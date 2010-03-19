@@ -6,7 +6,11 @@
  *
  *-------------------------------------------------------------------------
  */
- 
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/file.h>
+#include <sys/stat.h>
+
 #include "postgres.h"
 #include "cdb/cdbdoublylinked.h"
 #include "access/persistentfilesysobjname.h"
@@ -118,6 +122,8 @@ typedef struct FsObjEntryData
 
 	PersistentFileSysObjName	fsObjName;
 
+	PersistentFileSysRelStorageMgr relStorageMgr;
+
 	int64						persistentSerialNum;
 	
 	PersistentFileSysState		state;
@@ -138,7 +144,7 @@ FsObjEntryToBuffer(char *buffer, FsObjEntry fsObjEntry)
 		sprintf(buffer,
 			    "%s: state '%s', transaction %u, persistent serial number " INT64_FORMAT ", TID %s, fsObjEntry address %p",
 				PersistentFileSysObjName_TypeAndObjectName(&fsObjEntry->fsObjName),
-				PersistentFileSysObj_StateName(fsObjEntry->state),
+				PersistentFileSysObjState_Name(fsObjEntry->state),
 				fsObjEntry->xid,
 				fsObjEntry->persistentSerialNum,
 				ItemPointerToString(&fsObjEntry->key.persistentTid),
@@ -232,54 +238,6 @@ static FsObjEntry PersistentRecovery_FindOrCreateFsObjEntry(
 	return fsObjEntry;
 }
 
-#ifdef suppress
-static FsObjEntry PersistentRecovery_FindFsObjEntry(
-	PersistentFsObjType type,
-	
-	ItemPointer			persistentTid)
-
-{
-	FsObjEntry fsObjEntry;
-	bool found;
-
-	FsObjEntryKey	key;
-
-	if (fsObjHashTable == NULL)
-		PersistentRecovery_FsObjHashTableInit();
-
-	key.type = type;
-	key.persistentTid = *persistentTid;
-
-	fsObjEntry = 
-				(FsObjEntry) 
-						hash_search(fsObjHashTable,
-									(void *) &key,
-									HASH_FIND,
-									&found);
-
-	return fsObjEntry;
-}
-#endif
-
-#ifdef suppress
-static void PersistentRecovery_RemoveFsObjEntry(
-	FsObjEntry fsObjEntry)
-{
-	FsObjEntry removedFsObjEntry;
-
-	Assert (fsObjHashTable != NULL);
-
-	removedFsObjEntry = 
-				(FsObjEntry) 
-						hash_search(fsObjHashTable,
-									(void *) &fsObjEntry->key,
-									HASH_REMOVE,
-									NULL);
-
-	if (removedFsObjEntry == NULL)
-		elog(ERROR, "Trying to delete entry that does not exist");
-}
-#endif
 static void PersistentRecovery_AddEndXactFsObj(
 	TransactionId 			xid,
 	bool 					isCommit,
@@ -321,6 +279,7 @@ static void PersistentRecovery_AddEndXactFsObj(
 	}
 
 	fsObjEntry->fsObjName = fsObj->fsObjName;
+	fsObjEntry->relStorageMgr = fsObj->relStorageMgr;
 	fsObjEntry->persistentSerialNum = fsObj->persistentSerialNum;
 	fsObjEntry->xid = xid;
 	fsObjEntry->state = state;
@@ -358,7 +317,8 @@ PersistentRecovery_HandleXLogRec(
 	{
 		RelFileNode relFileNode;
 		
-		heap_redo_get_rnode(record, &relFileNode);
+		if (!heap_getrelfilenode(record, &relFileNode))
+			elog(ERROR, "No relfilenode");
 
 		if (relFileNode.spcNode != GLOBALTABLESPACE_OID)
 			return false;
@@ -605,7 +565,7 @@ PersistentRecovery_AddScanEntry(
 				elog(Debug_persistent_recovery_print_level, 
 				     "Scan REDO: Newer %s than %s state, transaction %u",
 					 FsObjEntryToString(fsObjEntry),
-					 PersistentFileSysObj_StateName(state),
+					 PersistentFileSysObjState_Name(state),
 					 parentXid);
 
 			fsObjEntry->state = state;
@@ -617,7 +577,7 @@ PersistentRecovery_AddScanEntry(
 				elog(Debug_persistent_recovery_print_level, 
 				     "Scan REDO: Update %s to state '%s', transaction %u, serial number " INT64_FORMAT,
 					 FsObjEntryToString(fsObjEntry),
-					 PersistentFileSysObj_StateName(state),
+					 PersistentFileSysObjState_Name(state),
 					 parentXid,
 					 persistentSerialNum);
 
@@ -631,7 +591,7 @@ PersistentRecovery_AddScanEntry(
 			     "Scan REDO: Overwriting obsolete %s with '%s', state '%s', transaction %u, serial number " INT64_FORMAT,
 				 FsObjEntryToString(fsObjEntry),
 				 PersistentFileSysObjName_TypeAndObjectName(fsObjName),
-				 PersistentFileSysObj_StateName(state),
+				 PersistentFileSysObjState_Name(state),
 				 parentXid,
 				 persistentSerialNum);
 
@@ -648,12 +608,10 @@ PersistentRecovery_AddScanEntry(
 	}
 }
 
-static PersistentFileSysObjSharedData	persistentRecoveryFileSysObjSharedData = PersistentFileSysObjSharedData_StaticInit;
-static PersistentFileSysObjData			persistentRecoveryFileSysObjData = PersistentFileSysObjData_StaticInit;
-static int								persistentRecoveryCount = 0;
+static int	persistentRecoveryCount = 0;
 
-static bool PersistentRecovery_ScanTupleCallback(
-	int 					token,
+static void PersistentRecovery_ScanTuple(
+	PersistentFsObjType 	fsObjType,
 	ItemPointer 			persistentTid,
 	int64					persistentSerialNum,
 	Datum					*values)
@@ -661,22 +619,24 @@ static bool PersistentRecovery_ScanTupleCallback(
 	PersistentFileSysObjName	fsObjName;
 	
 	PersistentFileSysState	state;
-	MirrorFileSysState		mirrorState;
+
+	MirroredObjectExistenceState		mirrorExistenceState;	// UNDONE
+
 	TransactionId			parentXid;
 	int64					serialNum;
 
 	GpPersistent_GetCommonValues(
-							persistentRecoveryFileSysObjData.fsObjType,
+							fsObjType,
 							values,
 							&fsObjName,
 							&state,
-							&mirrorState,
+							&mirrorExistenceState,
 							&parentXid,
 							&serialNum);
 	Assert(serialNum == persistentSerialNum);
 
 	PersistentRecovery_AddScanEntry(
-							(PersistentFsObjType)token,
+							fsObjType,
 							persistentTid,
 							&fsObjName,
 							state,
@@ -684,14 +644,22 @@ static bool PersistentRecovery_ScanTupleCallback(
 							persistentSerialNum);
 
 	persistentRecoveryCount++;
-
-	return true;	// Continue.
 }
 
 static void
 PersistentRecovery_ScanType(
 	PersistentFsObjType fsObjType)
 {
+	PersistentFileSysObjData *fileSysObjData;
+	PersistentFileSysObjSharedData	*fileSysObjSharedData;
+
+	PersistentStoreScan storeScan;
+
+	Datum *values;
+	 
+	ItemPointerData			 persistentTid;
+	int64					 persistentSerialNum;
+
 	if (Debug_persistent_recovery_print)
 		elog(Debug_persistent_recovery_print_level, 
 		     "Entering PersistentRecovery_ScanType %s",
@@ -699,20 +667,32 @@ PersistentRecovery_ScanType(
 
 	persistentRecoveryCount = 0;
 
-	PersistentFileSysObj_InitShared(
-					&persistentRecoveryFileSysObjSharedData);
+	PersistentFileSysObj_GetDataPtrs(
+								fsObjType,
+								&fileSysObjData,
+								&fileSysObjSharedData);
+		 
+	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes * sizeof(Datum));
+		 
+	PersistentStore_BeginScan(
+						&fileSysObjData->storeData,
+						&fileSysObjSharedData->storeSharedData,
+						&storeScan);
 
-	PersistentFileSysObj_Init(
-						&persistentRecoveryFileSysObjData,
-						fsObjType,
-						PersistentRecovery_ScanTupleCallback);
+	while (PersistentStore_GetNext(
+							&storeScan,
+							values,
+							&persistentTid,
+							&persistentSerialNum))
+	{
+		PersistentRecovery_ScanTuple(
+								fsObjType,
+								&persistentTid,
+								persistentSerialNum,
+								values);
+	}
 
-	/*
-	 * This will trigger a scan.
-	 */
-	PersistentFileSysObj_InitScan(
-						&persistentRecoveryFileSysObjData,
-						&persistentRecoveryFileSysObjSharedData);
+	pfree(values);
 	
 	if (Debug_persistent_recovery_print)
 		elog(Debug_persistent_recovery_print_level, 
@@ -842,7 +822,7 @@ PersistentRecovery_CrashAbort(void)
 
 		/*
 		 * We don't know the status of the transaction until we examine the
-		 * relation node states.
+		 * persistent node states.
 		 */
 
 		count = DoublyLinkedHead_Count(&xactEntry->fsObjEntryList);
@@ -1095,11 +1075,15 @@ PersistentRecovery_DropType(
 				elog(Debug_persistent_recovery_print_level, 
 				     "Drop REDO: %s", FsObjEntryToString(fsObjEntry));
 
-			PersistentFileSysObj_Drop(
+			// UNDONE: Determine the StorageManagerMirrorMode to pass in here.
+			PersistentFileSysObj_DropObject(
 							&fsObjEntry->fsObjName,
+							fsObjEntry->relStorageMgr,
+							/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
 							&fsObjEntry->key.persistentTid,
 							fsObjEntry->persistentSerialNum,
-							/* isRedo */ true);
+							StorageManagerMirrorMode_Both,
+							/* ignoreNonExistence */ true);
 		}
 	}
 
@@ -1130,3 +1114,106 @@ PersistentRecovery_Drop(void)
 		     "Exiting PersistentRecovery_Scan");
 }
 
+typedef struct RedoRelationEntry
+{
+	RelFileNode		relFileNode;
+
+	// UNDONE: mirrorExistence
+} RedoRelationEntry;
+
+void
+PersistentRecovery_SerializeRedoRelationFile(
+	int redoRelationFile)
+{
+	HASH_SEQ_STATUS iterateStatus;
+	FsObjEntry fsObjEntry;
+
+	RedoRelationEntry redoRelationEntry;
+
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level, 
+		     "Entering PersistentRecovery_SerializeRedoRelationFile");
+
+	hash_seq_init(
+			&iterateStatus, 
+			fsObjHashTable[PersistentFsObjType_RelationFile]);
+
+	persistentRecoveryCount = 0;
+
+	while (true)
+	{
+		int writeLen;
+
+		fsObjEntry = 
+				(FsObjEntry)
+						hash_seq_search(&iterateStatus);
+		if (fsObjEntry == NULL)
+			break;
+
+		redoRelationEntry.relFileNode = fsObjEntry->fsObjName.variant.rel.relFileNode;
+
+		writeLen = write(redoRelationFile, &redoRelationEntry, sizeof(RedoRelationEntry));
+		if (writeLen != sizeof(RedoRelationEntry))
+		{
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not write redo relation file : %m")));
+		}
+		persistentRecoveryCount++;
+		
+		if (Debug_persistent_recovery_print)
+			elog(Debug_persistent_recovery_print_level, 
+				 "PersistentRecovery_SerializeRedoRelationFile: %u/%u/%u",
+				 redoRelationEntry.relFileNode.spcNode,
+				 redoRelationEntry.relFileNode.dbNode,
+				 redoRelationEntry.relFileNode.relNode);
+	}
+	
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level, 
+		     "Exiting PersistentRecovery_SerializeRedoRelationFile count %d",
+		     persistentRecoveryCount);
+}
+
+void
+PersistentRecovery_DeserializeRedoRelationFile(
+	int redoRelationFile)
+{
+	RedoRelationEntry redoRelationEntry;
+
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level, 
+		     "Entering PersistentRecovery_DeserializeRedoRelationFile");
+
+	while(true)
+	{
+		int readLen;
+
+		errno = 0;
+		readLen = read(redoRelationFile, &redoRelationEntry, sizeof(RedoRelationEntry));
+
+		if (readLen == 0)
+			break;
+		else if (readLen != sizeof(RedoRelationEntry) && errno == 0)
+			elog(ERROR, "Bad redo relation entry length (expected %d and found %d)",
+			     (int)sizeof(RedoRelationEntry), readLen);
+		else if (errno != 0)
+		{
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("error reading redo relation file: %m")));
+		}
+		
+		if (Debug_persistent_recovery_print)
+			elog(Debug_persistent_recovery_print_level, 
+				"PersistentRecovery_DeserializeRedoRelationFile: %u/%u/%u",
+				redoRelationEntry.relFileNode.spcNode,
+				redoRelationEntry.relFileNode.dbNode,
+				redoRelationEntry.relFileNode.relNode);
+	}
+	
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level, 
+		     "Exiting PersistentRecovery_DeserializeRedoRelationFile count %d",
+		     persistentRecoveryCount);
+}

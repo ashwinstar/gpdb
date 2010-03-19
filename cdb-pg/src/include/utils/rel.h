@@ -202,7 +202,7 @@ typedef struct RelationData
 	/*
 	 * Physical file-system information.
 	 */
-	struct RelationNodeInfo rd_relationnodeinfo;
+	struct RelationNodeInfo rd_segfile0_relationnodeinfo;
 								/* Values from gp_relation_node, if present */
 
 	/* use "struct" here to avoid needing to include pgstat.h: */

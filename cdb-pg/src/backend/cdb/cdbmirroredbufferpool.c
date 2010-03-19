@@ -34,6 +34,9 @@ bool MirroredBufferPool_Open(
 	uint32			segmentFileNum,
 				/* Which segment file. */
 
+	char			*relationName,
+				/* For tracing only.  Can be NULL in some execution paths. */
+
 	int 			fileFlags,
 
 	int 			fileMode)
@@ -43,6 +46,7 @@ bool MirroredBufferPool_Open(
 	char *mirrorFilespaceLocation;
 	char dbPath[MAXPGPATH];
 	char path[MAXPGPATH];
+	bool retval = TRUE;
 
 	Assert(open != NULL);
 	
@@ -51,22 +55,36 @@ bool MirroredBufferPool_Open(
 										&primaryFilespaceLocation,
 										&mirrorFilespaceLocation);
 	
+	MemSet(open, 0, sizeof(MirroredBufferPoolOpen));
+	open->primaryFile = -1;
+	
+	if (mirrorFilespaceLocation == NULL)
+		sprintf(open->mirrorFilespaceLocation, "%s", "");
+	else
+		sprintf(open->mirrorFilespaceLocation, "%s", mirrorFilespaceLocation);
+		
+	open->relFileNode = *relFileNode;
+	open->segmentFileNum = segmentFileNum;
+	
+	open->isResync = FileRepPrimary_IsResync();	
+	
 	if (FileRepPrimary_MirrorOpen(
 				  FileRep_GetRelationIdentifier(
-									*relFileNode, 
-									segmentFileNum),
+									open->mirrorFilespaceLocation,
+									open->relFileNode, 
+									open->segmentFileNum),
 				  FileRepRelationTypeBufferPool,
 				  FILEREP_OFFSET_UNDEFINED,
 				  fileFlags,
 				  fileMode,
 				  TRUE /* supressError */) != 0) 
 		ereport(LOG,
-				(errmsg("could not sent open file to mirror file \"%s\", segment file %d", 
-						relpath(open->relFileNode), open->segmentFileNum)));
-
-	MemSet(open, 0, sizeof(MirroredBufferPoolOpen));
-	open->primaryFile = -1;
-
+				(errmsg("ERROR(filerep): could not sent file open request to mirror "), 
+						FileRep_ReportRelationPath(
+											open->mirrorFilespaceLocation,
+											open->relFileNode,
+											open->segmentFileNum)));
+	
 	FormDatabasePath(
 				dbPath,
 				primaryFilespaceLocation,
@@ -78,23 +96,23 @@ bool MirroredBufferPool_Open(
 	else
 		sprintf(path, "%s/%u.%u", dbPath, relFileNode->relNode, segmentFileNum);
 
+	errno = 0;
 	open->primaryFile = PathNameOpenFile(path, fileFlags, fileMode);
 	if (open->primaryFile < 0)
-		return false;
-	else
-		errno = 0;
-
-	open->relFileNode = *relFileNode;
-	open->segmentFileNum = segmentFileNum;
-	
-	open->isActive = true;
-
+		retval = false;
+	else 
+	{
+		Assert(errno == 0);
+		open->isActive = true;
+	}
+		
 	if (primaryFilespaceLocation != NULL)
 		pfree(primaryFilespaceLocation);
+	
 	if (mirrorFilespaceLocation != NULL)
 		pfree(mirrorFilespaceLocation);
 
-	return true;
+	return retval;
 }
 
 extern bool MirroredBufferPool_IsActive(
@@ -120,31 +138,42 @@ bool MirroredBufferPool_Flush(
 	
 	if (FileRepPrimary_MirrorFlush(
 					FileRep_GetRelationIdentifier(
-								open->relFileNode, 
-								open->segmentFileNum),
+												  open->mirrorFilespaceLocation,
+												  open->relFileNode, 
+												  open->segmentFileNum),
 					FileRepRelationTypeBufferPool) != 0) {
 		
 		mirrorFlush = FALSE;
 		ereport(LOG,
-				(errmsg("could not sent fsync file to mirror file \"%s\", segment file %d", 
-						relpath(open->relFileNode), open->segmentFileNum)));
+				(errmsg("ERROR(filerep): could not sent file fsync request to mirror "), 
+						FileRep_ReportRelationPath(
+												   open->mirrorFilespaceLocation,
+												   open->relFileNode,
+												   open->segmentFileNum)));
 	}
 	
-	errno = 0;
+	if (open->isResync == FALSE)
+	{
+		errno = 0;
 
-	if (FileSync(open->primaryFile) < 0) 
-		retval = false;
+		if (FileSync(open->primaryFile) < 0) 
+			retval = false;
+	}
 
 	if (mirrorFlush) {
 		if (FileRepPrimary_IsOperationCompleted(
 						FileRep_GetRelationIdentifier(
-								  open->relFileNode, 
-								  open->segmentFileNum),									
+													  open->mirrorFilespaceLocation,
+													  open->relFileNode, 
+													  open->segmentFileNum),									
 						FileRepRelationTypeBufferPool) == FALSE)	
 			
 			ereport(LOG,
-					(errmsg("could not fsync file on mirror file \"%s\", segment file %d", 
-							relpath(open->relFileNode), open->segmentFileNum)));
+					(errmsg("ERROR(filerep): could not fsync file on mirror "), 
+							FileRep_ReportRelationPath(
+													   open->mirrorFilespaceLocation,
+													   open->relFileNode,
+													   open->segmentFileNum)));
 	}
 	
 	return retval;
@@ -164,16 +193,22 @@ void MirroredBufferPool_Close(
 						
 	if (FileRepPrimary_MirrorClose(
 				FileRep_GetRelationIdentifier(
-								 open->relFileNode, 
-								 open->segmentFileNum),
+											  open->mirrorFilespaceLocation,
+											  open->relFileNode, 
+											  open->segmentFileNum),
 				FileRepRelationTypeBufferPool) != 0) 
 		
 		ereport(LOG,
-				(errmsg("could not sent close file to mirror file \"%s\", segment file %d", 
-						relpath(open->relFileNode), open->segmentFileNum)));
-    errno = 0;
+				(errmsg("ERROR(filerep): could not sent file close request to mirror"), 
+						FileRep_ReportRelationPath(
+												   open->mirrorFilespaceLocation,
+												   open->relFileNode,
+												   open->segmentFileNum)));
 	
+	errno = 0;
+		
 	FileClose(open->primaryFile);
+	
 	open->primaryFile = -1;
 
 	open->isActive = false;
@@ -196,8 +231,9 @@ bool MirroredBufferPool_Write(
 				/* Byte length of buffer. */
 
 {
-	int64 seekResult;
+	int64	seekResult;
 	char*	buf = NULL;
+	bool	retval = true;
 
 	Assert(open != NULL);
 	Assert(buffer != NULL);
@@ -213,8 +249,9 @@ bool MirroredBufferPool_Write(
 	
 	if (FileRepPrimary_MirrorWrite(
 					   FileRep_GetRelationIdentifier(
-									 open->relFileNode, 
-									 open->segmentFileNum),
+													 open->mirrorFilespaceLocation,
+													 open->relFileNode, 
+													 open->segmentFileNum),
 					   FileRepRelationTypeBufferPool,
 					   position,
 					   buf, 
@@ -222,28 +259,37 @@ bool MirroredBufferPool_Write(
 					   FileRep_GetXLogRecPtrUndefined())	!= 0) 		
 		
 		ereport(LOG,
-				 (errmsg("could not sent write to mirror position %d in file \"%s\", segment file %d", 
-						position, relpath(open->relFileNode), open->segmentFileNum)));
+				 (errmsg("ERROR(filerep): could not sent write request to mirror position:'%d' ", 
+						 position), 
+						 FileRep_ReportRelationPath(
+													open->mirrorFilespaceLocation,
+													open->relFileNode,
+													open->segmentFileNum)));
 	
-	errno = 0;
 	
-	seekResult = FileSeek(open->primaryFile, position, SEEK_SET);
-	if (seekResult != position)
+	if (open->isResync == FALSE)
 	{
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not seek in file to position %d in file \"%s\", segment file %d: %m", 
-				        position,
-				        relpath(open->relFileNode), open->segmentFileNum)));
-	}
+		errno = 0;
+		
+		seekResult = FileSeek(open->primaryFile, position, SEEK_SET);
+		if (seekResult != position)
+		{
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not seek in file to position %d in file \"%s\", segment file %d: %m", 
+							position,
+							relpath(open->relFileNode), 
+							open->segmentFileNum)));
+		}
 
-	errno = 0;
-	if ((int) FileWrite(open->primaryFile, buf, bufferLen) != bufferLen)
-	{
-		/* if write didn't set errno, assume problem is no disk space */
-		if (errno == 0)
-			errno = ENOSPC;
-		return false;
+		errno = 0;
+		if ((int) FileWrite(open->primaryFile, buf, bufferLen) != bufferLen)
+		{
+			/* if write didn't set errno, assume problem is no disk space */
+			if (errno == 0)
+				errno = ENOSPC;
+			retval = false;
+		}
 	}
 	
 	if (buf) {
@@ -251,7 +297,7 @@ bool MirroredBufferPool_Write(
 		buf = NULL;
 	}
 
-	return true;
+	return retval;
 }
 
 /*
@@ -317,51 +363,81 @@ bool MirroredBufferPool_Drop(
 	RelFileNode 	*relFileNode,
 				/* The tablespace, database, and relation OIDs for the open. */
 
-	uint32			segmentFileNum)
+	uint32			segmentFileNum,
 				/* Which segment file. */
+
+	char			*relationName)
+				/* For tracing only.  Can be NULL in some execution paths. */
+
 {
-	char *subDirectory;
+	char *primaryFilespaceLocation;
+	char *mirrorFilespaceLocation;
+	char dbPath[MAXPGPATH];	
 	char path[MAXPGPATH];
 	bool mirrorDrop = TRUE;
 	bool retval = TRUE;
 	
+	PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+													   relFileNode->spcNode,
+													   &primaryFilespaceLocation,
+													   &mirrorFilespaceLocation);	
+	
 	if (FileRepPrimary_MirrorDrop(
 				FileRep_GetRelationIdentifier(
-							*relFileNode, 
-							segmentFileNum),				  
+											  mirrorFilespaceLocation,
+											  *relFileNode, 
+											  segmentFileNum),				  
 				FileRepRelationTypeBufferPool) != 0) {
 		
 		mirrorDrop = FALSE;
 		ereport(LOG,
-				 (errmsg("could not sent drop file to mirror file \"%s\", segment file %d", 
-						relpath(*relFileNode), segmentFileNum)));
+				 (errmsg("ERROR(filerep): could not sent file drop request to mirror "), 
+						 FileRep_ReportRelationPath(
+													mirrorFilespaceLocation,
+													*relFileNode,
+													segmentFileNum)));
 	}
 
-	subDirectory = GetDatabasePath(
-								relFileNode->dbNode,
-								relFileNode->spcNode);
-	if (segmentFileNum == 0)
-		sprintf(path, "%s/%u", subDirectory, relFileNode->relNode);
-	else
-		sprintf(path, "%s/%u.%u", subDirectory, relFileNode->relNode, segmentFileNum);
-	pfree(subDirectory);
+	if (FileRepPrimary_IsResync() == FALSE)
+	{
+		FormDatabasePath(
+						 dbPath,
+						 primaryFilespaceLocation,
+						 relFileNode->spcNode,
+						 relFileNode->dbNode);
+		
+		if (segmentFileNum == 0)
+			sprintf(path, "%s/%u", dbPath, relFileNode->relNode);
+		else
+			sprintf(path, "%s/%u.%u", dbPath, relFileNode->relNode, segmentFileNum);
 
-	errno = 0;
-	
-	if (unlink(path) < 0) 
-		retval = false;
+		errno = 0;
+		
+		if (unlink(path) < 0) 
+			retval = false;
+	}
 
 	if (mirrorDrop) {
 		if (FileRepPrimary_IsOperationCompleted(
 					FileRep_GetRelationIdentifier(
+									mirrorFilespaceLocation,
 									*relFileNode, 
 									segmentFileNum),									
 					FileRepRelationTypeBufferPool) == FALSE)	
 			
 			ereport(LOG,
-					(errmsg("could not fsync file on mirror file \"%s\", segment file %d", 
-							relpath(*relFileNode), segmentFileNum)));
+					(errmsg("ERROR(filerep): could not drop file on mirror "), 
+							FileRep_ReportRelationPath(
+													   mirrorFilespaceLocation,
+													   *relFileNode,
+													   segmentFileNum)));		
 	}
+	
+	if (primaryFilespaceLocation != NULL)
+		pfree(primaryFilespaceLocation);
+	
+	if (mirrorFilespaceLocation != NULL)
+		pfree(mirrorFilespaceLocation);	
 	
 	return retval;
 }
@@ -376,19 +452,26 @@ bool MirroredBufferPool_Truncate(
 	
 	if (FileRepPrimary_MirrorTruncate(
 				FileRep_GetRelationIdentifier(
-							open->relFileNode, 
-							open->segmentFileNum),
+											  open->mirrorFilespaceLocation,				  
+											  open->relFileNode, 
+											  open->segmentFileNum),
 				FileRepRelationTypeBufferPool,
 				position) != 0) 
 		
 		ereport(LOG,
-				(errmsg("could not sent truncate file to mirror file \"%s\", segment file %d", 
-						relpath(open->relFileNode), open->segmentFileNum)));	
+				(errmsg("ERROR(filerep): could not sent file truncate request to mirror "), 
+						FileRep_ReportRelationPath(
+												   open->mirrorFilespaceLocation,
+												   open->relFileNode,
+												   open->segmentFileNum)));
 	
-	errno = 0;
-	
-	if (FileTruncate(open->primaryFile, position) < 0)
-		return false;
+	if (open->isResync == FALSE)
+	{
+		errno = 0;
+		
+		if (FileTruncate(open->primaryFile, position) < 0)
+			return false;
+	}
 
 	return true;
 }

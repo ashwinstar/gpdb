@@ -36,6 +36,9 @@ typedef enum
 	PMSIGNAL_FILEREP_STATE_CHANGE,	      /* filerep is reporting state change */ 
 
 	PMSIGNAL_PRIMARY_MIRROR_TRANSITION_RECEIVED, /* a primary mirror transition has been received by a backend */
+	PMSIGNAL_PRIMARY_MIRROR_ALL_BACKENDS_SHUTDOWN, /* filerep has shut down all backends */
+
+    PMSIGNAL_FILEREP_POSTMASTER_RESET_REQUIRED, /* one of the filerep subprocesses crashed in a way that requires PM reset */
 
 	NUM_PMSIGNALS				/* Must be last value of enum! */
 } PMSignalReason;

@@ -47,6 +47,8 @@ typedef struct PersistentEndXactFsObj
 {
 	PersistentFileSysObjName 	fsObjName;
 
+	PersistentFileSysRelStorageMgr relStorageMgr;
+
 	ItemPointerData			persistentTid;
 
 	int64					persistentSerialNum;

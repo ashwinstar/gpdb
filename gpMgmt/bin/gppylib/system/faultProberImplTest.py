@@ -17,6 +17,12 @@ class GpFaultProberImplForTest(GpFaultProber):
     def __init__(self):
         self.__isPaused = False
 
+    #
+    # returns self
+    #
+    def initializeProber( self, masterPort ) :
+        return self
+
     def pauseFaultProber(self):
         assert not self.__isPaused
         self.__isPaused = True

@@ -60,8 +60,12 @@ extern DistributedTransactionTimeStamp PostmasterGetDtxStartTime(void);
 
 extern void StartMasterOrPrimaryPostmasterProcesses(void);
 extern void SignalShutdownFilerepProcess(void);
+extern void SignalShutdownFilerepBackendProcesses(void);
+extern bool IsFilerepBackendsDoneShutdown(void);
 extern void NotifyProcessesOfFilerepStateChange(void);
 extern void StartFilerepProcesses(void);
 extern bool IsFilerepProcessRunning(void);
+extern bool IsDatabaseInRunMode(void);
+
 
 #endif   /* _POSTMASTER_H */

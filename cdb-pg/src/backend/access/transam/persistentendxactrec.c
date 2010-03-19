@@ -8,9 +8,12 @@
  *-------------------------------------------------------------------------
  */
 
+#include "postgres.h"
+#include "miscadmin.h"
 #include "access/persistentendxactrec.h"
 #include "storage/smgr.h"
 #include "utils/guc.h"
+#include "cdb/cdbpersistentstore.h"
 
 /*
  * Structure containing an object.
@@ -42,10 +45,11 @@ void PersistentEndXactRec_Print(
 					&objects->typed.createFsObjs[i];
 
 		elog(Debug_persistent_print_level, 
-			 "%s: [%d] %s, persistent serial num " INT64_FORMAT ", TID %s, Create on Commit",
+			 "%s: [%d] %s, relation storage manager '%s', persistent serial num " INT64_FORMAT ", TID %s, Create on Commit",
 			 procName,
 			 i,
 			 PersistentFileSysObjName_TypeAndObjectName(&fsObj->fsObjName),
+			 PersistentFileSysRelStorageMgr_Name(fsObj->relStorageMgr),
 			 fsObj->persistentSerialNum,
 			 ItemPointerToString(&fsObj->persistentTid));
 		
@@ -57,10 +61,11 @@ void PersistentEndXactRec_Print(
 					&objects->typed.dropFsObjs[i];
 
 		elog(Debug_persistent_print_level, 
-			 "%s: [%d] %s, persistent serial num " INT64_FORMAT ", TID %s, Drop on Commit",
+			 "%s: [%d] %s, relation storage manager '%s', persistent serial num " INT64_FORMAT ", TID %s, Drop on Commit",
 			 procName,
 			 i,
 			 PersistentFileSysObjName_TypeAndObjectName(&fsObj->fsObjName),
+			 PersistentFileSysRelStorageMgr_Name(fsObj->relStorageMgr),
 			 fsObj->persistentSerialNum,
 			 ItemPointerToString(&fsObj->persistentTid));
 	}
@@ -142,6 +147,33 @@ void PersistentEndXactRec_Init(
 	MemSet(objects, 0, sizeof(PersistentEndXactRecObjects));
 }
 
+static void
+PersistentEndXactRec_VerifyFsObjs(
+	PersistentEndXactFsObj		*fsObjs,
+	int 						count,
+	char						*name)
+{
+	int i;
+
+	if (IsBootstrapProcessingMode())
+		return;
+
+	for (i = 0; i < count; i++)
+	{
+		if (PersistentStore_IsZeroTid(&fsObjs[i].persistentTid))
+			elog(ERROR, "TID for persistent '%s' tuple for file-system %s is invalid (0,0) (index %d)",
+				 PersistentFileSysObjName_TypeName(fsObjs[i].fsObjName.type),
+				 name,
+				 i);
+
+		if (fsObjs[i].persistentSerialNum == 0)
+			elog(ERROR, "Persistent '%s' serial number for file-system %s is invalid (0) (index %d)",
+				 PersistentFileSysObjName_TypeName(fsObjs[i].fsObjName.type),
+				 name,
+				 i);
+	}
+}
+
 void PersistentEndXactRec_AddCreateFsObjs(
 	PersistentEndXactRecObjects	*objects,
 	PersistentEndXactFsObj		*createFsObjs,
@@ -150,6 +182,11 @@ void PersistentEndXactRec_AddCreateFsObjs(
 	objects->typed.createFsObjs = createFsObjs;
 	objects->typed.createFsObjsCount = count;
 	objects->typed.createFsObjsLen = count * sizeof(PersistentEndXactFsObj);
+
+	PersistentEndXactRec_VerifyFsObjs(
+								createFsObjs,
+								count,
+								"CREATE");
 }
 
 int32 PersistentEndXactRec_FetchObjectsFromSmgr(
@@ -185,6 +222,11 @@ int32 PersistentEndXactRec_FetchObjectsFromSmgr(
 									/* forCommit */ false,
 									(PersistentEndXactFsObj**)&data);
 			len = count * sizeof(PersistentEndXactFsObj);
+
+			PersistentEndXactRec_VerifyFsObjs(
+										(PersistentEndXactFsObj*)data,
+										count,
+										"CREATE");
 			break;
 			
 		case PersistentXactObjKind_DropFsObjs:
@@ -192,6 +234,11 @@ int32 PersistentEndXactRec_FetchObjectsFromSmgr(
 									/* forCommit */ true,
 									(PersistentEndXactFsObj**)&data);
 			len = count * sizeof(PersistentEndXactFsObj);
+
+			PersistentEndXactRec_VerifyFsObjs(
+										(PersistentEndXactFsObj*)data,
+										count,
+										"DROP");
 			break;
 								
 		default:

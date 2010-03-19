@@ -20,6 +20,7 @@
  * Send Messages to Mirror
  */
 
+extern bool FileRepPrimary_IsResync(void);
 
 
 // -----------------------------------------------------------------------------
@@ -211,6 +212,16 @@ extern bool FileRepPrimary_IsOperationCompleted(
 		/* type on which operation was performed */
 
 extern XLogRecPtr FileRepPrimary_GetMirrorXLogEof(void);
+
+/*
+ * Inform mirror that gracefull shutdown is performing o primary
+ */
+extern void FileRepPrimary_MirrorShutdown(void);
+
+/*
+ * Transition mirror from InResync to InSync dataState
+ */
+extern void FileRepPrimary_MirrorInSyncTransition(void);
 
 // -----------------------------------------------------------------------------
 // SENDER THREAD

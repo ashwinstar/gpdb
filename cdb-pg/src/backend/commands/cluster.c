@@ -986,34 +986,19 @@ void
 swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 {
 	Relation	relRelation;
-	Relation	relNodeRelation;
 	HeapTuple	reltup1,
 				reltup2;
 	Form_pg_class relform1,
 				relform2;
-	Oid			tablespace1,
-				tablespace2;
-	HeapTuple	relNodeTuple1,
-				relNodeTuple2;
-	ItemPointerData persistentTid1,
-					persistentTid2;
-	int64		persistentSerialNum1,
-				persistentSerialNum2;
 	Oid			swaptemp;
+	char		swapchar;
 	CatalogIndexState indstate;
-	Oid segrelid1, segrelid2, segidxid1, segidxid2;
-	Oid blkdirrelid1, blkdirrelid2, blkdiridxid1, blkdiridxid2;
-
-	segrelid1 = segrelid2 = segidxid1 = segidxid2 = InvalidOid;
-	blkdirrelid1 = blkdirrelid2 = blkdiridxid1 = blkdiridxid2 = InvalidOid;
+	bool		isAO1, isAO2;
 
 	/* 
-	 * We need writable copies of both pg_class tuples, and both 
-	 * gp_relation_node tuples.
+	 * We need writable copies of both pg_class tuples.
 	 */
-
 	relRelation = heap_open(RelationRelationId, RowExclusiveLock);
-	relNodeRelation = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
 
 	reltup1 = SearchSysCacheCopy(RELOID,
 								 ObjectIdGetDatum(r1),
@@ -1022,20 +1007,6 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 		elog(ERROR, "cache lookup failed for relation %u", r1);
 	relform1 = (Form_pg_class) GETSTRUCT(reltup1);
 
-	tablespace1 = relform1->reltablespace;
-	if (tablespace1 == 0)
-		tablespace1 = DEFAULTTABLESPACE_OID;
-	relNodeTuple1 = FetchGpRelationNodeTuple(
-								relNodeRelation,
-								r1,
-								tablespace1, 
-								relform1->relfilenode, 
-								&persistentTid1,
-								&persistentSerialNum1);
-	if (!HeapTupleIsValid(relNodeTuple1))
-		elog(ERROR, "scan lookup failed for relation %u, reltablespace %u, relfilenode %u", 
-		     r1, tablespace1, relform1->relfilenode);
-
 	reltup2 = SearchSysCacheCopy(RELOID,
 								 ObjectIdGetDatum(r2),
 								 0, 0, 0);
@@ -1043,30 +1014,27 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 		elog(ERROR, "cache lookup failed for relation %u", r2);
 	relform2 = (Form_pg_class) GETSTRUCT(reltup2);
 	
-	tablespace2 = relform2->reltablespace;
-	if (tablespace2 == 0)
-		tablespace2 = DEFAULTTABLESPACE_OID;
-	relNodeTuple2 = FetchGpRelationNodeTuple(
-								relNodeRelation,
-								r2,
-								tablespace2, 
-								relform2->relfilenode, 
-								&persistentTid2,
-								&persistentSerialNum2);
-	if (!HeapTupleIsValid(relNodeTuple2))
-		elog(ERROR, "scan lookup failed for relation %u, reltablespace %u, relfilenode %u", 
-		     r2, tablespace2, relform2->relfilenode);
+	isAO1 = (relform1->relstorage == RELSTORAGE_AOROWS ||
+			 relform1->relstorage == RELSTORAGE_AOCOLS);
+	isAO2 = (relform2->relstorage == RELSTORAGE_AOROWS ||
+			 relform2->relstorage == RELSTORAGE_AOCOLS);
 
-	if (relform1->relstorage == RELSTORAGE_AOROWS ||
-		relform1->relstorage == RELSTORAGE_AOCOLS)
-	{
-		GetAppendOnlyEntryAuxOids(r1, &segrelid1, &segidxid1, &blkdirrelid1, &blkdiridxid1);
-	}
-	if (relform2->relstorage == RELSTORAGE_AOROWS ||
-		relform2->relstorage == RELSTORAGE_AOCOLS)
-	{
-		GetAppendOnlyEntryAuxOids(r2, &segrelid2, &segidxid2, &blkdirrelid2, &blkdiridxid2);
-	}
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "swap_relation_files (#1): ENTER relation '%s', relation id %u, relfilenode %u, reltablespace %u, relstorage '%c'",
+			 relform1->relname.data,
+			 r1,
+			 relform1->relfilenode,
+			 relform1->reltablespace,
+			 relform1->relstorage);
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "swap_relation_files (#2): ENTER relation '%s', relation id %u, relfilenode %u, reltablespace %u, relstorage '%c'",
+			 relform2->relname.data,
+			 r2,
+			 relform2->relfilenode,
+			 relform2->reltablespace,
+			 relform2->relstorage);
 
 	/*
 	 * Actually swap the fields in the two tuples
@@ -1089,35 +1057,17 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 	 * Swap the AO auxiliary relations and their indexes. Unlike the toast
 	 * relations, we need to swap the index oids as well.
 	 */
-	if (relform1->relstorage == RELSTORAGE_AOROWS ||
-		relform1->relstorage == RELSTORAGE_AOCOLS ||
-		relform2->relstorage == RELSTORAGE_AOROWS ||
-		relform2->relstorage == RELSTORAGE_AOCOLS)
+	if (isAO1 && isAO2)
 	{
-		swaptemp = segrelid1;
-		segrelid1 = segrelid2;
-		segrelid2 = swaptemp;
-
-		swaptemp = segidxid1;
-		segidxid1 = segidxid2;
-		segidxid2 = swaptemp;
-
-		swaptemp = blkdirrelid1;
-		blkdirrelid1 = blkdirrelid2;
-		blkdirrelid2 = swaptemp;
-
-		swaptemp = blkdiridxid1;
-		blkdiridxid1 = blkdiridxid2;
-		blkdiridxid2 = swaptemp;
-
-		if (relform1->relstorage == RELSTORAGE_AOROWS ||
-			relform1->relstorage == RELSTORAGE_AOCOLS)
-			UpdateAppendOnlyEntryAuxOids(r1, segrelid1, segidxid1, blkdirrelid1, blkdiridxid1);
-
-
-		if (relform2->relstorage == RELSTORAGE_AOROWS ||
-			relform2->relstorage == RELSTORAGE_AOCOLS)
-			UpdateAppendOnlyEntryAuxOids(r2, segrelid2, segidxid2, blkdirrelid2, blkdiridxid2);
+		SwapAppendonlyEntries(r1, r2);
+	}
+	else if (isAO1)
+	{
+		TransferAppendonlyEntry(r1, r2);
+	}
+	else if (isAO2)
+	{
+		TransferAppendonlyEntry(r2, r1);
 	}
 	
 
@@ -1135,7 +1085,32 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 		relform1->reltuples = relform2->reltuples;
 		relform2->reltuples = swap_tuples;
 	}
-	
+
+	/*
+	 * Swap relstorage so we will later know how to drop the temporary table with
+	 * the right Storage Manager (i.e. Buffer Pool or Append-Only).
+	 */
+	swapchar = relform1->relstorage;
+	relform1->relstorage = relform2->relstorage;
+	relform2->relstorage = swapchar;
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "swap_relation_files (#1): UPDATE relation '%s', relation id %u, relfilenode %u, reltablespace %u, relstorage '%c'",
+			 relform1->relname.data,
+			 r1,
+			 relform1->relfilenode,
+			 relform1->reltablespace,
+			 relform1->relstorage);
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "swap_relation_files (#2): UPDATE relation '%s', relation id %u, relfilenode %u, reltablespace %u, relstorage '%c'",
+			 relform2->relname.data,
+			 r2,
+			 relform2->relfilenode,
+			 relform2->reltablespace,
+			 relform2->relstorage);
+
 	simple_heap_update(relRelation, &reltup1->t_self, reltup1);
 	simple_heap_update(relRelation, &reltup2->t_self, reltup2);
 
@@ -1144,34 +1119,6 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 	CatalogIndexInsert(indstate, reltup1);
 	CatalogIndexInsert(indstate, reltup2);
 	CatalogCloseIndexes(indstate);
-
-	/* 
-	 * Update gp_relation_node table and index.
-	 * 
-	 * We cannot swap using UpdateGpRelationNodeTuple, so we have to delete both and
-	 * then insert.
-	 */
-	
-	simple_heap_delete(relNodeRelation, &relNodeTuple1->t_self);
-	simple_heap_delete(relNodeRelation, &relNodeTuple2->t_self);
-
-	CommandCounterIncrement();
-
-	InsertGpRelationNodeTuple(
-					relNodeRelation,
-					r1,
-					relform1->reltablespace,	/* Already swapped */
-					relform1->relfilenode,		/* Already swapped */
-					&persistentTid2,
-					persistentSerialNum2);
-	InsertGpRelationNodeTuple(
-					relNodeRelation,
-					r2,
-					relform2->reltablespace,	/* Already swapped */
-					relform2->relfilenode,		/* Already swapped */
-					&persistentTid1,
-					persistentSerialNum1);
-
 
 	/*
 	 * If we have toast tables associated with the relations being swapped,
@@ -1194,29 +1141,7 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 							  "TOAST");
 	}
 
-	/*
-	 * If we have ao segment tables associated with the relations being swapped,
-	 * change their dependency links to re-associate them with their new
-	 * owning relations.  Otherwise the wrong one will get dropped ...
-	 */
-	if ((segrelid1 || segrelid2) && (segrelid1 != segrelid2))
-	{
-		changeDependencyLinks(r1, r2,
-							  segrelid1, segrelid2,
-							  "aoseg");
-	}
-
-	/*
-	 * If we have ao block directory tables associated with the relations being swapped,
-	 * change their dependency links to re-associate them with their new
-	 * owning relations.  Otherwise the wrong one will get dropped ...
-	 */
-	if ((blkdirrelid1 || blkdirrelid2) && (blkdirrelid1 != blkdirrelid2))
-	{
-		changeDependencyLinks(r1, r2,
-							  blkdirrelid1, blkdirrelid2,
-							  "aoblkdir");
-	}
+	CommandCounterIncrement();
 
 	/*
 	 * Blow away the old relcache entries now.	We need this kluge because
@@ -1239,7 +1164,6 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 	heap_freetuple(reltup2);
 
 	heap_close(relRelation, RowExclusiveLock);
-	heap_close(relNodeRelation, RowExclusiveLock);
 }
 
 /*

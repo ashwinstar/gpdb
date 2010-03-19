@@ -225,7 +225,7 @@ cdb_position_to_end(void)
 	// Throw in extra new line to make log more readable.
 	elog(LOG,"--------------------------");
 	
-	XLogGetStandbyRecoveryStart("to get initial restart location", &redoCheckpointLoc, &redoCheckpoint);
+	XLogGetRecoveryStart("QDSYNC", "to get initial restart location", &redoCheckpointLoc, &redoCheckpoint);
 	syncRedoLoc = redoCheckpoint.redo;
 
 	// UNDONE: Minimum of redoCheckpointLoc and redoCheckpoint.redo?
@@ -298,7 +298,7 @@ cdb_perform_redo(XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint, XLog
 	
 	if (redoCheckPointLoc->xlogid == 0 && redoCheckPointLoc->xrecoff == 0)
 	{
-		XLogGetStandbyRecoveryStart("for redo apply", redoCheckPointLoc, redoCheckPoint);
+		XLogGetRecoveryStart("QDSYNC", "for redo apply", redoCheckPointLoc, redoCheckPoint);
 	}
 	
 	XLogStandbyRecoverRange(redoCheckPointLoc, redoCheckPoint, newCheckpointLoc);
@@ -309,7 +309,7 @@ cdb_perform_redo(XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint, XLog
 	 */
 	oldRedoCheckpoint = *redoCheckPoint;
 
-	XLogGetStandbyRecoveryStart("for redo progress check", redoCheckPointLoc, redoCheckPoint);
+	XLogGetRecoveryStart("QDSYNC", "for redo progress check", redoCheckPointLoc, redoCheckPoint);
 
 	if (XLByteLT(oldRedoCheckpoint.redo,redoCheckPoint->redo))
 	{

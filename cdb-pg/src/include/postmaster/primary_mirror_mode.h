@@ -30,14 +30,17 @@ typedef enum DataState_e
     DataStateInSync,
 
     /* Primary is logging changing. Mirror is down. */
-    DataStateInChangeLogging,
+    DataStateInChangeTracking,
 
     /**
      * Changes are begin re-synchronized from primary to mirror.
      */
-    DataStateResynchronizing
+    DataStateInResync,
 
     /* note that these must be in sync with gDataStateLabels inside the implementation file */
+
+    /* The number of elements in this enumeration */
+    DataState__EnumerationCount
 } DataState_e;
 
 /**
@@ -45,33 +48,54 @@ typedef enum DataState_e
  */
 typedef enum SegmentState_e {
 
-        SegmentStateNotInitialized=0,
-		/* State has not been set */
+    SegmentStateNotInitialized=0,
+    /* State has not been set */
 
-		SegmentStateInitialization,
-		/* 
-		 * FileRep initialization.
-		 * Change Logging initialization. 
-		 */ 
+    SegmentStateInitialization,
+    /*
+     * FileRep, Change Tracking and Resync initialization and recovery.
+     */
 
-		SegmentStateRecovery,
-		/* 
-		 * WAL recovery, Change logging recovery.
-		 */
+    SegmentStateInResyncTransition,
+    /*
+     * Transition from Change Tracking or from no mirroring into Resync.
+     * This state is used while dataState == InResync.
+     */
 
-		SegmentStateReady,
-		/* Normal operation. */
-	
-		SegmentStateFault,
-		/* 
-		 * Fault is detected. Notify fts prober. 
-		 * Waiting for third coordinator decision about recovery.
-		 */
-		SegmentStateShutdown,
-		/* gracefull shutdown in progress. */
-	
-		SegmentStateImmediateShutdown 
-		/* immediate shutdown in progress */
+    SegmentStateInSyncTransition,
+    /*
+     * Transition from Resync to Sync segment state.
+     * This state is used while dataState == InResync.
+     */
+
+    SegmentStateReady,
+    /* Normal operation. */
+
+    SegmentStateChangeTrackingDisabled,
+    /*
+     * Change Tracking was turned off due to no disk space or
+     * gprecoverseg with full copy was requested.
+     * This state is used while dataState == InChangeTracking.
+     */
+
+    SegmentStateFault,
+    /*
+     * Fault is detected. Notify fts prober.
+     * Waiting for third coordinator decision about recovery.
+     */
+
+    SegmentStateShutdownFilerepBackends,
+    /* graceful shutdown of filerep processes which act as backends is in progress. */
+
+    SegmentStateShutdown,
+    /* graceful shutdown in progress. */
+
+    SegmentStateImmediateShutdown,
+    /* immediate shutdown in progress */
+
+    /* The number of elements in this enumeration */
+    SegmentState__EnumerationCount
+
 } SegmentState_e;
 
 
@@ -85,8 +109,11 @@ typedef enum FileRepRole_e {
     FileRepPrimaryRole,
 	/* Mirroring is configured. Segment is in the role of primary. */
 
-    FileRepMirrorRole
+    FileRepMirrorRole,
 	/* Mirroring is configured. Segment is in the role of mirror. */
+
+    /* The number of elements in this enumeration */
+	FileRepRole_e_Count
 } FileRepRole_e;
 
 /**
@@ -110,9 +137,12 @@ typedef enum
 	PMModePrimarySegment,
 
 	/* PMModeMirrorSegment: a mirror segment cannot answer queries; it can only wait for primary-segment connections and handle them */
-	PMModeMirrorSegment
+	PMModeMirrorSegment,
 
 	/* note that these must be in sync with gModeLabels inside the implementation file */
+
+    /* The number of elements in this enumeration */
+	PMMode__EnumerationCount
 } PrimaryMirrorMode;
 
 /**
@@ -141,9 +171,11 @@ typedef enum
 	 * Note that this will only be used by the postmaster process while processing the request and never
 	 *   actually returned to the original caller
 	 */
-	PMTransitionOkayButStillInProgress
+	PMTransitionOkayButStillInProgress,
 
-	/* note that these must be in sync with gTransitionResultLabels inside the implementation file */
+	/* note that these must be in sync with labels inside the implementation file */
+
+	PMTransition__EnumerationCount
 } PrimaryMirrorModeTransitionResult;
 
 #define PM_MAX_HOST_NAME_LENGTH (200)
@@ -167,6 +199,12 @@ typedef struct
     /* if true then a full resynchronization will be begun */
 	bool forceFullResync;
 
+	/** external callers will never set this to true.  It will become true if we are doing a postmaster reset
+	 *   but the reset did not work.  This flag indicates that we should transition immmediately to a fault
+	 *   state
+	 */
+	bool transitionToFault;
+
 	/* note that if more fields are added here, must be sure to update the no-op check in primary_mirror_mode.c */
 } PrimaryMirrorModeTransitionArguments;
 
@@ -186,10 +224,19 @@ extern bool doesPrimaryMirrorModeRequireFilerepProcess(bool checkTargetModeAsWel
  * Fetch the current file replication role and states.  Returns values through the pointer arguments.
  *   Note that any of the arguments may be NULL in which case that piece of information is not returned.
  */
-extern void getFileRepRoleAndState(FileRepRole_e *fileRepRole, SegmentState_e *segmentState, DataState_e *dataState);
+extern void getFileRepRoleAndState(
+								   FileRepRole_e *fileRepRole, 
+								   SegmentState_e *segmentState, 
+								   DataState_e *dataState);
 
 /* functions for the postmaster/filerep interaction */
-extern bool updateConfig(SegmentState_e segmentState);
+extern bool isFullResync(void);
+
+extern void setFullResync(void);
+
+extern bool updateSegmentState(SegmentState_e segmentState);
+
+extern bool updateDataState(DataState_e dataState);
 
 /* labeling enums */
 
@@ -204,7 +251,7 @@ extern const char *getSegmentStateLabel(SegmentState_e state);
 /* transitioning */
 extern PrimaryMirrorModeTransitionResult requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args );
 extern bool isPrimaryMirrorModeTransitionRequested(void);
-extern void doRequestedPrimaryMirrorModeTransitions(void);
+extern void doRequestedPrimaryMirrorModeTransitions(bool isInShutdown);
 extern PrimaryMirrorModeTransitionArguments *createNewTransitionArguments(void);
 extern void primaryMirrorGetFilerepArguments(
 				FileRepRole_e	*fileRepRoleOut,
@@ -215,5 +262,6 @@ extern void primaryMirrorGetFilerepArguments(
 				char **mirrorHostAddressOut,
 				int *mirrorPortOut,
 				bool *fullSyncOut);
+extern void primaryMirrorHandlePostmasterReset(void);
 
 #endif   /* _PRIMARY_MIRROR_MODE_H */

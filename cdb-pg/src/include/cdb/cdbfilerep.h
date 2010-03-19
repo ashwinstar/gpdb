@@ -30,10 +30,13 @@
 #define FILEREP_MAX_OPEN_FILES 128 // 131072   // 128k 
 
 #define FILEREP_MAX_PROC 64
+#define FILEREP_MAX_RESYNC_FILES 128  //8k
 
 #define FILEREP_OFFSET_UNDEFINED -1  
 
 #define FILEREP_UNDEFINED 0xFFFFFFFF
+
+#define FILEREP_UNKNOWN_IDENTIFIER_LEN	16
 	
 /* GUC parameters */
 extern int file_rep_message_body_length; 	
@@ -46,6 +49,21 @@ extern int file_rep_mirror_consumer_process_count;
 extern FileRepRole_e		fileRepRole;
 extern SegmentState_e		segmentState;
 extern DataState_e			dataState;
+
+/* The IPv4 address of the primary segment. */
+extern char *fileRepPrimaryHostAddress;
+
+/* The communication port of the primary. Required for listener ACK. */
+extern int fileRepPrimaryPort;
+
+/* The IPv4 address of the mirror. */
+extern char *fileRepMirrorHostAddress;
+
+/* The communication port of the mirror. Required for listener. */
+extern int fileRepMirrorPort;
+
+/* whether a full resync has been requested on startup */
+extern bool fileRepFullResync;
 
 extern const char*	FileRepProcessTypeToString[];
 extern const char*	FileRepRoleToString[];
@@ -125,7 +143,7 @@ typedef struct FileRepShmem_s {
 	
 	uint32	consumeCount;
 	/* counter of consumed messages. It is used for testing code correctness. */
-	
+
 	volatile sig_atomic_t state;
 	
 } FileRepShmem_s;
@@ -223,7 +241,7 @@ typedef enum FileRepState_e {
 	FileRepStateReady,
 	/* 
 	 * Mirroring or resynchronization is in progress.
-	 * Data state is Change Logging or Resynchronization.
+	 * dataState is InChangeTracking or InResync.
 	 */
 	
 	FileRepStateFault,
@@ -231,17 +249,22 @@ typedef enum FileRepState_e {
 	 * Fault is detected on primary or mirror. 
 	 * It transitions into Suspend state.
 	 */
-	
-	FileRepStateSuspend,
-	/* Wait for segment state change. Segment is in
-	 * change logging.
-	 */
-	
+    FileRepStateShutdownBackends,
+    /* Backend-like processes are going to exit (graceful termination)
+     *
+     * Note that handling of this in cdbfilerepservice is a little special:
+     *  it is NEVER copied into the local state, but either ignored
+     *  or converted to FileRepStateShutdown for local purposes.
+     */
+
 	FileRepStateShutdown,
 	/* Process is going to exit (graceful termination). */
 	
-	FileRepStateImmediateShutdown
+	FileRepStateImmediateShutdown,
 	/* Process is going to exit (emergency termination). */
+
+
+	FileRepState__EnumerationCount
 } FileRepState_e;	
 		
 /*
@@ -277,6 +300,13 @@ typedef enum FileRepConsumerProcIndex_e {
 	
 	FileRepMessageTypeAO02,
 	
+	FileRepMessageTypeShutdown,
+	
+	FileRepMessageTypeUndefined,
+	
+
+	/* the number of values in this enumeration */
+	FileRepMessageType__EnumerationCount
 } FileRepConsumerProcIndex_e;
 
 extern FileRepConsumerProcIndex_e fileRepProcIndex;
@@ -296,15 +326,18 @@ typedef enum FileRepRelationType_e {
 	
 	FileRepRelationTypeBulk,
 		/* Mirror Relation is bulk loaded file. */
-	
-	FileRepRelationTypeFile,
-		/* Mirror Relation is generic file create or drop. */
-	
+		
 	FileRepRelationTypeDir,
 		/* Mirror Relation is generic directory create and drop. */
 	
-	FileRepRelationNotSpecified,
+	FileRepRelationTypeUnknown,
 	
+	FileRepRelationTypeNotSpecified,
+
+
+	/* the number of values in this enumeration */
+	FileRepRelationType__EnumerationCount
+
 } FileRepRelationType_e;
 	
 /* 
@@ -341,12 +374,22 @@ typedef enum FileRepOperation_e {
 	FileRepOperationRename,
 		/* Rename flat file on a mirror relation */
 	
+	FileRepOperationShutdown,
+		/* Transition a mirror to shutdown */
+	
+	FileRepOperationInSyncTransition,
+		/* Transition a mirror from InResync to InSync */
+
 	FileRepOperationNotSpecified,
+
+
+	/* the number of values in this enumeration */
+	FileRepOperation__EnumerationCount
 	
 } FileRepOperation_e;
 
 /* 
- * Describe relation operations that are mirrored.
+ * 
  */
 typedef enum FileRepAckState_e {
 	FileRepAckStateNotInitialized=0,
@@ -356,8 +399,33 @@ typedef enum FileRepAckState_e {
 	FileRepAckStateCompleted,
 	
 	FileRepAckStateMirrorInFault,
+
+
+	/* the number of values in this enumeration */
+	FileRepAckState__EnumerationCount
 	
 } FileRepAckState_e;
+
+
+/* 
+ * 
+ */
+typedef enum FileRepResyncState_e {
+	FileRepResyncStateNotInitialized=0,
+	
+	FileRepResyncStateInitialized,
+		/* entry is initialized and file waited to be resynced */
+	
+	FileRepResyncStateInProgress,
+		/* file is in resync */
+	
+	FileRepResyncStateCompleted,
+		/* file resync completed */
+	
+	FileRepResyncStateFault,
+		/* file resync fault */
+	
+} FileRepResyncState_e;
 
 /*
  * This structure identifies uniquely Append Only,
@@ -369,6 +437,10 @@ typedef struct FileRepRelationIdentifier_s {
 	
 	uint32		segmentFileNum;
 		/* Which segment file? */
+	
+	char		mirrorFilespaceLocation[MAXPGPATH+1];
+		/* Mirror Filespace Location */
+	
 } FileRepRelationIdentifier_s;
 
 /*
@@ -383,12 +455,47 @@ typedef struct FileRepFlatFileIdentifier_s {
 } FileRepFlatFileIdentifier_s;
 
 /*
- * This structure identifies uniquely database directory
- * (the tablespace and database OIDs).
+ * Directory types to be created/dropped on mirror
  */
-typedef DbDirNode FileRepDbDirNodeIdentifier_s;	
+typedef enum FileRepDirType_e {
+	FileRepDirNotInitialized=0,
 	
+	FileRepDirFilespace,
+		/* filespace directory */
 	
+	FileRepDirTablespace,
+		/* tablespace directory */
+	
+	FileRepDirDatabase,
+		/* database directory */
+	
+} FileRepDirType_e;
+
+/*
+ * This structure identifies uniquely directory
+ * to be created/dropped on mirror.
+ */
+typedef struct FileRepDirIdentifier_s {
+	FileRepDirType_e	fileRepDirType;
+	/* which directory */
+	
+	DbDirNode			dbDirNode;
+	/* The tablespace and database OIDs */
+	
+	char				mirrorFilespaceLocation[MAXPGPATH+1];
+	/* Mirror Filespace Location */
+	
+} FileRepDirIdentifier_s;
+
+/*
+ * This structure is used for control messages
+ * (i.e. FileRepOperationShutdown)
+ */
+typedef struct FileRepUnknownIdentifier_s {
+	
+	char		unknownId[FILEREP_UNKNOWN_IDENTIFIER_LEN+1]; 
+} FileRepUnknownIdentifier_s;
+
 /* 
  * This structure identifies uniquely receiver of the message.
  */
@@ -399,10 +506,12 @@ typedef union FileRepIdentifier_u {
 	FileRepFlatFileIdentifier_s fileRepFlatFileIdentifier;
 		/* */
 	
-	FileRepDbDirNodeIdentifier_s fileRepDbDirNodeIdentifier; 
+	FileRepDirIdentifier_s		fileRepDirIdentifier; 
 		/* */
 	
-
+	FileRepUnknownIdentifier_s	fileRepUnknownIdentifier; 
+		/* */
+	
 } FileRepIdentifier_u;
 
 /*
@@ -563,6 +672,15 @@ typedef enum FileRepProcessType_e {
 	FileRepProcessTypeMirrorConsumerAppendOnly1,
 	
 	FileRepProcessTypeMirrorConsumerAppendOnly2,
+	
+	FileRepProcessTypeResyncManager,
+	
+	FileRepProcessTypeResyncWorker1,
+
+
+	FileRepProcessType__EnumerationCount
+	/* the count of enumeration values */
+	
 } FileRepProcessType_e;
 
 
@@ -663,12 +781,25 @@ extern void FileRep_SetState(
  */
 extern FileRepState_e FileRep_GetState(void);
 
+extern bool FileRep_IsInRecovery(void);
+
+extern bool FileRep_IsInResynchronizeReady(void);
+
+extern bool FileRep_IsInChangeTracking(void);
 
 /*
- * Return TRUE if shutdown was requested
- */	
-extern bool FileRep_IsShutdownRequested(void);
-		
+ * change data state of the segment and inform postmaster to 
+ * signal all segment processes
+ */
+extern void FileRep_SetDataState(
+								 DataState_e dataState, 
+								 bool signalPostmaster);
+
+/*
+ * change segment state and inform postmaster in order to signal
+ * all segment processes
+ */
+extern void FileRep_SetSegmentState(SegmentState_e segmentState);
 	
 /*
  * Reserve memory in order to insert FileRep message.
@@ -693,6 +824,11 @@ extern int FileRep_errdetail(
 				  FileRepIdentifier_u		fileRepIdentifier,
 				  FileRepRelationType_e		fileRepRelationType,
 				  FileRepOperation_e		fileRepOperation);
+
+extern int FileRep_ReportRelationPath(
+							   char*		filespaceLocation,
+							   RelFileNode	relFileNode,
+							   uint32		segmentFileNum);
 
 extern int FileRep_errdetail_Shmem(void);
 
@@ -724,15 +860,27 @@ extern void FileRep_CalculateCrc(
 						pg_crc32	*crc);
 
 extern FileRepIdentifier_u FileRep_GetRelationIdentifier(
+							  char			*mirrorFilespaceLocation,
 							  RelFileNode	relFileNode,
 							  int32			segmentFileNum);
 
-extern FileRepIdentifier_u FileRep_GetDirIdentifier(
+extern FileRepIdentifier_u FileRep_GetDirFilespaceIdentifier(
+							char	*mirrorFilespaceLocation);
+
+extern FileRepIdentifier_u FileRep_GetDirTablespaceIdentifier(
+						    char	*mirrorFilespaceLocation,
+						    Oid		tablespace);
+
+extern FileRepIdentifier_u FileRep_GetDirDatabaseIdentifier(
+							char		*mirrorFilespaceLocation,
 							DbDirNode	dbDirNode);
 
 extern FileRepIdentifier_u FileRep_GetFlatFileIdentifier(
-							  char*	subDirectory,
-							  char*	simpleFileName);
+							char*	subDirectory,
+							char*	simpleFileName);
+
+extern FileRepIdentifier_u FileRep_GetUnknownIdentifier(
+							 char*	unknownId);
 														 
 extern bool FileRep_IsOperationSynchronous(
 						FileRepOperation_e fileRepOperation);											 
@@ -743,6 +891,17 @@ extern XLogRecPtr FileRep_GetXLogRecPtrUndefined(void);
 extern FileName FileRep_GetFileName(
 				 FileRepIdentifier_u	fileRepIdentifier,
 				 FileRepRelationType_e	fileRepRelationType);
-	
+
+extern void FileRep_GetRelationPath(
+						char		*relationPath, 
+						RelFileNode relFileNode,
+						uint32		segmentFileNum);
+
+/**
+ * return true if the process of the given type acts as a backend (and so must be treated differently --
+ *   shutdown before the bgwriter shuts down, for example)
+ */
+extern bool FileRepIsBackendSubProcess(FileRepProcessType_e processType);
+
 #endif   /* CDBFILEREP_H */
 

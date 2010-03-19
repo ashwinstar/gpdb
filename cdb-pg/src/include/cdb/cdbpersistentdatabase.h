@@ -14,16 +14,20 @@
 #include "storage/itemptr.h"
 #include "cdb/cdbsharedoidsearch.h"
 #include "access/persistentfilesysobjname.h"
+#include "cdb/cdbdoublylinked.h"
 
 typedef struct DatabaseDirEntryData
 {
 	SharedOidSearchObjHeader	header;
-					/* Search header.  Must be the first field */
+					/* Search header.
+					 *
+					 * ****** MUST BE THE FIRST FIELD ******** 
+					 *
+					 */
 
 	PersistentFileSysState	state;
-	int64					serialNum;
-	TransactionId			parentXid;
-	ItemPointerData 		presistentTid;
+	int64					persistentSerialNum;
+	ItemPointerData 		persistentTid;
 
 	int32	iteratorRefCount;
 
@@ -48,19 +52,14 @@ extern void PersistentDatabase_DirIterateInit(void);
 
 extern bool PersistentDatabase_DirIterateNext(
 	DbDirNode				*dbDirNode,
-	PersistentFileSysState	*state);
+
+	PersistentFileSysState	*state,
+
+	ItemPointer				persistentTid,
+
+	int64					*persistentSerialNum);
 
 extern void PersistentDatabase_DirIterateClose(void);
-
-// -----------------------------------------------------------------------------
-// Scan	
-// -----------------------------------------------------------------------------
-
-extern void PersistentDatabase_InitScanUnderLock(void);
-
-// -----------------------------------------------------------------------------
-// aaa	
-// -----------------------------------------------------------------------------
 
 /*
  * Indicate we intend to create a relation file as part of the current transaction.
@@ -76,8 +75,13 @@ extern void PersistentDatabase_MarkCreatePending(
 	DbDirNode 		*dbDirNode,
 				/* The tablespace and database OIDs for the create. */
 
+	MirroredObjectExistenceState mirrorExistenceState,
+
 	ItemPointer		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
+				
+	int64			*persistentSerialNum,
+				
 
 	bool			flushToXLog);
 				/* When true, the XLOG record for this change will be flushed to disk. */
@@ -85,7 +89,9 @@ extern void PersistentDatabase_MarkCreatePending(
 extern void PersistentDatabase_AddCreated(
 	DbDirNode		*dbDirNode,
 				/* The tablespace and database OIDs for the create. */
-
+				
+	MirroredObjectExistenceState mirrorExistenceState,
+				
 	ItemPointer 	persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
 
@@ -104,9 +110,9 @@ extern void PersistentDatabase_Created(
 				/* The tablespace and database OIDs for the created relation. */
 				
 	ItemPointer 	persistentTid,
-				/* TID of the gp_persistent_rel_files tuple for the rel file */
+				/* TID of the gp_persistent_database_node tuple for the rel file */
 				
-	int64			serialNum);
+	int64			persistentSerialNum);
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 					
 /*
@@ -124,9 +130,9 @@ extern void PersistentDatabase_MarkDropPending(
 				/* The tablespace and database OIDs for the drop. */
 				
 	ItemPointer 	persistentTid,
-				/* TID of the gp_persistent_rel_files tuple for the rel file */
+				/* TID of the gp_persistent_database_node tuple for the rel file */
 							
-	int64			serialNum);
+	int64			persistentSerialNum);
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
 /*
@@ -139,9 +145,9 @@ extern void PersistentDatabase_MarkAbortingCreate(
 				/* The tablespace and database OIDs for the aborting create. */
 							
 	ItemPointer 	persistentTid,
-				/* TID of the gp_persistent_rel_files tuple for the rel file */
+				/* TID of the gp_persistent_database_node tuple for the rel file */
 							
-	int64			serialNum);
+	int64			persistentSerialNum);
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 					
 /*
@@ -152,22 +158,40 @@ extern void PersistentDatabase_Dropped(
 				/* The tablespace and database OIDs for the dropped relation. */
 				
 	ItemPointer 	persistentTid,
-				/* TID of the gp_persistent_rel_files tuple for the rel file */
+				/* TID of the gp_persistent_database_node tuple for the rel file */
 							
-	int64			serialNum);
+	int64			persistentSerialNum);
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
 extern bool PersistentDatabase_DirIsCreated(
 	DbDirNode		*dbDirNode);
 	
 extern void PersistentDatabase_MarkJustInTimeCreatePending(
-	DbDirNode		*dbDirNode);
+	DbDirNode 		*dbDirNode,
+
+	ItemPointer 	persistentTid,
+				/* TID of the gp_persistent_database_node tuple for the rel file */
+
+	int64			*persistentSerialNum);
+				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
 extern void PersistentDatabase_JustInTimeCreated(
-	DbDirNode		*dbDirNode);
+	DbDirNode 		*dbDirNode,
+
+	ItemPointer 	persistentTid,
+				/* TID of the gp_persistent_database_node tuple for the rel file */
+
+	int64			persistentSerialNum);
+				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 	
 extern void PersistentDatabase_AbandonJustInTimeCreatePending(
-	DbDirNode		*dbDirNode);
+	DbDirNode 		*dbDirNode,
+
+	ItemPointer 	persistentTid,
+				/* TID of the gp_persistent_database_node tuple for the rel file */
+
+	int64			persistentSerialNum);
+				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 	
 // -----------------------------------------------------------------------------
 // Shmem and Startup/Shutdown

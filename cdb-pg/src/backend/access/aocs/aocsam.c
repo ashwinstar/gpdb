@@ -110,7 +110,6 @@ static void open_all_datumstream_segfiles(Relation rel,
 static void open_ds(Relation rel, CompressorType compType, int32 compLv, int32 blocksz, 
         DatumStream **ds, int nvp, bool *proj)
 {
-    char *basepath = relpath(rel->rd_node);
     int i;
     TupleDesc tupdesc = RelationGetDescr(rel);
 
@@ -122,15 +121,13 @@ static void open_ds(Relation rel, CompressorType compType, int32 compLv, int32 b
          if(proj)
         {
             if(proj[i])
-                ds[i] = create_datumstream(compType, compLv, blocksz, attr, basepath, true);
+                ds[i] = create_datumstream(compType, compLv, blocksz, attr, rel->rd_rel->relname.data, true);
             else
                 ds[i] = NULL;
         }
         else 
-            ds[i] = create_datumstream(compType, compLv, blocksz, attr, basepath, false);
+            ds[i] = create_datumstream(compType, compLv, blocksz, attr, rel->rd_rel->relname.data, false);
     }
-
-    pfree(basepath);
 }
 
 static void close_ds(DatumStream **ds, int nvp)
@@ -800,6 +797,13 @@ openFetchSegmentFile(AOCSFetchDesc aocsFetchDesc,
 		i++;
 	}
 
+	/*
+	 * Don't try to open a segment file when its EOF is 0, since the file may not
+	 * exist. See MPP-8280.
+	 */
+	if (logicalEof == 0)
+		return false;
+
 	open_datumstream_segfile(aocsFetchDesc->basepath, aocsFetchDesc->relation->rd_node,
 							 fsInfo,
 							 datumStreamFetchDesc->datumStream,
@@ -904,7 +908,7 @@ aocs_fetch_init(Relation relation,
 								   attr->compressLevel,
 								   aocsFetchDesc->blockSize,
 								   tupleDesc->attrs[colno],
-								   basePath,
+								   relation->rd_rel->relname.data,
 								   true);
 		}
 	}

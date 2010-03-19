@@ -119,6 +119,31 @@ heap_getattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
     return result;
 }                               /* heap_getattr */
 
+// UNDONE: Temporarily.
+extern void RelationFetchGpRelationNodeForXLog_Index(Relation relation);
+
+/*
+ * Fetch the persistent TID and serial number for a relation from the gp_relation_node
+ * if needed to put in the XLOG record header.
+ */
+inline static void RelationFetchGpRelationNodeForXLog(
+	Relation		relation)
+{
+	if (!relation->rd_segfile0_relationnodeinfo.isPresent &&
+		!GpPersistent_SkipXLogInfo(relation->rd_id))
+	{
+	
+		if (relation->rd_rel->relkind == RELKIND_INDEX )
+		{
+			// UNDONE: Temporarily.
+			RelationFetchGpRelationNodeForXLog_Index(relation);
+			return;
+				 
+		}
+		RelationFetchSegFile0GpRelationNode(relation);
+	}
+}
+
 
 /* ----------------
  *		function prototypes for heap access method
@@ -156,6 +181,28 @@ struct HeapInsertDesc
     Buffer        hi_cbuf;	/* current buffer in page mode */
 };
 
+inline static void xl_heaptid_set(
+	struct xl_heaptid	*heaptid,
+
+	Relation rel,
+
+	ItemPointer tid)
+{
+	heaptid->node = rel->rd_node;
+	heaptid->persistentTid = rel->rd_segfile0_relationnodeinfo.persistentTid;
+	heaptid->persistentSerialNum = rel->rd_segfile0_relationnodeinfo.persistentSerialNum;
+	heaptid->tid = *tid;
+}
+
+inline static void xl_heapnode_set(
+	struct xl_heapnode	*heapnode,
+
+	Relation rel)
+{
+	heapnode->node = rel->rd_node;
+	heapnode->persistentTid = rel->rd_segfile0_relationnodeinfo.persistentTid;
+	heapnode->persistentSerialNum = rel->rd_segfile0_relationnodeinfo.persistentSerialNum;
+}
 
 extern Relation relation_open(Oid relationId, LOCKMODE lockmode);
 extern Relation try_relation_open(Oid relationId, LOCKMODE lockmode);
@@ -208,6 +255,7 @@ extern HTSU_Result heap_lock_tuple(Relation relation, HeapTuple tuple,
 				TransactionId *update_xmax, CommandId cid,
 				LockTupleMode mode, LockTupleWaitType waittype);
 extern void heap_inplace_update(Relation relation, HeapTuple tuple);
+extern void frozen_heap_inplace_update(Relation relation, HeapTuple tuple);
 extern bool heap_freeze_tuple(HeapTupleHeader tuple, TransactionId cutoff_xid,
 							  Buffer buf);
 
@@ -224,7 +272,7 @@ extern void heap_restrpos(HeapScanDesc scan);
 
 extern void heap_redo(XLogRecPtr lsn, XLogRecord *rptr);
 extern void heap_desc(StringInfo buf, uint8 xl_info, char *rec);
-extern void heap_redo_get_rnode(
+extern bool heap_getrelfilenode(
 	XLogRecord 		*record,
 	RelFileNode		*relFileNode);
 extern void heap2_redo(XLogRecPtr lsn, XLogRecord *rptr);

@@ -152,6 +152,7 @@ extern bool XLOG_DEBUG;
 extern XLogRecPtr XLogInsert(RmgrId rmid, uint8 info, XLogRecData *rdata);
 extern XLogRecPtr XLogInsert_OverrideXid(RmgrId rmid, uint8 info, XLogRecData *rdata, TransactionId overrideXid);
 extern XLogRecPtr XLogLastInsertEndLoc(void);
+extern XLogRecPtr XLogLastChangeTrackedLoc(void);
 extern void XLogFlush(XLogRecPtr RecPtr);
 
 extern void xlog_redo(XLogRecPtr lsn __attribute__((unused)) , XLogRecord *record);
@@ -162,8 +163,9 @@ extern Size XLOGShmemSize(void);
 extern void XLOGShmemInit(void);
 extern void BootStrapXLOG(void);
 extern void StartupXLOG(void);
-extern bool XLogStartupPass2Needed(void);
+extern bool XLogStartupMultiplePassesNeeded(void);
 extern void StartupXLOG_Pass2(void);
+extern void StartupXLOG_Pass3(void);
 extern void ShutdownXLOG(int code, Datum arg);
 extern void InitXLOGAccess(void);
 extern void CreateCheckPoint(bool shutdown, bool force);
@@ -172,7 +174,7 @@ extern XLogRecPtr GetRedoRecPtr(void);
 extern void GetNextXidAndEpoch(TransactionId *xid, uint32 *epoch);
 
 extern void XLogGetBuffer(int startidx, int npages, char **from, Size *nbytes);
-extern void XLogGetStandbyRecoveryStart(char *reasonStr, XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint);
+extern void XLogGetRecoveryStart(char *callerStr, char *reasonStr, XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint);
 extern void XLogScanForStandbyEndLocation(XLogRecPtr *startLoc, XLogRecPtr *endLoc);
 extern void XLogStandbyRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoint, XLogRecPtr *lastRecordLoc);
 extern bool XLogQDMirrorPositionToEnd(void);
@@ -192,7 +194,7 @@ extern char *XLogLocationToString3_Long(XLogRecPtr *loc);
 extern char *XLogLocationToString4_Long(XLogRecPtr *loc);
 extern char *XLogLocationToString5_Long(XLogRecPtr *loc);
 
-extern void StartupProcessMain(bool pass2);
+extern void StartupProcessMain(int passNum);
 
 extern int XLogReconcileEofPrimary(void);
 
@@ -201,5 +203,6 @@ extern int XLogReconcileEofMirror(
 					   XLogRecPtr	*mirrorEof);
 
 extern int XLogRecoverMirrorControlFile(void);
+extern int XLogAddRecordsToChangeTracking(void);
 
 #endif   /* XLOG_H */

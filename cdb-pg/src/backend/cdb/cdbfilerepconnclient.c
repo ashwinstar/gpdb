@@ -123,6 +123,9 @@ FileRepConnClient_SendMessage(
 		case FileRepMessageTypeAO02:
 			msgType = '4';
 			break;
+		case FileRepMessageTypeShutdown:
+			msgType = 'S';
+			break;
 		default:
 			return false;
 	}

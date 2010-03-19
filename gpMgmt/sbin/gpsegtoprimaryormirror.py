@@ -14,22 +14,14 @@ if sys.version_info < (2, 5, 0):
 '''Error: %s is supported on Python versions 2.5 or greater
 Please upgrade python installed on this machine.''' % progname)
 
+import pickle, base64, figleaf
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
-import figleaf
-import pickle
-
 from gppylib.gpparseopts import OptParser, OptChecker
-from gppylib import gplog
-from gppylib import gparray
-from gppylib.commands import base
-from gppylib.commands import unix
-from gppylib.commands import gp
-from gppylib.commands import pg
-from gppylib.db import catalog
-from gppylib.db import dbconn
-from gppylib import pgconf
+from gppylib import gplog, gparray, pgconf
+from gppylib.commands import base, gp, pg, unix
+from gppylib.db import catalog, dbconn
 
 
 description = (""" 
@@ -50,6 +42,9 @@ Return codes:
 
 EXECNAME = os.path.split(__file__)[-1]
 
+DEFAULT_TIMEOUT_FOR_SEGMENT_STARTUP=120
+
+
 #-------------------------------------------------------------------------
 class SegToPrimaryMirrorStatus():
     def __init__(self,datadir,modified,reason):
@@ -59,11 +54,11 @@ class SegToPrimaryMirrorStatus():
     
     def __str__(self):
         return "STATUS--DIR:%s--MODIFIED:%s--REASON:%s" % (self.datadir,self.modified,self.reason)
-    
+
 #-------------------------------------------------------------------------    
 class GpSegToPrimaryMirror():
     ######
-    def __init__(self,dblist,gpversion,collation,targetMirroringMode,transitionMessageFile):
+    def __init__(self,dblist,gpversion,collation,targetMirroringMode,pickledTransitionData):
         self.dblist=dblist
         self.expected_gpversion=gpversion
         # There is an issue with python 2.6.2 on linux that can cause start to 
@@ -76,7 +71,7 @@ class GpSegToPrimaryMirror():
         self.expected_lc_monetary=None
         self.expected_lc_numeric=None
         self.targetMirroringMode = targetMirroringMode
-        self.transitionMessageFile = transitionMessageFile
+        self.pickledTransitionData = pickledTransitionData
         
         self.gphome=os.path.abspath(os.pardir)
         
@@ -94,6 +89,7 @@ class GpSegToPrimaryMirror():
 
         pass
 
+
     ######
     def start(self): 
         results=[]
@@ -103,42 +99,13 @@ class GpSegToPrimaryMirror():
         for itm in self.dblist:
             (dir, port) = itm.split(':')
             dirportmap[dir] = port
-        
-        # this was pickled inside gpstart (look for pickle.dump)
-        f = open(self.transitionMessageFile, "r")
-        transitionData = pickle.load(f)
-        f.close()
+
+        transitionData = pickle.loads(base64.urlsafe_b64decode(self.pickledTransitionData))
             
-        logger.info("Changing segments...")       
+        logger.info("Changing segments...")
         for dir, port in dirportmap.iteritems():
-            dbData = transitionData["dbsByPort"][int(port)]
-            targetMode = transitionData["targetMode"]
-            
-            transitionArgumentsArr = []
-            transitionArgumentsArr.append(targetMode)
-            if targetMode == 'mirror' or targetMode == 'primary':
-                mode = dbData["mode"]
-                if mode == 'r' and dbData["fullResyncFlag"]:
-                    # full resync requested, convert 'r' to 'f'
-                    transitionArgumentsArr.append( 'f' )
-                else:
-                    # otherwise, pass the mode through
-                    transitionArgumentsArr.append( dbData["mode"])
-                transitionArgumentsArr.append( dbData["hostName"])
-                transitionArgumentsArr.append( "%d" % dbData["hostPort"])
-                transitionArgumentsArr.append( dbData["peerName"])
-                transitionArgumentsArr.append( "%d" % dbData["peerPort"])
-
-            transitionArguments = "\n".join(transitionArgumentsArr) + "\n"
-
-            # write arguments to input file
-            inputFile = os.path.join( dir, "gpstart_mirror_segargs" )
-            f = open(inputFile, 'w')
-            f.write(transitionArguments)
-            f.close()
-
-            cmd=gp.SendFilerepTransitionMessage("Changing seg at dir %s" % dir, inputFile, port=port, dataDir=dir)
-            self.pool.addCommand(cmd)  
+            cmd = gp.SendFilerepTransitionMessage.buildTransitionMessageCommand(transitionData, dir, port)
+            self.pool.addCommand(cmd)
               
         self.pool.join()
         
@@ -162,7 +129,8 @@ class GpSegToPrimaryMirror():
                                                 port,
                                                 self.expected_lc_collate,
                                                 self.expected_lc_monetary,
-                                                self.expected_lc_numeric)
+                                                self.expected_lc_numeric,
+                                                DEFAULT_TIMEOUT_FOR_SEGMENT_STARTUP)
                 self.pool.addCommand(cmd)
             self.pool.join()
             
@@ -207,7 +175,7 @@ def parseargs():
     parser.add_option("-C", "--collation", type="string", 
                         help="values for lc_collate, lc_monetary, lc_numeric separated by :")
     parser.add_option("-D","--datadir",dest="dblist", action="append", type="string")
-    parser.add_option("-t","--transitionMessageFile",dest="transitionMessageFile", type="string")
+    parser.add_option("-p","--pickledTransitionData",dest="pickledTransitionData", type="string")
     parser.add_option("-M","--mirroringMode",dest="mirroringMode", type="string")
     parser.add_option("-V", "--gp-version", dest="gpversion",metavar="GP_VERSION",
                     help="expected software version")      
@@ -242,7 +210,7 @@ def main():
 
         logger.info("Starting gpsegtoprimaryormirror with args: %s" % ' '.join(sys.argv[1:]))
         
-        conversionCmd = GpSegToPrimaryMirror(options.dblist,options.gpversion,options.collation,options.mirroringMode,options.transitionMessageFile)
+        conversionCmd = GpSegToPrimaryMirror(options.dblist,options.gpversion,options.collation,options.mirroringMode,options.pickledTransitionData)
         
         failures = conversionCmd.start()
         

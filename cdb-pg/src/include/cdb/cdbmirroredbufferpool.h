@@ -27,13 +27,17 @@
  */
 typedef struct MirroredBufferPoolOpen
 {
-	bool	isActive;
+	bool		isActive;
+	
+	bool		isResync;
 
 	RelFileNode relFileNode;
 
-	uint32	segmentFileNum;
+	uint32		segmentFileNum;
+	
+	char		mirrorFilespaceLocation[MAXPGPATH+1];
 
-	File primaryFile;
+	File		primaryFile;
 
 } MirroredBufferPoolOpen;
 
@@ -54,6 +58,9 @@ extern bool MirroredBufferPool_Open(
 
 	uint32			segmentFileNum,
 				/* Which segment file. */
+
+	char			*relationName,
+				/* For tracing only.  Can be NULL in some execution paths. */
 
 	int 			fileFlags,
 
@@ -82,9 +89,12 @@ extern void MirroredBufferPool_Close(
 extern bool MirroredBufferPool_Drop(
 	RelFileNode 	*relFileNode,
 				/* The tablespace, database, and relation OIDs for the open. */
-
-	uint32			segmentFileNum);
+	
+	uint32			segmentFileNum,
 				/* Which segment file. */
+	
+	char			*relationName);
+				/* For tracing only.  Can be NULL in some execution paths. */
 
 /*
  * Write a Buffer Pool page mirrored.

@@ -1,9 +1,9 @@
 #!/bin/bash
 #	Filename:-		gpsegsize.sh
 #	Version:-		$Revision$
-#	Updated:-		$Date$	
-#	Status:-		Released	
-#	Author:-		G Coombe	
+#	Updated:-		$Date$
+#	Status:-		Released
+#	Author:-		G Coombe
 #	Contact:-		gcoombe@greenplum.com
 #	Release date:-		Dec 2006
 #	Release stat:-		Released
@@ -56,7 +56,7 @@ USAGE () {
 CHK_CALL () {
 	FILE_PREFIX=`$ECHO $PARALLEL_STATUS_FILE|$CUT -d"." -f1`
 	if [ ! -f ${FILE_PREFIX}.$PARENT_PID ];then
-		$ECHO "[FATAL]:-Not called from from correct parent program" 
+		$ECHO "[FATAL]:-Not called from from correct parent program"
 		exit 2
 	fi
 }
@@ -80,7 +80,7 @@ PING_CHK () {
 GET_DATABASE_SIZE () {
 	LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
 	#Get the database OID
-	DB_OID=`$TRUSTED_SHELL -n $QE_HOST "${EXPORT_LIB_PATH}; env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PORT -d  \"$DEFAULTDB\" -A -t -c\"select OID from pg_database where datname='$QD_DBNAME'\""`
+	DB_OID=`$TRUSTED_SHELL -n $QE_PRIMARY_HOST "${EXPORT_LIB_PATH}; env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PRIMARY_PORT -d  \"$DEFAULTDB\" -A -t -c\"select OID from pg_database where datname='$QD_DBNAME'\""`
 	QE_BASE_DIR=`$BASENAME $QE_DIR`
 	QE_DB=${QE_DIR}/base/${DB_OID}
 	$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"${QE_PORT}"|"`$TRUSTED_SHELL $QE_HOST "ls -al ${QE_DB}|$GREP -v '^d'|$GREP -vi total 2>/dev/null" |$AWK '{total += \$5} END {print total}'` >> $TMPFILE
@@ -92,11 +92,11 @@ GET_DATABASE_SIZE () {
 GET_TABLE_SIZE () {
 	LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
 	#Get the database OID
-	DB_OID=`$TRUSTED_SHELL -n $QE_HOST "${EXPORT_LIB_PATH}; env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PORT -d  \"$DEFAULTDB\" -A -t -c\"select OID from pg_database where datname='$QD_DBNAME'\""`
+	DB_OID=`$TRUSTED_SHELL -n $QE_PRIMARY_HOST "${EXPORT_LIB_PATH}; env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PRIMARY_PORT -d  \"$DEFAULTDB\" -A -t -c\"select OID from pg_database where datname='$QD_DBNAME'\""`
 	#Now get schema OID
-	SCHEMA_OID=`$TRUSTED_SHELL -n $QE_HOST "${EXPORT_LIB_PATH}; env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PORT -d  \"$QD_DBNAME\" -A -t -c\"select OID from pg_namespace where nspname='${SCHEMA_NAME}'\""`
+	SCHEMA_OID=`$TRUSTED_SHELL -n $QE_PRIMARY_HOST "${EXPORT_LIB_PATH}; env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PRIMARY_PORT -d  \"$QD_DBNAME\" -A -t -c\"select OID from pg_namespace where nspname='${SCHEMA_NAME}'\""`
 	#Now get the table relfilenode
-	QE_TABLE_OID=`$TRUSTED_SHELL -n $QE_HOST "${EXPORT_LIB_PATH}; env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PORT -d  \"$QD_DBNAME\" -A -t -c\"select relfilenode from pg_class where relname='${TMP_TABLE_NAME}' and relnamespace=${SCHEMA_OID};\""`
+	QE_TABLE_OID=`$TRUSTED_SHELL -n $QE_PRIMARY_HOST "${EXPORT_LIB_PATH}; env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PRIMARY_PORT -d  \"$QD_DBNAME\" -A -t -c\"select relfilenode from pg_class where relname='${TMP_TABLE_NAME}' and relnamespace=${SCHEMA_OID};\""`
 	#Can now progress the size request
 	QE_TABLE=${QE_DIR}/base/${DB_OID}/${QE_TABLE_OID}
 	QE_BASE_DIR=`$BASENAME $QE_DIR`
@@ -112,13 +112,13 @@ GET_TABLE_SIZE () {
 GET_INDEX_SIZE () {
 	LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
 	#Get the database OID
-	DB_OID=`$TRUSTED_SHELL -n $QE_HOST "${EXPORT_LIB_PATH}; env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PORT -d  \"$DEFAULTDB\" -A -t -c\"select OID from pg_database where datname='$QD_DBNAME'\""`
-	INDEX_ARRAY=(`$TRUSTED_SHELL -n $QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PORT -d  \"$QD_DBNAME\" -A -t -c\"select relfilenode from pg_class where oid in (select indexrelid from pg_index where indrelid in (select oid from pg_class where relname='${TMP_TABLE_NAME}'));\""`)
+	DB_OID=`$TRUSTED_SHELL -n $QE_PRIMARY_HOST "${EXPORT_LIB_PATH}; env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PRIMARY_PORT -d  \"$DEFAULTDB\" -A -t -c\"select OID from pg_database where datname='$QD_DBNAME'\""`
+	INDEX_ARRAY=(`$TRUSTED_SHELL -n $QE_PRIMARY_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PRIMARY_PORT -d  \"$QD_DBNAME\" -A -t -c\"select relfilenode from pg_class where oid in (select indexrelid from pg_index where indrelid in (select oid from pg_class where relname='${TMP_TABLE_NAME}'));\""`)
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ] || [ ${#INDEX_ARRAY[@]} -eq 0 ];then
 		SIZE_ERROR_EXIT index
-	else	
-		for IDX in ${INDEX_ARRAY[@]} 
+	else
+		for IDX in ${INDEX_ARRAY[@]}
 		do
 			QE_INDEX=${QE_DIR}/base/${DB_OID}/$IDX
 			QE_BASE_DIR=`$BASENAME $QE_DIR`
@@ -138,7 +138,7 @@ while getopts ":v'?'" opt
 	case $opt in
 		v ) VERSION_INFO ;;
 		'?' ) USAGE ;;
-		* ) USAGE 
+		* ) USAGE
 	esac
 done
 #Now process supplied call parameters
@@ -154,6 +154,11 @@ QD_DBNAME="$1";shift
 TYPE=$1;shift
 TMPFILE=$1;shift
 QD_DBNAME="$1";shift
+QE_PRIMARY_HOST=$1;shift	    # the host name of the primary
+QE_PRIMARY_PORT=$1;shift		# the port of the primary
+QE_PRIMARY_DIR=$1;shift		# the dir of the primary
+QE_PRIMARY_BASE_DIR=`$BASENAME $QE_PRIMARY_DIR`
+
 LOG_MSG "[INFO][$INST_COUNT]:-Start Main"
 SCHEMA_NAME=`$ECHO $TABLE_NAME|$CUT -d"." -f1`
 TMP_TABLE_NAME=`$ECHO $TABLE_NAME|$CUT -d"." -f2`

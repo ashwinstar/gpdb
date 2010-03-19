@@ -329,6 +329,7 @@ FaultInjector_InjectFaultIfSet(
 			pg_usleep(entryLocal->sleepTime * 1000000L);
 			break;
 		case FaultInjectorTypeFault:
+			FileRepSubProcess_SetState(FileRepStateFault);
 			ereport(LOG, 
 					(errmsg("Fault is injected identifier:'%s'  ",
 							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier])));	

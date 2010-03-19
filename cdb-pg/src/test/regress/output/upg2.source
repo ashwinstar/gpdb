@@ -124,7 +124,7 @@ create unique index pg_operator_oid_index on public.pg_operator(oid);
 create unique index pg_resourcetype_oid_index on public.pg_resourcetype(oid);
 create unique index pg_resqueue_oid_index on public.pg_resqueue(oid);
 create unique index gp_fastsequence_objid_objmod_index on public.gp_fastsequence(objid, objmod);
-create unique index gp_relation_node_index on public.gp_relation_node(tablespace_oid, relfilenode_oid);
+create unique index gp_relation_node_index on public.gp_relation_node(relfilenode_oid,segment_file_num);
 --
 -- 2. Build the 33 catalog
 --
@@ -1673,6 +1673,9 @@ copy public.pg_description from '@abs_srcdir@/data//upg2_pg_description_toadd33.
 copy public.pg_depend from '@abs_srcdir@/data//upg2_pg_depend_toadd33.data' null as E'\\N' csv delimiter '|' header;
 copy public.pg_operator from '@abs_srcdir@/data//upg2_pg_operator_toadd33.data' oids null E'\\N' csv delimiter '|' header;
 copy public.pg_cast from'@abs_srcdir@/data//upg2_pg_cast_toadd33.data' null E'\\N' csv delimiter '|' header;
+copy public.pg_aggregate from'@abs_srcdir@/data//upg2_pg_aggregate_toadd33.data' null E'\\N' csv delimiter '|' header;
+copy public.pg_opclass from'@abs_srcdir@/data//upg2_pg_opclass_toadd33.data' null E'\\N' csv delimiter '|' header;
+copy public.pg_amop from'@abs_srcdir@/data//upg2_pg_amop_toadd33.data' null E'\\N' csv delimiter '|' header;
 -- fix up pg_tablespace, this is a shared table so the data changes are handled
 -- in loadcat34_sh, but the schema changes are stored in pg_class and pg_attribute
 -- which aren't shared so we must update the schema in every database.
@@ -1725,6 +1728,7 @@ update public.pg_rewrite set ev_action = public.gpviewreparse(ev_action), ev_qua
 -- Reindex normal tables (not shared tables)
 reindex table public.pg_amproc;
 reindex table public.pg_attribute;
+reindex table public.pg_aggregate;
 reindex table public.pg_appendonly;
 reindex table public.pg_appendonly_alter_column;
 reindex table public.pg_class;
@@ -1749,8 +1753,8 @@ commit;
 --   This is expected to fail in upg2 because the persistent tables are already populated.
 --   It may be nice to allow it to be callable in a populated database...
 insert into public.gp_global_sequence select 0 from generate_series(1,15);
-select gp_persistent_build_db();
-psql:@abs_builddir@/sql/loadcat34.sql:108: ERROR:  Persistent database entry 'base/17831' already exists in state 'Created' (cdbpersistentdatabase.c:773)
+select gp_persistent_build_db(true);
+psql:@abs_builddir@/sql/loadcat34.sql:112: ERROR:  Persistent database entry 'base/17831' already exists in state 'Created' (cdbpersistentdatabase.c:773)
 begin;
 -- Create new 3.4 views in pg_catalog
 set search_path='pg_catalog';

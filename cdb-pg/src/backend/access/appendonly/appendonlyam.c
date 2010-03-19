@@ -143,6 +143,7 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 	int				segno = -1;
 	int64			eof = 0;
 	bool			finished_all_files = true; /* assume */
+	int32			fileSegNo;
 	
 	Assert(scan->aos_need_new_segfile);   /* only call me when last segfile completed */
 	Assert(!scan->aos_done_all_segfiles); /* don't call me if I told you to stop */
@@ -224,7 +225,7 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 		return false;		
 	}
 
-	MakeAOSegmentFileName(reln, segno, -1, scan->aos_filenamepath);
+	MakeAOSegmentFileName(reln, segno, -1, &fileSegNo, scan->aos_filenamepath);
 	Assert(strlen(scan->aos_filenamepath) + 1 <= scan->aos_filenamepath_maxlen);
 	
 	Assert(scan->initedStorageRoutines);
@@ -330,10 +331,12 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 	int64			eof;
 	int64			eof_uncompressed;
 	int64			varblockcount;
+	int32			fileSegNo;
 
 	/* Make the 'segment' file name */
 	MakeAOSegmentFileName(aoInsertDesc->aoi_rel, 
 					  aoInsertDesc->cur_segno, -1,
+					  &fileSegNo,
 					  aoInsertDesc->appendFilePathName);		
 	Assert(strlen(aoInsertDesc->appendFilePathName) + 1 <= aoInsertDesc->appendFilePathNameMaxLen);
 
@@ -348,6 +351,24 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 	varblockcount = (int64)fsinfo->varblockcount;
 	aoInsertDesc->rowCount = fsinfo->tupcount;
 
+	/*
+	 * Segment file #0 is created when the Append-Only table is created.  
+	 *
+	 * Other ssegment files are created on-demand under transaction.
+	 */
+	if (aoInsertDesc->cur_segno > 0 && eof == 0)
+	{
+		AppendOnlyStorageWrite_TransactionCreateFile(
+								&aoInsertDesc->storageWrite,
+								aoInsertDesc->appendFilePathName,
+								eof,
+								aoInsertDesc->aoi_rel->rd_node,
+								aoInsertDesc->cur_segno);
+	}
+
+	/*
+	 * Open the existing file for write.
+	 */
 	AppendOnlyStorageWrite_OpenFile(
 							&aoInsertDesc->storageWrite,
 							aoInsertDesc->appendFilePathName,
@@ -1422,6 +1443,7 @@ openFetchSegmentFile(
 	FileSegInfo	*fsInfo;
 	int			segmentFileNum;
 	int64		logicalEof;
+	int32		fileSegNo;
 	
 	Assert(!aoFetchDesc->currentSegmentFile.isOpen);
 	
@@ -1441,9 +1463,17 @@ openFetchSegmentFile(
 		i++;
 	}
 
+	/*
+	 * Don't try to open a segment file when its EOF is 0, since the file may not
+	 * exist. See MPP-8280.
+	 */
+	if (logicalEof == 0)
+		return false;
+
 	MakeAOSegmentFileName(
 			aoFetchDesc->relation, 
 			openSegmentFileNum, -1, 
+			&fileSegNo,
 			aoFetchDesc->segmentFileName);
 	Assert(strlen(aoFetchDesc->segmentFileName) + 1 <=
 		   aoFetchDesc->segmentFileNameMaxLen);

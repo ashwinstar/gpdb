@@ -78,9 +78,9 @@ int32 SharedOidSearch_TableLen(
 				 * SharedOidSearchObjHeader.
 				 */
 {
-	return offsetof(SharedOidSearchTable,private.buckets) +
-		   hashSize * sizeof(SharedOidSearchHashBucket) +
-		   freeObjectCount * objectLen;
+	return MAXALIGN(offsetof(SharedOidSearchTable,private.buckets)) +
+		   MAXALIGN(hashSize * sizeof(SharedOidSearchHashBucket)) +
+		   MAXALIGN(freeObjectCount * objectLen);
 }
 
 void SharedOidSearch_InitTable(
@@ -99,6 +99,7 @@ void SharedOidSearch_InitTable(
 				 */
 {
 	SharedOidSearchHashBucket	*bucketArray;
+	int32						freePoolObjectArrayOffset;
 	void 						*freePoolObjectArray;
 
 	int32 i;
@@ -110,7 +111,14 @@ void SharedOidSearch_InitTable(
 	for (i = 0; i < hashSize; i++)
 		SharedDoublyLinkedHead_Init(&bucketArray[i].bucketListHead);
 
-	freePoolObjectArray = &table->private.buckets[hashSize];
+	freePoolObjectArrayOffset =
+					MAXALIGN(
+						(int32)
+							((uint8*)&table->private.buckets[hashSize] - (uint8*)table));
+
+	freePoolObjectArray = 
+					(void*)
+						(((uint8*)table) + freePoolObjectArrayOffset);
 	
 	SharedOidSearch_MakeFreeObjPool(
 						&table->private.freePool,

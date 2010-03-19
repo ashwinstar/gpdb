@@ -255,7 +255,7 @@
 /*
  * Enable debugging print statements for filerep-related operations.
  */
-/*#define FILEREP_DEBUG */
+/*#define FILEREP_DEBUG 1*/
 
 /*
  * Enable injecting faults.

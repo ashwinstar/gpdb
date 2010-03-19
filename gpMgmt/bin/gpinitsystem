@@ -288,7 +288,7 @@ CHK_PARAMS () {
 
 		# PORT_BASE
 		if [ x"" = x"$PORT_BASE" ]; then
-			ERROR_EXIT "[FATAL]:-PORT_BASE variable not set"2
+			ERROR_EXIT "[FATAL]:-PORT_BASE variable not set" 2
 		fi
 		QE_PORT=$PORT_BASE
 
@@ -383,11 +383,11 @@ CHK_PARAMS () {
 			fi
 			
 			if [ x"" = x"$REPLICATION_PORT_BASE" ]; then
-				ERROR_EXIT "[FATAL]:-REPLICATION_PORT_BASE variable not set"2
+				ERROR_EXIT "[FATAL]:-REPLICATION_PORT_BASE variable not set" 2
 			fi
 
 			if [ x"" = x"$MIRROR_REPLICATION_PORT_BASE" ]; then
-				ERROR_EXIT "[FATAL]:-MIRROR_REPLICATION_PORT_BASE variable not set"2
+				ERROR_EXIT "[FATAL]:-MIRROR_REPLICATION_PORT_BASE variable not set" 2
 			fi
 			
 			for dir in "${DATA_DIRECTORY[@]}"
@@ -1047,7 +1047,11 @@ CREATE_QD_DB () {
 		SET_VAR $QD_PRIMARY_ARRAY
 		LOG_MSG "[INFO]:-Initializing Master Postgres instance $GP_DIR"
 		$EXPORT_LIB_PATH
-		RUN_COMMAND "$INITDB -E $ENCODING -D $GP_DIR --locale=$LOCALE_SETTING --max_connections=$MASTER_MAX_CONNECT --shared_buffers=$MASTER_SHARED_BUFFERS"
+
+        #
+        # note: is_filerep_mirrored is no because the QD is not mirrored by filerep right now (standby master works differently)
+        #
+		RUN_COMMAND "$INITDB -E $ENCODING -D $GP_DIR --locale=$LOCALE_SETTING --max_connections=$MASTER_MAX_CONNECT --shared_buffers=$MASTER_SHARED_BUFFERS --is_filerep_mirrored=no"
 		BACKOUT_COMMAND "if [ -d $GP_DIR ]; then $RM -Rf $GP_DIR; fi"
 		BACKOUT_COMMAND "$ECHO Removing Master data directory files"
 		LOG_MSG "[INFO]:-Completed Master instance initialization"
@@ -1211,7 +1215,15 @@ CREATE_QES_PRIMARY () {
 			if [ x"" != x"$PG_CONF_ADD_FILE" ] ; then
 			    FLAG="-p $PG_CONF_ADD_FILE"
 			fi
-			$GPCREATESEG $FLAG $$ 1 $I IS_PRIMARY $INST_COUNT  $LOG_FILE \
+
+            HAS_MIRRORS_OPTION=
+            if [ $MIRRORING -ne 0 ]; then
+                HAS_MIRRORS_OPTION=yes
+            else
+                HAS_MIRRORS_OPTION=no
+            fi
+
+			$GPCREATESEG $FLAG $$ 1 $I IS_PRIMARY $HAS_MIRRORS_OPTION $INST_COUNT  $LOG_FILE \
 `$ECHO ${MASTER_IP_ADDRESS[@]}|$TR ' ' '~'` `$ECHO ${QE_IP_ARRAY[@]}|$TR ' ' '~'` \
 `$ECHO ${STANDBY_IP_ADDRESS[@]}|$TR ' ' '~'` &
 			PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
@@ -1258,7 +1270,7 @@ CREATE_QES_MIRROR () {
 		    FLAG="-p $PG_CONF_ADD_FILE"
 		fi
 
-		$GPCREATESEG $FLAG $$ 1 ${MIRRORS_ORDERED_BY_CONTENT_ID[$I_INDEX]} ${PRIMARIES_ORDERED_BY_CONTENT_ID[$I_INDEX]} $INST_COUNT  $LOG_FILE \
+		$GPCREATESEG $FLAG $$ 1 ${MIRRORS_ORDERED_BY_CONTENT_ID[$I_INDEX]} ${PRIMARIES_ORDERED_BY_CONTENT_ID[$I_INDEX]} no $INST_COUNT  $LOG_FILE \
 `$ECHO ${MASTER_IP_ADDRESS[@]}|$TR ' ' '~'` `$ECHO ${QE_IP_ARRAY[@]}|$TR ' ' '~'` \
 `$ECHO ${STANDBY_IP_ADDRESS[@]}|$TR ' ' '~'` &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT

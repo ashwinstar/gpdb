@@ -35,4 +35,12 @@ PersistentRecovery_Update(void);
 extern void
 PersistentRecovery_Drop(void);
 
+extern void
+PersistentRecovery_SerializeRedoRelationFile(
+	int redoRelationFile);
+
+extern void
+PersistentRecovery_DeserializeRedoRelationFile(
+	int redoRelationFile);
+
 #endif   /* PERSISTENTRECOVERY_H */

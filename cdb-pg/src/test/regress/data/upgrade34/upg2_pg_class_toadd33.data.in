@@ -24,12 +24,12 @@ relname|relnamespace|reltype|relowner|relam|relfilenode|reltablespace|relpages|r
 5036|gp_segment_configuration|11|6442|10|0|5036|1664|1|0|2900|0|0|0|t|t|r|h|11|0|0|0|0|0|f|f|f|f|926|{=r/@gpcurusername@}|\N
 5039|gp_fault_strategy|11|6443|10|0|5039|1664|1|0|0|0|0|0|f|t|r|h|1|0|0|0|0|0|f|f|f|f|899|{=r/@gpcurusername@}|\N
 5043|gp_fastsequence|11|6453|10|0|5043|0|1|0|0|0|0|0|t|f|r|h|3|0|0|0|0|0|f|f|f|f|918|{=r/@gpcurusername@}|\N
-5090|gp_persistent_relation_node|11|6990|10|0|5090|1664|1|216|0|0|0|0|f|t|r|h|11|0|0|0|0|0|f|f|f|f|940|{=r/@gpcurusername@}|\N
+5090|gp_persistent_relation_node|11|6990|10|0|5090|1664|1|216|0|0|0|0|f|t|r|h|14|0|0|0|0|0|f|f|f|f|940|{=r/@gpcurusername@}|\N
 5091|gp_persistent_database_node|11|6991|10|0|5091|1664|1|2|0|0|0|0|f|t|r|h|7|0|0|0|0|0|f|f|f|f|942|{=r/@gpcurusername@}|\N
 5092|gp_persistent_tablespace_node|11|6992|10|0|5092|1664|1|2|0|0|0|0|f|t|r|h|7|0|0|0|0|0|f|f|f|f|943|{=r/@gpcurusername@}|\N
 5093|gp_persistent_filespace_node|11|6993|10|0|5093|1664|1|0|0|0|0|0|f|t|r|h|10|0|0|0|0|0|f|f|f|f|944|{=r/@gpcurusername@}|\N
-5094|gp_relation_node|11|6994|10|0|5094|0|1|216|0|0|0|0|t|f|r|h|5|0|0|0|0|0|f|f|f|f|941|{=r/@gpcurusername@}|\N
-5095|gp_relation_node_index|11|0|10|403|5095|0|2|216|0|0|0|0|f|f|i|h|3|0|0|0|0|0|f|f|f|f|0|\N|\N
+5094|gp_relation_node|11|6994|10|0|5094|0|1|216|0|0|0|0|t|f|r|h|4|0|0|0|0|0|f|f|f|f|941|{=r/@gpcurusername@}|\N
+5095|gp_relation_node_index|11|0|10|403|5095|0|2|216|0|0|0|0|f|f|i|h|2|0|0|0|0|0|f|f|f|f|0|\N|\N
 5096|gp_global_sequence|11|6995|10|0|5096|1664|1|15|0|0|0|0|f|t|r|h|1|0|0|0|0|0|f|f|f|f|939|{=r/@gpcurusername@}|\N
 6052|pg_stat_last_operation|11|6440|10|0|6052|0|1|99|0|0|0|0|t|f|r|h|7|0|0|0|0|0|f|f|f|f|878|{=r/@gpcurusername@}|\N
 6053|pg_statlastop_classid_objid_index|11|0|10|403|6053|0|2|89|0|0|0|0|f|f|i|h|2|0|0|0|0|0|f|f|f|f|0|\N|\N

@@ -12,6 +12,7 @@
 #include "utils/palloc.h"
 #include "storage/fd.h"
 #include "storage/relfilenode.h"
+#include "storage/smgr.h"
 
 /*
  * This module is for doing mirrored writes for Append-Only relation files privately being written
@@ -27,10 +28,14 @@
 typedef struct MirroredAppendOnlyOpen
 {
 	bool	isActive;
+	
+	bool	isResync;
 
 	RelFileNode	relFileNode;
 	
 	uint32		segmentFileNum;
+	
+	char		mirrorFilespaceLocation[MAXPGPATH+1];
 	
 	File		primaryFile;
 
@@ -54,7 +59,10 @@ extern void MirroredAppendOnly_Open(
 
 	int32			segmentFileNum,
 				/* Which segment file. */
-
+	
+	char			*relationName,
+					/* For tracing only.  Can be NULL in some execution paths. */
+	
 	int64			logicalEof,
 				/* The logical EOF to begin appending the new data. */
 									
@@ -78,15 +86,33 @@ extern bool MirroredAppendOnly_IsActive(
 extern void MirroredAppendOnly_FlushAndClose(
 						MirroredAppendOnlyOpen *open);
 							/* The open struct. */
-				
+
 /*
- * Flush and Close an Append-Only relation file.
+ * Flush an Append-Only relation file.
+ */
+extern void MirroredAppendOnly_Flush(
+									 MirroredAppendOnlyOpen *open);
+										/* The open struct. */
+
+/*
+ * Close an Append-Only relation file.
  */
 extern void MirroredAppendOnly_Close(
 						 MirroredAppendOnlyOpen *open);
 							/* The open struct. */
 
 
+extern void MirroredAppendOnly_Drop(
+	RelFileNode 				*relFileNode,
+	 
+	int32						segmentFileNum,
+	
+	char						*relationName,
+					/* For tracing only.  Can be NULL in some execution paths. */
+	
+	StorageManagerMirrorMode	mirrorMode,
+	
+	bool						ignoreNonExistence);
 
 // -----------------------------------------------------------------------------
 // Append 
@@ -104,6 +130,29 @@ extern void MirroredAppendOnly_Append(
 
 	int32		appendDataLen);
 				/* The byte length of the Append-Only data. */
+
+// -----------------------------------------------------------------------------
+// Truncate
+// ----------------------------------------------------------------------------
+extern bool MirroredAppendOnly_Truncate(
+				 MirroredAppendOnlyOpen *open,
+				 /* The open struct. */
+				 
+				 int32		position);
+				 /* The position to cutoff the data. */
+
+
+// -----------------------------------------------------------------------------
+// Read local side (primary segment)
+// ----------------------------------------------------------------------------
+extern int MirroredAppendOnly_Read(
+			MirroredAppendOnlyOpen *open,
+			/* The open struct. */
+			
+			void		*buffer,
+			/* Pointer to the buffer. */
+			
+			int32		bufferLen);
 
 #endif   /* CDBMIRROREDAPPENDONLY_H */
 

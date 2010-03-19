@@ -18,28 +18,59 @@
 #include "cdb/cdbfilerepservice.h"
 #include "cdb/cdbfilerepprimaryack.h"
 #include "cdb/cdbfilerep.h"
+#include "cdb/cdbresynchronizechangetracking.h"
 #include "utils/flatfiles.h"
 
-static int FileRepPrimary_RunRecovery(void);
+static void FileRepPrimary_StartRecoveryInSync(void);
+static void FileRepPrimary_StartRecoveryInChangeTracking(void);
+
+static int FileRepPrimary_RunRecoveryInSync(void);
 
 /****************************************************************
  * FILEREP SUB-PROCESS (FileRep Primary RECOVERY Process)
  ****************************************************************/
+
+void 
+FileRepPrimary_StartRecovery(void)
+{		
+	elog(LOG, "FileRepPrimary_StartRecovery()");
+	
+	switch (dataState)
+	{
+		case DataStateInSync:
+			FileRepPrimary_StartRecoveryInSync();
+			break;
+			
+		case DataStateInChangeTracking:
+			FileRepPrimary_StartRecoveryInChangeTracking();
+			break;
+			
+		case DataStateInResync:
+		default:
+			Assert(0);
+			break;
+	}
+}	
+
+/****************************************************************
+ * DataStateInSync
+ ****************************************************************/
+
 /*
  * 
- * FileRepPrimary_StartRecovery()
+ * FileRepPrimary_StartRecoveryInSync()
  *
  * That process will be started only during recovery if
  *			*) dataState == DataStateInSync or
  *			*) dataState == case DataStateResynchronizing
  *
  */
-void 
-FileRepPrimary_StartRecovery(void)
+static void 
+FileRepPrimary_StartRecoveryInSync(void)
 {	
 	int	status = STATUS_OK;
 	
-	elog(LOG, "FileRepPrimary_StartRecovery()");
+	elog(LOG, "FileRepPrimary_StartRecoveryInSync()");
 	
 	while (1) {
 		
@@ -47,8 +78,7 @@ FileRepPrimary_StartRecovery(void)
 			FileRepSubProcess_SetState(FileRepStateFault);
 		}
 		
-		while (FileRepSubProcess_GetState() == FileRepStateSuspend ||
-			   FileRepSubProcess_GetState() == FileRepStateFault ||
+		while (FileRepSubProcess_GetState() == FileRepStateFault ||
 			   
 			   (fileRepShmemArray[0]->state == FileRepStateNotInitialized &&
 			    FileRepSubProcess_GetState() != FileRepStateShutdown &&
@@ -70,42 +100,40 @@ FileRepPrimary_StartRecovery(void)
 		
 		Insist(fileRepRole == FileRepPrimaryRole);
 
-		Insist(dataState == DataStateInSync ||
-			   dataState == DataStateResynchronizing);
+		Insist(dataState == DataStateInSync);
 		
-		status = FileRepPrimary_RunRecovery();
+		status = FileRepPrimary_RunRecoveryInSync();
 
 		
 	} // while(1)	
 
-	if (FileRepSubProcess_GetState() == FileRepStateShutdown) {
-		/* perform graceful shutdown */
-	}
-	
 }
 
 /*
  * 
- * FileRepPrimary_RunRecovery()
- *		Negotiation Protocol
- *		Recover Flat Files
+ * FileRepPrimary_RunRecoveryInSync()
+ *		
+ *		1) Recover Flat Files
  *			a) pg_control file
  *			b) pg_database file
  *			c) pg_auth file
  *			d) pg_twophase directory
- *		Reconcile xlog EOF
+ *			e) Slru directories 
+ *					*) pg_clog 
+ *					*) pg_multixact 
+ *					*) pg_distributedlog
+ *					*) pg_distributedxidmap
+ *					*) pg_subtrans
  *
- * Relation cache files are not copied to mirror. See comment 
- * in front of the routine "RelationCacheInitFileRemove()"
+ *		2) Reconcile xlog EOF
  *
  */
-
 static int 
-FileRepPrimary_RunRecovery(void)
+FileRepPrimary_RunRecoveryInSync(void)
 {	
 	int status = STATUS_OK;
 
-	elog(LOG, "FileRepPrimary_RunRecovery()");
+	elog(LOG, "FileRepPrimary_RunRecoveryInSync()");
 	
 	while (1) {
 		
@@ -158,7 +186,7 @@ FileRepPrimary_RunRecovery(void)
 		}	
 		
 		status = SlruRecoverMirror();
-		elog(DEBUG1, "FileRepPrimary_RunRecovery() TwoPhaseRecoverMirror");
+		elog(DEBUG1, "FileRepPrimary_RunRecovery() SlruRecoverMirror");
 		
 		if (status != STATUS_OK) {
 			break;
@@ -178,36 +206,43 @@ FileRepPrimary_RunRecovery(void)
 	return status;
 }
 
+/****************************************************************
+ * DataStateInChangeTracking
+ ****************************************************************/
+
 /*
- * FileRepPrimary_MirrorNegotiation
+ * 
+ * FileRepPrimary_StartRecoveryInChangeTracking()
  *
- * Handshake between primary and mirror to ensure 
- *		*) same protocol version
- *		*) synchronized segment state
- * Handshake is performed via Control Messages.	
  */
-/*
-static int
-FileRepPrimary_MirrorNegotiation(void)
-{
-*/
-	/* Verify State, Protocol Version
-	 
-	 
-	 if (! FileRepConnClient_SendMessage(
-	 TRUE, // Control Message Type
-	 TRUE, // Synchronous Message
-	 fileRepMessage,
-	 messageLength)) {
-	 
-	 ereport(DEBUG1, 
-	 (errmsg("Primary Message sent fail.")));
-	 
-	 return STATUS_ERROR;
-	 }
-	 
-	 */	
-/*
-	return STATUS_OK;
+static void 
+FileRepPrimary_StartRecoveryInChangeTracking(void)
+{		
+	elog(LOG, "FileRepPrimary_StartRecoveryInChangeTracking()");
+	
+	while (1) {
+					
+		while (FileRepSubProcess_GetState() == FileRepStateFault) {			
+			FileRepSubProcess_ProcessSignals();
+			pg_usleep(50000L); /* 50 ms */	
+		}
+		
+		if (FileRepSubProcess_GetState() == FileRepStateShutdown ||
+			FileRepSubProcess_GetState() == FileRepStateImmediateShutdown) {
+			
+			break;
+		}
+				
+		Insist(fileRepRole == FileRepPrimaryRole);
+		Insist(dataState == DataStateInChangeTracking);		
+		Insist(FileRepSubProcess_GetState() != FileRepStateReady);
+		
+		ChangeTracking_CreateInitialFromPreviousCheckpoint();
+		
+		/* NOTE: Any error during change tracking will result in disabling Change Tracking */
+		FileRepSubProcess_SetState(FileRepStateReady);
+		
+		break;
+		
+	} // while(1)	
 }
-*/

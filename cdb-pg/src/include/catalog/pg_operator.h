@@ -581,6 +581,14 @@ DATA(insert OID = 1366 (  "+"	   PGNSP PGUID b f 1266 1082 1184	1361 0 0 0 0 0 t
 
 DATA(insert OID = 1399 (  "-"	   PGNSP PGUID b f 1083 1083 1186	 0	0 0 0 0 0 time_mi_time - - ));
 
+/* gpxlogloc operators */
+DATA(insert OID = 3325 (  "="	   PGNSP PGUID b f	3310 3310	16 3325 3326 3327 3327 3327 3328 gpxlogloceq eqsel eqjoinsel ));
+DATA(insert OID = 3326 (  "<>"	   PGNSP PGUID b f	3310 3310	16 3326 3325 0 0 0 0 gpxloglocne neqsel neqjoinsel ));
+DATA(insert OID = 3327 (  "<"	   PGNSP PGUID b f	3310 3310	16 3328 3330 0 0 0 0 gpxlogloclt scalarltsel scalarltjoinsel ));
+DATA(insert OID = 3328 (  ">"	   PGNSP PGUID b f	3310 3310	16 3327 3329 0 0 0 0 gpxloglocgt scalargtsel scalargtjoinsel ));
+DATA(insert OID = 3329 (  "<="	   PGNSP PGUID b f	3310 3310	16 3330 3328 0 0 0 0 gpxloglocle scalarltsel scalarltjoinsel ));
+DATA(insert OID = 3330 (  ">="	   PGNSP PGUID b f	3310 3310	16 3329 3327 0 0 0 0 gpxloglocge scalargtsel scalargtjoinsel ));
+
 /* additional geometric operators - thomas 97/04/18 */
 DATA(insert OID = 1420 (  "@@"	  PGNSP PGUID l f	 0	718 600   0    0	0	 0	 0	 0 circle_center - - ));
 DATA(insert OID = 1500 (  "="	  PGNSP PGUID b f  718	718 16 1500 1501 1502 1502 1502 1503 circle_eq eqsel eqjoinsel ));

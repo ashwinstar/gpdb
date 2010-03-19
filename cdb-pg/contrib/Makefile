@@ -8,7 +8,8 @@ WANTED_DIRS = \
 		dblink		\
 		tsearch2	\
 		gp_filedump \
-		xlogdump
+		xlogdump \
+		changetrackingdump
 
 ifeq ($(with_openssl),yes)
 WANTED_DIRS += sslinfo

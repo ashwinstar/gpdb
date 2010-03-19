@@ -15,7 +15,7 @@ from base import *
 from unix import *
 import pg
 from gppylib import pgconf
-
+from gppylib.utils import writeLinesToFile
 
 logger = get_default_logger()
 
@@ -174,7 +174,7 @@ class SegmentStart(Command):
 class SendFilerepTransitionMessage(Command):
     def __init__(self, name, inputFile, port=None,ctxt=LOCAL, remoteHost=None, dataDir=None):
         if not remoteHost:
-            remoteHost = "localhost"
+            remoteHost = "127.0.0.1"
         self.cmdStr='$GPHOME/bin/gp_primarymirror -h %s -p %s -i %s' % (remoteHost,port,inputFile)
         self.dataDir = dataDir
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
@@ -190,6 +190,34 @@ class SendFilerepTransitionMessage(Command):
         cmd=SendFilerepTransitionMessage(name, inputFile, port, REMOTE, remoteHost)
         cmd.run(validateAfter=True)
         return cmd
+
+    @staticmethod
+    def buildTransitionMessageCommand(transitionData, dir, port):
+        dbData = transitionData["dbsByPort"][int(port)]
+        targetMode = transitionData["targetMode"]
+
+        argsArr = []
+        argsArr.append(targetMode)
+        if targetMode == 'mirror' or targetMode == 'primary':
+            mode = dbData["mode"]
+            if mode == 'r' and dbData["fullResyncFlag"]:
+                # full resync requested, convert 'r' to 'f'
+                argsArr.append( 'f' )
+            else:
+                # otherwise, pass the mode through
+                argsArr.append( dbData["mode"])
+            argsArr.append( dbData["hostName"])
+            argsArr.append( "%d" % dbData["hostPort"])
+            argsArr.append( dbData["peerName"])
+            argsArr.append( "%d" % dbData["peerPort"])
+
+        #
+        # write arguments to input file.  We will leave this file around.  It can be useful for debugging
+        #
+        inputFile = os.path.join( dir, "gp_pmtransition_args" )
+        writeLinesToFile(inputFile, argsArr)
+
+        return SendFilerepTransitionMessage("Changing seg at dir %s" % dir, inputFile, port=port, dataDir=dir)
 
 #-----------------------------------------------
 class SegmentStop(Command):
@@ -209,7 +237,7 @@ class SegmentStop(Command):
 class GpSegStartCmd(Command):
     def __init__(self, name, gphome, segments, collatelist, gpversion,
                  mirroringMode, numContentsInCluster, timeout=SEGMENT_TIMEOUT_DEFAULT, 
-                 verbose=False,ctxt=LOCAL, remoteHost=None):
+                 verbose=False,ctxt=LOCAL, remoteHost=None, pickledTransitionData=None):
 
         # Referenced by calling code, create a clone
         self.dblist = [x for x in segments]
@@ -225,16 +253,23 @@ class GpSegStartCmd(Command):
         else:
             setverbose=""
 
-        cmdStr= " ".join([
+        args = [
                 "$GPHOME/sbin/gpsegstart.py",
                 setverbose,
                 "-C %s" % colstr,
                 "-M %s" % mirroringMode,
                 "-V '%s'" % gpversion,
                 "-n %s" % numContentsInCluster,
-                "-t %d" % timeout,
-                dirstr
-                ])
+                "-t %d" % timeout
+                ]
+
+        if pickledTransitionData is not None:
+            args.append("-p")
+            args.append(pickledTransitionData)
+            
+        args.append(dirstr)
+
+        cmdStr= " ".join(args)
 
         logger.debug(cmdStr)
 
@@ -242,7 +277,7 @@ class GpSegStartCmd(Command):
 
 class GpSegChangeMirrorModeCmd(Command):
     def __init__(self, name, gphome, collatelist, gpversion, dbs, targetMode,
-                 transitionMessageFilePath, verbose=False, ctxt=LOCAL, remoteHost=None):
+                 pickledParams, verbose=False, ctxt=LOCAL, remoteHost=None):
         self.gphome=gphome
         self.dblist=dbs
         self.dirlist=[]
@@ -258,8 +293,8 @@ class GpSegChangeMirrorModeCmd(Command):
         else:
             setverbose=""
 
-        cmdStr="$GPHOME/sbin/gpsegtoprimaryormirror.py %s -D %s -C %s -M %s -t %s -V '%s'" % \
-                (setverbose,dirstr,colstr,targetMode,transitionMessageFilePath,gpversion)
+        cmdStr="$GPHOME/sbin/gpsegtoprimaryormirror.py %s -D %s -C %s -M %s -p %s -V '%s'" % \
+                (setverbose,dirstr,colstr,targetMode,pickledParams,gpversion)
 
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
@@ -558,7 +593,7 @@ class GpCatVersionDirectory(Command):
 
 #-----------------------------------------------
 class GpSegCheckLocaleAndConnect(Command):
-    def __init__(self,name,datadir,port,expected_lc_collate,expected_lc_monetary,expected_lc_numeric):
+    def __init__(self,name,datadir,port,expected_lc_collate,expected_lc_monetary,expected_lc_numeric, timeout):
         self.datadir=datadir
         self.port=port
         self.expected_lc_collate=expected_lc_collate
@@ -566,6 +601,7 @@ class GpSegCheckLocaleAndConnect(Command):
         self.expected_lc_numeric=expected_lc_numeric
         self.error_str=""
         self.success=False
+        self.timeout = timeout
 
         Command.__init__(self, name, "GpSegCheckLocaleAndConnect")
         pass
@@ -577,43 +613,53 @@ class GpSegCheckLocaleAndConnect(Command):
 
         logger.debug("%s connecting to %s" % (self.datadir,dburl))
 
+        #
+        # Note that rather than waiting strictly self.timeout number of seconds, we do
+        #  what pg_ctl does: loop self.timeout number of times, sleeping on failure
+        #
+        connectionLoopCount = 0
         conn = None
         while conn is None:
             try:
+                connectionLoopCount += 1
                 conn = dbconn.connect(dburl, utility=True)
             except Exception, ex:
                 (exType,exValue,exTraceback) = sys.exc_info()
-                # todo MIRRORING: this is bogus because it doesn't handle internationalization.  Should make gpmirrortransition option that just checks if the db has started...then we can wait for it to finish starting
-                if str(exValue).strip() == 'FATAL:  the database system is starting up':
-                    conn = None
-                    time.sleep(1) # wait 1 second to try again
-                else:
-                    raise ex
-        (lc_collate,lc_monetary,lc_numeric)=catalog.getCollationSettings(conn)
-        if lc_collate != self.expected_lc_collate:
-            self.error_str+="Segment's value of lc_collate does not match the master.\n" \
-                            " Master had value: '%s' while this segment has: '%s'\n" %\
-                            (self.expected_lc_collate,lc_collate)
-        if lc_monetary != self.expected_lc_monetary:
-            self.error_str += "Segment's value of lc_monetary does not match the master.\n"\
-                              " Master had value: '%s' while this segment has: '%s'" %\
-                            (self.expected_lc_monetary,lc_monetary)
-        if lc_numeric != self.expected_lc_numeric:
-            self.error_str += "Segment's value of lc_numeric does not match the master.\n" \
-                              " Master had value: '%s' while this segment has: '%s'" %\
-                              (self.expected_lc_numeric,lc_numeric)
-        seg_datadir = catalog.getSessionGUC(conn, 'data_directory')
-        if not os.path.samefile(seg_datadir, self.datadir):
-            self.error_str += "Segment's data directory does not match. " \
-                              "Expected value %s, " \
-                              "Actual value %s" % (self.datadir, seg_datadir)
-        conn.close()
-        logger.debug("%s connection closed" % self.datadir)
+                conn = None
+                if connectionLoopCount >= self.timeout:
+                    self.error_str += "Unable to connect to database to verify startup: %s" % (exValue)
+                    break
+                logger.debug("While checking for database '%s', connection attempt gave '%s'.  Will retry in one second.",
+                            self.datadir, exValue)
+                time.sleep(1)
+
+        if conn is not None: # if conn is none that's because we could not connect and we updated the error string
+
+            (lc_collate,lc_monetary,lc_numeric)=catalog.getCollationSettings(conn)
+            if lc_collate != self.expected_lc_collate:
+                self.error_str+="Segment's value of lc_collate does not match the master.\n" \
+                                " Master had value: '%s' while this segment has: '%s'\n" %\
+                                (self.expected_lc_collate,lc_collate)
+            if lc_monetary != self.expected_lc_monetary:
+                self.error_str += "Segment's value of lc_monetary does not match the master.\n"\
+                                  " Master had value: '%s' while this segment has: '%s'" %\
+                                (self.expected_lc_monetary,lc_monetary)
+            if lc_numeric != self.expected_lc_numeric:
+                self.error_str += "Segment's value of lc_numeric does not match the master.\n" \
+                                  " Master had value: '%s' while this segment has: '%s'" %\
+                                  (self.expected_lc_numeric,lc_numeric)
+            seg_datadir = catalog.getSessionGUC(conn, 'data_directory')
+            if not os.path.samefile(seg_datadir, self.datadir):
+                self.error_str += "Segment's data directory does not match. " \
+                                  "Expected value %s, " \
+                                  "Actual value %s" % (self.datadir, seg_datadir)
+            conn.close()
+            logger.debug("%s connection closed" % self.datadir)
 
         if len(self.error_str) == 0:
             self.success = True
         else:
-            self.sucess = False
+            self.success = False
 
     def set_results(self,results):
         raise ExecutionError("TODO:  must implement", self)

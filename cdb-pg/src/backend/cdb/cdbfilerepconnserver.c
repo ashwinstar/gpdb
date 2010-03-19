@@ -296,6 +296,10 @@ FileRepConnServer_ReceiveMessageType(
 			 *fileRepMessageType = FileRepMessageTypeAO02;
 			 break;
 			 
+		 case 'S':
+			 *fileRepMessageType = FileRepMessageTypeShutdown;
+			 break;
+			 
 		 case EOF:
 			 ereport(LOG,
 					 (errcode_for_socket_access(),

@@ -498,6 +498,9 @@ _bt_insertonpg(Relation rel,
 	OffsetNumber firstright = InvalidOffsetNumber;
 	Size		itemsz;
 
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(rel);
+
 	page = BufferGetPage(buf);
 	lpageop = (BTPageOpaque) PageGetSpecialPointer(page);
 
@@ -713,8 +716,7 @@ _bt_insertonpg(Relation rel,
 			XLogRecData *nextrdata;
 			IndexTupleData trunctuple;
 
-			xlrec.target.node = rel->rd_node;
-			ItemPointerSet(&(xlrec.target.tid), itup_blkno, itup_off);
+			xl_btreetid_set(&(xlrec.target), rel, itup_blkno, itup_off);
 
 			rdata[0].data = (char *) &xlrec;
 			rdata[0].len = SizeOfBtreeInsert;
@@ -831,6 +833,9 @@ _bt_split(Relation rel, Buffer buf, OffsetNumber firstright,
 				rightoff;
 	OffsetNumber maxoff;
 	OffsetNumber i;
+
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(rel);
 
 	rbuf = _bt_getbuf(rel, P_NEW, BT_WRITE);
 	origpage = BufferGetPage(buf);
@@ -1039,8 +1044,7 @@ _bt_split(Relation rel, Buffer buf, OffsetNumber firstright,
 		XLogRecPtr	recptr;
 		XLogRecData rdata[4];
 
-		xlrec.target.node = rel->rd_node;
-		ItemPointerSet(&(xlrec.target.tid), itup_blkno, itup_off);
+		xl_btreetid_set(&(xlrec.target), rel, itup_blkno, itup_off);
 		if (newitemonleft)
 			xlrec.otherblk = BufferGetBlockNumber(rbuf);
 		else
@@ -1607,6 +1611,9 @@ _bt_newroot(Relation rel, Buffer lbuf, Buffer rbuf)
 	Page		metapg;
 	BTMetaPageData *metad;
 
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(rel);
+
 	lbkno = BufferGetBlockNumber(lbuf);
 	rbkno = BufferGetBlockNumber(rbuf);
 	lpage = BufferGetPage(lbuf);
@@ -1691,7 +1698,7 @@ _bt_newroot(Relation rel, Buffer lbuf, Buffer rbuf)
 		XLogRecPtr	recptr;
 		XLogRecData rdata[2];
 
-		xlrec.node = rel->rd_node;
+		xl_btreenode_set(&(xlrec.btreenode), rel);
 		xlrec.rootblk = rootblknum;
 		xlrec.level = metad->btm_level;
 

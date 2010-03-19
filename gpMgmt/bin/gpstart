@@ -301,9 +301,6 @@ class GpStart:
         self.conn = dbconn.connect(self.dburl, utility=True)
         (self.lc_collate,self.lc_monetary,self.lc_numeric)=catalog.getCollationSettings(self.conn)
 
-        self.ftsmode = catalog.getSessionGUC(self.conn,'gp_fault_action')
-        logger.debug("FTS Mode: %s" % self.ftsmode)
-
         self.conn.close()
         pass
 
@@ -338,12 +335,13 @@ class GpStart:
                 self.gphome, self.master_datadir, self.timeout
                 ).startSegments(self.gparray, segmentsToStart, startMode)
 
-        # process the result of segment startup
-        self._print_segment_start(segmentStartResult, invalidSegments, inactiveSegments )
+        # see if we have at least one segment per content
+        willShutdownSegments = not self._verify_enough_segments(segmentStartResult,self.gparray)
 
-        # make sure we have at least one segment per content
-        # todo MIRRORING: what is right check in mirror mode?  See code before 1/21/2010
-        if not self._verify_enough_segments(segmentStartResult,self.gparray):
+        # process the result of segment startup
+        self._print_segment_start(segmentStartResult, invalidSegments, inactiveSegments, willShutdownSegments )
+
+        if willShutdownSegments :
             # go through and remove any segments that we did start so that we keep everything
             # shutdown cleanly
             self._shutdown_segments(segmentStartResult)
@@ -436,7 +434,7 @@ class GpStart:
         pass
 
     ######
-    def _print_segment_start(self, segmentStartResult, invalidSegments, inactiveSegments):
+    def _print_segment_start(self, segmentStartResult, invalidSegments, inactiveSegments, willShutdownSegments):
         """
         Print the results of segment startup
 
@@ -464,37 +462,32 @@ class GpStart:
                 logger.debug("DBID:%d  STARTED" % segment.getSegmentDbId())
             logger.info("----------------------------------------------------\n\n")
 
-        flag=""
-        if failed > 0:
-            flag="<<<<<"
+        attentionFlag = "<<<<<" if failed > 0 else ""
         logger.info("----------------------------------------------------")
-        logger.info("Total processes marked as completed             = %d" % started)
-        logger.info("Total processes marked as failed                = %d %s" % (failed,flag))
+        logger.info("Total successful segment starts             = %d" % started)
+        logger.info("Total failed segment starts                 = %d %s" % (failed, attentionFlag))
         logger.info("----------------------------------------------------")
         if len(invalidSegments ) > 0:
-            logger.warning("Total instances marked invalid and bypassed  = %d <<<<< " % len(invalidSegments))
+            logger.warning("Total instances that are marked down in configuration and were skipped = %d <<<<< " % len(invalidSegments))
         else:
-            logger.info("Total instances marked invalid and bypassed     = 0 ")
+            logger.info("Total instances that are marked down in configuration and were skipped = 0 ")
 
-        logger.info("Successfully started %d of %d segment instances %s" % (started,totalTriedToStart,flag))
+        logger.info("Successfully started %d of %d segment instances %s" % (started,totalTriedToStart, attentionFlag))
         logger.info("----------------------------------------------------")
 
         if failed > 0:
             logger.warning("Segment instance startup failures reported")
-            logger.warning("Failed start %d of %d segment instances %s" % (failed,totalTriedToStart,flag))
-            logger.warning("A total of %d errors were encountered" % failed)
+            logger.warning("Failed start %d of %d segment instances %s" % (failed,totalTriedToStart, attentionFlag))
             logger.warning("Review %s" % get_logfile())
-            logger.warning("For more details on segment startup failure(s)")
-            logger.warning("Run gpstate to review current segment instance status")
+            if not willShutdownSegments:
+                logger.warning("For more details on segment startup failure(s)")
+                logger.warning("Run gpstate to review current segment instance status")
             logger.info("----------------------------------------------------")
         if len(invalidSegments) > 0:
             logger.warning("****************************************************************************")
-            logger.warning("There are        %d segment(s) marked as invalid" % len(invalidSegments))
-            logger.warning("The GPDB gp_fault_action parameter is set to continue in the event of failure")
-            logger.warning("To recover from this current invalid state, review usage of gprecoverseg")
-            logger.warning("management utility, which will recover failed segment instance databases")
-            logger.warning("As gp_fault_action is set to continue, recovery will need to shutdown the")
-            logger.warning("GPDB database to ensure a consistent recovery can be completed")
+            logger.warning("There are %d segment(s) marked down in the database" % len(invalidSegments))
+            logger.warning("To recover from this current state, review usage of the gprecoverseg")
+            logger.warning("management utility which will recover failed segment instance databases.")
             logger.warning("****************************************************************************")
 
 

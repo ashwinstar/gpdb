@@ -52,12 +52,13 @@ typedef struct PersistentFileSysObjName
 
 inline static void PersistentFileSysObjName_SetRelationFile(
 	PersistentFileSysObjName	*fsObjName,
-	RelFileNode					*relFileNode)
+	RelFileNode					*relFileNode,
+	int32						segmentFileNum)
 {
 	MemSet(fsObjName, 0, sizeof(PersistentFileSysObjName));
 	fsObjName->type = PersistentFsObjType_RelationFile;
 	memcpy(&(fsObjName->variant.rel.relFileNode), relFileNode, sizeof(RelFileNode));
-	fsObjName->variant.rel.segmentFileNum = 0;	// UNDONE
+	fsObjName->variant.rel.segmentFileNum = segmentFileNum;
 }
 
 inline static void PersistentFileSysObjName_SetDatabaseDir(
@@ -115,17 +116,35 @@ typedef enum PersistentFileSysState
 } PersistentFileSysState;
 
 /*
- * The states of a persistent file-system object.
+ * The primary’s view of the state of a mirrored persistent file-system
+ * object.
  */
-typedef enum MirrorFileSysState
+typedef enum MirroredObjectExistenceState
 {
-	MirrorFileSysState_None = 0,
-	MirrorFileSysState_Synchronized = 1,
-	MirrorFileSysState_PageIncremental = 2,
-	MirrorFileSysState_FileIncremental = 3,
-	MirrorFileSysState_All = 4,
-	MaxMirrorFileSysState /* must always be last */
-} MirrorFileSysState;
+	MirroredObjectExistenceState_None = 0,
+	MirroredObjectExistenceState_NotMirrored = 1,
+	MirroredObjectExistenceState_MirrorCreatePending = 2,
+	MirroredObjectExistenceState_MirrorCreated = 3,
+	MirroredObjectExistenceState_MirrorReCreateNeeded = 4,
+	MirroredObjectExistenceState_MirrorReDropNeeded = 5,
+	MirroredObjectExistenceState_MirrorDropped = 6,
+	MaxMirroredObjectExistenceState /* must always be last */
+} MirroredObjectExistenceState;
+
+/*
+ * The primary’s view of the state of a mirrored persistent relation data
+ * synchronization state.
+ */
+typedef enum MirroredRelDataSynchronizationState
+{
+	MirroredRelDataSynchronizationState_None = 0,
+	MirroredRelDataSynchronizationState_Synchronized = 1,
+	MirroredRelDataSynchronizationState_FullCopy = 2,
+	MirroredRelDataSynchronizationState_BufferPoolPageIncremental = 3,
+	MirroredRelDataSynchronizationState_BufferPoolScanIncremental = 4,
+	MirroredRelDataSynchronizationState_AppendOnlyCatchup = 5,
+	MaxMirroredRelDataSynchronizationState /* must always be last */
+} MirroredRelDataSynchronizationState;
 
 
 /*
@@ -153,8 +172,17 @@ extern int PersistentFileSysObjName_Compare(
 	const PersistentFileSysObjName		*name1,
 	const PersistentFileSysObjName		*name2);
 
-extern char *PersistentFileSysObj_StateName(
-		PersistentFileSysState state);
-																																																																
+extern char *PersistentFileSysObjState_Name(
+	PersistentFileSysState state);
+
+extern char *MirroredObjectExistenceState_Name(
+	MirroredObjectExistenceState mirrorExistenceState);
+
+extern char *PersistentFileSysRelStorageMgr_Name(
+	PersistentFileSysRelStorageMgr relStorageMgr);
+
+extern char *MirroredRelDataSynchronizationState_Name(
+	MirroredRelDataSynchronizationState relDataSynchronizationState);
+
 #endif   /* PERSISTENTFILESYSOBJNAME_H */
 

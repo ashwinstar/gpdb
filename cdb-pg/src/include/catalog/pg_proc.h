@@ -744,6 +744,8 @@ DATA(insert OID = 381 (  bttintervalcmp    PGNSP PGUID 12 f f t f i 2 23 f "704 
 DESCR("btree less-equal-greater");
 DATA(insert OID = 382 (  btarraycmp		   PGNSP PGUID 12 f f t f i 2 23 f "2277 2277" _null_ _null_ _null_ btarraycmp - _null_ ));
 DESCR("btree less-equal-greater");
+DATA(insert OID = 2905 ( btgpxlogloccmp	   PGNSP PGUID 12 f f t f i 2 23 f "3310 3310" _null_ _null_ _null_ btgpxlogloccmp - _null_));
+DESCR("btree less-equal-greater");
 
 DATA(insert OID = 361 (  lseg_distance	   PGNSP PGUID 12 f f t f i 2 701 f "601 601" _null_ _null_ _null_	lseg_distance - _null_ ));
 DESCR("distance between");
@@ -3284,6 +3286,7 @@ DATA(insert OID = 2130 (  max				PGNSP PGUID 12 t f f f i 1 1700 f "1700" _null_
 DATA(insert OID = 2050 (  max				PGNSP PGUID 12 t f f f i 1 2277 f "2277" _null_ _null_ _null_ aggregate_dummy - _null_ ));
 DATA(insert OID = 2244 (  max				PGNSP PGUID 12 t f f f i 1 1042 f "1042" _null_ _null_ _null_ aggregate_dummy - _null_ ));
 DATA(insert OID = 2797 (  max				PGNSP PGUID 12 t f f f i 1 27 f "27" _null_ _null_ _null_ aggregate_dummy - _null_ ));
+DATA(insert OID = 3332 (  max				PGNSP PGUID 12 t f f f i 1 3310 f "3310" _null_ _null_ _null_ aggregate_dummy - _null_ ));
 
 DATA(insert OID = 2131 (  min				PGNSP PGUID 12 t f f f i 1 20 f "20" _null_ _null_ _null_ aggregate_dummy - _null_ ));
 DATA(insert OID = 2132 (  min				PGNSP PGUID 12 t f f f i 1 23 f "23" _null_ _null_ _null_ aggregate_dummy - _null_ ));
@@ -3304,6 +3307,7 @@ DATA(insert OID = 2146 (  min				PGNSP PGUID 12 t f f f i 1 1700 f "1700" _null_
 DATA(insert OID = 2051 (  min				PGNSP PGUID 12 t f f f i 1 2277 f "2277" _null_ _null_ _null_ aggregate_dummy - _null_ ));
 DATA(insert OID = 2245 (  min				PGNSP PGUID 12 t f f f i 1 1042 f "1042" _null_ _null_ _null_ aggregate_dummy - _null_ ));
 DATA(insert OID = 2798 (  min				PGNSP PGUID 12 t f f f i 1 27 f "27" _null_ _null_ _null_ aggregate_dummy - _null_ ));
+DATA(insert OID = 3333 (  min				PGNSP PGUID 12 t f f f i 1 3310 f "3310" _null_ _null_ _null_ aggregate_dummy - _null_ ));
 
 /* count has two forms: count(any) and count(*) */
 DATA(insert OID = 2147 (  count				PGNSP PGUID 12 t f f f i 1 20 f "2276" _null_ _null_ _null_  aggregate_dummy - _null_ ));
@@ -4453,6 +4457,22 @@ DATA(insert OID =  3314 (  gpxloglocrecv		   PGNSP PGUID 12 f f t f i 1 3310 f "
 DESCR("I/O");
 DATA(insert OID =  3315 (  gpxloglocsend		   PGNSP PGUID 12 f f t f i 1 17 f "3310" _null_ _null_ _null_	gpxloglocsend - _null_ ));
 DESCR("I/O");
+DATA(insert OID =  3318 (  gpxlogloclarger		   PGNSP PGUID 12 f f t f i 2 3310 f "3310 3310" _null_ _null_ _null_	gpxlogloclarger - _null_ ));
+DESCR("I/O");
+DATA(insert OID =  3319 (  gpxloglocsmaller		   PGNSP PGUID 12 f f t f i 2 3310 f "3310 3310" _null_ _null_ _null_	gpxloglocsmaller - _null_ ));
+DESCR("I/O");
+DATA(insert OID =  3331 (  gpxlogloceq			   PGNSP PGUID 12 f f t f i 2 16 f "3310 3310" _null_ _null_ _null_	gpxlogloceq - _null_ ));
+DESCR("I/O");
+DATA(insert OID =  3320 (  gpxloglocne			   PGNSP PGUID 12 f f t f i 2 16 f "3310 3310" _null_ _null_ _null_	gpxloglocne - _null_ ));
+DESCR("I/O");
+DATA(insert OID =  3321 (  gpxlogloclt			   PGNSP PGUID 12 f f t f i 2 16 f "3310 3310" _null_ _null_ _null_	gpxlogloclt - _null_ ));
+DESCR("I/O");
+DATA(insert OID =  3322 (  gpxloglocle			   PGNSP PGUID 12 f f t f i 2 16 f "3310 3310" _null_ _null_ _null_	gpxloglocle - _null_ ));
+DESCR("I/O");
+DATA(insert OID =  3323 (  gpxloglocgt			   PGNSP PGUID 12 f f t f i 2 16 f "3310 3310" _null_ _null_ _null_	gpxloglocgt - _null_ ));
+DESCR("I/O");
+DATA(insert OID =  3324 (  gpxloglocge			   PGNSP PGUID 12 f f t f i 2 16 f "3310 3310" _null_ _null_ _null_	gpxloglocge - _null_ ));
+DESCR("I/O");
 
 
 /* Greenplum MPP exposed internally-defined functions. */
@@ -4509,6 +4529,8 @@ DATA(insert OID = 6043 (  gp_transaction_log   PGNSP PGUID 12 f f f t v 0 2249 f
 DESCR("view logged local transaction status");
 DATA(insert OID = 6044 (  gp_distributed_log   PGNSP PGUID 12 f f f t v 0 2249 f "" _null_ _null_ _null_ gp_distributed_log - _null_ ));
 DESCR("view logged distributed transaction status");
+DATA(insert OID = 6435 (  gp_changetracking_log   PGNSP PGUID 12 f f f t v 0 2249 f "" "{21,21,26,26,26,3310,23,27,20}" "{o,o,o,o,o,o,o,o,o}" "{segment_id,dbid,space,db,rel,xlogloc,blocknum,persistent_tid,persistent_sn}" gp_changetracking_log - _null_ ));
+DESCR("view logged change tracking records");
 // DATA(insert OID = 6055 (  gp_memory_database_directories   PGNSP PGUID 12 f f f t v 0 2249 f "" _null_ _null_ _null_ gp_memory_database_directories - _null_ ));
 // DESCR("view in-memory status of persistent database directories");
 
@@ -4828,13 +4850,7 @@ DATA(insert OID = 7173 (  gp_update_ao_master_stats    PGNSP PGUID 12 f f f f v 
 DESCR("append only tables utility function");
 DATA(insert OID = 7174 (  gp_update_ao_master_stats    PGNSP PGUID 12 f f f f v 1 701 f "25" _null_ _null_ _null_ gp_update_ao_master_stats_name  - _null_  ));
 DESCR("append only tables utility function");
-DATA(insert OID = 7175 (  gp_persistent_database_node_add    PGNSP PGUID 12 f f f f v 3 23 f "26 26 21" _null_ _null_ _null_ gp_persistent_database_node_add  - _null_  ));
-DESCR("add entry to gp_persistent_database_node");
-DATA(insert OID = 7176 (  gp_persistent_relation_node_add    PGNSP PGUID 12 f f f f v 4 23 f "26 26 26 21" _null_ _null_ _null_ gp_persistent_relation_node_add  - _null_  ));
-DESCR("add entry to persistent_relation_node");
-DATA(insert OID = 7177 (  gp_persistent_tablespace_node_add    PGNSP PGUID 12 f f f f v 2 23 f "26 21" _null_ _null_ _null_ gp_persistent_tablespace_node_add  - _null_  ));
-DESCR("add entry to gp_persistent_tablespace_node");
-DATA(insert OID = 7178 (  gp_persistent_build_db    PGNSP PGUID 12 f f f f v 0 23 f "" _null_ _null_ _null_ gp_persistent_build_db  - _null_  ));
+DATA(insert OID = 7178 (  gp_persistent_build_db    PGNSP PGUID 12 f f f f v 1 23 f "16" _null_ _null_ _null_ gp_persistent_build_db  - _null_  ));
 DESCR("populate the persistent tables and gp_relation_node for the current database");
 
 /* GIN array support */

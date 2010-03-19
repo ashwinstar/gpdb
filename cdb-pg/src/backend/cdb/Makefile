@@ -31,6 +31,7 @@ OBJS = cdbanalyze.o \
 	   cdbfilerepprimary.o cdbfilerepmirror.o \
 	   cdbfilerepprimaryack.o cdbfilerepmirrorack.o \
 	   cdbfilerepconnclient.o cdbfilerepconnserver.o \
+	   cdbfilerepresyncmanager.o cdbfilerepresyncworker.o \
 	   cdbfts.o \
 	   cdbglobalsequence.o \
 	   cdbgang.o cdbgroup.o \
@@ -48,7 +49,7 @@ OBJS = cdbanalyze.o \
 	   cdbpersistentfilesysobj.o cdbpersistentrecovery.o cdbpersistentstore.o \
 	   cdbpgdatabase.o \
 	   cdbplan.o cdbpullup.o \
-	   cdbrelsize.o \
+	   cdbrelsize.o cdbresynchronizechangetracking.o \
 	   cdbshareddoublylinked.o cdbsharedoidsearch.o \
 	   cdbsetop.o cdbsreh.o cdbsrlz.o cdbsubplan.o cdbsubselect.o \
 	   cdbtargeteddispatch.o cdbthreadwork.o \

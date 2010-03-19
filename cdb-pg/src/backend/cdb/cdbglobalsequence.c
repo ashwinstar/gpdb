@@ -49,7 +49,7 @@ static Form_pg_attribute
 DirectOpenDefine(GlobalSequence_,\
 GlobalSequence_PgClass,Natts_gp_global_sequence,\
 GlobalSequence_AttrArray,GlobalSequence_AttrPtrArray,\
-GpGlobalSequenceRelationId,GpGlobalSequenceRelType,false);
+GpGlobalSequenceRelationId,GP_GLOBAL_SEQUENCE_OID,false,false);
 
 
 static void GlobalSequence_MakeTid(
@@ -97,7 +97,7 @@ static void GlobalSequence_UpdateTuple(
 						gpGlobalSequence,
 						&globalSequenceTuple->t_self);
 		
-	heap_inplace_update(gpGlobalSequenceRel, globalSequenceTuple);
+	frozen_heap_inplace_update(gpGlobalSequenceRel, globalSequenceTuple);
 
 	heap_freetuple(globalSequenceTuple);
 

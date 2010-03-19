@@ -37,7 +37,16 @@ Relation DirectOpen_Open(
 		direct->relationData.rd_refcnt = 0;
 		direct->relationData.rd_isvalid = true;
 
+		direct->relationData.rd_id = direct->relId;
+
 		direct->relationData.rd_rel = pgClass;
+
+		if (direct->noGpRelationNode)
+		{
+			direct->relationData.rd_segfile0_relationnodeinfo.isPresent = true;
+
+			// Leave persistentTid and persistentSerialNum as 0.
+		}
 
 		// Not much in terms of contraints.
 		direct->constrData.has_not_null = true;
@@ -87,8 +96,11 @@ void DirectOpen_Close(
 	Assert(direct->isInit);
 	Assert(rel == &direct->relationData);
 
-	smgrclose(direct->relationData.rd_smgr);
-	direct->relationData.rd_smgr = NULL;
+	if (direct->relationData.rd_smgr != NULL)
+	{
+		smgrclose(direct->relationData.rd_smgr);
+		direct->relationData.rd_smgr = NULL;
 
-	direct->relationData.rd_refcnt++;
+		direct->relationData.rd_refcnt++;
+	}
 }

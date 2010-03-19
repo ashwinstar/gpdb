@@ -203,20 +203,6 @@ FileRepAckMirror_StartSender(void)
 	
 	int retryLocal = 0; 
 
-	char		*primaryHostAddress = NULL;
-	/* The IPv4 address of the primary segment. */
-	
-	char		*mirrorHostAddress = NULL;
-	/* The IPv4 address of the mirror. */
-	
-	int			primaryPort = 0;
-	/* The communication port of the primary. Required for listener ACK. */
-	
-	int			mirrorPort = 0;
-	/* The communication port of the mirror. Required for listener. */
-
-    bool fullResync = false;
-	
 	elog(LOG, "FileRepMirror_StartSender() ");
 	
 	while (1) {
@@ -225,8 +211,7 @@ FileRepAckMirror_StartSender(void)
 			FileRepSubProcess_SetState(FileRepStateFault);
 		}
 		
-		while (FileRepSubProcess_GetState() == FileRepStateSuspend ||
-			   FileRepSubProcess_GetState() == FileRepStateInitialization ||
+		while (FileRepSubProcess_GetState() == FileRepStateInitialization ||
 			   FileRepSubProcess_GetState() == FileRepStateFault ||
 
 			   (fileRepShmemArray[0]->state == FileRepStateNotInitialized &&
@@ -243,39 +228,33 @@ FileRepAckMirror_StartSender(void)
 			break;
 		}
 
-		primaryMirrorGetFilerepArguments(
-							 &fileRepRole,
-							 &segmentState,
-							 &dataState,
-							 &primaryHostAddress,
-							 &primaryPort,
-							 &mirrorHostAddress,
-							 &mirrorPort,
-                             &fullResync);
-
 		ereport(LOG,
 				(errmsg("LOG(filerep): M_StartSender primary host address:'%s' and port:'%d' "
 						"mirror host address:'%s' and port:'%d' ",
-						primaryHostAddress,
-						primaryPort,
-						mirrorHostAddress,
-						mirrorPort),
+						fileRepPrimaryHostAddress,
+						fileRepPrimaryPort,
+						fileRepMirrorHostAddress,
+						fileRepMirrorPort),
 				 FileRep_errcontext()));	
 				
 		Insist(fileRepRole == FileRepMirrorRole);
 
 		status = FileRepConnClient_EstablishConnection(
-									   primaryHostAddress,
-									   primaryPort);		
+									   fileRepPrimaryHostAddress,
+									   fileRepPrimaryPort);		
 
 		while (status != STATUS_OK && retryLocal < file_rep_retry)  {
-			pg_usleep(500000L); /* 500 ms */
-		 
+			pg_usleep(100000L); /* 100 ms */
+		 			
 			status = FileRepConnClient_EstablishConnection(
-							primaryHostAddress,
-							primaryPort);
+							fileRepPrimaryHostAddress,
+							fileRepPrimaryPort);
 
 			retryLocal++;
+			if (FileRepSubProcess_IsStateTransitionRequested())
+			{
+				break;
+			}			
 		}
  
 		if (status != STATUS_OK) {
@@ -285,14 +264,8 @@ FileRepAckMirror_StartSender(void)
 		status = FileRepAckMirror_RunSender();
 		
 	} // while(1)
-	
-	if (FileRepSubProcess_GetState() == FileRepStateShutdown) {
-		/* perform graceful shutdown */
-	}
-	
+		
 	FileRepConnClient_CloseConnection();
-	
-	/* free memory if any required */
 	
 	return;
 }
@@ -373,7 +346,7 @@ FileRepAckMirror_RunSender(void)
 		FileRep_InsertLogEntry(
 							   "M_RunSenderAck",
 							   FileRep_GetFlatFileIdentifier("", ""),
-							   FileRepRelationNotSpecified,
+							   FileRepRelationTypeNotSpecified,
 							   FileRepOperationNotSpecified,
 							   FILEREP_UNDEFINED,
 							   FILEREP_UNDEFINED,
@@ -411,6 +384,8 @@ FileRepAckMirror_RunSender(void)
 		movePositionConsume = TRUE;
 	} // while(1)
 	
+	FileRepConnClient_CloseConnection();
+
 	return status;
 }
 

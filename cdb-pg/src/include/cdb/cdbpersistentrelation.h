@@ -13,6 +13,7 @@
 #include "storage/fd.h"
 #include "access/persistentfilesysobjname.h"
 #include "cdb/cdbpersistentdatabase.h"
+#include "cdb/cdbdoublylinked.h"
 
 /*
  * This module is for generic relation file create and drop.
@@ -21,6 +22,8 @@
  * the relation file will be deleted even on system crash.  The relation file could be a heap,
  * index, or append-only (row- or column-store).
  */
+extern int64 PersistentRelation_MyHighestSerialNum(void);
+extern int64 PersistentRelation_CurrentMaxSerialNum(void);
 
 extern void PersistentRelation_CheckTablespace(
 	Oid 			tablespace,
@@ -45,10 +48,20 @@ extern void PersistentRelation_AddCreatePending(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the create. */
 
+	int32				segmentFileNum,
+
+	PersistentFileSysRelStorageMgr relStorageMgr,
+
+	MirroredObjectExistenceState mirrorExistenceState,
+
+	MirroredRelDataSynchronizationState relDataSynchronizationState,
+
+	char				*relationName,
+
 	ItemPointer 		persistentTid,
 				/* Resulting TID of the gp_persistent_rel_files tuple for the relation. */
 
-	int64				*serialNum,
+	int64				*persistentSerialNum,
 				/* Resulting serial number for the relation.  Distinquishes the uses of the tuple. */
 
 	bool				flushToXLog);
@@ -57,11 +70,21 @@ extern void PersistentRelation_AddCreatePending(
 extern void PersistentRelation_AddCreated(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the create. */
-
+				
+	int32				segmentFileNum,
+				
+	PersistentFileSysRelStorageMgr relStorageMgr,
+				
+	MirroredObjectExistenceState mirrorExistenceState,
+	
+	MirroredRelDataSynchronizationState relDataSynchronizationState,
+	
+	char				*relationName,
+	
 	ItemPointer 		persistentTid,
 				/* Resulting TID of the gp_persistent_rel_files tuple for the relation. */
 
-	int64				*serialNum,
+	int64				*persistentSerialNum,
 				/* Resulting serial number for the relation.  Distinquishes the uses of the tuple. */
 
 	bool				flushToXLog);
@@ -78,11 +101,13 @@ extern void PersistentRelation_AddCreated(
 extern void PersistentRelation_Created(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the created relation. */
-
+	
+	int32				segmentFileNum,
+	
 	ItemPointer 		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
 
-	int64				serialNum);
+	int64				persistentSerialNum);
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
 /*
@@ -98,11 +123,13 @@ extern void PersistentRelation_Created(
 extern void PersistentRelation_MarkDropPending(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the drop. */
-
+	
+	int32				segmentFileNum,
+	
 	ItemPointer 		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
 
-	int64				serialNum);
+	int64				persistentSerialNum);
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 					
 
@@ -115,10 +142,12 @@ extern void PersistentRelation_MarkAbortingCreate(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the aborting create. */
 	
+	int32				segmentFileNum,
+	
 	ItemPointer 		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
 	
-	int64				serialNum);
+	int64				persistentSerialNum);
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 	
 
@@ -129,10 +158,12 @@ extern void PersistentRelation_Dropped(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the dropped relation. */
 	
+	int32				segmentFileNum,
+	
 	ItemPointer 		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
 	
-	int64				serialNum);
+	int64				persistentSerialNum);
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 		
 // -----------------------------------------------------------------------------

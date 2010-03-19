@@ -238,11 +238,12 @@ class GpDB:
     # --------------------------------------------------------------------
     def copy(self):
         """
-        Creates a copy of the segment
+        Creates a copy of the segment, shallow for everything except the filespaces map
 
-        Notes: a shallow copy is sufficent right now
         """
-        return copy.copy(self)
+        res = copy.copy(self)
+        res.__filespaces = copy.copy(self.__filespaces)
+        return res
 
 
     # --------------------------------------------------------------------
@@ -808,6 +809,8 @@ class GpArray:
                 seg = GpDB(content, preferred_role, dbid, role, mode, status, 
                            hostname, address, port, fslocation, replicationPort)
                 segments.append(seg)
+
+        origSegments = [seg.copy() for seg in segments]
         
         if strategy_rows.rowcount == 0:
             raise Exception("Database does not contain gp_fault_strategy entry")
@@ -815,7 +818,7 @@ class GpArray:
             raise Exception("Database does too many gp_fault_strategy entries")
         strategy = strategy_rows.fetchone()[0]
 
-        array = GpArray(segments)
+        array = GpArray(segments, origSegments, strategy)
         array.__version = version
         array.setFaultStrategy(strategy)
         return array

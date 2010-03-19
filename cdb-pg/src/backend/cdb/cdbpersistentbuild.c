@@ -43,44 +43,116 @@ static void PersistentBuild_PopulateGpRelationNode(
 
 	Oid				defaultTablespace,
 
+	MirroredObjectExistenceState mirrorExistenceState,
+
+	MirroredRelDataSynchronizationState relDataSynchronizationState,
+
 	int64			*count)
 {
 	Relation gp_relation_node;
-	int sr;
+	int r;
+
+	// UNDONE: Somehow UPGRADE needs to get mapping of Global tablespace objects
+	// UNDONE: to persistent information...
 
 	gp_relation_node = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
 
-	for (sr = 0; sr < info->pgClassStoredRelationsCount; sr++)
+	for (r = 0; r < info->dbInfoRelArrayCount; r++)
 	{
+		DbInfoRel *dbInfoRel = &info->dbInfoRelArray[r];
+		
 		RelFileNode relFileNode;
+
+		PersistentFileSysRelStorageMgr relStorageMgr;
+
 		ItemPointerData persistentTid;
 		int64 persistentSerialNum;
 
-		relFileNode.spcNode = info->pgClassStoredRelations[sr].tablespaceRelFile.tablespace;
-		relFileNode.dbNode = info->database;
-		relFileNode.relNode = info->pgClassStoredRelations[sr].tablespaceRelFile.relation;
-
-		if (relFileNode.spcNode == GLOBALTABLESPACE_OID &&
-			relFileNode.dbNode != TemplateDbOid)
+		if (dbInfoRel->reltablespace == GLOBALTABLESPACE_OID &&
+			info->database != TemplateDbOid)
 			continue;
-		
-		PersistentRelation_AddCreated(
-									&relFileNode,
-									&persistentTid,
-									&persistentSerialNum,
-									/* flushToXLog */ false);
+
+		relFileNode.spcNode = dbInfoRel->reltablespace;
+		relFileNode.dbNode = 
+				(dbInfoRel->reltablespace == GLOBALTABLESPACE_OID ?
+														0 : info->database);
+		relFileNode.relNode = dbInfoRel->relfilenodeOid;
+
+
+		relStorageMgr = (
+				 (dbInfoRel->relstorage == RELSTORAGE_AOROWS ||
+				  dbInfoRel->relstorage == RELSTORAGE_AOCOLS	) ?
+								PersistentFileSysRelStorageMgr_AppendOnly :
+								PersistentFileSysRelStorageMgr_BufferPool);
 
 		/*
-		 * Since we are using the direct open, we do not support indicies.
+		 * The gp_relation_node mapping table is empty, so use the physical files as
+		 * the guide.
 		 */
-		// UNDONE: Distinquish pg_class OID from pg_class relfilenode...
-		InsertGpRelationNodeTuple(
-						gp_relation_node,
-						relFileNode.relNode,	// pg_class OID
-						relFileNode.spcNode,
-						relFileNode.relNode,	// pg_class relfilenode
-						&persistentTid,
-						persistentSerialNum);
+		if (relStorageMgr == PersistentFileSysRelStorageMgr_BufferPool)
+		{
+			
+			// UNDONE: Assume we have a synchronized mirrored segment pair
+			// UNDONE: If we have no, mirror we should use ~_MirrorNotConfigured
+			PersistentRelation_AddCreated(
+										&relFileNode,
+										/* segmentFileNum */ 0,
+										relStorageMgr,
+										mirrorExistenceState,
+										relDataSynchronizationState,
+										dbInfoRel->relname,
+										&persistentTid,
+										&persistentSerialNum,
+										/* flushToXLog */ false);
+		
+			/*
+			 * Since we are using the direct open, we do not support indicies.
+			 */
+			InsertGpRelationNodeTuple(
+							gp_relation_node,
+							dbInfoRel->relationOid,	// pg_class OID
+							dbInfoRel->relname,
+							relFileNode.relNode,	// pg_class relfilenode
+							/* segmentFileNum */ 0,
+							&persistentTid,
+							persistentSerialNum);
+		}
+		else
+		{
+			int p;
+
+			for (p = 0; p < dbInfoRel->physicalSegmentFilesCount; p++)
+			{
+				int32 segmentFileNum;
+
+				segmentFileNum = dbInfoRel->physicalSegmentFiles[p].segmentFileNum;
+				
+				// UNDONE: Assume we have a synchronized mirrored segment pair
+				// UNDONE: If we have no, mirror we should use ~_MirrorNotConfigured
+				PersistentRelation_AddCreated(
+											&relFileNode,
+											segmentFileNum,
+											relStorageMgr,
+											mirrorExistenceState,
+											relDataSynchronizationState,
+											dbInfoRel->relname,
+											&persistentTid,
+											&persistentSerialNum,
+											/* flushToXLog */ false);
+				
+				/*
+				 * Since we are using the direct open, we do not support indicies.
+				 */
+				InsertGpRelationNodeTuple(
+								gp_relation_node,
+								dbInfoRel->relationOid, // pg_class OID
+								dbInfoRel->relname,
+								relFileNode.relNode,	// pg_class relfilenode
+								segmentFileNum,
+								&persistentTid,
+								persistentSerialNum);
+			}
+		}
 
 		(*count)++;
 	}
@@ -91,6 +163,11 @@ static void PersistentBuild_PopulateGpRelationNode(
 Datum
 gp_persistent_build_db(PG_FUNCTION_ARGS)
 {
+	bool mirrored = PG_GETARG_BOOL(0);
+
+	MirroredObjectExistenceState mirrorExistenceState;
+	MirroredRelDataSynchronizationState relDataSynchronizationState;
+
 	int64 count = 0;
 
 	Relation pg_database;
@@ -102,7 +179,24 @@ gp_persistent_build_db(PG_FUNCTION_ARGS)
 	Oid defaultTablespace;
 
 	int t;
-	
+
+	if (mirrored)
+	{
+		mirrorExistenceState = MirroredObjectExistenceState_MirrorCreated;
+		relDataSynchronizationState = MirroredRelDataSynchronizationState_Synchronized;
+	}
+	else
+	{
+		mirrorExistenceState = MirroredObjectExistenceState_NotMirrored;
+		relDataSynchronizationState = MirroredRelDataSynchronizationState_None;
+	}
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			"gp_persistent_build_db: Using mirror existence state '%s', data synchronization state '%s'",
+			MirroredObjectExistenceState_Name(mirrorExistenceState),
+			MirroredRelDataSynchronizationState_Name(relDataSynchronizationState));
+
 	pg_database = heap_open(DatabaseRelationId, AccessShareLock);
 
 	/* Fetch a copy of the tuple to scribble on */
@@ -123,12 +217,16 @@ gp_persistent_build_db(PG_FUNCTION_ARGS)
 		DbDirNode dbDirNode;
 	
 		ItemPointerData persistentTid;
+
+		if (tablespace == GLOBALTABLESPACE_OID)
+			continue;
 	
 		dbDirNode.tablespace = tablespace;
 		dbDirNode.database = MyDatabaseId;
-		
+
 		PersistentDatabase_AddCreated(
 								&dbDirNode,
+								mirrorExistenceState,
 								&persistentTid,
 								/* flushToXLog */ false);
 	}								
@@ -136,7 +234,10 @@ gp_persistent_build_db(PG_FUNCTION_ARGS)
 	PersistentBuild_PopulateGpRelationNode(
 										info,
 										defaultTablespace,
+										mirrorExistenceState,
+										relDataSynchronizationState,
 										&count);
+
 	heap_close(pg_database, AccessShareLock);
 
 	PG_RETURN_INT64(count);

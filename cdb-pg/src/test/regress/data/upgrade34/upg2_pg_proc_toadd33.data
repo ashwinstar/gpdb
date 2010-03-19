@@ -26,6 +26,18 @@ oid|proname|pronamespace|proowner|prolang|proisagg|prosecdef|proisstrict|prorets
 3313|gpxloglocout|11|10|12|f|f|t|f|i|1|2275|f|3310|\N|\N|\N|gpxloglocout|-|\N
 3314|gpxloglocrecv|11|10|12|f|f|t|f|i|1|3310|f|2281|\N|\N|\N|gpxloglocrecv|-|\N
 3315|gpxloglocsend|11|10|12|f|f|t|f|i|1|17|f|3310|\N|\N|\N|gpxloglocsend|-|\N
+3318|gpxlogloclarger|11|10|12|f|f|t|f|i|2|3310|f|3310 3310|\N|\N|\N|gpxlogloclarger|-|\N
+3319|gpxloglocsmaller|11|10|12|f|f|t|f|i|2|3310|f|3310 3310|\N|\N|\N|gpxloglocsmaller|-|\N
+3331|gpxlogloceq|11|10|12|f|f|t|f|i|2|16|f|3310 3310|\N|\N|\N|gpxlogloceq|-|\N
+3320|gpxloglocne|11|10|12|f|f|t|f|i|2|16|f|3310 3310|\N|\N|\N|gpxloglocne|-|\N
+3321|gpxlogloclt|11|10|12|f|f|t|f|i|2|16|f|3310 3310|\N|\N|\N|gpxlogloclt|-|\N
+3322|gpxloglocle|11|10|12|f|f|t|f|i|2|16|f|3310 3310|\N|\N|\N|gpxloglocle|-|\N
+3323|gpxloglocgt|11|10|12|f|f|t|f|i|2|16|f|3310 3310|\N|\N|\N|gpxloglocgt|-|\N
+3324|gpxloglocge|11|10|12|f|f|t|f|i|2|16|f|3310 3310|\N|\N|\N|gpxloglocge|-|\N
+2905|btgpxlogloccmp|11|10|12|f|f|t|f|i|2|23|f|3310 3310|\N|\N|\N|btgpxlogloccmp|-|\N
+3332|max|11|10|12|t|f|f|f|i|1|3310|f|3310|\N|\N|\N|aggregate_dummy|-|\N
+3333|min|11|10|12|t|f|f|f|i|1|3310|f|3310|\N|\N|\N|aggregate_dummy|-|\N
+6435|gp_changetracking_log|11|10|12|f|f|f|t|v|0|2249|f|""|{21,21,26,26,26,3310,23,27,20}|{o,o,o,o,o,o,o,o,o}|{segment_id,dbid,space,db,rel,xlogloc,blocknum,persistent_tid,persistent_sn}|gp_changetracking_log|-|\N
 5032|gp_statistics_estimate_reltuples_relpages_oid|11|10|12|f|f|t|f|v|1|1021|f|26|\N|\N|\N|gp_statistics_estimate_reltuples_relpages_oid|-|\N
 5034|pg_get_partition_def|11|10|12|f|f|t|f|s|3|25|f|26 16 16|\N|\N|\N|pg_get_partition_def_ext2|-|\N
 5040|gp_adjust_priority|11|10|12|f|f|t|f|v|3|23|f|23 23 23|\N|\N|\N|gp_adjust_priority_int|-|\N
@@ -33,10 +45,7 @@ oid|proname|pronamespace|proowner|prolang|proisagg|prosecdef|proisstrict|prorets
 5042|gp_list_backend_priorities|11|10|12|f|f|f|t|v|0|2249|f||\N|\N|\N|gp_list_backend_priorities|-|\N
 5044|pg_elog|11|10|12|f|f|t|f|i|1|2278|f|25|\N|\N|\N|pg_elog|-|\N
 5045|pg_elog|11|10|12|f|f|t|f|i|2|2278|f|25 16|\N|\N|\N|pg_elog|-|\N
-7175|gp_persistent_database_node_add|11|10|12|f|f|f|f|v|3|23|f|26 26 21|\N|\N|\N|gp_persistent_database_node_add|-|\N
-7176|gp_persistent_relation_node_add|11|10|12|f|f|f|f|v|4|23|f|26 26 26 21|\N|\N|\N|gp_persistent_relation_node_add|-|\N
-7177|gp_persistent_tablespace_node_add|11|10|12|f|f|f|f|v|2|23|f|26 21|\N|\N|\N|gp_persistent_tablespace_node_add|-|\N
-7178|gp_persistent_build_db|11|10|12|f|f|f|f|v|0|23|f||\N|\N|\N|gp_persistent_build_db|-|\N
+7178|gp_persistent_build_db|11|10|12|f|f|f|f|v|1|23|f|16|\N|\N|\N|gp_persistent_build_db|-|\N
 9900|aocsvpinfo_decode|11|10|12|f|f|t|f|i|3|20|f|1562 23 23|\N|\N|\N|aocsvpinfo_decode|-|\N
 9998|pg_objname_to_oid|11|10|12|f|f|t|f|i|1|26|f|25|\N|\N|\N|pg_objname_to_oid|-|\N
 \.

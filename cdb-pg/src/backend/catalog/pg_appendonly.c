@@ -24,6 +24,7 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/fmgroids.h"
+#include "utils/guc.h"
 
 /*
  * Adds an entry into the pg_appendonly catalog table. The entry
@@ -113,6 +114,10 @@ InsertAppendOnlyEntry(Oid relid,
 	 * held until end of transaction.
      */
     heap_close(pg_appendonly_rel, NoLock);
+
+	pfree(values);
+	pfree(nulls);
+
 }
 
 /*
@@ -524,6 +529,10 @@ UpdateAppendOnlyEntryAuxOids(Oid relid,
 	systable_endscan(aoscan);
 
 	heap_close(pg_appendonly_rel, RowExclusiveLock);
+
+	pfree(newValues);
+	pfree(newNulls);
+	pfree(replace);
 }
 
 /*
@@ -594,4 +603,299 @@ RemoveAppendonlyEntry(Oid relid)
 	heap_close(pg_appendonly_rel, NoLock);
 }
 
+static void
+TransferDependencyLink(
+	Oid baseOid, 
+	Oid oid,
+	const char *tabletype)
+{
+	ObjectAddress 	baseobject;
+	ObjectAddress	newobject;
+	long			count;
+
+	MemSet(&baseobject, 0, sizeof(ObjectAddress));
+	MemSet(&newobject, 0, sizeof(ObjectAddress));
+
+	Assert(OidIsValid(baseOid));
+	Assert(OidIsValid(oid));
+
+	/* Delete old dependency */
+	count = deleteDependencyRecordsFor(RelationRelationId, oid);
+	if (count != 1)
+		elog(LOG, "expected one dependency record for %s table, oid %u, found %ld",
+			 tabletype, oid, count);
+
+	/* Register new dependencies */
+	baseobject.classId = RelationRelationId;
+	baseobject.objectId = baseOid;
+	newobject.classId = RelationRelationId;
+	newobject.objectId = oid;
+	
+	recordDependencyOn(&newobject, &baseobject, DEPENDENCY_INTERNAL);
+}
+
+static HeapTuple 
+GetAppendEntryForMove(
+	Relation	pg_appendonly_rel,
+
+	TupleDesc	pg_appendonly_dsc,
+
+	Oid 		relId,
+
+	Oid 		*aosegrelid,
+	
+	Oid 		*aoblkdirrelid)
+{
+	HeapTuple	tuple;
+	ScanKeyData	key;
+	SysScanDesc	aoscan;
+	HeapTuple	tupleCopy;
+	bool		isNull;
+
+	ScanKeyInit(&key,
+				Anum_pg_appendonly_relid,
+				BTEqualStrategyNumber,
+				F_OIDEQ,
+				ObjectIdGetDatum(relId));
+	
+	aoscan = systable_beginscan(pg_appendonly_rel, 
+								AppendOnlyRelidIndexId, 
+								true,
+								SnapshotNow, 
+								1, 
+								&key);
+	
+	tuple = systable_getnext(aoscan);
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("appendonly table relid \"%d\" does not exist in "
+						"pg_appendonly", relId)));
+	
+    *aosegrelid = heap_getattr(tuple, 
+							Anum_pg_appendonly_segrelid,
+							pg_appendonly_rel->rd_att, 
+							&isNull);
+    Assert(!isNull);
+	if(isNull)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("got invalid segrelid value: NULL")));	
+
+    *aoblkdirrelid = heap_getattr(tuple, 
+							   Anum_pg_appendonly_blkdirrelid,
+							   pg_appendonly_rel->rd_att, 
+							   &isNull);
+    Assert(!isNull);
+	if(isNull)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("got invalid blkdirrelid value: NULL")));	
+
+	tupleCopy = heap_copytuple(tuple);
+
+	/* Finish up scan and close appendonly catalog. */
+	systable_endscan(aoscan);
+
+	return tupleCopy;
+}
+
+/*
+ * Transfer pg_appendonly entry from one table to another.
+ */
+void
+TransferAppendonlyEntry(Oid sourceRelId, Oid targetRelId)
+{
+	Relation	pg_appendonly_rel;
+	TupleDesc	pg_appendonly_dsc;
+	HeapTuple	tuple;
+	HeapTuple	tupleCopy;
+	Datum 		*newValues;
+	bool 		*newNulls;
+	bool 		*replace;
+	Oid			aosegrelid;
+	Oid			aoblkdirrelid;
+	
+	/*
+	 * Fetch the pg_appendonly entry 
+	 */
+	pg_appendonly_rel = heap_open(AppendOnlyRelationId, RowExclusiveLock);
+	pg_appendonly_dsc = RelationGetDescr(pg_appendonly_rel);
+	
+	tuple = GetAppendEntryForMove(
+							pg_appendonly_rel,
+							pg_appendonly_dsc,
+							sourceRelId,
+							&aosegrelid,
+							&aoblkdirrelid);
+
+	/* Since gp_fastsequence entry is referenced by aosegrelid, it rides along  */
+
+	/*
+	 * Delete the appendonly table entry from the catalog (pg_appendonly).
+	 */
+	tupleCopy = heap_copytuple(tuple);
+	simple_heap_delete(pg_appendonly_rel, &tuple->t_self);
+	
+	newValues = palloc0(pg_appendonly_dsc->natts * sizeof(Datum));
+	newNulls = palloc0(pg_appendonly_dsc->natts * sizeof(bool));
+	replace = palloc0(pg_appendonly_dsc->natts * sizeof(bool));
+
+	replace[Anum_pg_appendonly_relid - 1] = true;
+	newValues[Anum_pg_appendonly_relid - 1] = targetRelId;
+
+	tupleCopy = heap_modify_tuple(tupleCopy, pg_appendonly_dsc,
+								  newValues, newNulls, replace);
+
+	simple_heap_insert(pg_appendonly_rel, tupleCopy);
+	CatalogUpdateIndexes(pg_appendonly_rel, tupleCopy);
+
+	heap_freetuple(tupleCopy);
+
+	heap_close(pg_appendonly_rel, NoLock);
+
+	pfree(newValues);
+	pfree(newNulls);
+	pfree(replace);
+
+	if (OidIsValid(aosegrelid))
+	{
+		TransferDependencyLink(targetRelId, aosegrelid, "aoseg");
+	}
+
+	if (OidIsValid(aoblkdirrelid))
+	{
+		TransferDependencyLink(targetRelId, aoblkdirrelid, "aoblkdir");
+	}
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "TransferAppendonlyEntry: source relation id %u, target relation id %u, aosegrelid %u, aoblkdirrelid %u",
+			 sourceRelId,
+			 targetRelId,
+			 aosegrelid,
+			 aoblkdirrelid);
+}
+
+/*
+ * Swap pg_appendonly entries between tables.
+ */
+void
+SwapAppendonlyEntries(Oid entryRelId1, Oid entryRelId2)
+{
+	Relation	pg_appendonly_rel;
+	TupleDesc	pg_appendonly_dsc;
+	HeapTuple	tuple;
+	HeapTuple	tupleCopy1;
+	HeapTuple	tupleCopy2;
+	Datum 		*newValues;
+	bool 		*newNulls;
+	bool 		*replace;
+	Oid			aosegrelid1;
+	Oid			aoblkdirrelid1;
+	Oid			aosegrelid2;
+	Oid			aoblkdirrelid2;
+
+	pg_appendonly_rel = heap_open(AppendOnlyRelationId, RowExclusiveLock);
+	pg_appendonly_dsc = RelationGetDescr(pg_appendonly_rel);
+	
+	tuple = GetAppendEntryForMove(
+							pg_appendonly_rel,
+							pg_appendonly_dsc,
+							entryRelId1,
+							&aosegrelid1,
+							&aoblkdirrelid1);
+
+	/* Since gp_fastsequence entry is referenced by aosegrelid, it rides along  */
+
+	/*
+	 * Delete the appendonly table entry from the catalog (pg_appendonly).
+	 */
+	tupleCopy1 = heap_copytuple(tuple);
+	simple_heap_delete(pg_appendonly_rel, &tuple->t_self);
+	
+	tuple = GetAppendEntryForMove(
+							pg_appendonly_rel,
+							pg_appendonly_dsc,
+							entryRelId2,
+							&aosegrelid2,
+							&aoblkdirrelid2);
+
+	/* Since gp_fastsequence entry is referenced by aosegrelid, it rides along  */
+
+	/*
+	 * Delete the appendonly table entry from the catalog (pg_appendonly).
+	 */
+	tupleCopy2 = heap_copytuple(tuple);
+	simple_heap_delete(pg_appendonly_rel, &tuple->t_self);
+
+	/*
+	 * (Re)insert.
+	 */
+	newValues = palloc0(pg_appendonly_dsc->natts * sizeof(Datum));
+	newNulls = palloc0(pg_appendonly_dsc->natts * sizeof(bool));
+	replace = palloc0(pg_appendonly_dsc->natts * sizeof(bool));
+
+	replace[Anum_pg_appendonly_relid - 1] = true;
+	newValues[Anum_pg_appendonly_relid - 1] = entryRelId2;
+
+	tupleCopy1 = heap_modify_tuple(tupleCopy1, pg_appendonly_dsc,
+								  newValues, newNulls, replace);
+
+	simple_heap_insert(pg_appendonly_rel, tupleCopy1);
+	CatalogUpdateIndexes(pg_appendonly_rel, tupleCopy1);
+
+	heap_freetuple(tupleCopy1);
+
+	newValues[Anum_pg_appendonly_relid - 1] = entryRelId1;
+
+	tupleCopy2 = heap_modify_tuple(tupleCopy2, pg_appendonly_dsc,
+								  newValues, newNulls, replace);
+
+	simple_heap_insert(pg_appendonly_rel, tupleCopy2);
+	CatalogUpdateIndexes(pg_appendonly_rel, tupleCopy2);
+
+	heap_freetuple(tupleCopy2);
+
+	heap_close(pg_appendonly_rel, NoLock);
+
+	pfree(newValues);
+	pfree(newNulls);
+	pfree(replace);
+
+	if ((aosegrelid1 || aosegrelid2) && (aosegrelid1 != aosegrelid2))
+	{
+		if (OidIsValid(aosegrelid1))
+		{
+			TransferDependencyLink(entryRelId2, aosegrelid1, "aoseg");
+		}
+		if (OidIsValid(aosegrelid2))
+		{
+			TransferDependencyLink(entryRelId1, aosegrelid2, "aoseg");
+		}
+	}
+	
+	if ((aoblkdirrelid1 || aoblkdirrelid2) && (aoblkdirrelid1 != aoblkdirrelid2))
+	{
+		if (OidIsValid(aoblkdirrelid1))
+		{
+			TransferDependencyLink(entryRelId2, aoblkdirrelid1, "aoblkdir");
+		}
+		if (OidIsValid(aoblkdirrelid2))
+		{
+			TransferDependencyLink(entryRelId1, aoblkdirrelid2, "aoblkdir");
+		}
+	}
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "SwapAppendonlyEntries: relation id #1 %u, aosegrelid1 %u, aoblkdirrelid1 %u, "
+			 "relation id #2 %u, aosegrelid2 %u, aoblkdirrelid2 %u",
+			 entryRelId1,
+			 aosegrelid1,
+			 aoblkdirrelid1,
+			 entryRelId2,
+			 aosegrelid2,
+			 aoblkdirrelid2);
+}
 

@@ -447,13 +447,17 @@ DefineQueryRewrite(RuleStmt *stmt)
 	{
 		RelationOpenSmgr(event_relation);
 		Assert(event_relation->rd_smgr != NULL);
-		RelationFetchGpRelationNode(event_relation);
-		Assert(event_relation->rd_relationnodeinfo.isPresent);
-		MirroredFileSysObj_ScheduleDropRelFile(
+		
+		if (!event_relation->rd_segfile0_relationnodeinfo.isPresent)
+			RelationFetchSegFile0GpRelationNode(event_relation);
+
+		// UNDONE: Append-Only?
+		MirroredFileSysObj_ScheduleDropBufferPoolFile(
 								event_relation->rd_smgr, 
-								&event_relation->rd_relationnodeinfo.persistentTid,
-								event_relation->rd_relationnodeinfo.persistentSerialNum,
-								event_relation->rd_isLocalBuf);
+								event_relation->rd_isLocalBuf,
+								event_relation->rd_rel->relname.data,
+								&event_relation->rd_segfile0_relationnodeinfo.persistentTid,
+								event_relation->rd_segfile0_relationnodeinfo.persistentSerialNum);
 	}
 
 	/* Close rel, but keep lock till commit... */

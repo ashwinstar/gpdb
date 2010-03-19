@@ -100,49 +100,26 @@ static int FileRepAckPrimary_RunConsumer(void);
 void 
 FileRepAckPrimary_StartReceiver(void)
 {	
-	char			*primaryHostAddress = NULL;
-	/* The IPv4 address of the primary segment. */
-	
-	char			*mirrorHostAddress = NULL;
-	/* The IPv4 address of the mirror. */
-	
-	int			primaryPort = 0;
-	/* The communication port of the primary. Required for listener ACK. */
-	
-	int			mirrorPort = 0;
-	/* The communication port of the mirror. Required for listener. */
-		
 	int status = STATUS_OK;
-	bool fullResync = false;
 	
 	int retval;
 	
 	elog(LOG, "FileRepAckPrimary_StartReceiver() ");
-
-	primaryMirrorGetFilerepArguments(
-									 &fileRepRole,
-									 &segmentState,
-									 &dataState,
-									 &primaryHostAddress,
-									 &primaryPort,
-									 &mirrorHostAddress,
-									 &mirrorPort,
-								     &fullResync);
 		
 	ereport(LOG,
 			(errmsg("LOG(filerep): P_StartReceiver primary host address:'%s' and port:'%d' "
 					"mirror host address:'%s' and port:'%d' ",
-					primaryHostAddress,
-					primaryPort,
-					mirrorHostAddress,
-					mirrorPort),
+					fileRepPrimaryHostAddress,
+					fileRepPrimaryPort,
+					fileRepMirrorHostAddress,
+					fileRepMirrorPort),
 			 FileRep_errcontext()));	
 	
 	Insist(fileRepRole == FileRepPrimaryRole);
 	
 	status = FileRepConnServer_StartListener(
-								 primaryHostAddress,
-								 primaryPort);
+								 fileRepPrimaryHostAddress,
+								 fileRepPrimaryPort);
 	
 	while (1) {
 		
@@ -150,8 +127,7 @@ FileRepAckPrimary_StartReceiver(void)
 			FileRepSubProcess_SetState(FileRepStateFault);
 		}
 		
-		while (FileRepSubProcess_GetState() == FileRepStateSuspend ||
-			   FileRepSubProcess_GetState() == FileRepStateFault) {
+		while (FileRepSubProcess_GetState() == FileRepStateFault) {
 			
 			FileRepSubProcess_ProcessSignals();
 			pg_usleep(50000L); /* 50 ms */	
@@ -203,14 +179,8 @@ FileRepAckPrimary_StartReceiver(void)
 		status = FileRepAckPrimary_RunReceiver();
 		
 	} // while(1)
-		
-	if (FileRepSubProcess_GetState() == FileRepStateShutdown) {
-		/* perform graceful shutdown */
-	}
-	
-	/*FileRepConnServer_CloseConnection();*/
-	
-	/* free memory */
+			
+	FileRepConnServer_CloseConnection();
 	
 	return;
 }
@@ -229,7 +199,7 @@ FileRepAckPrimary_RunReceiver(void)
 	FileRepShmemMessageDescr_s  *fileRepShmemMessageDescr;
 	uint32					spareField;
 	
-	elog(DEBUG1, "FileRepAckPrimary_RunReceiver()");
+	elog(LOG, "FileRepAckPrimary_RunReceiver()");
 	
 	while (1) {
 		
@@ -297,7 +267,7 @@ FileRepAckPrimary_RunReceiver(void)
 		FileRep_InsertLogEntry(
 							   "P_RunReceiver",
 							   FileRep_GetFlatFileIdentifier("", ""),
-							   FileRepRelationNotSpecified,
+							   FileRepRelationTypeNotSpecified,
 							   FileRepOperationNotSpecified,
 							   FILEREP_UNDEFINED,
 							   FILEREP_UNDEFINED,
@@ -306,6 +276,8 @@ FileRepAckPrimary_RunReceiver(void)
 							   FILEREP_UNDEFINED);			
 				
 	} // while(1)
+	
+	FileRepConnServer_CloseConnection();
 	
 	return status;
 }
@@ -336,7 +308,7 @@ FileRepAckPrimary_ShmemInit(void)
 {
 	HASHCTL	hash_ctl;
 	
-	memset(&hash_ctl, 0, sizeof(hash_ctl));
+	MemSet(&hash_ctl, 0, sizeof(hash_ctl));
 	hash_ctl.keysize = MAXPGPATH+1;
 	hash_ctl.entrysize = sizeof(FileRepAckHashEntry_s);
 	hash_ctl.hash = string_hash;
@@ -378,7 +350,7 @@ FileRepAckPrimary_LookupHashEntry(FileName fileName)
 	if (entry == NULL) {
 		ereport(LOG,
 				(errmsg("ERROR(filerep): could not find ACK entry in hash table identifier:'%s' ",
-						fileName),
+						(fileName == NULL) ? "" : fileName),
 				FileRep_errcontext()));
 	} 
 
@@ -472,7 +444,7 @@ FileRepAckPrimary_NewHashEntry(
 	FileName				fileName = NULL;
 	int						status = STATUS_OK;
 	int						retry = 0;
-	
+		
 	fileName = FileRep_GetFileName(fileRepIdentifier, fileRepRelationType);
 		
 	while (retry < file_rep_retry) {
@@ -494,7 +466,11 @@ FileRepAckPrimary_NewHashEntry(
 					
 		if (exists) {
 			LWLockRelease(FileRepAckHashShmemLock);
-			
+			if (FileRepSubProcess_IsStateTransitionRequested())
+			{
+				status = STATUS_ERROR;
+				break;
+			}			
 			FileRep_Sleep1ms(retry);
 			retry++;
 			continue;
@@ -555,13 +531,19 @@ FileRepAckPrimary_UpdateHashEntry(
 	/* entry should be found since ack has not been processed yet */			
 	Assert(entry != NULL);
 				
-	if (!exists) {
+	if (!exists) 
+	{
 		LWLockRelease(FileRepAckHashShmemLock);
+		
+		if (fileRepRelationType == FileRepRelationTypeUnknown)
+		{
+			goto exit;
+		}
 		status = STATUS_ERROR;
 		ereport(LOG,
 				(errmsg("ERROR(filerep): could not update ACK entry with ACK status, no entry found "
 						"identifier:'%s' relation type:'%s' ",
-						fileName,
+						(fileName == NULL) ? "" : fileName,
 						FileRepRelationTypeToString[fileRepRelationType]),
 				 FileRep_errcontext()));		
 		goto exit;
@@ -576,7 +558,7 @@ FileRepAckPrimary_UpdateHashEntry(
 #ifdef FILEREP_DEBUG	
 	ereport(LOG,
 			(errmsg("LOG(filerep): P_UpdateHashEntry identifier:'%s' ack state:'%s' ",
-					entry->fileName, 
+					(entry->fileName == NULL) ? "":entry->fileName, 
 					FileRepAckStateToString[entry->fileRepAckState])));
 #endif
 
@@ -646,8 +628,26 @@ FileRepAckPrimary_IsOperationCompleted(
 		LWLockRelease(FileRepAckHashShmemLock);
 		
 		if (isCompleted == false) {
+			if (FileRepSubProcess_IsStateTransitionRequested())
+			{
+				break;
+			}
 			FileRep_Sleep1ms(retry);
 			retry++;
+
+
+			/*
+			 * if the message was from the main filerep process then it is a
+			 *   graceful shutdown message to the mirror.  We don't want to stall
+			 *   shutdown if the mirror is unavailable so we wait a smaller amount
+			 *   of time
+			 */
+			if ( fileRepProcessType == FileRepProcessTypeMain &&
+			     retry == 50)
+            {
+				FileRepAckPrimary_RemoveHashEntry(fileName);
+                break;
+            }
 		}
 	}
 
@@ -655,7 +655,7 @@ FileRepAckPrimary_IsOperationCompleted(
 		ereport(LOG,
 				(errmsg("ERROR(filerep): could not complete mirror request identifier:'%s' ack state:'%s' "
 						"position insert:'%p' count:'%d' ",
-						fileName,
+						(fileName == NULL) ? "" : fileName,
 						FileRepAckStateToString[entry->fileRepAckState],
 						fileRepAckShmem->positionInsert,
 						fileRepAckShmem->insertCount),
@@ -689,8 +689,11 @@ FileRepAckPrimary_StartConsumer(void)
 			FileRepSubProcess_SetState(FileRepStateFault);
 		}
 		
-		while (FileRepSubProcess_GetState() == FileRepStateSuspend ||
-			   FileRepSubProcess_GetState() == FileRepStateFault) {
+		while (FileRepSubProcess_GetState() == FileRepStateFault ||
+			   
+			   (fileRepShmemArray[0]->state == FileRepStateNotInitialized &&
+			    FileRepSubProcess_GetState() != FileRepStateShutdown &&
+			    FileRepSubProcess_GetState() != FileRepStateImmediateShutdown)) {
 			
 			FileRepSubProcess_ProcessSignals();
 			pg_usleep(50000L); /* 50 ms */	

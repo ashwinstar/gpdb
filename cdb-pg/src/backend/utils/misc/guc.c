@@ -259,7 +259,6 @@ bool		Debug_appendonly_rezero_quicklz_compress_scratch = false;
 bool		Debug_appendonly_rezero_quicklz_decompress_scratch = false;
 bool		Debug_appendonly_guard_end_quicklz_scratch = false;
 bool		Debug_filerep_skip_persistent_free_list = false;
-bool		Debug_persistent_skip_startup_pass_2 = false;
 bool 		gp_local_distributed_cache_stats = false;
 bool		Debug_persistent_print = false;
 int			Debug_persistent_print_level = LOG;
@@ -273,6 +272,10 @@ int			gp_max_databases = GP_MAX_DATABASES_DEFAULT;
 int			gp_max_tablespaces = GP_MAX_TABLESPACES_DEFAULT;
 #define GP_MAX_FILESPACES_DEFAULT 8
 int			gp_max_filespaces = GP_MAX_FILESPACES_DEFAULT;
+bool 		gp_initdb_mirrored = false;
+bool 		Debug_persistent_btree_collect = true;
+bool 		Debug_print_xlog_relation_change_info = false;
+bool 		Debug_print_xlog_relation_change_info_skip_issues_only = true;
 
 #define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
 bool		Debug_dtm_action_primary = DEBUG_DTM_ACTION_PRIMARY_DEFAULT;
@@ -1723,16 +1726,6 @@ false
 	},
 			
 	{
-		{"debug_persistent_skip_startup_pass_2", PGC_USERSET, DEVELOPER_OPTIONS,
-		 gettext_noop("Don't use persistent free list."),
-		 NULL,
-		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
-		},
-		&Debug_persistent_skip_startup_pass_2,
-		false, NULL, NULL
-	},
-								
-	{
 		{"gp_cost_hashjoin_chainwalk", PGC_USERSET, QUERY_TUNING_COST,
 			gettext_noop("Enable the cost for walking the chain in the hash join"),
 			NULL,
@@ -2144,6 +2137,46 @@ false
 		false, NULL, NULL
 	},
 		
+	{
+		{"gp_initdb_mirrored", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Indicate we are initializing a mirrored cluster during initdb."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_initdb_mirrored,
+		false, NULL, NULL
+	},
+
+	{
+		{"Debug_persistent_btree_collect", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Try out collecting persistent information for B-Tree XLOG generation"),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_persistent_btree_collect,
+		true, NULL, NULL
+	},
+			
+	{
+		{"Debug_print_xlog_relation_change_info", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print relation change information"),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_print_xlog_relation_change_info,
+		false, NULL, NULL
+	},
+				
+	{
+		{"Debug_print_xlog_relation_change_info_skip_issues_only", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print relation change information only when there is a skip issue"),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_print_xlog_relation_change_info_skip_issues_only,
+		true, NULL, NULL
+	},
+					
 	{
 		{"test_appendonly_override", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("For testing purposes, change the default of the appendonly create table option."),
@@ -3678,7 +3711,8 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"file_rep_message_body_length", PGC_POSTMASTER, DEVELOPER_OPTIONS,
 			gettext_noop("Size (in bytes) for FileRep message body."),
-			NULL
+			NULL,
+			GUC_NO_SHOW_ALL
 		},
 		&file_rep_message_body_length,
 		32768, 32768, 262144, NULL, NULL
@@ -3687,7 +3721,8 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"file_rep_buffer_size", PGC_POSTMASTER, DEVELOPER_OPTIONS,
 			gettext_noop("Size (in bytes) for FileRep shared memory."),
-			NULL
+			NULL,
+			GUC_NO_SHOW_ALL
 		},
 		&file_rep_buffer_size,
 		2097152, 1048576, 16777216, NULL, NULL
@@ -3696,7 +3731,8 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"file_rep_ack_buffer_size", PGC_POSTMASTER, DEVELOPER_OPTIONS,
 			gettext_noop("Size (in bytes) for FileRepAck shared memory."),
-			NULL
+			NULL,
+			GUC_NO_SHOW_ALL
 		},
 		&file_rep_ack_buffer_size,
 		524288, 131072, 1048576, NULL, NULL
@@ -3705,7 +3741,8 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"file_rep_retry", PGC_POSTMASTER, DEVELOPER_OPTIONS,
 			gettext_noop("Number of retries to insert message in shared memory before fault is reported."),
-			NULL
+			NULL,
+			GUC_NO_SHOW_ALL
 		},
 		&file_rep_retry,
 		1500, 1, 6000, NULL, NULL
@@ -3714,7 +3751,8 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"file_rep_min_data_before_flush", PGC_POSTMASTER, DEVELOPER_OPTIONS,
 			gettext_noop("Size (in bytes) that a FileRep buffer must reach before the client flushes the data."),
-			NULL
+			NULL,
+			GUC_NO_SHOW_ALL
 		},
 		&file_rep_min_data_before_flush,
 		128*1024, 8*1024, 16*1024*1024, NULL, NULL

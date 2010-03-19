@@ -21,6 +21,8 @@
 #include "cdb/cdbappendonlystoragelayer.h"
 #include "cdb/cdbappendonlystorageformat.h"
 #include "cdb/cdbappendonlystoragewrite.h"
+#include "cdb/cdbmirroredfilesysobj.h"
+#include "catalog/heap.h"
 
 // -----------------------------------------------------------------------------
 // Initialization 
@@ -295,7 +297,59 @@ void AppendOnlyStorageWrite_FinishSession(
 // -----------------------------------------------------------------------------
 
 /*
- * Opens the next segment file to write.
+ * Creates an on-demand Append-Only segment file under transaction.
+ */
+void AppendOnlyStorageWrite_TransactionCreateFile(
+	AppendOnlyStorageWrite		*storageWrite,
+
+    char				 		*filePathName,
+				/* The name of the segment file to open. */
+
+    int64				 		logicalEof,
+				/*
+				 * The last committed write transaction's EOF
+				 * value to use as the end of the segment
+				 * file.
+				 *
+				 * If the EOF is 0, we will create the file
+				 * if necessary.  Otherwise, it must already
+				 * exist.
+				 */
+	RelFileNode					relFileNode,
+	int32						segmentFileNum)
+{
+	Relation gp_relation_node;
+	
+	ItemPointerData	persistentTid;
+	int64 persistentSerialNum;
+
+	Assert (segmentFileNum > 0);
+	Assert (logicalEof == 0);
+
+	MirroredFileSysObj_TransactionCreateAppendOnlyFile(
+										&relFileNode,
+										segmentFileNum,
+										storageWrite->relationName,
+										/* doJustInTimeDirCreate */ false,
+										&persistentTid,
+										&persistentSerialNum);
+
+	gp_relation_node = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
+
+	InsertGpRelationNodeTuple(
+						gp_relation_node,
+						/* relationId */ 0,	// UNDONE: Don't have this value here -- currently only used for tracing...
+						storageWrite->relationName,
+						relFileNode.relNode,
+						segmentFileNum,
+						&persistentTid,
+						persistentSerialNum);
+
+	heap_close(gp_relation_node, RowExclusiveLock);
+}
+
+/*
+ * Opens the next segment file to write.  The file must already exist.
  *
  * This routine is responsible for seeking to the proper
  * write location given the logical EOF.
@@ -308,13 +362,9 @@ void AppendOnlyStorageWrite_OpenFile(
 
     int64				 		logicalEof,
 				/*
-				 * The last committed write transaction�s EOF
+				 * The last committed write transaction's EOF
 				 * value to use as the end of the segment
 				 * file.
-				 *
-				 * If the EOF is 0, we will create the file
-				 * if necessary.  Otherwise, it must already
-				 * exist.
 				 */
 	int64						fileLen_uncompressed,
 
@@ -348,6 +398,7 @@ void AppendOnlyStorageWrite_OpenFile(
 	MirroredAppendOnly_Open(&storageWrite->bufferedAppend.mirroredOpen, 
 				&relFileNode,
 				segmentFileNum,
+				storageWrite->relationName,
 				logicalEof,
 				fileFlags,
 				fileMode);
@@ -356,36 +407,12 @@ void AppendOnlyStorageWrite_OpenFile(
 
 	if(file < 0)
 	{
-		if(logicalEof > 0)
-		{
-			/* We expected to find this file */
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("Append-only Storage Write could not open segment file '%s' for relation '%s'", 
-					 		filePathName,
-					 		storageWrite->relationName)));
-		}
-		else
-		{
-			/* File doesn't exist.  Attempt to create it. */
-			fileFlags |= O_CREAT;
-
-			MirroredAppendOnly_Open(&storageWrite->bufferedAppend.mirroredOpen, 
-						&relFileNode,
-						segmentFileNum,
-						logicalEof,
-						fileFlags,
-						fileMode);
-
-			file = storageWrite->bufferedAppend.mirroredOpen.primaryFile;
-
-			if(file < 0)
-				ereport(ERROR,
-						(errcode_for_file_access(),
-						 errmsg("Append-only Storage Write could not create segment file '%s' for relation '%s'", 
-						 		filePathName,
-						 		storageWrite->relationName)));
-		}
+		/* We expected to find this file */
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("Append-only Storage Write could not open segment file '%s' for relation '%s'", 
+				 		filePathName,
+				 		storageWrite->relationName)));
 	}
 	
 	/* 

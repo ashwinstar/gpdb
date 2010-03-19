@@ -38,6 +38,8 @@ typedef struct MirroredBulkRelationOpen
 	RelFileNode relFileNode;
 
 	int32 segmentFileNum;
+	
+	char		mirrorFilespaceLocation[MAXPGPATH+1];
 
 } MirroredBulkRelationOpen;
 

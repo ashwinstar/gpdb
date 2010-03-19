@@ -1604,7 +1604,7 @@ heap_begininsert(Relation relation, CommandId cid, bool use_wal, bool use_fsm)
 
 /*
  * Log a whole (populated) page at a time to decrease xlog activity. cf.
- * copy_relation_data().
+ * copy_buffer_pool_data().
  */
 
 static void
@@ -1618,7 +1618,7 @@ heap_logpage(Relation rel, Buffer buf)
 
 	START_CRIT_SECTION();
 
-	xlrec.node = rel->rd_node;
+	xl_heapnode_set(&xlrec.heapnode, rel);
 	xlrec.blkno = bno;
 
 	rdata[0].data = (char*) &xlrec;
@@ -1653,8 +1653,7 @@ heap_log_tuple_insert(Relation rel, Buffer buffer, HeapTuple tup, bool isFrozen)
 
 	Assert(CritSectionCount > 0);
 
-	xlrec.target.node = rel->rd_node;
-	xlrec.target.tid = tup->t_self;
+	xl_heaptid_set(&xlrec.target, rel, &tup->t_self);
 	rdata[0].data = (char *) &xlrec;
 	rdata[0].len = SizeOfHeapInsert;
 	rdata[0].buffer = InvalidBuffer;
@@ -1706,6 +1705,9 @@ heap_log_tuple_insert(Relation rel, Buffer buffer, HeapTuple tup, bool isFrozen)
 void
 heap_endinsert(HeapInsertDesc *ins)
 {
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(ins->hi_rel);
+
 	if (ins->hi_cbuf != InvalidBuffer)
 	{
 		if (!ins->hi_rel->rd_istemp && ins->hi_use_wal)
@@ -1853,6 +1855,9 @@ heap_insertextend(HeapInsertDesc *ins, Size len)
 	Buffer buffer;
 	Page pageHeader;
 
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(ins->hi_rel);
+
 	len = MAXALIGN(len);		/* be conservative */
 
 	/*
@@ -1960,6 +1965,9 @@ heap_insertnext(HeapInsertDesc *ins, HeapTuple tup)
 {
 	HeapTuple	heaptup;
 	Buffer		buffer;
+
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(ins->hi_rel);
 
 	if (ins->hi_rel->rd_rel->relhasoids)
 	{
@@ -2098,6 +2106,9 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	Buffer		buffer;
 
 	Insist(RelationIsHeap(relation));
+
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(relation);
 
 	if (relation->rd_rel->relhasoids)
 	{
@@ -2281,6 +2292,9 @@ heap_delete(Relation relation, ItemPointer tid,
 				 errmsg("Append-only tables are not updatable. Operation not permitted."),
 				 errOmitLocation(true)));
 
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(relation);
+
 	buffer = ReadBuffer(relation, ItemPointerGetBlockNumber(tid));
 	LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
 
@@ -2444,8 +2458,7 @@ l1:
 		XLogRecPtr	recptr;
 		XLogRecData rdata[2];
 
-		xlrec.target.node = relation->rd_node;
-		xlrec.target.tid = tp.t_self;
+		xl_heaptid_set(&xlrec.target, relation, &tp.t_self);
 		rdata[0].data = (char *) &xlrec;
 		rdata[0].len = SizeOfHeapDelete;
 		rdata[0].buffer = InvalidBuffer;
@@ -2592,6 +2605,9 @@ heap_update(Relation relation, ItemPointer otid, HeapTuple newtup,
 				pagefree;
 	bool		have_tuple_lock = false;
 	bool		iscombo;
+
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(relation);
 
 	Assert(ItemPointerIsValid(otid));
 
@@ -3094,6 +3110,9 @@ heap_lock_tuple(Relation relation, HeapTuple tuple, Buffer *buffer,
 	LOCKMODE	tuple_lock_type;
 	bool		have_tuple_lock = false;
 
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(relation);
+
 	tuple_lock_type = (mode == LockTupleShared) ? ShareLock : ExclusiveLock;
 
 	*buffer = ReadBuffer(relation, ItemPointerGetBlockNumber(tid));
@@ -3446,8 +3465,7 @@ l3:
 		XLogRecPtr	recptr;
 		XLogRecData rdata[2];
 
-		xlrec.target.node = relation->rd_node;
-		xlrec.target.tid = tuple->t_self;
+		xl_heaptid_set(&xlrec.target, relation, &tuple->t_self);
 		xlrec.locking_xid = xid;
 		xlrec.xid_is_mxact = ((new_infomask & HEAP_XMAX_IS_MULTI) != 0);
 		xlrec.shared_lock = (mode == LockTupleShared);
@@ -3503,9 +3521,10 @@ l3:
  * tuple is an in-memory tuple structure containing the data to be written
  * over the target tuple.  Also, tuple->t_self identifies the target tuple.
  */
-void
-heap_inplace_update(Relation relation, HeapTuple tuple)
+static void
+heap_inplace_update_internal(Relation relation, HeapTuple tuple, TransactionId xid)
 {
+	bool		isFrozen = (xid == FrozenTransactionId);
 	Buffer		buffer;
 	Page		page;
 	OffsetNumber offnum;
@@ -3513,6 +3532,9 @@ heap_inplace_update(Relation relation, HeapTuple tuple)
 	HeapTupleHeader htup;
 	uint32		oldlen;
 	uint32		newlen;
+
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(relation);
 
 	buffer = ReadBuffer(relation, ItemPointerGetBlockNumber(&(tuple->t_self)));
 	LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
@@ -3548,8 +3570,7 @@ heap_inplace_update(Relation relation, HeapTuple tuple)
 		XLogRecPtr	recptr;
 		XLogRecData rdata[2];
 
-		xlrec.target.node = relation->rd_node;
-		xlrec.target.tid = tuple->t_self;
+		xl_heaptid_set(&xlrec.target, relation, &tuple->t_self);
 
 		rdata[0].data = (char *) &xlrec;
 		rdata[0].len = SizeOfHeapInplace;
@@ -3562,7 +3583,10 @@ heap_inplace_update(Relation relation, HeapTuple tuple)
 		rdata[1].buffer_std = true;
 		rdata[1].next = NULL;
 
-		recptr = XLogInsert(RM_HEAP_ID, XLOG_HEAP_INPLACE, rdata);
+		if (!isFrozen)
+			recptr = XLogInsert(RM_HEAP_ID, XLOG_HEAP_INPLACE, rdata);
+		else
+			recptr = XLogInsert_OverrideXid(RM_HEAP_ID, XLOG_HEAP_INPLACE, rdata, FrozenTransactionId);
 
 		PageSetLSN(page, recptr);
 		PageSetTLI(page, ThisTimeLineID);
@@ -3577,6 +3601,18 @@ heap_inplace_update(Relation relation, HeapTuple tuple)
 		CacheInvalidateHeapTuple(relation, tuple);
 }
 
+
+void
+frozen_heap_inplace_update(Relation relation, HeapTuple tuple)
+{
+	heap_inplace_update_internal(relation, tuple, FrozenTransactionId);
+}
+
+void
+heap_inplace_update(Relation relation, HeapTuple tuple)
+{
+	heap_inplace_update_internal(relation, tuple, GetCurrentTransactionId());
+}
 
 /*
  * heap_freeze_tuple
@@ -3841,7 +3877,7 @@ log_heap_clean(Relation reln, Buffer buffer, OffsetNumber *unused, int uncnt)
 	/* Caller should not call me on a temp relation */
 	Assert(!reln->rd_istemp);
 
-	xlrec.node = reln->rd_node;
+	xl_heapnode_set(&xlrec.heapnode, reln);
 	xlrec.block = BufferGetBlockNumber(buffer);
 
 	rdata[0].data = (char *) &xlrec;
@@ -3891,7 +3927,7 @@ log_heap_freeze(Relation reln, Buffer buffer,
 	/* Caller should not call me on a temp relation */
 	Assert(!reln->rd_istemp);
 
-	xlrec.node = reln->rd_node;
+	xl_heapnode_set(&xlrec.heapnode, reln);
 	xlrec.block = BufferGetBlockNumber(buffer);
 	xlrec.cutoff_xid = cutoff_xid;
 
@@ -3954,8 +3990,7 @@ log_heap_update(Relation reln, Buffer oldbuf, ItemPointerData from,
 	/* Caller should not call me on a temp relation */
 	Assert(!reln->rd_istemp);
 
-	xlrec.target.node = reln->rd_node;
-	xlrec.target.tid = from;
+	xl_heaptid_set(&xlrec.target, reln, &from);
 	xlrec.newtid = newtup->t_self;
 	rdata[0].data = (char *) &xlrec;
 	rdata[0].len = SizeOfHeapUpdate;
@@ -4038,7 +4073,7 @@ heap_xlog_clean(XLogRecPtr lsn, XLogRecord *record)
 	if (record->xl_info & XLR_BKP_BLOCK_1)
 		return;
 
-	reln = XLogOpenRelation(xlrec->node);
+	reln = XLogOpenRelation(xlrec->heapnode.node);
 	buffer = XLogReadBuffer(reln, xlrec->block, false);
 	if (!BufferIsValid(buffer))
 		return;
@@ -4088,7 +4123,7 @@ heap_xlog_freeze(XLogRecPtr lsn, XLogRecord *record)
 	if (record->xl_info & XLR_BKP_BLOCK_1)
 		return;
 
-	reln = XLogOpenRelation(xlrec->node);
+	reln = XLogOpenRelation(xlrec->heapnode.node);
 	buffer = XLogReadBuffer(reln, xlrec->block, false);
 	if (!BufferIsValid(buffer))
 		return;
@@ -4137,7 +4172,7 @@ heap_xlog_newpage(XLogRecPtr lsn, XLogRecord *record)
 	 * Note: the NEWPAGE log record is used for both heaps and indexes, so do
 	 * not do anything that assumes we are touching a heap.
 	 */
-	reln = XLogOpenRelation(xlrec->node);
+	reln = XLogOpenRelation(xlrec->heapnode.node);
 	buffer = XLogReadBuffer(reln, xlrec->blkno, true);
 	Assert(BufferIsValid(buffer));
 	page = (Page) BufferGetPage(buffer);
@@ -4675,16 +4710,16 @@ heap_desc(StringInfo buf, uint8 xl_info, char *rec)
 		xl_heap_clean *xlrec = (xl_heap_clean *) rec;
 
 		appendStringInfo(buf, "clean: rel %u/%u/%u; blk %u",
-						 xlrec->node.spcNode, xlrec->node.dbNode,
-						 xlrec->node.relNode, xlrec->block);
+						 xlrec->heapnode.node.spcNode, xlrec->heapnode.node.dbNode,
+						 xlrec->heapnode.node.relNode, xlrec->block);
 	}
 	else if (info == XLOG_HEAP_NEWPAGE)
 	{
 		xl_heap_newpage *xlrec = (xl_heap_newpage *) rec;
 
 		appendStringInfo(buf, "newpage: rel %u/%u/%u; blk %u",
-						 xlrec->node.spcNode, xlrec->node.dbNode,
-						 xlrec->node.relNode, xlrec->blkno);
+						 xlrec->heapnode.node.spcNode, xlrec->heapnode.node.dbNode,
+						 xlrec->heapnode.node.relNode, xlrec->blkno);
 	}
 	else if (info == XLOG_HEAP_LOCK)
 	{
@@ -4712,7 +4747,7 @@ heap_desc(StringInfo buf, uint8 xl_info, char *rec)
 		appendStringInfo(buf, "UNKNOWN");
 }
 
-void heap_redo_get_rnode(
+bool heap_getrelfilenode(
 	XLogRecord 		*record,
 	RelFileNode		*relFileNode)
 {
@@ -4748,13 +4783,13 @@ void heap_redo_get_rnode(
 	{
 		xl_heap_clean *xlrec = (xl_heap_clean *) data;
 
-		*relFileNode = xlrec->node;
+		*relFileNode = xlrec->heapnode.node;
 	}
 	else if (info == XLOG_HEAP_NEWPAGE)
 	{
 		xl_heap_newpage *xlrec = (xl_heap_newpage *) data;
 
-		*relFileNode = xlrec->node;
+		*relFileNode = xlrec->heapnode.node;
 	}
 	else if (info == XLOG_HEAP_LOCK)
 	{
@@ -4769,7 +4804,9 @@ void heap_redo_get_rnode(
 		*relFileNode = xlrec->target.node;
 	}
 	else
-		elog(PANIC, "heap_redo_get_rnode: unknown op code %u", info);
+		elog(PANIC, "heap_getrelfilenode: unknown op code %u", info);
+
+	return true;
 }
 
 void
@@ -4783,8 +4820,8 @@ heap2_desc(StringInfo buf, uint8 xl_info, char *rec)
 		xl_heap_freeze *xlrec = (xl_heap_freeze *) rec;
 
 		appendStringInfo(buf, "freeze: rel %u/%u/%u; blk %u; cutoff %u",
-						 xlrec->node.spcNode, xlrec->node.dbNode,
-						 xlrec->node.relNode, xlrec->block,
+						 xlrec->heapnode.node.spcNode, xlrec->heapnode.node.dbNode,
+						 xlrec->heapnode.node.relNode, xlrec->block,
 						 xlrec->cutoff_xid);
 	}
 	else

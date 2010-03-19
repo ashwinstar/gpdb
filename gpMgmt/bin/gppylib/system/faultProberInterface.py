@@ -18,6 +18,11 @@ logger = get_default_logger()
 class GpFaultProber:
     def __init__(self):
         pass
+    #
+    # returns self
+    #
+    def initializeProber( self, masterPort ) :
+        return self
 
     def pauseFaultProber(self):
         pass

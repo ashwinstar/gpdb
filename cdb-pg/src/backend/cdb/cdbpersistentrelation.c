@@ -70,26 +70,12 @@ PersistentRelationSharedData	*persistentRelationSharedData = NULL;
 
 PersistentRelationData	persistentRelationData = PersistentRelationData_StaticInit;
 
-
-static void PersistentRelation_InitScanUnderLock(void)
+static void PersistentRelation_InitScan(void)
 {
-	PersistentDatabase_InitScanUnderLock();
-
 	if (persistentRelationSharedData == NULL)
 		elog(PANIC, "Persistent relation information shared-memory not setup");
 
-	PersistentFileSysObj_InitScanUnderLock(
-						&persistentRelationData.fileSysObjData,
-						&persistentRelationSharedData->fileSysObjSharedData);
-}
-
-static void PersistentRelation_InitScan(void)
-{
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
-
-	PersistentRelation_InitScanUnderLock();
-
-	LWLockRelease(PersistentObjLock);
+	PersistentFileSysObj_InitScan();
 }
 
 // -----------------------------------------------------------------------------
@@ -106,58 +92,33 @@ void PersistentRelation_FlushXLog(void)
 	PersistentFileSysObj_FlushXLog();
 }
 
-Datum
-gp_persistent_relation_node_add(PG_FUNCTION_ARGS)
+//------------------------------------------------------------------------------
+
+int64 PersistentRelation_MyHighestSerialNum(void)
 {
-	Oid				tablespace = PG_GETARG_OID(0);
-	Oid				database = PG_GETARG_OID(1);
-	Oid				relationNode = PG_GETARG_OID(2);
-	int16			state = PG_GETARG_INT16(3);
-
-	ItemPointerData persistentTid;
-	int64 persistentSerialNum;
-
-	ItemPointerData previousFreeTid;
-
-	Datum values[Natts_gp_persistent_relation_node];
-
-	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
-
-	// UNDONE: Remove whole routine
-	GpPersistentRelationNode_SetDatumValues(
-										values,
-										tablespace,
-										database,
-										relationNode,
-										/* segmentFileNum */ 0,
-										PersistentFileSysRelStorageMgr_None,	// UNDONE
-										(PersistentFileSysState)state,
-										MirrorFileSysState_None,	// UNDONE
-										/* mirrorAppendOnlyEof */ 0,
-										InvalidTransactionId,
-										0,
-										&previousFreeTid);
-
-	PersistentFileSysObj_AddTuple(
-							&persistentRelationData.fileSysObjData,
-							&persistentRelationSharedData->fileSysObjSharedData,
-							values,
-							/* flushToXLog */ false,
-							&persistentTid,
-							&persistentSerialNum);
-
-//	if (Debug_persistent_print)
-//		elog(Debug_persistent_print_level, 
-//		     "Persistent relation: gp_persistent_relation_node_add '%s' in state '%s', serial number " INT64_FORMAT " at TID %s",
-//			 relpath(relFileNode),
-//			 PersistentFileSysObj_StateName(state),
-//			 persistentSerialNum,
-//			 ItemPointerToString(&persistentTid));
-
-	PG_RETURN_INT64(persistentSerialNum);
+	return PersistentFileSysObj_MyHighestSerialNum(
+							PersistentFsObjType_RelationFile);
 }
 
-//------------------------------------------------------------------------------
+int64 PersistentRelation_CurrentMaxSerialNum(void)
+{
+	bool lockHeldByMe;
+
+	int64 value;
+
+	lockHeldByMe = LWLockHeldByMe(PersistentObjLock);
+
+	if (!lockHeldByMe)
+		LWLockAcquire(PersistentObjLock, LW_SHARED);
+
+	value = PersistentFileSysObj_CurrentMaxSerialNum(
+							PersistentFsObjType_RelationFile);
+
+	if (!lockHeldByMe)
+		LWLockRelease(PersistentObjLock);
+
+	return value;
+}
 
 static Oid persistentRelationCheckTablespace;
 static int32 persistentRelationCheckTablespaceUseCount;
@@ -175,7 +136,13 @@ static bool PersistentRelation_CheckTablespaceScanTupleCallback(
 	PersistentFileSysRelStorageMgr relationStorageManager;
 
 	PersistentFileSysState	state;
-	MirrorFileSysState		mirrorState;
+
+	MirroredObjectExistenceState		mirrorExistenceState;
+
+	MirroredRelDataSynchronizationState mirrorDataSynchronizationState;
+	XLogRecPtr						mirrorBufpoolResyncCkptLoc;
+	BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
+
 	int64					mirrorAppendOnlyEof;
 	TransactionId			parentXid;
 	int64					serialNum;
@@ -191,7 +158,10 @@ static bool PersistentRelation_CheckTablespaceScanTupleCallback(
 									&segmentFileNum,
 									&relationStorageManager,
 									&state,
-									&mirrorState,
+									&mirrorExistenceState,
+									&mirrorDataSynchronizationState,
+									&mirrorBufpoolResyncCkptLoc,
+									&mirrorBufpoolResyncCkptBlockNum,
 									&mirrorAppendOnlyEof,
 									&parentXid,
 									&serialNum,
@@ -223,8 +193,7 @@ void PersistentRelation_CheckTablespace(
 	MemSet(&persistentRelationCheckTablespaceRelFileNode, 0, sizeof(RelFileNode));
 
 	PersistentFileSysObj_Scan(
-		&persistentRelationData.fileSysObjData,
-		&persistentRelationSharedData->fileSysObjSharedData,
+		PersistentFsObjType_RelationFile,
 		PersistentRelation_CheckTablespaceScanTupleCallback);
 
 	*useCount = persistentRelationCheckTablespaceUseCount;
@@ -249,6 +218,16 @@ void PersistentRelation_AddCreatePending(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the create. */
 
+	int32				segmentFileNum,
+
+	PersistentFileSysRelStorageMgr relStorageMgr,
+
+	MirroredObjectExistenceState mirrorExistenceState,
+
+	MirroredRelDataSynchronizationState relDataSynchronizationState,
+
+	char				*relationName,
+
 	ItemPointer			persistentTid,
 				/* Resulting TID of the gp_persistent_rel_files tuple for the relation. */
 
@@ -259,11 +238,18 @@ void PersistentRelation_AddCreatePending(
 				/* When true, the XLOG record for this change will be flushed to disk. */
 
 {
+	PersistentFileSysObjName fsObjName;
+
+	XLogRecPtr mirrorBufpoolResyncCkptLoc;
 	ItemPointerData previousFreeTid;
 
 	Datum values[Natts_gp_persistent_relation_node];
 
+	if(RelFileNode_IsEmpty(relFileNode))
+		elog(ERROR, "Invalid RelFileNode (0,0,0)");
+
 	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
+	MemSet(&mirrorBufpoolResyncCkptLoc, 0, sizeof(XLogRecPtr));
 
 	if (IsBootstrapProcessingMode())
 	{	
@@ -280,6 +266,11 @@ void PersistentRelation_AddCreatePending(
 
 	PersistentRelation_InitScan();
 
+	PersistentFileSysObjName_SetRelationFile(
+										&fsObjName, 
+										relFileNode,
+										segmentFileNum);
+
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
 	GpPersistentRelationNode_SetDatumValues(
@@ -287,18 +278,20 @@ void PersistentRelation_AddCreatePending(
 										relFileNode->spcNode,
 										relFileNode->dbNode,
 										relFileNode->relNode,
-										/* segmentFileNum */ 0,					// UNDONE
-										PersistentFileSysRelStorageMgr_None,	// UNDONE
+										segmentFileNum,
+										relStorageMgr,
 										PersistentFileSysState_CreatePending,
-										MirrorFileSysState_None,				// UNDONE
-										/* mirrorAppendOnlyEof */ 0,				// UNDONE
+										mirrorExistenceState,
+										relDataSynchronizationState,
+										&mirrorBufpoolResyncCkptLoc,
+										/* mirrorBufpoolResyncCkptBlockNum */ 0,
+										/* mirrorAppendOnlyEof */ 0,
 										GetTopTransactionId(),
 										/* persistentSerialNum */ 0,	// This will be set by PersistentFileSysObj_AddTuple.
 										&previousFreeTid);
 
 	PersistentFileSysObj_AddTuple(
-							&persistentRelationData.fileSysObjData,
-							&persistentRelationSharedData->fileSysObjSharedData,
+							PersistentFsObjType_RelationFile,
 							values,
 							flushToXLog,
 							persistentTid,
@@ -308,8 +301,12 @@ void PersistentRelation_AddCreatePending(
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
-		     "Persistent relation: Add '%s' in state 'Create Pending', serial number " INT64_FORMAT " at TID %s",
-			 relpath(*relFileNode),
+		     "Persistent relation: Add '%s', relation name '%s' in state 'Create Pending', relation storage manager '%s', mirror existence state '%s', relation data resynchronization state '%s', serial number " INT64_FORMAT " at TID %s",
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
+			 relationName,
+			 PersistentFileSysRelStorageMgr_Name(relStorageMgr),
+			 MirroredObjectExistenceState_Name(mirrorExistenceState),
+			 MirroredRelDataSynchronizationState_Name(relDataSynchronizationState),
 			 *serialNum,
 			 ItemPointerToString(persistentTid));
 }
@@ -318,21 +315,38 @@ void PersistentRelation_AddCreated(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the create. */
 
+	int32				segmentFileNum,
+
+	PersistentFileSysRelStorageMgr relStorageMgr,
+
+	MirroredObjectExistenceState mirrorExistenceState,
+
+	MirroredRelDataSynchronizationState relDataSynchronizationState,
+
+	char				*relationName,
+
 	ItemPointer			persistentTid,
 				/* Resulting TID of the gp_persistent_rel_files tuple for the relation. */
 
-	int64				*serialNum,
+	int64				*persistentSerialNum,
 				/* Resulting serial number for the relation.  Distinquishes the uses of the tuple. */
 
 	bool 				flushToXLog)
 				/* When true, the XLOG record for this change will be flushed to disk. */
 
 {
+	PersistentFileSysObjName fsObjName;
+
+	XLogRecPtr mirrorBufpoolResyncCkptLoc;
 	ItemPointerData previousFreeTid;
 
 	Datum values[Natts_gp_persistent_relation_node];
 
+	if(RelFileNode_IsEmpty(relFileNode))
+		elog(ERROR, "Invalid RelFileNode (0,0,0)");
+
 	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
+	MemSet(&mirrorBufpoolResyncCkptLoc, 0, sizeof(XLogRecPtr));
 
 	if (IsBootstrapProcessingMode())
 	{	
@@ -342,12 +356,17 @@ void PersistentRelation_AddCreated(
 				 relpath(*relFileNode));
 
 		MemSet(persistentTid, 0, sizeof(ItemPointerData));
-		*serialNum = 0;
+		*persistentSerialNum = 0;
 
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
 	PersistentRelation_InitScan();
+
+	PersistentFileSysObjName_SetRelationFile(
+										&fsObjName, 
+										relFileNode,
+										segmentFileNum);
 
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
@@ -356,30 +375,36 @@ void PersistentRelation_AddCreated(
 										relFileNode->spcNode,
 										relFileNode->dbNode,
 										relFileNode->relNode,
-										/* segmentFileNum */ 0, 					// UNDONE
-										PersistentFileSysRelStorageMgr_None,	// UNDONE
+										segmentFileNum,
+										relStorageMgr,
 										PersistentFileSysState_Created,
-										MirrorFileSysState_None,				// UNDONE
-										/* mirrorAppendOnlyEof */ 0,				// UNDONE
+										mirrorExistenceState,
+										relDataSynchronizationState,
+										&mirrorBufpoolResyncCkptLoc,
+										/* mirrorBufpoolResyncCkptBlockNum */ 0,
+										/* mirrorAppendOnlyEof */ 0,
 										InvalidTransactionId,
 										/* persistentSerialNum */ 0,	// This will be set by PersistentFileSysObj_AddTuple.
 										&previousFreeTid);
 
 	PersistentFileSysObj_AddTuple(
-							&persistentRelationData.fileSysObjData,
-							&persistentRelationSharedData->fileSysObjSharedData,
+							PersistentFsObjType_RelationFile,
 							values,
 							flushToXLog,
 							persistentTid,
-							serialNum);
+							persistentSerialNum);
 
 	LWLockRelease(PersistentObjLock);
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
-		     "Persistent relation: Add '%s' in state 'Created', serial number " INT64_FORMAT " at TID %s",
-			 relpath(*relFileNode),
-			 *serialNum,
+		     "Persistent relation: Add '%s', relation name '%s', in state 'Created', relation storage manager '%s', mirror existence state '%s', relation data resynchronization state '%s', serial number " INT64_FORMAT " at TID %s",
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
+			 relationName,
+			 PersistentFileSysRelStorageMgr_Name(relStorageMgr),
+			 MirroredObjectExistenceState_Name(mirrorExistenceState),
+			 MirroredRelDataSynchronizationState_Name(relDataSynchronizationState),
+			 *persistentSerialNum,
 			 ItemPointerToString(persistentTid));
 }
 
@@ -394,22 +419,19 @@ void PersistentRelation_Created(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the created relation. */
 
+	int32				segmentFileNum,
+
 	ItemPointer			persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
 
-	int64				serialNum)
+	int64				persistentSerialNum)
 				/* Serial number for the relation.  Distinquishes the uses of the tuple. */
 
 {
 	PersistentFileSysObjName fsObjName;
 
-	PersistentFileSysState	actualState;
-
-	ItemPointerData previousFreeTid;
-
-	Datum values[Natts_gp_persistent_relation_node];
-
-	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
+	if(RelFileNode_IsEmpty(relFileNode))
+		elog(ERROR, "Invalid RelFileNode (0,0,0)");
 
 	if (IsBootstrapProcessingMode())
 	{	
@@ -423,41 +445,29 @@ void PersistentRelation_Created(
 
 	PersistentRelation_InitScan();
 
-	PersistentFileSysObjName_SetRelationFile(&fsObjName,relFileNode);
-	
+	PersistentFileSysObjName_SetRelationFile(
+										&fsObjName, 
+										relFileNode,
+										segmentFileNum);
+
+	// Do this check after skipping out if in bootstrap mode.
+	if (PersistentStore_IsZeroTid(persistentTid))
+		elog(ERROR, "TID for persistent '%s' tuple for 'Created' is invalid (0,0)",
+			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName));
+
+	if (persistentSerialNum == 0)
+		elog(ERROR, "Persistent '%s' serial number for 'Created' is invalid (0)",
+			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName));
+
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
-	
-	PersistentFileSysObj_VerifyExpected(
-				&persistentRelationData.fileSysObjData,
-				&persistentRelationSharedData->fileSysObjSharedData,
-				&fsObjName,
-				persistentTid,
-				serialNum,
-				/* expectedState1 */ PersistentFileSysState_CreatePending,
-				/* expectedState2 */ (PersistentFileSysState)-1,
-				/* nextState */ PersistentFileSysState_Created,
-				&actualState);
 
-	GpPersistentRelationNode_SetDatumValues(
-										values,
-										relFileNode->spcNode,
-										relFileNode->dbNode,
-										relFileNode->relNode,
-										/* segmentFileNum */ 0, 					// UNDONE
-										PersistentFileSysRelStorageMgr_None,	// UNDONE
-										PersistentFileSysState_Created,
-										MirrorFileSysState_None,				// UNDONE
-										/* mirrorAppendOnlyEof */ 0,				// UNDONE
-										InvalidTransactionId,
-										serialNum,
-										&previousFreeTid);
-
-	PersistentFileSysObj_UpdateTuple(
-							&persistentRelationData.fileSysObjData,
-							&persistentRelationSharedData->fileSysObjSharedData,
-							persistentTid,
-							values,
-							/* flushToXLog */ false);
+	PersistentFileSysObj_StateChange(
+								&fsObjName,
+								persistentTid,
+								persistentSerialNum,
+								PersistentFileSysState_Created,
+								/* flushToXlog */ false,
+								NULL);
 
 	LWLockRelease(PersistentObjLock);
 
@@ -465,7 +475,7 @@ void PersistentRelation_Created(
 		elog(Debug_persistent_print_level, 
 		     "Persistent relation: '%s' changed state from 'Create Pending' to 'Created', serial number " INT64_FORMAT " at TID %s",
 			 relpath(*relFileNode),
-			 serialNum,
+			 persistentSerialNum,
 			 ItemPointerToString(persistentTid));
 }
 
@@ -483,22 +493,21 @@ void PersistentRelation_MarkDropPending(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the drop. */
 
+	int32				segmentFileNum,
+
 	ItemPointer			persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
 
-	int64				serialNum)
+	int64				persistentSerialNum)
 				/* Serial number for the relation.  Distinquishes the uses of the tuple. */
 
 {
 	PersistentFileSysObjName fsObjName;
 
-	PersistentFileSysState	actualState;
+	PersistentFileSysState oldState;
 
-	ItemPointerData previousFreeTid;
-
-	Datum values[Natts_gp_persistent_relation_node];
-
-	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
+	if(RelFileNode_IsEmpty(relFileNode))
+		elog(ERROR, "Invalid RelFileNode (0,0,0)");
 
 	if (IsBootstrapProcessingMode())
 	{	
@@ -512,41 +521,29 @@ void PersistentRelation_MarkDropPending(
 
 	PersistentRelation_InitScan();
 
-	PersistentFileSysObjName_SetRelationFile(&fsObjName,relFileNode);
-	
+	PersistentFileSysObjName_SetRelationFile(
+										&fsObjName, 
+										relFileNode,
+										segmentFileNum);
+
+	// Do this check after skipping out if in bootstrap mode.
+	if (PersistentStore_IsZeroTid(persistentTid))
+		elog(ERROR, "TID for persistent '%s' tuple for mark DROP pending is invalid (0,0)",
+			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName));
+
+	if (persistentSerialNum == 0)
+		elog(ERROR, "Persistent '%s' serial number for mark DROP pending is invalid (0)",
+			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName));
+
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 	
-	PersistentFileSysObj_VerifyExpected(
-				&persistentRelationData.fileSysObjData,
-				&persistentRelationSharedData->fileSysObjSharedData,
-				&fsObjName,
-				persistentTid,
-				serialNum,
-				/* expectedState1 */ PersistentFileSysState_CreatePending,
-				/* expectedState2 */ PersistentFileSysState_Created,
-				/* nextState */ PersistentFileSysState_DropPending,
-				&actualState);
-
-	GpPersistentRelationNode_SetDatumValues(
-										values,
-										relFileNode->spcNode,
-										relFileNode->dbNode,
-										relFileNode->relNode,
-										/* segmentFileNum */ 0, 					// UNDONE
-										PersistentFileSysRelStorageMgr_None,	// UNDONE
-										PersistentFileSysState_DropPending,
-										MirrorFileSysState_None,				// UNDONE
-										/* mirrorAppendOnlyEof */ 0,				// UNDONE
-										InvalidTransactionId,
-										serialNum,
-										&previousFreeTid);
-		
-	PersistentFileSysObj_UpdateTuple(
-						&persistentRelationData.fileSysObjData,
-						&persistentRelationSharedData->fileSysObjSharedData,
-						persistentTid,
-						values,
-						/* flushToXLog */ false);
+	PersistentFileSysObj_StateChange(
+								&fsObjName,
+								persistentTid,
+								persistentSerialNum,
+								PersistentFileSysState_DropPending,
+								/* flushToXlog */ false,
+								&oldState);
 
 	LWLockRelease(PersistentObjLock);
 
@@ -554,8 +551,8 @@ void PersistentRelation_MarkDropPending(
 		elog(Debug_persistent_print_level, 
 		     "Persistent relation: '%s' changed state from '%s' to 'Drop Pending', serial number " INT64_FORMAT " TID %s",
 			 relpath(*relFileNode),
-			 PersistentFileSysObj_StateName(actualState),
-			 serialNum,
+			 PersistentFileSysObjState_Name(oldState),
+			 persistentSerialNum,
 			 ItemPointerToString(persistentTid));
 }
 
@@ -568,22 +565,19 @@ void PersistentRelation_MarkAbortingCreate(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the aborting create. */
 
+	int32				segmentFileNum,
+
 	ItemPointer			persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
 
-	int64				serialNum)
+	int64				persistentSerialNum)
 				/* Serial number for the relation.  Distinquishes the uses of the tuple. */
 
 {
 	PersistentFileSysObjName fsObjName;
 
-	PersistentFileSysState	actualState;
-
-	ItemPointerData previousFreeTid;
-
-	Datum values[Natts_gp_persistent_relation_node];
-
-	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
+	if(RelFileNode_IsEmpty(relFileNode))
+		elog(ERROR, "Invalid RelFileNode (0,0,0)");
 
 	if (IsBootstrapProcessingMode())
 	{	
@@ -597,41 +591,29 @@ void PersistentRelation_MarkAbortingCreate(
 
 	PersistentRelation_InitScan();
 
-	PersistentFileSysObjName_SetRelationFile(&fsObjName,relFileNode);
-	
+	PersistentFileSysObjName_SetRelationFile(
+										&fsObjName, 
+										relFileNode,
+										segmentFileNum);
+
+	// Do this check after skipping out if in bootstrap mode.
+	if (PersistentStore_IsZeroTid(persistentTid))
+		elog(ERROR, "TID for persistent '%s' tuple for mark DROP pending is invalid (0,0)",
+			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName));
+
+	if (persistentSerialNum == 0)
+		elog(ERROR, "Persistent '%s' serial number for mark DROP pending is invalid (0)",
+			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName));
+
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 	
-	PersistentFileSysObj_VerifyExpected(
-				&persistentRelationData.fileSysObjData,
-				&persistentRelationSharedData->fileSysObjSharedData,
-				&fsObjName,
-				persistentTid,
-				serialNum,
-				/* expectedState1 */ PersistentFileSysState_CreatePending,
-				/* expectedState2 */ (PersistentFileSysState)-1,
-				/* nextState */ PersistentFileSysState_AbortingCreate,
-				&actualState);
-
-	GpPersistentRelationNode_SetDatumValues(
-										values,
-										relFileNode->spcNode,
-										relFileNode->dbNode,
-										relFileNode->relNode,
-										/* segmentFileNum */ 0, 					// UNDONE
-										PersistentFileSysRelStorageMgr_None,	// UNDONE
-										PersistentFileSysState_AbortingCreate,
-										InvalidTransactionId,
-										MirrorFileSysState_None,				// UNDONE
-										/* mirrorAppendOnlyEof */ 0,				// UNDONE
-										serialNum,
-										&previousFreeTid);
-		
-	PersistentFileSysObj_UpdateTuple(
-						&persistentRelationData.fileSysObjData,
-						&persistentRelationSharedData->fileSysObjSharedData,
-						persistentTid,
-						values,
-						/* flushToXLog */ false);
+	PersistentFileSysObj_StateChange(
+								&fsObjName,
+								persistentTid,
+								persistentSerialNum,
+								PersistentFileSysState_AbortingCreate,
+								/* flushToXlog */ false,
+								NULL);
 
 	LWLockRelease(PersistentObjLock);
 
@@ -639,7 +621,7 @@ void PersistentRelation_MarkAbortingCreate(
 		elog(Debug_persistent_print_level, 
 		     "Persistent relation: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s",
 			 relpath(*relFileNode),
-			 serialNum,
+			 persistentSerialNum,
 			 ItemPointerToString(persistentTid));
 }
 
@@ -650,22 +632,21 @@ void PersistentRelation_Dropped(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the dropped relation. */
 
+	int32				segmentFileNum,
+
 	ItemPointer			persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
 
-	int64				serialNum)
+	int64				persistentSerialNum)
 				/* Serial number for the relation.  Distinquishes the uses of the tuple. */
 
 {
 	PersistentFileSysObjName fsObjName;
 
-	PersistentFileSysState actualState;
+	PersistentFileSysState oldState;
 
-	ItemPointerData previousFreeTid;
-
-	Datum freeValues[Natts_gp_persistent_relation_node];
-
-	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
+	if(RelFileNode_IsEmpty(relFileNode))
+		elog(ERROR, "Invalid RelFileNode (0,0,0)");
 
 	if (IsBootstrapProcessingMode())
 	{	
@@ -679,40 +660,29 @@ void PersistentRelation_Dropped(
 
 	PersistentRelation_InitScan();
 
-	PersistentFileSysObjName_SetRelationFile(&fsObjName,relFileNode);
-	
+	PersistentFileSysObjName_SetRelationFile(
+										&fsObjName, 
+										relFileNode,
+										segmentFileNum);
+
+	// Do this check after skipping out if in bootstrap mode.
+	if (PersistentStore_IsZeroTid(persistentTid))
+		elog(ERROR, "TID for persistent '%s' tuple for mark DROP pending is invalid (0,0)",
+			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName));
+
+	if (persistentSerialNum == 0)
+		elog(ERROR, "Persistent '%s' serial number for mark DROP pending is invalid (0)",
+			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName));
+
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
-	PersistentFileSysObj_VerifyExpected(
-				&persistentRelationData.fileSysObjData,
-				&persistentRelationSharedData->fileSysObjSharedData,
-				&fsObjName,
-				persistentTid,
-				serialNum,
-				/* expectedState1 */ PersistentFileSysState_DropPending,
-				/* expectedState2 */ PersistentFileSysState_AbortingCreate,
-				/* nextState */ PersistentFileSysState_Free,
-				&actualState);
-
-	GpPersistentRelationNode_SetDatumValues(
-										freeValues,
-										/* tablespaceOid */ 0,
-										/* databaseOid */ 0,
-										/* relFileNodeOid */ 0,
-										/* segmentFileNum */ 0,
-										PersistentFileSysRelStorageMgr_None,
-										PersistentFileSysState_Free,
-										MirrorFileSysState_None,
-										/* mirrorAppendOnlyEof */ 0,
-										InvalidTransactionId,
-										/* persistentSerialNum */ 0,
-										&previousFreeTid);
-	PersistentFileSysObj_FreeTuple(
-							&persistentRelationData.fileSysObjData,
-							&persistentRelationSharedData->fileSysObjSharedData,
-							persistentTid,
-							freeValues,
-							/* flushToXLog */ false);
+	PersistentFileSysObj_StateChange(
+								&fsObjName,
+								persistentTid,
+								persistentSerialNum,
+								PersistentFileSysState_Free,
+								/* flushToXlog */ false,
+								&oldState);
 
 	LWLockRelease(PersistentObjLock);
 
@@ -720,8 +690,8 @@ void PersistentRelation_Dropped(
 		elog(Debug_persistent_print_level, 
 		     "Persistent relation: '%s' changed state from '%s' to (Free), serial number " INT64_FORMAT " at TID %s",
 			 relpath(*relFileNode),
-			 PersistentFileSysObj_StateName(actualState),
-			 serialNum,
+			 PersistentFileSysObjState_Name(oldState),
+			 persistentSerialNum,
 			 ItemPointerToString(persistentTid));
 }
 
@@ -731,7 +701,7 @@ void PersistentRelation_Dropped(
 
 static Size PersistentRelation_SharedDataSize(void)
 {
-	return sizeof(PersistentRelationSharedData);
+	return MAXALIGN(sizeof(PersistentRelationSharedData));
 }
 
 /*
@@ -769,6 +739,7 @@ void PersistentRelation_ShmemInit(void)
 
 	PersistentFileSysObj_Init(
 						&persistentRelationData.fileSysObjData,
+						&persistentRelationSharedData->fileSysObjSharedData,
 						PersistentFsObjType_RelationFile,
 						/* scanTupleCallback */ NULL);
 

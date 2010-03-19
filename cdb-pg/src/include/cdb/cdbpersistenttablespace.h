@@ -14,9 +14,20 @@
 #include "storage/itemptr.h"
 #include "cdb/cdbsharedoidsearch.h"
 #include "access/persistentfilesysobjname.h"
+#include "cdb/cdbdoublylinked.h"
 
 extern bool PersistentTablespace_Check(
 	Oid 			tablespace);
+
+extern void PersistentTablespace_LookupTidAndSerialNum(
+	Oid 		tablespaceOid,
+				/* The tablespace OID for the lookup. */
+
+	ItemPointer		persistentTid,
+				/* TID of the gp_persistent_tablespace_node tuple for the rel file */
+
+	int64			*persistentSerialNum);
+
 
 extern void PersistentTablespace_GetPrimaryAndMirrorFilespaces(
 	Oid 		tablespaceOid,
@@ -45,9 +56,13 @@ extern void PersistentTablespace_MarkCreatePending(
 
 	Oid 		tablespaceOid,
 				/* The tablespace OID for the create. */
+				
+	MirroredObjectExistenceState mirrorExistenceState,
 
 	ItemPointer		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
+
+	int64			*persistentSerialNum,
 
 	bool			flushToXLog);
 				/* When true, the XLOG record for this change will be flushed to disk. */

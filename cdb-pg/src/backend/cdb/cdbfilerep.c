@@ -32,11 +32,14 @@
 #include "cdb/cdbfilerepmirrorack.h"
 #include "cdb/cdbfilerepconnserver.h"
 #include "cdb/cdbfilerepservice.h"
+#include "cdb/cdbpersistenttablespace.h"
+#include "cdb/cdbresynchronizechangetracking.h"
 #include "libpq/pqsignal.h"
 #include "postmaster/fork_process.h"
 #include "storage/lwlock.h"
 #include "storage/ipc.h"
 #include "storage/pmsignal.h"
+#include "storage/proc.h"
 #include "storage/shmem.h"
 #include "utils/guc.h"
 #include "utils/ps_status.h"
@@ -60,6 +63,12 @@ static FileRepState_e fileRepState = FileRepStateNotInitialized;
 FileRepRole_e	fileRepRole = FileRepRoleNotInitialized;
 SegmentState_e	segmentState = SegmentStateNotInitialized;
 DataState_e		dataState = DataStateNotInitialized;
+
+char *fileRepPrimaryHostAddress = NULL;
+int fileRepPrimaryPort = -1;
+char *fileRepMirrorHostAddress = NULL;
+int fileRepMirrorPort = -1;
+bool fileRepFullResync = false;
 
 FileRepConsumerProcIndex_e 	fileRepProcIndex = FileRepMessageTypeXLog;
 
@@ -88,11 +97,19 @@ static void FileRep_ChildTerminationHandler(SIGNAL_ARGS);
 static void FileRep_StateHandler(SIGNAL_ARGS);
 
 static bool FileRep_IsAnyChildAlive(void);
-static void FileRep_SignalChildren(int signal);
+static bool FileRep_IsAnyBackendChildAlive(void);
+static void FileRep_SignalChildren(int signal, bool backendsOnly);
 static bool FileRep_ProcessSignals(void);
 static void FileRep_ConfigureSignals(void);
 
-#define MaxFileRepSubProc 12	
+#define MaxFileRepSubProc 14	
+
+/**
+ * the level of logging for filerep process messages (having to do with process create/destroy)
+ * It can be used only for testing purpose (set to LOG). Logging in signal handlers is not allowed, can cause deadlock.
+ * Remove the logs when code gets more stable.
+ */
+#define FILEREP_PROCESS_LOG_LEVEL DEBUG5
 
 typedef struct FileRepSubProc {
 	
@@ -115,6 +132,8 @@ static FileRepSubProc FileRepSubProcList[MaxFileRepSubProc] =
 	{0, FileRepProcessTypeMirrorConsumerWriter},
 	{0, FileRepProcessTypeMirrorConsumerAppendOnly1},
 	{0, FileRepProcessTypeMirrorConsumerAppendOnly2},
+	{0, FileRepProcessTypeResyncManager},
+	{0, FileRepProcessTypeResyncWorker1},
 };
 
 
@@ -135,18 +154,21 @@ static void FileRep_ReportLogEntry(int	index);
 const char*
 FileRepProcessTypeToString[] = {
 	"FileRep Uninitialized Process",
-	"FileRep Main Process",
+	"FileRep Main Process", /* note that this one is actually changed when we set the title */
 	"FileRep Primary Sender Process",
 	"FileRep Mirror Receiver Process",
 	"FileRep Mirror Consumer Process",
+
 	"FileRep Mirror Sender Ack Process",
 	"FileRep Primary Receiver Ack Process",
 	"FileRep Primary Consumer Ack Process",
 	"FileRep Primary Recovery Process",
 	"FileRep Mirror Consumer Writer Process",
-	"FileRep Mirror Consumer Append Only1 Process",
-	"FileRep Mirror Consumer Append Only2 Process",
-	"FileRep Unknown Process",
+
+	"FileRep Mirror Consumer Append Only 1 Process",
+	"FileRep Mirror Consumer Append Only 2 Process",
+	"FileRep Primary Resync Manager Process",
+	"FileRep Primary Resync Worker 1 Process"
 };
 
 const char*
@@ -161,18 +183,21 @@ const char*
 SegmentStateToString[] = {
 	"Not Initialized",
 	"Initialization and Recovery",
-	"In Recovery",				/* may be removed */
+	"Transition to InResync",	
+	"Transition to InSync",
 	"Up and Running",
+	"Change Tracking Disabled",
 	"In Fault",
+	"In Shutdown of Backends",
 	"In Shutdown",
-	"In Immediate Shutdown",	/* may be removed */
+	"In Immediate Shutdown",
 };
 
 const char*
 DataStateToString[] = {
 	"Not Initialized",
 	"In Sync",
-	"In Change Logging",
+	"In Change Tracking",
 	"In Resync",
 };
 
@@ -182,9 +207,9 @@ FileRepStateToString[] = {
 	"Initialization and Recovery",
 	"Up and Running",
 	"In Fault",
-	"In Suspend",
+	"In Shutdown of Backends",
 	"In Shutdown",
-	"In Immediate Shutdown",	/* may be removed */
+	"In Immediate Shutdown",	
 };
 						  
 const char*
@@ -199,6 +224,8 @@ FileRepOperationToString[] = {
 	"Drop",
 	"Reconcile xlog",
 	"Link or Rename",
+	"Shutdown",
+	"In Sync Transition",
 	"Not Specified",
 };
 
@@ -208,8 +235,8 @@ FileRepRelationTypeToString[] = {
 	"Append Only",
 	"Buffer Pool",
 	"Bulk",
-	"File",
 	"Directory",
+	"Control Message",
 	"Not Specified",
 };
 
@@ -227,6 +254,8 @@ FileRepConsumerProcIndexToString[] = {
 	"writer",
 	"append only 1",
 	"append only 2",
+	"shutdown",
+	"undefined"
 };
 
 /****************************************************************
@@ -344,13 +373,13 @@ static FileRepShmem_s *FileRep_ShmemInitOneBuffer(const char *bufferLabel, int s
 	}
 
 	if (! foundPtr) {
-		memset(result, 0, sizeof(FileRepShmem_s));
+		MemSet(result, 0, sizeof(FileRepShmem_s));
 	}
 
 	result->positionBegin =
 		((char *) result) + sizeof(FileRepShmem_s);
 
-	memset(result->positionBegin, 0, bufSize);
+	MemSet(result->positionBegin, 0, bufSize);
 
 	result->positionEnd =
 		result->positionBegin + bufSize;
@@ -407,7 +436,6 @@ FileRepAck_ShmemInit(void)
 	fileRepAckShmem = FileRep_ShmemInitOneBuffer("FileRepAck Primary Mirror Messages",
 							FileRepAck_ShmemSize(), file_rep_ack_buffer_size );
 }
-
 
 /*
  * FileRep_ShmemSize()
@@ -489,6 +517,86 @@ FileRep_ShmemInitArray(void)
 	return;
 }
 
+static void
+FileRep_ShmemReInitOneBuffer(FileRepShmem_s *result, int shmemSize, int bufSize)
+{
+	
+	Assert( shmemSize >= bufSize + sizeof(FileRepShmem_s));
+	
+	if (result == NULL) {
+		ereport(ERROR,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 (errmsg("shared memory for Mirroring not initialized."))));
+	}
+	
+	
+	MemSet(result, 0, sizeof(FileRepShmem_s));
+	
+	result->positionBegin =
+	((char *) result) + sizeof(FileRepShmem_s);
+	
+	MemSet(result->positionBegin, 0, bufSize);
+	
+	result->positionEnd =
+	result->positionBegin + bufSize;
+	
+	result->positionInsert = result->positionBegin;
+	
+	result->positionConsume = result->positionBegin;
+	
+	result->positionWraparound = result->positionEnd;
+	
+	result->insertCount = 0;
+	
+	result->consumeCount = 0;
+	
+	result->state = FileRepStateNotInitialized;
+	
+	elog(LOG, "FileRep_ShmemReInitOneBuffer() result:%p insert:%p end:%p ", 
+		 result, 
+		 result->positionBegin,
+		 result->positionEnd);
+	
+	
+	/*
+	 * positionWraparound is initialized
+	 * when message is inserted at the positionBegin.
+	 */
+	
+}
+
+/* 
+ * FileRep_ShmemInit()
+ *			Allocate and initialize FileRep Shared Memory 
+ *
+ */
+static void 
+FileRep_ShmemReInit(void)
+{
+	FileRep_ShmemReInitOneBuffer(fileRepShmemArray[fileRepProcIndex],
+								 FileRep_ShmemSize(), 
+								 FileRep_ShmemSize() - sizeof(FileRepShmem_s));
+	
+	elog(LOG, "FileRep_ShmemReInit() shmemArray:%p array index:'%d' ", 
+		 fileRepShmemArray[fileRepProcIndex], fileRepProcIndex);
+}
+
+/*
+ * FileRepAck_ShmemInit()
+ *			Allocate and initialize FileRepAck Shared Memory 
+ *
+ */
+static void 
+FileRepAck_ShmemReInit(void)
+{
+	FileRep_ShmemReInitOneBuffer(fileRepAckShmem,
+								 FileRepAck_ShmemSize(), 
+								 file_rep_ack_buffer_size);
+	
+	elog(LOG, "FileRepAck_ShmemReInit() fileRepAckShmem:%p  ", 
+		 fileRepAckShmem);
+}
+
 char *
 FileRepAck_ReserveShmem(
 					 uint32			msgLength,
@@ -543,7 +651,7 @@ FileRepAck_ReserveShmem(
 			} else {
 				msgPositionInsert = fileRepAckShmem->positionInsert;
 				
-				memset(msgPositionInsert, 0, 
+				MemSet(msgPositionInsert, 0, 
 					   msgLength + sizeof(FileRepShmemMessageDescr_s));
 				
 				Assert(msgPositionInsert + msgLength + sizeof(FileRepShmemMessageDescr_s) < fileRepAckShmem->positionEnd);
@@ -569,6 +677,10 @@ FileRepAck_ReserveShmem(
 		LWLockRelease(FileRepAckShmemLock);
 		
 		if (insert == false) {
+			if (FileRepSubProcess_IsStateTransitionRequested())
+			{
+				break;
+			}			
 			FileRep_Sleep10ms(retry);
 			retry++;
 		}
@@ -652,7 +764,7 @@ FileRep_ReserveShmem(
 			} else {				
 				msgPositionInsert = fileRepShmem->positionInsert;
 				
-				memset(msgPositionInsert, 0, 
+				MemSet(msgPositionInsert, 0, 
 					   msgLength + sizeof(FileRepShmemMessageDescr_s));
 				
 				Assert(msgPositionInsert + msgLength + sizeof(FileRepShmemMessageDescr_s) < fileRepShmem->positionEnd);
@@ -678,6 +790,10 @@ FileRep_ReserveShmem(
 		LWLockRelease(FileRepShmemLock);
 		
 		if (insert == false) {
+			if (FileRepSubProcess_IsStateTransitionRequested())
+			{
+				break;
+			}			
 			FileRep_Sleep10ms(retry); 
 			retry++;
 			elog(DEBUG1, "FileRep_ReserveShmem() RETRY:%d", 
@@ -706,11 +822,13 @@ FileRep_errcontext(void)
 			   "primary-mirror pair state:'%s' "
 			   "segment state:'%s' "
 			   "process pid:'%d' "
+			   "process name:'%s' "
 			   "filerep state:'%s' ",
 			   FileRepRoleToString[fileRepRole],
 			   DataStateToString[dataState],
 			   SegmentStateToString[segmentState],
 			   getpid(),
+			   FileRepProcessTypeToString[fileRepProcessType],
 			   FileRepStateToString[FileRepSubProcess_GetState()]);
 	
 	return 0;
@@ -773,15 +891,15 @@ FileRep_errdetail(
 	fileName = FileRep_GetFileName(
 								   fileRepIdentifier,
 								   fileRepRelationType);
-	
+
 	errdetail(
 			  "identifier:'%s' "
 			  "operation:'%s' "
 			  "relation type:'%s' ",
-			  fileName,
+			  (fileName == NULL) ? "":fileName,
 			  FileRepOperationToString[fileRepOperation],
-			  FileRepRelationTypeToString[fileRepRelationType]);
-
+			  FileRepRelationTypeToString[fileRepRelationType]);	
+		
 	if (fileName) {
 		pfree(fileName);
 		fileName = NULL;
@@ -789,6 +907,30 @@ FileRep_errdetail(
 			  
 	return 0;
 }
+
+int
+FileRep_ReportRelationPath(
+				  char*			filespaceLocation,
+				  RelFileNode	relFileNode,
+				  uint32		segmentFileNum)
+{
+	char		path[MAXPGPATH+1];
+	
+	FormRelationPath(
+					 path,
+					 filespaceLocation,
+					 relFileNode);
+	
+	if (segmentFileNum != 0) 
+	{
+		sprintf(path, "%s.%u", path, segmentFileNum);
+	}
+	
+	errdetail("relation path:'%s' ", path);
+	
+	return 0;
+}
+
 
 /*
  * static FileRepLogEntry *fileRepLog[file_rep_num_log_entries];
@@ -881,7 +1023,7 @@ FileRep_ReportLogEntry(int	index)
 	fileName = FileRep_GetFileName(
 								   fileRepLog[index].fileRepIdentifier,
 								   fileRepLog[index].fileRepRelationType);	
-	
+
 	ereport(LOG,
 			(errmsg("LOG(filerep): 	time:'%s' "
 					"routine:'%s' "
@@ -915,7 +1057,7 @@ FileRep_ReportLogEntry(int	index)
 					"process pid:'%d' ",
 					buftime,
 					fileRepLog[index].routineName,
-					fileName,
+					(fileName == NULL) ? "" : fileName,
 					FileRepOperationToString[fileRepLog[index].fileRepOperation],
 					FileRepRelationTypeToString[fileRepLog[index].fileRepRelationType],
 					fileRepLog[index].localCount,
@@ -979,7 +1121,7 @@ static void
 FileRep_SigHupHandler(SIGNAL_ARGS)
 {
 	reloadConfigFile = true;
-	elog(DEBUG1, "FileRep_SigHupHandler()");
+	elog(FILEREP_PROCESS_LOG_LEVEL, "FileRep_SigHupHandler()");
 }
 
 /* 
@@ -989,7 +1131,7 @@ static void
 FileRep_ImmediateShutdownHandler(SIGNAL_ARGS)
 {
 	immediateShutdownRequested = true;
-	elog(DEBUG1, "FileRep_ImmediateShutdownHandler()");
+	elog(FILEREP_PROCESS_LOG_LEVEL, "FileRep_ImmediateShutdownHandler()");
 }
 
 /*
@@ -999,7 +1141,7 @@ static void
 FileRep_ShutdownHandler(SIGNAL_ARGS)
 {
 	shutdownRequested = true;
-	elog(DEBUG1, "FileRep_ShutdownHandler()");	
+	elog(FILEREP_PROCESS_LOG_LEVEL, "FileRep_ShutdownHandler()");
 }
 
 /*
@@ -1009,7 +1151,7 @@ static void
 FileRep_ChildTerminationHandler(SIGNAL_ARGS)
 {
 	childTermination = true;
-	elog(DEBUG1, "FileRep_ChildTerminationHandler()");	
+	elog(FILEREP_PROCESS_LOG_LEVEL, "FileRep_ChildTerminationHandler()");
 }
 
 /*
@@ -1020,28 +1162,37 @@ static void
 FileRep_StateHandler(SIGNAL_ARGS)
 {
 	stateChangeRequested = true;
-	elog(DEBUG1, "FileRep_StateHandler() stateChangeRequested");	
+	elog(FILEREP_PROCESS_LOG_LEVEL, "FileRep_StateHandler() stateChangeRequested");
 }
 
 /*
  * NOTE - should we report fault
+ *
+ * @param backendsOnly if true then only filerep processes that act as backends will be signalled.
  */
 static void
-FileRep_SignalChildren(int signal)
+FileRep_SignalChildren(int signal, bool backendsOnly)
 {
 	int ii;
 
 	for (ii=0; ii < MaxFileRepSubProc; ii++) {
 		FileRepSubProc *subProc = &FileRepSubProcList[ii];
 		
-		if (subProc->pid != 0) {
-			if (kill(subProc->pid, signal) < 0) {
-				ereport(LOG, 
-						(errmsg("Signal to children failed pid %ld signal %d: %m",
-						 (long) subProc->pid, signal)));
+		if (subProc->pid == 0) {
+		    continue;
+        }
+		    
+        if ( backendsOnly &&
+             ! FileRepIsBackendSubProcess( subProc->fileRepProcessType)) {
+            continue;
+        }
 
-			}
-		}
+        if (kill(subProc->pid, signal) < 0)  {
+            ereport(LOG,
+                    (errmsg("Signal to children failed pid %ld signal %d: %m",
+                     (long) subProc->pid, signal)));
+
+        }
 	}
 	return;
 }
@@ -1059,7 +1210,111 @@ FileRep_IsAnyChildAlive(void)
 	return false;
 }
 
+static bool
+FileRep_IsAnyBackendChildAlive(void)
+{
+	int i;
 
+	for (i=0; i < MaxFileRepSubProc; i++)
+	{
+		if ( FileRepSubProcList[i].pid != 0 &&
+		     FileRepIsBackendSubProcess(FileRepSubProcList[i].fileRepProcessType))
+        {
+		    return true;
+        }
+	}
+	return false;
+}
+
+/*
+ * Log the death of a child process.
+ */
+static void
+LogChildExit(int lev, const char *procname, int pid, int exitstatus)
+{
+	if (WIFEXITED(exitstatus))
+		ereport(lev,
+				
+				/*------
+		 translator: %s is a noun phrase describing a child process, such as
+		 "server process" */
+				(errmsg("%s (PID %d) exited with exit code %d",
+						procname,
+						pid, WEXITSTATUS(exitstatus))));
+	else if (WIFSIGNALED(exitstatus))
+#if defined(WIN32)
+		ereport(lev,
+				
+				/*------
+		 translator: %s is a noun phrase describing a child process, such as
+		 "server process" */
+				(errmsg("%s (PID %d) was terminated by exception 0x%X",
+						procname,
+						pid, WTERMSIG(exitstatus)),
+				 errhint("See C include file \"ntstatus.h\" for a description of the hexadecimal value.")));
+#elif defined(HAVE_DECL_SYS_SIGLIST) && HAVE_DECL_SYS_SIGLIST
+	ereport(lev,
+			
+			/*------
+	 translator: %s is a noun phrase describing a child process, such as
+	 "server process" */
+			// strsignal() is preferred over the deprecated use of sys_siglist, on platforms that support it.
+			// Solaris and Linux do support it, but I think MAC OSX doesn't?
+			(errmsg("%s (PID %d) was terminated by signal %d: %s",
+					procname, 
+					pid, WTERMSIG(exitstatus),
+					WTERMSIG(exitstatus) < NSIG ?
+					sys_siglist[WTERMSIG(exitstatus)] : "(unknown)")));
+#else
+	{
+		// If we don't have strsignal or sys_siglist, do our own translation
+		const char *signalName;
+		
+		switch (WTERMSIG(exitstatus))
+		{
+			case SIGINT:	
+				signalName = "SIGINT";
+				break;
+			case SIGTERM:	
+				signalName = "SIGTERM";
+				break;
+			case SIGQUIT:	
+				signalName = "SIGQUIT";
+				break;
+			case SIGSTOP:	
+				signalName = "SIGSTOP";
+				break;
+			case SIGUSR1:
+				signalName = "SIGUSR1";
+				break;
+			case SIGUSR2:	
+				signalName = "SIGUSR2";
+				break;
+			default:	
+				signalName = "(unknown)";
+				break;
+		}
+		
+		ereport(lev,
+				
+				/*------
+		 translator: %s is a noun phrase describing a child process, such as
+		 "server process" */
+			    (errmsg("%s (PID %d) was terminated by signal %d: %s",
+						procname, 
+						pid, WTERMSIG(exitstatus), signalName)));
+	}
+#endif
+	else
+		ereport(lev,
+				
+				/*------
+		 translator: %s is a noun phrase describing a child process, such as
+		 "server process" */
+				(errmsg("%s (PID %d) exited with unrecognized status %d",
+						FileRepProcessTypeToString[fileRepProcessType], 
+						pid, exitstatus)));
+}
 
 /*
  *  FileRep_ProcessSignals()
@@ -1072,23 +1327,52 @@ FileRep_ProcessSignals()
 	
 	if (reloadConfigFile)
 	{
-		FileRep_SignalChildren(SIGHUP);
+		FileRep_SignalChildren(SIGHUP, false);
 		reloadConfigFile = false;
 		ProcessConfigFile(PGC_SIGHUP);
 	}
 	
 	if (shutdownRequested)
 	{
+	    SegmentState_e segmentState;
+		getPrimaryMirrorStatusCodes(NULL, &segmentState, NULL);
+
 		shutdownRequested = false;
-		FileRep_SignalChildren(SIGUSR2);
-		processExit = true;
-		FileRep_SetState(FileRepStateShutdown);
-	}		
+
+		if ( segmentState == SegmentStateShutdownFilerepBackends )
+		{
+            elog(FILEREP_PROCESS_LOG_LEVEL, "Filerep backends shutdown requested");
+            FileRep_SetState(FileRepStateShutdownBackends);
+    		FileRep_SignalChildren(SIGUSR2, true);
+		}
+		else
+		{
+            elog(FILEREP_PROCESS_LOG_LEVEL, "Filerep shutdown requested");
+
+            /* inform mirror that gracefull shutdown is in progress */
+            if (fileRepRole == FileRepPrimaryRole)
+            {
+                if (MyProc == NULL)
+                {
+                    InitAuxiliaryProcess();
+
+                    InitBufferPoolBackend();
+                }
+
+                FileRepPrimary_MirrorShutdown();
+            }
+
+    		processExit = true;
+    		FileRep_SetState(FileRepStateShutdown);
+    		FileRep_SignalChildren(SIGUSR2, false);
+		}
+	}
 
 	if (immediateShutdownRequested)
 	{
+	    elog(FILEREP_PROCESS_LOG_LEVEL, "Filerep Immediate shutdown requested");
 		immediateShutdownRequested = false;
-		FileRep_SignalChildren(SIGQUIT);
+		FileRep_SignalChildren(SIGQUIT, false);
 		processExit = true;
 		FileRep_SetState(FileRepStateImmediateShutdown);
 	}
@@ -1099,7 +1383,8 @@ FileRep_ProcessSignals()
 	 */
 	if (! PostmasterIsAlive(true))
 	{
-		FileRep_SignalChildren(SIGUSR2);
+	    elog(FILEREP_PROCESS_LOG_LEVEL, "Filerep: postmaster is gone, entering immediate shutdown");
+		FileRep_SignalChildren(SIGQUIT, false);
 		processExit = true;
 		FileRep_SetState(FileRepStateImmediateShutdown);
 	}
@@ -1134,6 +1419,15 @@ FileRep_ProcessSignals()
 			{
 				if (term_pid == FileRepSubProcList[i].pid)
 				{
+					if (! ((term_status == 0) &&
+						   (i == FileRepProcessTypePrimaryRecovery ||
+							i == FileRepProcessTypeResyncManager ||
+							i == FileRepProcessTypeResyncWorker1)))
+					{
+						LogChildExit(LOG, (FileRepProcessTypeToString[i]),
+									 FileRepSubProcList[i].pid,
+									 term_status);
+					}
 					FileRepSubProcList[i].pid = 0;
 					break;
 				}
@@ -1144,8 +1438,12 @@ FileRep_ProcessSignals()
 
 	if (stateChangeRequested)
 	{
+		getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState);
 		stateChangeRequested = false;
-		FileRep_SignalChildren(SIGUSR1);
+		ereport(LOG,
+				(errmsg("LOG(filerep): FileRep_ProcessSignals() "),
+						FileRep_errcontext()));						
+		FileRep_SignalChildren(SIGUSR1, false);
 	}
 	
 	return(processExit);
@@ -1161,13 +1459,107 @@ FileRep_GetState(void)
 	return fileRepState;
 }	
 
+/* NOTE temporary routine */
+bool
+FileRep_IsInRecovery(void)
+{	
+	return (segmentState == SegmentStateInitialization);
+}
+
+/* NOTE temporary routine */
+bool
+FileRep_IsInResynchronizeReady(void)
+{	
+	return (dataState == DataStateInResync &&
+		   segmentState != SegmentStateInResyncTransition);	
+}
+
+/**
+ * Return true if the process type represents a process that acts like
+ *   a normal database backend
+ */
+bool
+FileRepIsBackendSubProcess(FileRepProcessType_e processType)
+{
+    switch(processType)
+    {
+        case FileRepProcessTypeNotInitialized:
+	    case FileRepProcessTypeMain:
+	    case FileRepProcessTypePrimarySender:
+	    case FileRepProcessTypeMirrorReceiver:
+    	case FileRepProcessTypeMirrorConsumer:
+	    case FileRepProcessTypeMirrorSenderAck:
+    	case FileRepProcessTypePrimaryReceiverAck:
+	    case FileRepProcessTypePrimaryConsumerAck:
+	    case FileRepProcessTypePrimaryRecovery:
+	    case FileRepProcessTypeMirrorConsumerWriter:
+        case FileRepProcessTypeMirrorConsumerAppendOnly1:
+        case FileRepProcessTypeMirrorConsumerAppendOnly2:
+            return false;
+        case FileRepProcessTypeResyncManager:
+        case FileRepProcessTypeResyncWorker1:
+            return true;
+        default:
+            Assert(!"Unknown process type in FileRepIsBackendSubProcess");
+            return false;
+    }
+}
+
+/*
+ * NOTE temporary, it will be removed
+ */
+bool
+FileRep_IsInChangeTracking(void)
+{
+	DataState_e snapDataState;
+	bool result;
+	
+	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState);
+	snapDataState = dataState;
+	
+	result = (((snapDataState == DataStateInChangeTracking && 
+			    segmentState != SegmentStateChangeTrackingDisabled) ||
+			   (snapDataState == DataStateInResync &&
+			    !FileRep_IsInResynchronizeReady() &&
+			    !isFullResync())) &&
+			  !FileRep_IsInRecovery());
+	
+	return result;
+}
+
+void 
+FileRep_SetDataState(DataState_e dataState, bool signalPostmaster)
+{
+	if (updateDataState(dataState) && signalPostmaster) {
+		SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
+	}		
+	elog(LOG, "FileRep_SetDataState() state:'%s' MyProcPid:'%d'", 
+		 DataStateToString[dataState],
+		 getpid());	
+	
+}
+
+void 
+FileRep_SetSegmentState(SegmentState_e segmentState)
+{	
+	if (updateSegmentState(segmentState)) {
+		SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
+	}
+	elog(LOG, "FileRep_SetSegmentState() state:'%s' MyProcPid:'%d'", 
+		 SegmentStateToString[segmentState],
+		 getpid());	
+}
+
 /*
  *  Set state in FileRep process and sent signal to postmaster
  */
 void 
 FileRep_SetState(FileRepState_e fileRepStateLocal)
 {
-	
+	elog(FILEREP_PROCESS_LOG_LEVEL, "FileRep_SetState(%s, %d) MyProcPid:'%d'",
+		 FileRepStateToString[fileRepStateLocal], fileRepStateLocal,
+		 getpid());
+
 	switch (fileRepState) {
 		case FileRepStateNotInitialized:
 		case FileRepStateInitialization:
@@ -1177,36 +1569,62 @@ FileRep_SetState(FileRepState_e fileRepStateLocal)
 		case FileRepStateReady:
 			
 			switch (fileRepStateLocal) {
+				case FileRepStateInitialization:
 				case FileRepStateFault:
-				case FileRepStateSuspend:
 				case FileRepStateImmediateShutdown:
 				case FileRepStateShutdown:
+				case FileRepStateShutdownBackends:
 					fileRepState = fileRepStateLocal;
 					break;
 				case FileRepStateNotInitialized:
-				case FileRepStateInitialization:
-				case FileRepStateReady:
 					Assert(0);
+				case FileRepStateReady:
+
 					break;
+                default:
+                    Assert(0);
+                    break;
 			}
 			break;
 		case FileRepStateFault:
-		case FileRepStateSuspend:
 			
 			switch (fileRepStateLocal) {
 				case FileRepStateFault:
-				case FileRepStateSuspend:
 				case FileRepStateImmediateShutdown:
 				case FileRepStateShutdown:
+				case FileRepStateShutdownBackends:
 					fileRepState = fileRepStateLocal;
 					break;
 				case FileRepStateNotInitialized:
 				case FileRepStateInitialization:
 				case FileRepStateReady:
-					Assert(0);
 					break;
-			}			
+                default:
+                    Assert(0);
+                    break;
+			}
 			
+			break;
+
+        case FileRepStateShutdownBackends:
+
+			switch (fileRepStateLocal) {
+				case FileRepStateImmediateShutdown:
+				case FileRepStateShutdown:
+				case FileRepStateShutdownBackends:
+					fileRepState = fileRepStateLocal;
+					break;
+				case FileRepStateNotInitialized:
+				case FileRepStateInitialization:
+				case FileRepStateReady:
+
+				case FileRepStateFault:
+					break;
+                default:
+                    Assert(0);
+                    break;
+			}
+
 			break;
 
 		case FileRepStateShutdown:
@@ -1219,23 +1637,27 @@ FileRep_SetState(FileRepState_e fileRepStateLocal)
 				case FileRepStateNotInitialized:
 				case FileRepStateInitialization:
 				case FileRepStateReady:
-				case FileRepStateSuspend:
-					Assert(0);
+
 				case FileRepStateFault:
 					break;					
+                default:
+                    Assert(0);
+                    break;
 			}
 			
 			break;
 		case FileRepStateImmediateShutdown:
 
 			break;
+
+        default:
+            Assert(0);
+            break;
 	}
 
 	switch (fileRepState) {
 		case FileRepStateReady:
-			if (updateConfig(SegmentStateReady)) {
-				SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
-			}			
+			FileRep_SetSegmentState(SegmentStateReady);
 			break;
 			
 		case FileRepStateFault:
@@ -1245,24 +1667,24 @@ FileRep_SetState(FileRepState_e fileRepStateLocal)
 			   return FALSE if state was already set to FAULT
 			   change signal to PMSIGNAL_FILEREP_SEGMENT_STATE_CHANGE
 			 */
-			if (updateConfig(SegmentStateFault)) {
-				SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
-			}			
+			FileRep_SetSegmentState(SegmentStateFault);
 			break;
 			
 		case FileRepStateInitialization:
-		case FileRepStateShutdown:	
+        case FileRepStateShutdownBackends:
+		case FileRepStateShutdown:
 		case FileRepStateImmediateShutdown:
 		case FileRepStateNotInitialized:
-		case FileRepStateSuspend:
 			/* No operation */
 			break;
+        default:
+            Assert(0);
+            break;
 	}
 	
-	elog(DEBUG1, "FileRep_SetState() state:'%s' MyProcPid:'%d'", 
+	elog(FILEREP_PROCESS_LOG_LEVEL, "FileRep_SetState() state:'%s' MyProcPid:'%d'",
 		 FileRepStateToString[FileRep_GetState()],
 		 getpid());
-
 }
 
 /*
@@ -1353,7 +1775,7 @@ FileRep_StartChildProcess(FileRepProcessType_e type)
 void
 FileRep_Sleep10ms(int retry)
 {
-	
+
 	if (retry < 100) {
 		pg_usleep(10000L); /* 10 ms */
 	} else {
@@ -1372,7 +1794,7 @@ FileRep_Sleep10ms(int retry)
 void
 FileRep_Sleep1ms(int retry)
 {
-	
+
 	if (retry < 50) {
 		pg_usleep(1000L); /* 1 ms */
 	} else {
@@ -1421,6 +1843,8 @@ FileRep_IsOperationSynchronous(FileRepOperation_e fileRepOperation)
 		case FileRepOperationFlushAndClose:
 		case FileRepOperationReconcileXLogEof:
 		case FileRepOperationRename:
+		case FileRepOperationShutdown:
+		case FileRepOperationInSyncTransition:
 			
 			return TRUE;	
 
@@ -1433,6 +1857,11 @@ FileRep_IsOperationSynchronous(FileRepOperation_e fileRepOperation)
 			
 		case FileRepOperationNotSpecified:
 			Assert(0);
+			break;
+
+        default:
+            Assert(0);
+            break;
 	}	
 	return FALSE;
 }
@@ -1453,6 +1882,7 @@ FileRep_GetXLogRecPtrUndefined(void)
  */
 FileRepIdentifier_u
 FileRep_GetRelationIdentifier(
+				char			*mirrorFilespaceLocation,
 				RelFileNode		relFileNode,
 				int32			segmentFileNum)
 {
@@ -1464,17 +1894,88 @@ FileRep_GetRelationIdentifier(
 	
 	identifier.fileRepRelationIdentifier.segmentFileNum = segmentFileNum;		
 	
+	if (mirrorFilespaceLocation == NULL)
+		sprintf(identifier.fileRepRelationIdentifier.mirrorFilespaceLocation,
+				"%s", 
+				"");
+	else
+		sprintf(identifier.fileRepRelationIdentifier.mirrorFilespaceLocation,
+				"%s", 
+				mirrorFilespaceLocation);	
+	
 	return identifier;
 }
 
 FileRepIdentifier_u 
-FileRep_GetDirIdentifier(DbDirNode	dbDirNode)
+FileRep_GetDirFilespaceIdentifier(
+						 char				*mirrorFilespaceLocation)
 {
 	
 	FileRepIdentifier_u identifier;
 	
-	identifier.fileRepDbDirNodeIdentifier.tablespace = dbDirNode.tablespace;
-	identifier.fileRepDbDirNodeIdentifier.database = dbDirNode.database;
+	identifier.fileRepDirIdentifier.fileRepDirType = FileRepDirFilespace;
+	
+	identifier.fileRepDirIdentifier.dbDirNode.tablespace = 0;
+	identifier.fileRepDirIdentifier.dbDirNode.database = 0;
+	
+	if (mirrorFilespaceLocation == NULL)
+		sprintf(identifier.fileRepDirIdentifier.mirrorFilespaceLocation,
+				"%s", 
+				"");
+	else
+		sprintf(identifier.fileRepDirIdentifier.mirrorFilespaceLocation,
+				"%s", 
+				mirrorFilespaceLocation);	
+	
+	return identifier;
+}
+
+FileRepIdentifier_u 
+FileRep_GetDirTablespaceIdentifier(
+						 char		*mirrorFilespaceLocation,
+						 Oid		tablespace)
+{
+	
+	FileRepIdentifier_u identifier;
+	
+	identifier.fileRepDirIdentifier.fileRepDirType = FileRepDirTablespace;
+	
+	identifier.fileRepDirIdentifier.dbDirNode.tablespace = tablespace;
+	identifier.fileRepDirIdentifier.dbDirNode.database = 0;
+	
+	if (mirrorFilespaceLocation == NULL)
+		sprintf(identifier.fileRepDirIdentifier.mirrorFilespaceLocation,
+				"%s", 
+				"");
+	else
+		sprintf(identifier.fileRepDirIdentifier.mirrorFilespaceLocation,
+				"%s", 
+				mirrorFilespaceLocation);	
+	
+	return identifier;
+}
+
+FileRepIdentifier_u 
+FileRep_GetDirDatabaseIdentifier(
+						 char				*mirrorFilespaceLocation,
+						 DbDirNode			dbDirNode)
+{
+	
+	FileRepIdentifier_u identifier;
+	
+	identifier.fileRepDirIdentifier.fileRepDirType = FileRepDirDatabase;
+	
+	identifier.fileRepDirIdentifier.dbDirNode.tablespace = dbDirNode.tablespace;
+	identifier.fileRepDirIdentifier.dbDirNode.database = dbDirNode.database;
+	
+	if (mirrorFilespaceLocation == NULL)
+		sprintf(identifier.fileRepDirIdentifier.mirrorFilespaceLocation,
+				"%s", 
+				"");
+	else
+		sprintf(identifier.fileRepDirIdentifier.mirrorFilespaceLocation,
+				"%s", 
+				mirrorFilespaceLocation);	
 	
 	return identifier;
 }
@@ -1498,6 +1999,20 @@ FileRep_GetFlatFileIdentifier(
 	return identifier;
 }
 
+FileRepIdentifier_u 
+FileRep_GetUnknownIdentifier(
+							  char	*unknownId)
+{
+	
+	FileRepIdentifier_u identifier;
+	
+	strncpy(identifier.fileRepUnknownIdentifier.unknownId, 
+			unknownId, 
+			FILEREP_UNKNOWN_IDENTIFIER_LEN);
+	
+	return identifier;
+}
+
 /*
  * $PGDATA/filespace/segment/tablespace_oid/database_oid/relfilenode_oid
  */
@@ -1510,11 +2025,11 @@ FileRep_GetFileName(
 		
 	switch (fileRepRelationType) {
 		case FileRepRelationTypeFlatFile:
-	/* NOTE can flat file routine be added for constructing path */
 		
 			fileName = (char*) palloc(
 				strlen(fileRepIdentifier.fileRepFlatFileIdentifier.directorySimpleName) + 
-				strlen(fileRepIdentifier.fileRepFlatFileIdentifier.fileSimpleName) + 2);		
+				strlen(fileRepIdentifier.fileRepFlatFileIdentifier.fileSimpleName) + 2);
+			
 			sprintf(fileName, "%s/%s",
 					fileRepIdentifier.fileRepFlatFileIdentifier.directorySimpleName,
 					fileRepIdentifier.fileRepFlatFileIdentifier.fileSimpleName);
@@ -1524,49 +2039,123 @@ FileRep_GetFileName(
 		case FileRepRelationTypeBulk:
 		case FileRepRelationTypeBufferPool:						
 		case FileRepRelationTypeAppendOnly:
-	/* NOTE add to fileName filespaces and segment */
 			
-		/* palloc() is done in relpath() routine */
-			if (fileRepIdentifier.fileRepRelationIdentifier.segmentFileNum == 0) {
-				fileName = relpath(fileRepIdentifier.fileRepRelationIdentifier.relFileNode);
-			} else {
-				/*fileName = (char*) palloc(strlen(local) + sizeof(uint32) + 2);*/
-				fileName = (char*) palloc(MAXPGPATH);
+			fileName = (char*) palloc(MAXPGPATH);
+			
+			FormRelationPath(
+							 fileName,
+							 fileRepIdentifier.fileRepRelationIdentifier.mirrorFilespaceLocation,
+							 fileRepIdentifier.fileRepRelationIdentifier.relFileNode);
+			
+			if (fileRepIdentifier.fileRepRelationIdentifier.segmentFileNum != 0) 
+			{
 				sprintf(fileName, "%s.%u", 
-						relpath(fileRepIdentifier.fileRepRelationIdentifier.relFileNode), 
+						fileName, 
 						fileRepIdentifier.fileRepRelationIdentifier.segmentFileNum);
+			}
 
+			break;
+			
+		case FileRepRelationTypeDir:
+			
+			fileName = (char*) palloc(MAXPGPATH);
+		
+			switch (fileRepIdentifier.fileRepDirIdentifier.fileRepDirType)
+			{
+				case FileRepDirFilespace:
+					sprintf(fileName, "%s",
+							fileRepIdentifier.fileRepDirIdentifier.mirrorFilespaceLocation);
+					break;
+					
+				case FileRepDirTablespace:
+					if (strcmp(fileRepIdentifier.fileRepDirIdentifier.mirrorFilespaceLocation,
+							   "") == 0)
+						FormTablespacePath(
+										   fileName,
+										   NULL,
+										   fileRepIdentifier.fileRepDirIdentifier.dbDirNode.tablespace);
+					
+					else 
+						FormTablespacePath(
+										   fileName,
+										   fileRepIdentifier.fileRepDirIdentifier.mirrorFilespaceLocation,
+										   fileRepIdentifier.fileRepDirIdentifier.dbDirNode.tablespace);
+					
+					break;
+					
+				case FileRepDirDatabase:
+					if (strcmp(fileRepIdentifier.fileRepDirIdentifier.mirrorFilespaceLocation,
+							   "") == 0)
+						FormDatabasePath(
+										 fileName,
+										 NULL,
+										 fileRepIdentifier.fileRepDirIdentifier.dbDirNode.tablespace,
+										 fileRepIdentifier.fileRepDirIdentifier.dbDirNode.database);
+					else
+						FormDatabasePath(
+										 fileName,
+										 fileRepIdentifier.fileRepDirIdentifier.mirrorFilespaceLocation,
+										 fileRepIdentifier.fileRepDirIdentifier.dbDirNode.tablespace,
+										 fileRepIdentifier.fileRepDirIdentifier.dbDirNode.database);
+					break;
+					
+				default:
+					Assert(0);
+					break;
 			}
 			break;
+		
+		case FileRepRelationTypeUnknown:
 			
-		
-		case FileRepRelationTypeFile:
-	/* NOTE add to fileName filespaces and segment */
-
-		/* palloc() is done in relpath() routine */
-			fileName = relpath(fileRepIdentifier.fileRepRelationIdentifier.relFileNode);
-		
+			fileName = (char*) palloc(FILEREP_UNKNOWN_IDENTIFIER_LEN);
+			sprintf(fileName, "%s",
+					fileRepIdentifier.fileRepUnknownIdentifier.unknownId);			
 			break;
-		
-		case FileRepRelationTypeDir:
-	/* NOTE add to fileName filespaces and segment */
-
-		
-			fileName = GetDatabasePath(
-					fileRepIdentifier.fileRepDbDirNodeIdentifier.database,
-					fileRepIdentifier.fileRepDbDirNodeIdentifier.tablespace);	
-			break;
-		
-		case FileRepRelationNotSpecified:
 			
+		case FileRepRelationTypeNotSpecified:
 			break;
+			
 		default:
-			Assert(0);		
+			Assert(0);	
+			break;
 	}
 		
 	return fileName;										  
-}						  
-				
+}		
+
+void
+FileRep_GetRelationPath(
+					char		*relationPath, 
+					RelFileNode relFileNode,
+					uint32		segmentFileNum)
+{
+	char *primaryFilespaceLocation;
+	char *mirrorFilespaceLocation;
+	
+	PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+													   relFileNode.spcNode,
+													   &primaryFilespaceLocation,
+													   &mirrorFilespaceLocation);
+	
+	FormRelationPath(
+					 relationPath,
+					 mirrorFilespaceLocation,
+					 relFileNode);
+	
+	if (segmentFileNum != 0) 
+	{
+		sprintf(relationPath, "%s.%u", 
+				relationPath, 
+				segmentFileNum);
+	}
+	
+	if (primaryFilespaceLocation != NULL)
+		pfree(primaryFilespaceLocation);
+	
+	if (mirrorFilespaceLocation != NULL)
+		pfree(mirrorFilespaceLocation);	
+}			
+	
 /*
  * Postmaster is responsible to start, monitor and exit FileRep process.
  * FileRep process is required only if segment has mirror configured.
@@ -1707,14 +2296,26 @@ FileRep_GetFileName(
 void FileRep_Main(void)
 {
 	SegmentState_e	segmentState = SegmentStateNotInitialized;
-		
+
 	int status = STATUS_OK;
 	
 	char title[100];
 	
 	sigjmp_buf		local_sigjmp_buf;
-	
+
+    COMPILE_ASSERT(ARRAY_SIZE(FileRepProcessTypeToString) == FileRepProcessType__EnumerationCount);
+    COMPILE_ASSERT(ARRAY_SIZE(FileRepRoleToString) == FileRepRole_e_Count);
+    COMPILE_ASSERT(ARRAY_SIZE(SegmentStateToString) == SegmentState__EnumerationCount);
+    COMPILE_ASSERT(ARRAY_SIZE(DataStateToString) == DataState__EnumerationCount);
+    COMPILE_ASSERT(ARRAY_SIZE(FileRepStateToString) == FileRepState__EnumerationCount);
+    COMPILE_ASSERT(ARRAY_SIZE(FileRepOperationToString) == FileRepOperation__EnumerationCount);
+    COMPILE_ASSERT(ARRAY_SIZE(FileRepRelationTypeToString) == FileRepRelationType__EnumerationCount);
+    COMPILE_ASSERT(ARRAY_SIZE(FileRepAckStateToString) == FileRepAckState__EnumerationCount);
+    COMPILE_ASSERT(ARRAY_SIZE(FileRepConsumerProcIndexToString) == FileRepMessageType__EnumerationCount);
+
 	Insist(IsUnderPostmaster == TRUE);
+
+	fileRepProcessType = FileRepProcessTypeMain;
 	
 	FileRep_ConfigureSignals();
 
@@ -1757,7 +2358,13 @@ void FileRep_Main(void)
 	
 	FileRep_SetState(FileRepStateInitialization);
 	
-	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState);
+	FileRep_ShmemReInit();
+	FileRepAck_ShmemReInit();
+
+	MemoryContext oldContext = MemoryContextSwitchTo(TopMemoryContext);
+	primaryMirrorGetFilerepArguments(&fileRepRole, &segmentState, &dataState, &fileRepPrimaryHostAddress,
+	    &fileRepPrimaryPort, &fileRepMirrorHostAddress, &fileRepMirrorPort, &fileRepFullResync );
+    MemoryContextSwitchTo(oldContext);
 	
 	if (fileRepRole == FileRepNoRoleConfigured) {
 		ereport(LOG,
@@ -1766,13 +2373,29 @@ void FileRep_Main(void)
 		goto shutdown;
 	}
 		
-	snprintf(title, sizeof(title), "%s %s", 
-			 FileRepProcessTypeToString[FileRepProcessTypeMain],
-			 fileRepRole == FileRepPrimaryRole ? "Primary" : "Mirror");
+	snprintf(title, sizeof(title), "%s",
+			 fileRepRole == FileRepPrimaryRole ?
+			 	"FileRep Primary Main Process" : "FileRep Mirror Main Process");
 	init_ps_display(title, "", "", "");
 		
-	elog(DEBUG1, "FileRep_Main() started with role %d\n\t\t segmentState %d\n\t\t dataState %d\n\t\t\n", 
-		 fileRepRole, segmentState, dataState);
+	elog(LOG, "FileRep_Main() started with role %d\n\t\t segmentState %d\n\t\t dataState %d\n\t\t"
+	            "primary: %s:%d\n\t\tmirror: %s:%d"
+	            "\n",
+		        fileRepRole, segmentState, dataState,
+		        fileRepPrimaryHostAddress, fileRepPrimaryPort, fileRepMirrorHostAddress, fileRepMirrorPort );
+		
+	if (dataState == DataStateInChangeTracking) 
+	{
+		if (FileRep_StartChildProcess(FileRepProcessTypePrimaryRecovery) < 0) {
+			status = STATUS_ERROR;
+			FileRep_SetState(FileRepStateFault);
+		}
+		
+		/* enter shutdown state -- wait for the postmaster to stop us */
+		goto shutdown;
+	}
+		
+	Insist(dataState == DataStateInSync || dataState == DataStateInResync);
 	
 	switch (fileRepRole) {
 		case FileRepPrimaryRole:
@@ -1792,10 +2415,24 @@ void FileRep_Main(void)
 				break;
 			}			
 	
-			if (FileRep_StartChildProcess(FileRepProcessTypePrimaryRecovery) < 0) {
-				status = STATUS_ERROR;
-				break;
-			}			
+			if (dataState == DataStateInSync) 
+			{
+				if (FileRep_StartChildProcess(FileRepProcessTypePrimaryRecovery) < 0) {
+					status = STATUS_ERROR;
+					break;
+				}	
+			}
+			else 
+			{
+				if (FileRep_StartChildProcess(FileRepProcessTypeResyncManager) < 0) {
+					status = STATUS_ERROR;
+					break;
+				}						
+				if (FileRep_StartChildProcess(FileRepProcessTypeResyncWorker1) < 0) {
+					status = STATUS_ERROR;
+					break;
+				}										
+			}
 		
 												
 			break;
@@ -1837,8 +2474,10 @@ void FileRep_Main(void)
 			break;
 		case FileRepNoRoleConfigured:
 		case FileRepRoleNotInitialized:
+		default:
 			Assert(0);
 			break;
+
 	}			
 			
 	if (status != STATUS_OK) {
@@ -1847,7 +2486,15 @@ void FileRep_Main(void)
 	}
 shutdown:
 	while (FileRep_ProcessSignals() == false) {
-		/* 
+
+		if ( FileRep_GetState() == FileRepStateShutdownBackends &&
+		     ! FileRep_IsAnyBackendChildAlive())
+        {
+            /* tell postmaster that filerep backends have been shutdown */
+            SendPostmasterSignal(PMSIGNAL_PRIMARY_MIRROR_ALL_BACKENDS_SHUTDOWN);
+        }
+
+		/*
 		 * check and process any signals received 
 		 * The routine returns TRUE if the received signal requests
 		 * process shutdown.
@@ -1855,7 +2502,7 @@ shutdown:
 
 		pg_usleep(1000000L); // 1sec
 	}
-
+	
 	if ( FileRep_GetState() == FileRepStateShutdown)
 	{
 		/* wait for all children to terminate, unless immediate shutdown is reached */

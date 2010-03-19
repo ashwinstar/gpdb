@@ -132,7 +132,7 @@ create unique index pg_operator_oid_index on public.pg_operator(oid);
 create unique index pg_resourcetype_oid_index on public.pg_resourcetype(oid);
 create unique index pg_resqueue_oid_index on public.pg_resqueue(oid);
 create unique index gp_fastsequence_objid_objmod_index on public.gp_fastsequence(objid, objmod);
-create unique index gp_relation_node_index on public.gp_relation_node(tablespace_oid, relfilenode_oid);
+create unique index gp_relation_node_index on public.gp_relation_node(relfilenode_oid,segment_file_num);
 
 --
 -- 2. Build the 33 catalog

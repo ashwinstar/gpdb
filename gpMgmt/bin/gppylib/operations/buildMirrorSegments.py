@@ -2,7 +2,7 @@ import os, pickle
 
 from gppylib.mainUtils import *
 
-from gppylib.utils import checkNotNone
+from gppylib.utils import checkNotNone, appendNewEntriesToHbaFile
 from gppylib import gparray, gplog
 from gppylib.gplog import *
 from gppylib.commands import unix
@@ -16,8 +16,9 @@ from gppylib.operations import startSegments
 logger = get_default_logger()
 
 #
-# todo MIRRORING pg_hba.conf updates
 # todo MIRRORING search for the following and see if we apply this fix: logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % hostname)
+# todo MIRRORING it's a little quirky that caller must set up failed/failover so that failover is in gparray but failed is not (if both set)...change that, or at least protect against problems
+# todo update hba.conf in existing segments as well
 #
 
 class GpMirrorToBuild:
@@ -139,12 +140,16 @@ class GpMirrorListToBuild:
 
         # make sure the target directories are up-to-date
         #  by cleaning them, if needed, and then copying a basic directory there
-        #  the postgresql.conf in that basic directory will need updating
+        #  the postgresql.conf in that basic directory will need updating (to change the port)
         cleanupDirectives = []
         copyDirectives = []
         for toRecover in self.__mirrorsToBuild:
             if toRecover.isFullSynchronization():
-                if toRecover.getFailedSegment() is not None:
+                if toRecover.getFailedSegment() is not None and \
+                    toRecover.getFailoverSegment() is None:
+                    #
+                    # We are recovering a failed segment in-place
+                    #
                     cleanupDirectives.append(GpCleanupSegmentDirectoryDirective(toRecover.getFailedSegment()))
 
                 if toRecover.getFailoverSegment() is not None:
@@ -154,7 +159,7 @@ class GpMirrorListToBuild:
                 d = GpCopySegmentDirectoryDirective(toRecover.getLiveSegment(), targetSegment)
                 copyDirectives.append(d)
         self.__cleanUpSegmentDirectories(cleanupDirectives)
-        self.__copySegmentDirectories(gpEnv, copyDirectives)
+        self.__copySegmentDirectories(gpEnv, gpArray, copyDirectives)
 
         # update and save metadata
         for toRecover in self.__mirrorsToBuild:
@@ -179,7 +184,9 @@ class GpMirrorListToBuild:
             seg = toRecover.getLiveSegment()
             seg.setSegmentMode(gparray.MODE_RESYNCHRONIZATION)
 
-        configInterface.getConfigurationProvider().updateSystemConfig(gpArray)
+        # should use mainUtils.getProgramName but I can't make it work!
+        programName = os.path.split(sys.argv[0])[-1]
+        configInterface.getConfigurationProvider().updateSystemConfig(gpArray, "%s: segment resync" % programName )
 
         # stop/start new mirrors
         mirrorsToStart = []
@@ -249,15 +256,11 @@ class GpMirrorListToBuild:
             cmd = unix.MakeDirectory("create blank directory for segment", dir + "/" + name)
             cmd.run(validateAfter=True)
 
-    def __buildTarFileForTransfer(self, gpEnv):
+    def __buildTarFileForTransfer(self, gpEnv, masterSegment, sampleSegment, newSegments):
         """
-
         Returns the file for the tarfile that should be transferred and used
          for building the blank segment
 
-        todo: MIRRORING does this need to be built on each primary because pg_control must be copied from the primary
-              segment?  Or is it okay to start it up with a useless pg_control -- file replication code should
-              overwrite it.
         """
         masterDir = gpEnv.getMasterDataDir()
 
@@ -267,19 +270,37 @@ class GpMirrorListToBuild:
         schemaDir = tempDir + "/schema"
         unix.MakeDirectory("create temp schema directory for segment", schemaDir ).run(validateAfter=True)
 
-        # todo MIRRORING build proper hba.conf on master before we make the mirrors
-        # note that we could transfer the final pg_hba.conf here and then
-        self.__createEmptyDirectories( schemaDir, ["base", "global", "pg_log"])
-        self.__copyFiles(masterDir, schemaDir, ["PG_VERSION", "postgresql.conf", "pg_hba.conf", "global/pg_control"])
+        #
+        # Copy remote files from the sample segment to the master
+        #
+        logger.info('Copying postgresql.conf from existing segment into template')
+        for toCopyFromRemote in ["postgresql.conf", "pg_hba.conf"]:
+            cmd = gp.RemoteCopy('copying %s from a segment' % toCopyFromRemote,
+                               sampleSegment.getSegmentDataDirectory() + '/' + toCopyFromRemote,
+                               masterSegment.getSegmentHostName(), schemaDir, ctxt=base.REMOTE,
+                               remoteHost=sampleSegment.getSegmentAddress())
+            cmd.run(validateAfter=True)
+        appendNewEntriesToHbaFile( schemaDir + "/pg_hba.conf", newSegments)
 
+        #
+        # Use the master's verison of other files, and build
+        #
+        self.__createEmptyDirectories( schemaDir, [ "base", "global", "pg_clog", "pg_distributedlog",
+                    "pg_distributedxidmap", "pg_log", "pg_multixact", "pg_multixact/members", "pg_multixact/offsets",
+                    "pg_subtrans", "pg_tblspc", "pg_twophase", "pg_utilitymodedtmredo","pg_xlog" ] )
+        self.__copyFiles(masterDir, schemaDir, ["PG_VERSION", "pg_ident.conf"])
+
+
+        #
+        # Build final tar
+        #
         tarFile = tempDir + "/schema.tar"
-
         cmd = gp.CreateTar('gpbuildingmirrorsegment tar segment template', schemaDir, tarFile)
         cmd.run(validateAfter=True)
 
         return (tempDir, tarFile)
 
-    def __copySegmentDirectories(self, gpEnv, directives):
+    def __copySegmentDirectories(self, gpEnv, gpArray, directives):
         """
         directives should be composed of GpCopySegmentDirectoryDirective values
         """
@@ -287,12 +308,14 @@ class GpMirrorListToBuild:
             return
 
         srcSegments = [d.getSrcSegment() for d in directives]
-        srcSegmentByHost = GpArray.getSegmentsByHostName(srcSegments)
+        destSegments = [d.getDestSegment() for d in directives]
+        destSegmentByHost = GpArray.getSegmentsByHostName(destSegments)
+        newSegmentInfo = gp.buildExpansionSegmentInfo(destSegments)
 
-        (tempDir, blankTarFile) = self.__buildTarFileForTransfer(gpEnv)
+        (tempDir, blankTarFile) = self.__buildTarFileForTransfer(gpEnv, gpArray.master, srcSegments[0], destSegments)
 
         cmds = []
-        for hostName, segments in srcSegmentByHost.iteritems():
+        for hostName, segments in destSegmentByHost.iteritems():
             #
             # NOTE: copy set of files from the master itself to each target segment
             #
@@ -300,9 +323,6 @@ class GpMirrorListToBuild:
 
         self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "building and transferring basic segment directory")
 
-        destSegments = [d.getDestSegment() for d in directives]
-        destSegmentByHost = GpArray.getSegmentsByHostName(destSegments)
-        newSegmentInfo = gp.buildExpansionSegmentInfo(destSegments)
         cmds = []
         for hostName, segments in destSegmentByHost.iteritems():
             segmentInfo = newSegmentInfo[hostName]
@@ -317,8 +337,6 @@ class GpMirrorListToBuild:
                                             ctxt=gp.REMOTE,
                                             remoteHost=hostName))
         self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "unpacking basic segment directory")
-
-        # todo: update hba conf on every existing segment as well
 
 
     def __cleanUpSegmentDirectories(self, directives):

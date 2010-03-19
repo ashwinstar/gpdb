@@ -275,7 +275,7 @@ DECLARE_INDEX(pg_partition_rule_paroid_parentrule_ruleord_index, 5026, on pg_par
 DECLARE_UNIQUE_INDEX(pg_appendonly_alter_column_relid_index, 5031, on pg_appendonly_alter_column using btree(relid oid_ops, changenum int4_ops));
 #define AppendOnlyAlterColumnRelidIndexId  5031
 
-DECLARE_UNIQUE_INDEX(gp_relation_node_index, 5095, on gp_relation_node using btree(tablespace_oid oid_ops, relfilenode_oid oid_ops, segment_file_num int4_ops));
+DECLARE_UNIQUE_INDEX(gp_relation_node_index, 5095, on gp_relation_node using btree(relfilenode_oid oid_ops, segment_file_num int4_ops));
 #define GpRelationNodeOidIndexId  5095
 
 /* MPP-6929: metadata tracking */

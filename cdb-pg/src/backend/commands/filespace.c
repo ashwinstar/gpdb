@@ -90,6 +90,8 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 	int          mirror_dbid = -2;
 	char        *primary_location = NULL;
 	char        *mirror_location = NULL;
+	ItemPointerData persistentTid;
+	int64		persistentSerialNum;
 
 	/* Must be super user */
 	if (!superuser())
@@ -403,9 +405,10 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 	 * mechanisms know how to use this to cleanup after a hard failure or 
 	 * replay the creation for mirror resynchronisation.
 	 */
-	MirroredFileSysObj_CreateFilespaceDir(fsoid, 
+	MirroredFileSysObj_TransactionCreateFilespaceDir(fsoid, 
 										  primary_dbid, primary_location,
-										  mirror_dbid, mirror_location);
+										  mirror_dbid, mirror_location,
+										  &persistentTid, &persistentSerialNum);
 }
 
 /*

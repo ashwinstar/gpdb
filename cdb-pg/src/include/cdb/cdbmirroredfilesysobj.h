@@ -15,7 +15,7 @@
 #include "storage/dbdirnode.h"
 #include "storage/smgr.h"
 
-extern void MirroredFileSysObj_CreateFilespaceDir(
+extern void MirroredFileSysObj_TransactionCreateFilespaceDir(
 	Oid			filespaceOid,
 
 	int16		primaryDbId,
@@ -28,75 +28,209 @@ extern void MirroredFileSysObj_CreateFilespaceDir(
 	
 	int16		mirrorDbId,
 	
-	char		*mirrorFilespaceLocation);
-
-extern void MirroredFileSysObj_ScheduleDropFilespaceDir(
-	Oid							filespaceOid);
-
-extern void MirroredFileSysObj_DropFilespaceDir(
-	Oid			filespaceOid,
-
-	char		*primaryFilespaceLocation,
-				/* 
-				 * The primary filespace directory path.  NOT Blank padded.
-				 * Just a NULL terminated string.
-				 */
-	
 	char		*mirrorFilespaceLocation,
 
-	bool isRedo);
+	ItemPointer 		persistentTid,
+				/* Output: The TID of the gp_persistent_filespace_node tuple. */
+
+	int64				*persistentSerialNum);
+				/* Output: The serial number of the gp_persistent_filespace_node tuple. */
+
+extern void MirroredFileSysObj_CreateFilespaceDir(
+	Oid 						filespaceOid,
+	
+	char						*primaryFilespaceLocation,
+								/* 
+								 * The primary filespace directory path.  NOT Blank padded.
+								 * Just a NULL terminated string.
+								 */
+	
+	char						*mirrorFilespaceLocation,
+	
+	StorageManagerMirrorMode	mirrorMode,
+	
+	bool						ignoreAlreadyExists,
+	
+	int 						*primaryError,
+	
+	int 						*mirrorError);
+
+extern void MirroredFileSysObj_ScheduleDropFilespaceDir(
+	Oid			filespaceOid);
+
+extern void MirroredFileSysObj_DropFilespaceDir(
+	Oid							filespaceOid,
+
+	char						*primaryFilespaceLocation,
+								/* 
+								 * The primary filespace directory path.  NOT Blank padded.
+								 * Just a NULL terminated string.
+								 */
+	
+	char						*mirrorFilespaceLocation,
+
+	StorageManagerMirrorMode 	mirrorMode,
+
+	bool 						ignoreNonExistence);
+
+extern void MirroredFileSysObj_TransactionCreateTablespaceDir(
+	TablespaceDirNode	*tablespaceDirNode,
+
+	ItemPointer 		persistentTid,
+				/* Output: The TID of the gp_persistent_tablespace_node tuple. */
+
+	int64				*persistentSerialNum);
+				/* Output: The serial number of the gp_persistent_tablespace_node tuple. */
 
 extern void MirroredFileSysObj_CreateTablespaceDir(
-	TablespaceDirNode			*tablespaceDirNode);
+	Oid 						tablespaceOid,
+	
+	StorageManagerMirrorMode	mirrorMode,
+	
+	bool						ignoreAlreadyExists,
+	
+	int 						*primaryError,
+	
+	int 						*mirrorError);
 
 extern void MirroredFileSysObj_ScheduleDropTablespaceDir(
 	Oid							tablespaceOid);
 
 extern void MirroredFileSysObj_DropTablespaceDir(
-	Oid			tablespaceOid,
+	Oid							tablespaceOid,
 
-	bool	isRedo);
+	StorageManagerMirrorMode 	mirrorMode,
+
+	bool 						ignoreNonExistence);
+	
+extern void MirroredFileSysObj_TransactionCreateDbDir(
+	DbDirNode			*dbDirNode,
+
+	ItemPointer 		persistentTid,
+				/* Output: The TID of the gp_persistent_database_node tuple. */
+
+	int64				*persistentSerialNum);
+				/* Output: The serial number of the gp_persistent_database_node tuple. */
 
 extern void MirroredFileSysObj_CreateDbDir(
-	DbDirNode		*dbDirNode);
+	DbDirNode					*dbDirNode,
+	
+	StorageManagerMirrorMode	mirrorMode,
+	
+	bool						ignoreAlreadyExists,
+	
+	int 						*primaryError,
+	
+	int 						*mirrorError);
 
 extern void MirroredFileSysObj_ScheduleDropDbDir(
-	DbDirNode		*dbDirNode);
+	DbDirNode		*dbDirNode,
+	
+	ItemPointer		 persistentTid,
+
+	int64 			persistentSerialNum);
 
 extern void MirroredFileSysObj_DropDbDir(
-	DbDirNode		*dbDirNode,
+	DbDirNode					*dbDirNode,
 
-	bool	isRedo);
+	StorageManagerMirrorMode 	mirrorMode,
 
-extern void MirroredFileSysObj_CreateRelFile(
-	SMgrRelation smgrOpen,
+	bool 						ignoreNonExistence);
 
-	ItemPointer persistentTid,
+extern void MirroredFileSysObj_TransactionCreateBufferPoolFile(
+	SMgrRelation 			smgrOpen,
 
-	int64	*persistentSerialNum,
+	bool 					isLocalBuf,
 
-	bool isLocalBuf);
+	char					*relationName,
 
-extern void MirroredFileSysObj_CreateOnlyRelFile(
-	SMgrRelation smgrOpen,
+	bool					doJustInTimeDirCreate,
 
-	bool isLocalBuf);
+	ItemPointer 			persistentTid,
 
-extern void MirroredFileSysObj_ScheduleDropRelFile(
-	SMgrRelation smgrOpen,
+	int64					*persistentSerialNum);
 
-	ItemPointer persistentTid,
+extern void MirroredFileSysObj_TransactionCreateAppendOnlyFile(
+	RelFileNode 			*relFileNode,
 
-	int64	persistentSerialNum,
+	int32					segmentFileNum,
 
-	bool isLocalBuf);
+	char					*relationName,
+
+	bool					doJustInTimeDirCreate,
+
+	ItemPointer 			persistentTid,
+
+	int64					*persistentSerialNum);
+extern void MirroredFileSysObj_CreateBufferPoolFile(
+	SMgrRelation 				smgrOpen,
+
+	bool 						isLocalBuf,
+
+	char						*relationName,
+					/* For tracing only.  Can be NULL in some execution paths. */
+
+	StorageManagerMirrorMode 	mirrorMode,
+
+	bool						ignoreAlreadyExists,
+
+	int							*primaryError,
+
+	int							*mirrorError);
+
+extern void MirroredFileSysObj_CreateAppendOnlyFile(
+	RelFileNode 				*relFileNode,
+
+	int32						segmentFileNum,
+
+	char						*relationName,
+					/* For tracing only.  Can be NULL in some execution paths. */
+
+	StorageManagerMirrorMode 	mirrorMode,
+
+	bool						ignoreAlreadyExists,
+
+	int							*primaryError,
+
+	int							*mirrorError);
+
+extern void MirroredFileSysObj_ScheduleDropBufferPoolFile(
+	SMgrRelation 				smgrOpen,
+
+	bool 						isLocalBuf,
+
+	char						*relationName,
+
+	ItemPointer 				persistentTid,
+
+	int64						persistentSerialNum);
+
+extern void MirroredFileSysObj_ScheduleDropAppendOnlyFile(
+	RelFileNode 				*relFileNode,
+
+	int32						segmentFileNum,
+
+	char						*relationName,
+
+	ItemPointer 				persistentTid,
+
+	int64						persistentSerialNum);
 
 extern void MirroredFileSysObj_DropRelFile(
-	SMgrRelation smgrOpen,
+	RelFileNode 				*relFileNode,
 
-	bool isLocalBuf,
+	int32						segmentFileNum,
 
-	bool isRedo);
+	PersistentFileSysRelStorageMgr relStorageMgr,
+
+	char						*relationName,
+					/* For tracing only.  Can be NULL in some execution paths. */
+
+	bool 						isLocalBuf,
+
+	StorageManagerMirrorMode 	mirrorMode,
+
+	bool 						ignoreNonExistence);
 
 
 #endif   /* CDBMIRROREDFSOBJ_H */

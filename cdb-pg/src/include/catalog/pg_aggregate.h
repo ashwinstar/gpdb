@@ -121,6 +121,7 @@ DATA(insert ( 2130	numeric_larger	- numeric_larger	- -				1756	1700	_null_ ));
 DATA(insert ( 2050	array_larger	- array_larger		- -				1073	2277	_null_ ));
 DATA(insert ( 2244	bpchar_larger	- bpchar_larger		- -				1060	1042	_null_ ));
 DATA(insert ( 2797	tidlarger		- tidlarger			- -				2800	27		_null_ ));
+DATA(insert ( 3332	gpxlogloclarger	- gpxlogloclarger	- -				3328	3310	_null_ ));
 
 /* min */
 DATA(insert ( 2131	int8smaller		- int8smaller		- -				412		20		_null_ ));
@@ -142,6 +143,7 @@ DATA(insert ( 2146	numeric_smaller - numeric_smaller	- -				1754	1700	_null_ ));
 DATA(insert ( 2051	array_smaller	- array_smaller		- -				1072	2277	_null_ ));
 DATA(insert ( 2245	bpchar_smaller	- bpchar_smaller	- -				1058	1042	_null_ ));
 DATA(insert ( 2798	tidsmaller		- tidsmaller		- -				2799	27		_null_ ));
+DATA(insert ( 3333	gpxloglocsmaller - gpxloglocsmaller		- -			3327	3310	_null_ ));
 
 /* count */
 DATA(insert ( 2147	int8inc_any		- int8pl	int8mi -				0		20		"0" ));

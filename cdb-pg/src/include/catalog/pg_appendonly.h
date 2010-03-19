@@ -121,4 +121,10 @@ UpdateAppendOnlyEntryAuxOids(Oid relid,
 extern void
 RemoveAppendonlyEntry(Oid relid);
 
+extern void
+TransferAppendonlyEntry(Oid sourceRelId, Oid targetRelId);
+
+extern void
+SwapAppendonlyEntries(Oid entryRelId1, Oid entryRelId2);
+
 #endif   /* PG_APPENDONLY_H */

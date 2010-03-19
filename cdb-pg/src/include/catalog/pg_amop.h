@@ -1333,4 +1333,13 @@ DATA(insert (	3048	0 3 f  811 ));
 DATA(insert (	3048	0 4 f  816 ));
 DATA(insert (	3048	0 5 f  814 ));
 
+/*
+ * gpxlogloc
+ */
+DATA(insert (	2904	0 1 f 3327 ));
+DATA(insert (	2904	0 2 f 3329 ));
+DATA(insert (	2904	0 3 f 3325 ));
+DATA(insert (	2904	0 4 f 3330 ));
+DATA(insert (	2904	0 5 f 3328 ));
+
 #endif   /* PG_AMOP_H */

@@ -304,6 +304,33 @@ void FormTablespacePath(
 }
 
 
+void 
+FormRelationPath(char *relationPath, char *filespaceLocation, RelFileNode rnode)
+{
+	if (rnode.spcNode == GLOBALTABLESPACE_OID)
+	{
+		/* Shared system relations live in {datadir}/global */
+		Assert(rnode.dbNode == 0);
+		
+		sprintf(relationPath, "global/%u", rnode.relNode);
+	}
+	else if (rnode.spcNode == DEFAULTTABLESPACE_OID)
+	{
+		/* The default tablespace is {datadir}/base */
+		
+		sprintf(relationPath, "base/%u/%u",
+				rnode.dbNode, rnode.relNode);
+	}
+	else
+	{
+		sprintf(relationPath, "%s/%u/%u/%u",
+				filespaceLocation,
+				rnode.spcNode,
+				rnode.dbNode,
+				rnode.relNode);
+	}	
+}
+
 /*
  * IsSystemRelation
  *		True iff the relation is a system catalog relation.

@@ -83,4 +83,13 @@ typedef struct RelFileNode
 	 (node1).dbNode == (node2).dbNode && \
 	 (node1).spcNode == (node2).spcNode)
 
+inline static bool RelFileNode_IsEmpty(
+	RelFileNode	*relFileNode)
+{
+	return (relFileNode->spcNode == 0 &&
+		    relFileNode->dbNode == 0 &&
+		    relFileNode->relNode == 0);
+}
+
+
 #endif   /* RELFILENODE_H */

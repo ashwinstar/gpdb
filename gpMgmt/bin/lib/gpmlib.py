@@ -824,9 +824,6 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile,
     if not ok:
         fatal('failed to start mirror segment %s:%s in admin mode' % (dst_cfg['hostname'], dst_cfg['datadir']))
 
-    # update dbid, contentid data
-    #  -- todo MIRRORING this needs to update the dbid, contentid, etc. files on the machine itself
-
     if force_stop:
         # stop mirror segment
         log_info('stop segment datadir=%s port=%d on %s' % (dst_cfg['datadir'], dst_cfg['port'], dst_cfg['hostname'])) 

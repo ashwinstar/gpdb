@@ -8,12 +8,10 @@
 # todo MIRRORING STOP the old mirror in case they are running? (when failover to a new location)
 # todo MIRRORING checks for being able to build target directory
 # todo MIRRORING what is: multi_home = gpmlib.chk_multi_home(hosts) (from other gprecoverseg)
-# todo MIRRORING implement pause/unpause of fault prober properly
 # todo MIRRORING is it okay to leave the temporary directory sitting around (as gpexpand seems to do?)
 # todo MIRRORING need to compress arguments sent to segments?  I think command lines can be pretty long, but should test it
 # todo MIRRORING make sure we get good errors out when trying to build mirror data directories
 #
-# todo MIRRORING we should copy postgresql.conf from some other segment rather than the master (see what gpexpand does) since settings can be different on segments
 # todo MIRRORING: make sure created directories have the right permissions?
 #
 # todo MIRRORING if from config file, we should NOT take -F and instead should get full/incremental commands from the file?
@@ -22,15 +20,13 @@
 # todo MIRRORING what about chk_pool_dir_available from gprecoverseg?  Is that needed herE?
 # todo MIRRORING include check for passive standby master
 #
-# todo code reorg and consolidation with gpexpand?
-#
 # todo: catch string-to-int and other errors when parsing file
 #
 # todo MIRRORING test cases where input file says to recover a file in-place (perhaps with a change to ports)
 # todo MIRRORING (bugfix) escaping of directory names in unix.LocalCopy
-# todo MIRRORING it's a little quirky that caller must set up failed/failover so that failover is in gparray but failed is not (if both set)...change that, or at least protect against problems
 # todo MIRRORING when failing over to another host we may need to change port numbers as well!
 #
+# todO MIRRORING open question: okay to pause fault prober while prompt to user is up?
 #
 # Options removed when 3.4 gprecoverseg was implemented:
 #        --version
@@ -279,35 +275,41 @@ class GpRecoverSegmentProgram:
         # if gpmlib.chk_on_passive_standby(masterPort): # todo: what is this doing?  Proper error message
          #    raise Exception('Unable to process requested command')
 
-        # done basic checks, now load config
-        faultProberInterface.getFaultProber().pauseFaultProber()
-        confProvider = configInterface.getConfigurationProvider().initializeProvider(gpEnv.getMasterPort(), False)
-        gpArray = confProvider.loadSystemConfig()
+        faultProber = faultProberInterface.getFaultProber().initializeProber(gpEnv.getMasterPort())
+        try:
+            faultProber.pauseFaultProber()
+            confProvider = configInterface.getConfigurationProvider().initializeProvider(gpEnv.getMasterPort(), False)
+            gpArray = confProvider.loadSystemConfig()
 
-        # check that we actually have mirrors
-        if gpArray.getFaultStrategy() != gparray.FAULT_STRATEGY_FILE_REPLICATION:
-            raise ExceptionNoStackTraceNeeded( \
-                    'GPDB Mirroring replication is not configured for this Greenplum Database instance.')
+            # check that we actually have mirrors
+            if gpArray.getFaultStrategy() != gparray.FAULT_STRATEGY_FILE_REPLICATION:
+                raise ExceptionNoStackTraceNeeded( \
+                        'GPDB Mirroring replication is not configured for this Greenplum Database instance.')
 
-        # figure out what needs to be done
-        mirrorBuilder = self.getRecoveryActionsBasedOnOptions(gpArray)
+            # figure out what needs to be done
+            mirrorBuilder = self.getRecoveryActionsBasedOnOptions(gpArray)
 
 
-        if self.__options.outputSampleConfigFile is not None:
-            # just output config file and done
-            self.outputToFile(mirrorBuilder, self.__options.outputSampleConfigFile)
-            logger.info('Configuration file output to %s successfully.' % self.__options.outputSampleConfigFile)
-        else:
-            mirrorBuilder.checkForPortAndDirectoryConflicts(gpArray)
+            if self.__options.outputSampleConfigFile is not None:
+                # just output config file and done
+                self.outputToFile(mirrorBuilder, self.__options.outputSampleConfigFile)
+                logger.info('Configuration file output to %s successfully.' % self.__options.outputSampleConfigFile)
+            elif len(mirrorBuilder.getMirrorsToBuild()) == 0:
+                logger.info('No segments to recover')
+            else:
+                mirrorBuilder.checkForPortAndDirectoryConflicts(gpArray)
 
-            if self.__options.interactive:
-                self.displayRecovery(mirrorBuilder)
-                if not userinput.ask_yesno(None, "\nContinue with segment recovery procedure", 'N'):
-                    raise UserAbortedException()
+                if self.__options.interactive:
+                    self.displayRecovery(mirrorBuilder)
+                    if not userinput.ask_yesno(None, "\nContinue with segment recovery procedure", 'N'):
+                        raise UserAbortedException()
 
-            mirrorBuilder.buildMirrors("recover", gpEnv, gpArray )
+                mirrorBuilder.buildMirrors("recover", gpEnv, gpArray )
 
-        faultProberInterface.getFaultProber().unpauseFaultProber()
+        finally:
+            if faultProber.isFaultProberPaused():
+                faultProber.unpauseFaultProber()
+
         return 0 # success -- exit code 0!
 
     def cleanup(self):

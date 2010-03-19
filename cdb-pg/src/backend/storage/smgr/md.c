@@ -200,77 +200,104 @@ mdinit(void)
  *
  * If isRedo is true, it's okay for the filespace directory to exist already.
  */
-bool
+void
 mdcreatefilespacedir(
-	Oid filespaceOid, 
-	char *primaryFilespaceLocation, 
-	char *mirrorFilespaceLocation, 
-	bool isRedo)
+	Oid 						filespaceOid,
+
+	char						*primaryFilespaceLocation,
+								/* 
+								 * The primary filespace directory path.  NOT Blank padded.
+								 * Just a NULL terminated string.
+								 */
+
+	char						*mirrorFilespaceLocation,
+
+	StorageManagerMirrorMode	mirrorMode,
+
+	bool						ignoreAlreadyExists,
+
+	int 						*primaryError,
+
+	int 						*mirrorError)
 {
-	bool result;
+	*primaryError = 0;
+	*mirrorError = 0;
 
-	// UNDONE: Need tablespace directory equivalent
-//	if (FileRepPrimary_MirrorCreate(
-//				FileRep_GetDirIdentifier(*dbDirNode),
-//				FileRepRelationTypeDir) != 0) 
-//		ereport(LOG,
-//				(errmsg("could not sent create dbdir to mirror")));
+	if (FileRepPrimary_MirrorCreate(
+				FileRep_GetDirFilespaceIdentifier(
+												  mirrorFilespaceLocation),
+				FileRepRelationTypeDir) != 0) 
+		ereport(LOG,
+				(errmsg("ERROR(filerep): could not sent create dbdir to mirror")));
 
-	// UNDONE: Do we need to preserve the errno?  Probably.
-	result = (mkdir(primaryFilespaceLocation, 0700) == 0);
+	if (mkdir(primaryFilespaceLocation, 0700) < 0)
+		*primaryError = errno;
 	
-//	if (FileRepPrimary_IsOperationCompleted(
-//				   FileRep_GetDirIdentifier(*dbDirNode),							
-//				   FileRepRelationTypeDir) == FALSE)	
-//		ereport(LOG,
-//				(errmsg("could not create dbdir on mirror ")));	
-
-	return result;
-
+	if (FileRepPrimary_IsOperationCompleted(
+					FileRep_GetDirFilespaceIdentifier(
+													  mirrorFilespaceLocation),
+				   FileRepRelationTypeDir) == FALSE)	
+			ereport(LOG,
+				(errmsg("ERROR(filerep): could not create dbdir on mirror ")));	
 }
-
 
 /*
  *	mdcreatetablespacedir() -- Create a new tablespace directory on magnetic disk.
  *
  * If isRedo is true, it's okay for the tablespace directory to exist already.
  */
-bool
-mdcreatetablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo)
+void
+mdcreatetablespacedir(
+	Oid							tablespaceOid,
+
+	StorageManagerMirrorMode 	mirrorMode,
+
+	bool						ignoreAlreadyExists,
+
+	int							*primaryError,
+
+	int							*mirrorError)
 {
 	char *primaryFilespaceLocation;
 	char *mirrorFilespaceLocation;
 	char tablespacePath[MAXPGPATH];
-	bool result;
 
+	*primaryError = 0;
+	*mirrorError = 0;
+	
 	PersistentTablespace_GetPrimaryAndMirrorFilespaces(
-										tablespaceDirNode->tablespace,
+										tablespaceOid,
 										&primaryFilespaceLocation,
 										&mirrorFilespaceLocation);
 
-	// UNDONE: Need tablespace directory equivalent
-//	if (FileRepPrimary_MirrorCreate(
-//				FileRep_GetDirIdentifier(*dbDirNode),
-//				FileRepRelationTypeDir) != 0) 
-//		ereport(LOG,
-//				(errmsg("could not sent create dbdir to mirror")));
+	if (FileRepPrimary_MirrorCreate(
+				FileRep_GetDirTablespaceIdentifier(
+												   mirrorFilespaceLocation,
+												   tablespaceOid),
+				FileRepRelationTypeDir) != 0) 
+		ereport(LOG,
+				(errmsg("ERROR(filerep): could not sent create dbdir to mirror")));
 
 	FormTablespacePath(
 				tablespacePath,
 				primaryFilespaceLocation,
-				tablespaceDirNode->tablespace);
+				tablespaceOid);
 
-	// UNDONE: Do we need to preserve the errno?  Probably.
-	result = (mkdir(tablespacePath, 0700) == 0);
+	if (mkdir(tablespacePath, 0700) < 0)
+		*primaryError = errno;
 	
-//	if (FileRepPrimary_IsOperationCompleted(
-//				   FileRep_GetDirIdentifier(*dbDirNode),							
-//				   FileRepRelationTypeDir) == FALSE)	
-//		ereport(LOG,
-//				(errmsg("could not create dbdir on mirror ")));	
+	if (FileRepPrimary_IsOperationCompleted(
+				FileRep_GetDirTablespaceIdentifier(
+												   mirrorFilespaceLocation,
+												   tablespaceOid),
+				FileRepRelationTypeDir) == FALSE)	
+		ereport(LOG,
+				(errmsg("ERROR(filerep): could not create dbdir on mirror ")));	
 
-	return result;
-
+	if (primaryFilespaceLocation)
+		pfree(primaryFilespaceLocation);
+	if (mirrorFilespaceLocation)
+		pfree(mirrorFilespaceLocation);
 }
 
 /*
@@ -278,24 +305,37 @@ mdcreatetablespacedir(TablespaceDirNode *tablespaceDirNode, bool isRedo)
  *
  * If isRedo is true, it's okay for the database directory to exist already.
  */
-bool
-mdcreatedbdir(DbDirNode *dbDirNode)
+void
+mdcreatedbdir(
+	DbDirNode					*dbDirNode,
+
+	StorageManagerMirrorMode 	mirrorMode,
+
+	bool						ignoreAlreadyExists,
+
+	int							*primaryError,
+
+	int							*mirrorError)
 {
 	char *primaryFilespaceLocation;
 	char *mirrorFilespaceLocation;
 	char dbPath[MAXPGPATH];
-	bool result;
 
+	*primaryError = 0;
+	*mirrorError = 0;
+	
 	PersistentTablespace_GetPrimaryAndMirrorFilespaces(
 										dbDirNode->tablespace,
 										&primaryFilespaceLocation,
 										&mirrorFilespaceLocation);
 	
 	if (FileRepPrimary_MirrorCreate(
-				FileRep_GetDirIdentifier(*dbDirNode),
+				FileRep_GetDirDatabaseIdentifier(
+												 mirrorFilespaceLocation,
+												 *dbDirNode),
 				FileRepRelationTypeDir) != 0) 
 		ereport(LOG,
-				(errmsg("could not sent create dbdir to mirror")));
+				(errmsg("ERROR(filerep): could not sent create dbdir to mirror")));
 
 	FormDatabasePath(
 				dbPath,
@@ -303,33 +343,51 @@ mdcreatedbdir(DbDirNode *dbDirNode)
 				dbDirNode->tablespace,
 				dbDirNode->database);
 
-	// UNDONE: Do we need to preserve the errno?  Probably.
-	result = (mkdir(dbPath, 0700) == 0);
+	if (mkdir(dbPath, 0700) < 0)
+		*primaryError = errno;
 	
 	if (FileRepPrimary_IsOperationCompleted(
-				   FileRep_GetDirIdentifier(*dbDirNode),							
+				FileRep_GetDirDatabaseIdentifier(
+												 mirrorFilespaceLocation,
+												 *dbDirNode),
 				   FileRepRelationTypeDir) == FALSE)	
 		ereport(LOG,
-				(errmsg("could not create dbdir on mirror ")));	
+				(errmsg("ERROR(filerep): could not create dbdir on mirror ")));	
 
-	return result;
+	if (primaryFilespaceLocation)
+		pfree(primaryFilespaceLocation);
+	if (mirrorFilespaceLocation)
+		pfree(mirrorFilespaceLocation);
 }
 
 
 /*
  *	mdcreate() -- Create a new relation on magnetic disk.
- *
- * If isRedo is true, it's okay for the relation to exist already.
  */
-bool
+void
 mdcreate(
-	SMgrRelation reln, 
-	bool isRedo)
+	SMgrRelation 				reln,
+
+	bool 						isLocalBuf, 
+
+	char						*relationName,
+					/* For tracing only.  Can be NULL in some execution paths. */
+
+	StorageManagerMirrorMode 	mirrorMode,
+
+	bool						ignoreAlreadyExists,
+
+	int							*primaryError,
+
+	int							*mirrorError)
 {
 	MirroredBufferPoolOpen		mirroredOpen;
 
-	if (isRedo && reln->md_mirvec != NULL)
-		return true;			/* created and opened already... */
+	*primaryError = 0;
+	*mirrorError = 0;
+
+	if (reln->md_mirvec != NULL)
+		mdclose(reln);		// Don't assume it has been created -- make sure it gets created on both mirrors.
 
 	Assert(reln->md_mirvec == NULL);
 	
@@ -337,6 +395,7 @@ mdcreate(
 					&mirroredOpen,
 					&reln->smgr_rnode,
 					/* segmentFileNum */ 0,
+					relationName,
 					O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
 					0600))
 	{
@@ -348,21 +407,24 @@ mdcreate(
 		 * script nominally creates it.  Therefore, allow the file to exist
 		 * already, even if isRedo is not set.	(See also mdopen)
 		 */
-		if (isRedo || IsBootstrapProcessingMode())
+		if (ignoreAlreadyExists || IsBootstrapProcessingMode())
 			MirroredBufferPool_Open(
 						&mirroredOpen,
 						&reln->smgr_rnode,
 						/* segmentFileNum */ 0,
+						relationName,
 						O_RDWR | PG_BINARY,
 						0600);
 		if (!MirroredBufferPool_IsActive(&mirroredOpen))
 		{
 			/* be sure to return the error reported by create, not open */
-			errno = save_errno;
-			return false;
+			*primaryError = save_errno;
+			return;
 		}
 		errno = 0;
 	}
+
+	*primaryError = errno;
 
 	reln->md_mirvec = _mirvec_alloc();
 
@@ -371,8 +433,6 @@ mdcreate(
 #ifndef LET_OS_MANAGE_FILESIZE
 	reln->md_mirvec->mdmir_chain = NULL;
 #endif
-
-	return true;
 }
 
 /*
@@ -384,7 +444,15 @@ mdcreate(
  * If isRedo is true, it's okay for the relation to be already gone.
  */
 bool
-mdunlink(RelFileNode rnode, bool isRedo)
+mdunlink(
+	RelFileNode 				rnode, 
+
+	char						*relationName,
+					/* For tracing only.  Can be NULL in some execution paths. */
+
+	StorageManagerMirrorMode 	mode,
+
+	bool 						ignoreNonExistence)
 {
 	bool		status = true;
 	int			save_errno = 0;
@@ -396,9 +464,9 @@ mdunlink(RelFileNode rnode, bool isRedo)
 	ForgetRelationFsyncRequests(rnode);
 
 	/* Delete the first segment, or only segment if not doing segmenting */
-	if (!MirroredBufferPool_Drop(&rnode, 0))
+	if (!MirroredBufferPool_Drop(&rnode, /* segmentFileNum */ 0, relationName))
 	{
-		if (!isRedo || errno != ENOENT)
+		if (!ignoreNonExistence || errno != ENOENT)
 		{
 			status = false;
 			save_errno = errno;
@@ -445,7 +513,7 @@ mdunlink(RelFileNode rnode, bool isRedo)
 
 								scanCount = sscanf(&match[constantPrefixLen], "%u", &segmentFileNum);
 							
-                                if(!MirroredBufferPool_Drop(&rnode, segmentFileNum))
+                                if(!MirroredBufferPool_Drop(&rnode, segmentFileNum, relationName))
                                 {
                                         status = false;
                                         save_errno = errno;
@@ -470,25 +538,39 @@ mdunlink(RelFileNode rnode, bool isRedo)
  * If isRedo is true, it's okay for the filespace directory to exist already.
  */
 bool
-mdrmfilespacedir(Oid filespaceOid, char *primaryFilespaceLocation, char *mirrorFilespaceLocation, bool isRedo)
+mdrmfilespacedir(
+	Oid							filespaceOid,
+
+	char						*primaryFilespaceLocation,
+								/* 
+								 * The primary filespace directory path.  NOT Blank padded.
+								 * Just a NULL terminated string.
+								 */
+	
+	char						*mirrorFilespaceLocation,
+
+	StorageManagerMirrorMode 	mirrorMode,
+
+	bool 						ignoreNonExistence)
 {
 	bool result;
 
-	// UNDONE: Need filespace version
-//	if (FileRepPrimary_MirrorDrop(
-//				FileRep_GetDirIdentifier(*dbDirNode),
-//				FileRepRelationTypeDir) != 0) 
-//		ereport(LOG,
-//				(errmsg("could not sent drop dbdir to mirror")));
+	if (FileRepPrimary_MirrorDrop(
+				FileRep_GetDirFilespaceIdentifier(
+												  mirrorFilespaceLocation),
+				FileRepRelationTypeDir) != 0) 
+		ereport(LOG,
+				(errmsg("ERROR(filerep): could not sent drop dbdir to mirror")));
 			
 	// UNDONE: Do we need to preserve the errno?  Probably.
 	result = rmtree(primaryFilespaceLocation, true);
 
-//	if (FileRepPrimary_IsOperationCompleted(
-//					FileRep_GetDirIdentifier(*dbDirNode),							
-//					FileRepRelationTypeDir) == FALSE)	
-//		ereport(LOG,
-//				(errmsg("could not drop dbdir on mirror ")));	
+	if (FileRepPrimary_IsOperationCompleted(
+					FileRep_GetDirFilespaceIdentifier(
+													  mirrorFilespaceLocation),
+					FileRepRelationTypeDir) == FALSE)	
+		ereport(LOG,
+				(errmsg("ERROR(filerep): could not drop dbdir on mirror ")));	
 
 	return result;
 }
@@ -499,7 +581,12 @@ mdrmfilespacedir(Oid filespaceOid, char *primaryFilespaceLocation, char *mirrorF
  * If isRedo is true, it's okay for the tablespace directory to exist already.
  */
 bool
-mdrmtablespacedir(Oid tablespaceOid, bool isRedo)
+mdrmtablespacedir(
+	Oid							tablespaceOid,
+
+	StorageManagerMirrorMode 	mirrorMode,
+
+	bool 						ignoreNonExistence)
 {
 	char *primaryFilespaceLocation;
 	char *mirrorFilespaceLocation;
@@ -511,12 +598,13 @@ mdrmtablespacedir(Oid tablespaceOid, bool isRedo)
 										&primaryFilespaceLocation,
 										&mirrorFilespaceLocation);
 
-	// UNDONE: Need tablespace version
-//	if (FileRepPrimary_MirrorDrop(
-//				FileRep_GetDirIdentifier(*dbDirNode),
-//				FileRepRelationTypeDir) != 0) 
-//		ereport(LOG,
-//				(errmsg("could not sent drop dbdir to mirror")));
+	if (FileRepPrimary_MirrorDrop(
+			  FileRep_GetDirTablespaceIdentifier(
+												 mirrorFilespaceLocation,
+												 tablespaceOid),
+			  FileRepRelationTypeDir) != 0) 
+		ereport(LOG,
+				(errmsg("ERROR(filerep): could not sent drop dbdir to mirror")));
 	
 	/*
 	 * We've removed all relations, so all that is left are PG* files and work files.
@@ -526,14 +614,16 @@ mdrmtablespacedir(Oid tablespaceOid, bool isRedo)
 				primaryFilespaceLocation,
 				tablespaceOid);
 		
-	// UNDONE: Do we need to preserve the errno?  Probably.
+	// UNDONE: Not clear errno valid
 	result = rmtree(tablespacePath, true);
 
-//	if (FileRepPrimary_IsOperationCompleted(
-//					FileRep_GetDirIdentifier(*dbDirNode),							
-//					FileRepRelationTypeDir) == FALSE)	
-//		ereport(LOG,
-//				(errmsg("could not drop dbdir on mirror ")));	
+	if (FileRepPrimary_IsOperationCompleted(
+					FileRep_GetDirTablespaceIdentifier(
+													   mirrorFilespaceLocation,
+													   tablespaceOid),
+					FileRepRelationTypeDir) == FALSE)	
+		ereport(LOG,
+				(errmsg("ERROR(filerep): could not drop dbdir on mirror ")));	
 
 	if (primaryFilespaceLocation != NULL)
 		pfree(primaryFilespaceLocation);
@@ -550,7 +640,12 @@ mdrmtablespacedir(Oid tablespaceOid, bool isRedo)
  * If isRedo is true, it's okay for the database directory to exist already.
  */
 bool
-mdrmdbdir(DbDirNode *dbDirNode, bool isRedo)
+mdrmdbdir(
+	DbDirNode					*dbDirNode,
+
+	StorageManagerMirrorMode 	mirrorMode,
+
+	bool 						ignoreNonExistence)
 {
 	char *primaryFilespaceLocation;
 	char *mirrorFilespaceLocation;
@@ -563,10 +658,12 @@ mdrmdbdir(DbDirNode *dbDirNode, bool isRedo)
 										&mirrorFilespaceLocation);
 	
 	if (FileRepPrimary_MirrorDrop(
-				FileRep_GetDirIdentifier(*dbDirNode),
+				FileRep_GetDirDatabaseIdentifier(
+												 mirrorFilespaceLocation,
+												 *dbDirNode),
 				FileRepRelationTypeDir) != 0) 
 		ereport(LOG,
-				(errmsg("could not sent drop dbdir to mirror")));
+				(errmsg("ERROR(filerep): could not sent drop dbdir to mirror")));
 	
 	/*
 	 * We've removed all relations, so all that is left are PG* files and work files.
@@ -581,10 +678,12 @@ mdrmdbdir(DbDirNode *dbDirNode, bool isRedo)
 	result = rmtree(dbPath, true);
 
 	if (FileRepPrimary_IsOperationCompleted(
-					FileRep_GetDirIdentifier(*dbDirNode),							
-					FileRepRelationTypeDir) == FALSE)	
+				FileRep_GetDirDatabaseIdentifier(
+												 mirrorFilespaceLocation,
+												 *dbDirNode),
+				FileRepRelationTypeDir) == FALSE)	
 		ereport(LOG,
-				(errmsg("could not drop dbdir on mirror ")));	
+				(errmsg("ERROR(filerep): could not drop dbdir on mirror ")));	
 
 	if (primaryFilespaceLocation != NULL)
 		pfree(primaryFilespaceLocation);
@@ -693,6 +792,7 @@ mdopen(SMgrRelation reln, bool allowNotFound)
 				&mirroredOpen,
 				&reln->smgr_rnode,
 				/* segmentFileNum */ 0,
+				/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
 				O_RDWR | PG_BINARY,
 				0600))
 	{
@@ -707,6 +807,7 @@ mdopen(SMgrRelation reln, bool allowNotFound)
 					&mirroredOpen,
 					&reln->smgr_rnode,
 					/* segmentFileNum */ 0,
+					/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
 					O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
 					0600);
 		if (!MirroredBufferPool_IsActive(&mirroredOpen))
@@ -1471,6 +1572,7 @@ _mdmir_openseg(SMgrRelation reln, BlockNumber segno, int oflags)
 					&mirroredOpen,
 					&reln->smgr_rnode,
 					segno,
+					/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
 					O_RDWR | PG_BINARY | oflags,
 					0600);
 

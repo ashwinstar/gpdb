@@ -68,15 +68,15 @@ else
 	else
 		QD_DBNAME=$PGDATABASE
 	fi
-	$ECHO 
+	$ECHO
 	$ECHO "      `basename $0`"
 	$ECHO
 	$ECHO "      Provides actual disk space usage for a Greenplum table/index or database name supplied"
 	$ECHO "      as a parameter to this script"
-	$ECHO 
+	$ECHO
 	$ECHO "      Usage:"
 	$ECHO "      $0 [OPTIONS]"
-	$ECHO 
+	$ECHO
 	$ECHO "      General options:"
 	$ECHO "      -?, display this help message & exit"
 	$ECHO "      -v, display version information & exit"
@@ -85,7 +85,7 @@ else
 	$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
 	$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
 	$ECHO "      -D, set log output to debug level, shows all function calls"
-	$ECHO 
+	$ECHO
 	$ECHO "      Connection options:"
 	$ECHO "      -d, <Master instance directory> name of alternative Master instance to run against [optional]"
 	$ECHO
@@ -158,25 +158,50 @@ GET_OID_DATA () {
 				IDX_NAME=`${EXPORT_LIB_PATH};$PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select relname from pg_class where oid=${IDX_OID}"`
 				IDX_SIZE=`${EXPORT_LIB_PATH};$PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select * from pg_relation_size ('${IDX_NAME}');"`
 				IDX_DATA="$IDX_DATA ${IDX_NAME}:${IDX_SIZE}"
-			done	
+			done
 			SKIP_INDEX=0
 		fi
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+# must have I_INDEX value set
+#
+# Sets PEER_ARGS as output
+GET_PEER_ARGS_FOR_SEGSIZE () {
+    PRIMARY_VAL=${QE_MATCHING_PRIMARY_ARRAY[$I_INDEX]}
+    PRIMARY_HOST=`$ECHO $PRIMARY_VAL|$CUT -d'|' -f1`
+    PRIMARY_DIR=`$ECHO $PRIMARY_VAL|$CUT -d'|' -f2`
+    PRIMARY_PORT=`$ECHO $PRIMARY_VAL|$CUT -d'|' -f3`
+    PEER_ARGS=`$ECHO $PRIMARY_HOST $PRIMARY_PORT $PRIMARY_DIR`
+}
+
+#
+# pass a single argument: 1 for table, 2 for index
+#
+SEND_SIZE_REQUEST () {
+    LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+    BATCH_LIMIT=${#QE_ARRAY[@]}
+    PARALLEL_SETUP  $PARALLEL_STATUS_FILE
+    I_INDEX=0
+    for I in "${QE_ARRAY[@]}"
+    do
+        SET_VAR
+        GET_PEER_ARGS_FOR_SEGSIZE
+
+        if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+        $GPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE ${SCHEMA_NAME}.$TABLE_NAME "${QD_DBNAME}" $1 $TMPFILE "$QD_DBNAME" $PEER_ARGS &
+        PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
+
+        ((I_INDEX=I_INDEX+1))
+    done
+    LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 SEND_TABLE_SIZE_REQUEST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	PG_REL_SIZEB=`${EXPORT_LIB_PATH};$PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select * from pg_relation_size ('${SCHEMA_NAME}.${TABLE_NAME}');"`
-	BATCH_LIMIT=${#QE_ARRAY[@]}
-	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
-	for I in "${QE_ARRAY[@]}"
-	do
-		SET_VAR
-		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$GPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE ${SCHEMA_NAME}.$TABLE_NAME "${QD_DBNAME}" 1 $TMPFILE "$QD_DBNAME" &
-		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
-	done	
+    SEND_SIZE_REQUEST 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -188,15 +213,7 @@ SET_VAR () {
 
 SEND_INDEX_SIZE_REQUEST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	BATCH_LIMIT=${#QE_ARRAY[@]}
-	PARALLEL_SETUP  $PARALLEL_STATUS_FILE	
-	for I in "${QE_ARRAY[@]}"
-	do
-		SET_VAR
-		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$GPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE ${SCHEMA_NAME}.$TABLE_NAME "${QD_DBNAME}" 2 $TMPFILE "$QD_DBNAME" &
-		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
-	done
+    SEND_SIZE_REQUEST 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -223,23 +240,40 @@ CHK_SCHEMA_PREFIX () {
 SEND_DB_SIZE_REQUEST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	BATCH_LIMIT=${#QE_ARRAY[@]}
-	PARALLEL_SETUP  $PARALLEL_STATUS_FILE	
-	for I in "${QE_ARRAY[@]}"
+	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
+	I_INDEX=0
+    for I in "${QE_ARRAY[@]}"
 	do
-		QE_HOST=`$ECHO $I|$CUT -d'|' -f1`
-		QE_DIR=`$ECHO $I|$CUT -d'|' -f2`
-		QE_PORT=`$ECHO $I|$CUT -d'|' -f3`
+        SET_VAR
+        GET_PEER_ARGS_FOR_SEGSIZE
+
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$GPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE 0 $DB_OID 3 $TMPFILE "$QD_DBNAME" &
+        $GPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE 0 $DB_OID 3 $TMPFILE "$QD_DBNAME" $PEER_ARGS &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
-	done	
+
+        ((I_INDEX=I_INDEX+1))
+    done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+#
+# pass four args: host, port, segment, size
+#
+PRINT_SINGLE_SIZE () {
+    if [ $DISPLAY_TYPE -eq 1 ];then
+        if [ $VERBOSE ];then
+            LOG_MSG "[INFO]:-Host $1 Port $2 Segment $3 Space Used = $4 ${TXT_SCALE}" 1
+        else
+            $ECHO $I
+            $ECHO $I >> $LOG_FILE
+        fi
+    fi
 }
 
 CALC_TOTAL_SIZE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	TOTAL_SIZE=0
-	for I in `$CAT $TMPFILE| grep -v "|$"` 
+	for I in `$CAT $TMPFILE| grep -v "|$"`
 	do
 		BSIZE=`$ECHO $I|$CUT -d'|' -f4`
 		case $SCALE in
@@ -283,27 +317,27 @@ DISPLAY_SIZE () {
 			   LOG_MSG "[INFO]:-Schema name                = $SCHEMA_NAME" 1
 			   LOG_MSG "[INFO]:-Table name                 = $TABLE_NAME" 1
 			   fi
-		case $SIZE_TYPE in 
+		case $SIZE_TYPE in
 			0) if [ $PARTITIONED = 't' ];then
 			   LOG_MSG "[INFO]:-Table type                 = Partitioned and $TAB_TYPE_TXT" 1
 			   else
 		           LOG_MSG "[INFO]:-Table type                 = Un-Partitioned and $TAB_TYPE_TXT" 1
-			   fi 
-			   LOG_MSG "[INFO]:-Size type                  = Table" 1 
+			   fi
+			   LOG_MSG "[INFO]:-Size type                  = Table" 1
 			   LOG_MSG "[INFO]:-Size from pg_relation_size = $PG_REL_SIZEB Bytes" 1 ;;
 			1) if [ $PARTITIONED = 't' ];then
 			   LOG_MSG "[INFO]:-Table type                 = Partitioned and $TAB_TYPE_TXT" 1
 			   else
 			   LOG_MSG "[INFO]:-Table type                 = Un-Partitioned and $TAB_TYPE_TXT" 1
-			   fi 
+			   fi
 			   LOG_MSG "[INFO]:-Size type                  = Index" 1
 			   for IDX_LINE in $IDX_DATA
 			   do
 				IDX_NAME=`$ECHO $IDX_LINE|$AWK -F":" '{print $1}'`
 				IDX_BYTES=`$ECHO $IDX_LINE|$AWK -F":" '{print $2}'`
-				LOG_MSG "[INFO]:-Index name                 = $IDX_NAME" 1 
+				LOG_MSG "[INFO]:-Index name                 = $IDX_NAME" 1
 			   	LOG_MSG "[INFO]:-Size from pg_relation_size = $IDX_BYTES Bytes" 1
-			   done ;;	
+			   done ;;
 			2) LOG_MSG "[INFO]:-Size type                  = Database" 1;;
 		esac
 			   if [ $REPORT_FAIL -ne 0 ];then
@@ -383,24 +417,43 @@ READ_CHK
 if [ $READ_COUNT -ne 0 ];then
 	ERROR_EXIT "[FATAL]:-This script cannot be used on a Master read only instance" 2
 fi
-case $SIZE_TARGET in 
-	0) GET_QE_DETAILS 
-	   GET_MIRROR_TYPE
-	   if [ $MIR_TYPE_NUM -eq 0 ];then
-	   TYPE_TEXT="Primary [No mirrors configured]"
-	   else
-	   TYPE_TEXT="Primary and Mirror Segments" 
-	   fi
+GET_QE_PRIMARY_DETAILS
+GET_QE_MIRROR_DETAILS
+case $SIZE_TARGET in
+	0) GET_MIRROR_TYPE
+       if [ ${#QE_MIRROR_ARRAY[@]} -eq 0 ];then
+	     TYPE_TEXT="Primary [No mirrors configured]"
+         QE_ARRAY=(${QE_PRIMARY_ARRAY[@]})
+	     QE_MATCHING_PRIMARY_ARRAY=(${QE_PRIMARY_ARRAY[@]})
+       else
+	     TYPE_TEXT="Primary and Mirror Segments"
+
+         QE_ARRAY=(${QE_MIRROR_ARRAY[@]})
+         QE_MATCHING_PRIMARY_ARRAY=(${QE_PRIMARY_ARRAY[@]})
+
+         COUNT=${#QE_ARRAY[@]}
+         for TO_ADD in ${QE_PRIMARY_ARRAY[@]}
+         do
+            QE_ARRAY[$COUNT]=$TO_ADD
+            QE_MATCHING_PRIMARY_ARRAY[$COUNT]=$TO_ADD
+            ((COUNT=COUNT+1))
+         done
+       fi
        	;;
-	1) GET_QE_PRIMARY_DETAILS
-	   QE_ARRAY=(${QE_PRIMARY_ARRAY[@]}) 
-	   TYPE_TEXT="Primary Segments Only" ;;
-	2) GET_QE_MIRROR_DETAILS
+	1)
+	   TYPE_TEXT="Primary Segments Only"
+       QE_ARRAY=(${QE_PRIMARY_ARRAY[@]})
+       QE_MATCHING_PRIMARY_ARRAY=(${QE_PRIMARY_ARRAY[@]})
+        ;;
+	2)
 	   if [ ${#QE_MIRROR_ARRAY[@]} -eq 0 ];then
-	 	ERROR_EXIT "[FATAL]:-No mirrors configured -m option invalid" 2;fi
-	   QE_ARRAY=(${QE_MIRROR_ARRAY[@]}) 
-	   TYPE_TEXT="Mirror Segments Only" ;;
+	     ERROR_EXIT "[FATAL]:-No mirrors configured -m option invalid" 2;fi
+	   TYPE_TEXT="Mirror Segments Only"
+      QE_ARRAY=(${QE_MIRROR_ARRAY[@]})
+      QE_MATCHING_PRIMARY_ARRAY=(${QE_PRIMARY_ARRAY[@]})
+    ;;
 esac
+
 if [ x"" != x"$ALT_DBNAME" ];then
 	QD_DBNAME="$ALT_DBNAME"
 fi
@@ -438,7 +491,7 @@ if [ $SIZE_TYPE -le 1 ];then
 				DISPLAY_SIZE
 				$RM -f $TMPFILE
 			done
-		fi			
+		fi
 	else
 		if [ $SKIP_INDEX -eq 0 ];then
 			SEND_INDEX_SIZE_REQUEST
@@ -462,7 +515,7 @@ if [ $SIZE_TYPE -le 1 ];then
 				fi
 			$RM -f $TMPFILE
 			done
-		fi	
+		fi
 	fi
 else
 	GET_DB_OID_DATA

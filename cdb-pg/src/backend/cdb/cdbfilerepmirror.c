@@ -111,44 +111,21 @@ static void FileRepMirror_RemoveFileName(FileName fileName);
 void 
 FileRepMirror_StartReceiver(void)
 {	
-	char			*primaryHostAddress = NULL;
-	/* The IPv4 address of the primary segment. */
-	
-	char			*mirrorHostAddress = NULL;
-	/* The IPv4 address of the mirror. */
-	
-	int			primaryPort = 0;
-	/* The communication port of the primary. Required for listener ACK. */
-	
-	int			mirrorPort = 0;
-	/* The communication port of the mirror. Required for listener. */
-		
 	int status = STATUS_OK;
 	int retval;
-	bool fullResync = false;
-	
+
 	elog(LOG, "FileRepMirror_StartReceiver() ");
 	
-	primaryMirrorGetFilerepArguments(
-								 &fileRepRole,
-								 &segmentState,
-								 &dataState,
-								 &primaryHostAddress,
-								 &primaryPort,
-								 &mirrorHostAddress,
-								 &mirrorPort,
-								 &fullResync);
-	
-	elog(LOG, "FileRepMirror_StartReceiver() started with role %d\n\t\tstate %d\n\t\tPrimary %s:%d\n\t\tMirror %s:%d\n", 
+	elog(LOG, "FileRepMirror_StartReceiver() started with role %d\n\t\tstate %d\n\t\tPrimary %s:%d\n\t\tMirror %s:%d\n",
 		 fileRepRole, segmentState,
-		 primaryHostAddress, primaryPort, 
-		 mirrorHostAddress, mirrorPort);
+		 fileRepPrimaryHostAddress, fileRepPrimaryPort, 
+		 fileRepMirrorHostAddress, fileRepMirrorPort);
 	
 	Insist(fileRepRole == FileRepMirrorRole);
 	
 	status = FileRepConnServer_StartListener(
-								 mirrorHostAddress,
-								 mirrorPort);
+								 fileRepMirrorHostAddress,
+								 fileRepMirrorPort);
 	if (status == STATUS_OK) {
 		FileRepSubProcess_SetState(FileRepStateReady);
 	}
@@ -159,8 +136,7 @@ FileRepMirror_StartReceiver(void)
 			FileRepSubProcess_SetState(FileRepStateFault);
 		}
 		
-		while (FileRepSubProcess_GetState() == FileRepStateSuspend ||
-			   FileRepSubProcess_GetState() == FileRepStateFault) {
+		while (FileRepSubProcess_GetState() == FileRepStateFault) {
 			
 			FileRepSubProcess_ProcessSignals();
 			pg_usleep(50000L); /* 50 ms */	
@@ -215,14 +191,7 @@ FileRepMirror_StartReceiver(void)
 		
 	} // while(1)	
 	
-
-	if (FileRepSubProcess_GetState() == FileRepStateShutdown) {
-		/* perform graceful shutdown */
-	}
-	
-	/*FileRepConnServer_CloseConnection();*/
-	
-	/* free memory if any allocated */
+	FileRepConnServer_CloseConnection();
 	
 	return;
 }
@@ -241,6 +210,8 @@ FileRepMirror_RunReceiver(void)
 	char					*msgPositionInsert = NULL;
 	FileRepShmemMessageDescr_s  *fileRepShmemMessageDescr;
 	uint32					spareField;
+	bool					waitShutdown = FALSE;
+	bool					requestShutdown = FALSE;
 
 	enum mirror_receiver_state current_state = RECVTYPE;
 
@@ -257,6 +228,12 @@ FileRepMirror_RunReceiver(void)
 		if (!FileRepConnServer_AwaitMessageBegin())
 			continue;
 
+		if (waitShutdown == TRUE)
+		{
+			pg_usleep(50000L); // 50ms
+			continue;
+		}
+		
 		status = STATUS_OK;
 
 		switch (current_state)
@@ -267,6 +244,23 @@ FileRepMirror_RunReceiver(void)
 				if (status == STATUS_OK)
 					current_state = RECVLEN;
 
+				if (msgType == FileRepMessageTypeShutdown)
+				{
+					msgType = FileRepMessageTypeXLog;
+					requestShutdown = TRUE;
+					
+					FileRep_InsertLogEntry(
+										   "M_RunReceiver",
+										   FileRep_GetFlatFileIdentifier("", ""),
+										   FileRepRelationTypeNotSpecified,
+										   FileRepOperationShutdown,
+										   FILEREP_UNDEFINED,
+										   FILEREP_UNDEFINED,
+										   FileRepAckStateNotInitialized,
+										   spareField,
+										   FILEREP_UNDEFINED);						
+				}
+				
 				break;
 			case RECVLEN:
 				/* DATA MESSAGE TYPE */
@@ -309,7 +303,7 @@ FileRepMirror_RunReceiver(void)
 				FileRep_InsertLogEntry(
 									   "M_RunReceiver",
 									   FileRep_GetFlatFileIdentifier("", ""),
-									   FileRepRelationNotSpecified,
+									   FileRepRelationTypeNotSpecified,
 									   FileRepOperationNotSpecified,
 									   FILEREP_UNDEFINED,
 									   FILEREP_UNDEFINED,
@@ -328,7 +322,8 @@ FileRepMirror_RunReceiver(void)
 #ifdef FILEREP_DEBUG
 				ereport(LOG,
 						(errmsg("LOG(filerep): M_RunReceiver "
-								"local count:'%d' position insert:'%p' msg length:'%u' consumer proc index:'%d' ",
+								"local count:'%d' position insert:'%p' msg length:'%u' "
+								"consumer proc index:'%d' ",
 								spareField,
 								msgPositionInsert,
 								msgLength,
@@ -346,6 +341,9 @@ FileRepMirror_RunReceiver(void)
 				if (status == STATUS_OK)
 					current_state = RECVTYPE;
 
+				if (requestShutdown == TRUE)
+					waitShutdown = TRUE;
+				
 				break;
 
 			default:
@@ -359,6 +357,8 @@ FileRepMirror_RunReceiver(void)
 		}
 	} /* for (;;) */
 		
+	FileRepConnServer_CloseConnection();
+	
 	return status;
 }
 
@@ -388,7 +388,7 @@ FileRepMirror_Init(void)
 	HASHCTL	hash_ctl;
 	int status = STATUS_OK;
 							  
-	memset(&hash_ctl, 0, sizeof(hash_ctl));
+	MemSet(&hash_ctl, 0, sizeof(hash_ctl));
 	hash_ctl.keysize = MAXPGPATH;
 	hash_ctl.entrysize = sizeof(OpenFileEntry);
 	hash_ctl.hash = string_hash;
@@ -476,8 +476,7 @@ FileRepMirror_StartConsumer(void)
 			FileRepSubProcess_SetState(FileRepStateFault);
 		}
 		
-		while (FileRepSubProcess_GetState() == FileRepStateSuspend ||
-			   FileRepSubProcess_GetState() == FileRepStateInitialization ||
+		while (FileRepSubProcess_GetState() == FileRepStateInitialization ||
 			   FileRepSubProcess_GetState() == FileRepStateFault) {
 			
 			FileRepSubProcess_ProcessSignals();
@@ -883,29 +882,26 @@ FileRepMirror_RunConsumer(void)
 								fileName,
 								fileRepMessageHeader->fileRepOperationDescription.open.fileFlags,
 								fileRepMessageHeader->fileRepOperationDescription.open.fileMode);
-
-						if (fd < 0 && errno == EEXIST) {
-
-							/* NOTE see md.c L242 there are exceptions, how mirror will know about it */ 
+						
+						if ((fd < 0) && ((errno == EEXIST) || (errno == ENOENT))) {
+							
 							ereport(LOG,
 									(errcode_for_file_access(),
-									 errmsg("could not open file \"%s\": %m", fileName)));
+									 errmsg("WARNING(filerep): could not open file position:" INT64_FORMAT " "
+											"file flags:'%x' file mode:'%o' : %m", 
+											fileRepMessageHeader->fileRepOperationDescription.open.logicalEof,
+											fileRepMessageHeader->fileRepOperationDescription.open.fileFlags,
+											fileRepMessageHeader->fileRepOperationDescription.open.fileMode),
+									 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
+													   fileRepMessageHeader->fileRepRelationType,
+													   fileRepMessageHeader->fileRepOperation),
+									 FileRep_errcontext()));					
+				
+							/* NOTE see md.c L242 there are exceptions, how mirror will know about it */ 
 							fd = 0;
 							break;
 						}
-						
-						if (fd < 0 && errno == ENOENT) {
-							errno = 0;
-							fd = PathNameOpenFile(
-												  fileName,
-												  O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
-												  fileMode);	
-							ereport(LOG,
-									(errcode_for_file_access(),
-									 errmsg("could not open file \"%s\" so create file: %m", fileName)));
-							
-						}	
-						
+
 						if (fd < 0) {
 							status = STATUS_ERROR;
 
@@ -1078,7 +1074,7 @@ FileRepMirror_RunConsumer(void)
 									(errcode_for_file_access(),
 									 errmsg("LOG(filerep): could not open file; "
 											"file was already dropped identifier:'%s' : %m", 
-											fileName)));
+											(fileName == NULL) ? "" : fileName)));
 							break;
 						}
 						
@@ -1193,7 +1189,7 @@ FileRepMirror_RunConsumer(void)
 								(errcode_for_file_access(),
 								 errmsg("LOG(filerep): could not flush and close file, "
 										"The file was already dropped identifier:'%s' : %m", 
-										fileName)));
+										(fileName == NULL) ? "" : fileName)));
 						break;
 					}					
 					
@@ -1369,8 +1365,6 @@ FileRepMirror_RunConsumer(void)
 						}
 						
 						break;
-					case FileRepRelationTypeFile:
-						/* Do we need to call TablespaceCreateDbspace */
 					case FileRepRelationTypeFlatFile:
 						
 						fd = PathNameOpenFile(
@@ -1445,7 +1439,7 @@ FileRepMirror_RunConsumer(void)
 						}
 						
 						break;
-					case FileRepRelationTypeFile:
+					case FileRepRelationTypeAppendOnly:
 					case FileRepRelationTypeFlatFile:
 					case FileRepRelationTypeBufferPool:
 						
@@ -1529,7 +1523,8 @@ FileRepMirror_RunConsumer(void)
 #if HAVE_WORKING_LINK
 				elog(DEBUG1, "LINK from filename:%s to %s", fileName, newFileName);	
 
-				if (link(fileName, newFileName) < 0) {
+				errno = 0;	
+				if (link(fileName, newFileName) < 0 && errno != ENOENT) {
 					status = STATUS_ERROR;
 					ereport(LOG,
 							(errcode_for_file_access(),
@@ -1545,7 +1540,8 @@ FileRepMirror_RunConsumer(void)
 #else				
 				elog(DEBUG1, "FileRepOperationRename()  from filename:%s to %s", fileName, newFileName);	
 
-				if (rename(fileName, newFileName) < 0) {
+				errno = 0;
+				if (rename(fileName, newFileName) < 0 && errno != ENOENT) {
 					status = STATUS_ERROR;
 					ereport(LOG,
 							(errcode_for_file_access(),
@@ -1566,11 +1562,22 @@ FileRepMirror_RunConsumer(void)
 				}		
 								
 				break;
-		default:
-			Assert(0);
+			case FileRepOperationShutdown:
+				/* NoOp. Just send ACK back. */
+				break;
+				
+			case FileRepOperationInSyncTransition:
+				FileRep_SetDataState(DataStateInSync, FALSE);
+				
+				FileRep_SetSegmentState(SegmentStateReady);							
+				break;
+				
+			default:
+				Assert(0);
+				break;
 			
 		}
-		
+
 		if (fd == -1) {
 			Assert(status == STATUS_ERROR);
 		}

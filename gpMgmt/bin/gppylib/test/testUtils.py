@@ -135,7 +135,7 @@ def test_main( testName, newProgramArgs, createOptionParserFn, createCommandFn, 
     startTest(testName)
 
     try:
-        gplog.setup_tool_logging(gExecutableName,unix.getLocalHostname(),unix.getUserName(),nonuser=False)
+        gplog.setup_tool_logging(gProgramName,unix.getLocalHostname(),unix.getUserName(),nonuser=False)
 
         parser = createOptionParserFn()
         (options, args) = parser.parse_args()

@@ -51,18 +51,55 @@ extern void RelationSetIndexList(Relation relation,
 					 List *indexIds, Oid oidIndex);
 
 extern void RelationInitIndexAccessInfo(Relation relation);
+
+typedef struct GpRelationNodeScan
+{
+	Relation 		gp_relation_node;
+
+	Oid				relationId;
+
+	Oid				relfilenode;
+	
+	void		 	*scan;		// Actual type is SysScanDesc (type pointer).
+} GpRelationNodeScan;
+
+extern void
+GpRelationNodeBeginScan(
+	Relation 			gp_relation_node,
+
+	Oid					relationId,
+
+	Oid 				relfilenode,
+
+	GpRelationNodeScan 	*gpRelationNodeScan);
+
+extern HeapTuple
+GpRelationNodeGetNext(
+	GpRelationNodeScan 	*gpRelationNodeScan,
+
+	int32				*segmentFileNum,
+
+	ItemPointer			persistentTid,
+
+	int64				*persistentSerialNum);
+
+extern void
+GpRelationNodeEndScan(
+	GpRelationNodeScan 	*gpRelationNodeScan);
+
 extern HeapTuple ScanGpRelationNodeTuple(
 	Relation 	gp_relation_node,
-	Oid			tablespace,
-	Oid 		relationNode);
+	Oid 		relationNode,
+	int32		segmentFileNum);
 extern HeapTuple FetchGpRelationNodeTuple(
 	Relation 		gp_relation_node,
 	Oid				relationId,
-	Oid				tablespace,
 	Oid 			relationNode,
+	int32			segmentFileNum,
 	ItemPointer		persistentTid,
 	int64			*persistentSerialNum);
-extern void RelationFetchGpRelationNode(Relation relation);
+extern void RelationFetchSegFile0GpRelationNode(Relation relation);
+extern void RelationFetchGpRelationNodeForXLog_Index(Relation relation);
 
 /*
  * Routines for backend startup

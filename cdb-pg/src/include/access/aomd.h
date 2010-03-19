@@ -11,6 +11,7 @@
 
 #include "storage/fd.h"
 #include "utils/rel.h"
+#include "cdb/cdbmirroredappendonly.h"
 
 extern int
 AOSegmentFilePathNameLen(Relation rel);
@@ -28,6 +29,7 @@ MakeAOSegmentFileName(
 							Relation rel, 
 							int segno, 
 							int col, 
+							int32 *fileSegNo,
 							char *filepathname);
 
 extern void
@@ -35,12 +37,19 @@ OpenAOSegmentFile(
 					Relation rel, 
 					char *filepathname, 
 					bool create,
-					File *file);
+					int32	segmentFileNum,
+					int64	logicalEof,
+					MirroredAppendOnlyOpen *mirroredOpen);
 
 extern void
-CloseAOSegmentFile(File file, Relation rel, BlockNumber segno);
+CloseAOSegmentFile(
+				   MirroredAppendOnlyOpen *mirroredOpen);
 
 extern void
-TruncateAOSegmentFile(File aosegfile, Relation rel, int64 offset, int elevel);
+TruncateAOSegmentFile(
+					  MirroredAppendOnlyOpen *mirroredOpen, 
+					  Relation rel, 
+					  int64 offset, 
+					  int elevel);
 
 #endif   /* AOMD_H */

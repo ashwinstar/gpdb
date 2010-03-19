@@ -107,6 +107,8 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	Oid         filespaceoid;
 	Oid			ownerId;
 	TablespaceDirNode tablespaceDirNode;
+	ItemPointerData persistentTid;
+	int64		persistentSerialNum;
 
 	/* validate */
 
@@ -220,7 +222,10 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	/* Create the persistent directory for the tablespace */
 	tablespaceDirNode.tablespace = tablespaceoid;
 	tablespaceDirNode.filespace = filespaceoid;
-	MirroredFileSysObj_CreateTablespaceDir(&tablespaceDirNode);
+	MirroredFileSysObj_TransactionCreateTablespaceDir(
+											&tablespaceDirNode,
+											&persistentTid,
+											&persistentSerialNum);
 
 	/*
 	 * Record dependency on owner 

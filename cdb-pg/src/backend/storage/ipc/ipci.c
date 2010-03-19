@@ -26,11 +26,15 @@
 #include "access/appendonlywriter.h"
 #include "cdb/cdbfilerep.h"
 #include "cdb/cdbfilerepprimaryack.h"
+#include "cdb/cdbfilerepprimaryrecovery.h"
+#include "cdb/cdbfilerepresyncmanager.h"
 #include "cdb/cdblocaldistribxact.h"
+#include "cdb/cdbpersistentfilesysobj.h"
 #include "cdb/cdbpersistentfilespace.h"
 #include "cdb/cdbpersistenttablespace.h"
 #include "cdb/cdbpersistentdatabase.h"
 #include "cdb/cdbpersistentrelation.h"
+#include "cdb/cdbresynchronizechangetracking.h"
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
 #include "pgstat.h"
@@ -148,6 +152,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, XLOGShmemSize());
 		size = add_size(size, DistributedLog_ShmemSize());
 		size = add_size(size, CLOGShmemSize());
+		size = add_size(size, ChangeTrackingShmemSize());
 		size = add_size(size, SUBTRANSShmemSize());
 		size = add_size(size, TwoPhaseShmemSize());
 		size = add_size(size, MultiXactShmemSize());
@@ -165,6 +170,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, SeqServerShmemSize());
 		size = add_size(size, WalSendServerShmemSize());
 		size = add_size(size, WalRedoServerShmemSize());
+		size = add_size(size, PersistentFileSysObj_ShmemSize());
 		size = add_size(size, PersistentFilespace_ShmemSize());
 		size = add_size(size, PersistentTablespace_ShmemSize());
 		size = add_size(size, PersistentDatabase_ShmemSize());
@@ -176,8 +182,8 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 #ifdef FAULT_INJECTOR
 			size = add_size(size, FaultInjector_ShmemSize());
 #endif			
+			size = add_size(size, FileRepResync_ShmemSize()); 
 		}
-
 #ifdef EXEC_BACKEND
 		size = add_size(size, ShmemBackendArraySize());
 #endif
@@ -250,6 +256,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	 */
 	XLOGShmemInit();
 	CLOGShmemInit();
+	ChangeTrackingShmemInit();
 	DistributedLog_ShmemInit();
 	SUBTRANSShmemInit();
 	TwoPhaseShmemInit();
@@ -269,6 +276,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	if (Gp_role == GP_ROLE_DISPATCH)
 		InitAppendOnlyWriter();
 
+	PersistentFileSysObj_ShmemInit();
 	PersistentFilespace_ShmemInit();
 	PersistentTablespace_ShmemInit();
 	PersistentDatabase_ShmemInit();
@@ -336,6 +344,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 #ifdef FAULT_INJECTOR
 		FaultInjector_ShmemInit();
 #endif
+		FileRepResync_ShmemInit();
 	}
 
 	/*

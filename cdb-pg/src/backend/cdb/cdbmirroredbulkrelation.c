@@ -41,10 +41,17 @@ void MirroredBulkRelation_Open(
 
 	Assert(open != NULL);
 	
+	MemSet(open, 0, sizeof(MirroredBulkRelationOpen));
+	
 	PersistentTablespace_GetPrimaryAndMirrorFilespaces(
 										relFileNode->spcNode,
 										&primaryFilespaceLocation,
 										&mirrorFilespaceLocation);
+	
+	if (mirrorFilespaceLocation == NULL)
+		sprintf(open->mirrorFilespaceLocation, "%s", "");
+	else
+		sprintf(open->mirrorFilespaceLocation, "%s", mirrorFilespaceLocation);	
 	
 	FormDatabasePath(
 				dbPath,
@@ -59,19 +66,20 @@ void MirroredBulkRelation_Open(
 
 	if (FileRepPrimary_MirrorOpen(
 				  FileRep_GetRelationIdentifier(
-							*relFileNode, 
-							segmentFileNum),
+												open->mirrorFilespaceLocation,					
+												*relFileNode, 
+												segmentFileNum),
 				  FileRepRelationTypeBulk,
 				  FILEREP_OFFSET_UNDEFINED,
 				  fileFlags,
 				  fileMode,
 				  FALSE /* supressError */) != 0) 
 		ereport(LOG,
-				(errmsg("could not sent open file to mirror \"%s\"", 
-						path)));
-
-	MemSet(open, 0, sizeof(MirroredBulkRelationOpen));
-
+				(errmsg("ERROR(filerep): could not sent file open request to mirror "), 
+						FileRep_ReportRelationPath(
+												   open->mirrorFilespaceLocation,
+												   *relFileNode,
+												   segmentFileNum)));
 
 	errno = 0;
 	
@@ -113,14 +121,17 @@ void MirroredBulkRelation_FlushAndClose(
 	
 	if (FileRepPrimary_MirrorFlushAndClose(
 				   FileRep_GetRelationIdentifier(
-								 open->relFileNode, 
-								 open->segmentFileNum),
+												 open->mirrorFilespaceLocation,
+												 open->relFileNode, 
+												 open->segmentFileNum),
 				   FileRepRelationTypeBulk) != 0) {
 		mirrorFlush = FALSE;
 		ereport(LOG,
-				(errmsg("could not sent fsync and close file to mirror \"%s\"", 
-						open->path)));
-	
+				(errmsg("ERROR(filerep): could not sent file fsync and close request to mirror "), 
+						FileRep_ReportRelationPath(
+												   open->mirrorFilespaceLocation,
+												   open->relFileNode,
+												   open->segmentFileNum)));
 	}
 	
 	errno = 0;
@@ -135,15 +146,18 @@ void MirroredBulkRelation_FlushAndClose(
 	if (mirrorFlush) {
 		if (FileRepPrimary_IsOperationCompleted(
 				   FileRep_GetRelationIdentifier(
-							 open->relFileNode, 
-							 open->segmentFileNum),									
+												 open->mirrorFilespaceLocation,
+												 open->relFileNode, 
+												 open->segmentFileNum),									
 				   FileRepRelationTypeBulk) == FALSE)	
 
 			ereport(LOG,
-					(errmsg("could not fsync file on mirror \"%s\"", 
-							open->path)));					 
+					(errmsg("ERROR(filerep): could not fsync file on mirror "), 
+							FileRep_ReportRelationPath(
+													   open->mirrorFilespaceLocation,
+													   open->relFileNode,
+													   open->segmentFileNum)));
 	}
-
 
 	open->isActive = false;
 }
@@ -170,17 +184,21 @@ void MirroredBulkRelation_Append(
 	
 	if (FileRepPrimary_MirrorWrite(
 				   FileRep_GetRelationIdentifier(
-								 open->relFileNode, 
-								 open->segmentFileNum),
+												 open->mirrorFilespaceLocation,
+												 open->relFileNode, 
+												 open->segmentFileNum),
 				   FileRepRelationTypeBulk,
 				   FILEREP_OFFSET_UNDEFINED,
 				   buffer, 
 				   bufferLen, 
 				   FileRep_GetXLogRecPtrUndefined())	!= 0) 					  
 		ereport(LOG,
-				(errmsg("could not sent write to mirror \"%s\"", 
-						open->path)));
-
+				(errmsg("ERROR(filerep): could not sent write request to mirror "), 
+						FileRep_ReportRelationPath(
+												   open->mirrorFilespaceLocation,
+												   open->relFileNode,
+												   open->segmentFileNum)));
+	
 	errno = 0;
 	if ((int) FileWrite(open->primaryFile, buffer, bufferLen) != bufferLen)
 	{

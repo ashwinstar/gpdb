@@ -5802,25 +5802,6 @@ xact_redo_commit(xl_xact_commit *xlrec, TransactionId xid)
 		ShmemVariableCache->nextXid = max_xid;
 		TransactionIdAdvance(ShmemVariableCache->nextXid);
 	}
-
-#ifdef suppress
-	// UNDONE: This needs to occur in Pass 2 for persistent file-system objects...
-	/* Make sure files supposed to be dropped are dropped */
-	for (i = 0; i < persistentCommitObjects.typed.dropFsObjsCount; i++)
-	{
-		PersistentEndXactFsObj *fsObj = 
-					&persistentCommitObjects.typed.dropFsObjs[i];
-
-		if (fsObj->fsObjName.type == PersistentFsObjType_RelationFile)
-		{
-			RelFileNode *relFileNode = &fsObj->fsObjName.variant.relFileNode;
-
-			XLogDropRelation(*relFileNode);
-
-			smgrdounlink(smgropen(*relFileNode), false, true);
-		}
-	}
-#endif
 }
 
 static void
@@ -5924,24 +5905,6 @@ xact_redo_distributed_commit(xl_xact_commit *xlrec, TransactionId xid)
 		TransactionIdAdvance(ShmemVariableCache->nextXid);
 	}
 
-#ifdef suppress
-	// UNDONE: This needs to occur in Pass 2 for persistent file-system objects...
-	/* Make sure files supposed to be dropped are dropped */
-	for (i = 0; i < persistentCommitObjects.typed.dropFsObjsCount; i++)
-	{
-		PersistentEndXactFsObj *fsObj = 
-					&persistentCommitObjects.typed.dropFsObjs[i];
-
-		if (fsObj->fsObjName.type == PersistentFsObjType_RelationFile)
-		{
-			RelFileNode *relFileNode = &fsObj->fsObjName.variant.relFileNode;
-			
-			XLogDropRelation(*relFileNode);
-
-			smgrdounlink(smgropen(*relFileNode), false, true);
-		}
-	}
-#endif
 	/*
 	 * End copy of xact_redo_commit logic.
 	 */
@@ -5987,25 +5950,6 @@ xact_redo_abort(xl_xact_abort *xlrec, TransactionId xid)
 		ShmemVariableCache->nextXid = max_xid;
 		TransactionIdAdvance(ShmemVariableCache->nextXid);
 	}
-
-#ifdef suppress
-	// UNDONE: This needs to occur in Pass 2 for persistent file-system objects...
-	/* Make sure files supposed to be dropped are dropped */
-	for (i = 0; i < persistentAbortObjects.typed.createFsObjsCount; i++)
-	{
-		PersistentEndXactFsObj *fsObj = 
-					&persistentAbortObjects.typed.createFsObjs[i];
-
-		if (fsObj->fsObjName.type == PersistentFsObjType_RelationFile)
-		{
-			RelFileNode *relFileNode = &fsObj->fsObjName.variant.relFileNode;
-			
-			XLogDropRelation(*relFileNode);
-
-			smgrdounlink(smgropen(*relFileNode), false, true);
-		}
-	}
-#endif
 }
 
 static void

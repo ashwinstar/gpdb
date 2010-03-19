@@ -802,6 +802,11 @@ MirrorFlatFile(
 				
 		bufferLen = (Size) Min(BLCKSZ, endOffset - startOffset);
 		buffer = (char*) palloc(bufferLen);
+		if (buffer == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 (errmsg("Not enough shared memory for Mirroring."))));
+		
 		MemSet(buffer, 0, bufferLen);
 				
 		while (startOffset < endOffset) {

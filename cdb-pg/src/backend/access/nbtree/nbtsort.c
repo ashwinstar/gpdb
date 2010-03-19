@@ -278,6 +278,9 @@ _bt_blnewpage(uint32 level)
 static void
 _bt_blwritepage(BTWriteState *wstate, Page page, BlockNumber blkno)
 {
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(wstate->index);
+
 	/* Ensure rd_smgr is open (could have been closed by relcache flush!) */
 	RelationOpenSmgr(wstate->index);
 
@@ -292,7 +295,7 @@ _bt_blwritepage(BTWriteState *wstate, Page page, BlockNumber blkno)
 		/* NO ELOG(ERROR) from here till newpage op is logged */
 		START_CRIT_SECTION();
 
-		xlrec.node = wstate->index->rd_node;
+		xl_heapnode_set(&xlrec.heapnode, wstate->index);
 		xlrec.blkno = blkno;
 
 		rdata[0].data = (char *) &xlrec;

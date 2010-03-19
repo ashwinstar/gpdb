@@ -17,18 +17,13 @@ Please upgrade python installed on this machine.''' % progname)
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
-import figleaf
+import figleaf, pickle, base64
 
 from gppylib.gpparseopts import OptParser, OptChecker
-from gppylib import gplog
-from gppylib import gparray
-from gppylib.commands import base
-from gppylib.commands import unix
-from gppylib.commands import gp
+from gppylib import gparray, gplog
+from gppylib.commands import base, gp, pg, unix
 from gppylib.commands.gp import SEGMENT_TIMEOUT_DEFAULT
-from gppylib.commands import pg
-from gppylib.db import catalog
-from gppylib.db import dbconn
+from gppylib.db import catalog, dbconn
 from gppylib import pgconf
 
 
@@ -64,13 +59,14 @@ class SegStartStatus():
 #-------------------------------------------------------------------------    
 class GpSegStart:
     ######
-    def __init__(self, dblist, gpversion, collation, mirroringMode, numContentsInCluster, timeout):
+    def __init__(self, dblist, gpversion, collation, mirroringMode, numContentsInCluster, timeout, pickledTransitionData):
 
         self.dblist = map(gparray.GpDB.initFromString, dblist)
         self.mirroringMode = mirroringMode
         self.expected_gpversion=gpversion
         self.numContentsInCluster=numContentsInCluster
         self.timeout = timeout
+        self.pickledTransitionData = pickledTransitionData
 
         # There is an issue with python 2.6.2 on linux that can cause start to 
         # hang if it is multithreaded.
@@ -98,104 +94,163 @@ class GpSegStart:
         (self.expected_lc_collate,self.expected_lc_monetary,self.expected_lc_numeric)=collation_strings
         pass
 
+    def __markFailed(self, directoryToSegStartDataMap, results, dir, msg ):
+        """
+        Mark a segment as failed during some startup process and remove
+          the entry for the segment from directoryToSegStartDataMap
+        """
+
+        results.append(SegStartStatus(dir,False, msg))
+        del directoryToSegStartDataMap[dir]
+
+
+    def __validateDirectoriesAndSetupRecoveryStartup(self, directoryToSegStartDataMap, results):
+        """
+        validate that the directories all exist and run recovery startup if needed
+
+        @param directoryToSegStartDataMap the directories to start.  Any failed ones will be removed from this map
+        @param results any failures will have segment statuses appended here
+        """
+        for dir in directoryToSegStartDataMap.keys():
+            if os.path.isdir(dir):
+                if not os.path.exists(dir + '/pg_log'):
+                    os.mkdir(dir + '/pg_log')
+
+                if os.path.exists(dir + '/postmaster.pid'):
+                    logger.warning("postmaster.pid file exists, checking if recovery startup required")
+                    res = gp.recovery_startup(dir)
+                    if res:
+                        self.__markFailed(directoryToSegStartDataMap, results, dir, res)
+            else:
+                logger.info("Segment data directory does not exist for: '%s'" % dir)
+                self.__markFailed(directoryToSegStartDataMap, results, dir, "segment data directory does not exist")
+
+    def __startSegments(self, directoryToSegStartDataMap, results):
+        """
+        Start the segments themselves 
+
+        @param directoryToSegStartDataMap the directories to start.  Any failed ones will be removed from this map
+        @param results any failures will have segment statuses appended here
+        """
+
+        # this is the mirroring mode for the pre-conversion part of running
+        mirroringModeForStart = self.mirroringMode
+        if self.mirroringMode == 'primary' or self.mirroringMode == 'mirror':
+            mirroringModeForStart = 'quiescent'
+
+        if mirroringModeForStart == 'quiescent':
+            nowait = True
+        else:
+            nowait = False
+
+        logger.info("Starting segments...")
+        for dir, seg in directoryToSegStartDataMap.iteritems():
+            cmd=gp.SegmentStart("Starting seg at dir %s" % dir, seg,
+                                self.numContentsInCluster,
+                                mirroringModeForStart,
+                                noWait=nowait,
+                                timeout=self.timeout)
+            self.pool.addCommand(cmd)
+
+        self.pool.join()
+
+        for cmd in self.pool.getCompletedItems():
+            res=cmd.get_results()
+            if res.rc != 0:
+                #TODO: read in last entries in startup.log
+                self.__markFailed(directoryToSegStartDataMap, results, cmd.segment.getSegmentDataDirectory(),
+                                  "PG_CTL failed.\nstdout:%s\nstderr:%s\n" %
+                                      (res.stdout,res.stderr))
+
+        self.pool.empty_completed_items()
+
+    def __checkLocaleAndConnect(self, directoryToSegStartDataMap, results):
+        if self.mirroringMode == 'quiescent' or self.mirroringMode == 'mirror':
+            return
+
+        #
+        # regarding setting the timeout:
+        #     for primary (not mirrorless) segments, we must wait the timeout duration since
+        #             this was not done by pg_ctl.
+        #
+        # otherwise, pg_ctl should have waited for us
+        #
+        if self.mirroringMode == 'primary':
+            timeout = self.timeout
+            logger.info("Awaiting segment startup and validating segments...")
+        else:
+            timeout = 1
+            logger.info("Validating segments...")
+
+        for datadir, seg in directoryToSegStartDataMap.iteritems():
+
+            cmd = gp.GpSegCheckLocaleAndConnect('check on %s' % datadir,
+                                            datadir,
+                                            seg.getSegmentPort(),
+                                            self.expected_lc_collate,
+                                            self.expected_lc_monetary,
+                                            self.expected_lc_numeric,
+                                            timeout)
+            self.pool.addCommand(cmd)
+
+        self.pool.join()
+
+        for cmd in self.pool.getCompletedItems():
+            (success,error_str)= cmd.getResults()
+            if not success:
+                self.__markFailed(directoryToSegStartDataMap, results, cmd.datadir, error_str)
+
+    def __convertSegments(self, directoryToSegStartDataMap, results, transitionData):
+
+        if self.mirroringMode == 'primary' or self.mirroringMode == 'mirror':
+
+            logger.info("Changing segments...")
+            for dir, seg in directoryToSegStartDataMap.iteritems():
+                cmd = gp.SendFilerepTransitionMessage.buildTransitionMessageCommand(transitionData,
+                                                                                    seg.getSegmentDataDirectory(),
+                                                                                    seg.getSegmentPort())
+                self.pool.addCommand(cmd)
+            self.pool.join()
+
+            cmds=self.pool.getCompletedItems()
+            for cmd in cmds:
+                res=cmd.get_results()
+                if res.rc != 0:
+                    reason = "Start failed.  stdout:\"%s\"  stderr:\"%s\"" % \
+                                (res.stdout.replace("\n", " "), res.stderr.replace("\n", " "))
+                    self.__markFailed(directoryToSegStartDataMap, results, cmd.dataDir, reason)
+
     ######
     def start(self): 
         results=[]
         failures=False
         directoryToSegStartDataMap = {}
-        
-        if self.mirroringMode == 'quiescent':
-            nowait = True
+        if self.pickledTransitionData is None:
+            transitionData = None
         else:
-            nowait = False
+            transitionData = pickle.loads(base64.urlsafe_b64decode(self.pickledTransitionData))
 
         for seg in self.dblist:
             directoryToSegStartDataMap[seg.getSegmentDataDirectory()] = seg
+        numToStart = len(directoryToSegStartDataMap)
 
-        # validate that the directories all exist and run recovery startup if needed
-        for dir in directoryToSegStartDataMap.keys():
-            if os.path.isdir(dir):
-                if not os.path.exists(dir + '/pg_log'):
-                    os.mkdir(dir + '/pg_log')
-                    
-                if os.path.exists(dir + '/postmaster.pid'):
-                    logger.warning("postmaster.pid file exists, checking if recovery startup required")
-                    res = gp.recovery_startup(dir) # todo MIRRORING -- pass dbId, contentId, etc into recovery startup?
-                    if res:
-                        results.append(SegStartStatus(dir,False,res))
-                        del directoryToSegStartDataMap[dir]
-                        failures=True                    
-            else:
-                logger.info("Segment data directory does not exist for: '%s'" % dir)
-                results.append(SegStartStatus(dir,False,"segment data directory does not exist"))
-                del directoryToSegStartDataMap[dir]
-                failures=True
-        
-        # now do the start
-        logger.info("Starting segments...")       
-        for dir, seg in directoryToSegStartDataMap.iteritems():
-            cmd=gp.SegmentStart("Starting seg at dir %s" % dir, seg, 
-                                self.numContentsInCluster,
-                                self.mirroringMode,
-                                noWait=nowait,
-                                timeout=self.timeout)
-            self.pool.addCommand(cmd)
-              
-        self.pool.join()
-        
-        cmds=self.pool.getCompletedItems()
-        for cmd in cmds:
-            res=cmd.get_results()
-            if res.rc != 0:
-                #TODO: read in last entries in startup.log
-                datadir = cmd.segment.getSegmentDataDirectory()
-                status=SegStartStatus(datadir, False, 
-                                      "PG_CTL failed.\nstdout:%s\nstderr:%s\n" % 
-                                      (res.stdout,res.stderr))
-                results.append(status)
-                del directoryToSegStartDataMap[datadir]
-                failures=True
-        
-        self.pool.empty_completed_items()
-    
-        if self.mirroringMode == 'quiescent' or self.mirroringMode == 'mirror':
-            # todo MIRRORING: figure out a way to validate even in quiescent or mirror mode -- 
-            # we are currently not waiting at all when starting in quiescent mode
-            for datadir,segmentToStart in directoryToSegStartDataMap.iteritems():
-                results.append(SegStartStatus(datadir,True,"Start Succeeded"))
-        else:
-            logger.info("Validating segments...")
-            for datadir, seg in directoryToSegStartDataMap.iteritems():
-                cmd = gp.GpSegCheckLocaleAndConnect('check on %s' % datadir,
-                                                datadir,
-                                                seg.getSegmentPort(),
-                                                self.expected_lc_collate,
-                                                self.expected_lc_monetary,
-                                                self.expected_lc_numeric)
-                self.pool.addCommand(cmd)
-            
-            self.pool.join()
-        
-            cmds=self.pool.getCompletedItems()
-            for cmd in cmds:
-                (success,error_str)=cmd.getResults()
-                datadir = cmd.datadir
-            
-                if success:
-                    results.append(SegStartStatus(datadir, True, "Start Succeeded"))
-                else:
-                    results.append(SegStartStatus(datadir, False, error_str))
-    
-        
+        self.__validateDirectoriesAndSetupRecoveryStartup(directoryToSegStartDataMap, results)
+        self.__startSegments(directoryToSegStartDataMap, results)
+        self.__convertSegments(directoryToSegStartDataMap, results, transitionData)
+        self.__checkLocaleAndConnect(directoryToSegStartDataMap, results)
+
+        # any remaining items succeeded!
+        for datadir,segmentToStart in directoryToSegStartDataMap.iteritems():
+            results.append(SegStartStatus(datadir,True,"Start Succeeded"))
+
         #Log the results!
         status = '\nCOMMAND RESULTS\n'
-        
         for result in results:
             status += str(result) + "\n"
-        
         logger.info(status)
-        
-        return failures
+
+        # return whether there was at least one failure
+        return len(directoryToSegStartDataMap) != numToStart
     
     def cleanup(self):
         if self.pool:
@@ -217,6 +272,7 @@ def parseargs():
                         help="values for lc_collate, lc_monetary, lc_numeric separated by :")
     parser.add_option("-D","--dblist",dest="dblist", action="append", type="string")
     parser.add_option("-M","--mirroringmode",dest="mirroringMode", type="string")
+    parser.add_option("-p","--pickledTransitionData",dest="pickledTransitionData", type="string")
     parser.add_option("-V", "--gp-version", dest="gpversion",metavar="GP_VERSION",
                         help="expected software version")      
     parser.add_option("-n", "--numsegments", dest="numsegments", 
@@ -261,7 +317,8 @@ def main():
                                 options.collation,
                                 options.mirroringMode,
                                 options.numsegments,
-                                options.timeout)
+                                options.timeout,
+                                options.pickledTransitionData)
         
         failures = gpsegstart.start()
         

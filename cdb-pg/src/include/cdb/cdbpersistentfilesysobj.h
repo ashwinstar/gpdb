@@ -16,6 +16,8 @@
 #include "cdb/cdbpersistentstore.h"
 #include "cdb/cdbpersistentrelation.h"
 #include "cdb/cdbpersistentdatabase.h"
+#include "cdb/cdbdoublylinked.h"
+#include "storage/smgr.h"
 
 #define PersistentFileSysObjSharedData_StaticInit {PersistentStoreSharedData_StaticInit}
 
@@ -34,6 +36,12 @@ typedef struct PersistentFileSysObjData
 
 	PersistentStoreData		storeData;
 
+	int 					attNumPersistentState;
+
+	int 					attNumMirrorExistenceState;
+
+	int 					attNumParentXid;
+
 } PersistentFileSysObjData;
 
 extern void PersistentFileSysObj_InitShared(
@@ -41,46 +49,63 @@ extern void PersistentFileSysObj_InitShared(
 
 extern void PersistentFileSysObj_Init(
 	PersistentFileSysObjData 			*fileSysObjData,
+
+	PersistentFileSysObjSharedData 		*fileSysObjSharedData,
+
 	PersistentFsObjType					fsObjType,
+
 	PersistentStoreScanTupleCallback	scanTupleCallback);
 
-extern void PersistentFileSysObj_InitScanUnderLock(
-	PersistentFileSysObjData 		*fileSysObjData,
+extern void PersistentFileSysObj_GetDataPtrs(
+	PersistentFsObjType				fsObjType,
+	
+	PersistentFileSysObjData		**fileSysObjData,
+	
+	PersistentFileSysObjSharedData	**fileSysObjSharedData);
 
-	PersistentFileSysObjSharedData 	*fileSysObjSharedData);
-
-extern void PersistentFileSysObj_InitScan(
-	PersistentFileSysObjData 		*fileSysObjData,
-
-	PersistentFileSysObjSharedData 	*fileSysObjSharedData);
+extern void PersistentFileSysObj_InitScan(void);
 
 extern void PersistentFileSysObj_Scan(
-	PersistentFileSysObjData		*fileSysObjData,
-	
-	PersistentFileSysObjSharedData	*fileSysObjSharedData,
+	PersistentFsObjType			fsObjType,
 
 	PersistentStoreScanTupleCallback	scanTupleCallback);
 
 extern void PersistentFileSysObj_FlushXLog(void);
 
-extern void PersistentFileSysObj_UpdateTuple(
-		PersistentFileSysObjData 		*fileSysObjData,
-	
-		PersistentFileSysObjSharedData	*fileSysObjSharedData,
-	
-		ItemPointer 			persistentTid,
-					/* TID of the stored tuple. */
-	
-		Datum 					*values,
+extern int64 PersistentFileSysObj_MyHighestSerialNum(
+	PersistentFsObjType 	fsObjType);
+extern int64 PersistentFileSysObj_CurrentMaxSerialNum(
+	PersistentFsObjType 	fsObjType);
 
-		bool					flushToXLog);
-					/* When true, the XLOG record for this change will be flushed to disk. */
+extern void PersistentFileSysObj_UpdateTuple(
+	PersistentFsObjType		fsObjType,
+
+	ItemPointer 			persistentTid,
+				/* TID of the stored tuple. */
+
+	Datum 					*values,
+
+	bool					flushToXLog);
+				/* When true, the XLOG record for this change will be flushed to disk. */
+
+extern void PersistentFileSysObj_ReplaceTuple(
+	PersistentFsObjType 	fsObjType,
+
+	ItemPointer 			persistentTid,
+				/* TID of the stored tuple. */
+
+	HeapTuple				tuple,
+
+	Datum					*newValues,
+
+	bool					*replaces,
+
+	bool					flushToXLog);
+				/* When true, the XLOG record for this change will be flushed to disk. */
 
 extern void PersistentFileSysObj_ReadTuple(
-	PersistentFileSysObjData 		*fileSysObjData,
-
-	PersistentFileSysObjSharedData 	*fileSysObjSharedData,
-
+	PersistentFsObjType 		fsObjType,
+					
 	ItemPointer					readTid,
 
 	Datum						*values,
@@ -88,9 +113,7 @@ extern void PersistentFileSysObj_ReadTuple(
 	HeapTuple					*tupleCopy);
 
 extern void PersistentFileSysObj_AddTuple(
-	PersistentFileSysObjData 		*fileSysObjData,
-
-	PersistentFileSysObjSharedData 	*fileSysObjSharedData,
+	PersistentFsObjType			fsObjType,
 
 	Datum						*values,
 
@@ -100,41 +123,33 @@ extern void PersistentFileSysObj_AddTuple(
 	ItemPointer 				persistentTid,
 				/* TID of the stored tuple. */
 
-	int64					*persistentSerialNum);
+	int64						*persistentSerialNum);
 
 extern void PersistentFileSysObj_FreeTuple(
-	PersistentFileSysObjData 		*fileSysObjData,
+	PersistentFileSysObjData		*fileSysObjData,
 
-	PersistentFileSysObjSharedData 	*fileSysObjSharedData,
+	PersistentFileSysObjSharedData	*fileSysObjSharedData,
+
+	PersistentFsObjType 		fsObjType,
 
 	ItemPointer 				persistentTid,
 				/* TID of the stored tuple. */
 
-	Datum 						*freeValues,
-	
 	bool						flushToXLog);
 				/* When true, the XLOG record for this change will be flushed to disk. */
 
-
-extern void PersistentFileSysObj_VerifyExpected(
-	PersistentFileSysObjData		*fileSysObjData,
-	
-	PersistentFileSysObjSharedData	*fileSysObjSharedData,
-	
+extern void PersistentFileSysObj_StateChange(
 	PersistentFileSysObjName	*fsObjName,
 
-	ItemPointer 			persistentTid,
-				/* TID of the gp_persistent_rel_files tuple for the rel file */
+	ItemPointer 				persistentTid,
 
-	int64					serialNum,
+	int64						persistentSerialNum,
+	
+	PersistentFileSysState		nextState,
 
-	PersistentFileSysState	expectedState1,
+	bool						flushToXLog,
 
-	PersistentFileSysState	expectedState2,
-
-	PersistentFileSysState	nextState,
-
-	PersistentFileSysState	*actualState);
+	PersistentFileSysState		*oldState);
 
 extern void PersistentFileSysObj_Created(
 	PersistentFileSysObjName	*fsObjName,
@@ -157,18 +172,131 @@ extern void PersistentFileSysObj_MarkDropPending(
 
 	int64					persistentSerialNum);
 
-extern void PersistentFileSysObj_Drop(
+extern void PersistentFileSysObj_DropObject(
 	PersistentFileSysObjName	*fsObjName,
 
-	ItemPointer 			persistentTid,
+	PersistentFileSysRelStorageMgr relStorageMgr,
 
-	int64					persistentSerialNum,
+	char						*relationName,
+					/* For tracing only.  Can be NULL in some execution paths. */
+
+	ItemPointer 				persistentTid,
+
+	int64						persistentSerialNum,
 	
-	bool					isRedo);
+	StorageManagerMirrorMode 	mirrorMode,
+
+	bool 						ignoreNonExistence);
+
+extern void PersistentFileSysObj_EndXactDrop(
+	PersistentFileSysObjName	*fsObjName,
+
+	PersistentFileSysRelStorageMgr relStorageMgr,
+
+	char						*relationName,
+					/* For tracing only.  Can be NULL in some execution paths. */
+
+	ItemPointer 				persistentTid,
+
+	int64						persistentSerialNum,
+
+	bool						abortingCreate);
 
 extern void PersistentFileSysObj_EndXactAction(
 	PersistentEndXactRecObjects 	*persistentObjects,
 	
 	bool							isCommit);
+
+extern void PersistentFileSysObj_UpdateMirrorExistenceState(
+	PersistentFsObjType 			fsObjType,
+
+	ItemPointer 					persistentTid,
+
+	int64							persistentSerialNum,
+
+	MirroredObjectExistenceState	mirrorExistenceState,
+
+	MirroredRelDataSynchronizationState relDataSynchronizationState,
+
+	bool							flushToXLog);
+
+extern bool PersistentFileSysObj_ResynchronizeTransitionNeeded(void);
+
+extern void PersistentFileSysObj_RequestResynchronizeTransition(void);
+
+extern void PersistentFileSysObj_MarkWholeMirrorFullCopy(void);
+
+extern void PersistentFileSysObj_MarkWholeMirrorScanIncremental(void);
+
+extern void PersistentFileSysObj_MarkSpecialScanIncremental(void);
+
+extern void PersistentFileSysObj_MarkPageIncrementalFromChangeLog(void);
+
+extern void PersistentFileSysObj_MirrorReCreate(void);
+
+extern void PersistentFileSysObj_MirrorReDrop(void);
+
+typedef struct ResynchronizeScanToken
+{
+	bool				beginScan;
+
+	PersistentStoreScan storeScan;
+
+	bool				done;
+} ResynchronizeScanToken;
+
+inline static void ResynchronizeScanToken_Init(
+	ResynchronizeScanToken		*token)
+{
+	MemSet(token, 0, sizeof(ResynchronizeScanToken));
+	token->beginScan = false;
+	token->done = false;
+}
+
+extern bool PersistentFileSysObj_ResynchronizeScan(
+	ResynchronizeScanToken			*resynchronizeScanToken,
+
+	RelFileNode						*relFileNode,
+
+	int32							*segmentFileNum,
+
+	PersistentFileSysRelStorageMgr 	*relStorageMgr,
+
+	MirroredRelDataSynchronizationState *mirrorDataSynchronizationState,
+
+	XLogRecPtr						*mirrorBufpoolResyncCkptLoc,
+
+	BlockNumber 					*mirrorBufpoolResyncCkptBlockNum,
+
+	int64							*mirrorAppendOnlyEof,
+
+	ItemPointer						persistentTid,
+
+	int64							*persistentSerialNum);
+
+extern void PersistentFileSysObj_ResynchronizeAbandonScan(
+	ResynchronizeScanToken			*resynchronizeScanToken);
+
+extern void PersistentFileSysObj_ResynchronizeBufferPoolCkpt(
+	ItemPointer 					persistentTid,
+
+	int64							persistentSerialNum,
+
+	XLogRecPtr						mirrorBufpoolResyncCkptLoc,
+
+	BlockNumber 					mirrorBufpoolResyncCkptBlockNum,
+
+	bool							flushToXLog);
+
+extern void PersistentFileSysObj_ResynchronizeRelationComplete(
+	ItemPointer 					persistentTid,
+
+	int64							persistentSerialNum,
+
+	bool							flushToXLog);
+
+extern Size PersistentFileSysObj_ShmemSize(void);
+
+extern void PersistentFileSysObj_ShmemInit(void);
 
 #endif   /* CDBPERSISTENTFILESYSOBJ_H */

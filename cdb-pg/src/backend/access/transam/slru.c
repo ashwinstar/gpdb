@@ -1218,19 +1218,19 @@ SimpleLruPageExists(SlruCtl ctl, int pageno)
 	return false;	// Should not reach here.
 }
 
-int
-SlruRecoverMirror(void)
+static int
+SlruRecoverMirrorDir(char *slru_dir)
 {
 	DIR				*cldir;
 	struct dirent	*clde;
 	int				retval = 0;
 	
-	cldir = AllocateDir(CLOG_DIR);
-	while ((clde = ReadDir(cldir, CLOG_DIR)) != NULL) {
+	cldir = AllocateDir(slru_dir);
+	while ((clde = ReadDir(cldir, slru_dir)) != NULL) {
 		if (strlen(clde->d_name) == 4 &&
 			strspn(clde->d_name, "0123456789ABCDEF") == 4) {
 			
-			retval = MirrorFlatFile(CLOG_DIR, clde->d_name);
+			retval = MirrorFlatFile(slru_dir, clde->d_name);
 			
 			if (retval != 0)
 				break;
@@ -1242,3 +1242,37 @@ SlruRecoverMirror(void)
 	return retval;
 }
 
+int
+SlruRecoverMirror(void)
+{
+	int retval;
+
+	retval = SlruRecoverMirrorDir(CLOG_DIR);
+
+	if (retval != 0)
+		return retval;	
+	
+	retval = SlruRecoverMirrorDir(DISTRIBUTEDLOG_DIR);
+
+	if (retval != 0)
+		return retval;	
+	
+	retval = SlruRecoverMirrorDir(DISTRIBUTEDXIDMAP_DIR);
+
+	if (retval != 0)
+		return retval;	
+	
+	retval = SlruRecoverMirrorDir(MULTIXACT_MEMBERS_DIR);
+
+	if (retval != 0)
+		return retval;	
+	
+	retval = SlruRecoverMirrorDir(MULTIXACT_OFFSETS_DIR);
+
+	if (retval != 0)
+		return retval;	
+	
+	retval = SlruRecoverMirrorDir(SUBTRANS_DIR);
+
+	return retval;
+}

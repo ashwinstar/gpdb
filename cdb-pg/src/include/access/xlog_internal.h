@@ -237,6 +237,7 @@ typedef struct RmgrData
 	void		(*rm_startup) (void);
 	void		(*rm_cleanup) (void);
 	bool		(*rm_safe_restartpoint) (void);
+	bool		(*rm_getrelfilenode) (XLogRecord *record, RelFileNode *relFileNode);
 } RmgrData;
 
 extern const RmgrData RmgrTable[];

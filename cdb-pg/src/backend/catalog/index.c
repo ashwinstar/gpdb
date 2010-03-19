@@ -695,10 +695,11 @@ index_create(Oid heapRelationId,
 		InsertGpRelationNodeTuple(
 							gp_relation_node,
 							indexRelation->rd_id,
-							indexRelation->rd_rel->reltablespace,
+							indexRelation->rd_rel->relname.data,
 							indexRelation->rd_rel->relfilenode,
-							&indexRelation->rd_relationnodeinfo.persistentTid,
-							indexRelation->rd_relationnodeinfo.persistentSerialNum);
+							/* segmentFileNum */ 0,
+							&indexRelation->rd_segfile0_relationnodeinfo.persistentTid,
+							indexRelation->rd_segfile0_relationnodeinfo.persistentSerialNum);
 	
 		heap_close(gp_relation_node, RowExclusiveLock);
 	}
@@ -986,13 +987,20 @@ index_drop(Oid indexId)
 	 */
 	RelationOpenSmgr(userIndexRelation);
 	Assert(userIndexRelation->rd_smgr != NULL);
-	RelationFetchGpRelationNode(userIndexRelation);
-	DeleteGpRelationNodeTuple(userIndexRelation);
-	MirroredFileSysObj_ScheduleDropRelFile(
+
+	if (!userIndexRelation->rd_segfile0_relationnodeinfo.isPresent)
+		RelationFetchSegFile0GpRelationNode(userIndexRelation);
+
+	DeleteGpRelationNodeTuple(
+					userIndexRelation,
+					/* segmentFileNum */ 0);
+	
+	MirroredFileSysObj_ScheduleDropBufferPoolFile(
 									userIndexRelation->rd_smgr,
-									&userIndexRelation->rd_relationnodeinfo.persistentTid,
-									userIndexRelation->rd_relationnodeinfo.persistentSerialNum,
-								    userIndexRelation->rd_isLocalBuf);
+									userIndexRelation->rd_isLocalBuf,
+									userIndexRelation->rd_rel->relname.data,
+									&userIndexRelation->rd_segfile0_relationnodeinfo.persistentTid,
+									userIndexRelation->rd_segfile0_relationnodeinfo.persistentSerialNum);
 
 	/*
 	 * Close and flush the index's relcache entry, to ensure relcache doesn't
@@ -1350,278 +1358,6 @@ index_update_stats(Relation rel, bool hasindex, bool isprimary,
 
 	heap_close(pg_class, RowExclusiveLock);
 }
-
-/*
- * setNewRelfilenode		- assign a new relfilenode value to the relation
- *
- * Caller must already hold exclusive lock on the relation.
- */
-Oid
-setNewRelfilenode(Relation relation)
-{
-	Oid			newrelfilenode;
-	RelFileNode newrnode;
-	ItemPointerData newPersistentTid;
-	int64 newPersistentSerialNum;
-	SMgrRelation srel;
-	Relation	pg_class;
-	HeapTuple	tuple;
-	Form_pg_class rd_rel;
-	Oid			oldrelfilenode;
-	Relation	gp_relation_node;
-	Oid			tablespace;
-	HeapTuple	nodeTuple;
-
-	/* Can't change relfilenode for nailed tables (indexes ok though) */
-	Assert(!relation->rd_isnailed ||
-		   relation->rd_rel->relkind == RELKIND_INDEX);
-	/* Can't change for shared tables or indexes */
-	Assert(!relation->rd_rel->relisshared);
-
-	/* Allocate a new relfilenode */
-	newrelfilenode = GetNewRelFileNode(relation->rd_rel->reltablespace,
-									   relation->rd_rel->relisshared,
-									   NULL);
-
-	if (Gp_role == GP_ROLE_EXECUTE)
-	{
-		elog(DEBUG1, "setNewRelfilenode called in EXECUTE mode, "
-			 "newrelfilenode=%d", newrelfilenode);
-	}
-
-	/*
-	 * Find the pg_class tuple for the given relation.	This is not used
-	 * during bootstrap, so okay to use heap_update always.
-	 */
-	pg_class = heap_open(RelationRelationId, RowExclusiveLock);
-	gp_relation_node = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
-
-	tuple = SearchSysCacheCopy(RELOID,
-							   ObjectIdGetDatum(RelationGetRelid(relation)),
-							   0, 0, 0);
-	if (!HeapTupleIsValid(tuple))
-		elog(ERROR, "could not find tuple for relation %u",
-			 RelationGetRelid(relation));
-	rd_rel = (Form_pg_class) GETSTRUCT(tuple);
-
-	tablespace = relation->rd_rel->reltablespace;
-	if (tablespace == 0)
-		tablespace = DEFAULTTABLESPACE_OID;
-
-	nodeTuple = ScanGpRelationNodeTuple(
-						gp_relation_node,
-						tablespace, 
-						relation->rd_rel->relfilenode);
-	if (!HeapTupleIsValid(nodeTuple))
-		elog(ERROR, "could not find node tuple for relation %u, tablespace %u, relation file node %u",
-			 RelationGetRelid(relation), 
-			 tablespace,
-			 rd_rel->relfilenode);
-
-	/* get the existing (old) relfilenode value. we may need it later */
-	oldrelfilenode = relation->rd_rel->relfilenode;
-
-	/* create another storage file. Is it a little ugly ? */
-	/* NOTE: any conflict in relfilenode value will be caught here */
-	newrnode = relation->rd_node;
-	newrnode.relNode = newrelfilenode;
-
-	srel = smgropen(newrnode);
-	MirroredFileSysObj_CreateRelFile(
-								srel,
-								&newPersistentTid,
-								&newPersistentSerialNum,
-								relation->rd_isLocalBuf);
-	
-	smgrclose(srel);
-	
-	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
-		     "INDEX operation: Create for '%s' persistent TID %s and serial number " INT64_FORMAT,
-			 relpath(newrnode),
-			 ItemPointerToString(&newPersistentTid),
-			 newPersistentSerialNum);
-
-	/* schedule unlinking old relfilenode */
-	RelationOpenSmgr(relation);
-	Assert(relation->rd_smgr != NULL);
-	RelationFetchGpRelationNode(relation);
-	Assert(relation->rd_relationnodeinfo.isPresent);
-	MirroredFileSysObj_ScheduleDropRelFile(
-									relation->rd_smgr,
-									&relation->rd_relationnodeinfo.persistentTid,
-									relation->rd_relationnodeinfo.persistentSerialNum,
-									relation->rd_isLocalBuf);
-
-	if (Debug_persistent_recovery_print)
-		elog(Debug_persistent_recovery_print_level, 
-			 "INDEX operation: Scheduling drop for '%s' persistent TID %s and serial number " INT64_FORMAT,
-			 relpath(relation->rd_node),
-			 ItemPointerToString(&relation->rd_relationnodeinfo.persistentTid),
-			 relation->rd_relationnodeinfo.persistentSerialNum);
-
-	/* Update GETSTRUCT fields of the pg_class row */
-	rd_rel->relfilenode = newrelfilenode;
-	rd_rel->relpages = 0;		/* it's empty until further notice */
-	rd_rel->reltuples = 0;
-
-	simple_heap_update(pg_class, &tuple->t_self, tuple);
-
-	CatalogUpdateIndexes(pg_class, tuple);
-
-	heap_freetuple(tuple);
-
-	heap_close(pg_class, RowExclusiveLock);
-
-	UpdateGpRelationNodeTuple(
-						gp_relation_node,
-						nodeTuple,
-						relation->rd_rel->reltablespace,
-						newrelfilenode,
-						&newPersistentTid,
-						newPersistentSerialNum);
-
-	heap_close(gp_relation_node, RowExclusiveLock);
-
-	/* Make sure the relfilenode change is visible */
-	CommandCounterIncrement();
-
-	return newrelfilenode;
-}
-
-/*
- * Greenplum specific routine.
- *
- * setNewRelfilenodeToOid		- assign a new relfilenode value to the relation
- *
- * Caller must already hold exclusive lock on the relation.
- */
-Oid
-setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode)
-{
-
-	RelFileNode newrnode;
-	ItemPointerData newPersistentTid;
-	int64 newPersistentSerialNum;
-	SMgrRelation srel;
-	Relation	pg_class;
-	HeapTuple	tuple;
-	Form_pg_class rd_rel;
-	Oid			oldrelfilenode;
-	Relation	gp_relation_node;
-	Oid			tablespace;
-	HeapTuple	nodeTuple;
-
-	/* Can't change relfilenode for nailed tables (indexes ok though) */
-	Assert(!relation->rd_isnailed ||
-		   relation->rd_rel->relkind == RELKIND_INDEX);
-	/* Can't change for shared tables or indexes */
-	Assert(!relation->rd_rel->relisshared);
-
-	elog(DEBUG3, "setNewRelfilenodeToOid called.  newrelfilenode = %d",
-		 newrelfilenode);
-
-	CheckNewRelFileNodeIsOk(newrelfilenode, relation->rd_rel->reltablespace,
-							relation->rd_rel->relisshared, NULL);
-	/*
-	 * Find the pg_class tuple for the given relation.	This is not used
-	 * during bootstrap, so okay to use heap_update always.
-	 */
-	pg_class = heap_open(RelationRelationId, RowExclusiveLock);
-	gp_relation_node = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
-
-	tuple = SearchSysCacheCopy(RELOID,
-							   ObjectIdGetDatum(RelationGetRelid(relation)),
-							   0, 0, 0);
-	if (!HeapTupleIsValid(tuple))
-		elog(ERROR, "could not find tuple for relation %u",
-			 RelationGetRelid(relation));
-	rd_rel = (Form_pg_class) GETSTRUCT(tuple);
-
-	tablespace = relation->rd_rel->reltablespace;
-	if (tablespace == 0)
-		tablespace = DEFAULTTABLESPACE_OID;
-
-	nodeTuple = ScanGpRelationNodeTuple(
-						gp_relation_node,
-						tablespace, 
-						relation->rd_rel->relfilenode);
-	if (!HeapTupleIsValid(nodeTuple))
-		elog(ERROR, "could not find node tuple for relation %u, tablespace %u, relation file node %u",
-			 RelationGetRelid(relation), 
-			 tablespace,
-			 rd_rel->relfilenode);
-
-	/* get the existing (old) relfilenode value. we may need it later */
-	oldrelfilenode = relation->rd_rel->relfilenode;
-
-	/* create another storage file. Is it a little ugly ? */
-	/* NOTE: any conflict in relfilenode value will be caught here */
-	newrnode = relation->rd_node;
-	newrnode.relNode = newrelfilenode;
-
-	srel = smgropen(newrnode);
-	MirroredFileSysObj_CreateRelFile(
-								srel,
-								&newPersistentTid,
-								&newPersistentSerialNum,
-								relation->rd_isLocalBuf);
-	smgrclose(srel);
-
-	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
-		     "INDEX operation: Create for '%s' persistent TID %s and serial number " INT64_FORMAT,
-			 relpath(newrnode),
-			 ItemPointerToString(&newPersistentTid),
-			 newPersistentSerialNum);
-
-	/* schedule unlinking old relfilenode */
-	RelationOpenSmgr(relation);
-	Assert(relation->rd_smgr != NULL);
-	RelationFetchGpRelationNode(relation);
-	Assert(relation->rd_relationnodeinfo.isPresent);
-	MirroredFileSysObj_ScheduleDropRelFile(
-									relation->rd_smgr,
-									&relation->rd_relationnodeinfo.persistentTid,
-									relation->rd_relationnodeinfo.persistentSerialNum,
-									relation->rd_isLocalBuf);
-
-	if (Debug_persistent_recovery_print)
-		elog(Debug_persistent_recovery_print_level, 
-			 "INDEX operation: Scheduling drop for '%s' persistent TID %s and serial number " INT64_FORMAT,
-			 relpath(relation->rd_node),
-			 ItemPointerToString(&relation->rd_relationnodeinfo.persistentTid),
-			 relation->rd_relationnodeinfo.persistentSerialNum);
-
-	/* Update GETSTRUCT fields of the pg_class row */
-	rd_rel->relfilenode = newrelfilenode;
-	rd_rel->relpages = 0;		/* it's empty until further notice */
-	rd_rel->reltuples = 0;
-
-	simple_heap_update(pg_class, &tuple->t_self, tuple);
-
-	CatalogUpdateIndexes(pg_class, tuple);
-
-	heap_freetuple(tuple);
-
-	heap_close(pg_class, RowExclusiveLock);
-
-	UpdateGpRelationNodeTuple(
-						gp_relation_node,
-						nodeTuple,
-						relation->rd_rel->reltablespace,
-						newrelfilenode,
-						&newPersistentTid,
-						newPersistentSerialNum);
-
-	heap_close(gp_relation_node, RowExclusiveLock);
-
-	/* Make sure the relfilenode change is visible */
-	CommandCounterIncrement();
-
-	return newrelfilenode;
-}
-
 
 /*
  * index_build - invoke access-method-specific index build procedure

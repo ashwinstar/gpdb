@@ -1,10 +1,13 @@
 import shutil, filecmp,re
-import os, fcntl, select, getpass
+import os, fcntl, select, getpass, socket
 from subprocess import *
 from sys import *
 from xml.dom import minidom
 from xml.dom import Node
 
+from gppylib.gplog import *
+
+logger = get_default_logger()
 
 _debug=0
 #############
@@ -347,3 +350,46 @@ def copyFile(srcDir,srcFile, destDir, destFile):
 def sortedDictByKey(di):
     return  [ (k,di[k]) for k in sorted(di.keys())]
 
+def appendNewEntriesToHbaFile(fileName, segments):
+    """
+    Will raise Exception if there is a problem updating the hba file
+    """
+
+    try:
+        #
+        # Get the list of lines that already exist...we won't write those again
+        #
+        # Replace runs of whitespace with single space to improve deduping
+        #
+        def lineToCanonical(s):
+            s = re.sub("\s", " ", s) # first reduce whitespace runs to single space
+            s = re.sub(" $", "", s) # remove trailing space
+            s = re.sub("^ ", "", s) # remove leading space
+            return s
+        existingLineMap = {}
+        for line in readAllLinesFromFile(fileName):
+            existingLineMap[lineToCanonical(line)] = True
+
+        fp = open(fileName, 'a')
+        try:
+            for newSeg in segments:
+                address = newSeg.getSegmentAddress()
+                (hostname, aliaslist, ipaddrlist) = socket.gethostbyname_ex(address)
+
+                haveWrittenCommentHeader = False
+                for addr in ipaddrlist:
+                    newLine = 'host\tall\tall\t%s/32\ttrust' % addr
+                    newLineCanonical = lineToCanonical(newLine)
+                    if newLineCanonical not in existingLineMap:
+                        if not haveWrittenCommentHeader:
+                            fp.write('# %s\n' % address)
+                            haveWrittenCommentHeader = True
+                        fp.write(newLine)
+                        fp.write('\n')
+                        existingLineMap[newLineCanonical] = True
+        finally:
+            fp.close()
+    except IOError, msg:
+        raise Exception('Failed to open %s' % fileName)
+    except Exception, msg:
+        raise Exception('Failed to add new segments to template %s' % fileName)

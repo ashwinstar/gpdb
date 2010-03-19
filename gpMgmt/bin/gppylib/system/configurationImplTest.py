@@ -29,41 +29,42 @@ class GpConfigurationProviderForTesting(GpConfigurationProvider) :
         self.__testSegments=[]
         pass
 
-    #
-    # Initialize the provider to get information from the given master db, if it chooses to
-    #   get its data from the database
-    #
-    # returns self
-    #
-    def initializeProvider( self, masterDbUrl, useUtilityMode ) :
+    def initializeProvider( self, masterPort, useUtilityMode ) :
+        """
+         Initialize the provider to get information from the given master db, if it chooses to
+           get its data from the database
+
+         returns self
+        """
+
         # verify here to match what the true one will require
-        checkNotNone("masterDbUrl", masterDbUrl)
+        checkNotNone("masterPort", masterPort)
         checkNotNone("useUtilityMode", useUtilityMode)
         return self
 
-    #
-    # Load all segment information from the configuration source.
-    #
-    # Returns a new GpArray object
-    #
     def loadSystemConfig( self ) :
+        """
+        Load all segment information from the configuration source.
+
+        Returns a new GpArray object
+        """
         segments = []
         for segment in self.__testSegments:
             segments.append(segment.copy())
         return GpArray(segments)
 
-    #
-    # Update the configuration for the given segments in the underlying configuration store
-    #   to match the current values
-    #
-    def updateSystemConfig( self, systemConfiguration ) :
+    def updateSystemConfig( self, systemConfiguration, textForConfigTable ) :
+        """
+        Update the configuration for the given segments in the underlying configuration store
+            to match the current values
+        """
         self.__testSegments = []
         for segment in systemConfiguration.getDbList():
             self.addTestSegment(segment)
 
-    #
-    # add a test segment.  The segment is COPIED before adding
-    #
     def addTestSegment(self, configForSegment):
+        """
+        Add a test segment.  The segment is COPIED before adding
+        """
         self.__testSegments.append(configForSegment.copy())
 

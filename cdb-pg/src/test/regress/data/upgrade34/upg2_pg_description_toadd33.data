@@ -34,10 +34,17 @@ objoid|classoid|objsubid|description
 5042|1255|0|list priorities of backends
 5044|1255|0|Insert text into the error log
 5045|1255|0|Insert text into the error log
-7175|1255|0|add entry to gp_persistent_database_node
-7176|1255|0|add entry to persistent_relation_node
-7177|1255|0|add entry to gp_persistent_tablespace_node
 7178|1255|0|populate the persistent tables and gp_relation_node for the current database
 9998|1255|0|convert an object name to oid.
 9999|1255|0|Greenplum fault testing only
+3318|1255|0|I/O
+3319|1255|0|I/O
+3320|1255|0|I/O
+3321|1255|0|I/O
+3322|1255|0|I/O
+3323|1255|0|I/O
+3324|1255|0|I/O
+3331|1255|0|I/O
+6435|1255|0|view logged change tracking records
+2905|1255|0|btree less-equal-greater
 \.

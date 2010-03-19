@@ -146,7 +146,6 @@ extern bool	Debug_appendonly_rezero_quicklz_compress_scratch;
 extern bool	Debug_appendonly_rezero_quicklz_decompress_scratch;
 extern bool	Debug_appendonly_guard_end_quicklz_scratch;
 extern bool	Debug_filerep_skip_persistent_free_list;
-extern bool	Debug_persistent_skip_startup_pass_2;
 extern bool	Debug_persistent_print;
 extern int	Debug_persistent_print_level;
 extern bool	Debug_persistent_recovery_print;
@@ -156,6 +155,10 @@ extern int	Debug_database_command_print_level;
 extern int	gp_max_databases;
 extern int	gp_max_tablespaces;
 extern int	gp_max_filespaces;
+extern bool gp_initdb_mirrored;
+extern bool Debug_persistent_btree_collect;
+extern bool Debug_print_xlog_relation_change_info;
+extern bool Debug_print_xlog_relation_change_info_skip_issues_only;
 
 extern bool Debug_print_tablespace;
 extern bool	Debug_print_server_processes;

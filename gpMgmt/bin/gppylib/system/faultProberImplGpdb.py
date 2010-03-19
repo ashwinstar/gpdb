@@ -3,26 +3,50 @@
 #
 
 """
-todo MIRRORING implement this!
+todo MIRRORING: assert out if the fault prober is already paused in the database?  Most actions will call unpauseFaultProber to reset the paused to unpaused when done
 """
 import os
 
 from gppylib.gplog import *
 from gppylib.utils import checkNotNone
 from gppylib.system.faultProberInterface import GpFaultProber
+from gppylib.db import dbconn
 
 logger = get_default_logger()
 
 class GpFaultProberImplGpdb(GpFaultProber):
     def __init__(self):
         self.__isPaused = False
+        self.__masterDbUrl = None
+
+    #
+    # returns self
+    #
+    def initializeProber( self, masterPort ) :
+        self.__masterDbUrl = dbconn.DbURL(port=masterPort, dbname='template1')
+        return self
 
     def pauseFaultProber(self):
         assert not self.__isPaused
+        assert self.__masterDbUrl is not None
+
+        logger.debug("Pausing fault prober")
+        
+        conn = dbconn.connect(self.__masterDbUrl, False)
+        dbconn.execSQL( conn, "set gp_fts_probe_pause = on")
+        conn.close()
+
         self.__isPaused = True
 
     def unpauseFaultProber(self):
         assert self.__isPaused
+        assert self.__masterDbUrl is not None
+
+        logger.debug("Unpausing fault prober")
+
+        conn = dbconn.connect(self.__masterDbUrl, False)
+#        dbconn.execSQL( conn, "set gp_fts_probe_pause = off")
+        conn.close()
         self.__isPaused = False
 
     def isFaultProberPaused(self):

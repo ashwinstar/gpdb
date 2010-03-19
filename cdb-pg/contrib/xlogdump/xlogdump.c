@@ -974,9 +974,9 @@ dumpXLogRecord(XLogRecord *record, bool header_only)
 					xl_heap_freeze xlrec;
 					memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
 					printf("freeze: ts %d db %d rel %d block %d cutoff_xid %d\n",
-						xlrec.node.spcNode,
-						xlrec.node.dbNode,
-						xlrec.node.relNode,
+						xlrec.heapnode.node.spcNode,
+						xlrec.heapnode.node.dbNode,
+						xlrec.heapnode.node.relNode,
 						xlrec.block, xlrec.cutoff_xid
 					);
 				}
@@ -1109,9 +1109,9 @@ dumpXLogRecord(XLogRecord *record, bool header_only)
 					xl_heap_clean xlrec;
 
 					memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
-					getSpaceName(xlrec.node.spcNode);
-					getDbName(xlrec.node.dbNode);
-					getRelName(xlrec.node.relNode);
+					getSpaceName(xlrec.heapnode.node.spcNode);
+					getDbName(xlrec.heapnode.node.dbNode);
+					getRelName(xlrec.heapnode.node.relNode);
 					printf("clean%s: ts %s db %s rel %s block %u\n",
 						   (info & XLOG_HEAP_INIT_PAGE) ? "+INIT" : "",
 						   spaceName, dbName, relName,
@@ -1123,9 +1123,9 @@ dumpXLogRecord(XLogRecord *record, bool header_only)
 					xl_heap_newpage xlrec;
 
 					memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
-					getSpaceName(xlrec.node.spcNode);
-					getDbName(xlrec.node.dbNode);
-					getRelName(xlrec.node.relNode);
+					getSpaceName(xlrec.heapnode.node.spcNode);
+					getDbName(xlrec.heapnode.node.dbNode);
+					getRelName(xlrec.heapnode.node.relNode);
 					printf("newpage: ts %s db %s rel %s block %u\n", 
 							spaceName, dbName, relName,
 						   xlrec.blkno);
@@ -1165,8 +1165,7 @@ dumpXLogRecord(XLogRecord *record, bool header_only)
 			}
 			break;
 		case RM_BTREE_ID:
-			/* XXX not complete dump of info ... */
-			switch (info & XLOG_HEAP_OPMASK)
+			switch (info)
 			{
 				case XLOG_BTREE_INSERT_LEAF:
 				{
@@ -1272,9 +1271,9 @@ dumpXLogRecord(XLogRecord *record, bool header_only)
 					xl_btree_delete xlrec;
 
 					memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
-					getSpaceName(xlrec.node.spcNode);
-					getDbName(xlrec.node.dbNode);
-					getRelName(xlrec.node.relNode);
+					getSpaceName(xlrec.btreenode.node.spcNode);
+					getDbName(xlrec.btreenode.node.dbNode);
+					getRelName(xlrec.btreenode.node.relNode);
 					printf("delete: index %s/%s/%s block %u\n", 
 							spaceName, dbName,	relName,
 						   	xlrec.block);
@@ -1322,9 +1321,9 @@ dumpXLogRecord(XLogRecord *record, bool header_only)
 					xl_btree_newroot xlrec;
 
 					memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
-					getSpaceName(xlrec.node.spcNode);
-					getDbName(xlrec.node.dbNode);
-					getRelName(xlrec.node.relNode);
+					getSpaceName(xlrec.btreenode.node.spcNode);
+					getDbName(xlrec.btreenode.node.dbNode);
+					getRelName(xlrec.btreenode.node.relNode);
 
 					printf("newroot: index %s/%s/%s rootblk %u level %u\n", 
 							spaceName, dbName, relName,
@@ -1347,6 +1346,9 @@ dumpXLogRecord(XLogRecord *record, bool header_only)
 						   	xlrec.deadblk);
 					break;
 				}
+				default:
+					printf("a btree xlog type (%d) that isn't yet implemented in xlogdump", info);
+					break;
 			}
 			break;
 		case RM_HASH_ID:

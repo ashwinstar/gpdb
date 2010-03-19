@@ -1,0 +1,76 @@
+/*
+ *  cdbfilerepresyncmanager.h
+ *  
+ *
+ *  Copyright 2009-2010 Greenplum Inc. All rights reserved.
+ *
+ */
+
+#ifndef CDBFILEREPRESYNCMANAGER_H
+#define CDBFILEREPRESYNCMANAGER_H
+
+#include "cdb/cdbfilerep.h"
+#include "access/persistentfilesysobjname.h"
+
+/* 
+ * Resync Hash Table lacated in shared memory keeps 
+ * track of files that are currently in resync.
+ * One entry per file.
+ * It has fixed MAX number of files to be resynced
+ *
+ */
+typedef struct FileRepResyncHashEntry_s {
+	
+	char							fileName[MAXPGPATH+1]; 
+	/* 
+	 * It identifies mirror relation path.
+	 * It is key. It has to be first field in the structure. 
+	 */
+	
+	RelFileNode						relFileNode;
+	
+	int32							segmentFileNum;
+	
+	PersistentFileSysRelStorageMgr 	relStorageMgr; 
+	/* relationType (Buffer Pool or AppendOnly) */
+	
+	MirroredRelDataSynchronizationState mirrorDataSynchronizationState;
+	/* relationOperation (Full, IncrPage or IncrScan) */
+	
+	XLogRecPtr						mirrorBufpoolResyncCkptLoc;
+	/* beginIncrResyncLSN */
+	
+	BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
+	
+	int64							mirrorAppendOnlyEof;
+	
+	ItemPointerData					persistentTid;
+	
+	int64							persistentSerialNum;
+	
+	FileRepResyncState_e			fileRepResyncState;
+	
+} FileRepResyncHashEntry_s;
+
+
+
+extern Size FileRepResync_ShmemSize(void);
+
+extern void FileRepResync_ShmemInit(void);
+
+extern void FileRepPrimary_StartResyncManager(void);
+
+extern FileRepResyncHashEntry_s* FileRepPrimary_GetResyncEntry(void);
+
+extern int FileRepResync_UpdateEntry(
+									 FileRepResyncHashEntry_s*	entry);
+
+extern XLogRecPtr FileRepResync_GetEndIncrResyncLSN(void);
+
+extern XLogRecPtr FileRepResync_GetEndFullResyncLSN(void);
+
+extern void FileRepResyncManager_SetEndResyncLSN(
+												 XLogRecPtr endResyncLSN);
+
+
+#endif  /* CDBFILEREPRESYNCMANAGER_H */

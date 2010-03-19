@@ -204,6 +204,7 @@ DATA(insert OID = 2777 (	2742	_timestamp_ops	PGNSP PGUID  1115 t 1114 ));
 DATA(insert OID = 2778 (	2742	_money_ops		PGNSP PGUID  791 t 790 ));
 DATA(insert OID = 2779 (	2742	_reltime_ops	PGNSP PGUID  1024 t 703 ));
 DATA(insert OID = 2780 (	2742	_tinterval_ops	PGNSP PGUID  1025 t 704 ));
+DATA(insert OID = 2904 (	403		xlogloc_ops		PGNSP PGUID  3310 t 0 ));
 
 /*
  * the operators for the on-disk bitmap index.

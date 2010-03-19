@@ -395,7 +395,7 @@ btree_xlog_delete(XLogRecPtr lsn, XLogRecord *record)
 		return;
 
 	xlrec = (xl_btree_delete *) XLogRecGetData(record);
-	reln = XLogOpenRelation(xlrec->node);
+	reln = XLogOpenRelation(xlrec->btreenode.node);
 	buffer = XLogReadBuffer(reln, xlrec->block, false);
 	if (!BufferIsValid(buffer))
 		return;
@@ -596,7 +596,7 @@ btree_xlog_newroot(XLogRecPtr lsn, XLogRecord *record)
 	BTPageOpaque pageop;
 	BlockNumber downlink = 0;
 
-	reln = XLogOpenRelation(xlrec->node);
+	reln = XLogOpenRelation(xlrec->btreenode.node);
 	buffer = XLogReadBuffer(reln, xlrec->rootblk, true);
 	Assert(BufferIsValid(buffer));
 	page = (Page) BufferGetPage(buffer);
@@ -635,7 +635,7 @@ btree_xlog_newroot(XLogRecPtr lsn, XLogRecord *record)
 
 	/* Check to see if this satisfies any incomplete insertions */
 	if (record->xl_len > SizeOfBtreeNewroot)
-		forget_matching_split(xlrec->node, downlink, true);
+		forget_matching_split(xlrec->btreenode.node, downlink, true);
 }
 
 
@@ -768,8 +768,8 @@ btree_desc(StringInfo buf, uint8 xl_info, char *rec)
 				xl_btree_delete *xlrec = (xl_btree_delete *) rec;
 
 				appendStringInfo(buf, "delete: rel %u/%u/%u; blk %u",
-								 xlrec->node.spcNode, xlrec->node.dbNode,
-								 xlrec->node.relNode, xlrec->block);
+								 xlrec->btreenode.node.spcNode, xlrec->btreenode.node.dbNode,
+								 xlrec->btreenode.node.relNode, xlrec->block);
 				break;
 			}
 		case XLOG_BTREE_DELETE_PAGE:
@@ -789,8 +789,8 @@ btree_desc(StringInfo buf, uint8 xl_info, char *rec)
 				xl_btree_newroot *xlrec = (xl_btree_newroot *) rec;
 
 				appendStringInfo(buf, "newroot: rel %u/%u/%u; root %u lev %u",
-								 xlrec->node.spcNode, xlrec->node.dbNode,
-								 xlrec->node.relNode,
+								 xlrec->btreenode.node.spcNode, xlrec->btreenode.node.dbNode,
+								 xlrec->btreenode.node.relNode,
 								 xlrec->rootblk, xlrec->level);
 				break;
 			}

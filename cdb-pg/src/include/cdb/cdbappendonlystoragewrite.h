@@ -206,7 +206,29 @@ extern void AppendOnlyStorageWrite_FinishSession(
 // -----------------------------------------------------------------------------
 
 /*
- * Opens the next segment file to write.
+ * Creates an on-demand Append-Only segment file under transaction.
+ */
+void AppendOnlyStorageWrite_TransactionCreateFile(
+	AppendOnlyStorageWrite		*storageWrite,
+
+	char						*filePathName,
+				/* The name of the segment file to open. */
+
+	int64						logicalEof,
+				/*
+				 * The last committed write transaction's EOF
+				 * value to use as the end of the segment
+				 * file.
+				 *
+				 * If the EOF is 0, we will create the file
+				 * if necessary.  Otherwise, it must already
+				 * exist.
+				 */
+	RelFileNode 				relFileNode,
+	int32						segmentFileNum);
+
+/*
+ * Opens the next segment file to write.  The file must already exist.
  *
  * This routine is responsible for seeking to the proper
  * write location given the logical EOF.

@@ -215,8 +215,43 @@ typedef struct BTMetaPageData
 typedef struct xl_btreetid
 {
 	RelFileNode node;
+	ItemPointerData persistentTid;
+	int64 persistentSerialNum;
 	ItemPointerData tid;		/* changed tuple id */
 } xl_btreetid;
+
+inline static void xl_btreetid_set(
+	struct xl_btreetid	*btreeid,
+
+	Relation rel,
+
+	BlockNumber itup_blkno,
+	
+	OffsetNumber itup_off)
+{
+	btreeid->node = rel->rd_node;
+	btreeid->persistentTid = rel->rd_segfile0_relationnodeinfo.persistentTid;
+	btreeid->persistentSerialNum = rel->rd_segfile0_relationnodeinfo.persistentSerialNum;
+	ItemPointerSet(&(btreeid->tid), itup_blkno, itup_off);
+}
+
+typedef struct xl_btreenode
+{
+	RelFileNode node;
+	ItemPointerData persistentTid;
+	int64 persistentSerialNum;
+} xl_btreenode;
+
+inline static void xl_btreenode_set(
+	struct xl_btreenode	*btreenode,
+
+	Relation rel)
+{
+	btreenode->node = rel->rd_node;
+	btreenode->persistentTid = rel->rd_segfile0_relationnodeinfo.persistentTid;
+	btreenode->persistentSerialNum = rel->rd_segfile0_relationnodeinfo.persistentSerialNum;
+}
+
 
 /*
  * All that we need to regenerate the meta-data page
@@ -281,7 +316,7 @@ typedef struct xl_btree_split
  */
 typedef struct xl_btree_delete
 {
-	RelFileNode node;
+	xl_btreenode btreenode;
 	BlockNumber block;
 	/* TARGET OFFSET NUMBERS FOLLOW AT THE END */
 } xl_btree_delete;
@@ -315,7 +350,7 @@ typedef struct xl_btree_delete_page
  */
 typedef struct xl_btree_newroot
 {
-	RelFileNode node;
+	xl_btreenode btreenode;
 	BlockNumber rootblk;		/* location of new root */
 	uint32		level;			/* its tree level */
 	/* 0 or 2 INDEX TUPLES FOLLOW AT END OF STRUCT */

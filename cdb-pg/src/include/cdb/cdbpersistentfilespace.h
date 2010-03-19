@@ -14,11 +14,19 @@
 #include "storage/itemptr.h"
 #include "cdb/cdbsharedoidsearch.h"
 #include "access/persistentfilesysobjname.h"
-
-extern void PersistentFilespace_InitScan(void);
+#include "cdb/cdbdoublylinked.h"
 
 extern bool PersistentFilespace_Check(
 	Oid 			filespace);
+
+extern void PersistentFilespace_LookupTidAndSerialNum(
+	Oid 		filespaceOid,
+				/* The filespace OID for the lookup. */
+
+	ItemPointer		persistentTid,
+				/* TID of the gp_persistent_filespace_node tuple for the rel file */
+
+	int64			*persistentSerialNum);
 
 extern void PersistentFilespace_GetPrimaryAndMirrorUnderLock(
 	Oid 		filespaceOid,
@@ -67,10 +75,14 @@ extern void PersistentFilespace_MarkCreatePending(
 	int16		mirrorDbId,
 	
 	char		*mirrorFilespaceLocation,
-	
+
+	MirroredObjectExistenceState mirrorExistenceState,
+
 	ItemPointer		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
-
+				
+	int64			*persistentSerialNum,
+				
 	bool			flushToXLog);
 				/* When true, the XLOG record for this change will be flushed to disk. */
 

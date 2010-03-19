@@ -33,6 +33,8 @@ void PersistentStore_InitShared(
 void PersistentStore_Init(
 	PersistentStoreData 		*storeData,
 
+	int							token,
+
 	GpGlobalSequence			gpGlobalSequence,
 	
 	PersistentStoreOpenRel		openRel,
@@ -49,6 +51,7 @@ void PersistentStore_Init(
 {
 	MemSet(storeData, 0, sizeof(PersistentStoreData));
 
+	storeData->token = token;
 	storeData->gpGlobalSequence = gpGlobalSequence;
 	storeData->openRel = openRel;
 	storeData->closeRel = closeRel;
@@ -142,83 +145,78 @@ static void PersistentStore_FormTupleSetOurs(
 static void PersistentStore_DoInitScan(
 	PersistentStoreData 		*storeData,
 
-	PersistentStoreSharedData 	*storeSharedData,
-
-	int							token)
+	PersistentStoreSharedData 	*storeSharedData)
 {
-	Relation		persistentRel;
-    HeapScanDesc 	scan;
-    HeapTuple 		tuple;
+	PersistentStoreScan storeScan;
 
+	ItemPointerData			persistentTid;
 	int64					persistentSerialNum;
+
 	ItemPointerData			previousFreeTid;
 
 	Datum					*values;
 
-	ItemPointerData			zeroTid;
-
 	int64			globalSequenceNum;
-
-	MemSet(&zeroTid, 0, sizeof(ItemPointerData));
 
 	values = (Datum*)palloc(storeData->numAttributes * sizeof(Datum));
 
-	persistentRel = (*storeData->openRel)();
-	
-    scan = heap_beginscan(persistentRel, SnapshotNow, 0, NULL);
-
 	MemSet(&storeSharedData->maxTid, 0, sizeof(ItemPointerData));
-    while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+
+	PersistentStore_BeginScan(
+						storeData,
+						storeSharedData,
+						&storeScan);
+
+	while (PersistentStore_GetNext(
+							&storeScan,
+							values,
+							&persistentTid,
+							&persistentSerialNum))
 	{
 		Assert(ItemPointerCompare(
 							&storeSharedData->maxTid,
-							&tuple->t_self) == -1);	// Less-Than.
+							&persistentTid) == -1);	// Less-Than.
 							
-		storeSharedData->maxTid = tuple->t_self;
-		
-		PersistentStore_DeformTuple(
-								storeData,
-								persistentRel->rd_att,
-								tuple,
-								values);
+		storeSharedData->maxTid = persistentTid;
+
 		PersistentStore_ExtractOurTupleData(
 									storeData,
 									values,
 									&persistentSerialNum,
 									&previousFreeTid);
-
-	if (Debug_persistent_recovery_print)
-		elog(Debug_persistent_recovery_print_level, 
-			 "PersistentStore_DoInitScan: TID %s, serial number " INT64_FORMAT ", previous free TID %s",
-			 ItemPointerToString(&tuple->t_self),
-			 persistentSerialNum, 
-			 ItemPointerToString2(&previousFreeTid));
 		
-		if (ItemPointerCompare(&previousFreeTid, &zeroTid) != 0)
+		if (Debug_persistent_recovery_print)
+			elog(Debug_persistent_recovery_print_level, 
+				 "PersistentStore_DoInitScan (token %d): TID %s, serial number " INT64_FORMAT ", previous free TID %s",
+				 storeData->token,
+				 ItemPointerToString(&persistentTid),
+				 persistentSerialNum, 
+				 ItemPointerToString2(&previousFreeTid));
+		
+		if (!PersistentStore_IsZeroTid(&previousFreeTid))
 		{
 			if (storeSharedData->maxFreeOrderNum < persistentSerialNum)
 			{
 				storeSharedData->maxFreeOrderNum = persistentSerialNum;
-				storeSharedData->freeTid = tuple->t_self;
+				storeSharedData->freeTid = persistentTid;
 			}
 		}
 		else if (storeSharedData->maxInUseSerialNum < persistentSerialNum)
 		{
 			storeSharedData->maxInUseSerialNum = persistentSerialNum;
+			storeData->myHighestSerialNum = storeSharedData->maxInUseSerialNum;
 		}
 
 		if (storeData->scanTupleCallback != NULL)
 			(*storeData->scanTupleCallback)(
-										token,
-										&tuple->t_self,
+										storeData->token,
+										&persistentTid,
 										persistentSerialNum,
 										values);
 
 	}
-	
-    heap_endscan(scan);
 
-	(*storeData->closeRel)(persistentRel);
+	PersistentStore_EndScan(&storeScan);
 
 	pfree(values);
 
@@ -232,7 +230,8 @@ static void PersistentStore_DoInitScan(
 	
 	if (Debug_persistent_recovery_print)
 		elog(Debug_persistent_recovery_print_level, 
-			 "PersistentStore_DoInitScan: maximum in-use serial number " INT64_FORMAT ", maximum free order number " INT64_FORMAT ", free TID %s",
+			 "PersistentStore_DoInitScan (token %d): maximum in-use serial number " INT64_FORMAT ", maximum free order number " INT64_FORMAT ", free TID %s",
+			 storeData->token,
 			 storeSharedData->maxInUseSerialNum, 
 			 storeSharedData->maxFreeOrderNum, 
 			 ItemPointerToString2(&storeSharedData->freeTid));
@@ -241,9 +240,7 @@ static void PersistentStore_DoInitScan(
 void PersistentStore_InitScanUnderLock(
 	PersistentStoreData 		*storeData,
 
-	PersistentStoreSharedData 	*storeSharedData,
-
-	int							token)
+	PersistentStoreSharedData 	*storeSharedData)
 {
 	if (!storeSharedData->needToScanIntoSharedMemory)
 	{
@@ -252,27 +249,9 @@ void PersistentStore_InitScanUnderLock(
 
 	PersistentStore_DoInitScan(
 						storeData,
-						storeSharedData,
-						token);
+						storeSharedData);
 
 	storeSharedData->needToScanIntoSharedMemory = false;
-}
-
-void PersistentStore_InitScan(
-	PersistentStoreData 		*storeData,
-
-	PersistentStoreSharedData 	*storeSharedData,
-
-	int							token)
-{
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
-
-	PersistentStore_InitScanUnderLock(
-							storeData,
-							storeSharedData,
-							token);
-
-	LWLockRelease(PersistentObjLock);
 }
 
 void PersistentStore_Scan(
@@ -280,46 +259,35 @@ void PersistentStore_Scan(
 
 	PersistentStoreSharedData 	*storeSharedData,
 
-	int 						token,
-
 	PersistentStoreScanTupleCallback	scanTupleCallback)
 {
-	Relation		persistentRel;
-    HeapScanDesc 	scan;
-    HeapTuple 		tuple;
+	PersistentStoreScan storeScan;
 
-	int64					persistentSerialNum;
-	ItemPointerData			previousFreeTid;
+	ItemPointerData			persistentTid;
+	int64					persistentSerialNum = 0;
 
 	Datum					*values;
 
 	values = (Datum*)palloc(storeData->numAttributes * sizeof(Datum));
 
-	persistentRel = (*storeData->openRel)();
-	
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
-	scan = heap_beginscan(persistentRel, SnapshotNow, 0, NULL);
+	PersistentStore_BeginScan(
+						storeData,
+						storeSharedData,
+						&storeScan);
 
-	MemSet(&storeSharedData->maxTid, 0, sizeof(ItemPointerData));
-	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	while (PersistentStore_GetNext(
+							&storeScan,
+							values,
+							&persistentTid,
+							&persistentSerialNum))
 	{
 		bool okToContinue;
 
-		PersistentStore_DeformTuple(
-								storeData,
-								persistentRel->rd_att,
-								tuple,
-								values);
-		PersistentStore_ExtractOurTupleData(
-									storeData,
-									values,
-									&persistentSerialNum,
-									&previousFreeTid);
-
 		okToContinue = (*scanTupleCallback)(
-								token,
-								&tuple->t_self,
+								storeData->token,
+								&persistentTid,
 								persistentSerialNum,
 								values);
 
@@ -328,15 +296,80 @@ void PersistentStore_Scan(
 
 	}
 	
-	heap_endscan(scan);
-
-	(*storeData->closeRel)(persistentRel);
-
-	pfree(values);
+	PersistentStore_EndScan(&storeScan);
 
 	LWLockRelease(PersistentObjLock);
+
+	pfree(values);
 }
 
+void PersistentStore_BeginScan(
+	PersistentStoreData 		*storeData,
+
+	PersistentStoreSharedData	*storeSharedData,
+
+	PersistentStoreScan			*storeScan)
+{
+	MemSet(storeScan, 0, sizeof(PersistentStoreScan));
+
+	storeScan->storeData = storeData;
+	storeScan->storeSharedData = storeSharedData;
+
+	storeScan->persistentRel = (*storeData->openRel)();
+
+	storeScan->scan = heap_beginscan(
+							storeScan->persistentRel, 
+							SnapshotNow, 
+							0, 
+							NULL);
+
+	storeScan->tuple = NULL;
+}
+
+bool PersistentStore_GetNext(
+	PersistentStoreScan			*storeScan,
+
+	Datum						*values,
+
+	ItemPointer					persistentTid,
+
+	int64						*persistentSerialNum)
+{
+	ItemPointerData			previousFreeTid;
+
+	storeScan->tuple = heap_getnext(storeScan->scan, ForwardScanDirection);
+	if (storeScan->tuple == NULL)
+		return false;
+
+	PersistentStore_DeformTuple(
+							storeScan->storeData,
+							storeScan->persistentRel->rd_att,
+							storeScan->tuple,
+							values);
+	PersistentStore_ExtractOurTupleData(
+								storeScan->storeData,
+								values,
+								persistentSerialNum,
+								&previousFreeTid);
+
+	*persistentTid = storeScan->tuple->t_self;
+
+	return true;
+}
+
+HeapTuple PersistentStore_GetScanTupleCopy(
+	PersistentStoreScan			*storeScan)
+{
+	return heaptuple_copy_to(storeScan->tuple, NULL, NULL);
+}
+
+void PersistentStore_EndScan(
+	PersistentStoreScan			*storeScan)
+{
+	heap_endscan(storeScan->scan);
+
+	(*storeScan->storeData->closeRel)(storeScan->persistentRel);
+}
 
 // -----------------------------------------------------------------------------
 // Helpers 
@@ -357,6 +390,18 @@ void PersistentStore_FlushXLog(void)
 		XLogFlush(nowaitXLogEndLoc);
 		XLogRecPtr_Zero(&nowaitXLogEndLoc);
 	}
+}
+
+int64 PersistentStore_MyHighestSerialNum(
+	PersistentStoreData 	*storeData)
+{
+	return storeData->myHighestSerialNum;
+}
+
+int64 PersistentStore_CurrentMaxSerialNum(
+	PersistentStoreSharedData 	*storeSharedData)
+{
+	return storeSharedData->maxInUseSerialNum;
 }
 
 static void PersistentStore_DoInsertTuple(
@@ -503,7 +548,7 @@ void PersistentStore_UpdateTuple(
 
 	persistentTuple->t_self = *persistentTid;
 		
-	heap_inplace_update(persistentRel, persistentTuple);
+	frozen_heap_inplace_update(persistentRel, persistentTuple);
 
 	/*
 	 * Return the XLOG location of the UPDATE tuple's XLOG record.
@@ -523,6 +568,66 @@ void PersistentStore_UpdateTuple(
 		nowaitXLogEndLoc = xlogUpdateEndLoc;
 }
 
+void PersistentStore_ReplaceTuple(
+	PersistentStoreData 		*storeData,
+
+	PersistentStoreSharedData 	*storeSharedData,
+
+	ItemPointer 			persistentTid,
+				/* TID of the stored tuple. */
+
+	HeapTuple				tuple,
+
+	Datum					*newValues,
+	
+	bool					*replaces,
+
+	bool					flushToXLog)
+				/* When true, the XLOG record for this change will be flushed to disk. */
+
+{
+	Relation	persistentRel;
+	bool 		*nulls;
+	HeapTuple	replacementTuple = NULL;
+	XLogRecPtr 	xlogUpdateEndLoc;
+	
+	persistentRel = (*storeData->openRel)();
+
+	/*
+	 * In order to keep the tuples the exact same size to enable direct reuse of
+	 * free tuples, we do not use NULLs.
+	 */
+	nulls = (bool*)palloc0(storeData->numAttributes * sizeof(bool));
+		
+	/*
+	 * Modify the tuple.
+	 */
+	replacementTuple = heap_modify_tuple(tuple, persistentRel->rd_att, 
+										 newValues, nulls, replaces);
+
+	replacementTuple->t_self = *persistentTid;
+		
+	frozen_heap_inplace_update(persistentRel, replacementTuple);
+
+	/*
+	 * Return the XLOG location of the UPDATE tuple's XLOG record.
+	 */
+	xlogUpdateEndLoc = XLogLastInsertEndLoc();
+
+	heap_freetuple(replacementTuple);
+
+	(*storeData->closeRel)(persistentRel);
+
+	if (flushToXLog)
+	{
+		XLogFlush(xlogUpdateEndLoc);
+		XLogRecPtr_Zero(&nowaitXLogEndLoc);
+	}
+	else
+		nowaitXLogEndLoc = xlogUpdateEndLoc;
+}
+
+
 void PersistentStore_ReadTuple(
 	PersistentStoreData 		*storeData,
 
@@ -541,14 +646,21 @@ void PersistentStore_ReadTuple(
 
 	bool *nulls;
 
+	if (PersistentStore_IsZeroTid(readTid))
+		elog(ERROR, "TID for fetch persistent tuple is invalid (0,0) (token %d)",
+			 storeData->token);
+
 	persistentRel = (*storeData->openRel)();
 
 	tuple.t_self = *readTid;
 	
 	if (!heap_fetch(persistentRel, SnapshotAny,
 					&tuple, &buffer, false, NULL))
-		elog(ERROR, "Failed to fetch persistent tuple at %s",
-			 ItemPointerToString(&tuple.t_self));
+	{
+		elog(ERROR, "Failed to fetch persistent tuple at %s (token %d)",
+			 ItemPointerToString(&tuple.t_self),
+			 storeData->token);
+	}
 
 	
 	*tupleCopy = heaptuple_copy_to(&tuple, NULL, NULL);
@@ -576,15 +688,11 @@ static bool PersistentStore_GetFreeTuple(
 
 	ItemPointer				freeTid)
 {
-	ItemPointerData			zeroTid;
-
 	Datum			*values;
 	HeapTuple		tupleCopy;
 
 	int64					persistentSerialNum;
 	ItemPointerData			previousFreeTid;
-
-	MemSet(&zeroTid, 0, sizeof(ItemPointerData));
 
 	MemSet(freeTid, 0, sizeof(ItemPointerData));
 
@@ -619,17 +727,20 @@ static bool PersistentStore_GetFreeTuple(
 								&persistentSerialNum,
 								&previousFreeTid);
 
-	if (ItemPointerCompare(&previousFreeTid, &zeroTid) == 0)
-		elog(ERROR, "Expected persistent store tuple at %s to be in free", 
-			 ItemPointerToString(&storeSharedData->freeTid));
+	if (PersistentStore_IsZeroTid(&previousFreeTid))
+		elog(ERROR, "Expected persistent store tuple at %s to be free (token %d)", 
+			 ItemPointerToString(&storeSharedData->freeTid),
+			 storeData->token);
+
 	if (storeSharedData->maxFreeOrderNum == 1)
 		Assert(ItemPointerCompare(&previousFreeTid, &storeSharedData->freeTid) == 0);
 
 	if (persistentSerialNum != storeSharedData->maxFreeOrderNum)
-		elog(ERROR, "Expected persistent store tuple at %s to have order number " INT64_FORMAT " (found " INT64_FORMAT ")", 
+		elog(ERROR, "Expected persistent store tuple at %s to have order number " INT64_FORMAT " (found " INT64_FORMAT ", token %d)", 
 			 ItemPointerToString(&storeSharedData->freeTid),
 			 storeSharedData->maxFreeOrderNum,
-			 persistentSerialNum);
+			 persistentSerialNum,
+			 storeData->token);
 
 	*freeTid = storeSharedData->freeTid;
 	storeSharedData->maxFreeOrderNum--;
@@ -641,9 +752,10 @@ static bool PersistentStore_GetFreeTuple(
 
 	if (Debug_persistent_recovery_print)
 		elog(Debug_persistent_recovery_print_level, 
-			 "PersistentStore_GetFreeTuple: Exit: maximum free order number " INT64_FORMAT ", free TID %s",
+			 "PersistentStore_GetFreeTuple: Exit: maximum free order number " INT64_FORMAT ", free TID %s (token %d)",
 			 storeSharedData->maxFreeOrderNum, 
-			 ItemPointerToString2(&storeSharedData->freeTid));
+			 ItemPointerToString2(&storeSharedData->freeTid),
+			 storeData->token);
 
 	return true;
 }
@@ -665,6 +777,8 @@ void PersistentStore_AddTuple(
 
 {
 	*persistentSerialNum = ++storeSharedData->maxInUseSerialNum;
+	storeData->myHighestSerialNum = storeSharedData->maxInUseSerialNum;
+
 	GlobalSequence_Set(
 				storeData->gpGlobalSequence,
 				*persistentSerialNum);
@@ -745,7 +859,7 @@ void PersistentStore_FreeTuple(
 
 	persistentTuple->t_self = *persistentTid;
 		
-	heap_inplace_update(persistentRel, persistentTuple);
+	frozen_heap_inplace_update(persistentRel, persistentTuple);
 
 	/*
 	 * XLOG location of the UPDATE tuple's XLOG record.

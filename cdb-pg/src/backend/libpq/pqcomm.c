@@ -829,7 +829,6 @@ pq_waitForDataUsingSelect(void)
 	}
 	else
 	{
-		/* todo MIRRORING: use pqSocketPoll? */
 		int sock = MyProcPort->sock;
 		for ( ;; )
 		{

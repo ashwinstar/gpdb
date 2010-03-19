@@ -100,9 +100,9 @@ PROCESS_QE () {
 	MIRROR_ONLY_INITDB_OPTION=
 	if [ x"" != x"$COPY_FROM_PRIMARY_HOSTNAME" ]; then
 		MIRROR_ONLY_INITDB_OPTION=-m
-	fi	
+	fi
 
-	$TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;$INITDB $MIRROR_ONLY_INITDB_OPTION -E $ENCODING -D $GP_DIR --locale=$LOCALE_SETTING --max_connections=$QE_MAX_CONNECT --shared_buffers=$QE_SHARED_BUFFERS" >> $LOG_FILE 2>&1
+	$TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;$INITDB $MIRROR_ONLY_INITDB_OPTION -E $ENCODING -D $GP_DIR --locale=$LOCALE_SETTING --max_connections=$QE_MAX_CONNECT --shared_buffers=$QE_SHARED_BUFFERS --is_filerep_mirrored=$IS_FILEREP_MIRRORED_OPTION" >> $LOG_FILE 2>&1
 	RETVAL=$?
 	BACKOUT_COMMAND "$TRUSTED_SHELL ${GP_HOSTNAME} \"$RM -rf $GP_DIR > /dev/null 2>&1\""
 	BACKOUT_COMMAND "$ECHO \"removing directory $GP_DIR on $GP_HOSTNAME\""
@@ -248,7 +248,7 @@ TYPE=$1;shift
 case $TYPE in
 	1 )
 		SEGMENT_LINE=$1;shift		#String used to build segment instance
-                COPY_FROM_PRIMARY_SEGMENT_LINE=$1;shift # String used to build primary segment instance from which to copy data
+        COPY_FROM_PRIMARY_SEGMENT_LINE=$1;shift # String used to build primary segment instance from which to copy data
 		if [ x"IS_PRIMARY" != x"$COPY_FROM_PRIMARY_SEGMENT_LINE" ]; then
 			SET_VAR $COPY_FROM_PRIMARY_SEGMENT_LINE
 			COPY_FROM_PRIMARY_HOSTNAME=$GP_HOSTNAME
@@ -264,6 +264,7 @@ case $TYPE in
 		        exit 2
             fi
         fi
+        IS_FILEREP_MIRRORED_OPTION=$1;shift # yes or no, should we tell initdb to create persistent values
 		INST_COUNT=$1;shift		#Unique number for this parallel script, starts at 0
 		BACKOUT_FILE=/tmp/gpsegcreate.sh_backout.$$
 		LOG_FILE=$1;shift		#Central logging file

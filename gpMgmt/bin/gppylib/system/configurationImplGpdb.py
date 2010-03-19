@@ -28,6 +28,8 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
     """
 
     def __init__(self):
+        self.__masterDbUrl = None
+        self.__useUtilityMode = False
         pass
 
     def initializeProvider( self, masterPort, useUtilityMode ) :
@@ -61,7 +63,7 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
 
         return GpArray.initFromCatalog(self.__masterDbUrl, self.__useUtilityMode)
 
-    def updateSystemConfig( self, gpArray ) :
+    def updateSystemConfig( self, gpArray, textForConfigTable ) :
         """
         Update the configuration for the given segments in the underlying
         configuration store to match the current values
@@ -71,9 +73,6 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
 
         # ensure initializeProvider() was called
         checkNotNone("masterDbUrl", self.__masterDbUrl) 
-
-        # should use mainUtils.getProgramName but I can't make it work!
-        programName = os.path.split(sys.argv[0])[-1] 
 
         conn = dbconn.connect(self.__masterDbUrl, self.__useUtilityMode)
         dbconn.execSQL(conn, "BEGIN")
@@ -123,7 +122,7 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
                        "FROM pg_catalog.pg_filespace fs WHERE fs.fsname = 'pg_system'"
                 dbconn.executeUpdateOrInsert(conn, sql, 1)
 
-                changeDescription = "inserted by %s" % programName
+                changeDescription = textForConfigTable + ": inserted segment configuration"
 
             else:
 
@@ -152,12 +151,12 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
                             "  AND fsefsoid = (SELECT oid FROM pg_catalog.pg_filespace WHERE fsname='pg_system')"
                     dbconn.executeUpdateOrInsert(conn, sql, 1)
                     
-                    changeDescription = "updated by %s" % programName
+                changeDescription = textForConfigTable + ": updated segment configuration"
 
 
             if changeDescription is not None:
 
-                logger.debug("Change D is %s" % changeDescription)
+                logger.debug("Change description is %s" % changeDescription)
 
                 # now update change history
                 sql = "INSERT INTO gp_configuration_history (time, dbid, \"desc\") VALUES(\n" \
@@ -167,7 +166,7 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
 
                 dbconn.executeUpdateOrInsert(conn, sql, 1)
 
-        if gpArray.getStrategyAsLoadedFromDb()[0] != gpArray.getFaultStrategy():
+        if gpArray.getStrategyAsLoadedFromDb() != gpArray.getFaultStrategy():
             logger.debug("Setting fault strategy to " + gpArray.getFaultStrategy())
             sql = "UPDATE gp_fault_strategy\n" + \
                   "SET fault_strategy = " + self.__toSqlCharValue(gpArray.getFaultStrategy()) + "\n"

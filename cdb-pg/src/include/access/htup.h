@@ -20,6 +20,7 @@
 #include "storage/itemptr.h"
 #include "storage/relfilenode.h"
 #include "access/sysattr.h"
+
 /*
  * MaxTupleAttributeNumber limits the number of (user) columns in a tuple.
  * The key limit on this value is that the size of the fixed overhead for
@@ -514,10 +515,19 @@ static inline uint32 heaptuple_get_size(HeapTuple htup)
 typedef struct xl_heaptid
 {
 	RelFileNode node;
+	ItemPointerData persistentTid;
+	int64 persistentSerialNum;
 	ItemPointerData tid;		/* changed tuple id */
 } xl_heaptid;
 
 #define SizeOfHeapTid		(offsetof(xl_heaptid, tid) + SizeOfIptrData)
+
+typedef struct xl_heapnode
+{
+	RelFileNode node;
+	ItemPointerData persistentTid;
+	int64 persistentSerialNum;
+} xl_heapnode;
 
 /* This is what we need to know about delete */
 typedef struct xl_heap_delete
@@ -567,7 +577,7 @@ typedef struct xl_heap_update
 /* This is what we need to know about vacuum page cleanup */
 typedef struct xl_heap_clean
 {
-	RelFileNode node;
+	xl_heapnode heapnode;
 	BlockNumber block;
 	/* UNUSED OFFSET NUMBERS FOLLOW AT THE END */
 } xl_heap_clean;
@@ -578,7 +588,7 @@ typedef struct xl_heap_clean
 /* NB: this is used for indexes as well as heaps */
 typedef struct xl_heap_newpage
 {
-	RelFileNode node;
+	xl_heapnode heapnode;
 	BlockNumber blkno;			/* location of new page */
 	/* entire page contents follow at end of record */
 } xl_heap_newpage;
@@ -608,7 +618,7 @@ typedef struct xl_heap_inplace
 /* This is what we need to know about tuple freezing during vacuum */
 typedef struct xl_heap_freeze
 {
-	RelFileNode node;
+	xl_heapnode heapnode;
 	BlockNumber block;
 	TransactionId cutoff_xid;
 	/* TUPLE OFFSET NUMBERS FOLLOW AT THE END */

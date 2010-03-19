@@ -619,6 +619,15 @@ extern Datum gpxloglocin(PG_FUNCTION_ARGS);
 extern Datum gpxloglocout(PG_FUNCTION_ARGS);
 extern Datum gpxloglocrecv(PG_FUNCTION_ARGS);
 extern Datum gpxloglocsend(PG_FUNCTION_ARGS);
+extern Datum gpxlogloclarger(PG_FUNCTION_ARGS);
+extern Datum gpxloglocsmaller(PG_FUNCTION_ARGS);
+extern Datum gpxlogloceq(PG_FUNCTION_ARGS);
+extern Datum gpxloglocne(PG_FUNCTION_ARGS);
+extern Datum gpxlogloclt(PG_FUNCTION_ARGS);
+extern Datum gpxloglocle(PG_FUNCTION_ARGS);
+extern Datum gpxloglocgt(PG_FUNCTION_ARGS);
+extern Datum gpxloglocge(PG_FUNCTION_ARGS);
+extern Datum btgpxlogloccmp(PG_FUNCTION_ARGS);
 
 /* varchar.c */
 extern Datum bpcharin(PG_FUNCTION_ARGS);
@@ -1067,15 +1076,6 @@ extern Datum float8_mregr_r2(PG_FUNCTION_ARGS);
 
 /* utils/stat/pinv.c */
 Datum pseudoinverse(PG_FUNCTION_ARGS);
-
-/* cdb/cdbpersistentrelation.c */
-Datum gp_persistent_relation_node_add(PG_FUNCTION_ARGS);
-
-/* cdb/cdbpersistentdatabase.c */
-Datum gp_persistent_database_node_add(PG_FUNCTION_ARGS);
-
-/* cdb/cdbpersistenttablespace.c */
-Datum gp_persistent_tablespace_node_add(PG_FUNCTION_ARGS);
 
 /* cdb/cdbpersistentbuild.c */
 Datum gp_persistent_build_db(PG_FUNCTION_ARGS);

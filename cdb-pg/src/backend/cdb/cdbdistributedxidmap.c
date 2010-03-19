@@ -390,7 +390,7 @@ DistributedXidMapShmemInit_SLru(void)
 {
 	DistributedXidMapCtl->PagePrecedes = DistributedXidMapPagePrecedes;
 	SimpleLruInit(DistributedXidMapCtl, "DistributedXidMap Ctl", NUM_DISTRIBUTEDXIDMAP_BUFFERS,
-				  DistributedXidMapControlLock, "pg_distributedxidmap");
+				  DistributedXidMapControlLock, DISTRIBUTEDXIDMAP_DIR);
 	/* Override default assumption that writes should be fsync'd */
 	DistributedXidMapCtl->do_fsync = false;
 }

@@ -22,6 +22,7 @@ include = re.compile('\s*#include\s*["<](\S*)[">]')
 fileset = {
     'abi_mutex.h':       [],
     'alpha/builtins.h':  [],
+    'cdb/cdbmirroredappendonly.h':  [],
     'crtdefs.h':         [],
     'cygwin/version.h':  [],
     'direct.h':          [],

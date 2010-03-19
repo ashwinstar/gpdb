@@ -28,7 +28,8 @@
 #include "storage/freespace.h"
 #include "storage/lmgr.h"
 #include "utils/inval.h"
-
+#include "access/heapam.h"	// For RelationFetchGpRelationNodeForXLog.
+#include "utils/guc.h"
 
 /*
  *	_bt_initmetapage() -- Fill a page buffer with a correct metapage image
@@ -174,6 +175,9 @@ _bt_getroot(Relation rel, int access)
 			return InvalidBuffer;
 		}
 
+		// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+		RelationFetchGpRelationNodeForXLog(rel);
+		
 		/* trade in our read lock for a write lock */
 		LockBuffer(metabuf, BUFFER_LOCK_UNLOCK);
 		LockBuffer(metabuf, BT_WRITE);
@@ -227,7 +231,7 @@ _bt_getroot(Relation rel, int access)
 			XLogRecPtr	recptr;
 			XLogRecData rdata;
 
-			xlrec.node = rel->rd_node;
+			xl_btreenode_set(&(xlrec.btreenode), rel);
 			xlrec.rootblk = rootblkno;
 			xlrec.level = 0;
 
@@ -655,6 +659,9 @@ _bt_delitems(Relation rel, Buffer buf,
 	Page		page = BufferGetPage(buf);
 	BTPageOpaque opaque;
 
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(rel);
+
 	/* No ereport(ERROR) until changes are logged */
 	START_CRIT_SECTION();
 
@@ -686,7 +693,7 @@ _bt_delitems(Relation rel, Buffer buf,
 		XLogRecPtr	recptr;
 		XLogRecData rdata[2];
 
-		xlrec.node = rel->rd_node;
+		xl_btreenode_set(&(xlrec.btreenode), rel);
 		xlrec.block = BufferGetBlockNumber(buf);
 
 		rdata[0].data = (char *) &xlrec;
@@ -859,6 +866,9 @@ _bt_pagedel(Relation rel, Buffer buf, BTStack stack, bool vacuum_full)
 	BTMetaPageData *metad = NULL;
 	Page		page;
 	BTPageOpaque opaque;
+
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(rel);
 
 	/*
 	 * We can never delete rightmost pages nor root pages.	While at it, check
@@ -1197,8 +1207,7 @@ _bt_pagedel(Relation rel, Buffer buf, BTStack stack, bool vacuum_full)
 		XLogRecData rdata[5];
 		XLogRecData *nextrdata;
 
-		xlrec.target.node = rel->rd_node;
-		ItemPointerSet(&(xlrec.target.tid), parent, poffset);
+		xl_btreetid_set(&(xlrec.target), rel, parent, poffset);
 		xlrec.deadblk = target;
 		xlrec.leftblk = leftsib;
 		xlrec.rightblk = rightsib;

@@ -8,12 +8,10 @@
 #
 from gppylib.mainUtils import *
 
-# todo MIRRORING: catch and log errors more nicely
-# todo MIRRORING: make a main that can be used for remote-level scripts (that will return pickled output?)
-
 from gppylib.gplog import *
 from gppylib.commands import unix
 import pickle, base64
+from gppylib import gparray
 from gppylib.gpparseopts import OptChecker,OptParser,OptParser
 
 logger = get_default_logger()
@@ -30,7 +28,7 @@ class GpCleanSegmentDirectoryProgram:
         segments = pickle.loads(base64.urlsafe_b64decode(self.__options.pickledArguments))
         # todo: verify that the segment does not have a running postmaster???
 
-        results = []
+        logger.info("Cleaning main data directories")
         for segment in segments:
             dir = segment.getSegmentDataDirectory()
             logger.info("Cleaning %s" % dir)
@@ -39,9 +37,23 @@ class GpCleanSegmentDirectoryProgram:
             # todo MIRRORING: should we just remove dir + "/*"?  Can we somehow validate that
             #                 this is a correct mirroring directory???  Do some sanity check?
             #
-            subDirs = ["PG_VERSION", "base", "global", "gpstart*", "pg_*", "postgres*", "postmaster*"]
-            for subDir in subDirs:
-                unix.RemoveFiles('clean segment', dir + "/" + subDir).run( validateAfter=True )
+            # also, is it possible that there are more files in this directory?
+            #    I think some random tools drop files in here
+            #
+            # should we make it so we don't need to have the directory cleaned??
+            #
+            toCleanArr = ["PG_VERSION", "base", "global", "gpstart*", "gp_pmtransition_args",
+                            "pg_*", "postgres*", "postmaster*"]
+            for toClean in toCleanArr:
+                unix.RemoveFiles('clean segment', dir + "/" + toClean).run( validateAfter=True )
+
+        for segment in segments:
+            for filespaceOid, dir in segment.getSegmentFilespaces().iteritems():
+                if filespaceOid != gparray.SYSTEM_FILESPACE:
+                    # the filespace directory will contain
+                    toCleanArr = ["1*", "2*", "3*", "4*", "5*", "6*", "7*", "8*", "9*", "0*"]
+                    for toClean in toCleanArr:
+                        unix.RemoveFiles('clean segment', dir + "/" + toClean).run( validateAfter=True )
 
     def cleanup(self):
         pass
@@ -78,7 +90,6 @@ class GpCleanSegmentDirectoryProgram:
     @staticmethod
     def createProgram(options, args):
         if len(args) > 0 :
-            # todo: print help (as in gpstart) instead of this message
             raise ProgramArgumentValidationException("too many arguments: only options may be specified")
         return GpCleanSegmentDirectoryProgram(options)
 

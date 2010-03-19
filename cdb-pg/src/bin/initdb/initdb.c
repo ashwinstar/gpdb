@@ -101,9 +101,19 @@ static char *pwfilename = NULL;
 static char *authmethod = "";
 static bool debug = false;
 static bool noclean = false;
+
+/**
+ * Build the minimal set of files needed for a mirror db.  Note that this could be removed
+ *  eventually if we do a smarter copy of files from primary (with postresql.conf updates)
+ */
 static bool forMirrorOnly = false;
 static bool show_setting = false;
 static char *xlog_dir = "";
+
+/**
+ * Should we create persistent table entries needed for file replication?
+ */
+static bool gIsFileRepMirrored = false;
 
 
 /* internal vars */
@@ -152,7 +162,8 @@ static char *authwarning = NULL;
  * (no quoting to worry about).
  */
 static const char *boot_options = "-F";
-static const char *backend_options = "--single -F -O -c gp_session_role=utility -c search_path=pg_catalog -c exit_on_error=true";
+static char backend_options[200];
+static const char *backend_options_format = "--single -F -O -c gp_session_role=utility -c search_path=pg_catalog -c exit_on_error=true -c gp_initdb_mirrored=%s";
 
 
 /* path to 'initdb' binary directory */
@@ -2162,7 +2173,8 @@ setup_gp_persistent_tables(void)
 {
 	PG_CMD_DECL;
 
-	fputs(_("loading file-system persistent tables for template1 ... "), stdout);
+	fprintf(stdout, _("loading file-system persistent tables for template1 (mirrored = %s) ... \n"), 
+		    (gIsFileRepMirrored  ? "true" : "false"));
 	fflush(stdout);
 
 	snprintf(cmd, sizeof(cmd),
@@ -2172,60 +2184,8 @@ setup_gp_persistent_tables(void)
 
 	PG_CMD_OPEN;
 	
-	PG_CMD_PUTS("SELECT gp_persistent_build_db();\n");
-
-#ifdef suppress
-
-    PG_CMD_PRINTF2("SELECT gp_persistent_tablespace_node_add(%u::oid, %d::smallint);\n",
-				   GLOBALTABLESPACE_OID,
-				   PersistentFileSysState_Created);
-
-    PG_CMD_PRINTF2("SELECT gp_persistent_tablespace_node_add(%u::oid, %d::smallint);\n",
-				   DEFAULTTABLESPACE_OID,
-				   PersistentFileSysState_Created);
-
-    PG_CMD_PRINTF2("SELECT gp_persistent_database_node_add(%u::oid, 0::oid, %d::smallint);\n",
-				   GLOBALTABLESPACE_OID,
-				   PersistentFileSysState_Created);
-
-    PG_CMD_PRINTF1("SELECT gp_persistent_database_node_add(subq.tablespace_oid, subq.database_oid, %u::smallint) "
-		           "   FROM "
-		           "   (SELECT dattablespace as tablespace_oid, oid as database_oid "
-                   "        FROM pg_database) subq;\n",
-                   PersistentFileSysState_Created);
-
-	PG_CMD_PRINTF4("SELECT gp_persistent_relation_node_add(subq.tablespace_oid, subq.database_oid, subq.relfilenode_oid, %u::smallint) "
-				   "   FROM "
-				   "   (SELECT cl.reltablespace as tablespace_oid, 0 as database_oid, cl.relfilenode as relfilenode_oid "
-	   			   "        FROM pg_class as cl "
-	   			   "        WHERE cl.reltablespace = %u AND (cl.relkind <> '%c' AND cl.relkind <> '%c') "
-		   		   "        ORDER BY tablespace_oid, database_oid, relfilenode_oid) as subq;\n",
-				   PersistentFileSysState_Created,
-				   GLOBALTABLESPACE_OID,
-				   RELKIND_VIEW,
-				   RELKIND_COMPOSITE_TYPE);
-
-	PG_CMD_PRINTF5("SELECT gp_persistent_relation_node_add(subq.tablespace_oid, subq.database_oid, subq.relfilenode_oid, %u::smallint) "
-				   "   FROM "
-				   "   (SELECT %u as tablespace_oid, %u as database_oid, cl.relfilenode as relfilenode_oid "
-				   "		FROM pg_class as cl "
-				   "		WHERE cl.reltablespace = 0 AND (cl.relkind <> '%c' AND cl.relkind <> '%c') "
-				   "		ORDER BY tablespace_oid, database_oid, relfilenode_oid) as subq;\n",
-				   PersistentFileSysState_Created,
-				   DEFAULTTABLESPACE_OID,
-				   TemplateDbOid,
-				   RELKIND_VIEW,
-				   RELKIND_COMPOSITE_TYPE);
-
-	// NOTE: The following query works because we are working with the shared-global tables
-	// NOTE: and one database -- template1.
-
-	PG_CMD_PUTS("INSERT INTO gp_relation_node "
-				"	 (SELECT per.tablespace_oid as tablespace_oid, per.relfilenode_oid as relfilenode_oid, "
-				"            per.ctid as persistent_tid, per.persistent_serial_num as persisent_serial_num "
-				"	  FROM gp_persistent_relation_node AS per);\n ");
-
-#endif
+	PG_CMD_PRINTF1("SELECT gp_persistent_build_db(%s);\n",
+				   (gIsFileRepMirrored  ? "true" : "false"));
 
 	PG_CMD_CLOSE;
 
@@ -2773,6 +2733,7 @@ usage(const char *progname)
 			 "                            initialize database cluster with given locale\n"
 			 "                            in the respective category (default taken from\n"
 			 "                            environment)\n"));
+	printf(_("  --is_filerep_mirrored=yes|no whether or not this db directory will be mirrored by file replication\n"));
 	printf(_("  --no-locale               equivalent to --locale=C\n"));
 	printf(_("  -X, --xlogdir=XLOGDIR     location for the transaction log directory\n"));
 	printf(_("  -A, --auth=METHOD         default authentication method for local connections\n"));
@@ -2823,6 +2784,7 @@ main(int argc, char *argv[])
         {"max_connections", required_argument, NULL, 1001},     /*CDB*/
         {"max_fsm_pages", required_argument, NULL, 1002},       /*CDB*/
         {"shared_buffers", required_argument, NULL, 1003},      /*CDB*/
+        {"is_filerep_mirrored", required_argument, NULL, 1004},      /*CDB*/
 		{"help", no_argument, NULL, '?'},
 		{"version", no_argument, NULL, 'V'},
 		{"debug", no_argument, NULL, 'd'},
@@ -2852,6 +2814,7 @@ main(int argc, char *argv[])
 		"pg_xlog",
 		"pg_xlog/archive_status",
 		"pg_clog",
+		"pg_changetracking",
 		"pg_subtrans",
 		"pg_twophase",
 		"pg_multixact/members",
@@ -2983,6 +2946,19 @@ main(int argc, char *argv[])
 			case 1003:
                 n_buffers = parse_long(optarg, true, optname);
 				break;
+            case 1004:
+                if ( strcmp("yes", optarg) == 0  )
+                    gIsFileRepMirrored = true;
+                else if ( strcmp("no", optarg) == 0  )
+                    gIsFileRepMirrored = false;
+                else
+                {
+                    fprintf(stderr, "Invalid value for is_filerep_mirrored\n");
+                    fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
+						progname);
+    				exit(1);
+                }
+                break;
 			default:
 				/* getopt_long already emitted a complaint */
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
@@ -3474,6 +3450,9 @@ main(int argc, char *argv[])
 
 	if ( ! forMirrorOnly)
 	{
+		sprintf(backend_options, backend_options_format,
+			    ((gIsFileRepMirrored  ? "true" : "false")));
+
 		/* Bootstrap template1 */
 		bootstrap_template1(short_version);
 

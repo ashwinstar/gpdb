@@ -14,11 +14,7 @@
 
 
 extern FileRepProcessType_e fileRepProcessType;
-/*
-extern FileRepRole_e		fileRepRole;
-extern SegmentState_e		segmentState;
-extern DataState_e			dataState;
-*/
+
 extern void FileRepSubProcess_Main(void);
 
 extern void FileRepSubProcess_SetState(
@@ -29,6 +25,11 @@ extern void FileRepSubProcess_SetState(
  */
 extern FileRepState_e FileRepSubProcess_GetState(void);
 
+extern void FileRep_SetResynchronizeReady(XLogRecPtr *resyncLoc);
+
+extern bool FileRep_IsInRecovery(void);
+
+extern bool FileRep_IsInResynchronizeReady(void);
 
 /*
  * Process signals 
@@ -36,6 +37,7 @@ extern FileRepState_e FileRepSubProcess_GetState(void);
  */	
 extern bool FileRepSubProcess_ProcessSignals(void);
 
+extern bool FileRepSubProcess_IsStateTransitionRequested(void);
 
 #endif   /* CDBFILEREPSERVICE_H */
 

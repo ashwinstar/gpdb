@@ -900,6 +900,10 @@ extern int	vsnprintf(char *str, size_t count, const char *fmt, va_list args);
 #define SIGNAL_ARGS  int postgres_signal_arg
 #endif
 
+#ifndef PASS_SIGNAL_ARGS
+#define PASS_SIGNAL_ARGS postgres_signal_arg
+#endif
+
 /*
  * When there is no sigsetjmp, its functionality is provided by plain
  * setjmp. Incidentally, nothing provides setjmp's functionality in

@@ -90,6 +90,7 @@ NON_EXEC_STATIC void FtsProbeMain(int argc, char *argv[]);
 
 static void FtsProbeLoop(void);
 
+static void markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *dbInfo);
 static char FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo);
 
 static void retrieveUserAndDb(char **probeUser);
@@ -98,6 +99,8 @@ static bool probeSegments(CdbComponentDatabases *cdb_component_dbs);
 static void *probeSegmentFromThread(void *arg);
 
 extern bool FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace);
+
+static void fillTimestampStr(char *str, int maxLength );
 
 static bool am_ftsprobe = false;
 
@@ -111,6 +114,7 @@ static char failover_strategy='n';
 
 static CdbComponentDatabases *cdb_component_dbs = NULL;
 
+static void readCdbComponentInfoAndUpdateStatus(void);
 static bool probePublishUpdate(uint8 *scan_status);
 
 struct segmentStatusChange {
@@ -406,21 +410,13 @@ FtsProbeMain(int argc, char *argv[])
 	proc_exit(0);
 }
 
-void FtsProbeLoop(void)
+static void
+readCdbComponentInfoAndUpdateStatus(void)
 {
-	int		i;
-	bool	updated_bitmap, processing_fullscan;
-	MemoryContext probeContext, oldContext;
-
-	probeContext = AllocSetContextCreate(TopMemoryContext,
-										 "FtsProbeMemCtxt",
-										 ALLOCSET_DEFAULT_INITSIZE,	/* always have some memory */
-										 ALLOCSET_DEFAULT_INITSIZE,
-										 ALLOCSET_DEFAULT_MAXSIZE);
-	
 	cdb_component_dbs = getCdbComponentInfo(false);
+
 	ftsLock();
-	for (i=0; i < cdb_component_dbs->total_segment_dbs; i++)
+	for (int i=0; i < cdb_component_dbs->total_segment_dbs; i++)
 	{
 		CdbComponentDatabaseInfo *segInfo = &cdb_component_dbs->segment_db_info[i];
 		uint8	segStatus;
@@ -431,7 +427,7 @@ void FtsProbeLoop(void)
 			segStatus |= FTS_STATUS_ALIVE;
 
 		if (SEGMENT_IS_ACTIVE_PRIMARY(segInfo))
-			segStatus |= FTS_STATUS_PRIMARY; 
+			segStatus |= FTS_STATUS_PRIMARY;
 
 		if (segInfo->preferred_role == 'p')
 			segStatus |= FTS_STATUS_DEFINEDPRIMARY;
@@ -439,6 +435,20 @@ void FtsProbeLoop(void)
 		ftsProbeInfo->fts_status[segInfo->dbid] = segStatus;
 	}
 	ftsUnlock();
+}
+
+void FtsProbeLoop(void)
+{
+	bool	updated_bitmap, processing_fullscan;
+	MemoryContext probeContext, oldContext;
+
+	probeContext = AllocSetContextCreate(TopMemoryContext,
+										 "FtsProbeMemCtxt",
+										 ALLOCSET_DEFAULT_INITSIZE,	/* always have some memory */
+										 ALLOCSET_DEFAULT_INITSIZE,
+										 ALLOCSET_DEFAULT_MAXSIZE);
+	
+    readCdbComponentInfoAndUpdateStatus();
 
 	for (;;)
 	{
@@ -469,8 +479,7 @@ void FtsProbeLoop(void)
 		else
 			processing_fullscan = false;
 
-		cdb_component_dbs = getCdbComponentInfo(false);
-
+        readCdbComponentInfoAndUpdateStatus();
 		getGpFailover_strategy(&failover_strategy);
 
 		elog(DEBUG3, "Ftsprober: starting %sscan with %d dbids with %d content-ids",
@@ -625,6 +634,7 @@ retrieveUserAndDb(char **probeUser)
 
 #define PROBE_ALIVE		(0x01)
 #define PROBE_FAULT		(0x02)
+#define PROBE_TO_IN_SYNC (0x04)
 
 enum probe_state_t { CONNECTING, CONNECTED, REQUEST_SENT, RESPONSE_READY };
 
@@ -891,7 +901,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 
 					memcpy(&msg_int, buf+12, 4);
 					if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
-						write_log("second message int %d", ntohl(msg_int));
+						write_log("third message int %d", ntohl(msg_int));
 					d_state = (DataState_e)ntohl(msg_int);
 
 					if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
@@ -906,6 +916,12 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 
 						/* This means that the segment needs to know something from the prober. */
 						ret |= PROBE_FAULT;
+					}
+					
+					if ( d_state == DataStateInSync &&
+					    dbInfo->mode == 'r')
+					{
+					    ret |= PROBE_TO_IN_SYNC;
 					}
 
 					done = true;
@@ -1170,6 +1186,19 @@ getMirrorEntryByContent(CdbComponentDatabases *cdb_component_dbs, int content, i
 	return NULL;
 }
 
+static void
+fillTimestampStr(char *str, int maxLength )
+{
+    pg_time_t		curtime;
+    struct pg_tm	*time_tm;
+    struct timeval	tv;
+
+    gettimeofday(&tv, NULL);
+    curtime = tv.tv_sec;
+    time_tm = pg_gmtime(&curtime);
+    pg_strftime(str, maxLength, "%+", time_tm); /* "%+" is the format used by the Unix date command */
+}
+
 static bool
 probePublishUpdate(uint8 *probe_results)
 {
@@ -1214,6 +1243,20 @@ probePublishUpdate(uint8 *probe_results)
 			if (failover_strategy == 'f')
 			{
 				primary = segInfo;
+
+				if ((probe_results[primary->dbid] & PROBE_TO_IN_SYNC ) == PROBE_TO_IN_SYNC )
+				{
+					mirror = getMirrorEntryByContent(cdb_component_dbs, primary->segindex, primary->dbid);
+
+				    Assert(mirror != NULL); /* should never get marked to PROBE_TO_IN_SYNC if we don't have a mirror */
+
+				    markSegmentInSyncInConfiguration(primary);
+				    probe_results[primary->dbid] &= ~PROBE_TO_IN_SYNC;
+
+				    markSegmentInSyncInConfiguration(mirror);
+				    probe_results[mirror->dbid] &= ~PROBE_TO_IN_SYNC;
+				}
+
 				if ((probe_results[primary->dbid] & PROBE_FAULT) == PROBE_FAULT)
 				{
 					mirror = getMirrorEntryByContent(cdb_component_dbs, primary->segindex, primary->dbid);
@@ -1340,16 +1383,7 @@ probePublishUpdate(uint8 *probe_results)
 	}
 
 	/* We're going to use these timestamps below. */
-	{
-		pg_time_t		curtime;
-		struct pg_tm	*time_tm;
-		struct timeval	tv;
-
-		gettimeofday(&tv, NULL);
-		curtime = tv.tv_sec;
-		time_tm = pg_gmtime(&curtime);
-		pg_strftime(timestamp_str, sizeof(timestamp_str), "%+", time_tm); /* "%+" is the format used by the Unix date command */
-	}
+    fillTimestampStr(timestamp_str, sizeof(timestamp_str));
 
 	if (changes != NULL)
 	{
@@ -1623,13 +1657,13 @@ probeUpdateConfig(PGconn *entryConn, struct segmentStatusChange *changes, int ch
 
 			if (failover_strategy == 'f')
 			{
-				count = snprintf(cmd, sizeof(cmd),
-								 "update %s set role='%c', status='%c'%s where dbid=CAST(%d AS SMALLINT)",
-								 GpSegmentConfigRelationName,
-								 primary ? 'p' : 'm',
-								 valid ? 'u' : 'd',
-								 (valid && primary) ? ", mode = 'c'" : "",
-								 changes[i].dbid);
+                count = snprintf(cmd, sizeof(cmd),
+                                 "update %s set role='%c', status='%c'%s where dbid=CAST(%d AS SMALLINT)",
+                                 GpSegmentConfigRelationName,
+                                 primary ? 'p' : 'm',
+                                 valid ? 'u' : 'd',
+                                 (valid && primary) ? ", mode = 'c'" : "",
+                                 changes[i].dbid);
 			}
 			else
 			{
@@ -1927,12 +1961,12 @@ Filerep_mode_update(int dbid, char *mode, char status)
 
 	Filerep_get_hosts_by_dbid(dbid, &seg_addr, &seg_pm_port, &seg_rep_port, &peer_addr, &peer_rep_port);
 
-	snprintf(tmp_filename, sizeof(tmp_filename), "/tmp/ftsprobe_command_XXXXXX");
-	f = mkstemp(tmp_filename);
-	if (f < 0)
-	{
-		elog(FATAL, "Failed to create command file '%s': %m", tmp_filename);
-	}
+    snprintf(tmp_filename, sizeof(tmp_filename), "/tmp/ftsprobe_command_XXXXXX");
+    f = mkstemp(tmp_filename);
+    if (f < 0)
+    {
+        elog(FATAL, "Failed to create command file '%s': %m", tmp_filename);
+    }
 
 	if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
 		elog(LOG, "Filerep_Failover: tmp filename is '%s'", tmp_filename);
@@ -1967,28 +2001,28 @@ Filerep_mode_update(int dbid, char *mode, char status)
 		close(f);
 
 		/* issue the command to change modes */
-		{
-			char	cmd[1024];
-			int		cmd_status;
+        {
+            char	cmd[1024];
+            int		cmd_status;
 
 			sprintf(cmd, "gp_primarymirror -h %s -p %d -i %s", seg_addr, seg_pm_port, tmp_filename);
 
-			if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
-				elog(LOG, "gp_primarymirror command is [%s]", cmd);
+            if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+                elog(LOG, "gp_primarymirror command is [%s]", cmd);
 
-			cmd_status = system(cmd);
+            cmd_status = system(cmd);
 
 			unlink(tmp_filename);
 
-			if (cmd_status == -1)
-			{
-				elog(ERROR, "Could not issue command: %m");
-			}
-			else if (cmd_status != 0)
-			{
-				elog(ERROR, "gp_primarymirror failed!");
-			}
-		}
+            if (cmd_status == -1)
+            {
+                elog(ERROR, "Could not issue command: %m");
+            }
+            else if (cmd_status != 0)
+            {
+                elog(ERROR, "gp_primarymirror failed!");
+            }
+        }
 
 		return;
 	} while (0);
@@ -2023,6 +2057,58 @@ Filerep_mode_update(int dbid, char *mode, char status)
 			elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message);	\
 		}																\
 	}
+
+/**
+ * Marks the given db as in-sync in the segment configuration.
+ */
+static void
+markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *dbInfo)
+{
+    char cmd[2000];
+    char timestamp_str[100];
+
+    fillTimestampStr(timestamp_str, sizeof(timestamp_str));
+
+    CdbComponentDatabaseInfo *entryDB = &cdb_component_dbs->entry_db_info[0];
+
+    if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+        elog(LOG, "markSegmentInSyncInConfiguration: Updating segment to in-sync");
+
+    if (entryDB->dbid != GpIdentity.dbid)
+    {
+        if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+            elog(LOG, "ftsProbe: advancing to second entryDB.");
+        entryDB = entryDB + 1;
+    }
+
+    PGconn *entryConn = openSelfConn(entryDB);
+    Assert(entryConn != NULL);
+
+    ftsLock();
+
+    if (ftsProbeInfo->fts_pauseProbes)
+    {
+        /* we've gotten a pause request --> ignore our probe results. */
+    }
+    else
+    {
+        /* update gp_segment configuration to insync */
+        snprintf(cmd, sizeof(cmd),
+                         "update %s set mode='s' where dbid=CAST(%d AS SMALLINT)",
+                         GpSegmentConfigRelationName,
+                         dbInfo->dbid);
+        executeEntrySQL(entryConn, cmd);
+
+        /* update configuration history */
+        snprintf(cmd, sizeof(cmd),
+             "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: changed segment to insync from resync.')",
+             timestamp_str, dbInfo->dbid);
+        executeEntrySQL(entryConn, cmd);
+    }
+
+    closeSelfConn(entryConn);
+    ftsUnlock();
+}
 
 static void
 SAN_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str)

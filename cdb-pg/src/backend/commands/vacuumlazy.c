@@ -439,6 +439,9 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 					break;
 			}
 
+			// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+			RelationFetchGpRelationNodeForXLog(onerel);
+
 			if (tupgone)
 			{
 				lazy_record_dead_tuple(vacrelstats, &(tuple.t_self));
@@ -490,6 +493,10 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 			/* Trade in buffer share lock for super-exclusive lock */
 			LockBuffer(buf, BUFFER_LOCK_UNLOCK);
 			LockBufferForCleanup(buf);
+
+			// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+			RelationFetchGpRelationNodeForXLog(onerel);
+
 			/* Remove tuples from heap */
 			lazy_vacuum_page(onerel, blkno, buf, 0, vacrelstats);
 			/* Forget the now-vacuumed tuples, and press on */
@@ -646,7 +653,10 @@ lazy_vacuum_page(Relation onerel, BlockNumber blkno, Buffer buffer,
 	int			uncnt;
 	Page		page = BufferGetPage(buffer);
 	ItemId		itemid;
-
+	
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(onerel);
+	
 	START_CRIT_SECTION();
 
 	for (; tupindex < vacrelstats->num_dead_tuples; tupindex++)
@@ -991,7 +1001,6 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 			FileSegInfo*	fsinfo;
 			int 			segno;
 			int64 			segeof;
-			File 			relfile;
 			char 			filenamepath[MAXPGPATH];
 
 			segno = segfile_array[i]->segno;
@@ -1006,14 +1015,17 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 			}
 			else
 			{
+				MirroredAppendOnlyOpen mirroredOpened;
+				int32				   fileSegNo;				
+
 				segeof = (int64)fsinfo->eof;
 
 				/* Open and truncate the relation segfile beyond its eof */
-				MakeAOSegmentFileName(aorel, segno, -1, filenamepath);
-				OpenAOSegmentFile(aorel, filenamepath, false, &relfile);
-				TruncateAOSegmentFile(relfile, aorel, segeof, elevel);
-				CloseAOSegmentFile(relfile, aorel, segno);
-
+				MakeAOSegmentFileName(aorel, segno, -1, &fileSegNo, filenamepath);
+				OpenAOSegmentFile(aorel, filenamepath, false, fileSegNo, segeof, &mirroredOpened);
+				TruncateAOSegmentFile(&mirroredOpened, aorel, segeof, elevel);
+				CloseAOSegmentFile(&mirroredOpened);
+				
 				pfree(fsinfo);
 				fsinfo = NULL;
 			}
@@ -1146,18 +1158,20 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 				for(j=0; j<fsinfo->vpinfo.nEntry; ++j)
 				{
 					int64 			segeof;
-					File 			relfile;
 					char 			filenamepath[MAXPGPATH];
 					AOCSVPInfoEntry *entry;
+					
+					MirroredAppendOnlyOpen mirroredOpened;
+					int32				   fileSegNo;
 
 					entry = getAOCSVPEntry(fsinfo, j);
 					segeof = entry->eof;
 
 					/* Open and truncate the relation segfile beyond its eof */
-					MakeAOSegmentFileName(aorel, segno, j, filenamepath);
-					OpenAOSegmentFile(aorel, filenamepath, false, &relfile);
-					TruncateAOSegmentFile(relfile, aorel, segeof, elevel);
-					CloseAOSegmentFile(relfile, aorel, segno);
+					MakeAOSegmentFileName(aorel, segno, j, &fileSegNo, filenamepath);
+					OpenAOSegmentFile(aorel, filenamepath, false, fileSegNo, segeof, &mirroredOpened);
+					TruncateAOSegmentFile(&mirroredOpened, aorel, segeof, elevel);
+					CloseAOSegmentFile(&mirroredOpened);
 				}
 
 				pfree(fsinfo);

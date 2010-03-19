@@ -16,6 +16,9 @@
 #include "postgres.h"
 
 #include <math.h>
+#include <fcntl.h>
+#include <locale.h>
+#include <unistd.h>
 
 #include "access/appendonlywriter.h"
 #include "access/genam.h"
@@ -105,6 +108,7 @@
 #include "cdb/cdbsreh.h"
 
 #include "cdb/cdbmirroredfilesysobj.h"
+#include "cdb/cdbmirroredbulkrelation.h"
 
 typedef enum
 {
@@ -332,7 +336,7 @@ static void ATExecClusterOn(Relation rel, const char *indexName);
 static void ATExecDropCluster(Relation rel);
 static void ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel,
 					char *tablespacename);
-static void ATExecSetTableSpace(Oid tableOid, Oid newTableSpace);
+static void ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, TableOidInfo * oidInfo);
 static void ATExecSetRelOptions(Relation rel, List *defList, bool isReset);
 static void ATExecEnableDisableTrigger(Relation rel, char *trigname,
 						   bool enable, bool skip_system);
@@ -390,7 +394,7 @@ static List *
 atpxTruncateList(Relation rel, PartitionNode *pNode);
 static void ATPExecPartTruncate(Relation rel,
                                 AlterPartitionCmd *pc);		/* Truncate */
-static void copy_relation_data(Relation rel, SMgrRelation dst);
+static void copy_buffer_pool_data(Relation rel, SMgrRelation dst, ItemPointer persistentTid, int64 persistentSerialNum);
 static void update_ri_trigger_args(Oid relid,
 					   const char *oldname,
 					   const char *newname,
@@ -5205,7 +5209,17 @@ ATRewriteTables(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 			 * just do a block-by-block copy.
 			 */
 			if (tab->newTableSpace)
-				ATExecSetTableSpace(tab->relid, tab->newTableSpace);
+			{
+				if (oidInfo != NULL)
+				{
+					Assert(m<oidInfoCount);
+					ATExecSetTableSpace(tab->relid, tab->newTableSpace, &oidInfo[m]);
+				}
+				else
+				{
+					ATExecSetTableSpace(tab->relid, tab->newTableSpace, NULL);
+				}
+			}
 		}
 		m++;
 
@@ -9611,37 +9625,325 @@ ATExecSetRelOptions(Relation rel, List *defList, bool isReset)
 
 }
 
-/*
- * Execute ALTER TABLE SET TABLESPACE for cases where there is no tuple
- * rewriting to be done, so we just want to copy the data as fast as possible.
- */
-static void
-ATExecSetTableSpace(Oid tableOid, Oid newTableSpace)
+static void 
+copy_append_only_data(
+	RelFileNode		*oldRelFileNode,
+	
+	RelFileNode		*newRelFileNode,
+	
+	int32			segmentFileNum,
+
+	char			*buffer)
 {
-	Relation	rel;
-	Oid			oldTableSpace;
-	Oid			reltoastrelid;
-	Oid			reltoastidxid;
-	Oid			relaosegrelid = InvalidOid;
-	Oid			relaosegidxid = InvalidOid;
-	Oid			relaoblkdirrelid = InvalidOid;
-	Oid			relaoblkdiridxid = InvalidOid;
-	Oid           newrelfilenode;
+	char srcFileName[MAXPGPATH];
+	char extension[12];
+
+	File		srcFile;
+
+	int64 		eof;
+
+	MirroredBulkRelationOpen mirroredDstOpen;
+
+	int 		nbytes;
+
+	CopyRelPath(srcFileName, MAXPGPATH, *oldRelFileNode);
+	if (segmentFileNum > 0)
+	{
+		sprintf(extension, ".%u", segmentFileNum);
+		strcat(srcFileName, extension);
+	}
+
+	/*
+	 * Open the files
+	 */
+	srcFile = PathNameOpenFile(srcFileName, O_RDONLY | PG_BINARY, 0);
+	if (srcFile < 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not open file \"%s\": %m", srcFileName)));
+
+
+	MirroredBulkRelation_Open(
+							&mirroredDstOpen,
+							O_RDWR | O_EXCL | PG_BINARY,
+							S_IRUSR | S_IWUSR,
+							newRelFileNode,
+							segmentFileNum);
+	
+	/*
+	 * Do the data copying.
+	 */
+	eof = 0;
+	for (;;)
+	{
+		nbytes = FileRead(srcFile, buffer, BLCKSZ);
+		if (nbytes < 0)
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not read file \"%s\": %m", srcFileName)));
+		if (nbytes == 0)
+			break;
+
+		MirroredBulkRelation_Append(
+							&mirroredDstOpen,
+							buffer,
+							nbytes);
+
+		eof += nbytes;
+	}
+
+	MirroredBulkRelation_FlushAndClose(&mirroredDstOpen);
+
+	FileClose(srcFile);
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "ALTER TABLE SET TABLESPACE: Append-Only segment file #%d EOF " INT64_FORMAT,
+			 segmentFileNum,
+			 eof);
+}
+
+static void
+ATExecSetTableSpace_AppendOnly(
+	Oid				tableOid,
+	Relation		rel,
+	Relation		gp_relation_node,
+	RelFileNode		*newRelFileNode)
+{
+	Oid			oldTablespace;
+
+	char *buffer;
+
+	GpRelationNodeScan 	gpRelationNodeScan;
+
+	HeapTuple tuple;
+
+	int32 segmentFileNum;
+
+	ItemPointerData oldPersistentTid;
+	int64 oldPersistentSerialNum;
+
 	ItemPointerData newPersistentTid;
 	int64 newPersistentSerialNum;
-	RelFileNode newrnode;
+
+	HeapTuple tupleCopy;
+
+	oldTablespace = rel->rd_rel->reltablespace ? rel->rd_rel->reltablespace : MyDatabaseTableSpace;
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "ALTER TABLE SET TABLESPACE: Append-Only "
+			 "relation id %u, old path '%s', old relfilenode %u, old reltablespace %u, "
+			 "new path '%s', new relfilenode %u, new reltablespace %u",
+			 rel->rd_id,
+			 relpath(rel->rd_node),
+			 rel->rd_rel->relfilenode,
+			 oldTablespace,
+			 relpath(*newRelFileNode),
+			 newRelFileNode->relNode,
+			 newRelFileNode->spcNode);
+
+	/* Use palloc to ensure we get a maxaligned buffer */		
+	buffer = palloc(BLCKSZ);
+
+	/*
+	 * Loop through segment files
+	 *    Create segment file in new tablespace under transaction,
+	 *    Copy Append-Only segment file data and fsync,
+	 *    Update old gp_relation_node with new relfilenode and persistent information,
+	 *    Schedule old segment file for drop under transaction,
+	 */
+	GpRelationNodeBeginScan(
+					gp_relation_node,
+					tableOid,
+					rel->rd_rel->relfilenode,
+					&gpRelationNodeScan);
+
+	while ((tuple = GpRelationNodeGetNext(
+							&gpRelationNodeScan,
+							&segmentFileNum,
+							&oldPersistentTid,
+							&oldPersistentSerialNum)))
+	{
+		/*
+		 * Create segment file in new tablespace under transaction.
+		 */
+		MirroredFileSysObj_TransactionCreateAppendOnlyFile(
+											newRelFileNode,
+											segmentFileNum,
+											rel->rd_rel->relname.data,
+											/* doJustInTimeDirCreate */ true,
+											&newPersistentTid,
+											&newPersistentSerialNum);
+
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "ALTER TABLE SET TABLESPACE: Create for Append-Only '%s', segment file #%d "
+				 "persistent TID %s and serial number " INT64_FORMAT,
+				 relpath(*newRelFileNode),
+				 segmentFileNum,
+				 ItemPointerToString(&newPersistentTid),
+				 newPersistentSerialNum);
+
+		/*
+		 * Update gp_relation_node with new persistent information.
+		 */
+		tupleCopy = heap_copytuple(tuple);
+
+		UpdateGpRelationNodeTuple(
+							gp_relation_node,
+							tupleCopy,
+							newRelFileNode->relNode,
+							segmentFileNum,
+							&newPersistentTid,
+							newPersistentSerialNum);
+
+		/*
+		 * Schedule old segment file for drop under transaction.
+		 */
+		MirroredFileSysObj_ScheduleDropAppendOnlyFile(
+											&rel->rd_node,
+											segmentFileNum,
+											rel->rd_rel->relname.data,
+											&oldPersistentTid,
+											oldPersistentSerialNum);
+
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "ALTER TABLE SET TABLESPACE: Drop for Append-Only '%s', segment file #%d "
+				 "persistent TID %s and serial number " INT64_FORMAT,
+				 relpath(rel->rd_node),
+				 segmentFileNum,
+				 ItemPointerToString(&oldPersistentTid),
+				 oldPersistentSerialNum);
+
+		/*
+		 * Copy Append-Only segment file data and fsync.
+		 */
+		copy_append_only_data(
+						&rel->rd_node,
+						newRelFileNode,
+						segmentFileNum,
+						buffer);
+	}
+
+	GpRelationNodeEndScan(&gpRelationNodeScan);
+
+	pfree(buffer);
+}
+
+static void
+ATExecSetTableSpace_BufferPool(
+	Oid				tableOid,
+	Relation		rel,
+	Relation		gp_relation_node,
+	RelFileNode		*newRelFileNode)
+{
+	Oid			oldTablespace;
+	HeapTuple	nodeTuple;
+	ItemPointerData newPersistentTid;
+	int64 newPersistentSerialNum;
 	SMgrRelation dstrel;
+
+	oldTablespace = rel->rd_rel->reltablespace ? rel->rd_rel->reltablespace : MyDatabaseTableSpace;
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "ALTER TABLE SET TABLESPACE: Buffer Pool managed "
+			 "relation id %u, old path '%s', old relfilenode %u, old reltablespace %u, "
+			 "new path '%s', new relfilenode %u, new reltablespace %u",
+			 rel->rd_id,
+			 relpath(rel->rd_node),
+			 rel->rd_rel->relfilenode,
+			 oldTablespace,
+			 relpath(*newRelFileNode),
+			 newRelFileNode->relNode,
+			 newRelFileNode->spcNode);
+	
+	/* Fetch relation's gp_relation_node row */
+	nodeTuple = ScanGpRelationNodeTuple(
+							gp_relation_node,
+							rel->rd_rel->relfilenode,
+							/* segmentFileNum */ 0);
+	if (!HeapTupleIsValid(nodeTuple))
+		elog(ERROR, "cache lookup failed for relation %u, tablespace %u, relation file node %u", 
+		     tableOid,
+		     oldTablespace,
+		     rel->rd_rel->relfilenode);
+
+	dstrel = smgropen(*newRelFileNode);
+	MirroredFileSysObj_TransactionCreateBufferPoolFile(
+											dstrel,
+											rel->rd_isLocalBuf,
+											rel->rd_rel->relname.data,
+											/* doJustInTimeDirCreate */ true,
+											&newPersistentTid,
+											&newPersistentSerialNum);
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+		     "ALTER TABLE SET TABLESPACE: Create for Buffer Pool managed '%s' "
+			 "persistent TID %s and serial number " INT64_FORMAT,
+			 relpath(*newRelFileNode),
+			 ItemPointerToString(&newPersistentTid),
+			 newPersistentSerialNum);
+
+	/* copy relation data to the new physical file */
+	copy_buffer_pool_data(
+					rel, 
+					dstrel,
+					&newPersistentTid,
+					newPersistentSerialNum);
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "ALTER TABLE SET TABLESPACE: Scheduling drop for '%s' "
+			 "persistent TID %s and serial number " INT64_FORMAT,
+			 relpath(*newRelFileNode),
+			 ItemPointerToString(&rel->rd_segfile0_relationnodeinfo.persistentTid),
+			 rel->rd_segfile0_relationnodeinfo.persistentSerialNum);
+
+
+	/* schedule unlinking old physical file */
+	RelationOpenSmgr(rel);
+	Assert(rel->rd_smgr != NULL);
+
+	if (!rel->rd_segfile0_relationnodeinfo.isPresent)
+		RelationFetchSegFile0GpRelationNode(rel);
+
+	MirroredFileSysObj_ScheduleDropBufferPoolFile(
+									rel->rd_smgr,
+									rel->rd_isLocalBuf,
+									rel->rd_rel->relname.data,
+									&rel->rd_segfile0_relationnodeinfo.persistentTid,
+									rel->rd_segfile0_relationnodeinfo.persistentSerialNum);
+
+	/*
+	 * Now drop smgr references.  The source was already dropped by
+	 * smgrscheduleunlink.
+	 */
+	smgrclose(dstrel);
+
+	/* Update gp_relation_node row. */
+	UpdateGpRelationNodeTuple(
+						gp_relation_node,
+						nodeTuple,
+						newRelFileNode->relNode,
+						/* segmentFileNum */ 0,
+						&newPersistentTid,
+						newPersistentSerialNum);
+
+}
+
+static bool
+ATExecSetTableSpace_Relation(Oid tableOid, Relation rel, Oid newTableSpace, Oid newrelfilenode)
+{
 	Relation	pg_class;
+	Oid			oldTableSpace;
 	HeapTuple	tuple;
 	Form_pg_class rd_rel;
 	Relation	gp_relation_node;
-	Oid			tablespace;
-	HeapTuple	nodeTuple;
-
-	/*
-	 * Need lock here in case we are recursing to toast table or index
-	 */
-	rel = relation_open(tableOid, AccessExclusiveLock);
+	RelFileNode newrnode;
 
 	/*
 	 * We can never allow moving of shared or nailed-in-cache relations,
@@ -9671,16 +9973,8 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace)
 	if (newTableSpace == oldTableSpace ||
 		(newTableSpace == MyDatabaseTableSpace && oldTableSpace == 0))
 	{
-		relation_close(rel, NoLock);
-		return;
+		return false;
 	}
-
-	reltoastrelid = rel->rd_rel->reltoastrelid;
-	reltoastidxid = rel->rd_rel->reltoastidxid;
-
-	if (RelationIsAoRows(rel) || RelationIsAoCols(rel))
-		GetAppendOnlyEntryAuxOids(tableOid, &relaosegrelid, &relaosegidxid,
-								  &relaoblkdirrelid, &relaoblkdiridxid);
 
 	/* Fetch relation's pg_class row */
 	pg_class = heap_open(RelationRelationId, RowExclusiveLock);
@@ -9692,30 +9986,7 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace)
 		elog(ERROR, "cache lookup failed for relation %u", tableOid);
 	rd_rel = (Form_pg_class) GETSTRUCT(tuple);
 
-	tablespace = rd_rel->reltablespace;
-	if (tablespace == 0)
-		tablespace = DEFAULTTABLESPACE_OID;
-
-	/* Fetch relation's gp_relation_node row */
 	gp_relation_node = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
-
-	nodeTuple = ScanGpRelationNodeTuple(
-							gp_relation_node,
-							tablespace, 
-							rd_rel->relfilenode);
-	if (!HeapTupleIsValid(nodeTuple))
-		elog(ERROR, "cache lookup failed for relation %u, tablespace %u, relation file node %u", 
-		     tableOid, 
-		     tablespace,
-		     rd_rel->relfilenode);
-
-	/*
-	 * Relfilenodes are not unique across tablespaces, so we need to allocate
-	 * a new one in the new tablespace.
-	 */
-	newrelfilenode = GetNewRelFileNode(newTableSpace,
-			rel->rd_rel->relisshared,
-			NULL);
 
 	/* create another storage file. Is it a little ugly ? */
 	/* NOTE: any conflict in relfilenode value will be caught here */
@@ -9723,86 +9994,41 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace)
 	newrnode.relNode = newrelfilenode;
 	newrnode.spcNode = newTableSpace;
 
-	dstrel = smgropen(newrnode);
-	MirroredFileSysObj_CreateRelFile(
-								dstrel,
-								&newPersistentTid,
-								&newPersistentSerialNum,
-								rel->rd_isLocalBuf);
-
-	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
-		     "ALTER TABLE SET TABLESPACE: Create for '%s' "
-			 "persistent TID %s and serial number " INT64_FORMAT,
-			 relpath(newrnode),
-			 ItemPointerToString(&newPersistentTid),
-			 newPersistentSerialNum);
-
-	/* copy relation data to the new physical file */
-	copy_relation_data(rel, dstrel);
-
-	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
-			 "ALTER TABLE SET TABLESPACE: Scheduling drop for '%s' "
-			 "persistent TID %s and serial number " INT64_FORMAT,
-			 relpath(rel->rd_smgr->smgr_rnode),
-			 ItemPointerToString(&rel->rd_relationnodeinfo.persistentTid),
-			 rel->rd_relationnodeinfo.persistentSerialNum);
-
-	/* schedule unlinking old physical file */
-	RelationOpenSmgr(rel);
-	Assert(rel->rd_smgr != NULL);
-	RelationFetchGpRelationNode(rel);
-	Assert(rel->rd_relationnodeinfo.isPresent);
-	MirroredFileSysObj_ScheduleDropRelFile(
-									rel->rd_smgr,
-									&rel->rd_relationnodeinfo.persistentTid,
-									rel->rd_relationnodeinfo.persistentSerialNum,
-									rel->rd_isLocalBuf);
-
-	/*
-	 * Now drop smgr references.  The source was already dropped by
-	 * smgrscheduleunlink.
-	 */
-	smgrclose(dstrel);
-
 	/* update the pg_class row */
 	rd_rel->reltablespace = (newTableSpace == MyDatabaseTableSpace) ? InvalidOid : newTableSpace;
 	rd_rel->relfilenode = newrelfilenode;
+	
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "ALTER TABLE SET TABLESPACE: Update pg_class for relation id %u --> relfilenode to %u, reltablespace to %u",
+			 tableOid,
+			 rd_rel->relfilenode,
+			 rd_rel->reltablespace);
+
 	simple_heap_update(pg_class, &tuple->t_self, tuple);
 	CatalogUpdateIndexes(pg_class, tuple);
-
 	heap_freetuple(tuple);
 
-	heap_close(pg_class, RowExclusiveLock);
+	if (RelationIsAoRows(rel) || RelationIsAoCols(rel))
+		ATExecSetTableSpace_AppendOnly(
+								tableOid,
+								rel, 
+								gp_relation_node, 
+								&newrnode);
+	else
+		ATExecSetTableSpace_BufferPool(
+								tableOid,
+								rel, 
+								gp_relation_node, 
+								&newrnode);
 
-	/* Update gp_relation_node row. */
-	UpdateGpRelationNodeTuple(
-						gp_relation_node,
-						nodeTuple,
-						newTableSpace,
-						newrelfilenode,
-						&newPersistentTid,
-						newPersistentSerialNum);
+
+	heap_close(pg_class, RowExclusiveLock);
 
 	heap_close(gp_relation_node, RowExclusiveLock);
 
 	/* Make sure the reltablespace change is visible */
 	CommandCounterIncrement();
-
-	/* Move associated toast relation and/or index, too */
-	if (OidIsValid(reltoastrelid))
-		ATExecSetTableSpace(reltoastrelid, newTableSpace);
-	if (OidIsValid(reltoastidxid))
-		ATExecSetTableSpace(reltoastidxid, newTableSpace);
-	if (OidIsValid(relaosegrelid))
-		ATExecSetTableSpace(relaosegrelid, newTableSpace);
-	if (OidIsValid(relaosegidxid))
-		ATExecSetTableSpace(relaosegidxid, newTableSpace);
-	if (OidIsValid(relaoblkdirrelid))
-		ATExecSetTableSpace(relaoblkdirrelid, newTableSpace);
-	if (OidIsValid(relaoblkdiridxid))
-		ATExecSetTableSpace(relaoblkdiridxid, newTableSpace);
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
@@ -9813,6 +10039,134 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace)
 						   "ALTER", "SET TABLESPACE"
 				);
 
+	return true;
+}
+
+/*
+ * Execute ALTER TABLE SET TABLESPACE for cases where there is no tuple
+ * rewriting to be done, so we just want to copy the data as fast as possible.
+ */
+static void
+ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, TableOidInfo * oidInfo)
+{
+	Relation	rel;
+	Oid			reltoastrelid;
+	Oid			reltoastidxid;
+//	Oid			relaosegrelid = InvalidOid;
+//	Oid			relaosegidxid = InvalidOid;
+//	Oid			relaoblkdirrelid = InvalidOid;
+//	Oid			relaoblkdiridxid = InvalidOid;
+	Oid         newrelfilenode = InvalidOid;
+	Oid         newtoastrelid = InvalidOid;
+	Oid         newtoastidxid = InvalidOid;
+
+	if (Gp_role == GP_ROLE_DISPATCH && oidInfo != NULL)
+	{
+		Relation	pg_class_desc;
+
+		cdb_sync_oid_to_segments();
+
+		pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
+
+		/*
+		 * Pre-Allocate an OID for the relfilenode, plus one for the toast table and index.
+		 *
+		 * The OID will be the relfilenode as well, so make sure it doesn't collide
+		 * with either pg_class OIDs or existing physical files.
+		 */
+
+		oidInfo->relOid = GetNewRelFileNode(newTableSpace, false,  pg_class_desc);
+		newrelfilenode = oidInfo->relOid;
+		oidInfo->toastOid = GetNewRelFileNode(newTableSpace, false,  pg_class_desc);
+		newtoastrelid = oidInfo->toastOid;
+		oidInfo->toastIndexOid = GetNewRelFileNode(newTableSpace, false,  pg_class_desc);
+		newtoastidxid = oidInfo->toastIndexOid;
+
+		heap_close(pg_class_desc, NoLock);  /* gonna update, so don't unlock */
+	}
+	else if (Gp_role == GP_ROLE_EXECUTE && oidInfo != NULL)
+	{
+		newrelfilenode = oidInfo->relOid;
+		newtoastrelid = oidInfo->toastOid;
+		newtoastidxid = oidInfo->toastIndexOid;
+	}
+
+	/*
+	 * Need lock here in case we are recursing to toast table or index
+	 */
+	rel = relation_open(tableOid, AccessExclusiveLock);
+
+	reltoastrelid = rel->rd_rel->reltoastrelid;
+	reltoastidxid = rel->rd_rel->reltoastidxid;
+
+//	if (RelationIsAoRows(rel) || RelationIsAoCols(rel))
+//		GetAppendOnlyEntryAuxOids(tableOid, &relaosegrelid, &relaosegidxid,
+//								  &relaoblkdirrelid, &relaoblkdiridxid);
+
+	/*
+	 * Relfilenodes are not unique across tablespaces, so we need to allocate
+	 * a new one in the new tablespace.
+	 */
+	if (!OidIsValid(newrelfilenode))
+		newrelfilenode = GetNewRelFileNode(newTableSpace,
+				rel->rd_rel->relisshared,
+				NULL);
+
+	if (!ATExecSetTableSpace_Relation(
+								tableOid, 
+								rel, 
+								newTableSpace, 
+								newrelfilenode))
+	{
+		relation_close(rel, NoLock);
+		return;
+	}
+
+	/* Move associated toast relation and/or index, too */
+	if (OidIsValid(reltoastrelid))
+	{
+		Relation reltoastrel;
+
+		if (!OidIsValid(newtoastrelid))
+			newtoastrelid = GetNewRelFileNode(newTableSpace,
+					rel->rd_rel->relisshared,
+					NULL);
+
+		reltoastrel = relation_open(reltoastrelid, AccessExclusiveLock);
+		ATExecSetTableSpace_Relation(
+								reltoastrelid, 
+								reltoastrel, 
+								newTableSpace, 
+								newtoastrelid);
+		relation_close(reltoastrel, NoLock);
+	}
+	if (OidIsValid(reltoastidxid))
+	{
+		Relation reltoastidx;
+
+		if (!OidIsValid(newtoastidxid))
+			newtoastidxid = GetNewRelFileNode(newTableSpace,
+					rel->rd_rel->relisshared,
+					NULL);
+
+		reltoastidx = relation_open(reltoastidxid, AccessExclusiveLock);
+		ATExecSetTableSpace_Relation(
+								reltoastidxid, 
+								reltoastidx,
+								newTableSpace, 
+								newtoastidxid);
+		relation_close(reltoastidx, NoLock);
+	}
+
+//	if (OidIsValid(relaosegrelid))
+//		ATExecSetTableSpace(relaosegrelid, newTableSpace);
+//	if (OidIsValid(relaosegidxid))
+//		ATExecSetTableSpace(relaosegidxid, newTableSpace);
+//	if (OidIsValid(relaoblkdirrelid))
+//		ATExecSetTableSpace(relaoblkdirrelid, newTableSpace);
+//	if (OidIsValid(relaoblkdiridxid))
+//		ATExecSetTableSpace(relaoblkdiridxid, newTableSpace);
+
 	relation_close(rel, NoLock);
 }
 
@@ -9820,7 +10174,7 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace)
  * Copy data, block by block
  */
 static void
-copy_relation_data(Relation rel, SMgrRelation dst)
+copy_buffer_pool_data(Relation rel, SMgrRelation dst, ItemPointer persistentTid, int64 persistentSerialNum)
 {
 	SMgrRelation src;
 	bool		use_wal;
@@ -9861,7 +10215,9 @@ copy_relation_data(Relation rel, SMgrRelation dst)
 			/* NO ELOG(ERROR) from here till newpage op is logged */
 			START_CRIT_SECTION();
 
-			xlrec.node = dst->smgr_rnode;
+			xlrec.heapnode.node = dst->smgr_rnode;
+			xlrec.heapnode.persistentTid = *persistentTid;
+			xlrec.heapnode.persistentSerialNum = persistentSerialNum;
 			xlrec.blkno = blkno;
 
 			rdata[0].data = (char *) &xlrec;
@@ -11840,6 +12196,18 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		newOptions = new_rel_opts(rel, lwith);
 	}
 
+	/*
+	 * Step (f) - swap relfilenodes and MORE !!!
+	 *
+	 * Just lookup the Oid and pass it to swap_relation_files(). To do
+	 * this we must close the rel, since it needs to be forgotten by
+	 * the cache, we keep the lock though. ATRewriteCatalogs() knows
+	 * that we've closed the relation here.
+	 */
+	heap_close(rel, NoLock);
+   	tmprelid = RangeVarGetRelid(tmprv, false);
+	swap_relation_files(tarrelid, tmprelid, false);
+
 	if (DatumGetPointer(newOptions))
 	{
 		Datum		repl_val[Natts_pg_class];
@@ -11848,21 +12216,15 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		HeapTuple	newOptsTuple;
 		Relation	class = heap_open(RelationRelationId, RowExclusiveLock);
 		HeapTuple	tuple;
-		ScanKeyData	key;
-		SysScanDesc scan;
 
 		/*
 		 * All we need do here is update the pg_class row; the new
 		 * options will be propagated into relcaches during
 		 * post-commit cache inval.
 		 */
-
 		MemSet(repl_val, 0, sizeof(repl_val));
 		MemSet(repl_null, false, sizeof(repl_null));
 		MemSet(repl_repl, false, sizeof(repl_repl));
-
-		repl_val[Anum_pg_class_relstorage - 1] = CharGetDatum(relstorage);
-		repl_repl[Anum_pg_class_relstorage - 1] = true;
 
 		if (newOptions != (Datum) 0)
 			repl_val[Anum_pg_class_reloptions - 1] = newOptions;
@@ -11872,7 +12234,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		repl_repl[Anum_pg_class_reloptions - 1] = true;
 
 		tuple = SearchSysCache(RELOID,
-								   ObjectIdGetDatum(RelationGetRelid(rel)),
+								   ObjectIdGetDatum(tarrelid),
 								   0, 0, 0);
 		Insist(HeapTupleIsValid(tuple));
 		newOptsTuple = heap_modify_tuple(tuple, RelationGetDescr(class),
@@ -11886,99 +12248,12 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 
 		heap_close(class, RowExclusiveLock);
 
-		/* remove the old pg_appendonly entry, if any */
-		class = heap_open(AppendOnlyRelationId, RowExclusiveLock);
-
-		ScanKeyInit(&key,
-					Anum_pg_appendonly_relid,
-					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(RelationGetRelid(rel)));
-
-		scan = systable_beginscan(class, AppendOnlyRelidIndexId,
-								  true, SnapshotNow, 1, &key);
-		tuple = systable_getnext(scan);
-		if (HeapTupleIsValid(tuple))
-			simple_heap_delete(class, &tuple->t_self);
-
-		systable_endscan(scan);
-
-		if (is_ao)
-		{
-			/*
-			 * We changed this to make it an AO table. We need to duplicate
-			 * the pg_appendonly tuple for the temp table, replace relid
-			 * with our relid and insert it into the table. There's no
-			 * point just updating the tuple because when we delete it below
-			 * (see the performDeletion call) it's reasonable for the
-			 * dependency code to expect an entry for the temp table in
-			 * pg_appendonly.
-			 */
-			Oid relid = RangeVarGetRelid(tmprv, false);
-
-			ScanKeyInit(&key,
-						Anum_pg_appendonly_relid,
-						BTEqualStrategyNumber, F_OIDEQ,
-						ObjectIdGetDatum(relid));
-
-			scan = systable_beginscan(class, AppendOnlyRelidIndexId,
-									  true, SnapshotSelf, 1, &key);
-			tuple = systable_getnext(scan);
-			if (HeapTupleIsValid(tuple))
-			{
-				Datum *values;
-				bool *nulls;
-				bool *replace;
-				
-				Insist(HeapTupleIsValid(tuple));
-
-				values = palloc0(class->rd_rel->relnatts * sizeof(Datum));
-				nulls = palloc0(class->rd_rel->relnatts * sizeof(bool));
-				replace = palloc0(class->rd_rel->relnatts * sizeof(bool));
-				
-				values[Anum_pg_appendonly_relid - 1] = RelationGetRelid(rel);
-				replace[Anum_pg_appendonly_relid - 1] = true;
-
-				/* Make segrelid, segidxid, blkdirrelid, blkdiridxid invalid. */
-				values[Anum_pg_appendonly_segrelid - 1] = InvalidOid;
-				replace[Anum_pg_appendonly_segrelid - 1] = true;
-				values[Anum_pg_appendonly_segidxid - 1] = InvalidOid;
-				replace[Anum_pg_appendonly_segidxid - 1] = true;
-				values[Anum_pg_appendonly_blkdirrelid - 1] = InvalidOid;
-				replace[Anum_pg_appendonly_blkdirrelid - 1] = true;
-				values[Anum_pg_appendonly_blkdiridxid - 1] = InvalidOid;
-				replace[Anum_pg_appendonly_blkdiridxid - 1] = true;
-
-				tuple = heap_modify_tuple(tuple, RelationGetDescr(class),
-										  values, nulls, replace);
-				
-				simple_heap_insert(class, tuple);
-				CatalogUpdateIndexes(class, tuple);
-				pfree(values);
-				pfree(nulls);
-				pfree(replace);
-			}
-			systable_endscan(scan);
-		}
-		heap_close(class, RowExclusiveLock);
-
 		/*
 		 * Increment cmd counter to make updates visible; this is
 		 * needed because the same tuple has to be updated again
 		 */
 		CommandCounterIncrement();
 	}
-
-	/*
-	 * Step (f) - swap relfilenodes
-	 *
-	 * Just lookup the Oid and pass it to swap_relation_files(). To do
-	 * this we must close the rel, since it needs to be forgotten by
-	 * the cache, we keep the lock though. ATRewriteCatalogs() knows
-	 * that we've closed the relation here.
-	 */
-	heap_close(rel, NoLock);
-   	tmprelid = RangeVarGetRelid(tmprv, false);
-	swap_relation_files(tarrelid, tmprelid, false);
 
 	/* now, reindex */
 	reindex_relation(tarrelid, false, false /* ao_segs ? */, false,

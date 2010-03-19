@@ -20,6 +20,8 @@
 #include "storage/shmem.h"
 #include "access/heapam.h"
 #include "access/transam.h"
+#include "catalog/pg_tablespace.h"
+#include "utils/guc.h"
 
 
 /*
@@ -37,33 +39,75 @@
 char *PersistentFileSysObjName_ObjectName(
 	const PersistentFileSysObjName		*name)
 {
-	Oid oid = 0;
-	char *path;
-	
+	char path[MAXPGPATH + 30];
+
+	/*
+	 * We don't use relpath or GetDatabasePath since they include the filespace directory.
+	 *
+	 * We just want the shorter version for display purposes.
+	 */
 	switch (name->type)
 	{
 	case PersistentFsObjType_RelationFile:	
-		return relpath(name->variant.rel.relFileNode);
+		if (name->variant.rel.relFileNode.spcNode == GLOBALTABLESPACE_OID)
+		{
+			/* Shared system relations live in {datadir}/global */
+			sprintf(path, "global/%u (segment file #%d)",
+					name->variant.rel.relFileNode.relNode,
+					name->variant.rel.segmentFileNum);
+		}
+		else if (name->variant.rel.relFileNode.spcNode == DEFAULTTABLESPACE_OID)
+		{
+			/* The default tablespace is {datadir}/base */
+			sprintf(path, "base/%u/%u (segment file #%d)",
+					name->variant.rel.relFileNode.dbNode,
+					name->variant.rel.relFileNode.relNode,
+					name->variant.rel.segmentFileNum);
+		}
+		else
+		{
+			/* All other tablespaces are accessed via filespace locations */
+			sprintf(path, "%u/%u/%u (segment file #%d)",
+					 name->variant.rel.relFileNode.spcNode,
+					 name->variant.rel.relFileNode.dbNode,
+					 name->variant.rel.relFileNode.relNode,
+					 name->variant.rel.segmentFileNum);
+		}
+		break;
 	case PersistentFsObjType_DatabaseDir:	
-		return GetDatabasePath(
-						name->variant.dbDirNode.database,
-						name->variant.dbDirNode.tablespace);
-
+		if (name->variant.dbDirNode.tablespace == GLOBALTABLESPACE_OID)
+		{
+			/* Shared system relations live in {datadir}/global */
+			strcpy(path, "global");
+		}
+		else if (name->variant.dbDirNode.tablespace == DEFAULTTABLESPACE_OID)
+		{
+			/* The default tablespace is {datadir}/base */
+			sprintf(path, "base/%u",
+					name->variant.dbDirNode.database);
+		}
+		else
+		{
+			/* All other tablespaces are accessed via filespace locations */
+			sprintf(path, "%u/%u",
+					 name->variant.dbDirNode.tablespace,
+					 name->variant.dbDirNode.database);
+		}
+		break;
 	case PersistentFsObjType_TablespaceDir:
-		oid = name->variant.tablespaceOid;
+		sprintf(path, "%u", name->variant.tablespaceOid);
 		break;
 	case PersistentFsObjType_FilespaceDir:
-		oid = name->variant.filespaceOid;
+		sprintf(path, "%u", name->variant.filespaceOid);
 		break;
 
 	default:
 		elog(ERROR, "Unexpected persistent file-system object type: %d",
 			 name->type);
-		return NULL;
+		return pstrdup("Unknown");
 	}
-	path = (char *) palloc(15);
-	snprintf(path, 15, "%u", oid);
-	return path;
+
+	return pstrdup(path);
 }
 
 char *PersistentFileSysObjName_TypeName(
@@ -116,6 +160,7 @@ int PersistentFileSysObjName_Compare(
 		switch (name1->type)
 		{
 		case PersistentFsObjType_RelationFile:	
+//			compareLen = offsetof(PersistentFileSysObjName,variant.rel.segmentFileNum) + sizeof(int32);
 			compareLen = sizeof(RelFileNode);
 			break;
 
@@ -139,7 +184,20 @@ int PersistentFileSysObjName_Compare(
 					&name2->variant,
 					compareLen);
 		if (cmp == 0)
-			return 0;
+		{
+			/*
+			 * Handle segmentFileNum for 'Relation File's.
+			 */
+			if (name1->type != PersistentFsObjType_RelationFile)
+				return 0;
+
+			if (name1->variant.rel.segmentFileNum == name2->variant.rel.segmentFileNum)
+				return 0;
+			else if (name1->variant.rel.segmentFileNum > name2->variant.rel.segmentFileNum)
+				return 1;
+			else
+				return -1;
+		}
 		else if (cmp > 0)
 			return 1;
 		else
@@ -151,7 +209,7 @@ int PersistentFileSysObjName_Compare(
 		return -1;
 }
 
-char *PersistentFileSysObj_StateName(
+char *PersistentFileSysObjState_Name(
 	PersistentFileSysState state)
 {
 	switch (state)
@@ -169,3 +227,51 @@ char *PersistentFileSysObj_StateName(
 	}
 }
 
+char *MirroredObjectExistenceState_Name(
+		MirroredObjectExistenceState mirrorExistenceState)
+{
+	switch (mirrorExistenceState)
+	{
+	case MirroredObjectExistenceState_None: 					return "None";
+	case MirroredObjectExistenceState_NotMirrored: 				return "Not Mirrored";
+	case MirroredObjectExistenceState_MirrorCreatePending: 		return "Mirror Create Pending";
+	case MirroredObjectExistenceState_MirrorCreated: 			return "Mirror Created";
+	case MirroredObjectExistenceState_MirrorReCreateNeeded: 	return "Mirror (Re)Create Needed";
+	case MirroredObjectExistenceState_MirrorReDropNeeded: 		return "Mirror (Re)Drop Needed";
+	case MirroredObjectExistenceState_MirrorDropped: 			return "Mirror Dropped";
+
+	default:
+		return "Unknown";
+	}
+}	
+
+char *PersistentFileSysRelStorageMgr_Name(
+	PersistentFileSysRelStorageMgr relStorageMgr)
+{
+	switch (relStorageMgr)
+	{
+	case PersistentFileSysRelStorageMgr_None: 		return "None";
+	case PersistentFileSysRelStorageMgr_BufferPool:	return "Buffer Pool";
+	case PersistentFileSysRelStorageMgr_AppendOnly:	return "Append-Only";
+		
+	default:
+		return "Unknown";
+	}
+}
+
+char *MirroredRelDataSynchronizationState_Name(
+	MirroredRelDataSynchronizationState relDataSynchronizationState)
+{
+	switch (relDataSynchronizationState)
+	{
+	case MirroredRelDataSynchronizationState_None:						return "None";
+	case MirroredRelDataSynchronizationState_Synchronized:				return "Synchronized";
+	case MirroredRelDataSynchronizationState_FullCopy:					return "Full Copy";
+	case MirroredRelDataSynchronizationState_BufferPoolPageIncremental:	return "Buffer Pool Page Incremental";
+	case MirroredRelDataSynchronizationState_BufferPoolScanIncremental:	return "Buffer Pool Scan Incremental";
+	case MirroredRelDataSynchronizationState_AppendOnlyCatchup:			return "Append-Only Catch-up";
+
+	default:
+		return "Unknown";
+	}
+}

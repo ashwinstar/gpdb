@@ -380,6 +380,25 @@ void datumstream_open_file(DatumStream *ds, char *fn, int64 eof, int64 eofUncomp
     else
     {
         Assert(ds->ao_write && !ds->ao_read);
+
+		/*
+		 * Segment file #0 is created when the Append-Only table is created.  
+		 *
+		 * Other ssegment files are created on-demand under transaction.
+		 */
+		if (segmentFileNum > 0 && eof == 0)
+		{
+			AppendOnlyStorageWrite_TransactionCreateFile(
+				ds->ao_write, 
+				fn, 
+				eof,	
+				relFileNode,
+				segmentFileNum);
+		}
+
+		/*
+		 * Open the existing file for write.
+		 */
         AppendOnlyStorageWrite_OpenFile(
 			ds->ao_write, 
 			fn, 

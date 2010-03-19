@@ -1909,6 +1909,9 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 
 	pg_rusage_init(&ru0);
 
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(onerel);
+
 	ExecContext_Init(&ec, onerel);
 
 	Nvacpagelist.num_pages = 0;
@@ -2753,7 +2756,7 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 				num_tuples++;
 			}
 			Assert(vacpage->offsets_free == num_tuples);
-
+			
 			START_CRIT_SECTION();
 
 			uncnt = PageRepairFragmentation(page, unused);
@@ -2829,6 +2832,9 @@ move_chain_tuple(Relation rel,
 	OffsetNumber newoff;
 	ItemId		newitemid;
 	Size		tuple_len = old_tup->t_len;
+
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(rel);
 
 	/*
 	 * make a modifiable copy of the source tuple.
@@ -2974,6 +2980,9 @@ move_plain_tuple(Relation rel,
 	OffsetNumber newoff;
 	ItemId		newitemid;
 	Size		tuple_len = old_tup->t_len;
+
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(rel);
 
 	/* copy tuple */
 	heap_copytuple_with_tuple(old_tup, &newtup);
@@ -3166,6 +3175,9 @@ vacuum_heap(VRelStats *vacrelstats, Relation onerel, VacPageList vacuum_pages)
 	BlockNumber relblocks;
 	int			nblocks;
 	int			i;
+
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(onerel);
 
 	nblocks = vacuum_pages->num_pages;
 	nblocks -= vacuum_pages->empty_end_pages;	/* nothing to do with them */

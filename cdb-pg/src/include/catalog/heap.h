@@ -76,19 +76,21 @@ extern void InsertPgClassTuple(Relation pg_class_desc,
 extern void InsertGpRelationNodeTuple(
 	Relation 		gp_relation_node,
 	Oid				relationId,
-	Oid 			tablespace,
+	char			*relname,
 	Oid				relation,
+	int32			segmentFileNum,
 	ItemPointer		persistentTid,
 	int64			persistentSerialNum);
 extern void UpdateGpRelationNodeTuple(
 		Relation	gp_relation_node,
 		HeapTuple	tuple,
-		Oid			tablespace,
 		Oid 		relation,
+		int32		segmentFileNum,
 		ItemPointer persistentTid,
 		int64		persistentSerialNum);
 extern void DeleteGpRelationNodeTuple(
-		Relation relation);
+		Relation 	relation,
+		int32		segmentFileNum);
 
 extern List *AddRelationRawConstraints(Relation rel,
 						  List *rawColDefaults,
@@ -123,6 +125,10 @@ extern void CheckAttributeNamesTypes(TupleDesc tupdesc, char relkind);
 
 extern void CheckAttributeType(const char *attname, Oid atttypid);
 extern void SetRelationNumChecks(Relation rel, int numchecks);
+
+extern Oid setNewRelfilenode(Relation relation);
+
+extern Oid setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode);
 
 /* MPP-6929: metadata tracking */
 extern void MetaTrackAddObject(Oid		classid, 

@@ -168,8 +168,16 @@ static void create_target_directories(
 
 	for (t = 0; t < info->tablespacesCount; t++)
 	{
+		ItemPointerData persistentTid;
+		int64 persistentSerialNum;
+
 		Oid tablespace = info->tablespaces[t];
 		DbDirNode dbDirNode;
+		
+		CHECK_FOR_INTERRUPTS();
+		
+		if (tablespace == GLOBALTABLESPACE_OID)
+			continue;
 
 		if (tablespace == sourceDefaultTablespace)
 			tablespace = destDefaultTablespace;
@@ -177,15 +185,20 @@ static void create_target_directories(
 		dbDirNode.tablespace = tablespace;
 		dbDirNode.database = destDatabase;
 		
-		MirroredFileSysObj_CreateDbDir(&dbDirNode);
+		MirroredFileSysObj_TransactionCreateDbDir(
+											&dbDirNode,
+											&persistentTid,
+											&persistentSerialNum);
 
 		set_short_version(&dbDirNode);
 	}
 }
 
 static void make_dst_relfilenode(
-	TablespaceRelFile		*srcTablespaceRelFile,
-	
+	Oid						tablespace,
+
+	Oid						relfilenode,
+
 	Oid						srcDefaultTablespace,
 
 	Oid						dstDefaultTablespace,
@@ -194,8 +207,6 @@ static void make_dst_relfilenode(
 
 	RelFileNode				*dstRelFileNode)
 {
-	Oid tablespace = srcTablespaceRelFile->tablespace;
-	
 	if (tablespace == srcDefaultTablespace)
 		tablespace = dstDefaultTablespace;
 	
@@ -203,7 +214,7 @@ static void make_dst_relfilenode(
 	
 	dstRelFileNode->dbNode = dstDatabase;
 	
-	dstRelFileNode->relNode = srcTablespaceRelFile->relation;
+	dstRelFileNode->relNode = relfilenode;
 }
 
 typedef struct StoredRelationPersistentInfo
@@ -237,14 +248,14 @@ static Form_pg_attribute
 DirectOpenDefine(DbCommand_GpRelationNode,\
 DbCommand_GpRelationNodePgClass,Natts_gp_relation_node,\
 DbCommand_GpRelationNodeAttrArray,DbCommand_GpRelationNodeAttrPtrArray,\
-GpRelationNodeRelationId,GpRelationNodeRelType,false);
+GpRelationNodeRelationId,GP_RELATION_NODE_OID,false,true);
 
 static void update_gp_relation_node(
 	Oid						dstDefaultTablespace,
 	Oid						dstDatabase,
 	ItemPointer				gpRelationNodeTid,
-	Oid						tablespace,
 	Oid						relationNode,
+	int32					segmentFileNum,
 	ItemPointer				persistentTid,
 	int64					persistentSerialNum)
 {
@@ -255,7 +266,6 @@ static void update_gp_relation_node(
 	bool			nulls[Natts_gp_relation_node];
 	Datum			values[Natts_gp_relation_node];
 
-	Oid				verifyTablespace;
 	Oid				verifyRelationNode;
 	int32			verifySegmentFileNum;
 	
@@ -275,11 +285,6 @@ static void update_gp_relation_node(
 	
 	heap_deform_tuple(&tuple, RelationGetDescr(gpRelationNodeRel), values, nulls);
 	
-	Assert(!nulls[Anum_gp_relation_node_tablespace_oid - 1]);
-	verifyTablespace = DatumGetObjectId(values[Anum_gp_relation_node_tablespace_oid - 1]);
-
-	Assert(verifyTablespace == tablespace);
-
 	Assert(!nulls[Anum_gp_relation_node_relfilenode_oid - 1]);
 	verifyRelationNode = DatumGetObjectId(values[Anum_gp_relation_node_relfilenode_oid - 1]);
 
@@ -287,6 +292,8 @@ static void update_gp_relation_node(
 
 	Assert(!nulls[Anum_gp_relation_node_segment_file_num - 1]);
 	verifySegmentFileNum = DatumGetInt32(values[Anum_gp_relation_node_segment_file_num - 1]);
+
+	Assert(verifySegmentFileNum == segmentFileNum);
 
 	memset(repl_val, 0, sizeof(repl_val));
 	memset(repl_null, false, sizeof(repl_null));
@@ -299,7 +306,7 @@ static void update_gp_relation_node(
 	
 	newtuple = heap_modify_tuple(&tuple, RelationGetDescr(gpRelationNodeRel), repl_val, repl_null, repl_repl);
 	
-	simple_heap_update(gpRelationNodeRel, &newtuple->t_self, newtuple);
+	heap_inplace_update(gpRelationNodeRel, newtuple);
 	
 	heap_freetuple(newtuple);
 
@@ -308,55 +315,13 @@ static void update_gp_relation_node(
 	DbCommand_GpRelationNodeClose(gpRelationNodeRel);
 }
 
-static void create_pending_relations(
-	DatabaseInfo 			*info,
-
-	Oid						srcDefaultTablespace,
-
-	Oid						dstDefaultTablespace,
-
-	Oid						dstDatabase,
-
-	GpRelationNode 			*newGpRelationNodes)
-{
-	int sr;
-
-	for (sr = 0; sr < info->pgClassStoredRelationsCount; sr++)
-	{
-		RelFileNode dstRelFileNode;
-
-		make_dst_relfilenode(
-						&info->pgClassStoredRelations[sr].tablespaceRelFile,
-						srcDefaultTablespace,
-						dstDefaultTablespace,
-						dstDatabase,
-						&dstRelFileNode);
-
-		smgrcreatepending(
-					&dstRelFileNode, 
-					&newGpRelationNodes[sr].persistentTid,
-					&newGpRelationNodes[sr].persistentSerialNum,
-					/* isLocalBuf */ false,
-					/* flushToXLog */ false);
-
-		newGpRelationNodes[sr].tablespaceRelFile = info->gpRelationNodes[sr].tablespaceRelFile;
-
-		if (Debug_database_command_print)
-			elog(Debug_database_command_print_level, 
-			     "newGpRelationNodes: Tablespace %u, relation %u node information (persistent TID %s, perstent serial number " INT64_FORMAT ")",
-				 newGpRelationNodes[sr].tablespaceRelFile.tablespace, 
-				 newGpRelationNodes[sr].tablespaceRelFile.relation, 
-				 ItemPointerToString(&newGpRelationNodes[sr].persistentTid),
-				 newGpRelationNodes[sr].persistentSerialNum);
-	}
-	
-}
-
-static void copy_relation_segment_file(
+static void copy_buffer_pool_segment_file(
 	RelFileNode 	*srcRelFileNode,
 	RelFileNode		*dstRelFileNode,
 	int32			segmentFileNum,
-	bool			isBufferPoolRelation,
+	int64			eof,
+	ItemPointer		persistentTid,
+	int64			persistentSerialNum,
 	char			*buffer)
 {
 	char srcFileName[MAXPGPATH];
@@ -364,8 +329,7 @@ static void copy_relation_segment_file(
 
 	File		srcFile;
 
-	SMgrRelation	dstrel=NULL;
-	MirroredBulkRelationOpen mirroredDstOpen;
+	SMgrRelation	dstrel;
 
 	int32		blkno;
 
@@ -387,24 +351,7 @@ static void copy_relation_segment_file(
 				(errcode_for_file_access(),
 				 errmsg("could not open file \"%s\": %m", srcFileName)));
 
-	if (isBufferPoolRelation)
-	{
 		dstrel = smgropen(*dstRelFileNode);
-
-		if (segmentFileNum == 0)
-			MirroredFileSysObj_CreateOnlyRelFile(
-											dstrel,
-											/* isLocalBuf */ false);
-	}
-	else
-	{
-		MirroredBulkRelation_Open(
-								&mirroredDstOpen,
-								O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
-								S_IRUSR | S_IWUSR,
-								dstRelFileNode,
-								segmentFileNum);
-	}
 	
 	/*
 	 * Do the data copying.
@@ -412,6 +359,12 @@ static void copy_relation_segment_file(
 	blkno = segmentFileNum * RELSEG_SIZE;
 	for (;;)
 	{
+		xl_heap_newpage xlrec;
+		XLogRecPtr	recptr;
+		XLogRecData rdata[2];
+		
+		CHECK_FOR_INTERRUPTS();
+		
 		nbytes = FileRead(srcFile, buffer, BLCKSZ);
 		if (nbytes < 0)
 			ereport(ERROR,
@@ -420,84 +373,118 @@ static void copy_relation_segment_file(
 		if (nbytes == 0)
 			break;
 
-		if (isBufferPoolRelation)
-		{
-			xl_heap_newpage xlrec;
-			XLogRecPtr	recptr;
-			XLogRecData rdata[2];
+		/*
+		 * We XLOG buffer pool relations for 2 reasons:
+		 *
+		 *   1) To support master mirroring which replays the XLOG to the
+		 *       standby master.
+		 *   2) Better CREATE DATABASE performance.  If we fsync each file
+		 *       as we copy, it slows things down.
+		 */
+	
+		/* NO ELOG(ERROR) from here till newpage op is logged */
+		START_CRIT_SECTION();
+	
+		xlrec.heapnode.node = dstrel->smgr_rnode;
+		xlrec.heapnode.persistentTid = *persistentTid;
+		xlrec.heapnode.persistentSerialNum = persistentSerialNum;
+		xlrec.blkno = blkno;
+	
+		rdata[0].data = (char *) &xlrec;
+		rdata[0].len = SizeOfHeapNewpage;
+		rdata[0].buffer = InvalidBuffer;
+		rdata[0].next = &(rdata[1]);
+	
+		rdata[1].data = (char *) buffer;
+		rdata[1].len = BLCKSZ;
+		rdata[1].buffer = InvalidBuffer;
+		rdata[1].next = NULL;
+	
+		recptr = XLogInsert(RM_HEAP_ID, XLOG_HEAP_NEWPAGE, rdata);
+	
+		PageSetLSN(buffer, recptr);
+		PageSetTLI(buffer, ThisTimeLineID);
+	
+		END_CRIT_SECTION();
 
-			/*
-			 * We XLOG buffer pool relations for 2 reasons:
-			 *
-			 *   1) To support master mirroring which replays the XLOG to the
-			 *       standby master.
-			 *   2) Better CREATE DATABASE performance.  If we fsync each file
-			 *       as we copy, it slows things down.
-			 */
-		
-			/* NO ELOG(ERROR) from here till newpage op is logged */
-			START_CRIT_SECTION();
-		
-			xlrec.node = dstrel->smgr_rnode;
-			xlrec.blkno = blkno;
-		
-			rdata[0].data = (char *) &xlrec;
-			rdata[0].len = SizeOfHeapNewpage;
-			rdata[0].buffer = InvalidBuffer;
-			rdata[0].next = &(rdata[1]);
-		
-			rdata[1].data = (char *) buffer;
-			rdata[1].len = BLCKSZ;
-			rdata[1].buffer = InvalidBuffer;
-			rdata[1].next = NULL;
-		
-			recptr = XLogInsert(RM_HEAP_ID, XLOG_HEAP_NEWPAGE, rdata);
-		
-			PageSetLSN(buffer, recptr);
-			PageSetTLI(buffer, ThisTimeLineID);
-		
-			END_CRIT_SECTION();
+		smgrwrite(dstrel, blkno, buffer, false);
 
-			smgrwrite(dstrel, blkno, buffer, false);
-		}
-		else
-		{
-			MirroredBulkRelation_Append(
-								&mirroredDstOpen,
-								buffer,
-								nbytes);
-		}
 		blkno++;
 	}
 
-	if (isBufferPoolRelation)
-	{
-		/*
-		 * Do not fsync.  Let the buffer pool push the pages out since we have XLOG'd
-		 * the new pages.
-		 */
-		smgrclose(dstrel);
-	}
-	else
-	{
-		MirroredBulkRelation_FlushAndClose(&mirroredDstOpen);
-	}
+	/*
+	 * Do not fsync.  Let the buffer pool push the pages out since we have XLOG'd
+	 * the new pages.
+	 */
+	smgrclose(dstrel);
 
 	FileClose(srcFile);
 }
 
-// -----------------------------------------------------------------------------
-
-typedef struct CreateDbStoredRelation
+static void copy_append_only_segment_file(
+	RelFileNode 	*srcRelFileNode,
+	RelFileNode		*dstRelFileNode,
+	int32			segmentFileNum,
+	int64			eof,
+	char			*buffer)
 {
-	RelFileNode 		srcRelFileNode;
+	char srcFileName[MAXPGPATH];
+	char extension[12];
 
-	RelFileNode 		dstRelFileNode;
+	File		srcFile;
 
-	ItemPointerData 	persistentTid;
-			/* Resulting TID of the gp_persistent_rel_files tuple for the rel file */
-				
-} CreateDbStoredRelation;
+	MirroredBulkRelationOpen mirroredDstOpen;
+
+	int 		nbytes;
+
+	CopyRelPath(srcFileName, MAXPGPATH, *srcRelFileNode);
+	if (segmentFileNum > 0)
+	{
+		sprintf(extension, ".%u", segmentFileNum);
+		strcat(srcFileName, extension);
+	}
+
+	/*
+	 * Open the files
+	 */
+	srcFile = PathNameOpenFile(srcFileName, O_RDONLY | PG_BINARY, 0);
+	if (srcFile < 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not open file \"%s\": %m", srcFileName)));
+
+	MirroredBulkRelation_Open(
+							&mirroredDstOpen,
+							O_RDWR | O_EXCL | PG_BINARY,
+							S_IRUSR | S_IWUSR,
+							dstRelFileNode,
+							segmentFileNum);
+	
+	/*
+	 * Do the data copying.
+	 */
+	for (;;)
+	{		
+		CHECK_FOR_INTERRUPTS();
+		
+		nbytes = FileRead(srcFile, buffer, BLCKSZ);
+		if (nbytes < 0)
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not read file \"%s\": %m", srcFileName)));
+		if (nbytes == 0)
+			break;
+
+		MirroredBulkRelation_Append(
+							&mirroredDstOpen,
+							buffer,
+							nbytes);
+	}
+
+	MirroredBulkRelation_FlushAndClose(&mirroredDstOpen);
+
+	FileClose(srcFile);
+}
 
 // -----------------------------------------------------------------------------
 
@@ -901,6 +888,9 @@ createdb_int(CreatedbStmt *stmt,
 						   "CREATE", "DATABASE"
 				);
 
+	
+	CHECK_FOR_INTERRUPTS();
+	
 	/*
 	 * Force dirty buffers out to disk, to ensure source database is
 	 * up-to-date for the copy.  (We really only need to flush buffers for the
@@ -908,13 +898,12 @@ createdb_int(CreatedbStmt *stmt,
 	 */
 	BufferSync();
 
+	CHECK_FOR_INTERRUPTS();
+	
 	{
 		PGRUsage	ru_start;
 		DatabaseInfo *info;
-		GpRelationNode *newGpRelationNodes;
-		int rsf;
-		int sr;
-		int grn;
+		int r;
 		char *buffer;
 
 		/*
@@ -929,8 +918,11 @@ createdb_int(CreatedbStmt *stmt,
 			elog(NOTICE, "collect phase: %s",
 				 pg_rusage_show(&ru_start));
 
-		if (Debug_database_command_print)
-			DatabaseInfo_Trace(info);
+
+		CHECK_FOR_INTERRUPTS();
+
+//		if (Debug_database_command_print)
+//			DatabaseInfo_Trace(info);
 
 		/*
 		 * Verify integrity of databae information.
@@ -938,7 +930,7 @@ createdb_int(CreatedbStmt *stmt,
 		if (Debug_database_command_print)
 			pg_rusage_init(&ru_start);
 
-		DatabaseInfo_Check(info);
+//		DatabaseInfo_Check(info);
 
 		if (Debug_database_command_print)
 			elog(NOTICE, "check phase: %s",
@@ -962,41 +954,6 @@ createdb_int(CreatedbStmt *stmt,
 
 
 		/*
-		 * Before we physically copy the relation files, we need the CreatePending
-		 * intent information in gp_persistent_rel_files to provide for automatic cleanup
-		 * in case the transaction aborts.
-		 */
-		if (Debug_database_command_print)
-			pg_rusage_init(&ru_start);
-
-		newGpRelationNodes = 
-						palloc(info->pgClassStoredRelationsCount* 
-						       sizeof(GpRelationNode));
-
-		create_pending_relations(
-								info,
-								src_deftablespace,
-								dst_deftablespace,
-								dboid,
-								newGpRelationNodes);
-							
-		if (Debug_database_command_print)
-			elog(NOTICE, "create pending phase: %s",
-				 pg_rusage_show(&ru_start));
-
-		/*
-		 * Push all gp_persistent_rel_files tuples to disk.
-		 */
-		if (Debug_database_command_print)
-				pg_rusage_init(&ru_start);
-			
-		PersistentRelation_FlushXLog();
-
-		if (Debug_database_command_print)
-			elog(NOTICE, "flush xlog phase: %s",
-				 pg_rusage_show(&ru_start));
-
-		/*
 		 * Create each physical destination relation segment file and copy the data.
 		 */
 		if (Debug_database_command_print)
@@ -1005,45 +962,105 @@ createdb_int(CreatedbStmt *stmt,
 		/* Use palloc to ensure we get a maxaligned buffer */		
 		buffer = palloc(BLCKSZ);
 
-		sr = 0;
-		for (rsf = 0; rsf < info->relSegFilesCount; rsf++)
+		for (r = 0; r < info->dbInfoRelArrayCount; r++)
 		{
+			DbInfoRel *dbInfoRel = &info->dbInfoRelArray[r];
+
+			Oid tablespace;
+			Oid relfilenode;
+
 			RelFileNode srcRelFileNode;
 			RelFileNode dstRelFileNode;
 
-			if (TablespaceRelFile_Compare(
-					&info->relSegFiles[rsf].tablespaceRelFile,
-					&info->pgClassStoredRelations[sr].tablespaceRelFile) != 0)
-			{
-				sr++;
+			PersistentFileSysRelStorageMgr relStorageMgr;
 
-				// UNDONE
-				Assert(sr < info->pgClassStoredRelationsCount);
-				Assert(TablespaceRelFile_Compare(
-					&info->relSegFiles[rsf].tablespaceRelFile,
-					&info->pgClassStoredRelations[sr].tablespaceRelFile) == 0);
-			}
-				    
+			tablespace = dbInfoRel->reltablespace;
+			if (tablespace == GLOBALTABLESPACE_OID)
+				continue;
+
+			CHECK_FOR_INTERRUPTS();
+
+			relfilenode = dbInfoRel->relfilenodeOid;
 			
-			srcRelFileNode.spcNode =
-					info->relSegFiles[rsf].tablespaceRelFile.tablespace;
+			srcRelFileNode.spcNode = tablespace;
 			srcRelFileNode.dbNode = info->database;
-			srcRelFileNode.relNode = 
-					info->relSegFiles[rsf].tablespaceRelFile.relation;
+			srcRelFileNode.relNode = relfilenode;
 			
 			make_dst_relfilenode(
-							&info->relSegFiles[rsf].tablespaceRelFile,
+							tablespace,
+							relfilenode,
 							src_deftablespace,
 							dst_deftablespace,
 							dboid,
 							&dstRelFileNode);
 			
-			copy_relation_segment_file(
-					&srcRelFileNode,
-					&dstRelFileNode,
-					info->relSegFiles[rsf].segmentFileNum,
-					info->pgClassStoredRelations[sr].isBufferPoolRelation,
-					buffer);
+			relStorageMgr = (
+					 (dbInfoRel->relstorage == RELSTORAGE_AOROWS ||
+					  dbInfoRel->relstorage == RELSTORAGE_AOCOLS	) ?
+									PersistentFileSysRelStorageMgr_AppendOnly :
+									PersistentFileSysRelStorageMgr_BufferPool);
+
+			if (relStorageMgr == PersistentFileSysRelStorageMgr_BufferPool)
+			{
+				int p;
+
+				/*
+				 * Generate new page XLOG records with the one persistent TID and
+				 * serial number for the Buffer Pool managed relation.
+				 */
+				MirroredFileSysObj_TransactionCreateBufferPoolFile(
+													smgropen(dstRelFileNode),
+													/* isLocalBuf */ false,
+													dbInfoRel->relname,
+													/* doJustInTimeDirCreate */ false,
+													&dbInfoRel->gpRelationNodes[0].persistentTid,		// OUTPUT
+													&dbInfoRel->gpRelationNodes[0].persistentSerialNum);	// OUTPUT
+
+				for (p = 0; p < dbInfoRel->physicalSegmentFilesCount; p++)
+				{
+					DbInfoSegmentFile *dbInfoSegmentFile = &dbInfoRel->physicalSegmentFiles[p];
+
+					copy_buffer_pool_segment_file(
+									&srcRelFileNode,
+									&dstRelFileNode,
+									dbInfoSegmentFile->segmentFileNum,
+									dbInfoSegmentFile->eof,
+									&dbInfoRel->gpRelationNodes[0].persistentTid,
+									dbInfoRel->gpRelationNodes[0].persistentSerialNum,
+									buffer);
+											
+				}
+			}
+			else
+			{
+				int g;
+
+				Assert(dbInfoRel->gpRelationNodesCount == 
+					   dbInfoRel->physicalSegmentFilesCount);
+
+				for (g = 0; g < dbInfoRel->gpRelationNodesCount; g++)
+				{
+					DbInfoGpRelationNode *dbInfoGpRelationNode = 
+												&dbInfoRel->gpRelationNodes[g];
+
+					Assert(dbInfoGpRelationNode->segmentFileNum == 
+						   dbInfoRel->physicalSegmentFiles[g].segmentFileNum);
+
+					MirroredFileSysObj_TransactionCreateAppendOnlyFile(
+														&dstRelFileNode,
+														dbInfoGpRelationNode->segmentFileNum,
+														dbInfoRel->relname,
+														/* doJustInTimeDirCreate */ false,
+														&dbInfoGpRelationNode->persistentTid,			// OUTPUT
+														&dbInfoGpRelationNode->persistentSerialNum); 	// OUTPUT
+					copy_append_only_segment_file(
+									&srcRelFileNode,
+									&dstRelFileNode,
+									dbInfoGpRelationNode->segmentFileNum,
+									dbInfoRel->physicalSegmentFiles[g].eof,
+									buffer);
+				}
+			}
 			
 		}
 
@@ -1053,25 +1070,27 @@ createdb_int(CreatedbStmt *stmt,
 			elog(NOTICE, "copy stored relations phase: %s",
 				 pg_rusage_show(&ru_start));
 
-		sr = 0;
-		for (grn = 0; grn < info->gpRelationNodesCount; grn++)
+		for (r = 0; r < info->dbInfoRelArrayCount; r++)
 		{
-			Assert (info->pgClassStoredRelations[sr].tablespaceRelFile.tablespace ==
-				    info->gpRelationNodes[grn].tablespaceRelFile.tablespace);
-	
-			Assert (info->pgClassStoredRelations[sr].tablespaceRelFile.relation ==
-				    info->gpRelationNodes[grn].tablespaceRelFile.relation);
-	
-			update_gp_relation_node(
-						dst_deftablespace,
-						dboid,
-						&info->gpRelationNodes[grn].gpRelationNodeTid,
-						newGpRelationNodes[sr].tablespaceRelFile.tablespace,
-						info->gpRelationNodes[grn].tablespaceRelFile.relation,
-						&newGpRelationNodes[sr].persistentTid,
-						newGpRelationNodes[sr].persistentSerialNum);
+			DbInfoRel *dbInfoRel = &info->dbInfoRelArray[r];
 
-			sr++;
+			int g;
+			
+			for (g = 0; g < dbInfoRel->gpRelationNodesCount; g++)
+			{
+				DbInfoGpRelationNode *dbInfoGpRelationNode = 
+											&dbInfoRel->gpRelationNodes[g];
+			
+				update_gp_relation_node(
+							dst_deftablespace,
+							dboid,
+							&dbInfoGpRelationNode->gpRelationNodeTid,
+							dbInfoRel->relfilenodeOid,
+							dbInfoGpRelationNode->segmentFileNum,
+							&dbInfoGpRelationNode->persistentTid,		// INPUT
+							dbInfoGpRelationNode->persistentSerialNum);	// INPUT
+			}
+
 		}
 	}
 
@@ -1258,59 +1277,92 @@ dropdb(const char *dbname, bool missing_ok)
 	 */
 	{
 		DatabaseInfo *info;
-		int grn;
+		int r;
 
 		DbDirNode dbDirNode;
 		PersistentFileSysState state;
-
-		info = DatabaseInfo_Collect(db_id, defaultTablespace);
 		
-		if (Debug_database_command_print)
-			DatabaseInfo_Trace(info);
+		ItemPointerData persistentTid;
+		int64 persistentSerialNum;
+		
+		info = DatabaseInfo_Collect(db_id, defaultTablespace);
+
+//		if (Debug_database_command_print)
+//			DatabaseInfo_Trace(info);
+		
+		if (info->parentlessGpRelationNodesCount > 0)
+		{
+//			DatabaseInfo_Trace(info);
+
+//			pg_usleep(60 * 1000000L);
+			
+			elog(ERROR, "Found %d parentless gp_relation_node entries",
+				 info->parentlessGpRelationNodesCount);
+		}
 
 		/*
 		 * Verify the relation information from pg_class matches what we found on disk.
 		 */
-		DatabaseInfo_Check(info);
+//		DatabaseInfo_Check(info);
 
 		/*
 		 * Schedule relation file deletes for transaction commit.
 		 */
-		for (grn = 0; grn < info->gpRelationNodesCount; grn++)
+		for (r = 0; r < info->dbInfoRelArrayCount; r++)
 		{
-			PgClassStoredRelation *stored = &info->pgClassStoredRelations[grn];
-			GpRelationNode *physNode = &info->gpRelationNodes[grn];
+			DbInfoRel *dbInfoRel = &info->dbInfoRelArray[r];
 			
 			RelFileNode relFileNode;
-			SMgrRelation smgrOpen;
+			PersistentFileSysRelStorageMgr relStorageMgr;
 
-			Assert (stored->tablespaceRelFile.tablespace ==
-				    physNode->tablespaceRelFile.tablespace);
-	
-			Assert (stored->tablespaceRelFile.relation ==
-				    physNode->tablespaceRelFile.relation);
-
-			if (stored->tablespaceRelFile.tablespace ==
-				GLOBALTABLESPACE_OID)
+			int g;
+			if (dbInfoRel->reltablespace == GLOBALTABLESPACE_OID)
 				continue;
 			
-			relFileNode.spcNode = stored->tablespaceRelFile.tablespace;
+			relFileNode.spcNode = dbInfoRel->reltablespace;
 			relFileNode.dbNode = db_id;
-			relFileNode.relNode = stored->tablespaceRelFile.relation;
-			
-			smgrOpen = smgropen(relFileNode);
-			
+			relFileNode.relNode = dbInfoRel->relfilenodeOid;
+
+			CHECK_FOR_INTERRUPTS();
+
 			/*
 			 * Schedule the relation drop.
-			 *
-			 * Give SMGR open to MirroredFileSysObj module.
 			 */
-			MirroredFileSysObj_ScheduleDropRelFile(
-								smgrOpen,
-								&physNode->persistentTid,
-								physNode->persistentSerialNum,
-								/* isLocalBuf */ false);
-		
+			relStorageMgr = (
+					 (dbInfoRel->relstorage == RELSTORAGE_AOROWS ||
+					  dbInfoRel->relstorage == RELSTORAGE_AOCOLS    ) ?
+									PersistentFileSysRelStorageMgr_AppendOnly :
+									PersistentFileSysRelStorageMgr_BufferPool);
+
+			if (relStorageMgr == PersistentFileSysRelStorageMgr_BufferPool)
+			{
+				DbInfoGpRelationNode *dbInfoGpRelationNode;
+				
+				dbInfoGpRelationNode = &dbInfoRel->gpRelationNodes[0];
+
+				MirroredFileSysObj_ScheduleDropBufferPoolFile(
+												smgropen(relFileNode),
+												/* isLocalBuf */ false,
+												dbInfoRel->relname,
+												&dbInfoGpRelationNode->persistentTid,
+												dbInfoGpRelationNode->persistentSerialNum);
+			}
+			else
+			{
+				for (g = 0; g < dbInfoRel->gpRelationNodesCount; g++)
+				{
+					DbInfoGpRelationNode *dbInfoGpRelationNode;
+					
+					dbInfoGpRelationNode = &dbInfoRel->gpRelationNodes[g];
+
+					MirroredFileSysObj_ScheduleDropAppendOnlyFile(
+													&relFileNode,
+													dbInfoGpRelationNode->segmentFileNum,
+													dbInfoRel->relname,
+													&dbInfoGpRelationNode->persistentTid,
+													dbInfoGpRelationNode->persistentSerialNum);
+				}
+			}
 		}
 
 		/*
@@ -1319,7 +1371,9 @@ dropdb(const char *dbname, bool missing_ok)
 		PersistentDatabase_DirIterateInit();
 		while (PersistentDatabase_DirIterateNext(
 										&dbDirNode,
-										&state))
+										&state,
+										&persistentTid,
+										&persistentSerialNum))
 		{
 			if (dbDirNode.database != db_id)
 				continue;
@@ -1328,7 +1382,10 @@ dropdb(const char *dbname, bool missing_ok)
 			if (state != PersistentFileSysState_Created)
 				continue;
 	
-			MirroredFileSysObj_ScheduleDropDbDir(&dbDirNode);
+			MirroredFileSysObj_ScheduleDropDbDir(
+											&dbDirNode,
+											&persistentTid,
+											persistentSerialNum);
 		}
 	}
 

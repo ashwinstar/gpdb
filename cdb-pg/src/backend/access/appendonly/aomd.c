@@ -101,16 +101,19 @@ MakeAOSegmentFileName(
 							Relation rel, 
 							int segno, 
 							int col, 
+							int32 *fileSegNo,
 							char *filepathname)
 {
 	char	*basepath;
-	int32	fileSegNo;
+	int32   fileSegNoLocal;
 	
 	/* Get base path for this relation file */
 	basepath = relpath(rel->rd_node);
 
-	FormatAOSegmentFileName(basepath, segno, col, &fileSegNo, filepathname);
-
+	FormatAOSegmentFileName(basepath, segno, col, &fileSegNoLocal, filepathname);
+	
+	*fileSegNo = fileSegNoLocal;
+	
 	pfree(basepath);
 }
 
@@ -125,13 +128,22 @@ OpenAOSegmentFile(
 					Relation rel, 
 					char *filepathname, 
 					bool create,
-					File *file)
-{
-	int		fileflags = O_RDWR | PG_BINARY;
+				  int32	segmentFileNum,
+				  int64	logicalEof,
+				  MirroredAppendOnlyOpen *mirroredOpen)
+{	
+	int		fileFlags = O_RDWR | PG_BINARY;
+	int		fileMode = 0600;
 	
-	*file = PathNameOpenFile(filepathname, fileflags, 0600);
+	MirroredAppendOnly_Open(mirroredOpen, 
+							&rel->rd_node,
+							segmentFileNum,
+							/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
+							logicalEof,
+							fileFlags,
+							fileMode);
 	
-	if(*file < 0)
+	if(mirroredOpen->primaryFile < 0)
 	{
 		if(!create)
 		{
@@ -143,10 +155,17 @@ OpenAOSegmentFile(
 		else
 		{
 			/* file doesn't exist. create a new one. */
-			fileflags |= O_CREAT;
-			*file = PathNameOpenFile(filepathname, fileflags, 0600);
-
-			if(*file < 0)
+			fileFlags |= O_CREAT;
+			
+			MirroredAppendOnly_Open(mirroredOpen, 
+									&rel->rd_node,
+									segmentFileNum,
+									/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
+									logicalEof,
+									fileFlags,
+									fileMode);
+			
+			if(mirroredOpen->primaryFile < 0)
 				ereport(ERROR,
 						(errcode_for_file_access(),
 						 errmsg("failed to create a new file segment: \"%s\"", filepathname)));
@@ -159,30 +178,29 @@ OpenAOSegmentFile(
  * Close an Append Only relation file segment
  */
 void
-CloseAOSegmentFile(File aosegfile, Relation rel  __attribute__((unused)), BlockNumber segno __attribute__((unused)))
+CloseAOSegmentFile(MirroredAppendOnlyOpen *mirroredOpen)
 {
-	Assert(aosegfile > 0);
-	Assert(segno >= 0);
-
-	FileClose(aosegfile);
+	Assert(mirroredOpen->primaryFile > 0);
+	
+	MirroredAppendOnly_Close(mirroredOpen);
 }
 
 /*
  * Truncate all bytes from offset to end of file.
  */
 void
-TruncateAOSegmentFile(File aosegfile, Relation rel, int64 offset, int elevel)
+TruncateAOSegmentFile(MirroredAppendOnlyOpen *mirroredOpen, Relation rel, int64 offset, int elevel)
 {
 	char *relname = RelationGetRelationName(rel);
 	
-	Assert(aosegfile > 0);
+	Assert(mirroredOpen->primaryFile > 0);
 	Assert(offset >= 0);
 
 	/*
 	 * Call the 'fd' module with a 64-bit length since AO segment files
 	 * can be multi-gigabyte to the terabytes...
 	 */
-	if (FileTruncate(aosegfile, offset) < 0)
+	if (MirroredAppendOnly_Truncate(mirroredOpen, offset) == FALSE)
 		ereport(elevel,
 				(errmsg("\"%s\": failed to truncate data after eof", relname)));
 	

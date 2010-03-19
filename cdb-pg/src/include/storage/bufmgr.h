@@ -17,6 +17,7 @@
 #include "storage/buf.h"
 #include "storage/bufpage.h"
 #include "storage/relfilenode.h"
+#include "storage/smgr.h"
 #include "utils/relcache.h"
 #include "utils/rel.h"
 
@@ -120,6 +121,10 @@ extern PGDLLIMPORT int32 *LocalRefCount;
 /*
  * prototypes for functions in bufmgr.c
  */
+extern Buffer
+ReadBuffer_ResyncEx(SMgrRelation reln, 
+					BlockNumber blockNum);
+
 extern Buffer ReadBuffer(Relation reln, BlockNumber blockNum);
 extern void ReleaseBuffer(Buffer buffer);
 extern void ReleaseBuffer_Ex(Buffer buffer, bool flushIfDirty);

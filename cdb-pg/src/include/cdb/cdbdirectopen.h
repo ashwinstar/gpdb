@@ -42,6 +42,8 @@ typedef struct DirectOpen
 
 	bool hasOid;
 
+	bool noGpRelationNode;
+
 	// The following fields initialize to 0, with minor exceptions.
 
 	struct tupleConstr constrData;
@@ -62,7 +64,7 @@ typedef struct DirectOpen
 //     Relation type id.
 //     (NOTE: REMAINING FIELDS 0)
 
-#define DirectOpenDefine(name,pgClassStatic,natts,attrArrayStatic,attrPtrArrayStatic,relId,relType,relHasOid) \
+#define DirectOpenDefine(name,pgClassStatic,natts,attrArrayStatic,attrPtrArrayStatic,relId,relType,relHasOid,noGpRelationNode) \
 \
 static FormData_pg_class *name##RelPgClass = &pgClassStatic; \
 static FormData_pg_attribute *name##RelAttrArray = attrArrayStatic; \
@@ -73,7 +75,8 @@ static DirectOpen name##RelDirectOpen = \
 	  natts, \
 	  relId, \
 	  relType, \
-	  relHasOid }; \
+	  relHasOid, \
+	  noGpRelationNode}; \
 \
 static inline Relation name##OpenShared(void) \
 { \

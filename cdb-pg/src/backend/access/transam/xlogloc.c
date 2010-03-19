@@ -33,6 +33,9 @@
 #define DELIM			'/'
 #define NXLOGLOCARGS	2
 
+static int gpxlogloc_cmp_internal(XLogRecPtr *arg1, XLogRecPtr *arg2);
+
+
 /* ----------------------------------------------------------------
  *		gpxloglocin
  * ----------------------------------------------------------------
@@ -137,5 +140,114 @@ gpxloglocsend(PG_FUNCTION_ARGS)
 	pq_sendint(&buf, send_xlogid, sizeof(send_xlogid));
 	pq_sendint(&buf, send_xrecoff, sizeof(send_xrecoff));
 	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
+}
+
+
+Datum
+gpxlogloclarger(PG_FUNCTION_ARGS)
+{
+	XLogRecPtr *arg1 = PG_GETARG_XLOGLOC(0);
+	XLogRecPtr *arg2 = PG_GETARG_XLOGLOC(1);
+	XLogRecPtr *result;
+	
+	if (gpxlogloc_cmp_internal(arg1, arg2) > 0)
+		result = arg1;
+	else
+		result = arg2;
+	
+	PG_RETURN_XLOGLOC(result);		
+}
+
+Datum
+gpxloglocsmaller(PG_FUNCTION_ARGS)
+{
+	XLogRecPtr *arg1 = PG_GETARG_XLOGLOC(0);
+	XLogRecPtr *arg2 = PG_GETARG_XLOGLOC(1);
+	XLogRecPtr *result;
+	
+	if (gpxlogloc_cmp_internal(arg1, arg2) < 0)
+		result = arg1;
+	else
+		result = arg2;
+	
+	PG_RETURN_XLOGLOC(result);		
+}
+
+Datum
+gpxlogloceq(PG_FUNCTION_ARGS)
+{
+	XLogRecPtr *arg1 = PG_GETARG_XLOGLOC(0);
+	XLogRecPtr *arg2 = PG_GETARG_XLOGLOC(1);
+
+	PG_RETURN_BOOL(gpxlogloc_cmp_internal(arg1, arg2) == 0);
+}
+
+Datum
+gpxloglocne(PG_FUNCTION_ARGS)
+{
+	XLogRecPtr *arg1 = PG_GETARG_XLOGLOC(0);
+	XLogRecPtr *arg2 = PG_GETARG_XLOGLOC(1);
+
+	PG_RETURN_BOOL(gpxlogloc_cmp_internal(arg1, arg2) != 0);
+}
+
+Datum
+gpxlogloclt(PG_FUNCTION_ARGS)
+{
+	XLogRecPtr *arg1 = PG_GETARG_XLOGLOC(0);
+	XLogRecPtr *arg2 = PG_GETARG_XLOGLOC(1);
+
+	PG_RETURN_BOOL(gpxlogloc_cmp_internal(arg1, arg2) < 0);
+}
+
+Datum
+gpxloglocle(PG_FUNCTION_ARGS)
+{
+	XLogRecPtr *arg1 = PG_GETARG_XLOGLOC(0);
+	XLogRecPtr *arg2 = PG_GETARG_XLOGLOC(1);
+
+	PG_RETURN_BOOL(gpxlogloc_cmp_internal(arg1, arg2) <= 0);
+}
+
+Datum
+gpxloglocgt(PG_FUNCTION_ARGS)
+{
+	XLogRecPtr *arg1 = PG_GETARG_XLOGLOC(0);
+	XLogRecPtr *arg2 = PG_GETARG_XLOGLOC(1);
+
+	PG_RETURN_BOOL(gpxlogloc_cmp_internal(arg1, arg2) > 0);
+}
+
+Datum
+gpxloglocge(PG_FUNCTION_ARGS)
+{
+	XLogRecPtr *arg1 = PG_GETARG_XLOGLOC(0);
+	XLogRecPtr *arg2 = PG_GETARG_XLOGLOC(1);
+
+	PG_RETURN_BOOL(gpxlogloc_cmp_internal(arg1, arg2) >= 0);
+}
+
+Datum
+btgpxlogloccmp(PG_FUNCTION_ARGS)
+{
+	XLogRecPtr *arg1 = PG_GETARG_XLOGLOC(0);
+	XLogRecPtr *arg2 = PG_GETARG_XLOGLOC(1);
+
+	PG_RETURN_INT32(gpxlogloc_cmp_internal(arg1, arg2));
+}
+
+static int
+gpxlogloc_cmp_internal(XLogRecPtr *arg1, XLogRecPtr *arg2)
+{
+	if(arg1->xlogid > arg2->xlogid)
+		return 1;
+	else if(arg1->xlogid < arg2->xlogid)
+		return -1;
+	else if(arg1->xrecoff > arg2->xrecoff)
+		return 1;
+	else if (arg1->xrecoff < arg2->xrecoff)
+		return -1;
+	else 
+		return 0;
 }
 

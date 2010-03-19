@@ -423,6 +423,9 @@ XLogOpenRelation(RelFileNode rnode)
 	}
 	else
 	{
+		int primaryError;
+		int mirrorError;
+
 		res = _xl_new_reldesc();
 
 		sprintf(RelationGetRelationName(&(res->reldata)), "%u", rnode.relNode);
@@ -461,14 +464,16 @@ XLogOpenRelation(RelFileNode rnode)
 		 * told to delete the file.)
 		 */
 		// UNDONE: What about the persistent rel files table???
+		// UNDONE: This condition should not occur anymore.
+		// UNDONE: segmentFileNum and AO?
 		smgrcreate(
 			res->reldata.rd_smgr, 
 			res->reldata.rd_isLocalBuf, 
-			true);
-		// UNDONE: This condition should not occur anymore.
-//		MirroredFileSysObj_CreateRelFile(
-//									res->reldata.rd_smgr,
-//									res->reldata.rd_isLocalBuf);
+			/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
+			StorageManagerMirrorMode_PrimaryOnly,
+			/* ignoreAlreadyExists */ true,
+			&primaryError,
+			&mirrorError);
 	}
 
 	res->moreRecently = &(_xlrelarr[0]);

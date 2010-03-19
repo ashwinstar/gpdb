@@ -301,11 +301,7 @@ class GpStop():
             failed_seg_status.append(SegStopStatus(db,False,'Failed to Ping on host: %s' % db.hostname))
         
         self.hostcache.log_contents()
-                                   
-        invalid_segs=self.gparray.get_invalid_segdbs() 
-        for seg in invalid_segs:
-            logger.warning("Not processing %s directory %s marked invalid <<<<<" % (seg.hostname,seg.datadir)) 
-
+         
         strategy = self.gparray.getFaultStrategy()
         if strategy == FAULT_STRATEGY_FILE_REPLICATION:
             # stop primaries

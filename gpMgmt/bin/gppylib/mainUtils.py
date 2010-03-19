@@ -13,8 +13,6 @@ from gppylib.system import configurationInterface, configurationImplGpdb, fileSy
         fileSystemImplOs, osInterface, osImplNative, faultProberInterface, faultProberImplGpdb
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
-gExecutableName = os.path.split(__file__)[-1]
-
 # Throw this out to main to have the message printed with
 class ProgramArgumentValidationException(Exception):
     def __init__(self, msg, shouldPrintHelp=False):
@@ -62,7 +60,7 @@ def simple_main( createOptionParserFn, createCommandFn, mainOptions=None) :
 
     # NOTE: if this logic is changed then also change test_main in testUtils.py
     try:
-        gplog.setup_tool_logging(gExecutableName,unix.getLocalHostname(),unix.getUserName(),nonuser=False)
+        gplog.setup_tool_logging(gProgramName, unix.getLocalHostname(), unix.getUserName(), nonuser=False)
 
         parser = createOptionParserFn()
         (options, args) = parser.parse_args()
