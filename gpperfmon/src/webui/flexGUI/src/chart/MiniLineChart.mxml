@@ -26,7 +26,7 @@
             	maximum="{mdl.session.timeArray.getItemAt(Session.LATEST_TICK) as Date}"/>
         </mx:horizontalAxis>
         <mx:verticalAxis>
-            <mx:LinearAxis id="vaxis" baseAtZero="true" padding="10"/>
+            <mx:LinearAxis id="vaxis" baseAtZero="true" padding="0"/>
         </mx:verticalAxis>
         
 		<mx:horizontalAxisRenderers>
