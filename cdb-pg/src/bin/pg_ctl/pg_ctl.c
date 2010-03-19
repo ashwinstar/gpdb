@@ -360,26 +360,16 @@ start_postmaster(void)
 
 #ifndef WIN32
 
-#if defined(__darwin__)
-	/*
-	 * On MAC OSX we need to start the postmasters via launchctl so that when the interactive session ends, and the Mach kernel
-	 * cleans up the context, we don't lose our ability to resolve hostnames.
-	 */
-#define LAUNCH  "exec launchctl bsexec / "
-#else
-#define LAUNCH
-#endif
-
 	/*
 	 * Since there might be quotes to handle here, it is easier simply to pass
 	 * everything to a shell to process them.
 	 */
 	if (log_file != NULL)
-		snprintf(cmd, MAXPGPATH, LAUNCH  SYSTEMQUOTE "\"%s\" %s%s < \"%s\" >> \"%s\" 2>&1 &" SYSTEMQUOTE,
+		snprintf(cmd, MAXPGPATH, SYSTEMQUOTE "\"%s\" %s%s < \"%s\" >> \"%s\" 2>&1 &" SYSTEMQUOTE,
 				 postgres_path, pgdata_opt, post_opts,
 				 DEVNULL, log_file);
 	else
-		snprintf(cmd, MAXPGPATH, LAUNCH  SYSTEMQUOTE "\"%s\" %s%s < \"%s\" 2>&1 &" SYSTEMQUOTE,
+		snprintf(cmd, MAXPGPATH, SYSTEMQUOTE "\"%s\" %s%s < \"%s\" 2>&1 &" SYSTEMQUOTE,
 				 postgres_path, pgdata_opt, post_opts, DEVNULL);
 
 	return system(cmd);
