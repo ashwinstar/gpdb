@@ -1661,13 +1661,15 @@ alter table public.pg_exttable add column writable boolean;
 -- This file handles the upgrade transformation from 3.3 catalog => 3.4 catalog
 --
 begin;
--- Copy in the new catalog definitions
-copy public.pg_amproc from '@abs_srcdir@/data//upg2_pg_amproc_toadd33.data' null E'\\N' csv delimiter '|' header;
+-- Disable maintenance of persistent tables until we are done bootstrapping them
+set gp_before_persistence_work=true;
+-- Copy in the new catalog definitions, bootstrap tables first
 copy public.pg_class from '@abs_srcdir@/data//upg2_pg_class_toadd33.data' oids null E'\\N' csv delimiter '|' header;
 copy public.pg_attribute from '@abs_srcdir@/data//upg2_pg_attribute_toadd33.data' csv delimiter '|' header;
-copy public.pg_index from '@abs_srcdir@/data//upg2_pg_index_toadd33.data' null as E'\\N' csv delimiter '|' header;
 copy public.pg_proc from '@abs_srcdir@/data//upg2_pg_proc_toadd33.data' oids null as E'\\N' csv delimiter '|' header;
 copy public.pg_type from '@abs_srcdir@/data//upg2_pg_type_toadd33.data' oids null as E'\\N' csv delimiter '|' header;
+-- followed by the non-bootstrap tables
+copy public.pg_index from '@abs_srcdir@/data//upg2_pg_index_toadd33.data' null as E'\\N' csv delimiter '|' header;
 copy public.pg_namespace from '@abs_srcdir@/data//upg2_pg_namespace_toadd33.data' oids null as E'\\N' csv delimiter '|' header;
 copy public.pg_description from '@abs_srcdir@/data//upg2_pg_description_toadd33.data' null as E'\\N' csv delimiter '|' header;
 copy public.pg_depend from '@abs_srcdir@/data//upg2_pg_depend_toadd33.data' null as E'\\N' csv delimiter '|' header;
@@ -1676,6 +1678,7 @@ copy public.pg_cast from'@abs_srcdir@/data//upg2_pg_cast_toadd33.data' null E'\\
 copy public.pg_aggregate from'@abs_srcdir@/data//upg2_pg_aggregate_toadd33.data' null E'\\N' csv delimiter '|' header;
 copy public.pg_opclass from'@abs_srcdir@/data//upg2_pg_opclass_toadd33.data' null E'\\N' csv delimiter '|' header;
 copy public.pg_amop from'@abs_srcdir@/data//upg2_pg_amop_toadd33.data' null E'\\N' csv delimiter '|' header;
+copy public.pg_amproc from '@abs_srcdir@/data//upg2_pg_amproc_toadd33.data' null E'\\N' csv delimiter '|' header;
 -- fix up pg_tablespace, this is a shared table so the data changes are handled
 -- in loadcat34_sh, but the schema changes are stored in pg_class and pg_attribute
 -- which aren't shared so we must update the schema in every database.
@@ -1747,6 +1750,8 @@ reindex table public.pg_stat_last_operation;
 reindex table public.pg_type;
 reindex table public.gp_fastsequence;
 reindex table public.gp_relation_node;
+-- bootstrap done, re-enable persistent node tables now that they exist.
+set gp_before_persistence_work=false;
 commit;
 -- Populate gp_persistent tables:
 --   Must be called after REINDEX statements
@@ -1754,7 +1759,7 @@ commit;
 --   It may be nice to allow it to be callable in a populated database...
 insert into public.gp_global_sequence select 0 from generate_series(1,15);
 select gp_persistent_build_db(true);
-psql:@abs_builddir@/sql/loadcat34.sql:112: ERROR:  Persistent database entry 'base/17831' already exists in state 'Created' (cdbpersistentdatabase.c:773)
+psql:@abs_builddir@/sql/loadcat34.sql:120: ERROR:  Persistent database entry 'base/17831' already exists in state 'Created' (cdbpersistentdatabase.c:773)
 begin;
 -- Create new 3.4 views in pg_catalog
 set search_path='pg_catalog';
