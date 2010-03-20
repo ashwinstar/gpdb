@@ -2999,6 +2999,7 @@ class GPUpgrade:
                                  "loadcat34_sh.source.in"])
                 datafiles.extend(["upg2_pg_class_toadd33.data.in",
                                   "upg2_pg_cast_toadd33.data",
+                                  "upg2_pg_aggregate_toadd33.data",
                                   "upg2_pg_attribute_toadd33.data.in",
                                   "upg2_pg_type_toadd33.data.in",
                                   "upg2_pg_index_toadd33.data.in",
@@ -3011,7 +3012,9 @@ class GPUpgrade:
                                   "upg2_pg_amproc_toadd33.data",
                                   "upg2_pg_operator_toadd33.data",
                                   "upg2_pg_resqueue_toadd33.data",
-                                  "upg2_pg_resourcetype_toadd33.data"])
+                                  "upg2_pg_resourcetype_toadd33.data",
+                                  "upg2_pg_amop_toadd33.data",
+                                  "upg2_pg_opclass_toadd33.data"])
 
             h = self.newhome
             
