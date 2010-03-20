@@ -121,6 +121,8 @@ gp_distributed_log(PG_FUNCTION_ARGS)
 		sprintf(distribId, "%u-%.10u",
 			    distribTimeStamp, distribXid);
 		
+		Assert(strlen(distribId) < TMGIDSIZE);
+
 		values[3] = 
 			DirectFunctionCall1(textin,
 				                CStringGetDatum(distribId));

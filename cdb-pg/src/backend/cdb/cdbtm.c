@@ -271,6 +271,7 @@ getDistributedTransactionIdentifier(char *id)
 	{
 		if (currentGxact != NULL)
 		{
+			Assert(strlen(currentGxact->gid) < TMGIDSIZE);
 			memcpy(id, currentGxact->gid, TMGIDSIZE);
 			return true;
 		}
@@ -279,6 +280,7 @@ getDistributedTransactionIdentifier(char *id)
 	{
 		if (QEDtxContextInfo.distributedXid != InvalidDistributedTransactionId)
 		{
+			Assert(strlen(QEDtxContextInfo.distributedId) < TMGIDSIZE);
 			memcpy(id, QEDtxContextInfo.distributedId, TMGIDSIZE);
 			return true;
 		}
@@ -307,6 +309,7 @@ getDtxLogInfo(TMGXACT_LOG *gxact_log)
 		elog(FATAL, "getDtxLogInfo found current distributed transaction is NULL");
 	}
 
+	Assert(strlen(currentGxact->gid) < TMGIDSIZE);
 	memcpy(gxact_log->gid, currentGxact->gid, TMGIDSIZE);
 	gxact_log->gxid = currentGxact->gxid;
 }
@@ -628,6 +631,7 @@ doInsertForgetCommitted(void)
 	
 	setCurrentGxactState( DTX_STATE_INSERTING_FORGET_COMMITTED );
 
+	Assert(strlen(currentGxact->gid) < TMGIDSIZE);
 	memcpy(&gxact_log.gid, currentGxact->gid, TMGIDSIZE);
 	gxact_log.gxid = currentGxact->gxid;
 	
@@ -657,6 +661,8 @@ doNotifyingCommitPrepared(void)
 	Assert(currentGxact->state == DTX_STATE_FORCED_COMMITTED);
 	setCurrentGxactState( DTX_STATE_NOTIFYING_COMMIT_PREPARED );
 	releaseTmLock();
+
+	Assert(strlen(currentGxact->gid) < TMGIDSIZE);
 
 	succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_COMMIT_PREPARED, /* flags */ 0,  
 											 currentGxact->gid, currentGxact->gxid,
@@ -1361,6 +1367,7 @@ restoreGxact(TMGXACT_LOG * gxact_log, DtxState state)
 	/*
 	 * Copy the log fields.
 	 */
+	Assert(strlen(gxact_log->gid) < TMGIDSIZE);
 	memcpy(currentGxact->gid, gxact_log->gid, TMGIDSIZE);
 	currentGxact->gxid = gxact_log->gxid;
 
@@ -2024,6 +2031,7 @@ getAllDistributedXactStatus(TMGALLXACTSTATUS **allDistributedXactStatus)
 				TMGXACT *gxact = shmGxactArray[i];
 
 				all->statusArray[i].gxid = gxact->gxid;
+				Assert(strlen(gxact->gid) < TMGIDSIZE);
 				memcpy(all->statusArray[i].gid, gxact->gid, TMGIDSIZE);
 				all->statusArray[i].state = gxact->state;
 				all->statusArray[i].sessionId = gxact->sessionId;
@@ -2548,6 +2556,7 @@ getDtxCheckPointInfoAndLock(char **result, int *result_size)
 			break;
 		}
 		
+		Assert(strlen(gxact->gid) < TMGIDSIZE);
 		memcpy(gxact_log->gid, gxact->gid, TMGIDSIZE);
 		gxact_log->gxid = gxact->gxid;
 
@@ -2594,6 +2603,8 @@ generateGID(char *gid, DistributedTransactionId *gxid)
 	
 	*gxid = (*shmGIDSeq)++;
 	sprintf(gid, "%u-%.10u", *shmDistribTimeStamp, (*gxid));
+	Assert(strlen(gid) < TMGIDSIZE);
+
 }
 
 

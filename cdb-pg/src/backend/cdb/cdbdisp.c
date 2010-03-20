@@ -888,6 +888,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 				pParms->dtxProtocolParms.dtxProtocolCommand = pDtxProtocolParms->dtxProtocolCommand;
 				pParms->dtxProtocolParms.flags = pDtxProtocolParms->flags;
 				pParms->dtxProtocolParms.dtxProtocolCommandLoggingStr = pDtxProtocolParms->dtxProtocolCommandLoggingStr;
+				Assert(strlen(pDtxProtocolParms->gid) < TMGIDSIZE);
 				memcpy(pParms->dtxProtocolParms.gid, pDtxProtocolParms->gid, TMGIDSIZE);
 				pParms->dtxProtocolParms.gxid = pDtxProtocolParms->gxid;
 				pParms->dtxProtocolParms.primary_gang_id = pDtxProtocolParms->primary_gang_id;
@@ -1273,6 +1274,7 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	dtxProtocolParms.dtxProtocolCommand = dtxProtocolCommand;
 	dtxProtocolParms.flags = flags;
 	dtxProtocolParms.dtxProtocolCommandLoggingStr = dtxProtocolCommandLoggingStr;
+	Assert(strlen(gid) < TMGIDSIZE);
 	memcpy(dtxProtocolParms.gid, gid, TMGIDSIZE);
 	dtxProtocolParms.gxid = gxid;
 	dtxProtocolParms.argument = argument;

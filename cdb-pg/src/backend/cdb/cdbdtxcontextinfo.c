@@ -243,6 +243,7 @@ DtxContextInfo_Serialize(char *buffer, DtxContextInfo *dtxContextInfo)
 	{
 		memcpy(p, &dtxContextInfo->distributedTimeStamp, sizeof(DistributedTransactionTimeStamp)); 
 		p += sizeof(DistributedTransactionTimeStamp);
+		Assert(strlen(dtxContextInfo->distributedId) < TMGIDSIZE);
 		memcpy(p, dtxContextInfo->distributedId, TMGIDSIZE);
 		p += TMGIDSIZE;		
 		memcpy(p, &dtxContextInfo->curcid, sizeof(CommandId));
@@ -335,6 +336,7 @@ DtxContextInfo_Reset(DtxContextInfo *dtxContextInfo)
 	dtxContextInfo->distributedTimeStamp = 0;
 	dtxContextInfo->distributedXid = InvalidDistributedTransactionId;
 	memcpy(dtxContextInfo->distributedId, TmGid_Init, TMGIDSIZE);
+	Assert(strlen(dtxContextInfo->distributedId) < TMGIDSIZE);
 
 	dtxContextInfo->curcid = 0;
 	dtxContextInfo->segmateSync = 0;
@@ -355,6 +357,7 @@ DtxContextInfo_Copy(
 
 	target->distributedTimeStamp = source->distributedTimeStamp;
 	target->distributedXid = source->distributedXid;
+	Assert(strlen(source->distributedId) < TMGIDSIZE);
 	memcpy(
 		target->distributedId,
 		source->distributedId,
@@ -423,6 +426,7 @@ DtxContextInfo_Deserialize(
 			memcpy(&dtxContextInfo->distributedTimeStamp, p, sizeof(DistributedTransactionTimeStamp)); 	
 			p += sizeof(DistributedTransactionTimeStamp);	
 			memcpy(dtxContextInfo->distributedId, p, TMGIDSIZE);
+			Assert(strlen(dtxContextInfo->distributedId) < TMGIDSIZE);
 			p += TMGIDSIZE;		
 			memcpy(&dtxContextInfo->curcid, p, sizeof(CommandId));
 			p += sizeof(CommandId);
