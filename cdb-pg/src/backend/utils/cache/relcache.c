@@ -70,6 +70,7 @@
 #include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"        /* Gp_role */
 #include "cdb/cdbmirroredflatfile.h"
+#include "cdb/cdbpersistentfilesysobj.h"
 
 
 /*
@@ -495,7 +496,7 @@ RelationFetchSegFile0GpRelationNode(
 		Relation gp_relation_node;
 		HeapTuple tuple;
 
-		if (IsBootstrapProcessingMode() || InRecovery)
+		if (PersistentFileSysObj_BeforePersistenceWork() || InRecovery)
 		{
 			MemSet(&relation->rd_segfile0_relationnodeinfo.persistentTid, 0, sizeof(ItemPointerData));
 			relation->rd_segfile0_relationnodeinfo.persistentSerialNum = 0;

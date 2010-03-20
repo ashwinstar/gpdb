@@ -387,11 +387,11 @@ void PersistentDatabase_MarkCreatePending(
 	DatabaseDirEntry databaseDirEntry;
 	SharedOidSearchAddResult addResult;
 
-	if (IsBootstrapProcessingMode())
+	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent database '%s' because we are in bootstrap mode",
+				 "Skipping persistent database '%s' because we are before persistence work",
 				 GetDatabasePath(
 					  dbDirNode->database, 
 					  dbDirNode->tablespace));
@@ -465,11 +465,11 @@ void PersistentDatabase_AddCreated(
 	DatabaseDirEntry databaseDirEntry;
 	SharedOidSearchAddResult addResult;
 
-	if (IsBootstrapProcessingMode())
+	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent database '%s' because we are in bootstrap mode",
+				 "Skipping persistent database '%s' because we are before persistence work",
 				 GetDatabasePath(
 					  dbDirNode->database, 
 					  dbDirNode->tablespace));
@@ -548,11 +548,11 @@ void PersistentDatabase_Created(
 
 	DatabaseDirEntry databaseDirEntry;
 
-	if (IsBootstrapProcessingMode())
+	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent database '%s' because we are in bootstrap mode",
+				 "Skipping persistent database '%s' because we are before persistence work",
 				 GetDatabasePath(
 					  dbDirNode->database, 
 					  dbDirNode->tablespace));
@@ -615,11 +615,11 @@ void PersistentDatabase_MarkDropPending(
 
 	DatabaseDirEntry databaseDirEntry;
 
-	if (IsBootstrapProcessingMode())
+	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent database '%s' because we are in bootstrap mode",
+				 "Skipping persistent database '%s' because we are before persistence work",
 				 GetDatabasePath(
 					  dbDirNode->database, 
 					  dbDirNode->tablespace));
@@ -678,11 +678,11 @@ void PersistentDatabase_MarkAbortingCreate(
 
 	DatabaseDirEntry databaseDirEntry;
 	
-	if (IsBootstrapProcessingMode())
+	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent database '%s' because we are in bootstrap mode",
+				 "Skipping persistent database '%s' because we are before persistence work",
 				 GetDatabasePath(
 					  dbDirNode->database, 
 					  dbDirNode->tablespace));
@@ -739,11 +739,11 @@ void PersistentDatabase_Dropped(
 
 	DatabaseDirEntry databaseDirEntry;
 
-	if (IsBootstrapProcessingMode())
+	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent database '%s' because we are in bootstrap mode",
+				 "Skipping persistent database '%s' because we are before persistence work",
 				 GetDatabasePath(
 					  dbDirNode->database, 
 					  dbDirNode->tablespace));
@@ -793,11 +793,11 @@ bool PersistentDatabase_DirIsCreated(
 	DatabaseDirEntry databaseDirEntry;
 	bool result;
 
-	if (IsBootstrapProcessingMode())
+	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent database '%s' because we are in bootstrap mode",
+				 "Skipping persistent database '%s' because we are before persistence work",
 				 GetDatabasePath(
 					  dbDirNode->database, 
 					  dbDirNode->tablespace));
@@ -842,11 +842,11 @@ void PersistentDatabase_MarkJustInTimeCreatePending(
 
 	SharedOidSearchAddResult addResult;
 
-	if (IsBootstrapProcessingMode())
+	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent database '%s' because we are in bootstrap mode",
+				 "Skipping persistent database '%s' because we are before persistence work",
 				 GetDatabasePath(
 					  dbDirNode->database, 
 					  dbDirNode->tablespace));
@@ -926,11 +926,11 @@ void PersistentDatabase_JustInTimeCreated(
 
 	DatabaseDirEntry databaseDirEntry;
 
-	if (IsBootstrapProcessingMode())
+	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent database '%s' because we are in bootstrap mode",
+				 "Skipping persistent database '%s' because we are before persistence work",
 				 GetDatabasePath(
 					  dbDirNode->database, 
 					  dbDirNode->tablespace));
@@ -985,11 +985,11 @@ void PersistentDatabase_AbandonJustInTimeCreatePending(
 
 	DatabaseDirEntry databaseDirEntry;
 
-	if (IsBootstrapProcessingMode())
+	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent database '%s' because we are in bootstrap mode",
+				 "Skipping persistent database '%s' because we are before persistence work",
 				 GetDatabasePath(
 					  dbDirNode->database, 
 					  dbDirNode->tablespace));

@@ -251,11 +251,11 @@ void PersistentRelation_AddCreatePending(
 	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
 	MemSet(&mirrorBufpoolResyncCkptLoc, 0, sizeof(XLogRecPtr));
 
-	if (IsBootstrapProcessingMode())
+	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-			     "Skipping persistent relation '%s' because we are in bootstrap mode",
+			     "Skipping persistent relation '%s' because we are before persistence work",
 				 relpath(*relFileNode));
 
 		MemSet(persistentTid, 0, sizeof(ItemPointerData));
@@ -348,11 +348,11 @@ void PersistentRelation_AddCreated(
 	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
 	MemSet(&mirrorBufpoolResyncCkptLoc, 0, sizeof(XLogRecPtr));
 
-	if (IsBootstrapProcessingMode())
+	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-			     "Skipping persistent relation '%s' because we are in bootstrap mode",
+			     "Skipping persistent relation '%s' because we are before persistence work",
 				 relpath(*relFileNode));
 
 		MemSet(persistentTid, 0, sizeof(ItemPointerData));
@@ -433,11 +433,11 @@ void PersistentRelation_Created(
 	if(RelFileNode_IsEmpty(relFileNode))
 		elog(ERROR, "Invalid RelFileNode (0,0,0)");
 
-	if (IsBootstrapProcessingMode())
+	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-			     "Skipping persistent relation '%s' because we are in bootstrap mode",
+			     "Skipping persistent relation '%s' because we are before persistence work",
 				 relpath(*relFileNode));
 
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
@@ -509,11 +509,11 @@ void PersistentRelation_MarkDropPending(
 	if(RelFileNode_IsEmpty(relFileNode))
 		elog(ERROR, "Invalid RelFileNode (0,0,0)");
 
-	if (IsBootstrapProcessingMode())
+	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-			     "Skipping persistent relation '%s' because we are in bootstrap mode",
+			     "Skipping persistent relation '%s' because we are before persistence work",
 				 relpath(*relFileNode));
 
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
@@ -579,11 +579,11 @@ void PersistentRelation_MarkAbortingCreate(
 	if(RelFileNode_IsEmpty(relFileNode))
 		elog(ERROR, "Invalid RelFileNode (0,0,0)");
 
-	if (IsBootstrapProcessingMode())
+	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent relation '%s' because we are in bootstrap mode",
+				 "Skipping persistent relation '%s' because we are before persistence work",
 				 relpath(*relFileNode));
 
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
@@ -648,11 +648,11 @@ void PersistentRelation_Dropped(
 	if(RelFileNode_IsEmpty(relFileNode))
 		elog(ERROR, "Invalid RelFileNode (0,0,0)");
 
-	if (IsBootstrapProcessingMode())
+	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-			     "Skipping persistent relation '%s' because we are in bootstrap mode",
+			     "Skipping persistent relation '%s' because we are before persistence work",
 				 relpath(*relFileNode));
 
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.

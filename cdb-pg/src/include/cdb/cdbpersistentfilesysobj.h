@@ -9,6 +9,8 @@
 #ifndef CDBPERSISTENTFILESYSOBJ_H
 #define CDBPERSISTENTFILESYSOBJ_H
 
+#include "miscadmin.h"
+#include "utils/guc.h"
 #include "utils/palloc.h"
 #include "storage/fd.h"
 #include "access/persistentfilesysobjname.h"
@@ -43,6 +45,18 @@ typedef struct PersistentFileSysObjData
 	int 					attNumParentXid;
 
 } PersistentFileSysObjData;
+
+inline static bool PersistentFileSysObj_BeforePersistenceWork(void)
+{
+	if (IsBootstrapProcessingMode())
+		return true;
+
+	if (gp_before_persistence_work && !IsUnderPostmaster)
+		return true;
+
+	return false;
+}
+
 
 extern void PersistentFileSysObj_InitShared(
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData);

@@ -439,11 +439,11 @@ void PersistentTablespace_MarkCreatePending(
 {
 	TablespaceDirEntry tablespaceDirEntry;
 
-	if (IsBootstrapProcessingMode())
+	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent tablespace %u because we are in bootstrap mode",
+				 "Skipping persistent tablespace %u because we are before persistence work",
 				 tablespaceOid);
 
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
@@ -495,11 +495,11 @@ void PersistentTablespace_Created(
 
 	TablespaceDirEntry tablespaceDirEntry;
 
-	if (IsBootstrapProcessingMode())
+	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent tablespace %u because we are in bootstrap mode",
+				 "Skipping persistent tablespace %u because we are before persistence work",
 				 tablespaceOid);
 
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
@@ -561,11 +561,11 @@ void PersistentTablespace_MarkDropPending(
 
 	TablespaceDirEntry tablespaceDirEntry;
 
-	if (IsBootstrapProcessingMode())
+	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent tablespace %u because we are in bootstrap mode",
+				 "Skipping persistent tablespace %u because we are before persistence work",
 				 tablespaceOid);
 
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
@@ -623,11 +623,11 @@ void PersistentTablespace_MarkAbortingCreate(
 
 	TablespaceDirEntry tablespaceDirEntry;
 	
-	if (IsBootstrapProcessingMode())
+	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent tablespace %u because we are in bootstrap mode",
+				 "Skipping persistent tablespace %u because we are before persistence work",
 				 tablespaceOid);
 
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
@@ -682,11 +682,11 @@ void PersistentTablespace_Dropped(
 
 	TablespaceDirEntry tablespaceDirEntry;
 
-	if (IsBootstrapProcessingMode())
+	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent tablespace %u because we are in bootstrap mode",
+				 "Skipping persistent tablespace %u because we are before persistence work",
 				 tablespaceOid);
 
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.

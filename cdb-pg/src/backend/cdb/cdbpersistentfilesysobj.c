@@ -1045,7 +1045,7 @@ void PersistentFileSysObj_Created(
 
 	int64					persistentSerialNum)
 {
-	if (!IsBootstrapProcessingMode())
+	if (!PersistentFileSysObj_BeforePersistenceWork())
 	{
 		if (PersistentStore_IsZeroTid(persistentTid))
 			elog(ERROR, "TID for persistent '%s' tuple for created is invalid (0,0)",
@@ -1101,7 +1101,7 @@ void PersistentFileSysObj_MarkAbortingCreate(
 
 	int64					persistentSerialNum)
 {
-	if (!IsBootstrapProcessingMode())
+	if (!PersistentFileSysObj_BeforePersistenceWork())
 	{
 		if (PersistentStore_IsZeroTid(persistentTid))
 			elog(ERROR, "TID for persistent '%s' tuple for mark aborting CREATE is invalid (0,0)",
@@ -1156,7 +1156,7 @@ void PersistentFileSysObj_MarkDropPending(
 
 	int64					persistentSerialNum)
 {
-	if (!IsBootstrapProcessingMode())
+	if (!PersistentFileSysObj_BeforePersistenceWork())
 	{
 		if (PersistentStore_IsZeroTid(persistentTid))
 			elog(ERROR, "TID for persistent '%s' tuple for mark DROP pending is invalid (0,0)",
@@ -1220,7 +1220,7 @@ void PersistentFileSysObj_DropObject(
 
 	bool 					ignoreNonExistence)
 {
-	if (!IsBootstrapProcessingMode())
+	if (!PersistentFileSysObj_BeforePersistenceWork())
 	{
 		if (PersistentStore_IsZeroTid(persistentTid))
 			elog(ERROR, "TID for persistent '%s' tuple for DROP is invalid (0,0)",

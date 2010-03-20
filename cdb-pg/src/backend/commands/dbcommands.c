@@ -71,6 +71,7 @@
 #include "cdb/cdbmirroredflatfile.h"
 #include "cdb/cdbdatabaseinfo.h"
 #include "cdb/cdbdirectopen.h"
+#include "cdb/cdbpersistentfilesysobj.h"
 
 #include "utils/pg_rusage.h"
 
@@ -536,8 +537,8 @@ createdb_int(CreatedbStmt *stmt,
 	bool		shouldDispatch = (Gp_role == GP_ROLE_DISPATCH);
 
 	if (shouldDispatch)
-		if (IsBootstrapProcessingMode())
-			elog(NOTICE, " Create database dispatch in bootstrap mode!");
+		if (PersistentFileSysObj_BeforePersistenceWork())
+			elog(NOTICE, " Create database dispatch before persistence work!");
 
 
 	if (Gp_role != GP_ROLE_EXECUTE)

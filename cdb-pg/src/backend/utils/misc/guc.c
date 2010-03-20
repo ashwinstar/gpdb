@@ -273,6 +273,7 @@ int			gp_max_tablespaces = GP_MAX_TABLESPACES_DEFAULT;
 #define GP_MAX_FILESPACES_DEFAULT 8
 int			gp_max_filespaces = GP_MAX_FILESPACES_DEFAULT;
 bool 		gp_initdb_mirrored = false;
+bool 		gp_before_persistence_work = false;
 bool 		Debug_persistent_btree_collect = true;
 bool 		Debug_print_xlog_relation_change_info = false;
 bool 		Debug_print_xlog_relation_change_info_skip_issues_only = true;
@@ -2146,7 +2147,17 @@ false
 		&gp_initdb_mirrored,
 		false, NULL, NULL
 	},
-
+		
+	{
+		{"gp_before_persistence_work", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Indicate we are initializing / upgrading and do not want to do persistence work yet."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_before_persistence_work,
+		false, NULL, NULL
+	},
+	
 	{
 		{"Debug_persistent_btree_collect", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Try out collecting persistent information for B-Tree XLOG generation"),
