@@ -1310,6 +1310,7 @@ ResCheckSelfDeadLock(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *increme
 		 */
 		if (lock->nRequested > lock->nGranted)
 		{
+			pgstat_report_waiting(false); /* we're no longer waiting. */
 			ResGrantLock(lock, proclock);
 			ResLockUpdateLimit(lock, proclock, incrementSet, true, true);
 		}
