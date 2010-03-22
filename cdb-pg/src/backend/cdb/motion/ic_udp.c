@@ -770,11 +770,15 @@ get_rx_buffer(void)
 					write_log("Interconnect ran out of rx-buffers count/max %d/%d", rx_buf_count, rx_buf_maxcount);
 				break;
 			}
+
 			ret = (struct icpkthdr *)malloc(Gp_max_packet_size);
-			/* Note: we return NULL if the malloc() fails -- and the
+
+			/*
+			 * Note: we return NULL if the malloc() fails -- and the
 			 * main-thread will either free a buffer up, or notice
 			 * that we ran out (throw an erorr) and start the
-			 * teardown */
+			 * teardown
+			 */
 			if (ret != NULL)
 				rx_buf_count++;
 
@@ -1116,12 +1120,12 @@ SetupUDPInterconnect(EState *estate)
 	ListCell   *cell;
 	Slice	   *mySlice;
 	Slice	   *aSlice;
-    MotionConn *conn=NULL;
+	MotionConn *conn=NULL;
 	int			incoming_count = 0;
 	int			outgoing_count = 0;
 	int			expectedTotalIncoming = 0;
 	int			expectedTotalOutgoing = 0;
-    int         iteration = 0;
+	int			iteration = 0;
 	struct timeval  startTime;
 	int             elapsed_ms = 0;
 	int             elapsed_timeout = 0;
@@ -1224,7 +1228,7 @@ SetupUDPInterconnect(EState *estate)
 			conn = &pEntry->conns[i];
 			conn->cdbProc = list_nth(aSlice->primaryProcesses, i);
 
-			if ( conn->cdbProc)
+			if (conn->cdbProc)
 			{
 				numValidProcs++;
 
@@ -1327,13 +1331,13 @@ SetupUDPInterconnect(EState *estate)
 	while (outgoing_count < expectedTotalOutgoing)
 	{
 		int		timeout;
-        int		timeout_ms = 20*60*1000;
+		int		timeout_ms = 20*60*1000;
 		struct pollfd nfd;
 
 		/* check for cancellation */
 		ML_CHECK_FOR_INTERRUPTS(false);
 
-        iteration++;
+		iteration++;
 
 		/* send message out, if we haven't already */
 		/* loop over outbound connections sending registration messages as needed */
@@ -1529,6 +1533,13 @@ SetupUDPInterconnect(EState *estate)
 					main_thread_waiting = false;
 
 					pthread_mutex_unlock(&rx_thread_mutex);
+
+					if (rx_thread_waiting)
+					{
+						/* deadlock, out of memory! */
+						ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+										errmsg("Interconnect error: UDP-IC out of memory.")));
+					}
 				}
 
 				/* we check again, since it may have changed. */
