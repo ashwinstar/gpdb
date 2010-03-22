@@ -15,7 +15,6 @@ Connection Options:
   -W | --password            prompt for password
 
 Execution Options:
-  -n | --name NAME           name for the filespace
   -c | --config FILE         configuration file
   -o | --output DIRECTORY    output directory for config file
 '''
@@ -122,8 +121,6 @@ def ParseOptions():
                       action='store_true', help=optparse.SUPPRESS_HELP)
     parser.add_option('-c', '--config', default=None,
                       help=optparse.SUPPRESS_HELP)
-    parser.add_option('-n', '--name', default=None,
-                      help=optparse.SUPPRESS_HELP)
     parser.add_option('-o', '--output', default=output,
                       help=optparse.SUPPRESS_HELP)
     
@@ -202,7 +199,7 @@ def getstring(prompt, question=False, default=""):
             else:
                 print question
 
-        value = raw_input(prompt)
+        value = raw_input(prompt).strip()
         if value == "":
             value = default
         return value
@@ -535,7 +532,7 @@ class GPFilespace:
         '''
 
         self.options    = options
-        self.fspacename = options.name
+        self.fspacename = None # name for the filespace
         self.dir        = options.output
         self.master     = None # [] list of master segments
         self.segments   = None # {} dbid => GpDB resolution
@@ -631,7 +628,7 @@ class GPFilespace:
         # We save the costly hostname lookup step until later.
         for seg in array.getDbList():
 
-            # Keep the primary master is at the front of the list
+            # Keep the primary master at the front of the list
             if seg.isSegmentMaster():  
                 self.master.insert(0, seg)
             elif seg.isSegmentStandby(): self.master.append(seg)
@@ -777,19 +774,11 @@ class GPFilespace:
             # FIXME: Check against existing filespaces
             return True
 
-        # If the filespace name was passed in as a command line argument:
-        #   - use it or raise an error, 
-        #   - otherwise prompt until a valid name is given.
+        # Prompt for the filespace name:
         fspacename = ""
-        if self.options.name:
-            if check_fsname(self.options.name):
-                fspacename = self.options.name
-            else:
-                raise GPError("Invalid filespace name")
-        else:
-            question = "Please provide a name for this Filespace:"
-            while not check_fsname(fspacename):
-                fspacename = getstring("> ", question)
+        question = "Enter a name for this filespace"
+        while not check_fsname(fspacename):
+            fspacename = getstring("> ", question)
 
         logger.debug("Filespace Name: %s" % fspacename)
 
@@ -807,7 +796,7 @@ class GPFilespace:
             nhosts   = len(config.hosts)
             nprimary = len(config.primaries)
             nmirror  = len(config.mirrors)
-            print "You have %d hosts with %d primary and %d mirror segments." \
+            print "Your system has %d hosts with %d primary and %d mirror segments per host." \
                 % (nhosts, nprimary, nmirror)
 
         # For every configuration we need to setup paths for the filespace
@@ -836,7 +825,7 @@ class GPFilespace:
                 print "\nPlease specify %s locations for the primary " \
                     "segments, one per line:" % nprimary
                 for i in range(nprimary):
-                    prompt = "Primary %d> " % (i+1)
+                    prompt = "primary location %d> " % (i+1)
                     dir = getdir(prompt, config.hosts, primary=True)
                     config.set_primary(dir)
                     logger.debug("%s %s" % (prompt, dir))
@@ -846,17 +835,18 @@ class GPFilespace:
                 print "\nPlease specify %s locations for the mirror " \
                     "segments, one per line:" % nmirror
                 for i in range(nmirror):
-                    prompt = "Mirror %d> " % (i+1)
+                    prompt = "mirror location %d> " % (i+1)
                     dir = getdir(prompt, config.hosts, primary=False)
                     config.set_mirror(dir)
                     logger.debug("%s %s" % (prompt, dir))
 
         # Get a location for the master, this directory applies both to
         # the master and the standby master, like a regular datadir.
-        masterhost = self.hosts[self.master[0].getSegmentHostName()]
-        print "\nPlease specify location for the master directory"
-        masterdir = getdir("Master> ", [masterhost])
-        logger.debug("Master> %s" % masterdir)
+        masterhost = self.master[0].getSegmentAddress()
+        print "\nEnter a file system location for the master"
+        prompt = "master location>"
+        masterdir = getdir(prompt, [masterhost])
+        logger.debug("%s %s" % (prompt, masterdir))
 
         # Write out the information to a configuration file
         filename = os.path.join(self.dir, "gpfilespace_config_1")
@@ -947,7 +937,7 @@ To add this filespace to the database please run the command:
 
             # It may be nice to add a more robust parsing, but this is
             # sufficient for now.
-            values = line.strip().split(':')
+            values = map(lambda x: x.strip(), line.strip().split(':'))
             if (len(values) == 2 and values[0] == 'filespace'):
                 fspacename = values[1]
                 continue
@@ -1068,12 +1058,10 @@ if __name__ == '__main__':
     try:
         logger.info("Start, config=" + str(opt.config))
         print """
-Filespace Creation is used to describe the physical resources of nodes within 
-an existing GPDB array.  Once a Filespace has been created it will be possible 
-to easily create multiple Tablespaces within that Filespace directly from SQL 
-using the CREATE TABLESPACE command. 
-
-Please refer to chapter XXX in the Admin Guide for more information.
+A tablespace requires a file system location to store its database
+files. A filespace is a collection of file system locations for all components
+in a Greenplum system (primary segment, mirror segment and master instances).
+Once a filespace is created, it can be used by one or more tablespaces.
 
 """,
         gpf = GPFilespace(opt)

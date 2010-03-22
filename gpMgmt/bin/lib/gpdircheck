@@ -21,7 +21,7 @@ OPTION=0;
 for i in "$@"
 do
   # Handle options
-  if [ ${i:0:1} == "-" ]; then 
+  if [ "${i:0:1}" == "-" ]; then 
     # for any option we expect a directory to follow, so if we already
     # have an option set but not yet cleared it is an error.
 	  if [ $OPTION -ne 0 ]; then 
