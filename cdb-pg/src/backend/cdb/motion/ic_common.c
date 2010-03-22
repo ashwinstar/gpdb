@@ -130,7 +130,7 @@ int		UDP_listenerFd;
 /* Socket file descriptor for the sequence server. */
 int		savedSeqServerFd = -1;
 char	*savedSeqServerHost = NULL;
-int		savedSeqServerPort;
+uint16	savedSeqServerPort = 0;
 
 /*
  * Outgoing port assignment
@@ -145,7 +145,7 @@ int		outgoingPort = 0;
  * FUNCTIONS PROTOTYPES
  */
 
-static void setupSeqServerConnection(char *hostname, int port);
+static void setupSeqServerConnection(char *hostname, uint16 port);
 
 #ifdef AMS_VERBOSE_LOGGING
 static void	dumpEntryConnections(int elevel, ChunkTransportStateEntry *pEntry);
@@ -646,7 +646,7 @@ SetupSequenceServer(const char *host, int port)
 			elog(ERROR, "SetupSequenceServer: memory allocation failed.");
 		}
 		
-		Assert(port != -1);
+		Assert(port != 0);
 		savedSeqServerPort = port;
 	}
 }
@@ -671,12 +671,12 @@ TeardownSequenceServer(void)
 	{
 		free(savedSeqServerHost);
 		savedSeqServerHost = NULL;
-		savedSeqServerPort = -1;
+		savedSeqServerPort = 0;
 	}
 }
 
 static void
-setupSeqServerConnection(char *seqServerHost, int seqServerPort)
+setupSeqServerConnection(char *seqServerHost, uint16 seqServerPort)
 {
 	int  n;
 	struct sockaddr_in addr;	

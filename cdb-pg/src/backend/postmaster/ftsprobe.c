@@ -413,10 +413,12 @@ FtsProbeMain(int argc, char *argv[])
 static void
 readCdbComponentInfoAndUpdateStatus(void)
 {
+	int i;
+
 	cdb_component_dbs = getCdbComponentInfo(false);
 
 	ftsLock();
-	for (int i=0; i < cdb_component_dbs->total_segment_dbs; i++)
+	for (i=0; i < cdb_component_dbs->total_segment_dbs; i++)
 	{
 		CdbComponentDatabaseInfo *segInfo = &cdb_component_dbs->segment_db_info[i];
 		uint8	segStatus;
@@ -919,7 +921,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 					}
 					
 					if ( d_state == DataStateInSync &&
-					    dbInfo->mode == 'r')
+						 dbInfo->mode == 'r')
 					{
 					    ret |= PROBE_TO_IN_SYNC;
 					}
@@ -944,15 +946,15 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
 			write_log("Probe elapsed time: %d milliseconds", elapsed_ms);
 
+		if (done)
+		{
+			break;
+		}
+
 		/* If connection takes more than the gp_segment_connect_timeout, we fail. */
 		if (elapsed_ms > gp_segment_connect_timeout * 1000)
 		{
 			ret = 0;
-			done = true;
-		}
-
-		if (done)
-		{
 			break;
 		}
 	}
@@ -2037,11 +2039,11 @@ Filerep_mode_update(int dbid, char *mode, char status)
 /*
  * Convenience macro for running some SQL on a previously established self-connection.
  */
-#define executeEntrySQL(entryConn, query) \
-	{											\
-		PGresult   *rs=NULL;					\
-												\
-		rs = PQexec(entryConn, query);			\
+#define executeEntrySQL(entryConn, query)								\
+	{																	\
+		PGresult   *rs=NULL;											\
+																		\
+		rs = PQexec(entryConn, query);									\
 		if (PQresultStatus(rs) != PGRES_COMMAND_OK)						\
 		{																\
 			char	*error_message = strdup(PQerrorMessage(entryConn));	\
@@ -2094,15 +2096,15 @@ markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *dbInfo)
     {
         /* update gp_segment configuration to insync */
         snprintf(cmd, sizeof(cmd),
-                         "update %s set mode='s' where dbid=CAST(%d AS SMALLINT)",
-                         GpSegmentConfigRelationName,
-                         dbInfo->dbid);
+				 "update %s set mode='s' where dbid=CAST(%d AS SMALLINT)",
+				 GpSegmentConfigRelationName,
+				 dbInfo->dbid);
         executeEntrySQL(entryConn, cmd);
 
         /* update configuration history */
         snprintf(cmd, sizeof(cmd),
-             "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: changed segment to insync from resync.')",
-             timestamp_str, dbInfo->dbid);
+				 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: changed segment to insync from resync.')",
+				 timestamp_str, dbInfo->dbid);
         executeEntrySQL(entryConn, cmd);
     }
 
@@ -2254,13 +2256,13 @@ getMounts_forDbid(int dbid, List **mountp)
 
 /* convenience macro for sucking catalog info out of our table */
 #define get_heap_attr(datum, prefix, ATTR, tuple, rel)					\
-		{																\
-			bool isNull=true;											\
+	{																	\
+		bool isNull=true;												\
 																		\
-			datum = heap_getattr((tuple), prefix ## ATTR , (rel)->rd_att, &isNull); \
-			if (isNull)													\
-				elog(FATAL, "Fault reponse error: %s IS NULL", #ATTR); \
-		}
+		datum = heap_getattr((tuple), prefix ## ATTR , (rel)->rd_att, &isNull); \
+		if (isNull)														\
+			elog(FATAL, "Fault reponse error: %s IS NULL", #ATTR);		\
+	}
 
 #define get_config_attr(datum, ATTR, tuple, rel) get_heap_attr(datum, Anum_gp_segment_config_, ATTR, tuple, rel)
 
