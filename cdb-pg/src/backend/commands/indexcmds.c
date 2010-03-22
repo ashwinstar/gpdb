@@ -245,6 +245,8 @@ DefineIndex(RangeVar *heapRelation,
 	/*
 	 * Select tablespace to use.  If not specified, use default_tablespace
 	 * (which may in turn default to database's default).
+	 *
+	 * Note: This code duplicates code in tablecmds.c
 	 */
 	if (tableSpaceName)
 	{
@@ -259,11 +261,20 @@ DefineIndex(RangeVar *heapRelation,
 	else
 	{
 		tablespaceId = GetDefaultTablespace();
-		/* note InvalidOid is OK in this case */
+
+		/* Need the real tablespace id for dispatch */
+		if (!OidIsValid(tablespaceId)) 
+			tablespaceId = MyDatabaseTableSpace;
+
+		/* 
+		 * MPP-8238 : inconsistent tablespaces between segments and master 
+		 */
+		if (shouldDispatch)
+			stmt->tableSpace = get_tablespace_name(tablespaceId);
 	}
 
 	/* Check permissions except when using database's default */
-	if (OidIsValid(tablespaceId))
+	if (OidIsValid(tablespaceId) && tablespaceId != MyDatabaseTableSpace)
 	{
 		AclResult	aclresult;
 

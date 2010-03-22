@@ -538,9 +538,33 @@ DefineRelation_int(CreateStmt *stmt,
 	/*
 	 * Select tablespace to use.  If not specified, use default_tablespace
 	 * (which may in turn default to database's default).
+	 *
+	 * Note: This code duplicates code in indexcmds.c
 	 */
-	if (stmt->tablespacename)
+	if (relkind == RELKIND_SEQUENCE || 
+		relkind == RELKIND_VIEW ||
+		relkind == RELKIND_COMPOSITE_TYPE ||
+		(relkind == RELKIND_RELATION && (
+			relstorage == RELSTORAGE_EXTERNAL ||
+			relstorage == RELSTORAGE_FOREIGN  ||
+			relstorage == RELSTORAGE_VIRTUAL)))
 	{
+		/* 
+		 * MPP-8262: unable to create sequence with default_tablespace
+		 *
+		 * These relkinds have no storage, and thus do not support tablespaces.
+		 * We shouldn't go through the regular default case for these because we
+		 * don't want to pick up the value from the default_tablespace guc.
+		 */
+		Assert(!stmt->tablespacename);
+		tablespaceId = InvalidOid;
+	}
+	else if (stmt->tablespacename)
+	{
+		/*
+		 * Tablespace specified on the command line, or was passed down by
+		 * dispatch.
+		 */
 		tablespaceId = get_tablespace_oid(stmt->tablespacename);
 		if (!OidIsValid(tablespaceId))
 			ereport(ERROR,
@@ -551,8 +575,21 @@ DefineRelation_int(CreateStmt *stmt,
 	}
 	else
 	{
+		/*
+		 * Get the default tablespace specified via default_tablespace, or fall
+		 * back on the database tablespace.
+		 */
 		tablespaceId = GetDefaultTablespace();
-		/* note InvalidOid is OK in this case */
+		
+		/* Need the real tablespace id for dispatch */
+		if (!OidIsValid(tablespaceId)) 
+			tablespaceId = MyDatabaseTableSpace;
+
+		/* 
+		 * MPP-8238 : inconsistent tablespaces between segments and master 
+		 */
+		if (shouldDispatch)
+			stmt->tablespacename = get_tablespace_name(tablespaceId);
 	}
 
 	/*
@@ -561,15 +598,10 @@ DefineRelation_int(CreateStmt *stmt,
 	reloptions = transformRelOptions((Datum) 0, stmt->options, true, false);
 
 	/* Check permissions except when using database's default */
-	if (OidIsValid(tablespaceId))
+	if (OidIsValid(tablespaceId) && tablespaceId != MyDatabaseTableSpace)
 	{
 		AclResult	aclresult;
-		/*
-		 * Special code for allowing upgrade from Greenplum Database 2.2 to 2.3.
-		 */
-		if (namespaceId == PG_CATALOG_NAMESPACE && tablespaceId==GLOBALTABLESPACE_OID && strcmp(relname,"pg_resqueue")==0)
-			aclresult = ACLCHECK_OK;
-		else
+
 		aclresult = pg_tablespace_aclcheck(tablespaceId, GetUserId(),
 										   ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
