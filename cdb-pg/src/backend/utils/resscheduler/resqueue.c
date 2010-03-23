@@ -772,8 +772,6 @@ ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *increment
 				}
 				limits[i].current_value += increment_amt;
 
-				Assert(inError ||
-					   (limits[i].current_value <= limits[i].threshold_value));
 #ifdef RESLOCK_DEBUG
 				elog(DEBUG1, "setting count limit threshold %.0f current %.0f",
 					 limits[i].threshold_value, limits[i].current_value);
@@ -794,11 +792,6 @@ ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *increment
 					increment_amt = -1 * incrementSet->increments[i];
 				}
 				limits[i].current_value += increment_amt;
-
-				Assert(inError ||
-					   (limits[i].current_value <= limits[i].threshold_value) ||
-					   ((limits[i].current_value - increment_amt < 0.1) && queue->overcommit) ||
-					   ((increment_amt - limits[i].current_value < 0.1) && queue->overcommit));
 
 #ifdef RESLOCK_DEBUG
 				elog(DEBUG1, "setting cost limit threshold %.2f current %.2f",
