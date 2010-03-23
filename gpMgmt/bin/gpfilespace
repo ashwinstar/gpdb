@@ -842,7 +842,7 @@ class GPFilespace:
 
         # Get a location for the master, this directory applies both to
         # the master and the standby master, like a regular datadir.
-        masterhost = self.master[0].getSegmentAddress()
+        masterhost = self.hosts[self.master[0].getSegmentAddress()]
         print "\nEnter a file system location for the master"
         prompt = "master location>"
         masterdir = getdir(prompt, [masterhost])
