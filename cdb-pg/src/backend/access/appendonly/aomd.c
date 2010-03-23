@@ -27,6 +27,7 @@
 #include "utils/guc.h"
 #include "access/appendonlytid.h"
 #include "cdb/cdbappendonlystorage.h"
+#include "cdb/cdbmirroredappendonly.h"
 
 int
 AOSegmentFilePathNameLen(Relation rel)

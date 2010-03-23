@@ -336,7 +336,8 @@ static void ATExecClusterOn(Relation rel, const char *indexName);
 static void ATExecDropCluster(Relation rel);
 static void ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel,
 					char *tablespacename);
-static void ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, TableOidInfo * oidInfo);
+static void ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, 
+								TableOidInfo *oidInfo);
 static void ATExecSetRelOptions(Relation rel, List *defList, bool isReset);
 static void ATExecEnableDisableTrigger(Relation rel, char *trigname,
 						   bool enable, bool skip_system);
@@ -3644,11 +3645,17 @@ AlterTable(AlterTableStmt *stmt)
  *
  * ALTER TABLE with target specified by OID
  *
- * We do not reject if the relation is already open, because it's quite
- * likely that one or more layers of caller have it open.  That means it
- * is unsafe to use this entry point for alterations that could break
- * existing query plans.  On the assumption it's not used for such, we
- * don't have to reject pending AFTER triggers, either.
+ * We do not reject if the relation is already open, because it's quite likely
+ * that one or more layers of caller have it open.  That means it is unsafe to
+ * use this entry point for alterations that could break existing query plans.
+ * On the assumption it's not used for such, we don't have to reject pending
+ * AFTER triggers, either.
+ *
+ * It is also unsafe to use this function for any Alter Table subcommand that
+ * requires rewriting the table or creating toast tables, because that requires
+ * creating relfilenodes outside of a context that understands dispatch.
+ * Commands that rewrite the table include: adding or altering columns, changing
+ * the tablespace, etc.
  */
 void
 AlterTableInternal(Oid relid, List *cmds, bool recurse)
@@ -5126,21 +5133,32 @@ ATRewriteTables(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 	foreach(ltab, *wqueue)
 	{
 		AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
+		Relation OldHeap;
+		Oid      newTableSpace;
+		Oid      oldTableSpace;
+
+		/* We will lock the table iff we decide to actually rewrite it */
+		OldHeap = heap_open(tab->relid, NoLock);
+		oldTableSpace = OldHeap->rd_rel->reltablespace;
+		newTableSpace = tab->newTableSpace ? tab->newTableSpace : oldTableSpace;
 
 		/*
-		 * We only need to rewrite the table if at least one column needs to
-		 * be recomputed.
+		 * There are two cases where we will rewrite the table, for these cases
+		 * run the necessary sanity checks.
 		 */
-		if (tab->newvals != NIL)
+		if (tab->newvals != NIL || tab->newTableSpace)
 		{
-			/* Build a temporary relation and copy data */
-			Oid			OIDNewHeap;
-			char		NewHeapName[NAMEDATALEN];
-			Oid			NewTableSpace;
-			Relation	OldHeap;
-			ObjectAddress object;
-
-			OldHeap = heap_open(tab->relid, NoLock);
+			/* 
+			 * AlterTableInternal is not allowed to execute alter table
+			 * subcommands that require allocating new relfilenodes since it is
+			 * executed in a context that doesn't dispatch the Alter Table.
+			 *
+			 * This should never occur.
+			 */
+			if (!oidInfo)
+				elog(ERROR, 
+					 "internal alter table cannot allocate new relfilenodes");
+			Assert(m < oidInfoCount);
 
 			/*
 			 * We can never allow rewriting of shared or nailed-in-cache
@@ -5162,16 +5180,20 @@ ATRewriteTables(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				errmsg("cannot rewrite temporary tables of other sessions")));
 
-			/*
-			 * Select destination tablespace (same as original unless user
-			 * requested a change)
-			 */
-			if (tab->newTableSpace)
-				NewTableSpace = tab->newTableSpace;
-			else
-				NewTableSpace = OldHeap->rd_rel->reltablespace;
+		}
+		heap_close(OldHeap, NoLock);
 
-			heap_close(OldHeap, NoLock);
+
+		/*
+		 * We only need to rewrite the table if at least one column needs to be
+		 * recomputed.
+		 */
+		if (tab->newvals != NIL)
+		{
+			/* Build a temporary relation and copy data */
+			char		NewHeapName[NAMEDATALEN];
+			Oid         OIDNewHeap;
+			ObjectAddress object;
 
 			/*
 			 * Create the new heap, using a temporary name in the same
@@ -5184,17 +5206,8 @@ ATRewriteTables(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 			snprintf(NewHeapName, sizeof(NewHeapName),
 					 "pg_temp_%u", tab->relid);
 
-
-
-			if (oidInfo != NULL)
-			{
-				Assert(m<oidInfoCount);
-				OIDNewHeap = make_new_heap(tab->relid, NewHeapName, NewTableSpace,&oidInfo[m]);
-			}
-			else
-			{
-				OIDNewHeap = make_new_heap(tab->relid, NewHeapName, NewTableSpace, NULL);
-			}
+			OIDNewHeap = make_new_heap(tab->relid, NewHeapName, newTableSpace, 
+									   &oidInfo[m]);
 
 			/*
 			 * Copy the heap data into the new table with the desired
@@ -5224,6 +5237,11 @@ ATRewriteTables(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 			 * Rebuild each index on the relation (but not the toast table,
 			 * which is all-new anyway).  We do not need
 			 * CommandCounterIncrement() because reindex_relation does it.
+			 *
+			 * MPP-8011 - XXX - this is still broken
+			 * 
+			 * It is not legal to reindex without dispatch of the associated
+			 * oids!
 			 */
 			reindex_relation(tab->relid, false, false, false, NULL, false);
 		}
@@ -5242,15 +5260,11 @@ ATRewriteTables(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 			 */
 			if (tab->newTableSpace)
 			{
-				if (oidInfo != NULL)
-				{
-					Assert(m<oidInfoCount);
-					ATExecSetTableSpace(tab->relid, tab->newTableSpace, &oidInfo[m]);
-				}
-				else
-				{
-					ATExecSetTableSpace(tab->relid, tab->newTableSpace, NULL);
-				}
+				populate_oidInfo(&oidInfo[m], newTableSpace, 
+								 OldHeap->rd_rel->relisshared, false);
+				
+				ATExecSetTableSpace(tab->relid, tab->newTableSpace, 
+									&oidInfo[m]);
 			}
 		}
 		m++;
@@ -9968,14 +9982,17 @@ ATExecSetTableSpace_BufferPool(
 }
 
 static bool
-ATExecSetTableSpace_Relation(Oid tableOid, Relation rel, Oid newTableSpace, Oid newrelfilenode)
+ATExecSetTableSpace_Relation(Oid tableOid, Oid newTableSpace, Oid newrelfilenode)
 {
+	Relation    rel;
 	Relation	pg_class;
 	Oid			oldTableSpace;
 	HeapTuple	tuple;
 	Form_pg_class rd_rel;
 	Relation	gp_relation_node;
 	RelFileNode newrnode;
+
+	rel = relation_open(tableOid, AccessExclusiveLock);
 
 	/*
 	 * We can never allow moving of shared or nailed-in-cache relations,
@@ -10005,6 +10022,8 @@ ATExecSetTableSpace_Relation(Oid tableOid, Relation rel, Oid newTableSpace, Oid 
 	if (newTableSpace == oldTableSpace ||
 		(newTableSpace == MyDatabaseTableSpace && oldTableSpace == 0))
 	{
+		/* XXX - Why do we hold the lock if we aren't changing anything? */
+		relation_close(rel, NoLock);
 		return false;
 	}
 
@@ -10062,14 +10081,8 @@ ATExecSetTableSpace_Relation(Oid tableOid, Relation rel, Oid newTableSpace, Oid 
 	/* Make sure the reltablespace change is visible */
 	CommandCounterIncrement();
 
-	/* MPP-6929: metadata tracking */
-	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& MetaTrackValidKindNsp(rel->rd_rel))
-		MetaTrackUpdObject(RelationRelationId,
-						   RelationGetRelid(rel),
-						   GetUserId(),
-						   "ALTER", "SET TABLESPACE"
-				);
+	/* Hold the lock until commit */
+	relation_close(rel, NoLock);
 
 	return true;
 }
@@ -10079,49 +10092,23 @@ ATExecSetTableSpace_Relation(Oid tableOid, Relation rel, Oid newTableSpace, Oid 
  * rewriting to be done, so we just want to copy the data as fast as possible.
  */
 static void
-ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, TableOidInfo * oidInfo)
+ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, TableOidInfo *oidInfo)
 {
 	Relation	rel;
-	Oid			reltoastrelid;
-	Oid			reltoastidxid;
-//	Oid			relaosegrelid = InvalidOid;
-//	Oid			relaosegidxid = InvalidOid;
-//	Oid			relaoblkdirrelid = InvalidOid;
-//	Oid			relaoblkdiridxid = InvalidOid;
-	Oid         newrelfilenode = InvalidOid;
-	Oid         newtoastrelid = InvalidOid;
-	Oid         newtoastidxid = InvalidOid;
+	Oid         newrelfilenode;
+	Oid			reltoastrelid = InvalidOid;
+	Oid			reltoastidxid = InvalidOid;
+	Oid			relaosegrelid = InvalidOid;
+	Oid			relaosegidxid = InvalidOid;
+	Oid			relaoblkdirrelid = InvalidOid;
+	Oid			relaoblkdiridxid = InvalidOid;
 
-	if (Gp_role == GP_ROLE_DISPATCH && oidInfo != NULL)
-	{
-		Relation	pg_class_desc;
+	/* Ensure valid input */
+	Assert(OidIsValid(tableOid));
+	Assert(OidIsValid(newTableSpace));
+	Assert(oidInfo);
 
-		cdb_sync_oid_to_segments();
-
-		pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
-
-		/*
-		 * Pre-Allocate an OID for the relfilenode, plus one for the toast table and index.
-		 *
-		 * The OID will be the relfilenode as well, so make sure it doesn't collide
-		 * with either pg_class OIDs or existing physical files.
-		 */
-
-		oidInfo->relOid = GetNewRelFileNode(newTableSpace, false,  pg_class_desc);
-		newrelfilenode = oidInfo->relOid;
-		oidInfo->toastOid = GetNewRelFileNode(newTableSpace, false,  pg_class_desc);
-		newtoastrelid = oidInfo->toastOid;
-		oidInfo->toastIndexOid = GetNewRelFileNode(newTableSpace, false,  pg_class_desc);
-		newtoastidxid = oidInfo->toastIndexOid;
-
-		heap_close(pg_class_desc, NoLock);  /* gonna update, so don't unlock */
-	}
-	else if (Gp_role == GP_ROLE_EXECUTE && oidInfo != NULL)
-	{
-		newrelfilenode = oidInfo->relOid;
-		newtoastrelid = oidInfo->toastOid;
-		newtoastidxid = oidInfo->toastIndexOid;
-	}
+	newrelfilenode = oidInfo->relOid;
 
 	/*
 	 * Need lock here in case we are recursing to toast table or index
@@ -10129,76 +10116,59 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, TableOidInfo * oidInfo)
 	rel = relation_open(tableOid, AccessExclusiveLock);
 
 	reltoastrelid = rel->rd_rel->reltoastrelid;
-	reltoastidxid = rel->rd_rel->reltoastidxid;
 
-//	if (RelationIsAoRows(rel) || RelationIsAoCols(rel))
-//		GetAppendOnlyEntryAuxOids(tableOid, &relaosegrelid, &relaosegidxid,
-//								  &relaoblkdirrelid, &relaoblkdiridxid);
-
-	/*
-	 * Relfilenodes are not unique across tablespaces, so we need to allocate
-	 * a new one in the new tablespace.
-	 */
-	if (!OidIsValid(newrelfilenode))
-		newrelfilenode = GetNewRelFileNode(newTableSpace,
-				rel->rd_rel->relisshared,
-				NULL);
-
-	if (!ATExecSetTableSpace_Relation(
-								tableOid, 
-								rel, 
-								newTableSpace, 
-								newrelfilenode))
+	/* Find the toast relation index */
+	if (reltoastrelid)
 	{
+		Relation toastrel;
+
+		toastrel = relation_open(reltoastrelid, NoLock);
+		reltoastidxid = toastrel->rd_rel->reltoastidxid;
+		relation_close(toastrel, NoLock);
+	}
+
+	/* Get the ao sub objects */
+	if (RelationIsAoRows(rel) || RelationIsAoCols(rel))
+		GetAppendOnlyEntryAuxOids(tableOid, &relaosegrelid, &relaosegidxid,
+								  &relaoblkdirrelid, &relaoblkdiridxid);
+
+	/* Move the main table */
+	if (!ATExecSetTableSpace_Relation(tableOid, newTableSpace, newrelfilenode))
+	{
+		/* XXX - Why do we hold the lock if we aren't changing anything? */
 		relation_close(rel, NoLock);
 		return;
 	}
 
-	/* Move associated toast relation and/or index, too */
+	/* Move associated toast/toast_index/ao subobjects */
 	if (OidIsValid(reltoastrelid))
-	{
-		Relation reltoastrel;
-
-		if (!OidIsValid(newtoastrelid))
-			newtoastrelid = GetNewRelFileNode(newTableSpace,
-					rel->rd_rel->relisshared,
-					NULL);
-
-		reltoastrel = relation_open(reltoastrelid, AccessExclusiveLock);
-		ATExecSetTableSpace_Relation(
-								reltoastrelid, 
-								reltoastrel, 
-								newTableSpace, 
-								newtoastrelid);
-		relation_close(reltoastrel, NoLock);
-	}
+		ATExecSetTableSpace_Relation(reltoastrelid, newTableSpace, 
+									 oidInfo->toastOid);
 	if (OidIsValid(reltoastidxid))
-	{
-		Relation reltoastidx;
+		ATExecSetTableSpace_Relation(reltoastidxid, newTableSpace,
+									 oidInfo->toastIndexOid);
+	if (OidIsValid(relaosegrelid))
+		ATExecSetTableSpace_Relation(relaosegrelid, newTableSpace,
+									 oidInfo->aosegOid);
+	if (OidIsValid(relaosegidxid))
+		ATExecSetTableSpace_Relation(relaosegidxid, newTableSpace,
+									 oidInfo->aosegIndexOid);
+	if (OidIsValid(relaoblkdirrelid))
+		ATExecSetTableSpace_Relation(relaoblkdirrelid, newTableSpace,
+									 oidInfo->aoblkdirOid);
+	if (OidIsValid(relaoblkdiridxid))
+		ATExecSetTableSpace_Relation(relaoblkdiridxid, newTableSpace,
+									 oidInfo->aoblkdirIndexOid);
 
-		if (!OidIsValid(newtoastidxid))
-			newtoastidxid = GetNewRelFileNode(newTableSpace,
-					rel->rd_rel->relisshared,
-					NULL);
+	/* MPP-6929: metadata tracking */
+	if ((Gp_role == GP_ROLE_DISPATCH) && MetaTrackValidKindNsp(rel->rd_rel))
+		MetaTrackUpdObject(RelationRelationId,
+						   RelationGetRelid(rel),
+						   GetUserId(),
+						   "ALTER", "SET TABLESPACE"
+			);
 
-		reltoastidx = relation_open(reltoastidxid, AccessExclusiveLock);
-		ATExecSetTableSpace_Relation(
-								reltoastidxid, 
-								reltoastidx,
-								newTableSpace, 
-								newtoastidxid);
-		relation_close(reltoastidx, NoLock);
-	}
-
-//	if (OidIsValid(relaosegrelid))
-//		ATExecSetTableSpace(relaosegrelid, newTableSpace);
-//	if (OidIsValid(relaosegidxid))
-//		ATExecSetTableSpace(relaosegidxid, newTableSpace);
-//	if (OidIsValid(relaoblkdirrelid))
-//		ATExecSetTableSpace(relaoblkdirrelid, newTableSpace);
-//	if (OidIsValid(relaoblkdiridxid))
-//		ATExecSetTableSpace(relaoblkdiridxid, newTableSpace);
-
+	/* Hold the lock until commit */
 	relation_close(rel, NoLock);
 }
 

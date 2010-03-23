@@ -27,4 +27,7 @@ extern Oid make_new_heap(Oid OIDOldHeap, const char *NewName,
 			TableOidInfo * oidInfo);
 extern void swap_relation_files(Oid r1, Oid r2, bool swap_stats);
 
+extern void populate_oidInfo(TableOidInfo *oidInfo, Oid TableSpace, 
+							 bool relisshared, bool withTypes);
+
 #endif   /* CLUSTER_H */

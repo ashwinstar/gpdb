@@ -19,17 +19,21 @@ include = re.compile('\s*#include\s*["<](\S*)[">]')
 
 # Hard code standard includes that are okay but we can't check via standard methods.
 # Mostly port specific includes.
+#
+# This list should only contain system header files, or port-specific header files.
+#
+# Do NOT add anything from include/cdb/ to this list, as that would defeat the purpose
+# of this script.
 fileset = {
     'abi_mutex.h':       [],
     'alpha/builtins.h':  [],
-    'cdb/cdbmirroredappendonly.h':  [],
     'crtdefs.h':         [],
     'cygwin/version.h':  [],
     'direct.h':          [],
     'err.h':             [],
     'float.h':           [],
     'getopt.h':          [],
-    'gssapi.h':			 [],
+    'gssapi.h':	       	 [],
     'gssapi/gssapi.h':	 [],
     'ia64/sys/inline.h': [],
     'io.h':              [],
@@ -45,7 +49,7 @@ fileset = {
     'pipe.h':            [],
     'process.h':         [],
     'pthread-win32.h':   [],
-    'security.h':		 [],
+    'security.h':      	 [],
     'solaris.h':         [],
     'SupportDefs.h':     [],
     'ssl.h':             [],

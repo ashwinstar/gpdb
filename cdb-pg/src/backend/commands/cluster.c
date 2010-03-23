@@ -693,68 +693,31 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 
 	is_part = !rel_needs_long_lock(OIDOldHeap);
 
-	if (Gp_role == GP_ROLE_DISPATCH && oidInfo != NULL)
+	/* Check that the oidInfo is valid */
+	Assert(oidInfo);
+	if (!OidIsValid(oidInfo->relOid))
 	{
-		Relation	pg_class_desc;
-		Relation	pg_type_desc;
-
-		cdb_sync_oid_to_segments();
-
-		pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
-		pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
-
-		/*
-		 * Pre-Allocate an OID for the relfilenode, plus one for the toast table
-		 * and another for an aoseg table (just in case).
-		 *
-		 * The OID will be the relfilenode as well, so make sure it doesn't collide
-		 * with either pg_class OIDs or existing physical files.
-		 */
-
-		oidInfo->relOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
-		OIDNewHeap = oidInfo->relOid;
-
-		oidInfo->comptypeOid = GetNewRelFileNode(NewTableSpace, false,  pg_type_desc);
-		oidInfo->toastOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
-		oidInfo->toastIndexOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
-		oidInfo->aosegOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
-		oidInfo->aosegIndexOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
-		oidInfo->aoblkdirOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
-		oidInfo->aoblkdirIndexOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
-
-		heap_close(pg_class_desc, NoLock);  /* gonna update, so don't unlock */
-
-		oidInfo->toastComptypeOid = GetNewRelFileNode(NewTableSpace, false,  pg_type_desc);
-		oidInfo->aosegComptypeOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
-		oidInfo->aoblkdirComptypeOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
-
-		heap_close(pg_type_desc, RowExclusiveLock);
-
-		tOid = oidInfo->toastOid;
-		tiOid = oidInfo->toastIndexOid;
-		toastComptypeOid = &oidInfo->toastComptypeOid;
-		aOid = oidInfo->aosegOid;
-		aiOid = oidInfo->aosegIndexOid;
-		aosegComptypeOid = &oidInfo->aosegComptypeOid;
-		comptypeOid = &oidInfo->comptypeOid;
-		blkdirOid = oidInfo->aoblkdirOid;
-		blkdirIdxOid = oidInfo->aoblkdirIndexOid;
-		aoblkdirComptypeOid = &oidInfo->aoblkdirComptypeOid;
+		populate_oidInfo(oidInfo, NewTableSpace, OldHeap->rd_rel->relisshared, true);
 	}
-	else if (Gp_role == GP_ROLE_EXECUTE && oidInfo != NULL)
-	{
-		toastComptypeOid = &oidInfo->toastComptypeOid;
-		aosegComptypeOid = &oidInfo->aosegComptypeOid;
-		aoblkdirComptypeOid = &oidInfo->aoblkdirComptypeOid;
-		comptypeOid = &oidInfo->comptypeOid;
-	    OIDNewHeap = oidInfo->relOid;
-	    tOid = oidInfo->toastOid;
-		tiOid = oidInfo->toastIndexOid;
-		aOid = oidInfo->aosegOid;
-		aiOid = oidInfo->aosegIndexOid;
-		blkdirOid = oidInfo->aoblkdirOid;
-		blkdirIdxOid = oidInfo->aoblkdirIndexOid;
-	}
+
+	/* 
+	 * Extract the oids from the oidInfo, this is used to ensure oid
+	 * syncronization between the master and segments.  
+	 *
+	 * It is the responibility of the caller to make sure the oidInfo is
+	 * correctly dispatched.
+	 */
+	OIDNewHeap = oidInfo->relOid;
+	tOid = oidInfo->toastOid;
+	tiOid = oidInfo->toastIndexOid;
+	toastComptypeOid = &oidInfo->toastComptypeOid;
+	aOid = oidInfo->aosegOid;
+	aiOid = oidInfo->aosegIndexOid;
+	aosegComptypeOid = &oidInfo->aosegComptypeOid;
+	comptypeOid = &oidInfo->comptypeOid;
+	blkdirOid = oidInfo->aoblkdirOid;
+	blkdirIdxOid = oidInfo->aoblkdirIndexOid;
+	aoblkdirComptypeOid = &oidInfo->aoblkdirComptypeOid;
 
 	/*
 	 * Need to make a copy of the tuple descriptor, since
@@ -1222,3 +1185,111 @@ get_tables_to_cluster(MemoryContext cluster_context)
 
 	return rvs;
 }
+
+
+/*
+ * populate_oidInfo - Fill in a new OidInfo structure 
+ *
+ * Note: it would be desirable not to allocate more oids than are really needed,
+ * but we don't have enough context here to really know (when called from ALTER
+ * TABLE any of them could be needed).
+ */
+void populate_oidInfo(TableOidInfo *oidInfo, Oid TableSpace, bool relisshared, 
+					  bool withTypes)
+{
+	/* Valid pointers only please */
+	Assert(oidInfo);
+
+	/* Make sure any oids we allocate are available on all segments */
+	cdb_sync_oid_to_segments();
+
+	switch (Gp_role)
+	{
+		/*
+		 * In Utility or dispatch mode we must allocate new relfilenodes.
+		 * It may be desirable to put more restrictions on utility mode, it is
+		 * dangerous to allow segment relfilenodes to drift.
+		 */
+		case GP_ROLE_UTILITY:
+		case GP_ROLE_DISPATCH:
+		{
+			Relation	pg_class_desc;
+			Relation	pg_type_desc;
+
+			pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
+
+			/* Get new oids for pg_class entities */
+			oidInfo->relOid = 
+				GetNewRelFileNode(TableSpace, relisshared,  pg_class_desc);
+			oidInfo->toastOid = 
+				GetNewRelFileNode(TableSpace, relisshared,  pg_class_desc);
+			oidInfo->toastIndexOid = 
+				GetNewRelFileNode(TableSpace, relisshared,  pg_class_desc);
+			oidInfo->aosegOid = 
+				GetNewRelFileNode(TableSpace, relisshared,  pg_class_desc);
+			oidInfo->aosegIndexOid = 
+				GetNewRelFileNode(TableSpace, relisshared,  pg_class_desc);
+			oidInfo->aoblkdirOid = 
+				GetNewRelFileNode(TableSpace, relisshared,  pg_class_desc);
+			oidInfo->aoblkdirIndexOid = 
+				GetNewRelFileNode(TableSpace, relisshared,  pg_class_desc);
+
+			/* gonna update, so don't unlock */
+			heap_close(pg_class_desc, NoLock);  
+
+			/* Get new oids for pg_type entities */
+			if (withTypes)
+			{
+				pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
+
+				oidInfo->comptypeOid = 
+					GetNewRelFileNode(TableSpace, relisshared,  pg_type_desc);
+				oidInfo->toastComptypeOid = 
+					GetNewRelFileNode(TableSpace, relisshared,  pg_type_desc);
+				oidInfo->aosegComptypeOid = 
+					GetNewRelFileNode(TableSpace, relisshared,  pg_type_desc);
+				oidInfo->aoblkdirComptypeOid = 
+					GetNewRelFileNode(TableSpace, relisshared,  pg_type_desc);
+
+				/* We don't need to keep the pg_type lock */
+				heap_close(pg_type_desc, RowExclusiveLock);
+			}
+			break;
+		}
+
+		/* 
+		 * In EXECUTE mode we expect to have recieved a valid oidInfo from
+		 * the master.  Perform some small validations and return. 
+		 */
+		case GP_ROLE_EXECUTE:
+		{
+			if (oidInfo->relOid == 0 ||
+				oidInfo->toastOid == 0 ||
+				oidInfo->toastIndexOid == 0 ||
+				oidInfo->aosegOid == 0 ||
+				oidInfo->aosegIndexOid == 0 ||
+				oidInfo->aoblkdirOid == 0 ||
+				oidInfo->aoblkdirIndexOid == 0 ||
+				(withTypes && (
+					oidInfo->comptypeOid == 0 ||
+					oidInfo->toastComptypeOid == 0 ||
+					oidInfo->aosegComptypeOid == 0 ||
+					oidInfo->aoblkdirComptypeOid == 0)
+					)
+				)
+			{
+				elog(ERROR, "segment recieved incomplete oidInfo from master");
+			}
+			break;
+		}
+
+		/* Unexpected mode? */
+		default:
+		{
+			elog(ERROR, "populate_oidInfo from unexpected dispatch mode");
+			break;
+		}
+	}
+}
+ 
+ 

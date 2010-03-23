@@ -11,7 +11,8 @@
 
 #include "storage/fd.h"
 #include "utils/rel.h"
-#include "cdb/cdbmirroredappendonly.h"
+
+struct MirroredAppendOnlyOpen;  /* Defined in cdb/cdbmirroredappendonly.h */
 
 extern int
 AOSegmentFilePathNameLen(Relation rel);
@@ -39,15 +40,15 @@ OpenAOSegmentFile(
 					bool create,
 					int32	segmentFileNum,
 					int64	logicalEof,
-					MirroredAppendOnlyOpen *mirroredOpen);
+					struct MirroredAppendOnlyOpen *mirroredOpen);
 
 extern void
 CloseAOSegmentFile(
-				   MirroredAppendOnlyOpen *mirroredOpen);
+				   struct MirroredAppendOnlyOpen *mirroredOpen);
 
 extern void
 TruncateAOSegmentFile(
-					  MirroredAppendOnlyOpen *mirroredOpen, 
+					  struct MirroredAppendOnlyOpen *mirroredOpen, 
 					  Relation rel, 
 					  int64 offset, 
 					  int elevel);
