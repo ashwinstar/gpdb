@@ -861,6 +861,7 @@ FileRepAckPrimary_RunConsumer(void)
 							"msg header count:'%d' ack state:'%s' ",
 							fileRepMessageHeader->messageCount,
 							FileRepAckStateToString[fileRepMessageHeader->fileRepAckState]),
+					 errSendAlert(true),
 					 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 									   fileRepMessageHeader->fileRepRelationType,
 									   fileRepMessageHeader->fileRepOperation),

@@ -2187,11 +2187,12 @@ select * from get_ereport order by 1;
  baag: bitmap:00000073:  ereport (ERROR, 
  baag: bitmap:00000074:  (errcode(ERRCODE_INDEX_CORRUPTED), 
  baag: bitmap:00000075:  errmsg("index "%s" already contains data", 
- baag: bitmap:00000076:  RelationGetRelationName(index)))); 
- baag: bitmap:00000089:  ereport(ERROR, 
- baag: bitmap:00000090:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- baag: bitmap:00000091:  errmsg("oids for bitmap index "%s" do not exist", 
- baag: bitmap:00000092:  RelationGetRelationName(index)))); 
+ baag: bitmap:00000076:  RelationGetRelationName(index)), 
+ baag: bitmap:00000077:  errSendAlert(true))); 
+ baag: bitmap:00000090:  ereport(ERROR, 
+ baag: bitmap:00000091:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ baag: bitmap:00000092:  errmsg("oids for bitmap index "%s" do not exist", 
+ baag: bitmap:00000093:  RelationGetRelationName(index)))); 
  baag: bufmgr:00000119:  ereport(ERROR, 
  baag: bufmgr:00000120:  (errmsg("Unable to set memory level to %d, error %d, block size %d, ptr %ld", protectionLevel, 
  baag: bufmgr:00000121:  errno, BLCKSZ, (long int) BufHdrGetBlock(bufHdr)))); 
@@ -2206,23 +2207,25 @@ select * from get_ereport order by 1;
  baag: bufmgr:00000352:  ereport(ERROR, 
  baag: bufmgr:00000353:  (errcode(ERRCODE_DATA_CORRUPTED), 
  baag: bufmgr:00000354:  errmsg("invalid page header in block %u of relation "%s"", 
- baag: bufmgr:00000355:  blockNum, RelationGetRelationName(reln)))); 
- baag: bufmgr:00000461:  ereport(WARNING, 
- baag: bufmgr:00000462:  (errcode(ERRCODE_DATA_CORRUPTED), 
- baag: bufmgr:00000463:  errmsg("invalid page header in block %u of relation ""; zeroing out page", 
- baag: bufmgr:00000464:  blockNum/*, relpath(reln->smgr_rnode)*/))); 
- baag: bufmgr:00000468:  ereport(ERROR, 
- baag: bufmgr:00000469:  (errcode(ERRCODE_DATA_CORRUPTED), 
- baag: bufmgr:00000470:  errmsg("invalid page header in block %u of relation """, 
- baag: bufmgr:00000471:  blockNum/*, relpath(reln->smgr_rnode)*/))); 
- baag: bufmgr:00002803:  ereport(WARNING, 
- baag: bufmgr:00002804:  (errcode(ERRCODE_IO_ERROR), 
- baag: bufmgr:00002805:  errmsg("could not write block %u of %u/%u/%u", 
- baag: bufmgr:00002806:  buf->tag.blockNum, 
- baag: bufmgr:00002807:  buf->tag.rnode.spcNode, 
- baag: bufmgr:00002808:  buf->tag.rnode.dbNode, 
- baag: bufmgr:00002809:  buf->tag.rnode.relNode), 
- baag: bufmgr:00002810:  errdetail("Multiple failures --- write error might be permanent."))); 
+ baag: bufmgr:00000355:  blockNum, RelationGetRelationName(reln)), 
+ baag: bufmgr:00000356:  errSendAlert(true))); 
+ baag: bufmgr:00000462:  ereport(WARNING, 
+ baag: bufmgr:00000463:  (errcode(ERRCODE_DATA_CORRUPTED), 
+ baag: bufmgr:00000464:  errmsg("invalid page header in block %u of relation ""; zeroing out page", 
+ baag: bufmgr:00000465:  blockNum/*, relpath(reln->smgr_rnode)*/))); 
+ baag: bufmgr:00000469:  ereport(ERROR, 
+ baag: bufmgr:00000470:  (errcode(ERRCODE_DATA_CORRUPTED), 
+ baag: bufmgr:00000471:  errmsg("invalid page header in block %u of relation """, 
+ baag: bufmgr:00000472:  blockNum/*, relpath(reln->smgr_rnode)*/), 
+ baag: bufmgr:00000473:  errSendAlert(true))); 
+ baag: bufmgr:00002805:  ereport(WARNING, 
+ baag: bufmgr:00002806:  (errcode(ERRCODE_IO_ERROR), 
+ baag: bufmgr:00002807:  errmsg("could not write block %u of %u/%u/%u", 
+ baag: bufmgr:00002808:  buf->tag.blockNum, 
+ baag: bufmgr:00002809:  buf->tag.rnode.spcNode, 
+ baag: bufmgr:00002810:  buf->tag.rnode.dbNode, 
+ baag: bufmgr:00002811:  buf->tag.rnode.relNode), 
+ baag: bufmgr:00002812:  errdetail("Multiple failures --- write error might be permanent."))); 
  baah: backend:00000171:  ereport(ERROR, ( 
  baah: backend:00000172:  errcode(ERRCODE_INTERNAL_ERROR), 
  baah: backend:00000173:  errmsg("Unable to initialize java security"))); 
@@ -2242,35 +2245,43 @@ select * from get_ereport order by 1;
  baah: bufpage:00000346:  ereport(ERROR, 
  baah: bufpage:00000347:  (errcode(ERRCODE_DATA_CORRUPTED), 
  baah: bufpage:00000348:  errmsg("corrupted page pointers: lower = %u, upper = %u, special = %u", 
- baah: bufpage:00000349:  pd_lower, pd_upper, pd_special))); 
- baah: bufpage:00000389:  ereport(ERROR, 
- baah: bufpage:00000390:  (errcode(ERRCODE_DATA_CORRUPTED), 
- baah: bufpage:00000391:  errmsg("corrupted item pointer: %u", 
- baah: bufpage:00000392:  itemidptr->itemoff))); 
- baah: bufpage:00000404:  ereport(ERROR, 
- baah: bufpage:00000405:  (errcode(ERRCODE_DATA_CORRUPTED), 
- baah: bufpage:00000406:  errmsg("corrupted item lengths: total %u, available space %u", 
- baah: bufpage:00000407:  (unsigned int) totallen, pd_special - pd_lower))); 
- baah: bufpage:00000490:  ereport(ERROR, 
- baah: bufpage:00000491:  (errcode(ERRCODE_DATA_CORRUPTED), 
- baah: bufpage:00000492:  errmsg("corrupted page pointers: lower = %u, upper = %u, special = %u", 
- baah: bufpage:00000493:  phdr->pd_lower, phdr->pd_upper, phdr->pd_special))); 
- baah: bufpage:00000508:  ereport(ERROR, 
- baah: bufpage:00000509:  (errcode(ERRCODE_DATA_CORRUPTED), 
- baah: bufpage:00000510:  errmsg("corrupted item pointer: offset = %u, size = %u", 
- baah: bufpage:00000511:  offset, (unsigned int) size))); 
- baah: bufpage:00000618:  ereport(ERROR, 
- baah: bufpage:00000619:  (errcode(ERRCODE_DATA_CORRUPTED), 
- baah: bufpage:00000620:  errmsg("corrupted page pointers: lower = %u, upper = %u, special = %u", 
- baah: bufpage:00000621:  pd_lower, pd_upper, pd_special))); 
- baah: bufpage:00000642:  ereport(ERROR, 
- baah: bufpage:00000643:  (errcode(ERRCODE_DATA_CORRUPTED), 
- baah: bufpage:00000644:  errmsg("corrupted item pointer: offset = %u, size = %u", 
- baah: bufpage:00000645:  offset, (unsigned int) size))); 
- baah: bufpage:00000669:  ereport(ERROR, 
- baah: bufpage:00000670:  (errcode(ERRCODE_DATA_CORRUPTED), 
- baah: bufpage:00000671:  errmsg("corrupted item lengths: total %u, available space %u", 
- baah: bufpage:00000672:  (unsigned int) totallen, pd_special - pd_lower))); 
+ baah: bufpage:00000349:  pd_lower, pd_upper, pd_special), 
+ baah: bufpage:00000350:  errSendAlert(true))); 
+ baah: bufpage:00000390:  ereport(ERROR, 
+ baah: bufpage:00000391:  (errcode(ERRCODE_DATA_CORRUPTED), 
+ baah: bufpage:00000392:  errmsg("corrupted item pointer: %u", 
+ baah: bufpage:00000393:  itemidptr->itemoff), 
+ baah: bufpage:00000394:  errSendAlert(true))); 
+ baah: bufpage:00000406:  ereport(ERROR, 
+ baah: bufpage:00000407:  (errcode(ERRCODE_DATA_CORRUPTED), 
+ baah: bufpage:00000408:  errmsg("corrupted item lengths: total %u, available space %u", 
+ baah: bufpage:00000409:  (unsigned int) totallen, pd_special - pd_lower), 
+ baah: bufpage:00000410:  errSendAlert(true))); 
+ baah: bufpage:00000493:  ereport(ERROR, 
+ baah: bufpage:00000494:  (errcode(ERRCODE_DATA_CORRUPTED), 
+ baah: bufpage:00000495:  errmsg("corrupted page pointers: lower = %u, upper = %u, special = %u", 
+ baah: bufpage:00000496:  phdr->pd_lower, phdr->pd_upper, phdr->pd_special), 
+ baah: bufpage:00000497:  errSendAlert(true))); 
+ baah: bufpage:00000512:  ereport(ERROR, 
+ baah: bufpage:00000513:  (errcode(ERRCODE_DATA_CORRUPTED), 
+ baah: bufpage:00000514:  errmsg("corrupted item pointer: offset = %u, size = %u", 
+ baah: bufpage:00000515:  offset, (unsigned int) size), 
+ baah: bufpage:00000516:  errSendAlert(true))); 
+ baah: bufpage:00000623:  ereport(ERROR, 
+ baah: bufpage:00000624:  (errcode(ERRCODE_DATA_CORRUPTED), 
+ baah: bufpage:00000625:  errmsg("corrupted page pointers: lower = %u, upper = %u, special = %u", 
+ baah: bufpage:00000626:  pd_lower, pd_upper, pd_special), 
+ baah: bufpage:00000627:  errSendAlert(true))); 
+ baah: bufpage:00000648:  ereport(ERROR, 
+ baah: bufpage:00000649:  (errcode(ERRCODE_DATA_CORRUPTED), 
+ baah: bufpage:00000650:  errmsg("corrupted item pointer: offset = %u, size = %u", 
+ baah: bufpage:00000651:  offset, (unsigned int) size), 
+ baah: bufpage:00000652:  errSendAlert(true))); 
+ baah: bufpage:00000676:  ereport(ERROR, 
+ baah: bufpage:00000677:  (errcode(ERRCODE_DATA_CORRUPTED), 
+ baah: bufpage:00000678:  errmsg("corrupted item lengths: total %u, available space %u", 
+ baah: bufpage:00000679:  (unsigned int) totallen, pd_special - pd_lower), 
+ baah: bufpage:00000680:  errSendAlert(true))); 
  baai: bgwriter:00000610:  ereport(FATAL, 
  baai: bgwriter:00000611:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  baai: bgwriter:00000612:  errmsg("not enough shared memory for background writer"))); 
@@ -2370,11 +2381,12 @@ select * from get_ereport order by 1;
  babb: bitmappages:00000345:  ereport(ERROR, 
  babb: bitmappages:00000346:  (errcode(ERRCODE_INDEX_CORRUPTED), 
  babb: bitmappages:00000347:  errmsg("cannot initialize non-empty bitmap index "%s"", 
- babb: bitmappages:00000348:  RelationGetRelationName(rel)))); 
- babb: bitmappages:00000398:  ereport(ERROR, 
- babb: bitmappages:00000399:  (errcode(ERRCODE_INTERNAL_ERROR), 
- babb: bitmappages:00000400:  errmsg("failed to add LOV item to "%s"", 
- babb: bitmappages:00000401:  RelationGetRelationName(rel)))); 
+ babb: bitmappages:00000348:  RelationGetRelationName(rel)), 
+ babb: bitmappages:00000349:  errSendAlert(true))); 
+ babb: bitmappages:00000399:  ereport(ERROR, 
+ babb: bitmappages:00000400:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ babb: bitmappages:00000401:  errmsg("failed to add LOV item to "%s"", 
+ babb: bitmappages:00000402:  RelationGetRelationName(rel)))); 
  babc: bitmapinsert:00001497:  ereport(ERROR, 
  babc: bitmapinsert:00001498:  (errcode(ERRCODE_INTERNAL_ERROR), 
  babc: bitmapinsert:00001499:  errmsg("failed to add LOV item to "%s"", 
@@ -2819,49 +2831,50 @@ select * from get_ereport order by 1;
  caag: cdbcat:00000509:  isprimary ? "PRIMARY KEY" : "UNIQUE index", 
  caag: cdbcat:00000510:  RelationGetRelationName(rel)), 
  caag: cdbcat:00000511:  errOmitLocation(true))); 
- caag: cdbfts:00000363:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- caag: cdbfts:00000364:  errmsg("QDMirroringUpdate: out of memory"))); 
- caag: cdbfts:00000391:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- caag: cdbfts:00000392:  errmsg("QDMirroringUpdate: out of memory"))); 
- caag: cdbfts:00000414:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
- caag: cdbfts:00000415:  errmsg("QDMirroringUpdate: format command string failure"))); 
- caag: cdbfts:00000421:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
- caag: cdbfts:00000422:  errmsg("QDMirroringUpdate: could not execute command '%s'", cmd))); 
- caag: cdbfts:00000478:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
- caag: cdbfts:00000479:  errmsg("QDMirroringUpdate: format command string failure"))); 
- caag: cdbfts:00000517:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
- caag: cdbfts:00000518:  errmsg("QDMirroringUpdate: format command string failure"))); 
- caag: cdbfts:00000524:  ereport(ERROR, 
- caag: cdbfts:00000525:  (errcode(ERRCODE_INTERNAL_ERROR), 
- caag: cdbfts:00000526:  errmsg("QDMirroringUpdate: could not execute command '%s'", cmd))); 
- caag: cdbfts:00000655:  ereport(WARNING, 
- caag: cdbfts:00000656:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- caag: cdbfts:00000657:  errSuppressOutputToLog(), // Don't clutter up the system log with these warnings! 
- caag: cdbfts:00000658:  errmsg("Master mirroring is not synchronized as of %s (%s). " 
- caag: cdbfts:00000659:  "The GPDB system is currently not highly-available", 
- caag: cdbfts:00000660:  logTimeStr, 
- caag: cdbfts:00000661:  QDMirroringDisabledReasonToString(disabledReason)))); 
- caag: cdbfts:00000694:  ereport(NOTICE, 
- caag: cdbfts:00000695:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- caag: cdbfts:00000696:  errmsg("Master mirroring not synchronized because the standby master was not started by the administrator"))); 
- caag: cdbfts:00000698:  ereport(WARNING, 
- caag: cdbfts:00000699:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- caag: cdbfts:00000700:  errSendAlert(true), 
- caag: cdbfts:00000701:  errmsg("Master mirroring synchronization lost"), 
- caag: cdbfts:00000702:  errdetail(detail))); 
- caag: cdbfts:00000809:  ereport(ERROR, 
- caag: cdbfts:00000810:  (errcode(ERRCODE_INTERNAL_ERROR), 
- caag: cdbfts:00000811:  errmsg("Unexpected master mirror state '%s'", 
- caag: cdbfts:00000812:  QDMirroringStateToString(state)))); 
- caag: cdbfts:00000818:  ereport(NOTICE, 
- caag: cdbfts:00000819:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- caag: cdbfts:00000820:  errmsg(message), 
- caag: cdbfts:00000821:  errdetail(detail))); 
- caag: cdbfts:00001021:  ereport(ERROR, (errmsg_internal("MPP detected %d segment failures, system is reconnected", numOfFailed))); 
- caag: cdbfts:00001276:  ereport(ERROR, (errmsg_internal("Unexpected master mirroring state '%s'", 
- caag: cdbfts:00001277:  QDMirroringStateToString(state)))); 
- caag: cdbfts:00001372:  ereport(ERROR, (errmsg_internal("Unexpected master mirror state '%s'", 
- caag: cdbfts:00001373:  QDMirroringStateToString(state)))); 
+ caag: cdbfts:00000364:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ caag: cdbfts:00000365:  errmsg("QDMirroringUpdate: out of memory"))); 
+ caag: cdbfts:00000392:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ caag: cdbfts:00000393:  errmsg("QDMirroringUpdate: out of memory"))); 
+ caag: cdbfts:00000415:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+ caag: cdbfts:00000416:  errmsg("QDMirroringUpdate: format command string failure"))); 
+ caag: cdbfts:00000422:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+ caag: cdbfts:00000423:  errmsg("QDMirroringUpdate: could not execute command '%s'", cmd))); 
+ caag: cdbfts:00000479:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+ caag: cdbfts:00000480:  errmsg("QDMirroringUpdate: format command string failure"))); 
+ caag: cdbfts:00000518:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+ caag: cdbfts:00000519:  errmsg("QDMirroringUpdate: format command string failure"))); 
+ caag: cdbfts:00000525:  ereport(ERROR, 
+ caag: cdbfts:00000526:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ caag: cdbfts:00000527:  errmsg("QDMirroringUpdate: could not execute command '%s'", cmd))); 
+ caag: cdbfts:00000656:  ereport(WARNING, 
+ caag: cdbfts:00000657:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ caag: cdbfts:00000658:  errSuppressOutputToLog(), // Don't clutter up the system log with these warnings! 
+ caag: cdbfts:00000659:  errmsg("Master mirroring is not synchronized as of %s (%s). " 
+ caag: cdbfts:00000660:  "The GPDB system is currently not highly-available", 
+ caag: cdbfts:00000661:  logTimeStr, 
+ caag: cdbfts:00000662:  QDMirroringDisabledReasonToString(disabledReason)))); 
+ caag: cdbfts:00000695:  ereport(NOTICE, 
+ caag: cdbfts:00000696:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ caag: cdbfts:00000697:  errmsg("Master mirroring not synchronized because the standby master was not started by the administrator"))); 
+ caag: cdbfts:00000699:  ereport(WARNING, 
+ caag: cdbfts:00000700:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ caag: cdbfts:00000701:  errSendAlert(true), 
+ caag: cdbfts:00000702:  errmsg("Master mirroring synchronization lost"), 
+ caag: cdbfts:00000703:  errdetail(detail))); 
+ caag: cdbfts:00000810:  ereport(ERROR, 
+ caag: cdbfts:00000811:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ caag: cdbfts:00000812:  errmsg("Unexpected master mirror state '%s'", 
+ caag: cdbfts:00000813:  QDMirroringStateToString(state)))); 
+ caag: cdbfts:00000819:  ereport(NOTICE, 
+ caag: cdbfts:00000820:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ caag: cdbfts:00000821:  errmsg(message), 
+ caag: cdbfts:00000822:  errdetail(detail))); 
+ caag: cdbfts:00001022:  ereport(ERROR, (errmsg_internal("MPP detected %d segment failures, system is reconnected", numOfFailed), 
+ caag: cdbfts:00001023:  errSendAlert(true))); 
+ caag: cdbfts:00001279:  ereport(ERROR, (errmsg_internal("Unexpected master mirroring state '%s'", 
+ caag: cdbfts:00001280:  QDMirroringStateToString(state)))); 
+ caag: cdbfts:00001375:  ereport(ERROR, (errmsg_internal("Unexpected master mirror state '%s'", 
+ caag: cdbfts:00001376:  QDMirroringStateToString(state)))); 
  caag: cdboid:00000026:  ereport(ERROR, 
  caag: cdboid:00000027:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
  caag: cdboid:00000028:  errmsg("SPI_connect failed in cdb_eget_oid" ))); 
@@ -4419,46 +4432,52 @@ select * from get_ereport order by 1;
  cada: cdbresynchronizechangetracking:00000728:  (errcode_for_file_access(), 
  cada: cdbresynchronizechangetracking:00000729:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
  cada: cdbresynchronizechangetracking:00000730:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00000731:  path))); 
- cada: cdbresynchronizechangetracking:00000817:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- cada: cdbresynchronizechangetracking:00000818:  errmsg("Unable to obtain change tracking information from segment database."), 
- cada: cdbresynchronizechangetracking:00000819:  errdetail("SPI_connect failed in ChangeTracking_GetIncrementalChangeList()"))); 
- cada: cdbresynchronizechangetracking:00001082:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- cada: cdbresynchronizechangetracking:00001083:  errmsg("Unable to obtain change tracking information from segment database."), 
- cada: cdbresynchronizechangetracking:00001084:  errdetail("SPI_connect failed in ChangeTracking_GetChanges()"))); 
- cada: cdbresynchronizechangetracking:00001383:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001384:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001385:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
- cada: cdbresynchronizechangetracking:00001386:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001387:  path))); 
- cada: cdbresynchronizechangetracking:00001396:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001397:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001398:  errmsg("ERROR(filerep): unable to write change tracking log file "%s", " 
- cada: cdbresynchronizechangetracking:00001399:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001400:  path))); 
- cada: cdbresynchronizechangetracking:00001460:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001461:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001462:  errmsg("ERROR(filerep): no disk space for change tracking meta file "%s", " 
- cada: cdbresynchronizechangetracking:00001463:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001464:  path))); 
- cada: cdbresynchronizechangetracking:00001473:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001474:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001475:  errmsg("ERROR(filerep): unable to write change tracking meta file "%s", " 
- cada: cdbresynchronizechangetracking:00001476:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001477:  path))); 
- cada: cdbresynchronizechangetracking:00001511:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001512:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001513:  errmsg("ERROR(filerep): unable to read change tracking meta file "%s", " 
- cada: cdbresynchronizechangetracking:00001514:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001515:  path))); 
- cada: cdbresynchronizechangetracking:00001649:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001650:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001651:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
- cada: cdbresynchronizechangetracking:00001652:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001653:  path))); 
- cada: cdbresynchronizechangetracking:00001764:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- cada: cdbresynchronizechangetracking:00001765:  errmsg("Unable to obtain change tracking information from segment database."), 
- cada: cdbresynchronizechangetracking:00001766:  errdetail("SPI_connect failed in ChangeTracking_ReadLastLocOnDisk()"))); 
+ cada: cdbresynchronizechangetracking:00000731:  path), 
+ cada: cdbresynchronizechangetracking:00000732:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00000818:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ cada: cdbresynchronizechangetracking:00000819:  errmsg("Unable to obtain change tracking information from segment database."), 
+ cada: cdbresynchronizechangetracking:00000820:  errdetail("SPI_connect failed in ChangeTracking_GetIncrementalChangeList()"))); 
+ cada: cdbresynchronizechangetracking:00001083:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ cada: cdbresynchronizechangetracking:00001084:  errmsg("Unable to obtain change tracking information from segment database."), 
+ cada: cdbresynchronizechangetracking:00001085:  errdetail("SPI_connect failed in ChangeTracking_GetChanges()"))); 
+ cada: cdbresynchronizechangetracking:00001384:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001385:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001386:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
+ cada: cdbresynchronizechangetracking:00001387:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001388:  path), 
+ cada: cdbresynchronizechangetracking:00001389:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001398:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001399:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001400:  errmsg("ERROR(filerep): unable to write change tracking log file "%s", " 
+ cada: cdbresynchronizechangetracking:00001401:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001402:  path), 
+ cada: cdbresynchronizechangetracking:00001403:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001463:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001464:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001465:  errmsg("ERROR(filerep): no disk space for change tracking meta file "%s", " 
+ cada: cdbresynchronizechangetracking:00001466:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001467:  path), 
+ cada: cdbresynchronizechangetracking:00001468:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001477:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001478:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001479:  errmsg("ERROR(filerep): unable to write change tracking meta file "%s", " 
+ cada: cdbresynchronizechangetracking:00001480:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001481:  path), 
+ cada: cdbresynchronizechangetracking:00001482:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001516:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001517:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001518:  errmsg("ERROR(filerep): unable to read change tracking meta file "%s", " 
+ cada: cdbresynchronizechangetracking:00001519:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001520:  path), 
+ cada: cdbresynchronizechangetracking:00001521:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001655:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001656:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001657:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
+ cada: cdbresynchronizechangetracking:00001658:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001659:  path))); 
+ cada: cdbresynchronizechangetracking:00001770:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ cada: cdbresynchronizechangetracking:00001771:  errmsg("Unable to obtain change tracking information from segment database."), 
+ cada: cdbresynchronizechangetracking:00001772:  errdetail("SPI_connect failed in ChangeTracking_ReadLastLocOnDisk()"))); 
  daae: date:00000083:  ereport(ERROR, 
  daae: date:00000084:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  daae: date:00000085:  errmsg("date/time value "current" is no longer supported"))); 
@@ -7091,13 +7110,15 @@ select * from get_ereport order by 1;
  gaai: gistutil:00000589:  errmsg("index "%s" contains unexpected zero page at block %u", 
  gaai: gistutil:00000590:  RelationGetRelationName(rel), 
  gaai: gistutil:00000591:  BufferGetBlockNumber(buf)), 
- gaai: gistutil:00000592:  errhint("Please REINDEX it."))); 
- gaai: gistutil:00000599:  ereport(ERROR, 
- gaai: gistutil:00000600:  (errcode(ERRCODE_INDEX_CORRUPTED), 
- gaai: gistutil:00000601:  errmsg("index "%s" contains corrupted page at block %u", 
- gaai: gistutil:00000602:  RelationGetRelationName(rel), 
- gaai: gistutil:00000603:  BufferGetBlockNumber(buf)), 
- gaai: gistutil:00000604:  errhint("Please REINDEX it."))); 
+ gaai: gistutil:00000592:  errhint("Please REINDEX it."), 
+ gaai: gistutil:00000593:  errSendAlert(true))); 
+ gaai: gistutil:00000600:  ereport(ERROR, 
+ gaai: gistutil:00000601:  (errcode(ERRCODE_INDEX_CORRUPTED), 
+ gaai: gistutil:00000602:  errmsg("index "%s" contains corrupted page at block %u", 
+ gaai: gistutil:00000603:  RelationGetRelationName(rel), 
+ gaai: gistutil:00000604:  BufferGetBlockNumber(buf)), 
+ gaai: gistutil:00000605:  errhint("Please REINDEX it."), 
+ gaai: gistutil:00000606:  errSendAlert(true))); 
  gaai: gpviewcp:00000070:  ereport(ERROR, 
  gaai: gpviewcp:00000071:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  gaai: gpviewcp:00000072:  errmsg("gpviewcopy(): called with %hd arguments", 
@@ -7176,19 +7197,19 @@ select * from get_ereport order by 1;
  gaai: gpviewcp:00000338:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  gaai: gpviewcp:00000339:  errmsg("gpviewreparse(): called with %hd arguments", 
  gaai: gpviewcp:00000340:  PG_NARGS()))); 
- gaai: gucxfile:00000542: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
- gaai: gucxfile:00000543:  
- gaai: gucxfile:00000544: enum { 
- gaai: gucxfile:00000545:  GUC_ID = 1, 
- gaai: gucxfile:00000546:  GUC_STRING = 2, 
- gaai: gucxfile:00000547:  GUC_INTEGER = 3, 
- gaai: gucxfile:00000548:  GUC_REAL = 4, 
- gaai: gucxfile:00000549:  GUC_EQUALS = 5, 
- gaai: gucxfile:00000550:  GUC_UNQUOTED_STRING = 6, 
- gaai: gucxfile:00000551:  GUC_QUALIFIED_ID = 7, 
- gaai: gucxfile:00000552:  GUC_EOL = 99, 
- gaai: gucxfile:00000553:  GUC_ERROR = 100 
- gaai: gucxfile:00000554: }; 
+ gaai: gucxfile:00000557: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
+ gaai: gucxfile:00000558:  
+ gaai: gucxfile:00000559: enum { 
+ gaai: gucxfile:00000560:  GUC_ID = 1, 
+ gaai: gucxfile:00000561:  GUC_STRING = 2, 
+ gaai: gucxfile:00000562:  GUC_INTEGER = 3, 
+ gaai: gucxfile:00000563:  GUC_REAL = 4, 
+ gaai: gucxfile:00000564:  GUC_EQUALS = 5, 
+ gaai: gucxfile:00000565:  GUC_UNQUOTED_STRING = 6, 
+ gaai: gucxfile:00000566:  GUC_QUALIFIED_ID = 7, 
+ gaai: gucxfile:00000567:  GUC_EOL = 99, 
+ gaai: gucxfile:00000568:  GUC_ERROR = 100 
+ gaai: gucxfile:00000569: }; 
  gaba: gistvacuum:00000569:  ereport(NOTICE, 
  gaba: gistvacuum:00000570:  (errmsg("index "%s" needs VACUUM FULL or REINDEX to finish crash recovery", 
  gaba: gistvacuum:00000571:  RelationGetRelationName(rel)))); 
@@ -7412,28 +7433,32 @@ select * from get_ereport order by 1;
  haai: hashutil:00000126:  errmsg("index "%s" contains unexpected zero page at block %u", 
  haai: hashutil:00000127:  RelationGetRelationName(rel), 
  haai: hashutil:00000128:  BufferGetBlockNumber(buf)), 
- haai: hashutil:00000129:  errhint("Please REINDEX it."))); 
- haai: hashutil:00000136:  ereport(ERROR, 
- haai: hashutil:00000137:  (errcode(ERRCODE_INDEX_CORRUPTED), 
- haai: hashutil:00000138:  errmsg("index "%s" contains corrupted page at block %u", 
- haai: hashutil:00000139:  RelationGetRelationName(rel), 
- haai: hashutil:00000140:  BufferGetBlockNumber(buf)), 
- haai: hashutil:00000141:  errhint("Please REINDEX it."))); 
- haai: hashutil:00000148:  ereport(ERROR, 
- haai: hashutil:00000149:  (errcode(ERRCODE_INDEX_CORRUPTED), 
- haai: hashutil:00000150:  errmsg("index "%s" contains corrupted page at block %u", 
- haai: hashutil:00000151:  RelationGetRelationName(rel), 
- haai: hashutil:00000152:  BufferGetBlockNumber(buf)), 
- haai: hashutil:00000153:  errhint("Please REINDEX it."))); 
- haai: hashutil:00000164:  ereport(ERROR, 
- haai: hashutil:00000165:  (errcode(ERRCODE_INDEX_CORRUPTED), 
- haai: hashutil:00000166:  errmsg("index "%s" is not a hash index", 
- haai: hashutil:00000167:  RelationGetRelationName(rel)))); 
- haai: hashutil:00000170:  ereport(ERROR, 
- haai: hashutil:00000171:  (errcode(ERRCODE_INDEX_CORRUPTED), 
- haai: hashutil:00000172:  errmsg("index "%s" has wrong hash version", 
- haai: hashutil:00000173:  RelationGetRelationName(rel)), 
- haai: hashutil:00000174:  errhint("Please REINDEX it."))); 
+ haai: hashutil:00000129:  errhint("Please REINDEX it."), 
+ haai: hashutil:00000130:  errSendAlert(true))); 
+ haai: hashutil:00000137:  ereport(ERROR, 
+ haai: hashutil:00000138:  (errcode(ERRCODE_INDEX_CORRUPTED), 
+ haai: hashutil:00000139:  errmsg("index "%s" contains corrupted page at block %u", 
+ haai: hashutil:00000140:  RelationGetRelationName(rel), 
+ haai: hashutil:00000141:  BufferGetBlockNumber(buf)), 
+ haai: hashutil:00000142:  errhint("Please REINDEX it."), 
+ haai: hashutil:00000143:  errSendAlert(true))); 
+ haai: hashutil:00000150:  ereport(ERROR, 
+ haai: hashutil:00000151:  (errcode(ERRCODE_INDEX_CORRUPTED), 
+ haai: hashutil:00000152:  errmsg("index "%s" contains corrupted page at block %u", 
+ haai: hashutil:00000153:  RelationGetRelationName(rel), 
+ haai: hashutil:00000154:  BufferGetBlockNumber(buf)), 
+ haai: hashutil:00000155:  errhint("Please REINDEX it."), 
+ haai: hashutil:00000156:  errSendAlert(true))); 
+ haai: hashutil:00000167:  ereport(ERROR, 
+ haai: hashutil:00000168:  (errcode(ERRCODE_INDEX_CORRUPTED), 
+ haai: hashutil:00000169:  errmsg("index "%s" is not a hash index", 
+ haai: hashutil:00000170:  RelationGetRelationName(rel)))); 
+ haai: hashutil:00000173:  ereport(ERROR, 
+ haai: hashutil:00000174:  (errcode(ERRCODE_INDEX_CORRUPTED), 
+ haai: hashutil:00000175:  errmsg("index "%s" has wrong hash version", 
+ haai: hashutil:00000176:  RelationGetRelationName(rel)), 
+ haai: hashutil:00000177:  errhint("Please REINDEX it."), 
+ haai: hashutil:00000178:  errSendAlert(true))); 
  haaj: heaptuple:00000716:  ereport(ERROR, 
  haaj: heaptuple:00000717:  (errcode(ERRCODE_TOO_MANY_COLUMNS), 
  haaj: heaptuple:00000718:  errmsg("number of columns (%d) exceeds limit (%d)", 
@@ -8717,7 +8742,8 @@ select * from get_ereport order by 1;
  naah: nbtpage:00000445:  errmsg("index "%s" contains corrupted page at block %u", 
  naah: nbtpage:00000446:  RelationGetRelationName(rel), 
  naah: nbtpage:00000447:  BufferGetBlockNumber(buf)), 
- naah: nbtpage:00000448:  errhint("Please REINDEX it."))); 
+ naah: nbtpage:00000448:  errhint("Please REINDEX it."), 
+ naah: nbtpage:00000449:  errSendAlert(true))); 
  naah: nbtsort:00000515:  ereport(ERROR, 
  naah: nbtsort:00000516:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
  naah: nbtsort:00000517:  errmsg("index row size %lu exceeds btree maximum, %lu", 
@@ -10287,35 +10313,35 @@ select * from get_ereport order by 1;
  paah: plxgram:00004389:  (errcode(ERRCODE_SYNTAX_ERROR), 
  paah: plxgram:00004390:  errmsg("end label "%s" differs from block's label "%s"", 
  paah: plxgram:00004391:  end_label, start_label))); 
- paah: plxscan:00000858: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
- paah: plxscan:00000859:  
- paah: plxscan:00000860: #define unify_version(a,b,c) ((a<<16)+(b<<8)+c) 
- paah: plxscan:00000861: #if unify_version(YY_FLEX_MAJOR_VERSION,YY_FLEX_MINOR_VERSION,YY_FLEX_SUBMINOR_VERSION) < unify_version(2,5,35) 
- paah: plxscan:00000862: int plpgsql_base_yyget_lineno (void); 
- paah: plxscan:00001587:  ereport(ERROR, 
- paah: plxscan:00001588:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001589:  errmsg("unterminated quoted identifier"))); 
- paah: plxscan:00001638:  ereport(ERROR, 
- paah: plxscan:00001639:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001640:  errmsg("unterminated comment"))); 
- paah: plxscan:00001708:  ereport(ERROR, 
- paah: plxscan:00001709:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001710:  errmsg("unterminated string"))); 
- paah: plxscan:00001764:  ereport(ERROR, 
- paah: plxscan:00001765:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001766:  errmsg("unterminated dollar-quoted string"))); 
- paah: plxscan:00002784:  ereport(ERROR, 
- paah: plxscan:00002785:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxscan:00002786:  /* translator: %s is typically "syntax error" */ 
- paah: plxscan:00002787:  errmsg("%s at end of input", message), 
- paah: plxscan:00002788:  internalerrposition(cursorpos), 
- paah: plxscan:00002789:  internalerrquery(scanstr))); 
- paah: plxscan:00002793:  ereport(ERROR, 
- paah: plxscan:00002794:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxscan:00002795:  /* translator: first %s is typically "syntax error" */ 
- paah: plxscan:00002796:  errmsg("%s at or near "%s"", message, loc), 
- paah: plxscan:00002797:  internalerrposition(cursorpos), 
- paah: plxscan:00002798:  internalerrquery(scanstr))); 
+ paah: plxscan:00001161: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
+ paah: plxscan:00001162:  
+ paah: plxscan:00001163: #define unify_version(a,b,c) ((a<<16)+(b<<8)+c) 
+ paah: plxscan:00001164: #if unify_version(YY_FLEX_MAJOR_VERSION,YY_FLEX_MINOR_VERSION,YY_FLEX_SUBMINOR_VERSION) < unify_version(2,5,35) 
+ paah: plxscan:00001165: int plpgsql_base_yyget_lineno (void); 
+ paah: plxscan:00001919:  ereport(ERROR, 
+ paah: plxscan:00001920:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00001921:  errmsg("unterminated quoted identifier"))); 
+ paah: plxscan:00001970:  ereport(ERROR, 
+ paah: plxscan:00001971:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00001972:  errmsg("unterminated comment"))); 
+ paah: plxscan:00002040:  ereport(ERROR, 
+ paah: plxscan:00002041:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00002042:  errmsg("unterminated string"))); 
+ paah: plxscan:00002096:  ereport(ERROR, 
+ paah: plxscan:00002097:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00002098:  errmsg("unterminated dollar-quoted string"))); 
+ paah: plxscan:00003128:  ereport(ERROR, 
+ paah: plxscan:00003129:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxscan:00003130:  /* translator: %s is typically "syntax error" */ 
+ paah: plxscan:00003131:  errmsg("%s at end of input", message), 
+ paah: plxscan:00003132:  internalerrposition(cursorpos), 
+ paah: plxscan:00003133:  internalerrquery(scanstr))); 
+ paah: plxscan:00003137:  ereport(ERROR, 
+ paah: plxscan:00003138:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxscan:00003139:  /* translator: first %s is typically "syntax error" */ 
+ paah: plxscan:00003140:  errmsg("%s at or near "%s"", message, loc), 
+ paah: plxscan:00003141:  internalerrposition(cursorpos), 
+ paah: plxscan:00003142:  internalerrquery(scanstr))); 
  paah: prepare:00000078:  ereport(ERROR, 
  paah: prepare:00000079:  (errcode(ERRCODE_INVALID_PSTATEMENT_DEFINITION), 
  paah: prepare:00000080:  errmsg("invalid statement name: must not be empty"))); 
@@ -10984,74 +11010,74 @@ select * from get_ereport order by 1;
  paba: parsexexpr:00001578:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
  paba: parsexexpr:00001579:  errmsg("could not find array type for data type %s", 
  paba: parsexexpr:00001580:  format_type_be(array_type)))); 
- paba: parsexexpr:00001968:  ereport(ERROR, 
- paba: parsexexpr:00001969:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- paba: parsexexpr:00001970:  errmsg("could not find array type for data type %s", 
- paba: parsexexpr:00001971:  format_type_be(exprType((Node *) tent->expr))))); 
- paba: parsexexpr:00002000:  ereport(ERROR, 
- paba: parsexexpr:00002001:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- paba: parsexexpr:00002002:  errmsg("could not find array type for data type %s", 
- paba: parsexexpr:00002003:  format_type_be(itemtype)))); 
- paba: parsexexpr:00002409:  ereport(ERROR, 
- paba: parsexexpr:00002410:  (errcode(ERRCODE_CANNOT_COERCE), 
- paba: parsexexpr:00002411:  errmsg("cannot cast type %s to %s", 
- paba: parsexexpr:00002412:  format_type_be(inputType), 
- paba: parsexexpr:00002413:  format_type_be(targetType)), 
- paba: parsexexpr:00002414:  errOmitLocation(true), 
- paba: parsexexpr:00002415:  parser_errposition(pstate, typname->location))); 
- paba: parsexexpr:00002451:  ereport(ERROR, 
- paba: parsexexpr:00002452:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paba: parsexexpr:00002453:  errmsg("unequal number of entries in row expressions"), 
- paba: parsexexpr:00002454:  errOmitLocation(true), 
- paba: parsexexpr:00002455:  parser_errposition(pstate, location))); 
- paba: parsexexpr:00002462:  ereport(ERROR, 
- paba: parsexexpr:00002463:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- paba: parsexexpr:00002464:  errmsg("cannot compare rows of zero length"), 
- paba: parsexexpr:00002465:  errOmitLocation(true), 
- paba: parsexexpr:00002466:  parser_errposition(pstate, location))); 
- paba: parsexexpr:00002488:  ereport(ERROR, 
- paba: parsexexpr:00002489:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paba: parsexexpr:00002490:  errmsg("row comparison operator must yield type boolean, " 
- paba: parsexexpr:00002491:  "not type %s", 
- paba: parsexexpr:00002492:  format_type_be(cmp->opresulttype)), 
- paba: parsexexpr:00002493:  errOmitLocation(true), 
- paba: parsexexpr:00002494:  parser_errposition(pstate, location))); 
- paba: parsexexpr:00002496:  ereport(ERROR, 
- paba: parsexexpr:00002497:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paba: parsexexpr:00002498:  errmsg("row comparison operator must not return a set"), 
- paba: parsexexpr:00002499:  errOmitLocation(true), 
- paba: parsexexpr:00002500:  parser_errposition(pstate, location))); 
- paba: parsexexpr:00002550:  ereport(ERROR, 
- paba: parsexexpr:00002551:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- paba: parsexexpr:00002552:  errmsg("could not determine interpretation of row comparison operator %s", 
- paba: parsexexpr:00002553:  strVal(llast(opname))), 
- paba: parsexexpr:00002554:  errhint("Row comparison operators must be associated with btree operator classes."), 
- paba: parsexexpr:00002555:  errOmitLocation(true), 
- paba: parsexexpr:00002556:  parser_errposition(pstate, location))); 
- paba: parsexexpr:00002600:  ereport(ERROR, 
- paba: parsexexpr:00002601:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- paba: parsexexpr:00002602:  errmsg("could not determine interpretation of row comparison operator %s", 
- paba: parsexexpr:00002603:  strVal(llast(opname))), 
- paba: parsexexpr:00002604:  errdetail("There are multiple equally-plausible candidates."), 
- paba: parsexexpr:00002605:  errOmitLocation(true), 
- paba: parsexexpr:00002606:  parser_errposition(pstate, location))); 
- paba: parsexexpr:00002653:  ereport(ERROR, 
- paba: parsexexpr:00002654:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- paba: parsexexpr:00002655:  errmsg("could not determine interpretation of row comparison operator %s", 
- paba: parsexexpr:00002656:  strVal(llast(opname))), 
- paba: parsexexpr:00002657:  errdetail("There are multiple equally-plausible candidates."), 
- paba: parsexexpr:00002658:  errOmitLocation(true), 
- paba: parsexexpr:00002659:  parser_errposition(pstate, location))); 
- paba: parsexexpr:00002707:  ereport(ERROR, 
- paba: parsexexpr:00002708:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paba: parsexexpr:00002709:  errmsg("unequal number of entries in row expressions"), 
- paba: parsexexpr:00002710:  errOmitLocation(true), 
- paba: parsexexpr:00002711:  parser_errposition(pstate, location))); 
- paba: parsexexpr:00002747:  ereport(ERROR, 
- paba: parsexexpr:00002748:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paba: parsexexpr:00002749:  errmsg("IS DISTINCT FROM requires = operator to yield boolean"), 
- paba: parsexexpr:00002750:  errOmitLocation(true), 
- paba: parsexexpr:00002751:  parser_errposition(pstate, location))); 
+ paba: parsexexpr:00001963:  ereport(ERROR, 
+ paba: parsexexpr:00001964:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ paba: parsexexpr:00001965:  errmsg("could not find array type for data type %s", 
+ paba: parsexexpr:00001966:  format_type_be(exprType((Node *) tent->expr))))); 
+ paba: parsexexpr:00001995:  ereport(ERROR, 
+ paba: parsexexpr:00001996:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ paba: parsexexpr:00001997:  errmsg("could not find array type for data type %s", 
+ paba: parsexexpr:00001998:  format_type_be(itemtype)))); 
+ paba: parsexexpr:00002404:  ereport(ERROR, 
+ paba: parsexexpr:00002405:  (errcode(ERRCODE_CANNOT_COERCE), 
+ paba: parsexexpr:00002406:  errmsg("cannot cast type %s to %s", 
+ paba: parsexexpr:00002407:  format_type_be(inputType), 
+ paba: parsexexpr:00002408:  format_type_be(targetType)), 
+ paba: parsexexpr:00002409:  errOmitLocation(true), 
+ paba: parsexexpr:00002410:  parser_errposition(pstate, typname->location))); 
+ paba: parsexexpr:00002446:  ereport(ERROR, 
+ paba: parsexexpr:00002447:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paba: parsexexpr:00002448:  errmsg("unequal number of entries in row expressions"), 
+ paba: parsexexpr:00002449:  errOmitLocation(true), 
+ paba: parsexexpr:00002450:  parser_errposition(pstate, location))); 
+ paba: parsexexpr:00002457:  ereport(ERROR, 
+ paba: parsexexpr:00002458:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ paba: parsexexpr:00002459:  errmsg("cannot compare rows of zero length"), 
+ paba: parsexexpr:00002460:  errOmitLocation(true), 
+ paba: parsexexpr:00002461:  parser_errposition(pstate, location))); 
+ paba: parsexexpr:00002483:  ereport(ERROR, 
+ paba: parsexexpr:00002484:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paba: parsexexpr:00002485:  errmsg("row comparison operator must yield type boolean, " 
+ paba: parsexexpr:00002486:  "not type %s", 
+ paba: parsexexpr:00002487:  format_type_be(cmp->opresulttype)), 
+ paba: parsexexpr:00002488:  errOmitLocation(true), 
+ paba: parsexexpr:00002489:  parser_errposition(pstate, location))); 
+ paba: parsexexpr:00002491:  ereport(ERROR, 
+ paba: parsexexpr:00002492:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paba: parsexexpr:00002493:  errmsg("row comparison operator must not return a set"), 
+ paba: parsexexpr:00002494:  errOmitLocation(true), 
+ paba: parsexexpr:00002495:  parser_errposition(pstate, location))); 
+ paba: parsexexpr:00002545:  ereport(ERROR, 
+ paba: parsexexpr:00002546:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ paba: parsexexpr:00002547:  errmsg("could not determine interpretation of row comparison operator %s", 
+ paba: parsexexpr:00002548:  strVal(llast(opname))), 
+ paba: parsexexpr:00002549:  errhint("Row comparison operators must be associated with btree operator classes."), 
+ paba: parsexexpr:00002550:  errOmitLocation(true), 
+ paba: parsexexpr:00002551:  parser_errposition(pstate, location))); 
+ paba: parsexexpr:00002595:  ereport(ERROR, 
+ paba: parsexexpr:00002596:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ paba: parsexexpr:00002597:  errmsg("could not determine interpretation of row comparison operator %s", 
+ paba: parsexexpr:00002598:  strVal(llast(opname))), 
+ paba: parsexexpr:00002599:  errdetail("There are multiple equally-plausible candidates."), 
+ paba: parsexexpr:00002600:  errOmitLocation(true), 
+ paba: parsexexpr:00002601:  parser_errposition(pstate, location))); 
+ paba: parsexexpr:00002648:  ereport(ERROR, 
+ paba: parsexexpr:00002649:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ paba: parsexexpr:00002650:  errmsg("could not determine interpretation of row comparison operator %s", 
+ paba: parsexexpr:00002651:  strVal(llast(opname))), 
+ paba: parsexexpr:00002652:  errdetail("There are multiple equally-plausible candidates."), 
+ paba: parsexexpr:00002653:  errOmitLocation(true), 
+ paba: parsexexpr:00002654:  parser_errposition(pstate, location))); 
+ paba: parsexexpr:00002702:  ereport(ERROR, 
+ paba: parsexexpr:00002703:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paba: parsexexpr:00002704:  errmsg("unequal number of entries in row expressions"), 
+ paba: parsexexpr:00002705:  errOmitLocation(true), 
+ paba: parsexexpr:00002706:  parser_errposition(pstate, location))); 
+ paba: parsexexpr:00002742:  ereport(ERROR, 
+ paba: parsexexpr:00002743:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paba: parsexexpr:00002744:  errmsg("IS DISTINCT FROM requires = operator to yield boolean"), 
+ paba: parsexexpr:00002745:  errOmitLocation(true), 
+ paba: parsexexpr:00002746:  parser_errposition(pstate, location))); 
  paba: parsexfunc:00000090:  ereport(ERROR, 
  paba: parsexfunc:00000091:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
  paba: parsexfunc:00000092:  errmsg("cannot pass more than %d arguments to a function", 
@@ -13483,55 +13509,55 @@ select * from get_ereport order by 1;
  saad: spi:00002026:  (errcode(ERRCODE_WARNING), 
  saad: spi:00002027:  errmsg("A stable or volatile function is used as if it is immutable"), 
  saad: spi:00002028:  errhint("The function should be declared as stable or volatile in create function statement."))); 
- saae: scan:00014199: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
- saae: scan:00014200:  
- saae: scan:00014201: static int xcdepth = 0; /* depth of nesting in slash-star comments */ 
- saae: scan:00014202: static char *dolqstart; /* current $foo$ quote start string */ 
- saae: scan:00014203:  
- saae: scan:00014204: /* 
- saae: scan:00014205:  * GUC variables. This is a DIRECT violation of the warning given at the 
- saae: scan:00014206:  * head of gram.y, ie flex/bison code must not depend on any GUC variables; 
- saae: scan:00014827:  ereport(ERROR, 
- saae: scan:00014828:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- saae: scan:00014829:  errmsg("unsafe use of string constant with Unicode escapes"), 
- saae: scan:00014830:  errdetail("String constants with Unicode escapes cannot be used when standard_conforming_strings is off."), 
- saae: scan:00014831:  lexer_errposition())); 
- saae: scan:00014911:  ereport(ERROR, 
- saae: scan:00014912:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00014913:  errmsg("unsafe use of \' in a string literal"), 
- saae: scan:00014914:  errhint("Use '' to write quotes in strings. \' is insecure in client-only encodings."), 
- saae: scan:00014915:  errOmitLocation(true), 
- saae: scan:00014916:  lexer_errposition())); 
- saae: scan:00016337:  ereport(ERROR, 
- saae: scan:00016338:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saae: scan:00016339:  /* translator: %s is typically the translation of "syntax error" */ 
- saae: scan:00016340:  errmsg("%s at end of input", _(message)), 
- saae: scan:00016341:  errOmitLocation(true), 
- saae: scan:00016342:  lexer_errposition())); 
- saae: scan:00016346:  ereport(ERROR, 
- saae: scan:00016347:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saae: scan:00016348:  /* translator: first %s is typically the translation of "syntax error" */ 
- saae: scan:00016349:  errmsg("%s at or near "%s"", _(message), loc), 
- saae: scan:00016350:  errOmitLocation(true), 
- saae: scan:00016351:  lexer_errposition())); 
- saae: scan:00016577:  ereport(WARNING, 
- saae: scan:00016578:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00016579:  errmsg("nonstandard use of \' in a string literal"), 
- saae: scan:00016580:  errhint("Use '' to write quotes in strings, or use the escape string syntax (E'...')."), 
- saae: scan:00016581:  errOmitLocation(true), 
- saae: scan:00016582:  lexer_errposition())); 
- saae: scan:00016588:  ereport(WARNING, 
- saae: scan:00016589:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00016590:  errmsg("nonstandard use of \\ in a string literal"), 
- saae: scan:00016591:  errhint("Use the escape string syntax for backslashes, e.g., E'\\'."), 
- saae: scan:00016592:  errOmitLocation(true), 
- saae: scan:00016593:  lexer_errposition())); 
- saae: scan:00016604:  ereport(WARNING, 
- saae: scan:00016605:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00016606:  errmsg("nonstandard use of escape in a string literal"), 
- saae: scan:00016607:  errhint("Use the escape string syntax for escapes, e.g., E'\r\n'."), 
- saae: scan:00016608:  errOmitLocation(true), 
- saae: scan:00016609:  lexer_errposition())); 
+ saae: scan:00014214: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
+ saae: scan:00014215:  
+ saae: scan:00014216: static int xcdepth = 0; /* depth of nesting in slash-star comments */ 
+ saae: scan:00014217: static char *dolqstart; /* current $foo$ quote start string */ 
+ saae: scan:00014218:  
+ saae: scan:00014219: /* 
+ saae: scan:00014220:  * GUC variables. This is a DIRECT violation of the warning given at the 
+ saae: scan:00014221:  * head of gram.y, ie flex/bison code must not depend on any GUC variables; 
+ saae: scan:00014871:  ereport(ERROR, 
+ saae: scan:00014872:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ saae: scan:00014873:  errmsg("unsafe use of string constant with Unicode escapes"), 
+ saae: scan:00014874:  errdetail("String constants with Unicode escapes cannot be used when standard_conforming_strings is off."), 
+ saae: scan:00014875:  lexer_errposition())); 
+ saae: scan:00014955:  ereport(ERROR, 
+ saae: scan:00014956:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00014957:  errmsg("unsafe use of \' in a string literal"), 
+ saae: scan:00014958:  errhint("Use '' to write quotes in strings. \' is insecure in client-only encodings."), 
+ saae: scan:00014959:  errOmitLocation(true), 
+ saae: scan:00014960:  lexer_errposition())); 
+ saae: scan:00016393:  ereport(ERROR, 
+ saae: scan:00016394:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saae: scan:00016395:  /* translator: %s is typically the translation of "syntax error" */ 
+ saae: scan:00016396:  errmsg("%s at end of input", _(message)), 
+ saae: scan:00016397:  errOmitLocation(true), 
+ saae: scan:00016398:  lexer_errposition())); 
+ saae: scan:00016402:  ereport(ERROR, 
+ saae: scan:00016403:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saae: scan:00016404:  /* translator: first %s is typically the translation of "syntax error" */ 
+ saae: scan:00016405:  errmsg("%s at or near "%s"", _(message), loc), 
+ saae: scan:00016406:  errOmitLocation(true), 
+ saae: scan:00016407:  lexer_errposition())); 
+ saae: scan:00016633:  ereport(WARNING, 
+ saae: scan:00016634:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00016635:  errmsg("nonstandard use of \' in a string literal"), 
+ saae: scan:00016636:  errhint("Use '' to write quotes in strings, or use the escape string syntax (E'...')."), 
+ saae: scan:00016637:  errOmitLocation(true), 
+ saae: scan:00016638:  lexer_errposition())); 
+ saae: scan:00016644:  ereport(WARNING, 
+ saae: scan:00016645:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00016646:  errmsg("nonstandard use of \\ in a string literal"), 
+ saae: scan:00016647:  errhint("Use the escape string syntax for backslashes, e.g., E'\\'."), 
+ saae: scan:00016648:  errOmitLocation(true), 
+ saae: scan:00016649:  lexer_errposition())); 
+ saae: scan:00016660:  ereport(WARNING, 
+ saae: scan:00016661:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00016662:  errmsg("nonstandard use of escape in a string literal"), 
+ saae: scan:00016663:  errhint("Use the escape string syntax for escapes, e.g., E'\r\n'."), 
+ saae: scan:00016664:  errOmitLocation(true), 
+ saae: scan:00016665:  lexer_errposition())); 
  saae: slru:00000783:  ereport(ERROR, 
  saae: slru:00000784:  (errcode_for_file_access(), 
  saae: slru:00000785:  errmsg("could not access status of transaction %u", xid), 
@@ -14346,30 +14372,31 @@ select * from get_ereport order by 1;
  taai: twophase:00001250:  ereport(ERROR, 
  taai: twophase:00001251:  (errcode(ERRCODE_DATA_CORRUPTED), 
  taai: twophase:00001252:  errmsg("two-phase state file for transaction %u is corrupt", 
- taai: twophase:00001253:  xid))); 
- taai: twophase:00001394:  ereport(WARNING, 
- taai: twophase:00001395:  (errcode_for_file_access(), 
- taai: twophase:00001396:  errmsg("could not remove two-phase state file "%s": %m", 
- taai: twophase:00001397:  path))); 
- taai: twophase:00001538:  ereport(ERROR, 
- taai: twophase:00001539:  (errcode_for_file_access(), 
- taai: twophase:00001540:  errmsg("could not open two-phase state file "%s": %m", 
- taai: twophase:00001541:  path))); 
- taai: twophase:00001602:  ereport(WARNING, 
- taai: twophase:00001603:  (errmsg("removing future two-phase state file "%s"", 
- taai: twophase:00001604:  clde->d_name))); 
- taai: twophase:00001618:  ereport(WARNING, 
- taai: twophase:00001619:  (errmsg("removing corrupt two-phase state file "%s"", 
- taai: twophase:00001620:  clde->d_name))); 
- taai: twophase:00001629:  ereport(WARNING, 
- taai: twophase:00001630:  (errmsg("removing corrupt two-phase state file "%s"", 
- taai: twophase:00001631:  clde->d_name))); 
- taai: twophase:00001713:  ereport(WARNING, 
- taai: twophase:00001714:  (errmsg("removing stale two-phase state file "%s"", 
- taai: twophase:00001715:  clde->d_name))); 
- taai: twophase:00001724:  ereport(WARNING, 
- taai: twophase:00001725:  (errmsg("removing corrupt two-phase state file "%s"", 
- taai: twophase:00001726:  clde->d_name))); 
+ taai: twophase:00001253:  xid), 
+ taai: twophase:00001254:  errSendAlert(true))); 
+ taai: twophase:00001395:  ereport(WARNING, 
+ taai: twophase:00001396:  (errcode_for_file_access(), 
+ taai: twophase:00001397:  errmsg("could not remove two-phase state file "%s": %m", 
+ taai: twophase:00001398:  path))); 
+ taai: twophase:00001539:  ereport(ERROR, 
+ taai: twophase:00001540:  (errcode_for_file_access(), 
+ taai: twophase:00001541:  errmsg("could not open two-phase state file "%s": %m", 
+ taai: twophase:00001542:  path))); 
+ taai: twophase:00001603:  ereport(WARNING, 
+ taai: twophase:00001604:  (errmsg("removing future two-phase state file "%s"", 
+ taai: twophase:00001605:  clde->d_name))); 
+ taai: twophase:00001619:  ereport(WARNING, 
+ taai: twophase:00001620:  (errmsg("removing corrupt two-phase state file "%s"", 
+ taai: twophase:00001621:  clde->d_name))); 
+ taai: twophase:00001630:  ereport(WARNING, 
+ taai: twophase:00001631:  (errmsg("removing corrupt two-phase state file "%s"", 
+ taai: twophase:00001632:  clde->d_name))); 
+ taai: twophase:00001714:  ereport(WARNING, 
+ taai: twophase:00001715:  (errmsg("removing stale two-phase state file "%s"", 
+ taai: twophase:00001716:  clde->d_name))); 
+ taai: twophase:00001725:  ereport(WARNING, 
+ taai: twophase:00001726:  (errmsg("removing corrupt two-phase state file "%s"", 
+ taai: twophase:00001727:  clde->d_name))); 
  taai: typcache:00000143:  ereport(ERROR, 
  taai: typcache:00000144:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
  taai: typcache:00000145:  errmsg("type "%s" is only a shell", 
@@ -17871,135 +17898,135 @@ select * from get_ereport order by 1;
  xaae: xlog:00005678:  RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE))); 
  xaae: xlog:00005926:  ereport(FATAL, 
  xaae: xlog:00005927:  (errmsg("control file contains invalid data"))); 
- xaae: xlog:00005988:  ereport(FATAL, 
- xaae: xlog:00005989:  (errmsg("requested timeline %u is not a child of database system timeline %u", 
- xaae: xlog:00005990:  recoveryTargetTLI, 
- xaae: xlog:00005991:  ControlFile->checkPointCopy.ThisTimeLineID))); 
- xaae: xlog:00006181:  ereport(FATAL, 
- xaae: xlog:00006182:  (errcode_for_file_access(), 
- xaae: xlog:00006183:  errmsg("could not rename file "%s" to "%s": %m", 
- xaae: xlog:00006184:  BACKUP_LABEL_FILE, BACKUP_LABEL_OLD))); 
- xaae: xlog:00006341:  ereport(FATAL, 
- xaae: xlog:00006342:  (errmsg("requested recovery stop point is before end time of backup dump"))); 
- xaae: xlog:00006344:  ereport(FATAL, 
- xaae: xlog:00006345:  (errmsg("WAL ends before end time of backup dump"))); 
- xaae: xlog:00006561:  ereport(ERROR, 
- xaae: xlog:00006562:  (errcode_for_file_access(), 
- xaae: xlog:00006563:  errmsg("could not create redo relation file "%s"", 
- xaae: xlog:00006564:  path))); 
- xaae: xlog:00006582:  ereport(ERROR, 
- xaae: xlog:00006583:  (errcode_for_file_access(), 
- xaae: xlog:00006584:  errmsg("could not open redo relation file "%s"", 
- xaae: xlog:00006585:  path))); 
- xaae: xlog:00006599:  ereport(ERROR, 
- xaae: xlog:00006600:  (errcode_for_file_access(), 
- xaae: xlog:00006601:  errmsg("could not unlink redo relation file "%s": %m", path))); 
- xaae: xlog:00006628:  ereport(FATAL, 
- xaae: xlog:00006629:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
- xaae: xlog:00006754:  ereport(FATAL, 
- xaae: xlog:00006755:  (errmsg("%s: control file contains invalid data", callerStr))); 
- xaae: xlog:00006801:  ereport(ERROR, 
- xaae: xlog:00006802:  (errmsg("%s: could not locate a valid checkpoint record", callerStr))); 
- xaae: xlog:00006819:  ereport(ERROR, 
- xaae: xlog:00006820:  (errmsg("%s: invalid redo in checkpoint record", callerStr))); 
- xaae: xlog:00006829:  ereport(ERROR, 
- xaae: xlog:00006830:  (errmsg("%s: first redo record before checkpoint not found at %s", 
- xaae: xlog:00006831:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
- xaae: xlog:00008138:  ereport(ERROR, 
- xaae: xlog:00008139:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- xaae: xlog:00008140:  (errmsg("must be superuser to run a backup")))); 
- xaae: xlog:00008143:  ereport(ERROR, 
- xaae: xlog:00008144:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008145:  (errmsg("WAL archiving is not active"), 
- xaae: xlog:00008146:  (errhint("archive_command must be defined before " 
- xaae: xlog:00008147:  "online backups can be made safely."))))); 
- xaae: xlog:00008173:  ereport(ERROR, 
- xaae: xlog:00008174:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008175:  errmsg("a backup is already in progress"), 
- xaae: xlog:00008176:  errhint("Run pg_stop_backup() and try again."))); 
- xaae: xlog:00008221:  ereport(ERROR, 
- xaae: xlog:00008222:  (errcode_for_file_access(), 
- xaae: xlog:00008223:  errmsg("could not stat file "%s": %m", 
- xaae: xlog:00008224:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008227:  ereport(ERROR, 
- xaae: xlog:00008228:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008229:  errmsg("a backup is already in progress"), 
- xaae: xlog:00008230:  errhint("If you're sure there is no backup in progress, remove file "%s" and try again.", 
- xaae: xlog:00008231:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008238:  ereport(ERROR, 
- xaae: xlog:00008239:  (errcode_for_file_access(), 
- xaae: xlog:00008240:  errmsg("could not create file "%s": %m", 
- xaae: xlog:00008241:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008249:  ereport(ERROR, 
- xaae: xlog:00008250:  (errcode_for_file_access(), 
- xaae: xlog:00008251:  errmsg("could not write file "%s": %m", 
- xaae: xlog:00008252:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008304:  ereport(ERROR, 
- xaae: xlog:00008305:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- xaae: xlog:00008306:  (errmsg("must be superuser to run a backup")))); 
- xaae: xlog:00008338:  ereport(ERROR, 
- xaae: xlog:00008339:  (errcode_for_file_access(), 
- xaae: xlog:00008340:  errmsg("could not read file "%s": %m", 
- xaae: xlog:00008341:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008342:  ereport(ERROR, 
- xaae: xlog:00008343:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008344:  errmsg("a backup is not in progress"))); 
- xaae: xlog:00008354:  ereport(ERROR, 
- xaae: xlog:00008355:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008356:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
- xaae: xlog:00008366:  ereport(ERROR, 
- xaae: xlog:00008367:  (errcode_for_file_access(), 
- xaae: xlog:00008368:  errmsg("could not create file "%s": %m", 
- xaae: xlog:00008369:  histfilepath))); 
- xaae: xlog:00008379:  ereport(ERROR, 
- xaae: xlog:00008380:  (errcode_for_file_access(), 
- xaae: xlog:00008381:  errmsg("could not write file "%s": %m", 
- xaae: xlog:00008382:  histfilepath))); 
- xaae: xlog:00008388:  ereport(ERROR, 
- xaae: xlog:00008389:  (errcode_for_file_access(), 
- xaae: xlog:00008390:  errmsg("could not read file "%s": %m", 
- xaae: xlog:00008391:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008393:  ereport(ERROR, 
- xaae: xlog:00008394:  (errcode_for_file_access(), 
- xaae: xlog:00008395:  errmsg("could not remove file "%s": %m", 
- xaae: xlog:00008396:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008426:  ereport(ERROR, 
- xaae: xlog:00008427:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- xaae: xlog:00008428:  (errmsg("must be superuser to switch transaction log files")))); 
- xaae: xlog:00008534:  ereport(ERROR, 
- xaae: xlog:00008535:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- xaae: xlog:00008536:  errmsg("could not parse transaction log location "%s"", 
- xaae: xlog:00008537:  locationstr))); 
- xaae: xlog:00008603:  ereport(ERROR, 
- xaae: xlog:00008604:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- xaae: xlog:00008605:  errmsg("could not parse transaction log location "%s"", 
- xaae: xlog:00008606:  locationstr))); 
- xaae: xlog:00008663:  ereport(FATAL, 
- xaae: xlog:00008664:  (errcode_for_file_access(), 
- xaae: xlog:00008665:  errmsg("could not read file "%s": %m", 
- xaae: xlog:00008666:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008678:  ereport(FATAL, 
- xaae: xlog:00008679:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008680:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
- xaae: xlog:00008684:  ereport(FATAL, 
- xaae: xlog:00008685:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008686:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
- xaae: xlog:00008688:  ereport(FATAL, 
- xaae: xlog:00008689:  (errcode_for_file_access(), 
- xaae: xlog:00008690:  errmsg("could not read file "%s": %m", 
- xaae: xlog:00008691:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008715:  ereport(FATAL, 
- xaae: xlog:00008716:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008717:  errmsg("invalid data in file "%s"", histfilename))); 
- xaae: xlog:00008721:  ereport(FATAL, 
- xaae: xlog:00008722:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008723:  errmsg("invalid data in file "%s"", histfilename))); 
- xaae: xlog:00008726:  ereport(FATAL, 
- xaae: xlog:00008727:  (errcode_for_file_access(), 
- xaae: xlog:00008728:  errmsg("could not read file "%s": %m", 
- xaae: xlog:00008729:  histfilepath))); 
- xaae: xlog:00008983:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
- xaae: xlog:00008984:  errmsg("database 'postgres' does not exist"))); 
+ xaae: xlog:00005990:  ereport(FATAL, 
+ xaae: xlog:00005991:  (errmsg("requested timeline %u is not a child of database system timeline %u", 
+ xaae: xlog:00005992:  recoveryTargetTLI, 
+ xaae: xlog:00005993:  ControlFile->checkPointCopy.ThisTimeLineID))); 
+ xaae: xlog:00006183:  ereport(FATAL, 
+ xaae: xlog:00006184:  (errcode_for_file_access(), 
+ xaae: xlog:00006185:  errmsg("could not rename file "%s" to "%s": %m", 
+ xaae: xlog:00006186:  BACKUP_LABEL_FILE, BACKUP_LABEL_OLD))); 
+ xaae: xlog:00006343:  ereport(FATAL, 
+ xaae: xlog:00006344:  (errmsg("requested recovery stop point is before end time of backup dump"))); 
+ xaae: xlog:00006346:  ereport(FATAL, 
+ xaae: xlog:00006347:  (errmsg("WAL ends before end time of backup dump"))); 
+ xaae: xlog:00006563:  ereport(ERROR, 
+ xaae: xlog:00006564:  (errcode_for_file_access(), 
+ xaae: xlog:00006565:  errmsg("could not create redo relation file "%s"", 
+ xaae: xlog:00006566:  path))); 
+ xaae: xlog:00006584:  ereport(ERROR, 
+ xaae: xlog:00006585:  (errcode_for_file_access(), 
+ xaae: xlog:00006586:  errmsg("could not open redo relation file "%s"", 
+ xaae: xlog:00006587:  path))); 
+ xaae: xlog:00006601:  ereport(ERROR, 
+ xaae: xlog:00006602:  (errcode_for_file_access(), 
+ xaae: xlog:00006603:  errmsg("could not unlink redo relation file "%s": %m", path))); 
+ xaae: xlog:00006630:  ereport(FATAL, 
+ xaae: xlog:00006631:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
+ xaae: xlog:00006756:  ereport(FATAL, 
+ xaae: xlog:00006757:  (errmsg("%s: control file contains invalid data", callerStr))); 
+ xaae: xlog:00006803:  ereport(ERROR, 
+ xaae: xlog:00006804:  (errmsg("%s: could not locate a valid checkpoint record", callerStr))); 
+ xaae: xlog:00006821:  ereport(ERROR, 
+ xaae: xlog:00006822:  (errmsg("%s: invalid redo in checkpoint record", callerStr))); 
+ xaae: xlog:00006831:  ereport(ERROR, 
+ xaae: xlog:00006832:  (errmsg("%s: first redo record before checkpoint not found at %s", 
+ xaae: xlog:00006833:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
+ xaae: xlog:00008140:  ereport(ERROR, 
+ xaae: xlog:00008141:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ xaae: xlog:00008142:  (errmsg("must be superuser to run a backup")))); 
+ xaae: xlog:00008145:  ereport(ERROR, 
+ xaae: xlog:00008146:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008147:  (errmsg("WAL archiving is not active"), 
+ xaae: xlog:00008148:  (errhint("archive_command must be defined before " 
+ xaae: xlog:00008149:  "online backups can be made safely."))))); 
+ xaae: xlog:00008175:  ereport(ERROR, 
+ xaae: xlog:00008176:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008177:  errmsg("a backup is already in progress"), 
+ xaae: xlog:00008178:  errhint("Run pg_stop_backup() and try again."))); 
+ xaae: xlog:00008223:  ereport(ERROR, 
+ xaae: xlog:00008224:  (errcode_for_file_access(), 
+ xaae: xlog:00008225:  errmsg("could not stat file "%s": %m", 
+ xaae: xlog:00008226:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008229:  ereport(ERROR, 
+ xaae: xlog:00008230:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008231:  errmsg("a backup is already in progress"), 
+ xaae: xlog:00008232:  errhint("If you're sure there is no backup in progress, remove file "%s" and try again.", 
+ xaae: xlog:00008233:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008240:  ereport(ERROR, 
+ xaae: xlog:00008241:  (errcode_for_file_access(), 
+ xaae: xlog:00008242:  errmsg("could not create file "%s": %m", 
+ xaae: xlog:00008243:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008251:  ereport(ERROR, 
+ xaae: xlog:00008252:  (errcode_for_file_access(), 
+ xaae: xlog:00008253:  errmsg("could not write file "%s": %m", 
+ xaae: xlog:00008254:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008306:  ereport(ERROR, 
+ xaae: xlog:00008307:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ xaae: xlog:00008308:  (errmsg("must be superuser to run a backup")))); 
+ xaae: xlog:00008340:  ereport(ERROR, 
+ xaae: xlog:00008341:  (errcode_for_file_access(), 
+ xaae: xlog:00008342:  errmsg("could not read file "%s": %m", 
+ xaae: xlog:00008343:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008344:  ereport(ERROR, 
+ xaae: xlog:00008345:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008346:  errmsg("a backup is not in progress"))); 
+ xaae: xlog:00008356:  ereport(ERROR, 
+ xaae: xlog:00008357:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008358:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008368:  ereport(ERROR, 
+ xaae: xlog:00008369:  (errcode_for_file_access(), 
+ xaae: xlog:00008370:  errmsg("could not create file "%s": %m", 
+ xaae: xlog:00008371:  histfilepath))); 
+ xaae: xlog:00008381:  ereport(ERROR, 
+ xaae: xlog:00008382:  (errcode_for_file_access(), 
+ xaae: xlog:00008383:  errmsg("could not write file "%s": %m", 
+ xaae: xlog:00008384:  histfilepath))); 
+ xaae: xlog:00008390:  ereport(ERROR, 
+ xaae: xlog:00008391:  (errcode_for_file_access(), 
+ xaae: xlog:00008392:  errmsg("could not read file "%s": %m", 
+ xaae: xlog:00008393:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008395:  ereport(ERROR, 
+ xaae: xlog:00008396:  (errcode_for_file_access(), 
+ xaae: xlog:00008397:  errmsg("could not remove file "%s": %m", 
+ xaae: xlog:00008398:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008428:  ereport(ERROR, 
+ xaae: xlog:00008429:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ xaae: xlog:00008430:  (errmsg("must be superuser to switch transaction log files")))); 
+ xaae: xlog:00008536:  ereport(ERROR, 
+ xaae: xlog:00008537:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ xaae: xlog:00008538:  errmsg("could not parse transaction log location "%s"", 
+ xaae: xlog:00008539:  locationstr))); 
+ xaae: xlog:00008605:  ereport(ERROR, 
+ xaae: xlog:00008606:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ xaae: xlog:00008607:  errmsg("could not parse transaction log location "%s"", 
+ xaae: xlog:00008608:  locationstr))); 
+ xaae: xlog:00008665:  ereport(FATAL, 
+ xaae: xlog:00008666:  (errcode_for_file_access(), 
+ xaae: xlog:00008667:  errmsg("could not read file "%s": %m", 
+ xaae: xlog:00008668:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008680:  ereport(FATAL, 
+ xaae: xlog:00008681:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008682:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008686:  ereport(FATAL, 
+ xaae: xlog:00008687:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008688:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008690:  ereport(FATAL, 
+ xaae: xlog:00008691:  (errcode_for_file_access(), 
+ xaae: xlog:00008692:  errmsg("could not read file "%s": %m", 
+ xaae: xlog:00008693:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008717:  ereport(FATAL, 
+ xaae: xlog:00008718:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008719:  errmsg("invalid data in file "%s"", histfilename))); 
+ xaae: xlog:00008723:  ereport(FATAL, 
+ xaae: xlog:00008724:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008725:  errmsg("invalid data in file "%s"", histfilename))); 
+ xaae: xlog:00008728:  ereport(FATAL, 
+ xaae: xlog:00008729:  (errcode_for_file_access(), 
+ xaae: xlog:00008730:  errmsg("could not read file "%s": %m", 
+ xaae: xlog:00008731:  histfilepath))); 
+ xaae: xlog:00008985:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ xaae: xlog:00008986:  errmsg("database 'postgres' does not exist"))); 
  xaah: xlogloc:00000060:  ereport(ERROR, 
  xaah: xlogloc:00000061:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000062:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
@@ -18012,6 +18039,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000076:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000077:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000078:  str))); 
-(17951 rows)
+(17978 rows)
 
 drop external table get_ereport;

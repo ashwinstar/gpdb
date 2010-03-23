@@ -728,7 +728,8 @@ void CheckPointChangeTracking(void)
 				(errcode_for_file_access(),
 				 errmsg("ERROR(filerep): no disk space for change tracking log file \"%s\", "
 						"change tracking disabled : %m", 
-						path)));	
+						path),
+				 errSendAlert(true)));
 		
 		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
 		
@@ -1384,7 +1385,8 @@ static void ChangeTracking_WriteBuffer(File file)
 				(errcode_for_file_access(),
 				 errmsg("ERROR(filerep): no disk space for change tracking log file \"%s\", "
 						"change tracking disabled : %m", 
-					   path)));	
+					   path),
+			     errSendAlert(true)));
 		
 		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
 		
@@ -1397,7 +1399,8 @@ static void ChangeTracking_WriteBuffer(File file)
 				(errcode_for_file_access(),
 				 errmsg("ERROR(filerep): unable to write change tracking log file \"%s\", "
 						"change tracking disabled : %m", 
-					   path)));
+					   path),
+			     errSendAlert(true)));
 		
 		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
 		
@@ -1461,7 +1464,8 @@ static void ChangeTracking_WriteMeta(File file)
 				(errcode_for_file_access(),
 				 errmsg("ERROR(filerep): no disk space for change tracking meta file \"%s\", "
 						"change tracking disabled : %m", 
-					   path)));	
+					   path),
+				 errSendAlert(true)));
 		
 		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
 		
@@ -1474,7 +1478,8 @@ static void ChangeTracking_WriteMeta(File file)
 				(errcode_for_file_access(),
 				 errmsg("ERROR(filerep): unable to write change tracking meta file \"%s\", "
 						"change tracking disabled : %m", 
-					   path)));
+					   path),
+			     errSendAlert(true)));
 		
 		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
 		
@@ -1512,7 +1517,8 @@ ChangeTracking_ReadMeta(File file, ChangeTrackingMetaRecord* rec)
 				(errcode_for_file_access(),
 				 errmsg("ERROR(filerep): unable to read change tracking meta file \"%s\", "
 						"change tracking disabled : %m", 
-					   path)));
+					   path),
+				 errSendAlert(true)));
 		return NULL;
 	}
 	

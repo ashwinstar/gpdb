@@ -352,7 +352,8 @@ ReadBuffer_Ex(Relation reln, BlockNumber blockNum, volatile BufferDesc* availBuf
 				ereport(ERROR,
 						(errcode(ERRCODE_DATA_CORRUPTED),
 				 errmsg("invalid page header in block %u of relation \"%s\"",
-						blockNum, RelationGetRelationName(reln))));
+						blockNum, RelationGetRelationName(reln)),
+				 errSendAlert(true)));
 		}
 	}
 
@@ -468,7 +469,8 @@ ReadBuffer_Resync(SMgrRelation reln, BlockNumber blockNum, volatile BufferDesc* 
 			ereport(ERROR,
 					(errcode(ERRCODE_DATA_CORRUPTED),
 					 errmsg("invalid page header in block %u of relation \"\"",
-							blockNum/*, relpath(reln->smgr_rnode)*/)));
+							blockNum/*, relpath(reln->smgr_rnode)*/),
+					 errSendAlert(true)));
 	}
 
 	

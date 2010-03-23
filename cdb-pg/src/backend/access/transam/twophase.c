@@ -1250,7 +1250,8 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_CORRUPTED),
 				 errmsg("two-phase state file for transaction %u is corrupt",
-						xid)));
+						xid),
+				 errSendAlert(true)));
 
 	/*
 	 * Disassemble the header area

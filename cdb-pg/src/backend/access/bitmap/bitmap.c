@@ -73,7 +73,8 @@ bmbuild(PG_FUNCTION_ARGS)
 		ereport (ERROR,
 				(errcode(ERRCODE_INDEX_CORRUPTED),
 				errmsg("index \"%s\" already contains data",
-				RelationGetRelationName(index))));
+				RelationGetRelationName(index)),
+				errSendAlert(true)));
 
 	tupDesc = RelationGetDescr(index);
 

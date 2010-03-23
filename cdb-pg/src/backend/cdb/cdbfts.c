@@ -203,7 +203,8 @@ FtsReConfigureMPP(bool create_new_gangs)
 	detectFailedConnections();
 	local_fts_statusVersion = ftsProbeInfo->fts_statusVersion;
 
-	ereport(LOG, (errmsg_internal("FTS: reconfiguration is in progress")));
+	ereport(LOG, (errmsg_internal("FTS: reconfiguration is in progress"),
+			errSendAlert(true)));
 	disconnectAndDestroyAllGangs();
 
 	/* Caller should throw an error. */
@@ -1018,7 +1019,8 @@ FtsHandleNetFailure(SegmentDatabaseDescriptor ** segDB, int numOfFailed)
 
 	FtsReConfigureMPP(true);
 
-	ereport(ERROR, (errmsg_internal("MPP detected %d segment failures, system is reconnected", numOfFailed)));
+	ereport(ERROR, (errmsg_internal("MPP detected %d segment failures, system is reconnected", numOfFailed),
+			errSendAlert(true)));
 }
 
 /*
@@ -1079,7 +1081,8 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 		{
 			if (!FtsTestConnection(segInfo, forceRescan))
 			{
-				ereport(LOG, (errmsg_internal("FTS: found bad segment with dbid %d", segInfo->dbid)));
+				ereport(LOG, (errmsg_internal("FTS: found bad segment with dbid %d", segInfo->dbid),
+						errSendAlert(true)));
 				/* probe process has already marked segment down. */
 			}
 			forceRescan = false; /* only force rescan on first call. */

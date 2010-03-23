@@ -5939,13 +5939,15 @@ StartupXLOG(void)
 		   (errmsg("database system was interrupted while in recovery at %s",
 				   str_time(ControlFile->time)),
 			errhint("This probably means that some data is corrupted and"
-					" you will have to use the last backup for recovery.")));
+					" you will have to use the last backup for recovery."),
+			errSendAlert(true)));
 	else if (ControlFile->state == DB_IN_ARCHIVE_RECOVERY)
 		ereport(LOG,
 				(errmsg("database system was interrupted while in recovery at log time %s",
 						str_time(ControlFile->checkPointCopy.time)),
 				 errhint("If this has occurred more than once some data may be corrupted"
-				" and you may need to choose an earlier recovery target.")));
+				" and you may need to choose an earlier recovery target."),
+				 errSendAlert(true)));
 	else if (ControlFile->state == DB_IN_PRODUCTION)
 		ereport(LOG,
 				(errmsg("database system was interrupted at %s",

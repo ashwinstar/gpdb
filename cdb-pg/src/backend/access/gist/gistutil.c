@@ -589,7 +589,8 @@ gistcheckpage(Relation rel, Buffer buf)
 			 errmsg("index \"%s\" contains unexpected zero page at block %u",
 					RelationGetRelationName(rel),
 					BufferGetBlockNumber(buf)),
-				 errhint("Please REINDEX it.")));
+				 errhint("Please REINDEX it."),
+				 errSendAlert(true)));
 
 	/*
 	 * Additionally check that the special area looks sane.
@@ -601,7 +602,8 @@ gistcheckpage(Relation rel, Buffer buf)
 				 errmsg("index \"%s\" contains corrupted page at block %u",
 						RelationGetRelationName(rel),
 						BufferGetBlockNumber(buf)),
-				 errhint("Please REINDEX it.")));
+				 errhint("Please REINDEX it."),
+				 errSendAlert(true)));
 }
 
 

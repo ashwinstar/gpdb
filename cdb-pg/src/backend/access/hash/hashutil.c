@@ -126,7 +126,8 @@ _hash_checkpage(Relation rel, Buffer buf, int flags)
 			 errmsg("index \"%s\" contains unexpected zero page at block %u",
 					RelationGetRelationName(rel),
 					BufferGetBlockNumber(buf)),
-				 errhint("Please REINDEX it.")));
+				 errhint("Please REINDEX it."),
+				 errSendAlert(true)));
 
 	/*
 	 * Additionally check that the special area looks sane.
@@ -138,7 +139,8 @@ _hash_checkpage(Relation rel, Buffer buf, int flags)
 				 errmsg("index \"%s\" contains corrupted page at block %u",
 						RelationGetRelationName(rel),
 						BufferGetBlockNumber(buf)),
-				 errhint("Please REINDEX it.")));
+				 errhint("Please REINDEX it."),
+				 errSendAlert(true)));
 
 	if (flags)
 	{
@@ -150,7 +152,8 @@ _hash_checkpage(Relation rel, Buffer buf, int flags)
 				   errmsg("index \"%s\" contains corrupted page at block %u",
 						  RelationGetRelationName(rel),
 						  BufferGetBlockNumber(buf)),
-					 errhint("Please REINDEX it.")));
+					 errhint("Please REINDEX it."),
+					 errSendAlert(true)));
 	}
 
 	/*
@@ -171,7 +174,8 @@ _hash_checkpage(Relation rel, Buffer buf, int flags)
 					(errcode(ERRCODE_INDEX_CORRUPTED),
 					 errmsg("index \"%s\" has wrong hash version",
 							RelationGetRelationName(rel)),
-					 errhint("Please REINDEX it.")));
+					 errhint("Please REINDEX it."),
+					 errSendAlert(true)));
 	}
 }
 

@@ -1909,11 +1909,6 @@ exprType(Node *expr)
 				if (undertype == VARCHAROID)
 					type = VARCHAROID;
 
-				/* lower and upper don't need to change from BP CHAR to VARCHAR */
-				if ((funcOid == 870 /* lower */ ||
-					 funcOid == 871 /* upper */) &&
-					undertype == BPCHAROID)
-					type = BPCHAROID;
 			}
 
 			break;

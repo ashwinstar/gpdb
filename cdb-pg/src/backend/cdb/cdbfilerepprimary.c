@@ -139,6 +139,7 @@ FileRepPrimary_IsMirroringRequired(void)
 					ereport(LOG,
 							(errmsg("LOG(filerep): failover is performed to the primary segment, "
 									"segment mirroring is suspended "),
+							 errSendAlert(true),
 							FileRep_errcontext()));
 					report = FALSE;
 				}	

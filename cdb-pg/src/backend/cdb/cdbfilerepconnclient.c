@@ -58,6 +58,7 @@ FileRepConnClient_EstablishConnection(
 						hostAddress,
 						port,
 						PQerrorMessage(conn)),
+				 errSendAlert(true),
 				 FileRep_errcontext()));
 		
 		status = STATUS_ERROR;
