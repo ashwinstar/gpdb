@@ -123,20 +123,18 @@ describeTablespaces(const char *pattern, bool verbose)
 	printfPQExpBuffer(&buf,
 					  "SELECT spcname AS \"%s\",\n"
 					  "  pg_catalog.pg_get_userbyid(spcowner) AS \"%s\",\n"
-					  "  spclocation AS \"%s\",\n"
-					  "  spcprilocations AS \"%s\",\n"
-					  "  spcmirlocations AS \"%s\"",
-					  _("Name"), _("Owner"), _("Location"),
-					  _("Primary Locations"), _("Mirror Locations"));
+					  "  fsname AS \"%s\"",
+					  _("Name"), _("Owner"), _("Filespace Name"));
 
 	if (verbose)
 		appendPQExpBuffer(&buf,
 						  ",\n  spcacl as \"%s\""
-		 ",\n  pg_catalog.shobj_description(oid, 'pg_tablespace') AS \"%s\"",
+		 ",\n  pg_catalog.shobj_description(t.oid, 'pg_tablespace') AS \"%s\"",
 						  _("Access privileges"), _("Description"));
 
 	appendPQExpBuffer(&buf,
-					  "\nFROM pg_catalog.pg_tablespace\n");
+					  "\nFROM pg_catalog.pg_tablespace t\n"
+					  "JOIN pg_catalog.pg_filespace fs on (spcfsoid=fs.oid)");
 
 	processSQLNamePattern(pset.db, &buf, pattern, false, false,
 						  NULL, "spcname", NULL,
