@@ -857,6 +857,10 @@ extern int gp_sort_max_distinct;
 
 extern bool	gp_enable_hash_partitioned_tables;
 
+/* turn SQL/MED functionality on */
+
+extern bool	gp_foreign_data_access;
+
 /* MPP-7770: disallow altering storage using SET WITH */
 
 extern bool	gp_setwith_alter_storage;

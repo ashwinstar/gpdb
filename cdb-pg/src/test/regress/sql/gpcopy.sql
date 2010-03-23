@@ -527,3 +527,40 @@ COPY copy_regression_error1 from stdin;
 \.
 
 DROP TABLE copy_regression_error1;
+
+-- ######################################################
+-- NEWLINE
+-- ######################################################
+
+CREATE TABLE copy_regression_newline(a text, b text) distributed by(a);
+
+-- positive: text
+COPY copy_regression_newline from stdin with delimiter '|' newline 'lf';
+1|1
+2|2
+\.
+
+-- positive: csv
+COPY copy_regression_newline from stdin with delimiter '|' newline 'lf' csv;
+1|1
+2|2
+\.
+
+-- negative: text
+COPY copy_regression_newline from stdin with delimiter '|' newline 'cr';
+1|1
+2|2
+\.
+
+-- negative: csv
+COPY copy_regression_newline from stdin with delimiter '|' newline 'cr' csv;
+1|1
+2|2
+\.
+
+-- negative: invalid newline
+COPY copy_regression_newline from stdin with delimiter '|' newline 'blah';
+-- negative: newline not yet supported for COPY TO
+COPY copy_regression_newline to stdout with delimiter '|' newline 'blah';
+
+DROP TABLE copy_regression_newline;

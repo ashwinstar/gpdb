@@ -226,7 +226,7 @@ PRE_RESTORE_CHECKS () {
 		LOG_MSG "[INFO]:-Use $GPRECOVERSEG utility to recover failed segment instances database" 1
 		ERROR_EXIT "[FATAL]:-Unable to continue" 2
 	fi
-	TOTAL_PRIMARY_SEGMENTS=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select count(*) from $CONFIG_TABLE where content<>-1 and preferred_role='p';"`
+	TOTAL_PRIMARY_SEGMENTS=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select count(*) from $CONFIG_TABLE as _gp_config where content<>-1 and preferred_role='p';"`
 	ERROR_CHK $? "obtain number of primary segments" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }

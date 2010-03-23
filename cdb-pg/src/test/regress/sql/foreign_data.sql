@@ -6,6 +6,7 @@
 
 -- Suppress NOTICE messages when roles don't exist
 SET client_min_messages TO 'error';
+SET gp_foreign_data_access = true;
 
 DROP ROLE IF EXISTS foreign_data_user, regress_test_role, regress_test_role2, regress_test_role_super, regress_test_indirect, unpriviled_role;
 
@@ -415,3 +416,4 @@ SELECT fdwname, fdwvalidator, fdwoptions FROM pg_foreign_data_wrapper;
 SELECT srvname, srvoptions FROM pg_foreign_server;
 SELECT * FROM pg_user_mapping;
 SELECT * FROM pg_foreign_table;
+SET gp_foreign_data_access = false;

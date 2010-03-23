@@ -38,9 +38,9 @@ typedef enum CopyDest
 typedef enum EolType
 {
 	EOL_UNKNOWN,
-	EOL_NL,
+	EOL_LF,
 	EOL_CR,
-	EOL_CRNL
+	EOL_CRLF
 } EolType;
 
 /*
@@ -117,6 +117,7 @@ typedef struct CopyStateData
 	bool		fe_copy;		/* true for all FE copy dests */
 	bool		fe_eof;			/* true if detected end of copy data */
 	EolType		eol_type;		/* EOL type of input */
+	char	   *eol_str;		/* optional NEWLINE from command. before eol_type is defined */
 	int			client_encoding;	/* remote side's character encoding */
 	bool		need_transcoding;		/* client encoding diff from server? */
 	bool		encoding_embeds_ascii;	/* ASCII can be non-first byte? */
@@ -227,7 +228,8 @@ typedef struct CopyStateData
 	/* Original row number tracking variables */
 #define COPY_METADATA_DELIM '^'
 	ErrLocType  err_loc_type;   /* see enum def for description */
-
+	bool		md_error;
+	
 	/* Error handling options */
 	CopyErrMode	errMode;
 	struct CdbSreh		*cdbsreh; /* single row error handler */
@@ -249,7 +251,8 @@ typedef CopyStateData *CopyState;
 extern void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim,
 								 char *null_print, char *quote, char *escape,
 								 List *force_quote, List *force_notnull,
-								 bool header_line, bool fill_missing, int numcols);
+								 bool header_line, bool fill_missing, char *newline,
+								 int numcols);
 extern uint64 DoCopy(const CopyStmt *stmt, const char *queryString);
 
 extern DestReceiver *CreateCopyDestReceiver(void);
@@ -267,5 +270,6 @@ extern void CopySendEndOfRow(CopyState cstate);
 extern void limit_printout_length(StringInfo buf);
 extern void truncateEol(StringInfo buf, EolType	eol_type);
 extern void setEncodingConversionProc(CopyState cstate, int client_encoding, bool iswritable);
+extern void CopyEolStrToType(CopyState cstate);
 
 #endif   /* COPY_H */

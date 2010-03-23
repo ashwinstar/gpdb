@@ -1342,6 +1342,16 @@ false
 	},
 
 	{
+		{"gp_foreign_data_access", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable SQL/MED operation."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_foreign_data_access,
+		false, NULL, NULL
+	},
+
+	{
 		{"gp_setwith_alter_storage", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Let SET WITH alter the storage options."),
 			NULL,

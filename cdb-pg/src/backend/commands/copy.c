@@ -210,7 +210,8 @@ else \
 			/* if line has embedded rownum, update the cursor to the pos right after */ \
 			Insist(cstate->err_loc_type == ROWNUM_EMBEDDED);\
 			cstate->line_buf.cursor = 0;\
-			CopyExtractRowMetaData(cstate); \
+			if(!cstate->md_error) \
+				CopyExtractRowMetaData(cstate); \
 		}\
 \
 		cstate->cdbsreh->rawdata = cstate->line_buf.data + cstate->line_buf.cursor; \
@@ -681,7 +682,8 @@ CopyGetData(CopyState cstate, void *databuf, int datasize)
 void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim,
 						char *null_print, char *quote, char *escape,
 						List *force_quote, List *force_notnull,
-						bool header_line, bool fill_missing, int num_columns)
+						bool header_line, bool fill_missing, char *newline,
+						int num_columns)
 {
 	bool	delim_off = (pg_strcasecmp(delim, "off") == 0);
 
@@ -873,6 +875,28 @@ void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				errmsg("fill missing fields only available for data loading, not unloading")));
 
+	/*
+	 * NEWLINE
+	 */
+	if (newline)
+	{
+		if (!load)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+					errmsg("newline currently available for data loading only, not unloading")));
+		}
+		else
+		{
+			if(pg_strcasecmp(newline, "lf") != 0 &&
+			   pg_strcasecmp(newline, "cr") != 0 &&
+			   pg_strcasecmp(newline, "crlf") != 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("invalid value for NEWLINE (%s)", newline),
+						errhint("valid options are: 'LF', 'CRLF', 'CR'")));
+		}
+	}
 }
 
 /*
@@ -1029,6 +1053,14 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 						 errmsg("conflicting or redundant options")));
 			cstate->fill_missing = intVal(defel->arg);
 		}
+		else if (strcmp(defel->defname, "newline") == 0)
+		{
+			if (cstate->eol_str)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			cstate->eol_str = strVal(defel->arg);
+		}
 		else
 			elog(ERROR, "option \"%s\" not recognized",
 				 defel->defname);
@@ -1037,7 +1069,7 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 	/* Set defaults */
 
 	cstate->err_loc_type = ROWNUM_ORIGINAL;
-
+	cstate->eol_type = EOL_UNKNOWN;
 	cstate->escape_off = false;
 
 	if (!cstate->delim)
@@ -1124,11 +1156,16 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 						 force_notnull,
 						 cstate->header_line,
 						 cstate->fill_missing,
+						 cstate->eol_str,
 						 0 /* pass correct value when COPY supports no delim */);
 
 	if (!pg_strcasecmp(cstate->escape, "off"))
 		cstate->escape_off = true;
 
+	/* set end of line type if NEWLINE keyword was specified */
+	if (cstate->eol_str)
+		CopyEolStrToType(cstate);
+	
 	/* Disallow file COPY except to superusers. */
 	if (!pipe && !superuser())
 		ereport(ERROR,
@@ -2403,6 +2440,13 @@ static void CopyFromCreateDispatchCommand(CopyState cstate,
 	if (!cstate->csv_mode && strcmp(cstate->escape, "\\") != 0)
 		appendStringInfo(cdbcopy_cmd, " ESCAPE AS E'%s'", cstate->escape);
 
+	/* if EOL is already defined it means that NEWLINE was declared. pass it along */
+	if (cstate->eol_type != EOL_UNKNOWN)
+	{
+		Assert(cstate->eol_str);
+		appendStringInfo(cdbcopy_cmd, " NEWLINE AS '%s'", cstate->eol_str);
+	}
+		
 	if (cstate->csv_mode)
 	{
 		appendStringInfo(cdbcopy_cmd, " CSV");
@@ -4230,7 +4274,7 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 	 * unescaped CR and 1st byte of current buffer is NL. We check for
 	 * that here.
 	 */
-	if (cstate->eol_type == EOL_CRNL)
+	if (cstate->eol_type == EOL_CRLF)
 	{
 		/* if we started scanning from the 1st byte of the buffer */
 		if (cstate->begloc == cstate->raw_buf)
@@ -4274,7 +4318,7 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 			linesize = bytesread - (cstate->begloc - cstate->raw_buf);
 			appendBinaryStringInfo(&cstate->line_buf, cstate->begloc, linesize);
 
-			if (cstate->eol_type == EOL_CRNL && cstate->line_buf.len > 1)
+			if (cstate->eol_type == EOL_CRLF && cstate->line_buf.len > 1)
 			{
 				char	   *last_ch = cstate->line_buf.data + cstate->line_buf.len - 1; /* before terminating \0 */
 
@@ -4301,7 +4345,7 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 			cstate->raw_buf_index += linesize;
 			cstate->begloc = cstate->endloc + 1;
 
-			if (cstate->eol_type == EOL_CRNL)
+			if (cstate->eol_type == EOL_CRLF)
 			{
 				/* check if there is a '\n' after the '\r' */
 				if (*(cstate->endloc + 1) == '\n')
@@ -4355,7 +4399,7 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 
 	switch (cstate->eol_type)
 	{
-		case EOL_NL:
+		case EOL_LF:
 			if (!strcmp(cstate->line_buf.data, "\\.\n"))
 				cstate->end_marker = true;
 			break;
@@ -4363,7 +4407,7 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 			if (!strcmp(cstate->line_buf.data, "\\.\r"))
 				cstate->end_marker = true;
 			break;
-		case EOL_CRNL:
+		case EOL_CRLF:
 			if (!strcmp(cstate->line_buf.data, "\\.\r\n"))
 				cstate->end_marker = true;
 			break;
@@ -4444,7 +4488,7 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 	 * unescaped CR and 1st byte of current buffer is NL. We check for
 	 * that here.
 	 */
-	if (cstate->eol_type == EOL_CRNL)
+	if (cstate->eol_type == EOL_CRLF)
 	{
 		/* if we started scanning from the 1st byte of the buffer */
 		if (cstate->begloc == cstate->raw_buf)
@@ -4495,7 +4539,7 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 
 				if (*last_ch == '\r')
 				{
-					if (cstate->eol_type == EOL_CRNL)
+					if (cstate->eol_type == EOL_CRLF)
 						cstate->cr_in_prevbuf = true;
 				}
 			}
@@ -4555,7 +4599,7 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 			else
 			{
 				/* if dos eol, check for '\n' after the '\r' */
-				if (cstate->eol_type == EOL_CRNL)
+				if (cstate->eol_type == EOL_CRLF)
 				{
 					if (*(cstate->endloc + 1) == '\n')
 					{
@@ -4611,7 +4655,7 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 
 	switch (cstate->eol_type)
 	{
-		case EOL_NL:
+		case EOL_LF:
 			if (!strcmp(cstate->line_buf.data, "\\.\n"))
 				cstate->end_marker = true;
 			break;
@@ -4619,7 +4663,7 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 			if (!strcmp(cstate->line_buf.data, "\\.\r"))
 				cstate->end_marker = true;
 			break;
-		case EOL_CRNL:
+		case EOL_CRLF:
 			if (!strcmp(cstate->line_buf.data, "\\.\r\n"))
 				cstate->end_marker = true;
 			break;
@@ -4668,7 +4712,7 @@ DetectLineEnd(CopyState cstate, size_t bytesread  __attribute__((unused)))
 	char		quotec = '\0',
 				escapec = '\0';
 	bool		csv = false;
-
+	
 	/*
 	 * CSV special case. See MPP-7819.
 	 * 
@@ -4681,6 +4725,9 @@ DetectLineEnd(CopyState cstate, size_t bytesread  __attribute__((unused)))
 	 */
 	bool save_inquote = cstate->in_quote;
 	bool save_lastwas = cstate->last_was_esc;
+
+	/* if user specified NEWLINE we should never be here */
+	Assert(!cstate->eol_str);
 
 	if (cstate->quote)					/* CSV format */
 	{
@@ -4712,7 +4759,7 @@ DetectLineEnd(CopyState cstate, size_t bytesread  __attribute__((unused)))
 			
 			if (!csv || (csv && !cstate->in_quote))
 			{
-				cstate->eol_type = EOL_NL;
+				cstate->eol_type = EOL_LF;
 				cstate->eol_ch[0] = '\n';
 				cstate->eol_ch[1] = '\0';
 
@@ -4741,7 +4788,7 @@ DetectLineEnd(CopyState cstate, size_t bytesread  __attribute__((unused)))
 			{
 				if (cstate->raw_buf[index + 1] == '\n')		/* always safe */
 				{
-					cstate->eol_type = EOL_CRNL;
+					cstate->eol_type = EOL_CRLF;
 					cstate->eol_ch[0] = '\r';
 					cstate->eol_ch[1] = '\n';
 				}
@@ -4897,7 +4944,7 @@ CopyReadAttributesText(CopyState cstate, bool *nulls,
 			m = attnum - 1;
 
 			/* don't count eol char(s) in attr and chunk len calculation */
-			if (cstate->eol_type == EOL_CRNL)
+			if (cstate->eol_type == EOL_CRLF)
 			{
 				attr_pre_len += bytes_remaining - 2;
 				chunk_len = cstate->line_buf.len - chunk_start - 2;
@@ -5111,9 +5158,9 @@ CopyReadAttributesText(CopyState cstate, bool *nulls,
 						{
 							/* no escape sequence found. it's a lone escape */
 							
-							bool next_is_eol = ((nextc == '\n' && cstate->eol_type == EOL_NL) ||
+							bool next_is_eol = ((nextc == '\n' && cstate->eol_type == EOL_LF) ||
 											    (nextc == '\r' && (cstate->eol_type == EOL_CR || 
-																   cstate->eol_type == EOL_CRNL)));
+																   cstate->eol_type == EOL_CRLF)));
 							
 							if(!next_is_eol)
 							{
@@ -5238,7 +5285,7 @@ CopyReadAttributesCSV(CopyState cstate, bool *nulls, int *attr_offsets,
 		{
 			input_len = end_cursor - start_cursor;
 
-			if (cstate->eol_type == EOL_CRNL)
+			if (cstate->eol_type == EOL_CRLF)
 			{
 				/* ignore the leftover CR */
 				input_len--;
@@ -5425,7 +5472,7 @@ CopyReadAttributesTextNoDelim(CopyState cstate, bool *nulls, int num_phys_attrs,
 	/* don't count eol char(s) in attr len calculation */
 	len = cstate->line_buf.len - 1;
 
-	if (cstate->eol_type == EOL_CRNL)
+	if (cstate->eol_type == EOL_CRLF)
 		len--;
 
 	/* check if this is a NULL value or data value (assumed NULL) */
@@ -5831,9 +5878,15 @@ CopyGetAttnums(TupleDesc tupDesc, Relation rel, List *attnamelist)
 
 #define COPY_FIND_MD_DELIM \
 md_delim = memchr(line_start, COPY_METADATA_DELIM, 32); \
-Assert(md_delim && (md_delim != line_start)); \
-value_len = md_delim - line_start + 1; \
-*md_delim = '\0';
+if(md_delim && (md_delim != line_start)) \
+{ \
+	value_len = md_delim - line_start + 1; \
+	*md_delim = '\0'; \
+} \
+else \
+{ \
+	cstate->md_error = true; \
+}	
 
 /*
  * CopyExtractRowMetaData - extract embedded row number from data.
@@ -5859,7 +5912,7 @@ static
 void CopyExtractRowMetaData(CopyState cstate)
 {
 	char *md_delim = NULL; /* position of the metadata delimiter */
-
+	
 	/*
 	 * Line_buf may have already skipped an OID column if WITH OIDS defined,
 	 * so we need to start from cursor not always from beginning of linebuf.
@@ -5867,8 +5920,23 @@ void CopyExtractRowMetaData(CopyState cstate)
 	char *line_start = cstate->line_buf.data + cstate->line_buf.cursor;
 	int  value_len = 0;
 
+	cstate->md_error = false;
+	
 	/* look for the first delimiter, and extract lineno */
 	COPY_FIND_MD_DELIM;
+	
+	/* 
+	 * make sure MD exists. that should always be the case
+	 * unless we run into an edge case - see MPP-8052. if that 
+	 * happens md_error is now set. we raise an error. 
+	 */
+	if(cstate->md_error)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 errmsg("COPY metadata not found. This probably means that there is a "
+						"mixture of newline types in the data. Use the NEWLINE keyword "
+						"in order to resolve this reliably.")));
+
 	cstate->cur_lineno = atoi(line_start);
 
 	*md_delim = COPY_METADATA_DELIM; /* restore the line_buf byte after setting it to \0 */
@@ -5918,8 +5986,11 @@ copy_in_error_callback(void *arg)
 	 * If our (copy of) linebuf has the embedded original row number and other
 	 * row-specific metadata, remove it. It is not part of the actual data, and 
 	 * should not be displayed.
+	 * 
+	 * we skip this step, however, if md_error was previously set by
+	 * CopyExtractRowMetaData. That should rarely happen, though.
 	 */
-	if(cstate->err_loc_type == ROWNUM_EMBEDDED)
+	if(cstate->err_loc_type == ROWNUM_EMBEDDED && !cstate->md_error)
 	{
 		
 		/* the following is a compacted mod of CopyExtractRowMetaData */
@@ -6175,7 +6246,7 @@ void truncateEol(StringInfo buf, EolType eol_type)
 	int one_back = buf->len - 1;
 	int two_back = buf->len - 2;
 
-	if(eol_type == EOL_CRNL)
+	if(eol_type == EOL_CRLF)
 	{
 		if(buf->len < 2)
 			return;
@@ -6212,13 +6283,13 @@ static void concatenateEol(CopyState cstate)
 {
 	switch (cstate->eol_type)
 	{
-		case EOL_NL:
+		case EOL_LF:
 			appendStringInfo(&cstate->line_buf, "\n");
 			break;
 		case EOL_CR:
 			appendStringInfo(&cstate->line_buf, "\r");
 			break;
-		case EOL_CRNL:
+		case EOL_CRLF:
 			appendStringInfo(&cstate->line_buf, "\r\n");
 			break;
 		case EOL_UNKNOWN:
@@ -6335,7 +6406,6 @@ static void CopyInitPartitioningState(EState *estate)
 static void CopyInitDataParser(CopyState cstate)
 {
 	cstate->fe_eof = false;
-	cstate->eol_type = EOL_UNKNOWN;
 	cstate->cur_relname = RelationGetRelationName(cstate->rel);
 	cstate->cur_lineno = 0;
 	cstate->cur_attname = NULL;
@@ -6489,4 +6559,32 @@ void preProcessDataLine(CopyState cstate)
 	}
 	/* indicate that line buf is in server encoding */
 	cstate->line_buf_converted = true;
+}
+
+void CopyEolStrToType(CopyState cstate)
+{
+	if (pg_strcasecmp(cstate->eol_str, "lf") == 0)
+	{
+		cstate->eol_type = EOL_LF;
+		cstate->eol_ch[0] = '\n';
+		cstate->eol_ch[1] = '\0';
+	}
+	else if (pg_strcasecmp(cstate->eol_str, "cr") == 0)
+	{
+		cstate->eol_type = EOL_CR;
+		cstate->eol_ch[0] = '\r';
+		cstate->eol_ch[1] = '\0';		
+	}
+	else if (pg_strcasecmp(cstate->eol_str, "crlf") == 0)
+	{
+		cstate->eol_type = EOL_CRLF;
+		cstate->eol_ch[0] = '\r';
+		cstate->eol_ch[1] = '\n';		
+		
+	}
+	else /* error. must have been validated in CopyValidateControlChars() ! */
+		ereport(ERROR,
+				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				 errmsg("internal error in CopySetEolType. Trying to set NEWLINE %s", 
+						 cstate->eol_str)));
 }

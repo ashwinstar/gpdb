@@ -483,3 +483,31 @@ COPY copy_regression_error1 from stdin;
 ERROR:  invalid input syntax for integer: "five"  (seg2 minithump2:50003 pid=16196)
 CONTEXT:  COPY copy_regression_error1, line 5, column b
 DROP TABLE copy_regression_error1;
+-- ######################################################
+-- NEWLINE
+-- ######################################################
+CREATE TABLE copy_regression_newline(a text, b text) distributed by(a);
+-- positive: text
+COPY copy_regression_newline from stdin with delimiter '|' newline 'lf';
+-- positive: csv
+COPY copy_regression_newline from stdin with delimiter '|' newline 'lf' csv;
+-- negative: text
+COPY copy_regression_newline from stdin with delimiter '|' newline 'cr';
+ERROR:  extra data after last expected column
+CONTEXT:  COPY copy_regression_newline, line 1: "1|1
+2|2
+"
+-- negative: csv
+COPY copy_regression_newline from stdin with delimiter '|' newline 'cr' csv;
+ERROR:  extra data after last expected column
+CONTEXT:  COPY copy_regression_newline, line 1: "1|1
+2|2
+"
+-- negative: invalid newline
+COPY copy_regression_newline from stdin with delimiter '|' newline 'blah';
+ERROR:  invalid value for NEWLINE (blah)
+HINT:  valid options are: 'LF', 'CRLF', 'CR'
+-- negative: newline not yet supported for COPY TO
+COPY copy_regression_newline to stdout with delimiter '|' newline 'blah';
+ERROR:  newline currently available for data loading only, not unloading
+DROP TABLE copy_regression_newline;

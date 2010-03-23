@@ -21960,13 +21960,14 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols,
 	char *null_print = NULL;
 	char *quote = NULL;
 	char *escape = NULL;
+	char *eol_str = NULL;
 	bool header_line = false;
 	bool csv_mode;
 	bool fill_missing = false;
 	List *force_notnull = NIL;
 	List *force_quote = NIL;
 	Size len;
-	StringInfoData fnn, fq;
+	StringInfoData fnn, fq, nl;
 
 	Assert(formattype == 'c' || formattype == 't');
 
@@ -22051,6 +22052,16 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols,
 								   errOmitLocation(true)));
 			fill_missing = intVal(defel->arg);
 		}
+		else if (strcmp(defel->defname, "newline") == 0)
+		{
+			if (eol_str)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options"),
+								   errOmitLocation(true)));
+			eol_str = strVal(defel->arg);
+		}
+
 		else
 			elog(ERROR, "option \"%s\" not recognized",
 				 defel->defname);
@@ -22119,6 +22130,12 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols,
 		}
 	}
 
+	if(eol_str)
+	{
+		initStringInfo(&nl);
+		appendStringInfo(&nl, " newline '%s'", eol_str);
+	}
+	
 	/* verify all user supplied control char combinations are legal */
 	ValidateControlChars(false,
 						 !iswritable,
@@ -22131,6 +22148,7 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols,
 						 force_notnull,
 						 header_line,
 						 fill_missing,
+						 eol_str,
 						 numcols);
 
 	/*
@@ -22151,6 +22169,7 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols,
 	len += fill_missing ? strlen(" fill missing fields") : 0;
 	len += force_notnull ? strlen(fnn.data) : 0;
 	len += force_quote ? strlen(fq.data) : 0;
+	len += (eol_str ? (1 + 7 + 1 + 1 + strlen(eol_str) + 1) : 0); /* space x 2, newline 'xx/xxxx' */
 
 	/* +1 leaves room for sprintf's trailing null */
 	format_str = (char *) palloc(len + 1);
@@ -22158,16 +22177,17 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols,
 	switch(formattype)
 	{
 		case 't':
-			sprintf((char *) format_str, "delimiter '%s' null '%s' escape '%s'%s%s",
+			sprintf((char *) format_str, "delimiter '%s' null '%s' escape '%s'%s%s%s",
 					delim, null_print, escape, (header_line ? " header":""),
-					(fill_missing ? " fill missing fields":"") );
+					(fill_missing ? " fill missing fields":""), (eol_str ?  nl.data : ""));
 			break;
 
 		case 'c':
-			sprintf((char *) format_str, "delimiter '%s' null '%s' escape '%s' quote '%s'%s%s%s%s",
+			sprintf((char *) format_str, "delimiter '%s' null '%s' escape '%s' quote '%s'%s%s%s%s%s",
 					delim, null_print, escape, quote, (header_line ? " header" : ""),
 					(fill_missing ? " fill missing fields":""),
-					(force_notnull ? fnn.data :""), (force_quote ? fq.data :""));
+					(force_notnull ? fnn.data :""), (force_quote ? fq.data :""),
+					(eol_str ?  nl.data : ""));
 			break;
 
 		default:
@@ -22178,6 +22198,11 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols,
 	/* convert c string to text datum */
 	result = DirectFunctionCall1(textin, CStringGetDatum(format_str));
 
+	/* clean up */
+	if (force_notnull) pfree(fnn.data);
+	if (force_quote) pfree(fq.data);
+	if (eol_str) pfree(nl.data);
+	
 	return result;
 
 }

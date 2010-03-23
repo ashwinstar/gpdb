@@ -56,7 +56,7 @@ static void spinOffThreads( PGconn* pConn, InputOptions* pInputOpts, const Segme
 							ThreadParmArray* pParmAr );
 static void* threadProc(void *arg);
 static bool testPartitioningSupport(void);
-static void transformPassThroughParms(InputOptions* pInputOpts);
+static bool transformPassThroughParms(InputOptions* pInputOpts);
 
 /*
  * static and extern global variables left over from pg_dump
@@ -142,8 +142,9 @@ int main( int argc, char** argv)
 	if ( !GetDumpSegmentDatabaseArray(master_db_conn, &segDBAr, inputOpts.actors, inputOpts.pszRawDumpSet, dataOnly, schemaOnly) )
 		goto cleanup;
 
-	/* make changes (if any) needed to be made before shipping options to the agents */
-	transformPassThroughParms(&inputOpts);
+	/* make changes and verifications (if any) needed to be made before shipping options to the agents */
+	if ( !transformPassThroughParms(&inputOpts))
+		goto cleanup;
 	
 	/* Start a transaction (to be released in spinOffThreads)  */
 	if ( !startTransactionAndLock(master_db_conn) )
@@ -269,6 +270,45 @@ addPassThroughLongParm( const char *Parm, const char* pszValue, char* pszPassThr
 }
 
 /*
+ * Error if any child tables were specified in an input option (-t or -T)
+ */
+static bool isChildSelected(char opt, SimpleOidList list)
+{
+	PQExpBuffer 		query = createPQExpBuffer();
+	PGresult   			*res;
+	SimpleOidListCell 	*cell;
+
+	if (list.head != NULL)
+	{
+		for (cell = list.head; cell; cell = cell->next)
+		{
+			int numtups = 0;
+			
+			appendPQExpBuffer(query, "select 1 from pg_partition_rule "
+									 "where parchildrelid ='%u'::pg_catalog.oid; ", 
+									  cell->val);
+
+			res = PQexec(g_conn, query->data);
+			check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+			numtups = PQntuples(res);
+			PQclear(res);
+			resetPQExpBuffer(query);
+
+			if (numtups == 1)
+			{
+				mpp_err_msg_cache(logError, pszProgName, "specifying child tables in -%c option is not allowed\n", opt);
+				return false;
+			}
+
+		}
+	}
+		
+	destroyPQExpBuffer(query);
+	
+	return true;
+}
+
+/*
  * Given an input option -t (include table) or -T (exclude table) check if this is
  * a parent table of a partitioned table and if it is, add its children to the list
  * as well (see MPP-7540).
@@ -315,8 +355,10 @@ static void addChildrenToPassThrough(InputOptions* pInputOpts, char opt, SimpleO
  * 
  * For now, there's only a partitioning related transformation, see addChildrenToPassThrough
  * for more information.
+ * 
+ * returns 'false' if error was reported. 'true' otherwise.
  */
-static void transformPassThroughParms(InputOptions* pInputOpts)
+static bool transformPassThroughParms(InputOptions* pInputOpts)
 {
 	
 	g_gp_supportsPartitioning = testPartitioningSupport();
@@ -326,9 +368,15 @@ static void transformPassThroughParms(InputOptions* pInputOpts)
 		/* Expand table selection patterns into OID lists */
 		convert_patterns_to_oids();
 
+		if(!isChildSelected('t', table_include_oids) ||
+		   !isChildSelected('T', table_exclude_oids))
+			return false;
+
 		addChildrenToPassThrough(pInputOpts, 't', table_include_oids);
 		addChildrenToPassThrough(pInputOpts, 'T', table_exclude_oids);
 	}
+	
+	return true;
 }
 
 /*

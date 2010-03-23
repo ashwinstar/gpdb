@@ -4,6 +4,7 @@
 -- Clean up in case a prior regression run failed
 -- Suppress NOTICE messages when roles don't exist
 SET client_min_messages TO 'error';
+SET gp_foreign_data_access = true;
 DROP ROLE IF EXISTS foreign_data_user, regress_test_role, regress_test_role2, regress_test_role_super, regress_test_indirect, unpriviled_role;
 RESET client_min_messages;
 CREATE ROLE foreign_data_user LOGIN SUPERUSER;
@@ -1052,3 +1053,4 @@ SELECT * FROM pg_foreign_table;
 --------+--------+------------
 (0 rows)
 
+SET gp_foreign_data_access = false;

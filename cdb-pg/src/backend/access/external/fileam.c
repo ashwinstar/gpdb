@@ -996,6 +996,7 @@ initParseState(CopyState pstate, Relation relation,
 
 	pstate->fe_eof = false;
 	pstate->eol_type = EOL_UNKNOWN;
+	pstate->eol_str = NULL;
 	pstate->cur_relname = RelationGetRelationName(relation);
 	pstate->cur_lineno = 0;
 	pstate->err_loc_type = ROWNUM_ORIGINAL;
@@ -1199,6 +1200,7 @@ initParseState(CopyState pstate, Relation relation,
 															pstate->null_print_len);
 	}
 
+	
     /*
 	 * Create a temporary memory context that we can reset once per row to
 	 * recover palloc'd memory.  This avoids any problems with leaks inside
@@ -1957,6 +1959,19 @@ static void parseFormatString(CopyState pstate, char *fmtstr)
 					}
 					else
 						goto error;
+				}
+				else
+					goto error;
+			}
+			else if (pg_strcasecmp(token, "newline") == 0)
+			{
+				token = strtokx2(NULL, whitespace, NULL, "'",
+								nonstd_backslash, true, true, encoding);
+				if (token)
+				{
+					/* if NEWLINE was specified in exttab def, set eol_type now */
+					pstate->eol_str = pstrdup(token);
+					CopyEolStrToType(pstate);
 				}
 				else
 					goto error;

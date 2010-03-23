@@ -267,6 +267,7 @@ int			gp_dbg_flags = 0;
 int 		gp_sort_max_distinct = 20000;
 
 bool		gp_enable_hash_partitioned_tables = FALSE;
+bool		gp_foreign_data_access = FALSE;
 bool		gp_setwith_alter_storage = FALSE;
 
 bool		gp_enable_tablespaces = FALSE;

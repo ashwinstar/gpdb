@@ -214,6 +214,8 @@ static void check_sql_result(PGresult *res, PGconn *conn, const char *query,
 static char *nextToken(register char **stringp, register const char *delim);
 static char *gettype(int typlen, char typbyval, char typalign, int ndims, int typmod, char typstorage, bool istoasted, Oid *typoid);
 static void  addDistributedBy(PQExpBuffer q, TableInfo *tbinfo, int actual_atts);
+static bool isChildSelected(char opt, SimpleOidList list);
+
 /* END MPP ADDITION */
 
 int
@@ -690,6 +692,14 @@ main(int argc, char **argv)
 							   &table_exclude_oids);
 	/* non-matching exclusion patterns aren't an error */
 
+	if(gp_partitioning_available)
+	{
+		/* disallow specification of child tables in -t and -T */
+		if(!isChildSelected('t', table_include_oids) ||
+		   !isChildSelected('T', table_exclude_oids))
+			exit_nicely();		
+	}
+	
 	/*
 	 * Dumping blobs is now default unless we saw an inclusion switch or -s
 	 * ... but even if we did see one of these, -b turns it back on.
@@ -8770,6 +8780,44 @@ testSqlMedSupport(void)
 	destroyPQExpBuffer(query);
 
 	return isSupported;
+}
+
+/*
+ * Error if any child tables were specified in an input option (-t or -T)
+ */
+static bool isChildSelected(char opt, SimpleOidList list)
+{
+	PQExpBuffer 		query = createPQExpBuffer();
+	PGresult   			*res;
+	SimpleOidListCell 	*cell;
+
+	if (list.head != NULL)
+	{
+		for (cell = list.head; cell; cell = cell->next)
+		{
+			int numtups = 0;
+			
+			appendPQExpBuffer(query, "select 1 from pg_partition_rule "
+									 "where parchildrelid ='%u'::pg_catalog.oid; ", 
+									  cell->val);
+
+			res = PQexec(g_conn, query->data);
+			check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+			numtups = PQntuples(res);
+			PQclear(res);
+			resetPQExpBuffer(query);
+
+			if (numtups == 1)
+			{
+				write_msg(NULL, "specifying child tables in -%c option is not allowed\n", opt);
+				return false;
+			}
+		}
+	}
+		
+	destroyPQExpBuffer(query);
+	
+	return true;
 }
 
 
