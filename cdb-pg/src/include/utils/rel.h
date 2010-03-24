@@ -314,6 +314,13 @@ typedef struct StdRdOptions
 	((bool)((relation)->rd_rel->relstorage == RELSTORAGE_FOREIGN))
 
 /*
+ * RelationIsBitmapIndex
+ *      True iff relation is a bitmap index
+ */
+#define RelationIsBitmapIndex(relation) \
+	((bool)((relation)->rd_rel->relam == BITMAP_AM_OID))
+
+/*
  * RelationHasReferenceCountZero
  *		True iff relation reference count is zero.
  *

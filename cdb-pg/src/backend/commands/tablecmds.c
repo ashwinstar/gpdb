@@ -21,6 +21,7 @@
 #include <unistd.h>
 
 #include "access/appendonlywriter.h"
+#include "access/bitmap.h"
 #include "access/genam.h"
 #include "access/hash.h"
 #include "access/heapam.h"
@@ -3400,7 +3401,7 @@ CheckTableNotInUse(Relation rel, const char *stmt)
 	 * here until vacuum is done properly.
 	 */
 	if (expected_refcnt == 1 &&
-		rel->rd_rel->relam == BITMAP_AM_OID &&
+		RelationIsBitmapIndex(rel) &&
 		(rel->rd_refcnt == 2 || rel->rd_refcnt == 3))
 		expected_refcnt = rel->rd_refcnt;
 
@@ -5133,13 +5134,19 @@ ATRewriteTables(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 	foreach(ltab, *wqueue)
 	{
 		AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
-		Relation OldHeap;
-		Oid      newTableSpace;
-		Oid      oldTableSpace;
+		Relation rel;
+		bool relisshared;
+		bool relisnailed;
+		Oid  newTableSpace;
+		Oid  oldTableSpace;
+		Oid  relNamespace;
 
 		/* We will lock the table iff we decide to actually rewrite it */
-		OldHeap = heap_open(tab->relid, NoLock);
-		oldTableSpace = OldHeap->rd_rel->reltablespace;
+		rel = relation_open(tab->relid, NoLock);
+		relisshared   = rel->rd_rel->relisshared;
+		relisnailed   = rel->rd_isnailed;
+		relNamespace  = RelationGetNamespace(rel);
+		oldTableSpace = rel->rd_rel->reltablespace;
 		newTableSpace = tab->newTableSpace ? tab->newTableSpace : oldTableSpace;
 
 		/*
@@ -5165,24 +5172,23 @@ ATRewriteTables(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 			 * relations, because we can't support changing their relfilenode
 			 * values.
 			 */
-			if (OldHeap->rd_rel->relisshared || OldHeap->rd_isnailed)
+			if (relisshared || relisnailed)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("cannot rewrite system relation \"%s\"",
-								RelationGetRelationName(OldHeap))));
+								RelationGetRelationName(rel))));
 
 			/*
 			 * Don't allow rewrite on temp tables of other backends ... their
 			 * local buffer manager is not going to cope.
 			 */
-			if (isOtherTempNamespace(RelationGetNamespace(OldHeap)))
+			if (isOtherTempNamespace(relNamespace))
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				errmsg("cannot rewrite temporary tables of other sessions")));
 
 		}
-		heap_close(OldHeap, NoLock);
-
+		heap_close(rel, NoLock);
 
 		/*
 		 * We only need to rewrite the table if at least one column needs to be
@@ -5260,8 +5266,8 @@ ATRewriteTables(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 			 */
 			if (tab->newTableSpace)
 			{
-				populate_oidInfo(&oidInfo[m], newTableSpace, 
-								 OldHeap->rd_rel->relisshared, false);
+				populate_oidInfo(&oidInfo[m], newTableSpace, relisshared, 
+								 false);
 				
 				ATExecSetTableSpace(tab->relid, tab->newTableSpace, 
 									&oidInfo[m]);
@@ -10102,6 +10108,9 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, TableOidInfo *oidInfo)
 	Oid			relaosegidxid = InvalidOid;
 	Oid			relaoblkdirrelid = InvalidOid;
 	Oid			relaoblkdiridxid = InvalidOid;
+	Oid			relbmrelid = InvalidOid;
+	Oid			relbmidxid = InvalidOid;
+
 
 	/* Ensure valid input */
 	Assert(OidIsValid(tableOid));
@@ -10132,6 +10141,10 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, TableOidInfo *oidInfo)
 		GetAppendOnlyEntryAuxOids(tableOid, &relaosegrelid, &relaosegidxid,
 								  &relaoblkdirrelid, &relaoblkdiridxid);
 
+	/* Get the bitmap sub objects */
+	if (RelationIsBitmapIndex(rel))
+		GetBitmapIndexAuxOids(rel, &relbmrelid, &relbmidxid);
+
 	/* Move the main table */
 	if (!ATExecSetTableSpace_Relation(tableOid, newTableSpace, newrelfilenode))
 	{
@@ -10159,6 +10172,26 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, TableOidInfo *oidInfo)
 	if (OidIsValid(relaoblkdiridxid))
 		ATExecSetTableSpace_Relation(relaoblkdiridxid, newTableSpace,
 									 oidInfo->aoblkdirIndexOid);
+
+	/* 
+	 * MPP-7996 - bitmap index subobjects w/Alter Table Set tablespace
+	 *
+	 * Minor hack: Bitmap indexes are never AO tables.  Rather than extending
+	 * OidInfo with yet more oids we simply overload aosegOid/aosegIndexOid
+	 * to serve double purpose as oids for the bitmap subobjects.
+	 */
+	if (OidIsValid(relbmrelid))
+	{
+		Assert(!relaosegrelid);
+		ATExecSetTableSpace_Relation(relbmrelid, newTableSpace,
+									 oidInfo->aosegOid);
+	}
+	if (OidIsValid(relbmidxid))
+	{
+		Assert(!relaosegidxid);
+		ATExecSetTableSpace_Relation(relbmidxid, newTableSpace,
+									 oidInfo->aosegIndexOid);
+	}
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH) && MetaTrackValidKindNsp(rel->rd_rel))

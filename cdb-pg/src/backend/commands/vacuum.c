@@ -4017,7 +4017,7 @@ gen_oids_for_bitmaps(VacuumStmt *vacstmt, Relation onerel)
 		bool shared = Irel[index_no]->rd_rel->relisshared;
 		int i;
 
-		if (Irel[index_no]->rd_rel->relam == BITMAP_AM_OID)
+		if (RelationIsBitmapIndex(Irel[index_no]))
 		{
 			vacstmt->extra_oids = lappend_oid(vacstmt->extra_oids,
 											  indoid);
@@ -4067,7 +4067,7 @@ get_oids_for_bitmap(List *all_extra_oids, Relation Irel,
 	ListCell *lc;
 	int oid_index = 0;
 	
-	if (Irel->rd_rel->relam != BITMAP_AM_OID)
+	if (!RelationIsBitmapIndex(Irel))
 		return extra_oids;
 
 	foreach(lc, all_extra_oids)

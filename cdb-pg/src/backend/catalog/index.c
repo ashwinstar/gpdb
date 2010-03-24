@@ -1705,7 +1705,7 @@ IndexBuildHeapScan(Relation heapRelation,
 					if (!TransactionIdIsCurrentTransactionId(
 								   HeapTupleHeaderGetXmax(heapTuple->t_data))
 						&& !IsSystemRelation(heapRelation)
-						&& (indexRelation->rd_rel->relam != BITMAP_AM_OID))
+						&& (!RelationIsBitmapIndex(indexRelation)))
 						elog(ERROR, "concurrent delete in progress");
 					indexIt = true;
 					tupleIsAlive = false;
@@ -2537,7 +2537,7 @@ reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
 				 * If this is a bitmap index, we generate two more relfilenodes
 				 * for its internal heap and index.
 				 */
-				if (iRel->rd_rel->relam == BITMAP_AM_OID)
+				if (RelationIsBitmapIndex(iRel))
 				{
 					Assert(*extra_oids == NULL);
 					*extra_oids = lappend_oid(*extra_oids,

@@ -1014,3 +1014,26 @@ restart:
 
 	return true;
 }
+
+void GetBitmapIndexAuxOids(Relation index, Oid *heapId, Oid *indexId)
+{
+	Buffer     metabuf;
+	BMMetaPage metapage;
+	
+
+	/* Only Bitmap Indexes have bitmap related sub-objects */
+	if (!RelationIsBitmapIndex(index))
+	{
+		*heapId = InvalidOid;
+		*indexId = InvalidOid;
+		return;
+	}
+
+	metabuf = _bitmap_getbuf(index, BM_METAPAGE, BM_READ);
+	metapage = _bitmap_get_metapage_data(index, metabuf);
+
+	*heapId  = metapage->bm_lov_heapId;
+	*indexId = metapage->bm_lov_indexId;
+
+	_bitmap_relbuf(metabuf);
+}
