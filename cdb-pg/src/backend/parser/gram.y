@@ -506,7 +506,7 @@ static TypeName *TableFuncTypeName(List *columns);
 	MAPPING MASTER MATCH MAXVALUE MERGE MINUTE_P MINVALUE MIRROR MISSING MODE MODIFY 
 	MONTH_P MOVE
 
-	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEWLINE NEXT NO NOCREATEDB
+	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEXT NO NOCREATEDB
 	NOCREATEROLE NOCREATEUSER NOINHERIT NOLOGIN_P NONE NOOVERCOMMIT NOSUPERUSER
 	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLS_P NULLIF NUMERIC
 
@@ -726,7 +726,6 @@ static TypeName *TableFuncTypeName(List *columns);
 			%nonassoc MOVE
 			%nonassoc NAME_P
 			%nonassoc NAMES
-			%nonassoc NEWLINE
 			%nonassoc NEXT
 			%nonassoc NO
 			%nonassoc NOCREATEDB
@@ -1940,11 +1939,6 @@ AlterTableStmt:
 		|	ALTER FOREIGN TABLE relation_expr alter_table_cmds
 				{
 					AlterTableStmt *n = makeNode(AlterTableStmt);
-					
-					if (!gp_foreign_data_access)
-                    {
-                        yyerror("syntax error");
-                    }
 					n->relation = $4;
 					n->cmds = $5;
 					n->relkind = OBJECT_FOREIGNTABLE;
@@ -3097,10 +3091,6 @@ copy_opt_item:
 				{
 					$$ = makeDefElem("fill_missing_fields", (Node *)makeInteger(TRUE));
 				}
-			| NEWLINE opt_as Sconst
-				{
-					$$ = makeDefElem("newline", (Node *)makeString($3));
-				}			
 		;
 
 /* The following exist for backward compatibility */
@@ -4373,11 +4363,6 @@ CreateForeignStmt: CREATE FOREIGN OptTemp TABLE qualified_name '(' OptExtTableEl
 				   SERVER name create_generic_options
 				{
 					CreateForeignStmt *n = makeNode(CreateForeignStmt);
-					
-					if (!gp_foreign_data_access)
-                    {
-                        yyerror("syntax error");
-                    }		
 					n->relation = $5;
 					$5->istemp = $3;
 					n->tableElts = $7;
@@ -4559,12 +4544,6 @@ format_opt_item:
 			{
 				$$ = makeDefElem("fill_missing_fields", (Node *)makeInteger(TRUE));
 			}
-			| NEWLINE opt_as Sconst
-			{
-				$$ = makeDefElem("newline", (Node *)makeString($3));
-			}
-			
-			
 		;
 
 OptExtTableElementList:
@@ -4924,11 +4903,6 @@ CreateTableSpaceStmt: CREATE TABLESPACE name OptOwner FILESPACE name
 CreateFdwStmt: CREATE FOREIGN DATA_P WRAPPER name opt_validator create_generic_options
 				{
 					CreateFdwStmt *n = makeNode(CreateFdwStmt);
-					
-					if (!gp_foreign_data_access)
-                    {
-                        yyerror("syntax error");
-                    }
 					n->fdwname = $5;
 					n->validator = $6;
 					n->options = $7;
@@ -4946,11 +4920,6 @@ CreateFdwStmt: CREATE FOREIGN DATA_P WRAPPER name opt_validator create_generic_o
 DropFdwStmt: DROP FOREIGN DATA_P WRAPPER name opt_drop_behavior
 				{
 					DropFdwStmt *n = makeNode(DropFdwStmt);
-					
-					if (!gp_foreign_data_access)
-                    {
-                        yyerror("syntax error");
-                    }
 					n->fdwname = $5;
 					n->missing_ok = false;
 					n->behavior = $6;
@@ -4959,11 +4928,6 @@ DropFdwStmt: DROP FOREIGN DATA_P WRAPPER name opt_drop_behavior
 				|  DROP FOREIGN DATA_P WRAPPER IF_P EXISTS name opt_drop_behavior
                 {
 					DropFdwStmt *n = makeNode(DropFdwStmt);
-					
-					if (!gp_foreign_data_access)
-                    {
-                        yyerror("syntax error");
-                    }
 					n->fdwname = $7;
 					n->missing_ok = true;
 					n->behavior = $8;
@@ -4981,11 +4945,6 @@ DropFdwStmt: DROP FOREIGN DATA_P WRAPPER name opt_drop_behavior
 AlterFdwStmt: ALTER FOREIGN DATA_P WRAPPER name validator_clause alter_generic_options
 				{
 					AlterFdwStmt *n = makeNode(AlterFdwStmt);
-					
-					if (!gp_foreign_data_access)
-                    {
-                        yyerror("syntax error");
-                    }					
 					n->fdwname = $5;
 					n->validator = $6;
 					n->change_validator = true;
@@ -4995,11 +4954,6 @@ AlterFdwStmt: ALTER FOREIGN DATA_P WRAPPER name validator_clause alter_generic_o
 			| ALTER FOREIGN DATA_P WRAPPER name validator_clause
 				{
 					AlterFdwStmt *n = makeNode(AlterFdwStmt);
-
-					if (!gp_foreign_data_access)
-                    {
-                        yyerror("syntax error");
-                    }
 					n->fdwname = $5;
 					n->validator = $6;
 					n->change_validator = true;
@@ -5008,11 +4962,6 @@ AlterFdwStmt: ALTER FOREIGN DATA_P WRAPPER name validator_clause alter_generic_o
 			| ALTER FOREIGN DATA_P WRAPPER name alter_generic_options
 				{
 					AlterFdwStmt *n = makeNode(AlterFdwStmt);
-
-					if (!gp_foreign_data_access)
-                    {
-                        yyerror("syntax error");
-                    }
 					n->fdwname = $5;
 					n->options = $6;
 					$$ = (Node *) n;
@@ -5100,11 +5049,6 @@ CreateForeignServerStmt: CREATE SERVER name opt_type opt_foreign_server_version
 						 FOREIGN DATA_P WRAPPER name create_generic_options
 				{
 					CreateForeignServerStmt *n = makeNode(CreateForeignServerStmt);
-					
-					if (!gp_foreign_data_access)
-                    {
-                        yyerror("syntax error");
-                    }
 					n->servername = $3;
 					n->servertype = $4;
 					n->version = $5;
@@ -5140,11 +5084,6 @@ opt_foreign_server_version:
 DropForeignServerStmt: DROP SERVER name opt_drop_behavior
 				{
 					DropForeignServerStmt *n = makeNode(DropForeignServerStmt);
-					
-					if (!gp_foreign_data_access)
-                    {
-                        yyerror("syntax error");
-                    }
 					n->servername = $3;
 					n->missing_ok = false;
 					n->behavior = $4;
@@ -5153,11 +5092,6 @@ DropForeignServerStmt: DROP SERVER name opt_drop_behavior
 				|  DROP SERVER IF_P EXISTS name opt_drop_behavior
                 {
 					DropForeignServerStmt *n = makeNode(DropForeignServerStmt);
-					
-					if (!gp_foreign_data_access)
-                    {
-                        yyerror("syntax error");
-                    }
 					n->servername = $5;
 					n->missing_ok = true;
 					n->behavior = $6;
@@ -5175,11 +5109,6 @@ DropForeignServerStmt: DROP SERVER name opt_drop_behavior
 AlterForeignServerStmt: ALTER SERVER name foreign_server_version alter_generic_options
 				{
 					AlterForeignServerStmt *n = makeNode(AlterForeignServerStmt);
-					
-					if (!gp_foreign_data_access)
-                    {
-                        yyerror("syntax error");
-                    }
 					n->servername = $3;
 					n->version = $4;
 					n->options = $5;
@@ -5189,11 +5118,6 @@ AlterForeignServerStmt: ALTER SERVER name foreign_server_version alter_generic_o
 			| ALTER SERVER name foreign_server_version
 				{
 					AlterForeignServerStmt *n = makeNode(AlterForeignServerStmt);
-					
-					if (!gp_foreign_data_access)
-                    {
-                        yyerror("syntax error");
-                    }
 					n->servername = $3;
 					n->version = $4;
 					n->has_version = true;
@@ -5202,11 +5126,6 @@ AlterForeignServerStmt: ALTER SERVER name foreign_server_version alter_generic_o
 			| ALTER SERVER name alter_generic_options
 				{
 					AlterForeignServerStmt *n = makeNode(AlterForeignServerStmt);
-					
-					if (!gp_foreign_data_access)
-                    {
-                        yyerror("syntax error");
-                    }
 					n->servername = $3;
 					n->options = $4;
 					$$ = (Node *) n;
@@ -12078,7 +11997,6 @@ unreserved_keyword:
 			| MOVE
 			| NAME_P
 			| NAMES
-			| NEWLINE
 			| NEXT
 			| NO
 			| NOCREATEDB
@@ -12351,7 +12269,6 @@ PartitionIdentKeyword: ABORT_P
 			| MODIFY
 			| MOVE
 			| NAMES
-			| NEWLINE
 			| NEXT
 			| NO
 			| NOCREATEDB

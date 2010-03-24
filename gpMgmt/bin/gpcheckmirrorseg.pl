@@ -565,7 +565,18 @@ sub get_relfilenode_func
 		unless (exists($dbs{$db}->{relfilenodeh}->{$relfilenode}))
 		{
 			$dbs{$db}->{relfilenodeh}->{$relfilenode} = { files => [] } ;
-			push @relfnods, $relfilenode;
+
+			# Build a list of relfilenodes to lookup in catalog.
+			# Note: filter out non-numeric names like "pg_auth"
+			if ($relfilenode =~ m/^\d+$/)
+			{
+				push @relfnods, $relfilenode;
+			}
+			else
+			{
+				warn "invalid relfilenode: $relfilenode in db: $db";
+			}
+
 		}
 		
 		push @{$dbs{$db}->{relfilenodeh}->{$relfilenode}->{files}}, $fil;

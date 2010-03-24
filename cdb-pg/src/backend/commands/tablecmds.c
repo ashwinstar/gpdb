@@ -14252,6 +14252,12 @@ magic_expr_to_datum(Relation rel, PartitionNode *partnode,
 				 errmsg("too many columns in boundary specification (%d > %d)",
 						jj, ii)));
 
+	if (jj > part->parnatts)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("too many columns in boundary specification (%d > %d)",
+						jj, part->parnatts)));
+
 	{
 		ListCell   *lc;
 		int i = 0;

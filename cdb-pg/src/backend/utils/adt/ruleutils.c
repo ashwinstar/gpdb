@@ -5786,7 +5786,13 @@ deparse_part_param(deparse_context *c, List *dat)
 		else
 			first = false;
 
-		get_const_expr(lfirst(lc), c, 0);
+		/* MPP-8258: fix for double precision types that use
+		 * FuncExpr's (vs Consts)
+		 */
+		if (IsA(lfirst(lc), Const))
+			get_const_expr(lfirst(lc), c, 0);
+		else
+			get_rule_expr(lfirst(lc), c, false);
 	}
 }
 

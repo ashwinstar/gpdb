@@ -6,7 +6,7 @@
  * gp_filedump.c - PostgreSQL file dump utility for dumping and
  *                 formatting heap(data), index and control files.
  *
- * Copyright (c) 2008-2009 Greenplum, Inc.
+ * Copyright (c) 2008-2010 Greenplum, Inc.
  * Copyright (c) 2002-2007 Red Hat, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
