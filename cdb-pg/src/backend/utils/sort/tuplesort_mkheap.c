@@ -50,9 +50,25 @@
  *    2) the compare is cheap because once you've determined the level of a row then you can compare using only level
  *
  * Testing note: see attachment on MPP-7231 for some useful testing code
+ *
+ *
+ *
+ * NOTE ON UNIQUENESS CHECKING:
+ *
+ * When required to enforce uniqueness, by necessity we can only do that either when:
+ *    a) a value is inserted and we detect that it equals the root then uniqueness is violated
+ *    b) at any point, if one of the root's children exactly matches the root then uniqueness is violated
+ *
+ * However, when inserting a value that is greater than the root then we can't check whether it is
+ *    equal to some other value in the heap.  Therefore, the heap may contain duplicate values at
+ *    any point in time.
+ *
+ * For this reason, we do NOT try to check uniqueness when building from array -- it would take time and
+ *    we are assuming that duplicates inside the heaps will be later detected by case b) above.
  */
 
 static void mkheap_heapify(MKHeap *mkheap, bool doLv0);
+static bool mke_has_duplicates_with_root(MKHeap *mkheap);
 
 static inline int LEFT(int n)
 {
@@ -199,6 +215,9 @@ MKHeap *mkheap_from_array(MKEntry *entries, int alloc_sz, int cnt, MKContext *mk
         }
     }
 #endif
+
+    /* note: see NOTE ON UNIQUENESS CHECKING  at the top of this file for information about why
+     *   we don't check uniqueness here */
 
     mk_prepare_array(entries, 0, cnt-1, 0, mkctxt);
     mkheap_heapify(heap, true);
@@ -437,10 +456,6 @@ static void mkheap_heapify(MKHeap *mkheap, bool doLv0)
 static bool
 mke_has_duplicates_with_root(MKHeap *mkheap)
 {
-	/* can't have duplicates in a small heap! */
-	if ( mkheap->count <= 1)
-		return false;
-
 	/** since the heap is heapified, only if the level is at the max can
 	 *   we have a duplicate
 	 */
@@ -482,6 +497,16 @@ static int mkheap_putAndGet_impl(MKHeap *mkheap, MKEntry *e)
 
     /* can't put+get from an empty heap */
     Assert(mkheap->count > 0);
+
+    if ( mkheap->mkctxt->enforceUnique &&
+         mke_has_duplicates_with_root(mkheap))
+    {
+        /**
+         * See NOTE ON UNIQUENESS CHECKING in the comment at the top of the file
+         * for information about why we check for duplicates here
+         */
+        ERROR_UNIQUENESS_VIOLATED();
+    }
 
     if(mke_is_empty(e))
     {
@@ -695,23 +720,6 @@ int mkheap_putAndGet_reader(MKHeap *mkheap, MKEntry *out)
 
     /* _reader code is not compatible with the run code */
     Assert(mke_get_run(e) == 0);
-
-    if ( mkheap->mkctxt->enforceUnique && mke_has_duplicates_with_root(mkheap))
-    {
-    	/* this checks if two different readers produce the same value
-    	 *   a single reader producing the same value is checked below.
-    	 *
-    	 *
-    	 * The problem with two different readers is because we don't actually do:
-    	 *    1) pop top value
-    	 *    2) insert new value from reader
-    	 *
-    	 * Instead, we putGet the new value from the reader -- so the values returned from
-    	 *     putAndGetImpl will ALWAYS be the result of comparison from the replaced value!
-    	 *     new values are not compared against what the root would be after the pop (step 1 above)
-    	 */
-    	ERROR_UNIQUENESS_VIOLATED();
-    }
 
     /* Figure out the reader that provided the current top of the heap */
     n = mke_get_reader(e);
