@@ -1,3 +1,4 @@
+//cdb2/main/gpMgmt/bin/gppylib/gpversion.py#1 - add change 45377 (text)
 #!/usr/bin/env python
 #
 # Copyright (c) Greenplum Inc 2008. All Rights Reserved. 
@@ -20,7 +21,7 @@ if sys.version_info < (2, 5, 0) or sys.version_info >= (3, 0, 0):
 
 
 MAIN_VERSION = [4,0,99,99]    # version number for main
-FILEREP_VERSION = [3,4,99,99]	# filerep version
+
 
 #============================================================
 class GpVersion:
@@ -222,6 +223,6 @@ class GpVersion:
         '''
         Returns true if the version matches the current MAIN_VERSION
         '''
-        return self.isVersionRelease(MAIN_VERSION) or self.isVersionRelease(FILEREP_VERSION)
+        return self.isVersionRelease(MAIN_VERSION)
 
     
