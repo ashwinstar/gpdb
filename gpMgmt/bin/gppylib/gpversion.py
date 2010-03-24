@@ -1,4 +1,3 @@
-//cdb2/main/gpMgmt/bin/gppylib/gpversion.py#1 - add change 45377 (text)
 #!/usr/bin/env python
 #
 # Copyright (c) Greenplum Inc 2008. All Rights Reserved. 
