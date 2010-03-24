@@ -771,7 +771,7 @@ GATHER_INFO () {
 	#Get the current gp_fault_action setting
 	FAIL_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"show gp_fault_action;"`
 	ERROR_CHK $? "obtain GPDB fault action setting" 2
-	TOTAL_PRI=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select count(*) from $CONFIG_TABLE where content<>-1 and preferred_role='p';"`
+	TOTAL_PRI=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select count(*) from $CONFIG_TABLE as _gp_config where content<>-1 and preferred_role='p';"`
 	ERROR_CHK $? "obtain total number of primary segment hosts" 2
 	#Now get name of database we are going to restore
 	if [ x"" = x"$DB_FILE_HOST" ];then
@@ -837,17 +837,17 @@ SWITCH_TO_PRIMARY () {
 	for DBID in ${DBID_LIST[@]}
 	do
 		LOG_MSG "[INFO]:-Processing DBID = $DBID"
-		IS_MIRROR=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select case when preferred_role='p' then 'f' else 't' end from $CONFIG_TABLE where dbid=$DBID;"`
+		IS_MIRROR=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select case when preferred_role='p' then 'f' else 't' end from $CONFIG_TABLE as a where dbid=$DBID;"`
 		if [ $IS_MIRROR == 'f' ];then
-			M_HOST=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select hostname from $CONFIG_TABLE where dbid=$DBID;"`
-			M_CONTENT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select content from $CONFIG_TABLE where dbid=$DBID;"`
+			M_HOST=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select hostname from $CONFIG_TABLE as a where dbid=$DBID;"`
+			M_CONTENT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select content from $CONFIG_TABLE as a where dbid=$DBID;"`
 			M_DIR=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select
  datadir from $CONFIG_TABLE where dbid=$DBID;"`
-			P_HOST=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select hostname from $CONFIG_TABLE where content=$M_CONTENT and preferred_role='p';"`
+			P_HOST=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select hostname from $CONFIG_TABLE as a where content=$M_CONTENT and preferred_role='p';"`
 			P_DIR=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select
- datadir from $CONFIG_TABLE where content=$M_CONTENT and preferred_role='p';"`
+ datadir from $CONFIG_TABLE as a where content=$M_CONTENT and preferred_role='p';"`
 			P_DBID=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select
- dbid from $CONFIG_TABLE where content=$M_CONTENT and preferred_role='p';"`
+ dbid from $CONFIG_TABLE as a where content=$M_CONTENT and preferred_role='p';"`
 			#Check if we have remote db_dumps directory
 			CHK_DIR ${P_DIR}/${DUMP_DIR} $P_HOST
 			if [ $EXISTS -ne 0 ];then
@@ -998,7 +998,7 @@ GP_RESTORE_TABLE () {
 	BATCH_LIMIT=${#PRIMARY_QE_ARRAY[@]}
 	#Get segment details from the contents of DBID_LIST
 	DBID_TXT=`$ECHO $DBID_LIST|$TR ' ' ','`
-	TAB_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select hostname, datadir, dbid from $CONFIG_TABLE where dbid in (${DBID_TXT}) and content<>-1 order by port;"`)
+	TAB_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select hostname, datadir, dbid from $CONFIG_TABLE as _gp_config where dbid in (${DBID_TXT}) and content<>-1 order by port;"`)
 	if [ $BATCH_DEFAULT -gt $BATCH_LIMIT ];then
 		RESET_BATCH_VALUE
 	fi
