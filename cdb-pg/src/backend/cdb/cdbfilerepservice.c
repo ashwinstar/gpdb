@@ -206,7 +206,7 @@ FileRepSubProcess_ProcessSignals()
 				break;
 				
 			case SegmentStateInSyncTransition:
-				// fileRepSTate remains Ready
+				// fileRepState remains Ready
 				break;
 				
 			case SegmentStateChangeTrackingDisabled:	
@@ -685,10 +685,6 @@ FileRepSubProcess_Main()
 			
 		case FileRepProcessTypePrimaryRecovery:
 			FileRepPrimary_StartRecovery();
-			if (dataState == DataStateInResync)
-			{
-				proc_exit(0);
-			}
 			break;
 
 		case FileRepProcessTypeResyncManager:

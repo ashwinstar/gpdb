@@ -360,6 +360,9 @@ class GpAddMirrorsProgram:
 
                 gpArray.setFaultStrategy(gparray.FAULT_STRATEGY_FILE_REPLICATION)
                 mirrorBuilder.buildMirrors("add", gpEnv, gpArray )
+
+                logger.info("Mirrors have been added; data synchronization is in progress.")
+                logger.info("Use gpstate to check the resynchronization progress.")
         finally:
             if faultProber.isFaultProberPaused():
                 faultProber.unpauseFaultProber()

@@ -94,7 +94,7 @@ typedef struct RelationChangeInfo
 	int64	  		persistentSerialNum;
 } RelationChangeInfo;
 
-#define MaxRelationChangeInfoReturns 3
+#define MaxRelationChangeInfoReturns 4
 
 extern void ChangeTracking_GetRelationChangeInfoFromXlog(
 									  RmgrId	xl_rmid,
@@ -108,7 +108,8 @@ extern void ChangeTracking_PrintRelationChangeInfo(
 									  uint8		xl_info,
 									  void		*data, 
 									  XLogRecPtr *loc,
-									  bool	  weAreGeneratingXLogNow);
+									  bool	  weAreGeneratingXLogNow,
+									  bool	  printSkipIssuesOnly);
 
 /*
  * Recover the end of the resynchronize change log by determing the last good change record

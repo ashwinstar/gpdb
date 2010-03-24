@@ -14,16 +14,9 @@
 #include <string.h>
 
 /**
- * todo MIRRORING: do we need to enter critical sections to make sure shared state is not messed up?
  * todo MIRRORING: error when doRequestedPrimaryMirrorModeTransitions should cause a panic?  Or at least should wake
- *                 up requestXXX.
- * todo MIRRORING: proper locking around get/set of segmentState and others -- because filerep can fault the state
- *                 while postmaster is updating it!
- * todo MIRRORING: change some assert calls to insist.  It is really bad if we get in a bad state and this code has no
- *                 performance concerns around using assert
- * todo MIRRORING: can hasPostmasterCopiedTransitionToLocalMemory be out of sync with whether the transition was
- *                 actually applied?  That would be bad -- a reset would then attempt a transition to a state
- *                 that was failed to be reached!
+ *                 up requestXXX.  Do we need any critical sections or anything here?  Review setup of
+ *                 signal handlers here -- if we are inside a transition will we quit out properly on shutdown?
  */
 
 /**
@@ -55,22 +48,12 @@ typedef enum
         TSAwaitingFilerepStartup,
         TSDoneFilerepStartup,
 
-        /* for two-phase recovery (where filerep goes into changelogging before database startup) */
+        /* for two-phase recovery (where filerep goes into changelogging before database startup and
+         *   needs to be notified after the database is up) */
 
         TSDoDatabaseStartup,
         TSAwaitingDatabaseStartup,
         TSDoneDatabaseStartup,
-
-        TSDoSecondFilerepBackendsShutdown,
-        TSAwaitingSecondFilerepBackendsShutdown,
-        TSDoneSecondFilerepBackendsShutdown,
-        TSDoSecondFilerepShutdown,
-        TSAwaitingSecondFilerepShutdown,
-        TSDoneSecondFilerepShutdown,
-
-        TSDoSecondFilerepStartup,
-        TSAwaitingSecondFilerepStartup,
-        TSDoneSecondFilerepStartup,
 
         TSDone,
 
@@ -142,6 +125,7 @@ typedef struct PMModuleState
 	volatile PrimaryMirrorMode mode;
 	volatile SegmentState_e segmentState;
 	volatile DataState_e dataState;
+	volatile bool isDatabaseRunning;
 
 	/* connection info for self (which can be a mirror or primary, depending on mode) */
 	volatile char hostAddress[PM_MAX_HOST_NAME_LENGTH+1];
@@ -288,18 +272,6 @@ getTransitionStateLabel(TransitionState state)
         "DoDatabaseStartup",
         "AwaitingDatabaseStartup",
         "DoneDatabaseStartup",
-
-        "DoSecondFilerepBackendsShutdown",
-        "AwaitingSecondFilerepBackendsShutdown",
-        "DoneSecondFilerepBackendsShutdown",
-
-        "DoSecondFilerepShutdown",
-        "AwaitingSecondFilerepShutdown",
-        "DoneSecondFilerepShutdown",
-
-        "DoSecondFilerepStartup",
-        "AwaitingSecondFilerepStartup",
-        "DoneSecondFilerepStartup",
 
         "Done"
 	};
@@ -499,6 +471,21 @@ setFullResync(void)
 	releaseModuleSpinLock();
 }
 	
+bool
+isDatabaseRunning(void)
+{
+	bool isDatabaseRunning = FALSE;
+	
+	assertModuleInitialized();
+	
+	acquireModuleSpinLock();
+	
+	isDatabaseRunning = pmModuleState->isDatabaseRunning;
+	
+	releaseModuleSpinLock();
+	
+	return(isDatabaseRunning);
+}
 
 void
 getFileRepRoleAndState(
@@ -615,6 +602,7 @@ primaryMirrorModeShmemInit(void)
 	pmModuleState->mode = PMModeUninitialized;
 	pmModuleState->segmentState = SegmentStateNotInitialized;
 	pmModuleState->dataState = DataStateNotInitialized;
+	pmModuleState->isDatabaseRunning = false;
 	pmModuleState->isTransitionListenerFinished = true;
 	pmModuleState->transitionState = TSNone;
 
@@ -1033,7 +1021,8 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 
     	copyTransitionParametersToLocalMemoryIfNeeded(&requestedTransition);
         copyTransitionInputParameters(&requestedTransition, SegmentStateInitialization);
-        updateSegmentState(SegmentStateFault);
+        if ( updateSegmentState(SegmentStateFault))
+            NotifyProcessesOfFilerepStateChange();
         result = PMTransitionSuccess;
     }
     else
@@ -1074,10 +1063,11 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 
             Assert(result != PMTransitionOtherTransitionInProgress);
 
-            if ( result != PMTransitionInvalidTargetMode  )
+            if ( result != PMTransitionInvalidTargetMode &&
+                 result != PMTransitionInvalidInputParameter )
             {
-                /* if transition is not going to be run then don't copy it out
-                 * todo MIRRORING what to do on transition error? */
+                /* if the result was  code that indicated that we are committed to this transition
+                 *   then go ahead and copy it to local memory so that a postmaster reset will replay it */
                 copyTransitionParametersToLocalMemoryIfNeeded(&requestedTransition);
             }
 
@@ -1139,6 +1129,10 @@ stepDoDatabaseStartup(TransitionState nextState, TransitionState *stateInOut)
 
     pmModuleState->haveStartedDatabase = true;
     StartMasterOrPrimaryPostmasterProcesses();
+	if ( IsDatabaseInRunMode())
+	{
+		pmModuleState->isDatabaseRunning = true;
+	}	
     *stateInOut = TSDone;
     return PMTransitionSuccess;
 }
@@ -1202,18 +1196,20 @@ stepWaitForFilerepBackendsShutdown(TransitionState nextState, TransitionState *s
 static PrimaryMirrorModeTransitionResult
 stepWaitForFilerepStartup(TransitionState nextState, TransitionState *stateInOut)
 {
+    SegmentState_e segmentState;
+    getPrimaryMirrorStatusCodes(NULL, &segmentState, NULL);
+
     if (!IsFilerepProcessRunning() ||
-        pmModuleState->segmentState == SegmentStateFault)
+        segmentState == SegmentStateFault)
     {
         elog(LOG, "PostmasterPrimaryMirrorTransition: filerep startup: transition error");
-        pmModuleState->segmentState = SegmentStateFault;
-        return PMTransitionError; /* todo MIRRORING: do we even need this transition state? -- we should
-                                                     continue running in gpstart mode, only gpinitsystem needs
-                                                     to check this (and it could check the fault state) */
+        if ( updateSegmentState(SegmentStateFault))
+            NotifyProcessesOfFilerepStateChange();
+        return PMTransitionError;
     }
 
-    if (pmModuleState->segmentState == SegmentStateReady ||
-        pmModuleState->segmentState == SegmentStateChangeTrackingDisabled )
+    if (segmentState == SegmentStateReady ||
+        segmentState == SegmentStateChangeTrackingDisabled )
     {
         elog(LOG, "PostmasterPrimaryMirrorTransition: filerep is up");
         *stateInOut = nextState;
@@ -1404,6 +1400,10 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
                 elog(LOG, "PostmasterPrimaryMirrorTransition: starting database processes");
                 pmModuleState->haveStartedDatabase = true;
                 StartMasterOrPrimaryPostmasterProcesses();
+			if ( IsDatabaseInRunMode())
+			{
+				pmModuleState->isDatabaseRunning = true;
+			}
             }
 
             if ( args->dataState == DataStateInResync &&
@@ -1429,7 +1429,7 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
 
         case TSDoneDatabaseStartup:
 
-            /* we only wait for database startup completion is filerep wants to be notified
+            /* we only wait for database startup completion if filerep wants to be notified
              * when XLOG crash recovery has completed */
 
             Assert(args->dataState == DataStateInResync );
@@ -1438,48 +1438,29 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
              /*
              * update segment states
              */
+            bool isNowInFault = false;
             acquireModuleSpinLock();
             {
-                pmModuleState->dataState = DataStateInResync;
-                pmModuleState->segmentState = SegmentStateInResyncTransition;
+                if ( pmModuleState->segmentState == SegmentStateFault )
+                {
+                    isNowInFault = true;
+                }
+                else
+                {
+                    pmModuleState->dataState = DataStateInResync;
+                    pmModuleState->segmentState = SegmentStateInResyncTransition;
 
-                /** tell filerep processes that their can begin resync now! */
-                NotifyProcessesOfFilerepStateChange();
+                }
             }
             releaseModuleSpinLock();
 
-            *stateInOut = TSDone ;
-            return PMTransitionSuccess;
+            if ( isNowInFault )
+            {
+                return PMTransitionError;
+            }
+            /** tell filerep processes that they can begin resync now! */
+            NotifyProcessesOfFilerepStateChange();
 
-
-        /* the following steps are unreachable right now */
-        case TSDoSecondFilerepBackendsShutdown:
-            return stepDoFilerepBackendsShutdown(TSAwaitingSecondFilerepBackendsShutdown, stateInOut );
-        case TSAwaitingSecondFilerepBackendsShutdown:
-            return stepWaitForFilerepBackendsShutdown(TSDoneSecondFilerepBackendsShutdown, stateInOut );
-        case TSDoneSecondFilerepBackendsShutdown:
-            *stateInOut = TSDoSecondFilerepShutdown;
-            return PMTransitionSuccess;
-
-        case TSDoSecondFilerepShutdown:
-            return stepDoFilerepShutdown(TSAwaitingSecondFilerepShutdown, stateInOut );
-        case TSAwaitingSecondFilerepShutdown:
-            return stepWaitForFilerepShutdown(TSDoneSecondFilerepShutdown, stateInOut );
-        case TSDoneSecondFilerepShutdown:
-            /* we must startup filerep again in the original mode...proceed to do that */
-            *stateInOut = TSDoSecondFilerepStartup;
-			
-            return PMTransitionSuccess;
-
-        case TSDoSecondFilerepStartup:
-            Assert(pmModuleState->dataState == DataStateInChangeTracking );
-            Assert(args->dataState == DataStateInResync);
-            pmModuleState->dataState = DataStateInResync;
-			pmModuleState->segmentState = SegmentStateInResyncTransition;
-            return stepDoFilerepStartup(TSAwaitingSecondFilerepStartup, stateInOut );
-        case TSAwaitingSecondFilerepStartup:
-            return stepWaitForFilerepStartup(TSDoneSecondFilerepStartup, stateInOut);
-        case TSDoneSecondFilerepStartup:
             *stateInOut = TSDone;
             return PMTransitionSuccess;
 

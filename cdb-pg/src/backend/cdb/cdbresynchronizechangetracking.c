@@ -283,7 +283,8 @@ void ChangeTracking_PrintRelationChangeInfo(
 									  uint8		xl_info,
 									  void		*data, 
 									  XLogRecPtr *loc,
-									  bool		weAreGeneratingXLogNow)
+									  bool		weAreGeneratingXLogNow,
+									  bool		printSkipIssuesOnly)
 {
 	RelationChangeInfo 	relationChangeInfoArray[MaxRelationChangeInfoReturns];
 	int					relationChangeInfoArrayCount;
@@ -335,9 +336,9 @@ void ChangeTracking_PrintRelationChangeInfo(
 			skipIssue = (zeroTid || invalidTid || zeroSerialNum || invalidSerialNum);
 		}
 
-		if (!Debug_print_xlog_relation_change_info_skip_issues_only || skipIssue)
+		if (!printSkipIssuesOnly || skipIssue)
 			elog(LOG, 
-				 "ChangeTracking_PrintRelationChangeInfo: [%d] xl_rmid %d, xl_info 0x%X, %u/%u/%u, block number %d, LSN %s, persistent serial num " INT64_FORMAT ", TID %s, maxPersistentSerialNum " INT64_FORMAT ", skip %s, zeroTid %s, invalidTid %s, zeroSerialNum %s, invalidSerialNum %s, skipIssue %s",
+				 "ChangeTracking_PrintRelationChangeInfo: [%d] xl_rmid %d, xl_info 0x%X, %u/%u/%u, block number %u, LSN %s, persistent serial num " INT64_FORMAT ", TID %s, maxPersistentSerialNum " INT64_FORMAT ", skip %s, zeroTid %s, invalidTid %s, zeroSerialNum %s, invalidSerialNum %s, skipIssue %s",
 				i,
 				xl_rmid,
 				xl_info,
@@ -585,6 +586,15 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 													   BlockIdGetBlockNumber(&blkid),
 													   &xlrec->target.persistentTid,
 													   xlrec->target.persistentSerialNum);
+					
+					if(info == XLOG_BTREE_INSERT_META)
+						ChangeTracking_AddRelationChangeInfo(
+														   relationChangeInfoArray,
+														   relationChangeInfoArrayCount,
+														   &(xlrec->target.node),
+														   BTREE_METAPAGE,
+														   &xlrec->target.persistentTid,
+														   xlrec->target.persistentSerialNum);
 
 					break;
 				}
@@ -658,7 +668,16 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 														   &(xlrec->target.node),
 														   xlrec->leftblk,
 														   &xlrec->target.persistentTid,
-														   xlrec->target.persistentSerialNum);					
+														   xlrec->target.persistentSerialNum);
+					
+					if (info == XLOG_BTREE_DELETE_PAGE_META)
+						ChangeTracking_AddRelationChangeInfo(
+														   relationChangeInfoArray,
+														   relationChangeInfoArrayCount,
+														   &(xlrec->target.node),
+														   BTREE_METAPAGE,
+														   &xlrec->target.persistentTid,
+														   xlrec->target.persistentSerialNum);
 					break;
 				}
 				case XLOG_BTREE_NEWROOT:
@@ -671,7 +690,16 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 													   &(xlrec->btreenode.node),
 													   xlrec->rootblk,
 													   &xlrec->btreenode.persistentTid,
-													   xlrec->btreenode.persistentSerialNum);					
+													   xlrec->btreenode.persistentSerialNum);	
+					 
+					/* newroot always updates the meta page */
+					ChangeTracking_AddRelationChangeInfo(
+													   relationChangeInfoArray,
+													   relationChangeInfoArrayCount,
+													   &(xlrec->btreenode.node),
+													   BTREE_METAPAGE,
+													   &xlrec->btreenode.persistentTid,
+													   xlrec->btreenode.persistentSerialNum);	
 					
 					break;
 				}
@@ -1658,10 +1686,7 @@ ChangeTracking_RecordLastChangeTrackedLoc(void)
 						"change tracking disabled : %m", 
 						path)));	
 		
-		/* TODO: what needs to be set here in case of failure? any of these?
 		FileRep_SetState(FileRepStateFault);
-		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
-		ChangeTracking_MarkFullResync();*/
 	}
 	
 	ChangeTracking_CloseLogFile(file);

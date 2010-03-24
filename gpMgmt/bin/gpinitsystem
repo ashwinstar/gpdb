@@ -992,6 +992,8 @@ DISPLAY_CONFIG () {
 			LOG_MSG "[INFO]:-Number segment hosts       = $NUM_QES" 1
 			if [ $MIRROR_PORT_BASE ]; then
 				LOG_MSG "[INFO]:-Mirror port base           = $MIRROR_PORT_BASE" 1
+                LOG_MSG "[INFO]:-Replicaton port base       = $REPLICATION_PORT_BASE" 1
+                LOG_MSG "[INFO]:-Mirror replicaton port base= $MIRROR_REPLICATION_PORT_BASE" 1
 				((NUM_MIRROR_DIRECTORY=${#MIRROR_DATA_DIRECTORY[@]}))
 				LOG_MSG "[INFO]:-Mirror segment #           = $NUM_MIRROR_DIRECTORY" 1
 				LOG_MSG "[INFO]:-Mirroring config           = ON" 1
@@ -1012,7 +1014,11 @@ DISPLAY_CONFIG () {
 			LOG_MSG "[INFO]:----------------------------------------" 1
 			for I in "${QE_PRIMARY_ARRAY[@]}"
 			do
-				TXT=`$ECHO $I|$AWK -F":" '{print $1" \t"$3" \t"$2" \t"$4" \t"$5}'`
+                if [ $MIRRORING -ne 0 ]; then
+    				TXT=`$ECHO $I|$AWK -F":" '{print $1" \t"$3" \t"$2" \t"$4" \t"$5" \t"$6}'`
+                else
+                    TXT=`$ECHO $I|$AWK -F":" '{print $1" \t"$3" \t"$2" \t"$4" \t"$5}'`
+                fi
 				LOG_MSG "[INFO]:-$TXT" 1
 			done
 			if [ $MIRRORING -ne 0 ]; then
@@ -1021,7 +1027,7 @@ DISPLAY_CONFIG () {
 				LOG_MSG "[INFO]:---------------------------------------" 1
 				for I in  "${QE_MIRROR_ARRAY[@]}"
 				do
-					TXT=`$ECHO $I|$AWK -F":" '{print $1" \t"$3" \t"$2" \t"$4" \t"$5}'`
+					TXT=`$ECHO $I|$AWK -F":" '{print $1" \t"$3" \t"$2" \t"$4" \t"$5" \t"$6}'`
 					LOG_MSG "[INFO]:-$TXT" 1
 				done
 			fi
@@ -1386,7 +1392,7 @@ SCAN_LOG () {
 }
 
 DUMP_OUTPUT_CONFIG () {
-    $ECHO "ARRAY_NAME=$ARRAY_NAME" > $OUTPUT_CONFIG
+    $ECHO "ARRAY_NAME=\"$ARRAY_NAME\"" > $OUTPUT_CONFIG
     if [ x"" != x"$IP_ALLOW" ] ; then
 	$ECHO "IP_ALLOW=$IP_ALLOW" >> $OUTPUT_CONFIG
     fi
@@ -1463,14 +1469,21 @@ READ_INPUT_CONFIG () {
     MACHINE_LIST=()
     DATA_DIRECTORY=()
     PORT_BASE=1000000
+    REPLICATION_PORT_BASE=100000000
+    CONTENT_COUNT=0
     for QE in ${PRIMARY_ARRAY[@]}
     do
 		SET_VAR $QE
 		if [ $GP_PORT -lt $PORT_BASE ] ; then
 			PORT_BASE=$GP_PORT
 		fi
+        if [ $GP_REPLICATION_PORT -lt $REPLICATION_PORT_BASE ]; then
+            REPLICATION_PORT_BASE=$GP_REPLICATION_PORT
+        fi
 		DATA_DIRECTORY=(${DATA_DIRECTORY[@]} `$DIRNAME $GP_DIR`)
 		MACHINE_LIST=(${MACHINE_LIST[@]} $GP_HOSTNAME)
+
+        ((CONTENT_COUNT=$CONTENT_COUNT+1))
     done
     DATA_DIRECTORY=(`$ECHO ${DATA_DIRECTORY[@]} | $TR ' ' '\n' | $SORT | $TR '\n' ' '`)
     
@@ -1478,12 +1491,16 @@ READ_INPUT_CONFIG () {
 	MIRRORING=1
 	MIRROR_DATA_DIRECTORY=()
 	MIRROR_PORT_BASE=100000000
+    MIRROR_REPLICATION_PORT_BASE=100000000
 	for QE in ${MIRROR_ARRAY[@]}
 	do
 	    SET_VAR $QE
 	    if [ $GP_PORT -lt $MIRROR_PORT_BASE ] ; then
 			MIRROR_PORT_BASE=$GP_PORT
 	    fi
+        if [ $GP_REPLICATION_PORT -lt $MIRROR_REPLICATION_PORT_BASE ]; then
+            MIRROR_REPLICATION_PORT_BASE=$GP_REPLICATION_PORT
+        fi
 	    MIRROR_DATA_DIRECTORY=(${MIRROR_DATA_DIRECTORY[@]} `$DIRNAME $GP_DIR`)
 		MACHINE_LIST=(${MACHINE_LIST[@]} $GP_HOSTNAME)
 	done

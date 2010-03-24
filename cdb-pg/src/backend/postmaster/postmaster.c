@@ -1820,8 +1820,11 @@ ServerLoop(void)
 
 		PG_SETMASK(&UnBlockSig);
 
-		/* once backends are done we don't do any more acceptance of them! */
-        bool acceptNewConnections = pmState <= PM_CHILD_STOP_WAIT_BACKENDS;
+		/*
+		 * we allow new connections (which are rejected because the database is shutting down, but
+		 *   that gives a nicer message than potentially hanging the client's connection)
+		 */
+        bool acceptNewConnections = pmState < PM_CHILD_STOP_WAIT_DEAD_END_CHILDREN;
 
 
         /* If something that needs handling is received while we were doing other things with signals

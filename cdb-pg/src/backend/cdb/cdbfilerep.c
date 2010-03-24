@@ -226,6 +226,7 @@ FileRepOperationToString[] = {
 	"Link or Rename",
 	"Shutdown",
 	"In Sync Transition",
+	"Heart Beat",
 	"Not Specified",
 };
 
@@ -356,6 +357,90 @@ FileRepShmem_s *fileRepAckShmem = NULL;
 
 static void FileRep_ShmemInitArray(void);
 
+FileRepIpcShmem_s	*fileRepIpcArray[FILEREP_MAX_IPC_ARRAY];
+
+int
+FileRepSemas(void)
+{
+	/* 
+	 *	PRIMARY
+	 *		1) backend and sender (FileRepShmem_s = 2)
+	 *		2) Receiver Ack and Consumer Ack (FileRepAckShmem_s = 2)
+	 *		3) Consumer Ack and backend (IsOperationCompleted = 1)
+	 *		4) backend and backend (InsertNewHashEntry = 1)
+	 *
+	 *	MIRROR
+	 *		1) receiver and consumer XLOG (FileRepShmem_s = 2)
+	 *		2) receiver and consumer bgwriter (FileRepShmem_s =2)
+	 *		3) receiver and consumer Append Only 1 (FileRepShmem_s = 2)
+	 *		4) receiver and consumer Append Only 2 (FileRepShmem_s = 2)
+	 *		5) consumers and sender ack (FileRepAckShmem_s = 2)
+	 *
+	 */
+	return(FILEREP_MAX_SEMAPHORES);
+}
+
+Size
+FileRepIpc_ShmemSize(void)
+{
+	Size	size;
+	
+	size = sizeof(FileRepIpcShmem_s);
+	
+	size = mul_size(size, FILEREP_MAX_IPC_ARRAY);
+	
+	return size;
+}
+
+void
+FileRepIpc_ShmemInit(void)
+{
+	int		ii;
+	bool	foundPtr;
+	char label[16];
+		
+	for (ii=0; ii < FILEREP_MAX_IPC_ARRAY; ii++)
+	{
+		sprintf(label, "FileRep Ipc %d", ii);
+		fileRepIpcArray[ii] = (FileRepIpcShmem_s *) ShmemInitStruct(label,
+																	sizeof(FileRepIpcShmem_s), 
+																	&foundPtr);
+		
+		if (fileRepIpcArray[ii] == NULL) {
+			ereport(ERROR,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 (errmsg("Not enough shared memory for Mirroring."))));
+		}	
+		
+		if (! foundPtr) {
+			MemSet(fileRepIpcArray[ii], 0, sizeof(FileRepIpcShmem_s));
+		}
+		
+		PGSemaphoreCreate(&fileRepIpcArray[ii]->semP);
+		PGSemaphoreCreate(&fileRepIpcArray[ii]->semC);
+		
+		fileRepIpcArray[ii]->refCountSemP = 0;
+		fileRepIpcArray[ii]->refCountSemC = 0;		
+	}
+}
+
+void
+FileRep_IpcWait(PGSemaphoreData sem)
+{
+	PGSemaphoreLockInterruptable(&sem);
+}
+
+void
+FileRep_IpcSignal(PGSemaphoreData sem, int refCount)
+{
+	int ii;
+
+	for (ii=0; ii < refCount; ii++)
+	{
+		PGSemaphoreUnlock(&sem);
+	}	
+}
+
 static FileRepShmem_s *FileRep_ShmemInitOneBuffer(const char *bufferLabel, int shmemSize, int bufSize)
 {
 	bool	foundPtr;
@@ -420,6 +505,8 @@ FileRep_ShmemInit(void)
 {
 	fileRepShmemArray[fileRepProcIndex] = FileRep_ShmemInitOneBuffer("FileRep Primary Mirror Messages",
 							FileRep_ShmemSize(), FileRep_ShmemSize() - sizeof(FileRepShmem_s));
+	
+	fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex = IndexIpcArrayShmem;
 		
 	elog(LOG, "FileRep_ShmemInit shmemArray:%p array index:'%d' ", 
 		 fileRepShmemArray[fileRepProcIndex], fileRepProcIndex);
@@ -435,6 +522,8 @@ FileRepAck_ShmemInit(void)
 {
 	fileRepAckShmem = FileRep_ShmemInitOneBuffer("FileRepAck Primary Mirror Messages",
 							FileRepAck_ShmemSize(), file_rep_ack_buffer_size );
+	
+	fileRepAckShmem->ipcArrayIndex = IndexIpcArrayAckShmem;
 }
 
 /*
@@ -450,9 +539,6 @@ FileRep_ShmemSize(void)
 	
 	size = add_size(size, file_rep_buffer_size);
 	size = mul_size(size, fileRepShmemArrayCount);
-	
-	elog(LOG, "FileRep_ShmemSize() size:%u ", 
-		 (uint)size);	
 	
 	return size;
 }
@@ -471,7 +557,7 @@ FileRepAck_ShmemSize(void)
 	size = sizeof(FileRepShmem_s);
 	
 	size = add_size(size, file_rep_ack_buffer_size);
-	elog(DEBUG1, "FileRepAck_ShmemSize() size:%u", (uint)size);	
+
 	return size;
 }
 
@@ -508,6 +594,8 @@ FileRep_ShmemInitArray(void)
 		fileRepShmemArray[ii]->consumeCount = 0;
 		
 		fileRepShmemArray[ii]->state = FileRepStateNotInitialized;
+		
+		fileRepShmemArray[ii]->ipcArrayIndex = ii+1;
 		
 		if ((ii + 1) < fileRepShmemArrayCount) {
 			fileRepShmemArray[ii+1] = (FileRepShmem_s *)fileRepShmemArray[ii]->positionEnd;
@@ -577,12 +665,20 @@ FileRep_ShmemReInit(void)
 								 FileRep_ShmemSize(), 
 								 FileRep_ShmemSize() - sizeof(FileRepShmem_s));
 	
+	fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex = IndexIpcArrayShmem;
+	
+	fileRepIpcArray[fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex]->refCountSemC = 0;
+	fileRepIpcArray[fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex]->refCountSemP = 0;
+	
+	PGSemaphoreReset(&fileRepIpcArray[fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex]->semC);
+	PGSemaphoreReset(&fileRepIpcArray[fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex]->semP);
+
 	elog(LOG, "FileRep_ShmemReInit() shmemArray:%p array index:'%d' ", 
 		 fileRepShmemArray[fileRepProcIndex], fileRepProcIndex);
 }
 
 /*
- * FileRepAck_ShmemInit()
+ * FileRepAck_ShmemReInit()
  *			Allocate and initialize FileRepAck Shared Memory 
  *
  */
@@ -592,6 +688,14 @@ FileRepAck_ShmemReInit(void)
 	FileRep_ShmemReInitOneBuffer(fileRepAckShmem,
 								 FileRepAck_ShmemSize(), 
 								 file_rep_ack_buffer_size);
+	
+	fileRepAckShmem->ipcArrayIndex = IndexIpcArrayAckShmem;
+	
+	fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemC = 0;
+	fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemP = 0;
+	
+	PGSemaphoreReset(&fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semC);
+	PGSemaphoreReset(&fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semP);		
 	
 	elog(LOG, "FileRepAck_ShmemReInit() fileRepAckShmem:%p  ", 
 		 fileRepAckShmem);
@@ -604,12 +708,19 @@ FileRepAck_ReserveShmem(
 {
 	bool	insert = false;
 	int		retry = 0;
+	bool	wait = FALSE;
 	char	*msgPositionInsert = NULL;
 	FileRepShmemMessageDescr_s *fileRepShmemMessageDescr;
 		
 	while ((insert == false) && (retry < file_rep_retry)) {
 		
 		LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE);
+		
+		if (wait == TRUE)
+		{
+			fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemP--;
+			wait = FALSE;
+		}
 		
 		if (fileRepAckShmem->positionInsert > fileRepAckShmem->positionConsume) {
 			if ((fileRepAckShmem->positionInsert + msgLength + sizeof(FileRepShmemMessageDescr_s)) < 
@@ -620,6 +731,8 @@ FileRepAck_ReserveShmem(
 				if (fileRepAckShmem->positionConsume != fileRepAckShmem->positionBegin) {
 					fileRepAckShmem->positionWraparound = fileRepAckShmem->positionInsert;
 					fileRepAckShmem->positionInsert = fileRepAckShmem->positionBegin;
+					LWLockRelease(FileRepAckShmemLock);
+					continue;
 				}
 			}
 		}
@@ -639,6 +752,9 @@ FileRepAck_ReserveShmem(
 				/* Message wraparound */
 				fileRepAckShmem->positionWraparound = fileRepAckShmem->positionInsert;
 				fileRepAckShmem->positionInsert = fileRepAckShmem->positionBegin;
+				LWLockRelease(FileRepAckShmemLock);
+				continue;
+
 			}			
 		}
 		
@@ -670,8 +786,13 @@ FileRepAck_ReserveShmem(
 				
 				fileRepAckShmem->positionInsert = msgPositionInsert + 
 						msgLength + sizeof(FileRepShmemMessageDescr_s);
-
 			}
+		}
+		
+		if (insert == FALSE)
+		{
+			fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemP++;
+			wait = TRUE;
 		}
 		
 		LWLockRelease(FileRepAckShmemLock);
@@ -680,8 +801,12 @@ FileRepAck_ReserveShmem(
 			if (FileRepSubProcess_IsStateTransitionRequested())
 			{
 				break;
-			}			
-			FileRep_Sleep10ms(retry);
+			}	
+			
+			FileRep_IpcWait(fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semP);
+						
+			//FileRep_Sleep10ms(retry);
+
 			retry++;
 		}
 		
@@ -694,8 +819,6 @@ FileRepAck_ReserveShmem(
 	
 	return (msgPositionInsert);
 }
-
-
 
 /*
  * Ensure next insertPosition is also available. That will happen 
@@ -717,12 +840,19 @@ FileRep_ReserveShmem(
 {
 	bool	insert = false;
 	int		retry = 0;
+	bool	wait = FALSE;
 	char	*msgPositionInsert = NULL;
 	FileRepShmemMessageDescr_s *fileRepShmemMessageDescr;
 	
 	while ((insert == false) && (retry < file_rep_retry)) {
 		
 		LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
+		
+		if (wait == TRUE)
+		{
+			fileRepIpcArray[fileRepShmem->ipcArrayIndex]->refCountSemP--;
+			wait = FALSE;
+		}
 		
 		if (fileRepShmem->positionInsert > fileRepShmem->positionConsume) {
 			if ((fileRepShmem->positionInsert + msgLength + sizeof(FileRepShmemMessageDescr_s)) < 
@@ -733,6 +863,8 @@ FileRep_ReserveShmem(
 				if (fileRepShmem->positionConsume != fileRepShmem->positionBegin) {
 					fileRepShmem->positionWraparound = fileRepShmem->positionInsert;
 					fileRepShmem->positionInsert = fileRepShmem->positionBegin;
+					LWLockRelease(FileRepShmemLock);
+					continue;
 				}
 			}
 		}
@@ -752,6 +884,8 @@ FileRep_ReserveShmem(
 				/* Message wraparound */
 				fileRepShmem->positionWraparound = fileRepShmem->positionInsert;
 				fileRepShmem->positionInsert = fileRepShmem->positionBegin;
+				LWLockRelease(FileRepShmemLock);
+				continue;
 			}
 		}
 		
@@ -783,8 +917,13 @@ FileRep_ReserveShmem(
 				
 				fileRepShmem->positionInsert = msgPositionInsert + 
 						msgLength + sizeof(FileRepShmemMessageDescr_s);
-
 			}
+		}
+				
+		if (insert == FALSE)
+		{
+			fileRepIpcArray[fileRepShmem->ipcArrayIndex]->refCountSemP++;
+			wait = TRUE;
 		}
 		
 		LWLockRelease(FileRepShmemLock);
@@ -793,13 +932,14 @@ FileRep_ReserveShmem(
 			if (FileRepSubProcess_IsStateTransitionRequested())
 			{
 				break;
-			}			
-			FileRep_Sleep10ms(retry); 
+			}		
+
+			FileRep_IpcWait(fileRepIpcArray[fileRepShmem->ipcArrayIndex]->semP);
+
+			//FileRep_Sleep10ms(retry); 
+
 			retry++;
-			elog(DEBUG1, "FileRep_ReserveShmem() RETRY:%d", 
-				 retry);	
 		}
-		
 	}
 	
 	if (insert == false) {
@@ -1419,14 +1559,22 @@ FileRep_ProcessSignals()
 			{
 				if (term_pid == FileRepSubProcList[i].pid)
 				{
+					/*
 					if (! ((term_status == 0) &&
 						   (i == FileRepProcessTypePrimaryRecovery ||
 							i == FileRepProcessTypeResyncManager ||
 							i == FileRepProcessTypeResyncWorker1)))
-					{
+					{ */
 						LogChildExit(LOG, (FileRepProcessTypeToString[i]),
 									 FileRepSubProcList[i].pid,
 									 term_status);
+					//}
+					if (term_status != 0 &&
+						segmentState != SegmentStateShutdown &&
+						segmentState != SegmentStateImmediateShutdown &&
+						segmentState != SegmentStateShutdownFilerepBackends)
+					{
+						FileRep_SetSegmentState(SegmentStateFault);
 					}
 					FileRepSubProcList[i].pid = 0;
 					break;
@@ -1491,11 +1639,11 @@ FileRepIsBackendSubProcess(FileRepProcessType_e processType)
 	    case FileRepProcessTypeMirrorSenderAck:
     	case FileRepProcessTypePrimaryReceiverAck:
 	    case FileRepProcessTypePrimaryConsumerAck:
-	    case FileRepProcessTypePrimaryRecovery:
 	    case FileRepProcessTypeMirrorConsumerWriter:
         case FileRepProcessTypeMirrorConsumerAppendOnly1:
         case FileRepProcessTypeMirrorConsumerAppendOnly2:
             return false;
+		case FileRepProcessTypePrimaryRecovery:
         case FileRepProcessTypeResyncManager:
         case FileRepProcessTypeResyncWorker1:
             return true;
@@ -1548,6 +1696,12 @@ FileRep_SetSegmentState(SegmentState_e segmentState)
 	elog(LOG, "FileRep_SetSegmentState() state:'%s' MyProcPid:'%d'", 
 		 SegmentStateToString[segmentState],
 		 getpid());	
+}
+
+void
+FileRep_SetPostmasterReset(void)
+{
+		SendPostmasterSignal(PMSIGNAL_FILEREP_POSTMASTER_RESET_REQUIRED);
 }
 
 /*
@@ -1682,7 +1836,7 @@ FileRep_SetState(FileRepState_e fileRepStateLocal)
             break;
 	}
 	
-	elog(FILEREP_PROCESS_LOG_LEVEL, "FileRep_SetState() state:'%s' MyProcPid:'%d'",
+	elog(LOG, "LOG(filerep)FileRep_SetState() state:'%s' MyProcPid:'%d'",
 		 FileRepStateToString[FileRep_GetState()],
 		 getpid());
 }
@@ -1820,14 +1974,15 @@ FileRep_CalculateCrc(
 					 uint32		length,
 					 pg_crc32	*crc)
 {
-	pg_crc32 _crc;
-	
+	pg_crc32 _crc = 0;
+
 	/* Compute Crc */
 	INIT_CRC32(_crc);
 	
 	COMP_CRC32(_crc, (char *) data, length);
 	
 	FIN_CRC32(_crc);
+
 	*crc = _crc;
 }
 
@@ -1845,6 +2000,7 @@ FileRep_IsOperationSynchronous(FileRepOperation_e fileRepOperation)
 		case FileRepOperationRename:
 		case FileRepOperationShutdown:
 		case FileRepOperationInSyncTransition:
+		case FileRepOperationHeartBeat:
 			
 			return TRUE;	
 
@@ -2383,12 +2539,17 @@ void FileRep_Main(void)
 	            "\n",
 		        fileRepRole, segmentState, dataState,
 		        fileRepPrimaryHostAddress, fileRepPrimaryPort, fileRepMirrorHostAddress, fileRepMirrorPort );
-		
+			
 	if (dataState == DataStateInChangeTracking) 
 	{
+		if (segmentState == SegmentStateFault)
+		{
+			FileRep_SetPostmasterReset();
+		}
+		
 		if (FileRep_StartChildProcess(FileRepProcessTypePrimaryRecovery) < 0) {
 			status = STATUS_ERROR;
-			FileRep_SetState(FileRepStateFault);
+			FileRep_SetPostmasterReset();
 		}
 		
 		/* enter shutdown state -- wait for the postmaster to stop us */
@@ -2415,14 +2576,12 @@ void FileRep_Main(void)
 				break;
 			}			
 	
-			if (dataState == DataStateInSync) 
-			{
-				if (FileRep_StartChildProcess(FileRepProcessTypePrimaryRecovery) < 0) {
-					status = STATUS_ERROR;
-					break;
-				}	
-			}
-			else 
+			if (FileRep_StartChildProcess(FileRepProcessTypePrimaryRecovery) < 0) {
+				status = STATUS_ERROR;
+				break;
+			}	
+
+			if (dataState == DataStateInResync) 
 			{
 				if (FileRep_StartChildProcess(FileRepProcessTypeResyncManager) < 0) {
 					status = STATUS_ERROR;

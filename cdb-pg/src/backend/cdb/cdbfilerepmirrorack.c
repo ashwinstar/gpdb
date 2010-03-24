@@ -163,6 +163,9 @@ FileRepAckMirror_ConstructAndInsertMessage(
 	
 	fileRepShmemMessageDescr->messageState = FileRepShmemMessageStateReady; 
 	
+	FileRep_IpcSignal(fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semC, 
+					  fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemC);
+	
 	return STATUS_OK;
 }	
 
@@ -301,6 +304,9 @@ FileRepAckMirror_RunSender(void)
 				fileRepAckShmem->positionConsume = fileRepAckShmem->positionBegin;
 				fileRepAckShmem->positionWraparound = fileRepAckShmem->positionEnd;
 			}
+			
+			FileRep_IpcSignal(fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semP, 
+							  fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemP);
 		}
 		
 		fileRepShmemMessageDescr = 
@@ -309,6 +315,8 @@ FileRepAckMirror_RunSender(void)
 		while ((fileRepAckShmem->positionConsume == fileRepAckShmem->positionInsert) ||
 			   ((fileRepAckShmem->positionConsume != fileRepAckShmem->positionInsert) &&
 				(fileRepShmemMessageDescr->messageState != FileRepShmemMessageStateReady))) {
+			
+			fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemC++;
 			
 			LWLockRelease(FileRepAckShmemLock);
 			
@@ -319,9 +327,13 @@ FileRepAckMirror_RunSender(void)
 				break;
 			}
 			
-			pg_usleep(1000L); /* 1 ms */
+			FileRep_IpcWait(fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semC);
+			
+			//pg_usleep(1000L); /* 1 ms */
 			
 			LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE); 
+			
+			fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemC--;
 			
 			if (fileRepAckShmem->positionConsume == fileRepAckShmem->positionWraparound &&
 				fileRepAckShmem->positionInsert != fileRepAckShmem->positionWraparound) {

@@ -243,10 +243,11 @@ FileRepResyncManager_SetEndResyncLSN(XLogRecPtr endResyncLSN)
 		fileRepResyncShmem->endIncrResyncLSN.xrecoff = endResyncLSN.xrecoff;		
 	}
 			 
-    elog(LOG, "FileRepResync_SetEndResyncLSN() isFullResync:'%d' lsn:'%d'/'%d'",
+    elog(LOG, "FileRepResync_SetEndResyncLSN() isFullResync:'%d' lsn:'%u'/'%u' '%s'",
 		 isFullResync(),
 		 endResyncLSN.xlogid,
-		 endResyncLSN.xrecoff);
+		 endResyncLSN.xrecoff,
+		 XLogLocationToString(&endResyncLSN));
 
 }
 
@@ -279,8 +280,22 @@ void
 FileRepResync_ShmemInit(void)
 {
 	HASHCTL	hash_ctl;
+	bool	foundPtr;
 	
-	fileRepResyncShmem = (FileRepResyncShmem_s *) ShmemAlloc(sizeof(FileRepResyncShmem_s));
+	fileRepResyncShmem = (FileRepResyncShmem_s *) ShmemInitStruct("FileRep Resync", 
+																  sizeof(FileRepResyncShmem_s),
+																  &foundPtr);
+	  
+	if (fileRepResyncShmem == NULL) {
+		ereport(ERROR,
+		  (errcode(ERRCODE_OUT_OF_MEMORY),
+		   (errmsg("Not enough shared memory for Mirroring."))));
+	}	
+  
+	if (! foundPtr) 
+	{
+		MemSet(fileRepResyncShmem, 0, sizeof(FileRepResyncShmem_s));
+	}
 	
 	SpinLockInit(&fileRepResyncShmem->lock);
 	
@@ -301,7 +316,7 @@ FileRepResync_ShmemInit(void)
 	hash_ctl.entrysize = sizeof(FileRepResyncHashEntry_s);
 	hash_ctl.hash = string_hash;
 	
-	fileRepResyncShmem->fileRepResyncHash = ShmemInitHash("File Rep Resync Hash",
+	fileRepResyncShmem->fileRepResyncHash = ShmemInitHash("FileRep Resync Hash",
 														  FILEREP_MAX_RESYNC_FILES,
 														  FILEREP_MAX_RESYNC_FILES,
 														  &hash_ctl,
@@ -348,6 +363,7 @@ FileRepPrimary_StartResyncManager(void)
 		while (FileRepSubProcess_GetState() == FileRepStateFault ||
 			   
 			   (fileRepShmemArray[0]->state == FileRepStateNotInitialized &&
+				FileRepSubProcess_GetState() != FileRepStateShutdownBackends &&
 			    FileRepSubProcess_GetState() != FileRepStateShutdown &&
 			    FileRepSubProcess_GetState() != FileRepStateImmediateShutdown)) {
 			
@@ -356,6 +372,7 @@ FileRepPrimary_StartResyncManager(void)
 		}
 		
 		if (FileRepSubProcess_GetState() == FileRepStateShutdown ||
+			FileRepSubProcess_GetState() == FileRepStateShutdownBackends ||
 			FileRepSubProcess_GetState() == FileRepStateImmediateShutdown) {
 			
 			break;
@@ -369,6 +386,23 @@ FileRepPrimary_StartResyncManager(void)
 				isLastLocTracked = TRUE;
 				FileRepSubProcess_SetState(FileRepStateReady);
 				getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState);
+				
+				while (FileRepSubProcess_GetState() != FileRepStateShutdown &&
+					   FileRepSubProcess_GetState() != FileRepStateShutdownBackends &&
+					   FileRepSubProcess_GetState() != FileRepStateImmediateShutdown &&
+					   isDatabaseRunning() == FALSE) {
+					
+					FileRepSubProcess_ProcessSignals();
+					pg_usleep(50000L); /* 50 ms */	
+				}		
+				
+				if (FileRepSubProcess_GetState() == FileRepStateShutdown ||
+					FileRepSubProcess_GetState() == FileRepStateShutdownBackends ||
+					FileRepSubProcess_GetState() == FileRepStateImmediateShutdown) {
+					
+					break;
+				}				
+				
 			}
 			else
 			{
@@ -387,6 +421,7 @@ FileRepPrimary_StartResyncManager(void)
 				
 				/* Wait that XLOG replay is done */
 				while (FileRepSubProcess_GetState() != FileRepStateShutdown &&
+					   FileRepSubProcess_GetState() != FileRepStateShutdownBackends &&
 					   FileRepSubProcess_GetState() != FileRepStateImmediateShutdown &&
 					   ! (segmentState == SegmentStateInResyncTransition && 
 						  dataState == DataStateInResync)) {
@@ -395,9 +430,10 @@ FileRepPrimary_StartResyncManager(void)
 					pg_usleep(50000L); /* 50 ms */	
 				}		
 
-				if (segmentState == SegmentStateShutdown ||
-					segmentState == SegmentStateImmediateShutdown) {
-
+				if (FileRepSubProcess_GetState() == FileRepStateShutdown ||
+					FileRepSubProcess_GetState() == FileRepStateShutdownBackends ||
+					FileRepSubProcess_GetState() == FileRepStateImmediateShutdown) {
+					
 					break;
 				}
 			}
@@ -407,20 +443,27 @@ FileRepPrimary_StartResyncManager(void)
 			   segmentState == SegmentStateReady);
 
 		status = FileRepResyncManager_InResyncTransition(isLastLocTracked);
-		
-		if (status != STATUS_OK) {
+				
+		if (status != STATUS_OK ||
+			! (FileRepSubProcess_GetState() == FileRepStateReady &&
+			   dataState == DataStateInResync))
+		{
 			continue;
 		}		
-														
+		
 		status = FileRepPrimary_RunResyncManager();
 
-		if (status != STATUS_OK) {
+		if (status != STATUS_OK ||
+			! (FileRepSubProcess_GetState() == FileRepStateReady &&
+			   dataState == DataStateInResync))
+		{
 			continue;
 		}		
-						
+		
 		status = FileRepResyncManager_InSyncTransition();
 		
-		if (status != STATUS_OK) {
+		if (status != STATUS_OK) 
+		{
 			continue;
 		}
 		
@@ -448,13 +491,26 @@ FileRepResyncManager_InResyncTransition(bool isLastLocTracked)
 
 	if (isLastLocTracked == FALSE)
 	{
-	/* NOTE remove after it will be implemented to mark from postmaster */
+		/* NOTE remove after it will be implemented to mark from postmaster */
 		if (isFullResync())
 			ChangeTracking_MarkFullResync();
 	
 		ChangeTracking_RecordLastChangeTrackedLoc();
-	}
 		
+		if (FileRepSubProcess_GetState() == FileRepStateFault)
+		{
+			goto exit;
+		}
+	}
+	
+	FileRepSubProcess_ProcessSignals();
+	if (! ((segmentState == SegmentStateInResyncTransition ||
+			segmentState == SegmentStateReady) &&
+		   dataState == DataStateInResync))
+	{
+		goto exit;
+	}						
+	
 	if (isFullResync())
 	{
 		PersistentFileSysObj_MarkWholeMirrorFullCopy();
@@ -463,17 +519,27 @@ FileRepResyncManager_InResyncTransition(bool isLastLocTracked)
 	}
 	else
 	{
+		/* Mark OIDs {5090, 5091, 5092, 5093, and 5096} for scan incremental */
+		PersistentFileSysObj_MarkSpecialScanIncremental(); 
 		PersistentFileSysObj_MarkPageIncrementalFromChangeLog();
 		//PersistentFileSysObj_MarkWholeMirrorScanIncremental();
-		elog(LOG, "FileRepResyncManager_InResyncTransition() PersistentFileSysObj_MarkWholeMirrorScanIncremental");
+		elog(LOG, "FileRepResyncManager_InResyncTransition() PersistentFileSysObj_MarkPageIncrementalFromChangeLog");
 	}
+	
+	FileRepSubProcess_ProcessSignals();
+	if (! ((segmentState == SegmentStateInResyncTransition ||
+			segmentState == SegmentStateReady) &&
+		   dataState == DataStateInResync))
+	{
+		goto exit;
+	}						
 	
 	FileRepSubProcess_SetState(FileRepStateReady);	
 		
-	PersistentFileSysObj_MirrorReCreate();
+	PersistentFileSysObj_MirrorReCreate();	
+	elog(LOG, "FileRepResyncManager_InResyncTransition() PersistentFileSysObj_MirrorReCreate DONE");
 	
-	elog(LOG, "FileRepResyncManager_InResyncTransition() PersistentFileSysObj_MirrorReCreate");
-
+exit:
 	LWLockRelease(MirroredLock);
 	
 	return status;
@@ -499,7 +565,6 @@ FileRepPrimary_RunResyncManager(void)
 	while (1) {
 		
 		FileRepSubProcess_ProcessSignals();
-		
 		if (! (FileRepSubProcess_GetState() == FileRepStateReady &&
 			   dataState == DataStateInResync))
 		{
@@ -520,7 +585,8 @@ FileRepPrimary_RunResyncManager(void)
 											   &entry.mirrorDataSynchronizationState,
 											   &entry.mirrorBufpoolResyncCkptLoc,
 											   &entry.mirrorBufpoolResyncCkptBlockNum,
-											   &entry.mirrorAppendOnlyEof,											   
+											   &entry.mirrorAppendOnlyLossEof,											   
+											   &entry.mirrorAppendOnlyNewEof, 											
 											   &entry.persistentTid,
 											   &entry.persistentSerialNum);
 		
@@ -540,18 +606,20 @@ FileRepPrimary_RunResyncManager(void)
 								entry.segmentFileNum);
 								
 				
-		elog(LOG, "FileRepPrimary_RunResyncManager() mirror relation path:'%s' ii:'%d' "
+		elog(LOG, "FileRepPrimary_RunResyncManager() mirror relation path:'%s' index:'%d' "
 				 "relStorageMgr:'%d' mirrorDataSynchronizationState:'%d' "
 				 "ResyncCkptLoc:'%d/%d' "
 				 "ResyncCkptBlockNum:'%u' "
-				 "AppendOnlyEof:" INT64_FORMAT " ",
+				 "AppendOnlyLossEof:" INT64_FORMAT " "
+				 "AppendOnlyNewEof:" INT64_FORMAT " ",
 				 entry.fileName, ii++,
 				 entry.relStorageMgr,
 				 entry.mirrorDataSynchronizationState,
 				 entry.mirrorBufpoolResyncCkptLoc.xlogid,
 				 entry.mirrorBufpoolResyncCkptLoc.xrecoff,
 				 entry.mirrorBufpoolResyncCkptBlockNum,
-				 entry.mirrorAppendOnlyEof);
+				 entry.mirrorAppendOnlyLossEof,
+				 entry.mirrorAppendOnlyNewEof);
 
 		
 		FileRepResync_InsertEntry(&entry);
@@ -576,23 +644,46 @@ FileRepResyncManager_InSyncTransition(void)
 	while (1) {
 		
 		LWLockAcquire(MirroredLock, LW_EXCLUSIVE);
-		
-		RequestCheckpoint(true, false);
-		
-		elog(LOG, "FileRepResyncManager_InSyncTransition() RequestCheckpoint()");
 
-		RequestXLogSwitch();
 		
+		
+		RequestCheckpoint(true, false);	
+		elog(LOG, "FileRepResyncManager_InSyncTransition() RequestCheckpoint()");
+		
+		FileRepSubProcess_ProcessSignals();
+		if (! (FileRepSubProcess_GetState() == FileRepStateReady &&
+			   dataState == DataStateInResync))
+		{
+			LWLockRelease(MirroredLock);
+			break;
+		}						
+
+		
+		
+		RequestXLogSwitch();		
 		elog(LOG, "FileRepResyncManager_InSyncTransition() RequestXLogSwitch()");
 
+		FileRepSubProcess_ProcessSignals();
+		if (! (FileRepSubProcess_GetState() == FileRepStateReady &&
+			   dataState == DataStateInResync))
+		{
+			LWLockRelease(MirroredLock);
+			break;
+		}				
 		FileRep_SetSegmentState(SegmentStateInSyncTransition);
 
+		
+		
 		status = FileRepResyncManager_ResyncFlatFiles();
 		
-		if (status != STATUS_OK) {
+		if (status != STATUS_OK || 
+			segmentState != SegmentStateInSyncTransition) {
+			LWLockRelease(MirroredLock);
 			break;
 		}		
-		
+			
+		RequestCheckpoint(true, false);	
+
 		FileRep_SetDataState(DataStateInSync, FALSE);
 		
 		FileRep_SetSegmentState(SegmentStateReady);			
@@ -664,7 +755,8 @@ FileRepResyncManager_ResyncFlatFiles(void)
 		if (status != STATUS_OK) {
 			break;
 		}
-				
+		
+		FileRepSubProcess_ProcessSignals();
 		break;
 	}
 	
@@ -724,7 +816,8 @@ FileRepResync_InsertEntry(
 		entryLocal->mirrorBufpoolResyncCkptLoc = entry->mirrorBufpoolResyncCkptLoc;
 		entryLocal->mirrorBufpoolResyncCkptBlockNum = entry->mirrorBufpoolResyncCkptBlockNum;
 		
-		entryLocal->mirrorAppendOnlyEof = entry->mirrorAppendOnlyEof;
+		entryLocal->mirrorAppendOnlyLossEof = entry->mirrorAppendOnlyLossEof;
+		entryLocal->mirrorAppendOnlyNewEof = entry->mirrorAppendOnlyNewEof;
 		
 		entryLocal->persistentTid = entry->persistentTid;
 		entryLocal->persistentSerialNum = entry->persistentSerialNum;

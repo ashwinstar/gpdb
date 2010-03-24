@@ -20,7 +20,7 @@ if sys.version_info < (2, 5, 0) or sys.version_info >= (3, 0, 0):
 
 
 MAIN_VERSION = [4,0,99,99]    # version number for main
-
+FILEREP_VERSION = [3,4,99,99]	# filerep version
 
 #============================================================
 class GpVersion:
@@ -222,6 +222,6 @@ class GpVersion:
         '''
         Returns true if the version matches the current MAIN_VERSION
         '''
-        return self.isVersionRelease(MAIN_VERSION)
+        return self.isVersionRelease(MAIN_VERSION) or self.isVersionRelease(FILEREP_VERSION)
 
     

@@ -17,10 +17,9 @@
 #include "postmaster/primary_mirror_mode.h"
 #include "storage/fd.h"
 #include "storage/dbdirnode.h"
+#include "storage/pg_sema.h"
+#include "storage/spin.h"
 #include "signal.h"
-
-
-
 
 	/* ATTENTION: Code has to be changed if FILEREP_MAX_LISTEN > 1 */
 #define FILEREP_MAX_LISTEN	1
@@ -28,6 +27,9 @@
 #define FILEREP_MESSAGEBODY_LEN 32 * 1024
 	/* should we have GUC */
 #define FILEREP_MAX_OPEN_FILES 128 // 131072   // 128k 
+
+#define FILEREP_MAX_IPC_ARRAY	5
+#define FILEREP_MAX_SEMAPHORES	2 * FILEREP_MAX_IPC_ARRAY
 
 #define FILEREP_MAX_PROC 64
 #define FILEREP_MAX_RESYNC_FILES 128  //8k
@@ -102,6 +104,8 @@ extern const char*	FileRepAckStateToString[];
  */
 	
 typedef struct FileRepShmem_s {
+	
+	int		ipcArrayIndex;
 	
 	char*	positionBegin;
 	/* 
@@ -193,6 +197,49 @@ typedef struct FileRepShmemMessageDescr_s {
 	
 } FileRepShmemMessageDescr_s;	
 
+/*
+ *
+ */
+typedef struct FileRepIpcShmem_s
+{
+	PGSemaphoreData	semP;
+
+	PGSemaphoreData semC;
+
+	int		refCountSemP;
+
+	int		refCountSemC;
+	
+} FileRepIpcShmem_s;
+
+extern FileRepIpcShmem_s	*fileRepIpcArray[FILEREP_MAX_IPC_ARRAY];
+
+typedef enum FileRep_IndexIpcArray_e
+{
+	IndexIpcArrayAckShmem = 0,
+	IndexIpcArrayShmem,
+	IndexIpcArrayAckHashShmem,
+	
+} FileRep_IndexIpcArray_e;
+
+/*
+ * Return the required number of semaphores for this module. 
+ */
+extern int FileRepSemas(void);
+
+extern Size FileRepIpc_ShmemSize(void);
+
+extern void FileRepIpc_ShmemInit(void);
+
+/*
+ * Block
+ */
+extern void FileRep_IpcWait(PGSemaphoreData sem);
+
+/*
+ * Unblock 
+ */
+extern void FileRep_IpcSignal(PGSemaphoreData sem, int refCount);
 /*
  * Return the required shared-memory size for this module.
  */
@@ -379,9 +426,11 @@ typedef enum FileRepOperation_e {
 	
 	FileRepOperationInSyncTransition,
 		/* Transition a mirror from InResync to InSync */
+	
+	FileRepOperationHeartBeat,
+		/* Verify that flow from primary to mirror and back is alive */
 
 	FileRepOperationNotSpecified,
-
 
 	/* the number of values in this enumeration */
 	FileRepOperation__EnumerationCount
@@ -570,6 +619,13 @@ typedef struct FileRepOperationDescriptionRename_s {
 	
 } FileRepOperationDescriptionRename_s;
 
+typedef struct FileRepOperationDescriptionHeartBeat_s {
+	
+	FileRepConsumerProcIndex_e fileRepConsumerProcIndex;
+	/* identify shared memory to verify the flow on mirror  */
+	
+} FileRepOperationDescriptionHeartBeat_s;
+
 /* 
  *
  */
@@ -587,6 +643,8 @@ typedef union FileRepOperationDescription_u {
 	FileRepOperationDescriptionReconcile_s reconcile;
 	
 	FileRepOperationDescriptionRename_s rename;
+	
+	FileRepOperationDescriptionHeartBeat_s heartBeat;
 	
 } FileRepOperationDescription_u;
 
@@ -800,7 +858,8 @@ extern void FileRep_SetDataState(
  * all segment processes
  */
 extern void FileRep_SetSegmentState(SegmentState_e segmentState);
-	
+
+extern void FileRep_SetPostmasterReset(void);
 /*
  * Reserve memory in order to insert FileRep message.
  * The routine returns the insert position in FileRep shared memory.

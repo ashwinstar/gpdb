@@ -14,10 +14,11 @@
 #include "access/xlog.h"
 #include "access/twophase.h"
 #include "access/slru.h"
+#include "cdb/cdbfilerep.h"
+#include "cdb/cdbfilerepprimary.h"
+#include "cdb/cdbfilerepprimaryack.h"
 #include "cdb/cdbfilerepprimaryrecovery.h"
 #include "cdb/cdbfilerepservice.h"
-#include "cdb/cdbfilerepprimaryack.h"
-#include "cdb/cdbfilerep.h"
 #include "cdb/cdbresynchronizechangetracking.h"
 #include "utils/flatfiles.h"
 
@@ -25,6 +26,8 @@ static void FileRepPrimary_StartRecoveryInSync(void);
 static void FileRepPrimary_StartRecoveryInChangeTracking(void);
 
 static int FileRepPrimary_RunRecoveryInSync(void);
+
+static void FileRepPrimary_RunHeartBeat(void);
 
 /****************************************************************
  * FILEREP SUB-PROCESS (FileRep Primary RECOVERY Process)
@@ -39,6 +42,7 @@ FileRepPrimary_StartRecovery(void)
 	{
 		case DataStateInSync:
 			FileRepPrimary_StartRecoveryInSync();
+			FileRepPrimary_RunHeartBeat();
 			break;
 			
 		case DataStateInChangeTracking:
@@ -46,6 +50,9 @@ FileRepPrimary_StartRecovery(void)
 			break;
 			
 		case DataStateInResync:
+			FileRepPrimary_RunHeartBeat();
+			break;
+			
 		default:
 			Assert(0);
 			break;
@@ -60,9 +67,6 @@ FileRepPrimary_StartRecovery(void)
  * 
  * FileRepPrimary_StartRecoveryInSync()
  *
- * That process will be started only during recovery if
- *			*) dataState == DataStateInSync or
- *			*) dataState == case DataStateResynchronizing
  *
  */
 static void 
@@ -81,6 +85,7 @@ FileRepPrimary_StartRecoveryInSync(void)
 		while (FileRepSubProcess_GetState() == FileRepStateFault ||
 			   
 			   (fileRepShmemArray[0]->state == FileRepStateNotInitialized &&
+				FileRepSubProcess_GetState() != FileRepStateShutdownBackends &&
 			    FileRepSubProcess_GetState() != FileRepStateShutdown &&
 			    FileRepSubProcess_GetState() != FileRepStateImmediateShutdown)) {
 			
@@ -89,6 +94,7 @@ FileRepPrimary_StartRecoveryInSync(void)
 		}
 		
 		if (FileRepSubProcess_GetState() == FileRepStateShutdown ||
+			FileRepSubProcess_GetState() == FileRepStateShutdownBackends ||
 			FileRepSubProcess_GetState() == FileRepStateImmediateShutdown) {
 			
 			break;
@@ -245,4 +251,69 @@ FileRepPrimary_StartRecoveryInChangeTracking(void)
 		break;
 		
 	} // while(1)	
+}
+
+
+/*
+ * 
+ * FileRepPrimary_RunHeartBeat()
+ *
+ *
+ */
+static void 
+FileRepPrimary_RunHeartBeat(void)
+{	
+	int retry = 0;
+	
+	elog(LOG, "FileRepPrimary_RunHeartBeat()");
+	
+	Insist(fileRepRole == FileRepPrimaryRole);
+	
+	Insist(dataState == DataStateInSync ||
+		   dataState == DataStateInResync);	
+	
+	while (1) 
+	{
+		FileRepSubProcess_ProcessSignals();
+		
+		while (FileRepSubProcess_GetState() == FileRepStateFault ||
+			   
+			   (fileRepShmemArray[0]->state == FileRepStateNotInitialized &&
+				FileRepSubProcess_GetState() != FileRepStateShutdownBackends &&
+			    FileRepSubProcess_GetState() != FileRepStateShutdown &&
+			    FileRepSubProcess_GetState() != FileRepStateImmediateShutdown)) {
+			
+			FileRepSubProcess_ProcessSignals();
+			pg_usleep(50000L); /* 50 ms */	
+		}
+		
+		if (FileRepSubProcess_GetState() == FileRepStateShutdown ||
+			FileRepSubProcess_GetState() == FileRepStateShutdownBackends ||
+			FileRepSubProcess_GetState() == FileRepStateImmediateShutdown) {
+			
+			break;
+		}
+
+		/* verify if flow from primary to mirror and back is alive once per minute */
+		pg_usleep(50000L); /* 50 ms */
+		
+		if (FileRepSubProcess_ProcessSignals() == true ||
+			FileRepSubProcess_GetState() == FileRepStateFault)
+		{
+			continue;
+		}
+		
+		retry++;
+		if (retry == 1200) /* 1200 * 50 ms = 60 sec */
+		{
+			FileRepPrimary_MirrorHeartBeat(FileRepMessageTypeXLog);
+			FileRepPrimary_MirrorHeartBeat(FileRepMessageTypeWriter);
+			FileRepPrimary_MirrorHeartBeat(FileRepMessageTypeAO01);
+			FileRepPrimary_MirrorHeartBeat(FileRepMessageTypeAO02);
+
+			retry = 0;
+		}
+
+	} // while(1)	
+	
 }

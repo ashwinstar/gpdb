@@ -258,7 +258,7 @@ bool 		gp_appendonly_verify_write_block = false;
 bool		Debug_appendonly_rezero_quicklz_compress_scratch = false;
 bool		Debug_appendonly_rezero_quicklz_decompress_scratch = false;
 bool		Debug_appendonly_guard_end_quicklz_scratch = false;
-bool		Debug_filerep_skip_persistent_free_list = false;
+bool		Debug_enable_new_startup_pass = false;
 bool 		gp_local_distributed_cache_stats = false;
 bool		Debug_persistent_print = false;
 int			Debug_persistent_print_level = LOG;
@@ -1727,12 +1727,12 @@ false
 	},
 				
 	{
-		{"debug_filerep_skip_persistent_free_list", PGC_USERSET, DEVELOPER_OPTIONS,
-		 gettext_noop("Don't use persistent free list."),
+		{"debug_enable_new_startup_pass", PGC_USERSET, DEVELOPER_OPTIONS,
+		 gettext_noop("Enable Startup Pass 3 REDO."),
 		 NULL,
 		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
-		&Debug_filerep_skip_persistent_free_list,
+		&Debug_enable_new_startup_pass,
 		false, NULL, NULL
 	},
 			
@@ -2175,7 +2175,7 @@ false
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_persistent_btree_collect,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 			
 	{
@@ -2185,7 +2185,7 @@ false
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_print_xlog_relation_change_info,
-		false, NULL, NULL
+		false, NULL, NULL 
 	},
 				
 	{
@@ -2195,7 +2195,7 @@ false
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_print_xlog_relation_change_info_skip_issues_only,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 					
 	{
@@ -2524,7 +2524,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&MaxBackends,
-		200, 1, INT_MAX / BLCKSZ, NULL, NULL
+		200, 10, INT_MAX / BLCKSZ, NULL, NULL
 	},
 
 	{
@@ -4103,7 +4103,7 @@ static struct config_string ConfigureNamesString[] =
 			GUC_GPDB_ADDOPT
 		},
 		&Debug_persistent_print_level_str,
-		"log", assign_debug_persistent_relation_print_level, NULL
+		"debug1", assign_debug_persistent_relation_print_level, NULL
 	},
 
 	{
@@ -4115,7 +4115,7 @@ static struct config_string ConfigureNamesString[] =
 			GUC_GPDB_ADDOPT
 		},
 		&Debug_persistent_recovery_print_level_str,
-		"log", assign_debug_persistent_recovery_print_level, NULL
+		"debug1", assign_debug_persistent_recovery_print_level, NULL
 	},
 		
 	{

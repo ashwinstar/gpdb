@@ -47,6 +47,7 @@ FileRepPrimary_StartResyncWorker(void)
 		}
 		
 		while (FileRepSubProcess_GetState() != FileRepStateShutdown &&
+			   FileRepSubProcess_GetState() != FileRepStateShutdownBackends &&
 			   FileRepSubProcess_GetState() != FileRepStateImmediateShutdown &&
 			   ! (FileRepSubProcess_GetState() == FileRepStateReady && 
 			    dataState == DataStateInResync)) {
@@ -56,11 +57,12 @@ FileRepPrimary_StartResyncWorker(void)
 		}
 		
 		if (FileRepSubProcess_GetState() == FileRepStateShutdown ||
+			FileRepSubProcess_GetState() == FileRepStateShutdownBackends ||
 			FileRepSubProcess_GetState() == FileRepStateImmediateShutdown) {
 			
 			break;
 		}
-				
+		
 		status = FileRepPrimary_RunResyncWorker();
 		
 		if (status != STATUS_OK) {
@@ -144,6 +146,8 @@ FileRepPrimary_RunResyncWorker(void)
  *				*) RelFileNode
  *				*)
  *
+ * The following relations will be always resynced as scan incremental
+ *		OIDs {5090, 5091, 5092, 5093, and 5096}
  *
  */
 
@@ -185,14 +189,14 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 					}
 					
 					numBlocks = smgrnblocks(smgr_relation);
-					
+#ifdef FILEREP_DEBUG					
 					elog(LOG, "FileRepPrimary_ResyncWrite() relNode:'%d' spcNode:'%d' dbNode:'%d' "
 							  "numBlocks:'%d' ",
 						 smgr_relation->smgr_rnode.relNode,
 						 smgr_relation->smgr_rnode.spcNode,
 						 smgr_relation->smgr_rnode.dbNode,
 						 numBlocks);					
-					
+#endif					
 					for (blkno = entry->mirrorBufpoolResyncCkptBlockNum; blkno < numBlocks; blkno++) 
 					{
 						XLogRecPtr	endResyncLSN = (isFullResync() ? 
@@ -206,11 +210,11 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 						page = BufferGetPage(buf);
 						
 						loc = PageGetLSN(page);
-						
+#ifdef FILEREP_DEBUG						
 						elog(LOG, "FileRepPrimary_ResyncWrite() blkno:'%d' "
-							 "lsn_begin:'%d'/'%d' "
-							 "lsn_page:'%d'/'%d' "
-							 "lsn_end:'%d'/'%d' ",
+							 "lsn_begin:'%u'/'%u' "
+							 "lsn_page:'%u'/'%u' "
+							 "lsn_end:'%u'/'%u' ",
 							 blkno,
 							 entry->mirrorBufpoolResyncCkptLoc.xlogid,
 							 entry->mirrorBufpoolResyncCkptLoc.xrecoff,
@@ -218,7 +222,7 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 							 loc.xrecoff,
 							 endResyncLSN.xlogid,
 							 endResyncLSN.xrecoff);
-						
+#endif						
 						if (XLByteLE(PageGetLSN(page), endResyncLSN) &&
 							XLByteLE(entry->mirrorBufpoolResyncCkptLoc, PageGetLSN(page))) 
 						{
@@ -254,11 +258,12 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 				
 					if ((result = ChangeTracking_GetChanges(request)) != NULL) 
 					{
+#ifdef FILEREP_DEBUG
 						elog(LOG, "FileRepPrimary_ResyncWrite() relNode:'%d' spcNode:'%d' dbNode:'%d' ",
 							 result->entries[0].relFileNode.relNode,
 							 result->entries[0].relFileNode.spcNode,
 							 result->entries[0].relFileNode.dbNode);
-
+#endif
 						if (smgr_relation == NULL)
 						{
 							smgr_relation = smgropen(result->entries[0].relFileNode);
@@ -269,36 +274,42 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 						}
 						
 						numBlocks = smgrnblocks(smgr_relation);
-								
-						elog(LOG, "FileRepPrimary_ResyncWrite() relNode:'%d' spcNode:'%d' dbNode:'%d' ",
-							 smgr_relation->smgr_rnode.relNode,
-							 smgr_relation->smgr_rnode.spcNode,
-							 smgr_relation->smgr_rnode.dbNode);
-						
+#ifdef FILEREP_DEBUG									
+						elog(LOG, "FileRepPrimary_ResyncWrite() relNode:'%d' spcNode:'%d' dbNode:'%d' "
+								  "numBlocks:'%d' ",
+								 smgr_relation->smgr_rnode.relNode,
+								 smgr_relation->smgr_rnode.spcNode,
+								 smgr_relation->smgr_rnode.dbNode,
+								 numBlocks);
+#endif						
 						for (ii = 0; ii < result->count; ii++)
 						{
 						
 							buf = ReadBuffer_ResyncEx(smgr_relation, 
 											 result->entries[ii].block_num);
 							
+							Assert(result->entries[ii].block_num <= numBlocks);
+							
 							LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 							page = BufferGetPage(buf);
 							
 							loc = PageGetLSN(page); 
 							loc1 =  result->entries[ii].lsn_end;
-							
+#ifdef FILEREP_DEBUG					
 							elog(LOG, "FileRepPrimary_ResyncWrite() blkno:'%d' "
-								 "lsn_begin:'%d'/'%d' "
-								 "lsn_page:'%d'/'%d' "
-								 "lsn_end:'%d'/'%d' ",
+								 "lsn_begin:'%u'/'%u' "
+								 "lsn_page:'%u'/'%u' '%s' "
+								 "lsn_end:'%u'/'%u' '%s' ",
 								 result->entries[ii].block_num,
 								 entry->mirrorBufpoolResyncCkptLoc.xlogid,
 								 entry->mirrorBufpoolResyncCkptLoc.xrecoff,
 								 loc.xlogid,
 								 loc.xrecoff,
+								 XLogLocationToString(&loc),
 								 loc1.xlogid,
-								 loc1.xrecoff);
-
+								 loc1.xrecoff,
+								 XLogLocationToString(&loc1));
+#endif
 							if (XLByteEQ(PageGetLSN(page), result->entries[ii].lsn_end)) 
 							{
 			
@@ -318,10 +329,24 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 												   
 					}
 					
-					smgrimmedsync(smgr_relation);
-							
-					smgrclose(smgr_relation);
-					
+					if (smgr_relation != NULL) 
+					{
+						smgrimmedsync(smgr_relation);
+								
+						smgrclose(smgr_relation);
+					}
+					else 
+					{
+						//Assert(0);
+						elog(LOG, "FileRepPrimary_ResyncWrite() NoDataToResync "
+								  "relNode:'%d' spcNode:'%d' dbNode:'%d' "
+								  "SynchronizationState:'%d' ",
+							 entry->relFileNode.relNode,
+							 entry->relFileNode.spcNode,
+							 entry->relFileNode.dbNode,
+							 entry->mirrorDataSynchronizationState);
+						
+					}
 					smgr_relation = NULL;
 					
 					ChangeTracking_FreeRequest(request);
@@ -342,7 +367,7 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 		{
 			MirroredAppendOnlyOpen	mirroredOpen;
 			char					*buffer = NULL;
-			int32					endOffset = entry->mirrorAppendOnlyEof;
+			int32					endOffset = entry->mirrorAppendOnlyNewEof;
 			int32					startOffset = 0;
 			int32					bufferLen = 0;
 			int						retval = 0;

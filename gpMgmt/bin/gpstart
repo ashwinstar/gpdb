@@ -412,25 +412,44 @@ class GpStart:
     ######  
     def _shutdown_segments(self,segmentStartResult):
 
-        # todo MIRRORING: this needs to shutdown in proper order (call fn from gpstop)
         logger.info("Commencing parallel segment instance shutdown, please wait...")
 
-        #TODO:  future optimization would be to only stop the segments that we actually started.  This requires
-        #       knowing which ones are left in a partially up state
+        #
+        # Note that a future optimization would be to only stop the segments that we actually started.
+        #    This requires knowing which ones are left in a partially up state
+        #
+        #
+        # gather the list of those that we actually tried to start
         toStop = []
         toStop.extend(segmentStartResult.getSuccessfulSegments())
         toStop.extend(segmentStartResult.getFailedSegments())
 
         segmentsByHost = GpArray.getSegmentsByHostName(toStop)
-        dispatch_count=0
-        for hostName, segments in segmentsByHost.iteritems():
-            logger.debug("Dispatching command to shutdown segments on host: %s" % hostName)
-            cmd=gp.GpSegStopCmd("remote segment starts on host '%s'" % hostName, self.gphome,self.gpversion,
-                                mode='immediate', dbs=segments, verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=hostName)
-            self.pool.addCommand(cmd)
-            dispatch_count+=1
 
-        self.pool.wait_and_printdots(dispatch_count,self.quiet)    
+        #
+        # stop them, stopping primaries before mirrors
+        #
+        for type in ["primary","mirror"]:
+            dispatch_count=0
+            for hostName, segments in segmentsByHost.iteritems():
+
+                if type == "primary":
+                    segments = [seg for seg in segments if seg.isSegmentPrimary(current_role=True)]
+                else: segments = [seg for seg in segments if seg.isSegmentMirror(current_role=True)]
+
+                if len(segments) > 0:
+                    logger.debug("Dispatching command to shutdown %s segments on host: %s" % (type, hostName))
+                    cmd=gp.GpSegStopCmd("remote segment stop on host '%s'" % hostName,
+                                        self.gphome, self.gpversion,
+                                        mode='immediate', dbs=segments,
+                                        verbose=logging_is_verbose(),
+                                        ctxt=base.REMOTE, remoteHost=hostName)
+                    self.pool.addCommand(cmd)
+                    dispatch_count += 1
+
+            if dispatch_count > 0:
+                self.pool.wait_and_printdots(dispatch_count,self.quiet)
+
         pass
 
     ######

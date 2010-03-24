@@ -13,10 +13,26 @@
 #include "access/xlog.h"
 
 extern bool
-PersistentRecovery_HandleXLogRec(
-	XLogRecPtr		beginLoc,
+PersistentRecovery_ShouldHandlePass1XLogRec(
+	XLogRecPtr		*beginLoc,
 
-	XLogRecPtr 		lsn,
+	XLogRecPtr 		*lsn,
+	
+	XLogRecord 		*record);
+
+extern void
+PersistentRecovery_HandlePass2XLogRec(
+	XLogRecPtr		*beginLoc,
+
+	XLogRecPtr 		*lsn,
+	
+	XLogRecord 		*record);
+
+extern bool
+PersistentRecovery_ShouldHandlePass3XLogRec(
+	XLogRecPtr		*beginLoc,
+
+	XLogRecPtr 		*lsn,
 	
 	XLogRecord 		*record);
 
@@ -42,5 +58,13 @@ PersistentRecovery_SerializeRedoRelationFile(
 extern void
 PersistentRecovery_DeserializeRedoRelationFile(
 	int redoRelationFile);
+
+extern bool
+PersistentRecovery_RedoRelationExists(
+	RelFileNode 	*relFileNode,
+	
+	ItemPointer 	persistentTid,
+	
+	int64			*persistentSerialNum);
 
 #endif   /* PERSISTENTRECOVERY_H */

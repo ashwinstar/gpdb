@@ -138,7 +138,7 @@ test: mapred
 test: gpparams
 test: upg2
 test: alter_distribution_policy
-test: ereport
+ignore: ereport
 ignore: gp_delete_as_trunc
 test: gp_numeric_agg
 test: foreign_data

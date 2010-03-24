@@ -8,7 +8,6 @@
 
 /*
  * FileRep process (sender thread) launched by main thread.
- *
  * Responsibilities of this module.
  *		*) 
  *
@@ -123,7 +122,7 @@ FileRepPrimary_IsMirroringRequired(void)
 					isMirroringRequired = TRUE;
 				} else {
 					if (! report) {
-						ereport(WARNING,
+						ereport(LOG,
 								(errmsg("WARNING(filerep): failure is detected in segment mirroring, "
 										"failover requested "),
 								FileRep_errcontext()));
@@ -188,7 +187,7 @@ FileRepPrimary_ConstructAndInsertMessage(
 												fileRepRelationType);
 	}
 	
-	if (status != STATUS_OK) {
+	if (status != STATUS_OK && dataState != DataStateInChangeTracking) {
 		ereport(LOG,			
 				(errmsg("ERROR(filerep): could not insert message in ACK table"),
 				 FileRep_errdetail(fileRepIdentifier,
@@ -217,7 +216,7 @@ FileRepPrimary_ConstructAndInsertMessage(
 											  msgLength, 
 											  &spareField);
 	
-	if (msgPositionInsert == NULL) {
+	if (msgPositionInsert == NULL && dataState != DataStateInChangeTracking) {
 		
 		status = STATUS_ERROR;
 		ereport(LOG,			
@@ -258,6 +257,7 @@ FileRepPrimary_ConstructAndInsertMessage(
 		case FileRepOperationOpen:
 		case FileRepOperationTruncate:
 		case FileRepOperationRename:
+		case FileRepOperationHeartBeat:
 			
 			fileRepMessageHeader->fileRepOperationDescription = fileRepOperationDescription;
 			break;
@@ -302,11 +302,13 @@ FileRepPrimary_ConstructAndInsertMessage(
 	ereport(LOG,
 			(errmsg("LOG(filerep): P_ConstructAndInsertMessage "
 					"msg header count:'%d' msg header crc:'%u' position insert:'%p' "
-					"msg length:'%u' ",
+					"msg length:'%u' open file flags:'%x' ",
 					fileRepMessageHeader->messageCount,
 					fileRepMessageHeaderCrcLocal,
 					msgPositionInsert,
-					msgLength),
+					msgLength,
+					(fileRepOperation == FileRepOperationOpen)?
+					fileRepOperationDescription.open.fileFlags:0),
 			 FileRep_errdetail(fileRepIdentifier,
 							   fileRepRelationType,
 							   fileRepOperation),
@@ -323,6 +325,10 @@ FileRepPrimary_ConstructAndInsertMessage(
 	Assert(status == STATUS_OK);
 	
 	fileRepShmemMessageDescr->messageState = FileRepShmemMessageStateReady; 	
+	
+	FileRep_IpcSignal(fileRepIpcArray[fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex]->semC, 
+					  fileRepIpcArray[fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex]->refCountSemC);
+	
 	return status;
 }	
 
@@ -361,7 +367,8 @@ FileRepPrimary_MirrorOpen(FileRepIdentifier_u	fileRepIdentifier,
 							  descr);
 		}
 	}
-
+	
+#ifdef FILEREP_DEBUG
 	if (dataState == DataStateInChangeTracking)
 		ereport(LOG,			
 			(errmsg("LOG(filerep): Change Tracking "), 
@@ -369,7 +376,7 @@ FileRepPrimary_MirrorOpen(FileRepIdentifier_u	fileRepIdentifier,
 							   fileRepRelationType,
 							   FileRepOperationOpen),
 			 FileRep_errcontext()));	
-	
+#endif	
 			
 	return status;
 }	
@@ -398,7 +405,8 @@ FileRepPrimary_MirrorFlush(FileRepIdentifier_u		fileRepIdentifier,
 							  descr);
 		}
 	}
-			
+
+#ifdef FILEREP_DEBUG
 	if (dataState == DataStateInChangeTracking)
 		ereport(LOG,			
 				(errmsg("LOG(filerep): Change Tracking "), 
@@ -406,7 +414,7 @@ FileRepPrimary_MirrorFlush(FileRepIdentifier_u		fileRepIdentifier,
 								   fileRepRelationType,
 								   FileRepOperationFlush),
 				 FileRep_errcontext()));	
-	
+#endif	
 	return status;
 }
 
@@ -434,7 +442,8 @@ FileRepPrimary_MirrorClose(FileRepIdentifier_u		fileRepIdentifier,
 						  descr);
 		}
 	}
-		
+
+#ifdef FILEREP_DEBUG
 	if (dataState == DataStateInChangeTracking)
 		ereport(LOG,			
 				(errmsg("LOG(filerep): Change Tracking "), 
@@ -442,6 +451,7 @@ FileRepPrimary_MirrorClose(FileRepIdentifier_u		fileRepIdentifier,
 								   fileRepRelationType,
 								   FileRepOperationClose),
 				 FileRep_errcontext()));	
+#endif
 	
 	return status;	
 }
@@ -470,7 +480,8 @@ FileRepPrimary_MirrorFlushAndClose(FileRepIdentifier_u		fileRepIdentifier,
 							  descr);
 		}
 	}
-		
+
+#ifdef FILEREP_DEBUG
 	if (dataState == DataStateInChangeTracking)
 		ereport(LOG,			
 				(errmsg("LOG(filerep): Change Tracking "), 
@@ -478,7 +489,7 @@ FileRepPrimary_MirrorFlushAndClose(FileRepIdentifier_u		fileRepIdentifier,
 								   fileRepRelationType,
 								   FileRepOperationFlushAndClose),
 				 FileRep_errcontext()));	
-	
+#endif	
 	return status;	
 }
 
@@ -515,6 +526,7 @@ FileRepPrimary_MirrorTruncate(
 		}
 	}
 	
+#ifdef FILEREP_DEBUG	
 	if (dataState == DataStateInChangeTracking)
 		ereport(LOG,			
 				(errmsg("LOG(filerep): Change Tracking "), 
@@ -522,7 +534,7 @@ FileRepPrimary_MirrorTruncate(
 								   fileRepRelationType,
 								   FileRepOperationTruncate),
 				 FileRep_errcontext()));	
-	
+#endif	
 	
 	return status;	
 }
@@ -583,6 +595,7 @@ int FileRepPrimary_MirrorRename(
 		}
 	}
 	
+#ifdef FILEREP_DEBUG	
 	if (dataState == DataStateInChangeTracking)
 		ereport(LOG,			
 				(errmsg("LOG(filerep): Change Tracking "), 
@@ -590,7 +603,7 @@ int FileRepPrimary_MirrorRename(
 								   fileRepRelationType,
 								   FileRepOperationRename),
 				 FileRep_errcontext()));	
-	
+#endif	
 	
 	return status;		
 }	
@@ -641,7 +654,7 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 													 msgLength, 
 													 &spareField);
 			
-			if (msgPositionInsert == NULL) {
+			if (msgPositionInsert == NULL && dataState != DataStateInChangeTracking) {
 				
 				status = STATUS_ERROR;
 				ereport(LOG,
@@ -750,6 +763,9 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 
 			fileRepShmemMessageDescr->messageState = FileRepShmemMessageStateReady; 
 			
+			FileRep_IpcSignal(fileRepIpcArray[fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex]->semC, 
+							  fileRepIpcArray[fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex]->refCountSemC);
+			
 			/* the order should not be changed. */
 			data = (char *) data + dataLengthLocal;		
 			if (offset != FILEREP_OFFSET_UNDEFINED) {
@@ -760,7 +776,8 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 		} // while()			
 		} // if
 	}
-		
+	
+#ifdef FILEREP_DEBUG		
 	if (dataState == DataStateInChangeTracking)
 		ereport(LOG,			
 				(errmsg("LOG(filerep): Change Tracking "), 
@@ -768,6 +785,7 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 								   fileRepRelationType,
 								   FileRepOperationWrite),
 				 FileRep_errcontext()));	
+#endif
 	
 	return status;
 }
@@ -797,6 +815,7 @@ FileRepPrimary_MirrorCreate(FileRepIdentifier_u		fileRepIdentifier,
 		}
 	}
 	
+#ifdef FILEREP_DEBUG
 	if (dataState == DataStateInChangeTracking)
 		ereport(LOG,			
 				(errmsg("LOG(filerep): Change Tracking "), 
@@ -804,7 +823,7 @@ FileRepPrimary_MirrorCreate(FileRepIdentifier_u		fileRepIdentifier,
 								   fileRepRelationType,
 								   FileRepOperationCreate),
 				 FileRep_errcontext()));	
-	
+#endif	
 			
 	return status;	
 }
@@ -834,6 +853,7 @@ FileRepPrimary_MirrorDrop(FileRepIdentifier_u	fileRepIdentifier,
 		}
 	}
 
+#ifdef FILEREP_DEBUG
 	if (dataState == DataStateInChangeTracking)
 		ereport(LOG,			
 				(errmsg("LOG(filerep): Change Tracking "), 
@@ -841,6 +861,7 @@ FileRepPrimary_MirrorDrop(FileRepIdentifier_u	fileRepIdentifier,
 								   fileRepRelationType,
 								   FileRepOperationDrop),
 				 FileRep_errcontext()));	
+#endif
 	
 	return status;
 }
@@ -885,7 +906,7 @@ FileRepPrimary_MirrorShutdown(void)
 		retval = FileRepAckPrimary_IsOperationCompleted(
 											   fileRepIdentifier,									
 											   FileRepRelationTypeUnknown);
-		if (retval == FALSE) {
+		if (retval == FALSE && dataState != DataStateInChangeTracking) {
 			ereport(LOG,
 					(errmsg("WARNING(filerep): could not complete operation on mirror"), 
 					 FileRep_errdetail(fileRepIdentifier,
@@ -927,9 +948,9 @@ FileRepPrimary_MirrorInSyncTransition(void)
 		retval = FileRepAckPrimary_IsOperationCompleted(
 														fileRepIdentifier,									
 														FileRepRelationTypeUnknown);
-		if (retval == FALSE) {
+		if (retval == FALSE && dataState != DataStateInChangeTracking) {
 			ereport(LOG,
-					(errmsg("WARNING(filerep): could not complete operation on mirror"), 
+					(errmsg("ERROR(filerep): could not complete operation on mirror"), 
 					 FileRep_errdetail(fileRepIdentifier,
 									   FileRepRelationTypeUnknown,
 									   FileRepOperationInSyncTransition), 
@@ -937,8 +958,57 @@ FileRepPrimary_MirrorInSyncTransition(void)
 					 FileRep_errdetail_ShmemAck(),
 					 FileRep_errcontext()));	
 			
+			if (updateSegmentState(SegmentStateFault)) {
+				SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
+			}						
 		}
 		
+	}
+	
+	return;
+}
+
+/*
+ * FileRepPrimary_MirrorHeartBeat
+ * verify that flow from primary to mirror and back is alive
+ */
+void 
+FileRepPrimary_MirrorHeartBeat(FileRepConsumerProcIndex_e index)
+{
+	int status = STATUS_OK;
+	bool retval = TRUE;
+	FileRepIdentifier_u	fileRepIdentifier;
+	FileRepOperationDescription_u descr;
+	
+	descr.heartBeat.fileRepConsumerProcIndex = index;
+	
+	fileRepIdentifier = FileRep_GetUnknownIdentifier("heartBeat");
+	
+	if (FileRepPrimary_IsMirroringRequired()) 
+	{
+		status = FileRepPrimary_ConstructAndInsertMessage(
+														  fileRepIdentifier,
+														  FileRepRelationTypeUnknown,
+														  FileRepOperationHeartBeat,
+														  descr);
+		
+		retval = FileRepAckPrimary_IsOperationCompleted(
+														fileRepIdentifier,									
+														FileRepRelationTypeUnknown);
+		if (retval == FALSE && dataState != DataStateInChangeTracking) {
+			ereport(LOG,
+					(errmsg("ERROR(filerep): could not complete operation on mirror"), 
+					 FileRep_errdetail(fileRepIdentifier,
+									   FileRepRelationTypeUnknown,
+									   FileRepOperationNotSpecified), 
+					 FileRep_errdetail_Shmem(),
+					 FileRep_errdetail_ShmemAck(),
+					 FileRep_errcontext()));	
+			
+			if (updateSegmentState(SegmentStateFault)) {
+				SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
+			}			
+		}		
 	}
 	
 	return;
@@ -961,7 +1031,7 @@ FileRepPrimary_IsOperationCompleted(
 							fileRepIdentifier,									
 						    fileRepRelationType);
 				/* suspend if mirror reported fault */
-			if (retval == FALSE) {
+			if (retval == FALSE && dataState != DataStateInChangeTracking) {
 				ereport(LOG,
 						(errmsg("ERROR(filerep): could not complete operation on mirror"), 
 						 FileRep_errdetail(fileRepIdentifier,
@@ -1099,6 +1169,9 @@ FileRepPrimary_RunSender(void)
 				fileRepShmem->positionConsume = fileRepShmem->positionBegin;
 				fileRepShmem->positionWraparound = fileRepShmem->positionEnd;
 			}
+			
+			FileRep_IpcSignal(fileRepIpcArray[fileRepShmem->ipcArrayIndex]->semP,
+							  fileRepIpcArray[fileRepShmem->ipcArrayIndex]->refCountSemP);
 		}
 
 		fileRepShmemMessageDescr = 
@@ -1108,6 +1181,8 @@ FileRepPrimary_RunSender(void)
 			   ((fileRepShmem->positionConsume != fileRepShmem->positionInsert) &&
 				(fileRepShmemMessageDescr->messageState != FileRepShmemMessageStateReady))) {
 			
+			fileRepIpcArray[fileRepShmem->ipcArrayIndex]->refCountSemC++;
+
 			LWLockRelease(FileRepShmemLock);
 
 			FileRepSubProcess_ProcessSignals();
@@ -1118,9 +1193,13 @@ FileRepPrimary_RunSender(void)
 				break;
 			}
 			
-			pg_usleep(1000L); /* 1 ms */
+			FileRep_IpcWait(fileRepIpcArray[fileRepShmem->ipcArrayIndex]->semC);
+			
+			//pg_usleep(1000L); /* 1 ms */
 			
 			LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
+			
+			fileRepIpcArray[fileRepShmem->ipcArrayIndex]->refCountSemC--;
 			
 			if (fileRepShmem->positionConsume == fileRepShmem->positionWraparound &&
 				fileRepShmem->positionInsert != fileRepShmem->positionWraparound) {	
@@ -1216,6 +1295,10 @@ FileRepPrimary_RunSender(void)
 					
 					case FileRepOperationInSyncTransition:
 						messageType = FileRepMessageTypeXLog;
+						break;
+						
+					case FileRepOperationHeartBeat:
+						messageType = fileRepMessageHeader->fileRepOperationDescription.heartBeat.fileRepConsumerProcIndex;
 						break;
 						
 					default:

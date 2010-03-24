@@ -54,8 +54,15 @@ typedef struct FileRepAckHashEntry_s {
 	
 } FileRepAckHashEntry_s;
 
+typedef struct FileRepAckHashShmem_s {
+	
+	int		ipcArrayIndex;	
+	
+	HTAB	*hash;
+	
+} FileRepAckHashShmem_s;
 
-static HTAB *fileRepAckHash = NULL;
+static	FileRepAckHashShmem_s *fileRepAckHashShmem = NULL;
 
 static XLogRecPtr xLogEof = {0, 0};
 
@@ -264,6 +271,9 @@ FileRepAckPrimary_RunReceiver(void)
 		
 		fileRepShmemMessageDescr->messageState = FileRepShmemMessageStateReady; 
 		
+		FileRep_IpcSignal(fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semC, 
+						  fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemC);
+		
 		FileRep_InsertLogEntry(
 							   "P_RunReceiver",
 							   FileRep_GetFlatFileIdentifier("", ""),
@@ -295,6 +305,8 @@ FileRepAckPrimary_ShmemSize(void)
 				(Size)FILEREP_MAX_OPEN_FILES, 
 				sizeof(FileRepAckHashEntry_s));
 	
+	size = add_size(size, sizeof(FileRepAckHashShmem_s));
+	
 	return size;	
 }
 
@@ -307,19 +319,35 @@ void
 FileRepAckPrimary_ShmemInit(void)
 {
 	HASHCTL	hash_ctl;
+	bool	foundPtr;
+	
+	fileRepAckHashShmem = (FileRepAckHashShmem_s *) ShmemInitStruct("FileRep Ack Base Hash",
+																	sizeof(FileRepAckHashShmem_s),
+																	&foundPtr);
+	if (fileRepAckHashShmem == NULL) {
+		ereport(ERROR,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 (errmsg("Not enough shared memory for Mirroring."))));
+	}
+	
+	if (! foundPtr) {
+		MemSet(fileRepAckHashShmem, 0, sizeof(FileRepAckHashShmem_s));
+	}	
+	
+	fileRepAckHashShmem->ipcArrayIndex = IndexIpcArrayAckHashShmem;
 	
 	MemSet(&hash_ctl, 0, sizeof(hash_ctl));
 	hash_ctl.keysize = MAXPGPATH+1;
 	hash_ctl.entrysize = sizeof(FileRepAckHashEntry_s);
 	hash_ctl.hash = string_hash;
 	
-	fileRepAckHash = ShmemInitHash("FileRep Ack Hash",
+	fileRepAckHashShmem->hash = ShmemInitHash("FileRep Ack Hash",
 								   FILEREP_MAX_OPEN_FILES,
 								   FILEREP_MAX_OPEN_FILES,
 								   &hash_ctl,
 								   HASH_ELEM | HASH_FUNCTION);
 	
-	if (fileRepAckHash == NULL) {
+	if (fileRepAckHashShmem->hash == NULL) {
 		ereport(ERROR, 
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				(errmsg("Not enough shared memory for Mirroring."))));
@@ -339,10 +367,10 @@ FileRepAckPrimary_LookupHashEntry(FileName fileName)
 	
 	snprintf(key, sizeof(key), "%s", fileName);
 	
-	Assert(fileRepAckHash != NULL);
+	Assert(fileRepAckHashShmem->hash != NULL);
 		
 	entry = (FileRepAckHashEntry_s *) hash_search(
-										  fileRepAckHash, 
+										  fileRepAckHashShmem->hash, 
 										  (void *) &key, 
 										  HASH_FIND, 
 										  NULL);
@@ -372,10 +400,10 @@ FileRepAckPrimary_InsertHashEntry(
 	
 	snprintf(key, sizeof(key), "%s", fileName);
 	
-	Assert(fileRepAckHash != NULL);
+	Assert(fileRepAckHashShmem->hash != NULL);
 	
 	entry = (FileRepAckHashEntry_s *) hash_search(
-										  fileRepAckHash, 
+										  fileRepAckHashShmem->hash, 
 										  (void *) &key, 
 										  HASH_ENTER_NULL, 
 										  &foundPtr);
@@ -413,17 +441,21 @@ FileRepAckPrimary_RemoveHashEntry(FileName  fileName)
 	
 	snprintf(key, sizeof(key), "%s", fileName);
 		
-	Assert(fileRepAckHash != NULL);
+	Assert(fileRepAckHashShmem->hash != NULL);
 		
 	entry = (FileRepAckHashEntry_s *) hash_search(
-										fileRepAckHash, 
+										fileRepAckHashShmem->hash, 
 										(void *) &key, 
 										HASH_REMOVE, 
 										NULL);
 	
 	if (entry) {
 		elog(DEBUG1, "FileRepAckPrimary_RemoveHashEntry() Removed hash entry entry_key:%s", entry->fileName);
+
 		isRemoved = TRUE;
+		FileRep_IpcSignal(fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->semC,
+						  fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->refCountSemC);
+
 	}
 				
 	return isRemoved;			
@@ -444,11 +476,27 @@ FileRepAckPrimary_NewHashEntry(
 	FileName				fileName = NULL;
 	int						status = STATUS_OK;
 	int						retry = 0;
+	bool					wait = FALSE;
 		
 	fileName = FileRep_GetFileName(fileRepIdentifier, fileRepRelationType);
 		
 	while (retry < file_rep_retry) {
 		LWLockAcquire(FileRepAckHashShmemLock, LW_EXCLUSIVE);
+		
+		switch (fileRepOperation)
+		{
+			case FileRepOperationHeartBeat:
+				break;
+				
+			default:
+				
+				if (wait == TRUE)
+				{	
+					fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->refCountSemC--;
+					wait = FALSE;
+				}
+				break;
+		}
 		
 		entry = FileRepAckPrimary_InsertHashEntry(fileName, &exists);
 					
@@ -465,13 +513,35 @@ FileRepAckPrimary_NewHashEntry(
 		}
 					
 		if (exists) {
+			switch (fileRepOperation)
+			{
+				case FileRepOperationHeartBeat:
+					break;
+					
+				default:
+					
+					fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->refCountSemC++;
+					wait = TRUE;
+					break;
+			}
+			
 			LWLockRelease(FileRepAckHashShmemLock);
 			if (FileRepSubProcess_IsStateTransitionRequested())
 			{
 				status = STATUS_ERROR;
 				break;
+			}	
+			
+			switch (fileRepOperation)
+			{
+				case FileRepOperationHeartBeat:
+					FileRep_Sleep1ms(retry);
+					break;
+					
+				default:
+					FileRep_IpcWait(fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->semC);
+					break;
 			}			
-			FileRep_Sleep1ms(retry);
 			retry++;
 			continue;
 		}
@@ -553,8 +623,11 @@ FileRepAckPrimary_UpdateHashEntry(
 	
 	entry->xLogEof = xLogEof;
 	
+	FileRep_IpcSignal(fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->semP, 
+					  fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->refCountSemP);
+
 	LWLockRelease(FileRepAckHashShmemLock);
-	
+		
 #ifdef FILEREP_DEBUG	
 	ereport(LOG,
 			(errmsg("LOG(filerep): P_UpdateHashEntry identifier:'%s' ack state:'%s' ",
@@ -590,6 +663,7 @@ FileRepAckPrimary_IsOperationCompleted(
 	FileName				fileName = NULL;
 	int						retry = 0;
 	bool					retval = FALSE;
+	bool					wait = FALSE;
 
 	fileName = FileRep_GetFileName(fileRepIdentifier, fileRepRelationType);
 	
@@ -598,10 +672,26 @@ FileRepAckPrimary_IsOperationCompleted(
 		LWLockAcquire(FileRepAckHashShmemLock, LW_EXCLUSIVE);
 		
 		entry = FileRepAckPrimary_LookupHashEntry(fileName);
-					
+		
 		/* entry should be found since backend haven't received ack yet */
 		Assert(entry != NULL);
-					
+		
+		switch (entry->fileRepOperation)
+		{
+			case FileRepOperationShutdown:
+			case FileRepOperationHeartBeat:
+				
+				break;
+			default:
+				
+				if (wait == TRUE)
+				{	
+					fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->refCountSemP--;
+					wait = FALSE;
+				}
+				break;
+		}
+							
 		switch (entry->fileRepAckState) {
 				
 			case FileRepAckStateWaiting:
@@ -625,6 +715,22 @@ FileRepAckPrimary_IsOperationCompleted(
 				Assert(0);
 		}
 		
+		if (isCompleted == false) 
+		{
+			switch (entry->fileRepOperation)
+			{
+				case FileRepOperationShutdown:
+				case FileRepOperationHeartBeat:
+					
+					break;
+				default:
+					
+					fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->refCountSemP++;
+					wait = TRUE;
+					break;
+			}
+		}
+		
 		LWLockRelease(FileRepAckHashShmemLock);
 		
 		if (isCompleted == false) {
@@ -632,9 +738,21 @@ FileRepAckPrimary_IsOperationCompleted(
 			{
 				break;
 			}
-			FileRep_Sleep1ms(retry);
+			
+			switch (entry->fileRepOperation)
+			{
+				case FileRepOperationShutdown:
+				case FileRepOperationHeartBeat:
+					
+					FileRep_Sleep1ms(retry);
+					break;
+					
+				default:
+					FileRep_IpcWait(fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->semP);
+					break;
+			}			
+				
 			retry++;
-
 
 			/*
 			 * if the message was from the main filerep process then it is a
@@ -642,7 +760,7 @@ FileRepAckPrimary_IsOperationCompleted(
 			 *   shutdown if the mirror is unavailable so we wait a smaller amount
 			 *   of time
 			 */
-			if ( fileRepProcessType == FileRepProcessTypeMain &&
+			if ( entry->fileRepOperation == FileRepOperationShutdown &&
 			     retry == 50)
             {
 				FileRepAckPrimary_RemoveHashEntry(fileName);
@@ -650,7 +768,7 @@ FileRepAckPrimary_IsOperationCompleted(
             }
 		}
 	}
-
+	
 	if (retval == FALSE) {
 		ereport(LOG,
 				(errmsg("ERROR(filerep): could not complete mirror request identifier:'%s' ack state:'%s' "
@@ -714,6 +832,13 @@ FileRepAckPrimary_StartConsumer(void)
 		/* perform graceful shutdown */
 	}
 
+	LWLockAcquire(FileRepAckHashShmemLock, LW_EXCLUSIVE);
+
+	FileRep_IpcSignal(fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->semP, 
+					  fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->refCountSemP);
+	
+	LWLockRelease(FileRepAckHashShmemLock);
+
 	/* NOTE free memory (if any) */
 	return;
 }
@@ -751,6 +876,8 @@ FileRepAckPrimary_RunConsumer(void)
 				fileRepAckShmem->positionConsume = fileRepAckShmem->positionBegin;
 				fileRepAckShmem->positionWraparound = fileRepAckShmem->positionEnd;
 			}
+			FileRep_IpcSignal(fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semP, 
+							  fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemP);
 		}
 				
 		fileRepShmemMessageDescr = 
@@ -760,9 +887,10 @@ FileRepAckPrimary_RunConsumer(void)
 			   ((fileRepAckShmem->positionConsume != fileRepAckShmem->positionInsert) &&
 				(fileRepShmemMessageDescr->messageState != FileRepShmemMessageStateReady))) {
 			
+			fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemC++;
+
 			LWLockRelease(FileRepAckShmemLock);
 						
-			
 			FileRepSubProcess_ProcessSignals();
 			if (FileRepSubProcess_GetState() != FileRepStateReady &&
 				FileRepSubProcess_GetState() != FileRepStateInitialization) {
@@ -770,9 +898,13 @@ FileRepAckPrimary_RunConsumer(void)
 				break;
 			}
 			
-			pg_usleep(1000L); /* 1 ms */
+			FileRep_IpcWait(fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semC);
+			
+			//pg_usleep(1000L); /* 1 ms */
 			
 			LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE);
+			
+			fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemC--;
 			
 			if (fileRepAckShmem->positionConsume == fileRepAckShmem->positionWraparound &&
 				fileRepAckShmem->positionInsert != fileRepAckShmem->positionWraparound) {

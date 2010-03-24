@@ -309,8 +309,6 @@ class GpStop():
             self._stopseg_cmds(True,False)
             primary_success_seg_status=self._process_segment_stop(failed_seg_status)    
             
-            # todo MIRRORING: if a primary fails to stop what do we do?
-            
             # stop mirrors
             logger.info("Commencing parallel mirror segment instance shutdown, please wait...")
             self._stopseg_cmds(False,True)

@@ -41,9 +41,11 @@ void GpPersistentRelationNode_GetValues(
 	PersistentFileSysState			*persistentState,
 	MirroredObjectExistenceState	*mirrorExistenceState,
 	MirroredRelDataSynchronizationState *mirrorDataSynchronizationState,
+	bool							*mirrorBufpoolVacuumed,
 	XLogRecPtr						*mirrorBufpoolResyncCkptLoc,
 	BlockNumber						*mirrorBufpoolResyncCkptBlockNum,
-	int64							*mirrorAppendOnlyEof,
+	int64							*mirrorAppendOnlyLossEof,
+	int64							*mirrorAppendOnlyNewEof,
 	TransactionId					*parentXid,
 	int64							*serialNum,
 	ItemPointerData 				*previousFreeTid)
@@ -64,11 +66,15 @@ void GpPersistentRelationNode_GetValues(
 
 	*mirrorDataSynchronizationState = (MirroredRelDataSynchronizationState)DatumGetInt16(values[Anum_gp_persistent_relation_node_mirror_data_synchronization_state - 1]);
 
+	*mirrorBufpoolVacuumed = DatumGetBool(values[Anum_gp_persistent_relation_node_mirror_bufpool_vacuumed - 1]);
+
 	*mirrorBufpoolResyncCkptLoc = *((XLogRecPtr*) DatumGetPointer(values[Anum_gp_persistent_relation_node_mirror_bufpool_resync_ckpt_loc - 1]));
 
 	*mirrorBufpoolResyncCkptBlockNum = (BlockNumber)DatumGetInt32(values[Anum_gp_persistent_relation_node_mirror_bufpool_resync_ckpt_block_num - 1]);
 
-	*mirrorAppendOnlyEof = DatumGetInt64(values[Anum_gp_persistent_relation_node_mirror_append_only_eof - 1]);
+	*mirrorAppendOnlyLossEof = DatumGetInt64(values[Anum_gp_persistent_relation_node_mirror_append_only_loss_eof - 1]);
+
+	*mirrorAppendOnlyNewEof = DatumGetInt64(values[Anum_gp_persistent_relation_node_mirror_append_only_new_eof - 1]);
 
 	*parentXid = (TransactionId)DatumGetInt32(values[Anum_gp_persistent_relation_node_parent_xid - 1]);
 
@@ -89,9 +95,11 @@ void GpPersistentRelationNode_SetDatumValues(
 	PersistentFileSysState			persistentState,
 	MirroredObjectExistenceState	mirrorExistenceState,
 	MirroredRelDataSynchronizationState mirrorDataSynchronizationState,
+	bool							mirrorBufpoolVacuumed,
 	XLogRecPtr						*mirrorBufpoolResyncCkptLoc,
 	BlockNumber						mirrorBufpoolResyncCkptBlockNum,
-	int64							mirrorAppendOnlyEof,
+	int64							mirrorAppendOnlyLossEof,
+	int64							mirrorAppendOnlyNewEof,
 	TransactionId					parentXid,
 	int64							serialNum,
 	ItemPointerData 				*previousFreeTid)
@@ -118,14 +126,20 @@ void GpPersistentRelationNode_SetDatumValues(
 	values[Anum_gp_persistent_relation_node_mirror_data_synchronization_state - 1] = 
 									Int16GetDatum(mirrorDataSynchronizationState);
 
+	values[Anum_gp_persistent_relation_node_mirror_bufpool_vacuumed - 1] = 
+									BoolGetDatum(mirrorBufpoolVacuumed);
+
 	values[Anum_gp_persistent_relation_node_mirror_bufpool_resync_ckpt_loc - 1] =
 									PointerGetDatum(mirrorBufpoolResyncCkptLoc);
 
 	values[Anum_gp_persistent_relation_node_mirror_bufpool_resync_ckpt_block_num - 1] = 
 									Int32GetDatum(mirrorBufpoolResyncCkptBlockNum);
 
-	values[Anum_gp_persistent_relation_node_mirror_append_only_eof - 1] = 
-									Int64GetDatum(mirrorAppendOnlyEof);
+	values[Anum_gp_persistent_relation_node_mirror_append_only_loss_eof - 1] = 
+									Int64GetDatum(mirrorAppendOnlyLossEof);
+
+	values[Anum_gp_persistent_relation_node_mirror_append_only_new_eof - 1] = 
+									Int64GetDatum(mirrorAppendOnlyNewEof);
 
 	values[Anum_gp_persistent_relation_node_parent_xid - 1] = 
 									Int32GetDatum(parentXid);
@@ -391,9 +405,11 @@ void GpPersistent_GetCommonValues(
 			int32 segmentFileNum;	// UNDONE
 			PersistentFileSysRelStorageMgr	relationStorageManager;
 			MirroredRelDataSynchronizationState mirrorDataSynchronizationState;
+			bool							mirrorBufpoolVacuumed;
 			XLogRecPtr						mirrorBufpoolResyncCkptLoc;
 			BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
-			int64							mirrorAppendOnlyEof;
+			int64							mirrorAppendOnlyLossEof;
+			int64							mirrorAppendOnlyNewEof;
 
 			GpPersistentRelationNode_GetValues(
 											values,
@@ -405,9 +421,11 @@ void GpPersistent_GetCommonValues(
 											persistentState,
 											mirrorExistenceState,
 											&mirrorDataSynchronizationState,
+											&mirrorBufpoolVacuumed,
 											&mirrorBufpoolResyncCkptLoc,
 											&mirrorBufpoolResyncCkptBlockNum,
-											&mirrorAppendOnlyEof,
+											&mirrorAppendOnlyLossEof,
+											&mirrorAppendOnlyNewEof,
 											parentXid,
 											persistentSerialNum,
 											&previousFreeTid);

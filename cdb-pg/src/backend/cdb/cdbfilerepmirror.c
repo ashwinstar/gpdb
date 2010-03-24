@@ -320,6 +320,7 @@ FileRepMirror_RunReceiver(void)
 #endif				
 				
 #ifdef FILEREP_DEBUG
+				fileRepProcIndex = msgType;
 				ereport(LOG,
 						(errmsg("LOG(filerep): M_RunReceiver "
 								"local count:'%d' position insert:'%p' msg length:'%u' "
@@ -337,6 +338,9 @@ FileRepMirror_RunReceiver(void)
 				/* it is not in use */
 				fileRepShmemMessageDescr->messageSync = FALSE;		
 				fileRepShmemMessageDescr->messageState = FileRepShmemMessageStateReady; 
+				
+				FileRep_IpcSignal(fileRepIpcArray[fileRepShmemArray[msgType]->ipcArrayIndex]->semC, 
+								  fileRepIpcArray[fileRepShmemArray[msgType]->ipcArrayIndex]->refCountSemC);
 
 				if (status == STATUS_OK)
 					current_state = RECVTYPE;
@@ -565,6 +569,9 @@ FileRepMirror_RunConsumer(void)
 				fileRepShmem->positionConsume = fileRepShmem->positionBegin;
 				fileRepShmem->positionWraparound = fileRepShmem->positionEnd;
 			}
+			
+			FileRep_IpcSignal(fileRepIpcArray[fileRepShmem->ipcArrayIndex]->semP,
+							  fileRepIpcArray[fileRepShmem->ipcArrayIndex]->refCountSemP);
 		}
 		
 		fileRepShmemMessageDescr = 
@@ -574,6 +581,8 @@ FileRepMirror_RunConsumer(void)
 			   ((fileRepShmem->positionConsume != fileRepShmem->positionInsert) &&
 				(fileRepShmemMessageDescr->messageState != FileRepShmemMessageStateReady))) {
 			
+			fileRepIpcArray[fileRepShmem->ipcArrayIndex]->refCountSemC++;
+			
 			LWLockRelease(FileRepShmemLock);
 			
 			FileRepSubProcess_ProcessSignals();
@@ -582,9 +591,13 @@ FileRepMirror_RunConsumer(void)
 				break;
 			}
 			
-			pg_usleep(1000L);  /* 1 ms */
+			FileRep_IpcWait(fileRepIpcArray[fileRepShmem->ipcArrayIndex]->semC);
+	
+			//pg_usleep(1000L);  /* 1 ms */
 			
 			LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
+			
+			fileRepIpcArray[fileRepShmem->ipcArrayIndex]->refCountSemC--;
 			
 			if (fileRepShmem->positionConsume == fileRepShmem->positionWraparound &&
 				fileRepShmem->positionInsert != fileRepShmem->positionWraparound) {
@@ -845,6 +858,17 @@ FileRepMirror_RunConsumer(void)
 											  fileName,
 											  fileRepMessageHeader->fileRepOperationDescription.open.fileFlags,
 											  fileRepMessageHeader->fileRepOperationDescription.open.fileMode);
+						
+						if (fd < 0 && 
+							fileRepMessageHeader->fileRepOperationDescription.open.suppressError == TRUE && 
+							errno == ENOENT &&
+							dataState == DataStateInResync) 
+						{
+							fd = PathNameOpenFile(
+												  fileName,
+												  fileRepMessageHeader->fileRepOperationDescription.open.fileFlags | O_CREAT,
+												  fileRepMessageHeader->fileRepOperationDescription.open.fileMode);								
+						}						
 												
 						if (fd < 0 && 
 							fileRepMessageHeader->fileRepOperationDescription.open.suppressError == TRUE && 
@@ -1570,6 +1594,10 @@ FileRepMirror_RunConsumer(void)
 				FileRep_SetDataState(DataStateInSync, FALSE);
 				
 				FileRep_SetSegmentState(SegmentStateReady);							
+				break;
+				
+			case FileRepOperationHeartBeat:
+				/* NoOp. Just send ACK back. */
 				break;
 				
 			default:

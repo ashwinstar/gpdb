@@ -143,7 +143,8 @@ def test_main( testName, newProgramArgs, createOptionParserFn, createCommandFn, 
 
         commandObject = createCommandFn(options, args)
         exitCode = commandObject.run()
-        # todo MIRRORING: use a testing version of sysexit sys.exit(exitCode)
+
+        testOutput("sys.exit %s", exitCode)
 
     except ProgramArgumentValidationException, e:
         testOutput( "Validation error: %s" % e.args[0])

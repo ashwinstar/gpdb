@@ -1248,7 +1248,8 @@ begin:;
 											info, 
 											(void *)rdata_orig->data, 
 											&RecPtr,
-											/* weAreGeneratingXLogNow */ true);
+											/* weAreGeneratingXLogNow */ true,
+											/* printSkipIssuesOnly */ Debug_print_xlog_relation_change_info_skip_issues_only);
 
 	/* if needed, send this record to the changetracker */
 	if (OkToConsiderChangeTrackingLogging &&
@@ -5887,6 +5888,39 @@ StartupXLOG_InProduction(void)
 		InitResQueues();
 }
 
+static void
+ApplyStartupRedo(
+	XLogRecPtr		*beginLoc,
+
+	XLogRecPtr		*lsn,
+
+	XLogRecord		*record)
+{
+	ErrorContextCallback errcontext;
+
+	/* Setup error traceback support for ereport() */
+	errcontext.callback = rm_redo_error_callback;
+	errcontext.arg = (void *) record;
+	errcontext.previous = error_context_stack;
+	error_context_stack = &errcontext;
+	
+	/* nextXid must be beyond record's xid */
+	if (TransactionIdFollowsOrEquals(record->xl_xid,
+									 ShmemVariableCache->nextXid))
+	{
+		ShmemVariableCache->nextXid = record->xl_xid;
+		TransactionIdAdvance(ShmemVariableCache->nextXid);
+	}
+	
+	if (record->xl_info & XLR_BKP_BLOCK_MASK)
+		RestoreBkpBlocks(record, *lsn);
+	
+	RmgrTable[record->xl_rmid].rm_redo(*lsn, record);
+	
+	/* Pop the error context stack */
+	error_context_stack = errcontext.previous;
+}
+
 /*
  * This must be called ONCE during postmaster or standalone-backend startup
  */
@@ -6216,7 +6250,6 @@ StartupXLOG(void)
 		{
 			bool		recoveryContinue = true;
 			bool		recoveryApply = true;
-			ErrorContextCallback errcontext;
 
 			InRedo = true;
 			ereport(LOG,
@@ -6277,27 +6310,8 @@ StartupXLOG(void)
 						break;
 				}
 
-				/* Setup error traceback support for ereport() */
-				errcontext.callback = rm_redo_error_callback;
-				errcontext.arg = (void *) record;
-				errcontext.previous = error_context_stack;
-				error_context_stack = &errcontext;
-
-				/* nextXid must be beyond record's xid */
-				if (TransactionIdFollowsOrEquals(record->xl_xid,
-												 ShmemVariableCache->nextXid))
-				{
-					ShmemVariableCache->nextXid = record->xl_xid;
-					TransactionIdAdvance(ShmemVariableCache->nextXid);
-				}
-
-				if (record->xl_info & XLR_BKP_BLOCK_MASK)
-					RestoreBkpBlocks(record, EndRecPtr);
-
-				RmgrTable[record->xl_rmid].rm_redo(EndRecPtr, record);
-
-				/* Pop the error context stack */
-				error_context_stack = errcontext.previous;
+				if (PersistentRecovery_ShouldHandlePass1XLogRec(&ReadRecPtr, &EndRecPtr, record))
+					ApplyStartupRedo(&ReadRecPtr, &EndRecPtr, record);
 
 				LastRec = ReadRecPtr;
 
@@ -6648,7 +6662,7 @@ StartupXLOG_Pass2(void)
 	 */
 	while (true)
 	{
-		PersistentRecovery_HandleXLogRec(ReadRecPtr, EndRecPtr, record);
+		PersistentRecovery_HandlePass2XLogRec(&ReadRecPtr, &EndRecPtr, record);
 
 		if (XLByteEQ(ReadRecPtr, XLogCtl->pass1LastLoc))
 			break;
@@ -6667,9 +6681,8 @@ StartupXLOG_Pass2(void)
 	
 	PersistentRecovery_Drop();
 
-	StartupXLOG_InProduction();
+	Checkpoint_RecoveryPass(XLogCtl->pass1LastLoc);
 
-	// UNDONE: Unfinished.
 	/*
 	 * Create a file that passes information to pass 3.
 	 */
@@ -6703,6 +6716,81 @@ StartupXLOG_Pass3(void)
 	close(redoRelationFile);
 
 	UnlinkRedoRelationFile();
+
+	if (Debug_enable_new_startup_pass)
+	{
+		XLogRecord *record;
+
+		if (Debug_persistent_recovery_print)
+			elog(Debug_persistent_recovery_print_level, 
+				 "StartupXLOG_Pass3: Begin re-scanning XLOG");
+
+		/*
+		 * Read control file and verify XLOG status looks valid.
+		 *
+		 */
+		ReadControlFile();
+		
+		if (ControlFile->logSeg == 0 ||
+			ControlFile->state < DB_SHUTDOWNED ||
+			ControlFile->state > DB_IN_PRODUCTION ||
+			!XRecOffIsValid(ControlFile->checkPoint.xrecoff))
+			ereport(FATAL,
+					(errmsg("Startup Pass 2: control file contains invalid data")));
+		
+		recoveryTargetTLI = ControlFile->checkPointCopy.ThisTimeLineID;
+			
+		/* Now we can determine the list of expected TLIs */
+		expectedTLIs = readTimeLineHistory(recoveryTargetTLI);
+		
+		if (Debug_persistent_recovery_print)
+			elog(Debug_persistent_recovery_print_level,
+				 "ControlFile with recoveryTargetTLI %u, transaction log to start location is %s",
+				 recoveryTargetTLI, 
+				 XLogLocationToString(&XLogCtl->pass1StartLoc));
+		
+		record = ReadRecord(&XLogCtl->pass1StartLoc, PANIC);
+		
+		/*
+		 * Pass 2 XLOG scan
+		 */
+		while (true)
+		{
+			{
+				StringInfoData buf;
+			
+				initStringInfo(&buf);
+				appendStringInfo(&buf, "PASS 3 @ %s; LSN %s: ",
+								 XLogLocationToString(&ReadRecPtr),
+								 XLogLocationToString2(&EndRecPtr));
+				XLog_OutRec(&buf, record);
+				appendStringInfo(&buf, " - ");
+				RmgrTable[record->xl_rmid].rm_desc(&buf,
+												   record->xl_info,
+												 XLogRecGetData(record));
+				elog(LOG, "%s", buf.data);
+				pfree(buf.data);
+			}
+
+			if (PersistentRecovery_ShouldHandlePass3XLogRec(&ReadRecPtr, &EndRecPtr, record))
+				ApplyStartupRedo(&ReadRecPtr, &EndRecPtr, record);
+			
+			if (XLByteEQ(ReadRecPtr, XLogCtl->pass1LastLoc))
+				break;
+		
+			Assert(XLByteLE(ReadRecPtr,XLogCtl->pass1LastLoc));
+		
+			record = ReadRecord(NULL, PANIC);
+		}
+		ShutdownReadFile();
+
+		if (Debug_persistent_recovery_print)
+			elog(Debug_persistent_recovery_print_level, 
+				 "StartupXLOG_Pass3: End re-scanning XLOG");
+
+	}
+
+	StartupXLOG_InProduction();
 
 	if (Debug_persistent_recovery_print)
 		elog(Debug_persistent_recovery_print_level, 

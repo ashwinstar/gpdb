@@ -47,15 +47,17 @@ CATALOG(gp_persistent_relation_node,5090) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 	int2		persistent_state;
 	int2		mirror_existence_state;
 	int2		mirror_data_synchronization_state;
+	bool		mirror_bufpool_vacuumed;
 	gpxlogloc	mirror_bufpool_resync_ckpt_loc;
 	int4		mirror_bufpool_resync_ckpt_block_num;
-	int8		mirror_append_only_eof;
+	int8		mirror_append_only_loss_eof;
+	int8		mirror_append_only_new_eof;
 	int4		parent_xid;
 	int8		persistent_serial_num;
 	tid			previous_free_tid;
 } FormData_gp_persistent_relation_node;
 
-#define Natts_gp_persistent_relation_node				    				  14
+#define Natts_gp_persistent_relation_node				    				  16
 #define Anum_gp_persistent_relation_node_tablespace_oid  					  1
 #define Anum_gp_persistent_relation_node_database_oid   					  2
 #define Anum_gp_persistent_relation_node_relfilenode_oid					  3
@@ -64,12 +66,14 @@ CATALOG(gp_persistent_relation_node,5090) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 #define Anum_gp_persistent_relation_node_persistent_state					  6
 #define Anum_gp_persistent_relation_node_mirror_existence_state				  7
 #define Anum_gp_persistent_relation_node_mirror_data_synchronization_state	  8
-#define Anum_gp_persistent_relation_node_mirror_bufpool_resync_ckpt_loc		  9
-#define Anum_gp_persistent_relation_node_mirror_bufpool_resync_ckpt_block_num 10
-#define Anum_gp_persistent_relation_node_mirror_append_only_eof				  11
-#define Anum_gp_persistent_relation_node_parent_xid  						  12
-#define Anum_gp_persistent_relation_node_persistent_serial_num     			  13
-#define Anum_gp_persistent_relation_node_previous_free_tid  				  14
+#define Anum_gp_persistent_relation_node_mirror_bufpool_vacuumed			  9
+#define Anum_gp_persistent_relation_node_mirror_bufpool_resync_ckpt_loc		  10
+#define Anum_gp_persistent_relation_node_mirror_bufpool_resync_ckpt_block_num 11
+#define Anum_gp_persistent_relation_node_mirror_append_only_loss_eof		  12
+#define Anum_gp_persistent_relation_node_mirror_append_only_new_eof			  13
+#define Anum_gp_persistent_relation_node_parent_xid  						  14
+#define Anum_gp_persistent_relation_node_persistent_serial_num     			  15
+#define Anum_gp_persistent_relation_node_previous_free_tid  				  16
  
 typedef FormData_gp_persistent_relation_node *Form_gp_persistent_relation_node;
 
@@ -89,12 +93,14 @@ typedef FormData_gp_persistent_relation_node *Form_gp_persistent_relation_node;
 { GpPersistentRelationNodeRelationId, {"persistent_state"}, 					21, -1, 2, 6, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
 { GpPersistentRelationNodeRelationId, {"mirror_existence_state"}, 				21, -1, 2, 7, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
 { GpPersistentRelationNodeRelationId, {"mirror_data_synchronization_state"},	21, -1, 2, 8, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"mirror_bufpool_resync_ckpt_loc"},		3310, -1, 8, 9, 0, -1, -1, false, 'p', 's', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"mirror_bufpool_resync_ckpt_block_num"},	23, -1, 4, 10, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"mirror_append_only_eof"},				20, -1, 8, 11, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"parent_xid"},							23, -1, 4, 12, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"persistent_serial_num"},				20, -1, 8, 13, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"previous_free_tid"},					27, -1, 6, 14, 0, -1, -1, false, 'p', 's', true, false, false, true, 0 }
+{ GpPersistentRelationNodeRelationId, {"mirror_bufpool_vacuumed"},				16, -1, 1, 9, 0, -1, -1, true, 'p', 'c', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"mirror_bufpool_resync_ckpt_loc"},		3310, -1, 8, 10, 0, -1, -1, false, 'p', 's', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"mirror_bufpool_resync_ckpt_block_num"},	23, -1, 4, 11, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"mirror_append_only_loss_eof"},			20, -1, 8, 12, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"mirror_append_only_new_eof"},			20, -1, 8, 13, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"parent_xid"},							23, -1, 4, 14, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"persistent_serial_num"},				20, -1, 8, 15, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"previous_free_tid"},					27, -1, 6, 16, 0, -1, -1, false, 'p', 's', true, false, false, true, 0 }
 
 /*
  * gp_persistent_relation_node table values for FormData_pg_class.
@@ -381,9 +387,11 @@ extern void GpPersistentRelationNode_GetValues(
 	PersistentFileSysState			*persistentState,
 	MirroredObjectExistenceState	*mirrorExistenceState,
 	MirroredRelDataSynchronizationState *mirrorDataSynchronizationState,
+	bool							*mirrorBufpoolVacuumed,
 	XLogRecPtr						*mirrorBufpoolResyncCkptLoc,
 	BlockNumber						*mirrorBufpoolResyncCkptBlockNum,
-	int64							*mirrorAppendOnlyEof,
+	int64							*mirrorAppendOnlyLossEof,
+	int64							*mirrorAppendOnlyNewEof,
 	TransactionId					*parentXid,
 	int64							*serialNum,
 	ItemPointerData 				*previousFreeTid);
@@ -399,9 +407,11 @@ extern void GpPersistentRelationNode_SetDatumValues(
 	PersistentFileSysState			persistentState,
 	MirroredObjectExistenceState	mirrorExistenceState,
 	MirroredRelDataSynchronizationState mirrorDataSynchronizationState,
+	bool							mirrorBufpoolVacuumed,
 	XLogRecPtr						*mirrorBufpoolResyncCkptLoc,
 	BlockNumber						mirrorBufpoolResyncCkptBlockNum,
-	int64							mirrorAppendOnlyEof,
+	int64							mirrorAppendOnlyLossEof,
+	int64							mirrorAppendOnlyNewEof,
 	TransactionId					parentXid,
 	int64							serialNum,
 	ItemPointerData 				*previousFreeTid);

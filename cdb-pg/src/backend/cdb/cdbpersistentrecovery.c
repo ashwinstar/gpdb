@@ -37,6 +37,7 @@
 #include "utils/guc.h"
 #include "storage/smgr.h"
 #include "cdb/cdbmirroredfilesysobj.h"
+#include "cdb/cdbresynchronizechangetracking.h"
 
 typedef struct XactEntryData
 {
@@ -304,10 +305,21 @@ static void PersistentRecovery_AddEndXactFsObj(
 }
 
 bool
-PersistentRecovery_HandleXLogRec(
-	XLogRecPtr		beginLoc,
+PersistentRecovery_ShouldHandlePass1XLogRec(
+	XLogRecPtr		*beginLoc,
 
-	XLogRecPtr 		lsn,
+	XLogRecPtr 		*lsn,
+	
+	XLogRecord 		*record)
+{
+	return true;	// UNDONE: Fow now, redo everything in Pass 1.  Later we'll move most of it to Pass 3.
+}
+
+void
+PersistentRecovery_HandlePass2XLogRec(
+	XLogRecPtr		*beginLoc,
+
+	XLogRecPtr 		*lsn,
 	
 	XLogRecord 		*record)
 {
@@ -321,11 +333,13 @@ PersistentRecovery_HandleXLogRec(
 			elog(ERROR, "No relfilenode");
 
 		if (relFileNode.spcNode != GLOBALTABLESPACE_OID)
-			return false;
+			return;
 
 		if (relFileNode.relNode != GpPersistentRelationNodeRelationId &&
-			relFileNode.relNode != GpPersistentDatabaseNodeRelationId)
-			return false;
+			relFileNode.relNode != GpPersistentDatabaseNodeRelationId &&
+			relFileNode.relNode != GpPersistentTablespaceNodeRelationId &&
+			relFileNode.relNode != GpPersistentFilespaceNodeRelationId)
+			return;
 
 		/*
 		 * The XLOG record applies to one of our persistent relations.
@@ -336,8 +350,8 @@ PersistentRecovery_HandleXLogRec(
 		
 			initStringInfo(&buf);
 			appendStringInfo(&buf, "Persistent Relation REDO @ %s; LSN %s: ",
-							 XLogLocationToString(&beginLoc),
-							 XLogLocationToString2(&lsn));
+							 XLogLocationToString(beginLoc),
+							 XLogLocationToString2(lsn));
 			XLog_OutRec(&buf, record);
 			appendStringInfo(&buf, " - ");
 			RmgrTable[record->xl_rmid].rm_desc(&buf,
@@ -365,8 +379,8 @@ PersistentRecovery_HandleXLogRec(
 		
 			initStringInfo(&buf);
 			appendStringInfo(&buf, "Transaction Module REDO @ %s; LSN %s: ",
-							 XLogLocationToString(&beginLoc),
-							 XLogLocationToString2(&lsn));
+							 XLogLocationToString(beginLoc),
+							 XLogLocationToString2(lsn));
 			XLog_OutRec(&buf, record);
 			appendStringInfo(&buf, " - ");
 			RmgrTable[record->xl_rmid].rm_desc(&buf,
@@ -383,7 +397,7 @@ PersistentRecovery_HandleXLogRec(
 							&persistentObjects,
 							&subXids,
 							&subXidCount))
-			return false;
+			return;
 
 		if (infoKind == XACT_INFOKIND_COMMIT)
 		{
@@ -434,11 +448,110 @@ PersistentRecovery_HandleXLogRec(
 					 xid);
 		}
 	}
-	else
-		return false;
 
-	return true;
 }
+
+bool
+PersistentRecovery_ShouldHandlePass3XLogRec(
+	XLogRecPtr		*beginLoc,
+
+	XLogRecPtr 		*lsn,
+	
+	XLogRecord 		*record)
+{
+	RelationChangeInfo 	relationChangeInfoArray[MaxRelationChangeInfoReturns];
+	int					relationChangeInfoArrayCount;
+	
+	if (Debug_persistent_recovery_print)
+		ChangeTracking_PrintRelationChangeInfo(
+											record->xl_rmid,
+											record->xl_info,
+											(void*)XLogRecGetData(record), 
+											lsn,
+											/* weAreGeneratingXLogNow */ false,
+											/* printSkipIssuesOnly */ false);
+
+	ChangeTracking_GetRelationChangeInfoFromXlog(
+										  record->xl_rmid,
+										  record->xl_info,
+										  (void*)XLogRecGetData(record), 
+										  relationChangeInfoArray,
+										  &relationChangeInfoArrayCount);
+
+	if (relationChangeInfoArrayCount == 0)
+	{
+		/*
+		 * A non-data change XLOG record.
+		 */
+	}
+	else
+	{
+		ItemPointerData xlogPersistentTid;
+		int64 xlogPersistentSerialNum;
+
+		RelFileNode *xlogRelFileNode;
+		bool exists;
+		ItemPointerData redoRelationPersistentTid;
+		int64 redoRelationPersistentSerialNum;
+		bool tidMatches;
+		bool serialNumMatches;
+
+		xlogRelFileNode = &relationChangeInfoArray[0].relFileNode;
+		xlogPersistentTid = relationChangeInfoArray[0].persistentTid;
+		xlogPersistentSerialNum = relationChangeInfoArray[0].persistentSerialNum;
+
+		/*
+		 * Further qualify using the RelFileNode.
+		 */
+		exists = PersistentRecovery_RedoRelationExists(
+													xlogRelFileNode,
+													&redoRelationPersistentTid,
+													&redoRelationPersistentSerialNum);
+
+		tidMatches = !PersistentStore_IsZeroTid(&xlogPersistentTid) &&
+			         !PersistentStore_IsZeroTid(&redoRelationPersistentTid) &&
+					 (ItemPointerCompare(&xlogPersistentTid, &redoRelationPersistentTid) == 0);
+
+		serialNumMatches = xlogPersistentSerialNum != 0 &&
+						   redoRelationPersistentSerialNum != 0 &&
+						   xlogPersistentSerialNum == redoRelationPersistentSerialNum;
+		
+		if (Debug_persistent_recovery_print)
+		{
+			if (exists)
+			{
+				if (tidMatches && serialNumMatches)
+					elog(Debug_persistent_recovery_print_level, 
+						 "PersistentRecovery_ShouldHandlePass3XLogRec: match %u/%u/%u, serial number " INT64_FORMAT ", TID %s",
+						  xlogRelFileNode->spcNode,
+						  xlogRelFileNode->dbNode,
+						  xlogRelFileNode->relNode,
+						  redoRelationPersistentSerialNum,
+						  ItemPointerToString(&redoRelationPersistentTid));
+				else
+					elog(Debug_persistent_recovery_print_level, 
+						    "PersistentRecovery_ShouldHandlePass3XLogRec: exists %u/%u/%u but mismatch, XLOG record serial number " INT64_FORMAT ", XLOG record TID %s"
+						    "redo relation serial number " INT64_FORMAT ", redo relation TID %s",
+						    xlogRelFileNode->spcNode,
+						    xlogRelFileNode->dbNode,
+						    xlogRelFileNode->relNode,
+						    xlogPersistentSerialNum,
+						    ItemPointerToString(&xlogPersistentTid),
+						    redoRelationPersistentSerialNum,
+						    ItemPointerToString2(&redoRelationPersistentTid));
+			}
+			else
+				elog(Debug_persistent_recovery_print_level, 
+					 "PersistentRecovery_ShouldHandlePass3XLogRec: doesn't exist %u/%u/%u",
+					 xlogRelFileNode->spcNode,
+					 xlogRelFileNode->dbNode,
+					 xlogRelFileNode->relNode);
+		}
+	}
+
+	return false;	// UNDONE: Fow now, redo is done in Pass 1.  Later we'll move most of it to Pass 3.
+}
+
 
 static void
 PersistentRecovery_PrintXactAndFsObjs(void)
@@ -1114,12 +1227,17 @@ PersistentRecovery_Drop(void)
 		     "Exiting PersistentRecovery_Scan");
 }
 
-typedef struct RedoRelationEntry
+typedef struct RedoRelationEntryData
 {
 	RelFileNode		relFileNode;
 
+	ItemPointerData	persistentTid;
+
+	int64			persistentSerialNum;
+
 	// UNDONE: mirrorExistence
-} RedoRelationEntry;
+} RedoRelationEntryData;
+typedef RedoRelationEntryData *RedoRelationEntry;
 
 void
 PersistentRecovery_SerializeRedoRelationFile(
@@ -1128,7 +1246,7 @@ PersistentRecovery_SerializeRedoRelationFile(
 	HASH_SEQ_STATUS iterateStatus;
 	FsObjEntry fsObjEntry;
 
-	RedoRelationEntry redoRelationEntry;
+	RedoRelationEntryData redoRelationEntryData;
 
 	if (Debug_persistent_recovery_print)
 		elog(Debug_persistent_recovery_print_level, 
@@ -1150,10 +1268,12 @@ PersistentRecovery_SerializeRedoRelationFile(
 		if (fsObjEntry == NULL)
 			break;
 
-		redoRelationEntry.relFileNode = fsObjEntry->fsObjName.variant.rel.relFileNode;
+		redoRelationEntryData.relFileNode = fsObjEntry->fsObjName.variant.rel.relFileNode;
+		redoRelationEntryData.persistentTid = fsObjEntry->key.persistentTid;
+		redoRelationEntryData.persistentSerialNum = fsObjEntry->persistentSerialNum;
 
-		writeLen = write(redoRelationFile, &redoRelationEntry, sizeof(RedoRelationEntry));
-		if (writeLen != sizeof(RedoRelationEntry))
+		writeLen = write(redoRelationFile, &redoRelationEntryData, sizeof(RedoRelationEntryData));
+		if (writeLen != sizeof(RedoRelationEntryData))
 		{
 			ereport(ERROR,
 					(errcode_for_file_access(),
@@ -1163,10 +1283,12 @@ PersistentRecovery_SerializeRedoRelationFile(
 		
 		if (Debug_persistent_recovery_print)
 			elog(Debug_persistent_recovery_print_level, 
-				 "PersistentRecovery_SerializeRedoRelationFile: %u/%u/%u",
-				 redoRelationEntry.relFileNode.spcNode,
-				 redoRelationEntry.relFileNode.dbNode,
-				 redoRelationEntry.relFileNode.relNode);
+				 "PersistentRecovery_SerializeRedoRelationFile: %u/%u/%u, serial number " INT64_FORMAT ", TID %s",
+			     redoRelationEntryData.relFileNode.spcNode,
+			     redoRelationEntryData.relFileNode.dbNode,
+			     redoRelationEntryData.relFileNode.relNode,
+			     redoRelationEntryData.persistentSerialNum,
+			     ItemPointerToString(&redoRelationEntryData.persistentTid));
 	}
 	
 	if (Debug_persistent_recovery_print)
@@ -1175,11 +1297,97 @@ PersistentRecovery_SerializeRedoRelationFile(
 		     persistentRecoveryCount);
 }
 
+static HTAB* redoRelationHashTable = NULL;
+
+static void
+PersistentRecovery_RedoRelationHashTableInit(void)
+{
+	HASHCTL			info;
+	int				hash_flags;
+
+	/* Set key and entry sizes. */
+	MemSet(&info, 0, sizeof(info));
+	info.keysize = sizeof(RelFileNode);
+	info.entrysize = sizeof(RedoRelationEntryData);
+	info.hash = tag_hash;
+
+	hash_flags = (HASH_ELEM | HASH_FUNCTION);
+
+	redoRelationHashTable = hash_create("Redo Relation", 10, &info, hash_flags);
+}
+
+static RedoRelationEntry
+PersistentRecovery_CreateRedoRelationEntry(
+	RedoRelationEntry redoRelationEntry)
+{
+	RedoRelationEntry createdEntry;
+
+	bool found;
+
+	if (redoRelationHashTable == NULL)
+		PersistentRecovery_RedoRelationHashTableInit();
+		
+	createdEntry = 
+			(RedoRelationEntry) 
+					hash_search(redoRelationHashTable,
+								(void *) &redoRelationEntry->relFileNode,
+								HASH_ENTER,
+								&found);
+
+	if (found)
+	{
+		elog(ERROR, 
+			 "Duplicate redo relation entry: %u/%u/%u, serial number " INT64_FORMAT ", TID %s",
+		     redoRelationEntry->relFileNode.spcNode,
+		     redoRelationEntry->relFileNode.dbNode,
+		     redoRelationEntry->relFileNode.relNode,
+		     redoRelationEntry->persistentSerialNum,
+		     ItemPointerToString(&redoRelationEntry->persistentTid));
+	}
+
+	createdEntry->persistentSerialNum = redoRelationEntry->persistentSerialNum;
+	createdEntry->persistentTid = redoRelationEntry->persistentTid;
+
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level, 
+			 "Created redo relation entry: %u/%u/%u, serial number " INT64_FORMAT ", TID %s",
+			 createdEntry->relFileNode.spcNode,
+			 createdEntry->relFileNode.dbNode,
+			 createdEntry->relFileNode.relNode,
+			 createdEntry->persistentSerialNum,
+			 ItemPointerToString(&createdEntry->persistentTid));
+
+	return createdEntry;
+}
+
+static RedoRelationEntry
+PersistentRecovery_FindRedoRelationEntry(
+	RelFileNode *relFileNode)
+{
+	RedoRelationEntry foundEntry;
+
+	bool found;
+
+	if (redoRelationHashTable == NULL)
+		PersistentRecovery_RedoRelationHashTableInit();
+		
+	foundEntry = 
+			(RedoRelationEntry) 
+					hash_search(redoRelationHashTable,
+								(void *) relFileNode,
+								HASH_FIND,
+								&found);
+
+
+	return foundEntry;
+}
+
+
 void
 PersistentRecovery_DeserializeRedoRelationFile(
 	int redoRelationFile)
 {
-	RedoRelationEntry redoRelationEntry;
+	RedoRelationEntryData redoRelationEntryData;
 
 	if (Debug_persistent_recovery_print)
 		elog(Debug_persistent_recovery_print_level, 
@@ -1190,13 +1398,13 @@ PersistentRecovery_DeserializeRedoRelationFile(
 		int readLen;
 
 		errno = 0;
-		readLen = read(redoRelationFile, &redoRelationEntry, sizeof(RedoRelationEntry));
+		readLen = read(redoRelationFile, &redoRelationEntryData, sizeof(RedoRelationEntryData));
 
 		if (readLen == 0)
 			break;
-		else if (readLen != sizeof(RedoRelationEntry) && errno == 0)
+		else if (readLen != sizeof(RedoRelationEntryData) && errno == 0)
 			elog(ERROR, "Bad redo relation entry length (expected %d and found %d)",
-			     (int)sizeof(RedoRelationEntry), readLen);
+			     (int)sizeof(RedoRelationEntryData), readLen);
 		else if (errno != 0)
 		{
 			ereport(ERROR,
@@ -1206,10 +1414,14 @@ PersistentRecovery_DeserializeRedoRelationFile(
 		
 		if (Debug_persistent_recovery_print)
 			elog(Debug_persistent_recovery_print_level, 
-				"PersistentRecovery_DeserializeRedoRelationFile: %u/%u/%u",
-				redoRelationEntry.relFileNode.spcNode,
-				redoRelationEntry.relFileNode.dbNode,
-				redoRelationEntry.relFileNode.relNode);
+				 "PersistentRecovery_DeserializeRedoRelationFile: %u/%u/%u, serial number " INT64_FORMAT ", TID %s",
+			     redoRelationEntryData.relFileNode.spcNode,
+			     redoRelationEntryData.relFileNode.dbNode,
+			     redoRelationEntryData.relFileNode.relNode,
+			     redoRelationEntryData.persistentSerialNum,
+			     ItemPointerToString(&redoRelationEntryData.persistentTid));
+
+		PersistentRecovery_CreateRedoRelationEntry(&redoRelationEntryData);
 	}
 	
 	if (Debug_persistent_recovery_print)
@@ -1217,3 +1429,27 @@ PersistentRecovery_DeserializeRedoRelationFile(
 		     "Exiting PersistentRecovery_DeserializeRedoRelationFile count %d",
 		     persistentRecoveryCount);
 }
+
+bool
+PersistentRecovery_RedoRelationExists(
+	RelFileNode 	*relFileNode,
+	
+	ItemPointer		persistentTid,
+	
+	int64 			*persistentSerialNum)
+{
+	RedoRelationEntry redoRelationEntry;
+
+	redoRelationEntry = PersistentRecovery_FindRedoRelationEntry(relFileNode);
+	if (redoRelationEntry == NULL)
+	{
+		MemSet(persistentTid, 0, sizeof(ItemPointerData));
+		*persistentSerialNum = 0;
+		return false;
+	}
+
+	*persistentTid = redoRelationEntry->persistentTid;
+	*persistentSerialNum = redoRelationEntry->persistentSerialNum;
+	return true;
+}
+

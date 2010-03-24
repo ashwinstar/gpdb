@@ -42,7 +42,9 @@ typedef struct FileRepResyncHashEntry_s {
 	
 	BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
 	
-	int64							mirrorAppendOnlyEof;
+	int64							mirrorAppendOnlyLossEof;
+	
+	int64							mirrorAppendOnlyNewEof;
 	
 	ItemPointerData					persistentTid;
 	

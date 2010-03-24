@@ -306,6 +306,9 @@ class GpRecoverSegmentProgram:
 
                 mirrorBuilder.buildMirrors("recover", gpEnv, gpArray )
 
+                logger.info("Segments have been recovered; data synchronization is in progress.")
+                logger.info("Use gpstate to check the resynchronization progress.")
+
         finally:
             if faultProber.isFaultProberPaused():
                 faultProber.unpauseFaultProber()

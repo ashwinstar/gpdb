@@ -214,7 +214,7 @@ FaultInjector_ShmemSize(void)
 							  (Size)FAULTINJECTOR_MAX_SLOTS, 
 							  sizeof(FaultInjectorEntry_s));
 	
-	size = add_size(size, sizeof(slock_t));
+	size = add_size(size, sizeof(FaultInjectorShmem_s));
 	
 	return size;	
 }
@@ -229,14 +229,28 @@ void
 FaultInjector_ShmemInit(void)
 {
 	HASHCTL	hash_ctl;
+	bool	foundPtr;
 	
-	faultInjectorShmem = (FaultInjectorShmem_s *) ShmemAlloc(sizeof(FaultInjectorShmem_s));
+	faultInjectorShmem = (FaultInjectorShmem_s *) ShmemInitStruct("Fault Injector",
+																  sizeof(FaultInjectorShmem_s),
+																  &foundPtr);
+	
+	if (faultInjectorShmem == NULL) {
+		ereport(ERROR,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 (errmsg("Not enough shared memory for Mirroring."))));
+	}	
+	
+	if (! foundPtr) 
+	{
+		MemSet(faultInjectorShmem, 0, sizeof(FaultInjectorShmem_s));
+	}	
 	
 	SpinLockInit(&faultInjectorShmem->lock);
 	
 	faultInjectorShmem->faultInjectorSlots = 0;
 	
-	memset(&hash_ctl, 0, sizeof(hash_ctl));
+	MemSet(&hash_ctl, 0, sizeof(hash_ctl));
 	hash_ctl.keysize = sizeof(int32);
 	hash_ctl.entrysize = sizeof(FaultInjectorEntry_s);
 	hash_ctl.hash = int32_hash;

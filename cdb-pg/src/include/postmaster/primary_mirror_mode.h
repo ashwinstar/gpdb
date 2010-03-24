@@ -147,6 +147,11 @@ typedef enum
 
 /**
  * Note: if the order or # of values is changed then update the labels in primary_mirror_mode.c
+ *
+ * When adding a new value here, you must search primary_mirror_mode.c for occurrences of it
+ *    -- for example, the call to copyTransitionParametersToLocalMemoryIfNeeded is only done on
+ *       certain transition result codes and that must be checked for a new code.
+ *
  */
 typedef enum
 {
@@ -233,6 +238,8 @@ extern void getFileRepRoleAndState(
 extern bool isFullResync(void);
 
 extern void setFullResync(void);
+
+extern bool isDatabaseRunning(void);
 
 extern bool updateSegmentState(SegmentState_e segmentState);
 

@@ -140,10 +140,12 @@ static bool PersistentRelation_CheckTablespaceScanTupleCallback(
 	MirroredObjectExistenceState		mirrorExistenceState;
 
 	MirroredRelDataSynchronizationState mirrorDataSynchronizationState;
+	bool							mirrorBufpoolVacuumed;
 	XLogRecPtr						mirrorBufpoolResyncCkptLoc;
 	BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
 
-	int64					mirrorAppendOnlyEof;
+	int64					mirrorAppendOnlyLossEof;
+	int64					mirrorAppendOnlyNewEof;
 	TransactionId			parentXid;
 	int64					serialNum;
 	ItemPointerData			previousFreeTid;
@@ -160,9 +162,11 @@ static bool PersistentRelation_CheckTablespaceScanTupleCallback(
 									&state,
 									&mirrorExistenceState,
 									&mirrorDataSynchronizationState,
+									&mirrorBufpoolVacuumed,
 									&mirrorBufpoolResyncCkptLoc,
 									&mirrorBufpoolResyncCkptBlockNum,
-									&mirrorAppendOnlyEof,
+									&mirrorAppendOnlyLossEof,
+									&mirrorAppendOnlyNewEof,
 									&parentXid,
 									&serialNum,
 									&previousFreeTid);
@@ -283,9 +287,11 @@ void PersistentRelation_AddCreatePending(
 										PersistentFileSysState_CreatePending,
 										mirrorExistenceState,
 										relDataSynchronizationState,
+										/* mirrorBufpoolVacuumed */ false,
 										&mirrorBufpoolResyncCkptLoc,
 										/* mirrorBufpoolResyncCkptBlockNum */ 0,
-										/* mirrorAppendOnlyEof */ 0,
+										/* mirrorAppendOnlyLossEof */ 0,
+										/* mirrorAppendOnlyNewEof */ 0,
 										GetTopTransactionId(),
 										/* persistentSerialNum */ 0,	// This will be set by PersistentFileSysObj_AddTuple.
 										&previousFreeTid);
@@ -380,9 +386,11 @@ void PersistentRelation_AddCreated(
 										PersistentFileSysState_Created,
 										mirrorExistenceState,
 										relDataSynchronizationState,
+										/* mirrorBufpoolVacuumed */ false,
 										&mirrorBufpoolResyncCkptLoc,
 										/* mirrorBufpoolResyncCkptBlockNum */ 0,
-										/* mirrorAppendOnlyEof */ 0,
+										/* mirrorAppendOnlyLossEof */ 0,
+										/* mirrorAppendOnlyNewEof */ 0,
 										InvalidTransactionId,
 										/* persistentSerialNum */ 0,	// This will be set by PersistentFileSysObj_AddTuple.
 										&previousFreeTid);

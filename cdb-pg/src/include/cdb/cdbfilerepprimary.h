@@ -223,6 +223,11 @@ extern void FileRepPrimary_MirrorShutdown(void);
  */
 extern void FileRepPrimary_MirrorInSyncTransition(void);
 
+/*
+ *	Verify that flow from primary to mirror and back to primary is alive
+ */
+extern void FileRepPrimary_MirrorHeartBeat(FileRepConsumerProcIndex_e index);
+
 // -----------------------------------------------------------------------------
 // SENDER THREAD
 // -----------------------------------------------------------------------------

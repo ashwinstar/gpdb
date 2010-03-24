@@ -282,7 +282,9 @@ extern bool PersistentFileSysObj_ResynchronizeScan(
 
 	BlockNumber 					*mirrorBufpoolResyncCkptBlockNum,
 
-	int64							*mirrorAppendOnlyEof,
+	int64							*mirrorAppendOnlyLossEof,
+
+	int64							*mirrorAppendOnlyNewEof,
 
 	ItemPointer						persistentTid,
 

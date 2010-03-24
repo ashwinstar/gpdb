@@ -787,8 +787,7 @@ void PersistentStore_AddTuple(
 	values[storeData->attNumPersistentSerialNum - 1] = 
 										Int64GetDatum(*persistentSerialNum);
 
-	if (!Debug_filerep_skip_persistent_free_list &&
-		PersistentStore_GetFreeTuple(
+	if (PersistentStore_GetFreeTuple(
 								storeData,
 								storeSharedData,
 								persistentTid))

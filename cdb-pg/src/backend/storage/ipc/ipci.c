@@ -183,6 +183,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 			size = add_size(size, FaultInjector_ShmemSize());
 #endif			
 			size = add_size(size, FileRepResync_ShmemSize()); 
+			size = add_size(size, FileRepIpc_ShmemSize());
 		}
 #ifdef EXEC_BACKEND
 		size = add_size(size, ShmemBackendArraySize());
@@ -215,9 +216,14 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		 */
 		numSemas = ProcGlobalSemas();
 		numSemas += SpinlockSemas();
-
+		if (GPAreFileReplicationStructuresRequired()) 
+		{
+			numSemas += FileRepSemas();
+		}
+		
 		elog(DEBUG3,"reserving %d semaphores",numSemas);
 		PGReserveSemaphores(numSemas, port);
+		
 	}
 	else
 	{
@@ -345,6 +351,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		FaultInjector_ShmemInit();
 #endif
 		FileRepResync_ShmemInit();
+		FileRepIpc_ShmemInit();
 	}
 
 	/*
