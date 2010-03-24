@@ -3,7 +3,7 @@
  * heap.c
  *	  code to create and destroy POSTGRES heap relations
  *
- * Portions Copyright (c) 2005-2009, Greenplum inc
+ * Portions Copyright (c) 2005-2010, Greenplum inc
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -1263,6 +1263,29 @@ heap_create_with_catalog(const char *relname,
             relstorage = RELSTORAGE_AOCOLS;
 		else
 			relstorage = RELSTORAGE_AOROWS;
+	}
+
+	/* MPP-8058: disallow OIDS on column-oriented tables */
+	if (tupdesc->tdhasoid && 
+		IsNormalProcessingMode() &&
+        (Gp_role == GP_ROLE_DISPATCH))
+	{
+		if (relstorage == RELSTORAGE_AOCOLS)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg(
+							 "OIDS=TRUE is not allowed on tables that "
+							 "use column-oriented storage. Use OIDS=FALSE"
+							 ),
+					 errOmitLocation(true)));
+		else
+			ereport(NOTICE,
+					(errmsg(
+							 "OIDS=TRUE is not recommended for user-created "
+							 "tables. Use OIDS=FALSE to prevent wrap-around "
+							 "of the OID counter"
+							 ),
+					 errOmitLocation(true)));
 	}
 
 	CheckAttributeNamesTypes(tupdesc, relkind);

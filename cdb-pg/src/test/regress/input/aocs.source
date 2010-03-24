@@ -1,5 +1,21 @@
 set client_min_messages='ERROR';
 
+-- test ao seg totals
+create  or replace function aototal(relname text) returns float8 as $$
+declare
+  aosegname text;
+  tupcount float8 := 0;
+  rc int := 0;
+begin
+
+  execute 'select relname from pg_class where oid=(select segrelid from pg_class, pg_appendonly where relname=''' || relname || ''' and relid = pg_class.oid)' into aosegname;
+  if aosegname > 0 then
+	  execute 'select tupcount from pg_aoseg.' || aosegname into tupcount;
+  end if;
+  return tupcount;
+end; $$ language plpgsql volatile;
+
+
 CREATE TABLE tenk_heap (
 	unique1 	int4,
 	unique2 	int4,
@@ -230,13 +246,8 @@ TRUNCATE tenk_aocs2;
 -- OID with aocs NYI
 -- OIDS
 -- 
+-- MPP-8058: should fail
 CREATE TABLE aocswithoids(a int, b int) WITH (appendonly=true, orientation=column, oids=true);
-COPY aowithoids FROM STDIN;
-1	1
-2	2
-\.
-SELECT * FROM aocswithoids ORDER BY a; -- this should show a,b only
-SELECT oideq(oid,-1) FROM aocswithoids; -- kind of stupid but checks that oid actually exists and is queriable. should always be 'f'
 
 -- INDEX
 CREATE INDEX tenk_aocs1_unique1 ON tenk_aocs1 USING btree(unique1 int4_ops);
@@ -308,6 +319,5 @@ DROP TABLE tenk_aocs2;
 DROP TABLE tenk_aocs3;
 DROP TABLE tenk_aocs4;
 DROP TABLE tenk_aocs5;
-DROP TABLE aocswithoids;
 
 set client_min_messages='WARNING';

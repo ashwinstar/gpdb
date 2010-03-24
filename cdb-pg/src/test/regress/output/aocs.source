@@ -1,4 +1,18 @@
 set client_min_messages='ERROR';
+-- test ao seg totals
+create  or replace function aototal(relname text) returns float8 as $$
+declare
+  aosegname text;
+  tupcount float8 := 0;
+  rc int := 0;
+begin
+
+  execute 'select relname from pg_class where oid=(select segrelid from pg_class, pg_appendonly where relname=''' || relname || ''' and relid = pg_class.oid)' into aosegname;
+  if aosegname > 0 then
+	  execute 'select tupcount from pg_aoseg.' || aosegname into tupcount;
+  end if;
+  return tupcount;
+end; $$ language plpgsql volatile;
 CREATE TABLE tenk_heap (
 	unique1 	int4,
 	unique2 	int4,
@@ -453,22 +467,9 @@ TRUNCATE tenk_aocs2;
 -- OID with aocs NYI
 -- OIDS
 -- 
+-- MPP-8058: should fail
 CREATE TABLE aocswithoids(a int, b int) WITH (appendonly=true, orientation=column, oids=true);
-COPY aowithoids FROM STDIN;
-ERROR:  relation "aowithoids" does not exist
-1	1
-2	2
-\.
-invalid command \.
-SELECT * FROM aocswithoids ORDER BY a; -- this should show a,b only
-ERROR:  syntax error at or near "1"
-LINE 1: 1 1
-        ^
-SELECT oideq(oid,-1) FROM aocswithoids; -- kind of stupid but checks that oid actually exists and is queriable. should always be 'f'
- oideq 
--------
-(0 rows)
-
+ERROR:  OIDS=TRUE is not allowed on tables that use column-oriented storage. Use OIDS=FALSE
 -- INDEX
 CREATE INDEX tenk_aocs1_unique1 ON tenk_aocs1 USING btree(unique1 int4_ops);
 drop table if exists co;
@@ -499,12 +500,12 @@ insert into co values (9,2,'b'), (10,2,'bb'), (11,2,'bbb'), (12,2,'bbbb'),
 select * from co where j = 2;
  i  | j |  k   
 ----+---+------
- 11 | 2 | bbb
   9 | 2 | b
- 12 | 2 | bbbb
+ 11 | 2 | bbb
   2 | 2 | aa
  10 | 2 | bb
  10 | 2 | bb
+ 12 | 2 | bbbb
 (6 rows)
 
 drop table if exists co;
@@ -535,12 +536,12 @@ insert into co values (9,2,'b'), (10,2,'bb'), (11,2,'bbb'), (12,2,'bbbb'),
 select * from co where j = 2;
  i  | j |  k   
 ----+---+------
- 11 | 2 | bbb
-  9 | 2 | b
- 12 | 2 | bbbb
   2 | 2 | aa
  10 | 2 | bb
  10 | 2 | bb
+ 12 | 2 | bbbb
+  9 | 2 | b
+ 11 | 2 | bbb
 (6 rows)
 
 -------------------- 
@@ -548,10 +549,10 @@ select * from co where j = 2;
 --------------------
 -- DELETE (not supported)
 DELETE FROM tenk_aocs1 WHERE unique1 = 1;
-ERROR:  Append-only tables are not updatable. Operation not permitted.  (seg2 minithump4:19004 pid=14837)
+ERROR:  Append-only tables are not updatable. Operation not permitted.  (seg0 @hostname@:11002 pid=30886)
 -- UPDATE (not supported)
 UPDATE tenk_aocs1 SET unique2 = 1 WHERE unique2 = 2;
-ERROR:  Append-only tables are not updatable. Operation not permitted.  (seg0 minithump4:19002 pid=14833)
+ERROR:  Append-only tables are not updatable. Operation not permitted.  (seg0 @hostname@:11002 pid=30886)
 -- ALTER
 ALTER TABLE tenk_aocs1 RENAME TO tenk_renamed;
 ALTER TABLE tenk_renamed ADD COLUMN newcol int default 10;
@@ -571,7 +572,7 @@ ALTER TABLE tenk_renamed RENAME TO tenk_aocs1;
 CREATE TABLE syscoltest(a int) WITH (appendonly=true, orientation=column);
 INSERT INTO syscoltest VALUES(1);
 SELECT ctid FROM syscoltest;
-   ctid   
+       ctid       
 ------------------
  (33554432,32769)
 (1 row)
@@ -586,5 +587,4 @@ DROP TABLE tenk_aocs2;
 DROP TABLE tenk_aocs3;
 DROP TABLE tenk_aocs4;
 DROP TABLE tenk_aocs5;
-DROP TABLE aocswithoids;
 set client_min_messages='WARNING';

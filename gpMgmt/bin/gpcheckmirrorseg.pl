@@ -886,13 +886,13 @@ sub diff_again
 		my $eof = $fil->{eof};
 
 		push @allfiles1, 
-		$fil->{file} ." perl MYPRESH2 -ao  $eof  MYDIR/" . $fil->{file}
+		$fil->{file} ." perl MYPRESH21 -ao  $eof  MYDIR/" . $fil->{file}
 		. " | openssl dgst -md5 -hex ";
 	}
 	for my $fil (@heapfiles)
 	{
 		push @allfiles1, 
-		$fil . " perl MYPRESH2 -heap  MYDIR/" . $fil
+		$fil . " perl MYPRESH21 -heap  MYDIR/" . $fil
 		. " | openssl dgst -md5 -hex ";
 ###			File::Spec->catfile($primfil, $fil->{file});
 	}
@@ -1208,6 +1208,8 @@ if (1)
 
 		my $cmd_template2 = 
 			'gpscp -h MYHOST MYSHSCRIPT =:MYSHSCRIPT1 ; ' .
+			'gpscp -h MYHOST MYPRESCRIPT =:MYPRESCRIPT1 ; ' .
+			'gpscp -h MYHOST MYPRE2SCRIPT =:MYPRE2SCRIPT1 ; ' .
 			'gpssh -h MYHOST \' sh MYSHSCRIPT1 > MYOUT  \' ; ' .
 			'gpscp -h MYHOST  =:MYOUT MYOUT1 ; ' ;
 
@@ -1216,6 +1218,8 @@ if (1)
 		$cmd =~ s/MYDIR/$primfil/g;
 		$cmd =~ s/MYOUT/$primtmp/g;
 		$cmd =~ s/MYSHSCRIPT/$primsh/g;
+		$cmd =~ s/MYPRESCRIPT/$ppresh/g;
+		$cmd =~ s/MYPRE2SCRIPT/$ppresh2/g;
 
 		print $cmd, "\n";
 
@@ -1226,6 +1230,8 @@ if (1)
 		$cmd =~ s/MYDIR/$mirrfil/g;
 		$cmd =~ s/MYOUT/$mirrtmp/g;
 		$cmd =~ s/MYSHSCRIPT/$mirrsh/g;
+		$cmd =~ s/MYPRESCRIPT/$mpresh/g;
+		$cmd =~ s/MYPRE2SCRIPT/$mpresh2/g;
 
 		print $cmd, "\n";
 
