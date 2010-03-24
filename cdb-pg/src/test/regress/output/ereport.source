@@ -8153,6 +8153,9 @@ select * from get_ereport order by 1;
  iaaj: indexcmds:00000355:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  iaaj: indexcmds:00000356:  errmsg("access method "%s" does not support multicolumn indexes", 
  iaaj: indexcmds:00000357:  accessMethodName))); 
+ iaaj: indexcmds:00000360:  ereport(ERROR,
+ iaaj: indexcmds:00000361:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ iaaj: indexcmds:00000362:  errmsg("append-only tables do not support unique indexes")));
  iaaj: indexcmds:00000370:  ereport(ERROR, 
  iaaj: indexcmds:00000371:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
  iaaj: indexcmds:00000372:  errmsg("index expressions and predicates may refer only to the table being indexed"))); 
@@ -18043,6 +18046,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000076:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000077:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000078:  str))); 
-(17982 rows)
+(17985 rows)
 
 drop external table get_ereport;
