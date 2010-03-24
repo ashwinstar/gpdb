@@ -1015,7 +1015,16 @@ restart:
 	return true;
 }
 
-void GetBitmapIndexAuxOids(Relation index, Oid *heapId, Oid *indexId)
+/*
+ * GetBitmapIndexAuxOids - Given an open index, fetch and return the oids for
+ * the bitmap subobjects (pg_bm_xxxx + pg_bm_xxxx_index).
+ *
+ * Note: Currently this information is not stored directly in the catalog, but
+ * is hidden away inside the metadata page of the index.  Future versions should
+ * move this information into the catalog.
+ */
+void 
+GetBitmapIndexAuxOids(Relation index, Oid *heapId, Oid *indexId)
 {
 	Buffer     metabuf;
 	BMMetaPage metapage;
