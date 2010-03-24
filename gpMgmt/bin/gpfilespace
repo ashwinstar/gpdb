@@ -39,6 +39,7 @@ Please upgrade python installed on this machine.
 import optparse                          # Option Parsing
 import subprocess                        # Calling external processes
 import traceback                         # exception logging
+from time import strftime
 try:
     from gppylib.commands import unix
     from gppylib.db import dbconn
@@ -842,14 +843,16 @@ class GPFilespace:
 
         # Get a location for the master, this directory applies both to
         # the master and the standby master, like a regular datadir.
-        masterhost = self.hosts[self.master[0].getSegmentAddress()]
+        hostname   = self.nics[self.master[0].getSegmentAddress()]
+        masterhost = self.hosts[hostname]
         print "\nEnter a file system location for the master"
-        prompt = "master location>"
+        prompt = "master location> "
         masterdir = getdir(prompt, [masterhost])
         logger.debug("%s %s" % (prompt, masterdir))
 
         # Write out the information to a configuration file
-        filename = os.path.join(self.dir, "gpfilespace_config_1")
+        filename = os.path.join(self.dir, "gpfilespace_config_" + 
+                                strftime("%Y%m%d_%H%M%S"))
         logger.debug("Creating Config File: %s" % filename)
         print "Creating configuration file...",
 
