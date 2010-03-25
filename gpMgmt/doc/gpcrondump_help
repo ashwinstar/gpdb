@@ -9,7 +9,7 @@ SYNOPSIS
 
 gpcrondump -x <database_name> 
 [-s <schema> | -t <schema>.<table> | -T <schema>.<table>[,...]] 
-[-p | -m | -w <dbid>[,...]] [-u <backup_directory>] 
+[-p | -w <dbid>[,...]] [-u <backup_directory>] 
 [-R <post_dump_script>] [-c | -o] [-z] [-r] [-f <free_space_percent>] 
 [-b] [-i] [-j | -k] [-g] [-G] [-C] [-d <master_data_directory>] 
 [-B <parallel_processes>] [-a] [-q] 
@@ -154,14 +154,6 @@ Run VACUUM after the dump has completed successfully.
 The directory to write the log file. Defaults to ~/gpAdminLogs.
 
 
--m (mirror segments only)
-
-Optional. Dump the mirror segment instances only. The default 
-is to dump both primary and mirror segment instances. If a mirror 
-is down, the dump will reconfigure itself and dump the active 
-primary segment for the downed mirror.
-
-
 --no-owner
 
 Do not output commands to set object ownership.
@@ -186,10 +178,7 @@ Include object identifiers (oid) in dump data.
 
 -p (primary segments only)
 
-Optional. Dump the primary segment instances only. The default is 
-to dump both primary and mirror segment instances. If a primary is 
-down, the dump will reconfigure itself and dump the active mirror 
-segment for the downed primary.
+Dump all primary segments. It is also the default. Note: this option is deprecated.
 
 
 -q (no screen output)

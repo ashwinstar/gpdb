@@ -161,7 +161,7 @@ USAGE () {
 		$ECHO "      -z, do not use compression [default:- use compression]"
 		$ECHO "      -u, <BACKUPFILEDIR> directory where backup files are placed [default:- segment data directory]"
 		$ECHO "      -y, <REPORTFILEDIR> directory where report file is placed [default:- master segment data directory]"
-		$ECHO "      -p, dump all primary segment instances [default]"
+		$ECHO "      -p, dump all primary segment instances [default]. note: this option is deprecated."
 		$ECHO "      -w, <BACKUPSET>, backup set indicator. Individual segdb (must be followed with a list of dbid's"
 		$ECHO "          to dump). Master segment is added to the list automatically."
 		$ECHO "          For example, script with option -w 2,3,4 will dump segment 1, 2, 3 and 4."

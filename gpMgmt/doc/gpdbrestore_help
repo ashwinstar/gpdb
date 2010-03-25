@@ -31,9 +31,7 @@ functionality on top of gp_restore:
 
 * Automatically reconfigures for compression 
 
-* Validates the number of dump files are correct (For primary only, 
-  mirror only, primary and mirror, or a subset consisting of some 
-  mirror and primary segment dump files) 
+* Validates the number of dump files are correct
 
 * If a failed segment is detected and if gp_fault_action =continue, 
   restores to active segment instances
@@ -54,9 +52,6 @@ functionality on top of gp_restore:
   of the entire database.
 
 * Can restore global objects such as roles and tablespaces (-G option).
-
-* Detects if the backup set is primary segments only or primary 
-  and mirror segments and passes the appropriate options to gp_restore.
 
 * Allows you to drop the target database before a restore in a 
   single operation.
