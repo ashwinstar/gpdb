@@ -116,13 +116,14 @@ int			max_stack_depth = 100;
 /* wait N seconds to allow attach from a debugger */
 int			PostAuthDelay = 0;
 
-/* Priority of the postmaster process */
-int MyProcPriority = 0;
 
 /* ----------------
  *		private variables
  * ----------------
  */
+
+/* Priority of the postmaster process */
+static int PostmasterPriority = 0;
 
 /* max_stack_depth converted to bytes for speed of checking */
 static long max_stack_depth_bytes = 100 * 1024L;
@@ -1188,10 +1189,10 @@ exec_mpp_query(const char *query_string,
 		
 		BeginCommand(commandTag, dest);
 		
-        /* Downgrade process priority */
-		if (gp_qp_relative_renice != 0)
+        /* Downgrade segworker process priority */
+		if (gp_segworker_relative_priority != 0)
 		{
-			renice_current_process(MyProcPriority + gp_qp_relative_renice);
+			renice_current_process(PostmasterPriority + gp_segworker_relative_priority);
 		}
 
 		if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND &&
@@ -3680,8 +3681,10 @@ PostgresMain(int argc, char *argv[], const char *username)
 	 * standalone; cheap enough to do over)
 	 */
 	MyProcPid = getpid();
-	MyProcPriority = getpriority(PRIO_PROCESS, 0);
 
+#ifndef WIN32
+	PostmasterPriority = getpriority(PRIO_PROCESS, 0);
+#endif
 	/*
 	 * Fire up essential subsystems: error and memory management
 	 *

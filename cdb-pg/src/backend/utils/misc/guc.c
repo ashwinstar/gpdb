@@ -3801,12 +3801,12 @@ static struct config_int ConfigureNamesInt[] =
 
 
 	{
-		{"gp_qp_relative_renice", PGC_POSTMASTER, RESOURCES_MGM,
-		gettext_noop("Relative renice level for the query processors."),
+		{"gp_segworker_relative_priority", PGC_POSTMASTER, RESOURCES_MGM,
+		gettext_noop("Priority for the segworkers relative to the postmaster's priority."),
 		NULL,
 		GUC_NOT_IN_SAMPLE
 		},
-		&gp_qp_relative_renice,
+		&gp_segworker_relative_priority,
 		0,
 		0, PRIO_MAX, NULL, NULL
 	},

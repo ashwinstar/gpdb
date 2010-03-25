@@ -874,8 +874,8 @@ extern bool	gp_enable_tablespaces;
 extern bool	gp_enable_tablespace_auto_mkdir;
 
 
-/* renicing for the query processors */
-extern int gp_qp_relative_renice;
+/* Priority for the segworkers relative to the postmaster's priority */
+extern int gp_segworker_relative_priority;
 
 /* The maximum number of times on average that the hybrid hashed aggregation
  * algorithm will plan to spill an input row to disk before including it in

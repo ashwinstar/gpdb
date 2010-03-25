@@ -274,8 +274,8 @@ bool		gp_enable_tablespaces = FALSE;
 bool		gp_enable_tablespace_auto_mkdir = FALSE;
 
 
-/* renicing for the query processors */
-int gp_qp_relative_renice = 0;
+/* Priority for the segworkers relative to the postmaster's priority */
+int gp_segworker_relative_priority = 0;
 
 /* Disable setting of tuple hints while reading */
 bool		gp_disable_tuple_hints = false;
