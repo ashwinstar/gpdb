@@ -22,8 +22,12 @@ typedef struct PersistentEndXactRecObjHdr
 {
 	int32 	len;
 	int16   objKind;
-
-	uint8	data[0];
+	
+	union
+	{
+		uint8	data[0];
+		uint64  align;
+	} p;
 } PersistentEndXactRecObjHdr;
 
 void PersistentEndXactRec_Print(
@@ -250,7 +254,7 @@ int32 PersistentEndXactRec_FetchObjectsFromSmgr(
 		{
 			(*objectCount)++;
 
-			serializeLen += offsetof(PersistentEndXactRecObjHdr, data) + len;
+			serializeLen += offsetof(PersistentEndXactRecObjHdr, p.data) + len;
 
 			PersistentEndXactRec_SetObjectInfo(
 										objects, objKind, data, count, len);
@@ -314,7 +318,7 @@ int32 PersistentEndXactRec_SerializeLen(
 									objects, objKind, &data, &count, &len);
 		if (len > 0)
 		{
-			fillLen += offsetof(PersistentEndXactRecObjHdr, data) + len;
+			fillLen += offsetof(PersistentEndXactRecObjHdr, p.data) + len;
 		}
 	}
 
@@ -336,7 +340,7 @@ static void PersistentEndXactRec_AddSection(
 {
 	uint8 *next;
 	PersistentEndXactRecObjHdr *header;
-	const int headerLen = offsetof(PersistentEndXactRecObjHdr, data);
+	const int headerLen = offsetof(PersistentEndXactRecObjHdr, p.data);
 
 	Assert(len > 0);
 	Assert(*currentLen + headerLen + len <= bufferLen);
@@ -348,7 +352,7 @@ static void PersistentEndXactRec_AddSection(
 	header->len = len;
 	header->objKind = objKind;
 	
-	memcpy(header->data, data, len);
+	memcpy(header->p.data, data, len);
 
 	(*currentLen) += headerLen + len;
 }
@@ -419,7 +423,7 @@ int32 PersistentEndXactRec_DeserializeLen(
 	{
 		len = header->len;
 
-		deserializeLen += offsetof(PersistentEndXactRecObjHdr, data) + len;
+		deserializeLen += offsetof(PersistentEndXactRecObjHdr, p.data) + len;
 		header = (PersistentEndXactRecObjHdr*)&buffer[deserializeLen];
 	}
 
@@ -452,14 +456,14 @@ void PersistentEndXactRec_Deserialize(
 
 		len = header->len;
 		objKind = header->objKind;
-		data = header->data;
+		data = header->p.data;
 
 		count = PersistentEndXactRec_CountForObject(objKind, len);
 
 		PersistentEndXactRec_SetObjectInfo(
 									objects, objKind, data, count, len);
 
-		currentLen += offsetof(PersistentEndXactRecObjHdr, data) + len;
+		currentLen += offsetof(PersistentEndXactRecObjHdr, p.data) + len;
 		header = (PersistentEndXactRecObjHdr*)&buffer[currentLen];
 	}
 
