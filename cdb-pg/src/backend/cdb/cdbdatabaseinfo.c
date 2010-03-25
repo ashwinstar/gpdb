@@ -565,6 +565,10 @@ static void DatabaseInfo_Scan(
 			strcmp(xlde->d_name, "..") == 0)
 			continue;
 
+		/* Odd... On snow leopard, we get back "/" as a subdir, which is wrong. Ingore it */
+		if (xlde->d_name[0] == '/' && xlde->d_name[1] == '\0')
+			continue;
+
 		snprintf(fromfile, MAXPGPATH, "%s/%s", dbDirPath, xlde->d_name);
 
 		if (lstat(fromfile, &fst) < 0)
