@@ -565,7 +565,7 @@ scan_available_timezones(char *tzdir, char *tzdirsub, struct tztry * tt,
 	int			tzdir_orig_len = strlen(tzdir);
 	DIR		   *dirdesc;
 	struct dirent *direntry;
-
+	
 	dirdesc = AllocateDir(tzdir);
 	if (!dirdesc)
 	{
@@ -581,6 +581,10 @@ scan_available_timezones(char *tzdir, char *tzdirsub, struct tztry * tt,
 
 		/* Ignore . and .., plus any other "hidden" files */
 		if (direntry->d_name[0] == '.')
+			continue;
+
+	    /* Odd... On snow leopard, I got back a "/" as a subdir, which causes infinite recursion */
+		if (direntry->d_name[0] == '/' && direntry->d_name[1]== '\0')
 			continue;
 
 		snprintf(tzdir + tzdir_orig_len, MAXPGPATH - tzdir_orig_len,
