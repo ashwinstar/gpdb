@@ -888,6 +888,9 @@ _outIntoClause(StringInfo str, IntoClause *node)
 	WRITE_OID_FIELD(oidInfo.aosegOid);
 	WRITE_OID_FIELD(oidInfo.aosegIndexOid);
 	WRITE_OID_FIELD(oidInfo.aosegComptypeOid);
+	WRITE_OID_FIELD(oidInfo.aoblkdirOid);
+	WRITE_OID_FIELD(oidInfo.aoblkdirIndexOid);
+	WRITE_OID_FIELD(oidInfo.aoblkdirComptypeOid);
 }
 
 static void

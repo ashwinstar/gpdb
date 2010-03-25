@@ -24,9 +24,10 @@ extern void AlterTableCreateToastTableWithOid(Oid relOid, Oid newOid,
 											  Oid *comptypeOid,
 											  bool is_part_child);
 
+extern bool RelationNeedsToastTable(Relation rel);
+
 extern void BootstrapToastTable(char *relName,
 					Oid toastOid, Oid toastIndexOid);
-
 
 /*
  * This macro is just to keep the C compiler from spitting up on the

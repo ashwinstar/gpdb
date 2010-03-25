@@ -311,6 +311,9 @@ _readQuery(void)
 			local_node->intoClause->oidInfo.aosegOid = InvalidOid;
 			local_node->intoClause->oidInfo.aosegIndexOid = InvalidOid;
 			local_node->intoClause->oidInfo.aosegComptypeOid = InvalidOid;
+			local_node->intoClause->oidInfo.aoblkdirOid = InvalidOid;
+			local_node->intoClause->oidInfo.aoblkdirIndexOid = InvalidOid;
+			local_node->intoClause->oidInfo.aoblkdirComptypeOid = InvalidOid;
 		}
 	}
 	else
@@ -358,6 +361,12 @@ _readQuery(void)
         READ_SCALAR_VALUE(intoOidInfo.aosegOid, InvalidOid);
         READ_SCALAR_VALUE(intoOidInfo.aosegIndexOid, InvalidOid);
         READ_SCALAR_VALUE(intoOidInfo.aosegComptypeOid, InvalidOid);
+	}
+    if (pg_strtok_peek_fldname("intoOidInfo.aoblkdirOid"))
+	{
+        READ_SCALAR_VALUE(intoOidInfo.aoblkdirOid, InvalidOid);
+        READ_SCALAR_VALUE(intoOidInfo.aoblkdirIndexOid, InvalidOid);
+        READ_SCALAR_VALUE(intoOidInfo.aoblkdirComptypeOid, InvalidOid);
     }
 
 	local_node->intoPolicy = NULL;
@@ -622,6 +631,12 @@ _readIntoClause(void)
     READ_OID_FIELD(oidInfo.aosegOid);
     READ_OID_FIELD(oidInfo.aosegIndexOid);
     READ_OID_FIELD(oidInfo.aosegComptypeOid);
+    if (pg_strtok_peek_fldname("oidInfo.aoblkdirOid"))
+	{
+        READ_OID_FIELD(oidInfo.aoblkdirOid);
+        READ_OID_FIELD(oidInfo.aoblkdirIndexOid);
+        READ_OID_FIELD(oidInfo.aoblkdirComptypeOid);
+    }
 	/* policy not serialized */
 	
 	/* Is this code, carried over from 3.3, actually needed?

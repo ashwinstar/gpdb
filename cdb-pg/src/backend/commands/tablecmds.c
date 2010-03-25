@@ -4883,7 +4883,7 @@ ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 
 	ListCell   *ltab;
 	int			m = 0;
-
+	
 	/*
 	 * Check to see if a toast table must be added, if we executed any
 	 * subcommands that might have added a column or changed column storage.
@@ -4892,8 +4892,8 @@ ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 	{
 		Oid tOid = InvalidOid;
 		Oid tiOid = InvalidOid;
-		AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
 		Oid	*toastComptypeOid = NULL;
+		AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
 		bool is_part = !rel_needs_long_lock(tab->relid);
 
 		if (tab->relkind == RELKIND_RELATION &&
@@ -4901,6 +4901,9 @@ ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 			 tab->subcmds[AT_PASS_ALTER_TYPE] ||
 			 tab->subcmds[AT_PASS_COL_ATTRS]))
 		{
+			Relation rel;
+			Oid reltablespace;
+
 			/*
 			 * For 3.3 upgrade, don't create a toast table for
 			 * pg_appendonly.
@@ -4908,52 +4911,74 @@ ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 			if (!IsUnderPostmaster && tab->relid == AppendOnlyRelationId)
 				continue;
 
-			if (Gp_role == GP_ROLE_DISPATCH && oidInfo != NULL)
-			{
-				Relation	pg_class_desc;
-				Relation	rel;
-
-				Assert(m<oidInfoCount);
-
-				pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
-				rel = heap_open(tab->relid, AccessExclusiveLock);
-
-				if (rel->rd_rel->reltoastrelid == InvalidOid)
-				{
-					/*
-					 * Pre-Allocate an OID for the toast table and toast index,
-					 * just in case needed.
-					 *
-					 * The OID will be the relfilenode as well, so make sure it
-					 * doesn't collide with either pg_class OIDs or existing
-					 * physical files.
-					 */
-
-					oidInfo[m].toastOid = GetNewRelFileNode(rel->rd_rel->reltablespace, false,  pg_class_desc);
-
-					oidInfo[m].toastIndexOid = GetNewRelFileNode(rel->rd_rel->reltablespace, false,  pg_class_desc);
-
-					tOid = oidInfo[m].toastOid;
-					tiOid = oidInfo[m].toastIndexOid;
-					toastComptypeOid = &oidInfo[m].toastComptypeOid;
-					*toastComptypeOid = InvalidOid;
-					elog(DEBUG2,"Pre-allocating toast Oid %ud, %ud",tOid,tiOid);
-				}
-
-
+			/* 
+			 * Determine if we need to create a toast table.
+			 */
+			rel = heap_open(tab->relid, NoLock);
+			if (rel->rd_rel->reltoastrelid != InvalidOid)
+			{  /* Already have one */
 				heap_close(rel, NoLock);
-				heap_close(pg_class_desc, NoLock);  /* gonna update, so don't unlock */
-
+				continue;
 			}
-			if (Gp_role == GP_ROLE_EXECUTE && oidInfo != NULL)
+			if (!RelationNeedsToastTable(rel))
+			{  /* Don't need one */
+				heap_close(rel, NoLock);
+				continue;
+			}
+			reltablespace = rel->rd_rel->reltablespace;
+			heap_close(rel, NoLock);
+			
+			/* 
+			 * We do not currently have a toast table, but we need one.  If we
+			 * have not already allocated oids in the oidinfo then we need to do
+			 * so now.
+			 */
+			if (Gp_role == GP_ROLE_DISPATCH)
 			{
-				Assert(m<oidInfoCount);
+				Relation	pg_class_desc = NULL;
+				Relation    pg_type_desc = NULL;
+
+				Assert(oidInfo);
+				Assert(m < oidInfoCount);
+
+				if (oidInfo[m].toastOid == InvalidOid)
+				{
+					pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
+					oidInfo[m].toastOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+				}
+				if (oidInfo[m].toastIndexOid == InvalidOid)
+				{
+					if (!pg_class_desc)
+						pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
+					oidInfo[m].toastIndexOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+				}
+				if (oidInfo[m].toastComptypeOid == InvalidOid)
+				{
+					pg_type_desc = heap_open(RelationRelationId, RowExclusiveLock);
+					oidInfo[m].toastIndexOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
+				}
+				if (pg_class_desc)
+					heap_close(pg_class_desc, NoLock);
+				if (pg_type_desc)
+					heap_close(pg_type_desc, NoLock);
+			}
+
+			/*
+			 * Normal dispatch/execute mode will always have an oidInfo, but if
+			 * we are in utility mode or bootstrap then we might not.  In this
+			 * event we fall back to the InvalidOid as initialized above.
+			 */
+			if (oidInfo != NULL)
+			{
+				Assert(m < oidInfoCount);
 				tOid = oidInfo[m].toastOid;
 				tiOid = oidInfo[m].toastIndexOid;
 				toastComptypeOid = &oidInfo[m].toastComptypeOid;
 			}
-			elog(DEBUG2,"Create Toast %d with Oid %u",m,tOid);
-			AlterTableCreateToastTableWithOid(tab->relid, tOid, tiOid,
+
+			/* Finally create the toast table */
+			elog(DEBUG2,"Create Toast %d with Oid %u", m, tOid);
+			AlterTableCreateToastTableWithOid(tab->relid, tOid, tiOid, 
 											  toastComptypeOid, is_part);
 			m++;
 

@@ -693,12 +693,12 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 
 	is_part = !rel_needs_long_lock(OIDOldHeap);
 
-	/* Check that the oidInfo is valid */
+	/* 
+	 * Allocate new Oids for the heap, or check that all oids have been passed
+	 * in from the master, depending on current GpRole.
+	 */
 	Assert(oidInfo);
-	if (!OidIsValid(oidInfo->relOid))
-	{
-		populate_oidInfo(oidInfo, NewTableSpace, OldHeap->rd_rel->relisshared, true);
-	}
+	populate_oidInfo(oidInfo, NewTableSpace, OldHeap->rd_rel->relisshared, true);
 
 	/* 
 	 * Extract the oids from the oidInfo, this is used to ensure oid
