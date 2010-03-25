@@ -172,7 +172,7 @@ attrelid|attname|atttypid|attstattarget|attlen|attnum|attndims|attcacheoff|attty
 5090|persistent_state|21|-1|2|6|0|-1|-1|t|p|s|t|f|f|t|0
 5090|mirror_existence_state|21|-1|2|7|0|-1|-1|t|p|s|t|f|f|t|0
 5090|mirror_data_synchronization_state|21|-1|2|8|0|-1|-1|t|p|s|t|f|f|t|0
-5090|mirror_bufpool_vacuumed|16|-1|1|9|0|-1|-1|t|p|c|t|f|f|t|0
+5090|mirror_bufpool_physically_truncated|16|-1|1|9|0|-1|-1|t|p|c|t|f|f|t|0
 5090|mirror_bufpool_resync_ckpt_loc|3310|-1|8|10|0|-1|-1|f|p|s|t|f|f|t|0
 5090|mirror_bufpool_resync_ckpt_block_num|23|-1|4|11|0|-1|-1|t|p|i|t|f|f|t|0
 5090|mirror_append_only_loss_eof|20|-1|8|12|0|-1|-1|t|p|d|t|f|f|t|0

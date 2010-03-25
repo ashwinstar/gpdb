@@ -486,16 +486,54 @@ FetchGpRelationNodeTuple(
 }
 
 void
+ReadGpRelationNode(
+	Oid				relationId,
+	
+	Oid 			relfilenode,
+	
+	int32			segmentFileNum,
+
+	ItemPointer		persistentTid,
+
+	int64			*persistentSerialNum)
+{
+	Relation gp_relation_node;
+	HeapTuple tuple;
+
+	MemSet(persistentTid, 0, sizeof(ItemPointerData));
+	*persistentSerialNum = 0;
+
+	gp_relation_node = heap_open(GpRelationNodeRelationId, AccessShareLock);
+
+	tuple = FetchGpRelationNodeTuple(
+						gp_relation_node,
+						relationId,
+						relfilenode,
+						segmentFileNum,
+						persistentTid,
+						persistentSerialNum);
+
+	/*
+	 * if no such tuple exists, return NULL
+	 */
+	if (!HeapTupleIsValid(tuple))
+	{
+		elog(ERROR, "Did not find node tuple in gp_relation_node for relation %u, relation node %u",
+		     relationId,
+		     relfilenode);
+	}
+	else
+		heap_freetuple(tuple);
+
+	heap_close(gp_relation_node, AccessShareLock);
+}
+
+void
 RelationFetchSegFile0GpRelationNode(
 	Relation relation)
 {
 	if (!relation->rd_segfile0_relationnodeinfo.isPresent)
 	{
-		Oid relfilenode;
-
-		Relation gp_relation_node;
-		HeapTuple tuple;
-
 		if (PersistentFileSysObj_BeforePersistenceWork() || InRecovery)
 		{
 			MemSet(&relation->rd_segfile0_relationnodeinfo.persistentTid, 0, sizeof(ItemPointerData));
@@ -504,38 +542,17 @@ RelationFetchSegFile0GpRelationNode(
 			relation->rd_segfile0_relationnodeinfo.isPresent = true;
 			
 			return; // The initdb process will load the persistent table once we out of bootstrap mode.
-		}		
-
-		relfilenode = relation->rd_rel->relfilenode;
-
-		gp_relation_node = heap_open(GpRelationNodeRelationId, AccessShareLock);
-
-		tuple = FetchGpRelationNodeTuple(
-							gp_relation_node,
-							/* relationId */ relation->rd_node.relNode,
-							relfilenode,
-							/* segmentFileNum */ 0,
-							&relation->rd_segfile0_relationnodeinfo.persistentTid,
-							&relation->rd_segfile0_relationnodeinfo.persistentSerialNum);
-
-		/*
-		 * if no such tuple exists, return NULL
-		 */
-		if (!HeapTupleIsValid(tuple))
-		{
-			// UNDONE: Temporarily make this a warning...
-			elog(LOG, "**** Did not find node tuple in gp_relation_node for relation %u, relation node %u",
-			     relation->rd_node.relNode,
-			     relfilenode);
-			MemSet(&relation->rd_segfile0_relationnodeinfo.persistentTid, 0, sizeof(ItemPointerData));
-			relation->rd_segfile0_relationnodeinfo.persistentSerialNum = 0;
 		}
-		else
-			heap_freetuple(tuple);
+
+		ReadGpRelationNode(
+					relation->rd_id,
+					relation->rd_node.relNode,
+					/* segmentFileNum */ 0,
+					&relation->rd_segfile0_relationnodeinfo.persistentTid,
+					&relation->rd_segfile0_relationnodeinfo.persistentSerialNum);
 
 		relation->rd_segfile0_relationnodeinfo.isPresent = true;
-
-		heap_close(gp_relation_node, AccessShareLock);
+		
 	}
 
 }
@@ -552,26 +569,15 @@ RelationFetchGpRelationNodeForXLog_Index(
 
 	countInThisBackend++;
 
-//	elog(LOG, "RelationFetchGpRelationNodeForXLog [%d] for non-heap %u/%u/%u (deep %d)",
-//		 countInThisBackend,
-//		 relation->rd_node.spcNode,
-//		 relation->rd_node.dbNode,
-//		 relation->rd_node.relNode,
-//		 deep);
+	if (deep >= 2)
+		elog(ERROR, "RelationFetchGpRelationNodeForXLog [%d] for non-heap %u/%u/%u (deep %d)",
+			 countInThisBackend,
+			 relation->rd_node.spcNode,
+			 relation->rd_node.dbNode,
+			 relation->rd_node.relNode,
+			 deep);
 
-
-	if (Debug_persistent_btree_collect)
-	{
-		if (deep >= 2)
-			elog(ERROR, "RelationFetchGpRelationNodeForXLog [%d] for non-heap %u/%u/%u (deep %d)",
-				 countInThisBackend,
-				 relation->rd_node.spcNode,
-				 relation->rd_node.dbNode,
-				 relation->rd_node.relNode,
-				 deep);
-
-		RelationFetchSegFile0GpRelationNode(relation);
-	}
+	RelationFetchSegFile0GpRelationNode(relation);
 
 	deep--;
 }

@@ -98,6 +98,12 @@ extern HeapTuple FetchGpRelationNodeTuple(
 	int32			segmentFileNum,
 	ItemPointer		persistentTid,
 	int64			*persistentSerialNum);
+extern void ReadGpRelationNode(
+	Oid				relationId,
+	Oid 			relfilenode,
+	int32			segmentFileNum,
+	ItemPointer		persistentTid,
+	int64			*persistentSerialNum);
 extern void RelationFetchSegFile0GpRelationNode(Relation relation);
 extern void RelationFetchGpRelationNodeForXLog_Index(Relation relation);
 

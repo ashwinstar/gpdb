@@ -722,8 +722,11 @@ btvacuumscan(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 		{
 			/*
 			 * Okay to truncate.
-			 */
-			RelationTruncate(rel, new_pages);
+			 */			
+			RelationTruncate(
+						rel, 
+						new_pages,
+						/* markPersistentAsPhysicallyTruncated */ true);
 
 			/* update statistics */
 			stats->pages_removed += num_pages - new_pages;

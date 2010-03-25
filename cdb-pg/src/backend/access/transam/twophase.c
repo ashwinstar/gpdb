@@ -892,7 +892,12 @@ StartPrepare(GlobalTransaction gxact)
 								persistentPrepareSerializeLen);
 		
 		if (Debug_persistent_print)
+		{
+			elog(Debug_persistent_print_level, 
+				 "StartPrepare: persistentPrepareSerializeLen %d",
+				 persistentPrepareSerializeLen);
 			PersistentEndXactRec_Print("StartPrepare", &persistentPrepareObjects);
+		}
 		
 		save_state_data(persistentPrepareBuffer, persistentPrepareSerializeLen);
 
@@ -1279,7 +1284,13 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 								(uint8**)&dummy);
 
 	if (Debug_persistent_print)
+	{
+		elog(Debug_persistent_print_level, 
+			 "FinishPreparedTransaction: deserializedLen %d, persistentPrepareObjectCount %d",
+			 deserializeLen,
+			 hdr->persistentPrepareObjectCount);
 		PersistentEndXactRec_Print("FinishPreparedTransaction", &persistentPrepareObjects);
+	}
 
 	bufptr += MAXALIGN(deserializeLen);
 
@@ -1746,7 +1757,15 @@ RecoverPreparedTransactions(void)
 										(uint8**)&bufptr);
 
 			if (Debug_persistent_print)
+			{
+				elog(Debug_persistent_print_level, 
+					 "RecoverPreparedTransactions: deserializeLen %d, persistentPrepareObjectCount %d",
+					 PersistentEndXactRec_DeserializeLen(
+												(uint8*)bufptr,
+												hdr->persistentPrepareObjectCount),
+					 hdr->persistentPrepareObjectCount);
 				PersistentEndXactRec_Print("RecoverPreparedTransactions", &persistentPrepareObjects);
+			}
 
 			/*
 			 * Reconstruct subtrans state for the transaction --- needed
@@ -1881,7 +1900,13 @@ RecordTransactionCommitPrepared(TransactionId xid,
 								persistentCommitSerializeLen);
 		
 		if (Debug_persistent_print)
+		{
+			elog(Debug_persistent_print_level, 
+				 "RecordTransactionCommitPrepared: persistentCommitSerializeLen %d, objectCount %d",
+				 persistentCommitSerializeLen,
+				 objectCount);
 			PersistentEndXactRec_Print("RecordTransactionCommitPrepared", persistentPrepareObjects);
+		}
 
 		rdata[0].next = &(rdata[1]);
 		rdata[1].data = persistentCommitBuffer;
@@ -2014,7 +2039,12 @@ RecordTransactionAbortPrepared(TransactionId xid,
 								persistentAbortSerializeLen);
 		
 		if (Debug_persistent_print)
+		{
+			elog(Debug_persistent_print_level, 
+				 "RecordTransactionAbortPrepared: persistentAbortSerializeLen %d",
+				 persistentAbortSerializeLen);
 			PersistentEndXactRec_Print("RecordTransactionAbortPrepared", persistentPrepareObjects);
+		}
 
 		rdata[0].next = &(rdata[1]);
 		rdata[1].data = persistentAbortBuffer;

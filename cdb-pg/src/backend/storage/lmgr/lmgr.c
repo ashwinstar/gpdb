@@ -348,6 +348,30 @@ UnlockRelationForExtension(Relation relation, LOCKMODE lockmode)
 	LockRelease(&tag, lockmode, false);
 }
 
+void
+LockRelationForResynchronize(RelFileNode *relFileNode, LOCKMODE lockmode)
+{
+	LOCKTAG		tag;
+
+	SET_LOCKTAG_RELATION_RESYNCHRONIZE(tag,
+						 relFileNode->dbNode,
+						 relFileNode->relNode);
+
+	LockAcquire(&tag, lockmode, false, false);
+}
+
+void
+UnlockRelationForResynchronize(RelFileNode *relFileNode, LOCKMODE lockmode)
+{
+	LOCKTAG		tag;
+
+	SET_LOCKTAG_RELATION_RESYNCHRONIZE(tag,
+						 relFileNode->dbNode,
+						 relFileNode->relNode);
+
+	LockRelease(&tag, lockmode, false);
+}
+
 /*
  *		LockPage
  *
@@ -664,6 +688,7 @@ LockTagIsTemp(const LOCKTAG *tag)
 		case LOCKTAG_RELATION_EXTEND:
 		case LOCKTAG_PAGE:
 		case LOCKTAG_TUPLE:
+		case LOCKTAG_RELATION_RESYNCHRONIZE:	// UNDONE: Right place?
 			/* check for lock on a temp relation */
 			/* field1 is dboid, field2 is reloid for all of these */
 			if ((Oid) tag->locktag_field1 == InvalidOid)

@@ -45,6 +45,8 @@
 #include "storage/smgr.h"
 #include "utils/resowner.h"
 #include "sys/mman.h"
+#include "access/heapam.h"
+#include "cdb/cdbpersistentrelation.h"
 
 /* Note: these two macros only work on shared buffers, not local ones! */
 #define BufHdrGetBlock(bufHdr)	((Block) (BufferBlocks + ((Size) (bufHdr)->buf_id) * BLCKSZ))
@@ -2073,8 +2075,31 @@ RelationGetNumberOfBlocks(Relation relation)
  * blocks that are to be dropped; previously, callers had to do that.
  */
 void
-RelationTruncate(Relation rel, BlockNumber nblocks)
+RelationTruncate(Relation rel, BlockNumber nblocks, bool markPersistentAsPhysicallyTruncated)
 {
+	if (markPersistentAsPhysicallyTruncated)
+	{
+		LockRelationForResynchronize(&rel->rd_node, AccessExclusiveLock);
+
+		/*
+		 * Fetch gp_persistent_relation_node information so we can mark the persistent entry.
+		 */
+		RelationFetchGpRelationNodeForXLog(rel);
+
+		if (rel->rd_segfile0_relationnodeinfo.isPresent)
+		{
+			/*
+			 * Since we are deleting 0, 1, or more segments files and possibly lopping off the
+			 * end of new last segment file, we need to indicate to resynchronize that
+			 * it should use 'Scan Incremental' only.
+			 */
+			PersistentRelation_MarkBufPoolRelationPhysicallyTruncated(
+															&rel->rd_node,
+															&rel->rd_segfile0_relationnodeinfo.persistentTid,
+															rel->rd_segfile0_relationnodeinfo.persistentSerialNum);
+		}
+	}
+
 	/* Open it at the smgr level if not already done */
 	RelationOpenSmgr(rel);
 
@@ -2083,6 +2108,11 @@ RelationTruncate(Relation rel, BlockNumber nblocks)
 
 	/* Do the real work */
 	smgrtruncate(rel->rd_smgr, nblocks, rel->rd_istemp, rel->rd_isLocalBuf); /*CDB*/
+	
+	if (markPersistentAsPhysicallyTruncated)
+	{
+		UnlockRelationForResynchronize(&rel->rd_node, AccessExclusiveLock);
+	}
 }
 
 /* ---------------------------------------------------------------------

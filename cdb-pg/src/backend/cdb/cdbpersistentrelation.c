@@ -140,7 +140,7 @@ static bool PersistentRelation_CheckTablespaceScanTupleCallback(
 	MirroredObjectExistenceState		mirrorExistenceState;
 
 	MirroredRelDataSynchronizationState mirrorDataSynchronizationState;
-	bool							mirrorBufpoolVacuumed;
+	bool							mirrorBufpoolPhysicallyTruncated;
 	XLogRecPtr						mirrorBufpoolResyncCkptLoc;
 	BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
 
@@ -162,7 +162,7 @@ static bool PersistentRelation_CheckTablespaceScanTupleCallback(
 									&state,
 									&mirrorExistenceState,
 									&mirrorDataSynchronizationState,
-									&mirrorBufpoolVacuumed,
+									&mirrorBufpoolPhysicallyTruncated,
 									&mirrorBufpoolResyncCkptLoc,
 									&mirrorBufpoolResyncCkptBlockNum,
 									&mirrorAppendOnlyLossEof,
@@ -287,7 +287,7 @@ void PersistentRelation_AddCreatePending(
 										PersistentFileSysState_CreatePending,
 										mirrorExistenceState,
 										relDataSynchronizationState,
-										/* mirrorBufpoolVacuumed */ false,
+										/* mirrorBufpoolPhysicallyTruncated */ false,
 										&mirrorBufpoolResyncCkptLoc,
 										/* mirrorBufpoolResyncCkptBlockNum */ 0,
 										/* mirrorAppendOnlyLossEof */ 0,
@@ -386,7 +386,7 @@ void PersistentRelation_AddCreated(
 										PersistentFileSysState_Created,
 										mirrorExistenceState,
 										relDataSynchronizationState,
-										/* mirrorBufpoolVacuumed */ false,
+										/* mirrorBufpoolPhysicallyTruncated */ false,
 										&mirrorBufpoolResyncCkptLoc,
 										/* mirrorBufpoolResyncCkptBlockNum */ 0,
 										/* mirrorAppendOnlyLossEof */ 0,
@@ -699,6 +699,76 @@ void PersistentRelation_Dropped(
 		     "Persistent relation: '%s' changed state from '%s' to (Free), serial number " INT64_FORMAT " at TID %s",
 			 relpath(*relFileNode),
 			 PersistentFileSysObjState_Name(oldState),
+			 persistentSerialNum,
+			 ItemPointerToString(persistentTid));
+}
+
+void PersistentRelation_MarkBufPoolRelationPhysicallyTruncated(
+	RelFileNode 		*relFileNode,
+				/* The tablespace, database, and relation OIDs for the created relation. */
+
+	ItemPointer			persistentTid,
+				/* TID of the gp_persistent_rel_files tuple for the relation. */
+
+	int64				persistentSerialNum)
+				/* Serial number for the relation.  Distinquishes the uses of the tuple. */
+
+{
+	PersistentFileSysObjName fsObjName;
+
+	if(RelFileNode_IsEmpty(relFileNode))
+		elog(ERROR, "Invalid RelFileNode (0,0,0)");
+
+	if (GpPersistent_SkipXLogInfo(relFileNode->relNode))
+	{	
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "Skipping persistent relation '%s' because it is special",
+				 relpath(*relFileNode));
+	
+		return; // Resynchronize will always handle these relations as 'Scan Incremental'..
+	}
+
+	if (IsBootstrapProcessingMode())
+	{	
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+			     "Skipping persistent relation '%s' because we are in bootstrap mode",
+				 relpath(*relFileNode));
+
+		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
+	}
+
+	PersistentRelation_InitScan();
+
+	PersistentFileSysObjName_SetRelationFile(
+										&fsObjName, 
+										relFileNode,
+										/* segmentFileNum */ 0);
+
+	// Do this check after skipping out if in bootstrap mode.
+	if (PersistentStore_IsZeroTid(persistentTid))
+		elog(ERROR, "TID for persistent '%s' tuple for mark physically truncated is invalid (0,0)",
+			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName));
+
+	if (persistentSerialNum == 0)
+		elog(ERROR, "Persistent '%s' serial number for mark physcially truncated is invalid (0)",
+			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName));
+
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	
+	PersistentFileSysObj_MarkBufPoolRelationPhysicallyTruncated(
+										&fsObjName,
+										persistentTid,
+										persistentSerialNum,
+										/* flushToXlog */ true);
+
+	LWLockRelease(PersistentObjLock);
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+		     "Persistent relation: '%s' marked physically truncated, serial number " INT64_FORMAT " at TID %s",
+			 relpath(*relFileNode),
 			 persistentSerialNum,
 			 ItemPointerToString(persistentTid));
 }

@@ -47,7 +47,7 @@ CATALOG(gp_persistent_relation_node,5090) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 	int2		persistent_state;
 	int2		mirror_existence_state;
 	int2		mirror_data_synchronization_state;
-	bool		mirror_bufpool_vacuumed;
+	bool		mirror_bufpool_physically_truncated;
 	gpxlogloc	mirror_bufpool_resync_ckpt_loc;
 	int4		mirror_bufpool_resync_ckpt_block_num;
 	int8		mirror_append_only_loss_eof;
@@ -66,7 +66,7 @@ CATALOG(gp_persistent_relation_node,5090) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 #define Anum_gp_persistent_relation_node_persistent_state					  6
 #define Anum_gp_persistent_relation_node_mirror_existence_state				  7
 #define Anum_gp_persistent_relation_node_mirror_data_synchronization_state	  8
-#define Anum_gp_persistent_relation_node_mirror_bufpool_vacuumed			  9
+#define Anum_gp_persistent_relation_node_mirror_bufpool_physically_truncated  9
 #define Anum_gp_persistent_relation_node_mirror_bufpool_resync_ckpt_loc		  10
 #define Anum_gp_persistent_relation_node_mirror_bufpool_resync_ckpt_block_num 11
 #define Anum_gp_persistent_relation_node_mirror_append_only_loss_eof		  12
@@ -93,7 +93,7 @@ typedef FormData_gp_persistent_relation_node *Form_gp_persistent_relation_node;
 { GpPersistentRelationNodeRelationId, {"persistent_state"}, 					21, -1, 2, 6, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
 { GpPersistentRelationNodeRelationId, {"mirror_existence_state"}, 				21, -1, 2, 7, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
 { GpPersistentRelationNodeRelationId, {"mirror_data_synchronization_state"},	21, -1, 2, 8, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"mirror_bufpool_vacuumed"},				16, -1, 1, 9, 0, -1, -1, true, 'p', 'c', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"mirror_bufpool_physically_truncated"},	16, -1, 1, 9, 0, -1, -1, true, 'p', 'c', true, false, false, true, 0 }, \
 { GpPersistentRelationNodeRelationId, {"mirror_bufpool_resync_ckpt_loc"},		3310, -1, 8, 10, 0, -1, -1, false, 'p', 's', true, false, false, true, 0 }, \
 { GpPersistentRelationNodeRelationId, {"mirror_bufpool_resync_ckpt_block_num"},	23, -1, 4, 11, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
 { GpPersistentRelationNodeRelationId, {"mirror_append_only_loss_eof"},			20, -1, 8, 12, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
@@ -387,7 +387,7 @@ extern void GpPersistentRelationNode_GetValues(
 	PersistentFileSysState			*persistentState,
 	MirroredObjectExistenceState	*mirrorExistenceState,
 	MirroredRelDataSynchronizationState *mirrorDataSynchronizationState,
-	bool							*mirrorBufpoolVacuumed,
+	bool							*mirrorBufpoolPhysicallyTruncated,
 	XLogRecPtr						*mirrorBufpoolResyncCkptLoc,
 	BlockNumber						*mirrorBufpoolResyncCkptBlockNum,
 	int64							*mirrorAppendOnlyLossEof,
@@ -407,7 +407,7 @@ extern void GpPersistentRelationNode_SetDatumValues(
 	PersistentFileSysState			persistentState,
 	MirroredObjectExistenceState	mirrorExistenceState,
 	MirroredRelDataSynchronizationState mirrorDataSynchronizationState,
-	bool							mirrorBufpoolVacuumed,
+	bool							mirrorBufpoolPhysicallyTruncated,
 	XLogRecPtr						*mirrorBufpoolResyncCkptLoc,
 	BlockNumber						mirrorBufpoolResyncCkptBlockNum,
 	int64							mirrorAppendOnlyLossEof,

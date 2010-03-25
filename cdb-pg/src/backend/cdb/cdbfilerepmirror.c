@@ -339,8 +339,10 @@ FileRepMirror_RunReceiver(void)
 				fileRepShmemMessageDescr->messageSync = FALSE;		
 				fileRepShmemMessageDescr->messageState = FileRepShmemMessageStateReady; 
 				
+				LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
 				FileRep_IpcSignal(fileRepIpcArray[fileRepShmemArray[msgType]->ipcArrayIndex]->semC, 
 								  fileRepIpcArray[fileRepShmemArray[msgType]->ipcArrayIndex]->refCountSemC);
+				LWLockRelease(FileRepShmemLock);
 
 				if (status == STATUS_OK)
 					current_state = RECVTYPE;
@@ -1591,7 +1593,7 @@ FileRepMirror_RunConsumer(void)
 				break;
 				
 			case FileRepOperationInSyncTransition:
-				FileRep_SetDataState(DataStateInSync, FALSE);
+				FileRep_SetDataState(DataStateInSync, TRUE);
 				
 				FileRep_SetSegmentState(SegmentStateReady);							
 				break;

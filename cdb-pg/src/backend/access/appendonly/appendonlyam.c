@@ -332,6 +332,8 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 	int64			eof_uncompressed;
 	int64			varblockcount;
 	int32			fileSegNo;
+	ItemPointerData persistentTid;
+	int64			persistentSerialNum;
 
 	/* Make the 'segment' file name */
 	MakeAOSegmentFileName(aoInsertDesc->aoi_rel, 
@@ -354,7 +356,7 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 	/*
 	 * Segment file #0 is created when the Append-Only table is created.  
 	 *
-	 * Other ssegment files are created on-demand under transaction.
+	 * Other segment files are created on-demand under transaction.
 	 */
 	if (aoInsertDesc->cur_segno > 0 && eof == 0)
 	{
@@ -362,8 +364,25 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 								&aoInsertDesc->storageWrite,
 								aoInsertDesc->appendFilePathName,
 								eof,
-								aoInsertDesc->aoi_rel->rd_node,
-								aoInsertDesc->cur_segno);
+								&aoInsertDesc->aoi_rel->rd_node,
+								aoInsertDesc->cur_segno,
+								&persistentTid,
+								&persistentSerialNum);
+	}
+	else
+	{
+		if (Debug_try_appendonly_mirror_resynch_eofs)
+			ReadGpRelationNode(
+						aoInsertDesc->aoi_rel->rd_id,
+						aoInsertDesc->aoi_rel->rd_node.relNode,
+						aoInsertDesc->cur_segno,
+						&persistentTid,
+						&persistentSerialNum);
+		else
+		{
+			MemSet(&persistentTid, 0, sizeof(ItemPointerData));
+			persistentSerialNum = 0;
+		}
 	}
 
 	/*
@@ -374,8 +393,10 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 							aoInsertDesc->appendFilePathName,
 							eof,
 							eof_uncompressed,
-							aoInsertDesc->aoi_rel->rd_node,
-							aoInsertDesc->cur_segno);
+							&aoInsertDesc->aoi_rel->rd_node,
+							aoInsertDesc->cur_segno,
+							&persistentTid,
+							persistentSerialNum);
 
 	/* reset counts */
 	aoInsertDesc->insertCount = 0;
@@ -408,10 +429,10 @@ CloseWritableFileSeg(AppendOnlyInsertDesc aoInsertDesc)
 	int64	fileLen;
 	int64	fileLen_uncompressed;
 
-	AppendOnlyStorageWrite_FlushAndCloseFile(
-								&aoInsertDesc->storageWrite,
-								&fileLen, 
-								&fileLen_uncompressed);
+	AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
+											&aoInsertDesc->storageWrite,
+											&fileLen, 
+											&fileLen_uncompressed);
 
 	/* 
 	 * Update the AO segment info table with our new eof
@@ -1966,7 +1987,7 @@ appendonly_insert_init(Relation rel, int segno)
 	int64 firstSequence = 0;
 
 	AppendOnlyStorageAttributes *attr;
-		
+
 	/*
 	 * Get the pg_appendonly information for this table
 	 */

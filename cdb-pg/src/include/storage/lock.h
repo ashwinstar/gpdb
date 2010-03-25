@@ -155,6 +155,8 @@ typedef enum LockTagType
 	/* ID info for a tuple is PAGE info + OffsetNumber */
 	LOCKTAG_TRANSACTION,		/* transaction (for waiting for xact done) */
 	/* ID info for a transaction is its TransactionId */
+	LOCKTAG_RELATION_RESYNCHRONIZE,			/* whole relation for resynchronize */
+	/* ID info for a relation is DB OID + REL OID; DB OID = 0 if shared */
 	LOCKTAG_OBJECT,				/* non-relation database object */
 	/* ID info for an object is DB OID + CLASS OID + OBJECT OID + SUBID */
 
@@ -229,6 +231,14 @@ typedef struct LOCKTAG
 	 (locktag).locktag_field3 = 0, \
 	 (locktag).locktag_field4 = 0, \
 	 (locktag).locktag_type = LOCKTAG_TRANSACTION, \
+	 (locktag).locktag_lockmethodid = DEFAULT_LOCKMETHOD)
+
+#define SET_LOCKTAG_RELATION_RESYNCHRONIZE(locktag,dboid,reloid) \
+	((locktag).locktag_field1 = (dboid), \
+	 (locktag).locktag_field2 = (reloid), \
+	 (locktag).locktag_field3 = 0, \
+	 (locktag).locktag_field4 = 0, \
+	 (locktag).locktag_type = LOCKTAG_RELATION_RESYNCHRONIZE, \
 	 (locktag).locktag_lockmethodid = DEFAULT_LOCKMETHOD)
 
 #define SET_LOCKTAG_OBJECT(locktag,dboid,classoid,objoid,objsubid) \

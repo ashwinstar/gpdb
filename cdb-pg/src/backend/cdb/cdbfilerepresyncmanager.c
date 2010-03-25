@@ -519,10 +519,25 @@ FileRepResyncManager_InResyncTransition(bool isLastLocTracked)
 	}
 	else
 	{
-		/* Mark OIDs {5090, 5091, 5092, 5093, and 5096} for scan incremental */
-		PersistentFileSysObj_MarkSpecialScanIncremental(); 
+		/*
+		 * First, mark the special persistent tables and others as 'Scan Incremental'.
+		 *
+		 *     These include OIDs {5090, 5091, 5092, 5093, and 5096} and others
+		 *     (see GpPersistent_SkipXLogInfo).
+		 *
+		 * And, mark any Buffer Pool managed relations that were physically truncated as
+		 * as 'Scan incremental' because we don't know how to process old changes in
+		 * the change tracking log.
+		 */
+		PersistentFileSysObj_MarkSpecialScanIncremental();
+
+		/*
+		 * Second, now mark any relations that have changes in the change tracking
+		 * log as 'Page Incremental', except those relations marked 'Scan Incremental' in the
+		 * first step.
+		 */
 		PersistentFileSysObj_MarkPageIncrementalFromChangeLog();
-		//PersistentFileSysObj_MarkWholeMirrorScanIncremental();
+
 		elog(LOG, "FileRepResyncManager_InResyncTransition() PersistentFileSysObj_MarkPageIncrementalFromChangeLog");
 	}
 	

@@ -271,8 +271,10 @@ FileRepAckPrimary_RunReceiver(void)
 		
 		fileRepShmemMessageDescr->messageState = FileRepShmemMessageStateReady; 
 		
+		LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE);
 		FileRep_IpcSignal(fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semC, 
 						  fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemC);
+		LWLockRelease(FileRepAckShmemLock);
 		
 		FileRep_InsertLogEntry(
 							   "P_RunReceiver",

@@ -68,6 +68,7 @@
 #include "nodes/makefuncs.h"     /* makeRangeVar */
 #include "gp-libpq-fe.h"
 #include "gp-libpq-int.h"
+
 /*
  * GUC parameters
  */
@@ -2796,7 +2797,11 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 	/* Truncate relation, if needed */
 	if (blkno < nblocks)
 	{
-		RelationTruncate(onerel, blkno);
+		RelationTruncate(
+					onerel,
+					blkno,
+					/* markPersistentAsPhysicallyTruncated */ true);
+
 		vacrelstats->rel_pages = blkno; /* set new number of blocks */
 	}
 
@@ -3204,7 +3209,12 @@ vacuum_heap(VRelStats *vacrelstats, Relation onerel, VacPageList vacuum_pages)
 				(errmsg("\"%s\": truncated %u to %u pages",
 						RelationGetRelationName(onerel),
 						vacrelstats->rel_pages, relblocks)));
-		RelationTruncate(onerel, relblocks);
+
+		RelationTruncate(
+					onerel, 
+					relblocks,
+					/* markPersistentAsPhysicallyTruncated */ true);
+
 		vacrelstats->rel_pages = relblocks;		/* set new number of blocks */
 	}
 }

@@ -2502,7 +2502,12 @@ reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
 		if (inplace)
 		{
 			/* Truncate the actual file (and discard buffers) */
-			RelationTruncate(iRel, 0);
+
+			RelationTruncate(
+						iRel, 
+						0,
+						/* markPersistentAsPhysicallyTruncated */ true);
+
 			retrelfilenode = iRel->rd_rel->relfilenode;
 			Assert(newrelfilenode == newrelfilenode ||
 				   !OidIsValid(newrelfilenode));

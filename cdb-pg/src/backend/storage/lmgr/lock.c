@@ -2569,6 +2569,7 @@ int  LockStatStuff(LockStatStd *lf, int ii, 	LockData   *lockData)
 		{
 			case LOCKTAG_RELATION:
 			case LOCKTAG_RELATION_EXTEND:
+			case LOCKTAG_RELATION_RESYNCHRONIZE:
 				lf->lf_database = (lock->tag.locktag_field1);
 				lf->lf_relation = (lock->tag.locktag_field2);
 				break;

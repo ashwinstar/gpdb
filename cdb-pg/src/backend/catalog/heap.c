@@ -2937,7 +2937,10 @@ RelationTruncateIndexes(Relation heapRelation)
 		indexInfo = BuildIndexInfo(currentIndex);
 
 		/* Now truncate the actual file (and discard buffers) */
-		RelationTruncate(currentIndex, 0);
+		RelationTruncate(
+					currentIndex, 
+					0,
+					/* markPersistentAsPhysicallyTruncated */ true);
 
 		/* Initialize the index and rebuild */
 		/* Note: we do not need to re-establish pkey setting */
@@ -3017,7 +3020,10 @@ heap_truncate(List *relids)
 		Relation	rel = lfirst(cell);
 
 		/* Truncate the actual file (and discard buffers) */
-		RelationTruncate(rel, 0);
+		RelationTruncate(
+					rel, 
+					0,
+					/* markPersistentAsPhysicallyTruncated */ false);
 
 		/* If this relation has indexes, truncate the indexes too */
 		RelationTruncateIndexes(rel);

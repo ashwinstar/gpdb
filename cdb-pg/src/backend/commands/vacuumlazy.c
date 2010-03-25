@@ -69,6 +69,7 @@
 
 #include "cdb/cdbvars.h"
 
+
 /*
  * Space/time tradeoff parameters: do these need to be user-tunable?
  *
@@ -836,7 +837,10 @@ lazy_truncate_heap(Relation onerel, LVRelStats *vacrelstats)
 	/*
 	 * Okay to truncate.
 	 */
-	RelationTruncate(onerel, new_rel_pages);
+	RelationTruncate(
+				onerel, 
+				new_rel_pages,
+				/* markPersistentAsPhysicallyTruncated */ true);
 
 	/*
 	 * Drop free-space info for removed blocks; these must not get entered

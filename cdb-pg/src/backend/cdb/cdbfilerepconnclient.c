@@ -62,6 +62,11 @@ FileRepConnClient_EstablishConnection(
 				 FileRep_errcontext()));
 		
 		status = STATUS_ERROR;
+		
+		if (conn) {
+			PQfinish(conn);
+			conn = NULL;
+		}
 	}
 	
 	/* NOTE Handle error message see ftsprobe.c */

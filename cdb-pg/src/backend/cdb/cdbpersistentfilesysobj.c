@@ -529,7 +529,7 @@ void PersistentFileSysObj_FreeTuple(
 												PersistentFileSysState_Free,
 												MirroredObjectExistenceState_None,
 												MirroredRelDataSynchronizationState_None,
-												/* mirrorBufpoolVacuumed */ false,
+												/* mirrorBufpoolPhysicallyTruncated */ false,
 												&mirrorBufpoolResyncCkptLoc,
 												/* mirrorBufpoolResyncCkptBlockNum */ 0,
 												/* mirrorAppendOnlyLossEof */ 0,
@@ -878,6 +878,7 @@ void PersistentFileSysObj_StateChange(
 
 	pfree(values);
 
+#ifdef suppress
 	// UNDONE: *** EXTRA VERIFICATION *** Eliminate at some point
 	{
 		Datum *verifyValues;
@@ -923,6 +924,7 @@ void PersistentFileSysObj_StateChange(
 
 		pfree(verifyValues);
 	}
+#endif
 }
 
 static void PersistentFileSysObj_DoMirrorReCreate(
@@ -1334,10 +1336,10 @@ void PersistentFileSysObj_EndXactDrop(
 
 	bool					abortingCreate)
 {
-	// UNDONE: Do this under the MirroredLock.
-	// UNDONE: If in Resynchronization, then send to ResyncManager
-	// UNDONE: ***** EXCEPT ***** There is subtle Buffer Pool flushing going on at drop time that needs to be done in-process !!!!!
-	// UNDONE: Collect data on whether object is mirrored
+	if (fsObjName->type == PersistentFsObjType_RelationFile)
+		LockRelationForResynchronize(
+						&fsObjName->variant.rel.relFileNode, 
+						AccessExclusiveLock);
 
 	PersistentFileSysObj_DropObject(
 							fsObjName,
@@ -1347,6 +1349,11 @@ void PersistentFileSysObj_EndXactDrop(
 							persistentSerialNum,
 							StorageManagerMirrorMode_Both,
 							/* ignoreNonExistence */ abortingCreate);
+
+	if (fsObjName->type == PersistentFsObjType_RelationFile)
+		UnlockRelationForResynchronize(
+						&fsObjName->variant.rel.relFileNode, 
+						AccessExclusiveLock);
 }
 
 void PersistentFileSysObj_EndXactAction(
@@ -1358,10 +1365,11 @@ void PersistentFileSysObj_EndXactAction(
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
-			 "PersistentFileSysObj_EndXactAction: commit %s, create count %d, drop count %d",
+			 "PersistentFileSysObj_EndXactAction: commit %s, create count %d, drop count %d, , Append-Only mirror resync EOFs count %d",
 			 (isCommit ? "true" : "false"),
 			 persistentObjects->typed.createFsObjsCount,
-			 persistentObjects->typed.dropFsObjsCount);
+			 persistentObjects->typed.dropFsObjsCount,
+			 persistentObjects->typed.appendOnlyMirrorResyncEofsCount);
 
 	if (isCommit)
 	{
@@ -1438,6 +1446,26 @@ void PersistentFileSysObj_EndXactAction(
 									fsObj->persistentSerialNum,
 									/* abortingCreate */ false);
 		}
+		
+		/*
+		 * UNDONE: Display new Append-Only mirror resync EOFs....
+		 */
+		for (i = 0; i < persistentObjects->typed.appendOnlyMirrorResyncEofsCount; i++)
+		{
+			PersistentEndXactAppendOnlyMirrorResyncEofs *eofs = 
+						&persistentObjects->typed.appendOnlyMirrorResyncEofs[i];
+
+			if (Debug_persistent_print)
+				elog(Debug_persistent_print_level, 
+					 "PersistentFileSysObj_EndXactAction: [%d] %s, Append-Only Mirror Resync EOFs -- persistent serial num " INT64_FORMAT ", TID %s, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
+					 i,
+					 PersistentFileSysObjName_TypeAndObjectName(&eofs->fsObjName),
+					 eofs->persistentSerialNum,
+					 ItemPointerToString(&eofs->persistentTid),
+					 eofs->mirrorLossEof,
+					 eofs->mirrorNewEof);
+		}
+
 	}
 	else
 	{
@@ -1545,6 +1573,43 @@ static void PersistentFileSysObj_UpdateTupleMirrorExistenceState(
 	pfree(replaces);
 }
 
+static void PersistentFileSysObj_UpdateTupleMirrorBufPoolPhysicallyTruncated(
+	PersistentFileSysObjData 		*fileSysObjData,
+
+	PersistentFileSysObjSharedData 	*fileSysObjSharedData,
+
+	HeapTuple					tuple,
+	
+	ItemPointer 				persistentTid,
+
+	int64						persistentSerialNum,
+
+	bool						newMirrorBufPoolPhysicallyTruncated,
+
+	bool						flushToXLog)
+{
+	Datum *newValues;
+	bool *replaces;
+
+	newValues = (Datum*)palloc0(fileSysObjData->storeData.numAttributes * sizeof(Datum));
+	replaces = (bool*)palloc0(fileSysObjData->storeData.numAttributes * sizeof(bool));
+	
+	replaces[Anum_gp_persistent_relation_node_mirror_bufpool_physically_truncated - 1] = true;
+	newValues[Anum_gp_persistent_relation_node_mirror_bufpool_physically_truncated - 1] = 
+													BoolGetDatum(newMirrorBufPoolPhysicallyTruncated);
+	
+	PersistentFileSysObj_ReplaceTuple(
+								PersistentFsObjType_RelationFile,
+								persistentTid,
+								tuple,
+								newValues,
+								replaces,
+								flushToXLog);
+	
+	pfree(newValues);
+	pfree(replaces);
+}
+
 void PersistentFileSysObj_UpdateMirrorExistenceState(
 	PersistentFsObjType				fsObjType,
 
@@ -1599,6 +1664,104 @@ void PersistentFileSysObj_UpdateMirrorExistenceState(
 
 	pfree(values);
 }
+
+void PersistentFileSysObj_MarkBufPoolRelationPhysicallyTruncated(
+	PersistentFileSysObjName 	*fsObjName,
+
+	ItemPointer					persistentTid,
+
+	int64						persistentSerialNum,
+	
+	bool						flushToXLog)
+{
+	PersistentFileSysObjData 		*fileSysObjData;
+	PersistentFileSysObjSharedData 	*fileSysObjSharedData;
+	
+	Datum *values;
+
+	HeapTuple tupleCopy;
+
+	RelFileNode 					relFileNode;
+	int32							segmentFileNum;
+	
+	PersistentFileSysRelStorageMgr	relationStorageManager;
+	PersistentFileSysState			persistentState;
+	MirroredObjectExistenceState	mirrorExistenceState;
+	MirroredRelDataSynchronizationState mirrorDataSynchronizationState;
+	bool							mirrorBufpoolPhysicallyTruncated;
+	XLogRecPtr						mirrorBufpoolResyncCkptLoc;
+	BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
+	int64							mirrorAppendOnlyLossEof;
+	int64							mirrorAppendOnlyNewEof;
+	TransactionId					parentXid;
+	int64							actualPersistentSerialNum;
+	ItemPointerData 				previousFreeTid;
+
+	PersistentFileSysObj_GetDataPtrs(
+								PersistentFsObjType_RelationFile,
+								&fileSysObjData,
+								&fileSysObjSharedData);
+	
+	if (PersistentStore_IsZeroTid(persistentTid))
+		elog(ERROR, "TID for persistent '%s' tuple for update relation physically truncated is invalid (0,0)",
+			 PersistentFileSysObjName_TypeAndObjectName(fsObjName));
+
+	if (persistentSerialNum == 0)
+		elog(ERROR, "Persistent '%s' serial number for update relation physically truncated is invalid (0)",
+			 PersistentFileSysObjName_TypeAndObjectName(fsObjName));
+
+	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes * sizeof(Datum));
+
+	PersistentFileSysObj_ReadTuple(
+							PersistentFsObjType_RelationFile,
+							persistentTid,
+							values,
+							&tupleCopy);
+
+	GpPersistentRelationNode_GetValues(
+									values,
+									&relFileNode.spcNode,
+									&relFileNode.dbNode,
+									&relFileNode.relNode,
+									&segmentFileNum,
+									&relationStorageManager,
+									&persistentState,
+									&mirrorExistenceState,
+									&mirrorDataSynchronizationState,
+									&mirrorBufpoolPhysicallyTruncated,
+									&mirrorBufpoolResyncCkptLoc,
+									&mirrorBufpoolResyncCkptBlockNum,
+									&mirrorAppendOnlyLossEof,
+									&mirrorAppendOnlyNewEof,
+									&parentXid,
+									&actualPersistentSerialNum,
+									&previousFreeTid);
+	
+
+	if (persistentSerialNum != actualPersistentSerialNum)
+		elog(ERROR, "Persistent '%s' serial number mismatch for update physically truncated (expected " INT64_FORMAT ", found " INT64_FORMAT ")",
+			 PersistentFileSysObjName_TypeAndObjectName(fsObjName),
+			 persistentSerialNum,
+			 actualPersistentSerialNum);
+
+	if (relationStorageManager != PersistentFileSysRelStorageMgr_BufferPool)
+		elog(ERROR, "Persistent '%s' relation storage manager mismatch for update physically truncated (expected '%s', found '%s')",
+			 PersistentFileSysObjName_TypeAndObjectName(fsObjName),
+			 PersistentFileSysRelStorageMgr_Name(PersistentFileSysRelStorageMgr_BufferPool),
+			 PersistentFileSysRelStorageMgr_Name(relationStorageManager));
+
+	PersistentFileSysObj_UpdateTupleMirrorBufPoolPhysicallyTruncated(
+											fileSysObjData,
+											fileSysObjSharedData,
+											tupleCopy,
+											persistentTid,
+											persistentSerialNum,
+											/* newmirrorBufpoolPhysicallyTruncated */ true,
+											flushToXLog);
+
+	pfree(values);
+}
+
 
 typedef enum StateAction
 {
@@ -1915,7 +2078,7 @@ void PersistentFileSysObj_MarkWholeMirrorScanIncremental(void)
 		PersistentFileSysState			persistentState;
 		MirroredObjectExistenceState	mirrorExistenceState;
 		MirroredRelDataSynchronizationState mirrorDataSynchronizationState;
-		bool 							mirrorBufpoolVacuumed;
+		bool 							mirrorBufpoolPhysicallyTruncated;
 		XLogRecPtr						mirrorBufpoolResyncCkptLoc;
 		BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
 		int64							mirrorAppendOnlyLossEof;
@@ -1934,7 +2097,7 @@ void PersistentFileSysObj_MarkWholeMirrorScanIncremental(void)
 										&persistentState,
 										&mirrorExistenceState,
 										&mirrorDataSynchronizationState,
-										&mirrorBufpoolVacuumed,
+										&mirrorBufpoolPhysicallyTruncated,
 										&mirrorBufpoolResyncCkptLoc,
 										&mirrorBufpoolResyncCkptBlockNum,
 										&mirrorAppendOnlyLossEof,
@@ -2009,6 +2172,8 @@ void PersistentFileSysObj_MarkSpecialScanIncremental(void)
 								&fileSysObjData,
 								&fileSysObjSharedData);
 		 
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+		 
 	PersistentStore_BeginScan(
 						&fileSysObjData->storeData,
 						&fileSysObjSharedData->storeSharedData,
@@ -2028,7 +2193,7 @@ void PersistentFileSysObj_MarkSpecialScanIncremental(void)
 		PersistentFileSysState			persistentState;
 		MirroredObjectExistenceState	mirrorExistenceState;
 		MirroredRelDataSynchronizationState mirrorDataSynchronizationState;
-		bool							mirrorBufpoolVacuumed;
+		bool							mirrorBufpoolPhysicallyTruncated;
 		XLogRecPtr						mirrorBufpoolResyncCkptLoc;
 		BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
 		int64							mirrorAppendOnlyLossEof;
@@ -2047,7 +2212,7 @@ void PersistentFileSysObj_MarkSpecialScanIncremental(void)
 										&persistentState,
 										&mirrorExistenceState,
 										&mirrorDataSynchronizationState,
-										&mirrorBufpoolVacuumed,
+										&mirrorBufpoolPhysicallyTruncated,
 										&mirrorBufpoolResyncCkptLoc,
 										&mirrorBufpoolResyncCkptBlockNum,
 										&mirrorAppendOnlyLossEof,
@@ -2082,7 +2247,41 @@ void PersistentFileSysObj_MarkSpecialScanIncremental(void)
 													MirroredRelDataSynchronizationState_BufferPoolScanIncremental,
 													/* flushToXLog */ false);
 		}
+		else if (mirrorBufpoolPhysicallyTruncated)
+		{
+			if (Debug_persistent_print)
+				elog(Debug_persistent_print_level, 
+					 "PersistentFileSysObj_MarkSpecialScanIncremental: Mark '%s' vacuumed relation as scan incremental, persistent state '%s', mirror existence state '%s', serial number " INT64_FORMAT " at TID %s",
+					 PersistentFileSysObjName_ObjectName(&fsObjName),
+					 PersistentFileSysObjState_Name(persistentState),
+					 MirroredObjectExistenceState_Name(mirrorExistenceState),
+					 serialNum,
+					 ItemPointerToString(&persistentTid));
 
+			PersistentFileSysObj_UpdateTupleMirrorExistenceState(
+													fileSysObjData,
+													fileSysObjSharedData,
+													PersistentFsObjType_RelationFile,
+													PersistentStore_GetScanTupleCopy(&storeScan),
+													&persistentTid,
+													persistentSerialNum,
+													mirrorExistenceState,
+													MirroredRelDataSynchronizationState_BufferPoolScanIncremental,
+													/* flushToXLog */ false);
+			PersistentFileSysObj_UpdateTupleMirrorBufPoolPhysicallyTruncated(
+													fileSysObjData,
+													fileSysObjSharedData,
+													PersistentStore_GetScanTupleCopy(&storeScan),
+													&persistentTid,
+													persistentSerialNum,
+													/* newMirrorBufPoolPhysicallyTruncated */ false,
+													/* flushToXLog */ false);
+		}
+
+		LWLockRelease(PersistentObjLock);
+		
+		LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+		
 	}
 
 	PersistentStore_EndScan(&storeScan);
@@ -2108,7 +2307,7 @@ static void PersistentFileSysObj_MarkPageIncremental(
 	PersistentFileSysState			persistentState;
 	MirroredObjectExistenceState	mirrorExistenceState;
 	MirroredRelDataSynchronizationState mirrorDataSynchronizationState;
-	bool							mirrorBufpoolVacuumed;
+	bool							mirrorBufpoolPhysicallyTruncated;
 	XLogRecPtr						mirrorBufpoolResyncCkptLoc;
 	BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
 	int64							mirrorAppendOnlyLossEof;
@@ -2147,7 +2346,7 @@ static void PersistentFileSysObj_MarkPageIncremental(
 									&persistentState,
 									&mirrorExistenceState,
 									&mirrorDataSynchronizationState,
-									&mirrorBufpoolVacuumed,
+									&mirrorBufpoolPhysicallyTruncated,
 									&mirrorBufpoolResyncCkptLoc,
 									&mirrorBufpoolResyncCkptBlockNum,
 									&mirrorAppendOnlyLossEof,
@@ -2272,7 +2471,7 @@ bool PersistentFileSysObj_ResynchronizeScan(
 	 
 	PersistentFileSysState			state;
 	MirroredObjectExistenceState	mirrorExistenceState;
-	bool							mirrorBufpoolVacuumed;
+	bool							mirrorBufpoolPhysicallyTruncated;
 	TransactionId					parentXid;
 	int64							serialNum;
 	ItemPointerData 				previousFreeTid;
@@ -2320,7 +2519,7 @@ bool PersistentFileSysObj_ResynchronizeScan(
 										&state,
 										&mirrorExistenceState,
 										mirrorDataSynchronizationState,
-										&mirrorBufpoolVacuumed,
+										&mirrorBufpoolPhysicallyTruncated,
 										mirrorBufpoolResyncCkptLoc,
 										mirrorBufpoolResyncCkptBlockNum,
 										mirrorAppendOnlyLossEof,
@@ -2353,6 +2552,102 @@ void PersistentFileSysObj_ResynchronizeAbandonScan(
 	}
 
 	resynchronizeScanToken->done = true;
+}
+
+/*
+ * Refetch the resynchronize relation information while under RELATION_RESYNCHRONIZE lock
+ * based on its persistent TID and serial number.
+ */
+bool PersistentFileSysObj_ResynchronizeRefetch(
+	RelFileNode						*relFileNode,
+
+	int32							*segmentFileNum,
+
+	ItemPointer						persistentTid,
+
+	int64							persistentSerialNum,
+
+	PersistentFileSysRelStorageMgr 	*relStorageMgr,
+
+	MirroredRelDataSynchronizationState *mirrorDataSynchronizationState,
+
+	XLogRecPtr						*mirrorBufpoolResyncCkptLoc,
+
+	BlockNumber 					*mirrorBufpoolResyncCkptBlockNum,
+
+	int64							*mirrorAppendOnlyLossEof,
+
+	int64							*mirrorAppendOnlyNewEof)
+{
+	PersistentFileSysObjData 		*fileSysObjData;
+	PersistentFileSysObjSharedData 	*fileSysObjSharedData;
+
+	Datum values[Natts_gp_persistent_relation_node];
+
+	HeapTuple tupleCopy;
+
+	PersistentFileSysObjName		fsObjName;
+	RelFileNode 					*actualRelFileNode = &fsObjName.variant.rel.relFileNode;
+	int32							*actualSegmentFileNum = &fsObjName.variant.rel.segmentFileNum;
+	
+	PersistentFileSysState			persistentState;
+	MirroredObjectExistenceState	mirrorExistenceState;
+	bool							mirrorBufpoolPhysicallyTruncated;
+	TransactionId					parentXid;
+	int64							serialNum;
+	ItemPointerData 				previousFreeTid;
+
+	if (PersistentStore_IsZeroTid(persistentTid))
+		elog(ERROR, "TID for persistent '%s' tuple for marking page incremental is invalid (0,0)",
+			 PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile));
+
+	if (persistentSerialNum == 0)
+		elog(ERROR, "Persistent '%s' serial number for update mirror existence state is invalid (0)",
+			 PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile));
+
+	PersistentFileSysObj_GetDataPtrs(
+								PersistentFsObjType_RelationFile,
+								&fileSysObjData,
+								&fileSysObjSharedData);
+
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+
+	PersistentFileSysObj_ReadTuple(
+							PersistentFsObjType_RelationFile,
+							persistentTid,
+							values,
+							&tupleCopy);
+
+	GpPersistentRelationNode_GetValues(
+									values,
+									&actualRelFileNode->spcNode,
+									&actualRelFileNode->dbNode,
+									&actualRelFileNode->relNode,
+									actualSegmentFileNum,
+									relStorageMgr,
+									&persistentState,
+									&mirrorExistenceState,
+									mirrorDataSynchronizationState,
+									&mirrorBufpoolPhysicallyTruncated,
+									mirrorBufpoolResyncCkptLoc,
+									mirrorBufpoolResyncCkptBlockNum,
+									mirrorAppendOnlyLossEof,
+									mirrorAppendOnlyNewEof,
+									&parentXid,
+									&serialNum,
+									&previousFreeTid);
+
+	heap_freetuple(tupleCopy);
+
+	LWLockRelease(PersistentObjLock);
+
+	if (persistentState == PersistentFileSysState_Free)
+		return false;
+
+	if (persistentSerialNum != serialNum)
+		return false;
+
+	return true;
 }
 
 void PersistentFileSysObj_ResynchronizeBufferPoolCkpt(

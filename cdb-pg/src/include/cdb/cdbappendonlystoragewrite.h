@@ -75,7 +75,20 @@ typedef struct AppendOnlyStorageWrite
 			 * The handle to the current open segment file.
 			 */
 
+	int64	startEof;
+			/*
+			 * The committed EOF at the beginning of the write open.
+			 */
+
+	RelFileNode	relFileNode;
+	int32		segmentFileNum;
 	
+	ItemPointerData 	persistentTid;
+	int64				persistentSerialNum;
+			/*
+			 * Persistence information for current write open.
+			 */
+
 	int64	bufferCount;
 			/*
 			 * The number of blocks written since the beginning of the segment file.
@@ -224,8 +237,10 @@ void AppendOnlyStorageWrite_TransactionCreateFile(
 				 * if necessary.  Otherwise, it must already
 				 * exist.
 				 */
-	RelFileNode 				relFileNode,
-	int32						segmentFileNum);
+	RelFileNode 				*relFileNode,
+	int32						segmentFileNum,
+	ItemPointer 				persistentTid,
+	int64						*persistentSerialNum);
 
 /*
  * Opens the next segment file to write.  The file must already exist.
@@ -250,8 +265,10 @@ extern void AppendOnlyStorageWrite_OpenFile(
 				 * exist.
 				 */
 	int64						fileLen_uncompressed,
-	RelFileNode					relFileNode,
-	int32						segmentFileNum);
+	RelFileNode					*relFileNode,
+	int32						segmentFileNum,
+	ItemPointer 				persistentTid,
+	int64						persistentSerialNum);
 
 /*
  * Flush and close the current segment file.
@@ -265,7 +282,23 @@ extern void AppendOnlyStorageWrite_FlushAndCloseFile(
 				/* The new EOF for the segment file. */
 
 	int64						*fileLen_uncompressed);
-				
+
+
+
+/*
+ * Flush and close the current segment file under a transaction.
+ *
+ * Handles mirror loss end transaction work.
+ *
+ * No error if the current is already closed.
+ */
+void AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
+	AppendOnlyStorageWrite		*storageWrite,
+
+	int64						*newLogicalEof,
+				/* The new EOF for the segment file. */
+
+	int64						*fileLen_uncompressed);
 
 // -----------------------------------------------------------------------------
 // Usable Block Length 

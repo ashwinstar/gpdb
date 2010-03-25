@@ -36,6 +36,7 @@ typedef enum PersistentXactObjKind
 	PersistentXactObjKind_None = 0,
 	PersistentXactObjKind_CreateFsObjs = 1,
 	PersistentXactObjKind_DropFsObjs = 2,
+	PersistentXactObjKind_AppendOnlyMirrorResyncEofs = 3,
 	MaxPersistentXactObjKind /* must always be last */
 } PersistentXactObjKind;
 
@@ -54,6 +55,20 @@ typedef struct PersistentEndXactFsObj
 	int64					persistentSerialNum;
 
 } PersistentEndXactFsObj;
+
+typedef struct PersistentEndXactAppendOnlyMirrorResyncEofs
+{
+	PersistentFileSysObjName 	fsObjName;
+
+	ItemPointerData			persistentTid;
+
+	int64					persistentSerialNum;
+
+	int64					mirrorLossEof;
+
+	int64					mirrorNewEof;
+} PersistentEndXactAppendOnlyMirrorResyncEofs;
+
 
 typedef struct PeristentEndXaxtUntyped
 {
@@ -81,8 +96,9 @@ typedef union PersistentEndXactRecObjects
 		int32 						dropFsObjsLen;
 		int32 						dropFsObjsCount;
 		
-		// UNDONE: UnmirroredBulkLoads
-		// UNDONE: UnmirroredAoInserts
+		PersistentEndXactAppendOnlyMirrorResyncEofs 	*appendOnlyMirrorResyncEofs;
+		int32 											appendOnlyMirrorResyncEofsLen;
+		int32 											appendOnlyMirrorResyncEofsCount;
 	}typed; 
 	
 } PersistentEndXactRecObjects;

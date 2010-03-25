@@ -1421,7 +1421,8 @@ PersistentRecovery_DeserializeRedoRelationFile(
 			     redoRelationEntryData.persistentSerialNum,
 			     ItemPointerToString(&redoRelationEntryData.persistentTid));
 
-		PersistentRecovery_CreateRedoRelationEntry(&redoRelationEntryData);
+		if (Debug_enable_new_startup_pass)
+			PersistentRecovery_CreateRedoRelationEntry(&redoRelationEntryData);
 	}
 	
 	if (Debug_persistent_recovery_print)

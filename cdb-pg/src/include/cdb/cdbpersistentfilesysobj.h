@@ -234,6 +234,15 @@ extern void PersistentFileSysObj_UpdateMirrorExistenceState(
 
 	bool							flushToXLog);
 
+extern void PersistentFileSysObj_MarkBufPoolRelationPhysicallyTruncated(
+	PersistentFileSysObjName 	*fsObjName,
+
+	ItemPointer					persistentTid,
+
+	int64						persistentSerialNum,
+	
+	bool						flushToXLog);
+
 extern bool PersistentFileSysObj_ResynchronizeTransitionNeeded(void);
 
 extern void PersistentFileSysObj_RequestResynchronizeTransition(void);
@@ -292,6 +301,31 @@ extern bool PersistentFileSysObj_ResynchronizeScan(
 
 extern void PersistentFileSysObj_ResynchronizeAbandonScan(
 	ResynchronizeScanToken			*resynchronizeScanToken);
+
+/*
+ * Refetch the resynchronize relation information while under RELATION_RESYNCHRONIZE lock
+ * based on its persistent TID and serial number.
+ */
+extern bool PersistentFileSysObj_ResynchronizeRefetch(
+	RelFileNode						*relFileNode,
+
+	int32							*segmentFileNum,
+
+	ItemPointer						persistentTid,
+
+	int64							persistentSerialNum,
+
+	PersistentFileSysRelStorageMgr 	*relStorageMgr,
+
+	MirroredRelDataSynchronizationState *mirrorDataSynchronizationState,
+
+	XLogRecPtr						*mirrorBufpoolResyncCkptLoc,
+
+	BlockNumber 					*mirrorBufpoolResyncCkptBlockNum,
+
+	int64							*mirrorAppendOnlyLossEof,
+
+	int64							*mirrorAppendOnlyNewEof);
 
 extern void PersistentFileSysObj_ResynchronizeBufferPoolCkpt(
 	ItemPointer 					persistentTid,

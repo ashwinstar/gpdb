@@ -145,7 +145,7 @@ extern void PrintBufferLeakWarning(Buffer buffer);
 extern void FlushBufferPool(void);
 extern BlockNumber BufferGetBlockNumber(Buffer buffer);
 extern BlockNumber RelationGetNumberOfBlocks(Relation relation);
-extern void RelationTruncate(Relation rel, BlockNumber nblocks);
+extern void RelationTruncate(Relation rel, BlockNumber nblocks, bool markPersistentAsPhysicallyTruncated);
 extern void FlushRelationBuffers(Relation rel);
 extern void DropRelFileNodeBuffers(RelFileNode rnode, bool istemp,
 					   BlockNumber firstDelBlock);

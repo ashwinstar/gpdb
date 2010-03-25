@@ -628,7 +628,10 @@ gistvacuumcleanup(PG_FUNCTION_ARGS)
 			}
 
 		if (lastBlock > lastFilledBlock)
-			RelationTruncate(rel, lastFilledBlock + 1);
+			RelationTruncate(
+				rel, 
+				lastFilledBlock + 1,
+				/* markPersistentAsPhysicallyTruncated */ true);
 		stats->std.pages_removed = lastBlock - lastFilledBlock;
 	}
 

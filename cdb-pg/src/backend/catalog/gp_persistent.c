@@ -41,7 +41,7 @@ void GpPersistentRelationNode_GetValues(
 	PersistentFileSysState			*persistentState,
 	MirroredObjectExistenceState	*mirrorExistenceState,
 	MirroredRelDataSynchronizationState *mirrorDataSynchronizationState,
-	bool							*mirrorBufpoolVacuumed,
+	bool							*mirrorBufpoolPhysicallyTruncated,
 	XLogRecPtr						*mirrorBufpoolResyncCkptLoc,
 	BlockNumber						*mirrorBufpoolResyncCkptBlockNum,
 	int64							*mirrorAppendOnlyLossEof,
@@ -66,7 +66,7 @@ void GpPersistentRelationNode_GetValues(
 
 	*mirrorDataSynchronizationState = (MirroredRelDataSynchronizationState)DatumGetInt16(values[Anum_gp_persistent_relation_node_mirror_data_synchronization_state - 1]);
 
-	*mirrorBufpoolVacuumed = DatumGetBool(values[Anum_gp_persistent_relation_node_mirror_bufpool_vacuumed - 1]);
+	*mirrorBufpoolPhysicallyTruncated = DatumGetBool(values[Anum_gp_persistent_relation_node_mirror_bufpool_physically_truncated - 1]);
 
 	*mirrorBufpoolResyncCkptLoc = *((XLogRecPtr*) DatumGetPointer(values[Anum_gp_persistent_relation_node_mirror_bufpool_resync_ckpt_loc - 1]));
 
@@ -95,7 +95,7 @@ void GpPersistentRelationNode_SetDatumValues(
 	PersistentFileSysState			persistentState,
 	MirroredObjectExistenceState	mirrorExistenceState,
 	MirroredRelDataSynchronizationState mirrorDataSynchronizationState,
-	bool							mirrorBufpoolVacuumed,
+	bool							mirrorBufpoolPhysicallyTruncated,
 	XLogRecPtr						*mirrorBufpoolResyncCkptLoc,
 	BlockNumber						mirrorBufpoolResyncCkptBlockNum,
 	int64							mirrorAppendOnlyLossEof,
@@ -126,8 +126,8 @@ void GpPersistentRelationNode_SetDatumValues(
 	values[Anum_gp_persistent_relation_node_mirror_data_synchronization_state - 1] = 
 									Int16GetDatum(mirrorDataSynchronizationState);
 
-	values[Anum_gp_persistent_relation_node_mirror_bufpool_vacuumed - 1] = 
-									BoolGetDatum(mirrorBufpoolVacuumed);
+	values[Anum_gp_persistent_relation_node_mirror_bufpool_physically_truncated - 1] = 
+									BoolGetDatum(mirrorBufpoolPhysicallyTruncated);
 
 	values[Anum_gp_persistent_relation_node_mirror_bufpool_resync_ckpt_loc - 1] =
 									PointerGetDatum(mirrorBufpoolResyncCkptLoc);
@@ -405,7 +405,7 @@ void GpPersistent_GetCommonValues(
 			int32 segmentFileNum;	// UNDONE
 			PersistentFileSysRelStorageMgr	relationStorageManager;
 			MirroredRelDataSynchronizationState mirrorDataSynchronizationState;
-			bool							mirrorBufpoolVacuumed;
+			bool							mirrorBufpoolPhysicallyTruncated;
 			XLogRecPtr						mirrorBufpoolResyncCkptLoc;
 			BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
 			int64							mirrorAppendOnlyLossEof;
@@ -421,7 +421,7 @@ void GpPersistent_GetCommonValues(
 											persistentState,
 											mirrorExistenceState,
 											&mirrorDataSynchronizationState,
-											&mirrorBufpoolVacuumed,
+											&mirrorBufpoolPhysicallyTruncated,
 											&mirrorBufpoolResyncCkptLoc,
 											&mirrorBufpoolResyncCkptBlockNum,
 											&mirrorAppendOnlyLossEof,

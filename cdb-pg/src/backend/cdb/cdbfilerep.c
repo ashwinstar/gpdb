@@ -1836,9 +1836,11 @@ FileRep_SetState(FileRepState_e fileRepStateLocal)
             break;
 	}
 	
+#ifdef FILEREP_DEBUG
 	elog(LOG, "LOG(filerep)FileRep_SetState() state:'%s' MyProcPid:'%d'",
 		 FileRepStateToString[FileRep_GetState()],
 		 getpid());
+#endif
 }
 
 /*

@@ -315,24 +315,24 @@ void AppendOnlyStorageWrite_TransactionCreateFile(
 				 * if necessary.  Otherwise, it must already
 				 * exist.
 				 */
-	RelFileNode					relFileNode,
-	int32						segmentFileNum)
+	RelFileNode					*relFileNode,
+	int32						segmentFileNum,
+	ItemPointer					persistentTid,
+	int64 						*persistentSerialNum)
 {
 	Relation gp_relation_node;
 	
-	ItemPointerData	persistentTid;
-	int64 persistentSerialNum;
 
 	Assert (segmentFileNum > 0);
 	Assert (logicalEof == 0);
 
 	MirroredFileSysObj_TransactionCreateAppendOnlyFile(
-										&relFileNode,
+										relFileNode,
 										segmentFileNum,
 										storageWrite->relationName,
 										/* doJustInTimeDirCreate */ false,
-										&persistentTid,
-										&persistentSerialNum);
+										persistentTid,
+										persistentSerialNum);
 
 	gp_relation_node = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
 
@@ -340,10 +340,10 @@ void AppendOnlyStorageWrite_TransactionCreateFile(
 						gp_relation_node,
 						/* relationId */ 0,	// UNDONE: Don't have this value here -- currently only used for tracing...
 						storageWrite->relationName,
-						relFileNode.relNode,
+						relFileNode->relNode,
 						segmentFileNum,
-						&persistentTid,
-						persistentSerialNum);
+						persistentTid,
+						*persistentSerialNum);
 
 	heap_close(gp_relation_node, RowExclusiveLock);
 }
@@ -368,8 +368,10 @@ void AppendOnlyStorageWrite_OpenFile(
 				 */
 	int64						fileLen_uncompressed,
 
-	RelFileNode					relFileNode,
-	int32						segmentFileNum)
+	RelFileNode					*relFileNode,
+	int32						segmentFileNum,
+	ItemPointer 				persistentTid,
+	int64						persistentSerialNum)
 {
 	int		fileFlags = O_RDWR | PG_BINARY;
 	int		fileMode = 0600;
@@ -390,13 +392,12 @@ void AppendOnlyStorageWrite_OpenFile(
 	Assert(storageWrite->isActive);
 	
 	Assert(filePathName != NULL);
-	// UNDONE: Range check logicalEof
 	
 	/*
 	 * Open or create the file for write.
 	 */	
 	MirroredAppendOnly_Open(&storageWrite->bufferedAppend.mirroredOpen, 
-				&relFileNode,
+				relFileNode,
 				segmentFileNum,
 				storageWrite->relationName,
 				logicalEof,
@@ -434,6 +435,11 @@ void AppendOnlyStorageWrite_OpenFile(
 	}
 
 	storageWrite->file = file;
+	storageWrite->startEof = logicalEof;
+	storageWrite->relFileNode = *relFileNode;
+	storageWrite->segmentFileNum = segmentFileNum;
+	storageWrite->persistentTid = *persistentTid;
+	storageWrite->persistentSerialNum = persistentSerialNum;
 
 	/*
 	 * When writing multiple segment files, we throw away the old segment file name strings.
@@ -577,6 +583,83 @@ void AppendOnlyStorageWrite_FlushAndCloseFile(
 
 	MirroredAppendOnly_FlushAndClose(&storageWrite->bufferedAppend.mirroredOpen);
 	storageWrite->file = -1;
+
+	MemSet(&storageWrite->relFileNode, 0, sizeof(RelFileNode));
+	storageWrite->segmentFileNum = 0;
+	MemSet(&storageWrite->persistentTid, 0, sizeof(ItemPointerData));
+	storageWrite->persistentSerialNum = 0;
+}
+
+/*
+ * Flush and close the current segment file under a transaction.
+ *
+ * Handles mirror loss end transaction work.
+ *
+ * No error if the current is already closed.
+ */
+void AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
+	AppendOnlyStorageWrite		*storageWrite,
+
+	int64						*newLogicalEof,
+				/* The new EOF for the segment file. */
+
+	int64						*fileLen_uncompressed)
+{
+	RelFileNode relFileNode;
+	int32 segmentFileNum;
+	ItemPointerData persistentTid;
+	int64 persistentSerialNum;
+
+	int64	startEof;
+
+	Assert(storageWrite != NULL);
+	Assert(storageWrite->isActive);
+	
+	if (storageWrite->file == -1)
+	{
+		*newLogicalEof = 0;
+		*fileLen_uncompressed = 0;
+		return;
+	}
+
+	relFileNode = storageWrite->relFileNode;
+	segmentFileNum = storageWrite->segmentFileNum;
+	persistentTid = storageWrite->persistentTid;
+	persistentSerialNum = storageWrite->persistentSerialNum;
+
+	startEof = storageWrite->startEof;
+	
+	AppendOnlyStorageWrite_FlushAndCloseFile(
+										storageWrite,
+										newLogicalEof,
+										fileLen_uncompressed);
+
+	if (Debug_try_appendonly_mirror_resynch_eofs)
+	{
+		/*
+		 * UNDONE: Only call this when the segment is mirrored and the mirror was not connected during our transaction...
+		 */
+		smgrappendonlymirrorresynceofs(
+								&relFileNode,
+								segmentFileNum,
+								storageWrite->relationName,
+								&persistentTid,
+								persistentSerialNum,
+								startEof,
+								*newLogicalEof);
+	}
+
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level, 
+			 "AppendOnlyStorageWrite_TransactionFlushAndCloseFile: %u/%u/%u, segment file #%d, serial number " INT64_FORMAT ", TID %s, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
+			 relFileNode.spcNode,
+			 relFileNode.dbNode,
+			 relFileNode.relNode,
+			 segmentFileNum,
+			 persistentSerialNum,
+			 ItemPointerToString(&persistentTid),
+			 startEof,
+			 *newLogicalEof);
 }
 
 // -----------------------------------------------------------------------------

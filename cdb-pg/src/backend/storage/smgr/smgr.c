@@ -97,6 +97,24 @@ static bool pendingDeletesSorted = false;
 
 typedef PendingDelete *PendingDeletePtr;
 
+typedef struct PendingAppendOnlyMirrorResyncEofs
+{
+	PersistentFileSysObjName fsObjName;		
+
+	char		*relationName;
+	
+	ItemPointerData persistentTid;
+	int64			persistentSerialNum;
+
+	int64		mirrorLossEof;
+	int64		mirrorNewEof;
+
+	int			nestLevel;		/* xact nesting level of request */
+	struct PendingAppendOnlyMirrorResyncEofs *next;		/* linked-list link */
+} PendingAppendOnlyMirrorResyncEofs;
+
+static PendingAppendOnlyMirrorResyncEofs *pendingAppendOnlyMirrorResyncEofs = NULL; /* head of linked list */
+
 /*
  * Declarations for smgr-related XLOG records
  *
@@ -1066,6 +1084,44 @@ smgrdormdbdir(
 					ignoreNonExistence);
 }
 
+void smgrappendonlymirrorresynceofs(
+	RelFileNode						*relFileNode,
+
+	int32							segmentFileNum,
+
+	char							*relationName,
+
+	ItemPointer						persistentTid,
+
+	int64							persistentSerialNum,
+
+	int64							mirrorLossEof,
+
+	int64							mirrorNewEof)
+{
+	PendingAppendOnlyMirrorResyncEofs *pendingEofs;
+	
+	/* Add the relation to the list of stuff to delete at abort */
+	pendingEofs = (PendingAppendOnlyMirrorResyncEofs *)
+		MemoryContextAllocZero(TopMemoryContext, sizeof(PendingAppendOnlyMirrorResyncEofs));
+	
+	PersistentFileSysObjName_SetRelationFile(
+										&pendingEofs->fsObjName,
+										relFileNode,
+										segmentFileNum);
+
+	pendingEofs->relationName = MemoryContextStrdup(TopMemoryContext, relationName);
+
+	pendingEofs->persistentTid = *persistentTid;
+	pendingEofs->persistentSerialNum = persistentSerialNum;
+	
+	pendingEofs->mirrorLossEof = mirrorLossEof;
+	pendingEofs->mirrorNewEof = mirrorNewEof;
+	
+	pendingEofs->nestLevel = GetCurrentTransactionNestLevel();
+	pendingEofs->next = pendingAppendOnlyMirrorResyncEofs;
+	pendingAppendOnlyMirrorResyncEofs = pendingEofs;
+}
 
 /*
  *	smgrextend() -- Add a new block to a file.
@@ -1274,6 +1330,19 @@ PendingDelete_Free(
 	*ele = NULL;
 }
 
+static void
+PendingAppendOnlyMirrorResyncEofs_Free(
+	PendingAppendOnlyMirrorResyncEofs **ele)
+{
+	if ((*ele)->relationName != NULL)
+		pfree((*ele)->relationName);
+
+	pfree(*ele);
+
+	*ele = NULL;
+}
+
+
 /*
  *	PostPrepare_smgr -- Clean up after a successful PREPARE
  *
@@ -1286,6 +1355,9 @@ PostPrepare_smgr(void)
 {
 	PendingDelete *pending;
 	PendingDelete *next;
+	
+	PendingAppendOnlyMirrorResyncEofs *pendingEofs;
+	PendingAppendOnlyMirrorResyncEofs *nextEofs;
 
 	for (pending = pendingDeletes; pending != NULL; pending = next)
 	{
@@ -1300,6 +1372,19 @@ PostPrepare_smgr(void)
 
 	Assert(pendingDeletesCount == 0);
 	pendingDeletesSorted = false;
+
+	/*
+	 * Free the 2nd Append-Only mirror resync EOFs list.
+	 */
+	for (pendingEofs = pendingAppendOnlyMirrorResyncEofs; pendingEofs != NULL; pendingEofs = nextEofs)
+	{
+		nextEofs = pendingEofs->next;
+		pendingAppendOnlyMirrorResyncEofs = nextEofs;
+
+		/* must explicitly free the list entry */
+		PendingAppendOnlyMirrorResyncEofs_Free(&pendingEofs);
+	}
+
 }
 
 
@@ -1332,9 +1417,10 @@ smgrDoDeleteActions(
 		{
 			if (current->relationName == NULL)
 				elog(Debug_persistent_print_level, 
-					 "Storage Manager: Do delete action for list entry #%d: '%s' (forCommit %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", sameTransCreateDrop %s)",
+					 "Storage Manager: Do delete action for list entry #%d: '%s' relation name '%s' (forCommit %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", sameTransCreateDrop %s)",
 					 entryIndex,
 					 PersistentFileSysObjName_TypeAndObjectName(&current->fsObjName),
+					 current->relationName,
 					 (forCommit ? "true" : "false"),
 					 current->nestLevel,
 					 ItemPointerToString(&current->persistentTid),
@@ -1577,9 +1663,7 @@ smgrSortDeletesList(
 	 */
 	(*listCount) -= collapseCount;
 
-
-
-	// UNDONE: Put this under DEBUG ifdef
+#ifdef suppress
 	{
 		PendingDelete	*check; 
 		PendingDelete	*checkPrev;
@@ -1611,6 +1695,7 @@ smgrSortDeletesList(
 			elog(ERROR, "List count does not match (expected %d, found %d)",
 			     *listCount, checkCount);
 	}
+#endif
 }
 
 /*
@@ -1627,6 +1712,9 @@ smgrSubTransAbort(void)
 	PendingDelete *next;
 	PendingDelete *subTransList;
 	int			subTransCount;
+
+	PendingAppendOnlyMirrorResyncEofs *pendingEofs;
+	PendingAppendOnlyMirrorResyncEofs *nextEofs;
 
 	subTransList = NULL;
 	subTransCount = 0;
@@ -1679,6 +1767,24 @@ smgrSubTransAbort(void)
 
 	Assert(subTransList == NULL);
 	Assert(subTransCount == 0);
+
+	/*
+	 * Throw away sub-transaction Append-Only mirror resync EOFs.
+	 */
+	for (pendingEofs = pendingAppendOnlyMirrorResyncEofs; pendingEofs != NULL; pendingEofs = nextEofs)
+	{
+		nextEofs = pendingEofs->next;
+
+		if (pendingEofs->nestLevel >= nestLevel)
+		{
+			if (pendingEofs == pendingAppendOnlyMirrorResyncEofs)
+				pendingAppendOnlyMirrorResyncEofs = nextEofs;
+			
+			/* must explicitly free the list entry */
+			PendingAppendOnlyMirrorResyncEofs_Free(&pendingEofs);
+		}
+	}
+
 }
 
 /*
@@ -1729,7 +1835,7 @@ smgrGetPendingDeletes(bool forCommit, PersistentEndXactFsObj **ptr)
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
-			 "Storage Manager: Get list entries (forCommit %s, current transaction nest level %d",
+			 "Storage Manager: Get list entries (forCommit %s, current transaction nest level %d)",
 			 (forCommit ? "true" : "false"),
 			 nestLevel);
 
@@ -1758,9 +1864,10 @@ smgrGetPendingDeletes(bool forCommit, PersistentEndXactFsObj **ptr)
 		{
 			if (pending == NULL)
 				elog(Debug_persistent_print_level, 
-					 "Storage Manager: Get list entry #%d: '%s' (forCommit %s, returned %s, transaction nest level %d, relation storage manager '%s', persistent TID %s, persistent serial number " INT64_FORMAT ", sameTransCreateDrop %s)",
+					 "Storage Manager: Get list entry #%d: '%s' relation name '%s' (forCommit %s, returned %s, transaction nest level %d, relation storage manager '%s', persistent TID %s, persistent serial number " INT64_FORMAT ", sameTransCreateDrop %s)",
 					 entryIndex,
 					 PersistentFileSysObjName_TypeAndObjectName(&pending->fsObjName),
+					 pending->relationName,
 					 (forCommit ? "true" : "false"),
 					 (returned ? "true" : "false"),
 					 pending->nestLevel,
@@ -1787,6 +1894,87 @@ smgrGetPendingDeletes(bool forCommit, PersistentEndXactFsObj **ptr)
 	return nrels;
 }
 
+int
+smgrGetAppendOnlyMirrorResyncEofs(PersistentEndXactAppendOnlyMirrorResyncEofs **ptr)
+{
+	int			nestLevel = GetCurrentTransactionNestLevel();
+	int			nentries;
+	PersistentEndXactAppendOnlyMirrorResyncEofs *rptr;
+	PendingAppendOnlyMirrorResyncEofs *pendingEofs;
+	int			entryIndex;
+
+	nentries = 0;
+	for (pendingEofs = pendingAppendOnlyMirrorResyncEofs; pendingEofs != NULL; pendingEofs = pendingEofs->next)
+	{
+		if (pendingEofs->nestLevel >= nestLevel)
+			nentries++;
+	}
+	if (nentries == 0)
+	{
+		*ptr = NULL;
+		return 0;
+	}
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "Storage Manager: Get Append-Only mirror resync eofs list entries (current transaction nest level %d)",
+			 nestLevel);
+
+	rptr = (PersistentEndXactAppendOnlyMirrorResyncEofs *) 
+							palloc(nentries * sizeof(PersistentEndXactAppendOnlyMirrorResyncEofs));
+	*ptr = rptr;
+	entryIndex = 0;
+	for (pendingEofs = pendingAppendOnlyMirrorResyncEofs; pendingEofs != NULL; pendingEofs = pendingEofs->next)
+	{
+		bool returned;
+
+		returned = false;
+		if (pendingEofs->nestLevel >= nestLevel)
+		{
+			rptr->fsObjName = pendingEofs->fsObjName;
+
+			rptr->persistentTid = pendingEofs->persistentTid;
+			rptr->persistentSerialNum = pendingEofs->persistentSerialNum;
+
+			rptr->mirrorLossEof = pendingEofs->mirrorLossEof;
+			rptr->mirrorNewEof = pendingEofs->mirrorNewEof;
+
+			rptr++;
+			returned = true;
+		}
+
+		if (Debug_persistent_print)
+		{
+			if (pendingEofs == NULL)
+				elog(Debug_persistent_print_level, 
+					 "Storage Manager: Get Append-Only mirror resync eofs list entry #%d: '%s' relation name '%s' (returned %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
+					 entryIndex,
+					 PersistentFileSysObjName_TypeAndObjectName(&pendingEofs->fsObjName),
+					 pendingEofs->relationName,
+					 (returned ? "true" : "false"),
+					 pendingEofs->nestLevel,
+					 ItemPointerToString(&pendingEofs->persistentTid),
+					 pendingEofs->persistentSerialNum,
+					 pendingEofs->mirrorLossEof,
+					 pendingEofs->mirrorNewEof);
+			else
+				elog(Debug_persistent_print_level, 
+					 "Storage Manager: Get Append-Only mirror resync eofs list entry #%d: '%s', relation name '%s' (returned %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
+					 entryIndex,
+					 PersistentFileSysObjName_TypeAndObjectName(&pendingEofs->fsObjName),
+					 pendingEofs->relationName,
+					 (returned ? "true" : "false"),
+					 pendingEofs->nestLevel,
+					 ItemPointerToString(&pendingEofs->persistentTid),
+					 pendingEofs->persistentSerialNum,
+					 pendingEofs->mirrorLossEof,
+					 pendingEofs->mirrorNewEof);
+		}
+		entryIndex++;
+	}
+	return nentries;
+}
+
 /*
  * smgrIsPendingDeletes() -- Returns true if there are relations to be deleted.
  *
@@ -1798,12 +1986,20 @@ smgrIsPendingDeletes(bool forCommit)
 {
 	int			nestLevel = GetCurrentTransactionNestLevel();
 	PendingDelete *pending;
+	PendingAppendOnlyMirrorResyncEofs *pendingEofs;
 
 	for (pending = pendingDeletes; pending != NULL; pending = pending->next)
 	{
 		if (pending->nestLevel >= nestLevel && pending->atCommit == forCommit)
 			return true;
 	}
+
+	for (pendingEofs = pendingAppendOnlyMirrorResyncEofs; pendingEofs != NULL; pendingEofs = pendingEofs->next)
+	{
+		if (pendingEofs->nestLevel >= nestLevel)
+			return true;
+	}
+
 	return false;
 }
 
@@ -1819,11 +2015,18 @@ AtSubCommit_smgr(void)
 {
 	int			nestLevel = GetCurrentTransactionNestLevel();
 	PendingDelete *pending;
+	PendingAppendOnlyMirrorResyncEofs *pendingEofs;
 
 	for (pending = pendingDeletes; pending != NULL; pending = pending->next)
 	{
 		if (pending->nestLevel >= nestLevel)
 			pending->nestLevel = nestLevel - 1;
+	}
+
+	for (pendingEofs = pendingAppendOnlyMirrorResyncEofs; pendingEofs != NULL; pendingEofs = pendingEofs->next)
+	{
+		if (pendingEofs->nestLevel >= nestLevel)
+			pendingEofs->nestLevel = nestLevel - 1;
 	}
 }
 

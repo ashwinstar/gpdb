@@ -203,6 +203,7 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		{
 			case LOCKTAG_RELATION:
 			case LOCKTAG_RELATION_EXTEND:
+			case LOCKTAG_RELATION_RESYNCHRONIZE:
 				values[1] = ObjectIdGetDatum(lock->tag.locktag_field1);
 				values[2] = ObjectIdGetDatum(lock->tag.locktag_field2);
 				nulls[3] = true;

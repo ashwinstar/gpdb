@@ -747,7 +747,10 @@ ginvacuumcleanup(PG_FUNCTION_ARGS)
 			}
 
 		if (lastBlock > lastFilledBlock)
-			RelationTruncate(index, lastFilledBlock + 1);
+			RelationTruncate(
+					index, 
+					lastFilledBlock + 1,
+					/* markPersistentAsPhysicallyTruncated */ true);
 
 		stats->pages_removed = lastBlock - lastFilledBlock;
 	}

@@ -272,7 +272,22 @@ extern BlockNumber smgrnblocks(SMgrRelation reln);
 extern BlockNumber smgrtruncate(SMgrRelation reln, BlockNumber nblocks,
 			 bool isTemp, bool isLocalBuf);
 extern void smgrimmedsync(SMgrRelation reln);
+extern void smgrappendonlymirrorresynceofs(
+	RelFileNode						*relFileNode,
+
+	int32							segmentFileNum,
+
+	char							*relationName,
+
+	ItemPointer						persistentTid,
+
+	int64							persistentSerialNum,
+
+	int64							mirrorLossEof,
+
+	int64							mirrorNewEof);
 extern int	smgrGetPendingDeletes(bool forCommit, PersistentEndXactFsObj **ptr);
+extern int	smgrGetAppendOnlyMirrorResyncEofs(PersistentEndXactAppendOnlyMirrorResyncEofs **ptr);
 extern bool	smgrIsPendingDeletes(bool forCommit);
 extern void AtSubCommit_smgr(void);
 extern void AtSubAbort_smgr(void);

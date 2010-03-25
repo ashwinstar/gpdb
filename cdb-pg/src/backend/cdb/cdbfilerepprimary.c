@@ -324,10 +324,12 @@ FileRepPrimary_ConstructAndInsertMessage(
 	
 	Assert(status == STATUS_OK);
 	
-	fileRepShmemMessageDescr->messageState = FileRepShmemMessageStateReady; 	
+	fileRepShmemMessageDescr->messageState = FileRepShmemMessageStateReady; 
 	
+	LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
 	FileRep_IpcSignal(fileRepIpcArray[fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex]->semC, 
 					  fileRepIpcArray[fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex]->refCountSemC);
+	LWLockRelease(FileRepShmemLock);
 	
 	return status;
 }	
@@ -763,8 +765,10 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 
 			fileRepShmemMessageDescr->messageState = FileRepShmemMessageStateReady; 
 			
+			LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
 			FileRep_IpcSignal(fileRepIpcArray[fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex]->semC, 
 							  fileRepIpcArray[fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex]->refCountSemC);
+			LWLockRelease(FileRepShmemLock);
 			
 			/* the order should not be changed. */
 			data = (char *) data + dataLengthLocal;		

@@ -19,6 +19,7 @@
 #include "cdb/cdbappendonlystorageread.h"
 #include "cdb/cdbappendonlystoragewrite.h"
 #include "utils/datumstream.h"
+#include "utils/guc.h"
 
 typedef enum AOCSBK
 {
@@ -366,6 +367,9 @@ void destroy_datumstream(DatumStream *ds)
 
 void datumstream_open_file(DatumStream *ds, char *fn, int64 eof, int64 eofUncompressed, RelFileNode relFileNode, int32 segmentFileNum)
 {
+	ItemPointerData persistentTid;
+	int64 persistentSerialNum;
+
     ds->eof = eof;
     ds->eofUncompress = eofUncompressed;
 
@@ -392,8 +396,25 @@ void datumstream_open_file(DatumStream *ds, char *fn, int64 eof, int64 eofUncomp
 				ds->ao_write, 
 				fn, 
 				eof,	
-				relFileNode,
-				segmentFileNum);
+				&relFileNode,
+				segmentFileNum,
+				&persistentTid,
+				&persistentSerialNum);
+		}
+		else
+		{
+			if (Debug_try_appendonly_mirror_resynch_eofs)
+				ReadGpRelationNode(
+							relFileNode.relNode,	// UNDONE: Need relationId for tracing...
+							relFileNode.relNode,
+							segmentFileNum,
+							&persistentTid,
+							&persistentSerialNum);
+			else
+			{
+				MemSet(&persistentTid, 0, sizeof(ItemPointerData));
+				persistentSerialNum = 0;
+			}
 		}
 
 		/*
@@ -404,8 +425,10 @@ void datumstream_open_file(DatumStream *ds, char *fn, int64 eof, int64 eofUncomp
 			fn, 
 			eof, 	
 			eofUncompressed,
-			relFileNode,
-			segmentFileNum);
+			&relFileNode,
+			segmentFileNum,
+			&persistentTid,
+			persistentSerialNum);
         ds->maxdatasz = ds->maxsz - AppendOnlyStorageWrite_CompleteHeaderLen(ds->ao_write) - sizeof(DatumStreamBlock);
     }
 
@@ -422,7 +445,8 @@ void datumstream_close_file(DatumStream *ds)
     else
     {
         Assert(ds->ao_write && !ds->ao_read);
-        AppendOnlyStorageWrite_FlushAndCloseFile(ds->ao_write,
+        AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
+			ds->ao_write,
             &ds->eof,
             &ds->eofUncompress
             );

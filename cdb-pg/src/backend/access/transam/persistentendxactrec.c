@@ -38,10 +38,11 @@ void PersistentEndXactRec_Print(
 	int i;
 
 	elog(Debug_persistent_print_level, 
-		 "%s: create count %d, drop count %d",
+		 "%s: create count %d, drop count %d, Append-Only mirror resync EOFs count %d",
 		 procName,
 		 objects->typed.createFsObjsCount,
-		 objects->typed.dropFsObjsCount);
+		 objects->typed.dropFsObjsCount,
+		 objects->typed.appendOnlyMirrorResyncEofsCount);
 
 	for (i = 0; i < objects->typed.createFsObjsCount; i++)
 	{
@@ -73,6 +74,22 @@ void PersistentEndXactRec_Print(
 			 fsObj->persistentSerialNum,
 			 ItemPointerToString(&fsObj->persistentTid));
 	}
+	
+	for (i = 0; i < objects->typed.appendOnlyMirrorResyncEofsCount; i++)
+	{
+		PersistentEndXactAppendOnlyMirrorResyncEofs *eofs = 
+					&objects->typed.appendOnlyMirrorResyncEofs[i];
+
+		elog(Debug_persistent_print_level, 
+			 "%s: [%d] %s, Append-Only Mirror Resync EOFs -- persistent serial num " INT64_FORMAT ", TID %s, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
+			 procName,
+			 i,
+			 PersistentFileSysObjName_TypeAndObjectName(&eofs->fsObjName),
+			 eofs->persistentSerialNum,
+			 ItemPointerToString(&eofs->persistentTid),
+			 eofs->mirrorLossEof,
+			 eofs->mirrorNewEof);
+	}
 }
 
 static int PersistentEndXactRec_CountForObject(
@@ -87,6 +104,10 @@ static int PersistentEndXactRec_CountForObject(
 	case PersistentXactObjKind_CreateFsObjs:
 	case PersistentXactObjKind_DropFsObjs:
 		count = len / sizeof(PersistentEndXactFsObj);
+		break;
+		
+	case PersistentXactObjKind_AppendOnlyMirrorResyncEofs:
+		count = len / sizeof(PersistentEndXactAppendOnlyMirrorResyncEofs);
 		break;
 		
 	default:
@@ -244,7 +265,13 @@ int32 PersistentEndXactRec_FetchObjectsFromSmgr(
 										count,
 										"DROP");
 			break;
-								
+
+		case PersistentXactObjKind_AppendOnlyMirrorResyncEofs:
+			count = smgrGetAppendOnlyMirrorResyncEofs(
+									(PersistentEndXactAppendOnlyMirrorResyncEofs**)&data);
+			len = count * sizeof(PersistentEndXactAppendOnlyMirrorResyncEofs);
+			break;
+
 		default:
 			elog(ERROR, "Unexpected persistent transaction object kind: %d",
 				 objKind);

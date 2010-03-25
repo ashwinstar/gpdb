@@ -125,6 +125,13 @@ extern void ChangeTracking_RecoverUsingXLog(void);
 extern XLogRecPtr* ChangeTracking_ReadLastLocOnDisk(void);
 
 /*
+ * Get the total number of (unique) blocks that had changed and
+ * need to be resynchronized. returns number of blocks or -1 for
+ * error.
+ */
+extern int64 ChangeTracking_GetTotalBlocksToSync(void);
+
+/*
  * Drop the resynchronize change log and meta files.
  */
 extern void ChangeTracking_DropAll(void);

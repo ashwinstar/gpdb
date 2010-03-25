@@ -274,7 +274,7 @@ int			gp_max_tablespaces = GP_MAX_TABLESPACES_DEFAULT;
 int			gp_max_filespaces = GP_MAX_FILESPACES_DEFAULT;
 bool 		gp_initdb_mirrored = false;
 bool 		gp_before_persistence_work = false;
-bool 		Debug_persistent_btree_collect = true;
+bool 		Debug_try_appendonly_mirror_resynch_eofs = false;
 bool 		Debug_print_xlog_relation_change_info = false;
 bool 		Debug_print_xlog_relation_change_info_skip_issues_only = true;
 
@@ -2169,12 +2169,12 @@ false
 	},
 	
 	{
-		{"Debug_persistent_btree_collect", PGC_SUSET, DEVELOPER_OPTIONS,
-			gettext_noop("Try out collecting persistent information for B-Tree XLOG generation"),
+		{"debug_try_appendonly_mirror_resynch_eofs", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Try out Append-Only mirror resynch EOFs (i.e. incremental A-O resynchronization)"),
 			NULL,
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&Debug_persistent_btree_collect,
+		&Debug_try_appendonly_mirror_resynch_eofs,
 		false, NULL, NULL
 	},
 			
