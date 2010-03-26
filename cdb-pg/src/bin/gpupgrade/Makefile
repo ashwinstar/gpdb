@@ -53,7 +53,7 @@ gpmodcat_clean:
 	rm -f $(MODCAT_OBJS)
 	rm -f pg_crc.c
 
-gpmodcat_install:
+gpmodcat_install: gpmodcatversion
 	$(INSTALL_PROGRAM) gpmodcatversion$(X) \
 		'$(DESTDIR)$(bindir)/lib'/gpmodcatversion$(X)
 

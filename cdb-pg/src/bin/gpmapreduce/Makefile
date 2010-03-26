@@ -52,7 +52,7 @@ else
 	@$(missing) flex $< $@
 endif
 
-$(SRCDIR)/yaml_scan.c: $(SRCDIR)/yaml_scan.l
+$(SRCDIR)/yaml_scan.c: $(SRCDIR)/yaml_parse.h $(SRCDIR)/yaml_scan.l
 ifdef FLEX
 	cd $(SRCDIR) ; \
 	$(FLEX) $(FLEXFLAGS) yaml_scan.l
