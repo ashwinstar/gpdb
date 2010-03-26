@@ -3772,18 +3772,34 @@ ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOi
 					 */
 					List *data = (List *)cmd->def;
 					List *qe_data = lsecond(data);
-					List *oidmap = lsecond(qe_data);
 
-					umap = list_concat(umap, oidmap);
+					if (qe_data && list_length(qe_data) >= 2)
+					{
+						List *oidmap = lsecond(qe_data);
+
+						umap = list_concat(umap, oidmap);
+					}
 				}
 			}
 		}
 
 		/* Finally, push it all back into the master command */
-		if (mastercmd)
+		if (mastercmd && umap)
 		{
 			List *qe_data = lsecond((List *)mastercmd->def);
-			lsecond(qe_data) = umap;
+
+			if (list_length(qe_data) >= 2)
+				lsecond(qe_data) = umap;
+			else if (list_length(qe_data) == 1)
+			{
+				qe_data = lappend(qe_data, umap);
+
+				/* 
+				 * We've changed the pointer, save it back to the master
+				 * definition.
+				 */
+				lsecond((List *)mastercmd->def) = qe_data;
+			}
 		}
 	}
 
