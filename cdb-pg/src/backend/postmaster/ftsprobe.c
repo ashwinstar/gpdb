@@ -1467,9 +1467,9 @@ openSelfConn(CdbComponentDatabaseInfo *entryDB)
 	PGresult   *rs;
 
 	entryBuffer = createPQExpBuffer();
-
-	if (entryBuffer == NULL)
+	if (PQExpBufferBroken(entryBuffer))
 	{
+		destroyPQExpBuffer(entryBuffer);
 		elog(FATAL, "FTSPROBE: failed to create self-connection buffer.");
 		/* never reached */
 		return NULL;

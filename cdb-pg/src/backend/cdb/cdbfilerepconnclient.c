@@ -38,8 +38,9 @@ FileRepConnClient_EstablishConnection(
 	
 	buffer = createPQExpBuffer();
 
-	if (buffer == NULL)
+	if (PQExpBufferBroken(buffer))
 	{
+		destroyPQExpBuffer(buffer);
 		/* XXX: allocation failed. Is this the right thing to do ? */
 		return STATUS_ERROR;
 	}

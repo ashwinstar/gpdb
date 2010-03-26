@@ -358,9 +358,9 @@ QDMirroringUpdate(
 		Assert(user != NULL);
 
 		entryBuffer = createPQExpBuffer();
-
-		if (entryBuffer == NULL)
+		if (PQExpBufferBroken(entryBuffer))
 		{
+			destroyPQExpBuffer(entryBuffer);
 			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
 							errmsg("QDMirroringUpdate: out of memory")));
 			/* not reached. */
