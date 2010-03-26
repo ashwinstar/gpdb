@@ -756,10 +756,20 @@ ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *increment
 		if (limits[i].threshold_value == INVALID_RES_LIMIT_THRESHOLD)
 			continue;
 
+		/*
+		 * MPP-8454: NOTE that if our resource-queue has been modified
+		 * since we locked our resources, on unlock it is possible
+		 * that we're deducting an increment that we never added --
+		 * the lowest value we should allow is 0.0.
+		 *
+		 * Note, we skip anything that's negative above.
+		 */
 		switch (limits[i].type)
 		{
 			case RES_COUNT_LIMIT:
 			{
+				Cost new_value;
+
 				Assert((limits[i].threshold_is_max));
 				/* setup whether to increment or decrement the # active. */
 				if (increment)
@@ -770,17 +780,18 @@ ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *increment
 				{
 					increment_amt = -1 * incrementSet->increments[i];
 				}
-				limits[i].current_value += increment_amt;
 
-#ifdef RESLOCK_DEBUG
-				elog(DEBUG1, "setting count limit threshold %.0f current %.0f",
-					 limits[i].threshold_value, limits[i].current_value);
-#endif
+				new_value = ceil(limits[i].current_value + increment_amt);
+				new_value = Max(new_value, 0.0);
+
+				limits[i].current_value = new_value;
 			}
 			break;
 
 			case RES_COST_LIMIT:
 			{
+				Cost new_value;
+
 				Assert((limits[i].threshold_is_max));
 				/* setup whether to increment or decrement the cost. */
 				if (increment)
@@ -791,12 +802,11 @@ ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *increment
 				{
 					increment_amt = -1 * incrementSet->increments[i];
 				}
-				limits[i].current_value += increment_amt;
 
-#ifdef RESLOCK_DEBUG
-				elog(DEBUG1, "setting cost limit threshold %.2f current %.2f",
-					 limits[i].threshold_value, limits[i].current_value);
-#endif
+				new_value = ceil(limits[i].current_value + increment_amt);
+				new_value = Max(new_value, 0.0);
+
+				limits[i].current_value = new_value;
 			}
 			break;
 
