@@ -3679,8 +3679,10 @@ ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOi
 	TableOidInfo * oids = NULL;
 	bool is_partition = false;
 	bool is_data_remote = (RelationIsExternal(rel) || RelationIsForeign(rel));
+#ifdef USE_ASSERT_CHECKING
 	Oid			relid = RelationGetRelid(rel);
-	
+#endif
+
 	cdb_sync_oid_to_segments();
 
 	/* Phase 1: preliminary examination of commands, create work queue */
@@ -3782,7 +3784,6 @@ ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOi
 		{
 			List *qe_data = lsecond((List *)mastercmd->def);
 			lsecond(qe_data) = umap;
-
 		}
 	}
 
