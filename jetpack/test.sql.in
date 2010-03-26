@@ -73,3 +73,6 @@ select * from %%JETPACK_PREFIX%%bloat_diag;
 
 
 select * from %%JETPACK_PREFIX%%resq_activity_by_queue;
+select * from %%JETPACK_PREFIX%%resq_priority_statement;
+select * from %%JETPACK_PREFIX%%resq_priority_backend;
+

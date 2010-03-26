@@ -1,6 +1,6 @@
 --------------------------------------------------------------------------------
 -- Greenplum Database
--- Copyright (C) 2009 by Greenplum, Inc. All rights reserved.
+-- Copyright (C) 2009, 2010 by Greenplum, Inc. All rights reserved.
 --
 -- %%JETPACK_NAME%% %%JETPACK_VERSION%%
 --
@@ -1087,7 +1087,7 @@ AS
 			pgl.objid = pgrq.oid
 	) as resq
 	ON resqprocid = procpid
-	WHERE current_query !~ '<IDLE>'
+	WHERE current_query != '<IDLE>'
 	ORDER BY resqstart;
 
 GRANT SELECT ON TABLE %%JETPACK_PREFIX%%resq_activity TO public;
@@ -1119,37 +1119,50 @@ GRANT SELECT ON TABLE %%JETPACK_PREFIX%%resq_activity_by_queue TO public;
 
 --------------------------------------------------------------------------------
 -- @view: 
---		%%JETPACK_PREFIX%%list_backend_priorities
+--		%%JETPACK_PREFIX%%resq_priority_backend
 --
 -- @doc:
---		Lists priorities associated with each backend executing currently.
+--		Priorities associated with each backend executing currently
 --		
 --------------------------------------------------------------------------------
-CREATE VIEW %%JETPACK_PREFIX%%list_backend_priorities
+CREATE VIEW %%JETPACK_PREFIX%%resq_priority_backend
 AS
-   SELECT * FROM gp_list_backend_priorities() AS L(session_id int, command_count int, priority text, weight int);
+	SELECT 
+		session_id as rqpsession,
+		command_count as rqpcommand,
+		priority as rqppriority,
+		weight as rqpweight
+	FROM
+		gp_list_backend_priorities() 
+			AS L(session_id int, command_count int, priority text, weight int);
 
-GRANT SELECT ON TABLE %%JETPACK_PREFIX%%list_backend_priorities TO public;
+GRANT SELECT ON TABLE %%JETPACK_PREFIX%%resq_priority_backend TO public;
+
 
 --------------------------------------------------------------------------------
 -- @view: 
---		%%JETPACK_PREFIX%%gp_statement_priorities
+--		%%JETPACK_PREFIX%%resq_priority_statment
 --
 -- @doc:
---		Lists priorities associated with each statement
+--		Priorities associated with each statement
 --		
 --------------------------------------------------------------------------------
-CREATE VIEW %%JETPACK_PREFIX%%statement_priorities
+CREATE VIEW %%JETPACK_PREFIX%%resq_priority_statement
 AS
-   SELECT a.datname, a.usename, b.session_id, b.command_count, b.priority, b.weight, a.current_query
-   FROM 
-   	%%JETPACK_PREFIX%%list_backend_priorities b, pg_stat_activity a
-   WHERE
-	b.session_id = a.sess_id
-	AND a.current_query != '<IDLE>'
-	;
+	SELECT 
+		psa.datname AS rqpdatname, 
+		psa.usename AS rqpusename, 
+		rpb.rqpsession,
+		rpb.rqpcommand, 
+		rpb.rqppriority, 
+		rpb.rqpweight, 
+		psa.current_query AS rqpquery
+	FROM 
+		%%JETPACK_PREFIX%%resq_priority_backend rpb
+		JOIN pg_stat_activity psa ON (rpb.rqpsession = psa.sess_id)
+	WHERE psa.current_query != '<IDLE>';
 
-GRANT SELECT ON TABLE %%JETPACK_PREFIX%%statement_priorities TO public;
+GRANT SELECT ON TABLE %%JETPACK_PREFIX%%resq_priority_statement TO public;
 
 -- Finalize install
 COMMIT;
