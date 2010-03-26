@@ -41,6 +41,8 @@ import subprocess                        # Calling external processes
 import traceback                         # exception logging
 from time import strftime
 try:
+    from gppylib import gphostcache
+    from gppylib.commands.base import WorkerPool
     from gppylib.commands import unix
     from gppylib.db import dbconn
     from gppylib.db import catalog
@@ -64,7 +66,8 @@ class GPError(StandardError): pass
 class GPDatabaseError(GPError): pass
 class GPPrivilegeError(GPError): pass
 
-CLUSTERSIZE = 1    #  DEBUGGING (to simulate ebay set to 98)
+CLUSTERSIZE = 1            # DEBUGGING (to simulate ebay set to 98)
+DEFAULT_NUM_WORKERS = 64   # same as gpstart, used for hostcache
 
 # ============================================================================
 def cli_help():
@@ -543,8 +546,28 @@ class GPFilespace:
         self.db         = None # pygresql.pgobject 
         self.dburl      = None
 
+        self.pool       = None
+        self.array      = None
+        self.hostcache  = None
+
         self.connect()
         self.get_configuration()
+        self.resolve_hostnames()
+
+    # --------------------------------------------------------------------
+    def cleanup(self):
+        ''' 
+        Close all active connections, shutdown threads, etc.
+        '''
+        if self.pool:
+            logger.debug('halting threads')
+            self.pool.haltWork()
+            self.pool = None
+        if self.db:
+            logger.debug('closing database connection')
+            self.db.close()
+            self.db = None
+
         
     # --------------------------------------------------------------------
     def connect(self):
@@ -614,7 +637,7 @@ class GPFilespace:
 
         try:
             logger.info("getting config")
-            array = GpArray.initFromCatalog(self.dburl)
+            self.array = GpArray.initFromCatalog(self.dburl)
         except Exception, e:
             raise GPDatabaseError(str(e))
 
@@ -625,9 +648,17 @@ class GPFilespace:
         self.hosts    = None
         self.config   = None
 
+        # Setup a workerpool, used by the hostcache
+        hosts = set(self.array.get_hostlist())
+        workers = min(DEFAULT_NUM_WORKERS, len(hosts))
+        self.pool = WorkerPool(numWorkers = workers)
+
+        # Setup a hostcache
+        self.hostcache = gphostcache.GpHostCache(self.array, self.pool)
+
         # Loop through configuration and add segments to datastructures
         # We save the costly hostname lookup step until later.
-        for seg in array.getDbList():
+        for seg in self.array.getDbList():
 
             # Keep the primary master at the front of the list
             if seg.isSegmentMaster():  
@@ -671,36 +702,23 @@ class GPFilespace:
         if not self.segments or len(self.segments) == 0:
             raise GPError("gp_configuration is empty")
 
-        # Progress indicator: 
-        progress = 0
-        done     = 0.0
-        each     = 78.0 / len(self.segments)
+        # Todo: Replace existing GPHost with more compatable gppylib interfaces
+        # for the moment populate our local versions based on a GpHostCache
+        for host in self.hostcache.get_hosts():
+            for db in host.dbs:
+                seg = self.segments[db.getSegmentDbId()]
+                nic = seg.getSegmentAddress()
+                
+                if nic not in self.nics:
+                    hostname = host.hostname
+                    self.nics[nic] = hostname
+                else:
+                    hostname = self.nics[nic]
 
-        # Loop through all the segments to get the nics
-        for dbid in self.segments:
-            seg = self.segments[dbid]
-            nic = seg.getSegmentAddress()
-            if nic not in self.nics:
-                # need to improve this
-                for i in range(CLUSTERSIZE):  ## DEBUG: mimic a large cluster
-                    hostname = runcmd(['ssh', nic, 'hostname'])
-                self.nics[nic] = hostname
-            else:
-                hostname = self.nics[nic]
-
-            # Build the host => segment list mapping
-            if not hostname in self.hosts:
-                self.hosts[hostname] = GPHost(nic, hostname)
-            self.hosts[hostname].add_segment(seg)
-
-            # progress reporting
-            done += each
-            while (done > progress):
-                progress += 1
-                sys.stdout.write(".")
-                sys.stdout.flush()
-        sys.stdout.write("\n")
-        sys.stdout.flush()
+                # build the host => segment list mapping
+                if not hostname in self.hosts:
+                    self.hosts[hostname] = GPHost(nic, hostname)
+                self.hosts[hostname].add_segment(seg)
 
         logger.debug('nics: ' + str(self.nics))
         logger.debug('hosts: ' + str(self.hosts))
@@ -714,9 +732,6 @@ class GPFilespace:
         "configurations" of simalar shape - all have the same number of
         primaries/mirrors in the same locations.
         '''
-        if not self.nics:
-            self.resolve_hostnames()
-
         configs = {}
         for h in self.hosts:
             host = self.hosts[h]
@@ -754,12 +769,22 @@ class GPFilespace:
         create the filespace using the generated config file.
         '''
         
-        # test that the output directory is writeable
+        # determine output path location based on input directory.
+        filename = "gpfilespace_config_" + strftime("%Y%m%d_%H%M%S")
+        if not os.access(self.dir, os.F_OK):
+            (self.dir, filename) = os.path.split(self.dir)
+            if len(self.dir) == 0:
+                self.dir = os.getcwd()
+        if not os.access(self.dir, os.F_OK):
+            logger.error('No such file or directory: "%s"' % self.dir)
+            logger.error('Unable to create config file')
+            sys.exit(1)
         if not os.access(self.dir, os.W_OK):
             logger.error('Directory not writeable: "%s"' % self.dir)
             logger.error('Unable to create config file')
             sys.exit(1)
-            
+        filename = os.path.join(self.dir, filename)
+
         #question = "Would you like to configure a new Filespace?  (Y|N)"
         #if not getbool("> ", question, "Y"):
         #    raise KeyboardInterrupt()
@@ -797,8 +822,8 @@ class GPFilespace:
             nhosts   = len(config.hosts)
             nprimary = len(config.primaries)
             nmirror  = len(config.mirrors)
-            print "Your system has %d hosts with %d primary and %d mirror segments per host." \
-                % (nhosts, nprimary, nmirror)
+            print "Your system has %d hosts with %d primary and %d mirror " \
+                "segments per host." % (nhosts, nprimary, nmirror)
 
         # For every configuration we need to setup paths for the filespace
         # Loop through each one and prompt for paths.
@@ -851,8 +876,6 @@ class GPFilespace:
         logger.debug("%s %s" % (prompt, masterdir))
 
         # Write out the information to a configuration file
-        filename = os.path.join(self.dir, "gpfilespace_config_" + 
-                                strftime("%Y%m%d_%H%M%S"))
         logger.debug("Creating Config File: %s" % filename)
         print "Creating configuration file...",
 
@@ -918,14 +941,6 @@ To add this filespace to the database please run the command:
             config = open(self.options.config)
         except IOError, e:
             raise GPError(str(e))
-
-        # We are recalculating our nic and host lookups from the config 
-        # file.
-        self.hosts = {}
-        if not self.nics:
-            self.nics = {}
-
-        # logger.debug('segs: ' + str(self.segments))
         
         # First line in file is the filespace name, remaining lines are
         # specify hostname, dbid, and a path:
@@ -938,9 +953,15 @@ To add this filespace to the database please run the command:
         for line in config:
             lineno += 1
 
+            # skip blank lines, none are generated by output, but if a user has
+            # added some it's good to be a little tollerant.
+            line = line.strip()
+            if len(line) == 0:
+                continue
+
             # It may be nice to add a more robust parsing, but this is
             # sufficient for now.
-            values = map(lambda x: x.strip(), line.strip().split(':'))
+            values = map(lambda x: x.strip(), line.split(':'))
             if (len(values) == 2 and values[0] == 'filespace'):
                 fspacename = values[1]
                 continue
@@ -959,25 +980,6 @@ To add this filespace to the database please run the command:
                               % (lineno, line))
             seg = self.segments[dbid]
             
-            # The hostname lookup can be expensive on large clusters, so we 
-            # assume that the values inserted by the config file generation 
-            # are still valid. If this assumption is somehow false we should 
-            # error gracefully. 
-            #
-            # It is required that a single nic->hostname must be consistent 
-            # within the config file.  
-            #
-            nic = seg.getSegmentAddress()
-            if nic not in self.nics:
-                self.nics[nic] = host
-            elif self.nics[nic] != host:
-                raise GPError("Network interface mismatch for host: "
-                              "%s => (%s, %s)" % (nic, host, self.nics[nic]))
-            
-            if not host in self.hosts:
-                self.hosts[host] = GPHost(nic, host)
-            self.hosts[host].add_segment(seg)
-
             # Assign the path for the segment, will throw GPError if the
             # segment already has a path associated with it.
             try:
@@ -1074,7 +1076,9 @@ Once a filespace is created, it can be used by one or more tablespaces.
         else:
             gpf.execute_config()
 
+        gpf.cleanup()
         logger.info("Done")
+        sys.exit(0)
         
     # An expected error
     except GPError, e:
