@@ -41,11 +41,13 @@
  * than a couple of kilobytes).
  * 
  * MPP-3628: explain-analyze of large subtrees can generate big messages.
+ *
+ * MPP-7971: allow AO to return information about large numbers of partitions.
  */
 #define VALID_LONG_MESSAGE_TYPE(id) \
 	((id) == 'T' || (id) == 'D' || (id) == 'd' || (id) == 'V' || \
 	 (id) == 'E' || (id) == 'N' || (id) == 'A' || (id) == 'Y' || \
-	 (id) == 'y')
+	 (id) == 'y' || (id) == 'o')
 
 
 static void handleSyncLoss(PGconn *conn, char id, int msgLength);
