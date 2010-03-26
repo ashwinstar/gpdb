@@ -53,7 +53,17 @@ GP_UNIQUE_COMMAND=gpsyncmaster
 
 findCmdInPath() {
 		cmdtofind=$1
-
+		
+		if [ $cmdtofind = 'awk' ] && [ `uname` = SunOS ]; then
+			if [ -f "/usr/xpg4/bin/awk" ]; then
+				CMD=/usr/xpg4/bin/awk
+				echo $CMD
+				return
+			else
+				echo $cmdtofind
+				return "Problem in gp_bash_functions, command '/usr/xpg4/bin/awk' not found. You will need to edit the script named gp_bash_functions.sh to properly locate the needed commands for your platform."			
+			fi
+		fi
 		for pathel in ${CMDPATH[@]}
 				do
 				CMD=$pathel/$cmdtofind
