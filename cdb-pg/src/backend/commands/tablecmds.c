@@ -3679,6 +3679,7 @@ ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOi
 	TableOidInfo * oids = NULL;
 	bool is_partition = false;
 	bool is_data_remote = (RelationIsExternal(rel) || RelationIsForeign(rel));
+	Oid			relid = RelationGetRelid(rel);
 	
 	cdb_sync_oid_to_segments();
 
@@ -3718,8 +3719,78 @@ ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOi
 	/* Phase 2: update system catalogs */
 	ATRewriteCatalogs(&wqueue, ocount, oids);
 
-	/* Phase 3: scan/rewrite tables as needed. if data is external, no need to rewrite nor add toast */
-	if(!is_data_remote)
+	/*
+	 * Build OID map info.
+	 *
+	 * If we've recursed (i.e., expanded) an ALTER TABLE SET DISTRIBUTED
+	 * command from a master table to its children, then we need to extract
+	 * the OID map (used to ensure that all segments map old index OIDs to
+	 * new index OIDs) for each of the sub commands and put them in the
+	 * master command. This is because we only dispatch the command on the
+	 * master table to the segments, not each expanded command. We expect
+	 * the segments to do the same expansion.
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		List *umap = NIL; /* the full OID map for all relations */
+		ListCell *lc;
+		AlterTableCmd *mastercmd = NULL; /* the command which was expanded */
+
+		/* 
+		 * Iterate over the work queue looking for SET WITH DISTRIBUTED
+		 * statements.
+		 */
+		foreach(lc, wqueue)
+		{
+			ListCell *lc2;
+			AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(lc);
+
+			/* AT_PASS_MISC is used for SET DISTRIBUTED BY */
+			List *subcmds = (List *)tab->subcmds[AT_PASS_MISC];
+
+			foreach(lc2, subcmds)
+			{
+				AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lc2);
+
+				if (cmd->subtype == AT_SetDistributedBy)
+				{
+					if (!mastercmd)
+					{
+						Assert(tab->relid == relid);
+						mastercmd = cmd;
+					}
+
+					/*
+					 * cmd->def stores the data we're sending to the QEs.
+					 * The second element is where we stash QE data to drive
+					 * the command. The second element of qe_data is our
+					 * OID map. See ATExecSetDistributedBy().
+					 *
+					 * Yes, this is begging to be improved.
+					 */
+					List *data = (List *)cmd->def;
+					List *qe_data = lsecond(data);
+					List *oidmap = lsecond(qe_data);
+
+					umap = list_concat(umap, oidmap);
+				}
+			}
+		}
+
+		/* Finally, push it all back into the master command */
+		if (mastercmd)
+		{
+			List *qe_data = lsecond((List *)mastercmd->def);
+			lsecond(qe_data) = umap;
+
+		}
+	}
+
+	/* 
+	 * Phase 3: scan/rewrite tables as needed. If the data is in an external
+	 * table, no need to rewrite it or to add toast.
+	 */
+	if (!is_data_remote)
 	{
 		ATRewriteTables(&wqueue, ocount, oids);
 
@@ -11733,6 +11804,24 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
 	return need_rebuild;
 }
 
+/* Build a human readable tag for what we're doing */
+static char *
+make_distro_str(List *lwith, List *ldistro)
+{
+    char       *distro_str = "SET WITH DISTRIBUTED BY";
+
+	if (lwith && ldistro)
+		distro_str = "SET WITH DISTRIBUTED BY";
+	else
+	{
+		if (lwith)
+			distro_str = "SET WITH";
+		else if (ldistro)
+			distro_str = "SET DISTRIBUTED BY";
+	}
+	return pstrdup(distro_str); /* don't return a stack address */
+}
+
 /*
  * ALTER TABLE SET DISTRIBUTED BY
  *
@@ -11760,7 +11849,6 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	bool		is_ao = false;
     bool        is_aocs = false;
     char        relstorage = RELSTORAGE_HEAP;
-    char       *distro_str = "SET WITH DISTRIBUTED BY";
 	List	   *hidden_types = NIL; /* types we need to build for dropped columns */
 
 	/* Permissions checks */
@@ -11768,6 +11856,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
 					   RelationGetRelationName(rel));
 
+	/* Can't ALTER TABLE SET system catalogs */
 	if (IsSystemRelation(rel))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
@@ -11778,21 +11867,14 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	Assert(PointerIsValid(node));
 	Assert(IsA(node, List));
 
-	/* linitial is WITH definition, lsecond is distro */
 	lprime = (List *)node;
 
+	/* 
+	 * First element is the WITH clause, second element is the actual
+	 * distribution clause.
+	 */
 	lwith   = (List *)linitial(lprime);
 	ldistro = (List *)lsecond(lprime);
-
-	if (lwith && ldistro)
-		distro_str = "SET WITH DISTRIBUTED BY";
-	else
-	{
-		if (lwith)
-			distro_str = "SET WITH";
-		else if (ldistro)
-			distro_str = "SET DISTRIBUTED BY";
-	}
 
 	if (Gp_role == GP_ROLE_UTILITY)
 		ereport(ERROR,
@@ -12367,13 +12449,15 @@ l_distro_fini:
 
 	/* MPP-6929: metadata tracking */
 	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		char *distro_str = make_distro_str(lwith, ldistro);
 		/* don't check relkind - must be a table */
 		MetaTrackUpdObject(RelationRelationId,
 						   tarrelid,
 						   GetUserId(),
 						   "ALTER", distro_str
 				);
-
+	}
 
 }
 
