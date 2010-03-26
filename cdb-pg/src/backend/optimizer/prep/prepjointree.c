@@ -65,7 +65,6 @@ static void fix_append_rel_relids(List *append_rel_list, Index varno,
 					  Relids subrelids);
 static Node *find_jointree_node_for_rel(Node *jtnode, int relid);
 
-
 /*
  * pull_up_IN_clauses
  *
@@ -306,7 +305,10 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 
     /* CDB: Stash subquery jointree relids before flattening subqueries. */
     subroot->currlevel_relids = get_relids_in_jointree((Node *)subquery->jointree);
-	
+    
+    /* Ensure that jointree has been normalized. See normalize_query_jointree_mutator() */
+    AssertImply(subquery->jointree->fromlist, list_length(subquery->jointree->fromlist) == 1);
+    
 	/* CDB: Clear fallback, but just use segment count from parent. */
 	subroot->mpp_trying_fallback_plan = false;
 	subroot->cdbpath_segments = root->cdbpath_segments;
