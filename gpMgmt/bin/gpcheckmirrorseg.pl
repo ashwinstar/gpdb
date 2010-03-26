@@ -1140,8 +1140,10 @@ if (1)
 										 "_mirr.sh");
 
 		# use openssl to construct an md5 hash for every file
+		# Note: use mypresh*1*, because this script runs on the copy
+		# of the file on the segment
 		my $cmd_template = 
-			'find MYDIR -type f | xargs perl MYPRESH  ' .
+			'find MYDIR -type f | xargs perl MYPRESH1  ' .
 			'| ' . $ignore_cmd . " " .
 			'| sort  ' .
 			'| perl -i -ple \'s|MYDIR||gm \' ' . 
