@@ -2,65 +2,73 @@ COMMAND NAME: gpdetective
 
 Collects diagnostic information from a running Greenplum Database system.
 
+
 *****************************************************
 SYNOPSIS
 *****************************************************
 
-
-gpdetective [-h <master_hostname>] [-p <master_port>] 
-[-U <gp_superuser>] [-P <password>] 
-[--start_date <number_of_days> | <YYYY-MM-DD>]
+gpdetective [-h <master_hostname>] [-p <master_port>] [-U <gp_superuser>] 
+[-P <password>] [--start_date <number_of_days> | <YYYY-MM-DD>] 
+[--end_date | <YYYY-MM-DD>] [--diagnostics=a | n | s | o | c] 
+[--logs=a | n | <dbid_list>] [--cores=t | f] [--pg_dumpall=t | f] 
+[--pg_dump_options=<options>] [--tempdir=<temp_dir>] [--connect=t | f]
 
 gpdetective -? 
 
 gpdetective -v
 
+
 *****************************************************
 DESCRIPTION
 *****************************************************
 
-The gpdetective utility collects information from a running 
-Greenplum Database system and creates a bzip2-compressed tar output 
-file. This output file can then be sent to Greenplum Customer Support 
-to help with the diagnosis of Greenplum Database errors or system failures. 
+The gpdetective utility collects information from a running Greenplum 
+Database system and creates a bzip2-compressed tar output file. This 
+output file can then be sent to Greenplum Customer Support to help with 
+the diagnosis of Greenplum Database errors or system failures. 
 The gpdetective utility runs the following diagnostic tests:
 
-* Runs gpstate to check the system status
+* gpstate to check the system status
 
-* Runs gpcheckos to make sure the recommended OS settings are 
-  set on all hosts
+* gpcheckos to make sure the recommended OS settings are set on 
+  all hosts
 
-* Runs pg_dumpall to capture the schema DDL for all databases
+* pg_dumpall to capture the schema DDL for all databases
 
-* Runs gpcheckcat and gpcheckdb to check the system catalog 
-  tables for inconsistencies
+* gpcheckcat and gpcheckdb to check the system catalog tables for 
+  inconsistencies
 
-And secures the following information:
+* pg_dump to capture a backup of the database in a single (non-parallel)
+  dump file (you can configure this output by using pg_dump_options)
+
+gpdetective captures the following information:
 
 * The master and segment postgresql.conf configuration file
 
-* The master and segment server log files (provided that the 
-  log files are located in the default location)
+* The master and segment server log files (provided that the log files 
+  are located in the default location)
 
-* Core files (if any)
+* Core files (optional)
 
 * Array configuration information
 
 * Schema information
 
-The bzip2-compressed tar output file containing this information is created 
+* A backup of the database
+
+A bzip2-compressed tar output file containing this information is created 
 in the current directory with a file name of gpdetective<timestamp>.tar.bz2.
+
 
 *****************************************************
 OPTIONS
 *****************************************************
 
-
 -h <master_hostname>
 
-The host name of the machine on which the Greenplum master 
-database server is running. If not specified, reads from the environment 
-variable PGHOST or defaults to localhost.
+The host name of the machine on which the Greenplum master database server 
+is running. If not specified, reads from the environment variable PGHOST 
+or defaults to localhost.
 
 
 -p <master_port>
@@ -70,24 +78,83 @@ listening for connections. If not specified, reads from the environment
 variable PGPORT or defaults to 5432.
 
 
+-U <gp_superuser>
+
+The Greenplum database superuser role name to connect as (typically 
+gpadmin). If not specified, reads from the environment variable 
+PGUSER or defaults to the current system user name.
+
+
 -P <password>
 
-If Greenplum Database is configured to use password authentication, 
-you must also supply the database superuser password. If not specified, 
-reads from ~/.pgpass if it exists.
+If Greenplum Database is configured to use password authentication, you 
+must also supply the database superuser password. If it is not specified, 
+it reads from ~/.pgpass if it exists.
 
 
 --start_date <number_of_days> | <YYYY-MM-DD>
 
-Sets the start date for the diagnostic information collected.  Can 
+Sets the start date for the diagnostic information collected. It can 
 specify either the number of days prior, or an explicit past date.
 
 
--U <gp_superuser>
+--end_date | <YYYY-MM-DD>
 
-The Greenplum database superuser role name to connect as 
-(typically gpadmin). If not specified, reads from the environment 
-variable PGUSER or defaults to the current system user name.
+Sets the end date for the diagnostic information collected. The 
+collected information ends at 00:00:00 of the specified date. 
+
+
+--diagnostics=a | n | s | o | c
+
+Specifies the diagnostics that are run on the system. Enter either all 
+(a), none (n), operating system (o) diagnostics, or catalog (c) 
+diagnostics on the master catalog table. The default is all.
+
+
+--logs=a | n | <dbid_list>
+
+Specifies the segment log file(s) to retrieve. Enter "a" to get logs 
+from all segments and mirrors, "n" to skip retrieval, or enter the 
+database ID of the segment or master from which you want to get logs. 
+You can also enter a range of IDs by entering a dash (-) between the 
+IDs (for example, entering "3-6" retrieves logs from databases with 
+the IDs 3, 4, 5, and 6). The default is [a]ll.
+
+
+--cores=t | f 
+
+Determines whether or not the utility retrieves core files. Enter "t" 
+to get core files, or "f" to skip the retrieval of these files. The 
+default is [t]rue.
+
+
+--pg_dumpall=t | f
+
+Specifies whether of not to run pg_dumpall. The pg_dumpall utility 
+extracts all databases in a Greenplum Database system to a single script 
+file or other archive file. Enter "t" to run pg_dumpall, or "f" to 
+prevent this utility from running. The default is [t]rue.
+
+
+--pg_dump_options=<options>
+
+Specifies the pg_dump options to use in conjunction with the gpdetective 
+utility. See pg_dump for a complete list of valid pg_dump 
+options. 
+
+
+--tempdir=<temp_dir>
+
+Specifies the temporary directory that gpdetective uses store 
+diagnostics information. The default value is determined by the 
+$TEMP, $TMP and $TMPDIR environment variables.
+
+
+--connect=t | f
+
+Allows or denies gpdetective from making a database connection. If you 
+enter "f" (false), gpdetective only gathers information it can obtain 
+without making a connection to the database. The default is [t]rue.
 
 
 -v (show utility version)
@@ -123,4 +190,4 @@ gpdetective -h mdw -p 54320 - U gpadmin -P mypassword
 SEE ALSO
 *****************************************************
 
-gpstate, gpcheckos, pg_dumpall
+gpstate, gpcheckos, pg_dumpall, pg_dump
