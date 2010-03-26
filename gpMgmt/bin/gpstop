@@ -70,11 +70,10 @@ class SegStopStatus():
 class GpStop():
     
     ######
-    def __init__(self,mode,cancel_active_connections,master_datadir=None,
+    def __init__(self,mode,master_datadir=None,
                  parallel=DEFAULT_NUM_WORKERS,quiet=False,masteronly=False,sighup=False,
                  interactive=False,stopstandby=False,restart=False):
         self.mode=mode
-        self.cancel_active_connections=cancel_active_connections        
         self.master_datadir=master_datadir
         self.pool = None
         self.parallel=parallel
@@ -186,10 +185,7 @@ class GpStop():
         ''' shutsdown the master '''
         
         self.conn = dbconn.connect(self.dburl, utility=True)        
-        if masterOnly:
-            self._stop_master_only_checks()
-        else:
-            self._stop_master_checks()
+        self._stop_master_checks()
             
         self.conn.close()
     
@@ -202,22 +198,7 @@ class GpStop():
         logger.debug("Successfully shutdown the Master instance in admin mode")
     
     
-    ######
-    def _stop_master_only_checks(self):
-        active_pids = catalog.getActiveUserPIDs(conn)
-        
-        if len(active_pids) > 0:            
-            if self.cancel_active_connections:
-                catalog.cancelBackendPIDs(self.conn)                
-            else:
-                raise GpStopError("There are %d active connections to the database\n"\
-                                  "Option -C not supplied to cancel backend process")
-        
-        total_connections=len(catalog.getUserPIDs(conn))
-        logger.info("There are %d connections to the database" % total_connections)
-        if total_connections > 0:            
-            logger.info("Setting shutdown mode to immediate")
-            self.mode='immediate'
+
     
     
     ######
@@ -555,8 +536,6 @@ def parseargs():
     optgrp3.add_option('-u', dest="request_sighup", action='store_true',
                         help="upload new master postgresql.conf settings, does not stop Greenplum array,"\
                              "issues a signal to the master segment potmaster process to reload")
-    optgrp3.add_option('-C', dest="cancel_active_connections", action='store_true',
-                        help='calls pg_cancel_backend function for each active connection prior to shutdown')
     
     
     optgrp3.add_option('-B', '--parallel', type="int", default=64, metavar="<parallel_processes>",
@@ -641,7 +620,6 @@ def main():
         logger.info("Starting gpstop with args: '%s'" % ' '.join(sys.argv[1:]))
         
         gpstop = GpStop(options.mode,
-                        options.cancel_active_connections,
                         master_datadir=options.master_data_directory,
                         parallel=options.parallel,
                         quiet=options.quiet,
