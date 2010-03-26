@@ -312,18 +312,90 @@ sub get_presh2_txt
 #	} # else heap
 #	else
 #	{
-#		my $filedump = "MYFILEDUMP";
+#		my $fh;
 #
-#		if (length($filedump))
+#		open ($fh, "<", $filnam) or die ("cannot open $filnam: $!");
+#
+#		my $bufsiz = 32768;
+#		my $buf;
+#		my $realsiz;
+#
+#		while (1)
 #		{
-#			`$filedump -b -M $filnam`;
-#		}
-#		else
-#		{
-#			print "no filedump - use cat\n";
-#			`cat $filnam`;
+#			$realsiz = read($fh, $buf, $bufsiz);
+#
+#			if ($realsiz < $bufsiz)
+#			{
+#				print $buf;
+#				last;
+#			}
+#
+#			# bits            64 16         
+#			# bytes            8 2
+#			my @foo = unpack("L2 S S S S S S ", $buf);
+#
+#			shift @foo; # discard XLogRecPtr
+#			shift @foo;
+#			
+#			shift @foo; # discard pd_tli, pd_flags
+#			shift @foo;
+#			
+#			my $pd_lower = shift @foo;
+#			my $pd_upper = shift @foo;
+#			my $pd_special = shift @foo;
+#			
+#			my $pd_pagesize_version = shift @foo;
+#			
+#			# print "page size: ", $pd_pagesize_version & 0xFF00, "\n";
+#			# print "page version: ", $pd_pagesize_version & 0x00FF, "\n";
+#			
+#			my $szofpagehdrdata = 8 + (6 * 2);
+#			
+#			my $maxoffsetnum = ($pd_lower <= $szofpagehdrdata) ? 0 : 
+#				# divide by sizeof ItemIdData
+#				(($pd_lower - $szofpagehdrdata) / 4 ); 
+#			
+#			my $twomax = 2 * $maxoffsetnum ;
+#
+#			my @baz = unpack("L2 S S S S S S S$twomax", $buf);			
+#			
+#			for my $jj (1..8)
+#			{
+#				shift @baz
+#					;
+#			}
+#
+#			my $ii = 0;
+#			
+#			while ($ii < scalar(@baz))
+#			{
+#				my $s1 = $baz[$ii];
+#				my $s2 = $baz[$ii+1];
+#
+#				$ii += 2;
+#			
+#				my $lp_off = $s1;
+#				$lp_off = $lp_off & 0x7FFF;
+#
+#				my $lp_flags = 0;
+#
+#				my $lp_len = $s2 >> 1;
+#				
+#				my @ggg = unpack("x$lp_off S11 c c  ", $buf);
+#
+#				# clear infomask flags
+#				$ggg[10] = 0;
+#
+#				my $fixbuf = pack("S11 c c  ", @ggg);
+#				substr($buf, $lp_off, length($fixbuf)) = $fixbuf;
+#
+#			} # end while
+#
+#			print  $buf;
+#
 #		}
 #		
+#		close $fh;
 #	}
 #}
 EOF_bigstr
