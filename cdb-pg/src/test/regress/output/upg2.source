@@ -110,6 +110,7 @@ create table public.pg_user_mapping(like pg_catalog.pg_user_mapping);
 create table public.gp_fastsequence(like pg_catalog.gp_fastsequence);
 create table public.gp_global_sequence(like pg_catalog.gp_global_sequence);
 create table public.gp_relation_node(like pg_catalog.gp_relation_node);
+create table public.gp_distribution_policy(like pg_catalog.gp_distribution_policy);
 -- indexes
 create unique index gp_configuration_content_definedprimary_index on public.gp_configuration(content, definedprimary);
 create        index gp_db_interfaces_dbid_index on public.gp_db_interfaces(dbid);
@@ -1761,6 +1762,8 @@ insert into public.gp_global_sequence select 0 from generate_series(1,15);
 select gp_persistent_build_db(true);
 psql:@abs_builddir@/sql/loadcat34.sql:120: ERROR:  Persistent database entry 'base/17831' already exists in state 'Created' (cdbpersistentdatabase.c:773)
 begin;
+-- Delete the distribution policy from bitmap indexes.
+delete from public.gp_distribution_policy using pg_catalog.pg_class c, pg_catalog.pg_namespace n where c.relnamespace=n.oid and n.nspname='pg_bitmapindex' and localoid=c.oid;
 -- Create new 3.4 views in pg_catalog
 set search_path='pg_catalog';
 CREATE VIEW public.pg_user_mappings AS SELECT U.oid AS umid, S.oid AS srvid, S.srvname AS srvname, U.umuser AS umuser, CASE WHEN U.umuser = 0 THEN 'public' ELSE A.rolname END AS usename, CASE WHEN pg_has_role(S.srvowner, 'USAGE') OR has_server_privilege(S.oid, 'USAGE') THEN U.umoptions ELSE NULL END AS umoptions FROM pg_user_mapping U LEFT JOIN pg_authid A ON (A.oid = U.umuser) JOIN pg_foreign_server S ON (U.umserver = S.oid);
@@ -2518,16 +2521,16 @@ select * from pg_catalog.pg_amop;
 (0 rows)
 
 -- pg_tablespace
-select oid, spcname, spcowner, spcfsoid from pg_catalog.pg_tablespace
+select oid, spcname, spcowner, spcfsoid from pg_catalog.pg_tablespace where oid < 10000
 except all
-select oid, spcname, spcowner, spcfsoid from public.pg_tablespace;
+select oid, spcname, spcowner, spcfsoid from public.pg_tablespace where oid < 10000;
  oid | spcname | spcowner | spcfsoid 
 -----+---------+----------+----------
 (0 rows)
 
-select oid, spcname, spcowner, spcfsoid from public.pg_tablespace
+select oid, spcname, spcowner, spcfsoid from public.pg_tablespace where oid < 10000
 except all
-select oid, spcname, spcowner, spcfsoid from pg_catalog.pg_tablespace;
+select oid, spcname, spcowner, spcfsoid from pg_catalog.pg_tablespace where oid < 10000;
  oid | spcname | spcowner | spcfsoid 
 -----+---------+----------+----------
 (0 rows)
@@ -2642,7 +2645,8 @@ drop table
   public.pg_resourcetype,
   public.pg_resqueuecapability,
   public.pg_stat_last_shoperation,
-  public.gp_fastsequence;
+  public.gp_fastsequence,
+  public.gp_distribution_policy;
 drop view
    public.pg_partitions,
    public.pg_partitions_v33,

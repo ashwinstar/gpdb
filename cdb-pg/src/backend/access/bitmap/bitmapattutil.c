@@ -62,7 +62,6 @@ _bitmap_create_lov_heapandindex(Relation rel,
 	Oid			idxid;
 	int			indattrs;
 	int			i;
- 	GpPolicy   policy;
 
 	Assert(rel != NULL);
 
@@ -141,9 +140,6 @@ _bitmap_create_lov_heapandindex(Relation rel,
 	 */
 	tupDesc = _bitmap_create_lov_heapTupleDesc(rel);
 
- 	MemSet(&policy, 0, sizeof(policy));
- 	policy.ptype = POLICYTYPE_PARTITIONED;
-
 	Assert(rel->rd_rel != NULL);
 
   	heapid =
@@ -152,7 +148,8 @@ _bitmap_create_lov_heapandindex(Relation rel,
 								 *lovHeapOid, rel->rd_rel->relowner,
 								 tupDesc, RELKIND_RELATION, RELSTORAGE_HEAP,
 								 rel->rd_rel->relisshared, false, 0,
-								 ONCOMMIT_NOOP, &policy, (Datum)0, true,
+								 ONCOMMIT_NOOP, NULL /* GP Policy */,
+								 (Datum)0, true,
 								 &lovComptypeOid);
 	Assert(heapid == *lovHeapOid);
 

@@ -117,6 +117,7 @@ create table public.pg_user_mapping(like pg_catalog.pg_user_mapping);
 create table public.gp_fastsequence(like pg_catalog.gp_fastsequence);
 create table public.gp_global_sequence(like pg_catalog.gp_global_sequence);
 create table public.gp_relation_node(like pg_catalog.gp_relation_node);
+create table public.gp_distribution_policy(like pg_catalog.gp_distribution_policy);
 
 -- indexes
 create unique index gp_configuration_content_definedprimary_index on public.gp_configuration(content, definedprimary);
@@ -1104,13 +1105,13 @@ except all
 select * from pg_catalog.pg_amop;
 
 -- pg_tablespace
-select oid, spcname, spcowner, spcfsoid from pg_catalog.pg_tablespace
+select oid, spcname, spcowner, spcfsoid from pg_catalog.pg_tablespace where oid < 10000
 except all
-select oid, spcname, spcowner, spcfsoid from public.pg_tablespace;
+select oid, spcname, spcowner, spcfsoid from public.pg_tablespace where oid < 10000;
 
-select oid, spcname, spcowner, spcfsoid from public.pg_tablespace
+select oid, spcname, spcowner, spcfsoid from public.pg_tablespace where oid < 10000
 except all
-select oid, spcname, spcowner, spcfsoid from pg_catalog.pg_tablespace;
+select oid, spcname, spcowner, spcfsoid from pg_catalog.pg_tablespace where oid < 10000;
 
 -- gp_fault_strategy
 select fault_strategy from public.gp_fault_strategy
@@ -1214,7 +1215,8 @@ drop table
   public.pg_resourcetype,
   public.pg_resqueuecapability,
   public.pg_stat_last_shoperation,
-  public.gp_fastsequence;
+  public.gp_fastsequence,
+  public.gp_distribution_policy;
 drop view
    public.pg_partitions,
    public.pg_partitions_v33,

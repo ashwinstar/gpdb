@@ -121,6 +121,8 @@ select gp_persistent_build_db(true);
 
 begin;
 
+-- Delete the distribution policy from bitmap indexes.
+delete from @gpupgradeschemaname@.gp_distribution_policy using pg_catalog.pg_class c, pg_catalog.pg_namespace n where c.relnamespace=n.oid and n.nspname='pg_bitmapindex' and localoid=c.oid;
 
 -- Create new 3.4 views in pg_catalog
 set search_path='pg_catalog';
