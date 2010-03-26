@@ -446,7 +446,7 @@ bool MirroredBufferPool_Truncate(
 	MirroredBufferPoolOpen *open,
 				/* The open struct. */
 
-	int32		position)
+	int64		position)
 				/* The position to cutoff the data. */
 {
 	

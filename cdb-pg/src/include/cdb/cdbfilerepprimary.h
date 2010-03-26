@@ -113,7 +113,7 @@ extern int FileRepPrimary_MirrorTruncate(
 			  FileRepRelationType_e fileRepRelationType,
 				/* */
 
-			  int32 position);
+			  int64 position);
 				/* */
 
 /*

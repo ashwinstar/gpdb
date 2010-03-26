@@ -135,6 +135,6 @@ extern bool MirroredBufferPool_Truncate(
 	MirroredBufferPoolOpen *open,
 				/* The open struct. */
 
-	int32		position);
+	int64		position);
 
 #endif   /* CDBMIRROREDBUFFERPOOL_H */

@@ -1330,7 +1330,8 @@ FileRepMirror_RunConsumer(void)
 				if (status < 0) {
 					ereport(LOG,
 							(errcode_for_file_access(),
-							 errmsg("ERROR(filerep): could not truncate file : %m"), 
+							 errmsg("ERROR(filerep): could not truncate file to position:'" INT64_FORMAT "' : %m",
+							 fileRepMessageHeader->fileRepOperationDescription.truncate.position), 
 							 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 											   fileRepMessageHeader->fileRepRelationType,
 											   fileRepMessageHeader->fileRepOperation),

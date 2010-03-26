@@ -583,7 +583,7 @@ typedef struct FileRepOperationDescriptionOpen_s {
  *	 
  */
 typedef struct FileRepOperationDescriptionTruncate_s {
-	int32			position;
+	int64			position;
 	/* the position to cutoff the data */
 	
 } FileRepOperationDescriptionTruncate_s;

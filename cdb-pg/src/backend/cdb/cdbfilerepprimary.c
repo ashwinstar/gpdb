@@ -302,13 +302,16 @@ FileRepPrimary_ConstructAndInsertMessage(
 	ereport(LOG,
 			(errmsg("LOG(filerep): P_ConstructAndInsertMessage "
 					"msg header count:'%d' msg header crc:'%u' position insert:'%p' "
-					"msg length:'%u' open file flags:'%x' ",
+					"msg length:'%u' open file flags:'%x' "
+					"truncate position:'" INT64_FORMAT "' ",
 					fileRepMessageHeader->messageCount,
 					fileRepMessageHeaderCrcLocal,
 					msgPositionInsert,
 					msgLength,
 					(fileRepOperation == FileRepOperationOpen)?
 					fileRepOperationDescription.open.fileFlags:0),
+					(fileRepOperation == FileRepOperationTruncate)?
+					fileRepOperationDescription.truncate.position:0),
 			 FileRep_errdetail(fileRepIdentifier,
 							   fileRepRelationType,
 							   fileRepOperation),
@@ -506,7 +509,7 @@ FileRepPrimary_MirrorTruncate(
 				FileRepRelationType_e fileRepRelationType,
 				  /* */
 								  
-				int32 position) 
+				int64 position) 
 {
 	int status = STATUS_OK;
 	

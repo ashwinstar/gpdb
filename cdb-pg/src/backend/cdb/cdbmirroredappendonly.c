@@ -434,7 +434,7 @@ bool MirroredAppendOnly_Truncate(
 								 MirroredAppendOnlyOpen *open,
 								 /* The open struct. */
 								 
-								 int32		position)
+								 int64		position)
 									/* The position to cutoff the data. */
 {
 	
