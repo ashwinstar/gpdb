@@ -316,6 +316,9 @@ coerce_type(ParseState *pstate, Node *node,
         inputTypeId = fixvar->vartype;
         if (targetTypeId == inputTypeId)
             return node;
+        else if ((targetTypeId == TEXTOID && inputTypeId == VARCHAROID) ||
+        		  (targetTypeId == VARCHAROID && inputTypeId == TEXTOID))
+        	return node;
 		else
 		{
 			/* 

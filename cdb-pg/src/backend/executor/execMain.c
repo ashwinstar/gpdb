@@ -2155,7 +2155,18 @@ ExecCheckPlanOutput(Relation resultRel, List *targetList)
 		if (!attr->attisdropped)
 		{
 			/* Normal case: demand type match */
-			if (exprType((Node *) tle->expr) != attr->atttypid)
+			Oid etype = exprType((Node *) tle->expr);
+
+			if (etype != attr->atttypid)
+			{
+				/* Types don't match.  Let's allow one exception:  varchar and text are basically the same thing */
+				if (etype == VARCHAROID && attr->atttypid == TEXTOID)
+				{
+				}
+				else if (etype == TEXTOID && attr->atttypid == VARCHAROID)
+				{
+				}
+				else
 				ereport(ERROR,
 						(errcode(ERRCODE_DATATYPE_MISMATCH),
 						 errmsg("table row type and query-specified row type do not match"),
@@ -2163,6 +2174,7 @@ ExecCheckPlanOutput(Relation resultRel, List *targetList)
 								   format_type_be(attr->atttypid),
 								   attno,
 								   format_type_be(exprType((Node *) tle->expr)))));
+			}
 		}
 		else
 		{

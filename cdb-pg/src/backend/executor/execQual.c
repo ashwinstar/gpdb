@@ -620,7 +620,11 @@ ExecEvalVar(ExprState *exprstate, ExprContext *econtext,
 			/* can't check type if dropped, since atttypid is probably 0 */
 			if (!attr->attisdropped)
 			{
-				if (variable->vartype != attr->atttypid)
+				if (variable->vartype == TEXTOID && attr->atttypid == VARCHAROID)
+				{}
+				else if (attr->atttypid == VARCHAROID && variable->vartype == TEXTOID)
+				{}
+				else if (variable->vartype != attr->atttypid)
 					ereport(ERROR,
 							(errmsg("attribute %d has wrong type", attnum),
 							 errdetail("Table has type %s, but query expects %s.",
@@ -694,6 +698,10 @@ ExecEvalVar(ExprState *exprstate, ExprContext *econtext,
 
 				if (vattr->atttypid == sattr->atttypid)
 					continue;			/* no worries */
+				if (vattr->atttypid == TEXTOID && sattr->atttypid == VARCHAROID)
+					continue;
+				if (vattr->atttypid == VARCHAROID && sattr->atttypid == TEXTOID)
+					continue;
 				if (!vattr->attisdropped)
 					ereport(ERROR,
 							(errcode(ERRCODE_DATATYPE_MISMATCH),
@@ -3678,6 +3686,11 @@ ExecEvalFieldSelect(FieldSelectState *fstate,
 
 	/* Check for type mismatch --- possible after ALTER COLUMN TYPE? */
 	/* As in ExecEvalVar, we should but can't check typmod */
+	if (fselect->resulttype == TEXTOID && attr->atttypid == VARCHAROID)
+	{}
+	else if (attr->atttypid == VARCHAROID && fselect->resulttype == TEXTOID)
+	{}
+	else
 	if (fselect->resulttype != attr->atttypid)
 		ereport(ERROR,
 				(errmsg("attribute %d has wrong type", fieldnum),
@@ -4252,11 +4265,22 @@ ExecInitExpr(Expr *node, PlanState *parent)
 						 * same.
 						 */
 						if (exprType((Node *) e) != attrs[i]->atttypid)
+						{
+							if (exprType((Node *) e) == TEXTOID && attrs[i]->atttypid == VARCHAROID)
+							{
+								/* Special case:  OK */
+							}
+							else if (exprType((Node *) e) == VARCHAROID && attrs[i]->atttypid == TEXTOID)
+							{
+								/* Special case:  OK */
+							}
+							else
 							ereport(ERROR,
 									(errcode(ERRCODE_DATATYPE_MISMATCH),
 									 errmsg("ROW() column has type %s instead of type %s",
 										format_type_be(exprType((Node *) e)),
 									   format_type_be(attrs[i]->atttypid))));
+						}
 					}
 					else
 					{
