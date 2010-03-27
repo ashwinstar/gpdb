@@ -739,6 +739,16 @@ void PersistentRelation_MarkBufPoolRelationPhysicallyTruncated(
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
+	if (PersistentFileSysObj_BeforePersistenceWork())
+	{	
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "Skipping persistent relation '%s' because we are before persistence work",
+				 relpath(*relFileNode));
+
+		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
+	}
+
 	PersistentRelation_InitScan();
 
 	PersistentFileSysObjName_SetRelationFile(

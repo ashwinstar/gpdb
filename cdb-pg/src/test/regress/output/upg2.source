@@ -1751,17 +1751,6 @@ reindex table public.pg_stat_last_operation;
 reindex table public.pg_type;
 reindex table public.gp_fastsequence;
 reindex table public.gp_relation_node;
--- bootstrap done, re-enable persistent node tables now that they exist.
-set gp_before_persistence_work=false;
-commit;
--- Populate gp_persistent tables:
---   Must be called after REINDEX statements
---   This is expected to fail in upg2 because the persistent tables are already populated.
---   It may be nice to allow it to be callable in a populated database...
-insert into public.gp_global_sequence select 0 from generate_series(1,15);
-select gp_persistent_build_db(true);
-psql:@abs_builddir@/sql/loadcat34.sql:120: ERROR:  Persistent database entry 'base/17831' already exists in state 'Created' (cdbpersistentdatabase.c:773)
-begin;
 -- Delete the distribution policy from bitmap indexes.
 delete from public.gp_distribution_policy using pg_catalog.pg_class c, pg_catalog.pg_namespace n where c.relnamespace=n.oid and n.nspname='pg_bitmapindex' and localoid=c.oid;
 -- Create new 3.4 views in pg_catalog
@@ -1922,6 +1911,15 @@ reindex table public.pg_rewrite;
 set search_path='public';
 DROP FUNCTION public.gpviewcopy(oid, oid);
 commit;
+-- bootstrap done, re-enable persistent node tables now that they exist.
+set gp_before_persistence_work=false;
+-- Populate gp_persistent tables:
+--   Must be called after REINDEX statements
+--   This is expected to fail in upg2 because the persistent tables are already populated.
+--   It may be nice to allow it to be callable in a populated database...
+insert into public.gp_global_sequence select 0 from generate_series(1,15);
+select gp_persistent_build_db(true);
+psql:@abs_builddir@/sql/loadcat34.sql:265: ERROR:  Persistent database entry 'base/17831' already exists in state 'Created' (cdbpersistentdatabase.c:773)
 -- end
 -- We updated the public.pg_attribute manually, but since we will
 -- be doing data operations we need to update in the real catalag too...
@@ -1929,6 +1927,8 @@ alter table public.pg_tablespace add column spcfsoid oid;
 \i @abs_builddir@/sql/loadcat34_sh.sql
 -- -*- mode: sql -*-
 begin;
+-- Prior to persistence tables being functional
+set gp_before_persistence_work=true;
 -- Updates for shared tables, these updates can only occur in ONE
 -- database (template0) otherwise we will end up with duplication
 -- issues.
@@ -1945,7 +1945,7 @@ copy public.pg_resourcetype from '@abs_srcdir@/data//upg2_pg_resourcetype_toadd3
 reindex table public.gp_configuration_history;
 reindex table public.gp_db_interfaces;
 reindex table public.gp_fault_strategy;
-psql:@abs_builddir@/sql/loadcat34_sh.sql:23: NOTICE:  table "gp_fault_strategy" has no indexes
+psql:@abs_builddir@/sql/loadcat34_sh.sql:26: NOTICE:  table "gp_fault_strategy" has no indexes
 reindex table public.gp_interfaces;
 reindex table public.gp_san_configuration;
 reindex table public.gp_segment_configuration;
@@ -1972,6 +1972,7 @@ delete from public.gp_configuration;
 insert into public.gp_fault_strategy(fault_strategy) (select case when (select count(*)=0 from public.gp_segment_configuration where content >= 0 and preferred_role='m') then 'n' else 'f' end);
 -- Add priority=medium for all existing resource queues
 insert into public.pg_resqueuecapability (select oid, 5, 'medium' from public.pg_resqueue);
+set gp_before_persistence_work=false;
 commit;
 -- end
 -- 

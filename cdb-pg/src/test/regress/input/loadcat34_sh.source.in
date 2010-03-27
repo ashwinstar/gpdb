@@ -2,6 +2,9 @@
 
 begin;
 
+-- Prior to persistence tables being functional
+set gp_before_persistence_work=true;
+
 -- Updates for shared tables, these updates can only occur in ONE
 -- database (template0) otherwise we will end up with duplication
 -- issues.
@@ -54,6 +57,8 @@ insert into @gpupgradeschemaname@.gp_fault_strategy(fault_strategy) (select case
 
 -- Add priority=medium for all existing resource queues
 insert into @gpupgradeschemaname@.pg_resqueuecapability (select oid, 5, 'medium' from @gpupgradeschemaname@.pg_resqueue);
+
+set gp_before_persistence_work=false;
 
 commit;
 -- end
