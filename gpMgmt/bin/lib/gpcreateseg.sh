@@ -75,7 +75,7 @@ CHK_CALL () {
 
 SET_VAR () {
                 I=$1
-                GP_HOSTNAME=`$ECHO $I|$CUT -d: -f1`
+                GP_HOSTADDRESS=`$ECHO $I|$CUT -d: -f1`
                 GP_PORT=`$ECHO $I|$CUT -d: -f2`
                 GP_DIR=`$ECHO $I|$CUT -d: -f3`
                 GP_DBID=`$ECHO $I|$CUT -d: -f4`
@@ -95,39 +95,39 @@ PARA_EXIT () {
 PROCESS_QE () {
 
 	LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO][$INST_COUNT]:-Processing segment $GP_HOSTNAME"
+	LOG_MSG "[INFO][$INST_COUNT]:-Processing segment $GP_HOSTADDRESS"
 
 	MIRROR_ONLY_INITDB_OPTION=
-	if [ x"" != x"$COPY_FROM_PRIMARY_HOSTNAME" ]; then
+	if [ x"" != x"$COPY_FROM_PRIMARY_HOSTADDRESS" ]; then
 		MIRROR_ONLY_INITDB_OPTION=-m
 	fi
 
-	$TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;$INITDB $MIRROR_ONLY_INITDB_OPTION -E $ENCODING -D $GP_DIR --locale=$LOCALE_SETTING --max_connections=$QE_MAX_CONNECT --shared_buffers=$QE_SHARED_BUFFERS --is_filerep_mirrored=$IS_FILEREP_MIRRORED_OPTION" >> $LOG_FILE 2>&1
+	$TRUSTED_SHELL ${GP_HOSTADDRESS} "$EXPORT_LIB_PATH;$INITDB $MIRROR_ONLY_INITDB_OPTION -E $ENCODING -D $GP_DIR --locale=$LOCALE_SETTING --max_connections=$QE_MAX_CONNECT --shared_buffers=$QE_SHARED_BUFFERS  --is_filerep_mirrored=$IS_FILEREP_MIRRORED_OPTION" >> $LOG_FILE 2>&1
 	RETVAL=$?
-	BACKOUT_COMMAND "$TRUSTED_SHELL ${GP_HOSTNAME} \"$RM -rf $GP_DIR > /dev/null 2>&1\""
-	BACKOUT_COMMAND "$ECHO \"removing directory $GP_DIR on $GP_HOSTNAME\""
-	PARA_EXIT $RETVAL "to start segment instance database $GP_HOSTNAME $GP_DIR"
+	BACKOUT_COMMAND "$TRUSTED_SHELL ${GP_HOSTADDRESS} \"$RM -rf $GP_DIR > /dev/null 2>&1\""
+	BACKOUT_COMMAND "$ECHO \"removing directory $GP_DIR on $GP_HOSTADDRESS\""
+	PARA_EXIT $RETVAL "to start segment instance database $GP_HOSTADDRESS $GP_DIR"
 
 	# on mirror, copy data from primary
-    if [ x"" != x"$COPY_FROM_PRIMARY_HOSTNAME" ]; then
-        LOG_MSG "[INFO]:-Copying data for mirror on ${GP_HOSTNAME} using remote copy from primary ${COPY_FROM_PRIMARY_HOSTNAME} ..." 1
-        RUN_COMMAND_REMOTE ${COPY_FROM_PRIMARY_HOSTNAME} "${EXPORT_GPHOME}; . ${GPHOME}/greenplum_path.sh; ${GPHOME}/bin/lib/pysync.py -x pg_log -x postgresql.conf -x postmaster.pid ${COPY_FROM_PRIMARY_DIR} ${GP_HOSTNAME}:${GP_DIR}"
-        PARA_EXIT $? "remote copy of segment data directory to ${GP_HOSTNAME}"
+    if [ x"" != x"$COPY_FROM_PRIMARY_HOSTADDRESS" ]; then
+        LOG_MSG "[INFO]:-Copying data for mirror on ${GP_HOSTADDRESS} using remote copy from primary ${COPY_FROM_PRIMARY_HOSTADDRESS} ..." 1
+        RUN_COMMAND_REMOTE ${COPY_FROM_PRIMARY_HOSTADDRESS} "${EXPORT_GPHOME}; . ${GPHOME}/greenplum_path.sh; ${GPHOME}/bin/lib/pysync.py -x pg_log -x postgresql.conf -x postmaster.pid ${COPY_FROM_PRIMARY_DIR} ${GP_HOSTADDRESS}:${GP_DIR}"
+        PARA_EXIT $? "remote copy of segment data directory to ${GP_HOSTADDRESS}"
 	fi
 
 	# Configure postgresql.conf
 	LOG_MSG "[INFO][$INST_COUNT]:-Configuring segment $PG_CONF"
-	$TRUSTED_SHELL ${GP_HOSTNAME} "$ECHO \"#MPP Specific parameters\" >> ${GP_DIR}/$PG_CONF"
+	$TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO \"#MPP Specific parameters\" >> ${GP_DIR}/$PG_CONF"
 	RETVAL=$?
 	PARA_EXIT $RETVAL "Update ${GP_DIR}/$PG_CONF file"
-	$TRUSTED_SHELL ${GP_HOSTNAME} "$ECHO \"#----------------------\" >> ${GP_DIR}/$PG_CONF"
+	$TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO \"#----------------------\" >> ${GP_DIR}/$PG_CONF"
 	RETVAL=$?
 	PARA_EXIT $RETVAL "Update ${GP_DIR}/$PG_CONF file"
-	ED_FILE ${GP_DIR}/$PG_CONF "$PORT_TXT" port=$GP_PORT 0 $GP_HOSTNAME
+	ED_FILE ${GP_DIR}/$PG_CONF "$PORT_TXT" port=$GP_PORT 0 $GP_HOSTADDRESS
 	PARA_EXIT $RETVAL "Update port number to $GP_PORT"
-	ED_FILE ${GP_DIR}/$PG_CONF "$LISTEN_ADR_TXT" listen_addresses=\'*\' 0 $GP_HOSTNAME
+	ED_FILE ${GP_DIR}/$PG_CONF "$LISTEN_ADR_TXT" listen_addresses=\'*\' 0 $GP_HOSTADDRESS
 	PARA_EXIT $RETVAL "Update listen address"
-	ED_FILE ${GP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS 0 $GP_HOSTNAME
+	ED_FILE ${GP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS 0 $GP_HOSTADDRESS
 	PARA_EXIT $RETVAL "Update checkpoint segments"
 
 	if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
@@ -136,45 +136,45 @@ PROCESS_QE () {
 		do
 			LOG_MSG "[INFO][$INST_COUNT]:-Adding config $NEW_PARAM to segment"
 			SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
-			ED_FILE ${GP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM 0 $GP_HOSTNAME
+			ED_FILE ${GP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM 0 $GP_HOSTADDRESS
 			PARA_EXIT $RETVAL "Update $PG_CONF $SEARCH_TXT $NEW_PARAM"
 		done
 	fi
 
 	# Configuring PG_HBA  -- on mirror, only need to add local addresses (skip the other addresses)
 	LOG_MSG "[INFO][$INST_COUNT]:-Configuring segment $PG_HBA"
-        if [ x"" = x"$COPY_FROM_PRIMARY_HOSTNAME" ]; then
+        if [ x"" = x"$COPY_FROM_PRIMARY_HOSTADDRESS" ]; then
 		for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
 		do
-			$TRUSTED_SHELL ${GP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP}/32	trust >> ${GP_DIR}/$PG_HBA"
+			$TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host	all	all	${MASTER_IP}/32	trust >> ${GP_DIR}/$PG_HBA"
 			PARA_EXIT $? "Update $PG_HBA for master IP address ${MASTER_IP}"
 		done
 		if [ x"" != x"$STANDBY_HOSTNAME" ];then
 			LOG_MSG "[INFO][$INST_COUNT]:-Processing Standby master IP address for segment instances"
 			for STANDBY_IP in "${STANDBY_IP_ADDRESS[@]}"
 			do
-				$TRUSTED_SHELL ${GP_HOSTNAME} "$ECHO host	all	all	${STANDBY_IP}/32	trust >> ${GP_DIR}/$PG_HBA"
+				$TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host	all	all	${STANDBY_IP}/32	trust >> ${GP_DIR}/$PG_HBA"
 				PARA_EXIT $? "Update $PG_HBA for master standby address ${STANDBY_IP}"
 			done
 		fi
 		for QE_IP in "${QE_IP_ARRAY[@]}"
 		do
-			$TRUSTED_SHELL ${GP_HOSTNAME} "$ECHO host  all     all     ${QE_IP}/32 trust >> ${GP_DIR}/$PG_HBA"
+			$TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host  all     all     ${QE_IP}/32 trust >> ${GP_DIR}/$PG_HBA"
 			PARA_EXIT $? "Update $PG_HBA for segment IP address ${QE_IP}"
 		done
 	fi
 
 	# Add all local IPV6 addresses
-	SEGMENT_IPV6_LOCAL_ADDRESS_ALL=(`$TRUSTED_SHELL $GP_HOSTNAME "$IFCONFIG $IFCONFIG_TXT |$GREP inet6|$CUT -d' ' -f2"`)
+	SEGMENT_IPV6_LOCAL_ADDRESS_ALL=(`$TRUSTED_SHELL $GP_HOSTADDRESS "$IFCONFIG $IFCONFIG_TXT |$GREP inet6|$CUT -d' ' -f2"`)
 	for ADDR in "${SEGMENT_IPV6_LOCAL_ADDRESS_ALL[@]}"
 	do
-		$TRUSTED_SHELL ${GP_HOSTNAME} "$ECHO host     all          $USER_NAME         $ADDR/128       trust >> ${GP_DIR}/$PG_HBA"
+		$TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host     all          $USER_NAME         $ADDR/128       trust >> ${GP_DIR}/$PG_HBA"
 	done
 		
-        if [ x"" = x"$COPY_FROM_PRIMARY_HOSTNAME" ]; then
+        if [ x"" = x"$COPY_FROM_PRIMARY_HOSTADDRESS" ]; then
  		# Primary: start the segment to fill in configuration
 		START_QE
-		UPDATE_MPP $GP_PORT "$ARRAY_NAME" $TOTAL_SEG $GP_DBID $GP_CONTENT 1 $GP_HOSTNAME
+		UPDATE_MPP $GP_PORT "$ARRAY_NAME" $TOTAL_SEG $GP_DBID $GP_CONTENT 1 $GP_HOSTADDRESS
 		STOP_QE
 	fi
 
@@ -185,24 +185,24 @@ STOP_QE() {
         # we don't add backout commands here.  We could get double-stop calls since the same QE is sometimes started, stopped, and restarted.  But hopefully that's okay
 
         LOG_MSG "[INFO]:-Start Function $FUNCNAME" 1
-        LOG_MSG "[INFO]:-Stopping instance on segment ${GP_HOSTNAME}:${GP_PORT}" 1
-        $TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;export PGPORT=${GP_PORT}; $PG_CTL -w -l $GP_DIR/pg_log/startup.log -D $GP_DIR -o \"-i -p ${GP_PORT}\" stop" >> $LOG_FILE 2>&1
+        LOG_MSG "[INFO]:-Stopping instance on segment ${GP_HOSTADDRESS}:${GP_PORT}" 1
+        $TRUSTED_SHELL ${GP_HOSTADDRESS} "$EXPORT_LIB_PATH;export PGPORT=${GP_PORT}; $PG_CTL -w -l $GP_DIR/pg_log/startup.log -D $GP_DIR -o \"-i -p ${GP_PORT}\" stop" >> $LOG_FILE 2>&1
         LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 START_QE() {
-	LOG_MSG "[INFO][$INST_COUNT]:-Starting Functioning instance on segment ${GP_HOSTNAME}"
-	$TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;export PGPORT=${GP_PORT}; $PG_CTL -w -l $GP_DIR/pg_log/startup.log -D $GP_DIR -o \"-i -p ${GP_PORT} -M mirrorless -b ${GP_DBID} -C ${GP_CONTENT} -z 0\" start" >> $LOG_FILE 2>&1
+	LOG_MSG "[INFO][$INST_COUNT]:-Starting Functioning instance on segment ${GP_HOSTADDRESS}"
+	$TRUSTED_SHELL ${GP_HOSTADDRESS} "$EXPORT_LIB_PATH;export PGPORT=${GP_PORT}; $PG_CTL -w -l $GP_DIR/pg_log/startup.log -D $GP_DIR -o \"-i -p ${GP_PORT} -M mirrorless -b ${GP_DBID} -C ${GP_CONTENT} -z 0\" start" >> $LOG_FILE 2>&1
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ]; then
-		BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -o \"-i -p ${GP_PORT}\" -m immediate  stop\""
-		BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $GP_HOSTNAME\""
-		$TRUSTED_SHELL ${GP_HOSTNAME} "$CAT ${GP_DIR}/pg_log/startup.log "|$TEE -a $LOG_FILE
+		BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTADDRESS \"${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -o \"-i -p ${GP_PORT}\" -m immediate  stop\""
+		BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $GP_HOSTADDRESS\""
+		$TRUSTED_SHELL ${GP_HOSTADDRESS} "$CAT ${GP_DIR}/pg_log/startup.log "|$TEE -a $LOG_FILE
 		PARA_EXIT $RETVAL "Start segment instance database"
 	fi	
-	BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -o \"-i -p ${GP_PORT}\" -m immediate  stop\""
-	BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $GP_HOSTNAME\""
-	LOG_MSG "[INFO][$INST_COUNT]:-Successfully started segment instance on $GP_HOSTNAME"
+	BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTADDRESS \"${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -o \"-i -p ${GP_PORT}\" -m immediate  stop\""
+	BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $GP_HOSTADDRESS\""
+	LOG_MSG "[INFO][$INST_COUNT]:-Successfully started segment instance on $GP_HOSTADDRESS"
 }
 
 UPDATE_MPP () {
@@ -251,7 +251,7 @@ case $TYPE in
         COPY_FROM_PRIMARY_SEGMENT_LINE=$1;shift # String used to build primary segment instance from which to copy data
 		if [ x"IS_PRIMARY" != x"$COPY_FROM_PRIMARY_SEGMENT_LINE" ]; then
 			SET_VAR $COPY_FROM_PRIMARY_SEGMENT_LINE
-			COPY_FROM_PRIMARY_HOSTNAME=$GP_HOSTNAME
+			COPY_FROM_PRIMARY_HOSTADDRESS=$GP_HOSTADDRESS
 			COPY_FROM_PRIMARY_DIR=$GP_DIR
 			COPY_FROM_PRIMARY_PORT=$GP_PORT
             COPY_FROM_PRIMARY_CONTENT=$GP_CONTENT
