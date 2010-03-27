@@ -3577,7 +3577,7 @@ class GPUpgrade:
         #
         # The first stage of this is to remirror the system while we
         # are still in a stage that can rollback.
-        if 'REMIRRORSYSTEM' not in current_state:
+        if len(self.mirrors) > 0 and 'REMIRRORSYSTEM' not in current_state:
 
             # If we are resuming an upgrade and we have already started the
             # mirror upgrade, but did not complete it, then we must pass
