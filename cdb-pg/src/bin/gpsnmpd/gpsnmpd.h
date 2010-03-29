@@ -1,8 +1,8 @@
 /*-------------------------------------------------------------------------
- * pgsnmpd.h
+ * gpsnmpd.h
  *
  *      Global definitions for the main PostgreSQL SNMP Daemon.
- *      This file should be included first in all pgsnmpd source files.
+ *      This file should be included first in all gpsnmpd source files.
  *
  *      Copyright (c) 2006, PostgreSQL Global Development Group
  *      Author: Joshua Tolley

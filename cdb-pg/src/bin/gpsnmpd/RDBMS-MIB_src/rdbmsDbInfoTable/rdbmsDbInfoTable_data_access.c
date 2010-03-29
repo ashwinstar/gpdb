@@ -227,7 +227,7 @@ int rdbmsDbInfoTable_cache_load(netsnmp_container *container)
 		tmpString = calloc(tmpInt, sizeof(char*));
 		if (tmpString == NULL)
 			snmp_log(LOG_ERR,
-					"Couldn't allocate memory to query pgsnmpd-specific database table\n");
+					"Couldn't allocate memory to query gpsnmpd-specific database table\n");
 		else
 		{
 			snmp_log(LOG_INFO,

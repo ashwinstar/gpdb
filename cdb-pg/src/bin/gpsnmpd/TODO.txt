@@ -11,7 +11,7 @@ Names in parentheses indicate the developer working on the TODO item
 
 - RDBMS-MIB
 	- Make regression test support SNMP v3
-	- Fix getopts code in pgsnmpd.c to support all snmpd command-line options
+	- Fix getopts code in gpsnmpd.c to support all snmpd command-line options
 	- Implement APPLICATION-MIB enough to index the rbdmsSrv* tables and rdbmsRelTable (Waiting until after May)
 	- Implement rdbmsWellKnownLimitedResources (maybe this isn't worth it... the only data point in there is "rdbmsLogSpace", which talks about remaining space allocated for "redo and undo logs", which doesn't mean a whole lot to pgsql)
 	- Figure out what the rdbmsConformance section of the MIB tree is supposed to do
