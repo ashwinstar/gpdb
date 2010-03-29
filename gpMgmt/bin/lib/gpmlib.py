@@ -864,52 +864,31 @@ def get_gp_prefix(datadir):
 
 ##################
 def group_mirror(pri_qes, mir_datadirs, mir_port_offset, multihome):
-    log_info('Building group mirror array type %s, please wait...' % (multihome and 'Multi-Home' or 'Single-Home'))
+    log_info('Building group mirror array type %s, please wait...' % ('Multi-Home' if multihome else 'Single-Home'))
 
-    hosts = [ qe['hostname'] for qe in pri_qes ]
-    hosts_uniq = unique(hosts)
-    
-    pri_host_count = len(hosts_uniq)
-    max_array = len(pri_qes) - 1
-
-#    if multihome and remote_host_count == 1:
-#        pri_host_count = 1
-
-    if multihome and pri_host_count == len(mir_datadirs):
-        host_idx = len(mir_datadirs)-1
-    else:
-        host_idx = len(mir_datadirs)
-
-    datadir_idx = 0
-
+    num_segments = len(pri_qes)
+    num_data_dirs = len(mir_datadirs)
     cfg = []
-
-    i = 0
+    primary_index = 0
     for qe in pri_qes:
-        p_host = qe['hostname']
-        p_port = qe['port']
-        m_datadir = mir_datadirs[datadir_idx]
-        m_port = p_port + mir_port_offset
-        if pri_host_count == 1:
-            m_host = p_host
-        else:
-            m_host = pri_qes[host_idx]['hostname']
 
-        datadir_idx += 1
-        if datadir_idx == len(mir_datadirs):
-            datadir_idx = 0
+        #
+        # group mirroring uses the next host for all data dirs on a single host...
+        #   so we shift forward by num_data_dirs to get the host to use
+        #
+        mirror_index = (primary_index + num_data_dirs) % num_segments 
+        datadir_idx = mirror_index % num_data_dirs
 
-        # mirror config is done (hostname, port, datadir)
+        primary_port = qe['port']
+
         m = {}
-        m['hostname'] = m_host
-        m['port'] = m_port
-        m['datadir'] = m_datadir
+        m['hostname'] = pri_qes[mirror_index]['hostname']
+        m['port'] = primary_port + mir_port_offset
+        m['datadir'] = mir_datadirs[datadir_idx]
         
         cfg.append(m)
 
-        host_idx += 1
-        if host_idx > max_array:
-            host_idx = 0
+        primary_index += 1
 
     return cfg
 

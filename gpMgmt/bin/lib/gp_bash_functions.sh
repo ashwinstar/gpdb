@@ -806,47 +806,42 @@ CREATE_GROUP_MIRROR_ARRAY () {
 	if [ $MULTI_HOME -eq 1 ] && [ $REMOTE_HOST_COUNT -eq 1 ];then
 		PRI_HOST_COUNT=1
 	fi
-	((MAX_ARRAY=${#QE_PRIMARY_ARRAY[@]}-1))
-	if [ $MULTI_HOME -eq 1 ] && [ $PRI_HOST_COUNT -eq $NUM_DATADIR ];then
-		((HOST_VECTOR=${NUM_DATADIR}-1))
-	else
-		((HOST_VECTOR=${NUM_DATADIR}))	
-	fi
-	ARRAY_VECTOR=0
+
+	PRIMARY_ARRAY_LENGTH=${#QE_PRIMARY_ARRAY[@]}
+	PRIMARY_INDEX=0
 	for QE_LINE in ${QE_PRIMARY_ARRAY[@]}
 	do
+
+        #
+        #  the mirror will take the host from the primary of $MIRROR_INDE
+        #     this is (primary+numDataDirs) % numPrimaries to get from the next block of hosts
+        # 
+	    MIRROR_INDEX=$(($PRIMARY_INDEX+$NUM_DATADIR))
+	    MIRROR_INDEX=$(($MIRROR_INDEX%$PRIMARY_ARRAY_LENGTH))
+
+	    MIRROR_DIR_INDEX=$(($MIRROR_INDEX % $NUM_DATADIR))
+
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		CUR_HOST=`$ECHO $QE_LINE|$AWK -F":" '{print $1}'`
-		CUR_SEGMENT=`$ECHO $QE_LINE|$AWK -F":" '{print $3}'|$AWK -F"/" '{print $NF}'`
-		CUR_PORT=`$ECHO $QE_LINE|$AWK -F":" '{print $2}'`	
-		QE_M_NAME=`$ECHO ${QE_PRIMARY_ARRAY[$HOST_VECTOR]}|$AWK -F":" '{print $1}'`
-		GP_M_DIR=${MIRROR_DATA_DIRECTORY[$ARRAY_VECTOR]}/`$ECHO $QE_LINE|$AWK -F":" '{print $3}'|$AWK -F"/" '{print $NF}'`
-		((ARRAY_VECTOR=$ARRAY_VECTOR+1))
-		((HOST_VECTOR=$HOST_VECTOR+1))
-		if [ $ARRAY_VECTOR -eq $NUM_DATADIR ];then
-			ARRAY_VECTOR=0
-		fi
-		#GP_M_DIR=${MIRROR_DATA_DIRECTORY[$ARRAY_VECTOR]}/`$ECHO $QE_LINE|$AWK -F":" '{print $3}'|$AWK -F"/" '{print $NF}'`
-		((DIR_VECTOR=$DIR_VECTOR+1))
+		
+		QE_M_NAME=`$ECHO ${QE_PRIMARY_ARRAY[$MIRROR_INDEX]}|$AWK -F":" '{print $1}'`
+		GP_M_DIR=${MIRROR_DATA_DIRECTORY[$MIRROR_DIR_INDEX]}/`$ECHO $QE_LINE|$AWK -F":" '{print $3}'|$AWK -F"/" '{print $NF}'`
+
 		M_CONTENT=`$ECHO $QE_LINE|$AWK -F":" '{print $5}'`
 		P_PORT=`$ECHO $QE_LINE|$AWK -F":" '{print $2}'`
 		P_REPL_PORT=`$ECHO $QE_LINE|$AWK -F":" '{print $6}'`
-		((GP_M_PORT=$P_PORT+$MIRROR_OFFSET))
-		((M_REPL_PORT=$P_REPL_PORT+$MIRROR_REPLICATION_PORT_OFFSET))
-		if [ $PRI_HOST_COUNT -eq 1 ];then
-			QE_M_NAME=`$ECHO $QE_LINE|$AWK -F":" '{print $1}'`
-		fi
+		GP_M_PORT=$(($P_PORT+$MIRROR_OFFSET))
+		M_REPL_PORT=$(($P_REPL_PORT+$MIRROR_REPLICATION_PORT_OFFSET))
+		
 		QE_MIRROR_ARRAY=(${QE_MIRROR_ARRAY[@]} ${QE_M_NAME}:${GP_M_PORT}:${GP_M_DIR}:${DBID_COUNT}:${M_CONTENT}:${M_REPL_PORT})
 		POSTGRES_PORT_CHK $GP_M_PORT $QE_M_NAME
-		((DBID_COUNT=$DBID_COUNT+1))
-		if [ $HOST_VECTOR -gt $MAX_ARRAY ];then
-			HOST_VECTOR=0
-		fi
+
+		DBID_COUNT=$(($DBID_COUNT+1))
+	    PRIMARY_INDEX=$((PRIMARY_INDEX+1))
 	done
 	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
-	
+
 GET_REPLY () {
 	$ECHO "$1 Yy/Nn>"
 	read REPLY
