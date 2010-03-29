@@ -31,16 +31,18 @@ typedef struct BMBuildHashData
 {
 	int			natts;
 	FmgrInfo   *hash_funcs;
+	bool       *hash_func_is_strict;
 	FmgrInfo   *eq_funcs;
 	MemoryContext tmpcxt;
 	MemoryContext hash_cxt;
 } BMBuildHashData;
 
+
 static BMBuildHashData *cur_bmbuild = NULL;
 
 static uint32 build_hash_key(const void *key, Size keysize);
 static int build_match_key(const void *key1, const void *key2, Size keysize);
-
+static void *build_keycopy(void *dest, const void *src, Size keysize);
 /*
  * _bitmap_getbuf() -- return the buffer for the given block number and
  * 					   the access method.
@@ -193,6 +195,8 @@ _bitmap_init_buildstate(Relation index, BMBuildState *bmstate)
 						palloc(sizeof(FmgrInfo) * bmstate->bm_tupDesc->natts);
 	cur_bmbuild->eq_funcs = (FmgrInfo *)
                         palloc(sizeof(FmgrInfo) * bmstate->bm_tupDesc->natts);
+    cur_bmbuild->hash_func_is_strict = (bool *)
+                        palloc(sizeof(bool) * bmstate->bm_tupDesc->natts);
 
 	for (i = 0; i < bmstate->bm_tupDesc->natts; i++)
 	{
@@ -216,6 +220,7 @@ _bitmap_init_buildstate(Relation index, BMBuildState *bmstate)
 
 		fmgr_info(eq_function, &cur_bmbuild->eq_funcs[i]);
 		fmgr_info(hash_function, &cur_bmbuild->hash_funcs[i]);
+        cur_bmbuild->hash_func_is_strict[i] = func_strict(hash_function);
 	}
 
 	if (cur_bmbuild)
@@ -230,10 +235,19 @@ _bitmap_init_buildstate(Relation index, BMBuildState *bmstate)
 
 		/* setup the hash table */
 	    MemSet(&hash_ctl, 0, sizeof(hash_ctl));
-    	hash_ctl.keysize = sizeof(Datum) * cur_bmbuild->natts;
+
+	    /**
+	     * Reserve enough space for the hash key header and then the data segments (values followed by nulls)
+	     */
+    	hash_ctl.keysize = MAXALIGN(sizeof(BMBuildHashKey)) +
+                           MAXALIGN(sizeof(Datum) * cur_bmbuild->natts) +
+                           MAXALIGN(sizeof(bool) * cur_bmbuild->natts);
+        hash_ctl.keysize = MAXALIGN(hash_ctl.keysize);
+        
 		hash_ctl.entrysize = hash_ctl.keysize + sizeof(BMBuildLovData) + 200; 
     	hash_ctl.hash = build_hash_key;
 	    hash_ctl.match = build_match_key;
+	    hash_ctl.keycopy = build_keycopy;
     	hash_ctl.hcxt = AllocSetContextCreate(CurrentMemoryContext,
         	                      "Bitmap build hash table",
             	                  ALLOCSET_DEFAULT_MINSIZE,
@@ -245,11 +259,13 @@ _bitmap_init_buildstate(Relation index, BMBuildState *bmstate)
 
 		bmstate->lovitem_hash = hash_create("Bitmap index build lov item hash",
 											100, &hash_ctl, hash_flags);
+        bmstate->lovitem_hashKeySize = hash_ctl.keysize;
 	}
 	else
 	{
 		int attno;
 		bmstate->lovitem_hash = NULL;
+		bmstate->lovitem_hashKeySize = 0;
 		bmstate->bm_lov_scanKeys =
 			(ScanKey)palloc0(bmstate->bm_tupDesc->natts * sizeof(ScanKeyData));
 
@@ -421,7 +437,10 @@ _bitmap_init(Relation rel, Oid comptypeOid,
 static uint32
 build_hash_key(const void *key, Size keysize __attribute__((unused)))
 {
-	Datum *k = (Datum *)key;
+    BMBuildHashKey *keyData = (BMBuildHashKey*)key;
+	Datum *k = keyData->attributeValueArr;
+	bool *isNull = keyData->isNullArr;
+
 	int i;
 	uint32 hashkey = 0;
 
@@ -430,8 +449,15 @@ build_hash_key(const void *key, Size keysize __attribute__((unused)))
 		/* rotate hashkey left 1 bit at each step */
 		hashkey = (hashkey << 1) | ((hashkey & 0x80000000) ? 1 : 0);
 
-		hashkey ^= DatumGetUInt32(FunctionCall1(&cur_bmbuild->hash_funcs[i],
-												k[i]));
+        if ( isNull[i] && cur_bmbuild->hash_func_is_strict[i])
+        {
+            /* leave hashkey unmodified, equivalent to hashcode 0 */
+        }
+        else
+        {
+            hashkey ^= DatumGetUInt32(FunctionCall1(&cur_bmbuild->hash_funcs[i], k[i]));
+        }
+
 	}
 	return hashkey;
 }
@@ -444,6 +470,16 @@ build_hash_key(const void *key, Size keysize __attribute__((unused)))
 static int
 build_match_key(const void *key1, const void *key2, Size keysize __attribute__((unused)))
 {
+    BMBuildHashKey *keyData1 = (BMBuildHashKey*)key1;
+	Datum *k1 = keyData1->attributeValueArr;
+	bool *isNull1 = keyData1->isNullArr;
+	
+	BMBuildHashKey *keyData2 = (BMBuildHashKey*)key2;
+	Datum *k2 = keyData2->attributeValueArr;
+	bool *isNull2 = keyData2->isNullArr;
+	
+    int numKeys = cur_bmbuild->natts;
+
 	int i;
 	MemoryContext old;
 	int result = 0;
@@ -451,18 +487,54 @@ build_match_key(const void *key1, const void *key2, Size keysize __attribute__((
 	MemoryContextReset(cur_bmbuild->tmpcxt);
 	old = MemoryContextSwitchTo(cur_bmbuild->tmpcxt);
 
-	for(i = 0; i < cur_bmbuild->natts; i++)
+	for(i = 0; i < numKeys; i++)
 	{
-		Datum attr1 = ((Datum *)key1)[i];
-		Datum attr2 = ((Datum *)key2)[i];
-        if (!DatumGetBool(FunctionCall2(&cur_bmbuild->eq_funcs[i],
-                                        attr1, attr2)))
+	    if (isNull1[i] && isNull2[i])
         {
-            result = 1;     /* they aren't equal */
+            /* both nulls -- treat as equal so we group them together */
+        }
+        else if ( isNull1[i] || isNull2[i])
+        {
+            /* one is null and one non-null -- this is inequal */
+            result = 1;
             break;
+        }
+        else
+        {
+            /* do the real comparison */
+            Datum attr1 = k1[i];
+            Datum attr2 = k2[i];
+            if (!DatumGetBool(FunctionCall2(&cur_bmbuild->eq_funcs[i], attr1, attr2)))
+            {
+                result = 1;     /* they aren't equal */
+                break;
+            }
         }
 	}
 	MemoryContextSwitchTo(old);
 	return result;
 }
 
+static void *build_keycopy(void *dest, const void *src, Size keysize)
+{
+    BMBuildHashKey *destKey = (BMBuildHashKey*) dest;
+    BMBuildHashKey *srcKey = (BMBuildHashKey*) src;
+    int numKeys = cur_bmbuild->natts;
+
+    Datum *datumsOut = (Datum*) (((char*)dest) + MAXALIGN(sizeof(BMBuildHashKey)));
+    bool *isNullsOut = (bool*) (((char*)dest) + MAXALIGN(sizeof(BMBuildHashKey)) + MAXALIGN(sizeof(Datum) * numKeys ));
+    int i;
+
+    for ( i = 0; i < numKeys; i++)
+    {
+        datumsOut[i] = srcKey->attributeValueArr[i];
+        isNullsOut[i] = srcKey->isNullArr[i];
+    }
+
+    /* we've copied the datums into the data segment, now set up final output */ 
+    destKey->attributeValueArr = datumsOut;
+    destKey->isNullArr  = isNullsOut;
+
+    /** return valu;es fo keycopy are ignored */
+    return NULL;
+}

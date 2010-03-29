@@ -413,6 +413,12 @@ typedef struct BMBuildState
 	 */
 	HTAB		   *lovitem_hash;
 
+	/**
+	 * when lovitem_hash is non-NULL then this will correspond to the
+	 *   size of the keys in the hash
+	 */
+	int lovitem_hashKeySize;
+
 	/*
 	 * When the attributes to be indexed can not be hashed, we can not use
 	 * the hash for the lov blocks. We have to search through the
@@ -430,6 +436,19 @@ typedef struct BMBuildState
 	double 			ituples;	/* the number of index tuples */
 	bool			use_wal;	/* whether or not we write WAL records */
 } BMBuildState;
+
+/**
+ * The key used inside BMBuildState's lovitem_hash hashtable
+ *
+ * The caller should assign attributeValueArr and isNullArr to point at the values and isnull array to be hashed
+ *
+ * When inside the hashtable, attributeValueArr and isNullArr will point to aligned memory within the key block itself
+ */
+typedef struct BMBuildHashKey
+{
+    Datum *attributeValueArr;
+    bool *isNullArr;
+} BMBuildHashKey;
 
 /*
  * Define an iteration result while scanning an BMBatchWords.

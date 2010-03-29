@@ -2084,7 +2084,7 @@ build_inserttuple(Relation rel, uint64 tidnum,
 	BMTidBuildBuf *tidLocsBuffer;
 	int				attno;
 	bool			allNulls = true;
-	Datum		   *entry;
+	BMBuildHashKey  *entry;
 
 	tidLocsBuffer = state->bm_tidLocsBuffer;
 
@@ -2115,9 +2115,13 @@ build_inserttuple(Relation rel, uint64 tidnum,
 
 		if (state->lovitem_hash)
 		{
+		    BMBuildHashKey toLookup;
+		    toLookup.attributeValueArr = attdata;
+		    toLookup.isNullArr = nulls;
+
 			/* look up the hash to see if we can find the lov data that way */
-			entry = (Datum *)hash_search(state->lovitem_hash,
-												  (void *)attdata,
+			entry = (BMBuildHashKey *)hash_search(state->lovitem_hash,
+												  (void*)&toLookup,
 												  HASH_ENTER, &found);
 			if (!found)
 			{
@@ -2126,7 +2130,7 @@ build_inserttuple(Relation rel, uint64 tidnum,
 				{
 					Form_pg_attribute at = tupDesc->attrs[attno];
 
-					entry[attno] = datumCopy(entry[attno], at->attbyval,
+					entry->attributeValueArr[attno] = datumCopy(entry->attributeValueArr[attno], at->attbyval,
 												  at->attlen);
 				}
 
@@ -2138,14 +2142,14 @@ build_inserttuple(Relation rel, uint64 tidnum,
 							   nulls, state->bm_lov_heap, state->bm_lov_index,
 							   &lovBlock, &lovOffset, state->use_wal);
 
-				lov = (BMBuildLovData *) &(entry[tupDesc->natts]);
+				lov = (BMBuildLovData *) (((char*)entry) + state->lovitem_hashKeySize );
 				lov->lov_block = lovBlock;
 				lov->lov_off = lovOffset;
 			}
 
 			else
 			{
-				lov = (BMBuildLovData *) &(entry[tupDesc->natts]);
+				lov = (BMBuildLovData *) (((char*)entry) + state->lovitem_hashKeySize );
 				lovBlock = lov->lov_block;
 				lovOffset = lov->lov_off;
 			}

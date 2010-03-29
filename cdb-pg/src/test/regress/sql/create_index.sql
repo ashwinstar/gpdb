@@ -459,3 +459,23 @@ create unique index ijk_ijk on ijk(i,j,k);
 
 set gp_enable_mk_sort=off;
 drop table ijk;
+
+---------
+-- test bitmaps with NULL and non-NULL values (MPP-8461)
+--
+create table bmap_test (x int, y int, z int);
+insert into bmap_test values (1,NULL,NULL);
+insert into bmap_test values (NULL,1,NULL);
+insert into bmap_test values (NULL,NULL,1);
+insert into bmap_test values (1,NULL,NULL);
+insert into bmap_test values (NULL,1,NULL);
+insert into bmap_test values (NULL,NULL,1);
+insert into bmap_test values (1,NULL,5);
+insert into bmap_test values (NULL,1,NULL);
+insert into bmap_test values (NULL,NULL,1);
+insert into bmap_test select a from generate_series(1,10*1000) as s(a);
+create index bmap_test_idx_1 on bmap_test using bitmap (x,y,z);
+analyze bmap_test;
+select * from bmap_test where x = 1 order by x,y,z;
+
+drop table bmap_test;
