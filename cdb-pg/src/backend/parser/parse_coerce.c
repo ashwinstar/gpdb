@@ -421,6 +421,10 @@ coerce_type(ParseState *pstate, Node *node,
 				if (targetTypeId == TEXTOID && exprType(node) == VARCHAROID && exprTypmod(node) > 0)
 					return result;
 
+				/* BPCHAR/VARCHAR with unlimited length makes no sense */
+				if ((targetTypeId == BPCHAROID || targetTypeId == VARCHAROID) && exprTypmod(node) < 0)
+					targetTypeId = TEXTOID;
+
 				/*
 				 * XXX could we label result with exprTypmod(node) instead of
 				 * default -1 typmod, to save a possible length-coercion
@@ -1319,6 +1323,18 @@ select_common_type(List *typeids, const char *context)
 			{
 				/* so far, only nulls so take anything... */
 				ptype = ntype;
+				pcategory = TypeCategory(ptype);
+			}
+			else if (ntype == TEXTOID && (ptype == BPCHAROID || ptype == VARCHAROID))
+			{
+				/* Mixing TEXT and other char types, coerce to TEXT */
+				ptype = TEXTOID;
+				pcategory = TypeCategory(ptype);
+			}
+			else if (ptype == TEXTOID && (ntype == BPCHAROID || ntype == VARCHAROID))
+			{
+				/* Mixing TEXT and other char types, coerce to TEXT */
+				ptype = TEXTOID;
 				pcategory = TypeCategory(ptype);
 			}
 			else if (TypeCategory(ntype) != pcategory)
