@@ -67,7 +67,7 @@ class WorkerPool:
     
     
     def addCommand(self,cmd):   
-        logger.debug("Adding cmd to work_queue: %s" % str(cmd.cmdStr)) 
+        logger.debug("Adding cmd to work_queue: %s" % cmd.cmdStr) 
         self.work_queue.put(cmd)
         self.num_assigned += 1
     

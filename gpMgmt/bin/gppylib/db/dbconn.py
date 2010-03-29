@@ -128,7 +128,7 @@ class DbURL:
 
 
 
-def connect(dburl, utility=False, verbose=False):
+def connect(dburl, utility=False, verbose=False, encoding=None):
     if utility:
         options = '-c gp_session_role=utility'
     else:
@@ -143,6 +143,14 @@ def connect(dburl, utility=False, verbose=False):
         cursor.execute("SET CLIENT_MIN_MESSAGES='ERROR'")
         conn.commit()
         cursor.close()
+
+    # set client encoding if needed
+    if encoding:
+        cursor=conn.cursor()
+        cursor.execute("SET CLIENT_ENCODING='%s'" % encoding)
+        conn.commit()
+        cursor.close()   
+        
     return conn 
 
 
