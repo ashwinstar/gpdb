@@ -4768,6 +4768,8 @@ compatible_tupdesc(TupleDesc td1, TupleDesc td2)
 	for (i = 0; i < td1->natts; i++)
 	{
 		if (td1->attrs[i]->atttypid != td2->attrs[i]->atttypid)
+			if ((td1->attrs[i]->atttypid != VARCHAROID || td2->attrs[i]->atttypid != TEXTOID) &&
+				(td1->attrs[i]->atttypid != TEXTOID || td2->attrs[i]->atttypid != VARCHAROID))
 			return false;
 	}
 
