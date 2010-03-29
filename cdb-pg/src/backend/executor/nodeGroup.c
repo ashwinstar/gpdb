@@ -454,15 +454,9 @@ initGpmonPktForGroup(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
 	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, Group));
 
 	{
-		Gpmon_NameUnit_MaxVal m[GPMON_GROUP_TOTAL + 1] = 
-		{
-			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ NULL, NULL, 0}
-		};
-
 		Assert(GPMON_GROUP_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Group",
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_Group,
 							 (int64)planNode->plan_rows,
-							 m, NULL);
+							 NULL);
 	}
 }

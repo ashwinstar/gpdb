@@ -11,6 +11,7 @@
 #include "apr_queue.h"
 #include "apr_atomic.h"
 #include "apr_lib.h"
+#include "assert.h"
 
 #if APR_IS_BIGENDIAN
 #define local_htonll(n)  (n)
@@ -65,8 +66,8 @@ apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt)
 	case GPMON_PKTTYPE_QLOG:
 	    {
 		gpmon_qlog_t* p = &pkt->u.qlog;
-         	GPMON_NTOHL(p->key.tmid);
-         	GPMON_NTOHL(p->key.ssid);
+		GPMON_NTOHL(p->key.tmid);
+		GPMON_NTOHL(p->key.ssid);
 		GPMON_NTOHL(p->key.ccnt);
 		GPMON_NTOHL(p->cost);
 		GPMON_NTOHL(p->tsubmit);
@@ -75,38 +76,49 @@ apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt)
 		GPMON_NTOHL(p->status);
 		GPMON_NTOHLL(p->rows_out);
 		GPMON_NTOHL(p->_segmax);
-		for (i = 0; i < sizeof(p->_segcpu) / sizeof(p->_segcpu[0]); i++)
+		for (i = 0; i < GPMON_NUM_SEG_CPU; i++)
+		{
 		    GPMON_NTOHL(p->_segcpu[i]);
+		}
 		break;
 	    }
 	case GPMON_PKTTYPE_QEXEC:
 	    {
 		gpmon_qexec_t* p = &pkt->u.qexec;
-         	GPMON_NTOHL(p->key.tmid);
-         	GPMON_NTOHL(p->key.ssid);
+		GPMON_NTOHL(p->key.tmid);
+		GPMON_NTOHL(p->key.ssid);
 		GPMON_NTOHS(p->key.ccnt);
 		GPMON_NTOHS(p->key.segid);
 		GPMON_NTOHL(p->key.pid);
 		GPMON_NTOHS(p->key.nid);
 		GPMON_NTOHS(p->key.zero);
 		GPMON_NTOHL(p->pnid);
+		GPMON_NTOHS(p->nodeType);
 		GPMON_NTOHL(p->tstart);
 		GPMON_NTOHL(p->tduration);
 		GPMON_NTOHLL(p->p_mem);
 		GPMON_NTOHLL(p->p_memmax);
-                GPMON_NTOHLL(p->_cpu_elapsed);
+		GPMON_NTOHLL(p->_cpu_elapsed);
 		GPMON_NTOHL(p->_p_metrics.fd_cnt);
 		GPMON_NTOHLL(p->_p_metrics.mem.size);
 		GPMON_NTOHLL(p->_p_metrics.mem.resident);
 		GPMON_NTOHLL(p->_p_metrics.mem.share);
-          	GPMON_NTOHLL(p->rowsout);
-          	GPMON_NTOHLL(p->rowsout_est);
-		for (i = 0; i < sizeof(p->m) / sizeof(p->m[0]); i++) {
-		    GPMON_NTOHLL(p->m[i].value);
-		    GPMON_NTOHLL(p->m[i].valuemax);
+		GPMON_NTOHLL(p->rowsout);
+		GPMON_NTOHLL(p->rowsout_est);
+		for (i = 0; i < GPMON_QEXEC_M_COUNT; i++) 
+		{
+		    GPMON_NTOHLL(p->measures[i]);
 		}
 		break;
 	    }
+	case GPMON_PKTTYPE_SEGINFO:
+		{
+		gpmon_seginfo_t* p = &pkt->u.seginfo;
+		GPMON_NTOHLL(p->dbid);
+		GPMON_NTOHLL(p->dynamic_memory_used);
+		GPMON_NTOHLL(p->dynamic_memory_available);
+		break;
+		}
 	}
     }
 
@@ -149,14 +161,14 @@ apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt)
 }
 
 
-
+#define GPMONLIB_DATETIME_BUFSIZE_LOCAL 100
 static char* datetime(void)
 {
-    static char buf[100];
+    static char buf[GPMONLIB_DATETIME_BUFSIZE_LOCAL];
     apr_time_exp_t t;
     apr_time_exp_lt(&t, apr_time_now());
 
-    sprintf(buf, "%04d-%02d-%02d %02d:%02d:%02d",
+    snprintf(buf, GPMONLIB_DATETIME_BUFSIZE_LOCAL, "%04d-%02d-%02d %02d:%02d:%02d",
             1900 + t.tm_year, 1 + t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
     return buf;
 }
@@ -176,29 +188,47 @@ int gpmon_print(const char* fmt, ...)
 
 int gpmon_fatal(const char* fline, const char* fmt, ...)
 {
-    va_list ap;
-    va_start(ap, fmt);
-    fprintf(stderr, "%s|:-FATAL: [INTERNAL ERROR %s] ", datetime(), fline);
-    vfprintf(stderr, fmt, ap);
-    fprintf(stderr, "\n          ... exiting\n");
-    exit(1);
-    return 0;
+	va_list ap;
+	va_start(ap, fmt);
+
+	fprintf(stdout, "%s|:-FATAL: [INTERNAL ERROR %s] ", datetime(), fline);
+	vfprintf(stdout, fmt, ap);
+	fprintf(stdout, "\n          ... exiting\n");
+
+	fprintf(stderr, "%s|:-FATAL: [INTERNAL ERROR %s] ", datetime(), fline);
+	vfprintf(stderr, fmt, ap);
+	fprintf(stderr, "\n          ... exiting\n");
+
+	exit(1);
+	return 0;
 }
 
 
 int gpmon_fatalx(const char* fline, int e, const char* fmt, ...)
 {
-    va_list ap;
-    va_start(ap, fmt);
-    fprintf(stderr, "%s|:-FATAL: [INTERNAL ERROR %s] ", datetime(), fline);
-    vfprintf(stderr, fmt, ap);
-    if (e) {
-	char msg[512];
-	fprintf(stderr, "\n\terror %d (%s)", e, apr_strerror(e, msg, sizeof(msg)));
-    }
-    fprintf(stderr, "\n\t... exiting\n");
-    exit(1);
-    return 0;
+	va_list ap;
+	va_start(ap, fmt);
+
+	fprintf(stdout, "%s|:-FATAL: [INTERNAL ERROR %s] ", datetime(), fline);
+	vfprintf(stdout, fmt, ap);
+	if (e) 
+	{
+		char msg[512];
+		fprintf(stdout, "\n\terror %d (%s)", e, apr_strerror(e, msg, sizeof(msg)));
+	}
+	fprintf(stdout, "\n\t... exiting\n");
+
+	fprintf(stderr, "%s|:-FATAL: [INTERNAL ERROR %s] ", datetime(), fline);
+	vfprintf(stderr, fmt, ap);
+	if (e) 
+	{
+		char msg[512];
+		fprintf(stderr, "\n\terror %d (%s)", e, apr_strerror(e, msg, sizeof(msg)));
+	}
+	fprintf(stderr, "\n\t... exiting\n");
+
+	exit(1);
+	return 0;
 }
 
 
@@ -207,9 +237,9 @@ int gpmon_warning(const char* fline, const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    fprintf(stderr, "%s|:-WARNING: [%s] ", datetime(), fline);
-    vfprintf(stderr, fmt, ap);
-    fprintf(stderr, "\n");
+    fprintf(stdout, "%s|:-WARNING: [%s] ", datetime(), fline);
+    vfprintf(stdout, fmt, ap);
+    fprintf(stdout, "\n");
     return 0;
 }
 
@@ -217,13 +247,13 @@ int gpmon_warningx(const char* fline, int e, const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    fprintf(stderr, "%s|:-WARNING: [%s] ", datetime(), fline);
-    vfprintf(stderr, fmt, ap);
+    fprintf(stdout, "%s|:-WARNING: [%s] ", datetime(), fline);
+    vfprintf(stdout, fmt, ap);
     if (e) {
 	char msg[512];
-	fprintf(stderr, "\n\terror %d (%s)", e, apr_strerror(e, msg, sizeof(msg)));
+	fprintf(stdout, "\n\terror %d (%s)", e, apr_strerror(e, msg, sizeof(msg)));
     }
-    fprintf(stderr, "\n");
+    fprintf(stdout, "\n");
     return 0;
 }
 
@@ -254,7 +284,7 @@ char* gpmon_trim(char* s)
 
 
 /* datetime, e.g. 2004-02-14  23:50:02 */
-char* gpmon_datetime(apr_time_t t, char str[24])
+char* gpmon_datetime(apr_time_t t, char str[GPMON_DATE_BUF_SIZE])
 {
     apr_time_exp_t tm;
     int e;
@@ -265,9 +295,34 @@ char* gpmon_datetime(apr_time_t t, char str[24])
 	gpmon_warningx(FLINE, e, "apr_time_exp_lt failed");
 	return str;
     }
-    sprintf(str, "%04d-%02d-%02d %02d:%02d:%02d",
+    snprintf(str, GPMON_DATE_BUF_SIZE, "%04d-%02d-%02d %02d:%02d:%02d",
 	    1900 + tm.tm_year, tm.tm_mon + 1, tm.tm_mday,
 	    tm.tm_hour, tm.tm_min, tm.tm_sec);
+    return str;
+}
+
+/* datetime, e.g. 2004-02-14  23:50:10 
+   round to lowest 5 second interval */
+char* gpmon_datetime_rounded(apr_time_t t, char str[GPMON_DATE_BUF_SIZE])
+{
+	apr_time_exp_t tm;
+	int e;
+	str[0] = 0;
+	if (t < 0)
+	{
+		t = 0;
+	}
+
+	if (0 != (e = apr_time_exp_lt(&tm, t))) 
+	{
+		gpmon_warningx(FLINE, e, "apr_time_exp_lt failed");
+		return str;
+	}
+
+	snprintf(str, GPMON_DATE_BUF_SIZE, "%04d-%02d-%02d %02d:%02d:%02d",
+	1900 + tm.tm_year, tm.tm_mon + 1, tm.tm_mday,
+		tm.tm_hour, tm.tm_min, ((tm.tm_sec/5)*5));
+
     return str;
 }
 
@@ -324,3 +379,514 @@ int gpmon_recursive_mkdir(char* work_dir)
 
     return 0;
 }
+
+const char* gpdb_getnodestatus(PerfmonNodeStatus status)
+{
+	const char* name = "";
+	switch(status)
+	{
+		case PMNS_Initialize:
+			name = "Initialize";
+		break;
+		case PMNS_Executing:
+			name = "Executing";
+		break;
+		case PMNS_Finished:
+			name = "Finished";
+		break;
+		default:
+		break;
+	}
+
+	return name;
+}
+
+/* Node Types */
+#define QENODE_TYPE_APPEND "Append"
+#define QENODE_TYPE_APPENDONLY_SCAN "Append-only Scan"
+#define QENODE_TYPE_AGGREGATE "Aggregate"
+#define QENODE_TYPE_GROUPAGGREGATE "GroupAggregate"
+#define QENODE_TYPE_HASHAGGREGATE "HashAggregate"
+#define QENODE_TYPE_APPENDONLY_COLUMNAR_SCAN "Append-Only Columnar Scan"
+#define QENODE_TYPE_BITMAPAND "BitmapAnd"
+#define QENODE_TYPE_BITMAPOR "BitmapOr"
+#define QENODE_TYPE_BITMAP_APPENDONLY_SCAN "Bitmap Append-Only Scan"
+#define QENODE_TYPE_BITMAP_HEAP_SCAN "Bitmap Heap Scan"
+#define QENODE_TYPE_BITMAP_INDEX_SCAN "Bitmap Index Scan"
+#define QENODE_TYPE_EXTERNAL_SCAN "External Scan"
+#define QENODE_TYPE_FUNCTION_SCAN "Function Scan"
+#define QENODE_TYPE_GROUP "Group"
+#define QENODE_TYPE_HASH "Hash"
+#define QENODE_TYPE_HASH_JOIN "Hash Join"
+#define QENODE_TYPE_HASH_LEFT_JOIN "Hash Left Join"
+#define QENODE_TYPE_HASH_LEFT_ANTI_SEMI_JOIN "Hash Left Anti Semi Join"
+#define QENODE_TYPE_HASH_FULL_JOIN "Hash Full Join"
+#define QENODE_TYPE_HASH_RIGHT_JOIN "Hash Right Join"
+#define QENODE_TYPE_HASH_EXISTS_JOIN "Hash EXISTS Join"
+#define QENODE_TYPE_HASH_REVERSE_IN_JOIN "Hash Reverse In Join"
+#define QENODE_TYPE_HASH_UNIQUE_INNER_JOIN "Hash Unique Inner Join"
+#define QENODE_TYPE_HASH_UNIQUE_OUTER_JOIN "Hash Unique Outer Join"
+#define QENODE_TYPE_INDEX_SCAN "Index Scan"
+#define QENODE_TYPE_LIMIT "Limit"
+#define QENODE_TYPE_MATERIALIZE "Materialize"
+#define QENODE_TYPE_MERGE_JOIN "Merge Join"
+#define QENODE_TYPE_MERGE_LEFT_JOIN "Merge Left Join"
+#define QENODE_TYPE_MERGE_LEFT_ANTI_SEMI_JOIN "Merge Left Anti Semi Join"
+#define QENODE_TYPE_MERGE_FULL_JOIN "Merge Full Join"
+#define QENODE_TYPE_MERGE_RIGHT_JOIN "Merge Right Join"
+#define QENODE_TYPE_MERGE_EXISTS_JOIN "Merge EXISTS Join"
+#define QENODE_TYPE_MERGE_REVERSE_IN_JOIN "Merge Reverse In Join"
+#define QENODE_TYPE_MERGE_UNIQUE_OUTER_JOIN "Merge Unique Outer Join"
+#define QENODE_TYPE_MERGE_UNIQUE_INNER_JOIN "Merge Unique Inner Join"
+#define QENODE_TYPE_REDISTRIBUTE_MOTION "Redistribute Motion"
+#define QENODE_TYPE_BROADCAST_MOTION "Broadcast Motion"
+#define QENODE_TYPE_GATHER_MOTION "Gather Motion"
+#define QENODE_TYPE_NESTED_LOOP "Nested Loop"
+#define QENODE_TYPE_NESTED_LOOP_LEFT_JOIN "Nested Loop Left Join"
+#define QENODE_TYPE_NESTED_LOOP_LEFT_ANTI_SEMI_JOIN "Nested Loop Left Anti Semi Join"
+#define QENODE_TYPE_NESTED_LOOP_FULL_JOIN "Nested Loop Full Join"
+#define QENODE_TYPE_NESTED_LOOP_RIGHT_JOIN "Nested Loop Right Join"
+#define QENODE_TYPE_NESTED_LOOP_EXISTS_JOIN "Nested Loop EXISTS Join"
+#define QENODE_TYPE_NESTED_LOOP_REVERSE_IN_JOIN "Nested Loop Reverse In Join"
+#define QENODE_TYPE_NESTED_LOOP_UNIQUE_OUTER_JOIN "Nested Loop Unique Outer Join"
+#define QENODE_TYPE_NESTED_LOOP_UNIQUE_INNER_JOIN "Nested Loop Unique Inner Join"
+#define QENODE_TYPE_RESULT "Result"
+#define QENODE_TYPE_REPEAT "Repeat"
+#define QENODE_TYPE_SEQ_SCAN "Seq Scan"
+#define QENODE_TYPE_SETOP "SetOp"
+#define QENODE_TYPE_SETOP_INTERSECT "SetOp Intersect"
+#define QENODE_TYPE_SETOP_INTERSECT_ALL "SetOp Intersect All"
+#define QENODE_TYPE_SETOP_EXCEPT "SetOp Except"
+#define QENODE_TYPE_SETOP_EXCEPT_ALL "SetOp Except All"
+#define QENODE_TYPE_SHARED_SCAN "Shared Scan"
+#define QENODE_TYPE_SORT "Sort"
+#define QENODE_TYPE_SUBQUERY_SCAN "Subquery Scan"
+#define QENODE_TYPE_TID_SCAN "Tid Scan"
+#define QENODE_TYPE_UNIQUE "Unique"
+#define QENODE_TYPE_VALUES_SCAN "Values Scan"
+#define QENODE_TYPE_WINDOW "Window"
+
+/* Units for node measurements */
+#define QENODE_UNIT_ROWS "Rows"
+#define QENODE_UNIT_TUPLES "Tuples"
+#define QENODE_UNIT_INPUTS "Inputs"
+#define QENODE_UNIT_RESCANS "Rescans"
+#define QENODE_UNIT_BYTES "Bytes"
+#define QENODE_UNIT_BATCHES "Batches"
+#define QENODE_UNIT_PASSES "Passes"
+#define QENODE_UNIT_PAGES "Pages"
+#define QENODE_UNIT_RESTORES "Restores"
+
+
+/* node measurement types */
+#define QENODE_MEASURE_ROWS_IN "Rows in"
+#define QENODE_MEASURE_APPEND_CURRENT_INPUT_SOURCE "Append Current Input Source"
+#define QENODE_MEASURE_APPENDONLY_SCAN_RESCAN "Append-only Scan Rescan"
+#define QENODE_MEASURE_AGGREGATE_TOTAL_SPILL_TUPLES "Aggregate Total Spill Tuples"
+#define QENODE_MEASURE_AGGREGATE_TOTAL_SPILL_BYTES "Aggregate Total Spill Bytes"
+#define QENODE_MEASURE_AGGREGATE_TOTAL_SPILL_BATCHES "Aggregate Total Spill Batches"
+#define QENODE_MEASURE_AGGREGATE_TOTAL_SPILL_PASS "Aggregate Total Spill Pass"
+#define QENODE_MEASURE_AGGREGATE_CURRENT_SPILL_PASS_READ_TUPLES "Aggregate Current Spill Pass Read Tuples"
+#define QENODE_MEASURE_AGGREGATE_CURRENT_SPILL_PASS_READ_BYTES "Aggregate Current Spill Pass Read Bytes"
+#define QENODE_MEASURE_AGGREGATE_CURRENT_SPILL_PASS_TUPLES "Aggregate Current Spill Pass Tuples"
+#define QENODE_MEASURE_AGGREGATE_CURRENT_SPILL_PASS_BYTES "Aggregate Current Spill Pass Bytes"
+#define QENODE_MEASURE_AGGREGATE_CURRENT_SPILL_PASS_BATCHES "Aggregate Current Spill Pass Batches"
+#define QENODE_MEASURE_APPENDONLY_COLUMNAR_SCAN_RESCAN "Append-Only Columnar Scan Rescan"
+#define QENODE_MEASURE_BITMAP_APPEDONLY_SCAN_PAGES "Bitmap Apped-Only Scan Pages"
+#define QENODE_MEASURE_BITMAP_APPENDONLY_SCAN_RESCAN "Bitmap Append-Only Scan Rescan"
+#define QENODE_MEASURE_BITMAP_HEAP_SCAN_PAGES "Bitmap Heap Scan Pages"
+#define QENODE_MEASURE_BITMAP_HEAP_SCAN_RESCAN "Bitmap Heap Scan Rescan"
+#define QENODE_MEASURE_BITMAP_INDEX_SCAN_RESCAN "Bitmap Index Scan Rescan"
+#define QENODE_MEASURE_EXTERNAL_SCAN_RESCAN "External Scan Rescan"
+#define QENODE_MEASURE_HASH_SPILL_BATCHES "Hash Spill Batches"
+#define QENODE_MEASURE_HASH_SPILL_TUPLES "Hash Spill Tuples"
+#define QENODE_MEASURE_HASH_SPILL_BYTES "Hash Spill Bytes"
+#define QENODE_MEASURE_HASH_JOIN_SPILL_BATCHES "Hash Join Spill Batches"
+#define QENODE_MEASURE_HASH_JOIN_SPILL_TUPLES "Hash Join Spill Tuples"
+#define QENODE_MEASURE_HASH_JOIN_SPILL_BYTES "Hash Join Spill Bytes"
+#define QENODE_MEASURE_INDEX_SCAN_RESTORE_POS "Index Scan Restore Pos"
+#define QENODE_MEASURE_INDEX_SCAN_RESCAN "Index Scan Rescan"
+#define QENODE_MEASURE_MATERIALIZE_RESCAN "Materialize Rescan"
+#define QENODE_MEASURE_MERGE_JOIN_INNER_TUPLES "Merge Join Inner Tuples"
+#define QENODE_MEASURE_MERGE_JOIN_OUTER_TUPLES "Merge Join Outer Tuples"
+#define QENODE_MEASURE_NESTED_LOOP_INNER_TUPLES "Nested Loop Inner Tuples"
+#define QENODE_MEASURE_NESTED_LOOP_OUTER_TUPLES "Nested Loop Outer Tuples"
+#define QENODE_MEASURE_SEQ_SCAN_PAGE_STATS "Seq Scan Page Stats"
+#define QENODE_MEASURE_SEQ_SCAN_RESTORE_POS "Seq Scan Restore Pos"
+#define QENODE_MEASURE_SEQ_SCAN_RESCAN "Seq Scan Rescan"
+#define QENODE_MEASURE_SHARED_SCAN_RESTORE_POS "Shared Scan Restore Pos"
+#define QENODE_MEASURE_SHARED_SCAN_RESCAN "Shared Scan Rescan"
+#define QENODE_MEASURE_SORT_MEMORY_USAGE "Sort Memory Usage"
+#define QENODE_MEASURE_SORT_SPILL_TUPLES "Sort Spill Tuples"
+#define QENODE_MEASURE_SORT_SPILL_BYTES "Sort Spill Bytes"
+#define QENODE_MEASURE_SORT_SPILL_PASS "Sort Spill Pass"
+#define QENODE_MEASURE_SORT_CURRENT_SPILL_PASS_TUPLES "Sort Current Spill Pass Tuples"
+#define QENODE_MEASURE_SORT_CURRENT_SPILL_PASS_BYTES "Sort Current Spill Pass Bytes"
+#define QENODE_MEASURE_SUBQUERY_SCAN_RESCAN "Subquery Scan Rescan"
+
+#define QENODE_AGG_METRICS  \
+		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_AGGREGATE_TOTAL_SPILL_TUPLES, QENODE_MEASURE_AGGREGATE_TOTAL_SPILL_BYTES, QENODE_MEASURE_AGGREGATE_TOTAL_SPILL_BATCHES, QENODE_MEASURE_AGGREGATE_TOTAL_SPILL_PASS, QENODE_MEASURE_AGGREGATE_CURRENT_SPILL_PASS_READ_TUPLES, QENODE_MEASURE_AGGREGATE_CURRENT_SPILL_PASS_READ_BYTES, QENODE_MEASURE_AGGREGATE_CURRENT_SPILL_PASS_TUPLES, QENODE_MEASURE_AGGREGATE_CURRENT_SPILL_PASS_BYTES, QENODE_MEASURE_AGGREGATE_CURRENT_SPILL_PASS_BATCHES}
+#define QENODE_AGG_UNITS  \
+		{QENODE_UNIT_ROWS, QENODE_UNIT_TUPLES, QENODE_UNIT_BYTES, QENODE_UNIT_BATCHES, QENODE_UNIT_PASSES, QENODE_UNIT_TUPLES, QENODE_UNIT_BYTES, QENODE_UNIT_TUPLES, QENODE_UNIT_BYTES, QENODE_UNIT_BATCHES }
+
+#define QENODE_HASHJOIN_METRICS \
+		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_HASH_JOIN_SPILL_BATCHES, QENODE_MEASURE_HASH_JOIN_SPILL_TUPLES, QENODE_MEASURE_HASH_JOIN_SPILL_BYTES}
+#define QENODE_HASHJOIN_UNITS \
+		{QENODE_UNIT_ROWS, QENODE_UNIT_BATCHES, QENODE_UNIT_TUPLES, QENODE_UNIT_BYTES}
+
+#define QENODE_MERGEJOIN_METRICS \
+		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_MERGE_JOIN_INNER_TUPLES, QENODE_MEASURE_MERGE_JOIN_OUTER_TUPLES}
+#define QENODE_MERGEJOIN_UNITS \
+		{QENODE_UNIT_ROWS, QENODE_UNIT_TUPLES, QENODE_UNIT_TUPLES}
+
+#define QENODE_NESTEDLOOP_METRICS \
+		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_NESTED_LOOP_INNER_TUPLES, QENODE_MEASURE_NESTED_LOOP_OUTER_TUPLES}
+#define QENODE_NESTEDLOOP_UNITS \
+		{QENODE_UNIT_ROWS, QENODE_UNIT_TUPLES, QENODE_UNIT_TUPLES}
+
+
+/* this struct is used for lookups to find strings 
+   the struct is 166 bytes -- this many bytes will be added to the process times number of node types */
+typedef struct QenodeNamesDescriptor
+{
+	PerfmonNodeType type;  /* this is for code correctness to vefify a QenodeNamesDescriptor is in the correct place in lookup table */
+	const char* nodename;
+	const char* measurenames[GPMON_QEXEC_M_COUNT];
+	const char* measureunits[GPMON_QEXEC_M_COUNT];
+	
+} QenodeNamesDescriptor;
+
+
+/* the index into this array is the PerfmonNodeType enum
+   the positions in this array must match the positions in the enum
+   we do asserts to validate that there is no mistake in the positions */
+QenodeNamesDescriptor nodetype_string_lookup[PMNT_MAXIMUM_ENUM] = 
+{
+	{PMNT_Invalid, NULL, { NULL }, {NULL }},
+
+	{PMNT_Append, QENODE_TYPE_APPEND, 
+		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_APPEND_CURRENT_INPUT_SOURCE  }, 
+		{QENODE_UNIT_ROWS, QENODE_UNIT_INPUTS }
+	},
+	{PMNT_AppendOnlyScan, QENODE_TYPE_APPENDONLY_SCAN, 
+		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_APPENDONLY_SCAN_RESCAN }, 
+		{QENODE_UNIT_ROWS, QENODE_UNIT_RESCANS}
+	},
+	{PMNT_Aggregate, QENODE_TYPE_AGGREGATE, 
+		QENODE_AGG_METRICS,
+		QENODE_AGG_UNITS
+	},
+	{PMNT_GroupAggregate, QENODE_TYPE_GROUPAGGREGATE, 
+		QENODE_AGG_METRICS,
+		QENODE_AGG_UNITS
+	},
+	{PMNT_HashAggregate, QENODE_TYPE_HASHAGGREGATE, 
+		QENODE_AGG_METRICS,
+		QENODE_AGG_UNITS
+	},
+	{PMNT_AppendOnlyColumnarScan, QENODE_TYPE_APPENDONLY_COLUMNAR_SCAN, 
+		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_APPENDONLY_COLUMNAR_SCAN_RESCAN}, 
+		{QENODE_UNIT_ROWS, QENODE_UNIT_RESCANS}
+	},
+	{PMNT_BitmapAnd, QENODE_TYPE_BITMAPAND, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_BitmapOr, QENODE_TYPE_BITMAPOR, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_BitmapAppendOnlyScan, QENODE_TYPE_BITMAP_APPENDONLY_SCAN, 
+		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_BITMAP_APPEDONLY_SCAN_PAGES, QENODE_MEASURE_BITMAP_APPENDONLY_SCAN_RESCAN }, 
+		{QENODE_UNIT_ROWS, QENODE_UNIT_PAGES, QENODE_UNIT_RESCANS }
+	},
+	{PMNT_BitmapHeapScan, QENODE_TYPE_BITMAP_HEAP_SCAN, 
+		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_BITMAP_HEAP_SCAN_PAGES, QENODE_MEASURE_BITMAP_HEAP_SCAN_RESCAN }, 
+		{QENODE_UNIT_ROWS, QENODE_UNIT_PAGES, QENODE_UNIT_RESCANS }
+	},
+	{PMNT_BitmapIndexScan, QENODE_TYPE_BITMAP_INDEX_SCAN,
+		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_BITMAP_INDEX_SCAN_RESCAN  }, 
+		{QENODE_UNIT_ROWS, QENODE_UNIT_RESCANS }
+	},
+	{PMNT_ExternalScan, QENODE_TYPE_EXTERNAL_SCAN,
+		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_EXTERNAL_SCAN_RESCAN }, 
+		{QENODE_UNIT_ROWS, QENODE_UNIT_RESCANS }
+	},
+	{PMNT_FunctionScan, QENODE_TYPE_FUNCTION_SCAN, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_Group, QENODE_TYPE_GROUP, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_Hash, QENODE_TYPE_HASH, 
+		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_HASH_SPILL_BATCHES, QENODE_MEASURE_HASH_SPILL_TUPLES, QENODE_MEASURE_HASH_SPILL_BYTES}, 
+		{QENODE_UNIT_ROWS, QENODE_UNIT_BATCHES, QENODE_UNIT_TUPLES, QENODE_UNIT_BYTES }
+	},
+	{PMNT_HashJoin, QENODE_TYPE_HASH_JOIN, 
+		QENODE_HASHJOIN_METRICS,
+		QENODE_HASHJOIN_UNITS
+	},
+	{PMNT_HashLeftJoin, QENODE_TYPE_HASH_LEFT_JOIN, 
+		QENODE_HASHJOIN_METRICS,
+		QENODE_HASHJOIN_UNITS
+	},
+	{PMNT_HashLeftAntiSemiJoin, QENODE_TYPE_HASH_LEFT_ANTI_SEMI_JOIN, 
+		QENODE_HASHJOIN_METRICS,
+		QENODE_HASHJOIN_UNITS
+	},
+	{PMNT_HashFullJoin, QENODE_TYPE_HASH_FULL_JOIN, 
+		QENODE_HASHJOIN_METRICS,
+		QENODE_HASHJOIN_UNITS
+	},
+	{PMNT_HashRightJoin, QENODE_TYPE_HASH_RIGHT_JOIN, 
+		QENODE_HASHJOIN_METRICS,
+		QENODE_HASHJOIN_UNITS
+	},
+	{PMNT_HashExistsJoin, QENODE_TYPE_HASH_EXISTS_JOIN, 
+		QENODE_HASHJOIN_METRICS,
+		QENODE_HASHJOIN_UNITS
+	},
+	{PMNT_HashReverseInJoin, QENODE_TYPE_HASH_REVERSE_IN_JOIN, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_HashUniqueOuterJoin, QENODE_TYPE_HASH_UNIQUE_OUTER_JOIN, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_HashUniqueInnerJoin, QENODE_TYPE_HASH_UNIQUE_INNER_JOIN, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_IndexScan, QENODE_TYPE_INDEX_SCAN, 
+		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_INDEX_SCAN_RESTORE_POS, QENODE_MEASURE_INDEX_SCAN_RESCAN }, 
+		{QENODE_UNIT_ROWS, QENODE_UNIT_RESTORES, QENODE_UNIT_RESCANS}
+	},
+	{PMNT_Limit, QENODE_TYPE_LIMIT, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_Materialize, QENODE_TYPE_MATERIALIZE, 
+		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_MATERIALIZE_RESCAN}, 
+		{QENODE_UNIT_ROWS, QENODE_UNIT_RESCANS }
+	},
+	{PMNT_MergeJoin, QENODE_TYPE_MERGE_JOIN, 
+		QENODE_MERGEJOIN_METRICS,
+		QENODE_MERGEJOIN_UNITS
+	},
+	{PMNT_MergeLeftJoin, QENODE_TYPE_MERGE_LEFT_JOIN, 
+		QENODE_MERGEJOIN_METRICS,
+		QENODE_MERGEJOIN_UNITS
+	},
+	{PMNT_MergeLeftAntiSemiJoin, QENODE_TYPE_MERGE_LEFT_ANTI_SEMI_JOIN, 
+		QENODE_MERGEJOIN_METRICS,
+		QENODE_MERGEJOIN_UNITS
+	},
+	{PMNT_MergeFullJoin, QENODE_TYPE_MERGE_FULL_JOIN, 
+		QENODE_MERGEJOIN_METRICS,
+		QENODE_MERGEJOIN_UNITS
+	},
+	{PMNT_MergeRightJoin, QENODE_TYPE_MERGE_RIGHT_JOIN, 
+		QENODE_MERGEJOIN_METRICS,
+		QENODE_MERGEJOIN_UNITS
+	},
+	{PMNT_MergeExistsJoin, QENODE_TYPE_MERGE_EXISTS_JOIN, 
+		QENODE_MERGEJOIN_METRICS,
+		QENODE_MERGEJOIN_UNITS
+	},
+	{PMNT_MergeReverseInJoin, QENODE_TYPE_MERGE_REVERSE_IN_JOIN, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_MergeUniqueOuterJoin, QENODE_TYPE_MERGE_UNIQUE_OUTER_JOIN, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_MergeUniqueInnerJoin, QENODE_TYPE_MERGE_UNIQUE_INNER_JOIN, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_RedistributeMotion, QENODE_TYPE_REDISTRIBUTE_MOTION, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_BroadcastMotion, QENODE_TYPE_BROADCAST_MOTION, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_GatherMotion, QENODE_TYPE_GATHER_MOTION, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_NestedLoop, QENODE_TYPE_NESTED_LOOP, 
+		QENODE_NESTEDLOOP_METRICS,
+		QENODE_NESTEDLOOP_UNITS
+	},
+	{PMNT_NestedLoopLeftJoin, QENODE_TYPE_NESTED_LOOP_LEFT_JOIN, 
+		QENODE_NESTEDLOOP_METRICS,
+		QENODE_NESTEDLOOP_UNITS
+	},
+	{PMNT_NestedLoopLeftAntiSemiJoin, QENODE_TYPE_NESTED_LOOP_LEFT_ANTI_SEMI_JOIN, 
+		QENODE_NESTEDLOOP_METRICS,
+		QENODE_NESTEDLOOP_UNITS
+	},
+	{PMNT_NestedLoopFullJoin, QENODE_TYPE_NESTED_LOOP_FULL_JOIN, 
+		QENODE_NESTEDLOOP_METRICS,
+		QENODE_NESTEDLOOP_UNITS
+	},
+	{PMNT_NestedLoopRightJoin, QENODE_TYPE_NESTED_LOOP_RIGHT_JOIN, 
+		QENODE_NESTEDLOOP_METRICS,
+		QENODE_NESTEDLOOP_UNITS
+	},
+	{PMNT_NestedLoopExistsJoin, QENODE_TYPE_NESTED_LOOP_EXISTS_JOIN, 
+		QENODE_NESTEDLOOP_METRICS,
+		QENODE_NESTEDLOOP_UNITS
+	},
+	{PMNT_NestedLoopReverseInJoin, QENODE_TYPE_NESTED_LOOP_REVERSE_IN_JOIN, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_NestedLoopUniqueOuterJoin, QENODE_TYPE_NESTED_LOOP_UNIQUE_OUTER_JOIN, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_NestedLoopUniqueInnerJoin, QENODE_TYPE_NESTED_LOOP_UNIQUE_INNER_JOIN, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_Result, QENODE_TYPE_RESULT, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_Repeat, QENODE_TYPE_REPEAT, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_SeqScan, QENODE_TYPE_SEQ_SCAN, 
+		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_SEQ_SCAN_PAGE_STATS, QENODE_MEASURE_SEQ_SCAN_RESTORE_POS, QENODE_MEASURE_SEQ_SCAN_RESCAN }, 
+		{QENODE_UNIT_ROWS, QENODE_UNIT_PAGES, QENODE_UNIT_RESTORES, QENODE_UNIT_RESCANS }
+	},
+	{PMNT_SetOp, QENODE_TYPE_SETOP, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_SetOpIntersect, QENODE_TYPE_SETOP_INTERSECT, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_SetOpIntersectAll, QENODE_TYPE_SETOP_INTERSECT_ALL, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_SetOpExcept, QENODE_TYPE_SETOP_EXCEPT, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_SetOpExceptAll, QENODE_TYPE_SETOP_EXCEPT_ALL, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_SharedScan, QENODE_TYPE_SHARED_SCAN, 
+		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_SHARED_SCAN_RESTORE_POS, QENODE_MEASURE_SHARED_SCAN_RESCAN }, 
+		{QENODE_UNIT_ROWS, QENODE_UNIT_RESTORES, QENODE_UNIT_RESCANS }
+	},
+	{PMNT_Sort, QENODE_TYPE_SORT, 
+		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_SORT_MEMORY_USAGE, QENODE_MEASURE_SORT_SPILL_TUPLES, QENODE_MEASURE_SORT_SPILL_BYTES, QENODE_MEASURE_SORT_SPILL_PASS, QENODE_MEASURE_SORT_CURRENT_SPILL_PASS_TUPLES, QENODE_MEASURE_SORT_CURRENT_SPILL_PASS_BYTES},
+		{QENODE_UNIT_ROWS, QENODE_UNIT_BYTES, QENODE_UNIT_TUPLES, QENODE_UNIT_BYTES, QENODE_UNIT_PASSES, QENODE_UNIT_TUPLES, QENODE_UNIT_BYTES }
+	},
+	{PMNT_SubqueryScan, QENODE_TYPE_SUBQUERY_SCAN, 
+		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_SUBQUERY_SCAN_RESCAN}, 
+		{QENODE_UNIT_ROWS, QENODE_UNIT_RESCANS}
+	},
+	{PMNT_TidScan, QENODE_TYPE_TID_SCAN, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_Unique, QENODE_TYPE_UNIQUE , 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_ValuesScan, QENODE_TYPE_VALUES_SCAN, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+	{PMNT_Window, QENODE_TYPE_WINDOW, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
+	},
+};
+
+/* this is a debug function to validate the string lookup table datastructures 
+   it should be run one time only at startup */
+apr_status_t gpdb_debug_string_lookup_table()
+{
+	int i;
+	for (i = PMNT_Invalid + 1; i < PMNT_MAXIMUM_ENUM; ++i)
+	{
+		QenodeNamesDescriptor* desc = &nodetype_string_lookup[i];
+		int j;
+
+		if (desc->type != i)
+		{
+			gpmon_warning(FLINE, "gpmmon nodetype_string_lookup out of sync at type %d with value %d", i, desc->type);
+			return APR_NOTFOUND;
+		}
+		if (!desc->nodename)
+		{
+			gpmon_warning(FLINE, "gpmmon missing nodetype description for type: %d\n", desc->type);
+			return APR_NOTFOUND;
+		}
+
+		for (j = 0; j < GPMON_QEXEC_M_COUNT; ++j)
+		{
+			if (!desc->measurenames[j])
+			{
+				break;
+			}
+			if (!desc->measureunits[j])
+			{
+				gpmon_warning(FLINE, "gpmmon nodetype %s missing units for measurement: %d\n", desc->nodename, j);
+				return APR_NOTFOUND;
+			}
+			
+			/* enable this for debugging help only */
+			/* gpmon_print("gpmmon %s \"%s\" \"%s\"\n", desc->nodename, desc->measurenames[j], desc->measureunits[j]);  */
+		}
+		if (!j)
+		{
+			gpmon_warning(FLINE, "gpmmon missing node measurements for nodetype %s\n", desc->nodename);
+			return APR_NOTFOUND;
+		}
+	}
+
+	return APR_SUCCESS;
+}
+
+const char* gpdb_getnodename(PerfmonNodeType type)
+{
+	QenodeNamesDescriptor* desc = &nodetype_string_lookup[type];
+	return desc->nodename;
+}
+
+apr_status_t gpdb_getnode_metricinfo(PerfmonNodeType type, apr_byte_t metricnum, const char** name, const char** unit)
+{
+	QenodeNamesDescriptor* desc = &nodetype_string_lookup[type];
+	if (!desc->measurenames[metricnum])
+	{
+		*name = NULL;
+		*unit = NULL;
+		return APR_NOTFOUND;
+	}
+	else
+	{
+		*name = desc->measurenames[metricnum];
+		*unit = desc->measureunits[metricnum];
+
+		assert(desc->measureunits[metricnum]);
+
+		return APR_SUCCESS;
+	}
+}
+

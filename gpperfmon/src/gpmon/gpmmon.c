@@ -77,13 +77,18 @@ static struct
 	int hosttabsz; /* # machines */
 
 	char* master_data_directory;
-	apr_thread_mutex_t *mutex;
+	apr_thread_mutex_t *agg_mutex; /* lock when accessing the agg data */
 	agg_t* agg;
+
+	apr_thread_mutex_t *tailfile_mutex; /* lock when accessing the physical tail files */
 
 	int exit; /* TRUE if we need to exit */
 	int reload;
-	unsigned int gpmon_tick;
+	apr_uint64_t tail_buffer_bytes;
+	apr_uint64_t _tail_buffer_bytes;
 } ax = { 0 };
+
+void interuptable_sleep(unsigned int seconds);
 
 
 /* Default option values */
@@ -92,12 +97,12 @@ int very_verbose = 0; /* == opt.V */
 int quantum = 15; /* == opt.q */
 int min_query_time = 60; /* == opt.m */
 int min_detailed_query_time = 60; /* == opt.d */
-apr_status_t harvest_failure = 0;
 
 
 /* thread handles */
 static apr_thread_t* conm_th = NULL;
 static apr_thread_t* event_th = NULL;
+static apr_thread_t* harvest_th = NULL;
 
 /* signal masks */
 sigset_t unblocksig;
@@ -118,18 +123,6 @@ int gpmmon_quantum(void)
 	return opt.q;
 }
 
-/* Gets maximum amount of data to buffer on harvest failure */
-apr_uint64_t gpmmon_tail_buffer_max()
-{
-	return opt.tail_buffer_max;
-}
-
-/* Gets status of last harvest attempt */
-apr_status_t gpmmon_harvest_status()
-{
-	return harvest_failure;
-}
-
 /* prints usage and exit */
 static void usage(const char* msg)
 {
@@ -142,6 +135,11 @@ static void usage(const char* msg)
 		fprintf(stderr, "%s\n\n", msg);
 
 	exit(msg ? 1 : 0);
+}
+
+void incremement_tail_bytes(apr_uint64_t bytes)
+{
+	ax.tail_buffer_bytes += bytes;
 }
 
 /* Cleanup function called on exit. */
@@ -157,6 +155,8 @@ static void cleanup()
 		apr_thread_join(&tstatus, event_th);
 	if (conm_th)
 		apr_thread_join(&tstatus, conm_th);
+	if (harvest_th)
+		apr_thread_join(&tstatus, harvest_th);
 
 	for (i = 0; i < ax.hosttabsz; i++)
 	{
@@ -267,11 +267,14 @@ static void recv_from_gx(SOCKET sock, short event, void* arg)
 	apr_thread_mutex_unlock(h->mutex);
 	if (pkt)
 	{
-		apr_thread_mutex_lock(ax.mutex);
+		apr_thread_mutex_lock(ax.agg_mutex);
 		e = agg_put(ax.agg, pkt);
-		apr_thread_mutex_unlock(ax.mutex);
+		apr_thread_mutex_unlock(ax.agg_mutex);
 		if (e)
+		{
+        	interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 			gpmon_fatalx(FLINE, e, "agg_put failed");
+		}
 	}
 }
 
@@ -299,6 +302,7 @@ static void* event_main(apr_thread_t* thread_, void* arg_)
 
 	if (!event_init())
 	{
+        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "event_init failed");
 	}
 	while (!ax.exit)
@@ -337,8 +341,8 @@ static void* event_main(apr_thread_t* thread_, void* arg_)
 								recv_from_gx, h);
 						if (event_add(h->event, 0))
 						{
-							gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
-									"event_add failed");
+        					interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+							gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "event_add failed");
 						}
 					}
 				}
@@ -364,14 +368,14 @@ static void* event_main(apr_thread_t* thread_, void* arg_)
 		TR2(("event_loopexit\n"));
 		if (-1 == event_loopexit(&tv))
 		{
-			gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
-					"event_loopexit failed");
+        	interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+			gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "event_loopexit failed");
 		}
 		TR2(("event_dispatch\n"));
 		if (-1 == event_dispatch() && ETIME != errno)
 		{
-			gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
-					"event_dispatch failed");
+        	interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+			gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "event_dispatch failed");
 		}
 		if (ax.reload == 1)
 		{
@@ -491,12 +495,13 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 			for (i = 0; i < count_broken;)
 			{
 				FILE* fp[BATCH];
-				char line[1024];
+				const int line_size = 1024;
+				char line[line_size];
 				memset(fp, 0, sizeof(fp));
 				for (j = 0; j < 8 && i < count_broken; j++, i++)
 				{
 					host_t* h = &tab[broken[i]];
-					sprintf(line, "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
+					snprintf(line, line_size, "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
 							" %s %s/bin/gpsmon -m %" FMT64 " -l %s %s %d ",
 							h->hostname, ax.gphome, opt.max_log_size, h->data_dir,
 							opt.v ? "-v" : "", ax.port);
@@ -548,10 +553,118 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 	return 0;
 }
 
+/* seperate thread for harvest */
+static void* harvest_main(apr_thread_t* thread_, void* arg_)
+{
+	unsigned int loop;
+	apr_status_t status;
+	unsigned int consecutive_failures = 0;
+
+	for (loop = 1; !ax.exit; loop++)
+	{
+		apr_sleep(apr_time_from_sec(1));
+
+		if (0 == (loop % opt.harvest_interval))
+		{
+			/* 	
+				PROCESS:
+				1) WITH TAIL MUTEX: rename tail files to stage files
+				2) WITH TAIL MUTEX: create new tail files
+				3) Append data from stage files into _tail files
+				4) load data from _tail files into system history
+				5) delete _tail files after successful data load
+
+				NOTES:
+				1) mutex is held only over rename and creation of new tail files
+				   The reason is this is a fast operation and both the main thread doing dumps and the harvest
+				   thread uses the tail files
+
+				2) tail files are renamed/moved because this operation is safe to be done while the clients are
+				   reading the files.  
+
+				3) The stage files are written over every harvest cycle, so the idea is no client
+				   will still be reading the tail files for an entire harvest cycle.  (this is not perfect logic but ok)
+			*/
+
+			/* LOCK TAIL MUTEX ****************************************/
+			apr_thread_mutex_lock(ax.tailfile_mutex);
+
+			ax._tail_buffer_bytes += ax.tail_buffer_bytes;
+			ax.tail_buffer_bytes = 0;
+
+			status = gpdb_rename_tail_files(ax.pool);
+
+			status = gpdb_truncate_tail_files(ax.pool);
+
+			apr_thread_mutex_unlock(ax.tailfile_mutex);
+			/* UNLOCK TAIL MUTEX ****************************************/
+
+			status = gpdb_copy_stage_to_harvest_files(ax.pool);
+
+			if (status == APR_SUCCESS)
+			{
+				status = gpdb_harvest();
+			}
+
+			if (status != APR_SUCCESS)
+			{
+				gpmon_warningx(FLINE, 0, "harvest failure: accumulated tail file size is %llu bytes", ax._tail_buffer_bytes);
+				consecutive_failures++;
+			}
+
+			if (status == APR_SUCCESS || consecutive_failures > 100 || (ax._tail_buffer_bytes > opt.tail_buffer_max))
+			{
+				/* 
+					delete the data in the _tail file because it has been inserted successfully into history
+					we also delete the data without loading if it loading failed more than 100 times as a defensive measure for corrupted data in the file
+					better to lose some perf data and self fix than calling support to have them manually find the corrupted perf data and clear it themselves
+					we also delete the data if the size of the data is greater than our max data size
+				*/
+				status = gpdb_empty_harvest_files(ax.pool);
+
+				if (status != APR_SUCCESS)
+				{
+					gpmon_warningx(FLINE, 0, "error trying to clear harvest files");
+				}
+				consecutive_failures = 0;
+				ax._tail_buffer_bytes = 0;
+			}
+		}
+	}
+
+	return APR_SUCCESS;
+}
+
+time_t compute_next_dump_to_file()
+{
+	time_t current_time = time(NULL);
+	return (current_time - (current_time % opt.q) + opt.q);
+}
+
 static void gpmmon_main(void)
 {
 	int e;
 	apr_threadattr_t* ta;
+	time_t this_cycle_ts = 0;
+
+	/* log check is not exact. do it every X loops */
+	int ticks_since_last_log_check = 0;
+	const unsigned int log_check_interval = 60;
+
+	const int safety_ticks = 2 * opt.q;
+	unsigned int dump_request_time_allowance = opt.q / 2;
+
+	/* DUMP TO FILE */
+	time_t next_dump_to_file_ts;
+	int dump_to_file_safety_ticks = safety_ticks;
+
+	/* SEND MESSAGE  */
+	time_t next_send_msg_ts;
+	int send_msg_safety_ticks = safety_ticks;
+
+	/* init timestamps */
+	next_dump_to_file_ts = compute_next_dump_to_file();
+	next_send_msg_ts = next_dump_to_file_ts - dump_request_time_allowance;
 
 	/* TODO: MPP-3974 might have actually been caused by the spin lock problem... investigate */
 	setenv("EVENT_NOKQUEUE", "1", 1);
@@ -562,33 +675,38 @@ static void gpmmon_main(void)
 
 	if (0 != (e = apr_pool_create(&ax.pool, 0)))
 	{
+        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "apr_pool_create failed");
 	}
 
 	if (0 != (e = apr_env_get(&ax.gphome, "GPHOME", ax.pool)))
 	{
+        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "GPHOME environment variable not set");
 	}
 
 	/* Create mutexes */
-	if (0 != (e = apr_thread_mutex_create(&ax.mutex, APR_THREAD_MUTEX_UNNESTED, ax.pool)))
+	if (0 != (e = apr_thread_mutex_create(&ax.agg_mutex, APR_THREAD_MUTEX_UNNESTED, ax.pool)))
 	{
-		gpmon_fatalx(FLINE, e, "Failed to create mutex");
+        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		gpmon_fatalx(FLINE, e, "Resource Error: Failed to create agg_mutex");
 	}
 
-	if (0 != (e = apr_thread_mutex_create(&ax.mutex, APR_THREAD_MUTEX_UNNESTED, ax.pool)))
+	if (0 != (e = apr_thread_mutex_create(&ax.tailfile_mutex, APR_THREAD_MUTEX_UNNESTED, ax.pool)))
 	{
-		gpmon_fatalx(FLINE, e, "Failed to create mutex");
+        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		gpmon_fatalx(FLINE, e, "Resource Error: Failed to create tailfile_mutex");
 	}
-
 
 	if (0 != (e = apr_threadattr_create(&ta, ax.pool)))
 	{
+        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "apr_threadattr_create failed");
 	}
 
 	if (0 != (e = apr_threadattr_detach_set(ta, 1)))
 	{
+        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "apr_threadattr_detach_set failed");
 	}
 
@@ -596,6 +714,7 @@ static void gpmmon_main(void)
 	if (0 != (e = apr_generate_random_bytes((void*) &ax.signature,
 			sizeof(ax.signature))))
 	{
+        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "apr_generate_random_bytes failed");
 	}
 	if (ax.signature < 0)
@@ -607,18 +726,28 @@ static void gpmmon_main(void)
 	/* create the agg */
 	if (0 != (e = agg_create(&ax.agg, 1, ax.pool)))
 	{
+        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "agg_create failed");
 	}
 
 	/* spawn conm thread */
 	if (0 != (e = apr_thread_create(&conm_th, ta, conm_main, 0, ax.pool)))
 	{
+        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "apr_thread_create failed");
 	}
 
 	/* spawn event thread */
 	if (0 != (e = apr_thread_create(&event_th, ta, event_main, 0, ax.pool)))
 	{
+        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		gpmon_fatalx(FLINE, e, "apr_thread_create failed");
+	}
+
+	/* spawn harvest thread */
+	if (0 != (e = apr_thread_create(&harvest_th, ta, harvest_main, 0, ax.pool)))
+	{
+        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "apr_thread_create failed");
 	}
 
@@ -626,10 +755,14 @@ static void gpmmon_main(void)
 	while (!ax.exit)
 	{
 		apr_sleep(apr_time_from_sec(1));
-		ax.gpmon_tick++;
 
-		/* get all hosts to dump their metrics */
-		if (1 == (ax.gpmon_tick % opt.q))
+		this_cycle_ts = time(NULL);
+		send_msg_safety_ticks--;
+		dump_to_file_safety_ticks--;
+		ticks_since_last_log_check++;
+
+		/* SEND MESSAGE */
+		if ((this_cycle_ts >= next_send_msg_ts) || (send_msg_safety_ticks < 1))
 		{
 			int i;
 			for (i = 0; i < ax.hosttabsz; i++)
@@ -648,12 +781,22 @@ static void gpmmon_main(void)
 				}
 				apr_thread_mutex_unlock(h->mutex);
 			}
+
+			send_msg_safety_ticks = safety_ticks;
+			next_send_msg_ts = this_cycle_ts + opt.q;
 		}
-		/* aggregate after collection */
-		if (5 == (ax.gpmon_tick % opt.q))
+
+		/* DUMP TO FILE */
+		if ((this_cycle_ts >= next_dump_to_file_ts) || (dump_to_file_safety_ticks < 1))
 		{
 			agg_t* newagg = 0;
 			agg_t* oldagg = 0;
+
+			/* mutex lock the aggregate data while we dump and dupe it */
+			apr_thread_mutex_lock(ax.agg_mutex);
+
+			/* mutex tail files during dump call */
+			apr_thread_mutex_lock(ax.tailfile_mutex);
 
 			/* dump the current aggregates */
 			if (0 != (e = agg_dump(ax.agg)))
@@ -661,24 +804,27 @@ static void gpmmon_main(void)
 				gpmon_warningx(FLINE, e, "unable to finish aggregation");
 			}
 
+			apr_thread_mutex_unlock(ax.tailfile_mutex);
+
 			/* make a new one, copy only recently updated entries */
-			apr_thread_mutex_lock(ax.mutex);
 			if (0 != (e = agg_dup(&newagg, ax.agg, ax.pool)))
+			{
+        		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 				gpmon_fatalx(FLINE, e, "agg_dup failed");
+			}
 			oldagg = ax.agg;
 			ax.agg = newagg;
-			apr_thread_mutex_unlock(ax.mutex);
+
+			apr_thread_mutex_unlock(ax.agg_mutex);
 			/* destroy the old agg */
 			agg_destroy(oldagg);
+
+			next_dump_to_file_ts = compute_next_dump_to_file();
+			next_send_msg_ts = next_dump_to_file_ts - dump_request_time_allowance;
+			dump_to_file_safety_ticks = safety_ticks;
 		}
 
-		/* every N quantums, run the harvest queries */
-		if (0 == (ax.gpmon_tick % opt.harvest_interval))
-		{
-			harvest_failure = gpdb_harvest();
-		}
-
-		if (0 == (ax.gpmon_tick % 60))
+		if (ticks_since_last_log_check > log_check_interval)
 		{
 			apr_finfo_t finfo;
 			char log_file[MAXPATHLEN + 1] =
@@ -693,6 +839,7 @@ static void gpmmon_main(void)
 					freopen(log_file, "w+", stderr);
 				}
 			}
+			ticks_since_last_log_check = 0;
 		}
 	}
 }
@@ -824,9 +971,9 @@ static int read_conf_file(char *conffile)
 		fprintf(stderr, "Performance Monitor - Failed to find [gpmmon] section in the "
 				"configuration file.  Using default values");
 
-	if (!(10 <= opt.q && opt.q <= 60))
+	if (opt.q != 10 && opt.q != 15 && opt.q != 20 && opt.q != 30 && opt.q != 60)
 	{
-		fprintf(stderr, "Performance Monitor - quantum value must be between 10 and 60.  Using "
+		fprintf(stderr, "Performance Monitor - quantum value must be be either 10, 15, 20, 30 or 60.  Using "
 				"default value of 15");
 		opt.q = 15;
 	}
@@ -896,6 +1043,7 @@ static void parse_command_line(int argc, const char* const argv[])
 
 	if (0 != (e = apr_pool_create(&pool, 0)))
 	{
+        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "apr_pool_create failed");
 	}
 
@@ -909,6 +1057,7 @@ static void parse_command_line(int argc, const char* const argv[])
 
 	if (0 != (e = apr_getopt_init(&os, pool, argc, argv)))
 	{
+        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "apr_getopt_init failed");
 	}
 
@@ -965,6 +1114,12 @@ int main(int argc, const char* const argv[])
 		exit(1);
 	}
 
+	if ( gpdb_debug_string_lookup_table() != APR_SUCCESS)
+	{
+        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		gpmon_fatal(FLINE, "internal consistency check failed at gpperfmon startup");
+	}
+
 	parse_command_line(argc, argv);
 
 	/* Set env if we got a port.  This will be picked up by libpq */
@@ -1019,6 +1174,8 @@ int main(int argc, const char* const argv[])
 	read_conf_file(opt.conf_file);
 
     /* redirect output to log_file */
+	/* stdout goes to log: debug and warnings */
+	/* stderr goes to pg_log: fatal errors */
 	{
         if (gpmon_recursive_mkdir(opt.log_dir))
         {
@@ -1033,10 +1190,6 @@ int main(int argc, const char* const argv[])
             fprintf(stderr, "\nPerformance Monitor -- failed to open perfmon log file %s\n", log_file);
             interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		    gpmon_fatal(FLINE, "\nfailed (1) to open perfmon log file %s\n", log_file);
-        }
-		if (!freopen(log_file, "w", stderr)){
-            interuptable_sleep(30); // sleep to prevent loop of forking process and failing
-		    gpmon_fatal(FLINE, "\nfailed (2) to open perfmon log file %s\n", log_file);
         }
 	}
 
@@ -1072,7 +1225,6 @@ int main(int argc, const char* const argv[])
         }
 	}
 
-
 	gpmmon_main();
 
 	cleanup();
@@ -1080,12 +1232,14 @@ int main(int argc, const char* const argv[])
 	return 0;
 }
 
+#define GPMMON_GETHOSTLIST_LINE_BUFSIZE 1024
 static void gethostlist(host_t** rettab, int* rettabsz)
 {
 	apr_pool_t* pool;
 	apr_hash_t* htab;
 	int e, i;
-	char line[1024];
+	
+	char line[GPMMON_GETHOSTLIST_LINE_BUFSIZE];
 	apr_array_header_t* hostarray;
 	int host_count = 0;
 	char **hosts = NULL;
@@ -1093,6 +1247,7 @@ static void gethostlist(host_t** rettab, int* rettabsz)
 
 	if (0 != (e = apr_pool_create(&pool, NULL)))
 	{
+        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "apr_pool_create failed");
 	}
 
@@ -1116,6 +1271,7 @@ static void gethostlist(host_t** rettab, int* rettabsz)
 
 	if (apr_is_empty_array(hostarray))
 	{
+        interuptable_sleep(10); // sleep to prevent loop of forking process and failing
 		gpmon_fatal(FLINE, "No valid hosts in gp_segment_configuration.");
 	}
 
@@ -1136,7 +1292,7 @@ static void gethostlist(host_t** rettab, int* rettabsz)
 			if (!rec)
 				break;
 			memcpy(&host[i], rec, sizeof(*rec));
-			sprintf(line, "ssh -o 'BatchMode yes' -o "
+			snprintf(line, GPMMON_GETHOSTLIST_LINE_BUFSIZE, "ssh -o 'BatchMode yes' -o "
 				"'StrictHostKeyChecking no' %s hostname", host[i].hostname);
 			fp[i] = popen(line, "r");
 			if (!fp[i])
@@ -1231,6 +1387,7 @@ static void gethostlist(host_t** rettab, int* rettabsz)
 			hp = gethostbyname(ret[i].hostname);
 			if (! hp)
 			{
+        		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 				gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
 						"cannot resolve host %s",
 						ret[i].hostname);
@@ -1313,7 +1470,10 @@ static void getconfig(void)
 	if (pool == NULL)
 	{
 		if (APR_SUCCESS != (rc = apr_pool_create(&pool, NULL)))
+		{
+        	interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 			gpmon_fatalx(FLINE, rc, "Failed to create APR pool\n");
+		}
 	}
 
 	/* fetch datadir */

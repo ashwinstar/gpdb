@@ -1601,14 +1601,22 @@ initGpmonPktForMotion(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
 	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, Motion));
 
 	{
-		Gpmon_NameUnit_MaxVal m[GPMON_MOTION_TOTAL+1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0), 
-			{ NULL, NULL, 0 } 
-		};
+		PerfmonNodeType type = PMNT_Invalid;
+		if (((Motion *)planNode)->motionType == MOTIONTYPE_HASH)
+		{
+			type = PMNT_RedistributeMotion;
+		}
+		else if (((Motion *)planNode)->numOutputSegs == 0)
+		{
+			type = PMNT_BroadcastMotion;
+		}
+		else
+		{
+			type = PMNT_GatherMotion;
+		}
 
 		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, 
-							 ((Motion *)planNode)->motionType == MOTIONTYPE_HASH ? "Redistribute Motion" :
-							 (((Motion *)planNode)->numOutputSegs == 0 ? "Broadcast Motion" : "Gather Motion"), 
-							 (int64) planNode->plan_rows, m, NULL); 
+							type,
+							 (int64) planNode->plan_rows, NULL); 
 	}
 }

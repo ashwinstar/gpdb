@@ -426,6 +426,8 @@ double gp_resqueue_priority_cpucores_per_segment;
 char* gp_resqueue_priority_default_value;
 bool gp_debug_resqueue_priority = false;
 
+/* Perfmon segment GUCs */
+int gp_perfmon_segment_interval;
 
 /*
  * Displayable names for context types (enum GucContext)
@@ -3738,6 +3740,16 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&gp_resqueue_priority_grouping_timeout,
 		1000, 1000, INT_MAX, NULL, NULL
+	},
+
+	{
+		{"gp_perfmon_segment_interval", PGC_POSTMASTER, STATS,
+			gettext_noop("Interval (in ms) between sending segment statistics to perfmon."),
+			NULL,
+			GUC_NO_SHOW_ALL
+		},
+		&gp_perfmon_segment_interval,
+		1000, 500, INT_MAX, NULL, NULL
 	},
 
 	{

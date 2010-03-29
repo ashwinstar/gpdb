@@ -22,6 +22,7 @@ typedef int SOCKET;
 #define GPMON_PACKET_ERR_LOG_TIME 60
 
 #define FMT64 APR_INT64_T_FMT
+#define FMTU64 APR_UINT64_T_FMT
 #define FLINE __FILE__ ":" APR_STRINGIFY(__LINE__)
 #define CHECKMEM(x)  if (x) ; else gpmon_fatal(FLINE, "out of memory")
 
@@ -41,6 +42,8 @@ extern int verbose;
 	#define GPSMON_METRIC_MAX 0xffffffffUL
 #endif
 
+#define GPMON_DATE_BUF_SIZE 24
+
 
 /* fatal & warning messages */
 extern int gpmon_print(const char* fmt, ...);
@@ -59,10 +62,18 @@ extern char* gpmon_trim(char* s);
 extern int gpmon_recursive_mkdir(char* work_dir);
 
 /* datetime, e.g. 2004-02-14  23:50:02 */
-extern char* gpmon_datetime(apr_time_t t, char str[24]);
+extern char* gpmon_datetime(apr_time_t t, char str[GPMON_DATE_BUF_SIZE]);
+
+/* version that rounds to lowest 5 sec interval */
+extern char* gpmon_datetime_rounded(apr_time_t t, char str[GPMON_DATE_BUF_SIZE]);
 
 /* utility */
 extern apr_int32_t get_query_status(apr_int32_t tmid, apr_int32_t ssid,
 									apr_int32_t ccnt);
+
+extern const char* gpdb_getnodename(PerfmonNodeType type);
+extern const char* gpdb_getnodestatus(PerfmonNodeStatus status);
+extern apr_status_t gpdb_getnode_metricinfo(PerfmonNodeType type, apr_byte_t metricnum, const char** name, const char** unit);
+extern apr_status_t gpdb_debug_string_lookup_table();
 
 #endif /* GPMONLIB_H */

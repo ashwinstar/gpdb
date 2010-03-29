@@ -1865,19 +1865,11 @@ void reset_agg_hash_table(AggState *aggstate)
 
 	Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_SPILLPASS);
 	/* Reset current pass read tuples much be before currentpass spill tuples */
-	Gpmon_M_Reset(GpmonPktFromAggState(aggstate),
-			GPMON_AGG_CURRSPILLPASS_READTUPLE, 
-			Gpmon_M_Get(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_TUPLE));
-	Gpmon_M_Reset(GpmonPktFromAggState(aggstate),
-			GPMON_AGG_CURRSPILLPASS_READBYTE, 
-			Gpmon_M_Get(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_BYTE));
-
-	Gpmon_M_Reset(GpmonPktFromAggState(aggstate), 
-			GPMON_AGG_CURRSPILLPASS_TUPLE, 0);
-	Gpmon_M_Reset(GpmonPktFromAggState(aggstate), 
-			GPMON_AGG_CURRSPILLPASS_BYTE, 0);
-	Gpmon_M_Reset(GpmonPktFromAggState(aggstate), 
-			GPMON_AGG_CURRSPILLPASS_BATCH, 0);
+	Gpmon_M_Reset(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_READTUPLE);
+	Gpmon_M_Reset(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_READBYTE); 
+	Gpmon_M_Reset(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_TUPLE);
+	Gpmon_M_Reset(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_BYTE);
+	Gpmon_M_Reset(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_BATCH);
 
 	CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
 }

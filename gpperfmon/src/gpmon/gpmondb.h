@@ -40,11 +40,6 @@ APR_DECLARE(int) gpdb_get_gpmon_port(void);
 APR_DECLARE(void) gpdb_get_hostlist(int* hostcnt, char*** hostvec, char*** datadirvec, apr_pool_t* pool);
 
 /**
- *  Get the MD5 of the gp_configuration
- */
-/*APR_DECLARE(void) gpdb_get_config_md5(unsigned char md5[APR_MD5_DIGESTSIZE]); */
-
-/**
  *  Get the master data directory in the GPDB.
  *  @param mstrdir return the master data directory
  *  @param hostname return the master hostname
@@ -53,9 +48,30 @@ APR_DECLARE(void) gpdb_get_hostlist(int* hostcnt, char*** hostvec, char*** datad
 APR_DECLARE(void) gpdb_get_master_data_dir(char** hostname, char** mstrdir, apr_pool_t* pool);
 
 /**
- *
+ * insert _tail data into history table
  */
 APR_DECLARE(apr_status_t) gpdb_harvest(void);
 
+/**
+ * truncate _tail files to clear data already loaded into the DB
+ */
+APR_DECLARE( apr_status_t) gpdb_empty_harvest_files(apr_pool_t* pool);
+
+/**
+ * rename tail to stage files to allow continuous reading and allow new data to go into tail files
+ */
+APR_DECLARE (apr_status_t) gpdb_rename_tail_files(apr_pool_t* pool);
+
+/**
+ * add the data from the stage files into the harvest (_tail) files for loading into history
+ */
+APR_DECLARE (apr_status_t) gpdb_copy_stage_to_harvest_files(apr_pool_t* pool);
+
+/**
+ * restart with empty tail files
+ */
+APR_DECLARE (apr_status_t) gpdb_truncate_tail_files(apr_pool_t* pool);
+
 
 #endif /* GPMONDB_H */
+

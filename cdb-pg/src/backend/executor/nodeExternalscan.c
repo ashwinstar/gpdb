@@ -315,24 +315,13 @@ initGpmonPktForExternalScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *e
 	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, ExternalScan));
 
 	{
-		Gpmon_NameUnit_MaxVal m[GPMON_EXTSCAN_TOTAL +1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ "External Scan Rescan", "Rescans", 0 },
-			{ NULL, NULL, 0}
-		};
-		
 		RangeTblEntry *rte = rt_fetch(((ExternalScan *)planNode)->scan.scanrelid,
 									  estate->es_range_table);
-		char schema_rel_name[NAMEDATALEN * 2] = {0};
-		
-		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
-			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
-			{ NULL, NULL }
-		};
+		char schema_rel_name[SCAN_REL_NAME_BUF_SIZE] = {0};
 		
 		Assert(GPMON_EXTSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "External Scan",
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_ExternalScan,
 							 (int64)planNode->plan_rows,
-							 m, t);
+							 GetScanRelNameGpmon(rte->relid, schema_rel_name));
 	}
 }

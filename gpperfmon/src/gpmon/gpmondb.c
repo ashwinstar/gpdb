@@ -5,6 +5,7 @@
 #include "gpmondb.h"
 #include "libpq-fe.h"
 #include "apr_strings.h"
+#include "apr_file_io.h"
 
 static const char* gpdb_exec(PGconn** pconn, PGresult** pres, const char* query)
 {
@@ -214,48 +215,6 @@ void gpdb_get_hostlist(int* hostcnt, char*** hostvec, char*** datadirvec,
 	PQfinish(conn);
 }
 
-/*
-void gpdb_get_config_md5(unsigned char md5[APR_MD5_DIGESTSIZE])
-{
-	PGconn* conn = 0;
-	PGresult* result = 0;
-	const char
-			* QUERY =
-					"select content || case when definedprimary then 1 else 0 end || dbid || case when isprimary then 1 else 0 end || case when valid then 1 else 0 end || hostname || port || datadir from gp_configuration";
-
-	apr_md5_ctx_t ctx;
-	int e, i;
-	int rowcount;
-	const char* errmsg = gpdb_exec(&conn, &result, QUERY);
-	if (errmsg)
-	{
-		gpmon_warning(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
-		memset(md5, 0, APR_MD5_DIGESTSIZE);
-	}
-	else
-	{
-		if (0 != (e = apr_md5_init(&ctx)))
-		{
-			gpmon_warningx(FLINE, e, "apr_md5_init failed");
-		}
-
-		rowcount = PQntuples(result);
-		for (i = 0; i < rowcount; i++)
-		{
-			const char* p = PQgetvalue(result, i, 0);
-			if (p)
-			{
-				if (0 != (e = apr_md5_update(&ctx, p, strlen(p))))
-					gpmon_warningx(FLINE, e, "apr_md5_update failed");
-			}
-		}
-		apr_md5_final(md5, &ctx);
-	}
-	PQclear(result);
-	PQfinish(conn);
-}
-*/
-
 void gpdb_get_master_data_dir(char** hostname, char** mstrdir, apr_pool_t* pool)
 {
 	PGconn* conn = 0;
@@ -299,79 +258,179 @@ void gpdb_get_master_data_dir(char** hostname, char** mstrdir, apr_pool_t* pool)
 	*mstrdir = dir;
 }
 
-static apr_status_t do_rename(const char* tbl)
-{
-	char src[200];
-	char dst[200];
-	FILE* fp;
-
-	/* make the file names */
-	sprintf(src, "%s%s_tail.dat", GPMON_DIR, tbl);
-	sprintf(dst, "%s_%s_tail.dat", GPMON_DIR, tbl);
-
-	/* delete destination */
-	unlink(dst);
-
-	/* rename src -> dst */
-	if (0 != rename(src, dst))
-		return APR_EINVAL;
-
-	/* recreate src as empty file */
-	fp = fopen(src, "a");
-	if (fp)
-		fclose(fp);
-
-	return 0;
-}
-
-static apr_status_t harvest(const char* tbl)
+static apr_status_t harvest(const char* tbl, apr_pool_t* pool)
 {
 	PGconn* conn = 0;
 	PGresult* result = 0;
-	char qrybuf[1024];
+	const int QRYBUFSIZ = 1024;
+	char qrybuf[QRYBUFSIZ];
 	const char* QRYFMT = "insert into %s_history select * from _%s_tail;";
 	const char* errmsg;
 	apr_status_t res = APR_SUCCESS;
 
-	TR1(("---- HARVEST %s STARTED ---- \n", tbl));
+	snprintf(qrybuf, QRYBUFSIZ, QRYFMT, tbl, tbl);
 
-	/* rename the file, e.g. queries_tail.dat -> _queries_tail.dat */
-	if (0 != do_rename(tbl))
-	{
-		TR1(("---- HARVEST %s FAILED to rename ---- \n", tbl));
-		return 1;
-	}
-
-	sprintf(qrybuf, QRYFMT, tbl, tbl);
 	errmsg = gpdb_exec(&conn, &result, qrybuf);
 	if (errmsg)
 	{
-		char src[200];
-		char dst[200];
-		sprintf(dst, "%s%s_tail.dat", GPMON_DIR, tbl);
-		sprintf(src, "%s_%s_tail.dat", GPMON_DIR, tbl);
-		/* import failed so put the file back.
-		 We don't need to syncronize this as the writing
-		 is done by the same thread that does the harvest */
-		rename(src, dst);
 		res = 1;
-		TR1(("---- HARVEST %s FAILED ---- \n", tbl));
+		gpmon_warningx(FLINE, 0, "---- HARVEST %s FAILED ---- on query %s with error %s\n", tbl, qrybuf, errmsg);
 	}
 	else
-		TR1(("---- HARVEST %s OK ---- \n", tbl));
+	{
+		TR1(("load completed OK: %s\n", tbl));
+	}
 
 	PQclear(result);
 	PQfinish(conn);
 	return res;
 }
 
+
+apr_status_t truncate_file(char* fn, apr_pool_t* pool)
+{
+	apr_file_t *fp = NULL;
+	apr_status_t status;
+
+	status = apr_file_open(&fp, fn, APR_WRITE|APR_CREATE|APR_TRUNCATE, APR_UREAD|APR_UWRITE, pool);
+
+	if (status == APR_SUCCESS)
+	{
+		status = apr_file_trunc(fp, 0);
+		apr_file_close(fp);
+	}
+
+	if (status != APR_SUCCESS)
+	{
+		gpmon_warningx(FLINE, 0, "harvest process truncate file %s failed", fn);
+	}
+	else
+	{
+		TR1(("harvest truncated file %s: ok\n", fn));
+	}
+
+	return status;
+}
+
+
+/* rename tail to stage */
+static apr_status_t rename_tail_files(const char* tbl, apr_pool_t* pool)
+{
+	char srcfn[PATH_MAX];
+	char dstfn[PATH_MAX];
+
+	apr_status_t status;
+
+	/* make the file names */
+	snprintf(srcfn, PATH_MAX, "%s%s_tail.dat", GPMON_DIR, tbl);
+	snprintf(dstfn, PATH_MAX, "%s%s_stage.dat", GPMON_DIR, tbl);
+
+	status = apr_file_rename(srcfn, dstfn, pool);
+	if (status != APR_SUCCESS)
+	{
+		gpmon_warningx(FLINE, status, "harvest failed renaming %s to %s", srcfn, dstfn);
+		return status;
+	}
+	else
+	{
+		TR1(("harvest rename %s to %s success\n", srcfn, dstfn));
+	}
+
+	return status;
+}
+
+/* append stage data to _tail file */
+static apr_status_t append_to_harvest(const char* tbl, apr_pool_t* pool)
+{
+	char srcfn[PATH_MAX];
+	char dstfn[PATH_MAX];
+
+	apr_status_t status;
+
+	/* make the file names */
+	snprintf(srcfn, PATH_MAX, "%s%s_stage.dat", GPMON_DIR, tbl);
+	snprintf(dstfn, PATH_MAX, "%s_%s_tail.dat", GPMON_DIR, tbl);
+
+	status = apr_file_append(srcfn, dstfn, APR_FILE_SOURCE_PERMS, pool);
+	if (status != APR_SUCCESS)
+	{
+		gpmon_warningx(FLINE, status, "harvest failed appending %s to %s", srcfn, dstfn);
+	}
+	else
+	{
+		TR1(("harvest append %s to %s: ok\n", srcfn, dstfn));
+	}
+
+	return status;
+}
+
+typedef apr_status_t eachtablefunc(const char* tbl, apr_pool_t*);
+
+char* all_tables[] = { "system", "queries", "iterators", "database", "segment" };
+
+apr_status_t call_for_each_table(eachtablefunc func, apr_pool_t* pool)
+{ 
+ 	apr_status_t status = APR_SUCCESS;
+	apr_status_t r;
+	int num_tables = sizeof(all_tables) / sizeof (char*);
+	int i;
+
+	for (i = 0; i < num_tables; ++i)
+	{
+		r = func(all_tables[i], pool);
+		if (r != APR_SUCCESS)
+		{
+			status = r;
+		}
+	}
+	
+	return status;
+}
+
+/* rename tail files to stage files */
+apr_status_t gpdb_rename_tail_files(apr_pool_t* pool)
+{
+	return call_for_each_table(rename_tail_files, pool);
+}
+
+/* copy data from stage files to harvest files */
+apr_status_t gpdb_copy_stage_to_harvest_files(apr_pool_t* pool)
+{
+	return call_for_each_table(append_to_harvest, pool);
+}
+
+/* truncate _tail files */
+apr_status_t empty_harvest_file(const char* tbl, apr_pool_t* pool)
+{
+	char fn[PATH_MAX];
+	snprintf(fn, PATH_MAX, "%s_%s_tail.dat", GPMON_DIR, tbl);
+	return truncate_file(fn, pool);
+}
+
+/* truncate tail files */
+apr_status_t truncate_tail_file(const char* tbl, apr_pool_t* pool)
+{
+	char fn[PATH_MAX];
+	snprintf(fn, PATH_MAX, "%s%s_tail.dat", GPMON_DIR, tbl);
+	return truncate_file(fn, pool);
+}
+
+/* truncate _tail files to clear data already loaded into the DB */
+apr_status_t gpdb_truncate_tail_files(apr_pool_t* pool)
+{
+	return call_for_each_table(truncate_tail_file, pool);
+}
+
+/* truncate _tail files to clear data already loaded into the DB */
+apr_status_t gpdb_empty_harvest_files(apr_pool_t* pool)
+{
+	return call_for_each_table(empty_harvest_file, pool);
+}
+
+/* insert _tail data into history table */
 apr_status_t gpdb_harvest(void)
 {
-	if (harvest("system") != APR_SUCCESS || harvest("queries") != APR_SUCCESS
-			|| harvest("iterators") != APR_SUCCESS || harvest("database")
-			!= APR_SUCCESS)
-	{
-		return 1;
-	}
-	return APR_SUCCESS;
+	return call_for_each_table(harvest, NULL);
 }
+
+

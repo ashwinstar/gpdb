@@ -44,6 +44,37 @@ create external web table _system_tail (
 
 
 --  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+--  segments data
+--
+
+create table segment_history (
+       ctime timestamp(0) not null, -- record creation time
+       dbid int not null,           -- segment database id
+       hostname varchar(64) not null, -- hostname of system this metric belongs to
+       dynamic_memory_used bigint not null, -- bytes of dynamic memory used by the segment
+       dynamic_memory_available bigint not null -- bytes of dynamic memory available for use by the segment
+) 
+with (fillfactor=100)
+distributed by (ctime)
+partition by range (ctime)(start (date '2009-09-01') end (date '2011-09-01') EVERY (interval '1 month'));
+
+create external web table segment_now (
+       like segment_history
+) execute 'cat gpperfmon/data/segment_now.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
+
+
+create external web table segment_tail (
+       like segment_history
+) execute 'cat gpperfmon/data/segment_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
+
+
+create external web table _segment_tail (
+        like segment_history
+) execute 'cat gpperfmon/data/_segment_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
+
+
+
+--  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 --  queries
 --
 
@@ -369,6 +400,32 @@ CREATE VIEW iterators_now_rollup as select
        min(m15_name)||'|'||min(m15_unit)||'|'||avg(m15_val)||'|'||avg(m15_est) as m15,
        min(t0_name)||'|'||min(t0_val) as t0
        from iterators_now group by tmid, ssid, ccnt, nid;
+
+-- utility sql's to make user's life easier
+
+DROP VIEW IF EXISTS dynamic_memory_alllocation;
+CREATE VIEW dynamic_memory_alllocation as select
+		segment_history.ctime, segment_history.hostname, 
+		sum(segment_history.dynamic_memory_used) AS dynamic_memory_used, 
+		sum(segment_history.dynamic_memory_available) AS dynamic_memory_availabe
+		FROM segment_history
+		GROUP BY segment_history.ctime, segment_history.hostname;
+
+DROP VIEW IF EXISTS memory_info;
+CREATE VIEW memory_info as select
+		system_history.ctime, 
+		system_history.hostname, 
+		round(system_history.mem_total/1024/1024, 2) as mem_total_mb,
+ 		round(system_history.mem_used/1024/1024, 2) as mem_used_mb, 
+		round(system_history.mem_actual_used/1024/1024, 2) as mem_actual_used_mb, 
+		round(system_history.mem_actual_free/1024/1024, 2) as mem_actual_free_mb, 
+		round(system_history.swap_total/1024/1024, 2) as swap_total_mb, 
+		round(system_history.swap_used/1024/1024, 2) as swap_used_mb, 
+		round(dynamic_memory_alllocation.dynamic_memory_used/1024/1024, 2) as dynamic_memory_used_mb, 
+		round(dynamic_memory_alllocation.dynamic_memory_availabe/1024/1024, 2) as dynamic_memory_available_mb  
+		FROM system_history, dynamic_memory_alllocation 
+		WHERE system_history.hostname = dynamic_memory_alllocation.hostname 
+		AND system_history.ctime = dynamic_memory_alllocation.ctime;
 
 
 

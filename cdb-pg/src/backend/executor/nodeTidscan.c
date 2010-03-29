@@ -568,23 +568,13 @@ initGpmonPktForTidScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate
 	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, TidScan));
 	
 	{
-		Gpmon_NameUnit_MaxVal m[GPMON_TIDSCAN_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT,
-			{ NULL, NULL, 0}
-		};
-		
 		RangeTblEntry *rte = rt_fetch(((TidScan *)planNode)->scan.scanrelid,
 									  estate->es_range_table);
-		char schema_rel_name[NAMEDATALEN * 2] = {0};
-		
-		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
-			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
-			{ NULL, NULL }	
-		};
+		char schema_rel_name[SCAN_REL_NAME_BUF_SIZE] = {0};
 		
 		Assert(GPMON_TIDSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Tid Scan", 
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_TidScan,
 							 (int64)planNode->plan_rows, 
-							 m, t);
+							 GetScanRelNameGpmon(rte->relid, schema_rel_name));
 	}
 }

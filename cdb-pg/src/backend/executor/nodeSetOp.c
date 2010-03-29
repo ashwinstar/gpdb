@@ -342,33 +342,28 @@ initGpmonPktForSetOp(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
 	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, SetOp));
 
 	{
-		char *iname = NULL;
-		Gpmon_NameUnit_MaxVal m[GPMON_SETOP_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ NULL, NULL, 0}
-		};
+		PerfmonNodeType type = PMNT_Invalid;
 
 		switch(((SetOp *)planNode)->cmd)
 		{
 			case SETOPCMD_INTERSECT:
-				iname = "SetOp Intersect";
-				break;
+				type = PMNT_SetOpIntersect;
+			break;
 			case SETOPCMD_INTERSECT_ALL:
-				iname = "SetOp Intersect All";
-				break;
+				type = PMNT_SetOpIntersectAll;
+			break;
 			case SETOPCMD_EXCEPT:
-				iname = "SetOp Except";
-				break;
+				type = PMNT_SetOpExcept;
+			break;
 			case SETOPCMD_EXCEPT_ALL:
-				iname = "SetOp Except All";
-				break;
-			default:
-				iname = "SetOp ???";
+				type = PMNT_SetOpExceptAll;
+			break;
 		}
 
+		Assert(type != PMNT_Invalid);
 		Assert(GPMON_SETOP_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "SetOp", 
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, type,
 							 (int64)planNode->plan_rows,
-							 m, NULL);
+							 NULL);
 	}
 }

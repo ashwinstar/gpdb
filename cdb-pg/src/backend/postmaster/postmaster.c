@@ -132,6 +132,7 @@
 #include "postmaster/ddaserver.h"
 #include "postmaster/syslogger.h"
 #include "postmaster/backoff.h"
+#include "postmaster/perfmon_segmentinfo.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/pg_shmem.h"
@@ -198,6 +199,7 @@ typedef enum pmsub_type
 	FtsProbeProc,
 	PerfmonProc,
 	BackoffProc,
+	PerfmonSegmentInfoProc,
 	MaxPMSubType
 } PMSubType;
 
@@ -443,6 +445,9 @@ static PMSubProc PMSubProcList[MaxPMSubType] =
 	{0, BackoffProc,
 	(PMSubStartCallback*)&backoff_start,
 	"sweeper process", PMSUBPROC_FLAG_QD_AND_QE, true},
+	{0, PerfmonSegmentInfoProc,
+	(PMSubStartCallback*)&perfmon_segmentinfo_start,
+	"stats sender process", PMSUBPROC_FLAG_QD_AND_QE, true},
 #ifdef DO_DDA_SERV
 	{0, DdaServerProc,
 	 (PMSubStartCallback*)&ddaserver_start,
@@ -1770,7 +1775,12 @@ ServiceStartable(PMSubProc *subProc)
 	else
 		flagNeeded = PMSUBPROC_FLAG_STANDBY;
 
-	if (subProc->procType == PerfmonProc && !gp_enable_gpperfmon)
+	/*
+	 * GUC gp_enable_gpperfmon controls the start
+	 * of both the 'perfmon' and 'stats sender' processes
+	 */
+	if ((subProc->procType == PerfmonProc || subProc->procType == PerfmonSegmentInfoProc)
+	    && !gp_enable_gpperfmon)
 		result = 0;
 	else
 		result = ((subProc->flags & flagNeeded) != 0);

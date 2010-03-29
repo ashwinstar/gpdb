@@ -96,6 +96,9 @@ static PGSemaphoreData gpsema_vmem_prot;
 static PGSemaphoreData gpsema_mp_fault;
 #endif
 
+/* Convert value in MB to equivalent in bytes */
+static uint64 ConvertMBToBytes(int value_mb);
+
 /* By default, we will inc/dec counter, in MB. */
 static int gpsema_vmem_prot_max;
 static int gp_memprot_chunksize_shift = 20; 
@@ -423,7 +426,6 @@ void *gp_realloc(void *ptr, int64 sz, int64 newsz)
                     gp_failed_to_alloc(MOP_FAIL_REACHED_LIMIT, 0, newsz, mem_avail << (gp_memprot_chunksize_shift - 20)); 
                     return NULL;
                 }
-
 			}
 		}
 
@@ -461,6 +463,49 @@ void *gp_realloc(void *ptr, int64 sz, int64 newsz)
 
 	/* Never reach here*/
 	return NULL; 
+}
+
+/*
+ * Inlined function for converting an integer value in MB
+ * to the equivalent in bytes.
+ * The input value is multiplied by 2^20.
+ */
+static inline uint64
+ConvertMBToBytes(int value_mb)
+{
+	Assert(value_mb >= 0);
+	Assert(value_mb < ((uint64) 1 << 44) &&
+		   "overflow when converting MB value to bytes");
+	uint64 value_bytes = (uint64) value_mb;
+
+	return value_bytes << 20;
+}
+
+/*
+ * gp_vmem_used
+ *
+ * Returns current memory allocation in bytes.
+ */
+uint64 gp_vmem_used(void)
+{
+	int mem_avail = gpmemprot_peek_sem(&gpsema_vmem_prot);
+	Assert(mem_avail >= 0 && "available memory < 0");
+	Assert(gp_vmem_protect_limit - mem_avail >= 0 && "allocated memory < 0");
+	int mem_used = gp_vmem_protect_limit - mem_avail;
+
+	return ConvertMBToBytes(mem_used);
+}
+
+/*
+ * gp_vmem_max
+ *
+ * Returns maximum allowed memory allocation in bytes.
+ * This value is set by GUC gp_vmem_protect_limit (in MB)
+ *
+ */
+uint64 gp_vmem_max(void)
+{
+	return ConvertMBToBytes(gp_vmem_protect_limit);
 }
 
 void gp_free2(void *ptr, int64 sz)

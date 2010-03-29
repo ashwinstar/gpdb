@@ -857,16 +857,9 @@ initGpmonPktForShareInputScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState 
 	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, ShareInputScan));
 
 	{
-		Gpmon_NameUnit_MaxVal m[GPMON_SHAREINPUT_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ "Shared Scan Restore Pos", "Restores", 0},
-			{ "Shared Scan Rescan", "Rescans", 0},
-			{ NULL, NULL, 0 }
-		};
-
 		Assert(GPMON_SHAREINPUT_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Shared Scan",
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_SharedScan,
 							 (int64)planNode->plan_rows, 
-							 m, NULL);
+							 NULL);
 	}
 }

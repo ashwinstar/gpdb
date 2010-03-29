@@ -1685,8 +1685,8 @@ mergeruns(Tuplesortstate_mk *state)
     if(state->gpmon_pkt)
     {
         Gpmon_M_Incr(state->gpmon_pkt, GPMON_SORT_SPILLPASS);
-        Gpmon_M_Reset(state->gpmon_pkt, GPMON_SORT_CURRSPILLPASS_TUPLE, 0);
-        Gpmon_M_Reset(state->gpmon_pkt, GPMON_SORT_CURRSPILLPASS_BYTE, 0);
+        Gpmon_M_Reset(state->gpmon_pkt, GPMON_SORT_CURRSPILLPASS_TUPLE);
+        Gpmon_M_Reset(state->gpmon_pkt, GPMON_SORT_CURRSPILLPASS_BYTE);
     }
 
     for (;;)

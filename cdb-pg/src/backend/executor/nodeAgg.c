@@ -2274,49 +2274,25 @@ initGpmonPktForAgg(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
 	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, Agg));
 
 	{
-		char *iname = NULL;
-		Gpmon_NameUnit_MaxVal m[GPMON_AGG_TOTAL+1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0), 
-			/* GPMON_AGG_SPILLTUPLE */
-			{ "Aggregate Total Spill Tuples", "Tuples", 0 },
-			/* GPMON_AGG_SPILLBYTE */
-			{ "Aggregate Total Spill Bytes", "Bytes", 0},
-			/* GPMON_AGG_SPILLBATCH */
-			{ "Aggregate Total Spill Batches", "Batches", 0 },
-			/* GPMON_AGG_SPILLPASS */
-			{ "Aggregate Total Spill Pass", "Passes", 0},
-			/* GPMON_AGG_CURRSPILLPASS_READTUPLE */
-			{ "Aggregate Current Spill Pass Read Tuples", "Tuples", 0},
-			/* GPMON_AGG_CURRSPILLPASS_READBYTE */
-			{ "Aggregate Current Spill Pass Read Bytes", "Bytes", 0},
-			/* GPMON_AGG_CURRSPILLPASS_TUPLE */
-			{ "Aggregate Current Spill Pass Tuples", "Tuples", 0},
-			/* GPMON_AGG_CURRSPILLPASS_BYTE */
-			{ "Aggregate Current Spill Pass Bytes", "Bytes", 0},
-			/* GPMON_AGG_CURRSPILLPASS_BATCH */
-			{ "Aggregate Current Spill Pass Batches", "Batches", 0},
-			/* GPMON_AGG_TOTAL */
-			{ NULL, NULL, 0 },
-		};
+		PerfmonNodeType type = PMNT_Invalid;
 
 		switch(((Agg*)planNode)->aggstrategy)
 		{
 			case AGG_PLAIN:
-				iname = "Aggregate";
+				type = PMNT_Aggregate;
 				break;
 			case AGG_SORTED:
-				iname = "GroupAggregate";
+				type = PMNT_GroupAggregate;
 				break;
 			case AGG_HASHED:
-				iname = "HashAggregate";
+				type = PMNT_HashAggregate;
 				break;
-			default:
-				iname = "Aggregate ???";
 		}
 			
+		Assert(type != PMNT_Invalid);
 		Assert(GPMON_AGG_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, iname,
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, type,
 							 (int64)planNode->plan_rows,
-							 m, NULL);
+							 NULL);
 	}
 }

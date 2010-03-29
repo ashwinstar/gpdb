@@ -1889,41 +1889,43 @@ initGpmonPktForMergeJoin(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *esta
 	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, MergeJoin));
 	
 	{
-		char *iname = NULL;
-		Gpmon_NameUnit_MaxVal m[GPMON_MERGEJOIN_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT,
-			{ "Merge Join Inner Tuples", "Tuples", 0},
-			{ "Merge Join Outer Tuples", "Tuples", 0},
-			{ NULL, NULL, 0}
-		};
+		PerfmonNodeType type = PMNT_Invalid;
 
 		switch(((MergeJoin *)planNode)->join.jointype)
 		{
 			case JOIN_INNER:
-				iname = "Merge Join";
+				type = PMNT_MergeJoin;
 				break;
 			case JOIN_LEFT:
-				iname = "Merge Left Join";
+				type = PMNT_MergeLeftJoin;
 				break;
 			case JOIN_LASJ:
-				iname = "Merge Left Anti Semi Join";
+				type = PMNT_MergeLeftAntiSemiJoin;
 				break;
 			case JOIN_FULL:
-				iname = "Merge Full Join";
+				type = PMNT_MergeFullJoin;
 				break;
 			case JOIN_RIGHT:
-				iname = "Merge Right Join";
+				type = PMNT_MergeRightJoin;
 				break;
 			case JOIN_IN:
-				iname = "Merge EXISTS Join";
+				type = PMNT_MergeExistsJoin;
 				break;
-			default:
-				iname = "Merge ??? Join";
+			case JOIN_REVERSE_IN:
+				type = PMNT_MergeReverseInJoin;
+				break;
+			case JOIN_UNIQUE_OUTER:
+				type = PMNT_MergeUniqueOuterJoin;
+				break;
+			case JOIN_UNIQUE_INNER:
+				type = PMNT_MergeUniqueInnerJoin;
+				break;
 		}
 
+		Assert(type != PMNT_Invalid);
 		Assert(GPMON_MERGEJOIN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, iname, 
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, type, 
 							 (int64)planNode->plan_rows,
-							 m, NULL);
+							 NULL);
 	}
 }

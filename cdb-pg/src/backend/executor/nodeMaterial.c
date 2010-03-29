@@ -646,16 +646,10 @@ initGpmonPktForMaterial(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estat
 	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, Material));
 	
 	{
-		Gpmon_NameUnit_MaxVal m[GPMON_MATERIAL_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT,
-                { "Materialize Rescan", "Rescans", 0 },
-			{ NULL, NULL, 0}
-		};
-
 		Assert(GPMON_MATERIAL_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Materialize", 
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_Materialize,
 							 (int64)planNode->plan_rows,
-							 m, NULL);
+							 NULL);
 	}
 	
 }

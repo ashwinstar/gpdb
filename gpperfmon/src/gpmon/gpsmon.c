@@ -78,6 +78,7 @@ struct gx_t
 	/* hash tables */
 	apr_hash_t* qexectab; /* stores qexec packets */
 	apr_hash_t* qlogtab; /* stores qlog packets */
+	apr_hash_t* segmenttab; /* stores segment packets */
 	apr_hash_t* pidtab; /* key=pid, value=pidrec_t */
 };
 static struct gx_t gx = { 0 };
@@ -705,6 +706,7 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 	apr_hash_t* qetab;
 	apr_hash_t* qdtab;
 	apr_hash_t* pidtab;
+	apr_hash_t* segtab;
 
 	n = recv(sock, &dump, 1, 0);
 	if (n == 0)
@@ -721,8 +723,9 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 	qetab = gx.qexectab;
 	qdtab = gx.qlogtab;
 	pidtab = gx.pidtab;
+	segtab = gx.segmenttab;
 
-	/* make a new qexec/qlog/pidtab hashtab for next cycle */
+	/* make a new qexec/qlog/segment/pidtab hashtab for next cycle */
 	{
 		apr_pool_t* newpool;
 		if (0 != (e = apr_pool_create(&newpool, gx.pool)))
@@ -737,6 +740,10 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 		gx.qlogtab = apr_hash_make(newpool);
 		CHECKMEM(gx.qlogtab);
 
+		/* segment hash table */
+		gx.segmenttab = apr_hash_make(newpool);
+		CHECKMEM(gx.segmenttab);
+
 		/* pidtab hash table */
 		gx.pidtab = apr_hash_make(newpool);
 		CHECKMEM(gx.pidtab);
@@ -745,13 +752,30 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 	/* push out a metric of the machine */
 	send_machine_metrics(sock);
 
-	/* push out records in qe/qd */
+	/* push out records in segment/qe/qd */
 	{
 		void* vptr;
 		apr_hash_index_t* hi;
 		gpmon_packet_t* ppkt;
 		pidrec_t* pidrec;
 		int count = 0;
+
+		for (hi = apr_hash_first(0, segtab); hi; hi = apr_hash_next(hi))
+		{
+			apr_hash_this(hi, 0, 0, &vptr);
+			ppkt = vptr;
+			if (ppkt->pkttype != GPMON_PKTTYPE_SEGINFO)
+				continue;
+
+			/* fill in hostname */
+			strncpy(ppkt->u.seginfo.hostname, gx.hostname, sizeof(ppkt->u.seginfo.hostname) - 1);
+			ppkt->u.seginfo.hostname[sizeof(ppkt->u.seginfo.hostname) - 1] = 0;
+
+			TR2(("sending magic %x, pkttype %d\n", ppkt->magic, ppkt->pkttype));
+			send_fully(sock, ppkt, sizeof(*ppkt));
+			count++;
+		}
+
 
 		for (hi = apr_hash_first(0, qdtab); hi; hi = apr_hash_next(hi))
 		{
@@ -915,6 +939,30 @@ static void gx_recvqlog(gpmon_packet_t* pkt)
 	}
 }
 
+static void gx_recvsegment(gpmon_packet_t* pkt)
+{
+	gpmon_seginfo_t* p;
+	gpmon_packet_t* rec;
+
+	if (pkt->pkttype != GPMON_PKTTYPE_SEGINFO)
+		gpmon_fatal(FLINE, "assert failed; expected pkttype segment");
+
+	p = &pkt->u.seginfo;
+
+	TR2(("Received segment packet for dbid %d (dynamic_memory_used, dynamic_memory_available) (%llu %llu)\n", p->dbid, p->dynamic_memory_used, p->dynamic_memory_available));
+
+	rec = apr_hash_get(gx.segmenttab, &p->dbid, sizeof(p->dbid));
+	if (rec)
+	{
+		memcpy(rec, pkt, sizeof(*pkt));
+	}
+	else
+	{
+		rec = gx_pktdup(apr_hash_pool_get(gx.segmenttab), pkt);
+		apr_hash_set(gx.segmenttab, &rec->u.seginfo.dbid, sizeof(rec->u.seginfo.dbid), rec);
+	}
+}
+
 static void gx_recvqexec(gpmon_packet_t* pkt)
 {
 	gpmon_qexec_t* p;
@@ -987,6 +1035,9 @@ static void gx_recvfrom(SOCKET sock, short event, void* arg)
 	{
 	case GPMON_PKTTYPE_QLOG:
 		gx_recvqlog(&pkt);
+		break;
+	case GPMON_PKTTYPE_SEGINFO:
+		gx_recvsegment(&pkt);
 		break;
 	case GPMON_PKTTYPE_QEXEC:
 		gx_recvqexec(&pkt);
@@ -1100,7 +1151,7 @@ static void setup_gx(int port, apr_int64_t signature)
 
 	/* set up hostname */
 	if (gethostname(hname, sizeof(hname) - 1))
-		sprintf(hname, "unknown");
+		snprintf(hname, sizeof(hname), "unknown");
 	hname[sizeof(hname) - 1] = 0;
 	gx.hostname = apr_pstrdup(gx.pool, hname);
 	CHECKMEM(gx.hostname);
@@ -1126,6 +1177,10 @@ static void setup_gx(int port, apr_int64_t signature)
 	/* qlog hash table */
 	gx.qlogtab = apr_hash_make(subpool);
 	CHECKMEM(gx.qlogtab);
+
+	/* segment hash table */
+	gx.segmenttab = apr_hash_make(subpool);
+	CHECKMEM(gx.segmenttab);
 
 	/* pidtab */
 	gx.pidtab = apr_hash_make(subpool);

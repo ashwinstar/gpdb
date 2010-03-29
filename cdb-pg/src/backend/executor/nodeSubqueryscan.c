@@ -379,20 +379,8 @@ initGpmonPktForSubqueryScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *e
 
 	if (rte && rte->rtekind != RTE_VOID)
 	{
-		Gpmon_NameUnit_MaxVal m[GPMON_SUBQUERYSCAN_TOTAL+1] = 
-		{
-			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ "Subquery Scan Rescan", "Rescans", 0},
-			{ NULL, NULL, 0},
-		};
-		
-		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
-			GPMON_QEXEC_T_RELATION(rte->eref->aliasname),
-			{ NULL, NULL }
-		};
-
-		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Subquery Scan", 
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_SubqueryScan,
 							 (int64)planNode->plan_rows, 
-							 m, t); 
+							 rte->eref->aliasname); 
 	}
 }

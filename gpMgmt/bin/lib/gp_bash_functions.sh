@@ -1109,7 +1109,7 @@ BUILD_PERFMON() {
 [GPMMON]
 # quantum specifies the time in seconds between updates from 
 # performance monitor agents on all segments. Valid values 
-# are between 10 and 60 seconds.
+# are 10, 15, 20, 30, or 60
 quantum = 15
 
 # min_query_time specifies the minimum query run time 

@@ -491,25 +491,16 @@ initGpmonPktForFunctionScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *e
 	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, FunctionScan));
 
 	{
-		Gpmon_NameUnit_MaxVal m[GPMON_FUNCSCAN_TOTAL + 1] = {
-           	GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ NULL, NULL, 0}
-		};
-		
 		RangeTblEntry *rte = rt_fetch(((Scan *)planNode)->scanrelid, estate->es_range_table);
 		char *funcname = (rte->funcexpr && IsA(rte->funcexpr, FuncExpr)) ? 
 					get_func_name(((FuncExpr *)rte->funcexpr)->funcid)
 				 	: rte->eref->aliasname;
 
-		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
-			GPMON_QEXEC_T_RELATION(funcname),
-			{ NULL, NULL }
-		};
-		
 		Assert(GPMON_FUNCSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Function Scan", 
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_FunctionScan,
 							 (int64)planNode->plan_rows,
-							 m, t);
+							 funcname);
+
 		if (funcname && funcname != rte->eref->aliasname)
 			pfree(funcname);
 	}

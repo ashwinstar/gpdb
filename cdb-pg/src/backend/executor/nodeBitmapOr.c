@@ -272,13 +272,8 @@ initGpmonPktForBitmapOr(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estat
 	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, BitmapOr));
 
 	{
-		Gpmon_NameUnit_MaxVal m[GPMON_BITMAPOR_TOTAL +1] = {
-			GPMON_QEXEC_M_INIT,
-			{ NULL, NULL, 0}
-		};
-		
-		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "BitmapOr", 
-							  (int64)0,  m, NULL);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_BitmapOr,
+							  (int64)0,  NULL);
 	}
 }
 

@@ -1150,12 +1150,12 @@ typedef struct Gpmon_NameVal_Text
 extern void CheckSendPlanStateGpmonPkt(PlanState *ps);
 extern void EndPlanStateGpmonPkt(PlanState *ps);
 extern void InitPlanNodeGpmonPkt(Plan* plan, gpmon_packet_t *gpmon_pkt, EState *estate,
-								 const char *name, int64 rowsout_est,
-								 Gpmon_NameUnit_MaxVal *m, Gpmon_NameVal_Text *t); 
+								 PerfmonNodeType type, int64 rowsout_est,
+								 char* relname);
 
 static inline void Gpmon_M_Incr(gpmon_packet_t *pkt, int nth) 
 {
-        ++pkt->u.qexec.m[nth].value;
+        ++pkt->u.qexec.measures[nth];
 }
 static inline void Gpmon_M_Incr_Rows_Out(gpmon_packet_t *pkt)
 {
@@ -1167,20 +1167,19 @@ static inline void Gpmon_M_Add_Rows_Out(gpmon_packet_t *pkt, int val)
 }
 static inline void Gpmon_M_Add(gpmon_packet_t *pkt, int nth, int val)
 {
-        pkt->u.qexec.m[nth].value += val;
+        pkt->u.qexec.measures[nth] += val;
 }
 static inline void Gpmon_M_Set(gpmon_packet_t *pkt, int nth, int64 val)
 {
-        pkt->u.qexec.m[nth].value = val;
+        pkt->u.qexec.measures[nth] = val;
 }
 static inline int64 Gpmon_M_Get(gpmon_packet_t *pkt, int nth)
 {
-        return pkt->u.qexec.m[nth].value;
+        return pkt->u.qexec.measures[nth];
 }
-static inline void Gpmon_M_Reset(gpmon_packet_t *pkt, int nth, int64 maxval)
+static inline void Gpmon_M_Reset(gpmon_packet_t *pkt, int nth)
 {
-        pkt->u.qexec.m[nth].value = 0;
-        pkt->u.qexec.m[nth].valuemax = maxval;
+        pkt->u.qexec.measures[nth] = 0;
 }
 
 /* ----------------
@@ -1317,7 +1316,7 @@ typedef struct ScanState
 typedef ScanState SeqScanState;
 
 /* Gpperfmon helper function */
-extern char *GetScanRelNameGpmon(Oid relid, char schema_table_name[NAMEDATALEN*2]);
+extern char *GetScanRelNameGpmon(Oid relid, char schema_table_name[SCAN_REL_NAME_BUF_SIZE]);
 
 /*
  * These structs store information about index quals that don't have simple

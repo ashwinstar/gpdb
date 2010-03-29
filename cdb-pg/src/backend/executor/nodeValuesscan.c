@@ -374,16 +374,6 @@ initGpmonPktForValuesScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *est
 	rte = rt_fetch(((ValuesScan *)planNode)->scan.scanrelid, estate->es_range_table);
 
 	{
-		Gpmon_NameUnit_MaxVal m[GPMON_NODEVALUESCAN_TOTAL +1] = {
-			GPMON_QEXEC_M_INIT,
-			{ NULL, NULL, 0}
-		};
-		
-		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
-			GPMON_QEXEC_T_RELATION(rte->eref->aliasname),
-			{ NULL, NULL }
-		};
-
-		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Values Scan", (int64)0, m, t);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_ValuesScan, (int64)0, rte->eref->aliasname);
 	}
 }

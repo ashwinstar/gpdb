@@ -1093,46 +1093,43 @@ initGpmonPktForHashJoin(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estat
 	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, HashJoin));
 	
 	{
-		char *iname = NULL;
-		Gpmon_NameUnit_MaxVal m[GPMON_HASHJOIN_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0), 
-			/* SPILLBATCH */
-			{ "Hash Join Spill Batches", "Batches", 0 }, 
-			/* SPILLTUPLE */
-			{ "Hash Join Spill Tuples", "Tuples", 0 }, 
-			/* SPILLBYTE */
-			{ "Hash Join Spill Bytes", "Bytes", 0 }, 
-			/* TOTAL */
-			{ NULL, NULL, 0},
-		};
+		PerfmonNodeType type = PMNT_Invalid;
 
 		switch(((HashJoin *)planNode)->join.jointype)
 		{
 			case JOIN_INNER:
-				iname = "Hash Join";
+				type = PMNT_HashJoin;
 				break;
 			case JOIN_LEFT:
-				iname = "Hash Left Join";
+				type = PMNT_HashLeftJoin;
 				break;
 			case JOIN_LASJ:
-				iname = "Hash Left Anti Semi Join";
+				type = PMNT_HashLeftAntiSemiJoin;
 				break;
 			case JOIN_FULL:
-				iname = "Hash Full Join";
+				type = PMNT_HashFullJoin;
 				break;
 			case JOIN_RIGHT:
-				iname = "Hash Right Join";
+				type = PMNT_HashRightJoin;
 				break;
 			case JOIN_IN:
-				iname = "Hash EXISTS Join";
+				type = PMNT_HashExistsJoin;
 				break;
-			default:
-				iname = "Hash ??? Join";
+			case JOIN_REVERSE_IN:
+				type = PMNT_HashReverseInJoin;
+				break;
+			case JOIN_UNIQUE_OUTER:
+				type = PMNT_HashUniqueOuterJoin;
+				break;
+			case JOIN_UNIQUE_INNER:
+				type = PMNT_HashUniqueInnerJoin;
+				break;
 		}
 
+		Assert(type != PMNT_Invalid);
 		Assert(GPMON_HASHJOIN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, iname, 
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, type, 
 							 (int64)planNode->plan_rows,
-							 m, NULL);
+							 NULL);
 	}
 }

@@ -1055,24 +1055,12 @@ initGpmonPktForIndexScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *esta
 	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, IndexScan));
 
 	{
-		Gpmon_NameUnit_MaxVal m[GPMON_INDEXSCAN_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ "Index Scan Restore Pos", "Restores", 0 },
-			{ "Index Scan Rescan", "Rescans", 0 },
-			{ NULL, NULL, 0}
-		};
-		
 		char *relname = get_rel_name(((IndexScan *)planNode)->indexid);
 		
-		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
-			GPMON_QEXEC_T_RELATION(relname),
-			{ NULL, NULL }
-		};
-		
 		Assert(GPMON_INDEXSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Index Scan", 
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_IndexScan,
 							 (int64)planNode->plan_rows, 
-							 m, t);
+							 relname);
 		if (relname)
 			pfree(relname);
 	}

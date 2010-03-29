@@ -6,6 +6,8 @@ void gpmon_init(void);
 typedef int64 apr_int64_t;
 typedef int32 apr_int32_t;
 typedef int16 apr_int16_t;
+typedef uint8 apr_byte_t;
+typedef uint16 apr_uint16_t;
 typedef uint64 apr_uint64_t;
 #endif
 
@@ -17,7 +19,7 @@ typedef struct gpmon_qexeckey_t gpmon_qexeckey_t;
 typedef struct gpmon_qexec_t gpmon_qexec_t;
 typedef struct gpmon_hello_t gpmon_hello_t;
 typedef struct gpmon_metrics_t gpmon_metrics_t;
-
+typedef struct gpmon_seginfo_t gpmon_seginfo_t;
 
 /*
  * this dir sits in $MASTER_DATA_DIRECTORY. always include the
@@ -26,7 +28,14 @@ typedef struct gpmon_metrics_t gpmon_metrics_t;
 #define GPMON_DIR   "./gpperfmon/data/"
 #define GPMON_DIR_MAX_PATH 100
 #define GPMON_DB    "gpperfmon"
-#define GPMMON_VERSION_STRING "gpmmon version 2.1.0.0\n"
+#define GPMMON_VERSION_STRING "gpmmon version 4.0.0.0\n"
+
+/*
+this is enough space for 2 names plus a . between the names plus a null char at the end of the string
+for example SCHEMA.RELATION\0
+*/
+#define SCAN_REL_NAME_BUF_SIZE (NAMEDATALEN*2)
+
 
 /* ------------------------------------------------------------------
          INTERFACE
@@ -48,7 +57,7 @@ extern void gpmon_gettmid(apr_int32_t*);
          METRICS
    ------------------------------------------------------------------ */
 struct gpmon_metrics_t {
-    /* if you modify this, do not forget to edit gpcc/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
+    /* if you modify this, do not forget to edit gpperfmon/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
     char hname[NAMEDATALEN];
     struct {
 		apr_uint64_t total, used, actual_used, actual_free;
@@ -76,7 +85,7 @@ struct gpmon_metrics_t {
    ------------------------------------------------------------------ */
 
 struct gpmon_qlogkey_t {
-    /* if you modify this, do not forget to edit gpcc/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
+    /* if you modify this, do not forget to edit gpperfmon/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
     apr_int32_t tmid;  /* transaction time */
     apr_int32_t ssid; /* session id */
     apr_int32_t ccnt; /* command count */
@@ -89,8 +98,10 @@ struct gpmon_qlogkey_t {
 #define GPMON_QLOG_STATUS_DONE     3
 #define GPMON_QLOG_STATUS_ERROR    4
 
+#define GPMON_NUM_SEG_CPU 10
+
 struct gpmon_qlog_t {
-    /* if you modify this, do not forget to edit gpcc/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
+    /* if you modify this, do not forget to edit gpperfmon/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
     gpmon_qlogkey_t key;
     char        user[NAMEDATALEN];
     char        db[NAMEDATALEN];
@@ -99,7 +110,7 @@ struct gpmon_qlog_t {
     apr_int32_t status;		/* GPMON_QLOG_STATUS_XXXXXX */
     apr_int64_t rows_out;
     apr_int32_t _segmax;
-    apr_int32_t _segcpu[10];
+    apr_int32_t _segcpu[GPMON_NUM_SEG_CPU];
 };
 
 
@@ -112,7 +123,7 @@ struct gpmon_qlog_t {
  * QE will NOT need to touch anything begin with _
  */
 struct gpmon_qexeckey_t {
-    /* if you modify this, do not forget to edit gpcc/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
+    /* if you modify this, do not forget to edit gpperfmon/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
     apr_int32_t tmid;  /* transaction time */
     apr_int32_t ssid; /* session id */
     apr_int16_t ccnt;	/* command count */
@@ -140,49 +151,41 @@ enum {
 	GPMON_QEXEC_M_BYTESOUT,
 #endif
 	GPMON_QEXEC_M_NODE_START,
-	GPMON_QEXEC_M_COUNT = 16
+	GPMON_QEXEC_M_COUNT = 10,
+	GPMON_QEXEC_M_DBCOUNT = 16
 };
 
-enum {
-	GPMON_QEXEC_T_SCHEMA_TABLE = 0,
-	GPMON_QEXEC_T_COUNT = 1
-};
-
-#define GPMON_QEXEC_M_INIT \
- 	{ "Rows in", "Rows", 0 }
-
-#define GPMON_QEXEC_M_INIT_ROWS_IN(rowsin_max) \
- 	{ "Rows in", "Rows", (rowsin_max) }
-
-#define GPMON_QEXEC_T_RELATION(rel_name) \
-	{ "Name", rel_name }
+/* there is an array of 10 measurements in the array inside a gpmon packet
+   however the gpperfmon DB will contain 16 measurements. 
+   long term we need a more extensible solution. short term we limit size of packets
+   to what is actually used to conserve resources
+*/
 
 struct gpmon_qexec_t {
-    /* if you modify this, do not forget to edit gpcc/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
-    gpmon_qexeckey_t key;
-    apr_int32_t pnid;	/* plan parent node id */
-    char        _hname[NAMEDATALEN];
-    char        ntype[NAMEDATALEN]; 	/* node type (SeqScan, HashJoin, etc) */
-    char        nstatus[NAMEDATALEN];  /* node status */
-    apr_int32_t tstart, tduration; /* start (wall clock) time and duration.  XXX Leave as 0 for now. */
-    apr_int64_t p_mem, p_memmax;   /* XXX Aset instrumentation.  Leave as 0 for now. */
-    apr_int64_t _cpu_elapsed; /* CPU elapsed for iter */
-
-    gpmon_proc_metrics_t _p_metrics;
-    char  phase[NAMEDATALEN];		/* Spill, ReSpill, etc */
-    apr_int64_t rowsout, rowsout_est;
-    struct {
-		char name[NAMEDATALEN];	/* measure name */
-		char unit[15+1];	/* measure unit */
-		apr_int64_t value;
-		apr_int64_t valuemax;
-    } m[GPMON_QEXEC_M_COUNT]; 		/* Measures */
-    struct {
-    	char name[NAMEDATALEN];
-    	char value[NAMEDATALEN * 2];
-    } t[GPMON_QEXEC_T_COUNT];
+	/* if you modify this, do not forget to edit gpperfmon/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
+	gpmon_qexeckey_t 		key;
+	apr_int32_t  			pnid;	/* plan parent node id */
+	char        			_hname[NAMEDATALEN];
+	apr_uint16_t			nodeType; 					/* using enum PerfmonNodeType */
+	apr_byte_t 				status;    /* node status using PerfmonNodeStatus */
+	apr_int32_t 			tstart, tduration; /* start (wall clock) time and duration.  XXX Leave as 0 for now. */
+	apr_int64_t 			p_mem, p_memmax;   /* XXX Aset instrumentation.  Leave as 0 for now. */
+	apr_int64_t				_cpu_elapsed; /* CPU elapsed for iter */
+	gpmon_proc_metrics_t 	_p_metrics;
+	apr_int64_t 			rowsout, rowsout_est;
+	apr_int64_t 			measures[GPMON_QEXEC_M_COUNT];
+	char 					relation_name[SCAN_REL_NAME_BUF_SIZE];
 };
 
+/*
+ * Segment-related statistics
+ */
+struct gpmon_seginfo_t {
+	apr_int32_t dbid; 							// dbid as in gp_segment_configuration
+	char hostname[NAMEDATALEN];					// hostname without NIC extension
+	apr_uint64_t dynamic_memory_used;			// allocated memory in bytes
+	apr_uint64_t dynamic_memory_available;		// available memory in bytes,
+};
 
 /* ------------------------------------------------------------------
          HELLO
@@ -195,7 +198,7 @@ struct gpmon_hello_t {
 
 
 #define GPMON_MAGIC     0x78ab928d
-#define GPMON_PACKET_VERSION   3
+#define GPMON_PACKET_VERSION   4
 
 enum gpmon_pkttype_t {
     GPMON_PKTTYPE_NONE = 0,
@@ -203,6 +206,7 @@ enum gpmon_pkttype_t {
     GPMON_PKTTYPE_METRICS = 2,
     GPMON_PKTTYPE_QLOG = 3,
     GPMON_PKTTYPE_QEXEC = 4,
+    GPMON_PKTTYPE_SEGINFO = 5,
 
     GPMON_PKTTYPE_MAX
 };
@@ -210,7 +214,7 @@ enum gpmon_pkttype_t {
 
 
 struct gpmon_packet_t {
-    /* if you modify this, do not forget to edit gpcc/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
+    /* if you modify this, do not forget to edit gpperfmon/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
     apr_int32_t magic;
     apr_int16_t version;
     apr_int16_t pkttype;
@@ -219,10 +223,92 @@ struct gpmon_packet_t {
 		gpmon_metrics_t metrics;
 		gpmon_qlog_t    qlog;
 		gpmon_qexec_t   qexec;
+		gpmon_seginfo_t seginfo;
     } u;
 };
 
 
 extern const char* gpmon_qlog_status_string(int gpmon_qlog_status);
+
+/* when adding a node type for perfmon display be sure to also update the corresponding structures in
+   in gpperfmon/src/gpmon/gpmonlib.c */
+
+typedef enum PerfmonNodeType
+{
+    PMNT_Invalid = 0,
+    PMNT_Append,
+    PMNT_AppendOnlyScan,
+    PMNT_Aggregate,
+    PMNT_GroupAggregate,
+    PMNT_HashAggregate,
+    PMNT_AppendOnlyColumnarScan,
+    PMNT_BitmapAnd,
+    PMNT_BitmapOr,
+    PMNT_BitmapAppendOnlyScan,
+    PMNT_BitmapHeapScan,
+    PMNT_BitmapIndexScan,
+    PMNT_ExternalScan,
+    PMNT_FunctionScan,
+    PMNT_Group,
+    PMNT_Hash,
+    PMNT_HashJoin,
+    PMNT_HashLeftJoin,
+    PMNT_HashLeftAntiSemiJoin,
+    PMNT_HashFullJoin,
+    PMNT_HashRightJoin,
+    PMNT_HashExistsJoin,
+    PMNT_HashReverseInJoin,
+    PMNT_HashUniqueOuterJoin,
+    PMNT_HashUniqueInnerJoin,
+    PMNT_IndexScan,
+    PMNT_Limit,
+    PMNT_Materialize,
+    PMNT_MergeJoin,
+    PMNT_MergeLeftJoin,
+    PMNT_MergeLeftAntiSemiJoin,
+    PMNT_MergeFullJoin,
+    PMNT_MergeRightJoin,
+    PMNT_MergeExistsJoin,
+    PMNT_MergeReverseInJoin,
+    PMNT_MergeUniqueOuterJoin,
+    PMNT_MergeUniqueInnerJoin,
+    PMNT_RedistributeMotion,
+    PMNT_BroadcastMotion,
+    PMNT_GatherMotion,
+    PMNT_NestedLoop,
+    PMNT_NestedLoopLeftJoin,
+    PMNT_NestedLoopLeftAntiSemiJoin,
+    PMNT_NestedLoopFullJoin,
+    PMNT_NestedLoopRightJoin,
+    PMNT_NestedLoopExistsJoin,
+    PMNT_NestedLoopReverseInJoin,
+    PMNT_NestedLoopUniqueOuterJoin,
+    PMNT_NestedLoopUniqueInnerJoin,
+    PMNT_Result,
+    PMNT_Repeat,
+    PMNT_SeqScan,
+    PMNT_SetOp,
+    PMNT_SetOpIntersect,
+    PMNT_SetOpIntersectAll,
+    PMNT_SetOpExcept,
+    PMNT_SetOpExceptAll,
+    PMNT_SharedScan,
+    PMNT_Sort,
+    PMNT_SubqueryScan,
+    PMNT_TidScan,
+    PMNT_Unique,
+    PMNT_ValuesScan,
+    PMNT_Window,
+	PMNT_MAXIMUM_ENUM
+
+} PerfmonNodeType;
+
+typedef enum PerfmonNodeStatus
+{
+	PMNS_Initialize = 0,
+	PMNS_Executing,
+	PMNS_Finished
+
+} PerfmonNodeStatus;
 
 #endif

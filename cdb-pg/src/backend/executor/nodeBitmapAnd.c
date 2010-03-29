@@ -360,13 +360,8 @@ initGpmonPktForBitmapAnd(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *esta
 	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, BitmapAnd));
 
 	{
-		Gpmon_NameUnit_MaxVal m[GPMON_BITMAPAND_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT, 
-			{ NULL, NULL, 0}
-		};
-		
-		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "BitmapAnd", (int64)0,
-							  m, NULL);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_BitmapAnd, (int64)0,
+							  NULL);
 	}
 }
 

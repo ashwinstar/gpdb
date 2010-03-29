@@ -6429,13 +6429,8 @@ initGpmonPktForWindow(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
 	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, Window));
 
 	{
-		Gpmon_NameUnit_MaxVal m[GPMON_WINDOW_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ NULL, NULL, 0}
-		};
-
 		Assert(GPMON_WINDOW_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Window", 
-							 (int64)planNode->plan_rows, m, NULL);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_Window,
+							 (int64)planNode->plan_rows, NULL);
 	}
 }

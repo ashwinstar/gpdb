@@ -417,12 +417,7 @@ initGpmonPktForLimit(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
 	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, Limit));
 
 	{
-		Gpmon_NameUnit_MaxVal m[GPMON_LIMIT_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT,
-			{ NULL, NULL, 0}
-		};
-
 		Assert(GPMON_LIMIT_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Limit", (int64)0, m, NULL);
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_Limit, (int64)0, NULL);
 	}
 }

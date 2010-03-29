@@ -556,41 +556,43 @@ initGpmonPktForNestLoop(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estat
 	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, NestLoop));
 	
 	{
-		char *iname = NULL;
-		Gpmon_NameUnit_MaxVal m[GPMON_NLJ_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ "Nested Loop Inner Tuples", "Tuples", 0},
-			{ "Nested Loop Outer Tuples", "Tuples", 0},
-			{ NULL, NULL, 0}
-		};
+		PerfmonNodeType type = PMNT_Invalid;
 
 		switch(((NestLoop *)planNode)->join.jointype)
 		{
 			case JOIN_INNER:
-				iname = "Nested Loop";
-				break;
+				type = PMNT_NestedLoop;
+			break;
 			case JOIN_LEFT:
-				iname = "Nested Loop Left Join";
-				break;
+				type = PMNT_NestedLoopLeftJoin;
+			break;
 			case JOIN_LASJ:
-				iname = "Nested Loop Left Anti Semi Join";
-				break;
+				type = PMNT_NestedLoopLeftAntiSemiJoin;
+			break;
 			case JOIN_FULL:
-				iname = "Nested Loop Full Join";
-				break;
+				type = PMNT_NestedLoopFullJoin;
+			break;
 			case JOIN_RIGHT:
-				iname = "Nested Loop Right Join";
-				break;
+				type = PMNT_NestedLoopRightJoin;
+			break;
 			case JOIN_IN:
-				iname = "Nested Loop EXISTS Join";
-				break;
-			default:
-				iname = "Nested Loop ??? Join";
+				type = PMNT_NestedLoopExistsJoin;
+			break;
+			case JOIN_REVERSE_IN:
+				type = PMNT_NestedLoopReverseInJoin;
+			break;
+			case JOIN_UNIQUE_OUTER:
+				type = PMNT_NestedLoopUniqueOuterJoin;
+			break;
+			case JOIN_UNIQUE_INNER:
+				type = PMNT_NestedLoopUniqueInnerJoin;
+			break;
 		}
 
+		Assert(type != PMNT_Invalid);
 		Assert(GPMON_NLJ_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Nested Loop", 
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, type,
 							 (int64)planNode->plan_rows,
-							 m, NULL);
+							 NULL);
 	}
 }

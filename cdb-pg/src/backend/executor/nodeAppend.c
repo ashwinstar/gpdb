@@ -485,15 +485,9 @@ initGpmonPktForAppend(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
 	}
 
 	{
-		Gpmon_NameUnit_MaxVal m[GPMON_APPEND_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ "Append Current Input Source", "Inputs", last_plan},
-			{ NULL, NULL, 0}
-		};
-		
 		Assert(GPMON_APPEND_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Append", 
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_Append,
 							  (int64)planNode->plan_rows,
-							  m, NULL);
+							  NULL);
 	}
 }

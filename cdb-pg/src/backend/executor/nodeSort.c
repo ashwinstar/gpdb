@@ -609,21 +609,10 @@ initGpmonPktForSort(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
 	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, Sort));
 	
 	{
-		Gpmon_NameUnit_MaxVal m[GPMON_SORT_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS_IN((int64) planNode->plan_rows), 
-			{ "Sort Memory Usage", "Bytes", 0 }, 
-			{ "Sort Spill Tuples", "Tuples", 0 },
-			{ "Sort Spill Bytes", "Bytes", 0 },
-			{ "Sort Spill Pass", "Passes", 0 },
-			{ "Sort Current Spill Pass Tuples", "Tuples", 0},
-			{ "Sort Current Spill Pass Bytes", "Bytes", 0},
-			{ NULL, NULL, 0 },
-		};
-
 		Assert(GPMON_SORT_TOTAL <= GPMON_QEXEC_M_COUNT);
 
-		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, "Sort", 
+		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_Sort,
 							 (int64)planNode->plan_rows, 
-							 m, NULL); 
+							 NULL); 
 	}
 }

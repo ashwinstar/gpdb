@@ -150,6 +150,13 @@ extern void *gp_malloc(int64 sz);
 extern void *gp_calloc(int64 nmemb, int64 sz); 
 extern void *gp_realloc(void *ptr, int64 sz, int64 newsz); 
 extern void gp_free2(void *ptr, int64 sz); 
+
+/* Current dynamic memory allocation in bytes. */
+extern uint64 gp_vmem_used(void);
+
+/* Maximum allowed dynamic memory allocation in bytes. */
+extern uint64 gp_vmem_max(void);
+
 #else
 #define gp_malloc(sz) malloc(sz)
 #define gp_calloc(sz1, sz2) calloc((sz1), (sz2))
