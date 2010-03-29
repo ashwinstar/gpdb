@@ -2289,8 +2289,7 @@ doSendStopMessageTCP(ChunkTransportState *transportStates, int16 motNodeID)
 			 motNodeID);
 
 	/*
-	 * Note: we're only concerned with receivers here, so mirrors
-	 * don't matter
+	 * Note: we're only concerned with receivers here.
 	 */
 	for (i = 0; i < pEntry->numConns; i++)
 	{

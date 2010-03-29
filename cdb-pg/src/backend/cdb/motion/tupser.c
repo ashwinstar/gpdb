@@ -687,8 +687,6 @@ SerializeTupleDirect(HeapTuple tuple, SerTupInfo * pSerInfo, struct directTransp
 	AssertArg(pSerInfo != NULL);
 	AssertArg(b != NULL);
 
-	Assert(!b->hasMirrors || b->mir != NULL);
-
 	tupdesc = pSerInfo->tupdesc;
 	natts = tupdesc->natts;
 
@@ -780,13 +778,6 @@ SerializeTupleDirect(HeapTuple tuple, SerTupInfo * pSerInfo, struct directTransp
 		return 0;
 	}
 	while (0);
-
-	if (b->hasMirrors)
-	{
-		Assert(dataSize <= b->mirlen);
-
-		memcpy(b->mir, b->pri, dataSize);
-	}
 
 	return dataSize;   
 }

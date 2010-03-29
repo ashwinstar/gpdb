@@ -394,20 +394,7 @@ SendTupleChunkToAMS(MotionLayerState *mlStates,
 				if (!conn->stillActive)
 					recount = 1;
 			}
-
-			/* handle pt-to-pt message. Mirror */
-			if (pEntry->numConns > pEntry->numPrimaryConns)
-			{
-				conn = pEntry->conns + targetRoute + pEntry->numPrimaryConns;
-				/* only send to interested connections */
-				if (conn->stillActive)
-				{
-					transportStates->SendChunk(mlStates, transportStates, pEntry, conn, currItem, motNodeID);
-					if (!conn->stillActive)
-						recount = 1;
-				}
-			}
-
+			/* in 4.0 logical mirror xmit eliminated. */
 		}
 	}
 
@@ -442,9 +429,18 @@ getTransportDirectBuffer(ChunkTransportState *transportStates,
 	ChunkTransportStateEntry *pEntry = NULL;
 	MotionConn *conn;
 
-	Insist(transportStates);
-	Insist(transportStates->activated);
-	Insist(targetRoute != BROADCAST_SEGIDX);
+	if (!transportStates)
+	{
+		elog(FATAL, "getTransportDirectBuffer: no transport states");
+	}
+	else if (!transportStates->activated)
+	{
+		elog(FATAL, "getTransportDirectBuffer: inactive transport states");
+	}
+	else if (targetRoute == BROADCAST_SEGIDX)
+	{
+		elog(FATAL, "getTransportDirectBuffer: can't direct-transport to broadcast");
+	}
 
 	Assert(b != NULL);
 
@@ -463,28 +459,7 @@ getTransportDirectBuffer(ChunkTransportState *transportStates,
 		b->pri = conn->pBuff + conn->msgSize;
 		b->prilen = Gp_max_packet_size - conn->msgSize;
 
-		/* handle pt-to-pt message. Mirror */
-		if (pEntry->numConns > pEntry->numPrimaryConns)
-		{
-			conn = pEntry->conns + targetRoute + pEntry->numPrimaryConns;
-			/* only send to interested connections */
-			if (!conn->stillActive)
-			{
-				break;
-			}
-
-			b->hasMirrors = true;
-			b->mir = conn->pBuff + conn->msgSize;
-			b->mirlen = Gp_max_packet_size - conn->msgSize;
-		}
-		else
-		{
-			b->hasMirrors = false;
-			b->mir = NULL;
-			b->mirlen = 0;
-		}
-
-		/* got both buffers. */
+		/* got buffer. */
 		return;
 	}
 	while (0);
@@ -493,9 +468,6 @@ getTransportDirectBuffer(ChunkTransportState *transportStates,
 
 	b->pri = NULL;
 	b->prilen = 0;
-	b->hasMirrors = false;
-	b->mir = NULL;
-	b->mirlen = 0;
 
 	return;
 }
@@ -515,9 +487,18 @@ putTransportDirectBuffer(ChunkTransportState *transportStates,
 	ChunkTransportStateEntry *pEntry = NULL;
 	MotionConn *conn;
 
-	Insist(transportStates);
-	Insist(transportStates->activated);
-	Insist(targetRoute != BROADCAST_SEGIDX);
+	if (!transportStates)
+	{
+		elog(FATAL, "putTransportDirectBuffer: no transport states");
+	}
+	else if (!transportStates->activated)
+	{
+		elog(FATAL, "putTransportDirectBuffer: inactive transport states");
+	}
+	else if (targetRoute == BROADCAST_SEGIDX)
+	{
+		elog(FATAL, "putTransportDirectBuffer: can't direct-transport to broadcast");
+	}
 
 	getChunkTransportState(transportStates, motNodeID, &pEntry);
 
@@ -530,19 +511,7 @@ putTransportDirectBuffer(ChunkTransportState *transportStates,
 		conn->tupleCount++;
 	}
 
-	/* handle pt-to-pt message. Mirror */
-	if (pEntry->numConns > pEntry->numPrimaryConns)
-	{
-		conn = pEntry->conns + targetRoute + pEntry->numPrimaryConns;
-		/* only send to interested connections */
-		if (conn->stillActive)
-		{
-			conn->msgSize += length;
-			conn->tupleCount++;
-		}
-	}
-
-	/* got both buffers. */
+	/* put buffer. */
 	return;
 }
 
@@ -819,8 +788,6 @@ TeardownInterconnect(ChunkTransportState *transportStates,
  *	 numPrimaryConns  - number of primary connections for this motion node.
  *               All are incoming if this is a receiving motion node.
  *               All are outgoing if this is a sending motion node.
- *
- *   numMirrorConns - number of mirror connections (always 0 if receiving).
  *
  * RETURNS
  *	 An empty and initialized ChunkTransportState struct for the given motion node. If

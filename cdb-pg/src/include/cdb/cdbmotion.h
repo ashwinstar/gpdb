@@ -36,19 +36,16 @@ typedef enum ReceiveReturnCode
 }	ReceiveReturnCode;
 
 /*
- * Struct describing the two direct transmit buffers see
+ * Struct describing the direct transmit buffer.  see:
  * getTransportDirectBuffer() (in ic_common.c) and
  * SerializeTupleDirect() (in cdbmotion.c).
  *
- * I believe that the lengths should always be the same.
+ * Simplified somewhat in 4.0 to remove mirror-data.
  */
-struct directTransportBuffer {
+struct directTransportBuffer
+{
 	unsigned char		*pri;
 	int					prilen;
-
-	bool				hasMirrors;
-	unsigned char		*mir;
-	int					mirlen;
 };
 
 /* Max message size */

@@ -155,6 +155,7 @@ timeouts[] =
 #define RX_THREAD_POLL_TIMEOUT (250) /* 1/4 sec in msec */
 
 #define MAIN_THREAD_COND_TIMEOUT (250000) /* 1/4 second in usec */
+#define RX_THREAD_COND_TIMEOUT (250000) /* 1/4 second in usec */
 static pthread_t ic_rx_thread;
 static pthread_mutex_t	rx_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool rx_thread_shutdown = false;
@@ -1728,7 +1729,8 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 				 Gp_segment, mySlice->sliceIndex, mySlice->parentIndex,
 				 list_length(parentSlice->primaryProcesses));
 
-		/* in the olden days, we required that the error case
+		/*
+		 * In the olden days, we required that the error case
 		 * successfully transmit and end-of-stream message here. But
 		 * the introduction of cdbdisp_check_estate_for_cancel()
 		 * alleviates for the QD case, and the cross-connection of
@@ -2807,8 +2809,7 @@ doSendStopMessageUDP(ChunkTransportState *transportStates, int16 motNodeID)
 			 motNodeID);
 
 	/*
-	 * Note: we're only concerned with receivers here, so mirrors
-	 * don't matter
+	 * Note: we're only concerned with receivers here.
 	 */
 	for (i = 0; i < pEntry->numConns; i++)
 	{
@@ -2960,12 +2961,32 @@ ic_rx_thread_func(void *arg)
 			pkt = get_rx_buffer();
 			if (pkt == NULL)
 			{
+				struct timeval tv;
+				struct timespec ts;
+
 				if (DEBUG3 >= log_min_messages)
 					write_log("no rx_buffer available");
 
-				/* SLEEP HERE ? WAIT ON COND_VAR */
+				gettimeofday(&tv, NULL);
+				ts.tv_sec = tv.tv_sec;
+				/*  leave in ms for this */
+				ts.tv_nsec = (tv.tv_usec + RX_THREAD_COND_TIMEOUT);
+				if (ts.tv_nsec > 1000000)
+				{
+					ts.tv_sec++;
+					ts.tv_nsec -= 1000000;
+				}
+				/* convert usec to nsec */
+				ts.tv_nsec *= 1000;
+
+				/*
+				 * Wait on our condition variable.
+				 *
+				 * We do the timedwait so that we can successfully
+				 * shutdown, and so we don't wind up blocking forever.
+				 */
 				rx_thread_waiting = true;
-				pthread_cond_wait(&rx_thread_cond, &rx_thread_mutex);
+				pthread_cond_timedwait(&rx_thread_cond, &rx_thread_mutex, &ts);
 				rx_thread_waiting = false;
 
 				pthread_mutex_unlock(&rx_thread_mutex);

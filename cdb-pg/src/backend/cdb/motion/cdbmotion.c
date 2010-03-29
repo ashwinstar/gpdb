@@ -436,8 +436,6 @@ SendTuple(MotionLayerState *mlStates,
 
 		getTransportDirectBuffer(transportStates, motNodeID, targetRoute, &b);
 
-		Assert (!b.hasMirrors || b.prilen == b.mirlen); /* is there any case where these can be different ? */
-
 		if (b.pri != NULL && b.prilen > TUPLE_CHUNK_HEADER_SIZE)
 		{
 			int sent = 0;
