@@ -315,8 +315,8 @@
 # if gp_snmp_peername is empty, snmp alerts are disabled.
 
 #gp_snmp_monitor_address = ''     		# name or IP address (and optionally the port) of the SNMP monitor that will receive the alerts.
-#gp_snmp_community = 'public';			# Change to whatever community string you use in your monitor
-#gp_snmp_use_inform_or_trap = 'inform'; # Set to 'inform' or 'trap', we will send SNMP v2c inform, or SNMP v2c trap.
+#gp_snmp_community = 'public'			# Change to whatever community string you use in your monitor
+#gp_snmp_use_inform_or_trap = 'inform'  # Set to 'inform' or 'trap', we will send SNMP v2c inform, or SNMP v2c trap.
 
 #------------------------------------------------------------------------------
 # RUNTIME STATISTICS
