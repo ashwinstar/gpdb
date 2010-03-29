@@ -1978,12 +1978,15 @@ FileRep_CalculateCrc(
 {
 	pg_crc32 _crc = 0;
 
-	/* Compute Crc */
-	INIT_CRC32(_crc);
-	
-	COMP_CRC32(_crc, (char *) data, length);
-	
-	FIN_CRC32(_crc);
+	if (Debug_filerep_crc_on)
+	{
+		/* Compute Crc */
+		INIT_CRC32(_crc);
+		
+		COMP_CRC32(_crc, (char *) data, length);
+		
+		FIN_CRC32(_crc);
+	}
 
 	*crc = _crc;
 }
@@ -2541,7 +2544,7 @@ void FileRep_Main(void)
 	            "\n",
 		        fileRepRole, segmentState, dataState,
 		        fileRepPrimaryHostAddress, fileRepPrimaryPort, fileRepMirrorHostAddress, fileRepMirrorPort );
-			
+	
 	if (dataState == DataStateInChangeTracking) 
 	{
 		if (segmentState == SegmentStateFault)
