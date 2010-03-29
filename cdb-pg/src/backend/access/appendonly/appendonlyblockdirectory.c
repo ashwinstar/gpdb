@@ -590,7 +590,7 @@ AppendOnlyBlockDirectory_InsertEntry(
 		blockDirectory->blkdirIdx == NULL)
 		return false;
 
-	Assert(minipageInfo->numMinipageEntries <= (uint32)gp_blockdirectory_minipage_size);
+	Assert(minipageInfo->numMinipageEntries <= (uint32)NUM_MINIPAGE_ENTRIES);
 
 	lastEntryNo = minipageInfo->numMinipageEntries - 1;
 	if (lastEntryNo >= 0)
@@ -622,7 +622,7 @@ AppendOnlyBlockDirectory_InsertEntry(
 		entry->rowCount = firstRowNum - entry->firstRowNum;
 	}
 	
-	if (minipageInfo->numMinipageEntries == (uint32)gp_blockdirectory_minipage_size)
+	if (minipageInfo->numMinipageEntries >= (uint32)gp_blockdirectory_minipage_size)
 	{
 		write_minipage(blockDirectory, columnGroupNo);
 

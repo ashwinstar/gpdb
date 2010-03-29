@@ -3783,7 +3783,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_blockdirectory_entry_min_range", PGC_USERSET, GP_ARRAY_TUNING,
 		 gettext_noop("Minimal range in bytes one block directory entry covers."),
 		 gettext_noop("Used to reduce the size of a block directory."),
-		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
 		&gp_blockdirectory_entry_min_range,
 		0, 0, INT_MAX, NULL, NULL
@@ -3793,7 +3793,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_blockdirectory_minipage_size", PGC_USERSET, GP_ARRAY_TUNING,
 		 gettext_noop("Number of entries one row in a block directory table contains."),
 		 gettext_noop("Use smaller value in non-bulk load cases."),
-		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
 		&gp_blockdirectory_minipage_size,
 		NUM_MINIPAGE_ENTRIES, 1, NUM_MINIPAGE_ENTRIES, NULL, NULL
