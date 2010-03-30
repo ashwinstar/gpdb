@@ -231,7 +231,6 @@ _bitmap_init_buildstate(Relation index, BMBuildState *bmstate)
             	                  ALLOCSET_DEFAULT_MINSIZE,
                 	              ALLOCSET_DEFAULT_INITSIZE,
                     	          ALLOCSET_DEFAULT_MAXSIZE);
-		cur_bmbuild = cur_bmbuild;
 
 		/* setup the hash table */
 	    MemSet(&hash_ctl, 0, sizeof(hash_ctl));
@@ -242,8 +241,7 @@ _bitmap_init_buildstate(Relation index, BMBuildState *bmstate)
     	hash_ctl.keysize = MAXALIGN(sizeof(BMBuildHashKey)) +
                            MAXALIGN(sizeof(Datum) * cur_bmbuild->natts) +
                            MAXALIGN(sizeof(bool) * cur_bmbuild->natts);
-        hash_ctl.keysize = hash_ctl.keysize;
-        
+
 		hash_ctl.entrysize = hash_ctl.keysize + sizeof(BMBuildLovData) + 200; 
     	hash_ctl.hash = build_hash_key;
 	    hash_ctl.match = build_match_key;
@@ -255,7 +253,7 @@ _bitmap_init_buildstate(Relation index, BMBuildState *bmstate)
                     	          ALLOCSET_DEFAULT_MAXSIZE);
 		cur_bmbuild->hash_cxt = hash_ctl.hcxt;
 
-		hash_flags = HASH_ELEM | HASH_FUNCTION | HASH_COMPARE | HASH_CONTEXT;
+		hash_flags = HASH_ELEM | HASH_FUNCTION | HASH_COMPARE | HASH_CONTEXT | HASH_KEYCOPY;
 
 		bmstate->lovitem_hash = hash_create("Bitmap index build lov item hash",
 											100, &hash_ctl, hash_flags);
