@@ -242,7 +242,7 @@ _bitmap_init_buildstate(Relation index, BMBuildState *bmstate)
     	hash_ctl.keysize = MAXALIGN(sizeof(BMBuildHashKey)) +
                            MAXALIGN(sizeof(Datum) * cur_bmbuild->natts) +
                            MAXALIGN(sizeof(bool) * cur_bmbuild->natts);
-        hash_ctl.keysize = MAXALIGN(hash_ctl.keysize);
+        hash_ctl.keysize = hash_ctl.keysize;
         
 		hash_ctl.entrysize = hash_ctl.keysize + sizeof(BMBuildLovData) + 200; 
     	hash_ctl.hash = build_hash_key;
@@ -437,6 +437,8 @@ _bitmap_init(Relation rel, Oid comptypeOid,
 static uint32
 build_hash_key(const void *key, Size keysize __attribute__((unused)))
 {
+    Assert(key);
+
     BMBuildHashKey *keyData = (BMBuildHashKey*)key;
 	Datum *k = keyData->attributeValueArr;
 	bool *isNull = keyData->isNullArr;
@@ -470,6 +472,9 @@ build_hash_key(const void *key, Size keysize __attribute__((unused)))
 static int
 build_match_key(const void *key1, const void *key2, Size keysize __attribute__((unused)))
 {
+    Assert(key1);
+    Assert(key2);
+
     BMBuildHashKey *keyData1 = (BMBuildHashKey*)key1;
 	Datum *k1 = keyData1->attributeValueArr;
 	bool *isNull1 = keyData1->isNullArr;
@@ -535,7 +540,10 @@ static void *build_keycopy(void *dest, const void *src, Size keysize)
     destKey->attributeValueArr = datumsOut;
     destKey->isNullArr  = isNullsOut;
 
-    /** return valu;es fo keycopy are ignored */
+    /**
+     * build_keycopy must meet the spec of the keycopy function, which requires a return value even though
+     * the return value is ignored 
+     */
     return NULL;
 }
 
