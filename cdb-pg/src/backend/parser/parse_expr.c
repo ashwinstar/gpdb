@@ -1855,17 +1855,8 @@ exprType(Node *expr)
 		case T_Var:
 			type = ((Var *) expr)->vartype;
 			break;
-
 		case T_Const:
-			{
-				/* Be smart about string constants... */
-				Const	   *con = (Const *) expr;
-				type = ((Const *) expr)->consttype;
-
-				/* Change TEXT to VARCHAR so we can keep the max length typmod */
-				if (con->consttype == TEXTOID && !con->constisnull)
-					type = VARCHAROID;
-			}
+			type = ((Const *) expr)->consttype;
 			break;
 		case T_Param:
 			type = ((Param *) expr)->paramtype;
@@ -1877,96 +1868,49 @@ exprType(Node *expr)
 			type = ((WindowRef *) expr)->restype;
 			break;
 		case T_ArrayRef:
-			{
-				type = ((ArrayRef *) expr)->refrestype;
-
-				/*
-				 * max and min should preserve the max length of the expression
-				 */
-				Oid funcOid = ((Aggref *) expr)->aggfnoid;
-				if (funcOid == 2129 /* max(text) */ ||
-					funcOid == 2145 /* min(text) */)
-				{
-					List * args = ((Aggref *) expr)->args;
-					Node * arg1 = linitial(args);
-
-					if (exprTypmod(arg1) > 0)
-						type = VARCHAROID;
-				}
-
-			}
+			type = ((ArrayRef *) expr)->refrestype;
 			break;
 		case T_FuncExpr:
+			type = ((FuncExpr *) expr)->funcresulttype;
+
+			/*
+			 * GPDB:  Special code to look for built-in functions that return TEXT, but
+			 * really should return a type based on the argument's type if the argument
+			 * is VARCHAR(n) or CHAR(n).
+			 * For example, trim() of a CHAR or VARCHAR should return VARCHAR.
+			 */
+			Oid funcOid = ((FuncExpr *) expr)->funcid;
+
+			/* trim() of a varchar or bpchar should result in varchar */
+			if (funcOid == 401 /* bpchar to text (rtrim) */ ||
+				funcOid == 875 /* ltrim (specifying char) */ ||
+				funcOid == 876 /* rtrim (specifying char) */ ||
+				funcOid == 881 /* ltrim */ ||
+				funcOid == 882 /* rtrim */ ||
+				funcOid == 884 /* btrim (specifying char) */ ||
+				funcOid == 885 /* btrim */ ||
+				funcOid == 870 /* lower */ ||
+				funcOid == 871 /* upper */ ||
+				funcOid == 872 /* initcap */ ||
+				funcOid == 2244 /* max(bpchar) */ ||
+				funcOid == 2245 /* min(bpchar) */ ||
+				funcOid == 2129 /* max(text) */ ||
+				funcOid == 2145 /* min(text) */ ||
+				funcOid == 877 /* substr(x,a,b) */ ||
+				funcOid == 883 /* substr(x,b) */ ||
+				funcOid == 936 /* substring(x from a for b) */ ||
+				funcOid == 937 /* substring(x for b) */ ||
+				funcOid == 2088 /* split_part */ )
 			{
-				Oid funcOid = ((FuncExpr *) expr)->funcid;
+				List * args = ((FuncExpr *) expr)->args;
+				Node * arg1 = linitial(args);
 
-				type = ((FuncExpr *) expr)->funcresulttype;
-
-				/*
-				 * GPDB:  Special code to look for built-in functions that return TEXT, but
-				 * really should return a type based on the argument's type if the argument
-				 * is VARCHAR(n) or CHAR(n).
-				 * For example, trim() of a CHAR or VARCHAR should return VARCHAR.
-				 */
-
-				/* trim() of a varchar or bpchar should result in varchar */
-				if (funcOid == 401 /* bpchar to text (rtrim) */ ||
-					funcOid == 875 /* ltrim (specifying char) */ ||
-					funcOid == 876 /* rtrim (specifying char) */ ||
-					funcOid == 881 /* ltrim */ ||
-					funcOid == 882 /* rtrim */ ||
-					funcOid == 884 /* btrim (specifying char) */ ||
-					funcOid == 885 /* btrim */ ||
-					funcOid == 870 /* lower */ ||
-					funcOid == 871 /* upper */ ||
-					funcOid == 872 /* initcap */ ||
-					funcOid == 2244 /* max(bpchar) */ ||
-					funcOid == 2245 /* min(bpchar) */ ||
-					funcOid == 2129 /* max(text) */ ||
-					funcOid == 2145 /* min(text) */ ||
-					funcOid == 877 /* substr(x,a,b) */ ||
-					funcOid == 883 /* substr(x,b) */ ||
-					funcOid == 936 /* substring(x from a for b) */ ||
-					funcOid == 937 /* substring(x for b) */ ||
-					funcOid == 2088 /* split_part */ )
-				{
-					List * args = ((FuncExpr *) expr)->args;
-					Node * arg1 = linitial(args);
-
-					Oid undertype = exprType(arg1);
-					if (undertype == VARCHAROID || undertype == BPCHAROID)
-						type = VARCHAROID;
-
-					if (funcOid == 877 /* substr(x,a,b) */ ||
-						funcOid == 883 /* substr(x,b) */ ||
-						funcOid == 936 /* substring(x from a for b) */ ||
-						funcOid == 937 /* substring(x for b) */)
-					{
-						/*
-						 * Special for substring.. If length is a Const, we use that as the typmod.
-						 */
-						Node * lenarg; /* the argument that has the length:  The last one */
-						if (list_length(args) == 3)
-							lenarg = lthird(args);
-						else
-							lenarg = lsecond(args);
-						if (IsA(lenarg, Const))
-						{
-							Const * c = (Const *)lenarg;
-							if (c->consttype == INT4OID && !c->constisnull)
-							{
-								type = VARCHAROID;
-							}
-						}
-
-					}
-
-				}
-				if (funcOid == 112 /* int4 to text */)
+				Oid undertype = exprType(arg1);
+				if (undertype == VARCHAROID)
 					type = VARCHAROID;
-				if (funcOid == 113 /* int2 to text */)
-					type = VARCHAROID;
+
 			}
+
 			break;
 		case T_OpExpr:
 			type = ((OpExpr *) expr)->opresulttype;
@@ -1982,9 +1926,7 @@ exprType(Node *expr)
 				Node * arg1 = linitial(args);
 				Node * arg2 = lsecond(args);
 
-				if ((exprType(arg1) == TEXTOID || exprType(arg1) == VARCHAROID || exprType(arg1) == BPCHAROID) &&
-					(exprType(arg2) == TEXTOID || exprType(arg2) == VARCHAROID || exprType(arg2) == BPCHAROID) &&
-					(exprTypmod(arg1) > 0 && exprTypmod(arg2) > 0))
+				if (exprTypmod(arg1) > 0 && exprTypmod(arg2) > 0)
 					type = VARCHAROID;
 			}
 			break;
@@ -2157,8 +2099,6 @@ exprTypmod(Node *expr)
 				switch (con->consttype)
 				{
 					case BPCHAROID:
-					case VARCHAROID:
-					case TEXTOID:
 						if (!con->constisnull)
 						{
 							int32		len = VARSIZE(DatumGetPointer(con->constvalue)) - VARHDRSZ;
@@ -2171,25 +2111,6 @@ exprTypmod(Node *expr)
 					default:
 						break;
 				}
-			}
-			break;
-		case T_Aggref:
-			{
-				/*
-				 * max and min should preserve the max length of the expression
-				 */
-				Oid funcOid = ((Aggref *) expr)->aggfnoid;
-				if (funcOid == 2244 /* max(bpchar) */ ||
-					funcOid == 2245 /* min(bpchar) */ ||
-					funcOid == 2129 /* max(text) */ ||
-					funcOid == 2145 /* min(text) */)
-				{
-					List * args = ((Aggref *) expr)->args;
-					Node * arg1 = linitial(args);
-
-					return exprTypmod(arg1);
-				}
-
 			}
 			break;
 		case T_FuncExpr:
@@ -2258,9 +2179,8 @@ exprTypmod(Node *expr)
 							Const * c = (Const *)lenarg;
 							if (c->consttype == INT4OID && !c->constisnull)
 							{
-								int32 len = DatumGetInt32(c->constvalue) + VARHDRSZ;
-								/* The unsigned lets us deal with -1 as max len */
-								if (len > 0 && ((unsigned int)len <= (unsigned int)exprTypmod(arg1)))
+								int32 len = DatumGetInt32(c->constvalue);
+								if (len > 0 && len <= exprTypmod(arg1))
 									return len;
 							}
 						}
@@ -2268,11 +2188,6 @@ exprTypmod(Node *expr)
 					}
 					return exprTypmod(arg1);
 				}
-
-				if (funcOid == 112 /* int4 to text */)
-					return 11 + VARHDRSZ;
-				if (funcOid == 113 /* int2 to text */)
-					return 6 + VARHDRSZ;
 			}
 			break;
 		case T_FieldSelect:
@@ -2291,9 +2206,7 @@ exprTypmod(Node *expr)
 				Node * arg1 = linitial(args);
 				Node * arg2 = lsecond(args);
 
-				if ((exprType(arg1) == TEXTOID || exprType(arg1) == VARCHAROID || exprType(arg1) == BPCHAROID) &&
-					(exprType(arg2) == TEXTOID || exprType(arg2) == VARCHAROID || exprType(arg2) == BPCHAROID) &&
-				    (exprTypmod(arg1) > 0 && exprTypmod(arg2) > 0))
+				if (exprTypmod(arg1) > 0 && exprTypmod(arg2) > 0)
 					return exprTypmod(arg1) + exprTypmod(arg2);
 				else
 					return -1;
@@ -2316,45 +2229,21 @@ exprTypmod(Node *expr)
 				if (exprType((Node *) cexpr->defresult) != casetype)
 					return -1;
 				typmod = exprTypmod((Node *) cexpr->defresult);
-				if (IsA(cexpr->defresult, Const))
-				{
-					/*
-					 * If it is a NULL constant, treat as zero len, so we pick up the length of
-					 * the other exprs
-					 */
-					Const * c = (Const *)cexpr->defresult;
-					if (c->constisnull)
-						typmod = 0;
-				}
-
 				if (typmod < 0)
 					return -1;	/* no point in trying harder */
-
 				foreach(arg, cexpr->args)
 				{
 					CaseWhen   *w = (CaseWhen *) lfirst(arg);
-					int32 		w_typmod;
 
 					Assert(IsA(w, CaseWhen));
 					if (exprType((Node *) w->result) != casetype)
 						return -1;
-
-					w_typmod = exprTypmod((Node *) w->result);
-					if (w_typmod < 0)
+					if (exprTypmod((Node *) w->result) != typmod)
 						return -1;
-
-					/*
-					 * Keep the longer typmod
-					 */
-					if (w_typmod > typmod)
-						typmod = w_typmod;
-
 				}
 				return typmod;
 			}
 			break;
-		case T_CaseWhen:
-			return exprTypmod((Node *)((CaseWhen *) expr)->result);
 		case T_CaseTestExpr:
 			return ((CaseTestExpr *) expr)->typeMod;
 		case T_CoalesceExpr:
@@ -2376,18 +2265,11 @@ exprTypmod(Node *expr)
 				for_each_cell(arg, lnext(list_head(cexpr->args)))
 				{
 					Node	   *e = (Node *) lfirst(arg);
-					int32 		e_typmod;
 
 					if (exprType(e) != coalescetype)
 						return -1;
-
-					e_typmod = exprTypmod(e);
-
-					if (e_typmod <= 0)
+					if (exprTypmod(e) != typmod)
 						return -1;
-
-					if (e_typmod > typmod)
-						typmod = e_typmod;
 				}
 				return typmod;
 			}
