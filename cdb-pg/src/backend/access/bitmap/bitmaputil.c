@@ -975,7 +975,7 @@ _bitmap_log_updateword(Relation rel, Buffer bitmapBuffer, int word_no)
 	XLogRecData			rdata[1];
 
 	bitmapPage = BufferGetPage(bitmapBuffer);
-	bitmap = (BMBitmap) PageGetContents(bitmapPage);
+	bitmap = (BMBitmap) PageGetContentsMaxAligned(bitmapPage);
 
 	xlBitmapWord.bm_node = rel->rd_node;
 	xlBitmapWord.bm_blkno = BufferGetBlockNumber(bitmapBuffer);
@@ -1026,7 +1026,7 @@ _bitmap_log_updatewords(Relation rel,
 
 
 	firstPage = BufferGetPage(firstBuffer);
-	firstBitmap = (BMBitmap) PageGetContents(firstPage);
+	firstBitmap = (BMBitmap) PageGetContentsMaxAligned(firstPage);
 	firstOpaque = (BMBitmapOpaque)PageGetSpecialPointer(firstPage);
 	xlBitmapWords.bm_two_pages = false;
 	xlBitmapWords.bm_first_blkno = BufferGetBlockNumber(firstBuffer);
@@ -1044,7 +1044,7 @@ _bitmap_log_updatewords(Relation rel,
 	if (BufferIsValid(secondBuffer))
 	{
 		secondPage = BufferGetPage(secondBuffer);
-		secondBitmap = (BMBitmap) PageGetContents(secondPage);
+		secondBitmap = (BMBitmap) PageGetContentsMaxAligned(secondPage);
 		secondOpaque = (BMBitmapOpaque)PageGetSpecialPointer(secondPage);
 
 		xlBitmapWords.bm_two_pages = true;

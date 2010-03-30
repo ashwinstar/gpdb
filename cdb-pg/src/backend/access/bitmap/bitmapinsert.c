@@ -659,7 +659,7 @@ updatesetbit_inpage(Relation rel, uint64 tidnum,
 	bitmapPage = BufferGetPage(bitmapBuffer);
 	bitmapOpaque = (BMBitmapOpaque)PageGetSpecialPointer(bitmapPage);
 
-	bitmap = (BMBitmap) PageGetContents(bitmapPage);
+	bitmap = (BMBitmap) PageGetContentsMaxAligned(bitmapPage);
 	bitNo = 0;
 
 #ifdef DEBUG_BITMAP
@@ -854,7 +854,7 @@ updatesetbit_inpage(Relation rel, uint64 tidnum,
 	{
 		nextPage = BufferGetPage(nextBuffer);
 		nextOpaque = (BMBitmapOpaque)PageGetSpecialPointer(nextPage);
-		nextBitmap = (BMBitmap)PageGetContents(nextPage);
+		nextBitmap = (BMBitmap)PageGetContentsMaxAligned(nextPage);
 
 		nextOpaque->bm_last_tid_location = bitmapOpaque->bm_last_tid_location;
 		nextOpaque->bm_bitmap_next = bitmapOpaque->bm_bitmap_next;
@@ -877,7 +877,7 @@ updatesetbit_inpage(Relation rel, uint64 tidnum,
 	{
 		nextPage = BufferGetPage(nextBuffer);
 		nextOpaque = (BMBitmapOpaque)PageGetSpecialPointer(nextPage);
-		nextBitmap = (BMBitmap)PageGetContents(nextPage);
+		nextBitmap = (BMBitmap)PageGetContentsMaxAligned(nextPage);
 
 		/* Create the buffer for the original words */
 		MemSet(&words, 0, sizeof(words));
@@ -992,7 +992,7 @@ verify_bitmappages(Relation rel, BMLOVItem lovitem)
 		bitmapPage = BufferGetPage(bitmapBuffer);
 		bitmapOpaque = (BMBitmapOpaque)
 			PageGetSpecialPointer(bitmapPage);
-		bitmap = (BMBitmap) PageGetContents(bitmapPage);
+		bitmap = (BMBitmap) PageGetContentsMaxAligned(bitmapPage);
 
 		for (wordNo = 0; wordNo < bitmapOpaque->bm_hrl_words_used; wordNo++)
 		{
@@ -1306,7 +1306,7 @@ _bitmap_write_bitmapwords(Buffer bitmapBuffer, BMTIDBuffer* buf)
 	Assert (words_written > 0);
 
 	/* Copy the content words */
-	bitmap = (BMBitmap) PageGetContents(bitmapPage);
+	bitmap = (BMBitmap) PageGetContentsMaxAligned(bitmapPage);
 	memcpy(bitmap->cwords + cwords,
 		   buf->cwords + startWordNo,
 		   words_written * sizeof(BM_HRL_WORD));

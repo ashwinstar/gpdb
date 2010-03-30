@@ -201,6 +201,13 @@ typedef PageHeaderData *PageHeader;
 #define PageGetContents(page) \
 	((char *) (&((PageHeader) (page))->pd_linp[0]))
 
+/*
+ * PageGetContentsMaxAligned
+ *		Aligns PageGetContents for storing 8-byte data
+ */
+#define PageGetContentsMaxAligned(page) \
+	((char *) MAXALIGN(&((PageHeader) (page))->pd_linp[0]))
+
 /* ----------------
  *		macros to access page size info
  * ----------------

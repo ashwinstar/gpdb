@@ -269,7 +269,7 @@ read_words(Relation rel, Buffer lovBuffer, OffsetNumber lovOffset,
 
 		bitmapPage = BufferGetPage(bitmapBuffer);
 
-		bitmap = (BMBitmap) PageGetContents(bitmapPage);
+		bitmap = (BMBitmap) PageGetContentsMaxAligned(bitmapPage);
 		bo = (BMBitmapOpaque)PageGetSpecialPointer(bitmapPage);
 
 		*numOfWordsP = bo->bm_hrl_words_used;

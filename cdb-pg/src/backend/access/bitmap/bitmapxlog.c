@@ -510,7 +510,7 @@ _bitmap_xlog_updateword(XLogRecPtr lsn, XLogRecord *record)
 		bitmapPage = BufferGetPage(bitmapBuffer);
 		bitmapOpaque =
 			(BMBitmapOpaque)PageGetSpecialPointer(bitmapPage);
-		bitmap = (BMBitmap) PageGetContents(bitmapPage);
+		bitmap = (BMBitmap) PageGetContentsMaxAligned(bitmapPage);
 
 		if (XLByteLT(PageGetLSN(bitmapPage), lsn))
 		{
@@ -562,7 +562,7 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
 		firstPage = BufferGetPage(firstBuffer);
 		firstOpaque =
 			(BMBitmapOpaque)PageGetSpecialPointer(firstPage);
-		firstBitmap = (BMBitmap) PageGetContents(firstPage);
+		firstBitmap = (BMBitmap) PageGetContentsMaxAligned(firstPage);
 
 		if (XLByteLT(PageGetLSN(firstPage), lsn))
 		{
@@ -574,7 +574,7 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
 
 				secondOpaque =
 					(BMBitmapOpaque)PageGetSpecialPointer(secondPage);
-				secondBitmap = (BMBitmap) PageGetContents(secondPage);
+				secondBitmap = (BMBitmap) PageGetContentsMaxAligned(secondPage);
 			}
 
 			memcpy(firstBitmap->cwords, xlrec->bm_first_cwords,
