@@ -826,13 +826,7 @@ static struct config_bool ConfigureNamesBool[] =
 						 "to detect invalid accesses to the buffer pool memory."),
 			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
-		&memory_protect_buffer_pool,
-#ifdef USE_ASSERT_CHECKING
-true
-#else
-false
-#endif
-		, NULL, NULL
+		&memory_protect_buffer_pool, false, NULL, NULL
 	},
 	{
 		{"gp_flush_buffer_pages_when_evicted", PGC_SUSET, DEVELOPER_OPTIONS,
