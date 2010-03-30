@@ -161,6 +161,7 @@ extern void xlog_desc(StringInfo buf, uint8 xl_info, char *rec);
 extern void UpdateControlFile(void);
 extern Size XLOGShmemSize(void);
 extern void XLOGShmemInit(void);
+extern void XLogStartupInit(void);
 extern void BootStrapXLOG(void);
 extern void StartupXLOG(void);
 extern bool XLogStartupMultiplePassesNeeded(void);

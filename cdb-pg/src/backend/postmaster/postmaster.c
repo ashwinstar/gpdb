@@ -1451,6 +1451,8 @@ StartMasterOrPrimaryPostmasterProcesses(void)
 	    gHaveCalledOnetimeInitFunctions = true;
 	}
 
+	XLogStartupInit(); /* required to get collation parameters read from the control file */
+
 	/*
 	 * We're ready to rock and roll...
 	 */

@@ -5159,19 +5159,24 @@ XLOGShmemInit(void)
 	memset(&XLogCtl->lastCheckpointEndLoc, 0, sizeof(XLogRecPtr));
 
 	SpinLockInit(&XLogCtl->resynchronize_lck);
+}
 
+/**
+ * This should be called when we are sure that it is safe to try to read the control file and BEFORE
+ *  we have launched any child processes that need access to collation and ctype data.
+ *
+ * It is not safe to read the control file on a mirror because it may not be synchronized
+ */
+void
+XLogStartupInit(void)
+{
 	/*
 	 * If we are not in bootstrap mode, pg_control should already exist. Read
 	 * and validate it immediately (see comments in ReadControlFile() for the
 	 * reasons why).
 	 */
-/*
-
- todo MIRRORING
- 
 	if (!IsBootstrapProcessingMode())
 		ReadControlFile();
-*/
 }
 
 /*

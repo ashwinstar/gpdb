@@ -11,6 +11,7 @@
 #include "storage/shmem.h"
 #include "storage/spin.h"
 #include "miscadmin.h"
+#include "access/xlog.h"
 #include <string.h>
 
 /**
@@ -1259,6 +1260,8 @@ applyStepForTransitionToMasterOrMirrorlessMode(PrimaryMirrorModeTransitionArgume
 	switch ( *stateInOut )
 	{
 	    case TSNone:
+	        XLogStartupInit(); /* do this as early as possible */
+
             switch (pmModuleState->mode)
             {
                 case PMModeUninitialized:
@@ -1368,6 +1371,10 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
 
         /* the first filerep startup of the transition; a later one may happen after the database is started up */
         case TSDoFilerepStartup:
+
+            /* do this as early as possible -- must do it before any of the new filerep processes are built */
+            XLogStartupInit();
+
             {
                 SegmentState_e segState;
                 if (args->dataState == DataStateInResync )
