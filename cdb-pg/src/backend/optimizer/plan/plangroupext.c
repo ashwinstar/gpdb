@@ -2099,7 +2099,7 @@ plan_list_rollup_plans(PlannerInfo *root,
 													NIL,
 													list_length(final_query->rtable),
 													rollup_plan,
-													final_query->rtable);
+													root->parse->rtable);
 			mark_passthru_locus(rollup_plan, true, true);
 			pfree(resno_map);
 		}
