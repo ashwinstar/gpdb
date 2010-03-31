@@ -16,8 +16,9 @@ from gppylib.operations import startSegments
 logger = get_default_logger()
 
 #
-# todo MIRRORING search for the following and see if we apply this fix: logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % hostname)
-# todo MIRRORING it's a little quirky that caller must set up failed/failover so that failover is in gparray but failed is not (if both set)...change that, or at least protect against problems
+# note: it's a little quirky that caller must set up failed/failover so that failover is in gparray but
+#                                 failed is not (if both set)...change that, or at least protect against problems
+#
 # todo update hba.conf in existing segments as well
 #
 
@@ -104,7 +105,6 @@ class GpMirrorToBuild:
 
         return False
 
-
 class GpMirrorListToBuild:
     def __init__(self, toBuild, pool, quiet, parallelDegree):
         self.__mirrorsToBuild = toBuild
@@ -141,9 +141,15 @@ class GpMirrorListToBuild:
         # make sure the target directories are up-to-date
         #  by cleaning them, if needed, and then copying a basic directory there
         #  the postgresql.conf in that basic directory will need updating (to change the port)
+        toStopDirectives = []
         cleanupDirectives = []
         copyDirectives = []
         for toRecover in self.__mirrorsToBuild:
+
+            if toRecover.getFailedSegment() is not None:
+                # will stop the failed segment.  Note that we do this even if we are recovering to a different location!
+                toStopDirectives.append(GpStopSegmentDirectoryDirective(toRecover.getFailedSegment()))
+
             if toRecover.isFullSynchronization():
                 if toRecover.getFailedSegment() is not None and \
                     toRecover.getFailoverSegment() is None:
@@ -158,6 +164,8 @@ class GpMirrorListToBuild:
 
                 d = GpCopySegmentDirectoryDirective(toRecover.getLiveSegment(), targetSegment)
                 copyDirectives.append(d)
+
+        self.__ensureStopped(gpEnv, toStopDirectives)
         self.__cleanUpSegmentDirectories(cleanupDirectives)
         self.__copySegmentDirectories(gpEnv, gpArray, copyDirectives)
 
@@ -238,12 +246,13 @@ class GpMirrorListToBuild:
                             % (dbid, usedDataDirectories.get(port)))
                 usedDataDirectories[segment.getSegmentDataDirectory()] = dbid
 
-    def __runWaitAndCheckWorkerPoolForErrorsAndClear(self, cmds, actionVerb):
+    def __runWaitAndCheckWorkerPoolForErrorsAndClear(self, cmds, actionVerb, suppressErrorCheck=False):
         for cmd in cmds:
             self.__pool.addCommand(cmd)
 
         self.__pool.wait_and_printdots(len(cmds), self.__quiet)
-        self.__pool.check_results()
+        if not suppressErrorCheck:
+            self.__pool.check_results()
         self.__pool.empty_completed_items()
 
     def __copyFiles(self, srcDir, destDir, fileNames):
@@ -253,8 +262,9 @@ class GpMirrorListToBuild:
 
     def __createEmptyDirectories( self, dir, newDirectoryNames ):
         for name in newDirectoryNames:
-            cmd = unix.MakeDirectory("create blank directory for segment", dir + "/" + name)
-            cmd.run(validateAfter=True)
+            subDir = os.path.join(dir, name)
+            unix.MakeDirectory("create blank directory for segment", subDir).run(validateAfter=True)
+            unix.Chmod.local('set permissions on blank dir', subDir, '0700')
 
     def __buildTarFileForTransfer(self, gpEnv, masterSegment, sampleSegment, newSegments):
         """
@@ -264,11 +274,13 @@ class GpMirrorListToBuild:
         """
         masterDir = gpEnv.getMasterDataDir()
 
-        tempDir = gp.createTempDirectoryName(gpEnv.getMasterDataDir(), "gpbuildingmirrorsegment")
+        # note that this tempdir will be left around on the system (this is what other scripts do currently)
+        tempDir = gp.createTempDirectoryName(gpEnv.getMasterDataDir(), "gpbuildingsegment")
         unix.MakeDirectory("create temp directory for segment", tempDir ).run(validateAfter=True)
 
         schemaDir = tempDir + "/schema"
         unix.MakeDirectory("create temp schema directory for segment", schemaDir ).run(validateAfter=True)
+        unix.Chmod.local('set permissions on schema dir', schemaDir, '0700') # set perms so postgres can start
 
         #
         # Copy remote files from the sample segment to the master
@@ -283,11 +295,27 @@ class GpMirrorListToBuild:
         appendNewEntriesToHbaFile( schemaDir + "/pg_hba.conf", newSegments)
 
         #
-        # Use the master's verison of other files, and build
+        # Use the master's version of other files, and build
         #
-        self.__createEmptyDirectories( schemaDir, [ "base", "global", "pg_clog", "pg_distributedlog",
-                    "pg_distributedxidmap", "pg_log", "pg_multixact", "pg_multixact/members", "pg_multixact/offsets",
-                    "pg_subtrans", "pg_tblspc", "pg_twophase", "pg_utilitymodedtmredo","pg_xlog" ] )
+        self.__createEmptyDirectories( schemaDir, [
+                # this list (with some small differences) also occurs in initdb.c
+                "global",
+                "pg_log",
+                "pg_xlog",
+                "pg_clog",
+                "pg_changetracking",
+                "pg_subtrans",
+                "pg_twophase",
+                "pg_multixact",
+                "pg_multixact/members",
+                "pg_multixact/offsets",
+                "pg_distributedxidmap",
+                "pg_distributedlog",
+                "pg_utilitymodedtmredo",
+                "base",
+                "pg_tblspc",
+                "pg_stat_tmp"
+                ] )
         self.__copyFiles(masterDir, schemaDir, ["PG_VERSION", "pg_ident.conf"])
 
 
@@ -338,11 +366,42 @@ class GpMirrorListToBuild:
                                             remoteHost=hostName))
         self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "unpacking basic segment directory")
 
+    def __ensureStopped(self, gpEnv, directives):
+        """
+
+        @param directives a list of the GpStopSegmentDirectoryDirective values indicating which segments to stop
+
+        """
+        if len(directives) == 0:
+            return
+
+        logger.info("Ensuring %d failed segment(s) are stopped" % (len(directives)))
+        segments = [d.getSegment() for d in directives]
+        segmentByHost = GpArray.getSegmentsByHostName(segments)
+
+        cmds = []
+        for hostName, segments in segmentByHost.iteritems():
+            cmd=gp.GpSegStopCmd("remote segment stop on host '%s'" % hostName,
+                                gpEnv.getGpHome(), gpEnv.getGpVersion(),
+                                mode='fast', dbs=segments, verbose=logging_is_verbose(),
+                                ctxt=base.REMOTE, remoteHost=hostName)
+
+            cmds.append( cmd)
+
+        # we suppress checking for the error.  This is because gpsegstop will actually error
+        #  in many cases where the stop is actually done (that is, for example, the segment is
+        #  running but slow to shutdown so gpsegstop errors after whacking it with a kill)
+        #
+        # Perhaps we should make it so that it so that is checks if the seg is running and only attempt stop
+        #  if it's running?  In that case, we could propagate the error
+        #
+        self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "stopping segments", suppressErrorCheck=True)
 
     def __cleanUpSegmentDirectories(self, directives):
         if len(directives) == 0:
             return
 
+        logger.info("Cleaning files from %d segment(s)" % (len(directives)))
         segments = [d.getSegment() for d in directives]
         segmentByHost = GpArray.getSegmentsByHostName(segments)
 
@@ -378,6 +437,14 @@ class GpMirrorListToBuild:
 
 
 class GpCleanupSegmentDirectoryDirective:
+    def __init__(self, segment):
+        checkNotNone("segment", segment)
+        self.__segment = segment
+
+    def getSegment(self):
+        return self.__segment
+
+class GpStopSegmentDirectoryDirective:
     def __init__(self, segment):
         checkNotNone("segment", segment)
         self.__segment = segment

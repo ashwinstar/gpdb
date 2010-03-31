@@ -35,12 +35,11 @@ class GpFileSystemProviderUsingOs(GpFileSystemProvider) :
         pass
 
     #
-    # Create a temporary file
+    # Create a temporary file.  Note that this uses python's NamedTemporaryFile which
+    #    may not do what we want on windows (that is, on windows, the temporary file
+    #    cannot be opened for reading while it is opened for this write
     #
     # returns self
-    #
-    # todo MIRRORING I don't quite understand the description of NamedTemporaryFile's limitation with regard
-    #      to opening the file again
     #
     def createNamedTemporaryFile( self ) :
         return NamedTemporaryFile('w', delete=True)

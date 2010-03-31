@@ -53,7 +53,7 @@ extern void MirroredFileSysObj_CreateFilespaceDir(
 	
 	int 						*primaryError,
 	
-	int 						*mirrorError);
+	bool 						*mirrorDataLossOccurred);
 
 extern void MirroredFileSysObj_ScheduleDropFilespaceDir(
 	Oid			filespaceOid);
@@ -91,7 +91,7 @@ extern void MirroredFileSysObj_CreateTablespaceDir(
 	
 	int 						*primaryError,
 	
-	int 						*mirrorError);
+	bool 						*mirrorDataLossOccurred);
 
 extern void MirroredFileSysObj_ScheduleDropTablespaceDir(
 	Oid							tablespaceOid);
@@ -121,7 +121,7 @@ extern void MirroredFileSysObj_CreateDbDir(
 	
 	int 						*primaryError,
 	
-	int 						*mirrorError);
+	bool 						*mirrorDataLossOccurred);
 
 extern void MirroredFileSysObj_ScheduleDropDbDir(
 	DbDirNode		*dbDirNode,
@@ -162,38 +162,6 @@ extern void MirroredFileSysObj_TransactionCreateAppendOnlyFile(
 	ItemPointer 			persistentTid,
 
 	int64					*persistentSerialNum);
-extern void MirroredFileSysObj_CreateBufferPoolFile(
-	SMgrRelation 				smgrOpen,
-
-	bool 						isLocalBuf,
-
-	char						*relationName,
-					/* For tracing only.  Can be NULL in some execution paths. */
-
-	StorageManagerMirrorMode 	mirrorMode,
-
-	bool						ignoreAlreadyExists,
-
-	int							*primaryError,
-
-	int							*mirrorError);
-
-extern void MirroredFileSysObj_CreateAppendOnlyFile(
-	RelFileNode 				*relFileNode,
-
-	int32						segmentFileNum,
-
-	char						*relationName,
-					/* For tracing only.  Can be NULL in some execution paths. */
-
-	StorageManagerMirrorMode 	mirrorMode,
-
-	bool						ignoreAlreadyExists,
-
-	int							*primaryError,
-
-	int							*mirrorError);
-
 extern void MirroredFileSysObj_ScheduleDropBufferPoolFile(
 	SMgrRelation 				smgrOpen,
 

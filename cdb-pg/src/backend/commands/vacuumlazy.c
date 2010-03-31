@@ -1026,7 +1026,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 
 				/* Open and truncate the relation segfile beyond its eof */
 				MakeAOSegmentFileName(aorel, segno, -1, &fileSegNo, filenamepath);
-				OpenAOSegmentFile(aorel, filenamepath, false, fileSegNo, segeof, &mirroredOpened);
+				OpenAOSegmentFile(aorel, filenamepath, fileSegNo, segeof, &mirroredOpened);
 				TruncateAOSegmentFile(&mirroredOpened, aorel, segeof, elevel);
 				CloseAOSegmentFile(&mirroredOpened);
 				
@@ -1173,7 +1173,7 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 
 					/* Open and truncate the relation segfile beyond its eof */
 					MakeAOSegmentFileName(aorel, segno, j, &fileSegNo, filenamepath);
-					OpenAOSegmentFile(aorel, filenamepath, false, fileSegNo, segeof, &mirroredOpened);
+					OpenAOSegmentFile(aorel, filenamepath, fileSegNo, segeof, &mirroredOpened);
 					TruncateAOSegmentFile(&mirroredOpened, aorel, segeof, elevel);
 					CloseAOSegmentFile(&mirroredOpened);
 				}

@@ -128,50 +128,39 @@ void
 OpenAOSegmentFile(
 					Relation rel, 
 					char *filepathname, 
-					bool create,
 				  int32	segmentFileNum,
 				  int64	logicalEof,
 				  MirroredAppendOnlyOpen *mirroredOpen)
 {	
-	int		fileFlags = O_RDWR | PG_BINARY;
-	int		fileMode = 0600;
-	
-	MirroredAppendOnly_Open(mirroredOpen, 
+	ItemPointerData persistentTid;
+	int64 persistentSerialNum;
+
+	int primaryError;
+	bool mirrorDataLossOccurred;	// We'll look at this at close time.
+
+	ReadGpRelationNode(
+				rel->rd_id,
+				rel->rd_node.relNode,
+				segmentFileNum,
+				&persistentTid,
+				&persistentSerialNum);
+
+	MirroredAppendOnly_OpenReadWrite(
+							mirroredOpen, 
 							&rel->rd_node,
 							segmentFileNum,
 							/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
 							logicalEof,
-							fileFlags,
-							fileMode);
-	
-	if(mirroredOpen->primaryFile < 0)
-	{
-		if(!create)
-		{
-			/* we expected to find this file */
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not open append only file \"%s\"", filepathname)));
-		}
-		else
-		{
-			/* file doesn't exist. create a new one. */
-			fileFlags |= O_CREAT;
-			
-			MirroredAppendOnly_Open(mirroredOpen, 
-									&rel->rd_node,
-									segmentFileNum,
-									/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
-									logicalEof,
-									fileFlags,
-									fileMode);
-			
-			if(mirroredOpen->primaryFile < 0)
-				ereport(ERROR,
-						(errcode_for_file_access(),
-						 errmsg("failed to create a new file segment: \"%s\"", filepathname)));
-		}
-	}
+							&persistentTid,
+							persistentSerialNum,
+							&primaryError,
+							&mirrorDataLossOccurred);
+	if (primaryError != 0)
+		ereport(ERROR,
+			   (errcode_for_file_access(),
+			    errmsg("Could not open Append-Only segment file '%s': %s",
+					   filepathname,
+					   strerror(primaryError))));
 }
 
 
@@ -181,9 +170,13 @@ OpenAOSegmentFile(
 void
 CloseAOSegmentFile(MirroredAppendOnlyOpen *mirroredOpen)
 {
+	bool mirrorDataLossOccurred;	// UNDONE: We need to do something now...
+
 	Assert(mirroredOpen->primaryFile > 0);
 	
-	MirroredAppendOnly_Close(mirroredOpen);
+	MirroredAppendOnly_Close(
+						mirroredOpen,
+						&mirrorDataLossOccurred);
 }
 
 /*
@@ -192,6 +185,9 @@ CloseAOSegmentFile(MirroredAppendOnlyOpen *mirroredOpen)
 void
 TruncateAOSegmentFile(MirroredAppendOnlyOpen *mirroredOpen, Relation rel, int64 offset, int elevel)
 {
+	int primaryError;
+	bool mirrorDataLossOccurred;	// We'll look at this at close time.
+
 	char *relname = RelationGetRelationName(rel);
 	
 	Assert(mirroredOpen->primaryFile > 0);
@@ -201,9 +197,16 @@ TruncateAOSegmentFile(MirroredAppendOnlyOpen *mirroredOpen, Relation rel, int64 
 	 * Call the 'fd' module with a 64-bit length since AO segment files
 	 * can be multi-gigabyte to the terabytes...
 	 */
-	if (MirroredAppendOnly_Truncate(mirroredOpen, offset) == FALSE)
+	MirroredAppendOnly_Truncate(
+							mirroredOpen,
+							offset,
+							&primaryError,
+							&mirrorDataLossOccurred);
+	if (primaryError != 0)
 		ereport(elevel,
-				(errmsg("\"%s\": failed to truncate data after eof", relname)));
+				(errmsg("\"%s\": failed to truncate data after eof: %s", 
+					    relname,
+					    strerror(primaryError))));
 	
 }
 

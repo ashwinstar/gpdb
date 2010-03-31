@@ -80,6 +80,15 @@ typedef struct AppendOnlyStorageWrite
 			 * The committed EOF at the beginning of the write open.
 			 */
 
+	bool	primaryOnlyToLetResynchronizeWork;
+			/*
+			 * When we opened the file for write, we discovered that we were in
+			 * resynchronization mode and could not write to the mirror.
+			 *
+			 * Re-check the situation at FlushAndClose to determine what action 
+			 * to take.
+			 */
+
 	RelFileNode	relFileNode;
 	int32		segmentFileNum;
 	
@@ -281,9 +290,9 @@ extern void AppendOnlyStorageWrite_FlushAndCloseFile(
 	int64						*newLogicalEof,
 				/* The new EOF for the segment file. */
 
-	int64						*fileLen_uncompressed);
+	int64						*fileLen_uncompressed,
 
-
+	bool						*mirrorDataLossOccurred);
 
 /*
  * Flush and close the current segment file under a transaction.

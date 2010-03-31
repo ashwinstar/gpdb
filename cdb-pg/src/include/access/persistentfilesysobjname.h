@@ -61,6 +61,30 @@ inline static void PersistentFileSysObjName_SetRelationFile(
 	fsObjName->variant.rel.segmentFileNum = segmentFileNum;
 }
 
+inline static RelFileNode PersistentFileSysObjName_GetRelFileNode(
+	PersistentFileSysObjName	*fsObjName)
+{
+	Assert(fsObjName->type == PersistentFsObjType_RelationFile);
+
+	return fsObjName->variant.rel.relFileNode;
+}
+
+inline static RelFileNode *PersistentFileSysObjName_GetRelFileNodePtr(
+	PersistentFileSysObjName	*fsObjName)
+{
+	Assert(fsObjName->type == PersistentFsObjType_RelationFile);
+
+	return &fsObjName->variant.rel.relFileNode;
+}
+
+inline static int32 PersistentFileSysObjName_GetSegmentFileNum(
+	PersistentFileSysObjName	*fsObjName)
+{
+	Assert(fsObjName->type == PersistentFsObjType_RelationFile);
+
+	return fsObjName->variant.rel.segmentFileNum;
+}
+
 inline static void PersistentFileSysObjName_SetDatabaseDir(
 	PersistentFileSysObjName	*fsObjName,
 	Oid							tablespaceOid,

@@ -735,7 +735,12 @@ typedef enum FileRepProcessType_e {
 	
 	FileRepProcessTypeResyncWorker1,
 
-
+	FileRepProcessTypeResyncWorker2,
+	
+	FileRepProcessTypeResyncWorker3,
+	
+	FileRepProcessTypeResyncWorker4,
+	
 	FileRepProcessType__EnumerationCount
 	/* the count of enumeration values */
 	
@@ -865,9 +870,10 @@ extern void FileRep_SetPostmasterReset(void);
  * The routine returns the insert position in FileRep shared memory.
  */
 extern char *FileRep_ReserveShmem(
-					FileRepShmem_s	*fileRepShmem,
-					uint32			msgLength,
-					uint32			*spareField);
+					FileRepShmem_s		*fileRepShmem,
+					uint32				msgLength,
+					uint32				*spareField,
+					FileRepOperation_e	fileRepOperation);
 
 extern char *FileRepAck_ReserveShmem(
 								  uint32		msgLength,
@@ -942,7 +948,9 @@ extern FileRepIdentifier_u FileRep_GetUnknownIdentifier(
 							 char*	unknownId);
 														 
 extern bool FileRep_IsOperationSynchronous(
-						FileRepOperation_e fileRepOperation);											 
+						FileRepOperation_e fileRepOperation);		
+
+extern bool FileRep_IsIpcSleep(FileRepOperation_e fileRepOperation);
 
 extern XLogRecPtr FileRep_GetXLogRecPtrUndefined(void);
 

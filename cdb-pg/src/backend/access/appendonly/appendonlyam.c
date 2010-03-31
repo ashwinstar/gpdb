@@ -371,18 +371,12 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 	}
 	else
 	{
-		if (Debug_try_appendonly_mirror_resynch_eofs)
-			ReadGpRelationNode(
-						aoInsertDesc->aoi_rel->rd_id,
-						aoInsertDesc->aoi_rel->rd_node.relNode,
-						aoInsertDesc->cur_segno,
-						&persistentTid,
-						&persistentSerialNum);
-		else
-		{
-			MemSet(&persistentTid, 0, sizeof(ItemPointerData));
-			persistentSerialNum = 0;
-		}
+		ReadGpRelationNode(
+					aoInsertDesc->aoi_rel->rd_id,
+					aoInsertDesc->aoi_rel->rd_node.relNode,
+					aoInsertDesc->cur_segno,
+					&persistentTid,
+					&persistentSerialNum);
 	}
 
 	/*

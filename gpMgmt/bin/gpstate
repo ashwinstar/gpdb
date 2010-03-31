@@ -24,6 +24,7 @@
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
 WORKDIR=`dirname $0`
+PYTHON_GPSTATE=$WORKDIR/lib/gpstate.py
 FUNCTIONS=$WORKDIR/lib/gp_bash_functions.sh
 if [ -f $FUNCTIONS ]; then
 		. $FUNCTIONS
@@ -444,54 +445,9 @@ VERSION_INFO () {
 
 MIRROR_LIST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	GET_MAX_LEN
-	GET_QE_MIRROR_DETAILS
-	EXIT_STATUS=0
-	LOG_MSG "[INFO]:-------------------------------------------------------------" 1
-	LOG_MSG "[INFO]:-Current GPDB mirror list and status" 1
-	LOG_MSG "[INFO]:-Type = $MIR_TYPE" 1
-	LOG_MSG "[INFO]:-------------------------------------------------------------" 1
-	HEADER=`$ECHO "Mirror:Datadir:Port:Status"|$AWK -F":" '{printf "%-'"${LEN_ARRAY[0]}"'s %-'"${LEN_ARRAY[2]}"'s %-'"${LEN_ARRAY[1]}"'s %s\n", $1, $2, $3, $4}'`
-	LOG_MSG "[INFO]:-$HEADER" 1
-	$ECHO
-	if [ ${#QE_MIRROR_ARRAY[@]} -ne 0 ]; then
-		for MNODE in "${QE_MIRROR_ARRAY[@]}"
-		do
-			QE_NAME=`$ECHO $MNODE|$CUT -d"|" -f1`
-			QE_DIR=`$ECHO $MNODE|$CUT -d"|" -f2`
-			QE_PORT=`$ECHO $MNODE|$CUT -d"|" -f3`
-			QE_VALID=`$ECHO $MNODE|$CUT -d"|" -f4`
-			QE_PRIMARY=`$ECHO $MNODE|$CUT -d"|" -f5`
-			if [ "$QE_PRIMARY" == "t" ] && [ "$QE_VALID" == 't' ];then
-				STATUS="Active"
-				LM=WARN
-				TAG="<<<<<<<<<<"
-				EXIT_STATUS=1
-			else
-				if [ "$QE_PRIMARY" == "f" ] && [ "$QE_VALID" == 't' ]; then
-					STATUS="Passive"
-					LM=INFO
-					TAG=""
-				else
-					STATUS="Failed"
-					LM=WARN
-					TAG="<<<<<<<<<<"
-					EXIT_STATUS=1
-				fi
-			fi
-			#TXT=`$ECHO $MNODE|$AWK -F"|" '{print "Mirror = "$1" \t data directory = "$2" \t port = "$3}'`
-			TXT=`$ECHO $MNODE|$AWK -F"|" '{printf "%-'"${LEN_ARRAY[0]}"'s %-'"${LEN_ARRAY[2]}"'s %-'"${LEN_ARRAY[1]}"'s",$1, $2, $3}'`
-			if [ $VERBOSE ];then
-			LOG_MSG "[$LM]:-$TXT $STATUS $TAG" 1
-			else
-				$ECHO "[$LM]:-$TXT $STATUS $TAG" | $TEE -a $LOG_FILE
-			fi
-			done
-			$ECHO
-	else
-		LOG_MSG "[WARN]:-No mirrors defined" 1
-		EXIT_STATUS=1
-	fi
+
+   $PYTHON_GPSTATE -m -d $MASTER_DATA_DIRECTORY -M "$MIR_TYPE"
+
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -753,56 +709,9 @@ SUMMARY_REPORT () {
 
 CLUSTER_CONFIG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		GET_MAX_LEN
-		GET_QE_PRIMARY_DETAILS
-		GET_QE_MIRROR_DETAILS
-		if [ ${#QE_MIRROR_ARRAY[@]} -ne 0 ]; then
-			LOG_MSG "[INFO]:-------------------------------------------------------------" 1
-			LOG_MSG "[INFO]:-Current GPDB primary to mirror mapping" 1
-			LOG_MSG "[INFO]:-Type = $MIR_TYPE" 1
-			LOG_MSG "[INFO]:-------------------------------------------------------------" 1
-			ARRAY_MAX=${#QE_MIRROR_ARRAY[@]}
-			COUNT=0
-			while [ $COUNT -lt $ARRAY_MAX ]
-			do
-				PHOST=`$ECHO ${QE_PRIMARY_ARRAY[$COUNT]}|$CUT -d"|" -f1`
-				PDIR=`$ECHO ${QE_PRIMARY_ARRAY[$COUNT]}|$CUT -d"|" -f2`
-				PPORT=`$ECHO ${QE_PRIMARY_ARRAY[$COUNT]}|$CUT -d"|" -f3`
-				MHOST=`$ECHO ${QE_MIRROR_ARRAY[$COUNT]}|$CUT -d"|" -f1`
-				MDIR=`$ECHO ${QE_MIRROR_ARRAY[$COUNT]}|$CUT -d"|" -f2`
-				MPORT=`$ECHO ${QE_MIRROR_ARRAY[$COUNT]}|$CUT -d"|" -f3`
-				CONFIG_ARRAY=(${CONFIG_ARRAY[@]} ${PHOST}:${PDIR}:${PPORT}:${MHOST}:${MDIR}:${MPORT})
-				((COUNT=$COUNT+1))
-			done
-			HEADER=`$ECHO "Primary:Datadir:Port:Mirror:Datadir:Port"|$AWK -F":" '{printf "%-'"${LEN_ARRAY[0]}"'s %-'"${LEN_ARRAY[2]}"'s %-'"${LEN_ARRAY[1]}"'s %-'"${LEN_ARRAY[0]}"'s %-'"${LEN_ARRAY[2]}"'s %-'"${LEN_ARRAY[1]}"'s\n", $1, $2, $3, $4, $5, $6}'`
-			LOG_MSG "[INFO]:-$HEADER" 1
-			$ECHO
-			for CONFIG_ITEM in ${CONFIG_ARRAY[@]}
-			do
-				TXT=`$ECHO $CONFIG_ITEM|$AWK -F":" '{printf "%-'"${LEN_ARRAY[0]}"'s %-'"${LEN_ARRAY[2]}"'s %-'"${LEN_ARRAY[1]}"'s %-'"${LEN_ARRAY[0]}"'s %-'"${LEN_ARRAY[2]}"'s %-'"${LEN_ARRAY[1]}"'s",$1, $2, $3, $4, $5, $6}'`
-				if [ $VERBOSE ];then
-				LOG_MSG "[INFO]:-$TXT" 1
-				else
-				$ECHO $TXT | $TEE -a $LOG_FILE
-				fi
-			done
-			$ECHO
-		else
-			LOG_MSG "[INFO]:-------------------------------------------------------------" 1
-			LOG_MSG "[INFO]:-Primary list [Mirroring not implemented]" 1
-			LOG_MSG "[INFO]:-------------------------------------------------------------" 1
-			$ECHO
-			for PNODE in "${QE_PRIMARY_ARRAY[@]}"
-			do
-				TXT=`$ECHO $PNODE|$AWK -F"|" '{print "Primary   "$1" \t"$2"\t"$3}'`
-				if [ $VERBOSE ];then
-				LOG_MSG "[INFO]:-$TXT" 1
-				else
-				$ECHO $TXT | $TEE -a $LOG_FILE
-				fi
-			done
-			$ECHO
-		fi
+
+    $PYTHON_GPSTATE -c -d $MASTER_DATA_DIRECTORY -M "$MIR_TYPE"
+
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 

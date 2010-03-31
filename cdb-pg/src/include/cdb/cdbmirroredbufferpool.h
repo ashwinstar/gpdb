@@ -13,6 +13,8 @@
 #include "storage/fd.h"
 #include "storage/relfilenode.h"
 #include "catalog/catalog.h"
+#include "storage/smgr.h"
+#include "cdb/cdbfilerepprimary.h"
 
 /*
  * This module is for doing mirrored writes for relation files currently managed by the
@@ -29,8 +31,6 @@ typedef struct MirroredBufferPoolOpen
 {
 	bool		isActive;
 	
-	bool		isResync;
-
 	RelFileNode relFileNode;
 
 	uint32		segmentFileNum;
@@ -39,6 +39,19 @@ typedef struct MirroredBufferPoolOpen
 
 	File		primaryFile;
 
+	MirrorDataLossTrackingState mirrorDataLossTrackingState;
+
+	int64						mirrorDataLossTrackingSessionNum;
+
+	bool						create;
+
+	bool						mirrorOnly;
+
+	bool						copyToMirror;
+
+	StorageManagerMirrorMode	mirrorMode;
+
+	bool						mirrorDataLossOccurred;
 } MirroredBufferPoolOpen;
 
 
@@ -49,7 +62,7 @@ typedef struct MirroredBufferPoolOpen
 /*
  * Open a relation for mirrored write.
  */
-extern bool MirroredBufferPool_Open(
+void MirroredBufferPool_Open(
 	MirroredBufferPoolOpen *open,
 				/* The resulting open struct. */
 
@@ -61,11 +74,44 @@ extern bool MirroredBufferPool_Open(
 
 	char			*relationName,
 				/* For tracing only.  Can be NULL in some execution paths. */
+	
+	int 			*primaryError,
+	
+	bool			*mirrorDataLossOccurred);
 
-	int 			fileFlags,
+void MirroredBufferPool_Create(
+	MirroredBufferPoolOpen		*open,
+				/* The resulting open struct. */
 
-	int 			fileMode);
+	RelFileNode 				*relFileNode,
+				/* The tablespace, database, and relation OIDs for the open. */
 
+	uint32						segmentFileNum,
+				/* Which segment file. */
+
+	char						*relationName,
+				/* For tracing only.  Can be NULL in some execution paths. */
+
+	MirrorDataLossTrackingState mirrorDataLossTrackingState,
+
+	int64						mirrorDataLossTrackingSessionNum,
+
+	int 						*primaryError,
+
+	bool						*mirrorDataLossOccurred);
+
+void MirroredBufferPool_MirrorReCreate(
+	RelFileNode 				*relFileNode,
+				/* The tablespace, database, and relation OIDs for the open. */
+
+	uint32						segmentFileNum,
+				/* Which segment file. */
+
+	MirrorDataLossTrackingState mirrorDataLossTrackingState,
+
+	int64						mirrorDataLossTrackingSessionNum,
+
+	bool						*mirrorDataLossOccurred);
 
 extern bool MirroredBufferPool_IsActive(
 	MirroredBufferPoolOpen *open);
@@ -86,15 +132,28 @@ extern void MirroredBufferPool_Close(
 				/* The open struct. */
 
 
-extern bool MirroredBufferPool_Drop(
-	RelFileNode 	*relFileNode,
-				/* The tablespace, database, and relation OIDs for the open. */
+extern void MirroredBufferPool_Drop(
+	RelFileNode 				*relFileNode,
+	 
+	int32						segmentFileNum,
+
+	char						*relationName,
+					/* For tracing only.  Can be NULL in some execution paths. */
 	
-	uint32			segmentFileNum,
-				/* Which segment file. */
+	int 						*primaryError,
+
+	bool						*mirrorDataLossOccurred);
+
+extern void MirroredBufferPool_MirrorReDrop(
+	RelFileNode					*relFileNode,
+	 
+	int32						segmentFileNum,
 	
-	char			*relationName);
-				/* For tracing only.  Can be NULL in some execution paths. */
+	MirrorDataLossTrackingState mirrorDataLossTrackingState,
+
+	int64						mirrorDataLossTrackingSessionNum,
+	
+	bool						*mirrorDataLossOccurred);
 
 /*
  * Write a Buffer Pool page mirrored.

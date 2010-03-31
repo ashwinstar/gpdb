@@ -2,33 +2,25 @@
 #
 # Copyright (c) Greenplum Inc 2010. All Rights Reserved.
 #
-# todo MIRRORING get address of the new host (not just hostName) using gphostcache.py
 #
-# todo MIRRORING better error message when cluster is not running
-# todo MIRRORING STOP the old mirror in case they are running? (when failover to a new location)
-# todo MIRRORING checks for being able to build target directory
-# todo MIRRORING what is: multi_home = gpmlib.chk_multi_home(hosts) (from other gprecoverseg)
-# todo MIRRORING is it okay to leave the temporary directory sitting around (as gpexpand seems to do?)
-# todo MIRRORING need to compress arguments sent to segments?  I think command lines can be pretty long, but should test it
-# todo MIRRORING make sure we get good errors out when trying to build mirror data directories
-#
-# todo MIRRORING: make sure created directories have the right permissions?
-#
-# todo MIRRORING if from config file, we should NOT take -F and instead should get full/incremental commands from the file?
+# todo MIRRORING move over checks for newRecoverHost (chk_pool_host) from old code
 # todo MIRRORING I may have changed the semantics for 'spareDataDirectory'.  review old semantics
+#
+# todo MIRRORING check that segment is actually in changetracking mode
+# todo MIRRORING if recovering using input file, need to make sure change is still possible to apply
+#
+# todo MIRRORING what is: multi_home = gpmlib.chk_multi_home(hosts) (from other gprecoverseg)
+#
+# todo MIRRORING checks for being able to build target directory
+# todo MIRRORING make sure we get good errors out when trying to build mirror data directories but can't
 #
 # todo MIRRORING what about chk_pool_dir_available from gprecoverseg?  Is that needed herE?
 # todo MIRRORING include check for passive standby master
 #
-# todo: catch string-to-int and other errors when parsing file
-#
-# todo MIRRORING test cases where input file says to recover a file in-place (perhaps with a change to ports)
-# todo MIRRORING (bugfix) escaping of directory names in unix.LocalCopy
 # todo MIRRORING when failing over to another host we may need to change port numbers as well!
-#
 # todO MIRRORING open question: okay to pause fault prober while prompt to user is up?
 #
-# Options removed when 3.4 gprecoverseg was implemented:
+# Options removed when 4.0 gprecoverseg was implemented:
 #        --version
 #       -S "Primary segment dbid to force recovery": I think this is done now by bringing the primary down, waiting for
 #           failover, and then doing recover full
@@ -36,7 +28,6 @@
 #       -f        : force Greenplum Database instance shutdown and restart
 #       -F (HAS BEEN CHANGED) -- used to mean "force recovery" and now means "full recovery)
 # And a change to the -i input file: it now takes replicationPort in list of args (for failover target)
-#
 #
 # import mainUtils FIRST to get python version check
 # THIS IMPORT SHOULD COME FIRST
@@ -75,13 +66,13 @@ class GpRecoverSegmentProgram:
         lines = []
         for mirror in mirrorBuilder.getMirrorsToBuild():
             str = ""
-            seg = segToRecover.getFailedSegment()
-            str += ('%s:%d:%s' % (seg.getSegmentHostName(), seg.getSegmentPort(), seg.getSegmentDataDirectory()))
+            seg = mirror.getFailedSegment()
+            str += ('%s:%d:%s' % (seg.getSegmentAddress(), seg.getSegmentPort(), seg.getSegmentDataDirectory()))
 
-            seg = segToRecover.getFailoverSegment()
+            seg = mirror.getFailoverSegment()
             if seg is not None:
                 str += ' '
-                str += ('%s:%d:%d:%s' % (seg.getSegmentHostName(),
+                str += ('%s:%s:%d:%d:%s' % (seg.getSegmentAddress(), seg.getSegmentHostName(),
                     seg.getSegmentPort(), seg.getSegmentReplicationPort(), seg.getSegmentDataDirectory()))
 
             lines.append(str)
@@ -111,10 +102,10 @@ class GpRecoverSegmentProgram:
                 raise Exception('config file format error. %s' % line)
 
             # find the failed segment
-            (failedHostName, failedPort, failedDataDirectory) = arr
+            (failedAddress, failedPort, failedDataDirectory) = arr
             failedSegment = None
             for segment in gpArray.getDbList():
-                if segment.getSegmentHostName() == failedHostName and \
+                if segment.getSegmentAddress() == failedAddress and \
                             str(segment.getSegmentPort()) == failedPort and \
                             segment.getSegmentDataDirectory() == failedDataDirectory:
 
@@ -132,18 +123,25 @@ class GpRecoverSegmentProgram:
                   build a failover segment
                 """
                 arr = [s.strip() for s in qeArray[1].split(':')]
-                if len(arr) != 4:
+                if len(arr) != 5:
                     raise Exception('Config file format error. %s' % line)
 
                 # these two lines make it so that failoverSegment points to the object that is registered in gparray
                 failoverSegment = failedSegment
                 failedSegment = failoverSegment.copy()
 
+                try:
+                    port = int(arr[2])
+                    replicationPort = int(arr[3])
+                except ValueError:
+                    raise Exception( 'Config file format error, invalid number in line: %s' % (line))
+
                 # now update values in failover segment
-                failoverSegment.setSegmentHostName( arr[0] )
-                failoverSegment.setSegmentPort( int(arr[1]) )
-                failoverSegment.setSegmentReplicationPort( int(arr[2]) )
-                failoverSegment.setSegmentDataDirectory( arr[3] )
+                failoverSegment.setSegmentAddress( arr[0] )
+                failoverSegment.setSegmentHostName( arr[1] )
+                failoverSegment.setSegmentPort( port )
+                failoverSegment.setSegmentReplicationPort( replicationPort )
+                failoverSegment.setSegmentDataDirectory( arr[4] )
 
             # this must come AFTER the if check above because failedSegment can be adjusted to
             #   point to a different object
@@ -288,7 +286,6 @@ class GpRecoverSegmentProgram:
 
             # figure out what needs to be done
             mirrorBuilder = self.getRecoveryActionsBasedOnOptions(gpArray)
-
 
             if self.__options.outputSampleConfigFile is not None:
                 # just output config file and done

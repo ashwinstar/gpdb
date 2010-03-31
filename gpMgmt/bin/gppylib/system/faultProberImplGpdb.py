@@ -3,7 +3,10 @@
 #
 
 """
-todo MIRRORING: assert out if the fault prober is already paused in the database?  Most actions will call unpauseFaultProber to reset the paused to unpaused when done
+
+Note that this does NOT pay attention to the current pause state in the db.  It can't do that right now
+  anyway because gp_fts_probe_pause does not reflect the shared memory variable?
+
 """
 import os
 
@@ -45,7 +48,7 @@ class GpFaultProberImplGpdb(GpFaultProber):
         logger.debug("Unpausing fault prober")
 
         conn = dbconn.connect(self.__masterDbUrl, False)
-#        dbconn.execSQL( conn, "set gp_fts_probe_pause = off")
+        dbconn.execSQL( conn, "set gp_fts_probe_pause = off")
         conn.close()
         self.__isPaused = False
 

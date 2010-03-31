@@ -245,6 +245,11 @@ extern bool updateSegmentState(SegmentState_e segmentState);
 
 extern bool updateDataState(DataState_e dataState);
 
+extern int64 getChangeTrackingSessionId(void);
+
+extern void primaryMirrorSetBGWriterPID( pid_t pid );
+extern pid_t primaryMirrorGetBGWriterPID(void);
+
 /* labeling enums */
 
 extern const char * getTransitionResultLabel(PrimaryMirrorModeTransitionResult res);

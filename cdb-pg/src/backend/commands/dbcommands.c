@@ -67,7 +67,7 @@
 #include "cdb/cdbpersistentdatabase.h"
 #include "cdb/cdbpersistentrelation.h"
 #include "cdb/cdbmirroredfilesysobj.h"
-#include "cdb/cdbmirroredbulkrelation.h"
+#include "cdb/cdbmirroredappendonly.h"
 #include "cdb/cdbmirroredflatfile.h"
 #include "cdb/cdbdatabaseinfo.h"
 #include "cdb/cdbdirectopen.h"
@@ -408,15 +408,40 @@ static void copy_buffer_pool_segment_file(
 	
 		END_CRIT_SECTION();
 
+		// -------- MirroredLock ----------
+		LWLockAcquire(MirroredLock, LW_SHARED);
+
 		smgrwrite(dstrel, blkno, buffer, false);
+
+		LWLockRelease(MirroredLock);
+		// -------- MirroredLock ----------
 
 		blkno++;
 	}
 
 	/*
-	 * Do not fsync.  Let the buffer pool push the pages out since we have XLOG'd
-	 * the new pages.
+	 * If the rel isn't temp, we must fsync it down to disk before it's safe
+	 * to commit the transaction.  (For a temp rel we don't care since the rel
+	 * will be uninteresting after a crash anyway.)
+	 *
+	 * It's obvious that we must do this when not WAL-logging the copy. It's
+	 * less obvious that we have to do it even if we did WAL-log the copied
+	 * pages. The reason is that since we're copying outside shared buffers, a
+	 * CHECKPOINT occurring during the copy has no way to flush the previously
+	 * written data to disk (indeed it won't know the new rel even exists).  A
+	 * crash later on would replay WAL from the checkpoint, therefore it
+	 * wouldn't replay our earlier WAL entries. If we do not fsync those pages
+	 * here, they might still not be on disk when the crash occurs.
 	 */
+	
+	// -------- MirroredLock ----------
+	LWLockAcquire(MirroredLock, LW_SHARED);
+	
+	smgrimmedsync(dstrel);
+	
+	LWLockRelease(MirroredLock);
+	// -------- MirroredLock ----------
+
 	smgrclose(dstrel);
 
 	FileClose(srcFile);
@@ -426,22 +451,40 @@ static void copy_append_only_segment_file(
 	RelFileNode 	*srcRelFileNode,
 	RelFileNode		*dstRelFileNode,
 	int32			segmentFileNum,
+	char			*relationName,
 	int64			eof,
-	char			*buffer)
+	ItemPointer		persistentTid,
+	int64			persistentSerialNum,
+	char			*buffer,
+	bool			*mirrorDataLossOccurred)
 {
 	char srcFileName[MAXPGPATH];
+	char dstFileName[MAXPGPATH];
 	char extension[12];
 
 	File		srcFile;
 
-	MirroredBulkRelationOpen mirroredDstOpen;
+	MirroredAppendOnlyOpen mirroredDstOpen;
 
-	int 		nbytes;
+	bool primaryOnlyToLetResynchronizeWork;
 
-	CopyRelPath(srcFileName, MAXPGPATH, *srcRelFileNode);
+	int64	endOffset;
+	int64	readOffset;
+	int32	bufferLen;
+	int 	retval;
+
+	int primaryError;
+
 	if (segmentFileNum > 0)
 	{
 		sprintf(extension, ".%u", segmentFileNum);
+	}
+	else
+		extension[0] = '\0';
+	
+	CopyRelPath(srcFileName, MAXPGPATH, *srcRelFileNode);
+	if (segmentFileNum > 0)
+	{
 		strcat(srcFileName, extension);
 	}
 
@@ -454,37 +497,125 @@ static void copy_append_only_segment_file(
 				(errcode_for_file_access(),
 				 errmsg("could not open file \"%s\": %m", srcFileName)));
 
-	MirroredBulkRelation_Open(
-							&mirroredDstOpen,
-							O_RDWR | O_EXCL | PG_BINARY,
-							S_IRUSR | S_IWUSR,
-							dstRelFileNode,
-							segmentFileNum);
-	
+	CopyRelPath(dstFileName, MAXPGPATH, *dstRelFileNode);
+	if (segmentFileNum > 0)
+	{
+		strcat(dstFileName, extension);
+	}
+
+	primaryOnlyToLetResynchronizeWork =
+			MirroredAppendOnly_OpenReadWrite(
+									&mirroredDstOpen,
+									dstRelFileNode,
+									segmentFileNum,
+									relationName,
+									eof,
+									persistentTid,
+									persistentSerialNum,
+									&primaryError,
+									mirrorDataLossOccurred);
+	if (primaryError != 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not open file \"%s\": %s",
+				 		dstFileName,
+				 		strerror(primaryError))));
+
 	/*
 	 * Do the data copying.
 	 */
-	for (;;)
-	{		
+	endOffset = eof;
+	readOffset = 0;
+	bufferLen = (Size) Min(BLCKSZ, endOffset);
+	while (readOffset < endOffset)
+	{
 		CHECK_FOR_INTERRUPTS();
 		
-		nbytes = FileRead(srcFile, buffer, BLCKSZ);
-		if (nbytes < 0)
+		retval = FileRead(srcFile, buffer, bufferLen);
+		if (retval != bufferLen) 
+		{
 			ereport(ERROR,
 					(errcode_for_file_access(),
-					 errmsg("could not read file \"%s\": %m", srcFileName)));
-		if (nbytes == 0)
+					 errmsg("could not read from position: " INT64_FORMAT " in file '%s' : %m",
+							readOffset, 
+							srcFileName)));
+			
 			break;
-
-		MirroredBulkRelation_Append(
-							&mirroredDstOpen,
-							buffer,
-							nbytes);
+		}						
+		
+		MirroredAppendOnly_Append(
+							  &mirroredDstOpen,
+							  buffer,
+							  bufferLen,
+							  &primaryError,
+							  mirrorDataLossOccurred);
+		if (primaryError != 0)
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not write file \"%s\": %s",
+							dstFileName,
+							strerror(primaryError))));
+		
+		readOffset += bufferLen;
+		
+		bufferLen = (Size) Min(BLCKSZ, endOffset - readOffset);						
 	}
 
-	MirroredBulkRelation_FlushAndClose(&mirroredDstOpen);
+	MirroredAppendOnly_FlushAndClose(
+							&mirroredDstOpen,
+							&primaryError,
+							mirrorDataLossOccurred);
+	if (primaryError != 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not flush (fsync) file \"%s\": %s",
+						dstFileName,
+						strerror(primaryError))));
 
 	FileClose(srcFile);
+	
+	if (eof > 0)
+	{
+		int64 mirrorLossEof;
+
+		if (mirrorDataLossOccurred || 
+			primaryOnlyToLetResynchronizeWork)
+		{
+			/*
+			 * Assume all mirror data we tried to write was lost, or
+			 * we found at open time that resynchronize could be working on the
+			 * segment file and didn't write the mirror.
+			 */
+			mirrorLossEof = 0;
+		}
+		else
+			mirrorLossEof = eof;		// No loss.
+
+		/* 
+		 * This routine will handle both updating the persistent information about the
+		 * new EOFs and copy data to the mirror if we are now in synchronized state.
+		 */
+		MirroredAppendOnly_AddMirrorResyncEofs(
+										dstRelFileNode,
+										segmentFileNum,
+										relationName,
+										persistentTid,
+										persistentSerialNum,
+										&mirrorLossEof,		// Input and Output
+										eof);
+
+		if (Debug_persistent_recovery_print)
+			elog(Debug_persistent_recovery_print_level, 
+				 "copy_append_only_segment_file: %u/%u/%u, segment file #%d, serial number " INT64_FORMAT ", TID %s, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
+				 dstRelFileNode->spcNode,
+				 dstRelFileNode->dbNode,
+				 dstRelFileNode->relNode,
+				 segmentFileNum,
+				 persistentSerialNum,
+				 ItemPointerToString(persistentTid),
+				 mirrorLossEof,
+				 eof);
+	}
 }
 
 // -----------------------------------------------------------------------------
@@ -913,7 +1044,10 @@ createdb_int(CreatedbStmt *stmt,
 		if (Debug_database_command_print)
 			pg_rusage_init(&ru_start);
 
-		info = DatabaseInfo_Collect(src_dboid, src_deftablespace);
+		info = DatabaseInfo_Collect(
+							src_dboid, 
+							src_deftablespace,
+							/* collectAppendOnlyCatalogSegmentInfo */ true);
 		
 		if (Debug_database_command_print)
 			elog(NOTICE, "collect phase: %s",
@@ -975,6 +1109,8 @@ createdb_int(CreatedbStmt *stmt,
 
 			PersistentFileSysRelStorageMgr relStorageMgr;
 
+			bool mirrorDataLossOccurred;
+			
 			tablespace = dbInfoRel->reltablespace;
 			if (tablespace == GLOBALTABLESPACE_OID)
 				continue;
@@ -1034,18 +1170,14 @@ createdb_int(CreatedbStmt *stmt,
 			}
 			else
 			{
-				int g;
+				int i;
 
-				Assert(dbInfoRel->gpRelationNodesCount == 
-					   dbInfoRel->physicalSegmentFilesCount);
+				DatabaseInfo_AlignAppendOnly(info, dbInfoRel);
 
-				for (g = 0; g < dbInfoRel->gpRelationNodesCount; g++)
+				for (i = 0; i < dbInfoRel->gpRelationNodesCount; i++)
 				{
 					DbInfoGpRelationNode *dbInfoGpRelationNode = 
-												&dbInfoRel->gpRelationNodes[g];
-
-					Assert(dbInfoGpRelationNode->segmentFileNum == 
-						   dbInfoRel->physicalSegmentFiles[g].segmentFileNum);
+												&dbInfoRel->gpRelationNodes[i];
 
 					MirroredFileSysObj_TransactionCreateAppendOnlyFile(
 														&dstRelFileNode,
@@ -1058,11 +1190,14 @@ createdb_int(CreatedbStmt *stmt,
 									&srcRelFileNode,
 									&dstRelFileNode,
 									dbInfoGpRelationNode->segmentFileNum,
-									dbInfoRel->physicalSegmentFiles[g].eof,
-									buffer);
+									dbInfoRel->relname,
+									dbInfoGpRelationNode->logicalEof,
+									&dbInfoGpRelationNode->persistentTid,
+									dbInfoGpRelationNode->persistentSerialNum,
+									buffer,
+									&mirrorDataLossOccurred);
 				}
-			}
-			
+			}			
 		}
 
 		pfree(buffer);
@@ -1286,7 +1421,10 @@ dropdb(const char *dbname, bool missing_ok)
 		ItemPointerData persistentTid;
 		int64 persistentSerialNum;
 		
-		info = DatabaseInfo_Collect(db_id, defaultTablespace);
+		info = DatabaseInfo_Collect(
+								db_id, 
+								defaultTablespace,
+								/* collectAppendOnlyCatalogSegmentInfo */ false);
 
 //		if (Debug_database_command_print)
 //			DatabaseInfo_Trace(info);

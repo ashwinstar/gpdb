@@ -403,18 +403,12 @@ void datumstream_open_file(DatumStream *ds, char *fn, int64 eof, int64 eofUncomp
 		}
 		else
 		{
-			if (Debug_try_appendonly_mirror_resynch_eofs)
-				ReadGpRelationNode(
-							relFileNode.relNode,	// UNDONE: Need relationId for tracing...
-							relFileNode.relNode,
-							segmentFileNum,
-							&persistentTid,
-							&persistentSerialNum);
-			else
-			{
-				MemSet(&persistentTid, 0, sizeof(ItemPointerData));
-				persistentSerialNum = 0;
-			}
+			ReadGpRelationNode(
+						relFileNode.relNode,	// UNDONE: Need relationId for tracing...
+						relFileNode.relNode,
+						segmentFileNum,
+						&persistentTid,
+						&persistentSerialNum);
 		}
 
 		/*

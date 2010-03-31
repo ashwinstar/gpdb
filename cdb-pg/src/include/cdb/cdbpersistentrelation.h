@@ -79,6 +79,10 @@ extern void PersistentRelation_AddCreated(
 	
 	MirroredRelDataSynchronizationState relDataSynchronizationState,
 	
+	int64				mirrorAppendOnlyLossEof,
+	
+	int64				mirrorAppendOnlyNewEof,
+	
 	char				*relationName,
 	
 	ItemPointer 		persistentTid,

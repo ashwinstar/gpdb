@@ -100,6 +100,8 @@ static int FileRepMirror_InsertFileName(
  */
 static void FileRepMirror_RemoveFileName(FileName fileName);
 
+static void FileRepMirror_ReInit(void);
+
 /****************************************************************
  * FILEREP SUB-PROCESS (FileRep Mirror RECEIVER Process)
  ****************************************************************/
@@ -274,7 +276,8 @@ FileRepMirror_RunReceiver(void)
 				msgPositionInsert = FileRep_ReserveShmem(
 														 fileRepShmemArray[msgType],
 														 msgLength, 
-														 &spareField);
+														 &spareField,
+														 FileRepOperationNotSpecified);
 		
 				if (msgPositionInsert == NULL)
 				{
@@ -436,7 +439,31 @@ FileRepMirror_Cleanup(void)
 	
 	return;
 }
-							  
+
+/*
+ *	Remove hash entry.
+ */
+static void
+FileRepMirror_ReInit(void)
+{
+	HASH_SEQ_STATUS		hash_status;
+	OpenFileEntry		*entry;
+	
+	if (openFilesTable == NULL) 
+	{
+		return;
+	} 
+	
+	hash_seq_init(&hash_status, openFilesTable);
+	
+	while ((entry = (OpenFileEntry *) hash_seq_search(&hash_status)) != NULL) 
+	{
+		FileRepMirror_RemoveFileName(entry->fileName);
+	}
+	
+	return;
+}
+
 /*
  * 
  * FileRepMirror_StartConsumer
@@ -447,6 +474,8 @@ FileRepMirror_StartConsumer(void)
 	int status = STATUS_OK;
 	
 	elog(LOG, "FileRepMirror_StartConsumer() ");
+	
+	FileRepMirror_ReInit();
 	
 	switch (fileRepProcessType) 
 	{
@@ -863,9 +892,13 @@ FileRepMirror_RunConsumer(void)
 						
 						if (fd < 0 && 
 							fileRepMessageHeader->fileRepOperationDescription.open.suppressError == TRUE && 
-							errno == ENOENT &&
-							dataState == DataStateInResync) 
+							errno == ENOENT) 
 						{
+							ereport(LOG,
+									(errcode_for_file_access(),
+									 errmsg("LOG(filerep): could not open file \"%s\" suppressError==TRUE : %m", fileName)));
+							
+							errno = 0;
 							fd = PathNameOpenFile(
 												  fileName,
 												  fileRepMessageHeader->fileRepOperationDescription.open.fileFlags | O_CREAT,
@@ -878,7 +911,7 @@ FileRepMirror_RunConsumer(void)
 							
 							ereport(LOG,
 									(errcode_for_file_access(),
-									 errmsg("could not open file \"%s\" suppressError==TRUE : %m", fileName)));
+									 errmsg("LOG(filerep): could not open file \"%s\" suppressError==TRUE : %m", fileName)));
 							fd = 0;
 							break;							
 						}	
@@ -1594,6 +1627,7 @@ FileRepMirror_RunConsumer(void)
 				break;
 				
 			case FileRepOperationInSyncTransition:
+				
 				FileRep_SetDataState(DataStateInSync, TRUE);
 				
 				FileRep_SetSegmentState(SegmentStateReady);							

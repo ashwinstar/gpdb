@@ -81,10 +81,13 @@ void PersistentEndXactRec_Print(
 					&objects->typed.appendOnlyMirrorResyncEofs[i];
 
 		elog(Debug_persistent_print_level, 
-			 "%s: [%d] %s, Append-Only Mirror Resync EOFs -- persistent serial num " INT64_FORMAT ", TID %s, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
+			 "%s: [%d] %u/%u/%u, segment file #%d, Append-Only Mirror Resync EOFs -- persistent serial num " INT64_FORMAT ", TID %s, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
 			 procName,
 			 i,
-			 PersistentFileSysObjName_TypeAndObjectName(&eofs->fsObjName),
+			 eofs->relFileNode.spcNode,
+			 eofs->relFileNode.dbNode,
+			 eofs->relFileNode.relNode,
+			 eofs->segmentFileNum,
 			 eofs->persistentSerialNum,
 			 ItemPointerToString(&eofs->persistentTid),
 			 eofs->mirrorLossEof,

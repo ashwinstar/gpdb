@@ -6686,6 +6686,8 @@ StartupXLOG_Pass2(void)
 	
 	PersistentRecovery_Drop();
 
+	PersistentRecovery_UpdateAppendOnlyMirrorResyncEofs();
+
 	Checkpoint_RecoveryPass(XLogCtl->pass1LastLoc);
 
 	/*

@@ -58,7 +58,9 @@ typedef struct PersistentEndXactFsObj
 
 typedef struct PersistentEndXactAppendOnlyMirrorResyncEofs
 {
-	PersistentFileSysObjName 	fsObjName;
+	RelFileNode				relFileNode;
+
+	int32					segmentFileNum;
 
 	ItemPointerData			persistentTid;
 

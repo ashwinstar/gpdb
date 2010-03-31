@@ -218,10 +218,10 @@ mdcreatefilespacedir(
 
 	int 						*primaryError,
 
-	int 						*mirrorError)
+	bool						*mirrorDataLossOccurred)
 {
 	*primaryError = 0;
-	*mirrorError = 0;
+	*mirrorDataLossOccurred = false;
 
 	if (FileRepPrimary_MirrorCreate(
 				FileRep_GetDirFilespaceIdentifier(
@@ -256,14 +256,14 @@ mdcreatetablespacedir(
 
 	int							*primaryError,
 
-	int							*mirrorError)
+	bool						*mirrorDataLossOccurred)
 {
 	char *primaryFilespaceLocation;
 	char *mirrorFilespaceLocation;
 	char tablespacePath[MAXPGPATH];
 
 	*primaryError = 0;
-	*mirrorError = 0;
+	*mirrorDataLossOccurred = false;
 	
 	PersistentTablespace_GetPrimaryAndMirrorFilespaces(
 										tablespaceOid,
@@ -315,14 +315,14 @@ mdcreatedbdir(
 
 	int							*primaryError,
 
-	int							*mirrorError)
+	bool						*mirrorDataLossOccurred)
 {
 	char *primaryFilespaceLocation;
 	char *mirrorFilespaceLocation;
 	char dbPath[MAXPGPATH];
 
 	*primaryError = 0;
-	*mirrorError = 0;
+	*mirrorDataLossOccurred = false;
 	
 	PersistentTablespace_GetPrimaryAndMirrorFilespaces(
 										dbDirNode->tablespace,
@@ -373,33 +373,38 @@ mdcreate(
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
 
-	StorageManagerMirrorMode 	mirrorMode,
+	MirrorDataLossTrackingState mirrorDataLossTrackingState,
 
+	int64						mirrorDataLossTrackingSessionNum,
+	
 	bool						ignoreAlreadyExists,
 
 	int							*primaryError,
 
-	int							*mirrorError)
+	bool						*mirrorDataLossOccurred)
 {
 	MirroredBufferPoolOpen		mirroredOpen;
 
 	*primaryError = 0;
-	*mirrorError = 0;
+	*mirrorDataLossOccurred = false;
 
 	if (reln->md_mirvec != NULL)
 		mdclose(reln);		// Don't assume it has been created -- make sure it gets created on both mirrors.
 
 	Assert(reln->md_mirvec == NULL);
 	
-	if (!MirroredBufferPool_Open(
+	MirroredBufferPool_Create(
 					&mirroredOpen,
 					&reln->smgr_rnode,
 					/* segmentFileNum */ 0,
 					relationName,
-					O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
-					0600))
+					mirrorDataLossTrackingState,
+					mirrorDataLossTrackingSessionNum,
+					primaryError,
+					mirrorDataLossOccurred);
+	if (primaryError != 0)
 	{
-		int			save_errno = errno;
+		int			savePrimaryError = *primaryError;
 
 		/*
 		 * During bootstrap, there are cases where a system relation will be
@@ -413,18 +418,16 @@ mdcreate(
 						&reln->smgr_rnode,
 						/* segmentFileNum */ 0,
 						relationName,
-						O_RDWR | PG_BINARY,
-						0600);
+						primaryError,
+						mirrorDataLossOccurred);
 		if (!MirroredBufferPool_IsActive(&mirroredOpen))
 		{
 			/* be sure to return the error reported by create, not open */
-			*primaryError = save_errno;
+			*primaryError = savePrimaryError;
 			return;
 		}
 		errno = 0;
 	}
-
-	*primaryError = errno;
 
 	reln->md_mirvec = _mirvec_alloc();
 
@@ -455,7 +458,10 @@ mdunlink(
 	bool 						ignoreNonExistence)
 {
 	bool		status = true;
-	int			save_errno = 0;
+	int			primaryError;
+	bool		mirrorDataLossOccurred;
+
+	primaryError = 0;
 
 	/*
 	 * We have to clean out any pending fsync requests for the doomed relation,
@@ -464,13 +470,20 @@ mdunlink(
 	ForgetRelationFsyncRequests(rnode);
 
 	/* Delete the first segment, or only segment if not doing segmenting */
-	if (!MirroredBufferPool_Drop(&rnode, /* segmentFileNum */ 0, relationName))
+	MirroredBufferPool_Drop(
+						&rnode, 
+						/* segmentFileNum */ 0,
+						relationName,
+						&primaryError,
+						&mirrorDataLossOccurred);
+	if (primaryError != 0)
 	{
-		if (!ignoreNonExistence || errno != ENOENT)
+		if (!ignoreNonExistence || primaryError != ENOENT)
 		{
 			status = false;
-			save_errno = errno;
 		}
+		else
+			primaryError = 0;
 	}
 
 	// UNDONE: This is broken for mirroring !!!
@@ -513,10 +526,15 @@ mdunlink(
 
 								scanCount = sscanf(&match[constantPrefixLen], "%u", &segmentFileNum);
 							
-                                if(!MirroredBufferPool_Drop(&rnode, segmentFileNum, relationName))
+                                MirroredBufferPool_Drop(
+													&rnode, 
+													segmentFileNum, 
+													relationName,
+													&primaryError,
+													&mirrorDataLossOccurred);
+								if (primaryError != 0);
                                 {
                                         status = false;
-                                        save_errno = errno;
                                         break;
                                 }
                         }
@@ -528,7 +546,7 @@ mdunlink(
 #endif
 
 
-	errno = save_errno;
+	errno = primaryError;
 	return status;
 }
 
@@ -781,6 +799,9 @@ mdextend(SMgrRelation reln, BlockNumber blocknum, char *buffer, bool isTemp)
 static MdMirVec *
 mdopen(SMgrRelation reln, bool allowNotFound)
 {
+	int	primaryError;
+	bool mirrorDataLossOccurred;
+
 	MdMirVec    *v;
 	MirroredBufferPoolOpen		mirroredOpen;
 
@@ -788,13 +809,14 @@ mdopen(SMgrRelation reln, bool allowNotFound)
 	if (reln->md_mirvec)
 		return reln->md_mirvec;
 
-	if (!MirroredBufferPool_Open(
+	MirroredBufferPool_Open(
 				&mirroredOpen,
 				&reln->smgr_rnode,
 				/* segmentFileNum */ 0,
 				/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
-				O_RDWR | PG_BINARY,
-				0600))
+				&primaryError,
+				&mirrorDataLossOccurred);
+	if (primaryError != 0)
 	{
 		/*
 		 * During bootstrap, there are cases where a system relation will be
@@ -803,13 +825,24 @@ mdopen(SMgrRelation reln, bool allowNotFound)
 		 * substitute for mdcreate() in bootstrap mode only. (See mdcreate)
 		 */
 		if (IsBootstrapProcessingMode())
-			MirroredBufferPool_Open(
-					&mirroredOpen,
-					&reln->smgr_rnode,
-					/* segmentFileNum */ 0,
-					/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
-					O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
-					0600);
+		{
+			
+			MirrorDataLossTrackingState mirrorDataLossTrackingState;
+			int64						mirrorDataLossTrackingSessionNum;
+			
+			mirrorDataLossTrackingState = 
+						FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
+														&mirrorDataLossTrackingSessionNum);
+			MirroredBufferPool_Create(
+							&mirroredOpen,
+							&reln->smgr_rnode,
+							/* segmentFileNum */ 0,
+							/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
+							mirrorDataLossTrackingState,
+							mirrorDataLossTrackingSessionNum,
+							&primaryError,
+							&mirrorDataLossOccurred);
+		}
 		if (!MirroredBufferPool_IsActive(&mirroredOpen))
 		{
 			if (allowNotFound && FILE_POSSIBLY_DELETED(errno))
@@ -1563,6 +1596,9 @@ _mirvec_alloc(void)
 static MdMirVec *
 _mdmir_openseg(SMgrRelation reln, BlockNumber segno, int oflags)
 {
+	int	primaryError;
+	bool mirrorDataLossOccurred;
+
 	MdMirVec    *v;
 
 	MirroredBufferPoolOpen		mirroredOpen;
@@ -1573,8 +1609,8 @@ _mdmir_openseg(SMgrRelation reln, BlockNumber segno, int oflags)
 					&reln->smgr_rnode,
 					segno,
 					/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
-					O_RDWR | PG_BINARY | oflags,
-					0600);
+					&primaryError,
+					&mirrorDataLossOccurred);
 
 	if (!MirroredBufferPool_IsActive(&mirroredOpen))
 		return NULL;

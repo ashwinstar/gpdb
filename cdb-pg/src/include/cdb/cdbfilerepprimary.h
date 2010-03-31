@@ -9,6 +9,7 @@
 #ifndef CDBFILEREPPRIMARY_H
 #define CDBFILEREPPRIMARY_H
 
+#include "access/filerepdefs.h"
 #include "cdb/cdbfilerep.h"
 
 
@@ -20,8 +21,15 @@
  * Send Messages to Mirror
  */
 
-extern bool FileRepPrimary_IsResync(void);
+extern bool FileRepPrimary_IsResyncWorker(void);
+extern bool FileRepPrimary_IsResyncManager(void);
 
+extern MirrorDataLossTrackingState 
+FileRepPrimary_GetMirrorDataLossTrackingSessionNum(int64 *sessionNum);
+
+extern void FileRepPrimary_IntentAppendOnlyCommitWork(void);
+
+extern void FileRepPrimary_FinishedAppendOnlyCommitWork(int count);
 
 // -----------------------------------------------------------------------------
 // Construct Messages for Open, Flush, Close, and Write 

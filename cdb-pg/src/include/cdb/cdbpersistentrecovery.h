@@ -52,6 +52,9 @@ extern void
 PersistentRecovery_Drop(void);
 
 extern void
+PersistentRecovery_UpdateAppendOnlyMirrorResyncEofs(void);
+
+extern void
 PersistentRecovery_SerializeRedoRelationFile(
 	int redoRelationFile);
 

@@ -47,7 +47,8 @@
 #include "sys/mman.h"
 #include "access/heapam.h"
 #include "cdb/cdbpersistentrelation.h"
-
+#include "cdb/cdbfilerepprimary.h"
+			
 /* Note: these two macros only work on shared buffers, not local ones! */
 #define BufHdrGetBlock(bufHdr)	((Block) (BufferBlocks + ((Size) (bufHdr)->buf_id) * BLCKSZ))
 #define BufferGetLSN(bufHdr)	(*((XLogRecPtr*) BufHdrGetBlock(bufHdr)))
@@ -202,6 +203,8 @@ ReadBuffer(Relation reln, BlockNumber blockNum)
 static Buffer
 ReadBuffer_Ex(Relation reln, BlockNumber blockNum, volatile BufferDesc* availBufHdr)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	volatile BufferDesc* bufHdr;
 	Block		bufBlock;
 	bool		found;
@@ -222,7 +225,11 @@ ReadBuffer_Ex(Relation reln, BlockNumber blockNum, volatile BufferDesc* availBuf
 		blockNum = smgrnblocks(reln->rd_smgr);
 
 	pgstat_count_buffer_read(reln);
-
+	
+	// -------- MirroredLock ----------
+	// UNDONE: Unfortunately, I think we write temp relations to the mirror...
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	if (isLocalBuf)
 	{
 		ReadLocalBufferCount++;
@@ -386,6 +393,9 @@ ReadBuffer_Ex(Relation reln, BlockNumber blockNum, volatile BufferDesc* availBuf
 		if (freebuf)
 			StrategyFreeBuffer(availBufHdr, true);
 	}
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
 
 	return BufferDescriptorGetBuffer(bufHdr);
 }
@@ -412,6 +422,10 @@ ReadBuffer_Resync(SMgrRelation reln, BlockNumber blockNum, volatile BufferDesc* 
 	ResourceOwnerEnlargeBuffers(CurrentResourceOwner);
 	
 	ReadBufferCount++;
+
+	// ----------------------------------
+	// No MirroredLock acquistion needed here.
+	// ----------------------------------
 	
 	/*
 	 * lookup the buffer.  IO_IN_PROGRESS is set if the requested block is
@@ -515,6 +529,10 @@ BufferAlloc_Resync(SMgrRelation reln,
 	int			buf_id;
 	volatile BufferDesc *buf;
 	bool		valid;
+
+	// ----------------------------------
+	// No MirroredLock acquistion needed here.
+	// ----------------------------------
 	
 	/* create a tag so we can lookup the buffer */
 	newTag.rnode = reln->smgr_rnode;
@@ -1709,6 +1727,8 @@ BgBufferSync(void)
 static bool
 SyncOneBuffer(int buf_id, bool skip_pinned)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+	
 	volatile BufferDesc *bufHdr = &BufferDescriptors[buf_id];
 
 	/*
@@ -1733,6 +1753,9 @@ SyncOneBuffer(int buf_id, bool skip_pinned)
 		return false;
 	}
 
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	/*
 	 * Pin it, share-lock it, write it.  (FlushBuffer will do nothing if the
 	 * buffer is clean by the time we've locked it.)
@@ -1744,6 +1767,9 @@ SyncOneBuffer(int buf_id, bool skip_pinned)
 
 	ReleaseContentLock(bufHdr);
 	UnpinBuffer(bufHdr, true, false /* don't change freelist */ );
+
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
 
 	return true;
 }
@@ -2077,6 +2103,8 @@ RelationGetNumberOfBlocks(Relation relation)
 void
 RelationTruncate(Relation rel, BlockNumber nblocks, bool markPersistentAsPhysicallyTruncated)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	if (markPersistentAsPhysicallyTruncated)
 	{
 		LockRelationForResynchronize(&rel->rd_node, AccessExclusiveLock);
@@ -2100,6 +2128,11 @@ RelationTruncate(Relation rel, BlockNumber nblocks, bool markPersistentAsPhysica
 		}
 	}
 
+	// -------- MirroredLock ----------
+	// NOTE: PersistentFileSysObj_EndXactDrop acquires relation resynchronize lock before MirroredLock, too.
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
+
 	/* Open it at the smgr level if not already done */
 	RelationOpenSmgr(rel);
 
@@ -2113,6 +2146,10 @@ RelationTruncate(Relation rel, BlockNumber nblocks, bool markPersistentAsPhysica
 	{
 		UnlockRelationForResynchronize(&rel->rd_node, AccessExclusiveLock);
 	}
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 }
 
 /* ---------------------------------------------------------------------
@@ -2291,16 +2328,25 @@ FlushRelationBuffers(Relation rel)
 			{
 				ErrorContextCallback errcontext;
 
+				MIRROREDLOCK_BUFMGR_DECLARE;
+				
 				/* Setup error traceback support for ereport() */
 				errcontext.callback = buffer_write_error_callback;
 				errcontext.arg = (void *) bufHdr;
 				errcontext.previous = error_context_stack;
 				error_context_stack = &errcontext;
 
+				// -------- MirroredLock ----------
+				// UNDONE: Unfortunately, I think we write temp relations to the mirror...
+				MIRROREDLOCK_BUFMGR_LOCK;
+				
 				smgrwrite(rel->rd_smgr,
 						  bufHdr->tag.blockNum,
 						  (char *) LocalBufHdrGetBlock(bufHdr),
 						  rel->rd_istemp);
+
+				MIRROREDLOCK_BUFMGR_UNLOCK;
+				// -------- MirroredLock ----------
 
 				bufHdr->flags &= ~(BM_DIRTY | BM_JUST_DIRTIED);
 
@@ -2317,6 +2363,11 @@ FlushRelationBuffers(Relation rel)
 
 	for (i = 0; i < NBuffers; i++)
 	{
+		MIRROREDLOCK_BUFMGR_DECLARE;
+				
+		// -------- MirroredLock ----------
+		MIRROREDLOCK_BUFMGR_LOCK;
+		
 		bufHdr = &BufferDescriptors[i];
 		LockBufHdr(bufHdr);
 		if (RelFileNodeEquals(bufHdr->tag.rnode, rel->rd_node) &&
@@ -2330,6 +2381,10 @@ FlushRelationBuffers(Relation rel)
 		}
 		else
 			UnlockBufHdr(bufHdr);
+		
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
+		
 	}
 }
 
@@ -2370,6 +2425,11 @@ ReleaseBuffer_Ex(Buffer buffer, bool flushIfDirty)
 
 	if (flushIfDirty)
 	{
+		MIRROREDLOCK_BUFMGR_DECLARE;
+				
+		// -------- MirroredLock ----------
+		MIRROREDLOCK_BUFMGR_LOCK;
+
 		LockBufHdr(bufHdr);
 		if (bufHdr->flags & BM_DIRTY)
 		{
@@ -2380,6 +2440,10 @@ ReleaseBuffer_Ex(Buffer buffer, bool flushIfDirty)
 		}
 		else
 			UnlockBufHdr(bufHdr);
+		
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
+		
 	}
 
 	if (PrivateRefCount[buffer - 1] > 1)

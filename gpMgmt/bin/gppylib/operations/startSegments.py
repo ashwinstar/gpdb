@@ -137,8 +137,12 @@ class StartSegmentsOperation:
 
     def __runStartCommand(self, segments, mirroringMode, numContentsInCluster, resultOut, gpArray):
         """
-        Returns a StartSegmentsResult object
+        Putt results into the resultOut object
         """
+
+        if len(segments) == 0:
+            return
+
         if mirroringMode == 'primary':
             logger.info("Commencing parallel primary segment instance startup, please wait...")
         elif mirroringMode == 'mirror':

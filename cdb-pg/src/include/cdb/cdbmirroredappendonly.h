@@ -13,6 +13,7 @@
 #include "storage/fd.h"
 #include "storage/relfilenode.h"
 #include "storage/smgr.h"
+#include "cdb/cdbfilerepprimary.h"
 
 /*
  * This module is for doing mirrored writes for Append-Only relation files privately being written
@@ -28,8 +29,6 @@
 typedef struct MirroredAppendOnlyOpen
 {
 	bool	isActive;
-	
-	bool	isResync;
 
 	RelFileNode	relFileNode;
 	
@@ -39,37 +38,137 @@ typedef struct MirroredAppendOnlyOpen
 	
 	File		primaryFile;
 
-} MirroredAppendOnlyOpen;
+	MirrorDataLossTrackingState mirrorDataLossTrackingState;
 
-#define MirroredAppendOnlyOpen_Init {FALSE, {0, 0, 0}, 0, -1}
+	int64						mirrorDataLossTrackingSessionNum;
+
+	bool						create;
+	
+	bool						mirrorOnly;
+	
+	bool						copyToMirror;
+
+	bool						guardOtherCallsWithMirroredLock;
+	
+	StorageManagerMirrorMode	mirrorMode;
+
+	bool						mirrorDataLossOccurred;
+} MirroredAppendOnlyOpen;
 
 // -----------------------------------------------------------------------------
 // Open, Flush, and Close 
 // -----------------------------------------------------------------------------
 
 /*
- * Open an Append-Only relation for mirrored append.
+ * We call MirroredAppendOnly_Create with the MirroredLock already held.
  */
-extern void MirroredAppendOnly_Open(
-	MirroredAppendOnlyOpen	*open,
-				/* The resulting open struct. */
-
-	RelFileNode 	*relFileNode,
+extern void MirroredAppendOnly_Create(
+	RelFileNode 				*relFileNode,
 				/* The tablespace, database, and relation OIDs for the open. */
 
-	int32			segmentFileNum,
+	int32						segmentFileNum,
 				/* Which segment file. */
 	
-	char			*relationName,
+	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
 	
-	int64			logicalEof,
+	MirrorDataLossTrackingState mirrorDataLossTrackingState,
+
+	int64						mirrorDataLossTrackingSessionNum,
+	
+	int 						*primaryError,
+	
+	bool						*mirrorDataLossOccurred);
+
+
+extern void MirroredAppendOnly_MirrorReCreate(
+	RelFileNode 				*relFileNode,
+				/* The tablespace, database, and relation OIDs for the open. */
+
+	int32						segmentFileNum,
+				/* Which segment file. */
+	
+	MirrorDataLossTrackingState mirrorDataLossTrackingState,
+
+	int64						mirrorDataLossTrackingSessionNum,
+	
+	bool						*mirrorDataLossOccurred);
+
+/*
+ * MirroredAppendOnly_OpenReadWrite will acquire and release the MirroredLock.
+ */
+extern bool MirroredAppendOnly_OpenReadWrite(
+	MirroredAppendOnlyOpen		*open,
+				/* The resulting open struct. */
+
+	RelFileNode 				*relFileNode,
+				/* The tablespace, database, and relation OIDs for the open. */
+
+	int32						segmentFileNum,
+				/* Which segment file. */
+	
+	char						*relationName,
+					/* For tracing only.  Can be NULL in some execution paths. */
+	
+	int64						logicalEof,
+				/* The logical EOF to begin appending the new data. */
+
+	ItemPointer					persistentTid,
+
+	int64						persistentSerialNum,
+	
+	int 						*primaryError,
+	
+	bool						*mirrorDataLossOccurred);
+
+extern void MirroredAppendOnly_AddMirrorResyncEofs(
+	RelFileNode						*relFileNode,
+
+	int32							segmentFileNum,
+
+	char							*relationName,
+
+	ItemPointer						persistentTid,
+
+	int64							persistentSerialNum,
+
+	int64							*mirrorLossEof,
+
+	int64							mirrorNewEof);
+
+extern void MirroredAppendOnly_CopyToMirror(
+	RelFileNode						*relFileNode,
+
+	int32							segmentFileNum,
+
+	char							*relationName,
+
+	ItemPointer						persistentTid,
+
+	int64							persistentSerialNum,
+
+	int64							*mirrorLossEof,
+
+	int64							mirrorNewEof,
+	
+	bool							*mirrorDataLossOccurred);
+
+extern void MirroredAppendOnly_OpenResynchonize(
+	MirroredAppendOnlyOpen		*open,
+				/* The resulting open struct. */
+
+	RelFileNode 				*relFileNode,
+				/* The tablespace, database, and relation OIDs for the open. */
+
+	int32						segmentFileNum,
+				/* Which segment file. */
+		
+	int64						logicalEof,
 				/* The logical EOF to begin appending the new data. */
 									
-	int				fileFlags,
-									
-	int				fileMode);
-				/* The resulting open struct. */
+	int 						*primaryError,
+	
+	bool						*mirrorDataLossOccurred);
 
 extern bool MirroredAppendOnly_IsActive(
 					MirroredAppendOnlyOpen *open);
@@ -84,35 +183,57 @@ extern bool MirroredAppendOnly_IsActive(
  * later.
  */
 extern void MirroredAppendOnly_FlushAndClose(
-						MirroredAppendOnlyOpen *open);
-							/* The open struct. */
+	MirroredAppendOnlyOpen 		*open,
+				/* The open struct. */				
+
+	int 						*primaryError,
+	
+	bool						*mirrorDataLossOccurred);
 
 /*
  * Flush an Append-Only relation file.
  */
 extern void MirroredAppendOnly_Flush(
-									 MirroredAppendOnlyOpen *open);
-										/* The open struct. */
+	MirroredAppendOnlyOpen 		*open,
+				/* The open struct. */				
+
+	int 						*primaryError,
+	
+	bool						*mirrorDataLossOccurred);
 
 /*
  * Close an Append-Only relation file.
  */
 extern void MirroredAppendOnly_Close(
-						 MirroredAppendOnlyOpen *open);
-							/* The open struct. */
+	MirroredAppendOnlyOpen 	*open,
+				/* The open struct. */				
+
+	bool					*mirrorDataLossOccurred);
 
 
 extern void MirroredAppendOnly_Drop(
-	RelFileNode 				*relFileNode,
+	RelFileNode					*relFileNode,
 	 
 	int32						segmentFileNum,
-	
+
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
 	
-	StorageManagerMirrorMode	mirrorMode,
+	int							*primaryError,
+
+	bool						*mirrorDataLossOccurred);
+
+
+extern void MirroredAppendOnly_MirrorReDrop(
+	RelFileNode					*relFileNode,
+	 
+	int32						segmentFileNum,
 	
-	bool						ignoreNonExistence);
+	MirrorDataLossTrackingState mirrorDataLossTrackingState,
+
+	int64						mirrorDataLossTrackingSessionNum,
+	
+	bool						*mirrorDataLossOccurred);
 
 // -----------------------------------------------------------------------------
 // Append 
@@ -128,31 +249,39 @@ extern void MirroredAppendOnly_Append(
 	void		*appendData,
 				/* Pointer to the Append-Only data. */
 
-	int32		appendDataLen);
+	int32		appendDataLen,
+	
 				/* The byte length of the Append-Only data. */
+	int 		*primaryError,
+	
+	bool		*mirrorDataLossOccurred);
 
 // -----------------------------------------------------------------------------
 // Truncate
 // ----------------------------------------------------------------------------
-extern bool MirroredAppendOnly_Truncate(
-				 MirroredAppendOnlyOpen *open,
-				 /* The open struct. */
-				 
-				 int64		position);
-				 /* The position to cutoff the data. */
+extern void MirroredAppendOnly_Truncate(
+	MirroredAppendOnlyOpen *open,
+				/* The open struct. */
+	
+	int64		position,
+				/* The position to cutoff the data. */
+
+	int 		*primaryError,
+	
+	bool		*mirrorDataLossOccurred);
 
 
 // -----------------------------------------------------------------------------
 // Read local side (primary segment)
 // ----------------------------------------------------------------------------
 extern int MirroredAppendOnly_Read(
-			MirroredAppendOnlyOpen *open,
-			/* The open struct. */
-			
-			void		*buffer,
-			/* Pointer to the buffer. */
-			
-			int32		bufferLen);
+	MirroredAppendOnlyOpen *open,
+	/* The open struct. */
+	
+	void					*buffer,
+	/* Pointer to the buffer. */
+	
+	int32					bufferLen);
 
 #endif   /* CDBMIRROREDAPPENDONLY_H */
 

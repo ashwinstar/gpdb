@@ -102,7 +102,7 @@ static void FileRep_SignalChildren(int signal, bool backendsOnly);
 static bool FileRep_ProcessSignals(void);
 static void FileRep_ConfigureSignals(void);
 
-#define MaxFileRepSubProc 14	
+#define MaxFileRepSubProc 17	
 
 /**
  * the level of logging for filerep process messages (having to do with process create/destroy)
@@ -134,6 +134,9 @@ static FileRepSubProc FileRepSubProcList[MaxFileRepSubProc] =
 	{0, FileRepProcessTypeMirrorConsumerAppendOnly2},
 	{0, FileRepProcessTypeResyncManager},
 	{0, FileRepProcessTypeResyncWorker1},
+	{0, FileRepProcessTypeResyncWorker2},
+	{0, FileRepProcessTypeResyncWorker3},
+	{0, FileRepProcessTypeResyncWorker4},
 };
 
 
@@ -167,8 +170,13 @@ FileRepProcessTypeToString[] = {
 
 	"FileRep Mirror Consumer Append Only 1 Process",
 	"FileRep Mirror Consumer Append Only 2 Process",
+
 	"FileRep Primary Resync Manager Process",
-	"FileRep Primary Resync Worker 1 Process"
+
+	"FileRep Primary Resync Worker 1 Process",
+	"FileRep Primary Resync Worker 2 Process",
+	"FileRep Primary Resync Worker 3 Process",
+	"FileRep Primary Resync Worker 4 Process",
 };
 
 const char*
@@ -834,9 +842,10 @@ FileRepAck_ReserveShmem(
  */
 char *
 FileRep_ReserveShmem(
-					 FileRepShmem_s *fileRepShmem,
-					 uint32			msgLength,
-					 uint32			*spareField)
+					 FileRepShmem_s		*fileRepShmem,
+					 uint32				msgLength,
+					 uint32				*spareField,
+					 FileRepOperation_e	fileRepOperation)
 {
 	bool	insert = false;
 	int		retry = 0;
@@ -848,10 +857,13 @@ FileRep_ReserveShmem(
 		
 		LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
 		
-		if (wait == TRUE)
-		{
-			fileRepIpcArray[fileRepShmem->ipcArrayIndex]->refCountSemP--;
-			wait = FALSE;
+		if (! FileRep_IsIpcSleep(fileRepOperation))
+		{					
+			if (wait == TRUE)
+			{
+				fileRepIpcArray[fileRepShmem->ipcArrayIndex]->refCountSemP--;
+				wait = FALSE;
+			}
 		}
 		
 		if (fileRepShmem->positionInsert > fileRepShmem->positionConsume) {
@@ -919,11 +931,14 @@ FileRep_ReserveShmem(
 						msgLength + sizeof(FileRepShmemMessageDescr_s);
 			}
 		}
-				
-		if (insert == FALSE)
-		{
-			fileRepIpcArray[fileRepShmem->ipcArrayIndex]->refCountSemP++;
-			wait = TRUE;
+			
+		if (! FileRep_IsIpcSleep(fileRepOperation))
+		{					
+			if (insert == FALSE)
+			{
+				fileRepIpcArray[fileRepShmem->ipcArrayIndex]->refCountSemP++;
+				wait = TRUE;
+			}
 		}
 		
 		LWLockRelease(FileRepShmemLock);
@@ -933,10 +948,15 @@ FileRep_ReserveShmem(
 			{
 				break;
 			}		
-
-			FileRep_IpcWait(fileRepIpcArray[fileRepShmem->ipcArrayIndex]->semP);
-
-			//FileRep_Sleep10ms(retry); 
+			
+			if (FileRep_IsIpcSleep(fileRepOperation))
+			{					
+				FileRep_Sleep10ms(retry);
+			}
+			else
+			{
+				FileRep_IpcWait(fileRepIpcArray[fileRepShmem->ipcArrayIndex]->semP);
+			}
 
 			retry++;
 		}
@@ -1043,8 +1063,7 @@ FileRep_errdetail(
 	if (fileName) {
 		pfree(fileName);
 		fileName = NULL;
-	}		
-			  
+	}				  
 	return 0;
 }
 
@@ -1563,7 +1582,10 @@ FileRep_ProcessSignals()
 					if (! ((term_status == 0) &&
 						   (i == FileRepProcessTypePrimaryRecovery ||
 							i == FileRepProcessTypeResyncManager ||
-							i == FileRepProcessTypeResyncWorker1)))
+							i == FileRepProcessTypeResyncWorker1 ||
+							i == FileRepProcessTypeResyncWorker2 ||
+							i == FileRepProcessTypeResyncWorker3 ||
+							i == FileRepProcessTypeResyncWorker4 )))
 					{ */
 						LogChildExit(LOG, (FileRepProcessTypeToString[i]),
 									 FileRepSubProcList[i].pid,
@@ -1588,9 +1610,11 @@ FileRep_ProcessSignals()
 	{
 		getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState);
 		stateChangeRequested = false;
+#ifdef FILEREP_DEBUG
 		ereport(LOG,
 				(errmsg("LOG(filerep): FileRep_ProcessSignals() "),
-						FileRep_errcontext()));						
+						FileRep_errcontext()));		
+#endif
 		FileRep_SignalChildren(SIGUSR1, false);
 	}
 	
@@ -1646,6 +1670,9 @@ FileRepIsBackendSubProcess(FileRepProcessType_e processType)
 		case FileRepProcessTypePrimaryRecovery:
         case FileRepProcessTypeResyncManager:
         case FileRepProcessTypeResyncWorker1:
+        case FileRepProcessTypeResyncWorker2:
+        case FileRepProcessTypeResyncWorker3:
+        case FileRepProcessTypeResyncWorker4:
             return true;
         default:
             Assert(!"Unknown process type in FileRepIsBackendSubProcess");
@@ -1680,11 +1707,12 @@ FileRep_SetDataState(DataState_e dataState, bool signalPostmaster)
 {
 	if (updateDataState(dataState) && signalPostmaster) {
 		SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
-	}		
+	}
+#ifdef FILEREP_DEBUG
 	elog(LOG, "FileRep_SetDataState() state:'%s' MyProcPid:'%d'", 
 		 DataStateToString[dataState],
 		 getpid());	
-	
+#endif
 }
 
 void 
@@ -1693,9 +1721,11 @@ FileRep_SetSegmentState(SegmentState_e segmentState)
 	if (updateSegmentState(segmentState)) {
 		SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
 	}
+#ifdef FILEREP_DEBUG
 	elog(LOG, "FileRep_SetSegmentState() state:'%s' MyProcPid:'%d'", 
 		 SegmentStateToString[segmentState],
 		 getpid());	
+#endif
 }
 
 void
@@ -1835,7 +1865,6 @@ FileRep_SetState(FileRepState_e fileRepStateLocal)
             Assert(0);
             break;
 	}
-	
 #ifdef FILEREP_DEBUG
 	elog(LOG, "LOG(filerep)FileRep_SetState() state:'%s' MyProcPid:'%d'",
 		 FileRepStateToString[FileRep_GetState()],
@@ -1989,6 +2018,22 @@ FileRep_CalculateCrc(
 	}
 
 	*crc = _crc;
+}
+
+bool
+FileRep_IsIpcSleep(FileRepOperation_e fileRepOperation)
+{
+	switch (fileRepOperation) {
+			
+		case FileRepOperationShutdown:
+		case FileRepOperationHeartBeat:
+			
+			return TRUE;	
+			
+		default:			
+			return FALSE;
+	}	
+	return FALSE;	
 }
 
 bool
@@ -2186,9 +2231,9 @@ FileRep_GetFileName(
 		
 	switch (fileRepRelationType) {
 		case FileRepRelationTypeFlatFile:
-		
+
 			fileName = (char*) palloc(
-				strlen(fileRepIdentifier.fileRepFlatFileIdentifier.directorySimpleName) + 
+				strlen(fileRepIdentifier.fileRepFlatFileIdentifier.directorySimpleName) +
 				strlen(fileRepIdentifier.fileRepFlatFileIdentifier.fileSimpleName) + 2);
 			
 			sprintf(fileName, "%s/%s",
@@ -2200,8 +2245,8 @@ FileRep_GetFileName(
 		case FileRepRelationTypeBulk:
 		case FileRepRelationTypeBufferPool:						
 		case FileRepRelationTypeAppendOnly:
-			
-			fileName = (char*) palloc(MAXPGPATH);
+
+			fileName = (char*) palloc(MAXPGPATH+1+20); /* + 20 is to add room for . and the segment file num */
 			
 			FormRelationPath(
 							 fileName,
@@ -2219,7 +2264,7 @@ FileRep_GetFileName(
 			
 		case FileRepRelationTypeDir:
 			
-			fileName = (char*) palloc(MAXPGPATH);
+			fileName = (char*) palloc(MAXPGPATH+1);
 		
 			switch (fileRepIdentifier.fileRepDirIdentifier.fileRepDirType)
 			{
@@ -2268,7 +2313,7 @@ FileRep_GetFileName(
 		
 		case FileRepRelationTypeUnknown:
 			
-			fileName = (char*) palloc(FILEREP_UNKNOWN_IDENTIFIER_LEN);
+			fileName = (char*) palloc(FILEREP_UNKNOWN_IDENTIFIER_LEN + 1);
 			sprintf(fileName, "%s",
 					fileRepIdentifier.fileRepUnknownIdentifier.unknownId);			
 			break;
@@ -2595,7 +2640,20 @@ void FileRep_Main(void)
 				if (FileRep_StartChildProcess(FileRepProcessTypeResyncWorker1) < 0) {
 					status = STATUS_ERROR;
 					break;
+				}		
+				if (FileRep_StartChildProcess(FileRepProcessTypeResyncWorker2) < 0) {
+					status = STATUS_ERROR;
+					break;
 				}										
+				if (FileRep_StartChildProcess(FileRepProcessTypeResyncWorker3) < 0) {
+					status = STATUS_ERROR;
+					break;
+				}										
+				if (FileRep_StartChildProcess(FileRepProcessTypeResyncWorker4) < 0) {
+					status = STATUS_ERROR;
+					break;
+				}										
+				
 			}
 		
 												

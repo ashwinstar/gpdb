@@ -94,7 +94,7 @@ typedef struct RelationChangeInfo
 	int64	  		persistentSerialNum;
 } RelationChangeInfo;
 
-#define MaxRelationChangeInfoReturns 4
+#define MaxRelationChangeInfoReturns 5
 
 extern void ChangeTracking_GetRelationChangeInfoFromXlog(
 									  RmgrId	xl_rmid,

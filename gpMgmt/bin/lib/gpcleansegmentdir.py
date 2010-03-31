@@ -17,6 +17,11 @@ from gppylib.gpparseopts import OptChecker,OptParser,OptParser
 logger = get_default_logger()
 
 class GpCleanSegmentDirectoryProgram:
+    """
+    Clean up segment directories on a single host
+
+    The caller should have already stopped the segments before calling this.
+    """
 
     def __init__(self, options):
         self.__options = options
@@ -24,9 +29,8 @@ class GpCleanSegmentDirectoryProgram:
     def run(self):
         if self.__options.pickledArguments is None:
             raise ProgramArgumentValidationException("-a argument is missing")
-        
+            
         segments = pickle.loads(base64.urlsafe_b64decode(self.__options.pickledArguments))
-        # todo: verify that the segment does not have a running postmaster???
 
         logger.info("Cleaning main data directories")
         for segment in segments:
@@ -34,13 +38,9 @@ class GpCleanSegmentDirectoryProgram:
             logger.info("Cleaning %s" % dir)
 
             #
-            # todo MIRRORING: should we just remove dir + "/*"?  Can we somehow validate that
-            #                 this is a correct mirroring directory???  Do some sanity check?
-            #
-            # also, is it possible that there are more files in this directory?
-            #    I think some random tools drop files in here
-            #
-            # should we make it so we don't need to have the directory cleaned??
+            # Note: we we just just remove dir + "/*" -- but doing it selectively right now
+            #       helps protect against dropping too much, and does keep around spare files
+            #       the user may have placed in the dir for other reasons.
             #
             toCleanArr = ["PG_VERSION", "base", "global", "gpstart*", "gp_pmtransition_args",
                             "pg_*", "postgres*", "postmaster*"]

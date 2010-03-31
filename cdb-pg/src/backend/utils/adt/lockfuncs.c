@@ -27,6 +27,7 @@ static const char *const LockTagTypeNames[] = {
 	"page",
 	"tuple",
 	"transactionid",
+	"resynchronize",
 	"object",
 	"resource queue",
 	"userlock",

@@ -100,6 +100,8 @@ static void PersistentBuild_PopulateGpRelationNode(
 										relStorageMgr,
 										mirrorExistenceState,
 										relDataSynchronizationState,
+										/* mirrorAppendOnlyLossEof */ 0,
+										/* mirrorAppendOnlyNewEof */ 0,
 										dbInfoRel->relname,
 										&persistentTid,
 										&persistentSerialNum,
@@ -135,6 +137,8 @@ static void PersistentBuild_PopulateGpRelationNode(
 											relStorageMgr,
 											mirrorExistenceState,
 											relDataSynchronizationState,
+											/* mirrorAppendOnlyLossEof */ 0,
+											/* mirrorAppendOnlyNewEof */ 0,
 											dbInfoRel->relname,
 											&persistentTid,
 											&persistentSerialNum,
@@ -209,7 +213,10 @@ gp_persistent_build_db(PG_FUNCTION_ARGS)
 	
 	defaultTablespace = form_pg_database->dattablespace;
 
-	info = DatabaseInfo_Collect(MyDatabaseId, defaultTablespace);
+	info = DatabaseInfo_Collect(
+						MyDatabaseId,
+						defaultTablespace,
+						/* collectAppendOnlyCatalogSegmentInfo */ false);
 
 	for (t = 0; t < info->tablespacesCount; t++)
 	{

@@ -109,7 +109,7 @@
 #include "cdb/cdbsreh.h"
 
 #include "cdb/cdbmirroredfilesysobj.h"
-#include "cdb/cdbmirroredbulkrelation.h"
+#include "cdb/cdbmirroredappendonly.h"
 
 typedef enum
 {
@@ -9798,23 +9798,45 @@ copy_append_only_data(
 	
 	int32			segmentFileNum,
 
-	char			*buffer)
+	char			*relationName,
+
+	int64			eof,
+
+	ItemPointer		persistentTid,
+	
+	int64			persistentSerialNum,
+	
+	char			*buffer,
+
+	bool			*mirrorDataLossOccurred)
 {
 	char srcFileName[MAXPGPATH];
+	char dstFileName[MAXPGPATH];
 	char extension[12];
 
 	File		srcFile;
 
-	int64 		eof;
+	MirroredAppendOnlyOpen mirroredDstOpen;
 
-	MirroredBulkRelationOpen mirroredDstOpen;
+	bool primaryOnlyToLetResynchronizeWork;
 
-	int 		nbytes;
+	int64	endOffset;
+	int64	readOffset;
+	int32	bufferLen;
+	int 	retval;
+
+	int 		primaryError;
+
+	if (segmentFileNum > 0)
+	{
+		sprintf(extension, ".%u", segmentFileNum);
+	}
+	else
+		extension[0] = '\0';
 
 	CopyRelPath(srcFileName, MAXPGPATH, *oldRelFileNode);
 	if (segmentFileNum > 0)
 	{
-		sprintf(extension, ".%u", segmentFileNum);
 		strcat(srcFileName, extension);
 	}
 
@@ -9828,38 +9850,127 @@ copy_append_only_data(
 				 errmsg("could not open file \"%s\": %m", srcFileName)));
 
 
-	MirroredBulkRelation_Open(
-							&mirroredDstOpen,
-							O_RDWR | O_EXCL | PG_BINARY,
-							S_IRUSR | S_IWUSR,
-							newRelFileNode,
-							segmentFileNum);
+	CopyRelPath(dstFileName, MAXPGPATH, *newRelFileNode);
+	if (segmentFileNum > 0)
+	{
+		strcat(dstFileName, extension);
+	}
+
+	primaryOnlyToLetResynchronizeWork =
+			MirroredAppendOnly_OpenReadWrite(
+										&mirroredDstOpen,
+										newRelFileNode,
+										segmentFileNum,
+										relationName,
+										eof,
+										persistentTid,
+										persistentSerialNum,
+										&primaryError,
+										mirrorDataLossOccurred);
+	if (primaryError != 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not open file \"%s\" for relation '%s': %s",
+						dstFileName,
+						relationName,
+						strerror(primaryError))));
 	
 	/*
 	 * Do the data copying.
 	 */
-	eof = 0;
-	for (;;)
+	endOffset = eof;
+	readOffset = 0;
+	bufferLen = (Size) Min(BLCKSZ, endOffset);
+	while (readOffset < endOffset)
 	{
-		nbytes = FileRead(srcFile, buffer, BLCKSZ);
-		if (nbytes < 0)
+		CHECK_FOR_INTERRUPTS();
+		
+		retval = FileRead(srcFile, buffer, bufferLen);
+		if (retval != bufferLen) 
+		{
 			ereport(ERROR,
 					(errcode_for_file_access(),
-					 errmsg("could not read file \"%s\": %m", srcFileName)));
-		if (nbytes == 0)
+					 errmsg("could not read from position: " INT64_FORMAT " in file '%s' : %m",
+							readOffset, 
+							srcFileName)));
+			
 			break;
-
-		MirroredBulkRelation_Append(
-							&mirroredDstOpen,
-							buffer,
-							nbytes);
-
-		eof += nbytes;
+		}						
+		
+		MirroredAppendOnly_Append(
+							  &mirroredDstOpen,
+							  buffer,
+							  bufferLen,
+							  &primaryError,
+							  mirrorDataLossOccurred);
+		if (primaryError != 0)
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not write file \"%s\": %s",
+							dstFileName,
+							strerror(primaryError))));
+		
+		readOffset += bufferLen;
+		
+		bufferLen = (Size) Min(BLCKSZ, endOffset - readOffset); 					
 	}
 
-	MirroredBulkRelation_FlushAndClose(&mirroredDstOpen);
+	MirroredAppendOnly_FlushAndClose(
+							&mirroredDstOpen,
+							&primaryError,
+							mirrorDataLossOccurred);
+	if (primaryError != 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not flush (fsync) file \"%s\" for relation '%s': %s",
+						dstFileName,
+						relationName,
+						strerror(primaryError))));
 
 	FileClose(srcFile);
+
+	if (eof > 0)
+	{
+		int64 mirrorLossEof;
+
+		if (mirrorDataLossOccurred || 
+			primaryOnlyToLetResynchronizeWork)
+		{
+			/*
+			 * Assume all mirror data we tried to write was lost, or
+			 * we found at open time that resynchronize could be working on the
+			 * segment file and didn't write the mirror.
+			 */
+			mirrorLossEof = 0;
+		}
+		else
+			mirrorLossEof = eof;		// No loss.
+
+		/* 
+		 * This routine will handle both updating the persistent information about the
+		 * new EOFs and copy data to the mirror if we are now in synchronized state.
+		 */
+		MirroredAppendOnly_AddMirrorResyncEofs(
+										newRelFileNode,
+										segmentFileNum,
+										relationName,
+										persistentTid,
+										persistentSerialNum,
+										&mirrorLossEof,		// Input and Output
+										eof);
+
+		if (Debug_persistent_recovery_print)
+			elog(Debug_persistent_recovery_print_level, 
+				 "copy_append_only_data: %u/%u/%u, segment file #%d, serial number " INT64_FORMAT ", TID %s, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
+				 newRelFileNode->spcNode,
+				 newRelFileNode->dbNode,
+				 newRelFileNode->relNode,
+				 segmentFileNum,
+				 persistentSerialNum,
+				 ItemPointerToString(persistentTid),
+				 mirrorLossEof,
+				 eof);
+	}
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
@@ -9893,6 +10004,10 @@ ATExecSetTableSpace_AppendOnly(
 
 	HeapTuple tupleCopy;
 
+	AppendOnlyEntry *aoEntry;
+
+	bool mirrorDataLossOccurred;
+
 	oldTablespace = rel->rd_rel->reltablespace ? rel->rd_rel->reltablespace : MyDatabaseTableSpace;
 
 	if (Debug_persistent_print)
@@ -9910,6 +10025,8 @@ ATExecSetTableSpace_AppendOnly(
 
 	/* Use palloc to ensure we get a maxaligned buffer */		
 	buffer = palloc(BLCKSZ);
+
+	aoEntry = GetAppendOnlyEntry(RelationGetRelid(rel));
 
 	/*
 	 * Loop through segment files
@@ -9930,6 +10047,8 @@ ATExecSetTableSpace_AppendOnly(
 							&oldPersistentTid,
 							&oldPersistentSerialNum)))
 	{
+		int64 eof;
+
 		/*
 		 * Create segment file in new tablespace under transaction.
 		 */
@@ -9985,14 +10104,68 @@ ATExecSetTableSpace_AppendOnly(
 		/*
 		 * Copy Append-Only segment file data and fsync.
 		 */
+		if (RelationIsAoRows(rel))
+		{
+			FileSegInfo *fileSegInfo;
+
+			fileSegInfo = GetFileSegInfoForRead(rel, aoEntry, segmentFileNum);
+
+			eof = fileSegInfo->eof;
+
+			pfree(fileSegInfo);
+		}
+		else 
+		{
+			int32 actualSegmentNum;
+			int columnNum;
+
+			AOCSFileSegInfo *aocsFileSegInfo;
+
+			Assert(RelationIsAoCols(rel));
+
+			// UNDONE: This is inefficient.
+
+			columnNum = segmentFileNum / AOTupleId_MultiplierSegmentFileNum;
+
+			actualSegmentNum = segmentFileNum % AOTupleId_MultiplierSegmentFileNum;
+			
+			aocsFileSegInfo = GetAOCSFileSegInfoForRead(rel, aoEntry, actualSegmentNum);
+
+			eof = aocsFileSegInfo->vpinfo.entry[columnNum].eof;
+			
+			pfree(aocsFileSegInfo);
+		}
+		
 		copy_append_only_data(
 						&rel->rd_node,
 						newRelFileNode,
 						segmentFileNum,
-						buffer);
+						rel->rd_rel->relname.data,
+						eof,
+						&newPersistentTid,
+						newPersistentSerialNum,
+						buffer,
+						&mirrorDataLossOccurred);
+		if (eof > 0)
+		{
+			int64 mirrorLossEof;
+
+			mirrorLossEof = (mirrorDataLossOccurred ? 0 : eof);
+
+			smgrappendonlymirrorresynceofs(
+									newRelFileNode,
+									segmentFileNum,
+									rel->rd_rel->relname.data,
+									&newPersistentTid,
+									newPersistentSerialNum,
+									mirrorLossEof,
+									eof);
+		}
 	}
 
 	GpRelationNodeEndScan(&gpRelationNodeScan);
+
+	pfree(aoEntry);
 
 	pfree(buffer);
 }
@@ -10386,12 +10559,19 @@ copy_buffer_pool_data(Relation rel, SMgrRelation dst, ItemPointer persistentTid,
 			END_CRIT_SECTION();
 		}
 
+		
+		// -------- MirroredLock ----------
+		LWLockAcquire(MirroredLock, LW_SHARED);
+		
 		/*
 		 * Now write the page.	We say isTemp = true even if it's not a temp
 		 * rel, because there's no need for smgr to schedule an fsync for this
 		 * write; we'll do it ourselves below.
 		 */
 		smgrwrite(dst, blkno, buf, true);
+		
+		LWLockRelease(MirroredLock);
+		// -------- MirroredLock ----------
 	}
 
 	/*
@@ -10408,8 +10588,15 @@ copy_buffer_pool_data(Relation rel, SMgrRelation dst, ItemPointer persistentTid,
 	 * wouldn't replay our earlier WAL entries. If we do not fsync those pages
 	 * here, they might still not be on disk when the crash occurs.
 	 */
+	
+	// -------- MirroredLock ----------
+	LWLockAcquire(MirroredLock, LW_SHARED);
+	
 	if (!rel->rd_istemp)
 		smgrimmedsync(dst);
+	
+	LWLockRelease(MirroredLock);
+	// -------- MirroredLock ----------
 }
 
 /*

@@ -329,6 +329,10 @@ void PersistentRelation_AddCreated(
 
 	MirroredRelDataSynchronizationState relDataSynchronizationState,
 
+	int64				mirrorAppendOnlyLossEof,
+
+	int64				mirrorAppendOnlyNewEof,
+
 	char				*relationName,
 
 	ItemPointer			persistentTid,
@@ -389,8 +393,8 @@ void PersistentRelation_AddCreated(
 										/* mirrorBufpoolPhysicallyTruncated */ false,
 										&mirrorBufpoolResyncCkptLoc,
 										/* mirrorBufpoolResyncCkptBlockNum */ 0,
-										/* mirrorAppendOnlyLossEof */ 0,
-										/* mirrorAppendOnlyNewEof */ 0,
+										mirrorAppendOnlyLossEof,
+										mirrorAppendOnlyNewEof,
 										InvalidTransactionId,
 										/* persistentSerialNum */ 0,	// This will be set by PersistentFileSysObj_AddTuple.
 										&previousFreeTid);

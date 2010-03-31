@@ -118,6 +118,26 @@ extern PGDLLIMPORT int32 *LocalRefCount;
 		(Block) (BufferBlocks + ((Size) ((buffer) - 1)) * BLCKSZ) \
 )
 
+// Helper DEFINEs for MirroredLock within Buffer Pool Manager ONLY.
+#define MIRROREDLOCK_BUFMGR_DECLARE \
+	bool mirroredLockIsHeldByMe = false; \
+	bool specialResyncManagerFlag = false;
+
+#define MIRROREDLOCK_BUFMGR_LOCK \
+	{ \
+		mirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
+		specialResyncManagerFlag = FileRepPrimary_IsResyncManager(); \
+		\
+		if (!mirroredLockIsHeldByMe && !specialResyncManagerFlag) \
+			LWLockAcquire(MirroredLock , LW_SHARED); \
+	}
+	
+#define MIRROREDLOCK_BUFMGR_UNLOCK \
+	{ \
+		if (!mirroredLockIsHeldByMe && !specialResyncManagerFlag) \
+			LWLockRelease(MirroredLock); \
+	}
+
 /*
  * prototypes for functions in bufmgr.c
  */

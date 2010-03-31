@@ -144,10 +144,10 @@ def test_main( testName, newProgramArgs, createOptionParserFn, createCommandFn, 
         commandObject = createCommandFn(options, args)
         exitCode = commandObject.run()
 
-        testOutput("sys.exit %s", exitCode)
+        testOutput("sys.exit %s" % exitCode)
 
     except ProgramArgumentValidationException, e:
-        testOutput( "Validation error: %s" % e.args[0])
+        testOutput( "Validation error: %s" % e.getMessage())
     except ExceptionNoStackTraceNeeded, e:
         testOutput( str(e))
     except Exception, e:

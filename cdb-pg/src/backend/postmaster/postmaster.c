@@ -676,6 +676,17 @@ bool GPStandby()
 	return (SyncMaster);
 }
 
+/**
+ * filerep process is interested in the bg writer's pid, so
+ *   all sets of bgwriter pid should go through this function
+ *   so that we update shared memory
+ */
+static void SetBGWriterPID(pid_t pid)
+{
+    BgWriterPID = pid;
+    primaryMirrorSetBGWriterPID(pid);
+}
+
 /*
  * gpsyncMaster main entry point
  */
@@ -1972,7 +1983,7 @@ ServerLoop(void)
 			if (BgWriterPID == 0 && StartupPID == 0 && StartupPass2PID == 0 && StartupPass3PID == 0 && !FatalError && !SyncMaster &&
 			    pmState < PM_CHILD_STOP_BEGIN)
 			{
-				BgWriterPID = StartBackgroundWriter();
+				SetBGWriterPID(StartBackgroundWriter());
 				if (Debug_print_server_processes)
 					elog(LOG,"restarted 'background writer process' as pid %ld",
 						 (long)BgWriterPID);
@@ -3282,7 +3293,7 @@ static bool CommenceNormalOperations(void)
 	 */
 	if (BgWriterPID == 0)
 	{
-		BgWriterPID = StartBackgroundWriter();
+		SetBGWriterPID(StartBackgroundWriter());
 		if (Debug_print_server_processes)
 		{
 			elog(LOG,"on startup successful: started 'background writer' as pid %ld",
@@ -3668,7 +3679,8 @@ static void do_reaper()
 		 */
 		if (pid == BgWriterPID)
 		{
-			BgWriterPID = 0;
+		    SetBGWriterPID(0);
+			
 			if (EXIT_STATUS_0(exitstatus) &&
 			    (pmState == PM_CHILD_STOP_WAIT_BGWRITER_CHECKPOINT
 			    || (FatalError && pmState >= PM_CHILD_STOP_BEGIN)))
@@ -4121,7 +4133,9 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 
     /* Take care of the bgwriter too */
 	if (pid == BgWriterPID)
-		BgWriterPID = 0;
+    {
+        SetBGWriterPID(0);
+    }
 	else if (BgWriterPID != 0 && !FatalError)
 	{
 		ereport((Debug_print_server_processes ? LOG : DEBUG2),
@@ -4557,7 +4571,7 @@ static void StateMachineTransition_ShutdownBgWriterWithCheckpoint(void)
         /* Start the bgwriter if not running */
         if (BgWriterPID == 0 )
         {
-            BgWriterPID = StartBackgroundWriter();
+            SetBGWriterPID(StartBackgroundWriter());
         }
     }
 
@@ -6101,7 +6115,7 @@ sigusr1_handler(SIGNAL_ARGS)
 		 * we'll just try again later.
 		 */
 		Assert(BgWriterPID == 0);
-		BgWriterPID = StartBackgroundWriter();
+		SetBGWriterPID(StartBackgroundWriter());
 
 		pmState = PM_RECOVERY;
 	}

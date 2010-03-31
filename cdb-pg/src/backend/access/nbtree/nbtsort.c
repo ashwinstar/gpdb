@@ -332,17 +332,34 @@ _bt_blwritepage(BTWriteState *wstate, Page page, BlockNumber blkno)
 	{
 		if (!wstate->btws_zeropage)
 			wstate->btws_zeropage = (Page) palloc0(BLCKSZ);
+
+
+		// -------- MirroredLock ----------
+		// UNDONE: Unfortunately, I think we write temp relations to the mirror...
+		LWLockAcquire(MirroredLock, LW_SHARED);
+
 		smgrwrite(wstate->index->rd_smgr, wstate->btws_pages_written++,
 				  (char *) wstate->btws_zeropage,
 				  true);
+
+		LWLockRelease(MirroredLock);
+		// -------- MirroredLock ----------
 	}
 
+	
+	// -------- MirroredLock ----------
+	// UNDONE: Unfortunately, I think we write temp relations to the mirror...
+	LWLockAcquire(MirroredLock, LW_SHARED);
+	
 	/*
 	 * Now write the page.	We say isTemp = true even if it's not a temp
 	 * index, because there's no need for smgr to schedule an fsync for this
 	 * write; we'll do it ourselves before ending the build.
 	 */
 	smgrwrite(wstate->index->rd_smgr, blkno, (char *) page, true);
+	
+	LWLockRelease(MirroredLock);
+	// -------- MirroredLock ----------
 
 	if (blkno == wstate->btws_pages_written)
 		wstate->btws_pages_written++;

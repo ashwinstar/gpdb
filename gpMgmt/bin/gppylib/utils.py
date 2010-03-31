@@ -393,3 +393,33 @@ def appendNewEntriesToHbaFile(fileName, segments):
         raise Exception('Failed to open %s' % fileName)
     except Exception, msg:
         raise Exception('Failed to add new segments to template %s' % fileName)
+
+
+def logLinesToTable(lines, warningLineNumbers):
+    """
+    @param lines should be an array of arrays
+    @param warningLineNumbers should be dictionary mapping line number (0-indexed) to true for warning lines,
+                 or unmapped or mapped to falsy value for info lines
+    """
+    lineWidth = []
+    for line in lines:
+        while len(lineWidth) < len(line):
+            lineWidth.append(0)
+
+        for i, field in enumerate(line):
+            lineWidth[i] = max(len(field), lineWidth[i])
+
+    # now print it all!
+    for lineNumber, line in enumerate(lines):
+        doWarn = warningLineNumbers.get(lineNumber)
+
+        outLine = []
+        for i, field in enumerate(line):
+            outLine.append(field.ljust(lineWidth[i] + 3))
+        msg = "".join(outLine)
+        if doWarn:
+            logger.warn(msg)
+        else:
+            logger.info("   " + msg) # add 3 so that lines will line up even with the INFO and WARNING stuff on front
+
+            

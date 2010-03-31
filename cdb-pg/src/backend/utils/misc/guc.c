@@ -274,7 +274,6 @@ int			gp_max_tablespaces = GP_MAX_TABLESPACES_DEFAULT;
 int			gp_max_filespaces = GP_MAX_FILESPACES_DEFAULT;
 bool 		gp_initdb_mirrored = false;
 bool 		gp_before_persistence_work = false;
-bool 		Debug_try_appendonly_mirror_resynch_eofs = false;
 bool 		Debug_print_xlog_relation_change_info = false;
 bool 		Debug_print_xlog_relation_change_info_skip_issues_only = true;
 bool		Debug_filerep_crc_on = true;
@@ -2165,16 +2164,6 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 	
-	{
-		{"debug_try_appendonly_mirror_resynch_eofs", PGC_SUSET, DEVELOPER_OPTIONS,
-			gettext_noop("Try out Append-Only mirror resynch EOFs (i.e. incremental A-O resynchronization)"),
-			NULL,
-			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&Debug_try_appendonly_mirror_resynch_eofs,
-		false, NULL, NULL
-	},
-			
 	{
 		{"Debug_print_xlog_relation_change_info", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print relation change information"),

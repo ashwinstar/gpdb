@@ -70,7 +70,7 @@ class TestDriver:
         self.__fileSystemProvider = fileSystemImplTest.GpFileSystemProviderForTest()
         fileSystemInterface.registerFileSystemProvider(self.__fileSystemProvider)
         osInterface.registerOsProvider(osImplTest.GpOsProviderForTest())
-        faultProberInterface.registerOsProvider(faultProberImplTest.GpFaultProberImplForTest())
+        faultProberInterface.registerFaultProber(faultProberImplTest.GpFaultProberImplForTest())
         pass
 
     def getFileSystem(self):

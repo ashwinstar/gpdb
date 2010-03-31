@@ -537,15 +537,13 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 				case XLOG_HEAP_LOCK:
 				{
 					xl_heap_lock *xlrec = (xl_heap_lock *) data;
+					BlockNumber block = ItemPointerGetBlockNumber(&(xlrec->target.tid));
 
-					if (xl_info & XLR_BKP_BLOCK_1)
-						break;
-								
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
 													   &(xlrec->target.node),
-													   ItemPointerGetBlockNumber(&(xlrec->target.tid)),
+													   block,
 													   &xlrec->target.persistentTid,
 													   xlrec->target.persistentSerialNum);
 					break;
@@ -553,12 +551,13 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 				case XLOG_HEAP_INPLACE:
 				{
 					xl_heap_inplace *xlrec = (xl_heap_inplace *) data;
-										
+					BlockNumber block = ItemPointerGetBlockNumber(&(xlrec->target.tid));
+					
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
 													   &(xlrec->target.node),
-													   ItemPointerGetBlockNumber(&(xlrec->target.tid)),
+													   block,
 													   &xlrec->target.persistentTid,
 													   xlrec->target.persistentSerialNum);
 					break;
@@ -621,6 +620,18 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 													   xlrec->otherblk,
 													   &xlrec->target.persistentTid,
 													   xlrec->target.persistentSerialNum);
+					
+					if (xlrec->rightblk != P_NONE)
+					{
+						ChangeTracking_AddRelationChangeInfo(
+														   relationChangeInfoArray,
+														   relationChangeInfoArrayCount,
+														   &(xlrec->target.node),
+														   xlrec->rightblk,
+														   &xlrec->target.persistentTid,
+														   xlrec->target.persistentSerialNum);
+					}
+					
 					break;
 				}
 				case XLOG_BTREE_DELETE:
@@ -642,17 +653,18 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 				{
 					xl_btree_delete_page *xlrec = (xl_btree_delete_page *) data;
 					BlockIdData blkid = xlrec->target.tid.ip_blkid;
-
-					if (!(xl_info & XLR_BKP_BLOCK_1))
+					BlockNumber block = BlockIdGetBlockNumber(&blkid);
+					
+					if (block != P_NONE)
 						ChangeTracking_AddRelationChangeInfo(
 														   relationChangeInfoArray,
 														   relationChangeInfoArrayCount,
 														   &(xlrec->target.node),
-														   BlockIdGetBlockNumber(&blkid),
+														   block,
 														   &xlrec->target.persistentTid,
 														   xlrec->target.persistentSerialNum);
 					
-					if (!(xl_info & XLR_BKP_BLOCK_2))
+					if (xlrec->rightblk != P_NONE)
 						ChangeTracking_AddRelationChangeInfo(
 														   relationChangeInfoArray,
 														   relationChangeInfoArrayCount,
@@ -661,7 +673,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 														   &xlrec->target.persistentTid,
 														   xlrec->target.persistentSerialNum);
 
-					if (!(xl_info & XLR_BKP_BLOCK_3) && xlrec->leftblk != P_NONE)
+					if (xlrec->leftblk != P_NONE)
 						ChangeTracking_AddRelationChangeInfo(
 														   relationChangeInfoArray,
 														   relationChangeInfoArrayCount,
@@ -669,6 +681,15 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 														   xlrec->leftblk,
 														   &xlrec->target.persistentTid,
 														   xlrec->target.persistentSerialNum);
+					
+					if (xlrec->deadblk != P_NONE)
+						ChangeTracking_AddRelationChangeInfo(
+														   relationChangeInfoArray,
+														   relationChangeInfoArrayCount,
+														   &(xlrec->target.node),
+														   xlrec->deadblk,
+														   &xlrec->target.persistentTid,
+														   xlrec->target.persistentSerialNum);						
 					
 					if (info == XLOG_BTREE_DELETE_PAGE_META)
 						ChangeTracking_AddRelationChangeInfo(

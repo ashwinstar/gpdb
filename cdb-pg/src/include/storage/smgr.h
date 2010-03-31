@@ -21,6 +21,7 @@
 #include "storage/relfilenode.h"
 #include "storage/dbdirnode.h"
 #include "access/persistentendxactrec.h"
+#include "access/filerepdefs.h"
 
 
 /*
@@ -72,6 +73,18 @@ typedef enum StorageManagerMirrorMode
 	MaxStorageManagerMirrorMode /* must always be last */
 } StorageManagerMirrorMode;
 
+inline static bool StorageManagerMirrorMode_DoPrimaryWork(
+	StorageManagerMirrorMode		mirrorMode)
+{
+	return (mirrorMode == StorageManagerMirrorMode_Both|| mirrorMode == StorageManagerMirrorMode_PrimaryOnly);
+}
+
+inline static bool StorageManagerMirrorMode_SendToMirror(
+	StorageManagerMirrorMode		mirrorMode)
+{
+	return (mirrorMode == StorageManagerMirrorMode_Both|| mirrorMode == StorageManagerMirrorMode_MirrorOnly);
+}
+
 extern char *StorageManagerMirrorMode_Name(
 	StorageManagerMirrorMode		mirrorMode);
 
@@ -116,7 +129,7 @@ extern void smgrcreatefilespacedir(
 
 	int 						*primaryError,
 
-	int 						*mirrorError);
+	bool						*mirrorDataLossOccurred);
 extern void smgrcreatetablespacedirpending(
 	TablespaceDirNode				*tablespaceDirNode,
 
@@ -136,7 +149,7 @@ extern void smgrcreatetablespacedir(
 
 	int 						*primaryError,
 
-	int 						*mirrorError);
+	bool						*mirrorDataLossOccurred);
 extern bool smgrcreatedbdirjustintime(DbDirNode *justInTimeDbDirNode);
 extern void smgrcreatedbdirpending(
 	DbDirNode						*dbDirNode,
@@ -158,7 +171,7 @@ extern void smgrcreatedbdir(
 
 	int 						*primaryError,
 
-	int 						*mirrorError);
+	bool						*mirrorDataLossOccurred);
 extern void smgrcreatepending(
 	RelFileNode 					*relFileNode,
 
@@ -187,13 +200,30 @@ extern void smgrcreate(
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
 
-	StorageManagerMirrorMode	mirrorMode,
+	MirrorDataLossTrackingState mirrorDataLossTrackingState,
 
+	int64						mirrorDataLossTrackingSessionNum,
+	
 	bool						ignoreAlreadyExists,
 
 	int 						*primaryError,
 
-	int 						*mirrorError);
+	bool						*mirrorDataLossOccurred);
+extern void smgrrecreate(
+	RelFileNode 				*relFileNode,
+
+	bool						isLocalBuf, 
+
+	char						*relationName,
+					/* For tracing only.  Can be NULL in some execution paths. */
+
+	MirrorDataLossTrackingState mirrorDataLossTrackingState,
+
+	int64						mirrorDataLossTrackingSessionNum,
+	
+	int 						*primaryError,
+
+	bool						*mirrorDataLossOccurred);
 extern void smgrscheduleunlink(
 	RelFileNode 	*relFileNode,
 
@@ -323,7 +353,7 @@ extern void mdcreatefilespacedir(
 
 	int 						*primaryError,
 
-	int 						*mirrorError);
+	bool						*mirrorDataLossOccurred);
 extern void mdcreatetablespacedir(
 	Oid 						tablespaceOid,
 
@@ -333,7 +363,7 @@ extern void mdcreatetablespacedir(
 
 	int 						*primaryError,
 
-	int 						*mirrorError);
+	bool						*mirrorDataLossOccurred);
 extern void mdcreatedbdir(
 	DbDirNode					*dbDirNode,
 
@@ -343,7 +373,7 @@ extern void mdcreatedbdir(
 
 	int 						*primaryError,
 
-	int 						*mirrorError);
+	bool						*mirrorDataLossOccurred);
 extern void mdcreate(
 	SMgrRelation 				reln,
 
@@ -352,13 +382,15 @@ extern void mdcreate(
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
 
-	StorageManagerMirrorMode	mirrorMode,
+	MirrorDataLossTrackingState mirrorDataLossTrackingState,
 
+	int64						mirrorDataLossTrackingSessionNum,
+	
 	bool						ignoreAlreadyExists,
 
 	int 						*primaryError,
 
-	int 						*mirrorError);
+	bool						*mirrorDataLossOccurred);
 extern bool mdunlink(
 	RelFileNode 				rnode, 
 

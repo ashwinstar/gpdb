@@ -243,7 +243,31 @@ extern void PersistentFileSysObj_MarkBufPoolRelationPhysicallyTruncated(
 	
 	bool						flushToXLog);
 
-extern bool PersistentFileSysObj_ResynchronizeTransitionNeeded(void);
+extern void PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
+	RelFileNode					*relFileNode,
+
+	int32						segmentFileNum,
+
+	ItemPointer 				persistentTid,
+
+	int64						persistentSerialNum,
+
+	int64						mirrorLossEof,
+
+	int64						mirrorNewEof,
+
+	bool						recovery,
+	
+	bool						flushToXLog);
+
+bool PersistentFileSysObj_CheckForAppendOnlyCatchup(
+	RelFileNode					*relFileNode,
+
+	int32						segmentFileNum,
+
+	ItemPointer 				persistentTid,
+
+	int64						persistentSerialNum);
 
 extern void PersistentFileSysObj_RequestResynchronizeTransition(void);
 
@@ -251,11 +275,15 @@ extern void PersistentFileSysObj_MarkWholeMirrorFullCopy(void);
 
 extern void PersistentFileSysObj_MarkWholeMirrorScanIncremental(void);
 
+extern void PersistentFileSysObj_MarkAppendOnlyCatchup(void);
+
 extern void PersistentFileSysObj_MarkSpecialScanIncremental(void);
 
 extern void PersistentFileSysObj_MarkPageIncrementalFromChangeLog(void);
 
 extern void PersistentFileSysObj_MirrorReCreate(void);
+
+extern void PersistentFileSysObj_MarkMirrorReCreated(void);
 
 extern void PersistentFileSysObj_MirrorReDrop(void);
 

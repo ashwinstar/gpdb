@@ -32,6 +32,7 @@
 #include "cdb/cdbpersistentrelation.h"
 #include "cdb/cdbmirroredfilesysobj.h"
 #include "cdb/cdbpersistentfilesysobj.h"
+#include "cdb/cdbfilerepprimary.h"
 #include "storage/smgr.h"
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
@@ -97,9 +98,18 @@ static bool pendingDeletesSorted = false;
 
 typedef PendingDelete *PendingDeletePtr;
 
-typedef struct PendingAppendOnlyMirrorResyncEofs
+typedef struct AppendOnlyMirrorResyncEofsKey
 {
-	PersistentFileSysObjName fsObjName;		
+	RelFileNode	relFileNode;
+
+	int32		segmentFileNum;
+
+	int			nestLevel;		/* Transaction nesting level. */
+} AppendOnlyMirrorResyncEofsKey;
+
+typedef struct AppendOnlyMirrorResyncEofs
+{
+	AppendOnlyMirrorResyncEofsKey key;		
 
 	char		*relationName;
 	
@@ -109,11 +119,9 @@ typedef struct PendingAppendOnlyMirrorResyncEofs
 	int64		mirrorLossEof;
 	int64		mirrorNewEof;
 
-	int			nestLevel;		/* xact nesting level of request */
-	struct PendingAppendOnlyMirrorResyncEofs *next;		/* linked-list link */
-} PendingAppendOnlyMirrorResyncEofs;
+} AppendOnlyMirrorResyncEofs;
 
-static PendingAppendOnlyMirrorResyncEofs *pendingAppendOnlyMirrorResyncEofs = NULL; /* head of linked list */
+static HTAB* AppendOnlyMirrorResyncEofsTable = NULL;
 
 /*
  * Declarations for smgr-related XLOG records
@@ -152,6 +160,29 @@ static void smgr_internal_unlink(
 
 	bool 						ignoreNonExistence);
 
+static void
+AppendOnlyMirrorResyncEofs_Merge(
+	RelFileNode		*relFileNode,
+
+	int32			segmentFileNum,
+
+	int				nestLevel,		/* Transaction nesting level. */
+	
+	char			*relationName,
+	
+	ItemPointer 	persistentTid,
+	int64			persistentSerialNum,
+
+	int64			mirrorLossEof,
+	int64			mirrorNewEof);
+
+static void
+AppendOnlyMirrorResyncEofs_RemoveForDrop(
+	RelFileNode		*relFileNode,
+
+	int32			segmentFileNum,
+
+	int				nestLevel);		/* Transaction nesting level. */
 
 char *StorageManagerMirrorMode_Name(
 	StorageManagerMirrorMode		mirrorMode)
@@ -412,7 +443,7 @@ smgrcreatefilespacedir(
 
 	int 						*primaryError,
 
-	int 						*mirrorError)
+	bool						*mirrorDataLossOccurred)
 {	
 	mdcreatefilespacedir(
 					filespaceOid, 
@@ -421,7 +452,7 @@ smgrcreatefilespacedir(
 					mirrorMode,
 					ignoreAlreadyExists,
 					primaryError,
-					mirrorError);
+					mirrorDataLossOccurred);
 }
 
 /*
@@ -487,14 +518,14 @@ smgrcreatetablespacedir(
 
 	int							*primaryError,
 
-	int							*mirrorError)
+	bool						*mirrorDataLossOccurred)
 {
 	mdcreatetablespacedir(
 					tablespaceOid, 
 					mirrorMode,
 					ignoreAlreadyExists,
 					primaryError,
-					mirrorError);
+					mirrorDataLossOccurred);
 }
 
 /*
@@ -561,14 +592,14 @@ smgrcreatedbdir(
 
 	int							*primaryError,
 
-	int							*mirrorError)
+	bool						*mirrorDataLossOccurred)
 {
 	mdcreatedbdir(
 			dbDirNode, 
 			mirrorMode,
 			ignoreAlreadyExists,
 			primaryError,
-			mirrorError);
+			mirrorDataLossOccurred);
 }
 
 bool
@@ -578,7 +609,7 @@ smgrcreatedbdirjustintime(DbDirNode *justInTimeDbDirNode)
 	int64 persistentSerialNum;
 
 	int primaryError;
-	int mirrorError;
+	bool mirrorDataLossOccurred;
 
 	PersistentDatabase_MarkJustInTimeCreatePending(
 											justInTimeDbDirNode,
@@ -591,7 +622,7 @@ smgrcreatedbdirjustintime(DbDirNode *justInTimeDbDirNode)
 				StorageManagerMirrorMode_Both,
 				/* ignoreAlreadyExists */ false,
 				&primaryError,
-				&mirrorError);
+				&mirrorDataLossOccurred);
 	if (primaryError != 0)
 	{
 		PersistentDatabase_AbandonJustInTimeCreatePending(
@@ -709,22 +740,25 @@ smgrcreate(
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
 
-	StorageManagerMirrorMode 	mirrorMode,
+	MirrorDataLossTrackingState mirrorDataLossTrackingState,
 
+	int64						mirrorDataLossTrackingSessionNum,
+	
 	bool						ignoreAlreadyExists,
 
 	int							*primaryError,
 
-	int							*mirrorError)
+	bool						*mirrorDataLossOccurred)
 {
 	mdcreate(
 			reln,
 			isLocalBuf,
 			relationName,
-			mirrorMode,
+			mirrorDataLossTrackingState,
+			mirrorDataLossTrackingSessionNum,
 			ignoreAlreadyExists,
 			primaryError,
-			mirrorError);
+			mirrorDataLossOccurred);
 }
 
 /*
@@ -751,6 +785,8 @@ smgrscheduleunlink(
 
 	int64 			persistentSerialNum)
 {
+	int	nestLevel = GetCurrentTransactionNestLevel();
+
 	PendingDelete *pending;
 
 	/* Add the relation to the list of stuff to delete at commit */
@@ -771,11 +807,24 @@ smgrscheduleunlink(
 	pending->sameTransCreateDrop = false;
 	pending->persistentTid = *persistentTid;
 	pending->persistentSerialNum = persistentSerialNum;
-	pending->nestLevel = GetCurrentTransactionNestLevel();
+	pending->nestLevel = nestLevel;
 	pending->next = pendingDeletes;
 	pendingDeletes = pending;
 	pendingDeletesCount++;
 	pendingDeletesSorted = false;
+
+	if (relStorageMgr == PersistentFileSysRelStorageMgr_AppendOnly)
+	{
+		/*
+		 * Remove pending updates for Append-Only mirror resync EOFs, too.
+		 *
+		 * But only at this transaction level !!!
+		 */
+		AppendOnlyMirrorResyncEofs_RemoveForDrop(
+											relFileNode,
+											segmentFileNum,
+											nestLevel);
+	}
 }
 
 /*
@@ -1099,28 +1148,17 @@ void smgrappendonlymirrorresynceofs(
 
 	int64							mirrorNewEof)
 {
-	PendingAppendOnlyMirrorResyncEofs *pendingEofs;
-	
-	/* Add the relation to the list of stuff to delete at abort */
-	pendingEofs = (PendingAppendOnlyMirrorResyncEofs *)
-		MemoryContextAllocZero(TopMemoryContext, sizeof(PendingAppendOnlyMirrorResyncEofs));
-	
-	PersistentFileSysObjName_SetRelationFile(
-										&pendingEofs->fsObjName,
-										relFileNode,
-										segmentFileNum);
+	Assert(mirrorNewEof > 0);
 
-	pendingEofs->relationName = MemoryContextStrdup(TopMemoryContext, relationName);
-
-	pendingEofs->persistentTid = *persistentTid;
-	pendingEofs->persistentSerialNum = persistentSerialNum;
-	
-	pendingEofs->mirrorLossEof = mirrorLossEof;
-	pendingEofs->mirrorNewEof = mirrorNewEof;
-	
-	pendingEofs->nestLevel = GetCurrentTransactionNestLevel();
-	pendingEofs->next = pendingAppendOnlyMirrorResyncEofs;
-	pendingAppendOnlyMirrorResyncEofs = pendingEofs;
+	AppendOnlyMirrorResyncEofs_Merge(
+								relFileNode,
+								segmentFileNum,
+								GetCurrentTransactionNestLevel(),
+								relationName,
+								persistentTid,
+								persistentSerialNum,
+								mirrorLossEof,
+								mirrorNewEof);
 }
 
 /*
@@ -1331,17 +1369,225 @@ PendingDelete_Free(
 }
 
 static void
-PendingAppendOnlyMirrorResyncEofs_Free(
-	PendingAppendOnlyMirrorResyncEofs **ele)
+AppendOnlyMirrorResyncEofs_HashTableInit(void)
 {
-	if ((*ele)->relationName != NULL)
-		pfree((*ele)->relationName);
+	HASHCTL			info;
+	int				hash_flags;
 
-	pfree(*ele);
+	/* Set key and entry sizes. */
+	MemSet(&info, 0, sizeof(info));
+	info.keysize = sizeof(AppendOnlyMirrorResyncEofsKey);
+	info.entrysize = sizeof(AppendOnlyMirrorResyncEofs);
+	info.hash = tag_hash;
+	info.hcxt = TopMemoryContext;
 
-	*ele = NULL;
+	hash_flags = (HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+
+	AppendOnlyMirrorResyncEofsTable = hash_create("AO Mirror Resync EOFs", 10, &info, hash_flags);
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "Storage Manager: Append-Only mirror resync eofs hash-table created");
 }
 
+static void
+AppendOnlyMirrorResyncEofs_HashTableRemove(
+	char *procName)
+{
+	if (AppendOnlyMirrorResyncEofsTable == NULL)
+		return;
+
+	hash_destroy(AppendOnlyMirrorResyncEofsTable);
+	AppendOnlyMirrorResyncEofsTable = NULL;
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "Storage Manager (%s): Append-Only mirror resync eofs hash-table removed",
+			 procName);
+}
+
+static void
+AppendOnlyMirrorResyncEofs_InitKey(
+	AppendOnlyMirrorResyncEofsKey *key,
+
+	RelFileNode		*relFileNode,
+
+	int32			segmentFileNum,
+
+	int				nestLevel)		/* Transaction nesting level. */
+{
+	MemSet(key, 0, sizeof(AppendOnlyMirrorResyncEofsKey));
+	key->relFileNode = *relFileNode;
+	key->segmentFileNum = segmentFileNum;
+	key->nestLevel = nestLevel;
+}
+
+static void
+AppendOnlyMirrorResyncEofs_Merge(
+	RelFileNode		*relFileNode,
+
+	int32			segmentFileNum,
+
+	int				nestLevel,		/* Transaction nesting level. */
+	
+	char			*relationName,
+	
+	ItemPointer		persistentTid,
+	int64			persistentSerialNum,
+
+	int64			mirrorLossEof,
+	int64			mirrorNewEof)
+{
+	AppendOnlyMirrorResyncEofsKey key;
+	AppendOnlyMirrorResyncEofs *entry;
+	bool found;
+
+	if (AppendOnlyMirrorResyncEofsTable == NULL)
+		AppendOnlyMirrorResyncEofs_HashTableInit();
+
+	AppendOnlyMirrorResyncEofs_InitKey(
+									&key,
+									relFileNode,
+									segmentFileNum,
+									nestLevel);
+	
+	entry = 
+		(AppendOnlyMirrorResyncEofs*) 
+						hash_search(AppendOnlyMirrorResyncEofsTable,
+									(void *) &key,
+									HASH_ENTER,
+									&found);
+
+	if (!found)
+	{
+		entry->relationName = MemoryContextStrdup(TopMemoryContext, relationName);
+		entry->persistentSerialNum = persistentSerialNum;
+		entry->persistentTid = *persistentTid;
+		entry->mirrorLossEof = mirrorLossEof;
+		entry->mirrorNewEof = mirrorNewEof;
+	}
+	else
+	{
+		if (entry->mirrorLossEof == entry->mirrorNewEof)
+		{
+			/*
+			 * If the 2 EOFs are synchronized, then we use the loss value (which is often equal to new).
+			 */
+			entry->mirrorLossEof = mirrorLossEof;
+		}
+		else
+			Assert(entry->mirrorLossEof < mirrorLossEof);	// Old value should be less.  Keep it.
+		
+		if (mirrorNewEof > entry->mirrorNewEof)
+			entry->mirrorNewEof = mirrorNewEof;
+	}
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "Storage Manager: %s Append-Only mirror resync eofs entry: %u/%u/%u, segment file #%d, relation name '%s' (transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", input mirror loss EOF " INT64_FORMAT ", saved mirror loss EOF " INT64_FORMAT ", input mirror new EOF " INT64_FORMAT ", saved mirror new EOF " INT64_FORMAT ")",
+			 (found ? "Merge" : "New"),
+			 entry->key.relFileNode.spcNode,
+			 entry->key.relFileNode.dbNode,
+			 entry->key.relFileNode.relNode,
+			 entry->key.segmentFileNum,
+			 (entry->relationName == NULL ? "<null>" : entry->relationName),
+			 entry->key.nestLevel,
+			 ItemPointerToString(&entry->persistentTid),
+			 entry->persistentSerialNum,
+			 mirrorLossEof,
+			 entry->mirrorLossEof,
+			 mirrorNewEof,
+			 entry->mirrorNewEof);
+}
+
+static void
+AppendOnlyMirrorResyncEofs_Remove(
+	char						*procName,
+
+	AppendOnlyMirrorResyncEofs 	*entry)
+{
+	Assert(AppendOnlyMirrorResyncEofsTable != NULL);
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "Storage Manager (%s): Remove Append-Only mirror resync eofs entry: %u/%u/%u, segment file #%d, relation name '%s' (transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", saved mirror loss EOF " INT64_FORMAT ", saved mirror new EOF " INT64_FORMAT ")",
+			 procName,
+			 entry->key.relFileNode.spcNode,
+			 entry->key.relFileNode.dbNode,
+			 entry->key.relFileNode.relNode,
+			 entry->key.segmentFileNum,
+			 (entry->relationName == NULL ? "<null>" : entry->relationName),
+			 entry->key.nestLevel,
+			 ItemPointerToString(&entry->persistentTid),
+			 entry->persistentSerialNum,
+			 entry->mirrorLossEof,
+			 entry->mirrorNewEof);
+
+	if (entry->relationName != NULL)
+		pfree(entry->relationName);
+
+	hash_search(
+			AppendOnlyMirrorResyncEofsTable, 
+			(void *) &entry->key, 
+			HASH_REMOVE, 
+			NULL);
+}
+
+static void
+AppendOnlyMirrorResyncEofs_Promote(
+	AppendOnlyMirrorResyncEofs *entry,
+
+	int							newNestLevel)
+{
+	Assert(AppendOnlyMirrorResyncEofsTable != NULL);
+
+	AppendOnlyMirrorResyncEofs_Merge(
+								&entry->key.relFileNode,
+								entry->key.segmentFileNum,
+								newNestLevel,
+								entry->relationName,
+								&entry->persistentTid,
+								entry->persistentSerialNum,
+								entry->mirrorLossEof,
+								entry->mirrorNewEof);
+
+	AppendOnlyMirrorResyncEofs_Remove(
+								"AppendOnlyMirrorResyncEofs_Promote",
+								entry);
+}
+
+static void
+AppendOnlyMirrorResyncEofs_RemoveForDrop(
+	RelFileNode		*relFileNode,
+
+	int32			segmentFileNum,
+
+	int				nestLevel)		/* Transaction nesting level. */
+{
+	AppendOnlyMirrorResyncEofsKey key;
+	AppendOnlyMirrorResyncEofs *entry;
+	bool found;
+
+	if (AppendOnlyMirrorResyncEofsTable == NULL)
+		return;
+
+	AppendOnlyMirrorResyncEofs_InitKey(
+									&key,
+									relFileNode,
+									segmentFileNum,
+									nestLevel);
+	
+	entry = 
+		(AppendOnlyMirrorResyncEofs*) 
+						hash_search(AppendOnlyMirrorResyncEofsTable,
+									(void *) &key,
+									HASH_FIND,
+									&found);
+	if (found)
+		AppendOnlyMirrorResyncEofs_Remove(
+								"AppendOnlyMirrorResyncEofs_RemoveForDrop",
+								entry);
+}
 
 /*
  *	PostPrepare_smgr -- Clean up after a successful PREPARE
@@ -1355,9 +1601,6 @@ PostPrepare_smgr(void)
 {
 	PendingDelete *pending;
 	PendingDelete *next;
-	
-	PendingAppendOnlyMirrorResyncEofs *pendingEofs;
-	PendingAppendOnlyMirrorResyncEofs *nextEofs;
 
 	for (pending = pendingDeletes; pending != NULL; pending = next)
 	{
@@ -1374,16 +1617,9 @@ PostPrepare_smgr(void)
 	pendingDeletesSorted = false;
 
 	/*
-	 * Free the 2nd Append-Only mirror resync EOFs list.
+	 * Free the Append-Only mirror resync EOFs hash table.
 	 */
-	for (pendingEofs = pendingAppendOnlyMirrorResyncEofs; pendingEofs != NULL; pendingEofs = nextEofs)
-	{
-		nextEofs = pendingEofs->next;
-		pendingAppendOnlyMirrorResyncEofs = nextEofs;
-
-		/* must explicitly free the list entry */
-		PendingAppendOnlyMirrorResyncEofs_Free(&pendingEofs);
-	}
+	AppendOnlyMirrorResyncEofs_HashTableRemove("PostPrepare_smgr");
 
 }
 
@@ -1713,8 +1949,8 @@ smgrSubTransAbort(void)
 	PendingDelete *subTransList;
 	int			subTransCount;
 
-	PendingAppendOnlyMirrorResyncEofs *pendingEofs;
-	PendingAppendOnlyMirrorResyncEofs *nextEofs;
+	HASH_SEQ_STATUS iterateStatus;
+	AppendOnlyMirrorResyncEofs *entry;
 
 	subTransList = NULL;
 	subTransCount = 0;
@@ -1771,17 +2007,17 @@ smgrSubTransAbort(void)
 	/*
 	 * Throw away sub-transaction Append-Only mirror resync EOFs.
 	 */
-	for (pendingEofs = pendingAppendOnlyMirrorResyncEofs; pendingEofs != NULL; pendingEofs = nextEofs)
+	hash_seq_init(
+			&iterateStatus, 
+			AppendOnlyMirrorResyncEofsTable);
+	
+	while ((entry = hash_seq_search(&iterateStatus)) != NULL)
 	{
-		nextEofs = pendingEofs->next;
-
-		if (pendingEofs->nestLevel >= nestLevel)
+		if (entry->key.nestLevel >= nestLevel)
 		{
-			if (pendingEofs == pendingAppendOnlyMirrorResyncEofs)
-				pendingAppendOnlyMirrorResyncEofs = nextEofs;
-			
-			/* must explicitly free the list entry */
-			PendingAppendOnlyMirrorResyncEofs_Free(&pendingEofs);
+			AppendOnlyMirrorResyncEofs_Remove(
+										"smgrSubTransAbort",
+										entry);
 		}
 	}
 
@@ -1861,34 +2097,18 @@ smgrGetPendingDeletes(bool forCommit, PersistentEndXactFsObj **ptr)
 		}
 
 		if (Debug_persistent_print)
-		{
-			if (pending == NULL)
-				elog(Debug_persistent_print_level, 
-					 "Storage Manager: Get list entry #%d: '%s' relation name '%s' (forCommit %s, returned %s, transaction nest level %d, relation storage manager '%s', persistent TID %s, persistent serial number " INT64_FORMAT ", sameTransCreateDrop %s)",
-					 entryIndex,
-					 PersistentFileSysObjName_TypeAndObjectName(&pending->fsObjName),
-					 pending->relationName,
-					 (forCommit ? "true" : "false"),
-					 (returned ? "true" : "false"),
-					 pending->nestLevel,
-					 PersistentFileSysRelStorageMgr_Name(pending->relStorageMgr),
-					 ItemPointerToString(&pending->persistentTid),
-					 pending->persistentSerialNum,
-					 (pending->sameTransCreateDrop ? "true" : "false"));
-			else
-				elog(Debug_persistent_print_level, 
-					 "Storage Manager: Get list entry #%d: '%s', relation name '%s' (forCommit %s, returned %s, transaction nest level %d, relation storage manager '%s', persistent TID %s, persistent serial number " INT64_FORMAT ", sameTransCreateDrop %s)",
-					 entryIndex,
-					 PersistentFileSysObjName_TypeAndObjectName(&pending->fsObjName),
-					 pending->relationName,
-					 (forCommit ? "true" : "false"),
-					 (returned ? "true" : "false"),
-					 pending->nestLevel,
-					 PersistentFileSysRelStorageMgr_Name(pending->relStorageMgr),
-					 ItemPointerToString(&pending->persistentTid),
-					 pending->persistentSerialNum,
-					 (pending->sameTransCreateDrop ? "true" : "false"));
-		}
+			elog(Debug_persistent_print_level, 
+				 "Storage Manager: Get list entry #%d: '%s', relation name '%s' (forCommit %s, returned %s, transaction nest level %d, relation storage manager '%s', persistent TID %s, persistent serial number " INT64_FORMAT ", sameTransCreateDrop %s)",
+				 entryIndex,
+				 PersistentFileSysObjName_TypeAndObjectName(&pending->fsObjName),
+				 (pending->relationName == NULL ? "<null>" : pending->relationName),
+				 (forCommit ? "true" : "false"),
+				 (returned ? "true" : "false"),
+				 pending->nestLevel,
+				 PersistentFileSysRelStorageMgr_Name(pending->relStorageMgr),
+				 ItemPointerToString(&pending->persistentTid),
+				 pending->persistentSerialNum,
+				 (pending->sameTransCreateDrop ? "true" : "false"));
 		entryIndex++;
 	}
 	return nrels;
@@ -1900,14 +2120,23 @@ smgrGetAppendOnlyMirrorResyncEofs(PersistentEndXactAppendOnlyMirrorResyncEofs **
 	int			nestLevel = GetCurrentTransactionNestLevel();
 	int			nentries;
 	PersistentEndXactAppendOnlyMirrorResyncEofs *rptr;
-	PendingAppendOnlyMirrorResyncEofs *pendingEofs;
+	HASH_SEQ_STATUS iterateStatus;
+	AppendOnlyMirrorResyncEofs *entry;
 	int			entryIndex;
 
 	nentries = 0;
-	for (pendingEofs = pendingAppendOnlyMirrorResyncEofs; pendingEofs != NULL; pendingEofs = pendingEofs->next)
+
+	if (AppendOnlyMirrorResyncEofsTable !=  NULL)
 	{
-		if (pendingEofs->nestLevel >= nestLevel)
-			nentries++;
+		hash_seq_init(
+				&iterateStatus, 
+				AppendOnlyMirrorResyncEofsTable);
+
+		while ((entry = hash_seq_search(&iterateStatus)) != NULL)
+		{
+			if (entry->key.nestLevel >= nestLevel)
+				nentries++;
+		}
 	}
 	if (nentries == 0)
 	{
@@ -1924,52 +2153,50 @@ smgrGetAppendOnlyMirrorResyncEofs(PersistentEndXactAppendOnlyMirrorResyncEofs **
 							palloc(nentries * sizeof(PersistentEndXactAppendOnlyMirrorResyncEofs));
 	*ptr = rptr;
 	entryIndex = 0;
-	for (pendingEofs = pendingAppendOnlyMirrorResyncEofs; pendingEofs != NULL; pendingEofs = pendingEofs->next)
+	hash_seq_init(
+			&iterateStatus, 
+			AppendOnlyMirrorResyncEofsTable);
+	
+	while ((entry = hash_seq_search(&iterateStatus)) != NULL)
 	{
 		bool returned;
 
 		returned = false;
-		if (pendingEofs->nestLevel >= nestLevel)
+		if (entry->key.nestLevel >= nestLevel)
 		{
-			rptr->fsObjName = pendingEofs->fsObjName;
+			rptr->relFileNode = entry->key.relFileNode;
+			rptr->segmentFileNum = entry->key.segmentFileNum;
 
-			rptr->persistentTid = pendingEofs->persistentTid;
-			rptr->persistentSerialNum = pendingEofs->persistentSerialNum;
+			rptr->persistentTid = entry->persistentTid;
+			rptr->persistentSerialNum = entry->persistentSerialNum;
 
-			rptr->mirrorLossEof = pendingEofs->mirrorLossEof;
-			rptr->mirrorNewEof = pendingEofs->mirrorNewEof;
+			rptr->mirrorLossEof = entry->mirrorLossEof;
+			rptr->mirrorNewEof = entry->mirrorNewEof;
 
 			rptr++;
 			returned = true;
+
+			/*
+			 * Don't know if this is really the best place for this.
+			 */
+			FileRepPrimary_IntentAppendOnlyCommitWork();
 		}
 
 		if (Debug_persistent_print)
-		{
-			if (pendingEofs == NULL)
-				elog(Debug_persistent_print_level, 
-					 "Storage Manager: Get Append-Only mirror resync eofs list entry #%d: '%s' relation name '%s' (returned %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
-					 entryIndex,
-					 PersistentFileSysObjName_TypeAndObjectName(&pendingEofs->fsObjName),
-					 pendingEofs->relationName,
-					 (returned ? "true" : "false"),
-					 pendingEofs->nestLevel,
-					 ItemPointerToString(&pendingEofs->persistentTid),
-					 pendingEofs->persistentSerialNum,
-					 pendingEofs->mirrorLossEof,
-					 pendingEofs->mirrorNewEof);
-			else
-				elog(Debug_persistent_print_level, 
-					 "Storage Manager: Get Append-Only mirror resync eofs list entry #%d: '%s', relation name '%s' (returned %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
-					 entryIndex,
-					 PersistentFileSysObjName_TypeAndObjectName(&pendingEofs->fsObjName),
-					 pendingEofs->relationName,
-					 (returned ? "true" : "false"),
-					 pendingEofs->nestLevel,
-					 ItemPointerToString(&pendingEofs->persistentTid),
-					 pendingEofs->persistentSerialNum,
-					 pendingEofs->mirrorLossEof,
-					 pendingEofs->mirrorNewEof);
-		}
+			elog(Debug_persistent_print_level, 
+				 "Storage Manager: Get Append-Only mirror resync eofs list entry #%d: %u/%u/%u, segment file #%d, relation name '%s' (returned %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
+				 entryIndex,
+				 entry->key.relFileNode.spcNode,
+				 entry->key.relFileNode.dbNode,
+				 entry->key.relFileNode.relNode,
+				 entry->key.segmentFileNum,
+				 (entry->relationName == NULL ? "<null>" : entry->relationName),
+				 (returned ? "true" : "false"),
+				 entry->key.nestLevel,
+				 ItemPointerToString(&entry->persistentTid),
+				 entry->persistentSerialNum,
+				 entry->mirrorLossEof,
+				 entry->mirrorNewEof);
 		entryIndex++;
 	}
 	return nentries;
@@ -1986,7 +2213,8 @@ smgrIsPendingDeletes(bool forCommit)
 {
 	int			nestLevel = GetCurrentTransactionNestLevel();
 	PendingDelete *pending;
-	PendingAppendOnlyMirrorResyncEofs *pendingEofs;
+	HASH_SEQ_STATUS iterateStatus;
+	AppendOnlyMirrorResyncEofs *entry;
 
 	for (pending = pendingDeletes; pending != NULL; pending = pending->next)
 	{
@@ -1994,10 +2222,17 @@ smgrIsPendingDeletes(bool forCommit)
 			return true;
 	}
 
-	for (pendingEofs = pendingAppendOnlyMirrorResyncEofs; pendingEofs != NULL; pendingEofs = pendingEofs->next)
+	hash_seq_init(
+			&iterateStatus, 
+			AppendOnlyMirrorResyncEofsTable);
+	
+	while ((entry = hash_seq_search(&iterateStatus)) != NULL)
 	{
-		if (pendingEofs->nestLevel >= nestLevel)
+		if (entry->key.nestLevel >= nestLevel)
+		{
+			hash_seq_term(&iterateStatus);
 			return true;
+		}
 	}
 
 	return false;
@@ -2015,18 +2250,41 @@ AtSubCommit_smgr(void)
 {
 	int			nestLevel = GetCurrentTransactionNestLevel();
 	PendingDelete *pending;
-	PendingAppendOnlyMirrorResyncEofs *pendingEofs;
+	HASH_SEQ_STATUS iterateStatus;
+	AppendOnlyMirrorResyncEofs *entry;
 
 	for (pending = pendingDeletes; pending != NULL; pending = pending->next)
 	{
 		if (pending->nestLevel >= nestLevel)
+		{
 			pending->nestLevel = nestLevel - 1;
+			
+			if (pending->fsObjName.type == PersistentFsObjType_RelationFile &&
+				pending->relStorageMgr == PersistentFileSysRelStorageMgr_AppendOnly)
+			{
+				/*
+				 * If we are promoting a DROP of an Append-Only table, be sure to remove any
+				 * pending Append-Only mirror resync EOFs updates for the NEW TRANSACTION
+				 * LEVEL, too.
+				 */
+				AppendOnlyMirrorResyncEofs_RemoveForDrop(
+													PersistentFileSysObjName_GetRelFileNodePtr(&pending->fsObjName),
+													PersistentFileSysObjName_GetSegmentFileNum(&pending->fsObjName),
+													pending->nestLevel);
+			}
+		}
 	}
 
-	for (pendingEofs = pendingAppendOnlyMirrorResyncEofs; pendingEofs != NULL; pendingEofs = pendingEofs->next)
+	hash_seq_init(
+			&iterateStatus, 
+			AppendOnlyMirrorResyncEofsTable);
+	
+	while ((entry = hash_seq_search(&iterateStatus)) != NULL)
 	{
-		if (pendingEofs->nestLevel >= nestLevel)
-			pendingEofs->nestLevel = nestLevel - 1;
+		if (entry->key.nestLevel >= nestLevel)
+			AppendOnlyMirrorResyncEofs_Promote(
+											entry,
+											nestLevel - 1);
 	}
 }
 
@@ -2083,6 +2341,11 @@ AtEOXact_smgr(bool forCommit)
 	Assert(pendingDeletes == NULL);
 	Assert(pendingDeletesCount == 0);
 	pendingDeletesSorted = false;
+
+	/*
+	 * Free the Append-Only mirror resync EOFs hash table.
+	 */
+	AppendOnlyMirrorResyncEofs_HashTableRemove("AtEOXact_smgr");
 }
 
 /*
@@ -2119,25 +2382,36 @@ smgr_redo(XLogRecPtr lsn, XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
 	int primaryError;
-	int mirrorError;
+	bool mirrorDataLossOccurred;
 
 	if (info == XLOG_SMGR_CREATE)
 	{
+		MirrorDataLossTrackingState mirrorDataLossTrackingState;
+		int64 mirrorDataLossTrackingSessionNum;
+
 		xl_smgr_create *xlrec = (xl_smgr_create *) XLogRecGetData(record);
 		SMgrRelation reln;
 
 		reln = smgropen(xlrec->rnode);
+
+		mirrorDataLossTrackingState = 
+					FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
+													&mirrorDataLossTrackingSessionNum);
 		smgrcreate(
 				reln,
 				/* isLocalBuf */ false, 
 				/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
-				StorageManagerMirrorMode_PrimaryOnly,
+				mirrorDataLossTrackingState,
+				mirrorDataLossTrackingSessionNum,
 				/* ignoreAlreadyExists */ true,
 				&primaryError,
-				&mirrorError);
+				&mirrorDataLossOccurred);
 	}
 	else if (info == XLOG_SMGR_TRUNCATE)
 	{
+		MirrorDataLossTrackingState mirrorDataLossTrackingState;
+		int64 mirrorDataLossTrackingSessionNum;
+
 		xl_smgr_truncate *xlrec = (xl_smgr_truncate *) XLogRecGetData(record);
 		SMgrRelation reln;
 		BlockNumber newblks;
@@ -2150,14 +2424,19 @@ smgr_redo(XLogRecPtr lsn, XLogRecord *record)
 		 * XLogOpenRelation, we prefer to recreate the rel and replay the
 		 * log as best we can until the drop is seen.
 		 */
+		
+		mirrorDataLossTrackingState = 
+					FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
+													&mirrorDataLossTrackingSessionNum);
 		smgrcreate(
 				reln,
 				/* isLocalBuf */ false, 
 				/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
-				StorageManagerMirrorMode_PrimaryOnly,
+				mirrorDataLossTrackingState,
+				mirrorDataLossTrackingSessionNum,
 				/* ignoreAlreadyExists */ true,
 				&primaryError,
-				&mirrorError);
+				&mirrorDataLossOccurred);
 
 		/* Can't use smgrtruncate because it would try to xlog */
 

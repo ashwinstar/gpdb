@@ -186,7 +186,7 @@ FileRepSubProcess_ProcessSignals()
 	}
 	*/
 	if (stateChangeRequested) {
-				
+
 		stateChangeRequested = FALSE;
 		
 		getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState);
@@ -220,14 +220,24 @@ FileRepSubProcess_ProcessSignals()
 				break;
 				
 			case SegmentStateShutdownFilerepBackends:
-				FileRepSubProcess_SetState(FileRepStateShutdownBackends);
+				if (fileRepRole == FileRepPrimaryRole)
+				{
+					FileRepSubProcess_SetState(FileRepStateShutdownBackends);
+				}
+				else
+				{
+					processExit = true;
+					FileRepSubProcess_SetState(FileRepStateShutdown);
+				}
 				break;
 
 			case SegmentStateShutdown:
+				processExit = true;
 				FileRepSubProcess_SetState(FileRepStateShutdown);
 				break;
 
 			case SegmentStateImmediateShutdown:
+				processExit = true;
 				FileRepSubProcess_SetState(FileRepStateImmediateShutdown);
 				break;
 				
@@ -439,9 +449,13 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
             break;
 	}
 	
-	elog(LOG, "FileRepSubProcess_SetState() state:'%s' MyProcPid:'%d'", 
-		FileRepStateToString[FileRepSubProcess_GetState()],
-		getpid());
+	if (fileRepState != FileRepStateShutdown &&
+		fileRepState != FileRepStateImmediateShutdown)
+	{
+		elog(LOG, "FileRepSubProcess_SetState() state:'%s' MyProcPid:'%d'", 
+			FileRepStateToString[FileRepSubProcess_GetState()],
+			getpid());
+	}
 	
 }
 	
@@ -697,6 +711,10 @@ FileRepSubProcess_Main()
 			break;
 			
 		case FileRepProcessTypeResyncWorker1:
+		case FileRepProcessTypeResyncWorker2:
+		case FileRepProcessTypeResyncWorker3:
+		case FileRepProcessTypeResyncWorker4:
+
 			FileRepSubProcess_InitializeResyncManagerProcess();
 			FileRepPrimary_StartResyncWorker();
 			

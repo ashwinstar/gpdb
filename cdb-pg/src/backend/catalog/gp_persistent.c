@@ -394,15 +394,13 @@ void GpPersistent_GetCommonValues(
 {
 	ItemPointerData previousFreeTid;
 
-	MemSet(fsObjName, 0, sizeof(PersistentFileSysObjName));
-	fsObjName->type = fsObjType;
-
 	switch (fsObjType)
 	{
 	case PersistentFsObjType_RelationFile:
 		{
-			RelFileNode *relFileNode = &fsObjName->variant.rel.relFileNode;
-			int32 segmentFileNum;	// UNDONE
+			RelFileNode 					relFileNode;
+			int32 							segmentFileNum;
+
 			PersistentFileSysRelStorageMgr	relationStorageManager;
 			MirroredRelDataSynchronizationState mirrorDataSynchronizationState;
 			bool							mirrorBufpoolPhysicallyTruncated;
@@ -413,9 +411,9 @@ void GpPersistent_GetCommonValues(
 
 			GpPersistentRelationNode_GetValues(
 											values,
-											&relFileNode->spcNode,
-											&relFileNode->dbNode,
-											&relFileNode->relNode,
+											&relFileNode.spcNode,
+											&relFileNode.dbNode,
+											&relFileNode.relNode,
 											&segmentFileNum,
 											&relationStorageManager,
 											persistentState,
@@ -429,22 +427,33 @@ void GpPersistent_GetCommonValues(
 											parentXid,
 											persistentSerialNum,
 											&previousFreeTid);
+
+			PersistentFileSysObjName_SetRelationFile(
+												fsObjName,
+												&relFileNode,
+												segmentFileNum);
+			
 		}
 		break;
 
 	case PersistentFsObjType_DatabaseDir:
 		{
-			DbDirNode *dbDirNode = &fsObjName->variant.dbDirNode;
+			DbDirNode dbDirNode;
 
 			GpPersistentDatabaseNode_GetValues(
 									values,
-									&dbDirNode->tablespace,
-									&dbDirNode->database,
+									&dbDirNode.tablespace,
+									&dbDirNode.database,
 									persistentState,
 									mirrorExistenceState,
 									parentXid,
 									persistentSerialNum,
 									&previousFreeTid);
+
+			PersistentFileSysObjName_SetDatabaseDir(
+											fsObjName,
+											dbDirNode.tablespace,
+											dbDirNode.database);
 		}
 		break;
 

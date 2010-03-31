@@ -373,13 +373,9 @@ void AppendOnlyStorageWrite_OpenFile(
 	ItemPointer 				persistentTid,
 	int64						persistentSerialNum)
 {
-	int		fileFlags = O_RDWR | PG_BINARY;
-	int		fileMode = 0600;
-						/*
-						 * File mode is S_IRUSR 00400 user has read permission
-						 *               + S_IWUSR 00200 user has write permission
-						 */
-	 
+	int		primaryError;
+	bool 	mirrorDataLossOccurred;	// We'll look at this at flush and close time.
+
 	File	file;
 	
 	int64	seekResult;
@@ -396,25 +392,26 @@ void AppendOnlyStorageWrite_OpenFile(
 	/*
 	 * Open or create the file for write.
 	 */	
-	MirroredAppendOnly_Open(&storageWrite->bufferedAppend.mirroredOpen, 
-				relFileNode,
-				segmentFileNum,
-				storageWrite->relationName,
-				logicalEof,
-				fileFlags,
-				fileMode);
+	storageWrite->primaryOnlyToLetResynchronizeWork =
+		MirroredAppendOnly_OpenReadWrite(
+								&storageWrite->bufferedAppend.mirroredOpen, 
+								relFileNode,
+								segmentFileNum,
+								storageWrite->relationName,
+								logicalEof,
+								persistentTid,
+								persistentSerialNum,
+								&primaryError,
+								&mirrorDataLossOccurred);
+	if (primaryError != 0)
+		ereport(ERROR,
+			   (errcode_for_file_access(),
+			    errmsg("Append-only Storage Write could not open segment file '%s' for relation '%s': %s",
+					   filePathName,
+					   storageWrite->relationName,
+					   strerror(primaryError))));
 
 	file = storageWrite->bufferedAppend.mirroredOpen.primaryFile;
-
-	if(file < 0)
-	{
-		/* We expected to find this file */
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("Append-only Storage Write could not open segment file '%s' for relation '%s'", 
-				 		filePathName,
-				 		storageWrite->relationName)));
-	}
 	
 	/* 
 	 * Seek to the logical EOF write position.
@@ -422,7 +419,9 @@ void AppendOnlyStorageWrite_OpenFile(
 	seekResult = FileSeek(file, logicalEof, SEEK_SET);
 	if (seekResult != logicalEof)
 	{
-		MirroredAppendOnly_Close(&storageWrite->bufferedAppend.mirroredOpen);
+		MirroredAppendOnly_Close(
+						&storageWrite->bufferedAppend.mirroredOpen,
+						&mirrorDataLossOccurred);
 
         ereport(ERROR, 
 				(errcode(ERRCODE_IO_ERROR),
@@ -550,10 +549,16 @@ void AppendOnlyStorageWrite_FlushAndCloseFile(
 	int64						*newLogicalEof,
 				/* The new EOF for the segment file. */
 
-	int64						*fileLen_uncompressed)
+	int64						*fileLen_uncompressed,
+
+	bool						*mirrorDataLossOccurred)
 {
+	int primaryError;
+
 	Assert(storageWrite != NULL);
 	Assert(storageWrite->isActive);
+
+	*mirrorDataLossOccurred = false;	// Assume.
 	
 	if (storageWrite->file == -1)
 	{
@@ -581,7 +586,18 @@ void AppendOnlyStorageWrite_FlushAndCloseFile(
 	 * the fd API won't do it for us.
 	 */
 
-	MirroredAppendOnly_FlushAndClose(&storageWrite->bufferedAppend.mirroredOpen);
+	MirroredAppendOnly_FlushAndClose(
+							&storageWrite->bufferedAppend.mirroredOpen,
+							&primaryError,
+							mirrorDataLossOccurred);
+	if (primaryError != 0)
+		ereport(ERROR,
+			   (errcode_for_file_access(),
+			    errmsg("Could not flush (fsync) Append-Only segment file '%s' to disk for relation '%s': %s",
+					   storageWrite->segmentFileName,
+					   storageWrite->relationName,
+					   strerror(primaryError))));
+	
 	storageWrite->file = -1;
 
 	MemSet(&storageWrite->relFileNode, 0, sizeof(RelFileNode));
@@ -609,8 +625,9 @@ void AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
 	int32 segmentFileNum;
 	ItemPointerData persistentTid;
 	int64 persistentSerialNum;
-
+		
 	int64	startEof;
+	bool	mirrorDataLossOccurred;
 
 	Assert(storageWrite != NULL);
 	Assert(storageWrite->isActive);
@@ -632,34 +649,51 @@ void AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
 	AppendOnlyStorageWrite_FlushAndCloseFile(
 										storageWrite,
 										newLogicalEof,
-										fileLen_uncompressed);
+										fileLen_uncompressed,
+										&mirrorDataLossOccurred);
 
-	if (Debug_try_appendonly_mirror_resynch_eofs)
+	if (*newLogicalEof - startEof > 0)
 	{
-		/*
-		 * UNDONE: Only call this when the segment is mirrored and the mirror was not connected during our transaction...
-		 */
-		smgrappendonlymirrorresynceofs(
-								&relFileNode,
-								segmentFileNum,
-								storageWrite->relationName,
-								&persistentTid,
-								persistentSerialNum,
-								startEof,
-								*newLogicalEof);
-	}
+		int64 mirrorLossEof;
 
-	if (Debug_persistent_recovery_print)
-		elog(Debug_persistent_recovery_print_level, 
-			 "AppendOnlyStorageWrite_TransactionFlushAndCloseFile: %u/%u/%u, segment file #%d, serial number " INT64_FORMAT ", TID %s, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
-			 relFileNode.spcNode,
-			 relFileNode.dbNode,
-			 relFileNode.relNode,
-			 segmentFileNum,
-			 persistentSerialNum,
-			 ItemPointerToString(&persistentTid),
-			 startEof,
-			 *newLogicalEof);
+		if (mirrorDataLossOccurred || 
+			storageWrite->primaryOnlyToLetResynchronizeWork)
+		{
+			/*
+			 * Assume all mirror data we tried to write was lost, or
+			 * we found at open time that resynchronize could be working on the
+			 * segment file and didn't write the mirror.
+			 */
+			mirrorLossEof = startEof;
+		}
+		else
+			mirrorLossEof = *newLogicalEof;		// No loss.
+
+		/* 
+		 * This routine will handle both updating the persistent information about the
+		 * new EOFs and copy data to the mirror if we are now in synchronized state.
+		 */
+		MirroredAppendOnly_AddMirrorResyncEofs(
+										&relFileNode,
+										segmentFileNum,
+										storageWrite->relationName,
+										&persistentTid,
+										persistentSerialNum,
+										&mirrorLossEof,		// Input and Output
+										*newLogicalEof);
+
+		if (Debug_persistent_recovery_print)
+			elog(Debug_persistent_recovery_print_level, 
+				 "AppendOnlyStorageWrite_TransactionFlushAndCloseFile: %u/%u/%u, segment file #%d, serial number " INT64_FORMAT ", TID %s, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
+				 relFileNode.spcNode,
+				 relFileNode.dbNode,
+				 relFileNode.relNode,
+				 segmentFileNum,
+				 persistentSerialNum,
+				 ItemPointerToString(&persistentTid),
+				 mirrorLossEof,
+				 *newLogicalEof);
+	}
 }
 
 // -----------------------------------------------------------------------------

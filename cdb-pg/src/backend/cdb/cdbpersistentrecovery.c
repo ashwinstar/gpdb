@@ -161,11 +161,18 @@ FsObjEntryToBuffer(char *buffer, FsObjEntry fsObjEntry)
 }
 
 static char fsObjEntryBuffer[200];
+static char fsObjEntryBuffer2[200];
 
 static char *
 FsObjEntryToString(FsObjEntry fsObjEntry)
 {
 	return FsObjEntryToBuffer(fsObjEntryBuffer, fsObjEntry);
+}
+
+static char *
+FsObjEntryToString2(FsObjEntry fsObjEntry)
+{
+	return FsObjEntryToBuffer(fsObjEntryBuffer2, fsObjEntry);
 }
 
 static HTAB **fsObjHashTable = NULL;
@@ -239,6 +246,33 @@ static FsObjEntry PersistentRecovery_FindOrCreateFsObjEntry(
 	return fsObjEntry;
 }
 
+static FsObjEntry PersistentRecovery_FindFsObjEntry(
+	PersistentFsObjType fsObjType,
+	
+	ItemPointer			persistentTid)
+{
+	FsObjEntry fsObjEntry;
+
+	FsObjEntryKey	key;
+
+	bool found;
+
+	if (fsObjHashTable == NULL)
+		return NULL;
+
+	MemSet(&key, 0, sizeof(FsObjEntryKey));
+	key.persistentTid = *persistentTid;
+
+	fsObjEntry = 
+				(FsObjEntry) 
+						hash_search(fsObjHashTable[fsObjType],
+									(void *) &key,
+									HASH_FIND,
+									&found);
+
+	return fsObjEntry;
+}
+
 static void PersistentRecovery_AddEndXactFsObj(
 	TransactionId 			xid,
 	bool 					isCommit,
@@ -292,7 +326,7 @@ static void PersistentRecovery_AddEndXactFsObj(
 			     "%s REDO: Overwritting %s with %s",
 				 (isCommit ? "Commit" : "Abort"),
 				 FsObjEntryToString(&prevFsObjEntry),
-				 FsObjEntryToString(fsObjEntry));
+				 FsObjEntryToString2(fsObjEntry));
 	}
 	else
 	{
@@ -301,6 +335,136 @@ static void PersistentRecovery_AddEndXactFsObj(
 			     "%s REDO: Adding %s",
 				 (isCommit ? "Commit" : "Abort"),
 				 FsObjEntryToString(fsObjEntry));
+	}
+}
+
+typedef struct AoMirrorResyncEofsEntryKey
+{
+	ItemPointerData				persistentTid;
+} AoMirrorResyncEofsEntryKey;
+
+typedef struct AoMirrorResyncEofsEntryData
+{
+	AoMirrorResyncEofsEntryKey	key;
+
+	RelFileNode					relFileNode;
+
+	int32						segmentFileNum;
+
+	int64						persistentSerialNum;
+
+	TransactionId				xid;
+
+	int64						mirrorLossEof;
+
+	int64						mirrorNewEof;
+
+} AoMirrorResyncEofsEntryData;
+typedef AoMirrorResyncEofsEntryData *AoMirrorResyncEofsEntry;
+
+static char *
+AoMirrorResyncEofsEntryToBuffer(char *buffer, AoMirrorResyncEofsEntry eofsEntry)
+{
+	sprintf(buffer,
+		    "Append-Only relation %u/%u/%u, segment file #%d, transaction %u, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ", persistent serial number " INT64_FORMAT ", TID %s, eofsEntry address %p",
+			eofsEntry->relFileNode.spcNode,
+			eofsEntry->relFileNode.dbNode,
+			eofsEntry->relFileNode.relNode,
+			eofsEntry->segmentFileNum,
+			eofsEntry->xid,
+			eofsEntry->mirrorLossEof,
+			eofsEntry->mirrorNewEof,
+			eofsEntry->persistentSerialNum,
+			ItemPointerToString(&eofsEntry->key.persistentTid),
+			eofsEntry);
+
+	return buffer;
+}
+
+static char aoMirrorResyncEofsEntryBuffer[200];
+static char aoMirrorResyncEofsEntryBuffer2[200];
+
+static char *
+AoMirrorResyncEofsEntryToString(AoMirrorResyncEofsEntry eofsEntry)
+{
+	return AoMirrorResyncEofsEntryToBuffer(aoMirrorResyncEofsEntryBuffer, eofsEntry);
+}
+
+static char *
+AoMirrorResyncEofsEntryToString2(AoMirrorResyncEofsEntry eofsEntry)
+{
+	return AoMirrorResyncEofsEntryToBuffer(aoMirrorResyncEofsEntryBuffer2, eofsEntry);
+}
+
+static HTAB *recoveryAppendOnlyMirrorResyncEofsTable = NULL;
+
+static void
+PersistentRecovery_RecoveryAppendOnlyMirrorResyncEofsTableInit(void)
+{
+	HASHCTL			info;
+	int				hash_flags;
+
+	/* Set key and entry sizes. */
+	MemSet(&info, 0, sizeof(info));
+	info.keysize = sizeof(AoMirrorResyncEofsEntryKey);
+	info.entrysize = sizeof(AoMirrorResyncEofsEntryData);
+	info.hash = tag_hash;
+
+	hash_flags = (HASH_ELEM | HASH_FUNCTION);
+
+	recoveryAppendOnlyMirrorResyncEofsTable = hash_create("Recovery AO EOFs", 10, &info, hash_flags);
+}
+
+static void PersistentRecovery_AddAppendOnlyMirrorResyncEofs(
+	TransactionId 								xid,
+	PersistentEndXactAppendOnlyMirrorResyncEofs	*eofs)
+{
+	AoMirrorResyncEofsEntryKey	key;
+
+	AoMirrorResyncEofsEntry eofsEntry;
+
+	bool found;
+
+	AoMirrorResyncEofsEntryData prevEofsEntry;
+
+	if (recoveryAppendOnlyMirrorResyncEofsTable == NULL)
+		PersistentRecovery_RecoveryAppendOnlyMirrorResyncEofsTableInit();
+
+	MemSet(&key, 0, sizeof(FsObjEntryKey));
+	key.persistentTid = eofs->persistentTid;
+
+	eofsEntry = 
+		(AoMirrorResyncEofsEntry) 
+						hash_search(recoveryAppendOnlyMirrorResyncEofsTable,
+									(void *) &key,
+									HASH_ENTER,
+									&found);
+	if (found)
+	{
+		memcpy(&prevEofsEntry, eofsEntry, sizeof(AoMirrorResyncEofsEntryData));
+	}
+
+	eofsEntry->relFileNode = eofs->relFileNode;
+	eofsEntry->segmentFileNum = eofs->segmentFileNum;
+	eofsEntry->persistentSerialNum = eofs->persistentSerialNum;
+	eofsEntry->xid = xid;
+	eofsEntry->mirrorLossEof = eofs->mirrorLossEof;
+	eofsEntry->mirrorNewEof = eofs->mirrorNewEof;
+
+	if (found)
+	{
+		if (Debug_persistent_recovery_print)
+			elog(Debug_persistent_recovery_print_level, 
+			     "Commit REDO: Overwritting %s with %s",
+				 AoMirrorResyncEofsEntryToString(&prevEofsEntry),
+				 AoMirrorResyncEofsEntryToString2(eofsEntry));
+	}
+	else
+	{
+		if (Debug_persistent_recovery_print)
+			elog(Debug_persistent_recovery_print_level, 
+			     "Commit REDO: Adding %s",
+				 AoMirrorResyncEofsEntryToString(eofsEntry));
 	}
 }
 
@@ -422,6 +586,15 @@ PersistentRecovery_HandlePass2XLogRec(
 												/* isCommit */ true,
 												fsObj,
 												PersistentFileSysState_DropPending);
+			}
+			for (i = 0; i < persistentObjects.typed.appendOnlyMirrorResyncEofsCount; i++)
+			{
+				PersistentEndXactAppendOnlyMirrorResyncEofs *eofs = 
+							&persistentObjects.typed.appendOnlyMirrorResyncEofs[i];
+
+				PersistentRecovery_AddAppendOnlyMirrorResyncEofs(
+																xid,
+																eofs);
 			}
 		}
 		else if (infoKind == XACT_INFOKIND_ABORT)
@@ -560,8 +733,15 @@ PersistentRecovery_PrintXactAndFsObjs(void)
 	XactEntry xactEntry;
 	FsObjEntry fsObjEntry;
 
+	elog(Debug_persistent_recovery_print_level, 
+	     "Entering PersistentRecovery_PrintXactAndFsObjs");
+
 	if (xactHashTable == NULL)
+	{
+		elog(Debug_persistent_recovery_print_level, 
+			 "Entering PersistentRecovery_PrintXactAndFsObjs -- no entries");
 		return;
+	}
 	
 	hash_seq_init(&iterateStatus, xactHashTable);
 
@@ -599,6 +779,47 @@ PersistentRecovery_PrintXactAndFsObjs(void)
 										fsObjEntry);
 		}
 	}
+	
+	elog(Debug_persistent_recovery_print_level, 
+	     "Exiting PersistentRecovery_PrintXactAndFsObjs");
+
+}
+
+
+static void
+PersistentRecovery_PrintAoMirrorResyncEofs(void)
+{
+	HASH_SEQ_STATUS iterateStatus;
+	AoMirrorResyncEofsEntry eofsEntry;
+
+	elog(Debug_persistent_recovery_print_level, 
+	     "Entering PersistentRecovery_PrintAoMirrorResyncEofs");
+
+	if (recoveryAppendOnlyMirrorResyncEofsTable == NULL)
+	{
+		elog(Debug_persistent_recovery_print_level, 
+			 "Entering PersistentRecovery_PrintAoMirrorResyncEofs -- no entries");
+		return;
+	}
+	
+	hash_seq_init(&iterateStatus, recoveryAppendOnlyMirrorResyncEofsTable);
+
+	while (true)
+	{
+		eofsEntry = 
+			(AoMirrorResyncEofsEntry)
+						hash_seq_search(&iterateStatus);
+		if (eofsEntry == NULL)
+			break;
+
+		elog(Debug_persistent_recovery_print_level, 
+		     "Summary REDO: %s",
+			 AoMirrorResyncEofsEntryToString(eofsEntry));
+	}
+	
+	elog(Debug_persistent_recovery_print_level, 
+	     "Exiting PersistentRecovery_PrintAoMirrorResyncEofs");
+
 }
 
 // -----------------------------------------------------------------------------
@@ -900,7 +1121,11 @@ PersistentRecovery_CrashAbort(void)
 		PersistentRecovery_AttachFsObjTypeToXact(fsObjType);
 
 	if (Debug_persistent_recovery_print)
+	{
 		PersistentRecovery_PrintXactAndFsObjs();
+
+		PersistentRecovery_PrintAoMirrorResyncEofs();
+	}
 
 	hash_seq_init(&iterateStatus, xactHashTable);
 
@@ -1227,6 +1452,97 @@ PersistentRecovery_Drop(void)
 		     "Exiting PersistentRecovery_Scan");
 }
 
+void
+PersistentRecovery_UpdateAppendOnlyMirrorResyncEofs(void)
+{
+	HASH_SEQ_STATUS iterateStatus;
+	AoMirrorResyncEofsEntry eofsEntry;
+
+	FsObjEntry fsObjEntry;
+
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level, 
+		     "Entering PersistentRecovery_UpdateAppendOnlyMirrorResyncEofs");
+
+	if (recoveryAppendOnlyMirrorResyncEofsTable == NULL)
+	{
+		if (Debug_persistent_recovery_print)
+			elog(Debug_persistent_recovery_print_level, 
+				 "Entering PersistentRecovery_UpdateAppendOnlyMirrorResyncEofs -- no entries");
+		return;
+	}
+	
+	persistentRecoveryCount = 0;
+
+	hash_seq_init(&iterateStatus, recoveryAppendOnlyMirrorResyncEofsTable);
+
+	while (true)
+	{
+		eofsEntry = 
+			(AoMirrorResyncEofsEntry)
+						hash_seq_search(&iterateStatus);
+		if (eofsEntry == NULL)
+			break;
+
+		persistentRecoveryCount++;
+
+		fsObjEntry =
+				PersistentRecovery_FindFsObjEntry(
+									PersistentFsObjType_RelationFile,
+									&eofsEntry->key.persistentTid);
+		if (fsObjEntry == NULL)
+		{
+			if (Debug_persistent_recovery_print)
+				elog(Debug_persistent_recovery_print_level, 
+				     "Update Append-Only EOFs REDO: %s has no persistent entry (i.e. update is obsolete)",
+					 AoMirrorResyncEofsEntryToString(eofsEntry));
+			continue;
+		}
+
+		if (fsObjEntry->state != PersistentFileSysState_Created)
+		{
+			if (Debug_persistent_recovery_print)
+				elog(Debug_persistent_recovery_print_level, 
+				     "Update Append-Only EOFs REDO: %s has persistent entry %s in non-Created state",
+					 AoMirrorResyncEofsEntryToString(eofsEntry),
+					 FsObjEntryToString(fsObjEntry));
+			continue;
+		}
+
+		if (fsObjEntry->persistentSerialNum > eofsEntry->persistentSerialNum)
+		{
+			if (Debug_persistent_recovery_print)
+				elog(Debug_persistent_recovery_print_level, 
+				     "Update Append-Only EOFs REDO: %s is superceeded by newer persistent entry %s",
+					 AoMirrorResyncEofsEntryToString(eofsEntry),
+					 FsObjEntryToString(fsObjEntry));
+			continue;
+		}
+		if (fsObjEntry->persistentSerialNum < eofsEntry->persistentSerialNum)
+			elog(ERROR,
+				 "Update Append-Only EOFs REDO: %s is newer than persistent entry %s",
+				 AoMirrorResyncEofsEntryToString(eofsEntry),
+				 FsObjEntryToString(fsObjEntry));
+
+		PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
+														&eofsEntry->relFileNode,
+														eofsEntry->segmentFileNum,
+														&eofsEntry->key.persistentTid,
+														eofsEntry->persistentSerialNum,
+														eofsEntry->mirrorLossEof,
+														eofsEntry->mirrorNewEof,
+														/* recovery */ true,
+														/* flushToXLog */ false);
+		
+	}
+	
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level, 
+		     "Exiting PersistentRecovery_UpdateAppendOnlyMirrorResyncEofs count %d",
+		     persistentRecoveryCount);
+
+}
+
 typedef struct RedoRelationEntryData
 {
 	RelFileNode		relFileNode;
@@ -1268,7 +1584,7 @@ PersistentRecovery_SerializeRedoRelationFile(
 		if (fsObjEntry == NULL)
 			break;
 
-		redoRelationEntryData.relFileNode = fsObjEntry->fsObjName.variant.rel.relFileNode;
+		redoRelationEntryData.relFileNode = PersistentFileSysObjName_GetRelFileNode(&fsObjEntry->fsObjName);
 		redoRelationEntryData.persistentTid = fsObjEntry->key.persistentTid;
 		redoRelationEntryData.persistentSerialNum = fsObjEntry->persistentSerialNum;
 

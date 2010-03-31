@@ -153,10 +153,20 @@ static void BufferedAppendWrite(
 
 	while (writeLen > 0) 
 	{
-
-		MirroredAppendOnly_Append(&bufferedAppend->mirroredOpen,
-					(char*)largeWriteMemory,
-					writeLen);
+		int primaryError;
+		bool mirrorDataLossOccurred;
+		
+		MirroredAppendOnly_Append(
+							&bufferedAppend->mirroredOpen,
+							(char*)largeWriteMemory,
+							writeLen,
+							&primaryError,
+							&mirrorDataLossOccurred);
+		if (primaryError != 0)
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("Could not write to segment file '%s': %m", 
+							bufferedAppend->filePathName)));
 					   
 		actualLen = writeLen;
 

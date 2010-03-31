@@ -34,6 +34,8 @@ typedef struct DbInfoGpRelationNode
 	ItemPointerData		persistentTid;
 
 	int64		persistentSerialNum;
+
+	int64		logicalEof;
 } DbInfoGpRelationNode;
 
 typedef struct DbInfoSegmentFile
@@ -42,6 +44,14 @@ typedef struct DbInfoSegmentFile
 
 	int64			eof;
 } DbInfoSegmentFile;
+
+typedef struct DbInfoAppendOnlyCatalogSegmentInfo
+{
+	int32			segmentFileNum;
+
+	int64			logicalEof;
+} DbInfoAppendOnlyCatalogSegmentInfo;
+
 
 typedef struct DbInfoRel
 {
@@ -67,6 +77,10 @@ typedef struct DbInfoRel
 	DbInfoGpRelationNode 	*gpRelationNodes;
 	int32		gpRelationNodesCount;
 	int32		gpRelationNodesMaxCount;
+
+	DbInfoAppendOnlyCatalogSegmentInfo 	*appendOnlyCatalogSegmentInfo;
+	int32		appendOnlyCatalogSegmentInfoCount;
+	int32		appendOnlyCatalogSegmentInfoMaxCount;
 
 	// File-System.
 
@@ -110,6 +124,7 @@ typedef struct DatabaseInfo
 	int32		parentlessGpRelationNodesCount;
 	int32		parentlessGpRelationNodesMaxCount;
 
+	bool		collectAppendOnlyCatalogSegmentInfo;
 
 } DatabaseInfo;
 
@@ -124,8 +139,14 @@ typedef struct DatabaseInfo
 // -----------------------------------------------------------------------------
 
 extern DatabaseInfo *DatabaseInfo_Collect(
-		Oid 		database,
-		Oid 		defaultTablespace);
+	Oid 		database,
+	Oid 		defaultTablespace,
+	bool		collectAppendOnlyCatalogSegmentInfo);
+
+extern void DatabaseInfo_AlignAppendOnly(
+	DatabaseInfo 			*info,
+
+	DbInfoRel 				*dbInfoRel);
 
 #ifdef suppress
 

@@ -24,6 +24,7 @@
 #include "utils/hsearch.h"
 
 #include "cdb/cdbmirroredfilesysobj.h"
+#include "cdb/cdbfilerepprimary.h"
 
 
 /*
@@ -423,8 +424,11 @@ XLogOpenRelation(RelFileNode rnode)
 	}
 	else
 	{
+		MirrorDataLossTrackingState mirrorDataLossTrackingState;
+		int64 mirrorDataLossTrackingSessionNum;
+
 		int primaryError;
-		int mirrorError;
+		bool mirrorDataLossOccurred;
 
 		res = _xl_new_reldesc();
 
@@ -466,14 +470,18 @@ XLogOpenRelation(RelFileNode rnode)
 		// UNDONE: What about the persistent rel files table???
 		// UNDONE: This condition should not occur anymore.
 		// UNDONE: segmentFileNum and AO?
+		mirrorDataLossTrackingState = 
+					FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
+													&mirrorDataLossTrackingSessionNum);
 		smgrcreate(
 			res->reldata.rd_smgr, 
 			res->reldata.rd_isLocalBuf, 
 			/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
-			StorageManagerMirrorMode_PrimaryOnly,
+			mirrorDataLossTrackingState,
+			mirrorDataLossTrackingSessionNum,
 			/* ignoreAlreadyExists */ true,
 			&primaryError,
-			&mirrorError);
+			&mirrorDataLossOccurred);
 	}
 
 	res->moreRecently = &(_xlrelarr[0]);

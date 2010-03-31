@@ -151,7 +151,7 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
                             "  AND fsefsoid = (SELECT oid FROM pg_catalog.pg_filespace WHERE fsname='pg_system')"
                     dbconn.executeUpdateOrInsert(conn, sql, 1)
                     
-                changeDescription = textForConfigTable + ": updated segment configuration"
+                    changeDescription = textForConfigTable + ": updated segment configuration"
 
 
             if changeDescription is not None:

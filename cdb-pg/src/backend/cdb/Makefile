@@ -39,7 +39,7 @@ OBJS = cdbanalyze.o \
 	   cdblink.o cdbllize.o cdblocaldistribxact.o cdblogsync.o \
 	   cdbmaxdistributedxid.o \
 	   cdbmirroredbufferpool.o \
-	   cdbmirroredbulkrelation.o cdbmirroredfilesysobj.o cdbmirroredflatfile.o \
+	   cdbmirroredfilesysobj.o cdbmirroredflatfile.o \
 	   cdbmirroredappendonly.o \
 	   cdbmutate.o \
 	   cdboidsync.o \

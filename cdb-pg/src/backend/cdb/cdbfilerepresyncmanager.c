@@ -162,6 +162,10 @@
 
 typedef struct FileRepResyncShmem_s {
 	
+	volatile int	appendOnlyCommitCount;
+	
+	bool		checkpointRequest;
+	
 	slock_t		lock;
 	
 	XLogRecPtr	endFullResyncLSN;
@@ -186,12 +190,12 @@ typedef struct FileRepResyncShmem_s {
 
 static FileRepResyncShmem_s *fileRepResyncShmem = NULL;
 
+static void FileRepResync_ShmemReInit(void);
+
 static int FileRepResyncManager_InResyncTransition(bool isLastLocTracked);
 static int FileRepResyncManager_InSyncTransition(void);
 static int FileRepPrimary_RunResyncManager(void);
 static int FileRepResyncManager_ResyncFlatFiles(void);
-
-
 
 static void FileRepResync_LockAcquire(void);
 static void FileRepResync_LockRelease(void);
@@ -215,6 +219,36 @@ static void
 FileRepResync_LockRelease(void) 
 {	
 	SpinLockRelease(&fileRepResyncShmem->lock);
+}
+
+void
+FileRepResync_IncAppendOnlyCommitCount(void)
+{
+	if (fileRepResyncShmem != NULL)
+	{
+		fileRepResyncShmem->appendOnlyCommitCount++;
+	}
+}
+
+void
+FileRepResync_DecAppendOnlyCommitCount(int	count)
+{
+	if (fileRepResyncShmem != NULL)
+	{	
+		fileRepResyncShmem->appendOnlyCommitCount -= count;
+	
+		Assert(fileRepResyncShmem->appendOnlyCommitCount >= 0);
+	}		
+}
+
+bool
+FileRepResync_CheckpointRequest(void)
+{
+	if (fileRepResyncShmem != NULL)
+	{
+		return fileRepResyncShmem->checkpointRequest;	
+	}
+	return FALSE;
 }
 
 XLogRecPtr
@@ -297,6 +331,10 @@ FileRepResync_ShmemInit(void)
 		MemSet(fileRepResyncShmem, 0, sizeof(FileRepResyncShmem_s));
 	}
 	
+	fileRepResyncShmem->appendOnlyCommitCount = 0;
+	
+	fileRepResyncShmem->checkpointRequest = FALSE;
+	
 	SpinLockInit(&fileRepResyncShmem->lock);
 	
 	fileRepResyncShmem->endFullResyncLSN.xlogid = 0;
@@ -307,7 +345,6 @@ FileRepResync_ShmemInit(void)
 	
 	fileRepResyncShmem->writeCount = 0;
 	
-	//fileRepResyncShmem->resyncWaitingCount = 0;
 	fileRepResyncShmem->resyncInProgressCount = 0;
 	fileRepResyncShmem->resyncCompletedCount = 0;
 	
@@ -332,6 +369,58 @@ FileRepResync_ShmemInit(void)
 	return;						  
 }
 
+/*
+ *
+ */
+static void
+FileRepResync_ShmemReInit(void)
+{
+	HASH_SEQ_STATUS				hash_status;
+	FileRepResyncHashEntry_s	*entry;
+	
+	if (fileRepResyncShmem == NULL) {
+		ereport(ERROR,
+		  (errcode(ERRCODE_OUT_OF_MEMORY),
+		   (errmsg("Not enough shared memory for Mirroring."))));
+	}	
+	
+	fileRepResyncShmem->appendOnlyCommitCount = 0;
+	
+	fileRepResyncShmem->checkpointRequest = FALSE;
+	
+	SpinLockInit(&fileRepResyncShmem->lock);
+	
+	fileRepResyncShmem->endFullResyncLSN.xlogid = 0;
+	fileRepResyncShmem->endFullResyncLSN.xrecoff = 0;
+	
+	fileRepResyncShmem->endIncrResyncLSN.xlogid = 0;
+	fileRepResyncShmem->endIncrResyncLSN.xrecoff = 0;
+	
+	fileRepResyncShmem->writeCount = 0;
+	
+	fileRepResyncShmem->resyncInProgressCount = 0;
+	fileRepResyncShmem->resyncCompletedCount = 0;
+		
+	if (fileRepResyncShmem->fileRepResyncHash == NULL) 
+	{
+		ereport(ERROR, 
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 (errmsg("Not enough shared memory for FileRep Resync."))));
+	}
+	
+	FileRepResync_LockAcquire();
+	
+	hash_seq_init(&hash_status, fileRepResyncShmem->fileRepResyncHash);
+	
+	while ((entry = (FileRepResyncHashEntry_s *) hash_seq_search(&hash_status)) != NULL) {
+	
+		FileRepResync_RemoveEntry(entry->fileName);
+	}
+	
+	FileRepResync_LockRelease();
+	
+	return;						  
+}
 
 /****************************************************************
  * FILEREP SUB-PROCESS (FileRep Primary RECOVERY Process)
@@ -353,6 +442,8 @@ FileRepPrimary_StartResyncManager(void)
 	Insist(fileRepRole == FileRepPrimaryRole);
 
 	Insist(dataState == DataStateInResync);
+	
+	FileRepResync_ShmemReInit();
 
 	while (1) {
 		
@@ -485,6 +576,11 @@ FileRepResyncManager_InResyncTransition(bool isLastLocTracked)
 	
 	elog(LOG, "FileRepResyncManager_InResyncTransition()");
 
+	RequestCheckpoint(true, false);	
+
+	if (LWLockHeldByMe(MirroredLock))
+		elog(ERROR, "FileRep Manager already holding the MirroredLock");
+	
 	LWLockAcquire(MirroredLock, LW_EXCLUSIVE);
 	
 	elog(LOG, "FileRepResyncManager_InResyncTransition() ChangeTracking_RecordLastChangeTrackedLoc");
@@ -538,6 +634,11 @@ FileRepResyncManager_InResyncTransition(bool isLastLocTracked)
 		 */
 		PersistentFileSysObj_MarkPageIncrementalFromChangeLog();
 
+		/*
+		 * Finally, find any Append-Only tables that have mirror data loss.
+		 */
+		PersistentFileSysObj_MarkAppendOnlyCatchup();
+
 		elog(LOG, "FileRepResyncManager_InResyncTransition() PersistentFileSysObj_MarkPageIncrementalFromChangeLog");
 	}
 	
@@ -554,6 +655,10 @@ FileRepResyncManager_InResyncTransition(bool isLastLocTracked)
 	PersistentFileSysObj_MirrorReCreate();	
 	elog(LOG, "FileRepResyncManager_InResyncTransition() PersistentFileSysObj_MirrorReCreate DONE");
 	
+/* commented out on filerep34, waiting for merge of other code	PersistentFileSysObj_MarkMirrorReCreated();
+	elog(LOG, "FileRepResyncManager_InResyncTransition() PersistentFileSysObj_MarkMirrorReCreated DONE");
+*/
+	
 exit:
 	LWLockRelease(MirroredLock);
 	
@@ -569,6 +674,7 @@ FileRepPrimary_RunResyncManager(void)
 	int		status = STATUS_OK;
 	bool	retval;
 	int ii=0;
+	bool	locked = FALSE;
 		
 	FileRepResyncHashEntry_s	entry;
 	ResynchronizeScanToken		token;
@@ -588,10 +694,18 @@ FileRepPrimary_RunResyncManager(void)
 
 		if (FileRepResync_CheckProgress() == FALSE)
 		{
-			pg_usleep(100000L);  // 100ms
+			pg_usleep(50000L);  // 50ms
 			continue;
 		}
 				
+		if (locked == TRUE)
+		{
+			UnlockRelationForResynchronize(
+										   &entry.relFileNode, 
+										   AccessExclusiveLock);
+			locked = FALSE;
+		}
+		
 		retval = PersistentFileSysObj_ResynchronizeScan(
 											   &token,
 											   &entry.relFileNode,
@@ -607,14 +721,51 @@ FileRepPrimary_RunResyncManager(void)
 		
 		if (retval == FALSE)
 		{
-			break;
+			if (fileRepResyncShmem->appendOnlyCommitCount == 0)
+			{
+				break;
+			}
+			else
+			{
+				/* 
+				 * wait that all in progress AppendOnly transactions are committed
+				 * and periodically check if more work to do for resync
+				 */
+				pg_usleep(50000L);  // 50ms
+				continue;
+			}
 		}
 		
-		if (entry.mirrorDataSynchronizationState == MirroredRelDataSynchronizationState_Synchronized)
+		if (entry.mirrorDataSynchronizationState == MirroredRelDataSynchronizationState_Synchronized ||
+			entry.mirrorDataSynchronizationState == MirroredRelDataSynchronizationState_None)
 		{
 			continue;
 		}
 		
+		LockRelationForResynchronize(
+									 &entry.relFileNode, 
+									 AccessExclusiveLock);
+		locked = TRUE;
+		
+		if (!PersistentFileSysObj_ResynchronizeRefetch(
+													   &entry.relFileNode,
+													   &entry.segmentFileNum,
+													   &entry.persistentTid,
+													   entry.persistentSerialNum,
+													   &entry.relStorageMgr,
+													   &entry.mirrorDataSynchronizationState,
+													   &entry.mirrorBufpoolResyncCkptLoc,
+													   &entry.mirrorBufpoolResyncCkptBlockNum,
+													   &entry.mirrorAppendOnlyLossEof,											   
+													   &entry.mirrorAppendOnlyNewEof))								
+		{
+				UnlockRelationForResynchronize(
+											   &entry.relFileNode, 
+											   AccessExclusiveLock);
+				locked = FALSE;
+				continue;
+		}
+						
 		FileRep_GetRelationPath(
 								entry.fileName, 
 								entry.relFileNode, 
@@ -641,10 +792,16 @@ FileRepPrimary_RunResyncManager(void)
 		
 	}
 	
+	if (locked == TRUE)
+	{
+		UnlockRelationForResynchronize(
+									   &entry.relFileNode, 
+									   AccessExclusiveLock);
+		locked = FALSE;
+	}	
+	
 	return status;
 }
-
-
 
 /*
  * FileRepResyncManager_InSyncTransition()
@@ -658,11 +815,14 @@ FileRepResyncManager_InSyncTransition(void)
 	
 	while (1) {
 		
+		RequestCheckpoint(true, false);	
+
 		LWLockAcquire(MirroredLock, LW_EXCLUSIVE);
 
-		
-		
+		fileRepResyncShmem->checkpointRequest = TRUE;
 		RequestCheckpoint(true, false);	
+		fileRepResyncShmem->checkpointRequest = FALSE;
+
 		elog(LOG, "FileRepResyncManager_InSyncTransition() RequestCheckpoint()");
 		
 		FileRepSubProcess_ProcessSignals();
@@ -672,8 +832,6 @@ FileRepResyncManager_InSyncTransition(void)
 			LWLockRelease(MirroredLock);
 			break;
 		}						
-
-		
 		
 		RequestXLogSwitch();		
 		elog(LOG, "FileRepResyncManager_InSyncTransition() RequestXLogSwitch()");
@@ -686,8 +844,6 @@ FileRepResyncManager_InSyncTransition(void)
 			break;
 		}				
 		FileRep_SetSegmentState(SegmentStateInSyncTransition);
-
-		
 		
 		status = FileRepResyncManager_ResyncFlatFiles();
 		
@@ -696,8 +852,10 @@ FileRepResyncManager_InSyncTransition(void)
 			LWLockRelease(MirroredLock);
 			break;
 		}		
-			
+		
+		fileRepResyncShmem->checkpointRequest = TRUE;
 		RequestCheckpoint(true, false);	
+		fileRepResyncShmem->checkpointRequest = FALSE;
 
 		FileRep_SetDataState(DataStateInSync, FALSE);
 		

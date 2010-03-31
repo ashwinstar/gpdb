@@ -321,7 +321,7 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 							}
 							else
 							{
-								Assert(XLByteLT(FileRepResync_GetEndIncrResyncLSN(), PageGetLSN(page)));
+								//Assert(XLByteLT(FileRepResync_GetEndIncrResyncLSN(), PageGetLSN(page)));
 							}
 								
 							UnlockReleaseBuffer(buf); 
@@ -357,8 +357,8 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 					break;
 				default:
 					elog(LOG, "FileRepPrimary_ResyncWrite() SynchronizationState:'%d' ",
-								entry->mirrorDataSynchronizationState);					
-					//Assert(0);
+						 entry->mirrorDataSynchronizationState);					
+					Assert(0);
 					break;
 			}
 			break;
@@ -366,27 +366,44 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 		case PersistentFileSysRelStorageMgr_AppendOnly:
 		{
 			MirroredAppendOnlyOpen	mirroredOpen;
+			int						primaryError;
+			bool					mirrorDataLossOccurred;
 			char					*buffer = NULL;
-			int32					endOffset = entry->mirrorAppendOnlyNewEof;
-			int32					startOffset = 0;
+			int64					endOffset = entry->mirrorAppendOnlyNewEof;
+			int64					startOffset = entry->mirrorAppendOnlyLossEof;
 			int32					bufferLen = 0;
 			int						retval = 0;
 			
 			switch (entry->mirrorDataSynchronizationState)
 			{
-				
+				case MirroredRelDataSynchronizationState_AppendOnlyCatchup:
 				case MirroredRelDataSynchronizationState_FullCopy:
-					errno = 0;
-					
-					MirroredAppendOnly_Open(&mirroredOpen, 
+					/*
+					 * The MirroredAppendOnly_OpenResynchonize routine knows we are a resynch worker and
+					 * will open BOTH, but write only the MIRROR!!!
+					 */
+					MirroredAppendOnly_OpenResynchonize(
+											&mirroredOpen, 
 											&entry->relFileNode,
 											entry->segmentFileNum,
-											/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
 											startOffset,
-											O_RDWR | PG_BINARY,
-											0600);
-					
-					if (! MirroredAppendOnly_IsActive(&mirroredOpen))
+											&primaryError,
+											&mirrorDataLossOccurred);
+					if (primaryError != 0)
+					{
+						ereport(ERROR,
+								(errcode_for_file_access(),
+								 errmsg("could not open file %d/%d/%d.%d : %s",
+										entry->relFileNode.dbNode,
+										entry->relFileNode.spcNode,
+										entry->relFileNode.relNode,
+										entry->segmentFileNum,
+										strerror(primaryError))));
+						
+						break;
+					}
+
+					if (mirrorDataLossOccurred)
 						break;
 					
 					bufferLen = (Size) Min(BLCKSZ, endOffset - startOffset);
@@ -409,7 +426,7 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 						{
 							ereport(ERROR,
 									(errcode_for_file_access(),
-									 errmsg("could not read from position:%d in file %d/%d/%d.%d : %m",
+									 errmsg("could not read from position:" INT64_FORMAT " in file %d/%d/%d.%d : %m",
 											startOffset, 
 											entry->relFileNode.dbNode,
 											entry->relFileNode.spcNode,
@@ -420,9 +437,12 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 						}						
 						
 						MirroredAppendOnly_Append(
-												  &mirroredOpen,
-												  buffer,
-												  bufferLen);
+											  &mirroredOpen,
+											  buffer,
+											  bufferLen,
+											  &primaryError,
+											  &mirrorDataLossOccurred);
+						Assert(primaryError == 0);	// No primary writes as resync worker.
 						
 						startOffset += bufferLen;
 						
@@ -430,10 +450,16 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 					}
 					
 					/* Flush written data on Mirror */
-					MirroredAppendOnly_Flush(&mirroredOpen);
+					MirroredAppendOnly_Flush(
+										&mirroredOpen,
+										&primaryError,
+										&mirrorDataLossOccurred);
+					Assert(primaryError == 0);	// Not flushed on primary as resync worker.
 					
 					/* Close Primary and Mirror */
-					MirroredAppendOnly_Close(&mirroredOpen);
+					MirroredAppendOnly_Close(
+										&mirroredOpen,
+										&mirrorDataLossOccurred);
 					
 					if (buffer) 
 					{
@@ -442,11 +468,10 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 					}
 			
 					break;
-				case MirroredRelDataSynchronizationState_AppendOnlyCatchup:
-					
-					break;
 					
 				default:
+					elog(LOG, "FileRepPrimary_ResyncWrite() SynchronizationState:'%d' ",
+						 entry->mirrorDataSynchronizationState);					
 					Assert(0);
 					break;
 			}

@@ -24,6 +24,7 @@
 #include "cdb/cdbfilerepprimary.h"
 #include "cdb/cdbfilerepprimaryack.h"
 #include "cdb/cdbfilerepconnclient.h"
+#include "cdb/cdbfilerepresyncmanager.h"
 #include "storage/lwlock.h"
 #include "storage/pmsignal.h"
 #include "postmaster/primary_mirror_mode.h"
@@ -53,16 +54,65 @@ static int FileRepPrimary_ConstructAndInsertMessage(
  ****************************************************************/
 
 bool
-FileRepPrimary_IsResync(void)
+FileRepPrimary_IsResyncWorker(void)
 {
-	bool isResync = FALSE;
-	
-	if (fileRepProcessType == FileRepProcessTypeResyncWorker1)
-	{
-		isResync = TRUE;
-	}
-	
-	return isResync;
+	return(
+		fileRepProcessType == FileRepProcessTypeResyncWorker1 ||
+		fileRepProcessType == FileRepProcessTypeResyncWorker2 ||
+		fileRepProcessType == FileRepProcessTypeResyncWorker3 ||
+		fileRepProcessType == FileRepProcessTypeResyncWorker4);
+}
+
+bool
+FileRepPrimary_IsResyncManager(void)
+{
+	return(fileRepProcessType == FileRepProcessTypeResyncManager ||
+		   fileRepProcessType == FileRepProcessTypeResyncWorker1 ||
+		   fileRepProcessType == FileRepProcessTypeResyncWorker2 ||
+		   fileRepProcessType == FileRepProcessTypeResyncWorker3 ||
+		   fileRepProcessType == FileRepProcessTypeResyncWorker4 ||
+		   (FileRepResync_CheckpointRequest() == TRUE &&
+			getpid() == primaryMirrorGetBGWriterPID()));
+}
+
+MirrorDataLossTrackingState 
+FileRepPrimary_GetMirrorDataLossTrackingSessionNum(int64 *sessionNum)
+{
+    
+    *sessionNum = getChangeTrackingSessionId();
+    
+    getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState);
+    
+	switch (dataState) {
+		case DataStateNotInitialized:
+			return MirrorDataLossTrackingState_MirrorNotConfigured;
+			
+		case DataStateInResync:
+			return MirrorDataLossTrackingState_MirrorCurrentlyUpInResync;
+			
+		case DataStateInSync:
+			return MirrorDataLossTrackingState_MirrorCurrentlyUpInSync;
+			
+		case DataStateInChangeTracking:
+			return MirrorDataLossTrackingState_MirrorDown;
+
+		default:
+			Assert(0);
+			return MirrorDataLossTrackingState_MirrorNotConfigured;
+	}	
+	return MirrorDataLossTrackingState_MirrorNotConfigured;
+}
+
+void 
+FileRepPrimary_IntentAppendOnlyCommitWork(void)
+{
+	FileRepResync_IncAppendOnlyCommitCount();
+}
+
+void 
+FileRepPrimary_FinishedAppendOnlyCommitWork(int count)
+{
+	FileRepResync_DecAppendOnlyCommitCount(count);
 }
 
 /*
@@ -214,7 +264,8 @@ FileRepPrimary_ConstructAndInsertMessage(
 	 msgPositionInsert = FileRep_ReserveShmem(
 											  fileRepShmemArray[fileRepProcIndex], 
 											  msgLength, 
-											  &spareField);
+											  &spareField,
+											  fileRepOperation);
 	
 	if (msgPositionInsert == NULL && dataState != DataStateInChangeTracking) {
 		
@@ -309,7 +360,7 @@ FileRepPrimary_ConstructAndInsertMessage(
 					msgPositionInsert,
 					msgLength,
 					(fileRepOperation == FileRepOperationOpen)?
-					fileRepOperationDescription.open.fileFlags:0),
+					fileRepOperationDescription.open.fileFlags:0,
 					(fileRepOperation == FileRepOperationTruncate)?
 					fileRepOperationDescription.truncate.position:0),
 			 FileRep_errdetail(fileRepIdentifier,
@@ -657,7 +708,8 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 			msgPositionInsert = FileRep_ReserveShmem(
 													 fileRepShmemArray[fileRepProcIndex],
 													 msgLength, 
-													 &spareField);
+													 &spareField,
+													 FileRepOperationWrite);
 			
 			if (msgPositionInsert == NULL && dataState != DataStateInChangeTracking) {
 				

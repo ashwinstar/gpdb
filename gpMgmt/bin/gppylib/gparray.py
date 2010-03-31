@@ -43,6 +43,15 @@ VALID_MODE = [
     MODE_CHANGELOGGING, 
     MODE_RESYNCHRONIZATION,
 ]
+MODE_LABELS = {
+    MODE_CHANGELOGGING: "Changelogging",
+    MODE_SYNCHRONIZED: "Synchronized",
+    MODE_RESYNCHRONIZATION: "Resynchronizing"
+}
+
+def getDataModeLabel(mode):
+    return MODE_LABELS[mode]
+
 
 FAULT_STRATEGY_NONE = 'n'               # mirrorless systems
 FAULT_STRATEGY_FILE_REPLICATION = 'f'   # valid for versions 4.0+

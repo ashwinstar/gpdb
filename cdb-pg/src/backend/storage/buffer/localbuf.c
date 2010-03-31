@@ -151,11 +151,18 @@ LocalBufferAlloc(Relation reln, BlockNumber blockNum, bool *foundPtr)
 		/* Find smgr relation for buffer */
 		oreln = smgropen(bufHdr->tag.rnode);
 
+		// -------- MirroredLock ----------
+		// UNDONE: Unfortunately, I think we write temp relations to the mirror...
+		LWLockAcquire(MirroredLock, LW_SHARED);
+
 		/* And write... */
 		smgrwrite(oreln,
 				  bufHdr->tag.blockNum,
 				  (char *) LocalBufHdrGetBlock(bufHdr),
 				  true);
+
+		LWLockRelease(MirroredLock);
+		// -------- MirroredLock ----------
 
 		/* Mark not-dirty now in case we error out below */
 		bufHdr->flags &= ~BM_DIRTY;

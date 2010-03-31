@@ -25,6 +25,10 @@
 #include "catalog/pg_tablespace.h"
 #include "cdb/cdbpersistentdatabase.h"
 #include "cdb/cdbdirectopen.h"
+#include "catalog/pg_appendonly.h"
+#include "access/aosegfiles.h"
+#include "access/aocssegfiles.h"
+#include "access/appendonlytid.h"
 
 // -----------------------------------------------------------------------------
 // Open/Close pg_class Relation 
@@ -261,6 +265,30 @@ static void DatabaseInfo_AddExtraSegmentFile(
 	dbInfoExtraSegmentFile->eof = eof;
 }
 
+static void DatabaseInfo_AddAppendOnlyCatalogSegmentInfo(
+	DbInfoRel 				*dbInfoRel,
+	int32 					segmentFileNum,
+	int64					logicalEof)
+{
+	DbInfoAppendOnlyCatalogSegmentInfo 	*appendOnlyCatalogSegmentInfo;
+
+	if (dbInfoRel->appendOnlyCatalogSegmentInfoCount >= dbInfoRel->appendOnlyCatalogSegmentInfoMaxCount)
+	{
+		DatabaseInfo_Grow(
+						(void**)&dbInfoRel->appendOnlyCatalogSegmentInfo,
+						dbInfoRel->appendOnlyCatalogSegmentInfoCount,
+						&dbInfoRel->appendOnlyCatalogSegmentInfoMaxCount,
+						sizeof(DbInfoAppendOnlyCatalogSegmentInfo));
+	}
+
+	appendOnlyCatalogSegmentInfo = &dbInfoRel->appendOnlyCatalogSegmentInfo[dbInfoRel->appendOnlyCatalogSegmentInfoCount];
+	dbInfoRel->appendOnlyCatalogSegmentInfoCount++;
+	
+	appendOnlyCatalogSegmentInfo->segmentFileNum = segmentFileNum;
+	appendOnlyCatalogSegmentInfo->logicalEof = logicalEof;
+
+}
+
 
 static void DatabaseInfo_AddPgClassStoredRelation(
 	DatabaseInfo 		*info,
@@ -303,11 +331,71 @@ static void DatabaseInfo_AddPgClassStoredRelation(
 			palloc0(dbInfoRel->gpRelationNodesMaxCount * sizeof(DbInfoGpRelationNode));
 	dbInfoRel->gpRelationNodesCount = 0;
 	
+	dbInfoRel->appendOnlyCatalogSegmentInfoMaxCount= 1;
+	dbInfoRel->appendOnlyCatalogSegmentInfo = 
+			palloc0(dbInfoRel->appendOnlyCatalogSegmentInfoMaxCount * sizeof(DbInfoAppendOnlyCatalogSegmentInfo));
+	dbInfoRel->appendOnlyCatalogSegmentInfoCount = 0;
+	
 	dbInfoRel->physicalSegmentFilesMaxCount = 1;
 	dbInfoRel->physicalSegmentFiles = 
 			palloc0(dbInfoRel->physicalSegmentFilesMaxCount * sizeof(DbInfoSegmentFile));
 	dbInfoRel->physicalSegmentFilesCount = 0;
-	
+
+	if (info->collectAppendOnlyCatalogSegmentInfo
+		&&
+		(relstorage == RELSTORAGE_AOROWS ||
+		 relstorage == RELSTORAGE_AOCOLS))
+	{
+		Relation relation;
+		AppendOnlyEntry 	*aoEntry;
+		int i;
+			
+		relation = relation_open(relationOid, AccessShareLock);
+		aoEntry = GetAppendOnlyEntry(relationOid);
+
+		if (relstorage == RELSTORAGE_AOROWS)
+		{
+			FileSegInfo **aoSegfileArray;
+			int totalAoSegFiles;
+			
+			aoSegfileArray = GetAllFileSegInfo(relation, aoEntry, SnapshotNow, &totalAoSegFiles);
+			for (i = 0; i < totalAoSegFiles; i++)
+			{
+				DatabaseInfo_AddAppendOnlyCatalogSegmentInfo(
+														dbInfoRel,
+														aoSegfileArray[i]->segno,
+														aoSegfileArray[i]->eof);
+			}
+		}
+		else if (relstorage == RELSTORAGE_AOCOLS)
+		{
+			struct AOCSFileSegInfo **aocsSegfileArray;
+			int totalAocsSegFiles;
+
+			aocsSegfileArray = GetAllAOCSFileSegInfo(relation, aoEntry, SnapshotNow, &totalAocsSegFiles);
+			for (i = 0; i < totalAocsSegFiles; i++)
+			{
+				int32 segmentFileNum;
+				int columnNum;
+
+				segmentFileNum = aocsSegfileArray[i]->segno;
+
+				for (columnNum = 0; columnNum < relation->rd_att->natts; columnNum++)
+				{
+                    AOCSVPInfoEntry *entry;
+
+					entry = getAOCSVPEntry(aocsSegfileArray[i], columnNum);
+					
+					DatabaseInfo_AddAppendOnlyCatalogSegmentInfo(
+															dbInfoRel,
+															columnNum * AOTupleId_MultiplierSegmentFileNum + segmentFileNum,
+															entry->eof);
+				}
+			}
+		}
+
+		relation_close(relation, AccessShareLock);
+	}
 }
 
 static bool DatabaseInfo_AddGpRelationNode(
@@ -366,6 +454,7 @@ static bool DatabaseInfo_AddGpRelationNode(
 	dbInfoGpRelationNode->segmentFileNum = segmentFileNum;
 	dbInfoGpRelationNode->persistentTid = *persistentTid;
 	dbInfoGpRelationNode->persistentSerialNum = persistentSerialNum;
+	dbInfoGpRelationNode->logicalEof = 0;	// This will obtained from the other sources later (e.g. aoseg / aocsseg).
 
 	return found;
 }
@@ -403,7 +492,7 @@ static void DatabaseInfo_AddPhysicalSegmentFile(
 {
 	DbInfoSegmentFile 	*dbInfoSegmentFile;
 
-	if (dbInfoRel->physicalSegmentFilesCount>= dbInfoRel->physicalSegmentFilesMaxCount)
+	if (dbInfoRel->physicalSegmentFilesCount >= dbInfoRel->physicalSegmentFilesMaxCount)
 	{
 		DatabaseInfo_Grow(
 						(void**)&dbInfoRel->physicalSegmentFiles,
@@ -633,10 +722,10 @@ DbInfoRelPtrArray_Compare(const void *entry1, const void *entry2)
 		return -1;
 }
 
-
 DatabaseInfo *DatabaseInfo_Collect(
 	Oid			database,
-	Oid 		defaultTablespace)
+	Oid 		defaultTablespace,
+	bool		collectAppendOnlyCatalogSegmentInfo)
 {
 	DatabaseInfo *info;
 	
@@ -675,6 +764,8 @@ DatabaseInfo *DatabaseInfo_Collect(
 	info->parentlessGpRelationNodesMaxCount = 10;
 	info->parentlessGpRelationNodes = 
 			palloc0(info->parentlessGpRelationNodesMaxCount*sizeof(DbInfoGpRelationNode));
+
+	info->collectAppendOnlyCatalogSegmentInfo = collectAppendOnlyCatalogSegmentInfo;
 
 	DatabaseInfo_HashTableInit(&dbInfoRelHashTable);
 
@@ -832,3 +923,50 @@ DatabaseInfo *DatabaseInfo_Collect(
 
 }
 
+void DatabaseInfo_AlignAppendOnly(
+	DatabaseInfo 			*info,
+
+	DbInfoRel 				*dbInfoRel)
+{
+	int a;
+	int g;
+	bool outOfGpRelationNodes;
+
+	g = 0;
+	outOfGpRelationNodes = false;
+	for (a = 0; a < dbInfoRel->appendOnlyCatalogSegmentInfoCount; a++)
+	{
+		DbInfoAppendOnlyCatalogSegmentInfo	*appendOnlyCatalogSegmentInfo =
+									&dbInfoRel->appendOnlyCatalogSegmentInfo[a];
+
+		while (true)
+		{
+			if (g >= dbInfoRel->gpRelationNodesCount)
+			{
+				outOfGpRelationNodes = true;
+				break;
+			}
+
+			if (dbInfoRel->gpRelationNodes[g].segmentFileNum == appendOnlyCatalogSegmentInfo->segmentFileNum)
+			{
+				if (appendOnlyCatalogSegmentInfo->logicalEof == 0 &&
+					dbInfoRel->gpRelationNodes[g].segmentFileNum > 0)
+					elog(ERROR, "Append-Only relation '%s' segment files above #0 shouldn't exist in gp_relation_node relation when empty (segment file #%d)",
+						 dbInfoRel->relname,
+						 dbInfoRel->gpRelationNodes[g].segmentFileNum);
+
+				dbInfoRel->gpRelationNodes[g].logicalEof = appendOnlyCatalogSegmentInfo->logicalEof;
+				g++;
+				break;
+			}
+			
+			g++;
+		}
+
+		if (outOfGpRelationNodes && appendOnlyCatalogSegmentInfo->logicalEof > 0)
+			elog(ERROR, "Append-Only relation '%s' segment file #%d has data (logical EOF " INT64_FORMAT ") in the aoseg / aocsseg entry but no gp_relation_node entry!",
+				 dbInfoRel->relname,
+				 appendOnlyCatalogSegmentInfo->segmentFileNum,
+				 appendOnlyCatalogSegmentInfo->logicalEof);
+	}
+}

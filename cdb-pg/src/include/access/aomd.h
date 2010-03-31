@@ -37,7 +37,6 @@ extern void
 OpenAOSegmentFile(
 					Relation rel, 
 					char *filepathname, 
-					bool create,
 					int32	segmentFileNum,
 					int64	logicalEof,
 					struct MirroredAppendOnlyOpen *mirroredOpen);

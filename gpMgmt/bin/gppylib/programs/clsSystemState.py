@@ -9,7 +9,7 @@ from gppylib.mainUtils import *
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 import os, sys, getopt, socket, StringIO, signal
 
-from gppylib import gparray, gplog, pgconf, userinput
+from gppylib import gparray, gplog, pgconf, userinput, utils
 from gppylib.commands import base, gp, pg, unix
 from gppylib.db import catalog, dbconn
 from gppylib.gpparseopts import OptParser, OptChecker
@@ -35,20 +35,148 @@ class GpSystemStateProgram:
         self.__options = options
         self.__pool = None
 
+    def __appendSegmentTripletToArray(self, segment, line):
+        """
+        returns line
+
+        @param the line to which to append the triplet of address/datadir/port
+        """
+        line.append(segment.getSegmentAddress())
+        line.append(segment.getSegmentDataDirectory())
+        line.append(str(segment.getSegmentPort()))
+        return line
+
+    def __displayClusterConfig(self, gpEnv, gpArray, mirrorType):
+        """
+        Returns the exitCode
+
+        """
+        if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_FILE_REPLICATION:
+            logger.info("-------------------------------------------------------------" )
+            logger.info("-Current GPDB mirror list and status" )
+            logger.info("-Type = %s" % mirrorType )
+            logger.info("-------------------------------------------------------------" )
+
+            primarySegments = [ seg for seg in gpArray.getSegDbList() if seg.isSegmentPrimary(False) ]
+            mirrorSegments = [ seg for seg in gpArray.getSegDbList() if seg.isSegmentMirror(False) ]
+            contentIdToMirror = GpArray.getSegmentsByContentId(mirrorSegments)
+
+            lines = []
+            lines.append(["Status", "Data State", "Primary", "Datadir", "Port", "Mirror", "Datadir", "Port"])
+            for primary in primarySegments:
+                mirror = contentIdToMirror[primary.getSegmentContentId()][0]
+
+                status = ""
+                if primary.isSegmentMirror(True):
+                    actingPrimary = mirror
+                    actingMirror = primary
+
+                    actMirrorStatus = "Available" if actingMirror.isSegmentUp() else "Failed"
+                    status = "Mirror Active, Primary %s" % (actMirrorStatus)
+                else:
+                    actingPrimary = primary
+                    actingMirror = mirror
+
+                    actMirrorStatus = "Available" if actingMirror.isSegmentUp() else "Failed"
+                    status = "Primary Active, Mirror %s" % (actMirrorStatus)
+
+                dataStatus = gparray.getDataModeLabel(actingPrimary.getSegmentMode())
+
+                line = [status, dataStatus]
+                self.__appendSegmentTripletToArray(primary, line)
+                self.__appendSegmentTripletToArray(mirror, line)
+                lines.append(line)
+            utils.logLinesToTable(lines, {})
+        else:
+            logger.info("-------------------------------------------------------------" )
+            logger.info("-Primary list [%s not implemented]" % \
+                        gparray.getFaultStrategyLabel(gparray.FAULT_STRATEGY_FILE_REPLICATION))
+            logger.info("-------------------------------------------------------------" )
+
+            lines = []
+            lines.append(["Primary", "Datadir", "Port"])
+            for seg in [ seg for seg in gpArray.getSegDbList()]:
+                lines.append(self.__appendSegmentTripletToArray(seg, []))
+            utils.logLinesToTable(lines, {})
+
+        return 0
+
+    def __displayMirrorList(self,gpEnv, gpArray, mirrorType):
+        """
+        Returns the exitCode
+        """
+        exitCode = 0
+        if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_FILE_REPLICATION:
+            lines = []
+            lines.append(["Mirror","Datadir", "Port", "Status", ""])
+            warningLineNumbers = {}
+
+            # based off the bash version of -m "mirror list" option,
+            #    the mirror list prints information about defined mirrors only
+            mirrorSegments = [ seg for seg in gpArray.getSegDbList() if seg.isSegmentMirror(False) ]
+            for seg in mirrorSegments:
+                doWarn = False
+                if seg.isSegmentPrimary(True):
+                    if seg.isSegmentModeSynchronized():
+                        status = "Active, Synchronized"
+                    elif seg.isSegmentModeInResynchronization():
+                        status = "Active, Resynchronizing"
+                    else:
+                        status = "Active, In Change Tracking"
+
+                    doWarn = True
+                    exitCode = 1
+                elif seg.isSegmentUp():
+                    if seg.isSegmentModeSynchronized():
+                        status = "Passive, Synchronized"
+                    elif seg.isSegmentModeInResynchronization():
+                        status = "Passive, Resynchronizing"
+                    else:
+                        status = "Passive" # this should not happen
+                else:
+                    status="Failed"
+                    doWarn = True
+
+                extra = "<<<<<<<<<<" if doWarn else ""
+                warningLineNumbers[len(lines)] = doWarn
+                line = self.__appendSegmentTripletToArray(seg, [])
+                line.append(status)
+                line.append(extra)
+                lines.append(line)
+
+            logger.info("-------------------------------------------------------------" )
+            logger.info("-Current GPDB mirror list and status" )
+            logger.info("-Type = %s" % mirrorType )
+            logger.info("-------------------------------------------------------------" )
+
+            utils.logLinesToTable(lines, warningLineNumbers)
+
+        else:
+            logger.warn("-------------------------------------------------------------" )
+            logger.warn( "%s not used" % gparray.getFaultStrategyLabel(gparray.FAULT_STRATEGY_FILE_REPLICATION))
+            logger.warn("-------------------------------------------------------------" )
+
+        return exitCode
+
     def run(self):
 
-        numSet = (1 if self.__options.showMirrorList else 0)
+        numSet = (1 if self.__options.showMirrorList else 0) + \
+                 (1 if self.__options.showClusterConfig else 0)
         if numSet > 1:
             raise ProgramArgumentValidationException("Too many output options specified")
 
+        gpEnv = GpMasterEnvironment(self.__options.masterDataDirectory, True)
+        confProvider = configInterface.getConfigurationProvider().initializeProvider(gpEnv.getMasterPort(), False)
+        gpArray = confProvider.loadSystemConfig()
 
         if self.__options.showMirrorList:
-            logger.info("MIRROR LIST")
-            pass
+            exitCode = self.__displayMirrorList(gpEnv, gpArray, self.__options.mirrorType)
+        elif self.__options.showClusterConfig:
+            exitCode = self.__displayClusterConfig(gpEnv, gpArray, self.__options.mirrorType)
         else:
             raise ProgramArgumentValidationException( "No output options specified")
 
-        return 0 # success -- exit code 0!
+        return exitCode
 
     def cleanup(self):
         if self.__pool:
@@ -78,7 +206,17 @@ class GpSystemStateProgram:
                             dest="showMirrorList",
                             metavar="<showMirrorList>",
                             help="Show mirror list from configuration")
+        addTo.add_option('-c', None, default=False, action='store_true',
+                            dest="showClusterConfig",
+                            metavar="<showClusterConfig>",
+                            help="Show cluster configuration")
 
+        addTo = OptionGroup(parser, "Other Options")
+        parser.add_option_group(addTo)
+        addTo.add_option("-M", None, default="",
+                            dest="mirrorType",
+                            metavar="<mirrorType>",
+                            help="mirrorType, as calculated from $MIR_TYPE")
 
         parser.set_defaults()
         return parser

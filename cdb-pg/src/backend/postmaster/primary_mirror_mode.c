@@ -126,6 +126,9 @@ typedef struct PMModuleState
 	volatile PrimaryMirrorMode mode;
 	volatile SegmentState_e segmentState;
 	volatile DataState_e dataState;
+
+	/* changeTrackingSessionId starts at zero and is incremented each time the system enters change tracking */
+	volatile int64 changeTrackingSessionId;
 	volatile bool isDatabaseRunning;
 
 	/* connection info for self (which can be a mirror or primary, depending on mode) */
@@ -142,6 +145,9 @@ typedef struct PMModuleState
 
     /* OTHER FIELDS */
 	volatile bool haveStartedDatabase;
+
+	/** used by resync processes, this field will be kept up-to-date by the postmaster */
+	volatile pid_t bgWriterPID;
 
     /**
      * a counter used to assign values to transitions; that values are for logging.
@@ -603,6 +609,7 @@ primaryMirrorModeShmemInit(void)
 	pmModuleState->mode = PMModeUninitialized;
 	pmModuleState->segmentState = SegmentStateNotInitialized;
 	pmModuleState->dataState = DataStateNotInitialized;
+	pmModuleState->changeTrackingSessionId = 0;
 	pmModuleState->isDatabaseRunning = false;
 	pmModuleState->isTransitionListenerFinished = true;
 	pmModuleState->transitionState = TSNone;
@@ -834,6 +841,26 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args)
 	PG_END_TRY();
 }
 
+static bool
+updateDataStateUnderSpinLock(DataState_e dataState)
+{
+    if (pmModuleState->dataState != dataState)
+    {
+        if ( dataState == DataStateInChangeTracking )
+            pmModuleState->changeTrackingSessionId++;
+        pmModuleState->dataState = dataState;
+        return true;
+    }
+    return false;
+}
+
+int64
+getChangeTrackingSessionId(void)
+{
+    assertModuleInitialized();
+    return pmModuleState->changeTrackingSessionId;
+}
+
 /**
  * Update data state from an internal transition.  This should ONLY be called by
  *    filerep backend processes.
@@ -845,18 +872,7 @@ updateDataState(DataState_e dataState)
 
 	acquireModuleSpinLock();
 	{
-	    DataState_e curState = pmModuleState->dataState;
-
-		if (curState != dataState)
-		{
-			isUpdated = TRUE;
-		}
-
-		if (isUpdated)
-		{
-            pmModuleState->dataState = dataState;
-		}
-
+	    isUpdated = updateDataStateUnderSpinLock(dataState);
 	}
 	releaseModuleSpinLock();
 
@@ -952,7 +968,8 @@ copyTransitionInputParameters(PrimaryMirrorModeTransitionArguments *args, Segmen
 
 		strcpy((char*) pmModuleState->peerAddress, args->peerAddress);
 		pmModuleState->peerPort = args->peerPort;
-		pmModuleState->dataState = args->dataState;
+
+		updateDataStateUnderSpinLock(args->dataState);
 		pmModuleState->segmentState = segmentState;
 	}
 	releaseModuleSpinLock();
@@ -1454,7 +1471,7 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
                 }
                 else
                 {
-                    pmModuleState->dataState = DataStateInResync;
+                    updateDataStateUnderSpinLock(DataStateInResync);
                     pmModuleState->segmentState = SegmentStateInResyncTransition;
 
                 }
@@ -1509,4 +1526,26 @@ applyStepForTransitionToMirrorSegmentMode(PrimaryMirrorModeTransitionArguments *
         default:
             return invalidState(stateInOut);
 	}
+}
+
+/**
+ * set the bgwriter pid.  Should only be called by the postmaster
+ */
+extern void primaryMirrorSetBGWriterPID( pid_t pid )
+{
+    assertModuleInitialized();
+
+    /* updating single int field, no need for fancy locking */
+    pmModuleState->bgWriterPID = pid;
+}
+
+/**
+ * get the current bgwriter pid.  Note, of course, that the writer may crash by the time the caller
+ *   can use this value -- so construct client code appropriately.
+ */
+extern pid_t primaryMirrorGetBGWriterPID(void)
+{
+    assertModuleInitialized();
+    /* fetching single int field, no need for fancy locking */
+    return pmModuleState->bgWriterPID;
 }

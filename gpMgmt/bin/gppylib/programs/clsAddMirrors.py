@@ -24,14 +24,13 @@ from lib import gpmlib
 logger = gplog.get_default_logger()
 
 #
-# todo MIRRORING unit testing for GpMirrorBuildCalculator and others
-# todo MIRRORING understand 'multihome' check from old code
-# todo MIRRORING remove gpmlib run use (can we replace that echo with an os.path function?)
-# todo MIRRORING: discuss to see if grouping by hostname is okay.  Did 3.3 have host+address columns?
-# todo MIRRORING: I think the previous code would also do primary + offset to get mirror port, but this
-#                 didn't seem implemented correctly for spread mirroring so I changed it (primary+offset is
-#                 not always correct when doing spread mirroring)
+# todo MIRRORING test spread/group mirroring logic 
+#
+# note: can delete old spread/group mirror stuff inside gpmlib.py (spread_mirror, group_mirror)
 
+# note: can we add unit testing for GpMirrorBuildCalculator and others
+# can we remove gpmlib run use (can we replace that echo with an os.path function?)?
+#
 class GpMirrorBuildCalculator:
     """
     Create mirror segment (GpDB) objects for an existing array, using different strategies.
@@ -113,8 +112,10 @@ class GpMirrorBuildCalculator:
 
         mirrorDataDir = self.__mirrorDataDirs[mirrorIndexOnTargetHost]
 
+        #
         # we want to spread out use of addresses on a single host so go through primary addresses
         #            for the target host to get the mirror address
+        #
         address = primariesOnTargetHost[mirrorIndexOnTargetHost % len(primariesOnTargetHost)].getSegmentAddress()
 
         self.addMirror( resultOut, primary, targetHost, address, port, mirrorDataDir, replicationPort,
@@ -253,7 +254,7 @@ class GpAddMirrorsProgram:
             dirs.append(out[0].strip())
         return dirs
 
-    def __generateMirrorsToBuild(self, gpArray):
+    def __generateMirrorsToBuild(self, gpEnv, gpArray):
         toBuild = []
 
         maxPrimariesPerHost = 0
@@ -269,9 +270,19 @@ class GpAddMirrorsProgram:
         else:
             toBuild = calc.getGroupMirrors()
 
+        gpPrefix = gpmlib.get_gp_prefix(gpEnv.getMasterDataDir())
+        if not gpPrefix:
+            gpPrefix = 'gp-'
+
+        for mirToBuild in toBuild:
+            # mirToBuild is a GpMirrorToBuild object
+            mir = mirToBuild.getFailoverSegment()
+            dir = os.path.join(mir.getSegmentDataDirectory(), '%s%d' % (gpPrefix, mir.getSegmentContentId()))
+            mir.setSegmentDataDirectory(dir)
+
         return GpMirrorListToBuild(toBuild, self.__pool, self.__options.quiet, self.__options.parallelDegree)
 
-    def __getMirrorsToBuildBasedOnOptions(self, gpArray):
+    def __getMirrorsToBuildBasedOnOptions(self, gpEnv, gpArray):
         """
         returns a GpMirrorListToBuild object
         """
@@ -279,7 +290,7 @@ class GpAddMirrorsProgram:
         if self.__options.mirrorConfigFile is not None:
             return self.__getMirrorsToBuildFromConfigFile(gpArray)
         else:
-            return self.__generateMirrorsToBuild(gpArray)
+            return self.__generateMirrorsToBuild(gpEnv, gpArray)
 
     def __displayAddMirrors(self, gpEnv, mirrorBuilder):
         logger.info('Greenplum Add Mirrors Parameters')
@@ -345,7 +356,7 @@ class GpAddMirrorsProgram:
                         gparray.getFaultStrategyLabel(gpArray.getFaultStrategy()))
 
             # figure out what needs to be done
-            mirrorBuilder = self.__getMirrorsToBuildBasedOnOptions(gpArray)
+            mirrorBuilder = self.__getMirrorsToBuildBasedOnOptions(gpEnv, gpArray)
             mirrorBuilder.checkForPortAndDirectoryConflicts(gpArray)
 
             if self.__options.outputSampleConfigFile is not None:
@@ -408,7 +419,7 @@ class GpAddMirrorsProgram:
                          metavar="<dataDirConfigFile>",
                          help="Mirroring data directory configuration file")
 
-        addTo.add_option('-s', default=False, action='store_false',
+        addTo.add_option('-s', default=False, action='store_true',
                          dest="spreadMirroring" ,
                          help="use spread mirroring for placing mirrors on hosts")
 

@@ -74,5 +74,10 @@ extern XLogRecPtr FileRepResync_GetEndFullResyncLSN(void);
 extern void FileRepResyncManager_SetEndResyncLSN(
 												 XLogRecPtr endResyncLSN);
 
+extern void FileRepResync_IncAppendOnlyCommitCount(void);
+
+extern void FileRepResync_DecAppendOnlyCommitCount(int	count);
+
+extern bool FileRepResync_CheckpointRequest(void);
 
 #endif  /* CDBFILEREPRESYNCMANAGER_H */

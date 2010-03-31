@@ -80,12 +80,10 @@ Relation DirectOpen_Open(
 	direct->relationData.rd_node.spcNode = tablespace;
 	direct->relationData.rd_node.dbNode = database;
 
-	direct->relationData.rd_smgr =
-					smgropen(direct->relationData.rd_node);
-
-	
 	direct->relationData.rd_refcnt++;
 
+	RelationOpenSmgr(&direct->relationData);
+	
 	return &direct->relationData;
 }
 
@@ -96,11 +94,7 @@ void DirectOpen_Close(
 	Assert(direct->isInit);
 	Assert(rel == &direct->relationData);
 
-	if (direct->relationData.rd_smgr != NULL)
-	{
-		smgrclose(direct->relationData.rd_smgr);
-		direct->relationData.rd_smgr = NULL;
-
-		direct->relationData.rd_refcnt++;
-	}
+	RelationCloseSmgr(&direct->relationData);
+	
+	direct->relationData.rd_refcnt--;
 }
