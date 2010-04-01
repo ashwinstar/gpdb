@@ -483,7 +483,7 @@ class GPUpgrade:
         # for simplicity we have self.mirrors still point to a list, but
         # its contents are not directly useful.
         if options.mirrors:
-            self.mirrors = [true]
+            self.mirrors = [True]
 
         try:
             setup_tool_logging(EXECNAME,
