@@ -12,19 +12,29 @@ def run_command(cmdstr):
 ###### main()
 if __name__ == '__main__':
 
-	gphome = os.environ.get('GPHOME')
-	if not gphome:
-	    raise Exception("GPHOME not set")
-	
-	# 3.X gpperfmon schema
-	cmd1 = "psql -f %s/lib/gpperfmon/gpperfmon3.sql template1" % gphome
-	
-	# 4.x gpperfmon schema additions
-	cmd2 = "psql -f %s/lib/gpperfmon/gpperfmon4.sql template1" % gphome
-	
-	# gpperfmon schema completion tasks
-	cmd3 = "psql -f %s/lib/gpperfmon/gpperfmonC.sql template1" % gphome
-	
-	run_command(cmd1)
-	run_command(cmd2)
-	run_command(cmd3)
+    gphome = os.environ.get('GPHOME')
+    if not gphome:
+        raise Exception("GPHOME not set")
+
+    # 3.X gpperfmon schema
+    cmd1 = "psql -f %s/lib/gpperfmon/gpperfmon3.sql template1" % gphome
+    
+    # 4.x gpperfmon schema additions
+    cmd2 = "psql -f %s/lib/gpperfmon/gpperfmon4.sql template1" % gphome
+    
+    # gpperfmon schema completion tasks
+    cmd3 = "psql -f %s/lib/gpperfmon/gpperfmonC.sql template1" % gphome
+    
+command = None
+try:
+    for c in (cmd1, cmd2, cmd3):
+        command = c
+        run_command(command)
+except:
+    print "\n==============================================="
+    print "error on command: %s" % command
+    print "check to make sure the DB is running and accessible"
+    print "gpperfmon schema not successfully installed"
+    sys.exit(1)
+
+print "--gpperfmon schema successfully installed--"
