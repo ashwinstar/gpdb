@@ -7,7 +7,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <getopt.h>
+#include <getopt_long.h>
 #include <termios.h>
 #include <signal.h>
 

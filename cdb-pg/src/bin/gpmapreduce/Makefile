@@ -23,10 +23,6 @@ override LDFLAGS  += -lyaml
 FILES     = main.o mapred.o parse.o yaml_scan.o yaml_parse.o 
 GENFILES  = yaml_parse.h yaml_parse.c yaml_scan.c yaml_scan.h
 
-ifneq "$(findstring $(BLD_OS)-$(BLD_OS_VER),SunOS-5.8 SunOS-5.9)" ""
-FILES	+= getopt.o getopt1.o
-endif
-
 OBJS      = $(addprefix $(SRCDIR)/, $(FILES))
 GENOBJS   = $(addprefix $(SRCDIR)/, $(GENFILES))
 
