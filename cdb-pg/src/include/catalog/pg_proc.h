@@ -4926,9 +4926,12 @@ DESCR("btree(internal)");
 
 DATA(insert OID = 9900 (  aocsvpinfo_decode	   PGNSP PGUID 12 f f t f i 3 20 f "1562 23 23" _null_ _null_ _null_ aocsvpinfo_decode - _null_ ));
 
-/* An convinient utility */
+/* raises deprecation error */
+DATA(insert OID = 9997 (  gp_deprecated        PGNSP PGUID 12 f f f f i 0 2278 f "" _null_ _null_ _null_ gp_deprecated - _null_ ));
+DESCR("raises function deprecation error");
+/* A convinient utility */
 DATA(insert OID = 9998 (  pg_objname_to_oid		   PGNSP PGUID 12 f f t f i 1 26 f "25" _null_ _null_ _null_ pg_objname_to_oid - _null_ ));
-DESCR("convert an object name to oid.");
+DESCR("convert an object name to oid");
 /* Fault injection */
 DATA(insert OID = 9999 (  gp_fault_inject		   PGNSP PGUID 12 f f t f v 2 20 f "23 20" _null_ _null_ _null_ gp_fault_inject - _null_ ));
 DESCR("Greenplum fault testing only");

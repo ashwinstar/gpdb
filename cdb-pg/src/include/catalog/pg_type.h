@@ -574,6 +574,14 @@ DATA(insert OID = 2283 ( anyelement		PGNSP PGUID  4 t p t \054 0 0 anyelement_in
  * Note: For this to work correctly it requires some hackery in bootparse.y
  * When extending this list make sure to update there as well.
  */
+
+/* toast tables */
+DATA(insert OID = 2906 (pg_toast_5036 TOASTNSP PGUID -1 f c t \054 2900 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
+#define GP_SEGMENT_CONFIGURATION_TOAST_RELTYPE_OID 2906
+DATA(insert OID = 2907 (pg_toast_5033 TOASTNSP PGUID -1 f c t \054 2902 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
+#define PG_FILESPACE_ENTRY_TOAST_RELTYPE_OID 2907
+
+/* catalog tables */
 DATA(insert OID = 6433 ( gp_interfaces	            PGNSP PGUID	-1 f c t \054 5030 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
 #define GPINTERFACES_RELTYPE_OID 6433
 DATA(insert OID = 6434 ( gp_configuration_history	PGNSP PGUID -1 f c t \054 5006 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));

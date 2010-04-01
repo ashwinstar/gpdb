@@ -1082,4 +1082,8 @@ Datum gp_persistent_build_db(PG_FUNCTION_ARGS);
 
 /* utils/error/elog.c */
 extern Datum pg_elog(PG_FUNCTION_ARGS);
+
+/* utils/fmgr/deprecated.c */
+extern Datum gp_deprecated(PG_FUNCTION_ARGS);
+
 #endif   /* BUILTINS_H */

@@ -149,11 +149,13 @@ def is_supported_version(version, upgrade=True):
 class GpUpgradeCmd(base.Command):
     def __init__(self, name, oldHome, newHome, oldVersion, newVersion,
                  command, pid, dataDirectories, option1,
-                 option2, method, isUpgrade, isRevert,
+                 option2, method, isUpgrade, isRevert, mirrors,
                  ctxt=base.LOCAL, remoteHost=None):
 
         # space separated list of directories
         datadirs = ' '.join(dataDirectories)
+
+        hasMirrors = len(mirrors) > 0
 
         cmd = [
             EXECNAME,
@@ -166,6 +168,7 @@ class GpUpgradeCmd(base.Command):
             '--internal-dirs=' + urllib.quote(datadirs),
             '--internal-option=' + urllib.quote(str(option1)),
             '--internal-option2=' + urllib.quote(str(option2)),
+            '--debug',
             '--quiet',
             ]
         if method:
@@ -174,6 +177,8 @@ class GpUpgradeCmd(base.Command):
             cmd.append('--internal-isupgrade')
         if isRevert:
             cmd.append('-R')
+        if hasMirrors:
+            cmd.append('--internal-mirrors')
 
         cmdStr = ' '.join(cmd)
 
@@ -413,6 +418,9 @@ class GPUpgrade:
             parser.add_option('--internal-isupgrade', dest='upgrade',
                               action='store_true',
                               help=optparse.SUPPRESS_HELP)
+            parser.add_option('--internal-mirrors', dest='mirrors',
+                              action='store_true',
+                              help=optparse.SUPPRESS_HELP)
             parser.add_option('--nocheckcat', dest='nocheckcat',
                               action='store_true',
                               help=optparse.SUPPRESS_HELP)
@@ -438,9 +446,6 @@ class GPUpgrade:
         except Exception, e:
             usage()
             raise UpgradeError('Error parsing input: ' + str(e))
-
-        if options.quiet and options.debug:
-            parser.error('cannot specify -q and --debug at the same time')
 
         if options.revert:
             self.revert = True
@@ -473,6 +478,12 @@ class GPUpgrade:
             self.logdir = options.logdir
         else:
             self.logdir = os.path.join(os.environ['HOME'], 'gpAdminLogs')
+
+        # --internal_mirrors just indicates that the cluster has mirrors,
+        # for simplicity we have self.mirrors still point to a list, but
+        # its contents are not directly useful.
+        if options.mirrors:
+            self.mirrors = [true]
 
         try:
             setup_tool_logging(EXECNAME,
@@ -697,6 +708,7 @@ class GPUpgrade:
                              method=self.method,
                              isUpgrade=self.upgrade,
                              isRevert=self.revert,
+                             mirrors=self.mirrors,
                              ctxt=base.REMOTE,
                              remoteHost=hostname)
             self.pool.addCommand(c)
@@ -2585,6 +2597,8 @@ class GPUpgrade:
     def ExtractAosegs(self):
         '''
         Build AO seg upgrade/downgrade files for this node
+
+        Also builds the persistent file upgrade/downgrade files for this node.
         '''
 
         logger.info('Building append only segment upgrader')
@@ -2679,6 +2693,31 @@ class GPUpgrade:
             f.write('vacuum freeze;\n')
             f.close()
 
+
+            # Produce upgrade files for persistent tables:
+            #   - template1 must be processed first and handles the updates for
+            #     the shared tables
+            #   - the master is always called with gp_persistent_build_db(false)
+            #   - segments call gp_peristent_build_db(true) when there are 
+            #     mirrors
+            fname = os.path.join(logdir, 'persistent_template1.sql')
+            f = open(fname, 'w')
+            f.write('insert into pg_catalog.gp_global_sequence'
+                    '  select 0 from generate_series(1,15);\n')
+            f.close()
+
+            fname = os.path.join(logdir, 'persistent_master.sql')
+            f = open(fname, 'w')
+            f.write('select gp_persistent_build_db(false);\n')
+            f.close()
+
+            fname = os.path.join(logdir, 'persistent_segment.sql')
+            f = open(fname, 'w')
+            if len(self.mirrors) > 0:
+                f.write('select gp_persistent_build_db(true);\n')
+            else:
+                f.write('select gp_persistent_build_db(false);\n')
+            f.close()
 
     #------------------------------------------------------------
     def BuildSkel(self):
@@ -2911,7 +2950,9 @@ class GPUpgrade:
             if p.returncode == 0:
                 logger.debug('successfully transformed ' + dbname)
                 logger.debug(result[0].strip())
+                logger.debug(result[1].strip())
             else:
+                logger.debug(result[0])
                 raise CmdError(str(cmd), result[0], result[1])
         
         
@@ -3041,6 +3082,39 @@ class GPUpgrade:
             for i in range(len(rfs)):
                 logger.info('Pass %d' % i)
                 transform(dir, dbs, rfs[i])
+
+            # gp_persistent table handling:
+            #    - must populate template1 first
+            logger.info('Pass %d' % len(rfs))
+            for dboid, dbname in dbs.iteritems():
+                if dbname != 'template1':
+                    continue
+
+                # Special template1 processing
+                file = os.path.join(d, WORKDIR, 'persistent_template1.sql')
+                transform_db(dir, dbname, dboid, file)
+
+                # this also needs to be done on template1 before handling
+                # other segments.
+                if self.cmd == 'MASTER':
+                    file = os.path.join(d, WORKDIR, 'persistent_master.sql')
+                else:
+                    file = os.path.join(d, WORKDIR, 'persistent_segment.sql')
+                transform_db(dir, dbname, dboid, file)
+                logger.info('... ' + dbname)
+
+            # Then process all databases besides template1, this may ultimately
+            # need a separate file from this portion of template1.
+            for dboid, dbname in dbs.iteritems():
+                if dbname == 'template1':
+                    continue
+
+                if self.cmd == 'MASTER':
+                    file = os.path.join(d, WORKDIR, 'persistent_master.sql')
+                else:
+                    file = os.path.join(d, WORKDIR, 'persistent_segment.sql')
+                transform_db(dir, dbname, dboid, file)
+                logger.info('... ' + dbname)      
 
             # ao file too -- must be last because we
             # use this file to VACUUM FREEZE template databases
@@ -3226,7 +3300,7 @@ class GPUpgrade:
         # the upgrademirror.py script only exists in the 4.0 $GPHOME,
         # but while we are remirroring the old system we need to
         # run it in the old environment.
-        cmd = '%s/bin/gpupgrademirror.py' % self.newhome
+        cmd = '%s/bin/gpupgrademirror.py --verbose' % self.newhome
         if withContinue:
             cmd += " --continue-upgrade"
         elif self.mirrormode == 'redundant':
@@ -3249,7 +3323,7 @@ class GPUpgrade:
         that it only applies to catalog tables, so it should be considerably 
         faster.
         '''
-        cmd = '%s/bin/gpupgrademirror.py --phase2' % self.newhome
+        cmd = '%s/bin/gpupgrademirror.py --verbose --phase2' % self.newhome
         if withContinue:
             cmd += " --continue-upgrade"
         logger.info("Upgrading Mirrors")

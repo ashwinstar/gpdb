@@ -50,6 +50,10 @@ sub genbki
       || die "Could not read PG_CATALOG_NAMESPACE from pg_namespace.h\n";
     my $pgcatalognamespace = $1;
 
+    $pgnamespace =~ /^#define\s+PG_TOAST_NAMESPACE\s+(\d+)\s*$/mg
+      || die "Could not read PG_TOAST_NAMESPACE from pg_namespace.h\n";
+	my $pgtoastnamespace = $1;
+
     my $indata = "";
 
     while (@_)
@@ -74,6 +78,7 @@ sub genbki
     $indata =~ s{PGUID}{$bootstrapsuperuserid}g;
     $indata =~ s{NAMEDATALEN}{$namedatalen}g;
     $indata =~ s{PGNSP}{$pgcatalognamespace}g;
+    $indata =~ s{TOASTNSP}{$pgtoastnamespace}g;
 
     #print $indata;
 

@@ -99,6 +99,7 @@ void
 BootstrapToastTable(char *relName, Oid toastOid, Oid toastIndexOid)
 {
 	Relation	rel;
+	Oid         typid;
 
 	rel = heap_openrv(makeRangeVar(NULL, relName, -1), AccessExclusiveLock);
 
@@ -110,8 +111,29 @@ BootstrapToastTable(char *relName, Oid toastOid, Oid toastIndexOid)
 				 errmsg("\"%s\" is not a table",
 						relName)));
 
+	/* 
+	 * In order to be able to support upgrade we need to be able to
+	 * support toast tables with fixed oids.  Toast tables created
+	 * pre 4.0 can continue to be dynamic, but anything new must
+	 * be declared in pg_type.h and again here. 
+	 */
+	switch (toastOid)
+	{
+		/* New Toast Tables in 4.0 */
+		case PgFilespaceEntryToastTable:
+			typid = PG_FILESPACE_ENTRY_TOAST_RELTYPE_OID;
+			break;
+		case GpSegmentConfigToastTable:
+			typid = GP_SEGMENT_CONFIGURATION_TOAST_RELTYPE_OID;
+			break;
+			
+		default:
+			typid = InvalidOid;
+			break;
+	}
+
 	/* create_toast_table does all the work */
-	if (!create_toast_table(rel, toastOid, toastIndexOid, NULL, false))
+	if (!create_toast_table(rel, toastOid, toastIndexOid, &typid, false))
 		elog(ERROR, "\"%s\" does not require a toast table",
 			 relName);
 

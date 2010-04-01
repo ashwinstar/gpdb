@@ -405,11 +405,14 @@ DATA(insert ( 1700 1700 1703 i ));
  */
 DATA(insert (   27   20 6021 e ));
 
-/*
- * GP: Allow explicit cast between tid and aotid.
+/* 
+ * CASTS created after 3.x must have fixed oids otherwise upgrade will not work
+ * correctly. 
  */
-DATA(insert (	27 3300    0 e ));
-DATA(insert ( 3300	 27    0 e ));
+
+/* GP: Allow explicit cast between tid and aotid. */
+DATA(insert OID = 9901 (	27 3300    0 e ));
+DATA(insert OID = 9902 ( 3300	 27    0 e ));
 
 
 #endif   /* PG_CAST_H */

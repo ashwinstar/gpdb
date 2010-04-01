@@ -260,7 +260,7 @@ Boot_CreateStmt:
 								typid = PG_STAT_LAST_SHOPERATION_OID;
 								break;
 
-							/* Three new configuration tables in 3.4 */
+							/* Three new configuration tables in 4.0 */
 							case GpSanConfigRelationId:
 								typid = GP_SAN_CONFIG_RELTYPE_OID;
 								break;
@@ -271,7 +271,7 @@ Boot_CreateStmt:
 								typid = GP_SEGMENT_CONFIG_RELTYPE_OID;
 								break;
 
-							/* Four new tables in 3.4 for foreign data */
+							/* Four new tables in 4.0 for foreign data */
 							case ForeignDataWrapperRelationId:
 								typid = PG_FOREIGN_DATA_WRAPPER_OID;
 								break;
@@ -285,7 +285,7 @@ Boot_CreateStmt:
 								typid = PG_FOREIGN_TABLE_OID;
 								break;
 
-							/* new tables in 3.4 for persistent file ops */
+							/* new tables in 4.0 for persistent file ops */
 							case GpPersistentRelationNodeRelationId:
 								typid = GP_PERSISTENT_RELATION_NODE_OID;
 								break;
@@ -305,10 +305,12 @@ Boot_CreateStmt:
 								typid = GP_GLOBAL_SEQUENCE_OID;
 								break;
 
-							/* New table in 3.4 for AO index */
+							/* New table in 4.0 for AO index */
 							case FastSequenceRelationId:
 								typid = GP_FASTSEQUENCE_OID;
 								break;
+
+
 
 /* TIDYCAT_BEGIN_CODEGEN 
 */

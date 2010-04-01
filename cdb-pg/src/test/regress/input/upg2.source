@@ -118,6 +118,7 @@ create table public.gp_fastsequence(like pg_catalog.gp_fastsequence);
 create table public.gp_global_sequence(like pg_catalog.gp_global_sequence);
 create table public.gp_relation_node(like pg_catalog.gp_relation_node);
 create table public.gp_distribution_policy(like pg_catalog.gp_distribution_policy);
+create table public.sql_parts(like information_schema.sql_parts);
 
 -- indexes
 create unique index gp_configuration_content_definedprimary_index on public.gp_configuration(content, definedprimary);

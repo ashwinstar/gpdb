@@ -8,6 +8,22 @@ Greenplum logging facilities.
 This Module contains some helper functions for setting up the 
 python builtin logging module.  Tools and libraries are expected
 to centralize configuration of logging through these functions.
+
+Typical usage:
+
+  from gppylib import gplog
+
+  logger = gplog.setup_tool_logging(EXECNAME, hostname, username, logdir)
+
+  if options.verbose:
+    gplog.enable_verbose_logging()
+
+  if options.quiet:
+    gplog.quiet_stdout_logging()
+
+  logger.info("Start myTool")
+  ...
+
 '''
 import datetime
 import logging
@@ -15,78 +31,112 @@ import os
 import sys
 
 
-#evil global
-LOGGER=None
-DEFAULT_FORMATTER=None
-LITERAL_FORMATTER=None
-SOUT_HANDLER=None
-FILE_HANDLER=None
-
 #------------------------------- Public Interface --------------------------------
 def get_default_logger():
     """
-    Return a singleton logger.
+    Return the singleton default logger.
+
+    If a logger has not yet been established it creates one that:
+      - Logs output to stdout
+      - Does not setup file logging.
+
+    Typicial usage would be to call one of the setup_*_logging() functions
+    at the beginning of a script in order to establish the exact type of
+    logging desired, afterwhich later calls to get_default_logger() can be
+    used to return a reference to the logger.
     """
-    global LOGGER,SOUT_HANDLER
-    if LOGGER is None:
-        LOGGER = logging.getLogger('default')
-        f = get_default_formatter()
-        SOUT_HANDLER = logging.StreamHandler(sys.stdout)
-        SOUT_HANDLER.setFormatter(f)
-        LOGGER.addHandler(SOUT_HANDLER)
-        LOGGER.setLevel(logging.INFO)
-    return LOGGER
+    global _LOGGER, _SOUT_HANDLER
+    if _LOGGER is None:
+        _LOGGER = logging.getLogger('default')
+        f = _get_default_formatter()
+        _SOUT_HANDLER = logging.StreamHandler(sys.stdout)
+        _SOUT_HANDLER.setFormatter(f)
+        _LOGGER.addHandler(_SOUT_HANDLER)
+        _LOGGER.setLevel(logging.INFO)
+    return _LOGGER
 
 def get_unittest_logger():
-    global LOGGER, SOUT_HANDLER
-    if LOGGER is None:
-        LOGGER = logging.getLogger('default')
+    """
+    Returns a singleton logger for use by gppylib unittests:
+      - Does not setup stdout logging
+      - Logs output to a file named "unittest.log" in the current directory.
+
+    Much like get_default_logger, except that the default logger it creates
+    (if one does not already exist) is different.
+
+    Note: perhaps the interface for this should be cleaned up.  It would be
+    more consistent to gave a single get_default_logger() method and supply
+    a setup_unittest_logging() function.
+    """
+    global _LOGGER, _SOUT_HANDLER
+    if _LOGGER is None:
+        _LOGGER = logging.getLogger('default')
         filename="unittest.log"
-        set_file_logging(filename)
-    return LOGGER
+        _set_file_logging(filename)
+    return _LOGGER
 
 
 def setup_helper_tool_logging(appName,hostname,userName):
-    """ for cmd line utilities that get called by tools.  we want the same
-        log format but we dont want to log to ~/gpAdminLogs
+    """ 
+    Returns a singleton logger for use by helper tools:
+      - Logs output to stdout
+      - Does not log output to a file
     """
     logger = get_default_logger()
     logger.name="%s:%s" % (hostname,userName)
     return logger
 
 def setup_tool_logging(appName,hostname,userName,logdir=None,nonuser=False):
-    """ sets up the logging as per standard GP Tools should  """
+    """ 
+    Returns a singleton logger for standard Greenplum tools:
+      - Logs output to stdout
+      - Logs output to a file, typically in ~/gpAdminLogs 
+    """
     logger = get_default_logger()
     logger.name="%s:%s" % (hostname,userName)
     
     if nonuser:
         appName=appName + "_" + logger.name
-    enable_gpadmin_logging(appName,logdir)
+    _enable_gpadmin_logging(appName,logdir)
     return logger
 
 def enable_verbose_logging():
-    """ increases the log level to be verbose """
-    LOGGER.setLevel(logging.DEBUG)
+    """
+    Increases the log level to be verbose.
+     - Applies to all logging handlers (stdout/file).
+    """
+    _LOGGER.setLevel(logging.DEBUG)
 
 
 def quiet_stdout_logging():
-    """ reduce log level for stdout logging """
-    
-    #TODO:  this should ideally only quiet the stdout handler but still
-    #       log normally to the file handler.
-    global SOUT_HANDLER
-    SOUT_HANDLER.setLevel(logging.WARN)
+    """ 
+    Reduce log level for stdout logging 
+    """
+    global _SOUT_HANDLER
+    _SOUT_HANDLER.setLevel(logging.WARN)
 
 
 def logging_is_verbose():
-    return LOGGER.getEffectiveLevel() == logging.DEBUG    
+    """
+    Returns true if the logging level has been set to verbose
+    """
+    return _LOGGER.getEffectiveLevel() == logging.DEBUG    
     
 def logging_is_quiet():
-    return LOGGER.getEffectiveLevel() == logging.WARN
+    """
+    Returns true if the logging level has been set to quiet.
+    """
+    # Todo: Currently this checks the default LOGGER, the 
+    # quiet_stdout_logging() function only sets it on the stdout
+    # logging handler.   So typical usage will never return true.
+    return _LOGGER.getEffectiveLevel() == logging.WARN
 
 def get_logfile():
-    global FILENAME
-    return FILENAME
+    """
+    Returns the name of the file we are logging to, if any.
+    """
+    global _FILENAME
+    return _FILENAME
 
 def log_literal(logger, lvl, msg):
     """
@@ -98,21 +148,24 @@ def log_literal(logger, lvl, msg):
     """
     
     # We assume the logger is using the two global handlers
-    global SOUT_HANDLER
-    global FILE_HANDLER
+    global _SOUT_HANDLER
+    global _FILE_HANDLER
 
     # Switch to the literal formatter
-    f = get_literal_formatter()
-    SOUT_HANDLER.setFormatter(f)
-    FILE_HANDLER.setFormatter(f)
+    #
+    # Note: the logger may or may not actually make use of both formatters,
+    # but it is safe to always set both even if only one of them is used.
+    f = _get_literal_formatter()
+    _SOUT_HANDLER.setFormatter(f)
+    _FILE_HANDLER.setFormatter(f)
 
     # Log the message
     logger.log(lvl, msg)
     
     # Restore default formatter
-    f = get_default_formatter()
-    SOUT_HANDLER.setFormatter(f)
-    FILE_HANDLER.setFormatter(f)
+    f = _get_default_formatter()
+    _SOUT_HANDLER.setFormatter(f)
+    _FILE_HANDLER.setFormatter(f)
     
     return
     
@@ -120,28 +173,68 @@ def log_literal(logger, lvl, msg):
     
 #------------------------------- Private --------------------------------    
 
-def set_file_logging(filename): 
-    global LOGGER,SOUT_HANDLER,FILENAME,FILE_HANDLER
-    FILENAME=filename   
-    FILE_HANDLER = logging.FileHandler( filename, 'a')
-    FILE_HANDLER.setFormatter(get_default_formatter())
-    LOGGER.addHandler(FILE_HANDLER)
+#evil global
+_LOGGER=None
+_FILENAME=None
+_DEFAULT_FORMATTER=None
+_LITERAL_FORMATTER=None
+_SOUT_HANDLER=None
+_FILE_HANDLER=None
 
 
-def get_default_formatter():
-    global DEFAULT_FORMATTER
-    if DEFAULT_FORMATTER == None:
-        DEFAULT_FORMATTER = logging.Formatter("%(asctime)s:%(filename)s:%(name)s-[%(levelname)-s]:-%(message)s","%Y%m%d:%H:%M:%S")
-    return DEFAULT_FORMATTER
-
-def get_literal_formatter():
-    global LITERAL_FORMATTER
-    if LITERAL_FORMATTER == None:
-        LITERAL_FORMATTER = logging.Formatter()
-    return LITERAL_FORMATTER
+def _set_file_logging(filename): 
+    """
+    Establishes a file output HANDLER for the default formater.
     
-def enable_gpadmin_logging(name,logdir=None):
-    global FILE_HANDLER
+    NOTE: internal use only
+    """
+    global _LOGGER, _SOUT_HANDLER, _FILENAME, _FILE_HANDLER
+    _FILENAME=filename   
+    _FILE_HANDLER = logging.FileHandler( filename, 'a')
+    _FILE_HANDLER.setFormatter(_get_default_formatter())
+    _LOGGER.addHandler(_FILE_HANDLER)
+
+
+def _get_default_formatter():
+    """
+    Returns the default formatter, constructing it if needed.
+
+    The default formatter formats things using Greenplum standard logging:
+      <date>:<filename>:<hostname>:<username>:[LEVEL]:-message
+    
+    NOTE: internal use only
+    """
+
+    global _DEFAULT_FORMATTER
+    if _DEFAULT_FORMATTER == None:
+        _DEFAULT_FORMATTER = logging.Formatter(
+            "%(asctime)s:%(filename)s:%(name)s-[%(levelname)-s]:-%(message)s",
+            "%Y%m%d:%H:%M:%S")
+    return _DEFAULT_FORMATTER
+
+def _get_literal_formatter():
+    """
+    Returns the literal formatter, constructing it if needed.
+
+    The literal formatter formats the input string exactly as it was received.
+    It is only used by the log_literal() function.
+    
+    NOTE: internal use only
+    """
+    global _LITERAL_FORMATTER
+    if _LITERAL_FORMATTER == None:
+        _LITERAL_FORMATTER = logging.Formatter()
+    return _LITERAL_FORMATTER
+    
+def _enable_gpadmin_logging(name,logdir=None):
+    """
+    Sets up the file output handler for the default logger.
+      - if logdir is not specified it uses ~/gpAdminLogs
+      - the file is constructed as appended with "<logdir>/<name>_<date>.log"
+
+    NOTE: internal use only
+    """
+    global _FILE_HANDLER
         
     get_default_logger()
     now = datetime.date.today()
@@ -156,4 +249,4 @@ def enable_gpadmin_logging(name,logdir=None):
         os.mkdir(gpadmin_logs_dir)
     
     filename = "%s/%s_%s.log" % (gpadmin_logs_dir,name, now.strftime("%Y%m%d"))
-    set_file_logging(filename)
+    _set_file_logging(filename)

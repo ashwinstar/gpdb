@@ -132,6 +132,7 @@ done
 for dir in $INCLUDE_DIRS; do
     if [ -f "$dir/catalog/pg_namespace.h" ]; then
         PG_CATALOG_NAMESPACE=`grep '^#define[ 	]*PG_CATALOG_NAMESPACE' $dir/catalog/pg_namespace.h | $AWK '{ print $3 }'`
+        PG_TOAST_NAMESPACE=`grep '^#define[ 	]*PG_TOAST_NAMESPACE' $dir/catalog/pg_namespace.h | $AWK '{ print $3 }'`
         break
     fi
 done
@@ -171,6 +172,7 @@ sed -e "s/;[ 	]*$//g" \
     -e "s/PGUID/$BOOTSTRAP_SUPERUSERID/g" \
     -e "s/NAMEDATALEN/$NAMEDATALEN/g" \
     -e "s/PGNSP/$PG_CATALOG_NAMESPACE/g" \
+    -e "s/TOASTNSP/$PG_TOAST_NAMESPACE/g" \
 | $AWK '
 # ----------------
 #	now use awk to process remaining .h file..

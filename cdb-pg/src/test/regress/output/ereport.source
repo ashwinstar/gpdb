@@ -152,6 +152,7 @@ select * from get_ereport order by 1;
  aaaaa GP_IGNORE: daaj: ddaserver - @abs_builddir@/../../backend/postmaster/ddaserver.c
  aaaaa GP_IGNORE: daba: dbcommands - @abs_builddir@/../../backend/commands/dbcommands.c
  aaaaa GP_IGNORE: daba: dependency - @abs_builddir@/../../backend/catalog/dependency.c
+ aaaaa GP_IGNORE: daba: deprecated - @abs_builddir@/../../backend/utils/fmgr/deprecated.c
  aaaaa GP_IGNORE: eaae: elog - @abs_builddir@/../../backend/utils/error/elog.c
  aaaaa GP_IGNORE: eaag: encode - @abs_builddir@/../../backend/utils/adt/encode.c
  aaaaa GP_IGNORE: eaah: execami - @abs_builddir@/../../backend/executor/execAmi.c
@@ -2190,39 +2191,39 @@ select * from get_ereport order by 1;
  baag: bitmap:00000091:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
  baag: bitmap:00000092:  errmsg("oids for bitmap index "%s" do not exist", 
  baag: bitmap:00000093:  RelationGetRelationName(index)))); 
- baag: bufmgr:00000142:  ereport(ERROR, 
- baag: bufmgr:00000143:  (errmsg("Unable to set memory level to %d, error %d, block size %d, ptr %ld", protectionLevel, 
- baag: bufmgr:00000144:  errno, BLCKSZ, (long int) BufHdrGetBlock(bufHdr)))); 
- baag: bufmgr:00000301:  ereport(ERROR, 
- baag: bufmgr:00000302:  (errmsg("unexpected data beyond EOF in block %u of relation "%s"", 
- baag: bufmgr:00000303:  blockNum, RelationGetRelationName(reln)), 
- baag: bufmgr:00000304:  errhint("This has been seen to occur with buggy kernels; consider updating your system."))); 
- baag: bufmgr:00000374:  ereport(WARNING, 
- baag: bufmgr:00000375:  (errcode(ERRCODE_DATA_CORRUPTED), 
- baag: bufmgr:00000376:  errmsg("invalid page header in block %u of relation "%s"; zeroing out page", 
- baag: bufmgr:00000377:  blockNum, RelationGetRelationName(reln)))); 
- baag: bufmgr:00000381:  ereport(ERROR, 
- baag: bufmgr:00000382:  (errcode(ERRCODE_DATA_CORRUPTED), 
- baag: bufmgr:00000383:  errmsg("invalid page header in block %u of relation "%s"", 
- baag: bufmgr:00000384:  blockNum, RelationGetRelationName(reln)), 
- baag: bufmgr:00000385:  errSendAlert(true))); 
- baag: bufmgr:00000498:  ereport(WARNING, 
- baag: bufmgr:00000499:  (errcode(ERRCODE_DATA_CORRUPTED), 
- baag: bufmgr:00000500:  errmsg("invalid page header in block %u of relation ""; zeroing out page", 
- baag: bufmgr:00000501:  blockNum/*, relpath(reln->smgr_rnode)*/))); 
- baag: bufmgr:00000505:  ereport(ERROR, 
- baag: bufmgr:00000506:  (errcode(ERRCODE_DATA_CORRUPTED), 
- baag: bufmgr:00000507:  errmsg("invalid page header in block %u of relation """, 
- baag: bufmgr:00000508:  blockNum/*, relpath(reln->smgr_rnode)*/), 
- baag: bufmgr:00000509:  errSendAlert(true))); 
- baag: bufmgr:00002919:  ereport(WARNING, 
- baag: bufmgr:00002920:  (errcode(ERRCODE_IO_ERROR), 
- baag: bufmgr:00002921:  errmsg("could not write block %u of %u/%u/%u", 
- baag: bufmgr:00002922:  buf->tag.blockNum, 
- baag: bufmgr:00002923:  buf->tag.rnode.spcNode, 
- baag: bufmgr:00002924:  buf->tag.rnode.dbNode, 
- baag: bufmgr:00002925:  buf->tag.rnode.relNode), 
- baag: bufmgr:00002926:  errdetail("Multiple failures --- write error might be permanent."))); 
+ baag: bufmgr:00000122:  ereport(ERROR, 
+ baag: bufmgr:00000123:  (errmsg("Unable to set memory level to %d, error %d, block size %d, ptr %ld", protectionLevel, 
+ baag: bufmgr:00000124:  errno, BLCKSZ, (long int) BufHdrGetBlock(bufHdr)))); 
+ baag: bufmgr:00000281:  ereport(ERROR, 
+ baag: bufmgr:00000282:  (errmsg("unexpected data beyond EOF in block %u of relation "%s"", 
+ baag: bufmgr:00000283:  blockNum, RelationGetRelationName(reln)), 
+ baag: bufmgr:00000284:  errhint("This has been seen to occur with buggy kernels; consider updating your system."))); 
+ baag: bufmgr:00000354:  ereport(WARNING, 
+ baag: bufmgr:00000355:  (errcode(ERRCODE_DATA_CORRUPTED), 
+ baag: bufmgr:00000356:  errmsg("invalid page header in block %u of relation "%s"; zeroing out page", 
+ baag: bufmgr:00000357:  blockNum, RelationGetRelationName(reln)))); 
+ baag: bufmgr:00000361:  ereport(ERROR, 
+ baag: bufmgr:00000362:  (errcode(ERRCODE_DATA_CORRUPTED), 
+ baag: bufmgr:00000363:  errmsg("invalid page header in block %u of relation "%s"", 
+ baag: bufmgr:00000364:  blockNum, RelationGetRelationName(reln)), 
+ baag: bufmgr:00000365:  errSendAlert(true))); 
+ baag: bufmgr:00000478:  ereport(WARNING, 
+ baag: bufmgr:00000479:  (errcode(ERRCODE_DATA_CORRUPTED), 
+ baag: bufmgr:00000480:  errmsg("invalid page header in block %u of relation ""; zeroing out page", 
+ baag: bufmgr:00000481:  blockNum/*, relpath(reln->smgr_rnode)*/))); 
+ baag: bufmgr:00000485:  ereport(ERROR, 
+ baag: bufmgr:00000486:  (errcode(ERRCODE_DATA_CORRUPTED), 
+ baag: bufmgr:00000487:  errmsg("invalid page header in block %u of relation """, 
+ baag: bufmgr:00000488:  blockNum/*, relpath(reln->smgr_rnode)*/), 
+ baag: bufmgr:00000489:  errSendAlert(true))); 
+ baag: bufmgr:00002899:  ereport(WARNING, 
+ baag: bufmgr:00002900:  (errcode(ERRCODE_IO_ERROR), 
+ baag: bufmgr:00002901:  errmsg("could not write block %u of %u/%u/%u", 
+ baag: bufmgr:00002902:  buf->tag.blockNum, 
+ baag: bufmgr:00002903:  buf->tag.rnode.spcNode, 
+ baag: bufmgr:00002904:  buf->tag.rnode.dbNode, 
+ baag: bufmgr:00002905:  buf->tag.rnode.relNode), 
+ baag: bufmgr:00002906:  errdetail("Multiple failures --- write error might be permanent."))); 
  baah: backend:00000171:  ereport(ERROR, ( 
  baah: backend:00000172:  errcode(ERRCODE_INTERNAL_ERROR), 
  baah: backend:00000173:  errmsg("Unable to initialize java security"))); 
@@ -4073,17 +4074,17 @@ select * from get_ereport order by 1;
  cacb: cdbmirroredappendonly:00001019:  relpath(*relFileNode), 
  cacb: cdbmirroredappendonly:00001020:  relationName, 
  cacb: cdbmirroredappendonly:00001021:  strerror(primaryError)))); 
- cacb: cdbmirroredbufferpool:00000630:  ereport(ERROR, 
- cacb: cdbmirroredbufferpool:00000631:  (errcode_for_file_access(), 
- cacb: cdbmirroredbufferpool:00000632:  errmsg("could not seek in file to position %d in file "%s", segment file %d: %m", 
- cacb: cdbmirroredbufferpool:00000633:  position, 
- cacb: cdbmirroredbufferpool:00000634:  relpath(open->relFileNode), 
- cacb: cdbmirroredbufferpool:00000635:  open->segmentFileNum))); 
- cacb: cdbmirroredbufferpool:00000688:  ereport(ERROR, 
- cacb: cdbmirroredbufferpool:00000689:  (errcode_for_file_access(), 
- cacb: cdbmirroredbufferpool:00000690:  errmsg("could not seek in file to position %d in file "%s", segment file %d: %m", 
- cacb: cdbmirroredbufferpool:00000691:  position, 
- cacb: cdbmirroredbufferpool:00000692:  relpath(open->relFileNode), open->segmentFileNum))); 
+ cacb: cdbmirroredbufferpool:00000623:  ereport(ERROR, 
+ cacb: cdbmirroredbufferpool:00000624:  (errcode_for_file_access(), 
+ cacb: cdbmirroredbufferpool:00000625:  errmsg("could not seek in file to position %d in file "%s", segment file %d: %m", 
+ cacb: cdbmirroredbufferpool:00000626:  position, 
+ cacb: cdbmirroredbufferpool:00000627:  relpath(open->relFileNode), 
+ cacb: cdbmirroredbufferpool:00000628:  open->segmentFileNum))); 
+ cacb: cdbmirroredbufferpool:00000681:  ereport(ERROR, 
+ cacb: cdbmirroredbufferpool:00000682:  (errcode_for_file_access(), 
+ cacb: cdbmirroredbufferpool:00000683:  errmsg("could not seek in file to position %d in file "%s", segment file %d: %m", 
+ cacb: cdbmirroredbufferpool:00000684:  position, 
+ cacb: cdbmirroredbufferpool:00000685:  relpath(open->relFileNode), open->segmentFileNum))); 
  cacb: cdbmirroredfilesysobj:00000216:  ereport(ERROR, 
  cacb: cdbmirroredfilesysobj:00000217:  (errcode_for_file_access(), 
  cacb: cdbmirroredfilesysobj:00000218:  errmsg("could not create filespace directory %u: %s", 
@@ -5021,6 +5022,9 @@ select * from get_ereport order by 1;
  daba: dependency:00000930:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
  daba: dependency:00000931:  errmsg("cannot drop %s because it is required by the database system", 
  daba: dependency:00000932:  objDescription))); 
+ daba: deprecated:00000029:  ereport(ERROR, 
+ daba: deprecated:00000030:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ daba: deprecated:00000031:  errmsg("function %s has been deprecated", procName))); 
  eaae: elog:00000166:  ereport(ERROR, (errmsg_internal("errstart was not called")));  
  eaae: elog:00000167:  }  
  eaae: elog:00000168:  } while (0) 
@@ -14373,13 +14377,13 @@ select * from get_ereport order by 1;
  taah: tupdesc:00000552:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
  taah: tupdesc:00000553:  errmsg("column "%s" cannot be declared SETOF", 
  taah: tupdesc:00000554:  attname))); 
- taai: toasting:00000108:  ereport(ERROR, 
- taai: toasting:00000109:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- taai: toasting:00000110:  errmsg(""%s" is not a table", 
- taai: toasting:00000111:  relName))); 
- taai: toasting:00000155:  ereport(ERROR, 
- taai: toasting:00000156:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- taai: toasting:00000157:  errmsg("shared tables cannot be toasted after initdb"))); 
+ taai: toasting:00000109:  ereport(ERROR, 
+ taai: toasting:00000110:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ taai: toasting:00000111:  errmsg(""%s" is not a table", 
+ taai: toasting:00000112:  relName))); 
+ taai: toasting:00000177:  ereport(ERROR, 
+ taai: toasting:00000178:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ taai: toasting:00000179:  errmsg("shared tables cannot be toasted after initdb"))); 
  taai: twophase:00000238:  ereport(ERROR, 
  taai: twophase:00000239:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  taai: twophase:00000240:  errmsg("transaction identifier "%s" is too long (%d > %d max)", 
@@ -18137,6 +18141,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000076:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000077:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000078:  str))); 
-(18076 rows)
+(18080 rows)
 
 drop external table get_ereport;

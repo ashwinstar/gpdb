@@ -47,5 +47,6 @@ oid|proname|pronamespace|proowner|prolang|proisagg|prosecdef|proisstrict|prorets
 5045|pg_elog|11|10|12|f|f|t|f|i|2|2278|f|25 16|\N|\N|\N|pg_elog|-|\N
 7178|gp_persistent_build_db|11|10|12|f|f|f|f|v|1|23|f|16|\N|\N|\N|gp_persistent_build_db|-|\N
 9900|aocsvpinfo_decode|11|10|12|f|f|t|f|i|3|20|f|1562 23 23|\N|\N|\N|aocsvpinfo_decode|-|\N
+9997|gp_deprecated|11|10|12|f|f|f|f|i|0|2278|f||\N|\N|\N|gp_deprecated|-|\N
 9998|pg_objname_to_oid|11|10|12|f|f|t|f|i|1|26|f|25|\N|\N|\N|pg_objname_to_oid|-|\N
 \.

@@ -70,13 +70,19 @@ WHERE p1.oid != p2.oid AND
 -- have several entries with different pronames for the same internal function,
 -- but conflicts in the number of arguments (except in the case of window 
 -- functions) and other critical items should be complained of.  (We don't 
--- check data types here; see next query.) Note: ignore aggregate functions 
--- here, since they all point to the same dummy built-in function.
+-- check data types here; see next query.) 
+--
+-- Note: ignore aggregate functions here, since they all point to the same dummy
+-- built-in function.
+--
+-- Note: ignoring gp_deprecated here since the function ignores its parameters
+-- always errors and never returns a value.
 
 SELECT p1.oid, p1.proname, p2.oid, p2.proname
 FROM pg_proc AS p1, pg_proc AS p2
 WHERE p1.oid < p2.oid AND
     p1.prosrc = p2.prosrc AND
+	p1.prosrc NOT IN ('gp_deprecated') AND
     p1.prolang = 12 AND p2.prolang = 12 AND
     (p1.proisagg = false OR p2.proisagg = false) AND
     (p1.proiswin = false OR p1.proiswin = false) AND
@@ -98,89 +104,112 @@ WHERE p1.oid < p2.oid AND
 -- so treated.  Note that the expected output of this part of the test will
 -- need to be modified whenever new pairs of types are made binary-equivalent,
 -- or when new polymorphic built-in functions are added!
+--
 -- Note: ignore aggregate functions here, since they all point to the same
 -- dummy built-in function.
+--
+-- Note: ignoring gp_deprecated here since the function ignores its parameters
+-- always errors and never returns a value.
 
-SELECT DISTINCT p1.prorettype, p2.prorettype
+SELECT DISTINCT p1.prorettype::regtype, p2.prorettype::regtype
 FROM pg_proc AS p1, pg_proc AS p2
 WHERE p1.oid != p2.oid AND
     p1.prosrc = p2.prosrc AND
+	p1.prosrc NOT IN ('gp_deprecated') AND
     p1.prolang = 12 AND p2.prolang = 12 AND
     NOT p1.proisagg AND NOT p2.proisagg AND
     NOT p1.proiswin AND NOT p2.proiswin AND
     (p1.prorettype < p2.prorettype);
 
-SELECT DISTINCT p1.proargtypes[0], p2.proargtypes[0]
+SELECT DISTINCT p1.proargtypes[0]::regtype, p2.proargtypes[0]::regtype
 FROM pg_proc AS p1, pg_proc AS p2
 WHERE p1.oid != p2.oid AND
     p1.prosrc = p2.prosrc AND
+	p1.prosrc NOT IN ('gp_deprecated') AND
     p1.prolang = 12 AND p2.prolang = 12 AND
     NOT p1.proisagg AND NOT p2.proisagg AND
     NOT p1.proiswin AND NOT p2.proiswin AND
     (p1.proargtypes[0] < p2.proargtypes[0]);
 
-SELECT DISTINCT p1.proargtypes[1], p2.proargtypes[1]
+SELECT DISTINCT p1.proargtypes[1]::regtype, p2.proargtypes[1]::regtype
 FROM pg_proc AS p1, pg_proc AS p2
 WHERE p1.oid != p2.oid AND
     p1.prosrc = p2.prosrc AND
+	p1.prosrc NOT IN ('gp_deprecated') AND
     p1.prolang = 12 AND p2.prolang = 12 AND
     NOT p1.proisagg AND NOT p2.proisagg AND
     NOT p1.proiswin AND NOT p2.proiswin AND
     (p1.proargtypes[1] < p2.proargtypes[1]);
 
-SELECT DISTINCT p1.proargtypes[2], p2.proargtypes[2]
+SELECT DISTINCT p1.proargtypes[2]::regtype, p2.proargtypes[2]::regtype
 FROM pg_proc AS p1, pg_proc AS p2
 WHERE p1.oid != p2.oid AND
     p1.prosrc = p2.prosrc AND
+	p1.prosrc NOT IN ('gp_deprecated') AND
     p1.prolang = 12 AND p2.prolang = 12 AND
     NOT p1.proisagg AND NOT p2.proisagg AND
     NOT p1.proiswin AND NOT p2.proiswin AND
     (p1.proargtypes[2] < p2.proargtypes[2]);
 
-SELECT DISTINCT p1.proargtypes[3], p2.proargtypes[3]
+SELECT DISTINCT p1.proargtypes[3]::regtype, p2.proargtypes[3]::regtype
 FROM pg_proc AS p1, pg_proc AS p2
 WHERE p1.oid != p2.oid AND
     p1.prosrc = p2.prosrc AND
+	p1.prosrc NOT IN ('gp_deprecated') AND
     p1.prolang = 12 AND p2.prolang = 12 AND
     NOT p1.proisagg AND NOT p2.proisagg AND
     NOT p1.proiswin AND NOT p2.proiswin AND
     (p1.proargtypes[3] < p2.proargtypes[3]);
 
-SELECT DISTINCT p1.proargtypes[4], p2.proargtypes[4]
+SELECT DISTINCT p1.proargtypes[4]::regtype, p2.proargtypes[4]::regtype
 FROM pg_proc AS p1, pg_proc AS p2
 WHERE p1.oid != p2.oid AND
     p1.prosrc = p2.prosrc AND
+	p1.prosrc NOT IN ('gp_deprecated') AND
     p1.prolang = 12 AND p2.prolang = 12 AND
     NOT p1.proisagg AND NOT p2.proisagg AND
     NOT p1.proiswin AND NOT p2.proiswin AND
     (p1.proargtypes[4] < p2.proargtypes[4]);
 
-SELECT DISTINCT p1.proargtypes[5], p2.proargtypes[5]
+SELECT DISTINCT p1.proargtypes[5]::regtype, p2.proargtypes[5]::regtype
 FROM pg_proc AS p1, pg_proc AS p2
 WHERE p1.oid != p2.oid AND
     p1.prosrc = p2.prosrc AND
+	p1.prosrc NOT IN ('gp_deprecated') AND
     p1.prolang = 12 AND p2.prolang = 12 AND
     NOT p1.proisagg AND NOT p2.proisagg AND
     NOT p1.proiswin AND NOT p2.proiswin AND
     (p1.proargtypes[5] < p2.proargtypes[5]);
 
-SELECT DISTINCT p1.proargtypes[6], p2.proargtypes[6]
+SELECT DISTINCT p1.proargtypes[6]::regtype, p2.proargtypes[6]::regtype
 FROM pg_proc AS p1, pg_proc AS p2
 WHERE p1.oid != p2.oid AND
     p1.prosrc = p2.prosrc AND
+	p1.prosrc NOT IN ('gp_deprecated') AND
     p1.prolang = 12 AND p2.prolang = 12 AND
     NOT p1.proisagg AND NOT p2.proisagg AND
     NOT p1.proiswin AND NOT p2.proiswin AND
     (p1.proargtypes[6] < p2.proargtypes[6]);
 
-SELECT DISTINCT p1.proargtypes[7], p2.proargtypes[7]
+SELECT DISTINCT p1.proargtypes[7]::regtype, p2.proargtypes[7]::regtype
 FROM pg_proc AS p1, pg_proc AS p2
 WHERE p1.oid != p2.oid AND
     p1.prosrc = p2.prosrc AND
+	p1.prosrc NOT IN ('gp_deprecated') AND
     p1.prolang = 12 AND p2.prolang = 12 AND
     NOT p1.proisagg AND NOT p2.proisagg AND
     NOT p1.proiswin AND NOT p2.proiswin AND
     (p1.proargtypes[7] < p2.proargtypes[7]);
+
+-- The checks above only extend to the first 8 parameters, list any
+-- functions not checked.
+SELECT proname, pronargs 
+FROM pg_proc 
+WHERE pronargs > 8 and prolang = 12 AND
+	prosrc NOT IN ('gp_deprecated') AND
+    NOT proisagg AND 
+    NOT proiswin;
+
 
 -- Look for functions that return type "internal" and do not have any
 -- "internal" argument.  Such a function would be a security hole since
@@ -198,7 +227,7 @@ WHERE p1.prorettype = 'internal'::regtype AND NOT
 -- Catch bogus values in pg_cast columns (other than cases detected by
 -- oidjoins test).
 
-SELECT *
+SELECT castsource::regtype, casttarget::regtype, castfunc::regproc, castcontext
 FROM pg_cast c
 WHERE castsource = 0 OR casttarget = 0 OR castcontext NOT IN ('e', 'a', 'i');
 
@@ -206,11 +235,11 @@ WHERE castsource = 0 OR casttarget = 0 OR castcontext NOT IN ('e', 'a', 'i');
 -- (We assume they are length coercions if they take multiple arguments.)
 -- Such entries are not necessarily harmful, but they are useless.
 
-SELECT *
+SELECT castsource::regtype, casttarget::regtype, castfunc::regproc, castcontext
 FROM pg_cast c
 WHERE castsource = casttarget AND castfunc = 0;
 
-SELECT c.*
+SELECT castsource::regtype, casttarget::regtype, castfunc::regproc, castcontext
 FROM pg_cast c, pg_proc p
 WHERE c.castfunc = p.oid AND p.pronargs < 2 AND castsource = casttarget;
 
@@ -222,7 +251,7 @@ WHERE c.castfunc = p.oid AND p.pronargs < 2 AND castsource = casttarget;
 -- because CHAR(n)-to-TEXT normally invokes rtrim().  However, the results
 -- are the same, so long as the function is one that ignores trailing blanks.
 
-SELECT c.*
+SELECT castsource::regtype, casttarget::regtype, castfunc::regproc, castcontext
 FROM pg_cast c, pg_proc p
 WHERE c.castfunc = p.oid AND
     (p.pronargs < 1 OR p.pronargs > 3
@@ -231,7 +260,7 @@ WHERE c.castfunc = p.oid AND
                  p.proargtypes[0] = 'text'::regtype))
      OR NOT binary_coercible(p.prorettype, c.casttarget));
 
-SELECT c.*
+SELECT castsource::regtype, casttarget::regtype, castfunc::regproc, castcontext
 FROM pg_cast c, pg_proc p
 WHERE c.castfunc = p.oid AND
     ((p.pronargs > 1 AND p.proargtypes[1] != 'int4'::regtype) OR
@@ -247,7 +276,7 @@ WHERE c.castfunc = p.oid AND
 -- As of 8.2, this finds the cast from cidr to inet, because that is a
 -- trivial binary coercion while the other way goes through inet_to_cidr().
 
-SELECT *
+SELECT castsource::regtype, casttarget::regtype, castfunc::regproc, castcontext
 FROM pg_cast c
 WHERE c.castfunc = 0 AND
     NOT EXISTS (SELECT 1 FROM pg_cast k

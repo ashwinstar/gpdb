@@ -38,6 +38,103 @@
 #include "cdb/cdbdatabaseinfo.h"
 #include "utils/syscache.h"
 
+static void PersistentBuild_ScanGpPersistentRelationNodeForGlobal(
+	Relation 	gp_relation_node,
+
+	int64		*count)
+{
+	PersistentFileSysObjData *fileSysObjData;
+	PersistentFileSysObjSharedData	*fileSysObjSharedData;
+
+	PersistentStoreScan storeScan;
+	 
+	Datum values[Natts_gp_persistent_relation_node];
+	 
+	ItemPointerData persistentTid;
+	int64 persistentSerialNum;
+
+	PersistentFileSysObj_GetDataPtrs(
+								PersistentFsObjType_RelationFile,
+								&fileSysObjData,
+								&fileSysObjSharedData);
+		 
+	PersistentStore_BeginScan(
+						&fileSysObjData->storeData,
+						&fileSysObjSharedData->storeSharedData,
+						&storeScan);
+
+	while (PersistentStore_GetNext(
+							&storeScan,
+							values,
+							&persistentTid,
+							&persistentSerialNum))
+	{
+		RelFileNode 					relFileNode;
+		int32 							segmentFileNum;
+		
+		PersistentFileSysRelStorageMgr	relationStorageManager;
+		PersistentFileSysState			persistentState;
+		MirroredObjectExistenceState	mirrorExistenceState;
+		MirroredRelDataSynchronizationState mirrorDataSynchronizationState;
+		bool							mirrorBufpoolPhysicallyTruncated;
+		XLogRecPtr						mirrorBufpoolResyncCkptLoc;
+		BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
+		int64							mirrorAppendOnlyLossEof;
+		int64							mirrorAppendOnlyNewEof;
+		TransactionId					parentXid;
+		int64							serialNum;
+		ItemPointerData					previousFreeTid;
+		
+		PersistentFileSysObjName		fsObjName;
+
+		GpPersistentRelationNode_GetValues(
+										values,
+										&relFileNode.spcNode,
+										&relFileNode.dbNode,
+										&relFileNode.relNode,
+										&segmentFileNum,
+										&relationStorageManager,
+										&persistentState,
+										&mirrorExistenceState,
+										&mirrorDataSynchronizationState,
+										&mirrorBufpoolPhysicallyTruncated,
+										&mirrorBufpoolResyncCkptLoc,
+										&mirrorBufpoolResyncCkptBlockNum,
+										&mirrorAppendOnlyLossEof,
+										&mirrorAppendOnlyNewEof,
+										&parentXid,
+										&serialNum,
+										&previousFreeTid);
+
+		if (persistentState == PersistentFileSysState_Free)
+			continue;
+
+		PersistentFileSysObjName_SetRelationFile(
+											&fsObjName,
+											&relFileNode,
+											segmentFileNum);
+
+		if (relFileNode.spcNode != GLOBALTABLESPACE_OID)
+			continue;
+
+		if (relationStorageManager != PersistentFileSysRelStorageMgr_BufferPool)
+			elog(ERROR, "Only expecting global tables to be Buffer Pool managed");
+
+		InsertGpRelationNodeTuple(
+						gp_relation_node,
+						relFileNode.relNode, 	// pg_class OID
+						/* relationName */ NULL,	// Optional.
+						relFileNode.relNode,	// pg_class relfilenode
+						/* segmentFileNum */ 0,
+						&persistentTid,
+						persistentSerialNum);
+
+		(*count)++;
+	}
+
+	PersistentStore_EndScan(&storeScan);
+}
+
 static void PersistentBuild_PopulateGpRelationNode(
 	DatabaseInfo 	*info,
 
@@ -51,9 +148,6 @@ static void PersistentBuild_PopulateGpRelationNode(
 {
 	Relation gp_relation_node;
 	int r;
-
-	// UNDONE: Somehow UPGRADE needs to get mapping of Global tablespace objects
-	// UNDONE: to persistent information...
 
 	gp_relation_node = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
 
@@ -92,8 +186,6 @@ static void PersistentBuild_PopulateGpRelationNode(
 		if (relStorageMgr == PersistentFileSysRelStorageMgr_BufferPool)
 		{
 			
-			// UNDONE: Assume we have a synchronized mirrored segment pair
-			// UNDONE: If we have no, mirror we should use ~_MirrorNotConfigured
 			PersistentRelation_AddCreated(
 										&relFileNode,
 										/* segmentFileNum */ 0,
@@ -107,9 +199,6 @@ static void PersistentBuild_PopulateGpRelationNode(
 										&persistentSerialNum,
 										/* flushToXLog */ false);
 		
-			/*
-			 * Since we are using the direct open, we do not support indicies.
-			 */
 			InsertGpRelationNodeTuple(
 							gp_relation_node,
 							dbInfoRel->relationOid,	// pg_class OID
@@ -118,22 +207,58 @@ static void PersistentBuild_PopulateGpRelationNode(
 							/* segmentFileNum */ 0,
 							&persistentTid,
 							persistentSerialNum);
+			
 		}
 		else
 		{
-			int p;
+			int a;
+			bool foundSegmentFile0 = false;
 
-			for (p = 0; p < dbInfoRel->physicalSegmentFilesCount; p++)
+			for (a = 0; a < dbInfoRel->appendOnlyCatalogSegmentInfoCount; a++)
 			{
 				int32 segmentFileNum;
+				int64 eof;
 
-				segmentFileNum = dbInfoRel->physicalSegmentFiles[p].segmentFileNum;
+				segmentFileNum = dbInfoRel->appendOnlyCatalogSegmentInfo[a].segmentFileNum;
+				if (segmentFileNum == 0)
+					foundSegmentFile0 = true;
+				else if (eof == 0)
+					continue;	// Don't create empty segment files above #0.
+
+				eof = dbInfoRel->appendOnlyCatalogSegmentInfo[a].logicalEof;
 				
-				// UNDONE: Assume we have a synchronized mirrored segment pair
-				// UNDONE: If we have no, mirror we should use ~_MirrorNotConfigured
 				PersistentRelation_AddCreated(
 											&relFileNode,
 											segmentFileNum,
+											relStorageMgr,
+											mirrorExistenceState,
+											relDataSynchronizationState,
+											/* mirrorAppendOnlyLossEof */ eof,
+											/* mirrorAppendOnlyNewEof */ eof,
+											dbInfoRel->relname,
+											&persistentTid,
+											&persistentSerialNum,
+											/* flushToXLog */ false);
+				
+				InsertGpRelationNodeTuple(
+								gp_relation_node,
+								dbInfoRel->relationOid, // pg_class OID
+								dbInfoRel->relname,
+								relFileNode.relNode,	// pg_class relfilenode
+								segmentFileNum,
+								&persistentTid,
+								persistentSerialNum);
+				
+			}
+
+			if (!foundSegmentFile0)
+			{
+				/*
+				 * We always need segment file #0.  Add it as empty.
+				 */
+				PersistentRelation_AddCreated(
+											&relFileNode,
+											/* segmentFileNum */ 0,
 											relStorageMgr,
 											mirrorExistenceState,
 											relDataSynchronizationState,
@@ -144,21 +269,25 @@ static void PersistentBuild_PopulateGpRelationNode(
 											&persistentSerialNum,
 											/* flushToXLog */ false);
 				
-				/*
-				 * Since we are using the direct open, we do not support indicies.
-				 */
 				InsertGpRelationNodeTuple(
 								gp_relation_node,
 								dbInfoRel->relationOid, // pg_class OID
 								dbInfoRel->relname,
 								relFileNode.relNode,	// pg_class relfilenode
-								segmentFileNum,
+								/* segmentFileNum */ 0,
 								&persistentTid,
 								persistentSerialNum);
+				
 			}
 		}
-
 		(*count)++;
+	}
+
+	if (info->database != TemplateDbOid)
+	{
+		PersistentBuild_ScanGpPersistentRelationNodeForGlobal(
+														gp_relation_node,
+														count);
 	}
 
 	heap_close(gp_relation_node, RowExclusiveLock);
@@ -216,7 +345,7 @@ gp_persistent_build_db(PG_FUNCTION_ARGS)
 	info = DatabaseInfo_Collect(
 						MyDatabaseId,
 						defaultTablespace,
-						/* collectAppendOnlyCatalogSegmentInfo */ false);
+						/* collectAppendOnlyCatalogSegmentInfo */ true);
 
 	for (t = 0; t < info->tablespacesCount; t++)
 	{
