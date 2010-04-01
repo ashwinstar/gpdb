@@ -7,7 +7,6 @@ import copy
 import datetime
 import os
 import sys
-import socket
 import signal
 import traceback
 import pprint
@@ -16,7 +15,11 @@ from time import strftime, sleep
 from gppylib.commands.base import *
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
-from subprocess import Popen, PIPE
+
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "lib"))
+
+import lib.pysync
 
 try:
     from gppylib.commands.unix import *
@@ -40,6 +43,7 @@ except ImportError, e:
 #
 
 EXECNAME = os.path.split(__file__)[-1]
+FULL_EXECNAME = os.path.abspath( __file__ )
 
 DESCRIPTION = ("""Upgrades 3.3.x.x mirrors to 4.0 mirrors.""")
 
@@ -48,7 +52,51 @@ _help  = [""" TODO add help """]
 _usage = """ TODO add usage """
 
 TEN_MEG = 10485760
+TEN_GIG = 1024 * TEN_MEG
 
+INFO_DIR = "gpupgrademirrorinfodir"
+INFO_DIR_MINION = "gpupgrademirrorinfodirminion"
+
+PID_FILE = "gpupgrademirror.pid"
+
+
+#-------------------------------------------------------------------------------
+def sshBusy(cmd):
+    """ 
+      This funciton will check the results of a Command to see if ssh was too busy.
+      It will return False if the command completed, successfully or not, 
+      and a retry is not possible or necessary. 
+    """
+    retValue = False
+    results = cmd.get_results()
+    resultStr = results.printResult()
+    if results.rc != 0:
+       if resultStr.find("ssh_exchange_identification: Connection closed by remote host") != -1:
+          retValue = True
+       else:
+          retValue = False
+    else:
+       retValue = False
+    return retValue
+
+
+#-------------------------------------------------------------------------------
+def runAndCheckCommandComplete(cmd):
+    """ 
+      This function will run a Command and return False if ssh was too busy.
+      It will return True if the command completed, successfully or not, 
+      if ssh wasn't busy. 
+    """
+    retValue = True
+    cmd.run(validateAfter = False)
+    if sshBusy(cmd) == True:
+       """ Couldn't make the connection. put in a delay, and return"""
+       self.logger.debug("gpupgrademirror ssh is busy... need to retry the command: " + str(cmd))
+       time.sleep(1)
+       retValue = False
+    else:
+       retValue = True
+    return retValue
 
 
 #-------------------------------------------------------------------------------
@@ -74,7 +122,10 @@ def parseargs():
                       help='debug output.', default=False)
     parser.add_option('-h', '-?', '--help', action='help',
                         help='show this help message and exit.', default=False)
+    parser.add_option('-i', '--ids', default='',
+                      help='comma separated list of dbids for use in upgrade')
     parser.add_option('--usage', action="briefhelp")
+    
 
     """
      Parse the command line arguments
@@ -86,16 +137,18 @@ def parseargs():
         parser.exit()
 
     try:
-        options.master_data_directory = get_masterdatadir()
-        options.gphome = get_gphome()
+        if options.ids == None or len(options.ids) == 0:
+           options.info_data_directory = get_gphome() + '/' + INFO_DIR
+        else:
+           options.info_data_directory = get_gphome() + '/' + INFO_DIR_MINION 
     except GpError, msg:
         logger.error(msg)
         parser.exit()
 
-    if not os.path.exists(options.master_data_directory):
-         logger.error('Master data directory does not exist.')
-         parser.exit()
-
+    if not os.path.exists(options.info_data_directory):
+       MakeDirectory.local( name = 'gpupgrademirror make info dir: %s' % options.info_data_directory
+                          , directory = options.info_data_directory
+                          )
     return options, args
 
 #-------------------------------------------------------------------------------
@@ -108,10 +161,10 @@ def sig_handler(sig, arg):
 
 
 #-------------------------------------------------------------------------------
-def create_pid_file(master_data_directory):
+def create_pid_file(info_data_directory):
     """Creates gpupgradmirror pid file"""
     try:
-        fp = open(master_data_directory + '/gpupgrademirror.pid', 'w')
+        fp = open(info_data_directory + '/' + PID_FILE, 'w')
         fp.write(str(os.getpid()))
     except IOError:
         raise
@@ -120,26 +173,20 @@ def create_pid_file(master_data_directory):
 
 
 #-------------------------------------------------------------------------------
-def gpupgrademirror_status_file_exists(master_data_directory):
-    """Checks if gpupgrademirror.pid exists"""
-    return os.path.exists(master_data_directory + '/gpupgrademirror.status')
-
-
-#-------------------------------------------------------------------------------
-def remove_pid_file(master_data_directory):
+def remove_pid_file(info_data_directory):
     """Removes upgrademirror pid file"""
     try:
-        os.unlink(master_data_directory + '/gpupgrademirror.pid')
+        os.unlink(info_data_directory + '/' + PID_FILE)
     except:
         pass
 
 
 #-------------------------------------------------------------------------------
-def is_gpupgrademirror_running(master_data_directory):
+def is_gpupgrademirror_running(info_data_directory):
     """Checks if there is another instance of gpupgrademirror running"""
     is_running = False
     try:
-        fp = open(master_data_directory + '/gpupgrademirror.pid', 'r')
+        fp = open(info_data_directory + '/' + PID_FILE, 'r')
         pid = int(fp.readline().strip())
         fp.close()
         is_running = check_pid(pid)
@@ -174,7 +221,7 @@ class GPHostCache:
         
     #-------------------------------------------------------------------------------
     def __str__(self):   
-       tempStr = self.hostcache =  + str(self.hostcache) + '\n'
+       tempStr = "self.hostcache = " + str(self.hostcache) + '\n'
        return tempStr
         
     #-------------------------------------------------------------------------------
@@ -218,6 +265,159 @@ class GPHostCache:
                 retList.append(host)
 
 
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+class RelFileNodes():
+    """ This class represents a complete set of tables and dependencies for a given segment. """
+    """ WARNING: This class isn't currently used, so it is not tested. Beware...."""
+
+    def __init__(self, logger, mirrorInfo, database_list):
+        self.info_data_directory = mirrorInfo.mirror_dbid
+        self.mirrorInfo = mirrorInfo
+        self.databaseList = database_list
+        self.tableRelFileList = []
+        
+    #-------------------------------------------------------------------------------    
+    def __str__(self): 
+        retValue = ''
+         
+        for tableFileList in self.tableRelFileList:
+            tempStr = ':'.join(tableFileList)
+            retValue = retValue + tempStr + '\n'
+        return retValue
+        
+#   #-------------------------------------------------------------------------------            
+    def __repr__(self):
+        return self.__str__()
+        
+    #-------------------------------------------------------------------------------
+    def setup(self):
+        
+        """ Connect to each database on the segment, and get its list of tables and table dependencies. """
+        for db in self.databaseList:
+           if db.databaseName == "template0":
+              continue
+           segmentURL = dbconn.DbURL( hostname = self.mirrorInfo.primary_host
+                                    , port = self.mirrorInfo.primary_host_port
+                                    , dbname = db.databaseName 
+                                    )
+           conn   = dbconn.connect( dburl   = segmentURL
+                                  , utility = True
+                                  )
+           
+           tablesCursor = dbconn.execSQL(conn, TableRelFileNodesRow.query())
+           aTable = []
+           for row in tablesCursor:
+               aTable = []
+               """ KAS need to added code to look for *.1, *.2 files for this table """
+               tableRelRow = TableRelFileNodesRow(row)
+               aTable.append(str(db.databaseDirectory) + '/' + str(tableRelRow.table_file))
+               if tableRelRow.toast_file != None:
+                  aTable.append(str(db.databaseDirectory) + '/' + str(tableRelRow.toast_file))
+               if tableRelRow.toast_index_file != None:
+                  aTable.append(str(db.databaseDirectory) + '/' + str(tableRelRow.toast_index_file))
+               if tableRelRow.ao_file != None:            
+                  aTable.append(str(db.databaseDirectory) + '/' + str(tableRelRow.ao_file))
+               if tableRelRow.ao_index_file != None:
+                  aTable.append(str(db.databaseDirectory) + '/' + str(tableRelRow.ao_index_file))
+               indexesCursor = dbconn.execSQL(conn, TableIndexRow.query(str(tableRelRow.table_file_oid)))
+               """ KAS note to self. Do I need to worry about *.1, *.2... files? """
+               for indexRow in indexesCursor:
+                   indexEntry = TableIndexRow(indexRow)
+                   aTable.append(str(db.databaseDirectory) + '/' + str(indexEntry.relfilenode))
+               self.tableRelFileList.append(aTable)
+           conn.close()
+
+   #-------------------------------------------------------------------------------
+    def _read_rel_file_node_file(self):
+        """Reads in an existing relfile node file"""
+        self.logger.debug("Trying to read in a pre-existing relfile node file")
+        try:
+            self._fp = open(self._rel_file_node_filename, 'r')
+            self._fp.seek(0)
+
+            for line in self._fp:
+                tableFileList = line.split(':')
+                tableRelFileList.append(tableFileList)
+                
+        except IOErrormm, e:
+           logger.error('Unable to read relfile node file: ' + str(e))
+           logger.error('gpupgradmirror exiting')
+           exit(1)
+
+   #-------------------------------------------------------------------------------
+    def create_rel_file_node_file(self):
+        """Creates a new gpupgrademirror relfile node file"""
+        try:                
+            self._fp = open(self._rel_file_node_filename, 'w')
+        except IOError, e:
+            logging.error('Unable to create relfile node file %s.' % self._rel_file_node_filename)
+            raise e
+
+   #-------------------------------------------------------------------------------
+    def remove_rel_file_node_file(self):
+        """Closes and removes the gpupgrademirror relfile node file"""
+        if self._fp:
+            self._fp.close()
+            self._fp = None
+        if os.path.exists(self._rel_file_node_filename):
+            os.unlink(self._rel_file_node_filename)
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+
+class TableRelFileNodesRow:
+
+    def __init__(self, row):
+        self.table_file_oid   = row[0]
+        self.table_file       = row[1]
+        self.toast_file       = row[2]
+        self.toast_index_file = row[3]
+        self.ao_file          = row[4]
+        self.ao_index_file    = row[5]
+        
+    #-------------------------------------------------------------------------------
+    @staticmethod
+    def query():    
+        exeSql = """SELECT 
+            t1.oid         AS table_file_oid 
+          , t1.relfilenode AS table_file
+          , t2.relfilenode AS toast_file
+          , t3.relfilenode AS toast_index_file
+          ,    t4.relfilenode AS ao_file
+          ,    t5.relfilenode AS ao_index_file
+           FROM    (((pg_class AS t1 left outer join pg_class AS t2 ON t2.oid = t1.reltoastrelid)
+              left outer join  pg_class AS t3 ON t3.oid = t2.reltoastidxid)
+                  left outer join pg_class AS    t4 ON t4.oid = t1.relaosegrelid)
+                    left outer join pg_class AS t5 ON    t5.oid = t4.relaosegidxid
+           WHERE   t1.relkind = 'r' or t1.relkind = 'x'
+           ORDER BY t1.relfilenode
+        """
+
+        return exeSql
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+
+class TableIndexRow:
+
+    def __init__(self, row):
+        self.relfilenode       = row[0]
+
+        
+#-------------------------------------------------------------------------------
+    @staticmethod
+    def query(table_oid):
+        exeSql = """ SELECT t2.relfilenode
+                     FROM   pg_catalog.pg_index AS t1
+                             INNER JOIN
+                            pg_catalog.pg_class AS t2
+                     ON     t1.indexrelid = t2.oid
+                     WHERE  t1.indrelid = """ + str(table_oid)
+
+        return exeSql
 
 
 #-------------------------------------------------------------------------------
@@ -226,15 +426,16 @@ class MirrorNICRow:
     
     def __init__(self, row):
         self.nic = row[0]
+        self.dbid = row[1]
 
     #-------------------------------------------------------------------------------
     @staticmethod
     def query():
         if options.phase2 == False:
-           exeStr = '''  SELECT DISTINCT  hostname as nicaddress
-                         FROM             pg_catalog.gp_configuration
-                         WHERE            isprimary = 'f'
-                         ORDER BY         hostname '''
+           exeStr = '''  SELECT    hostname as nicaddress, dbid
+                         FROM      pg_catalog.gp_configuration
+                         WHERE     isprimary = 'f'
+                         ORDER BY  hostname '''
         else:
            raise Exception('Internal Error. MirrorNICRow.qurey only for 3.x systems.')           
         return exeStr
@@ -246,6 +447,7 @@ class MirrorHostsRow:
     
     def __init__(self, row):
         self.hostname = row[0]
+        self.dbid     = row[1]
 
     #-------------------------------------------------------------------------------
     @staticmethod
@@ -253,10 +455,10 @@ class MirrorHostsRow:
         if options.phase2 == False:
            raise Exception('Internal Error. MirrorHostsRow.qurey only for 3.3.x systems.')
         else:
-           exeStr = ''' SELECT DISTINCT hostname 
-                        FROM            pg_catalog.gp_segment_configuration
-                        WHERE           role = 'm'
-                        ORDER BY        hostname '''
+           exeStr = ''' SELECT      hostname, dbid 
+                        FROM        pg_catalog.gp_segment_configuration
+                        WHERE       role = 'm'
+                        ORDER BY    hostname '''
         return exeStr
 
 
@@ -266,12 +468,15 @@ class MirrorHostInfoRow:
     
     def __init__(self, row):
         self.mirror_host            = row[0]
-        self.primary_host           = row[1]
-        self.primary_data_directory = row[2]
-        self.mirror_data_directory  = row[3]
-        self.dbid                   = row[4]
+        self.mirror_host_port       = row[1]
+        self.primary_host           = row[2]
+        self.primary_host_port      = row[3]
+        self.primary_data_directory = row[4]
+        self.mirror_data_directory  = row[5]
+        self.mirror_dbid            = row[6]
+        self.primary_dbid           = row[7]
         if options.phase2 == True:
-           self.nic_address = row[5]
+           self.nic_address = row[8]
 
     #-------------------------------------------------------------------------------
     def __repr__(self):
@@ -280,10 +485,13 @@ class MirrorHostInfoRow:
     #-------------------------------------------------------------------------------
     def __str__(self):  
         tempStr = 'mirror_host='            + str(self.mirror_host)            + '\n' \
+        +         'mirror_host_port='       + str(self.mirror_host_port)       + '\n' \
         +         'primary_host='           + str(self.primary_host)           + '\n' \
+        +         'primary_host_port='      + str(self.primary_host_port)      + '\n' \
         +         'primary_data_directory=' + str(self.primary_data_directory) + '\n' \
         +         'mirror_data_directory='  + str(self.mirror_data_directory)  + '\n' \
-        +         'dbid='                   + str(self.dbid)                   + '\n'
+        +         'mirror_dbid='            + str(self.mirror_dbid)            + '\n' \
+        +         'primary_dbid='           + str(self.primary_dbid)           + '\n'
         if options.phase2 == True:
            tempStr = tempStr + 'nic_address='   + str(self.nic_address)        + '\n' 
         return tempStr
@@ -301,13 +509,17 @@ class MirrorHostInfoRow:
             fp = open(nvFileName,'r')
             fp.seek(0)
 
+            if options.phase2 == True:
+              colsPerRow = 9
+            else:
+              colsPerRow = 8
             index = 0
             row = []
             for line in fp:
                 (name, value) = line.strip().rsplit('=', 1)
                 row.append(value)
                 index = index + 1
-                if index == 5:     
+                if index == colsPerRow:     
                    retList.append(MirrorHostInfoRow(row))
                    row = []
                    index = 0
@@ -344,10 +556,13 @@ class MirrorHostInfoRow:
     def query():     
         if options.phase2 == False:
            exeStr =  '''SELECT         t2.hostname as mirror_host
+                                     , t2.port     as mirror_host_port
                                      , t1.hostname as primary_host
+                                     , t1.port     as primary_host_port
                                      , t1.datadir  as primary_data_directory
                                      , t2.datadir  as mirror_data_directory
-                                     , t2.dbid     as dbid
+                                     , t2.dbid     as mirror_dbid
+                                     , t1.dbid     as primary_dbid
                                 FROM   pg_catalog.gp_configuration as t1 
                                         INNER JOIN  
                                        pg_catalog.gp_configuration as t2 
@@ -359,10 +574,13 @@ class MirrorHostInfoRow:
                                 ORDER BY  primary_host '''
         else: 
            exeStr = """SELECT          t2.hostname as mirror_host
+                                     , t2.port     as mirror_host_port
                                      , t1.hostname as primary_host
+                                     , t1.port     as primary_host_port
                                      , t3.fselocation  as primary_data_directory
                                      , t4.fselocation  as mirror_data_directory
-                                     , t2.dbid     as dbid
+                                     , t2.dbid     as mirror_dbid
+                                     , t1.dbid     as primary_dbid
                                      , t2.address as nic_address
                             FROM   ((pg_catalog.gp_segment_configuration as t1
                                       INNER JOIN
@@ -440,7 +658,7 @@ class Phase1MirrorInfo:
 
     def __init__(self, url = None):
         self.dbUrl = url
-        self.mirrorInfoFile = options.master_data_directory + '/' + 'gpupgrademirror.mirrorinfo'
+        self.mirrorInfoFile = options.info_data_directory + '/' + 'gpupgrademirror.mirrorinfo'
         self.mirrorNodeList = []
         self.allMirrorInfoList = []
         self.gpHostCacheInfo = GPHostCache()
@@ -469,13 +687,16 @@ class Phase1MirrorInfo:
               mirrorNodeCursor = dbconn.execSQL(conn, MirrorHostsRow.query())
               for row in mirrorNodeCursor:
                   mirror = MirrorHostsRow(row)
-                  self.mirrorNodeList.append(mirror.hostname)
+                  if len(options.ids) == 0 or str(mirror.dbid) in options.ids:
+                     if mirror.hostname not in self.mirrorNodeList:
+                        self.mirrorNodeList.append(mirror.hostname)
 
-                  ''' Get info on mirror segments for this host'''
-                  mirrorSegInfoCursor = dbconn.execSQL(conn, MirrorHostInfoRow.query() % mirror.hostname)
-                  for mirrorInfoRow in mirrorSegInfoCursor:
-                      mirrorInfo = MirrorHostInfoRow(mirrorInfoRow)
-                      self.allMirrorInfoList.append(mirrorInfo)
+                        ''' Get info on mirror segments for this host'''
+                        mirrorSegInfoCursor = dbconn.execSQL(conn, MirrorHostInfoRow.query() % mirror.hostname)
+                        for mirrorInfoRow in mirrorSegInfoCursor:
+                            mirrorInfo = MirrorHostInfoRow(mirrorInfoRow)
+                            if len(options.ids) == 0 or str(mirrorInfo.mirror_dbid) in options.ids:
+                               self.allMirrorInfoList.append(mirrorInfo)
            else:
               ''' We are in phase1              '''
               ''' Get a list of all mirror NICs '''
@@ -488,7 +709,8 @@ class Phase1MirrorInfo:
                   if host in self.mirrorNodeList:
                      pass
                   else:
-                     self.mirrorNodeList.append(host)
+                     if len(options.ids) == 0 or str(nicRow.dbid) in options.ids:
+                        self.mirrorNodeList.append(host)
            
               for nodeName in self.mirrorNodeList:
                   ''' for each node, use its NICs to find its segments '''
@@ -498,7 +720,8 @@ class Phase1MirrorInfo:
                      mirrorSegInfoCursor = dbconn.execSQL(conn, MirrorHostInfoRow.query() % nic)
                      for mirrorInfoRow in mirrorSegInfoCursor:
                          mirrorInfo = MirrorHostInfoRow(mirrorInfoRow)
-                         self.allMirrorInfoList.append(mirrorInfo)
+                         if len(options.ids) == 0 or str(mirrorInfo.mirror_dbid) in options.ids:
+                            self.allMirrorInfoList.append(mirrorInfo)
 
            if conn != None:
               conn.close()  
@@ -540,11 +763,30 @@ class Phase1MirrorInfo:
         
         return retList
 
+    #-------------------------------------------------------------------------------
+    def getInterfaceList(self, node_name):
+        retList = []
+        
+        if options.phase2 == True:
+           for mirrorSeg in self.allMirrorInfoList:
+               if mirrorSeg.mirror_host == node_name:
+                  retList.append(mirrorSeg.nic_address)
+        else:
+           allHostCacheInterfaces = self.gpHostCacheInfo.getInterfaces(node_name)
+           """ The host cache contains entries that are not actual nics, so """
+           """ we must only return the real nics that are referenced from   """
+           """ from the database cluster.                                   """                        
+           for interface in allHostCacheInterfaces:
+               for seg in self.allMirrorInfoList:
+                   if seg.mirror_host not in retList and interface == seg.mirror_host:
+                       retList.append(interface)
+           
+        return retList
 
     #-------------------------------------------------------------------------------
     @staticmethod
     def getMirrorInfoFile():
-        return options.master_data_directory + '/' + 'gpupgrademirror.mirrorinfo'
+        return options.info_data_directory + '/' + 'gpupgrademirror.mirrorinfo'
 
 
     #-------------------------------------------------------------------------------
@@ -555,6 +797,64 @@ class Phase1MirrorInfo:
         except:
            pass
            
+
+
+#-------------------------------------------------------------------------
+#-------------------------------------------------------------------------                    
+class MakeDirectoryWithMode(Command):
+    
+    def __init__(self,name,directory,ctxt=LOCAL,remoteHost=None,mode=None):        
+        self.directory=directory
+        if mode == None:
+            pMode = ''
+        else:
+            pMode = "-m " + str(mode)
+        cmdStr="%s -p %s %s" % (findCmdInPath('mkdir'),pMode,directory)
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+    
+    @staticmethod
+    def local(name,directory,mode=None):    
+        mkdirCmd=MakeDirectoryWithMode(name,directory,mode = mode)
+        mkdirCmd.run(validateAfter=True)
+            
+    @staticmethod
+    def remote(name,remote_host,directory,mode=None):
+        mkdirCmd=MakeDirectoryWithMode(name,directory,ctxt=REMOTE,remoteHost=remote_host,mode=mode)
+        mkdirCmd.run(validateAfter=True)
+
+
+#-------------------------------------------------------------------------
+#-------------------------------------------------------------------------                    
+class CreateDirIfNecessaryWithMode(Command):
+    def __init__(self,name,directory,ctxt=LOCAL,remoteHost=None,mode=None):
+        if mode == None:
+           cmdStr="""python -c "import os; os.mkdir('%s')" """ % (directory)
+        else:
+           if len(str(mode)) != 4:
+               raise Exception("Internal error: os.mkdir mode parameter must have length of 4")
+           pythonPg = """\"\"\"import os
+if os.path.exists('%s') == False:
+  os.mkdir('%s', %s)\"\"\"
+""" % (directory, directory, str(mode))
+           cmdStr = """python -c %s""" % pythonPg
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+        
+    @staticmethod
+    def remote(name,remote_host,directory,mode=None):
+        cmd=CreateDirIfNecessaryWithMode(name,directory,ctxt=REMOTE,remoteHost=remote_host,mode=mode)
+        cmd.run(validateAfter=False)
+                
+
+#-------------------------------------------------------------------------
+#-------------------------------------------------------------------------                    
+class RemoteCopyPreserve(Command):
+    def __init__(self,name,srcDirectory,dstHost,dstDirectory,ctxt=LOCAL,remoteHost=None):
+        self.srcDirectory=srcDirectory
+        self.dstHost=dstHost
+        self.dstDirectory=dstDirectory        
+        cmdStr="%s -rp %s %s:%s" % (findCmdInPath('scp'),srcDirectory,dstHost,dstDirectory)
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
 
 #-------------------------------------------------------------------------
 #-------------------------------------------------------------------------                    
@@ -569,6 +869,9 @@ class GPumDiskFree(Command):
         if options.phase2 == False and isinstance(SYSTEM, SolarisPlatform):
            """ This is a work around for a bug in 3.3.x (see MPP-6647) """
            dfCommand = dfCommand + 'k'
+        if options.phase2 == False and isinstance(SYSTEM, LinuxPlatform):
+           """ This is a work around for a bug in 3.3.x (see MPP-6647) """
+           dfCommand = dfCommand + 'Pk'
         cmdStr="%s %s" % (dfCommand,directory)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
@@ -595,6 +898,22 @@ class GPumDiskFree(Command):
 
 #-------------------------------------------------------------------------
 #-------------------------------------------------------------------------                                                       
+class CreateHardLink(Command):
+    """ This class create a hard link or links. """
+
+    def __init__(self, name, srcFile, softLink, ctxt = LOCAL, remoteHost = None, argsFile = None):
+        if argsFile == None:
+           self.srcFile = srcFile
+           self.softLink = softLink
+           cmdStr="%s %s %s" % (findCmdInPath('ln'), srcFile, softLink)
+           Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+        else:
+           cmdStr="%s %s | %s -n 2 %s" % (findCmdInPath("cat"), argsFile, findCmdInPath("xargs"), findCmdInPath('ln'))
+           Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+           
+
+#-------------------------------------------------------------------------
+#-------------------------------------------------------------------------                                                       
 class GPumMoveDirectory(Command):
     """ This class moves a local directory."""
 
@@ -603,7 +922,7 @@ class GPumMoveDirectory(Command):
         self.dstDirectory=dstDirectory
         cmdStr="%s -f %s %s" % (findCmdInPath('mv'),srcDirectory,dstDirectory)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
-
+        
 
 #-------------------------------------------------------------------------
 #-------------------------------------------------------------------------                                                       
@@ -630,6 +949,409 @@ class FileDirectoryList(Command):
     
     
 #-------------------------------------------------------------------------
+#-------------------------------------------------------------------------                                                       
+class FileAndSize(Command):
+    """ This method gets a list of files in a directory and their sizes in k-bytes """
+
+    def __init__(self, name, filePattern, ctxt=LOCAL, remoteHost=None, zeroSize=False):
+        self.filePattern = filePattern
+        if zeroSize == True:
+           sizeArg = "-size 0c"
+        else:
+           sizeArg = ''
+        find  = findCmdInPath('find')
+        xargs = findCmdInPath('xargs')
+        du    = findCmdInPath('du') 
+        sort  = findCmdInPath('sort')
+        cmdStr= "%s %s -type f %s | %s %s -k | %s -n" % (find, filePattern, sizeArg, xargs, du, sort)            
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
+    @staticmethod
+    def get_list(name, remote_host, file_pattern):
+        theCmd = FileAndSize(name, filePattern = file_pattern, ctxt = REMOTE, remoteHost = remote_host)
+        theCmd.run(validateAfter=False)
+        return theCmd.get_result_list()
+    
+    def get_result_list(self):
+        retList = []
+        fileList = self.results.stdout.split('\n')
+        if fileList != None and len(fileList) > 0 and fileList[-1] == '':
+           ''' Remove any trailing empty string '''
+           fileList.pop()
+        for file in fileList:
+            retList.append(file.split())
+        return retList
+    
+#-------------------------------------------------------------------------
+#-------------------------------------------------------------------------                                                       
+class DirectoryList(Command):
+    """ This method gets a list of top level directories in a directory  """
+
+    def __init__(self, name, dirLocation, ctxt=LOCAL, remoteHost=None):
+        self.dirLocation = dirLocation
+        find  = findCmdInPath('find')
+        sort  = findCmdInPath('sort')
+        cmdStr= "%s %s -type d | %s " % (find, dirLocation, sort)         
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
+    @staticmethod
+    def get_list(name, remote_host, dir_location):
+        theCmd = DirectoryList(name, dirLocation = dir_location, ctxt = REMOTE, remoteHost = remote_host)
+        theCmd.run(validateAfter=False)
+        return theCmd.get_result_list()
+    
+    def get_result_list(self):
+        dirList = self.results.stdout.split('\n')
+        if dirList != None and len(dirList) > 0 and dirList[-1] == '':
+           ''' Remove any trailing empty string '''
+           dirList.pop()
+        if dirList != None and len(dirList) > 0:
+            ''' The first element is the dirLcation itself. Remove it'''
+            dirList.pop(0)
+        return dirList 
+    
+#-------------------------------------------------------------------------
+#-------------------------------------------------------------------------    
+class SegHardLinks(Command):
+    """ 
+      This class will generate groups of hard links to files in a segment directory.
+      The overall design is to create a new temporary directory "softbase", which
+      will contain a many to one relationship between its sub-directories and
+      the real database directories (e.g. softbase/1.1, softbase/1.2 both contian
+      links that point to base/1 files).
+      
+      We will special case any file that has zero length. This is becau
+      
+    """
+    
+    _max_files_per_pysync = 500
+    _max_size_kb_per_pysync  = 50000
+
+    def __init__(self, mirror_info, logger):
+        logger.debug("in SegHardLinks__init__()")
+        self.logger = logger
+        self.theMirror = mirror_info
+        self.softBaseDir = self.theMirror.primary_data_directory + '/softbase'
+        
+    #-------------------------------------------------------------------------------
+    def createLinks(self):
+        self.logger.debug('in SegHardLinks.createLinks()')
+                
+        """ thetemplate
+        cmdComplete = False
+        while cmdComplete == False:
+            Cmd = 
+            cmdComplete = runAndCheckCommandComplete(
+        Cmd.validate()
+        """
+        
+        """ Get list of directories under base (i.e. the database directories) """
+        cmdComplete = False
+        while cmdComplete == False:
+           baseDir = DirectoryList( name = "gpupgrademirror get directory list under base for primary seg: " + str(self.theMirror.primary_dbid)
+                                  , dirLocation = self.theMirror.primary_data_directory + '/base' 
+                                  , ctxt = REMOTE
+                                  , remoteHost = self.theMirror.primary_host
+                                  )
+           cmdComplete = runAndCheckCommandComplete(baseDir)
+        baseDir.validate()   
+        dirResultList = baseDir.get_result_list()
+        
+        """ Create a directory to store all our links to the actual files """
+        cmdComplete = False
+        while cmdComplete == False:
+           rmCmd = MakeDirectoryWithMode( name = 'gpupgrademirror make soft base: %s' % self.softBaseDir
+                             , directory = self.softBaseDir
+                             , ctxt = REMOTE
+                             , remoteHost = self.theMirror.primary_host
+                             , mode = 700
+                             )
+           cmdComplete = runAndCheckCommandComplete(rmCmd)
+        rmCmd.validate()
+        
+        for dir in dirResultList:
+            """ For each database directory """
+            self.logger.debug("working on dir " + str(dir))
+            
+            """ Get a list of all files in the dir and their sizes in k-bytes """
+            cmdComplete = False
+            while cmdComplete == False:
+               dirFileSizeAll = FileAndSize( name = 'gpupgradmirror get list of files and size in database dir'
+                                     , filePattern = str(dir)
+                                     , ctxt = REMOTE
+                                     , remoteHost = self.theMirror.primary_host
+                                     )
+               cmdComplete = runAndCheckCommandComplete(dirFileSizeAll)
+            dirFileSizeAll.validate()
+            dbFileListAll = dirFileSizeAll.get_result_list()
+            
+            """ Get a sub-list of files that have zero length """ 
+            cmdComplete = False
+            while cmdComplete == False:
+               dirFileSizeZero = FileAndSize( name = 'gpupgradmirror get list of files and size in database dir'
+                                     , filePattern = str(dir)
+                                     , ctxt = REMOTE
+                                     , remoteHost = self.theMirror.primary_host
+                                     , zeroSize = True
+                                     )
+               cmdComplete = runAndCheckCommandComplete(dirFileSizeZero)
+            dirFileSizeZero.validate()           
+            dbFileListZero = dirFileSizeZero.get_result_list()
+            dbFileListZeroLength = len(dbFileListZero) 
+               
+            """ Divide the two lists into distinct sub-lists """   
+            for fileSize in dbFileListZero:
+                dbFileListAll.remove(fileSize)
+            
+            
+            """ Recombine the lists, putting the zero length file list on the front """
+            dbFileList = dbFileListZero + dbFileListAll
+
+            newDirSuffix = 0
+            fileIndex    = 0
+            dirIndex = dir.rfind('/')
+            theDir = dir[dirIndex + 1:]
+            while fileIndex < len(dbFileList):
+               """ For each file in the database directory """
+               dirPlusSuffix = self.softBaseDir + "/" + str(theDir) + "." + str(newDirSuffix)
+               
+               cmdComplete = False
+               while cmdComplete == False:
+                  rmCmd = MakeDirectoryWithMode( name = 'gpupgrademirror make soft base sub-database dir: %s' % dirPlusSuffix
+                                    , directory = dirPlusSuffix
+                                    , ctxt = REMOTE
+                                    , remoteHost = self.theMirror.primary_host
+                                    , mode = 700
+                                    )
+                  cmdComplete = runAndCheckCommandComplete(rmCmd)
+               rmCmd.validate()               
+               numFiles    = 0
+               currentSize = 0
+               srcFileList = []
+               softLinkList = []
+               while  (newDirSuffix == 0 and fileIndex < dbFileListZeroLength) \
+                      or \
+                      (   newDirSuffix != 0 and fileIndex < len(dbFileList) \
+                          and numFiles < self._max_files_per_pysync \
+                          and currentSize < self._max_size_kb_per_pysync \
+                      ):
+                  """ Make groups of the files and create links to the grouped files """
+                  sizeSourceFile     = dbFileList[fileIndex][0]
+                  fullPathSourceFile = dbFileList[fileIndex][1]
+                  subfileIndex = fullPathSourceFile.rfind('/')
+                  theFile = fullPathSourceFile[subfileIndex + 1:]
+                  sLink = dirPlusSuffix + "/" + theFile
+                  srcFileList.append(fullPathSourceFile)
+                  softLinkList.append(sLink)
+                  numFiles = numFiles + 1
+                  currentSize = currentSize + int(sizeSourceFile)
+                  fileIndex = fileIndex + 1
+                  if newDirSuffix == 0 and fileIndex == dbFileListZeroLength:
+                     zeroFilesFlag = False
+               
+               """ 
+                 Create a file containing a list of ln parameters locally, and the copy it 
+                 to the primary node where we will run ln and create the links.
+               """
+               linkFile = "gpupgrademirror%s.linkfile" % str(self.theMirror.primary_dbid)       
+               sourceFullPathLinkFile = options.info_data_directory + "/" + linkFile
+               targetFullPathLinkFile = self.softBaseDir + "/" + linkFile
+               linkFP = open(sourceFullPathLinkFile, 'w')
+               for lnIndex in range(len(srcFileList)):
+                   linkFP.write("%s %s\n" % (srcFileList[lnIndex], softLinkList[lnIndex]))
+               linkFP.close()
+               cmdComplete = False
+               while cmdComplete == False:
+                  linkCopy = RemoteCopyPreserve( name = "gpupgrademirror copy ln file for primary dbid: " + str(self.theMirror.primary_dbid)
+                                       , srcDirectory = sourceFullPathLinkFile
+                                       , dstHost = self.theMirror.primary_host
+                                       , dstDirectory = targetFullPathLinkFile
+                                       , ctxt = LOCAL
+                                       )
+                  cmdComplete = runAndCheckCommandComplete(linkCopy)
+               linkCopy.validate()
+               
+               cmdComplete = False
+               while cmdComplete == False:
+                  link = CreateHardLink( name = "gpupgrademirror creating links for dbid %s directory %s ." % (self.theMirror.primary_dbid, str(newDirSuffix))
+                                    , srcFile = srcFileList
+                                    , softLink = softLinkList
+                                    , ctxt = REMOTE
+                                    , remoteHost = self.theMirror.primary_host
+                                    , argsFile = targetFullPathLinkFile
+                                    )
+                  cmdComplete = runAndCheckCommandComplete(link)
+               link.validate()
+
+               cmdComplete = False
+               while cmdComplete == False:
+                  rmCmd = RemoveFiles( name = 'gpupgrademirror remove links file: %s' % (targetFullPathLinkFile)
+                                  , directory = targetFullPathLinkFile
+                                  , ctxt = REMOTE
+                                  , remoteHost = self.theMirror.primary_host
+                                  )
+                  cmdComplete = runAndCheckCommandComplete(rmCmd)
+               rmCmd.validate()              
+               newDirSuffix = newDirSuffix + 1
+        
+    #-------------------------------------------------------------------------------    
+    def removeLinks(self):
+        self.logger.debug("in SegHardLinks.removeLinks")
+        
+        cmdComplete = False
+        while cmdComplete == False:
+           cmd = RemoveFiles( name = 'gpupgrademirror remove softbase dir'
+                         , remoteHost = self.theMirror.primary_host 
+                         , directory = self.softBaseDir
+                         , ctxt = REMOTE
+                         )
+           cmdComplete = runAndCheckCommandComplete(cmd)
+        cmd.validate()
+ 
+    #-------------------------------------------------------------------------------    
+    def getHardDirList(self):
+        """ 
+          Returns a list of the fully qualified link dirs
+          (e.g. [ '/db1/seg1/g0/base/2.1' , '/db1/seg1/g0/base/2.2' ,...] )
+        """
+        retList = [] 
+        cmdComplete = False
+        while cmdComplete == False:
+           baseDir = DirectoryList( name = "gpupgrademirror get directory list under base for primary seg: " + str(self.theMirror.primary_dbid)
+                               , dirLocation = self.softBaseDir 
+                               , ctxt = REMOTE
+                               , remoteHost = self.theMirror.primary_host
+                               )
+           cmdComplete = runAndCheckCommandComplete(baseDir)
+        baseDir.validate()
+        retList = baseDir.get_result_list()
+        return retList
+ 
+    #-------------------------------------------------------------------------------    
+    @staticmethod
+    def getUnqualifiedLinkDir(qualifiedDir):
+        retValue = ''        
+        startIndex = qualifiedDir.rfind("/")
+        retValue = qualifiedDir[startIndex +1:]
+        return retValue
+ 
+     #-------------------------------------------------------------------------------    
+    @staticmethod
+    def getUnqualifiedRealDir(qualifiedDir):
+        retValue = ''       
+        startIndex = qualifiedDir.rfind("/")
+        endIndex = qualifiedDir.rfind(".")
+        retValue = qualifiedDir[startIndex +1:endIndex]       
+        return retValue
+ 
+#-------------------------------------------------------------------------
+#-------------------------------------------------------------------------
+class PySyncPlus(PySync):
+
+    def __init__(self,name,srcDir,dstHost,dstDir,ctxt=LOCAL,remoteHost=None, options=None):
+        self.namePlus = name
+        self.srcDirPlus = srcDir
+        self.dstHostPlus = dstHost
+        self.dstDirPlus = dstDir
+        self.ctxtPlus = ctxt
+        self.remoteHostPlus = remoteHost
+        self.optionsPlus = options
+        PySync.__init__( self
+                       , name = name
+                       , srcDir = srcDir
+                       , dstHost = dstHost
+                       , dstDir = dstDir
+                       , ctxt = ctxt
+                       , remoteHost = remoteHost
+                       , options = options 
+                       )
+        self.destinationHost = dstHost
+
+
+#-------------------------------------------------------------------------
+#-------------------------------------------------------------------------
+class GPUpgradeMirrorMinion(Command):
+    """ This class represents a gpugprademirror process. """
+
+    def __init__(self, name, options, segs, ctxt=LOCAL, remoteHost=None):
+        self.name = name
+        if options != None:
+           self.options = options
+        else:
+            options = ""
+        self.segList = segs
+        self.ctxt = ctxt
+        self.remoteHost = remoteHost
+        tempPythonPath = "PYTHONPATH=$PYTHONPATH:$GPHOME/bin"
+        self.gpupgrademirror_executable = "$GPHOME/" + INFO_DIR_MINION + "/gpupgrademirror.py"
+        self.cmdStr = "%s %s %s" % ( self.gpupgrademirror_executable
+                                   , self.options
+                                   , segs
+                                   )
+        self.cmdStr = tempPythonPath + ";" + self.cmdStr
+        Command.__init__( self
+                        , name = self.name
+                        , cmdStr = self.cmdStr
+                        , ctxt = self.ctxt
+                        , remoteHost = self.remoteHost
+                        )
+
+    #-------------------------------------------------------------------------------
+    def createInfoDirectory(self):
+        """ Create a info directory for the minion """
+        minionDir = "$GPHOME/" + INFO_DIR_MINION
+        mkDirCmd = CreateDirIfNecessaryWithMode( name = 'Create the minion info dir: %s:%s' % (self.remoteHost, minionDir)
+                             , directory = minionDir
+                             , ctxt = REMOTE
+                             , remoteHost = self.remoteHost
+                             , mode = '0700'
+                             )
+        mkDirCmd.run(validateAfter=True)
+    #-------------------------------------------------------------------------------
+    def copyGpupgrademirrorToHost(self):
+        source = FULL_EXECNAME
+        target = self.gpupgrademirror_executable
+        cpCmd = RemoteCopyPreserve( name = 'gpupgrademirror copy gpupgrademirror to minion : %s:%s' % (self.remoteHost, target)
+                                  , srcDirectory = source
+                                  , dstHost = self.remoteHost
+                                  , dstDirectory = target
+                                  , ctxt = LOCAL
+                                  , remoteHost = None
+                                  )
+        cpCmd.run(validateAfter=True)
+
+    #-------------------------------------------------------------------------------
+    def copyStatusFileToHost(self):
+        source = options.info_data_directory + "/*"
+        target = "$GPHOME/" + INFO_DIR_MINION
+        cpCmd = RemoteCopyPreserve( name = 'gpupgrademirror copy info dir to minion : %s:%s' % (self.remoteHost, target)
+                                  , srcDirectory = source
+                                  , dstHost = self.remoteHost
+                                  , dstDirectory = target
+                                  , ctxt = LOCAL
+                                  , remoteHost = None
+                                  )
+        cpCmd.run(validateAfter=True)
+        
+        pidFileLoc = target + "/" + PID_FILE
+        rmCmd = RemoveFiles( name = "gpupgrademirror remove the pid file %s:%s" % (self.remoteHost, pidFileLoc)
+                           , remoteHost = self.remoteHost
+                           , directory = pidFileLoc
+                           , ctxt = REMOTE
+                           )
+        rmCmd.run(validateAfter=True)
+
+    #-------------------------------------------------------------------------------
+    def removeGpupgradeMirror(self):
+        target = self.gpupgrademirror_executable
+        rmCmd = RemoveFiles( name = "gpupgrademirror remove the gpupgrademirror file %s:%s" % (self.remoteHost, target)
+                           , remoteHost = self.remoteHost
+                           , directory = target
+                           , ctxt = REMOTE
+                           )
+        rmCmd.run(validateAfter=True)
+
+#-------------------------------------------------------------------------
 #-------------------------------------------------------------------------
 class GpUpgradeMirrorStatus():
     """Class that manages gpupgrademirror status file.
@@ -641,35 +1363,39 @@ class GpUpgradeMirrorStatus():
     Each status file has the segment dbid as part of its suffix.
     """
     _safeModeStatusValues = { 'PHASE1_SAFE_MODE'            : 2
-                            , 'START_PRIMARY_COPY'          : 3
-                            , 'END_PRIMARY_COPY'            : 4
-                            , 'START_NEW_MIRROR_FILE_FIXUP' : 5 
-                            , 'END_NEW_MIRROR_FILE_FIXUP'   : 6
-                            , 'START_MOVE_OLD_MIRROR'       : 7
-                            , 'END_MOVE_OLD_MIRROR'         : 8
-                            , 'START_MOVE_NEW_MIRROR'       : 9
-                            , 'END_MOVE_NEW_MIRROR'         : 10
-                            , 'START_REMOVE_OLD_MIRROR'     : 11
-                            , 'END_REMOVE_OLD_MIRROR'       : 12
-                            , 'PHASE1_DONE'                 : 13
-                            , 'START_PHASE2'                : 14
-                            , 'PHASE2_DONE'                 : 15
+                            , 'START_SEG_SETUP'             : 3
+                            , 'END_SEG_SETUP'               : 4
+                            , 'START_PRIMARY_COPY'          : 5
+                            , 'END_PRIMARY_COPY'            : 6
+                            , 'START_NEW_MIRROR_FILE_FIXUP' : 7 
+                            , 'END_NEW_MIRROR_FILE_FIXUP'   : 8
+                            , 'START_MOVE_OLD_MIRROR'       : 9
+                            , 'END_MOVE_OLD_MIRROR'         : 10
+                            , 'START_MOVE_NEW_MIRROR'       : 11
+                            , 'END_MOVE_NEW_MIRROR'         : 12
+                            , 'START_REMOVE_OLD_MIRROR'     : 13
+                            , 'END_REMOVE_OLD_MIRROR'       : 14
+                            , 'PHASE1_DONE'                 : 15
+                            , 'START_PHASE2'                : 16
+                            , 'PHASE2_DONE'                 : 17
                             }
 
     _unsafeModeStatusValues  = { 'PHASE1_UNSAFE_MODE'                   : 2
-                                , 'START_MOVE_OLD_MIRROR_SPECIAL_FILES' : 3
-                                , 'END_MOVE_OLD_MIRROR_SPECIAL_FILES'   : 4
-                                , 'START_REMOVE_OLD_MIRROR'             : 5
-                                , 'END_REMOVE_OLD_MIRROR'               : 6
-                                , 'START_PRIMARY_COPY'                  : 7
-                                , 'END_PRIMARY_COPY'                    : 8
-                                , 'START_NEW_MIRROR_FILE_FIXUP'         : 9
-                                , 'END_NEW_MIRROR_FILE_FIXUP'           : 10
-                                , 'START_MOVE_NEW_MIRROR'               : 11
-                                , 'END_MOVE_NEW_MIRROR'                 : 12
-                                , 'PHASE1_DONE'                         : 13
-                                , 'START_PHASE2'                        : 14
-                                , 'PHASE2_DONE'                         : 15
+                                , 'START_SEG_SETUP'                     : 3
+                                , 'END_SEG_SETUP'                       : 4
+                                , 'START_MOVE_OLD_MIRROR_SPECIAL_FILES' : 5
+                                , 'END_MOVE_OLD_MIRROR_SPECIAL_FILES'   : 6
+                                , 'START_REMOVE_OLD_MIRROR'             : 7
+                                , 'END_REMOVE_OLD_MIRROR'               : 8
+                                , 'START_PRIMARY_COPY'                  : 9
+                                , 'END_PRIMARY_COPY'                    : 10
+                                , 'START_NEW_MIRROR_FILE_FIXUP'         : 11
+                                , 'END_NEW_MIRROR_FILE_FIXUP'           : 12
+                                , 'START_MOVE_NEW_MIRROR'               : 13
+                                , 'END_MOVE_NEW_MIRROR'                 : 14
+                                , 'PHASE1_DONE'                         : 15
+                                , 'START_PHASE2'                        : 16
+                                , 'PHASE2_DONE'                         : 17
                                 }
     
     """ Note, Both safe and un-safe mode values are valid, therefore their values are the same '2' """
@@ -677,14 +1403,17 @@ class GpUpgradeMirrorStatus():
                            , 'PHASE1_UNSAFE_MODE'     : 2
                            , 'START_SETUP'            : 3
                            , 'SETUP_DONE'             : 4
-                           , 'PHASE1_DONE'            : 5
-                           , 'START_PHASE2'           : 6
-                           , 'PHASE2_DONE'            : 7
+                           , 'MINION_START_SETUP'     : 5
+                           , 'MINION_SETUP_DONE'      : 6
+                           , 'PHASE1_DONE'            : 7
+                           , 'START_PHASE2'           : 8
+                           , 'PHASE2_DONE'            : 9
                            }
     
     
     
-    def __init__(self, logger, master_data_directory, segment_dbid, phase, overall = False):
+    def __init__(self, logger, info_data_directory, segment_dbid, phase, overall = False):
+        logger.debug("in __init__ for GpUpgradeMirrorStatus. dbid = " + str(segment_dbid))
         self.logger = logger
         self.overall = overall
         
@@ -697,10 +1426,10 @@ class GpUpgradeMirrorStatus():
             
         self._status = []
         self._status_info = []
-        self._master_data_directory = master_data_directory
+        self._info_data_directory = info_data_directory
         self._phase = phase
         self.segment_dbid = segment_dbid
-        self._status_filename = master_data_directory + '/gpupgrademirror' + str(segment_dbid) + '.status'
+        self._status_filename = info_data_directory + '/gpupgrademirror' + str(segment_dbid) + '.status'
         self._fp = None
         self._fp_standby = None
         self._temp_dir = None
@@ -766,7 +1495,7 @@ class GpUpgradeMirrorStatus():
             self._status.append(startStatus)
             self._status_info.append('None')
         except IOError, e:
-            logging.error('Unable to create status file %s.' % self._status_filename)
+            self.logger.error('Unable to create status file %s.' % self._status_filename)
             raise e
 
    #-------------------------------------------------------------------------------
@@ -856,7 +1585,7 @@ class GpUpgradeMirrorStatus():
             os.unlink(self._status_filename)
 
 
-#-------------------------------------------------------------------------------
+#-----------conb--------------------------------------------------------------------
 #-------------------------------------------------------------------------------
 class Phase1(threading.Thread):
     '''
@@ -864,7 +1593,7 @@ class Phase1(threading.Thread):
      It will upgrade all mirror segments on that node.
     '''
 
-    def __init__(self, dburl, logger, master_data_directory, node_name):
+    def __init__(self, dburl, logger, info_data_directory, node_name, mirror_info_list, setup_completed_event, continue_event):
         threading.Thread.__init__(self)
         
         self.tempOldMirrorDirSuffix = 'gpupgrademirrors.originalmirror'
@@ -875,50 +1604,74 @@ class Phase1(threading.Thread):
                                       ]
         self.dburl                  = dburl
         self.logger                 = logger
-        self.master_data_directory  = master_data_directory
+        self.info_data_directory    = info_data_directory
         self.nodeName               = node_name
-        self.mirrorSegmentList      = []
+        self.mirrorSegmentList      = mirror_info_list 
+        self.mirrorSegmentList      = mirror_info_list
         self.statusList             = []
-
+        self.setupCompletedEvent     = setup_completed_event
+        self.continueEvent          = continue_event
 
     #-------------------------------------------------------------------------------
-    def  setup(self, mirrorInfoList):
-        self.mirrorSegmentList = mirrorInfoList
-
+    def  setup(self):
+        self.logger.debug("Phase1 setup for mirror: " + str(self.nodeName))
+        
         for seg in self.mirrorSegmentList:
+            self.logger.debug("setup for segment: " + str(seg.mirror_dbid))
             ''' Make sure their is enough space for the largest segment '''
             if options.rollback == False and options.continue_upgrade == False:
                self.checkAvailableSpace()            
             
             ''' Create a status object for each mirror segment '''
             status = GpUpgradeMirrorStatus( logger = self.logger
-                                          , master_data_directory = self.master_data_directory
-                                          , segment_dbid = seg.dbid
+                                          , info_data_directory = self.info_data_directory
+                                          , segment_dbid = seg.mirror_dbid
                                           , phase = 1
                                           )
             self.statusList.append(status)
             if options.rollback == True:
                 ''' setup for rollback '''
                 if status.get_current_status() == (None, None):
-                    logging.warning('There is no upgrade mirror in progress for this segment: ' + str(seg.dbid))
+                    self.logger.warning('There is no upgrade mirror in progress for this segment: ' + str(seg.mirror_dbid))
                     """ Create a status file so that other logic works correctly """
                     status.create_status_file()
+                if status.compare_status('START_SEG_SETUP') >= 0:
+                   genLink = SegHardLinks( mirror_info = seg
+                                         , logger = self.logger
+                                         )
+                   genLink.removeLinks()
                 if     status.compare_status('START_REMOVE_OLD_MIRROR') >= 0 \
                    and status.compare_status('PHASE1_DONE') < 0:
                    ''' We are past the point of recovering. Must move forward at this point '''
-                   logging.error('The upgrade of the system mirrors is past the point of recovery.')
-                   logging.error('You must continue system mirror upgrade at this point.')
+                   self.logger.error('The upgrade of the system mirrors is past the point of recovery.')
+                   self.logger.error('You must continue system mirror upgrade at this point.')
                    raise ValidationError('Unable to rollback')
             elif options.continue_upgrade == True:
                 ''' Setup to continue upgrade '''
+                if status.get_current_status() == (None, None):
+                   status.create_status_file()
+                if status.compare_status('END_SEG_SETUP') < 0:
+                   genLink = SegHardLinks( mirror_info = seg
+                                         , logger = self.logger
+                                         )  
+                   genLink.removeLinks()
+                   status.set_status('START_SEG_SETUP')
+                   genLink.createLinks()        
+                   status.set_status('END_SEG_SETUP')                     
             else:
                 if (status.get_current_status() != (None, None)):
-                   logging.error("Upgrade mirrors already started.")
-                   logging.error("You must either rollback or continue mirror upgrade") 
+                   self.logger.error("Upgrade mirrors already started.")
+                   self.logger.error("You must either rollback or continue mirror upgrade") 
                    raise ValidationError("Unable to continue")
-                else:  
+                else:
+                   """ We are doing a normal phase 1 setup """ 
                    status.create_status_file()
-            
+                   genLink = SegHardLinks( mirror_info = seg
+                                         , logger = self.logger
+                                         )  
+                   status.set_status('START_SEG_SETUP')
+                   genLink.createLinks()        
+                   status.set_status('END_SEG_SETUP')    
 
     #-------------------------------------------------------------------------------
     def renameOldMirrorToTemp(self, seg):
@@ -926,73 +1679,336 @@ class Phase1(threading.Thread):
         
         tempDataDir = seg.mirror_data_directory + self.tempOldMirrorDirSuffix
 
-        if options.continue_upgrade == True:
-           cmd = RemoveFiles( name = 'gpupgrademirror remove any old directory'
+        if options.continue_upgrade == True:           
+           cmdComplete = False
+           while cmdComplete == False:
+              cmd = RemoveFiles( name = 'gpupgrademirror remove any old directory'
                                 , remoteHost = self.nodeName 
                                 , directory = tempDataDir
                                 , ctxt = REMOTE
                                 )
-           cmd.run(validateAfter = False)
+              cmdComplete = runAndCheckCommandComplete(cmd)
+           cmd.validate()
         
         if options.mode == 'S':
-           rmCmd = GPumMoveDirectory( name = 'gpupgrademirror move old mirror to temp location: %s:%s' % (seg.mirror_data_directory, tempDataDir)
+           cmdComplete = False
+           while cmdComplete == False:
+              rmCmd = GPumMoveDirectory( name = 'gpupgrademirror move old mirror to temp location: %s:%s' % (seg.mirror_data_directory, tempDataDir)
                                 , srcDirectory = seg.mirror_data_directory
                                 , dstDirectory = tempDataDir
                                 , ctxt  = REMOTE
                                 , remoteHost = self.nodeName
                                 )
-           rmCmd.run(validateAfter = True)
+              cmdComplete = runAndCheckCommandComplete(rmCmd)
+           rmCmd.validate()
         else:
            ''' Un-safe mode '''
-           rmCmd = MakeDirectory( name = 'gpupgrademirror make temp directory for old mirror special files: %s' % tempDataDir
+           cmdComplete = False
+           while cmdComplete == False:
+              rmCmd = MakeDirectoryWithMode( name = 'gpupgrademirror make temp directory for old mirror special files: %s' % tempDataDir
                                 , directory = tempDataDir
                                 , ctxt = REMOTE
                                 , remoteHost = self.nodeName
+                                , mode = 700
                                 )
-           rmCmd.run(validateAfter = True) 
+              cmdComplete = runAndCheckCommandComplete(rmCmd)
+           rmCmd.validate()
            for file in self.fixupFileList:
                 fullPathFile = seg.mirror_data_directory + '/' + file
                 fullPathTarget = tempDataDir + '/' + file
-                rmCmd = RemoteCopy( name = 'gpupgrademirror fixup file list fixup copy : %s:%s' % (fullPathFile, fullPathTarget)
+                cmdComplete = False
+                while cmdComplete == False:
+                   rmCmd = RemoteCopyPreserve( name = 'gpupgrademirror fixup file list fixup copy : %s:%s' % (fullPathFile, fullPathTarget)
                               , srcDirectory = fullPathFile
                               , dstHost = self.nodeName
                               , dstDirectory = fullPathTarget
                               , ctxt = REMOTE
                               , remoteHost = self.nodeName
                               )
-                rmCmd.run(validateAfter = True)
-           
+                   cmdComplete = runAndCheckCommandComplete(rmCmd)
+                rmCmd.validate()
+                
                 
     #-------------------------------------------------------------------------------
     def renameTempMirrorToOldMirror(self, seg, dirSuffix):
         self.logger.debug('in renameTempMirrorToOldMirror')
         
         tempDataDir = seg.mirror_data_directory + dirSuffix
-        rmCmd = GPumMoveDirectory( name = 'gpupgrademirror move temp mirror to mirror location: %s:%s' % (tempDataDir, seg.mirror_data_directory)
+        cmdComplete = False
+        while cmdComplete == False:
+           rmCmd = GPumMoveDirectory( name = 'gpupgrademirror move temp mirror to mirror location: %s:%s' % (tempDataDir, seg.mirror_data_directory)
                                  , srcDirectory = tempDataDir
                                  , dstDirectory = seg.mirror_data_directory
                                  , ctxt  = REMOTE
                                  , remoteHost = self.nodeName
                                  )
-        rmCmd.run(validateAfter = True)
+           cmdComplete = runAndCheckCommandComplete(rmCmd)
+        rmCmd.validate()           
 
     #-------------------------------------------------------------------------------                                              
     def copyPrimaryToMirror(self, seg):
         self.logger.debug('in copyPrimaryToMirror')
 
-        tempDataDir = seg.mirror_data_directory + self.tempNewMirrorDirSuffix
+        mirrorTempDataDir = seg.mirror_data_directory + self.tempNewMirrorDirSuffix 
+        cmdComplete = False
+        """ Make the <seg data dir>gpupgrademirrors.copyfromprimary directory """
+        while cmdComplete == False:
+            mkDirCmd = CreateDirIfNecessaryWithMode( name = 'gpupgrademirror make temp directory for old mirror special files: %s' % mirrorTempDataDir
+                             , directory = mirrorTempDataDir
+                             , ctxt = REMOTE
+                             , remoteHost = self.nodeName
+                             , mode = '0700'
+                             )
+            cmdComplete = runAndCheckCommandComplete(mkDirCmd)
+        mkDirCmd.validate()
 
-        """ KAS, Note to self. RemoteCopy does not use compression. Need to create my own that has -C option. """
+        mirrorTempBaseDataDir = mirrorTempDataDir + "/base"
+        cmdComplete = False
+        """ Make the <seg data dir>gpupgrademirrors.copyfromprimary/base directory """
+        while cmdComplete == False:
+           mkDirCmd = CreateDirIfNecessaryWithMode( name = 'gpupgrademirror make temp directory for old mirror special files: %s' % mirrorTempBaseDataDir
+                         , directory = mirrorTempBaseDataDir
+                         , ctxt = REMOTE
+                         , remoteHost = self.nodeName
+                         , mode = '0700'
+                         )
+           cmdComplete = runAndCheckCommandComplete(mkDirCmd)
+        mkDirCmd.validate()
         
-        rmCmd = RemoteCopy( name = 'gpupgrademirror copy primary to mirror: %s:%s' % (self.nodeName, seg.mirror_data_directory)
-                          , srcDirectory = seg.primary_data_directory
-                          , dstHost = self.nodeName
-                          , dstDirectory = tempDataDir
-                          , ctxt  = REMOTE
-                          , remoteHost = seg.primary_host
-                          )
-        rmCmd.run(validateAfter = True)
-    
+        genLink = SegHardLinks(seg, self.logger)
+        dirList = genLink.getHardDirList()
+       
+        for dir in dirList:
+            targetTempDir = mirrorTempDataDir + "/base/" + SegHardLinks.getUnqualifiedLinkDir(dir)
+            if dir.endswith(".0"):
+               self.logger.debug("handle special directory *.0.")
+               """ Special directory """
+               cmdComplete = False
+               while cmdComplete == False:
+                  rmCmd = RemoveFiles( name = 'gpupgrademirror remove old mirror special directory: %s:%s' % (self.nodeName, dir)
+                              , directory = targetTempDir
+                              , ctxt = REMOTE
+                              , remoteHost = self.nodeName
+                              )
+                  cmdComplete = runAndCheckCommandComplete(rmCmd)
+               rmCmd.validate()
+               continue
+
+            cmdComplete = False
+            while cmdComplete == False:
+               mkDirCmd = CreateDirIfNecessaryWithMode( name = 'gpupgrademirror make temp directory for old mirror special files: %s' % targetTempDir
+                                 , directory = targetTempDir
+                                 , ctxt = REMOTE
+                                 , remoteHost = self.nodeName
+                                 , mode = '0700'
+                                 )
+               cmdComplete = runAndCheckCommandComplete(mkDirCmd)
+            mkDirCmd.validate()      
+        
+        nicList = p1MirrorInfo.getInterfaceList(self.nodeName)
+        self.logger.debug("NICs for mirror %s are %s" % (self.nodeName, str(nicList)))
+        workersPerNic = 2
+        totalWorkers = len(nicList) * workersPerNic
+        availableNicQueue = Queue(totalWorkers)
+        
+        """ Need to prime the queue """
+        for wpn in range(workersPerNic):
+            for nic in nicList:
+                availableNicQueue.put(nic)
+                
+        wPool = WorkerPool(numWorkers = totalWorkers)
+        
+        """ copy everyting in the base directory """
+        numCopiesStarted = 0
+        numCopiesCompleted = 0
+        for dir in dirList:
+            """ 
+              KAS note to self. Need to add code here to check to see if we need to stop.
+              That is, the process that started this thread may tell us to die, probably
+              because one of the other threads finished abnormally, so we are stopping the
+              mirror upgrade.
+            """
+            sourceDir = dir
+            specialSourceDir = sourceDir.endswith(".0")
+            targetDir = mirrorTempDataDir + "/base/" + SegHardLinks.getUnqualifiedLinkDir(sourceDir)
+            nicToUse = availableNicQueue.get()
+            if specialSourceDir == True:
+               self.logger.debug("handle special case directory" + str(dir))
+               """ Special case of directory with empty files """
+               rmCopy = RemoteCopyPreserve( name = 'gpupgrademirror remotecopy special .0 file to mirror: %s:%s' % (self.nodeName, seg.mirror_data_directory)
+                         , srcDirectory = sourceDir
+                         , dstHost = nicToUse
+                         , dstDirectory = targetDir
+                         , ctxt = REMOTE
+                         , remoteHost = seg.primary_host
+                         )
+               rmCopy.run(validateAfter = True)
+               availableNicQueue.put(nicToUse)
+               continue
+            else:
+               pysyncCmd = PySyncPlus( name = 'gpupgrademirror pysync primary to mirror: %s:%s' % (self.nodeName, seg.mirror_data_directory)
+                             , srcDir = sourceDir
+                             , dstHost = nicToUse
+                             , dstDir = targetDir
+                             , ctxt  = REMOTE
+                             , remoteHost = seg.primary_host
+                             )
+            """ 
+              KAS note to self. Need to do something here to handle the case where 
+              the machine we are connecting too has is validating more connections
+              than it can handle. We need to retry the command. In the mean time,
+              I'm delaying every command 1 second and hoping that is enough.
+            """
+            ###time.sleep(1)
+            wPool.addCommand(pysyncCmd)
+            numCopiesStarted = numCopiesStarted + 1
+            if availableNicQueue.empty() == True:
+               while True:
+                   completedCmdList = wPool.getCompletedItems()
+                   if len(completedCmdList) > 0:
+                      numCopiesCompleted = numCopiesCompleted + len(completedCmdList)
+                      break;
+               for compCmd in completedCmdList:
+                   if sshBusy(compCmd) == True:  
+                      time.sleep(1)
+                      if isinstance(compCmd, PySyncPlus) == True:
+                         redoCmd = PySyncPlus( name = compCmd.namePlus
+                                                    , srcDir = compCmd.srcDirPlus
+                                                    , dstHost = compCmd.dstHostPlus
+                                                    , dstDir = compCmd.dstDirPlus
+                                                    , ctxt = compCmd.ctxtPlus
+                                                    , remoteHost = compCmd.remoteHostPlus
+                                                    , options = compCmd.optionsPlus
+                                                    )
+                      else:
+                         redoCmd = RemoteCopyPreserve( name = 'gpupgrademirror remotecopy special .0 file to mirror: %s:%s' % (compCmd.dstHost, compCmd.srcDirectory)
+                                                     , srcDirectory = compCmd.srcDirectory
+                                                     , dstHost = compCmd.dstHost
+                                                     , dstDirectory = compCmd.dstDirectory
+                                                     , ctxt = REMOTE
+                                                     , remoteHost = seg.primary_host
+                                                     )
+                      wPool.addCommand(redoCmd)
+                   else:
+                      compCmd.validate()
+                      availableNicQueue.put(compCmd.destinationHost)
+
+        """ Collect all the uncompleted copies. """
+        while numCopiesStarted > numCopiesCompleted:
+            completedCmdList = wPool.getCompletedItems()
+            if len(completedCmdList) > 0:
+               numCopiesCompleted = numCopiesCompleted + len(completedCmdList)
+               for compCmd in completedCmdList:
+                   """ Go through the last commands and see if we need to retry """
+                   retryPossible = sshBusy(compCmd)
+                   if retryPossible == True:
+                      cmdComplete = False
+                   else:
+                      cmdComplete = True     
+                   while cmdComplete == False:
+                      if isinstance(compCmd, PySyncPlus) == True:
+                         compCmd = PySyncPlus( name = compCmd.namePlus
+                                                    , srcDir = compCmd.srcDirPlus
+                                                    , dstHost = compCmd.dstHostPlus
+                                                    , dstDir = compCmd.dstDirPlus
+                                                    , ctxt = compCmd.ctxtPlus
+                                                    , remoteHost = compCmd.remoteHostPlus
+                                                    , options = compCmd.optionsPlus
+                                                    )
+                      else:
+                         compCmd = RemoteCopyPreserve( name = 'gpupgrademirror remotecopy special .0 file to mirror: %s:%s' % (compCmd.dstHost, compCmd.srcDirectory)
+                                                     , srcDirectory = compCmd.srcDirectory
+                                                     , dstHost = compCmd.dstHost
+                                                     , dstDirectory = compCmd.dstDirectory
+                                                     , ctxt = REMOTE
+                                                     , remoteHost = seg.primary_host
+                                                     )
+                      cmdComplete = runAndCheckCommandComplete(compCmd)
+                   compCmd.validate()                
+            else:
+               time.sleep(1)
+
+        wPool.haltWork()
+        wPool.joinWorkers()
+        genLink.removeLinks()
+
+        """
+          Now we need to copy everything but the base directory. We assume these files are small in
+          comparison to the base directory, so we will use scp instead of pysync. Also, there may
+          be some zero-lenght files, which pysync can not handle.
+        """
+        cmdComplete = False
+        while cmdComplete == False:
+           fdlCmd = FileDirectoryList( name = "gpupgrademirror find all non-base dirs and files for %s:%s " % (seg.primary_host, seg.primary_data_directory)
+                                     , filePattern = seg.primary_data_directory
+                                     , ctxt = REMOTE
+                                     , remoteHost = seg.primary_host
+                                     )
+           cmdComplete = runAndCheckCommandComplete(fdlCmd)
+        fdlCmd.validate()           
+        nonBaseList = fdlCmd.get_result_list()
+        nonBaseList.remove("base")
+        
+        for nonBase in nonBaseList:
+           cmdComplete = False
+           primaryNonBase = seg.primary_data_directory + "/" + nonBase
+           while cmdComplete == False:
+              self.logger.debug('remotecopy everything but base: %s:%s' % (self.nodeName, primaryNonBase))
+              rcCmd = RemoteCopyPreserve( name = 'gpupgrademirror remotecopy everything but base: %s:%s' % (self.nodeName, primaryNonBase)
+                                , srcDirectory = primaryNonBase
+                                , dstHost = seg.mirror_host
+                                , dstDirectory = mirrorTempDataDir
+                                , ctxt = REMOTE
+                                , remoteHost = seg.primary_host
+                                )
+              cmdComplete = runAndCheckCommandComplete(rcCmd)
+           rcCmd.validate()        
+
+        """ Put the base directory back together the way it was originally (e.g. 1.1 and 1.2 go into 1) """
+        dbDirs = DirectoryList( name = 'gpupgrademirror get database dirs for primary seg dbid +' + str(seg.primary_dbid)
+                              , dirLocation = seg.primary_data_directory + "/base"
+                              , ctxt = REMOTE
+                              , remoteHost = seg.primary_host 
+                              )
+        dbDirs.run(validateAfter = True)
+        dbDirList = dbDirs.get_result_list()
+        for db in dbDirList:
+            unqualDir = SegHardLinks.getUnqualifiedLinkDir(db)
+            qualDir = mirrorTempDataDir + "/base/" + unqualDir
+            cmdComplete = False
+            while cmdComplete == False:
+               rmCmd = MakeDirectoryWithMode( name = 'gpupgrademirror make consolidation directory: %s' % qualDir
+                                 , directory = qualDir
+                                 , ctxt = REMOTE
+                                 , remoteHost = seg.mirror_host
+                                 , mode = 700
+                                 )
+               cmdComplete = runAndCheckCommandComplete(rmCmd)
+            rmCmd.validate()
+        for dir in dirList:
+            unqualDir = SegHardLinks.getUnqualifiedLinkDir(dir)
+            srcDirFiles = mirrorTempDataDir + "/base/" + unqualDir
+            trgDir = mirrorTempDataDir + "/base/" + SegHardLinks.getUnqualifiedRealDir(dir)
+            cmdComplete = False
+            while cmdComplete == False:
+               mvCmd = GPumMoveDirectory( name = 'gpupgrademirror consolidate a directory: %s' % srcDirFiles 
+                                     , srcDirectory = srcDirFiles + "/*"
+                                     , dstDirectory = trgDir
+                                     , ctxt = REMOTE
+                                     , remoteHost = seg.mirror_host
+                                     )
+               cmdComplete = runAndCheckCommandComplete(mvCmd)
+            mvCmd.validate()
+            cmdComplete = False
+            while cmdComplete == False:
+               rmCmd = RemoveDirectory( name = 'gpupgrademirror remove unconsolidated dir: %s' % srcDirFiles 
+                                          , directory = srcDirFiles
+                                          , ctxt = REMOTE
+                                          , remoteHost = seg.mirror_host 
+                                          )
+               cmdComplete = runAndCheckCommandComplete(rmCmd)
+            rmCmd.validate()
+            
     #------------------------------------------------------------------------------ 
     def newMirrorFileFixup(self, seg):
         self.logger.debug('in newMirrorFileFixup')
@@ -1007,15 +2023,26 @@ class Phase1(threading.Thread):
         for file in self.fixupFileList:
             fullPathFile = tempSourceDataDir + '/' + file
             fullPathTarget = tempTargetDataDir + '/' + file
-            rmCmd = RemoteCopy( name = 'gpupgrademirror fixup copy : %s:%s' % (fullPathFile, fullPathTarget)
+            
+                               
+            """ thetemplate
+            cmdComplete = False
+            while cmdComplete == False:
+                Cmd = 
+                cmdComplete = runAndCheckCommandComplete(
+            Cmd.validate()
+            """
+            cmdComplete = False
+            while cmdComplete == False:
+               rmCmd = RemoteCopyPreserve( name = 'gpupgrademirror fixup copy : %s:%s' % (fullPathFile, fullPathTarget)
                               , srcDirectory = fullPathFile
                               , dstHost = self.nodeName
                               , dstDirectory = fullPathTarget
                               , ctxt = REMOTE
                               , remoteHost = self.nodeName
                               )
-            rmCmd.run(validateAfter = True)
-        
+               cmdComplete = runAndCheckCommandComplete(rmCmd)
+            rmCmd.validate()  
         
     #-------------------------------------------------------------------------------
     def removeOldMirror(self, seg):
@@ -1027,12 +2054,15 @@ class Phase1(threading.Thread):
         else:
            ''' if in un-safe mode or in rollback, remove all files in the real mirror location'''
            tempDataDir = seg.mirror_data_directory
-        rmCmd = RemoveFiles( name = 'gpupgrademirror remove old mirror data directory: %s:%s' % (self.nodeName, tempDataDir)
+        cmdComplete = False
+        while cmdComplete == False:
+           rmCmd = RemoveFiles( name = 'gpupgrademirror remove old mirror data directory: %s:%s' % (self.nodeName, tempDataDir)
                            , directory = tempDataDir
                            , ctxt = REMOTE
                            , remoteHost = self.nodeName
                            )
-        rmCmd.run(validateAfter = True)
+           cmdComplete = runAndCheckCommandComplete(rmCmd)
+        rmCmd.validate()
 
         
     #-------------------------------------------------------------------------------
@@ -1040,14 +2070,15 @@ class Phase1(threading.Thread):
         self.logger.debug('in removeOldMirrorSpecialFiles')
 
         tempDataDir = seg.mirror_data_directory + self.tempOldMirrorDirSuffix
-
-        rmCmd = RemoveFiles( name = 'gpupgrademirror remove old mirror special files: %s:%s' % (self.nodeName, tempDataDir)
+        cmdComplete = False
+        while cmdComplete == False:
+           rmCmd = RemoveFiles( name = 'gpupgrademirror remove old mirror special files: %s:%s' % (self.nodeName, tempDataDir)
                            , directory = tempDataDir
                            , ctxt = REMOTE
                            , remoteHost = self.nodeName
                            )
-        rmCmd.run(validateAfter = True)
-        
+           cmdComplete = runAndCheckCommandComplete(rmCmd)
+        rmCmd.validate()
 
     #-------------------------------------------------------------------------------
     def removeCopyOfPrimary(self, seg):
@@ -1055,12 +2086,15 @@ class Phase1(threading.Thread):
         self.logger.debug('in removeCopyOfPrimary')
 
         tempDataDir = seg.mirror_data_directory + self.tempNewMirrorDirSuffix
-        rmCmd = RemoveFiles( name = 'gpupgrademirror remove the copied mirror data directory: %s:%s' % (self.nodeName, tempDataDir)
+        cmdComplete = False
+        while cmdComplete == False:
+           rmCmd = RemoveFiles( name = 'gpupgrademirror remove the copied mirror data directory: %s:%s' % (self.nodeName, tempDataDir)
                            , directory = tempDataDir
                            , ctxt = REMOTE
                            , remoteHost = self.nodeName
                            )
-        rmCmd.run(validateAfter = True)
+           cmdComplete = runAndCheckCommandComplete(rmCmd)
+        rmCmd.validate()
 
     #-------------------------------------------------------------------------------
     def checkAvailableSpace(self):
@@ -1068,22 +2102,40 @@ class Phase1(threading.Thread):
 
         for seg in self.mirrorSegmentList:
             ''' Get size of primary '''
-            dirSize = DiskUsage.get_size( name = "primaryDir"
-                                        , remote_host = seg.primary_host
-                                        , directory = seg.primary_data_directory
-                                        )
+            cmdComplete = False
+            while cmdComplete == False:            
+               dirSizeCmd = DiskUsage( name = "gpupgrademirror check for disk usage on primary: " + str(seg.primary_data_directory)
+                                  , directory = seg.primary_data_directory
+                                  , ctxt = REMOTE
+                                  , remoteHost = seg.primary_host
+                                  )
+               cmdComplete = runAndCheckCommandComplete(dirSizeCmd)
+            dirSizeCmd.validate()
+            dirSize = dirSizeCmd.get_bytes_used()
             
-            ''' Get available space on mirror '''        
-            mirrorFreeSize = GPumDiskFree.get_size( name = 'disk space available'
-                                      , remote_host = self.nodeName
-                                      , directory = seg.mirror_data_directory
-                                      )
+            ''' Get available space on mirror '''
+            cmdComplete = False
+            while cmdComplete == False:   
+               mirrorFreeSizeCmd = GPumDiskFree( name = 'gpupgrademirror disk space available on mirror: ' + str(seg.mirror_data_directory)
+                                               , directory = seg.mirror_data_directory
+                                               , ctxt = REMOTE
+                                               , remoteHost = self.nodeName
+                                               )
+               cmdComplete = runAndCheckCommandComplete(mirrorFreeSizeCmd)
+            mirrorFreeSizeCmd.validate()
+            mirrorFreeSize = mirrorFreeSizeCmd.get_bytes_free()
             if options.mode == 'U':
                 ''' Add current mirror size to available mirror space '''
-                currentMirrorSize = DiskUsage.get_size( name = "mirrorDir"
-                                        , remote_host = self.nodeName
-                                        , directory = seg.mirror_data_directory
-                                        )
+                cmdComplete = False
+                while cmdComplete == False:  
+                   currentMirrorSizeCmd = DiskUsage( name = "gpupgrademirror check for disk usage on mirror: " + str(seg.mirror_data_directory) 
+                                                   , directory = seg.mirror_data_directory
+                                                   , ctxt = REMOTE
+                                                   , remoteHost = self.nodeName
+                                                   )
+                   cmdComplete = runAndCheckCommandComplete(currentMirrorSizeCmd)
+                currentMirrorSizeCmd.validate()
+                currentMirrorSize = currentMirrorSizeCmd.get_bytes_used()
                 mirrorFreeSize = mirrorFreeSize + currentMirrorSize
  
             ''' Compare available space to needed space (add 10 Meg. just to make sure) '''
@@ -1093,9 +2145,13 @@ class Phase1(threading.Thread):
 
     #-------------------------------------------------------------------------------
     def run(self):
-        i = 0
+        self.setup()
+        self.setupCompletedEvent.set()
+        self.continueEvent.wait()
+        self.logger.debug("continuing run of phase1 for segment: " + str(self.nodeName))
+        statusIndex = 0
         for seg in self.mirrorSegmentList:
-            status = self.statusList[i]
+            status = self.statusList[statusIndex]
             
             if options.rollback == True:
                ''' Put the mirror's back if necessary, and remove temp files '''
@@ -1181,7 +2237,7 @@ class Phase1(threading.Thread):
                
                 if status.compare_status('PHASE1_DONE') < 0:
                    status.set_status('PHASE1_DONE')        
-            i = i + 1
+            statusIndex = statusIndex + 1
 
 
     #-------------------------------------------------------------------------------
@@ -1194,12 +2250,12 @@ class Phase1(threading.Thread):
 #-------------------------------------------------------------------------------
 class Phase2(threading.Thread):
 
-    def __init__(self, dburl, logger, master_data_directory, node_name):
+    def __init__(self, dburl, logger, info_data_directory, node_name):
         threading.Thread.__init__(self)
         
         self.dburl                  = dburl
         self.logger                 = logger
-        self.master_data_directory  = master_data_directory
+        self.info_data_directory  = info_data_directory
         self.nodeName               = node_name
         self.mirrorSegmentList      = []
         self.statusList             = []
@@ -1208,14 +2264,15 @@ class Phase2(threading.Thread):
 
     #-------------------------------------------------------------------------------
     def  setup(self, mirrorInfoList, fileList, fileListDeleteBeforeCopy):
+        self.logger.debug("in Phase2.setup: " + str(self.nodeName))
         self.mirrorSegmentList = mirrorInfoList
 
         for seg in self.mirrorSegmentList:
             
             ''' Get status file from Phase 1 for each mirror segment '''
             status = GpUpgradeMirrorStatus( logger = self.logger
-                                          , master_data_directory = self.master_data_directory
-                                          , segment_dbid = seg.dbid
+                                          , info_data_directory = self.info_data_directory
+                                          , segment_dbid = seg.mirror_dbid
                                           , phase = 2
                                           )
             self.statusList.append(status)
@@ -1224,8 +2281,8 @@ class Phase2(threading.Thread):
                 ''' Setup to continue upgrade '''
             else:
                 if (status.get_current_status() != (None, None)):
-                   logging.error("Upgrade mirrors phase 2 already started.")
-                   logging.error("You must continue mirror upgrade") 
+                   self.logger.error("Upgrade mirrors phase 2 already started.")
+                   self.logger.error("You must continue mirror upgrade") 
                    raise ValidationError("Unable to run phase 2")
                 else:  
                    status.create_status_file()
@@ -1243,38 +2300,54 @@ class Phase2(threading.Thread):
             fullPathTarget = seg.mirror_data_directory + '/' + file
 
             if file in self.deleteBeforeCopy:
-               cmd = RemoveFiles( name = 'gpupgrademirror remove special old directory'
+               """ Try to remove the special files. """                
+               cmdComplete = False
+               while cmdComplete == False:
+                  cmd = RemoveFiles( name = 'gpupgrademirror remove special old directory'
                                 , remoteHost = self.nodeName 
                                 , directory = fullPathTarget
                                 , ctxt = REMOTE
                                 )
-               cmd.run(validateAfter = False)
-
-            rmCmd = RemoteCopy( name = 'gpupgrademirror phase 2 fixup copy : %s:%s' % (fullPathSource, fullPathTarget)
+                  cmdComplete = runAndCheckCommandComplete(cmd)
+                  
+            cmdComplete = False
+            while cmdComplete == False:
+               rmCmd = RemoteCopyPreserve( name = 'gpupgrademirror phase 2 fixup copy : %s:%s' % (fullPathSource, fullPathTarget)
                               , srcDirectory = fullPathSource
                               , dstHost = self.nodeName
                               , dstDirectory = fullPathTarget
                               , ctxt = REMOTE
                               , remoteHost = seg.primary_host
                               )
-            rmCmd.run(validateAfter = True)
+               cmdComplete = runAndCheckCommandComplete(rmCmd)
+               rmCmd.validate()
     
             ''' Check for files with extensions (i.e. .1, .2, ...) '''
-            fileList = FileDirectoryList.get_list( name = 'Get list file extensions'
-                                                 , remote_host = seg.primary_host
-                                                 , file_pattern = fullPathSource + '.*'
-                                                 )
+            cmdComplete = False
+            while cmdComplete == False:
+               fdlCmd = FileDirectoryList(  name = 'Get list file extensions'
+                                     , filePattern = fullPathSource + '.*'
+                                     , ctxt = REMOTE
+                                     , remoteHost = seg.primary_host
+                                     )
+               cmdComplete = runAndCheckCommandComplete(fdlCmd)         
+            fileList = fdlCmd.get_result_list()
+                        
             for fileExt in fileList:
                 suffixIndex = fileExt.rfind('.')
                 suffix = fileExt[suffixIndex:]
-                rmCmd = RemoteCopy( name = 'gpupgrademirror phase 2 segment files fixup copy : %s:%s' % (fullPathSource, fullPathTarget)
+                
+                cmdComplete = False
+                while cmdComplete == False:
+                   rmCmd = RemoteCopyPreserve( name = 'gpupgrademirror phase 2 segment files fixup copy : %s:%s' % (fullPathSource, fullPathTarget)
                               , srcDirectory = fileExt
                               , dstHost = self.nodeName
                               , dstDirectory = fullPathTarget + suffix
                               , ctxt = REMOTE
                               , remoteHost = seg.primary_host
                               )
-                rmCmd.run(validateAfter = True)
+                   cmdComplete = runAndCheckCommandComplete(rmCmd)
+                rmCmd.validate()
 
     #-------------------------------------------------------------------------------
     def run(self):
@@ -1323,18 +2396,21 @@ try:
 
   options, args = parseargs()
 
+  if len(options.ids) > 0:
+     options.ids = options.ids.split(':')
+
   if options.verbose:
      enable_verbose_logging()
 
-  if is_gpupgrademirror_running(options.master_data_directory):
+  if is_gpupgrademirror_running(options.info_data_directory):
      logger.error('gpupgrademirror is already running.  Only one instance')
      logger.error('of gpupgrademirror is allowed at a time.')
      remove_pid = False
      sys.exit(1)
   else:
-     create_pid_file(options.master_data_directory)
+     create_pid_file(options.info_data_directory)
 
-  dbUrl = dbconn.DbURL()
+  dbUrl = dbconn.DbURL(dbname = 'template1')
      
   """ 
       We will start the database in master only mode unless we are in phase 1 and 
@@ -1355,7 +2431,7 @@ try:
      phase = 1
 
   overallStatus = GpUpgradeMirrorStatus( logger = logger
-                                       , master_data_directory = options.master_data_directory
+                                       , info_data_directory = options.info_data_directory
                                        , segment_dbid = 0
                                        , phase = phase
                                        , overall = True
@@ -1366,10 +2442,17 @@ try:
         logging.warning('There is no upgrade mirror in progress')
         exit(0)
      elif overallStatus.compare_status("SETUP_DONE") < 0:
-         """ We have not gotten past the setup phase,    """
-         """ so remove the overall status file and exit. """
-         overallStatus.remove_status_file()
-         exit(0)
+        """
+           We have not gotten past the setup phase,             
+           so remove the gpugprademirr info directory and exit. 
+        """
+        rmCmd = RemoveFiles( name = 'gpupgrademirror remove info directory: %s' % (options.info_data_directory)
+                           , directory = options.info_data_directory
+                           , ctxt = LOCAL
+                           , remoteHost = None
+                           )
+        rmCmd.run(validateAfter = False)
+        exit(0)
   elif options.continue_upgrade == True:
      ''' Setup to continue upgrade '''
      pass
@@ -1403,6 +2486,7 @@ try:
      for row in databaseCursor:
          dbrow = DatabaseRow(row)
          databaseList.append(dbrow)
+     conn.close()
          
      ''' Connect to each database, and make a list of files we will use '''
      fileList = []
@@ -1445,25 +2529,22 @@ try:
         logger.warning('gpupgradmirror exiting')
         exit(0)
 
-
      ''' Get list of all segments '''
      allSegMirrorInfo = p1MirrorInfo.getAllMirrorInfoList()
      
      for mirrorInfo in allSegMirrorInfo:
         ''' Create a phase2 object for each mirror segment'''
-        tempNode = Phase2(dbUrl, logger, options.master_data_directory, mirrorInfo.nic_address)
+        tempNode = Phase2(dbUrl, logger, options.info_data_directory, mirrorInfo.nic_address)
         
         ''' Setup the mirror node '''
         """ KAS note to self. Setup could be done in parallel. """
         tempNode.setup([mirrorInfo], fileList, fileListDeleteBeforeCopy)
         
         phase2MirrorList.append(tempNode)
-        
-     if conn != None:
-        conn.close()
     
      if gpstartStatus != None and gpstartStatus == "MASTER":
         GpStop.local('gpupgrademirror stop databse', fast=True, masterOnly = True)
+        gpstartStatus = "STOPPED"
 
      """
        Start the threads 
@@ -1493,6 +2574,12 @@ try:
         for node in phase2MirrorList:
             for segStatus in node.statusList:
                 segStatus.remove_status_file()
+        rmCmd = RemoveFiles( name = 'gpupgrademirror remove info directory: %s' % (options.info_data_directory)
+                           , directory = options.info_data_directory
+                           , ctxt = LOCAL
+                           , remoteHost = None
+                           )
+        rmCmd.run(validateAfter = False)
   else:
     """
       Phase 1 
@@ -1504,58 +2591,156 @@ try:
     try:
        p1MirrorInfo = Phase1MirrorInfo(dbUrl)
     except Exception, e:
+        """ KAS note to self. I don't remember why we only put out a warning here. It's probably because Caleb told me do do that? """
         logger.warning('Unable to obtain mirror information: ' + str(e))
         logger.warning('gpupgradmirror exiting')
         traceback.print_exc()
         exit(0)
-
+    
+    """
+    print "*** p1MirrorInfo = " 
+    print str(p1MirrorInfo)
+    print "************"
+    print " ==== p1MirrorInfo.getInterfaceList() = "
+    print str(p1MirrorInfo.getInterfaceList())
+    exit(0)
+    """
+    
+    allSegMirrorInfo = p1MirrorInfo.getAllMirrorInfoList()
+        
     if overallStatus.compare_status("SETUP_DONE") < 0:
        overallStatus.set_status("SETUP_DONE")
 
-    if options.mode == 'S':
-       """ In safe mode, we create a list of nodes and their segment information """
-       ''' Get a list of mirror nodes '''
-       mirrorNodeCursor = p1MirrorInfo.getMirrorNodeList()
-       
-       for mirrorName in mirrorNodeCursor:
-        
-           ''' Create a gpupgrademirror object for each mirror node'''
-           tempNode = Phase1(dbUrl, logger, options.master_data_directory, mirrorName)
+    """ 
+      At this point, all setup that requires database access is done. We can continue from here
+      without connecting to the database.
+    """ 
+    if gpstartStatus != None and gpstartStatus == "MASTER":
+       GpStop.local('gpupgrademirror stop databse', fast=True, masterOnly = True)
+       gpstartStatus = "STOPPED" 
+     
+     
+    if len(options.ids) > 0:
+        """ I am a minion, so skip the minion setup. """
+        if overallStatus.compare_status("MINION_START_SETUP") < 0:
+           overallStatus.set_status("MINION_START_SETUP") 
+        if overallStatus.compare_status("MINION_SETUP_DONE") < 0:
+           overallStatus.set_status("MINION_SETUP_DONE")
 
-           ''' Get info on mirror segments for this host'''
-           mirrorInfoList = p1MirrorInfo.getMirrorInfo(mirrorName)
-        
-           ''' Setup the mirror node '''
-           """ KAS note to self. Setup could be done in parallel. """
-           tempNode.setup(mirrorInfoList)
-           MirrorNodeList.append(tempNode)
-    else:
-       """ In un-safe mode, we create a list of segments with their segment information """
-       ''' Get a list of Segments '''
-       mirrorNodeCursor = p1MirrorInfo.getAllMirrorInfoList()
+    """ KAS turn off this logic for now. """
+    if overallStatus.compare_status("MINION_START_SETUP") < 0:
+       overallStatus.set_status("MINION_START_SETUP") 
+    if overallStatus.compare_status("MINION_SETUP_DONE") < 0:
+       overallStatus.set_status("MINION_SETUP_DONE")
+
+    """ KAS turn off this logic for now. """
+    if True == False and len(options.ids) == 0:
+       """ 
+         We are the king of the gpupgrademirror processes, so we do not do any upgrading ourself. 
+         Instead, we will create a bunch of gpupgrademirror processes on a set of our
+         nodes, and slave them to this king process. 
+       """
        
-       for mirrorNode in mirrorNodeCursor:
-        
-           ''' Create a gpupgrademirror object for each segment'''
-           tempNode = Phase1( dburl = dbUrl
-                            , logger = logger
-                            , master_data_directory = options.master_data_directory
-                            , node_name = mirrorNode.mirror_host
-                            )
-        
-           ''' Setup the mirror segment. We pass a list here because that what the method expects. '''
-           """ KAS note to self. Setup could be done in parallel. """
-           tempNode.setup([mirrorNode])
-           MirrorNodeList.append(tempNode)
+       allNodes = p1MirrorInfo.getMirrorNodeList()
+
+       """
+         We are limited to how many ssh connections we can make on a given node (estimate 64).
+         Also, there may be issues with Python and a large number of threads.
+         The number of ssh's at any given moment on a node should be about 8 (2 per NIC, 4 NICs). 
+         We should be able to support about 8 mirror nodes per gpupgrademirror instance.
+       """
+       nodesPerMinion = 1  # 1 for testing should be 8
+       minionList = []
+       index = 0
+       while index < len(allNodes):
+          numNodes = 0
+          segs = ""
+          minionNode = allNodes[index]
+          while numNodes < nodesPerMinion and index < len(allNodes):
+              node = allNodes[index]
+              nodeSegs = p1MirrorInfo.getMirrorInfo(node)
+              for segInfo in nodeSegs:
+                  if len(segs) > 0:
+                      segs = segs + ":"
+                  segs = segs + str(segInfo.mirror_dbid)
+              index = index + 1
+              numNodes = numNodes + 1
+          minionOptions = " -c "
+          if options.verbose == True:
+              minionOptions = minionOptions + " -v "
+          minion = GPUpgradeMirrorMinion( name = "gpupgrademirror create a minion"
+                                        , options = minionOptions
+                                        , segs = str(segs)
+                                        , ctxt = REMOTE
+                                        , remoteHost = str(minionNode)
+                                        )
+          minionList.append(minion)
+
+       if overallStatus.compare_status("MINION_START_SETUP") < 0:
+          overallStatus.set_status("MINION_START_SETUP")
+                    
+       """ Copy all the needed files to the minion hosts """
+       for minion in minionList:
+              minion.createInfoDirectory()
+              minion.copyGpupgrademirrorToHost()
+              minion.copyStatusFileToHost()
+              
+       if overallStatus.compare_status("MINION_SETUP_DONE") < 0:
+          overallStatus.set_status("MINION_SETUP_DONE")
+      
+       """ All the minions are set up and ready to go. """
+       minionWP = WorkerPool(numWorkers = len(minionList))
+       for minion in minionList:
+           minionWP.addCommand(cmd = minion)
+       numDone = 0
+       while numDone < len(minionList):
+           resultList = minionWP.getCompletedItems()
+           numDone = numDone + len(resultList)
+       minionWP.haltWork()
+       minionWP.joinWorkers()
+       exit()
+               
+    
+
+    """ Create a list of nodes and their segment information """
+    ''' Get a list of mirror nodes '''
+    mirrorNodeCursor = p1MirrorInfo.getMirrorNodeList()
+    numMirrorNodes = len(mirrorNodeCursor)   
+       
+    for mirrorName in mirrorNodeCursor:
+        ''' Get info on mirror segments for this host'''
+        mirrorInfoList = p1MirrorInfo.getMirrorInfo(mirrorName)
+                   
+        ''' Create a gpupgrademirror object for each mirror node'''
+        tempNode = Phase1( dburl = dbUrl
+                         , logger = logger
+                         , info_data_directory = options.info_data_directory
+                         , node_name = mirrorName
+                         , mirror_info_list = mirrorInfoList
+                         , setup_completed_event = threading.Event()
+                         , continue_event = threading.Event()
+                         )
+        MirrorNodeList.append(tempNode)
 
     if gpstartStatus != None and gpstartStatus == "MASTER":
-       GpStop.local('gpupgrademirror stop databse', fast=True, masterOnly = True)    
+       GpStop.local('gpupgrademirror stop databse', fast=True, masterOnly = True)   
+       gpstartStatus = "STOPPED" 
 
     """ 
       Start the threads 
     """
     for node in MirrorNodeList:
         node.start()
+    for node in MirrorNodeList:
+        node.setupCompletedEvent.wait()
+    for node in MirrorNodeList:
+        node.continueEvent.set()
+        
+    """ 
+      KAS note to self. Need to add code here to detect and notify all the threads if
+      there is an issue with one of the threads, and all others must stop.
+    """
+        
     for node in MirrorNodeList:
         node.join()    
     
@@ -1572,6 +2757,14 @@ try:
        if p1Completed == False:
           logging.error('Unable to complete upgrade mirrors for phase 1')
           raise ValidationError('Unable to complete upgrade')
+       else:
+           overallStatus.set_status('PHASE1_DONE')
+           rmCmd = RemoveFiles( name = 'gpupgrademirror remove info directory: %s' % (options.info_data_directory)
+                           , directory = options.info_data_directory
+                           , ctxt = LOCAL
+                           , remoteHost = None
+                           )
+           rmCmd.run(validateAfter = False)
     else:
        ''' We are in rollback mode '''
        p1RollbackCompleted = True
@@ -1589,11 +2782,19 @@ try:
           logging.error('Unable to complete rollback of upgrade mirrors for phase 1')
           raise ValidationError('Unable to complete rollback')
        else:
-          Phase1MirrorInfo.removeMirrorInfoFile()
-          overallStatus.remove_status_file()
-          for node in MirrorNodeList:
-              for segStatus in node.statusList:
-                  segStatus.remove_status_file()
+           RemoveFiles.local("gpupgrademirror remove %s" % options.info_data_directory
+                           , options.info_data_directory
+                           )
+           """
+           Phase1MirrorInfo.removeMirrorInfoFile()
+           overallStatus.remove_status_file()
+           for node in MirrorNodeList:
+               for segStatus in node.statusList:
+                   segStatus.remove_status_file()
+           RemoveDirectory.local("gpupgrademirror remove %s" % options.info_data_directory
+                                , options.info_data_directory
+                                )
+           """
     
   sys.exit(0)
 
@@ -1621,10 +2822,11 @@ except Exception, e:
 finally:
     try:
         if remove_pid:
-            remove_pid_file(options.master_data_directory)
+            remove_pid_file(options.info_data_directory)
         try:
             if gpstartStatus != None and gpstartStatus == "MASTER":
                GpStop.local('gpupgrademirror stop databse', fast=True, masterOnly = True)
+               gpstartStatus = "STOPPED"
         except Exception:
             pass         
     except NameError:
