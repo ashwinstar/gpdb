@@ -1,3 +1,0 @@
-Installcheck/gpic
-Installcheck/gpic_bigtup
-Installcheck/upg2
