@@ -220,12 +220,12 @@ static void PersistentBuild_PopulateGpRelationNode(
 				int64 eof;
 
 				segmentFileNum = dbInfoRel->appendOnlyCatalogSegmentInfo[a].segmentFileNum;
+				eof = dbInfoRel->appendOnlyCatalogSegmentInfo[a].logicalEof;
+
 				if (segmentFileNum == 0)
 					foundSegmentFile0 = true;
 				else if (eof == 0)
 					continue;	// Don't create empty segment files above #0.
-
-				eof = dbInfoRel->appendOnlyCatalogSegmentInfo[a].logicalEof;
 				
 				PersistentRelation_AddCreated(
 											&relFileNode,
