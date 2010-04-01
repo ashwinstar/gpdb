@@ -415,6 +415,8 @@ select * from baz order by 1;
 
 abort;
 DROP TABLE foo;
+-- try to guarantee race-condition failures on the tests below.
+SET GP_ENABLE_SLOW_CURSOR_TESTMODE=on;
 BEGIN;
 SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 CREATE TABLE foo (a int) distributed randomly;
@@ -422,13 +424,10 @@ INSERT INTO foo VALUES (1);
 DECLARE c1 NO SCROLL CURSOR FOR SELECT * FROM foo;
 UPDATE foo SET a = 2;
 FETCH ALL FROM c1;
- a 
----
- 1
-(1 row)
-
+ERROR:  Cursor-Reader gang not able to provide correct visibility 0/0, writer modified table while cursor was scanning. (combocid.c:304)  (seg1 slice1 localhost:60002 pid=69384) (cdbdisp.c:1486)
 COMMIT;
 DROP TABLE foo;
+ERROR:  table "foo" does not exist
 BEGIN;
 SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 CREATE TABLE foo (a int) distributed randomly;
@@ -437,13 +436,10 @@ UPDATE foo SET a = 2;
 DECLARE c1 NO SCROLL CURSOR FOR SELECT * FROM foo;
 UPDATE foo SET a = 3;
 FETCH ALL FROM c1;
- a 
----
- 2
-(1 row)
-
+ERROR:  Cursor-Reader gang not able to provide correct visibility 1/1, writer modified table while cursor was scanning. (combocid.c:304)  (seg0 slice1 localhost:60001 pid=69370) (cdbdisp.c:1486)
 COMMIT;
 DROP TABLE foo;
+ERROR:  table "foo" does not exist
 BEGIN;
 SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 CREATE TABLE foo (a int) distributed randomly;
@@ -455,9 +451,5 @@ INSERT INTO foo VALUES (1);
 UPDATE foo SET a = 3;
 INSERT INTO foo VALUES (1);
 FETCH ALL FROM c1;
- a 
----
- 2
-(1 row)
-
+ERROR:  Cursor-Reader gang not able to provide correct visibility 1/1, writer modified table while cursor was scanning. (combocid.c:304)  (seg1 slice1 localhost:60002 pid=69382) (cdbdisp.c:1486)
 COMMIT;

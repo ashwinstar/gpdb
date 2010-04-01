@@ -207,6 +207,9 @@ abort;
 
 DROP TABLE foo;
 
+-- try to guarantee race-condition failures on the tests below.
+SET GP_ENABLE_SLOW_CURSOR_TESTMODE=on;
+
 BEGIN;
 SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 CREATE TABLE foo (a int) distributed randomly;
