@@ -222,6 +222,14 @@ extern bool           gp_select_invisible;
  */
 extern bool           gp_enable_slow_writer_testmode;
 
+
+/*
+ * MPP-8622:
+ * In order to facilitate testing of reader-gang/writer-gang synchronization
+ * it is very handy to slow down the cursor (opens important race-window).
+ */
+extern bool           gp_enable_slow_cursor_testmode;
+
 /*
  * MPP-4145: convert certain delete statements into truncate statements.
  */

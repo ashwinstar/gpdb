@@ -128,6 +128,14 @@ int			gp_fts_probe_threadcount=5;
 bool	gp_enable_slow_writer_testmode = false;
 
 /*
+ * gp_enable_slow_cursor_testmode
+ *
+ * In order facilitate testing of reader-gang/writer-gang synchronization,
+ * this inserts a pg_usleep call at the start of cursor-gang processing.
+ */
+bool	gp_enable_slow_cursor_testmode = false;
+
+/*
  * gp_enable_delete_as_truncate
  *
  * piggy-back a truncate on simple delete statements (statements

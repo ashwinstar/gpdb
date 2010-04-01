@@ -301,12 +301,9 @@ GetRealCmin(CommandId combocid)
 	{
 		if (QEDtxContextInfo.cursorContext)
 		{
-			/*
-			 * This cursor was created before the combocid was
-			 * available: this tuple was deleted/updated after we were
-			 * started, so we need to return a cid in the past.
-			 */
-			return (CommandId)0;
+			elog(ERROR, "Cursor-Reader gang not able to provide correct visibility %u/%u, writer modified table while cursor was scanning.",
+				 combocid, usedComboCids);
+			/* not reached */
 		}
 
 		if (Debug_print_combocid_detail)
@@ -327,12 +324,9 @@ GetRealCmax(CommandId combocid)
 	{
 		if (QEDtxContextInfo.cursorContext)
 		{
-			/*
-			 * This cursor was created before the combocid was
-			 * available: this tuple was deleted/updated after we were
-			 * started, so we need to return a cid in the future.
-			 */
-			return (CommandId)-1; /* CommandId is unsigned, (unsigned int)-1 is "max-command-id" */
+			elog(ERROR, "Cursor-Reader gang not able to provide correct visibility %u/%u, writer modified table while cursor was scanning.",
+				 combocid, usedComboCids);
+			/* not reached */
 		}
 
 		if (Debug_print_combocid_detail)

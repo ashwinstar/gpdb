@@ -905,6 +905,9 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 		{
 			readSharedLocalSnapshot_forCursor(snapshot);
 
+			if (gp_enable_slow_cursor_testmode)
+				pg_usleep(1 * 1000 * 1000); /* 1 sec. */
+
 			return snapshot;
 		}
 
