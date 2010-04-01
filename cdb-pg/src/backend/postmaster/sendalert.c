@@ -520,7 +520,7 @@ int send_alert(const GpErrorData * errorData)
 
 	//host = "smtpx18.msoutlookonline.net:587";
 
-	if (email_to == NULL || strlen(email_to) == 0)
+	if (gp_email_to == NULL || strlen(gp_email_to) == 0)
 	{
 		static bool firsttime = 1;
 
@@ -529,7 +529,7 @@ int send_alert(const GpErrorData * errorData)
 		return -1;
 	}
 
-	if (strlen(email_from) == 0)
+	if (strlen(gp_email_from) == 0)
 	{
 		elog(LOG,"e-mail alerts are not properly configured:  No 'from:' address configured");
 		return -1;
@@ -538,12 +538,26 @@ int send_alert(const GpErrorData * errorData)
 
 	// Ok, send the alert here.
 
-	auth_client_init(); // Call this only once!
+	static bool auth_client_init_called = false;
+	if (!auth_client_init_called)
+	{
+		auth_client_init(); // Call this only once!
+		auth_client_init_called = true;
+	}
 	session = smtp_create_session();
+	if (session == NULL)
+	{
+		elog(LOG,"Unable to send e-mail: smtp_create_session() failed %d",smtp_errno());
+		return -1;
+	}
+
 	message = smtp_add_message(session);
+	if (message == NULL)
+		elog(LOG,"smtp_add_message() failed");
 
 #if USE_SSL
-	smtp_starttls_enable(session, Starttls_ENABLED);
+	if (!smtp_starttls_enable(session, Starttls_ENABLED))
+		elog(LOG,"smtp_starttls_enable() failed");
 #endif
 
 	/*
@@ -551,7 +565,13 @@ int send_alert(const GpErrorData * errorData)
 	 * number of 587, however this is not widely deployed so the port
 	 * is specified as 25 along with the default MTA host.
 	 */
-	smtp_set_server(session, email_smtp_server != NULL && strlen(email_smtp_server) > 0 ? email_smtp_server : "localhost:25");
+	if (!smtp_set_server(session,
+			gp_email_smtp_server != NULL && strlen(gp_email_smtp_server) > 0 ? gp_email_smtp_server : "localhost:25"))
+	{
+		elog(LOG,"Unable to send e-mail: smtp_set_server failed %d",smtp_errno());
+		smtp_destroy_session(session);
+		return -1;
+	}
 
 	smtp_set_eventcb(session, event_cb, NULL);
 
@@ -559,11 +579,13 @@ int send_alert(const GpErrorData * errorData)
 	 * Do what's needed at application level to use authentication.
 	 */
 	authctx = auth_create_context();
+	if (authctx == NULL)
+		elog(LOG,"auth_create_context() failed %d",smtp_errno());
 	auth_set_mechanism_flags(authctx, AUTH_PLUGIN_PLAIN|AUTH_PLUGIN_ANONYMOUS, 0);
 	auth_set_interact_cb(authctx, authinteract, NULL);
 
 	/* TODO: I don't know how "external" is supposed to work, or what ID I'm supposed to set here */
-	auth_set_external_id(authctx, email_smtp_userid);
+	auth_set_external_id(authctx, gp_email_smtp_userid);
 
 	smtp_auth_set_context(session, authctx);
 
@@ -576,16 +598,42 @@ int send_alert(const GpErrorData * errorData)
 	/*
 	 * Set the reverse path for the mail envelope.  (NULL is ok)
 	 */
-	smtp_set_reverse_path(message, email_from);
+	if (!smtp_set_reverse_path(message, gp_email_from))
+		elog(LOG,"smtp_set_reverse_path failed %d",smtp_errno());
 
 	smtp_set_header(message, "Subject", subject);
 	smtp_set_header_option(message, "Subject", Hdr_OVERRIDE, 1);
 	smtp_set_header(message, "Message-Id", NULL);
 
+	/*
+	 * A little bit of crude prioritization... If the message means we are down,
+	 * let's set high priority.  If the message says everything is OK, low priority
+	 * If we don't know, just let it default to medium.
+	 */
+	if (strcmp(errorData->error_severity,"PANIC") == 0)
+		smtp_set_header(message, "X-Priority", "1"); // 1 == highest priority
+
+	else if (strstr(errorData->error_message, gettext("abnormal database system shutdown")) != NULL ||
+			strstr(errorData->error_message, gettext("the database system is shutting down"))  != NULL ||
+			strstr(errorData->error_message, gettext("received smart shutdown request")) != NULL ||
+			strstr(errorData->error_message, gettext("received fast shutdown request")) != NULL ||
+			strstr(errorData->error_message, gettext("received immediate shutdown request")) != NULL ||
+			strstr(errorData->error_message, gettext("database system is shut down"))  != NULL ||
+			strstr(errorData->error_message, gettext("Master mirroring synchronization lost"))  != NULL ||
+			strstr(errorData->error_message, gettext("Error from sending to standby master"))  != NULL ||
+			strstr(errorData->error_message, "GPDB performed segment reconfiguration.") != NULL) // elog, so no gettext
+		smtp_set_header(message, "X-Priority", "1"); // 1 == highest priority
+
+	else if (strstr(errorData->error_message, gettext("the database system is starting up")) != NULL ||
+			  strstr(errorData->error_message, gettext("database system is ready to accept connections"))  != NULL)
+		smtp_set_header(message, "X-Priority", "5"); // 5  == low priority
+
+
+
 	smtp_set_messagecb(message, messagebody_cb, (void *) errorData);
 
 	/* Need a modifiable copy of To list */
-	rawstring = pstrdup(email_to);
+	rawstring = pstrdup(gp_email_to);
 
 	/* Parse string into list of identifiers */
 	if (!SplitIdentifierString(rawstring, ',', &elemlist))
@@ -593,23 +641,29 @@ int send_alert(const GpErrorData * errorData)
 		/* syntax error in list */
 		ereport(LOG,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid list syntax for \"email_to\"")));
+				 errmsg("invalid list syntax for \"gp_email_to\"")));
 	}
 
 	foreach(l, elemlist)
 	{
-		char	   *cur_email_addr = (char *) lfirst(l);
+		char	   *cur_gp_email_addr = (char *) lfirst(l);
 
-		if (cur_email_addr != NULL && strlen(cur_email_addr) > 0)
+		if (cur_gp_email_addr != NULL && strlen(cur_gp_email_addr) > 0)
 		{
 			/*
 			 * RFC 2822 doesn't require recipient headers but a To: header would
 			 * be nice to have if not present.
 			 */
-			smtp_set_header(message, "To", cur_email_addr, cur_email_addr);
+			if (!smtp_set_header(message, "To", cur_gp_email_addr, cur_gp_email_addr))
+			{
+				char buf[128];
+
+				elog(LOG, "smtp_set_header failed:  %d  %s", smtp_errno(), smtp_strerror(smtp_errno(),
+								buf, sizeof buf));
+			}
 
 			/* Recipient must be in RFC2821 format */
-			recipient = smtp_add_recipient(message, cur_email_addr);
+			recipient = smtp_add_recipient(message, cur_gp_email_addr);
 
 			smtp_dsn_set_notify(recipient, notify);
 
@@ -641,7 +695,7 @@ int send_alert(const GpErrorData * errorData)
 		 */
 		char buf[128];
 
-		elog(LOG, "SMTP server problem %s", smtp_strerror(smtp_errno(),
+		elog(LOG, "SMTP server problem %d  %s", smtp_errno(), smtp_strerror(smtp_errno(),
 				buf, sizeof buf));
 	}
 	else
@@ -650,7 +704,7 @@ int send_alert(const GpErrorData * errorData)
 
 		/* I would expect this to be always zero here, but just in case it's not */
 		if (smtp_errno() != 0)
-				elog(LOG, "SMTP  server problem %s", smtp_strerror(smtp_errno(),
+				elog(LOG, "SMTP  server problem (errno %d) %s", smtp_errno(), smtp_strerror(smtp_errno(),
 								buf, sizeof buf));
 		/*
 		 * Report on the success or otherwise of the mail transfer.
@@ -671,7 +725,10 @@ int send_alert(const GpErrorData * errorData)
 		/*
 		 * This should tell us how each e-mail recipient fared.
 		 */
-		smtp_enumerate_recipients(message, print_recipient_status, NULL);
+		if (!smtp_enumerate_recipients(message, print_recipient_status, NULL))
+		{
+			elog(LOG,"smtp_enumerate_recipients failed %d",smtp_errno());
+		}
 	}
 
 	/* Free resources consumed by the program.
@@ -679,7 +736,8 @@ int send_alert(const GpErrorData * errorData)
 	smtp_destroy_session(session);
 	auth_destroy_context(authctx);
 
-	auth_client_exit();
+	/* To save on overhead, don't call this more than necessary */
+	/* auth_client_exit(); */
 #endif
 
 	return 0;
@@ -1084,13 +1142,13 @@ static int authinteract(auth_client_request_t request, char **result,
 		{
 			elog(DEBUG1, "authinteract asking for password: %s  %s%s",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
 					: "");
-			result[i] = email_smtp_password;
+			result[i] = gp_email_smtp_password;
 		}
 		else if (request[i].flags & AUTH_USER)
 		{
 			elog(DEBUG1, "authinteract asking for username: %s  %s%s",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
 					: "");
-			result[i] = email_smtp_userid;
+			result[i] = gp_email_smtp_userid;
 
 		}
 		else if (request[i].flags & AUTH_REALM)
@@ -1114,7 +1172,7 @@ static int tlsinteract(char *buf, int buflen, int rwflag  __attribute__((unused)
 
 	elog(LOG, "tlsinteract asking for tls password");
 
-	strcpy(buf, email_smtp_password);  // This isn't right... We need the X.509 certificate's password, I think
+	strcpy(buf, gp_email_smtp_password);  // This isn't right... We need the X.509 certificate's password, I think
 	return strlen(buf);
 }
 

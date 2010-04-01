@@ -231,11 +231,11 @@ extern int  WalSendClientTimeout;
 extern char  *data_directory;
 
 #if USE_EMAIL
-extern char  *email_smtp_server;
-extern char  *email_smtp_userid;
-extern char  *email_smtp_password;
-extern char  *email_from;
-extern char  *email_to;
+extern char  *gp_email_smtp_server;
+extern char  *gp_email_smtp_userid;
+extern char  *gp_email_smtp_password;
+extern char  *gp_email_from;
+extern char  *gp_email_to;
 #endif
 
 #if USE_SNMP

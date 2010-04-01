@@ -286,17 +286,17 @@
 # the port it runs on (which will be either 25 or 587), and
 # the SASL authentication information used to connect to it.
 
-#email_smtp_server = 'localhost:25'     # SMTP server hostname and port (don't forget the port!)
-#email_smtp_userid = ''					# Userid used to authenticate with SMTP server, if needed
-#email_smtp_password = ''				# Password/Passphrase used to authenticate with SMTP server, if needed
+#gp_email_smtp_server = 'localhost:25'      # SMTP server hostname and port (don't forget the port!)
+#gp_email_smtp_userid = ''					# Userid used to authenticate with SMTP server, if needed
+#gp_email_smtp_password = ''				# Password/Passphrase used to authenticate with SMTP server, if needed
 
 # Here you need to specify e-mail addresses.  The email_from address doesn't actually need 
 # to be a valid e-mail address.  The email_to is a list of recipients who will get the alerts.
 # The e-mail addresses need to be in the form of userid@domain.com, not just userid.
 # If email_to list is empty, it disables e-mail alerts.
 
-#email_from = ''						# Who do we say the e-mails are from?  and who is the return-path?
-#email_to = ''							# Comma separated list of recipients that will get e-mail alerts.
+#gp_email_from = ''						# Who do we say the e-mails are from?  and who is the return-path?
+#gp_email_to = ''						# Comma separated list of recipients that will get e-mail alerts.
 										# empty means disable e-mail alerts.
 
 #------------------------------------------------------------------------------

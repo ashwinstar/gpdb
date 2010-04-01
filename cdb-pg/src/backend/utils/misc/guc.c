@@ -346,11 +346,11 @@ bool 		defunct_bool = 0;
 double 		defunct_double = 0;
 
 #if USE_EMAIL
-char	   *email_smtp_server;
-char	   *email_smtp_userid;
-char	   *email_smtp_password;
-char	   *email_from;
-char	   *email_to;
+char	   *gp_email_smtp_server;
+char	   *gp_email_smtp_userid;
+char	   *gp_email_smtp_password;
+char	   *gp_email_from;
+char	   *gp_email_to;
 #endif
 
 #if USE_SNMP
@@ -4770,48 +4770,48 @@ static struct config_string ConfigureNamesString[] =
 
 #if USE_EMAIL
 	{
-		{"email_smtp_server", PGC_SUSET, LOGGING,
+		{"gp_email_smtp_server", PGC_SUSET, LOGGING,
 			gettext_noop("Sets the SMTP server and port used to send e-mail alerts."),
 			NULL,
 			GUC_SUPERUSER_ONLY
 		},
-		&email_smtp_server,
+		&gp_email_smtp_server,
 		"localhost:25", NULL, NULL
 	},
 	{
-		{"email_smtp_userid", PGC_SUSET, LOGGING,
+		{"gp_email_smtp_userid", PGC_SUSET, LOGGING,
 			gettext_noop("Sets the userid used for the SMTP server, if required."),
 			NULL,
 			GUC_SUPERUSER_ONLY
 		},
-		&email_smtp_userid,
+		&gp_email_smtp_userid,
 		"", NULL, NULL
 	},
 	{
-		{"email_smtp_password", PGC_SUSET, LOGGING,
+		{"gp_email_smtp_password", PGC_SUSET, LOGGING,
 			gettext_noop("Sets the password used for the SMTP server, if required."),
 			NULL,
 			GUC_SUPERUSER_ONLY
 		},
-		&email_smtp_password,
+		&gp_email_smtp_password,
 		"", NULL, NULL
 	},
 	{
-		{"email_from", PGC_SUSET, LOGGING,
+		{"gp_email_from", PGC_SUSET, LOGGING,
 			gettext_noop("Sets email address of the sender of email alerts (our e-mail id)."),
 			NULL,
 			GUC_SUPERUSER_ONLY
 		},
-		&email_from,
+		&gp_email_from,
 		"", NULL, NULL
 	},
 	{
-		{"email_to", PGC_SUSET, LOGGING,
+		{"gp_email_to", PGC_SUSET, LOGGING,
 			gettext_noop("Sets email address(es) to send alerts to.  Maybe be multiple email addresses."),
 			NULL,
 			GUC_SUPERUSER_ONLY| GUC_LIST_INPUT
 		},
-		&email_to,
+		&gp_email_to,
 		"", NULL, NULL
 	},
 #endif
