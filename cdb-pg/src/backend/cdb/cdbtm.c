@@ -1008,7 +1008,7 @@ doNotifyCommittedInDoubt(char *gid)
 	}
 	else
 	{
-		elog(INFO, "Crash recovery broadcast of the distributed transaction 'Commit Prepared' broadcast succeeded for gid = %s.", gid);
+		elog(LOG, "Crash recovery broadcast of the distributed transaction 'Commit Prepared' broadcast succeeded for gid = %s.", gid);
 	}
 
 	return succeeded;
@@ -1033,7 +1033,7 @@ doAbortInDoubt(char *gid)
 	}
 	else
 	{
-		elog(INFO, "Crash recovery broadcast of the distributed transaction 'Abort Prepared' broadcast succeeded for gid = %s", gid);
+		elog(LOG, "Crash recovery broadcast of the distributed transaction 'Abort Prepared' broadcast succeeded for gid = %s", gid);
 	}
 }
 
