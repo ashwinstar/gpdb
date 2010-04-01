@@ -131,6 +131,8 @@ class GpSegCopy:
         logger.info("Copy complete.")
 
         if self.schema_only:
+            # Remove the gp_dbid file from the data dir
+            RemoveFiles.local('Remove gp_dbid file', os.path.normpath(self.dstDir + '/gp_dbid'))
             logger.info("Cleaning up catalog for schema only copy on destination")
             # We need 700 permissions or postgres won't start
             Chmod.local('set template permissions',self.dstDir,'0700')
