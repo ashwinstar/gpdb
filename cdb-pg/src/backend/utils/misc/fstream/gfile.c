@@ -225,15 +225,24 @@ struct zlib_stuff
 };
 
 static ssize_t
-gz_file_read(gfile_t*fd, void*ptr, size_t len)
+gz_file_read(gfile_t* fd, void* ptr, size_t len)
 {
-	struct zlib_stuff*z = fd->u.z;
+	struct zlib_stuff* z = fd->u.z;
 	
 	for (;;)
 	{
 		int	e;
-		int	f = 0;
-		int s = z->s.next_out - z->out - z->out_size;
+		int	flush = Z_NO_FLUSH;
+		
+		/*
+		 * 'out' is our output buffer.
+		 * 'next_out' is a pointer to the next byte in 'out'
+		 * 'out_size' is num bytes currently in 'out'
+		 * 
+		 * if s is >0 we have data in 'out' that we didn't write
+		 * yet, write it and return.  
+		 */
+		int s = z->s.next_out - (z->out + z->out_size);
 		
 		if (s > 0 || z->eof)
 		{
@@ -244,34 +253,64 @@ gz_file_read(gfile_t*fd, void*ptr, size_t len)
 			return s;
 		}
 		
+		/* ok, wrote all 'out' data. reset back to beginning of 'out' */
 		z->out_size = 0;
 		z->s.next_out = z->out;
 		
+		/*
+		 * Fill up our input buffer from the input file.
+		 */
 		while (z->in_size < sizeof z->in)
 		{
-			s = read_and_retry(fd, z->in + z->in_size, sizeof z->in
-					- z->in_size);
+			s = read_and_retry(fd, z->in + z->in_size, sizeof z->in - z->in_size);
+			
 			if (s == 0)
 			{
+				/* no more data to read */
+				
 				if (z->in + z->in_size == z->s.next_in)
-					f = Z_FINISH;
+					flush = Z_FINISH;
 				break;
 			}
 			if (s < 0)
+			{
+				/* read error */
 				return -1;
+			}
+				
 			z->in_size += s;
 		}
 		
-		z->s.avail_in = s = z->in + z->in_size - z->s.next_in;
+		/* number of bytes available at next_in */
+		z->s.avail_in = (z->in + z->in_size) - z->s.next_in;
+		
+		/* remaining free space at next_out */ 
 		z->s.avail_out = sizeof z->out;
-		e = inflate(&z->s, f);
 		
-		if (e == Z_STREAM_END)
+		/* decompress */ 
+		e = inflate(&z->s, flush);
+		
+		if (e == Z_STREAM_END && z->s.avail_in == 0)
+		{
+			/* we're done decompressing all we have */
 			z->eof = 1;
+		}
+		else if(e == Z_STREAM_END && z->s.avail_in > 0)
+		{
+			/* 
+			 * we're done decompressing a chunk, but there's more
+			 * input. we need to reset state. see MPP-8012 for info 
+			 */
+			if(inflateReset(&z->s))
+				return -1;
+		}
 		else if (e)
-			return -1;
+		{
+			return -1;			
+		}
 		
-		if (z->s.next_in == z->in + z->in_size)
+		/* if no more data available for decompression reset input buf */
+		if (z->s.next_in == (z->in + z->in_size))
 		{
 			z->s.next_in = z->in;
 			z->in_size = 0;
