@@ -2289,7 +2289,7 @@ class GPUpgrade:
         if style == 'CLEANUP':
             return
 
-        if style not in ['BACKUP', 'INSTALL', 'REVERT']:
+        if style not in ['BACKUP', 'INSTALL', 'REVERT', 'SKELETON']:
             raise UpgradeError('FATAL', ' DeepLink(%s)!?' % style)            
         
         if self.cmd == 'MASTER':
@@ -2299,6 +2299,10 @@ class GPUpgrade:
             elif style == 'INSTALL':
                 logger.info('Linking upgrade')
                 logger.info('... This may take a while')
+            elif style == 'SKELETON':
+                logger.info('Linking skeleton')
+                logger.info('... This may take a while')
+
 
             # Have all hosts perform the link first
             self.CallSlaves('DEEPLINK', style)
@@ -2313,6 +2317,9 @@ class GPUpgrade:
             if style == 'BACKUP':
                 source      = os.path.join(location, content)
                 destination = os.path.join(location, WORKDIR, BACKUPDIR, content)
+            if style == 'SKELETON':
+                source      = os.path.join(location, content)
+                destination = os.path.join(location, WORKDIR, UPGRADEDIR, content)
             if style == 'INSTALL':
                 source      = os.path.join(location, WORKDIR, UPGRADEDIR, content)
                 destination = os.path.join(location, content)
@@ -2726,7 +2733,17 @@ class GPUpgrade:
         '''
 
         logger.info('Building skeleton cluster')
+        
         if self.cmd == 'MASTER':
+
+            # It would be nice to avoid having to make a full deep link,
+            # but the gp_persistent creation requires reading in a bunch
+            # of user tables to handle part of the ao conversion.
+            self.DeepLink('SKELETON')
+            logger.info('... cloning catalog')
+
+            # Once that is done make a REAL copy (not hardlink) of the
+            # actual catalog tables
             self.CallSlaves('BUILDSKEL', self.highestoid)
             datadirs = [ self.masterdir ]
         else:
@@ -2741,8 +2758,16 @@ class GPUpgrade:
             #logger.debug("copying %s to %s" % (os.path.join(src, f),
             #                                   os.path.join(dst, f)))
             if os.path.isdir(os.path.join(src, f)):
+                if os.path.exists(os.path.join(dst,f)):
+                    logger.debug('rmtree(%s)' % os.path.join(dst,f))
+                    shutil.rmtree(os.path.join(dst,f))
+                logger.debug('cptree(%s)' % os.path.join(dst,f))
                 shutil.copytree(os.path.join(src, f), os.path.join(dst, f))
             else:
+                if os.path.exists(os.path.join(dst,f)):
+                    logger.debug('rm(%s)' % os.path.join(dst,f))
+                    os.remove(os.path.join(dst,f))
+                logger.debug('cp(%s)' % os.path.join(dst,f))
                 shutil.copy2(os.path.join(src, f), os.path.join(dst, f))
         
                 # for this is a file, copy all segments
@@ -2751,6 +2776,10 @@ class GPUpgrade:
                         i = '.' + str(i)
                         fseg = f + i
                         if os.path.exists(os.path.join(src, fseg)):
+                            if os.path.exists(os.path.join(dst,fseg)):
+                                logger.debug('rm(%s)' % os.path.join(dst,fseg))
+                                os.remove(os.path.join(dst,fseg))
+                            logger.debug('cp(%s)' % os.path.join(dst,fseg))
                             shutil.copy2(os.path.join(src, fseg),
                                          os.path.join(dst, fseg))
                         else:
@@ -2801,7 +2830,8 @@ class GPUpgrade:
                 logger.debug("making dir %s" % dir)
             
                 # equivalent of mkdir -p dst/dir
-                os.makedirs(os.path.join(dst, dir), 0700)
+                if not os.path.exists(os.path.join(dst, dir)):
+                    os.makedirs(os.path.join(dst, dir), 0700)
                 
             logger.debug("copying files")
                 
@@ -2828,11 +2858,19 @@ class GPUpgrade:
                 f.close()
                 t.close()
 
+            # remove the two pg_hba.conf hardlinks from DeepLink('SKELETON')
+            # otherwise they get in the way of the recreate logic below.
+            if os.path.exists(os.path.join(dst, 'pg_hba.conf'+LOCKEXT)):
+                os.remove(os.path.join(dst, 'pg_hba.conf'+LOCKEXT))
+            if os.path.exists(os.path.join(dst, 'pg_hba.conf')):
+                os.remove(os.path.join(dst, 'pg_hba.conf'))
+
             # master needs locked pg_hba.conf
             if self.cmd == 'MASTER':
                 self.copy_rewrite_hba(os.path.join(src, 'pg_hba.conf'+LOCKEXT),
                                       os.path.join(dst, 'pg_hba.conf'+LOCKEXT),
                                       self.upgrade)
+
                 overwrite(os.path.join(src, 'pg_ident.conf'+LOCKEXT),
                           os.path.join(dst, 'pg_ident.conf'+LOCKEXT))
 
