@@ -152,7 +152,7 @@ static MdMirVec *_mirvec_alloc(void);
 
 #ifndef LET_OS_MANAGE_FILESIZE
 static MdMirVec *_mdmir_openseg(SMgrRelation reln, BlockNumber segno,
-			  int oflags);
+			  bool createIfDoesntExist);
 #endif
 static MdMirVec *_mdmir_getseg(SMgrRelation reln, BlockNumber blkno,
 			 bool allowNotFound);
@@ -1030,7 +1030,9 @@ mdnblocks(SMgrRelation reln)
 		if (nblocks > ((BlockNumber) RELSEG_SIZE))
 			elog(FATAL, "segment too big");
 		if (nblocks < ((BlockNumber) RELSEG_SIZE))
+		{
 			return (segno * ((BlockNumber) RELSEG_SIZE)) + nblocks;
+        }
 
 		/*
 		 * If segment is exactly RELSEG_SIZE, advance to next one.
@@ -1040,12 +1042,12 @@ mdnblocks(SMgrRelation reln)
 		if (v->mdmir_chain == NULL)
 		{
 			/*
-			 * Because we pass O_CREAT, we will create the next segment (with
+			 * Because we pass true for createIfDoesntExist, we will create the next segment (with
 			 * zero length) immediately, if the last segment is of length
 			 * RELSEG_SIZE.  While perhaps not strictly necessary, this keeps
 			 * the logic simple.
 			 */
-			v->mdmir_chain = _mdmir_openseg(reln, segno, O_CREAT);
+			v->mdmir_chain = _mdmir_openseg(reln, segno, true /* createIfDoesntExist */);
 			if (v->mdmir_chain == NULL)
 				return InvalidBlockNumber;		/* failed? */
 		}
@@ -1592,9 +1594,11 @@ _mirvec_alloc(void)
 /*
  * Open the specified segment of the relation,
  * and make a MdfdVec object for it.  Returns NULL on failure.
+ *
+ * @param createIfDoesntExist if true then create the segment file if it doesn't already exist
  */
 static MdMirVec *
-_mdmir_openseg(SMgrRelation reln, BlockNumber segno, int oflags)
+_mdmir_openseg(SMgrRelation reln, BlockNumber segno, bool createIfDoesntExist)
 {
 	int	primaryError;
 	bool mirrorDataLossOccurred;
@@ -1613,8 +1617,33 @@ _mdmir_openseg(SMgrRelation reln, BlockNumber segno, int oflags)
 					&mirrorDataLossOccurred);
 
 	if (!MirroredBufferPool_IsActive(&mirroredOpen))
-		return NULL;
+	{
+	    if ( createIfDoesntExist )
+	    {
+            MirrorDataLossTrackingState mirrorDataLossTrackingState;
+            int64						mirrorDataLossTrackingSessionNum;
 
+            mirrorDataLossTrackingState =
+                FileRepPrimary_GetMirrorDataLossTrackingSessionNum(&mirrorDataLossTrackingSessionNum);
+
+	        MirroredBufferPool_Create(
+					&mirroredOpen,
+					&reln->smgr_rnode,
+					segno,
+					/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
+					mirrorDataLossTrackingState,
+					mirrorDataLossTrackingSessionNum,
+					&primaryError,
+					&mirrorDataLossOccurred);
+
+        }
+
+        /* check again now that we may have done create */
+        if (!MirroredBufferPool_IsActive(&mirroredOpen))
+        {
+            return NULL;
+        }
+    }
 	/* allocate an mdfdvec entry for it */
 	v = _mirvec_alloc();
 
@@ -1670,9 +1699,10 @@ _mdmir_getseg(SMgrRelation reln, BlockNumber blkno, bool allowNotFound)
 			 * want to go ahead and create the segments so we can finish out
 			 * the replay.
 			 */
+			bool createIfDoesntExist = segstogo == 1 || InRecovery;
 			v->mdmir_chain = _mdmir_openseg(reln,
 										  nextsegno,
-								(segstogo == 1 || InRecovery) ? O_CREAT : 0);
+								          createIfDoesntExist);
 			if (v->mdmir_chain == NULL)
 			{
 				if (allowNotFound && FILE_POSSIBLY_DELETED(errno))

@@ -18,9 +18,13 @@
 #include "utils/palloc.h"
 #include "cdb/cdbfilerepprimary.h"
 #include "cdb/cdbmirroredflatfile.h"
+#include "cdb/cdbpersistentdatabase.h"
+#include "cdb/cdbpersistenttablespace.h"
 #include "storage/fd.h"
 #include "catalog/catalog.h"
 #include "utils/memutils.h"
+
+#define PGVERSION "PG_VERSION"
 
 /*
  * Open a relation for mirrored write.
@@ -857,6 +861,177 @@ MirrorFlatFile(
 		buffer = NULL;
 	}
 	
+	if (MirroredFlatFile_IsActive(&mirroredOpen)) {
+		MirroredFlatFile_Close(&mirroredOpen);
+	}
+	
+	if (MirroredFlatFile_IsActive(&primaryOpen)) {
+		MirroredFlatFile_ClosePrimary(&primaryOpen);
+	}
+	
+	return retval;
+}
+
+/*
+ *
+ */
+int
+PgVersionRecoverMirror(void)
+{
+	DbDirNode dbDirNode;
+	PersistentFileSysState state;
+	
+	ItemPointerData persistentTid;
+	int64 persistentSerialNum;
+	
+	char *primaryFilespaceLocation;
+	char *mirrorFilespaceLocation;
+	
+	char subDirectoryPrimary[MAXPGPATH+1];
+	char subDirectoryMirror[MAXPGPATH+1];
+	
+	MirroredFlatFileOpen	mirroredOpen;
+	MirroredFlatFileOpen	primaryOpen;
+	char					*buffer = NULL;
+	int32					endOffset = 0;
+	int32					startOffset = 0;
+	int32					bufferLen = 0;
+	int						retval = 0;
+	
+	PersistentDatabase_DirIterateInit();
+	
+	while (PersistentDatabase_DirIterateNext(
+											 &dbDirNode,
+											 &state,
+											 &persistentTid,
+											 &persistentSerialNum))
+	{
+		if (state != PersistentFileSysState_Created)
+			continue;
+		
+		PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+														   dbDirNode.tablespace,
+														   &primaryFilespaceLocation,
+														   &mirrorFilespaceLocation);	
+				
+		FormDatabasePath(
+						 subDirectoryPrimary,
+						 primaryFilespaceLocation,
+						 dbDirNode.tablespace,
+						 dbDirNode.database);	
+		
+		FormDatabasePath(
+						 subDirectoryMirror,
+						 mirrorFilespaceLocation,
+						 dbDirNode.tablespace,
+						 dbDirNode.database);			
+		
+		errno = 0;
+				
+		while (1) {
+			
+			retval = MirroredFlatFile_OpenPrimary(
+												  &primaryOpen,
+												  subDirectoryPrimary,
+												  PGVERSION,
+												  O_RDONLY | PG_BINARY,
+												  S_IRUSR | S_IWUSR,
+												  /* suppressError */ false);
+			if (retval != 0)
+				break;
+			
+			/*
+			 * Determine the end.
+			 */
+			endOffset = MirroredFlatFile_SeekEnd(&primaryOpen);
+			if (endOffset < 0) {
+				ereport(ERROR,
+						(errcode_for_file_access(),
+						 errmsg("could not seek to end of file \"%s\" : %m",
+								primaryOpen.path)));
+				break;
+			}
+			
+			retval = MirroredFlatFile_Drop(
+										   subDirectoryMirror,
+										   PGVERSION,
+										   /* suppressError */ false,
+										   /*isMirrorRecovery */ TRUE);
+			if (retval != 0)
+				break;
+			
+			retval = MirroredFlatFile_Open(
+										   &mirroredOpen,
+										   subDirectoryMirror,
+										   PGVERSION,
+										   O_CREAT | O_TRUNC | O_RDWR | PG_BINARY,
+										   S_IRUSR | S_IWUSR,
+										   /* suppressError */ false,
+										   /*isMirrorRecovery */ TRUE);
+			if (retval != 0)
+				break;
+			
+			bufferLen = (Size) Min(BLCKSZ, endOffset - startOffset);
+			buffer = (char*) palloc(bufferLen);
+			if (buffer == NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_OUT_OF_MEMORY),
+						 (errmsg("Not enough shared memory for Mirroring."))));
+			
+			MemSet(buffer, 0, bufferLen);
+			
+			while (startOffset < endOffset) {
+				
+				retval = MirroredFlatFile_Read(	
+											   &primaryOpen,
+											   startOffset,
+											   buffer,
+											   bufferLen);
+				
+				if (retval != bufferLen) {
+					ereport(ERROR,
+							(errcode_for_file_access(),
+							 errmsg("could not read from position:%d in file \"%s\" : %m",
+									startOffset, primaryOpen.path)));
+					
+					break;
+				}
+				
+				retval = MirroredFlatFile_Append(
+												 &mirroredOpen,
+												 buffer,
+												 bufferLen,
+												 /* suppressError */ false);
+				
+				if (retval != 0)
+					break;
+				
+				startOffset += bufferLen;
+				
+				bufferLen = (Size) Min(BLCKSZ, endOffset - startOffset);
+			} // while
+			
+			if (retval != 0)
+				break;
+			
+			retval = MirroredFlatFile_Flush(
+											&mirroredOpen,
+											/* suppressError */ FALSE);
+			if (retval != 0)
+				break;
+			
+			break;
+		} // while(1)
+		
+		startOffset = 0;
+
+		if (buffer) {
+			pfree(buffer);
+			buffer = NULL;
+		}
+		
+	} // while (PersistentDatabase_DirIterateNext
+		
 	if (MirroredFlatFile_IsActive(&mirroredOpen)) {
 		MirroredFlatFile_Close(&mirroredOpen);
 	}

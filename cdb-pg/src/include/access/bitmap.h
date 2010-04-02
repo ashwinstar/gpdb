@@ -578,6 +578,9 @@ typedef BMScanOpaqueData *BMScanOpaque;
 typedef struct xl_bm_bitmapwords
 {
 	RelFileNode 	bm_node;
+	ItemPointerData bm_persistentTid;
+	int64 			bm_persistentSerialNum;
+
 	/* The block number for the bitmap page */
 	BlockNumber		bm_blkno;
 	/* The next block number for this bitmap page */
@@ -633,6 +636,9 @@ typedef struct xl_bm_bitmapwords
 typedef struct xl_bm_updatewords
 {
 	RelFileNode		bm_node;
+	ItemPointerData bm_persistentTid;
+	int64 			bm_persistentSerialNum;
+
 	BlockNumber		bm_lov_blkno;
 	OffsetNumber	bm_lov_offset;
 
@@ -661,6 +667,9 @@ typedef struct xl_bm_updatewords
 typedef struct xl_bm_updateword
 {
 	RelFileNode		bm_node;
+	ItemPointerData bm_persistentTid;
+	int64 			bm_persistentSerialNum;
+
 	BlockNumber		bm_blkno;
 	int				bm_word_no;
 	BM_HRL_WORD		bm_cword;
@@ -671,6 +680,9 @@ typedef struct xl_bm_updateword
 typedef struct xl_bm_lovitem
 {
 	RelFileNode 	bm_node;
+	ItemPointerData bm_persistentTid;
+	int64 			bm_persistentSerialNum;
+
 	BlockNumber		bm_lov_blkno;
 	OffsetNumber	bm_lov_offset;
 	BMLOVItemData	bm_lovItem;
@@ -681,6 +693,9 @@ typedef struct xl_bm_lovitem
 typedef struct xl_bm_newpage
 {
 	RelFileNode 	bm_node;
+	ItemPointerData bm_persistentTid;
+	int64 			bm_persistentSerialNum;
+
 	BlockNumber		bm_new_blkno;
 } xl_bm_newpage;
 
@@ -691,6 +706,9 @@ typedef struct xl_bm_newpage
 typedef struct xl_bm_bitmappage
 {
 	RelFileNode 	bm_node;
+	ItemPointerData bm_persistentTid;
+	int64 			bm_persistentSerialNum;
+
 	BlockNumber		bm_bitmap_blkno;
 
 	bool			bm_isOpaque;
@@ -708,6 +726,9 @@ typedef struct xl_bm_bitmappage
 typedef struct xl_bm_bitmap_lastwords
 {
 	RelFileNode 	bm_node;
+	ItemPointerData bm_persistentTid;
+	int64 			bm_persistentSerialNum;
+
 	BM_HRL_WORD		bm_last_compword;
 	BM_HRL_WORD		bm_last_word;
 	uint8			lov_words_header;
@@ -721,11 +742,14 @@ typedef struct xl_bm_bitmap_lastwords
 /* The information about the changes in the metapage. */
 typedef struct xl_bm_metapage
 {
-	RelFileNode bm_node;
-	Oid			bm_lov_heapId;		/* the relation id for the heap */
-	Oid			bm_lov_indexId;		/* the relation id for the index */
+	RelFileNode 	bm_node;
+	ItemPointerData bm_persistentTid;
+	int64 			bm_persistentSerialNum;
+
+	Oid				bm_lov_heapId;		/* the relation id for the heap */
+	Oid				bm_lov_indexId;		/* the relation id for the index */
 	/* the block number for the last LOV pages. */
-	BlockNumber	bm_lov_lastpage;
+	BlockNumber		bm_lov_lastpage;
 } xl_bm_metapage;
 
 /* public routines */

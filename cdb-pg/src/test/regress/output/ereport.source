@@ -2216,14 +2216,14 @@ select * from get_ereport order by 1;
  baag: bufmgr:00000487:  errmsg("invalid page header in block %u of relation """, 
  baag: bufmgr:00000488:  blockNum/*, relpath(reln->smgr_rnode)*/), 
  baag: bufmgr:00000489:  errSendAlert(true))); 
- baag: bufmgr:00002899:  ereport(WARNING, 
- baag: bufmgr:00002900:  (errcode(ERRCODE_IO_ERROR), 
- baag: bufmgr:00002901:  errmsg("could not write block %u of %u/%u/%u", 
- baag: bufmgr:00002902:  buf->tag.blockNum, 
- baag: bufmgr:00002903:  buf->tag.rnode.spcNode, 
- baag: bufmgr:00002904:  buf->tag.rnode.dbNode, 
- baag: bufmgr:00002905:  buf->tag.rnode.relNode), 
- baag: bufmgr:00002906:  errdetail("Multiple failures --- write error might be permanent."))); 
+ baag: bufmgr:00002904:  ereport(WARNING, 
+ baag: bufmgr:00002905:  (errcode(ERRCODE_IO_ERROR), 
+ baag: bufmgr:00002906:  errmsg("could not write block %u of %u/%u/%u", 
+ baag: bufmgr:00002907:  buf->tag.blockNum, 
+ baag: bufmgr:00002908:  buf->tag.rnode.spcNode, 
+ baag: bufmgr:00002909:  buf->tag.rnode.dbNode, 
+ baag: bufmgr:00002910:  buf->tag.rnode.relNode), 
+ baag: bufmgr:00002911:  errdetail("Multiple failures --- write error might be permanent."))); 
  baah: backend:00000171:  ereport(ERROR, ( 
  baah: backend:00000172:  errcode(ERRCODE_INTERNAL_ERROR), 
  baah: backend:00000173:  errmsg("Unable to initialize java security"))); 
@@ -3100,12 +3100,12 @@ select * from get_ereport order by 1;
  caah: cdbutil:00000362:  (errcode(ERRCODE_DATA_EXCEPTION), 
  caah: cdbutil:00000363:  errmsg("Content values not valid in %s table. They must be in the range 0 to %d inclusive", 
  caah: cdbutil:00000364:  GpSegmentConfigRelationName, getgpsegmentCount() - 1))); 
- caah: cdbvars:00000942:  ereport(ERROR, 
- caah: cdbvars:00000943:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- caah: cdbvars:00000944:  errmsg("must be superuser to set gp_enable_gpperfmon"))); 
- caah: cdbvars:00000962:  ereport(ERROR, 
- caah: cdbvars:00000963:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- caah: cdbvars:00000964:  errmsg("must be superuser to set gp_gpperfmon_send_interval"))); 
+ caah: cdbvars:00000950:  ereport(ERROR, 
+ caah: cdbvars:00000951:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ caah: cdbvars:00000952:  errmsg("must be superuser to set gp_enable_gpperfmon"))); 
+ caah: cdbvars:00000970:  ereport(ERROR, 
+ caah: cdbvars:00000971:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ caah: cdbvars:00000972:  errmsg("must be superuser to set gp_gpperfmon_send_interval"))); 
  caah: clauses:00000428:  ereport(ERROR, 
  caah: clauses:00000429:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  caah: clauses:00000430:  errmsg("DISTINCT is supported only for single-argument aggregates"))); 
@@ -3985,56 +3985,67 @@ select * from get_ereport order by 1;
  cabh: cdbfilerepservice:00000545:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
  cabh: cdbfilerepservice:00000546:  errOmitLocation(true), 
  cabh: cdbfilerepservice:00000547:  errmsg("Unexpected internal error"))); 
- cabj: cdbmirroredflatfile:00000079:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000080:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000081:  errmsg("could not open file "%s": %m", open->path))); 
- cabj: cdbmirroredflatfile:00000153:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000154:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000155:  errmsg("could not open file "%s": %m", open->path))); 
- cabj: cdbmirroredflatfile:00000209:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000210:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000211:  errmsg("could not fsync file "%s": %m", open->path))); 
- cabj: cdbmirroredflatfile:00000311:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000312:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000313:  errmsg("could not link file from "%s" to "%s": %m", 
- cabj: cdbmirroredflatfile:00000314:  oldPath, newPath))); 
- cabj: cdbmirroredflatfile:00000319:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000320:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000321:  errmsg("could not rename file from "%s" to "%s": %m", 
- cabj: cdbmirroredflatfile:00000322:  oldPath, newPath))); 
- cabj: cdbmirroredflatfile:00000390:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000391:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000392:  errmsg("could not write to file "%s": %m", open->path))); 
- cabj: cdbmirroredflatfile:00000460:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000461:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000462:  errmsg("could not seek in file to position %d in file "%s": %m", 
- cabj: cdbmirroredflatfile:00000463:  position, 
- cabj: cdbmirroredflatfile:00000464:  open->path))); 
- cabj: cdbmirroredflatfile:00000473:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000474:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000475:  errmsg("could not write to file "%s": %m", open->path))); 
- cabj: cdbmirroredflatfile:00000524:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000525:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000526:  errmsg("could not open file "%s": %m", open->path))); 
- cabj: cdbmirroredflatfile:00000598:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000599:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000600:  errmsg("could not seek in file to position %d in file "%s": %m", 
- cabj: cdbmirroredflatfile:00000601:  position, 
- cabj: cdbmirroredflatfile:00000602:  open->path))); 
- cabj: cdbmirroredflatfile:00000667:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000668:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000669:  errmsg("could not unlink file "%s": %m", path))); 
- cabj: cdbmirroredflatfile:00000776:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000777:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000778:  errmsg("could not seek to end of file "%s" : %m", 
- cabj: cdbmirroredflatfile:00000779:  primaryOpen.path))); 
- cabj: cdbmirroredflatfile:00000806:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000807:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cabj: cdbmirroredflatfile:00000808:  (errmsg("Not enough shared memory for Mirroring.")))); 
- cabj: cdbmirroredflatfile:00000821:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000822:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000823:  errmsg("could not read from position:%d in file "%s" : %m", 
- cabj: cdbmirroredflatfile:00000824:  startOffset, primaryOpen.path))); 
+ cabj: cdbmirroredflatfile:00000083:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000084:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000085:  errmsg("could not open file "%s": %m", open->path))); 
+ cabj: cdbmirroredflatfile:00000157:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000158:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000159:  errmsg("could not open file "%s": %m", open->path))); 
+ cabj: cdbmirroredflatfile:00000213:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000214:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000215:  errmsg("could not fsync file "%s": %m", open->path))); 
+ cabj: cdbmirroredflatfile:00000315:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000316:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000317:  errmsg("could not link file from "%s" to "%s": %m", 
+ cabj: cdbmirroredflatfile:00000318:  oldPath, newPath))); 
+ cabj: cdbmirroredflatfile:00000323:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000324:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000325:  errmsg("could not rename file from "%s" to "%s": %m", 
+ cabj: cdbmirroredflatfile:00000326:  oldPath, newPath))); 
+ cabj: cdbmirroredflatfile:00000394:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000395:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000396:  errmsg("could not write to file "%s": %m", open->path))); 
+ cabj: cdbmirroredflatfile:00000464:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000465:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000466:  errmsg("could not seek in file to position %d in file "%s": %m", 
+ cabj: cdbmirroredflatfile:00000467:  position, 
+ cabj: cdbmirroredflatfile:00000468:  open->path))); 
+ cabj: cdbmirroredflatfile:00000477:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000478:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000479:  errmsg("could not write to file "%s": %m", open->path))); 
+ cabj: cdbmirroredflatfile:00000528:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000529:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000530:  errmsg("could not open file "%s": %m", open->path))); 
+ cabj: cdbmirroredflatfile:00000602:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000603:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000604:  errmsg("could not seek in file to position %d in file "%s": %m", 
+ cabj: cdbmirroredflatfile:00000605:  position, 
+ cabj: cdbmirroredflatfile:00000606:  open->path))); 
+ cabj: cdbmirroredflatfile:00000671:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000672:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000673:  errmsg("could not unlink file "%s": %m", path))); 
+ cabj: cdbmirroredflatfile:00000780:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000781:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000782:  errmsg("could not seek to end of file "%s" : %m", 
+ cabj: cdbmirroredflatfile:00000783:  primaryOpen.path))); 
+ cabj: cdbmirroredflatfile:00000810:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000811:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cabj: cdbmirroredflatfile:00000812:  (errmsg("Not enough shared memory for Mirroring.")))); 
+ cabj: cdbmirroredflatfile:00000825:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000826:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000827:  errmsg("could not read from position:%d in file "%s" : %m", 
+ cabj: cdbmirroredflatfile:00000828:  startOffset, primaryOpen.path))); 
+ cabj: cdbmirroredflatfile:00000948:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000949:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000950:  errmsg("could not seek to end of file "%s" : %m", 
+ cabj: cdbmirroredflatfile:00000951:  primaryOpen.path))); 
+ cabj: cdbmirroredflatfile:00000977:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000978:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cabj: cdbmirroredflatfile:00000979:  (errmsg("Not enough shared memory for Mirroring.")))); 
+ cabj: cdbmirroredflatfile:00000992:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000993:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000994:  errmsg("could not read from position:%d in file "%s" : %m", 
+ cabj: cdbmirroredflatfile:00000995:  startOffset, primaryOpen.path))); 
  caca: cdbfilerepconnserver:00000079:  ereport(ERROR, 
  caca: cdbfilerepconnserver:00000080:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  caca: cdbfilerepconnserver:00000081:  (errmsg("ERROR(filerep): not enough memory to create connection")))); 
@@ -4159,18 +4170,18 @@ select * from get_ereport order by 1;
  cacc: cdbpersistentfilespace:00001005:  ereport(FATAL, 
  cacc: cdbpersistentfilespace:00001006:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  cacc: cdbpersistentfilespace:00001007:  errmsg("Not enough shared memory for persistent filespace hash table"))); 
- cacd: cdbfilerepresyncmanager:00000324:  ereport(ERROR, 
- cacd: cdbfilerepresyncmanager:00000325:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cacd: cdbfilerepresyncmanager:00000326:  (errmsg("Not enough shared memory for Mirroring.")))); 
- cacd: cdbfilerepresyncmanager:00000364:  ereport(ERROR, 
- cacd: cdbfilerepresyncmanager:00000365:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cacd: cdbfilerepresyncmanager:00000366:  (errmsg("Not enough shared memory for FileRep Resync.")))); 
- cacd: cdbfilerepresyncmanager:00000382:  ereport(ERROR, 
- cacd: cdbfilerepresyncmanager:00000383:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cacd: cdbfilerepresyncmanager:00000384:  (errmsg("Not enough shared memory for Mirroring.")))); 
- cacd: cdbfilerepresyncmanager:00000406:  ereport(ERROR, 
- cacd: cdbfilerepresyncmanager:00000407:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cacd: cdbfilerepresyncmanager:00000408:  (errmsg("Not enough shared memory for FileRep Resync.")))); 
+ cacd: cdbfilerepresyncmanager:00000325:  ereport(ERROR, 
+ cacd: cdbfilerepresyncmanager:00000326:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cacd: cdbfilerepresyncmanager:00000327:  (errmsg("Not enough shared memory for Mirroring.")))); 
+ cacd: cdbfilerepresyncmanager:00000365:  ereport(ERROR, 
+ cacd: cdbfilerepresyncmanager:00000366:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cacd: cdbfilerepresyncmanager:00000367:  (errmsg("Not enough shared memory for FileRep Resync.")))); 
+ cacd: cdbfilerepresyncmanager:00000383:  ereport(ERROR, 
+ cacd: cdbfilerepresyncmanager:00000384:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cacd: cdbfilerepresyncmanager:00000385:  (errmsg("Not enough shared memory for Mirroring.")))); 
+ cacd: cdbfilerepresyncmanager:00000407:  ereport(ERROR, 
+ cacd: cdbfilerepresyncmanager:00000408:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cacd: cdbfilerepresyncmanager:00000409:  (errmsg("Not enough shared memory for FileRep Resync.")))); 
  cacd: cdbpersistentfilesysobj:00000707:  ereport(ERROR, 
  cacd: cdbpersistentfilesysobj:00000708:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
  cacd: cdbpersistentfilesysobj:00000709:  errmsg("Did not expect to find a 'Free' entry"), 
@@ -4462,59 +4473,59 @@ select * from get_ereport order by 1;
  cacf: cdbappendonlystoragewrite:00001198:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
  cacf: cdbappendonlystoragewrite:00001199:  errmsg("We do not expect files to be have a maximum length"), 
  cacf: cdbappendonlystoragewrite:00001200:  errcontext_appendonly_write_storage_block(storageWrite))); 
- cada: cdbresynchronizechangetracking:00000776:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00000777:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00000778:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
- cada: cdbresynchronizechangetracking:00000779:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00000780:  path), 
- cada: cdbresynchronizechangetracking:00000781:  errSendAlert(true))); 
- cada: cdbresynchronizechangetracking:00000867:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- cada: cdbresynchronizechangetracking:00000868:  errmsg("Unable to obtain change tracking information from segment database."), 
- cada: cdbresynchronizechangetracking:00000869:  errdetail("SPI_connect failed in ChangeTracking_GetIncrementalChangeList()"))); 
- cada: cdbresynchronizechangetracking:00001132:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- cada: cdbresynchronizechangetracking:00001133:  errmsg("Unable to obtain change tracking information from segment database."), 
- cada: cdbresynchronizechangetracking:00001134:  errdetail("SPI_connect failed in ChangeTracking_GetChanges()"))); 
- cada: cdbresynchronizechangetracking:00001433:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001434:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001435:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
- cada: cdbresynchronizechangetracking:00001436:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001437:  path), 
- cada: cdbresynchronizechangetracking:00001438:  errSendAlert(true))); 
- cada: cdbresynchronizechangetracking:00001447:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001448:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001449:  errmsg("ERROR(filerep): unable to write change tracking log file "%s", " 
- cada: cdbresynchronizechangetracking:00001450:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001451:  path), 
- cada: cdbresynchronizechangetracking:00001452:  errSendAlert(true))); 
- cada: cdbresynchronizechangetracking:00001512:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001513:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001514:  errmsg("ERROR(filerep): no disk space for change tracking meta file "%s", " 
- cada: cdbresynchronizechangetracking:00001515:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001516:  path), 
- cada: cdbresynchronizechangetracking:00001517:  errSendAlert(true))); 
- cada: cdbresynchronizechangetracking:00001526:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001527:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001528:  errmsg("ERROR(filerep): unable to write change tracking meta file "%s", " 
- cada: cdbresynchronizechangetracking:00001529:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001530:  path), 
- cada: cdbresynchronizechangetracking:00001531:  errSendAlert(true))); 
- cada: cdbresynchronizechangetracking:00001565:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001566:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001567:  errmsg("ERROR(filerep): unable to read change tracking meta file "%s", " 
- cada: cdbresynchronizechangetracking:00001568:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001569:  path), 
- cada: cdbresynchronizechangetracking:00001570:  errSendAlert(true))); 
- cada: cdbresynchronizechangetracking:00001704:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001705:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001706:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
- cada: cdbresynchronizechangetracking:00001707:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001708:  path))); 
- cada: cdbresynchronizechangetracking:00001816:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- cada: cdbresynchronizechangetracking:00001817:  errmsg("Unable to obtain change tracking information from segment database."), 
- cada: cdbresynchronizechangetracking:00001818:  errdetail("SPI_connect failed in ChangeTracking_ReadLastLocOnDisk()"))); 
- cada: cdbresynchronizechangetracking:00001919:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- cada: cdbresynchronizechangetracking:00001920:  errmsg("Unable to obtain change tracking information from segment database."), 
- cada: cdbresynchronizechangetracking:00001921:  errdetail("SPI_connect failed in ChangeTracking_GetTotalBlocksToSync()"))); 
+ cada: cdbresynchronizechangetracking:00000931:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00000932:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00000933:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
+ cada: cdbresynchronizechangetracking:00000934:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00000935:  path), 
+ cada: cdbresynchronizechangetracking:00000936:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001022:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ cada: cdbresynchronizechangetracking:00001023:  errmsg("Unable to obtain change tracking information from segment database."), 
+ cada: cdbresynchronizechangetracking:00001024:  errdetail("SPI_connect failed in ChangeTracking_GetIncrementalChangeList()"))); 
+ cada: cdbresynchronizechangetracking:00001287:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ cada: cdbresynchronizechangetracking:00001288:  errmsg("Unable to obtain change tracking information from segment database."), 
+ cada: cdbresynchronizechangetracking:00001289:  errdetail("SPI_connect failed in ChangeTracking_GetChanges()"))); 
+ cada: cdbresynchronizechangetracking:00001588:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001589:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001590:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
+ cada: cdbresynchronizechangetracking:00001591:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001592:  path), 
+ cada: cdbresynchronizechangetracking:00001593:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001602:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001603:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001604:  errmsg("ERROR(filerep): unable to write change tracking log file "%s", " 
+ cada: cdbresynchronizechangetracking:00001605:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001606:  path), 
+ cada: cdbresynchronizechangetracking:00001607:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001667:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001668:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001669:  errmsg("ERROR(filerep): no disk space for change tracking meta file "%s", " 
+ cada: cdbresynchronizechangetracking:00001670:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001671:  path), 
+ cada: cdbresynchronizechangetracking:00001672:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001681:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001682:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001683:  errmsg("ERROR(filerep): unable to write change tracking meta file "%s", " 
+ cada: cdbresynchronizechangetracking:00001684:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001685:  path), 
+ cada: cdbresynchronizechangetracking:00001686:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001720:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001721:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001722:  errmsg("ERROR(filerep): unable to read change tracking meta file "%s", " 
+ cada: cdbresynchronizechangetracking:00001723:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001724:  path), 
+ cada: cdbresynchronizechangetracking:00001725:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001859:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001860:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001861:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
+ cada: cdbresynchronizechangetracking:00001862:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001863:  path))); 
+ cada: cdbresynchronizechangetracking:00001971:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ cada: cdbresynchronizechangetracking:00001972:  errmsg("Unable to obtain change tracking information from segment database."), 
+ cada: cdbresynchronizechangetracking:00001973:  errdetail("SPI_connect failed in ChangeTracking_ReadLastLocOnDisk()"))); 
+ cada: cdbresynchronizechangetracking:00002074:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ cada: cdbresynchronizechangetracking:00002075:  errmsg("Unable to obtain change tracking information from segment database."), 
+ cada: cdbresynchronizechangetracking:00002076:  errdetail("SPI_connect failed in ChangeTracking_GetTotalBlocksToSync()"))); 
  daae: date:00000083:  ereport(ERROR, 
  daae: date:00000084:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  daae: date:00000085:  errmsg("date/time value "current" is no longer supported"))); 
@@ -6534,81 +6545,81 @@ select * from get_ereport order by 1;
  fabd: faultinjector:00000377:  ereport(ERROR, 
  fabd: faultinjector:00000378:  (errmsg("Fault is injected identifier:'%s' ", 
  fabd: faultinjector:00000379:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier]))); 
- gaad: guc:00007174:  ereport(ERROR, 
- gaad: guc:00007175:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00007176:  errmsg("unrecognized configuration parameter "%s"", name))); 
- gaad: guc:00007178:  ereport(ERROR, 
- gaad: guc:00007179:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- gaad: guc:00007180:  errmsg("must be superuser to examine "%s"", name))); 
- gaad: guc:00007214:  ereport(ERROR, 
- gaad: guc:00007215:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00007216:  errmsg("unrecognized configuration parameter "%s"", name))); 
- gaad: guc:00007218:  ereport(ERROR, 
- gaad: guc:00007219:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- gaad: guc:00007220:  errmsg("must be superuser to examine "%s"", name))); 
- gaad: guc:00007289:  ereport(ERROR, 
- gaad: guc:00007290:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00007291:  errmsg("unrecognized configuration parameter "%s"", name))); 
- gaad: guc:00007298:  ereport(ERROR, 
- gaad: guc:00007299:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00007300:  errmsg("SET %s takes only one argument", name))); 
- gaad: guc:00007471:  ereport(ERROR, 
- gaad: guc:00007472:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
- gaad: guc:00007473:  errmsg("SET requires parameter name"))); 
- gaad: guc:00007535:  ereport(ERROR, 
- gaad: guc:00007536:  (errcode(ERRCODE_INTERNAL_ERROR), 
- gaad: guc:00007537:  errmsg("attempt to redefine parameter "%s"", name))); 
- gaad: guc:00007856:  ereport(ERROR, 
- gaad: guc:00007857:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00007858:  errmsg("unrecognized configuration parameter "%s"", name))); 
- gaad: guc:00007860:  ereport(ERROR, 
- gaad: guc:00007861:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- gaad: guc:00007862:  errmsg("must be superuser to examine "%s"", name))); 
- gaad: guc:00008664:  ereport(FATAL, 
- gaad: guc:00008665:  (errcode_for_file_access(), 
- gaad: guc:00008666:  errmsg("could not read from file "%s": %m", 
- gaad: guc:00008667:  CONFIG_EXEC_PARAMS))); 
- gaad: guc:00008774:  ereport(WARNING, 
- gaad: guc:00008775:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaad: guc:00008776:  errmsg("could not parse setting for parameter "%s"", name))); 
- gaad: guc:00008970:  ereport(ERROR, 
- gaad: guc:00008971:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00008972:  errmsg("invalid list syntax for parameter "log_destination""))); 
- gaad: guc:00008993:  ereport(ERROR, 
- gaad: guc:00008994:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00008995:  errmsg("unrecognized "log_destination" key word: "%s"", 
- gaad: guc:00008996:  tok))); 
- gaad: guc:00009022:  ereport(ERROR, 
- gaad: guc:00009023:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009024:  errmsg("unrecognized "gp_log_format" key word: "%s"", 
- gaad: guc:00009025:  value))); 
- gaad: guc:00009368:  ereport(ERROR, 
- gaad: guc:00009369:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaad: guc:00009370:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
- gaad: guc:00009444:  ereport(ERROR, 
- gaad: guc:00009445:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009446:  errmsg("assertion checking is not supported by this build"))); 
- gaad: guc:00009465:  ereport(ERROR, 
- gaad: guc:00009466:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009467:  errmsg("SSL is not supported by this build"))); 
- gaad: guc:00009478:  ereport(ERROR, 
- gaad: guc:00009479:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009480:  errmsg("cannot enable parameter when "log_statement_stats" is true"))); 
- gaad: guc:00009495:  ereport(ERROR, 
- gaad: guc:00009496:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009497:  errmsg("cannot enable "log_statement_stats" when " 
- gaad: guc:00009498:  ""log_parser_stats", "log_planner_stats", " 
- gaad: guc:00009499:  ""log_dispatch_stats", " 
- gaad: guc:00009500:  "or "log_executor_stats" is true"))); 
- gaad: guc:00009515:  ereport(ERROR, 
- gaad: guc:00009516:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009517:  errmsg("cannot enable "log_dispatch_stats" when " 
- gaad: guc:00009518:  ""log_statement_stats", " 
- gaad: guc:00009519:  ""log_parser_stats", "log_planner_stats", " 
- gaad: guc:00009520:  "or "log_executor_stats" is true"))); 
- gaad: guc:00009535:  ereport(ERROR, 
- gaad: guc:00009536:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009537:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+ gaad: guc:00007184:  ereport(ERROR, 
+ gaad: guc:00007185:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00007186:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00007188:  ereport(ERROR, 
+ gaad: guc:00007189:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ gaad: guc:00007190:  errmsg("must be superuser to examine "%s"", name))); 
+ gaad: guc:00007224:  ereport(ERROR, 
+ gaad: guc:00007225:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00007226:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00007228:  ereport(ERROR, 
+ gaad: guc:00007229:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ gaad: guc:00007230:  errmsg("must be superuser to examine "%s"", name))); 
+ gaad: guc:00007299:  ereport(ERROR, 
+ gaad: guc:00007300:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00007301:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00007308:  ereport(ERROR, 
+ gaad: guc:00007309:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00007310:  errmsg("SET %s takes only one argument", name))); 
+ gaad: guc:00007481:  ereport(ERROR, 
+ gaad: guc:00007482:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+ gaad: guc:00007483:  errmsg("SET requires parameter name"))); 
+ gaad: guc:00007545:  ereport(ERROR, 
+ gaad: guc:00007546:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ gaad: guc:00007547:  errmsg("attempt to redefine parameter "%s"", name))); 
+ gaad: guc:00007866:  ereport(ERROR, 
+ gaad: guc:00007867:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00007868:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00007870:  ereport(ERROR, 
+ gaad: guc:00007871:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ gaad: guc:00007872:  errmsg("must be superuser to examine "%s"", name))); 
+ gaad: guc:00008674:  ereport(FATAL, 
+ gaad: guc:00008675:  (errcode_for_file_access(), 
+ gaad: guc:00008676:  errmsg("could not read from file "%s": %m", 
+ gaad: guc:00008677:  CONFIG_EXEC_PARAMS))); 
+ gaad: guc:00008784:  ereport(WARNING, 
+ gaad: guc:00008785:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaad: guc:00008786:  errmsg("could not parse setting for parameter "%s"", name))); 
+ gaad: guc:00008980:  ereport(ERROR, 
+ gaad: guc:00008981:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00008982:  errmsg("invalid list syntax for parameter "log_destination""))); 
+ gaad: guc:00009003:  ereport(ERROR, 
+ gaad: guc:00009004:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009005:  errmsg("unrecognized "log_destination" key word: "%s"", 
+ gaad: guc:00009006:  tok))); 
+ gaad: guc:00009032:  ereport(ERROR, 
+ gaad: guc:00009033:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009034:  errmsg("unrecognized "gp_log_format" key word: "%s"", 
+ gaad: guc:00009035:  value))); 
+ gaad: guc:00009378:  ereport(ERROR, 
+ gaad: guc:00009379:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaad: guc:00009380:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+ gaad: guc:00009454:  ereport(ERROR, 
+ gaad: guc:00009455:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009456:  errmsg("assertion checking is not supported by this build"))); 
+ gaad: guc:00009475:  ereport(ERROR, 
+ gaad: guc:00009476:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009477:  errmsg("SSL is not supported by this build"))); 
+ gaad: guc:00009488:  ereport(ERROR, 
+ gaad: guc:00009489:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009490:  errmsg("cannot enable parameter when "log_statement_stats" is true"))); 
+ gaad: guc:00009505:  ereport(ERROR, 
+ gaad: guc:00009506:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009507:  errmsg("cannot enable "log_statement_stats" when " 
+ gaad: guc:00009508:  ""log_parser_stats", "log_planner_stats", " 
+ gaad: guc:00009509:  ""log_dispatch_stats", " 
+ gaad: guc:00009510:  "or "log_executor_stats" is true"))); 
+ gaad: guc:00009525:  ereport(ERROR, 
+ gaad: guc:00009526:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009527:  errmsg("cannot enable "log_dispatch_stats" when " 
+ gaad: guc:00009528:  ""log_statement_stats", " 
+ gaad: guc:00009529:  ""log_parser_stats", "log_planner_stats", " 
+ gaad: guc:00009530:  "or "log_executor_stats" is true"))); 
+ gaad: guc:00009545:  ereport(ERROR, 
+ gaad: guc:00009546:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009547:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
  gaae: gram:00018642:  ereport(ERROR, 
  gaae: gram:00018643:  (errcode(ERRCODE_SYNTAX_ERROR), 
  gaae: gram:00018644:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"), 
@@ -8460,14 +8471,14 @@ select * from get_ereport order by 1;
  maac: md:00000853:  reln->smgr_rnode.spcNode, 
  maac: md:00000854:  reln->smgr_rnode.dbNode, 
  maac: md:00000855:  reln->smgr_rnode.relNode))); 
- maac: md:00001680:  ereport(ERROR, 
- maac: md:00001681:  (errcode_for_file_access(), 
- maac: md:00001682:  errmsg("could not open segment %u of relation %u/%u/%u (target block %u): %m", 
- maac: md:00001683:  nextsegno, 
- maac: md:00001684:  reln->smgr_rnode.spcNode, 
- maac: md:00001685:  reln->smgr_rnode.dbNode, 
- maac: md:00001686:  reln->smgr_rnode.relNode, 
- maac: md:00001687:  blkno))); 
+ maac: md:00001710:  ereport(ERROR, 
+ maac: md:00001711:  (errcode_for_file_access(), 
+ maac: md:00001712:  errmsg("could not open segment %u of relation %u/%u/%u (target block %u): %m", 
+ maac: md:00001713:  nextsegno, 
+ maac: md:00001714:  reln->smgr_rnode.spcNode, 
+ maac: md:00001715:  reln->smgr_rnode.dbNode, 
+ maac: md:00001716:  reln->smgr_rnode.relNode, 
+ maac: md:00001717:  blkno))); 
  maad: mac:00000063:  ereport(ERROR, 
  maad: mac:00000064:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  maad: mac:00000065:  errmsg("invalid input syntax for type macaddr: "%s"", str))); 
@@ -11024,21 +11035,21 @@ select * from get_ereport order by 1;
  paaj: procarray:00000830:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), errmsg("out of memory"))); 
  paaj: procarray:00000838:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), errmsg("out of memory"))); 
  paaj: procarray:00000862:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), errmsg("out of memory"))); 
- paaj: procarray:00001005:  ereport(ERROR, 
- paaj: procarray:00001006:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- paaj: procarray:00001007:  errmsg("GetSnapshotData timed out waiting for Writer to set the shared snapshot."), 
- paaj: procarray:00001008:  errdetail("We are waiting for the shared snapshot to have XID: %d but the value " 
- paaj: procarray:00001009:  "is currently: %d." 
- paaj: procarray:00001010:  " waiting for cid to be %d but is currently %d. ready=%d." 
- paaj: procarray:00001011:  "DistributedTransactionContext = %s. " 
- paaj: procarray:00001012:  " Our slotindex is: %d 
+ paaj: procarray:00001008:  ereport(ERROR, 
+ paaj: procarray:00001009:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ paaj: procarray:00001010:  errmsg("GetSnapshotData timed out waiting for Writer to set the shared snapshot."), 
+ paaj: procarray:00001011:  errdetail("We are waiting for the shared snapshot to have XID: %d but the value " 
+ paaj: procarray:00001012:  "is currently: %d." 
+ paaj: procarray:00001013:  " waiting for cid to be %d but is currently %d. ready=%d." 
+ paaj: procarray:00001014:  "DistributedTransactionContext = %s. " 
+ paaj: procarray:00001015:  " Our slotindex is: %d 
  " 
- paaj: procarray:00001013:  "Dump of all sharedsnapshots in shmem: %s", 
- paaj: procarray:00001014:  QEDtxContextInfo.distributedXid, SharedLocalSnapshotSlot->QDxid, 
- paaj: procarray:00001015:  QEDtxContextInfo.curcid, 
- paaj: procarray:00001016:  SharedLocalSnapshotSlot->QDcid, SharedLocalSnapshotSlot->ready, 
- paaj: procarray:00001017:  DtxContextToString(DistributedTransactionContext), 
- paaj: procarray:00001018:  SharedLocalSnapshotSlot->slotindex, SharedSnapshotDump()))); 
+ paaj: procarray:00001016:  "Dump of all sharedsnapshots in shmem: %s", 
+ paaj: procarray:00001017:  QEDtxContextInfo.distributedXid, SharedLocalSnapshotSlot->QDxid, 
+ paaj: procarray:00001018:  QEDtxContextInfo.curcid, 
+ paaj: procarray:00001019:  SharedLocalSnapshotSlot->QDcid, SharedLocalSnapshotSlot->ready, 
+ paaj: procarray:00001020:  DtxContextToString(DistributedTransactionContext), 
+ paaj: procarray:00001021:  SharedLocalSnapshotSlot->slotindex, SharedSnapshotDump()))); 
  paba: parsexexpr:00000680:  ereport(ERROR, 
  paba: parsexexpr:00000681:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
  paba: parsexexpr:00000682:  errmsg("column "%s" does not exist", 
@@ -13924,119 +13935,119 @@ select * from get_ereport order by 1;
  saai: selfuncs:00004535:  ereport(ERROR, 
  saai: selfuncs:00004536:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  saai: selfuncs:00004537:  errmsg("regular-expression matching not supported on type bytea"))); 
- saai: sequence:00000568:  ereport(ERROR, 
- saai: sequence:00000569:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- saai: sequence:00000570:  errmsg("permission denied for sequence %s", 
- saai: sequence:00000571:  RelationGetRelationName(seqrel)))); 
- saai: sequence:00000680:  ereport(ERROR, 
- saai: sequence:00000681:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- saai: sequence:00000682:  errmsg("nextval: reached maximum value of sequence "%s" (%s)", 
- saai: sequence:00000683:  RelationGetRelationName(seqrel), buf))); 
- saai: sequence:00000703:  ereport(ERROR, 
- saai: sequence:00000704:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- saai: sequence:00000705:  errmsg("nextval: reached minimum value of sequence "%s" (%s)", 
- saai: sequence:00000706:  RelationGetRelationName(seqrel), buf))); 
- saai: sequence:00000801:  ereport(ERROR, 
- saai: sequence:00000802:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- saai: sequence:00000803:  errmsg("currval() not supported"))); 
- saai: sequence:00000811:  ereport(ERROR, 
- saai: sequence:00000812:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- saai: sequence:00000813:  errmsg("permission denied for sequence %s", 
- saai: sequence:00000814:  RelationGetRelationName(seqrel)))); 
- saai: sequence:00000817:  ereport(ERROR, 
- saai: sequence:00000818:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- saai: sequence:00000819:  errmsg("currval of sequence "%s" is not yet defined in this session", 
- saai: sequence:00000820:  RelationGetRelationName(seqrel)))); 
- saai: sequence:00000838:  ereport(ERROR, 
- saai: sequence:00000839:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- saai: sequence:00000840:  errmsg("lastval() not supported"))); 
- saai: sequence:00000844:  ereport(ERROR, 
- saai: sequence:00000845:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- saai: sequence:00000846:  errmsg("lastval is not yet defined in this session"))); 
- saai: sequence:00000852:  ereport(ERROR, 
- saai: sequence:00000853:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- saai: sequence:00000854:  errmsg("lastval is not yet defined in this session"))); 
- saai: sequence:00000863:  ereport(ERROR, 
- saai: sequence:00000864:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- saai: sequence:00000865:  errmsg("permission denied for sequence %s", 
- saai: sequence:00000866:  RelationGetRelationName(seqrel)))); 
- saai: sequence:00000897:  ereport(ERROR, 
- saai: sequence:00000898:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- saai: sequence:00000899:  errmsg("setval() not supported in this context"))); 
+ saai: sequence:00000574:  ereport(ERROR, 
+ saai: sequence:00000575:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ saai: sequence:00000576:  errmsg("permission denied for sequence %s", 
+ saai: sequence:00000577:  RelationGetRelationName(seqrel)))); 
+ saai: sequence:00000686:  ereport(ERROR, 
+ saai: sequence:00000687:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ saai: sequence:00000688:  errmsg("nextval: reached maximum value of sequence "%s" (%s)", 
+ saai: sequence:00000689:  RelationGetRelationName(seqrel), buf))); 
+ saai: sequence:00000709:  ereport(ERROR, 
+ saai: sequence:00000710:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ saai: sequence:00000711:  errmsg("nextval: reached minimum value of sequence "%s" (%s)", 
+ saai: sequence:00000712:  RelationGetRelationName(seqrel), buf))); 
+ saai: sequence:00000810:  ereport(ERROR, 
+ saai: sequence:00000811:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ saai: sequence:00000812:  errmsg("currval() not supported"))); 
+ saai: sequence:00000820:  ereport(ERROR, 
+ saai: sequence:00000821:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ saai: sequence:00000822:  errmsg("permission denied for sequence %s", 
+ saai: sequence:00000823:  RelationGetRelationName(seqrel)))); 
+ saai: sequence:00000826:  ereport(ERROR, 
+ saai: sequence:00000827:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ saai: sequence:00000828:  errmsg("currval of sequence "%s" is not yet defined in this session", 
+ saai: sequence:00000829:  RelationGetRelationName(seqrel)))); 
+ saai: sequence:00000847:  ereport(ERROR, 
+ saai: sequence:00000848:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ saai: sequence:00000849:  errmsg("lastval() not supported"))); 
+ saai: sequence:00000853:  ereport(ERROR, 
+ saai: sequence:00000854:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ saai: sequence:00000855:  errmsg("lastval is not yet defined in this session"))); 
+ saai: sequence:00000861:  ereport(ERROR, 
+ saai: sequence:00000862:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ saai: sequence:00000863:  errmsg("lastval is not yet defined in this session"))); 
+ saai: sequence:00000872:  ereport(ERROR, 
+ saai: sequence:00000873:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ saai: sequence:00000874:  errmsg("permission denied for sequence %s", 
+ saai: sequence:00000875:  RelationGetRelationName(seqrel)))); 
  saai: sequence:00000906:  ereport(ERROR, 
- saai: sequence:00000907:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- saai: sequence:00000908:  errmsg("permission denied for sequence %s", 
- saai: sequence:00000909:  RelationGetRelationName(seqrel)))); 
- saai: sequence:00000924:  ereport(ERROR, 
- saai: sequence:00000925:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
- saai: sequence:00000926:  errmsg("setval: value %s is out of bounds for sequence "%s" (%s..%s)", 
- saai: sequence:00000927:  bufv, RelationGetRelationName(seqrel), 
- saai: sequence:00000928:  bufm, bufx))); 
- saai: sequence:00001087:  ereport(ERROR, 
- saai: sequence:00001088:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- saai: sequence:00001089:  errmsg("out of memory"))); 
- saai: sequence:00001104:  ereport(ERROR, 
- saai: sequence:00001105:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- saai: sequence:00001106:  errmsg(""%s" is not a sequence", 
- saai: sequence:00001107:  RelationGetRelationName(seqrel)))); 
- saai: sequence:00001172:  ereport(ERROR, 
- saai: sequence:00001173:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saai: sequence:00001174:  errmsg("conflicting or redundant options"))); 
- saai: sequence:00001185:  ereport(ERROR, 
- saai: sequence:00001186:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saai: sequence:00001187:  errmsg("conflicting or redundant options"))); 
- saai: sequence:00001193:  ereport(ERROR, 
- saai: sequence:00001194:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saai: sequence:00001195:  errmsg("conflicting or redundant options"))); 
- saai: sequence:00001201:  ereport(ERROR, 
- saai: sequence:00001202:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saai: sequence:00001203:  errmsg("conflicting or redundant options"))); 
- saai: sequence:00001209:  ereport(ERROR, 
- saai: sequence:00001210:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saai: sequence:00001211:  errmsg("conflicting or redundant options"))); 
- saai: sequence:00001217:  ereport(ERROR, 
- saai: sequence:00001218:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saai: sequence:00001219:  errmsg("conflicting or redundant options"))); 
- saai: sequence:00001225:  ereport(ERROR, 
- saai: sequence:00001226:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saai: sequence:00001227:  errmsg("conflicting or redundant options"))); 
- saai: sequence:00001240:  ereport(ERROR, 
- saai: sequence:00001241:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- saai: sequence:00001242:  errmsg("INCREMENT must not be zero"))); 
- saai: sequence:00001286:  ereport(ERROR, 
- saai: sequence:00001287:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- saai: sequence:00001288:  errmsg("MINVALUE (%s) must be less than MAXVALUE (%s)", 
- saai: sequence:00001289:  bufm, bufx))); 
- saai: sequence:00001317:  ereport(ERROR, 
- saai: sequence:00001318:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- saai: sequence:00001319:  errmsg("START value (%s) can't be less than MINVALUE (%s)", 
- saai: sequence:00001320:  bufs, bufm))); 
+ saai: sequence:00000907:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ saai: sequence:00000908:  errmsg("setval() not supported in this context"))); 
+ saai: sequence:00000915:  ereport(ERROR, 
+ saai: sequence:00000916:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ saai: sequence:00000917:  errmsg("permission denied for sequence %s", 
+ saai: sequence:00000918:  RelationGetRelationName(seqrel)))); 
+ saai: sequence:00000933:  ereport(ERROR, 
+ saai: sequence:00000934:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+ saai: sequence:00000935:  errmsg("setval: value %s is out of bounds for sequence "%s" (%s..%s)", 
+ saai: sequence:00000936:  bufv, RelationGetRelationName(seqrel), 
+ saai: sequence:00000937:  bufm, bufx))); 
+ saai: sequence:00001099:  ereport(ERROR, 
+ saai: sequence:00001100:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ saai: sequence:00001101:  errmsg("out of memory"))); 
+ saai: sequence:00001116:  ereport(ERROR, 
+ saai: sequence:00001117:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ saai: sequence:00001118:  errmsg(""%s" is not a sequence", 
+ saai: sequence:00001119:  RelationGetRelationName(seqrel)))); 
+ saai: sequence:00001184:  ereport(ERROR, 
+ saai: sequence:00001185:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saai: sequence:00001186:  errmsg("conflicting or redundant options"))); 
+ saai: sequence:00001197:  ereport(ERROR, 
+ saai: sequence:00001198:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saai: sequence:00001199:  errmsg("conflicting or redundant options"))); 
+ saai: sequence:00001205:  ereport(ERROR, 
+ saai: sequence:00001206:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saai: sequence:00001207:  errmsg("conflicting or redundant options"))); 
+ saai: sequence:00001213:  ereport(ERROR, 
+ saai: sequence:00001214:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saai: sequence:00001215:  errmsg("conflicting or redundant options"))); 
+ saai: sequence:00001221:  ereport(ERROR, 
+ saai: sequence:00001222:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saai: sequence:00001223:  errmsg("conflicting or redundant options"))); 
+ saai: sequence:00001229:  ereport(ERROR, 
+ saai: sequence:00001230:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saai: sequence:00001231:  errmsg("conflicting or redundant options"))); 
+ saai: sequence:00001237:  ereport(ERROR, 
+ saai: sequence:00001238:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saai: sequence:00001239:  errmsg("conflicting or redundant options"))); 
+ saai: sequence:00001252:  ereport(ERROR, 
+ saai: sequence:00001253:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ saai: sequence:00001254:  errmsg("INCREMENT must not be zero"))); 
+ saai: sequence:00001298:  ereport(ERROR, 
+ saai: sequence:00001299:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ saai: sequence:00001300:  errmsg("MINVALUE (%s) must be less than MAXVALUE (%s)", 
+ saai: sequence:00001301:  bufm, bufx))); 
  saai: sequence:00001329:  ereport(ERROR, 
  saai: sequence:00001330:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- saai: sequence:00001331:  errmsg("START value (%s) can't be greater than MAXVALUE (%s)", 
+ saai: sequence:00001331:  errmsg("START value (%s) can't be less than MINVALUE (%s)", 
  saai: sequence:00001332:  bufs, bufm))); 
- saai: sequence:00001344:  ereport(ERROR, 
- saai: sequence:00001345:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- saai: sequence:00001346:  errmsg("CACHE (%s) must be greater than zero", 
- saai: sequence:00001347:  buf))); 
- saai: sequence:00001375:  ereport(ERROR, 
- saai: sequence:00001376:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saai: sequence:00001377:  errmsg("invalid OWNED BY option"), 
- saai: sequence:00001378:  errhint("Specify OWNED BY table.column or OWNED BY NONE."))); 
- saai: sequence:00001398:  ereport(ERROR, 
- saai: sequence:00001399:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- saai: sequence:00001400:  errmsg("referenced relation "%s" is not a table", 
- saai: sequence:00001401:  RelationGetRelationName(tablerel)))); 
- saai: sequence:00001405:  ereport(ERROR, 
- saai: sequence:00001406:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- saai: sequence:00001407:  errmsg("sequence must have same owner as table it is linked to"))); 
- saai: sequence:00001409:  ereport(ERROR, 
- saai: sequence:00001410:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- saai: sequence:00001411:  errmsg("sequence must be in same schema as table it is linked to"))); 
- saai: sequence:00001416:  ereport(ERROR, 
- saai: sequence:00001417:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- saai: sequence:00001418:  errmsg("column "%s" of relation "%s" does not exist", 
- saai: sequence:00001419:  attrname, RelationGetRelationName(tablerel)))); 
+ saai: sequence:00001341:  ereport(ERROR, 
+ saai: sequence:00001342:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ saai: sequence:00001343:  errmsg("START value (%s) can't be greater than MAXVALUE (%s)", 
+ saai: sequence:00001344:  bufs, bufm))); 
+ saai: sequence:00001356:  ereport(ERROR, 
+ saai: sequence:00001357:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ saai: sequence:00001358:  errmsg("CACHE (%s) must be greater than zero", 
+ saai: sequence:00001359:  buf))); 
+ saai: sequence:00001387:  ereport(ERROR, 
+ saai: sequence:00001388:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saai: sequence:00001389:  errmsg("invalid OWNED BY option"), 
+ saai: sequence:00001390:  errhint("Specify OWNED BY table.column or OWNED BY NONE."))); 
+ saai: sequence:00001410:  ereport(ERROR, 
+ saai: sequence:00001411:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ saai: sequence:00001412:  errmsg("referenced relation "%s" is not a table", 
+ saai: sequence:00001413:  RelationGetRelationName(tablerel)))); 
+ saai: sequence:00001417:  ereport(ERROR, 
+ saai: sequence:00001418:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ saai: sequence:00001419:  errmsg("sequence must have same owner as table it is linked to"))); 
+ saai: sequence:00001421:  ereport(ERROR, 
+ saai: sequence:00001422:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ saai: sequence:00001423:  errmsg("sequence must be in same schema as table it is linked to"))); 
+ saai: sequence:00001428:  ereport(ERROR, 
+ saai: sequence:00001429:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ saai: sequence:00001430:  errmsg("column "%s" of relation "%s" does not exist", 
+ saai: sequence:00001431:  attrname, RelationGetRelationName(tablerel)))); 
  saaj: seqserver:00000218:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
  saaj: seqserver:00000219:  errmsg("Error: Could not write() message to seqserver: %s", 
  saaj: seqserver:00000220:  strerror(errno)), 
@@ -18141,6 +18152,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000076:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000077:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000078:  str))); 
-(18080 rows)
+(18091 rows)
 
 drop external table get_ereport;

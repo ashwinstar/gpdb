@@ -265,5 +265,7 @@ extern int MirrorFlatFile(
 			   char 		*subDirectory,
 			   char			*simpleFileName);
 
+extern int PgVersionRecoverMirror(void);
+
 #endif   /* CDBMIRROREDFLATFILE_H */
 

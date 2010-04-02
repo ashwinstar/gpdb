@@ -1731,6 +1731,9 @@ SyncOneBuffer(int buf_id, bool skip_pinned)
 	
 	volatile BufferDesc *bufHdr = &BufferDescriptors[buf_id];
 
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	/*
 	 * Check whether buffer needs writing.
 	 *
@@ -1744,17 +1747,19 @@ SyncOneBuffer(int buf_id, bool skip_pinned)
 	if (!(bufHdr->flags & BM_VALID) || !(bufHdr->flags & BM_DIRTY))
 	{
 		UnlockBufHdr(bufHdr);
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
 		return false;
 	}
 	if (skip_pinned &&
 		(bufHdr->refcount != 0 || bufHdr->usage_count != 0))
 	{
 		UnlockBufHdr(bufHdr);
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
+
 		return false;
 	}
-
-	// -------- MirroredLock ----------
-	MIRROREDLOCK_BUFMGR_LOCK;
 	
 	/*
 	 * Pin it, share-lock it, write it.  (FlushBuffer will do nothing if the

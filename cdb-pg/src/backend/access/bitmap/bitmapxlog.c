@@ -587,7 +587,7 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
 			if (xlrec->bm_two_pages)
 				firstOpaque->bm_bitmap_next = xlrec->bm_second_blkno;
 			else
-			firstOpaque->bm_bitmap_next = xlrec->bm_next_blkno;
+				firstOpaque->bm_bitmap_next = xlrec->bm_next_blkno;
 
 			if (xlrec->bm_two_pages)
 			{

@@ -698,7 +698,12 @@ FileRepSubProcess_Main()
 			break;
 			
 		case FileRepProcessTypePrimaryRecovery:
+			FileRepSubProcess_InitializeResyncManagerProcess();
 			FileRepPrimary_StartRecovery();
+			
+			ResourceOwnerRelease(CurrentResourceOwner,
+								 RESOURCE_RELEASE_BEFORE_LOCKS,
+								 false, true);							
 			break;
 
 		case FileRepProcessTypeResyncManager:

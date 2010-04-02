@@ -154,6 +154,7 @@
 #include "cdb/cdbfilerepprimary.h"
 #include "cdb/cdbfilerepresyncmanager.h"
 #include "cdb/cdbpersistentfilesysobj.h"
+#include "cdb/cdbmirroredflatfile.h"
 #include "cdb/cdbresynchronizechangetracking.h"
 #include "postmaster/bgwriter.h"
 #include "postmaster/primary_mirror_mode.h"
@@ -655,9 +656,8 @@ FileRepResyncManager_InResyncTransition(bool isLastLocTracked)
 	PersistentFileSysObj_MirrorReCreate();	
 	elog(LOG, "FileRepResyncManager_InResyncTransition() PersistentFileSysObj_MirrorReCreate DONE");
 	
-/* commented out on filerep34, waiting for merge of other code	PersistentFileSysObj_MarkMirrorReCreated();
+	PersistentFileSysObj_MarkMirrorReCreated();
 	elog(LOG, "FileRepResyncManager_InResyncTransition() PersistentFileSysObj_MarkMirrorReCreated DONE");
-*/
 	
 exit:
 	LWLockRelease(MirroredLock);
@@ -930,6 +930,19 @@ FileRepResyncManager_ResyncFlatFiles(void)
 		}
 		
 		FileRepSubProcess_ProcessSignals();
+		if (segmentState != SegmentStateInSyncTransition) {
+			break;
+		}	
+		
+		status = PgVersionRecoverMirror();
+		elog(LOG, "FileRepResyncManager_ResyncFlatFiles() PgVersionRecoverMirror");
+		
+		if (status != STATUS_OK) {
+			break;
+		}
+		
+		FileRepSubProcess_ProcessSignals();		
+		
 		break;
 	}
 	

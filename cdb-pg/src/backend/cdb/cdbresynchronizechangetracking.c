@@ -12,9 +12,11 @@
 #include "postgres.h"
 #include "miscadmin.h"
 
+#include "access/bitmap.h"
 #include "access/htup.h"
 #include "access/nbtree.h"
 #include "catalog/pg_authid.h"
+#include "commands/sequence.h"
 #include "executor/spi.h"
 #include "postmaster/primary_mirror_mode.h"
 #include "storage/fd.h"
@@ -410,14 +412,12 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 		 */
 		case RM_XLOG_ID:
 		case RM_CLOG_ID:
-		case RM_SEQ_ID:
 		case RM_MULTIXACT_ID:
 		case RM_XACT_ID:
 		case RM_SMGR_ID:
 		case RM_DISTRIBUTEDLOG_ID:
 		case RM_DBASE_ID:
 		case RM_TBLSPC_ID:
-		case RM_BITMAP_ID:
 			break;
 			
 		/* UNDONE? do we need to add these as well? */
@@ -729,7 +729,162 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					elog(ERROR, "internal error: unsupported RM_BTREE_ID op (%d) in AddRecordFromXlog", info);
 			}
 			break;
+		case RM_BITMAP_ID:
+			switch (info)
+			{
+				case XLOG_BITMAP_INSERT_NEWLOV:
+				{
+					xl_bm_newpage	*xlrec = (xl_bm_newpage *) data;
+					
+					ChangeTracking_AddRelationChangeInfo(
+													   relationChangeInfoArray,
+													   relationChangeInfoArrayCount,
+													   &(xlrec->bm_node),
+													   xlrec->bm_new_blkno,
+													   &xlrec->bm_persistentTid,
+													   xlrec->bm_persistentSerialNum);
+					break;
+				}
+				case XLOG_BITMAP_INSERT_LOVITEM:
+				{
+					xl_bm_lovitem	*xlrec = (xl_bm_lovitem *) data;
+					
+					ChangeTracking_AddRelationChangeInfo(
+													   relationChangeInfoArray,
+													   relationChangeInfoArrayCount,
+													   &(xlrec->bm_node),
+													   xlrec->bm_lov_blkno,
+													   &xlrec->bm_persistentTid,
+													   xlrec->bm_persistentSerialNum);
+					
+					if (xlrec->bm_is_new_lov_blkno)
+						ChangeTracking_AddRelationChangeInfo(
+														   relationChangeInfoArray,
+														   relationChangeInfoArrayCount,
+														   &(xlrec->bm_node),
+														   BM_METAPAGE,
+														   &xlrec->bm_persistentTid,
+														   xlrec->bm_persistentSerialNum);
+					break;
+				}
+				case XLOG_BITMAP_INSERT_META:
+				{
+					xl_bm_metapage	*xlrec = (xl_bm_metapage *) data;
+					
+					ChangeTracking_AddRelationChangeInfo(
+													   relationChangeInfoArray,
+													   relationChangeInfoArrayCount,
+													   &(xlrec->bm_node),
+													   BM_METAPAGE,
+													   &xlrec->bm_persistentTid,
+													   xlrec->bm_persistentSerialNum);
+					break;
+				}
+				case XLOG_BITMAP_INSERT_BITMAP_LASTWORDS:
+				{
+					xl_bm_bitmap_lastwords	*xlrec = (xl_bm_bitmap_lastwords *) data;
+					
+					ChangeTracking_AddRelationChangeInfo(
+													   relationChangeInfoArray,
+													   relationChangeInfoArrayCount,
+													   &(xlrec->bm_node),
+													   xlrec->bm_lov_blkno,
+													   &xlrec->bm_persistentTid,
+													   xlrec->bm_persistentSerialNum);
+					break;
+				}
+				case XLOG_BITMAP_INSERT_WORDS:
+				{
+					xl_bm_bitmapwords	*xlrec = (xl_bm_bitmapwords *) data;
+					
+					ChangeTracking_AddRelationChangeInfo(
+													   relationChangeInfoArray,
+													   relationChangeInfoArrayCount,
+													   &(xlrec->bm_node),
+													   xlrec->bm_lov_blkno,
+													   &xlrec->bm_persistentTid,
+													   xlrec->bm_persistentSerialNum);
 
+					if (!xlrec->bm_is_last)
+						ChangeTracking_AddRelationChangeInfo(
+														   relationChangeInfoArray,
+														   relationChangeInfoArrayCount,
+														   &(xlrec->bm_node),
+														   xlrec->bm_next_blkno,
+														   &xlrec->bm_persistentTid,
+														   xlrec->bm_persistentSerialNum);
+					break;
+				}
+				case XLOG_BITMAP_UPDATEWORD:
+				{
+					xl_bm_updateword	*xlrec = (xl_bm_updateword *) data;
+					
+					ChangeTracking_AddRelationChangeInfo(
+													   relationChangeInfoArray,
+													   relationChangeInfoArrayCount,
+													   &(xlrec->bm_node),
+													   xlrec->bm_blkno,
+													   &xlrec->bm_persistentTid,
+													   xlrec->bm_persistentSerialNum);
+					break;
+				}
+				case XLOG_BITMAP_UPDATEWORDS:
+				{
+					xl_bm_updatewords	*xlrec = (xl_bm_updatewords *) data;
+					
+					ChangeTracking_AddRelationChangeInfo(
+													   relationChangeInfoArray,
+													   relationChangeInfoArrayCount,
+													   &(xlrec->bm_node),
+													   xlrec->bm_first_blkno,
+													   &xlrec->bm_persistentTid,
+													   xlrec->bm_persistentSerialNum);
+					
+					if (xlrec->bm_two_pages)
+						ChangeTracking_AddRelationChangeInfo(
+														   relationChangeInfoArray,
+														   relationChangeInfoArrayCount,
+														   &(xlrec->bm_node),
+														   xlrec->bm_second_blkno,
+														   &xlrec->bm_persistentTid,
+														   xlrec->bm_persistentSerialNum);
+					
+					if (xlrec->bm_new_lastpage)
+						ChangeTracking_AddRelationChangeInfo(
+														   relationChangeInfoArray,
+														   relationChangeInfoArrayCount,
+														   &(xlrec->bm_node),
+														   xlrec->bm_lov_blkno,
+														   &xlrec->bm_persistentTid,
+														   xlrec->bm_persistentSerialNum);
+						
+					break;
+				}
+				default:
+					elog(ERROR, "internal error: unsupported RM_BITMAP_ID op (%d) in AddRecordFromXlog", info);
+			}
+			break;
+		case RM_SEQ_ID:
+			switch (info)
+			{
+				case XLOG_SEQ_LOG:
+				{
+					xl_seq_rec 	*xlrec = (xl_seq_rec *) data;
+					
+					ChangeTracking_AddRelationChangeInfo(
+													   relationChangeInfoArray,
+													   relationChangeInfoArrayCount,
+													   &(xlrec->node),
+													   0, /* seq_redo touches block 0 only */
+													   &xlrec->persistentTid,
+													   xlrec->persistentSerialNum);
+
+					break;
+				}
+				default:
+					elog(ERROR, "internal error: unsupported RM_SEQ_ID op (%d) in AddRecordFromXlog", info);
+			}
+			break;
 		default:
 			elog(ERROR, "internal error: unsupported resource manager type (%d) in AddRecordFromXlog", xl_rmid);
 	}

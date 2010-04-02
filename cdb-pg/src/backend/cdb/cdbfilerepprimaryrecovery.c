@@ -19,6 +19,7 @@
 #include "cdb/cdbfilerepprimaryack.h"
 #include "cdb/cdbfilerepprimaryrecovery.h"
 #include "cdb/cdbfilerepservice.h"
+#include "cdb/cdbmirroredflatfile.h"
 #include "cdb/cdbresynchronizechangetracking.h"
 #include "utils/flatfiles.h"
 
@@ -203,6 +204,17 @@ FileRepPrimary_RunRecoveryInSync(void)
 			break;
 		}			
 		
+		status = PgVersionRecoverMirror();
+		elog(DEBUG1, "FileRepPrimary_RunRecovery() PgVersionRecoverMirror");
+		
+		if (status != STATUS_OK) {
+			break;
+		}
+		
+		FileRepSubProcess_ProcessSignals();
+		if (FileRepSubProcess_GetState() != FileRepStateInitialization) {
+			break;
+		}					
 		
 		FileRepSubProcess_SetState(FileRepStateReady);
 		break;
