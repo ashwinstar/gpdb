@@ -38,12 +38,10 @@ class GpCleanSegmentDirectoryProgram:
             logger.info("Cleaning %s" % dir)
 
             #
-            # Note: we we just just remove dir + "/*" -- but doing it selectively right now
-            #       helps protect against dropping too much, and does keep around spare files
-            #       the user may have placed in the dir for other reasons.
+            # Note: we could just remove dir + "/*" ?
             #
             toCleanArr = ["PG_VERSION", "base", "global", "gpstart*", "gp_pmtransition_args",
-                            "pg_*", "postgres*", "postmaster*"]
+                            "pg_*", "postgres*", "postmaster*", "gp_*"]
             for toClean in toCleanArr:
                 unix.RemoveFiles('clean segment', dir + "/" + toClean).run( validateAfter=True )
 
