@@ -1057,6 +1057,13 @@ class SegHardLinks(Command):
         baseDir.validate()   
         dirResultList = baseDir.get_result_list()
         
+        """ Remove any reference to a dir called pgsql_tmp, which may exist in some database directories. """
+        for aDir in dirResultList:
+           dirSuffixIndex = aDir.rfind("/")
+           candidateDir = aDir[dirSuffixIndex + 1:].rstrip()
+           if candidateDir == "pgsql_tmp":
+              dirResultList.remove(aDir)
+
         """ Create a directory to store all our links to the actual files """
         cmdComplete = False
         while cmdComplete == False:
