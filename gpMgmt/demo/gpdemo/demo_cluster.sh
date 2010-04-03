@@ -194,7 +194,7 @@ done
 # Host configuration
 #*****************************************************************************************
 LOCALHOST=`hostname`
-echo "localhost" > hostfile
+echo $LOCALHOST > hostfile
 
 #*****************************************************************************************
 # Name of the system configuration file.
