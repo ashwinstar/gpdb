@@ -158,10 +158,38 @@ class GpSystemStateProgram:
 
         return exitCode
 
+    def __showQuickStatus(self, gpEnv, gpArray, mirrorType):
+
+        exitCode = 0
+
+        logger.info("-Quick Greenplum database status from Master instance only")
+        logger.info( "----------------------------------------------------------")
+
+        segments = [seg for seg in gpArray.getDbList() if seg.isSegmentQE()]
+        upSegments = [seg for seg in segments if seg.isSegmentUp()]
+        downSegments = [seg for seg in segments if seg.isSegmentDown()]
+
+        logger.info("# of up segments, from configuration table     = %s" % (len(upSegments)))
+        if len(downSegments) > 0:
+            exitCode = 1
+
+            logger.info("# of down segments, from configuration table   = %s" % (len(downSegments)))
+
+            lines = []
+            lines.append(["Down Segment", "Datadir", "Port"])
+            for seg in downSegments:
+                lines.append(self.__appendSegmentTripletToArray(seg, []))
+            utils.logLinesToTable(lines, {}) # use {} for warningLineNumbers, this script doesn't warn right now
+
+        logger.info( "----------------------------------------------------------")
+
+        return exitCode
+
     def run(self):
 
         numSet = (1 if self.__options.showMirrorList else 0) + \
-                 (1 if self.__options.showClusterConfig else 0)
+                 (1 if self.__options.showClusterConfig else 0) + \
+                 (1 if self.__options.showQuickStatus else 0)
         if numSet > 1:
             raise ProgramArgumentValidationException("Too many output options specified")
 
@@ -173,6 +201,8 @@ class GpSystemStateProgram:
             exitCode = self.__displayMirrorList(gpEnv, gpArray, self.__options.mirrorType)
         elif self.__options.showClusterConfig:
             exitCode = self.__displayClusterConfig(gpEnv, gpArray, self.__options.mirrorType)
+        elif self.__options.showQuickStatus:
+            exitCode = self.__showQuickStatus(gpEnv, gpArray, self.__options.mirrorType)
         else:
             raise ProgramArgumentValidationException( "No output options specified")
 
@@ -210,6 +240,10 @@ class GpSystemStateProgram:
                             dest="showClusterConfig",
                             metavar="<showClusterConfig>",
                             help="Show cluster configuration")
+        addTo.add_option("-Q", None, default=False, action="store_true",
+                            dest="showQuickStatus",
+                            metavar="<showQuickStatus>",
+                            help="Show quick status")
 
         addTo = OptionGroup(parser, "Other Options")
         parser.add_option_group(addTo)

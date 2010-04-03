@@ -322,11 +322,12 @@ class GpMirrorListToBuild:
         #
         # Build final tar
         #
-        tarFile = tempDir + "/schema.tar"
+        tarFileName = "gp_emptySegmentSchema.tar"
+        tarFile = tempDir + "/" + tarFileName
         cmd = gp.CreateTar('gpbuildingmirrorsegment tar segment template', schemaDir, tarFile)
         cmd.run(validateAfter=True)
 
-        return (tempDir, tarFile)
+        return (tempDir, tarFile, tarFileName)
 
     def __copySegmentDirectories(self, gpEnv, gpArray, directives):
         """
@@ -340,14 +341,14 @@ class GpMirrorListToBuild:
         destSegmentByHost = GpArray.getSegmentsByHostName(destSegments)
         newSegmentInfo = gp.buildExpansionSegmentInfo(destSegments)
 
-        (tempDir, blankTarFile) = self.__buildTarFileForTransfer(gpEnv, gpArray.master, srcSegments[0], destSegments)
+        (tempDir, blankTarFile, tarFileName) = self.__buildTarFileForTransfer(gpEnv, gpArray.master, srcSegments[0], destSegments)
 
         cmds = []
         for hostName, segments in destSegmentByHost.iteritems():
             #
-            # NOTE: copy set of files from the master itself to each target segment
+            # copy set of files from the master itself to each target segment
             #
-            cmds.append( gp.RemoteCopy("copy segment tar", blankTarFile, hostName, '.') )
+            cmds.append( gp.RemoteCopy("copy segment tar", blankTarFile, hostName, tarFileName ))
 
         self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "building and transferring basic segment directory")
 
@@ -356,9 +357,9 @@ class GpMirrorListToBuild:
             segmentInfo = newSegmentInfo[hostName]
             checkNotNone("segmentInfo for %s" % hostName, segmentInfo)
 
-            cmds.append(gp.ConfigExpansionSeg('gpexpand configure new segments',
+            cmds.append(gp.ConfigExpansionSeg('configure blank segments',
                                             segmentInfo,
-                                            tarFile=blankTarFile,
+                                            tarFile=tarFileName,
                                             newSegments=True,
                                             verbose=gplog.logging_is_verbose(),
                                             batchSize=self.__parallelDegree,

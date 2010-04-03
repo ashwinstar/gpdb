@@ -248,7 +248,7 @@ FileRepAckMirror_StartSender(void)
 									   fileRepPrimaryHostAddress,
 									   fileRepPrimaryPort);		
 
-		while (status != STATUS_OK && retryLocal < file_rep_retry)  {
+		while (status != STATUS_OK && retryLocal < 10)  {
 			pg_usleep(100000L); /* 100 ms */
 		 			
 			status = FileRepConnClient_EstablishConnection(

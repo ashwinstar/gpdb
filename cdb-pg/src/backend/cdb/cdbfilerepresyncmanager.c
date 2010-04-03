@@ -196,7 +196,6 @@ static void FileRepResync_ShmemReInit(void);
 static int FileRepResyncManager_InResyncTransition(bool isLastLocTracked);
 static int FileRepResyncManager_InSyncTransition(void);
 static int FileRepPrimary_RunResyncManager(void);
-static int FileRepResyncManager_ResyncFlatFiles(void);
 
 static void FileRepResync_LockAcquire(void);
 static void FileRepResync_LockRelease(void);
@@ -242,16 +241,6 @@ FileRepResync_DecAppendOnlyCommitCount(int	count)
 	}		
 }
 
-bool
-FileRepResync_CheckpointRequest(void)
-{
-	if (fileRepResyncShmem != NULL)
-	{
-		return fileRepResyncShmem->checkpointRequest;	
-	}
-	return FALSE;
-}
-
 XLogRecPtr
 FileRepResync_GetEndIncrResyncLSN(void)
 {
@@ -286,6 +275,13 @@ FileRepResyncManager_SetEndResyncLSN(XLogRecPtr endResyncLSN)
 
 }
 
+bool 
+FileRepResync_IsTransitionFromResyncToInSync(void)
+{
+	return((fileRepResyncShmem != NULL)?
+		   (fileRepResyncShmem->checkpointRequest == TRUE &&
+			fileRepProcessType == FileRepProcessTypeResyncManager):false);
+}
 
 /****************************************************************
  * FILEREP_RESYNC SHARED MEMORY 
@@ -577,8 +573,6 @@ FileRepResyncManager_InResyncTransition(bool isLastLocTracked)
 	
 	elog(LOG, "FileRepResyncManager_InResyncTransition()");
 
-	RequestCheckpoint(true, false);	
-
 	if (LWLockHeldByMe(MirroredLock))
 		elog(ERROR, "FileRep Manager already holding the MirroredLock");
 	
@@ -814,78 +808,48 @@ FileRepResyncManager_InSyncTransition(void)
 	elog(LOG, "FileRepResyncManager_InSyncTransition()");
 	
 	while (1) {
+		/*
+		 * (MirroredLock, LW_EXCLUSIVE) is acquired and released in CreateCheckPoint
+		 */
+		elog(LOG, "FileRepResyncManager_InSyncTransition() RequestCheckpoint() BEGIN");
 		
-		RequestCheckpoint(true, false);	
-
-		LWLockAcquire(MirroredLock, LW_EXCLUSIVE);
-
-		fileRepResyncShmem->checkpointRequest = TRUE;
-		RequestCheckpoint(true, false);	
+		fileRepResyncShmem->checkpointRequest = TRUE;		
+		CreateCheckPoint(false, true);
 		fileRepResyncShmem->checkpointRequest = FALSE;
-
-		elog(LOG, "FileRepResyncManager_InSyncTransition() RequestCheckpoint()");
+		
+		elog(LOG, "FileRepResyncManager_InSyncTransition() RequestCheckpoint() END");
 		
 		FileRepSubProcess_ProcessSignals();
 		if (! (FileRepSubProcess_GetState() == FileRepStateReady &&
-			   dataState == DataStateInResync))
+			   dataState == DataStateInSync))
 		{
-			LWLockRelease(MirroredLock);
-			break;
-		}						
-		
-		RequestXLogSwitch();		
-		elog(LOG, "FileRepResyncManager_InSyncTransition() RequestXLogSwitch()");
-
-		FileRepSubProcess_ProcessSignals();
-		if (! (FileRepSubProcess_GetState() == FileRepStateReady &&
-			   dataState == DataStateInResync))
-		{
-			LWLockRelease(MirroredLock);
 			break;
 		}				
-		FileRep_SetSegmentState(SegmentStateInSyncTransition);
-		
-		status = FileRepResyncManager_ResyncFlatFiles();
-		
-		if (status != STATUS_OK || 
-			segmentState != SegmentStateInSyncTransition) {
-			LWLockRelease(MirroredLock);
-			break;
-		}		
-		
-		fileRepResyncShmem->checkpointRequest = TRUE;
-		RequestCheckpoint(true, false);	
-		fileRepResyncShmem->checkpointRequest = FALSE;
-
-		FileRep_SetDataState(DataStateInSync, FALSE);
-		
-		FileRep_SetSegmentState(SegmentStateReady);			
-
-		LWLockRelease(MirroredLock);
-		
 		FileRepPrimary_MirrorInSyncTransition();
-
+		
 		ChangeTracking_DropAll();
 		
 		break;
 	}
-	
+		
 	return status;
 }
 
 /*
  *
  */
-static int
+void
 FileRepResyncManager_ResyncFlatFiles(void)
 {
 	int status = STATUS_OK;
+	
+	FileRep_SetSegmentState(SegmentStateInSyncTransition);
 	
 	elog(LOG, "FileRepResyncManager_ResyncFlatFiles()");
 	
 	while (1) 
 	{
-				
+	
 		status = XLogRecoverMirrorControlFile();
 		elog(LOG, "FileRepResyncManager_ResyncFlatFiles() XLogRecoverMirrorControlFile");
 		
@@ -897,7 +861,7 @@ FileRepResyncManager_ResyncFlatFiles(void)
 		if (segmentState != SegmentStateInSyncTransition) {
 			break;
 		}		
-				
+			
 		status = FlatFilesRecoverMirror();
 		elog(LOG, "FileRepResyncManager_ResyncFlatFiles() FlatFilesRecoverMirror");
 		
@@ -940,13 +904,25 @@ FileRepResyncManager_ResyncFlatFiles(void)
 		if (status != STATUS_OK) {
 			break;
 		}
-		
+
 		FileRepSubProcess_ProcessSignals();		
 		
 		break;
 	}
+
+	if (status != STATUS_OK) {
+		FileRepSubProcess_SetState(FileRepStateFault);
+	}
 	
-	return status;
+	if (segmentState == SegmentStateInSyncTransition &&
+		status == STATUS_OK)
+	{
+		FileRep_SetDataState(DataStateInSync, FALSE);
+		
+		FileRep_SetSegmentState(SegmentStateReady);		
+	}
+	
+	return;
 }
 
 static int

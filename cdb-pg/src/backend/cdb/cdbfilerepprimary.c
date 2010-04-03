@@ -64,15 +64,14 @@ FileRepPrimary_IsResyncWorker(void)
 }
 
 bool
-FileRepPrimary_IsResyncManager(void)
-{
-	return(fileRepProcessType == FileRepProcessTypeResyncManager ||
+FileRepPrimary_IsResyncManagerOrWorker(void)
+{		
+	return(
+		   fileRepProcessType == FileRepProcessTypeResyncManager ||
 		   fileRepProcessType == FileRepProcessTypeResyncWorker1 ||
 		   fileRepProcessType == FileRepProcessTypeResyncWorker2 ||
 		   fileRepProcessType == FileRepProcessTypeResyncWorker3 ||
-		   fileRepProcessType == FileRepProcessTypeResyncWorker4 ||
-		   (FileRepResync_CheckpointRequest() == TRUE &&
-			getpid() == primaryMirrorGetBGWriterPID()));
+		   fileRepProcessType == FileRepProcessTypeResyncWorker4);
 }
 
 MirrorDataLossTrackingState 

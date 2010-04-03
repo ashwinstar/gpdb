@@ -78,6 +78,8 @@ extern void FileRepResync_IncAppendOnlyCommitCount(void);
 
 extern void FileRepResync_DecAppendOnlyCommitCount(int	count);
 
-extern bool FileRepResync_CheckpointRequest(void);
+extern bool FileRepResync_IsTransitionFromResyncToInSync(void);
+
+extern void FileRepResyncManager_ResyncFlatFiles(void);
 
 #endif  /* CDBFILEREPRESYNCMANAGER_H */

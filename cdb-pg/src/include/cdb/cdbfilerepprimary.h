@@ -22,7 +22,7 @@
  */
 
 extern bool FileRepPrimary_IsResyncWorker(void);
-extern bool FileRepPrimary_IsResyncManager(void);
+extern bool FileRepPrimary_IsResyncManagerOrWorker(void);
 
 extern MirrorDataLossTrackingState 
 FileRepPrimary_GetMirrorDataLossTrackingSessionNum(int64 *sessionNum);

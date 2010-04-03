@@ -126,7 +126,7 @@ extern PGDLLIMPORT int32 *LocalRefCount;
 #define MIRROREDLOCK_BUFMGR_LOCK \
 	{ \
 		mirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
-		specialResyncManagerFlag = FileRepPrimary_IsResyncManager(); \
+		specialResyncManagerFlag = FileRepPrimary_IsResyncManagerOrWorker(); \
 		\
 		if (!mirroredLockIsHeldByMe && !specialResyncManagerFlag) \
 			LWLockAcquire(MirroredLock , LW_SHARED); \

@@ -1412,16 +1412,23 @@ FileRepMirror_RunConsumer(void)
 						   creates only one sub-directory */
 						status = mkdir(fileName, 0700);
 						
-						if (status < 0) {
-							status = STATUS_ERROR;
-							ereport(LOG,
-									(errcode_for_file_access(),
-									errmsg("ERROR(filerep): could not create directory : %m"), 
-									FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
-													  fileRepMessageHeader->fileRepRelationType,
-													  fileRepMessageHeader->fileRepOperation),
-									FileRep_errcontext()));					
-							
+						if (status < 0)
+						{
+							if (errno == EEXIST)
+							{
+								status = STATUS_OK;
+							}
+							else 
+							{
+								status = STATUS_ERROR;
+								ereport(LOG,
+										(errcode_for_file_access(),
+										errmsg("ERROR(filerep): could not create directory : %m"), 
+										FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
+														  fileRepMessageHeader->fileRepRelationType,
+														  fileRepMessageHeader->fileRepOperation),
+										FileRep_errcontext()));		
+							}
 						}
 						
 						break;
@@ -1485,7 +1492,8 @@ FileRepMirror_RunConsumer(void)
 				switch (fileRepMessageHeader->fileRepRelationType) {
 					case FileRepRelationTypeDir:
 						
-						if (rmtree(fileName, true) == FALSE) {
+						if (rmtree(fileName, true) == FALSE) 
+						{
 
 							status = STATUS_ERROR;
 							ereport(LOG,

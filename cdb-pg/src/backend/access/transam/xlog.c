@@ -7504,6 +7504,11 @@ CreateCheckPoint(bool shutdown, bool force)
 	 */
 	LWLockAcquire(CheckpointLock, LW_EXCLUSIVE);
 
+	if (FileRepResync_IsTransitionFromResyncToInSync())
+	{
+		LWLockAcquire(MirroredLock, LW_EXCLUSIVE);
+	}
+	
 	/*
 	 * Use a critical section to force system panic if we have trouble.
 	 */
@@ -7573,6 +7578,10 @@ CreateCheckPoint(bool shutdown, bool force)
 		{
 			LWLockRelease(WALInsertLock);
 			LWLockRelease(CheckpointStartLock);
+			if (FileRepResync_IsTransitionFromResyncToInSync())
+			{
+				LWLockRelease(MirroredLock);
+			}			
 			LWLockRelease(CheckpointLock);
 			END_CRIT_SECTION();
 			return;
@@ -7779,6 +7788,17 @@ CreateCheckPoint(bool shutdown, bool force)
 				(errmsg("checkpoint complete; %d transaction log file(s) added, %d removed, %d recycled",
 						nsegsadded, nsegsremoved, nsegsrecycled)));
 
+	if (FileRepResync_IsTransitionFromResyncToInSync())
+	{
+		RequestXLogSwitch();
+		
+		FileRepResyncManager_ResyncFlatFiles();
+		
+		UpdateControlFile();
+		
+		LWLockRelease(MirroredLock);
+	}	
+	
 	LWLockRelease(CheckpointLock);
 }
 

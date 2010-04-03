@@ -1424,67 +1424,53 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
                 elog(LOG, "PostmasterPrimaryMirrorTransition: starting database processes");
                 pmModuleState->haveStartedDatabase = true;
                 StartMasterOrPrimaryPostmasterProcesses();
-			if ( IsDatabaseInRunMode())
-			{
-				pmModuleState->isDatabaseRunning = true;
-			}
             }
 
-            if ( args->dataState == DataStateInResync &&
-                    pmModuleState->dataState == DataStateInChangeTracking )
-            {
-                /* this means that filerep changed the datastate to changelogging...we must
-                 * now wait for database startup to complete and then update state for backend */
-                *stateInOut = TSAwaitingDatabaseStartup;
-            }
-            else
-            {
-                *stateInOut = TSDone;
-            }
+            *stateInOut = TSAwaitingDatabaseStartup;
             return PMTransitionSuccess;
 
         case TSAwaitingDatabaseStartup:
             if ( IsDatabaseInRunMode())
             {
                 *stateInOut = TSDoneDatabaseStartup;
+				pmModuleState->isDatabaseRunning = true;
             }
             return PMTransitionSuccess;
 
-
         case TSDoneDatabaseStartup:
-
-            /* we only wait for database startup completion if filerep wants to be notified
-             * when XLOG crash recovery has completed */
-
-            Assert(args->dataState == DataStateInResync );
-            Assert(pmModuleState->dataState == DataStateInChangeTracking );
-
-             /*
-             * update segment states
-             */
-            bool isNowInFault = false;
-            acquireModuleSpinLock();
+            if ( args->dataState == DataStateInResync &&
+				pmModuleState->dataState == DataStateInChangeTracking )
             {
-                if ( pmModuleState->segmentState == SegmentStateFault )
-                {
-                    isNowInFault = true;
-                }
-                else
-                {
-                    updateDataStateUnderSpinLock(DataStateInResync);
-                    pmModuleState->segmentState = SegmentStateInResyncTransition;
+				/* if filerep wants to be notified
+				 * when XLOG crash recovery has completed then do that
+				 */
+			
+				/*
+				 * update segment states
+				 */
+				bool isNowInFault = false;
+				acquireModuleSpinLock();
+				{
+					if ( pmModuleState->segmentState == SegmentStateFault )
+					{
+						isNowInFault = true;
+					}
+					else
+					{
+						updateDataStateUnderSpinLock(DataStateInResync);
+						pmModuleState->segmentState = SegmentStateInResyncTransition;
+					}
+				}
+				releaseModuleSpinLock();
 
-                }
-            }
-            releaseModuleSpinLock();
-
-            if ( isNowInFault )
-            {
-                return PMTransitionError;
-            }
-            /** tell filerep processes that they can begin resync now! */
-            NotifyProcessesOfFilerepStateChange();
-
+				if ( isNowInFault )
+				{
+					return PMTransitionError;
+				}
+				/** tell filerep processes that they can begin resync now! */
+				NotifyProcessesOfFilerepStateChange();
+			}
+			
             *stateInOut = TSDone;
             return PMTransitionSuccess;
 
@@ -1531,7 +1517,7 @@ applyStepForTransitionToMirrorSegmentMode(PrimaryMirrorModeTransitionArguments *
 /**
  * set the bgwriter pid.  Should only be called by the postmaster
  */
-extern void primaryMirrorSetBGWriterPID( pid_t pid )
+void primaryMirrorSetBGWriterPID( pid_t pid )
 {
     assertModuleInitialized();
 
@@ -1543,7 +1529,7 @@ extern void primaryMirrorSetBGWriterPID( pid_t pid )
  * get the current bgwriter pid.  Note, of course, that the writer may crash by the time the caller
  *   can use this value -- so construct client code appropriately.
  */
-extern pid_t primaryMirrorGetBGWriterPID(void)
+pid_t primaryMirrorGetBGWriterPID(void)
 {
     assertModuleInitialized();
     /* fetching single int field, no need for fancy locking */

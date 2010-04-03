@@ -42,6 +42,11 @@ def getProgramName():
 #                   run and return an exit code.  "cleanup" will be called to clean up before the program exits;
 #                   this can be used to clean up, for example, to clean up a worker pool
 #
+# mainOptions can include:   forceQuietOutput (map to bool),
+#                            programNameOverride (map to string)
+#                            suppressStartupLogMessage (map to bool)
+#
+#
 def simple_main( createOptionParserFn, createCommandFn, mainOptions=None) :
     logger = gplog.get_default_logger()
     configurationInterface.registerConfigurationProvider( configurationImplGpdb.GpConfigurationProviderUsingGpdbCatalog())
@@ -58,9 +63,14 @@ def simple_main( createOptionParserFn, createCommandFn, mainOptions=None) :
     forceQuiet = mainOptions is not None and mainOptions.get("forceQuietOutput")
     options = None
 
+    if mainOptions is not None and mainOptions.get("programNameOverride"):
+        global gProgramName
+        gProgramName = mainOptions.get("programNameOverride")
+    suppressStartupLogMessage = mainOptions is not None and mainOptions.get("suppressStartupLogMessage")
+
     # NOTE: if this logic is changed then also change test_main in testUtils.py
     try:
-        gplog.setup_tool_logging(gProgramName, unix.getLocalHostname(), unix.getUserName(), nonuser=False)
+        gplog.setup_tool_logging(getProgramName(), unix.getLocalHostname(), unix.getUserName(), nonuser=False)
 
         parser = createOptionParserFn()
         (options, args) = parser.parse_args()
@@ -72,8 +82,9 @@ def simple_main( createOptionParserFn, createCommandFn, mainOptions=None) :
                 gplog.enable_verbose_logging()
             if options.quiet:
                 gplog.quiet_stdout_logging()
-            
-        logger.info("Starting %s with args: %s" % (gProgramName, ' '.join(sys.argv[1:])))
+
+        if not suppressStartupLogMessage:
+            logger.info("Starting %s with args: %s" % (gProgramName, ' '.join(sys.argv[1:])))
 
         commandObject = createCommandFn(options, args)
         exitCode = commandObject.run()
