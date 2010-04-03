@@ -249,7 +249,7 @@ pg_database_size_name(PG_FUNCTION_ARGS)
 		
 		initStringInfo(&buffer);
 
-		appendStringInfo(&buffer, "select sum(pg_database_size('%s'))::int8 from gp_dist_random('gp_id');", quote_identifier(NameStr(*dbName)));
+		appendStringInfo(&buffer, "select sum(pg_database_size('%s'))::int8 from gp_dist_random('gp_id');", NameStr(*dbName));
 
 		size += get_size_from_segDBs(buffer.data);
 	}
@@ -373,7 +373,7 @@ pg_tablespace_size_name(PG_FUNCTION_ARGS)
 		
 		initStringInfo(&buffer);
 
-		appendStringInfo(&buffer, "select sum(pg_tablespace_size('%s'))::int8 from gp_dist_random('gp_id');", quote_identifier(NameStr(*tblspcName)));
+		appendStringInfo(&buffer, "select sum(pg_tablespace_size('%s'))::int8 from gp_dist_random('gp_id');", NameStr(*tblspcName));
 
 		size += get_size_from_segDBs(buffer.data);
 	}
