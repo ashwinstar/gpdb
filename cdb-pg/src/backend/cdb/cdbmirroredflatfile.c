@@ -800,7 +800,7 @@ MirrorFlatFile(
 									   &mirroredOpen,
 									   subDirectory,
 									   simpleFileName,
-									   O_CREAT | O_TRUNC | O_RDWR | PG_BINARY,
+									   O_CREAT | O_EXCL | O_RDWR | PG_BINARY,
 									   S_IRUSR | S_IWUSR,
 									   /* suppressError */ false,
 									   /*isMirrorRecovery */ TRUE);
@@ -968,7 +968,7 @@ PgVersionRecoverMirror(void)
 										   &mirroredOpen,
 										   subDirectoryMirror,
 										   PGVERSION,
-										   O_CREAT | O_TRUNC | O_RDWR | PG_BINARY,
+										   O_CREAT | O_EXCL | O_RDWR | PG_BINARY,
 										   S_IRUSR | S_IWUSR,
 										   /* suppressError */ false,
 										   /*isMirrorRecovery */ TRUE);
@@ -1023,42 +1023,39 @@ PgVersionRecoverMirror(void)
 											/* suppressError */ FALSE);
 			if (retval != 0)
 				break;
-			
-			if (MirroredFlatFile_IsActive(&mirroredOpen)) {
-				MirroredFlatFile_Close(&mirroredOpen);
-			}
-			
-			if (MirroredFlatFile_IsActive(&primaryOpen)) {
-				MirroredFlatFile_ClosePrimary(&primaryOpen);
-			}
-			
-			
+						
 			break;
 		} // while(1)
 		
 		startOffset = 0;
+		
+		if (MirroredFlatFile_IsActive(&mirroredOpen)) {
+			MirroredFlatFile_Close(&mirroredOpen);
+		}
+		
+		if (MirroredFlatFile_IsActive(&primaryOpen)) {
+			MirroredFlatFile_ClosePrimary(&primaryOpen);
+		}
 
+		if (primaryFilespaceLocation != NULL)
+		{
+			pfree(primaryFilespaceLocation);
+			primaryFilespaceLocation = NULL;
+		}
+		
+		if (mirrorFilespaceLocation != NULL)
+		{
+			pfree(mirrorFilespaceLocation);
+			mirrorFilespaceLocation = NULL;
+		}
+		
 		if (buffer) {
 			pfree(buffer);
 			buffer = NULL;
 		}
 		
 	} // while (PersistentDatabase_DirIterateNext
-		
-	if (MirroredFlatFile_IsActive(&mirroredOpen)) {
-		MirroredFlatFile_Close(&mirroredOpen);
-	}
-	
-	if (MirroredFlatFile_IsActive(&primaryOpen)) {
-		MirroredFlatFile_ClosePrimary(&primaryOpen);
-	}
-	
-	if (primaryFilespaceLocation != NULL)
-		pfree(primaryFilespaceLocation);
-	
-	if (mirrorFilespaceLocation != NULL)
-		pfree(mirrorFilespaceLocation);
-	
+			
 	return retval;
 }
 

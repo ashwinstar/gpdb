@@ -9552,7 +9552,7 @@ XLogRecoverMirrorControlFile(void)
 							  &mirroredOpen,
 							  XLOG_CONTROL_FILE_SUBDIR,
 							  XLOG_CONTROL_FILE_SIMPLE,
-							  O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
+							  O_CREAT | O_EXCL | O_RDWR | PG_BINARY,
 							  S_IRUSR | S_IWUSR,
 							  /* suppressError */ false,
 							  /*isMirrorRecovery */ TRUE);
