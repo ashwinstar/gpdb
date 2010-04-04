@@ -730,8 +730,8 @@ FileRepMirror_RunConsumer(void)
 							   spare,
 							   fileRepMessageHeader->messageCount);		
 		
-#ifdef FILEREP_DEBUG
-		ereport(LOG,
+		if (Debug_filerep_print)
+			ereport(LOG,
 				(errmsg("LOG(filerep): M_RunConsumer msg header count:'%d' local count:'%d' "
 						"consumer proc index:'%d'",
 						fileRepMessageHeader->messageCount,
@@ -742,7 +742,7 @@ FileRepMirror_RunConsumer(void)
 								   fileRepMessageHeader->fileRepOperation),
 				 FileRep_errdetail_Shmem(),
 				 FileRep_errcontext()));		
-#endif		
+	
 		/* NOTE - it will be removed */
 		if (fileRepMessageHeader->messageCount <= spare) {
 			elog(LOG, "ERROR(filerep): FileRepMirror_RunConsumer() spare:%d spareLocal:%d consume:%p insert:%p wraparound:%p pid:%d", 

@@ -2461,6 +2461,8 @@ static void PersistentFileSysObj_ScanStateAction(
 				mirrorDataLossTrackingState = 
 							FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
 															&mirrorDataLossTrackingSessionNum);
+				FileRepResync_SetReCreateRequest();
+				
 				PersistentFileSysObj_DoMirrorReCreate(
 										&fsObjName,
 										relStorageMgr,
@@ -2469,6 +2471,8 @@ static void PersistentFileSysObj_ScanStateAction(
 										mirrorDataLossTrackingState,
 										mirrorDataLossTrackingSessionNum,
 										&mirrorDataLossOccurred);
+				
+				FileRepResync_ResetReCreateRequest();
 
 				// UNDONE: Act on mirrorDataLossOccurred
 			}
@@ -2508,7 +2512,7 @@ static void PersistentFileSysObj_ScanStateAction(
 						 MirroredObjectExistenceState_Name(mirrorExistenceState),
 						 serialNum,
 						 ItemPointerToString(&persistentTid));
-
+				
 				PersistentFileSysObj_UpdateTupleMirrorReCreated(
 														fileSysObjData,
 														fileSysObjSharedData,

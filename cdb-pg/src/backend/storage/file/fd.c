@@ -53,6 +53,8 @@
 #include "storage/ipc.h"
 
 #include "utils/debugbreak.h"
+/* Debug_filerep_print guc temporaly added for troubleshooting */
+#include "utils/guc.h"
 
 // Provide some indirection here in case we have problems with lseek and
 // 64 bits on some platforms
@@ -1073,6 +1075,11 @@ FileReadIntr(File file, char *buffer, int amount, bool fRetryIntr)
 			   file, VfdCache[file].fileName,
 			   VfdCache[file].seekPos, amount, buffer));
 
+	if (Debug_filerep_print)
+		(elog(LOG, "FileRead: %d (%s) " INT64_FORMAT " %d %p",
+			  file, VfdCache[file].fileName,
+			  VfdCache[file].seekPos, amount, buffer));
+	
 	returnCode = FileAccess(file);
 	if (returnCode < 0)
 		return returnCode;
@@ -1126,7 +1133,13 @@ FileWrite(File file, char *buffer, int amount)
 	DO_DB(elog(LOG, "FileWrite: %d (%s) " INT64_FORMAT " %d %p",
 			   file, VfdCache[file].fileName,
 			   VfdCache[file].seekPos, amount, buffer));
-
+	
+	/* Added temporary for troubleshooting */
+	if (Debug_filerep_print)
+		elog(LOG, "FileWrite: %d (%s) " INT64_FORMAT " %d %p",
+		 file, VfdCache[file].fileName,
+		 VfdCache[file].seekPos, amount, buffer);
+	
 	returnCode = FileAccess(file);
 	if (returnCode < 0)
 		return returnCode;

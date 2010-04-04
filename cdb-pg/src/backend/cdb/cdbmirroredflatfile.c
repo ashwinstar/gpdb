@@ -72,7 +72,9 @@ int MirroredFlatFile_Open(
 				  fileMode,
 				  suppressError) != 0) 
 		ereport(LOG,
-				(errmsg("could not sent open file to mirror \"%s\"", open->path)));		
+				(errmsg("could not sent open file to mirror \"%s\" open file flags:'%x' ", 
+						open->path, 
+						fileFlags)));		
 
 	if (! open->isMirrorRecovery) {
 		open->primaryFile = PathNameOpenFile(open->path, fileFlags, fileMode);
@@ -147,7 +149,9 @@ int MirroredFlatFile_OpenInDbDir(
 					  fileMode,
 					  suppressError) != 0) 
 		ereport(LOG,
-				(errmsg("could not sent open file to mirror \"%s\"", open->path)));		
+				(errmsg("could not sent open file to mirror \"%s\" open file flags:'%x' ", 
+						open->path, 
+						fileFlags)));		
 
 	open->primaryFile = PathNameOpenFile(open->path, fileFlags, fileMode);
 	if (open->primaryFile < 0)
@@ -1020,6 +1024,15 @@ PgVersionRecoverMirror(void)
 			if (retval != 0)
 				break;
 			
+			if (MirroredFlatFile_IsActive(&mirroredOpen)) {
+				MirroredFlatFile_Close(&mirroredOpen);
+			}
+			
+			if (MirroredFlatFile_IsActive(&primaryOpen)) {
+				MirroredFlatFile_ClosePrimary(&primaryOpen);
+			}
+			
+			
 			break;
 		} // while(1)
 		
@@ -1039,6 +1052,12 @@ PgVersionRecoverMirror(void)
 	if (MirroredFlatFile_IsActive(&primaryOpen)) {
 		MirroredFlatFile_ClosePrimary(&primaryOpen);
 	}
+	
+	if (primaryFilespaceLocation != NULL)
+		pfree(primaryFilespaceLocation);
+	
+	if (mirrorFilespaceLocation != NULL)
+		pfree(mirrorFilespaceLocation);
 	
 	return retval;
 }

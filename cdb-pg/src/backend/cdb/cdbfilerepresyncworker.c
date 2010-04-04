@@ -274,14 +274,14 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 						}
 						
 						numBlocks = smgrnblocks(smgr_relation);
-#ifdef FILEREP_DEBUG									
+						if (Debug_filerep_print)
 						elog(LOG, "FileRepPrimary_ResyncWrite() relNode:'%d' spcNode:'%d' dbNode:'%d' "
 								  "numBlocks:'%d' ",
 								 smgr_relation->smgr_rnode.relNode,
 								 smgr_relation->smgr_rnode.spcNode,
 								 smgr_relation->smgr_rnode.dbNode,
 								 numBlocks);
-#endif						
+					
 						for (ii = 0; ii < result->count; ii++)
 						{
 						
@@ -295,7 +295,8 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 							
 							loc = PageGetLSN(page); 
 							loc1 =  result->entries[ii].lsn_end;
-#ifdef FILEREP_DEBUG					
+							
+							if (Debug_filerep_print)
 							elog(LOG, "FileRepPrimary_ResyncWrite() blkno:'%d' "
 								 "lsn_begin:'%u'/'%u' "
 								 "lsn_page:'%u'/'%u' '%s' "
@@ -309,7 +310,7 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 								 loc1.xlogid,
 								 loc1.xrecoff,
 								 XLogLocationToString(&loc1));
-#endif
+
 							if (XLByteEQ(PageGetLSN(page), result->entries[ii].lsn_end)) 
 							{
 			

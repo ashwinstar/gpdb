@@ -160,10 +160,13 @@ FileRepPrimary_IsMirroringRequired(void)
 				break;
 				
 			case DataStateInResync:
-				if (segmentState == SegmentStateInitialization ||
-					segmentState == SegmentStateInResyncTransition)
+				if (! FileRepResync_IsReCreate())
 				{
-					break;
+					if (segmentState == SegmentStateInitialization ||
+						segmentState == SegmentStateInResyncTransition) 
+					{
+						break;
+					}
 				}
 				/* no break */
 			case DataStateInSync:
@@ -348,8 +351,8 @@ FileRepPrimary_ConstructAndInsertMessage(
 						   FILEREP_UNDEFINED,
 						   fileRepMessageHeader->messageCount);
 						   	
-#ifdef FILEREP_DEBUG
-	ereport(LOG,
+	if (Debug_filerep_print)
+		ereport(LOG,
 			(errmsg("LOG(filerep): P_ConstructAndInsertMessage "
 					"msg header count:'%d' msg header crc:'%u' position insert:'%p' "
 					"msg length:'%u' open file flags:'%x' "
@@ -367,7 +370,7 @@ FileRepPrimary_ConstructAndInsertMessage(
 							   fileRepOperation),
 			 FileRep_errdetail_Shmem(),
 			 FileRep_errcontext()));		
-#endif
+
 	
 	fileRepShmemMessageDescr = 
 	(FileRepShmemMessageDescr_s*) msgPositionInsert;	
@@ -786,8 +789,8 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 								   FILEREP_UNDEFINED,
 								   fileRepMessageHeader->messageCount);			
 						
-#ifdef FILEREP_DEBUG
-			ereport(LOG,
+			if (Debug_filerep_print)
+				ereport(LOG,
 					(errmsg("LOG(filerep): P_ConstructAndInsertMessage "
 							"msg header count:'%d' msg header crc:'%u' position insert:'%p' "
 							"msg body crc:'%u' ",
@@ -799,9 +802,7 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 									   fileRepRelationType,
 									   FileRepOperationWrite),
 					 FileRep_errdetail_Shmem(),
-					 FileRep_errcontext()));		
-#endif
-			
+					 FileRep_errcontext()));					
 			
 			/* Copy Data */
 			fileRepMessageBody = (char *) (msgPositionInsert + 
@@ -1327,8 +1328,8 @@ FileRepPrimary_RunSender(void)
 							   spare,
 							   fileRepMessageHeader->messageCount);					
 		
-#ifdef FILEREP_DEBUG
-		ereport(LOG,
+		if (Debug_filerep_print)
+			ereport(LOG,
 				(errmsg("LOG(filerep): P_RunSender msg header count:'%d' local count:'%d' ",
 						fileRepMessageHeader->messageCount,
 						spare),
@@ -1336,9 +1337,7 @@ FileRepPrimary_RunSender(void)
 								   fileRepMessageHeader->fileRepRelationType,
 								   fileRepMessageHeader->fileRepOperation),
 				 FileRep_errdetail_Shmem(),
-				 FileRep_errcontext()));		
-#endif
-		
+				 FileRep_errcontext()));				
 		
 		spare = fileRepMessageHeader->messageCount;
 	

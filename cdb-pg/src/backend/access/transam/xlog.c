@@ -1256,7 +1256,14 @@ begin:;
 	    ChangeTracking_ShouldTrackChanges())
 	{
 		ChangeTracking_AddRecordFromXlog(rmid, info, (void *)rdata_orig->data, &RecPtr);
-
+	}
+	
+	/*
+	 * last LSN location has to be tracked also when no mirrors are configured
+	 * in order to handle gpaddmirrors correctly
+	 */
+	if (OkToConsiderChangeTrackingLogging)
+	{
 		XLogCtl->lastChangeTrackingLoc = RecPtr;
 	}
 

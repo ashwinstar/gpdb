@@ -80,6 +80,12 @@ extern void FileRepResync_DecAppendOnlyCommitCount(int	count);
 
 extern bool FileRepResync_IsTransitionFromResyncToInSync(void);
 
+extern bool FileRepResync_IsReCreate(void);
+
+extern void FileRepResync_SetReCreateRequest(void);
+
+extern void FileRepResync_ResetReCreateRequest(void);
+
 extern void FileRepResyncManager_ResyncFlatFiles(void);
 
 #endif  /* CDBFILEREPRESYNCMANAGER_H */

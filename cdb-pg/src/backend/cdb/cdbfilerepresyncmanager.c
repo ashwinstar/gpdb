@@ -167,6 +167,8 @@ typedef struct FileRepResyncShmem_s {
 	
 	bool		checkpointRequest;
 	
+	bool		reCreateRequest;
+	
 	slock_t		lock;
 	
 	XLogRecPtr	endFullResyncLSN;
@@ -256,6 +258,8 @@ FileRepResync_GetEndFullResyncLSN(void)
 void
 FileRepResyncManager_SetEndResyncLSN(XLogRecPtr endResyncLSN)
 {
+	Assert(! (endResyncLSN.xlogid == 0 && endResyncLSN.xrecoff == 0));
+			   
 	if (isFullResync())
 	{
 		fileRepResyncShmem->endFullResyncLSN.xlogid = endResyncLSN.xlogid;
@@ -266,7 +270,7 @@ FileRepResyncManager_SetEndResyncLSN(XLogRecPtr endResyncLSN)
 		fileRepResyncShmem->endIncrResyncLSN.xlogid = endResyncLSN.xlogid;
 		fileRepResyncShmem->endIncrResyncLSN.xrecoff = endResyncLSN.xrecoff;		
 	}
-			 
+	
     elog(LOG, "FileRepResync_SetEndResyncLSN() isFullResync:'%d' lsn:'%u'/'%u' '%s'",
 		 isFullResync(),
 		 endResyncLSN.xlogid,
@@ -275,12 +279,32 @@ FileRepResyncManager_SetEndResyncLSN(XLogRecPtr endResyncLSN)
 
 }
 
+void
+FileRepResync_SetReCreateRequest(void)
+{
+	fileRepResyncShmem->reCreateRequest = TRUE;
+}
+
+void
+FileRepResync_ResetReCreateRequest(void)
+{
+	fileRepResyncShmem->reCreateRequest = FALSE;
+}
+
 bool 
 FileRepResync_IsTransitionFromResyncToInSync(void)
 {
 	return((fileRepResyncShmem != NULL)?
 		   (fileRepResyncShmem->checkpointRequest == TRUE &&
 			fileRepProcessType == FileRepProcessTypeResyncManager):false);
+}
+
+bool
+FileRepResync_IsReCreate(void)
+{
+	return((fileRepResyncShmem != NULL)?
+		   (fileRepResyncShmem->reCreateRequest == TRUE &&
+			fileRepProcessType == FileRepProcessTypeResyncManager):false);	
 }
 
 /****************************************************************
@@ -331,6 +355,8 @@ FileRepResync_ShmemInit(void)
 	fileRepResyncShmem->appendOnlyCommitCount = 0;
 	
 	fileRepResyncShmem->checkpointRequest = FALSE;
+	
+	fileRepResyncShmem->reCreateRequest = FALSE;	
 	
 	SpinLockInit(&fileRepResyncShmem->lock);
 	
@@ -384,6 +410,8 @@ FileRepResync_ShmemReInit(void)
 	fileRepResyncShmem->appendOnlyCommitCount = 0;
 	
 	fileRepResyncShmem->checkpointRequest = FALSE;
+	
+	fileRepResyncShmem->reCreateRequest = FALSE;	
 	
 	SpinLockInit(&fileRepResyncShmem->lock);
 	
@@ -585,13 +613,6 @@ FileRepResyncManager_InResyncTransition(bool isLastLocTracked)
 		/* NOTE remove after it will be implemented to mark from postmaster */
 		if (isFullResync())
 			ChangeTracking_MarkFullResync();
-	
-		ChangeTracking_RecordLastChangeTrackedLoc();
-		
-		if (FileRepSubProcess_GetState() == FileRepStateFault)
-		{
-			goto exit;
-		}
 	}
 	
 	FileRepSubProcess_ProcessSignals();
@@ -644,11 +665,32 @@ FileRepResyncManager_InResyncTransition(bool isLastLocTracked)
 	{
 		goto exit;
 	}						
-	
-	FileRepSubProcess_SetState(FileRepStateReady);	
 		
 	PersistentFileSysObj_MirrorReCreate();	
 	elog(LOG, "FileRepResyncManager_InResyncTransition() PersistentFileSysObj_MirrorReCreate DONE");
+	
+	FileRepSubProcess_ProcessSignals();
+	if (! ((segmentState == SegmentStateInResyncTransition ||
+			segmentState == SegmentStateReady) &&
+		   dataState == DataStateInResync))
+	{
+		goto exit;
+	}	
+	
+	if (isLastLocTracked == FALSE)
+	{
+		ChangeTracking_RecordLastChangeTrackedLoc();
+		
+		FileRepSubProcess_ProcessSignals();
+		if (! ((segmentState == SegmentStateInResyncTransition ||
+				segmentState == SegmentStateReady) &&
+			   dataState == DataStateInResync))
+		{
+			goto exit;
+		}	
+	}	
+	
+	FileRepSubProcess_SetState(FileRepStateReady);	
 	
 	PersistentFileSysObj_MarkMirrorReCreated();
 	elog(LOG, "FileRepResyncManager_InResyncTransition() PersistentFileSysObj_MarkMirrorReCreated DONE");
@@ -1043,7 +1085,8 @@ FileRepResync_RemoveEntry(FileName	fileName)
 						NULL);
 	
 	if (entry) {
-		elog(LOG, "FileRepResync_RemoveEntry() removed resync entry identifier:'%s' ", fileName);		
+		if (Debug_filerep_print)
+			elog(LOG, "FileRepResync_RemoveEntry() removed resync entry identifier:'%s' ", fileName);		
 		isRemoved = TRUE;
 	} 
 	
@@ -1086,16 +1129,19 @@ FileRepResync_CheckProgress(void)
 							entry->persistentSerialNum,
 							TRUE); 
 					
-					elog(LOG, "FileRepResync_CheckProgress() identifier:'%s' state:'%d' ", 
-						 entry->fileName,
-						 entry->fileRepResyncState);
+					if (Debug_filerep_print)
+						elog(LOG, "FileRepResync_CheckProgress() identifier:'%s' state:'%d' ", 
+							 entry->fileName,
+							 entry->fileRepResyncState);
 					
 					break;
 					
 				case FileRepResyncStateFault:
-					elog(LOG, "FileRepResync_CheckProgress() identifier:'%s' state:'%d' ", 
-						 entry->fileName,
-						 entry->fileRepResyncState);
+										
+					if (Debug_filerep_print)
+						elog(LOG, "FileRepResync_CheckProgress() identifier:'%s' state:'%d' ", 
+							 entry->fileName,
+							 entry->fileRepResyncState);
 										
 					break;
 		
@@ -1156,8 +1202,10 @@ FileRepPrimary_GetResyncEntry(void)
 	
 	FileRepResync_LockRelease();
 
-	if (entry != NULL) {
-		elog(LOG, "FileRepPrimary_GetResyncEntry() identifier:'%s' ", entry->fileName);
+	if (entry != NULL)
+	{
+		if (Debug_filerep_print) 
+			elog(LOG, "FileRepPrimary_GetResyncEntry() identifier:'%s' ", entry->fileName);
 	}
 	
 	return entry;
@@ -1186,9 +1234,10 @@ FileRepResync_UpdateEntry(
 	
 	FileRepResync_LockRelease();
 	
-	elog(LOG, "FileRepResync_UpdateEntry() identifier:'%s' state:'%d' ", 
-		 entry->fileName,
-		 entry->fileRepResyncState);
+	if (Debug_filerep_print)
+		elog(LOG, "FileRepResync_UpdateEntry() identifier:'%s' state:'%d' ", 
+			 entry->fileName,
+			 entry->fileRepResyncState);
 
 	return status;
 }

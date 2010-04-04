@@ -160,6 +160,7 @@ extern bool gp_before_persistence_work;
 extern bool Debug_print_xlog_relation_change_info;
 extern bool Debug_print_xlog_relation_change_info_skip_issues_only;
 extern bool Debug_filerep_crc_on;
+extern bool Debug_filerep_print;
 
 extern bool Debug_print_tablespace;
 extern bool	Debug_print_server_processes;

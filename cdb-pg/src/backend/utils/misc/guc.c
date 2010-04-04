@@ -277,6 +277,7 @@ bool 		gp_before_persistence_work = false;
 bool 		Debug_print_xlog_relation_change_info = false;
 bool 		Debug_print_xlog_relation_change_info_skip_issues_only = true;
 bool		Debug_filerep_crc_on = true;
+bool		Debug_filerep_print = false;
 
 #define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
 bool		Debug_dtm_action_primary = DEBUG_DTM_ACTION_PRIMARY_DEFAULT;
@@ -2405,6 +2406,16 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&Debug_filerep_crc_on,
 		true, NULL, NULL
+	},
+
+	{
+		{"Debug_filerep_print", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Turn on filerep logs"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_filerep_print,
+		false, NULL, NULL
 	},
 
 	/* End-of-list marker */

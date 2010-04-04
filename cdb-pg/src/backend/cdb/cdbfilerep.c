@@ -152,6 +152,8 @@ static FileRepLogEntry_s fileRepLog[file_rep_num_log_entries];
 
 static	int	logIndex = 0;
 
+static	int fileRepInsertedLogEntries = 0; 
+
 static void FileRep_ReportLogEntry(int	index);
 
 const char*
@@ -1160,6 +1162,9 @@ FileRep_InsertLogEntry(
 	
 	if (logIndex == file_rep_num_log_entries)
 		logIndex = 0;
+	
+	if (fileRepInsertedLogEntries < file_rep_num_log_entries)
+		fileRepInsertedLogEntries++;
 }
 
 /*
@@ -1257,8 +1262,12 @@ void
 FileRep_ReportLog(void)
 {
 	int	ii;
+	int numEntries;
 
-	for (ii = logIndex; ii < file_rep_num_log_entries; ii++) {
+	numEntries = Min(fileRepInsertedLogEntries, file_rep_num_log_entries);
+	
+	for (ii = logIndex; ii < numEntries; ii++) 
+	{
 		FileRep_ReportLogEntry(ii);
 	}
 	
