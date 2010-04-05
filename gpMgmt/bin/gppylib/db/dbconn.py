@@ -48,6 +48,9 @@ class Pgpass():
             try:
                 lineno = 1
                 for line in fp:
+                    line = line.strip()
+                    if line.startswith('#'):
+                        continue
                     try:
                         (hostname, port, database, username, password) = line.strip().split(':')
                         entry = {'hostname': hostname,
@@ -70,7 +73,7 @@ class Pgpass():
     def get_password(self, username, hostname, port, database):
         for entry in self.entries:
             if ((entry['hostname'] == hostname or entry['hostname'] == '*') and
-               (entry['port'] == port or entry['port'] == '*') and
+               (entry['port'] == str(port) or entry['port'] == '*') and
                (entry['database'] == database or entry['database'] == '*') and
                (entry['username'] == username or entry['username'] == '*')):
                 return entry['password']
@@ -115,7 +118,14 @@ class DbURL:
             self.pguser = username
 
         if password is None:
-            self.pgpass = os.environ.get('PGPASSWORD', None)
+            pgpass = Pgpass()
+            if pgpass.pgpass_valid():
+                password = pgpass.get_password(self.pguser, self.pghost, self.pgport, self.pgdb)
+                print 'Password is: %s' % password
+                if password:
+                    self.pgpass = password
+                else:
+                    self.pgpass = os.environ.get('PGPASSWORD', None)
         else:
             self.pgpass = password
 
