@@ -1844,9 +1844,9 @@ Filerep_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int cha
 			 */
 			if (new_pri)
 			{
+				elog(LOG, "Segment with dbid %d failed *and* was marked as the new primary! Dumping changes.", changes[i].dbid);
 				dumpChanges(changes, changeCount);
-
-				elog(FATAL, "Segment with dbid %d failed *and* was marked as the new primary!", changes[i].dbid);
+				/* NOTE: we don't apply the state change here. */
 			}
 		}
 		else if (new_alive && !old_alive)
@@ -1854,9 +1854,9 @@ Filerep_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int cha
 			/* this is a segment that came back up ? Nothing to do here. */
 			if (old_pri)
 			{
+				elog(LOG, "Segment with dbid %d came back from the dead *and* was marked as the old primary! Dumping changes", changes[i].dbid);
 				dumpChanges(changes, changeCount);
-
-				elog(FATAL, "Segment with dbid %d came back from the dead *and* was marked as the old primary!", changes[i].dbid);
+				/* NOTE: we don't apply the state change here. */
 			}
 		}
 		else if (new_alive && old_alive)
