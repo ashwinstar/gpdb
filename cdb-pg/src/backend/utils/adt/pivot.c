@@ -27,15 +27,18 @@ static Datum oid_pivot_accum(FunctionCallInfo fcinfo, Oid type);
 /*
  * External facing wrapper functions to allow for proper type extraction
  */
-Datum int4_pivot_accum(PG_FUNCTION_ARGS)
+Datum 
+int4_pivot_accum(PG_FUNCTION_ARGS)
 {
 	return oid_pivot_accum(fcinfo, INT4OID);
 }
-Datum int8_pivot_accum(PG_FUNCTION_ARGS)
+Datum 
+int8_pivot_accum(PG_FUNCTION_ARGS)
 {
 	return oid_pivot_accum(fcinfo, INT8OID);
 }
-Datum float8_pivot_accum(PG_FUNCTION_ARGS)
+Datum 
+float8_pivot_accum(PG_FUNCTION_ARGS)
 {
 	return oid_pivot_accum(fcinfo, FLOAT8OID);
 }
@@ -291,88 +294,6 @@ static Datum oid_pivot_accum(FunctionCallInfo fcinfo, Oid type)
 }
 
 
-Datum unnest(PG_FUNCTION_ARGS)
-{
-	FuncCallContext      *funcctx;
-	array_iter           *fctx;
-	MemoryContext         oldcontext;
-	Datum                 d;
-	bool                  isna;
-
-	/* stuff done only on the first call of the function */
-	if (SRF_IS_FIRSTCALL())
-	{
-		ArrayType *data;
-		Oid        eltype1;
-
-		/* see if we were given an explicit step size */
-		if (PG_NARGS() != 1)
-			elog(ERROR, "number of parameters != 1");
-
-		eltype1 = get_fn_expr_argtype(fcinfo->flinfo, 0);
-		if (!OidIsValid(eltype1))
-			elog(ERROR, "could not determine data type of input");
-
-		/* Strict function, return null on null input */
-		if (PG_ARGISNULL(0))
-			PG_RETURN_NULL();
-		data = PG_GETARG_ARRAYTYPE_P(0);
-
-		/* 
-		 * Should implement unnest(anyarray, int) => anyarray 
-		 * that unnests the specified dimension.
-		 */
-		if (ARR_NDIM(data) > 1)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("cannot unnest multidimensional array")));
-		
-		/* create a function context for cross-call persistence */
-		funcctx = SRF_FIRSTCALL_INIT();
-
-		/* switch to memory context appropriate for multiple function calls */
-		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
-
-
-		/* allocate memory for user context */
-		fctx = (array_iter *) palloc(sizeof(array_iter));
-
-		/* Use fctx to keep state from call to call */
-		array_loop(data, ARR_LBOUND(data)[0], fctx);
-
-		funcctx->user_fctx = fctx;
-		MemoryContextSwitchTo(oldcontext);
-	}
-
-	/* stuff done on every call of the function */
-	funcctx = SRF_PERCALL_SETUP();
-
-	/* get the saved state and use current as the result for this iteration */
-	fctx = (array_iter *) funcctx->user_fctx;
-
-	/* 
-	 * Initialization isn't necessary since array_next will set both values,
-	 * but this fixes compiler warnings.
-	 */
-	d = (Datum) 0;
-	isna = false;
-
-	if (array_next(fctx, &d, &isna))
-	{
-		if (isna)
-		{
-			ReturnSetInfo *rsi = (ReturnSetInfo *) fcinfo->resultinfo;
-			rsi->isDone = ExprMultipleResult;
-			PG_RETURN_NULL();
-		}
-		SRF_RETURN_NEXT(funcctx, d);
-	}
-	else
-	{
-		SRF_RETURN_DONE(funcctx);
-	}
-}
-
 
 /*
  * For unpivot to behave correctly it needs to be able to return multiple
@@ -391,7 +312,8 @@ typedef struct {
 	array_iter data_iter;
 } unpivot_fctx;
 
-Datum text_unpivot(PG_FUNCTION_ARGS)
+Datum 
+text_unpivot(PG_FUNCTION_ARGS)
 {
 	FuncCallContext      *funcctx;
 	unpivot_fctx         *fctx;
