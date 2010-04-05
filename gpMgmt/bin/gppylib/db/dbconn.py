@@ -121,7 +121,6 @@ class DbURL:
             pgpass = Pgpass()
             if pgpass.pgpass_valid():
                 password = pgpass.get_password(self.pguser, self.pghost, self.pgport, self.pgdb)
-                print 'Password is: %s' % password
                 if password:
                     self.pgpass = password
                 else:
