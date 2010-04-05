@@ -59,3 +59,43 @@ UPDATE update_test AS t SET b = update_test.b + 10 WHERE t.a = 10;
 ROLLBACK;
 
 DROP TABLE update_test;
+
+--
+-- text types. We should support the following updates.
+--
+
+drop table tab1;
+drop table tab2;
+
+CREATE TABLE tab1 (a varchar(15), b integer) DISTRIBUTED BY (a);
+CREATE TABLE tab2 (a varchar(15), b integer) DISTRIBUTED BY (a);
+
+UPDATE tab1 SET b = tab2.b FROM tab2 WHERE tab1.a = tab2.a;
+
+
+drop table tab1;
+drop table tab2;
+
+CREATE TABLE tab1 (a text, b integer) DISTRIBUTED BY (a);
+CREATE TABLE tab2 (a text, b integer) DISTRIBUTED BY (a);
+
+UPDATE tab1 SET b = tab2.b FROM tab2 WHERE tab1.a = tab2.a;
+
+
+drop table tab1;
+drop table tab2;
+
+CREATE TABLE tab1 (a varchar, b integer) DISTRIBUTED BY (a);
+CREATE TABLE tab2 (a varchar, b integer) DISTRIBUTED BY (a);
+
+UPDATE tab1 SET b = tab2.b FROM tab2 WHERE tab1.a = tab2.a;
+
+
+drop table tab1;
+drop table tab2;
+
+CREATE TABLE tab1 (a char(15), b integer) DISTRIBUTED BY (a);
+CREATE TABLE tab2 (a char(15), b integer) DISTRIBUTED BY (a);
+
+UPDATE tab1 SET b = tab2.b FROM tab2 WHERE tab1.a = tab2.a;
+
