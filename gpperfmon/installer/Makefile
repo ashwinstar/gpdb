@@ -53,8 +53,6 @@ all:
 	cp -R $(LIGHTY_DIR)/* .tmp
 	cp $(BLD_TOP)/ext/$(BLD_ARCH)/bin/openssl .tmp/bin
 	cp $(BLD_TOP)/ext/$(BLD_ARCH)/ssl/openssl.cnf .tmp/etc	
-	cp $(GPMONDOCS_DIR)/GPMonGuide.pdf .tmp/docs
-	cp $(GPMONDOCS_DIR)/GPMon_2000_README.pdf .tmp/docs
 	@if [ "$(PACKAGE_ARCH)" = "OSX-i386" ] ; then \
 		cp $(BLD_TOP)/ext/$(BLD_ARCH)/lib/libpcre.0.0.1.dylib .tmp/lib; \
 		cp $(BLD_TOP)/ext/$(BLD_ARCH)/lib/libcrypto.0.9.8.dylib .tmp/lib; \
