@@ -34,8 +34,8 @@ GPPATH=`dirname $GPPATH`
 #***********************************************************
 # Create a list of catalog tables to printout
 #***********************************************************
-declare -a TABLES=(id version_at_initdb)
-declare -a TABLESQD=(segment_configuration id pgdatabase distribution_policy version_at_initdb)
+declare -a TABLES=(version_at_initdb)
+declare -a TABLESQD=(segment_configuration pgdatabase version_at_initdb)
 
 #***********************************************************
 # Declare the max and min port numbers to probe
