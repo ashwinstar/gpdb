@@ -2231,13 +2231,14 @@ _complete_from_query(int is_schema_query, const char *text, int state)
 
 			/*
 			 * When fetching relation names, suppress system catalogs unless
-			 * the input-so-far begins with "pg_".	This is a compromise
+			 * the input-so-far begins with "pg_" or "gp_".	This is a compromise
 			 * between not offering system catalogs for completion at all, and
 			 * having them swamp the result when the input is just "p".
 			 */
 			if (strcmp(completion_squery->catname,
 					   "pg_catalog.pg_class c") == 0 &&
-				strncmp(text, "pg_", 3) !=0)
+				strncmp(text, "pg_", 3) != 0 &&
+				strncmp(text, "gp_", 3) != 0)
 			{
 				appendPQExpBuffer(&query_buffer,
 								  " AND c.relnamespace <> (SELECT oid FROM"
