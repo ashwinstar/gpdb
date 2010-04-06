@@ -66,6 +66,8 @@
 #include "catalog/pg_namespace.h"
 #include "utils/debugbreak.h"
 #include "nodes/makefuncs.h"
+#include "cdb/cdbhash.h"
+
 /**
  * Statistics related parameters.
  */
@@ -119,7 +121,7 @@ static bool isMasterOnly(Oid relationOid);
 static void analyzeEstimateIndexpages(Oid relationOid, Oid indexOid, float4 *indexPages);
 
 /* Attribute-type related functions */
-static bool hasOrderDefined(Oid relationOid, const char *attributeName);
+static bool isOrderedAndHashable(Oid relationOid, const char *attributeName);
 static bool isBoolType(Oid relationOid, const char *attributeName);
 static bool isNotNull(Oid relationOid, const char *attributeName);
 static bool	isFixedWidth(Oid relationOid, const char *attributeName, float4 *width);
@@ -1382,14 +1384,14 @@ static void updateReltuplesRelpagesInCatalog(Oid relationOid, float4 relTuples, 
 
 /**
  * Does this attribute have a total ordering defined i.e. does it have "<", "="
- * operators? We can consider building only if these operators are defined.
+ * and is the attribute hashable?
  * Input:
  * 	relationOid - relation's Oid
  * 	attributeName - attribute in question
  * Output:
- * 	true if operators are defined, false otherwise. 
+ * 	true if operators are defined and the attribute type is hashable, false otherwise. 
  */
-static bool hasOrderDefined(Oid relationOid, const char *attributeName)
+static bool isOrderedAndHashable(Oid relationOid, const char *attributeName)
 {
 	HeapTuple	attributeTuple = NULL;
 	Form_pg_attribute attribute = NULL;
@@ -1414,7 +1416,11 @@ static bool hasOrderDefined(Oid relationOid, const char *attributeName)
 		result = false;
 	else
 		ReleaseSysCache(ltOperator);
-		
+	
+	/* Is the attribute hashable?*/
+	if (!isGreenplumDbHashable(attribute->atttypid))
+		result = false;
+	
 	ReleaseSysCache(attributeTuple);
 	
 	return result;
@@ -2034,7 +2040,7 @@ static void analyzeComputeAttributeStatistics(Oid relationOid,
 	
 	elog(elevel, "avgwidth = %f", stats->avgWidth);		
 	
-	if (!hasOrderDefined(relationOid, attributeName))
+	if (!isOrderedAndHashable(relationOid, attributeName))
 	{
 		computeDistinct = false;
 		computeMCV = false;
