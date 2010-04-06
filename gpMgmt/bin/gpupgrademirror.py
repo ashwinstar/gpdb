@@ -52,6 +52,7 @@ _help  = [""" TODO add help """]
 _usage = """ TODO add usage """
 
 TEN_MEG = 10485760
+ONE_GIG = 128  * TEN_MEG
 TEN_GIG = 1024 * TEN_MEG
 
 INFO_DIR = "gpupgrademirrorinfodir"
@@ -846,6 +847,16 @@ if os.path.exists('%s') == False:
                 
 
 #-------------------------------------------------------------------------
+#-------------------------------------------------------------------------
+class CopyToLocal(Command):
+    def __init__(self, name, srcHost, srcDirectory, dstDirectory, ctxt=LOCAL):
+        self.srcDirectory=srcDirectory
+        self.srcHost=srcHost
+        self.dstDirectory=dstDirectory
+        cmdStr="%s -r %s:%s %s" % (findCmdInPath('scp'), srcHost, srcDirectory, dstDirectory)
+        Command.__init__(self, name, cmdStr, ctxt=LOCAL)
+
+#-------------------------------------------------------------------------
 #-------------------------------------------------------------------------                    
 class RemoteCopyPreserve(Command):
     def __init__(self,name,srcDirectory,dstHost,dstDirectory,ctxt=LOCAL,remoteHost=None):
@@ -953,8 +964,14 @@ class FileDirectoryList(Command):
 class FileAndSize(Command):
     """ This method gets a list of files in a directory and their sizes in k-bytes """
 
-    def __init__(self, name, filePattern, ctxt=LOCAL, remoteHost=None, zeroSize=False):
+    def __init__(self, name, filePattern, ctxt=LOCAL, remoteHost=None, zeroSize=False, remoteTempFile=None):
         self.filePattern = filePattern
+        self.remoteHost = remoteHost
+        self.remoteTempFile = remoteTempFile
+        if remoteTempFile != None:
+           remoteTempFilePart = " > %s" % remoteTempFile
+        else:
+           remoteTempFilePart = ""
         if zeroSize == True:
            sizeArg = "-size 0c"
         else:
@@ -963,23 +980,65 @@ class FileAndSize(Command):
         xargs = findCmdInPath('xargs')
         du    = findCmdInPath('du') 
         sort  = findCmdInPath('sort')
-        cmdStr= "%s %s -type f %s | %s %s -k | %s -n" % (find, filePattern, sizeArg, xargs, du, sort)            
+        cmdStr= "%s %s -type f %s | %s %s -k | %s -n %s" % (find, filePattern, sizeArg, xargs, du, sort, remoteTempFilePart)
+        self.cmdStr = cmdStr
+        ###print "*** cmdStr = " + str(cmdStr)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
-
-    @staticmethod
-    def get_list(name, remote_host, file_pattern):
-        theCmd = FileAndSize(name, filePattern = file_pattern, ctxt = REMOTE, remoteHost = remote_host)
-        theCmd.run(validateAfter=False)
-        return theCmd.get_result_list()
+        ###print "after call too **** Command.__init__ ***"
     
-    def get_result_list(self):
+    def get_result_list(self, localTempFile = None):
         retList = []
-        fileList = self.results.stdout.split('\n')
+
+        if localTempFile != None:
+           rcCmd = CopyToLocal( name = "gpupgrademirror get result list copy: %s:%s to %s" % (self.remoteHost, self.remoteTempFile, localTempFile)
+                           , srcHost = self.remoteHost
+                           , srcDirectory = self.remoteTempFile
+                           , dstDirectory = localTempFile
+                           )
+           ###print "*** rcCmd = " + str(rcCmd)
+           rcCmd.run(validateAfter = True)
+           rmCmd = RemoveFiles( name = 'gpupgrademirror remove remote temp file: %s:%s' % (self.remoteHost, self.remoteTempFile)
+                              , directory = self.remoteTempFile
+                              , ctxt = REMOTE
+                              , remoteHost = self.remoteHost
+                              )
+           rmCmd.run(validateAfter = True)
+
+           fd = open(localTempFile, "r")
+           fd.seek(0)
+           fileList = []
+           for line in fd:
+               fileList.append(line)
+           fd.close()
+        else:
+           fileList = self.results.stdout.split('\n')
+
+        """
+        print ""
+        print str(self.cmdStr)
+        print "fileList = " + str(fileList) 
+        print ""
+        print 
+        """
+        
+        """
+        print ""
+        print str(self.cmdStr)
+        print "fileList = " 
+        for sdd in fileList:
+            print str(sdd)
+        """
+
         if fileList != None and len(fileList) > 0 and fileList[-1] == '':
            ''' Remove any trailing empty string '''
            fileList.pop()
         for file in fileList:
-            retList.append(file.split())
+            sizef, filef = file.split()
+            sizef = sizef.strip()
+            filef = filef.strip()
+            ###print "sizef = " + str(sizef)
+            ###print "filef = >>>" + str(filef) + "<<<"
+            retList.append([sizef, filef])
         return retList
     
 #-------------------------------------------------------------------------
@@ -1025,7 +1084,7 @@ class SegHardLinks(Command):
     """
     
     _max_files_per_pysync = 500
-    _max_size_kb_per_pysync  = 50000
+    _max_size_kb_per_pysync  = 50000000
 
     def __init__(self, mirror_info, logger):
         logger.debug("in SegHardLinks__init__()")
@@ -1082,16 +1141,28 @@ class SegHardLinks(Command):
             
             """ Get a list of all files in the dir and their sizes in k-bytes """
             cmdComplete = False
+            
             while cmdComplete == False:
                dirFileSizeAll = FileAndSize( name = 'gpupgradmirror get list of files and size in database dir'
                                      , filePattern = str(dir)
                                      , ctxt = REMOTE
                                      , remoteHost = self.theMirror.primary_host
+                                     , remoteTempFile = self.theMirror.primary_data_directory + '/softbase/tempfileandsize'
                                      )
                cmdComplete = runAndCheckCommandComplete(dirFileSizeAll)
+               ###print "*** after call to runAndCheckCommandComplate()"
             dirFileSizeAll.validate()
-            dbFileListAll = dirFileSizeAll.get_result_list()
-            
+            ###print "*** after dirFileSizeAll.validate()"
+            dbFileListAll = dirFileSizeAll.get_result_list(localTempFile = options.info_data_directory + "/tempfileandsize" + str(self.theMirror.primary_dbid))
+            ###print "*** after dbFileListAll = dirFileSizeAll.get_result_list"
+
+            """
+            print "dirFileListAll = "
+            for aaa in dbFileListAll:
+                print "  " + str(aaa)
+            os._exit(1)
+            """
+
             """ Get a sub-list of files that have zero length """ 
             cmdComplete = False
             while cmdComplete == False:
@@ -1100,19 +1171,43 @@ class SegHardLinks(Command):
                                      , ctxt = REMOTE
                                      , remoteHost = self.theMirror.primary_host
                                      , zeroSize = True
+                                     , remoteTempFile = self.theMirror.primary_data_directory + '/softbase/tempfileandsize'
                                      )
                cmdComplete = runAndCheckCommandComplete(dirFileSizeZero)
             dirFileSizeZero.validate()           
-            dbFileListZero = dirFileSizeZero.get_result_list()
+            dbFileListZero = dirFileSizeZero.get_result_list(localTempFile = options.info_data_directory + "/tempfileandsize" + str(self.theMirror.primary_dbid))
             dbFileListZeroLength = len(dbFileListZero) 
-               
-            """ Divide the two lists into distinct sub-lists """   
-            for fileSize in dbFileListZero:
-                dbFileListAll.remove(fileSize)
+
+            dbFileListZeroName = []
+            for iii in range(len(dbFileListZero)):
+                dbFileListZeroName.append(dbFileListZero[iii][1])
             
-            
+            """ Divide the two lists into distinct sub-lists """
+            dbFileNonZeroList = []
+            for candidate in dbFileListAll:
+                if candidate[0] == str(0):
+                   """ size is less than 1k """
+                   if candidate[1] not in dbFileListZeroName:
+                      dbFileNonZeroList.append(candidate)
+                else:
+                   dbFileNonZeroList.append(candidate)
+
             """ Recombine the lists, putting the zero length file list on the front """
-            dbFileList = dbFileListZero + dbFileListAll
+            dbFileList = dbFileListZero + dbFileNonZeroList
+            
+            """
+            ###print "**** dbFileList = "
+            for dbf in dbFileList:
+              ###print "   >>>>>>>%s<<<<<<" % dbf
+              exists = FileDirExists.remote( name = "debugging"
+                                           , remote_host = self.theMirror.primary_host
+                                           , directory = dbf[1]
+                                           )
+              if exists == False:
+                 for dbf2 in dbFileList:
+                    print "   11111>>>>>>>%s<<<<<<" % dbf2
+                 os._exit(2)
+            """
 
             newDirSuffix = 0
             fileIndex    = 0
@@ -1145,9 +1240,35 @@ class SegHardLinks(Command):
                   """ Make groups of the files and create links to the grouped files """
                   sizeSourceFile     = dbFileList[fileIndex][0]
                   fullPathSourceFile = dbFileList[fileIndex][1]
+                  
+                  """
+                  print "5555dbFileList[fileIndex]        >>>%s<<<" % dbFileList[fileIndex]
+                  print "6666(dbFileList[fileIndex])[1]   >>>%s<<<" % (dbFileList[fileIndex])[1]
+                  print "7777dbFileList[fileIndex][1]     >>>%s<<<" % dbFileList[fileIndex][1]
+                  print "8888fullPathSourceFile           >>>%s<<<" % fullPathSourceFile
+                  if fullPathSourceFile.find("primary/gp") == -1:
+                     print "print dbFileListAll start"
+                     for db in dbFileListAll:
+                         print str(db[1])
+                     print "print dbFileListAll end"
+                  """
+
                   subfileIndex = fullPathSourceFile.rfind('/')
                   theFile = fullPathSourceFile[subfileIndex + 1:]
                   sLink = dirPlusSuffix + "/" + theFile
+
+
+                  """
+                  exists = FileDirExists.remote( name = "debugging"
+                                           , remote_host = self.theMirror.primary_host
+                                           , directory = fullPathSourceFile
+                                           )
+                  if exists == False:
+                    print "   22222>>>>>>>%s<<<<<<" % fullPathSourceFile
+                    os._exit(2)
+                  """
+
+
                   srcFileList.append(fullPathSourceFile)
                   softLinkList.append(sLink)
                   numFiles = numFiles + 1
@@ -1164,8 +1285,11 @@ class SegHardLinks(Command):
                sourceFullPathLinkFile = options.info_data_directory + "/" + linkFile
                targetFullPathLinkFile = self.softBaseDir + "/" + linkFile
                linkFP = open(sourceFullPathLinkFile, 'w')
+               linkFP.seek(0)
                for lnIndex in range(len(srcFileList)):
+                   ###print ">>>%s %s<<<" % (srcFileList[lnIndex], softLinkList[lnIndex]) 
                    linkFP.write("%s %s\n" % (srcFileList[lnIndex], softLinkList[lnIndex]))
+	       linkFP.flush()   
                linkFP.close()
                cmdComplete = False
                while cmdComplete == False:
@@ -2146,12 +2270,18 @@ class Phase1(threading.Thread):
                 mirrorFreeSize = mirrorFreeSize + currentMirrorSize
  
             ''' Compare available space to needed space (add 10 Meg. just to make sure) '''
-            if mirrorFreeSize + TEN_MEG < dirSize:
-               logger.error("Size of mirror directory %s is too small %s:%s." % (self.nodeName, seg.mirror_data_directory))          
+            ''' Compare available space to needed space (add a few Meg. just to make sure) '''
+            requiredSpace = dirSize + ONE_GIG
+            if mirrorFreeSize < requiredSpace:
+               self.logger.error("Size of mirror directory is too small %s:%s." % (self.nodeName, seg.mirror_data_directory))          
+               self.logger.error("The mirror directory must have at least %s bytes free. ") % (requiredSpace)
+               self.logger.error("The mirror has %s bytes free.") % (mirrorFreeSize)
                raise ValidationError('Mirror data directory is too small')
+
 
     #-------------------------------------------------------------------------------
     def run(self):
+      try:
         self.setup()
         self.setupCompletedEvent.set()
         self.continueEvent.wait()
@@ -2245,6 +2375,11 @@ class Phase1(threading.Thread):
                 if status.compare_status('PHASE1_DONE') < 0:
                    status.set_status('PHASE1_DONE')        
             statusIndex = statusIndex + 1
+      except Exception, e:
+          self.logger.error('ERROR in processing mirror: %s Exception: %s' % (self.nodeName, str(e)))
+          self.logger.error('gpupgradmirror exiting')
+          traceback.print_exc()
+          os._exit(2)
 
 
     #-------------------------------------------------------------------------------
@@ -2358,6 +2493,7 @@ class Phase2(threading.Thread):
 
     #-------------------------------------------------------------------------------
     def run(self):
+      try:
         i = 0
         for seg in self.mirrorSegmentList:
             status = self.statusList[i]
@@ -2370,6 +2506,11 @@ class Phase2(threading.Thread):
             if status.compare_status('PHASE2_DONE') <= 0:
                status.set_status('PHASE2_DONE')
             i = i + 1
+      except Exception, e:
+            self.logger.error('ERROR in processing mirror: %s Exception: %s' % (self.nodeName, str(e)))
+            self.logger.error('gpupgradmirror exiting')
+            traceback.print_exc()
+            os._exit(2)
 
     #-------------------------------------------------------------------------------
     def shutdown(self):
