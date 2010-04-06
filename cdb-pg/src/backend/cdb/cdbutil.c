@@ -687,9 +687,8 @@ getDnsCachedAddress(char *name, int port, int elevel)
 		 */
 		if (e == NULL && addrs->ai_family == AF_INET6)
 		{
-			/* We haven't tested this code, so warn about it */
+			/* Whatever we do, we can't put an IPv6 address into our host-ip cache */
 			elog(LOG, "host %s only has IPv6 address, not yet supported", name);
-			elog(WARNING, "host %s only has IPv6 address, not yet supported", name);
 		}
 #endif
 			
@@ -768,7 +767,6 @@ getDnsAddress(char *hostname, int port, int elevel)
 	if (result == NULL && addrs->ai_family == AF_INET6)
 	{
 		elog(LOG, "host %s only has IPv6 address, not yet supported", hostname);
-		elog(WARNING, "host %s only has IPv6 address, not yet supported", hostname);
 	}
 #endif
 
