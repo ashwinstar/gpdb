@@ -1019,14 +1019,7 @@ if [ $# -ne 0 ]; then
 				z ) unset COMPRESSION ;;
 				f ) FREE_SPACE_PERCENT=$OPTARG ;;
 				c ) CLEAR_DUMPS=1 ;;
-				o ) LOG_MSG "[INFO]:-Start Main"
-				    LOG_MSG "[INFO]:-Commencing clear old dump files only"
-				    CHK_QD_DB_RUNNING
-				    CHK_ON_PASSIVE_STANDBY
-				    GET_MASTER_PORT $MASTER_DATA_DIRECTORY
-				    DELETE_OLD_DUMPS
-				    LOG_MSG "[INFO]:-End Main"
-				    exit $EXIT_STATUS ;;
+				o ) CLEAR_DUMPS_ONLY=1 ;;
 				s ) DUMP_SCHEMA_NAME=$OPTARG ;;
 				l ) LOG_DIR=$OPTARG ;;
 				x ) DUMP_DATABASE=$OPTARG ;;
@@ -1048,6 +1041,17 @@ if [ $# -ne 0 ]; then
 				* ) USAGE ;;
 				esac
 		done	
+fi
+
+if [ x"$CLEAR_DUMPS_ONLY" == x"1" ]; then
+    LOG_MSG "[INFO]:-Start Main"
+    LOG_MSG "[INFO]:-Commencing clear old dump files only"
+    CHK_QD_DB_RUNNING
+    CHK_ON_PASSIVE_STANDBY
+    GET_MASTER_PORT $MASTER_DATA_DIRECTORY
+    DELETE_OLD_DUMPS
+    LOG_MSG "[INFO]:-End Main"
+    exit $EXIT_STATUS
 fi
 
 for opt in ${OUTPUT_OPTIONS[@]}
