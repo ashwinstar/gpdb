@@ -244,7 +244,15 @@ class GpSegStartCmd(Command):
 
         dirlist=[]
         for seg in segments:
-            dirlist.append("-D '%s'" % repr(seg))
+            # The following strip of the filespaces is to reduce the command
+            # line length of the gpsegstart.py command.  There are shell
+            # limitations to the length, and if there are a large number of segments
+            # and filespaces, this limit can be exceeded.  Since filespaces are not
+            # used for starting a segment, we can remove all but one of them.
+            
+            cfg_array = repr(seg).split('|')[0:-1]
+        
+            dirlist.append("-D '%s'" % ('|'.join(cfg_array) + '|'))
 
         dirstr=" ".join(dirlist)
         colstr=":".join(collatelist)
