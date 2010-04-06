@@ -161,18 +161,21 @@ class StartSegmentsOperation:
 
             pickledTransitionData = None
             if mirroringMode == 'primary' or mirroringMode == 'mirror':
-                pickledTransitionData = self.__createPickledTransitionParameters(mirroringMode, hostName,
-                                                                                    segments, None, dbIdToPeerMap)
+                pickledTransitionData = self.__createPickledTransitionParameters(mirroringMode,
+                                                                                 segments, None, dbIdToPeerMap)
 
-            cmd = gp.GpSegStartCmd("remote segment starts on host '%s'" %
-                    hostName, self.__gpHome, segments, self.__localeData,
+            #
+            # This will call sbin/gpsegstart.py
+            #
+            cmd = gp.GpSegStartCmd("remote segment starts on host '%s'" % hostName,
+                                   self.__gpHome, segments, self.__localeData,
                                    self.__gpVersion,
                                    mirroringMode,
                                    numContentsInCluster,
                                    self.__timeout,
                                    verbose=logging_is_verbose(),
                                    ctxt=base.REMOTE,
-                                   remoteHost=hostName,
+                                   remoteHost=segments[0].getSegmentAddress(),
                                    pickledTransitionData=pickledTransitionData)
             self.__workerPool.addCommand(cmd)
             dispatchCount+=1
@@ -218,7 +221,7 @@ class StartSegmentsOperation:
                 for segment in cmd.dblist:
                     resultOut.addFailure(segment, cmd.get_results())
 
-    def __createPickledTransitionParameters(self, targetMode, hostName, segmentsOnHost, convertUsingFullResync, dbIdToPeerMap):
+    def __createPickledTransitionParameters(self, targetMode, segmentsOnHost, convertUsingFullResync, dbIdToPeerMap):
         dbIdToFullResync = {}
         if convertUsingFullResync is not None:
             for i in range(len(segmentsOnHost)):
@@ -231,14 +234,14 @@ class StartSegmentsOperation:
         for db in segmentsOnHost:
             peer = dbIdToPeerMap[db.getSegmentDbId()]
             dbData = {}
-            dbData["dbid"] = db.dbid
-            dbData["mode"] = db.mode
-            dbData["hostName"] = db.hostname
-            dbData["hostPort"] = db.replicationPort
-            dbData["peerName"] = peer.hostname
-            dbData["peerPort"] = peer.replicationPort
-            hostData["dbsByPort"][db.port] = dbData
-            dbData["fullResyncFlag"] = db.dbid in dbIdToFullResync
+            dbData["dbid"] = db.getSegmentDbId()
+            dbData["mode"] = db.getSegmentMode()
+            dbData["hostName"] = db.getSegmentAddress()
+            dbData["hostPort"] = db.getSegmentReplicationPort()
+            dbData["peerName"] = peer.getSegmentAddress()
+            dbData["peerPort"] = peer.getSegmentReplicationPort()
+            hostData["dbsByPort"][db.getSegmentPort()] = dbData
+            dbData["fullResyncFlag"] = db.getSegmentDbId() in dbIdToFullResync
 
         return base64.urlsafe_b64encode(pickle.dumps(hostData))
 
@@ -266,14 +269,16 @@ class StartSegmentsOperation:
 
             logger.debug("Dispatching command to convert segments on host: %s " % (hostName))
 
-            pickledParams = self.__createPickledTransitionParameters(targetMode, hostName, segments,
+            pickledParams = self.__createPickledTransitionParameters(targetMode, segments,
                                         convertUsingFullResync, dbIdToPeerMap)
 
-            cmd=gp.GpSegChangeMirrorModeCmd("remote segment mirror mode conversion on host '%s'" % hostName,
-                                            self.__gpHome, self.__localeData, self.__gpVersion,
-                                            segments, targetMode, pickledParams, verbose=logging_is_verbose(),
-                                            ctxt=base.REMOTE,
-                                            remoteHost=hostName)
+            address = segments[0].getSegmentAddress()
+            cmd=gp.GpSegChangeMirrorModeCmd(
+                    "remote segment mirror mode conversion on host '%s' using address '%s'" % (hostName, address),
+                    self.__gpHome, self.__localeData, self.__gpVersion,
+                    segments, targetMode, pickledParams, verbose=logging_is_verbose(),
+                    ctxt=base.REMOTE,
+                    remoteHost=address)
             self.__workerPool.addCommand(cmd)
             dispatchCount+=1
         self.__workerPool.wait_and_printdots(dispatchCount,self.__quiet)

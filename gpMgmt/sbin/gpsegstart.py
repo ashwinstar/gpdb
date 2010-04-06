@@ -206,6 +206,11 @@ class GpSegStart:
 
             logger.info("Changing segments...")
             for dir, seg in directoryToSegStartDataMap.iteritems():
+                #
+                # This cmd will deliver a message to the postmaster using gp_primarymirror
+                #
+                # (look for the protocol message type PRIMARY_MIRROR_TRANSITION_REQUEST_CODE )
+                #
                 cmd = gp.SendFilerepTransitionMessage.buildTransitionMessageCommand(transitionData,
                                                                                     seg.getSegmentDataDirectory(),
                                                                                     seg.getSegmentPort())
