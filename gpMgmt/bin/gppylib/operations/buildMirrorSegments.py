@@ -366,6 +366,15 @@ class GpMirrorListToBuild:
                                             ctxt=gp.REMOTE,
                                             remoteHost=hostName))
         self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "unpacking basic segment directory")
+        
+        cmds = []
+        for hostName, segments in destSegmentByHost.iteritems():
+            cmds.append(unix.RemoveFiles('remove tar file', tarFileName, ctxt=gp.REMOTE, remoteHost=hostName))
+            
+        self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "cleaning up tar file on segment hosts")
+        
+        # clean up the temp directory
+        unix.RemoveFiles.local('remove temp directory', tempDir)
 
     def __ensureStopped(self, gpEnv, directives):
         """
