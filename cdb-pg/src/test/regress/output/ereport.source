@@ -3988,64 +3988,64 @@ select * from get_ereport order by 1;
  cabj: cdbmirroredflatfile:00000085:  ereport(ERROR, 
  cabj: cdbmirroredflatfile:00000086:  (errcode_for_file_access(), 
  cabj: cdbmirroredflatfile:00000087:  errmsg("could not open file "%s": %m", open->path))); 
- cabj: cdbmirroredflatfile:00000161:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000162:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000163:  errmsg("could not open file "%s": %m", open->path))); 
- cabj: cdbmirroredflatfile:00000217:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000218:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000219:  errmsg("could not fsync file "%s": %m", open->path))); 
- cabj: cdbmirroredflatfile:00000319:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000320:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000321:  errmsg("could not link file from "%s" to "%s": %m", 
- cabj: cdbmirroredflatfile:00000322:  oldPath, newPath))); 
- cabj: cdbmirroredflatfile:00000327:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000328:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000329:  errmsg("could not rename file from "%s" to "%s": %m", 
- cabj: cdbmirroredflatfile:00000330:  oldPath, newPath))); 
- cabj: cdbmirroredflatfile:00000398:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000399:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000400:  errmsg("could not write to file "%s": %m", open->path))); 
- cabj: cdbmirroredflatfile:00000468:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000469:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000470:  errmsg("could not seek in file to position %d in file "%s": %m", 
- cabj: cdbmirroredflatfile:00000471:  position, 
- cabj: cdbmirroredflatfile:00000472:  open->path))); 
- cabj: cdbmirroredflatfile:00000481:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000482:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000483:  errmsg("could not write to file "%s": %m", open->path))); 
- cabj: cdbmirroredflatfile:00000532:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000533:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000534:  errmsg("could not open file "%s": %m", open->path))); 
- cabj: cdbmirroredflatfile:00000606:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000607:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000608:  errmsg("could not seek in file to position %d in file "%s": %m", 
- cabj: cdbmirroredflatfile:00000609:  position, 
- cabj: cdbmirroredflatfile:00000610:  open->path))); 
- cabj: cdbmirroredflatfile:00000675:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000676:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000677:  errmsg("could not unlink file "%s": %m", path))); 
- cabj: cdbmirroredflatfile:00000784:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000785:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000786:  errmsg("could not seek to end of file "%s" : %m", 
- cabj: cdbmirroredflatfile:00000787:  primaryOpen.path))); 
- cabj: cdbmirroredflatfile:00000814:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000815:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cabj: cdbmirroredflatfile:00000816:  (errmsg("Not enough shared memory for Mirroring.")))); 
- cabj: cdbmirroredflatfile:00000829:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000830:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000831:  errmsg("could not read from position:%d in file "%s" : %m", 
- cabj: cdbmirroredflatfile:00000832:  startOffset, primaryOpen.path))); 
- cabj: cdbmirroredflatfile:00000952:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000953:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000954:  errmsg("could not seek to end of file "%s" : %m", 
- cabj: cdbmirroredflatfile:00000955:  primaryOpen.path))); 
- cabj: cdbmirroredflatfile:00000981:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000982:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cabj: cdbmirroredflatfile:00000983:  (errmsg("Not enough shared memory for Mirroring.")))); 
- cabj: cdbmirroredflatfile:00000996:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000997:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000998:  errmsg("could not read from position:%d in file "%s" : %m", 
- cabj: cdbmirroredflatfile:00000999:  startOffset, primaryOpen.path))); 
+ cabj: cdbmirroredflatfile:00000179:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000180:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000181:  errmsg("could not open file "%s": %m", open->path))); 
+ cabj: cdbmirroredflatfile:00000243:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000244:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000245:  errmsg("could not fsync file "%s": %m", open->path))); 
+ cabj: cdbmirroredflatfile:00000347:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000348:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000349:  errmsg("could not link file from "%s" to "%s": %m", 
+ cabj: cdbmirroredflatfile:00000350:  oldPath, newPath))); 
+ cabj: cdbmirroredflatfile:00000355:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000356:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000357:  errmsg("could not rename file from "%s" to "%s": %m", 
+ cabj: cdbmirroredflatfile:00000358:  oldPath, newPath))); 
+ cabj: cdbmirroredflatfile:00000428:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000429:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000430:  errmsg("could not write to file "%s": %m", open->path))); 
+ cabj: cdbmirroredflatfile:00000500:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000501:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000502:  errmsg("could not seek in file to position '%d' in file '%s': %m", 
+ cabj: cdbmirroredflatfile:00000503:  position, 
+ cabj: cdbmirroredflatfile:00000504:  open->path))); 
+ cabj: cdbmirroredflatfile:00000513:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000514:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000515:  errmsg("could not write to file "%s": %m", open->path))); 
+ cabj: cdbmirroredflatfile:00000564:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000565:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000566:  errmsg("could not open file "%s": %m", open->path))); 
+ cabj: cdbmirroredflatfile:00000638:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000639:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000640:  errmsg("could not seek in file to position %d in file "%s": %m", 
+ cabj: cdbmirroredflatfile:00000641:  position, 
+ cabj: cdbmirroredflatfile:00000642:  open->path))); 
+ cabj: cdbmirroredflatfile:00000707:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000708:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000709:  errmsg("could not unlink file "%s": %m", path))); 
+ cabj: cdbmirroredflatfile:00000816:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000817:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000818:  errmsg("could not seek to end of file "%s" : %m", 
+ cabj: cdbmirroredflatfile:00000819:  primaryOpen.path))); 
+ cabj: cdbmirroredflatfile:00000846:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000847:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cabj: cdbmirroredflatfile:00000848:  (errmsg("Not enough shared memory for Mirroring.")))); 
+ cabj: cdbmirroredflatfile:00000861:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000862:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000863:  errmsg("could not read from position:%d in file "%s" : %m", 
+ cabj: cdbmirroredflatfile:00000864:  startOffset, primaryOpen.path))); 
+ cabj: cdbmirroredflatfile:00000984:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000985:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000986:  errmsg("could not seek to end of file "%s" : %m", 
+ cabj: cdbmirroredflatfile:00000987:  primaryOpen.path))); 
+ cabj: cdbmirroredflatfile:00001013:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00001014:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cabj: cdbmirroredflatfile:00001015:  (errmsg("Not enough shared memory for Mirroring.")))); 
+ cabj: cdbmirroredflatfile:00001028:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00001029:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00001030:  errmsg("could not read from position:%d in file "%s" : %m", 
+ cabj: cdbmirroredflatfile:00001031:  startOffset, primaryOpen.path))); 
  caca: cdbfilerepconnserver:00000079:  ereport(ERROR, 
  caca: cdbfilerepconnserver:00000080:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  caca: cdbfilerepconnserver:00000081:  (errmsg("ERROR(filerep): not enough memory to create connection")))); 
@@ -4473,59 +4473,59 @@ select * from get_ereport order by 1;
  cacf: cdbappendonlystoragewrite:00001198:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
  cacf: cdbappendonlystoragewrite:00001199:  errmsg("We do not expect files to be have a maximum length"), 
  cacf: cdbappendonlystoragewrite:00001200:  errcontext_appendonly_write_storage_block(storageWrite))); 
- cada: cdbresynchronizechangetracking:00000931:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00000932:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00000933:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
- cada: cdbresynchronizechangetracking:00000934:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00000935:  path), 
- cada: cdbresynchronizechangetracking:00000936:  errSendAlert(true))); 
- cada: cdbresynchronizechangetracking:00001022:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- cada: cdbresynchronizechangetracking:00001023:  errmsg("Unable to obtain change tracking information from segment database."), 
- cada: cdbresynchronizechangetracking:00001024:  errdetail("SPI_connect failed in ChangeTracking_GetIncrementalChangeList()"))); 
- cada: cdbresynchronizechangetracking:00001287:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- cada: cdbresynchronizechangetracking:00001288:  errmsg("Unable to obtain change tracking information from segment database."), 
- cada: cdbresynchronizechangetracking:00001289:  errdetail("SPI_connect failed in ChangeTracking_GetChanges()"))); 
- cada: cdbresynchronizechangetracking:00001588:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001589:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001590:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
- cada: cdbresynchronizechangetracking:00001591:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001592:  path), 
- cada: cdbresynchronizechangetracking:00001593:  errSendAlert(true))); 
- cada: cdbresynchronizechangetracking:00001602:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001603:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001604:  errmsg("ERROR(filerep): unable to write change tracking log file "%s", " 
- cada: cdbresynchronizechangetracking:00001605:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001606:  path), 
- cada: cdbresynchronizechangetracking:00001607:  errSendAlert(true))); 
- cada: cdbresynchronizechangetracking:00001667:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001668:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001669:  errmsg("ERROR(filerep): no disk space for change tracking meta file "%s", " 
- cada: cdbresynchronizechangetracking:00001670:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001671:  path), 
- cada: cdbresynchronizechangetracking:00001672:  errSendAlert(true))); 
- cada: cdbresynchronizechangetracking:00001681:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001682:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001683:  errmsg("ERROR(filerep): unable to write change tracking meta file "%s", " 
- cada: cdbresynchronizechangetracking:00001684:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001685:  path), 
- cada: cdbresynchronizechangetracking:00001686:  errSendAlert(true))); 
- cada: cdbresynchronizechangetracking:00001720:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001721:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001722:  errmsg("ERROR(filerep): unable to read change tracking meta file "%s", " 
- cada: cdbresynchronizechangetracking:00001723:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001724:  path), 
- cada: cdbresynchronizechangetracking:00001725:  errSendAlert(true))); 
- cada: cdbresynchronizechangetracking:00001859:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001860:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001861:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
- cada: cdbresynchronizechangetracking:00001862:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001863:  path))); 
- cada: cdbresynchronizechangetracking:00001971:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- cada: cdbresynchronizechangetracking:00001972:  errmsg("Unable to obtain change tracking information from segment database."), 
- cada: cdbresynchronizechangetracking:00001973:  errdetail("SPI_connect failed in ChangeTracking_ReadLastLocOnDisk()"))); 
- cada: cdbresynchronizechangetracking:00002074:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- cada: cdbresynchronizechangetracking:00002075:  errmsg("Unable to obtain change tracking information from segment database."), 
- cada: cdbresynchronizechangetracking:00002076:  errdetail("SPI_connect failed in ChangeTracking_GetTotalBlocksToSync()"))); 
+ cada: cdbresynchronizechangetracking:00000932:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00000933:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00000934:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
+ cada: cdbresynchronizechangetracking:00000935:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00000936:  path), 
+ cada: cdbresynchronizechangetracking:00000937:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001023:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ cada: cdbresynchronizechangetracking:00001024:  errmsg("Unable to obtain change tracking information from segment database."), 
+ cada: cdbresynchronizechangetracking:00001025:  errdetail("SPI_connect failed in ChangeTracking_GetIncrementalChangeList()"))); 
+ cada: cdbresynchronizechangetracking:00001288:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ cada: cdbresynchronizechangetracking:00001289:  errmsg("Unable to obtain change tracking information from segment database."), 
+ cada: cdbresynchronizechangetracking:00001290:  errdetail("SPI_connect failed in ChangeTracking_GetChanges()"))); 
+ cada: cdbresynchronizechangetracking:00001590:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001591:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001592:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
+ cada: cdbresynchronizechangetracking:00001593:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001594:  path), 
+ cada: cdbresynchronizechangetracking:00001595:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001604:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001605:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001606:  errmsg("ERROR(filerep): unable to write change tracking log file "%s", " 
+ cada: cdbresynchronizechangetracking:00001607:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001608:  path), 
+ cada: cdbresynchronizechangetracking:00001609:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001669:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001670:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001671:  errmsg("ERROR(filerep): no disk space for change tracking meta file "%s", " 
+ cada: cdbresynchronizechangetracking:00001672:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001673:  path), 
+ cada: cdbresynchronizechangetracking:00001674:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001683:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001684:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001685:  errmsg("ERROR(filerep): unable to write change tracking meta file "%s", " 
+ cada: cdbresynchronizechangetracking:00001686:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001687:  path), 
+ cada: cdbresynchronizechangetracking:00001688:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001722:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001723:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001724:  errmsg("ERROR(filerep): unable to read change tracking meta file "%s", " 
+ cada: cdbresynchronizechangetracking:00001725:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001726:  path), 
+ cada: cdbresynchronizechangetracking:00001727:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001893:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001894:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001895:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
+ cada: cdbresynchronizechangetracking:00001896:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001897:  path))); 
+ cada: cdbresynchronizechangetracking:00002007:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ cada: cdbresynchronizechangetracking:00002008:  errmsg("Unable to obtain change tracking information from segment database."), 
+ cada: cdbresynchronizechangetracking:00002009:  errdetail("SPI_connect failed in ChangeTracking_ReadLastLocOnDisk()"))); 
+ cada: cdbresynchronizechangetracking:00002110:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ cada: cdbresynchronizechangetracking:00002111:  errmsg("Unable to obtain change tracking information from segment database."), 
+ cada: cdbresynchronizechangetracking:00002112:  errdetail("SPI_connect failed in ChangeTracking_GetTotalBlocksToSync()"))); 
  daae: date:00000083:  ereport(ERROR, 
  daae: date:00000084:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  daae: date:00000085:  errmsg("date/time value "current" is no longer supported"))); 
@@ -12065,125 +12065,125 @@ select * from get_ereport order by 1;
  pabc: parsexcoerce:00000292:  errdetail("%s versus %s", 
  pabc: parsexcoerce:00000293:  format_type_be(toppstate->p_paramtypes[paramno - 1]), 
  pabc: parsexcoerce:00000294:  format_type_be(targetTypeId)))); 
- pabc: parsexcoerce:00001088:  ereport(ERROR, 
- pabc: parsexcoerce:00001089:  (errcode(ERRCODE_CANNOT_COERCE), 
- pabc: parsexcoerce:00001090:  errmsg("cannot cast type %s to %s", 
- pabc: parsexcoerce:00001091:  format_type_be(RECORDOID), 
- pabc: parsexcoerce:00001092:  format_type_be(targetTypeId)))); 
- pabc: parsexcoerce:00001115:  ereport(ERROR, 
- pabc: parsexcoerce:00001116:  (errcode(ERRCODE_CANNOT_COERCE), 
- pabc: parsexcoerce:00001117:  errmsg("cannot cast type %s to %s", 
- pabc: parsexcoerce:00001118:  format_type_be(RECORDOID), 
- pabc: parsexcoerce:00001119:  format_type_be(targetTypeId)), 
- pabc: parsexcoerce:00001120:  errdetail("Input has too few columns."))); 
- pabc: parsexcoerce:00001132:  ereport(ERROR, 
- pabc: parsexcoerce:00001133:  (errcode(ERRCODE_CANNOT_COERCE), 
- pabc: parsexcoerce:00001134:  errmsg("cannot cast type %s to %s", 
- pabc: parsexcoerce:00001135:  format_type_be(RECORDOID), 
- pabc: parsexcoerce:00001136:  format_type_be(targetTypeId)), 
- pabc: parsexcoerce:00001137:  errdetail("Cannot cast type %s to %s in column %d.", 
- pabc: parsexcoerce:00001138:  format_type_be(exprtype), 
- pabc: parsexcoerce:00001139:  format_type_be(tupdesc->attrs[i]->atttypid), 
- pabc: parsexcoerce:00001140:  ucolno))); 
- pabc: parsexcoerce:00001146:  ereport(ERROR, 
- pabc: parsexcoerce:00001147:  (errcode(ERRCODE_CANNOT_COERCE), 
- pabc: parsexcoerce:00001148:  errmsg("cannot cast type %s to %s", 
- pabc: parsexcoerce:00001149:  format_type_be(RECORDOID), 
- pabc: parsexcoerce:00001150:  format_type_be(targetTypeId)), 
- pabc: parsexcoerce:00001151:  errdetail("Input has too many columns."))); 
- pabc: parsexcoerce:00001186:  ereport(ERROR, 
- pabc: parsexcoerce:00001187:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- pabc: parsexcoerce:00001188:  /* translator: first %s is name of a SQL construct, eg WHERE */ 
- pabc: parsexcoerce:00001189:  errmsg("argument of %s must be type boolean, not type %s", 
- pabc: parsexcoerce:00001190:  constructName, format_type_be(inputTypeId)))); 
- pabc: parsexcoerce:00001194:  ereport(ERROR, 
- pabc: parsexcoerce:00001195:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- pabc: parsexcoerce:00001196:  /* translator: %s is name of a SQL construct, eg WHERE */ 
- pabc: parsexcoerce:00001197:  errmsg("argument of %s must not return a set", 
- pabc: parsexcoerce:00001198:  constructName))); 
- pabc: parsexcoerce:00001227:  ereport(ERROR, 
- pabc: parsexcoerce:00001228:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- pabc: parsexcoerce:00001229:  /* translator: first %s is name of a SQL construct, eg LIMIT */ 
- pabc: parsexcoerce:00001230:  errmsg("argument of %s must be type integer, not type %s", 
- pabc: parsexcoerce:00001231:  constructName, format_type_be(inputTypeId)))); 
- pabc: parsexcoerce:00001235:  ereport(ERROR, 
- pabc: parsexcoerce:00001236:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- pabc: parsexcoerce:00001237:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
- pabc: parsexcoerce:00001238:  errmsg("argument of %s must not return a set", 
- pabc: parsexcoerce:00001239:  constructName))); 
- pabc: parsexcoerce:00001268:  ereport(ERROR, 
- pabc: parsexcoerce:00001269:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- pabc: parsexcoerce:00001270:  /* translator: first %s is name of a SQL construct, eg LIMIT */ 
- pabc: parsexcoerce:00001271:  errmsg("argument of %s must be type bigint, not type %s", 
- pabc: parsexcoerce:00001272:  constructName, format_type_be(inputTypeId)))); 
- pabc: parsexcoerce:00001276:  ereport(ERROR, 
- pabc: parsexcoerce:00001277:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- pabc: parsexcoerce:00001278:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
- pabc: parsexcoerce:00001279:  errmsg("argument of %s must not return a set", 
- pabc: parsexcoerce:00001280:  constructName))); 
- pabc: parsexcoerce:00001328:  ereport(ERROR, 
- pabc: parsexcoerce:00001329:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- pabc: parsexcoerce:00001330:  
- pabc: parsexcoerce:00001331:  /*------ 
- pabc: parsexcoerce:00001332:  translator: first %s is name of a SQL construct, eg CASE */ 
- pabc: parsexcoerce:00001333:  errmsg("%s types %s and %s cannot be matched", 
- pabc: parsexcoerce:00001334:  context, 
- pabc: parsexcoerce:00001335:  format_type_be(ptype), 
- pabc: parsexcoerce:00001336:  format_type_be(ntype)))); 
- pabc: parsexcoerce:00001391:  ereport(ERROR, 
- pabc: parsexcoerce:00001392:  (errcode(ERRCODE_CANNOT_COERCE), 
- pabc: parsexcoerce:00001393:  /* translator: first %s is name of a SQL construct, eg CASE */ 
- pabc: parsexcoerce:00001394:  errmsg("%s could not convert type %s to %s", 
- pabc: parsexcoerce:00001395:  context, 
- pabc: parsexcoerce:00001396:  format_type_be(inputTypeId), 
- pabc: parsexcoerce:00001397:  format_type_be(targetTypeId)))); 
- pabc: parsexcoerce:00001565:  ereport(ERROR, 
- pabc: parsexcoerce:00001566:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- pabc: parsexcoerce:00001567:  errmsg("arguments declared "anyelement" are not all alike"), 
- pabc: parsexcoerce:00001568:  errdetail("%s versus %s", 
- pabc: parsexcoerce:00001569:  format_type_be(elem_typeid), 
- pabc: parsexcoerce:00001570:  format_type_be(actual_type)))); 
- pabc: parsexcoerce:00001582:  ereport(ERROR, 
- pabc: parsexcoerce:00001583:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- pabc: parsexcoerce:00001584:  errmsg("arguments declared "anyarray" are not all alike"), 
- pabc: parsexcoerce:00001585:  errdetail("%s versus %s", 
- pabc: parsexcoerce:00001586:  format_type_be(array_typeid), 
- pabc: parsexcoerce:00001587:  format_type_be(actual_type)))); 
- pabc: parsexcoerce:00001611:  ereport(ERROR, 
- pabc: parsexcoerce:00001612:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- pabc: parsexcoerce:00001613:  errmsg("argument declared "anyarray" is not an array but type %s", 
- pabc: parsexcoerce:00001614:  format_type_be(array_typeid)))); 
+ pabc: parsexcoerce:00001076:  ereport(ERROR, 
+ pabc: parsexcoerce:00001077:  (errcode(ERRCODE_CANNOT_COERCE), 
+ pabc: parsexcoerce:00001078:  errmsg("cannot cast type %s to %s", 
+ pabc: parsexcoerce:00001079:  format_type_be(RECORDOID), 
+ pabc: parsexcoerce:00001080:  format_type_be(targetTypeId)))); 
+ pabc: parsexcoerce:00001103:  ereport(ERROR, 
+ pabc: parsexcoerce:00001104:  (errcode(ERRCODE_CANNOT_COERCE), 
+ pabc: parsexcoerce:00001105:  errmsg("cannot cast type %s to %s", 
+ pabc: parsexcoerce:00001106:  format_type_be(RECORDOID), 
+ pabc: parsexcoerce:00001107:  format_type_be(targetTypeId)), 
+ pabc: parsexcoerce:00001108:  errdetail("Input has too few columns."))); 
+ pabc: parsexcoerce:00001120:  ereport(ERROR, 
+ pabc: parsexcoerce:00001121:  (errcode(ERRCODE_CANNOT_COERCE), 
+ pabc: parsexcoerce:00001122:  errmsg("cannot cast type %s to %s", 
+ pabc: parsexcoerce:00001123:  format_type_be(RECORDOID), 
+ pabc: parsexcoerce:00001124:  format_type_be(targetTypeId)), 
+ pabc: parsexcoerce:00001125:  errdetail("Cannot cast type %s to %s in column %d.", 
+ pabc: parsexcoerce:00001126:  format_type_be(exprtype), 
+ pabc: parsexcoerce:00001127:  format_type_be(tupdesc->attrs[i]->atttypid), 
+ pabc: parsexcoerce:00001128:  ucolno))); 
+ pabc: parsexcoerce:00001134:  ereport(ERROR, 
+ pabc: parsexcoerce:00001135:  (errcode(ERRCODE_CANNOT_COERCE), 
+ pabc: parsexcoerce:00001136:  errmsg("cannot cast type %s to %s", 
+ pabc: parsexcoerce:00001137:  format_type_be(RECORDOID), 
+ pabc: parsexcoerce:00001138:  format_type_be(targetTypeId)), 
+ pabc: parsexcoerce:00001139:  errdetail("Input has too many columns."))); 
+ pabc: parsexcoerce:00001174:  ereport(ERROR, 
+ pabc: parsexcoerce:00001175:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ pabc: parsexcoerce:00001176:  /* translator: first %s is name of a SQL construct, eg WHERE */ 
+ pabc: parsexcoerce:00001177:  errmsg("argument of %s must be type boolean, not type %s", 
+ pabc: parsexcoerce:00001178:  constructName, format_type_be(inputTypeId)))); 
+ pabc: parsexcoerce:00001182:  ereport(ERROR, 
+ pabc: parsexcoerce:00001183:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ pabc: parsexcoerce:00001184:  /* translator: %s is name of a SQL construct, eg WHERE */ 
+ pabc: parsexcoerce:00001185:  errmsg("argument of %s must not return a set", 
+ pabc: parsexcoerce:00001186:  constructName))); 
+ pabc: parsexcoerce:00001215:  ereport(ERROR, 
+ pabc: parsexcoerce:00001216:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ pabc: parsexcoerce:00001217:  /* translator: first %s is name of a SQL construct, eg LIMIT */ 
+ pabc: parsexcoerce:00001218:  errmsg("argument of %s must be type integer, not type %s", 
+ pabc: parsexcoerce:00001219:  constructName, format_type_be(inputTypeId)))); 
+ pabc: parsexcoerce:00001223:  ereport(ERROR, 
+ pabc: parsexcoerce:00001224:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ pabc: parsexcoerce:00001225:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
+ pabc: parsexcoerce:00001226:  errmsg("argument of %s must not return a set", 
+ pabc: parsexcoerce:00001227:  constructName))); 
+ pabc: parsexcoerce:00001256:  ereport(ERROR, 
+ pabc: parsexcoerce:00001257:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ pabc: parsexcoerce:00001258:  /* translator: first %s is name of a SQL construct, eg LIMIT */ 
+ pabc: parsexcoerce:00001259:  errmsg("argument of %s must be type bigint, not type %s", 
+ pabc: parsexcoerce:00001260:  constructName, format_type_be(inputTypeId)))); 
+ pabc: parsexcoerce:00001264:  ereport(ERROR, 
+ pabc: parsexcoerce:00001265:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ pabc: parsexcoerce:00001266:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
+ pabc: parsexcoerce:00001267:  errmsg("argument of %s must not return a set", 
+ pabc: parsexcoerce:00001268:  constructName))); 
+ pabc: parsexcoerce:00001316:  ereport(ERROR, 
+ pabc: parsexcoerce:00001317:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ pabc: parsexcoerce:00001318:  
+ pabc: parsexcoerce:00001319:  /*------ 
+ pabc: parsexcoerce:00001320:  translator: first %s is name of a SQL construct, eg CASE */ 
+ pabc: parsexcoerce:00001321:  errmsg("%s types %s and %s cannot be matched", 
+ pabc: parsexcoerce:00001322:  context, 
+ pabc: parsexcoerce:00001323:  format_type_be(ptype), 
+ pabc: parsexcoerce:00001324:  format_type_be(ntype)))); 
+ pabc: parsexcoerce:00001379:  ereport(ERROR, 
+ pabc: parsexcoerce:00001380:  (errcode(ERRCODE_CANNOT_COERCE), 
+ pabc: parsexcoerce:00001381:  /* translator: first %s is name of a SQL construct, eg CASE */ 
+ pabc: parsexcoerce:00001382:  errmsg("%s could not convert type %s to %s", 
+ pabc: parsexcoerce:00001383:  context, 
+ pabc: parsexcoerce:00001384:  format_type_be(inputTypeId), 
+ pabc: parsexcoerce:00001385:  format_type_be(targetTypeId)))); 
+ pabc: parsexcoerce:00001553:  ereport(ERROR, 
+ pabc: parsexcoerce:00001554:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ pabc: parsexcoerce:00001555:  errmsg("arguments declared "anyelement" are not all alike"), 
+ pabc: parsexcoerce:00001556:  errdetail("%s versus %s", 
+ pabc: parsexcoerce:00001557:  format_type_be(elem_typeid), 
+ pabc: parsexcoerce:00001558:  format_type_be(actual_type)))); 
+ pabc: parsexcoerce:00001570:  ereport(ERROR, 
+ pabc: parsexcoerce:00001571:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ pabc: parsexcoerce:00001572:  errmsg("arguments declared "anyarray" are not all alike"), 
+ pabc: parsexcoerce:00001573:  errdetail("%s versus %s", 
+ pabc: parsexcoerce:00001574:  format_type_be(array_typeid), 
+ pabc: parsexcoerce:00001575:  format_type_be(actual_type)))); 
+ pabc: parsexcoerce:00001599:  ereport(ERROR, 
+ pabc: parsexcoerce:00001600:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ pabc: parsexcoerce:00001601:  errmsg("argument declared "anyarray" is not an array but type %s", 
+ pabc: parsexcoerce:00001602:  format_type_be(array_typeid)))); 
+ pabc: parsexcoerce:00001615:  ereport(ERROR, 
+ pabc: parsexcoerce:00001616:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ pabc: parsexcoerce:00001617:  errmsg("argument declared "anyarray" is not consistent with argument declared "anyelement""), 
+ pabc: parsexcoerce:00001618:  errdetail("%s versus %s", 
+ pabc: parsexcoerce:00001619:  format_type_be(array_typeid), 
+ pabc: parsexcoerce:00001620:  format_type_be(elem_typeid)), 
+ pabc: parsexcoerce:00001621:  errOmitLocation(true))); 
  pabc: parsexcoerce:00001627:  ereport(ERROR, 
  pabc: parsexcoerce:00001628:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- pabc: parsexcoerce:00001629:  errmsg("argument declared "anyarray" is not consistent with argument declared "anyelement""), 
- pabc: parsexcoerce:00001630:  errdetail("%s versus %s", 
- pabc: parsexcoerce:00001631:  format_type_be(array_typeid), 
- pabc: parsexcoerce:00001632:  format_type_be(elem_typeid)), 
- pabc: parsexcoerce:00001633:  errOmitLocation(true))); 
- pabc: parsexcoerce:00001639:  ereport(ERROR, 
- pabc: parsexcoerce:00001640:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- pabc: parsexcoerce:00001641:  errmsg("could not determine anyarray/anyelement type because input has type "unknown""), 
- pabc: parsexcoerce:00001642:  errOmitLocation(true))); 
- pabc: parsexcoerce:00001665:  ereport(ERROR, 
- pabc: parsexcoerce:00001666:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- pabc: parsexcoerce:00001667:  errmsg("could not find array type for data type %s", 
- pabc: parsexcoerce:00001668:  format_type_be(elem_typeid)))); 
- pabc: parsexcoerce:00001682:  ereport(ERROR, 
- pabc: parsexcoerce:00001683:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- pabc: parsexcoerce:00001684:  errmsg("could not find array type for data type %s", 
- pabc: parsexcoerce:00001685:  format_type_be(elem_typeid)))); 
+ pabc: parsexcoerce:00001629:  errmsg("could not determine anyarray/anyelement type because input has type "unknown""), 
+ pabc: parsexcoerce:00001630:  errOmitLocation(true))); 
+ pabc: parsexcoerce:00001653:  ereport(ERROR, 
+ pabc: parsexcoerce:00001654:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ pabc: parsexcoerce:00001655:  errmsg("could not find array type for data type %s", 
+ pabc: parsexcoerce:00001656:  format_type_be(elem_typeid)))); 
+ pabc: parsexcoerce:00001670:  ereport(ERROR, 
+ pabc: parsexcoerce:00001671:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ pabc: parsexcoerce:00001672:  errmsg("could not find array type for data type %s", 
+ pabc: parsexcoerce:00001673:  format_type_be(elem_typeid)))); 
+ pabc: parsexcoerce:00001712:  ereport(ERROR, 
+ pabc: parsexcoerce:00001713:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ pabc: parsexcoerce:00001714:  errmsg("argument declared "anyarray" is not an array but type %s", 
+ pabc: parsexcoerce:00001715:  format_type_be(context_actual_type)))); 
  pabc: parsexcoerce:00001724:  ereport(ERROR, 
- pabc: parsexcoerce:00001725:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- pabc: parsexcoerce:00001726:  errmsg("argument declared "anyarray" is not an array but type %s", 
+ pabc: parsexcoerce:00001725:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ pabc: parsexcoerce:00001726:  errmsg("could not find array type for data type %s", 
  pabc: parsexcoerce:00001727:  format_type_be(context_actual_type)))); 
- pabc: parsexcoerce:00001736:  ereport(ERROR, 
- pabc: parsexcoerce:00001737:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- pabc: parsexcoerce:00001738:  errmsg("could not find array type for data type %s", 
- pabc: parsexcoerce:00001739:  format_type_be(context_actual_type)))); 
- pabc: parsexcoerce:00001751:  ereport(ERROR, 
- pabc: parsexcoerce:00001752:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- pabc: parsexcoerce:00001753:  errmsg("argument declared "anyarray" is not an array but type %s", 
- pabc: parsexcoerce:00001754:  format_type_be(context_actual_type)))); 
+ pabc: parsexcoerce:00001739:  ereport(ERROR, 
+ pabc: parsexcoerce:00001740:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ pabc: parsexcoerce:00001741:  errmsg("argument declared "anyarray" is not an array but type %s", 
+ pabc: parsexcoerce:00001742:  format_type_be(context_actual_type)))); 
  pabc: parsextarget:00000366:  ereport(ERROR, 
  pabc: parsextarget:00000367:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  pabc: parsextarget:00000368:  errmsg("cannot assign to system column "%s"", 

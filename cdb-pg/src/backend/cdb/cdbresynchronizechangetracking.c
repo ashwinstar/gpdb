@@ -123,6 +123,7 @@ extern void ChangeTrackingShmemInit(void)
 	changeTrackingResyncMeta->resync_mode_full = false;
 	changeTrackingResyncMeta->resync_lsn_end.xlogid = 0;
 	changeTrackingResyncMeta->resync_lsn_end.xrecoff = 0;
+	changeTrackingResyncMeta->resync_transition_completed = false;
 	
 	ereport(DEBUG1, (errmsg("initialized changetracking shared memory structures")));
 
@@ -1514,6 +1515,7 @@ static void ChangeTracking_DropMetaFile(void)
 	changeTrackingResyncMeta->resync_mode_full = false;
 	changeTrackingResyncMeta->resync_lsn_end.xlogid = 0;
 	changeTrackingResyncMeta->resync_lsn_end.xrecoff = 0;
+	changeTrackingResyncMeta->resync_transition_completed = false;
 	
 	/* delete the change tracking meta file*/
 	FileUnlink(file);
@@ -1650,7 +1652,7 @@ static void ChangeTracking_WriteMeta(File file)
 	/* populate a new meta record */
 	rec.resync_lsn_end = changeTrackingResyncMeta->resync_lsn_end;
 	rec.resync_mode_full = changeTrackingResyncMeta->resync_mode_full;
-	
+	rec.resync_transition_completed = changeTrackingResyncMeta->resync_transition_completed;
 	
 	/* init buffer and copy rec into it */	
 	MemSet(metabuf, 0, CHANGETRACKING_METABUFLEN);
@@ -1729,7 +1731,7 @@ ChangeTracking_ReadMeta(File file, ChangeTrackingMetaRecord* rec)
 	/* populate a the meta record with data from the file */
 	rec->resync_lsn_end = ((ChangeTrackingMetaRecord *)metabuf)->resync_lsn_end;
 	rec->resync_mode_full = ((ChangeTrackingMetaRecord *)metabuf)->resync_mode_full;
-	
+	rec->resync_transition_completed = ((ChangeTrackingMetaRecord *)metabuf)->resync_transition_completed;
 	return rec;
 }
 
@@ -1800,6 +1802,38 @@ ChangeTracking_MarkFullResync(void)
 	LWLockRelease(ChangeTrackingWriteLock);
 }
 
+void
+ChangeTracking_MarkTransitionToResyncCompleted(void)
+{
+	File		file;
+	char		path[MAXPGPATH];
+	
+	LWLockAcquire(ChangeTrackingWriteLock, LW_EXCLUSIVE);
+
+	elog(LOG, "CHANGETRACKING: setting resync_transition_completed to true");
+	changeTrackingResyncMeta->resync_transition_completed = true;
+	file = ChangeTracking_OpenMetaFile();	
+	ChangeTracking_WriteMeta(file);
+
+	errno = 0;
+	
+	/* fsync meta file to disk */
+	if(FileSync(file) < 0)
+	{
+		ChangeTrackingMetaFilePath(path);
+		ereport(LOG,
+				(errcode_for_file_access(),
+				 errmsg("ERROR(filerep): could not fsync change tracking meta file \"%s\" "
+						"in ChangeTracking_MarkTransitionToResyncCompleted: %m", 
+						path)));
+		FileRep_SetState(FileRepStateFault);
+	}
+	
+	ChangeTracking_CloseMetaFile(file);
+	
+	LWLockRelease(ChangeTrackingWriteLock);
+}
+
 /*
  *	Store last change tracked LSN into shared memory and 
  *	in Change Tracking meta file (LSN has to be fsync-ed to persistent media).
@@ -1838,7 +1872,7 @@ ChangeTracking_RecordLastChangeTrackedLoc(void)
 		ChangeTrackingMetaFilePath(path);
 		ereport(LOG,
 				(errcode_for_file_access(),
-				 errmsg("ERROR(filerep): could not fsync change tracking log file \"%s\": %m", 
+				 errmsg("ERROR(filerep): could not fsync change tracking meta file \"%s\": %m", 
 						path)));
 		FileRep_SetState(FileRepStateFault);
 	}
@@ -1898,10 +1932,12 @@ ChangeTracking_RetrieveLastChangeTrackedLoc(void)
 	/* is there a meta record in the meta file? */
 	if (recptr)
 	{
-		elog(LOG, "CHANGETRACKING: found an MD record. is full resync %d, last lsn (%d/%d)",
+		elog(LOG, "CHANGETRACKING: found an MD record. is full resync %d, last lsn (%d/%d) "
+				  "is transition to resync completed %d",
 				recptr->resync_mode_full, 
 				recptr->resync_lsn_end.xlogid,
-				recptr->resync_lsn_end.xrecoff);
+				recptr->resync_lsn_end.xrecoff,
+				recptr->resync_transition_completed);
 
 		if (recptr->resync_mode_full) 	
 			setFullResync();
@@ -1914,7 +1950,7 @@ ChangeTracking_RetrieveLastChangeTrackedLoc(void)
 		if (!XLByteEQ(recptr->resync_lsn_end, DummyRecPtr))
 		{
 			 FileRepResyncManager_SetEndResyncLSN(recptr->resync_lsn_end); 
-			 return true;
+			 return recptr->resync_transition_completed;	 
 		}
 	}
 	else

@@ -613,6 +613,13 @@ FileRepResyncManager_InResyncTransition(bool isLastLocTracked)
 		/* NOTE remove after it will be implemented to mark from postmaster */
 		if (isFullResync())
 			ChangeTracking_MarkFullResync();
+
+		ChangeTracking_RecordLastChangeTrackedLoc();
+		
+		if (FileRepSubProcess_GetState() == FileRepStateFault)
+		{
+			goto exit;
+		}
 	}
 	
 	FileRepSubProcess_ProcessSignals();
@@ -679,8 +686,8 @@ FileRepResyncManager_InResyncTransition(bool isLastLocTracked)
 	
 	if (isLastLocTracked == FALSE)
 	{
-		ChangeTracking_RecordLastChangeTrackedLoc();
-		
+		ChangeTracking_MarkTransitionToResyncCompleted();
+
 		FileRepSubProcess_ProcessSignals();
 		if (! ((segmentState == SegmentStateInResyncTransition ||
 				segmentState == SegmentStateReady) &&

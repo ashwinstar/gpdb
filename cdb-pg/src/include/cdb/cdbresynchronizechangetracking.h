@@ -54,6 +54,8 @@ extern bool ChangeTracking_RetrieveLastChangeTrackedLoc(void);
 
 extern void ChangeTracking_MarkFullResync(void);
 
+extern void ChangeTracking_MarkTransitionToResyncCompleted(void);
+
 extern void ChangeTracking_RecordLastChangeTrackedLoc(void);
 
 // -----------------------------------------------------------------------------
@@ -188,6 +190,7 @@ typedef struct ChangeTrackingMetaRecord
 {
 	XLogRecPtr		resync_lsn_end;	  /* endResyncLSN                         */
 	bool			resync_mode_full; /* marks that resync FULL was requested */
+	bool			resync_transition_completed; /* transition to resync mode completed */
 
 } ChangeTrackingMetaRecord;
 
@@ -294,6 +297,7 @@ typedef struct ChangeTrackingResyncMetaData
 {
 	XLogRecPtr		resync_lsn_end;	  /* endResyncLSN                         */
 	bool			resync_mode_full; /* marks that resync FULL was requested */	
+	bool			resync_transition_completed; /* transition to resync mode completed */
 } ChangeTrackingResyncMetaData;
 
 /*

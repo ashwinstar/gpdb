@@ -118,8 +118,13 @@ int MirroredFlatFile_OpenInDbDir(
 	bool			suppressError)
 
 {
-	char *databasePath;
 	int save_errno = 0;
+	
+	char *primaryFilespaceLocation;
+	char *mirrorFilespaceLocation;
+	
+	char subDirectoryPrimary[MAXPGPATH+1];
+	char subDirectoryMirror[MAXPGPATH+1];
 
 	Assert(open != NULL);
 	
@@ -127,17 +132,29 @@ int MirroredFlatFile_OpenInDbDir(
 
 	open->usingDbDirNode = true;
 	open->dbDirNode = *dbDirNode;
-
-	databasePath = GetDatabasePath(
-								   dbDirNode->database,
-								   dbDirNode->tablespace);
-	open->subDirectory = MemoryContextStrdup(TopMemoryContext, databasePath);
-	pfree(databasePath);
+	
+	PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+													   dbDirNode->tablespace,
+													   &primaryFilespaceLocation,
+													   &mirrorFilespaceLocation);	
+	FormDatabasePath(
+					 subDirectoryPrimary,
+					 primaryFilespaceLocation,
+					 dbDirNode->tablespace,
+					 dbDirNode->database);	
+	
+	FormDatabasePath(
+					 subDirectoryMirror,
+					 mirrorFilespaceLocation,
+					 dbDirNode->tablespace,
+					 dbDirNode->database);			
+	
+	open->subDirectory = MemoryContextStrdup(TopMemoryContext, subDirectoryMirror);
 
 	open->simpleFileName = MemoryContextStrdup(TopMemoryContext, simpleFileName);
-	open->path = MemoryContextAlloc(TopMemoryContext, strlen(open->subDirectory) + 1 + strlen(simpleFileName) + 1);
+	open->path = MemoryContextAlloc(TopMemoryContext, strlen(subDirectoryPrimary) + 1 + strlen(simpleFileName) + 1);
 	
-	sprintf(open->path, "%s/%s", open->subDirectory, simpleFileName);
+	sprintf(open->path, "%s/%s", subDirectoryPrimary, simpleFileName);
 	
 	if (FileRepPrimary_MirrorOpen(
 					  FileRep_GetFlatFileIdentifier(
@@ -149,8 +166,9 @@ int MirroredFlatFile_OpenInDbDir(
 					  fileMode,
 					  suppressError) != 0) 
 		ereport(LOG,
-				(errmsg("could not sent open file to mirror \"%s\" open file flags:'%x' ", 
-						open->path, 
+				(errmsg("could not sent open file to mirror '%s/%s' open file flags:'%x' ", 
+						open->subDirectory, 
+						open->simpleFileName,
 						fileFlags)));		
 
 	open->primaryFile = PathNameOpenFile(open->path, fileFlags, fileMode);
@@ -171,6 +189,12 @@ int MirroredFlatFile_OpenInDbDir(
 	open->appendPosition = 0;
 
 	open->isActive = true;
+	
+	if (primaryFilespaceLocation != NULL)
+		pfree(primaryFilespaceLocation);
+	
+	if (mirrorFilespaceLocation != NULL)
+		pfree(mirrorFilespaceLocation);	
 
 	return save_errno;
 }
@@ -208,7 +232,9 @@ int MirroredFlatFile_Flush(
 		
 		mirrorFlush = FALSE;
 		ereport(LOG,
-				(errmsg("could not sent fsync file to mirror \"%s\"", open->path)));
+				(errmsg("could not sent fsync file to mirror '%s/%s' ", 
+						open->subDirectory,
+						open->simpleFileName)));
 	}
 
 	if (! open->isMirrorRecovery) {
@@ -228,7 +254,9 @@ int MirroredFlatFile_Flush(
 								 open->simpleFileName),									
 					   FileRepRelationTypeFlatFile) == FALSE)	
 			ereport(LOG,
-				    (errmsg("could not fsync file on mirror \"%s\"", open->path)));	
+				    (errmsg("could not fsync file on mirror '%s/%s' ", 
+							open->subDirectory,
+							open->simpleFileName)));	
 	}
 		
 	return save_errno;
@@ -384,7 +412,9 @@ int MirroredFlatFile_Append(
 				   bufferLen, 
 				   FileRep_GetXLogRecPtrUndefined())	!= 0) 					  
 		ereport(LOG,
-				(errmsg("could not sent write to mirror \"%s\" ", open->path)));
+				(errmsg("could not sent write to mirror '%s/%s' ", 
+						open->subDirectory,
+						open->simpleFileName)));
 
 	if (! open->isMirrorRecovery) {
 		errno = 0;
@@ -458,7 +488,9 @@ int MirroredFlatFile_Write(
 				   bufferLen, 
 				   FileRep_GetXLogRecPtrUndefined())	!= 0) 					  
 		ereport(LOG,
-				(errmsg("could not sent seek and write to mirror \"%s\"", open->path)));
+				(errmsg("could not sent seek and write to mirror '%s/%s' ", 
+						open->subDirectory,
+						open->simpleFileName)));
 
 	if (! open->isMirrorRecovery) {
 		errno = 0;
@@ -467,7 +499,7 @@ int MirroredFlatFile_Write(
 		{
 			ereport(ERROR,
 					(errcode_for_file_access(),
-					 errmsg("could not seek in file to position %d in file \"%s\": %m", 
+					 errmsg("could not seek in file to position '%d' in file '%s': %m", 
 							position,
 							open->path)));
 		}
