@@ -690,19 +690,8 @@ getDnsCachedAddress(char *name, int port, int elevel)
 			char		hostinfo[NI_MAXHOST];
 
 			/* We haven't tested this code, so warn about it */
+			elog(LOG, "host %s only has IPv6 address, not yet supported", name);
 			elog(WARNING, "host %s only has IPv6 address, not yet supported", name);
-			addr = addrs;
-			pg_getnameinfo_all((struct sockaddr_storage *) addr->ai_addr, addr->ai_addrlen,
-							   hostinfo, sizeof(hostinfo),
-							   NULL, 0,
-							   NI_NUMERICHOST);
-
-			e = (struct segment_ip_cache_entry *)hash_search(segment_ip_cache_htab,
-															 name,
-															 HASH_ENTER,
-															 NULL);
-			Assert(e != NULL);
-			memcpy(e->hostinfo, hostinfo, sizeof(hostinfo));
 		}
 #endif
 			
@@ -782,13 +771,8 @@ getDnsAddress(char *hostname, int port, int elevel)
 	{
 		char		hostinfo[NI_MAXHOST];
 
+		elog(LOG, "host %s only has IPv6 address, not yet supported", hostname);
 		elog(WARNING, "host %s only has IPv6 address, not yet supported", hostname);
-		addr = addrs;
-		pg_getnameinfo_all((struct sockaddr_storage *) addr->ai_addr, addr->ai_addrlen,
-						   hostinfo, sizeof(hostinfo),
-						   NULL, 0,
-						   NI_NUMERICHOST);
-		result = pstrdup(hostinfo);
 	}
 #endif
 
@@ -965,7 +949,9 @@ getAddressesForDBid(CdbComponentDatabaseInfo *c, int elevel)
 		c->hostaddrs[0] = pstrdup(name);
 	}
 	else
+	{
 		c->hostaddrs[0] = NULL;
+	}
 
 	return;
 }
@@ -1008,7 +994,7 @@ makeRandomSegMap(int total_primaries, int total_to_skip)
 		 * mark this random index 'true' in the skip map (marked to be
 		 * skipped) unless it was already marked.
 		 */
-		if(skip_map[randint] == false)
+		if (skip_map[randint] == false)
 		{
 			skip_map[randint] = true;
 			skipped++;
