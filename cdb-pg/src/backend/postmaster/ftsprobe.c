@@ -1279,13 +1279,15 @@ probePublishUpdate(uint8 *probe_results)
 						if (((probe_results[mirror->dbid] & PROBE_FAULT) == PROBE_FAULT) ||
 							((probe_results[mirror->dbid] & PROBE_ALIVE) == 0))
 						{
-							elog(LOG, "probePublishUpdate: dbid %d reported fault mirror %d considered dead (0x%x)", primary->dbid, mirror->dbid, probe_results[mirror->dbid]);
+							elog(LOG, "probePublishUpdate: dbid %d/0x%x reported fault mirror %d/0x%x considered dead.",
+								 primary->dbid, probe_results[mirror->dbid], mirror->dbid, probe_results[mirror->dbid]);
 							/* consider mirror dead */
 							probe_results[mirror->dbid] &= ~PROBE_ALIVE;
 						}
 						else
 						{
-							elog(LOG, "probePublishUpdate: dbid %d reported fault mirror %d looks good (0x%x)", primary->dbid, mirror->dbid, probe_results[mirror->dbid]);
+							elog(LOG, "probePublishUpdate: dbid %d/0x%x reported fault mirror %d/0x%x looks good.",
+								 primary->dbid, probe_results[mirror->dbid], mirror->dbid, probe_results[mirror->dbid]);
 							/* mirror is happy */
 							probe_results[primary->dbid] &= ~PROBE_ALIVE;
 						}
@@ -1293,7 +1295,7 @@ probePublishUpdate(uint8 *probe_results)
 					}
 					else
 					{
-						elog(LOG, "probePublishUpdate: dbid %d reported fault could find no mirror", primary->dbid);
+						elog(LOG, "probePublishUpdate: dbid %d/0x%x reported fault could find no mirror", primary->dbid, probe_results[primary->dbid]);
 					}
 					probe_results[primary->dbid] &= ~PROBE_FAULT;
 				}
@@ -1363,6 +1365,12 @@ probePublishUpdate(uint8 *probe_results)
 						changes[mirrorChange].newStatus = segStatus | FTS_STATUS_PRIMARY;
 
 						/* update primary */
+						/*
+						 * MPP-8764/MPP-8765: We only clear the Primary-status if we successfully found an
+						 * alive mirror. This means that the way we detect a second failure is that we have
+						 * a "newStatus" which is an *invalid primary* (see addChangeHistory() and
+						 * probeUpdateConfig()).
+						 */
 						changes[primaryChange].newStatus &= ~FTS_STATUS_PRIMARY;
 					}
 
@@ -1598,6 +1606,13 @@ addChangeHistory(PGconn *entryConn, struct segmentStatusChange *changes, int cha
 		valid   = (change->newStatus & FTS_STATUS_ALIVE) ? true : false;
 		primary = (change->newStatus & FTS_STATUS_PRIMARY) ? true : false;
 
+		/*
+		 * MPP-8764/MPP-8765: if we wound up with an invalid primary,
+		 * we are "down" but we aren't going to record it.
+		 */
+		if (!valid && primary)
+			continue;
+
 		count = snprintf(cmd, sizeof(cmd),
 						 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: content %d fault marking as %s role %c')",
 						 time_str, change->dbid, change->segindex,
@@ -1656,6 +1671,16 @@ probeUpdateConfig(PGconn *entryConn, struct segmentStatusChange *changes, int ch
 		{
 			valid   = (changes[i].newStatus & FTS_STATUS_ALIVE) ? true : false;
 			primary = (changes[i].newStatus & FTS_STATUS_PRIMARY) ? true : false;
+
+			/*
+			 * MPP-8764/MPP-8765: if we wound up with an invalid primary,
+			 * we are "down" but we aren't going to record it.
+			 * 
+			 * See the changelist generation logic in probePublishUpdate() for
+			 * details.
+			 */
+			if (!valid && primary)
+				continue;
 
 			if (failover_strategy == 'f')
 			{
