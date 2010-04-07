@@ -114,7 +114,6 @@ endif
 # them out of the BASE library set for you
 # --------------------------------------------------------------------------------
 define tmpBLD_THIRDPARTY_LIBS_BASE_TO_REMOVE
-	net-snmp/5.5
 endef
 BLD_THIRDPARTY_LIBS_BASE_TO_REMOVE:=$(strip $(tmpBLD_THIRDPARTY_LIBS_BASE_TO_REMOVE))
 
