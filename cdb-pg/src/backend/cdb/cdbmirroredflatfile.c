@@ -22,6 +22,7 @@
 #include "cdb/cdbpersistenttablespace.h"
 #include "storage/fd.h"
 #include "catalog/catalog.h"
+#include "catalog/pg_tablespace.h"
 #include "utils/memutils.h"
 
 #define PGVERSION "PG_VERSION"
@@ -143,14 +144,25 @@ int MirroredFlatFile_OpenInDbDir(
 					 dbDirNode->tablespace,
 					 dbDirNode->database);	
 	
-	FormDatabasePath(
-					 subDirectoryMirror,
-					 mirrorFilespaceLocation,
-					 dbDirNode->tablespace,
-					 dbDirNode->database);			
+	/* Skip mirror if Master of Primary without mirrors */
+	if (dbDirNode->tablespace == GLOBALTABLESPACE_OID ||
+		dbDirNode->tablespace == DEFAULTTABLESPACE_OID ||
+		mirrorFilespaceLocation != NULL)
+	{
+		FormDatabasePath(
+						 subDirectoryMirror,
+						 mirrorFilespaceLocation,
+						 dbDirNode->tablespace,
+						 dbDirNode->database);			
+		
+		open->subDirectory = MemoryContextStrdup(TopMemoryContext, subDirectoryMirror);
+	}
+	else
+	{
+		/* If Master Node or Primary Segment with no Mirrors */
+		open->subDirectory = MemoryContextStrdup(TopMemoryContext, subDirectoryPrimary);
+	}
 	
-	open->subDirectory = MemoryContextStrdup(TopMemoryContext, subDirectoryMirror);
-
 	open->simpleFileName = MemoryContextStrdup(TopMemoryContext, simpleFileName);
 	open->path = MemoryContextAlloc(TopMemoryContext, strlen(subDirectoryPrimary) + 1 + strlen(simpleFileName) + 1);
 	
