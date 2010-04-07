@@ -175,6 +175,11 @@ typedef struct PMLocalState
      * See mostRecentTransition
      */
     bool haveSetMostRecentTransition;
+
+    /**
+     * Was the most recent (non-fault) segment state "change tracking disabled"?
+     */
+    bool mostRecentSegmentStateWasChangeTrackingDisabled;
 } PMLocalState;
 
 PMLocalState pmLocalState;
@@ -599,6 +604,7 @@ primaryMirrorModeShmemInit(void)
     {
         /* only initialize local state once */
         pmLocalState.haveSetMostRecentTransition = false;
+        pmLocalState.mostRecentSegmentStateWasChangeTrackingDisabled = false;
 
         gHaveInitializedLocalState = true;
     }
@@ -675,9 +681,9 @@ primaryMirrorHandlePostmasterReset(void)
     }
     else if ( pmLocalState.mostRecentTransition.mode == PMModePrimarySegment)
     {
-        if ( pmLocalState.mostRecentTransition.dataState == DataStateInSync)
+        if ( pmLocalState.mostRecentTransition.dataState != DataStateInChangeTracking )
         {
-            /* transition to fault if we have an insync mirror to fail to */
+            /* transition to fault to let fault prober decide what to do */
             transitionToFault = true;
         }
     }
@@ -691,6 +697,17 @@ primaryMirrorHandlePostmasterReset(void)
 
     pmModuleState->requestedTransition = pmLocalState.mostRecentTransition;
     pmModuleState->requestedTransition.transitionToFault = transitionToFault;
+
+    if ( pmModuleState->requestedTransition.dataState == DataStateInChangeTracking &&
+         pmModuleState->requestedTransition.mode == PMModePrimarySegment &&
+
+         pmLocalState.mostRecentSegmentStateWasChangeTrackingDisabled)
+    {
+        /**
+         * before reset we were in change tracking disabled; continue that through to after the reset
+         */
+        pmModuleState->requestedTransition.transitionToChangeTrackingDisabledMode = true;
+    }
 
     /* come after assigning requestedTransition, so we get the transition number set */
     resetModuleStateForInitialTransition();
@@ -817,8 +834,9 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args)
 			if (isDone)
 			{
 				elog(LOG, "TransitionResult: Transition to primary/mirror mode %s, "
-				"data state %s resulted in %s",
+				"data state %s%s resulted in %s",
 					 getMirrorModeLabel(targetMode), getDataStateLabel(args->dataState),
+					 args->transitionToFault ? " (to fault)" : "",
 					 getTransitionResultLabel(result));
 				return result;
 			}
@@ -1386,12 +1404,18 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
             *stateInOut = TSDoFilerepStartup;
             return PMTransitionSuccess;
 
-        /* the first filerep startup of the transition; a later one may happen after the database is started up */
         case TSDoFilerepStartup:
 
             /* do this as early as possible -- must do it before any of the new filerep processes are built */
             XLogStartupInit();
 
+            if ( args->transitionToChangeTrackingDisabledMode )
+            {
+                copyTransitionInputParameters(args, SegmentStateChangeTrackingDisabled );
+                *stateInOut = TSDoDatabaseStartup;
+                return PMTransitionSuccess;
+            }
+            else
             {
                 SegmentState_e segState;
                 if (args->dataState == DataStateInResync )
@@ -1406,7 +1430,10 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
                         segState = SegmentStateInResyncTransition;
                     }
                 }
-                else segState = SegmentStateInitialization;
+                else
+                {
+                    segState = SegmentStateInitialization;
+                }
 
                 copyTransitionInputParameters(args, segState);
                 return stepDoFilerepStartup(TSAwaitingFilerepStartup, stateInOut );
@@ -1512,6 +1539,38 @@ applyStepForTransitionToMirrorSegmentMode(PrimaryMirrorModeTransitionArguments *
         default:
             return invalidState(stateInOut);
 	}
+}
+
+void primaryMirrorRecordSegmentStateToPostmasterLocalMemory(void)
+{
+    Assert(!IsUnderPostmaster);
+
+    SegmentState_e segmentState = pmModuleState->segmentState;
+    switch ( segmentState )
+    {
+        case SegmentStateInitialization:
+        case SegmentStateInResyncTransition:
+        case SegmentStateInSyncTransition:
+        case SegmentStateReady:
+            pmLocalState.mostRecentSegmentStateWasChangeTrackingDisabled = false;
+            break;
+
+        case SegmentStateChangeTrackingDisabled:
+            pmLocalState.mostRecentSegmentStateWasChangeTrackingDisabled = true;
+            break;
+
+        case SegmentStateNotInitialized:
+        case SegmentStateFault:
+        case SegmentStateShutdownFilerepBackends:
+        case SegmentStateShutdown:
+        case SegmentStateImmediateShutdown:
+            /* does not change mostRecentSegmentStateWasChangeTrackingDisabled */
+             break;
+
+         case SegmentState__EnumerationCount:
+            Assert(0);
+            break;
+    }
 }
 
 /**

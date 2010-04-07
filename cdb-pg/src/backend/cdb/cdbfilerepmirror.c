@@ -764,6 +764,7 @@ FileRepMirror_RunConsumer(void)
 				
 		switch (fileRepMessageHeader->fileRepOperation) {
 			case FileRepOperationOpen:
+			case FileRepOperationCreateAndOpen:
 				found = FALSE;
 				
 				entry = FileRepMirror_LookupFileName(fileName);

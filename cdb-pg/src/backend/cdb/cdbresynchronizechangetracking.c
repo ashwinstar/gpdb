@@ -32,7 +32,7 @@
 #include "cdb/cdbpersistentstore.h"
 
 #define CHANGETRACKING_FILE_EOF INT64CONST(-1)
-#define CHANGETRACKING_METABUFLEN 128
+
 /*
  * Global Variables
  */
@@ -61,7 +61,7 @@ static void ChangeTracking_AddResultEntry(ChangeTrackingResult *result,
 										  Oid rel,
 										  BlockNumber blocknum,
 										  XLogRecPtr* lsn_end);
-
+static void ChangeTracking_MarkFullResyncLockAcquired(void);
 /*
  * Return the required shared-memory size for this module.
  */
@@ -938,9 +938,9 @@ void CheckPointChangeTracking(void)
 		
 		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
 		
-		ChangeTracking_MarkFullResync();
+		ChangeTracking_MarkFullResyncLockAcquired();
 	}
-	
+
 	ChangeTracking_CloseLogFile(file);
 
 	LWLockRelease(ChangeTrackingWriteLock);
@@ -1490,8 +1490,6 @@ static void ChangeTracking_DropLogFile(void)
 {
 	File	file;
 
-	//LWLockAcquire(ChangeTrackingWriteLock, LW_EXCLUSIVE);
-
 	file = ChangeTracking_OpenLogFile();
 	
 	changeTrackingBufStatus->bufsize = 0;
@@ -1500,15 +1498,11 @@ static void ChangeTracking_DropLogFile(void)
 
 	/* delete the change tracking log file*/
 	FileUnlink(file);
-		
-	//LWLockRelease(ChangeTrackingWriteLock);
 }
 
 static void ChangeTracking_DropMetaFile(void)
 {
 	File	file;
-
-	//LWLockAcquire(ChangeTrackingWriteLock, LW_EXCLUSIVE);
 
 	file = ChangeTracking_OpenMetaFile();
 	
@@ -1519,8 +1513,6 @@ static void ChangeTracking_DropMetaFile(void)
 	
 	/* delete the change tracking meta file*/
 	FileUnlink(file);
-		
-	//LWLockRelease(ChangeTrackingWriteLock);
 }
 
 /*
@@ -1596,7 +1588,7 @@ static void ChangeTracking_WriteBuffer(File file)
 		
 		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
 		
-		ChangeTracking_MarkFullResync();
+		ChangeTracking_MarkFullResyncLockAcquired();
 	}
 	else if (wrote < 0)
 	{
@@ -1610,7 +1602,7 @@ static void ChangeTracking_WriteBuffer(File file)
 		
 		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
 		
-		ChangeTracking_MarkFullResync();
+		ChangeTracking_MarkFullResyncLockAcquired();
 	}
 
 	/*
@@ -1675,7 +1667,7 @@ static void ChangeTracking_WriteMeta(File file)
 		
 		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
 		
-		ChangeTracking_MarkFullResync();
+		ChangeTracking_MarkFullResyncLockAcquired();
 	}
 	else if (wrote < 0)
 	{
@@ -1689,7 +1681,7 @@ static void ChangeTracking_WriteMeta(File file)
 		
 		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
 		
-		ChangeTracking_MarkFullResync();
+		ChangeTracking_MarkFullResyncLockAcquired();
 	}
 }
 
@@ -1752,14 +1744,29 @@ bool ChangeTracking_ShouldTrackChanges(void)
  *		a) if failure is detected during Change Tracking 
  *		b) if user requested gprecoverseg with --FULL option (i.e. mirror node replacement)
  *		c) if user performed gpaddmirrors
+ *
+ * The process should have an exclusive lock on ChangeTrackingWriteLock before calling this function.
  */
-void
-ChangeTracking_MarkFullResync(void)
+
+/*
+ * Drop all change tracking files (log and meta).
+ */
+void ChangeTracking_MarkFullResync(void)
+{
+	LWLockAcquire(ChangeTrackingWriteLock, LW_EXCLUSIVE);
+	
+	ChangeTracking_MarkFullResyncLockAcquired();
+	
+	LWLockRelease(ChangeTrackingWriteLock);
+}
+
+static void
+ChangeTracking_MarkFullResyncLockAcquired(void)
 {
 	File	file;
 	char	path[MAXPGPATH];
 
-	LWLockAcquire(ChangeTrackingWriteLock, LW_EXCLUSIVE);
+	// can enable this when all callers are updated Assert( LWLockHeldByMe(ChangeTrackingWriteLock));
 
 	/* it will be removed when backend signaling will be implemented */
 	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState);
@@ -1798,8 +1805,6 @@ ChangeTracking_MarkFullResync(void)
 	 * TODO: should ereport(ERROR) if file doesn't exist?
 	 */
 	ChangeTracking_DropLogFile();
-	
-	LWLockRelease(ChangeTrackingWriteLock);
 }
 
 void

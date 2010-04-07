@@ -16,6 +16,7 @@
 
 #include <signal.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include "cdb/cdbvars.h"
 
@@ -311,6 +312,7 @@ FileRepPrimary_ConstructAndInsertMessage(
 		case FileRepOperationTruncate:
 		case FileRepOperationRename:
 		case FileRepOperationHeartBeat:
+		case FileRepOperationCreateAndOpen:
 			
 			fileRepMessageHeader->fileRepOperationDescription = fileRepOperationDescription;
 			break;
@@ -361,7 +363,7 @@ FileRepPrimary_ConstructAndInsertMessage(
 					fileRepMessageHeaderCrcLocal,
 					msgPositionInsert,
 					msgLength,
-					(fileRepOperation == FileRepOperationOpen)?
+					(fileRepOperation == FileRepOperationOpen || fileRepOperation == FileRepOperationCreateAndOpen)?
 					fileRepOperationDescription.open.fileFlags:0,
 					(fileRepOperation == FileRepOperationTruncate)?
 					fileRepOperationDescription.truncate.position:0),
@@ -401,8 +403,9 @@ FileRepPrimary_MirrorOpen(FileRepIdentifier_u	fileRepIdentifier,
 						  int					fileMode,
 						  bool					suppressError)
 {
-	int status = STATUS_OK;
-	
+	int					status = STATUS_OK;
+	FileRepOperation_e	fileRepOperation = FileRepOperationOpen; 
+	bool				mirrorCreateAndOpen = FALSE;
 	FileRepOperationDescription_u descr;
 	
 	descr.open.fileFlags = fileFlags;
@@ -410,19 +413,38 @@ FileRepPrimary_MirrorOpen(FileRepIdentifier_u	fileRepIdentifier,
 	descr.open.fileMode = fileMode;
 	descr.open.logicalEof = logicalEof;
 	descr.open.suppressError = suppressError;
-	
-	
+		
 	if (FileRepPrimary_IsMirroringRequired()) 
 	{
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
 			   segmentState != SegmentStateInSyncTransition))
 		{
+			if ((fileFlags & O_CREAT) == O_CREAT)
+			{
+				fileRepOperation = FileRepOperationCreateAndOpen;
+				mirrorCreateAndOpen = TRUE;
+			}
+			
 			status = FileRepPrimary_ConstructAndInsertMessage(
 							  fileRepIdentifier,
 							  fileRepRelationType,
-							  FileRepOperationOpen, 
+							  fileRepOperation, 
 							  descr);
+			if (status != STATUS_OK)
+			{
+				mirrorCreateAndOpen = FALSE;
+			}	
+		}
+	}
+	
+	if (mirrorCreateAndOpen) 
+	{
+		if (FileRepPrimary_IsOperationCompleted(
+												fileRepIdentifier,									
+												fileRepRelationType) ==  FALSE)
+		{
+			status = STATUS_ERROR;
 		}
 	}
 	
@@ -432,7 +454,7 @@ FileRepPrimary_MirrorOpen(FileRepIdentifier_u	fileRepIdentifier,
 			(errmsg("LOG(filerep): Change Tracking "), 
 			 FileRep_errdetail(fileRepIdentifier,
 							   fileRepRelationType,
-							   FileRepOperationOpen),
+							   fileRepOperation),
 			 FileRep_errcontext()));	
 #endif	
 			

@@ -16,6 +16,7 @@
 #define CHANGETRACKINGDIR  "pg_changetracking"
 #define CHANGETRACKING_STORAGE_VERSION 1
 #define CHANGETRACKING_BLCKSZ BLCKSZ
+#define CHANGETRACKING_METABUFLEN 128
 #define CHANGETRACKING_FILESEGMENT 1 /* for now, doesn't change and doesn't mean anything. a single file */
 
 /*

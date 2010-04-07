@@ -430,6 +430,9 @@ typedef enum FileRepOperation_e {
 	FileRepOperationHeartBeat,
 		/* Verify that flow from primary to mirror and back is alive */
 
+	FileRepOperationCreateAndOpen,
+		/* Create and Open mirror relation */
+	
 	FileRepOperationNotSpecified,
 
 	/* the number of values in this enumeration */

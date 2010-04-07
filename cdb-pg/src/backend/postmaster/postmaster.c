@@ -1512,6 +1512,7 @@ IsFilerepBackendsDoneShutdown(void)
 void
 NotifyProcessesOfFilerepStateChange(void)
 {
+    primaryMirrorRecordSegmentStateToPostmasterLocalMemory();
 	filerep_has_signaled_state_change = false;
 	signal_child_if_up(FilerepPID, SIGUSR1);
 }
@@ -1879,9 +1880,22 @@ ServerLoop(void)
             timeout.tv_usec = 0;
         }
 
+        errno = 0;
         if (acceptNewConnections)
         {
             selres = select(nSockets, &rmask, NULL, NULL, &timeout);
+
+            /* check the select() result */
+            if (selres < 0)
+            {
+                if (errno != EINTR && errno != EWOULDBLOCK)
+                {
+                    ereport(LOG,
+                            (errcode_for_socket_access(),
+                             errmsg("select() failed in postmaster: %m")));
+                    return STATUS_ERROR;
+                }
+            }
         }
         else
         {
@@ -1918,17 +1932,6 @@ ServerLoop(void)
 			NotifyProcessesOfFilerepStateChange();
 		}
 
-		/* Now check the select() result */
-		if (selres < 0)
-		{
-			if (errno != EINTR && errno != EWOULDBLOCK)
-			{
-				ereport(LOG,
-						(errcode_for_socket_access(),
-						 errmsg("select() failed in postmaster: %m")));
-				return STATUS_ERROR;
-			}
-		}
 
 		/*
 		 * New connection pending on any of our sockets? If so, fork a child

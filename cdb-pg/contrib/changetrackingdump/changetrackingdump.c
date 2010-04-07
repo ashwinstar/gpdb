@@ -20,17 +20,20 @@
 #include "storage/itemptr.h"
 #include "cdb/cdbresynchronizechangetracking.h"
 
+#define CTDUMP_INVALID_OID -1
 
 static int		logFd;		/* kernel FD for current input file */
 static uint32	logSeg;		/* current log file segment */
 static int32	logPageOff;	/* offset of current page in file */
 static int		logRecOff;	/* offset of next record in page */
 static char		pageBuffer[CHANGETRACKING_BLCKSZ];	/* current page */
-static char		*readRecordBuf = NULL; /* ReadRecord result area */
-static char		*readHeaderBuf = NULL; /* Header result area */
+static char		*readCTRecordBuf = NULL; /* ReadCTRecord result area */
+static char		*readCTHeaderBuf = NULL; /* Header result area */
+static char		*readMDRecordBuf = NULL; /* ReadMDRecord result area */
 static int		recs_read = 0;
 static int		recs_in_page = 0;
 static int		block_number = 0;
+static int		file_is_log = 0;
 
 static PGconn		*conn = NULL; /* Connection for translating oids of global objects */
 static PGconn		*lastDbConn = NULL; /* Connection for translating oids of per database objects */
@@ -43,9 +46,9 @@ const char 		*pgport = NULL; /* connection port */
 const char 		*username = NULL; /* connection username */
 
 /* Oids used for checking if we need to search for an objects name or if we can use the last one */
-static Oid 		lastDbOid;
-static Oid 		lastSpcOid;
-static Oid 		lastRelOid;
+static Oid 		lastDbOid = CTDUMP_INVALID_OID;
+static Oid 		lastSpcOid = CTDUMP_INVALID_OID;
+static Oid 		lastRelOid = CTDUMP_INVALID_OID;
 
 /* Buffers to hold objects names */
 static char 		spaceName[NAMEDATALEN] = "";
@@ -56,7 +59,7 @@ static char 		relName[NAMEDATALEN]  = "";
 /* prototypes */
 static void exit_gracefuly(int status);
 static PGconn * DBConnect(const char *host, const char *port, char *database, const char *user);
-static void dumpIncrementalChangeRecord(ChangeTrackingRecord *record);
+static void dumpCTRecord(ChangeTrackingRecord *record);
 
 /* Read another page, if possible */
 static bool
@@ -76,6 +79,7 @@ readChangeTrackingPage(void)
 	}
 	return false;
 }
+
 
 /* 
  * Exit closing active database connections
@@ -143,10 +147,10 @@ DBConnect(const char *host, const char *port, char *database, const char *user)
 
 
 /*
- * Attempt to read a ChangeTracking record into readRecordBuf.
+ * Attempt to read a ChangeTracking record into readCTRecordBuf.
  */
 static bool
-ReadRecord(void)
+ReadCTRecord(void)
 {
 	char	   *buffer;
 	ChangeTrackingRecord *record;
@@ -164,8 +168,8 @@ ReadRecord(void)
 		recs_read = 0;
 		
 		/* read page header */
-		memcpy(readHeaderBuf, pageBuffer, header_len);
-		header = (ChangeTrackingPageHeader *)readHeaderBuf;
+		memcpy(readCTHeaderBuf, pageBuffer, header_len);
+		header = (ChangeTrackingPageHeader *)readCTHeaderBuf;
 		
 		printf("-----------------------------------\n");
 		printf("block version: %d\n", header->blockversion);
@@ -180,7 +184,7 @@ ReadRecord(void)
 	
 	
 	record = (ChangeTrackingRecord *) (pageBuffer + logRecOff);
-	buffer = readRecordBuf;
+	buffer = readCTRecordBuf;
 	
 	memcpy(buffer, record, record_len);
 	record = (ChangeTrackingRecord *) buffer;
@@ -190,6 +194,39 @@ ReadRecord(void)
 	return true;
 }
 
+/*
+ * Attempt to read a ChangeTracking meta data into readCTRecordBuf.
+ */
+static void
+DumpMDRecord(void)
+{
+	ChangeTrackingMetaRecord *record;
+	uint32		record_len = sizeof(ChangeTrackingMetaRecord);
+	int			numread = 0;
+	
+	/* we ask to read BLCKSZ even though there are less bytes there */
+	numread = read(logFd, pageBuffer, CHANGETRACKING_METABUFLEN);
+	
+	if (numread <= 0)
+	{
+		printf("no data in MD file!");
+		return;
+	}
+	else if (numread < CHANGETRACKING_METABUFLEN)
+	{
+		printf("found a corrupted MD record! only %d bytes were read", numread);
+		return;
+	}
+		
+	memcpy(readMDRecordBuf, pageBuffer, record_len);
+	record = (ChangeTrackingMetaRecord *)readMDRecordBuf;
+		
+	printf("-----------------------------------\n");
+	printf("Resync LSN end: [%X/%X]\n", record->resync_lsn_end.xlogid, record->resync_lsn_end.xrecoff);
+	printf("Resync is full? : %s\n", (record->resync_mode_full ? "yes" : "no"));
+	printf("Resync transition completed? : %s\n", (record->resync_transition_completed ? "yes" : "no"));
+	printf("-----------------------------------\n");
+}
 
 /*
  * Atempt to read the name of tablespace into lastSpcName
@@ -332,7 +369,7 @@ ItemPointerToStringX(ItemPointer tid)
 /* ======= end ======== */
 
 static void
-dumpIncrementalChangeRecord(ChangeTrackingRecord *record)
+dumpCTRecord(ChangeTrackingRecord *record)
 {
 	
 	printf("(%04d/%04d): ", recs_read, recs_in_page);
@@ -341,9 +378,9 @@ dumpIncrementalChangeRecord(ChangeTrackingRecord *record)
 	getDbName(record->relFileNode.dbNode);
 	getRelName(record->relFileNode.relNode);
 
-	printf("space %s, db %s, tblname %s, ", spaceName, dbName, relName);
+	printf("space %8s, db %8s, tblname %8s, ", spaceName, dbName, relName);
 	printf("xlogloc [%X/%X] ", record->xlogLocation.xlogid, record->xlogLocation.xrecoff);	
-	printf("block number %d ", record->bufferPoolBlockNum);
+	printf("block number %4d ", record->bufferPoolBlockNum);
 	printf("persistent tid %s ", ItemPointerToStringX(&record->persistentTid));
 	printf("persistent sn " INT64_FORMAT, record->persistentSerialNum);
 	printf("\n");
@@ -355,41 +392,66 @@ dumpChangeTracking(char* fname)
 {
 	char	*fnamebase;
 
-	printf("\n%s:\n\n", fname);
-	/*
-	 * Extract logfile id and segment from file name
-	 */
 	fnamebase = strrchr(fname, '/');
 	if (fnamebase)
 		fnamebase++;
 	else
 		fnamebase = fname;
-	if (sscanf(fnamebase, "%8x", &logSeg) != 1)
-	{
-		fprintf(stderr, "Can't recognize logfile name '%s'\n", fnamebase);
-		logSeg = 1;
-	}
-	logPageOff = -CHANGETRACKING_BLCKSZ;		/* so 1st increment in readXLogPage gives 0 */
-	logRecOff = 0;
-	recs_read = recs_in_page = 0;
 	
-	readRecordBuf = (char *) malloc(sizeof(ChangeTrackingRecord));
-	readHeaderBuf = (char *) malloc(sizeof(ChangeTrackingPageHeader));
-	
-	while (ReadRecord())
+	/* verify it's a valid changetracking file */
+	if (strcmp(fnamebase, "CT00000001") != 0 &&
+		strcmp(fnamebase, "MD00000001") != 0)
 	{
-		dumpIncrementalChangeRecord((ChangeTrackingRecord *) readRecordBuf);
+		fprintf(stderr, "file '%s' is not a change tracking log or meta file.\n", fnamebase);
+		return;
 	}
 	
-	free(readRecordBuf);
+	if (strncmp(fnamebase, "CT", 2) == 0)
+		file_is_log = 1; /* CT */
+	else
+		file_is_log = 0; /* MD */
+	
+	printf("\ndumping change tracking %s file %s:\n\n", (file_is_log ? "log" : "meta"), fname);
+	
+	logSeg = 1;
+	
+	if(file_is_log)
+	{
+		/* dump CT file */
+		
+		logPageOff = -CHANGETRACKING_BLCKSZ;		/* so 1st increment in readXLogPage gives 0 */
+		logRecOff = 0;
+		recs_read = recs_in_page = 0;
+		
+		readCTRecordBuf = (char *) malloc(sizeof(ChangeTrackingRecord));
+		readCTHeaderBuf = (char *) malloc(sizeof(ChangeTrackingPageHeader));
+		
+		while (ReadCTRecord())
+		{
+			dumpCTRecord((ChangeTrackingRecord *) readCTRecordBuf);
+		}
+		
+		free(readCTRecordBuf);
+		free(readCTHeaderBuf);
+	}
+	else
+	{
+		/* dump MD file */
+		
+		readMDRecordBuf = (char *) malloc(sizeof(ChangeTrackingMetaRecord));
+		DumpMDRecord();		
+		free(readMDRecordBuf);
+	}
 }
 
 static void
 help(void)
 {
-	printf("changetrackingdump ... \n\n");
-	printf("Usage:\n");
-	printf("  changetrackingdump [OPTION]... [segment file]\n");
+	printf("\nchangetrackingdump ... \n\n");
+	printf("Description:\n");
+	printf("  dumps the contents of a changetracking log file or meta file\n");
+	printf("\nUsage:\n");
+	printf("  changetrackingdump [OPTION]... filename\n");
 	printf("\nConnection options:\n");
 	printf("  -h, --host=HOST           database server host or socket directory\n");
 	printf("  -p, --port=PORT           database server port number\n");

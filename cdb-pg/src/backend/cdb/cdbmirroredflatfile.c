@@ -1088,6 +1088,8 @@ PgVersionRecoverMirror(void)
 		
 	} // while (PersistentDatabase_DirIterateNext
 			
+	PersistentDatabase_DirIterateClose();
+	
 	return retval;
 }
 

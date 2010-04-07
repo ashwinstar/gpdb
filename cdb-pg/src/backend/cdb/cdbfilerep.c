@@ -237,6 +237,7 @@ FileRepOperationToString[] = {
 	"Shutdown",
 	"In Sync Transition",
 	"Heart Beat",
+	"Create and Open",
 	"Not Specified",
 };
 
@@ -1587,19 +1588,15 @@ FileRep_ProcessSignals()
 			{
 				if (term_pid == FileRepSubProcList[i].pid)
 				{
-					/*
-					if (! ((term_status == 0) &&
-						   (i == FileRepProcessTypePrimaryRecovery ||
-							i == FileRepProcessTypeResyncManager ||
-							i == FileRepProcessTypeResyncWorker1 ||
-							i == FileRepProcessTypeResyncWorker2 ||
-							i == FileRepProcessTypeResyncWorker3 ||
-							i == FileRepProcessTypeResyncWorker4 )))
-					{ */
-						LogChildExit(LOG, (FileRepProcessTypeToString[i]),
-									 FileRepSubProcList[i].pid,
-									 term_status);
-					//}
+					LogChildExit(LOG, (FileRepProcessTypeToString[i]),
+								 FileRepSubProcList[i].pid,
+								 term_status);
+					
+					if (WTERMSIG(term_status) == SIGSEGV)
+					{
+						FileRep_SetPostmasterReset();
+					}
+						
 					if (term_status != 0 &&
 						segmentState != SegmentStateShutdown &&
 						segmentState != SegmentStateImmediateShutdown &&
@@ -2060,6 +2057,7 @@ FileRep_IsOperationSynchronous(FileRepOperation_e fileRepOperation)
 		case FileRepOperationShutdown:
 		case FileRepOperationInSyncTransition:
 		case FileRepOperationHeartBeat:
+		case FileRepOperationCreateAndOpen:
 			
 			return TRUE;	
 

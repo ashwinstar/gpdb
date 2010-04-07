@@ -210,6 +210,14 @@ typedef struct
 	 */
 	bool transitionToFault;
 
+	/**
+	 * external callers will never set this to true.  It will become true if we are doing a postmaster reset
+	 *   and need to disable change tracking after the reset.
+	 *
+	 * This is used for the case where we get a postmaster reset from filerep while changeTrackingDisabled is set
+	 */
+	bool transitionToChangeTrackingDisabledMode;
+
 	/* note that if more fields are added here, must be sure to update the no-op check in primary_mirror_mode.c */
 } PrimaryMirrorModeTransitionArguments;
 
@@ -275,5 +283,6 @@ extern void primaryMirrorGetFilerepArguments(
 				int *mirrorPortOut,
 				bool *fullSyncOut);
 extern void primaryMirrorHandlePostmasterReset(void);
+extern void primaryMirrorRecordSegmentStateToPostmasterLocalMemory(void);
 
 #endif   /* _PRIMARY_MIRROR_MODE_H */
