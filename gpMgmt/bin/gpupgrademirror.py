@@ -925,6 +925,33 @@ class CreateHardLink(Command):
 
 #-------------------------------------------------------------------------
 #-------------------------------------------------------------------------                                                       
+class GPumMoveDirectoryContents(Command):
+    """ This class moves a local directory."""
+
+    def __init__(self,name,srcDirectory,dstDirectory,ctxt=LOCAL,remoteHost=None):
+        self.srcDirectory = srcDirectory
+        self.srcDirectoryFiles = self.srcDirectory + "." + "dirfilelist" 
+        self.dstDirectory = dstDirectory
+        ls = findCmdInPath("ls")
+        cat = findCmdInPath("cat")
+        xargs = findCmdInPath("xargs")
+        mv = findCmdInPath("mv")
+        cmdStr = "%s -1 %s > %s" % (ls, self.srcDirectory, self.srcDirectoryFiles)
+        cmdStr = cmdStr + ";%s %s" % (cat, self.srcDirectoryFiles)
+        cmdStr = cmdStr + " | %s -I xxx %s %s/xxx %s" % (xargs, mv, self.srcDirectory, self.dstDirectory)
+        cmdStr = cmdStr + "; rm %s" % (self.srcDirectoryFiles)
+        print cmdStr
+        exit(1)
+        """
+        ls -1 temp1 > temp1.list;cat temp1.list | xargs -I xxx mv temp1/xxx temp2
+        cmdStr = "%s -1 %s > %s;%s %s | %s -I xxx %s %s/xxx %s"
+        cmdStr="%s -f %s %s" % (findCmdInPath('mv'),srcDirectory,dstDirectory)
+        """
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+        
+
+#-------------------------------------------------------------------------
+#-------------------------------------------------------------------------                                                       
 class GPumMoveDirectory(Command):
     """ This class moves a local directory."""
 
@@ -2122,8 +2149,8 @@ class Phase1(threading.Thread):
             trgDir = mirrorTempDataDir + "/base/" + SegHardLinks.getUnqualifiedRealDir(dir)
             cmdComplete = False
             while cmdComplete == False:
-               mvCmd = GPumMoveDirectory( name = 'gpupgrademirror consolidate a directory: %s' % srcDirFiles 
-                                     , srcDirectory = srcDirFiles + "/*"
+               mvCmd = GPumMoveDirectoryContents( name = 'gpupgrademirror consolidate a directory: %s' % srcDirFiles 
+                                     , srcDirectory = srcDirFiles
                                      , dstDirectory = trgDir
                                      , ctxt = REMOTE
                                      , remoteHost = seg.mirror_host
@@ -2379,6 +2406,8 @@ class Phase1(threading.Thread):
           self.logger.error('ERROR in processing mirror: %s Exception: %s' % (self.nodeName, str(e)))
           self.logger.error('gpupgradmirror exiting')
           traceback.print_exc()
+          os.stdout.flush()
+          os.stderr.flush()
           os._exit(2)
 
 
@@ -2510,6 +2539,8 @@ class Phase2(threading.Thread):
             self.logger.error('ERROR in processing mirror: %s Exception: %s' % (self.nodeName, str(e)))
             self.logger.error('gpupgradmirror exiting')
             traceback.print_exc()
+            os.stdout.flush()
+            os.stderr.flush()
             os._exit(2)
 
     #-------------------------------------------------------------------------------
