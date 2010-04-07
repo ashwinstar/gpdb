@@ -1222,7 +1222,8 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"default_with_oids", PGC_USERSET, COMPAT_OPTIONS_PREVIOUS,
 			gettext_noop("Create new tables with OIDs by default."),
-			NULL
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&default_with_oids,
 		false, NULL, NULL
