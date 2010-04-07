@@ -344,6 +344,7 @@ clearTransitionArgs(volatile PrimaryMirrorModeTransitionArguments *args)
 	args->peerPort = 0;
 	args->forceFullResync = false;
 	args->transitionToFault = false;
+	args->transitionToChangeTrackingDisabledMode = false;
 }
 
 PrimaryMirrorModeTransitionArguments *
