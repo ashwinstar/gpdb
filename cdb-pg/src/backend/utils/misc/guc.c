@@ -4165,7 +4165,7 @@ static struct config_string ConfigureNamesString[] =
 			GUC_REPORT
 		},
 		&IntervalStyle_string,
-		INTSTYLE_POSTGRES, assign_IntervalStyle, show_IntervalStyle
+		"postgres", assign_IntervalStyle, show_IntervalStyle
 	},
 	
 	{
