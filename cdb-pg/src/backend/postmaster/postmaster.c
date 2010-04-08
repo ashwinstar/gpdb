@@ -2587,15 +2587,17 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
 
 	if (strcmp("getStatus", targetModeStr) == 0)
 	{
-		char buf[10000];
-		getPrimaryMirrorModeStatus(buf, sizeof(buf));
-		sendPrimaryMirrorTransitionResult(buf);
+		char statusBuf[10000];
+		getPrimaryMirrorModeStatus(statusBuf, sizeof(statusBuf));
+		sendPrimaryMirrorTransitionResult(statusBuf);
 		return;
 	}
 
 	if ( strcmp("getFaultInjectStatus", targetModeStr ) == 0)
 	{
 #ifdef FAULT_INJECTOR
+	    init_ps_display("filerep fault inject status process", "", "", "");
+
         char *faultName = readNextStringFromString(buf, &offset, length);
 	    bool isDone = false;
 		
@@ -2630,6 +2632,8 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
 	    int sleepTimeSeconds = readIntFromString(buf, &offset, length, &wasRead);
 		FaultInjectorEntry_s	faultInjectorEntry;
 		char buf[1000];
+
+        init_ps_display("filerep fault inject process", "", "", "");
 
         if ( ! wasRead)
         {
@@ -2713,6 +2717,8 @@ exit:
 #endif
 	    return;
 	}
+
+	init_ps_display("filerep transition process", "", "", "");
 	
 	args->mode = decipherPrimaryMirrorModeArgument(targetModeStr);
 
@@ -2844,6 +2850,8 @@ processPrimaryMirrorTransitionQuery(Port *port, void *pkt)
 	PrimaryMirrorMode pm_mode;
 	SegmentState_e s_state;
 	DataState_e d_state;
+
+	init_ps_display("filerep status query process", "", "", "");
 
 	length = (int)ntohl(transition->dataLength);
 	if (length != 0)

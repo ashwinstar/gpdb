@@ -227,18 +227,27 @@ mdcreatefilespacedir(
 				FileRep_GetDirFilespaceIdentifier(
 												  mirrorFilespaceLocation),
 				FileRepRelationTypeDir) != 0) 
+	{
+		*mirrorDataLossOccurred = true;
 		ereport(LOG,
 				(errmsg("ERROR(filerep): could not sent create dbdir to mirror")));
+	}
 
 	if (mkdir(primaryFilespaceLocation, 0700) < 0)
 		*primaryError = errno;
 	
-	if (FileRepPrimary_IsOperationCompleted(
-					FileRep_GetDirFilespaceIdentifier(
-													  mirrorFilespaceLocation),
-				   FileRepRelationTypeDir) == FALSE)	
+	if (*mirrorDataLossOccurred == false)
+	{
+		if (FileRepPrimary_IsOperationCompleted(
+						FileRep_GetDirFilespaceIdentifier(
+														  mirrorFilespaceLocation),
+					   FileRepRelationTypeDir) == FALSE)	
+		{
+			*mirrorDataLossOccurred = true;
 			ereport(LOG,
-				(errmsg("ERROR(filerep): could not create dbdir on mirror ")));	
+				(errmsg("ERROR(filerep): could not create dbdir on mirror ")));
+		}
+	}
 }
 
 /*
@@ -275,8 +284,11 @@ mdcreatetablespacedir(
 												   mirrorFilespaceLocation,
 												   tablespaceOid),
 				FileRepRelationTypeDir) != 0) 
+	{
+		*mirrorDataLossOccurred = true;
 		ereport(LOG,
 				(errmsg("ERROR(filerep): could not sent create dbdir to mirror")));
+	}
 
 	FormTablespacePath(
 				tablespacePath,
@@ -286,14 +298,20 @@ mdcreatetablespacedir(
 	if (mkdir(tablespacePath, 0700) < 0)
 		*primaryError = errno;
 	
-	if (FileRepPrimary_IsOperationCompleted(
-				FileRep_GetDirTablespaceIdentifier(
-												   mirrorFilespaceLocation,
-												   tablespaceOid),
-				FileRepRelationTypeDir) == FALSE)	
-		ereport(LOG,
-				(errmsg("ERROR(filerep): could not create dbdir on mirror ")));	
-
+	if (*mirrorDataLossOccurred == false)
+	{
+		if (FileRepPrimary_IsOperationCompleted(
+					FileRep_GetDirTablespaceIdentifier(
+													   mirrorFilespaceLocation,
+													   tablespaceOid),
+					FileRepRelationTypeDir) == FALSE)	
+		{
+			*mirrorDataLossOccurred = true;
+			ereport(LOG,
+					(errmsg("ERROR(filerep): could not create dbdir on mirror ")));	
+		}
+	}
+		
 	if (primaryFilespaceLocation)
 		pfree(primaryFilespaceLocation);
 	if (mirrorFilespaceLocation)
@@ -334,8 +352,11 @@ mdcreatedbdir(
 												 mirrorFilespaceLocation,
 												 *dbDirNode),
 				FileRepRelationTypeDir) != 0) 
+	{
+		*mirrorDataLossOccurred = true;
 		ereport(LOG,
 				(errmsg("ERROR(filerep): could not sent create dbdir to mirror")));
+	}
 
 	FormDatabasePath(
 				dbPath,
@@ -346,13 +367,19 @@ mdcreatedbdir(
 	if (mkdir(dbPath, 0700) < 0)
 		*primaryError = errno;
 	
-	if (FileRepPrimary_IsOperationCompleted(
-				FileRep_GetDirDatabaseIdentifier(
-												 mirrorFilespaceLocation,
-												 *dbDirNode),
-				   FileRepRelationTypeDir) == FALSE)	
-		ereport(LOG,
-				(errmsg("ERROR(filerep): could not create dbdir on mirror ")));	
+	if (*mirrorDataLossOccurred == false)
+	{
+		if (FileRepPrimary_IsOperationCompleted(
+					FileRep_GetDirDatabaseIdentifier(
+													 mirrorFilespaceLocation,
+													 *dbDirNode),
+					   FileRepRelationTypeDir) == FALSE)	
+		{
+			*mirrorDataLossOccurred = true;
+			ereport(LOG,
+					(errmsg("ERROR(filerep): could not create dbdir on mirror ")));	
+		}
+	}
 
 	if (primaryFilespaceLocation)
 		pfree(primaryFilespaceLocation);

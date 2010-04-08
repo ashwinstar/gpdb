@@ -25,6 +25,8 @@
 #include "access/xlogdefs.h"
 #include "catalog/indexing.h"
 #include "catalog/gp_global_sequence.h"
+#include "catalog/gp_id.h"
+#include "catalog/pg_shdepend.h"
 
 #define int8 int64
 #define tid ItemPointerData
@@ -362,6 +364,13 @@ inline static bool GpPersistent_SkipXLogInfo(
 		testOid == GpPersistentTablespaceNodeRelationId ||
 		testOid == GpPersistentFilespaceNodeRelationId ||
 		testOid == GpGlobalSequenceRelationId)
+		return true;
+	
+	/*
+	 * gp_id and pg_shdepend 
+	 */
+	if (testOid == GpIdRelationId ||
+		testOid == SharedDependRelationId)
 		return true;
 
 	/*

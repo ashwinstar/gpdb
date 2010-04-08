@@ -929,9 +929,13 @@ updateSegmentState(SegmentState_e segmentState)
         }
 		else if ( curState != segmentState )
 		{
-		    isUpdated = TRUE;
+			/* During change tracking failure is reported by signaling postmaster Reset (no Fault) */
+			if (! (segmentState == SegmentStateFault && 
+				   pmModuleState->dataState == DataStateInChangeTracking))
+			{					
+				isUpdated = TRUE;
+			}
 		}
-
 		if (isUpdated)
 		{
             pmModuleState->segmentState = segmentState;
