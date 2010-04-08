@@ -371,7 +371,7 @@ class RemoteExecutionContext(LocalExecutionContext):
     def execute(self,cmd):
         # Escape " for remote execution otherwise it interferes with ssh
         cmd.cmdStr = cmd.cmdStr.replace('"', '\\"')
-        cmd.cmdStr="ssh  %s \"%s %s\"" % (self.targetHost,SRC_GPPATH,cmd.cmdStr)
+        cmd.cmdStr="ssh -o 'StrictHostKeyChecking no' %s \"%s %s\"" % (self.targetHost,SRC_GPPATH,cmd.cmdStr)
         LocalExecutionContext.execute(self,cmd)
         pass
       

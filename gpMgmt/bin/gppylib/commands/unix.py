@@ -479,7 +479,7 @@ class RemoteCopy(Command):
         self.srcDirectory=srcDirectory
         self.dstHost=dstHost
         self.dstDirectory=dstDirectory        
-        cmdStr="%s -r %s %s:%s" % (findCmdInPath('scp'),srcDirectory,dstHost,dstDirectory)
+        cmdStr="%s -o 'StrictHostKeyChecking no' -r %s %s:%s" % (findCmdInPath('scp'),srcDirectory,dstHost,dstDirectory)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
 class Scp(Command):
