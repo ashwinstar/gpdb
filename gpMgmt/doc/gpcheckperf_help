@@ -45,14 +45,20 @@ and runs the following performance tests:
 * Network Performance Test (netperf) - To test network performance 
   (and thereby the performance of the Greenplum Database Interconnect), 
   the utility runs the netperf benchmark program. gpcheckperf runs 
-  the netperf TCP_STREAM test, which transfers a 15 second stream 
-  of data from the current host to each remote host included in the 
-  test. The data is transferred in parallel to each remote host and 
+  the netperf TCP_STREAM test, which transfers a stream of data 
+  (default 5s) from the current host to each remote host included in 
+  the test. The data is transferred in parallel to each remote host and 
   the minimum, maximum, average and median network transfer rates 
   are reported in megabytes (MB) per second. If the summary transfer 
   rate is slower than expected (less than 100 MB/s), you can run the 
   network test serially using the -r n option to obtain per-host 
-  results.
+  results.  To run a full-matrix bandwidth test, you can specify -r M
+  which will cause every host to send and receive data from every 
+  other host specified.  This test is best used to validate if the
+  switch fabric can tolerate a full-matrix workload.  The duration 
+  of all network tests can be specified with the --duration <time>
+  switch, where duration can be specified in seconds, minutes, hours,
+  or days.
 
 To specify the hosts to test, use the -f option to specify a file 
 containing a list of host names, or use the -h option to name single 
@@ -110,12 +116,12 @@ Specifies the default SSH port to use when logging in
 to a remote host. If not specified, defaults to port 22 
 (or the port specified in the host file, if any).
 
--r ds{n|N}
+-r ds{n|N|M}
 
 Specifies which performance tests to run: disk I/O (d), 
-stream test (s), parallel (N) or sequential (n) network 
-performance test, or a combination of these tests. The default 
-is to run all tests (dsN). By default the network 
+stream test (s), parallel (N), sequential (n), or full matrix
+network performance test, or a combination of these tests. The 
+default is to run all tests (dsN). By default the network 
 performance test is run in parallel (N). If the parallel 
 network test indicates a performance problem, running the 
 sequential network test (n) can help pinpoint the particular 
