@@ -4,7 +4,7 @@
  *	  definition of the system "procedure" relation (pg_proc)
  *	  along with the relation's initial contents.
  *
- * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Portions Copyright (c) 2006-2010, Greenplum inc
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -2318,6 +2318,10 @@ DESCR("partition configuration for a given relation");
 DATA(insert OID = 5027 (  pg_get_partition_rule_def	PGNSP PGUID 12 f f t f s 1 25 f "26" _null_ _null_ _null_	pg_get_partition_rule_def - _null_ ));
 DATA(insert OID = 5028 (  pg_get_partition_rule_def	PGNSP PGUID 12 f f t f s 2 25 f "26 16" _null_ _null_ _null_	pg_get_partition_rule_def_ext - _null_ ));
 DESCR("partition configuration for a given rule");
+#ifdef MPP6095
+XXATA(insert OID = 5037 (  pg_get_partition_template_def	PGNSP PGUID 12 f f t f s 3 25 f "26 16 16" _null_ _null_ _null_	pg_get_partition_template_def - _null_ ));
+XXESCR("ALTER statement to recreate subpartition templates for a give relation");
+#endif
 
 DATA(insert OID = 821 (  pg_get_keywords		PGNSP PGUID 12 f f t t s 0 2249 f "" "{25,18,25}" "{o,o,o}" "{word,catcode,catdesc}" pg_get_keywords - _null_ ));
 DESCR("list of SQL keywords");

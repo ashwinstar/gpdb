@@ -5964,7 +5964,8 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 		}
 
 	}
-	else if (PointerIsValid(rule->parreloptions))
+	else if (PointerIsValid(rule->parreloptions)
+			 || (bLeafTablename && part->paristemplate))
 	{
 		ListCell *lc;
 		List *opts;
@@ -5972,20 +5973,37 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 
 		initStringInfo(&buf);
 
+		/* NOTE: only the template case */
 		Assert(part->paristemplate);
 
-		opts = rule->parreloptions;
-		foreach(lc, opts)
+		if (bLeafTablename && part->paristemplate)
 		{
-			DefElem *e = lfirst(lc);
+			/* hackery! */
+			/* MPP-6297: Make a fake tablename for template entries to
+			 * invoke special dump/restore magic for EVERY in
+			 * analyze.c:partition_range_every().  Note that the
+			 * tablename is ignored during SET SUBPARTITION TEMPLATE
+			 * because the template rules do not have corresponding
+			 * relations
+			 */
+			appendStringInfo(&buf, "tablename=\'foo\'");
+		}
 
-			if (lc != list_head(opts))
-				appendStringInfo(&buf, ", ");
+		opts = rule->parreloptions;
+		if (PointerIsValid(rule->parreloptions))
+		{
+			foreach(lc, opts)
+			{
+				DefElem *e = lfirst(lc);
 
-			appendStringInfoString(&buf, e->defname);
+				if (strlen(buf.data))
+					appendStringInfo(&buf, ", ");
 
-			if (e->arg)
-				appendStringInfo(&buf, "=%s", strVal(e->arg));
+				appendStringInfoString(&buf, e->defname);
+				
+				if (e->arg)
+					appendStringInfo(&buf, "=%s", strVal(e->arg));
+			}
 		}
 		reloptions = buf.data;
 	}
@@ -6002,7 +6020,7 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 						 part->parlevel > 0 ? "SUB" : "",
 						 quote_identifier(rule->parname));
 
-		if (reloptions)
+		if (reloptions && strlen(reloptions))
 			appendStringInfo(&str, " WITH (%s)", reloptions);
 
 		return str.data;
@@ -6407,6 +6425,181 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 		appendContextKeyword(body, ")", 0, -PRETTYINDENT_STD, 2);
 }
 
+/* MPP-6095: dump template definitions */
+#ifdef MPP6095
+static char *
+pg_get_partition_template_def_worker(Oid relid, int prettyFlags, 
+									 int bLeafTablename)
+{
+	Relation		 	rel	 = heap_open(relid, AccessShareLock);
+
+	/* pn is the partition def for the relation, and pnt is the
+	 * associated template defs.  We need to walk pn to obtain the
+	 * partition id str's for the ALTER statement.
+	 */
+	PartitionNode	   *pn	 = RelationBuildPartitionDesc(rel, false);
+	PartitionNode	   *pnt	 = NULL;
+
+	StringInfoData		head;
+	StringInfoData		body;
+	StringInfoData		altr, sid1, sid2, partidsid;
+	int16				leveldone	  = -1;
+	deparse_context		headc;
+	deparse_context		bodyc;
+	deparse_context		partidc;
+	int					templatelevel = 1;
+
+	if (!pn)
+	{
+		heap_close(rel, AccessShareLock);
+		return NULL;
+	}
+	/* head string for get_partition_recursive() -- just discard this */
+	initStringInfo(&head); 
+	headc.buf = &head;
+	headc.prettyFlags = prettyFlags;
+	headc.indentLevel = 0;
+
+	/* body: partition definition associated with template */
+	initStringInfo(&body); 
+	bodyc.buf = &body;
+	bodyc.prettyFlags = prettyFlags;
+	bodyc.indentLevel = 0;
+
+	/* altr: the real "head" string (first part of ALTER TABLE statement) */
+	initStringInfo(&altr); 
+
+	initStringInfo(&sid1); /* final output string */
+	initStringInfo(&sid2); /* string for temp storage */
+	initStringInfo(&partidsid);
+	partidc.buf = &partidsid;
+	partidc.prettyFlags = prettyFlags;
+	partidc.indentLevel = 0;
+
+
+	/* build the initial ALTER TABLE prefix.  Append the next level of
+	 * partition depth as iterate thru loop
+	 */
+
+	appendStringInfo(&altr, "ALTER TABLE %s ",
+					 generate_relation_name(relid));
+
+	/* build the text of the SET SUBPARTITION TEMPLATE statements from
+	 * shallowest (level 1) to deepest by walking pn tree rules, but
+	 * resequence statements from deepest to shallowest when we append
+	 * them into the final output string, as we cannot reset the
+	 * shallow template unless the deeper template exists.
+	 */
+	while (pn)
+	{
+		PartitionRule	*prule = NULL; 
+		const char		*partIdStr;
+
+		truncateStringInfo(&head, 0);
+		truncateStringInfo(&body, 0);
+		truncateStringInfo(&sid2, 0);
+
+		pnt = get_parts(relid, 
+						templatelevel, 0, true, CurrentMemoryContext);
+		get_partition_recursive(pnt, &headc, &bodyc, &leveldone, 
+								bLeafTablename);
+
+		/* look at the prule for the default partition (or non-default
+		 * if necessary).  We need to build the partition identifier
+		 * for the next level of the tree (used for the next iteration
+		 * of this loop, not the current iteration). 
+		 */
+		prule = pn->default_part;
+		if (!prule)
+		{
+			if (list_length(pn->rules))
+				prule = (PartitionRule *)linitial(pn->rules);
+		}
+
+		if (!prule)
+			break;
+
+		if (prule->parname
+			&& strlen(prule->parname))
+		{
+			partIdStr = quote_identifier(prule->parname);
+		}
+		else
+		{
+			switch (pn->part->parkind)
+			{
+				case 'r': /* range */
+					partIdStr = "FOR (RANK(1))";
+					break;
+				case 'l': /* list */
+				{
+					ListCell	*lc;
+					List		*l1;
+					int2		 nkeys  = pn->part->parnatts;
+					int2		 parcol = 0;
+
+					truncateStringInfo(&partidsid, 0);
+
+					appendStringInfo(&partidsid, "FOR (");
+
+					l1 = (List *)prule->parlistvalues;
+
+					/* MPP-5878: print multiple columns if > 1 key cols */
+					foreach(lc, l1)
+					{
+						List		*vals = lfirst(lc);
+						ListCell	*lcv  = list_head(vals);
+
+						for (parcol = 0; parcol < nkeys; parcol++)
+						{
+							Const *con = lfirst(lcv);
+
+							if (lcv != list_head(vals))
+								appendStringInfoString(&partidsid, ", ");
+							
+							get_const_expr(con, &partidc, -1);
+
+							lcv = lnext(lcv);
+						}
+						break;
+					}
+					appendStringInfoString(&partidsid, ")");
+					partIdStr = partidsid.data;
+				}
+					break;
+				default: /* including hash for now... */
+					elog(ERROR, "unrecognized partitioning kind '%c'",
+						 pn->part->parkind);
+					break;
+			}
+		}
+		pn = prule->children;
+
+		if (pnt)
+		{
+			/* move the prior statements to sid2 */
+			appendStringInfo(&sid2, "%s", sid1.data);
+			truncateStringInfo(&sid1, 0);
+
+			/* build the new statement in sid1, then append the
+			 * previous (shallower) statements 
+			 */
+			appendStringInfo(&sid1, "%s\nSET SUBPARTITION TEMPLATE %s;\n", 
+							 altr.data, body.data);
+			appendStringInfo(&sid1, "\n%s", sid2.data);
+		}
+
+		/* increase the partitioning depth */
+		appendStringInfo(&altr, "ALTER PARTITION %s ", partIdStr);
+		templatelevel++;
+	} /* end while pn */
+
+	heap_close(rel, NoLock);
+
+	return sid1.data;
+} /* end pg_get_partition_template_def_worker */
+#endif
+
 static char *
 pg_get_partition_def_worker(Oid relid, int prettyFlags, int bLeafTablename)
 {
@@ -6423,7 +6616,6 @@ pg_get_partition_def_worker(Oid relid, int prettyFlags, int bLeafTablename)
 		heap_close(rel, AccessShareLock);
 		return NULL;
 	}
-
 	initStringInfo(&head);
 	headc.buf = &head;
 	headc.prettyFlags = prettyFlags;
@@ -6603,3 +6795,26 @@ pg_get_partition_def_ext2(PG_FUNCTION_ARGS)
 
 	PG_RETURN_TEXT_P(string_to_text(str));
 }
+
+/* MPP-6095: dump template definitions */
+#ifdef MPP6095
+Datum
+pg_get_partition_template_def(PG_FUNCTION_ARGS)
+{
+	Oid			 relid			= PG_GETARG_OID(0);
+	bool		 pretty			= PG_GETARG_BOOL(1);
+	bool		 bLeafTablename = PG_GETARG_BOOL(2);
+	char		*str;
+	int			 prettyFlags	= 0;
+	
+	prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : 0;
+
+	str = pg_get_partition_template_def_worker(relid, 
+											   prettyFlags, bLeafTablename);
+
+	if (!str)
+		PG_RETURN_NULL();
+
+	PG_RETURN_TEXT_P(string_to_text(str));
+}
+#endif

@@ -4,6 +4,7 @@
  *	  Declarations for operations on built-in types.
  *
  *
+ * Portions Copyright (c) 2005-2010, Greenplum inc
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -589,6 +590,9 @@ extern Datum pg_get_partition_def_ext(PG_FUNCTION_ARGS);
 extern Datum pg_get_partition_def_ext2(PG_FUNCTION_ARGS);
 extern Datum pg_get_partition_rule_def(PG_FUNCTION_ARGS);
 extern Datum pg_get_partition_rule_def_ext(PG_FUNCTION_ARGS);
+#ifdef MPP6095
+extern Datum pg_get_partition_template_def(PG_FUNCTION_ARGS);
+#endif
 
 /* tid.c */
 extern Datum tidin(PG_FUNCTION_ARGS);
