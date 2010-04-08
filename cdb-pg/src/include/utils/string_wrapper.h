@@ -29,26 +29,33 @@ int gp_strcoll(const char *left, const char *right)
 
 	if ( errno != 0 )
 	{
-		if ( errno == EINVAL)
+		if ( errno == EINVAL || EILSEQ)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_UNTRANSLATABLE_CHARACTER),
-							errmsg("Failed to compare strings because of characters outside of the domain of the collating sequence.  First string has length %lu and value (limited to 100 characters): '%.100s'.  Second string has length %lu and value (limited to 100 characters): '%.100s'",
-									(unsigned long) SAFE_STR_LENGTH(left), NULL_TO_DUMMY_STR(left), (unsigned long) SAFE_STR_LENGTH(left), NULL_TO_DUMMY_STR(right))));
-		}
-		else if ( errno == EILSEQ)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_UNTRANSLATABLE_CHARACTER),
-							errmsg("Failed to compare strings because of an invalid byte sequence in the data.  First string has length %lu and value (limited to 100 characters): '%.100s'.  Second string has length %lu and value (limited to 100 characters): '%.100s'",
-									(unsigned long) SAFE_STR_LENGTH(left), NULL_TO_DUMMY_STR(left), (unsigned long) SAFE_STR_LENGTH(left), NULL_TO_DUMMY_STR(right))));
+							errmsg("Unable to compare strings because one or both contained data that is not valid "
+							       "for the collation specified by LC_COLLATE ('%s').  First string has length %lu "
+							       "and value (limited to 100 characters): '%.100s'.  Second string has length %lu "
+							       "and value (limited to 100 characters): '%.100s'",
+									GetConfigOption("lc_collate"),
+									(unsigned long) SAFE_STR_LENGTH(left),
+									NULL_TO_DUMMY_STR(left),
+									(unsigned long) SAFE_STR_LENGTH(left),
+									NULL_TO_DUMMY_STR(right))));
 		}
 		else
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-							errmsg("Unable to compare strings.  Error: %s.  First string has length %lu and value (limited to 100 characters): '%.100s'.  Second string has length %lu and value (limited to 100 characters): '%.100s'"
-									, strerror(errno), (unsigned long) SAFE_STR_LENGTH(left), NULL_TO_DUMMY_STR(left), (unsigned long) SAFE_STR_LENGTH(left), NULL_TO_DUMMY_STR(right))));
+							errmsg("Unable to compare strings.  "
+							       "Error: %s.  "
+							       "First string has length %lu and value (limited to 100 characters): '%.100s'.  "
+							       "Second string has length %lu and value (limited to 100 characters): '%.100s'",
+									strerror(errno),
+									(unsigned long) SAFE_STR_LENGTH(left),
+									NULL_TO_DUMMY_STR(left),
+									(unsigned long) SAFE_STR_LENGTH(left),
+									NULL_TO_DUMMY_STR(right))));
 		}
 	}
 
@@ -65,26 +72,27 @@ size_t gp_strxfrm(char *dst, const char *src, size_t n)
 
 	if ( errno != 0 )
 	{
-		if ( errno == EINVAL)
+		if ( errno == EINVAL || errno == EILSEQ)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_UNTRANSLATABLE_CHARACTER),
-							errmsg("Failed to transform string because it contains characters outside of the domain of the collating sequence.  String has length %lu and value (limited to 100 characters): '%.100s'",
-									(unsigned long) SAFE_STR_LENGTH(src), NULL_TO_DUMMY_STR(src))));
-		}
-		else if ( errno == EILSEQ)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_UNTRANSLATABLE_CHARACTER),
-							errmsg("Failed to transform string because of an invalid byte sequence in the data.  String has length %lu and value (limited to 100 characters): '%.100s'",
-									(unsigned long) SAFE_STR_LENGTH(src), NULL_TO_DUMMY_STR(src))));
+							errmsg("Unable to process string for comparison or sorting because it contains data that "
+							        "is not valid for the collation specified by LC_COLLATE ('%s').  "
+							        "The string has length %lu "
+							        "and value (limited to 100 characters): '%.100s'",
+								    GetConfigOption("lc_collate"),
+									(unsigned long) SAFE_STR_LENGTH(src),
+									NULL_TO_DUMMY_STR(src))));
 		}
 		else
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-							errmsg("Unable to transform string.  Error: %s.  String has length %lu and value (limited to 100 characters): '%.100s'",
-									strerror(errno),(unsigned long) SAFE_STR_LENGTH(src), NULL_TO_DUMMY_STR(src))));
+							errmsg("Unable to process string for comparison or sorting.  Error: %s.  "
+							        "String has length %lu and value (limited to 100 characters): '%.100s'",
+									strerror(errno),
+									(unsigned long) SAFE_STR_LENGTH(src),
+									NULL_TO_DUMMY_STR(src))));
 		}
 	}
 
