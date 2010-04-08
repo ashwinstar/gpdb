@@ -2375,6 +2375,9 @@ CopySnapshot(Snapshot snapshot)
 	Size		dsoff = 0;
 	Size		size;
 
+	if (!IsMVCCSnapshot(snapshot))
+		return snapshot;
+
 	/* We allocate any XID arrays needed in the same palloc block. */
 	size = subxipoff = sizeof(SnapshotData) +
 		snapshot->xcnt * sizeof(TransactionId);
@@ -2442,6 +2445,9 @@ CopySnapshot(Snapshot snapshot)
 void
 FreeSnapshot(Snapshot snapshot)
 {
+	if (!IsMVCCSnapshot(snapshot))
+		return;
+
 	pfree(snapshot);
 }
 
