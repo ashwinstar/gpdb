@@ -136,7 +136,8 @@ USAGE () {
 		$ECHO "          ${DUMP_SUB_DIR}/$DUMP_DATE/$CONFIG_BACKUP_FILE directory on this host"  
 		$ECHO "      -t, <schema.table1> dump the named table only for the database."
 		$ECHO "          Multiple tables can be specified with multiple -t option." 
-		$ECHO "      -T, <schema.table1,schema.table2...> exclude the named tables from the database dump"
+		$ECHO "      -T, <schema.table1> exclude the named tables from the database dump"
+		$ECHO "          Multiple tables can be specified with multiple -T option." 
 		$ECHO "      -G, use pg_dumpall to dump global objects, i.e. user accounts"
 		$ECHO "          Data will be dumped to ${DUMP_SUB_DIR}/$DUMP_DATE/${PG_DUMPALL_PREFIX}<timestamp>"
 		$ECHO "      -C, clean (drop) schema prior to create [default:- do not clean]"
@@ -540,11 +541,11 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:------------------------------------------------" 1
 		fi
 		fi
-		if [ x"" != x"$EXC_DUMP_TABLE_LIST" ];then
+		if [ ${#EXC_DUMP_TABLE_LIST[@]} -gt 0 ];then
 		LOG_MSG "[INFO]:------------------------------------------------" 1
 		LOG_MSG "[INFO]:-Table exclusion list" 1
 		LOG_MSG "[INFO]:------------------------------------------------" 1
-		for EXC_NAME in `$ECHO $EXC_DUMP_TABLE_LIST|$TR ',' ' '`
+		for EXC_NAME in "${EXC_DUMP_TABLE_LIST[@]}"
 		do
 		LOG_MSG "[INFO]:-Table name                       = $EXC_NAME" 1
 		done
@@ -655,7 +656,7 @@ CHK_DUMP_TABLE_LIST () {
 CHK_EXC_DUMP_TABLE_LIST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	NEW_LIST=()
-	for EXC_DUMP_NAME in `$ECHO $EXC_DUMP_TABLE_LIST|$TR -d ' '|$TR ',' ' '`
+	for EXC_DUMP_NAME in "${EXC_DUMP_TABLE_LIST[@]}"
 	do
 		if [ `$ECHO $EXC_DUMP_NAME|$GREP -c "\."` -ne 1 ];then
 			ERROR_EXIT "[FATAL]:-No schema name supplied for exclude table $EXC_DUMP_NAME" 2
@@ -682,7 +683,7 @@ CHK_EXC_DUMP_TABLE_LIST () {
 	if [ ${#NEW_LIST[@]} -eq 0 ];then
 		LOG_MSG "[WARN]:-All exclude table names have been removed due to issues, see log file" 1
 	else
-		EXC_DUMP_TABLE_LIST=`$ECHO ${NEW_LIST[@]}|$TR ' ' ','`
+		EXC_DUMP_TABLE_LIST=(${NEW_LIST[@]})
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -750,10 +751,10 @@ PROCESS_DUMP () {
 	do
 		DUMP_TEXT=$DUMP_TEXT" --table=${DUMP_TABLE_NAME}"
 	done
-	if [ x"" != x"$EXC_DUMP_TABLE_LIST" ];then
-		EXCLUDE_LIST=`$ECHO $EXC_DUMP_TABLE_LIST|$TR ',' ' '`
-		DUMP_TEXT=$DUMP_TEXT" --exclude-table=${EXCLUDE_LIST}"
-	fi
+	for EXC_DUMP_TABLE_NAME in "${EXC_DUMP_TABLE_LIST[@]}"
+	do
+		DUMP_TEXT=$DUMP_TEXT" --exclude-table=${EXC_DUMP_TABLE_NAME}"
+	done
 	for opt in ${OUTPUT_OPTIONS[@]}
 	do
 	    DUMP_TEXT=$DUMP_TEXT" $opt"
@@ -1030,7 +1031,7 @@ if [ $# -ne 0 ]; then
 				R ) RUN_PROG=$OPTARG ;;
 				B ) BATCH_DEFAULT=$OPTARG ;;
 				t ) DUMP_TABLE_LIST=(${DUMP_TABLE_LIST[@]} $OPTARG) ;;
-				T ) EXC_DUMP_TABLE_LIST=$OPTARG ;;
+				T ) EXC_DUMP_TABLE_LIST=(${EXC_DUMP_TABLE_LIST[@]} $OPTARG) ;;
 				h ) HISTORY=1 ;;
 			    u ) BACKUPFILEDIR=$OPTARG ;;
 			    y ) REPORTFILEDIR=$OPTARG ;;
@@ -1117,7 +1118,7 @@ if [ `$ECHO $DUMP_DATABASE|$GREP -c ","` -ne 0 ];then
 	if [ ${#DUMP_TABLE_LIST[@]} -gt 0 ];then
 		ERROR_EXIT "[FATAL]:-Cannot supply a table dump list if multiple database dump requested" 2
 	fi
-	if [ x"" != x"$EXC_DUMP_TABLE_LIST" ];then
+	if [ ${#EXC_DUMP_TABLE_LIST[@]} -gt 0 ];then
 		ERROR_EXIT "[FATAL]:-Cannot exclude specific tables if multiple database dump requested" 2
 	fi
 	DUMP_DATABASE_LIST=(`$ECHO $DUMP_DATABASE|$TR ',' ' '`)
@@ -1125,14 +1126,14 @@ if [ `$ECHO $DUMP_DATABASE|$GREP -c ","` -ne 0 ];then
 else
 	MULTIDB=0
 	DUMP_DATABASE_LIST=($DUMP_DATABASE)
-	if [ ${#DUMP_TABLE_LIST[@]} -gt 0 ] && [ x"" != x"$EXC_DUMP_TABLE_LIST" ];then
+	if [ ${#DUMP_TABLE_LIST[@]} -gt 0 ] && [ ${#EXC_DUMP_TABLE_LIST[@]} -gt 0 ];then
 		ERROR_EXIT "[FATAL]:-Cannot use -t and -T options at same time" 2
 	fi
 	if [ ${#DUMP_TABLE_LIST[@]} -gt 0 ];then
 		LOG_MSG "[INFO]:-Configuring for single database specific table dump" 1
 		CHK_DUMP_TABLE_LIST
 	else
-		if [ x"" != x"$EXC_DUMP_TABLE_LIST" ];then
+		if [ ${#EXC_DUMP_TABLE_LIST[@]} -gt 0 ];then
 			LOG_MSG "[INFO]:-Configuring for single database with table exclusion(s) dump" 1
 			CHK_EXC_DUMP_TABLE_LIST
 		else

@@ -8,7 +8,7 @@ SYNOPSIS
 *****************************************************
 
 gpcrondump -x <database_name> 
-[-s <schema> | -t <schema>.<table> | -T <schema>.<table>[,...]] 
+[-s <schema> | -t <schema>.<table> | -T <schema>.<table>, [-T ...]] 
 [-p | -w <dbid>[,...]] [-u <backup_directory>] 
 [-R <post_dump_script>] [-c | -o] [-z] [-r] [-f <free_space_percent>] 
 [-b] [-i] [-j | -k] [-g] [-G] [-C] [-d <master_data_directory>] 
@@ -213,8 +213,8 @@ Dump only the named table in this database.
 
 -T <schema>.<table_name>
 
-A comma-separated list of table names to exclude from 
-the database dump.
+A table name to exclude from the database dump. Multiple 
+table names could be specified with multiple -T options.
 
 
 -u <backup_directory>
