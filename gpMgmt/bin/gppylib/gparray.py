@@ -686,6 +686,9 @@ class GpArray:
         self.__strategyLoadedFromDb = strategyLoadedFromDb
         self.__strategy = FAULT_STRATEGY_NONE
 
+        self.san_mount_by_dbid = {}
+        self.san_mounts = {}
+
         for segdb in segments:
 
             # Handle QD nodes
@@ -760,6 +763,21 @@ class GpArray:
                 ORDER BY content, preferred_role DESC, fs.oid
             ''')
 
+            san_segs_rows = dbconn.execSQL(conn, '''
+                SELECT dbid, content, status, unnest(san_mounts)
+                FROM pg_catalog.gp_segment_configuration
+                WHERE content >= 0
+                ORDER BY content, dbid
+            ''')
+
+            san_rows = dbconn.execSQL(conn, '''
+                SELECT mountid, active_host, san_type,
+                       primary_host, primary_mountpoint, primary_device,
+                       mirror_host, mirror_mountpoint, mirror_device
+                FROM pg_catalog.gp_san_configuration
+                ORDER BY mountid
+            ''')
+
         elif version.getVersionRelease() in ("3.0", "3.1", "3.2", "3.3"):
 
             # In older releases we get the fault strategy using the 
@@ -791,6 +809,10 @@ class GpArray:
                 FROM pg_catalog.gp_configuration
                 ORDER BY content, preferred_role DESC
             ''' % str(SYSTEM_FILESPACE))
+
+            # No SAN support in these older releases.
+            san_segs_rows = []
+            san_rows = []
 
         else:
             logger.error("Unsupported version: %s" % str(version))
@@ -830,6 +852,7 @@ class GpArray:
         array = GpArray(segments, origSegments, strategy)
         array.__version = version
         array.setFaultStrategy(strategy)
+        array.setSanConfig(san_rows, san_segs_rows)
         return array
 
     # --------------------------------------------------------------------
@@ -866,6 +889,47 @@ class GpArray:
         for gpdb in self.getDbList():
             fp.write(repr(gpdb) + '\n')
         fp.close()
+
+    # --------------------------------------------------------------------
+    def setSanConfig(self, san_row_list, san_segs_list):
+        """
+        Sets up the san-config.
+
+        san_row_list is essentially the contents of gp_san_config (which may be empty)
+
+        san_segs_list is the content of the san_mounts field of gp_segment_configuration
+        (also potentially empty), unnested.
+
+        These are raw results sets. We build two maps:
+          Map1: from dbid to a list of san-mounts.
+          Map2: from mount-id to the san_config attributes.
+          
+        The code below has to match the SQL inside initFromCatalog()
+        """
+        dbid_map = {}
+        for row in san_segs_list:
+            (dbid, content, status, mountid) = row
+            if dbid_map.has_key(dbid):
+                (status, mount_list) = dbid_map[dbid]
+                dbid_map[dbid] = (status, mount_list.append(mountid))
+            else:
+                dbid_map[dbid] = (status, [mountid])
+        # dbid_map now contains a flat mapping from dbid -> (status, list of mountpoints)
+
+        san_map = {}
+        for row in san_row_list:
+            (mountid, active, type, p_host, p_mp, p_dev, m_host, m_mp, m_dev) = row
+            san_map[mountid] = {'active':active, 'type':type,
+                                'primaryhost':p_host, 'primarymountpoint':p_mp, 'primarydevice':p_dev,
+                                'mirrorhost':p_host, 'mirrormountpoint':p_mp, 'mirrordevice':p_dev
+                                }
+
+        self.san_mount_by_dbid = dbid_map
+        self.san_mounts = san_map
+
+    # --------------------------------------------------------------------
+    def getSanConfigMaps(self):
+        return (self.san_mounts, self.san_mount_by_dbid)
 
     # --------------------------------------------------------------------
     def setFaultStrategy(self, strategy):
@@ -994,11 +1058,10 @@ class GpArray:
 
     # --------------------------------------------------------------------
     def get_inactive_mirrors_segdbs(self):
-        dbs=[]
-
         if self.__strategy != FAULT_STRATEGY_SAN:
-            return dbs
+            return []
 
+        dbs=[]
         for seg in self.segments:
             segdb = seg.primaryDB
             for db in seg.mirrorDBs:

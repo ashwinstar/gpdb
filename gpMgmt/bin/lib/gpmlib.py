@@ -109,7 +109,7 @@ def fatal(msg):
 #############
 def findCmdInPath_noerror(cmd):
     CMDPATH = ('/usr/kerberos/bin', '/usr/sfw/bin', '/opt/sfw/bin', '/usr/local/bin', '/bin', 
-               '/usr/bin', '/sbin', '/usr/sbin', '/usr/ucb', '/sw/bin')
+               '/usr/bin', '/sbin', '/usr/sbin', '/usr/ucb', '/sw/bin', '/opt/Navisphere/bin')
 
     for p in CMDPATH:
         f = os.path.join(p, cmd)
@@ -280,13 +280,16 @@ class Env:
         self.ECHO = findCmdInPath('echo')
         self.EXPR = findCmdInPath('expr')
         self.FIND = findCmdInPath('find')
+
+        self.GP_MOUNT_AGENT = findCmdInPath_noerror('gp_mount_agent') # GPDB supplied, but only required for SAN.
+
         self.GREP = findCmdInPath('grep')
         self.GZIP = findCmdInPath('gzip')
         self.EGREP = findCmdInPath('egrep')
         self.HEAD = findCmdInPath('head')
         self.HOSTNAME = findCmdInPath('hostname')
 
-        self.INQ = findCmdInPath_noerror('inq') # not available on every system.
+        self.INQ = findCmdInPath_noerror('inq') # SAN-specific not available on every system.
 
         self.IPCS = findCmdInPath('ipcs')
         self.IFCONFIG = findCmdInPath('ifconfig')
@@ -300,8 +303,14 @@ class Env:
 
         self.MKDIR = findCmdInPath('mkdir')
         self.MKFIFO = findCmdInPath('mkfifo')
+
+        self.NAVISECCLI = findCmdInPath_noerror('naviseccli') # SAN-specific not available on every system.
+
         self.NETSTAT = findCmdInPath('netstat')
         self.PING = findCmdInPath('ping')
+
+        self.POWERMT = findCmdInPath_noerror('powermt') # SAN-specific not available on every system.
+
         self.PS = findCmdInPath('ps')
         self.RM = findCmdInPath('rm')
         self.SCP = findCmdInPath('scp')
@@ -310,6 +319,9 @@ class Env:
         self.SORT = findCmdInPath('sort')
         self.SPLIT = findCmdInPath('split')
         self.SSH = findCmdInPath('ssh')
+
+        self.STAT = findCmdInPath_noerror('stat') # Only required for SAN.
+
         self.TAIL = findCmdInPath('tail')
         self.TAR = findCmdInPath('tar')
         self.TEE = findCmdInPath('tee')

@@ -300,11 +300,10 @@ class GpStop():
 
         else:
             logger.info("Commencing parallel segment instance shutdown, please wait...")
+            # There are no active-mirrors
+            self._stopseg_cmds(True, False)
+            success_seg_status = self._process_segment_stop(failed_seg_status)
 
-            stopMirrors = (strategy != FAULT_STRATEGY_SAN)
-
-            self._stopseg_cmds(True, stopMirrors) # second arg shouldn't matter
-            success_seg_status = self._process_segment_stop(failed_seg_status)    
             self._print_segment_stop(segs,failed_seg_status,success_seg_status)            
         pass
     
@@ -375,10 +374,11 @@ class GpStop():
     
     
     ######
-    def _print_segment_stop(self,segs,failed_seg_status,success_seg_status):
+    def _print_segment_stop(self, segs, failed_seg_status, success_seg_status):
         stopped = len(segs) - len(failed_seg_status)         
         failed = len(failed_seg_status)
         invalid = self.gparray.get_invalid_segdbs()
+        inactive = self.gparray.get_inactive_mirrors_segdbs()
         total_segs = len(self.gparray.getSegDbList())
         logger.info("------------------------------------------------")
         logger.info("Parallel process exit status")
@@ -406,7 +406,7 @@ class GpStop():
             logger.info("Total instances marked invalid and bypassed = 0 ")
         logger.info("Successfully shutdown %d of %d segment instances %s" % (stopped,total_segs,flag))
          
-        total_failures=failed + len(invalid)
+        total_failures=failed + len(invalid) - len(inactive)
         if total_failures > 0:
             self.hadFailures=True
             logger.warning("------------------------------------------------")
