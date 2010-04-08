@@ -82,6 +82,12 @@ int64 getMOPHighWaterMark(void)
     return 0;
 }
 
+int
+MemProtSemas(void)
+{
+	return 0;
+}
+
 #else
 
 /* Helpers */
@@ -553,6 +559,16 @@ int gpmemprot_peek_sem(PGSemaphoreData *psem)
             write_log("Greenplum memory protection failed to get memory counter: %m");
     }
 	return ret;
+}
+
+int
+MemProtSemas(void)
+{
+#ifdef USE_FAULT_INJECTION
+	return 2;
+#else
+	return 1;
+#endif
 }
 
 #ifdef USE_FAULT_INJECTION

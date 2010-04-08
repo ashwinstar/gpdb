@@ -144,6 +144,7 @@ extern void pgport_pfree(void *pointer);
 extern void GPMemoryProtectInit(void);
 extern void GPMemoryProtectReset(void);
 extern int64 getMOPHighWaterMark(void);
+extern int MemProtSemas(void);
 
 #ifdef USE_SYSV_SEMAPHORES
 extern void *gp_malloc(int64 sz); 

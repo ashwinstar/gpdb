@@ -216,6 +216,9 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		 */
 		numSemas = ProcGlobalSemas();
 		numSemas += SpinlockSemas();
+
+		numSemas += MemProtSemas(); /* memory protection */
+
 		if (GPAreFileReplicationStructuresRequired()) 
 		{
 			numSemas += FileRepSemas();
