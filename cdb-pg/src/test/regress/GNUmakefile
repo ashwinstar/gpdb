@@ -23,7 +23,7 @@ TEMP_PORT = 5$(DEF_PGPORT)
 PSQLDIR = $(bindir)
 
 # default encoding
-MULTIBYTE = LATIN1
+##MULTIBYTE = LATIN1
 
 # maximum simultaneous connections for parallel tests
 MAXCONNOPT =
