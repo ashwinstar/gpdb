@@ -112,7 +112,8 @@ PROCESS_QE () {
     if [ x"" != x"$COPY_FROM_PRIMARY_HOSTADDRESS" ]; then
         LOG_MSG "[INFO]:-Copying data for mirror on ${GP_HOSTADDRESS} using remote copy from primary ${COPY_FROM_PRIMARY_HOSTADDRESS} ..." 1
         RUN_COMMAND_REMOTE ${COPY_FROM_PRIMARY_HOSTADDRESS} "${EXPORT_GPHOME}; . ${GPHOME}/greenplum_path.sh; ${GPHOME}/bin/lib/pysync.py -x pg_log -x postgresql.conf -x postmaster.pid ${COPY_FROM_PRIMARY_DIR} ${GP_HOSTADDRESS}:${GP_DIR}"
-        PARA_EXIT $? "remote copy of segment data directory to ${GP_HOSTADDRESS}"
+        RETVAL=$?
+        PARA_EXIT $RETVAL "remote copy of segment data directory from ${COPY_FROM_PRIMARY_HOSTADDRESS} to ${GP_HOSTADDRESS}"
 	fi
 
 	# Configure postgresql.conf

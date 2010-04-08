@@ -1473,11 +1473,12 @@ RUN_COMMAND_REMOTE () {
 		$TRUSTED_SHELL $HOST $COMMAND >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-			ERROR_EXIT "[FATAL]:- Command $COMMAND on $HOST failed with error status $RETVAL" 2
+			LOG_MSG "[FATAL]:- Command $COMMAND on $HOST failed with error status $RETVAL" 2
 		else
 			LOG_MSG "[INFO]:-Completed $TRUSTED_SHELL $HOST $COMMAND"
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
+		return $RETVAL
 }
 
 BACKOUT_COMMAND () {

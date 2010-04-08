@@ -273,8 +273,18 @@ DELETE_CLUSTER () {
 	$RM -f $PARALLEL_STATUS_FILE
 	if [ $STANDBY_COUNT -ne 0 ];then
 		LOG_MSG "[INFO]:-Processing Master standby host $STANDBY_HOSTNAME" 1
-		RUN_COMMAND_REMOTE $STANDBY_HOSTNAME "$RM -Rf $STANDBY_DATADIR"
-		RUN_COMMAND_REMOTE $STANDBY_HOSTNAME "$RM -f ${STANDBY_DATADIR}.log"
+		COMMAND="$RM -Rf $STANDBY_DATADIR"
+		RUN_COMMAND_REMOTE $STANDBY_HOSTNAME "$COMMAND"
+		RETVAL=$?
+	    if [ $RETVAL -ne 0 ]; then
+			ERROR_EXIT "[FATAL]:- Command $COMMAND failed with error status $RETVAL" 2
+	    fi
+	    COMMAND="$RM -f ${STANDBY_DATADIR}.log"
+		RUN_COMMAND_REMOTE $STANDBY_HOSTNAME "$COMMAND"
+		RETVAL=$?
+	    if [ $RETVAL -ne 0 ]; then
+			ERROR_EXIT "[FATAL]:- Command $COMMAND failed with error status $RETVAL" 2
+	    fi		
 	fi
 	LOG_MSG "[INFO]:-Processing Master host $MASTER_HOSTNAME" 1
 	CWD=`pwd`

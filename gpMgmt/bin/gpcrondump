@@ -700,7 +700,13 @@ PROCESS_DUMP_CONFIG () {
 	do
 	    CONFIG_BACKUP_FILE=gp_segment_config_files_0_${DBID}_${TIMESTAMP_KEY}.tar
 	    CHK_DATA
-	    RUN_COMMAND_REMOTE ${DIR_HOST} "$TAR cf ${DIR}/${DUMP_SUB_DIR}/${DUMP_DATE}/${CONFIG_BACKUP_FILE} ${DIR_DATA}/*.conf"
+		COMMAND="$TAR cf ${DIR}/${DUMP_SUB_DIR}/${DUMP_DATE}/${CONFIG_BACKUP_FILE} ${DIR_DATA}/*.conf"
+		RUN_COMMAND_REMOTE ${DIR_HOST} "$COMMAND"
+		RETVAL=$?
+		if [ $RETVAL -ne 0 ]; then
+			ERROR_EXIT "[FATAL]:- Command $COMMAND on ${DIR_HOST} failed with error status $RETVAL" 2
+		fi
+	    
 	done
 	DUMP_CONFIG=0
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
