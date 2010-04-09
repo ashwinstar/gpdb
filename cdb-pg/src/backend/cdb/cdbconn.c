@@ -289,12 +289,39 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
         appendPQExpBufferChar(&buffer, ' ');
     }
 
-    if ( q->hostname == NULL )
+	/*
+	 * First we pick the cached hostip if we have it.
+	 *
+	 * If we don't have a cached hostip, we use the host->address,
+	 * if we don't have that we fallback to host->hostname.
+	 */
+	if (q->hostip != NULL)
+	{
+        appendPQExpBuffer(&buffer, "hostaddr=%s ", q->hostip);
+	}
+	else if (q->address != NULL)
+	{
+		if (isdigit(q->address[0]))
+		{
+			appendPQExpBuffer(&buffer, "hostaddr=%s ", q->address);
+		}
+		else
+		{
+			appendPQExpBuffer(&buffer, "host=%s ", q->address);
+		}
+	}
+    else if (q->hostname == NULL)
+	{
         appendPQExpBufferStr(&buffer, "host='' " );
-    else if ( isdigit(q->hostname[0]) )
-        appendPQExpBuffer(&buffer, "hostaddr=%s ", q->hostname );
+	}
+    else if (isdigit(q->hostname[0]))
+	{
+        appendPQExpBuffer(&buffer, "hostaddr=%s ", q->hostname);
+	}
     else
-        appendPQExpBuffer(&buffer, "host=%s ", q->hostname );
+	{
+        appendPQExpBuffer(&buffer, "host=%s ", q->hostname);
+	}
 
     appendPQExpBuffer(&buffer, "port=%u ", q->port);
 
@@ -374,118 +401,6 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
     free(buffer.data);
     return segdbDesc->conn != NULL;
 }                               /* cdbconn_doConnect */
-
-/* Connect to a DA as a client via libpq. */
-/*
- * Almost the same as doConnect, but dispatch agents don't have
- * motion listeners
- */
-bool                            /* returns true if connected */
-cdbconn_doDispatchAgentConnect(SegmentDatabaseDescriptor    *segdbDesc,
-                  const char                   *options)
-{
-    CdbComponentDatabaseInfo   *q = segdbDesc->segment_database_info;
-    PQExpBufferData             buffer;
-
-    /*
-     * We use PQExpBufferData instead of StringInfoData
-     * because the former uses malloc, the latter palloc.
-     * We are in a thread, and we CANNOT use palloc since it's not
-     * thread safe.  We cannot call elog or ereport either for the
-     * same reason.
-     */
-    initPQExpBuffer(&buffer);
-
-    /*
-     * Build the connection string
-     */
-    if (options)
-    {
-        appendPQExpBufferStr(&buffer, options);
-        appendPQExpBufferChar(&buffer, ' ');
-    }
-
-    if ( q->hostname == NULL )
-        appendPQExpBufferStr(&buffer, "host='' " );
-    else if ( isdigit(q->hostname[0]) )
-        appendPQExpBuffer(&buffer, "hostaddr=%s ", q->hostname );
-    else
-        appendPQExpBuffer(&buffer, "host=%s ", q->hostname );
-
-    appendPQExpBuffer(&buffer, "port=%u ", q->port);
-
-    if (MyProcPort->database_name)
-        appendPQExpBuffer(&buffer, "dbname=%s ", MyProcPort->database_name);
-
-    appendPQExpBuffer(&buffer, "user=%s ", MyProcPort->user_name);
-
-    appendPQExpBuffer(&buffer, "connect_timeout=%d ", gp_segment_connect_timeout);
-
-    /*
-     * Call libpq to connect
-     */
-    segdbDesc->conn = PQconnectdb(buffer.data);
-
-
-    /* Build whoami string to identify the QE for use in messages. */
-    if(!cdbconn_setSliceIndex(segdbDesc, -1))
-    {
-	    if (!segdbDesc->errcode)
-		    segdbDesc->errcode = ERRCODE_GP_INTERCONNECTION_ERROR;
-
-	    /* Don't use elog, it's not thread-safe */
-	    if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
-		    write_log("%s\n", segdbDesc->error_message.data);
-
-	    PQfinish(segdbDesc->conn);
-	    segdbDesc->conn = NULL;
-    }
-
-    /*
-     * Check for connection failure.
-     */
-    if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)
-    {
-        if (!segdbDesc->errcode)
-            segdbDesc->errcode = ERRCODE_GP_INTERCONNECTION_ERROR;
-        appendPQExpBuffer(&segdbDesc->error_message,
-                          "Master unable to connect to DA  %s with options %s: %s\n",
-                          segdbDesc->whoami,
-                          buffer.data,
-                          PQerrorMessage(segdbDesc->conn));
-
-        /* Don't use elog, it's not thread-safe */
-        if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
-            write_log("%s\n", segdbDesc->error_message.data);
-
-        PQfinish(segdbDesc->conn);
-        segdbDesc->conn = NULL;
-    }
-    /*
-     * Successfully connected.
-     */
-    else
-    {
-    	PQsetNoticeReceiver(segdbDesc->conn, &MPPnoticeReceiver, segdbDesc);
-        /* Command the QE to initialize its motion layer.
-         * Wait for it to respond giving us the TCP port number
-         * where it listens for connections from the gang below.
-         */
-
-        segdbDesc->backendPid = PQbackendPID(segdbDesc->conn);
-
-        /* Don't use elog, it's not thread-safe */
-        if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
-            write_log("Connected to %s motionListener=%d/%d with options %s\n",
-						 segdbDesc->whoami,
-						 (segdbDesc->motionListener & 0x0ffff),
-						 ((segdbDesc->motionListener>>16) & 0x0ffff),
-						 buffer.data);
-    }
-
-    free(buffer.data);
-    return segdbDesc->conn != NULL;
-}                               
 
 /* Build text to identify this QE in error messages. */
 bool

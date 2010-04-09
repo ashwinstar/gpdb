@@ -79,14 +79,9 @@ bool                            /* returns true if connected */
 cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
                   const char                   *options);
 
-bool                            /* returns true if connected */
-cdbconn_doDispatchAgentConnect(SegmentDatabaseDescriptor    *segdbDesc,
-                  const char                   *options);
-
 /* Set the slice index for error messages related to this QE. */
 bool
 cdbconn_setSliceIndex(SegmentDatabaseDescriptor    *segdbDesc,
                       int                           sliceIndex);
-
 
 #endif   /* CDBCONN_H */
