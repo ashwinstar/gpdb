@@ -68,7 +68,7 @@ class Global():
     opt['-S'] = 0
     opt['-h'] = []
     opt['-f'] = None
-    opt['--duration'] = 0
+    opt['--duration'] = 15  # default to 15s
     opt['--net'] = None
 
 GV = Global()
@@ -209,6 +209,10 @@ def parseCommandLine():
         elif (switch == '--duration'): GV.opt[switch] = parseDuration(val)
         elif (switch == '--version'): print_version()
 
+    # run default tests (if not specified)
+    if GV.opt['-r'] == '':
+        GV.opt['-r'] = 'dsN'
+
     # parse netperf test type, error if more than one specified
     netcount = 0
     if GV.opt['-r'].find('n') >= 0: 
@@ -243,8 +247,9 @@ def parseCommandLine():
     else:
         GV.opt['-S'] /= len(GV.opt['-d'])
 
-    if GV.opt['--duration'] == 0:
-        GV.opt['--duration'] = 5
+    if GV.opt['--duration'] <= 0:
+        GV.opt['--duration'] = 15
+        print '[INFO] Invalid network duration specified.  Using default (15 seconds)'
 
     # strip the last '/' from the dir
     dd = []
