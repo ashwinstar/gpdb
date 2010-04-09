@@ -139,14 +139,11 @@ void AppendOnlyStorageRead_Init(
 		BufferedReadMemoryLen(
 					storageRead->maxBufferLen,
 					storageRead->largeReadLen);
-	
-	oldMemoryContext = MemoryContextSwitchTo(storageRead->memoryContext);
-	
+
+	Assert(CurrentMemoryContext == storageRead->memoryContext);
 	memory = (uint8*)palloc(memoryLen);
 
-	MemoryContextSwitchTo(oldMemoryContext);
-
-	BufferedReadInit(&storageRead->bufferedRead, 
+	BufferedReadInit(&storageRead->bufferedRead,
 					 memory,
 					 memoryLen, 
 					 storageRead->maxBufferLen, 
