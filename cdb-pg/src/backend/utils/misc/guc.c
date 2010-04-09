@@ -1039,7 +1039,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&pgstat_track_counts,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 
 	{
