@@ -19,6 +19,8 @@ Options:
 
   --replication_port_base PORT
   --mirror_replication_port_base PORT
+
+  --gpperfmonhome DIRECTORY
 '''
 
 #============================================================
@@ -389,6 +391,9 @@ class GPUpgrade:
             parser.add_option('--mirror_replication_port_base', type="int",
                               help=optparse.SUPPRESS_HELP)
 
+            parser.add_option('--gpperfmonhome',
+                              help=optparse.SUPPRESS_HELP)
+
             parser.add_option('--nosnapshot', action='store_true',
                               help=optparse.SUPPRESS_HELP)
             parser.add_option('--resume', action='store_true',
@@ -558,6 +563,9 @@ class GPUpgrade:
                 options.replication_port_base
             self.config['MIRROR_REPLICATION_PORT_BASE'] = \
                 options.mirror_replication_port_base
+            self.config['GPPERFMONHOME'] = \
+                options.gpperfmonhome
+
 
 
     #------------------------------------------------------------
@@ -1769,6 +1777,21 @@ class GPUpgrade:
         if standbymaster > 0:
             raise UpgradeError('Cannot upgrade while standbymaster is running')
 
+        # -- If there is a perfmon database then we must be able to stop the
+        # running perfmonitor, which requires a gpperfmonhome.
+        logger.debug('Checking gpperfmon')
+        for dboid, dbname in self.dbs.iteritems():
+            if dbname == 'gpperfmon':
+                if not self.config['GPPERFMONHOME']:
+                    logger.fatal("  missing option:  "
+                                 "--gpperfmonhome=<path>")
+                    raise UpgradeError("Missing required upgrade options")
+                else:
+                    envsetup = os.path.join(self.config['GPPERFMONHOME'],
+                                            "gpperfmon_path.sh")
+                    if not os.path.exists(envsetup):
+                        raise UpgradeError("%s: No such file or directory" % envsetup)
+
         # To upgrade mirrors from 3.3 format mirrors to 4.0 format mirrors we 
         # must have been provided with the replication ports.
         if len(self.mirrors) > 0:
@@ -1885,6 +1908,7 @@ class GPUpgrade:
         # MAX_CONNECTIONS
         self.config['MAX_CONNECTIONS'] = \
             self.Select('show max_connections')[0]
+
 
         logger.info('Configuration acquired')
 
@@ -2740,7 +2764,6 @@ class GPUpgrade:
             # but the gp_persistent creation requires reading in a bunch
             # of user tables to handle part of the ao conversion.
             self.DeepLink('SKELETON')
-            logger.info('... cloning catalog')
 
             # Once that is done make a REAL copy (not hardlink) of the
             # actual catalog tables
@@ -2844,6 +2867,9 @@ class GPUpgrade:
                     left = os.path.join(src, f)
                     right = os.path.join(dst, f)
                     #logger.debug('linking %s to %s' % (left, right))
+                    
+                    if os.path.exists(right):
+                        os.remove(right)
                     os.link(left, right)
                 else:
                     do_copy(src, dst, f)
@@ -3114,16 +3140,19 @@ class GPUpgrade:
         conf_re = re.compile('^(.*max_resource_queues\s*=\s*)(\d+)(.*)$')
         for olddir in datadirs:
             (d, seg) = os.path.split(olddir)
-            
+            phase = 0
+
             # The directory for this segment
             dir = os.path.join(d, WORKDIR, UPGRADEDIR, seg)
             for i in range(len(rfs)):
-                logger.info('Pass %d' % i)
+                logger.info('Pass %d' % phase)
                 transform(dir, dbs, rfs[i])
+                phase += 1
 
             # gp_persistent table handling:
             #    - must populate template1 first
-            logger.info('Pass %d' % len(rfs))
+            logger.info('Pass %d' % phase)
+            phase += 1
             for dboid, dbname in dbs.iteritems():
                 if dbname != 'template1':
                     continue
@@ -3153,6 +3182,16 @@ class GPUpgrade:
                     file = os.path.join(d, WORKDIR, 'persistent_segment.sql')
                 transform_db(dir, dbname, dboid, file)
                 logger.info('... ' + dbname)      
+
+            # Handle perfmon upgrade
+            for dboid, dbname in dbs.iteritems():
+                if dbname != 'gpperfmon':
+                    continue
+                logger.info('Pass %d' % phase)
+                phase += 1
+                file = "%s/lib/gpperfmon/gpperfmon4.sql" % h
+                transform_db(dir, dbname, dboid, file)
+                logger.info('... ' + dbname)
 
             # ao file too -- must be last because we
             # use this file to VACUUM FREEZE template databases
@@ -3569,11 +3608,19 @@ class GPUpgrade:
                 self.SetState('BOOTSTRAP: ' + self.RunCmd('date +%Y%m%d:%H:%M:%S'))
                 self.SetState('CREATE_DIRS')
     
+            # Stop gpperfmon, if it is installed
+            for dboid, dbname in self.dbs.iteritems():
+                if dbname == 'gpperfmon':
+                    logger.info("Stopping gpperfmon")
+                    self.oldenv['GPPERFMONHOME'] = self.config['GPPERFMONHOME']
+                    self.oldenv['PATH'] += ":%s/bin" % self.config['GPPERFMONHOME']
+                    self.RunCmd("gpperfmon --stop", env=self.oldenv)
+
             # Check the catalog
             if 'CHECKCAT' not in current_state and self.checkcat:
                 self.CheckCatalog()
                 self.SetState('CHECKCAT')
-        
+
             # SetupLockdown:
             # + Requires the database to be up
             # + Creates the upgrade user
@@ -3600,7 +3647,7 @@ class GPUpgrade:
             if 'EXTRACTAOSEGS' not in current_state:
                 self.ExtractAosegs()
                 self.SetState('EXTRACTAOSEGS')
-    
+
             # All information collected, shutdown old database
             #  - We can't release the lockdown yet because we rely on copying
             #    the lockdown files when building the upgraded version
