@@ -339,83 +339,95 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
         }
     }
 
-    if ( doAssignment)
+    if ( ! doAssignment )
     {
-        switch (fileRepState) {
-            case FileRepStateNotInitialized:
-            case FileRepStateInitialization:
-
-                fileRepState = fileRepStateLocal;
-                break;
-            case FileRepStateReady:
-
-                switch (fileRepStateLocal) {
-                    case FileRepStateFault:
-                    case FileRepStateImmediateShutdown:
-                    case FileRepStateShutdown:
-                        fileRepState = fileRepStateLocal;
-                        break;
-                    case FileRepStateNotInitialized:
-                    case FileRepStateInitialization:
-                        Assert(0);
-                        break;
-                    case FileRepStateReady:
-                        break;
-                    default:
-                        Assert(0);
-                        break;
-                }
-                break;
-            case FileRepStateFault:
-
-                switch (fileRepStateLocal) {
-                    case FileRepStateFault:
-                    case FileRepStateImmediateShutdown:
-                    case FileRepStateShutdown:
-                        fileRepState = fileRepStateLocal;
-                        break;
-                    case FileRepStateNotInitialized:
-                    case FileRepStateInitialization:
-                    case FileRepStateReady:
-                        Assert(0);
-                        break;
-                    default:
-                        Assert(0);
-                        break;
-                }
-
-                break;
-            case FileRepStateShutdownBackends:
-                Assert(!"process filerep state should never be in ShutdownBackends");
-                break;
-            case FileRepStateShutdown:
-
-                switch (fileRepStateLocal) {
-                    case FileRepStateImmediateShutdown:
-                    case FileRepStateShutdown:
-                        fileRepState = fileRepStateLocal;
-                        break;
-                    case FileRepStateNotInitialized:
-                    case FileRepStateInitialization:
-                    case FileRepStateReady:
-                        Assert(0);
-                    case FileRepStateFault:
-                        break;
-                    default:
-                        Assert(0);
-                        break;
-                }
-
-                break;
-            case FileRepStateImmediateShutdown:
-
-                break;
-            default:
-                Assert(0);
-                break;
-        }
+        return;
     }
 
+    switch (fileRepState) {
+        case FileRepStateNotInitialized:
+        case FileRepStateInitialization:
+
+            fileRepState = fileRepStateLocal;
+            break;
+        case FileRepStateReady:
+
+            switch (fileRepStateLocal) {
+                case FileRepStateFault:
+                case FileRepStateImmediateShutdown:
+                case FileRepStateShutdown:
+                    fileRepState = fileRepStateLocal;
+                    break;
+                case FileRepStateNotInitialized:
+                    Assert(0);
+                    break;
+                case FileRepStateInitialization:
+                    /* don't do assignment -- this can happen when going from segmentState Ready to InSyncTransition */
+                    doAssignment = false;
+                    break;
+                case FileRepStateReady:
+                    break;
+                default:
+                    Assert(0);
+                    break;
+            }
+            break;
+        case FileRepStateFault:
+
+            switch (fileRepStateLocal) {
+                case FileRepStateFault:
+                case FileRepStateImmediateShutdown:
+                case FileRepStateShutdown:
+                    fileRepState = fileRepStateLocal;
+                    break;
+                case FileRepStateNotInitialized:
+                case FileRepStateInitialization:
+                case FileRepStateReady:
+                    Assert(0);
+                    break;
+                default:
+                    Assert(0);
+                    break;
+            }
+
+            break;
+        case FileRepStateShutdownBackends:
+            Assert(!"process filerep state should never be in ShutdownBackends");
+            break;
+        case FileRepStateShutdown:
+
+            switch (fileRepStateLocal) {
+                case FileRepStateImmediateShutdown:
+                case FileRepStateShutdown:
+                    fileRepState = fileRepStateLocal;
+                    break;
+                case FileRepStateNotInitialized:
+                case FileRepStateInitialization:
+                case FileRepStateReady:
+                    Assert(0);
+                case FileRepStateFault:
+                    break;
+                default:
+                    Assert(0);
+                    break;
+            }
+
+            break;
+        case FileRepStateImmediateShutdown:
+
+            break;
+        default:
+            Assert(0);
+            break;
+    }
+
+    /* check doAssignment again -- may have changed value in the switch above */
+    if ( ! doAssignment )
+    {
+        return;
+    }
+
+    /* now update in shared memory if needed */
 	switch (fileRepState) {
 		case FileRepStateReady:
 			if (updateSegmentState(SegmentStateReady)) {
@@ -448,7 +460,8 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
             Assert(0);
             break;
 	}
-	
+
+	/* report the change */
 	if (fileRepState != FileRepStateShutdown &&
 		fileRepState != FileRepStateImmediateShutdown)
 	{
