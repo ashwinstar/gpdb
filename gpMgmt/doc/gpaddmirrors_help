@@ -8,18 +8,16 @@ initially configured without mirroring.
 SYNOPSIS
 *****************************************************
 
-gpaddmirrors [-d master_data_directory] -p port_offset 
-[-m datadir_config_file] [-s] [-a] [-B parallel_processes] 
-[-l logfile_directory] [-D]
 
-gpaddmirrors [-d master_data_directory] -m datadir_config_file 
-[-p port_offset] [-s] [-a] [-B parallel_processes] 
-[-l logfile_directory] [-D]
+gpaddmirrors [-p <port_offset>] [-m <datadir_config_file> [-a]] [-s] 
+             [-d <master_data_directory>] [-B <parallel_processes>] 
+             [-l <logfile_directory>] [-v]
 
-gpaddmirrors [-d master_data_directory] -i mirror_config_file 
-[-s] [-a] [-B parallel_processes] [-l logfile_directory] [-D]
+gpaddmirrors -i <mirror_config_file> [-s] [-a] 
+             [-d <master_data_directory>] [-B <parallel_processes>] 
+             [-l <logfile_directory>] [-v]
 
-gpaddmirrors -o <output_sample_mirror_config>
+gpaddmirrors -o <output_sample_mirror_config> [-m <datadir_config_file>]
 
 gpaddmirrors -? 
 
@@ -32,178 +30,204 @@ DESCRIPTION
 
 The gpaddmirrors utility configures mirror segment instances for 
 an existing Greenplum Database system that was initially configured 
-with primary segment instances only. The utility will shut down your 
-Greenplum Database system while it creates the mirrors, and then restart 
-it with mirroring enabled.
+with primary segment instances only. The utility will create the 
+mirror instances and begin the online replication process between 
+the primary and mirror segment instances. Once all mirrors are 
+synchronized with their primaries, your Greenplum Database system 
+is fully data redundant.
 
-CREATING MIRROR DATA DIRECTORIES
+By default, the utility will prompt you for the file system 
+location(s) where it will create the mirror segment data directories. 
+If you do not want to be prompted, you can pass in a file containing 
+the file system locations using the -m option.
 
-By default, the utility will prompt you for the data storage location(s) 
-where it will create the mirror segment data directories. The utility 
-will create a unique data directory for each mirror segment instance in 
-this location using a predefined naming convention. There must be the same 
-number of data directories declared for mirror segment instances as for 
-primary segment instances. It is OK to specify the same directory name 
-multiple times if you want your mirror data directories created in the 
-same location, or you can enter a different data location for each mirror. 
-Enter the absolute path. For example:
+The mirror locations must be different than your primary segment 
+data locations. If you have created additional filespaces (with 
+CREATE FILESPACE or gpfilespace), you will also be prompted for 
+mirror locations for each of your filespaces.
 
-Enter mirror segment instance directory 1 of 2 > /gpxb/mirror
+The utility will create a unique data directory for each mirror 
+segment instance in the specified location using the predefined 
+naming convention. There must be the same number of file system 
+locations declared for mirror segment instances as for primary 
+segment instances. It is OK to specify the same directory name 
+multiple times if you want your mirror data directories created 
+in the same location, or you can enter a different data location 
+for each mirror. Enter the absolute path. For example:
 
-Enter mirror segment instance directory 2 of 2 > /gpxb/mirror
+Enter mirror segment data directory location 1 of 2 > /gpdb/mirror
+
+Enter mirror segment data directory location 2 of 2 > /gpdb/mirror
 
 OR
 
-Enter mirror segment instance directory 1 of 2 > /gpxb/m1
+Enter mirror segment data directory location 1 of 2 > /gpdb/m1
 
-Enter mirror segment instance directory 2 of 2 > /gpxb/m2
+Enter mirror segment data directory location 2 of 2 > /gpdb/m2
 
 Alternatively, you can run the gpaddmirrors utility and supply a 
-configuration file containing the mirror host names and data directory 
-locations (-m option). This is useful if you want your mirror segments 
-on a completely different set of hosts than your primary segments. 
-The format of the mirror configuration file is:
+detailed configuration file using the -i option. This is useful if 
+you want your mirror segments on a completely different set of 
+hosts than your primary segments. The format of the mirror 
+configuration file is:
 
-mirror[<content_id_number>]=<hostname>:<port>:<datadir_location>
+mirror[<content>]=<content>:<hostname>:<address>:<port>:<mir_replication_port>:<pri_replication_port>:<fselocation>
 
-The content_id_number is used to match a primary segment to its 
-corresponding mirror segment. This corresponds to the content attribute 
-in the gp_configuration system catalog table. The hostname is the host 
-name of the segment host you are adding. If using a multi-NIC 
-configuration, use the per-interface host names configured for the 
-segment host. You must supply the exact same number of mirror segments 
-as you have primary segments. 
+For example:
 
-You must make sure that the user who runs gpaddmirrors (for example, the 
-gpadmin user) has permissions to write to these directories. You may want 
-to create these directories on the segment hosts and chown them to 
-the appropriate user before running gpaddmirrors.
+mirror0=0:sdw1:sdw1-1:52001:53001:54001:/gpdata/mir1/gp0
+
+The gp_segment_configuration and pg_filespace_entry system 
+catalog tables can help you determine your current primary 
+segment configuration so that you can plan your mirror segment 
+configuration. For example, run the following query:
+
+      SELECT dbid, content, hostname, address, port, 
+      replication_port, fselocation as datadir 
+      FROM gp_segment_configuration, pg_filespace_entry 
+      WHERE dbid=fsedbid 
+      ORDER BY dbid;
+
+You must make sure that the user who runs gpaddmirrors (the 
+gpadmin user) has permissions to write to the data directory 
+locations specified. You may want to create these directories 
+on the segment hosts and chown them to the appropriate user 
+before running gpaddmirrors.
 
 
 *****************************************************
 OPTIONS
 *****************************************************
 
--d <master_data_directory>
-
-Optional. The master data directory. If not specified, the value set for 
-$MASTER_DATA_DIRECTORY will be used.
-
-
--p <port_offset>
-
-This number is used to calculate the ports used for mirror segments. 
-This number is added to whatever number you have chosen for your primary 
-segment port base. The default offset is 1000. So for example, if your 
-primary segments use a port base of 50000, then mirrors will use a port 
-base of 51000 by default. If a host has multiple mirror segment instances, 
-the base port number will be incremented by one for each additional 
-mirror segment instance started on that host.
-
-
-
--s (spread mirrors)
-
-Spreads the mirror segments amongst the available hosts. The default is 
-to group a set of mirror segments together on an alternate host from 
-their primary segment set. Mirror spreading will place each mirror on a 
-different host within the Greenplum Database array. Spreading is only 
-allowed if there is a sufficient number of hosts in the array 
-(number of hosts is greater than or equal to the number of segment instances).
-
 -a (do not prompt)
 
-Run in quiet mode - do not prompt the user to enter information. 
-Must supply a configuration file with -m if this option is used.
+ Run in quiet mode - do not prompt for information. Must supply 
+ a configuration file with either -m or -i if this option is used.
 
 
--B <parallel_processes>
+-B parallel_processes
 
-The number of segments to add in parallel. If not specified, the 
-utility will start up to ten parallel processes depending on how many 
-mirror instances it needs to add.
+ The number of mirror setup processes to start in parallel. If 
+ not specified, the utility will start up to 10 parallel processes 
+ depending on how many mirror segment instances it needs to set up.
+
+
+-d <master_data_directory>
+
+ The master data directory. If not specified, the value set for 
+ $MASTER_DATA_DIRECTORY will be used.
 
 
 -i <mirror_config_file>
 
-A configuration file containing one line for each mirror segment you 
-want to create. You must have the same number of mirror hosts and segments 
-per host as you do for your primary configuration. If you have a multi-NIC 
-configuration on your segment and mirror hosts, use the per-interface host 
-names in this file. Each line in the file specifies the data content 
-identifier (as per the gp_configuration catalog table), mirror host name, 
-mirror database listener port, and mirror data directory location in the 
-format of:
+ A configuration file containing one line for each mirror segment 
+ you want to create. You must have the same number of mirror hosts 
+ and segments per host as you do for your primary configuration. 
+ The format of this file is as follows (as per fields in the 
+ gp_segment_configuration and pg_filespace_entry catalog tables): 
 
-     mirror[<content_id>]=<hostname>:<port>:<datadir_location>
-
-
--m <datadir_config_file>
-A configuration file containing a list of data directory locations. 
-The number of locations specified must correspond to the number of 
-segments per host. Each line in the file specifies a data directory 
-location. For example:
-/gpdata/m1
-/gpdata/m2
-/gpdata/m3
-/gpdata/m4
-
-
--o <output_sample_mirror_config>
-
-If you are not sure how to lay out the mirror configuration file used by 
-the -m option, you can run gpaddmirrors with this option to generate a 
-sample mirror configuration file based on your primary segment configuration.
-You can then edit this file to change the host names to alternate mirror 
-hosts if necessary.
+mirror[<content>]=<content>:<hostname>:<address>:<port>:<mir_replication_port>:<pri_replication_port>:<fselocation>
 
 
 -l <logfile_directory>
 
-The directory to write the log file. Defaults to ~/gpAdminLogs.
+ The directory to write the log file. Defaults to ~/gpAdminLogs.
 
 
--D (debug)
+-m <datadir_config_file>
 
-Sets logging output to debug level.
+ A configuration file containing a list of file system locations 
+ where the mirror data directories will be created. If not supplied, 
+ the utility will prompt you for locations. The number of locations 
+ correspond to the number of segments per host. Each line in the 
+ file specifies a mirror data directory location. For example:
+
+	/gpdata/m1
+	/gpdata/m2
+	/gpdata/m3
+	/gpdata/m4
 
 
--? (help)
+-o <output_sample_mirror_config>
 
-Displays the online help.
+ If you are not sure how to lay out the mirror configuration file 
+ used by the -i option, you can run gpaddmirrors with this option 
+ to generate a sample mirror configuration file based on your 
+ primary segment configuration. The utility will prompt you for 
+ your mirror segment data directory locations (unless you provide 
+ these in a file using -m). You can then edit this file to change 
+ the host names to alternate mirror hosts if necessary.
+
+
+-p <port_offset>
+
+ Optional. This number is used to calculate the database ports 
+ and replication ports used for mirror segments. The default offset 
+ is 1000. Mirror port assignments are calculated as follows: 
+	primary port + offset = mirror database port
+	primary port + (2 * offset) = mirror replication port
+	primary port + (3 * offset) = primary replication port
+ For example, if a primary segment has port 50001, then its mirror 
+ will use a database port of 51001, a mirror replication port of 
+ 52001, and a primary replication port of 53001 by default.
+
+
+-s (spread mirrors)
+
+ Spreads the mirror segments across the available hosts. The 
+ default is to group a set of mirror segments together on an 
+ alternate host from their primary segment set. Mirror spreading 
+ will place each mirror on a different host within the Greenplum 
+ Database array. Spreading is only allowed if there is a sufficient 
+ number of hosts in the array (number of hosts is greater than 
+ or equal to the number of segment instances per host).
+
+
+-v (verbose)
+
+ Sets logging output to verbose.
 
 
 --version (show utility version)
 
-Displays the version, status, last updated date, and check sum of this utility.
+ Displays the version of this utility.
+
+
+-? (help)
+
+ Displays the online help.
 
 
 *****************************************************
 EXAMPLES
 *****************************************************
 
-Add mirroring to an existing Greenplum Database system using the same 
-set of hosts as your primary data.  Calculate the mirror port by adding 100
-to the current primary segment port numbers:
+Add mirroring to an existing Greenplum Database system using 
+the same set of hosts as your primary data. Calculate the mirror 
+database and replication ports by adding 100 to the current 
+primary segment port numbers:
 
-gpaddmirrors -p 100
+  $ gpaddmirrors -p 100
 
 
-Add mirroring to an existing Greenplum Database system using a different 
-set of hosts from your primary data:
 
-gpaddmirrors -i mirror_config_file
+Add mirroring to an existing Greenplum Database system using a 
+different set of hosts from your primary data:
 
-Where the mirror_config_file looks like this:
+  $ gpaddmirrors -i mirror_config_file
 
-mirror[0]=sdw2:50100:/gpdata/m1
-mirror[1]=sdw2:50101:/gpdata/m2
-mirror[2]=sdw1:50100:/gpdata/m1
-mirror[3]=sdw1:50101:/gpdata/m2
+Where the mirror_config_file looks something like this:
+
+	mirror0=0:sdw1:sdw1-1:52001:53001:54001:/gpdata/mir1/gp0
+	mirror1=1:sdw1:sdw1-2:52002:53002:54002:/gpdata/mir2/gp1
+	mirror2=2:sdw2:sdw2-1:52001:53001:54001:/gpdata/mir1/gp2
+	mirror3=3:sdw2:sdw2-2:52002:53002:54002:/gpdata/mir2/gp3
+
+
 
 Output a sample mirror configuration file to use with gpaddmirrors -i:
 
-gpaddmirrors -o /home/gpadmin/sample_mirror_config
+  $ gpaddmirrors -o /home/gpadmin/sample_mirror_config
 
 
 *****************************************************
@@ -211,4 +235,3 @@ SEE ALSO
 *****************************************************
 
 gpinitsystem, gpinitstandby, gpactivatestandby
-
