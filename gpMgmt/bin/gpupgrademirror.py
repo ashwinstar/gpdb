@@ -62,6 +62,8 @@ INFO_DIR_MINION = "gpupgrademirrorinfodirminion"
 
 PID_FILE = "gpupgrademirror.pid"
 
+GPUPGRADEMIRROR_TEMP_DIR = "gpupbrademirrortempdir"
+
 
 
 #-------------------------------------------------------------------------------
@@ -200,6 +202,7 @@ def parseargs():
 
 #-------------------------------------------------------------------------------
 def sig_handler(sig, arg):
+    print "Handling signal..."
     signal.signal(signal.SIGTERM, signal.SIG_DFL)
     signal.signal(signal.SIGHUP, signal.SIG_DFL)
 
@@ -378,7 +381,7 @@ class RelFileNodes():
    #-------------------------------------------------------------------------------
     def _read_rel_file_node_file(self):
         """Reads in an existing relfile node file"""
-        self.logger.debug("Trying to read in a pre-existing relfile node file")
+        self.logger.debug("Trying to read in a pre-existing relfile node file" + str(self._rel_file_node_filename))
         try:
             self._fp = open(self._rel_file_node_filename, 'r')
             self._fp.seek(0)
@@ -550,7 +553,7 @@ class MirrorHostInfoRow:
         """ for this object into a list of tuples.                                      """
         retList = []
         
-        logger.debug("Trying to read in a pre-existing gpupgrademirror MirrorHostInfoRow file.")
+        logger.debug("Trying to read in a pre-existing gpupgrademirror MirrorHostInfoRow file. " + str(nvFileName))
         
         try:
             fp = open(nvFileName,'r')
@@ -586,7 +589,7 @@ class MirrorHostInfoRow:
     def writeListToFile(nvFileName, listOfRows):
         """ Static method to write out a list of tuples in the __str__ method format """
 
-        logger.debug("Trying to write a list of MirrorHostInfoRow to a file.")
+        logger.debug("Trying to write a list of MirrorHostInfoRow to a file. " + str(nvFileName))
        
         try:
            fp = open(nvFileName, 'w')
@@ -1508,14 +1511,14 @@ class SegHardLinks(Command):
     _max_size_kb_per_pysync  = 50000000
 
     def __init__(self, mirror_info, logger):
-        logger.debug("in SegHardLinks__init__()")
+        logger.debug("in SegHardLinks__init__() %s:%s primary seg id: %s" % (mirror_info.primary_host, mirror_info.primary_data_directory, str(mirror_info.primary_dbid)))
         self.logger = logger
         self.theMirror = mirror_info
         self.softBaseDir = self.theMirror.primary_data_directory + '/softbase'
         
     #-------------------------------------------------------------------------------
     def createLinks(self):
-        self.logger.debug('in SegHardLinks.createLinks()')
+        self.logger.debug('in SegHardLinks.createLinks(). Primary seg id %s' % str(self.theMirror.primary_dbid))
         cmdComplete = False
         while cmdComplete == False:
            baseDir = DirectoryList( name = "gpupgrademirror get directory list under base for primary seg: " + str(self.theMirror.primary_dbid)
@@ -1549,7 +1552,7 @@ class SegHardLinks(Command):
         
         for dir in dirResultList:
             """ For each database directory """
-            self.logger.debug("working on dir " + str(dir))
+            self.logger.debug("working on dir %s:%s" % (self.theMirror.primary_host, str(dir)))
             
             """ Get a list of all files in the dir and their sizes in k-bytes """
             cmdComplete = False
@@ -1687,7 +1690,7 @@ class SegHardLinks(Command):
         
     #-------------------------------------------------------------------------------    
     def removeLinks(self):
-        self.logger.debug("in SegHardLinks.removeLinks")
+        self.logger.debug("in SegHardLinks.removeLinks %s:%s" % (self.theMirror.primary_host, self.softBaseDir))
         
         cmdComplete = False
         while cmdComplete == False:
@@ -1904,7 +1907,7 @@ class GpUpgradeMirrorStatus():
     
     
     def __init__(self, logger, info_data_directory, segment_dbid, phase, overall = False):
-        logger.debug("in __init__ for GpUpgradeMirrorStatus. dbid = " + str(segment_dbid))
+        logger.debug("in __init__ for GpUpgradeMirrorStatus. dbid = %s" % str(segment_dbid))
         self.logger = logger
         self.overall = overall
         
@@ -1930,12 +1933,13 @@ class GpUpgradeMirrorStatus():
 
         if os.path.exists(self._status_filename):
             self._read_status_file()
+        logger.debug("__init__ for GpUpgradeMirrorStatus complete. dbid = %s" % str(segment_dbid))
 
 
    #-------------------------------------------------------------------------------
     def _read_status_file(self):
         """Reads in an existing gpupgrademirror status file"""
-        self.logger.debug("Trying to read in a pre-existing gpupgrademirror status file")
+        self.logger.debug("Trying to read in a pre-existing gpupgrademirror status file %s" % (self._status_filename))
         try:
             self._fp = open(self._status_filename, 'a+')
             self._fp.seek(0)
@@ -1956,7 +1960,7 @@ class GpUpgradeMirrorStatus():
                     options.phase2 = True
                 self._status.append(status)
                 self._status_info.append(status_info)
-        except IOErrormm, e:
+        except Exception, e:
            logger.warning('Unable to read segment status file: ' + str(e))
            logger.warning('gpupgradmirror exiting')
            """ KAS note to self. There is a reason for only putting out a warning here. Something
@@ -2097,11 +2101,12 @@ class Phase1(threading.Thread):
         self.logger                 = logger
         self.info_data_directory    = info_data_directory
         self.nodeName               = node_name
-        self.mirrorSegmentList      = mirror_info_list 
         self.mirrorSegmentList      = mirror_info_list
         self.statusList             = []
-        self.setupCompletedEvent     = setup_completed_event
+        self.setupCompletedEvent    = setup_completed_event
         self.continueEvent          = continue_event
+        self.startedRun             = False
+        self.completedRun           = False
 
     #-------------------------------------------------------------------------------
     def  setup(self):
@@ -2111,7 +2116,7 @@ class Phase1(threading.Thread):
             self.logger.debug("setup for segment: " + str(seg.mirror_dbid))
 
             """ Create a temp directory in each primary segment for our use"""
-            seg.tempDir = seg.primary_data_directory + "/gpupgrademirrortempdir"
+            seg.tempDir = seg.primary_data_directory + "/" + GPUPGRADEMIRROR_TEMP_DIR
             cmdComplete = False
             while cmdComplete == False:
                 rmCmd = CreateDirIfNecessaryWithMode( name = 'gpupgrademirror make temp dir: %s' % seg.tempDir
@@ -2125,7 +2130,7 @@ class Phase1(threading.Thread):
             
             ''' Make sure their is enough space for the largest segment '''
             if options.rollback == False and options.continue_upgrade == False:
-               self.checkAvailableSpace()            
+               self.checkAvailableSpace(seg)            
             
             ''' Create a status object for each mirror segment '''
             status = GpUpgradeMirrorStatus( logger = self.logger
@@ -2180,7 +2185,7 @@ class Phase1(threading.Thread):
 
     #-------------------------------------------------------------------------------
     def renameOldMirrorToTemp(self, seg):
-        self.logger.debug('in renameOldMirror')
+        self.logger.debug('in renameOldMirror %s:5s seg id = %s')
         
         tempDataDir = seg.mirror_data_directory + self.tempOldMirrorDirSuffix
 
@@ -2236,7 +2241,7 @@ class Phase1(threading.Thread):
                 
     #-------------------------------------------------------------------------------
     def renameTempMirrorToOldMirror(self, seg, dirSuffix):
-        self.logger.debug('in renameTempMirrorToOldMirror')
+        self.logger.debug("in renameTempMirrorToOldMirror for irror data directory %s:%s" % (self.nodeName, seg.mirror_data_directory))
         
         tempDataDir = seg.mirror_data_directory + dirSuffix
         cmdComplete = False
@@ -2252,7 +2257,7 @@ class Phase1(threading.Thread):
 
     #-------------------------------------------------------------------------------                                              
     def copyPrimaryToMirror(self, seg):
-        self.logger.debug('in copyPrimaryToMirror')
+        self.logger.debug("in copyPrimaryToMirror for primary %s:%s" % (seg.primary_host, seg.primary_data_directory))
 
         mirrorTempDataDir = seg.mirror_data_directory + self.tempNewMirrorDirSuffix 
         cmdComplete = False
@@ -2286,7 +2291,7 @@ class Phase1(threading.Thread):
         for dir in dirList:
             targetTempDir = mirrorTempDataDir + "/base/" + SegHardLinks.getUnqualifiedLinkDir(dir)
             if dir.endswith(".0"):
-               self.logger.debug("handle special directory *.0.")
+               self.logger.debug("handle special directory *.0 for %s:%s" % (self.nodeName, targetTempDir))
                """ Special directory """
                cmdComplete = False
                while cmdComplete == False:
@@ -2338,7 +2343,7 @@ class Phase1(threading.Thread):
             targetDir = mirrorTempDataDir + "/base/" + SegHardLinks.getUnqualifiedLinkDir(sourceDir)
             nicToUse = availableNicQueue.get()
             if specialSourceDir == True:
-               self.logger.debug("handle special case directory" + str(dir))
+               self.logger.debug("handle special case directoryn %s:%s" % (seg.primary_host, str(dir)))
                """ Special case of directory with empty files """
                rmCopy = RemoteCopyPreserve( name = 'gpupgrademirror remotecopy special .0 file to mirror: %s:%s' % (self.nodeName, seg.mirror_data_directory)
                          , srcDirectory = sourceDir
@@ -2516,7 +2521,7 @@ class Phase1(threading.Thread):
             
     #------------------------------------------------------------------------------ 
     def newMirrorFileFixup(self, seg):
-        self.logger.debug('in newMirrorFileFixup')
+        self.logger.debug('in newMirrorFileFixup for %s:%s' % (self.nodeName, seg.mirror_data_directory))
 
         if options.mode == 'S':
            tempSourceDataDir = seg.mirror_data_directory 
@@ -2539,7 +2544,7 @@ class Phase1(threading.Thread):
             """
             cmdComplete = False
             while cmdComplete == False:
-               rmCmd = RemoteCopyPreserve( name = 'gpupgrademirror fixup copy : %s:%s' % (fullPathFile, fullPathTarget)
+               rmCmd = RemoteCopyPreserve( name = 'gpupgrademirror fixup copy : %s to %s' % (fullPathFile, fullPathTarget)
                               , srcDirectory = fullPathFile
                               , dstHost = self.nodeName
                               , dstDirectory = fullPathTarget
@@ -2551,7 +2556,7 @@ class Phase1(threading.Thread):
         
     #-------------------------------------------------------------------------------
     def removeOldMirror(self, seg):
-        self.logger.debug('in removeOldMirror')
+        self.logger.debug('in removeOldMirror %s:%s' % (self.nodeName, seg.mirror_data_directory))
 
         if options.mode == 'S' and options.rollback == False:
            ''' If in a safe mode upgrade, point to the temp locatio of the old mirror '''
@@ -2572,7 +2577,7 @@ class Phase1(threading.Thread):
         
     #-------------------------------------------------------------------------------
     def removeOldMirrorSpecialFiles(self, seg):
-        self.logger.debug('in removeOldMirrorSpecialFiles')
+        self.logger.debug('in removeOldMirrorSpecialFiles %s:%s' % (self.nodeName, seg.mirror_data_directory))
 
         tempDataDir = seg.mirror_data_directory + self.tempOldMirrorDirSuffix
         cmdComplete = False
@@ -2588,7 +2593,7 @@ class Phase1(threading.Thread):
     #-------------------------------------------------------------------------------
     def removeCopyOfPrimary(self, seg):
         ''' This method is used during recovery '''
-        self.logger.debug('in removeCopyOfPrimary')
+        self.logger.debug('in removeCopyOfPrimary %s:%s' % (self.nodeName, seg.mirror_data_directory))
 
         tempDataDir = seg.mirror_data_directory + self.tempNewMirrorDirSuffix
         cmdComplete = False
@@ -2602,62 +2607,64 @@ class Phase1(threading.Thread):
         rmCmd.validate()
 
     #-------------------------------------------------------------------------------
-    def checkAvailableSpace(self):
-        self.logger.debug('in checkAvailableSpace')
+    def checkAvailableSpace(self, seg):
+        self.logger.debug('in checkAvailableSpace %s:%s' % (seg.primary_host, seg.primary_data_directory))
 
-        for seg in self.mirrorSegmentList:
-            ''' Get size of primary '''
-            cmdComplete = False
-            while cmdComplete == False:            
-               dirSizeCmd = DiskUsage( name = "gpupgrademirror check for disk usage on primary: " + str(seg.primary_data_directory)
-                                  , directory = seg.primary_data_directory
-                                  , ctxt = REMOTE
-                                  , remoteHost = seg.primary_host
-                                  )
-               cmdComplete = runAndCheckCommandComplete(dirSizeCmd)
-            dirSizeCmd.validate()
-            dirSize = dirSizeCmd.get_bytes_used()
+        ''' Get size of primary '''
+        cmdComplete = False
+        while cmdComplete == False:            
+           dirSizeCmd = DiskUsage( name = "gpupgrademirror check for disk usage on primary: " + str(seg.primary_data_directory)
+                              , directory = seg.primary_data_directory
+                              , ctxt = REMOTE
+                              , remoteHost = seg.primary_host
+                              )
+           cmdComplete = runAndCheckCommandComplete(dirSizeCmd)
+        dirSizeCmd.validate()
+        dirSize = dirSizeCmd.get_bytes_used()
             
-            ''' Get available space on mirror '''
+        ''' Get available space on mirror '''
+        cmdComplete = False
+        while cmdComplete == False:   
+           mirrorFreeSizeCmd = GPumDiskFree( name = 'gpupgrademirror disk space available on mirror: ' + str(seg.mirror_data_directory)
+                                           , directory = seg.mirror_data_directory
+                                           , ctxt = REMOTE
+                                           , remoteHost = self.nodeName
+                                           )
+           cmdComplete = runAndCheckCommandComplete(mirrorFreeSizeCmd)
+        mirrorFreeSizeCmd.validate()
+        mirrorFreeSize = mirrorFreeSizeCmd.get_bytes_free()
+        if options.mode == 'U':
+            ''' Add current mirror size to available mirror space '''
             cmdComplete = False
-            while cmdComplete == False:   
-               mirrorFreeSizeCmd = GPumDiskFree( name = 'gpupgrademirror disk space available on mirror: ' + str(seg.mirror_data_directory)
+            while cmdComplete == False:  
+               currentMirrorSizeCmd = DiskUsage( name = "gpupgrademirror check for disk usage on mirror: " + str(seg.mirror_data_directory) 
                                                , directory = seg.mirror_data_directory
                                                , ctxt = REMOTE
                                                , remoteHost = self.nodeName
                                                )
-               cmdComplete = runAndCheckCommandComplete(mirrorFreeSizeCmd)
-            mirrorFreeSizeCmd.validate()
-            mirrorFreeSize = mirrorFreeSizeCmd.get_bytes_free()
-            if options.mode == 'U':
-                ''' Add current mirror size to available mirror space '''
-                cmdComplete = False
-                while cmdComplete == False:  
-                   currentMirrorSizeCmd = DiskUsage( name = "gpupgrademirror check for disk usage on mirror: " + str(seg.mirror_data_directory) 
-                                                   , directory = seg.mirror_data_directory
-                                                   , ctxt = REMOTE
-                                                   , remoteHost = self.nodeName
-                                                   )
-                   cmdComplete = runAndCheckCommandComplete(currentMirrorSizeCmd)
-                currentMirrorSizeCmd.validate()
-                currentMirrorSize = currentMirrorSizeCmd.get_bytes_used()
-                mirrorFreeSize = mirrorFreeSize + currentMirrorSize
- 
-            ''' Compare available space to needed space (add some extra space just to make sure) '''
-            requiredSpace = dirSize + ONE_GIG
-            if mirrorFreeSize < requiredSpace:
-               self.logger.error("Size of mirror directory is too small %s:%s." % (self.nodeName, seg.mirror_data_directory))          
-               self.logger.error("The mirror directory must have at least %s bytes free. ") % (requiredSpace)
-               self.logger.error("The mirror has %s bytes free.") % (mirrorFreeSize)
-               raise ValidationError('Mirror data directory is too small')
+               cmdComplete = runAndCheckCommandComplete(currentMirrorSizeCmd)
+            currentMirrorSizeCmd.validate()
+            currentMirrorSize = currentMirrorSizeCmd.get_bytes_used()
+            mirrorFreeSize = mirrorFreeSize + currentMirrorSize  
+
+        ''' Compare available space to needed space (add some extra space just to make sure) '''
+        requiredSpace = int(dirSize) + int(TEN_GIG)
+        if mirrorFreeSize < requiredSpace:
+           self.logger.error("Size of mirror directory is too small %s:%s." % (self.nodeName, seg.mirror_data_directory))          
+           self.logger.error("The mirror directory must have at least %s bytes free. " % str(requiredSpace))
+           self.logger.error("The mirror has %s bytes free." % str(mirrorFreeSize))
+           raise ValidationError('Mirror data directory is too small')
 
     #-------------------------------------------------------------------------------
     def run(self):
         try:
+            self.startedRun = True
             self.setup()
+            """
             self.setupCompletedEvent.set()
             self.continueEvent.wait()
-            self.logger.debug("continuing run of phase1 for segment: " + str(self.nodeName))
+            """
+            self.logger.debug("continuing run of phase1 for mirror: " + str(self.nodeName))
             statusIndex = 0
             for seg in self.mirrorSegmentList:
                 status = self.statusList[statusIndex]
@@ -2747,19 +2754,25 @@ class Phase1(threading.Thread):
                     if status.compare_status('PHASE1_DONE') < 0:
                        status.set_status('PHASE1_DONE')        
                 statusIndex = statusIndex + 1
+            self.shutdown()
+            self.completedRun = True
         except Exception, e:
             self.logger.error('ERROR in processing mirror: %s Exception: %s' % (self.nodeName, str(e)))
             self.logger.error('gpupgradmirror exiting')
             traceback.print_exc()
-            sys.stdout.flush()
-            sys.stderr.flush()
-            os._exit(2)
-
+            sys.exit(2)
 
     #-------------------------------------------------------------------------------
     def shutdown(self):
-        ''' Need to do '''
-
+        for seg in self.mirrorSegmentList:
+            cmdComplete = False
+            while cmdComplete == False:
+               rmCmd = RemoveFiles( name = 'gpupgrademirror remove temp dir: %s:%s' % (seg.primary_host, seg.tempDir) 
+                                      , directory = seg.tempDir
+                                      , ctxt = REMOTE
+                                      , remoteHost = seg.primary_host 
+                                      )
+               cmdComplete = runAndCheckCommandComplete(rmCmd)
 
 
 #-------------------------------------------------------------------------------
@@ -2776,6 +2789,7 @@ class Phase2(threading.Thread):
         self.mirrorSegmentList      = []
         self.statusList             = []
         self.fixupFileList          = []
+        self.startedRun             = False
 
 
     #-------------------------------------------------------------------------------
@@ -2794,7 +2808,7 @@ class Phase2(threading.Thread):
             self.statusList.append(status)
             
             """ Create a temp directory in each primary segment for our use"""
-            seg.tempDir = seg.primary_data_directory + "/gpupgrademirrortempdir"
+            seg.tempDir = seg.primary_data_directory + "/" + GPUPGRADEMIRROR_TEMP_DIR
             cmdComplete = False
             while cmdComplete == False:
                 rmCmd = CreateDirIfNecessaryWithMode( name = 'gpupgrademirror make temp dir: %s' % seg.tempDir
@@ -2815,7 +2829,8 @@ class Phase2(threading.Thread):
                    raise ValidationError("Unable to run phase 2")
                 else:  
                    status.create_status_file()
-                
+            self.logger.debug("completed Phase2.setup for mirror seg dbid: " + str(seg.mirror_dbid))
+            
         self.fixupFileList = fileList
         self.specialDirectoryList = specialDirectoryList
 
@@ -2872,7 +2887,7 @@ class Phase2(threading.Thread):
               
         cmdComplete = False
         while cmdComplete == False:
-           fdlCmd = FileDirectoryList( name = "gpupgrademirror find all  dirs and files for %s:%s " % (seg.primary_host, sph.fullPathLinkDir)
+           fdlCmd = FileDirectoryList( name = "gpupgrademirror find all dirs and files for %s:%s " % (seg.primary_host, sph.fullPathLinkDir)
                                      , filePattern = sph.fullPathLinkDir
                                      , ctxt = REMOTE
                                      , remoteHost = seg.primary_host
@@ -2906,68 +2921,14 @@ class Phase2(threading.Thread):
             rcCmd.validate()
         
         return
- 
-        """ Tar up the files """
-        tempFileListFile = seg.tempDir + "/" + "tempTarSpecialFileList"
-        tempDstTarFile   = seg.tempDir + "/" + "tempTarSpecialFile"
-        ctflCmd = CreateTarFromList( name = "gpupgrademirror create a tar file from all the special files"
-                                   , fileListLocation = tempFileListFile
-                                   , dstTarFile = tempDstTarFile
-                                   , srcDirectory = seg.primary_data_directory
-                                   , ctxt = REMOTE
-                                   , remoteHost = seg.primary_host
-                                   )
-        ctflCmd.setupListFile( tempDir = options.info_data_directory
-                             , theList = allFixupFileList
-                             )
-        
-        
-        exit(2)
-        
-        ctflCmd.run(validateAfter = True)
-        while cmdComplete == False:
-            rmCmd = RemoteCopyPreserve( name = 'gpupgrademirror phase 2 fixup copy tar : %s to %s' % (tempDstTarFile, fullPathTarget)
-                              , srcDirectory = fullPathSource
-                              , dstHost = self.nodeName
-                              , dstDirectory = fullPathTarget
-                              , ctxt = REMOTE
-                              , remoteHost = seg.primary_host
-                              )
-            cmdComplete = runAndCheckCommandComplete(rmCmd)
-        rmCmd.validate()      
-        etCmd = ExtractTar( name = "gpupgrademirror extract tar for special: %s:%s" % (eg.primary_host, fullPathTarget)
-                          , srcTarFile = fullPathTarget
-                          , dstDirectory = seg.mirror_data_directory
-                          , ctxt = REMOTE
-                          , remoteHost = self.nodeName
-                          )
-        etCmd.run(validateAfter = True)
-
-        exit(2)
-
-        """ Fixup all the files """            
-        allFixupFileList = self.fixupFileList + fixupFileExtsList
-        for file in allFixupFileList:
-            fullPathSource = seg.primary_data_directory + '/' + file
-            fullPathTarget = seg.mirror_data_directory + '/' + file
-            cmdComplete = False
-            while cmdComplete == False:
-               rmCmd = RemoteCopyPreserve( name = 'gpupgrademirror phase 2 fixup copy : %s:%s' % (fullPathSource, fullPathTarget)
-                              , srcDirectory = fullPathSource
-                              , dstHost = self.nodeName
-                              , dstDirectory = fullPathTarget
-                              , ctxt = REMOTE
-                              , remoteHost = seg.primary_host
-                              )
-               cmdComplete = runAndCheckCommandComplete(rmCmd)
-            rmCmd.validate()
-    
 
     #-------------------------------------------------------------------------------
     def run(self):
+        self.startedRun = True
         try:
             i = 0
             for seg in self.mirrorSegmentList:
+                self.logger.debug("started run for Phase 2 for seg mirror: %s" % str(seg.mirror_dbid))
                 status = self.statusList[i]
                 currentStatus = status.get_current_status()
                 
@@ -2978,18 +2939,27 @@ class Phase2(threading.Thread):
                 if status.compare_status('PHASE2_DONE') <= 0:
                    status.set_status('PHASE2_DONE')
                 i = i + 1
+            self.shutdown()
         except Exception, e:
             self.logger.error('ERROR in processing mirror: %s Exception: %s' % (self.nodeName, str(e)))
             self.logger.error('gpupgradmirror exiting')
             traceback.print_exc()
-            sys.stdout.flush()
-            sys.stderr.flush()
-            os._exit(2)
+            sys.exit(2)
 
     #-------------------------------------------------------------------------------
     def shutdown(self):
-        ''' Need to do '''
-
+        for seg in self.mirrorSegmentList:
+            cmdComplete = False
+            while cmdComplete == False:
+               rmCmd = RemoveFiles( name = 'gpupgrademirror remove temp dir: %s:%s' % (seg.primary_host, seg.tempDir) 
+                                      , directory = seg.tempDir
+                                      , ctxt = REMOTE
+                                      , remoteHost = seg.primary_host 
+                                      )
+               ###print "rmCmd = "
+               ###print str(rmCmd)
+               cmdComplete = runAndCheckCommandComplete(rmCmd)
+            rmCmd.validate()
 
 #
 #-------------------------------------------------------------------------------
@@ -3013,6 +2983,9 @@ phase2MirrorList = []
 
 
 try:
+  # setup signal handlers so we can clean up correctly
+  signal.signal(signal.SIGTERM, sig_handler)
+  signal.signal(signal.SIGHUP, sig_handler)
   logger = get_default_logger()
   setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
 
@@ -3170,8 +3143,50 @@ try:
      """
      for node in phase2MirrorList:
          node.start()
+
+     """ Wait no more than 60 seconds for all the threads to start """
+     numTries = 12
+     for thisTry in range(numTries):
+         started = True
+         for node in phase2MirrorList:
+             if node.startedRun == False:
+                sleep(5)
+                break
+         if started == True:
+            break
+     if started == False:
+        raise Exception("Unable to initialize threads for Phase 2 mirror upgrade")
+        
+     done = False
+     completedNodeList = []
+     notCompletedNodeList = list(phase2MirrorList)
+     while done == False:
+         justCompletedNodeList = []
+         for node in notCompletedNodeList:
+             node.join(10)
+             logging.debug("checking to see if thread for mirror node is alive: " + str(node.nodeName))
+             if node.isAlive() == False:
+                """ The node has completed """
+                for segStatus in node.statusList:
+                    if segStatus.get_current_status()[0] != 'PHASE2_DONE':
+                       done = True
+                       break   
+                if done == True:
+                   break
+                justCompletedNodeList.append(node)
+         completedNodeList.extend(justCompletedNodeList)
+         for completedNode in justCompletedNodeList:
+             notCompletedNodeList.remove(completedNode)        
+         if len(completedNodeList) == len(phase2MirrorList):
+           done = True    
+      
+
+     """
+     for node in phase2MirrorList:
+         node.start()
      for node in phase2MirrorList:
          node.join()                 
+     """
      
      """ Make sure all phase 2 threads complated successfully """
      p2Completed = True
@@ -3317,7 +3332,7 @@ try:
            numDone = numDone + len(resultList)
        minionWP.haltWork()
        minionWP.joinWorkers()
-       exit()
+       exit(0)
                
     
 
@@ -3348,20 +3363,63 @@ try:
     """ 
       Start the threads 
     """
+    
+    """
+     KAS Note to self. There is an issue here if one of the treads dies.
+     The call to wait will go for every becaseu it will never get an event.
+    """
+    
     for node in MirrorNodeList:
         node.start()
+        
+        
+    """ Wait no more than 60 seconds for all the threads to start """
+    numTries = 12
+    for thisTry in range(numTries):
+        started = True
+        for node in MirrorNodeList:
+            if node.startedRun == False:
+               sleep(5)
+               break
+        if started == True:
+           break
+    if started == False:
+       raise Exception("Unable to initialize threads for Phase 1 mirror upgrade")
+            
+    """        
     for node in MirrorNodeList:
         node.setupCompletedEvent.wait()
     for node in MirrorNodeList:
         node.continueEvent.set()
+    """   
         
     """ 
       KAS note to self. Need to add code here to detect and notify all the threads if
       there is an issue with one of the threads, and all others must stop.
     """
         
-    for node in MirrorNodeList:
-        node.join()    
+    done = False
+    completedNodeList = []
+    notCompletedNodeList = list(MirrorNodeList)
+    while done == False:
+        justCompletedNodeList = []
+        for node in notCompletedNodeList:
+            node.join(10)
+            logging.debug("checking to see if thread for mirror node is alive: " + str(node.nodeName))
+            if node.isAlive() == False:
+               """ The node has completed """
+               for segStatus in node.statusList:
+                   if segStatus.get_current_status()[0] != 'PHASE1_DONE':
+                      done = True
+                      break   
+               if done == True:
+                  break
+               justCompletedNodeList.append(node)
+        completedNodeList.extend(justCompletedNodeList)
+        for completedNode in justCompletedNodeList:
+            notCompletedNodeList.remove(completedNode)        
+        if len(completedNodeList) == len(MirrorNodeList):
+           done = True    
     
     if options.rollback == False:
        p1Completed = True
