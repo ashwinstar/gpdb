@@ -849,6 +849,32 @@ createdb_int(CreatedbStmt *stmt,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("invalid server encoding %d", encoding)));
 
+	/* check whether encoding and locale are compatible - see also related check in initdb */
+	if (gp_check_locale_encoding_compatibility)
+	{
+		char *lc_ctype = GetConfigOptionByName("lc_ctype", NULL);
+		char *lc_collate = GetConfigOptionByName("lc_collate", NULL);
+		if (!check_locale_encoding(lc_ctype, encoding))
+		{
+			ereport(ERROR,
+					(errmsg("Encoding mismatch"),
+					 errdetail("The encoding you selected (%s) and the encoding that the\n"
+								"selected locale uses (%s) do not match.  This would lead to\n"
+								"misbehavior in various character string processing functions.\n",
+							pg_encoding_to_char(encoding),
+							lc_ctype)));
+		}
+		if(!check_locale_encoding(lc_collate,encoding))
+		{
+			ereport(ERROR,
+					(errmsg("Encoding mismatch"),
+					 errdetail("The encoding you selected (%s) and the encoding that the\n"
+								"selected locale uses (%s) do not match.  This would lead to\n"
+								"misbehavior in various character string processing functions.\n",
+							pg_encoding_to_char(encoding),
+							lc_collate)));
+		}
+	}
 	/* Resolve default tablespace for new database */
 	if (dtablespacename && dtablespacename->arg)
 	{

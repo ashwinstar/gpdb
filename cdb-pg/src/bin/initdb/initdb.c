@@ -216,6 +216,7 @@ static void check_ok(void);
 static char *escape_quotes(const char *src);
 static int	locale_date_order(const char *locale);
 static bool chklocale(const char *locale);
+static bool chklocaleencoding(const char *locale, int user_enc);
 static void setlocales(void);
 static void usage(const char *progname);
 
@@ -994,38 +995,6 @@ get_encoding_from_locale(const char *ctype)
 	return sys;
 }
 
-static void
-check_encodings_match(int pg_enc, const char *ctype)
-{
-	char	   *sys;
-	int			i;
-
-	sys = get_encoding_from_locale(ctype);
-
-	for (i = 0; encoding_match_list[i].system_enc_name; i++)
-	{
-		if (pg_enc == encoding_match_list[i].pg_enc_code
-		  && pg_strcasecmp(sys, encoding_match_list[i].system_enc_name) == 0)
-		{
-			free(sys);
-			return;
-		}
-	}
-
-	fprintf(stderr,
-			_("%s: warning: encoding mismatch\n"), progname);
-	fprintf(stderr,
-	  _("The encoding you selected (%s) and the encoding that the selected\n"
-		"locale uses (%s) are not known to match.  This may lead to\n"
-	"misbehavior in various character string processing functions.  To fix\n"
-		"this situation, rerun %s and either do not specify an encoding\n"
-		"explicitly, or choose a matching combination.\n"),
-			pg_encoding_to_char(pg_enc), sys, progname);
-
-	free(sys);
-	return;
-}
-
 static int
 find_matching_encoding(const char *ctype)
 {
@@ -1047,6 +1016,8 @@ find_matching_encoding(const char *ctype)
 	return -1;
 }
 #endif   /* HAVE_LANGINFO_H && CODESET */
+
+
 
 /*
  * get short version of VERSION
@@ -2540,6 +2511,37 @@ setlocales(void)
 
 }
 
+/*
+ * check if the chosen encoding matches the encoding required by the locale
+ * this should match the backend check_locale_encoding() function
+ *
+ */
+bool chklocaleencoding(const char *locale, int user_enc)
+{
+	int			locale_enc;
+
+	locale_enc = pg_get_encoding_from_locale(locale);
+
+	/* We allow selection of SQL_ASCII */
+	if (!(locale_enc == user_enc ||
+		  locale_enc == PG_SQL_ASCII ||
+		  user_enc == PG_SQL_ASCII
+#ifdef WIN32
+
+	/*
+	 * On win32, if the encoding chosen is UTF8, all locales are OK (assuming
+	 * the actual locale name passed the checks above). This is because UTF8
+	 * is a pseudo-codepage, that we convert to UTF16 before doing any
+	 * operations on, and UTF16 supports all locales.
+	 */
+		  || user_enc == PG_UTF8
+#endif
+		  ))
+	{
+		return false;
+	}
+	return true;
+}
 
 /*
  * Try to parse value as an integer.  The accepted formats are the
@@ -2804,6 +2806,8 @@ main(int argc, char *argv[])
 								 * environment */
 	char		bin_dir[MAXPGPATH];
 	char	   *pg_data_native;
+
+	int			user_enc;
 
 #ifdef WIN32
 	char	   *restrict_env;
@@ -3240,7 +3244,7 @@ main(int argc, char *argv[])
 	}
 
 #if defined(HAVE_LANGINFO_H) && defined(CODESET)
-	if (strcmp(lc_ctype, "C") != 0 && strcmp(lc_ctype, "POSIX") != 0)
+	if (pg_strcasecmp(lc_ctype, "C") != 0 && pg_strcasecmp(lc_ctype, "POSIX") != 0)
 	{
 		if (strlen(encoding) == 0)
 		{
@@ -3262,7 +3266,29 @@ main(int argc, char *argv[])
 			}
 		}
 		else
-			check_encodings_match(atoi(encodingid), lc_ctype);
+		{
+			user_enc = atoi(encodingid);
+			if (!chklocaleencoding(lc_ctype, user_enc))
+			{
+				fprintf(stderr, _("Encoding mismatch.\n"
+										"The encoding you selected (%s) and the encoding that the\n"
+										"selected locale uses (%s) do not match.  This would lead to\n"
+										"misbehavior in various character string processing functions.\n"),
+								pg_encoding_to_char(user_enc),
+								lc_ctype);
+				exit(1);
+			}
+			if(!chklocaleencoding(lc_collate, user_enc))
+			{
+				fprintf(stderr, _("Encoding mismatch.\n"
+										"The encoding you selected (%s) and the encoding that the\n"
+										"selected locale uses (%s) do not match.  This would lead to\n"
+										"misbehavior in various character string processing functions.\n"),
+								pg_encoding_to_char(user_enc),
+								lc_collate);
+				exit(1);
+			}
+		}
 	}
 #endif   /* HAVE_LANGINFO_H && CODESET */
 
