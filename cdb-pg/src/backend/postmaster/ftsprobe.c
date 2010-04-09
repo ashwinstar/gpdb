@@ -2161,13 +2161,19 @@ SAN_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeC
 	 */
 	for (i=0; i < changeCount; i++)
 	{
-		bool new_status, old_status;
+		bool new_alive, old_alive, new_pri;
 
-		new_status = (changes[i].newStatus & FTS_STATUS_ALIVE ? true : false);
-		old_status = (changes[i].oldStatus & FTS_STATUS_ALIVE ? true : false);
+		new_alive = (changes[i].newStatus & FTS_STATUS_ALIVE ? true : false);
+		old_alive = (changes[i].oldStatus & FTS_STATUS_ALIVE ? true : false);
 
-		if (!new_status && old_status)
+		new_pri = (changes[i].newStatus & FTS_STATUS_PRIMARY ? true : false);
+
+		if (!new_alive && old_alive)
 		{
+			/* dead marked as new primary means double-failure -- skip */
+			if (new_pri)
+				continue;
+
 			getMounts_forDbid(changes[i].dbid, &mps);
 			/* mps is our deduped list of mountpoints */
 
@@ -2201,12 +2207,18 @@ SAN_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeC
 	/* Now we're ready to start up the failover segments */
 	for (i=0; i < changeCount; i++)
 	{
-		bool new_status, old_status;
+		bool new_alive, new_pri, old_pri;
 
-		new_status = (changes[i].newStatus & FTS_STATUS_PRIMARY ? true : false);
-		old_status = (changes[i].oldStatus & FTS_STATUS_PRIMARY ? true : false);
+		new_pri = (changes[i].newStatus & FTS_STATUS_PRIMARY ? true : false);
+		old_pri = (changes[i].oldStatus & FTS_STATUS_PRIMARY ? true : false);
 
-		if (new_status && !old_status)
+		new_alive = (changes[i].newStatus & FTS_STATUS_ALIVE ? true : false);
+
+		/* dead marked as new primary means double-failure -- skip */
+		if (new_pri && !new_alive)
+			continue;
+
+		if (new_pri && !old_pri)
 		{
 			startSegment_forDbid(changes[i].dbid);
 
