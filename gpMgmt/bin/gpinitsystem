@@ -879,7 +879,7 @@ GET_IP_ADDRESS () {
 POSTGRES_PORT_CHK () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	GET_PG_PID_ACTIVE $1 $2
-	if [ $PID -ne 0 ];then
+	if [ x"$PID" != x0 ];then
 		ERROR_EXIT "[FATAL]:-Host $2 has an active database process on port = $1" 2
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
