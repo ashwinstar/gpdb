@@ -39,6 +39,7 @@ Please upgrade python installed on this machine.
 import optparse                          # Option Parsing
 import subprocess                        # Calling external processes
 import traceback                         # exception logging
+import re
 from time import strftime
 try:
     from gppylib import gphostcache
@@ -263,7 +264,10 @@ def getdir(prompt, hosts=[], primary=None):
                 hosts[i].dircheck(value, primary)
             return value
         except OSError, e:
-            print "[error] " + str(e)
+            print "[Error] " + str(e)
+            continue
+        except GPError, e:
+            print "[Error] " + str(e)
             continue
 
 def checkdirs(host, parents, paths):
@@ -296,6 +300,39 @@ def checkdirs(host, parents, paths):
         runcmd(['ssh', host, dircheck] + dirs)
     except OSError, e:
         raise GPError('%s: %s' % (host, str(e)))
+
+
+# Helper function to validate reasonable names for filespaces
+def isValidIdentifier(name):
+    if name == "": 
+        return False
+    if name[0] == '"' and name[-1] == '"':
+        quoted = True
+        name = name[1:-1]
+    else:
+        quoted = False
+
+    if name[0:3] == 'pg_' or name[0:4] == '"pg_':
+        print "[Error] The name prefix 'pg_' is reserved for " \
+            "system filespaces\n"
+        return False
+
+    # Check for identifier names
+    if quoted:
+        regex = r'([^"]*("")*)+$'
+    else:
+        regex = r'[a-zA-Z][a-zA-Z0-9_]*$'
+    if not re.match(regex, name):
+        if quoted:
+            print "[Error] invalid identifier\n"
+        else:
+            print "[Error] invalid identifier"
+            print " [Hint] non-alphanumeric identifers should be double-" \
+                "quoted\n"
+        return False
+
+    return True
+
 
 
 # ============================================================================
@@ -789,21 +826,10 @@ class GPFilespace:
         #if not getbool("> ", question, "Y"):
         #    raise KeyboardInterrupt()
 
-        # Helper function to validate reasonable names for filespaces
-        def check_fsname(name):
-            if name == "": 
-                return False
-            if name[0:3] == "pg_":
-                print "[Error] The name prefix 'pg_' is reserved for " \
-                    "system filespaces"
-                return False 
-            # FIXME: Check against existing filespaces
-            return True
-
         # Prompt for the filespace name:
         fspacename = ""
         question = "Enter a name for this filespace"
-        while not check_fsname(fspacename):
+        while not isValidIdentifier(fspacename):
             fspacename = getstring("> ", question)
 
         logger.debug("Filespace Name: %s" % fspacename)
@@ -964,6 +990,8 @@ To add this filespace to the database please run the command:
             values = map(lambda x: x.strip(), line.split(':'))
             if (len(values) == 2 and values[0] == 'filespace'):
                 fspacename = values[1]
+                if not isValidIdentifier(fspacename):
+                    raise BaseException('Invalid filespace name: %s' % fspacename)
                 continue
             elif len(values) != 3:
                 raise GPError("Syntax Error at line %d: %s" 
@@ -1069,40 +1097,61 @@ in a Greenplum system (primary segment, mirror segment and master instances).
 Once a filespace is created, it can be used by one or more tablespaces.
 
 """,
-        gpf = GPFilespace(opt)
 
-        if opt.config == None:
-            gpf.generate_config()
-        else:
-            gpf.execute_config()
+        try:
+            gpf = GPFilespace(opt)
 
-        gpf.cleanup()
+            if opt.config == None:
+                gpf.generate_config()
+            else:
+                gpf.execute_config()
+        finally:
+            gpf.cleanup()
+
         logger.info("Done")
         sys.exit(0)
         
     # An expected error
     except GPError, e:
-        logger.error(str(e))
-        logger.info("exit(1)")
+        try:
+            # Cast to unicode using UTF-8 to work around issues with the 
+            # logging module:
+            #    logger.error("퀙퀠퀩퀘ㄲㄸㅉㅃ12ㅁavb")  => UnicodeDecodeError
+            err = unicode(str(e), 'UTF-8')
+            logger.error(err)
+            logger.info("exit(1)")
+        except BaseException, e:
+            sys.stderr.write("[Error] %s\n" % str(e))
+            sys.stderr.write(traceback.format_exc())
+            sys.stderr.flush()
         sys.exit(1)
 
     # User cancelation 
     except KeyboardInterrupt, e:
-        logger.info("cancelled")
-        print '[Cancelled]'
+        try:
+            logger.info("cancelled")
+            print '[Cancelled]'
+        except BaseException, e:
+            sys.stderr.write("error %s\n" % str(e))
         sys.exit(1)
 
     # Let SystemExit exceptions through
     except SystemExit, e:
-        logger.info("exit(%s)" % str(e))
+        try:
+            logger.info("exit(%s)" % str(e))
+        except BaseException, e:
+            sys.stderr.write("error %s\n" % str(e))
         raise e
 
     # Catch anything else - shouldn't ever occur
     except BaseException, e:
-        logger.error(repr(e))
-        logger.info(traceback.format_exc())
-        logger.info("exit(1)")
+        try:
+            err = str(type(e)) + ': ' + unicode(str(e), 'UTF-8')
+            logger.error(err)
+            logger.info(traceback.format_exc())
+            logger.info("exit(1)")
 
-        sys.stderr.write('[ERROR] See "%s" for details\n' % get_logfile())
+            sys.stderr.write('[Error] See "%s" for details\n' % get_logfile())
+        except BaseException, e:
+            sys.stderr.write("error %s\n" % str(e))
         sys.exit(1)
-
