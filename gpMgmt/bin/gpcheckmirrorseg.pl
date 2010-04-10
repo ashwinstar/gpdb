@@ -66,6 +66,32 @@ perl gpcheckmirrorseg.pl -connect "-p 11000 template1"
 
 Substitute the correct "connect string" for your postgres database.
 
+=head2 Comparison Methods
+
+First, on each primary/mirror pair, the script constructs a list of
+all relfilenodes that has their size and an md5 hash of the entire
+file contents.  The primary and mirror output is compared to look for
+file size differences, hash differences, and whether identical sets of
+files are listed.  If the first, or "raw" diff is unsuccessful, the
+script proceeds with an "enhanced" diff.  The relfilenodes which
+differed are reclassified by type as append-only, heap, or other
+(unknown).  Although FileRep is a block-for-block copy, file contents
+may differ slightly due to the effects of aborted transactions or
+recovery.  For AO tables, the relfilenode on the primary may contain
+uncommitted data, so the enhanced diff will only compare ao files up
+to the committed EOF.  For heap tables, the MVCC "hint bits" for rows
+on the mirror may differ from the primary after recovery, so the
+enhanced comparison masks these bits for heap relfilenodes.  After it
+preprocesses the relfilenodes, the enhanced diff constructs md5 hashes
+of their contents and compares the results for each primary/mirror
+pair.  Finally, if the enhanced diff is still unsuccessful, even with
+the known exceptions for heap and ao relfilenodes, the script proceeds
+to the final phase: a block-by-block diff.  For this phase, the script
+utilizes the ao and heap preprocessing from the "enhanced" diff, but
+it generates an Adler32 hash for each block.  The final diff compares
+the hashes for each block, highlighting the exact location where each
+file differs.
+
 =head1 AUTHORS
 
 Jeffrey I Cohen
@@ -200,6 +226,7 @@ sub ignore_list
 	my @m1 = qw(
 		pg_stat 
 		pg_log
+		pg_xlog
 		pg_internal
 		pg_fsm.cache
 		pgstat
