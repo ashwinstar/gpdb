@@ -1,0 +1,821 @@
+/*------------------------------------------------------------------------------
+ *
+ * SparseData.h
+ *        Declarations/definitions for "SparseData" functions.
+ *
+ * SparseData provides array storage for repetitive data as commonly found
+ * in numerical analysis of sparse arrays and matrices.
+ * Sequential duplicate values in the array are represented in an index
+ * structure that stores the count of the number of times a given value
+ * is duplicated.
+ * All storage is allocated with palloc().
+ *
+ * ***NOTE***
+ * The SparseData structure is an in-memory structure and so must be
+ * serialized into a persisted structure like a VARLENA when leaving
+ * a GP / Postgres function.  This implies a COPY from the SparseData
+ * to the VARLENA.
+ * ***NOTE***
+ *
+ * Copyright (c) 2010, Greenplum Software
+ *
+ * $$
+ *
+ *------------------------------------------------------------------------------
+ */
+
+#include <math.h>
+#include "postgres.h"
+#include "lib/stringinfo.h"
+#include "utils/array.h"
+#include "catalog/pg_type.h"
+
+#ifndef SPARSEDATA_H
+#define SPARSEDATA_H
+
+#define ABS(a)   (((a) < 0) ? -(a) : (a))
+#define MIN(a,b) (((a) < (b)) ? (a) : (b))
+#define MAX(a,b) (((a) > (b)) ? (a) : (b))
+#define CEIL(a,b) ( ((a)+(b)-1) / (b) )
+#define BCAP(a)  ( ((a) != 0) ? 1 : 0 )
+
+/*
+ * Calculate the size of the integer count in an RLE index provided the pointer
+ * to the start of the count entry
+ */
+#define	int8compstoragesize(ptr) \
+	((*((char *)(ptr)) < 0) ? 1 : (1 + *((char *)(ptr))) )
+
+/*------------------------------------------------------------------------------
+ * SparseData holds information about a sparse array of values
+ *------------------------------------------------------------------------------
+ */
+typedef struct SparseDataStruct
+{
+	/* The native type of the data entries */
+	Oid type_of_data;
+//	enum
+//	{
+//		BIT,BYTE,INT16,INT32,INT64,FLOAT32,FLOAT64,COMPLEX32,COMPLEX64
+//		BYTE,INT16,INT32,INT64,FLOAT32,FLOAT64
+//	} type_of_data;
+	int unique_value_count; /* The number of unique values in the data
+				   array */
+	int total_value_count;  /* The total number of values, including
+				   duplicates */
+	StringInfo vals;  /* The unique number values are stored here as a
+			     stream of bytes */
+	StringInfo index; /* A count of each value is stored in the index */
+} SparseDataStruct;
+
+typedef SparseDataStruct *SparseData;
+
+/* Calculate the size of a serialized SparseData based on the actual consumed
+ * length of the StringInfo data and StringInfoData structures.
+ */
+/*------------------------------------------------------------------------------
+ * Serialized SparseData
+ *------------------------------------------------------------------------------
+ * SparseDataStruct Contents
+ * StringInfoData Contents for "vals"
+ * StringInfoData Contents for "index"
+ *
+ * 	The vals and index fields are serialized as StringInfoData followed by
+ * 	the data itself. Each serialized StringInfo will lay out like:
+ * 		char * dataptr;
+ * 			-> a placeholder in the serialized version, is filled
+ * 			   when the serialized version is used in-place
+ * 		int len;
+ * 		int maxlen;
+ * 		int cursor;
+ * 		4 bytes of padding
+ * 			-> necessary to 64-bit align the data field
+ * 		char[len] data;
+ * 			-> the serialized data
+ */ 
+#define SIZEOF_SPARSEDATAHDR	(sizeof(SparseDataStruct)-2*sizeof(StringInfo))
+/* Size of the sparse data structure minus the dynamic variables, plus two integers
+ * describing the length of the data area and index
+ * Takes a SparseData argument 
+ */
+#define SIZEOF_SPARSEDATASERIAL(x) (SIZEOF_SPARSEDATAHDR + \
+		2*sizeof(int)+\
+		(x)->vals->len + (x)->index->len)
+
+#define SDATA_DATA_SIZEPTR(x)	((char *)(x)+SIZEOF_SPARSEDATAHDR)
+#define SDATA_INDEX_SIZEPTR(x)	(SDATA_DATA_SIZEPTR(x)+sizeof(int))
+#define SDATA_VALS_PTR(x)       (SDATA_INDEX_SIZEPTR(x)+sizeof(int))
+#define SDATA_DATA_SIZE(x)	(*((int *)SDATA_DATA_SIZEPTR(x)))
+#define SDATA_INDEX_PTR(x) 	(SDATA_VALS_PTR(x)+SDATA_DATA_SIZE(x))
+#define SDATA_INDEX_SIZE(x)	(*((int *)SDATA_INDEX_SIZEPTR(x)))
+
+#define SDATA_UNIQUE_VALCNT(x)	(((SparseData)(x))->unique_value_count)
+#define SDATA_TOTAL_VALCNT(x)	(((SparseData)(x))->total_value_count)
+
+
+int64_t *sdata_index_to_int64arr(SparseData sdata);
+void serializeSparseData(char *target, SparseData source);
+SparseData deserializeSparseData(char *source);
+
+SparseData makeEmptySparseData(void);
+SparseData makeInplaceSparseData(char *vals, char *index,
+		int datasize, int indexsize, Oid datatype,
+		int unique_value_count, int total_value_count);
+
+SparseData makeSparseDataCopy(SparseData source_sdata);
+SparseData makeSparseDataFromDouble(double scalar,int64_t dimension);
+
+SparseData makeSparseData(void);
+SparseData float8arr_to_sdata(double *array, int count);
+double *sdata_to_float8arr(SparseData sdata);
+StringInfo copyStringInfo(StringInfo source_sinfo);
+StringInfo makeStringInfoFromData(char *data,int len);
+static inline void int8_to_compword(int64_t num, char entry[9]);
+
+static inline void append_to_rle_index(StringInfo index, int64_t run_len)
+{
+	char bytes[]={0,0,0,0,0,0,0,0,0}; /* 9 bytes into which the compressed
+					     int8 value is written */
+	int8_to_compword(run_len,bytes); /* create compressed version of
+					    int8 value */
+	appendBinaryStringInfo(index,bytes,int8compstoragesize(bytes));
+}
+
+static inline void add_run_to_sdata(double run_val, int64_t run_len,
+		SparseData sdata)
+{
+	StringInfo index = sdata->index;
+	StringInfo vals  = sdata->vals;
+
+	appendBinaryStringInfo(vals,(char *)(&run_val),sizeof(double));
+	append_to_rle_index(index, run_len);
+	sdata->unique_value_count++;
+	sdata->total_value_count+=run_len;
+}
+
+/*------------------------------------------------------------------------------
+ * Each integer count in the RLE index is stored in a number of bytes determined
+ * by it's size.  The larger the integer count, the larger the size of storage.
+ * Following is the map of count maximums to storage size:
+ * 	Range			Storage
+ * 	---------		-----------------------------------------
+ * 	0     - 127		signed char stores the negative count
+ *
+ * 		All higher than 127 have two parts, the description byte
+ * 		and the count word
+ *
+ * 	description byte	signed char stores the number of bytes in the
+ * 				count word one of 1,2,4 or 8
+ *
+ * 	128   - 32767		count word is 2 bytes, signed int16_t
+ * 	32768 - 2147483648	count word is 4 bytes, signed int32_t
+ * 	2147483648 - max	count word is 8 bytes, signed int64_t
+ *------------------------------------------------------------------------------
+ */
+/*
+ * Transform an int64_t value to an RLE entry.  The entry is placed in the
+ * provided entry[] array and will have a variable size depending on the value.
+ */
+static inline void int8_to_compword(int64_t num, char entry[9])
+{
+	int16_t num_2;
+	int32_t num_4;
+
+	if (num < 128) {
+		entry[0] = -(char)num;
+	} else if (num < 32768) {
+		entry[0] = 2;
+		num_2 = (int16_t)num;
+		entry[1] = *( char *)(&num_2)   ;
+		entry[2] = *((char *)(&num_2)+1);
+	} else if (num < 2147483648) {
+		entry[0] = 4;
+		num_4 = (int32_t)num;
+		entry[1] = *( char *)(&num_4)   ;
+		entry[2] = *((char *)(&num_4)+1);
+		entry[3] = *((char *)(&num_4)+2);
+		entry[4] = *((char *)(&num_4)+3);
+	} else {
+		entry[0] = 8;
+		entry[1] = *( char *)(&num)   ;
+		entry[2] = *((char *)(&num)+1);
+		entry[3] = *((char *)(&num)+2);
+		entry[4] = *((char *)(&num)+3);
+		entry[5] = *((char *)(&num)+4);
+		entry[6] = *((char *)(&num)+5);
+		entry[7] = *((char *)(&num)+6);
+		entry[8] = *((char *)(&num)+7);
+	}
+}
+
+/*
+ * Transform a count entry into an int64_t value when provided with a pointer
+ * to an entry.
+ */
+static inline int64_t compword_to_int8(const char *entry)
+{
+	char size = int8compstoragesize(entry);
+	int16_t num_2;
+	char *numptr2 = (char *)(&num_2);
+	int32_t num_4;
+	char *numptr4 = (char *)(&num_4);
+	int64_t num;
+	char *numptr8 = (char *)(&num);
+
+	switch(size) {
+		case 1:
+			num = -(entry[0]);
+			break;
+		case 3:
+			numptr2[0] = entry[1];
+			numptr2[1] = entry[2];
+			num = num_2;
+			break;
+		case 5:
+			numptr4[0] = entry[1];
+			numptr4[1] = entry[2];
+			numptr4[2] = entry[3];
+			numptr4[3] = entry[4];
+			num = num_4;
+			break;
+		case 9:
+			numptr8[0] = entry[1];
+			numptr8[1] = entry[2];
+			numptr8[2] = entry[3];
+			numptr8[3] = entry[4];
+			numptr8[4] = entry[5];
+			numptr8[5] = entry[6];
+			numptr8[6] = entry[7];
+			numptr8[7] = entry[8];
+			break;
+	}
+
+	return num;
+}
+/*------------------------------------------------------------------------------
+ * Multiplication, Addition, Division by scalars
+ *------------------------------------------------------------------------------
+ */
+#define valref(type,val,i) (((type *)(val)->vals->data)[(i)])
+#define valsquare(val)	(val*val)
+#define valcube(val)	(val*valsquare(val))
+#define valquad(val)	(valsquare(valsquare(val)))
+#define apply_const_to_sdata(sdata,i,op,scalar) \
+	switch ((sdata)->type_of_data) \
+{ \
+	case FLOAT4OID: \
+		valref(float,sdata,i) op (scalar); \
+		break; \
+	case FLOAT8OID: \
+		valref(double,sdata,i) op (scalar); \
+		break; \
+	case CHAROID: \
+		valref(char,sdata,i) op (scalar); \
+		break; \
+	case INT2OID: \
+		valref(int16_t,sdata,i) op (scalar); \
+		break; \
+	case INT4OID: \
+		valref(int32_t,sdata,i) op (scalar); \
+		break; \
+	case INT8OID: \
+		((int64_t *)(sdata)->vals->data)[(i)] op (scalar); \
+		break; \
+}
+
+#define apply_scalar_left_to_sdata(sdata,i,op,scalar) \
+	switch ((sdata)->type_of_data) \
+{ \
+	case FLOAT4OID: \
+		valref(float,sdata,i) = \
+		(scalar) op valref(float,sdata,i); \
+		break; \
+	case FLOAT8OID: \
+		valref(double,sdata,i) = \
+		(scalar) op valref(double,sdata,i); \
+		break; \
+	case CHAROID: \
+		valref(char,sdata,i) = \
+		(scalar) op valref(char,sdata,i); \
+		break; \
+	case INT2OID: \
+		valref(int16_t,sdata,i) = \
+		(scalar) op valref(int16_t,sdata,i); \
+		break; \
+	case INT4OID: \
+		valref(int32_t,sdata,i) = \
+		(scalar) op valref(int32_t,sdata,i); \
+		break; \
+	case INT8OID: \
+		valref(int64_t,sdata,i) = \
+		(scalar) op valref(int64_t,sdata,i); \
+		break; \
+}
+
+#define accum_sdata_result(result,left,i,op,right,j) \
+	switch ((left)->type_of_data) \
+{ \
+	case FLOAT4OID: \
+		(result) = \
+		valref(float,left,i) op \
+		valref(float,right,j); \
+		break; \
+	case FLOAT8OID: \
+		(result) = \
+		valref(double,left,i) op \
+		valref(double,right,j); \
+		break; \
+	case CHAROID: \
+		(result) = \
+		valref(char,left,i) op \
+		valref(char,right,j); \
+		break; \
+	case INT2OID: \
+		(result) = \
+		valref(int16_t,left,i) op \
+		valref(int16_t,right,j); \
+		break; \
+	case INT4OID: \
+		(result) = \
+		valref(int32_t,left,i) op \
+		valref(int32_t,right,j); \
+		break; \
+	case INT8OID: \
+		(result) = \
+		valref(int64_t,left,i) op \
+		valref(int64_t,right,j); \
+		break; \
+}
+
+#define apply_function_sdata_scalar(result,func,left,i,scalar) \
+	switch ((left)->type_of_data) \
+{ \
+	case FLOAT4OID: \
+		valref(float,result,i) =\
+		func(valref(float,left,i),scalar); \
+		break; \
+	case FLOAT8OID: \
+		valref(double,result,i) =\
+		func(valref(double,left,i),scalar); \
+		break; \
+	case CHAROID: \
+		valref(char,result,i) =\
+		func(valref(char,left,i),scalar); \
+		break; \
+	case INT2OID: \
+		valref(int16_t,result,i) =\
+		func(valref(int16_t,left,i),scalar); \
+		break; \
+	case INT4OID: \
+		valref(int32_t,result,i) =\
+		func(valref(int32_t,left,i),scalar); \
+		break; \
+	case INT8OID: \
+		valref(int64_t,result,i) =\
+		func(valref(int64_t,left,i),scalar); \
+		break; \
+}
+
+#define apply_square_sdata(result,left,i) \
+	switch ((left)->type_of_data) \
+{ \
+	case FLOAT4OID: \
+		valref(float,result,i) = \
+		valsquare(valref(float,left,i)); \
+		break; \
+	case FLOAT8OID: \
+		valref(float8,result,i) = \
+		valsquare(valref(float8,left,i));\
+		break; \
+	case CHAROID: \
+		valref(char,result,i) = \
+		valsquare(valref(char,left,i));\
+		break; \
+	case INT2OID: \
+		valref(int16_t,result,i) = \
+		valsquare(valref(int16_t,left,i));\
+		break; \
+	case INT4OID: \
+		valref(int32_t,result,i) = \
+		valsquare(valref(int32_t,left,i));\
+		break; \
+	case INT8OID: \
+		valref(int64_t,result,i) = \
+		valsquare(valref(int64_t,left,i));\
+		break; \
+}
+
+#define apply_cube_sdata(result,left,i) \
+	switch ((left)->type_of_data) \
+{ \
+	case FLOAT4OID: \
+		valref(float,result,i) = \
+		valcube(valref(float,left,i)); \
+		break; \
+	case FLOAT8OID: \
+		valref(float8,result,i) = \
+		valcube(valref(float8,left,i));\
+		break; \
+	case CHAROID: \
+		valref(char,result,i) = \
+		valcube(valref(char,left,i));\
+		break; \
+	case INT2OID: \
+		valref(int16_t,result,i) = \
+		valcube(valref(int16_t,left,i));\
+		break; \
+	case INT4OID: \
+		valref(int32_t,result,i) = \
+		valcube(valref(int32_t,left,i));\
+		break; \
+	case INT8OID: \
+		valref(int64_t,result,i) = \
+		valcube(valref(int64_t,left,i));\
+		break; \
+}
+#define apply_quad_sdata(result,left,i) \
+	switch ((left)->type_of_data) \
+{ \
+	case FLOAT4OID: \
+		valref(float,result,i) = \
+		valquad(valref(float,left,i)); \
+		break; \
+	case FLOAT8OID: \
+		valref(float8,result,i) = \
+		valquad(valref(float8,left,i));\
+		break; \
+	case CHAROID: \
+		valref(char,result,i) = \
+		valquad(valref(char,left,i));\
+		break; \
+	case INT2OID: \
+		valref(int16_t,result,i) = \
+		valquad(valref(int16_t,left,i));\
+		break; \
+	case INT4OID: \
+		valref(int32_t,result,i) = \
+		valquad(valref(int32_t,left,i));\
+		break; \
+	case INT8OID: \
+		valref(int64_t,result,i) = \
+		valquad(valref(int64_t,left,i));\
+		break; \
+}
+
+/*
+ * Do one of subtract, add, multiply, or divide depending on
+ * the value of operation one of (0,1,2,3).
+ *
+ * The "direction" argument is either 1 or 2 depending on
+ * whether the scalar is on the left (1) or right (2)
+ */
+static inline void op_sdata_by_scalar_inplace(int operation,
+		double scalar, SparseData sdata, int direction)
+{
+	if (direction == 2) //scalar is on the right
+	{
+		for(int i=0; i<sdata->unique_value_count; i++)
+		{
+			switch(operation)
+			{
+				case 0:
+			apply_const_to_sdata(sdata,i,-=,scalar)
+					break;
+				case 1:
+			apply_const_to_sdata(sdata,i,+=,scalar)
+					break;
+				case 2:
+			apply_const_to_sdata(sdata,i,*=,scalar)
+					break;
+				case 3:
+			apply_const_to_sdata(sdata,i,/=,scalar)
+					break;
+			}
+		}
+	} else { //scalar is on the left
+		for(int i=0; i<sdata->unique_value_count; i++)
+		{
+			switch(operation)
+			{
+				case 0:
+			apply_scalar_left_to_sdata(sdata,i,-,scalar)
+					break;
+				case 1:
+			apply_scalar_left_to_sdata(sdata,i,+,scalar)
+					break;
+				case 2:
+			apply_scalar_left_to_sdata(sdata,i,*,scalar)
+					break;
+				case 3:
+			apply_scalar_left_to_sdata(sdata,i,/,scalar)
+					break;
+			}
+		}
+	}
+
+}
+static inline SparseData op_sdata_by_scalar_copy(int operation,
+		double scalar, SparseData source_sdata, int direction) {
+	SparseData sdata = makeSparseDataCopy(source_sdata);
+	op_sdata_by_scalar_inplace(operation,scalar,sdata,direction);
+	return sdata;
+}
+
+/*
+ * Exponentiate an sdata left argument with a right scalar
+ */
+static inline SparseData pow_sdata_by_scalar(SparseData sdata,
+		double scalar)
+{
+	SparseData result = makeSparseDataCopy(sdata);
+	for(int i=0; i<sdata->unique_value_count; i++)
+		apply_function_sdata_scalar(result,pow,sdata,i,scalar)
+
+	return(result);
+}
+static inline SparseData square_sdata(SparseData sdata)
+{
+	SparseData result = makeSparseDataCopy(sdata);
+	for(int i=0; i<sdata->unique_value_count; i++)
+		apply_square_sdata(result,sdata,i)
+
+	return(result);
+}
+static inline SparseData cube_sdata(SparseData sdata)
+{
+	SparseData result = makeSparseDataCopy(sdata);
+	for(int i=0; i<sdata->unique_value_count; i++)
+		apply_cube_sdata(result,sdata,i)
+
+	return(result);
+}
+static inline SparseData quad_sdata(SparseData sdata)
+{
+	SparseData result = makeSparseDataCopy(sdata);
+	for(int i=0; i<sdata->unique_value_count; i++)
+		apply_quad_sdata(result,sdata,i)
+
+	return(result);
+}
+
+static inline bool sparsedata_eq(SparseData left, SparseData right)
+{
+	if ((left->total_value_count  != right->total_value_count)   ||
+	    (left->unique_value_count != right->unique_value_count))
+		return(0);
+	/*
+	 * We'll take a two phase approach to enhance speed:
+	 * Check the unique values for equivalence, then check the run lengths
+	 */
+	for (int i=0;i<left->vals->len;i++)
+	{
+		if (left->vals->data[i] != right->vals->data[i]) return(0);
+	}
+	for (int i=0;i<left->index->len;i++)
+	{
+		if (left->index->data[i] != right->index->data[i]) return(0);
+	}
+
+	return(1);
+}
+
+static inline double sum_sdata_values_double(SparseData sdata)
+{
+	double accum=0.;
+	char *ix = sdata->index->data;
+	double *vals = (double *)sdata->vals->data;
+	int64_t run_length;
+
+	for (int i=0;i<sdata->unique_value_count;i++)
+	{
+		run_length = compword_to_int8(ix);
+		accum += vals[i]*run_length;
+		ix+=int8compstoragesize(ix);
+	}
+	return (accum);
+}
+static inline double l2norm_sdata_values_double(SparseData sdata)
+{
+	double accum=0.;
+	char *ix = sdata->index->data;
+	double *vals = (double *)sdata->vals->data;
+	int64_t run_length;
+
+	for (int i=0;i<sdata->unique_value_count;i++)
+	{
+		run_length = compword_to_int8(ix);
+		accum += (vals[i]*vals[i])*run_length;
+		ix+=int8compstoragesize(ix);
+	}
+	accum = sqrt(accum);
+	return (accum);
+}
+static inline double l1norm_sdata_values_double(SparseData sdata)
+{
+	double accum=0.;
+	char *ix = sdata->index->data;
+	double *vals = (double *)sdata->vals->data;
+	int64_t run_length;
+
+	for (int i=0;i<sdata->unique_value_count;i++)
+	{
+		run_length = compword_to_int8(ix);
+		accum += ABS(vals[i])*run_length;
+		ix+=int8compstoragesize(ix);
+	}
+	return (accum);
+}
+
+/*------------------------------------------------------------------------------
+ * Addition, Scalar Product, Division between SparseData arrays
+ *
+ * There are a few factors to consider:
+ * - The dimension of the left and right arguments must be the same
+ * - We employ an algorithm that does the computation on the compressed contents
+ *   which creates a new SparseData array
+ * - "operation" is one of 0,1,2,3 for subtraction, addition, multiplication or
+ *   division
+ *------------------------------------------------------------------------------
+ */
+static inline SparseData op_sdata_by_sdata(int operation,SparseData left,
+		SparseData right)
+{
+	SparseData sdata = makeSparseData();
+
+	/*
+	 * Loop over the contents of the left array, operating on elements
+	 * of the right array and append a new value to the sdata when a
+	 * new unique value is generated.
+	 *
+	 * We will manage two cursors, one for each of left and right arrays
+	 */
+	char *liptr=left->index->data;
+	char *riptr=right->index->data;
+	int left_run_length, right_run_length;
+	double new_value=0.;
+	int tot_run_length=-1;
+	double last_new_value=0;
+	left_run_length = compword_to_int8(liptr);
+	right_run_length = compword_to_int8(riptr);
+	int left_lst=0,right_lst=0;
+	int left_nxt=left_run_length,right_nxt=right_run_length;
+	int nextpos = MIN(left_nxt,right_nxt),lastpos=0;
+	int i=0,j=0;
+
+	if ((operation > 3)|| (operation < 0))
+		ereport(ERROR, 
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			 errOmitLocation(true),
+			 errmsg("Operation not in range 0-3")));
+
+	while (1)
+	{
+//		printf("i,j,left_nxt,right_nxt,nextpos=%d,%d,%d,%d,%d\n",i,j,nextpos,left_nxt,right_nxt);
+		switch (operation)
+		{
+			case 0:
+				accum_sdata_result(new_value,left,i,-,right,j)
+				break;
+			case 1:
+			default:
+				accum_sdata_result(new_value,left,i,+,right,j)
+				break;
+			case 2:
+				accum_sdata_result(new_value,left,i,*,right,j)
+				break;
+			case 3:
+				accum_sdata_result(new_value,left,i,/,right,j)
+				break;
+		}
+		/*
+		 * Potentially add a new run, depending on whether this is a different
+		 * value from the previous calculation.  It may be that this calculation
+		 * has produced an identical value to the previous, in which case we store
+		 * it up, waiting for a new value to happen.
+		 */
+		if (tot_run_length==-1)
+		{
+			last_new_value = new_value;
+			tot_run_length=0;
+		}
+		if (new_value!=last_new_value)
+		{
+			add_run_to_sdata(last_new_value,tot_run_length,sdata);
+			tot_run_length = 0;
+			last_new_value = new_value;
+		}
+		tot_run_length += (nextpos-lastpos);
+//		printf("New_value,runlength = %f,%d\n",new_value,nextpos-lastpos);
+		if ((left_nxt==right_nxt)&&(left_nxt==(left->total_value_count))) {
+//			printf("STOPPING: i,j,left_nxt,right_nxt,nextpos=%d,%d,%d,%d,%d\n",i,j,nextpos,left_nxt,right_nxt);
+			break;
+		} else if (left_nxt==right_nxt) {
+			i++;j++;
+			left_lst=left_nxt;right_lst=right_nxt;
+			liptr+=int8compstoragesize(liptr);
+			riptr+=int8compstoragesize(riptr);
+		} else if (nextpos==left_nxt) {
+			i++;
+			left_lst=left_nxt;
+			liptr+=int8compstoragesize(liptr);
+		} else if (nextpos==right_nxt) {
+			j++;
+			right_lst=right_nxt;
+			riptr+=int8compstoragesize(riptr);
+		}
+		left_run_length = compword_to_int8(liptr);
+		right_run_length = compword_to_int8(riptr);
+		left_nxt=left_run_length+left_lst;
+		right_nxt=right_run_length+right_lst;
+		lastpos=nextpos;
+		nextpos = MIN(left_nxt,right_nxt);
+//		printf("nextpos,leftmax = %d,%d\n",nextpos,left->total_value_count);
+	}
+
+	/*
+	 * Add the last run if we ended with a repeating value
+	 */
+	if (tot_run_length!=0)
+		add_run_to_sdata(new_value,tot_run_length,sdata);
+
+	return sdata;
+}
+
+static inline void printout_double(double *vals, int num_values, int stop);
+static inline void printout_index(char *ix, int num_values, int stop);
+static inline void printout_double(double *vals, int num_values, int stop)
+{
+	char *output_str = (char *)palloc(sizeof(char)*(num_values*(6+18+2))+1);
+	char *str = output_str;
+	int numout;
+	for (int i=0; i<num_values; i++) {
+		numout=snprintf(str,26,"%6.2f,%#llX,",vals[i],*((long long unsigned int *)(&(vals[i]))));
+		str+=numout;
+	}
+	*str = '\0';
+	elog(NOTICE,"doubles:%s",output_str);
+}
+static inline void printout_index(char *ix, int num_values, int stop)
+{
+	char *output_str = (char *)palloc(sizeof(char)*(num_values*(6+1))+1);
+	char *str = output_str;
+	int numout;
+	for (int i=0; i<num_values; i++,ix+=int8compstoragesize(ix)) {
+		numout=snprintf(str,6,"%lld,",(long long int)compword_to_int8(ix));
+		str+=numout;
+	}
+	*str = '\0';
+	elog(NOTICE,"index:%s",output_str);
+}
+static inline void printout_sdata(SparseData sdata, char *msg, int stop);
+static inline void printout_sdata(SparseData sdata, char *msg, int stop)
+{
+	elog(NOTICE,"%s ==> unvct,tvct,isize,dsize,datatype=%d,%d,%d,%d,%d",
+			msg,
+			sdata->unique_value_count,sdata->total_value_count,
+			sdata->index->len,sdata->vals->len,
+			sdata->type_of_data);
+	{
+		char *ix=sdata->index->data;
+		double *ar=(double *)(sdata->vals->data);
+		printout_double(ar,sdata->unique_value_count,0);
+		printout_index(ix,sdata->unique_value_count,0);
+	}
+
+	if (stop)
+	  ereport(ERROR, 
+			  (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			   errOmitLocation(true),
+			   errmsg("LAL STOP")));
+}
+/*------------------------------------------------------------------------------
+ * When compressing out duplicate (double) values in a data array, we need a
+ * way to reliably test for equivalence of double floating point values that
+ * bypasses the floating point handling for unusual values.  We define a set of
+ * macros that will test equivalence and also will test whether a given double
+ * value is in the normal range or is in the special range (denormals,
+ * exceptions).
+ *------------------------------------------------------------------------------
+ */
+/* Anything between LOW and HIGH is a denormal or exception */
+#define SPEC_MASK_HIGH 0xFFF0000000000000
+#define SPEC_MASK_LOW  0x7FF0000000000000
+#define MASKTEST(x,y)	(((x)&(y))==x) /* MASKTEST checks for the presents of
+					  the bits in x in the input y */
+
+/* The input to MASKTEST_double should be an int64 mask and a (double *) to be
+ * tested
+ */
+#define MASKTEST_double(x,y)	MASKTEST((x),*((int64_t *)(&(y))))
+
+#define DBL_IS_A_SPECIAL(x) \
+  (MASKTEST_double(SPEC_MASK_HIGH,(x)) || MASKTEST_double(SPEC_MASK_LOW,(x)) \
+   || ((x) == 0.))
+
+/* 
+ * DBL_IS_EQUIV  tests the equivalence of two doubles using a bitwise
+ * comparison the entry values should both be doubles
+ */
+#define DBL_IS_EQUIV(x,y) (*((int64_t *)(&(x))) == *((int64_t *)(&(y))))
+
+#endif	/* SPARSEDATA_H */
