@@ -206,7 +206,7 @@ SvecType *classify_document(char **features, int num_features, char **document, 
 		for (i=0; i<num_features; i++) {
 			if (features[i] != NULL) {
 		  		item.key = strdup(features[i]);
-		  		item.data = &(ordinals[i]);
+		  		item.data = (void *)(&(ordinals[i]));
 		  		(void) hsearch(item,ENTER);
 			}
 		}
