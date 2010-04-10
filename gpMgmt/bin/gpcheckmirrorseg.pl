@@ -259,27 +259,85 @@ EOF_bigstr
 sub get_presh2_txt
 {
 	my $bigstr = <<'EOF_bigstr';
-##tiny perl script to preprocess ao or heap files
+##nontiny perl script to preprocess ao or heap files
 ##by truncating to length (ao) or filtering hint bits (heap)
+##
+## args: -adler|noadler -heap|(-ao <filesize> ) filename
+##
+## if adler is specified, prints blockno and adler32 for each block,
+## else if noadler, just preprocesses each block according to ao/heap rules
+## and prints it out.
+#
+#my $glob_adler = 0;
+#
+#sub doprint
+#{
+#    my ($blockno, $buf) = @_;
+#	
+#    if ($glob_adler)
+#    {
+#		print $blockno, ":", adler32(1, [$buf]), "\n";
+#    }
+#    else
+#    {
+#		print $buf;
+#    }
+#    
+#}
+#
+## adapted from Digest::Adler32
+## see RFC 1950 section 9
+#sub adler32 
+#{
+#    my ($ad32, $bufs) = @_;
+#	
+#    my $s1 = $ad32 & 0x0000FFFF;
+#    my $s2 = ($ad32 >> 16) & 0x0000FFFF;
+#
+#    for my $buf (@{$bufs}) 
+#    {
+#		for my $c (unpack("C*", $buf)) 
+#		{
+#			$s1 = ($s1 + $c ) % 65521;
+#			$s2 = ($s2 + $s1) % 65521;
+#		}
+#    }
+#    $ad32 = ($s2 << 16) + $s1;
+#    return $ad32;
+#}
+#
 #if (1)
 #{
-#	my $flag = shift @ARGV;
-#	my $sz;
-#
-#	if ($flag =~ m/ao/i)
+#	my $flag1 = shift @ARGV;
+#	my $flag2 = shift @ARGV;
+#	my ($sz, $orig_sz, $cur_siz);
+#	my $blockno = 0;
+#	
+#	if ($flag1 =~ m/noadler/i)
+#	{
+#		$glob_adler = 0;
+#	}
+#	else
+#	{
+#		$glob_adler = 1;
+#	}
+#	
+#	if ($flag2 =~ m/ao/i)
 #	{
 #		$sz = shift @ARGV;
+#		$orig_sz = $sz;
+#		$cur_sz = 0;
 #	}
 #	my $filnam = shift @ARGV;
-#
+#	
 #	if (defined($sz))
 #	{
 #		my $fh;
-#
+#		
 #		open ($fh, "<", $filnam) or die ("cannot open $filnam: $!");
 #		my $bufsiz = 32768;
 #		my $bufl;
-#
+#		
 #		if ($bufsiz > $sz)
 #		{
 #			$bufl = $sz;
@@ -294,9 +352,17 @@ sub get_presh2_txt
 #		while ($bufl)
 #		{
 #			my $buf;
-#			read($fh, $buf, $bufl);
-#			print  $buf;
-#
+#			my $readlen = read($fh, $buf, $bufl);
+#	        doprint($blockno, $buf);
+#			
+#			$cur_sz += $readlen;
+#			
+#			if ($readlen && ($readlen < $bufl))
+#			{
+#				warn "file $filnam shorter than $orig_sz bytes";
+#			    die "read only $cur_sz bytes (last block $readlen bytes vs $bufl)" ;
+#			}
+#			
 #			if ($bufsiz > $sz)
 #			{
 #				$bufl = $sz;
@@ -307,33 +373,34 @@ sub get_presh2_txt
 #				$sz -= $bufsiz;
 #				$bufl = $bufsiz;
 #			}
+#			$blockno++;
 #		}
 # 	    close $fh;
 #	} # else heap
 #	else
 #	{
 #		my $fh;
-#
+#		
 #		open ($fh, "<", $filnam) or die ("cannot open $filnam: $!");
-#
+#		
 #		my $bufsiz = 32768;
 #		my $buf;
 #		my $realsiz;
-#
+#		
 #		while (1)
 #		{
 #			$realsiz = read($fh, $buf, $bufsiz);
-#
+#			
 #			if ($realsiz < $bufsiz)
 #			{
-#				print $buf;
+#	            doprint($blockno, $buf);
 #				last;
 #			}
-#
+#			
 #			# bits            64 16         
 #			# bytes            8 2
 #			my @foo = unpack("L2 S S S S S S ", $buf);
-#
+#			
 #			shift @foo; # discard XLogRecPtr
 #			shift @foo;
 #			
@@ -356,7 +423,7 @@ sub get_presh2_txt
 #				(($pd_lower - $szofpagehdrdata) / 4 ); 
 #			
 #			my $twomax = 2 * $maxoffsetnum ;
-#
+#			
 #			my @baz = unpack("L2 S S S S S S S$twomax", $buf);			
 #			
 #			for my $jj (1..8)
@@ -364,35 +431,35 @@ sub get_presh2_txt
 #				shift @baz
 #					;
 #			}
-#
+#			
 #			my $ii = 0;
 #			
 #			while ($ii < scalar(@baz))
 #			{
 #				my $s1 = $baz[$ii];
 #				my $s2 = $baz[$ii+1];
-#
+#				
 #				$ii += 2;
-#			
+#				
 #				my $lp_off = $s1;
 #				$lp_off = $lp_off & 0x7FFF;
-#
+#				
 #				my $lp_flags = 0;
-#
+#				
 #				my $lp_len = $s2 >> 1;
 #				
 #				my @ggg = unpack("x$lp_off S11 c c  ", $buf);
-#
+#				
 #				# clear infomask flags
 #				$ggg[10] = 0;
-#
+#				
 #				my $fixbuf = pack("S11 c c  ", @ggg);
 #				substr($buf, $lp_off, length($fixbuf)) = $fixbuf;
-#
+#				
 #			} # end while
-#
-#			print  $buf;
-#
+#			
+#	        doprint($blockno, $buf);
+#			$blockno++;
 #		}
 #		
 #		close $fh;
@@ -458,13 +525,13 @@ sub dandydiff
 		# an "extra")
 		if ($pfilnam gt $mfilnam)
 		{
-			push @extrafiles, $mfilnam;
+			push @extrafiles, "m:". $mfilnam;
 			$mstat = ($mlin = <$mfh>);
 			next;
 		}
 		elsif ($pfilnam lt $mfilnam)
 		{
-			push @extrafiles, $pfilnam;
+			push @extrafiles, "p:". $pfilnam;
 			$pstat = ($plin = <$pfh>);
 			next;
 		}
@@ -515,7 +582,7 @@ sub dandydiff
 
 		my $pfilnam = shift @ppp;
 
-		push @extrafiles, $pfilnam;
+		push @extrafiles, "p:". $pfilnam;
 
 		$pstat = ($plin = <$pfh>);
 	}
@@ -529,7 +596,7 @@ sub dandydiff
 
 		my $mfilnam = shift @mmm;
 
-		push @extrafiles, $mfilnam;
+		push @extrafiles, "m:". $mfilnam;
 
 		$mstat = ($mlin = <$mfh>);
 	}
@@ -779,6 +846,7 @@ sub get_relfilenode_func
 				print Data::Dumper->Dump([$vv2]),"\n";
 				warn "$relname for $dbname storage is not ao or heap";
 			}
+			# XXX XXX: what about for column-oriented?? 
 			if (exists($rnod->{relstorage})
 					&& ($rnod->{relstorage} eq "a"))
 			{
@@ -799,7 +867,9 @@ sub get_relfilenode_func
 
 	} # end for all db's
 
-	unless ($bstat)
+	my $do_anyway = 1;
+
+	unless ($do_anyway || $bstat)
 	{
 		print Data::Dumper->Dump([%dbs]);
 
@@ -835,20 +905,23 @@ sub resolve_sizediff
 		while (my ($kk2, $vv2) = each(%{$vv->{relfilenodeh}}))
 		{
 			my $rnod = $vv2;
-			my $relname = $rnod->{relname};
+			my $relname = exists($rnod->{relname}) ? $rnod->{relname} : 
+				"<unknown relname: $kk2>";
 
 			unless (exists($rnod->{relstorage})
 					&& ($rnod->{relstorage} =~ m/^(a)$/))
 			{
 				$bstat = 0;
 				print Data::Dumper->Dump([$vv2]),"\n";
-				warn "$relname for $dbname storage is not ao";
+				warn "bad sizediff for non-ao file $relname for db $dbname";
 			}
 		} # end for all relfilenodes
 
 	} # end for all db's
 
-	unless ($bstat)
+	my $do_anyway = 1;
+
+	unless ($do_anyway || $bstat)
 	{
 		print Data::Dumper->Dump([$dbs]);
 
@@ -889,7 +962,7 @@ sub diff_again
 		$primsh, $mirrsh) = @_;
 
 	my $bstat = 1;
-	my (@aofiles, @heapfiles);
+	my (@aofiles, @heapfiles, @unknownfiles);
 
 	for my $dbs ($dbs1, $dbs2)
 	{
@@ -901,9 +974,9 @@ sub diff_again
 			while (my ($kk2, $vv2) = each(%{$vv->{relfilenodeh}}))
 			{
 				my $rnod = $vv2;
-				my $relname = $rnod->{relname};
+				my $relname = exists($rnod->{relname}) ? $rnod->{relname} : 
+					"<unknown relname: $kk2>";
 
-				if ($rnod->{relstorage} =~ m/^(h|a)$/)
 				{
 					my @filpref;
 					
@@ -915,35 +988,40 @@ sub diff_again
 					{
 						my $filnam = join("/", @filpref) . "/" . $f1;
 
-						if ($rnod->{relstorage} eq "h")
+						if (exists($rnod->{relstorage})
+							&& ($rnod->{relstorage} =~ m/h|a/))
 						{
-							push @heapfiles, $filnam;
-						}
-						else
-						{
-							my @foo = split(/\./, $filnam);
+							if ($rnod->{relstorage} eq "h")
+							{
+								push @heapfiles, $filnam;
+							}
+							elsif ($rnod->{relstorage} eq "a")
+							{
+								my @foo = split(/\./, $filnam);
+								
+								die "bad fil no segno" unless scalar(@foo);
 
-							die "bad fil no segno" unless scalar(@foo);
+								my $segno = pop @foo;
+								my $eof;
 
-							my $segno = pop @foo;
-							my $eof;
-
-							die "no eof for segno" 
+								die "no eof for segno $segno" 
 								unless (exists($rnod->{aoseg_eof}->{$segno}));
 
-							$eof = $rnod->{aoseg_eof}->{$segno};
-
-							push @aofiles, {file => $filnam, eof=> $eof};
+								$eof = $rnod->{aoseg_eof}->{$segno};
+								
+								push @aofiles, {file => $filnam, eof=> $eof};
+							}
+						}
+						else 
+						{
+							my $s1 = exists($rnod->{relstorage}) ? 
+								$rnod->{relstorage} : "<unknown>";
+							warn "unknown storage type: $s1 for $relname in $dbname";
+							push @unknownfiles, $filnam;
 						}
 
 					}
 
-				}
-				else 
-				{
-					my $s1 = $rnod->{relstorage};
-					warn "unknown storage type: s1 for $relname in $dbname";
-					$bstat = 0;
 				}
 
 			} # end for all relfilenodes
@@ -957,15 +1035,32 @@ sub diff_again
 	{
 		my $eof = $fil->{eof};
 
+		# calculate hash for files, but prefix hash with filename
 		push @allfiles1, 
-		$fil->{file} ." perl MYPRESH21 -ao  $eof  MYDIR/" . $fil->{file}
-		. " | openssl dgst -md5 -hex ";
+		$fil->{file} ."  ( perl MYPRESH21 -noadler -ao  $eof  MYDIR/" . $fil->{file}
+		. " | openssl dgst -md5 -hex ) 2>&1  "
+		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
+		. "| perl -e 'for (<STDIN>) { print \"" . $fil->{file} . 
+		':ao: ", $_ ;}' . "'";
 	}
 	for my $fil (@heapfiles)
 	{
 		push @allfiles1, 
-		$fil . " perl MYPRESH21 -heap  MYDIR/" . $fil
-		. " | openssl dgst -md5 -hex ";
+		$fil . "  ( perl MYPRESH21 -noadler -heap  MYDIR/" . $fil
+		. " | openssl dgst -md5 -hex ) 2>&1  "
+		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
+		. "| perl -e 'for (<STDIN>) { print \"" . $fil . 
+		':heap: ", $_ ;}' . "'";
+###			File::Spec->catfile($primfil, $fil->{file});
+	}
+	for my $fil (@unknownfiles)
+	{
+		push @allfiles1, 
+		$fil . "  ( cat MYDIR/" . $fil
+		. " | openssl dgst -md5 -hex ) 2>&1  "
+		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
+		. "| perl -e 'for (<STDIN>) { print \"" . $fil . 
+		':unknown: ", $_ ;}' . "'";
 ###			File::Spec->catfile($primfil, $fil->{file});
 	}
 
@@ -1062,12 +1157,198 @@ sub diff_again
 
 	if (length($diffi2))
 	{
+		print "enhanced diff: found differences\n";
+
+		my $fdiff = $diffi2;
+
+		$fdiff =~ s/\:ao\:\s+.*/:ao:/gm;
+		$fdiff =~ s/\:heap\:\s+.*/:heap:/gm;
+		$fdiff =~ s/\:unknown\:\s+.*/:unknown:/gm;
+		$fdiff =~ s/^\>\s+//gm;
+		$fdiff =~ s/^\<\s+//gm;
+
+		my %thrice;
+		my @foo = split(/\n/, $fdiff);
+
+		for my $ff (@foo)
+		{
+			next
+				unless ($ff =~ m/\:ao\:|\:heap\:|\:unknown\:/);
+			$thrice{$ff} = 1;
+		}
+		print "block by block: ", join("\n", sort(keys(%thrice))), "\n";
+
+		diff_thrice($dbs1, $dbs2,
+					$diffi, $diffi2, $row, $fselochsh, $bigh,
+					$primfil, $mirrfil, $primhost, $mirrhost, 
+					$primtmp, $mirrtmp, 
+					$ppresh2, $mpresh2,
+					$primsh, $mirrsh,
+					\@aofiles, \@heapfiles, \@unknownfiles
+			);
+
+		exit(1);
+	}
+
+	print "\nenhanced diff [$floc]: no differences\n\n";
+
+} # end diff_again
+
+# MPP-8555: block by block diff 
+sub diff_thrice
+{
+	my ($dbs1, $dbs2,
+		$diffi, $diffi2, $row, $fselochsh, $bigh,
+		$primfil, $mirrfil, $primhost, $mirrhost, 
+		$primtmp, $mirrtmp,
+		$ppresh2, $mpresh2,
+		$primsh, $mirrsh, $aofiles, $heapfiles, $unknownfiles) = @_;
+
+	my $bstat = 1;
+
+	my (@allfiles1, @allfiles2);
+
+	for my $fil (@{$aofiles})
+	{
+		my $eof = $fil->{eof};
+
+		# calculate hash for files, but prefix hash with filename
+		push @allfiles1, 
+		$fil->{file} ."  ( perl MYPRESH21 -adler -ao  $eof  MYDIR/" . $fil->{file}
+		. " ) 2>&1  "
+		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
+		. "| perl -e 'for (<STDIN>) { print \"" . $fil->{file} . 
+		':ao: ", $_ ;}' . "'";
+	}
+	for my $fil (@{$heapfiles})
+	{
+		push @allfiles1, 
+		$fil . "  ( perl MYPRESH21 -adler -heap  MYDIR/" . $fil
+		. " ) 2>&1  "
+		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
+		. "| perl -e 'for (<STDIN>) { print \"" . $fil . 
+		':heap: ", $_ ;}' . "'";
+###			File::Spec->catfile($primfil, $fil->{file});
+	}
+	for my $fil (@{$unknownfiles})
+	{
+		push @allfiles1, 
+		$fil . "  ( cat MYDIR/" . $fil
+		. " | openssl dgst -md5 -hex ) 2>&1  "
+		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
+		. "| perl -e 'for (<STDIN>) { print \"" . $fil . 
+		':unknown: ", $_ ;}' . "'";
+###			File::Spec->catfile($primfil, $fil->{file});
+	}
+
+#	print Data::Dumper->Dump([$dbs1]);
+#	print Data::Dumper->Dump([$dbs2]);
+
+	# need filename to sort correctly
+	@allfiles2 = sort @allfiles1;
+	@allfiles1 = ();
+
+	# remove the filename sort key, leaving command string
+	for my $fff (@allfiles2)
+	{
+		my @zzz = split(/\s/, $fff, 2);
+		shift @zzz;
+		push @allfiles1, $zzz[0];
+	}
+
+
+	my $numfiles = scalar(@allfiles1);
+	my $floc = $row->{ploc};
+
+	print "recheck $numfiles files for $floc\n";
+	print Data::Dumper->Dump(\@allfiles1);
+
+	$primsh  =~ s/deux/trois/;
+	$mirrsh  =~ s/deux/trois/;
+	$primtmp =~ s/deux/trois/;
+	$mirrtmp =~ s/deux/trois/;
+
+	# use openssl to construct an md5 hash for every file
+	my $cmd_template = join ("\n", @allfiles1);
+	my $cmd = $cmd_template;
+	$cmd =~ s/MYHOST/$primhost/g;
+	$cmd =~ s/MYDIR/$primfil/g;
+	$cmd =~ s/MYOUT/$primtmp/g;
+	$cmd =~ s/MYPRESH2/$ppresh2/g;
+
+	my $fh;
+	open ($fh, '>', $primsh);
+
+	print $fh $cmd, "\n";
+
+	close $fh;
+
+	$cmd = $cmd_template;
+	$cmd =~ s/MYHOST/$mirrhost/g;
+	$cmd =~ s/MYDIR/$mirrfil/g;
+	$cmd =~ s/MYOUT/$mirrtmp/g;
+	$cmd =~ s/MYPRESH2/$mpresh2/g;
+
+	open ($fh, '>', $mirrsh);
+
+	print $fh $cmd, "\n";
+
+	close $fh;
+
+	# copy the shell scripts to the segments, execute them, then
+	# copy back the results. Note that we add "1" as a suffix to
+	# the script name and output file name to handle the case
+	# where the master and segment are on the same machine (useful
+	# for testing)
+
+	my $cmd_template2 = 
+			'gpscp -h MYHOST MYSHSCRIPT =:MYSHSCRIPT1 ; ' .
+			'gpssh -h MYHOST \' sh MYSHSCRIPT1 > MYOUT  \' ; ' .
+			'gpscp -h MYHOST  =:MYOUT MYOUT1 ; ' ;
+
+	$cmd = $cmd_template2;
+	$cmd =~ s/MYHOST/$primhost/g;
+	$cmd =~ s/MYDIR/$primfil/g;
+	$cmd =~ s/MYOUT/$primtmp/g;
+	$cmd =~ s/MYSHSCRIPT/$primsh/g;
+
+	print $cmd, "\n";
+
+	system ($cmd);
+
+	$cmd = $cmd_template2;
+	$cmd =~ s/MYHOST/$mirrhost/g;
+	$cmd =~ s/MYDIR/$mirrfil/g;
+	$cmd =~ s/MYOUT/$mirrtmp/g;
+	$cmd =~ s/MYSHSCRIPT/$mirrsh/g;
+
+	print $cmd, "\n";
+
+	system ($cmd);
+
+	# add "1" suffix on master
+	$primtmp .= '1';
+	$mirrtmp .= '1';
+
+	my $diffi3 = `diff -b $primtmp $mirrtmp`;
+
+	{
 		print "raw diff:\n";
 		print $diffi;
 
 		print "\nenhanced diff:\n";
 		print $diffi2;
-		
+
+		if (length($diffi3))
+		{
+			print "\nblock by block diff:\n";
+			print $diffi3;
+		}
+		else
+		{
+			print "\block by block diff [$floc]: no differences\n\n";
+		}
+
 		print Data::Dumper->Dump([$row]);
 		
 		print Data::Dumper->Dump([$bigh]);	 
@@ -1076,9 +1357,9 @@ sub diff_again
 		exit(1);
 	}
 
-	print "\nenhanced diff [$floc]: no differences\n\n";
+	exit(0);
 
-} # end diff_again
+} # end diff_thrice
 
 if (1)
 {
@@ -1297,7 +1578,15 @@ if (1)
 
 		print $cmd, "\n";
 
+
+		my $time1 = time();
 		system ($cmd);
+		my $time2 = time();
+
+		my $numfiles = `wc -l < $primtmp`;
+		chomp $numfiles;
+
+		print "\nprimary: ", $numfiles, " files, ", $time2-$time1," seconds\n\n";
 
 		$cmd = $cmd_template2;
 		$cmd =~ s/MYHOST/$mirrhost/g;
@@ -1309,7 +1598,14 @@ if (1)
 
 		print $cmd, "\n";
 
+		$time1 = time();
 		system ($cmd);
+		$time2 = time();
+
+		$numfiles = `wc -l < $mirrtmp`;
+		chomp $numfiles;
+
+		print "\nmirror: ", $numfiles, " files, ", $time2-$time1," seconds\n\n";
 
 		# add "1" suffix on master
 		$primtmp .= '1';
@@ -1317,12 +1613,16 @@ if (1)
 
 		my $diffi = `diff -b $primtmp $mirrtmp`;
 
-		if (length($diffi))
+		if (!length($diffi))
+		{
+			print "\n$fil: no differences\n\n";
+		}
+		else
 		{
 			my $bigh = dandydiff($primtmp, $mirrtmp);
 
-			if (exists($bigh->{extrafile})
-				&& scalar(@{($bigh->{extrafile})}))
+			if (exists($bigh->{extrafiles})
+				&& scalar(@{($bigh->{extrafiles})}))
 			{
 				print $diffi;
 
@@ -1334,7 +1634,7 @@ if (1)
 				exit (1);
 			}
 
-			print "\n\nraw diff mismatch: will diff again using storage-specific techniques\n\n";
+			print "\n\nraw diff mismatch for $fil: will diff again using storage-specific techniques\n\n";
 
 			my ($dbs1, $dbs2);
 
