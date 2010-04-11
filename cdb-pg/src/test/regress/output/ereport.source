@@ -4219,161 +4219,161 @@ select * from get_ereport order by 1;
  cacd: cdbpersistenttablespace:00000811:  ereport(FATAL, 
  cacd: cdbpersistenttablespace:00000812:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  cacd: cdbpersistenttablespace:00000813:  errmsg("Not enough shared memory for persistent tablespace hash table"))); 
- cace: cdbappendonlystorageread:00000304:  ereport(ERROR, 
- cace: cdbappendonlystorageread:00000305:  (errcode(ERRCODE_IO_ERROR), 
- cace: cdbappendonlystorageread:00000306:  errmsg("Append-only Storage Read error on segment file '%s' for relation '%s'. FileSeek offset = 0. Error code = %d (%s)", 
- cace: cdbappendonlystorageread:00000307:  filePathName, 
- cace: cdbappendonlystorageread:00000308:  storageRead->relationName, 
- cace: cdbappendonlystorageread:00000309:  (int)seekResult, 
- cace: cdbappendonlystorageread:00000310:  strerror((int)seekResult)))); 
- cace: cdbappendonlystorageread:00000370:  ereport(ERROR, 
- cace: cdbappendonlystorageread:00000371:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cace: cdbappendonlystorageread:00000372:  errmsg("Append-only Storage Read segment file '%s' EOF must be > 0 for relation '%s'", 
- cace: cdbappendonlystorageread:00000373:  filePathName, 
- cace: cdbappendonlystorageread:00000374:  storageRead->relationName))); 
- cace: cdbappendonlystorageread:00000381:  ereport(ERROR, 
- cace: cdbappendonlystorageread:00000382:  (errcode_for_file_access(), 
- cace: cdbappendonlystorageread:00000383:  errmsg("Append-Only Storage Read could not open segment file '%s' for relation '%s'", 
- cace: cdbappendonlystorageread:00000384:  filePathName, 
- cace: cdbappendonlystorageread:00000385:  storageRead->relationName))); 
- cace: cdbappendonlystorageread:00000554:  ereport(ERROR, 
- cace: cdbappendonlystorageread:00000555:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cace: cdbappendonlystorageread:00000556:  errmsg("Unexpected end of file. Expected to read %d bytes after position " INT64_FORMAT " but found %d bytes (bufferCount " INT64_FORMAT ")
+ cace: cdbappendonlystorageread:00000301:  ereport(ERROR, 
+ cace: cdbappendonlystorageread:00000302:  (errcode(ERRCODE_IO_ERROR), 
+ cace: cdbappendonlystorageread:00000303:  errmsg("Append-only Storage Read error on segment file '%s' for relation '%s'. FileSeek offset = 0. Error code = %d (%s)", 
+ cace: cdbappendonlystorageread:00000304:  filePathName, 
+ cace: cdbappendonlystorageread:00000305:  storageRead->relationName, 
+ cace: cdbappendonlystorageread:00000306:  (int)seekResult, 
+ cace: cdbappendonlystorageread:00000307:  strerror((int)seekResult)))); 
+ cace: cdbappendonlystorageread:00000367:  ereport(ERROR, 
+ cace: cdbappendonlystorageread:00000368:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cace: cdbappendonlystorageread:00000369:  errmsg("Append-only Storage Read segment file '%s' EOF must be > 0 for relation '%s'", 
+ cace: cdbappendonlystorageread:00000370:  filePathName, 
+ cace: cdbappendonlystorageread:00000371:  storageRead->relationName))); 
+ cace: cdbappendonlystorageread:00000378:  ereport(ERROR, 
+ cace: cdbappendonlystorageread:00000379:  (errcode_for_file_access(), 
+ cace: cdbappendonlystorageread:00000380:  errmsg("Append-Only Storage Read could not open segment file '%s' for relation '%s'", 
+ cace: cdbappendonlystorageread:00000381:  filePathName, 
+ cace: cdbappendonlystorageread:00000382:  storageRead->relationName))); 
+ cace: cdbappendonlystorageread:00000551:  ereport(ERROR, 
+ cace: cdbappendonlystorageread:00000552:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cace: cdbappendonlystorageread:00000553:  errmsg("Unexpected end of file. Expected to read %d bytes after position " INT64_FORMAT " but found %d bytes (bufferCount " INT64_FORMAT ")
  ", 
- cace: cdbappendonlystorageread:00000557:  safeWriteRemainder, 
- cace: cdbappendonlystorageread:00000558:  nextReadPosition, 
- cace: cdbappendonlystorageread:00000559:  availableLen, 
- cace: cdbappendonlystorageread:00000560:  storageRead->bufferCount))); 
- cace: cdbappendonlystorageread:00000620:  ereport(ERROR, 
- cace: cdbappendonlystorageread:00000621:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cace: cdbappendonlystorageread:00000622:  errmsg("Expected %d bytes and got %d bytes in table %s " 
- cace: cdbappendonlystorageread:00000623:  "(segment file '%s', header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")
+ cace: cdbappendonlystorageread:00000554:  safeWriteRemainder, 
+ cace: cdbappendonlystorageread:00000555:  nextReadPosition, 
+ cace: cdbappendonlystorageread:00000556:  availableLen, 
+ cace: cdbappendonlystorageread:00000557:  storageRead->bufferCount))); 
+ cace: cdbappendonlystorageread:00000617:  ereport(ERROR, 
+ cace: cdbappendonlystorageread:00000618:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cace: cdbappendonlystorageread:00000619:  errmsg("Expected %d bytes and got %d bytes in table %s " 
+ cace: cdbappendonlystorageread:00000620:  "(segment file '%s', header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")
  ", 
- cace: cdbappendonlystorageread:00000624:  storageRead->minimumHeaderLen, 
- cace: cdbappendonlystorageread:00000625:  availableLen, 
- cace: cdbappendonlystorageread:00000626:  storageRead->relationName, 
- cace: cdbappendonlystorageread:00000627:  storageRead->segmentFileName, 
- cace: cdbappendonlystorageread:00000628:  *headerOffsetInFile, 
- cace: cdbappendonlystorageread:00000629:  storageRead->bufferCount))); 
- cace: cdbappendonlystorageread:00000665:  ereport(ERROR, 
- cace: cdbappendonlystorageread:00000666:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cace: cdbappendonlystorageread:00000667:  errmsg("Expected %d bytes and found %d bytes in table %s " 
- cace: cdbappendonlystorageread:00000668:  "(segment file '%s', header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")", 
- cace: cdbappendonlystorageread:00000669:  storageRead->minimumHeaderLen, 
- cace: cdbappendonlystorageread:00000670:  availableLen, 
- cace: cdbappendonlystorageread:00000671:  storageRead->relationName, 
- cace: cdbappendonlystorageread:00000672:  storageRead->segmentFileName, 
- cace: cdbappendonlystorageread:00000673:  *headerOffsetInFile, 
- cace: cdbappendonlystorageread:00000674:  storageRead->bufferCount))); 
- cace: cdbappendonlystorageread:00000836:  ereport(ERROR, 
- cace: cdbappendonlystorageread:00000837:  (errmsg("Header checksum does not match. Expected 0x%X and found 0x%X ", 
- cace: cdbappendonlystorageread:00000838:  storedChecksum, 
- cace: cdbappendonlystorageread:00000839:  computedChecksum), 
- cace: cdbappendonlystorageread:00000840:  errdetail_appendonly_read_storage_block_header(storageRead), 
- cace: cdbappendonlystorageread:00000841:  errcontext_appendonly_read_storage_block(storageRead))); 
- cace: cdbappendonlystorageread:00000853:  ereport(ERROR, 
- cace: cdbappendonlystorageread:00000854:  (errmsg("Bad append-only storage header. Header check error %d, detail '%s'", 
- cace: cdbappendonlystorageread:00000855:  (int)checkError, 
- cace: cdbappendonlystorageread:00000856:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
- cace: cdbappendonlystorageread:00000857:  errdetail_appendonly_read_storage_block_header(storageRead), 
- cace: cdbappendonlystorageread:00000858:  errcontext_appendonly_read_storage_block(storageRead))); 
- cace: cdbappendonlystorageread:00000873:  ereport(ERROR, 
- cace: cdbappendonlystorageread:00000874:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cace: cdbappendonlystorageread:00000875:  errmsg("Expected %d bytes and found %d bytes in table %s " 
- cace: cdbappendonlystorageread:00000876:  "(segment file '%s', header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")", 
- cace: cdbappendonlystorageread:00000877:  storageRead->current.actualHeaderLen, 
- cace: cdbappendonlystorageread:00000878:  availableLen, 
- cace: cdbappendonlystorageread:00000879:  storageRead->relationName, 
- cace: cdbappendonlystorageread:00000880:  storageRead->segmentFileName, 
- cace: cdbappendonlystorageread:00000881:  storageRead->current.headerOffsetInFile, 
- cace: cdbappendonlystorageread:00000882:  storageRead->bufferCount))); 
- cace: cdbappendonlystorageread:00000910:  ereport(ERROR, 
- cace: cdbappendonlystorageread:00000911:  (errmsg("Bad append-only storage header of type Block. Header check error %d, detail '%s'", 
- cace: cdbappendonlystorageread:00000912:  (int)checkError, 
- cace: cdbappendonlystorageread:00000913:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
- cace: cdbappendonlystorageread:00000914:  errdetail_appendonly_read_smallcontent_header(storageRead), 
- cace: cdbappendonlystorageread:00000915:  errcontext_appendonly_read_storage_block(storageRead))); 
- cace: cdbappendonlystorageread:00000932:  ereport(ERROR, 
- cace: cdbappendonlystorageread:00000933:  (errmsg("Bad append-only storage header of type LargeContentMetadata. Header check error %d, detail '%s'", 
- cace: cdbappendonlystorageread:00000934:  (int)checkError, 
- cace: cdbappendonlystorageread:00000935:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
- cace: cdbappendonlystorageread:00000936:  errdetail_appendonly_read_largecontent_header(storageRead), 
- cace: cdbappendonlystorageread:00000937:  errcontext_appendonly_read_storage_block(storageRead))); 
- cace: cdbappendonlystorageread:00001113:  ereport(ERROR, 
- cace: cdbappendonlystorageread:00001114:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cace: cdbappendonlystorageread:00001115:  errmsg("Wrong buffer length. Expected %d byte length buffer and got %d ", 
- cace: cdbappendonlystorageread:00001116:  storageRead->current.overallBlockLen, 
- cace: cdbappendonlystorageread:00001117:  availableLen), 
- cace: cdbappendonlystorageread:00001118:  errdetail_appendonly_read_smallcontent_header(storageRead), 
- cace: cdbappendonlystorageread:00001119:  errcontext_appendonly_read_storage_block(storageRead))); 
- cace: cdbappendonlystorageread:00001133:  ereport(ERROR, 
- cace: cdbappendonlystorageread:00001134:  (errmsg("Block checksum does not match. Expected 0x%X and found 0x%X", 
- cace: cdbappendonlystorageread:00001135:  storedChecksum, 
- cace: cdbappendonlystorageread:00001136:  computedChecksum), 
- cace: cdbappendonlystorageread:00001137:  errdetail_appendonly_read_smallcontent_header(storageRead), 
- cace: cdbappendonlystorageread:00001138:  errcontext_appendonly_read_storage_block(storageRead))); 
- cace: cdbappendonlystorageread:00001251:  ereport(ERROR, 
- cace: cdbappendonlystorageread:00001252:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cace: cdbappendonlystorageread:00001253:  errmsg("Unexpected end of file trying to read block %d of large content in segment file '%s' of table '%s'. " 
- cace: cdbappendonlystorageread:00001254:  "Large content metadata block is at position " INT64_FORMAT " " 
- cace: cdbappendonlystorageread:00001255:  "Large content length %d", 
- cace: cdbappendonlystorageread:00001256:  regularBlockReadCount, 
- cace: cdbappendonlystorageread:00001257:  storageRead->segmentFileName, 
- cace: cdbappendonlystorageread:00001258:  storageRead->relationName, 
- cace: cdbappendonlystorageread:00001259:  largeContentPosition, 
- cace: cdbappendonlystorageread:00001260:  largeContentLen))); 
- cace: cdbappendonlystorageread:00001267:  ereport(ERROR, 
- cace: cdbappendonlystorageread:00001268:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cace: cdbappendonlystorageread:00001269:  errmsg("Expected header kind 'Block' for block %d of large content in segment file '%s' of table '%s'. " 
- cace: cdbappendonlystorageread:00001270:  "Large content metadata block is at position " INT64_FORMAT " " 
- cace: cdbappendonlystorageread:00001271:  "Large content length %d", 
- cace: cdbappendonlystorageread:00001272:  regularBlockReadCount, 
- cace: cdbappendonlystorageread:00001273:  storageRead->segmentFileName, 
- cace: cdbappendonlystorageread:00001274:  storageRead->relationName, 
- cace: cdbappendonlystorageread:00001275:  largeContentPosition, 
- cace: cdbappendonlystorageread:00001276:  largeContentLen))); 
- cace: cdbappendonlystorageread:00001287:  ereport(ERROR, 
- cace: cdbappendonlystorageread:00001288:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cace: cdbappendonlystorageread:00001289:  errmsg("Too much data found after reading %d blocks for large content in segment file '%s' of table '%s'. " 
- cace: cdbappendonlystorageread:00001290:  "Large content metadata block is at position " INT64_FORMAT " " 
- cace: cdbappendonlystorageread:00001291:  "Large content length %d; extra data length %d", 
- cace: cdbappendonlystorageread:00001292:  regularBlockReadCount, 
- cace: cdbappendonlystorageread:00001293:  storageRead->segmentFileName, 
- cace: cdbappendonlystorageread:00001294:  storageRead->relationName, 
- cace: cdbappendonlystorageread:00001295:  largeContentPosition, 
- cace: cdbappendonlystorageread:00001296:  largeContentLen, 
- cace: cdbappendonlystorageread:00001297:  -remainingLargeContentLen))); 
- cace: cdbappendonlystorageread:00001450:  ereport(ERROR, 
- cace: cdbappendonlystorageread:00001451:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cace: cdbappendonlystorageread:00001452:  errmsg("Unexpected end of file trying to read block %d of large content in segment file '%s' of table '%s'. " 
- cace: cdbappendonlystorageread:00001453:  "Large content metadata block is at position " INT64_FORMAT " " 
- cace: cdbappendonlystorageread:00001454:  "Large content length %d", 
- cace: cdbappendonlystorageread:00001455:  regularBlockReadCount, 
- cace: cdbappendonlystorageread:00001456:  storageRead->segmentFileName, 
- cace: cdbappendonlystorageread:00001457:  storageRead->relationName, 
- cace: cdbappendonlystorageread:00001458:  largeContentPosition, 
- cace: cdbappendonlystorageread:00001459:  largeContentLen))); 
- cace: cdbappendonlystorageread:00001466:  ereport(ERROR, 
- cace: cdbappendonlystorageread:00001467:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cace: cdbappendonlystorageread:00001468:  errmsg("Expected header kind 'Block' for block %d of large content in segment file '%s' of table '%s'. " 
- cace: cdbappendonlystorageread:00001469:  "Large content metadata block is at position " INT64_FORMAT " " 
- cace: cdbappendonlystorageread:00001470:  "Large content length %d", 
- cace: cdbappendonlystorageread:00001471:  regularBlockReadCount, 
- cace: cdbappendonlystorageread:00001472:  storageRead->segmentFileName, 
- cace: cdbappendonlystorageread:00001473:  storageRead->relationName, 
- cace: cdbappendonlystorageread:00001474:  largeContentPosition, 
- cace: cdbappendonlystorageread:00001475:  largeContentLen))); 
- cace: cdbappendonlystorageread:00001486:  ereport(ERROR, 
- cace: cdbappendonlystorageread:00001487:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cace: cdbappendonlystorageread:00001488:  errmsg("Too much data found after reading %d blocks for large content in segment file '%s' of table '%s'. " 
- cace: cdbappendonlystorageread:00001489:  "Large content metadata block is at position " INT64_FORMAT " " 
- cace: cdbappendonlystorageread:00001490:  "Large content length %d; extra data length %d", 
- cace: cdbappendonlystorageread:00001491:  regularBlockReadCount, 
- cace: cdbappendonlystorageread:00001492:  storageRead->segmentFileName, 
- cace: cdbappendonlystorageread:00001493:  storageRead->relationName, 
- cace: cdbappendonlystorageread:00001494:  largeContentPosition, 
- cace: cdbappendonlystorageread:00001495:  largeContentLen, 
- cace: cdbappendonlystorageread:00001496:  -remainingLargeContentLen))); 
+ cace: cdbappendonlystorageread:00000621:  storageRead->minimumHeaderLen, 
+ cace: cdbappendonlystorageread:00000622:  availableLen, 
+ cace: cdbappendonlystorageread:00000623:  storageRead->relationName, 
+ cace: cdbappendonlystorageread:00000624:  storageRead->segmentFileName, 
+ cace: cdbappendonlystorageread:00000625:  *headerOffsetInFile, 
+ cace: cdbappendonlystorageread:00000626:  storageRead->bufferCount))); 
+ cace: cdbappendonlystorageread:00000662:  ereport(ERROR, 
+ cace: cdbappendonlystorageread:00000663:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cace: cdbappendonlystorageread:00000664:  errmsg("Expected %d bytes and found %d bytes in table %s " 
+ cace: cdbappendonlystorageread:00000665:  "(segment file '%s', header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")", 
+ cace: cdbappendonlystorageread:00000666:  storageRead->minimumHeaderLen, 
+ cace: cdbappendonlystorageread:00000667:  availableLen, 
+ cace: cdbappendonlystorageread:00000668:  storageRead->relationName, 
+ cace: cdbappendonlystorageread:00000669:  storageRead->segmentFileName, 
+ cace: cdbappendonlystorageread:00000670:  *headerOffsetInFile, 
+ cace: cdbappendonlystorageread:00000671:  storageRead->bufferCount))); 
+ cace: cdbappendonlystorageread:00000833:  ereport(ERROR, 
+ cace: cdbappendonlystorageread:00000834:  (errmsg("Header checksum does not match. Expected 0x%X and found 0x%X ", 
+ cace: cdbappendonlystorageread:00000835:  storedChecksum, 
+ cace: cdbappendonlystorageread:00000836:  computedChecksum), 
+ cace: cdbappendonlystorageread:00000837:  errdetail_appendonly_read_storage_block_header(storageRead), 
+ cace: cdbappendonlystorageread:00000838:  errcontext_appendonly_read_storage_block(storageRead))); 
+ cace: cdbappendonlystorageread:00000850:  ereport(ERROR, 
+ cace: cdbappendonlystorageread:00000851:  (errmsg("Bad append-only storage header. Header check error %d, detail '%s'", 
+ cace: cdbappendonlystorageread:00000852:  (int)checkError, 
+ cace: cdbappendonlystorageread:00000853:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
+ cace: cdbappendonlystorageread:00000854:  errdetail_appendonly_read_storage_block_header(storageRead), 
+ cace: cdbappendonlystorageread:00000855:  errcontext_appendonly_read_storage_block(storageRead))); 
+ cace: cdbappendonlystorageread:00000870:  ereport(ERROR, 
+ cace: cdbappendonlystorageread:00000871:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cace: cdbappendonlystorageread:00000872:  errmsg("Expected %d bytes and found %d bytes in table %s " 
+ cace: cdbappendonlystorageread:00000873:  "(segment file '%s', header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")", 
+ cace: cdbappendonlystorageread:00000874:  storageRead->current.actualHeaderLen, 
+ cace: cdbappendonlystorageread:00000875:  availableLen, 
+ cace: cdbappendonlystorageread:00000876:  storageRead->relationName, 
+ cace: cdbappendonlystorageread:00000877:  storageRead->segmentFileName, 
+ cace: cdbappendonlystorageread:00000878:  storageRead->current.headerOffsetInFile, 
+ cace: cdbappendonlystorageread:00000879:  storageRead->bufferCount))); 
+ cace: cdbappendonlystorageread:00000907:  ereport(ERROR, 
+ cace: cdbappendonlystorageread:00000908:  (errmsg("Bad append-only storage header of type Block. Header check error %d, detail '%s'", 
+ cace: cdbappendonlystorageread:00000909:  (int)checkError, 
+ cace: cdbappendonlystorageread:00000910:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
+ cace: cdbappendonlystorageread:00000911:  errdetail_appendonly_read_smallcontent_header(storageRead), 
+ cace: cdbappendonlystorageread:00000912:  errcontext_appendonly_read_storage_block(storageRead))); 
+ cace: cdbappendonlystorageread:00000929:  ereport(ERROR, 
+ cace: cdbappendonlystorageread:00000930:  (errmsg("Bad append-only storage header of type LargeContentMetadata. Header check error %d, detail '%s'", 
+ cace: cdbappendonlystorageread:00000931:  (int)checkError, 
+ cace: cdbappendonlystorageread:00000932:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
+ cace: cdbappendonlystorageread:00000933:  errdetail_appendonly_read_largecontent_header(storageRead), 
+ cace: cdbappendonlystorageread:00000934:  errcontext_appendonly_read_storage_block(storageRead))); 
+ cace: cdbappendonlystorageread:00001110:  ereport(ERROR, 
+ cace: cdbappendonlystorageread:00001111:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cace: cdbappendonlystorageread:00001112:  errmsg("Wrong buffer length. Expected %d byte length buffer and got %d ", 
+ cace: cdbappendonlystorageread:00001113:  storageRead->current.overallBlockLen, 
+ cace: cdbappendonlystorageread:00001114:  availableLen), 
+ cace: cdbappendonlystorageread:00001115:  errdetail_appendonly_read_smallcontent_header(storageRead), 
+ cace: cdbappendonlystorageread:00001116:  errcontext_appendonly_read_storage_block(storageRead))); 
+ cace: cdbappendonlystorageread:00001130:  ereport(ERROR, 
+ cace: cdbappendonlystorageread:00001131:  (errmsg("Block checksum does not match. Expected 0x%X and found 0x%X", 
+ cace: cdbappendonlystorageread:00001132:  storedChecksum, 
+ cace: cdbappendonlystorageread:00001133:  computedChecksum), 
+ cace: cdbappendonlystorageread:00001134:  errdetail_appendonly_read_smallcontent_header(storageRead), 
+ cace: cdbappendonlystorageread:00001135:  errcontext_appendonly_read_storage_block(storageRead))); 
+ cace: cdbappendonlystorageread:00001248:  ereport(ERROR, 
+ cace: cdbappendonlystorageread:00001249:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cace: cdbappendonlystorageread:00001250:  errmsg("Unexpected end of file trying to read block %d of large content in segment file '%s' of table '%s'. " 
+ cace: cdbappendonlystorageread:00001251:  "Large content metadata block is at position " INT64_FORMAT " " 
+ cace: cdbappendonlystorageread:00001252:  "Large content length %d", 
+ cace: cdbappendonlystorageread:00001253:  regularBlockReadCount, 
+ cace: cdbappendonlystorageread:00001254:  storageRead->segmentFileName, 
+ cace: cdbappendonlystorageread:00001255:  storageRead->relationName, 
+ cace: cdbappendonlystorageread:00001256:  largeContentPosition, 
+ cace: cdbappendonlystorageread:00001257:  largeContentLen))); 
+ cace: cdbappendonlystorageread:00001264:  ereport(ERROR, 
+ cace: cdbappendonlystorageread:00001265:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cace: cdbappendonlystorageread:00001266:  errmsg("Expected header kind 'Block' for block %d of large content in segment file '%s' of table '%s'. " 
+ cace: cdbappendonlystorageread:00001267:  "Large content metadata block is at position " INT64_FORMAT " " 
+ cace: cdbappendonlystorageread:00001268:  "Large content length %d", 
+ cace: cdbappendonlystorageread:00001269:  regularBlockReadCount, 
+ cace: cdbappendonlystorageread:00001270:  storageRead->segmentFileName, 
+ cace: cdbappendonlystorageread:00001271:  storageRead->relationName, 
+ cace: cdbappendonlystorageread:00001272:  largeContentPosition, 
+ cace: cdbappendonlystorageread:00001273:  largeContentLen))); 
+ cace: cdbappendonlystorageread:00001284:  ereport(ERROR, 
+ cace: cdbappendonlystorageread:00001285:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cace: cdbappendonlystorageread:00001286:  errmsg("Too much data found after reading %d blocks for large content in segment file '%s' of table '%s'. " 
+ cace: cdbappendonlystorageread:00001287:  "Large content metadata block is at position " INT64_FORMAT " " 
+ cace: cdbappendonlystorageread:00001288:  "Large content length %d; extra data length %d", 
+ cace: cdbappendonlystorageread:00001289:  regularBlockReadCount, 
+ cace: cdbappendonlystorageread:00001290:  storageRead->segmentFileName, 
+ cace: cdbappendonlystorageread:00001291:  storageRead->relationName, 
+ cace: cdbappendonlystorageread:00001292:  largeContentPosition, 
+ cace: cdbappendonlystorageread:00001293:  largeContentLen, 
+ cace: cdbappendonlystorageread:00001294:  -remainingLargeContentLen))); 
+ cace: cdbappendonlystorageread:00001447:  ereport(ERROR, 
+ cace: cdbappendonlystorageread:00001448:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cace: cdbappendonlystorageread:00001449:  errmsg("Unexpected end of file trying to read block %d of large content in segment file '%s' of table '%s'. " 
+ cace: cdbappendonlystorageread:00001450:  "Large content metadata block is at position " INT64_FORMAT " " 
+ cace: cdbappendonlystorageread:00001451:  "Large content length %d", 
+ cace: cdbappendonlystorageread:00001452:  regularBlockReadCount, 
+ cace: cdbappendonlystorageread:00001453:  storageRead->segmentFileName, 
+ cace: cdbappendonlystorageread:00001454:  storageRead->relationName, 
+ cace: cdbappendonlystorageread:00001455:  largeContentPosition, 
+ cace: cdbappendonlystorageread:00001456:  largeContentLen))); 
+ cace: cdbappendonlystorageread:00001463:  ereport(ERROR, 
+ cace: cdbappendonlystorageread:00001464:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cace: cdbappendonlystorageread:00001465:  errmsg("Expected header kind 'Block' for block %d of large content in segment file '%s' of table '%s'. " 
+ cace: cdbappendonlystorageread:00001466:  "Large content metadata block is at position " INT64_FORMAT " " 
+ cace: cdbappendonlystorageread:00001467:  "Large content length %d", 
+ cace: cdbappendonlystorageread:00001468:  regularBlockReadCount, 
+ cace: cdbappendonlystorageread:00001469:  storageRead->segmentFileName, 
+ cace: cdbappendonlystorageread:00001470:  storageRead->relationName, 
+ cace: cdbappendonlystorageread:00001471:  largeContentPosition, 
+ cace: cdbappendonlystorageread:00001472:  largeContentLen))); 
+ cace: cdbappendonlystorageread:00001483:  ereport(ERROR, 
+ cace: cdbappendonlystorageread:00001484:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cace: cdbappendonlystorageread:00001485:  errmsg("Too much data found after reading %d blocks for large content in segment file '%s' of table '%s'. " 
+ cace: cdbappendonlystorageread:00001486:  "Large content metadata block is at position " INT64_FORMAT " " 
+ cace: cdbappendonlystorageread:00001487:  "Large content length %d; extra data length %d", 
+ cace: cdbappendonlystorageread:00001488:  regularBlockReadCount, 
+ cace: cdbappendonlystorageread:00001489:  storageRead->segmentFileName, 
+ cace: cdbappendonlystorageread:00001490:  storageRead->relationName, 
+ cace: cdbappendonlystorageread:00001491:  largeContentPosition, 
+ cace: cdbappendonlystorageread:00001492:  largeContentLen, 
+ cace: cdbappendonlystorageread:00001493:  -remainingLargeContentLen))); 
  cacf: cdbappendonlystoragewrite:00000407:  ereport(ERROR, 
  cacf: cdbappendonlystoragewrite:00000408:  (errcode_for_file_access(), 
  cacf: cdbappendonlystoragewrite:00000409:  errmsg("Append-only Storage Write could not open segment file '%s' for relation '%s': %s", 
@@ -6561,81 +6561,81 @@ select * from get_ereport order by 1;
  fabd: faultinjector:00000377:  ereport(ERROR, 
  fabd: faultinjector:00000378:  (errmsg("Fault is injected identifier:'%s' ", 
  fabd: faultinjector:00000379:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier]))); 
- gaad: guc:00007208:  ereport(ERROR, 
- gaad: guc:00007209:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00007210:  errmsg("unrecognized configuration parameter "%s"", name))); 
- gaad: guc:00007212:  ereport(ERROR, 
- gaad: guc:00007213:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- gaad: guc:00007214:  errmsg("must be superuser to examine "%s"", name))); 
- gaad: guc:00007248:  ereport(ERROR, 
- gaad: guc:00007249:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00007250:  errmsg("unrecognized configuration parameter "%s"", name))); 
- gaad: guc:00007252:  ereport(ERROR, 
- gaad: guc:00007253:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- gaad: guc:00007254:  errmsg("must be superuser to examine "%s"", name))); 
- gaad: guc:00007323:  ereport(ERROR, 
- gaad: guc:00007324:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00007325:  errmsg("unrecognized configuration parameter "%s"", name))); 
- gaad: guc:00007332:  ereport(ERROR, 
- gaad: guc:00007333:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00007334:  errmsg("SET %s takes only one argument", name))); 
- gaad: guc:00007505:  ereport(ERROR, 
- gaad: guc:00007506:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
- gaad: guc:00007507:  errmsg("SET requires parameter name"))); 
- gaad: guc:00007569:  ereport(ERROR, 
- gaad: guc:00007570:  (errcode(ERRCODE_INTERNAL_ERROR), 
- gaad: guc:00007571:  errmsg("attempt to redefine parameter "%s"", name))); 
- gaad: guc:00007890:  ereport(ERROR, 
- gaad: guc:00007891:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00007892:  errmsg("unrecognized configuration parameter "%s"", name))); 
- gaad: guc:00007894:  ereport(ERROR, 
- gaad: guc:00007895:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- gaad: guc:00007896:  errmsg("must be superuser to examine "%s"", name))); 
- gaad: guc:00008698:  ereport(FATAL, 
- gaad: guc:00008699:  (errcode_for_file_access(), 
- gaad: guc:00008700:  errmsg("could not read from file "%s": %m", 
- gaad: guc:00008701:  CONFIG_EXEC_PARAMS))); 
- gaad: guc:00008808:  ereport(WARNING, 
- gaad: guc:00008809:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaad: guc:00008810:  errmsg("could not parse setting for parameter "%s"", name))); 
- gaad: guc:00009004:  ereport(ERROR, 
- gaad: guc:00009005:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009006:  errmsg("invalid list syntax for parameter "log_destination""))); 
- gaad: guc:00009027:  ereport(ERROR, 
- gaad: guc:00009028:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009029:  errmsg("unrecognized "log_destination" key word: "%s"", 
- gaad: guc:00009030:  tok))); 
- gaad: guc:00009056:  ereport(ERROR, 
- gaad: guc:00009057:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009058:  errmsg("unrecognized "gp_log_format" key word: "%s"", 
- gaad: guc:00009059:  value))); 
- gaad: guc:00009402:  ereport(ERROR, 
- gaad: guc:00009403:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaad: guc:00009404:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
- gaad: guc:00009478:  ereport(ERROR, 
- gaad: guc:00009479:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009480:  errmsg("assertion checking is not supported by this build"))); 
- gaad: guc:00009499:  ereport(ERROR, 
- gaad: guc:00009500:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009501:  errmsg("SSL is not supported by this build"))); 
- gaad: guc:00009512:  ereport(ERROR, 
- gaad: guc:00009513:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009514:  errmsg("cannot enable parameter when "log_statement_stats" is true"))); 
- gaad: guc:00009529:  ereport(ERROR, 
- gaad: guc:00009530:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009531:  errmsg("cannot enable "log_statement_stats" when " 
- gaad: guc:00009532:  ""log_parser_stats", "log_planner_stats", " 
- gaad: guc:00009533:  ""log_dispatch_stats", " 
- gaad: guc:00009534:  "or "log_executor_stats" is true"))); 
- gaad: guc:00009549:  ereport(ERROR, 
- gaad: guc:00009550:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009551:  errmsg("cannot enable "log_dispatch_stats" when " 
- gaad: guc:00009552:  ""log_statement_stats", " 
- gaad: guc:00009553:  ""log_parser_stats", "log_planner_stats", " 
- gaad: guc:00009554:  "or "log_executor_stats" is true"))); 
- gaad: guc:00009569:  ereport(ERROR, 
- gaad: guc:00009570:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009571:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+ gaad: guc:00007219:  ereport(ERROR, 
+ gaad: guc:00007220:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00007221:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00007223:  ereport(ERROR, 
+ gaad: guc:00007224:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ gaad: guc:00007225:  errmsg("must be superuser to examine "%s"", name))); 
+ gaad: guc:00007259:  ereport(ERROR, 
+ gaad: guc:00007260:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00007261:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00007263:  ereport(ERROR, 
+ gaad: guc:00007264:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ gaad: guc:00007265:  errmsg("must be superuser to examine "%s"", name))); 
+ gaad: guc:00007334:  ereport(ERROR, 
+ gaad: guc:00007335:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00007336:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00007343:  ereport(ERROR, 
+ gaad: guc:00007344:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00007345:  errmsg("SET %s takes only one argument", name))); 
+ gaad: guc:00007516:  ereport(ERROR, 
+ gaad: guc:00007517:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+ gaad: guc:00007518:  errmsg("SET requires parameter name"))); 
+ gaad: guc:00007580:  ereport(ERROR, 
+ gaad: guc:00007581:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ gaad: guc:00007582:  errmsg("attempt to redefine parameter "%s"", name))); 
+ gaad: guc:00007901:  ereport(ERROR, 
+ gaad: guc:00007902:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00007903:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00007905:  ereport(ERROR, 
+ gaad: guc:00007906:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ gaad: guc:00007907:  errmsg("must be superuser to examine "%s"", name))); 
+ gaad: guc:00008709:  ereport(FATAL, 
+ gaad: guc:00008710:  (errcode_for_file_access(), 
+ gaad: guc:00008711:  errmsg("could not read from file "%s": %m", 
+ gaad: guc:00008712:  CONFIG_EXEC_PARAMS))); 
+ gaad: guc:00008819:  ereport(WARNING, 
+ gaad: guc:00008820:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaad: guc:00008821:  errmsg("could not parse setting for parameter "%s"", name))); 
+ gaad: guc:00009015:  ereport(ERROR, 
+ gaad: guc:00009016:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009017:  errmsg("invalid list syntax for parameter "log_destination""))); 
+ gaad: guc:00009038:  ereport(ERROR, 
+ gaad: guc:00009039:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009040:  errmsg("unrecognized "log_destination" key word: "%s"", 
+ gaad: guc:00009041:  tok))); 
+ gaad: guc:00009067:  ereport(ERROR, 
+ gaad: guc:00009068:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009069:  errmsg("unrecognized "gp_log_format" key word: "%s"", 
+ gaad: guc:00009070:  value))); 
+ gaad: guc:00009413:  ereport(ERROR, 
+ gaad: guc:00009414:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaad: guc:00009415:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+ gaad: guc:00009489:  ereport(ERROR, 
+ gaad: guc:00009490:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009491:  errmsg("assertion checking is not supported by this build"))); 
+ gaad: guc:00009510:  ereport(ERROR, 
+ gaad: guc:00009511:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009512:  errmsg("SSL is not supported by this build"))); 
+ gaad: guc:00009523:  ereport(ERROR, 
+ gaad: guc:00009524:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009525:  errmsg("cannot enable parameter when "log_statement_stats" is true"))); 
+ gaad: guc:00009540:  ereport(ERROR, 
+ gaad: guc:00009541:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009542:  errmsg("cannot enable "log_statement_stats" when " 
+ gaad: guc:00009543:  ""log_parser_stats", "log_planner_stats", " 
+ gaad: guc:00009544:  ""log_dispatch_stats", " 
+ gaad: guc:00009545:  "or "log_executor_stats" is true"))); 
+ gaad: guc:00009560:  ereport(ERROR, 
+ gaad: guc:00009561:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009562:  errmsg("cannot enable "log_dispatch_stats" when " 
+ gaad: guc:00009563:  ""log_statement_stats", " 
+ gaad: guc:00009564:  ""log_parser_stats", "log_planner_stats", " 
+ gaad: guc:00009565:  "or "log_executor_stats" is true"))); 
+ gaad: guc:00009580:  ereport(ERROR, 
+ gaad: guc:00009581:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009582:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
  gaae: gram:00018642:  ereport(ERROR, 
  gaae: gram:00018643:  (errcode(ERRCODE_SYNTAX_ERROR), 
  gaae: gram:00018644:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"), 
@@ -8206,163 +8206,166 @@ select * from get_ereport order by 1;
  iaaj: icxcommon:00000896:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
  iaaj: icxcommon:00000897:  errmsg("Interconnect Error: Unexpected Motion Node Id: %d. During remove. State not valid", 
  iaaj: icxcommon:00000898:  motNodeID))); 
- iaaj: indexcmds:00000157:  ereport(ERROR, 
- iaaj: indexcmds:00000158:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- iaaj: indexcmds:00000159:  errmsg("must specify at least one column"))); 
- iaaj: indexcmds:00000161:  ereport(ERROR, 
- iaaj: indexcmds:00000162:  (errcode(ERRCODE_TOO_MANY_COLUMNS), 
- iaaj: indexcmds:00000163:  errmsg("cannot use more than %d columns in an index", 
- iaaj: indexcmds:00000164:  INDEX_MAX_KEYS))); 
- iaaj: indexcmds:00000187:  ereport(ERROR, 
- iaaj: indexcmds:00000188:  (errcode(ERRCODE_UNDEFINED_TABLE), 
- iaaj: indexcmds:00000189:  errmsg("relation "%s.%s" does not exist", 
- iaaj: indexcmds:00000190:  heapRelation->schemaname, heapRelation->relname), 
- iaaj: indexcmds:00000191:  errOmitLocation(true))); 
- iaaj: indexcmds:00000193:  ereport(ERROR, 
- iaaj: indexcmds:00000194:  (errcode(ERRCODE_UNDEFINED_TABLE), 
- iaaj: indexcmds:00000195:  errmsg("relation "%s" does not exist", 
- iaaj: indexcmds:00000196:  heapRelation->relname), 
- iaaj: indexcmds:00000197:  errOmitLocation(true))); 
- iaaj: indexcmds:00000206:  ereport(ERROR, 
- iaaj: indexcmds:00000207:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- iaaj: indexcmds:00000208:  errmsg("cannot create indexes on external tables."))); 
- iaaj: indexcmds:00000213:  ereport(ERROR, 
- iaaj: indexcmds:00000214:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- iaaj: indexcmds:00000215:  errmsg(""%s" is not a table", 
- iaaj: indexcmds:00000216:  heapRelation->relname), 
- iaaj: indexcmds:00000217:  errOmitLocation(true))); 
- iaaj: indexcmds:00000223:  ereport(ERROR, 
- iaaj: indexcmds:00000224:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- iaaj: indexcmds:00000225:  errmsg("cannot create indexes on temporary tables of other sessions"), 
- iaaj: indexcmds:00000226:  errOmitLocation(true))); 
- iaaj: indexcmds:00000255:  ereport(ERROR, 
- iaaj: indexcmds:00000256:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- iaaj: indexcmds:00000257:  errmsg("tablespace "%s" does not exist", 
- iaaj: indexcmds:00000258:  tableSpaceName), 
- iaaj: indexcmds:00000259:  errOmitLocation(true))); 
- iaaj: indexcmds:00000331:  ereport(NOTICE, 
- iaaj: indexcmds:00000332:  (errmsg("substituting access method "gist" for obsolete method "rtree""))); 
- iaaj: indexcmds:00000340:  ereport(ERROR, 
- iaaj: indexcmds:00000341:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- iaaj: indexcmds:00000342:  errmsg("access method "%s" does not exist", 
- iaaj: indexcmds:00000343:  accessMethodName))); 
- iaaj: indexcmds:00000349:  ereport(ERROR, 
- iaaj: indexcmds:00000350:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- iaaj: indexcmds:00000351:  errmsg("access method "%s" does not support unique indexes", 
- iaaj: indexcmds:00000352:  accessMethodName))); 
- iaaj: indexcmds:00000354:  ereport(ERROR, 
- iaaj: indexcmds:00000355:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- iaaj: indexcmds:00000356:  errmsg("access method "%s" does not support multicolumn indexes", 
- iaaj: indexcmds:00000357:  accessMethodName))); 
- iaaj: indexcmds:00000360:  ereport(ERROR, 
- iaaj: indexcmds:00000361:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- iaaj: indexcmds:00000362:  errmsg("append-only tables do not support unique indexes"))); 
- iaaj: indexcmds:00000375:  ereport(ERROR, 
- iaaj: indexcmds:00000376:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
- iaaj: indexcmds:00000377:  errmsg("index expressions and predicates may refer only to the table being indexed"))); 
- iaaj: indexcmds:00000403:  ereport(ERROR, 
- iaaj: indexcmds:00000404:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
- iaaj: indexcmds:00000405:  errmsg("multiple primary keys for table "%s" are not allowed", 
- iaaj: indexcmds:00000406:  RelationGetRelationName(rel)))); 
- iaaj: indexcmds:00000420:  ereport(ERROR, 
- iaaj: indexcmds:00000421:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- iaaj: indexcmds:00000422:  errmsg("primary keys cannot be expressions"))); 
- iaaj: indexcmds:00000451:  ereport(ERROR, 
- iaaj: indexcmds:00000452:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- iaaj: indexcmds:00000453:  errmsg("column "%s" named in key does not exist", 
- iaaj: indexcmds:00000454:  key->name))); 
- iaaj: indexcmds:00000559:  ereport(NOTICE, 
- iaaj: indexcmds:00000560:  (errmsg("%s %s will create implicit index "%s" for table "%s"", 
- iaaj: indexcmds:00000561:  is_alter_table ? "ALTER TABLE / ADD" : "CREATE TABLE /", 
- iaaj: indexcmds:00000562:  primary ? "PRIMARY KEY" : "UNIQUE", 
- iaaj: indexcmds:00000563:  indexRelationName, RelationGetRelationName(rel)))); 
- iaaj: indexcmds:00000644:  * Wait for QEs to finish. Exit via ereport(ERROR,...) if error. 
- iaaj: indexcmds:00000645:  */ 
- iaaj: indexcmds:00000646:  if (stmt->concurrent) 
- iaaj: indexcmds:00000647:  { 
- iaaj: indexcmds:00000648:  CdbDispatchResults *primaryResults; 
- iaaj: indexcmds:00000810:  ereport(ERROR, 
- iaaj: indexcmds:00000811:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- iaaj: indexcmds:00000812:  errmsg("cannot use subquery in index predicate"), 
- iaaj: indexcmds:00000813:  errOmitLocation(true))); 
- iaaj: indexcmds:00000815:  ereport(ERROR, 
- iaaj: indexcmds:00000816:  (errcode(ERRCODE_GROUPING_ERROR), 
- iaaj: indexcmds:00000817:  errmsg("cannot use aggregate in index predicate"), 
- iaaj: indexcmds:00000818:  errOmitLocation(true))); 
- iaaj: indexcmds:00000820:  ereport(ERROR, 
- iaaj: indexcmds:00000821:  (errcode(ERRCODE_SYNTAX_ERROR), 
- iaaj: indexcmds:00000822:  errmsg("cannot use window function in index predicate"), 
- iaaj: indexcmds:00000823:  errOmitLocation(true))); 
- iaaj: indexcmds:00000829:  ereport(ERROR, 
- iaaj: indexcmds:00000830:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- iaaj: indexcmds:00000831:  errmsg("functions in index predicate must be marked IMMUTABLE"), 
- iaaj: indexcmds:00000832:  errOmitLocation(true))); 
- iaaj: indexcmds:00000867:  ereport(ERROR, 
- iaaj: indexcmds:00000868:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- iaaj: indexcmds:00000869:  errmsg("column "%s" named in key does not exist", 
- iaaj: indexcmds:00000870:  attribute->name))); 
- iaaj: indexcmds:00000872:  ereport(ERROR, 
- iaaj: indexcmds:00000873:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- iaaj: indexcmds:00000874:  errmsg("column "%s" does not exist", 
- iaaj: indexcmds:00000875:  attribute->name))); 
- iaaj: indexcmds:00000905:  ereport(ERROR, 
- iaaj: indexcmds:00000906:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- iaaj: indexcmds:00000907:  errmsg("cannot use subquery in index expression"))); 
- iaaj: indexcmds:00000909:  ereport(ERROR, 
- iaaj: indexcmds:00000910:  (errcode(ERRCODE_GROUPING_ERROR), 
- iaaj: indexcmds:00000911:  errmsg("cannot use aggregate function in index expression"))); 
- iaaj: indexcmds:00000913:  ereport(ERROR, 
- iaaj: indexcmds:00000914:  (errcode(ERRCODE_SYNTAX_ERROR), 
- iaaj: indexcmds:00000915:  errmsg("cannot use window function in index expression"))); 
- iaaj: indexcmds:00000924:  ereport(ERROR, 
- iaaj: indexcmds:00000925:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- iaaj: indexcmds:00000926:  errmsg("functions in index expression must be marked IMMUTABLE"))); 
- iaaj: indexcmds:00000983:  ereport(ERROR, 
- iaaj: indexcmds:00000984:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- iaaj: indexcmds:00000985:  errmsg("data type %s has no default operator class for access method "%s"", 
- iaaj: indexcmds:00000986:  format_type_be(attrType), accessMethodName), 
- iaaj: indexcmds:00000987:  errhint("You must specify an operator class for the index or define a default operator class for the data type."))); 
- iaaj: indexcmds:00001015:  ereport(ERROR, 
- iaaj: indexcmds:00001016:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- iaaj: indexcmds:00001017:  errmsg("operator class "%s" does not exist for access method "%s"", 
- iaaj: indexcmds:00001018:  opcname, accessMethodName))); 
- iaaj: indexcmds:00001025:  ereport(ERROR, 
- iaaj: indexcmds:00001026:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- iaaj: indexcmds:00001027:  errmsg("operator class "%s" does not exist for access method "%s"", 
- iaaj: indexcmds:00001028:  NameListToString(opclass), accessMethodName))); 
- iaaj: indexcmds:00001038:  ereport(ERROR, 
- iaaj: indexcmds:00001039:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- iaaj: indexcmds:00001040:  errmsg("operator class "%s" does not accept data type %s", 
- iaaj: indexcmds:00001041:  NameListToString(opclass), format_type_be(attrType)))); 
- iaaj: indexcmds:00001114:  ereport(ERROR, 
- iaaj: indexcmds:00001115:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
- iaaj: indexcmds:00001116:  errmsg("there are multiple default operator classes for data type %s", 
- iaaj: indexcmds:00001117:  format_type_be(type_id)))); 
- iaaj: indexcmds:00001362:  ereport(ERROR, 
- iaaj: indexcmds:00001363:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- iaaj: indexcmds:00001364:  errmsg(""%s" is not an index", 
- iaaj: indexcmds:00001365:  relation->relname))); 
- iaaj: indexcmds:00001397:  ereport(ERROR, 
- iaaj: indexcmds:00001398:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- iaaj: indexcmds:00001399:  errmsg(""%s" is not an index", 
- iaaj: indexcmds:00001400:  stmt->relation->relname))); 
- iaaj: indexcmds:00001473:  ereport(ERROR, 
- iaaj: indexcmds:00001474:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- iaaj: indexcmds:00001475:  errmsg(""%s" is not a table", 
- iaaj: indexcmds:00001476:  stmt->relation->relname))); 
- iaaj: indexcmds:00001485:  ereport(ERROR, 
- iaaj: indexcmds:00001486:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- iaaj: indexcmds:00001487:  errmsg("shared table "%s" can only be reindexed in stand-alone mode", 
- iaaj: indexcmds:00001488:  stmt->relation->relname))); 
- iaaj: indexcmds:00001496:  ereport(NOTICE, 
- iaaj: indexcmds:00001497:  (errmsg("table "%s" has no indexes", 
- iaaj: indexcmds:00001498:  stmt->relation->relname))); 
- iaaj: indexcmds:00001526:  ereport(ERROR, 
- iaaj: indexcmds:00001527:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- iaaj: indexcmds:00001528:  errmsg("can only reindex the currently open database"))); 
- iaaj: indexcmds:00001623:  ereport(NOTICE, 
- iaaj: indexcmds:00001624:  (errmsg("table "%s" was reindexed", 
- iaaj: indexcmds:00001625:  get_rel_name(relid)))); 
+ iaaj: indexcmds:00000159:  ereport(ERROR, 
+ iaaj: indexcmds:00000160:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ iaaj: indexcmds:00000161:  errmsg("must specify at least one column"))); 
+ iaaj: indexcmds:00000163:  ereport(ERROR, 
+ iaaj: indexcmds:00000164:  (errcode(ERRCODE_TOO_MANY_COLUMNS), 
+ iaaj: indexcmds:00000165:  errmsg("cannot use more than %d columns in an index", 
+ iaaj: indexcmds:00000166:  INDEX_MAX_KEYS))); 
+ iaaj: indexcmds:00000189:  ereport(ERROR, 
+ iaaj: indexcmds:00000190:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+ iaaj: indexcmds:00000191:  errmsg("relation "%s.%s" does not exist", 
+ iaaj: indexcmds:00000192:  heapRelation->schemaname, heapRelation->relname), 
+ iaaj: indexcmds:00000193:  errOmitLocation(true))); 
+ iaaj: indexcmds:00000195:  ereport(ERROR, 
+ iaaj: indexcmds:00000196:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+ iaaj: indexcmds:00000197:  errmsg("relation "%s" does not exist", 
+ iaaj: indexcmds:00000198:  heapRelation->relname), 
+ iaaj: indexcmds:00000199:  errOmitLocation(true))); 
+ iaaj: indexcmds:00000208:  ereport(ERROR, 
+ iaaj: indexcmds:00000209:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ iaaj: indexcmds:00000210:  errmsg("cannot create indexes on external tables."))); 
+ iaaj: indexcmds:00000215:  ereport(ERROR, 
+ iaaj: indexcmds:00000216:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ iaaj: indexcmds:00000217:  errmsg(""%s" is not a table", 
+ iaaj: indexcmds:00000218:  heapRelation->relname), 
+ iaaj: indexcmds:00000219:  errOmitLocation(true))); 
+ iaaj: indexcmds:00000225:  ereport(ERROR, 
+ iaaj: indexcmds:00000226:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ iaaj: indexcmds:00000227:  errmsg("cannot create indexes on temporary tables of other sessions"), 
+ iaaj: indexcmds:00000228:  errOmitLocation(true))); 
+ iaaj: indexcmds:00000257:  ereport(ERROR, 
+ iaaj: indexcmds:00000258:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ iaaj: indexcmds:00000259:  errmsg("tablespace "%s" does not exist", 
+ iaaj: indexcmds:00000260:  tableSpaceName), 
+ iaaj: indexcmds:00000261:  errOmitLocation(true))); 
+ iaaj: indexcmds:00000333:  ereport(NOTICE, 
+ iaaj: indexcmds:00000334:  (errmsg("substituting access method "gist" for obsolete method "rtree""))); 
+ iaaj: indexcmds:00000342:  ereport(ERROR, 
+ iaaj: indexcmds:00000343:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ iaaj: indexcmds:00000344:  errmsg("access method "%s" does not exist", 
+ iaaj: indexcmds:00000345:  accessMethodName))); 
+ iaaj: indexcmds:00000351:  ereport(ERROR, 
+ iaaj: indexcmds:00000352:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ iaaj: indexcmds:00000353:  errmsg("hash indexes are not supported"))); 
+ iaaj: indexcmds:00000356:  ereport(ERROR, 
+ iaaj: indexcmds:00000357:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ iaaj: indexcmds:00000358:  errmsg("access method "%s" does not support unique indexes", 
+ iaaj: indexcmds:00000359:  accessMethodName))); 
+ iaaj: indexcmds:00000361:  ereport(ERROR, 
+ iaaj: indexcmds:00000362:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ iaaj: indexcmds:00000363:  errmsg("access method "%s" does not support multicolumn indexes", 
+ iaaj: indexcmds:00000364:  accessMethodName))); 
+ iaaj: indexcmds:00000367:  ereport(ERROR, 
+ iaaj: indexcmds:00000368:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ iaaj: indexcmds:00000369:  errmsg("append-only tables do not support unique indexes"))); 
+ iaaj: indexcmds:00000382:  ereport(ERROR, 
+ iaaj: indexcmds:00000383:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+ iaaj: indexcmds:00000384:  errmsg("index expressions and predicates may refer only to the table being indexed"))); 
+ iaaj: indexcmds:00000410:  ereport(ERROR, 
+ iaaj: indexcmds:00000411:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+ iaaj: indexcmds:00000412:  errmsg("multiple primary keys for table "%s" are not allowed", 
+ iaaj: indexcmds:00000413:  RelationGetRelationName(rel)))); 
+ iaaj: indexcmds:00000427:  ereport(ERROR, 
+ iaaj: indexcmds:00000428:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ iaaj: indexcmds:00000429:  errmsg("primary keys cannot be expressions"))); 
+ iaaj: indexcmds:00000458:  ereport(ERROR, 
+ iaaj: indexcmds:00000459:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ iaaj: indexcmds:00000460:  errmsg("column "%s" named in key does not exist", 
+ iaaj: indexcmds:00000461:  key->name))); 
+ iaaj: indexcmds:00000566:  ereport(NOTICE, 
+ iaaj: indexcmds:00000567:  (errmsg("%s %s will create implicit index "%s" for table "%s"", 
+ iaaj: indexcmds:00000568:  is_alter_table ? "ALTER TABLE / ADD" : "CREATE TABLE /", 
+ iaaj: indexcmds:00000569:  primary ? "PRIMARY KEY" : "UNIQUE", 
+ iaaj: indexcmds:00000570:  indexRelationName, RelationGetRelationName(rel)))); 
+ iaaj: indexcmds:00000651:  * Wait for QEs to finish. Exit via ereport(ERROR,...) if error. 
+ iaaj: indexcmds:00000652:  */ 
+ iaaj: indexcmds:00000653:  if (stmt->concurrent) 
+ iaaj: indexcmds:00000654:  { 
+ iaaj: indexcmds:00000655:  CdbDispatchResults *primaryResults; 
+ iaaj: indexcmds:00000817:  ereport(ERROR, 
+ iaaj: indexcmds:00000818:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ iaaj: indexcmds:00000819:  errmsg("cannot use subquery in index predicate"), 
+ iaaj: indexcmds:00000820:  errOmitLocation(true))); 
+ iaaj: indexcmds:00000822:  ereport(ERROR, 
+ iaaj: indexcmds:00000823:  (errcode(ERRCODE_GROUPING_ERROR), 
+ iaaj: indexcmds:00000824:  errmsg("cannot use aggregate in index predicate"), 
+ iaaj: indexcmds:00000825:  errOmitLocation(true))); 
+ iaaj: indexcmds:00000827:  ereport(ERROR, 
+ iaaj: indexcmds:00000828:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ iaaj: indexcmds:00000829:  errmsg("cannot use window function in index predicate"), 
+ iaaj: indexcmds:00000830:  errOmitLocation(true))); 
+ iaaj: indexcmds:00000836:  ereport(ERROR, 
+ iaaj: indexcmds:00000837:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ iaaj: indexcmds:00000838:  errmsg("functions in index predicate must be marked IMMUTABLE"), 
+ iaaj: indexcmds:00000839:  errOmitLocation(true))); 
+ iaaj: indexcmds:00000874:  ereport(ERROR, 
+ iaaj: indexcmds:00000875:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ iaaj: indexcmds:00000876:  errmsg("column "%s" named in key does not exist", 
+ iaaj: indexcmds:00000877:  attribute->name))); 
+ iaaj: indexcmds:00000879:  ereport(ERROR, 
+ iaaj: indexcmds:00000880:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ iaaj: indexcmds:00000881:  errmsg("column "%s" does not exist", 
+ iaaj: indexcmds:00000882:  attribute->name))); 
+ iaaj: indexcmds:00000912:  ereport(ERROR, 
+ iaaj: indexcmds:00000913:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ iaaj: indexcmds:00000914:  errmsg("cannot use subquery in index expression"))); 
+ iaaj: indexcmds:00000916:  ereport(ERROR, 
+ iaaj: indexcmds:00000917:  (errcode(ERRCODE_GROUPING_ERROR), 
+ iaaj: indexcmds:00000918:  errmsg("cannot use aggregate function in index expression"))); 
+ iaaj: indexcmds:00000920:  ereport(ERROR, 
+ iaaj: indexcmds:00000921:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ iaaj: indexcmds:00000922:  errmsg("cannot use window function in index expression"))); 
+ iaaj: indexcmds:00000931:  ereport(ERROR, 
+ iaaj: indexcmds:00000932:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ iaaj: indexcmds:00000933:  errmsg("functions in index expression must be marked IMMUTABLE"))); 
+ iaaj: indexcmds:00000990:  ereport(ERROR, 
+ iaaj: indexcmds:00000991:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ iaaj: indexcmds:00000992:  errmsg("data type %s has no default operator class for access method "%s"", 
+ iaaj: indexcmds:00000993:  format_type_be(attrType), accessMethodName), 
+ iaaj: indexcmds:00000994:  errhint("You must specify an operator class for the index or define a default operator class for the data type."))); 
+ iaaj: indexcmds:00001022:  ereport(ERROR, 
+ iaaj: indexcmds:00001023:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ iaaj: indexcmds:00001024:  errmsg("operator class "%s" does not exist for access method "%s"", 
+ iaaj: indexcmds:00001025:  opcname, accessMethodName))); 
+ iaaj: indexcmds:00001032:  ereport(ERROR, 
+ iaaj: indexcmds:00001033:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ iaaj: indexcmds:00001034:  errmsg("operator class "%s" does not exist for access method "%s"", 
+ iaaj: indexcmds:00001035:  NameListToString(opclass), accessMethodName))); 
+ iaaj: indexcmds:00001045:  ereport(ERROR, 
+ iaaj: indexcmds:00001046:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ iaaj: indexcmds:00001047:  errmsg("operator class "%s" does not accept data type %s", 
+ iaaj: indexcmds:00001048:  NameListToString(opclass), format_type_be(attrType)))); 
+ iaaj: indexcmds:00001121:  ereport(ERROR, 
+ iaaj: indexcmds:00001122:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+ iaaj: indexcmds:00001123:  errmsg("there are multiple default operator classes for data type %s", 
+ iaaj: indexcmds:00001124:  format_type_be(type_id)))); 
+ iaaj: indexcmds:00001369:  ereport(ERROR, 
+ iaaj: indexcmds:00001370:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ iaaj: indexcmds:00001371:  errmsg(""%s" is not an index", 
+ iaaj: indexcmds:00001372:  relation->relname))); 
+ iaaj: indexcmds:00001404:  ereport(ERROR, 
+ iaaj: indexcmds:00001405:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ iaaj: indexcmds:00001406:  errmsg(""%s" is not an index", 
+ iaaj: indexcmds:00001407:  stmt->relation->relname))); 
+ iaaj: indexcmds:00001480:  ereport(ERROR, 
+ iaaj: indexcmds:00001481:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ iaaj: indexcmds:00001482:  errmsg(""%s" is not a table", 
+ iaaj: indexcmds:00001483:  stmt->relation->relname))); 
+ iaaj: indexcmds:00001492:  ereport(ERROR, 
+ iaaj: indexcmds:00001493:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ iaaj: indexcmds:00001494:  errmsg("shared table "%s" can only be reindexed in stand-alone mode", 
+ iaaj: indexcmds:00001495:  stmt->relation->relname))); 
+ iaaj: indexcmds:00001503:  ereport(NOTICE, 
+ iaaj: indexcmds:00001504:  (errmsg("table "%s" has no indexes", 
+ iaaj: indexcmds:00001505:  stmt->relation->relname))); 
+ iaaj: indexcmds:00001533:  ereport(ERROR, 
+ iaaj: indexcmds:00001534:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ iaaj: indexcmds:00001535:  errmsg("can only reindex the currently open database"))); 
+ iaaj: indexcmds:00001630:  ereport(NOTICE, 
+ iaaj: indexcmds:00001631:  (errmsg("table "%s" was reindexed", 
+ iaaj: indexcmds:00001632:  get_rel_name(relid)))); 
  iaaj: initsplan:00000610:  ereport(ERROR, 
  iaaj: initsplan:00000611:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  iaaj: initsplan:00000612:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to the nullable side of an outer join"))); 
@@ -18165,6 +18168,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000076:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000077:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000078:  str))); 
-(18098 rows)
+(18101 rows)
 
 drop external table get_ereport;

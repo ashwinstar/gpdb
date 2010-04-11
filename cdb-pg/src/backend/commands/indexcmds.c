@@ -72,6 +72,8 @@ static Oid GetIndexOpClass(List *opclass, Oid attrType,
 static bool relationHasPrimaryKey(Relation rel);
 static bool relationHasUniqueIndex(Relation rel);
 
+bool gp_hash_index = false; /* hash index phase out. */
+
 /*
  * DefineIndex
  *		Creates a new index.
@@ -344,6 +346,11 @@ DefineIndex(RangeVar *heapRelation,
 	}
 	accessMethodId = HeapTupleGetOid(tuple);
 	accessMethodForm = (Form_pg_am) GETSTRUCT(tuple);
+
+	if (!gp_hash_index && accessMethodId == HASH_AM_OID)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("hash indexes are not supported")));
 
 	if (unique && !accessMethodForm->amcanunique)
 		ereport(ERROR,

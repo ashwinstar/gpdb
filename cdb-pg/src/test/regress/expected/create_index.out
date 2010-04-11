@@ -325,10 +325,12 @@ RESET enable_bitmapscan;
 --
 -- HASH
 --
+set gp_hash_index = true;
 CREATE INDEX hash_i4_index ON hash_i4_heap USING hash (random int4_ops);
 CREATE INDEX hash_name_index ON hash_name_heap USING hash (random name_ops);
 CREATE INDEX hash_txt_index ON hash_txt_heap USING hash (random text_ops);
 CREATE INDEX hash_f8_index ON hash_f8_heap USING hash (random float8_ops);
+set gp_hash_index = false;
 -- CREATE INDEX hash_ovfl_index ON hash_ovfl_heap USING hash (x int4_ops);
 --
 -- Test functional index
@@ -382,7 +384,7 @@ INSERT INTO concur_heap VALUES  ('b','b');
 CREATE UNIQUE INDEX CONCURRENTLY concur_index2 ON concur_heap(f1);
 -- check if constraint is set up properly to be enforced
 INSERT INTO concur_heap VALUES ('b','x');
-ERROR:  duplicate key violates unique constraint "concur_index2"  (seg1 minithump4:19003 pid=7057)
+ERROR:  duplicate key violates unique constraint "concur_index2"  (seg1 localhost:12003 pid=62805)
 -- check if constraint is enforced properly at build time
 --CREATE UNIQUE INDEX CONCURRENTLY concur_index3 ON concur_heap(f2);
 -- test that expression indexes and partial indexes work concurrently
@@ -469,16 +471,6 @@ select * from bm_test where i=5 and t='5';
 select * from bm_test where i=5 or t='6';
  i | t 
 ---+---
- 5 | 5
- 5 | 5
- 5 | 5
- 5 | 5
- 5 | 5
- 5 | 5
- 5 | 5
- 5 | 5
- 5 | 5
- 5 | 5
  6 | 6
  6 | 6
  6 | 6
@@ -489,101 +481,111 @@ select * from bm_test where i=5 or t='6';
  6 | 6
  6 | 6
  6 | 6
+ 5 | 5
+ 5 | 5
+ 5 | 5
+ 5 | 5
+ 5 | 5
+ 5 | 5
+ 5 | 5
+ 5 | 5
+ 5 | 5
+ 5 | 5
 (20 rows)
 
 select * from bm_test where i between 1 and 10 and i::text = t;
  i | t 
 ---+---
- 3 | 3
- 7 | 7
- 3 | 3
- 7 | 7
- 3 | 3
- 7 | 7
- 3 | 3
- 7 | 7
- 3 | 3
- 7 | 7
- 3 | 3
- 7 | 7
- 3 | 3
- 7 | 7
- 3 | 3
- 7 | 7
- 3 | 3
- 7 | 7
- 3 | 3
- 7 | 7
+ 2 | 2
  4 | 4
+ 6 | 6
  8 | 8
+ 2 | 2
  4 | 4
+ 6 | 6
  8 | 8
+ 2 | 2
  4 | 4
+ 6 | 6
  8 | 8
+ 2 | 2
  4 | 4
+ 6 | 6
  8 | 8
+ 2 | 2
  4 | 4
+ 6 | 6
  8 | 8
+ 2 | 2
  4 | 4
+ 6 | 6
  8 | 8
+ 2 | 2
  4 | 4
+ 6 | 6
  8 | 8
+ 2 | 2
  4 | 4
+ 6 | 6
  8 | 8
+ 2 | 2
  4 | 4
+ 6 | 6
  8 | 8
+ 2 | 2
  4 | 4
+ 6 | 6
  8 | 8
  1 | 1
+ 3 | 3
  5 | 5
+ 7 | 7
  9 | 9
  1 | 1
+ 3 | 3
  5 | 5
+ 7 | 7
  9 | 9
  1 | 1
+ 3 | 3
  5 | 5
+ 7 | 7
  9 | 9
  1 | 1
+ 3 | 3
  5 | 5
+ 7 | 7
  9 | 9
  1 | 1
+ 3 | 3
  5 | 5
+ 7 | 7
  9 | 9
  1 | 1
+ 3 | 3
  5 | 5
+ 7 | 7
  9 | 9
  1 | 1
+ 3 | 3
  5 | 5
+ 7 | 7
  9 | 9
  1 | 1
+ 3 | 3
  5 | 5
+ 7 | 7
  9 | 9
  1 | 1
+ 3 | 3
  5 | 5
+ 7 | 7
  9 | 9
  1 | 1
+ 3 | 3
  5 | 5
+ 7 | 7
  9 | 9
- 2 | 2
- 6 | 6
- 2 | 2
- 6 | 6
- 2 | 2
- 6 | 6
- 2 | 2
- 6 | 6
- 2 | 2
- 6 | 6
- 2 | 2
- 6 | 6
- 2 | 2
- 6 | 6
- 2 | 2
- 6 | 6
- 2 | 2
- 6 | 6
- 2 | 2
- 6 | 6
 (90 rows)
 
 drop table bm_test;
@@ -662,8 +664,8 @@ select a.t from bm_test a, bm_test b where a.ip < b.ip;
 select a.t from bm_test a, bm_test b where a.ip=b.ip OR a.b = b.b;
             t             
 --------------------------
- Mon Jan 01 01:01:01 2007
  Tue Jan 02 01:01:01 2007
+ Mon Jan 01 01:01:01 2007
 (2 rows)
 
 -- and
@@ -677,8 +679,8 @@ select a.t from bm_test a, bm_test b where a.ip=b.ip and a.b = b.b and a.i2=1;
 select a.t from bm_test a where d in(select d from bm_test b where a.g=b.g);
             t             
 --------------------------
- Tue Jan 02 01:01:01 2007
  Mon Jan 01 01:01:01 2007
+ Tue Jan 02 01:01:01 2007
 (2 rows)
 
 -- functional and predicate indexes
@@ -696,7 +698,7 @@ select t from bm_test where n ISNULL;
 
 -- bitmap index builds do not support concurrent building, test for this
 create index concurrently should_not_work on bm_test using bitmap(a);
-ERROR:  CONCURRENTLY is not supported when creating bitmap indexes (bitmap.c:66)
+ERROR:  CONCURRENTLY is not supported when creating bitmap indexes (bitmap.c:69)
 -- test updates
 update bm_test set i4 = 3;
 -- should return nothing
@@ -709,9 +711,9 @@ select * from bm_test where i4 = 1;
 select * from bm_test where i4=3;
  i2 | i4 | i8 | f4 | f8 |    n     | t1 | t2  | t3  |   a   |    ip     |  b   |            t             |     d      | g 
 ----+----+----+----+----+----------+----+-----+-----+-------+-----------+------+--------------------------+------------+---
-  2 |  3 |  2 |  2 |  2 | 2000.333 | 2  | 2   | foo | {2,6} | 127.0.0.2 | \002 | Tue Jan 02 01:01:01 2007 | 01-02-2007 | f
   1 |  3 |  1 |  1 |  1 | 1000.333 | 1  | 1   | 1   | {1,3} | 127.0.0.1 | \001 | Mon Jan 01 01:01:01 2007 | 01-01-2007 | t
     |  3 |    |    |    |          |    |     |     |       |           |      |                          |            | 
+  2 |  3 |  2 |  2 |  2 | 2000.333 | 2  | 2   | foo | {2,6} | 127.0.0.2 | \002 | Tue Jan 02 01:01:01 2007 | 01-02-2007 | f
 (3 rows)
 
 -- should return one row
@@ -851,8 +853,8 @@ set enable_bitmapscan=off;
 explain select * from bm_test where j = 1;
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
- Gather Motion 4:1  (slice1)  (cost=0.00..300.27 rows=1 width=8)
-   ->  Index Scan using bm_test_j on bm_test  (cost=0.00..300.27 rows=1 width=8)
+ Gather Motion 2:1  (slice1)  (cost=0.00..400.28 rows=1 width=8)
+   ->  Index Scan using bm_test_j on bm_test  (cost=0.00..400.28 rows=1 width=8)
          Index Cond: j = 1
  Settings:  enable_bitmapscan=off; enable_indexscan=on; enable_seqscan=off
 (4 rows)
@@ -886,10 +888,10 @@ insert into ijk values (1, NULL, NULL);
 insert into ijk values (1, NULL, NULL);
 -- should fail.
 create unique index ijk_i on ijk(i);
-ERROR:  could not create unique index  (seg2 minithump4:19004 pid=7059)
+ERROR:  could not create unique index  (seg0 localhost:12002 pid=62804)
 DETAIL:  Table contains duplicate values.
 create unique index ijk_ij on ijk(i,j);
-ERROR:  could not create unique index  (seg2 minithump4:19004 pid=7059)
+ERROR:  could not create unique index  (seg0 localhost:12002 pid=62804)
 DETAIL:  Table contains duplicate values.
 -- should OK.
 create unique index ijk_ijk on ijk(i,j,k);
@@ -906,10 +908,10 @@ insert into ijk values (1, NULL, NULL);
 insert into ijk values (1, NULL, NULL);
 -- should fail.
 create unique index ijk_i on ijk(i);
-ERROR:  could not create unique index  (seg2 minithump4:19004 pid=7059)
+ERROR:  could not create unique index  (seg0 localhost:12002 pid=62804)
 DETAIL:  Table contains duplicate values.
 create unique index ijk_ij on ijk(i,j);
-ERROR:  could not create unique index  (seg2 minithump4:19004 pid=7059)
+ERROR:  could not create unique index  (seg0 localhost:12002 pid=62804)
 DETAIL:  Table contains duplicate values.
 -- should OK.
 create unique index ijk_ijk on ijk(i,j,k);

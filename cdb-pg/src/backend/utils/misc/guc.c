@@ -123,6 +123,8 @@ extern bool fullPageWrites;
 
 extern bool enable_partition_rules;
 
+extern bool gp_hash_index;
+
 /* GUC lists for gp_guc_list_show().  (List of struct config_generic) */
 List       *gp_guc_list_for_explain;
 List       *gp_guc_list_for_no_plan;
@@ -2399,6 +2401,15 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&gp_enable_resqueue_priority,
+		false, NULL, NULL
+	},
+	{
+		{"gp_hash_index", PGC_SUSET, UNGROUPED,
+			gettext_noop("Specify whether hash indexes can be used."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE 
+		},
+		&gp_hash_index,
 		false, NULL, NULL
 	},
 
