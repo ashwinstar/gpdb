@@ -141,9 +141,11 @@ FILE	   *LOGFILE = NULL;
 bool		use_log;			/* log transaction latencies to a file */
 
 int			is_connect;			/* establish connection for each transaction */
+int			use_unique_key=1;	/* indexes will be primary key if set, otherwise non-unique indexes */
 
 char	   *pghost = "";
 char	   *pgport = "";
+char	   *storage_clause = "appendonly=false";
 char	   *pgoptions = NULL;
 char	   *pgtty = NULL;
 char	   *login = NULL;
@@ -284,6 +286,8 @@ usage(const char *progname)
 		   "  %s [OPTIONS]... [DBNAME]\n"
 		   "\nInitialization options:\n"
 		   "  -i           invokes initialization mode\n"
+		   "  -x STRING    append this string to the storage clause e.g. 'appendonly=true, orientation=column'\n"
+		   "  -q           make the indexes that are created non-unique indexes (defaul: unique)\n"
 		   "  -F NUM       fill factor\n"
 		   "  -s NUM       scaling factor\n"
 		   "\nBenchmarking options:\n"
@@ -1166,18 +1170,23 @@ init(void)
 	 */
 	static char *DDLs[] = {
 		"drop table if exists pgbench_branches",
-		"create table pgbench_branches(bid int not null,bbalance int,filler char(88)) with (fillfactor=%d)",
+		"create table pgbench_branches(bid int not null,bbalance int,filler char(88)) with (fillfactor=%d, %s) DISTRIBUTED BY (bid)",
 		"drop table if exists pgbench_tellers",
-		"create table pgbench_tellers(tid int not null,bid int,tbalance int,filler char(84)) with (fillfactor=%d)",
+		"create table pgbench_tellers(tid int not null,bid int,tbalance int,filler char(84)) with (fillfactor=%d, %s) DISTRIBUTED BY (tid)",
 		"drop table if exists pgbench_accounts",
-		"create table pgbench_accounts(aid int not null,bid int,abalance int,filler char(84)) with (fillfactor=%d)",
+		"create table pgbench_accounts(aid int not null,bid int,abalance int,filler char(84)) with (fillfactor=%d, %s) DISTRIBUTED BY (aid)",
 		"drop table if exists pgbench_history",
-		"create table pgbench_history(tid int,bid int,aid int,delta int,mtime timestamp,filler char(22))"
+		"create table pgbench_history(tid int,bid int,aid int,delta int,mtime timestamp,filler char(22)) with (%s) DISTRIBUTED BY (tid)"
 	};
 	static char *DDLAFTERs[] = {
 		"alter table pgbench_branches add primary key (bid)",
 		"alter table pgbench_tellers add primary key (tid)",
 		"alter table pgbench_accounts add primary key (aid)"
+	};
+	static char *NON_UNIQUE_INDEX_DDLAFTERs[] = {
+		"CREATE INDEX branch_idx ON pgbench_branches (bid) ",
+		"CREATE INDEX teller_idx ON pgbench_tellers (tid) ",
+		"CREATE INDEX account_idx ON pgbench_accounts (aid) "
 	};
 
 	PGconn	   *con;
@@ -1188,6 +1197,8 @@ init(void)
 	if ((con = doConnect()) == NULL)
 		exit(1);
 
+	fprintf(stderr, "creating tables...\n");
+
 	for (i = 0; i < lengthof(DDLs); i++)
 	{
 		/*
@@ -1197,14 +1208,22 @@ init(void)
 			(strstr(DDLs[i], "create table pgbench_tellers") == DDLs[i]) ||
 			(strstr(DDLs[i], "create table pgbench_accounts") == DDLs[i]))
 		{
-			char		ddl_stmt[128];
-
-			snprintf(ddl_stmt, 128, DDLs[i], fillfactor);
+			char		ddl_stmt[256];
+			snprintf(ddl_stmt, 256, DDLs[i], fillfactor, storage_clause);
+			fprintf(stderr, "%s\n", ddl_stmt); 
 			executeStatement(con, ddl_stmt);
-			continue;
+		}
+		else if (strstr(DDLs[i], "create table pgbench_history") == DDLs[i])
+		{
+			char		ddl_stmt[256];
+			snprintf(ddl_stmt, 256, DDLs[i], storage_clause);
+			fprintf(stderr, "%s\n", ddl_stmt); 
+			executeStatement(con, ddl_stmt);
 		}
 		else
+		{
 			executeStatement(con, DDLs[i]);
+		}
 	}
 
 	executeStatement(con, "begin");
@@ -1227,7 +1246,6 @@ init(void)
 	/*
 	 * fill the pgbench_accounts table with some data
 	 */
-	fprintf(stderr, "creating tables...\n");
 
 	executeStatement(con, "begin");
 	executeStatement(con, "truncate pgbench_accounts");
@@ -1269,9 +1287,23 @@ init(void)
 	/*
 	 * create indexes
 	 */
-	fprintf(stderr, "set primary key...\n");
-	for (i = 0; i < lengthof(DDLAFTERs); i++)
-		executeStatement(con, DDLAFTERs[i]);
+	fprintf(stderr, "creating indexes...\n");
+	if (use_unique_key)
+	{
+		for (i = 0; i < lengthof(DDLAFTERs); i++)
+		{
+			fprintf(stderr, "%s\n", DDLAFTERs[i]);
+			executeStatement(con, DDLAFTERs[i]);
+		}
+	}
+	else
+	{
+		for (i = 0; i < lengthof(NON_UNIQUE_INDEX_DDLAFTERs); i++)
+		{
+			fprintf(stderr, "%s\n", NON_UNIQUE_INDEX_DDLAFTERs[i]);
+			executeStatement(con, NON_UNIQUE_INDEX_DDLAFTERs[i]);
+		}
+	}
 
 	/* vacuum */
 	fprintf(stderr, "vacuum...");
@@ -1752,12 +1784,18 @@ main(int argc, char **argv)
 
 	memset(state, 0, sizeof(*state));
 
-	while ((c = getopt(argc, argv, "ih:nvp:dSNc:Cs:t:T:U:lf:D:F:M:j:")) != -1)
+	while ((c = getopt(argc, argv, "ih:nvp:dSNc:Cs:t:T:U:lf:D:F:M:j:x:q")) != -1)
 	{
 		switch (c)
 		{
 			case 'i':
 				is_init_mode++;
+				break;
+			case 'q':
+				use_unique_key = 0;
+				break;
+			case 'x':
+				storage_clause = optarg;
 				break;
 			case 'h':
 				pghost = optarg;
