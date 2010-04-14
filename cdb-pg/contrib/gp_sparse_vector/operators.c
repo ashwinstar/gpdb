@@ -14,6 +14,7 @@ void check_dimension(SvecType *svec1, SvecType *svec2, char *msg);
 
 Datum svec_dimension(PG_FUNCTION_ARGS);
 PG_FUNCTION_INFO_V1( svec_dimension );
+
 Datum
 svec_dimension(PG_FUNCTION_ARGS)
 {
@@ -23,6 +24,7 @@ svec_dimension(PG_FUNCTION_ARGS)
 
 Datum svec_concat_replicate(PG_FUNCTION_ARGS);
 PG_FUNCTION_INFO_V1( svec_concat_replicate);
+
 Datum
 svec_concat_replicate(PG_FUNCTION_ARGS)
 {
@@ -579,7 +581,7 @@ svec_cast_float8arr(PG_FUNCTION_ARGS) {
 /*
  * Equality
  */
-bool
+static bool
 float8arr_equals_internal(ArrayType *left, ArrayType *right)
 {
         int dimleft = ARR_NDIM(left), dimright = ARR_NDIM(right);
@@ -634,6 +636,7 @@ float8arr_equals_internal(ArrayType *left, ArrayType *right)
         return(true);
 }
 
+Datum float8arr_equals(PG_FUNCTION_ARGS);
 PG_FUNCTION_INFO_V1( float8arr_equals);
 
 Datum
@@ -647,7 +650,7 @@ float8arr_equals(PG_FUNCTION_ARGS) {
 /*
  * L2 Norm
  */
-double
+static double
 float8arr_l2norm_internal(ArrayType *left)
 {
         int dimleft = ARR_NDIM(left);
@@ -688,6 +691,7 @@ float8arr_l2norm_internal(ArrayType *left)
         return(accum);
 }
 
+Datum float8arr_l2norm(PG_FUNCTION_ARGS);
 PG_FUNCTION_INFO_V1( float8arr_l2norm);
 
 Datum
