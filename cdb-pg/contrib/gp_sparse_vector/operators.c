@@ -572,3 +572,128 @@ svec_cast_float8arr(PG_FUNCTION_ARGS) {
 
 	PG_RETURN_SVECTYPE_P(output_svec);
 }
+
+/*
+ * Provide some operators for Postgres FLOAT8OID arrays
+ */
+/*
+ * Equality
+ */
+bool
+float8arr_equals_internal(ArrayType *left, ArrayType *right)
+{
+        int dimleft = ARR_NDIM(left), dimright = ARR_NDIM(right);
+        int *dimsleft = ARR_DIMS(left), *dimsright = ARR_DIMS(right);
+	int numleft = ArrayGetNItems(dimleft,dimsleft);
+	int numright = ArrayGetNItems(dimright,dimsright);
+        double *vals_left=(double *)ARR_DATA_PTR(left), *vals_right=(double *)ARR_DATA_PTR(right);
+        bits8 *bitmap_left=ARR_NULLBITMAP(left), *bitmap_right=ARR_NULLBITMAP(right);
+        int   bitmask=1;
+
+        if ((dimsleft!=dimsright) || (numleft!=numright))
+	{
+		return(false);
+	}
+
+	/*
+	 * Note that we are only defined for FLOAT8OID
+	 */
+        //get_typlenbyvalalign(ARR_ELEMTYPE(array),
+        //                                         &typlen, &typbyval, &typalign);
+
+	/*
+	 * First we'll check to see if the null bitmaps are equivalent
+	 */
+	if (bitmap_left)
+		if (! bitmap_right) return(false);
+	if (bitmap_right)
+		if (! bitmap_left) return(false);
+
+	if (bitmap_left)
+	{
+        	for (int i=0; i<numleft; i++)
+		{
+                	if ((*bitmap_left & bitmask) == 0)
+                		if ((*bitmap_left & bitmask) != 0)
+			  		return(false);
+                        bitmask <<= 1;
+                        if (bitmask == 0x100)
+                        {
+                                bitmap_left++;
+                                bitmask = 1;
+                        }
+		}
+	}
+
+	/*
+	 * Now we check for equality of all array values
+	 */
+       	for (int i=0; i<numleft; i++)
+		if (vals_left[i] != vals_right[i]) return(false);
+
+        return(true);
+}
+
+PG_FUNCTION_INFO_V1( float8arr_equals);
+
+Datum
+float8arr_equals(PG_FUNCTION_ARGS) {
+	ArrayType *left  = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType *right = PG_GETARG_ARRAYTYPE_P(1);
+
+	PG_RETURN_BOOL(float8arr_equals_internal(left,right));
+}
+ 
+/*
+ * L2 Norm
+ */
+double
+float8arr_l2norm_internal(ArrayType *left)
+{
+        int dimleft = ARR_NDIM(left);
+        int *dimsleft = ARR_DIMS(left);
+	int numleft = ArrayGetNItems(dimleft,dimsleft);
+        double *vals_left=(double *)ARR_DATA_PTR(left);
+        bits8 *bitmap_left=ARR_NULLBITMAP(left);
+        int   bitmask=1;
+	double accum=0.;
+
+	/*
+	 * Convert null items into zeros
+	 */
+	if (bitmap_left)
+	{
+        	for (int i=0; i<numleft; i++)
+		{
+                	if ((*bitmap_left & bitmask) == 0)
+				vals_left[i] = 0.;
+                        bitmask <<= 1;
+                        if (bitmask == 0x100)
+                        {
+                                bitmap_left++;
+                                bitmask = 1;
+                        }
+		}
+	}
+
+	/*
+	 * Now we check for equality of all array values
+	 */
+       	for (int i=0; i<numleft; i++)
+	{
+		accum += vals_left[i] * vals_left[i];
+	}
+	accum = sqrt(accum);
+
+        return(accum);
+}
+
+PG_FUNCTION_INFO_V1( float8arr_l2norm);
+
+Datum
+float8arr_l2norm(PG_FUNCTION_ARGS) {
+	ArrayType *left  = PG_GETARG_ARRAYTYPE_P(0);
+
+	PG_RETURN_FLOAT8(float8arr_l2norm_internal(left));
+}
+ 

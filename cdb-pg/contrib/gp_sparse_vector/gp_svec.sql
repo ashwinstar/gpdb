@@ -67,6 +67,11 @@ CREATE OR REPLACE FUNCTION svec_concat_replicate(int4,svec) RETURNS svec AS 'gp_
 CREATE OR REPLACE FUNCTION svec_dimension(svec) RETURNS integer AS 'gp_svec.so', 'svec_dimension' LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION svec_unnest(svec) RETURNS setof float8  AS 'gp_svec.so', 'svec_unnest' LANGUAGE C IMMUTABLE; 
 
+-- Operators for the normal Postgres float8[]
+CREATE OR REPLACE FUNCTION float8arr_equals(float8[],float8[]) RETURNS bool AS 'gp_svec.so', 'float8arr_equals' LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION float8arr_l2norm(float8[]) RETURNS float8 AS 'gp_svec.so', 'float8arr_l2norm' LANGUAGE C IMMUTABLE;
+
+
 CREATE OPERATOR || (
 	LEFTARG = svec,
 	RIGHTARG = svec,
@@ -112,6 +117,13 @@ CREATE CAST (float8 AS svec) WITH FUNCTION svec_cast_float8(float8) AS IMPLICIT;
 CREATE CAST (svec AS float8[]) WITH FUNCTION svec_return_array(svec) AS IMPLICIT;
 CREATE CAST (float8[] AS svec) WITH FUNCTION svec_cast_float8arr(float8[]) AS IMPLICIT;
 CREATE CAST (numeric AS svec) WITH FUNCTION svec_cast_numeric(numeric) AS IMPLICIT;
+
+CREATE OPERATOR = (
+	leftarg = float8[], rightarg = float8[], procedure = float8arr_equals,
+	commutator = = ,
+--	negator = <> ,
+	restrict = eqsel, join = eqjoinsel
+);
 
 CREATE OPERATOR = (
 	leftarg = svec, rightarg = svec, procedure = svec_eq,

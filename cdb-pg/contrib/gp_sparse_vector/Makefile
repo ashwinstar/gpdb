@@ -20,5 +20,5 @@ endif
 #CC=gcc -no-cpp-precomp -m32
 #CC=gcc -ftree-vectorizer-verbose=10 -ftree-vectorize
 ifdef USE_ICC
-	override CFLAGS=-O3 -std=c99 -vec-report2 -vec-threshold0
+	override CFLAGS=-O3 -Werror -std=c99 -vec-report2 -vec-threshold0
 endif
