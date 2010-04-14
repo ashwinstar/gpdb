@@ -1,3 +1,8 @@
+#Intel compiler
+ifeq "$(CC)" "icc"
+	USE_ICC = 1
+endif
+
 MODULE_big = gp_svec
 DATA = gp_svec.sql gp_sfv_test.sql
 REGRESS = gp_svec_test.sql
@@ -13,3 +18,7 @@ else
 endif
 #CC=gcc -no-cpp-precomp -m64
 #CC=gcc -no-cpp-precomp -m32
+#CC=gcc -ftree-vectorizer-verbose=10 -ftree-vectorize
+ifdef USE_ICC
+	override CFLAGS=-O3 -std=c99 -vec-report2 -vec-threshold0
+endif
