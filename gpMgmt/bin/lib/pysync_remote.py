@@ -342,7 +342,7 @@ class SyncProgress(threading.Thread):
                    % ('*' if timedReport else ' ', 
                       formatSiBinary(progressCounters.bytesProcessed), 
                       formatSiBinary(self._totalBytes), 
-                      100 * progressCounters.bytesProcessed / self._totalBytes, 
+                      100 * progressCounters.bytesProcessed / self._totalBytes if self._totalBytes !=0 else 1, 
                       formatSiBinary(bytesMoved), 
                       formatSiBinary(byteRate), 
                       progressCounters.filesProcessed, 
@@ -385,7 +385,7 @@ class SyncProgress(threading.Thread):
                     self.progressCounters.filesProcessed += 1
                 self.progressCounters.processingFile = processingFile
                 
-            processingChunk = self.progressCounters.bytesProcessed // self.progressBytes
+            processingChunk = self.progressCounters.bytesProcessed // self.progressBytes if self.progressBytes != 0 else 1
             if self._final or processingChunk > self.processingChunk:
                 self.processingChunk = processingChunk
                 progressCounters = copy.copy(self.progressCounters)
