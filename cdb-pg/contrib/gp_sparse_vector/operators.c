@@ -21,6 +21,40 @@ svec_dimension(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(svec->dimension);
 }
 
+Datum svec_concat_replicate(PG_FUNCTION_ARGS);
+PG_FUNCTION_INFO_V1( svec_concat_replicate);
+Datum
+svec_concat_replicate(PG_FUNCTION_ARGS)
+{
+	int multiplier = PG_GETARG_INT32(0);
+	SvecType *svec = PG_GETARG_SVECTYPE_P(1);
+	SparseData left  = sdata_from_svec(svec);
+	SparseData sdata = makeEmptySparseData();
+	char *vals,*index;
+	int l_val_len = left->vals->len;
+	int l_ind_len = left->index->len;
+	int val_len=l_val_len*multiplier;
+	int ind_len=l_ind_len*multiplier;
+
+	vals = (char *)palloc(sizeof(char)*val_len);
+	index = (char *)palloc(sizeof(char)*ind_len);
+
+	for (int i=0;i<multiplier;i++)
+	{
+		memcpy(vals+i*l_val_len,left->vals->data,l_val_len);
+		memcpy(index+i*l_ind_len,left->index->data,l_ind_len);
+	}
+
+	sdata->vals  = makeStringInfoFromData(vals,val_len);
+	sdata->index = makeStringInfoFromData(index,ind_len);
+	sdata->type_of_data = FLOAT8OID;
+	sdata->unique_value_count = multiplier * left->unique_value_count;
+	sdata->total_value_count  = multiplier * left->total_value_count;
+
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+}
+
+
 Datum svec_concat(PG_FUNCTION_ARGS);
 PG_FUNCTION_INFO_V1( svec_concat );
 Datum
