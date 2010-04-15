@@ -2,38 +2,9 @@
 #
 # Copyright (c) Greenplum Inc 2009. All Rights Reserved. 
 
-'''
-USAGE:   gpconfig --entry CONFIG_ENTRY [--value CONFIG_VALUE] [--mastervalue MASTER_CONFIG_VALUE] [--removeonly] [--skipvalidation] [--list] [--show] [--verbose] [--debug] [--help] 
-
-# set the shared_buffers setting to 250MB
-EXAMPLE: gpconfig --entry shared_buffers --value 250MB
-
-# set the shared_buffers setting to 250MB on segs and 100MB on master
-EXAMPLE: gpconfig --entry shared_buffers --value 250MB --mastervalue 100MB
-
-# comment out all instances of the shared_buffers setting
-EXAMPLE: gpconfig --entry shared_buffers --removeonly
-
-# same examples using short form options
-EXAMPLE: gpconfig -e shared_buffers -v 250MB
-EXAMPLE: gpconfig -e shared_buffers -v 250MB -m 100MB
-EXAMPLE: gpconfig -e shared_buffers -r
-
-# show all available gucs
-EXAMPLE gpconfig --list
-EXAMPLE gpconfig -l
-
-# show values of a particular guc on all nodes
-EXAMPLE gpconfig --show max_connections
-EXAMPLE gpconfig -s max_connections
-
-# NOTE: env variables PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE are used to connect to the GPDB instance and obtain cluster information.
-# NOTE: install jetpack to use gpconfig --show: psql -f $GPHOME/lib/jetpack/jetpack.sql template1
-'''
+import os, sys, re
 
 try:
-    
-    import os, sys, re
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gparray import GpArray
@@ -52,10 +23,9 @@ EXECNAME = os.path.split(__file__)[-1]
 
 def parseargs():
 
-    parser = OptParser(option_class=OptChecker, usage=__doc__)
-
+    parser = OptParser(option_class=OptChecker)
     parser.remove_option('-h')
-    parser.add_option('-h','--help', action='store_true')
+    parser.add_option('-h', '-?', '--help', action='help')
     parser.add_option('--verbose', action='store_true')
     parser.add_option('--skipvalidation', action='store_true')
     parser.add_option('--debug', action='store_true')
@@ -66,10 +36,6 @@ def parseargs():
     parser.add_option('-l', '--list', action='store_true')
     parser.add_option('-s', '--show', type='string')
     (options, args) = parser.parse_args()
-
-    if options.help:
-        print __doc__
-        sys.exit(1)
 
     USER=os.getenv('USER')
     if USER is None or USER is ' ':
@@ -85,13 +51,11 @@ def parseargs():
         parser.exit()
 
     if not options.entry:
-        print "--entry is a required command line.  Check the usage below:"
-        print __doc__
+        print "--entry is a required command line."
         parser.exit()
 
     if (not options.removeonly and not options.value) or (options.removeonly and options.value):
         print "--value or --removeonly must be specified.  Check the usage below:"
-        print __doc__
         parser.exit()
 
     if options.value and (not options.mastervalue):
