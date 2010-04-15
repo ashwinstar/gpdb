@@ -6,166 +6,71 @@
 # whatever you like, and is referenced when you run gpinitsystem. 
 
 ################################################
-# REQUIRED PARAMETERS
+#### REQUIRED PARAMETERS
 ################################################
 
-# A name for the array you are configuring. You can use any name you 
-# like. Enclose the name in quotes if the name contains spaces.
+#### Name of this Greenplum system enclosed in quotes.
+ARRAY_NAME="Greenplum"
 
-ARRAY_NAME="Greenplum Database"
+#### Absolute path to the segment host list file.
+MACHINE_LIST_FILE=/home/gpadmin/seg_hosts_file
 
+#### Naming convention for utility-generated data directories.
+SEG_PREFIX=gpseg
 
-# This specifies the file that contains the list of segment host names 
-# that comprise the Greenplum system  the master host is assumed to 
-# be the host from which you are running the script. If the host list 
-# file does not reside in the same directory where the gpinitsystem 
-# script is executed, specify the absolute path to the file.
-
-MACHINE_LIST_FILE=/home/gpadmin/host_file
-
-
-# This specifies a prefix that will be used to name the data directories 
-# of the master and segment instances. The naming convention for data 
-# directories in a Greenplum Database system is SEG_PREFIX<number> 
-# where <number> starts with 0 for segment instances and the master 
-# is always -1. So for example, if you choose the prefix gp, your 
-# master instance data directory would be named gp-1, and the segment 
-# instances would be named gp0, gp1, gp2, gp3, and so on.
-
-SEG_PREFIX=gp
-
-
-# Base port number on which primary segment instances will be 
-# started on a segment host. If a host has multiple primary segment 
-# instances, the base port number will be incremented by one for each 
-# additional segment instance started on that host. 
-
+#### Base number by which primary segment port numbers 
+#### are calculated.
 PORT_BASE=50000
 
-# This specifies the data storage location(s) where the script will 
-# create the primary segment data directories. The script creates a 
-# unique data directory for each segment instance. If you want multiple 
-# segment instances per host, list a data storage area for each primary 
-# segment you want created. The recommended number is one primary segment
-# per CPU. It is OK to list the same data storage area multiple times 
-# if you want your data directories created in the same location. The 
-# number of data directory locations specified will determine the number 
-# of primary segment instances created per host.
-# You must make sure that the user who runs gpinitsystem (for example, 
-# the gpadmin user) has permissions to write to these directories. You 
-# may want to create these directories on the segment hosts before running 
-# gpinitsystem and chown them to the appropriate user.
+#### File system location(s) where primary segment data directories 
+#### will be created. The number of locations in the list dictate
+#### the number of primary segments per physical host.
+declare -a DATA_DIRECTORY=(/gpseg1 /gpseg2 /gpseg3 /gpseg4)
 
-declare -a DATA_DIRECTORY=(/dbfast1 /dbfast2)
-# declare -a DATA_DIRECTORY=(/gp_primary /gp_primary)
+#### OS-configured hostname or IP address of the master host.
+MASTER_HOSTNAME=output_of_hostname_command_on_master
 
+#### File system location where the master data directory 
+#### will be created.
+MASTER_DIRECTORY=/gpmaster
 
-# The host name of the Greenplum Database master instance.
-
-MASTER_HOSTNAME=host01
-
-
-# The location where the data directory will be created on the  
-# Greenplum master host. 
-# You must make sure that the user who runs gpinitsystem
-# has permissions to write to this directory. You may want to 
-# create this directory on the master host before running 
-# gpinitsystem and chown it to the appropriate user.
-
-MASTER_DIRECTORY=/dbfast1
-
-
-# The port number for the master instance. This is the port number 
-# that users and client connections will use when accessing the 
-# Greenplum Database system.
-
+#### Port number for the master instance. 
 MASTER_PORT=5432
 
-
-# The shell the gpinitsystem script uses to execute 
-# commands on remote hosts. Allowed value is ssh. You must set up 
-# your trusted host environment before running the gpinitsystem 
-# script. You can use gpssh-exkeys to do this.
-
+#### Shell utility used to connect to remote hosts.
 TRUSTED_SHELL=ssh
 
-
-# Maximum distance between automatic write ahead log (WAL) 
-# checkpoints, in log file segments (each segment is normally 16 
-# megabytes). This will set the checkpoint_segments parameter 
-# in the postgresql.conf file for each segment instance in the 
-# Greenplum Database system.
-
+#### Maximum log file segments between automatic WAL checkpoints.
 CHECK_POINT_SEGMENTS=8
 
-
-# The character set encoding to use. Greenplum supports the 
-# same character sets as PostgreSQL. See 'Character Set Support'
-# in the PostgreSQL documentation for allowed character sets.
-# Should correspond to the OS locale specified with the 
-# gpinitsystem -n option. 
-
+#### Default server-side character set encoding.
 ENCODING=UNICODE
 
-
 ################################################
-# OPTIONAL PARAMETERS
-################################################
-
-# Optional. Uncomment to create a database of this name after the
-# system is initialized. You can always create a database later using 
-# the CREATE DATABASE command or the createdb script.
-
-#DATABASE_NAME=warehouse
-
-
-################################################
-# OPTIONAL PARAMETERS FOR SEGMENT MIRRORING
+#### OPTIONAL CREATE DATABASE PARAMETER
 ################################################
 
-# Uncomment these parameters to set up mirroring at initialization. 
-# If you are using multiple network interfaces per segment host, 
-# do NOT set up mirrors at initialization time. Do so afterwards 
-# using gpaddmirrors
+#### Create a database of this name after initialization.
+#DATABASE_NAME=name_of_database
 
+################################################
+#### OPTIONAL MIRROR PARAMETERS
+################################################
 
-# The base port number on which mirror segment instances will be 
-# started on a segment host. If a host has multiple mirror segment 
-# instances, the base port number will be incremented by one for 
-# each additional mirror segment instance started on that host.
-# Be sure to use a different number than the primary PORT_BASE,
-# REPLICATION_PORT_BASE, and MIRROR_REPLICATION_PORT_BASE.
-
+#### Base number by which mirror segment port numbers 
+#### are calculated.
 #MIRROR_PORT_BASE=60000
 
-# The base port number on which primary segment instances' file
-# replication process (used by mirroring) will be started. If a host 
-# has multiple mirror segment instances, the base port number will be 
-# incremented by one for each additional mirror segment instance started 
-# on that host. Be sure to use a different number than the primary PORT_BASE,
-# MIRROR_PORT_BASE, and MIRROR_REPLICATION_BASE.
+#### Base number by which primary file replication port 
+#### numbers are calculated.
+#REPLICATION_PORT_BASE=51000
 
-#REPLICATION_PORT_BASE=53000
+#### Base number by which mirror file replication port 
+#### numbers are calculated. 
+#MIRROR_REPLICATION_PORT_BASE=61000
 
-# The base port number on which mirror segment instances' file
-# replication process (used by mirroring) will be started. If a host 
-# has multiple mirror segment instances, the base port number will be 
-# incremented by one for each additional mirror segment instance started 
-# on that host. Be sure to use a different number than the primary PORT_BASE,
-# MIRROR_PORT_BASE, and REPLICATION_PORT_BASE.
-
-#MIRROR_REPLICATION_PORT_BASE=63000
-
-# The data directory where mirror segment instances will be
-# created on a host. There must be the same number of data directories 
-# declared for mirror segment instances as for primary segment instances 
-# (see the DATA_DIRECTORY parameter for more information).
-
-# You must make sure that the user who runs gpinitsystem
-# has permissions to write to these directories. You may want to 
-# create these directories on the segment hosts before running 
-# gpinitsystem and chown them to the appropriate user.
-
-
-#declare -a MIRROR_DATA_DIRECTORY=(/dbfast3 /dbfast4)
-#declare -a MIRROR_DATA_DIRECTORY=(/gp_mirror /gp_mirror)
+#### File system location(s) where mirror segment data directories 
+#### will be created. The number of locations in the list must
+#### match the number of primary segments per host.
+ #MIRROR_DATA_DIRECTORY
+#declare -a MIRROR_DATA_DIRECTORY=(/gpmir1 /gpmir2 /gpmir3 /gpmir4)

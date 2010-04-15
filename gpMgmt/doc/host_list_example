@@ -21,8 +21,8 @@ seg3_eth4
 
 # sample host list for initializing an array (one name per segment host)
 
-seg1_eth1
-seg2_eth1
-seg3_eth1
+seg1
+seg2
+seg3
 
 

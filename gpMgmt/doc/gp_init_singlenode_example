@@ -36,9 +36,8 @@ SEG_PREFIX=gpsne
 
 
 # Base port number on which primary segment instances will be 
-# started on a segment host. If a host has multiple primary segment 
-# instances, the base port number will be incremented by one for each 
-# additional segment instance started on that host. 
+# started on a segment host. The base port number will be 
+# incremented by one for each segment instance started on a host. 
 
 PORT_BASE=50000
 
