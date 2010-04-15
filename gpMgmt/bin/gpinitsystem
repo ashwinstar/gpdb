@@ -346,9 +346,9 @@ CHK_PARAMS () {
 		fi
 		# ENCODING
 		if [ ! $ENCODING ]; then
-			LOG_MSG "[WARN]:-ENCODING variable not set, will set to default SQL_ASCII" 1
+			LOG_MSG "[WARN]:-ENCODING variable not set, will set to default UTF-8" 1
 			EXIT_STATUS=1
-			ENCODING="SQL_ASCII"
+			ENCODING="UTF-8"
 		fi
 		# MASTER_MAX_CONNECT
 		if [ ! $MASTER_MAX_CONNECT ];then
