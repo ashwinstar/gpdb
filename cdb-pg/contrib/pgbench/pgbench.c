@@ -287,7 +287,7 @@ usage(const char *progname)
 		   "\nInitialization options:\n"
 		   "  -i           invokes initialization mode\n"
 		   "  -x STRING    append this string to the storage clause e.g. 'appendonly=true, orientation=column'\n"
-		   "  -q           make the indexes that are created non-unique indexes (defaul: unique)\n"
+		   "  -q           make the indexes that are created non-unique indexes (default: unique)\n"
 		   "  -F NUM       fill factor\n"
 		   "  -s NUM       scaling factor\n"
 		   "\nBenchmarking options:\n"
