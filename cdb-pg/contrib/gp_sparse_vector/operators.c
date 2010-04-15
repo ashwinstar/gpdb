@@ -7,6 +7,7 @@
 #include "catalog/pg_type.h"
 #include "utils/numeric.h"
 #include "utils/builtins.h"
+#include "access/hash.h"
 
 #include "sparse_vector.h"
 
@@ -680,7 +681,7 @@ float8arr_l2norm_internal(ArrayType *left)
 	}
 
 	/*
-	 * Now we check for equality of all array values
+	 * Calculate the L2 norm
 	 */
        	for (int i=0; i<numleft; i++)
 	{
@@ -701,3 +702,76 @@ float8arr_l2norm(PG_FUNCTION_ARGS) {
 	PG_RETURN_FLOAT8(float8arr_l2norm_internal(left));
 }
  
+/*
+ * L1 Norm
+ */
+static double
+float8arr_l1norm_internal(ArrayType *left)
+{
+        int dimleft = ARR_NDIM(left);
+        int *dimsleft = ARR_DIMS(left);
+	int numleft = ArrayGetNItems(dimleft,dimsleft);
+        double *vals_left=(double *)ARR_DATA_PTR(left);
+        bits8 *bitmap_left=ARR_NULLBITMAP(left);
+        int   bitmask=1;
+	double accum=0.;
+
+	/*
+	 * Convert null items into zeros
+	 */
+	if (bitmap_left)
+	{
+        	for (int i=0; i<numleft; i++)
+		{
+                	if ((*bitmap_left & bitmask) == 0)
+				vals_left[i] = 0.;
+                        bitmask <<= 1;
+                        if (bitmask == 0x100)
+                        {
+                                bitmap_left++;
+                                bitmask = 1;
+                        }
+		}
+	}
+
+	/*
+	 * Calculate the L1 norm
+	 */
+       	for (int i=0; i<numleft; i++)
+	{
+		accum += vals_left[i];
+	}
+
+        return(accum);
+}
+
+Datum float8arr_l1norm(PG_FUNCTION_ARGS);
+PG_FUNCTION_INFO_V1( float8arr_l1norm);
+
+Datum
+float8arr_l1norm(PG_FUNCTION_ARGS) {
+	ArrayType *left  = PG_GETARG_ARRAYTYPE_P(0);
+
+	PG_RETURN_FLOAT8(float8arr_l1norm_internal(left));
+}
+
+/*
+ * Hash function for float8[]
+ */
+static int
+float8arr_hash_internal(ArrayType *left)
+{
+	double l1norm = float8arr_l1norm_internal(left);
+	int arr_hash = DirectFunctionCall1(hashfloat8, Float8GetDatumFast(l1norm));
+	return(arr_hash);
+}
+
+Datum float8arr_hash(PG_FUNCTION_ARGS);
+PG_FUNCTION_INFO_V1( float8arr_hash);
+
+Datum
+float8arr_hash(PG_FUNCTION_ARGS) {
+	ArrayType *left  = PG_GETARG_ARRAYTYPE_P(0);
+
+	PG_RETURN_INT32(float8arr_hash_internal(left));
+}

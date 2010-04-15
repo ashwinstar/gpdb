@@ -27,5 +27,27 @@ select (t1.b+t2.b)::float8[] cross_product_sum, svec_l2norm(t1.b+t2.b) l2norm, (
 select ('{1,2}:{20.,10.}'::svec)^('{1}:{3.}'::svec);
  select (t1.b %*% (t1.b/(select sum(b) from test))) / (svec_l1norm(t1.b) * svec_l1norm((select sum(b) from test))) as norm_score from test t1 order by a;
 
+-- Test the multi-concatenation and show sizes compared with a normal array
+drop table if exists corpus_proj;
+drop table if exists corpus_proj_array;
+create table corpus_proj as (select 10000 *|| ('{45,2,35,4,15,1}:{0,1,0,1,0,2}'::svec) result );
+create table corpus_proj_array as (select result::float8[] from corpus_proj) distributed randomly;
+-- Calculate on-disk size of sparse vector
+select pg_size_pretty(pg_total_relation_size('corpus_proj'));
+-- Calculate on-disk size of normal array
+select pg_size_pretty(pg_total_relation_size('corpus_proj_array'));
+\timing
+-- Calculate L1 norm from sparse vector
+select l1norm(result) from corpus_proj;
+-- Calculate L1 norm from float8[]
+select l1norm(result) from corpus_proj_array;
+-- Calculate L2 norm from sparse vector
+select l2norm(result) from corpus_proj;
+-- Calculate L2 norm from float8[]
+select l2norm(result) from corpus_proj_array;
+
+
+drop table corpus_proj;
+drop table corpus_proj_array;
 drop table test;
 drop table test2;

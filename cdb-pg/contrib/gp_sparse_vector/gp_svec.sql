@@ -38,20 +38,25 @@ CREATE OR REPLACE FUNCTION gp_extract_feature_histogram(text[], text[]) RETURNS 
 CREATE OR REPLACE FUNCTION dmin(float8,float8) RETURNS float8 AS 'gp_svec.so', 'float8_min' LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION dmax(float8,float8) RETURNS float8 AS 'gp_svec.so', 'float8_max' LANGUAGE C IMMUTABLE; 
 
--- Aggregate functions
-CREATE OR REPLACE FUNCTION svec_plus(svec,svec) RETURNS svec AS 'gp_svec.so', 'svec_plus' STRICT LANGUAGE C IMMUTABLE; 
+-- Aggregate related functions
 CREATE OR REPLACE FUNCTION svec_count(svec,svec) RETURNS svec AS 'gp_svec.so', 'svec_count' STRICT LANGUAGE C IMMUTABLE; 
 
--- Other operator related functions
+-- Scalar operator functions
+CREATE OR REPLACE FUNCTION svec_plus(svec,svec) RETURNS svec AS 'gp_svec.so', 'svec_plus' STRICT LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION svec_minus(svec,svec) RETURNS svec AS 'gp_svec.so', 'svec_minus' STRICT LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION log(svec) RETURNS svec AS 'gp_svec.so', 'svec_log' STRICT LANGUAGE C IMMUTABLE; 
-CREATE OR REPLACE FUNCTION svec_eq(svec,svec) RETURNS boolean AS 'gp_svec.so', 'svec_eq' STRICT LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION svec_div(svec,svec) RETURNS svec AS 'gp_svec.so', 'svec_div' STRICT LANGUAGE C IMMUTABLE; 
-CREATE OR REPLACE FUNCTION svec_dot(svec,svec) RETURNS float8 AS 'gp_svec.so', 'svec_dot' STRICT LANGUAGE C IMMUTABLE; 
-CREATE OR REPLACE FUNCTION svec_l2norm(svec) RETURNS float8 AS 'gp_svec.so', 'svec_l2norm' STRICT LANGUAGE C IMMUTABLE; 
-CREATE OR REPLACE FUNCTION svec_l1norm(svec) RETURNS float8 AS 'gp_svec.so', 'svec_l1norm' STRICT LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION svec_mult(svec,svec) RETURNS svec AS 'gp_svec.so', 'svec_mult' STRICT LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION svec_pow(svec,svec) RETURNS svec AS 'gp_svec.so', 'svec_pow' STRICT LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION svec_eq(svec,svec) RETURNS boolean AS 'gp_svec.so', 'svec_eq' STRICT LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION float8arr_eq(float8[],float8[]) RETURNS boolean AS 'gp_svec.so', 'float8arr_equals' LANGUAGE C IMMUTABLE;
+
+-- Vector operator functions
+CREATE OR REPLACE FUNCTION dot(svec,svec) RETURNS float8 AS 'gp_svec.so', 'svec_dot' STRICT LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION l2norm(svec) RETURNS float8 AS 'gp_svec.so', 'svec_l2norm' STRICT LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION l2norm(float8[]) RETURNS float8 AS 'gp_svec.so', 'float8arr_l2norm' LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION l1norm(svec) RETURNS float8 AS 'gp_svec.so', 'svec_l1norm' STRICT LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION l1norm(float8[]) RETURNS float8 AS 'gp_svec.so', 'float8arr_l1norm' STRICT LANGUAGE C IMMUTABLE; 
 
 -- Casts and transforms
 CREATE OR REPLACE FUNCTION svec_cast_int2(int2) RETURNS svec AS 'gp_svec.so', 'svec_cast_int2' STRICT LANGUAGE C IMMUTABLE; 
@@ -66,10 +71,6 @@ CREATE OR REPLACE FUNCTION svec_concat(svec,svec) RETURNS svec AS 'gp_svec.so', 
 CREATE OR REPLACE FUNCTION svec_concat_replicate(int4,svec) RETURNS svec AS 'gp_svec.so', 'svec_concat_replicate' LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION svec_dimension(svec) RETURNS integer AS 'gp_svec.so', 'svec_dimension' LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION svec_unnest(svec) RETURNS setof float8  AS 'gp_svec.so', 'svec_unnest' LANGUAGE C IMMUTABLE; 
-
--- Operators for the normal Postgres float8[]
-CREATE OR REPLACE FUNCTION float8arr_equals(float8[],float8[]) RETURNS bool AS 'gp_svec.so', 'float8arr_equals' LANGUAGE C IMMUTABLE;
-CREATE OR REPLACE FUNCTION float8arr_l2norm(float8[]) RETURNS float8 AS 'gp_svec.so', 'float8arr_l2norm' LANGUAGE C IMMUTABLE;
 
 
 CREATE OPERATOR || (
@@ -119,7 +120,7 @@ CREATE CAST (float8[] AS svec) WITH FUNCTION svec_cast_float8arr(float8[]) AS IM
 CREATE CAST (numeric AS svec) WITH FUNCTION svec_cast_numeric(numeric) AS IMPLICIT;
 
 CREATE OPERATOR = (
-	leftarg = float8[], rightarg = float8[], procedure = float8arr_equals,
+	leftarg = float8[], rightarg = float8[], procedure = float8arr_eq,
 	commutator = = ,
 --	negator = <> ,
 	restrict = eqsel, join = eqjoinsel
