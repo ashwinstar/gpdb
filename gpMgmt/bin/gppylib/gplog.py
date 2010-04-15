@@ -30,7 +30,6 @@ import logging
 import os
 import sys
 
-
 #------------------------------- Public Interface --------------------------------
 def get_default_logger():
     """
@@ -87,17 +86,30 @@ def setup_helper_tool_logging(appName,hostname,userName):
     return logger
 
 def setup_tool_logging(appName,hostname,userName,logdir=None,nonuser=False):
-    """ 
+    """
     Returns a singleton logger for standard Greenplum tools:
       - Logs output to stdout
-      - Logs output to a file, typically in ~/gpAdminLogs 
+      - Logs output to a file, typically in ~/gpAdminLogs
     """
-    logger = get_default_logger()
-    logger.name="%s:%s" % (hostname,userName)
-    
+    global _DEFAULT_FORMATTER
+    global _APP_NAME_FOR_DEFAULT_FORMAT
+
+    loggerName ="%s:%s" % (hostname,userName)
     if nonuser:
-        appName=appName + "_" + logger.name
+        appName=appName + "_" + loggerName
+    _APP_NAME_FOR_DEFAULT_FORMAT = appName
+
     _enable_gpadmin_logging(appName,logdir)
+
+    #
+    # now reset the default formatter (someone may have called get_default_logger before calling setup_tool_logging)
+    #
+    logger = get_default_logger()
+    _DEFAULT_FORMATTER = None
+    f = _get_default_formatter()
+    _SOUT_HANDLER.setFormatter(f)
+    _FILE_HANDLER.setFormatter(f)
+
     return logger
 
 def enable_verbose_logging():
@@ -180,7 +192,7 @@ _DEFAULT_FORMATTER=None
 _LITERAL_FORMATTER=None
 _SOUT_HANDLER=None
 _FILE_HANDLER=None
-
+_APP_NAME_FOR_DEFAULT_FORMAT=""
 
 def _set_file_logging(filename): 
     """
@@ -198,18 +210,18 @@ def _set_file_logging(filename):
 def _get_default_formatter():
     """
     Returns the default formatter, constructing it if needed.
-
     The default formatter formats things using Greenplum standard logging:
-      <date>:<filename>:<hostname>:<username>:[LEVEL]:-message
-    
+      <date>:<programname>:<hostname>:<username>:[LEVEL]:-message
     NOTE: internal use only
     """
-
     global _DEFAULT_FORMATTER
+    global _APP_NAME_FOR_DEFAULT_FORMAT
+
     if _DEFAULT_FORMATTER == None:
-        _DEFAULT_FORMATTER = logging.Formatter(
-            "%(asctime)s:%(filename)s:%(name)s-[%(levelname)-s]:-%(message)s",
-            "%Y%m%d:%H:%M:%S")
+        formatStr = "%(asctime)s:%(programname)s:%(name)s-[%(levelname)-s]:-%(message)s"
+        appName = _APP_NAME_FOR_DEFAULT_FORMAT.replace("%", "") # to make sure we don't produce a format string
+        formatStr = formatStr.replace("%(programname)s", appName)
+        _DEFAULT_FORMATTER = logging.Formatter(formatStr,"%Y%m%d:%H:%M:%S")
     return _DEFAULT_FORMATTER
 
 def _get_literal_formatter():
