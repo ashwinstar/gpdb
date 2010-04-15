@@ -7020,7 +7020,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
                           fmtId(tbinfo->dobj.name));
 
 		/* Now get required information from pg_exttable */
-		if (1/* TODO: if greenplum version is >= 3.4 */)
+		if (g_fout->remoteVersion >= 80214)
 		{
 			appendPQExpBuffer(query,
 							  "SELECT x.location, x.fmttype, x.fmtopts, x.command, "

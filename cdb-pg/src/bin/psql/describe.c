@@ -2153,7 +2153,7 @@ listForeignDataWrappers(const char *pattern, bool verbose)
 	PGresult   *res;
 	printQueryOpt myopt = pset.popt;
 
-	if (pset.sversion < 80213/* TODO FIX VERSION ONCE BRANCHED OF OFF MAIN */)
+	if (pset.sversion < 80214)
 	{
 		fprintf(stderr, _("The server (version %d.%d) does not support foreign-data wrappers.\n"),
 				pset.sversion / 10000, (pset.sversion / 100) % 100);
@@ -2212,7 +2212,7 @@ listForeignServers(const char *pattern, bool verbose)
 	PGresult   *res;
 	printQueryOpt myopt = pset.popt;
 
-	if (pset.sversion < 80213/* TODO FIX VERSION ONCE BRANCHED OF OFF MAIN */)
+	if (pset.sversion < 80214)
 	{
 		fprintf(stderr, _("The server (version %d.%d) does not support foreign servers.\n"),
 				pset.sversion / 10000, (pset.sversion / 100) % 100);
@@ -2278,7 +2278,7 @@ listUserMappings(const char *pattern, bool verbose)
 	PGresult   *res;
 	printQueryOpt myopt = pset.popt;
 
-	if (pset.sversion < 80213/* TODO FIX VERSION ONCE BRANCHED OF OFF MAIN */)
+	if (pset.sversion < 80214)
 	{
 		fprintf(stderr, _("The server (version %d.%d) does not support user mappings.\n"),
 				pset.sversion / 10000, (pset.sversion / 100) % 100);
