@@ -1204,7 +1204,7 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 {
 	CdbDispatchResults *primaryResults=NULL;
 
-	CdbDispatchCmdThreads  *dispatchThreads;
+	CdbDispatchCmdThreads  *dispatchThreads=NULL;
 	
 	PGresult  **resultSets = NULL;
 
@@ -1215,14 +1215,28 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 		 "cdbdisp_dispatchRMCommand for command = '%s', withSnapshot = %s",
 	     strCommand, (withSnapshot ? "true" : "false"));
 
-	/* Launch the command.	Don't cancel on error. */
-	cdbdisp_dispatchCommand(strCommand, NULL, 0,
-							/* cancelOnError */false,
-							needTwoPhase, withSnapshot, 
-							&primaryResults, &dispatchThreads);
+	PG_TRY();
+	{
+		/* Launch the command.	Don't cancel on error. */
+		cdbdisp_dispatchCommand(strCommand, NULL, 0,
+								/* cancelOnError */false,
+								needTwoPhase, withSnapshot, 
+								&primaryResults, &dispatchThreads);
 
-	/* Wait for all QEs to finish.	Don't cancel. */
-	CdbCheckDispatchResult(primaryResults, dispatchThreads, false);
+		/* Wait for all QEs to finish.	Don't cancel. */
+		CdbCheckDispatchResult(primaryResults, dispatchThreads, false);
+	}
+	PG_CATCH();
+	{
+		/* Something happend, clean up after ourselves */
+		CdbCheckDispatchResult(primaryResults, dispatchThreads, false);
+
+		cdbdisp_destroyDispatchResults(primaryResults);
+
+		PG_RE_THROW();
+		/* not reached */
+	}
+	PG_END_TRY();
 
 	resultSets = cdbdisp_returnResults(primaryResults, errmsgbuf, numresults);
 	
@@ -3993,26 +4007,27 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
  * and does not return.
  */
 void
-CdbDispatchUtilityStatement(struct Node *stmt, char* debugCaller __attribute__((unused)) )
+CdbDispatchUtilityStatement(struct Node *stmt, char *debugCaller __attribute__((unused)) )
 {
 	CdbDispatchUtilityStatement_Internal(stmt, /* needTwoPhase */ true, "CdbDispatchUtilityStatement");
 }
 
 void
-CdbDispatchUtilityStatement_NoTwoPhase(struct Node *stmt, char* debugCaller __attribute__((unused)) )
+CdbDispatchUtilityStatement_NoTwoPhase(struct Node *stmt, char *debugCaller __attribute__((unused)) )
 {
 	CdbDispatchUtilityStatement_Internal(stmt, /* needTwoPhase */ false, "CdbDispatchUtilityStatement_NoTwoPhase");
 }
 
 static void
-CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase, char* debugCaller)
+CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase, char *debugCaller)
 {
 	CdbDispatchResults *primaryResults;
 	CdbDispatchCmdThreads *dispatchThreads;
 	
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"cdbdisp_dispatchUtilityStatement called (needTwoPhase = %s, debugCaller = %s)",
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),
+		 "cdbdisp_dispatchUtilityStatement called (needTwoPhase = %s, debugCaller = %s)",
 		 (needTwoPhase ? "true" : "false"), debugCaller);
-	
+
 	cdbdisp_dispatchUtilityStatement(stmt, 
 									 true /* cancelOnError */, 
 									 needTwoPhase, 
@@ -4022,6 +4037,7 @@ CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase, char*
 
 	/* Wait for all QEs to finish.	Throw up if error. */
 	cdbdisp_finishCommand(primaryResults, dispatchThreads, NULL, NULL);
+
 }	/* CdbDispatchUtilityStatement */
 
 char *
