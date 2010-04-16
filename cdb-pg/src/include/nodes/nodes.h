@@ -102,8 +102,8 @@ typedef enum NodeTag
 	/* Real plan node starts below.  Scan and Join are "Virtal nodes",
 	 * It will take the form of IndexScan, SeqScan, etc. 
 	 */
-	T_PlanState_Start,
-	T_ResultState = T_PlanState_Start,
+	T_ResultState,
+	T_PlanState_Start = T_ResultState,
 	T_AppendState,
 	T_BitmapAndState,
 	T_BitmapOrState,
