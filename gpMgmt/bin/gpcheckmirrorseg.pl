@@ -152,6 +152,10 @@ sub perlhash
 	for my $val (split (//, $ini))
 	{
 		$hash = $hash*33 + ord($val);
+		# MPP-8927: mod the hash when it gets too big
+		$hash = $hash % 100000000000000
+			if ($hash > 100000000000000);
+
 	}
 	return $hash;
 }
