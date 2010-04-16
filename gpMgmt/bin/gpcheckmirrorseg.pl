@@ -1617,7 +1617,8 @@ if (1)
 		system ($cmd);
 		my $time2 = time();
 
-		my $numfiles = `wc -l < $primtmp`;
+		my $wcstr    = "wc -l < $primtmp" . "1"; # MPP-8951
+		my $numfiles = `$wcstr`;
 		chomp $numfiles;
 
 		print "\nprimary: ", $numfiles, " files, ", $time2-$time1," seconds\n\n";
@@ -1636,7 +1637,8 @@ if (1)
 		system ($cmd);
 		$time2 = time();
 
-		$numfiles = `wc -l < $mirrtmp`;
+		$wcstr    = "wc -l < $mirrtmp" . "1"; # MPP-8951
+		$numfiles = `$wcstr`;
 		chomp $numfiles;
 
 		print "\nmirror: ", $numfiles, " files, ", $time2-$time1," seconds\n\n";
