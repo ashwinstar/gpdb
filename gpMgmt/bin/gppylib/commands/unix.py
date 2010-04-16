@@ -448,13 +448,19 @@ class FileDirExists(Command):
 class CreateDirIfNecessary(Command):
     def __init__(self,name,directory,ctxt=LOCAL,remoteHost=None):
         self.directory=directory
-        cmdStr="""python -c "import os; os.mkdir('%s')" """ % (directory)
+        cmdStr="""python -c "import sys, os, errno; 
+try:
+	os.mkdir('%s')
+except OSError, ex:
+	if ex.errno != errno.EEXIST:
+		raise
+" """ % (directory)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
         
     @staticmethod
     def remote(name,remote_host,directory):
         cmd=CreateDirIfNecessary(name,directory,ctxt=REMOTE,remoteHost=remote_host)
-        cmd.run(validateAfter=False)
+        cmd.run(validateAfter=True)
                 
                 
 class DirectoryIsEmpty(Command):

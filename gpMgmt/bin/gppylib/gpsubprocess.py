@@ -61,8 +61,8 @@ class Popen(subprocess.Popen):
             if not terminated:
                 self._read_files(timeout,output,error)
 
-        #one last read to get the last bits.
-        self._read_files(timeout,output,error)
+        # Consume rest of output
+        self._finish_read_files(timeout,output,error)
                       
         (resout,reserr)=self._postprocess_outputs(output,error)
 
@@ -121,6 +121,36 @@ class Popen(subprocess.Popen):
 
         if self.stderr in rset:
             error.append(os.read(self.stderr.fileno(),8192))
+            
+    
+    def _finish_read_files(self, timeout, output, error):
+        """This function reads the rest of stderr and stdout and appends
+        it to error and output.  This ensures that all output is received"""
+        bytesRead=0
+        readList=[]
+        readList.append(self.stdout)
+        readList.append(self.stderr)
+        writeList = []
+        errorList=[]
+        
+        # consume rest of output
+        (rset,wset,eset) = self.__select(readList,writeList, errorList, timeout)
+        if self.stdout in rset:
+            while (True):
+                buffer = os.read(self.stdout.fileno(), 8192)
+                if buffer == '':
+                    break
+                else:
+                    output.append(buffer)
+    
+        if self.stderr in rset:
+            while (True):
+                buffer = os.read(self.stderr.fileno(), 8192)
+                if buffer == '':
+                    break
+                else:
+                    error.append(buffer)
+            
 
 
     def _check_status(self):

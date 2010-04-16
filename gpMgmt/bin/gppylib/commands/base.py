@@ -36,6 +36,12 @@ logger=gplog.get_default_logger()
 GPHOME=os.environ.get('GPHOME')
 SRC_GPPATH=". %s/greenplum_path.sh;" % GPHOME
 
+# Maximum retries if sshd rejects the connection due to too many
+# unauthenticated connections.
+SSH_MAX_RETRY=10
+# Delay before retrying ssh connection, in seconds
+SSH_RETRY_DELAY=.5
+
 
 class WorkerPool:
     """TODO:"""
@@ -373,10 +379,19 @@ class RemoteExecutionContext(LocalExecutionContext):
         cmd.cmdStr = cmd.cmdStr.replace('"', '\\"')
         cmd.cmdStr="ssh -o 'StrictHostKeyChecking no' %s \"%s %s\"" % (self.targetHost,SRC_GPPATH,cmd.cmdStr)
         LocalExecutionContext.execute(self,cmd)
+        if (cmd.get_results().stderr.startswith('ssh_exchange_identification: Connection closed by remote host')):
+            self.__retry(cmd)
         pass
-      
-
-
+    
+    def __retry(self, cmd, count=0):
+        if count == SSH_MAX_RETRY:
+            return
+        time.sleep(SSH_RETRY_DELAY)
+        LocalExecutionContext.execute(self, cmd)
+        if (cmd.get_results().stderr.startswith('ssh_exchange_identification: Connection closed by remote host')):
+            self.__retry(cmd, count + 1)
+        
+        
 class RMIExecutionContext(ExecutionContext):
     """ Leave this as a big old TODO: for now.  see agent.py for some more details"""
     def __init__(self):

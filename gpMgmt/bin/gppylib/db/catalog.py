@@ -270,14 +270,12 @@ Tablespace: "pg_global"
             cursor=conn.cursor()
 
             for seg in segments:
-                print '*** replicationPort before = ' + str(seg.replicationPort)
                 if seg.replicationPort != None:
                     replicationPort = str(seg.replicationPort)
                     if replicationPort.isdigit() == False:
                        replicationPort = 'null'
                 else:
                     replicationPort = 'null'
-                print '*** replicationPort after = ' + str(replicationPort)
                 sql = """
                     INSERT INTO pg_catalog.gp_segment_configuration
                        ( dbid         , content        , role         , preferred_role

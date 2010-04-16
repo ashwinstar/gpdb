@@ -803,7 +803,6 @@ class SegmentTemplate:
     def cleanup_build_new_segments(pool, tarFile, gparray, hosts=None, removeDataDirs=False):
         """Cleans up the work done by build_new_segments.  Deletes remote tar files and
         and removes remote data directories"""
-        commandsSent = {}
 
         if not hosts:
             hosts = []
@@ -821,16 +820,9 @@ class SegmentTemplate:
                 hostname = seg.getSegmentHostName()
                 datadir = seg.getSegmentDataDirectory()
                 
-                if not commandsSent.has_key(hostname):
-                    commandsSent[hostname] = 0
-
                 rmCmd = RemoveFiles('gpexpand remove new segment data directory: %s:%s' % (hostname, datadir),
                                     datadir, ctxt=REMOTE, remoteHost=hostname)
-                if commandsSent[hostname] != 0 and commandsSent[hostname] % 8 == 0:
-                    logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % hostname)
-                    sleep(1)
 
-                commandsSent[hostname] += 1
                 pool.addCommand(rmCmd)
 
         pool.join()
@@ -1226,7 +1218,6 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         self.statusLogger.set_status('UPDATE_OLD_SEGMENTS_STARTED', self.gparray.get_primary_count())
 
         self.logger.info('Backing up pg_hba.conf file on original segments')
-        commandsSent = {}
 
         # backup pg_hba.conf file on original segments
         for seg in self.old_segments:
@@ -1236,19 +1227,10 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             hostname = seg.getSegmentHostName()
             datadir = seg.getSegmentDataDirectory()
 
-            if not commandsSent.has_key(hostname):
-                commandsSent[hostname] = 0
-
             srcFile = datadir + '/pg_hba.conf'
             dstFile = datadir + '/pg_hba.gpexpand.bak'
             cpCmd = RemoteCopy('gpexpand back up pg_hba.conf file on original segments',
                                srcFile, hostname, dstFile, ctxt=REMOTE, remoteHost=hostname)
-
-            if commandsSent[hostname] != 0 and commandsSent[hostname] % 8 == 0:
-                logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % hostname)
-                sleep(1)
-
-            commandsSent[hostname] += 1
 
             self.pool.addCommand(cpCmd)
 
@@ -1271,12 +1253,6 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
 
             cpCmd = RemoteCopy('gpexpand copy new pg_hba.conf file to original segments',
                                self.tempDir + '/pg_hba.conf', hostname, datadir)
-
-            if commandsSent[hostname] != 0 and commandsSent[hostname] % 8 == 0:
-                logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % hostname)
-                sleep(1)
-
-            commandsSent[hostname] += 1
 
             self.pool.addCommand(cpCmd)
 
@@ -1331,8 +1307,6 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
 
         originalPrimaryCount = self.statusLogger.get_original_primary_count()
 
-        commandsSent = {}
-
         # Restore pg_hba.conf file from backup
         self.logger.info('Restoring pg_hba.conf file on original segments')
         for seg in originalArray.getSegDbList():
@@ -1340,20 +1314,11 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             datadir = seg.getSegmentDataDirectory()
             hostname = seg.getSegmentHostName()
 
-            if not commandsSent.has_key(hostname):
-                commandsSent[hostname] = 0
-
             srcFile = datadir + '/pg_hba.gpexpand.bak'
             dstFile = datadir + '/pg_hba.conf'
             cpCmd = RemoteCopy('gpexpand restore of pg_hba.conf file on original segments',
                                srcFile, hostname, dstFile, ctxt=REMOTE,
                                remoteHost=hostname)
-
-            if commandsSent[hostname] != 0 and commandsSent[hostname] % 8 == 0:
-                logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % hostname)
-                sleep(1)
-
-            commandsSent[hostname] += 1
 
             self.pool.addCommand(cpCmd)
 
