@@ -90,12 +90,8 @@ static void
 FileRepSubProcess_ImmediateShutdownHandler(SIGNAL_ARGS)
 {
 	immediateShutdownRequested = true;
-	if ( FileRepIsBackendSubProcess(fileRepProcessType))
-	{
-	    /* call the normal postgres die so that it requests query cancel/procdie */
-	    quickdie(PASS_SIGNAL_ARGS);
-    }
 	elog(DEBUG1, "FileRepSubProcess_ImmediateShutdownHandler()");
+    quickdie(PASS_SIGNAL_ARGS);
 }
 
 /*

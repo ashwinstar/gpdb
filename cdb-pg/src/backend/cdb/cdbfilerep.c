@@ -45,6 +45,8 @@
 #include "utils/ps_status.h"
 #include "utils/memutils.h"
 
+extern void quickdie(SIGNAL_ARGS); /* is in tcopprot.h */
+
 /****************************************************************
  * FILEREP PROCESS definitions
  ****************************************************************/
@@ -2732,19 +2734,14 @@ shutdown:
 		pg_usleep(1000000L); // 1sec
 	}
 	
-	if ( FileRep_GetState() == FileRepStateShutdown)
-	{
-		/* wait for all children to terminate, unless immediate shutdown is reached */
-		while ( FileRep_IsAnyChildAlive())
-		{
-			FileRep_ProcessSignals();
-			if ( FileRep_GetState() == FileRepStateImmediateShutdown )
-				break;
-			if ( ! FileRep_IsAnyChildAlive())
-				break;
+    /* wait for all children to terminate */
+    while ( FileRep_IsAnyChildAlive())
+    {
+        FileRep_ProcessSignals();
+        if ( ! FileRep_IsAnyChildAlive())
+            break;
 			pg_usleep(1000000L); // 1sec
-		}
-	}
+    }
 
 	if (FileRep_GetState() == FileRepStateShutdown) {
 		proc_exit(0);

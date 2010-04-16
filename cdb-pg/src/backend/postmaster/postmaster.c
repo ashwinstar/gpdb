@@ -273,9 +273,10 @@ static volatile sig_atomic_t filerep_has_signaled_postmaster_reset_required = fa
 static volatile sig_atomic_t filerep_has_signaled_backends_shutdown = false;
 
 /* Startup/shutdown state */
-#define			NoShutdown		0
-#define			SmartShutdown	1
-#define			FastShutdown	2
+#define			NoShutdown		    0
+#define			SmartShutdown	    1
+#define			FastShutdown        2
+#define         ImmediateShutdown   3
 
 static int	Shutdown = NoShutdown;
 
@@ -504,6 +505,7 @@ static volatile int need_call_reaper = 0;
 
 static void reaper(SIGNAL_ARGS);
 static void do_reaper(void);
+static void do_immediate_shutdown_reaper(void);
 static bool ServiceProcessesExist(int excludeFlags);
 static bool StopServices(int excludeFlags, int signal);
 static char *GetServerProcessTitle(int pid);
@@ -1802,6 +1804,32 @@ ServiceStartable(PMSubProc *subProc)
 	return result;
 }
 
+/**
+ * loop waiting for immediate shutdown to complete
+ */
+static void
+ImmediateShutdownLoop(void)
+{
+    for ( ;; )
+    {
+        PG_SETMASK(&BlockSig);
+        if ( need_call_reaper)
+        {
+            do_immediate_shutdown_reaper();
+        }
+
+        if ( FilerepPID == 0 )
+        {
+            break;
+        }
+
+        PG_SETMASK(&UnBlockSig);
+        pg_usleep(100 * 1000L);
+    }
+
+    ExitPostmaster(0);
+}
+
 /*
  * Main idle loop of postmaster
  */
@@ -1848,7 +1876,8 @@ ServerLoop(void)
 		 * we allow new connections (which are rejected because the database is shutting down, but
 		 *   that gives a nicer message than potentially hanging the client's connection)
 		 */
-        bool acceptNewConnections = pmState < PM_CHILD_STOP_WAIT_DEAD_END_CHILDREN;
+        bool acceptNewConnections = pmState < PM_CHILD_STOP_WAIT_DEAD_END_CHILDREN &&
+                                    Shutdown != ImmediateShutdown;
 
 
         /* If something that needs handling is received while we were doing other things with signals
@@ -1858,7 +1887,8 @@ ServerLoop(void)
          *
          * I think there may still be a race in which we are signaled between the completion of unblock and the sleep.
          */
-        if ( filerep_has_signaled_state_change ||
+        if ( Shutdown == ImmediateShutdown ||
+             filerep_has_signaled_state_change ||
              filerep_has_signaled_postmaster_reset_required ||
              need_call_reaper )
         {
@@ -1904,6 +1934,17 @@ ServerLoop(void)
             selres = 0;
         }
 
+		/*
+		 * Block all signals until we wait again.  (This makes it safe for our
+		 * signal handlers to do nontrivial work.)
+		 */
+		PG_SETMASK(&BlockSig);
+
+		if ( Shutdown == ImmediateShutdown )
+        {
+		    ImmediateShutdownLoop();
+        }
+
         if ( filerep_has_signaled_postmaster_reset_required )
         {
             filerep_has_signaled_postmaster_reset_required = false;
@@ -1921,17 +1962,10 @@ ServerLoop(void)
 			do_reaper();
 		}
 
-		/*
-		 * Block all signals until we wait again.  (This makes it safe for our
-		 * signal handlers to do nontrivial work.)
-		 */
-		PG_SETMASK(&BlockSig);
-
 		if ( filerep_has_signaled_state_change)
 		{
 			NotifyProcessesOfFilerepStateChange();
 		}
-
 
 		/*
 		 * New connection pending on any of our sockets? If so, fork a child
@@ -3265,17 +3299,21 @@ pmdie(SIGNAL_ARGS)
 				     errSendAlert(true),
 					 errOmitLocation(true)));
 
+            signal_filerep_to_shutdown(SegmentStateImmediateShutdown);
+
 			SignalChildren(SIGQUIT);
 			signal_child_if_up(StartupPID, SIGQUIT);
             signal_child_if_up(StartupPass2PID, SIGQUIT);
             signal_child_if_up(StartupPass3PID, SIGQUIT);
  			StopServices(0, SIGQUIT);
 			signal_child_if_up(BgWriterPID, SIGQUIT);            
-            signal_filerep_to_shutdown(SegmentStateImmediateShutdown);
             signal_child_if_up(AutoVacPID, SIGQUIT);
             signal_child_if_up(PgArchPID, SIGQUIT);
             signal_child_if_up(PgStatPID, SIGQUIT);
-            ExitPostmaster(0);
+
+            /* if you add more processes here then also update do_immediate_shutdown_reaper */
+
+            Shutdown = ImmediateShutdown;
 			break;
 	}
 
@@ -3285,6 +3323,79 @@ pmdie(SIGNAL_ARGS)
 	PG_SETMASK(&UnBlockSig);
 
 	errno = save_errno;
+}
+
+static void
+zeroIfPidEqual(int pid, pid_t *ptrToPidToCheckAndZero)
+{
+    if ( pid == *ptrToPidToCheckAndZero)
+    {
+        *ptrToPidToCheckAndZero = 0;
+    }
+}
+
+/* These macros hide platform variations in getting child status.
+ * They are used by do_reaper and do_immediate_shutdown_reaper
+ */
+#ifdef HAVE_WAITPID
+	int			status;			/* child exit status */
+
+#define REAPER_LOOPTEST()		((pid = waitpid(-1, &status, WNOHANG)) > 0)
+#define REAPER_LOOPHEADER()	(exitstatus = status)
+#else							/* !HAVE_WAITPID */
+#ifndef WIN32
+	union wait	status;			/* child exit status */
+
+#define REAPER_LOOPTEST()		((pid = wait3(&status, WNOHANG, NULL)) > 0)
+#define REAPER_LOOPHEADER()	(exitstatus = status.w_status)
+#else							/* WIN32 */
+#define REAPER_LOOPTEST()		((pid = win32_waitpid(&exitstatus)) > 0)
+#define REAPER_LOOPHEADER()
+#endif   /* WIN32 */
+#endif   /* HAVE_WAITPID */
+
+
+/**
+ * Check for dead processes during immediate shutdown
+ */
+static void
+do_immediate_shutdown_reaper(void)
+{
+	int         s;
+	int			pid;			/* process id of dead child process */
+	int			exitstatus;		/* its exit status */
+
+	need_call_reaper = 0;
+
+	ereport(DEBUG4, (errmsg_internal("reaping dead processes")));
+
+	while (REAPER_LOOPTEST())
+	{
+		REAPER_LOOPHEADER();
+
+        zeroIfPidEqual(pid, &FilerepPID);
+
+        for (Dlelem *curr = DLGetHead(BackendList); curr; curr = DLGetSucc(curr))
+        {
+            Backend    *bp = (Backend *) DLE_VAL(curr);
+            zeroIfPidEqual(pid, &bp->pid);
+        }
+
+        zeroIfPidEqual(pid, &StartupPID);
+        zeroIfPidEqual(pid, &StartupPass2PID);
+        zeroIfPidEqual(pid, &StartupPass3PID);
+
+        /* services */
+		for (s = 0; s < MaxPMSubType; s++)
+		{
+            zeroIfPidEqual(pid, &PMSubProcList[s].pid);
+        }
+
+        zeroIfPidEqual(pid, &BgWriterPID);
+        zeroIfPidEqual(pid, &AutoVacPID);
+        zeroIfPidEqual(pid, &PgArchPID);
+        zeroIfPidEqual(pid, &PgStatPID);
+    }
 }
 
 /*
@@ -3402,34 +3513,14 @@ static void do_reaper()
 	bool        wasServiceProcess = false;
 	bool        didServiceProcessWork = false;
 
-
-	/* These macros hide platform variations in getting child status */
-#ifdef HAVE_WAITPID
-	int			status;			/* child exit status */
-
-#define LOOPTEST()		((pid = waitpid(-1, &status, WNOHANG)) > 0)
-#define LOOPHEADER()	(exitstatus = status)
-#else							/* !HAVE_WAITPID */
-#ifndef WIN32
-	union wait	status;			/* child exit status */
-
-#define LOOPTEST()		((pid = wait3(&status, WNOHANG, NULL)) > 0)
-#define LOOPHEADER()	(exitstatus = status.w_status)
-#else							/* WIN32 */
-#define LOOPTEST()		((pid = win32_waitpid(&exitstatus)) > 0)
-#define LOOPHEADER()
-#endif   /* WIN32 */
-#endif   /* HAVE_WAITPID */
-
-	PG_SETMASK(&BlockSig);
 	need_call_reaper = 0;
 
 	ereport(DEBUG4,
 			(errmsg_internal("reaping dead processes")));
 
-	while (LOOPTEST())
+	while (REAPER_LOOPTEST())
 	{
-		LOOPHEADER();
+		REAPER_LOOPHEADER();
 
         Assert(pid != 0);
 
@@ -3904,12 +3995,8 @@ static void do_reaper()
 
 reaper_done:
 
-	/* Done with signal handler */
-	PG_SETMASK(&UnBlockSig);
-
 	if (Debug_print_server_processes && didServiceProcessWork)
 		elog(LOG,"returning from reaper");
-
 
 	errno = save_errno;
 }
