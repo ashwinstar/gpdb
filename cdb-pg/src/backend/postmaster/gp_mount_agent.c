@@ -10,9 +10,12 @@
 #include <sys/mount.h>
 
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 static int agent_main(int argc, char **argv);
+
+static int storagegroup_main(int argc, char **argv);
 
 static void parse_target_dev(char *input, char **WWN, char **SP, char **SG_NAME, char **ARGS, char **FSTYPE);
 static int match(char **p, char **val, const char *token);
@@ -107,6 +110,10 @@ main(int argc, char **argv)
 	{
 		agent_main(argc-1, stripped);
 	}
+	else if (strcmp(argv[1], "--storagegroup") == 0)
+	{
+		storagegroup_main(argc-1, stripped);
+	}
 	else
 	{
 		usage(argv[0]);
@@ -117,9 +124,66 @@ main(int argc, char **argv)
 }
 
 static int
+storagegroup_main(int argc, char **argv)
+{
+	struct stat stat_buf;
+	char cmd[1000];
+
+	sprintf(cmd, "%s display dev=all", argv[1]);
+
+	fprintf(stdout, "command %s\n", cmd);
+
+	/*
+	 * Do a quick&dirty security check before exec()ing anything
+	 * ... note this is obviously not comprehensive: we depend on no
+	 * one changing the file out from under us between the stat and
+	 * exec.
+	 */
+
+	if (lstat(argv[1], &stat_buf) < 0)
+	{
+		fprintf(stderr, "Cannot lstat %s\n", argv[1]);
+		exit(1);
+	}
+
+	if (S_ISLNK(stat_buf.st_mode))
+	{
+		fprintf(stderr, "Cannot use %s: it is a symbolic link", argv[1]);
+		exit(1);
+	}
+
+	if (stat(argv[1], &stat_buf) < 0)
+	{
+		fprintf(stderr, "Cannot stat %s\n", argv[1]);
+		exit(1);
+	}
+
+	if (stat_buf.st_uid != (uid_t)0)
+	{
+		fprintf(stderr, "Cannot use %s: invalid ownership\n", argv[1]);
+		exit(1);
+	}
+
+	if ((stat_buf.st_mode & S_IWGRP != 0) || (stat_buf.st_mode & S_IWOTH != 0))
+	{
+		fprintf(stderr, "Cannot use %s: invalid permissions\n", argv[1]);
+		exit(1);
+	}
+
+	/*
+	 * We're now *really* taking ourselves into never-never land:
+	 * go get a real root uid.
+	 */
+	setuid(0);
+
+	execl(argv[1], argv[1], "display", "dev=all", 0);
+}
+
+static int
 agent_main(int argc, char **argv)
 {
 	int			opt, bad_opts=0;
+	int			u_mount=0;
 	char		type=0;
 	char		active=0;
 	char		*p_host=NULL, *m_host=NULL;
@@ -130,11 +194,13 @@ agent_main(int argc, char **argv)
 	char *target_host=NULL, *target_dev=NULL, *target_mountpoint=NULL;
 	int status;
 
-
-	while ((opt = getopt(argc, argv, "ht:a:p:d:m:q:e:n:")) != -1)
+	while ((opt = getopt(argc, argv, "uht:a:p:d:m:q:e:n:")) != -1)
 	{
 		switch(opt)
 		{
+			case 'u':
+				u_mount = 1;
+				break;
 			case 't':
 				/* type 'n' or 'e' */
 				if (optarg == NULL || strlen(optarg) > 1)
@@ -258,6 +324,8 @@ agent_main(int argc, char **argv)
 		target_mountpoint = p_mp;
 	}
 
+	fprintf(stdout, "agent_main: p_host '%s' p_mp '%s' m_host '%s' m_mp '%s'\n", p_host, p_mp, m_host, m_mp);
+
 	/*
 	  GPHOME=os.environ.get('GPHOME')
 	  SRC_GPPATH=". %s/greenplum_path.sh;" % GPHOME
@@ -291,6 +359,37 @@ agent_main(int argc, char **argv)
 			exit(1);
 		}
 
+		if (u_mount)
+		{
+			char *old_host=NULL, *old_mountpoint=NULL;
+
+			if (active == 'p')
+			{
+				old_host = p_host;
+				old_mountpoint = p_mp;
+			}
+			else
+			{
+				old_host = m_host;
+				old_mountpoint = m_mp;
+			}
+
+			snprintf(cmd, sizeof(cmd), "ssh %s /bin/umount %s", old_host, old_mountpoint);
+
+			fprintf(stdout, "unmount old host [%s]\n", old_host);
+			fprintf(stdout, "unmount old mountpoint [%s]\n", old_mountpoint);
+
+			fprintf(stdout, "unmount cmd [%s]\n", cmd);
+
+			status = system(cmd);
+
+			if (status != 0)
+			{
+				fprintf(stderr, "UMOUNT COMMAND FAILED %d (%s:%s)\n", status, old_host, old_mountpoint);
+				exit(status);
+			}
+		}
+
 		snprintf(cmd, sizeof(cmd), "ssh %s /bin/mount %s %s", target_host, target_dev, target_mountpoint);
 
 		fprintf(stdout, "cmd [%s]\n", cmd);
@@ -301,7 +400,7 @@ agent_main(int argc, char **argv)
 		{
 			exit(status);
 		}
-		/* don with NFS response */
+		/* done with NFS response */
 	}
 	else if (type == 'e')
 	{
@@ -314,15 +413,40 @@ agent_main(int argc, char **argv)
 		char	dev_name[256];
 		int	name_len;
 
-		//fprintf(stdout, "getuid %d geteuid %d\n", getuid(), geteuid());
+		char *old_host=NULL, *old_mountpoint=NULL;
+
+		fprintf(stdout, "getuid %d geteuid %d\n", getuid(), geteuid());
 
 		/* Parse out the names of the SP and WWN from our "device" */
 		parse_target_dev(target_dev, &WWN, &SP, &SG_NAME, &ARGS, &FSTYPE);
 
 		if (WWN == NULL)
 		{
-			fprintf(stderr, "failed to create inquiry-results file: %d\n", errno);
+			fprintf(stderr, "No identifier for SAN-device.\n");
 			exit(1);
+		}
+
+		if (u_mount)
+		{
+			if (active == 'p')
+			{
+				old_host = p_host;
+				old_mountpoint = p_mp;
+			}
+			else
+			{
+				old_host = m_host;
+				old_mountpoint = m_mp;
+			}
+
+			/* We need to unfence before we can scan the target-device name! */
+			if (SP != NULL && SG_NAME != NULL)
+			{
+				/* DO OUR I/O UN-FENCING OPERATION HERE */
+				/*
+				  yes | head -1 | /opt/Navisphere/bin/naviseccli -h 172.16.10.6 storagegroup -connecthost -host emc2 -gname cx4-960
+				*/
+			}
 		}
 
 		/* Get the name of the target device */
@@ -396,8 +520,20 @@ agent_main(int argc, char **argv)
 
 		if (SP != NULL && SG_NAME != NULL)
 		{
-			/* DO OUR I/O FENCING OPERATION HERE ?!*/
-			/* naviseccli -h <SP-IP> storagegroup -disconnecthost <OLD-PRIMARY>*/
+			if (u_mount)
+			{
+				/* NOTHING TO DO HERE, SEE ABOVE */
+			}
+			else
+			{
+				/* DO OUR I/O FENCING OPERATION HERE ?!*/
+				/* naviseccli -h <SP-IP> storagegroup -disconnecthost <OLD-PRIMARY>*/
+
+				/*
+				 * This is the exact command:
+				 yes | head -1 | /opt/Navisphere/bin/naviseccli -h 172.16.10.6 storagegroup -disconnecthost -host emc2 -gname cx4-960
+				*/
+			}
 		}
 
 		/* 4) Do the mount: this is exactly like the NFS case now. */
@@ -428,6 +564,26 @@ agent_main(int argc, char **argv)
 			exit(1);
 		}
 
+		if (u_mount)
+		{
+			snprintf(cmd, sizeof(cmd), "ssh %s /bin/umount %s", old_host, old_mountpoint);
+
+			fprintf(stdout, "unmount old host [%s]\n", old_host);
+			fprintf(stdout, "unmount old mountpoint [%s]\n", old_mountpoint);
+
+			fprintf(stdout, "unmount cmd [%s]\n", cmd);
+
+			fflush(stdout);
+
+			status = system(cmd);
+
+			if (status != 0)
+			{
+				fprintf(stderr, "Unmount command failed (%s:%s):%d '%s'\n", old_host, old_mountpoint, status, cmd);
+				//exit(0);
+			}
+		}
+
 		if (FSTYPE == NULL)
 		{
 			snprintf(cmd, sizeof(cmd), "ssh %s /bin/mount %s %s", target_host, dev_name, target_mountpoint);
@@ -448,7 +604,10 @@ agent_main(int argc, char **argv)
 		status = system(cmd);
 
 		if (status != 0)
-			exit(status);
+		{
+			fprintf(stderr, "Mount command generated an error (%d) ('%s')\n", status, cmd);
+			exit(0);
+		}
 	}
 
 	exit(0);

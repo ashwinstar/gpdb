@@ -906,14 +906,15 @@ class GpArray:
           
         The code below has to match the SQL inside initFromCatalog()
         """
+        # First collect the "unnested" mount-ids into a list.
         dbid_map = {}
         for row in san_segs_list:
             (dbid, content, status, mountid) = row
             if dbid_map.has_key(dbid):
-                (status, mount_list) = dbid_map[dbid]
-                dbid_map[dbid] = (status, mount_list.append(mountid))
+                (status, content, mount_list) = dbid_map[dbid]
+                dbid_map[dbid] = (status, content, mount_list.append(mountid))
             else:
-                dbid_map[dbid] = (status, [mountid])
+                dbid_map[dbid] = (status, content, [mountid])
         # dbid_map now contains a flat mapping from dbid -> (status, list of mountpoints)
 
         san_map = {}
@@ -921,7 +922,7 @@ class GpArray:
             (mountid, active, type, p_host, p_mp, p_dev, m_host, m_mp, m_dev) = row
             san_map[mountid] = {'active':active, 'type':type,
                                 'primaryhost':p_host, 'primarymountpoint':p_mp, 'primarydevice':p_dev,
-                                'mirrorhost':p_host, 'mirrormountpoint':p_mp, 'mirrordevice':p_dev
+                                'mirrorhost':m_host, 'mirrormountpoint':m_mp, 'mirrordevice':m_dev
                                 }
 
         self.san_mount_by_dbid = dbid_map
