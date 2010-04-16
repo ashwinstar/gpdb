@@ -309,37 +309,48 @@ DATABASE_STATUS () {
 				LOG_MSG "[WARN]:-Lock files in /tmp status     = Missing" 1
 				GEN_ERROR=1
 			fi
+
 			QE_ACTIVE_PID=`$ECHO $QE_LINE|$AWK -F':' '{print $11}'`
-			if [ $QE_ACTIVE_PID -ne 1 ];then 
+            QE_CURRENTLY_PRIMARY=`$ECHO $QE_LINE|$AWK -F':' '{print $12}'`
+
+            # note: QE_INSTANCE_VALID can be overwritten below
+            QE_INSTANCE_VALID=$QE_VALID
+
+			if [ $QE_ACTIVE_PID -ne 1 ];then
 				LOG_MSG "[INFO]:-Active PID                    = $QE_ACTIVE_PID" 1
 			else
 				LOG_MSG "[WARN]:-Active PID                    = Missing <<<<<" 1
 				GEN_ERROR=1
+                QE_INSTANCE_VALID=f
 			fi
-			QE_MIRROR_ACTIVE=`$ECHO $QE_LINE|$AWK -F':' '{print $12}'`
-			QE_MIRROR_FAILED=`$ECHO $QE_LINE|$AWK -F':' '{print $13}'`
-			QE_PRIMARY_FAILED=`$ECHO $QE_LINE|$AWK -F':' '{print $14}'`
+
 			if [ "$QE_PRIMARY" == "f" ];then
-				if [ $QE_MIRROR_ACTIVE -eq 0 ];then 
-				LOG_MSG "[INFO]:-Mirror status                 = Passive" 1
+				if [ "$QE_CURRENTLY_PRIMARY" == "f" ];then
+				    LOG_MSG "[INFO]:-Mirror status                 = Passive" 1
 				else 
-				LOG_MSG "[WARN]:-Mirror status                 = Active <<<<<" 1
-				GEN_ERROR=1
-				fi
-				if [ $QE_MIRROR_FAILED -eq 0 ];then 
-				LOG_MSG "[INFO]:-Instance status               = Valid" 1
-				else 
-				LOG_MSG "[WARN]:-Instance status               = Failed <<<<<" 1
-				GEN_ERROR=1
+				    LOG_MSG "[WARN]:-Mirror status                 = Active <<<<<" 1
+				    GEN_ERROR=1
 				fi
 			else
-				if [ $QE_PRIMARY_FAILED -eq 0 ];then 
-				LOG_MSG "[INFO]:-Instance status               = Active" 1
-				else
-				LOG_MSG "[WARN]:-Instance status               = Failed <<<<<" 1
-				GEN_ERROR=1
-				fi
+                if [ $MIR_TYPE_NUM -ne 0 ]; then
+                    if [ "$QE_CURRENTLY_PRIMARY" == "f" ];then
+                        LOG_MSG "[WARN]:-Mirror status                 = Passive <<<<<" 1
+                        GEN_ERROR=1
+                    else
+                        LOG_MSG "[INFO]:-Mirror status                 = Active" 1
+                    fi
+                fi
 			fi
+
+            #
+            # note that QE_INSTANCE_VALID will f if it's invalid in metadata or PID gone
+            #
+            if [ "$QE_INSTANCE_VALID" == "t" ];then
+                LOG_MSG "[INFO]:-Instance status               = Valid" 1
+            else
+                LOG_MSG "[WARN]:-Instance status               = Failed <<<<<" 1
+                GEN_ERROR=1
+            fi
 
 		done < $PARALLEL_STATUS_FILE
 		if [ $GEN_ERROR -eq 1 ];then

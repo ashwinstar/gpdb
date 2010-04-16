@@ -127,44 +127,23 @@ GET_SEGMENT_STATUS () {
 	#*************************************
 	#Process gp_pgdatabase info
 	#*************************************
-	QE_MIRROR_ACTIVE=0
-	QE_MIRROR_FAILED=0
-	QE_PRIMARY_FAILED=0
+    QE_CURRENTLY_PRIMARY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d $DEFAULTDB  -A -t -c"select isprimary from $GP_PG_VIEW as _gp_pg_view where dbid in (select dbid from $CONFIG_TABLE a where port=$QE_PORT and datadir='${QE_DIR}');"`
+
 	if [ "$QE_PRIMARY" == 'f' ];then
 		#*************************************
 		#Process status mirror segment
 		#*************************************
-		QE_MIRROR_VALID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d $DEFAULTDB  -A -t -c"select valid from $GP_PG_VIEW as _gp_pg_view where dbid in (select dbid from $CONFIG_TABLE a where port=$QE_PORT and datadir='${QE_DIR}');"`
-		QE_MIRROR_PRIMARY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d $DEFAULTDB  -A -t -c"select isprimary from $GP_PG_VIEW as _gp_pg_view where dbid in (select dbid from $CONFIG_TABLE a where port=$QE_PORT and datadir='${QE_DIR}');"`
-		if [ "$QE_MIRROR_PRIMARY" == "t" ]; then
+		if [ "$QE_CURRENTLY_PRIMARY" == "t" ]; then
 			LOG_MSG "[WARN][$INST_COUNT]:-Mirror $QE_DIR $QE_PORT on $QE_NAME is active"
-			QE_MIRROR_ACTIVE=1
-			((QE_FAILED=$QE_FAILED+1))
-		fi
-		if [ "$QE_MIRROR_PRIMARY" == "f" ] && [ "$QE_VALID" == 't' ]; then
-			LOG_MSG "[INFO][$INST_COUNT]:-Mirror $QE_DIR $QE_PORT on $QE_NAME is passive"
-		fi
-		if [ "$QE_MIRROR_VALID" == "f" ];then	
-			LOG_MSG "[WARN][$INST_COUNT]:-Mirror $QE_DIR $QE_PORT on $QE_NAME is marked as failed"
-			QE_MIRROR_FAILED=1
 			((QE_FAILED=$QE_FAILED+1))
 		fi
 	else
-		#*************************************
-		#Process status primary segment
-		#*************************************
-		#This is a primary segment 
-		QE_PRIMARY_VALID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d $DEFAULTDB  -A -t -c"select valid from $GP_PG_VIEW as _gp_pg_view where dbid in (select dbid from $CONFIG_TABLE a where port=$QE_PORT and datadir='${QE_DIR}');"`
-		if [ "$QE_PRIMARY_VALID" == "f" ];then
-			LOG_MSG "[WARN][$INST_COUNT]:-Primary $QE_DIR $QE_PORT on $QE_NAME is marked as failed"
-			QE_PRIMARY_FAILED=1
-			((QE_FAILED=$QE_FAILED+1))
-		else
-			LOG_MSG "[INFO][$INST_COUNT]:-Primary $QE_DIR $QE_PORT on $QE_NAME is active"
-			QE_PRIMARY_FAILED=0
-		fi
+        if [ "$QE_CURRENTLY_PRIMARY" == "f" ]; then
+            LOG_MSG "[WARN][$INST_COUNT]:-Primary $QE_DIR $QE_PORT on $QE_NAME is not active"
+            ((QE_FAILED=$QE_FAILED+1))
+        fi
 	fi
-	QE_LINE="${QE_LINE}:${QE_FAILED}:${QE_PID_FILE}:${QE_PID_FILE_PID_ID}:${QE_LOCK_FILE}:${QE_ACTIVE_PID}:${QE_MIRROR_ACTIVE}:${QE_MIRROR_FAILED}:${QE_PRIMARY_FAILED}"
+	QE_LINE="${QE_LINE}:${QE_FAILED}:${QE_PID_FILE}:${QE_PID_FILE_PID_ID}:${QE_LOCK_FILE}:${QE_ACTIVE_PID}:${QE_CURRENTLY_PRIMARY}"
 	LOG_MSG "[INFO][$INST_COUNT]:-End Function $FUNCNAME"
 }
 
