@@ -282,7 +282,7 @@ bool		gp_enable_tablespaces = FALSE;
 bool		gp_enable_tablespace_auto_mkdir = FALSE;
 
 /* Enable check for compatibility of encoding and locale in createdb */
-bool gp_check_locale_encoding_compatibility = true;
+bool gp_encoding_check_locale_compatibility = true;
 
 /* Priority for the segworkers relative to the postmaster's priority */
 int gp_segworker_relative_priority = 0;

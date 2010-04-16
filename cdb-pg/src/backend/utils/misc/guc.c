@@ -335,7 +335,7 @@ char       *Debug_dtm_action_target_str;
 char       *Debug_dtm_action_protocol_str;
 
 /* Enable check for compatibility of encoding and locale in createdb */
-bool		gp_check_locale_encoding_compatibility;
+bool		gp_encoding_check_locale_compatibility;
 
 char	   *pgstat_temp_directory;
 
@@ -2433,12 +2433,12 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 	{
-		{"gp_check_locale_encoding_compatibility", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"gp_encoding_check_locale_compatibility", PGC_POSTMASTER, CLIENT_CONN_LOCALE,
 					gettext_noop("Enable check for compatibility of encoding and locale in createdb"),
 					NULL,
 					GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&gp_check_locale_encoding_compatibility,
+		&gp_encoding_check_locale_compatibility,
 		true, NULL, NULL
 	},
 

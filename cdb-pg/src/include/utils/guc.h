@@ -223,7 +223,7 @@ extern char *Debug_dtm_action_target_str;
 extern char *Debug_dtm_action_protocol_str;
 
 /* Enable check for compatibility of encoding and locale in createdb */
-extern bool gp_check_locale_encoding_compatibility;
+extern bool gp_encoding_check_locale_compatibility;
 
 extern int	tcp_keepalives_idle;
 extern int	tcp_keepalives_interval;

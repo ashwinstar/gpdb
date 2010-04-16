@@ -850,7 +850,7 @@ createdb_int(CreatedbStmt *stmt,
 				 errmsg("invalid server encoding %d", encoding)));
 
 	/* check whether encoding and locale are compatible - see also related check in initdb */
-	if (gp_check_locale_encoding_compatibility)
+	if (gp_encoding_check_locale_compatibility)
 	{
 		char *lc_ctype = GetConfigOptionByName("lc_ctype", NULL);
 		char *lc_collate = GetConfigOptionByName("lc_collate", NULL);
