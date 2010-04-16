@@ -691,7 +691,8 @@ class GPFilespace:
         self.pool = WorkerPool(numWorkers = workers)
 
         # Setup a hostcache
-        self.hostcache = gphostcache.GpHostCache(self.array, self.pool)
+        self.hostcache = \
+            gphostcache.GpHostCache(self.array, self.pool, withMasters=True)
 
         # Loop through configuration and add segments to datastructures
         # We save the costly hostname lookup step until later.

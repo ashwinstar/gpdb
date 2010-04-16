@@ -157,7 +157,7 @@ class GpInterfaceToHostNameCache:
 
 class GpHostCache:
 
-    def __init__(self, gparray, pool, skiplist=[]):
+    def __init__(self, gparray, pool, skiplist=[], withMasters=False):
         self.gparray=gparray
         self.gphost_map={}        # hostname -> GpHost
 
@@ -179,7 +179,15 @@ class GpHostCache:
         # a given interface more than once.
         interfaces = []
         hostnames = []
-        for db in self.gparray.getSegDbList():
+
+        # Get list of segment dbs, optionally including masters
+        if withMasters:
+            dblist = self.gparray.getDbList()
+        else:
+            dblist = self.gparray.getSegDbList()
+
+        # build the interface->host mapping
+        for db in dblist:
             if db.getSegmentDbId() not in skipmap:
                 interfaces.append(db.getSegmentAddress())
                 hostnames.append(db.getSegmentHostName())
@@ -187,7 +195,7 @@ class GpHostCache:
             GpInterfaceToHostNameCache(pool, interfaces, hostnames)
 
         # Build up the GpHosts using our interface->hostname lookup
-        for db in self.gparray.getSegDbList():
+        for db in dblist:
 
             # skip this dbid ?
             if db.getSegmentDbId() in skipmap:
