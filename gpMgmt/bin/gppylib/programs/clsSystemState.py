@@ -224,6 +224,7 @@ class GpSystemStateProgram:
                     for segIndex, seg in enumerate(segments):
                         version = outputFromCmd[segIndex]
                         if version is not None:
+                            version = version.rstrip()
                             dbIdToVersion[segments[segIndex].getSegmentDbId()] = version
                             uniqueVersions[version] = True
             else:
