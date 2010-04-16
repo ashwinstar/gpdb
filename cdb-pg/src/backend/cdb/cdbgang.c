@@ -882,7 +882,8 @@ addOptions(PQExpBufferData *buffer, bool iswriter, int segindex, bool i_am_super
 	int			ngucs = get_num_guc_variables();
 	int			i;
 
-	write_log("addOptions: iswriter %d segindex %d", iswriter, segindex);
+	if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
+		write_log("addOptions: iswriter %d segindex %d", iswriter, segindex);
 
 	appendPQExpBufferStr(buffer, "options='");
 
