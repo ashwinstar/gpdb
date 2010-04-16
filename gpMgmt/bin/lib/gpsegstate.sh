@@ -168,30 +168,6 @@ GET_SEGMENT_STATUS () {
 	LOG_MSG "[INFO][$INST_COUNT]:-End Function $FUNCNAME"
 }
 
-GET_VERSION_INFO () {
-	LOG_MSG "[INFO][$INST_COUNT]:-Start  Function $FUNCNAME"
-	POSTGRES_VERSION=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -A -t -p $QE_PORT -d $DEFAULTDB -c\"show server_version;\"" 2>/dev/null`
-	RETVAL=$?
-	if [ $RETVAL -ne 0 ];then
-		POSTGRES_VERSION="Failed"
-	fi
-	QE_INITDB_VERSION_STRING=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -A -t -p $QE_PORT -d $DEFAULTDB -c\"select productversion from $GP_INITDB_VER_TABLE;\"" 2>/dev/null`
-	RETVAL=$?
-	if [ $RETVAL -ne 0 ] || [ x"" == x"QE_INITDB_VERSION" ];then
-		QE_INITDB_VERSION="Failed"
-	else
-		QE_INITDB_VERSION=`$ECHO $QE_INITDB_VERSION_STRING|$TR '$' ' '|$TR -s ' '`	
-	fi
-	QE_VERSION=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -A -t -p $QE_PORT -d $DEFAULTDB -c\"select version();\"" 2>/dev/null`
-	RETVAL=$?
-	if [ $RETVAL -ne 0 ];then
-		QE_VERSION="Failed"
-	fi
-	QE_LINE="${QE_LINE}:${POSTGRES_VERSION}:${QE_INITDB_VERSION}:${QE_VERSION}"
-	LOG_MSG "[INFO][$INST_COUNT]:-End Function $FUNCNAME"
-}
-
-
 #******************************************************************************
 # Main Section
 #******************************************************************************
@@ -220,7 +196,6 @@ LOG_MSG "[INFO][$INST_COUNT]:-Start Main"
 QE_LINE="${QE_NAME}:${QE_PORT}:${QE_DIR}:${QE_PRIMARY}:${QE_VALID}"
 case $TYPE in
 	1 ) GET_SEGMENT_STATUS ;;
-	2 ) GET_VERSION_INFO ;;
 esac
 $ECHO "COMPLETED:$QE_LINE" >> $PARALLEL_STATUS_FILE
 LOG_MSG "[INFO][$INST_COUNT]:-End Main"

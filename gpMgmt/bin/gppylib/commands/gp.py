@@ -219,6 +219,17 @@ class SendFilerepTransitionMessage(Command):
 
         return SendFilerepTransitionMessage("Changing seg at dir %s" % dir, inputFile, port=port, dataDir=dir)
 
+class SendFilerepTransitionStatusMessage(Command):
+    def __init__(self, name, msg, dataDir=None, port=None,ctxt=LOCAL, remoteHost=None):
+        if not remoteHost:
+            remoteHost = "127.0.0.1"
+        self.cmdStr='$GPHOME/bin/gp_primarymirror -h %s -p %s' % (remoteHost,port)
+        self.dataDir = dataDir
+
+        logger.info("Msg %s and cmdStr %s" % (msg, self.cmdStr))
+
+        Command.__init__(self, name, self.cmdStr, ctxt, remoteHost, stdin=msg)
+
 #-----------------------------------------------
 class SegmentStop(Command):
     def __init__(self, name, dataDir,mode='smart', nowait=False, ctxt=LOCAL, remoteHost=None):
@@ -233,6 +244,50 @@ class SegmentStop(Command):
         cmd=SegmentStop(name, dataDir,mode)
         cmd.run(validateAfter=True)
 
+
+def getSegmentsReprArgWithoutFilespaces(segments):
+    dirlist=[]
+    for seg in segments:
+        # The following strip of the filespaces is to reduce the command
+        # line length of the gpsegstart.py and other commands.  There are shell
+        # limitations to the length, and if there are a large number of segments
+        # and filespaces, this limit can be exceeded.
+        # Since filespaces are not used by callers of this fn, we can remove all but one of them.
+
+        cfg_array = repr(seg).split('|')[0:-1]
+
+        dirlist.append("-D '%s'" % ('|'.join(cfg_array) + '|'))
+
+    dirstr=" ".join(dirlist)
+    return dirstr
+
+class GpGetSegStatusUsingTransition(Command):
+    """
+    Fetch status for segments on a host, using the transition message method of getting status
+    """
+    def __init__(self, name, segments, statusRequest, verbose=False, ctxt=LOCAL, remoteHost=None):
+
+        # clone the list
+        self.dblist = [x for x in segments]
+
+        # Since filespaces are not used for checking transition status, we can remove all but one of them.
+        dirStr = getSegmentsReprArgWithoutFilespaces(segments)
+
+        if verbose:
+            setVerbose="-v"
+        else:
+            setVerbose=""
+
+        args = [
+                "$GPHOME/sbin/gpgetstatususingtransition.py",
+                setVerbose,
+                "-s %s" % statusRequest,
+                dirStr
+                ]
+        cmdStr = " ".join(args)
+
+        Command.__init__(self, name, cmdStr, ctxt, remoteHost)
+
 #-----------------------------------------------
 class GpSegStartCmd(Command):
     def __init__(self, name, gphome, segments, collatelist, gpversion,
@@ -242,19 +297,9 @@ class GpSegStartCmd(Command):
         # Referenced by calling code, create a clone
         self.dblist = [x for x in segments]
 
-        dirlist=[]
-        for seg in segments:
-            # The following strip of the filespaces is to reduce the command
-            # line length of the gpsegstart.py command.  There are shell
-            # limitations to the length, and if there are a large number of segments
-            # and filespaces, this limit can be exceeded.  Since filespaces are not
-            # used for starting a segment, we can remove all but one of them.
-            
-            cfg_array = repr(seg).split('|')[0:-1]
+        # Since filespaces are not used for checking transition status, we can remove all but one of them.
+        dirstr=getSegmentsReprArgWithoutFilespaces(segments)
         
-            dirlist.append("-D '%s'" % ('|'.join(cfg_array) + '|'))
-
-        dirstr=" ".join(dirlist)
         colstr=":".join(collatelist)
         if verbose:
             setverbose="-v"

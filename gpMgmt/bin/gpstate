@@ -336,65 +336,11 @@ LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 VERSION_INFO () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	GET_QE_DETAILS
-	MASTER_POSTGRES_VERSION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT -d "$DEFAULTDB" -c"show server_version;"`
-	ERROR_CHK $? "obtain master postgres server version" 1
-	MASTER_INITDB_VERSION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT -d "$DEFAULTDB" -c"select productversion from $GP_INITDB_VER_TABLE limit 1;"|$TR '$' ' '|$TR -s ' '`
-	ERROR_CHK $? "obtain master initdb version" 1
-	MASTER_VERSION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT -d "$DEFAULTDB" -c"select version();" `
-	ERROR_CHK $? "obtain master current version" 1
-	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
-	for TNODE in "${QE_ARRAY[@]}"
-	do
-		SET_VAR
-		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$GPSEGSTATE $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $MASTER_PORT 2 &
-		PARALLEL_COUNT ${#QE_ARRAY[@]} $BATCH_DEFAULT
-	done
-	SORT_FILE
-	LOG_MSG "[INFO]:-Master segment version details" 1
-	LOG_MSG "[INFO]:-------------------------------" 1
-	LOG_MSG "[INFO]:-Master segment                    = $MASTER_DATA_DIRECTORY" 1
-	LOG_MSG "[INFO]:-Postgres version                  = $MASTER_POSTGRES_VERSION" 1
-	LOG_MSG "[INFO]:-Software application version      = $MASTER_INITDB_VERSION" 1
-	LOG_MSG "[INFO]:-Greenplum current version         = $MASTER_VERSION" 1
-	LOG_MSG "[INFO]:-Segment instance version details" 1
-	LOG_MSG "[INFO]:---------------------------------" 1
-	while read QE_LINE
-	do
-		QE_NAME=`$ECHO $QE_LINE|$AWK -F':' '{print $2}'`
-		QE_PORT=`$ECHO $QE_LINE|$AWK -F':' '{print $3}'`
-		QE_DIR=`$ECHO $QE_LINE|$AWK -F':' '{print $4}'`
-		QE_VALID=`$ECHO $QE_LINE|$AWK -F':' '{print $6}'`
-		CUR_VERSION=`$ECHO $QE_LINE|$AWK -F':' '{print $7}'`
-		INIT_VERSION=`$ECHO $QE_LINE|$AWK -F':' '{print $8}'`	
-		QE_VERSION=`$ECHO $QE_LINE|$AWK -F':' '{print $9}'`
-		LOG_MSG "[INFO]:-----------------------------------------" 1
-		if [ "$QE_VALID" == "t" ];then
-		LOG_MSG "[INFO]:-Host $QE_NAME Port $QE_PORT datadir $QE_DIR Status = Active" 1
-		else
-		LOG_MSG "[WARN]:-Host $QE_NAME Port $QE_PORT datadir $QE_DIR Status = Failed <<<<<" 1
-		fi
-		if [ "$CUR_VERSION" == "Failed" ];then
-			LOG_MSG "[WARN]:-Current Postgres version          = $CUR_VERSION <<<<<" 1
-		else
-			LOG_MSG "[INFO]:-Current Postgres version          = $CUR_VERSION" 1
-		fi
-		if [ "$INIT_VERSION" == "Failed" ];then
-			LOG_MSG "[WARN]:-Software application version      = $INIT_VERSION <<<<<" 1
-		else
-			LOG_MSG "[INFO]:-Software application version      = $INIT_VERSION" 1
-		fi
-		if [ "$QE_VERSION" == "Failed" ];then
-			LOG_MSG "[WARN]:-Greenplum current version         = $QE_VERSION <<<<<" 1
-		else
-			LOG_MSG "[INFO]:-Greenplum current version         = $QE_VERSION" 1
-		fi
-		LOG_MSG "[INFO]:-----------------------------------------" 1
-	done < $PARALLEL_STATUS_FILE
-	$RM -f $PARALLEL_STATUS_FILE
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+    LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+
+    $PYTHON_GPSTATE -i -d $MASTER_DATA_DIRECTORY
+
+    LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 MIRROR_LIST () {
@@ -802,6 +748,7 @@ else
 	fi
 fi
 CHK_ON_PASSIVE_STANDBY
+
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 CHK_GPDB_ID

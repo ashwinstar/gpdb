@@ -185,24 +185,112 @@ class GpSystemStateProgram:
 
         return exitCode
 
+    def __showVersionInfo(self, gpEnv, gpArray):
+
+        exitCode = 0
+
+        logger.info("Loading version information")
+        segmentsAndMaster = [seg for seg in gpArray.getDbList()]
+        upSegmentsAndMaster = [seg for seg in segmentsAndMaster if seg.isSegmentUp()]
+
+        # fetch from hosts
+        segmentsByHost = GpArray.getSegmentsByHostName(upSegmentsAndMaster)
+        dispatchCount = 0
+        for hostName, segments in segmentsByHost.iteritems():
+            cmd = gp.GpGetSegStatusUsingTransition("get segment version status", segments, "getVersion",
+                               verbose=logging_is_verbose(),
+                               ctxt=base.REMOTE,
+                               remoteHost=segments[0].getSegmentAddress())
+            self.__pool.addCommand(cmd)
+            dispatchCount+=1
+
+        self.__pool.wait_and_printdots(dispatchCount, False) # False -- self.__quiet
+
+        # group output
+        dbIdToVersion = {}
+        uniqueVersions = {}
+        for cmd in self.__pool.getCompletedItems():
+            if cmd.get_results().rc == 0:
+                outputFromCmd = None
+                for line in cmd.get_results().stdout.split('\n'):
+                    if line.startswith("STATUS_RESULTS:"):
+                        toDecode = line[len("STATUS_RESULTS:"):]
+                        outputFromCmd = pickle.loads(base64.urlsafe_b64decode(toDecode))
+                        break
+                if outputFromCmd is None:
+                    logger.warn("No status output provided from host %s" % cmd.remoteHost)
+                else:
+                    segments = cmd.dblist
+                    for segIndex, seg in enumerate(segments):
+                        version = outputFromCmd[segIndex]
+                        if version is not None:
+                            dbIdToVersion[segments[segIndex].getSegmentDbId()] = version
+                            uniqueVersions[version] = True
+            else:
+                logger.warn("Error getting status from host %s" % cmd.remoteHost)
+
+        # print the list of all segments and warnings about trouble
+        warningLineNumbers = {}
+        lines = []
+        lines.append(["Host","Datadir", "Port", "Version", ""])
+        for seg in segmentsAndMaster:
+            line = self.__appendSegmentTripletToArray(seg, [])
+            version = dbIdToVersion.get(seg.getSegmentDbId())
+            doWarn = False
+            if version is None:
+                warningLineNumbers[len(lines)] = True
+                line.append("unable to retrieve version")
+                line.append("<<<<<<<<<<")
+            else:
+                line.append(version)
+                line.append("")
+            lines.append(line)
+        utils.logLinesToTable(lines, warningLineNumbers)
+
+        if len(uniqueVersions) > 1:
+            logger.warn("Versions for some segments do not match.  Review table above for details.")
+
+        hadFailures = len(dbIdToVersion) != len(segmentsAndMaster)
+        if hadFailures:
+            logger.warn("Unable to retrieve version data from all segments.  Review table above for details.")
+
+        if len(uniqueVersions) == 1 and not hadFailures:
+            # if we got data from all segments then we are confident they are all the same version
+            logger.info("All segments are running the same software version")
+
+        self.__pool.empty_completed_items()
+
+        return exitCode
+
     def run(self):
 
+        # check that only one option is set
         numSet = (1 if self.__options.showMirrorList else 0) + \
                  (1 if self.__options.showClusterConfig else 0) + \
-                 (1 if self.__options.showQuickStatus else 0)
+                 (1 if self.__options.showQuickStatus else 0) + \
+                 (1 if self.__options.showVersionInfo else 0)
         if numSet > 1:
             raise ProgramArgumentValidationException("Too many output options specified")
 
+        if self.__options.parallelDegree < 1 or self.__options.parallelDegree > 64:
+            raise ProgramArgumentValidationException("Invalid parallelDegree provided with -B argument: %d" % self.__options.parallelDegree)
+
+        self.__pool = base.WorkerPool(self.__options.parallelDegree)
+
+        # load config
         gpEnv = GpMasterEnvironment(self.__options.masterDataDirectory, True)
         confProvider = configInterface.getConfigurationProvider().initializeProvider(gpEnv.getMasterPort(), False)
         gpArray = confProvider.loadSystemConfig()
 
+        # do it!
         if self.__options.showMirrorList:
             exitCode = self.__displayMirrorList(gpEnv, gpArray, self.__options.mirrorType)
         elif self.__options.showClusterConfig:
             exitCode = self.__displayClusterConfig(gpEnv, gpArray, self.__options.mirrorType)
         elif self.__options.showQuickStatus:
             exitCode = self.__showQuickStatus(gpEnv, gpArray, self.__options.mirrorType)
+        elif self.__options.showVersionInfo:
+            exitCode = self.__showVersionInfo(gpEnv, gpArray )
         else:
             raise ProgramArgumentValidationException( "No output options specified")
 
@@ -244,13 +332,21 @@ class GpSystemStateProgram:
                             dest="showQuickStatus",
                             metavar="<showQuickStatus>",
                             help="Show quick status")
+        addTo.add_option("-i", None, default=False, action="store_true",
+                            dest="showVersionInfo",
+                            metavar="<showVersionInfo>",
+                            help="Show version information")
 
         addTo = OptionGroup(parser, "Other Options")
         parser.add_option_group(addTo)
-        addTo.add_option("-M", None, default="",
+        addTo.add_option("-M", None, default="", # this should be removed when bash is all gone
                             dest="mirrorType",
                             metavar="<mirrorType>",
                             help="mirrorType, as calculated from $MIR_TYPE")
+        addTo.add_option("-B", None, type="int", default=16,
+                            dest="parallelDegree",
+                            metavar="<parallelDegree>",
+                            help="Max # of workers to use querying segments for status.  [default: %default]")
 
         parser.set_defaults()
         return parser

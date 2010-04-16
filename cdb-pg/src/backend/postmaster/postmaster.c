@@ -2593,6 +2593,14 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
 		return;
 	}
 
+	if ( strcmp("getVersion", targetModeStr) == 0 )
+	{
+	    char statusBuf[10000];
+	    snprintf(statusBuf, sizeof(statusBuf), "Success:%s", TextDatumGetCString(pgsql_version(NULL /* fcinfo */)));
+	    sendPrimaryMirrorTransitionResult(statusBuf);
+	    return;
+	}
+
 	if ( strcmp("getFaultInjectStatus", targetModeStr ) == 0)
 	{
 #ifdef FAULT_INJECTOR
