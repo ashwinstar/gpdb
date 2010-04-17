@@ -55,7 +55,12 @@ typedef enum SegmentState_e {
     /*
      * FileRep, Change Tracking and Resync initialization and recovery.
      */
-
+	
+	SegmentStateInChangeTrackingTransition,
+	/*
+	 * Transition from InSync to InChangeTracking
+	 */
+	
     SegmentStateInResyncTransition,
     /*
      * Transition from Change Tracking or from no mirroring into Resync.
@@ -240,7 +245,9 @@ extern bool doesPrimaryMirrorModeRequireFilerepProcess(bool checkTargetModeAsWel
 extern void getFileRepRoleAndState(
 								   FileRepRole_e *fileRepRole, 
 								   SegmentState_e *segmentState, 
-								   DataState_e *dataState);
+								   DataState_e *dataState,
+                                   bool *isInTransitionOut,
+                                   DataState_e *transitionTargetDataStateOut);
 
 /* functions for the postmaster/filerep interaction */
 extern bool isFullResync(void);

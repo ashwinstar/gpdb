@@ -197,8 +197,6 @@ extern void PersistentFileSysObj_DropObject(
 	ItemPointer 				persistentTid,
 
 	int64						persistentSerialNum,
-	
-	StorageManagerMirrorMode 	mirrorMode,
 
 	bool 						ignoreNonExistence);
 

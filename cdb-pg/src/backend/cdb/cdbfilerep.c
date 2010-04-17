@@ -89,8 +89,19 @@ static volatile sig_atomic_t immediateShutdownRequested = false;
 static volatile sig_atomic_t childTermination = false;
 	/* child termination of the main file rep process */
 
-static volatile sig_atomic_t stateChangeRequested = false;
-	/* state change informed by SIGUSR1 signal from postmaster */
+/* state change informed by SIGUSR1 signal from postmaster...when state change request comes in
+ *  this counter is incremented.
+ */
+static volatile sig_atomic_t stateChangeRequestCounter = 0;
+
+/**
+ * This value increases when we process state change requests.  There is no pending state change request if
+ *   lastChangeRequestProcessCounterValue == stateChangeRequestCounter
+ *
+ * Note that this value is not actually updated in the signal handlers, but must match or exceed the size of
+ *    stateChangeRequestCounter so we use its type
+ */
+static volatile sig_atomic_t lastChangeRequestProcessCounterValue = 0;
 
 static void FileRep_SigHupHandler(SIGNAL_ARGS);
 static void FileRep_ImmediateShutdownHandler(SIGNAL_ARGS);
@@ -195,6 +206,7 @@ const char*
 SegmentStateToString[] = {
 	"Not Initialized",
 	"Initialization and Recovery",
+	"Transition to InChangeTracking",
 	"Transition to InResync",	
 	"Transition to InSync",
 	"Up and Running",
@@ -1061,7 +1073,7 @@ FileRep_errdetail(
 			  "identifier:'%s' "
 			  "operation:'%s' "
 			  "relation type:'%s' ",
-			  (fileName == NULL) ? "":fileName,
+			  (fileName == NULL) ? "<null>" : fileName,
 			  FileRepOperationToString[fileRepOperation],
 			  FileRepRelationTypeToString[fileRepRelationType]);	
 		
@@ -1224,7 +1236,7 @@ FileRep_ReportLogEntry(int	index)
 					"process pid:'%d' ",
 					buftime,
 					fileRepLog[index].routineName,
-					(fileName == NULL) ? "" : fileName,
+					(fileName == NULL) ? "<null>" : fileName,
 					FileRepOperationToString[fileRepLog[index].fileRepOperation],
 					FileRepRelationTypeToString[fileRepLog[index].fileRepRelationType],
 					fileRepLog[index].localCount,
@@ -1332,8 +1344,8 @@ FileRep_ChildTerminationHandler(SIGNAL_ARGS)
 static void 
 FileRep_StateHandler(SIGNAL_ARGS)
 {
-	stateChangeRequested = true;
-	elog(FILEREP_PROCESS_LOG_LEVEL, "FileRep_StateHandler() stateChangeRequested");
+	++stateChangeRequestCounter;
+	elog(FILEREP_PROCESS_LOG_LEVEL, "FileRep_StateHandler() stateChangeRequestCounter %d", stateChangeRequestCounter);
 }
 
 /*
@@ -1614,10 +1626,15 @@ FileRep_ProcessSignals()
 		errno = 0;
 	}
 
-	if (stateChangeRequested)
+	for ( ;; )
 	{
-		getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState);
-		stateChangeRequested = false;
+	    /* check to see if change required */
+	    sig_atomic_t curStateChangeRequestCounter = stateChangeRequestCounter;
+	    if ( curStateChangeRequestCounter == lastChangeRequestProcessCounterValue )
+	        break;
+        lastChangeRequestProcessCounterValue = curStateChangeRequestCounter;
+
+		getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
 #ifdef FILEREP_DEBUG
 		ereport(LOG,
 				(errmsg("LOG(filerep): FileRep_ProcessSignals() "),
@@ -1643,7 +1660,8 @@ FileRep_GetState(void)
 bool
 FileRep_IsInRecovery(void)
 {	
-	return (segmentState == SegmentStateInitialization);
+	return (segmentState == SegmentStateInitialization ||
+			segmentState == SegmentStateInChangeTrackingTransition);
 }
 
 /* NOTE temporary routine */
@@ -1697,7 +1715,7 @@ FileRep_IsInChangeTracking(void)
 	DataState_e snapDataState;
 	bool result;
 	
-	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState);
+	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
 	snapDataState = dataState;
 	
 	result = (((snapDataState == DataStateInChangeTracking && 

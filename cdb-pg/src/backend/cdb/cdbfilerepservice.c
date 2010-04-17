@@ -58,8 +58,20 @@ static volatile sig_atomic_t shutdownRequested = false;
 static volatile sig_atomic_t immediateShutdownRequested = false;
 /* immediate shutdown informed by SIGQUIT signal from postmaster */
 
-static volatile sig_atomic_t stateChangeRequested = true;
-/* state change informed by SIGUSR1 signal from postmaster */
+/* state change informed by SIGUSR1 signal from postmaster...when state change request comes in
+ *  this counter is incremented.
+ */
+static volatile sig_atomic_t stateChangeRequestCounter = 0;
+
+/**
+ * This value increases when we process state change requests.  There is no pending state change request if
+ *   lastChangeRequestProcessCounterValue == stateChangeRequestCounter
+ *
+ * Note that this value is not actually updated in the signal handlers, but must match or exceed the size of
+ *    stateChangeRequestCounter so we use its type
+ */
+static volatile sig_atomic_t lastChangeRequestProcessCounterValue = 0;
+
 /* it is set to TRUE in order to read configuration information at start */
 
 static void FileRepSubProcess_SigHupHandler(SIGNAL_ARGS);
@@ -118,7 +130,7 @@ FileRepSubProcess_ShutdownHandler(SIGNAL_ARGS)
 static void 
 FileRepSubProcess_FileRepStateHandler(SIGNAL_ARGS)
 {
-	stateChangeRequested = true;
+	++stateChangeRequestCounter;
 	elog(DEBUG1, "FileRepSubProcess_FileRepStateHandler()");	
 }
 
@@ -181,67 +193,72 @@ FileRepSubProcess_ProcessSignals()
 		FileRepSubProcess_SetState(FileRepStateImmediateShutdown);
 	}
 	*/
-	if (stateChangeRequested) {
+	for ( ;; )
+	{
+	    /* check to see if change required */
+	    sig_atomic_t curStateChangeRequestCounter = stateChangeRequestCounter;
+	    if ( curStateChangeRequestCounter == lastChangeRequestProcessCounterValue )
+	        break;
+        lastChangeRequestProcessCounterValue = curStateChangeRequestCounter;
 
-		stateChangeRequested = FALSE;
-		
-		getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState);
-		
-		switch (segmentState) {
-		
-			case SegmentStateNotInitialized:
-				FileRepSubProcess_SetState(FileRepStateNotInitialized);
-				break;
-				
-			case SegmentStateInitialization:
-				FileRepSubProcess_SetState(FileRepStateInitialization);
-				break;
-							
-			case SegmentStateInResyncTransition:
-				FileRepSubProcess_SetState(FileRepStateInitialization);
-				break;
-				
-			case SegmentStateInSyncTransition:
-				// fileRepState remains Ready
-				break;
-				
-			case SegmentStateChangeTrackingDisabled:	
-			case SegmentStateReady:
-				FileRepSubProcess_SetState(FileRepStateReady);
-				break;
-								
-			case SegmentStateFault:
-				FileRep_ReportLog();
-				FileRepSubProcess_SetState(FileRepStateFault);
-				break;
-				
-			case SegmentStateShutdownFilerepBackends:
-				if (fileRepRole == FileRepPrimaryRole)
-				{
-					FileRepSubProcess_SetState(FileRepStateShutdownBackends);
-				}
-				else
-				{
-					processExit = true;
-					FileRepSubProcess_SetState(FileRepStateShutdown);
-				}
-				break;
+        /* do the change in local memory */
+        getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
+        switch (segmentState) {
 
-			case SegmentStateShutdown:
-				processExit = true;
-				FileRepSubProcess_SetState(FileRepStateShutdown);
-				break;
+            case SegmentStateNotInitialized:
+                FileRepSubProcess_SetState(FileRepStateNotInitialized);
+                break;
 
-			case SegmentStateImmediateShutdown:
-				processExit = true;
-				FileRepSubProcess_SetState(FileRepStateImmediateShutdown);
-				break;
+            case SegmentStateInitialization:
+                FileRepSubProcess_SetState(FileRepStateInitialization);
+                break;
 				
+            case SegmentStateInResyncTransition:
+                FileRepSubProcess_SetState(FileRepStateInitialization);
+                break;
+
+			case SegmentStateInChangeTrackingTransition:
+            case SegmentStateInSyncTransition:
+                // fileRepState remains Ready
+                break;
+
+            case SegmentStateChangeTrackingDisabled:
+            case SegmentStateReady:
+                FileRepSubProcess_SetState(FileRepStateReady);
+                break;
+
+            case SegmentStateFault:
+                FileRep_ReportLog();
+                FileRepSubProcess_SetState(FileRepStateFault);
+                break;
+
+            case SegmentStateShutdownFilerepBackends:
+                if (fileRepRole == FileRepPrimaryRole)
+                {
+                    FileRepSubProcess_SetState(FileRepStateShutdownBackends);
+                }
+                else
+                {
+                    processExit = true;
+                    FileRepSubProcess_SetState(FileRepStateShutdown);
+                }
+                break;
+
+            case SegmentStateShutdown:
+                processExit = true;
+                FileRepSubProcess_SetState(FileRepStateShutdown);
+                break;
+
+            case SegmentStateImmediateShutdown:
+                processExit = true;
+                FileRepSubProcess_SetState(FileRepStateImmediateShutdown);
+                break;
+
             default:
                 Assert(0);
-		        break;
-		} // switch()
-	} // if (stateChangeRequested)
+                break;
+        } // switch()
+    }
 
 	return(processExit);
 }
@@ -252,7 +269,7 @@ FileRepSubProcess_IsStateTransitionRequested(void)
 	/* NOTE remove when Shutdown Message will be moved to FileRep backend process */
 	if (fileRepProcessType == FileRepProcessTypeMain)
 	{
-		getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState);
+		getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
 		if (segmentState == FileRepStateImmediateShutdown)
 			return TRUE;
 		else
@@ -282,7 +299,7 @@ FileRepSubProcess_IsStateTransitionRequested(void)
 
 	if (fileRepProcessType == FileRepProcessTypeNotInitialized)
 	{
-		getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState);
+		getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
 
 		switch (segmentState)
 		{
@@ -673,7 +690,7 @@ FileRepSubProcess_Main()
  		 FileRepProcessTypeToString[fileRepProcessType], 
 		 MyProc->pid);
 	
-	stateChangeRequested = TRUE;
+	stateChangeRequestCounter++;
 	
 	FileRepSubProcess_ProcessSignals();
 	

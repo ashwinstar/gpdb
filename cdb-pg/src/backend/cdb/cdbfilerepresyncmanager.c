@@ -501,7 +501,7 @@ FileRepPrimary_StartResyncManager(void)
 			{
 				isLastLocTracked = TRUE;
 				FileRepSubProcess_SetState(FileRepStateReady);
-				getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState);
+				getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
 				
 				while (FileRepSubProcess_GetState() != FileRepStateShutdown &&
 					   FileRepSubProcess_GetState() != FileRepStateShutdownBackends &&
@@ -724,6 +724,10 @@ FileRepPrimary_RunResyncManager(void)
 	
 	elog(LOG, "FileRepPrimary_RunResyncManager()");
 
+	PersistentFileSysObj_MirrorReDrop();
+	
+	elog(LOG, "FileRepPrimary_RunResyncManager() PersistentFileSysObj_MirrorReDrop DONE");
+	
 	ResynchronizeScanToken_Init(&token);
 	
 	while (1) {
@@ -816,13 +820,15 @@ FileRepPrimary_RunResyncManager(void)
 								
 				
 		elog(LOG, "FileRepPrimary_RunResyncManager() mirror relation path:'%s' index:'%d' "
-				 "relStorageMgr:'%d' mirrorDataSynchronizationState:'%d' "
+				 "relStorageMgr:'%s(%d)' mirrorDataSynchronizationState:'%s(%d)' "
 				 "ResyncCkptLoc:'%d/%d' "
 				 "ResyncCkptBlockNum:'%u' "
 				 "AppendOnlyLossEof:" INT64_FORMAT " "
 				 "AppendOnlyNewEof:" INT64_FORMAT " ",
 				 entry.fileName, ii++,
-				 entry.relStorageMgr,
+				 PersistentFileSysRelStorageMgr_Name(entry.relStorageMgr),
+			     entry.relStorageMgr,
+				 MirroredRelDataSynchronizationState_Name(entry.mirrorDataSynchronizationState),
 				 entry.mirrorDataSynchronizationState,
 				 entry.mirrorBufpoolResyncCkptLoc.xlogid,
 				 entry.mirrorBufpoolResyncCkptLoc.xrecoff,
@@ -876,7 +882,7 @@ FileRepResyncManager_InSyncTransition(void)
 		}				
 		FileRepPrimary_MirrorInSyncTransition();
 		
-		ChangeTracking_DropAll();
+		ChangeTracking_MarkTransitionToInsyncCompleted();
 		
 		break;
 	}

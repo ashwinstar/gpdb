@@ -156,9 +156,9 @@ static void smgr_internal_unlink(
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
 
-	StorageManagerMirrorMode 	mode,
+	bool 						ignoreNonExistence,
 
-	bool 						ignoreNonExistence);
+	bool						*mirrorDataLossOccurred);
 
 static void
 AppendOnlyMirrorResyncEofs_Merge(
@@ -847,16 +847,16 @@ smgrdounlink(
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
 
-	StorageManagerMirrorMode 	mode, 
+	bool 						ignoreNonExistence,
 
-	bool 						ignoreNonExistence)
+	bool						*mirrorDataLossOccurred)
 {
 	smgr_internal_unlink(
 				*relFileNode, 
 				isLocalBuf,
 				relationName,
-				mode, 
-				ignoreNonExistence);
+				ignoreNonExistence,
+				mirrorDataLossOccurred);
 }
 
 /*
@@ -871,9 +871,9 @@ smgr_internal_unlink(
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
 
-	StorageManagerMirrorMode 	mode,
+	bool 						ignoreNonExistence,
 
-	bool 						ignoreNonExistence)
+	bool						*mirrorDataLossOccurred)
 {
 	/*
 	 * Get rid of any remaining buffers for the relation.  bufmgr will just
@@ -900,7 +900,7 @@ smgr_internal_unlink(
 	 * Note: we treat deletion failure as a WARNING, not an error, because
 	 * we've already decided to commit or abort the current xact.
 	 */
-	if (!mdunlink(rnode, relationName, mode, ignoreNonExistence))
+	if (!mdunlink(rnode, relationName, ignoreNonExistence, mirrorDataLossOccurred))
 	{
 		if (relationName == NULL)
 			ereport(WARNING,
@@ -970,9 +970,11 @@ smgrdormfilespacedir(
 	
 	char						*mirrorFilespaceLocation,
 
-	StorageManagerMirrorMode 	mirrorMode,
+	bool					 	mirrorOnly,
 
-	bool 						ignoreNonExistence)
+	bool 						ignoreNonExistence,
+
+	bool						*mirrorDataLossOccurred)
 {
 	/*
 	 * And remove the physical filespace directory.
@@ -984,8 +986,9 @@ smgrdormfilespacedir(
 						filespaceOid,
 						primaryFilespaceLocation,
 						mirrorFilespaceLocation,
-						mirrorMode,
-						ignoreNonExistence))
+						mirrorOnly,
+						ignoreNonExistence,
+						mirrorDataLossOccurred))
 		ereport(WARNING,
 				(errcode_for_file_access(),
 				 errmsg("could not remove filespace directory %u: %m",
@@ -1077,9 +1080,11 @@ void
 smgrdormtablespacedir(
 	Oid							tablespaceOid,
 
-	StorageManagerMirrorMode 	mirrorMode,
+	bool					 	mirrorOnly,
 
-	bool 						ignoreNonExistence)
+	bool 						ignoreNonExistence,
+
+	bool						*mirrorDataLossOccurred)
 {
 	/*
 	 * And remove the physical tablespace directory.
@@ -1087,7 +1092,7 @@ smgrdormtablespacedir(
 	 * Note: we treat deletion failure as a WARNING, not an error, because
 	 * we've already decided to commit or abort the current xact.
 	 */
-	if (!mdrmtablespacedir(tablespaceOid, mirrorMode, ignoreNonExistence))
+	if (!mdrmtablespacedir(tablespaceOid, mirrorOnly, ignoreNonExistence, mirrorDataLossOccurred))
 		ereport(WARNING,
 				(errcode_for_file_access(),
 				 errmsg("could not remove tablespace directory %u: %m",
@@ -1101,9 +1106,11 @@ static void
 smgr_internal_rmdbdir(
 	DbDirNode					*dbDirNode,
 
-	StorageManagerMirrorMode 	mirrorMode,
+	bool					 	mirrorOnly,
 
-	bool 						ignoreNonExistence)
+	bool 						ignoreNonExistence,
+
+	bool						*mirrorDataLossOccurred)
 {
 	/*
 	 * And remove the physical database directory.
@@ -1111,7 +1118,7 @@ smgr_internal_rmdbdir(
 	 * Note: we treat deletion failure as a WARNING, not an error, because
 	 * we've already decided to commit or abort the current xact.
 	 */
-	if (!mdrmdbdir(dbDirNode, mirrorMode, ignoreNonExistence))
+	if (!mdrmdbdir(dbDirNode, mirrorOnly, ignoreNonExistence, mirrorDataLossOccurred))
 		ereport(WARNING,
 				(errcode_for_file_access(),
 				 errmsg("could not remove database directory %u/%u: %m",
@@ -1123,14 +1130,17 @@ void
 smgrdormdbdir(
 	DbDirNode					*dbDirNode,
 
-	StorageManagerMirrorMode 	mirrorMode,
+	bool					 	mirrorOnly,
 
-	bool 						ignoreNonExistence)
+	bool 						ignoreNonExistence,
+
+	bool						*mirrorDataLossOccurred)
 {
 	smgr_internal_rmdbdir(
 					dbDirNode, 
-					mirrorMode,
-					ignoreNonExistence);
+					mirrorOnly,
+					ignoreNonExistence,
+					mirrorDataLossOccurred);
 }
 
 void smgrappendonlymirrorresynceofs(
@@ -1656,7 +1666,7 @@ smgrDoDeleteActions(
 					 "Storage Manager: Do delete action for list entry #%d: '%s' relation name '%s' (forCommit %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", sameTransCreateDrop %s)",
 					 entryIndex,
 					 PersistentFileSysObjName_TypeAndObjectName(&current->fsObjName),
-					 current->relationName,
+					 (current->relationName == NULL ? "<null>" : current->relationName),
 					 (forCommit ? "true" : "false"),
 					 current->nestLevel,
 					 ItemPointerToString(&current->persistentTid),
@@ -1667,7 +1677,7 @@ smgrDoDeleteActions(
 					 "Storage Manager: Do delete action for list entry #%d: '%s', relation name '%s' (forCommit %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", sameTransCreateDrop %s)",
 					 entryIndex,
 					 PersistentFileSysObjName_TypeAndObjectName(&current->fsObjName),
-					 current->relationName,
+					 (current->relationName == NULL ? "<null>" : current->relationName),
 					 (forCommit ? "true" : "false"),
 					 current->nestLevel,
 					 ItemPointerToString(&current->persistentTid),

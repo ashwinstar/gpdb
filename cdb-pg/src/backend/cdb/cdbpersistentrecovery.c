@@ -1413,14 +1413,12 @@ PersistentRecovery_DropType(
 				elog(Debug_persistent_recovery_print_level, 
 				     "Drop REDO: %s", FsObjEntryToString(fsObjEntry));
 
-			// UNDONE: Determine the StorageManagerMirrorMode to pass in here.
 			PersistentFileSysObj_DropObject(
 							&fsObjEntry->fsObjName,
 							fsObjEntry->relStorageMgr,
 							/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
 							&fsObjEntry->key.persistentTid,
 							fsObjEntry->persistentSerialNum,
-							StorageManagerMirrorMode_Both,
 							/* ignoreNonExistence */ true);
 		}
 	}

@@ -225,6 +225,7 @@ DumpMDRecord(void)
 	printf("Resync LSN end: [%X/%X]\n", record->resync_lsn_end.xlogid, record->resync_lsn_end.xrecoff);
 	printf("Resync is full? : %s\n", (record->resync_mode_full ? "yes" : "no"));
 	printf("Resync transition completed? : %s\n", (record->resync_transition_completed ? "yes" : "no"));
+	printf("Insync transition completed? : %s\n", (record->insync_transition_completed ? "yes" : "no"));	
 	printf("-----------------------------------\n");
 }
 

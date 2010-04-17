@@ -1080,12 +1080,12 @@ begin:;
 	if (isLogSwitch &&
 		(RecPtr.xrecoff % XLogSegSize) == SizeOfXLogLongPHD)
 	{
+		LWLockRelease(WALInsertLock);
 		/* We can release insert lock immediately */
 		if (OkToConsiderChangeTrackingLogging)
 		{
 			LWLockRelease(ChangeTrackingTransitionLock);
 		}
-		LWLockRelease(WALInsertLock);
 
 		RecPtr.xrecoff -= SizeOfXLogLongPHD;
 		if (RecPtr.xrecoff == 0)
@@ -1262,10 +1262,7 @@ begin:;
 	 * last LSN location has to be tracked also when no mirrors are configured
 	 * in order to handle gpaddmirrors correctly
 	 */
-	if (OkToConsiderChangeTrackingLogging)
-	{
-		XLogCtl->lastChangeTrackingLoc = RecPtr;
-	}
+	XLogCtl->lastChangeTrackingLoc = RecPtr;
 
 	/* free rdata_orig if memory was allocated for it */
 	if(rdata_orig_iscopy)
@@ -5040,6 +5037,49 @@ XLogGetWriteAndFlushedLoc(XLogRecPtr *writeLoc, XLogRecPtr *flushedLoc)
 	SpinLockRelease(&xlogctl->info_lck);
 	
 	return (writeLoc->xlogid != 0 || writeLoc->xrecoff != 0);
+}
+
+/*
+ * Very specific purpose routine for FileRep that flushes out XLOG records from the
+ * XLOG memory cache to disk.
+ */
+void
+XLogFileRepFlushCache(void)
+{
+	/* use volatile pointer to prevent code rearrangement */
+	volatile XLogCtlInsert *Insert = &XLogCtl->Insert;
+
+	XLogRecPtr prevRecordLoc;
+	
+	/* 
+	 * Since the WALInsertLock is acquired 2nd in XLogInsert after getting the
+	 * ChangeTrackingTransitionLock lock, we can safely get it here.
+	 *
+	 * Use it to guard access to the shared memory Insert data structure (since
+	 * a backend might be taking time to leave XLogInsert...).
+	 *
+	 */
+	LWLockAcquire(WALInsertLock, LW_EXCLUSIVE);
+
+	prevRecordLoc = Insert->PrevRecord;
+	
+	LWLockRelease(WALInsertLock);
+
+	XLogFlush(prevRecordLoc);
+}
+
+void
+XLogInChangeTrackingTransition(void)
+{
+	LWLockAcquire(ChangeTrackingTransitionLock, LW_EXCLUSIVE);
+	
+	FileRep_SetSegmentState(SegmentStateInChangeTrackingTransition);
+		
+	XLogFileRepFlushCache();
+	
+	ChangeTracking_CreateInitialFromPreviousCheckpoint();
+	
+	LWLockRelease(ChangeTrackingTransitionLock);
 }
 
 void

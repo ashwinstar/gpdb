@@ -21,7 +21,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
-
+#include <glob.h>
 #include <signal.h>
 
 #include "cdb/cdbvars.h"
@@ -101,6 +101,12 @@ static int FileRepMirror_InsertFileName(
 static void FileRepMirror_RemoveFileName(FileName fileName);
 
 static void FileRepMirror_ReInit(void);
+
+static int SegmentFileFillZero(File fd, int64 writeOffset);
+
+static int FileRepMirror_DropBufferPoolSegmentFiles(FileName  fileName);
+
+static int FileRepMirror_Drop(FileName fileName);
 
 /****************************************************************
  * FILEREP SUB-PROCESS (FileRep Mirror RECEIVER Process)
@@ -943,6 +949,22 @@ FileRepMirror_RunConsumer(void)
 								fileRepMessageHeader->fileRepOperationDescription.open.fileFlags,
 								fileRepMessageHeader->fileRepOperationDescription.open.fileMode);
 						
+						/*
+						 *	Segment Files > 0 for Buffer Pool are not created transactionally hence
+						 *	during in transition to Resync and crash recovery are created explicitly
+						 */
+						if (fd < 0 && 
+							errno == ENOENT && 
+							fileRepMessageHeader->fileRepRelationType == FileRepRelationTypeBufferPool &&
+							fileRepMessageHeader->fileRepIdentifier.fileRepRelationIdentifier.segmentFileNum > 0)
+						{
+							errno = 0;
+							fd = PathNameOpenFile(
+												  fileName,
+												  O_CREAT | fileRepMessageHeader->fileRepOperationDescription.open.fileFlags | O_RDWR | PG_BINARY,
+												  fileRepMessageHeader->fileRepOperationDescription.open.fileMode);
+						}
+						
 						if ((fd < 0) && ((errno == EEXIST) || (errno == ENOENT))) {
 							
 							ereport(LOG,
@@ -1028,6 +1050,24 @@ FileRepMirror_RunConsumer(void)
 										  O_RDWR,
 										  fileMode);
 					
+					
+					/*
+					 *	Segment Files > 0 for Buffer Pool are not created transactionally hence
+					 *	during in transition to Resync and crash recovery are created explicitly
+					 */
+					if (fd < 0 && 
+						errno == ENOENT && 
+						dataState == DataStateInResync &&
+						fileRepMessageHeader->fileRepRelationType == FileRepRelationTypeBufferPool &&
+						fileRepMessageHeader->fileRepIdentifier.fileRepRelationIdentifier.segmentFileNum > 0)
+					{
+						errno = 0;
+						fd = PathNameOpenFile(
+											  fileName,
+											  O_CREAT | O_RDWR | PG_BINARY,
+											  fileMode);
+					}					
+					
 					if (fd < 0) {
 						status = STATUS_ERROR;
 						ereport(LOG,
@@ -1056,7 +1096,35 @@ FileRepMirror_RunConsumer(void)
 						break;
 					}
 				}
-								
+				
+				/*
+				 *	Segment Files > 0 for Buffer Pool are not created transactionally hence
+				 *	during in transition to Resync and crash recovery are created explicitly
+				 */
+				if (fd > 0 && 
+					dataState == DataStateInResync &&
+					fileRepMessageHeader->fileRepRelationType == FileRepRelationTypeBufferPool &&
+					fileRepMessageHeader->fileRepIdentifier.fileRepRelationIdentifier.segmentFileNum > 0)
+				{
+					Assert(fileRepMessageHeader->fileRepOperationDescription.write.offset != FILEREP_OFFSET_UNDEFINED);
+					
+					status = SegmentFileFillZero(fd,
+												 (int64)fileRepMessageHeader->fileRepOperationDescription.write.offset);
+					
+					if (status != STATUS_OK)
+					{
+						ereport(LOG,
+								(errcode_for_file_access(),
+								 errmsg("ERROR(filerep): could not fill zero into segment file for write : %m"), 
+								 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
+												   fileRepMessageHeader->fileRepRelationType,
+												   fileRepMessageHeader->fileRepOperation),
+								 FileRep_errcontext()));					
+						
+						break;
+					}	
+				}
+				
 				if (fileRepMessageHeader->fileRepOperationDescription.write.offset != FILEREP_OFFSET_UNDEFINED) {
 					seekResult = FileSeek(fd, 
 										  fileRepMessageHeader->fileRepOperationDescription.write.offset, 
@@ -1508,10 +1576,20 @@ FileRepMirror_RunConsumer(void)
 						}
 						
 						break;
-					case FileRepRelationTypeAppendOnly:
-					case FileRepRelationTypeFlatFile:
+						
 					case FileRepRelationTypeBufferPool:
 						
+						status = FileRepMirror_DropBufferPoolSegmentFiles(fileName);
+						if (status != STATUS_OK)
+						{
+							break;
+						}
+						/* NO BREAK */
+					case FileRepRelationTypeAppendOnly:
+					case FileRepRelationTypeFlatFile:
+						
+						status = FileRepMirror_Drop(fileName);
+#ifdef REP				
 						/* Ensure that file is not opened. */
 						fd = FileRepMirror_GetFileDescriptor(fileName);
 						
@@ -1546,7 +1624,7 @@ FileRepMirror_RunConsumer(void)
 						}
 												
 						FileUnlink(fd);
-						
+#endif					
 						break;
 					default:
 						Assert(0);
@@ -1880,4 +1958,196 @@ FileRepMirror_RemoveFileName(FileName  fileName)
 		hash_search(openFilesTable, (void *) &key, HASH_REMOVE, NULL);
 	}
 	return;
+}
+
+/*
+ *
+ */
+static int
+SegmentFileFillZero(File fd, int64 writeOffset)
+{
+	int		status = STATUS_OK;
+	int64	startOffset = 0;
+	int64	seekResult;
+	
+	char	zbuffer[BLCKSZ];
+
+	Assert(writeOffset < RELSEG_SIZE * BLCKSZ);
+	
+	MemSet(zbuffer, 0, sizeof(zbuffer));
+	
+	errno = 0;
+	startOffset = FileSeek(fd, 0L, SEEK_END);
+	
+	if (startOffset < 0)
+	{
+		ereport(LOG,
+				(errcode_for_file_access(),
+				 errmsg("ERROR(filerep): could not seek to the end of file : %m")));
+		status = STATUS_ERROR;		
+		return status;
+	}
+	
+	if (startOffset >= writeOffset)
+	{
+		return status;
+	}
+	
+	Assert(startOffset < writeOffset);
+	
+	errno = 0;
+	seekResult = FileSeek(fd, startOffset, SEEK_SET);
+	if (seekResult != startOffset)
+	{
+		ereport(LOG,
+				(errcode_for_file_access(),
+				 errmsg("ERROR(filerep): could not seek in file to position " INT64_FORMAT ": %m", 
+				        startOffset)));
+		status = STATUS_ERROR;		
+		return status;
+	}
+		
+	while (startOffset < writeOffset) 
+	{
+		errno = 0;
+		
+		if ((int) FileWrite(fd, zbuffer, BLCKSZ) != (int) BLCKSZ) {
+			int			save_errno = errno;
+			
+			/*
+			 * If we fail to make the file, delete it to release disk space
+			 */
+			
+			/* if write didn't set errno, assume problem is no disk space */
+			errno = save_errno ? save_errno : ENOSPC;
+			
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("ERROR(filerep): could not zero segment file : %m")));
+			status = STATUS_ERROR;
+			return status;
+		}
+		startOffset += BLCKSZ;
+	}
+	
+	errno = 0;
+	if (FileSync(fd) != 0) 
+	{
+		ereport(LOG,
+				(errcode_for_file_access(),
+				 errmsg("ERROR(filerep): could not fsync file : %m")));
+		status = STATUS_ERROR;
+	}
+	
+	return status;
+}
+
+/*
+ *
+ */
+static int
+FileRepMirror_Drop(FileName fileName)
+{
+	File	fd = 0;
+	int		fileMode = 0600; 
+	int		status = STATUS_OK;
+	
+	fd = FileRepMirror_GetFileDescriptor(fileName);
+
+	if (fd < 0) 
+	{
+		errno = 0;
+		fd = PathNameOpenFile(fileName,
+							  O_WRONLY,
+							  fileMode);	
+		
+		if (fd < 0 && errno == ENOENT) 
+		{
+			fd = 0;
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("LOG(filerep): file was already dropped identifier:'%s' : %m", 
+							fileName)));
+			return status;
+		}							
+		
+		if (fd < 0) 
+		{
+			status = STATUS_ERROR;
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("ERROR(filerep): could not open file to issue drop:'%s' : %m", 
+							fileName)));
+			
+			return status;
+		}	
+	} 
+	else 
+	{
+		FileRepMirror_RemoveFileName(fileName);
+	}
+
+	FileUnlink(fd);
+	
+	return status;
+}
+
+/*
+ *
+ */
+static int
+FileRepMirror_DropBufferPoolSegmentFiles(FileName  fileName)
+{
+	char	tmp[MAXPGPATH+1];
+	char	fileNameLocal[MAXPGPATH+1];
+	
+	int		status = STATUS_OK;
+	int		constantPrefixLen;
+	int		ii;
+	glob_t	g;
+
+	sprintf(tmp, "%s.*", fileName);
+	
+	constantPrefixLen = strlen(tmp) - 1;
+
+	ii = glob(tmp, 0, 0, &g);
+
+	/* glob success */
+	if (ii == 0)
+	{
+		size_t n;
+		for (n = 0; n < g.gl_pathc; ++n)
+		{
+			char	*match = g.gl_pathv[n];
+			int		scanCount;
+			int		segmentFileNum;
+			
+			if (strncmp(match, tmp, constantPrefixLen) != 0)
+			{
+				elog(LOG, "LOG(filerep): File name pattern problem prefix:'%s' ", tmp);
+				continue;
+			}
+			
+			scanCount = sscanf(&match[constantPrefixLen], "%u", &segmentFileNum);
+			
+			if (segmentFileNum <= 0)
+			{
+				elog(LOG, "LOG(filerep): Invalid segment file num:'%u' ", segmentFileNum);
+				continue;
+			}
+			
+			sprintf(fileNameLocal, "%s.%u", fileName, segmentFileNum);
+			
+			status = FileRepMirror_Drop(fileNameLocal);
+			
+			if (status != STATUS_OK)
+			{
+				break;
+			}
+		}
+		
+		globfree(&g);
+	}
+	
+	return status;
 }

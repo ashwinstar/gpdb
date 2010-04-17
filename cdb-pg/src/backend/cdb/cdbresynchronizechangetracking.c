@@ -124,6 +124,8 @@ extern void ChangeTrackingShmemInit(void)
 	changeTrackingResyncMeta->resync_lsn_end.xlogid = 0;
 	changeTrackingResyncMeta->resync_lsn_end.xrecoff = 0;
 	changeTrackingResyncMeta->resync_transition_completed = false;
+	changeTrackingResyncMeta->insync_transition_completed = false;
+	
 	
 	ereport(DEBUG1, (errmsg("initialized changetracking shared memory structures")));
 
@@ -421,12 +423,16 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 		case RM_TBLSPC_ID:
 			break;
 			
-		/* UNDONE? do we need to add these as well? */
+		/* 
+		 * These aren't supported in GPDB
+		 */
 		case RM_HASH_ID:
-		case RM_GIST_ID:
 		case RM_GIN_ID:
-			break;
+			elog(ERROR, "internal error: unsupported RM ID (%d) in ChangeTracking_GetRelationChangeInfoFromXlog", xl_rmid);
 			
+		case RM_GIST_ID:
+			elog(LOG, "internal error: TEMPORARY unsupported RM_GIST_ID (%u) in ChangeTracking_GetRelationChangeInfoFromXlog", xl_rmid);
+			break;
 		/*
 		 * The following changes must be logged in the change log.
 		 */
@@ -448,7 +454,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 				break;
 
 				default:
-					elog(ERROR, "internal error: unsupported RM_HEAP2_ID op (%d) in AddRecordFromXlog", info);
+					elog(ERROR, "internal error: unsupported RM_HEAP2_ID op (%d) in ChangeTracking_GetRelationChangeInfoFromXlog", info);
 			}
 			break;
 		case RM_HEAP_ID:
@@ -565,7 +571,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 				}
 
 				default:
-					elog(ERROR, "internal error: unsupported RM_HEAP_ID op (%d) in AddRecordFromXlog", op);
+					elog(ERROR, "internal error: unsupported RM_HEAP_ID op (%d) in ChangeTracking_GetRelationChangeInfoFromXlog", op);
 			}
 			break;
 
@@ -727,7 +733,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 				}
 
 				default:
-					elog(ERROR, "internal error: unsupported RM_BTREE_ID op (%d) in AddRecordFromXlog", info);
+					elog(ERROR, "internal error: unsupported RM_BTREE_ID op (%d) in ChangeTracking_GetRelationChangeInfoFromXlog", info);
 			}
 			break;
 		case RM_BITMAP_ID:
@@ -862,7 +868,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					break;
 				}
 				default:
-					elog(ERROR, "internal error: unsupported RM_BITMAP_ID op (%d) in AddRecordFromXlog", info);
+					elog(ERROR, "internal error: unsupported RM_BITMAP_ID op (%d) in ChangeTracking_GetRelationChangeInfoFromXlog", info);
 			}
 			break;
 		case RM_SEQ_ID:
@@ -883,11 +889,11 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					break;
 				}
 				default:
-					elog(ERROR, "internal error: unsupported RM_SEQ_ID op (%d) in AddRecordFromXlog", info);
+					elog(ERROR, "internal error: unsupported RM_SEQ_ID op (%d) in ChangeTracking_GetRelationChangeInfoFromXlog", info);
 			}
 			break;
 		default:
-			elog(ERROR, "internal error: unsupported resource manager type (%d) in AddRecordFromXlog", xl_rmid);
+			elog(ERROR, "internal error: unsupported resource manager type (%d) in ChangeTracking_GetRelationChangeInfoFromXlog", xl_rmid);
 	}
 
 }
@@ -1510,6 +1516,7 @@ static void ChangeTracking_DropMetaFile(void)
 	changeTrackingResyncMeta->resync_lsn_end.xlogid = 0;
 	changeTrackingResyncMeta->resync_lsn_end.xrecoff = 0;
 	changeTrackingResyncMeta->resync_transition_completed = false;
+	changeTrackingResyncMeta->insync_transition_completed = false;
 	
 	/* delete the change tracking meta file*/
 	FileUnlink(file);
@@ -1645,6 +1652,7 @@ static void ChangeTracking_WriteMeta(File file)
 	rec.resync_lsn_end = changeTrackingResyncMeta->resync_lsn_end;
 	rec.resync_mode_full = changeTrackingResyncMeta->resync_mode_full;
 	rec.resync_transition_completed = changeTrackingResyncMeta->resync_transition_completed;
+	rec.insync_transition_completed = changeTrackingResyncMeta->insync_transition_completed;
 	
 	/* init buffer and copy rec into it */	
 	MemSet(metabuf, 0, CHANGETRACKING_METABUFLEN);
@@ -1724,6 +1732,8 @@ ChangeTracking_ReadMeta(File file, ChangeTrackingMetaRecord* rec)
 	rec->resync_lsn_end = ((ChangeTrackingMetaRecord *)metabuf)->resync_lsn_end;
 	rec->resync_mode_full = ((ChangeTrackingMetaRecord *)metabuf)->resync_mode_full;
 	rec->resync_transition_completed = ((ChangeTrackingMetaRecord *)metabuf)->resync_transition_completed;
+	rec->insync_transition_completed = ((ChangeTrackingMetaRecord *)metabuf)->insync_transition_completed;
+
 	return rec;
 }
 
@@ -1769,7 +1779,7 @@ ChangeTracking_MarkFullResyncLockAcquired(void)
 	// can enable this when all callers are updated Assert( LWLockHeldByMe(ChangeTrackingWriteLock));
 
 	/* it will be removed when backend signaling will be implemented */
-	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState);
+	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
 
 	/* NOTE commented till fix is implemented for marking full copy before transition to InResync */
 	//Assert(dataState == DataStateInChangeTracking);
@@ -1830,6 +1840,38 @@ ChangeTracking_MarkTransitionToResyncCompleted(void)
 				(errcode_for_file_access(),
 				 errmsg("ERROR(filerep): could not fsync change tracking meta file \"%s\" "
 						"in ChangeTracking_MarkTransitionToResyncCompleted: %m", 
+						path)));
+		FileRep_SetState(FileRepStateFault);
+	}
+	
+	ChangeTracking_CloseMetaFile(file);
+	
+	LWLockRelease(ChangeTrackingWriteLock);
+}
+
+void
+ChangeTracking_MarkTransitionToInsyncCompleted(void)
+{
+	File		file;
+	char		path[MAXPGPATH];
+	
+	LWLockAcquire(ChangeTrackingWriteLock, LW_EXCLUSIVE);
+
+	elog(LOG, "CHANGETRACKING: setting insync_transition_completed to true");
+	changeTrackingResyncMeta->insync_transition_completed = true;
+	file = ChangeTracking_OpenMetaFile();	
+	ChangeTracking_WriteMeta(file);
+
+	errno = 0;
+	
+	/* fsync meta file to disk */
+	if(FileSync(file) < 0)
+	{
+		ChangeTrackingMetaFilePath(path);
+		ereport(LOG,
+				(errcode_for_file_access(),
+				 errmsg("ERROR(filerep): could not fsync change tracking meta file \"%s\" "
+						"in ChangeTracking_MarkTransitionToInsyncCompleted: %m", 
 						path)));
 		FileRep_SetState(FileRepStateFault);
 	}
@@ -1938,11 +1980,12 @@ ChangeTracking_RetrieveLastChangeTrackedLoc(void)
 	if (recptr)
 	{
 		elog(LOG, "CHANGETRACKING: found an MD record. is full resync %d, last lsn (%d/%d) "
-				  "is transition to resync completed %d",
+				  "is transition to resync completed %d, is transition to insync completed %d",
 				recptr->resync_mode_full, 
 				recptr->resync_lsn_end.xlogid,
 				recptr->resync_lsn_end.xrecoff,
-				recptr->resync_transition_completed);
+				recptr->resync_transition_completed,
+				recptr->insync_transition_completed);
 
 		if (recptr->resync_mode_full) 	
 			setFullResync();
@@ -1965,6 +2008,37 @@ ChangeTracking_RetrieveLastChangeTrackedLoc(void)
 	ChangeTracking_CloseMetaFile(file);
 	
 	return false;
+}
+
+/*
+ * Return the value stored in the MD file insync_transition_completed field.
+ */
+bool
+ChangeTracking_RetrieveIsTransitionToInsync(void)
+{	
+	ChangeTrackingMetaRecord  	rec;
+	ChangeTrackingMetaRecord* 	recptr = NULL;
+	File						file;
+	bool						res = false;
+	
+	file = ChangeTracking_OpenMetaFile();	
+
+	recptr = ChangeTracking_ReadMeta(file, &rec);
+	
+	/* is there a meta record in the meta file? */
+	if (recptr)
+	{
+		res = recptr->insync_transition_completed;	
+		
+		elog(LOG, "CHANGETRACKING: ChangeTracking_RetrieveIsTransitionToInsync found "
+				  "insync_transition_completed is %d", res);
+	}
+	else
+		elog(LOG, "CHANGETRACKING: didn't find an MD record");
+
+	ChangeTracking_CloseMetaFile(file);
+	
+	return res;
 }
 
 /*

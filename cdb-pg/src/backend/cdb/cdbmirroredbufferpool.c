@@ -772,8 +772,8 @@ static void MirroredBufferPool_DoDrop(
 												  mirrorFilespaceLocation,
 												  *relFileNode, 
 												  segmentFileNum),				  
-					FileRepRelationTypeBufferPool) != 0) {
-			
+					FileRepRelationTypeBufferPool) != 0) 
+		{
 			*mirrorDataLossOccurred = true;
 			ereport(LOG,
 					 (errmsg("ERROR(filerep): could not sent file drop request to mirror "), 

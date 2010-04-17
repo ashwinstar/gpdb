@@ -3827,8 +3827,9 @@ static void do_reaper()
 
 		if (pid == FilerepPID)
 		{
-			elog(LOG, "reaper has noticed filerep process exited");
 			FilerepPID = 0;
+
+		    LogChildExit(LOG, _("filerep main process"), pid, exitstatus);
 
 			/* filerep has died.  */
 			if (Shutdown == NoShutdown)

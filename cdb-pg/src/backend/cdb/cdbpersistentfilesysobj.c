@@ -1237,10 +1237,10 @@ void PersistentFileSysObj_DropObject(
 
 	int64					persistentSerialNum,
 
-	StorageManagerMirrorMode mirrorMode,
-
 	bool 					ignoreNonExistence)
 {
+	bool mirrorDataLossOccurred;
+
 	if (!PersistentFileSysObj_BeforePersistenceWork())
 	{
 		if (PersistentStore_IsZeroTid(persistentTid))
@@ -1265,14 +1265,15 @@ void PersistentFileSysObj_DropObject(
 								relStorageMgr,
 								relationName,
 								/* isLocalBuf */ false, 
-								mirrorMode,
-								ignoreNonExistence);
+								ignoreNonExistence,
+								&mirrorDataLossOccurred);
 
-			PersistentRelation_Dropped(
-								relFileNode,
-								segmentFileNum,
-								persistentTid,
-								persistentSerialNum);
+			if (!mirrorDataLossOccurred)
+				PersistentRelation_Dropped(
+									relFileNode,
+									segmentFileNum,
+									persistentTid,
+									persistentSerialNum);
 		}
 		break;
 
@@ -1281,27 +1282,31 @@ void PersistentFileSysObj_DropObject(
 			DbDirNode *dbDirNode = &fsObjName->variant.dbDirNode;
 			
 			MirroredFileSysObj_DropDbDir(
-								dbDirNode, 
-								mirrorMode,
-								ignoreNonExistence);
-			
-			PersistentDatabase_Dropped(
 								dbDirNode,
-								persistentTid,
-								persistentSerialNum);
+								/* mirrorOnly */ false,
+								ignoreNonExistence,
+								&mirrorDataLossOccurred);
+			
+			if (!mirrorDataLossOccurred)
+				PersistentDatabase_Dropped(
+									dbDirNode,
+									persistentTid,
+									persistentSerialNum);
 		}
 		break;
 
 	case PersistentFsObjType_TablespaceDir:			
 		MirroredFileSysObj_DropTablespaceDir(
 							fsObjName->variant.tablespaceOid,
-							mirrorMode,
-							ignoreNonExistence);
+							/* mirrorOnly */ false,
+							ignoreNonExistence,
+							&mirrorDataLossOccurred);
 
-		PersistentTablespace_Dropped(
-							fsObjName->variant.tablespaceOid,
-							persistentTid,
-							persistentSerialNum);
+		if (!mirrorDataLossOccurred)
+			PersistentTablespace_Dropped(
+								fsObjName->variant.tablespaceOid,
+								persistentTid,
+								persistentSerialNum);
 		break;
 
 	case PersistentFsObjType_FilespaceDir:	
@@ -1318,13 +1323,15 @@ void PersistentFileSysObj_DropObject(
 								fsObjName->variant.filespaceOid,
 								primaryFilespaceLocation,
 								mirrorFilespaceLocation,
-								mirrorMode,
-								ignoreNonExistence);
+								/* mirrorOnly */ false,
+								ignoreNonExistence,
+								&mirrorDataLossOccurred);
 
-			PersistentFilespace_Dropped(
-								fsObjName->variant.filespaceOid,
-								persistentTid,
-								persistentSerialNum);
+			if (!mirrorDataLossOccurred)
+				PersistentFilespace_Dropped(
+									fsObjName->variant.filespaceOid,
+									persistentTid,
+									persistentSerialNum);
 
 			if (primaryFilespaceLocation != NULL)
 				pfree(primaryFilespaceLocation);
@@ -1336,6 +1343,21 @@ void PersistentFileSysObj_DropObject(
 	default:
 		elog(ERROR, "Unexpected persistent file-system object type: %d",
 			 fsObjName->type);
+	}
+
+	if (mirrorDataLossOccurred)
+	{
+		/*
+		 * Leave this persistent object in 'Drop Pending' state with an indication that
+		 * Re-Drop will be needed during Resynchronize.
+		 */
+		PersistentFileSysObj_UpdateMirrorExistenceState(
+												fsObjName->type,
+												persistentTid,
+												persistentSerialNum,
+												MirroredObjectExistenceState_MirrorReDropNeeded,
+												MirroredRelDataSynchronizationState_None,
+												/* flushToXLog */ true);
 	}
 }
 
@@ -1354,8 +1376,6 @@ static void PersistentFileSysObj_DoMirrorReDrop(
 	
 	bool						*mirrorDataLossOccurred)
 {
-	StorageManagerMirrorMode mirrorMode = StorageManagerMirrorMode_MirrorOnly;
-
 	*mirrorDataLossOccurred = false;
 
 	if (PersistentStore_IsZeroTid(persistentTid))
@@ -1379,14 +1399,12 @@ static void PersistentFileSysObj_DoMirrorReDrop(
 			{
 				Assert(segmentFileNum == 0);
 
-				MirroredFileSysObj_DropRelFile(
-									relFileNode,
-									segmentFileNum,
-									relStorageMgr,
-									/* relationName */ NULL,
-									/* isLocalBuf */ false, 
-									mirrorMode,
-									/* ignoreNonExistence */ true);
+				MirroredBufferPool_MirrorReDrop(
+											relFileNode,
+											segmentFileNum,
+											mirrorDataLossTrackingState,
+											mirrorDataLossTrackingSessionNum,
+											mirrorDataLossOccurred);
 			}
 			else
 			{
@@ -1417,9 +1435,13 @@ static void PersistentFileSysObj_DoMirrorReDrop(
 			
 			MirroredFileSysObj_DropDbDir(
 								dbDirNode, 
-								mirrorMode,
-								/* ignoreNonExistence */ true);
+								/* mirrorOnly */ true,
+								/* ignoreNonExistence */ true,
+								mirrorDataLossOccurred);
 			
+			if (*mirrorDataLossOccurred)
+				return;
+
 			PersistentDatabase_Dropped(
 								dbDirNode,
 								persistentTid,
@@ -1430,9 +1452,13 @@ static void PersistentFileSysObj_DoMirrorReDrop(
 	case PersistentFsObjType_TablespaceDir:			
 		MirroredFileSysObj_DropTablespaceDir(
 							fsObjName->variant.tablespaceOid,
-							mirrorMode,
-							/* ignoreNonExistence */ true);
-
+							/* mirrorOnly */ true,
+							/* ignoreNonExistence */ true,
+							mirrorDataLossOccurred);
+		
+		if (*mirrorDataLossOccurred)
+			return;
+		
 		PersistentTablespace_Dropped(
 							fsObjName->variant.tablespaceOid,
 							persistentTid,
@@ -1454,9 +1480,13 @@ static void PersistentFileSysObj_DoMirrorReDrop(
 								fsObjName->variant.filespaceOid,
 								primaryFilespaceLocation,
 								mirrorFilespaceLocation,
-								mirrorMode,
-								/* ignoreNonExistence */ true);
-
+								/* mirrorOnly */ true,
+								/* ignoreNonExistence */ true,
+								mirrorDataLossOccurred);
+			
+			if (*mirrorDataLossOccurred)
+				return;
+			
 			PersistentFilespace_Dropped(
 								fsObjName->variant.filespaceOid,
 								persistentTid,
@@ -1509,7 +1539,6 @@ void PersistentFileSysObj_EndXactDrop(
 							relationName,
 							persistentTid,
 							persistentSerialNum,
-							StorageManagerMirrorMode_Both,
 							/* ignoreNonExistence */ abortingCreate);
 
 	if (fsObjName->type == PersistentFsObjType_RelationFile)

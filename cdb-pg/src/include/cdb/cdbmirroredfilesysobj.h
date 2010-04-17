@@ -69,9 +69,11 @@ extern void MirroredFileSysObj_DropFilespaceDir(
 	
 	char						*mirrorFilespaceLocation,
 
-	StorageManagerMirrorMode 	mirrorMode,
+	bool					 	mirrorOnly,
 
-	bool 						ignoreNonExistence);
+	bool 						ignoreNonExistence,
+
+	bool						*mirrorDataLossOccurred);
 
 extern void MirroredFileSysObj_TransactionCreateTablespaceDir(
 	TablespaceDirNode	*tablespaceDirNode,
@@ -99,9 +101,11 @@ extern void MirroredFileSysObj_ScheduleDropTablespaceDir(
 extern void MirroredFileSysObj_DropTablespaceDir(
 	Oid							tablespaceOid,
 
-	StorageManagerMirrorMode 	mirrorMode,
+	bool					 	mirrorOnly,
 
-	bool 						ignoreNonExistence);
+	bool 						ignoreNonExistence,
+
+	bool						*mirrorDataLossOccurred);
 	
 extern void MirroredFileSysObj_TransactionCreateDbDir(
 	DbDirNode			*dbDirNode,
@@ -133,9 +137,11 @@ extern void MirroredFileSysObj_ScheduleDropDbDir(
 extern void MirroredFileSysObj_DropDbDir(
 	DbDirNode					*dbDirNode,
 
-	StorageManagerMirrorMode 	mirrorMode,
+	bool					 	mirrorOnly,
 
-	bool 						ignoreNonExistence);
+	bool 						ignoreNonExistence,
+
+	bool						*mirrorDataLossOccurred);
 
 extern void MirroredFileSysObj_TransactionCreateBufferPoolFile(
 	SMgrRelation 			smgrOpen,
@@ -196,9 +202,9 @@ extern void MirroredFileSysObj_DropRelFile(
 
 	bool 						isLocalBuf,
 
-	StorageManagerMirrorMode 	mirrorMode,
+	bool 						ignoreNonExistence,
 
-	bool 						ignoreNonExistence);
+	bool						*mirrorDataLossOccurred);
 
 
 #endif   /* CDBMIRROREDFSOBJ_H */

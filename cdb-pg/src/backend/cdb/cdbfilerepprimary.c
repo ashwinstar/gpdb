@@ -37,7 +37,7 @@ static volatile sig_atomic_t stateChangeRequested = false;
 
 /* NOTE configure signaling for stateChangeRequested */
 
-static bool FileRepPrimary_IsMirroringRequired(void);
+static bool FileRepPrimary_IsMirroringRequired(FileRepRelationType_e fileRepRelationType);
 
 /****************************************************************
  * SENDER THREAD definitions
@@ -81,7 +81,7 @@ FileRepPrimary_GetMirrorDataLossTrackingSessionNum(int64 *sessionNum)
     
     *sessionNum = getChangeTrackingSessionId();
     
-    getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState);
+    getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
     
 	switch (dataState) {
 		case DataStateNotInitialized:
@@ -124,17 +124,19 @@ FileRepPrimary_FinishedAppendOnlyCommitWork(int count)
  * to decide about the next action (failover, stop, ...). 
  */
 static bool
-FileRepPrimary_IsMirroringRequired(void)
+FileRepPrimary_IsMirroringRequired(FileRepRelationType_e fileRepRelationType)
 {
 	bool	isMirroringRequired = FALSE; 
 	int		report = FALSE;
+	bool	isInTransition = FALSE;
+	DataState_e dataStateTransition;
 	
 	while (1) {
 /*		if (stateChangeRequested) {
 			
 			stateChangeRequested = FALSE;
 */			
-			getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState);
+			getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, &isInTransition, &dataStateTransition);
 /*		} */
 		
 		switch (fileRepRole) {
@@ -171,7 +173,10 @@ FileRepPrimary_IsMirroringRequired(void)
 				}
 				/* no break */
 			case DataStateInSync:
-				if (segmentState != SegmentStateFault) {
+				if (segmentState != SegmentStateFault &&
+					!(isInTransition == TRUE &&
+					  dataStateTransition == DataStateInChangeTracking)) 
+				{
 					isMirroringRequired = TRUE;
 				} else {
 					if (! report) {
@@ -187,6 +192,13 @@ FileRepPrimary_IsMirroringRequired(void)
 				break;
 				
 			case DataStateInChangeTracking:
+				if (segmentState == SegmentStateInitialization ||
+					(segmentState == SegmentStateInChangeTrackingTransition &&
+					 fileRepRelationType != FileRepRelationTypeFlatFile))
+				{
+					pg_usleep(500000L); /* 500 ms */
+					continue;
+				}
 				if (report) {
 					ereport(LOG,
 							(errmsg("LOG(filerep): failover is performed to the primary segment, "
@@ -253,7 +265,7 @@ FileRepPrimary_ConstructAndInsertMessage(
 			SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
 		}					
 		
-		FileRepPrimary_IsMirroringRequired();
+		FileRepPrimary_IsMirroringRequired(fileRepRelationType);
 		return status;
 	}	
 		
@@ -285,7 +297,7 @@ FileRepPrimary_ConstructAndInsertMessage(
 			SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
 		}					
 		
-		FileRepPrimary_IsMirroringRequired();
+		FileRepPrimary_IsMirroringRequired(fileRepRelationType);
 		
 		return status;
 	}
@@ -414,7 +426,7 @@ FileRepPrimary_MirrorOpen(FileRepIdentifier_u	fileRepIdentifier,
 	descr.open.logicalEof = logicalEof;
 	descr.open.suppressError = suppressError;
 		
-	if (FileRepPrimary_IsMirroringRequired()) 
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
 	{
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
@@ -472,7 +484,7 @@ FileRepPrimary_MirrorFlush(FileRepIdentifier_u		fileRepIdentifier,
 	
 	FileRepOperationDescription_u descr;
 	
-	if (FileRepPrimary_IsMirroringRequired()) 
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
 	{
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
@@ -509,7 +521,7 @@ FileRepPrimary_MirrorClose(FileRepIdentifier_u		fileRepIdentifier,
 	
 	FileRepOperationDescription_u descr;
 			
-	if (FileRepPrimary_IsMirroringRequired()) 
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
 	{
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
@@ -547,7 +559,7 @@ FileRepPrimary_MirrorFlushAndClose(FileRepIdentifier_u		fileRepIdentifier,
 	
 	FileRepOperationDescription_u descr;
 
-	if (FileRepPrimary_IsMirroringRequired()) 
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
 	{
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
@@ -592,7 +604,7 @@ FileRepPrimary_MirrorTruncate(
 	
 	descr.truncate.position = position;
 	
-	if (FileRepPrimary_IsMirroringRequired()) 
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
 	{
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
@@ -635,7 +647,7 @@ int FileRepPrimary_ReconcileXLogEof(
 	
 	descr.reconcile.xLogEof = primaryXLogEof;
 	
-	if (FileRepPrimary_IsMirroringRequired()) {	
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) {	
 		status = FileRepPrimary_ConstructAndInsertMessage(
 								  fileRepIdentifier,
 								  fileRepRelationType,
@@ -661,7 +673,7 @@ int FileRepPrimary_MirrorRename(
 	
 	descr.rename.fileRepIdentifier = newFileRepIdentifier;
 	
-	if (FileRepPrimary_IsMirroringRequired()) 
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
 	{
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
@@ -711,7 +723,7 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 	int							status = STATUS_OK;
 	uint32						spareField;
 
-	if (FileRepPrimary_IsMirroringRequired()) 
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
 	{
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
@@ -750,7 +762,7 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 					SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
 				}					
 				
-				FileRepPrimary_IsMirroringRequired();
+				FileRepPrimary_IsMirroringRequired(fileRepRelationType);
 
 				break;
 			}
@@ -882,7 +894,7 @@ FileRepPrimary_MirrorCreate(FileRepIdentifier_u		fileRepIdentifier,
 	
 	FileRepOperationDescription_u descr;
 
-	if (FileRepPrimary_IsMirroringRequired()) 
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
 	{
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
@@ -920,7 +932,7 @@ FileRepPrimary_MirrorDrop(FileRepIdentifier_u	fileRepIdentifier,
 	
 	FileRepOperationDescription_u descr;
 			
-	if (FileRepPrimary_IsMirroringRequired()) 
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
 	{
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
@@ -963,7 +975,7 @@ FileRepPrimary_MirrorShutdown(void)
 
     /* see if we should send the shutdown to the mirror */
 	bool shouldSendShutdownToMirror = false;
-    getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState);
+    getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
 	if ( dataState == DataStateInSync )
 	{
         shouldSendShutdownToMirror = true;
@@ -1018,7 +1030,7 @@ FileRepPrimary_MirrorInSyncTransition(void)
 	
 	fileRepIdentifier = FileRep_GetUnknownIdentifier("inSyncTransition");
 	
-	if (FileRepPrimary_IsMirroringRequired()) 
+	if (FileRepPrimary_IsMirroringRequired(FileRepRelationTypeUnknown)) 
 	{
 		status = FileRepPrimary_ConstructAndInsertMessage(
 														  fileRepIdentifier,
@@ -1065,7 +1077,7 @@ FileRepPrimary_MirrorHeartBeat(FileRepConsumerProcIndex_e index)
 	
 	fileRepIdentifier = FileRep_GetUnknownIdentifier("heartBeat");
 	
-	if (FileRepPrimary_IsMirroringRequired()) 
+	if (FileRepPrimary_IsMirroringRequired(FileRepRelationTypeUnknown)) 
 	{
 		status = FileRepPrimary_ConstructAndInsertMessage(
 														  fileRepIdentifier,
@@ -1102,7 +1114,7 @@ FileRepPrimary_IsOperationCompleted(
 {
 	bool retval = TRUE;
 	
-	if (FileRepPrimary_IsMirroringRequired()) 
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
 	{
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
@@ -1126,7 +1138,7 @@ FileRepPrimary_IsOperationCompleted(
 					SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
 				}			
 				
-				FileRepPrimary_IsMirroringRequired();
+				FileRepPrimary_IsMirroringRequired(fileRepRelationType);
 			}
 		}
 	}
@@ -1211,7 +1223,7 @@ FileRepPrimary_StartSender(void)
 	} // while(1)
 	
 	FileRepConnClient_CloseConnection();	
-	
+		
 	return;
 }
 

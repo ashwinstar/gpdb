@@ -234,7 +234,7 @@ getSegmentStateLabel(SegmentState_e state)
 {
 	static const char *labels[] =
 	{
-		"NotInitialized", "Initialization", "InResyncTransition",
+		"NotInitialized", "Initialization", "InChangeTrackingTransition", "InResyncTransition",
 		"InSyncTransition", "Ready", "ChangeTrackingDisabled", "Fault",
 		"ShutdownBackends", "Shutdown", "ImmediateShutdown"
 	};
@@ -500,40 +500,90 @@ isDatabaseRunning(void)
 	return(isDatabaseRunning);
 }
 
+/**
+ *
+ * Fetch the current file and target replication role and states.  Returns values through the pointer arguments.
+ *
+ * Note that any of the arguments may be NULL in which case that piece of information is not returned.
+ *
+ * @param fileRepRoleOut may be NULL.  If non-null, *fileRepRoleOut is filled in with the current filerep role
+ * @param segmentStateOut may be NULL.  If non-null, *segmentStateOut is filled in with the current segment state
+ * @param dataStateOut  may be NULL.  If non-null, *dataStateOut is filled in with the current segment state
+ * @param isInTransitionOut  may be NULL.  If non-null, *isInTransitionOut is filled in with true or false depending on
+ *                           if the segment is in filerep transition to primary or mirror mode
+ * @param transitionTargetDataStateOut  may be NULL.  If non-null, *transitionTargetDataStateOut is filled
+ *                           in with the target data state, or DataStateNotInitialized if there is
+ *                           no transition to primary or mirror mode is in progress.
+ */
 void
 getFileRepRoleAndState(
-			FileRepRole_e	*fileRepRole, 
-			SegmentState_e	*segmentState,
-			DataState_e		*dataState)
+			FileRepRole_e	*fileRepRoleOut,
+			SegmentState_e	*segmentStateOut,
+			DataState_e		*dataStateOut,
+
+			bool *isInTransitionOut,
+			DataState_e *transitionTargetDataStateOut
+			)
 {
 	assertModuleInitialized();
+
+    FileRepRole_e fileRepRole;
+    SegmentState_e	segmentState;
+    DataState_e		dataState;
+    bool isInTransition;
+    DataState_e transitionTargetDataState;
 
 	acquireModuleSpinLock();
 	{
 		/* todo: only fetch mode from transition in some cases (or never?) */
 		volatile PrimaryMirrorModeTransitionArguments *args = &pmModuleState->requestedTransition;
 		PrimaryMirrorMode mode = args->mode;
-
 		switch (mode)
 		{
 			case PMModePrimarySegment:
-				*fileRepRole = FileRepPrimaryRole;
-				*dataState = pmModuleState->dataState;
-				*segmentState = pmModuleState->segmentState;
-				break;
 			case PMModeMirrorSegment:
-				*fileRepRole = FileRepMirrorRole;
-				*dataState = pmModuleState->dataState;
-				*segmentState = pmModuleState->segmentState;
+			    fileRepRole = mode == PMModePrimarySegment ? FileRepPrimaryRole : FileRepMirrorRole;
+                dataState = pmModuleState->dataState;
+                segmentState = pmModuleState->segmentState;
+				    
+				    
+                /* check to see if postmaster is still processing a transition.  Note that here we don't
+                 *  need to check to see if the listener is complete */
+                if ( pmModuleState->isTransitionRequested )
+                {
+                    isInTransition = true;
+                    transitionTargetDataState = args->dataState;
+                }
+                else
+                {
+                    isInTransition = false;
+                    transitionTargetDataState = DataStateNotInitialized;
+                }
+				    
 				break;
 			default:
-				*fileRepRole = FileRepNoRoleConfigured;
-				*dataState = DataStateNotInitialized;
-				*segmentState = SegmentStateNotInitialized;
+                fileRepRole = FileRepNoRoleConfigured;
+                dataState = DataStateNotInitialized;
+                segmentState = SegmentStateNotInitialized;
+                isInTransition = false;
+                transitionTargetDataState = DataStateNotInitialized;
 				break;
 		}
 	}
 	releaseModuleSpinLock();
+
+	/* now fill in output! */
+	if ( fileRepRoleOut )
+	    *fileRepRoleOut = fileRepRole;
+    if ( segmentStateOut )
+	    *segmentStateOut = segmentState;
+    if ( dataStateOut )
+	    *dataStateOut = dataState;
+
+    if ( isInTransitionOut )
+	    *isInTransitionOut = isInTransition ;
+    if ( transitionTargetDataStateOut )
+	    *transitionTargetDataStateOut = transitionTargetDataState;
 }
 
 static void
@@ -1214,6 +1264,7 @@ stepWaitForFilerepShutdown(TransitionState nextState, TransitionState *stateInOu
     }
     else
     {
+        /** note that at this point the postmaster will have set segment state to fault. */
         *stateInOut = nextState;
     }
     return PMTransitionSuccess;
@@ -1536,8 +1587,8 @@ applyStepForTransitionToMirrorSegmentMode(PrimaryMirrorModeTransitionArguments *
             copyTransitionInputParameters(args, SegmentStateInitialization);
             return stepDoFilerepStartup(TSAwaitingFilerepStartup, stateInOut );
         case TSAwaitingFilerepStartup:
-            return stepWaitForFilerepStartup(TSDoneFilerepShutdown, stateInOut );
-        case TSDoneFilerepShutdown:
+            return stepWaitForFilerepStartup(TSDoneFilerepStartup, stateInOut );
+        case TSDoneFilerepStartup:
             *stateInOut = TSDone;
             return PMTransitionSuccess;
 
@@ -1565,6 +1616,7 @@ void primaryMirrorRecordSegmentStateToPostmasterLocalMemory(void)
             break;
 
         case SegmentStateNotInitialized:
+		case SegmentStateInChangeTrackingTransition:
         case SegmentStateFault:
         case SegmentStateShutdownFilerepBackends:
         case SegmentStateShutdown:

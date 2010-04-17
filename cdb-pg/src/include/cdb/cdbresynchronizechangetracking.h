@@ -53,9 +53,13 @@ extern bool ChangeTracking_ShouldTrackChanges(void);
 
 extern bool ChangeTracking_RetrieveLastChangeTrackedLoc(void);
 
+extern bool ChangeTracking_RetrieveIsTransitionToInsync(void);
+
 extern void ChangeTracking_MarkFullResync(void);
 
 extern void ChangeTracking_MarkTransitionToResyncCompleted(void);
+
+extern void ChangeTracking_MarkTransitionToInsyncCompleted(void);
 
 extern void ChangeTracking_RecordLastChangeTrackedLoc(void);
 
@@ -192,6 +196,7 @@ typedef struct ChangeTrackingMetaRecord
 	XLogRecPtr		resync_lsn_end;	  /* endResyncLSN                         */
 	bool			resync_mode_full; /* marks that resync FULL was requested */
 	bool			resync_transition_completed; /* transition to resync mode completed */
+	bool			insync_transition_completed; /* transition to insync mode completed */
 
 } ChangeTrackingMetaRecord;
 
@@ -299,6 +304,8 @@ typedef struct ChangeTrackingResyncMetaData
 	XLogRecPtr		resync_lsn_end;	  /* endResyncLSN                         */
 	bool			resync_mode_full; /* marks that resync FULL was requested */	
 	bool			resync_transition_completed; /* transition to resync mode completed */
+	bool			insync_transition_completed; /* transition to resync mode completed */
+	
 } ChangeTrackingResyncMetaData;
 
 /*

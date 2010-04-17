@@ -246,9 +246,9 @@ extern void smgrdounlink(
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
 
-	StorageManagerMirrorMode 	mode, 
+	bool 						ignoreNonExistence,
 
-	bool 						ignoreNonExistence);
+	bool						*mirrorDataLossOccurred);
 extern void smgrschedulermfilespacedir(
 	Oid 				filespaceOid,
 
@@ -278,21 +278,27 @@ extern void smgrdormfilespacedir(
 
 	char						*mirrorFilespaceLocation,
 
-	StorageManagerMirrorMode	mirrorMode,
+	bool						mirrorOnly,
 
-	bool						ignoreNonExistence);
+	bool 						ignoreNonExistence,
+
+	bool						*mirrorDataLossOccurred);
 extern void smgrdormtablespacedir(
 	Oid 						tablespaceOid,
 
-	StorageManagerMirrorMode	mirrorMode,
+	bool						mirrorOnly,
 
-	bool						ignoreNonExistence);
+	bool 						ignoreNonExistence,
+
+	bool						*mirrorDataLossOccurred);
 extern void smgrdormdbdir(
-	DbDirNode *dropDbDirNode,
+	DbDirNode 					*dropDbDirNode,
 	
-	StorageManagerMirrorMode mirrorMode,
+	bool						mirrorOnly,
 
-	bool ignoreNonExistence);
+	bool 						ignoreNonExistence,
+
+	bool						*mirrorDataLossOccurred);
 extern void smgrextend(SMgrRelation reln, BlockNumber blocknum, char *buffer,
 		   bool isTemp);
 extern void smgrread(SMgrRelation reln, BlockNumber blocknum, char *buffer);
@@ -397,9 +403,9 @@ extern bool mdunlink(
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
 
-	StorageManagerMirrorMode	mode,
+	bool 						ignoreNonExistence,
 
-	bool						ignoreNonExistence);
+	bool						*mirrorDataLossOccurred);
 extern bool mdrmfilespacedir(
 	Oid 						filespaceOid,
 
@@ -411,21 +417,27 @@ extern bool mdrmfilespacedir(
 
 	char						*mirrorFilespaceLocation,
 
-	StorageManagerMirrorMode	mirrorMode,
+	bool						mirrorOnly,
 
-	bool						ignoreNonExistence);
+	bool 						ignoreNonExistence,
+
+	bool						*mirrorDataLossOccurred);
 extern bool mdrmtablespacedir(
 	Oid 						tablespaceOid,
 
-	StorageManagerMirrorMode	mirrorMode,
+	bool						mirrorOnly,
 
-	bool						ignoreNonExistence);
+	bool 						ignoreNonExistence,
+
+	bool						*mirrorDataLossOccurred);
 extern bool mdrmdbdir(
 	DbDirNode					*dbDirNode,
 
-	StorageManagerMirrorMode	mirrorMode,
+	bool						mirrorOnly,
 
-	bool						ignoreNonExistence);
+	bool 						ignoreNonExistence,
+
+	bool						*mirrorDataLossOccurred);
 extern bool mdextend(SMgrRelation reln, BlockNumber blocknum, char *buffer,
 		 bool isTemp);
 extern bool mdread(SMgrRelation reln, BlockNumber blocknum, char *buffer);

@@ -255,8 +255,13 @@ FileRepPrimary_StartRecoveryInChangeTracking(void)
 		Insist(dataState == DataStateInChangeTracking);		
 		Insist(FileRepSubProcess_GetState() != FileRepStateReady);
 		
-		ChangeTracking_CreateInitialFromPreviousCheckpoint();
+		if (ChangeTracking_RetrieveIsTransitionToInsync())
+		{
+			ChangeTracking_DropAll();
+		}
 		
+		XLogInChangeTrackingTransition();
+				
 		/* NOTE: Any error during change tracking will result in disabling Change Tracking */
 		FileRepSubProcess_SetState(FileRepStateReady);
 		

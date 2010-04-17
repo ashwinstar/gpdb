@@ -287,9 +287,11 @@ void MirroredFileSysObj_DropFilespaceDir(
 	
 	char						*mirrorFilespaceLocation,
 
-	StorageManagerMirrorMode 	mirrorMode,
+	bool					 	mirrorOnly,
 
-	bool 						ignoreNonExistence)
+	bool 						ignoreNonExistence,
+
+	bool						*mirrorDataLossOccurred)
 {
 	Assert(primaryFilespaceLocation != NULL);
 
@@ -297,8 +299,9 @@ void MirroredFileSysObj_DropFilespaceDir(
 				filespaceOid, 
 				primaryFilespaceLocation, 
 				mirrorFilespaceLocation, 
-				mirrorMode,
-				ignoreNonExistence);
+				mirrorOnly,
+				ignoreNonExistence,
+				mirrorDataLossOccurred);
 
 }
 
@@ -409,14 +412,17 @@ void MirroredFileSysObj_ScheduleDropTablespaceDir(
 void MirroredFileSysObj_DropTablespaceDir(
 	Oid							tablespaceOid,
 
-	StorageManagerMirrorMode 	mirrorMode,
+	bool					 	mirrorOnly,
 
-	bool 						ignoreNonExistence)
+	bool 						ignoreNonExistence,
+
+	bool						*mirrorDataLossOccurred)
 {
 	smgrdormtablespacedir(
 				tablespaceOid, 
-				mirrorMode,
-				ignoreNonExistence);
+				mirrorOnly,
+				ignoreNonExistence,
+				mirrorDataLossOccurred);
 }
 
 void MirroredFileSysObj_TransactionCreateDbDir(
@@ -527,16 +533,19 @@ void MirroredFileSysObj_ScheduleDropDbDir(
 void MirroredFileSysObj_DropDbDir(
 	DbDirNode					*dbDirNode,
 
-	StorageManagerMirrorMode 	mirrorMode,
+	bool 						mirrorOnly,
 
-	bool 						ignoreNonExistence)
+	bool 						ignoreNonExistence,
+
+	bool						*mirrorDataLossOccurred)
 {
 	Assert(dbDirNode != NULL);
 
 	smgrdormdbdir(
 			dbDirNode, 
-			mirrorMode, 
-			ignoreNonExistence);
+			mirrorOnly, 
+			ignoreNonExistence,
+			mirrorDataLossOccurred);
 }
 
 static void MirroredFileSysObj_JustInTimeDbDirCreate(
@@ -905,12 +914,11 @@ void MirroredFileSysObj_DropRelFile(
 
 	bool 						isLocalBuf,
 
-	StorageManagerMirrorMode 	mirrorMode,
+	bool 						ignoreNonExistence,
 
-	bool 						ignoreNonExistence)
+	bool						*mirrorDataLossOccurred)
 {
 	int primaryError;
-	bool mirrorDataLossOccurred;
 
 	switch (relStorageMgr)
 	{
@@ -920,8 +928,8 @@ void MirroredFileSysObj_DropRelFile(
 				relFileNode, 
 				isLocalBuf,
 				relationName,
-				mirrorMode, 
-				ignoreNonExistence);
+				ignoreNonExistence,
+				mirrorDataLossOccurred);
 		break;
 
 	case PersistentFileSysRelStorageMgr_AppendOnly:
@@ -930,7 +938,7 @@ void MirroredFileSysObj_DropRelFile(
 					segmentFileNum,
 					relationName,
 					&primaryError,
-					&mirrorDataLossOccurred);
+					mirrorDataLossOccurred);
 		if (ignoreNonExistence && primaryError == ENOENT)
 			primaryError = 0;
 
