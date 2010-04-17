@@ -1333,7 +1333,7 @@ class GPUpgrade:
         # + This forces a full remirroring of the system again, we
         #   should avoid this whenever possible.
         logger.info('Performing Mirror rollback')
-        cmd = '%s/bin/gpupgrademirror.py --rollback' % self.newhome
+        cmd = '%s/sbin/gpupgrademirror.py --rollback' % self.newhome
         self.RunCmd(cmd, env=self.oldenv)
 
         # done
@@ -3404,7 +3404,7 @@ class GPUpgrade:
         # the upgrademirror.py script only exists in the 4.0 $GPHOME,
         # but while we are remirroring the old system we need to
         # run it in the old environment.
-        cmd = '%s/bin/gpupgrademirror.py --verbose' % self.newhome
+        cmd = '%s/sbin/gpupgrademirror.py --verbose' % self.newhome
         if withContinue:
             cmd += " --continue-upgrade"
         elif self.mirrormode == 'redundant':
@@ -3414,9 +3414,16 @@ class GPUpgrade:
         else:
             raise UpgradeError("Unknown mirror mode: %s" % self.mirrormode)
 
+        # Construct an execution environment that uses the new GPHOME for
+        # executables/libraries/pythonpath but uses the old master directory.
+        env = self.newenv.copy()
+        env['MASTER_DATA_DIRECTORY'] = self.masterdir
+        cmd += ' --gphome="%s"' % self.oldhome
+
         logger.info("Synchronizing mirrors:")
         logger.info('... This may take a while')
-        r = self.RunCmd(cmd, env=self.oldenv)
+
+        r = self.RunCmd(cmd, env=env)
         logger.debug(r)
 
     #------------------------------------------------------------
@@ -3427,19 +3434,17 @@ class GPUpgrade:
         that it only applies to catalog tables, so it should be considerably 
         faster.
         '''
-        cmd = '%s/bin/gpupgrademirror.py --verbose --phase2' % self.newhome
+        cmd = '%s/sbin/gpupgrademirror.py --verbose --phase2' % self.newhome
         if withContinue:
             cmd += " --continue-upgrade"
         logger.info("Upgrading Mirrors")
         logger.info('... This may take a while')
 
         # We upgrade from a locked system, make sure to set PGUSER
-        try:
-            self.newenv['PGUSER'] = MIGRATIONUSER
-            r = self.RunCmd(cmd, env=self.newenv)
-            logger.debug(r)
-        finally:
-            del self.newenv['PGUSER']
+        env = self.newenv.copy()
+        env['PGUSER'] = MIGRATIONUSER
+        r = self.RunCmd(cmd, env=env)
+        logger.debug(r)
 
     #------------------------------------------------------------
     def Run(self):
