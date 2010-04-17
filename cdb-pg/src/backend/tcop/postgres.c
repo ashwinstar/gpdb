@@ -3414,7 +3414,8 @@ ProcessInterrupts(void)
 
 		ereport(FATAL,
 				(errcode(ERRCODE_ADMIN_SHUTDOWN),
-			 errmsg("terminating connection due to administrator command")));
+			 errmsg("terminating connection due to administrator command"),
+			 errSendAlert(false)));
 	}
 	if (QueryCancelPending)
 	{
