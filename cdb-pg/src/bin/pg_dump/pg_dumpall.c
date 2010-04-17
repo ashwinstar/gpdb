@@ -42,6 +42,7 @@ static void help(void);
 static void dumpResQueues(PGconn *conn);
 static void dumpRoles(PGconn *conn);
 static void dumpRoleMembership(PGconn *conn);
+static void dumpFilespaces(PGconn *conn);
 static void dumpTablespaces(PGconn *conn);
 static void dumpCreateDB(PGconn *conn);
 static void dumpDatabaseConfig(PGconn *conn, const char *dbname);
@@ -64,6 +65,7 @@ static bool skip_acls = false;
 static bool verbose = false;
 static bool ignoreVersion = false;
 static bool	resource_queues = false;
+static bool filespaces = false;
 
 static int	disable_dollar_quoting = 0;
 static int	disable_triggers = 0;
@@ -110,6 +112,7 @@ main(int argc, char *argv[])
 		{"no-privileges", no_argument, NULL, 'x'},
 		{"no-acl", no_argument, NULL, 'x'},
 		{"resource-queues", no_argument, NULL, 'r'},
+		{"filespaces", no_argument, NULL, 'f'},
 
 		/*
 		 * the following options don't have an equivalent short option letter
@@ -173,7 +176,7 @@ main(int argc, char *argv[])
 
 	pgdumpopts = createPQExpBuffer();
 
-	while ((c = getopt_long(argc, argv, "acdDgh:ioOp:rsS:U:vWxX:", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "acdDfgh:ioOp:rsS:U:vWxX:", long_options, &optindex)) != -1)
 	{
 		switch (c)
 		{
@@ -229,6 +232,10 @@ main(int argc, char *argv[])
 
 			case 'r':
 				resource_queues = true;
+				break;
+
+			case 'f':
+				filespaces = true;
 				break;
 
 			case 's':
@@ -394,6 +401,10 @@ main(int argc, char *argv[])
 		/* Dump role memberships */
 		dumpRoleMembership(conn);
 
+		/* Dump filespaces */
+		if (filespaces)
+			dumpFilespaces(conn);
+
 		/* Dump tablespaces */
 		dumpTablespaces(conn);
 
@@ -433,6 +444,7 @@ help(void)
 	printf(_("  -c, --clean              clean (drop) databases prior to create\n"));
 	printf(_("  -d, --inserts            dump data as INSERT, rather than COPY, commands\n"));
 	printf(_("  -D, --column-inserts     dump data as INSERT commands with column names\n"));
+	printf(_("  -f, --filespaces         dump filespace data\n"));
 	printf(_("  -g, --globals-only       dump only global objects, no databases\n"));
 	printf(_("  -o, --oids               include OIDs in dump\n"));
 	printf(_("  -O, --no-owner           skip restoration of object ownership\n"));
@@ -848,6 +860,112 @@ dumpRoleMembership(PGconn *conn)
 }
 
 /*
+ * Dump filespaces.
+ */
+static void
+dumpFilespaces(PGconn *conn)
+{
+	int          i, j;
+	PGresult    *res;
+
+	/* 
+	 * Get all filespaces execpt built-in ones (named pg_xxx)
+	 */
+	if (server_version < 80214)
+	{  /* Filespaces were introduced in GP 4.0 (server_version 8.2.14) */
+		return;
+	}
+	else
+	{
+		res = executeQuery(conn, "SELECT fsname, oid, "
+						   "pg_catalog.pg_get_userbyid(fsowner) as fsowner, "
+						   "pg_catalog.shobj_description(oid, 'pg_filespace') "
+						   "FROM pg_catalog.pg_filespace "
+						   "WHERE fsname !~ '^pg_' "
+						   "ORDER BY 1");
+	}
+
+	if (PQntuples(res) > 0)
+		printf("--\n-- Filespaces\n--\n\n");
+
+	for (i = 0; i < PQntuples(res); i++)
+	{
+		PQExpBuffer  buf      = createPQExpBuffer();
+		char        *fsname   = PQgetvalue(res, i, 0);
+		char        *fsoid    = PQgetvalue(res, i, 1);
+		char        *fsowner  = PQgetvalue(res, i, 2);
+		char        *fsdesc   = PQgetvalue(res, i, 3);
+		PQExpBuffer  subbuf;
+		PGresult    *entries  = NULL;
+
+		/* quote name if needed */
+		fsname = strdup(fmtId(fsname));
+
+		/* 
+		 * Drop existing filespace if required.
+		 *
+		 * Note: this statement will fail if the an existing filespace is not 
+		 * empty.  But this is no different from the related code in the rest
+		 * of pg_dump. 
+		 */
+		if (output_clean)
+			appendPQExpBuffer(buf, "DROP FILESPACE %s;\n", fsname);
+
+		/* Begin creating the filespace definition */
+		appendPQExpBuffer(buf, "CREATE FILESPACE %s", fsname);
+		appendPQExpBuffer(buf, " OWNER %s", fmtId(fsowner));
+		appendPQExpBuffer(buf, " (\n");
+
+		/* 
+		 * We still need to lookup all of the paths associated with this 
+		 * filespace, look them up in the pg_filespace_entry table.
+		 */
+		subbuf = createPQExpBuffer();
+		appendPQExpBuffer(subbuf, 
+						  "SELECT fsedbid, fselocation "
+						  "FROM pg_catalog.pg_filespace_entry "
+						  "WHERE fsefsoid = %s "
+						  "ORDER BY 1", 
+						  fsoid);
+		entries = executeQuery(conn, subbuf->data);
+		destroyPQExpBuffer(subbuf);
+
+		/* append the filespace location information to output */
+		for (j = 0; j < PQntuples(entries); j++)
+		{
+			char *dbid     = PQgetvalue(entries, j, 0);
+			char *location = PQgetvalue(entries, j, 1);
+
+			if (j > 0)
+				appendPQExpBuffer(buf, ",\n");
+			appendPQExpBuffer(buf, "  %s: ", dbid);
+			appendStringLiteralConn(buf, location, conn);
+		}
+		PQclear(entries);
+
+		/* Finnish off the statement */
+		appendPQExpBuffer(buf, "\n);\n");
+
+		/* Add a comment on the filespace if specified */
+		if (fsdesc && strlen(fsdesc))
+		{
+			appendPQExpBuffer(buf, "COMMENT ON FILESPACE %s IS ", fsname);
+			appendStringLiteralConn(buf, fsdesc, conn);
+			appendPQExpBuffer(buf, ";\n");
+		}
+
+		/* Output the results */
+		printf("%s", buf->data);
+
+		free(fsname);
+		destroyPQExpBuffer(buf);
+	}
+
+	PQclear(res);
+	printf("\n\n");
+}
+
+/*
  * Dump tablespaces.
  */
 static void
@@ -856,40 +974,26 @@ dumpTablespaces(PGconn *conn)
 	PGresult   *res;
 	int			i;
 
-	/*
-	 * Get all tablespaces except built-in ones (which we assume are named
-	 * pg_xxx)
+	/* 
+	 * Get all tablespaces execpt built-in ones (named pg_xxx)
+	 *
+	 * [FIXME] the queries need to be slightly different if the backend isn't
+	 * Greenplum, and the dump format should vary depending on if the dump
+	 * is --gp-syntax or --no-gp-syntax.
 	 */
-	if (server_version >= 80205)
-	{
-		res = executeQuery(conn, "SELECT spcname, "
-						   "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
-						   "spclocation, spcprilocations, spcmirlocations, spcacl, "
-						   "pg_catalog.shobj_description(oid, 'pg_tablespace') "
-						   "FROM pg_catalog.pg_tablespace "
-						   "WHERE spcname !~ '^pg_' "
-						   "ORDER BY 1");
-	}
-	else if(server_version >= 80204)
-	{
-		res = executeQuery(conn, "SELECT spcname, "
-						   "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
-						   "spclocation, null as spcprilocations, "
-						   "null as spcmirlocations, spcacl, "
-						   "pg_catalog.shobj_description(oid, 'pg_tablespace') "
-						   "FROM pg_catalog.pg_tablespace "
-						   "WHERE spcname !~ '^pg_' "
-						   "ORDER BY 1");
+	if (server_version < 80214)
+	{  /* Filespaces were introduced in GP 4.0 (server_version 8.2.14) */
+		return;
 	}
 	else
 	{
 		res = executeQuery(conn, "SELECT spcname, "
 						   "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
-						   "spclocation, null as spcprilocations, "
-						   "null as spcmirlocations, spcacl, "
-						   "null "
-						   "FROM pg_catalog.pg_tablespace "
-						   "WHERE spcname !~ '^pg_' "
+						   "fsname, spcacl, "
+						   "pg_catalog.shobj_description(t.oid, 'pg_tablespace') "
+						   "FROM pg_catalog.pg_tablespace t, "
+						   "pg_catalog.pg_filespace fs "
+						   "WHERE t.spcfsoid = fs.oid AND spcname !~ '^pg_' "
 						   "ORDER BY 1");
 	}
 
@@ -898,128 +1002,45 @@ dumpTablespaces(PGconn *conn)
 
 	for (i = 0; i < PQntuples(res); i++)
 	{
-		PQExpBuffer buf = createPQExpBuffer();
-		char	   *spcname = PQgetvalue(res, i, 0);
+		PQExpBuffer buf      = createPQExpBuffer();
+		char	   *spcname  = PQgetvalue(res, i, 0);
 		char	   *spcowner = PQgetvalue(res, i, 1);
-		char	   *spclocation = PQgetvalue(res, i, 2);    /* master  */
-		char	   *spcprilocation = PQgetvalue(res, i, 3); /* primary */
-		char	   *spcmirlocation = PQgetvalue(res, i, 4); /* mirror  */
-		char	   *spcacl = PQgetvalue(res, i, 5);
-		char	   *spccomment = PQgetvalue(res, i, 6);
-		char	   *fspcname;
-		char	  **prilocitems = NULL;
-		char	  **mirlocitems = NULL;
-		int			nitems = 0;
-		int			i = 0;
+		char	   *fsname   = PQgetvalue(res, i, 2);
+		char	   *spcacl   = PQgetvalue(res, i, 3);
+		char	   *spccomment = PQgetvalue(res, i, 4);
 
 		/* needed for buildACLCommands() */
-		fspcname = strdup(fmtId(spcname));
+		spcname = strdup(fmtId(spcname));
 
 		if (output_clean)
-			appendPQExpBuffer(buf, "DROP TABLESPACE %s;\n", fspcname);
+			appendPQExpBuffer(buf, "DROP TABLESPACE %s;\n", spcname);
 
-		appendPQExpBuffer(buf, "CREATE TABLESPACE %s", fspcname);
+		appendPQExpBuffer(buf, "CREATE TABLESPACE %s", spcname);
 		appendPQExpBuffer(buf, " OWNER %s", fmtId(spcowner));
-		appendPQExpBuffer(buf, " LOCATION ");
+		appendPQExpBuffer(buf, " FILESPACE %s;\n", fmtId(fsname));
 
-		/* parse and construct the primary location strings */
-		if (!parsePGArray(spcprilocation, &prilocitems, &nitems))
-		{
-			fprintf(stderr, _("%s: could not parse LOCATION array (%s) for tablespace \"%s\"\n"),
-					progname, spcprilocation, fspcname);
-			PQfinish(conn);
-			exit(1);
-		}
-
-		for(i = 0; i < nitems ; i++)
-		{
-			if(i > 0)
-				appendPQExpBuffer(buf, ",");
-
-			appendStringLiteralConn(buf, prilocitems[i], conn);
-		}
-
-		/* parse and construct the mirror location strings (if exists) */
-		if (server_version >= 80205)
-		{
-			if (!parsePGArray(spcprilocation, &prilocitems, &nitems))
-			{
-				fprintf(stderr, _("%s: could not parse LOCATION array (%s) for tablespace \"%s\"\n"),
-						progname, spcprilocation, fspcname);
-				PQfinish(conn);
-				exit(1);
-			}
-
-			for(i = 0; i < nitems ; i++)
-			{
-				if(i > 0)
-					appendPQExpBuffer(buf, ",");
-
-				appendStringLiteralConn(buf, prilocitems[i], conn);
-			}
-
-			/* parse and construct the mirror location strings (if exists) */
-			if(spcmirlocation && strlen(spcmirlocation) > 0)
-			{
-				nitems = 0;
-				appendPQExpBuffer(buf, " MIRROR LOCATION ");
-
-				if (!parsePGArray(spcmirlocation, &mirlocitems, &nitems))
-				{
-					fprintf(stderr, _("%s: could not parse MIRROR LOCATION array (%s) for tablespace \"%s\"\n"),
-							progname, spcmirlocation, fspcname);
-					PQfinish(conn);
-					exit(1);
-				}
-
-				for(i = 0; i < nitems ; i++)
-				{
-					if(i > 0)
-						appendPQExpBuffer(buf, ",");
-
-					appendStringLiteralConn(buf, mirlocitems[i], conn);
-				}
-
-				free(mirlocitems);
-			}
-
-			/* Add MASTER LOCATION clause if differs from first primary entry */
-			/* (we could add it anyway, but it won't reflect the original command) */
-			if(strcmp(spclocation, prilocitems[0]) != 0)
-			{
-				/* add MASTER LOCATION clause */
-				appendPQExpBuffer(buf, " MASTER LOCATION ");
-				appendStringLiteralConn(buf, spclocation, conn);
-			}
-		}
-		else
-		{
-			appendStringLiteralConn(buf, spclocation, conn);
-		}
-
-		appendPQExpBuffer(buf, ";\n");
-
+		/* Build Acls */
 		if (!skip_acls &&
-			!buildACLCommands(fspcname, "TABLESPACE", spcacl, spcowner,
+			!buildACLCommands(spcname, "TABLESPACE", spcacl, spcowner,
 							  server_version, buf))
 		{
 			fprintf(stderr, _("%s: could not parse ACL list (%s) for tablespace \"%s\"\n"),
-					progname, spcacl, fspcname);
+					progname, spcacl, spcname);
 			PQfinish(conn);
 			exit(1);
 		}
 
+		/* Set comments */
 		if (spccomment && strlen(spccomment))
 		{
-			appendPQExpBuffer(buf, "COMMENT ON TABLESPACE %s IS ", fspcname);
+			appendPQExpBuffer(buf, "COMMENT ON TABLESPACE %s IS ", spcname);
 			appendStringLiteralConn(buf, spccomment, conn);
 			appendPQExpBuffer(buf, ";\n");
 		}
 
 		printf("%s", buf->data);
 
-		free(fspcname);
-		free(prilocitems);
+		free(spcname);
 		destroyPQExpBuffer(buf);
 	}
 
