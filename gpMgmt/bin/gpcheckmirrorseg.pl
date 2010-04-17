@@ -228,6 +228,7 @@ sub ignore_list
 	my $iggy = shift;
 
 	# file/directory names
+	# MPP-8973: ignore changetracking files
 	my @m1 = qw(
 		pg_stat 
 		pg_log
@@ -236,6 +237,7 @@ sub ignore_list
 		pg_fsm.cache
 		pgstat
 		pgsql_tmp
+		pg_changetracking
 		);
 
 	# file suffixes -- append a close paren ")"
