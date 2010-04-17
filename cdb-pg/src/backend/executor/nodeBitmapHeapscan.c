@@ -322,20 +322,17 @@ BitmapHeapNext(BitmapHeapScanState *node)
 					   false);
 
 		/*
-		 * If we are using lossy info, we have to recheck the qual conditions
-		 * at every tuple.
+		 * We recheck the qual conditions for every tuple, since the bitmap
+		 * may contain invalid entries from deleted tuples.
 		 */
-		if (tbmres->ntuples < 0)
-		{
-			econtext->ecxt_scantuple = slot;
-			ResetExprContext(econtext);
+		econtext->ecxt_scantuple = slot;
+		ResetExprContext(econtext);
 
-			if (!ExecQual(node->bitmapqualorig, econtext, false))
-			{
-				/* Fails recheck, so drop it and loop back for another */
-				ExecClearTuple(slot);
-					continue;
-			}
+		if (!ExecQual(node->bitmapqualorig, econtext, false))
+		{
+			/* Fails recheck, so drop it and loop back for another */
+			ExecClearTuple(slot);
+			continue;
 		}
 
 		/* OK to return this tuple */
