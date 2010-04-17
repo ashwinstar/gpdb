@@ -2046,9 +2046,11 @@ class GpUpgradeMirrorStatus():
 
    #-------------------------------------------------------------------------------
     def set_status(self, status, status_info=None):
-        """Sets the current status.  gpupgrademirror status must be set in
-           proper order.  Any out of order status result in an
-           InvalidStatusError exception"""
+        """
+         Sets the current status.  gpupgrademirror status must be set in
+         proper order. Any out of order status result in an
+         InvalidStatusError exception
+        """
         self.logger.debug("Segment %s: Transitioning from %s to %s" % (str(self.segment_dbid), self._status[-1], status))
 
         if not self._fp:
@@ -2246,7 +2248,7 @@ class Phase1(threading.Thread):
 
     #-------------------------------------------------------------------------------
     def renameOldMirrorToTemp(self, seg):
-        self.logger.debug('in renameOldMirror %s:5s seg id = %s')
+        self.logger.debug('in renameOldMirror %s:%s seg id = %s' % (self.nodeName, seg.mirror_data_directory, seg.mirror_dbid))
         
         tempDataDir = seg.mirror_data_directory + self.tempOldMirrorDirSuffix
 
@@ -2302,7 +2304,7 @@ class Phase1(threading.Thread):
                 
     #-------------------------------------------------------------------------------
     def renameTempMirrorToOldMirror(self, seg, dirSuffix):
-        self.logger.debug("in renameTempMirrorToOldMirror for irror data directory %s:%s" % (self.nodeName, seg.mirror_data_directory))
+        self.logger.debug("in renameTempMirrorToOldMirror for mirror data directory %s:%s" % (self.nodeName, seg.mirror_data_directory))
         
         tempDataDir = seg.mirror_data_directory + dirSuffix
         cmdComplete = False
@@ -2393,12 +2395,6 @@ class Phase1(threading.Thread):
         numCopiesStarted = 0
         numCopiesCompleted = 0
         for dir in dirList:
-            """ 
-              KAS note to self. Need to add code here to check to see if we need to stop.
-              That is, the process that started this thread may tell us to die, probably
-              because one of the other threads finished abnormally, so we are stopping the
-              mirror upgrade.
-            """
             sourceDir = dir
             specialSourceDir = sourceDir.endswith(".0")
             targetDir = mirrorTempDataDir + "/base/" + SegHardLinks.getUnqualifiedLinkDir(sourceDir)
@@ -2424,13 +2420,6 @@ class Phase1(threading.Thread):
                              , ctxt  = REMOTE
                              , remoteHost = seg.primary_host
                              )
-            """ 
-              KAS note to self. Need to do something here to handle the case where 
-              the machine we are connecting too has is validating more connections
-              than it can handle. We need to retry the command. In the mean time,
-              I'm delaying every command 1 second and hoping that is enough.
-            """
-            ###time.sleep(1)
             wPool.addCommand(pysyncCmd)
             numCopiesStarted = numCopiesStarted + 1
             if availableNicQueue.empty() == True:
@@ -2594,15 +2583,6 @@ class Phase1(threading.Thread):
         for file in self.fixupFileList:
             fullPathFile = tempSourceDataDir + '/' + file
             fullPathTarget = tempTargetDataDir + '/' + file
-            
-                               
-            """ thetemplate
-            cmdComplete = False
-            while cmdComplete == False:
-                Cmd = 
-                cmdComplete = runAndCheckCommandComplete(
-            Cmd.validate()
-            """
             cmdComplete = False
             while cmdComplete == False:
                rmCmd = RemoteCopyPreserve( name = 'gpupgrademirror fixup copy : %s to %s' % (fullPathFile, fullPathTarget)
@@ -2845,7 +2825,7 @@ class Phase2(threading.Thread):
         
         self.dburl                  = dburl
         self.logger                 = logger
-        self.info_data_directory  = info_data_directory
+        self.info_data_directory    = info_data_directory
         self.nodeName               = node_name
         self.mirrorSegmentList      = []
         self.statusList             = []
@@ -3086,7 +3066,7 @@ try:
      
   """ 
       We will start the database in master only mode unless we are in phase 1 and 
-      we are rolling back or continuing. If we are in phase 1 and re rolling back
+      we are rolling back or continuing. If we are in phase 1 and are rolling back
       or continuing, we will get the information we need from a flat file we
       created on the first phase 1 attempt.   
   """
@@ -3209,6 +3189,9 @@ try:
         logger.warning('gpupgradmirror exiting')
         exit(0)
 
+
+     """ KAS note to self. Need to re-work this to not use so many threads at once. """
+
      ''' Get list of all segments '''
      allSegMirrorInfo = p2MirrorInfo.getAllMirrorInfoList()
      
@@ -3311,15 +3294,6 @@ try:
         traceback.print_exc()
         exit(0)
     
-    """
-    print "*** p1MirrorInfo = " 
-    print str(p1MirrorInfo)
-    print "************"
-    print " ==== p1MirrorInfo.getInterfaceList() = "
-    print str(p1MirrorInfo.getInterfaceList())
-    exit(0)
-    """
-    
     allSegMirrorInfo = p1MirrorInfo.getAllMirrorInfoList()
         
     if overallStatus.compare_status("SETUP_DONE") < 0:
@@ -3352,7 +3326,6 @@ try:
            cmdComplete = runAndCheckCommandComplete(netMBCmd)
        netMBSpeed = netMBCmd.getSpeed()
        logger.debug("Net speed for primary %s to mirror %s is estimated to be %s Meg per Sec." % (aSeg.primary_host, aSeg.mirror_host, str(netMBSpeed)))
-       ###exit(1)
      
     if len(options.ids) > 0:
         """ I am a minion, so skip the minion setup. """
@@ -3360,14 +3333,6 @@ try:
            overallStatus.set_status("MINION_START_SETUP") 
         if overallStatus.compare_status("MINION_SETUP_DONE") < 0:
            overallStatus.set_status("MINION_SETUP_DONE")
-
-    """ KAS turn off this logic for now. """
-    """
-    if overallStatus.compare_status("MINION_START_SETUP") < 0:
-       overallStatus.set_status("MINION_START_SETUP") 
-    if overallStatus.compare_status("MINION_SETUP_DONE") < 0:
-       overallStatus.set_status("MINION_SETUP_DONE")
-    """
 
     if len(options.ids) == 0:
        """ 
@@ -3385,7 +3350,7 @@ try:
          We should be able to support about 8 mirror nodes per gpupgrademirror instance.
        """
        logger.debug("Start setup for minion gpupgrademirror processes")
-       nodesPerMinion = 1  # 1 for testing should be 8
+       nodesPerMinion = 8
        minionList = []
        index = 0
        while index < len(allNodes):
@@ -3504,12 +3469,6 @@ try:
     """ 
       Start the threads 
     """
-    
-    """
-     KAS Note to self. There is an issue here if one of the treads dies.
-     The call to wait will go for every because it will never get an event.
-    """
-    
     for node in MirrorNodeList:
         node.start()
         
@@ -3526,13 +3485,6 @@ try:
            break
     if started == False:
        raise Exception("Unable to initialize threads for Phase 1 mirror upgrade")
-            
-    """        
-    for node in MirrorNodeList:
-        node.setupCompletedEvent.wait()
-    for node in MirrorNodeList:
-        node.continueEvent.set()
-    """   
         
     """ 
       KAS note to self. Need to add code here to detect and notify all the threads if
@@ -3642,4 +3594,4 @@ finally:
             pass         
     except NameError:
         pass
-    logger.info("gpupgrademirror complete")
+    logger.info("gpupgrademirror exit")
