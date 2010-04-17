@@ -28,13 +28,14 @@ def parseargs():
     parser.add_option('-h', '-?', '--help', action='help')
     parser.add_option('--verbose', action='store_true')
     parser.add_option('--skipvalidation', action='store_true')
+    parser.add_option('--masteronly', action='store_true')
     parser.add_option('--debug', action='store_true')
-    parser.add_option('-e', '--entry', type='string')
+    parser.add_option('-c', '--change', type='string')
+    parser.add_option('-r', '--remove', type='string')
+    parser.add_option('-s', '--show', type='string')
     parser.add_option('-v', '--value', type='string')
     parser.add_option('-m', '--mastervalue', type='string')
-    parser.add_option('-r', '--removeonly', action='store_true')
     parser.add_option('-l', '--list', action='store_true')
-    parser.add_option('-s', '--show', type='string')
     (options, args) = parser.parse_args()
 
     USER=os.getenv('USER')
@@ -50,12 +51,29 @@ def parseargs():
         doShow(options.show)
         parser.exit()
 
-    if not options.entry:
-        print "--entry is a required command line."
+    if options.change and options.remove:
+        logger.error("Multiple actions specified.  See the --help info.")
         parser.exit()
 
-    if (not options.removeonly and not options.value) or (options.removeonly and options.value):
-        print "--value or --removeonly must be specified.  Check the usage below:"
+    if options.change:
+        options.entry = options.change
+    elif options.remove:
+        options.entry = options.remove
+        options.remove = True
+    else:
+        logger.error("No action specified.  See the --help info.")
+        parser.exit()
+
+    if options.change and (not options.value) and (not options.masteronly):
+        logger.error("change requested but value not specified")
+        parser.exit()
+
+    if options.change and (not options.mastervalue) and options.masteronly:
+        logger.error("change requested but value not specified")
+        parser.exit()
+
+    if options.remove and (options.value or options.mastervalue):
+        logger.error("remove action does not take a value or master value parameter")
         parser.exit()
 
     if options.value and (not options.mastervalue):
@@ -211,7 +229,7 @@ try:
 
     gparray = GpArray.initFromCatalog(dburl,utility=True)
 
-    if not options.skipvalidation and not options.removeonly:
+    if not options.skipvalidation and not options.remove:
 
         conn = dbconn.connect(dburl, True)
     
@@ -254,28 +272,32 @@ if len(failedPings):
     userConfirm()
 
 try:
-    for h in hostCache.get_hosts():
-        directory_string = None
-
-        for seg in h.dbs:
-
-            if directory_string:
-                directory_string = directory_string + "\n" + seg.datadir
-            else:
-                directory_string = seg.datadir
-        
-            verbosePrint(options, h.hostname, seg.hostname, seg.datadir)
-    
-        cmd = GpAddConfigScript(h.hostname, directory_string, options.entry, options.value, options.removeonly, ctxt=REMOTE, remoteHost=h.hostname)
-        pool.addCommand(cmd)
-
+    # do the segments
+    if not options.masteronly:
+	    for h in hostCache.get_hosts():
+	        directory_string = None
+	
+	        for seg in h.dbs:
+	
+	            if directory_string:
+	                directory_string = directory_string + "\n" + seg.datadir
+	            else:
+	                directory_string = seg.datadir
+	        
+	            verbosePrint(options, h.hostname, seg.hostname, seg.datadir)
+	    
+	        cmd = GpAddConfigScript(h.hostname, directory_string, options.entry, options.value, options.remove, ctxt=REMOTE, remoteHost=h.hostname)
+	        pool.addCommand(cmd)
+	
+    # do the master
     verbosePrint(options, gparray.master.hostname, gparray.master.hostname, gparray.master.datadir)
-    cmd = GpAddConfigScript("master", gparray.master.datadir, options.entry, options.mastervalue, options.removeonly, ctxt=REMOTE, remoteHost=gparray.master.hostname)
+    cmd = GpAddConfigScript("master", gparray.master.datadir, options.entry, options.mastervalue, options.remove, ctxt=REMOTE, remoteHost=gparray.master.hostname)
     pool.addCommand(cmd)
 
+    # do the standby master
     if gparray.standbyMaster:
         verbosePrint(options, gparray.standbyMaster.hostname, gparray.standbyMaster.hostname, gparray.standbyMaster.datadir)
-        cmd = GpAddConfigScript("standbymaster", gparray.standbyMaster.datadir, options.entry, options.mastervalue, options.removeonly, ctxt=REMOTE, remoteHost=gparray.standbyMaster.hostname)
+        cmd = GpAddConfigScript("standbymaster", gparray.standbyMaster.datadir, options.entry, options.mastervalue, options.remove, ctxt=REMOTE, remoteHost=gparray.standbyMaster.hostname)
         pool.addCommand(cmd)
 
     pool.join()
