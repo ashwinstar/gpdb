@@ -158,7 +158,7 @@ db_dir_size(const char *path)
 static int64
 calculate_database_size(Oid dbOid)
 {
-	int64		 totalsize = -1;
+	int64		 totalsize = 0;
 	char		 pathname[MAXPGPATH];
 	Relation     rel;
 	HeapScanDesc scandesc;
@@ -201,7 +201,7 @@ calculate_database_size(Oid dbOid)
 	heap_close(rel, AccessShareLock);
 
 	/* Complain if we found no trace of the DB at all */
-	if (totalsize == -1)
+	if (totalsize == 0)
 		ereport(ERROR,
 				(ERRCODE_UNDEFINED_DATABASE,
 				 errmsg("database with OID %u does not exist", dbOid)));
