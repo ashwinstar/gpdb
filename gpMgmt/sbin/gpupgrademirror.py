@@ -790,6 +790,20 @@ class DatabaseRow:
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
+class InformationSchemaTablesRow:
+    
+    def __init__(self, row):
+        self.filename = row[0]
+
+    @staticmethod
+    def query():
+        return '''SELECT  c.relfilenode
+                  FROM    pg_class c JOIN pg_namespace n ON (c.relnamespace = n.oid)
+                  WHERE  n.nspname = 'information_schema' AND (relkind = 'r' OR relkind = 'i')'''
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 class NonCatalogToastTablesRow:
     
     def __init__(self, row):
@@ -3173,6 +3187,12 @@ try:
          for fileRow in DBcursor:
              nonToastRow = NonCatalogToastTablesRow(fileRow)
              fileList.append('base/' + str(db.databaseDirectory) + '/' + str(nonToastRow.filename))
+
+         ''' List of Information Schema catalog tables '''
+         DBcursor = dbconn.execSQL(connectForDB, InformationSchemaTablesRow.query())
+         for fileRow in DBcursor:
+             informationSchemaRow = InformationSchemaTablesRow(fileRow)
+             fileList.append('base/' + str(db.databaseDirectory) + '/' + str(informationSchemaRow.filename))
              
          ''' List of toast catalog tables and their toast files '''
          DBcursor = dbconn.execSQL(connectForDB, CatalogToastTablesRow.query())
@@ -3209,47 +3229,58 @@ try:
         GpStop.local('gpupgrademirror stop databse', fast=True, masterOnly = True)
         gpstartStatus = "STOPPED"
 
-     """
-       Start the threads 
-     """
-     for node in phase2MirrorList:
-         node.start()
 
-     """ Wait no more than 60 seconds for all the threads to start """
-     numTries = 12
-     for thisTry in range(numTries):
-         started = True
-         for node in phase2MirrorList:
-             if node.startedRun == False:
-                sleep(5)
+     """
+       There is a theoretical issue with running too many threads at once,
+       so we will limit the number of threads running at once to 64. 
+     """
+     maxThreads = 64
+     startIndex = 0
+     endIndex   = startIndex + maxThreads
+     
+     while startIndex < len(phase2MirrorList):
+         phase2MirrorSubList = phase2MirrorList[startIndex:endIndex]
+         """ Start the threads """
+         for node in phase2MirrorSubList:
+             node.start()
+    
+         """ Wait no more than 60 seconds for all the threads to start """
+         numTries = 12
+         for thisTry in range(numTries):
+             started = True
+             for node in phase2MirrorSubList:
+                 if node.startedRun == False:
+                    sleep(5)
+                    break
+             if started == True:
                 break
-         if started == True:
-            break
-     if started == False:
-        raise Exception("Unable to initialize threads for Phase 2 mirror upgrade")
-        
-     done = False
-     completedNodeList = []
-     notCompletedNodeList = list(phase2MirrorList)
-     while done == False:
-         justCompletedNodeList = []
-         for node in notCompletedNodeList:
-             node.join(10)
-             logging.debug("checking to see if thread for mirror node is alive: " + str(node.nodeName))
-             if node.isAlive() == False:
-                """ The node has completed """
-                for segStatus in node.statusList:
-                    if segStatus.get_current_status()[0] != 'PHASE2_DONE':
-                       done = True
-                       break   
-                if done == True:
-                   break
-                justCompletedNodeList.append(node)
-         completedNodeList.extend(justCompletedNodeList)
-         for completedNode in justCompletedNodeList:
-             notCompletedNodeList.remove(completedNode)        
-         if len(completedNodeList) == len(phase2MirrorList):
-           done = True    
+         if started == False:
+            raise Exception("Unable to initialize threads for Phase 2 mirror upgrade")
+            
+         done = False
+         completedNodeList = []
+         notCompletedNodeList = list(phase2MirrorSubList)
+         while done == False:
+             justCompletedNodeList = []
+             for node in notCompletedNodeList:
+                 node.join(10)
+                 logging.debug("checking to see if thread for mirror node is alive: " + str(node.nodeName))
+                 if node.isAlive() == False:
+                    """ The node has completed """
+                    for segStatus in node.statusList:
+                        if segStatus.get_current_status()[0] != 'PHASE2_DONE':
+                           done = True
+                           break   
+                    if done == True:
+                       break
+                    justCompletedNodeList.append(node)
+             completedNodeList.extend(justCompletedNodeList)
+             for completedNode in justCompletedNodeList:
+                 notCompletedNodeList.remove(completedNode)        
+             if len(completedNodeList) == len(phase2MirrorSubList):
+               done = True    
+         startIndex = endIndex
+         endIndex = endIndex + maxThreads
 
      """ Make sure all phase 2 threads complated successfully """
      p2Completed = True
