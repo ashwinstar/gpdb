@@ -203,6 +203,220 @@ class GpRecoverSegmentProgram:
 
         return GpMirrorListToBuild(segs, self.__pool, self.__options.quiet, self.__options.parallelDegree)
 
+    # San-failback is handled separately from the Filerep-recovery operations.
+    # 
+    # Apparently the gpmlib and gplib stuff was supposed to be deprecated, but 
+    # I cannot find the equivalent functionality anywhere else -- I need to
+    # walk through results returned by shell commands digging for information
+    # this isn't as easy as I'd like.
+    def SanFailback(self, array_config, gpEnv):
+
+        sys.path.append(sys.path[0] + '/lib')
+        try:
+            import gplib, gpmlib
+            import getopt, math, StringIO, stat, subprocess, signal
+            from gpmlib import ENV
+        except ImportError, e:
+            sys.exit('Error: unable to import module: ' + str(e))
+
+        # Verify the commands that we depend on.
+        ENV.chk_environ()
+
+        # Get the configuration information maps.
+        (san_mounts, san_mount_by_dbid) = array_config.getSanConfigMaps()
+
+        # 1 Get the failed segments
+        bad_segs = {}
+        for dbid, v in san_mount_by_dbid.iteritems():
+            (status, content, mountlist) = v
+            if status == 'd':
+                logger.info('Bad segment with dbid %d' % dbid)
+                bad_segs[dbid] = (status, content, mountlist)
+
+        # 2 Get the failed mountpoints.
+        bad_mounts = {}
+        for mount_id, v in san_mounts.iteritems():
+            if v['active'] == 'm':
+                logger.info('Bad mountpoint with id %d' % mount_id)
+                bad_mounts[mount_id] = v
+
+        # 3 Verify that the required hosts are back up (this may reduce the number of recoverable segments)
+        recoverable_mps = {}
+        for mount_id, v in bad_mounts.iteritems():
+            tmpfile = os.path.join('/tmp', 'gptmpfile_recovery')
+            #gpmlib.log_info('verifying host %s tmpfile %s' % (v['primary_host'], tmpfile))
+
+            (ok, out) = gpmlib.run_warn('%s "%s %s"' % (gplib.ssh_prefix(host=v['primaryhost']), ENV.TOUCH, tmpfile))
+            if ok:
+                (ok, out) = gpmlib.run('%s "%s -f %s"' % (gplib.ssh_prefix(host=v['primaryhost']), ENV.RM, tmpfile))            
+                recoverable_mps[mount_id] = v
+
+        # 4
+        # From the recoverable mountpoints, we should now be able to identify the
+        # mountpoints required to recover for the segments. A segment is recoverable
+        # if all of its mountpoints are recoverable.
+        recoverable_segs = {}
+        for dbid, v in bad_segs.iteritems():
+            (status, content, mountlist) = v
+            recoverable = True
+            for mount_id in mountlist:
+                if not recoverable_mps.has_key(mount_id):
+                    recoverable = False
+                    break
+            if recoverable:
+                recoverable_segs[dbid] = v
+            else:
+                logger.warning('Unrecoverable segment dbid %d' % (dbid))
+
+        # 4 Stop GPDB.
+        e = os.system('gpstop -aq -d %s' % (os.environ.get('MASTER_DATA_DIRECTORY')))
+        ok = not e
+        if not ok:
+            logger.error('Failed to shutdown Greenplum Database: segment recovery cannot proceed.')
+        else:
+            logger.info('Successfully shutdown the Greenplum Database')
+
+        # 5 Move mountpoints
+        #   For each recoverable seg, walk its mountlist.
+        # 5a
+        #   unmount on failover host.            
+        # 5b
+        #   reconnect to primary.
+        # 5c
+        #   mount on primary.
+        mount_done = {}
+        for dbid, v in recoverable_segs.iteritems():
+            (status, content, mountlist) = v
+
+            for mount_id in mountlist:
+                if mount_done.has_key(mount_id):
+                    continue # already moved this
+
+                if self.SanFailback_mountpoint(mount_id, recoverable_mps[mount_id]) == 0:
+                    # TODO: some kind of error handling here ??
+                    mount_done[mount_id] = True
+                else:
+                    mount_done[mount_id] = False
+
+        logger.debug('Completed mount-recovery:')
+        for mount_id, v in mount_done.iteritems():
+            if v:
+                logger.debug('mount-id %d ---> TRUE' % mount_id)
+            else:
+                logger.debug('mount-id %d ---> FALSE' % mount_id)
+
+        # N - 3
+        # Start GPDB in admin-mode
+        e = os.system('gpstart -m -d %s' % (os.environ.get('MASTER_DATA_DIRECTORY')))
+        ok = not e
+        if not ok:
+            logger.error('Failed to bring Greenplum Database up in management mode: segment recovery failed')
+        else:
+            logger.info('Greenplum Database restarted for configuration update')
+
+        # N - 2
+        # Update configuration
+
+        # Open a connection to the DB.
+        conn = None
+        try:
+            db_url = dbconn.DbURL(port=gpEnv.getMasterPort(), dbname='template1')
+
+            conn = dbconn.connect(db_url, utility=True)
+
+            dbconn.execSQL(conn, "BEGIN")
+
+            logger.debug('Starting Transaction')
+
+            # Update gp_san_configuration
+            for mount_id, v in mount_done.iteritems():
+                logger.debug('Checking Mount id %d' % mount_id)
+                if v:
+                    sql = 'UPDATE gp_san_configuration SET active_host=\'p\' WHERE mountid=%d' % mount_id
+                    logger.debug('Issuing SQL [%s]' % sql)
+                    dbconn.executeUpdateOrInsert(conn, sql, 1)
+
+            # Update gp_segment_configuration
+            for dbid, v in recoverable_segs.iteritems():
+                (status, content, mountlist) = v
+
+                logger.debug('Checking dbid id %d' % dbid)
+
+                all_mountpoints = True
+                for mount_id, v in mount_done.iteritems():
+                    logger.debug('Scanning mountid %d in dbid id %d' % (mount_id, dbid))
+                    if not v:
+                        logger.debug('Mountid %d --> False' % mount_id)
+                        all_mountpoints = False
+                    else:
+                        logger.debug('Mountid %d --> True' % mount_id)
+
+                if all_mountpoints:
+                    sql = 'UPDATE gp_segment_configuration SET status = \'u\' where dbid = %d' % dbid
+
+                    logger.debug('Issuing SQL [%s]' % sql)
+                    dbconn.executeUpdateOrInsert(conn, sql, 1)
+
+                    sql = 'UPDATE gp_segment_configuration SET role = preferred_role where content = %d' % content
+                    logger.debug('Issuing SQL [%s]' % sql)
+                    dbconn.executeUpdateOrInsert(conn, sql, 2)
+                else:
+                    logger.info('Failed to recover sufficient mountpoints for dbid %d' % dbid)
+
+            logger.debug('Committing our updates.')
+            dbconn.execSQL(conn, "COMMIT")
+        finally:
+            if conn:
+                conn.close()
+
+        # N - 1 
+        # Stop GPDB-admin-mode
+        e = os.system('gpstop -m -d %s' % (os.environ.get('MASTER_DATA_DIRECTORY')))
+        ok = not e
+        if not ok:
+            logger.error('Failed to stop Greenplum Database up in management mode: segment recovery failed')
+        else:
+            logger.info('Greenplum Database stopped, preparing for full restart.')
+
+        # N Start GPDB
+        e = os.system('gpstart -aq -d %s' % (os.environ.get('MASTER_DATA_DIRECTORY')))
+        ok = not e
+        if not ok:
+            logger.error('Failed to restart Greenplum Database: segment recovery failed')
+        else:
+            logger.info('Successfully restarted the Greenplum Database')
+        return 0
+
+    def SanFailback_mountpoint(self, mp_id, mp_dict):
+        active = mp_dict['active']
+        type = mp_dict['type']
+
+        if active == 'm':
+            oldhost = mp_dict['primaryhost']
+            old_mp = mp_dict['primarymountpoint']
+
+            newhost = mp_dict['mirrorhost']
+            new_mp = mp_dict['mirrormountpoint']
+        else:
+            # failback unnecessary ?
+            logger.info('Not failback required for mount id %d primary is active!' % mp_id)
+            return 0
+
+        # RUN GP_MOUNT_AGENT HERE ??
+
+        command = 'gp_mount_agent --agent -u -t %c -a %c -p %s -d %s -m %s -q %s -e %s -n %s' % (mp_dict['type'], mp_dict['active'],
+                                                                                                 mp_dict['primaryhost'], mp_dict['primarydevice'], mp_dict['primarymountpoint'],
+                                                                                                 mp_dict['mirrorhost'], mp_dict['mirrordevice'], mp_dict['mirrormountpoint'])
+                                                                                         
+        logger.debug('gp_mount_agent command is \'%s\'' % command)
+
+        e = os.system(command)
+        ok = not e
+        if not ok:
+            logger.error('gp_mount_agent: failed to relocate mount point %d' % mp_id)
+
+        return 0
+
     def getRecoveryActionsBasedOnOptions(self, gpArray):
         if self.__options.recoveryConfigFile is not None:
             return self.getRecoveryActionsFromConfigFile(gpArray)
@@ -275,14 +489,20 @@ class GpRecoverSegmentProgram:
 
         faultProber = faultProberInterface.getFaultProber().initializeProber(gpEnv.getMasterPort())
         try:
-            faultProber.pauseFaultProber()
             confProvider = configInterface.getConfigurationProvider().initializeProvider(gpEnv.getMasterPort(), False)
             gpArray = confProvider.loadSystemConfig()
 
             # check that we actually have mirrors
-            if gpArray.getFaultStrategy() != gparray.FAULT_STRATEGY_FILE_REPLICATION:
+            if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_SAN:
+                self.SanFailback(gpArray, gpEnv)
+                return 0
+            elif gpArray.getFaultStrategy() != gparray.FAULT_STRATEGY_FILE_REPLICATION:
                 raise ExceptionNoStackTraceNeeded( \
                         'GPDB Mirroring replication is not configured for this Greenplum Database instance.')
+
+            # We have phys-rep/filerep mirrors.
+
+            faultProber.pauseFaultProber()
 
             # figure out what needs to be done
             mirrorBuilder = self.getRecoveryActionsBasedOnOptions(gpArray)
