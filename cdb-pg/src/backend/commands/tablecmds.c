@@ -4727,16 +4727,16 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 					else
 					{
 						/* at must be in range */
-						Const *start = NULL;
-						Const *end = NULL;
-						Const *atval = NULL;
-						Oid opclass = prule1->pNode->part->parclass[0];
-						Oid funcid = get_opclass_proc(opclass, 0,
-													  BTORDER_PROC);
-						Node *n;
-						Datum res;
-						int32 ret;
-						bool in_range = true;
+						Const	*start	  = NULL;
+						Const	*end	  = NULL;
+						Const	*atval	  = NULL;
+						Oid		 opclass  = prule1->pNode->part->parclass[0];
+						Oid		 funcid	  = get_opclass_proc(opclass, 0,
+															 BTORDER_PROC);
+						Node	*n;
+						Datum	 res;
+						int32	 ret;
+						bool	 in_range = true;
 
 						n = (Node *)linitial((List *)at);
 
@@ -4748,11 +4748,21 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 						if (prule1->topRule->parrangestart)
 							start = linitial((List *)prule1->topRule->parrangestart);
 
-						Insist(exprType((Node *)n) == exprType((Node *)start));
-						res = OidFunctionCall2(funcid, start->constvalue,
-											   atval->constvalue);
+						/* MPP-6589: allow "open" start or end */
+						if (start)
+						{
+							Insist(exprType((Node *)n) == exprType((Node *)start));
+							res = OidFunctionCall2(funcid, start->constvalue,
+												   atval->constvalue);
 
-						ret = DatumGetInt32(res);
+							ret = DatumGetInt32(res);
+						}
+						else
+						{
+							/* MPP-6589: no start - check end */
+							Assert(prule1->topRule->parrangeend);
+							ret = -1;
+						}
 
 						if (ret > 0)
 							in_range = false;
@@ -4779,6 +4789,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 									if (!prule1->topRule->parrangeendincl)
 										in_range = false;
 							}
+							/* if no end, remains "in range" */
 						}
 
 						if (!in_range)
@@ -13669,7 +13680,12 @@ get_parts(Oid relid, int2 level, Oid parent, bool inctemplate,
 			MemoryContextSwitchTo(oldcxt);
 		}
 	}
-	Assert(inctemplate || list_length(rules) || n->default_part);
+	/* NOTE: this assert is valid, except for the case of splitting
+	 * the very last partition of a table.  For that case, we must
+	 * drop the last partition before re-adding the new pieces, which
+	 * violates this invariant
+	 */
+/*	Assert(inctemplate || list_length(rules) || n->default_part); */
 	n->rules = rules;
 
 	systable_endscan(scan);
@@ -16732,7 +16748,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 				/* ok if no successor [?] -- just means this is first
 				 * partition (XXX XXX though should always have 1
-				 * partition in the table...)
+				 * partition in the table... [XXX XXX unless did a
+				 * SPLIT of a single partition !! ])
 				 */
 
 				if (!(prule && prule->topRule))
@@ -16769,7 +16786,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 												   d_start, isnull, tupledesc);
 
 					/* if the current start is greater than the new start
-					 * then use it as the end of the new
+					 * then use the current start as the end of the new
 					 * partition
 					 */
 
@@ -16834,12 +16851,40 @@ atpxPartAddList(AlteredTableInfo *tab,
 					maxpartno = prule->topRule->parruleord + 1;
 				}
 				else
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-							 errmsg("new partition overlaps existing "
-									"partition"),
-											   errOmitLocation(true)));
+				{
+					PartitionRangeItem *ri =
+							(PartitionRangeItem *)pbs->partStart;
 
+					/* check for equality */
+					bstat =
+							compare_partn_opfuncid(pNode,
+												   "pg_catalog",
+												   "=",
+									   (List *)prule->topRule->parrangeend,
+											   d_start, isnull, tupledesc);
+					
+					/* if new start not >= to current end, then 
+					 * new start < current end, so it overlaps. Or if
+					 * new start == current end, but the
+					 * inclusivity is not opposite for the boundaries
+					 * (eg inclusive end abuts inclusive start for
+					 * same start/end value) then it overlaps
+					 */
+					if (!bstat || 
+						(bstat && 
+						 (prule->topRule->parrangeendincl == 
+						  (ri->partedge == PART_EDGE_INCLUSIVE)))
+							)
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("new partition overlaps existing "
+										"partition"),
+								 errOmitLocation(true)));
+
+					/* doesn't overlap, should be final partition */
+					maxpartno = prule->topRule->parruleord + 1;
+
+				}
 			L_fin_no_end:
 				bstat = false; /* fix warning */
 
@@ -16931,7 +16976,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 											   (List *)a_rule->parrangeend,
 											   d_start, isnull, tupledesc));
 
-					if (a_rule->parrangeendincl == ri->partedge)
+					if (a_rule->parrangeendincl == 
+						(ri->partedge == PART_EDGE_INCLUSIVE))
 					{
 						/* start and end must be of opposite
 						 * types, else they overlap
@@ -17009,7 +17055,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 											   d_start, isnull, tupledesc);
 					if (bstat)
 					{
-						if (a_rule->parrangeendincl == ri->partedge)
+						if (a_rule->parrangeendincl == 
+							(ri->partedge == PART_EDGE_INCLUSIVE))
 						{
 							/* start and end must be of opposite
 							 * types, else they overlap */
@@ -17167,7 +17214,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 											   (List *)a_rule->parrangestart,
 											   d_end, isnull, tupledesc));
 
-					if (a_rule->parrangestartincl == ri->partedge)
+					if (a_rule->parrangestartincl == 
+						(ri->partedge == PART_EDGE_INCLUSIVE))
 					{
 						/* start and end must be of opposite
 						 * types, else they overlap
@@ -17263,7 +17311,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 											   d_end, isnull, tupledesc);
 					if (bstat)
 					{
-						if (a_rule->parrangestartincl == ri->partedge)
+						if (a_rule->parrangestartincl == 
+							(ri->partedge == PART_EDGE_INCLUSIVE))
 						{
 							/* start and end must be of opposite
 							 * types, else they overlap */
@@ -17603,7 +17652,12 @@ atpxPartAddList(AlteredTableInfo *tab,
 							   lrelname,
 							   &pNode2);
 
-		Assert(prule && prule->topRule && prule->pNode && prule->pNode->part);
+		/* NOTE: this assert is valid, except for the case of splitting
+		 * the very last partition of a table.  For that case, we must
+		 * drop the last partition before re-adding the new pieces, which
+		 * violates this invariant
+		 */
+/*	Assert(prule && prule->topRule && prule->pNode && prule->pNode->part); */
 
 		if (prule && prule->topRule && prule->pNode && prule->pNode->part)
 			parruleord_open_gap(
@@ -18175,10 +18229,25 @@ ATPExecPartDrop(Relation rel,
 	AlterPartitionId 	*locPid 	 = pid;  /* local pid if IDRule */
 	PgPartRule* 		 par_prule 	 = NULL; /* prule for parent if IDRule */
 	char 		 		 lRelNameBuf[(NAMEDATALEN*2)];
-	char 				*lrelname=NULL;
+	char 				*lrelname	= NULL;
+	bool 				 bForceDrop	= false;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
+
+	if (pc->arg2 &&
+		IsA(pc->arg2, AlterPartitionCmd))
+	{
+		/* NOTE: Ugh, I hate this hack.  Normally, PartDrop has a null
+		 * pc->arg2 (the DropStmt is on arg1).  However, for SPLIT, we
+		 * have the case where we may need to DROP that last partition
+		 * of a table, which in only ok because we will re-ADD two
+		 * partitions to replace it.  So allow bForceDrop only for
+		 * this case.  We need a better way to decorate the ALTER cmd
+		 * structs to annotate these special cases.
+		 */
+		bForceDrop = true;
+	}
 
 	/* missing partition id only ok for range partitions -- just get
 	 * first one */
@@ -18320,7 +18389,7 @@ ATPExecPartDrop(Relation rel,
 									   errOmitLocation(true)));
 
 		/* cannot drop last partition of table */
-		if (numParts <= 1)
+		if (!bForceDrop && (numParts <= 1))
 		{
 			if (AT_AP_IDRule != pid->idtype)
 				ereport(ERROR,
@@ -19390,7 +19459,8 @@ atpxModifyRangeOverlap (Relation 		 		 rel,
 
 				if (bstat)
 				{
-					if (a_rule->parrangeendincl == ri->partedge)
+					if (a_rule->parrangeendincl == 
+						(ri->partedge == PART_EDGE_INCLUSIVE))
 					{
 						/* start and end must be of opposite
 						 * types, else they overlap */
@@ -19453,7 +19523,8 @@ atpxModifyRangeOverlap (Relation 		 		 rel,
 
 				if (bstat)
 				{
-					if (a_rule->parrangeendincl == ri->partedge)
+					if (a_rule->parrangeendincl == 
+						(ri->partedge == PART_EDGE_INCLUSIVE))
 					{
 						/* start and end must be of opposite
 						 * types, else they overlap */
@@ -19537,7 +19608,8 @@ atpxModifyRangeOverlap (Relation 		 		 rel,
 											   (List *)a_rule->parrangeend,
 											   d_start, isnull, tupledesc));
 
-					if (a_rule->parrangeendincl == ri->partedge)
+					if (a_rule->parrangeendincl == 
+						(ri->partedge == PART_EDGE_INCLUSIVE))
 					{
 						/* start and end must be of opposite
 						 * types, else they overlap
@@ -19590,7 +19662,8 @@ atpxModifyRangeOverlap (Relation 		 		 rel,
 											   (List *)a_rule->parrangestart,
 											   d_end, isnull, tupledesc));
 
-					if (a_rule->parrangestartincl == ri->partedge)
+					if (a_rule->parrangestartincl == 
+						(ri->partedge == PART_EDGE_INCLUSIVE))
 					{
 						/* start and end must be of opposite
 						 * types, else they overlap
@@ -20855,7 +20928,13 @@ ATPExecPartSplit(Relation rel,
 
 		mypc->partid = (Node *)idpid;
 		mypc->arg1 = (Node *)ds;
-		mypc->arg2 = NULL;
+		/* MPP-6589: make DROP work, even if last one
+		 * NOTE: hateful hackery.  Normally, the arg2 for the PartDrop
+		 * cmd is null.  But since SPLIT may need to DROP the last
+		 * partition before it re-ADDs two new ones, we pass a non-null
+		 * arg2 as a flag to enable ForceDrop in ATPExecPartDrop().  
+		*/
+		mypc->arg2 = (Node *)makeNode(AlterPartitionCmd);
 
 		cmd->def = (Node *)mypc;
 		parsetrees = parse_analyze((Node *)ats, NULL, NULL, 0);
@@ -21008,14 +21087,26 @@ ATPExecPartSplit(Relation rel,
 					else if (i == 1)
 					{
 						PartitionRangeItem *ri;
-						ri = makeNode(PartitionRangeItem);
-						ri->location = -1;
-						ri->everycount = 0;
-						ri->partRangeVal = copyObject(prule->topRule->parrangestart);
-						ri->partedge =
-							prule->topRule->parrangestartincl ? PART_EDGE_INCLUSIVE : PART_EDGE_EXCLUSIVE;
 
-						a->partStart = (Node *)ri;
+						/* MPP-6589: if the partition has an "open"
+						 * START, pass a NULL partStart 
+						 */
+						if (prule->topRule &&
+							prule->topRule->parrangestart)
+						{
+							ri = makeNode(PartitionRangeItem);
+							ri->location = -1;
+							ri->everycount = 0;
+							ri->partRangeVal = 
+									copyObject(prule->topRule->parrangestart);
+							ri->partedge =
+									prule->topRule->parrangestartincl ? 
+									PART_EDGE_INCLUSIVE : PART_EDGE_EXCLUSIVE;
+
+							a->partStart = (Node *)ri;
+						}
+						else
+							a->partStart = NULL;
 
 						ri = makeNode(PartitionRangeItem);
 						ri->location = -1;
@@ -21036,14 +21127,25 @@ ATPExecPartSplit(Relation rel,
 
 						a->partStart = (Node *)ri;
 
-						ri = makeNode(PartitionRangeItem);
-						ri->location = -1;
-						ri->everycount = 0;
-						ri->partRangeVal =
-							copyObject(prule->topRule->parrangeend);
-						ri->partedge = prule->topRule->parrangeendincl ? PART_EDGE_INCLUSIVE : PART_EDGE_EXCLUSIVE;
+						/* MPP-6589: if the partition has an "open"
+						 * END, pass a NULL partEnd 
+						 */
+						if (prule->topRule &&
+							prule->topRule->parrangeend)
+						{
+							ri = makeNode(PartitionRangeItem);
+							ri->location = -1;
+							ri->everycount = 0;
+							ri->partRangeVal =
+									copyObject(prule->topRule->parrangeend);
+							ri->partedge = prule->topRule->parrangeendincl ? 
+									PART_EDGE_INCLUSIVE : PART_EDGE_EXCLUSIVE;
 
-						a->partEnd = (Node *)ri;
+							a->partEnd = (Node *)ri;
+						}
+						else
+							a->partEnd = NULL;
+
 					}
 					pelem->boundSpec = (Node *)a;
 				}

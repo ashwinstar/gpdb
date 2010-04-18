@@ -3618,3 +3618,66 @@ pg_get_partition_def(
 where relname='mpp6297')::pg_catalog.oid, true);
 
 drop table mpp6297;
+
+-- MPP-6589: SPLITting an "open" ended partition (ie, no start or end)
+
+CREATE TABLE mpp6589a
+(
+  id bigint,
+  day_dt date
+)
+DISTRIBUTED BY (id)
+PARTITION BY RANGE(day_dt)
+          (
+          PARTITION p20090312  END ('2009-03-12'::date)
+          );
+
+select pg_get_partition_def('mpp6589a'::regclass,true);
+
+-- should work
+ALTER TABLE mpp6589a 
+SPLIT PARTITION p20090312 AT( '20090310' ) 
+INTO( PARTITION p20090309, PARTITION p20090312_tmp);
+
+select pg_get_partition_def('mpp6589a'::regclass,true);
+
+drop table mpp6589a;
+
+CREATE TABLE mpp6589i(a int, b int) 
+partition by range (b) (start (1) end (3));
+select pg_get_partition_def('mpp6589i'::regclass,true);
+
+-- should fail (overlap)
+ALTER TABLE mpp6589i ADD PARTITION start (2);
+-- should fail (overlap) (not a real overlap, but a "point" hole)
+ALTER TABLE mpp6589i ADD PARTITION start (3) exclusive;
+
+-- should work - make sure can add an open-ended final partition
+ALTER TABLE mpp6589i ADD PARTITION start (3);
+select pg_get_partition_def('mpp6589i'::regclass,true);
+
+DROP TABLE mpp6589i;
+
+-- test open-ended SPLIT
+CREATE TABLE mpp6589b
+(
+  id bigint,
+  day_dt date
+)
+DISTRIBUTED BY (id)
+PARTITION BY RANGE(day_dt)
+          (
+          PARTITION p20090312  START ('2008-03-12'::date)
+          );
+
+select pg_get_partition_def('mpp6589b'::regclass,true);
+
+-- should work
+ALTER TABLE mpp6589b 
+SPLIT PARTITION p20090312 AT( '20090310' ) 
+INTO( PARTITION p20090309, PARTITION p20090312_tmp);
+
+select pg_get_partition_def('mpp6589b'::regclass,true);
+
+drop table mpp6589b;
+
