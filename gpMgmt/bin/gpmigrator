@@ -2876,6 +2876,7 @@ class GPUpgrade:
                 os.mkdir(dst, 0700)
                 
             dirs.append('pg_log')
+            dirs.append('pg_changetracking')
             for dir in dirs:
                 logger.debug("making dir %s" % dir)
             
