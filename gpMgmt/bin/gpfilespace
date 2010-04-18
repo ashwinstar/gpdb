@@ -587,6 +587,16 @@ class GPFilespace:
         self.array      = None
         self.hostcache  = None
 
+
+    def Setup(self):
+        '''
+        GPFilespace::Setup()
+
+        Handle initial setup, including spawning the threadpool.
+
+        Once Setup() has been called it is imperitive that cleanup() be 
+        called on termination.
+        '''
         self.connect()
         self.get_configuration()
         self.resolve_hostnames()
@@ -594,6 +604,8 @@ class GPFilespace:
     # --------------------------------------------------------------------
     def cleanup(self):
         ''' 
+        GPFilespace::cleanup()
+
         Close all active connections, shutdown threads, etc.
         '''
         if self.pool:
@@ -992,7 +1004,7 @@ To add this filespace to the database please run the command:
             if (len(values) == 2 and values[0] == 'filespace'):
                 fspacename = values[1]
                 if not isValidIdentifier(fspacename):
-                    raise BaseException('Invalid filespace name: %s' % fspacename)
+                    raise GPError('Invalid filespace name: %s' % fspacename)
                 continue
             elif len(values) != 3:
                 raise GPError("Syntax Error at line %d: %s" 
@@ -1099,9 +1111,9 @@ Once a filespace is created, it can be used by one or more tablespaces.
 
 """,
 
+        gpf = GPFilespace(opt)
         try:
-            gpf = GPFilespace(opt)
-
+            gpf.Setup()
             if opt.config == None:
                 gpf.generate_config()
             else:
@@ -1147,7 +1159,7 @@ Once a filespace is created, it can be used by one or more tablespaces.
     # Catch anything else - shouldn't ever occur
     except BaseException, e:
         try:
-            err = str(type(e)) + ': ' + unicode(str(e), 'UTF-8')
+            err = '[%s]: "%s"' % (type(e).__name__,  unicode(str(e), 'UTF-8'))
             logger.error(err)
             logger.info(traceback.format_exc())
             logger.info("exit(1)")
