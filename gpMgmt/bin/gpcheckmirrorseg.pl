@@ -487,6 +487,7 @@ sub get_presh2_txt
 #				my @ggg = unpack("x$lp_off S11 c c  ", $buf);
 #				
 #				# clear infomask flags
+#				$ggg[9] = 0;
 #				$ggg[10] = 0;
 #				
 #				my $fixbuf = pack("S11 c c  ", @ggg);
@@ -1227,6 +1228,8 @@ sub diff_again
 	}
 
 	print "\nenhanced diff [$floc]: no differences\n\n";
+	print "no differences found\n";
+	exit(0);
 
 } # end diff_again
 
