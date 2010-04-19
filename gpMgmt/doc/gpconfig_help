@@ -8,9 +8,9 @@ SYNOPSIS
 *****************************************************
 
 
-gpconfig -e <param_entry_name> -v <segment_value> [-m <master_value>]
-       | -e <param_entry_name> -r
-       | -e <param_entry_name> -s
+gpconfig -c <param_name> -v <value> [-m <master_value> | --masteronly]
+       | -r <param_name>
+       | -s <param_name>       
        | -l
   [--skipvalidation] [--verbose] [--debug]
 
@@ -24,13 +24,11 @@ DESCRIPTION
 The gpconfig utility allows you to set, unset, or view configuration 
 parameters from the postgresql.conf files of all instances (master, 
 segments, and mirrors) in your Greenplum Database system. When setting 
-a parameter, you can also specify a different value for the master 
-if necessary. For example, parameters such as max_connections require 
+a parameter, you can also specify a different value for the master if 
+necessary. For example, parameters such as max_connections require 
 a different setting on the master than what is used for the segments. 
-
-gpconfig does not currently support setting or unsetting parameters 
-on the master only. If you only need to adjust your master 
-postgresql.conf file, edit the file directly.
+If you want to set or unset a global or master only parameter, use 
+the --masteronly option.
 
 gpconfig can only be used to manage certain parameters. For example, 
 you cannot use it to set parameters such as port, which is required 
@@ -58,7 +56,7 @@ To show the currenly set values for a parameter across the system
 administrative schema installed in your default database. 
 To install Jetpack, run: $ psql -f $GPHOME/lib/jetpack/jetpack.sql
 
-pgconfig uses the following environment variables to connect to 
+gpconfig uses the following environment variables to connect to 
 the Greenplum Database master instance and obtain system 
 configuration information: 
   * PGHOST
@@ -72,13 +70,13 @@ configuration information:
 DESCRIPTION
 *****************************************************
 
--e | --entry <param_entry_name>
+-c | --change <param_name>
 
-Specifies the configuration parameter name to set, unset 
-(comment out), or show. 
+Changes a configuration parameter setting by adding the new 
+setting to the bottom of the postgresql.conf files.
 
 
--v | --value segment_value
+-v | --value value
 
 The value to use for the configuration parameter you specified 
 with the -e option. By default, this value is applied to all 
@@ -93,10 +91,15 @@ applies to the master and standby master. The option can only
 be used with -v. 
 
 
--r | --removeonly
+--masteronly
 
-Removes a configuration parameter setting by commenting out 
-the entry in the postgresql.conf files.
+When specified, gpconfig only edits the master postgresql.conf file.
+
+
+-r | --removeonly <param_name>
+
+Specifies the configuration parameter name to unset or remove by 
+commenting out the entry in the postgresql.conf files.
 
 
 -l | --list
@@ -104,7 +107,7 @@ the entry in the postgresql.conf files.
 Lists all configuration parameters supported by the gpconfig utility.
 
 
--s | --show
+-s | --show <param_name>
 
 Shows the value for a configuration parameter used on all instances 
 (master and segments) in the Greenplum Database system. If there 
@@ -148,21 +151,21 @@ Displays the online help.
 EXAMPLES
 *****************************************************
 
-Set the work_mem setting to 120MB:
+Set the work_mem setting to 120MB on the master only:
 
-gpconfig -e work_mem -v 120MB
+gpconfig -c work_mem -v 120MB --masteronly
 
 
 Set the max_connections setting to 100 on all segments 
 and 10 on the master:
 
-gpconfig -e max_connections -v 100 -m 10
+gpconfig -c max_connections -v 100 -m 10
 
 
 Comment out all instances of the default_statistics_target 
 configuration parameter, and restore the system default:
 
-gpconfig -e default_statistics_target -r
+gpconfig -r default_statistics_target
 
 
 List all configuration parameters supported by gpconfig:
