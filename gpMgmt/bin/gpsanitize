@@ -514,7 +514,7 @@ try:
 #            gpmlib.log_info('dbid %d on %s has data-dir on %s (%s)' % (k, v['host'], v['mountpoint'], v['device']))
 
         if opt['-t'] == 'n':
-            bad_device_cnt = 0
+            bad_device_count = 0
             gpmlib.log_info('Scanning mount-devices in NFS-mode.')
             for k, v in devmap.iteritems():
                 if len(v['device'].split(':')) != 2:
