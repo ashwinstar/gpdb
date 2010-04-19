@@ -43,8 +43,10 @@ import os, sys, getopt, socket
 from threading import Thread
 from datetime import date, datetime, timedelta
 
+from gppylib.db import *
+from gppylib.gparray import *
+
 sys.path.append(sys.path[0] + '/lib')
-import pg8000
 
 # Apparently the gpmlib and gplib stuff was supposed to be deprecated, but 
 # I cannot find the equivalent functionality anywhere else -- I need to
@@ -164,6 +166,8 @@ def yesorno(msg, abortmsg):
     return False
 
 
+#####
+# GPSANITIZE DOES NOT SUPPORT THIS OPERATION YET.
 ################
 #   config file 
 #   mirrorN=host:port:data_dir
@@ -198,81 +202,6 @@ def parseMirrorConfig():
         mirrors.append(m)
         
     return mirrors
-        
-
-################
-def chk_mirror_config(db, qes, mirrors):
-    if len(qes) != len(mirrors):
-        gpmlib.error('Number of mirror segments must be equal to number of primary segments')
-
-    db.execute('select max(dbid) from gp_configuration')
-    row = db.read_tuple()
-    max_dbid = row[0]
-    dbid = max_dbid + 1
-    gp_prefix = gpmlib.get_gp_prefix(os.environ.get('MASTER_DATA_DIRECTORY'))
-    if not gp_prefix:
-        gp_prefix = 'gp-'
-
-    config = []
-    for i in range(len(qes)):
-        mir = mirrors[i]
-        mir['dbid'] = dbid
-        mir['content'] = qes[i]['content']
-        mir['datadir'] = os.path.join(mir['datadir'], '%s%d' % (gp_prefix, mir['content']))
-        config.append(mir)
-        dbid += 1
-
-    pri_hosts = gpmlib.unique([ qe['hostname'] for qe in qes ])
-    mir_hosts = gpmlib.unique([ m['hostname'] for m in mirrors ])
-    new_hosts = []
-    for h in mir_hosts:
-        if h not in pri_hosts:
-            new_hosts.append(h)
-
-    new_addr = []
-    for h in new_hosts:
-        ips = gpmlib.get_ipaddr(h)
-        if not ips:
-            gpmlib.error('Get IP Address from %s failed' % h)
-
-        new_addr.extend(ips)
-    new_addr = gpmlib.unique(new_addr)
-
-    return (config, new_addr)
-
-################
-def chk_mirror_dir(qes, mirrors):
-    for i in range(len(qes)):
-        pri_host = qes[i]['hostname']
-        mirror_host = mirrors[i]['hostname']
-        mirror_datadir = mirrors[i]['datadir']
-
-        # check postgres version
-        if not gpmlib.chk_postgres_version(mirror_host):
-            gpmlib.error('Postgres version does not match with mirror host %s' % mirror_host)
-
-        # check datadir exist
-        if gpmlib.directory_exists(mirror_datadir, mirror_host):
-            gpmlib.error('Directory %s already exists on %s' % (mirror_datadir, mirror_host))
-
-        # check write access of the parent datadir
-        dir = os.path.dirname(mirror_datadir)
-        tmpfile = os.path.join(dir, 'gptmpfile')
-        (ok, out) = gpmlib.run_warn('%s "%s %s"' % (gplib.ssh_prefix(host=mirror_host), ENV.TOUCH, tmpfile))
-        if ok:
-            (ok, out) = gpmlib.run('%s "%s -f %s"' % (gplib.ssh_prefix(host=mirror_host), ENV.RM, tmpfile))            
-        else:
-            gpmlib.error('Cannot create file under directory %s on segment host %s' % (dir, mirror_host))
-
-        # check access from primary host to mirror host
-        (ok, out) = gpmlib.run_warn('%s \'%s %s /tmp/gpaddmirrors_check.$$ && %s -f /tmp/gpaddmirrors_check.$$\'' % (
-                                                            gplib.ssh_prefix(host=pri_host),
-                                                            gplib.ssh_prefix(host=mirror_host),
-                                                            ENV.TOUCH, ENV.RM))
-        if not ok:
-            gpmlib.error('Check inter host ssh access from %s to %s failed' % (pri_host, mirror_host))
-
-    gpmlib.log_info('Completed host and directory checks')
 
 ################
 def update_gp_conf(db, mirrors):
@@ -287,26 +216,6 @@ def update_gp_conf(db, mirrors):
                    m['hostname'], m['port'])
         db.execute("insert into pg_filespace_entry values($1, $2, $3)",
                    system_filespace, m['dbid'], m['datadir'])
-
-################
-def display_param(master_datadir, master_port, qes, mirrors, multi_home):
-    global opt
-
-    gpmlib.log_info('Greenplum Database Mirror Parameters')
-    gpmlib.log_info('------------------------------------')
-    gpmlib.log_info('Greenplum master hostname                = %s' % socket.gethostname())
-    gpmlib.log_info('Greenplum master data directory          = %s' % master_datadir)
-    gpmlib.log_info('Greenplum master port                    = %d' % master_port)
-    gpmlib.log_info('Parallel batch limit                     = %d' % opt['-B'])
-    if multi_home:
-        gpmlib.log_info('Multi-home configuration')
-    else:
-        gpmlib.log_info('Single-home configuration')
-    gpmlib.log_info('------------------------------------')
-    gpmlib.log_info('Mirror segment instance list')
-    gpmlib.log_info('------------------------------------')
-    for m in mirrors:
-        gpmlib.log_info('Host "%s" \t Datadir "%s" \t Port "%d"' % (m['hostname'], m['datadir'], m['port']))
 
 ################                                      
 # Fetch the storage-group name using the powermt command via the wwn.
@@ -415,30 +324,22 @@ try:
         if ENV.POWERMT == '':
             gpmlib.error('Cannot locate EMC PowerPath powermt utility for storage-group lookup')
 
-    db = None
+#    if not gpmlib.chk_db_running(db, True):
+#        gpmlib.error('Database is not running')
+
+    dburl = dbconn.DbURL(port=master_port, dbname='template1')
+    gparray = GpArray.initFromCatalog(dburl, utility=True)
+
     qes = None
     new_addr = []
-    multi_home = False
-    mirrors = []
 
     try:
-        pghost = os.getenv('PGHOST', '127.0.0.1')
-        pgpassword = os.getenv('PGPASSWORD', None)
-        db = pg8000.Connection(host=pghost, port=master_port, 
-                               user=ENV.USER, database=ENV.DBNAME, password=pgpassword,
-                               options='-c gp_session_role=utility')
-    except pg8000.errors.InterfaceError, e:
-        gpmlib.log_error('Database is not started.')
-        gpmlib.error(e)
-
-    try:
-        if not gpmlib.chk_db_running(db, True):
-            gpmlib.error('Database is not running')
-
-        qes = gpmlib.get_qe_details(db, 'content')
-        qe_hosts = [ x['hostname'] for x in qes ]
-        hosts = gpmlib.unique(qe_hosts)
-        multi_home = gpmlib.chk_multi_home(hosts)
+        qes = gparray.getSegDbList()
+        qe_hosts = [ x.getSegmentHostName() for x in qes ]
+#
+#        hosts = gpmlib.unique(qe_hosts)
+#       XXX: NEED TO UNIQUE-IFY HERE.
+        hosts = qe_hosts
 
         # We have the qe-details (root filespace with dbids and so on)
 
@@ -496,11 +397,12 @@ try:
 
         devmap = {}
         for qe in qes:
-            h = qe['hostname']
-            d = qe['datadir']
-            primary_port = qe['port']
+            h = qe.getSegmentHostName()
+            content = qe.getSegmentContentId()
+            d = qe.getSegmentDataDirectory()
+            primary_port = qe.getSegmentPort()
             mirror_port = primary_port + opt['-p']
-            id = qe['dbid']
+            id = qe.getSegmentDbId()
 
             if id >= max_dbid:
                 max_dbid = id
@@ -515,7 +417,7 @@ try:
                         matchdir = mountdir
                         matchdev = dev
 
-            devmap[id] = {'content':qe['content'], 'host':h, 'datadir':d, 'device':matchdev, 'mountpoint':matchdir, 'primaryport':primary_port, 'mirrorport':mirror_port}
+            devmap[id] = {'content':content, 'host':h, 'datadir':d, 'device':matchdev, 'mountpoint':matchdir, 'primaryport':primary_port, 'mirrorport':mirror_port}
 
         if opt['-t'] == 'n':
             bad_device_count = 0
@@ -689,16 +591,8 @@ try:
         print('UPDATE GP_FAULT_STRATEGY SET fault_strategy = \'s\' ;')
 
         ########################
-
-
-    except pg8000.errors.InterfaceError, e:
+    except Exception,e:
         gpmlib.error(e)
-    except pg8000.errors.ProgrammingError, e:
-        gpmlib.error(e)
-
-    if db:
-        db.close()
-        db = None
 
     sys.exit(0)
 
