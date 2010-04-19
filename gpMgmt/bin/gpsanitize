@@ -375,9 +375,9 @@ def get_failover_info(devmap):
 
             if line == '':
                 gpmlib.error('Null value entered for failover')
-            words = line.split(' ')
+            words = line.split(':')
             if len(words) != 2:
-                gpmlib.error('Invalid value entered for failover')
+                gpmlib.error('Invalid value entered for failover, expected <host>:<mountpoint>')
 
             san_config[config_key] = {'primaryhost':v['host'], 'failoverhost':words[0], 'primarymp':v['mountpoint'], 'failovermp':words[1]}
 

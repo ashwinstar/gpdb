@@ -164,7 +164,7 @@ storagegroup_main(int argc, char **argv)
 		exit(1);
 	}
 
-	if ((stat_buf.st_mode & S_IWGRP != 0) || (stat_buf.st_mode & S_IWOTH != 0))
+	if (((stat_buf.st_mode & S_IWGRP) != 0) || ((stat_buf.st_mode & S_IWOTH) != 0))
 	{
 		fprintf(stderr, "Cannot use %s: invalid permissions\n", argv[1]);
 		exit(1);
