@@ -36,6 +36,8 @@ class pxssh (spawn):
         # used to set shell command-line prompt to something more unique.
         self.PROMPT_SET_SH = "PS1='[PEXPECT]\$ '"
         self.PROMPT_SET_CSH = "set prompt='[PEXPECT]\$ '"
+        self.SET_TERM_DUMB_SH = "TERM=dumb"
+        self.SET_TERM_DUMB_CSH = "set TERM=dumb"
 
     ### cktan: spawn login process, but don't wait on it
     def loginAsync (self,server,username=None,login_timeout=10, port=None):
@@ -51,7 +53,7 @@ class pxssh (spawn):
 	self.delaybeforesend = 0
 
     ### cktan: wait for login
-    def loginWait(self, login_timeout=10):
+    def loginWait(self, login_timeout=10, set_term_dumb=False):
         #, "(?i)no route to host"])
 	echo = 'hello hello hello hello'
 	self.sendline('echo ' + echo)
@@ -89,6 +91,8 @@ class pxssh (spawn):
 	    if not self._set_unique_prompt():
 		self.close()
 		return False
+
+	    if set_term_dumb: self._set_term_dumb()
 
 	    return True
 	except EOF:
@@ -134,3 +138,12 @@ class pxssh (spawn):
                 return 0
         return 1
 
+    def _set_term_dumb(self):
+        self.sendline(self.SET_TERM_DUMB_SH)
+        i = self.expect([TIMEOUT, self.PROMPT], timeout=10)
+        if i == 0: # csh-style
+            self.sendline(self.SET_TERM_DUMB_CSH)
+            i = self.expect([TIMEOUT, self.PROMPT], timeout=10)
+            if i == 0:
+                return 0
+        return 1

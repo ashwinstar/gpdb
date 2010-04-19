@@ -234,7 +234,7 @@ class Session(cmd.Cmd):
 
         for p in self.pxssh:
             if self.verbose: print '[INFO] login %s' % p.x_peer
-            if not p.loginWait():
+            if not p.loginWait(set_term_dumb=True):
                 print '[ERROR] unable to login to %s' % p.x_peer
                 print
                 print 'hint: use gpssh-exkeys to setup public-key authentication between hosts'
