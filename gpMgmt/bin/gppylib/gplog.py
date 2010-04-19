@@ -48,7 +48,7 @@ def get_default_logger():
     if _LOGGER is None:
         _LOGGER = logging.getLogger('default')
         f = _get_default_formatter()
-        _SOUT_HANDLER = logging.StreamHandler(sys.stdout)
+        _SOUT_HANDLER = EncodingStreamHandler(sys.stdout)
         _SOUT_HANDLER.setFormatter(f)
         _LOGGER.addHandler(_SOUT_HANDLER)
         _LOGGER.setLevel(logging.INFO)
@@ -202,7 +202,7 @@ def _set_file_logging(filename):
     """
     global _LOGGER, _SOUT_HANDLER, _FILENAME, _FILE_HANDLER
     _FILENAME=filename   
-    _FILE_HANDLER = logging.FileHandler( filename, 'a')
+    _FILE_HANDLER = EncodingFileHandler( filename, 'a')
     _FILE_HANDLER.setFormatter(_get_default_formatter())
     _LOGGER.addHandler(_FILE_HANDLER)
 
@@ -262,3 +262,36 @@ def _enable_gpadmin_logging(name,logdir=None):
     
     filename = "%s/%s_%s.log" % (gpadmin_logs_dir,name, now.strftime("%Y%m%d"))
     _set_file_logging(filename)
+
+
+class EncodingFileHandler(logging.FileHandler):
+    """This handler makes sure that the encoding of the message is utf-8 before
+    passing it along to the FileHandler.  This will prevent encode/decode
+    errors later on."""
+    
+    def __init__(self, filename, mode='a', encoding=None, delay=0):
+        logging.FileHandler.__init__(self, filename, mode, encoding, delay)
+        
+    def emit(self, record):
+        if not isinstance(record.msg, str) and not isinstance(record.msg, unicode):
+            record.msg = str(record.msg)
+        if not isinstance(record.msg, unicode): 
+            record.msg = unicode(record.msg, 'utf-8')
+        logging.FileHandler.emit(self, record)
+            
+class EncodingStreamHandler(logging.StreamHandler):
+    """This handler makes sure that the encoding of the message is utf-8 before
+    passing it along to the StreamHandler.  This will prevent encode/decode
+    errors later on."""
+    
+    def __init__(self, strm=None):
+        logging.StreamHandler.__init__(self, strm)
+        
+    def emit(self, record):
+        if not isinstance(record.msg, str) and not isinstance(record.msg, unicode):
+            record.msg = str(record.msg)
+        if not isinstance(record.msg, unicode): 
+            record.msg = unicode(record.msg, 'utf-8')
+        logging.StreamHandler.emit(self, record)
+
+    
