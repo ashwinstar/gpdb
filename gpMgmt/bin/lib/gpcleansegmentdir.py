@@ -41,7 +41,7 @@ class GpCleanSegmentDirectoryProgram:
             # Note: we could just remove dir + "/*" ?
             #
             toCleanArr = ["PG_VERSION", "base", "global", "gpstart*", "gp_pmtransition_args",
-                            "pg_*", "postgres*", "postmaster*", "gp_*"]
+                            "pg_*", "postgres*", "postmaster*", "gp*"]
             for toClean in toCleanArr:
                 unix.RemoveFiles('clean segment', dir + "/" + toClean).run( validateAfter=True )
 
