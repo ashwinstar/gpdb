@@ -175,6 +175,12 @@ typedef struct CdbDispatchDirectDesc
 extern CdbDispatchDirectDesc default_dispatch_direct_desc;
 #define DEFAULT_DISP_DIRECT (&default_dispatch_direct_desc)
 
+typedef struct CdbDispatcherState
+{
+	struct CdbDispatchResults    *primaryResults;
+	struct CdbDispatchCmdThreads *dispatchThreads;
+} CdbDispatcherState;
+
 /*--------------------------------------------------------------------*/
 
 /*
@@ -210,11 +216,10 @@ extern CdbDispatchDirectDesc default_dispatch_direct_desc;
  * PG_THROW, CHECK_FOR_INTERRUPTS, etc.
  */
 void
-cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads	**dispatchThreads,
+cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
 					   GpDispatchCommandType		mppDispatchCommandType,
 					   void							*commandTypeParms,
                        struct Gang					*gp,
-                       struct CdbDispatchResults	*dispatchResults,
                        int							sliceIndex,
                        unsigned int					maxSlices,
                        CdbDispatchDirectDesc		*direct);
@@ -228,9 +233,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads	**dispatchThreads,
  * 'cancelOnError' true and are not yet idle will be canceled.
  */
 void
-CdbCheckDispatchResult(struct CdbDispatchResults *pri,
-					   struct CdbDispatchCmdThreads *dispatchThreads,
-					   bool cancelUnfinishedWork);
+CdbCheckDispatchResult(struct CdbDispatcherState *ds, bool cancelUnfinishedWork);
 
 /*--------------------------------------------------------------------*/
 
@@ -320,8 +323,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
                         bool                        cancelOnError,
                         bool						needTwoPhase,
                         bool						withSnapshot,
-                        struct CdbDispatchResults **pPrimaryResults,    /* OUT */
-						struct CdbDispatchCmdThreads **pDispatchThreads);  /* OUT */
+						struct CdbDispatcherState *ds); /* OUT */
 
 /* Wait for all QEs to finish, then report any errors from the given
  * CdbDispatchResults objects and free them.  If not all QEs in the
@@ -331,10 +333,8 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
  * instead call CdbCheckDispatchResult(), etc., directly.
  */
 void
-cdbdisp_finishCommand(struct CdbDispatchResults    *primaryResults,
-					  struct CdbDispatchCmdThreads *dispatchThreads,
-					  void (*handle_results_callback)(struct CdbDispatchResults *primaryResults,
-													  void *ctx),
+cdbdisp_finishCommand(struct CdbDispatcherState *ds,
+					  void (*handle_results_callback)(struct CdbDispatchResults *primaryResults, void *ctx),
 					  void *ctx);
 
 /*
@@ -352,8 +352,7 @@ cdbdisp_finishCommand(struct CdbDispatchResults    *primaryResults,
  * exit via PG_RE_THROW().
  */
 void
-cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
-					struct CdbDispatchCmdThreads *dispatchThreads);
+cdbdisp_handleError(struct CdbDispatcherState *ds);
 
 /*
  * CdbDoCommand:
@@ -382,8 +381,7 @@ void
 cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				  bool cancelOnError,
 				  SliceTable *sliceTbl,
-				  struct CdbDispatchResults **pPrimaryResults,		/* OUT */
-				  struct CdbDispatchCmdThreads **pDispatchThreads); 		/* OUT */
+				  struct CdbDispatcherState *ds); /* OUT: fields filled in */
 
 /* Compose and dispatch the MPPEXEC commands corresponding to a plan tree
  * within a complete parallel plan.
@@ -406,8 +404,7 @@ void
 cdbdisp_dispatchPlan(struct QueryDesc              *queryDesc,
                      bool                           planRequiresTxn,
                      bool                           cancelOnError,
-                     struct CdbDispatchResults    **pPrimaryResults,  /* OUT */
-					 struct CdbDispatchCmdThreads **pDispatchThreads); /* OUT */
+					 struct CdbDispatcherState *ds); /* OUT: fields filled in */
 
 /* Dispatch a command - already parsed and in the form of a Node
  * tree - to all primary segdbs.  Does not wait for
@@ -428,8 +425,7 @@ cdbdisp_dispatchUtilityStatement(struct Node   *stmt,
                                  bool           cancelOnError,
                                  bool			needTwoPhase,
                                  bool			withSnapshot,
-                                 struct CdbDispatchResults    **pPrimaryResults,
-								 struct CdbDispatchCmdThreads ** pDispatchThreads,
+								 struct CdbDispatcherState *ds,
 								 char* debugCaller __attribute__((unused)) );
 
 /* Dispatch a command - already parsed and in the form of a Node

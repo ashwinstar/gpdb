@@ -277,8 +277,9 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 	estate->active_recv_id = -1;
 	estate->es_got_eos = false;
 	estate->cancelUnfinished = false;
-	estate->primaryResults = NULL;
-	estate->dispatchThreads = NULL;
+
+	estate->dispatcherState = palloc0(sizeof(struct CdbDispatcherState));
+
 	estate->current_slice_no = 0;
 	estate->slice_estates = NULL;
 
@@ -322,6 +323,12 @@ FreeExecutorState(EState *estate)
 		 */
 		FreeExprContext((ExprContext *) linitial(estate->es_exprcontexts));
 		/* FreeExprContext removed the list link for us */
+	}
+
+	if (estate->dispatcherState)
+	{
+		pfree(estate->dispatcherState);
+		estate->dispatcherState = NULL;
 	}
 
 	/*
@@ -1966,10 +1973,9 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 	/*
 	 * If QD, wait for QEs to finish and check their results.
 	 */
-	if (estate->primaryResults)
+	if (estate->dispatcherState->primaryResults)
 	{
-		CdbDispatchResults *pr = estate->primaryResults;
-		CdbDispatchCmdThreads  *dThreads = estate->dispatchThreads;
+		CdbDispatchResults *pr = estate->dispatcherState->primaryResults;
 		HTAB 			   *aopartcounts = NULL;
 
 		/*
@@ -1986,7 +1992,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		/*
 		 * Wait for completion of all QEs.
 		 */
-		CdbCheckDispatchResult(pr, dThreads, estate->cancelUnfinished);
+		CdbCheckDispatchResult(estate->dispatcherState, estate->cancelUnfinished);
 
 		/* If top slice was delegated to QEs, get num of rows processed. */
 		if (sliceRunsOnQE(currentSlice))
@@ -2045,9 +2051,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		 * error, report it and exit to our error handler via PG_THROW.
 		 * NB: This call doesn't wait, because we already waited above.
 		 */
-		estate->primaryResults = NULL;
-		estate->dispatchThreads = NULL;
-		cdbdisp_finishCommand(pr, dThreads, NULL, NULL);
+		cdbdisp_finishCommand(estate->dispatcherState, NULL, NULL);
 	}
 
 	/* Teardown the Interconnect */
@@ -2082,7 +2086,7 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 	 * Wait for them to finish and clean up the dispatching structures.
 	 * Replace current error info with QE error info if more interesting.
 	 */
-	if (estate->primaryResults)
+	if (estate->dispatcherState && estate->dispatcherState->primaryResults)
 	{
 		/*
 		 * If we are finishing a query before all the tuples of the query
@@ -2093,9 +2097,7 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 		if (estate->es_interconnect_is_setup && !estate->es_got_eos)
 			ExecSquelchNode(queryDesc->planstate);
 
-		cdbdisp_handleError(estate->primaryResults, estate->dispatchThreads);
-		estate->primaryResults = NULL;
-		estate->dispatchThreads = NULL;
+		cdbdisp_handleError(estate->dispatcherState);
 	}
 
 	/* Clean up the interconnect. */

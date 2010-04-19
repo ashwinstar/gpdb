@@ -60,7 +60,6 @@
 #include "utils/syscache.h"
 
 #include "cdb/cdbdisp.h"
-#include "cdb/cdbdispatchresult.h"      /* cdbdisp_destroyDispatchResults() */
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
@@ -90,10 +89,7 @@ static bool get_db_info(const char *name, LOCKMODE lockmode,
 static bool have_createdb_privilege(void);
 static bool check_db_file_conflict(Oid db_id);
 
-static void createdb_int(CreatedbStmt *stmt,
-             			 struct CdbDispatchResults **pPrimaryResults,
-			 			 struct CdbDispatchCmdThreads **pDispatchThreads);
-
+static void createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds);
 
 /*
  * write out the PG_VERSION file in the new destination directory
@@ -626,17 +622,14 @@ static void copy_append_only_segment_file(
 void
 createdb(CreatedbStmt *stmt)
 {
-    struct CdbDispatchResults *primaryResults = NULL;
-	CdbDispatchCmdThreads *dispatchThreads = NULL;
+	CdbDispatcherState ds = {NULL, NULL};
 
-    createdb_int(stmt, &primaryResults, &dispatchThreads);
-	cdbdisp_finishCommand(primaryResults, dispatchThreads, NULL, NULL);
+    createdb_int(stmt, &ds);
+	cdbdisp_finishCommand(&ds, NULL, NULL);
 }
 
 static void
-createdb_int(CreatedbStmt *stmt,
-             struct CdbDispatchResults    **pPrimaryResults,
-			 struct CdbDispatchCmdThreads **pDispatchThreads)
+createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 {
 	Oid			src_dboid = InvalidOid;
 	Oid			src_owner;
@@ -983,8 +976,7 @@ createdb_int(CreatedbStmt *stmt,
                                          true,      /* cancelOnError */
                                      	 true,      /* startTransaction */
                                      	 true,      /* withSnapshot */
-                                     	 pPrimaryResults,
-									 	 pDispatchThreads,
+                                     	 ds,
 									 	 "createdb_int");
 	}
 

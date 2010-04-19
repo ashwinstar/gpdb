@@ -652,8 +652,7 @@ DefineIndex(RangeVar *heapRelation,
          */
         if (stmt->concurrent)
         {
-        	CdbDispatchResults *primaryResults;
-			CdbDispatchCmdThreads *dispatchThreads;
+			CdbDispatcherState ds = {NULL, NULL};
 
         	/*
 			 * Dispatch the command to all primary and mirror segdbs.
@@ -664,11 +663,10 @@ DefineIndex(RangeVar *heapRelation,
 	                                         true,      /* cancelOnError */
 	                                         false,      /* startTransaction */
 	                                         true,      /* withSnapshot */
-	                                         &primaryResults,
-											 &dispatchThreads,
+	                                         &ds,
 											 "DefineIndex");
 			/* Wait for all QEs to finish.	Throw up if error. */
-			cdbdisp_finishCommand(primaryResults, dispatchThreads, NULL, NULL);
+			cdbdisp_finishCommand(&ds, NULL, NULL);
         }
         else
         	CdbDispatchUtilityStatement((Node *)stmt, "DefineIndex");

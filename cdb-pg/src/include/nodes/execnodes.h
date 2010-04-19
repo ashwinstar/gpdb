@@ -521,10 +521,7 @@ typedef struct EState
 	bool cancelUnfinished;                /* when we're cleaning up, we need to make sure that we know it */
 
     /* results from qExec processes */
-    struct CdbDispatchResults  *primaryResults;
-
-	/* dispatch threads for this command */
-	struct CdbDispatchCmdThreads  *dispatchThreads;
+	struct CdbDispatcherState *dispatcherState;
 
     /* CDB: EXPLAIN ANALYZE statistics */
     struct CdbExplain_ShowStatCtx  *showstatctx;

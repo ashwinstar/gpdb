@@ -1054,15 +1054,16 @@ CdbShutdownPortals(void)
 
 		if (portal->queryDesc == NULL ||
 			portal->queryDesc->estate == NULL ||
-			portal->queryDesc->estate->dispatchThreads == NULL)
+			portal->queryDesc->estate->dispatcherState == NULL ||
+			portal->queryDesc->estate->dispatcherState->dispatchThreads == NULL)
 			continue;
 
 		es = portal->queryDesc->estate;
 
 		/* active portal, shut it down */
-		if (es->dispatchThreads)
+		if (es->dispatcherState->dispatchThreads)
 		{
-			CdbCheckDispatchResult(es->primaryResults, es->dispatchThreads, true);   /* cancel any QEs still running */
+			CdbCheckDispatchResult(es->dispatcherState, true);   /* cancel any QEs still running */
 		}
 	}
 }

@@ -1053,7 +1053,6 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 
 	QueryDesc  *queryDesc = NULL;
 
-	struct CdbDispatchCmdThreads  *dispatchThreads = NULL; 
 	bool		needDtxTwoPhase;
 	bool		shouldDispatch = false;
 	volatile bool   shouldTeardownInterconnect = false;
@@ -1123,7 +1122,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
              * command to the appropriate segdbs.  It does not wait for them
              * to finish unless an error is detected before all are dispatched.
 			 */
-			cdbdisp_dispatchPlan(queryDesc, needDtxTwoPhase, true, &queryDesc->estate->primaryResults, &dispatchThreads);
+			cdbdisp_dispatchPlan(queryDesc, needDtxTwoPhase, true, queryDesc->estate->dispatcherState);
 
 			/*
 			 * Set up the interconnect for execution of the initplan root slice.
@@ -1286,18 +1285,16 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
          */
         if (shouldDispatch && 
 			queryDesc && queryDesc->estate &&
-			queryDesc->estate->primaryResults)
+			queryDesc->estate->dispatcherState &&
+			queryDesc->estate->dispatcherState->primaryResults)
         {
-            struct CdbDispatchResults  *pr = queryDesc->estate->primaryResults;
-			struct CdbDispatchCmdThreads  *dThreads = dispatchThreads; 
-
             /* If EXPLAIN ANALYZE, collect execution stats from qExecs. */
             if (planstate->instrument)
             {
                 MemoryContext   savecxt;
 
                 /* Wait for all gangs to finish. */
-                CdbCheckDispatchResult(pr, dThreads, false);	
+                CdbCheckDispatchResult(queryDesc->estate->dispatcherState, false);	
 
                 /* Allocate buffer to pass extra message text to cdbexplain. */
                 savecxt = MemoryContextSwitchTo(gbl_queryDesc->estate->es_query_cxt);
@@ -1307,7 +1304,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
                 /* Jam stats into subplan's Instrumentation nodes. */
                 explainRecvStats = true;
                 cdbexplain_recvExecStats(planstate,
-                                         queryDesc->estate->primaryResults,
+                                         queryDesc->estate->dispatcherState->primaryResults,
                                          queryDesc->estate->es_cur_slice_idx,
                                          econtext->ecxt_estate->showstatctx);
             }
@@ -1317,8 +1314,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
              * If the dispatcher or any QE had an error, report it and
              * exit to our error handler (below) via PG_THROW.
              */
-			queryDesc->estate->primaryResults = NULL;
-            cdbdisp_finishCommand(pr, dThreads, NULL, NULL);
+            cdbdisp_finishCommand(queryDesc->estate->dispatcherState, NULL, NULL);
         }
 
 		/* teardown the sequence server */
@@ -1344,13 +1340,11 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
             cdbexplain_localExecStats(planstate, econtext->ecxt_estate->showstatctx);
             if (!explainRecvStats)
             {
-				struct CdbDispatchResults  *pr = queryDesc->estate->primaryResults;
-
                 /* Wait for all gangs to finish.  Cancel slowpokes. */
-                CdbCheckDispatchResult(pr, dispatchThreads, true);
+                CdbCheckDispatchResult(queryDesc->estate->dispatcherState, true);
 
                 cdbexplain_recvExecStats(planstate,
-                                         queryDesc->estate->primaryResults,
+                                         queryDesc->estate->dispatcherState->primaryResults,
                                          queryDesc->estate->es_cur_slice_idx,
                                          econtext->ecxt_estate->showstatctx);
             }
@@ -1364,8 +1358,8 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		 * Wait for them to finish and clean up the dispatching structures.
          * Replace current error info with QE error info if more interesting.
 		 */
-        if (shouldDispatch && queryDesc && queryDesc->estate && queryDesc->estate->primaryResults)
-			cdbdisp_handleError(queryDesc->estate->primaryResults, dispatchThreads);
+        if (shouldDispatch && queryDesc && queryDesc->estate && queryDesc->estate->dispatcherState && queryDesc->estate->dispatcherState->primaryResults)
+			cdbdisp_handleError(queryDesc->estate->dispatcherState);
 		
 		/* teardown the sequence server */
 		TeardownSequenceServer();

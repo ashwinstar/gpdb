@@ -94,8 +94,7 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 {
 	int			seg;
 	MemoryContext oldcontext;
-	CdbDispatchResults *primaryResults;
-	CdbDispatchCmdThreads *dispatchThreads;
+	CdbDispatcherState ds = {NULL, NULL};
 	List	   *parsetree_list;
 	Node	   *parsetree = NULL;
 	List	   *querytree_list;
@@ -193,8 +192,8 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	cdbdisp_dispatchCommand(copyCmd, serializedQuerytree, serializedQuerytree_len, 
 								false 		/* cancelonError */, 
 								c->copy_in 	/* need2phase */, 
-								true 		/* withSnapshot */, 
-								&primaryResults, &dispatchThreads);
+								true 		/* withSnapshot */,
+								&ds);
 
 	/*  MPP-3017: insert a call like this to expand the timing, and
 	 *  then play with cancellation during a COPY command:
@@ -206,7 +205,7 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	 * Wait for all QEs to finish. If not all of our QEs were successful,
 	 * report the error and throw up.
 	 */
-	cdbdisp_finishCommand(primaryResults, dispatchThreads, NULL, NULL);
+	cdbdisp_finishCommand(&ds, NULL, NULL);
 
 	/* fill in CdbCopy structure */
 	for (seg = 0; seg < c->total_segs; seg++)

@@ -81,7 +81,7 @@ static void thread_DispatchWait(DispatchCommandParms	*pParms);
 static void thread_DispatchWaitSingle(DispatchCommandParms		*pParms);
 
 static void
-CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
+CdbCheckDispatchResultInt(struct CdbDispatcherState *ds,
 						  struct SegmentDatabaseDescriptor   ***failedSegDB,
                           int          *numOfFailed,
                           bool          cancelUnfinishedWork);
@@ -136,8 +136,7 @@ cdbdisp_dispatchCommandToAllGangs(const char	*strCommand,
 						int						serializedPlantreelen,
                         bool					cancelOnError,
                         bool					needTwoPhase,
-                        struct CdbDispatchResults		**pPrimaryResults,
-						struct CdbDispatchCmdThreads	**pDispatchThreads);
+                        struct CdbDispatcherState *ds);
 
 #define BEGIN_STR "BEGIN "
 #define PREPARE_STR "PREPARE "
@@ -184,11 +183,11 @@ checkSegmentDown(const char *strCommand, int nsegdb, Gang *primaryGang)
  * internal dispatcher structures. See MPP-6253 and MPP-6579.
  */
 static void
-cdbdisp_clearGangActiveFlag(CdbDispatchResults *primaryResults)
+cdbdisp_clearGangActiveFlag(CdbDispatcherState *ds)
 {
-	if (primaryResults && primaryResults->writer_gang)
+	if (ds && ds->primaryResults && ds->primaryResults->writer_gang)
 	{
-		primaryResults->writer_gang->dispatcherActive = false;
+		ds->primaryResults->writer_gang->dispatcherActive = false;
 	}
 }
 
@@ -463,16 +462,16 @@ write_log(const char *fmt,...)
  * cdbdisp_dispatchToGang()), setting it to 1 is fine.
  */
 void
-cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
+cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
 					   GpDispatchCommandType		mppDispatchCommandType,
 					   void						   *commandTypeParms,
                        struct Gang                 *gp,
-                       struct CdbDispatchResults   *dispatchResults,
                        int                          sliceIndex,
                        unsigned int                 maxSlices,
                        CdbDispatchDirectDesc		*disp_direct)
 {
-	SegmentDatabaseDescriptor *segdbDesc;
+	struct CdbDispatchResults	*dispatchResults = ds->primaryResults;
+	SegmentDatabaseDescriptor	*segdbDesc;
 	int	i,
 		max_threads,
 		segdbs_in_thread_pool = 0,
@@ -582,7 +581,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 	
 	oldContext = MemoryContextSwitchTo(DispatchContext);
 
-	if (!(*dispatchThreads))
+	if (ds->dispatchThreads == NULL)
 	{
 		/* the maximum number of command parameter blocks we'll possibly need is
 		 * one for each slice on the primary gang. Max sure that we
@@ -594,18 +593,21 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 
 		elog(DEBUG4, "dispatcher: allocating command array with maxslices %d paramCount %d", maxSlices, paramCount);
 			
-		*dispatchThreads = cdbdisp_makeDispatchThreads(paramCount);
+		ds->dispatchThreads = cdbdisp_makeDispatchThreads(paramCount);
 	}
 	else
 	{
-		/* If we attempt to reallocate, there is a race here: we
+		/*
+		 * If we attempt to reallocate, there is a race here: we
 		 * know that we have threads running using the
 		 * dispatchCommandParamsAr! If we reallocate we
 		 * potentially yank it out from under them! Don't do
-		 * it! */
-		if ((*dispatchThreads)->dispatchCommandParmsArSize < ((*dispatchThreads)->threadCount + max_threads))
+		 * it!
+		 */
+		if (ds->dispatchThreads->dispatchCommandParmsArSize < (ds->dispatchThreads->threadCount + max_threads))
 		{
-			elog(ERROR, "Attempted to reallocate dispatchCommandParmsAr while other threads still running size %d new threadcount %d", (*dispatchThreads)->dispatchCommandParmsArSize, ((*dispatchThreads)->threadCount + max_threads));
+			elog(ERROR, "Attempted to reallocate dispatchCommandParmsAr while other threads still running size %d new threadcount %d",
+				 ds->dispatchThreads->dispatchCommandParmsArSize, ds->dispatchThreads->threadCount + max_threads);
 		}
 	}
 
@@ -655,7 +657,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 			segdbDesc->error_message.len)
 			cdbdisp_mergeConnectionErrors(qeResult, segdbDesc);
 
-		addSegDBToDispatchThreadPool((*dispatchThreads)->dispatchCommandParmsAr + (*dispatchThreads)->threadCount,
+		addSegDBToDispatchThreadPool(ds->dispatchThreads->dispatchCommandParmsAr + ds->dispatchThreads->threadCount,
 									 x,
 					   				 mppDispatchCommandType,
 					   				 commandTypeParms,
@@ -693,7 +695,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 	 */
 	for (i = 0; i < newThreads; i++)
 	{
-		DispatchCommandParms *pParms = &((*dispatchThreads)->dispatchCommandParmsAr + (*dispatchThreads)->threadCount)[i];
+		DispatchCommandParms *pParms = &(ds->dispatchThreads->dispatchCommandParmsAr + ds->dispatchThreads->threadCount)[i];
 		
 		Assert(pParms != NULL);
 		
@@ -722,11 +724,11 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 	
 				pleaseCancel = true;
 	
-				for (j = 0; j < (*dispatchThreads)->threadCount + (i - 1); j++)
+				for (j = 0; j < ds->dispatchThreads->threadCount + (i - 1); j++)
 				{
 					DispatchCommandParms *pParms;
 	
-					pParms = &(*dispatchThreads)->dispatchCommandParmsAr[j];
+					pParms = &ds->dispatchThreads->dispatchCommandParmsAr[j];
 					pParms->thread_valid = false;
 					pthread_join(pParms->thread, NULL);
 				}
@@ -740,9 +742,8 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 
 	}
 
-	(*dispatchThreads)->threadCount += newThreads;
-	elog(DEBUG4, "dispatchToGang: Total threads now %d",
-		 (*dispatchThreads)->threadCount);
+	ds->dispatchThreads->threadCount += newThreads;
+	elog(DEBUG4, "dispatchToGang: Total threads now %d", ds->dispatchThreads->threadCount);
 }	/* cdbdisp_dispatchToGang */
 
 
@@ -936,13 +937,12 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
  * 'cancelOnError' true and are not yet idle will be canceled.
  */
 void
-CdbCheckDispatchResult(struct CdbDispatchResults *pri,
-					   struct CdbDispatchCmdThreads *dispatchThreads,
+CdbCheckDispatchResult(struct CdbDispatcherState *ds,
 					   bool cancelUnfinishedWork)
 {
-	CdbCheckDispatchResultInt(dispatchThreads, NULL, NULL, cancelUnfinishedWork);
+	CdbCheckDispatchResultInt(ds, NULL, NULL, cancelUnfinishedWork);
 
-	cdbdisp_clearGangActiveFlag(pri);
+	cdbdisp_clearGangActiveFlag(ds);
 	
 	if (log_dispatch_stats)
 		ShowUsage("DISPATCH STATISTICS");
@@ -962,7 +962,7 @@ CdbCheckDispatchResult(struct CdbDispatchResults *pri,
 }
 
 static void
-CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
+CdbCheckDispatchResultInt(struct CdbDispatcherState *ds,
 						  struct SegmentDatabaseDescriptor *** failedSegDB,
 						  int *numOfFailed,
 						  bool cancelUnfinishedWork)
@@ -974,13 +974,15 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 	CdbDispatchResult *dispatchResult;
 	SegmentDatabaseDescriptor *segdbDesc;
 
+	Assert(ds != NULL);
+
 	if (failedSegDB)
 		*failedSegDB = NULL;
 	if (numOfFailed)
 		*numOfFailed = 0;
 
 	/* No-op if no work was dispatched since the last time we were called.	*/
-	if (!dispatchThreads || dispatchThreads->threadCount == 0)
+	if (!ds->dispatchThreads || ds->dispatchThreads->threadCount == 0)
 	{
 		elog(DEBUG5, "CheckDispatchResult: no threads active");
 		return;
@@ -993,9 +995,9 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 	/*
 	 * Wait for threads to finish.
 	 */
-	for (i = 0; i < dispatchThreads->threadCount; i++)
+	for (i = 0; i < ds->dispatchThreads->threadCount; i++)
 	{							/* loop over threads */		
-		pParms = &dispatchThreads->dispatchCommandParmsAr[i];
+		pParms = &ds->dispatchThreads->dispatchCommandParmsAr[i];
 		Assert(pParms != NULL);
 		
 		if (gp_connections_per_thread==0)
@@ -1005,7 +1007,7 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 		else
 		{
 			elog(DEBUG4, "CheckDispatchResult: Joining to thread %d of %d",
-				 i + 1, dispatchThreads->threadCount);
+				 i + 1, ds->dispatchThreads->threadCount);
 	
 			if (pParms->thread_valid)
 			{
@@ -1019,7 +1021,7 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 #else
 						 (unsigned long) pParms->thread.p,
 #endif
-						 dispatchThreads->threadCount, pthread_err, (unsigned long)mythread());
+						 ds->dispatchThreads->threadCount, pthread_err, (unsigned long)mythread());
 			}
 		}
 		HOLD_INTERRUPTS();
@@ -1049,23 +1051,6 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 
 			segdbDesc = dispatchResult->segdbDesc;
 
-#if 0
-			if (pParms->mppDispatchCommandType == GP_DISPATCH_COMMAND_TYPE_QUERY &&
-				dispatchResult->QEWriter_HaveInfo)
-			{
-				elog(LOG,"CdbCheckDispatchResultInt calling MarkSegmentParticipation for segment %d (%s)",
-				     segdbDesc->segindex,
-				     (dispatchResult->QEIsPrimary ? "primary" : "mirror"));
-				elog(LOG,"CdbCheckDispatchResultInt values for QEWriter (DistributedTransactionId = %u, CommandId = %u, Dirty = %s)",
-					 dispatchResult->QEWriter_DistributedTransactionId,
-					 dispatchResult->QEWriter_CommandId,
-					 (dispatchResult->QEWriter_Dirty ? "true" : "false"));
-				MarkSegmentParticipation(segdbDesc->segindex,
-										 dispatchResult->QEIsPrimary,
-										 dispatchResult->QEWriter_Dirty);
-			}
-#endif
-			
 			/* segdbDesc error message is unlikely here, but check anyway. */
 			if (segdbDesc->errcode ||
 				segdbDesc->error_message.len)
@@ -1103,7 +1088,7 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 	}							/* loop over threads */
 
 	/* reset thread state (will be destroyed later on in finishCommand) */
-    dispatchThreads->threadCount = 0;
+    ds->dispatchThreads->threadCount = 0;
 			
 	/* Reset dispatcher state. */
 	pleaseCancel = false;
@@ -1202,9 +1187,7 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 						  StringInfo errmsgbuf,
 						  int *numresults)
 {
-	CdbDispatchResults *primaryResults=NULL;
-
-	CdbDispatchCmdThreads  *dispatchThreads=NULL;
+	CdbDispatcherState ds = {NULL, NULL};
 	
 	PGresult  **resultSets = NULL;
 
@@ -1220,28 +1203,28 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 		/* Launch the command.	Don't cancel on error. */
 		cdbdisp_dispatchCommand(strCommand, NULL, 0,
 								/* cancelOnError */false,
-								needTwoPhase, withSnapshot, 
-								&primaryResults, &dispatchThreads);
+								needTwoPhase, withSnapshot,
+								&ds);
 
 		/* Wait for all QEs to finish.	Don't cancel. */
-		CdbCheckDispatchResult(primaryResults, dispatchThreads, false);
+		CdbCheckDispatchResult(&ds, false);
 	}
 	PG_CATCH();
 	{
 		/* Something happend, clean up after ourselves */
-		CdbCheckDispatchResult(primaryResults, dispatchThreads, false);
+		CdbCheckDispatchResult(&ds, false);
 
-		cdbdisp_destroyDispatchResults(primaryResults);
+		cdbdisp_destroyDispatchResults(ds.primaryResults);
 
 		PG_RE_THROW();
 		/* not reached */
 	}
 	PG_END_TRY();
 
-	resultSets = cdbdisp_returnResults(primaryResults, errmsgbuf, numresults);
+	resultSets = cdbdisp_returnResults(ds.primaryResults, errmsgbuf, numresults);
 	
 	/* free memory allocated for the dispatch threads struct */
-	cdbdisp_destroyDispatchThreads(dispatchThreads);
+	cdbdisp_destroyDispatchThreads(ds.dispatchThreads);
 
 	return resultSets;
 }	/* cdbdisp_dispatchRMCommand */
@@ -1270,8 +1253,7 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 								   CdbDispatchDirectDesc *direct,
 								   char *argument, int argumentLength)
 {
-	CdbDispatchResults *primaryResults;
-	CdbDispatchCmdThreads  *dispatchThreads;
+	CdbDispatcherState ds = {NULL, NULL};
 
 	PGresult  **resultSets = NULL;
 	
@@ -1312,19 +1294,18 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	/*
      * Dispatch the command.
      */
-    dispatchThreads = NULL;
+    ds.dispatchThreads = NULL;
 
-	primaryResults = cdbdisp_makeDispatchResults(nsegdb, 0, /* cancelOnError */ false);
+	ds.primaryResults = cdbdisp_makeDispatchResults(nsegdb, 0, /* cancelOnError */ false);
 
-	primaryResults->writer_gang = primaryGang;
+	ds.primaryResults->writer_gang = primaryGang;
 
-	cdbdisp_dispatchToGang(&dispatchThreads, 
-						   GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL,
+	cdbdisp_dispatchToGang(&ds, GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL,
 						   &dtxProtocolParms,
-						   primaryGang, primaryResults, -1, 1, direct);
+						   primaryGang, -1, 1, direct);
 
 	/* Wait for all QEs to finish.	Don't cancel. */
-	CdbCheckDispatchResult(primaryResults, dispatchThreads, false);
+	CdbCheckDispatchResult(&ds, false);
 
 	if (!gangOK(primaryGang))
 	{
@@ -1335,10 +1316,10 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 			 dtxProtocolCommandLoggingStr, gid);
 	}
 
-	resultSets = cdbdisp_returnResults(primaryResults, errmsgbuf, numresults);
+	resultSets = cdbdisp_returnResults(ds.primaryResults, errmsgbuf, numresults);
 	
 	/* free memory allocated for the dispatch threads struct */
-	cdbdisp_destroyDispatchThreads(dispatchThreads);
+	cdbdisp_destroyDispatchThreads(ds.dispatchThreads);
 
 	return resultSets;
 }	/* cdbdisp_dispatchDtxProtocolCommand */
@@ -1378,8 +1359,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
                         bool                        cancelOnError,
                         bool						needTwoPhase,
                         bool						withSnapshot,
-                        struct CdbDispatchResults **pPrimaryResults,    /* OUT */
-						struct CdbDispatchCmdThreads **pDispatchThreads)    /* OUT */
+						CdbDispatcherState		*ds)
 {
 	DispatchCommandQueryParms queryParms;
 	Gang	*primaryGang;
@@ -1396,9 +1376,8 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
     	elog((Debug_print_full_dtm ? LOG : DEBUG3), "cdbdisp_dispatchCommand: %.50s (needTwoPhase = %s)", 
     	     strCommand, (needTwoPhase ? "true" : "false"));
 
-    *pPrimaryResults = NULL;
-
-	*pDispatchThreads = NULL;
+    ds->primaryResults = NULL;
+	ds->dispatchThreads = NULL;
 
 	MemSet(&queryParms, 0, sizeof(queryParms));
 	queryParms.strCommand = strCommand;
@@ -1430,13 +1409,13 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	/*
 	 * Dispatch the command.
 	 */
-	*pPrimaryResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
-	(*pPrimaryResults)->writer_gang = primaryGang;
+	ds->primaryResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
+	ds->primaryResults->writer_gang = primaryGang;
 
-	cdbdisp_dispatchToGang(pDispatchThreads, 
+	cdbdisp_dispatchToGang(ds,
 						   GP_DISPATCH_COMMAND_TYPE_QUERY,
 						   &queryParms,
-						   primaryGang, *pPrimaryResults, -1, 1, DEFAULT_DISP_DIRECT);
+						   primaryGang, -1, 1, DEFAULT_DISP_DIRECT);
 
 	/*
 	 * don't pfree serializedShapshot here, it will be pfree'd when
@@ -1454,43 +1433,46 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
  * instead call CdbCheckDispatchResult(), etc., directly.
  */
 void
-cdbdisp_finishCommand(struct CdbDispatchResults * primaryResults,
-					  struct CdbDispatchCmdThreads * dispatchThreads,
-					  void (*handle_results_callback)(CdbDispatchResults *primaryResults,
-													  void *ctx),
+cdbdisp_finishCommand(struct CdbDispatcherState *ds,
+					  void (*handle_results_callback)(CdbDispatchResults *primaryResults, void *ctx),
 					  void *ctx)
 {
 	StringInfoData buf;
 	int			errorcode = 0;
 
 	/* If cdbdisp_dispatchToGang() wasn't called, don't wait. */
-	if (!primaryResults)
+	if (!ds || !ds->primaryResults)
 		return;
 
 	/* Wait for all QEs to finish. Don't cancel them. */
-	CdbCheckDispatchResult(primaryResults, dispatchThreads, false);
+	CdbCheckDispatchResult(ds, false);
 
 	/* If no errors, free the CdbDispatchResults objects and return. */
-	if (primaryResults)
-		errorcode = primaryResults->errcode;
+	if (ds->primaryResults)
+		errorcode = ds->primaryResults->errcode;
 
 	if (!errorcode)
 	{
 		/* Call the callback function to handle the results */
 		if (handle_results_callback != NULL)
-			handle_results_callback(primaryResults, ctx);
+			handle_results_callback(ds->primaryResults, ctx);
 
-		cdbdisp_destroyDispatchResults(primaryResults);
-		cdbdisp_destroyDispatchThreads(dispatchThreads);
+		cdbdisp_destroyDispatchResults(ds->primaryResults);
+		ds->primaryResults = NULL;
+		cdbdisp_destroyDispatchThreads(ds->dispatchThreads);
+		ds->dispatchThreads = NULL;
 		return;
 	}
 
 	/* Format error messages from the primary gang. */
 	initStringInfo(&buf);
-	cdbdisp_dumpDispatchResults(primaryResults, &buf, false);
+	cdbdisp_dumpDispatchResults(ds->primaryResults, &buf, false);
 
-	cdbdisp_destroyDispatchResults(primaryResults);
-	cdbdisp_destroyDispatchThreads(dispatchThreads);
+	cdbdisp_destroyDispatchResults(ds->primaryResults);
+	ds->primaryResults = NULL;
+
+	cdbdisp_destroyDispatchThreads(ds->dispatchThreads);
+	ds->dispatchThreads = NULL;
 
 	/* Too bad, our gang got an error. */
 	PG_TRY();
@@ -1524,8 +1506,7 @@ cdbdisp_finishCommand(struct CdbDispatchResults * primaryResults,
  * exit via PG_RE_THROW().
  */
 void
-cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
-					struct CdbDispatchCmdThreads *dispatchThreads)
+cdbdisp_handleError(struct CdbDispatcherState *ds)
 {
 	int     qderrcode;
 	bool    useQeError = false;
@@ -1533,7 +1514,7 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
 	qderrcode = elog_geterrcode();
 
 	/* If cdbdisp_dispatchToGang() wasn't called, don't wait. */
-	if (!primaryResults)
+	if (!ds || !ds->primaryResults)
 		return;
 
 	/*
@@ -1541,7 +1522,7 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
 	 * We need to wait for the threads to finish.  This allows for proper
 	 * cleanup of the results from the async command executions.
 	 */
-	CdbCheckDispatchResult(primaryResults, dispatchThreads, true);   /* cancel any QEs still running */
+	CdbCheckDispatchResult(ds, true);   /* cancel any QEs still running */
 
     /*
      * When a QE stops executing a command due to an error, as a
@@ -1559,11 +1540,11 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
 		if (qderrtext && strcmp(qderrtext, CDB_MOTION_LOST_CONTACT_STRING) == 0)
 			qd_lost_flag = true;
 
-		if (primaryResults && primaryResults->errcode)
+		if (ds->primaryResults && ds->primaryResults->errcode)
 		{
-			if (qd_lost_flag && primaryResults->errcode == ERRCODE_GP_INTERCONNECTION_ERROR)
+			if (qd_lost_flag && ds->primaryResults->errcode == ERRCODE_GP_INTERCONNECTION_ERROR)
 				useQeError = true;
-			else if (primaryResults->errcode != ERRCODE_GP_INTERCONNECTION_ERROR)
+			else if (ds->primaryResults->errcode != ERRCODE_GP_INTERCONNECTION_ERROR)
 				useQeError = true;
 		}
 	}
@@ -1577,7 +1558,7 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
          */
         PG_TRY();
         {
-            cdbdisp_finishCommand(primaryResults, dispatchThreads, NULL, NULL);
+            cdbdisp_finishCommand(ds, NULL, NULL);
         }
         PG_CATCH();
         {}                      /* nop; fall thru */
@@ -1591,8 +1572,10 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
          * have been examined before raising the error that the caller is
          * currently handling.
          */
-        cdbdisp_destroyDispatchResults(primaryResults);
-		cdbdisp_destroyDispatchThreads(dispatchThreads);
+        cdbdisp_destroyDispatchResults(ds->primaryResults);
+		ds->primaryResults = NULL;
+		cdbdisp_destroyDispatchThreads(ds->dispatchThreads);
+		ds->dispatchThreads = NULL;
     }
 }                               /* cdbdisp_handleError */
 
@@ -1602,8 +1585,9 @@ cdbdisp_check_estate_for_cancel(EState *estate)
 	struct CdbDispatchResults  *meleeResults;
 
 	Assert(estate);
+	Assert(estate->dispatcherState);
 
-	meleeResults = estate->primaryResults;
+	meleeResults = estate->dispatcherState->primaryResults;
 
 	if (meleeResults == NULL) /* cleanup ? */
 	{
@@ -1620,7 +1604,7 @@ cdbdisp_check_estate_for_cancel(EState *estate)
 	return false;
 }
 
-void
+static void
 cdbdisp_dispatchCommandToAllGangs(const char	*strCommand,
 								  char			*serializedQuerytree,
 								  int			serializedQuerytreelen,
@@ -1628,8 +1612,7 @@ cdbdisp_dispatchCommandToAllGangs(const char	*strCommand,
 								  int			serializedPlantreelen,
 								  bool			cancelOnError,
 								  bool			needTwoPhase,
-								  struct CdbDispatchResults		**pPrimaryResults,    /* OUT */
-								  struct CdbDispatchCmdThreads	**pDispatchThreads)   /* OUT */
+								  struct CdbDispatcherState *ds)
 {
 	DispatchCommandQueryParms queryParms;
 	
@@ -1640,9 +1623,8 @@ cdbdisp_dispatchCommandToAllGangs(const char	*strCommand,
     int			nsegdb = getgpsegmentCount();
 	int			gangCount;
 	
-    *pPrimaryResults = NULL;
-	
-	*pDispatchThreads = NULL;
+    ds->primaryResults = NULL;	
+	ds->dispatchThreads = NULL;
 
 	MemSet(&queryParms, 0, sizeof(queryParms));
 	queryParms.strCommand = strCommand;
@@ -1673,21 +1655,21 @@ cdbdisp_dispatchCommandToAllGangs(const char	*strCommand,
 	 * Dispatch the command.
 	 */
 	gangCount = 1 + list_length(readerGangs);
-	*pPrimaryResults = cdbdisp_makeDispatchResults(nsegdb * gangCount, 0, cancelOnError);
+	ds->primaryResults = cdbdisp_makeDispatchResults(nsegdb * gangCount, 0, cancelOnError);
 
-	(*pPrimaryResults)->writer_gang = primaryGang;
-	cdbdisp_dispatchToGang(pDispatchThreads, 
+	ds->primaryResults->writer_gang = primaryGang;
+	cdbdisp_dispatchToGang(ds,
 						   GP_DISPATCH_COMMAND_TYPE_QUERY,
 						   &queryParms,
-						   primaryGang, *pPrimaryResults, -1, gangCount, DEFAULT_DISP_DIRECT);
+						   primaryGang, -1, gangCount, DEFAULT_DISP_DIRECT);
 
 	foreach(le, readerGangs)
 	{
 		Gang  *rg = lfirst(le);
-		cdbdisp_dispatchToGang(pDispatchThreads, 
+		cdbdisp_dispatchToGang(ds,
 							   GP_DISPATCH_COMMAND_TYPE_QUERY,
 							   &queryParms,
-							   rg, *pPrimaryResults, -1, gangCount, DEFAULT_DISP_DIRECT);
+							   rg, -1, gangCount, DEFAULT_DISP_DIRECT);
 	}
 }	/* cdbdisp_dispatchCommandToAllGangs */
 
@@ -2945,8 +2927,7 @@ CdbDoCommand(const char *strCommand,
 			 bool cancelOnError,
 			 bool needTwoPhase)
 {
-	CdbDispatchResults *primaryResults;
-	CdbDispatchCmdThreads *dispatchThreads;
+	CdbDispatcherState ds = {NULL, NULL};
 	const bool withSnapshot = true;
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "CdbDoCommand for command = '%s', needTwoPhase = %s",
@@ -2955,14 +2936,13 @@ CdbDoCommand(const char *strCommand,
 	dtmPreCommand("CdbDoCommand", strCommand, NULL, needTwoPhase, withSnapshot, false /* inCursor */);
 
 	cdbdisp_dispatchCommand(strCommand, NULL, 0, cancelOnError, needTwoPhase, 
-							/* withSnapshot */true,
-							&primaryResults, &dispatchThreads);
+							/* withSnapshot */true, &ds);
 
 	/*
 	 * Wait for all QEs to finish. If not all of our QEs were successful,
 	 * report the error and throw up.
 	 */
-	cdbdisp_finishCommand(primaryResults, dispatchThreads, NULL, NULL);
+	cdbdisp_finishCommand(&ds, NULL, NULL);
 }	/* CdbDoCommandNoTxn */
 
 
@@ -2971,8 +2951,7 @@ CdbDoCommandOnAllGangs(const char *strCommand,
 				  bool cancelOnError,
 				  bool needTwoPhase)
 {
-	CdbDispatchResults *primaryResults;
-	CdbDispatchCmdThreads *dispatchThreads;
+	CdbDispatcherState ds = {NULL, NULL};
 	const bool withSnapshot = true;
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "CdbDoCommandOnAllGangs for command = '%s', needTwoPhase = %s",
@@ -2980,14 +2959,13 @@ CdbDoCommandOnAllGangs(const char *strCommand,
 
 	dtmPreCommand("CdbDoCommandOnAllGangs", strCommand, NULL, needTwoPhase, withSnapshot, false /* inCursor */ );
 
-	cdbdisp_dispatchCommandToAllGangs(strCommand, NULL, 0, NULL, 0, cancelOnError, needTwoPhase,
-							&primaryResults, &dispatchThreads);
+	cdbdisp_dispatchCommandToAllGangs(strCommand, NULL, 0, NULL, 0, cancelOnError, needTwoPhase, &ds);
 
 	/*
 	 * Wait for all QEs to finish. If not all of our QEs were successful,
 	 * report the error and throw up.
 	 */
-	cdbdisp_finishCommand(primaryResults, dispatchThreads, NULL, NULL);
+	cdbdisp_finishCommand(&ds, NULL, NULL);
 }	
 
 /*--------------------------------------------------------------------*/
@@ -3245,8 +3223,7 @@ void
 cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				  bool cancelOnError,
 				  SliceTable *sliceTbl,
-				  struct CdbDispatchResults **pPrimaryResults,		/* OUT */
-				  struct CdbDispatchCmdThreads **pDispatchThreads)  /* OUT */
+				  struct CdbDispatcherState *ds)
 {
 	int			oldLocalSlice = 0;
 	sliceVec	*sliceVector = NULL;
@@ -3258,9 +3235,8 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	if (log_dispatch_stats)
 		ResetUsage();
 
-	*pPrimaryResults = NULL;
-	
-	*pDispatchThreads = NULL;
+	ds->primaryResults = NULL;
+	ds->dispatchThreads = NULL;
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 	
@@ -3286,7 +3262,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	}
 
 	/* Allocate result array with enough slots for QEs of primary gangs. */
-	*pPrimaryResults = cdbdisp_makeDispatchResults(nSlices * largestGangsize(),
+	ds->primaryResults = cdbdisp_makeDispatchResults(nSlices * largestGangsize(),
 												   sliceLim,
 												   cancelOnError);
 
@@ -3408,13 +3384,13 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		Assert(primaryGang != NULL);	/* Must have a gang to dispatch to */
 		if (primaryGang)
 		{
-			Assert((*pPrimaryResults) && (*pPrimaryResults)->resultArray);
+			Assert(ds->primaryResults && ds->primaryResults->resultArray);
 		}
 
 		/* Bail out if already got an error or cancellation request. */
 		if (cancelOnError)
 		{
-			if ((*pPrimaryResults)->errcode)
+			if (ds->primaryResults->errcode)
 				break;
 			if (InterruptPending)
 				break;
@@ -3427,11 +3403,11 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		if (primaryGang != NULL)
 		{
 			if (primaryGang->type == GANGTYPE_PRIMARY_WRITER)
-				(*pPrimaryResults)->writer_gang = primaryGang;
+				ds->primaryResults->writer_gang = primaryGang;
 
-			cdbdisp_dispatchToGang(pDispatchThreads,
+			cdbdisp_dispatchToGang(ds,
 								   GP_DISPATCH_COMMAND_TYPE_QUERY,
-								   pQueryParms, primaryGang, *pPrimaryResults,
+								   pQueryParms, primaryGang,
 								   si, sliceLim, &direct);
 		}
 	}
@@ -3447,22 +3423,16 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	 */
 	if (iSlice < nSlices)
 	{
-		CdbDispatchResults *pr = *pPrimaryResults;
-		CdbDispatchCmdThreads *dThreads = *pDispatchThreads;
-
 		elog(DEBUG2, "Plan dispatch canceled; dispatched %d of %d slices", iSlice, nSlices);
 
 		/* Cancel any QEs still running, and wait for them to terminate. */
-		CdbCheckDispatchResult(pr, dThreads, true);
+		CdbCheckDispatchResult(ds, true);
 
 		/*
 		 * Check and free the results of all gangs. If any QE had an
 		 * error, report it and exit via PG_THROW.
 		 */
-		*pPrimaryResults = NULL;
-		*pDispatchThreads = NULL;
-
-		cdbdisp_finishCommand(pr, dThreads, NULL, NULL);
+		cdbdisp_finishCommand(ds, NULL, NULL);
 
 		/* Wasn't an error, must have been an interrupt. */
 		CHECK_FOR_INTERRUPTS();
@@ -3555,8 +3525,7 @@ void
 cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 					 bool planRequiresTxn,
 					 bool cancelOnError,
-					 struct CdbDispatchResults ** pPrimaryResults,		/* OUT */
-					 struct CdbDispatchCmdThreads ** pDispatchThreads)		/* OUT */
+					 struct CdbDispatcherState *ds)
 {
 	char 	*splan,
 		*ssliceinfo,
@@ -3575,9 +3544,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	DispatchCommandQueryParms queryParms;
 	CdbComponentDatabaseInfo *qdinfo;
  
-	*pPrimaryResults = NULL;
-	
-	*pDispatchThreads = NULL;
+	ds->primaryResults = NULL;
+	ds->dispatchThreads = NULL;
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 	Assert(queryDesc != NULL && queryDesc->estate != NULL);
@@ -3793,9 +3761,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	Assert(sliceTbl);
 	Assert(sliceTbl->slices != NIL);
 
-	cdbdisp_dispatchX(&queryParms, cancelOnError, sliceTbl,
-					  pPrimaryResults,		/* OUT */
-					  pDispatchThreads)	;	/* OUT */
+	cdbdisp_dispatchX(&queryParms, cancelOnError, sliceTbl, ds);
 
 	sliceTbl->localSlice = oldLocalSlice;
 }	/* cdbdisp_dispatchPlan */
@@ -3949,8 +3915,7 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 								 bool cancelOnError,
 								 bool needTwoPhase,
 								 bool withSnapshot,
-								 struct CdbDispatchResults **pPrimaryResults,
-								 struct CdbDispatchCmdThreads **pDispatchThreads,
+								 struct CdbDispatcherState *ds,
 								 char *debugCaller)
 {
 	char	   *serializedQuerytree;
@@ -3994,7 +3959,7 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 	Assert(serializedQuerytree != NULL);
 
 	cdbdisp_dispatchCommand(debug_query_string, serializedQuerytree, serializedQuerytree_len, cancelOnError, needTwoPhase,
-							withSnapshot, pPrimaryResults, pDispatchThreads);
+							withSnapshot, ds);
 
 }	/* cdbdisp_dispatchUtilityStatement */
 
@@ -4021,22 +3986,35 @@ CdbDispatchUtilityStatement_NoTwoPhase(struct Node *stmt, char *debugCaller __at
 static void
 CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase, char *debugCaller)
 {
-	CdbDispatchResults *primaryResults;
-	CdbDispatchCmdThreads *dispatchThreads;
+	CdbDispatcherState ds = {NULL, NULL};
 	
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),
 		 "cdbdisp_dispatchUtilityStatement called (needTwoPhase = %s, debugCaller = %s)",
 		 (needTwoPhase ? "true" : "false"), debugCaller);
 
-	cdbdisp_dispatchUtilityStatement(stmt, 
-									 true /* cancelOnError */, 
-									 needTwoPhase, 
-									 true /* withSnapshot */,
-									 &primaryResults, &dispatchThreads,
-									 debugCaller);
+	PG_TRY();
+	{
+		cdbdisp_dispatchUtilityStatement(stmt, 
+										 true /* cancelOnError */, 
+										 needTwoPhase, 
+										 true /* withSnapshot */,
+										 &ds,
+										 debugCaller);
 
-	/* Wait for all QEs to finish.	Throw up if error. */
-	cdbdisp_finishCommand(primaryResults, dispatchThreads, NULL, NULL);
+		/* Wait for all QEs to finish.	Throw up if error. */
+		cdbdisp_finishCommand(&ds, NULL, NULL);
+	}
+	PG_CATCH();
+	{
+		/* Something happend, clean up after ourselves */
+		CdbCheckDispatchResult(&ds, true);
+
+		cdbdisp_destroyDispatchResults(ds.primaryResults);
+
+		PG_RE_THROW();
+		/* not reached */
+	}
+	PG_END_TRY();
 
 }	/* CdbDispatchUtilityStatement */
 

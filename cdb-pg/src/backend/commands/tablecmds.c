@@ -100,7 +100,6 @@
 #include "mb/pg_wchar.h"
 
 #include "cdb/cdbdisp.h"
-#include "cdb/cdbdispatchresult.h"      /* cdbdisp_destroyDispatchResults() */
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
@@ -406,9 +405,9 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable);
 static Datum transformExecOnClause(List	*on_clause);
 static char transformFormatType(char *formatname);
 static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols, bool iswritable);
-static Oid DefineRelation_int(CreateStmt *stmt, char relkind, char relstorage,
-							  struct CdbDispatchResults **pPrimaryResults,
-							  struct CdbDispatchCmdThreads **pDispatchThreads);
+
+static Oid DefineRelation_int(CreateStmt *stmt, char relkind, char relstorage, CdbDispatcherState *ds);
+
 static void ATExecPartAddInternal(Relation rel, Node *def);
 static void exchange_part_rule(Oid oldrelid, Oid newrelid);
 static List *exchange_part_constraints(List *pcols, Relation oldrel,
@@ -443,21 +442,20 @@ static void ATPartitionCheck(Relation rel, AlterTableType typ, bool recursing);
 Oid
 DefineRelation(CreateStmt *stmt, char relkind, char relstorage)
 {
-    struct CdbDispatchResults *primaryResults = NULL;
-	CdbDispatchCmdThreads     *dispatchThreads = NULL;
+	CdbDispatcherState ds = {NULL, NULL};
 
     Oid reloid = 0;
     Assert(stmt->relation->schemaname == NULL || strlen(stmt->relation->schemaname)>0);
 
     PG_TRY();
     {
-        reloid = DefineRelation_int(stmt, relkind, relstorage, &primaryResults, &dispatchThreads);
+        reloid = DefineRelation_int(stmt, relkind, relstorage, &ds);
     }
 	PG_CATCH();
 	{
         /* If dispatched, stop QEs and clean up after them. */
-        if (primaryResults)
-            cdbdisp_handleError(primaryResults, dispatchThreads);
+        if (ds.primaryResults)
+            cdbdisp_handleError(&ds);
 
         /* Carry on with error handling. */
 		PG_RE_THROW();
@@ -469,7 +467,7 @@ DefineRelation(CreateStmt *stmt, char relkind, char relstorage)
 	 * qExecs, if dispatched.  This waits for them to all finish, and exits
 	 * via ereport(ERROR,...) if unsuccessful.
 	 */
-	cdbdisp_finishCommand(primaryResults, dispatchThreads, NULL, NULL);
+	cdbdisp_finishCommand(&ds, NULL, NULL);
 
     return reloid;
 }
@@ -479,8 +477,7 @@ Oid
 DefineRelation_int(CreateStmt *stmt,
                    char relkind,
                    char relstorage,
-                   struct CdbDispatchResults **pPrimaryResults,
-				   struct CdbDispatchCmdThreads **pDispatchThreads)
+				   CdbDispatcherState *ds)
 {
 	char		relname[NAMEDATALEN];
 	Oid			namespaceId;
@@ -853,8 +850,7 @@ DefineRelation_int(CreateStmt *stmt,
 										 true,      /* cancelOnError */
 										 true,      /* startTransaction */
 										 true,      /* withSnapshot */
-										 pPrimaryResults,
-										 pDispatchThreads,
+										 ds,
 										 "DefineRelation_int");
 
 	}
@@ -887,8 +883,7 @@ DefineRelation_int(CreateStmt *stmt,
 extern void
 DefineExternalRelation(CreateExternalStmt *createExtStmt)
 {
-	struct CdbDispatchResults *primaryResults = NULL;
-	CdbDispatchCmdThreads     *dispatchThreads = NULL;
+	CdbDispatcherState			ds = {NULL, NULL};
 	CreateStmt				  *createStmt = makeNode(CreateStmt);
 	ExtTableTypeDesc 		  *exttypeDesc = (ExtTableTypeDesc *)createExtStmt->exttypedesc;
 	SingleRowErrorDesc 		  *singlerowerrorDesc = NULL;
@@ -1165,16 +1160,15 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 											 true,      /* cancelOnError */
 											 true,      /* startTransaction */
 											 true,      /* withSnapshot */
-											 &primaryResults,
-											 &dispatchThreads,
+											 &ds,
 											 "DefineExternalRelation");
 		}
     }
 	PG_CATCH();
 	{
         /* If dispatched, stop QEs and clean up after them. */
-        if (primaryResults)
-            cdbdisp_handleError(primaryResults, dispatchThreads);
+        if (ds.primaryResults)
+            cdbdisp_handleError(&ds);
 
         /* Carry on with error handling. */
 		PG_RE_THROW();
@@ -1186,14 +1180,13 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	 * qExecs, if dispatched.  This waits for them to all finish, and exits
 	 * via ereport(ERROR,...) if unsuccessful.
 	 */
-	cdbdisp_finishCommand(primaryResults, dispatchThreads, NULL, NULL);
+	cdbdisp_finishCommand(&ds, NULL, NULL);
 }
 
 extern void
 DefineForeignRelation(CreateForeignStmt *createForeignStmt)
 {
-	struct CdbDispatchResults *primaryResults = NULL;
-	CdbDispatchCmdThreads     *dispatchThreads = NULL;
+	CdbDispatcherState		  ds = {NULL, NULL};
 	CreateStmt				  *createStmt = makeNode(CreateStmt);
 	Oid						  reloid = 0;
 	bool					  shouldDispatch = (Gp_role == GP_ROLE_DISPATCH &&
@@ -1271,16 +1264,15 @@ DefineForeignRelation(CreateForeignStmt *createForeignStmt)
 											 true,      /* cancelOnError */
 											 true,      /* startTransaction */
 											 true,      /* withSnapshot */
-											 &primaryResults,
-											 &dispatchThreads,
+											 &ds,
 											 "DefineForeignRelation");
 		}
     }
 	PG_CATCH();
 	{
         /* If dispatched, stop QEs and clean up after them. */
-        if (primaryResults)
-            cdbdisp_handleError(primaryResults, dispatchThreads);
+        if (ds.primaryResults)
+            cdbdisp_handleError(&ds);
 
         /* Carry on with error handling. */
 		PG_RE_THROW();
@@ -1292,7 +1284,7 @@ DefineForeignRelation(CreateForeignStmt *createForeignStmt)
 	 * qExecs, if dispatched.  This waits for them to all finish, and exits
 	 * via ereport(ERROR,...) if unsuccessful.
 	 */
-	cdbdisp_finishCommand(primaryResults, dispatchThreads, NULL, NULL);
+	cdbdisp_finishCommand(&ds, NULL, NULL);
 
 }
 
