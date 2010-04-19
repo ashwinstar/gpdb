@@ -428,6 +428,7 @@ heapgettup(HeapScanDesc scan,
 	 * advance the scan until we find a qualifying tuple or run out of stuff
 	 * to scan
 	 */
+	bool checkForInterrupts = false;
 	lpp = PageGetItemId(dp, lineoff);
 	for (;;)
 	{
@@ -532,6 +533,17 @@ heapgettup(HeapScanDesc scan,
 			return;
 		}
 
+        if ( checkForInterrupts )
+	    {
+	        /* we've now looked through at least one 'empty' page...check for interrupts */
+	        CHECK_FOR_INTERRUPTS();
+	    }
+	    else
+	    {
+	        checkForInterrupts = true;
+	    }
+
+	    
 		page = backward ? (page - 1) : (page + 1);
 
 		heapgetpage(scan, page, ScanDirectionIsBackward(dir));
@@ -691,6 +703,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 	 * advance the scan until we find a qualifying tuple or run out of stuff
 	 * to scan
 	 */
+	bool checkForInterrupts = false;
 	for (;;)
 	{
 		while (linesleft > 0)
@@ -752,6 +765,16 @@ heapgettup_pagemode(HeapScanDesc scan,
 			scan->rs_inited = false;
 			return;
 		}
+
+        if ( checkForInterrupts )
+	    {
+	        /* we've now looked through at least one 'empty' page...check for interrupts */
+	        CHECK_FOR_INTERRUPTS();
+	    }
+	    else
+	    {
+	        checkForInterrupts = true;
+	    }
 
 		page = backward ? (page - 1) : (page + 1);
 		heapgetpage(scan, page, ScanDirectionIsBackward(dir));
