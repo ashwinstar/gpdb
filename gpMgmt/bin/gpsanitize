@@ -1,0 +1,704 @@
+#!/usr/bin/env python
+
+'''
+
+Helps an administrator configure Greenplum Database with shared-storage ("san") failover
+
+gpsanitize -- helper for generated SAN-failover configuration information.
+
+Usage: gpsanitize [--version] [-?aq] [-D] [-d master_data_dir] [-l log_dir] [-p port_offset] [-o outfile] [-s] [-t <n|e>] [-i mirror_config] [-m mirror_datadir_config] [-B number]
+           
+          --version : print version information
+          -?        : print this help screen
+          -D        : set logging output to debug level
+          -q        : quiet mode, do not log progress to screen [default: verbose output to screen]
+          -a        : non-interactive mode [default: interactive mode]
+          -d        : master data directory
+          -l        : <log directory> alternative log file directory [optional]
+          -o        : file to output configuration
+          -i        : mirror configuration file
+          -s        : spread mirror mode
+          -t        : "type" of shared-storage technology (e: EMC Clariion, n: NFS).
+          -p        : mirror offset, if not supplied, script will calculate a suitable
+                      port offset for the mirror segment instances, range 7000 - 61000
+                      current offset value is 1000
+          -m        : mirror data directory config file
+          -B        : number of parallel process to spawn to process mirror creation
+
+
+          Format of the input configuration file:
+          mirror[N]=host:port:data_dir
+          where N is content in gp_configuration table
+
+          Format of the mirror data directory config file:
+          data_dir1
+          data_dir2
+          ...
+          data_dirN
+          where N is the number of segment data directory per host
+'''
+
+from __future__ import with_statement
+import os, sys, getopt, socket
+from threading import Thread
+from datetime import date, datetime, timedelta
+
+sys.path.append(sys.path[0] + '/lib')
+import pg8000
+
+# Apparently the gpmlib and gplib stuff was supposed to be deprecated, but 
+# I cannot find the equivalent functionality anywhere else -- I need to
+# walk through results returned by shell commands digging for information
+# this isn't as easy as I'd like.
+import gplib
+import gpmlib
+from gpmlib import ENV
+
+script_name = os.path.split(__file__)[-1]
+opt = {}
+opt['-q'] = False
+opt['-d'] = None
+opt['-m'] = None
+opt['-B'] = 64
+opt['-a'] = False
+opt['-s'] = False
+opt['-i'] = None
+opt['-o'] = None
+opt['-p'] = 1000
+opt['-l'] = None
+opt['-D'] = False
+opt['-t'] = 'e'
+
+arg = {}
+arg['exit'] = 0
+
+################
+def usage(exitarg):
+    print gplib.cli_help() or __doc__
+    sys.exit(exitarg)
+
+################
+def print_version():
+    print '%s version $Revision$' % script_name
+    sys.exit(0)
+
+################
+def parseCommandLine():
+    global opt
+    try:
+        (options, args) = getopt.getopt(sys.argv[1:], '?vqasi:o:d:m:B:p:l:Dc:T:t:', ['version'])
+    except Exception, e:
+        usage(str(e))
+
+    for (switch, val) in options:
+        if (switch == '-?'):          usage(0)
+        elif (switch == '-v'):        print_version()
+        elif (switch == '--version'): print_version()
+        elif (switch == '-q'):        opt[switch] = True
+        elif (switch == '-m'):        opt[switch] = val
+        elif (switch == '-t'):        opt[switch] = val
+        elif (switch == '-B'):        opt[switch] = int(val)
+        elif (switch == '-a'):        opt[switch] = True
+        elif (switch == '-s'):        opt[switch] = True
+        elif (switch == '-i'):        opt[switch] = val
+        elif (switch == '-o'):        opt[switch] = val
+        elif (switch == '-p'):        opt[switch] = int(val)
+        elif (switch == '-d'):        opt[switch] = val
+        elif (switch == '-l'):        opt[switch] = val
+        elif (switch == '-D'):        opt[switch] = True
+        elif (switch == '-T'):        gpmlib.log_info('Option -T is obsolete.  This option will be ignored')
+
+    gpmlib.log_set_module(script_name)
+
+    if opt['-q']:
+        gpmlib.log_set_verbose(False)
+
+    if opt['-l']:
+        if not gpmlib.directory_exists(opt['-l']):
+            gpmlib.error('Log directory %s does not exist' % opt['-l'])
+
+        opt['-l'] = os.path.join(opt['-l'], '%s_%s.log' % (script_name, date.today().strftime('%Y%m%d')))
+        gpmlib.log_set_file(opt['-l'])
+    else:
+        logdir = os.path.join(os.environ.get('HOME'), 'gpAdminLogs')
+        if not gpmlib.directory_exists(logdir):
+            try:
+                os.mkdir(logdir)
+            except OSError, e:
+                gpmlib.error('Make directory %s error' % logdir)
+
+        opt['-l'] = os.path.join(logdir, '%s_%s.log' % (script_name, date.today().strftime('%Y%m%d')))
+        gpmlib.log_set_file(opt['-l'])
+
+    if opt['-i'] and not os.path.isfile(opt['-i']):
+        usage('Input configuration file %s does not exist' % opt['-i'])
+
+    if not opt['-d']:
+        opt['-d'] = os.getenv('MASTER_DATA_DIRECTORY')
+        if not opt['-d']:
+            gpmlib.error('MASTER_DATA_DIRECTORY not set')
+    else:
+        os.environ['MASTER_DATA_DIRECTORY'] = opt['-d']
+
+    if opt['-i'] and opt['-p']:
+        gpmlib.log_warn('-p option not valid when used with -i option.  -p will be ignored')
+
+    if not os.path.isdir(opt['-d']):
+        gpmlib.error('MASTER_DATA_DIRECTORY %s does not exist or is not a directory' % opt['-d'])
+
+    if opt['-t'] == 'e':
+        gpmlib.log_info('Will attempt to scan EMC Clariion devices')
+    elif opt['-t'] == 'n':
+        gpmlib.log_info('Will attempt to find NFS shares')
+    else:
+        gpmlib.log_error('\"%s\" is not a supported failover type' % opt['t'])
+
+################
+def yesorno(msg, abortmsg):
+    print msg
+    line = sys.stdin.readline()
+    line = line.strip().lower()
+    if line == 'y':
+        return True
+    print abortmsg
+    return False
+
+
+################
+#   config file 
+#   mirrorN=host:port:data_dir
+
+def parseMirrorConfig():
+    file = None
+    lines = []
+    try:
+        file = open(opt['-i'], 'r')
+        lines = file.readlines()
+    except Exception, e:
+        gpmlib.error('Read file %s error' % opt['-i'])
+    finally:
+        if file:
+            file.close()
+
+    mirrors = []
+    for l in lines:
+        l = l.strip()
+        if l == '':
+            continue
+        param = l.split('=')
+        if len(param) != 2:
+            gpmlib.error('Mirror config format error')
+        mirror = param[1].split(':')
+        if len(mirror) != 3:
+            gpmlib.error('Mirror config format error')
+        m = {}
+        m['hostname'] = mirror[0]
+        m['port'] = int(mirror[1])
+        m['datadir'] = mirror[2]
+        mirrors.append(m)
+        
+    return mirrors
+        
+
+################
+def chk_mirror_config(db, qes, mirrors):
+    if len(qes) != len(mirrors):
+        gpmlib.error('Number of mirror segments must be equal to number of primary segments')
+
+    db.execute('select max(dbid) from gp_configuration')
+    row = db.read_tuple()
+    max_dbid = row[0]
+    dbid = max_dbid + 1
+    gp_prefix = gpmlib.get_gp_prefix(os.environ.get('MASTER_DATA_DIRECTORY'))
+    if not gp_prefix:
+        gp_prefix = 'gp-'
+
+    config = []
+    for i in range(len(qes)):
+        mir = mirrors[i]
+        mir['dbid'] = dbid
+        mir['content'] = qes[i]['content']
+        mir['datadir'] = os.path.join(mir['datadir'], '%s%d' % (gp_prefix, mir['content']))
+        config.append(mir)
+        dbid += 1
+
+    pri_hosts = gpmlib.unique([ qe['hostname'] for qe in qes ])
+    mir_hosts = gpmlib.unique([ m['hostname'] for m in mirrors ])
+    new_hosts = []
+    for h in mir_hosts:
+        if h not in pri_hosts:
+            new_hosts.append(h)
+
+    new_addr = []
+    for h in new_hosts:
+        ips = gpmlib.get_ipaddr(h)
+        if not ips:
+            gpmlib.error('Get IP Address from %s failed' % h)
+
+        new_addr.extend(ips)
+    new_addr = gpmlib.unique(new_addr)
+
+    return (config, new_addr)
+
+################
+def chk_mirror_dir(qes, mirrors):
+    for i in range(len(qes)):
+        pri_host = qes[i]['hostname']
+        mirror_host = mirrors[i]['hostname']
+        mirror_datadir = mirrors[i]['datadir']
+
+        # check postgres version
+        if not gpmlib.chk_postgres_version(mirror_host):
+            gpmlib.error('Postgres version does not match with mirror host %s' % mirror_host)
+
+        # check datadir exist
+        if gpmlib.directory_exists(mirror_datadir, mirror_host):
+            gpmlib.error('Directory %s already exists on %s' % (mirror_datadir, mirror_host))
+
+        # check write access of the parent datadir
+        dir = os.path.dirname(mirror_datadir)
+        tmpfile = os.path.join(dir, 'gptmpfile')
+        (ok, out) = gpmlib.run_warn('%s "%s %s"' % (gplib.ssh_prefix(host=mirror_host), ENV.TOUCH, tmpfile))
+        if ok:
+            (ok, out) = gpmlib.run('%s "%s -f %s"' % (gplib.ssh_prefix(host=mirror_host), ENV.RM, tmpfile))            
+        else:
+            gpmlib.error('Cannot create file under directory %s on segment host %s' % (dir, mirror_host))
+
+        # check access from primary host to mirror host
+        (ok, out) = gpmlib.run_warn('%s \'%s %s /tmp/gpaddmirrors_check.$$ && %s -f /tmp/gpaddmirrors_check.$$\'' % (
+                                                            gplib.ssh_prefix(host=pri_host),
+                                                            gplib.ssh_prefix(host=mirror_host),
+                                                            ENV.TOUCH, ENV.RM))
+        if not ok:
+            gpmlib.error('Check inter host ssh access from %s to %s failed' % (pri_host, mirror_host))
+
+    gpmlib.log_info('Completed host and directory checks')
+
+################
+def update_gp_conf(db, mirrors):
+    system_filespace = 3052
+
+    # update Greenplum database configuration
+    for m in mirrors:
+        history_message = "GPADDMIRRORS: content %d, dbid %d, hostname %s, port %s, datadir %s" % (m['content'], m['dbid'], m['hostname'], m['port'], m['datadir'])
+        db.execute("insert into gp_configuration_history values(now(), $1, $2)", m['dbid'], history_message)
+        db.execute("insert into gp_configuration values($1, $2, $3, $4, $5, $6, $7, null)",
+                   m['content'], False, m['dbid'], False, True, 
+                   m['hostname'], m['port'])
+        db.execute("insert into pg_filespace_entry values($1, $2, $3)",
+                   system_filespace, m['dbid'], m['datadir'])
+
+################
+def display_param(master_datadir, master_port, qes, mirrors, multi_home):
+    global opt
+
+    gpmlib.log_info('Greenplum Database Mirror Parameters')
+    gpmlib.log_info('------------------------------------')
+    gpmlib.log_info('Greenplum master hostname                = %s' % socket.gethostname())
+    gpmlib.log_info('Greenplum master data directory          = %s' % master_datadir)
+    gpmlib.log_info('Greenplum master port                    = %d' % master_port)
+    gpmlib.log_info('Parallel batch limit                     = %d' % opt['-B'])
+    if multi_home:
+        gpmlib.log_info('Multi-home configuration')
+    else:
+        gpmlib.log_info('Single-home configuration')
+    gpmlib.log_info('------------------------------------')
+    gpmlib.log_info('Mirror segment instance list')
+    gpmlib.log_info('------------------------------------')
+    for m in mirrors:
+        gpmlib.log_info('Host "%s" \t Datadir "%s" \t Port "%d"' % (m['hostname'], m['datadir'], m['port']))
+
+################                                      
+# Fetch the storage-group name using the powermt command via the wwn.
+#
+def get_sgname_by_wwn(host, gp_mount_agent_cmd, powermt_cmd, wwn):
+    (ok, out) = gpmlib.run('%s %s --storagegroup %s' % (gplib.ssh_prefix(host=v['host']), gp_mount_agent_cmd, powermt_cmd))
+    if not ok:
+        gpmlib.log_error('failed to run powerpath management tool on remote host %s' % host)
+
+    matchstr = wwn.upper()
+
+    # we get output which looks like:
+    # [ . . . ]
+    # CLARiiON ID=<identifier> [SG_NAME]
+    # Logical device ID=<WWN> [LUN_ID]
+    # [ . . . ]
+    # We want to match on the WWN, and extract the SG_NAME, so we're walking a set
+    # of lines, keeping track of the previous line.
+    prev = ''
+    for l in out:
+
+        # Find a line with our match on it -- we'll store the previous
+        # line as we go.
+        # 
+        # we could use a regexp here, would that be faster ?
+        if l.rfind(matchstr) == -1:
+            # not found
+            prev = l
+            continue
+
+        # we have a line like "CLARiiON ID=APM00091400579 [<storage group name>]
+        x = prev.partition('[')
+        if x[2] == '':
+            prev = l
+            continue
+
+        y = x[2].partition(']')
+        if y[0] == '':
+            prev = l
+            continue
+
+        # we got a line that looks right.
+        return y[0]
+
+    return ''
+
+# Given a host and a command, verify that the command is setuid-root.
+# THIS DOESN'T WORK PROPERLY
+def verify_setuid_root(host, command):
+    (ok, out) = gpmlib.run('%s %s %s' % (gplib.ssh_prefix(host=host), ENV.STAT, command))
+    if not ok:
+        return False
+
+# Given a set of segment-mountpoints, we need to find out where to fail them over
+def get_failover_info(devmap):
+    san_config = {}
+
+    for k, v in devmap.iteritems():
+        config_key = (v['host'], v['mountpoint'])
+
+        # We only want to find a failover for a mountpoint one time.
+        if config_key not in san_config:
+            print 'Enter failover host and mountpoint for primary mountpoint %s:%s >' % (v['host'], v['mountpoint'])
+            line = sys.stdin.readline() 
+            line = line.strip()
+
+            if line == '':
+                gpmlib.error('Null value entered for failover')
+            words = line.split(' ')
+            if len(words) != 2:
+                gpmlib.error('Invalid value entered for failover')
+
+            san_config[config_key] = {'primaryhost':v['host'], 'failoverhost':words[0], 'primarymp':v['mountpoint'], 'failovermp':words[1]}
+
+    return san_config
+
+################
+try:
+    parseCommandLine()
+
+    ENV.chk_environ()
+
+    master_port = gpmlib.get_master_port(opt['-d'])
+
+    if gpmlib.chk_on_passive_standby(master_port):
+        gpmlib.fatal('Unable to process requested command')
+
+    if ENV.GP_MOUNT_AGENT == '':
+        if ENV.GPHOME == '':
+            gpmlib.error('Cannot locate GPDB mount mangement utility')
+        else:
+            ENV.GP_MOUNT_AGENT = '%s/bin/gp_mount_agent' % ENV.GPHOME
+
+    if opt['-t'] == 'e':
+        if ENV.INQ == '':
+            gpmlib.error('Cannot locate SCSI-Inquiry utility for use in EMC Clariion scan.')
+        if ENV.NAVISECCLI == '':
+            gpmlib.error('Cannot locate EMC management naviseccli utility for use in EMC Clariion scan.')
+        if ENV.POWERMT == '':
+            gpmlib.error('Cannot locate EMC PowerPath powermt utility for storage-group lookup')
+
+    db = None
+    qes = None
+    new_addr = []
+    multi_home = False
+    mirrors = []
+
+    try:
+        pghost = os.getenv('PGHOST', '127.0.0.1')
+        pgpassword = os.getenv('PGPASSWORD', None)
+        db = pg8000.Connection(host=pghost, port=master_port, 
+                               user=ENV.USER, database=ENV.DBNAME, password=pgpassword,
+                               options='-c gp_session_role=utility')
+    except pg8000.errors.InterfaceError, e:
+        gpmlib.log_error('Database is not started.')
+        gpmlib.error(e)
+
+    try:
+        if not gpmlib.chk_db_running(db, True):
+            gpmlib.error('Database is not running')
+
+        qes = gpmlib.get_qe_details(db, 'content')
+        qe_hosts = [ x['hostname'] for x in qes ]
+        hosts = gpmlib.unique(qe_hosts)
+        multi_home = gpmlib.chk_multi_home(hosts)
+
+        # We have the qe-details (root filespace with dbids and so on)
+
+        ########################
+        # Some systems' "mount" returns "dev on mp" and other return "mp on dev"
+        devfirst = True
+        if ENV.SYSTEM == 'sunos':
+            devfirst = False
+        elif ENV.SYSTEM == 'darwin':
+            devfirst = True
+        elif ENV.SYSTEM == 'linux':
+            devfirst = True
+        elif ENV.SYSTEM == 'freebsd':
+            devfirst = True
+
+        ########################
+        # Check the permissions on the utilities that we need.
+#        if opt['-t'] == 'e':
+#            for host in hosts:
+#                if not verify_setuid_root(host, ENV.GP_MOUNT_AGENT):
+#                    gpmlib.error('Host %s has invalid permissions for %s' % (host, ENV.GP_MOUNT_AGENT))
+#                if not verify_setuid_root(host, ENV.INQ):
+#                    gpmlib.error('Host %s has invalid permissions for %s' % (host, ENV.INQ))
+
+
+        ########################
+        # Get the raw mountpoint info for every host.
+        mountpoints = {}
+        for host in hosts:
+            (ok, out) = gpmlib.run('%s %s' % (gplib.ssh_prefix(host=host), ENV.MOUNT))
+            if not ok:
+                error('failed to run mount on remote host')
+
+            # we have a list of strings, find the dev and mp.
+            mps = []
+            for l in out:
+                x = l.strip().split()
+                if devfirst:
+                    thismp = (x[0], x[2])
+                else:
+                    thismp = (x[2], x[0])
+                mps.append(thismp)
+
+            # save the output for this
+            mountpoints[host] = mps
+
+        # What we have here is a dictionary indexed by host, with each value being
+        # a list containing our mountpoints
+
+        # loop over the qes, figuring out which mount-devices are used by each data-directory.
+        # We're generating a new dictionary, where the keys are dictionaries labelling fields.
+        #
+        # the new dictionary is going to be our main datastructure for the rest of our SAN calculations.
+        max_dbid = 0
+
+        devmap = {}
+        for qe in qes:
+            h = qe['hostname']
+            d = qe['datadir']
+            primary_port = qe['port']
+            mirror_port = primary_port + opt['-p']
+            id = qe['dbid']
+
+            if id >= max_dbid:
+                max_dbid = id
+
+            mplist = mountpoints[h]
+
+            matchdir = ''
+            matchdev = ''
+            for (dev, mountdir) in mplist:
+                if d.startswith(mountdir):
+                    if len(mountdir.split('/')) >= len(matchdir.split('/')):
+                        matchdir = mountdir
+                        matchdev = dev
+
+            devmap[id] = {'content':qe['content'], 'host':h, 'datadir':d, 'device':matchdev, 'mountpoint':matchdir, 'primaryport':primary_port, 'mirrorport':mirror_port}
+
+#        for k, v in devmap.iteritems():
+#            gpmlib.log_info('dbid %d on %s has data-dir on %s (%s)' % (k, v['host'], v['mountpoint'], v['device']))
+
+        if opt['-t'] == 'n':
+            bad_device_cnt = 0
+            gpmlib.log_info('Scanning mount-devices in NFS-mode.')
+            for k, v in devmap.iteritems():
+                if len(v['device'].split(':')) != 2:
+                    gpmlib.log_info('dbid %d on %s has data-dir on %s (%s): Does not appear to be NFS share' % (k, v['host'], v['mountpoint'], v['device']))
+                    bad_device_count = bad_device_count + 1
+            if bad_device_count > 0:
+                gpmlib.error('Database system has %d segments which are not on NFS, cannot proceed in NFS-mode' % bad_device_count)
+
+        # If we're in EMC/Clariion-mode, we need to find the WWNs for the devices so we
+        # can figure out which hosts have access to them.
+        #
+        # It would be nice if we could run INQ once for each host, but resolving multiple
+        # segments per host to hostnames properly is a little weird here -- so for now
+        # we're going to issue way more INQ requests than necessary (by a factor given
+        # by the number of segments/host).
+        if opt['-t'] == 'e':
+            gpmlib.log_info('Scanning mount-devices in EMC/Clariion-mode.')
+
+            wwn_sgname_map = {} # cache the storage-group names associated with each WWN.
+
+            missing_wwn = False
+            for k, v in devmap.iteritems():
+                found = False
+                # gpmlib.log_info('%s %s -clar_wwn -no_dots' % (gplib.ssh_prefix(host=v['host']), ENV.INQ))
+                (ok, out) = gpmlib.run('%s %s -clar_wwn -no_dots' % (gplib.ssh_prefix(host=v['host']), ENV.INQ))
+                if not ok:
+                    gpmlib.error('failed to run inquiry-tool on remote host %s' % host)
+
+                # We're parsing the output of the "inq" utility here.
+                # lines of interest look like:
+                # "/dev/emcpowerbp  APM00091400579   B  172.16.10.6     0x006f   600601607e62220093afcb43752ddf11"
+                # Where the last entry on that line is the WWN.
+                for l in out:
+                    x = l.strip().split()
+
+                    if len(x) == 6 and x[0].startswith('/') and x[0] == v['device']:
+                        # got the entry we want.
+                        WWN = x[5]
+                        SPIP = x[3]
+
+                        v['SPIP'] = SPIP
+                        v['WWN'] = WWN
+
+                        # if we don't have the storage group name already, try to get it.
+                        #
+                        if not wwn_sgname_map.has_key(WWN):
+                            sg_name = get_sgname_by_wwn(v['host'], ENV.GP_MOUNT_AGENT, ENV.POWERMT, WWN)
+                            if not sg_name == '':
+                                gpmlib.log_info('Got sgname %s for wwn %s' % (sg_name, WWN))
+                                wwn_sgname_map[WWN] = sg_name
+
+                        # If we got the storage group name successfully, use it.
+                        if wwn_sgname_map.has_key(WWN):
+                            v['SG_NAME'] = wwn_sgname_map[WWN]
+
+                        found = True
+                        break
+
+                if not found:
+                    missing_wwn = True
+                    gpmlib.log_info('dbid %d on host %s could not find WWN for device %s' % (k, v['host'], v['device']))
+
+            if missing_wwn:
+                gpmlib.log_error('Could not find some WWN entries')
+                gpmlib.error('Cannot resolve shared-storage location for EMC-SAN')
+
+            # At this point we have all of the information we need (except possibly the Storage-group names).
+            for k, v in devmap.iteritems():
+                if not wwn_sgname_map.has_key(WWN):
+                    gpmlib.log_info('dbid %d on %s has data-dir on %s (%s) EMC %s @ %s' % (k, v['host'], v['mountpoint'], v['device'], v['WWN'], v['SPIP']))
+                else:
+                    gpmlib.log_info('dbid %d on %s has data-dir on %s (%s) EMC %s @ %s SG %s' % (k, v['host'], v['mountpoint'], v['device'], v['WWN'], v['SPIP'], v['SG_NAME']))
+
+        ########################
+
+        if opt['-i']:
+            gpmlib.error('PARSING FAILOVER INPUT NOT SUPPORTED YET')
+
+        # So now we need to retrieve our failover mappings.
+        san_config = get_failover_info(devmap)
+
+        # For each host/mountpoint in devmap, we should now have a failover host/mountpoint in san_config.
+        # Now we need to verify that each of the new mountpoints exists.
+        for k, v in san_config.iteritems():
+            tmpfile = os.path.join(v['failovermp'], 'gptmpfile')
+            gpmlib.log_info('verifying host %s failovermp %s tmpfile %s' % (v['failoverhost'], v['failovermp'], tmpfile))
+
+            (ok, out) = gpmlib.run_warn('%s "%s %s"' % (gplib.ssh_prefix(host=v['failoverhost']), ENV.TOUCH, tmpfile))
+            if ok:
+                (ok, out) = gpmlib.run('%s "%s -f %s"' % (gplib.ssh_prefix(host=v['failoverhost']), ENV.RM, tmpfile))            
+            else:
+                gpmlib.error('Cannot find mountpoint %s on failover host %s' % (v['failovermp'], v['failoverhost']))
+
+        # Now we have all of the information we need for gp_san_configuration, build a final dictionary
+        # to store our work. As we go, we're going to add the failover-data-directory to devmap.
+        final_map = {}
+        map_id = 0
+        
+        for k, v in devmap.iteritems():
+            san_key = (v['host'], v['mountpoint'])
+
+            if not san_config.has_key(san_key):
+                gpmlib.error('Resolving final config: cannot find configuration for %s:%s' % (v['host'], v['mountpoint']))
+
+            san_val = san_config[san_key]
+            
+            primaryhost = san_val['primaryhost']
+            primarymp = san_val['primarymp']
+            failoverhost = san_val['failoverhost']
+            failovermp = san_val['failovermp']
+
+            # figure out the data-directory for this segment by substituting the failover
+            # mountpoint prefix for the primary mountpoint.
+            primary_datadir = v['datadir']
+            v['failover_host'] = failoverhost
+            v['failover_datadir'] = failovermp + primary_datadir[len(primarymp):]
+            v['san_mount'] = map_id
+
+            if opt['-t'] == 'n':
+                device = v['device']
+            elif opt['-t'] == 'e':
+                # build up the device string from our pieces.
+
+                device = 'WWN=' + v['WWN'] + ',SP=' + v['SPIP']
+
+                if v.has_key('SG_NAME'):
+                    new_device = device + ',SG_NAME=' + v['SG_NAME']
+                    device = new_device
+                # Got the entire device string
+            else:
+                gpmlib.error('Unknown device-type %s' % opt['-t'])
+
+            final_map[map_id] = {'primaryhost':primaryhost, 'primarymp':primarymp, 'failoverhost':failoverhost, 'failovermp':failovermp, 'device':device}
+            map_id = map_id + 1
+
+        gpmlib.log_info('Success.')
+
+        # We now have two top-level dictionaries:
+        # 
+        # devmap is indexed by dbid and contains all of the specifics to the segment
+        #   info for gp_segment_configuration *and* pg_filespace_entries indexed by dbid
+        #   and references the other map by "map_id"
+        #
+        # final_map has all of the contents for gp_san_configuration. indexed by "id"
+        #   as reference from devmap.
+
+        # First: emit the san-configuration info.
+        for k, v in final_map.iteritems():
+            print('INSERT INTO GP_SAN_CONFIGURATION VALUES (%d, \'p\', \'%s\', \'%s\', \'%s\', \'%s\', \'%s\', \'%s\', \'%s\');' %
+                            (k, opt['-t'], v['primaryhost'], v['primarymp'], v['device'], v['failoverhost'], v['failovermp'], v['device']))
+
+        # THE NEXT TWO STEPS COULD BE DONE IN ONE LOOP -- BUT THAT SEEMS LIKE IT WOULD BE LESS CLEAR
+
+        # Second: update the existing segments.
+        for k, v in devmap.iteritems():
+            print('UPDATE GP_SEGMENT_CONFIGURATION SET san_mounts = \'%s\' WHERE dbid=%d ;' % (v['san_mount'], k))
+
+        # Third: add the new segments, along with their filespace-locations.
+        new_dbid = max_dbid
+        for k, v in devmap.iteritems():
+            new_dbid = new_dbid + 1
+            print('INSERT INTO GP_SEGMENT_CONFIGURATION VALUES (%d, %d, \'m\', \'m\', \'s\', \'u\', %d, \'%s\', \'%s\', NULL, \'%d\');' %
+                            (new_dbid, v['content'], v['mirrorport'], v['failover_host'], v['failover_host'], v['san_mount']))
+            print('INSERT INTO PG_FILESPACE_ENTRY SELECT fsefsoid, %d, \'%s\' FROM PG_FILESPACE_ENTRY WHERE fsedbid = %d ;' % (new_dbid, v['failover_datadir'], k))
+
+        # Fourth: Modify the gp_fault_strategy setting.
+        print('UPDATE GP_FAULT_STRATEGY SET fault_strategy = \'s\' ;')
+
+        ########################
+
+
+    except pg8000.errors.InterfaceError, e:
+        gpmlib.error(e)
+    except pg8000.errors.ProgrammingError, e:
+        gpmlib.error(e)
+
+    if db:
+        db.close()
+        db = None
+
+    sys.exit(0)
+
+except KeyboardInterrupt:
+    sys.exit('\nUser Interrupted')
+
+
+
