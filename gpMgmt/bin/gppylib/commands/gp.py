@@ -537,20 +537,27 @@ class GpCleanSegmentDirectories(Command):
         Command.__init__(self, name, cmdStr, ctxt, remoteHost)
 
 #-----------------------------------------------
-def buildExpansionSegmentInfo(segments):
+def buildExpansionSegmentInfo(segments, isTargetReusedLocationArr=None):
     """
     Build the new segment info that can be used to get the confinfo argument to pass to ConfigExpansionSeg
 
+    @param isTargetReusedLocationArr if not None, then is an array of boolean values in parallel with segments
+                                  True values indicate that the directory has been cleaned by gpcleansegmentdir.py
+                                  and we should have lighter restrictions on how to check it for emptiness
+                                  Passing None is the same as passing an array of all False values
     """
     result = {}
-    for seg in segments:
+    for segIndex, seg in enumerate(segments):
         hostname = seg.getSegmentHostName()
         if result.has_key(hostname):
             result[hostname] += ','
         else:
             result[hostname] = ''
 
-        result[hostname] += '%s:%d' %  (seg.getSegmentDataDirectory(), seg.getSegmentPort())
+        isTargetReusedLocation = isTargetReusedLocationArr and isTargetReusedLocationArr[segIndex]
+        
+        result[hostname] += '%s:%d:%s' %  (seg.getSegmentDataDirectory(), seg.getSegmentPort(),
+                    "true" if isTargetReusedLocation else "false")
     return result
 
 #-----------------------------------------------

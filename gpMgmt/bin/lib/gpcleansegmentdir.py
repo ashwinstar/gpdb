@@ -13,6 +13,7 @@ from gppylib.commands import unix
 import pickle, base64
 from gppylib import gparray
 from gppylib.gpparseopts import OptChecker,OptParser,OptParser
+from gppylib.operations.buildMirrorSegments import gDatabaseDirectories, gDatabaseFiles
 
 logger = get_default_logger()
 
@@ -37,13 +38,10 @@ class GpCleanSegmentDirectoryProgram:
             dir = segment.getSegmentDataDirectory()
             logger.info("Cleaning %s" % dir)
 
-            #
-            # Note: we could just remove dir + "/*" ?
-            #
-            toCleanArr = ["PG_VERSION", "base", "global", "gpstart*", "gp_pmtransition_args",
-                            "pg_*", "postgres*", "postmaster*", "gp*"]
-            for toClean in toCleanArr:
-                unix.RemoveFiles('clean segment', dir + "/" + toClean).run( validateAfter=True )
+            for toClean in gDatabaseDirectories:
+                unix.RemoveFiles('clean segment', os.path.join(dir, toClean)).run( validateAfter=True )
+            for toClean in gDatabaseFiles:
+                unix.RemoveFiles('clean segment', os.path.join(dir, toClean)).run( validateAfter=True )
 
         for segment in segments:
             for filespaceOid, dir in segment.getSegmentFilespaces().iteritems():

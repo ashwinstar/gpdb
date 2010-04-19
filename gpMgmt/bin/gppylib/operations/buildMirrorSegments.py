@@ -15,6 +15,37 @@ from gppylib.operations import startSegments
 
 logger = get_default_logger()
 
+gDatabaseDirectories = [
+        # this list (with some small differences) also occurs in initdb.c
+        "global",
+        "pg_log",
+        "pg_xlog",
+        "pg_clog",
+        "pg_changetracking",
+        "pg_subtrans",
+        "pg_twophase",
+        "pg_multixact",
+        "pg_distributedxidmap",
+        "pg_distributedlog",
+        "pg_utilitymodedtmredo",
+        "base",
+        "pg_tblspc",
+        "pg_stat_tmp"
+        ]
+
+#
+# Database files that may exist in the root directory and need deleting 
+#
+gDatabaseFiles = [
+    "PG_VERSION",
+    "pg_hba.conf",
+    "pg_ident.conf",
+    "postgresql.conf",
+    "postmaster.log",
+    "postmaster.opts",
+    "postmaster.pid"
+        ]
+
 #
 # note: it's a little quirky that caller must set up failed/failover so that failover is in gparray but
 #                                 failed is not (if both set)...change that, or at least protect against problems
@@ -151,18 +182,21 @@ class GpMirrorListToBuild:
                 toStopDirectives.append(GpStopSegmentDirectoryDirective(toRecover.getFailedSegment()))
 
             if toRecover.isFullSynchronization():
+
+                isTargetReusedLocation = False
                 if toRecover.getFailedSegment() is not None and \
                     toRecover.getFailoverSegment() is None:
                     #
                     # We are recovering a failed segment in-place
                     #
                     cleanupDirectives.append(GpCleanupSegmentDirectoryDirective(toRecover.getFailedSegment()))
+                    isTargetReusedLocation = True
 
                 if toRecover.getFailoverSegment() is not None:
                     targetSegment = toRecover.getFailoverSegment()
                 else: targetSegment = toRecover.getFailedSegment()
 
-                d = GpCopySegmentDirectoryDirective(toRecover.getLiveSegment(), targetSegment)
+                d = GpCopySegmentDirectoryDirective(toRecover.getLiveSegment(), targetSegment, isTargetReusedLocation)
                 copyDirectives.append(d)
 
         self.__ensureStopped(gpEnv, toStopDirectives)
@@ -297,25 +331,8 @@ class GpMirrorListToBuild:
         #
         # Use the master's version of other files, and build
         #
-        self.__createEmptyDirectories( schemaDir, [
-                # this list (with some small differences) also occurs in initdb.c
-                "global",
-                "pg_log",
-                "pg_xlog",
-                "pg_clog",
-                "pg_changetracking",
-                "pg_subtrans",
-                "pg_twophase",
-                "pg_multixact",
-                "pg_multixact/members",
-                "pg_multixact/offsets",
-                "pg_distributedxidmap",
-                "pg_distributedlog",
-                "pg_utilitymodedtmredo",
-                "base",
-                "pg_tblspc",
-                "pg_stat_tmp"
-                ] )
+        self.__createEmptyDirectories( schemaDir, gDatabaseDirectories )
+        self.__createEmptyDirectories( schemaDir, [ "pg_multixact/members", "pg_multixact/offsets" ])
         self.__copyFiles(masterDir, schemaDir, ["PG_VERSION", "pg_ident.conf"])
 
 
@@ -338,8 +355,9 @@ class GpMirrorListToBuild:
 
         srcSegments = [d.getSrcSegment() for d in directives]
         destSegments = [d.getDestSegment() for d in directives]
+        isTargetReusedLocation = [d.isTargetReusedLocation() for d in directives]
         destSegmentByHost = GpArray.getSegmentsByHostName(destSegments)
-        newSegmentInfo = gp.buildExpansionSegmentInfo(destSegments)
+        newSegmentInfo = gp.buildExpansionSegmentInfo(destSegments, isTargetReusedLocation)
 
         (tempDir, blankTarFile, tarFileName) = self.__buildTarFileForTransfer(gpEnv, gpArray.master, srcSegments[0], destSegments)
 
@@ -463,17 +481,23 @@ class GpStopSegmentDirectoryDirective:
         return self.__segment
 
 class GpCopySegmentDirectoryDirective:
-    def __init__(self, source, dest ):
+
+    def __init__(self, source, dest, isTargetReusedLocation ):
         """
+        @param isTargetReusedLocation if True then the dest location is a cleaned-up location
         """
         checkNotNone("source", source)
         checkNotNone("dest", dest)
 
         self.__source = source
         self.__dest = dest
+        self.__isTargetReusedLocation = isTargetReusedLocation
 
     def getSrcSegment(self):
         return self.__source
 
     def getDestSegment(self):
         return self.__dest
+        
+    def isTargetReusedLocation(self):
+        return self.__isTargetReusedLocation

@@ -14,10 +14,13 @@ from gppylib import gplog
 from gppylib.commands.base import *
 from gppylib.gparray import GpDB
 from time import sleep
+from gppylib.operations.buildMirrorSegments import gDatabaseDirectories, gDatabaseFiles
 
 description = (""" 
 
 Configure segment directories for installation into a pre-existing GPDB array.
+
+Used by at least gpexpand, gprecoverseg, and gpaddmirrors
 
 """)
 
@@ -25,12 +28,17 @@ DEFAULT_BATCH_SIZE=8
 EXECNAME = os.path.split(__file__)[-1]
 
 class ConfExpSegCmd(Command):
-    def __init__(self, name, cmdstr, datadir, port, newseg, tarfile, verbose=False):
+    def __init__(self, name, cmdstr, datadir, port, newseg, tarfile, useLighterDirectoryValidation, verbose=False):
+        """
+        @param useLighterDirectoryValidation if True then we don't require an empty directory; we just require that
+                                             database stuff is not there.
+        """
         self.datadir = datadir
         self.port = int(port)
         self.newseg = newseg
         self.tarfile = tarfile
         self.verbose = verbose
+        self.useLighterDirectoryValidation = useLighterDirectoryValidation
         Command.__init__(self, name, cmdstr)
         
         
@@ -46,11 +54,22 @@ class ConfExpSegCmd(Command):
             if self.newseg:
                 try:
                     if os.path.exists(self.datadir):
-                        #it better be empty
-                        if len(os.listdir(self.datadir)) == 0:
-                            os.chmod(self.datadir,0700)
+                        if self.useLighterDirectoryValidation:
+                            # validate that we don't contain database directories or files
+                            for toCheck in gDatabaseDirectories:
+                                if os.path.exists(os.path.join(self.datadir, toCheck)):
+                                    raise Exception('Segment directory %s contains directory %s but should not!' %
+                                                (self.datadir, toCheck))
+                            for toCheck in gDatabaseFiles:
+                                if os.path.exists(os.path.join(self.datadir, toCheck)):
+                                    raise Exception('Segment directory %s contains file %s but should not!' % 
+                                                (self.datadir, toCheck))
                         else:
-                            raise Exception('Segment directory %s exists but is not empty!' % self.datadir)
+                            # it better be empty
+                            if len(os.listdir(self.datadir)) != 0:
+                                raise Exception('Segment directory %s exists but is not empty!' % self.datadir)
+
+                        os.chmod(self.datadir,0700)
                     else:
                         os.mkdir(self.datadir,0700)
                 except Exception, e:
@@ -81,7 +100,7 @@ class ConfExpSegCmd(Command):
             # We might need to stop the segment if the last setup failed past this point
             if os.path.exists('%s/postmaster.pid' % self.datadir):
                 logger.info('%s/postmaster.pid exists.  Stopping segment' % self.datadir)
-                stopCmd = SegmentStop('Stop expansion segment', self.datadir)
+                stopCmd = SegmentStop('Stop new segment', self.datadir)
                 try:
                     stopCmd.run(validateAfter=True)
                 except:
@@ -129,8 +148,8 @@ def parseargs():
     parser.add_option('-c', '--confinfo', type='string')                        
     parser.add_option('-t', '--tarfile', type='string')
     parser.add_option('-n', '--newsegments', action='store_true')
-    parser.add_option('-B', '--batch-size', type='int', default=DEFAULT_BATCH_SIZE, metavar='<batch_size>')  
-        
+    parser.add_option('-B', '--batch-size', type='int', default=DEFAULT_BATCH_SIZE, metavar='<batch_size>')
+
     parser.set_defaults(verbose=False,filters=[], slice=(None, None))
     
     # Parse the command line arguments
@@ -150,12 +169,14 @@ def parseargs():
     conf_lines = options.confinfo.split(',')
     for line in conf_lines:
         conf_vals = line.split(':')
-        if len(conf_vals) != 2:
+        if len(conf_vals) != 3:
             raise Exception('Invalid configuration value: %s' % conf_vals)
         if conf_vals[0] == '':
             raise Exception('Missing data directory in: %s' % conf_vals)
         if conf_vals[1] < 1024:
             raise Exception('Invalid port in: %s' % conf_vals)
+        if conf_vals[2] != 'true' and conf_vals[2] != 'false':
+            raise Exception('Invalid directory validation option in: %s' % conf_vals)
         seg_info.append(conf_vals)
 
     seg_info_len = len(seg_info)
@@ -181,7 +202,7 @@ try:
     
     for seg in seg_info:
         cmd = ConfExpSegCmd('Configure segment directory', ' '.join(sys.argv), seg[0], seg[1],
-                            options.newsegments, options.tarfile,
+                            options.newsegments, options.tarfile, seg[2] == "true",
                             options.verbose)
         pool.addCommand(cmd)
 
