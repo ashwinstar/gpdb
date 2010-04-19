@@ -357,7 +357,7 @@ class GpMirrorListToBuild:
         destSegments = [d.getDestSegment() for d in directives]
         isTargetReusedLocation = [d.isTargetReusedLocation() for d in directives]
         destSegmentByHost = GpArray.getSegmentsByHostName(destSegments)
-        newSegmentInfo = gp.buildExpansionSegmentInfo(destSegments, isTargetReusedLocation)
+        newSegmentInfo = gp.ConfigureNewSegment.buildSegmentInfoForNewSegment(destSegments, isTargetReusedLocation)
 
         (tempDir, blankTarFile, tarFileName) = self.__buildTarFileForTransfer(gpEnv, gpArray.master, srcSegments[0], destSegments)
 
@@ -375,7 +375,7 @@ class GpMirrorListToBuild:
             segmentInfo = newSegmentInfo[hostName]
             checkNotNone("segmentInfo for %s" % hostName, segmentInfo)
 
-            cmds.append(gp.ConfigExpansionSeg('configure blank segments',
+            cmds.append(gp.ConfigureNewSegment('configure blank segments',
                                             segmentInfo,
                                             tarFile=tarFileName,
                                             newSegments=True,

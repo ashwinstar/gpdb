@@ -714,10 +714,10 @@ class SegmentTemplate:
         and setting up the gp_id table"""
 
         self.logger.info('Configuring new segments')
-        new_segment_info = buildExpansionSegmentInfo(self.gparray.getExpansionSegDbList())
+        new_segment_info = ConfigureNewSegment.buildSegmentInfoForNewSegment(self.gparray.getExpansionSegDbList())
 
         for host in iter(new_segment_info):
-            segCfgCmd = ConfigExpansionSeg('gpexpand configure new segments', new_segment_info[host],
+            segCfgCmd = ConfigureNewSegment('gpexpand configure new segments', new_segment_info[host],
                                            tarFile=self.schema_tar_file, newSegments=True,
                                            verbose=gplog.logging_is_verbose(), batchSize=options.batch_size,
                                            ctxt=REMOTE, remoteHost=host)
@@ -1273,10 +1273,10 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
 
         self.logger.info('Configuring original segments')
 
-        orig_segment_info = buildExpansionSegmentInfo(self.gparray.getSegDbList())
+        orig_segment_info = ConfigureNewSegment.buildSegmentInfoForNewSegment(self.gparray.getSegDbList())
 
         for host in iter(orig_segment_info):
-            segCfgCmd = ConfigExpansionSeg('gpexpand configure new segments', orig_segment_info[host],
+            segCfgCmd = ConfigureNewSegment('gpexpand configure new segments', orig_segment_info[host],
                                            verbose=gplog.logging_is_verbose(), batchSize=options.batch_size,
                                            ctxt=REMOTE, remoteHost=host)
             self.pool.addCommand(segCfgCmd)
@@ -1331,12 +1331,12 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             self.pool.empty_completed_items()
 
         # note: this code may not be needed -- it will NOT change gp_id
-        #       However, the call to gpconfexpseg may still be doing some needed work (stopping the segment)
+        #       However, the call to gpconfigurenewsegment may still be doing some needed work (stopping the segment)
         #       which could be unnecessary or could be moved here)
         self.logger.info('Restoring original segments catalog tables')
-        orig_segment_info = buildExpansionSegmentInfo(originalArray.getSegDbList())
+        orig_segment_info = ConfigureNewSegment.buildSegmentInfoForNewSegment(originalArray.getSegDbList())
         for host in iter(orig_segment_info):
-            segCfgCmd = ConfigExpansionSeg('gpexpand configure new segments', orig_segment_info[host],
+            segCfgCmd = ConfigureNewSegment('gpexpand configure new segments', orig_segment_info[host],
                                            verbose=gplog.logging_is_verbose(), batchSize=options.batch_size,
                                            ctxt=REMOTE, remoteHost=host)
             self.pool.addCommand(segCfgCmd)

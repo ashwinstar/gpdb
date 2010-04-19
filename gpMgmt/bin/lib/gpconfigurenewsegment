@@ -196,7 +196,7 @@ try:
     if options.verbose:
         gplog.enable_verbose_logging()
         
-    logger.info("Starting gpconfexpseg with args: %s" % ' '.join(sys.argv[1:]))
+    logger.info("Starting gpconfigurenewsegment with args: %s" % ' '.join(sys.argv[1:]))
     
     pool = WorkerPool(numWorkers=options.batch_size)
     

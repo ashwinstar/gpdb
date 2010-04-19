@@ -533,38 +533,20 @@ class GpCleanSegmentDirectories(Command):
     """
     def __init__(self, name, segmentsToClean, ctxt, remoteHost):
         pickledSegmentsStr = base64.urlsafe_b64encode(pickle.dumps(segmentsToClean))
-        cmdStr = "$GPHOME/bin/lib/gpcleansegmentdir.py -p %s" % pickledSegmentsStr
+        cmdStr = "$GPHOME/sbin/gpcleansegmentdir.py -p %s" % pickledSegmentsStr
         Command.__init__(self, name, cmdStr, ctxt, remoteHost)
 
 #-----------------------------------------------
-def buildExpansionSegmentInfo(segments, isTargetReusedLocationArr=None):
+
+class ConfigureNewSegment(Command):
     """
-    Build the new segment info that can be used to get the confinfo argument to pass to ConfigExpansionSeg
-
-    @param isTargetReusedLocationArr if not None, then is an array of boolean values in parallel with segments
-                                  True values indicate that the directory has been cleaned by gpcleansegmentdir.py
-                                  and we should have lighter restrictions on how to check it for emptiness
-                                  Passing None is the same as passing an array of all False values
+    Configure a new segment, usually from a template, as is done during gpexpand, gpaddmirrors, gprecoverseg (full),
+      etc.
     """
-    result = {}
-    for segIndex, seg in enumerate(segments):
-        hostname = seg.getSegmentHostName()
-        if result.has_key(hostname):
-            result[hostname] += ','
-        else:
-            result[hostname] = ''
 
-        isTargetReusedLocation = isTargetReusedLocationArr and isTargetReusedLocationArr[segIndex]
-        
-        result[hostname] += '%s:%d:%s' %  (seg.getSegmentDataDirectory(), seg.getSegmentPort(),
-                    "true" if isTargetReusedLocation else "false")
-    return result
-
-#-----------------------------------------------
-class ConfigExpansionSeg(Command):
     def __init__(self, name, confinfo, newSegments=False, tarFile=None,
                  batchSize=None, verbose=False,ctxt=LOCAL, remoteHost=None):
-        cmdStr = '$GPHOME/bin/lib/gpconfexpseg -c \"%s\"' % (confinfo)
+        cmdStr = '$GPHOME/bin/lib/gpconfigurenewsegment -c \"%s\"' % (confinfo)
         if newSegments:
             cmdStr += ' -n'
         if tarFile:
@@ -575,6 +557,33 @@ class ConfigExpansionSeg(Command):
             cmdStr += ' -B %s' % batchSize
 
         Command.__init__(self, name, cmdStr, ctxt, remoteHost)
+
+    #-----------------------------------------------
+    @staticmethod
+    def buildSegmentInfoForNewSegment(segments, isTargetReusedLocationArr=None):
+        """
+        Build the new segment info that can be used to get the confinfo argument to pass to ConfigureNewSegment
+
+        @param isTargetReusedLocationArr if not None, then is an array of boolean values in parallel with segments
+                                      True values indicate that the directory has been cleaned by gpcleansegmentdir.py
+                                      and we should have lighter restrictions on how to check it for emptiness
+                                      Passing None is the same as passing an array of all False values
+        """
+        result = {}
+        for segIndex, seg in enumerate(segments):
+            hostname = seg.getSegmentHostName()
+            if result.has_key(hostname):
+                result[hostname] += ','
+            else:
+                result[hostname] = ''
+
+            isTargetReusedLocation = isTargetReusedLocationArr and isTargetReusedLocationArr[segIndex]
+
+            result[hostname] += '%s:%d:%s' %  (seg.getSegmentDataDirectory(), seg.getSegmentPort(),
+                        "true" if isTargetReusedLocation else "false")
+        return result
+
+
 
 #-----------------------------------------------
 class GpVersion(Command):
