@@ -359,6 +359,13 @@ def verify_setuid_root(host, command):
     (ok, out) = gpmlib.run('%s %s %s' % (gplib.ssh_prefix(host=host), ENV.STAT, command))
     if not ok:
         return False
+    else:
+        # NOTE: we don't actually check for SUID here "/usr/bin/stat" has different output on different
+        # platforms, and parsing isn't as straightforward as I'd expected. Python has some appropriate
+        # functions.
+        #
+        # So despite its name, this method actually only verifies that the command exists.
+        return True
 
 # Given a set of segment-mountpoints, we need to find out where to fail them over
 def get_failover_info(devmap):
@@ -449,12 +456,12 @@ try:
 
         ########################
         # Check the permissions on the utilities that we need.
-#        if opt['-t'] == 'e':
-#            for host in hosts:
-#                if not verify_setuid_root(host, ENV.GP_MOUNT_AGENT):
-#                    gpmlib.error('Host %s has invalid permissions for %s' % (host, ENV.GP_MOUNT_AGENT))
-#                if not verify_setuid_root(host, ENV.INQ):
-#                    gpmlib.error('Host %s has invalid permissions for %s' % (host, ENV.INQ))
+        if opt['-t'] == 'e':
+            for host in hosts:
+                if not verify_setuid_root(host, ENV.GP_MOUNT_AGENT):
+                    gpmlib.error('Host %s has invalid permissions for %s' % (host, ENV.GP_MOUNT_AGENT))
+                if not verify_setuid_root(host, ENV.INQ):
+                    gpmlib.error('Host %s has invalid permissions for %s' % (host, ENV.INQ))
 
 
         ########################
@@ -510,9 +517,6 @@ try:
 
             devmap[id] = {'content':qe['content'], 'host':h, 'datadir':d, 'device':matchdev, 'mountpoint':matchdir, 'primaryport':primary_port, 'mirrorport':mirror_port}
 
-#        for k, v in devmap.iteritems():
-#            gpmlib.log_info('dbid %d on %s has data-dir on %s (%s)' % (k, v['host'], v['mountpoint'], v['device']))
-
         if opt['-t'] == 'n':
             bad_device_count = 0
             gpmlib.log_info('Scanning mount-devices in NFS-mode.')
@@ -560,15 +564,12 @@ try:
 
                         # if we don't have the storage group name already, try to get it.
                         #
+                        # We'll fill it into out main configuration-map later, cache it here.
                         if not wwn_sgname_map.has_key(WWN):
                             sg_name = get_sgname_by_wwn(v['host'], ENV.GP_MOUNT_AGENT, ENV.POWERMT, WWN)
                             if not sg_name == '':
                                 gpmlib.log_info('Got sgname %s for wwn %s' % (sg_name, WWN))
                                 wwn_sgname_map[WWN] = sg_name
-
-                        # If we got the storage group name successfully, use it.
-                        if wwn_sgname_map.has_key(WWN):
-                            v['SG_NAME'] = wwn_sgname_map[WWN]
 
                         found = True
                         break
@@ -582,10 +583,14 @@ try:
                 gpmlib.error('Cannot resolve shared-storage location for EMC-SAN')
 
             # At this point we have all of the information we need (except possibly the Storage-group names).
+            #
+            # If we got the storage-group name, we fill it in here.
             for k, v in devmap.iteritems():
+                WWN = v['WWN']
                 if not wwn_sgname_map.has_key(WWN):
                     gpmlib.log_info('dbid %d on %s has data-dir on %s (%s) EMC %s @ %s' % (k, v['host'], v['mountpoint'], v['device'], v['WWN'], v['SPIP']))
                 else:
+                    v['SG_NAME'] = wwn_sgname_map[WWN]
                     gpmlib.log_info('dbid %d on %s has data-dir on %s (%s) EMC %s @ %s SG %s' % (k, v['host'], v['mountpoint'], v['device'], v['WWN'], v['SPIP'], v['SG_NAME']))
 
         ########################
