@@ -79,14 +79,14 @@ setting to the bottom of the postgresql.conf files.
 -v | --value value
 
 The value to use for the configuration parameter you specified 
-with the -e option. By default, this value is applied to all 
+with the -c option. By default, this value is applied to all 
 segments, their mirrors, the master, and the standby master.
 
 
 -m | --mastervalue master_value
 
 The master value to use for the configuration parameter you 
-specified with the -e option. If specified, this value only 
+specified with the -c option. If specified, this value only 
 applies to the master and standby master. The option can only 
 be used with -v. 
 
