@@ -939,6 +939,8 @@ findbitmappage(Relation rel, BMLOVItem lovitem,
 		Page bitmapPage;
 		BMBitmapOpaque bitmapOpaque;
 
+		CHECK_FOR_INTERRUPTS();
+
 		*bitmapBufferP = _bitmap_getbuf(rel, nextBlockNo, BM_WRITE);
 		bitmapPage = BufferGetPage(*bitmapBufferP);
 		bitmapOpaque = (BMBitmapOpaque)
@@ -1181,6 +1183,8 @@ _bitmap_write_new_bitmapwords(Relation rel,
 	while (numFreeWords < buf->curword - buf->start_wordno)
 	{
 		Buffer	newBuffer;
+
+		CHECK_FOR_INTERRUPTS();
 
 		bitmapPage = BufferGetPage(bitmapBuffer);
 		bitmapPageOpaque =
