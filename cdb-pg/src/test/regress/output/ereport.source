@@ -10828,55 +10828,66 @@ select * from get_ereport order by 1;
  paai: postinit:00000198:  ereport(FATAL, 
  paai: postinit:00000199:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
  paai: postinit:00000200:  errmsg("database "%s" is not currently accepting connections", 
- paai: postinit:00000201:  name),errOmitLocation(true))); 
- paai: postinit:00000211:  ereport(FATAL, 
- paai: postinit:00000212:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- paai: postinit:00000213:  errmsg("permission denied for database "%s"", name), 
- paai: postinit:00000214:  errdetail("User does not have CONNECT privilege."),errOmitLocation(true))); 
- paai: postinit:00000229:  ereport(FATAL, 
- paai: postinit:00000230:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
- paai: postinit:00000231:  errmsg("too many connections for database "%s"", 
- paai: postinit:00000232:  name),errOmitLocation(true))); 
- paai: postinit:00000253:  ereport(FATAL, 
- paai: postinit:00000254:  (errmsg("database locale is incompatible with operating system"), 
- paai: postinit:00000255:  errdetail("The database was initialized with LC_COLLATE "%s", " 
- paai: postinit:00000256:  " which is not recognized by setlocale().", collate), 
- paai: postinit:00000257:  errhint("Recreate the database with another locale or install the missing locale."))); 
- paai: postinit:00000260:  ereport(FATAL, 
- paai: postinit:00000261:  (errmsg("database locale is incompatible with operating system"), 
- paai: postinit:00000262:  errdetail("The database was initialized with LC_CTYPE "%s", " 
- paai: postinit:00000263:  " which is not recognized by setlocale().", ctype), 
- paai: postinit:00000264:  errhint("Recreate the database with another locale or install the missing locale."))); 
- paai: postinit:00000406:  ereport(FATAL, 
- paai: postinit:00000407:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- paai: postinit:00000408:  errmsg("database %u does not exist", dboid))); 
- paai: postinit:00000416:  ereport(FATAL, 
- paai: postinit:00000417:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- paai: postinit:00000418:  errmsg("database "%s" does not exist", 
- paai: postinit:00000419:  in_dbname), errOmitLocation(true),errSendAlert(false))); 
- paai: postinit:00000534:  ereport(FATAL, 
- paai: postinit:00000535:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- paai: postinit:00000536:  errmsg("database "%s" does not exist", 
- paai: postinit:00000537:  dbname), 
- paai: postinit:00000538:  errdetail("It seems to have just been dropped or renamed."))); 
- paai: postinit:00000550:  ereport(FATAL, 
- paai: postinit:00000551:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- paai: postinit:00000552:  errmsg("database "%s" does not exist", 
- paai: postinit:00000553:  dbname), 
- paai: postinit:00000554:  errdetail("The database subdirectory "%s" is missing.", 
- paai: postinit:00000555:  fullpath))); 
- paai: postinit:00000557:  ereport(FATAL, 
- paai: postinit:00000558:  (errcode_for_file_access(), 
- paai: postinit:00000559:  errmsg("could not access directory "%s": %m", 
- paai: postinit:00000560:  fullpath))); 
- paai: postinit:00000590:  ereport(WARNING, 
- paai: postinit:00000591:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- paai: postinit:00000592:  errmsg("no roles are defined in this database system"), 
- paai: postinit:00000593:  errhint("You should immediately run CREATE USER "%s" CREATEUSER;.", 
- paai: postinit:00000594:  username))); 
- paai: postinit:00000621:  ereport(FATAL, 
- paai: postinit:00000622:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
- paai: postinit:00000623:  errmsg("connection limit exceeded for non-superusers"),errOmitLocation(true))); 
+ paai: postinit:00000201:  name), 
+ paai: postinit:00000202:  errOmitLocation(true), 
+ paai: postinit:00000203:  errSendAlert(false))); 
+ paai: postinit:00000213:  ereport(FATAL, 
+ paai: postinit:00000214:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ paai: postinit:00000215:  errmsg("permission denied for database "%s"", name), 
+ paai: postinit:00000216:  errdetail("User does not have CONNECT privilege."), 
+ paai: postinit:00000217:  errOmitLocation(true), 
+ paai: postinit:00000218:  errSendAlert(false))); 
+ paai: postinit:00000233:  ereport(FATAL, 
+ paai: postinit:00000234:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
+ paai: postinit:00000235:  errmsg("too many connections for database "%s"", 
+ paai: postinit:00000236:  name), 
+ paai: postinit:00000237:  errOmitLocation(true), 
+ paai: postinit:00000238:  errSendAlert(false))); 
+ paai: postinit:00000259:  ereport(FATAL, 
+ paai: postinit:00000260:  (errmsg("database locale is incompatible with operating system"), 
+ paai: postinit:00000261:  errdetail("The database was initialized with LC_COLLATE "%s", " 
+ paai: postinit:00000262:  " which is not recognized by setlocale().", collate), 
+ paai: postinit:00000263:  errhint("Recreate the database with another locale or install the missing locale."))); 
+ paai: postinit:00000266:  ereport(FATAL, 
+ paai: postinit:00000267:  (errmsg("database locale is incompatible with operating system"), 
+ paai: postinit:00000268:  errdetail("The database was initialized with LC_CTYPE "%s", " 
+ paai: postinit:00000269:  " which is not recognized by setlocale().", ctype), 
+ paai: postinit:00000270:  errhint("Recreate the database with another locale or install the missing locale."))); 
+ paai: postinit:00000412:  ereport(FATAL, 
+ paai: postinit:00000413:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ paai: postinit:00000414:  errmsg("database %u does not exist", dboid), 
+ paai: postinit:00000415:  errSendAlert(false))); 
+ paai: postinit:00000423:  ereport(FATAL, 
+ paai: postinit:00000424:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ paai: postinit:00000425:  errmsg("database "%s" does not exist", 
+ paai: postinit:00000426:  in_dbname), 
+ paai: postinit:00000427:  errOmitLocation(true), 
+ paai: postinit:00000428:  errSendAlert(false))); 
+ paai: postinit:00000543:  ereport(FATAL, 
+ paai: postinit:00000544:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ paai: postinit:00000545:  errmsg("database "%s" does not exist", 
+ paai: postinit:00000546:  dbname), 
+ paai: postinit:00000547:  errdetail("It seems to have just been dropped or renamed."))); 
+ paai: postinit:00000559:  ereport(FATAL, 
+ paai: postinit:00000560:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ paai: postinit:00000561:  errmsg("database "%s" does not exist", 
+ paai: postinit:00000562:  dbname), 
+ paai: postinit:00000563:  errdetail("The database subdirectory "%s" is missing.", 
+ paai: postinit:00000564:  fullpath))); 
+ paai: postinit:00000566:  ereport(FATAL, 
+ paai: postinit:00000567:  (errcode_for_file_access(), 
+ paai: postinit:00000568:  errmsg("could not access directory "%s": %m", 
+ paai: postinit:00000569:  fullpath))); 
+ paai: postinit:00000599:  ereport(WARNING, 
+ paai: postinit:00000600:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ paai: postinit:00000601:  errmsg("no roles are defined in this database system"), 
+ paai: postinit:00000602:  errhint("You should immediately run CREATE USER "%s" CREATEUSER;.", 
+ paai: postinit:00000603:  username))); 
+ paai: postinit:00000630:  ereport(FATAL, 
+ paai: postinit:00000631:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
+ paai: postinit:00000632:  errmsg("connection limit exceeded for non-superusers"), 
+ paai: postinit:00000633:  errOmitLocation(true), 
+ paai: postinit:00000634:  errSendAlert(true))); 
  paai: pqformat:00000461:  ereport(ERROR, 
  paai: pqformat:00000462:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
  paai: pqformat:00000463:  errmsg("no data left in message"))); 
@@ -18172,6 +18183,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000076:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000077:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000078:  str))); 
-(18105 rows)
+(18116 rows)
 
 drop external table get_ereport;

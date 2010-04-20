@@ -198,7 +198,9 @@ CheckMyDatabase(const char *name, bool am_superuser)
 			ereport(FATAL,
 					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 			 errmsg("database \"%s\" is not currently accepting connections",
-					name),errOmitLocation(true)));
+					name),
+			 errOmitLocation(true),
+			 errSendAlert(false)));
 
 		/*
 		 * Check privilege to connect to the database.	(The am_superuser test
@@ -211,7 +213,9 @@ CheckMyDatabase(const char *name, bool am_superuser)
 			ereport(FATAL,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("permission denied for database \"%s\"", name),
-					 errdetail("User does not have CONNECT privilege."),errOmitLocation(true)));
+					 errdetail("User does not have CONNECT privilege."),
+					 errOmitLocation(true),
+					 errSendAlert(false)));
 
 		/*
 		 * Check connection limit for this database.
@@ -229,7 +233,9 @@ CheckMyDatabase(const char *name, bool am_superuser)
 			ereport(FATAL,
 					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
 					 errmsg("too many connections for database \"%s\"",
-							name),errOmitLocation(true)));
+							name),
+					 errOmitLocation(true),
+					 errSendAlert(false)));
 	}
 
 	/*
@@ -405,7 +411,8 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 			if (!FindMyDatabaseByOid(dboid, dbname, &MyDatabaseTableSpace))
 				ereport(FATAL,
 						(errcode(ERRCODE_UNDEFINED_DATABASE),
-						 errmsg("database %u does not exist", dboid)));
+						 errmsg("database %u does not exist", dboid),
+						 errSendAlert(false)));
 			MyDatabaseId = dboid;
 			/* pass the database name to the caller */
 			*out_dbname = pstrdup(dbname);
@@ -416,7 +423,9 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 				ereport(FATAL,
 						(errcode(ERRCODE_UNDEFINED_DATABASE),
 						 errmsg("database \"%s\" does not exist",
-								in_dbname), errOmitLocation(true),errSendAlert(false)));
+								in_dbname),
+						 errOmitLocation(true),
+						 errSendAlert(false)));
 			/* our database name is gotten from the caller */
 			strlcpy(dbname, in_dbname, NAMEDATALEN);
 		}
@@ -620,7 +629,9 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 		!HaveNFreeProcs(ReservedBackends))
 		ereport(FATAL,
 				(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
-				 errmsg("connection limit exceeded for non-superusers"),errOmitLocation(true)));
+				 errmsg("connection limit exceeded for non-superusers"),
+				 errOmitLocation(true),
+				 errSendAlert(true)));
 
 	/*
 	 * Initialize various default states that can't be set up until we've
