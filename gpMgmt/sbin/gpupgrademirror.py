@@ -25,6 +25,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "../bin/lib"))
 
 try:
     from pysync import *
+    from gppylib.gphostcache import *
     from gppylib.commands.unix import *
     from gppylib.commands.gp import *
     from gppylib.commands.pg import PgControlData
@@ -64,6 +65,7 @@ PID_FILE = "gpupgrademirror.pid"
 
 GPUPGRADEMIRROR_TEMP_DIR = "gpupbrademirrortempdir"
 
+PARALLELISM = 16
 
 #-----------------------------------------------------------                                                                             
 def Shutdown(env, utility=False):
@@ -390,8 +392,11 @@ class ValidationError(Exception): pass
 class GPHostCache:
     """ This class represents the information stored in the .gphostcache file """
     
-    def __init__(self):
+    def __init__(self, url):
         self.hostcache = {}
+        ###array = GpArray.initFromCatalog(url, utility=True)
+        ###pool = WorkerPool(numWorkers = PARALLELISM);
+        ###cache = GpHostCache(gparray = array, pool = pool)
         self.readfile()
         
     #-------------------------------------------------------------------------------
@@ -401,20 +406,25 @@ class GPHostCache:
         
     #-------------------------------------------------------------------------------
     def readfile(self):
-        FILEDIR   = os.path.expanduser("~")
-        FILENAME  = ".gphostcache"
-        CACHEFILE = FILEDIR + "/" + FILENAME
+        if len(options.ids) == 0:
+           FILEDIR   = os.path.expanduser("~")
+        else:
+           FILEDIR = options.info_data_directory
+        self.FILENAME  = ".gphostcache"
+        self.CACHEFILE = FILEDIR + "/" + self.FILENAME
 
         try:
-            file = open(CACHEFILE, 'r')
+            file = None
+            file = open(self.CACHEFILE, 'r')
                 
             for line in file:
                 (interface,hostname) = line.split(':')
                 self.hostcache[interface.strip()] = hostname.strip()                    
         except IOError:
-            raise Exception(' file %s not found' % path)                    
+            logger.warning("Unable to read host cache file: %s" % self.CACHEFILE)                  
         finally:
-            file.close()        
+            if file != None:
+               file.close()        
     
     #-------------------------------------------------------------------------------
     def getInterfaces(self, hostName):
@@ -856,7 +866,7 @@ class Phase1and2MirrorInfo:
         self.mirrorInfoFile = options.info_data_directory + '/' + self.mirrorInfoFileUnqualified
         self.mirrorNodeList = []
         self.allMirrorInfoList = []
-        self.gpHostCacheInfo = GPHostCache()
+        self.gpHostCacheInfo = GPHostCache(url = url)
         conn = None
     
         if (options.rollback == True or options.continue_upgrade == True) and options.phase2 == False:
@@ -1896,6 +1906,21 @@ class GPUpgradeMirrorMinion(Command):
                                   , remoteHost = None
                                   )
         cpCmd.run(validateAfter=True)
+
+
+    #-------------------------------------------------------------------------------
+    def copyGpHostCacheFileToHost(self):
+        source = p1MirrorInfo.gpHostCacheInfo.CACHEFILE
+        target = self.minionDir + "/" + p1MirrorInfo.gpHostCacheInfo.FILENAME
+        logger.debug("copy info file for minion: %s:%s" % (self.remoteHost, target))
+        cpCmd = RemoteCopyPreserve( name = 'gpupgrademirror copy info dir to minion : %s:%s' % (self.remoteHost, target)
+                                  , srcDirectory = source
+                                  , dstHost = self.remoteHost
+                                  , dstDirectory = target
+                                  , ctxt = LOCAL
+                                  , remoteHost = None
+                                  )
+        cpCmd.run(validateAfter=True)
         
     #-------------------------------------------------------------------------------
     def copyLogFile(self, parentLogFile):
@@ -1938,22 +1963,24 @@ class GpUpgradeMirrorStatus():
                             , 'PHASE2_DONE'                 : 17
                             }
 
-    _unsafeModeStatusValues  = { 'PHASE1_UNSAFE_MODE'                   : 2
-                                , 'START_SEG_SETUP'                     : 3
-                                , 'END_SEG_SETUP'                       : 4
-                                , 'START_MOVE_OLD_MIRROR_SPECIAL_FILES' : 5
-                                , 'END_MOVE_OLD_MIRROR_SPECIAL_FILES'   : 6
-                                , 'START_REMOVE_OLD_MIRROR'             : 7
-                                , 'END_REMOVE_OLD_MIRROR'               : 8
-                                , 'START_PRIMARY_COPY'                  : 9
-                                , 'END_PRIMARY_COPY'                    : 10
-                                , 'START_NEW_MIRROR_FILE_FIXUP'         : 11
-                                , 'END_NEW_MIRROR_FILE_FIXUP'           : 12
-                                , 'START_MOVE_NEW_MIRROR'               : 13
-                                , 'END_MOVE_NEW_MIRROR'                 : 14
-                                , 'PHASE1_DONE'                         : 15
-                                , 'START_PHASE2'                        : 16
-                                , 'PHASE2_DONE'                         : 17
+    _unsafeModeStatusValues  = { 'PHASE1_UNSAFE_MODE'                     : 2
+                                , 'START_SEG_SETUP'                       : 3
+                                , 'END_SEG_SETUP'                         : 4
+                                , 'START_MOVE_OLD_MIRROR_SPECIAL_FILES'   : 5
+                                , 'END_MOVE_OLD_MIRROR_SPECIAL_FILES'     : 6
+                                , 'START_REMOVE_OLD_MIRROR'               : 7
+                                , 'END_REMOVE_OLD_MIRROR'                 : 8
+                                , 'START_PRIMARY_COPY'                    : 9
+                                , 'END_PRIMARY_COPY'                      : 10
+                                , 'START_NEW_MIRROR_FILE_FIXUP'           : 11
+                                , 'END_NEW_MIRROR_FILE_FIXUP'             : 12
+                                , 'START_MOVE_NEW_MIRROR'                 : 13
+                                , 'END_MOVE_NEW_MIRROR'                   : 14
+                                , 'START_REMOVE_OLD_MIRROR_SPECIAL_FILES' : 15
+                                , 'END_REMOVE_OLD_MIRROR_SPECIAL_FILES'   : 16
+                                , 'PHASE1_DONE'                           : 17
+                                , 'START_PHASE2'                          : 18
+                                , 'PHASE2_DONE'                           : 19
                                 }
     
     """ Note, Both safe and un-safe mode values are valid, therefore their values are the same '2' """
@@ -2169,6 +2196,7 @@ class Phase1(threading.Thread):
         self.info_data_directory    = info_data_directory
         self.nodeName               = node_name
         self.mirrorSegmentList      = mirror_info_list
+        self.nodeNameNIC            = mirror_info_list[0].mirror_host
         self.statusList             = []
         self.setupCompletedEvent    = setup_completed_event
         self.continueEvent          = continue_event
@@ -2270,7 +2298,7 @@ class Phase1(threading.Thread):
            cmdComplete = False
            while cmdComplete == False:
               cmd = RemoveFiles( name = 'gpupgrademirror remove any old directory'
-                                , remoteHost = self.nodeName 
+                                , remoteHost = self.nodeNameNIC
                                 , directory = tempDataDir
                                 , ctxt = REMOTE
                                 )
@@ -2284,7 +2312,7 @@ class Phase1(threading.Thread):
                                 , srcDirectory = seg.mirror_data_directory
                                 , dstDirectory = tempDataDir
                                 , ctxt  = REMOTE
-                                , remoteHost = self.nodeName
+                                , remoteHost = self.nodeNameNIC
                                 )
               cmdComplete = runAndCheckCommandComplete(rmCmd)
            rmCmd.validate()
@@ -2295,7 +2323,7 @@ class Phase1(threading.Thread):
               rmCmd = MakeDirectoryWithMode( name = 'gpupgrademirror make temp directory for old mirror special files: %s' % tempDataDir
                                 , directory = tempDataDir
                                 , ctxt = REMOTE
-                                , remoteHost = self.nodeName
+                                , remoteHost = self.nodeNameNIC
                                 , mode = 700
                                 )
               cmdComplete = runAndCheckCommandComplete(rmCmd)
@@ -2307,10 +2335,10 @@ class Phase1(threading.Thread):
                 while cmdComplete == False:
                    rmCmd = RemoteCopyPreserve( name = 'gpupgrademirror fixup file list fixup copy : %s:%s' % (fullPathFile, fullPathTarget)
                               , srcDirectory = fullPathFile
-                              , dstHost = self.nodeName
+                              , dstHost = self.nodeNameNIC
                               , dstDirectory = fullPathTarget
                               , ctxt = REMOTE
-                              , remoteHost = self.nodeName
+                              , remoteHost = self.nodeNameNIC
                               )
                    cmdComplete = runAndCheckCommandComplete(rmCmd)
                 rmCmd.validate()
@@ -2327,7 +2355,7 @@ class Phase1(threading.Thread):
                                  , srcDirectory = tempDataDir
                                  , dstDirectory = seg.mirror_data_directory
                                  , ctxt  = REMOTE
-                                 , remoteHost = self.nodeName
+                                 , remoteHost = self.nodeNameNIC
                                  )
            cmdComplete = runAndCheckCommandComplete(rmCmd)
         rmCmd.validate()           
@@ -2343,7 +2371,7 @@ class Phase1(threading.Thread):
             mkDirCmd = CreateDirIfNecessaryWithMode( name = 'gpupgrademirror make temp directory for old mirror special files: %s' % mirrorTempDataDir
                              , directory = mirrorTempDataDir
                              , ctxt = REMOTE
-                             , remoteHost = self.nodeName
+                             , remoteHost = self.nodeNameNIC
                              , mode = '0700'
                              )
             cmdComplete = runAndCheckCommandComplete(mkDirCmd)
@@ -2356,7 +2384,7 @@ class Phase1(threading.Thread):
            mkDirCmd = CreateDirIfNecessaryWithMode( name = 'gpupgrademirror make temp directory for old mirror special files: %s' % mirrorTempBaseDataDir
                          , directory = mirrorTempBaseDataDir
                          , ctxt = REMOTE
-                         , remoteHost = self.nodeName
+                         , remoteHost = self.nodeNameNIC
                          , mode = '0700'
                          )
            cmdComplete = runAndCheckCommandComplete(mkDirCmd)
@@ -2375,7 +2403,7 @@ class Phase1(threading.Thread):
                   rmCmd = RemoveFiles( name = 'gpupgrademirror remove old mirror special directory: %s:%s' % (self.nodeName, dir)
                               , directory = targetTempDir
                               , ctxt = REMOTE
-                              , remoteHost = self.nodeName
+                              , remoteHost = self.nodeNameNIC
                               )
                   cmdComplete = runAndCheckCommandComplete(rmCmd)
                rmCmd.validate()
@@ -2386,7 +2414,7 @@ class Phase1(threading.Thread):
                mkDirCmd = CreateDirIfNecessaryWithMode( name = 'gpupgrademirror make temp directory for old mirror special files: %s' % targetTempDir
                                  , directory = targetTempDir
                                  , ctxt = REMOTE
-                                 , remoteHost = self.nodeName
+                                 , remoteHost = self.nodeNameNIC
                                  , mode = '0700'
                                  )
                cmdComplete = runAndCheckCommandComplete(mkDirCmd)
@@ -2601,10 +2629,10 @@ class Phase1(threading.Thread):
             while cmdComplete == False:
                rmCmd = RemoteCopyPreserve( name = 'gpupgrademirror fixup copy : %s to %s' % (fullPathFile, fullPathTarget)
                               , srcDirectory = fullPathFile
-                              , dstHost = self.nodeName
+                              , dstHost = self.nodeNameNIC
                               , dstDirectory = fullPathTarget
                               , ctxt = REMOTE
-                              , remoteHost = self.nodeName
+                              , remoteHost = self.nodeNameNIC
                               )
                cmdComplete = runAndCheckCommandComplete(rmCmd)
             rmCmd.validate()  
@@ -2614,7 +2642,7 @@ class Phase1(threading.Thread):
         self.logger.debug('in removeOldMirror %s:%s' % (self.nodeName, seg.mirror_data_directory))
 
         if options.mode == 'S' and options.rollback == False:
-           ''' If in a safe mode upgrade, point to the temp locatio of the old mirror '''
+           ''' If in a safe mode upgrade, point to the temp location of the old mirror '''
            tempDataDir = seg.mirror_data_directory + self.tempOldMirrorDirSuffix
         else:
            ''' if in un-safe mode or in rollback, remove all files in the real mirror location'''
@@ -2624,7 +2652,7 @@ class Phase1(threading.Thread):
            rmCmd = RemoveFiles( name = 'gpupgrademirror remove old mirror data directory: %s:%s' % (self.nodeName, tempDataDir)
                            , directory = tempDataDir
                            , ctxt = REMOTE
-                           , remoteHost = self.nodeName
+                           , remoteHost = self.nodeNameNIC
                            )
            cmdComplete = runAndCheckCommandComplete(rmCmd)
         rmCmd.validate()
@@ -2640,7 +2668,7 @@ class Phase1(threading.Thread):
            rmCmd = RemoveFiles( name = 'gpupgrademirror remove old mirror special files: %s:%s' % (self.nodeName, tempDataDir)
                            , directory = tempDataDir
                            , ctxt = REMOTE
-                           , remoteHost = self.nodeName
+                           , remoteHost = self.nodeNameNIC
                            )
            cmdComplete = runAndCheckCommandComplete(rmCmd)
         rmCmd.validate()
@@ -2656,7 +2684,7 @@ class Phase1(threading.Thread):
            rmCmd = RemoveFiles( name = 'gpupgrademirror remove the copied mirror data directory: %s:%s' % (self.nodeName, tempDataDir)
                            , directory = tempDataDir
                            , ctxt = REMOTE
-                           , remoteHost = self.nodeName
+                           , remoteHost = self.nodeNameNIC
                            )
            cmdComplete = runAndCheckCommandComplete(rmCmd)
         rmCmd.validate()
@@ -2683,7 +2711,7 @@ class Phase1(threading.Thread):
            mirrorFreeSizeCmd = GPumDiskFree( name = 'gpupgrademirror disk space available on mirror: ' + str(seg.mirror_data_directory)
                                            , directory = seg.mirror_data_directory
                                            , ctxt = REMOTE
-                                           , remoteHost = self.nodeName
+                                           , remoteHost = self.nodeNameNIC
                                            )
            cmdComplete = runAndCheckCommandComplete(mirrorFreeSizeCmd)
         mirrorFreeSizeCmd.validate()
@@ -2695,7 +2723,7 @@ class Phase1(threading.Thread):
                currentMirrorSizeCmd = DiskUsage( name = "gpupgrademirror check for disk usage on mirror: " + str(seg.mirror_data_directory) 
                                                , directory = seg.mirror_data_directory
                                                , ctxt = REMOTE
-                                               , remoteHost = self.nodeName
+                                               , remoteHost = self.nodeNameNIC
                                                )
                cmdComplete = runAndCheckCommandComplete(currentMirrorSizeCmd)
             currentMirrorSizeCmd.validate()
@@ -2805,6 +2833,12 @@ class Phase1(threading.Thread):
                        status.set_status('START_MOVE_NEW_MIRROR')
                        self.renameTempMirrorToOldMirror(seg, dirSuffix = self.tempNewMirrorDirSuffix)
                        status.set_status('END_MOVE_NEW_MIRROR')
+                    
+                    if status.compare_status('START_REMOVE_OLD_MIRROR_SPECIAL_FILES'):
+                       ''' Remove the special files we saved away'''
+                       status.set_status('START_REMOVE_OLD_MIRROR_SPECIAL_FILES')
+                       self.removeOldMirrorSpecialFiles(seg)
+                       status.set_status('END_REMOVE_OLD_MIRROR_SPECIAL_FILES')
                    
                     if status.compare_status('PHASE1_DONE') < 0:
                        status.set_status('PHASE1_DONE')        
@@ -3209,9 +3243,6 @@ try:
         logger.warning('gpupgradmirror exiting')
         exit(0)
 
-
-     """ KAS note to self. Need to re-work this to not use so many threads at once. """
-
      ''' Get list of all segments '''
      allSegMirrorInfo = p2MirrorInfo.getAllMirrorInfoList()
      
@@ -3319,11 +3350,10 @@ try:
     try:
        p1MirrorInfo = Phase1and2MirrorInfo(dbUrl)
     except Exception, e:
-        """ KAS note to self. I don't remember why we only put out a warning here. It's probably because Caleb told me do do that? """
         logger.warning('Unable to obtain mirror information: ' + str(e))
         logger.warning('gpupgradmirror exiting')
         traceback.print_exc()
-        exit(0)
+        exit(2)
     
     allSegMirrorInfo = p1MirrorInfo.getAllMirrorInfoList()
         
@@ -3427,6 +3457,7 @@ try:
               minion.createInfoDirectory()
               minion.copyStatusFileToHost()
               minion.copyInfoFileToHost()
+              minion.copyGpHostCacheFileToHost()
               
        if overallStatus.compare_status("MINION_SETUP_DONE") <= 0:
           overallStatus.set_status("MINION_SETUP_DONE")
