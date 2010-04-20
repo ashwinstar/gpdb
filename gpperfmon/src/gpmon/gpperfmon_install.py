@@ -20,7 +20,7 @@ if __name__ == '__main__':
     cmd1 = "psql -f %s/lib/gpperfmon/gpperfmon3.sql template1" % gphome
     
     # 4.x gpperfmon schema additions
-    cmd2 = "psql -f %s/lib/gpperfmon/gpperfmon4.sql template1" % gphome
+    cmd2 = "psql -f %s/lib/gpperfmon/gpperfmon4.sql gpperfmon" % gphome
     
     # gpperfmon schema completion tasks
     cmd3 = "psql -f %s/lib/gpperfmon/gpperfmonC.sql template1" % gphome
