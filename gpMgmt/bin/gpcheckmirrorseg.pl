@@ -113,6 +113,8 @@ my $glob_ignore;
 
 my $glob_filedump;
 
+my $glob_exit;
+
 BEGIN {
     my $man  = 0;
     my $help = 0;
@@ -1224,12 +1226,10 @@ sub diff_again
 					\@aofiles, \@heapfiles, \@unknownfiles
 			);
 
-		exit(1);
+		push @{$glob_exit}, $row->{ploc}." ".$row->{mloc} ; # found differences
 	}
 
 	print "\nenhanced diff [$floc]: no differences\n\n";
-	print "no differences found\n";
-	exit(0);
 
 } # end diff_again
 
@@ -1392,16 +1392,15 @@ sub diff_thrice
 		
 		print Data::Dumper->Dump([$bigh]);	 
 
-		die "found differences";
-		exit(1);
+		push @{$glob_exit}, $row->{ploc}." ".$row->{mloc} ; # found differences
 	}
-
-	exit(0);
 
 } # end diff_thrice
 
 if (1)
 {
+	$glob_exit = [];
+
     my $psql_str = "psql ";
 
     $psql_str .= $glob_connect
@@ -1671,8 +1670,9 @@ if (1)
 
 				print Data::Dumper->Dump([$bigh]);	 
 
-				die "found extra files in data directory";
-				exit (1);
+				warn "found extra files in data directory";
+
+				push @{$glob_exit}, $row->{ploc}." ".$row->{mloc} ; # found differences
 			}
 
 			print "\n\nraw diff mismatch for $fil: will diff again using storage-specific techniques\n\n";
@@ -1699,8 +1699,17 @@ if (1)
 		}
 
 	}
-	
-	print "no differences found\n";
+
+	if (scalar(@{$glob_exit}))
+	{
+		print "found differences: \n  ", join("\n  ", @{$glob_exit}), "\n";
+		exit(1);
+	}
+	else
+	{
+		print "no differences found\n";
+		exit(0);
+	}
 	exit(0);
 
 }
