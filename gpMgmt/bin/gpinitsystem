@@ -350,6 +350,9 @@ CHK_PARAMS () {
 			EXIT_STATUS=1
 			ENCODING="UTF-8"
 		fi
+		if [ x"SQL_ASCII" = x"$ENCODING" ]; then
+			ERROR_EXIT "[FATAL]:-SQL_ASCII is no longer supported as a server encoding" 2
+		fi
 		# MASTER_MAX_CONNECT
 		if [ ! $MASTER_MAX_CONNECT ];then
 			LOG_MSG "[INFO]:-MASTER_MAX_CONNECT not set, will set to default value $DEFAULT_QD_MAX_CONNECT" 1

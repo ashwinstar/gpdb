@@ -3975,9 +3975,9 @@ select * from get_ereport order by 1;
  cabh: cdbdtxcontextinfo:00000073:  ereport(ERROR, 
  cabh: cdbdtxcontextinfo:00000074:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  cabh: cdbdtxcontextinfo:00000075:  errmsg("out of memory"))); 
- cabh: cdbdtxcontextinfo:00000511:  ereport(ERROR, 
- cabh: cdbdtxcontextinfo:00000512:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cabh: cdbdtxcontextinfo:00000513:  errmsg("out of memory"))); 
+ cabh: cdbdtxcontextinfo:00000510:  ereport(ERROR, 
+ cabh: cdbdtxcontextinfo:00000511:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cabh: cdbdtxcontextinfo:00000512:  errmsg("out of memory"))); 
  cabh: cdbfilerepservice:00000516:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
  cabh: cdbfilerepservice:00000517:  errmsg("database 'postgres' does not exist"))); 
  cabh: cdbfilerepservice:00000571:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
@@ -4909,113 +4909,118 @@ select * from get_ereport order by 1;
  daba: dbcommands:00000758:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
  daba: dbcommands:00000759:  errmsg("%s is not a valid encoding name", 
  daba: dbcommands:00000760:  encoding_name))); 
- daba: dbcommands:00000784:  ereport(ERROR, 
- daba: dbcommands:00000785:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- daba: dbcommands:00000786:  errmsg("permission denied to create database"))); 
- daba: dbcommands:00000806:  ereport(ERROR, 
- daba: dbcommands:00000807:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- daba: dbcommands:00000808:  errmsg("template database "%s" does not exist", 
- daba: dbcommands:00000809:  dbtemplate))); 
- daba: dbcommands:00000818:  ereport(ERROR, 
- daba: dbcommands:00000819:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- daba: dbcommands:00000820:  errmsg("permission denied to copy database "%s"", 
- daba: dbcommands:00000821:  dbtemplate))); 
- daba: dbcommands:00000830:  ereport(ERROR, 
- daba: dbcommands:00000831:  (errcode(ERRCODE_OBJECT_IN_USE), 
- daba: dbcommands:00000832:  errmsg("source database "%s" is being accessed by other users", 
- daba: dbcommands:00000833:  dbtemplate))); 
- daba: dbcommands:00000841:  ereport(ERROR, 
- daba: dbcommands:00000842:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- daba: dbcommands:00000843:  errmsg("invalid server encoding %d", encoding))); 
- daba: dbcommands:00000852:  ereport(ERROR, 
- daba: dbcommands:00000853:  (errmsg("Encoding mismatch"), 
- daba: dbcommands:00000854:  errdetail("The encoding you selected (%s) and the encoding that the
+ daba: dbcommands:00000769:  ereport(ERROR, 
+ daba: dbcommands:00000770:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ daba: dbcommands:00000771:  errmsg("SQL_ASCII is no longer supported as a server encoding"), 
+ daba: dbcommands:00000772:  errhint("Use another encoding, such as LATIN1 or UTF8") 
+ daba: dbcommands:00000773:  )); 
+ daba: dbcommands:00000793:  ereport(ERROR, 
+ daba: dbcommands:00000794:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ daba: dbcommands:00000795:  errmsg("permission denied to create database"))); 
+ daba: dbcommands:00000815:  ereport(ERROR, 
+ daba: dbcommands:00000816:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ daba: dbcommands:00000817:  errmsg("template database "%s" does not exist", 
+ daba: dbcommands:00000818:  dbtemplate))); 
+ daba: dbcommands:00000827:  ereport(ERROR, 
+ daba: dbcommands:00000828:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ daba: dbcommands:00000829:  errmsg("permission denied to copy database "%s"", 
+ daba: dbcommands:00000830:  dbtemplate))); 
+ daba: dbcommands:00000839:  ereport(ERROR, 
+ daba: dbcommands:00000840:  (errcode(ERRCODE_OBJECT_IN_USE), 
+ daba: dbcommands:00000841:  errmsg("source database "%s" is being accessed by other users", 
+ daba: dbcommands:00000842:  dbtemplate))); 
+ daba: dbcommands:00000850:  ereport(ERROR, 
+ daba: dbcommands:00000851:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ daba: dbcommands:00000852:  errmsg("invalid server encoding %d", encoding))); 
+ daba: dbcommands:00000861:  ereport(ERROR, 
+ daba: dbcommands:00000862:  (errmsg("Encoding mismatch"), 
+ daba: dbcommands:00000863:  errdetail("The encoding you selected (%s) and the encoding that the
  " 
- daba: dbcommands:00000855:  "selected locale uses (%s) do not match. This would lead to
+ daba: dbcommands:00000864:  "selected locale uses (%s) do not match. This would lead to
  " 
- daba: dbcommands:00000856:  "misbehavior in various character string processing functions.
+ daba: dbcommands:00000865:  "misbehavior in various character string processing functions.
  ", 
- daba: dbcommands:00000857:  pg_encoding_to_char(encoding), 
- daba: dbcommands:00000858:  lc_ctype))); 
- daba: dbcommands:00000862:  ereport(ERROR, 
- daba: dbcommands:00000863:  (errmsg("Encoding mismatch"), 
- daba: dbcommands:00000864:  errdetail("The encoding you selected (%s) and the encoding that the
+ daba: dbcommands:00000866:  pg_encoding_to_char(encoding), 
+ daba: dbcommands:00000867:  lc_ctype))); 
+ daba: dbcommands:00000871:  ereport(ERROR, 
+ daba: dbcommands:00000872:  (errmsg("Encoding mismatch"), 
+ daba: dbcommands:00000873:  errdetail("The encoding you selected (%s) and the encoding that the
  " 
- daba: dbcommands:00000865:  "selected locale uses (%s) do not match. This would lead to
+ daba: dbcommands:00000874:  "selected locale uses (%s) do not match. This would lead to
  " 
- daba: dbcommands:00000866:  "misbehavior in various character string processing functions.
+ daba: dbcommands:00000875:  "misbehavior in various character string processing functions.
  ", 
- daba: dbcommands:00000867:  pg_encoding_to_char(encoding), 
- daba: dbcommands:00000868:  lc_collate))); 
- daba: dbcommands:00000880:  ereport(ERROR, 
- daba: dbcommands:00000881:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- daba: dbcommands:00000882:  errmsg("tablespace "%s" does not exist", 
- daba: dbcommands:00000883:  tablespacename))); 
- daba: dbcommands:00000893:  ereport(ERROR, 
- daba: dbcommands:00000894:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- daba: dbcommands:00000895:  errmsg("pg_global cannot be used as default tablespace"))); 
- daba: dbcommands:00000919:  ereport(ERROR, 
- daba: dbcommands:00000920:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- daba: dbcommands:00000921:  errmsg("cannot assign new default tablespace "%s"", 
- daba: dbcommands:00000922:  tablespacename), 
- daba: dbcommands:00000923:  errdetail("There is a conflict because database "%s" already has some tables in this tablespace.", 
- daba: dbcommands:00000924:  dbtemplate))); 
- daba: dbcommands:00000941:  ereport(ERROR, 
- daba: dbcommands:00000942:  (errcode(ERRCODE_DUPLICATE_DATABASE), 
- daba: dbcommands:00000943:  errmsg("database "%s" already exists", dbname))); 
- daba: dbcommands:00001287:  ereport(ERROR, 
- daba: dbcommands:00001288:  (errcode(ERRCODE_OBJECT_IN_USE), 
- daba: dbcommands:00001289:  errmsg("cannot drop the currently open database"))); 
- daba: dbcommands:00001305:  ereport(ERROR, 
- daba: dbcommands:00001306:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- daba: dbcommands:00001307:  errmsg("database "%s" does not exist", dbname))); 
- daba: dbcommands:00001327:  ereport(NOTICE, 
- daba: dbcommands:00001328:  (errmsg("database "%s" does not exist, skipping", 
- daba: dbcommands:00001329:  dbname))); 
- daba: dbcommands:00001348:  ereport(ERROR, 
- daba: dbcommands:00001349:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- daba: dbcommands:00001350:  errmsg("cannot drop a template database"))); 
+ daba: dbcommands:00000876:  pg_encoding_to_char(encoding), 
+ daba: dbcommands:00000877:  lc_collate))); 
+ daba: dbcommands:00000889:  ereport(ERROR, 
+ daba: dbcommands:00000890:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ daba: dbcommands:00000891:  errmsg("tablespace "%s" does not exist", 
+ daba: dbcommands:00000892:  tablespacename))); 
+ daba: dbcommands:00000902:  ereport(ERROR, 
+ daba: dbcommands:00000903:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ daba: dbcommands:00000904:  errmsg("pg_global cannot be used as default tablespace"))); 
+ daba: dbcommands:00000928:  ereport(ERROR, 
+ daba: dbcommands:00000929:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ daba: dbcommands:00000930:  errmsg("cannot assign new default tablespace "%s"", 
+ daba: dbcommands:00000931:  tablespacename), 
+ daba: dbcommands:00000932:  errdetail("There is a conflict because database "%s" already has some tables in this tablespace.", 
+ daba: dbcommands:00000933:  dbtemplate))); 
+ daba: dbcommands:00000950:  ereport(ERROR, 
+ daba: dbcommands:00000951:  (errcode(ERRCODE_DUPLICATE_DATABASE), 
+ daba: dbcommands:00000952:  errmsg("database "%s" already exists", dbname))); 
+ daba: dbcommands:00001296:  ereport(ERROR, 
+ daba: dbcommands:00001297:  (errcode(ERRCODE_OBJECT_IN_USE), 
+ daba: dbcommands:00001298:  errmsg("cannot drop the currently open database"))); 
+ daba: dbcommands:00001314:  ereport(ERROR, 
+ daba: dbcommands:00001315:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ daba: dbcommands:00001316:  errmsg("database "%s" does not exist", dbname))); 
+ daba: dbcommands:00001336:  ereport(NOTICE, 
+ daba: dbcommands:00001337:  (errmsg("database "%s" does not exist, skipping", 
+ daba: dbcommands:00001338:  dbname))); 
  daba: dbcommands:00001357:  ereport(ERROR, 
- daba: dbcommands:00001358:  (errcode(ERRCODE_OBJECT_IN_USE), 
- daba: dbcommands:00001359:  errmsg("database "%s" is being accessed by other users", 
- daba: dbcommands:00001360:  dbname))); 
- daba: dbcommands:00001580:  ereport(ERROR, 
- daba: dbcommands:00001581:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- daba: dbcommands:00001582:  errmsg("database "%s" does not exist", oldname))); 
- daba: dbcommands:00001591:  ereport(ERROR, 
- daba: dbcommands:00001592:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- daba: dbcommands:00001593:  errmsg("current database may not be renamed"))); 
+ daba: dbcommands:00001358:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ daba: dbcommands:00001359:  errmsg("cannot drop a template database"))); 
+ daba: dbcommands:00001366:  ereport(ERROR, 
+ daba: dbcommands:00001367:  (errcode(ERRCODE_OBJECT_IN_USE), 
+ daba: dbcommands:00001368:  errmsg("database "%s" is being accessed by other users", 
+ daba: dbcommands:00001369:  dbname))); 
+ daba: dbcommands:00001589:  ereport(ERROR, 
+ daba: dbcommands:00001590:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ daba: dbcommands:00001591:  errmsg("database "%s" does not exist", oldname))); 
  daba: dbcommands:00001600:  ereport(ERROR, 
- daba: dbcommands:00001601:  (errcode(ERRCODE_OBJECT_IN_USE), 
- daba: dbcommands:00001602:  errmsg("database "%s" is being accessed by other users", 
- daba: dbcommands:00001603:  oldname))); 
- daba: dbcommands:00001607:  ereport(ERROR, 
- daba: dbcommands:00001608:  (errcode(ERRCODE_DUPLICATE_DATABASE), 
- daba: dbcommands:00001609:  errmsg("database "%s" already exists", newname))); 
- daba: dbcommands:00001618:  ereport(ERROR, 
- daba: dbcommands:00001619:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- daba: dbcommands:00001620:  errmsg("permission denied to rename database"))); 
- daba: dbcommands:00001681:  ereport(ERROR, 
- daba: dbcommands:00001682:  (errcode(ERRCODE_SYNTAX_ERROR), 
- daba: dbcommands:00001683:  errmsg("conflicting or redundant options"))); 
- daba: dbcommands:00001708:  ereport(ERROR, 
- daba: dbcommands:00001709:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- daba: dbcommands:00001710:  errmsg("database "%s" does not exist", stmt->dbname))); 
- daba: dbcommands:00001804:  ereport(ERROR, 
- daba: dbcommands:00001805:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- daba: dbcommands:00001806:  errmsg("database "%s" does not exist", stmt->dbname))); 
- daba: dbcommands:00001962:  ereport(ERROR, 
- daba: dbcommands:00001963:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- daba: dbcommands:00001964:  errmsg("database "%s" does not exist", dbname))); 
- daba: dbcommands:00002003:  ereport(ERROR, 
- daba: dbcommands:00002004:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- daba: dbcommands:00002005:  errmsg("permission denied to change owner of database"))); 
- daba: dbcommands:00002348:  ereport(WARNING, 
- daba: dbcommands:00002349:  (errmsg("could not remove database directory "%s"", 
- daba: dbcommands:00002350:  dst_path))); 
- daba: dbcommands:00002388:  ereport(WARNING, 
- daba: dbcommands:00002389:  (errmsg("could not remove database directory "%s"", 
- daba: dbcommands:00002390:  dst_path))); 
+ daba: dbcommands:00001601:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ daba: dbcommands:00001602:  errmsg("current database may not be renamed"))); 
+ daba: dbcommands:00001609:  ereport(ERROR, 
+ daba: dbcommands:00001610:  (errcode(ERRCODE_OBJECT_IN_USE), 
+ daba: dbcommands:00001611:  errmsg("database "%s" is being accessed by other users", 
+ daba: dbcommands:00001612:  oldname))); 
+ daba: dbcommands:00001616:  ereport(ERROR, 
+ daba: dbcommands:00001617:  (errcode(ERRCODE_DUPLICATE_DATABASE), 
+ daba: dbcommands:00001618:  errmsg("database "%s" already exists", newname))); 
+ daba: dbcommands:00001627:  ereport(ERROR, 
+ daba: dbcommands:00001628:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ daba: dbcommands:00001629:  errmsg("permission denied to rename database"))); 
+ daba: dbcommands:00001690:  ereport(ERROR, 
+ daba: dbcommands:00001691:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ daba: dbcommands:00001692:  errmsg("conflicting or redundant options"))); 
+ daba: dbcommands:00001717:  ereport(ERROR, 
+ daba: dbcommands:00001718:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ daba: dbcommands:00001719:  errmsg("database "%s" does not exist", stmt->dbname))); 
+ daba: dbcommands:00001813:  ereport(ERROR, 
+ daba: dbcommands:00001814:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ daba: dbcommands:00001815:  errmsg("database "%s" does not exist", stmt->dbname))); 
+ daba: dbcommands:00001971:  ereport(ERROR, 
+ daba: dbcommands:00001972:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ daba: dbcommands:00001973:  errmsg("database "%s" does not exist", dbname))); 
+ daba: dbcommands:00002012:  ereport(ERROR, 
+ daba: dbcommands:00002013:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ daba: dbcommands:00002014:  errmsg("permission denied to change owner of database"))); 
+ daba: dbcommands:00002357:  ereport(WARNING, 
+ daba: dbcommands:00002358:  (errmsg("could not remove database directory "%s"", 
+ daba: dbcommands:00002359:  dst_path))); 
+ daba: dbcommands:00002397:  ereport(WARNING, 
+ daba: dbcommands:00002398:  (errmsg("could not remove database directory "%s"", 
+ daba: dbcommands:00002399:  dst_path))); 
  daba: dependency:00000186:  ereport(ERROR, 
  daba: dependency:00000187:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
  daba: dependency:00000188:  errmsg("cannot drop %s because other objects depend on it", 
@@ -7282,19 +7287,19 @@ select * from get_ereport order by 1;
  gaai: gpviewcp:00000338:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  gaai: gpviewcp:00000339:  errmsg("gpviewreparse(): called with %hd arguments", 
  gaai: gpviewcp:00000340:  PG_NARGS()))); 
- gaai: gucxfile:00000542: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
- gaai: gucxfile:00000543:  
- gaai: gucxfile:00000544: enum { 
- gaai: gucxfile:00000545:  GUC_ID = 1, 
- gaai: gucxfile:00000546:  GUC_STRING = 2, 
- gaai: gucxfile:00000547:  GUC_INTEGER = 3, 
- gaai: gucxfile:00000548:  GUC_REAL = 4, 
- gaai: gucxfile:00000549:  GUC_EQUALS = 5, 
- gaai: gucxfile:00000550:  GUC_UNQUOTED_STRING = 6, 
- gaai: gucxfile:00000551:  GUC_QUALIFIED_ID = 7, 
- gaai: gucxfile:00000552:  GUC_EOL = 99, 
- gaai: gucxfile:00000553:  GUC_ERROR = 100 
- gaai: gucxfile:00000554: }; 
+ gaai: gucxfile:00000557: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
+ gaai: gucxfile:00000558:  
+ gaai: gucxfile:00000559: enum { 
+ gaai: gucxfile:00000560:  GUC_ID = 1, 
+ gaai: gucxfile:00000561:  GUC_STRING = 2, 
+ gaai: gucxfile:00000562:  GUC_INTEGER = 3, 
+ gaai: gucxfile:00000563:  GUC_REAL = 4, 
+ gaai: gucxfile:00000564:  GUC_EQUALS = 5, 
+ gaai: gucxfile:00000565:  GUC_UNQUOTED_STRING = 6, 
+ gaai: gucxfile:00000566:  GUC_QUALIFIED_ID = 7, 
+ gaai: gucxfile:00000567:  GUC_EOL = 99, 
+ gaai: gucxfile:00000568:  GUC_ERROR = 100 
+ gaai: gucxfile:00000569: }; 
  gaba: gistvacuum:00000569:  ereport(NOTICE, 
  gaba: gistvacuum:00000570:  (errmsg("index "%s" needs VACUUM FULL or REINDEX to finish crash recovery", 
  gaba: gistvacuum:00000571:  RelationGetRelationName(rel)))); 
@@ -10415,35 +10420,35 @@ select * from get_ereport order by 1;
  paah: plxgram:00004389:  (errcode(ERRCODE_SYNTAX_ERROR), 
  paah: plxgram:00004390:  errmsg("end label "%s" differs from block's label "%s"", 
  paah: plxgram:00004391:  end_label, start_label))); 
- paah: plxscan:00000858: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
- paah: plxscan:00000859:  
- paah: plxscan:00000860: #define unify_version(a,b,c) ((a<<16)+(b<<8)+c) 
- paah: plxscan:00000861: #if unify_version(YY_FLEX_MAJOR_VERSION,YY_FLEX_MINOR_VERSION,YY_FLEX_SUBMINOR_VERSION) < unify_version(2,5,35) 
- paah: plxscan:00000862: int plpgsql_base_yyget_lineno (void); 
- paah: plxscan:00001587:  ereport(ERROR, 
- paah: plxscan:00001588:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001589:  errmsg("unterminated quoted identifier"))); 
- paah: plxscan:00001638:  ereport(ERROR, 
- paah: plxscan:00001639:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001640:  errmsg("unterminated comment"))); 
- paah: plxscan:00001708:  ereport(ERROR, 
- paah: plxscan:00001709:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001710:  errmsg("unterminated string"))); 
- paah: plxscan:00001764:  ereport(ERROR, 
- paah: plxscan:00001765:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001766:  errmsg("unterminated dollar-quoted string"))); 
- paah: plxscan:00002784:  ereport(ERROR, 
- paah: plxscan:00002785:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxscan:00002786:  /* translator: %s is typically "syntax error" */ 
- paah: plxscan:00002787:  errmsg("%s at end of input", message), 
- paah: plxscan:00002788:  internalerrposition(cursorpos), 
- paah: plxscan:00002789:  internalerrquery(scanstr))); 
- paah: plxscan:00002793:  ereport(ERROR, 
- paah: plxscan:00002794:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxscan:00002795:  /* translator: first %s is typically "syntax error" */ 
- paah: plxscan:00002796:  errmsg("%s at or near "%s"", message, loc), 
- paah: plxscan:00002797:  internalerrposition(cursorpos), 
- paah: plxscan:00002798:  internalerrquery(scanstr))); 
+ paah: plxscan:00001161: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
+ paah: plxscan:00001162:  
+ paah: plxscan:00001163: #define unify_version(a,b,c) ((a<<16)+(b<<8)+c) 
+ paah: plxscan:00001164: #if unify_version(YY_FLEX_MAJOR_VERSION,YY_FLEX_MINOR_VERSION,YY_FLEX_SUBMINOR_VERSION) < unify_version(2,5,35) 
+ paah: plxscan:00001165: int plpgsql_base_yyget_lineno (void); 
+ paah: plxscan:00001919:  ereport(ERROR, 
+ paah: plxscan:00001920:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00001921:  errmsg("unterminated quoted identifier"))); 
+ paah: plxscan:00001970:  ereport(ERROR, 
+ paah: plxscan:00001971:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00001972:  errmsg("unterminated comment"))); 
+ paah: plxscan:00002040:  ereport(ERROR, 
+ paah: plxscan:00002041:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00002042:  errmsg("unterminated string"))); 
+ paah: plxscan:00002096:  ereport(ERROR, 
+ paah: plxscan:00002097:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00002098:  errmsg("unterminated dollar-quoted string"))); 
+ paah: plxscan:00003128:  ereport(ERROR, 
+ paah: plxscan:00003129:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxscan:00003130:  /* translator: %s is typically "syntax error" */ 
+ paah: plxscan:00003131:  errmsg("%s at end of input", message), 
+ paah: plxscan:00003132:  internalerrposition(cursorpos), 
+ paah: plxscan:00003133:  internalerrquery(scanstr))); 
+ paah: plxscan:00003137:  ereport(ERROR, 
+ paah: plxscan:00003138:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxscan:00003139:  /* translator: first %s is typically "syntax error" */ 
+ paah: plxscan:00003140:  errmsg("%s at or near "%s"", message, loc), 
+ paah: plxscan:00003141:  internalerrposition(cursorpos), 
+ paah: plxscan:00003142:  internalerrquery(scanstr))); 
  paah: prepare:00000078:  ereport(ERROR, 
  paah: prepare:00000079:  (errcode(ERRCODE_INVALID_PSTATEMENT_DEFINITION), 
  paah: prepare:00000080:  errmsg("invalid statement name: must not be empty"))); 
@@ -13612,55 +13617,55 @@ select * from get_ereport order by 1;
  saad: spi:00002026:  (errcode(ERRCODE_WARNING), 
  saad: spi:00002027:  errmsg("A stable or volatile function is used as if it is immutable"), 
  saad: spi:00002028:  errhint("The function should be declared as stable or volatile in create function statement."))); 
- saae: scan:00014199: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
- saae: scan:00014200:  
- saae: scan:00014201: static int xcdepth = 0; /* depth of nesting in slash-star comments */ 
- saae: scan:00014202: static char *dolqstart; /* current $foo$ quote start string */ 
- saae: scan:00014203:  
- saae: scan:00014204: /* 
- saae: scan:00014205:  * GUC variables. This is a DIRECT violation of the warning given at the 
- saae: scan:00014206:  * head of gram.y, ie flex/bison code must not depend on any GUC variables; 
- saae: scan:00014827:  ereport(ERROR, 
- saae: scan:00014828:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- saae: scan:00014829:  errmsg("unsafe use of string constant with Unicode escapes"), 
- saae: scan:00014830:  errdetail("String constants with Unicode escapes cannot be used when standard_conforming_strings is off."), 
- saae: scan:00014831:  lexer_errposition())); 
- saae: scan:00014911:  ereport(ERROR, 
- saae: scan:00014912:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00014913:  errmsg("unsafe use of \' in a string literal"), 
- saae: scan:00014914:  errhint("Use '' to write quotes in strings. \' is insecure in client-only encodings."), 
- saae: scan:00014915:  errOmitLocation(true), 
- saae: scan:00014916:  lexer_errposition())); 
- saae: scan:00016337:  ereport(ERROR, 
- saae: scan:00016338:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saae: scan:00016339:  /* translator: %s is typically the translation of "syntax error" */ 
- saae: scan:00016340:  errmsg("%s at end of input", _(message)), 
- saae: scan:00016341:  errOmitLocation(true), 
- saae: scan:00016342:  lexer_errposition())); 
- saae: scan:00016346:  ereport(ERROR, 
- saae: scan:00016347:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saae: scan:00016348:  /* translator: first %s is typically the translation of "syntax error" */ 
- saae: scan:00016349:  errmsg("%s at or near "%s"", _(message), loc), 
- saae: scan:00016350:  errOmitLocation(true), 
- saae: scan:00016351:  lexer_errposition())); 
- saae: scan:00016577:  ereport(WARNING, 
- saae: scan:00016578:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00016579:  errmsg("nonstandard use of \' in a string literal"), 
- saae: scan:00016580:  errhint("Use '' to write quotes in strings, or use the escape string syntax (E'...')."), 
- saae: scan:00016581:  errOmitLocation(true), 
- saae: scan:00016582:  lexer_errposition())); 
- saae: scan:00016588:  ereport(WARNING, 
- saae: scan:00016589:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00016590:  errmsg("nonstandard use of \\ in a string literal"), 
- saae: scan:00016591:  errhint("Use the escape string syntax for backslashes, e.g., E'\\'."), 
- saae: scan:00016592:  errOmitLocation(true), 
- saae: scan:00016593:  lexer_errposition())); 
- saae: scan:00016604:  ereport(WARNING, 
- saae: scan:00016605:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00016606:  errmsg("nonstandard use of escape in a string literal"), 
- saae: scan:00016607:  errhint("Use the escape string syntax for escapes, e.g., E'\r\n'."), 
- saae: scan:00016608:  errOmitLocation(true), 
- saae: scan:00016609:  lexer_errposition())); 
+ saae: scan:00014214: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
+ saae: scan:00014215:  
+ saae: scan:00014216: static int xcdepth = 0; /* depth of nesting in slash-star comments */ 
+ saae: scan:00014217: static char *dolqstart; /* current $foo$ quote start string */ 
+ saae: scan:00014218:  
+ saae: scan:00014219: /* 
+ saae: scan:00014220:  * GUC variables. This is a DIRECT violation of the warning given at the 
+ saae: scan:00014221:  * head of gram.y, ie flex/bison code must not depend on any GUC variables; 
+ saae: scan:00014871:  ereport(ERROR, 
+ saae: scan:00014872:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ saae: scan:00014873:  errmsg("unsafe use of string constant with Unicode escapes"), 
+ saae: scan:00014874:  errdetail("String constants with Unicode escapes cannot be used when standard_conforming_strings is off."), 
+ saae: scan:00014875:  lexer_errposition())); 
+ saae: scan:00014955:  ereport(ERROR, 
+ saae: scan:00014956:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00014957:  errmsg("unsafe use of \' in a string literal"), 
+ saae: scan:00014958:  errhint("Use '' to write quotes in strings. \' is insecure in client-only encodings."), 
+ saae: scan:00014959:  errOmitLocation(true), 
+ saae: scan:00014960:  lexer_errposition())); 
+ saae: scan:00016393:  ereport(ERROR, 
+ saae: scan:00016394:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saae: scan:00016395:  /* translator: %s is typically the translation of "syntax error" */ 
+ saae: scan:00016396:  errmsg("%s at end of input", _(message)), 
+ saae: scan:00016397:  errOmitLocation(true), 
+ saae: scan:00016398:  lexer_errposition())); 
+ saae: scan:00016402:  ereport(ERROR, 
+ saae: scan:00016403:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saae: scan:00016404:  /* translator: first %s is typically the translation of "syntax error" */ 
+ saae: scan:00016405:  errmsg("%s at or near "%s"", _(message), loc), 
+ saae: scan:00016406:  errOmitLocation(true), 
+ saae: scan:00016407:  lexer_errposition())); 
+ saae: scan:00016633:  ereport(WARNING, 
+ saae: scan:00016634:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00016635:  errmsg("nonstandard use of \' in a string literal"), 
+ saae: scan:00016636:  errhint("Use '' to write quotes in strings, or use the escape string syntax (E'...')."), 
+ saae: scan:00016637:  errOmitLocation(true), 
+ saae: scan:00016638:  lexer_errposition())); 
+ saae: scan:00016644:  ereport(WARNING, 
+ saae: scan:00016645:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00016646:  errmsg("nonstandard use of \\ in a string literal"), 
+ saae: scan:00016647:  errhint("Use the escape string syntax for backslashes, e.g., E'\\'."), 
+ saae: scan:00016648:  errOmitLocation(true), 
+ saae: scan:00016649:  lexer_errposition())); 
+ saae: scan:00016660:  ereport(WARNING, 
+ saae: scan:00016661:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00016662:  errmsg("nonstandard use of escape in a string literal"), 
+ saae: scan:00016663:  errhint("Use the escape string syntax for escapes, e.g., E'\r\n'."), 
+ saae: scan:00016664:  errOmitLocation(true), 
+ saae: scan:00016665:  lexer_errposition())); 
  saae: slru:00000783:  ereport(ERROR, 
  saae: slru:00000784:  (errcode_for_file_access(), 
  saae: slru:00000785:  errmsg("could not access status of transaction %u", xid), 
@@ -17683,75 +17688,75 @@ select * from get_ereport order by 1;
  xaae: xact:00000981:  "Only the single Writer qExec can do so. "), 
  xaae: xact:00000982:  errhint("This is most likely the result of a feature being turned " 
  xaae: xact:00000983:  "on that violates the single WRITER principle"))); 
- xaae: xact:00002411:  ereport(ERROR, 
- xaae: xact:00002412:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- xaae: xact:00002413:  errmsg("StartTransaction timed out waiting for Writer to set the shared snapshot."), 
- xaae: xact:00002414:  errdetail("We are waiting for the shared snapshot to have XID: %d/%u but the value " 
- xaae: xact:00002415:  "is currently: %d/%u. Our slotindex is: %d our writer-pid %d
+ xaae: xact:00002404:  ereport(ERROR, 
+ xaae: xact:00002405:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ xaae: xact:00002406:  errmsg("StartTransaction timed out waiting for Writer to set the shared snapshot."), 
+ xaae: xact:00002407:  errdetail("We are waiting for the shared snapshot to have XID: %d/%u but the value " 
+ xaae: xact:00002408:  "is currently: %d/%u. Our slotindex is: %d our writer-pid %d
  " 
- xaae: xact:00002416:  "DistributedTransactionContext = %s." 
- xaae: xact:00002417:  "Dump of all sharedsnapshots in shmem: %s", 
- xaae: xact:00002418:  QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync, 
- xaae: xact:00002419:  SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync, 
- xaae: xact:00002420:  SharedLocalSnapshotSlot->slotindex, (int)SharedLocalSnapshotSlot->pid, 
- xaae: xact:00002421:  DtxContextToString(DistributedTransactionContext), 
- xaae: xact:00002422:  SharedSnapshotDump()))); 
- xaae: xact:00003886:  ereport(ERROR, 
- xaae: xact:00003887:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00003888:  /* translator: %s represents an SQL statement name */ 
- xaae: xact:00003889:  errmsg("%s cannot run inside a transaction block", 
- xaae: xact:00003890:  stmtType), 
- xaae: xact:00003891:  errOmitLocation(true))); 
- xaae: xact:00003897:  ereport(ERROR, 
- xaae: xact:00003898:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00003899:  /* translator: %s represents an SQL statement name */ 
- xaae: xact:00003900:  errmsg("%s cannot run inside a subtransaction", 
- xaae: xact:00003901:  stmtType), 
- xaae: xact:00003902:  errOmitLocation(true))); 
- xaae: xact:00003910:  ereport(ERROR, 
- xaae: xact:00003911:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00003912:  /* translator: %s represents an SQL statement name */ 
- xaae: xact:00003913:  errmsg("%s cannot be executed from a function", stmtType), 
- xaae: xact:00003914:  errOmitLocation(true))); 
- xaae: xact:00003962:  ereport(ERROR, 
- xaae: xact:00003963:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00003964:  /* translator: %s represents an SQL statement name */ 
- xaae: xact:00003965:  errmsg("%s may only be used in transaction blocks", 
- xaae: xact:00003966:  stmtType))); 
- xaae: xact:00004202:  ereport(WARNING, 
- xaae: xact:00004203:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00004204:  errmsg("there is already a transaction in progress"))); 
- xaae: xact:00004376:  ereport(WARNING, 
- xaae: xact:00004377:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00004378:  errmsg("there is no transaction in progress"))); 
- xaae: xact:00004475:  ereport(WARNING, 
- xaae: xact:00004476:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00004477:  errmsg("there is no transaction in progress"))); 
- xaae: xact:00004604:  ereport(ERROR, 
- xaae: xact:00004605:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004606:  errmsg("no such savepoint"), 
- xaae: xact:00004607:  errOmitLocation(true))); 
- xaae: xact:00004688:  ereport(ERROR, 
- xaae: xact:00004689:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004690:  errmsg("no such savepoint"))); 
- xaae: xact:00004694:  ereport(ERROR, 
- xaae: xact:00004695:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004696:  errmsg("no such savepoint"))); 
- xaae: xact:00004738:  ereport(ERROR, 
- xaae: xact:00004739:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004740:  errmsg("no such savepoint"))); 
- xaae: xact:00004786:  ereport(ERROR, 
- xaae: xact:00004787:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004788:  errmsg("no such savepoint"))); 
- xaae: xact:00004792:  ereport(ERROR, 
- xaae: xact:00004793:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004794:  errmsg("no such savepoint"))); 
- xaae: xact:00005496:  ereport(ERROR, 
- xaae: xact:00005497:  (errcode(ERRCODE_GP_SUBTRANS_LIMIT_EXCEEDED), 
- xaae: xact:00005498:  errmsg("cannot have more than 100 subtransactions in a transaction"))); 
- xaae: xact:00005515:  ereport(ERROR, 
- xaae: xact:00005516:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- xaae: xact:00005517:  errmsg("cannot have more than 2^32-1 subtransactions in a transaction"))); 
+ xaae: xact:00002409:  "DistributedTransactionContext = %s." 
+ xaae: xact:00002410:  "Dump of all sharedsnapshots in shmem: %s", 
+ xaae: xact:00002411:  QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync, 
+ xaae: xact:00002412:  SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync, 
+ xaae: xact:00002413:  SharedLocalSnapshotSlot->slotindex, (int)SharedLocalSnapshotSlot->pid, 
+ xaae: xact:00002414:  DtxContextToString(DistributedTransactionContext), 
+ xaae: xact:00002415:  SharedSnapshotDump()))); 
+ xaae: xact:00003879:  ereport(ERROR, 
+ xaae: xact:00003880:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00003881:  /* translator: %s represents an SQL statement name */ 
+ xaae: xact:00003882:  errmsg("%s cannot run inside a transaction block", 
+ xaae: xact:00003883:  stmtType), 
+ xaae: xact:00003884:  errOmitLocation(true))); 
+ xaae: xact:00003890:  ereport(ERROR, 
+ xaae: xact:00003891:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00003892:  /* translator: %s represents an SQL statement name */ 
+ xaae: xact:00003893:  errmsg("%s cannot run inside a subtransaction", 
+ xaae: xact:00003894:  stmtType), 
+ xaae: xact:00003895:  errOmitLocation(true))); 
+ xaae: xact:00003903:  ereport(ERROR, 
+ xaae: xact:00003904:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00003905:  /* translator: %s represents an SQL statement name */ 
+ xaae: xact:00003906:  errmsg("%s cannot be executed from a function", stmtType), 
+ xaae: xact:00003907:  errOmitLocation(true))); 
+ xaae: xact:00003955:  ereport(ERROR, 
+ xaae: xact:00003956:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00003957:  /* translator: %s represents an SQL statement name */ 
+ xaae: xact:00003958:  errmsg("%s may only be used in transaction blocks", 
+ xaae: xact:00003959:  stmtType))); 
+ xaae: xact:00004195:  ereport(WARNING, 
+ xaae: xact:00004196:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00004197:  errmsg("there is already a transaction in progress"))); 
+ xaae: xact:00004369:  ereport(WARNING, 
+ xaae: xact:00004370:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00004371:  errmsg("there is no transaction in progress"))); 
+ xaae: xact:00004468:  ereport(WARNING, 
+ xaae: xact:00004469:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00004470:  errmsg("there is no transaction in progress"))); 
+ xaae: xact:00004597:  ereport(ERROR, 
+ xaae: xact:00004598:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004599:  errmsg("no such savepoint"), 
+ xaae: xact:00004600:  errOmitLocation(true))); 
+ xaae: xact:00004681:  ereport(ERROR, 
+ xaae: xact:00004682:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004683:  errmsg("no such savepoint"))); 
+ xaae: xact:00004687:  ereport(ERROR, 
+ xaae: xact:00004688:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004689:  errmsg("no such savepoint"))); 
+ xaae: xact:00004731:  ereport(ERROR, 
+ xaae: xact:00004732:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004733:  errmsg("no such savepoint"))); 
+ xaae: xact:00004779:  ereport(ERROR, 
+ xaae: xact:00004780:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004781:  errmsg("no such savepoint"))); 
+ xaae: xact:00004785:  ereport(ERROR, 
+ xaae: xact:00004786:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004787:  errmsg("no such savepoint"))); 
+ xaae: xact:00005489:  ereport(ERROR, 
+ xaae: xact:00005490:  (errcode(ERRCODE_GP_SUBTRANS_LIMIT_EXCEEDED), 
+ xaae: xact:00005491:  errmsg("cannot have more than 100 subtransactions in a transaction"))); 
+ xaae: xact:00005508:  ereport(ERROR, 
+ xaae: xact:00005509:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ xaae: xact:00005510:  errmsg("cannot have more than 2^32-1 subtransactions in a transaction"))); 
  xaae: xlog:00000719:  ereport(ERROR, 
  xaae: xlog:00000720:  (errmsg("Reader qExec had local changes to commit! (rmid = %u)", 
  xaae: xlog:00000721:  rmid), 
@@ -18167,6 +18172,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000076:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000077:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000078:  str))); 
-(18100 rows)
+(18105 rows)
 
 drop external table get_ereport;

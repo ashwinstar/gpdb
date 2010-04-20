@@ -763,6 +763,15 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 		else
 			elog(ERROR, "unrecognized node type: %d",
 				 nodeTag(dencoding->arg));
+
+		if (encoding == PG_SQL_ASCII && shouldDispatch)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("SQL_ASCII is no longer supported as a server encoding"),
+					 errhint("Use another encoding, such as LATIN1 or UTF8")
+							));
+		}
 	}
 	if (dconnlimit && dconnlimit->arg)
 		dbconnlimit = intVal(dconnlimit->arg);
@@ -903,7 +912,7 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 		 * would cause problems.  For example another CREATE DATABASE using
 		 * the copied database as template, and trying to change its default
 		 * tablespace again, would yield outright incorrect results (it would
-		 * improperly move tables to the new default tablespace that should
+		 * improperly move tables to the new default tablespac/home/cmcdevitt/gpAdminLogs/backout_gpinitsystem_cmcdevitt_20100419_175619e that should
 		 * stay in the same tablespace).
 		 */
 		if (dst_deftablespace != src_deftablespace)
