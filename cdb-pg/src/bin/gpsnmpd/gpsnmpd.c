@@ -288,7 +288,7 @@ int main(int argc, char *argv[])
 		case 'C':
 			if (optarg != NULL)
 			{
-				conninfo = optarg;
+				conninfo = strdup(optarg);
 				/* Remove the string from the args because there might be a password */
 				memset(optarg, '\0', strlen(optarg));
 			}
