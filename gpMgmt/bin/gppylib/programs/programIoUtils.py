@@ -5,14 +5,16 @@ from gppylib import gparray, gplog, pgconf, userinput
 
 logger = gplog.get_default_logger()
 
-def displaySegmentInfo(instanceType, seg):
-    paddingLen = 11 - len(instanceType)
-    padding = ""
-    for i in range(paddingLen):
-        padding = padding + " "
+def appendSegmentInfoForOutput(instanceType, gpArray, seg, linesOut):
 
-    logger.info('%s instance host             %s= %s' % (instanceType, padding, seg.getSegmentHostName()))
-    logger.info('%s instance directory        %s= %s' % (instanceType, padding, seg.getSegmentDataDirectory()))
-    logger.info('%s instance port             %s= %d' % (instanceType, padding, seg.getSegmentPort()))
-    logger.info('%s instance replication port %s= %d' % (instanceType, padding, seg.getSegmentReplicationPort()))
+    linesOut.append(['%s instance host' % instanceType, "= " + seg.getSegmentHostName()])
+    linesOut.append(['%s instance directory' % instanceType, "= " + seg.getSegmentDataDirectory()])
+    linesOut.append(['%s instance port' % instanceType, "= " + str(seg.getSegmentPort())])
+    linesOut.append(['%s instance replication port' % instanceType, "= " + str(seg.getSegmentReplicationPort())])
+
+    for fs in gpArray.getFilespaces(False):
+        path = seg.getSegmentFilespaces()[fs.getOid()]
+        linesOut.append(['%s instance %s directory' % (instanceType, fs.getName()), "= " + path])
+
+
 

@@ -36,7 +36,7 @@ from gppylib.mainUtils import *
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 import os, sys, getopt, socket, StringIO, signal
 
-from gppylib import gparray, gplog, pgconf, userinput
+from gppylib import gparray, gplog, pgconf, userinput, utils
 from gppylib.commands import base, gp, pg, unix
 from gppylib.db import catalog, dbconn
 from gppylib.gpparseopts import OptParser, OptChecker
@@ -423,7 +423,7 @@ class GpRecoverSegmentProgram:
         else:
             return self.getRecoveryActionsFromConfiguration(gpArray)
 
-    def displayRecovery(self, mirrorBuilder):
+    def displayRecovery(self, mirrorBuilder, gpArray):
         logger.info('Greenplum instance recovery parameters')
         logger.info('---------------------------------------------------------')
 
@@ -450,16 +450,18 @@ class GpRecoverSegmentProgram:
             logger.info('Recovery %d of %d' % (i+1, total))
             logger.info('---------------------------------------------------------')
 
-            syncMode = "Full" if toRecover.isFullSynchronization() else "Incremental"
-            logger.info("Synchronization mode                  = %s" % syncMode)
+            lines = []
 
-            programIoUtils.displaySegmentInfo("Failed", toRecover.getFailedSegment())
-            programIoUtils.displaySegmentInfo("Recovery", toRecover.getLiveSegment())
+            syncMode = "Full" if toRecover.isFullSynchronization() else "Incremental"
+            lines.append(["Synchronization mode", "= " + syncMode])
+            programIoUtils.appendSegmentInfoForOutput("Failed", gpArray, toRecover.getFailedSegment(), lines)
+            programIoUtils.appendSegmentInfoForOutput("Recovery Source", gpArray, toRecover.getLiveSegment(), lines)
 
             if toRecover.getFailoverSegment() is not None:
-                programIoUtils.displaySegmentInfo("Failover", toRecover.getFailoverSegment())
+                programIoUtils.appendSegmentInfoForOutput("Recovery Target", gpArray, toRecover.getFailoverSegment(), lines)
             else:
-                logger.info("Recover the failed segment in-place")
+                lines.append(["Recovery Target", "= in-place"])
+            utils.logLinesToTable(lines, {})
 
             i = i + 1
 
@@ -517,7 +519,7 @@ class GpRecoverSegmentProgram:
                 mirrorBuilder.checkForPortAndDirectoryConflicts(gpArray)
 
                 if self.__options.interactive:
-                    self.displayRecovery(mirrorBuilder)
+                    self.displayRecovery(mirrorBuilder, gpArray)
                     if not userinput.ask_yesno(None, "\nContinue with segment recovery procedure", 'N'):
                         raise UserAbortedException()
 

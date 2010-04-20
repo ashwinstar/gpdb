@@ -265,20 +265,28 @@ class GpMirrorListToBuild:
                 if port in usedPorts:
                     raise Exception("A port for segment with dbid %s conflicts with a port for segment dbid %s" \
                             % (dbid, usedPorts.get(port)))
+
                 if replicationPort in usedPorts:
                     raise Exception("A port for segment with dbid %s conflicts with a port for segment dbid %s" \
                             % (dbid, usedPorts.get(replicationPort)))
 
                 if port == replicationPort:
                     raise Exception("Segment with dbid %s has equal port and replication port" % dbid)
+
                 usedPorts[port] = dbid
                 usedPorts[replicationPort] = dbid
 
-                # check for directory conflict
-                if segment.getSegmentDataDirectory() in usedDataDirectories:
-                    raise Exception("The directory for segment with dbid %s conflicts with the data directory for segment dbid %s"\
-                            % (dbid, usedDataDirectories.get(port)))
-                usedDataDirectories[segment.getSegmentDataDirectory()] = dbid
+                # check for directory conflict; could improve this by reporting nicer the conflicts
+                paths = [path for oid, path in segment.getSegmentFilespaces().items() if oid != gparray.SYSTEM_FILESPACE]
+                paths.append(segment.getSegmentDataDirectory())
+
+                for path in paths:
+                    if path in usedDataDirectories:
+                        raise Exception("A directory (base or filespace) for segment with dbid %s conflicts with a " \
+                                        "directory (base or filespace) for segment dbid %s; directory: %s" % \
+                                        (dbid, usedDataDirectories.get(path), path))
+                    usedDataDirectories[path] = dbid
+
 
     def __runWaitAndCheckWorkerPoolForErrorsAndClear(self, cmds, actionVerb, suppressErrorCheck=False):
         for cmd in cmds:
@@ -461,8 +469,6 @@ class GpMirrorListToBuild:
             failedSeg = segmentStartResult.getFailedSegments()[i]
             failureReason = segmentStartResult.getFailureReasons()[i]
             logger.warn("Failed to inform primary segment of updated mirroring state.  Segment: %s: REASON: %s" % (failedSeg, failureReason))
-
-
 
 class GpCleanupSegmentDirectoryDirective:
     def __init__(self, segment):

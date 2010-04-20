@@ -649,6 +649,23 @@ def get_host_interface(full_hostname):
     else:
         return (host_part, inf_num)
 
+class GpFilespaceObj:
+    """
+    List information for a filespace, as stored in pg_filespace
+    """
+    def __init__(self, oid, name):
+        self.__oid = oid
+        self.__name = name
+
+    def getOid(self):
+        return self.__oid
+
+    def getName(self):
+        return self.__name
+
+    def isSystemFilespace(self):
+        return self.__oid == SYSTEM_FILESPACE
+
 # ============================================================================
 class GpArray:
     """ 
@@ -688,6 +705,8 @@ class GpArray:
 
         self.san_mount_by_dbid = {}
         self.san_mounts = {}
+
+        self.filespaceArr = []
 
         for segdb in segments:
 
@@ -778,6 +797,13 @@ class GpArray:
                 ORDER BY mountid
             ''')
 
+            filespaceRows = dbconn.execSQL(conn, '''
+                SELECT oid, fsname
+                FROM pg_filespace
+                ORDER BY fsname;
+            ''')
+            filespaceArr = [GpFilespaceObj(fsRow[0], fsRow[1]) for fsRow in filespaceRows]
+
         elif version.getVersionRelease() in ("3.0", "3.1", "3.2", "3.3"):
 
             # In older releases we get the fault strategy using the 
@@ -814,6 +840,8 @@ class GpArray:
             san_segs_rows = []
             san_rows = []
 
+            # no filespace support in older releases.
+            filespaceArr = []
         else:
             logger.error("Unsupported version: %s" % str(version))
             raise Exception("GpArray() - Unsupported version: %s" % 
@@ -853,6 +881,7 @@ class GpArray:
         array.__version = version
         array.setFaultStrategy(strategy)
         array.setSanConfig(san_rows, san_segs_rows)
+        array.setFilespaces(filespaceArr)
         return array
 
     # --------------------------------------------------------------------
@@ -976,6 +1005,21 @@ class GpArray:
                             self.strategy)
 
         return self.__strategy
+
+    def setFilespaces(self, filespaceArr):
+        """
+        @param filespaceArr of GpFilespaceObj objects
+        """
+        self.__filespaceArr = [fs for fs in filespaceArr]
+
+    def getFilespaces(self, includeSystemFilespace=True):
+        """
+        @return a newly allocated list of GpFilespaceObj objects, will have been sorted by filespace name
+        """
+        if includeSystemFilespace:
+            return [fs for fs in self.__filespaceArr]
+        else:
+            return [fs for fs in self.__filespaceArr if not fs.isSystemFilespace()]
 
     # --------------------------------------------------------------------
     def getDbList(self, includeExpansionSegs=False):
