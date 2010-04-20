@@ -877,6 +877,7 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 							lc_collate)));
 		}
 	}
+
 	/* Resolve default tablespace for new database */
 	if (dtablespacename && dtablespacename->arg)
 	{
@@ -912,7 +913,7 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 		 * would cause problems.  For example another CREATE DATABASE using
 		 * the copied database as template, and trying to change its default
 		 * tablespace again, would yield outright incorrect results (it would
-		 * improperly move tables to the new default tablespac/home/cmcdevitt/gpAdminLogs/backout_gpinitsystem_cmcdevitt_20100419_175619e that should
+		 * improperly move tables to the new default tablespace that should
 		 * stay in the same tablespace).
 		 */
 		if (dst_deftablespace != src_deftablespace)
