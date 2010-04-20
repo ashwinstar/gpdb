@@ -434,6 +434,9 @@ readCdbComponentInfoAndUpdateStatus(void)
 		if (segInfo->preferred_role == 'p')
 			segStatus |= FTS_STATUS_DEFINEDPRIMARY;
 
+		if (segInfo->mode == 's')
+			segStatus |= FTS_STATUS_SYNCHRONIZED;
+
 		ftsProbeInfo->fts_status[segInfo->dbid] = segStatus;
 	}
 	ftsUnlock();
@@ -1057,7 +1060,7 @@ probeSegments(CdbComponentDatabases *cdb_component_dbs)
 			}
 			else
 			{
-				scan_status[segInfo->dbid] |= PROBE_DONE & PROBE_ALIVE;
+				scan_status[segInfo->dbid] |= (PROBE_DONE | PROBE_ALIVE);
 			}
 		}
 
@@ -1339,10 +1342,14 @@ probePublishUpdate(uint8 *probe_results)
 
 						if (FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status))
 						{
-							if (failover_strategy == 'f' &&
-								((probe_results[mirror->dbid] & PROBE_ALIVE) == PROBE_ALIVE))
+							if (failover_strategy == 'f')
 							{
-								updateMirror = true;
+								/* If the mirror is not currently synchronized, we can't use it */
+								if (FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status) &&
+									((probe_results[mirror->dbid] & PROBE_ALIVE) == PROBE_ALIVE))
+								{
+									updateMirror = true;
+								}
 							}
 							else if (failover_strategy == 's')
 							{
@@ -2119,7 +2126,14 @@ markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *dbInfo)
     }
     else
     {
-        /* update gp_segment configuration to insync */
+		uint8	segStatus=0;
+
+        /* update in-core copy */
+		segStatus = ftsProbeInfo->fts_status[dbInfo->dbid];
+		segStatus |= FTS_STATUS_SYNCHRONIZED;
+		ftsProbeInfo->fts_status[dbInfo->dbid] = segStatus;
+
+        /* update gp_segment_configuration to insync */
         snprintf(cmd, sizeof(cmd),
 				 "update %s set mode='s' where dbid=CAST(%d AS SMALLINT)",
 				 GpSegmentConfigRelationName,

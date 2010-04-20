@@ -86,14 +86,16 @@ struct FtsSegDBState
 
 #define FTS_MAX_DBS (128 * 1024)
 
-#define FTS_STATUS_ALIVE (1<<0)
-#define FTS_STATUS_PRIMARY (1<<1)
-#define FTS_STATUS_DEFINEDPRIMARY (1<<2)
+#define FTS_STATUS_ALIVE				(1<<0)
+#define FTS_STATUS_PRIMARY				(1<<1)
+#define FTS_STATUS_DEFINEDPRIMARY		(1<<2)
+#define FTS_STATUS_SYNCHRONIZED			(1<<3)
 
 #define FTS_STATUS_TEST(dbid, status, flag) (((status)[(dbid)] & (flag)) ? true : false)
 #define FTS_STATUS_ISALIVE(dbid, status) FTS_STATUS_TEST((dbid), (status), FTS_STATUS_ALIVE)
 #define FTS_STATUS_ISPRIMARY(dbid, status) FTS_STATUS_TEST((dbid), (status), FTS_STATUS_PRIMARY)
 #define FTS_STATUS_ISDEFINEDPRIMARY(dbid, status) FTS_STATUS_TEST((dbid), (status), FTS_STATUS_DEFINEDPRIMARY)
+#define FTS_STATUS_IS_SYNCED(dbid, status) FTS_STATUS_TEST((dbid), (status), FTS_STATUS_SYNCHRONIZED)
 
 typedef struct FtsProbeInfo
 {
