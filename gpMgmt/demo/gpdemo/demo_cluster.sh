@@ -14,9 +14,8 @@ DATADIRS=`pwd`/datadirs
 QDDIR=$DATADIRS/qddir
 declare -a DIRVEC=($DATADIRS/dbfast1 $DATADIRS/dbfast2 $DATADIRS/dbfast3)
 
-declare -a DEMO_SEG_PORTS=(`expr $DEMO_PORT_BASE + 1 `  \
-        `expr $DEMO_PORT_BASE + 2` `expr  $DEMO_PORT_BASE + 3 `)
-
+declare -a DEMO_SEG_PORTS=(`expr $DEMO_PORT_BASE`  \
+        `expr $DEMO_PORT_BASE + 1` `expr  $DEMO_PORT_BASE + 2`)
 
 
 #******************************************************************************

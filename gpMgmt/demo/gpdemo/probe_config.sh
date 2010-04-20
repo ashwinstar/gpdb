@@ -55,8 +55,8 @@ if [ -z $DEMO_PORT_BASE ] ; then
 fi
 
 
-declare -a PORTS=($MASTER_DEMO_PORT `expr $DEMO_PORT_BASE + 1` \
-    `expr $DEMO_PORT_BASE + 2` `expr $DEMO_PORT_BASE + 3 `)
+declare -a PORTS=($MASTER_DEMO_PORT `expr $DEMO_PORT_BASE` \
+   `expr $DEMO_PORT_BASE + 1` `expr $DEMO_PORT_BASE + 2 `)
 
 
 #
