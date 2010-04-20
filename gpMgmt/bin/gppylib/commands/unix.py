@@ -35,7 +35,7 @@ curr_platform = platform.uname()[0].lower()
 
 
 #---------------command path--------------------
-CMDPATH = ('/usr/kerberos/bin', '/usr/sfw/bin', '/opt/sfw/bin', '/usr/local/bin', '/bin', 
+CMDPATH = ('/usr/kerberos/bin', '/usr/sfw/bin', '/opt/sfw/bin', '/bin', '/usr/local/bin', 
                '/usr/bin', '/sbin', '/usr/sbin', '/usr/ucb', '/sw/bin')
 
 CMD_CACHE = {}
