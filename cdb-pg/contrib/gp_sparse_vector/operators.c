@@ -299,7 +299,7 @@ svec_pow(PG_FUNCTION_ARGS)
 {
 	SvecType *svec1 = PG_GETARG_SVECTYPE_P(0);
 	SvecType *svec2 = PG_GETARG_SVECTYPE_P(1);
-	check_dimension(svec1,svec2,"svec_minus");
+	check_dimension(svec1,svec2,"svec_pow");
 	SvecType *result = pow_svec_by_scalar_internal(svec1,svec2);
 	PG_RETURN_SVECTYPE_P(result);
 }
@@ -434,6 +434,9 @@ svec_dot(PG_FUNCTION_ARGS)
 
 	mult_result = op_sdata_by_sdata(2,left,right);
 	accum = sum_sdata_values_double(mult_result);
+	freeSparseData(left);
+	freeSparseData(right);
+	freeSparseDataAndData(mult_result);
 
 	PG_RETURN_FLOAT8(accum);
 }
@@ -647,122 +650,251 @@ float8arr_equals(PG_FUNCTION_ARGS) {
 
 	PG_RETURN_BOOL(float8arr_equals_internal(left,right));
 }
- 
+
 /*
- * L2 Norm
+ * Returns a SparseData formed from a dense float8[] in uncompressed format.
+ * This is useful for creating a SparseData without processing that can be
+ * used by the SparseData processing routines.
  */
-static double
-float8arr_l2norm_internal(ArrayType *left)
+static SparseData
+sdata_uncompressed_from_float8arr_internal(ArrayType *array)
 {
-        int dimleft = ARR_NDIM(left);
-        int *dimsleft = ARR_DIMS(left);
-	int numleft = ArrayGetNItems(dimleft,dimsleft);
-        double *vals_left=(double *)ARR_DATA_PTR(left);
-        bits8 *bitmap_left=ARR_NULLBITMAP(left);
+        int dim = ARR_NDIM(array);
+        int *dims = ARR_DIMS(array);
+	int num = ArrayGetNItems(dim,dims);
+        double *vals =(double *)ARR_DATA_PTR(array);
+        bits8 *bitmap = ARR_NULLBITMAP(array);
         int   bitmask=1;
-	double accum=0.;
+	SparseData result = makeInplaceSparseData(
+			(char *)vals,NULL,
+			num*sizeof(float8),0,FLOAT8OID,
+			num,num);
 
 	/*
 	 * Convert null items into zeros
 	 */
-	if (bitmap_left)
+	if (bitmap)
 	{
-        	for (int i=0; i<numleft; i++)
+        	for (int i=0; i<num; i++)
 		{
-                	if ((*bitmap_left & bitmask) == 0)
-				vals_left[i] = 0.;
+                	if ((*bitmap& bitmask) == 0)
+				vals[i] = 0.;
                         bitmask <<= 1;
                         if (bitmask == 0x100)
                         {
-                                bitmap_left++;
+                                bitmap++;
                                 bitmask = 1;
                         }
 		}
 	}
-
-	/*
-	 * Calculate the L2 norm
-	 */
-       	for (int i=0; i<numleft; i++)
-	{
-		accum += vals_left[i] * vals_left[i];
-	}
-	accum = sqrt(accum);
-
-        return(accum);
+	return(result);
 }
 
-Datum float8arr_l2norm(PG_FUNCTION_ARGS);
-PG_FUNCTION_INFO_V1( float8arr_l2norm);
-
-Datum
-float8arr_l2norm(PG_FUNCTION_ARGS) {
-	ArrayType *left  = PG_GETARG_ARRAYTYPE_P(0);
-
-	PG_RETURN_FLOAT8(float8arr_l2norm_internal(left));
-}
- 
 /*
  * L1 Norm
  */
-static double
-float8arr_l1norm_internal(ArrayType *left)
-{
-        int dimleft = ARR_NDIM(left);
-        int *dimsleft = ARR_DIMS(left);
-	int numleft = ArrayGetNItems(dimleft,dimsleft);
-        double *vals_left=(double *)ARR_DATA_PTR(left);
-        bits8 *bitmap_left=ARR_NULLBITMAP(left);
-        int   bitmask=1;
-	double accum=0.;
-
-	/*
-	 * Convert null items into zeros
-	 */
-	if (bitmap_left)
-	{
-        	for (int i=0; i<numleft; i++)
-		{
-                	if ((*bitmap_left & bitmask) == 0)
-				vals_left[i] = 0.;
-                        bitmask <<= 1;
-                        if (bitmask == 0x100)
-                        {
-                                bitmap_left++;
-                                bitmask = 1;
-                        }
-		}
-	}
-
-	/*
-	 * Calculate the L1 norm
-	 */
-       	for (int i=0; i<numleft; i++)
-	{
-		accum += vals_left[i];
-	}
-
-        return(accum);
-}
-
 Datum float8arr_l1norm(PG_FUNCTION_ARGS);
 PG_FUNCTION_INFO_V1( float8arr_l1norm);
 
 Datum
 float8arr_l1norm(PG_FUNCTION_ARGS) {
-	ArrayType *left  = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType *array  = PG_GETARG_ARRAYTYPE_P(0);
+	SparseData sdata = sdata_uncompressed_from_float8arr_internal(array);
+	double result = l1norm_sdata_values_double(sdata);
+	pfree(sdata);
+	PG_RETURN_FLOAT8(result);
+}
 
-	PG_RETURN_FLOAT8(float8arr_l1norm_internal(left));
+
+/*
+ * L2 Norm
+ */
+Datum float8arr_l2norm(PG_FUNCTION_ARGS);
+PG_FUNCTION_INFO_V1( float8arr_l2norm);
+
+Datum
+float8arr_l2norm(PG_FUNCTION_ARGS) {
+	ArrayType *array  = PG_GETARG_ARRAYTYPE_P(0);
+	SparseData sdata = sdata_uncompressed_from_float8arr_internal(array);
+	double result = l2norm_sdata_values_double(sdata);
+	pfree(sdata);
+	PG_RETURN_FLOAT8(result);
+}
+
+
+/*
+ * Dot product
+ */
+Datum float8arr_dot(PG_FUNCTION_ARGS);
+PG_FUNCTION_INFO_V1( float8arr_dot);
+
+Datum
+float8arr_dot(PG_FUNCTION_ARGS) {
+	ArrayType *arr_left   = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType *arr_right  = PG_GETARG_ARRAYTYPE_P(1);
+	SparseData left  = sdata_uncompressed_from_float8arr_internal(arr_left);
+	SparseData right = sdata_uncompressed_from_float8arr_internal(arr_right);
+	SparseData mult_result;
+	double accum;
+
+	mult_result = op_sdata_by_sdata(2,left,right);
+	accum = sum_sdata_values_double(mult_result);
+	freeSparseData(left);
+	freeSparseData(right);
+	freeSparseDataAndData(mult_result);
+
+	PG_RETURN_FLOAT8(accum);
+}
+
+/*
+ * Permute the basic operators (minus,plus,mult,div) between SparseData and float8[]
+ *
+ * For each function, make a version that takes the left and right args as
+ * each type (without copies)
+ */
+PG_FUNCTION_INFO_V1( float8arr_minus_float8arr );
+Datum
+float8arr_minus_float8arr(PG_FUNCTION_ARGS)
+{
+	ArrayType *arr1 = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType *arr2 = PG_GETARG_ARRAYTYPE_P(1);
+	SparseData left  = sdata_uncompressed_from_float8arr_internal(arr1);
+	SparseData right = sdata_uncompressed_from_float8arr_internal(arr2);
+	SparseData sdata = op_sdata_by_sdata(0,left,right);
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+}
+PG_FUNCTION_INFO_V1( svec_minus_float8arr );
+Datum
+svec_minus_float8arr(PG_FUNCTION_ARGS)
+{
+	SvecType *svec = PG_GETARG_SVECTYPE_P(0);
+	ArrayType *arr = PG_GETARG_ARRAYTYPE_P(1);
+	SparseData left = sdata_from_svec(svec);
+	SparseData right = sdata_uncompressed_from_float8arr_internal(arr);
+	SparseData sdata = op_sdata_by_sdata(0,left,right);
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+}
+PG_FUNCTION_INFO_V1( float8arr_minus_svec );
+Datum
+float8arr_minus_svec(PG_FUNCTION_ARGS)
+{
+	ArrayType *arr = PG_GETARG_ARRAYTYPE_P(0);
+	SvecType *svec = PG_GETARG_SVECTYPE_P(1);
+	SparseData left = sdata_uncompressed_from_float8arr_internal(arr);
+	SparseData right = sdata_from_svec(svec);
+	SparseData sdata = op_sdata_by_sdata(0,left,right);
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+}
+PG_FUNCTION_INFO_V1( float8arr_plus_float8arr );
+Datum
+float8arr_plus_float8arr(PG_FUNCTION_ARGS)
+{
+	ArrayType *arr1 = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType *arr2 = PG_GETARG_ARRAYTYPE_P(1);
+	SparseData left  = sdata_uncompressed_from_float8arr_internal(arr1);
+	SparseData right = sdata_uncompressed_from_float8arr_internal(arr2);
+	SparseData sdata = op_sdata_by_sdata(1,left,right);
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+}
+PG_FUNCTION_INFO_V1( svec_plus_float8arr );
+Datum
+svec_plus_float8arr(PG_FUNCTION_ARGS)
+{
+	SvecType *svec = PG_GETARG_SVECTYPE_P(0);
+	ArrayType *arr = PG_GETARG_ARRAYTYPE_P(1);
+	SparseData left = sdata_from_svec(svec);
+	SparseData right = sdata_uncompressed_from_float8arr_internal(arr);
+	SparseData sdata = op_sdata_by_sdata(1,left,right);
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+}
+PG_FUNCTION_INFO_V1( float8arr_plus_svec );
+Datum
+float8arr_plus_svec(PG_FUNCTION_ARGS)
+{
+	ArrayType *arr = PG_GETARG_ARRAYTYPE_P(0);
+	SvecType *svec = PG_GETARG_SVECTYPE_P(1);
+	SparseData left = sdata_uncompressed_from_float8arr_internal(arr);
+	SparseData right = sdata_from_svec(svec);
+	SparseData sdata = op_sdata_by_sdata(1,left,right);
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+}
+PG_FUNCTION_INFO_V1( float8arr_mult_float8arr );
+Datum
+float8arr_mult_float8arr(PG_FUNCTION_ARGS)
+{
+	ArrayType *arr1 = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType *arr2 = PG_GETARG_ARRAYTYPE_P(1);
+	SparseData left  = sdata_uncompressed_from_float8arr_internal(arr1);
+	SparseData right = sdata_uncompressed_from_float8arr_internal(arr2);
+	SparseData sdata = op_sdata_by_sdata(2,left,right);
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+}
+PG_FUNCTION_INFO_V1( svec_mult_float8arr );
+Datum
+svec_mult_float8arr(PG_FUNCTION_ARGS)
+{
+	SvecType *svec = PG_GETARG_SVECTYPE_P(0);
+	ArrayType *arr = PG_GETARG_ARRAYTYPE_P(1);
+	SparseData left = sdata_from_svec(svec);
+	SparseData right = sdata_uncompressed_from_float8arr_internal(arr);
+	SparseData sdata = op_sdata_by_sdata(2,left,right);
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+}
+PG_FUNCTION_INFO_V1( float8arr_mult_svec );
+Datum
+float8arr_mult_svec(PG_FUNCTION_ARGS)
+{
+	ArrayType *arr = PG_GETARG_ARRAYTYPE_P(0);
+	SvecType *svec = PG_GETARG_SVECTYPE_P(1);
+	SparseData left = sdata_uncompressed_from_float8arr_internal(arr);
+	SparseData right = sdata_from_svec(svec);
+	SparseData sdata = op_sdata_by_sdata(2,left,right);
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+}
+PG_FUNCTION_INFO_V1( float8arr_div_float8arr );
+Datum
+float8arr_div_float8arr(PG_FUNCTION_ARGS)
+{
+	ArrayType *arr1 = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType *arr2 = PG_GETARG_ARRAYTYPE_P(1);
+	SparseData left  = sdata_uncompressed_from_float8arr_internal(arr1);
+	SparseData right = sdata_uncompressed_from_float8arr_internal(arr2);
+	SparseData sdata = op_sdata_by_sdata(3,left,right);
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+}
+PG_FUNCTION_INFO_V1( svec_div_float8arr );
+Datum
+svec_div_float8arr(PG_FUNCTION_ARGS)
+{
+	SvecType *svec = PG_GETARG_SVECTYPE_P(0);
+	ArrayType *arr = PG_GETARG_ARRAYTYPE_P(1);
+	SparseData left = sdata_from_svec(svec);
+	SparseData right = sdata_uncompressed_from_float8arr_internal(arr);
+	SparseData sdata = op_sdata_by_sdata(3,left,right);
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+}
+PG_FUNCTION_INFO_V1( float8arr_div_svec );
+Datum
+float8arr_div_svec(PG_FUNCTION_ARGS)
+{
+	ArrayType *arr = PG_GETARG_ARRAYTYPE_P(0);
+	SvecType *svec = PG_GETARG_SVECTYPE_P(1);
+	SparseData left = sdata_uncompressed_from_float8arr_internal(arr);
+	SparseData right = sdata_from_svec(svec);
+	SparseData sdata = op_sdata_by_sdata(3,left,right);
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
 }
 
 /*
  * Hash function for float8[]
  */
 static int
-float8arr_hash_internal(ArrayType *left)
+float8arr_hash_internal(ArrayType *array)
 {
-	double l1norm = float8arr_l1norm_internal(left);
+	SparseData sdata = sdata_uncompressed_from_float8arr_internal(array);
+	double l1norm = l1norm_sdata_values_double(sdata);
 	int arr_hash = DirectFunctionCall1(hashfloat8, Float8GetDatumFast(l1norm));
+	pfree(sdata);
 	return(arr_hash);
 }
 
@@ -771,7 +903,7 @@ PG_FUNCTION_INFO_V1( float8arr_hash);
 
 Datum
 float8arr_hash(PG_FUNCTION_ARGS) {
-	ArrayType *left  = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType *array  = PG_GETARG_ARRAYTYPE_P(0);
 
-	PG_RETURN_INT32(float8arr_hash_internal(left));
+	PG_RETURN_INT32(float8arr_hash_internal(array));
 }

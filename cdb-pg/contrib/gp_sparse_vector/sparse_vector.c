@@ -113,7 +113,7 @@ svec_recv(PG_FUNCTION_ARGS)
 }
 
 /*
- * Basic floating point operators like MIN,MAX,ABS,CEIL
+ * Basic floating point operators like MIN,MAX
  */
 PG_FUNCTION_INFO_V1( float8_min );
 Datum float8_min(PG_FUNCTION_ARGS);
@@ -133,25 +133,6 @@ float8_max(PG_FUNCTION_ARGS)
 	float8 left = PG_GETARG_FLOAT8(0);
 	float8 right = PG_GETARG_FLOAT8(1);
 	PG_RETURN_FLOAT8(MAX(left,right));
-}
-
-PG_FUNCTION_INFO_V1( float8_abs );
-Datum float8_abs(PG_FUNCTION_ARGS);
-Datum
-float8_abs(PG_FUNCTION_ARGS)
-{
-	float8 left = PG_GETARG_FLOAT8(0);
-	PG_RETURN_FLOAT8(ABS(left));
-}
-
-PG_FUNCTION_INFO_V1( float8_ceil );
-Datum float8_ceil(PG_FUNCTION_ARGS);
-Datum
-float8_ceil(PG_FUNCTION_ARGS)
-{
-	float8 left = PG_GETARG_FLOAT8(0);
-	float8 right = PG_GETARG_FLOAT8(1);
-	PG_RETURN_FLOAT8(CEIL(left,right));
 }
 
 /*

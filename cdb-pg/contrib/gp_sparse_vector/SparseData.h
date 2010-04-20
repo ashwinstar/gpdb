@@ -42,9 +42,11 @@
 /*
  * Calculate the size of the integer count in an RLE index provided the pointer
  * to the start of the count entry
+ *
+ * Note that if the ptr is NULL, a zero size is returned
  */
 #define	int8compstoragesize(ptr) \
-	((*((char *)(ptr)) < 0) ? 1 : (1 + *((char *)(ptr))) )
+	(((ptr) == NULL) ? 0 : (((*((char *)(ptr)) < 0) ? 1 : (1 + *((char *)(ptr))))) )
 
 /*------------------------------------------------------------------------------
  * SparseData holds information about a sparse array of values
@@ -126,6 +128,8 @@ SparseData makeSparseDataCopy(SparseData source_sdata);
 SparseData makeSparseDataFromDouble(double scalar,int64_t dimension);
 
 SparseData makeSparseData(void);
+void freeSparseData(SparseData sdata);
+void freeSparseDataAndData(SparseData sdata);
 SparseData float8arr_to_sdata(double *array, int count);
 double *sdata_to_float8arr(SparseData sdata);
 StringInfo copyStringInfo(StringInfo source_sinfo);
@@ -223,6 +227,9 @@ static inline int64_t compword_to_int8(const char *entry)
 	char *numptr8 = (char *)(&num);
 
 	switch(size) {
+		case 0: //Null entry, return a run length of 1
+			return(1);
+			break;
 		case 1:
 			num = -(entry[0]);
 			break;
@@ -462,6 +469,18 @@ static inline int64_t compword_to_int8(const char *entry)
 		break; \
 }
 
+static inline void
+check_sdata_dimensions(SparseData left, SparseData right)
+{
+	if (left->total_value_count != right->total_value_count)
+	{
+		ereport(ERROR, 
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			 errOmitLocation(true),
+			 errmsg("Operation undefined when dimension of left and right vectors are not the same")));
+	}
+}
+
 /*
  * Do one of subtract, add, multiply, or divide depending on
  * the value of operation one of (0,1,2,3).
@@ -661,6 +680,8 @@ static inline SparseData op_sdata_by_sdata(int operation,SparseData left,
 	int left_nxt=left_run_length,right_nxt=right_run_length;
 	int nextpos = MIN(left_nxt,right_nxt),lastpos=0;
 	int i=0,j=0;
+
+	check_sdata_dimensions(left,right);
 
 	if ((operation > 3)|| (operation < 0))
 		ereport(ERROR, 

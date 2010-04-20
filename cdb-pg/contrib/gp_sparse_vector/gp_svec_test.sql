@@ -14,7 +14,7 @@ create table test2 as select * from test DISTRIBUTED BY (a);
 select (t1.b+t2.b)::float8[] cross_product_sum from test t1, test2 t2 order by t1.a;
 
 -- Test ORDER BY
-select (t1.b+t2.b)::float8[] cross_product_sum, svec_l2norm(t1.b+t2.b) l2norm, (t1.b+t2.b) sparse_vector from test t1, test2 t2 order by 3;
+select (t1.b+t2.b)::float8[] cross_product_sum, l2norm(t1.b+t2.b) l2norm, (t1.b+t2.b) sparse_vector from test t1, test2 t2 order by 3;
 
  select (sum(t1.b))::float8[] as features_sum from test t1;
 -- Test the div operator
@@ -22,10 +22,10 @@ select (t1.b+t2.b)::float8[] cross_product_sum, svec_l2norm(t1.b+t2.b) l2norm, (
 -- Test the * operator
  select t1.b %*% (t1.b/(select sum(b) from test)) as raw_score from test t1 order by a;
 -- Test the * and l2norm operators
- select (t1.b %*% (t1.b/(select sum(b) from test))) / (svec_l2norm(t1.b) * svec_l2norm((select sum(b) from test))) as norm_score from test t1 order by a;
+ select (t1.b %*% (t1.b/(select sum(b) from test))) / (l2norm(t1.b) * l2norm((select sum(b) from test))) as norm_score from test t1 order by a;
 -- Test the ^ and l1norm operators
 select ('{1,2}:{20.,10.}'::svec)^('{1}:{3.}'::svec);
- select (t1.b %*% (t1.b/(select sum(b) from test))) / (svec_l1norm(t1.b) * svec_l1norm((select sum(b) from test))) as norm_score from test t1 order by a;
+ select (t1.b %*% (t1.b/(select sum(b) from test))) / (l1norm(t1.b) * l1norm((select sum(b) from test))) as norm_score from test t1 order by a;
 
 -- Test the multi-concatenation and show sizes compared with a normal array
 drop table if exists corpus_proj;

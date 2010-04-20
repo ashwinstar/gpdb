@@ -34,7 +34,7 @@ CREATE TYPE svec (
 -- Sparse Feature Vector (text processing) related functions
 CREATE OR REPLACE FUNCTION gp_extract_feature_histogram(text[], text[]) RETURNS svec AS 'gp_svec.so', 'gp_extract_feature_histogram' LANGUAGE C IMMUTABLE; 
 
--- Basic floating point scalar operators MIN,MAX,ABS,CEIL
+-- Basic floating point scalar operators MIN,MAX
 CREATE OR REPLACE FUNCTION dmin(float8,float8) RETURNS float8 AS 'gp_svec.so', 'float8_min' LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION dmax(float8,float8) RETURNS float8 AS 'gp_svec.so', 'float8_max' LANGUAGE C IMMUTABLE; 
 
@@ -50,9 +50,23 @@ CREATE OR REPLACE FUNCTION svec_mult(svec,svec) RETURNS svec AS 'gp_svec.so', 's
 CREATE OR REPLACE FUNCTION svec_pow(svec,svec) RETURNS svec AS 'gp_svec.so', 'svec_pow' STRICT LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION svec_eq(svec,svec) RETURNS boolean AS 'gp_svec.so', 'svec_eq' STRICT LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION float8arr_eq(float8[],float8[]) RETURNS boolean AS 'gp_svec.so', 'float8arr_equals' LANGUAGE C IMMUTABLE;
+-- Permutation of float8[] and svec for basic functions minus,plus,mult,div
+CREATE OR REPLACE FUNCTION float8arr_minus_float8arr(float8[],float8[]) RETURNS svec AS 'gp_svec.so', 'float8arr_minus_float8arr' LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION float8arr_minus_svec(float8[],svec) RETURNS svec AS 'gp_svec.so', 'float8arr_minus_svec' LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION svec_minus_float8arr(svec,float8[]) RETURNS svec AS 'gp_svec.so', 'svec_minus_float8arr' LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION float8arr_plus_float8arr(float8[],float8[]) RETURNS svec AS 'gp_svec.so', 'float8arr_plus_float8arr' LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION float8arr_plus_svec(float8[],svec) RETURNS svec AS 'gp_svec.so', 'float8arr_plus_svec' LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION svec_plus_float8arr(svec,float8[]) RETURNS svec AS 'gp_svec.so', 'svec_plus_float8arr' LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION float8arr_mult_float8arr(float8[],float8[]) RETURNS svec AS 'gp_svec.so', 'float8arr_mult_float8arr' LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION float8arr_mult_svec(float8[],svec) RETURNS svec AS 'gp_svec.so', 'float8arr_mult_svec' LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION svec_mult_float8arr(svec,float8[]) RETURNS svec AS 'gp_svec.so', 'svec_mult_float8arr' LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION float8arr_div_float8arr(float8[],float8[]) RETURNS svec AS 'gp_svec.so', 'float8arr_div_float8arr' LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION float8arr_div_svec(float8[],svec) RETURNS svec AS 'gp_svec.so', 'float8arr_div_svec' LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION svec_div_float8arr(svec,float8[]) RETURNS svec AS 'gp_svec.so', 'svec_div_float8arr' LANGUAGE C IMMUTABLE;
 
 -- Vector operator functions
 CREATE OR REPLACE FUNCTION dot(svec,svec) RETURNS float8 AS 'gp_svec.so', 'svec_dot' STRICT LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION dot(float8[],float8[]) RETURNS float8 AS 'gp_svec.so', 'float8arr_dot' STRICT LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION l2norm(svec) RETURNS float8 AS 'gp_svec.so', 'svec_l2norm' STRICT LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION l2norm(float8[]) RETURNS float8 AS 'gp_svec.so', 'float8arr_l2norm' LANGUAGE C IMMUTABLE;
 CREATE OR REPLACE FUNCTION l1norm(svec) RETURNS float8 AS 'gp_svec.so', 'svec_l1norm' STRICT LANGUAGE C IMMUTABLE; 
@@ -97,7 +111,7 @@ CREATE OPERATOR / (
 CREATE OPERATOR %*% (
 	LEFTARG = svec,
 	RIGHTARG = svec,
-	PROCEDURE = svec_dot
+	PROCEDURE = dot
 );
 CREATE OPERATOR * (
 	LEFTARG = svec,
@@ -110,6 +124,96 @@ CREATE OPERATOR ^ (
 	PROCEDURE = svec_pow
 );
 
+-- float8[] operators
+DROP OPERATOR IF EXISTS = ( float8[], float8[]);
+DROP OPERATOR IF EXISTS %*% ( float8[], float8[]);
+DROP OPERATOR IF EXISTS - ( float8[], float8[]);
+DROP OPERATOR IF EXISTS + ( float8[], float8[]);
+DROP OPERATOR IF EXISTS * ( float8[], float8[]);
+DROP OPERATOR IF EXISTS / ( float8[], float8[]);
+DROP OPERATOR IF EXISTS - ( float8[], svec);
+DROP OPERATOR IF EXISTS + ( float8[], svec);
+DROP OPERATOR IF EXISTS * ( float8[], svec);
+DROP OPERATOR IF EXISTS / ( float8[], svec);
+DROP OPERATOR IF EXISTS - ( svec, float8[]);
+DROP OPERATOR IF EXISTS + ( svec, float8[]);
+DROP OPERATOR IF EXISTS * ( svec, float8[]);
+DROP OPERATOR IF EXISTS / ( svec, float8[]);
+
+CREATE OPERATOR = (
+	leftarg = float8[], rightarg = float8[], procedure = float8arr_eq,
+	commutator = = ,
+--	negator = <> ,
+	restrict = eqsel, join = eqjoinsel
+);
+CREATE OPERATOR %*% (
+	LEFTARG = float8[],
+	RIGHTARG = float8[],
+	PROCEDURE = dot
+);
+CREATE OPERATOR - (
+	LEFTARG = float8[],
+	RIGHTARG = float8[],
+	PROCEDURE = float8arr_minus_float8arr
+);
+CREATE OPERATOR + (
+	LEFTARG = float8[],
+	RIGHTARG = float8[],
+	PROCEDURE = float8arr_plus_float8arr
+);
+CREATE OPERATOR * (
+	LEFTARG = float8[],
+	RIGHTARG = float8[],
+	PROCEDURE = float8arr_mult_float8arr
+);
+CREATE OPERATOR / (
+	LEFTARG = float8[],
+	RIGHTARG = float8[],
+	PROCEDURE = float8arr_div_float8arr
+);
+
+CREATE OPERATOR - (
+	LEFTARG = float8[],
+	RIGHTARG = svec,
+	PROCEDURE = float8arr_minus_svec
+);
+CREATE OPERATOR + (
+	LEFTARG = float8[],
+	RIGHTARG = svec,
+	PROCEDURE = float8arr_plus_svec
+);
+CREATE OPERATOR * (
+	LEFTARG = float8[],
+	RIGHTARG = svec,
+	PROCEDURE = float8arr_mult_svec
+);
+CREATE OPERATOR / (
+	LEFTARG = float8[],
+	RIGHTARG = svec,
+	PROCEDURE = float8arr_div_svec
+);
+
+CREATE OPERATOR - (
+	LEFTARG = svec,
+	RIGHTARG = float8[],
+	PROCEDURE = svec_minus_float8arr
+);
+CREATE OPERATOR + (
+	LEFTARG = svec,
+	RIGHTARG = float8[],
+	PROCEDURE = svec_plus_float8arr
+);
+CREATE OPERATOR * (
+	LEFTARG = svec,
+	RIGHTARG = float8[],
+	PROCEDURE = svec_mult_float8arr
+);
+CREATE OPERATOR / (
+	LEFTARG = svec,
+	RIGHTARG = float8[],
+	PROCEDURE = svec_div_float8arr
+);
+
 CREATE CAST (int2 AS svec) WITH FUNCTION svec_cast_int2(int2) AS IMPLICIT;
 CREATE CAST (integer AS svec) WITH FUNCTION svec_cast_int4(integer) AS IMPLICIT;
 CREATE CAST (bigint AS svec) WITH FUNCTION svec_cast_int8(bigint) AS IMPLICIT;
@@ -118,13 +222,6 @@ CREATE CAST (float8 AS svec) WITH FUNCTION svec_cast_float8(float8) AS IMPLICIT;
 CREATE CAST (svec AS float8[]) WITH FUNCTION svec_return_array(svec) AS IMPLICIT;
 CREATE CAST (float8[] AS svec) WITH FUNCTION svec_cast_float8arr(float8[]) AS IMPLICIT;
 CREATE CAST (numeric AS svec) WITH FUNCTION svec_cast_numeric(numeric) AS IMPLICIT;
-
-CREATE OPERATOR = (
-	leftarg = float8[], rightarg = float8[], procedure = float8arr_eq,
-	commutator = = ,
---	negator = <> ,
-	restrict = eqsel, join = eqjoinsel
-);
 
 CREATE OPERATOR = (
 	leftarg = svec, rightarg = svec, procedure = svec_eq,

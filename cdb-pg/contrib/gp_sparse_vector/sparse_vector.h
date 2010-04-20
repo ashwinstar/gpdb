@@ -15,7 +15,7 @@
 #define SPARSEVECTOR_H
 
 #include "SparseData.h"
-#include "float_specials.h"
+//#include "float_specials.h"
 
 typedef struct {
 	int4 vl_len_;
@@ -114,6 +114,20 @@ Datum svec_count(PG_FUNCTION_ARGS);
 Datum svec_mult(PG_FUNCTION_ARGS);
 Datum svec_log(PG_FUNCTION_ARGS);
 Datum svec_l1norm(PG_FUNCTION_ARGS);
+
+Datum float8arr_minus_float8arr(PG_FUNCTION_ARGS);
+Datum svec_minus_float8arr(PG_FUNCTION_ARGS);
+Datum float8arr_minus_svec(PG_FUNCTION_ARGS);
+Datum float8arr_plus_float8arr(PG_FUNCTION_ARGS);
+Datum svec_plus_float8arr(PG_FUNCTION_ARGS);
+Datum float8arr_plus_svec(PG_FUNCTION_ARGS);
+Datum float8arr_mult_float8arr(PG_FUNCTION_ARGS);
+Datum svec_mult_float8arr(PG_FUNCTION_ARGS);
+Datum float8arr_mult_svec(PG_FUNCTION_ARGS);
+Datum float8arr_div_float8arr(PG_FUNCTION_ARGS);
+Datum svec_div_float8arr(PG_FUNCTION_ARGS);
+Datum float8arr_div_svec(PG_FUNCTION_ARGS);
+
 
 // Casts
 Datum svec_cast_int2(PG_FUNCTION_ARGS);

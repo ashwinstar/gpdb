@@ -91,6 +91,22 @@ SparseData makeSparseDataFromDouble(double constant,int64_t dimension)
 	return(sdata);
 }
 
+void
+freeSparseData(SparseData sdata)
+{
+	pfree(sdata->vals);
+	pfree(sdata->index);
+	pfree(sdata);
+}
+
+void
+freeSparseDataAndData(SparseData sdata)
+{
+	pfree(sdata->vals->data);
+	pfree(sdata->index->data);
+	freeSparseData(sdata);
+}
+
 /*------------------------------------------------------------------------------
  * Copy a StringInfo structure
  */
@@ -132,6 +148,7 @@ SparseData float8arr_to_sdata(double *array, int count) {
 	for (int i=1; i<count; i++) {
 		double curr_val=array[i  ];
 			if (! DBL_IS_EQUIV(curr_val,run_val))
+//			if (curr_val != run_val)
 			{ /*run is interrupted, initiate new run */
 				/* package up the finished run */
 				add_run_to_sdata(run_val, run_len, sdata);
