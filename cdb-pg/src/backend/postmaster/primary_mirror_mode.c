@@ -863,16 +863,37 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args)
 		SendPostmasterSignal(PMSIGNAL_PRIMARY_MIRROR_TRANSITION_RECEIVED);
 
 		/* Wait for postmaster to apply transition and turn isTransitionRequested to false */
+		int counter = 0;
 		for (;;)
 		{
 			PrimaryMirrorModeTransitionResult result = PMTransitionSuccess;
 			bool isDone = false;
+			bool postmasterIsDead = false;
 
-			pg_usleep(1000L); /* sleep 1 ms, waiting for postmaster to do something */
+            /* sleep 10 ms, waiting for postmaster to do something
+             * don't change the scale here without updating counter check below!
+             */
+			pg_usleep(10 * 1000L);
+
+			/* every ~ 1 second, see if postmaster is gone */
+			counter++;
+			if ( counter == 100)
+			{
+			    if ( ! PostmasterIsAlive(true))
+			        postmasterIsDead = true;
+			    counter = 0;
+			}
 
 			acquireModuleSpinLock();
 			{
-				if (!pmModuleState->isTransitionRequested)
+			    if ( postmasterIsDead)
+			    {
+			        pmModuleState->isTransitionRequested = false;
+			        pmModuleState->isTransitionListenerFinished = true;
+			        result = PMTransitionError;
+			        isDone = true;
+			    }
+				else if (!pmModuleState->isTransitionRequested)
 				{
 					// postmaster completed the work
 					pmModuleState->isTransitionListenerFinished = true;
