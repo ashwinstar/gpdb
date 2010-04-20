@@ -21,6 +21,8 @@ except ImportError, e:
 
 EXECNAME = os.path.split(__file__)[-1]
 
+prohibitedGucs = set(["port", "listen_addresses"])
+
 def parseargs():
 
     parser = OptParser(option_class=OptChecker)
@@ -64,16 +66,16 @@ def parseargs():
         logger.error("No action specified.  See the --help info.")
         parser.exit()
 
-    if options.change and (not options.value) and (not options.masteronly):
-        logger.error("change requested but value not specified")
-        parser.exit()
-
-    if options.change and (not options.mastervalue) and options.masteronly:
-        logger.error("change requested but value not specified")
-        parser.exit()
-
     if options.remove and (options.value or options.mastervalue):
         logger.error("remove action does not take a value or master value parameter")
+        parser.exit()
+
+    if options.change and (not options.value):
+        logger.error("change requested but value not specified")
+        parser.exit()
+
+    if options.change and options.mastervalue and options.masteronly:
+        logger.error("when changing a parameter on the master only specify the --value not --mastervalue")
         parser.exit()
 
     if options.value and (not options.mastervalue):
@@ -115,8 +117,8 @@ class Guc:
         # todo add code here...
         # be careful 128KB in postgresql.conf is translated into 32KB units
 
-        if self.name == "port" or self.name == "listen_addresses":
-            return "This guc can not be set with this tool"
+        if self.name in prohibitedGucs:
+            return ("The parameter '%s' can not be set with this tool" % self.name)
 
         if self.name == "max_connections":
             try:
@@ -151,7 +153,8 @@ def doList():
 
         for row in rows:
             guc = Guc(row)
-            guc.Print()
+            if guc.name not in prohibitedGucs:
+                guc.Print()
     
         conn.close()
 
