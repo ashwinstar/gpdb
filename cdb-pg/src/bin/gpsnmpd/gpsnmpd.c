@@ -53,7 +53,7 @@ char *pgsnmp_version = PG_VERSION_STR;
  * PostgreSQL Connection
  */
 PGconn *dbconn = NULL;
-char *conninfo = { "dbname=template1" };
+char *conninfo = { "dbname=postgres" };
 #define     SEARCH_PATH "set search_path TO public;"
 
 static int keep_running = 0;
@@ -145,7 +145,16 @@ static void usage(void)
 	fprintf(stderr, "   -x : address:port of a network interface\n");
 	/*	fprintf(stderr, "   -n : database search_path to use for gpsnmpd-specific tables (default: $user, public)\n"); */
 	fprintf(stderr, "   -V : display version strings\n");
+	fprintf(stderr, "   -m MIB[:...]\t\tload given list of MIBs (ALL loads everything)\n");
+	fprintf(stderr, "   -M DIR[:...]\t\tlook in given list of directories for MIBs\n");
 }
+
+static void version(void)
+{
+	usage();
+}
+
+
 
 int main(int argc, char *argv[])
 {
@@ -161,7 +170,7 @@ int main(int argc, char *argv[])
 	char *strv;
 #endif
 
-	char options[128] = "sbc:gC:x:V-:Q:";
+	char options[128] = "sbc:gm:M:HC:x:V-:Q:";
 	/*char	 options[128] = "sbc:gC:x:V-:n:"; */
 	PGresult *qryRes;
 
@@ -169,10 +178,28 @@ int main(int argc, char *argv[])
 	{
 		switch (arg)
 		{
+		case '-':
+			if (strcasecmp(optarg, "help") == 0)
+			{
+				usage();
+				exit(0);
+			}
+			if (strcasecmp(optarg, "version") == 0)
+			{
+				version();
+				exit(0);
+			}
+
+			handle_long_opt(optarg);
+			break;
+
+
 		case 'V':
 		case '?':
+		case 'h':
 			usage();
 			exit(0);
+
 		case 'Q':
 			if (optarg != NULL)
 				custom_query_config_file = optarg;
@@ -193,15 +220,52 @@ int main(int argc, char *argv[])
 				exit(-1);
 			}
 			break;
+		case 'D':
+			debug_register_tokens(optarg);
+			snmp_set_do_debugging(1);
+			break;
+
 		case 'g':
 			syslog = 1;
 			break;
+        case 'H':
+            init_agent("gpsnmpd");
+            init_snmp("gpsnmpd");
+            fprintf(stderr, "Configuration directives understood:\n");
+            read_config_print_usage("  ");
+            exit(0);
+
 		case 'b':
 			background = 1;
 			break;
 		case 's':
 			agentx_subagent = 1;
 			break;
+		case 'm':
+			if (optarg != NULL)
+			{
+				setenv("MIBS", optarg, 1);
+			}
+			else
+			{
+				usage();
+				exit(1);
+			}
+		    break;
+
+		case 'M':
+			if (optarg != NULL)
+			{
+				setenv("MIBDIRS", optarg, 1);
+			}
+			else
+			{
+				usage();
+				exit(1);
+			}
+			break;
+
+
 		case 'x':
 			if (optarg != NULL)
 			{
@@ -225,6 +289,8 @@ int main(int argc, char *argv[])
 			if (optarg != NULL)
 			{
 				conninfo = optarg;
+				/* Remove the string from the args because there might be a password */
+				memset(optarg, '\0', strlen(optarg));
 			}
 			else
 			{
