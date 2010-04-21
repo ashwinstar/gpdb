@@ -76,9 +76,13 @@ int MirroredFlatFile_Open(
 				(errmsg("could not sent open file to mirror \"%s\" open file flags:'%x' ", 
 						open->path, 
 						fileFlags)));		
-
+	
+	errno = 0;
+	
 	if (! open->isMirrorRecovery) {
 		open->primaryFile = PathNameOpenFile(open->path, fileFlags, fileMode);
+		save_errno = errno;
+		
 		if (open->primaryFile < 0)
 		{
 			if (!suppressError)
@@ -87,16 +91,30 @@ int MirroredFlatFile_Open(
 						(errcode_for_file_access(),
 						 errmsg("could not open file \"%s\": %m", open->path)));
 			}
+			
+			pfree(open->subDirectory);
+			open->subDirectory = NULL;
+			
+			pfree(open->simpleFileName);
+			open->simpleFileName = NULL;
+			
+			pfree(open->path);
+			open->path = NULL;
+			
+			open->isActive = false;
+						
 		}
 		else
-			errno = 0;
-		save_errno = errno;
+		{
+			open->appendPosition = 0;
+			
+			open->isActive = true;		
+		}
+	} 
+	else
+	{
+		open->isActive = true;
 	}
-	
-	open->appendPosition = 0;
-
-	open->isActive = true;
-
 	return save_errno;
 }
 
@@ -182,8 +200,11 @@ int MirroredFlatFile_OpenInDbDir(
 						open->subDirectory, 
 						open->simpleFileName,
 						fileFlags)));		
-
+	
+	errno = 0;
 	open->primaryFile = PathNameOpenFile(open->path, fileFlags, fileMode);
+	save_errno = errno;
+	
 	if (open->primaryFile < 0)
 	{
 		if (!suppressError)
@@ -192,16 +213,25 @@ int MirroredFlatFile_OpenInDbDir(
 					(errcode_for_file_access(),
 					 errmsg("could not open file \"%s\": %m", open->path)));
 		}
+		
+		pfree(open->subDirectory);
+		open->subDirectory = NULL;
+		
+		pfree(open->simpleFileName);
+		open->simpleFileName = NULL;
+		
+		pfree(open->path);
+		open->path = NULL;
+		
+		open->isActive = false;		
 	}
 	else
-		errno = 0;
-	
-	save_errno = errno;
-	
-	open->appendPosition = 0;
-
-	open->isActive = true;
-	
+	{
+		open->appendPosition = 0;
+		
+		open->isActive = true;
+	}
+		
 	if (primaryFilespaceLocation != NULL)
 		pfree(primaryFilespaceLocation);
 	
@@ -567,7 +597,8 @@ int MirroredFlatFile_OpenPrimary(
 	open->path = MemoryContextAlloc(TopMemoryContext, strlen(subDirectory) + 1 + strlen(simpleFileName) + 1);
 	
 	sprintf(open->path, "%s/%s", subDirectory, simpleFileName);
-		
+	
+	errno = 0;
 	open->primaryFile = PathNameOpenFile(open->path, fileFlags, fileMode);
 	if (open->primaryFile < 0)
 	{
@@ -577,14 +608,24 @@ int MirroredFlatFile_OpenPrimary(
 					(errcode_for_file_access(),
 					 errmsg("could not open file \"%s\": %m", open->path)));
 		}
+
+		pfree(open->subDirectory);
+		open->subDirectory = NULL;
+		
+		pfree(open->simpleFileName);
+		open->simpleFileName = NULL;
+
+		pfree(open->path);
+		open->path = NULL;
+
+		open->isActive = false;
 	}
 	else
-		errno = 0;
-
+	{
+		open->isActive = true;
 	
-	open->appendPosition = 0;
-	
-	open->isActive = true;
+		open->appendPosition = 0;
+	}
 	
 	return errno;
 }
@@ -960,20 +1001,20 @@ PgVersionRecoverMirror(void)
 		PersistentTablespace_GetPrimaryAndMirrorFilespaces(
 														   dbDirNode.tablespace,
 														   &primaryFilespaceLocation,
-														   &mirrorFilespaceLocation);	
+														   &mirrorFilespaceLocation);
 				
 		FormDatabasePath(
 						 subDirectoryPrimary,
 						 primaryFilespaceLocation,
 						 dbDirNode.tablespace,
 						 dbDirNode.database);	
-		
+
 		FormDatabasePath(
 						 subDirectoryMirror,
 						 mirrorFilespaceLocation,
 						 dbDirNode.tablespace,
 						 dbDirNode.database);			
-		
+				
 		errno = 0;
 				
 		while (1) {
@@ -984,10 +1025,12 @@ PgVersionRecoverMirror(void)
 												  PGVERSION,
 												  O_RDONLY | PG_BINARY,
 												  S_IRUSR | S_IWUSR,
-												  /* suppressError */ false);
-			if (retval != 0)
+												  /* suppressError */ true);
+
+			if (! MirroredFlatFile_IsActive(&primaryOpen) || retval != 0) {
 				break;
-			
+			}
+						
 			/*
 			 * Determine the end.
 			 */
@@ -1016,8 +1059,10 @@ PgVersionRecoverMirror(void)
 										   S_IRUSR | S_IWUSR,
 										   /* suppressError */ false,
 										   /*isMirrorRecovery */ TRUE);
-			if (retval != 0)
+			
+			if (! MirroredFlatFile_IsActive(&mirroredOpen) || retval != 0) {
 				break;
+			}
 			
 			bufferLen = (Size) Min(BLCKSZ, endOffset - startOffset);
 			buffer = (char*) palloc(bufferLen);
@@ -1064,7 +1109,7 @@ PgVersionRecoverMirror(void)
 			
 			retval = MirroredFlatFile_Flush(
 											&mirroredOpen,
-											/* suppressError */ FALSE);
+											/* suppressError */ false);
 			if (retval != 0)
 				break;
 						

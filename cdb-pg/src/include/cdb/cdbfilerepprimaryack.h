@@ -43,6 +43,8 @@ extern bool FileRepAckPrimary_IsOperationCompleted(
 
 extern XLogRecPtr FileRepAckPrimary_GetMirrorXLogEof(void);
 
+extern int FileRepAckPrimary_GetMirrorErrno(void);
+
 extern void FileRepAckPrimary_StartConsumer(void);
 
 

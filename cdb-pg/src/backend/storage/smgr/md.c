@@ -224,20 +224,28 @@ mdcreatefilespacedir(
 	*primaryError = 0;
 	*mirrorDataLossOccurred = false;
 
-	if (FileRepPrimary_MirrorCreate(
-				FileRep_GetDirFilespaceIdentifier(
-												  mirrorFilespaceLocation),
-				FileRepRelationTypeDir) != 0) 
+	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&
+		!*mirrorDataLossOccurred)
 	{
-		*mirrorDataLossOccurred = true;
-		ereport(LOG,
-				(errmsg("ERROR(filerep): could not sent create dbdir to mirror")));
+		if (FileRepPrimary_MirrorCreate(
+					FileRep_GetDirFilespaceIdentifier(
+													  mirrorFilespaceLocation),
+					FileRepRelationTypeDir) != 0) 
+		{
+			*mirrorDataLossOccurred = true;
+			ereport(LOG,
+					(errmsg("ERROR(filerep): could not sent create dbdir to mirror")));
+		}
 	}
 
-	if (mkdir(primaryFilespaceLocation, 0700) < 0)
-		*primaryError = errno;
+	if (StorageManagerMirrorMode_DoPrimaryWork(mirrorMode))
+	{
+		if (mkdir(primaryFilespaceLocation, 0700) < 0)
+			*primaryError = errno;
+	}
 	
-	if (*mirrorDataLossOccurred == false)
+	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&
+		!*mirrorDataLossOccurred)
 	{
 		if (FileRepPrimary_IsOperationCompleted(
 						FileRep_GetDirFilespaceIdentifier(
@@ -280,26 +288,34 @@ mdcreatetablespacedir(
 										&primaryFilespaceLocation,
 										&mirrorFilespaceLocation);
 
-	if (FileRepPrimary_MirrorCreate(
-				FileRep_GetDirTablespaceIdentifier(
-												   mirrorFilespaceLocation,
-												   tablespaceOid),
-				FileRepRelationTypeDir) != 0) 
+	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&
+		!*mirrorDataLossOccurred)
 	{
-		*mirrorDataLossOccurred = true;
-		ereport(LOG,
-				(errmsg("ERROR(filerep): could not sent create dbdir to mirror")));
+		if (FileRepPrimary_MirrorCreate(
+					FileRep_GetDirTablespaceIdentifier(
+													   mirrorFilespaceLocation,
+													   tablespaceOid),
+					FileRepRelationTypeDir) != 0) 
+		{
+			*mirrorDataLossOccurred = true;
+			ereport(LOG,
+					(errmsg("ERROR(filerep): could not sent create dbdir to mirror")));
+		}
 	}
-
-	FormTablespacePath(
-				tablespacePath,
-				primaryFilespaceLocation,
-				tablespaceOid);
-
-	if (mkdir(tablespacePath, 0700) < 0)
-		*primaryError = errno;
 	
-	if (*mirrorDataLossOccurred == false)
+	if (StorageManagerMirrorMode_DoPrimaryWork(mirrorMode))
+	{
+		FormTablespacePath(
+					tablespacePath,
+					primaryFilespaceLocation,
+					tablespaceOid);
+
+		if (mkdir(tablespacePath, 0700) < 0)
+			*primaryError = errno;
+	}
+	
+	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&
+		!*mirrorDataLossOccurred)
 	{
 		if (FileRepPrimary_IsOperationCompleted(
 					FileRep_GetDirTablespaceIdentifier(
@@ -348,27 +364,35 @@ mdcreatedbdir(
 										&primaryFilespaceLocation,
 										&mirrorFilespaceLocation);
 	
-	if (FileRepPrimary_MirrorCreate(
-				FileRep_GetDirDatabaseIdentifier(
-												 mirrorFilespaceLocation,
-												 *dbDirNode),
-				FileRepRelationTypeDir) != 0) 
+	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&
+		!*mirrorDataLossOccurred)
 	{
-		*mirrorDataLossOccurred = true;
-		ereport(LOG,
-				(errmsg("ERROR(filerep): could not sent create dbdir to mirror")));
+		if (FileRepPrimary_MirrorCreate(
+					FileRep_GetDirDatabaseIdentifier(
+													 mirrorFilespaceLocation,
+													 *dbDirNode),
+					FileRepRelationTypeDir) != 0) 
+		{
+			*mirrorDataLossOccurred = true;
+			ereport(LOG,
+					(errmsg("ERROR(filerep): could not sent create dbdir to mirror")));
+		}
 	}
 
-	FormDatabasePath(
-				dbPath,
-				primaryFilespaceLocation,
-				dbDirNode->tablespace,
-				dbDirNode->database);
+	if (StorageManagerMirrorMode_DoPrimaryWork(mirrorMode))
+	{
+		FormDatabasePath(
+					dbPath,
+					primaryFilespaceLocation,
+					dbDirNode->tablespace,
+					dbDirNode->database);
 
-	if (mkdir(dbPath, 0700) < 0)
-		*primaryError = errno;
+		if (mkdir(dbPath, 0700) < 0)
+			*primaryError = errno;
+	}
 	
-	if (*mirrorDataLossOccurred == false)
+	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&
+		!*mirrorDataLossOccurred)
 	{
 		if (FileRepPrimary_IsOperationCompleted(
 					FileRep_GetDirDatabaseIdentifier(

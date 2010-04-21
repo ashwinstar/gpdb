@@ -37,6 +37,8 @@
 #include "cdb/cdbmirroredappendonly.h"
 
 static void MirroredFileSysObj_BeginMirroredCreate(
+	PersistentFileSysObjName		*fsObjName,
+
 	MirrorDataLossTrackingState 	mirrorDataLossTrackingState,
 
 	MirroredObjectExistenceState 	*mirrorExistenceState,
@@ -48,6 +50,12 @@ static void MirroredFileSysObj_BeginMirroredCreate(
 	{
 		*mirrorExistenceState = MirroredObjectExistenceState_MirrorCreatePending;
 		*mirrorMode = StorageManagerMirrorMode_Both;
+		
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "MirroredFileSysObj_BeginMirroredCreate (%s): -- initdb mirrored",
+				 PersistentFileSysObjName_TypeAndObjectName(fsObjName));
+
 		return;
 	}
 
@@ -75,33 +83,16 @@ static void MirroredFileSysObj_BeginMirroredCreate(
 		*mirrorMode = StorageManagerMirrorMode_None;	// A happy optimizer is the sound of one hand clapping.
 	}
 
-#ifdef suppress
-	switch (snapDataState)
-	{
-	case DataStateNotInitialized:
-		*mirrorMode = StorageManagerMirrorMode_PrimaryOnly;
-		break;
-		
-	case DataStateInSync:
-	case DataStateInResync:
-		*mirrorExistenceState = MirroredObjectExistenceState_MirrorCreatePending;
-		*mirrorMode = StorageManagerMirrorMode_Both;
-		break;
-			
-	case DataStateInChangeTracking:
-		*mirrorExistenceState = MirroredObjectExistenceState_MirrorReCreateNeeded;
-		*mirrorMode = StorageManagerMirrorMode_PrimaryOnly;
-		break;
-		
-	default:
-		elog(ERROR, "Unexpected file-rep state: %d",
-			 snapDataState);
-	}
-#endif
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "MirroredFileSysObj_BeginMirroredCreate (%s): mirror existence state '%s', mirror mode %s",
+			 PersistentFileSysObjName_TypeAndObjectName(fsObjName),
+			 MirroredObjectExistenceState_Name(*mirrorExistenceState),
+			 StorageManagerMirrorMode_Name(*mirrorMode));
 }
 
 static void MirroredFileSysObj_FinishMirroredCreate(
-	PersistentFsObjType				fsObjType,
+	PersistentFileSysObjName		*fsObjName,
 
 	ItemPointer 					persistentTid,
 	
@@ -113,6 +104,16 @@ static void MirroredFileSysObj_FinishMirroredCreate(
 {
 	MirroredObjectExistenceState 	newMirrorExistenceState;
 	MirroredRelDataSynchronizationState newRelDataSynchronizationState;
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "MirroredFileSysObj_FinishMirroredCreate (%s): mirror existence state '%s', mirror data loss occurred %s, "
+		     "serial number " INT64_FORMAT " at TID %s",
+			 PersistentFileSysObjName_TypeAndObjectName(fsObjName),
+			 MirroredObjectExistenceState_Name(mirrorExistenceState),
+			 (mirrorDataLossOccurred ? "true" : "false"),
+			 persistentSerialNum,
+			 ItemPointerToString(persistentTid));
 
 	if (mirrorExistenceState == MirroredObjectExistenceState_NotMirrored ||
 		mirrorExistenceState == MirroredObjectExistenceState_MirrorReCreateNeeded)
@@ -134,12 +135,19 @@ static void MirroredFileSysObj_FinishMirroredCreate(
 	// UNDONE: Don't fsync this change to the XLOG for now.  Determine
 	// UNDONE: what needs to be fsync'd.
 	PersistentFileSysObj_UpdateMirrorExistenceState(
-											fsObjType,
+											fsObjName->type,
 											persistentTid,
 											persistentSerialNum,
 											newMirrorExistenceState,
 											newRelDataSynchronizationState,
 											/* flushToXLog */ false);
+}
+
+int MirroredFileSysObj_ValidateFilespaceDir(char *mirrorFilespaceLocation)
+{
+	return(FileRepPrimary_MirrorValidation(
+									FileRep_GetDirFilespaceIdentifier(mirrorFilespaceLocation),
+									FileRepRelationTypeDir));
 }
 
 void MirroredFileSysObj_TransactionCreateFilespaceDir(
@@ -163,6 +171,8 @@ void MirroredFileSysObj_TransactionCreateFilespaceDir(
 	int64				*persistentSerialNum)
 				/* Output: The serial number of the gp_persistent_filespace_node tuple. */
 {
+	PersistentFileSysObjName	fsObjName;
+	
 	MirrorDataLossTrackingState mirrorDataLossTrackingState;
 	int64 mirrorDataLossTrackingSessionNum;
 	
@@ -173,6 +183,10 @@ void MirroredFileSysObj_TransactionCreateFilespaceDir(
 
 	Assert(primaryFilespaceLocation != NULL);
 
+	PersistentFileSysObjName_SetFilespaceDir(
+										&fsObjName,
+										filespaceOid);
+
 	LWLockAcquire(MirroredLock, LW_SHARED);
 
 	mirrorDataLossTrackingState = 
@@ -180,6 +194,7 @@ void MirroredFileSysObj_TransactionCreateFilespaceDir(
 												&mirrorDataLossTrackingSessionNum);
 
 	MirroredFileSysObj_BeginMirroredCreate(
+									&fsObjName,
 									mirrorDataLossTrackingState,
 									&mirrorExistenceState,
 									&mirrorMode);
@@ -221,7 +236,7 @@ void MirroredFileSysObj_TransactionCreateFilespaceDir(
 	}
 	
 	MirroredFileSysObj_FinishMirroredCreate(
-									PersistentFsObjType_FilespaceDir,
+									&fsObjName,
 									persistentTid, 
 									*persistentSerialNum, 
 									mirrorExistenceState,
@@ -314,6 +329,8 @@ void MirroredFileSysObj_TransactionCreateTablespaceDir(
 	int64				*persistentSerialNum)
 				/* Output: The serial number of the gp_persistent_tablespace_node tuple. */
 {
+	PersistentFileSysObjName	fsObjName;
+	
 	MirrorDataLossTrackingState mirrorDataLossTrackingState;
 	int64 mirrorDataLossTrackingSessionNum;
 	
@@ -322,6 +339,10 @@ void MirroredFileSysObj_TransactionCreateTablespaceDir(
 	int primaryError;
 	bool mirrorDataLossOccurred;
 
+	PersistentFileSysObjName_SetTablespaceDir(
+										&fsObjName,
+										tablespaceDirNode->tablespace);
+
 	LWLockAcquire(MirroredLock, LW_SHARED);
 
 	mirrorDataLossTrackingState = 
@@ -329,6 +350,7 @@ void MirroredFileSysObj_TransactionCreateTablespaceDir(
 												&mirrorDataLossTrackingSessionNum);
 
 	MirroredFileSysObj_BeginMirroredCreate(
+									&fsObjName,
 									mirrorDataLossTrackingState,
 									&mirrorExistenceState,
 									&mirrorMode);
@@ -364,7 +386,7 @@ void MirroredFileSysObj_TransactionCreateTablespaceDir(
 	}
 
 	MirroredFileSysObj_FinishMirroredCreate(
-									PersistentFsObjType_TablespaceDir,
+									&fsObjName,
 									persistentTid, 
 									*persistentSerialNum, 
 									mirrorExistenceState,
@@ -435,6 +457,8 @@ void MirroredFileSysObj_TransactionCreateDbDir(
 				/* Output: The serial number of the gp_persistent_relation_node tuple. */
 
 {
+	PersistentFileSysObjName	fsObjName;
+	
 	MirrorDataLossTrackingState mirrorDataLossTrackingState;
 	int64 mirrorDataLossTrackingSessionNum;
 	
@@ -443,6 +467,11 @@ void MirroredFileSysObj_TransactionCreateDbDir(
 	int primaryError;
 	bool mirrorDataLossOccurred;
 
+	PersistentFileSysObjName_SetDatabaseDir(
+										&fsObjName,
+										dbDirNode->tablespace,
+										dbDirNode->database);
+
 	LWLockAcquire(MirroredLock, LW_SHARED);
 
 	mirrorDataLossTrackingState = 
@@ -450,6 +479,7 @@ void MirroredFileSysObj_TransactionCreateDbDir(
 												&mirrorDataLossTrackingSessionNum);
 
 	MirroredFileSysObj_BeginMirroredCreate(
+									&fsObjName,
 									mirrorDataLossTrackingState,
 									&mirrorExistenceState,
 									&mirrorMode);
@@ -484,7 +514,7 @@ void MirroredFileSysObj_TransactionCreateDbDir(
 	}
 
 	MirroredFileSysObj_FinishMirroredCreate(
-									PersistentFsObjType_DatabaseDir,
+									&fsObjName,
 									persistentTid, 
 									*persistentSerialNum, 
 									mirrorExistenceState,
@@ -551,11 +581,19 @@ void MirroredFileSysObj_DropDbDir(
 static void MirroredFileSysObj_JustInTimeDbDirCreate(
 	DbDirNode			*justInTimeDbDirNode)
 {
+	PersistentFileSysObjName	fsObjName;
+	
 	MirrorDataLossTrackingState mirrorDataLossTrackingState;
 	int64 mirrorDataLossTrackingSessionNum;
 	
 	MirroredObjectExistenceState mirrorExistenceState = MirroredObjectExistenceState_None;
 	StorageManagerMirrorMode mirrorMode = StorageManagerMirrorMode_None;
+
+	ItemPointerData 		persistentTid;
+	int64					persistentSerialNum;
+
+	int primaryError;
+	bool mirrorDataLossOccurred;
 
 	Assert(justInTimeDbDirNode != NULL);
 
@@ -568,6 +606,11 @@ static void MirroredFileSysObj_JustInTimeDbDirCreate(
 		 */
 		 return;
 	}
+
+	PersistentFileSysObjName_SetDatabaseDir(
+										&fsObjName,
+										justInTimeDbDirNode->tablespace,
+										justInTimeDbDirNode->database);
 
 	/*
 	 * Acquire TablespaceCreateLock to ensure that no DROP TABLESPACE
@@ -592,22 +635,90 @@ static void MirroredFileSysObj_JustInTimeDbDirCreate(
 												&mirrorDataLossTrackingSessionNum);
 
 	MirroredFileSysObj_BeginMirroredCreate(
+									&fsObjName,
 									mirrorDataLossTrackingState,
 									&mirrorExistenceState,
 									&mirrorMode);
 
-	if (!smgrcreatedbdirjustintime(justInTimeDbDirNode))
+
+	if (PersistentTablespace_GetState(justInTimeDbDirNode->tablespace) == PersistentFileSysState_CreatePending)
 	{
-		RESUME_INTERRUPTS();
-		LWLockRelease(MirroredLock);
-		LWLockRelease(TablespaceCreateLock);
-		ereport(ERROR,
-			(errcode_for_file_access(),
-			 errmsg("could not create database directory %u/%u: %m",
-					justInTimeDbDirNode->tablespace,
-					justInTimeDbDirNode->database)));
+		/*
+		 * This tablespace was created in our explicit (i.e. BEGIN ... END) transaction.
+		 *
+		 * Otherwise, if would not be visible to us.
+		 *
+		 * Do a regular transaction database directory create.
+		 */
+		 
+		/*
+		 * We write our intention or 'Create Pending' persistent information before we do
+		 * any create database directory work on either the primary or mirror.
+		 */
+		smgrcreatedbdirpending(
+						justInTimeDbDirNode,
+						mirrorExistenceState,
+						&persistentTid, 
+						&persistentSerialNum, 
+						/* flushToXLog */ true);
+		
+		/*
+		 * Synchronous primary and mirror create database directory.
+		 */
+		MirroredFileSysObj_CreateDbDir(
+									justInTimeDbDirNode,
+									mirrorMode,
+									/* ignoreAlreadyExists */ false,
+									&primaryError,
+									&mirrorDataLossOccurred);
+		if (primaryError != 0)
+		{
+			RESUME_INTERRUPTS();
+			LWLockRelease(MirroredLock);
+			LWLockRelease(TablespaceCreateLock);
+			ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not create database directory %u/%u: %s",
+						justInTimeDbDirNode->tablespace,
+						justInTimeDbDirNode->database,
+						strerror(primaryError))));
+		}
 	}
-	
+	else
+	{
+		/*
+		 * Do Just-In-Time non-transaction database directory create.
+		 */
+		smgrcreatedbdirjustintime(
+							justInTimeDbDirNode,
+							mirrorExistenceState,
+							mirrorMode,
+							&persistentTid, 
+							&persistentSerialNum, 
+							&primaryError,
+							&mirrorDataLossOccurred);
+		if (primaryError != 0)
+		{
+			RESUME_INTERRUPTS();
+			LWLockRelease(MirroredLock);
+			LWLockRelease(TablespaceCreateLock);
+			ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not create just-in-time database directory %u/%u: %s",
+						justInTimeDbDirNode->tablespace,
+						justInTimeDbDirNode->database,
+						strerror(primaryError))));
+		}
+	}
+
+	MirroredFileSysObj_FinishMirroredCreate(
+									&fsObjName,
+									&persistentTid, 
+									persistentSerialNum, 
+									mirrorExistenceState,
+									mirrorDataLossOccurred);	
+
+
 	RESUME_INTERRUPTS();
 
 	LWLockRelease(MirroredLock);
@@ -627,6 +738,8 @@ void MirroredFileSysObj_TransactionCreateBufferPoolFile(
 
 	int64					*persistentSerialNum)
 {
+	PersistentFileSysObjName	fsObjName;
+	
 	MirrorDataLossTrackingState mirrorDataLossTrackingState;
 	int64 mirrorDataLossTrackingSessionNum;
 	
@@ -652,6 +765,11 @@ void MirroredFileSysObj_TransactionCreateBufferPoolFile(
 		MirroredFileSysObj_JustInTimeDbDirCreate(&justInTimeDbDirNode);
 	}
 
+	PersistentFileSysObjName_SetRelationFile(
+										&fsObjName,
+										&smgrOpen->smgr_rnode,
+										/* segmentFileNum */ 0);
+
 	LWLockAcquire(MirroredLock, LW_SHARED);
 
 	mirrorDataLossTrackingState = 
@@ -659,6 +777,7 @@ void MirroredFileSysObj_TransactionCreateBufferPoolFile(
 												&mirrorDataLossTrackingSessionNum);
 
 	MirroredFileSysObj_BeginMirroredCreate(
+									&fsObjName,
 									mirrorDataLossTrackingState,
 									&mirrorExistenceState,
 									&mirrorMode);
@@ -703,7 +822,7 @@ void MirroredFileSysObj_TransactionCreateBufferPoolFile(
 	}
 
 	MirroredFileSysObj_FinishMirroredCreate(
-									PersistentFsObjType_RelationFile,
+									&fsObjName,
 									persistentTid, 
 									*persistentSerialNum, 
 									mirrorExistenceState,
@@ -740,6 +859,8 @@ void MirroredFileSysObj_TransactionCreateAppendOnlyFile(
 	int64					*persistentSerialNum)
 				/* Output: The serial number of the gp_persistent_relation_node tuple. */
 {
+	PersistentFileSysObjName	fsObjName;
+	
 	MirrorDataLossTrackingState mirrorDataLossTrackingState;
 	int64 mirrorDataLossTrackingSessionNum;
 	
@@ -765,6 +886,11 @@ void MirroredFileSysObj_TransactionCreateAppendOnlyFile(
 		MirroredFileSysObj_JustInTimeDbDirCreate(&justInTimeDbDirNode);
 	}
 
+	PersistentFileSysObjName_SetRelationFile(
+										&fsObjName,
+										relFileNode,
+										segmentFileNum);
+
 	LWLockAcquire(MirroredLock, LW_SHARED);
 
 	mirrorDataLossTrackingState = 
@@ -772,6 +898,7 @@ void MirroredFileSysObj_TransactionCreateAppendOnlyFile(
 												&mirrorDataLossTrackingSessionNum);
 
 	MirroredFileSysObj_BeginMirroredCreate(
+									&fsObjName,
 									mirrorDataLossTrackingState,
 									&mirrorExistenceState,
 									&mirrorMode);
@@ -815,7 +942,7 @@ void MirroredFileSysObj_TransactionCreateAppendOnlyFile(
 	}
 
 	MirroredFileSysObj_FinishMirroredCreate(
-									PersistentFsObjType_RelationFile,
+									&fsObjName,
 									persistentTid, 
 									*persistentSerialNum, 
 									mirrorExistenceState,
@@ -959,3 +1086,4 @@ void MirroredFileSysObj_DropRelFile(
 	}
 }
 
+ 

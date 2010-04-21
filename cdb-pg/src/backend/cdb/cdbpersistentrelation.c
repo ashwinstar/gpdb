@@ -358,18 +358,7 @@ void PersistentRelation_AddCreated(
 	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
 	MemSet(&mirrorBufpoolResyncCkptLoc, 0, sizeof(XLogRecPtr));
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
-	{	
-		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
-			     "Skipping persistent relation '%s' because we are before persistence work",
-				 relpath(*relFileNode));
-
-		MemSet(persistentTid, 0, sizeof(ItemPointerData));
-		*persistentSerialNum = 0;
-
-		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
-	}
+	Assert (PersistentFileSysObj_BeforePersistenceWork());
 
 	PersistentRelation_InitScan();
 

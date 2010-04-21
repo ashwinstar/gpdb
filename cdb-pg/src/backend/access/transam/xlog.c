@@ -1243,13 +1243,24 @@ begin:;
 	INSERT_RECPTR(RecPtr, Insert, curridx);
 
 	if (Debug_print_xlog_relation_change_info)
-		ChangeTracking_PrintRelationChangeInfo(
-											rmid, 
-											info, 
-											(void *)rdata_orig->data, 
-											&RecPtr,
-											/* weAreGeneratingXLogNow */ true,
-											/* printSkipIssuesOnly */ Debug_print_xlog_relation_change_info_skip_issues_only);
+	{
+		bool skipIssue;
+
+		skipIssue = 
+			ChangeTracking_PrintRelationChangeInfo(
+												rmid, 
+												info, 
+												(void *)rdata_orig->data, 
+												&RecPtr,
+												/* weAreGeneratingXLogNow */ true,
+												/* printSkipIssuesOnly */ Debug_print_xlog_relation_change_info_skip_issues_only);
+
+		if (Debug_print_xlog_relation_change_info_backtrace_skip_issues &&
+			skipIssue)
+		{
+			debug_backtrace();
+		}
+	}
 
 	/* if needed, send this record to the changetracker */
 	if (OkToConsiderChangeTrackingLogging &&
@@ -6775,6 +6786,8 @@ StartupXLOG_Pass3(void)
 	{
 		XLogRecord *record;
 
+		int			rmid;
+
 		if (Debug_persistent_recovery_print)
 			elog(Debug_persistent_recovery_print_level, 
 				 "StartupXLOG_Pass3: Begin re-scanning XLOG");
@@ -6802,11 +6815,22 @@ StartupXLOG_Pass3(void)
 				 "ControlFile with recoveryTargetTLI %u, transaction log to start location is %s",
 				 recoveryTargetTLI, 
 				 XLogLocationToString(&XLogCtl->pass1StartLoc));
-		
+
+		/* Start up the recovery environment */
+		XLogInitRelationCache();
+
+		UtilityModeFindOrCreateDtmRedoFile();
+
+		for (rmid = 0; rmid <= RM_MAX_ID; rmid++)
+		{
+			if (RmgrTable[rmid].rm_startup != NULL)
+				RmgrTable[rmid].rm_startup();
+		}
+
 		record = ReadRecord(&XLogCtl->pass1StartLoc, PANIC);
 		
 		/*
-		 * Pass 2 XLOG scan
+		 * Pass 3 XLOG scan
 		 */
 		while (true)
 		{
@@ -6836,7 +6860,35 @@ StartupXLOG_Pass3(void)
 		
 			record = ReadRecord(NULL, PANIC);
 		}
+
 		ShutdownReadFile();
+
+		/*
+		 * Allow resource managers to do any required cleanup.
+		 */
+		for (rmid = 0; rmid <= RM_MAX_ID; rmid++)
+		{
+			if (RmgrTable[rmid].rm_cleanup != NULL)
+				RmgrTable[rmid].rm_cleanup();
+		}
+
+		/*
+		 * Check to see if the XLOG sequence contained any unresolved
+		 * references to uninitialized pages.
+		 */
+		XLogCheckInvalidPages();
+
+		/*
+		 * Reset pgstat data, because it may be invalid after recovery.
+		 */
+		pgstat_reset_all();
+
+		/*
+		 * Close down recovery environment
+		 */
+		XLogCloseRelationCache();
+
+		UtilityModeCloseDtmRedoFile();
 
 		if (Debug_persistent_recovery_print)
 			elog(Debug_persistent_recovery_print_level, 
@@ -7835,8 +7887,20 @@ CreateCheckPoint(bool shutdown, bool force)
 				(errmsg("checkpoint complete; %d transaction log file(s) added, %d removed, %d recycled",
 						nsegsadded, nsegsremoved, nsegsrecycled)));
 
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level, 
+			 "CreateCheckPoint: shutdown %s, force %s, checkpoint location %s, redo location %s",
+			 (shutdown ? "true" : "false"),
+			 (force ? "true" : "false"),
+			 XLogLocationToString(&ControlFile->checkPoint),
+			 XLogLocationToString(&checkPoint.redo));
+
 	if (FileRepResync_IsTransitionFromResyncToInSync())
 	{
+		MirroredFlatFile_Drop(XLOGDIR, 
+							  "",
+							  /* supressError */ true,
+							  /* isMirrorRecovery */ true); 			
 		RequestXLogSwitch();
 		
 		FileRepResyncManager_ResyncFlatFiles();

@@ -485,4 +485,6 @@ extern void write_message_to_server_log(int elevel,
 										bool send_alert,
 										void* const *stacktracearray);
 
+extern void debug_backtrace(void);
+
 #endif   /* ELOG_H */

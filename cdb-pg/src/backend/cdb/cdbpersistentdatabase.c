@@ -832,6 +832,8 @@ bool PersistentDatabase_DirIsCreated(
 void PersistentDatabase_MarkJustInTimeCreatePending(
 	DbDirNode		*dbDirNode,
 
+	MirroredObjectExistenceState 	mirrorExistenceState,
+
 	ItemPointer		persistentTid,
 				/* TID of the gp_persistent_database_node tuple for the rel file */
 				
@@ -897,7 +899,7 @@ void PersistentDatabase_MarkJustInTimeCreatePending(
 
 	PersistentDatabase_AddTuple(
 							databaseDirEntry,
-							MirroredObjectExistenceState_None,		// UNDONE
+							mirrorExistenceState,
 							/* parentXid */ InvalidTransactionId,
 							/* flushToXLog */ true);
 

@@ -960,6 +960,52 @@ FileRepPrimary_MirrorDrop(FileRepIdentifier_u	fileRepIdentifier,
 }
 
 /*
+ * FileRepPrimary_MirrorValidation
+ */
+int 
+FileRepPrimary_MirrorValidation(FileRepIdentifier_u		fileRepIdentifier,
+								FileRepRelationType_e	fileRepRelationType)
+{
+	int		status = STATUS_OK;
+	bool	retval = FALSE;
+	int		mirrorErrno = -1;
+	
+	FileRepOperationDescription_u descr;
+	
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
+	{
+		status = FileRepPrimary_ConstructAndInsertMessage(
+														  fileRepIdentifier,
+														  fileRepRelationType,
+														  FileRepOperationValidation,
+														  descr);
+		if (status != STATUS_OK)
+			return mirrorErrno;
+		
+		retval = FileRepAckPrimary_IsOperationCompleted(
+														fileRepIdentifier,									
+														fileRepRelationType);
+		if (retval == TRUE) 
+		{
+			mirrorErrno = FileRepAckPrimary_GetMirrorErrno();
+		}
+					
+	}
+	
+#ifdef FILEREP_DEBUG
+	if (dataState == DataStateInChangeTracking)
+		ereport(LOG,			
+				(errmsg("LOG(filerep): Change Tracking "), 
+				 FileRep_errdetail(fileRepIdentifier,
+								   fileRepRelationType,
+								   FileRepOperationValidation),
+				 FileRep_errcontext()));	
+#endif
+	
+	return mirrorErrno;
+}
+
+/*
  * FileRepPrimary_MirrorShutdown
  *	inform mirror about graceful shutdown
  */
@@ -995,7 +1041,8 @@ FileRepPrimary_MirrorShutdown(void)
 															  FileRepRelationTypeUnknown,
 															  FileRepOperationShutdown,
 															  descr);
-		
+		if (status != STATUS_OK)
+			return;
 		retval = FileRepAckPrimary_IsOperationCompleted(
 											   fileRepIdentifier,									
 											   FileRepRelationTypeUnknown);
@@ -1037,6 +1084,8 @@ FileRepPrimary_MirrorInSyncTransition(void)
 														  FileRepRelationTypeUnknown,
 														  FileRepOperationInSyncTransition,
 														  descr);
+		if (status != STATUS_OK)
+			return;
 		
 		retval = FileRepAckPrimary_IsOperationCompleted(
 														fileRepIdentifier,									
@@ -1084,6 +1133,9 @@ FileRepPrimary_MirrorHeartBeat(FileRepConsumerProcIndex_e index)
 														  FileRepRelationTypeUnknown,
 														  FileRepOperationHeartBeat,
 														  descr);
+		
+		if (status != STATUS_OK)
+			return;
 		
 		retval = FileRepAckPrimary_IsOperationCompleted(
 														fileRepIdentifier,									

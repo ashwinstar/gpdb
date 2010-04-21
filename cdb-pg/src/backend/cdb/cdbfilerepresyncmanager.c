@@ -779,6 +779,8 @@ FileRepPrimary_RunResyncManager(void)
 				 * and periodically check if more work to do for resync
 				 */
 				pg_usleep(50000L);  // 50ms
+				
+				ResynchronizeScanToken_Init(&token);
 				continue;
 			}
 		}

@@ -248,6 +248,7 @@ DbCommand_GpRelationNodeAttrArray,DbCommand_GpRelationNodeAttrPtrArray,\
 GpRelationNodeRelationId,GP_RELATION_NODE_OID,false,true);
 
 static void update_gp_relation_node(
+	Relation 				gpRelationNodeRel,
 	Oid						dstDefaultTablespace,
 	Oid						dstDatabase,
 	ItemPointer				gpRelationNodeTid,
@@ -256,7 +257,6 @@ static void update_gp_relation_node(
 	ItemPointer				persistentTid,
 	int64					persistentSerialNum)
 {
-	Relation gpRelationNodeRel;
 	HeapTupleData	tuple;
 	Buffer			buffer;
 
@@ -270,8 +270,6 @@ static void update_gp_relation_node(
 	bool			repl_null[Natts_gp_relation_node];
 	bool			repl_repl[Natts_gp_relation_node];
 	HeapTuple		newtuple;
-
-	gpRelationNodeRel = DbCommand_GpRelationNodeOpen(dstDefaultTablespace, dstDatabase);
 
 	tuple.t_self = *gpRelationNodeTid;
 	
@@ -308,8 +306,6 @@ static void update_gp_relation_node(
 	heap_freetuple(newtuple);
 
 	ReleaseBuffer(buffer);
-
-	DbCommand_GpRelationNodeClose(gpRelationNodeRel);
 }
 
 static void copy_buffer_pool_segment_file(
@@ -1065,6 +1061,9 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 		DatabaseInfo *info;
 		int r;
 		char *buffer;
+		ItemPointerData	gpRelationNodePersistentTid;
+		int64 gpRelationNodePersistentSerialNum;
+		Relation gp_relation_node;
 
 		/*
 		 * Collect information of source database's relations.
@@ -1181,6 +1180,12 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 													&dbInfoRel->gpRelationNodes[0].persistentTid,		// OUTPUT
 													&dbInfoRel->gpRelationNodes[0].persistentSerialNum);	// OUTPUT
 
+				if (dstRelFileNode.relNode == GpRelationNodeRelationId)
+				{
+					gpRelationNodePersistentTid = dbInfoRel->gpRelationNodes[0].persistentTid;
+					gpRelationNodePersistentSerialNum = dbInfoRel->gpRelationNodes[0].persistentSerialNum;
+				}
+
 				for (p = 0; p < dbInfoRel->physicalSegmentFilesCount; p++)
 				{
 					DbInfoSegmentFile *dbInfoSegmentFile = &dbInfoRel->physicalSegmentFiles[p];
@@ -1234,6 +1239,24 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 			elog(NOTICE, "copy stored relations phase: %s",
 				 pg_rusage_show(&ru_start));
 
+		/*
+		 * Use our direct open feature so we can set the persistent information.
+		 *
+		 * Note:  The index will not get inserts -- we'll rebuild afterwards.
+		 */
+		gp_relation_node = 
+				DbCommand_GpRelationNodeOpen(
+								dst_deftablespace, 
+								dboid);
+
+		/*
+		 * Manually set the persistence information so it will get recorded in
+		 * the insert XLOG records.
+		 */
+		gp_relation_node->rd_segfile0_relationnodeinfo.isPresent = true;
+		gp_relation_node->rd_segfile0_relationnodeinfo.persistentTid = gpRelationNodePersistentTid;
+		gp_relation_node->rd_segfile0_relationnodeinfo.persistentSerialNum = gpRelationNodePersistentSerialNum;
+		
 		for (r = 0; r < info->dbInfoRelArrayCount; r++)
 		{
 			DbInfoRel *dbInfoRel = &info->dbInfoRelArray[r];
@@ -1246,6 +1269,7 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 											&dbInfoRel->gpRelationNodes[g];
 			
 				update_gp_relation_node(
+							gp_relation_node,
 							dst_deftablespace,
 							dboid,
 							&dbInfoGpRelationNode->gpRelationNodeTid,
@@ -1256,6 +1280,8 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 			}
 
 		}
+
+		DbCommand_GpRelationNodeClose(gp_relation_node);
 	}
 
 	/*
@@ -1545,7 +1571,11 @@ dropdb(const char *dbname, bool missing_ok)
 			if (dbDirNode.database != db_id)
 				continue;
 
-			// UNDONE: Error out if not in Created state.
+			/*
+			 * Database directory objects can linger in 'Drop Pending' state, etc,
+			 * when the mirror is down and needs drop work.  So only pay attention
+			 * to 'Created' objects.
+			 */
 			if (state != PersistentFileSysState_Created)
 				continue;
 	

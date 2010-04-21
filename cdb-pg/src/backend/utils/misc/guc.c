@@ -277,7 +277,8 @@ int			gp_max_filespaces = GP_MAX_FILESPACES_DEFAULT;
 bool 		gp_initdb_mirrored = false;
 bool 		gp_before_persistence_work = false;
 bool 		Debug_print_xlog_relation_change_info = false;
-bool 		Debug_print_xlog_relation_change_info_skip_issues_only = true;
+bool 		Debug_print_xlog_relation_change_info_skip_issues_only = false;
+bool 		Debug_print_xlog_relation_change_info_backtrace_skip_issues = false;
 bool		Debug_filerep_crc_on = true;
 bool		Debug_filerep_print = false;
 
@@ -2182,7 +2183,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 	
 	{
-		{"Debug_print_xlog_relation_change_info", PGC_SUSET, DEVELOPER_OPTIONS,
+		{"debug_print_xlog_relation_change_info", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print relation change information"),
 			NULL,
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
@@ -2192,12 +2193,22 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 				
 	{
-		{"Debug_print_xlog_relation_change_info_skip_issues_only", PGC_SUSET, DEVELOPER_OPTIONS,
+		{"debug_print_xlog_relation_change_info_skip_issues_only", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print relation change information only when there is a skip issue"),
 			NULL,
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_print_xlog_relation_change_info_skip_issues_only,
+		false, NULL, NULL
+	},
+				
+	{
+		{"debug_print_xlog_relation_change_info_backtrace_skip_issues", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print relation change information backtrace when there is a skip issue"),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_print_xlog_relation_change_info_backtrace_skip_issues,
 		false, NULL, NULL
 	},
 					
@@ -4146,7 +4157,7 @@ static struct config_string ConfigureNamesString[] =
 	},
 		
 	{
-		{"debug_persistent_relation_print_level", PGC_SUSET, DEVELOPER_OPTIONS,
+		{"debug_persistent_print_level", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the persistent relation debug message levels that are logged."),
 			gettext_noop("Valid values are DEBUG5, DEBUG4, DEBUG3, DEBUG2, DEBUG1, "
 			"INFO, NOTICE, WARNING, ERROR, LOG, FATAL, and PANIC. Each level "

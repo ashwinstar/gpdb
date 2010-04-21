@@ -88,6 +88,7 @@ NON_EXEC_STATIC LWLockPadded *LWLockArray = NULL;
 
 static int	num_held_lwlocks = 0;
 static LWLockId held_lwlocks[MAX_SIMUL_LWLOCKS];
+static bool held_lwlocks_exclusive[MAX_SIMUL_LWLOCKS];
 
 static int	lock_addin_request = 0;
 static bool lock_addin_request_allowed = true;
@@ -455,9 +456,7 @@ LWLockAcquire(LWLockId lockid, LWLockMode mode)
 	for (;;)
 	{
 		bool		mustwait;
-#ifdef LOCK_DEBUG
 		int			c;
-#endif
 
 		/* Acquire mutex.  Time spent holding mutex should be short! */
 		SpinLockAcquire(&lock->mutex);
@@ -537,13 +536,11 @@ LWLockAcquire(LWLockId lockid, LWLockMode mode)
 		block_counts[lockid]++;
 #endif
 
-#ifdef LOCK_DEBUG
 		for (c = 0; c < num_held_lwlocks; c++)
 		{
 			if (held_lwlocks[c] == lockid)
 				elog(PANIC, "Waiting on lock already held!");
 		}
-#endif
 
 		PG_TRACE2(lwlock__startwait, lockid, mode);
 
@@ -574,6 +571,7 @@ LWLockAcquire(LWLockId lockid, LWLockMode mode)
 	PG_TRACE2(lwlock__acquire, lockid, mode);
 
 	/* Add lock to list of locks held by this backend */
+	held_lwlocks_exclusive[num_held_lwlocks] = (mode == LW_EXCLUSIVE);
 	held_lwlocks[num_held_lwlocks++] = lockid;
 
 	/*
@@ -650,6 +648,7 @@ LWLockConditionalAcquire(LWLockId lockid, LWLockMode mode)
 	else
 	{
 		/* Add lock to list of locks held by this backend */
+		held_lwlocks_exclusive[num_held_lwlocks] = (mode == LW_EXCLUSIVE);
 		held_lwlocks[num_held_lwlocks++] = lockid;
 		PG_TRACE2(lwlock__condacquire, lockid, mode);
 	}
@@ -683,7 +682,10 @@ LWLockRelease(LWLockId lockid)
 		elog(ERROR, "lock %d is not held", (int) lockid);
 	num_held_lwlocks--;
 	for (; i < num_held_lwlocks; i++)
+	{
+		held_lwlocks_exclusive[i] = held_lwlocks_exclusive[i + 1];
 		held_lwlocks[i] = held_lwlocks[i + 1];
+	}
 
 	/* Acquire mutex.  Time spent holding mutex should be short! */
 	SpinLockAcquire(&lock->mutex);
@@ -798,6 +800,26 @@ LWLockHeldByMe(LWLockId lockid)
 	for (i = 0; i < num_held_lwlocks; i++)
 	{
 		if (held_lwlocks[i] == lockid)
+			return true;
+	}
+	return false;
+}
+
+/*
+ * LWLockHeldByMe - test whether my process currently holds an exclusive lock
+ *
+ * This is meant as debug support only.  We do not distinguish whether the
+ * lock is held shared or exclusive.
+ */
+bool
+LWLockHeldExclusiveByMe(LWLockId lockid)
+{
+	int			i;
+
+	for (i = 0; i < num_held_lwlocks; i++)
+	{
+		if (held_lwlocks[i] == lockid &&
+			held_lwlocks_exclusive[i])
 			return true;
 	}
 	return false;

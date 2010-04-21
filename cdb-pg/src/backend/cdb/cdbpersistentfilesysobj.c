@@ -1225,6 +1225,19 @@ void PersistentFileSysObj_MarkDropPending(
 	}
 }
 
+/*
+ * Error context callback for errors occurring during PersistentFileSysObj_DropObject().
+ */
+static void
+PersistentFileSysObj_DropObjectErrorCallback(void *arg)
+{
+	PersistentFileSysObjName *fsObjName = (PersistentFileSysObjName *) arg;
+
+	errcontext("Dropping file-system object -- %s",
+		       PersistentFileSysObjName_TypeAndObjectName(fsObjName));
+}
+
+
 void PersistentFileSysObj_DropObject(
 	PersistentFileSysObjName 	*fsObjName,
 
@@ -1239,8 +1252,16 @@ void PersistentFileSysObj_DropObject(
 
 	bool 					ignoreNonExistence)
 {
+	ErrorContextCallback errcontext;
+
 	bool mirrorDataLossOccurred;
 
+	/* Setup error traceback support for ereport() */
+	errcontext.callback = PersistentFileSysObj_DropObjectErrorCallback;
+	errcontext.arg = (void *) fsObjName;
+	errcontext.previous = error_context_stack;
+	error_context_stack = &errcontext;
+	
 	if (!PersistentFileSysObj_BeforePersistenceWork())
 	{
 		if (PersistentStore_IsZeroTid(persistentTid))
@@ -1359,6 +1380,9 @@ void PersistentFileSysObj_DropObject(
 												MirroredRelDataSynchronizationState_None,
 												/* flushToXLog */ true);
 	}
+	
+	/* Pop the error context stack */
+	error_context_stack = errcontext.previous;
 }
 
 static void PersistentFileSysObj_DoMirrorReDrop(

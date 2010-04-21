@@ -110,7 +110,7 @@ extern void ChangeTracking_GetRelationChangeInfoFromXlog(
 									  RelationChangeInfo	*relationChangeInfoArray,
 									  int					*relationChangeInfoArrayCount);
 
-extern void ChangeTracking_PrintRelationChangeInfo(
+extern bool ChangeTracking_PrintRelationChangeInfo(
 									  RmgrId	xl_rmid,
 									  uint8		xl_info,
 									  void		*data, 

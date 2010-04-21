@@ -602,41 +602,48 @@ smgrcreatedbdir(
 			mirrorDataLossOccurred);
 }
 
-bool
-smgrcreatedbdirjustintime(DbDirNode *justInTimeDbDirNode)
-{
-	ItemPointerData persistentTid;
-	int64 persistentSerialNum;
+void
+smgrcreatedbdirjustintime(
+	DbDirNode 					*justInTimeDbDirNode,
 
-	int primaryError;
-	bool mirrorDataLossOccurred;
+	MirroredObjectExistenceState 	mirrorExistenceState,
+
+	StorageManagerMirrorMode 	mirrorMode,
+
+	ItemPointer 				persistentTid,
+	
+	int64 						*persistentSerialNum,
+
+	int 						*primaryError,
+	
+	bool 						*mirrorDataLossOccurred)
+{
 
 	PersistentDatabase_MarkJustInTimeCreatePending(
 											justInTimeDbDirNode,
-											&persistentTid,
-											&persistentSerialNum);
+											mirrorExistenceState,
+											persistentTid,
+											persistentSerialNum);
 
-	// UNDONE: Need to parameterize this routine with mirrorExistenceState, primaryError, etc.
 	mdcreatedbdir(
 				justInTimeDbDirNode, 
-				StorageManagerMirrorMode_Both,
+				mirrorMode,
 				/* ignoreAlreadyExists */ false,
-				&primaryError,
-				&mirrorDataLossOccurred);
-	if (primaryError != 0)
+				primaryError,
+				mirrorDataLossOccurred);
+	if (*primaryError != 0)
 	{
 		PersistentDatabase_AbandonJustInTimeCreatePending(
 													justInTimeDbDirNode,
-													&persistentTid,
-													persistentSerialNum);
-		return false;
+													persistentTid,
+													*persistentSerialNum);
+		return;
 	}
 
 	PersistentDatabase_JustInTimeCreated(
 									justInTimeDbDirNode,
-									&persistentTid,
-									persistentSerialNum);
-	return true;
+									persistentTid,
+									*persistentSerialNum);
 }
 
 

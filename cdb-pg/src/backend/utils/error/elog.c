@@ -4095,3 +4095,15 @@ backtrace_symbols(void *const *buffer, int size)
     return result;
 }
 #endif
+
+void 
+debug_backtrace(void)
+{
+	int 		stacktracesize;
+	void	   *stacktracearray[30];
+
+	stacktracesize = backtrace(stacktracearray, 30);
+
+	append_stacktrace(NULL, stacktracearray, stacktracesize, false);
+
+}

@@ -283,7 +283,7 @@ void ChangeTracking_AddRecordFromXlog(
 										   relationChangeInfoArray[i].persistentSerialNum);
 }
 
-void ChangeTracking_PrintRelationChangeInfo(
+bool ChangeTracking_PrintRelationChangeInfo(
 									  RmgrId	xl_rmid,
 									  uint8		xl_info,
 									  void		*data, 
@@ -294,6 +294,7 @@ void ChangeTracking_PrintRelationChangeInfo(
 	RelationChangeInfo 	relationChangeInfoArray[MaxRelationChangeInfoReturns];
 	int					relationChangeInfoArrayCount;
 	int					i;
+	bool				atLeastOneSkipIssue = false;
 	
 	ChangeTracking_GetRelationChangeInfoFromXlog(
 										  xl_rmid,
@@ -361,7 +362,12 @@ void ChangeTracking_PrintRelationChangeInfo(
 				(zeroSerialNum ? "true" : "false"),
 				(invalidSerialNum ? "true" : "false"),
 				(skipIssue ? "true" : "false"));
+
+		if (skipIssue)
+			atLeastOneSkipIssue = true;
 	}
+
+	return atLeastOneSkipIssue;
 }
 
 

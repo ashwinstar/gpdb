@@ -92,7 +92,7 @@ static void PersistentTablespace_InitScan(void)
  * Return the hash entry for a tablespace.
  */
 static TablespaceDirEntry
-PersistentTablespace_FindDirUnderLock(
+PersistentTablespace_FindEntryUnderLock(
 	Oid			tablespaceOid)
 {
 	bool			found;
@@ -114,7 +114,7 @@ PersistentTablespace_FindDirUnderLock(
 }
 
 static TablespaceDirEntry
-PersistentTablespace_CreateDirUnderLock(
+PersistentTablespace_CreateEntryUnderLock(
 	Oid			filespaceOid,
 	
 	Oid 		tablespaceOid)
@@ -147,7 +147,7 @@ PersistentTablespace_CreateDirUnderLock(
 }
 
 static void
-PersistentTablespace_RemoveDirUnderLock(
+PersistentTablespace_RemoveEntryUnderLock(
 	TablespaceDirEntry	tablespaceDirEntry)
 {
 	TablespaceDirEntry	removeTablespaceDirEntry;
@@ -163,6 +163,29 @@ PersistentTablespace_RemoveDirUnderLock(
 		elog(ERROR, "Trying to delete entry that does not exist");
 }
 
+PersistentFileSysState
+PersistentTablespace_GetState(
+	Oid		tablespaceOid)
+{
+	TablespaceDirEntry tablespaceDirEntry;
+
+	PersistentFileSysState	state;
+
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+
+	tablespaceDirEntry = 
+				PersistentTablespace_FindEntryUnderLock(
+												tablespaceOid);
+	if (tablespaceDirEntry == NULL)
+		elog(ERROR, "Did not find persistent tablespace entry %u", 
+			 tablespaceOid);
+
+	state = tablespaceDirEntry->state;
+
+	LWLockRelease(PersistentObjLock);
+
+	return state;
+}
 
 // -----------------------------------------------------------------------------
 // Scan 
@@ -210,7 +233,7 @@ static bool PersistentTablespace_ScanTupleCallback(
 	}
 	
 	tablespaceDirEntry = 
-		PersistentTablespace_CreateDirUnderLock(filespaceOid, tablespaceOid);
+		PersistentTablespace_CreateEntryUnderLock(filespaceOid, tablespaceOid);
 	
 	tablespaceDirEntry->state = state;
 	tablespaceDirEntry->persistentSerialNum = serialNum;
@@ -297,7 +320,7 @@ extern void PersistentTablespace_LookupTidAndSerialNum(
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
 	tablespaceDirEntry = 
-				PersistentTablespace_FindDirUnderLock(
+				PersistentTablespace_FindEntryUnderLock(
 												tablespaceOid);
 	if (tablespaceDirEntry == NULL)
 		elog(ERROR, "Did not find persistent tablespace entry %u", 
@@ -389,7 +412,7 @@ void PersistentTablespace_GetPrimaryAndMirrorFilespaces(
 		LWLockAcquire(PersistentObjLock, LW_SHARED);
 
 	tablespaceDirEntry =
-		PersistentTablespace_FindDirUnderLock(
+		PersistentTablespace_FindEntryUnderLock(
 										tablespaceOid);
 	if (tablespaceDirEntry == NULL)
 		elog(ERROR, "Did not find persistent tablespace entry %u", 
@@ -454,7 +477,7 @@ void PersistentTablespace_MarkCreatePending(
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
 	tablespaceDirEntry = 
-				PersistentTablespace_CreateDirUnderLock(
+				PersistentTablespace_CreateEntryUnderLock(
 												filespaceOid,
 												tablespaceOid);
 	Assert(tablespaceDirEntry != NULL);
@@ -512,7 +535,7 @@ void PersistentTablespace_Created(
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
 	tablespaceDirEntry = 
-				PersistentTablespace_FindDirUnderLock(
+				PersistentTablespace_FindEntryUnderLock(
 												tablespaceOid);
 	if (tablespaceDirEntry == NULL)
 		elog(ERROR, "Did not find persistent tablespace entry %u", 
@@ -578,7 +601,7 @@ void PersistentTablespace_MarkDropPending(
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
 	tablespaceDirEntry = 
-				PersistentTablespace_FindDirUnderLock(
+				PersistentTablespace_FindEntryUnderLock(
 												tablespaceOid);
 	if (tablespaceDirEntry == NULL)
 		elog(ERROR, "Did not find persistent tablespace entry %u", 
@@ -640,7 +663,7 @@ void PersistentTablespace_MarkAbortingCreate(
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
 	tablespaceDirEntry = 
-				PersistentTablespace_FindDirUnderLock(
+				PersistentTablespace_FindEntryUnderLock(
 												tablespaceOid);
 	if (tablespaceDirEntry == NULL)
 		elog(ERROR, "Did not find persistent tablespace entry %u", 
@@ -699,7 +722,7 @@ void PersistentTablespace_Dropped(
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
 	tablespaceDirEntry = 
-				PersistentTablespace_FindDirUnderLock(
+				PersistentTablespace_FindEntryUnderLock(
 												tablespaceOid);
 	if (tablespaceDirEntry == NULL)
 		elog(ERROR, "Did not find persistent tablespace entry %u", 
@@ -721,7 +744,7 @@ void PersistentTablespace_Dropped(
 
 	tablespaceDirEntry->state = PersistentFileSysState_Free;
 
-	PersistentTablespace_RemoveDirUnderLock(tablespaceDirEntry);
+	PersistentTablespace_RemoveEntryUnderLock(tablespaceDirEntry);
 
 	LWLockRelease(PersistentObjLock);
 }

@@ -204,7 +204,7 @@ FileRepPrimary_RunRecoveryInSync(void)
 			break;
 		}			
 		
-		//status = PgVersionRecoverMirror();
+		status = PgVersionRecoverMirror();
 		elog(DEBUG1, "FileRepPrimary_RunRecovery() PgVersionRecoverMirror");
 		
 		if (status != STATUS_OK) {

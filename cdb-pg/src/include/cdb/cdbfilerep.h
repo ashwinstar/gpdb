@@ -24,8 +24,9 @@
 	/* ATTENTION: Code has to be changed if FILEREP_MAX_LISTEN > 1 */
 #define FILEREP_MAX_LISTEN	1
 	/* Max number of listener */
-#define FILEREP_MESSAGEBODY_LEN 32 * 1024
-	/* should we have GUC */
+#define FILEREP_MESSAGEBODY_LEN 64 * 1024 
+	/* AppendOnly writes 64k and BufferPool writes 32k */
+
 #define FILEREP_MAX_OPEN_FILES 128 // 131072   // 128k 
 
 #define FILEREP_MAX_IPC_ARRAY	5
@@ -433,6 +434,9 @@ typedef enum FileRepOperation_e {
 	FileRepOperationCreateAndOpen,
 		/* Create and Open mirror relation */
 	
+	FileRepOperationValidation,
+		/* Validate filespace directory */
+		
 	FileRepOperationNotSpecified,
 
 	/* the number of values in this enumeration */
@@ -629,6 +633,16 @@ typedef struct FileRepOperationDescriptionHeartBeat_s {
 	
 } FileRepOperationDescriptionHeartBeat_s;
 
+/*
+ *	 
+ */
+typedef struct FileRepOperationDescriptionValidation_s {
+	
+	int		mirrorErrno;
+		/* errno status */
+	
+} FileRepOperationDescriptionValidation_s;
+
 /* 
  *
  */
@@ -648,6 +662,8 @@ typedef union FileRepOperationDescription_u {
 	FileRepOperationDescriptionRename_s rename;
 	
 	FileRepOperationDescriptionHeartBeat_s heartBeat;
+	
+	FileRepOperationDescriptionValidation_s validation;
 	
 } FileRepOperationDescription_u;
 

@@ -287,6 +287,9 @@ DefineSequence(CreateSeqStmt *seq)
 
 	Assert(ItemPointerGetOffsetNumber(&(tuple->t_self)) == FirstOffsetNumber);
 
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+//	RelationFetchGpRelationNodeForXLog(rel);
+
 	/*
 	 * Two special hacks here:
 	 *
@@ -433,6 +436,9 @@ AlterSequence(AlterSeqStmt *stmt)
 		elm->cached = new.last_value;	/* last cached number (forget cached
 										 * values) */
 	}
+
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+//	RelationFetchGpRelationNodeForXLog(seqrel);
 
 	START_CRIT_SECTION();
 
@@ -735,6 +741,9 @@ cdb_sequence_nextval(Relation   seqrel,
     *pcached = last;            /* last fetched number */
 	*pincrement = incby;
 
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+//	RelationFetchGpRelationNodeForXLog(seqrel);
+
 	START_CRIT_SECTION();
 
 	MarkBufferDirty(buf);
@@ -940,6 +949,9 @@ do_setval(Oid relid, int64 next, bool iscalled)
 	/* save info in local cache */
 	elm->last = next;			/* last returned number */
 	elm->cached = next;			/* last cached number (forget cached values) */
+
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+//	RelationFetchGpRelationNodeForXLog(seqrel);
 
 	START_CRIT_SECTION();
 

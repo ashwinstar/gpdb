@@ -476,7 +476,64 @@ PersistentRecovery_ShouldHandlePass1XLogRec(
 	
 	XLogRecord 		*record)
 {
-	return true;	// UNDONE: Fow now, redo everything in Pass 1.  Later we'll move most of it to Pass 3.
+	RelationChangeInfo 	relationChangeInfoArray[MaxRelationChangeInfoReturns];
+	int					relationChangeInfoArrayCount;
+	
+	if (!Debug_enable_new_startup_pass)
+		return true;	// UNDONE: Fow now, redo everything in Pass 1.  Later we'll move most of it to Pass 3.
+
+	if (Debug_persistent_recovery_print)
+		ChangeTracking_PrintRelationChangeInfo(
+											record->xl_rmid,
+											record->xl_info,
+											(void*)XLogRecGetData(record), 
+											lsn,
+											/* weAreGeneratingXLogNow */ false,
+											/* printSkipIssuesOnly */ false);
+
+	ChangeTracking_GetRelationChangeInfoFromXlog(
+										  record->xl_rmid,
+										  record->xl_info,
+										  (void*)XLogRecGetData(record), 
+										  relationChangeInfoArray,
+										  &relationChangeInfoArrayCount);
+
+	if (relationChangeInfoArrayCount == 0)
+	{
+		/*
+		 * A non-data change XLOG record.
+		 */
+		return false;
+	}
+	else
+	{
+		RelFileNode *xlogRelFileNode;
+
+		xlogRelFileNode = &relationChangeInfoArray[0].relFileNode;
+
+		if (GpPersistent_IsPersistentRelation(xlogRelFileNode->relNode))
+		{
+			if (Debug_persistent_recovery_print)
+				elog(Debug_persistent_recovery_print_level, 
+					 "PersistentRecovery_ShouldHandlePass1XLogRec: persistent meta-data (returning true) %u/%u/%u",
+					 xlogRelFileNode->spcNode,
+					 xlogRelFileNode->dbNode,
+					 xlogRelFileNode->relNode);
+			return true;
+		}
+		else
+		{
+			if (Debug_persistent_recovery_print)
+				elog(Debug_persistent_recovery_print_level, 
+					 "PersistentRecovery_ShouldHandlePass1XLogRec: non-persistent meta-data (returning false) %u/%u/%u",
+					 xlogRelFileNode->spcNode,
+					 xlogRelFileNode->dbNode,
+					 xlogRelFileNode->relNode);
+			return false;
+		}
+	}
+
+	return false;	// Not reached.
 }
 
 void
@@ -656,23 +713,45 @@ PersistentRecovery_ShouldHandlePass3XLogRec(
 		/*
 		 * A non-data change XLOG record.
 		 */
+		return true;
 	}
 	else
 	{
+		RelFileNode *xlogRelFileNode;
 		ItemPointerData xlogPersistentTid;
 		int64 xlogPersistentSerialNum;
-
-		RelFileNode *xlogRelFileNode;
 		bool exists;
 		ItemPointerData redoRelationPersistentTid;
 		int64 redoRelationPersistentSerialNum;
-		bool tidMatches;
-		bool serialNumMatches;
 
 		xlogRelFileNode = &relationChangeInfoArray[0].relFileNode;
 		xlogPersistentTid = relationChangeInfoArray[0].persistentTid;
 		xlogPersistentSerialNum = relationChangeInfoArray[0].persistentSerialNum;
 
+		if (GpPersistent_IsPersistentRelation(xlogRelFileNode->relNode))
+		{
+			if (Debug_persistent_recovery_print)
+				elog(Debug_persistent_recovery_print_level, 
+					 "PersistentRecovery_ShouldHandlePass3XLogRec: skip persistent meta-data %u/%u/%u",
+					 xlogRelFileNode->spcNode,
+					 xlogRelFileNode->dbNode,
+					 xlogRelFileNode->relNode);
+			return false;
+		}
+
+		// UNDONE: For shared relations that are skipped, no problem.
+		// UNDONE: But for database relations are that are skipped, we don't know if database exists...
+		if (GpPersistent_SkipXLogInfo(xlogRelFileNode->relNode))
+		{
+			if (Debug_persistent_recovery_print)
+				elog(Debug_persistent_recovery_print_level, 
+					 "PersistentRecovery_ShouldHandlePass3XLogRec: special relation %u/%u/%u",
+					 xlogRelFileNode->spcNode,
+					 xlogRelFileNode->dbNode,
+					 xlogRelFileNode->relNode);
+			return true;
+		}
+			
 		/*
 		 * Further qualify using the RelFileNode.
 		 */
@@ -681,19 +760,22 @@ PersistentRecovery_ShouldHandlePass3XLogRec(
 													&redoRelationPersistentTid,
 													&redoRelationPersistentSerialNum);
 
-		tidMatches = !PersistentStore_IsZeroTid(&xlogPersistentTid) &&
-			         !PersistentStore_IsZeroTid(&redoRelationPersistentTid) &&
-					 (ItemPointerCompare(&xlogPersistentTid, &redoRelationPersistentTid) == 0);
-
-		serialNumMatches = xlogPersistentSerialNum != 0 &&
-						   redoRelationPersistentSerialNum != 0 &&
-						   xlogPersistentSerialNum == redoRelationPersistentSerialNum;
-		
-		if (Debug_persistent_recovery_print)
+		if (exists)
 		{
-			if (exists)
+			bool tidMatches;
+			bool serialNumMatches;
+
+			tidMatches = !PersistentStore_IsZeroTid(&xlogPersistentTid) &&
+						 !PersistentStore_IsZeroTid(&redoRelationPersistentTid) &&
+						 (ItemPointerCompare(&xlogPersistentTid, &redoRelationPersistentTid) == 0);
+			
+			serialNumMatches = xlogPersistentSerialNum != 0 &&
+							   redoRelationPersistentSerialNum != 0 &&
+							   xlogPersistentSerialNum == redoRelationPersistentSerialNum;
+			
+			if (tidMatches && serialNumMatches)
 			{
-				if (tidMatches && serialNumMatches)
+				if (Debug_persistent_recovery_print)
 					elog(Debug_persistent_recovery_print_level, 
 						 "PersistentRecovery_ShouldHandlePass3XLogRec: match %u/%u/%u, serial number " INT64_FORMAT ", TID %s",
 						  xlogRelFileNode->spcNode,
@@ -701,28 +783,31 @@ PersistentRecovery_ShouldHandlePass3XLogRec(
 						  xlogRelFileNode->relNode,
 						  redoRelationPersistentSerialNum,
 						  ItemPointerToString(&redoRelationPersistentTid));
-				else
-					elog(Debug_persistent_recovery_print_level, 
-						    "PersistentRecovery_ShouldHandlePass3XLogRec: exists %u/%u/%u but mismatch, XLOG record serial number " INT64_FORMAT ", XLOG record TID %s"
-						    "redo relation serial number " INT64_FORMAT ", redo relation TID %s",
-						    xlogRelFileNode->spcNode,
-						    xlogRelFileNode->dbNode,
-						    xlogRelFileNode->relNode,
-						    xlogPersistentSerialNum,
-						    ItemPointerToString(&xlogPersistentTid),
-						    redoRelationPersistentSerialNum,
-						    ItemPointerToString2(&redoRelationPersistentTid));
 			}
 			else
+				elog(ERROR, 
+				     "PersistentRecovery_ShouldHandlePass3XLogRec: exists %u/%u/%u but mismatch, XLOG record serial number " INT64_FORMAT ", XLOG record TID %s "
+				     "redo relation serial number " INT64_FORMAT ", redo relation TID %s",
+				     xlogRelFileNode->spcNode,
+				     xlogRelFileNode->dbNode,
+				     xlogRelFileNode->relNode,
+				     xlogPersistentSerialNum,
+				     ItemPointerToString(&xlogPersistentTid),
+				     redoRelationPersistentSerialNum,
+				     ItemPointerToString2(&redoRelationPersistentTid));
+		}
+		else
+		{
+			if (Debug_persistent_recovery_print)
 				elog(Debug_persistent_recovery_print_level, 
 					 "PersistentRecovery_ShouldHandlePass3XLogRec: doesn't exist %u/%u/%u",
 					 xlogRelFileNode->spcNode,
 					 xlogRelFileNode->dbNode,
 					 xlogRelFileNode->relNode);
 		}
-	}
 
-	return false;	// UNDONE: Fow now, redo is done in Pass 1.  Later we'll move most of it to Pass 3.
+		return exists;
+	}
 }
 
 

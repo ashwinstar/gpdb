@@ -313,6 +313,11 @@ gp_persistent_build_db(PG_FUNCTION_ARGS)
 
 	int t;
 
+	// Turn this on so we don't try to fetch persistence information from gp_releation_node
+	// for gp_relation_node and its index until we've done the assignment with
+	// PersistentRelation_AddCreated.
+	gp_before_persistence_work = true;
+
 	if (mirrored)
 	{
 		mirrorExistenceState = MirroredObjectExistenceState_MirrorCreated;
@@ -375,6 +380,16 @@ gp_persistent_build_db(PG_FUNCTION_ARGS)
 										&count);
 
 	heap_close(pg_database, AccessShareLock);
+
+	gp_before_persistence_work = false;
+
+	/* 
+	 * Since we have written XLOG records with <persistentTid, persistentSerialNum> of
+	 * zeroes because of the gp_before_persistence_work GUC, lets do a checkpoint
+	 * to force out all buffer pool pages so we never try to redo those XLOG records
+	 * in Crash Recovery.
+	 */
+	CreateCheckPoint(false, true);
 
 	PG_RETURN_INT64(count);
 }

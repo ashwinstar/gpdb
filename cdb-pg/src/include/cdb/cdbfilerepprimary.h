@@ -212,6 +212,11 @@ extern int FileRepPrimary_MirrorDrop(
 	FileRepRelationType_e fileRepRelationType);								 
 		/* FileRepRelationTypeFile or FileRepRelationTypeDir */
 
+extern int FileRepPrimary_MirrorValidation(
+		FileRepIdentifier_u		fileRepIdentifier,
+				   
+		FileRepRelationType_e	fileRepRelationType);
+
 extern bool FileRepPrimary_IsOperationCompleted(
 	FileRepIdentifier_u	fileRepIdentifier,
 		/* identifier of the operation */

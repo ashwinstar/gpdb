@@ -102,6 +102,10 @@ static void FileRepMirror_RemoveFileName(FileName fileName);
 
 static void FileRepMirror_ReInit(void);
 
+static int FileRepMirror_Validation(FileName fileName);
+
+static void FileRepMirror_DropFilesFromDir(FileName fileName);
+
 static int SegmentFileFillZero(File fd, int64 writeOffset);
 
 static int FileRepMirror_DropBufferPoolSegmentFiles(FileName  fileName);
@@ -1561,7 +1565,8 @@ FileRepMirror_RunConsumer(void)
 				switch (fileRepMessageHeader->fileRepRelationType) {
 					case FileRepRelationTypeDir:
 						
-						if (rmtree(fileName, true) == FALSE) 
+						errno = 0;
+						if (rmtree(fileName, true) == FALSE && errno != ENOENT) 
 						{
 
 							status = STATUS_ERROR;
@@ -1586,52 +1591,44 @@ FileRepMirror_RunConsumer(void)
 						}
 						/* NO BREAK */
 					case FileRepRelationTypeAppendOnly:
-					case FileRepRelationTypeFlatFile:
 						
 						status = FileRepMirror_Drop(fileName);
-#ifdef REP				
-						/* Ensure that file is not opened. */
-						fd = FileRepMirror_GetFileDescriptor(fileName);
-						
-						if (fd < 0) {
-							fd = PathNameOpenFile(fileName,
-												  O_WRONLY,
-												  fileMode);	
-							
-							if (fd < 0 && errno == ENOENT) {
-								fd = 0;
-								ereport(LOG,
-										(errcode_for_file_access(),
-										 errmsg("LOG(filerep): file was already dropped identifier:'%s' : %m", 
-												fileName)));
-								break;
-							}							
-							
-							if (fd < 0) {
-								status = STATUS_ERROR;
-								ereport(LOG,
-									(errcode_for_file_access(),
-									 errmsg("ERROR(filerep): could not open file to issue drop : %m"), 
-									 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
-													   fileRepMessageHeader->fileRepRelationType,
-													   fileRepMessageHeader->fileRepOperation),
-									 FileRep_errcontext()));					
-								
-								break;
-							}	
-						} else {
-								FileRepMirror_RemoveFileName(fileName);
-						}
-												
-						FileUnlink(fd);
-#endif					
 						break;
+						
+					case FileRepRelationTypeFlatFile:
+						
+						if (strcmp(fileRepMessageHeader->fileRepIdentifier.fileRepFlatFileIdentifier.fileSimpleName, "") == 0)
+						{
+							FileRepMirror_DropFilesFromDir(fileName);
+						}
+						else
+						{
+							status = FileRepMirror_Drop(fileName);
+						}
+						break;
+						
 					default:
 						Assert(0);
 				}
 				
 				break;
-		
+						
+			case FileRepOperationValidation:
+				
+				elog(DEBUG1, "FileRepOperationValidation() filename:%s", fileName);	
+
+				switch (fileRepMessageHeader->fileRepRelationType) 
+				{
+					case FileRepRelationTypeDir:
+						fileRepMessageHeader->fileRepOperationDescription.validation.mirrorErrno = FileRepMirror_Validation(fileName);
+						break;
+						
+					default:
+						Assert(0);
+				}
+						
+				break;
+				
 			case FileRepOperationRename:
 						
 				elog(DEBUG1, "FileRepOperationRename() from filename:%s", fileName);	
@@ -1956,6 +1953,164 @@ FileRepMirror_RemoveFileName(FileName  fileName)
 		/* File should be closed. */
 		/*Assert(FileIsNotOpen(entry->fd));  Not public routine. */
 		hash_search(openFilesTable, (void *) &key, HASH_REMOVE, NULL);
+	}
+	return;
+}
+
+/*
+ * See checkpath2(path) in commands/filespace.c for comments.
+ */
+static int
+FileRepMirror_Validation(FileName fileName)
+{
+	int				mirrorErrno = 0;
+	DIR				*dir = NULL;
+	struct dirent	*de;
+	struct stat		st;
+	
+	errno = 0;
+	/* Does the path exist? */
+	if (stat(fileName, &st) >= 0)
+	{
+		/* Is it actually a directory? */
+		if (! S_ISDIR(st.st_mode))
+		{
+			mirrorErrno = errno;
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("ERROR(filerep): %s : Not a directory : %m", fileName)));
+			goto exit;
+		}
+		
+		/* The directory must be owned by gpadmin user account */
+		if (st.st_uid != geteuid())
+		{
+			mirrorErrno = errno;
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("ERROR(filerep): %s : Permission denied : %m", fileName)));
+			goto exit;
+		}
+		
+		/* Check that the directory is empty */
+		if ((dir = AllocateDir(fileName)) == NULL)
+		{
+			mirrorErrno = errno;
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("ERROR(filerep): %s : Error reading directory : %m", fileName)));
+			goto exit;
+		}
+		
+		while ((de = ReadDir(dir, fileName)) != NULL)
+		{
+			if (strcmp(de->d_name, ".") == 0 ||
+				strcmp(de->d_name, "..") == 0)
+				continue;
+			
+			mirrorErrno = errno;
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("ERROR(filerep): %s : Directory not empty : %m", fileName)));
+			goto exit;
+		}
+	}
+	else
+	{
+		/* path does not exist, run checks on parent */
+		char *parentdir = pstrdup(fileName);
+		get_parent_directory(parentdir);
+		
+		/* Does the parent directory exist? */
+		if (stat(parentdir, &st) < 0)
+		{
+			mirrorErrno = errno;
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("ERROR(filerep): %s : No such file or directory : %m", parentdir)));
+			goto exit;
+		}
+		
+		/* Is it actually a directory? */
+		if (! S_ISDIR(st.st_mode))
+		{
+			mirrorErrno = errno;
+			ereport(LOG,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 errmsg("ERROR(filerep): %s : Not a directory : %m", parentdir)));
+			goto exit;
+		}
+		
+		/* Check write permissions */
+		if (access(parentdir, W_OK) < 0)
+		{
+			mirrorErrno = errno;
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("ERROR(filerep): %s: No write permissions : %m", parentdir)));
+			goto exit;
+		}
+	}
+exit:
+	if (dir)
+	{
+		FreeDir(dir);
+	}
+	return mirrorErrno;
+}
+
+static void
+FileRepMirror_DropFilesFromDir(FileName fileName)
+{
+	DIR				*dir = NULL;
+	struct dirent	*de;
+	struct stat		st;
+	char			path[MAXPGPATH+1];
+	
+	errno = 0;
+	/* Does the path exist? */
+	if (stat(fileName, &st) >= 0)
+	{
+		/* Is it actually a directory? */
+		if (! S_ISDIR(st.st_mode))
+		{
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("LOG(filerep): %s : Not a directory : %m", fileName)));
+			goto exit;
+		}
+				
+		/* Drop from the directory flat files */
+		if ((dir = AllocateDir(fileName)) == NULL)
+		{
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("LOG(filerep): %s : Error reading directory : %m", fileName)));
+			goto exit;
+		}
+		
+		while ((de = ReadDir(dir, fileName)) != NULL)
+		{
+			if (strcmp(de->d_name, ".") == 0 ||
+				strcmp(de->d_name, "..") == 0)
+				continue;
+			
+			sprintf(path, "%s/%s", fileName, de->d_name);
+			
+			if (unlink(path))
+			{
+				ereport(LOG,
+						(errcode_for_file_access(),
+						 errmsg("LOG(filerep): %s : Unlink failed : %m", path)));
+				goto exit;
+			}
+		}
+	}
+
+exit:
+	if (dir)
+	{
+		FreeDir(dir);
 	}
 	return;
 }

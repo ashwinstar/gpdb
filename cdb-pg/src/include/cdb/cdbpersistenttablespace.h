@@ -19,6 +19,9 @@
 extern bool PersistentTablespace_Check(
 	Oid 			tablespace);
 
+extern PersistentFileSysState PersistentTablespace_GetState(
+	Oid 	tablespaceOid);
+
 extern void PersistentTablespace_LookupTidAndSerialNum(
 	Oid 		tablespaceOid,
 				/* The tablespace OID for the lookup. */

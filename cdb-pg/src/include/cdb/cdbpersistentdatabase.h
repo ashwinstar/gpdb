@@ -169,6 +169,8 @@ extern bool PersistentDatabase_DirIsCreated(
 extern void PersistentDatabase_MarkJustInTimeCreatePending(
 	DbDirNode 		*dbDirNode,
 
+	MirroredObjectExistenceState 	mirrorExistenceState,
+
 	ItemPointer 	persistentTid,
 				/* TID of the gp_persistent_database_node tuple for the rel file */
 

@@ -2091,6 +2091,11 @@ TwoPhaseRecoverMirror(void)
 	struct dirent	*clde;
 	int				retval = 0;
 
+	MirroredFlatFile_Drop(TWOPHASE_DIR, 
+			      "",
+			      /* supressError */ true,
+			      /* isMirrorRecovery */ true); 
+
 	cldir = AllocateDir(TWOPHASE_DIR);
 	while ((clde = ReadDir(cldir, TWOPHASE_DIR)) != NULL) {
 		if (strlen(clde->d_name) == 8 &&

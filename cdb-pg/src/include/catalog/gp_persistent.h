@@ -345,40 +345,37 @@ typedef FormData_gp_persistent_filespace_node *Form_gp_persistent_filespace_node
 // Cannot change this length with upgrade work to convert the file's tuples...
 #define FilespaceLocationBlankPaddedWithNullTermLen MAXPGPATH
 
+inline static bool GpPersistent_IsPersistentRelation(
+	Oid		testOid)
+{
+	/*
+	 * Persistent related global tables.
+	 */
+	if (testOid == GpPersistentRelationNodeRelationId ||	// 5090
+		testOid == GpPersistentDatabaseNodeRelationId ||	// 5091
+		testOid == GpPersistentTablespaceNodeRelationId ||	// 5092
+		testOid == GpPersistentFilespaceNodeRelationId ||	// 5093
+		testOid == GpGlobalSequenceRelationId)				// 5096
+		return true;
+
+	return false;
+}
 inline static bool GpPersistent_SkipXLogInfo(
 	Oid		testOid)
 {
 	/*
-	 * pg_class and indices.
+	 * NOTE: Only shared (i.e. global) relations can be skipped.
 	 */
-	if (testOid == RelationRelationId ||
-		testOid == 2662 ||	// UNDONE: There seems to be a .h loop that prevents ClassOidIndexId from being pulled from catalog/indexing.h
-		testOid == 2663)	// UNDONE: There seems to be a .h loop that prevents ClassNameNspIndexId from being pulled from catalog/indexing.h
-		return true;
+//	Assert(IsSharedRelation(testOid));
 
-	/*
-	 * Persistent related global tables.
-	 */
-	if (testOid == GpPersistentRelationNodeRelationId ||
-		testOid == GpPersistentDatabaseNodeRelationId ||
-		testOid == GpPersistentTablespaceNodeRelationId ||
-		testOid == GpPersistentFilespaceNodeRelationId ||
-		testOid == GpGlobalSequenceRelationId)
+	if (GpPersistent_IsPersistentRelation(testOid))
 		return true;
 	
 	/*
 	 * gp_id and pg_shdepend 
 	 */
-	if (testOid == GpIdRelationId ||
-		testOid == SharedDependRelationId)
-		return true;
-
-	/*
-	 * Our per-database map (i.e. gp_relation_node) from pg_class to
-	 * gp_persistent_relation_node.
-	 */
-	if (testOid == GpRelationNodeRelationId ||
-		testOid == 5095)	// UNDONE: There seems to be a .h loop that prevents GpRelationNodeOidIndexId from being pulled from catalog/indexing.h
+	if (testOid == GpIdRelationId ||						// 5001
+		testOid == SharedDependRelationId)					// 1214
 		return true;
 
 	return false;

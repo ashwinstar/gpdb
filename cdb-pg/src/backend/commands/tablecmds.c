@@ -9977,7 +9977,7 @@ copy_append_only_data(
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
-			 "ALTER TABLE SET TABLESPACE: Append-Only segment file #%d EOF " INT64_FORMAT,
+			 "ALTER TABLE SET TABLESPACE: Copied Append-Only segment file #%d EOF " INT64_FORMAT,
 			 segmentFileNum,
 			 eof);
 }
@@ -10112,10 +10112,24 @@ ATExecSetTableSpace_AppendOnly(
 			FileSegInfo *fileSegInfo;
 
 			fileSegInfo = GetFileSegInfoForRead(rel, aoEntry, segmentFileNum);
+			if (fileSegInfo == NULL)
+			{
+				/*
+				 * Segment file #0 is special and can exist without an entry.
+				 */
+				if (segmentFileNum == 0)
+					eof = 0;
+				else
+					ereport(ERROR,
+							(errmsg("Append-only row segment file #%d information missing",
+									segmentFileNum)));
+			}
+			else
+			{
+				eof = fileSegInfo->eof;
 
-			eof = fileSegInfo->eof;
-
-			pfree(fileSegInfo);
+				pfree(fileSegInfo);
+			}
 		}
 		else 
 		{
@@ -10133,10 +10147,26 @@ ATExecSetTableSpace_AppendOnly(
 			actualSegmentNum = segmentFileNum % AOTupleId_MultiplierSegmentFileNum;
 			
 			aocsFileSegInfo = GetAOCSFileSegInfoForRead(rel, aoEntry, actualSegmentNum);
-
-			eof = aocsFileSegInfo->vpinfo.entry[columnNum].eof;
+			if (aocsFileSegInfo == NULL)
+			{
+				/*
+				 * Segment file #0 is special and can exist without an entry.
+				 */
+				if (segmentFileNum == 0)
+					eof = 0;
+				else
+					ereport(ERROR,
+							(errmsg("Append-only column logical segment file #%d information for missing (physical segment #%d, column %d)",
+									actualSegmentNum,
+									segmentFileNum,
+									columnNum)));
+			}
+			else
+			{
+				eof = aocsFileSegInfo->vpinfo.entry[columnNum].eof;
 			
-			pfree(aocsFileSegInfo);
+				pfree(aocsFileSegInfo);
+			}
 		}
 		
 		copy_append_only_data(

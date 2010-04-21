@@ -52,6 +52,8 @@ typedef struct FileRepAckHashEntry_s {
 	XLogRecPtr				xLogEof;
 		/* logical xlog EOF, required for xlog reconcile */
 	
+	int						mirrorErrno;
+	
 } FileRepAckHashEntry_s;
 
 typedef struct FileRepAckHashShmem_s {
@@ -67,6 +69,8 @@ static	FileRepAckHashShmem_s *fileRepAckHashShmem = NULL;
 static void FileRepAckPrimary_ShmemReInit(void);
 
 static XLogRecPtr xLogEof = {0, 0};
+
+static int mirrorErrno = 0;
 
 /*
  * Find if acknowledgement is received from mirror.
@@ -581,6 +585,7 @@ FileRepAckPrimary_NewHashEntry(
 		entry->fileRepRelationType = fileRepRelationType;
 		entry->fileRepAckState = FileRepAckStateWaiting;
 		entry->xLogEof = xLogEof;
+		entry->mirrorErrno = mirrorErrno;
 		
 		LWLockRelease(FileRepAckHashShmemLock);
 		break;
@@ -653,6 +658,7 @@ FileRepAckPrimary_UpdateHashEntry(
 	entry->fileRepAckState = fileRepAckState;
 	
 	entry->xLogEof = xLogEof;
+	entry->mirrorErrno = mirrorErrno;
 	
 	FileRep_IpcSignal(fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->semP, 
 					  fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->refCountSemP);
@@ -725,6 +731,7 @@ FileRepAckPrimary_IsOperationCompleted(
 				
 				retval = TRUE;
 				xLogEof = entry->xLogEof;
+				mirrorErrno = entry->mirrorErrno;
 				/* no BREAK */
 			case FileRepAckStateMirrorInFault:
 				
@@ -995,6 +1002,16 @@ FileRepAckPrimary_RunConsumer(void)
 #endif
 		}	
 		
+		if (fileRepMessageHeader->fileRepOperation == FileRepOperationValidation) {
+			
+			mirrorErrno = fileRepMessageHeader->fileRepOperationDescription.validation.mirrorErrno;
+#ifdef FILEREP_DEBUG
+			ereport(LOG,
+					(errmsg("LOG(filerep): P_RunConsumer ack validation status:'%d' ",
+							mirrorErrno)));	
+#endif
+		}			
+		
 		if (fileRepMessageHeader->fileRepAckState != FileRepAckStateCompleted) {
 			/* 
 			 * FAULT has to be set before entry is updated in hash
@@ -1075,5 +1092,10 @@ FileRepAckPrimary_GetMirrorXLogEof(void)
 {
 	return xLogEof;
 }
-				
+
+int
+FileRepAckPrimary_GetMirrorErrno(void)
+{
+	return mirrorErrno;
+}
 

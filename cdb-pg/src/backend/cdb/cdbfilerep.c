@@ -252,6 +252,7 @@ FileRepOperationToString[] = {
 	"In Sync Transition",
 	"Heart Beat",
 	"Create and Open",
+	"Validation FileSpace Dir",
 	"Not Specified",
 };
 
@@ -2078,6 +2079,7 @@ FileRep_IsOperationSynchronous(FileRepOperation_e fileRepOperation)
 		case FileRepOperationInSyncTransition:
 		case FileRepOperationHeartBeat:
 		case FileRepOperationCreateAndOpen:
+		case FileRepOperationValidation:
 			
 			return TRUE;	
 

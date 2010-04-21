@@ -276,7 +276,12 @@ RemoveTableSpace(List *names, DropBehavior behavior, bool missing_ok)
 	ScanKeyData  entry[1];
 	Oid			 tablespaceoid;
 	int32        count;
-	RelFileNode  relfilenode;
+	RelFileNode  relfilenode;	
+	DbDirNode 	 dbDirNode;
+	PersistentFileSysState persistentState;
+	ItemPointerData persistentTid;
+	int64 		 persistentSerialNum;
+	
 
 	/* don't call this in a transaction block */
 	// PreventTransactionChain((void *) stmt, "DROP TABLESPACE");
@@ -393,12 +398,43 @@ RemoveTableSpace(List *names, DropBehavior behavior, bool missing_ok)
 	}
 
 	/*
-	 * Try to remove the physical infrastructure.
+	 * Schedule the removal the physical infrastructure.
 	 * 
 	 * Note: This only schedules the delete, the delete won't actually occur
 	 * until after the transaction has comitted.  This should however do 
 	 * everything it can to assure that the delete will occur sucessfully,
 	 * e.g. check permissions etc.
+	 */
+
+    /*
+        * Schedule all persistent database directory removals for transaction commit.
+        */
+    PersistentDatabase_DirIterateInit();
+    while (PersistentDatabase_DirIterateNext(
+                                        &dbDirNode,
+                                        &persistentState,
+                                        &persistentTid,
+                                        &persistentSerialNum))
+    {
+        if (dbDirNode.tablespace != tablespaceoid)
+            continue;
+
+		/*
+		 * Database directory objects can linger in 'Drop Pending' state, etc,
+		 * when the mirror is down and needs drop work.  So only pay attention
+		 * to 'Created' objects.
+		 */
+        if (persistentState != PersistentFileSysState_Created)
+            continue;
+    
+        MirroredFileSysObj_ScheduleDropDbDir(
+                                        &dbDirNode,
+                                        &persistentTid,
+                                        persistentSerialNum);
+    }
+
+	/*
+	 * Now schedule the tablespace directory removal.
 	 */
 	MirroredFileSysObj_ScheduleDropTablespaceDir(tablespaceoid);
 

@@ -15,6 +15,9 @@
 #include "storage/dbdirnode.h"
 #include "storage/smgr.h"
 
+extern int MirroredFileSysObj_ValidateFilespaceDir(
+	char *mirrorFilespaceLocation);
+
 extern void MirroredFileSysObj_TransactionCreateFilespaceDir(
 	Oid			filespaceOid,
 

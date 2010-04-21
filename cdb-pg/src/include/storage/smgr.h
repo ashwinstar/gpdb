@@ -150,7 +150,20 @@ extern void smgrcreatetablespacedir(
 	int 						*primaryError,
 
 	bool						*mirrorDataLossOccurred);
-extern bool smgrcreatedbdirjustintime(DbDirNode *justInTimeDbDirNode);
+extern void smgrcreatedbdirjustintime(
+	DbDirNode					*justInTimeDbDirNode,
+
+	MirroredObjectExistenceState 	mirrorExistenceState,
+
+	StorageManagerMirrorMode	mirrorMode,
+
+	ItemPointer 				persistentTid,
+
+	int64						*persistentSerialNum,
+
+	int 						*primaryError,
+
+	bool						*mirrorDataLossOccurred);
 extern void smgrcreatedbdirpending(
 	DbDirNode						*dbDirNode,
 

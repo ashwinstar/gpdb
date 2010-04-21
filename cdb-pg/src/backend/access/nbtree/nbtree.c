@@ -537,6 +537,9 @@ btbulkdelete(PG_FUNCTION_ARGS)
 	Relation	rel = info->index;
 	BTCycleId	cycleid;
 
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(rel);
+
 	/* allocate stats if first time through, else re-use existing struct */
 	if (stats == NULL)
 		stats = (IndexBulkDeleteResult *) palloc0(sizeof(IndexBulkDeleteResult));

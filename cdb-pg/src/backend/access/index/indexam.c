@@ -193,6 +193,9 @@ index_insert(Relation indexRelation,
 	RELATION_CHECKS;
 	GET_REL_PROCEDURE(aminsert);
 
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(indexRelation);
+
 	/*
 	 * have the am's insert proc do all the work.
 	 */
