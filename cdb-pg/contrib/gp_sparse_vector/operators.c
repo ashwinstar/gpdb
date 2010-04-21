@@ -884,6 +884,43 @@ float8arr_div_svec(PG_FUNCTION_ARGS)
 	SparseData sdata = op_sdata_by_sdata(3,left,right);
 	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
 }
+PG_FUNCTION_INFO_V1( svec_dot_float8arr );
+Datum
+svec_dot_float8arr(PG_FUNCTION_ARGS)
+{
+	SvecType *svec = PG_GETARG_SVECTYPE_P(0);
+	ArrayType *arr = PG_GETARG_ARRAYTYPE_P(1);
+	SparseData left = sdata_uncompressed_from_float8arr_internal(arr);
+	SparseData right = sdata_from_svec(svec);
+	SparseData mult_result;
+	double accum;
+	mult_result = op_sdata_by_sdata(2,left,right);
+	accum = sum_sdata_values_double(mult_result);
+	freeSparseData(left);
+	freeSparseData(right);
+	freeSparseDataAndData(mult_result);
+
+	PG_RETURN_FLOAT8(accum);
+}
+PG_FUNCTION_INFO_V1( float8arr_dot_svec);
+Datum
+float8arr_dot_svec(PG_FUNCTION_ARGS)
+{
+	ArrayType *arr = PG_GETARG_ARRAYTYPE_P(0);
+	SvecType *svec = PG_GETARG_SVECTYPE_P(1);
+	SparseData left = sdata_uncompressed_from_float8arr_internal(arr);
+	SparseData right = sdata_from_svec(svec);
+	SparseData mult_result;
+	double accum;
+	mult_result = op_sdata_by_sdata(2,left,right);
+	accum = sum_sdata_values_double(mult_result);
+	freeSparseData(left);
+	freeSparseData(right);
+	freeSparseDataAndData(mult_result);
+
+	PG_RETURN_FLOAT8(accum);
+}
+
 
 /*
  * Hash function for float8[]

@@ -67,6 +67,8 @@ CREATE OR REPLACE FUNCTION svec_div_float8arr(svec,float8[]) RETURNS svec AS 'gp
 -- Vector operator functions
 CREATE OR REPLACE FUNCTION dot(svec,svec) RETURNS float8 AS 'gp_svec.so', 'svec_dot' STRICT LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION dot(float8[],float8[]) RETURNS float8 AS 'gp_svec.so', 'float8arr_dot' STRICT LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION dot(svec,float8[]) RETURNS float8 AS 'gp_svec.so', 'svec_dot_float8arr' STRICT LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION dot(float8[],svec) RETURNS float8 AS 'gp_svec.so', 'float8arr_dot_svec' STRICT LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION l2norm(svec) RETURNS float8 AS 'gp_svec.so', 'svec_l2norm' STRICT LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION l2norm(float8[]) RETURNS float8 AS 'gp_svec.so', 'float8arr_l2norm' LANGUAGE C IMMUTABLE;
 CREATE OR REPLACE FUNCTION l1norm(svec) RETURNS float8 AS 'gp_svec.so', 'svec_l1norm' STRICT LANGUAGE C IMMUTABLE; 
@@ -126,6 +128,8 @@ CREATE OPERATOR ^ (
 
 -- float8[] operators
 DROP OPERATOR IF EXISTS = ( float8[], float8[]);
+DROP OPERATOR IF EXISTS %*% ( float8[], svec);
+DROP OPERATOR IF EXISTS %*% ( svec, float8[]);
 DROP OPERATOR IF EXISTS %*% ( float8[], float8[]);
 DROP OPERATOR IF EXISTS - ( float8[], float8[]);
 DROP OPERATOR IF EXISTS + ( float8[], float8[]);
@@ -148,6 +152,16 @@ CREATE OPERATOR = (
 );
 CREATE OPERATOR %*% (
 	LEFTARG = float8[],
+	RIGHTARG = float8[],
+	PROCEDURE = dot
+);
+CREATE OPERATOR %*% (
+	LEFTARG = float8[],
+	RIGHTARG = svec,
+	PROCEDURE = dot
+);
+CREATE OPERATOR %*% (
+	LEFTARG = svec,
 	RIGHTARG = float8[],
 	PROCEDURE = dot
 );

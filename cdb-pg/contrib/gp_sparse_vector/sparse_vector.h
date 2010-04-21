@@ -127,6 +127,8 @@ Datum float8arr_mult_svec(PG_FUNCTION_ARGS);
 Datum float8arr_div_float8arr(PG_FUNCTION_ARGS);
 Datum svec_div_float8arr(PG_FUNCTION_ARGS);
 Datum float8arr_div_svec(PG_FUNCTION_ARGS);
+Datum svec_dot_float8arr(PG_FUNCTION_ARGS);
+Datum float8arr_dot_svec(PG_FUNCTION_ARGS);
 
 
 // Casts
