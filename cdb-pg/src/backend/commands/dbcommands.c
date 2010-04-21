@@ -1219,6 +1219,10 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 														/* doJustInTimeDirCreate */ false,
 														&dbInfoGpRelationNode->persistentTid,			// OUTPUT
 														&dbInfoGpRelationNode->persistentSerialNum); 	// OUTPUT
+					
+					gpRelationNodePersistentTid = dbInfoGpRelationNode->persistentTid;
+					gpRelationNodePersistentSerialNum = dbInfoGpRelationNode->persistentSerialNum;
+					
 					copy_append_only_segment_file(
 									&srcRelFileNode,
 									&dstRelFileNode,
