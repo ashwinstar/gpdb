@@ -10050,7 +10050,7 @@ ATExecSetTableSpace_AppendOnly(
 							&oldPersistentTid,
 							&oldPersistentSerialNum)))
 	{
-		int64 eof;
+		int64 eof = 0;
 
 		/*
 		 * Create segment file in new tablespace under transaction.
