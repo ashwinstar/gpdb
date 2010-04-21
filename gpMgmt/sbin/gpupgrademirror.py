@@ -25,7 +25,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "../bin/lib"))
 
 try:
     from pysync import *
-    from gppylib.gphostcache import *
     from gppylib.commands.unix import *
     from gppylib.commands.gp import *
     from gppylib.commands.pg import PgControlData
@@ -63,9 +62,8 @@ INFO_DIR = "gpupgrademirrorinfodir"
 
 PID_FILE = "gpupgrademirror.pid"
 
-GPUPGRADEMIRROR_TEMP_DIR = "gpupbrademirrortempdir"
+GPUPGRADEMIRROR_TEMP_DIR = "gpupgrademirrortempdir"
 
-PARALLELISM = 16
 
 #-----------------------------------------------------------                                                                             
 def Shutdown(env, utility=False):
@@ -316,9 +314,9 @@ def parseargs():
 
     try:
         if len(options.temp_dir) > 0:
-           options.info_data_directory = options.temp_dir + '/' + INFO_DIR
+           options.info_data_directory = options.temp_dir
         else:
-           options.info_data_directory = get_masterdatadir() + '/' + INFO_DIR 
+           options.info_data_directory = get_masterdatadir() + INFO_DIR 
     except GpError, msg:
         logger.error(msg)
         parser.exit()
@@ -394,9 +392,6 @@ class GPHostCache:
     
     def __init__(self, url):
         self.hostcache = {}
-        ###array = GpArray.initFromCatalog(url, utility=True)
-        ###pool = WorkerPool(numWorkers = PARALLELISM);
-        ###cache = GpHostCache(gparray = array, pool = pool)
         self.readfile()
         
     #-------------------------------------------------------------------------------
@@ -420,8 +415,9 @@ class GPHostCache:
             for line in file:
                 (interface,hostname) = line.split(':')
                 self.hostcache[interface.strip()] = hostname.strip()                    
-        except IOError:
-            logger.warning("Unable to read host cache file: %s" % self.CACHEFILE)                  
+        except IOError, ioe:
+            logger.error("Can not read host cache file %s. Exception: %s" % (self.CACHEFILE, str(ioe)))
+            raise Exception("Unable to read host cache file: %s" % self.CACHEFILE)                  
         finally:
             if file != None:
                file.close()        
@@ -1852,12 +1848,12 @@ class GPUpgradeMirrorMinion(Command):
         self.tempdir = tempdir
         self.ctxt = ctxt
         self.remoteHost = remoteHost
-        self.minionDir = self.tempdir + "/" + INFO_DIR
+        self.minionDir = self.tempdir + INFO_DIR + str(minionSeg)
         self.gpupgrademirror_executable = "$GPHOME/sbin/" + EXECNAME
         self.cmdStr = "%s %s -i %s -t %s" % ( self.gpupgrademirror_executable
                                             , self.options
                                             , segs
-                                            , self.tempdir
+                                            , self.minionDir
                                             )
         Command.__init__( self
                         , name = self.name
@@ -1883,7 +1879,7 @@ class GPUpgradeMirrorMinion(Command):
         source = overallStatus._status_filename 
         target = self.minionDir + "/" + overallStatus._status_filename_unqualified
         logger.debug("copy status file for minion: %s:%s" % (self.remoteHost, target))
-        cpCmd = RemoteCopyPreserve( name = 'gpupgrademirror copy info dir to minion : %s:%s' % (self.remoteHost, target)
+        cpCmd = RemoteCopyPreserve( name = 'gpupgrademirror copy status file to minion : %s:%s' % (self.remoteHost, target)
                                   , srcDirectory = source
                                   , dstHost = self.remoteHost
                                   , dstDirectory = target
@@ -2164,6 +2160,7 @@ class GpUpgradeMirrorStatus():
    #-------------------------------------------------------------------------------
     def remove_status_file(self):
         """Closes and removes the gpupgrademirror status file"""
+        logger.debug("Remove status file: %s" % self._status_filename)
         if self._fp:
             self._fp.close()
             self._fp = None
@@ -2243,25 +2240,24 @@ class Phase1(threading.Thread):
                                           , phase = 1
                                           )
             self.statusList.append(status)
+            seg.rollForward = False
             if options.rollback == True:
                 ''' setup for rollback '''
                 if status.get_current_status() == (None, None):
                     self.logger.warning('There is no upgrade mirror in progress for this segment: ' + str(seg.mirror_dbid))
                     """ Create a status file so that other logic works correctly """
                     status.create_status_file()
-                if status.compare_status('START_SEG_SETUP') >= 0:
+                elif status.compare_status('START_REMOVE_OLD_MIRROR') >= 0 \
+                   and status.compare_status('PHASE1_DONE') < 0:
+                   ''' We are past the point of recovering back. Must roll forward at this point '''
+                   self.logger.debug("Past the point of no return. Must roll forward on mirror: %s mirror seg dbid: %s" % (self.nodeName, str(seg.mirror_dbid)))
+                   seg.rollForward = True
+                elif status.compare_status('START_SEG_SETUP') >= 0:
                    genLink = SegHardLinks( mirror_info = seg
                                          , logger = self.logger
                                          )
                    genLink.removeLinks()
-                """ KAS not to self. It is possible that some segments must be rolled forward to roll back. """
-                if status.compare_status('START_REMOVE_OLD_MIRROR') >= 0 \
-                   and status.compare_status('PHASE1_DONE') < 0:
-                   ''' We are past the point of recovering. Must move forward at this point '''
-                   self.logger.error('The upgrade of the system mirrors is past the point of recovery.')
-                   self.logger.error('You must continue system mirror upgrade at this point.')
-                   raise ValidationError('Unable to rollback')
-            elif options.continue_upgrade == True:
+            if options.continue_upgrade == True or seg.rollForward == True:
                 ''' Setup to continue upgrade '''
                 if status.get_current_status() == (None, None):
                    status.create_status_file()
@@ -2273,7 +2269,7 @@ class Phase1(threading.Thread):
                    status.set_status('START_SEG_SETUP')
                    genLink.createLinks()        
                    status.set_status('END_SEG_SETUP')                     
-            else:
+            elif options.rollback == False:
                 if (status.get_current_status() != (None, None)):
                    self.logger.error("Upgrade mirrors already started.")
                    self.logger.error("You must either rollback or continue mirror upgrade") 
@@ -2550,6 +2546,7 @@ class Phase1(threading.Thread):
         fdlCmd.validate()           
         nonBaseList = fdlCmd.get_result_list()
         nonBaseList.remove("base")
+        nonBaseList.remove(GPUPGRADEMIRROR_TEMP_DIR)
         
         for nonBase in nonBaseList:
            cmdComplete = False
@@ -2641,7 +2638,7 @@ class Phase1(threading.Thread):
     def removeOldMirror(self, seg):
         self.logger.debug('in removeOldMirror %s:%s' % (self.nodeName, seg.mirror_data_directory))
 
-        if options.mode == 'S' and options.rollback == False:
+        if options.mode == 'S' and (options.rollback == False or seg.rollForward == True):
            ''' If in a safe mode upgrade, point to the temp location of the old mirror '''
            tempDataDir = seg.mirror_data_directory + self.tempOldMirrorDirSuffix
         else:
@@ -2752,7 +2749,7 @@ class Phase1(threading.Thread):
             for seg in self.mirrorSegmentList:
                 status = self.statusList[statusIndex]
                 
-                if options.rollback == True:
+                if options.rollback == True and seg.rollForward == False:
                    ''' Put the mirror's back if necessary, and remove temp files '''
                    if options.mode == 'S':
                       self.removeCopyOfPrimary(seg)
@@ -2801,6 +2798,8 @@ class Phase1(threading.Thread):
                    
                     if status.compare_status('PHASE1_DONE') < 0:
                        status.set_status('PHASE1_DONE')
+                       if seg.rollForward == True:
+                           status.set_status('PHASE1_SAFE_MODE')
                        
                 else:
                     ''' Un-safe mode '''
@@ -2841,7 +2840,9 @@ class Phase1(threading.Thread):
                        status.set_status('END_REMOVE_OLD_MIRROR_SPECIAL_FILES')
                    
                     if status.compare_status('PHASE1_DONE') < 0:
-                       status.set_status('PHASE1_DONE')        
+                       status.set_status('PHASE1_DONE')
+                       if seg.rollForward == True:
+                           status.set_status('PHASE1_UNSAFE_MODE')
                 statusIndex = statusIndex + 1
             self.shutdown()
             self.completedRun = True
@@ -3431,15 +3432,13 @@ try:
              minionOptions = " -c "
           if options.verbose == True:
               minionOptions = minionOptions + " -v "
-          if len(options.temp_dir) > 0:
-             minionOptions = minionOptions + " -t " + options.temp_dir
           minionSegdbid = segdbidList[0]
-          minionTempDir = p1MirrorInfo.getMirrorInfoFromMirrordbid(mirrordbid = minionSegdbid).mirror_data_directory
+          firstMirrorDataDir = p1MirrorInfo.getMirrorInfoFromMirrordbid(mirrordbid = minionSegdbid).mirror_data_directory
           minion = GPUpgradeMirrorMinion( name = "gpupgrademirror create a minion"
                                         , options = minionOptions
                                         , segs = ":".join(segdbidList)
                                         , minionSeg = minionSegdbid
-                                        , tempdir = minionTempDir
+                                        , tempdir = firstMirrorDataDir
                                         , ctxt = REMOTE
                                         , remoteHost = str(minionNode)
                                         )
