@@ -336,6 +336,11 @@ class GpRecoverSegmentProgram:
                     logger.debug('Issuing SQL [%s]' % sql)
                     dbconn.executeUpdateOrInsert(conn, sql, 1)
 
+                    history_message = "GPRECOVERSEG: san-mount-id %d set active_host to primary" % (mount_id)
+                    sql = 'INSERT INTO gp_configuration_history values (now(), -1, \'%s\')' % history_message
+                    logger.debug('Issuing SQL [%s]' % sql)
+                    dbconn.executeUpdateOrInsert(conn, sql, 1)
+
             # Update gp_segment_configuration
             for dbid, v in recoverable_segs.iteritems():
                 (status, content, mountlist) = v
@@ -360,6 +365,11 @@ class GpRecoverSegmentProgram:
                     sql = 'UPDATE gp_segment_configuration SET role = preferred_role where content = %d' % content
                     logger.debug('Issuing SQL [%s]' % sql)
                     dbconn.executeUpdateOrInsert(conn, sql, 2)
+
+                    history_message = "GPRECOVERSEG: content %d, dbid %d moved to primary host" % (content, dbid)
+                    sql = 'INSERT INTO gp_configuration_history values (now(), %d, \'%s\')' % (dbid, history_message)
+                    logger.debug('Issuing SQL [%s]' % sql)
+                    dbconn.executeUpdateOrInsert(conn, sql, 1)
                 else:
                     logger.info('Failed to recover sufficient mountpoints for dbid %d' % dbid)
 

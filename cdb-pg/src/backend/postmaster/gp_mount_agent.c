@@ -388,6 +388,21 @@ agent_main(int argc, char **argv)
 				fprintf(stderr, "UMOUNT COMMAND FAILED %d (%s:%s)\n", status, old_host, old_mountpoint);
 				exit(status);
 			}
+
+			/* 
+			 * For our testing, simulated failures may have left the original mountpoint mounted!
+			 * So we unmount it too. (this may return an error).
+			 */
+			snprintf(cmd, sizeof(cmd), "ssh %s /bin/umount %s", target_host, target_mountpoint);
+
+			fprintf(stdout, "unmount new host [%s]\n", target_host);
+			fprintf(stdout, "unmount new mountpoint [%s]\n", target_mountpoint);
+
+			fprintf(stdout, "unmount cmd [%s]\n", cmd);
+
+			status = system(cmd);
+
+			/* We ignore the status here. The second un-mount may emit an error if had been unmounted already. */
 		}
 
 		snprintf(cmd, sizeof(cmd), "ssh %s /bin/mount %s %s", target_host, target_dev, target_mountpoint);
@@ -582,6 +597,21 @@ agent_main(int argc, char **argv)
 				fprintf(stderr, "Unmount command failed (%s:%s):%d '%s'\n", old_host, old_mountpoint, status, cmd);
 				//exit(0);
 			}
+
+			/* 
+			 * For our testing, simulated failures may have left the original mountpoint mounted!
+			 * So we unmount it too. (this may return an error).
+			 */
+			snprintf(cmd, sizeof(cmd), "ssh %s /bin/umount %s", target_host, target_mountpoint);
+
+			fprintf(stdout, "unmount new host [%s]\n", target_host);
+			fprintf(stdout, "unmount new mountpoint [%s]\n", target_mountpoint);
+
+			fprintf(stdout, "unmount cmd [%s]\n", cmd);
+
+			status = system(cmd);
+
+			/* We ignore the status here. The second un-mount may emit an error if had been unmounted already. */
 		}
 
 		if (FSTYPE == NULL)
