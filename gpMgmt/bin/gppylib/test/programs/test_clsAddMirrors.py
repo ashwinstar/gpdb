@@ -59,5 +59,41 @@ dbid  | content  | role  | preferred_role  | mode  | status  | hostname     | ad
 """
 )
 
+#
+# Test group mirroring!
+#
+def testGroupMirror(args):
+    driver.initThreeHostMultiHomeNoMirrors()
+    confProvider = configInterface.getConfigurationProvider().initializeProvider(5432, False)
+    gpArray = confProvider.loadSystemConfig()
+
+    calc = GpMirrorBuildCalculator(gpArray, 1000, [ "/data/m1", "/data/m2"], [{},{}])
+    calc.getGroupMirrors()
+
+    GpMirrorListToBuild([], None, False, 1).checkForPortAndDirectoryConflicts(gpArray)
+
+    testOutput("")
+    testOutputGpArray(gpArray)
+    testOutput("")
+simple_test("testGroupMirror", testGroupMirror, [],
+"""
+dbid  | content  | role  | preferred_role  | mode  | status  | hostname     | address        | port   | datadir                         | replication_port
+1     | -1       | p     | p               | s     | u       | master-host  | primary-host   | 5432   | /datadirpathdbmaster/gp-1       | None
+2     | 0        | p     | p               | r     | u       | first-host   | first-host-1   | 50001  | /first/datadirpathdbfast1/gp0   | 53001
+3     | 1        | p     | p               | r     | u       | first-host   | first-host-2   | 50002  | /first/datadirpathdbfast2/gp1   | 53002
+4     | 2        | p     | p               | r     | u       | second-host  | second-host-1  | 50001  | /second/datadirpathdbfast1/gp2  | 53001
+5     | 3        | p     | p               | r     | u       | second-host  | second-host-2  | 50002  | /second/datadirpathdbfast2/gp3  | 53002
+6     | 4        | p     | p               | r     | u       | third-host   | third-host-1   | 50001  | /third/datadirpathdbfast2/gp4   | 53001
+7     | 5        | p     | p               | r     | u       | third-host   | third-host-2   | 50002  | /third/datadirpathdbfast2/gp5   | 53002
+8     | 0        | m     | m               | r     | u       | second-host  | second-host-1  | 51001  | /data/m1                        | 52001
+9     | 1        | m     | m               | r     | u       | second-host  | second-host-2  | 51002  | /data/m2                        | 52002
+10    | 2        | m     | m               | r     | u       | third-host   | third-host-1   | 51001  | /data/m1                        | 52001
+11    | 3        | m     | m               | r     | u       | third-host   | third-host-2   | 51002  | /data/m2                        | 52002
+12    | 4        | m     | m               | r     | u       | first-host   | first-host-1   | 51001  | /data/m1                        | 52001
+13    | 5        | m     | m               | r     | u       | first-host   | first-host-2   | 51002  | /data/m2                        | 52002
+"""
+
+)
+
 # All done tests
 printTestResults()
