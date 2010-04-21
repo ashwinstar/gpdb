@@ -1065,6 +1065,9 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 		int64 gpRelationNodePersistentSerialNum;
 		Relation gp_relation_node;
 
+		MemSet(&gpRelationNodePersistentTid, 0, sizeof(ItemPointerData));
+		gpRelationNodePersistentSerialNum = 0;
+
 		/*
 		 * Collect information of source database's relations.
 		 */
@@ -1219,10 +1222,7 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 														/* doJustInTimeDirCreate */ false,
 														&dbInfoGpRelationNode->persistentTid,			// OUTPUT
 														&dbInfoGpRelationNode->persistentSerialNum); 	// OUTPUT
-					
-					gpRelationNodePersistentTid = dbInfoGpRelationNode->persistentTid;
-					gpRelationNodePersistentSerialNum = dbInfoGpRelationNode->persistentSerialNum;
-					
+										
 					copy_append_only_segment_file(
 									&srcRelFileNode,
 									&dstRelFileNode,
