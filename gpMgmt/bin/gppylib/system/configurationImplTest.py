@@ -2,7 +2,7 @@
 #
 # Copyright (c) Greenplum Inc 2010. All Rights Reserved.
 #
-from gppylib.gparray import GpArray
+from gppylib.gparray import *
 
 """
 
@@ -27,6 +27,7 @@ class GpConfigurationProviderForTesting(GpConfigurationProvider) :
 
     def __init__(self):
         self.__testSegments=[]
+        self.__faultStrategy = FAULT_STRATEGY_NONE 
         pass
 
     def initializeProvider( self, masterPort, useUtilityMode ) :
@@ -51,7 +52,9 @@ class GpConfigurationProviderForTesting(GpConfigurationProvider) :
         segments = []
         for segment in self.__testSegments:
             segments.append(segment.copy())
-        return GpArray(segments)
+        result = GpArray(segments)
+        result.setFaultStrategy(self.__faultStrategy)
+        return result
 
     def updateSystemConfig( self, systemConfiguration, textForConfigTable ) :
         """
@@ -68,3 +71,5 @@ class GpConfigurationProviderForTesting(GpConfigurationProvider) :
         """
         self.__testSegments.append(configForSegment.copy())
 
+    def setFaultStrategy(self, faultStrategy):
+        self.__faultStrategy = faultStrategy

@@ -168,3 +168,63 @@ def test_main( testName, newProgramArgs, createOptionParserFn, createCommandFn, 
 
     finishTest(expectedOutput)
 
+def simple_test(testname, fnToCall, argsToFn, expectedOutput):
+    startTest(testname)
+
+    try:
+        fnToCall(argsToFn)
+    except Exception, e:
+        testOutput( "EXCEPTION: %s\n%s" % (e, traceback.format_exc()))
+
+    finishTest(expectedOutput)
+
+def testTableOutput(lines):
+    lineWidth = []
+    for line in lines:
+        while len(lineWidth) < len(line):
+            lineWidth.append(0)
+
+        for i, field in enumerate(line):
+            lineWidth[i] = max(len(field), lineWidth[i])
+
+    # now print it all!
+    for line in lines:
+        outLine = []
+        for i, field in enumerate(line):
+            outLine.append(field.ljust(lineWidth[i] + 1))
+        msg = " | ".join(outLine)
+        testOutput(msg.strip())
+
+
+def testOutputGpArray(gpArray):
+    segs = gpArray.getDbList()
+    def compareByDbId(left,right):
+        if left.getSegmentDbId() < right.getSegmentDbId(): return -1
+        elif left.getSegmentDbId() > right.getSegmentDbId(): return 1
+        else: return 0
+    segs.sort(compareByDbId)
+
+    lines = []
+
+    lines.append([
+            "dbid", "content", "role", "preferred_role", "mode", "status",
+            "hostname", "address", "port", "datadir", "replication_port"
+            ])
+    for seg in segs:
+        line = [
+                str(seg.getSegmentDbId()),
+                str(seg.getSegmentContentId()),
+                str(seg.getSegmentRole()),
+                str(seg.getSegmentPreferredRole()),
+                str(seg.getSegmentMode()),
+                str(seg.getSegmentStatus()),
+                str(seg.getSegmentHostName()),
+                str(seg.getSegmentAddress()),
+                str(seg.getSegmentPort()),
+                str(seg.getSegmentDataDirectory()),
+                str(seg.getSegmentReplicationPort()),
+                ]
+
+        lines.append(line)
+
+    testTableOutput(lines)

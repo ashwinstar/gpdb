@@ -706,7 +706,7 @@ class GpArray:
         self.san_mount_by_dbid = {}
         self.san_mounts = {}
 
-        self.filespaceArr = []
+        self.setFilespaces([])
 
         for segdb in segments:
 

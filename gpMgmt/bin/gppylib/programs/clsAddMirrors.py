@@ -47,10 +47,12 @@ class GpMirrorBuildCalculator:
             return cmp(left.getSegmentPort(), right.getSegmentPort())
 
         self.__mirrorsAddedByHost = {} # map hostname to the # of mirrors that have been added to that host
+        self.__primariesUpdatedToHaveMirrorsByHost = {} # map hostname to the # of primaries that have been attached to mirrors for that host
         self.__primaryPortBaseByHost = {} # map hostname to the lowest port number in-use by a primary on that host
         for hostName, segments in self.__primariesByHost.iteritems():
             self.__primaryPortBaseByHost[hostName] = min([seg.getSegmentPort() for seg in segments])
             self.__mirrorsAddedByHost[hostName] = 0
+            self.__primariesUpdatedToHaveMirrorsByHost[hostName] = 0
             segments.sort(comparePorts)
 
         self.__mirrorPortOffset = mirrorPortOffset
@@ -88,6 +90,7 @@ class GpMirrorBuildCalculator:
 
         resultOut.append(GpMirrorToBuild(None, primary, mirror, True))
 
+        self.__primariesUpdatedToHaveMirrorsByHost[primary.getSegmentHostName()] += 1
         self.__mirrorsAddedByHost[targetHost] = mirrorIndexOnTargetHost + 1
         self.__nextDbId += 1
 
@@ -97,6 +100,8 @@ class GpMirrorBuildCalculator:
 
         Fetches directory path info from the various member variables
         """
+        primaryHost = primary.getSegmentHostName()
+
         assert self.__nextDbId != -1
 
         primariesOnTargetHost = self.__primariesByHost[targetHost]
@@ -105,14 +110,23 @@ class GpMirrorBuildCalculator:
         mirrorIndexOnTargetHost = self.__mirrorsAddedByHost[targetHost]
         assert mirrorIndexOnTargetHost is not None
 
+        usedPrimaryIndexOnPrimaryHost = self.__primariesUpdatedToHaveMirrorsByHost[primaryHost]
+        assert usedPrimaryIndexOnPrimaryHost is not None
+
         # find basePort for target host
         basePort = self.__primaryPortBaseByHost[targetHost]
         assert basePort is not None
         basePort += mirrorIndexOnTargetHost
 
+        # find basePort for the primary host
+        primaryHostBasePort = self.__primaryPortBaseByHost[primaryHost]
+        assert primaryHostBasePort is not None
+        primaryHostBasePort += usedPrimaryIndexOnPrimaryHost
+
+        # assign new ports to be used
         port = basePort + self.__mirrorPortOffset
         replicationPort = basePort + self.__mirrorPortOffset * 2
-        primarySegmentReplicationPort = basePort + self.__mirrorPortOffset * 3
+        primarySegmentReplicationPort = primaryHostBasePort + self.__mirrorPortOffset * 3
 
         if mirrorIndexOnTargetHost >= len(self.__mirrorDataDirs):
             raise Exception("More mirrors targeted to host %s than there are mirror data directories" % targetHost )

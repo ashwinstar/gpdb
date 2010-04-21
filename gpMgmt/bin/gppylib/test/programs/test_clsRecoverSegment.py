@@ -24,10 +24,15 @@ logger = get_default_logger()
 # Tests involving default recovery
 #
 driver.initOneHostConfiguration()
-test_main( "nothingToDo", [], parserFn, commandFn, None, \
-    """recovering 0 segment(s)""")
+test_main( "nothingToDo", ["-a"], parserFn, commandFn, None, \
+"""exec $GPHOME/bin/postgres --gp-version
+exec /usr/bin/id|/usr/bin/tr '(' ' '|/usr/bin/tr ')' ' '|/usr/bin/awk '{print $2}'
+pausing fault prober
+unpausing fault prober
+sys.exit 0"""
+)
 driver.initTwoSegmentOneFailedMirrorConfiguration()
-test_main( "oneDownBasicRecovery", [], parserFn, commandFn, None, \
+test_main( "oneDownBasicRecovery", ["-a"], parserFn, commandFn, None, \
     """recovering 1 segment(s)""")
 
 # All done tests

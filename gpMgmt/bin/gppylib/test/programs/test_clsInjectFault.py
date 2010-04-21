@@ -80,11 +80,15 @@ test_main( "noHostArgForRole", ["--role", "primary"], parserFn, commandFn, None,
 
 driver.initOneHostConfiguration()
 test_main( "noMatchingHost", ["--host", "unknown", "--role", "primary"], parserFn, commandFn, None, \
-    """Injecting fault on 0 segment(s)""")
+"""Injecting fault on 0 segment(s)
+sys.exit 0"""
+)
 
 driver.initOneHostConfiguration()
 test_main( "invalidRole", ["--host", "unknown", "--role", "foo"], parserFn, commandFn, None, \
-    """Injecting fault on 0 segment(s)""")
+"""Injecting fault on 0 segment(s)
+sys.exit 0"""
+)
 
 # Contact primaries
 driver.initOneHostConfiguration()
@@ -93,6 +97,7 @@ test_main( "faultPrimaryNoArgs", ["--host", "this-is-my-host", "--role", "primar
 """Injecting fault on 2 segment(s)
 exec $GPHOME/bin/gp_primarymirror -h this-is-my-host -p 50001 -i /tmp/temporaryNamedFile0
 exec $GPHOME/bin/gp_primarymirror -h this-is-my-host -p 50002 -i /tmp/temporaryNamedFile0
+sys.exit 0
 BEGIN File 0:
 faultInject
 
@@ -120,6 +125,7 @@ test_main( "faultPrimarySomeArgs", ["--host", "this-is-my-host", "--role", "mirr
 """Injecting fault on 2 segment(s)
 exec $GPHOME/bin/gp_primarymirror -h this-is-my-host -p 60001 -i /tmp/temporaryNamedFile0
 exec $GPHOME/bin/gp_primarymirror -h this-is-my-host -p 60002 -i /tmp/temporaryNamedFile0
+sys.exit 0
 BEGIN File 0:
 faultInject
 myFaultName
@@ -197,6 +203,7 @@ Sleeping (seconds): 10.00
 exec $GPHOME/bin/gp_primarymirror -h this-is-my-host -p 60001 -i /tmp/temporaryNamedFile1
 Sleeping (seconds): 10.00
 exec $GPHOME/bin/gp_primarymirror -h this-is-my-host -p 60001 -i /tmp/temporaryNamedFile1
+sys.exit 0
 BEGIN File 1:
 getFaultInjectStatus
 myFaultName
@@ -212,7 +219,8 @@ test_main( "syncNoWaitTest1", ["--mode", "sync", "--host", "this-is-my-host", "-
             ], parserFn, commandFn, None, \
 """Injecting fault on 2 segment(s)
 exec $GPHOME/bin/gp_primarymirror -h this-is-my-host -p 60001 -i /tmp/temporaryNamedFile0
-exec $GPHOME/bin/gp_primarymirror -h this-is-my-host -p 60002 -i /tmp/temporaryNamedFile0"""
+exec $GPHOME/bin/gp_primarymirror -h this-is-my-host -p 60002 -i /tmp/temporaryNamedFile0
+sys.exit 0"""
 )
 driver.initOneHostConfiguration()
 test_main( "syncNoWaitTest2", ["--mode", "sync", "--host", "this-is-my-host", "--role", "mirror", \
@@ -221,7 +229,8 @@ test_main( "syncNoWaitTest2", ["--mode", "sync", "--host", "this-is-my-host", "-
             ], parserFn, commandFn, None, \
 """Injecting fault on 2 segment(s)
 exec $GPHOME/bin/gp_primarymirror -h this-is-my-host -p 60001 -i /tmp/temporaryNamedFile0
-exec $GPHOME/bin/gp_primarymirror -h this-is-my-host -p 60002 -i /tmp/temporaryNamedFile0"""
+exec $GPHOME/bin/gp_primarymirror -h this-is-my-host -p 60002 -i /tmp/temporaryNamedFile0
+sys.exit 0"""
 )
 
 
