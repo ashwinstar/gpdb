@@ -324,11 +324,11 @@ try:
         if ENV.POWERMT == '':
             gpmlib.error('Cannot locate EMC PowerPath powermt utility for storage-group lookup')
 
-#    if not gpmlib.chk_db_running(db, True):
-#        gpmlib.error('Database is not running')
-
     dburl = dbconn.DbURL(port=master_port, dbname='template1')
     gparray = GpArray.initFromCatalog(dburl, utility=True)
+
+    if gparray.get_mirroring_enabled():
+        gpmlib.error('System already has mirrors. SAN-mirroring cannot coexist with mirrors.')
 
     qes = None
     new_addr = []
@@ -336,10 +336,10 @@ try:
     try:
         qes = gparray.getSegDbList()
         qe_hosts = [ x.getSegmentHostName() for x in qes ]
-#
-#        hosts = gpmlib.unique(qe_hosts)
-#       XXX: NEED TO UNIQUE-IFY HERE.
-        hosts = qe_hosts
+
+        # Google tells me that this is the fastest way to unique-ify a list
+        # in Python, it is a weird construct: convert list->set->list
+        hosts = list(set(qe_hosts))
 
         # We have the qe-details (root filespace with dbids and so on)
 
