@@ -15,6 +15,7 @@ try:
     from gppylib.gparray import *
     from gppylib.commands.gp import *
     from gppylib.db import dbconn
+    from gppylib.gpcoverage import GpCoverage
 
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -76,14 +77,20 @@ def getSegmentsFromStdin():
     return dblist
 
 #------------------------------- Mainline --------------------------------
+coverage = GpCoverage()
+coverage.start()
 
-options = parseargs()
-
-# segments is a list of GpDB objects
-dblist = getSegmentsFromStdin()
-
-if options.pause:
-    suspend_segments(options, dblist)
-
-elif options.resume:
-    resume_segments(options, dblist)
+try:
+    options = parseargs()
+    
+    # segments is a list of GpDB objects
+    dblist = getSegmentsFromStdin()
+    
+    if options.pause:
+        suspend_segments(options, dblist)
+    
+    elif options.resume:
+        resume_segments(options, dblist)
+finally:
+    coverage.stop()
+    coverage.generate_report()

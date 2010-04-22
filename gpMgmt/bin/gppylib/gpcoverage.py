@@ -6,6 +6,7 @@ needed.  It also includes a method for generating the HTML reports.
 import os
 import figleaf
 from gppylib.commands.base import Command, LOCAL, REMOTE
+from gppylib.commands.unix import RemoveFiles
 from gppylib.gplog import *
 
 
@@ -61,26 +62,39 @@ class GpFigleafCoverage():
             self.logger.error('Error starting code coverage: %s' % e)
 
     def stop(self):
+        """Stops code coverage."""
         try:
             if self.running:
                 self.logger.info('Stopping code coverage')
                 figleaf.stop()
                 figleaf.write_coverage(self.filename)
+                self.running = False
         except Exception, e:
             self.logger.error('Error stopping code coverage: %s' % e)
         
     def generate_report(self, directory=None):
         """Generates the html reports and puts them in the directory
         specified."""
-        if self.running:
-            try:
-                if not directory:
-                    directory = os.path.normpath(os.path.expanduser("~") + '/.figleaf')
-                self.logger.info('Generating code coverage HTML reports to %s' % directory)
-                GpWriteFigleafCoverageHtml.local('Generate HTML', self.filename, directory)
-            except Exception, e:
-                self.logger.error('Error generating HTML code cover reports: %s' % e)
+        try:
+            if not directory:
+                directory = os.path.normpath(os.path.expanduser("~") + '/.figleaf')
+            self.logger.info('Generating code coverage HTML reports to %s' % directory)
+            GpWriteFigleafCoverageHtml.local('Generate HTML', self.filename, directory)
+        except Exception, e:
+            self.logger.error('Error generating HTML code cover reports: %s' % e)
                 
+    def delete_files(self, directory=None):
+        """Deletes code coverage files."""
+        if os.getenv('USE_FIGLEAF', None):
+            self.logger.info('Deleting coverage files...')
+            try:
+                RemoveFiles.local('Remove coverage file', self.filename)
+                if not directory:
+                    directory = os.path.normpath(os.path.dirname(self.filename))
+                RemoveFiles.local('Remove html files', directory + '/*.html')
+            except:
+                logger.error('Failed to clean up coverage files')
+        
                 
                 
 # The coverage tool to use

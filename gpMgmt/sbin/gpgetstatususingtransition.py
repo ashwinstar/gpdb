@@ -17,6 +17,7 @@ from gppylib.gpparseopts import OptParser, OptChecker
 from gppylib import gplog, gparray, pgconf
 from gppylib.commands import base, gp, pg, unix
 from gppylib.db import catalog, dbconn
+from gppylib.gpcoverage import GpCoverage
 
 logger = gplog.get_default_logger()
 
@@ -95,4 +96,11 @@ class GpSegStatusUsingTransition:
 
 #-------------------------------------------------------------------------
 if __name__ == '__main__':
-    simple_main( GpSegStatusUsingTransition.createParser, GpSegStatusUsingTransition.createProgram)
+    coverage = GpCoverage()
+    coverage.start()
+    
+    try:
+        simple_main( GpSegStatusUsingTransition.createParser, GpSegStatusUsingTransition.createProgram)
+    finally:
+        coverage.stop()
+        coverage.generate_report()

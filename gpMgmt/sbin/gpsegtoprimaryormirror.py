@@ -14,7 +14,7 @@ if sys.version_info < (2, 5, 0):
 '''Error: %s is supported on Python versions 2.5 or greater
 Please upgrade python installed on this machine.''' % progname)
 
-import pickle, base64, figleaf
+import pickle, base64
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
@@ -22,6 +22,7 @@ from gppylib.gpparseopts import OptParser, OptChecker
 from gppylib import gplog, gparray, pgconf
 from gppylib.commands import base, gp, pg, unix
 from gppylib.db import catalog, dbconn
+from gppylib.gpcoverage import GpCoverage
 
 
 description = (""" 
@@ -192,10 +193,9 @@ def parseargs():
 #-------------------------------------------------------------------------
     
 def main():
-    use_figleaf=os.getenv('USE_FIGLEAF', None)
-    
-    if use_figleaf:
-        figleaf.start()
+    coverage = GpCoverage()
+    coverage.start()
+
     conversionCmd=None
     
     try:
@@ -227,9 +227,9 @@ def main():
     finally:
         if conversionCmd:
             conversionCmd.cleanup()
-        if use_figleaf:
-            figleaf.stop()
-            figleaf.write_coverage(os.path.expanduser("~") + '/.figleaf',append=True)
+
+        coverage.stop()
+        coverage.generate_report()
 
 
 #------------------------------------------------------------------------- 

@@ -18,8 +18,6 @@ Please upgrade python installed on this machine.''' % progname)
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
-import figleaf
-
 from gppylib.gpparseopts import OptParser, OptChecker
 from gppylib import gplog
 from gppylib.commands import base
@@ -29,6 +27,8 @@ from gppylib.commands import pg
 from gppylib.db import catalog
 from gppylib.db import dbconn
 from gppylib import pgconf
+from gppylib.gpcoverage import GpCoverage
+
 
 description = (""" 
 This utility is NOT SUPPORTED and is for internal-use only.
@@ -155,10 +155,8 @@ def parseargs():
 #-------------------------------------------------------------------------
     
 def main():
-    use_figleaf=os.getenv('USE_FIGLEAF', None)
-    
-    if use_figleaf:
-        figleaf.start()
+    coverage = GpCoverage()
+    coverage.start()
         
     gpsegstop=None
     
@@ -191,9 +189,9 @@ def main():
     finally:
         if gpsegstop:
             gpsegstop.cleanup()
-        if use_figleaf:
-            figleaf.stop()
-            figleaf.write_coverage(os.path.expanduser("~") + '/.figleaf',append=True)
+            
+        coverage.stop()
+        coverage.generate_report()
 
 #------------------------------------------------------------------------- 
 logger = gplog.get_default_logger()    

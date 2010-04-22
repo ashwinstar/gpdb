@@ -15,6 +15,7 @@ try:
     from gppylib.gparray import *
     from gppylib.commands.gp import *
     from gppylib.db import dbconn
+    from gppylib.gpcoverage import GpCoverage
 
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -53,40 +54,47 @@ def parseargs():
 
 
 #------------------------------- Mainline --------------------------------
-options = parseargs()
- 
-files = list()
+coverage = GpCoverage()
+coverage.start()
 
-# get the files to edit from STDIN
-line = sys.stdin.readline()
-while line:
-
-    directory = line.rstrip()
+try:
+    options = parseargs()
+     
+    files = list()
     
-    filename = directory + "/postgresql.conf"
-    if not os.path.exists( filename ):
-        raise Exception("path does not exist" + filename)
-
-    files.append(filename)
-
+    # get the files to edit from STDIN
     line = sys.stdin.readline()
-
-
-fromString = "(^\s*" + options.entry + "\s*=.*$)"
-toString="#$1"
-if options.value:
-    newentry = options.entry + "=" + options.value
-name = "mycmd"
-
-# update all the files
-for f in files:
-
-    # comment out any existing entries for this setting
-    cmd=InlinePerlReplace(name, fromString, toString, f)
-    cmd.run(validateAfter=True)
-
-    if options.removeonly:
-        continue
-
-    cmd = AppendTextToFile(name, f, newentry)
-    cmd.run(validateAfter=True)
+    while line:
+    
+        directory = line.rstrip()
+        
+        filename = directory + "/postgresql.conf"
+        if not os.path.exists( filename ):
+            raise Exception("path does not exist" + filename)
+    
+        files.append(filename)
+    
+        line = sys.stdin.readline()
+    
+    
+    fromString = "(^\s*" + options.entry + "\s*=.*$)"
+    toString="#$1"
+    if options.value:
+        newentry = options.entry + "=" + options.value
+    name = "mycmd"
+    
+    # update all the files
+    for f in files:
+    
+        # comment out any existing entries for this setting
+        cmd=InlinePerlReplace(name, fromString, toString, f)
+        cmd.run(validateAfter=True)
+    
+        if options.removeonly:
+            continue
+    
+        cmd = AppendTextToFile(name, f, newentry)
+        cmd.run(validateAfter=True)
+finally:
+    coverage.stop()
+    coverage.generate_report()

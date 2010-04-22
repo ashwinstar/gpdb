@@ -14,6 +14,8 @@ import pickle, base64
 from gppylib import gparray
 from gppylib.gpparseopts import OptChecker,OptParser,OptParser
 from gppylib.operations.buildMirrorSegments import gDatabaseDirectories, gDatabaseFiles
+from gppylib.gpcoverage import GpCoverage
+
 
 logger = get_default_logger()
 
@@ -91,4 +93,11 @@ class GpCleanSegmentDirectoryProgram:
 
 #-------------------------------------------------------------------------
 if __name__ == '__main__':
-    simple_main( GpCleanSegmentDirectoryProgram.createParser, GpCleanSegmentDirectoryProgram.createProgram)
+    coverage = GpCoverage()
+    coverage.start()
+    
+    try:
+        simple_main( GpCleanSegmentDirectoryProgram.createParser, GpCleanSegmentDirectoryProgram.createProgram)
+    finally:
+        coverage.stop()
+        coverage.generate_report()

@@ -17,7 +17,7 @@ Please upgrade python installed on this machine.''' % progname)
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
-import figleaf, pickle, base64
+import pickle, base64
 
 from gppylib.gpparseopts import OptParser, OptChecker
 from gppylib import gparray, gplog
@@ -25,6 +25,7 @@ from gppylib.commands import base, gp, pg, unix
 from gppylib.commands.gp import SEGMENT_TIMEOUT_DEFAULT
 from gppylib.db import catalog, dbconn
 from gppylib import pgconf
+from gppylib.gpcoverage import GpCoverage
 
 
 description = (""" 
@@ -297,10 +298,9 @@ def parseargs():
 #-------------------------------------------------------------------------
     
 def main():
-    use_figleaf=os.getenv('USE_FIGLEAF', None)
+    coverage = GpCoverage()
+    coverage.start()
     
-    if use_figleaf:
-        figleaf.start()
     gpsegstart=None
     
     try:
@@ -341,10 +341,9 @@ def main():
     finally:
         if gpsegstart:
             gpsegstart.cleanup()
-        if use_figleaf:
-            figleaf.stop()
-            figleaf.write_coverage(os.path.expanduser("~") + '/.figleaf',append=True)
-
+            
+        coverage.stop()
+        coverage.generate_report()
 
 #------------------------------------------------------------------------- 
 logger = gplog.get_default_logger()    

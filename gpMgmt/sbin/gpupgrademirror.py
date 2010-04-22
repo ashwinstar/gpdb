@@ -37,7 +37,7 @@ try:
     from gppylib.userinput import *
     from pygresql.pgdb import DatabaseError
     from pygresql import pg
-    import figleaf
+    from gppylib.gpcoverage import GpCoverage
 except ImportError, e:
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -3071,6 +3071,8 @@ MirrorNodeList = []
 MirrorInfoList = []
 phase2MirrorList = []
 
+coverage = GpCoverage()
+coverage.start()
 
 try:
   # setup signal handlers so we can clean up correctly
@@ -3656,3 +3658,6 @@ finally:
     except NameError:
         pass
     logger.info("gpupgrademirror exit")
+    
+    coverage.stop()
+    coverage.generate_report()
