@@ -3929,7 +3929,7 @@ elog_debug_linger(ErrorData *edata)
  *
  */
 Datum
-gp_elog(PG_FUNCTION_ARGS)
+pg_elog(PG_FUNCTION_ARGS)
 {
 	ErrorData  		edata;
 	char	   	   *errormsg;
