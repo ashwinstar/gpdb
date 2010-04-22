@@ -18,7 +18,9 @@
 # todo MIRRORING include check for passive standby master
 #
 # todo MIRRORING when failing over to another host we may need to change port numbers as well!
-# todO MIRRORING open question: okay to pause fault prober while prompt to user is up?
+# todo MIRRORING open question: okay to pause fault prober while prompt to user is up?
+#
+# Note: the option to recover to a new host is not very good if we have a multi-home configuration
 #
 # Options removed when 4.0 gprecoverseg was implemented:
 #        --version
@@ -47,6 +49,7 @@ from gppylib.system import configurationInterface as configInterface
 from gppylib.system.environment import GpMasterEnvironment
 from gppylib.test.testUtils import *
 from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile, writeLinesToFile
+from gppylib.gphostcache import GpInterfaceToHostNameCache
 
 logger = gplog.get_default_logger()
 
@@ -179,6 +182,11 @@ class GpRecoverSegmentProgram:
         failedSegments = [ seg for seg in segments if seg.isSegmentDown() ]
         peersForFailedSegments = self.findAndValidatePeersForFailedSegments(gpArray, failedSegments)
 
+        newRecoverAddress = self.__options.newRecoverHost
+        if newRecoverAddress is not None:
+            interfaceLookup = GpInterfaceToHostNameCache(self.__pool, [newRecoverAddress], [None])
+            newRecoverHost = interfaceLookup.getHostName(newRecoverAddress)
+
         forceFull = self.__options.forceFullResynchronization
         segs = []
         for i in range(len(failedSegments)):
@@ -187,11 +195,12 @@ class GpRecoverSegmentProgram:
             failedSegment = failedSegments[i]
             liveSegment = peersForFailedSegments[i]
 
-            if self.__options.newRecoverHost is not None:
+            if newRecoverAddress is not None:
                 # these two lines make it so that failoverSegment points to the object that is registered in gparray
                 failoverSegment = failedSegment
                 failedSegment = failoverSegment.copy()
-                failoverSegment.setSegmentHostName( self.__options.newRecoverHost )
+                failoverSegment.setSegmentHostName( newRecoverHost )
+                failoverSegment.setSegmentAddress( newRecoverAddress )
 
             if self.__options.spareDataDirectory is not None:
                 # these two lines make it so that failoverSegment points to the object that is registered in gparray

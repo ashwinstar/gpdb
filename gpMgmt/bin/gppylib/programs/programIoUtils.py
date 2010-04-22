@@ -8,6 +8,7 @@ logger = gplog.get_default_logger()
 def appendSegmentInfoForOutput(instanceType, gpArray, seg, linesOut):
 
     linesOut.append(['%s instance host' % instanceType, "= " + seg.getSegmentHostName()])
+    linesOut.append(['%s instance address' % instanceType, "= " + seg.getSegmentAddress()])
     linesOut.append(['%s instance directory' % instanceType, "= " + seg.getSegmentDataDirectory()])
     linesOut.append(['%s instance port' % instanceType, "= " + str(seg.getSegmentPort())])
     linesOut.append(['%s instance replication port' % instanceType, "= " + str(seg.getSegmentReplicationPort())])
