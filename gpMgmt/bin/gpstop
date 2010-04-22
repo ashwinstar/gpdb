@@ -16,8 +16,6 @@ import time
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
 try:
-    import figleaf
-
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gplog import *
     from gppylib.db import dbconn
@@ -30,6 +28,7 @@ try:
     from gppylib.commands import gp
     from gppylib.commands import base
     from gppylib.commands import pg
+    from gppylib.gpcoverage import GpCoverage
 except ImportError, e:    
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -594,14 +593,12 @@ def check_to_continue():
         logger.info("User abort requested, Exiting...")
         sys.exit(4)
     pass
-
     
 def main():
-    options_parsed=False
-    use_figleaf=os.getenv('USE_FIGLEAF', None)
+    coverage = GpCoverage()
+    coverage.start()
     
-    if use_figleaf:
-        figleaf.start()
+    options_parsed=False
         
     gpstop = None
     try:            
@@ -657,10 +654,8 @@ def main():
             gpstop.cleanup()        
         sys.exit('\nUser Interrupted')
     finally:
-        if use_figleaf:
-            figleaf.stop()
-            figleaf.write_coverage(os.path.expanduser("~") + '/.figleaf',append=True)
-
+        coverage.stop()
+        coverage.generate_report()
 
 
 logger = get_default_logger()    

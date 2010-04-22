@@ -37,6 +37,7 @@ sys.path.append(sys.path[0] + '/lib')
 try:
     import gplib
     import getopt, math, StringIO, stat, subprocess, signal
+    from gppylib.gpcoverage import GpCoverage
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
@@ -879,6 +880,10 @@ def printResult(title, result):
 
 
 ################
+
+coverage = GpCoverage()
+coverage.start()
+
 try:
     parseCommandLine()
     runSetup()
@@ -926,4 +931,7 @@ try:
 
 except KeyboardInterrupt:
     print '[Abort] Keyboard Interrupt ...'
+finally:
+    coverage.stop()
+    coverage.generate_report()
 

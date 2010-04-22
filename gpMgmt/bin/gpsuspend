@@ -24,6 +24,7 @@ try:
     from pygresql.pgdb import DatabaseError
     from gppylib.gphostcache import GpHostCache
     from pygresql.pg import DB     #  Need this for admin sql, such as create/drop db
+    from gppylib.gpcoverage import GpCoverage
 
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -256,7 +257,10 @@ def changeFtsMode(On):
 
 
 #------------------------------- Mainline --------------------------------
- 
+
+coverage = GpCoverage()
+coverage.start()
+
 logger = gppylib.gplog.get_default_logger()
 gppylib.gplog.setup_tool_logging(EXECNAME, getLocalHostname(), getUserName())
 
@@ -304,5 +308,8 @@ if options.pause:
 
 elif options.resume:
     resume_greenplum(gparray=gparray, cache=hostCache)
+
+coverage.stop()
+coverage.generate_report()
 
 logger.info("--done--")

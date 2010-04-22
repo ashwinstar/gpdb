@@ -50,6 +50,8 @@ try:
     from gppylib.gpversion import GpVersion
     from gppylib.gparray import GpArray, GpDB
     from gppylib.gphostcache import GpHostCache
+    from gppylib.gpcoverage import GpCoverage
+
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
@@ -3933,6 +3935,9 @@ It should now be possible to take a zfs snapshot before finalizing the upgrade.
 
 #============================================================
 if __name__ == '__main__':
+    coverage = GpCoverage()
+    coverage.start()
+    
     # Create a new GPUpgrade - should never throw exception
     u = GPUpgrade()
     
@@ -4000,6 +4005,9 @@ if __name__ == '__main__':
         logger.fatal('***************************************')
         sys.stderr.write(traceback.format_exc())
         sys.exit(1)
+    finally:
+        coverage.stop()
+        coverage.generate_report()
     
     # This shouldn't need to be explicit, but if something goes wrong in
     # thread shutdown it forces the issue.

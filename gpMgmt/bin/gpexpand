@@ -26,7 +26,7 @@ try:
     from gppylib.userinput import *
     from pygresql.pgdb import DatabaseError
     from pygresql import pg
-    import figleaf
+    from gppylib.gpcoverage import GpCoverage
 except ImportError, e:
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -2206,16 +2206,14 @@ gp_expand=None
 remove_pid=True
 table_expand_error=False
 
+coverage = GpCoverage()
+coverage.start()
+
 try:
+    
     # setup signal handlers so we can clean up correctly
     signal.signal(signal.SIGTERM, sig_handler)
     signal.signal(signal.SIGHUP, sig_handler)
-
-    use_figleaf=os.getenv('USE_FIGLEAF', None)
-
-    if use_figleaf:
-        figleaf.start()
-
 
     logger = get_default_logger()
     setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
@@ -2363,6 +2361,6 @@ finally:
             remove_pid_file(options.master_data_directory)
     except NameError:
         pass
-    if use_figleaf:
-        figleaf.stop()
-        figleaf.write_coverage(os.path.expanduser("~") + '/.figleaf',append=True)
+    
+    coverage.stop()
+    coverage.generate_report()

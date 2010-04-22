@@ -11,7 +11,6 @@ from gppylib.mainUtils import *
 import os, sys, traceback
 
 gProgramName = os.path.split(sys.argv[0])[-1]
-import figleaf
 from gppylib.commands.base import setExecutionContextFactory, ExecutionContext,CommandResult
 from gppylib import gplog
 from gppylib.commands import unix

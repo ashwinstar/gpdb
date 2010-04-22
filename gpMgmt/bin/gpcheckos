@@ -19,6 +19,7 @@ try:
     import gplib
     import getopt, popen2, pickle, time
     from datetime import datetime, timedelta
+    from gppylib.gpcoverage import GpCoverage
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
@@ -854,6 +855,9 @@ def matchConfig(session, conf):
             ok = False
     return ok
 
+coverage = GpCoverage()
+coverage.start()
+
 try:
     parseCommandLine()
     hostlist = gplib.HostList()
@@ -983,5 +987,8 @@ try:
 
 except KeyboardInterrupt:
     sys.exit('\nInterrupted ...')
+finally:
+    coverage.stop()
+    coverage.generate_report()
 
 

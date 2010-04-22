@@ -45,6 +45,7 @@ from datetime import date, datetime, timedelta
 
 from gppylib.db import *
 from gppylib.gparray import *
+from gppylib.gpcoverage import GpCoverage
 
 sys.path.append(sys.path[0] + '/lib')
 
@@ -300,6 +301,9 @@ def get_failover_info(devmap):
     return san_config
 
 ################
+coverage = GpCoverage()
+coverage.start()
+
 try:
     parseCommandLine()
 
@@ -598,6 +602,9 @@ try:
 
 except KeyboardInterrupt:
     sys.exit('\nUser Interrupted')
+finally:
+    coverage.stop()
+    coverage.generate_report()
 
 
 

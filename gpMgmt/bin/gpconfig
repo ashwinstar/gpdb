@@ -15,7 +15,7 @@ try:
     from gppylib.db import dbconn
     from gppylib.userinput import *
     from pygresql.pgdb import DatabaseError
-
+    from gppylib.gpcoverage import GpCoverage
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -218,7 +218,10 @@ def doShow(gucname):
 
 
 #------------------------------- Mainline --------------------------------
- 
+
+coverage = GpCoverage()
+coverage.start()
+
 logger = get_default_logger()
 setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
 
@@ -325,3 +328,6 @@ if failure:
     logger.error('finished with errors')
 else:
     logger.info("completed successfully")
+
+coverage.stop()
+coverage.generate_report()

@@ -27,6 +27,7 @@ Please upgrade python installed on this machine.''' % progname)
 sys.path.append(sys.path[0] + '/lib')
 try:
     import gplib, getopt, atexit, signal, pexpect, time
+    from gppylib.gpcoverage import GpCoverage
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
@@ -151,6 +152,9 @@ def interactive():
             pass
 
 #############
+coverage = GpCoverage()
+coverage.start()
+
 try:
     parseCommandLine()              #Read options from the command line
 
@@ -193,3 +197,6 @@ try:
 except KeyboardInterrupt:
     sessionCleanup()
     sys.exit('\nInterrupted...')
+finally:
+    coverage.stop()
+    coverage.generate_report()

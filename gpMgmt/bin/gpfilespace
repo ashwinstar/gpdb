@@ -50,6 +50,7 @@ try:
     from pygresql   import pg            # Database interaction
     from gppylib.gparray import *        # Greenplum Array datastructures
     from gppylib.gplog import *          # Greenplum logging facility
+    from gppylib.gpcoverage import GpCoverage
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
@@ -1096,6 +1097,9 @@ To add this filespace to the database please run the command:
 logger = None
 
 if __name__ == '__main__':
+    coverage = GpCoverage()
+    coverage.start()
+    
     opt = ParseOptions()
     logger = setup_tool_logging(EXECNAME, opt.host, opt.username, opt.logdir)
     enable_verbose_logging()
@@ -1168,3 +1172,6 @@ Once a filespace is created, it can be used by one or more tablespaces.
         except BaseException, e:
             sys.stderr.write("error %s\n" % str(e))
         sys.exit(1)
+    finally:
+        coverage.stop()
+        coverage.generate_report()

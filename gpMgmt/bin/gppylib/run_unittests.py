@@ -2,14 +2,15 @@
 #
 # Copyright (c) Greenplum Inc 2008.  All Rights Reserved
 #
-# crude tool used for running unit tests with or without code coverage using figleaf.
+# crude tool used for running unit tests with or without code coverage.
 #
 # usage ./run_unittests.py  run from the gpMgmt/bin/gppylib directory
 #
 # at the end of this script there will be a summary of the 
 import os,sys
 import unittest
-import figleaf
+from gppylib.gpcoverage import GpCoverage
+
 
 testfiles = []
 
@@ -17,9 +18,11 @@ testfiles = []
 path = os.path.abspath(os.path.dirname(__file__))
 
 
-print "Deleting previous .figleaf files"
-os.system('rm .figleaf')
+# Delete figleaf files
+coverage = GpCoverage()
+coverage.delete_files()
 
+coverage.start()
 
 for root,dirs,files in os.walk(path):
         for f in files:
@@ -36,7 +39,6 @@ for root,dirs,files in os.walk(path):
           
 
 
-figleaf.start()
 testLoader = unittest.TestLoader()
 
 modules = []
@@ -77,13 +79,5 @@ if errorCount + failureCount:
 print ('--- SCORE: %s%% --' % score)
 
 
-figleaf.stop()
-figleaf.write_coverage('.figleaf',append=True)
-
-
-
-# generate html report
-cmd = "../ext/figleaf/figleaf2html -d figleaf_report .figleaf "
-print "Executing cmd: '%s'" % cmd
-result = os.system(cmd) 
-
+coverage.stop()
+coverage.generate_report()

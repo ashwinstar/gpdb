@@ -42,6 +42,8 @@ Usage: gpdetective <option> [dbname]
 '''
 #============================================================
 import sys, os, tempfile, subprocess, re, getopt, types, traceback, datetime
+from gppylib.gpcoverage import GpCoverage
+
 libdir = sys.path[0] + '/lib'
 try: 
     from pygresql import pg
@@ -1108,6 +1110,8 @@ class GPDetective:
         os.chdir(self.tardir)
 
 #================================================================
+coverage = GpCoverage()
+coverage.start()
 
 try:
     d = GPDetective()
@@ -1130,5 +1134,8 @@ except Exception, e:
     print "   Unhandled internal error:" + str(e)
     print traceback.format_exc()
     exit(1)
+finally:
+    coverage.stop()
+    coverage.generate_report()
 
 exit(0);

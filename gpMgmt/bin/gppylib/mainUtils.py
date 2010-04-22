@@ -6,7 +6,6 @@ if sys.version_info < (2, 5, 0):
 '''Error: %s is supported on Python versions 2.5 or greater
 Please upgrade python installed on this machine.''' % gProgramName)
 
-import figleaf
 from gppylib import gplog
 from gppylib.commands import unix
 from gppylib.system import configurationInterface, configurationImplGpdb, fileSystemInterface, \
@@ -53,10 +52,7 @@ def simple_main( createOptionParserFn, createCommandFn, mainOptions=None) :
     fileSystemInterface.registerFileSystemProvider( fileSystemImplOs.GpFileSystemProviderUsingOs())
     osInterface.registerOsProvider( osImplNative.GpOsProviderUsingNative())
     faultProberInterface.registerFaultProber( faultProberImplGpdb.GpFaultProberImplGpdb())
-    use_figleaf=os.getenv('USE_FIGLEAF', None)
 
-    if use_figleaf:
-        figleaf.start()
     commandObject=None
     parser = None
 
@@ -115,9 +111,6 @@ def simple_main( createOptionParserFn, createCommandFn, mainOptions=None) :
     finally:
         if commandObject:
             commandObject.cleanup()
-        if use_figleaf:
-            figleaf.stop()
-            figleaf.write_coverage(os.path.expanduser("~") + '/.figleaf',append=True)
 
 def addStandardLoggingAndHelpOptions(parser, includeNonInteractiveOption):
     parser.set_usage('%prog [--help] [options] ')

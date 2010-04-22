@@ -27,6 +27,7 @@ sys.path.append(sys.path[0] + '/lib')
 try:
     import gplib
     import getopt, popen2, os
+    from gppylib.gpcoverage import GpCoverage
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
@@ -94,6 +95,9 @@ def run(cmd, peer):
 
 
 #############
+coverage = GpCoverage()
+coverage.start()
+    
 try:
     parseCommandLine()
     hostlist = gplib.HostList()
@@ -136,3 +140,6 @@ try:
 
 except KeyboardInterrupt:
     sys.exit('\nInterrupted...')
+finally:
+    coverage.stop()
+    coverage.generate_report()

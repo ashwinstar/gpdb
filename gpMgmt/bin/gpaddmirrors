@@ -11,8 +11,15 @@
 # import mainUtils FIRST to get python version check
 from gppylib.mainUtils import *
 from gppylib.programs.clsAddMirrors import *
+from gppylib.gpcoverage import GpCoverage
+
 
 #-------------------------------------------------------------------------
 if __name__ == '__main__':
+    coverage = GpCoverage()
+    coverage.start()
+    
     simple_main( GpAddMirrorsProgram.createParser, GpAddMirrorsProgram.createProgram)
 
+    coverage.stop()
+    coverage.generate_report()
