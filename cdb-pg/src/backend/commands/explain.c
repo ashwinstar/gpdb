@@ -75,6 +75,7 @@ static ErrorData *explain_defer_error(ExplainState *es);
 static void explain_outNode(StringInfo str,
 				Plan *plan, PlanState *planstate,
 				Plan *outer_plan,
+				bool *isDirectDispatchOut,
 				int indent, ExplainState *es);
 static void show_plan_tlist(Plan *plan,
 				StringInfo str, int indent, ExplainState *es);
@@ -205,7 +206,7 @@ ExplainOneQuery(Query *query, ExplainStmt *stmt, const char *queryString,
 	/* plan the query */
 	//pstmt = planner(query, cursorOptions, params);
  	plan = pg_plan_query(query,/*0,*/ params);
-	
+
 	/*
 	 * Update snapshot command ID to ensure this query sees results of any
 	 * previously executed queries.  (It's a bit cheesy to modify
@@ -315,7 +316,7 @@ ExplainOnePlan(PlannedStmt *plannedstmt, ExplainStmt *stmt,
     es->deferredError = NULL;
     es->tupOutputState = tstate;
     es->pstmt = plannedstmt;
-    
+
     /* Allocate output buffer and a scratch buffer. */
     MemoryContextSwitchTo(explaincxt);
     initStringInfoOfSize(&es->workbuf, 1000);
@@ -360,6 +361,7 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt,
     EState     *estate = NULL;
 	int			eflags;
     int         nb;
+    bool		isDirectDispatch = false;
 
 	/*
 	 * Use a snapshot with an updated command ID to ensure this query sees
@@ -429,7 +431,7 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt,
         {
             if (estate->dispatcherState && estate->dispatcherState->primaryResults)
 			{
-                CdbCheckDispatchResult(estate->dispatcherState, false);	
+                CdbCheckDispatchResult(estate->dispatcherState, false); 
 			}
         }
         PG_CATCH();
@@ -506,7 +508,11 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt,
     PG_TRY();
     {
 	    explain_outNode(buf, queryDesc->plannedstmt->planTree, queryDesc->planstate,
-					    NULL, 0, es);
+					    NULL, &isDirectDispatch, 0, es);
+	    if (isDirectDispatch && Test_print_direct_dispatch_info)
+	    {
+	    	appendStringInfoString(buf, "Direct dispatch (true)\n");
+	    }
     }
     PG_CATCH();
     {
@@ -759,6 +765,7 @@ static void
 explain_outNode(StringInfo str,
 				Plan *plan, PlanState *planstate,
 				Plan *outer_plan,
+				bool *isDirectDispatchOut,
 				int indent, ExplainState *es)
 {
 	const char	   *pname = NULL;
@@ -768,14 +775,14 @@ explain_outNode(StringInfo str,
 	char       *skip_outer_msg = NULL;
 	float		scaleFactor = 1.0; /* we will divide planner estimates by this factor to produce
 									  per-segment estimates */
-	
+
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		/**
 		 * Estimates will have to be scaled down to be per-segment (except in a few cases).
 		 */
 		scaleFactor = getgpsegmentCount();
-		
+
 		if (plan->flow != NULL) 
 		{
 			/**
@@ -787,13 +794,18 @@ explain_outNode(StringInfo str,
 				scaleFactor = 1.0;
 		}
 	}
-	
+
 	Assert(scaleFactor > 0.0);
-	
+
 	if (plan == NULL)
 	{
 		appendStringInfoChar(str, '\n');
 		return;
+	}
+
+	if (plan->directDispatch.isDirectDispatch)
+	{
+		*isDirectDispatchOut = true;
 	}
 
 	switch (nodeTag(plan))
@@ -908,7 +920,7 @@ explain_outNode(StringInfo str,
 			break;
 		case T_ExternalScan:
 			pname = "External Scan";
-			break;						
+			break;
 		case T_IndexScan:
 			pname = "Index Scan";
 			break;
@@ -939,7 +951,7 @@ explain_outNode(StringInfo str,
 		case T_ShareInputScan:
 			{
 				ShareInputScan *sisc = (ShareInputScan *) plan;
-				appendStringInfo(str, "Shared Scan (share slice:id %d:%d)", 
+				appendStringInfo(str, "Shared Scan (share slice:id %d:%d)",
 						currentSlice ? currentSlice->sliceIndex : -1, sisc->share_id);
 				pname = "";
 			}
@@ -1328,7 +1340,7 @@ explain_outNode(StringInfo str,
 				ListCell *cell;
 				char orderKeyStr[32]; /* XXX big enough */
 				int i;
-				
+
 				if ( window->numPartCols > 0 )
 				{
 					show_grouping_keys(plan,
@@ -1342,18 +1354,18 @@ explain_outNode(StringInfo str,
 					i = 0;
 				else
 					i = -1;
-					
+
 				foreach(cell, window->windowKeys)
 				{
 					WindowKey *key = (WindowKey *) lfirst(cell);
-					
+
 					if ( i < 0 )
 						sprintf(orderKeyStr, "Order By");
 					else
 					{
 						sprintf(orderKeyStr, "Order By (level %d)", ++i);
 					}
-					
+
 					show_sort_keys(outerPlan(plan),
 								   key->numSortCols,
 								   key->sortColIdx,
@@ -1375,7 +1387,7 @@ explain_outNode(StringInfo str,
 		{
 			bool bLimit = (((Sort *) plan)->limitCount
 						   || ((Sort *) plan)->limitOffset);
-			
+
 			bool bNoDup = ((Sort *) plan)->noduplicates;
 
 			char *SortKeystr = "Sort Key";
@@ -1469,7 +1481,7 @@ explain_outNode(StringInfo str,
             }
             else
             {
-                /* 
+                /*
                  * CDB TODO: In non-parallel query, all qDispSliceId's are 0.
                  * Should fill them in properly before ExecutorStart(), but
                  * for now, just omit the slice id.
@@ -1486,6 +1498,7 @@ explain_outNode(StringInfo str,
 							exec_subplan_get_plan(es->pstmt, sp),
 							sps->planstate,
 							NULL,
+							isDirectDispatchOut,
 							indent + 4, es);
 		}
         es->currentSlice = saved_slice;
@@ -1508,6 +1521,7 @@ explain_outNode(StringInfo str,
 						outerPlanState(planstate),
 						(IsA(plan, BitmapHeapScan) |
 						 IsA(plan, BitmapAppendOnlyScan)) ? outer_plan : NULL,
+						isDirectDispatchOut,
 						indent + 3, es);
 	}
     else if (skip_outer)
@@ -1515,7 +1529,7 @@ explain_outNode(StringInfo str,
 		for (i = 0; i < indent; i++)
 			appendStringInfo(str, "  ");
 		appendStringInfo(str, "  ->  ");
-		appendStringInfo(str, skip_outer_msg); 
+		appendStringInfo(str, skip_outer_msg);
 		appendStringInfo(str, "\n");
     }
 
@@ -1528,6 +1542,7 @@ explain_outNode(StringInfo str,
 		explain_outNode(str, innerPlan(plan),
 						innerPlanState(planstate),
 						outerPlan(plan),
+						isDirectDispatchOut,
 						indent + 3, es);
 	}
 
@@ -1556,6 +1571,7 @@ explain_outNode(StringInfo str,
 			explain_outNode(str, subnode,
 							appendstate->appendplans[j],
 							outer_plan,
+							isDirectDispatchOut,
 							indent + 3, es);
 			j++;
 		}
@@ -1580,6 +1596,7 @@ explain_outNode(StringInfo str,
 			explain_outNode(str, subnode,
 							bitmapandstate->bitmapplans[j],
 							outer_plan, /* pass down same outer plan */
+							isDirectDispatchOut,
 							indent + 3, es);
 			j++;
 		}
@@ -1604,6 +1621,7 @@ explain_outNode(StringInfo str,
 			explain_outNode(str, subnode,
 							bitmaporstate->bitmapplans[j],
 							outer_plan, /* pass down same outer plan */
+							isDirectDispatchOut,
 							indent + 3, es);
 			j++;
 		}
@@ -1622,6 +1640,7 @@ explain_outNode(StringInfo str,
 		explain_outNode(str, subnode,
 						subquerystate->subplan,
 						NULL,
+						isDirectDispatchOut,
 						indent + 3, es);
 	}
 
@@ -1647,6 +1666,7 @@ explain_outNode(StringInfo str,
 							exec_subplan_get_plan(es->pstmt, sp),
 							sps->planstate,
 							NULL,
+							isDirectDispatchOut,
 							indent + 4, es);
 		}
 	}
@@ -1678,7 +1698,7 @@ static void show_plan_tlist(Plan *plan, StringInfo str, int indent,
 	/* The tlist of an Append isn't real helpful, so suppress it */
 	if (IsA(plan, Append))
 		return;
-	
+
 	/* TODO: Likewise for RecursiveUnion */
 	//if (IsA(plan, RecursiveUnion))
 	//        return;
@@ -1915,14 +1935,14 @@ show_grouping_keys(Plan        *plan,
 			/* Append "grouping" explicitly. */
 			exprstr = grping_str;
 		}
-		
+
 		else if (IsA(target->expr, GroupId))
 		{
 			sprintf(grping_str, "groupid");
 			/* Append "groupid" explicitly. */
 			exprstr = grping_str;
 		}
-		
+
 		else
 			/* Deparse the expression, showing any top-level cast */
 			exprstr = deparse_expr_sweet((Node *) target->expr, context,
