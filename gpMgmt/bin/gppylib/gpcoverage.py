@@ -75,13 +75,14 @@ class GpFigleafCoverage():
     def generate_report(self, directory=None):
         """Generates the html reports and puts them in the directory
         specified."""
-        try:
-            if not directory:
-                directory = os.path.normpath(os.path.expanduser("~") + '/.figleaf')
-            self.logger.info('Generating code coverage HTML reports to %s' % directory)
-            GpWriteFigleafCoverageHtml.local('Generate HTML', self.filename, directory)
-        except Exception, e:
-            self.logger.error('Error generating HTML code cover reports: %s' % e)
+        if os.getenv('USE_FIGLEAF', None):
+            try:
+                if not directory:
+                    directory = os.path.normpath(os.path.expanduser("~") + '/.figleaf')
+                self.logger.info('Generating code coverage HTML reports to %s' % directory)
+                GpWriteFigleafCoverageHtml.local('Generate HTML', self.filename, directory)
+            except Exception, e:
+                self.logger.error('Error generating HTML code cover reports: %s' % e)
                 
     def delete_files(self, directory=None):
         """Deletes code coverage files."""
