@@ -1937,7 +1937,8 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 		pthread_cond_signal(&rx_thread_cond);
 	}
 
-	elog(DEBUG1, "TeardownUDPInterconnect: total pkt count " INT64_FORMAT
+	elog((gp_interconnect_log_stats ? LOG : DEBUG1),
+		 "TeardownUDPInterconnect: total pkt count " INT64_FORMAT
 		 " dropped acks " INT64_FORMAT " retransmits " INT64_FORMAT
 		 " conn mismatch " INT64_FORMAT " rx overrun " INT64_FORMAT
 		 " crc error" INT64_FORMAT,

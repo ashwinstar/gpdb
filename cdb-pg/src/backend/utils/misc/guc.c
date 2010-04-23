@@ -1897,6 +1897,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_interconnect_log_stats", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Emit statistics from the UDP-IC at the end of every statement."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_interconnect_log_stats,
+		false, NULL, NULL
+	},
+
+	{
 		{"gp_version_mismatch_error", PGC_USERSET, QUERY_TUNING_OTHER,
 			gettext_noop("QD/QE version string mismatches reported as an error"),
 			NULL,
@@ -3306,7 +3316,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_GPDB_ADDOPT
         },
         &Gp_interconnect_queue_depth,
-        4, 1, 256, NULL, NULL
+        4, 1, 4096, NULL, NULL
 	},
 
 	{
