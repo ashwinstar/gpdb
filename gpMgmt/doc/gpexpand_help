@@ -109,7 +109,10 @@ Ending date and time for the expansion session.
 
 -i <configuration_file>
 
-Specify the expansion configuration file.
+Specifies the name of the expansion configuration file, which contains 
+one line for each segment to be added in the format of:
+hostname:port:fselocation:dbid:content:preferred_role:replication_port
+
 
 -f <hosts_file>
 
