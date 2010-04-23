@@ -83,6 +83,8 @@ typedef VariableCacheData *VariableCache;
 /* in transam/varsup.c */
 extern VariableCache ShmemVariableCache;
 
+extern int xid_stop_limit;
+
 
 /*
  * prototypes for functions in transam/transam.c

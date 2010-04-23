@@ -2930,6 +2930,15 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"xid_stop_limit", PGC_POSTMASTER, WAL,
+			gettext_noop("Sets the number of XIDs before XID wraparound at which we will no longer allow the system to be started."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&xid_stop_limit,
+		20000000, 0, INT_MAX, NULL, NULL
+	},
+	{
 		{"max_fsm_relations", PGC_POSTMASTER, RESOURCES_FSM,
 			gettext_noop("Sets the maximum number of tables and indexes for which free space is tracked."),
 			NULL

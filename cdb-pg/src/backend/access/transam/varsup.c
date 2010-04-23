@@ -31,6 +31,7 @@
 /* pointer to "variable cache" in shared memory (set up by shmem.c) */
 VariableCache ShmemVariableCache = NULL;
 
+int xid_stop_limit = 20000000;
 
 /*
  * Allocate the next XID for my new transaction or subtransaction.
@@ -229,27 +230,27 @@ SetTransactionIdLimit(TransactionId oldest_datfrozenxid,
 
 	/*
 	 * We'll refuse to continue assigning XIDs in interactive mode once we get
-	 * within 1M transactions of data loss.  This leaves lots of room for the
-	 * DBA to fool around fixing things in a standalone backend, while not
-	 * being significant compared to total XID space. (Note that since
+	 * within xid_stop_limit transactions of data loss.  This leaves lots of
+	 * room for the DBA to fool around fixing things in a standalone backend,
+	 * while not being significant compared to total XID space. (Note that since
 	 * vacuuming requires one transaction per table cleaned, we had better be
 	 * sure there's lots of XIDs left...)
 	 */
-	xidStopLimit = xidWrapLimit - 1000000;
+	xidStopLimit = xidWrapLimit - (TransactionId)xid_stop_limit;
 	if (xidStopLimit < FirstNormalTransactionId)
 		xidStopLimit -= FirstNormalTransactionId;
 
 	/*
-	 * We'll start complaining loudly when we get within 10M transactions of
-	 * the stop point.	This is kind of arbitrary, but if you let your gas
-	 * gauge get down to 1% of full, would you be looking for the next gas
-	 * station?  We need to be fairly liberal about this number because there
-	 * are lots of scenarios where most transactions are done by automatic
-	 * clients that won't pay attention to warnings. (No, we're not gonna make
-	 * this configurable.  If you know enough to configure it, you know enough
-	 * to not get in this kind of trouble in the first place.)
+	 * We'll start complaining loudly when we get within 10M + xid_stop_limit
+	 * transactions of the stop point.	This is kind of arbitrary, but if 
+	 * you let your gas gauge get down to 1% of full, would you be looking for
+	 * the next gas station?  We need to be fairly liberal about this number
+	 * because there are lots of scenarios where most transactions are done by
+	 * automatic clients that won't pay attention to warnings. (No, we're not 
+	 * gonna make this configurable.  If you know enough to configure it, you
+	 * know enough to not get in this kind of trouble in the first place.)
 	 */
-	xidWarnLimit = xidStopLimit - 10000000;
+	xidWarnLimit = xidStopLimit - 10000000 - (TransactionId)xid_stop_limit;
 	if (xidWarnLimit < FirstNormalTransactionId)
 		xidWarnLimit -= FirstNormalTransactionId;
 
