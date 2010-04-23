@@ -671,7 +671,7 @@ XLogInsert_Internal(RmgrId rmid, uint8 info, XLogRecData *rdata, TransactionId h
 	uint32		freespace;
 	int			curridx;
 	XLogRecData *rdt;
-	char 		*rdatabuf;
+	char 		*rdatabuf = NULL;
 	Buffer		dtbuf[XLR_MAX_BKP_BLOCKS];
 	bool		dtbuf_bkp[XLR_MAX_BKP_BLOCKS];
 	BkpBlock	dtbuf_xlg[XLR_MAX_BKP_BLOCKS];
