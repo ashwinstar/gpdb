@@ -1587,7 +1587,7 @@ class SegHardLinks(Command):
     
     """ These two values determin the upper limit as to the number and size of files copied with each copy. """
     _max_files_per_pysync = 500
-    _max_size_kb_per_pysync  = 50000000
+    _max_size_kb_per_pysync  = 10000000
 
     def __init__(self, mirror_info, logger):
         logger.debug("in SegHardLinks__init__() %s:%s primary seg id: %s" % (mirror_info.primary_host, mirror_info.primary_data_directory, str(mirror_info.primary_dbid)))
