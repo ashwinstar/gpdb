@@ -71,6 +71,8 @@ kernel.sem = 250 64000 100 512
 net.ipv4.tcp_tw_recycle=1 
 net.ipv4.tcp_max_syn_backlog=4096 
 net.core.netdev_max_backlog=10000
+net.ipv4.conf.default.arp_filter=1
+net.ipv4.conf.all.arp_filter=1
 vm.overcommit_memory=2
 
 In /etc/security/limits.conf:
