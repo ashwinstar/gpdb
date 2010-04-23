@@ -117,15 +117,11 @@ class Guc:
         # todo add code here...
         # be careful 128KB in postgresql.conf is translated into 32KB units
 
-        if self.name in prohibitedGucs:
-            return ("The parameter '%s' can not be set with this tool" % self.name)
-
-        if self.name == "max_connections":
+        if self.name == "max_connections" and (not options.masteronly):
             try:
                 s = int(newval)
                 m = int(newmasterval)
                 if s <= m:
-                    print "%d %d" % (s , m )
                     return "the value of max_connections must be greater on the segments than on the master"
             except:
                 return "invalid value for max_connections"
@@ -235,7 +231,7 @@ try:
 
     gparray = GpArray.initFromCatalog(dburl,utility=True)
 
-    if not options.skipvalidation and not options.remove:
+    if not options.skipvalidation:
 
         conn = dbconn.connect(dburl, True)
     
@@ -255,6 +251,10 @@ try:
             sys.exit(1)
     
         conn.close()
+
+        if options.entry in prohibitedGucs:
+            logger.fatal("The parameter '%s' is not modifiable with this tool" % options.entry)
+            sys.exit(1)
     
         if options.value:
             msg = guc.validate(options.value, options.mastervalue)
