@@ -44,6 +44,12 @@ class GpConfigurationProvider :
         """
         pass
 
+    def sendPgElogFromMaster( self, msg, sendAlerts):
+        """
+        Send a message from the master database using select pg_elog ... 
+        """
+        pass
+
     def updateSystemConfig( self, systemConfiguration, textForConfigTable ) :
         """
 

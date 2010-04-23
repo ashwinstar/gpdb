@@ -20,6 +20,7 @@ from gppylib.gplog import *
 from gppylib.utils import checkNotNone
 from gppylib.system.configurationInterface import *
 from gppylib.db import dbconn
+from gppylib.test.testUtils import testOutput
 
 logger = get_default_logger()
 
@@ -55,6 +56,13 @@ class GpConfigurationProviderForTesting(GpConfigurationProvider) :
         result = GpArray(segments)
         result.setFaultStrategy(self.__faultStrategy)
         return result
+
+    def sendPgElogFromMaster( self, msg, sendAlerts):
+        """
+        Send a message from the master database using select pg_elog ...
+        """
+        testOutput("Elog on master: " + ("(with alerts)" if sendAlerts else "(without alerts)") + msg)
+
 
     def updateSystemConfig( self, systemConfiguration, textForConfigTable ) :
         """

@@ -404,6 +404,9 @@ class GpRecoverSegmentProgram:
             logger.error('Failed to restart Greenplum Database: segment recovery failed')
         else:
             logger.info('Successfully restarted the Greenplum Database')
+
+        configInterface.getConfigurationProvider().sendPgElogFromMaster( "SAN recovery has completed.", True)
+
         return 0
 
     def SanFailback_mountpoint(self, mp_id, mp_dict):
@@ -543,6 +546,9 @@ class GpRecoverSegmentProgram:
                         raise UserAbortedException()
 
                 mirrorBuilder.buildMirrors("recover", gpEnv, gpArray )
+
+                confProvider.sendPgElogFromMaster("Recovery of %d segment(s) has been started." % \
+                        len(mirrorBuilder.getMirrorsToBuild()), True)
 
                 logger.info("Segments have been recovered; data synchronization is in progress.")
                 logger.info("Use gpstate to check the resynchronization progress.")

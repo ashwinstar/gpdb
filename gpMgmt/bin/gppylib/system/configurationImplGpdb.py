@@ -63,6 +63,24 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
 
         return GpArray.initFromCatalog(self.__masterDbUrl, self.__useUtilityMode)
 
+    def sendPgElogFromMaster( self, msg, sendAlerts):
+        """
+        Send a message from the master database using select pg_elog ...
+        """
+        # ensure initializeProvider() was called
+        checkNotNone("masterDbUrl", self.__masterDbUrl)
+
+        conn = None
+        try:
+            conn = dbconn.connect(self.__masterDbUrl, self.__useUtilityMode)
+            dbconn.execSQL(conn, "SELECT PG_ELOG(" +
+                        self.__toSqlCharValue(msg) + "," +
+                        ("true" if sendAlerts else "false") + ")")
+        finally:
+            if conn:
+                conn.close()
+
+
     def updateSystemConfig( self, gpArray, textForConfigTable ) :
         """
         Update the configuration for the given segments in the underlying

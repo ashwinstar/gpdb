@@ -124,6 +124,13 @@ struct segmentStatusChange {
 	uint8 newStatus;
 };
 
+
+typedef enum FilerepModeUpdateLoggingEnum
+{
+    FilerepModeUpdateLoggingEnum_MirrorToChangeTracking,
+    FilerepModeUpdateLoggingEnum_PrimaryToChangeTracking,
+} FilerepModeUpdateLoggingEnum;
+
 static PGconn *openSelfConn(CdbComponentDatabaseInfo *entryDB);
 static void closeSelfConn(PGconn *conn);
 static void addChangeHistory(PGconn *conn, struct segmentStatusChange *change, int changeCount, char *time_str);
@@ -132,7 +139,7 @@ static void probeUpdateConfig(PGconn *entryConn, struct segmentStatusChange *cha
 static void getGpFailover_strategy(char *strategy);
 static void SAN_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str);
 
-static void Filerep_mode_update(int dbid, char *mode, char status);
+static void Filerep_mode_update(int dbid, char *mode, char status, FilerepModeUpdateLoggingEnum logMsgToSend);
 static void Filerep_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str);
 
 static void Null_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str);
@@ -1901,12 +1908,12 @@ Filerep_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int cha
 			else if (new_pri && !old_pri)
 			{
 				/* promote mirror to primary */
-				Filerep_mode_update(changes[i].dbid, "primary", 'c');
+				Filerep_mode_update(changes[i].dbid, "primary", 'c', FilerepModeUpdateLoggingEnum_MirrorToChangeTracking);
 			}
 			else if (old_pri && new_pri)
 			{
-				/* convert to change-logging ? or mirrorless ? */
-				Filerep_mode_update(changes[i].dbid, "primary", 'c');
+				/* convert primary to changetracking */
+				Filerep_mode_update(changes[i].dbid, "primary", 'c', FilerepModeUpdateLoggingEnum_PrimaryToChangeTracking);
 			}
 		}
 	}
@@ -1978,7 +1985,7 @@ Filerep_get_hosts_by_dbid(int dbid, char **hostname_p, int *host_port_p, int *ho
 }
 
 static void
-Filerep_mode_update(int dbid, char *mode, char status)
+Filerep_mode_update(int dbid, char *mode, char status, FilerepModeUpdateLoggingEnum logMsgToSend)
 {
 	int f = -1;
 	char tmp_filename[35];
@@ -2000,6 +2007,23 @@ Filerep_mode_update(int dbid, char *mode, char status)
     if (f < 0)
     {
         elog(FATAL, "Failed to create command file '%s': %m", tmp_filename);
+    }
+
+    switch ( logMsgToSend )
+    {
+        case FilerepModeUpdateLoggingEnum_MirrorToChangeTracking:
+            ereport(LOG,
+                (errmsg("Mirror segment on %s:%d is taking over as primary in change tracking mode.",
+                        seg_addr, seg_pm_port ),
+                 errSendAlert(true)));
+            break;
+
+        case FilerepModeUpdateLoggingEnum_PrimaryToChangeTracking:
+            ereport(LOG,
+                (errmsg("Primary segment on %s:%d is going into change tracking mode.",
+                        seg_addr, seg_pm_port ),
+                 errSendAlert(true)));
+            break;
     }
 
 	if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
@@ -2058,6 +2082,22 @@ Filerep_mode_update(int dbid, char *mode, char status)
             }
         }
 
+        switch ( logMsgToSend )
+        {
+            case FilerepModeUpdateLoggingEnum_MirrorToChangeTracking:
+                ereport(LOG,
+                    (errmsg("Changing mirror segment on %s:%d to be the primary in change tracking mode completed successfully.",
+                            seg_addr, seg_pm_port ),
+                     errSendAlert(true)));
+                break;
+            case FilerepModeUpdateLoggingEnum_PrimaryToChangeTracking:
+                ereport(LOG,
+                    (errmsg("Changing primary segment on %s:%d to change tracking mode completed successfully.",
+                            seg_addr, seg_pm_port ),
+                     errSendAlert(true)));
+                break;
+        }
+        
 		return;
 	} while (0);
 
@@ -2145,6 +2185,15 @@ markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *dbInfo)
 				 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: changed segment to insync from resync.')",
 				 timestamp_str, dbInfo->dbid);
         executeEntrySQL(entryConn, cmd);
+
+        bool isPrimary = segStatus & FTS_STATUS_PRIMARY;
+        if ( ! isPrimary)
+        {
+            ereport(LOG,
+                    (errmsg("Resynchronization of mirror segment on %s:%d has completed.",
+                            dbInfo->address, dbInfo->port ),
+                     errSendAlert(true)));
+        }
     }
 
     closeSelfConn(entryConn);
@@ -2417,6 +2466,11 @@ startSegment_forDbid(int dbid)
 		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
 			elog(LOG, "command is [%s]", cmd);
 		system(cmd);
+
+		ereport(LOG,
+                (errmsg("SAN mirror segment on %s:%d is taking over as primary.",
+                        host, port ),
+                 errSendAlert(true)));
 
 		break;
 	}
