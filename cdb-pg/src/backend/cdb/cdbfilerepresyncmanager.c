@@ -780,6 +780,10 @@ FileRepPrimary_RunResyncManager(void)
 				 */
 				pg_usleep(50000L);  // 50ms
 				
+				LWLockAcquire(MirroredLock, LW_EXCLUSIVE);
+				PersistentFileSysObj_MarkAppendOnlyCatchup();
+				LWLockRelease(MirroredLock);
+				
 				ResynchronizeScanToken_Init(&token);
 				continue;
 			}
@@ -869,6 +873,8 @@ FileRepResyncManager_InSyncTransition(void)
 		 * (MirroredLock, LW_EXCLUSIVE) is acquired and released in CreateCheckPoint
 		 */
 		elog(LOG, "FileRepResyncManager_InSyncTransition() RequestCheckpoint() BEGIN");
+		
+		MirroredFlatFile_DropFilesFromDir();
 		
 		fileRepResyncShmem->checkpointRequest = TRUE;		
 		CreateCheckPoint(false, true);

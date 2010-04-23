@@ -68,13 +68,6 @@
 #include "cdb/cdbmirroredfilesysobj.h"
 #include "cdb/cdbpersistentfilesysobj.h"
 
-
-
-/*
- * Directory where Two-phase commit files reside within PGDATA
- */
-#define TWOPHASE_DIR "pg_twophase"
-
 /* GUC variable, can't be changed after startup */
 int			max_prepared_xacts = 5;
 
@@ -2090,11 +2083,6 @@ TwoPhaseRecoverMirror(void)
 	DIR				*cldir;
 	struct dirent	*clde;
 	int				retval = 0;
-
-	MirroredFlatFile_Drop(TWOPHASE_DIR, 
-			      "",
-			      /* supressError */ true,
-			      /* isMirrorRecovery */ true); 
 
 	cldir = AllocateDir(TWOPHASE_DIR);
 	while ((clde = ReadDir(cldir, TWOPHASE_DIR)) != NULL) {

@@ -20,6 +20,8 @@
 
 Datum		gp_changetracking_log(PG_FUNCTION_ARGS);
 
+#define NUM_COLUMNS_IN_FN_OUTPUT (9)
+
 typedef struct CTContext
 {
 	File	file;			/* changetracking File */
@@ -32,6 +34,9 @@ typedef struct CTContext
 	int		logRecOff;		/* offset of next record in page */
 	int		logPageOff;		/* offset of current page in file */
 
+    HeapTuple heapTuple;
+    Datum     tupleValuesToCopy[NUM_COLUMNS_IN_FN_OUTPUT];
+    int tupleDataLen;       /* used for asserting that tuple building is correct */
 } CTContext;
 
 
@@ -107,7 +112,9 @@ gp_changetracking_log(PG_FUNCTION_ARGS)
 	FuncCallContext *funcctx;
 	CTContext *context;
 
-	if (SRF_IS_FIRSTCALL())
+	bool isFirstCall = SRF_IS_FIRSTCALL();
+
+	if (isFirstCall)
 	{
 		TupleDesc	tupdesc;
 		MemoryContext oldcontext;
@@ -121,7 +128,7 @@ gp_changetracking_log(PG_FUNCTION_ARGS)
 
 		/* build tupdesc for result tuples */
 		/* this had better match gp_distributed_xacts view in system_views.sql */
-		tupdesc = CreateTemplateTupleDesc(9, false);
+		tupdesc = CreateTemplateTupleDesc(NUM_COLUMNS_IN_FN_OUTPUT, false);
 		
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "segment_id", INT2OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "dbid", INT2OID, -1, 0);
@@ -163,6 +170,12 @@ gp_changetracking_log(PG_FUNCTION_ARGS)
 		context->readHeaderBuf = (char *) palloc(sizeof(ChangeTrackingPageHeader));
 		context->readRecordBuf = (char *) palloc(sizeof(ChangeTrackingRecord));
 
+        /* form the sample tuple and tuple data that will be updated on each function call */
+        MemSet(context->tupleValuesToCopy, 0, sizeof(context->tupleValuesToCopy));
+        context->tupleValuesToCopy[0] = Int16GetDatum((int16)GpIdentity.segindex);
+        context->tupleValuesToCopy[1] = Int16GetDatum((int16)GpIdentity.dbid);
+        context->heapTuple = NULL; /* will be initialized lazily */
+
 		funcctx->user_fctx = (void *) context;
 
 		MemoryContextSwitchTo(oldcontext);
@@ -171,36 +184,64 @@ gp_changetracking_log(PG_FUNCTION_ARGS)
 	funcctx = SRF_PERCALL_SETUP();
 	context = (CTContext *) funcctx->user_fctx;
 
+	AssertEquivalent(isFirstCall, context->heapTuple == NULL);
+
 	/*
 	 * Get the next record. No more records? we're done.
 	 */
 	if (ReadRecord(context))
 	{
-		Datum		values[9];
-		bool		nulls[9];
-		HeapTuple	tuple;
-		Datum		result;
-		
 		ChangeTrackingRecord *record = (ChangeTrackingRecord *) context->readRecordBuf;
 		
 		/*
 		 * Form tuple with appropriate data.
 		 */
-		MemSet(values, 0, sizeof(values));
-		MemSet(nulls, false, sizeof(nulls));
 
-		values[0] = Int16GetDatum((int16)GpIdentity.segindex);
-		values[1] = Int16GetDatum((int16)GpIdentity.dbid);
-		values[2] = ObjectIdGetDatum(record->relFileNode.spcNode);
-		values[3] = ObjectIdGetDatum(record->relFileNode.dbNode);
-		values[4] = ObjectIdGetDatum(record->relFileNode.relNode);
-		values[5] = PointerGetDatum(&record->xlogLocation);
-		values[6] = UInt32GetDatum(record->bufferPoolBlockNum);		
-		values[7] = PointerGetDatum(&record->persistentTid);
-		values[8] = Int64GetDatum(record->persistentSerialNum);
-		       
-		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
-		result = HeapTupleGetDatum(tuple);
+        /* array entries 0 and 1 have been filled in with the gpidentity values already */
+		context->tupleValuesToCopy[2] = ObjectIdGetDatum(record->relFileNode.spcNode);
+		context->tupleValuesToCopy[3] = ObjectIdGetDatum(record->relFileNode.dbNode);
+		context->tupleValuesToCopy[4] = ObjectIdGetDatum(record->relFileNode.relNode);
+		context->tupleValuesToCopy[5] = PointerGetDatum(&record->xlogLocation);
+		context->tupleValuesToCopy[6] = UInt32GetDatum(record->bufferPoolBlockNum);
+		context->tupleValuesToCopy[7] = PointerGetDatum(&record->persistentTid);
+		context->tupleValuesToCopy[8] = Int64GetDatum(record->persistentSerialNum);
+
+        /*
+         * we reuse the same heap tuple for subsequent calls.  This only works because all of our fields
+         *   are of the same length
+         */
+        if ( context->heapTuple == NULL )
+        {
+            /* first time through, create a heap tuple */
+            bool nulls[NUM_COLUMNS_IN_FN_OUTPUT];
+            MemSet(nulls, false, sizeof(nulls));
+
+    		MemoryContext oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+            context->heapTuple = heap_form_tuple(funcctx->tuple_desc, context->tupleValuesToCopy, nulls);
+            context->tupleDataLen = heap_compute_data_size(funcctx->tuple_desc, context->tupleValuesToCopy, nulls);
+		    MemoryContextSwitchTo(oldcontext);
+        }
+        else
+        {
+            /**
+             * the calling code will copy our tuple data, so reuse our template one
+             */
+            HeapTupleHeader td = context->heapTuple->t_data;
+#ifdef USE_ASSERT_CHECKING
+            int len =
+#endif
+                heap_fill_tuple(funcctx->tuple_desc,
+                            context->tupleValuesToCopy,
+                            NULL /* isnull */,
+                            (char *) td + td->t_hoff,
+                            &td->t_infomask,
+                            NULL /* bits -- NULL is okay because we have no nulls */);
+
+            Assert(len == context->tupleDataLen);
+        }
+
+		Datum result = HeapTupleGetDatum(context->heapTuple);
 		SRF_RETURN_NEXT(funcctx, result);
 	}
 

@@ -19,6 +19,11 @@
 #include "utils/timestamp.h"
 
 /*
+ * Directory where two phase commit files reside within PGDATA
+ */
+#define TWOPHASE_DIR "pg_twophase"
+
+/*
  * GlobalTransactionData is defined in twophase.c; other places have no
  * business knowing the internal definition.
  */

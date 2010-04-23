@@ -52,7 +52,7 @@ typedef struct FileRepAckHashEntry_s {
 	XLogRecPtr				xLogEof;
 		/* logical xlog EOF, required for xlog reconcile */
 	
-	int						mirrorErrno;
+	int						mirrorStatus;
 	
 } FileRepAckHashEntry_s;
 
@@ -70,7 +70,7 @@ static void FileRepAckPrimary_ShmemReInit(void);
 
 static XLogRecPtr xLogEof = {0, 0};
 
-static int mirrorErrno = 0;
+static int mirrorStatus = 0;
 
 /*
  * Find if acknowledgement is received from mirror.
@@ -585,7 +585,7 @@ FileRepAckPrimary_NewHashEntry(
 		entry->fileRepRelationType = fileRepRelationType;
 		entry->fileRepAckState = FileRepAckStateWaiting;
 		entry->xLogEof = xLogEof;
-		entry->mirrorErrno = mirrorErrno;
+		entry->mirrorStatus = mirrorStatus;
 		
 		LWLockRelease(FileRepAckHashShmemLock);
 		break;
@@ -658,7 +658,7 @@ FileRepAckPrimary_UpdateHashEntry(
 	entry->fileRepAckState = fileRepAckState;
 	
 	entry->xLogEof = xLogEof;
-	entry->mirrorErrno = mirrorErrno;
+	entry->mirrorStatus = mirrorStatus;
 	
 	FileRep_IpcSignal(fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->semP, 
 					  fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->refCountSemP);
@@ -731,7 +731,7 @@ FileRepAckPrimary_IsOperationCompleted(
 				
 				retval = TRUE;
 				xLogEof = entry->xLogEof;
-				mirrorErrno = entry->mirrorErrno;
+				mirrorStatus = entry->mirrorStatus;
 				/* no BREAK */
 			case FileRepAckStateMirrorInFault:
 				
@@ -991,26 +991,36 @@ FileRepAckPrimary_RunConsumer(void)
 		Assert(fileRepMessageHeader->fileRepOperation != FileRepOperationWrite);
 		Assert(fileRepMessageHeader->fileRepMessageBodyCrc == 0);
 		
-		if (fileRepMessageHeader->fileRepOperation == FileRepOperationReconcileXLogEof) {
-			
-			xLogEof = fileRepMessageHeader->fileRepOperationDescription.reconcile.xLogEof;
+		switch (fileRepMessageHeader->fileRepOperation)
+		{
+			case FileRepOperationReconcileXLogEof:			
+				xLogEof = fileRepMessageHeader->fileRepOperationDescription.reconcile.xLogEof;
 #ifdef FILEREP_DEBUG
-			ereport(LOG,
+				ereport(LOG,
 					(errmsg("LOG(filerep): P_RunConsumer ack reconcile xlogid:'%d' reconcile xrecoff:'%d' ",
 							xLogEof.xlogid, 
 							xLogEof.xrecoff)));	
 #endif
-		}	
+				break;
 		
-		if (fileRepMessageHeader->fileRepOperation == FileRepOperationValidation) {
-			
-			mirrorErrno = fileRepMessageHeader->fileRepOperationDescription.validation.mirrorErrno;
+			case FileRepOperationValidation:
+				mirrorStatus = fileRepMessageHeader->fileRepOperationDescription.validation.mirrorStatus;
 #ifdef FILEREP_DEBUG
-			ereport(LOG,
-					(errmsg("LOG(filerep): P_RunConsumer ack validation status:'%d' ",
-							mirrorErrno)));	
+				ereport(LOG,
+					(errmsg("LOG(filerep): P_RunConsumer ack validation status:'%s' ",
+							FileRepStatusToString[mirrorStatus])));	
 #endif
-		}			
+			case FileRepOperationCreate:
+				mirrorStatus = fileRepMessageHeader->fileRepOperationDescription.create.mirrorStatus;
+#ifdef FILEREP_DEBUG
+				ereport(LOG,
+						(errmsg("LOG(filerep): P_RunConsumer ack create status:'%s' ",
+								FileRepStatusToString[mirrorStatus])));	
+#endif
+				break;
+			default:
+				break;
+		}
 		
 		if (fileRepMessageHeader->fileRepAckState != FileRepAckStateCompleted) {
 			/* 
@@ -1096,6 +1106,6 @@ FileRepAckPrimary_GetMirrorXLogEof(void)
 int
 FileRepAckPrimary_GetMirrorErrno(void)
 {
-	return mirrorErrno;
+	return mirrorStatus;
 }
 

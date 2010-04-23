@@ -15,6 +15,9 @@
 
 #include <signal.h>
 
+#include "access/twophase.h"
+#include "access/slru.h"
+#include "access/xlog_internal.h"
 #include "utils/palloc.h"
 #include "cdb/cdbfilerepprimary.h"
 #include "cdb/cdbmirroredflatfile.h"
@@ -961,6 +964,44 @@ MirrorFlatFile(
 	return retval;
 }
 
+void
+MirroredFlatFile_DropFilesFromDir(void)
+{
+
+	FileRepPrimary_MirrorDropFilesFromDir(
+										 FileRep_GetFlatFileIdentifier(TWOPHASE_DIR, ""),	
+										 FileRepRelationTypeFlatFile);
+	
+	FileRepPrimary_MirrorDropFilesFromDir(
+										 FileRep_GetFlatFileIdentifier(CLOG_DIR, ""),	
+										 FileRepRelationTypeFlatFile);
+	
+	FileRepPrimary_MirrorDropFilesFromDir(
+										 FileRep_GetFlatFileIdentifier(DISTRIBUTEDLOG_DIR, ""),	
+										 FileRepRelationTypeFlatFile);
+	
+	FileRepPrimary_MirrorDropFilesFromDir(
+										 FileRep_GetFlatFileIdentifier(DISTRIBUTEDXIDMAP_DIR, ""),	
+										 FileRepRelationTypeFlatFile);
+	
+	FileRepPrimary_MirrorDropFilesFromDir(
+										 FileRep_GetFlatFileIdentifier(MULTIXACT_MEMBERS_DIR, ""),	
+										 FileRepRelationTypeFlatFile);
+	
+	FileRepPrimary_MirrorDropFilesFromDir(
+										 FileRep_GetFlatFileIdentifier(MULTIXACT_OFFSETS_DIR, ""),	
+										 FileRepRelationTypeFlatFile);
+	
+	FileRepPrimary_MirrorDropFilesFromDir(
+										 FileRep_GetFlatFileIdentifier(SUBTRANS_DIR, ""),	
+										 FileRepRelationTypeFlatFile);
+	
+	FileRepPrimary_MirrorDropFilesFromDir(
+										 FileRep_GetFlatFileIdentifier(XLOGDIR, ""),	
+										 FileRepRelationTypeFlatFile);
+	
+}
+	
 /*
  *
  */

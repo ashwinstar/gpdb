@@ -114,7 +114,12 @@ gistDeleteSubtree(GistVacuum *gv, BlockNumber blkno)
 		XLogRecPtr	recptr;
 		gistxlogPageDelete xlrec;
 
+		// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+		RelationFetchGpRelationNodeForXLog(gv->index);
+
 		xlrec.node = gv->index->rd_node;
+		xlrec.persistentTid = gv->index->rd_segfile0_relationnodeinfo.persistentTid;
+		xlrec.persistentSerialNum = gv->index->rd_segfile0_relationnodeinfo.persistentSerialNum;
 		xlrec.blkno = blkno;
 
 		rdata[0].buffer = buffer;
@@ -235,7 +240,7 @@ vacuumSplitPage(GistVacuum *gv, Page tempPage, Buffer buffer, IndexTuple *addon,
 
 		ItemPointerSet(&key, blkno, TUPLE_IS_VALID);
 
-		rdata = formSplitRdata(gv->index->rd_node, blkno,
+		rdata = formSplitRdata(gv->index, blkno,
 							   false, &key, dist);
 		xlinfo = rdata->data;
 
@@ -453,7 +458,7 @@ gistVacuumUpdate(GistVacuum *gv, BlockNumber blkno, bool needunion)
 				XLogRecPtr	recptr;
 				char	   *xlinfo;
 
-				rdata = formUpdateRdata(gv->index->rd_node, buffer,
+				rdata = formUpdateRdata(gv->index, buffer,
 										offToDelete, nOffToDelete,
 										addon, curlenaddon, NULL);
 				xlinfo = rdata->next->data;
@@ -778,7 +783,7 @@ gistbulkdelete(PG_FUNCTION_ARGS)
 					XLogRecPtr	recptr;
 					gistxlogPageUpdate *xlinfo;
 
-					rdata = formUpdateRdata(rel->rd_node, buffer,
+					rdata = formUpdateRdata(rel, buffer,
 											todelete, ntodelete,
 											NULL, 0,
 											NULL);

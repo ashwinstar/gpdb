@@ -1755,9 +1755,27 @@ ExecMakeTableFunctionResult(ExprState *funcexpr,
 			 */
 			if (returnsTuple)
 			{
+			    const int staticBufferLimit = 200;
 				HeapTupleHeader td;
-				Datum *pd = (Datum *) palloc(tupdesc->natts * sizeof(Datum));
-				bool *pn = (bool *) palloc(tupdesc->natts * sizeof(bool));
+				Datum staticPd[staticBufferLimit];
+				bool staticNull[staticBufferLimit];
+				Datum *pd;
+				bool *pn;
+
+                /**
+                 * use memory on stack if possible, to save palloc calls
+                 */
+				if ( tupdesc->natts > staticBufferLimit)
+				{
+                    pd = (Datum *) palloc(tupdesc->natts * sizeof(Datum));
+                    pn = (bool *) palloc(tupdesc->natts * sizeof(bool));
+                }
+                else
+                {
+                    pd = staticPd;
+                    pn = staticNull;
+                }
+
 
 				td = DatumGetHeapTupleHeader(result);
 

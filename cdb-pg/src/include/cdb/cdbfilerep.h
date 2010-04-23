@@ -76,6 +76,7 @@ extern const char*  FileRepStateToString[];
 extern const char*	FileRepOperationToString[];
 extern const char*	FileRepRelationTypeToString[];
 extern const char*	FileRepAckStateToString[];
+extern const char*	FileRepStatusToString[];
 
 /****************************************************************
  * FILEREP SHARED MEMORY
@@ -333,6 +334,36 @@ typedef enum FileRepState_e {
  *
  */
 
+/* 
+ * 
+ */
+typedef enum FileRepStatus_e {
+	FileRepStatusSuccess=0,
+	
+	FileRepStatusNotDirectory,
+	
+	FileRepStatusNoSuchFileOrDirectory,
+	
+	FileRepStatusErrorReadingDirectory,
+	
+	FileRepStatusNotEmptyDirectory,
+	
+	FileRepStatusDirectoryExist,
+	
+	FileRepStatusNoSpace,
+	
+	FileRepStatusNoPermissions,
+
+	FileRepStatusNoWritePermissions,
+	
+	FileRepStatusMirrorLossOccurred,
+	
+	FileRepStatusMirrorError,
+	
+	/* the number of values in this enumeration */
+	FileRepStatus__EnumerationCount
+	
+} FileRepStatus_e;
 
 typedef enum FileRepMessageHeaderVersion_e {
 	FileRepMessageHeaderVersionOne=0,
@@ -381,7 +412,6 @@ typedef enum FileRepRelationType_e {
 	FileRepRelationTypeUnknown,
 	
 	FileRepRelationTypeNotSpecified,
-
 
 	/* the number of values in this enumeration */
 	FileRepRelationType__EnumerationCount
@@ -436,6 +466,9 @@ typedef enum FileRepOperation_e {
 	
 	FileRepOperationValidation,
 		/* Validate filespace directory */
+	
+	FileRepOperationDropFilesFromDir,
+		/* Drop Files from specified directory */
 		
 	FileRepOperationNotSpecified,
 
@@ -638,10 +671,20 @@ typedef struct FileRepOperationDescriptionHeartBeat_s {
  */
 typedef struct FileRepOperationDescriptionValidation_s {
 	
-	int		mirrorErrno;
-		/* errno status */
+	int		mirrorStatus;
 	
 } FileRepOperationDescriptionValidation_s;
+
+/*
+ *	 
+ */
+typedef struct FileRepOperationDescriptionCreate_s {
+	
+	int		reportStatus;
+	
+	int		mirrorStatus;
+	
+} FileRepOperationDescriptionCreate_s;
 
 /* 
  *
@@ -664,6 +707,8 @@ typedef union FileRepOperationDescription_u {
 	FileRepOperationDescriptionHeartBeat_s heartBeat;
 	
 	FileRepOperationDescriptionValidation_s validation;
+	
+	FileRepOperationDescriptionCreate_s create;
 	
 } FileRepOperationDescription_u;
 

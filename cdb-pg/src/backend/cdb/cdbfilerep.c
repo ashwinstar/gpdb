@@ -253,6 +253,7 @@ FileRepOperationToString[] = {
 	"Heart Beat",
 	"Create and Open",
 	"Validation FileSpace Dir",
+	"Drop files from Dir",
 	"Not Specified",
 };
 
@@ -283,6 +284,21 @@ FileRepConsumerProcIndexToString[] = {
 	"append only 2",
 	"shutdown",
 	"undefined"
+};
+
+const char*
+FileRepStatusToString[] = {
+	"success",
+	"not a directory",
+	"no such file or directory",
+	"error reading directory",
+	"not empty directory",
+	"directory exist",
+	"no space",
+	"no permissions",
+	"no write permissions",
+	"mirror loss occurred",
+	"mirror error",
 };
 
 /****************************************************************
@@ -2087,6 +2103,7 @@ FileRep_IsOperationSynchronous(FileRepOperation_e fileRepOperation)
 		case FileRepOperationClose:
 		case FileRepOperationTruncate:
 		case FileRepOperationWrite:
+		case FileRepOperationDropFilesFromDir:
 			
 			return FALSE;
 			
@@ -2547,7 +2564,8 @@ void FileRep_Main(void)
     COMPILE_ASSERT(ARRAY_SIZE(FileRepRelationTypeToString) == FileRepRelationType__EnumerationCount);
     COMPILE_ASSERT(ARRAY_SIZE(FileRepAckStateToString) == FileRepAckState__EnumerationCount);
     COMPILE_ASSERT(ARRAY_SIZE(FileRepConsumerProcIndexToString) == FileRepMessageType__EnumerationCount);
-
+	COMPILE_ASSERT(ARRAY_SIZE(FileRepStatusToString) == FileRepStatus__EnumerationCount);
+	
 	Insist(IsUnderPostmaster == TRUE);
 
 	fileRepProcessType = FileRepProcessTypeMain;

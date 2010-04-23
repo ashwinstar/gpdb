@@ -126,6 +126,10 @@ heap_compute_data_size(TupleDesc tupleDesc,
  * that reflect the tuple's data contents.
  *
  * NOTE: it is now REQUIRED that the caller have pre-zeroed the data area.
+ *
+ *
+ * @param isnull will only be used if <code>bit</code> is non-NULL
+ * @param bit should be non-NULL (refer to td->t_bits) if isnull is set and contains non-null values
  */
 Size
 heap_fill_tuple(TupleDesc tupleDesc,

@@ -265,6 +265,8 @@ extern int MirrorFlatFile(
 			   char 		*subDirectory,
 			   char			*simpleFileName);
 
+extern void MirroredFlatFile_DropFilesFromDir(void);
+
 extern int PgVersionRecoverMirror(void);
 
 #endif   /* CDBMIRROREDFLATFILE_H */

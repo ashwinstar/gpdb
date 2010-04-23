@@ -9,6 +9,7 @@
 #ifndef CDBRESYNCHRONIZECHANGETRACKING_H
 #define CDBRESYNCHRONIZECHANGETRACKING_H
 
+#include "access/gist_private.h"
 #include "access/xlog.h"
 #include "access/xlogdefs.h"
 #include "storage/relfilenode.h"
@@ -16,6 +17,7 @@
 #define CHANGETRACKINGDIR  "pg_changetracking"
 #define CHANGETRACKING_STORAGE_VERSION 1
 #define CHANGETRACKING_BLCKSZ BLCKSZ
+#define	CHANGETRACKING_XLOGDATASZ 2 * 1024
 #define CHANGETRACKING_METABUFLEN 128
 #define CHANGETRACKING_FILESEGMENT 1 /* for now, doesn't change and doesn't mean anything. a single file */
 
@@ -77,22 +79,27 @@ extern void ChangeTracking_RecordLastChangeTrackedLoc(void);
 extern void ChangeTracking_CreateInitialFromPreviousCheckpoint(void);
 
 /*
- * Make a copy of the original rdata so that we use it in case xlog
- * changes it later on.
+ * Make a copy of the rdata data buffers so that we use it 
+ * in case xlog changes it later on.
  */
-extern XLogRecData* ChangeTracking_MakeRdataCopy(XLogRecData *rdata);
-extern void ChangeTracking_FreeRdataCopy(XLogRecData *rdata);
+extern char* ChangeTracking_CopyRdataBuffers(XLogRecData*	rdata, 
+											  RmgrId		rmid,
+											  uint8			info,
+											  bool*			iscopy);
 
 /*
  * Send a single xlog record into the changetracker to examine it and add
  * the relevant information from it into the changetracker if desired.
  */
-extern void ChangeTracking_AddRecordFromXlog(
-											 RmgrId		xl_rmid,
-											 uint8		xl_info,
-											 void		*data, 
-											 XLogRecPtr *loc);
+extern void ChangeTracking_AddRecordFromXlog(RmgrId rmid, 
+											 uint8 info, 
+											 void*  data,
+											 XLogRecPtr*	loc);
 
+/*
+ * The information needed for a change tracking record to be
+ * stored.
+ */
 typedef struct RelationChangeInfo
 {
 	RelFileNode 	relFileNode;
@@ -317,6 +324,7 @@ extern Size ChangeTrackingShmemSize(void);
  * Initialize the shared-memory for this module.
  */
 extern void ChangeTrackingShmemInit(void);
-																
+
+
 #endif   /* CDBRESYNCHRONIZECHANGETRACKING_H */
 

@@ -204,7 +204,7 @@ FileRepPrimary_RunRecoveryInSync(void)
 			break;
 		}			
 		
-		status = PgVersionRecoverMirror();
+		//status = PgVersionRecoverMirror();
 		elog(DEBUG1, "FileRepPrimary_RunRecovery() PgVersionRecoverMirror");
 		
 		if (status != STATUS_OK) {
@@ -324,13 +324,27 @@ FileRepPrimary_RunHeartBeat(void)
 		if (retry == 1200) /* 1200 * 50 ms = 60 sec */
 		{
 			FileRepPrimary_MirrorHeartBeat(FileRepMessageTypeXLog);
+			continue;
+		}
+		
+		if (retry == 1201) /* 1200 * 50 ms = 60 sec */
+		{
 			FileRepPrimary_MirrorHeartBeat(FileRepMessageTypeWriter);
+			continue;
+		}
+		
+		if (retry == 1202) /* 1200 * 50 ms = 60 sec */
+		{
 			FileRepPrimary_MirrorHeartBeat(FileRepMessageTypeAO01);
-			FileRepPrimary_MirrorHeartBeat(FileRepMessageTypeAO02);
-
-			retry = 0;
+			continue;
 		}
 
+		if (retry == 1203) /* 1200 * 50 ms = 60 sec */
+		{
+			FileRepPrimary_MirrorHeartBeat(FileRepMessageTypeAO02);
+			retry = 0;
+		}
+		
 	} // while(1)	
 	
 }

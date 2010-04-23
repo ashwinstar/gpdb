@@ -1225,11 +1225,6 @@ SlruRecoverMirrorDir(char *slru_dir)
 	struct dirent	*clde;
 	int				retval = 0;
 	
-	MirroredFlatFile_Drop(slru_dir, 
-						  "",
-						  /* supressError */ true,
-						  /* isMirrorRecovery */ true); 	
-	
 	cldir = AllocateDir(slru_dir);
 	while ((clde = ReadDir(cldir, slru_dir)) != NULL) {
 		if (strlen(clde->d_name) == 4 &&

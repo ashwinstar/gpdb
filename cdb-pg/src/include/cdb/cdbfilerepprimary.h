@@ -192,8 +192,11 @@ extern int FileRepPrimary_MirrorCreate(
 	FileRepIdentifier_u	fileRepIdentifier,
 		/* file or dir to be created */
 									 
-	 FileRepRelationType_e fileRepRelationType);
+	FileRepRelationType_e fileRepRelationType,
 		/* FileRepRelationTypeFile or FileRepRelationTypeDir */
+
+	bool reportStatus);
+		/* Report Status to Primary, error on mirror is not reported as Fault. */
 
 /*
  * Drop
@@ -206,6 +209,13 @@ extern int FileRepPrimary_MirrorCreate(
  */
 
 extern int FileRepPrimary_MirrorDrop(
+	FileRepIdentifier_u	fileRepIdentifier,
+		/* file or dir to be removed */
+									 
+	FileRepRelationType_e fileRepRelationType);								 
+		/* FileRepRelationTypeFile or FileRepRelationTypeDir */
+
+extern int FileRepPrimary_MirrorDropFilesFromDir(
 	FileRepIdentifier_u	fileRepIdentifier,
 		/* file or dir to be removed */
 									 

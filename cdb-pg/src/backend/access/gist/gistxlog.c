@@ -359,7 +359,9 @@ gistRedoPageSplitRecord(XLogRecPtr lsn, XLogRecord *record)
 static void
 gistRedoCreateIndex(XLogRecPtr lsn, XLogRecord *record)
 {
-	RelFileNode *node = (RelFileNode *) XLogRecGetData(record);
+	gistxlogCreateIndex *xldata = (gistxlogCreateIndex *) XLogRecGetData(record);
+	
+	RelFileNode *node = &(xldata->node);
 	Relation	reln;
 	Buffer		buffer;
 	Page		page;
@@ -737,7 +739,7 @@ gistContinueInsert(gistIncompleteInsert *insert)
 				for (j = 0; j < ntodelete; j++)
 					PageIndexTupleDelete(pages[0], todelete[j]);
 
-				rdata = formSplitRdata(index->rd_node, insert->path[i],
+				rdata = formSplitRdata(index, insert->path[i],
 									   false, &(insert->key),
 									 gistMakePageLayout(buffers, numbuffer));
 
@@ -750,7 +752,7 @@ gistContinueInsert(gistIncompleteInsert *insert)
 					PageIndexTupleDelete(pages[0], todelete[j]);
 				gistfillbuffer(index, pages[0], itup, lenitup, InvalidOffsetNumber);
 
-				rdata = formUpdateRdata(index->rd_node, buffers[0],
+				rdata = formUpdateRdata(index, buffers[0],
 										todelete, ntodelete,
 										itup, lenitup, &(insert->key));
 			}
@@ -842,7 +844,7 @@ gist_safe_restartpoint(void)
 
 
 XLogRecData *
-formSplitRdata(RelFileNode node, BlockNumber blkno, bool page_is_leaf,
+formSplitRdata(Relation r, BlockNumber blkno, bool page_is_leaf,
 			   ItemPointer key, SplitedPageLayout *dist)
 {
 	XLogRecData *rdata;
@@ -860,7 +862,12 @@ formSplitRdata(RelFileNode node, BlockNumber blkno, bool page_is_leaf,
 
 	rdata = (XLogRecData *) palloc(sizeof(XLogRecData) * (npage * 2 + 2));
 
-	xlrec->node = node;
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(r);
+	
+	xlrec->node = r->rd_node;
+	xlrec->persistentTid = r->rd_segfile0_relationnodeinfo.persistentTid;
+	xlrec->persistentSerialNum = r->rd_segfile0_relationnodeinfo.persistentSerialNum;
 	xlrec->origblkno = blkno;
 	xlrec->origleaf = page_is_leaf;
 	xlrec->npage = (uint16) npage;
@@ -906,7 +913,7 @@ formSplitRdata(RelFileNode node, BlockNumber blkno, bool page_is_leaf,
  * ituplen are both zero; this ensures that XLogInsert knows about the buffer.
  */
 XLogRecData *
-formUpdateRdata(RelFileNode node, Buffer buffer,
+formUpdateRdata(Relation r, Buffer buffer,
 				OffsetNumber *todelete, int ntodelete,
 				IndexTuple *itup, int ituplen, ItemPointer key)
 {
@@ -918,7 +925,12 @@ formUpdateRdata(RelFileNode node, Buffer buffer,
 	rdata = (XLogRecData *) palloc(sizeof(XLogRecData) * (3 + ituplen));
 	xlrec = (gistxlogPageUpdate *) palloc(sizeof(gistxlogPageUpdate));
 
-	xlrec->node = node;
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(r);
+
+	xlrec->node = r->rd_node;
+	xlrec->persistentTid = r->rd_segfile0_relationnodeinfo.persistentTid;
+	xlrec->persistentSerialNum = r->rd_segfile0_relationnodeinfo.persistentSerialNum;
 	xlrec->blkno = BufferGetBlockNumber(buffer);
 	xlrec->ntodelete = ntodelete;
 
@@ -956,6 +968,29 @@ formUpdateRdata(RelFileNode node, Buffer buffer,
 		rdata[cur].next = NULL;
 		cur++;
 	}
+
+	return rdata;
+}
+
+XLogRecData *
+formCreateRData(Relation r)
+{
+	XLogRecData 		*rdata;
+	gistxlogCreateIndex *xlrec = (gistxlogCreateIndex *) palloc(sizeof(gistxlogCreateIndex));
+
+	rdata = (XLogRecData *) palloc(sizeof(XLogRecData));
+
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(r);
+
+	xlrec->node = r->rd_node;
+	xlrec->persistentTid = r->rd_segfile0_relationnodeinfo.persistentTid;
+	xlrec->persistentSerialNum = r->rd_segfile0_relationnodeinfo.persistentSerialNum;
+
+	rdata[0].data = (char *) xlrec;
+	rdata[0].len = sizeof(gistxlogCreateIndex);
+	rdata[0].buffer = InvalidBuffer;
+	rdata[0].next = NULL;
 
 	return rdata;
 }

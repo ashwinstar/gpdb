@@ -102,8 +102,10 @@ extern const XLogRecPtr XLogRecPtrForTemp;
 
 typedef struct gistxlogPageUpdate
 {
-	RelFileNode node;
-	BlockNumber blkno;
+	RelFileNode 	node;
+	ItemPointerData persistentTid;
+	int64 			persistentSerialNum;
+	BlockNumber 	blkno;
 
 	/*
 	 * It used to identify completeness of insert. Sets to leaf itup
@@ -120,8 +122,11 @@ typedef struct gistxlogPageUpdate
 
 typedef struct gistxlogPageSplit
 {
-	RelFileNode node;
-	BlockNumber origblkno;		/* splitted page */
+	RelFileNode 	node;
+	ItemPointerData persistentTid;
+	int64 			persistentSerialNum;
+
+	BlockNumber  origblkno;		/* splitted page */
 	bool		origleaf;		/* was splitted page a leaf page? */
 	uint16		npage;
 
@@ -132,6 +137,14 @@ typedef struct gistxlogPageSplit
 	 * follow: 1. gistxlogPage and array of IndexTupleData per page
 	 */
 } gistxlogPageSplit;
+
+typedef struct gistxlogCreateIndex
+{
+	RelFileNode 	node;
+	ItemPointerData persistentTid;
+	int64 			persistentSerialNum;
+
+} gistxlogCreateIndex;
 
 typedef struct gistxlogPage
 {
@@ -147,8 +160,10 @@ typedef struct gistxlogInsertComplete
 
 typedef struct gistxlogPageDelete
 {
-	RelFileNode node;
-	BlockNumber blkno;
+	RelFileNode 	node;
+	ItemPointerData persistentTid;
+	int64 			persistentSerialNum;
+	BlockNumber 	blkno;
 } gistxlogPageDelete;
 
 /* SplitedPageLayout - gistSplit function result */
@@ -270,13 +285,15 @@ extern void gist_xlog_cleanup(void);
 extern bool gist_safe_restartpoint(void);
 extern IndexTuple gist_form_invalid_tuple(BlockNumber blkno);
 
-extern XLogRecData *formUpdateRdata(RelFileNode node, Buffer buffer,
+extern XLogRecData *formUpdateRdata(Relation r, Buffer buffer,
 				OffsetNumber *todelete, int ntodelete,
 				IndexTuple *itup, int ituplen, ItemPointer key);
 
-extern XLogRecData *formSplitRdata(RelFileNode node,
+extern XLogRecData *formSplitRdata(Relation r,
 			   BlockNumber blkno, bool page_is_leaf,
 			   ItemPointer key, SplitedPageLayout *dist);
+
+extern XLogRecData *formCreateRData(Relation r);
 
 extern XLogRecPtr gistxlogInsertCompletion(RelFileNode node, ItemPointerData *keys, int len);
 

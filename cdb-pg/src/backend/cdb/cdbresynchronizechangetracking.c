@@ -8,7 +8,6 @@
  */
 #include <fcntl.h>
 #include <sys/stat.h>
-
 #include "postgres.h"
 #include "miscadmin.h"
 
@@ -37,9 +36,12 @@
  * Global Variables
  */
 char*	changeTrackingBuffer;
+char*	changeTrackingXlogDataBuffer;
 char	metabuf[CHANGETRACKING_METABUFLEN];
 ChangeTrackingBufStatusData* changeTrackingBufStatus;
 ChangeTrackingResyncMetaData* changeTrackingResyncMeta;
+
+extern bool enable_groupagg; /* from guc.h */
 
 /*
  * Local functions
@@ -62,6 +64,8 @@ static void ChangeTracking_AddResultEntry(ChangeTrackingResult *result,
 										  BlockNumber blocknum,
 										  XLogRecPtr* lsn_end);
 static void ChangeTracking_MarkFullResyncLockAcquired(void);
+
+
 /*
  * Return the required shared-memory size for this module.
  */
@@ -70,6 +74,7 @@ extern Size ChangeTrackingShmemSize(void)
 	Size		size = 0;
 	
 	size = add_size(size, CHANGETRACKING_BLCKSZ);  /* 32kB shmem buffer*/
+	size = add_size(size, CHANGETRACKING_XLOGDATASZ); 
 	size = add_size(size, sizeof(ChangeTrackingBufStatusData)); /* the buffer status */
 	size = add_size(size, sizeof(ChangeTrackingResyncMetaData)); /* the resync metadata */
 	
@@ -83,12 +88,14 @@ extern void ChangeTrackingShmemInit(void)
 {
 	bool	foundBuffer,
 			foundStatus,
-			foundMeta;
-	size_t	bufsize = CHANGETRACKING_BLCKSZ;
+			foundMeta,
+			foundXlogData;
+	size_t	bufsize1 = CHANGETRACKING_BLCKSZ;
+	size_t	bufsize2 = CHANGETRACKING_XLOGDATASZ;
 	
 	changeTrackingBuffer = (char *) 
 		ShmemInitStruct("Change Tracking Log Buffer", 
-						bufsize, 
+						bufsize1, 
 						&foundBuffer);
 	
 	changeTrackingBufStatus = (ChangeTrackingBufStatusData *) 
@@ -101,20 +108,25 @@ extern void ChangeTrackingShmemInit(void)
 						sizeof(ChangeTrackingResyncMetaData), 
 						&foundMeta);
 
+	changeTrackingXlogDataBuffer = (char *) 
+	ShmemInitStruct("Change Tracking Xlog Data Buffer", 
+					bufsize2, 
+					&foundXlogData);
 	/* See if we are already initialized */
-	if (foundBuffer || foundStatus || foundMeta)
+	if (foundBuffer || foundStatus || foundMeta || foundXlogData)
 	{
 		/* all should be present or neither */
-		Assert(foundBuffer && foundBuffer && foundMeta);
+		Assert(foundBuffer && foundBuffer && foundMeta && foundXlogData);
 		return;
 	}
 
-	/* init buffer */
-	memset(changeTrackingBuffer, 0, bufsize);
+	/* init buffers */
+	memset(changeTrackingBuffer, 0, bufsize1);
+	memset(changeTrackingXlogDataBuffer, 0, bufsize2);
 	
 	/* init buffer status */
 	changeTrackingBufStatus->recordcount = 0;
-	changeTrackingBufStatus->maxbufsize = bufsize;
+	changeTrackingBufStatus->maxbufsize = bufsize1;
 	changeTrackingBufStatus->bufsize = 0;
 	changeTrackingBufStatus->fileseg = CHANGETRACKING_FILESEGMENT;
 	changeTrackingBufStatus->nextwritepos = CHANGETRACKING_FILE_EOF;
@@ -141,22 +153,12 @@ extern void ChangeTrackingShmemInit(void)
  */
 void ChangeTracking_CreateInitialFromPreviousCheckpoint(void)
 {	
-	File	file;
-	int 	count = 0;
-	
-	/*
-	 * Open the changelog file if not opened (and create if doesn't exist).
-	 */
-	file = ChangeTracking_OpenLogFile();
+	int 	count;
 	
 	count = XLogAddRecordsToChangeTracking();
 
-	elog(LOG, "considered %d initial xlog records since last checkpoint "
-			  "for writing into the resynchronize change log", count);	
-	
-	ChangeTracking_CloseLogFile(file);
-
-	/* if any error (i.e. disk space) then mark FULL COPY in shared memory and on persistent media */
+	elog(LOG, "scanned through %d initial xlog records since last checkpoint "
+			  "for writing into the resynchronize change log", count);		
 }
 
 
@@ -223,28 +225,81 @@ static void ChangeTracking_AddBufferPoolChange(XLogRecPtr* 		xlogLocation,
 	LWLockRelease(ChangeTrackingWriteLock);
 }
 
-XLogRecData* ChangeTracking_MakeRdataCopy(XLogRecData *rdata)
+/*
+ * Given an rdata structure from XLogInsert() we extract
+ * all that we care about from it for changetracking, and
+ * return it in a buffer. The data is stored in a buffer
+ * in a similar structure to how an xlog record data section
+ * looks like.
+ * 
+ * Normally the data is stored in a shared memory buffer
+ * 'changeTrackingXlogDataBuffer'. however, there are special
+ * cases (currently gist is the only one) which may require
+ * a much larger buffer to store the data. In that case we
+ * dynamically allocate a buffer and populate it, while 
+ * marking 'iscopy' to true to let the caller know they
+ * need to pfree it themselves.
+ */
+char* ChangeTracking_CopyRdataBuffers(XLogRecData *rdata, 
+									   RmgrId		rmid,
+									   uint8		info,
+									   bool*		iscopy)
 {
-	XLogRecData* rdata_copy;
+	XLogRecData*	ptr = rdata; 			/* don't want to change rdata, use another ptr */
+	char*			gist_data_buf = NULL;
+	int				pos = 0;
+	bool			gist_split_page = (rmid == RM_GIST_ID && 
+										(info & ~XLR_INFO_MASK) == XLOG_GIST_PAGE_SPLIT);
 	
-	rdata_copy = (XLogRecData*) palloc(sizeof(XLogRecData));
-	rdata_copy->data = (char *) palloc(rdata->len);
+	while (ptr->data == NULL)
+		ptr = ptr->next;
+
+	/* Copy the main (first) rdata data block */
+	memcpy(changeTrackingXlogDataBuffer, ptr->data, ptr->len);
+	pos += ptr->len;
 	
-	rdata_copy->len = rdata->len;
-	rdata_copy->buffer_std = rdata->buffer_std;
-	rdata_copy->buffer = rdata->buffer;
-	rdata_copy->next = rdata->next;
+	/* ok, we're done! ... unless there's a special case to handle */
 	
-	memcpy(rdata_copy->data, rdata->data, rdata->len);
+	/* special case: gist split has data we need in the next rdata blocks */
+	if(gist_split_page)
+	{
+		XLogRecData*	ptr_save_loc = ptr;
+		int				gist_data_len = ptr->len; /* previous data */
+		
+		/* pre-calculate buf size we will need */
+		while(ptr->next != NULL)
+		{
+			ptr = ptr->next;
+			
+			if(ptr->data != NULL)
+				gist_data_len += ptr->len;
+		}
+
+		/* allocate a buffer. copy all previously copied data */
+		gist_data_buf = (char *) palloc(gist_data_len * sizeof(char));
+		memcpy(gist_data_buf, changeTrackingXlogDataBuffer, pos);
+		
+		/* now copy the rest of the gist data */
+		ptr = ptr_save_loc;
+		while(ptr->next != NULL)
+		{
+			ptr = ptr->next;
+							
+			if(ptr->data != NULL)
+			{
+				memcpy(gist_data_buf + pos, ptr->data, ptr->len);
+				pos += ptr->len;				
+			}
+		}
+		
+		*iscopy = true;
+		return gist_data_buf;
+	}
 	
-	return rdata_copy;
+	*iscopy = false;
+	return changeTrackingXlogDataBuffer;
 }
 
-void ChangeTracking_FreeRdataCopy(XLogRecData *rdata)
-{
-	pfree(rdata->data);
-	pfree(rdata);		
-}
 
 /*
  * When a new xlog record is created and we're in changetracking mode this 
@@ -258,19 +313,18 @@ void ChangeTracking_FreeRdataCopy(XLogRecData *rdata)
  * buffer boundaries and load some of it in the end of current buffer and the
  * rest, therefore leaving it no longer contigious in memory.
  */
-void ChangeTracking_AddRecordFromXlog(
-									  RmgrId	xl_rmid,
-									  uint8		xl_info,
-									  void		*data, 
-									  XLogRecPtr *loc)
+void ChangeTracking_AddRecordFromXlog(RmgrId rmid, 
+									  uint8 info, 
+									  void*  data,
+									  XLogRecPtr*	loc)
 {
 	RelationChangeInfo 	relationChangeInfoArray[MaxRelationChangeInfoReturns];
 	int					relationChangeInfoArrayCount;
 	int					i;
 		
 	ChangeTracking_GetRelationChangeInfoFromXlog(
-										  xl_rmid,
-										  xl_info,
+										  rmid,
+										  info,
 										  data, 
 										  relationChangeInfoArray,
 										  &relationChangeInfoArrayCount);
@@ -299,7 +353,7 @@ bool ChangeTracking_PrintRelationChangeInfo(
 	ChangeTracking_GetRelationChangeInfoFromXlog(
 										  xl_rmid,
 										  xl_info,
-										  data, 
+										  data,
 										  relationChangeInfoArray,
 										  &relationChangeInfoArrayCount);
 
@@ -404,8 +458,6 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 	uint8	info = xl_info & ~XLR_INFO_MASK;
 	uint8	op = 0;
 		
-	//Assert(ChangeTracking_ShouldTrackChanges());
-
 	MemSet(relationChangeInfoArray, 0, sizeof(RelationChangeInfo) * MaxRelationChangeInfoReturns);
 	*relationChangeInfoArrayCount = 0;
 
@@ -436,9 +488,6 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 		case RM_GIN_ID:
 			elog(ERROR, "internal error: unsupported RM ID (%d) in ChangeTracking_GetRelationChangeInfoFromXlog", xl_rmid);
 			
-		case RM_GIST_ID:
-			elog(LOG, "internal error: TEMPORARY unsupported RM_GIST_ID (%u) in ChangeTracking_GetRelationChangeInfoFromXlog", xl_rmid);
-			break;
 		/*
 		 * The following changes must be logged in the change log.
 		 */
@@ -456,11 +505,10 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 													   xlrec->block,
 													   &xlrec->heapnode.persistentTid,
 													   xlrec->heapnode.persistentSerialNum);
+					break;
 				}
-				break;
-
 				default:
-					elog(ERROR, "internal error: unsupported RM_HEAP2_ID op (%d) in ChangeTracking_GetRelationChangeInfoFromXlog", info);
+					elog(ERROR, "internal error: unsupported RM_HEAP2_ID op (%u) in ChangeTracking_GetRelationChangeInfoFromXlog", info);
 			}
 			break;
 		case RM_HEAP_ID:
@@ -577,7 +625,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 				}
 
 				default:
-					elog(ERROR, "internal error: unsupported RM_HEAP_ID op (%d) in ChangeTracking_GetRelationChangeInfoFromXlog", op);
+					elog(ERROR, "internal error: unsupported RM_HEAP_ID op (%u) in ChangeTracking_GetRelationChangeInfoFromXlog", op);
 			}
 			break;
 
@@ -739,7 +787,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 				}
 
 				default:
-					elog(ERROR, "internal error: unsupported RM_BTREE_ID op (%d) in ChangeTracking_GetRelationChangeInfoFromXlog", info);
+					elog(ERROR, "internal error: unsupported RM_BTREE_ID op (%u) in ChangeTracking_GetRelationChangeInfoFromXlog", info);
 			}
 			break;
 		case RM_BITMAP_ID:
@@ -874,7 +922,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					break;
 				}
 				default:
-					elog(ERROR, "internal error: unsupported RM_BITMAP_ID op (%d) in ChangeTracking_GetRelationChangeInfoFromXlog", info);
+					elog(ERROR, "internal error: unsupported RM_BITMAP_ID op (%u) in ChangeTracking_GetRelationChangeInfoFromXlog", info);
 			}
 			break;
 		case RM_SEQ_ID:
@@ -895,8 +943,112 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					break;
 				}
 				default:
-					elog(ERROR, "internal error: unsupported RM_SEQ_ID op (%d) in ChangeTracking_GetRelationChangeInfoFromXlog", info);
+					elog(ERROR, "internal error: unsupported RM_SEQ_ID op (%u) in ChangeTracking_GetRelationChangeInfoFromXlog", info);
 			}
+			break;
+			
+		case RM_GIST_ID:
+			switch (info)
+			{
+				case XLOG_GIST_PAGE_UPDATE:
+				case XLOG_GIST_NEW_ROOT:
+				{
+					gistxlogPageUpdate *xldata = (gistxlogPageUpdate *) data;					
+					
+					ChangeTracking_AddRelationChangeInfo(
+													   relationChangeInfoArray,
+													   relationChangeInfoArrayCount,
+													   &(xldata->node),
+													   xldata->blkno,
+													   &xldata->persistentTid,
+													   xldata->persistentSerialNum);
+					break;
+				}
+				case XLOG_GIST_PAGE_DELETE:
+				{
+					gistxlogPageDelete *xldata = (gistxlogPageDelete *) data;
+
+					ChangeTracking_AddRelationChangeInfo(
+													   relationChangeInfoArray,
+													   relationChangeInfoArrayCount,
+													   &(xldata->node),
+													   xldata->blkno,
+													   &xldata->persistentTid,
+													   xldata->persistentSerialNum);
+					break;
+				}
+				case XLOG_GIST_PAGE_SPLIT:
+				{
+					gistxlogPageSplit*	xldata = (gistxlogPageSplit *) data;
+					char*				ptr;
+					int 				j, 
+										i = 0;
+
+					/* TODO: fix this case that may cause an array overflow */
+					if(xldata->npage > MaxRelationChangeInfoReturns)
+						elog(ERROR, "CHANGE TRACKING: internal error in XLOG_GIST_PAGE_SPLIT. npage is %d", xldata->npage );
+
+					/* first, log the splitted page */
+					ChangeTracking_AddRelationChangeInfo(
+													   relationChangeInfoArray,
+													   relationChangeInfoArrayCount,
+													   &(xldata->node),
+													   xldata->origblkno,
+													   &xldata->persistentTid,
+													   xldata->persistentSerialNum);
+
+					/* now log all the pages that we split into */					
+					ptr = (char *)data + sizeof(gistxlogPageSplit);	
+
+					for (i = 0; i < xldata->npage; i++)
+					{
+						gistxlogPage*  gistp;
+						
+						gistp = (gistxlogPage *) ptr;
+						ptr += sizeof(gistxlogPage);
+
+						//elog(LOG, "CHANGETRACKING GIST SPLIT: block [%d/%d]:%d", i+1,xldata->npage, gistp->blkno);
+						ChangeTracking_AddRelationChangeInfo(
+														   relationChangeInfoArray,
+														   relationChangeInfoArrayCount,
+														   &(xldata->node),
+														   gistp->blkno,
+														   &xldata->persistentTid,
+														   xldata->persistentSerialNum);
+						
+						/* skip over all index tuples. we only care about block numbers */
+						j = 0;
+						while (j < gistp->num)
+						{
+							ptr += IndexTupleSize((IndexTuple) ptr);
+							j++;
+						}
+					}
+					
+					break;
+				}
+				case XLOG_GIST_CREATE_INDEX:
+				{
+					gistxlogCreateIndex*  xldata = (gistxlogCreateIndex *) data;
+
+					ChangeTracking_AddRelationChangeInfo(
+													   relationChangeInfoArray,
+													   relationChangeInfoArrayCount,
+													   &(xldata->node),
+													   GIST_ROOT_BLKNO,
+													   &xldata->persistentTid,
+													   xldata->persistentSerialNum);
+					break;
+				}
+				case XLOG_GIST_INSERT_COMPLETE:
+				{
+					/* nothing to be done here */
+					break;
+				}
+				default:
+					elog(ERROR, "internal error: unsupported RM_GIST_ID op (%u) in ChangeTracking_GetRelationChangeInfoFromXlog", info);
+			}
+
 			break;
 		default:
 			elog(ERROR, "internal error: unsupported resource manager type (%d) in ChangeTracking_GetRelationChangeInfoFromXlog", xl_rmid);
@@ -1279,7 +1431,9 @@ ChangeTrackingResult* ChangeTracking_GetChanges(ChangeTrackingRequest *request)
 							   "ORDER BY space, db, rel, blocknum");
 	
 	//elog(LOG, "ChangeTracking_GetChanges query: %s", sqlstmt.data);
-	
+	bool old_enable_groupagg = enable_groupagg;
+	enable_groupagg = false; /* disable sort group agg -- our query works better with hash agg */
+
 	PG_TRY();
 	{
 		/* must be in a transaction in order to use SPI */
@@ -1378,6 +1532,7 @@ ChangeTrackingResult* ChangeTracking_GetChanges(ChangeTrackingRequest *request)
 		SPI_finish();
 		
 		CommitTransactionCommand();
+		enable_groupagg = old_enable_groupagg;
 	}
 
 	/* Clean up in case of error. */
@@ -1387,6 +1542,8 @@ ChangeTrackingResult* ChangeTracking_GetChanges(ChangeTrackingRequest *request)
 			SPI_finish();
 
 		AbortCurrentTransaction();
+
+		enable_groupagg = old_enable_groupagg;
 
 		/* Carry on with error handling. */
 		PG_RE_THROW();
@@ -1560,7 +1717,7 @@ static void ChangeTracking_WriteBuffer(File file)
 	
 	if(changeTrackingBufStatus->recordcount == 0)
 		elog(ERROR, "ChangeTracking_WriteBuffer called with empty buffer");
-	
+		
 	/* set the page header and copy it */	
 	header.blockversion = CHANGETRACKING_STORAGE_VERSION;
 	header.numrecords = changeTrackingBufStatus->recordcount;

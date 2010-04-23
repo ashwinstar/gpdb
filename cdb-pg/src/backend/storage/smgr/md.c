@@ -230,7 +230,8 @@ mdcreatefilespacedir(
 		if (FileRepPrimary_MirrorCreate(
 					FileRep_GetDirFilespaceIdentifier(
 													  mirrorFilespaceLocation),
-					FileRepRelationTypeDir) != 0) 
+					FileRepRelationTypeDir,
+					FALSE) != 0) 
 		{
 			*mirrorDataLossOccurred = true;
 			ereport(LOG,
@@ -295,7 +296,8 @@ mdcreatetablespacedir(
 					FileRep_GetDirTablespaceIdentifier(
 													   mirrorFilespaceLocation,
 													   tablespaceOid),
-					FileRepRelationTypeDir) != 0) 
+					FileRepRelationTypeDir,
+					FALSE) != 0) 
 		{
 			*mirrorDataLossOccurred = true;
 			ereport(LOG,
@@ -371,7 +373,8 @@ mdcreatedbdir(
 					FileRep_GetDirDatabaseIdentifier(
 													 mirrorFilespaceLocation,
 													 *dbDirNode),
-					FileRepRelationTypeDir) != 0) 
+					FileRepRelationTypeDir,
+					FALSE) != 0) 
 		{
 			*mirrorDataLossOccurred = true;
 			ereport(LOG,

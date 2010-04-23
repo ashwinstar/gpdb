@@ -671,8 +671,7 @@ XLogInsert_Internal(RmgrId rmid, uint8 info, XLogRecData *rdata, TransactionId h
 	uint32		freespace;
 	int			curridx;
 	XLogRecData *rdt;
-	XLogRecData *rdata_orig = rdata;
-	bool		rdata_orig_iscopy = false;
+	char 		*rdatabuf;
 	Buffer		dtbuf[XLR_MAX_BKP_BLOCKS];
 	bool		dtbuf_bkp[XLR_MAX_BKP_BLOCKS];
 	BkpBlock	dtbuf_xlg[XLR_MAX_BKP_BLOCKS];
@@ -691,7 +690,8 @@ XLogInsert_Internal(RmgrId rmid, uint8 info, XLogRecData *rdata, TransactionId h
 	bool		no_tran = (rmid == RM_XLOG_ID);
 
 	bool		OkToConsiderChangeTrackingLogging;
-
+	bool		rdata_iscopy = false;
+	
     /* Safety check in case our assumption is ever broken. */
 	/* NOTE: This is slightly modified from the one in xact.c -- the test for */
  	/* NOTE: seqXlogWrite is omitted... */
@@ -1173,6 +1173,15 @@ begin:;
 	Insert->currpos += SizeOfXLogRecord;
 	freespace -= SizeOfXLogRecord;
 	
+	/* 
+	 * if in changetracking mode we make a copy of the relevant rdata 
+	 * information to use later in ChangeTracking_AddRecordFromXlog().
+	 */
+	if ((OkToConsiderChangeTrackingLogging && ChangeTracking_ShouldTrackChanges()) ||
+	     Debug_print_xlog_relation_change_info)
+	{
+		rdatabuf = ChangeTracking_CopyRdataBuffers(rdata, rmid, info, &rdata_iscopy);
+	}
 
 	/*
 	 * Append the data, including backup blocks if any
@@ -1186,23 +1195,6 @@ begin:;
 		{
 			if (rdata->len > freespace)
 			{
-				/* page boundary. copy partial record data */
-
-				/* 
-				 * if in changetracking mode and about to split rdata.data[0]
-				 * we make a copy to use later in ChangeTracking_AddRecordFromXlog().
-				 */
-				if (((OkToConsiderChangeTrackingLogging &&
-				       ChangeTracking_ShouldTrackChanges())
-				      ||
-				      Debug_print_xlog_relation_change_info) 
-				    && 
-				    rdata == rdata_orig)
-				{
-					rdata_orig = ChangeTracking_MakeRdataCopy(rdata);
-					rdata_orig_iscopy = true;
-				}
-
 				memcpy(Insert->currpos, rdata->data, freespace);
 				rdata->data += freespace;
 				rdata->len -= freespace;
@@ -1250,7 +1242,7 @@ begin:;
 			ChangeTracking_PrintRelationChangeInfo(
 												rmid, 
 												info, 
-												(void *)rdata_orig->data, 
+												(void *)rdatabuf, 
 												&RecPtr,
 												/* weAreGeneratingXLogNow */ true,
 												/* printSkipIssuesOnly */ Debug_print_xlog_relation_change_info_skip_issues_only);
@@ -1265,8 +1257,10 @@ begin:;
 	/* if needed, send this record to the changetracker */
 	if (OkToConsiderChangeTrackingLogging &&
 	    ChangeTracking_ShouldTrackChanges())
-	{
-		ChangeTracking_AddRecordFromXlog(rmid, info, (void *)rdata_orig->data, &RecPtr);
+	{		
+		ChangeTracking_AddRecordFromXlog(rmid, info, (void *)rdatabuf, &RecPtr);
+		if(rdata_iscopy)
+			pfree(rdatabuf);
 	}
 	
 	/*
@@ -1274,10 +1268,7 @@ begin:;
 	 * in order to handle gpaddmirrors correctly
 	 */
 	XLogCtl->lastChangeTrackingLoc = RecPtr;
-
-	/* free rdata_orig if memory was allocated for it */
-	if(rdata_orig_iscopy)
-		ChangeTracking_FreeRdataCopy(rdata_orig);
+	
 
 	/*
 	 * Now that we are finished with change tracking logging for this call,
@@ -7897,10 +7888,6 @@ CreateCheckPoint(bool shutdown, bool force)
 
 	if (FileRepResync_IsTransitionFromResyncToInSync())
 	{
-		MirroredFlatFile_Drop(XLOGDIR, 
-							  "",
-							  /* supressError */ true,
-							  /* isMirrorRecovery */ true); 			
 		RequestXLogSwitch();
 		
 		FileRepResyncManager_ResyncFlatFiles();
@@ -9731,18 +9718,18 @@ int XLogAddRecordsToChangeTracking(void)
 	 * gather information from the interesting ones into the change log.
 	 */
 	do
-	{
-				
+	{		
 		LastRec = ReadRecPtr;
 		/* add to the change log (unless not needed) */
 		
-		ChangeTracking_AddRecordFromXlog(record->xl_rmid,
-										 record->xl_info,
+		ChangeTracking_AddRecordFromXlog(record->xl_rmid, 
+									     record->xl_info, 
 										 (XLogRecData *)XLogRecGetData(record), 
 										 &EndRecPtr);
-		
+				
 		record = ReadRecord(NULL, LOG);
 		count++;
+		
 		
 	} while (record != NULL);
 	

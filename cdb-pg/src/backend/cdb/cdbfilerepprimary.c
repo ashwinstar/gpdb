@@ -173,6 +173,16 @@ FileRepPrimary_IsMirroringRequired(FileRepRelationType_e fileRepRelationType)
 				}
 				/* no break */
 			case DataStateInSync:
+				/*
+				 * FileRep backend processes have to exit in order to be able to transition
+				 * to Change Tracking.
+				 */
+				if (segmentState == SegmentStateShutdownFilerepBackends &&
+					FileRepIsBackendSubProcess(fileRepProcessType))
+				{
+					break;
+				}
+				
 				if (segmentState != SegmentStateFault &&
 					!(isInTransition == TRUE &&
 					  dataStateTransition == DataStateInChangeTracking)) 
@@ -888,11 +898,14 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
  */
 int 
 FileRepPrimary_MirrorCreate(FileRepIdentifier_u		fileRepIdentifier,
-							FileRepRelationType_e	fileRepRelationType)
+							FileRepRelationType_e	fileRepRelationType,
+							bool					reportStatus)
 {
 	int status = STATUS_OK;
 	
 	FileRepOperationDescription_u descr;
+	
+	descr.create.reportStatus = reportStatus;
 
 	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
 	{
@@ -960,6 +973,39 @@ FileRepPrimary_MirrorDrop(FileRepIdentifier_u	fileRepIdentifier,
 }
 
 /*
+ * FileRepPrimary_MirrorDropFileFromDir
+ */
+int 
+FileRepPrimary_MirrorDropFilesFromDir(FileRepIdentifier_u	fileRepIdentifier,
+									 FileRepRelationType_e	fileRepRelationType)
+{
+	int		status = STATUS_OK;
+	
+	FileRepOperationDescription_u descr;
+	
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
+	{
+		status = FileRepPrimary_ConstructAndInsertMessage(
+														  fileRepIdentifier,
+														  fileRepRelationType,
+														  FileRepOperationDropFilesFromDir,
+														  descr);		
+	}
+	
+#ifdef FILEREP_DEBUG
+	if (dataState == DataStateInChangeTracking)
+		ereport(LOG,			
+				(errmsg("LOG(filerep): Change Tracking "), 
+				 FileRep_errdetail(fileRepIdentifier,
+								   fileRepRelationType,
+								   FileRepOperationDropFilesFromDir),
+				 FileRep_errcontext()));	
+#endif
+	
+	return status;
+}
+
+/*
  * FileRepPrimary_MirrorValidation
  */
 int 
@@ -967,8 +1013,7 @@ FileRepPrimary_MirrorValidation(FileRepIdentifier_u		fileRepIdentifier,
 								FileRepRelationType_e	fileRepRelationType)
 {
 	int		status = STATUS_OK;
-	bool	retval = FALSE;
-	int		mirrorErrno = -1;
+	int		mirrorStatus = FileRepStatusMirrorLossOccurred;
 	
 	FileRepOperationDescription_u descr;
 	
@@ -980,16 +1025,14 @@ FileRepPrimary_MirrorValidation(FileRepIdentifier_u		fileRepIdentifier,
 														  FileRepOperationValidation,
 														  descr);
 		if (status != STATUS_OK)
-			return mirrorErrno;
+			return mirrorStatus;
 		
-		retval = FileRepAckPrimary_IsOperationCompleted(
-														fileRepIdentifier,									
-														fileRepRelationType);
-		if (retval == TRUE) 
+		if (FileRepAckPrimary_IsOperationCompleted(
+												fileRepIdentifier,									
+												fileRepRelationType) == TRUE)
 		{
-			mirrorErrno = FileRepAckPrimary_GetMirrorErrno();
-		}
-					
+			mirrorStatus = FileRepAckPrimary_GetMirrorErrno();
+		}					
 	}
 	
 #ifdef FILEREP_DEBUG
@@ -1002,7 +1045,7 @@ FileRepPrimary_MirrorValidation(FileRepIdentifier_u		fileRepIdentifier,
 				 FileRep_errcontext()));	
 #endif
 	
-	return mirrorErrno;
+	return mirrorStatus;
 }
 
 /*
