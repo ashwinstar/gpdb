@@ -172,6 +172,17 @@ class SegmentStart(Command):
 
 #-----------------------------------------------
 class SendFilerepTransitionMessage(Command):
+
+    # see gpmirrortransition.c
+    TRANSITION_ERRCODE_SUCCESS                             = 0
+    TRANSITION_ERRCODE_ERROR_UNSPECIFIED                   = 1
+    TRANSITION_ERRCODE_ERROR_SERVER_DID_NOT_RETURN_DATA    = 10
+    TRANSITION_ERRCODE_ERROR_PROTOCOL_VIOLATED             = 11
+    TRANSITION_ERRCODE_ERROR_HOST_LOOKUP_FAILED            = 12
+    TRANSITION_ERRCODE_ERROR_INVALID_ARGUMENT              = 13
+    TRANSITION_ERRCODE_ERROR_READING_INPUT                 = 14
+    TRANSITION_ERRCODE_ERROR_SOCKET                        = 15
+
     def __init__(self, name, inputFile, port=None,ctxt=LOCAL, remoteHost=None, dataDir=None):
         if not remoteHost:
             remoteHost = "127.0.0.1"

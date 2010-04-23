@@ -222,7 +222,10 @@ class GpSegStart:
             for cmd in cmds:
                 res=cmd.get_results()
                 if res.rc != 0:
-                    reason = "Start failed.  stdout:\"%s\"  stderr:\"%s\"" % \
+                    if res.rc == gp.SendFilerepTransitionMessage.TRANSITION_ERRCODE_ERROR_SERVER_DID_NOT_RETURN_DATA:
+                        reason = "Segment did not respond to startup request; check segment logfile"
+                    else:
+                        reason = "Start failed.  stdout:\"%s\"  stderr:\"%s\"" % \
                                 (res.stdout.replace("\n", " "), res.stderr.replace("\n", " "))
                     self.__markFailed(directoryToSegStartDataMap, results, cmd.dataDir, reason)
 

@@ -36,6 +36,19 @@
 #define SOCK_ERRNO_SET(e) (errno = (e))
 #endif
 
+
+/* NOTE!  These codes also exist in python code -- gp.py */
+#define ERRCODE_SUCCESS                             0
+#define ERRCODE_ERROR_UNSPECIFIED                   1
+#define ERRCODE_ERROR_SERVER_DID_NOT_RETURN_DATA    10
+#define ERRCODE_ERROR_PROTOCOL_VIOLATED             11
+#define ERRCODE_ERROR_HOST_LOOKUP_FAILED            12
+#define ERRCODE_ERROR_INVALID_ARGUMENT              13
+#define ERRCODE_ERROR_READING_INPUT                 14
+#define ERRCODE_ERROR_SOCKET                        15
+/* NOTE!  Thes codes above also exist in python code -- gp.py */
+
+
 static inline bool
 isEmpty(char *str)
 {
@@ -76,8 +89,10 @@ sendFully(int socket, char *data, int dataLength)
  * addr may be a chain of addresses
  *
  * if data is NULL then we don't send any data...we just close immediately
+ *
+ * @return the error code 
  */
-static bool
+static int
 sendMessage(struct addrinfo *addr, void *data, int dataLength)
 {
 #define MAX_RETRIES (12)
@@ -87,7 +102,7 @@ sendMessage(struct addrinfo *addr, void *data, int dataLength)
 	int			save_errno = SOCK_ERRNO;
 	int			tmpsock = -1;
 	char		sebuf[256];
-	bool result = true;
+	int result = ERRCODE_SUCCESS;
 
 	struct
 	{
@@ -196,7 +211,7 @@ sendMessage(struct addrinfo *addr, void *data, int dataLength)
 			if ( lengthLeft < 1 )
 			{
 				fprintf(stderr, "transition failed: response from server is too large\n" );
-				result = false;
+				result = ERRCODE_ERROR_PROTOCOL_VIOLATED;
 				goto allDone;
 			}
 			numRead = recv(tmpsock, buf + offset, lengthLeft, 0 /* flags */);
@@ -226,6 +241,7 @@ sendMessage(struct addrinfo *addr, void *data, int dataLength)
 			if ( offset < 4)
 			{
 				fprintf(stderr, "transition failed: server did not respond with enough data");
+				result = ERRCODE_ERROR_SERVER_DID_NOT_RETURN_DATA;
 				goto errReturn;
 			}
 
@@ -233,7 +249,7 @@ sendMessage(struct addrinfo *addr, void *data, int dataLength)
 			if ( lengthFromMsg != offset )
 			{
 				fprintf(stderr, "transition failed: received %d bytes but server message said %d were sent", (int) offset, (int) lengthFromMsg );
-				result = false;
+				result = ERRCODE_ERROR_PROTOCOL_VIOLATED;
 				goto errReturn;
 			}
 		}
@@ -259,9 +275,12 @@ allDone:
 
 sockErrReturn:
 	fprintf(stderr, "%s\n", SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
+	if ( result == ERRCODE_SUCCESS )
+	    result = ERRCODE_ERROR_SOCKET;
 
 errReturn:
-	result = false;
+    if ( result == ERRCODE_SUCCESS )
+        result = ERRCODE_ERROR_UNSPECIFIED;
 	goto allDone;
 }
 
@@ -371,18 +390,18 @@ main(int argc, char **argv)
 	if ( host == NULL)
 	{
 		fprintf(stderr, "Missing host (-h) argument\n");
-		return 1;
+		return ERRCODE_ERROR_INVALID_ARGUMENT;
 	}
 	if ( port == NULL )
 	{
 		fprintf(stderr, "Missing port (-p) argument\n");
-		return 1;
+		return ERRCODE_ERROR_INVALID_ARGUMENT;
 	}
 
 	/* find the target machine */
 	if ( ! determineTargetHost(&addrList, host, port))
 	{
-		return 1;
+		return ERRCODE_ERROR_HOST_LOOKUP_FAILED;
 	}
 
 	/* load the input message into memory */
@@ -396,17 +415,14 @@ main(int argc, char **argv)
 		if ( f == NULL)
 		{
 			fprintf(stderr, "Unable to open file %s\n", inputFile);
-			return 1;
+			return ERRCODE_ERROR_READING_INPUT;
 		}
 		msg = readFully(f, &msgLen);
 		fclose(f);
 	}
 	if ( msg == NULL )
-		return 1; /* an error will have been logged by readFully */
+		return ERRCODE_ERROR_READING_INPUT; /* an error will have been logged by readFully */
 
 	/* send the message */
-	if (! sendMessage(addrList, msg, msgLen))
-		return 1;
-
-	return 0;
+	return sendMessage(addrList, msg, msgLen);
 }
