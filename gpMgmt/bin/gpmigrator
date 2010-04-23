@@ -667,7 +667,7 @@ class GPUpgrade:
             return result[0].strip();
 
     #------------------------------------------------------------
-    def CallSlaves(self, cmd, option='', option2=''):
+    def CallSlaves(self, cmd, option='', option2='', includeMirrors=False):
         '''
         Calls every host to execute the given command with the given option 
         value
@@ -703,7 +703,8 @@ class GPUpgrade:
             # Get the data directories for this host:
             datadirs = []
             for seg in host.dbs:
-                datadirs.append(seg.getSegmentDataDirectory())
+                if includeMirrors or seg.isSegmentPrimary():
+                    datadirs.append(seg.getSegmentDataDirectory())
 
             c = GpUpgradeCmd("gpmigrator remote call",
                              oldHome=self.oldhome,
@@ -1336,7 +1337,7 @@ class GPUpgrade:
         #   should avoid this whenever possible.
         logger.info('Performing Mirror rollback')
         cmd = '%s/sbin/gpupgrademirror.py --rollback' % self.newhome
-        self.RunCmd(cmd, env=self.oldenv)
+        self.RunCmd(cmd, env=self.newenv)
 
         # done
         logger.info('Revert Successful')
@@ -1468,7 +1469,7 @@ class GPUpgrade:
         doerror = False
         if self.cmd == 'MASTER':
             logger.info('Removing temporary directories')
-            self.CallSlaves('RMDIR', force)
+            self.CallSlaves('RMDIR', force, includeMirrors=True)
             datadirs = [self.masterdir]
         else:
             datadirs = self.datadirs
@@ -1521,7 +1522,7 @@ class GPUpgrade:
 
             dirs_exist = False
             try: 
-                self.CallSlaves('CHKDIR')
+                self.CallSlaves('CHKDIR', includeMirrors=True)
             except UpgradeError, e:
                 dirs_exist = True
             if os.path.exists(self.workdir):
@@ -1533,7 +1534,7 @@ class GPUpgrade:
             logger.info('Creating temporary directories')                
 
             # Have the slaves create their directories
-            self.CallSlaves('MKDIR')
+            self.CallSlaves('MKDIR', includeMirrors=True)
             
             # Additionally we need upgrade/ and backup/ under the masterdir
             # if the masterdir is located in a different location or on
@@ -2349,16 +2350,19 @@ class GPUpgrade:
             if style == 'BACKUP':
                 logger.info('Linking backup')
                 logger.info('... This may take a while')
+                includeMirrors = True
             elif style == 'INSTALL':
                 logger.info('Linking upgrade')
                 logger.info('... This may take a while')
+                includeMirrors = True
             elif style == 'SKELETON':
                 logger.info('Linking skeleton')
                 logger.info('... This may take a while')
+                includeMirrors = False
 
 
             # Have all hosts perform the link first
-            self.CallSlaves('DEEPLINK', style)
+            self.CallSlaves('DEEPLINK', style, includeMirrors=includeMirrors)
 
         else:
             datadirs = self.datadirs
@@ -3795,9 +3799,7 @@ class GPUpgrade:
         if len(self.mirrors) == 0:
             logger.info("System configured without mirrors, stage 2 skipped")
         else:
-            breakForSnapshot = False
             if 'UPGRADEMIRRORS' not in current_state:
-                breakForSnapshot = True
 
                 withContinue=False
                 if 'START_UPGRADEMIRROR' not in current_state:
