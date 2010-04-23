@@ -1,0 +1,214 @@
+#!/usr/bin/env python
+#
+# Copyright (c) Greenplum Inc 2008. All Rights Reserved.
+#
+
+try:
+    import signal
+    import sys
+    from optparse import OptionGroup
+    from gppylib.gpparseopts import OptParser, OptChecker
+    from gppylib.gplog import *
+    from gppylib.db import dbconn
+    from gppylib.db import catalog
+    from gppylib.commands.unix import *
+    from gppylib.commands.base import *
+except ImportError, e:
+    sys.exit('ERROR: Cannot import modules.  Please check ' \
+             'that you have sourced greenplum_path.sh.  Detail: ' + str(e))
+
+_description = ("""Reindexes all bitmap indexes in a Greenplum Database.""")
+_help = ['']
+
+EXECNAME = os.path.split(__file__)[-1]
+
+MAX_PARALLEL_REINDEX=16
+
+GET_BITMAP_INDEXES_SQL="""
+SELECT relname 
+FROM pg_class, pg_am 
+WHERE pg_class.relam = pg_am.oid 
+AND pg_am.amname = 'bitmap'
+"""
+
+REINDEX_SQL="""
+REINDEX INDEX %s
+"""
+
+class ReindexCommand(SQLCommand):
+    """This command issues a REINDEX SQL statement to a Greenplum database."""
+    
+    def __init__(self,name,hostname, port, db_name, idx_name):
+        self.db_name = db_name
+        self.idx_name = idx_name
+        self.hostname = hostname
+        self.port = port
+        # The cmdStr isn't actually used except for logging in this class
+        self.cmdStr = REINDEX_SQL % idx_name
+
+        SQLCommand.__init__(self,name)
+        pass
+
+    def run(self,validateAfter=False):
+        dburl = dbconn.DbURL(hostname=self.hostname, port=self.port, 
+                             dbname=self.db_name)
+
+        try:
+            conn = dbconn.connect(dburl)
+            # Have to set this so SQLCommand can cancel if needed.
+            self.cancel_conn = conn
+        except DatabaseError, ex:
+            logger.error('Failed to connect to database %s' % self.db_name)
+            if options.verbose:
+                logger.exception(ex)
+            logger.error('Reindex of %s in database %s failed' % (self.idx_name, self.db_name))
+            return
+
+        try:
+            logger.info('Reindexing %s in database %s...' % 
+                        (self.idx_name, self.db_name))
+            # do the actual reindex
+            dbconn.execSQL(conn, REINDEX_SQL % self.idx_name)
+        except Exception, ex:
+            logger.error('Failed to reindex %s in database %s' % 
+                         (self.idx_name, self.db_name))
+        finally:
+            conn.close()
+
+
+def parseargs():
+    """Parses command line options and validates them."""
+    
+    parser = OptParser(option_class=OptChecker,
+                description=' '.join(_description.split()),
+                version='%prog version $Revision: #1 $')
+
+    parser.setHelp(_help)
+    parser.remove_option('-h')
+
+    optgrp = OptionGroup(parser, 'Database Options')
+    optgrp.add_option('-h', '--hostname', type='string', default='localhost',
+                      help='Master hostname')
+    optgrp.add_option('-p', '--port', type='int', default='0',
+                      help='Master port')
+    parser.add_option_group(optgrp)
+    
+    optgrp = OptionGroup(parser, 'Concurrency Options')
+    optgrp.add_option('-n', '--parallel', type="int", default=1, 
+                      metavar="<parallel_processes>",
+                      help='number of bitmap indexes to re-index at a time. ' \
+                      'Valid values are 1-%d. (Default: 1)' % MAX_PARALLEL_REINDEX)
+    parser.add_option_group(optgrp)
+    
+    optgrp = OptionGroup(parser, 'Logging Options')
+    optgrp.add_option('-v','--verbose', action='store_true', help='Debug output.')
+    parser.add_option_group(optgrp)
+
+    optgrp = OptionGroup(parser, 'Help Options')
+    optgrp.add_option('-?', '--help', action='store_true', 
+                      help='Display this message and exit')
+    parser.add_option_group(optgrp)
+
+    parser.set_defaults(hostname=None, port=0, verbose=False, 
+                        filters=[], slice=(None, None))
+
+    # Parse the command line arguments
+    (options, args) = parser.parse_args()
+    
+    if options.help:
+        parser.print_help()
+        parser.exit(0)
+
+    # validate the options
+    if options.parallel < 1 or options.parallel > MAX_PARALLEL_REINDEX:
+        logger.error('Invalid -n option given.  Value must be from 1 to 16.')
+        parser.exit(1)
+        
+    if options.port >= 65535:
+        logger.error('Invalid port given.  Value must be less than 65535.')
+        parser.exit(1)
+        
+    return options, args
+
+
+def get_bitmap_indexes(options):
+    """Gets a list of all bitmap indexes on the system"""
+    
+    bitmap_indexes = []
+    
+    dburl = dbconn.DbURL(hostname=options.hostname,port=options.port)
+    conn = dbconn.connect(dburl)
+    
+    try:
+        # note: catalog.getUserDatabaseList returns an array of arrays of len 1.
+        # That should probably be fixed at some point...
+        databases = catalog.getUserDatabaseList(conn)
+        conn.close()
+        for db in databases:
+            logger.info('Retrieving bitmap indexes from database %s...' % db[0])
+            dburl = dbconn.DbURL(hostname=options.hostname,
+                                 port=options.port,dbname=db[0])
+            conn = dbconn.connect(dburl)
+            cur = dbconn.execSQL(conn, GET_BITMAP_INDEXES_SQL)
+            for idx in cur:
+                logger.debug('Adding bitmap index %s from database %s' % 
+                             (idx[0], db[0]))
+                bitmap_indexes.append((db[0], idx[0]))
+            conn.close()
+    except:
+        raise
+    
+    return bitmap_indexes
+
+
+def reindex_bitmap_indexes(options, bitmap_indexes):
+    """Creates a worker pool and adds a command for every index
+    that needs to be reindexed."""
+    
+    pool = WorkerPool(numWorkers=options.parallel)
+    
+    dburl = dbconn.DbURL(hostname=options.hostname, port=options.port)
+    
+    for (db_name, idx_name) in bitmap_indexes:
+        logger.debug('Adding reindex command for %s in database %s to pool.' % 
+                     (idx_name, db_name))
+        cmd = ReindexCommand('Reindex %s' % idx_name, dburl.pghost, 
+                             dburl.pgport, db_name, idx_name)
+        pool.addCommand(cmd)
+
+    logger.info('Waiting for workers to finish...')
+    try:
+        # Sit in a loop waiting for cancel or completion
+        while not pool.isDone():
+            time.sleep(.5)
+    except KeyboardInterrupt:
+        logger.info('User canceled')
+        pool.haltWork()
+        
+    try:
+        # We are done
+        pool.haltWork()
+        pool.joinWorkers()
+    except:
+        # Ok to ignore this, we are done.
+        pass
+
+
+logger = get_default_logger()
+setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
+
+options, args = parseargs()
+
+try:
+    if options.verbose:
+        enable_verbose_logging()
+        
+    bitmap_indexes = get_bitmap_indexes(options)
+    reindex_bitmap_indexes(options, bitmap_indexes)
+    logger.info('Done.')
+except Exception, ex:
+    logger.error('There was an error during reindexing: %s' % ex.__str__())
+    if options.verbose:
+        logger.exception(ex)
+finally:
+    pass
