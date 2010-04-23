@@ -476,7 +476,7 @@ class RelFileNodes():
         
         """ Connect to each database on the segment, and get its list of tables and table dependencies. """
         for db in self.databaseList:
-           if db.databaseName == "template0":
+           if str(db.databaseName) == str("template0"):
               continue
            segmentURL = dbconn.DbURL( hostname = self.mirrorInfo.primary_host
                                     , port = self.mirrorInfo.primary_host_port
@@ -834,16 +834,18 @@ class CatalogToastTablesRow:
     def __init__(self, row):
         self.filename = row[0]
         self.toastfilename = row[1]
+        self.toastfileindex = row[2]
         
     @staticmethod
     def query():
-        return '''SELECT t1.relfilenode, t2.relfilenode as toast_filenode
-                  FROM pg_class as t1, pg_class t2
-                  WHERE t1.relnamespace  = 11
-                    AND t1.relisshared   = 'f'
-                    AND t1.reltoastrelid = t2.oid
-                  ORDER BY t1.relfilenode '''
-
+        return """SELECT  t1.relfilenode, t2.relfilenode as toast_filenode, t3.relfilenode as toast_filenode_index
+                  FROM  pg_class as t1, pg_class as t2, pg_class as t3
+                  WHERE   t1.relnamespace  = 11
+                    AND   t1.relisshared   = 'f'
+                    AND   t1.reltoastrelid = t2.oid
+                    AND   t2.reltoastidxid = t3.oid
+                  ORDER BY t1.relfilenode"""
+    
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
@@ -1503,6 +1505,16 @@ class SpecialFileHandling():
         linkCopy.validate()
 
         """ Create a directory to store all our links to the actual files """
+        cmdComplete = False
+        while cmdComplete == False:
+           rmCmd = RemoveFiles( name = 'gpupgrademirror special file link dir: %s:%s' % (self.seg.primary_host, self.fullPathLinkDir)
+                             , directory = self.fullPathLinkDir
+                             , ctxt = REMOTE
+                             , remoteHost = self.seg.primary_host
+                             )
+           cmdComplete = runAndCheckCommandComplete(rmCmd)
+        rmCmd.validate()
+        
         cmdComplete = False
         while cmdComplete == False:
            rmCmd = MakeDirectoryWithMode( name = 'gpupgrademirror special file link dir: %s:%s' % (self.seg.primary_host, self.fullPathLinkDir)
@@ -2896,6 +2908,30 @@ class Phase2(threading.Thread):
                                           , phase = 2
                                           )
             self.statusList.append(status)
+
+            """ gpmigrator has removed or moved the mirror data directory, so we will attemplt to make it."""
+            cmdComplete = False
+            while cmdComplete == False:
+                rmCmd = CreateDirIfNecessaryWithMode( name = 'gpupgrademirror make the mirror data directory: %s' % seg.mirror_data_directory
+                             , directory = seg.mirror_data_directory
+                             , ctxt = REMOTE
+                             , remoteHost = seg.mirror_host
+                             , mode = "0700"
+                             )
+                cmdComplete = runAndCheckCommandComplete(rmCmd)
+            rmCmd.validate()
+
+            """ Also may need to add base directory, so we will attemplt to make it."""
+            cmdComplete = False
+            while cmdComplete == False:
+                rmCmd = CreateDirIfNecessaryWithMode( name = 'gpupgrademirror make the mirror data directory: %s' % seg.mirror_data_directory
+                             , directory = seg.mirror_data_directory + "/base"
+                             , ctxt = REMOTE
+                             , remoteHost = seg.mirror_host
+                             , mode = "0700"
+                             )
+                cmdComplete = runAndCheckCommandComplete(rmCmd)
+            rmCmd.validate()
             
             """ Create a temp directory in each primary segment for our use"""
             seg.primaryTempDir = seg.primary_data_directory + "/" + GPUPGRADEMIRROR_TEMP_DIR
@@ -2987,7 +3023,7 @@ class Phase2(threading.Thread):
         linkDirList = fdlCmd.get_result_list()
               
         copyList = []
-        for element in specialDirectoryList:
+        for element in self.specialDirectoryList:
             elementList = element.split("/")
             if len(elementList) > 1:
                 elementPrefix =  "/" + "/".join(elementList[:-1])
@@ -3071,8 +3107,6 @@ MirrorNodeList = []
 MirrorInfoList = []
 phase2MirrorList = []
 
-coverage = GpCoverage()
-coverage.start()
 
 try:
   # setup signal handlers so we can clean up correctly
@@ -3204,15 +3238,15 @@ try:
          
      ''' Connect to each database, and make a list of files we will use '''
      fileList = []
-     specialDirectoryList = []
+     specialDirList = []
      ''' always copy the global directory '''
-     specialDirectoryList.append('global')
+     specialDirList.append('global')
      ''' always copy the pg_xlog directory '''
-     specialDirectoryList.append('pg_xlog')     
+     specialDirList.append('pg_xlog')     
      for db in databaseList:
-         if db.databaseName == 'template0':
+         if str(db.databaseName) == str("template0"):
             ''' Special case where we copy the entire database '''
-            specialDirectoryList.append(str('base/' + str(db.databaseDirectory)))
+            specialDirList.append('base/' + str(db.databaseDirectory))
             continue
                             
          connectURL = dbconn.DbURL(dbname = db.databaseName)
@@ -3237,6 +3271,7 @@ try:
              toastTableRow = CatalogToastTablesRow(fileRow)
              fileList.append('base/' + str(db.databaseDirectory) + '/' + str(toastTableRow.filename))
              fileList.append('base/' + str(db.databaseDirectory) + '/' + str(toastTableRow.toastfilename))
+             fileList.append('base/' + str(db.databaseDirectory) + '/' + str(toastTableRow.toastfileindex))
          connectForDB.close()
     
      try:
@@ -3255,7 +3290,7 @@ try:
         
         ''' Setup the mirror node '''
         """ KAS note to self. Setup could be done in parallel. """
-        tempNode.setup([mirrorInfo], fileList, specialDirectoryList)
+        tempNode.setup([mirrorInfo], fileList, specialDirList)
         
         phase2MirrorList.append(tempNode)
     
@@ -3658,6 +3693,6 @@ finally:
     except NameError:
         pass
     logger.info("gpupgrademirror exit")
-    
+
     coverage.stop()
     coverage.generate_report()
