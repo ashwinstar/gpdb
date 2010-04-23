@@ -27,7 +27,7 @@ INCS=-I$(EXT_DIR)/include -I$(EXT_DIR)/include/apr-1 -I$(BLD_TOP)/cdb-pg/src/inc
 LIBS=-L$(EXT_DIR)/lib -laprutil-1 -lapr-1 -levent $$($(EXT_DIR)/bin/apu-1-config --libs) $$($(EXT_DIR)/bin/apr-1-config --libs) 
 GPSMON_LIBS=
 GPMMON_LIBS=-L$(LIBPQ_DIR) -lpq -lm
-CFLAGS=$(OPT) $$($(EXT_DIR)/bin/apr-1-config --cflags)
+CFLAGS=$(OPT) $$($(EXT_DIR)/bin/apr-1-config --cflags) -Werror
 CPPFLAGS=$$($(EXT_DIR)/bin/apr-1-config --cppflags) -DGPPERFMON_VERSION="$(GPPERFMON_VERSION)" -D$(BLD_ARCH)
 
 ifeq "$(findstring osx,$(BLD_ARCH))" "osx"

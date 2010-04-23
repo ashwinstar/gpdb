@@ -390,7 +390,7 @@ static apr_uint32_t write_qenode_row(FILE* fp, const qenode_t* qenode, const cha
 
         if (r == APR_SUCCESS)
         {
-            snprintf(metrics[i], SINGLE_METRIC_BUFSZ, "%s|%s|%" FMT64 "|%" FMT64, measure_name, unit_name, qexec->measures[i], 0LL);
+            snprintf(metrics[i], SINGLE_METRIC_BUFSZ, "%s|%s|%" FMT64 "|0", measure_name, unit_name, qexec->measures[i]);
         }
 		else
 		{
