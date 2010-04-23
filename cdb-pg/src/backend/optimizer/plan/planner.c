@@ -75,11 +75,11 @@ ParamListInfo PlannerBoundParamList = NULL;		/* current boundParams */
 #define EXPRKIND_APPINFO		6
 #define EXPRKIND_WINDOW_BOUND	7
 
+
 static Node *preprocess_expression(PlannerInfo *root, Node *expr, int kind);
 static void preprocess_qual_conditions(PlannerInfo *root, Node *jtnode);
 static Plan *inheritance_planner(PlannerInfo *root);
 static Plan *grouping_planner(PlannerInfo *root, double tuple_fraction);
-static bool is_dummy_plan(Plan *plan);
 static double preprocess_limit(PlannerInfo *root,
 				 double tuple_fraction,
 				 int64 *offset_est, int64 *count_est);
@@ -103,6 +103,9 @@ static void sort_canonical_gs_list(List *gs, int *p_nsets, Bitmapset ***p_sets);
 
 static Node* normalize_query_jointree(Node *expr);
 static Node *normalize_query_jointree_mutator(Node *expr, void *context);
+
+bool is_dummy_plan(Plan *plan);
+
 
 /*****************************************************************************
  *
@@ -2180,7 +2183,7 @@ is_dummy_plan_walker(Node *node, bool *context)
 }
 
 
-static bool
+bool
 is_dummy_plan(Plan *plan)
 {
     bool is_dummy = false;

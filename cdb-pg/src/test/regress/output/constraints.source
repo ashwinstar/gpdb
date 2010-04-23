@@ -11,6 +11,8 @@
 --
 CREATE TABLE DEFAULT_TBL (i int DEFAULT 100,
 	x text DEFAULT 'vadim', f float8 DEFAULT 123.456);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 INSERT INTO DEFAULT_TBL VALUES (1, 'thomas', 57.0613);
 INSERT INTO DEFAULT_TBL VALUES (1, 'bruce');
 INSERT INTO DEFAULT_TBL (i, f) VALUES (2, 987.654);
@@ -19,16 +21,18 @@ INSERT INTO DEFAULT_TBL VALUES (3, null, 1.0);
 SELECT '' AS five, * FROM DEFAULT_TBL;
  five |  i  |   x    |    f    
 ------+-----+--------+---------
-      |   1 | bruce  | 123.456
       |   1 | thomas | 57.0613
-      |   2 | vadim  | 987.654
+      |   1 | bruce  | 123.456
       |   3 |        |       1
+      |   2 | vadim  | 987.654
       | 100 | marc   | 123.456
 (5 rows)
 
 CREATE SEQUENCE DEFAULT_SEQ;
 CREATE TABLE DEFAULTEXPR_TBL (i1 int DEFAULT 100 + (200-199) * 2,
 	i2 int DEFAULT nextval('default_seq'));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 INSERT INTO DEFAULTEXPR_TBL VALUES (-1, -2);
 INSERT INTO DEFAULTEXPR_TBL (i1) VALUES (-3);
 INSERT INTO DEFAULTEXPR_TBL (i2) VALUES (-4);
@@ -36,8 +40,8 @@ INSERT INTO DEFAULTEXPR_TBL (i2) VALUES (NULL);
 SELECT '' AS four, * FROM DEFAULTEXPR_TBL;
  four | i1  | i2 
 ------+-----+----
-      |  -3 |  1
       |  -1 | -2
+      |  -3 |  1
       | 102 | -4
       | 102 |   
 (4 rows)
@@ -57,26 +61,30 @@ LINE 1: CREATE TABLE error_tbl (b1 bool DEFAULT 1 IN (1, 2));
                                                   ^
 --  this should work, however:
 CREATE TABLE error_tbl (b1 bool DEFAULT (1 IN (1, 2)));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'b1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 DROP TABLE error_tbl;
 --
 -- CHECK syntax
 --
 CREATE TABLE CHECK_TBL (x int,
 	CONSTRAINT CHECK_CON CHECK (x > 3));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'x' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 INSERT INTO CHECK_TBL VALUES (5);
 INSERT INTO CHECK_TBL VALUES (4);
 INSERT INTO CHECK_TBL VALUES (3);
-ERROR:  new row for relation "check_tbl" violates check constraint "check_con"
+ERROR:  new row for relation "check_tbl" violates check constraint "check_con"  (seg0 florian-waas-computer.local:50000 pid=60722)
 INSERT INTO CHECK_TBL VALUES (2);
-ERROR:  new row for relation "check_tbl" violates check constraint "check_con"
+ERROR:  new row for relation "check_tbl" violates check constraint "check_con"  (seg1 florian-waas-computer.local:50001 pid=60723)
 INSERT INTO CHECK_TBL VALUES (6);
 INSERT INTO CHECK_TBL VALUES (1);
-ERROR:  new row for relation "check_tbl" violates check constraint "check_con"
+ERROR:  new row for relation "check_tbl" violates check constraint "check_con"  (seg0 florian-waas-computer.local:50000 pid=60722)
 SELECT '' AS three, * FROM CHECK_TBL;
  three | x 
 -------+---
-       | 4
        | 5
+       | 4
        | 6
 (3 rows)
 
@@ -84,21 +92,23 @@ CREATE SEQUENCE CHECK_SEQ;
 CREATE TABLE CHECK2_TBL (x int, y text, z int,
 	CONSTRAINT SEQUENCE_CON
 	CHECK (x > 3 and y <> 'check failed' and z < 8));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'x' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 INSERT INTO CHECK2_TBL VALUES (4, 'check ok', -2);
 INSERT INTO CHECK2_TBL VALUES (1, 'x check failed', -2);
-ERROR:  new row for relation "check2_tbl" violates check constraint "sequence_con"
+ERROR:  new row for relation "check2_tbl" violates check constraint "sequence_con"  (seg0 florian-waas-computer.local:50000 pid=60722)
 INSERT INTO CHECK2_TBL VALUES (5, 'z check failed', 10);
-ERROR:  new row for relation "check2_tbl" violates check constraint "sequence_con"
+ERROR:  new row for relation "check2_tbl" violates check constraint "sequence_con"  (seg0 florian-waas-computer.local:50000 pid=60722)
 INSERT INTO CHECK2_TBL VALUES (0, 'check failed', -2);
-ERROR:  new row for relation "check2_tbl" violates check constraint "sequence_con"
+ERROR:  new row for relation "check2_tbl" violates check constraint "sequence_con"  (seg1 florian-waas-computer.local:50001 pid=60723)
 INSERT INTO CHECK2_TBL VALUES (6, 'check failed', 11);
-ERROR:  new row for relation "check2_tbl" violates check constraint "sequence_con"
+ERROR:  new row for relation "check2_tbl" violates check constraint "sequence_con"  (seg1 florian-waas-computer.local:50001 pid=60723)
 INSERT INTO CHECK2_TBL VALUES (7, 'check ok', 7);
 SELECT '' AS two, * from CHECK2_TBL;
  two | x |    y     | z  
 -----+---+----------+----
-     | 4 | check ok | -2
      | 7 | check ok |  7
+     | 4 | check ok | -2
 (2 rows)
 
 --
@@ -110,8 +120,10 @@ CREATE TABLE INSERT_TBL (x INT DEFAULT nextval('insert_seq'),
 	z INT DEFAULT -1 * (nextval('insert_seq')-1),
 	CONSTRAINT INSERT_CON CHECK (x >= 3 AND y <> 'check failed' AND x < 8),
 	CHECK (x + z = 0));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'x' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 INSERT INTO INSERT_TBL(x,z) VALUES (2, -2);
-ERROR:  new row for relation "insert_tbl" violates check constraint "insert_con"
+ERROR:  new row for relation "insert_tbl" violates check constraint "insert_con"  (seg1 florian-waas-computer.local:50001 pid=60723)
 SELECT '' AS zero, * FROM INSERT_TBL;
  zero | x | y | z 
 ------+---+---+---
@@ -124,39 +136,39 @@ SELECT 'one' AS one, nextval('insert_seq');
 (1 row)
 
 INSERT INTO INSERT_TBL(y) VALUES ('Y');
-ERROR:  new row for relation "insert_tbl" violates check constraint "insert_con"
+ERROR:  new row for relation "insert_tbl" violates check constraint "insert_con"  (seg1 florian-waas-computer.local:50001 pid=60723)
 INSERT INTO INSERT_TBL(y) VALUES ('Y');
 INSERT INTO INSERT_TBL(x,z) VALUES (1, -2);
-ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_check"
+ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_check"  (seg0 florian-waas-computer.local:50000 pid=60722)
 INSERT INTO INSERT_TBL(z,x) VALUES (-7,  7);
 INSERT INTO INSERT_TBL VALUES (5, 'check failed', -5);
-ERROR:  new row for relation "insert_tbl" violates check constraint "insert_con"
+ERROR:  new row for relation "insert_tbl" violates check constraint "insert_con"  (seg0 florian-waas-computer.local:50000 pid=60722)
 INSERT INTO INSERT_TBL VALUES (7, '!check failed', -7);
 INSERT INTO INSERT_TBL(y) VALUES ('-!NULL-');
 SELECT '' AS four, * FROM INSERT_TBL;
  four | x |       y       | z  
 ------+---+---------------+----
+      | 7 | -NULL-        | -7
+      | 7 | !check failed | -7
       | 4 | Y             | -4
       | 6 | -!NULL-       | -6
-      | 7 | !check failed | -7
-      | 7 | -NULL-        | -7
 (4 rows)
 
 INSERT INTO INSERT_TBL(y,z) VALUES ('check failed', 4);
-ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_check"
+ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_check"  (seg1 florian-waas-computer.local:50001 pid=60723)
 INSERT INTO INSERT_TBL(x,y) VALUES (5, 'check failed');
-ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_check"
+ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_check"  (seg0 florian-waas-computer.local:50000 pid=60722)
 INSERT INTO INSERT_TBL(x,y) VALUES (5, '!check failed');
-ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_check"
+ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_check"  (seg0 florian-waas-computer.local:50000 pid=60722)
 INSERT INTO INSERT_TBL(y) VALUES ('-!NULL-');
-ERROR:  new row for relation "insert_tbl" violates check constraint "insert_con"
+ERROR:  new row for relation "insert_tbl" violates check constraint "insert_con"  (seg0 florian-waas-computer.local:50000 pid=60722)
 SELECT '' AS six, * FROM INSERT_TBL;
  six | x |       y       | z  
 -----+---+---------------+----
+     | 7 | -NULL-        | -7
+     | 7 | !check failed | -7
      | 4 | Y             | -4
      | 6 | -!NULL-       | -6
-     | 7 | !check failed | -7
-     | 7 | -NULL-        | -7
 (4 rows)
 
 SELECT 'seven' AS one, nextval('insert_seq');
@@ -166,7 +178,7 @@ SELECT 'seven' AS one, nextval('insert_seq');
 (1 row)
 
 INSERT INTO INSERT_TBL(y) VALUES ('Y');
-ERROR:  new row for relation "insert_tbl" violates check constraint "insert_con"
+ERROR:  new row for relation "insert_tbl" violates check constraint "insert_con"  (seg1 florian-waas-computer.local:50001 pid=60723)
 SELECT 'eight' AS one, nextval('insert_seq');
   one  | nextval 
 -------+---------
@@ -180,11 +192,11 @@ INSERT INTO INSERT_TBL VALUES (null, null, null);
 SELECT '' AS nine, * FROM INSERT_TBL;
  nine | x |       y       | z  
 ------+---+---------------+----
+      | 7 | -NULL-        | -7
+      | 7 | !check failed | -7
+      |   |               |   
       | 4 | Y             | -4
       | 6 | -!NULL-       | -6
-      | 7 | !check failed | -7
-      | 7 | -NULL-        | -7
-      |   |               |   
 (5 rows)
 
 --
@@ -193,13 +205,14 @@ SELECT '' AS nine, * FROM INSERT_TBL;
 CREATE TABLE INSERT_CHILD (cx INT default 42,
 	cy INT CHECK (cy > x))
 	INHERITS (INSERT_TBL);
+NOTICE:  Table has parent, setting distribution columns to match parent table
 INSERT INTO INSERT_CHILD(x,z,cy) VALUES (7,-7,11);
 INSERT INTO INSERT_CHILD(x,z,cy) VALUES (7,-7,6);
-ERROR:  new row for relation "insert_child" violates check constraint "insert_child_check"
+ERROR:  new row for relation "insert_child" violates check constraint "insert_child_check"  (seg0 florian-waas-computer.local:50000 pid=60722)
 INSERT INTO INSERT_CHILD(x,z,cy) VALUES (6,-7,7);
-ERROR:  new row for relation "insert_child" violates check constraint "insert_tbl_check"
+ERROR:  new row for relation "insert_child" violates check constraint "insert_tbl_check"  (seg1 florian-waas-computer.local:50001 pid=60723)
 INSERT INTO INSERT_CHILD(x,y,z,cy) VALUES (6,'check failed',-6,7);
-ERROR:  new row for relation "insert_child" violates check constraint "insert_con"
+ERROR:  new row for relation "insert_child" violates check constraint "insert_con"  (seg1 florian-waas-computer.local:50001 pid=60723)
 SELECT * FROM INSERT_CHILD;
  x |   y    | z  | cx | cy 
 ---+--------+----+----+----
@@ -213,11 +226,13 @@ DROP TABLE INSERT_CHILD;
 DELETE FROM INSERT_TBL;
 ALTER SEQUENCE INSERT_SEQ RESTART WITH 4;
 CREATE TABLE tmp (xd INT, yd TEXT, zd INT);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'xd' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 INSERT INTO tmp VALUES (null, 'Y', null);
 INSERT INTO tmp VALUES (5, '!check failed', null);
 INSERT INTO tmp VALUES (null, 'try again', null);
 INSERT INTO INSERT_TBL(y) select yd from tmp;
-ERROR:  new row for relation "insert_tbl" violates check constraint "insert_con"
+ERROR:  new row for relation "insert_tbl" violates check constraint "insert_con"  (seg1 florian-waas-computer.local:50001 pid=60723)
 SELECT '' AS three, * FROM INSERT_TBL;
  three | x | y | z 
 -------+---+---+---
@@ -225,9 +240,9 @@ SELECT '' AS three, * FROM INSERT_TBL;
 
 INSERT INTO INSERT_TBL SELECT * FROM tmp WHERE yd = 'try again';
 INSERT INTO INSERT_TBL(y,z) SELECT yd, -7 FROM tmp WHERE yd = 'try again';
-ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_check"
+ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_check"  (seg1 florian-waas-computer.local:50001 pid=60723)
 INSERT INTO INSERT_TBL(y,z) SELECT yd, -8 FROM tmp WHERE yd = 'try again';
-ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_check"
+ERROR:  new row for relation "insert_tbl" violates check constraint "insert_tbl_check"  (seg0 florian-waas-computer.local:50000 pid=60722)
 SELECT '' AS four, * FROM INSERT_TBL;
  four | x |     y     | z 
 ------+---+-----------+---
@@ -242,7 +257,6 @@ DROP TABLE tmp;
 --UPDATE INSERT_TBL SET x = 6 WHERE x = 6;
 --UPDATE INSERT_TBL SET x = -z, z = -x;
 UPDATE INSERT_TBL SET y = 'check failed' where x = 2;
-ERROR:  Cannot parallelize that UPDATE yet
 SELECT * FROM INSERT_TBL;
  x |     y     | z 
 ---+-----------+---
@@ -256,7 +270,9 @@ SELECT * FROM INSERT_TBL;
 CREATE TABLE COPY_TBL (x INT, y TEXT, z INT,
 	CONSTRAINT COPY_CON
 	CHECK (x > 3 AND y <> 'check failed' AND x < 7 ));
-COPY COPY_TBL FROM '@abs_srcdir@/data/constro.data';
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'x' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+COPY COPY_TBL FROM '/Users/flw/flw-cdb-main-1/cdb2/cdb-pg/src/test/regress/data/constro.data';
 SELECT '' AS two, * FROM COPY_TBL;
  two | x |       y       | z 
 -----+---+---------------+---
@@ -264,8 +280,8 @@ SELECT '' AS two, * FROM COPY_TBL;
      | 6 | OK            | 4
 (2 rows)
 
-COPY COPY_TBL FROM '@abs_srcdir@/data/constrf.data';
-ERROR:  new row for relation "copy_tbl" violates check constraint "copy_con"
+COPY COPY_TBL FROM '/Users/flw/flw-cdb-main-1/cdb2/cdb-pg/src/test/regress/data/constrf.data';
+ERROR:  new row for relation "copy_tbl" violates check constraint "copy_con"  (seg0 florian-waas-computer.local:50000 pid=60722)
 CONTEXT:  COPY copy_tbl, line 2: "7	check failed	6"
 SELECT * FROM COPY_TBL;
  x |       y       | z 
@@ -282,17 +298,17 @@ NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "primary_tbl_pkey
 INSERT INTO PRIMARY_TBL VALUES (1, 'one');
 INSERT INTO PRIMARY_TBL VALUES (2, 'two');
 INSERT INTO PRIMARY_TBL VALUES (1, 'three');
-ERROR:  duplicate key violates unique constraint "primary_tbl_pkey"
+ERROR:  duplicate key violates unique constraint "primary_tbl_pkey"  (seg0 florian-waas-computer.local:50000 pid=60722)
 INSERT INTO PRIMARY_TBL VALUES (4, 'three');
 INSERT INTO PRIMARY_TBL VALUES (5, 'one');
 INSERT INTO PRIMARY_TBL (t) VALUES ('six');
-ERROR:  null value in column "i" violates not-null constraint
+ERROR:  null value in column "i" violates not-null constraint  (seg0 florian-waas-computer.local:50000 pid=60722)
 SELECT '' AS four, * FROM PRIMARY_TBL;
  four | i |   t   
 ------+---+-------
-      | 1 | one
       | 2 | two
       | 4 | three
+      | 1 | one
       | 5 | one
 (4 rows)
 
@@ -306,14 +322,14 @@ INSERT INTO PRIMARY_TBL VALUES (1, 'three');
 INSERT INTO PRIMARY_TBL VALUES (4, 'three');
 INSERT INTO PRIMARY_TBL VALUES (5, 'one');
 INSERT INTO PRIMARY_TBL (t) VALUES ('six');
-ERROR:  null value in column "i" violates not-null constraint
+ERROR:  null value in column "i" violates not-null constraint  (seg0 florian-waas-computer.local:50000 pid=60722)
 SELECT '' AS three, * FROM PRIMARY_TBL;
  three | i |   t   
 -------+---+-------
-       | 1 | one
-       | 1 | three
        | 2 | two
        | 4 | three
+       | 1 | one
+       | 1 | three
        | 5 | one
 (5 rows)
 
@@ -326,7 +342,7 @@ NOTICE:  CREATE TABLE / UNIQUE will create implicit index "unique_tbl_i_key" for
 INSERT INTO UNIQUE_TBL VALUES (1, 'one');
 INSERT INTO UNIQUE_TBL VALUES (2, 'two');
 INSERT INTO UNIQUE_TBL VALUES (1, 'three');
-ERROR:  duplicate key violates unique constraint "unique_tbl_i_key"
+ERROR:  duplicate key violates unique constraint "unique_tbl_i_key"  (seg0 florian-waas-computer.local:50000 pid=60722)
 INSERT INTO UNIQUE_TBL VALUES (4, 'four');
 INSERT INTO UNIQUE_TBL VALUES (5, 'one');
 INSERT INTO UNIQUE_TBL (t) VALUES ('six');
@@ -335,11 +351,11 @@ SELECT '' AS five, * FROM UNIQUE_TBL;
  five | i |   t   
 ------+---+-------
       | 1 | one
+      | 5 | one
+      |   | six
+      |   | seven
       | 2 | two
       | 4 | four
-      | 5 | one
-      |   | seven
-      |   | six
 (6 rows)
 
 DROP TABLE UNIQUE_TBL;
@@ -350,15 +366,15 @@ INSERT INTO UNIQUE_TBL VALUES (1, 'one');
 INSERT INTO UNIQUE_TBL VALUES (2, 'two');
 INSERT INTO UNIQUE_TBL VALUES (1, 'three');
 INSERT INTO UNIQUE_TBL VALUES (1, 'one');
-ERROR:  duplicate key violates unique constraint "unique_tbl_i_key"
+ERROR:  duplicate key violates unique constraint "unique_tbl_i_key"  (seg0 florian-waas-computer.local:50000 pid=60722)
 INSERT INTO UNIQUE_TBL VALUES (5, 'one');
 INSERT INTO UNIQUE_TBL (t) VALUES ('six');
 SELECT '' AS five, * FROM UNIQUE_TBL;
  five | i |   t   
 ------+---+-------
+      | 2 | two
       | 1 | one
       | 1 | three
-      | 2 | two
       | 5 | one
       |   | six
 (5 rows)

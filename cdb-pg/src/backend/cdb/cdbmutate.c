@@ -56,6 +56,10 @@ typedef struct ApplyMotionState
     List       *initPlans;
 }	ApplyMotionState;
 
+/*
+ * External functions
+ */
+bool is_dummy_plan(Plan *plan);
 
 /*
  * Forward Declarations
@@ -720,7 +724,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 									errmsg("Cannot parallelize an UPDATE statement that updates the distribution columns"),
 									errOmitLocation(true)));
 				}
-				if (plan->flow->flotype != FLOW_PARTITIONED)
+				if (plan->flow->flotype != FLOW_PARTITIONED && !is_dummy_plan(plan))
 				{
 					ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
 									errmsg("Cannot parallelize that %s yet",
