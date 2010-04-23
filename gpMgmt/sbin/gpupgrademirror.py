@@ -3108,6 +3108,10 @@ MirrorInfoList = []
 phase2MirrorList = []
 
 
+
+coverage = GpCoverage()
+coverage.start()
+
 try:
   # setup signal handlers so we can clean up correctly
   signal.signal(signal.SIGTERM, sig_handler)
