@@ -13,6 +13,7 @@ try:
     from gppylib.db import catalog
     from gppylib.commands.unix import *
     from gppylib.commands.base import *
+    from gppylib.userinput import *
 except ImportError, e:
     sys.exit('ERROR: Cannot import modules.  Please check ' \
              'that you have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -34,6 +35,53 @@ AND pg_am.amname = 'bitmap'
 REINDEX_SQL="""
 REINDEX INDEX %s
 """
+
+DROP_INDEX_SQL="""
+DROP INDEX %s
+"""
+
+class DropIndexCommand(SQLCommand):
+    """This command issues a DROP INDEX SQL statement to a Greenplum database."""
+    
+    def __init__(self,name,hostname, port, db_name, idx_name):
+        self.db_name = db_name
+        self.idx_name = idx_name
+        self.hostname = hostname
+        self.port = port
+        # The cmdStr isn't actually used except for logging in this class
+        self.cmdStr = DROP_INDEX_SQL % idx_name
+
+        SQLCommand.__init__(self,name)
+        pass
+
+    def run(self,validateAfter=False):
+        dburl = dbconn.DbURL(hostname=self.hostname, port=self.port, 
+                             dbname=self.db_name)
+
+        try:
+            conn = dbconn.connect(dburl)
+            # Have to set this so SQLCommand can cancel if needed.
+            self.cancel_conn = conn
+        except DatabaseError, ex:
+            logger.error('Failed to connect to database %s' % self.db_name)
+            if options.verbose:
+                logger.exception(ex)
+            logger.error('Drop of index %s in database %s failed' % (self.idx_name, self.db_name))
+            return
+
+        try:
+            logger.info('Dropping index %s in database %s...' % 
+                        (self.idx_name, self.db_name))
+            # do the actual reindex
+            dbconn.execSQL(conn, DROP_INDEX_SQL % self.idx_name)
+            conn.commit()
+        except Exception, ex:
+            logger.error('Failed to drop index %s in database %s' % 
+                         (self.idx_name, self.db_name))
+        finally:
+            conn.close()
+
+
 
 class ReindexCommand(SQLCommand):
     """This command issues a REINDEX SQL statement to a Greenplum database."""
@@ -69,6 +117,7 @@ class ReindexCommand(SQLCommand):
                         (self.idx_name, self.db_name))
             # do the actual reindex
             dbconn.execSQL(conn, REINDEX_SQL % self.idx_name)
+            conn.commit()
         except Exception, ex:
             logger.error('Failed to reindex %s in database %s' % 
                          (self.idx_name, self.db_name))
@@ -100,6 +149,11 @@ def parseargs():
                       'Valid values are 1-%d. (Default: 1)' % MAX_PARALLEL_REINDEX)
     parser.add_option_group(optgrp)
     
+    optgrp = OptionGroup(parser, 'Mode Options')
+    optgrp.add_option('-m', '--mode', type='string',
+                      help='Mode of operation.  Can be either reindex or drop')
+    parser.add_option_group(optgrp)
+    
     optgrp = OptionGroup(parser, 'Logging Options')
     optgrp.add_option('-v','--verbose', action='store_true', help='Debug output.')
     parser.add_option_group(optgrp)
@@ -109,7 +163,7 @@ def parseargs():
                       help='Display this message and exit')
     parser.add_option_group(optgrp)
 
-    parser.set_defaults(hostname=None, port=0, verbose=False, 
+    parser.set_defaults(hostname=None, port=0, verbose=False, mode='reindex',
                         filters=[], slice=(None, None))
 
     # Parse the command line arguments
@@ -127,6 +181,19 @@ def parseargs():
     if options.port >= 65535:
         logger.error('Invalid port given.  Value must be less than 65535.')
         parser.exit(1)
+        
+    if options.mode not in ['reindex', 'drop']:
+        logger.error('Invalid mode option.  Must be either \'drop\' or \'reindex\'')
+        parser.exit(1)
+        
+    if options.mode == 'drop':
+        logger.warn('The drop mode of operation will drop all bitmap indexes that exist.')
+        logger.warn('This is not a recoverable operation.  You will need to recreate all')
+        logger.warn('bitmap indexes if you want to restore them.')
+        yn = ask_yesno('', "Are you sure you want to drop all bitmap indexes?",'N')
+        if not yn:
+            logger.info('Operation canceled by user.')
+            parser.exit(1)
         
     return options, args
 
@@ -161,9 +228,9 @@ def get_bitmap_indexes(options):
     return bitmap_indexes
 
 
-def reindex_bitmap_indexes(options, bitmap_indexes):
+def update_bitmap_indexes(options, bitmap_indexes):
     """Creates a worker pool and adds a command for every index
-    that needs to be reindexed."""
+    that needs to be reindexed or dropped."""
     
     pool = WorkerPool(numWorkers=options.parallel)
     
@@ -172,8 +239,18 @@ def reindex_bitmap_indexes(options, bitmap_indexes):
     for (db_name, idx_name) in bitmap_indexes:
         logger.debug('Adding reindex command for %s in database %s to pool.' % 
                      (idx_name, db_name))
-        cmd = ReindexCommand('Reindex %s' % idx_name, dburl.pghost, 
-                             dburl.pgport, db_name, idx_name)
+        if options.mode == 'reindex':
+            cmd = ReindexCommand('Reindex %s' % idx_name, dburl.pghost, 
+                                 dburl.pgport, db_name, idx_name)
+        elif options.mode == 'drop':
+            cmd = DropIndexCommand('Drop Index %s' % idx_name, dburl.pghost,
+                                   dburl.pgport, db_name, idx_name)
+        else:
+            # just a safety check, but this should have been caught in the 
+            # option parser.
+            logger.error('Invalid mode.  Exiting...')
+            sys.exit(1)
+            
         pool.addCommand(cmd)
 
     logger.info('Waiting for workers to finish...')
@@ -194,6 +271,7 @@ def reindex_bitmap_indexes(options, bitmap_indexes):
         pass
 
 
+
 logger = get_default_logger()
 setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
 
@@ -204,7 +282,7 @@ try:
         enable_verbose_logging()
         
     bitmap_indexes = get_bitmap_indexes(options)
-    reindex_bitmap_indexes(options, bitmap_indexes)
+    update_bitmap_indexes(options, bitmap_indexes)
     logger.info('Done.')
 except Exception, ex:
     logger.error('There was an error during reindexing: %s' % ex.__str__())
