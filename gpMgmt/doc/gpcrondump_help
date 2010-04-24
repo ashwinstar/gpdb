@@ -109,9 +109,9 @@ of the database being dumped.
 
 -f <free_space_percent>
 
-Percentage of free disk space to reserve when calculating 
-the available free disk space for the dump operation. 
-The default is 10.
+Specifies an additional percentage of free disk space to add to the 
+actual available free disk space. This is used to estimate the size 
+of compressed dump files. The default is 10.
 
 
 -g (copy master config files)
