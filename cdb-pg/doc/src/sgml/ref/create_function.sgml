@@ -21,7 +21,7 @@ $PostgreSQL: pgsql/doc/src/sgml/ref/create_function.sgml,v 1.70.2.2 2007/04/23 1
 <synopsis>
 CREATE [ OR REPLACE ] FUNCTION
     <replaceable class="parameter">name</replaceable> ( [ [ <replaceable class="parameter">argmode</replaceable> ] [ <replaceable class="parameter">argname</replaceable> ] <replaceable class="parameter">argtype</replaceable> [, ...] ] )
-    [ RETURNS <replaceable class="parameter">rettype</replaceable> ]
+    [ RETURNS [SETOF] <replaceableclass="parameter">rettype</replaceable> ]
   { LANGUAGE <replaceable class="parameter">langname</replaceable>
     | IMMUTABLE | STABLE | VOLATILE
     | CALLED ON NULL INPUT | RETURNS NULL ON NULL INPUT | STRICT
