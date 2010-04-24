@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 '''
-Usage: gpcheckcat <option> [dbname]
+Usage: gpcheckcat [<option>] [dbname]
 
 	-? 
 	-B parallel: number of worker threads
