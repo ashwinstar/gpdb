@@ -26,6 +26,7 @@
 #include "apr_getopt.h"
 #include <event.h>
 #include "libpq-fe.h"
+#include <time.h>
 
 
 #define SET_MAXFD(fd)  if (fd < opt.max_fd) ; else opt.max_fd = fd
