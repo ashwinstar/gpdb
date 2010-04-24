@@ -16,7 +16,7 @@ from gppylib.operations import startSegments
 logger = get_default_logger()
 
 gDatabaseDirectories = [
-        # this list (with some small differences) also occurs in initdb.c
+        # this list and the gDatabaseSubDirectories occur combined inside initdb.c
         "global",
         "pg_log",
         "pg_xlog",
@@ -31,6 +31,12 @@ gDatabaseDirectories = [
         "base",
         "pg_tblspc",
         "pg_stat_tmp"
+        ]
+gDatabaseSubDirectories = [
+        "pg_xlog/archive_status",
+        "pg_multixact/members",
+        "pg_multixact/offsets",
+        "base/1"
         ]
 
 #
@@ -340,7 +346,7 @@ class GpMirrorListToBuild:
         # Use the master's version of other files, and build
         #
         self.__createEmptyDirectories( schemaDir, gDatabaseDirectories )
-        self.__createEmptyDirectories( schemaDir, [ "pg_multixact/members", "pg_multixact/offsets" ])
+        self.__createEmptyDirectories( schemaDir, gDatabaseSubDirectories )
         self.__copyFiles(masterDir, schemaDir, ["PG_VERSION", "pg_ident.conf"])
 
 
