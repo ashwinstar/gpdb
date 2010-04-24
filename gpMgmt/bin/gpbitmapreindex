@@ -186,7 +186,7 @@ def parseargs():
         logger.error('Invalid mode option.  Must be either \'drop\' or \'reindex\'')
         parser.exit(1)
         
-    if options.mode == 'drop':
+    if options.mode == 'drop' or options.mode == 'd':
         logger.warn('The drop mode of operation will drop all bitmap indexes that exist.')
         logger.warn('This is not a recoverable operation.  You will need to recreate all')
         logger.warn('bitmap indexes if you want to restore them.')
