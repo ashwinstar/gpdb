@@ -439,9 +439,7 @@ PGSemaphoreLock(PGSemaphore sema, bool interruptOK)
 	} while (errStatus < 0 && errno == EINTR);
 
 	if (errStatus < 0)
-		// UNDONE: For the moment, make this an ERROR
-//		elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
-		elog(ERROR, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
+		elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
 }
 
 /*
@@ -465,10 +463,7 @@ PGSemaphoreLockInterruptable(PGSemaphore sema)
 	{
 		if (errno == EINTR)
 			return false;
-		// UNDONE: For the moment, make this an ERROR
-		// cmcdevtt: It would sure be nice to know WHY you did this, whoever did this...
-//		elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
-		elog(ERROR, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
+		elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
 	}
 
 	return true;
@@ -501,9 +496,7 @@ PGSemaphoreUnlock(PGSemaphore sema)
 	} while (errStatus < 0 && errno == EINTR);
 
 	if (errStatus < 0)
-		// UNDONE: For the moment, make this an ERROR
-//		elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
-		elog(ERROR, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
+		elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
 }
 
 /*
@@ -543,9 +536,7 @@ PGSemaphoreTryLock(PGSemaphore sema)
 			return false;		/* failed to lock it */
 #endif
 		/* Otherwise we got trouble */
-		// UNDONE: For the moment, make this an ERROR
-//		elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
-		elog(ERROR, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
+		elog(FATAL, "semop(id=%d,num=%d) failed: %m", sema->semId, sema->semNum);
 	}
 
 	return true;

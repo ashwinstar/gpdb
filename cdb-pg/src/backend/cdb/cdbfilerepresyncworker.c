@@ -497,7 +497,8 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 					if (mirrorDataLossOccurred)
 						break;
 					
-					bufferLen = (Size) Min(BLCKSZ, endOffset - startOffset);
+					/* AO and CO Data Store writes 64k size by default */
+					bufferLen = (Size) Min(2*BLCKSZ, endOffset - startOffset);
 					buffer = (char*) palloc(bufferLen);
 					if (buffer == NULL)
 						ereport(ERROR,
@@ -540,8 +541,8 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 						Assert(primaryError == 0);	// No primary writes as resync worker.
 						
 						startOffset += bufferLen;
-						
-						bufferLen = (Size) Min(BLCKSZ, endOffset - startOffset);						
+						/* AO and CO Data Store writes 64k size by default */
+						bufferLen = (Size) Min(2*BLCKSZ, endOffset - startOffset);						
 					}
 					
 					if (buffer) 

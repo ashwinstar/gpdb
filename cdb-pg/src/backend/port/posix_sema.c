@@ -284,9 +284,7 @@ PGSemaphoreLock(PGSemaphore sema, bool interruptOK)
 	} while (errStatus < 0 && errno == EINTR);
 
 	if (errStatus < 0)
-		// UNDONE: For the moment, make this an ERROR
-//		elog(FATAL, "sem_wait failed: %m");
-		elog(ERROR, "sem_wait failed: %m");
+		elog(FATAL, "sem_wait failed: %m");
 }
 
 /*
@@ -305,9 +303,7 @@ PGSemaphoreLockInterruptable(PGSemaphore sema)
 	{
 		if (errno == EINTR)
 			return false;
-		// UNDONE: For the moment, make this an ERROR
-//		elog(FATAL, "sem_wait failed: %m");
-		elog(ERROR, "sem_wait failed: %m");
+		elog(FATAL, "sem_wait failed: %m");
 	}
 
 	return true;

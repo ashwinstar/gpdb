@@ -318,16 +318,18 @@ void ChangeTracking_AddRecordFromXlog(RmgrId rmid,
 									  void*  data,
 									  XLogRecPtr*	loc)
 {
-	RelationChangeInfo 	relationChangeInfoArray[MaxRelationChangeInfoReturns];
 	int					relationChangeInfoArrayCount;
 	int					i;
+	int					arrlen = ChangeTracking_GetInfoArrayDesiredMaxLength(rmid, info);
+	RelationChangeInfo 	relationChangeInfoArray[arrlen];
 		
 	ChangeTracking_GetRelationChangeInfoFromXlog(
 										  rmid,
 										  info,
 										  data, 
 										  relationChangeInfoArray,
-										  &relationChangeInfoArrayCount);
+										  &relationChangeInfoArrayCount,
+										  arrlen);
 
 	for (i = 0; i < relationChangeInfoArrayCount; i++)
 		ChangeTracking_AddBufferPoolChange(loc,
@@ -345,17 +347,19 @@ bool ChangeTracking_PrintRelationChangeInfo(
 									  bool		weAreGeneratingXLogNow,
 									  bool		printSkipIssuesOnly)
 {
-	RelationChangeInfo 	relationChangeInfoArray[MaxRelationChangeInfoReturns];
+	bool				atLeastOneSkipIssue = false;
 	int					relationChangeInfoArrayCount;
 	int					i;
-	bool				atLeastOneSkipIssue = false;
+	int					arrlen = ChangeTracking_GetInfoArrayDesiredMaxLength(xl_rmid, xl_info);
+	RelationChangeInfo 	relationChangeInfoArray[arrlen];
 	
 	ChangeTracking_GetRelationChangeInfoFromXlog(
 										  xl_rmid,
 										  xl_info,
 										  data,
 										  relationChangeInfoArray,
-										  &relationChangeInfoArrayCount);
+										  &relationChangeInfoArrayCount,
+										  arrlen);
 
 	for (i = 0; i < relationChangeInfoArrayCount; i++)
 	{
@@ -428,6 +432,7 @@ bool ChangeTracking_PrintRelationChangeInfo(
 static void ChangeTracking_AddRelationChangeInfo(
 									  RelationChangeInfo	*relationChangeInfoArray,
 									  int					*relationChangeInfoArrayCount,
+									  int					 relationChangeInfoMaxSize,
 									  RelFileNode *relFileNode,
 									  BlockNumber blockNumber,
 									  ItemPointer persistentTid,
@@ -435,7 +440,7 @@ static void ChangeTracking_AddRelationChangeInfo(
 {
 	RelationChangeInfo	*relationChangeInfo;
 	
-	Assert (*relationChangeInfoArrayCount < MaxRelationChangeInfoReturns);
+	Assert (*relationChangeInfoArrayCount < relationChangeInfoMaxSize);
 
 	relationChangeInfo = &relationChangeInfoArray[*relationChangeInfoArrayCount];
 
@@ -452,13 +457,14 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 									  uint8 	xl_info,
 									  void		*data, 
 									  RelationChangeInfo	*relationChangeInfoArray,
-									  int					*relationChangeInfoArrayCount)
+									  int					*relationChangeInfoArrayCount,
+									  int					relationChangeInfoMaxSize)
 {
 
 	uint8	info = xl_info & ~XLR_INFO_MASK;
 	uint8	op = 0;
-		
-	MemSet(relationChangeInfoArray, 0, sizeof(RelationChangeInfo) * MaxRelationChangeInfoReturns);
+
+	MemSet(relationChangeInfoArray, 0, sizeof(RelationChangeInfo) * relationChangeInfoMaxSize);
 	*relationChangeInfoArrayCount = 0;
 
 	/*
@@ -504,6 +510,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xlrec->heapnode.node),
 													   xlrec->block,
 													   &xlrec->heapnode.persistentTid,
@@ -525,6 +532,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xlrec->target.node),
 													   ItemPointerGetBlockNumber(&(xlrec->target.tid)),
 													   &xlrec->target.persistentTid,
@@ -538,6 +546,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xlrec->target.node),
 													   ItemPointerGetBlockNumber(&(xlrec->target.tid)),
 													   &xlrec->target.persistentTid,
@@ -557,6 +566,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xlrec->target.node),
 													   newblock,
 													   &xlrec->target.persistentTid,
@@ -565,6 +575,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 						ChangeTracking_AddRelationChangeInfo(
 														   relationChangeInfoArray,
 														   relationChangeInfoArrayCount,
+														   relationChangeInfoMaxSize,
 														   &(xlrec->target.node),
 														   oldblock,
 														   &xlrec->target.persistentTid,
@@ -579,6 +590,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xlrec->heapnode.node),
 													   xlrec->block,
 													   &xlrec->heapnode.persistentTid,
@@ -592,6 +604,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xlrec->heapnode.node),
 													   xlrec->blkno,
 													   &xlrec->heapnode.persistentTid,
@@ -606,6 +619,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xlrec->target.node),
 													   block,
 													   &xlrec->target.persistentTid,
@@ -620,6 +634,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xlrec->target.node),
 													   block,
 													   &xlrec->target.persistentTid,
@@ -645,6 +660,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xlrec->target.node),
 													   BlockIdGetBlockNumber(&blkid),
 													   &xlrec->target.persistentTid,
@@ -654,6 +670,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 						ChangeTracking_AddRelationChangeInfo(
 														   relationChangeInfoArray,
 														   relationChangeInfoArrayCount,
+														   relationChangeInfoMaxSize,
 														   &(xlrec->target.node),
 														   BTREE_METAPAGE,
 														   &xlrec->target.persistentTid,
@@ -672,6 +689,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xlrec->target.node),
 													   BlockIdGetBlockNumber(&blkid),
 													   &xlrec->target.persistentTid,
@@ -680,6 +698,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xlrec->target.node),
 													   xlrec->otherblk,
 													   &xlrec->target.persistentTid,
@@ -690,6 +709,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 						ChangeTracking_AddRelationChangeInfo(
 														   relationChangeInfoArray,
 														   relationChangeInfoArrayCount,
+														   relationChangeInfoMaxSize,
 														   &(xlrec->target.node),
 														   xlrec->rightblk,
 														   &xlrec->target.persistentTid,
@@ -705,6 +725,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xlrec->btreenode.node),
 													   xlrec->block,
 													   &xlrec->btreenode.persistentTid,
@@ -723,6 +744,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 						ChangeTracking_AddRelationChangeInfo(
 														   relationChangeInfoArray,
 														   relationChangeInfoArrayCount,
+														   relationChangeInfoMaxSize,
 														   &(xlrec->target.node),
 														   block,
 														   &xlrec->target.persistentTid,
@@ -732,6 +754,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 						ChangeTracking_AddRelationChangeInfo(
 														   relationChangeInfoArray,
 														   relationChangeInfoArrayCount,
+														   relationChangeInfoMaxSize,
 														   &(xlrec->target.node),
 														   xlrec->rightblk,
 														   &xlrec->target.persistentTid,
@@ -741,6 +764,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 						ChangeTracking_AddRelationChangeInfo(
 														   relationChangeInfoArray,
 														   relationChangeInfoArrayCount,
+														   relationChangeInfoMaxSize,
 														   &(xlrec->target.node),
 														   xlrec->leftblk,
 														   &xlrec->target.persistentTid,
@@ -750,6 +774,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 						ChangeTracking_AddRelationChangeInfo(
 														   relationChangeInfoArray,
 														   relationChangeInfoArrayCount,
+														   relationChangeInfoMaxSize,
 														   &(xlrec->target.node),
 														   xlrec->deadblk,
 														   &xlrec->target.persistentTid,
@@ -759,6 +784,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 						ChangeTracking_AddRelationChangeInfo(
 														   relationChangeInfoArray,
 														   relationChangeInfoArrayCount,
+														   relationChangeInfoMaxSize,
 														   &(xlrec->target.node),
 														   BTREE_METAPAGE,
 														   &xlrec->target.persistentTid,
@@ -772,6 +798,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xlrec->btreenode.node),
 													   xlrec->rootblk,
 													   &xlrec->btreenode.persistentTid,
@@ -781,6 +808,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xlrec->btreenode.node),
 													   BTREE_METAPAGE,
 													   &xlrec->btreenode.persistentTid,
@@ -803,6 +831,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xlrec->bm_node),
 													   xlrec->bm_new_blkno,
 													   &xlrec->bm_persistentTid,
@@ -816,6 +845,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xlrec->bm_node),
 													   xlrec->bm_lov_blkno,
 													   &xlrec->bm_persistentTid,
@@ -825,6 +855,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 						ChangeTracking_AddRelationChangeInfo(
 														   relationChangeInfoArray,
 														   relationChangeInfoArrayCount,
+														   relationChangeInfoMaxSize,
 														   &(xlrec->bm_node),
 														   BM_METAPAGE,
 														   &xlrec->bm_persistentTid,
@@ -838,6 +869,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xlrec->bm_node),
 													   BM_METAPAGE,
 													   &xlrec->bm_persistentTid,
@@ -851,6 +883,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xlrec->bm_node),
 													   xlrec->bm_lov_blkno,
 													   &xlrec->bm_persistentTid,
@@ -864,6 +897,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xlrec->bm_node),
 													   xlrec->bm_lov_blkno,
 													   &xlrec->bm_persistentTid,
@@ -873,6 +907,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 						ChangeTracking_AddRelationChangeInfo(
 														   relationChangeInfoArray,
 														   relationChangeInfoArrayCount,
+														   relationChangeInfoMaxSize,
 														   &(xlrec->bm_node),
 														   xlrec->bm_next_blkno,
 														   &xlrec->bm_persistentTid,
@@ -886,6 +921,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xlrec->bm_node),
 													   xlrec->bm_blkno,
 													   &xlrec->bm_persistentTid,
@@ -899,6 +935,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xlrec->bm_node),
 													   xlrec->bm_first_blkno,
 													   &xlrec->bm_persistentTid,
@@ -908,6 +945,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 						ChangeTracking_AddRelationChangeInfo(
 														   relationChangeInfoArray,
 														   relationChangeInfoArrayCount,
+														   relationChangeInfoMaxSize,
 														   &(xlrec->bm_node),
 														   xlrec->bm_second_blkno,
 														   &xlrec->bm_persistentTid,
@@ -917,6 +955,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 						ChangeTracking_AddRelationChangeInfo(
 														   relationChangeInfoArray,
 														   relationChangeInfoArrayCount,
+														   relationChangeInfoMaxSize,
 														   &(xlrec->bm_node),
 														   xlrec->bm_lov_blkno,
 														   &xlrec->bm_persistentTid,
@@ -938,6 +977,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xlrec->node),
 													   0, /* seq_redo touches block 0 only */
 													   &xlrec->persistentTid,
@@ -961,6 +1001,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xldata->node),
 													   xldata->blkno,
 													   &xldata->persistentTid,
@@ -974,6 +1015,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xldata->node),
 													   xldata->blkno,
 													   &xldata->persistentTid,
@@ -987,14 +1029,11 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					int 				j, 
 										i = 0;
 
-					/* TODO: fix this case that may cause an array overflow */
-					if(xldata->npage > MaxRelationChangeInfoReturns)
-						elog(ERROR, "CHANGE TRACKING: internal error in XLOG_GIST_PAGE_SPLIT. npage is %d", xldata->npage );
-
 					/* first, log the splitted page */
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xldata->node),
 													   xldata->origblkno,
 													   &xldata->persistentTid,
@@ -1014,6 +1053,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 						ChangeTracking_AddRelationChangeInfo(
 														   relationChangeInfoArray,
 														   relationChangeInfoArrayCount,
+														   relationChangeInfoMaxSize,
 														   &(xldata->node),
 														   gistp->blkno,
 														   &xldata->persistentTid,
@@ -1037,6 +1077,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
 													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
 													   &(xldata->node),
 													   GIST_ROOT_BLKNO,
 													   &xldata->persistentTid,
@@ -2404,4 +2445,20 @@ int64 ChangeTracking_GetTotalBlocksToSync(void)
 
 	return count;
 
+}
+
+/*
+ * Any RM will not change more than 5 blocks per xlog record. The only exception
+ * is a GIST RM SPLIT xlog record, which has an undefined number of blocks to change.
+ * This function will return the maximum number of change infos that could occur, so
+ * that we could set the array size accordingly.
+ */
+int ChangeTracking_GetInfoArrayDesiredMaxLength(RmgrId rmid, uint8 info)
+{
+	int 	MaxRelChangeInfoReturns = 5;
+	int 	MaxRelChangeInfoReturns_GistSplit = 1024; //TODO: this is some sort of a very large guess. check if realistic.
+	bool	gist_split = ((rmid == RM_GIST_ID && (info & ~XLR_INFO_MASK) == XLOG_GIST_PAGE_SPLIT));
+	int		arrLen = (!gist_split ? MaxRelChangeInfoReturns : MaxRelChangeInfoReturns_GistSplit);
+	
+	return arrLen;
 }

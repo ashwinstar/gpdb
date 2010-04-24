@@ -16,6 +16,7 @@
 
 #include "access/genam.h"
 #include "access/bitmap.h"
+#include "access/heapam.h"
 #include "access/reloptions.h"
 
 static void _bitmap_findnextword(BMBatchWords* words, uint32 nextReadNo);
@@ -758,6 +759,9 @@ _bitmap_log_newpage(Relation rel, uint8 info, Buffer buf)
 
 	page = BufferGetPage(buf);
 
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(rel);
+
 	xlNewPage.bm_node = rel->rd_node;
 	xlNewPage.bm_persistentTid = rel->rd_segfile0_relationnodeinfo.persistentTid;
 	xlNewPage.bm_persistentSerialNum = rel->rd_segfile0_relationnodeinfo.persistentSerialNum;
@@ -787,6 +791,9 @@ _bitmap_log_metapage(Relation rel, Page page)
 	xl_bm_metapage*		xlMeta;
 	XLogRecPtr			recptr;
 	XLogRecData			rdata[1];
+
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(rel);
 
 	xlMeta = (xl_bm_metapage *)
 		palloc(MAXALIGN(sizeof(xl_bm_metapage)));
@@ -819,6 +826,9 @@ _bitmap_log_bitmap_lastwords(Relation rel, Buffer lovBuffer,
 	xl_bm_bitmap_lastwords	xlLastwords;
 	XLogRecPtr				recptr;
 	XLogRecData				rdata[1];
+
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(rel);
 
 	xlLastwords.bm_node = rel->rd_node;
 	xlLastwords.bm_persistentTid = rel->rd_segfile0_relationnodeinfo.persistentTid;
@@ -855,6 +865,9 @@ _bitmap_log_lovitem(Relation rel, Buffer lovBuffer, OffsetNumber offset,
 	xl_bm_lovitem	xlLovItem;
 	XLogRecPtr		recptr;
 	XLogRecData		rdata[1];
+
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(rel);
 
 	xlLovItem.bm_node = rel->rd_node;
 	xlLovItem.bm_persistentTid = rel->rd_segfile0_relationnodeinfo.persistentTid;
@@ -908,6 +921,9 @@ _bitmap_log_bitmapwords(Relation rel, Buffer bitmapBuffer, Buffer lovBuffer,
 	int					cwords_size;
 	int					hwords_size;
 	Page lovPage = BufferGetPage(lovBuffer);
+
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(rel);
 
 	lastTids_size = buf->curword * sizeof(uint64);
 	cwords_size = buf->curword * sizeof(BM_HRL_WORD);
@@ -983,6 +999,9 @@ _bitmap_log_updateword(Relation rel, Buffer bitmapBuffer, int word_no)
 	xl_bm_updateword	xlBitmapWord;
 	XLogRecPtr			recptr;
 	XLogRecData			rdata[1];
+
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(rel);
 
 	bitmapPage = BufferGetPage(bitmapBuffer);
 	bitmap = (BMBitmap) PageGetContentsMaxAligned(bitmapPage);
@@ -1073,6 +1092,9 @@ _bitmap_log_updatewords(Relation rel,
 			secondOpaque->bm_hrl_words_used;
 		xlBitmapWords.bm_next_blkno = secondOpaque->bm_bitmap_next;
 	}
+
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(rel);
 
 	xlBitmapWords.bm_node = rel->rd_node;
 	xlBitmapWords.bm_persistentTid = rel->rd_segfile0_relationnodeinfo.persistentTid;

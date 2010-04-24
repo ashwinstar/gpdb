@@ -476,8 +476,10 @@ PersistentRecovery_ShouldHandlePass1XLogRec(
 	
 	XLogRecord 		*record)
 {
-	RelationChangeInfo 	relationChangeInfoArray[MaxRelationChangeInfoReturns];
 	int					relationChangeInfoArrayCount;
+	int					arrlen = ChangeTracking_GetInfoArrayDesiredMaxLength(record->xl_rmid, 
+																			 record->xl_info);
+	RelationChangeInfo 	relationChangeInfoArray[arrlen];
 	
 	if (!Debug_enable_new_startup_pass)
 		return true;	// UNDONE: Fow now, redo everything in Pass 1.  Later we'll move most of it to Pass 3.
@@ -496,7 +498,8 @@ PersistentRecovery_ShouldHandlePass1XLogRec(
 										  record->xl_info,
 										  (void*)XLogRecGetData(record), 
 										  relationChangeInfoArray,
-										  &relationChangeInfoArrayCount);
+										  &relationChangeInfoArrayCount,
+										  arrlen);
 
 	if (relationChangeInfoArrayCount == 0)
 	{
@@ -684,13 +687,13 @@ PersistentRecovery_HandlePass2XLogRec(
 bool
 PersistentRecovery_ShouldHandlePass3XLogRec(
 	XLogRecPtr		*beginLoc,
-
 	XLogRecPtr 		*lsn,
-	
 	XLogRecord 		*record)
 {
-	RelationChangeInfo 	relationChangeInfoArray[MaxRelationChangeInfoReturns];
 	int					relationChangeInfoArrayCount;
+	int					arrlen = ChangeTracking_GetInfoArrayDesiredMaxLength(record->xl_rmid,
+																			 record->xl_info);
+	RelationChangeInfo 	relationChangeInfoArray[arrlen];
 	
 	if (Debug_persistent_recovery_print)
 		ChangeTracking_PrintRelationChangeInfo(
@@ -706,7 +709,8 @@ PersistentRecovery_ShouldHandlePass3XLogRec(
 										  record->xl_info,
 										  (void*)XLogRecGetData(record), 
 										  relationChangeInfoArray,
-										  &relationChangeInfoArrayCount);
+										  &relationChangeInfoArrayCount,
+										  arrlen);
 
 	if (relationChangeInfoArrayCount == 0)
 	{

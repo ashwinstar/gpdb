@@ -108,14 +108,16 @@ typedef struct RelationChangeInfo
 	int64	  		persistentSerialNum;
 } RelationChangeInfo;
 
-#define MaxRelationChangeInfoReturns 5
+//#define MaxRelChangeInfoReturns 5
+//#define MaxRelChangeInfoReturns_GistSplit 1024 //arbitrary very large number for gist split processing.
 
 extern void ChangeTracking_GetRelationChangeInfoFromXlog(
 									  RmgrId	xl_rmid,
 									  uint8 	xl_info,
 									  void		*data, 
 									  RelationChangeInfo	*relationChangeInfoArray,
-									  int					*relationChangeInfoArrayCount);
+									  int					*relationChangeInfoArrayCount,
+									  int					relationChangeInfoMaxSize);
 
 extern bool ChangeTracking_PrintRelationChangeInfo(
 									  RmgrId	xl_rmid,
@@ -124,6 +126,8 @@ extern bool ChangeTracking_PrintRelationChangeInfo(
 									  XLogRecPtr *loc,
 									  bool	  weAreGeneratingXLogNow,
 									  bool	  printSkipIssuesOnly);
+
+extern int ChangeTracking_GetInfoArrayDesiredMaxLength(RmgrId rmid, uint8 info);
 
 /*
  * Recover the end of the resynchronize change log by determing the last good change record
