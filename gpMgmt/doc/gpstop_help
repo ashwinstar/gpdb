@@ -83,7 +83,10 @@ OPTIONS
 -M fast (fast shutdown - rollback)
 
  Fast shut down. Any transactions in progress are interrupted 
- and rolled back.
+ and rolled back. This shutdown mode is not recommended. This 
+ mode kills all postgres processes without allowing the database 
+ server to complete transaction processing or clean up any temporary 
+ or in-process work files.
 
 
 -M immediate (immediate shutdown - abort)
@@ -148,9 +151,9 @@ Stop a Greenplum Database system in smart mode:
 
   gpstop
 
-Stop a Greenplum Database system in immediate mode:
+Stop a Greenplum Database system in fast mode:
 
-  gpstop -M immediate
+  gpstop -M fast
 
 
 Stop all segment instances and then restart the system:
