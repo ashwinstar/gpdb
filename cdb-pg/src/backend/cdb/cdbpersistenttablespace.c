@@ -171,6 +171,16 @@ PersistentTablespace_GetState(
 
 	PersistentFileSysState	state;
 
+	/*
+	 * pg_default and pg_global always exist, but do not have entries in
+	 * gp_persistent_tablespace_node.
+	 */
+	if (tablespaceOid == DEFAULTTABLESPACE_OID ||
+		tablespaceOid == GLOBALTABLESPACE_OID) 
+	{ 
+		return PersistentFileSysState_Created; 
+	}
+
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
 	tablespaceDirEntry = 
