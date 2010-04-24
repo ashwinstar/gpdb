@@ -35,11 +35,11 @@ of the individual instances. Each instance is shutdown in parallel.
 
 By default, you are not allowed to shut down Greenplum Database 
 if there are any client connections to the database. Use 
-the -M immediate option to terminate any connections before 
-shutting down. If there are any transactions in progress, 
+the -M fast option to roll back and terminate any connections 
+before shutting down. If there are any transactions in progress, 
 the default behavior is to wait for them to commit before 
-shutting down. Use the -M fast or -M immediate options to 
-either roll back or abort open transactions.
+shutting down. Use the -M fast option to roll back open 
+transactions.
 
 With the -u option, the utility uploads changes made to the 
 master pg_hba.conf file or to runtime configuration parameters 
