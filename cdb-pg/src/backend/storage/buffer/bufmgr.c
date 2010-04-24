@@ -2140,15 +2140,14 @@ RelationTruncate(Relation rel, BlockNumber nblocks, bool markPersistentAsPhysica
 
 	/* Do the real work */
 	smgrtruncate(rel->rd_smgr, nblocks, rel->rd_istemp, rel->rd_isLocalBuf); /*CDB*/
+
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
 	
 	if (markPersistentAsPhysicallyTruncated)
 	{
 		UnlockRelationForResynchronize(&rel->rd_node, AccessExclusiveLock);
 	}
-	
-	MIRROREDLOCK_BUFMGR_UNLOCK;
-	// -------- MirroredLock ----------
-	
 }
 
 /* ---------------------------------------------------------------------

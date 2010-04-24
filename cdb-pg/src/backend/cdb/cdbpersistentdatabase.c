@@ -817,8 +817,9 @@ bool PersistentDatabase_DirIsCreated(
 				    		dbDirNode->tablespace);
 	result = (databaseDirEntry != NULL);
 	if (result &&
-		databaseDirEntry->state != PersistentFileSysState_Created)
-		elog(ERROR, "Persistent database entry %s expected to be in 'Created' (actual state '%s')", 
+		databaseDirEntry->state != PersistentFileSysState_Created &&
+		databaseDirEntry->state != PersistentFileSysState_CreatePending)
+		elog(ERROR, "Persistent database entry %s expected to be in 'Create Pending' or 'Created' (actual state '%s')", 
 			 GetDatabasePath(
 				  dbDirNode->database, 
 				  dbDirNode->tablespace),

@@ -901,7 +901,7 @@ FileRepPrimary_MirrorCreate(FileRepIdentifier_u		fileRepIdentifier,
 							FileRepRelationType_e	fileRepRelationType,
 							bool					reportStatus)
 {
-	int status = STATUS_OK;
+	int	mirrorStatus = FileRepStatusSuccess;
 	
 	FileRepOperationDescription_u descr;
 	
@@ -913,25 +913,28 @@ FileRepPrimary_MirrorCreate(FileRepIdentifier_u		fileRepIdentifier,
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
 			   segmentState != SegmentStateInSyncTransition))
 		{			
-			status = FileRepPrimary_ConstructAndInsertMessage(
+			if (FileRepPrimary_ConstructAndInsertMessage(
 							  fileRepIdentifier,
 							  fileRepRelationType,
 							  FileRepOperationCreate,
-							  descr);
+							  descr) != STATUS_OK)
+			{
+				mirrorStatus = FileRepStatusMirrorLossOccurred;
+			}
 		}
 	}
 	
 #ifdef FILEREP_DEBUG
 	if (dataState == DataStateInChangeTracking)
 		ereport(LOG,			
-				(errmsg("LOG(filerep): Change Tracking "), 
+				(errmsg("LOG(filerep): Change Tracking "),
 				 FileRep_errdetail(fileRepIdentifier,
 								   fileRepRelationType,
 								   FileRepOperationCreate),
 				 FileRep_errcontext()));	
 #endif	
 			
-	return status;	
+	return mirrorStatus;	
 }
 
 /*
@@ -1246,6 +1249,12 @@ XLogRecPtr
 FileRepPrimary_GetMirrorXLogEof(void) 
 {
 	return FileRepAckPrimary_GetMirrorXLogEof();
+}
+
+int
+FileRepPrimary_GetMirrorStatus(void)
+{
+	return FileRepAckPrimary_GetMirrorErrno();
 }
 
 /****************************************************************

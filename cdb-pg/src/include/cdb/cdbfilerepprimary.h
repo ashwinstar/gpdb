@@ -236,6 +236,8 @@ extern bool FileRepPrimary_IsOperationCompleted(
 
 extern XLogRecPtr FileRepPrimary_GetMirrorXLogEof(void);
 
+extern int FileRepPrimary_GetMirrorStatus(void);
+
 /*
  * Inform mirror that gracefull shutdown is performing o primary
  */

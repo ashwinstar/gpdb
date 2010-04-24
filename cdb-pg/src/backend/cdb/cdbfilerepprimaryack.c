@@ -70,7 +70,7 @@ static void FileRepAckPrimary_ShmemReInit(void);
 
 static XLogRecPtr xLogEof = {0, 0};
 
-static int mirrorStatus = 0;
+static int mirrorStatus = FileRepStatusSuccess;
 
 /*
  * Find if acknowledgement is received from mirror.
@@ -585,7 +585,7 @@ FileRepAckPrimary_NewHashEntry(
 		entry->fileRepRelationType = fileRepRelationType;
 		entry->fileRepAckState = FileRepAckStateWaiting;
 		entry->xLogEof = xLogEof;
-		entry->mirrorStatus = mirrorStatus;
+		entry->mirrorStatus = FileRepStatusSuccess;
 		
 		LWLockRelease(FileRepAckHashShmemLock);
 		break;
@@ -790,6 +790,7 @@ FileRepAckPrimary_IsOperationCompleted(
 	}
 	
 	if (retval == FALSE) {
+		mirrorStatus = FileRepStatusMirrorLossOccurred;
 		ereport(LOG,
 				(errmsg("ERROR(filerep): could not complete mirror request identifier:'%s' ack state:'%s' "
 						"position insert:'%p' count:'%d' ",

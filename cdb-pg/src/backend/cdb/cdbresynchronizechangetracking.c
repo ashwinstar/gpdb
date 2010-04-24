@@ -485,9 +485,12 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 		 * These aren't supported in GPDB
 		 */
 		case RM_HASH_ID:
-		case RM_GIN_ID:
 			elog(ERROR, "internal error: unsupported RM ID (%d) in ChangeTracking_GetRelationChangeInfoFromXlog", xl_rmid);
-			
+			break;
+		case RM_GIN_ID:
+			/* keep LOG severity till crash recovery or GIN is implemented in order to avoid double failures during cdbfast */
+			elog(LOG, "internal error: unsupported RM ID (%d) in ChangeTracking_GetRelationChangeInfoFromXlog", xl_rmid);
+			break;
 		/*
 		 * The following changes must be logged in the change log.
 		 */
