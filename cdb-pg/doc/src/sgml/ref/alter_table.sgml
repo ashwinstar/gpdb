@@ -80,8 +80,9 @@ where partition_action is one of:
   EXCHANGE DEFAULT PARTITION WITH TABLE table_name
    [ WITH | WITHOUT VALIDATION ]
   SET SUBPARTITION TEMPLATE (subpartition_spec)
-  SPLIT DEFAULT PARTITION AT (list_value)
-     START([datatype] range_value) [INCLUSIVE | EXCLUSIVE] 
+  SPLIT DEFAULT PARTITION 
+      AT (list_value)
+    | START([datatype] range_value) [INCLUSIVE | EXCLUSIVE] 
        END([datatype] range_value) [INCLUSIVE | EXCLUSIVE]
     [ INTO ( PARTITION new_partition_name, 
              PARTITION default_partition_name ) ]
@@ -912,3 +913,4 @@ ALTER TABLE myschema.distributors SET SCHEMA yourschema;
   </para>
  </refsect1>
 </refentry>
+
