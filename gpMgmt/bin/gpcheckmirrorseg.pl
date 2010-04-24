@@ -652,6 +652,10 @@ sub dandydiff
 
 sub get_relation_info_query_txt
 {
+	# MPP-9087: for shared (global) tables, we look for them in
+	# template1 (which is dbid=1), but the prn.database_oid=0 (not 1)
+	# for this case.
+
 	my $bigstr = <<'EOF_bigstr';
 select
 pt.spcname,
@@ -670,7 +674,8 @@ pg_class as pc,
 pg_tablespace as pt,
 pg_database as pd
 where prn.tablespace_oid = pt.oid
-and prn.database_oid = pd.oid
+and (prn.database_oid = pd.oid
+  or (prn.database_oid = 0 and pd.datname = $q$template1$q$))
 and prn.relfilenode_oid = pc.relfilenode
 and pc.relfilenode in (
 EOF_bigstr
@@ -683,22 +688,44 @@ sub get_aoseg_func
 {
 	my ($rkey, $rnod, $dbname, $diffi, $row, $fselochsh, $bigh) = @_;
 
+	my $storage_class = $rnod->{relstorage};
+
 	my $psql_str = "psql ";
 
 	# XXX XXX: need portnumber!!
 	$psql_str .= "-p $glob_port " . $dbname;
 
-	# select from gp_persistent_relation_node, pg_class, etc
 
-	# use "dollar-quoting" to avoid dealing with nested single-quotes:
-	# $q$p$q$ is equivalent to 'p'
-	$psql_str .= " -c \' " .
-		"select gp_segment_id,* from gp_dist_random(" . '$q$' .
-		"pg_aoseg.pg_aoseg_" . $rkey . '$q$' . ") " .
+	if ($storage_class eq "a")
+	{
+
+		# select from gp_persistent_relation_node, pg_class, etc
+
+		# use "dollar-quoting" to avoid dealing with nested single-quotes:
+		# $q$p$q$ is equivalent to 'p'
+		$psql_str .= " -c \' " .
+			"select gp_segment_id,* from gp_dist_random(" . '$q$' .
+			"pg_aoseg.pg_aoseg_" . $rkey . '$q$' . ") " .
+			# filter by content/segment_id (which is identical for primary
+			# and mirror, ie not the dbid)
+			"where gp_segment_id = " . $row->{content} .
+			"\' ";
+	}
+	else
+	{
+		# XXX XXX XXX: fake for now until can deal with vpinfo
+		# use "dollar-quoting" to avoid dealing with nested single-quotes:
+		# $q$p$q$ is equivalent to 'p'
+		$psql_str .= " -c \' " .
+			"select content, " . 'p.* ' .
+			"from gp_segment_configuration, " .
+			"(select 999999999 as eof) as p " .
 		# filter by content/segment_id (which is identical for primary
 		# and mirror, ie not the dbid)
-		"where gp_segment_id = " . $row->{content} .
+		"where content = " . $row->{content} .
 		"\' ";
+
+	}
 
 #	print $psql_str, "\n";
 
@@ -778,6 +805,7 @@ sub get_relfilenode_func
 	my $dbidinfo = tablelizer($tabdef);
 
 	# Note: treat all global objects as belonging to template1 (dbid=1)
+	# but really have to find them in "database_oid"=0
 	if (exists($dbs{global}))
 	{
 		$dbs{global}->{dbname} = "template1";
@@ -878,16 +906,17 @@ sub get_relfilenode_func
 				next;
 			}
 
+			# ao, heap, columnstore
 			unless (exists($rnod->{relstorage})
-					&& ($rnod->{relstorage} =~ m/^(a|h)$/))
+					&& ($rnod->{relstorage} =~ m/^(a|h|c)$/))
 			{
 				$bstat = 0;
 				print Data::Dumper->Dump([$vv2]),"\n";
 				warn "$relname for $dbname storage is not ao or heap";
 			}
-			# XXX XXX: what about for column-oriented?? 
+			# treat column-oriented same as ao
 			if (exists($rnod->{relstorage})
-					&& ($rnod->{relstorage} eq "a"))
+					&& ($rnod->{relstorage} =~ m/a|c/))
 			{
 				$rnod->{aoseg} = 
 					get_aoseg_func($kk2, $rnod, $dbname,
@@ -896,9 +925,16 @@ sub get_relfilenode_func
 				$rnod->{aoseg_eof} = {};
 
 				# build hash by segno (ie file.segno) of eof lengths
-				for my $rr2 (@{$rnod->{aoseg}})
+				if ($rnod->{relstorage} eq "a")
 				{
-					$rnod->{aoseg_eof}->{$rr2->{segno}} = $rr2->{eof};
+					for my $rr2 (@{$rnod->{aoseg}})
+					{
+						$rnod->{aoseg_eof}->{$rr2->{segno}} = $rr2->{eof};
+					}
+				}
+				else
+				{
+					warn "cannot handle column store\n$relname for $dbname";
 				}
 			}
 
@@ -1228,8 +1264,10 @@ sub diff_again
 
 		push @{$glob_exit}, $row->{ploc}." ".$row->{mloc} ; # found differences
 	}
-
-	print "\nenhanced diff [$floc]: no differences\n\n";
+	else
+	{
+		print "\nenhanced diff [$floc]: no differences\n\n";
+	}
 
 } # end diff_again
 
@@ -1441,10 +1479,12 @@ if (1)
 		"gscp.hostname as phostname, gscp.address as paddress, " .
 		"fep.fselocation as ploc, " .
 		"gscm.hostname as mhostname, gscm.address as maddress, " .
-		"fem.fselocation as mloc " .
+		"fem.fselocation as mloc, " .
+		"pfs.fsname " .
 		"from " .
 		"gp_segment_configuration gscp, pg_filespace_entry fep, " .
-		"gp_segment_configuration gscm, pg_filespace_entry fem " .
+		"gp_segment_configuration gscm, pg_filespace_entry fem, " .
+		"pg_filespace pfs " .
 		"where " .
 		"fep.fsedbid=gscp.dbid and gscp.content > -1 " .
 		"and " .
@@ -1457,6 +1497,7 @@ if (1)
 		# $q$p$q$ is equivalent to 'p'
 		"and gscp.role =  " .  '$q$p$q$ ' .
 		"and gscm.role =  " .  '$q$m$q$ ' .
+		"and pfs.oid = fep.fsefsoid " .
 		" order by content  \'";
 
 	print $psql_str, "\n";
@@ -1492,11 +1533,12 @@ if (1)
 	{
 		my $prim_dd = $row->{ploc};
 		my $mirr_dd = $row->{mloc};
+		my $fsname  = $row->{fsname}; # MPP-9086: filespace name
 
 		my @foo = File::Spec->splitdir($prim_dd);
 		my $fil = pop @foo;
 
-		print "checking directory: ", $fil, "\n";
+		print "checking directory: ", $fil, "\nfilespace: $fsname\n";
 
 		my $primfil = $prim_dd;
 		my $mirrfil = $mirr_dd;
