@@ -33,11 +33,11 @@ AND pg_am.amname = 'bitmap'
 """
 
 REINDEX_SQL="""
-REINDEX INDEX %s
+REINDEX INDEX "%s"
 """
 
 DROP_INDEX_SQL="""
-DROP INDEX %s
+DROP INDEX "%s"
 """
 
 class DropIndexCommand(SQLCommand):
@@ -137,9 +137,9 @@ def parseargs():
 
     optgrp = OptionGroup(parser, 'Database Options')
     optgrp.add_option('-h', '--hostname', type='string', default='localhost',
-                      help='Master hostname')
+                      help='Master hostname.')
     optgrp.add_option('-p', '--port', type='int', default='0',
-                      help='Master port')
+                      help='Master port.')
     parser.add_option_group(optgrp)
     
     optgrp = OptionGroup(parser, 'Concurrency Options')
@@ -150,8 +150,8 @@ def parseargs():
     parser.add_option_group(optgrp)
     
     optgrp = OptionGroup(parser, 'Mode Options')
-    optgrp.add_option('-m', '--mode', type='string',
-                      help='Mode of operation.  Can be either reindex or drop')
+    optgrp.add_option('-m', '--mode', type='choice', choices=['d','drop','r','reindex'],
+                      help='Mode of operation.  Can be either r[eindex] or d[rop].')
     parser.add_option_group(optgrp)
     
     optgrp = OptionGroup(parser, 'Logging Options')
@@ -160,7 +160,7 @@ def parseargs():
 
     optgrp = OptionGroup(parser, 'Help Options')
     optgrp.add_option('-?', '--help', action='store_true', 
-                      help='Display this message and exit')
+                      help='Display this message and exit.')
     parser.add_option_group(optgrp)
 
     parser.set_defaults(hostname=None, port=0, verbose=False, mode='reindex',
@@ -182,7 +182,7 @@ def parseargs():
         logger.error('Invalid port given.  Value must be less than 65535.')
         parser.exit(1)
         
-    if options.mode not in ['reindex', 'drop']:
+    if options.mode not in ['d', 'drop', 'r', 'reindex']:
         logger.error('Invalid mode option.  Must be either \'drop\' or \'reindex\'')
         parser.exit(1)
         
@@ -239,10 +239,10 @@ def update_bitmap_indexes(options, bitmap_indexes):
     for (db_name, idx_name) in bitmap_indexes:
         logger.debug('Adding reindex command for %s in database %s to pool.' % 
                      (idx_name, db_name))
-        if options.mode == 'reindex':
+        if options.mode == 'reindex' or options.mode == 'r':
             cmd = ReindexCommand('Reindex %s' % idx_name, dburl.pghost, 
                                  dburl.pgport, db_name, idx_name)
-        elif options.mode == 'drop':
+        elif options.mode == 'drop' or options.mode == 'd':
             cmd = DropIndexCommand('Drop Index %s' % idx_name, dburl.pghost,
                                    dburl.pgport, db_name, idx_name)
         else:
