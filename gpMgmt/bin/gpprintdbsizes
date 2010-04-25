@@ -18,6 +18,6 @@ while read dbname
 do
    if [ $dbname"x" != "x" ]
    then
-      PSQL $dbname -t -c "SELECT pg_size_pretty(sum(pg_relation_size(tablename))::int8) AS TotalTableSize,'$dbname' FROM pg_tables WHERE schemaname = 'public'"
+      $PSQL $dbname -t -c "SELECT pg_size_pretty(sum(pg_relation_size(tablename))::int8) AS TotalTableSize,'$dbname' FROM pg_tables WHERE schemaname = 'public'"
    fi
 done
