@@ -201,7 +201,10 @@ def delete_cluster(options):
     # get gparray object
     logger.info('Getting segment information...')
     dburl = dbconn.DbURL()
-    array = gparray.GpArray.initFromCatalog(dburl)
+    try:
+        array = gparray.GpArray.initFromCatalog(dburl)
+    except Exception, ex:
+        raise GpDeleteSystemException('Failed to get database configuration: %s' % ex.__str__())
     # get all segdbs
     segments = array.getDbList()
     
@@ -263,8 +266,22 @@ if options.logfile:
     setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName(),logdir=options.logfile)
 
 
-try:    
+try:
+    # save off cwd
+    cwd = os.getcwd()
+    # chdir to home to prevent from trying to delete a dir while we are in it
+    home = os.getenv('USERPROFILE') or os.getenv('HOME')
+    os.chdir(home)
+	
+    # do the delete
     delete_cluster(options)
+    
+    # now try to go back into the original cwd
+    try:
+        os.chdir(cwd)
+    except:
+        # we can ignore this as cwd must no longer exist
+        pass
     
 except GpDeleteSystemException, ex:
     g_errors_generated = True
