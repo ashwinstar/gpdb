@@ -548,7 +548,24 @@ class GpCleanSegmentDirectories(Command):
         Command.__init__(self, name, cmdStr, ctxt, remoteHost)
 
 #-----------------------------------------------
+class GpDumpDirsExist(Command):
+    """
+    Checks if gp_dump* directories exist in the given directory
+    """
+    def __init__(self, name, baseDir, ctxt=LOCAL, remoteHost=None):
+        cmdStr = "find %s -name '*dump*' -print" % baseDir
+        Command.__init__(self, name, cmdStr, ctxt, remoteHost)
+        
+    @staticmethod
+    def local(name, baseDir):
+        cmd = GpDumpDirsExist(name, baseDir)
+        cmd.run(validateAfter=True)
+        dirCount = len(cmd.get_results().stdout.split('\n'))
+        # This is > 1 because the command output will terminate with \n
+        return dirCount > 1
 
+
+#-----------------------------------------------
 class ConfigureNewSegment(Command):
     """
     Configure a new segment, usually from a template, as is done during gpexpand, gpaddmirrors, gprecoverseg (full),

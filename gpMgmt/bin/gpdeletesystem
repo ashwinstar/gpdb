@@ -1,363 +1,288 @@
-#!/bin/bash
-#	Filename:-		gpdeletesystem
-#	Version:-		$Revision$	
-#	Updated:-		$Date$
-#	Status:-		Released
-#	Author:-		G L Coombe
-#	Contact:-		gcoombe@greenplum.com
-#	Release date:-		March 2006
-#	Release stat:-		Greenplum Co Internal
-#                               Copyright (c) Metapa 2005. All Rights Reserved.
-#                               Copyright (c) Greenplum 2005. All Rights Reserved
-#	Brief descn:-		Deletes an Greenplum instance.
-#******************************************************************************
-# Update History
-#******************************************************************************
-# Ver	Date		Who		Update
-#******************************************************************************
-# Detailed Description
-#******************************************************************************
-#******************************************************************************
-# Prep Code
-#******************************************************************************
-WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/lib/gp_bash_functions.sh
-if [ -f $FUNCTIONS ];then
-	. $FUNCTIONS
-else
-	echo "FATAL:-Cannot source $FUNCTIONS"
-	exit 2;fi
-#******************************************************************************
-# Location Variables
-#******************************************************************************
-
-#******************************************************************************
-# Command Variables
-#******************************************************************************
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 #
-#******************************************************************************
-# Script Specific Variables
-#******************************************************************************
-PROG_NAME=`$BASENAME $0`
-HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
-TIME=`$DATE +%H":"%M":"%S`
-CUR_DATE=`$DATE +%Y%m%d`
-MASTER_HOSTNAME=`hostname`
-EXIT_STATUS=0
-FULL_DISPLAY=0
-FORCE=0
-PARALLEL_STATUS_FILE=/tmp/gpdeletesystem_parallel_status_file.$$
-GPSEGDELETE=$WORKDIR/lib/gpsegdelete.sh
-#******************************************************************************
-# Functions
-#******************************************************************************
-USAGE () {
-	if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
-	$LESSCMD ${GPDOCDIR}/$HELP_DOC_NAME
-	exit 0
-	else
-	$ECHO
-        $ECHO "      `basename $0`"
-	$ECHO
-        $ECHO "      Deletes a Greenplum instance, use with caution, script is destructive"
-        $ECHO
-        $ECHO "      Usage:"
-        $ECHO "      $0 [OPTIONS]"
-        $ECHO
-        $ECHO "      General options:"
-        $ECHO "      -?, display this help message & exit"
-        $ECHO "      -v, display version information & exit"
-	$ECHO
-	$ECHO "      Logging options:"
-	$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
-	$ECHO "      -D, set log output to debug level, shows all function calls"
-	$ECHO
-	$ECHO "      Delete options:"
-	$ECHO "      -d, <Master database directory> directory to be deleted along with all segment instances [mandatory]"
-	$ECHO "      -f, force deletion, ignore any database backup files"
-	$ECHO "      -B, <number> run this batch of delete segment processes in parallel [default $BATCH_DEFAULT]"
-	$ECHO
-        $ECHO "      Return codes:"
-        $ECHO "      0 No problems encountered with requested operation"
-        $ECHO "      1 Warning generated"
-        $ECHO "      2 Fatal error, unable to continue requested operation"
-	$ECHO
-        exit $EXIT_STATUS
-	fi
-}
+# Copyright (c) Greenplum Inc 2010. All Rights Reserved. 
+#
 
-UNKNOWN_OPTION () {
-	$ECHO "Unknown option"
-	USAGE
-}
+# System imports
+import os
+import sys
+import signal
+from optparse import OptionGroup
 
-CHECK_PARAM () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	#Check that we have a master data directory on this host
-	CHK_DIR $DELETE_MASTER_DATA_DIRECTORY
-	if [ $EXISTS -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Directory $DELETE_MASTER_DATA_DIRECTORY does not exist on this host" 2;fi
-	if [ ! -f ${DELETE_MASTER_DATA_DIRECTORY}/postmaster.pid ];then
-		ERROR_EXIT "[FATAL]:-Greenplum instance not running, activate instance to be able to progress instance deletion" 2
-	fi
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
+# import GPDB modules
+try:
+    from gppylib.db import dbconn
+    from gppylib.gpparseopts import OptParser, OptChecker
+    from gppylib.gparray import *
+    from gppylib.gplog import *
+    from gppylib.gpcoverage import GpCoverage
+    from gppylib.commands import unix, gp, base
+    from gppylib.db import dbconn
+    from gppylib import gparray
+    from gppylib.userinput import *
+except ImportError, e:
+    sys.exit('ERROR: Cannot import modules.  Please check that you '
+             'have sourced greenplum_path.sh.  Detail: ' + str(e))
 
-OBTAIN_PARAM () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MASTER_DATA_DIRECTORY=$DELETE_MASTER_DATA_DIRECTORY
-	GET_QE_DETAILS
-	if [ $EXIT_STATUS -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Unable to obtain details of segment instances" 2;fi
-	#Check to see if a standby host is configured
-	GET_STANDBY_COUNT
-	if [ $STANDBY_COUNT -ne 0 ];then
-		GET_STANDBY_DETAILS
-		STANDBY_HOSTNAME=`$ECHO ${STANDBY_ARRAY[@]}|$CUT -d"|" -f1`
-		STANDBY_DATADIR=`$ECHO ${STANDBY_ARRAY[@]}|$CUT -d"|" -f2`
-		STANDBY_PORT=`$ECHO ${STANDBY_ARRAY[@]}|$CUT -d"|" -f3`
-	else
-		STANDBY_HOSTNAME="Not configured"
-	fi
-	LOG_MSG "[INFO]:-Checking for database dump files, please wait..." 1
-	DB_DUMP_CHK
-	LOG_MSG "[INFO]:-Completed check for database dump files" 1
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
+EXECNAME = os.path.split(__file__)[-1]
 
+DEFAULT_BATCH_SIZE=64
+MAX_BATCH_SIZE=128
 
-DB_DUMP_CHK () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Checking Master instance for dump files"
-	DUMP_COUNT=`$FIND $MASTER_DATA_DIRECTORY -name 'gp_dump*' -print|$WC -l`
-	if [ $DUMP_COUNT -ne 0 ] && [ $FORCE -eq 0 ];then
-		LOG_MSG "[FATAL]:-Located possible database dump file on Master instance host" 1
-		LOG_MSG "[FATAL]:-In directory $MASTER_DATA_DIRECTORY"1
-		ERROR_EXIT "[FATAL]:-To override database dump file checking use -f option" 2
-	else
-		LOG_MSG "[INFO]:-Completed Master instance dump file check" 1
-	fi	
-	LOG_MSG "[INFO]:-Checking segment instances for dump files" 1
-	BATCH_LIMIT=${#QE_ARRAY[@]}
-	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
-	for DELETE_SEG in "${QE_ARRAY[@]}"
-	do
-		SET_VAR $DELETE_SEG
-		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$GPSEGDELETE $$ 1 $DELETE_HOSTNAME $DELETE_DATADIR $INST_COUNT $LOG_FILE &
-		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
-	done
-	DUMP_FILE_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "DUMP_LOCATED"`
-	if [ $DUMP_FILE_COUNT -ne 0 ] && [ $FORCE -eq 0 ];then
-		LOG_MSG "[FATAL]:-Located possible database dump files on segment instance hosts" 1
-		ERROR_EXIT "[FATAL]:-To override database dump file checking use -f option" 2
-	else
-		LOG_MSG "[INFO]:-Complete dump files check"
-	fi
-	$RM -f $PARALLEL_STATUS_FILE
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
+_description = """
 
-SET_VAR () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	DELETE_HOSTNAME=`$ECHO $1|$CUT -d"|" -f1`
-	DELETE_DATADIR=`$ECHO $1|$CUT -d"|" -f2`
-	DELETE_PORT=`$ECHO $1|$CUT -d"|" -f3`	
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
+"""
 
-DISPLAY_PARAM () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	GET_MAX_LEN
-	LOG_MSG "[INFO]:-Greenplum Instance Deletion Parameters" 1
-	LOG_MSG "[INFO]:--------------------------------" 1
-	LOG_MSG "[INFO]:-Greenplum Master hostname               = $MASTER_HOSTNAME" 1
-	LOG_MSG "[INFO]:-Greenplum Master data directory         = $MASTER_DATA_DIRECTORY" 1
-	LOG_MSG "[INFO]:-Greenplum Master port                   = $MASTER_PORT" 1
-	LOG_MSG "[INFO]:-Greenplum Master standby host           = $STANDBY_HOSTNAME" 1
-	if [ $FORCE -eq 1 ];then
-		LOG_MSG "[WARN]:-Greenplum Force delete of dump files    = ON" 1
-	else
-		LOG_MSG "[INFO]:-Greenplum Force delete of dump files    = Off" 1
-	fi	
-	if [ $STANDBY_COUNT -ne 0 ];then
-	LOG_MSG "[INFO]:-Greenplum Master standby data directory = $STANDBY_DATADIR" 1
-	LOG_MSG "[INFO]:-Greenplum Master standby port           = $STANDBY_PORT" 1
-	fi
-	if [ $FAIL_PRI_SEG ];then
-	LOG_MSG "[INFO]:-Greenplum RO Master deletion            = On" 1
-	fi
-	LOG_MSG "[INFO]:-------------------------------" 1
-	LOG_MSG "[INFO]:-Segment Instance List" 1
-	LOG_MSG "[INFO]:-------------------------------" 1
-	HEADER=`$ECHO "Host:Datadir:Port"|$AWK -F":" '{printf "%-'"${LEN_ARRAY[0]}"'s %-'"${LEN_ARRAY[2]}"'s %-'"${LEN_ARRAY[1]}"'s\n", $1, $2, $3}'`
-	LOG_MSG "[INFO]:-$HEADER" 1
-	$ECHO
-	for DELETE_SEG in "${QE_ARRAY[@]}"
-	do
-		TXT=`$ECHO $DELETE_SEG|$AWK -F"|" '{printf "%-'"${LEN_ARRAY[0]}"'s %-'"${LEN_ARRAY[2]}"'s %-'"${LEN_ARRAY[1]}"'s",$1, $2, $3}'`
-		LOG_MSG "[INFO]:-$TXT" 1
-	done
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-	$ECHO
-	if [ -z $NOINTERACTIVE ];then
-		$ECHO  "Continue with Greenplum instance deletion Yy/Nn>"
-		read REPLY
-		CHK_REPLY
-		$ECHO "FINAL WARNING, you are about to delete the Greenplum instance on Master host $MASTER_HOSTNAME"
-		if [ $DUMP_COUNT -ne 0 ] && [ $FORCE -eq 1 ];then
-		$ECHO "There are database dump files, these will be DELETED if you continue!"
-		fi
-		$ECHO "Continue with Greenplum deletion Yy/Nn>"
-		read REPLY
-		CHK_REPLY
-	else
-		LOG_MSG "[INFO]:-Non-interactive mode selected" 1
-	fi
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
+_usage = """
+"""
 
-CHK_REPLY () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	if [ -z $REPLY ]; then
-		LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
-		EXIT_STATUS=1
-		exit $EXIT_STATUS
-	fi
-	if [ $REPLY != Y ] && [ $REPLY != y ]; then
-		LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
-		EXIT_STATUS=1
-		exit $EXIT_STATUS
-	fi
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
+# Generic exception for all things activatestandby
+class GpDeleteSystemException(Exception):
+    pass
 
-DELETE_CLUSTER () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Closing down instance" 1
-	if [ -f $GPSTOP ];then
-		$GPSTOP -zaf -d $DELETE_MASTER_DATA_DIRECTORY
-	else
-		ERROR_EXIT "[FATAL]:-Unable to locate $GPSTOP" 2
-	fi
-	LOG_MSG "[INFO]:-Deleting segment data directories, please wait..." 1
-	BATCH_LIMIT=${#QE_ARRAY[@]}
-	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
-	for DELETE_SEG in "${QE_ARRAY[@]}"
-	do
-		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		SET_VAR $DELETE_SEG
-		$GPSEGDELETE $$ 2 $DELETE_HOSTNAME $DELETE_DATADIR $INST_COUNT $LOG_FILE &
-		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
-	done
-	COMPLETED_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "COMPLETED"`
-	KILLED_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "KILLED"`
-	DEL_OK_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "DEL_OK"`
-	DEL_FAIL_COUNT=`$CAT $PARALLEL_STATUS_FILE|$GREP -c "DEL_WARN"`
-	LOG_MSG "[INFO]:------------------------------------------------" 1
-	LOG_MSG "[INFO]:-Parallel segment delete process exit status" 1
-	LOG_MSG "[INFO]:------------------------------------------------" 1
-	LOG_MSG "[INFO]:-Total processes marked as completed           = $COMPLETED_COUNT" 1
-	if [ $KILLED_COUNT -ne 0 ];then
-	LOG_MSG "[WARN]:-Total processes marked as killed              = $KILLED_COUNT $WARN_MARK" 1
-	else
-	LOG_MSG "[INFO]:-Total processes marked as killed              = 0" 1
-	fi
-	if [ $DEL_FAIL_COUNT -ne 0 ];then
-	LOG_MSG "[WARN]:-Total processes returned delete warning       = $DEL_FAIL_COUNT $WARN_MARK" 1
-	else
-	LOG_MSG "[INFO]:-Total processes returned delete warning       = 0" 1
-	fi	
-	LOG_MSG "[INFO]:-Total processes returned no delete warning    = $DEL_OK_COUNT" 1
-	LOG_MSG "[INFO]:------------------------------------------------" 1
-	$RM -f $PARALLEL_STATUS_FILE
-	if [ $STANDBY_COUNT -ne 0 ];then
-		LOG_MSG "[INFO]:-Processing Master standby host $STANDBY_HOSTNAME" 1
-		COMMAND="$RM -Rf $STANDBY_DATADIR"
-		RUN_COMMAND_REMOTE $STANDBY_HOSTNAME "$COMMAND"
-		RETVAL=$?
-	    if [ $RETVAL -ne 0 ]; then
-			ERROR_EXIT "[FATAL]:- Command $COMMAND failed with error status $RETVAL" 2
-	    fi
-	    COMMAND="$RM -f ${STANDBY_DATADIR}.log"
-		RUN_COMMAND_REMOTE $STANDBY_HOSTNAME "$COMMAND"
-		RETVAL=$?
-	    if [ $RETVAL -ne 0 ]; then
-			ERROR_EXIT "[FATAL]:- Command $COMMAND failed with error status $RETVAL" 2
-	    fi		
-	fi
-	LOG_MSG "[INFO]:-Processing Master host $MASTER_HOSTNAME" 1
-	CWD=`pwd`
-	if [[ $CWD =~ ^${MASTER_DATA_DIRECTORY}* ]]; then cd; fi
-	RUN_COMMAND "$RM -Rf $MASTER_DATA_DIRECTORY"
-	RUN_COMMAND "$RM -f ${MASTER_DATA_DIRECTORY}.log"
-	LOG_MSG "[INFO]:-The Greenplum instance on Master host $MASTER_HOSTNAME, has been deleted" 1
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
+#-------------------------------------------------------------------------
+# parseargs() - parses and validates command line args
+#-------------------------------------------------------------------------
+def parseargs():
+    parser = OptParser(option_class=OptChecker,
+                       description=' '.join(_description.split()),
+                       version='%prog version $Revision$')
+    parser.setHelp([])
+    parser.remove_option('-h')
+    parser.remove_option('--version')
+    
+    # General options section
+    optgrp = OptionGroup(parser, 'General options')
+    optgrp.add_option('-?', '--help', dest='help', action='store_true',
+                      help='Display this help message and exit')
+    optgrp.add_option('-v', '--version', dest='version', action='store_true',
+                      help='Display version information and exit.')
+    parser.add_option_group(optgrp)
 
-DELETE_RO_MASTER () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	PING_HOST $FAIL_PRI_SEG
-	if [ $RETVAL -eq 0 ];then
-		GET_PG_PID_ACTIVE $MASTER_PORT $FAIL_PRI_SEG
-		if [ $PID -ne 0 ];then
-			LOG_MSG "[INFO]:-Master read only host process active, calling shutdown" 1
-			$TRUSTED_SHELL $FAIL_PRI_SEG "export GPHOME=$GPHOME;$GPSTOP -d $MASTER_DATA_DIRECTORY -m"
-		fi
-		LOG_MSG "[INFO]:-Deleting Master read only directory and log file" 1
-		$TRUSTED_SHELL $FAIL_PRI_SEG "if [ -d $MASTER_DATA_DIRECTORY ];then $RM -Rf $MASTER_DATA_DIRECTORY; $RM -f ${MASTER_DATA_DIRECTORY}.log;fi"
-	fi
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-#******************************************************************************
-# Main Section
-#******************************************************************************
-trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
-if [ $# -ne 0 ];then
-        while getopts ":v'?'fr:d:l:!DB:" opt;do
-        case $opt in
-                v ) VERSION_INFO ;;
-                '?' ) USAGE ;;
-                d ) DELETE_MASTER_DATA_DIRECTORY=$OPTARG ;;
-		l ) LOG_DIR=$OPTARG ;;
-		f ) FORCE=1 ;;
-		r ) FAIL_PRI_SEG=$OPTARG ;;
-		D ) DEBUG_LEVEL=1 ;;
-		B ) BATCH_DEFAULT=$OPTARG ;;
-		! ) SCRIPT_USAGE=1
-		    USAGE ;;
-                * ) UNKNOWN_OPTION ;;
-        esac
-        done
-else
-	USAGE
-fi
+    # Logging options section
+    optgrp = OptionGroup(parser, 'Logging options')
+    optgrp.add_option('-l', '--logfile', type='string', default=None,
+                      help='Alternative log file directory')
+    optgrp.add_option('-D', '--verbose', help='Enable debug logging.',
+                      dest='verbose', default=False, action='store_true')
+    parser.add_option_group(optgrp)
 
-MASTER_DATA_DIRECTORY=$DELETE_MASTER_DATA_DIRECTORY
+    # Standby activation options section
+    optgrp = OptionGroup(parser, 'Delete system options')
+    optgrp.add_option('-d', '--master-data-directory', dest='master_data_dir', 
+                      type='string', help='Master data directory.')
+    optgrp.add_option('-f', '--force', action='store_true',
+                      help='Force deletion.  Ignore any database backup files.')
+    optgrp.add_option('-B', '--batch-size', type='int', dest='batch_size',
+                      default=DEFAULT_BATCH_SIZE,
+                      help='Number of batches to run in parallel. (Default %s)' % DEFAULT_BATCH_SIZE)
+    parser.add_option_group(optgrp)
 
-if [ x"" != x"$LOG_DIR" ];then
-	CHK_DIR $LOG_DIR
-	if [ $EXISTS -eq 1 ]; then
-		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory" 1
-		EXIT_STATUS=1
-else
-	LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
-	fi
-fi
-LOG_MSG "[INFO]:-Start Main"
-CHK_GPDB_ID
-if [ x"" == x"$DELETE_MASTER_DATA_DIRECTORY" ];then
-	ERROR_EXIT "[FATAL]:-Must supply -d option" 2
-fi
+    # Parse the command line arguments
+    (options, args) = parser.parse_args()
+
+    if options.help:
+        parser.print_help()
+        parser.exit(0, None)
+        
+    if options.version:
+        parser.print_version()
+        parser.exit(0, None)
+
+    # check we got the -d option
+    if not options.master_data_dir:
+        logger.fatal('Required option --master-data-directory is missing.')
+        parser.exit(2, None)
+        
+    # We have to normalize this path for a later comparison
+    options.master_data_dir = os.path.normpath(options.master_data_dir)
+
+    # check that there isn't a conflict between -d option and MASTER_DATA_DIRECTORY env
+    env_master_data_dir = os.getenv('MASTER_DATA_DIRECTORY', None)
+    if not env_master_data_dir:
+        logger.fatal('MASTER_DATA_DIRECTORY environment variable not set.')
+        parser.exit(2, None)
+        
+    if os.path.normpath(env_master_data_dir) != options.master_data_dir:
+        logger.fatal('Current setting of MASTER_DATA_DIRECTORY not same as -d parameter.')
+        parser.exit(2, None)
+        
+    # Check that master data directory exists
+    if not os.path.exists(options.master_data_dir) or not os.path.isdir(options.master_data_dir):
+        logger.fatal('Master data directory supplied %s does not exist' % options.master_data_dir)
+        parser.exit(2, None)
+
+    if options.logfile and not os.path.exists(options.logfile):
+        logger.fatal('Log directory %s does not exist.' % options.logfile)
+        parser.exit(2, None)
+
+    # Set log level
+    if options.verbose:
+        enable_verbose_logging()
+
+    # verify batch size
+    if options.batch_size < 1 or options.batch_size > MAX_BATCH_SIZE:
+        logger.fatal('--batch-size value must be from 1 to %s' % MAX_BATCH_SIZE)
+        parser.exit(2, None)
+
+    # There shouldn't be any args
+    if len(args) > 0:
+        logger.error('Unknown arguments:')
+        for arg in args:
+            logger.error('  %s' % args)
+        parser.exit(2, None)
+        
+    return options, args
 
 
-CHK_ON_PASSIVE_STANDBY
-CHECK_PARAM
-OBTAIN_PARAM
-DISPLAY_PARAM
-DELETE_CLUSTER
-if [ $FAIL_PRI_SEG ];then
-	DELETE_RO_MASTER
-fi
-LOG_MSG "[INFO]:-End Main"
-exit $EXIT_STATUS
+#-------------------------------------------------------------------------
+# display_params() - displays delete system parameters.
+#-------------------------------------------------------------------------
+def display_params(options, dburl, standby, segments, dumpDirsExist):
+    global g_warnings_generated
+    logger.info('Greenplum Instance Deletion Parameters')
+    logger.info('--------------------------------------')
+    logger.info('Greenplum Master hostname                  = %s' % dburl.pghost)
+    logger.info('Greenplum Master data directory            = %s' % options.master_data_dir)
+    logger.info('Greenplum Master port                      = %s' % dburl.pgport)
+    if standby:
+        logger.info('Greenplum Master standby host              = %s' % standby.getSegmentHostName())
+        logger.info('Greenplum Master standby data directory    = %s' % standby.getSegmentDataDirectory())
+        logger.info('Greenplum Master standby port              = %s' % standby.getSegmentPort())
+    if options.force:
+        logger.info('Greenplum Force delete of dump files       = ON')
+    else:
+        logger.info('Greenplum Force delete of dump files       = OFF')
+    logger.info('Batch size                                 = %s' % options.batch_size)
+    logger.info('--------------------------------------')
+    logger.info(' Segment Instance List ')
+    logger.info('--------------------------------------')
+    logger.info('Host:Datadir:Port')
+    for segdb in segments:
+        host = segdb.getSegmentHostName()
+        datadir = segdb.getSegmentDataDirectory()
+        port = segdb.getSegmentPort()
+        logger.info('%s:%s:%s' % (host, datadir, port))
+        
+    yn = ask_yesno('', 'Continue with Greenplum instance deletion?', 'N')
+    if yn:
+        logger.info('FINAL WARNING, you are about to delete the Greenplum instance')
+        logger.info('on master host %s.' % dburl.pghost)
+        if dumpDirsExist and options.force:
+            logger.warn('There are database dump files, these will be DELETED if you continue!')
+            g_warnings_generated = True
+        yn = ask_yesno('', 'Continue with Greenplum instance deletion?', 'N')
+        if not yn:
+            raise GpDeleteSystemException('User canceled')
+    else:
+        raise GpDeleteSystemException('User canceled')
+
+
+#-------------------------------------------------------------------------
+# check_for_dump_files() - checks if there are database dump files
+#-------------------------------------------------------------------------
+def check_for_dump_files(options):
+    logger.info('Checking for database dump files...')
+    return gp.GpDumpDirsExist.local('check for dump dirs', options.master_data_dir)
+
+#-------------------------------------------------------------------------
+# delete_system() - deletes a GPDB system
+#-------------------------------------------------------------------------
+def delete_cluster(options):
+    # check for dumps if needed
+    dump_files_exist = check_for_dump_files(options)
+    if not options.force and dump_files_exist:
+            logger.fatal('Located possible database dump file on Master instance host')
+            logger.fatal('in directory %s' % options.master_data_dir)
+            logger.fatal('To override database dump file checking use -f option')
+            raise GpDeleteSystemException('Dump files exist')
+        
+    # get gparray object
+    logger.info('Getting segment information...')
+    dburl = dbconn.DbURL()
+    array = gparray.GpArray.initFromCatalog(dburl)
+    # get all segdbs
+    segments = array.getDbList()
+    
+    # getSegmentsByHostName(segments)
+    segdbs_by_host = gparray.GpArray.getSegmentsByHostName(segments)
+    standby = array.standbyMaster
+    
+    # Display the options
+    display_params(options, dburl, standby, segments, dump_files_exist)
+    
+    # stop database
+    logger.info('Stopping database...')
+    gp.GpStop.local('stop database', fast=True, datadir=options.master_data_dir)
+
+    # From this point on we don't want ctrl-c to happen
+    signal.signal(signal.SIGINT,signal.SIG_IGN)
+    
+    # create pool
+    pool = base.WorkerPool(numWorkers=options.batch_size)
+    
+    logger.info('Deleting segments and removing data directories...')
+    for segdb in segments:
+        filespaces = segdb.getSegmentFilespaces().items()
+        for (oid, filespace) in filespaces:
+            logger.debug('Queueing up command to remove %s:%s' % (segdb.getSegmentHostName(), 
+                                                                  filespace))
+            cmd = unix.RemoveFiles('remove fs dir', filespace, ctxt=base.REMOTE, 
+                                       remoteHost=segdb.getSegmentHostName())
+            pool.addCommand(cmd)
+
+    logger.info('Waiting for worker threads to complete...')
+    pool.join()
+    pool.haltWork()
+    pool.joinWorkers()
+
+    # Re-enable ctrl-c
+    signal.signal(signal.SIGINT,signal.default_int_handler)
+
+
+#-------------------------------------------------------------------------
+# main 
+#-------------------------------------------------------------------------
+
+g_warnings_generated = False
+g_errors_generated = False
+
+coverage = GpCoverage()
+coverage.start()
+
+# setup logging
+logger = get_default_logger()
+setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName())
+
+# parse args and options
+(options, args) = parseargs()
+
+# if we got a new log dir, we can now set it up.
+if options.logfile:
+    setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName(),logdir=options.logfile)
+
+
+try:    
+    delete_cluster(options)
+    
+except GpDeleteSystemException, ex:
+    g_errors_generated = True
+    if ex.__str__() == 'User canceled':
+        logger.info(ex.__str__())
+    else:
+        logger.fatal(ex.__str__())
+    if options.verbose:
+        logger.exception(ex)
+finally:
+    coverage.stop()
+    coverage.generate_report()
+    if g_errors_generated:
+        logger.error('Delete system failed')
+        sys.exit(2)
+    elif g_warnings_generated:
+        logger.warn('Delete system completed but warnings were generated.')
+        sys.exit(1)
+    else:
+        logger.info('Delete system successful.')
+        sys.exit(0)
