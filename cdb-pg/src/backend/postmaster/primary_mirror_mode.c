@@ -153,6 +153,11 @@ typedef struct PMModuleState
      * a counter used to assign values to transitions; that values are for logging.
      */
 	volatile int transitionNumberCounter;
+
+	/**
+	 *  if true, means we are in fault after postmaster reset and waiting for a transition to be sent
+	 */
+    volatile bool isInFaultFromPostmasterReset;
 } PMModuleState;
 
 static volatile PMModuleState *pmModuleState = NULL;
@@ -594,6 +599,11 @@ assertIsTransitioning(void)
 	                    && "transition must be marked in-progress");
 }
 
+/**
+ * NOTE: in some cases the caller should also call isInFaultFromPostmasterReset() to check to
+ *       make sure the database will be started/should be started.  When in fault from postmaster reset,
+ *       database processes should not be started.
+ */
 bool
 isPrimaryMirrorModeAFullPostmaster(bool checkTargetModeAsWell)
 {
@@ -612,6 +622,21 @@ isPrimaryMirrorModeAFullPostmaster(bool checkTargetModeAsWell)
 			mode = pmModuleState->requestedTransition.mode;
 			result |= mode == PMModeMaster || mode == PMModePrimarySegment || mode == PMModeMirrorlessSegment;
 		}
+	}
+	releaseModuleSpinLock();
+	return result;
+}
+
+bool
+isInFaultFromPostmasterReset()
+{
+    bool result;
+
+    assertModuleInitialized();
+	/* the locking here may not be technically necessary */
+	acquireModuleSpinLock();
+	{
+		result = pmModuleState->isInFaultFromPostmasterReset;
 	}
 	releaseModuleSpinLock();
 	return result;
@@ -678,6 +703,7 @@ primaryMirrorModeShmemInit(void)
 
 	pmModuleState->haveStartedDatabase = false;
 	pmModuleState->transitionNumberCounter = 1;
+	pmModuleState->isInFaultFromPostmasterReset = false;
 
 	clearTransitionArgs(&pmModuleState->requestedTransition);
 
@@ -1030,7 +1056,6 @@ isPrimaryMirrorModeTransitionRequested(void)
     return pmModuleState->isTransitionRequested;
 }
 
-
 static void copyTransitionParametersToLocalMemoryIfNeeded(PrimaryMirrorModeTransitionArguments *args)
 {
     Assert(pmModuleState->isTransitionRequested );
@@ -1047,7 +1072,7 @@ static void copyTransitionParametersToLocalMemoryIfNeeded(PrimaryMirrorModeTrans
 }
 
 /**
- * Copy the transition input parameters into shared memory.
+ * Copy the transition input parameters into shared memory and reset isInFaultFromPostmasterReset
  */
 static void
 copyTransitionInputParameters(PrimaryMirrorModeTransitionArguments *args, SegmentState_e segmentState)
@@ -1065,6 +1090,8 @@ copyTransitionInputParameters(PrimaryMirrorModeTransitionArguments *args, Segmen
 
 		updateDataStateUnderSpinLock(args->dataState);
 		pmModuleState->segmentState = segmentState;
+
+		pmModuleState->isInFaultFromPostmasterReset = false;
 	}
 	releaseModuleSpinLock();
 }
@@ -1133,6 +1160,12 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 
     	copyTransitionParametersToLocalMemoryIfNeeded(&requestedTransition);
         copyTransitionInputParameters(&requestedTransition, SegmentStateInitialization);
+
+        /**
+         * must be after copying the transition input parameters
+         */
+        pmModuleState->isInFaultFromPostmasterReset = true;
+        
         if ( updateSegmentState(SegmentStateFault))
             NotifyProcessesOfFilerepStateChange();
         result = PMTransitionSuccess;

@@ -527,6 +527,7 @@ void MirroredAppendOnly_OpenResynchonize(
 {
 	MirrorDataLossTrackingState mirrorDataLossTrackingState;
 	int64 mirrorDataLossTrackingSessionNum;
+	int64 seekResult = 0;
 
 	*primaryError = 0;
 	*mirrorDataLossOccurred = false;
@@ -552,6 +553,17 @@ void MirroredAppendOnly_OpenResynchonize(
 							/* guardOtherCallsWithMirroredLock */ false,
 							primaryError,
 							mirrorDataLossOccurred);
+	/* 
+	 * Resync Worker open/seek primary for read.
+	 */
+	errno = 0;
+	seekResult = FileSeek(open->primaryFile, 
+						  logicalEof, 
+						  SEEK_SET);
+	if (seekResult != logicalEof) 
+	{
+		*primaryError = errno;
+	}
 }
 
 
@@ -838,7 +850,7 @@ static void MirroredAppendOnly_DoCopyDataToMirror(
 
 	int		primaryError;
 
-	bufferLen = (Size) Min(BLCKSZ, endOffset - readOffset);
+	bufferLen = (Size) Min(2*BLCKSZ, endOffset - readOffset);
 	buffer = (char*) palloc(bufferLen);
 
 	while (readOffset < endOffset)
@@ -875,7 +887,7 @@ static void MirroredAppendOnly_DoCopyDataToMirror(
 		
 		readOffset += bufferLen;
 		
-		bufferLen = (Size) Min(BLCKSZ, endOffset - readOffset);						
+		bufferLen = (Size) Min(2*BLCKSZ, endOffset - readOffset);						
 	}
 
 	pfree(buffer);
@@ -900,6 +912,7 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 
 	MirrorDataLossTrackingState mirrorDataLossTrackingState;
 	int64 mirrorDataLossTrackingSessionNum;
+	int64 seekResult = 0;
 
 	int 	primaryError;
 	bool	mirrorDataLossOccurred;
@@ -998,6 +1011,15 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 						/* guardOtherCallsWithMirroredLock */ true,
 						&primaryError,
 						&mirrorDataLossOccurred);
+
+		errno = 0;
+		seekResult = FileSeek(mirroredOpen.primaryFile, 
+							  *mirrorLossEof, 
+							  SEEK_SET);
+		if (seekResult != *mirrorLossEof) 
+		{
+			primaryError = errno;
+		}		
 		
 		LWLockRelease(MirroredLock);
 
@@ -1083,6 +1105,7 @@ void MirroredAppendOnly_CopyToMirror(
 
 	MirrorDataLossTrackingState mirrorDataLossTrackingState;
 	int64 mirrorDataLossTrackingSessionNum;
+	int64 seekResult = 0;
 
 	int 	primaryError;
 
@@ -1107,6 +1130,15 @@ void MirroredAppendOnly_CopyToMirror(
 					/* guardOtherCallsWithMirroredLock */ true,
 					&primaryError,
 					mirrorDataLossOccurred);
+	
+	errno = 0;
+	seekResult = FileSeek(mirroredOpen.primaryFile, 
+						  *mirrorLossEof, 
+						  SEEK_SET);
+	if (seekResult != *mirrorLossEof) 
+	{
+		primaryError = errno;
+	}			
 	
 	LWLockRelease(MirroredLock);
 	

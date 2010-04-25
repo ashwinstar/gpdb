@@ -718,6 +718,7 @@ FileRepPrimary_RunResyncManager(void)
 	bool	retval;
 	int ii=0;
 	bool	locked = FALSE;
+	bool	mirroredLock = FALSE;
 		
 	FileRepResyncHashEntry_s	entry;
 	ResynchronizeScanToken		token;
@@ -768,17 +769,34 @@ FileRepPrimary_RunResyncManager(void)
 		
 		if (retval == FALSE)
 		{
+			if (mirroredLock == TRUE)
+			{
+				LWLockRelease(MirroredLock);
+
+				mirroredLock = FALSE;
+				break;
+			}
+			
+			LWLockAcquire(MirroredLock, LW_EXCLUSIVE);
+			mirroredLock = TRUE;
+						
 			if (fileRepResyncShmem->appendOnlyCommitCount == 0)
 			{
-				break;
+				PersistentFileSysObj_MarkAppendOnlyCatchup();
+				ResynchronizeScanToken_Init(&token);
+								
+				/* MirroredLock is not released. AppendOnly Resync has to finish under MirrorLock. */
+				continue;
 			}
 			else
 			{
+				LWLockRelease(MirroredLock);
+				mirroredLock = FALSE;
 				/* 
 				 * wait that all in progress AppendOnly transactions are committed
 				 * and periodically check if more work to do for resync
 				 */
-				pg_usleep(50000L);  // 50ms
+				pg_usleep(100000L);  // 100ms
 				
 				LWLockAcquire(MirroredLock, LW_EXCLUSIVE);
 				PersistentFileSysObj_MarkAppendOnlyCatchup();
@@ -1148,6 +1166,7 @@ FileRepResync_CheckProgress(void)
 					PersistentFileSysObj_ResynchronizeRelationComplete(
 							&entry->persistentTid,
 							entry->persistentSerialNum,
+							entry->mirrorAppendOnlyNewEof,
 							TRUE); 
 					
 					if (Debug_filerep_print)

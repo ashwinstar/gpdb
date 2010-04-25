@@ -211,7 +211,7 @@ typedef struct
 
 	/** external callers will never set this to true.  It will become true if we are doing a postmaster reset
 	 *   but the reset did not work.  This flag indicates that we should transition immmediately to a fault
-	 *   state
+	 *   state and set isInFaultFromPostmasterReset inside the module state.
 	 */
 	bool transitionToFault;
 
@@ -236,6 +236,7 @@ extern PrimaryMirrorMode decipherPrimaryMirrorModeArgument(const char *arg);
 
 /* state */
 extern bool isPrimaryMirrorModeAFullPostmaster(bool checkTargetModeAsWell);
+extern bool isInFaultFromPostmasterReset(void);
 extern bool doesPrimaryMirrorModeRequireFilerepProcess(bool checkTargetModeAsWell);
 
 /**

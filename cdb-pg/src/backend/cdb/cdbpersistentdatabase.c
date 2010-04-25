@@ -465,17 +465,7 @@ void PersistentDatabase_AddCreated(
 	DatabaseDirEntry databaseDirEntry;
 	SharedOidSearchAddResult addResult;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
-	{	
-		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
-				 "Skipping persistent database '%s' because we are before persistence work",
-				 GetDatabasePath(
-					  dbDirNode->database, 
-					  dbDirNode->tablespace));
-
-		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
-	}
+	Assert (PersistentFileSysObj_BeforePersistenceWork());
 
 	PersistentDatabase_InitScan();
 

@@ -45,6 +45,7 @@ from gppylib.gpparseopts import OptParser, OptChecker
 from gppylib.operations.startSegments import *
 from gppylib.operations.buildMirrorSegments import *
 from gppylib.programs import programIoUtils
+from gppylib.programs.clsAddMirrors import validateFlexibleHeadersListAllFilespaces
 from gppylib.system import configurationInterface as configInterface
 from gppylib.system.environment import GpMasterEnvironment
 from gppylib.test.testUtils import *
@@ -65,8 +66,16 @@ class GpRecoverSegmentProgram:
         self.__options = options
         self.__pool = None
 
-    def outputToFile(self, mirrorBuilder, fileName):
+    def outputToFile(self, mirrorBuilder, gpArray, fileName):
         lines = []
+
+        #
+        # first line is always the filespace order
+        #
+        filespaceArr = [fs for fs in gpArray.getFilespaces(False)]
+        lines.append("filespaceOrder=" + (":".join([fs.getName() for fs in filespaceArr])))
+
+        # now one for each failure
         for mirror in mirrorBuilder.getMirrorsToBuild():
             str = ""
             seg = mirror.getFailedSegment()
@@ -74,9 +83,21 @@ class GpRecoverSegmentProgram:
 
             seg = mirror.getFailoverSegment()
             if seg is not None:
+
+                #
+                # build up :path1:path2   for the mirror segment's filespace paths
+                #
+                segFilespaces = seg.getSegmentFilespaces()
+                filespaceValues = []
+                for fs in filespaceArr :
+                    path = segFilespaces.get(fs.getOid())
+                    assert path is not None   # checking consistency should have been done earlier, but doublecheck here
+                    filespaceValues.append(":" + path)
+
                 str += ' '
-                str += ('%s:%s:%d:%d:%s' % (seg.getSegmentAddress(), seg.getSegmentHostName(),
-                    seg.getSegmentPort(), seg.getSegmentReplicationPort(), seg.getSegmentDataDirectory()))
+                str += ('%s:%d:%d:%s%s' % (seg.getSegmentAddress(),
+                    seg.getSegmentPort(), seg.getSegmentReplicationPort(), seg.getSegmentDataDirectory(),
+                        "".join(filespaceValues)))
 
             lines.append(str)
         writeLinesToFile(fileName, lines)
@@ -88,24 +109,33 @@ class GpRecoverSegmentProgram:
         returns a GpMirrorListToBuild object
         """
 
+        fileData = utils.parseMirroringConfigFile( readAllLinesFromFile(self.__options.recoveryConfigFile),
+                             "Segment recovery config",
+                             [
+                                    "failedAddress", "failedPort", "failedDataDirectory",
+                                    "newAddress", "newPort", "newReplicationPort", "newDataDirectory"
+                             ],
+                             "filespaceOrder",
+                             False, 3)
+
+        validateFlexibleHeadersListAllFilespaces("Segment recovery config", gpArray, fileData)
+        filespaceNameToFilespace = dict([ (fs.getName(), fs) for fs in gpArray.getFilespaces(False)])
+
+        allAddresses = [row.getFixedValuesMap()["newAddress"] for row in fileData.getRows()
+                                                if row.getFixedValuesMap()["newAddress"] is not None]
+        allNoneArr = [None for a in allAddresses]
+        interfaceLookup = GpInterfaceToHostNameCache(self.__pool, allAddresses, allNoneArr)
+
         failedSegments = []
         failoverSegments = []
-        for line in readAllLinesFromFile(self.__options.recoveryConfigFile):
-            line = line.strip()
-            logger.info("Checking %s " % line)
-            if line == '':
-                continue
-            qeArray = line.split()
-            qeArrayLen = len(qeArray)
-            if qeArrayLen < 1 or  qeArrayLen > 2:
-                raise Exception('config file format error. %s' % line)
-
-            arr = [s.strip() for s in qeArray[0].split(':')]
-            if len(arr) != 3:
-                raise Exception('config file format error. %s' % line)
+        for row in fileData.getRows():
+            fixedValues = row.getFixedValuesMap()
+            flexibleValues = row.getFlexibleValuesMap()
 
             # find the failed segment
-            (failedAddress, failedPort, failedDataDirectory) = arr
+            failedAddress = fixedValues['failedAddress']
+            failedPort = fixedValues['failedPort']
+            failedDataDirectory = fixedValues['failedDataDirectory']
             failedSegment = None
             for segment in gpArray.getDbList():
                 if segment.getSegmentAddress() == failedAddress and \
@@ -113,38 +143,46 @@ class GpRecoverSegmentProgram:
                             segment.getSegmentDataDirectory() == failedDataDirectory:
 
                     if failedSegment is not None:
-                        raise Exception("Segment found twice: %s" % line)
+                        raise Exception("Segment found twice in configuration: %s" % row.getLine())
                     failedSegment = segment
 
             if failedSegment is None:
-                raise Exception("Segment not found: %s" % line )
+                raise Exception("Segment not found: %s" % row.getLine())
 
             failoverSegment = None
-            if qeArrayLen == 2:
+            if "newAddress" in fixedValues:
                 """
-                When the length is two, the caller is going to tell us to where we need to failover, so
+                When the second set was passed, the caller is going to tell us to where we need to failover, so
                   build a failover segment
                 """
-                arr = [s.strip() for s in qeArray[1].split(':')]
-                if len(arr) != 5:
-                    raise Exception('Config file format error. %s' % line)
-
                 # these two lines make it so that failoverSegment points to the object that is registered in gparray
                 failoverSegment = failedSegment
                 failedSegment = failoverSegment.copy()
 
+                address = fixedValues["newAddress"]
                 try:
-                    port = int(arr[2])
-                    replicationPort = int(arr[3])
+                    port = int(fixedValues["newPort"])
+                    replicationPort = int(fixedValues["newReplicationPort"])
                 except ValueError:
-                    raise Exception( 'Config file format error, invalid number in line: %s' % (line))
+                    raise Exception( 'Config file format error, invalid number value in line: %s' % (row.getLine()))
+                dataDirectory = fixedValues["newDataDirectory"]
+
+                hostName = interfaceLookup.getHostName(address)
+
+                filespaceOidToPathMap = {}
+                for fsName, path in flexibleValues.iteritems():
+                    filespaceOidToPathMap[filespaceNameToFilespace[fsName].getOid()] = path
 
                 # now update values in failover segment
-                failoverSegment.setSegmentAddress( arr[0] )
-                failoverSegment.setSegmentHostName( arr[1] )
+                failoverSegment.setSegmentAddress( address )
+                failoverSegment.setSegmentHostName( hostName )
                 failoverSegment.setSegmentPort( port )
                 failoverSegment.setSegmentReplicationPort( replicationPort )
-                failoverSegment.setSegmentDataDirectory( arr[4] )
+                failoverSegment.setSegmentDataDirectory( dataDirectory )
+
+                for fsOid, path in filespaceOidToPathMap.iteritems():
+                    failoverSegment.getSegmentFilespaces()[fsOid] = path
+                failoverSegment.getSegmentFilespaces()[gparray.SYSTEM_FILESPACE] = dataDirectory
 
             # this must come AFTER the if check above because failedSegment can be adjusted to
             #   point to a different object
@@ -518,6 +556,9 @@ class GpRecoverSegmentProgram:
 
             # check that we actually have mirrors
             if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_SAN:
+                if self.__options.newRecoverHost is not None:
+                    raise ProgramArgumentValidationException("")
+
                 self.SanFailback(gpArray, gpEnv)
                 return 0
             elif gpArray.getFaultStrategy() != gparray.FAULT_STRATEGY_FILE_REPLICATION:
@@ -533,7 +574,7 @@ class GpRecoverSegmentProgram:
 
             if self.__options.outputSampleConfigFile is not None:
                 # just output config file and done
-                self.outputToFile(mirrorBuilder, self.__options.outputSampleConfigFile)
+                self.outputToFile(mirrorBuilder, gpArray, self.__options.outputSampleConfigFile)
                 logger.info('Configuration file output to %s successfully.' % self.__options.outputSampleConfigFile)
             elif len(mirrorBuilder.getMirrorsToBuild()) == 0:
                 logger.info('No segments to recover')

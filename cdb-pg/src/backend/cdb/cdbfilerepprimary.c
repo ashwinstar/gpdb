@@ -544,7 +544,7 @@ FileRepPrimary_MirrorClose(FileRepIdentifier_u		fileRepIdentifier,
 						  descr);
 		}
 	}
-
+	
 #ifdef FILEREP_DEBUG
 	if (dataState == DataStateInChangeTracking)
 		ereport(LOG,			
@@ -1016,7 +1016,7 @@ FileRepPrimary_MirrorValidation(FileRepIdentifier_u		fileRepIdentifier,
 								FileRepRelationType_e	fileRepRelationType)
 {
 	int		status = STATUS_OK;
-	int		mirrorStatus = FileRepStatusMirrorLossOccurred;
+	int		mirrorStatus = FileRepStatusSuccess;
 	
 	FileRepOperationDescription_u descr;
 	
@@ -1028,14 +1028,16 @@ FileRepPrimary_MirrorValidation(FileRepIdentifier_u		fileRepIdentifier,
 														  FileRepOperationValidation,
 														  descr);
 		if (status != STATUS_OK)
-			return mirrorStatus;
-		
-		if (FileRepAckPrimary_IsOperationCompleted(
-												fileRepIdentifier,									
-												fileRepRelationType) == TRUE)
 		{
-			mirrorStatus = FileRepAckPrimary_GetMirrorErrno();
-		}					
+			mirrorStatus = FileRepStatusMirrorLossOccurred;
+			return mirrorStatus;
+		}
+		
+		FileRepAckPrimary_IsOperationCompleted(
+											   fileRepIdentifier,									
+											   fileRepRelationType);
+		
+		mirrorStatus = FileRepAckPrimary_GetMirrorErrno();
 	}
 	
 #ifdef FILEREP_DEBUG

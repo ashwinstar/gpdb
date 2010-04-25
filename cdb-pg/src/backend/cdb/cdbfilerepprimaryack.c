@@ -801,7 +801,7 @@ FileRepAckPrimary_IsOperationCompleted(
 				 FileRep_errdetail_ShmemAck(),
 				 FileRep_errcontext()));		
 	}
-		
+	
 	if (fileName) {
 		pfree(fileName);
 		fileName = NULL;
@@ -1011,6 +1011,8 @@ FileRepAckPrimary_RunConsumer(void)
 					(errmsg("LOG(filerep): P_RunConsumer ack validation status:'%s' ",
 							FileRepStatusToString[mirrorStatus])));	
 #endif
+				break;
+				
 			case FileRepOperationCreate:
 				mirrorStatus = fileRepMessageHeader->fileRepOperationDescription.create.mirrorStatus;
 #ifdef FILEREP_DEBUG
@@ -1019,6 +1021,7 @@ FileRepAckPrimary_RunConsumer(void)
 								FileRepStatusToString[mirrorStatus])));	
 #endif
 				break;
+				
 			default:
 				break;
 		}

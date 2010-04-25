@@ -280,7 +280,9 @@ static volatile sig_atomic_t filerep_has_signaled_backends_shutdown = false;
 
 static int	Shutdown = NoShutdown;
 
-static bool FatalError = false; /* T if recovering from backend crash */
+/* T if recovering from a backend crash, up to the point of resetting shared memory and starting up again
+ * (or going into quiescent mode if it's a primary/mirror that has reset) */
+static bool FatalError = false;
 static bool RecoveryError = false;		/* T if WAL recovery failed */
 
 static bool gHaveCalledOnetimeInitFunctions = false;
@@ -323,11 +325,11 @@ static bool gHaveCalledOnetimeInitFunctions = false;
  *
  * Notice that this state variable does not distinguish *why* we entered
  * states later than PM_RUN --- Shutdown and FatalError must be consulted
- * to find that out.  FatalError is never true in PM_RECOVERY_* or PM_RUN
+ * to find that out.  FatalError is never true in PM_INIT through PM_RUN
  * states, nor in PM_SHUTDOWN states (because we don't enter those states
- * when trying to recover from a crash).  It can be true in PM_STARTUP state,
- * because we don't clear it until we've successfully started WAL redo.
- * Similarly, RecoveryError means that we have crashed during recovery, and
+ * when trying to recover from a crash).
+ *
+ * RecoveryError means that we have crashed during recovery, and
  * should not try to restart.
  */
 typedef enum
@@ -687,6 +689,19 @@ static void SetBGWriterPID(pid_t pid)
 {
     BgWriterPID = pid;
     primaryMirrorSetBGWriterPID(pid);
+}
+
+/**
+ * return true if we are allowed to start actual database processes in this state.
+ *
+ * Note that this checks whether we are in fault from postmaster reset, so should not be used for
+ *      assertions in do_reaper -- because it may have faulted from the time we started the process
+ *      to the time the reaper is called 
+ */
+static bool
+isFullPostmasterAndDatabaseIsAllowed(void)
+{
+    return isPrimaryMirrorModeAFullPostmaster(false) && ! isInFaultFromPostmasterReset();
 }
 
 /*
@@ -2010,14 +2025,16 @@ ServerLoop(void)
 					 (long)SysLoggerPID);
 		}
 
-		if ( isPrimaryMirrorModeAFullPostmaster(false))
+		if ( isFullPostmasterAndDatabaseIsAllowed())
 		{
 			/*
 			 * If no background writer process is running, and we are not in a
 			 * state that prevents it, start one.  It doesn't matter if this
 			 * fails, we'll just try again later.
 			 */
-			if (BgWriterPID == 0 && StartupPID == 0 && StartupPass2PID == 0 && StartupPass3PID == 0 && !FatalError && !SyncMaster &&
+			if (BgWriterPID == 0 &&
+			    StartupPID == 0 && StartupPass2PID == 0 && StartupPass3PID == 0 && pmState > PM_STARTUP_PASS3 &&
+			    !FatalError && !SyncMaster &&
 			    pmState < PM_CHILD_STOP_BEGIN)
 			{
 				SetBGWriterPID(StartBackgroundWriter());
@@ -2063,7 +2080,8 @@ ServerLoop(void)
 			 * frequently in autovac_start.
 			 */
 			if ((AutoVacuumingActive() || force_autovac) && AutoVacPID == 0 &&
-				StartupPID == 0 && StartupPass2PID == 0 && StartupPass3PID == 0 && !FatalError && Shutdown == NoShutdown)
+				StartupPID == 0 && StartupPass2PID == 0 && StartupPass3PID == 0 && pmState > PM_STARTUP_PASS3 && 
+				!FatalError && Shutdown == NoShutdown)
 			{
 				AutoVacPID = autovac_start();
 				if (Debug_print_server_processes)
@@ -2075,7 +2093,8 @@ ServerLoop(void)
 
 			/* If we have lost the stats collector, try to start a new one */
 			if (PgStatPID == 0 &&
-				StartupPID == 0 && StartupPass2PID == 0 && StartupPass3PID == 0 && !FatalError && Shutdown == NoShutdown && !SyncMaster)
+				StartupPID == 0 && StartupPass2PID == 0 && StartupPass3PID == 0 && pmState > PM_STARTUP_PASS3 && 
+				!FatalError && Shutdown == NoShutdown && !SyncMaster)
 			{
 				PgStatPID = pgstat_start();
 				if (Debug_print_server_processes)
@@ -2093,6 +2112,7 @@ ServerLoop(void)
 					StartupPID == 0 &&
 					StartupPass2PID == 0 &&
 					StartupPass3PID == 0 &&
+					pmState > PM_STARTUP_PASS3 &&
 					!FatalError &&
 					Shutdown == NoShutdown &&
 					ServiceStartable(subProc))
@@ -2989,6 +3009,8 @@ canAcceptConnections(void)
 			return CAC_SHUTDOWN;	/* shutdown is pending */
 		if (!FatalError &&
 			(pmState == PM_STARTUP ||
+			 pmState == PM_STARTUP_PASS2 ||
+			 pmState == PM_STARTUP_PASS3 ||
 			 pmState == PM_RECOVERY ||
 			 pmState == PM_RECOVERY_CONSISTENT))
 			return CAC_STARTUP; /* normal startup */
@@ -3001,9 +3023,9 @@ canAcceptConnections(void)
 
             if ( mirrorMode == PMModeQuiescentSegment ||
                  mirrorMode == PMModeMirrorSegment)
-             {
+            {
                 return CAC_MIRROR_OR_QUIESCENT;
-             }
+            }
         }
 
 		return CAC_RECOVERY;	/* else must be crash recovery */
@@ -3937,7 +3959,7 @@ static void do_reaper()
 	 *
 	 * TODO: CHAD_PM should this also proceed through normal child exit state logic and simply
 	 *   do something at the right time (when, for example, all post-bgwriters are done) (When that state is
-	 *   reached and we  have fatalerror with no shutdown request then do crash recovery)
+	 *   reached and we  have fatalerror with no shutdown request then do the shared memory reset and restart)
  	 */
 	if (FatalError)
 	{
@@ -3958,6 +3980,21 @@ static void do_reaper()
             /* important child is still going...wait longer */
 			goto reaper_done;
         }
+
+        if ( RecoveryError )
+        {
+    		ereport(LOG,
+				(errmsg("database recovery failed; exiting")));
+
+            /*
+             * If recovery failed, wait for all non-syslogger children to exit, and
+             * then exit postmaster. We don't try to reinitialize when recovery fails,
+             * because more than likely it will just fail again and we will keep
+             * trying forever.
+             */
+            ExitPostmaster(1);
+        }
+
 		ereport(LOG,
 				(errmsg("all server processes terminated; reinitializing")));
 
@@ -3981,6 +4018,7 @@ static void do_reaper()
 
 		shmem_exit(0);
 		pmState = PM_INIT;
+		FatalError = false;
 		reset_shared(PostPortNumber, true);
 
         /* continue to reaper_done, then to ServerLoop which will process startup transition */
@@ -4673,7 +4711,7 @@ static void StateMachineTransition_ShutdownBgWriterWithCheckpoint(void)
     if (! FatalError &&
         ! RecoveryError &&
         ! SyncMaster &&
-        isPrimaryMirrorModeAFullPostmaster(false))
+        isFullPostmasterAndDatabaseIsAllowed())
     {
         /* Start the bgwriter if not running */
         if (BgWriterPID == 0 )
@@ -4747,6 +4785,9 @@ static void StateMachineTransition_NoChildren(void)
     }
     else if (RecoveryError)
     {
+        ereport(LOG,
+            (errmsg("database recovery failed; exiting")));
+
         /*
          * If recovery failed, wait for all non-syslogger children to exit, and
          * then exit postmaster. We don't try to reinitialize when recovery fails,
@@ -4777,6 +4818,7 @@ static void StateMachineTransition_NoChildren(void)
 
         shmem_exit(1);
         pmState = PM_INIT;
+        FatalError = false;
         reset_shared(PostPortNumber, true);
         /* done..serverLoop will process startup request */
     }
@@ -6465,14 +6507,14 @@ StartChildProcess(AuxProcType type)
         case StartupPass2Process:
 		case StartupPass3Process:
         case WalWriterProcess:
-		Assert(isPrimaryMirrorModeAFullPostmaster(true));
-		break;
-	case FilerepProcess:
-		Assert(doesPrimaryMirrorModeRequireFilerepProcess(true));
-		break;
-	case CheckerProcess:
-	case BootstrapProcess:
-		break;
+            Assert(isPrimaryMirrorModeAFullPostmaster(true));
+            break;
+        case FilerepProcess:
+            Assert(doesPrimaryMirrorModeRequireFilerepProcess(true));
+            break;
+        case CheckerProcess:
+        case BootstrapProcess:
+            break;
 	}
 
 #ifdef EXEC_BACKEND

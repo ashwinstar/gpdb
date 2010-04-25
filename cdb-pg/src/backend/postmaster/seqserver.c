@@ -29,12 +29,17 @@
 #include "postmaster/fork_process.h"
 #include "postmaster/postmaster.h"
 #include "postmaster/seqserver.h"
+#include "catalog/catalog.h"
+#include "catalog/pg_database.h"
+#include "catalog/pg_tablespace.h"
 #include "storage/ipc.h"
 #include "storage/proc.h"
 #include "storage/pmsignal.h"			/* PostmasterIsAlive */
 #include "storage/sinval.h"
 #include "tcop/tcopprot.h"
 #include "utils/ps_status.h"
+#include "storage/backendid.h"
+#include "utils/syscache.h"
 
 #ifdef WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -72,6 +77,7 @@ static int listenerSetup(void);
 static int64 readInt64(uint8 *buff);
 static void sendInt64(uint8 *buff, int64 i);
 
+extern bool FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace);
 
 /*=========================================================================
  * GLOBAL STATE VARIABLES
@@ -392,6 +398,8 @@ ss_quickdie(SIGNAL_ARGS)
 	exit(2);
 }
 
+static char *knownDatabase = "postgres";
+
 /*
  * AutoVacMain
  */
@@ -399,6 +407,8 @@ NON_EXEC_STATIC void
 SeqServerMain(int argc, char *argv[])
 {
 	sigjmp_buf	local_sigjmp_buf;
+
+	char	   *fullpath;
 
 	IsUnderPostmaster = true;
 	am_seqserver = true;
@@ -484,8 +494,77 @@ SeqServerMain(int argc, char *argv[])
 	 */
 	inputBuff = palloc(sizeof(NextValRequest));
 	
-	/* main loop */
+	/*
+	 * The following additional initialization allows us to call the persistent meta-data modules.
+	 */
+
+	/*
+	 * Create a resource owner to keep track of our resources (currently only
+	 * buffer pins).
+	 */
+	CurrentResourceOwner = ResourceOwnerCreate(NULL, "SeqServer");
+	
+	/*
+	 * In order to access the catalog, we need a database, and a
+	 * tablespace; our access to the heap is going to be slightly
+	 * limited, so we'll just use some defaults.
+	 */
+	MyDatabaseId = TemplateDbOid;
+	MyDatabaseTableSpace = DEFAULTTABLESPACE_OID;
+
+	if (!FindMyDatabase(knownDatabase, &MyDatabaseId, &MyDatabaseTableSpace))
+		ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE),
+			errmsg("database 'postgres' does not exist")));
+
+	fullpath = GetDatabasePath(MyDatabaseId, MyDatabaseTableSpace);
+
+	SetDatabasePath(fullpath);
+
+	/*
+	 * Finish filling in the PGPROC struct, and add it to the ProcArray. (We
+	 * need to know MyDatabaseId before we can do this, since it's entered
+	 * into the PGPROC struct.)
+	 *
+	 * Once I have done this, I am visible to other backends!
+	 */
+	InitProcessPhase2();
+
+	/*
+	 * Initialize my entry in the shared-invalidation manager's array of
+	 * per-backend data.
+	 *
+	 * Sets up MyBackendId, a unique backend identifier.
+	 */
+	MyBackendId = InvalidBackendId;
+
+	InitBackendSharedInvalidationState();
+
+	if (MyBackendId > MaxBackends || MyBackendId <= 0)
+		elog(FATAL, "bad backend id: %d", MyBackendId);
+
+	/*
+	 * bufmgr needs another initialization call too
+	 */
+	InitBufferPoolBackend();
+
+	/* heap access requires the rel-cache */
+	RelationCacheInitialize();
+	InitCatalogCache();
+
+	/*
+	 * It's now possible to do real access to the system catalogs.
+	 *
+	 * Load relcache entries for the system catalogs.  This must create at
+	 * least the minimum set of "nailed-in" cache entries.
+	 */
+	RelationCacheInitializePhase2();		/* main loop */
+	
 	SeqServerLoop();
+
+	
+	ResourceOwnerRelease(CurrentResourceOwner,
+						 RESOURCE_RELEASE_BEFORE_LOCKS,
+						 false, true);							
 
 	/* One iteration done, go away */
 	proc_exit(0);

@@ -18,10 +18,27 @@ from gppylib.programs import programIoUtils
 from gppylib.system import configurationInterface as configInterface
 from gppylib.system.environment import GpMasterEnvironment
 from gppylib.test.testUtils import *
-from gppylib.utils import toNonNoneString, checkNotNone, writeLinesToFile, readAllLinesFromFile
+from gppylib.utils import toNonNoneString, checkNotNone, writeLinesToFile, readAllLinesFromFile, parseMirroringConfigFile
 from lib import gpmlib
+from gppylib.gphostcache import GpInterfaceToHostNameCache
 
 logger = gplog.get_default_logger()
+
+def validateFlexibleHeadersListAllFilespaces(configFileLabel, gpArray, fileData):
+    """
+    Verify that every filespace in the gpArray has exactly one entry in the flexible headers of fileData
+    """
+    filespaceNameToFilespace = dict([ (fs.getName(), fs) for fs in gpArray.getFilespaces(False)])
+    specifiedFilespaces = {}
+    for fsName in fileData.getFlexibleHeaders():
+        if fsName not in filespaceNameToFilespace:
+            raise Exception('%s refers to filespace that does not exist: "%s"' % (configFileLabel, fsName))
+        if fsName in specifiedFilespaces:
+            raise Exception('%s refers to filespace multiple times: "%s"' % (configFileLabel, fsName))
+        specifiedFilespaces[fsName] = True
+    if len(fileData.getFlexibleHeaders()) != len(filespaceNameToFilespace):
+        raise Exception('%s specified only %d of %d filespaces' %
+            (configFileLabel, len(fileData.getFlexibleHeaders()), len(filespaceNameToFilespace)))
 
 #
 # note: can we add unit testing for GpMirrorBuildCalculator and others
@@ -205,65 +222,50 @@ class GpAddMirrorsProgram:
         self.__pool = None
 
     def __getMirrorsToBuildFromConfigFile(self, gpArray):
+        fileData = parseMirroringConfigFile( readAllLinesFromFile(self.__options.mirrorConfigFile),
+                             "Mirror config",
+                             [
+                                    "contentId", "address", "port", "replicationPort",
+                                    "primarySegmentReplicationPort", "dataDirectory"
+                             ],
+                             "filespaceOrder",
+                             True, None)
 
-        filespaceNameToFilespace = {}
-        for fs in gpArray.getFilespaces(False):
-            filespaceNameToFilespace[fs.getName()] = fs
-        specifiedFilespaces = {}
+        validateFlexibleHeadersListAllFilespaces("Mirror config", gpArray, fileData)
+        filespaceNameToFilespace = dict([ (fs.getName(), fs) for fs in gpArray.getFilespaces(False)])
 
-        #
-        # figure out the order in which non-system filespaces will appear in the input rows
-        #
-        lines = [s.strip() for s in readAllLinesFromFile(self.__options.mirrorConfigFile) if len(s.strip()) > 0]
-        if len(lines) == 0:
-            raise Exception('Mirror config file is empty')
-        filespaceOrderLineSplit = lines[0].split('=')
-        if len(filespaceOrderLineSplit) != 2 or filespaceOrderLineSplit[0] != "filespaceOrder":
-            raise Exception('Mirror config format error for first line %s' % lines[0] )
-
-        filespacesInOrder = []
-        if len(filespaceOrderLineSplit[1]) > 0:
-            for fsName in filespaceOrderLineSplit[1].split(":"):
-                if fsName not in filespaceNameToFilespace:
-                    raise Exception('Mirror config refers to filespace that does not exist: "%s"' % fsName)
-                if fsName in specifiedFilespaces:
-                    raise Exception('Mirror config refers to filespace multiple times: "%s"' % fsName)
-                specifiedFilespaces[fsName] = True
-                filespacesInOrder.append(filespaceNameToFilespace[fsName])
-        if len(filespacesInOrder) != len(filespaceNameToFilespace):
-            raise Exception('Mirror config specified only %d of %d filespaces' %
-                (len(filespacesInOrder), len(filespaceNameToFilespace)))
-        lines = lines[1:]
+        allAddresses = [row.getFixedValuesMap()["address"] for row in fileData.getRows()]
+        allNoneArr = [None for a in allAddresses]
+        interfaceLookup = GpInterfaceToHostNameCache(self.__pool, allAddresses, allNoneArr)
 
         #
-        # Now parse the real lines
+        # build up the output now
         #
         toBuild = []
         primaries = [seg for seg in gpArray.getDbList() if seg.isSegmentPrimary(False)]
         segsByContentId = GpArray.getSegmentsByContentId(primaries)
 
-        numExpectedValuesPerLine = 6 + len(gpArray.getFilespaces())
-        calc = GpMirrorBuildCalculator(gpArray, 1000, [], [])
-        for line in lines:
-            param = line.split('=')
-            if len(param) != 2:
-                raise Exception('Mirror config format error for line %s' % line)
-            mirror = param[1].split(':')
-            if len(mirror) != numExpectedValuesPerLine:
-                raise Exception('Mirror config format error for line %s (wrong number of colon-separated values.  '
-                        'Found %d but expected %d)' % (line, len(mirror), numExpectedValuesPerLine))
+        # note: passed port offset in this call should not matter
+        calc = GpMirrorBuildCalculator(gpArray, self.__options.mirrorOffset, [], [])
+        
+        for row in fileData.getRows():
+            fixedValues = row.getFixedValuesMap()
+            flexibleValues = row.getFlexibleValuesMap()
 
-            contentId = int(mirror[0])
-            hostName = mirror[1]
-            address = mirror[2]
-            port = int(mirror[3])
-            replicationPort = int(mirror[4])
-            primarySegmentReplicationPort = int(mirror[5])
-            dataDir = mirror[6]
-
+            contentId = int(fixedValues['contentId'])
+            address = fixedValues['address']
+            #
+            # read the rest and add the mirror
+            #
+            port = int(fixedValues['port'])
+            replicationPort = int(fixedValues['replicationPort'])
+            primarySegmentReplicationPort = int(fixedValues['primarySegmentReplicationPort'])
+            dataDir = fixedValues['dataDirectory']
+            hostName = interfaceLookup.getHostName(address)
+            
             filespaceOidToPathMap = {}
-            for fsIndex, path in enumerate(mirror[7:]):
-                filespaceOidToPathMap[filespacesInOrder[fsIndex].getOid()] = path
+            for fsName, path in flexibleValues.iteritems():
+                filespaceOidToPathMap[filespaceNameToFilespace[fsName].getOid()] = path
 
             primary = segsByContentId[contentId]
             if primary is None:
@@ -303,10 +305,9 @@ class GpAddMirrorsProgram:
                 assert path is not None   # checking consistency should have been done earlier, but doublecheck here
                 filespaceValues.append(":" + path)
 
-            line = 'mirror%d=%d:%s:%s:%d:%d:%d:%s%s' % \
+            line = 'mirror%d=%d:%s:%d:%d:%d:%s%s' % \
                     (i, \
                     mirror.getSegmentContentId(), \
-                    mirror.getSegmentHostName(), \
                     mirror.getSegmentAddress(), \
                     mirror.getSegmentPort(), \
                     mirror.getSegmentReplicationPort(), \

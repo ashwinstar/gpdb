@@ -369,7 +369,21 @@ extern void PersistentFileSysObj_ResynchronizeRelationComplete(
 
 	int64							persistentSerialNum,
 
+	int64						mirrorLossEof,
+
 	bool							flushToXLog);
+
+extern bool PersistentFileSysObj_ScanForRelation(
+	RelFileNode 		*relFileNode,
+				/* The tablespace, database, and relation OIDs for the create. */
+
+	int32				segmentFileNum,
+
+	ItemPointer 		persistentTid,
+				/* Resulting TID of the gp_persistent_rel_files tuple for the relation. */
+
+	int64				*persistentSerialNum);
+				/* Resulting serial number for the relation.  Distinquishes the uses of the tuple. */
 
 extern Size PersistentFileSysObj_ShmemSize(void);
 

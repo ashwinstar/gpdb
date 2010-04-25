@@ -3600,7 +3600,9 @@ void PersistentFileSysObj_ResynchronizeRelationComplete(
 	ItemPointer 					persistentTid,
 
 	int64							persistentSerialNum,
-
+														
+	int64							mirrorLossEof,
+														
 	bool							flushToXLog)
 {
 	PersistentFileSysObjData 		*fileSysObjData;
@@ -3666,9 +3668,11 @@ void PersistentFileSysObj_ResynchronizeRelationComplete(
 
 		mirrorAppendOnlyNewEof = DatumGetInt64(values[Anum_gp_persistent_relation_node_mirror_append_only_new_eof - 1]);
 		
+		Assert(mirrorLossEof <= mirrorAppendOnlyNewEof);
+		
 		replaces[Anum_gp_persistent_relation_node_mirror_append_only_loss_eof - 1] = true;
 		newValues[Anum_gp_persistent_relation_node_mirror_append_only_loss_eof - 1] = 
-										Int64GetDatum(mirrorAppendOnlyNewEof);
+										Int64GetDatum(mirrorLossEof);
 	}
 
 	PersistentFileSysObj_ReplaceTuple(
@@ -3679,6 +3683,133 @@ void PersistentFileSysObj_ResynchronizeRelationComplete(
 								replaces,
 								flushToXLog);
 
+}
+
+bool PersistentFileSysObj_ScanForRelation(
+	RelFileNode 		*relFileNode,
+				/* The tablespace, database, and relation OIDs for the create. */
+
+	int32				segmentFileNum,
+
+	ItemPointer			persistentTid,
+				/* Resulting TID of the gp_persistent_rel_files tuple for the relation. */
+
+	int64				*persistentSerialNum)
+				/* Resulting serial number for the relation.  Distinquishes the uses of the tuple. */
+{
+	PersistentFileSysObjData *fileSysObjData;
+	PersistentFileSysObjSharedData	*fileSysObjSharedData;
+
+	PersistentStoreScan storeScan;
+	 
+	Datum values[Natts_gp_persistent_relation_node];
+
+	bool found;
+
+	if(RelFileNode_IsEmpty(relFileNode))
+		elog(ERROR, "Invalid RelFileNode (0,0,0)");
+
+	if (PersistentFileSysObj_BeforePersistenceWork())
+	{	
+		elog(ERROR, 
+		     "Cannot scan for persistent relation %u/%u/%u, segment file #%d because we are before persistence work",
+			 relFileNode->spcNode,
+			 relFileNode->dbNode,
+			 relFileNode->relNode,
+			 segmentFileNum);
+	}
+
+	PersistentFileSysObj_InitScan();
+
+	PersistentFileSysObj_GetDataPtrs(
+								PersistentFsObjType_RelationFile,
+								&fileSysObjData,
+								&fileSysObjSharedData);
+
+	found = false;
+	MemSet(persistentTid, 0, sizeof(ItemPointerData));
+	*persistentSerialNum = 0;
+		 
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+		 
+	PersistentStore_BeginScan(
+						&fileSysObjData->storeData,
+						&fileSysObjSharedData->storeSharedData,
+						&storeScan);
+
+	while (PersistentStore_GetNext(
+							&storeScan,
+							values,
+							persistentTid,
+							persistentSerialNum))
+	{
+		RelFileNode 					candidateRelFileNode;
+		int32 							candidateSegmentFileNum;
+		
+		PersistentFileSysRelStorageMgr	relationStorageManager;
+		PersistentFileSysState			persistentState;
+		MirroredObjectExistenceState	mirrorExistenceState;
+		MirroredRelDataSynchronizationState mirrorDataSynchronizationState;
+		bool							mirrorBufpoolPhysicallyTruncated;
+		XLogRecPtr						mirrorBufpoolResyncCkptLoc;
+		BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
+		int64							mirrorAppendOnlyLossEof;
+		int64							mirrorAppendOnlyNewEof;
+		TransactionId					parentXid;
+		int64							serialNum;
+		ItemPointerData					previousFreeTid;
+		
+		GpPersistentRelationNode_GetValues(
+										values,
+										&candidateRelFileNode.spcNode,
+										&candidateRelFileNode.dbNode,
+										&candidateRelFileNode.relNode,
+										&candidateSegmentFileNum,
+										&relationStorageManager,
+										&persistentState,
+										&mirrorExistenceState,
+										&mirrorDataSynchronizationState,
+										&mirrorBufpoolPhysicallyTruncated,
+										&mirrorBufpoolResyncCkptLoc,
+										&mirrorBufpoolResyncCkptBlockNum,
+										&mirrorAppendOnlyLossEof,
+										&mirrorAppendOnlyNewEof,
+										&parentXid,
+										&serialNum,
+										&previousFreeTid);
+
+		if (persistentState != PersistentFileSysState_CreatePending &&
+			persistentState != PersistentFileSysState_Created)
+			continue;
+
+		if (RelFileNodeEquals(candidateRelFileNode, *relFileNode) &&
+			candidateSegmentFileNum == segmentFileNum)
+		{
+			found = true;
+			break;
+		}
+
+		LWLockRelease(PersistentObjLock);
+		
+		LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+		
+	}
+
+	LWLockRelease(PersistentObjLock);
+
+	PersistentStore_EndScan(&storeScan);
+
+	if (found && Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+		     "Scan found persistent relation %u/%u/%u, segment file #%d with serial number " INT64_FORMAT " at TID %s",
+			 relFileNode->spcNode,
+			 relFileNode->dbNode,
+			 relFileNode->relNode,
+			 segmentFileNum,
+			 *persistentSerialNum,
+			 ItemPointerToString(persistentTid));
+
+	return found;
 }
 
 static Size PersistentFileSysObj_SharedDataSize(void)

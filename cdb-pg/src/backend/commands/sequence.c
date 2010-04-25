@@ -42,6 +42,8 @@
 #include "cdb/cdbmotion.h"
 #include "cdb/ml_ipc.h"
 
+#include "cdb/cdbpersistentfilesysobj.h"
+
 #include "postmaster/seqserver.h"
 
 
@@ -115,6 +117,234 @@ cdb_sequence_nextval_proxy(Oid      tablespaceid,
                            int64   *plast,
                            int64   *pcached,
                            int64   *pincrement);
+
+typedef struct SequencePersistentInfoCacheEntryKey
+{
+	RelFileNode				relFileNode;
+} SequencePersistentInfoCacheEntryKey;
+
+typedef struct SequencePersistentInfoCacheEntryData
+{
+	SequencePersistentInfoCacheEntryKey	key;
+
+	ItemPointerData		persistentTid;
+
+	int64				persistentSerialNum;
+
+	DoubleLinks			lruLinks;
+
+} SequencePersistentInfoCacheEntryData;
+typedef SequencePersistentInfoCacheEntryData *SequencePersistentInfoCacheEntry;
+
+static HTAB *sequencePersistentInfoCacheTable = NULL;
+
+static DoublyLinkedHead	sequencePersistentInfoCacheLruListHead;
+
+static int sequencePersistentInfoCacheLruCount = 0;
+
+static int sequencePersistentInfoCacheLruLimit = 100;
+
+static void
+Sequence_PersistentInfoCacheTableInit(void)
+{
+	HASHCTL			info;
+	int				hash_flags;
+
+	/* Set key and entry sizes. */
+	MemSet(&info, 0, sizeof(info));
+	info.keysize = sizeof(SequencePersistentInfoCacheEntryKey);
+	info.entrysize = sizeof(SequencePersistentInfoCacheEntryData);
+	info.hash = tag_hash;
+
+	hash_flags = (HASH_ELEM | HASH_FUNCTION);
+
+	sequencePersistentInfoCacheTable = hash_create("Sequence Persistent Info", 10, &info, hash_flags);
+
+	DoublyLinkedHead_Init(
+				&sequencePersistentInfoCacheLruListHead);
+}
+
+static bool Sequence_CheckPersistentInfoCache(
+	RelFileNode 		*relFileNode,
+
+	ItemPointer			persistentTid,
+
+	int64				*persistentSerialNum)
+{
+	SequencePersistentInfoCacheEntryKey	key;
+
+	SequencePersistentInfoCacheEntry persistentInfoCacheEntry;
+
+	bool found;
+
+	if (sequencePersistentInfoCacheTable == NULL)
+		Sequence_PersistentInfoCacheTableInit();
+
+	MemSet(&key, 0, sizeof(SequencePersistentInfoCacheEntryKey));
+	key.relFileNode = *relFileNode;
+
+	persistentInfoCacheEntry = 
+		(SequencePersistentInfoCacheEntry) 
+						hash_search(sequencePersistentInfoCacheTable,
+									(void *) &key,
+									HASH_FIND,
+									&found);
+	if (!found)
+		return false;
+	
+	*persistentTid = persistentInfoCacheEntry->persistentTid;
+	*persistentSerialNum = persistentInfoCacheEntry->persistentSerialNum;
+
+	/*
+	 * LRU.
+	 */
+	DoubleLinks_Remove(
+		offsetof(SequencePersistentInfoCacheEntryData, lruLinks),
+		&sequencePersistentInfoCacheLruListHead,
+		persistentInfoCacheEntry);
+
+	DoublyLinkedHead_AddFirst(
+		offsetof(SequencePersistentInfoCacheEntryData, lruLinks),
+		&sequencePersistentInfoCacheLruListHead,
+		persistentInfoCacheEntry);
+
+	return true;	
+}
+
+static void Sequence_AddPersistentInfoCache(
+	RelFileNode 		*relFileNode,
+
+	ItemPointer			persistentTid,
+
+	int64				persistentSerialNum)
+{
+	SequencePersistentInfoCacheEntryKey	key;
+
+	SequencePersistentInfoCacheEntry persistentInfoCacheEntry;
+
+	bool found;
+
+	if (sequencePersistentInfoCacheTable == NULL)
+		Sequence_PersistentInfoCacheTableInit();
+
+	MemSet(&key, 0, sizeof(SequencePersistentInfoCacheEntryKey));
+	key.relFileNode = *relFileNode;
+
+	persistentInfoCacheEntry = 
+		(SequencePersistentInfoCacheEntry) 
+						hash_search(
+								sequencePersistentInfoCacheTable,
+								(void *) &key,
+								HASH_ENTER,
+								&found);
+	Assert (!found);
+	
+	persistentInfoCacheEntry->persistentTid = *persistentTid;
+	persistentInfoCacheEntry->persistentSerialNum = persistentSerialNum;
+
+	DoubleLinks_Init(&persistentInfoCacheEntry->lruLinks);
+
+	/*
+	 * LRU.
+	 */
+	DoublyLinkedHead_AddFirst(
+		offsetof(SequencePersistentInfoCacheEntryData, lruLinks),
+		&sequencePersistentInfoCacheLruListHead,
+		persistentInfoCacheEntry);
+
+	sequencePersistentInfoCacheLruCount++;
+
+	if (sequencePersistentInfoCacheLruCount > sequencePersistentInfoCacheLruLimit)
+	{
+		SequencePersistentInfoCacheEntry lastPersistentInfoCacheEntry;
+
+		lastPersistentInfoCacheEntry = 
+			(SequencePersistentInfoCacheEntry) 
+							DoublyLinkedHead_Last(
+								offsetof(SequencePersistentInfoCacheEntryData, lruLinks),
+								&sequencePersistentInfoCacheLruListHead);
+		Assert(lastPersistentInfoCacheEntry != NULL);
+		
+		DoubleLinks_Remove(
+			offsetof(SequencePersistentInfoCacheEntryData, lruLinks),
+			&sequencePersistentInfoCacheLruListHead,
+			lastPersistentInfoCacheEntry);
+		
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "Removed cached persistent information for sequence %u/%u/%u -- serial number " INT64_FORMAT ", TID %s",
+				 lastPersistentInfoCacheEntry->key.relFileNode.spcNode,
+				 lastPersistentInfoCacheEntry->key.relFileNode.dbNode,
+				 lastPersistentInfoCacheEntry->key.relFileNode.relNode,
+				 lastPersistentInfoCacheEntry->persistentSerialNum,
+				 ItemPointerToString(&lastPersistentInfoCacheEntry->persistentTid));
+
+		hash_search(
+				sequencePersistentInfoCacheTable, 
+				(void *) &lastPersistentInfoCacheEntry->key, 
+				HASH_REMOVE, 
+				NULL);
+		
+		sequencePersistentInfoCacheLruCount--;
+	}
+}
+
+
+static void
+Sequence_FetchGpRelationNodeForXLog(Relation rel)
+{
+	if (rel->rd_segfile0_relationnodeinfo.isPresent)
+		return;
+
+	/*
+	 * For better performance, we cache the persistent information
+	 * for sequences with upper bound and use LRU...
+	 */
+	if (Sequence_CheckPersistentInfoCache(
+								&rel->rd_node,
+								&rel->rd_segfile0_relationnodeinfo.persistentTid,
+								&rel->rd_segfile0_relationnodeinfo.persistentSerialNum))
+	{
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "Found cached persistent information for sequence %u/%u/%u -- serial number " INT64_FORMAT ", TID %s",
+				 rel->rd_node.spcNode,
+				 rel->rd_node.dbNode,
+				 rel->rd_node.relNode,
+				 rel->rd_segfile0_relationnodeinfo.persistentSerialNum,
+				 ItemPointerToString(&rel->rd_segfile0_relationnodeinfo.persistentTid));
+	} 
+	else 
+	{
+		if (!PersistentFileSysObj_ScanForRelation(
+												&rel->rd_node,
+												/* segmentFileNum */ 0,
+												&rel->rd_segfile0_relationnodeinfo.persistentTid,
+												&rel->rd_segfile0_relationnodeinfo.persistentSerialNum))
+		{
+			elog(ERROR, "Cound not find persistent information for sequence %u/%u/%u",
+			     rel->rd_node.spcNode,
+			     rel->rd_node.dbNode,
+			     rel->rd_node.relNode);
+		}
+
+		Sequence_AddPersistentInfoCache(
+								&rel->rd_node,
+								&rel->rd_segfile0_relationnodeinfo.persistentTid,
+								rel->rd_segfile0_relationnodeinfo.persistentSerialNum);
+
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "Add cached persistent information for sequence %u/%u/%u -- serial number " INT64_FORMAT ", TID %s",
+				 rel->rd_node.spcNode,
+				 rel->rd_node.dbNode,
+				 rel->rd_node.relNode,
+				 rel->rd_segfile0_relationnodeinfo.persistentSerialNum,
+				 ItemPointerToString(&rel->rd_segfile0_relationnodeinfo.persistentTid));
+	}
+
+	rel->rd_segfile0_relationnodeinfo.isPresent = true;
+}
 
 /*
  * DefineSequence
@@ -288,7 +518,8 @@ DefineSequence(CreateSeqStmt *seq)
 	Assert(ItemPointerGetOffsetNumber(&(tuple->t_self)) == FirstOffsetNumber);
 
 	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
-//	RelationFetchGpRelationNodeForXLog(rel);
+	Assert(rel != NULL);
+	Sequence_FetchGpRelationNodeForXLog(rel);
 
 	/*
 	 * Two special hacks here:
@@ -438,7 +669,8 @@ AlterSequence(AlterSeqStmt *stmt)
 	}
 
 	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
-//	RelationFetchGpRelationNodeForXLog(seqrel);
+	Assert(seqrel != NULL);
+	Sequence_FetchGpRelationNodeForXLog(seqrel);
 
 	START_CRIT_SECTION();
 
@@ -742,7 +974,8 @@ cdb_sequence_nextval(Relation   seqrel,
 	*pincrement = incby;
 
 	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
-//	RelationFetchGpRelationNodeForXLog(seqrel);
+	Assert(seqrel != NULL);
+	Sequence_FetchGpRelationNodeForXLog(seqrel);
 
 	START_CRIT_SECTION();
 
@@ -951,7 +1184,8 @@ do_setval(Oid relid, int64 next, bool iscalled)
 	elm->cached = next;			/* last cached number (forget cached values) */
 
 	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
-//	RelationFetchGpRelationNodeForXLog(seqrel);
+	Assert(seqrel != NULL);
+	Sequence_FetchGpRelationNodeForXLog(seqrel);
 
 	START_CRIT_SECTION();
 

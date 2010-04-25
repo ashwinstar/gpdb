@@ -100,6 +100,8 @@ FileRepAckMirror_ConstructAndInsertMessage(
 		
 	switch (fileRepOperation) {
 		case FileRepOperationReconcileXLogEof:
+		case FileRepOperationValidation:
+		case FileRepOperationCreate:
 			fileRepMessageHeader->fileRepOperationDescription = fileRepOperationDescription;
 			break;
 			
