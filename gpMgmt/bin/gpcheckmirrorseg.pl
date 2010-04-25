@@ -92,6 +92,16 @@ it generates an Adler32 hash for each block.  The final diff compares
 the hashes for each block, highlighting the exact location where each
 file differs.
 
+=head1 CAVEATS/LIMITATIONS 
+
+Note that the preprocessing routine for heap files that filters hint
+bits makes assumptions about the C struct layout of the block headers
+and tuple headers, which is somewhat platform dependent. Column store
+tables have a similar issue, since the implementation encodes the eof
+for each file of the cols of a segno in a single raw vpinfo struct
+(containing a variable length array) that is stored in a catalog
+column as a bytea.
+
 =head1 AUTHORS
 
 Jeffrey I Cohen
@@ -683,6 +693,122 @@ EOF_bigstr
 	return $bigstr;
 } # end get_relation_info_query_txt
 
+# Ugh.  column store tables shove a vpinfo c struct directly into the
+# catalog, so we have to jump thru hoops to unpack it.  The vpinfo has
+# a variable length array, which encodes the eofs for the multiple
+# "pseudo-SegNos" that correspond to the columns of the table.  So
+# each aoseg entry is copied into a series of "pseudo_aoseg" entries, 1
+# per column.
+sub find_eof_in_vpinfo
+{
+	my $rnod = shift;
+
+	my $AOTupleId_MultiplierSegmentFileNum = 128;  # Next up power of 2
+												   # as multiplier.
+	my $pseudo_aoseg = [];
+
+	for my $rr (@{$rnod->{aoseg}})
+	{
+		my $biga;
+		my $bigbuf;
+
+		$biga = [];
+		$bigbuf = '';
+
+		my @foo = split(/(\\\d\d\d)/, $rr->{vpinfo});
+
+#		print Data::Dumper->Dump(\@foo);
+
+		for my $cc (@foo)
+		{
+			next unless length($cc);
+			if ($cc =~ m/\\\d\d\d/)
+			{
+				$cc =~ s/^\\//;
+				push @{$biga}, oct($cc);
+				$bigbuf .= chr(oct($cc));
+			}
+			else
+			{
+				my @baz = split(//, $cc);
+
+				for my $bb (@baz)
+				{
+					push @{$biga}, ord($bb);
+				}
+				$bigbuf .= $cc;
+			}
+
+			
+		}
+#		print Data::Dumper->Dump($biga);
+
+		# two 32 bit ints
+		my @ppp = unpack("I2", $bigbuf);
+
+#		print Data::Dumper->Dump(\@ppp);
+
+		next unless (scalar(@ppp) > 1);
+
+		# discard version
+		shift @ppp;
+
+		my $nentry = $ppp[0];
+
+		# two 64 bit (I2) fields in each entry, so multiply by 4
+		my $nentry2 = $nentry * 4;
+
+		@ppp = unpack("I2 I$nentry2", $bigbuf);
+
+#		print Data::Dumper->Dump(\@ppp);
+
+		# discard version, nentry
+		shift @ppp;
+		shift @ppp;
+
+		print "\nppp: \n",Data::Dumper->Dump(\@ppp);
+
+		# the nentry corresponds to the number of columns in the table
+		for my $column_num (0..($nentry-1))
+		{
+			my $new_entry;
+
+			$new_entry = {
+				'gp_segment_id' => $rr->{gp_segment_id},
+				'varblockcount' => $rr->{varblockcount},
+				'tupcount' => $rr->{tupcount}
+			};
+			$new_entry->{eof} = $ppp[4*$column_num];
+			$new_entry->{eofuncompressed} = $ppp[(4*$column_num) + 2];
+
+			# such fun! a normal ao table has a relfilenode composed
+			# of multiple segments, which have corresponding files
+			# named "relfilenode.segno".  But a co table has multiple
+			# "pseudo" segments, one per column, where:
+			#
+			#    pseudosegno = (colno*multiplier) + segno
+			#
+			# having colno=(0..(n-1)), multiplier=128
+			# ie we only support 128 concurrent users, since 
+			# col0 is pseudosegs 1-128
+			# col1 is pseudosegs 129-256
+			# col2 is pseudosegs 257-384, etc.
+
+			my $pseudoSegNo = 
+				($column_num*$AOTupleId_MultiplierSegmentFileNum) 
+				+ $rr->{segno};
+
+			$new_entry->{segno} = $pseudoSegNo;
+
+			push @{$pseudo_aoseg}, $new_entry;
+		}
+
+	} # end for rr
+
+	$rnod->{pseudo_aoseg} = $pseudo_aoseg;
+
+} # end find_eof_in_vpinfo
+
 
 sub get_aoseg_func
 {
@@ -711,20 +837,18 @@ sub get_aoseg_func
 			"where gp_segment_id = " . $row->{content} .
 			"\' ";
 	}
-	else
+	else # column store
 	{
-		# XXX XXX XXX: fake for now until can deal with vpinfo
+		# Extract the eofs from vpinfo in pg_aocsseg_XXX
 		# use "dollar-quoting" to avoid dealing with nested single-quotes:
 		# $q$p$q$ is equivalent to 'p'
 		$psql_str .= " -c \' " .
-			"select content, " . 'p.* ' .
-			"from gp_segment_configuration, " .
-			"(select 999999999 as eof) as p " .
-		# filter by content/segment_id (which is identical for primary
-		# and mirror, ie not the dbid)
-		"where content = " . $row->{content} .
-		"\' ";
-
+			"select gp_segment_id,* from gp_dist_random(" . '$q$' .
+			"pg_aoseg.pg_aocsseg_" . $rkey . '$q$' . ") " .
+			# filter by content/segment_id (which is identical for primary
+			# and mirror, ie not the dbid)
+			"where gp_segment_id = " . $row->{content} .
+			"\' ";
 	}
 
 #	print $psql_str, "\n";
@@ -932,9 +1056,18 @@ sub get_relfilenode_func
 						$rnod->{aoseg_eof}->{$rr2->{segno}} = $rr2->{eof};
 					}
 				}
-				else
+				else # column store
 				{
-					warn "cannot handle column store\n$relname for $dbname";
+					# unpack the list of pseudo-segments from the vpinfo
+					find_eof_in_vpinfo($rnod);
+
+					print Data::Dumper->Dump([$rnod]);
+
+					for my $rr2 (@{$rnod->{pseudo_aoseg}})
+					{
+						$rnod->{aoseg_eof}->{$rr2->{segno}} = $rr2->{eof};
+					}
+
 				}
 			}
 
@@ -984,7 +1117,7 @@ sub resolve_sizediff
 				"<unknown relname: $kk2>";
 
 			unless (exists($rnod->{relstorage})
-					&& ($rnod->{relstorage} =~ m/^(a)$/))
+					&& ($rnod->{relstorage} =~ m/^(a|c)$/))
 			{
 				$bstat = 0;
 				print Data::Dumper->Dump([$vv2]),"\n";
@@ -1064,13 +1197,13 @@ sub diff_again
 						my $filnam = join("/", @filpref) . "/" . $f1;
 
 						if (exists($rnod->{relstorage})
-							&& ($rnod->{relstorage} =~ m/h|a/))
+							&& ($rnod->{relstorage} =~ m/h|a|c/))
 						{
 							if ($rnod->{relstorage} eq "h")
 							{
 								push @heapfiles, $filnam;
 							}
-							elsif ($rnod->{relstorage} eq "a")
+							elsif ($rnod->{relstorage} =~m/a|c/)
 							{
 								my @foo = split(/\./, $filnam);
 								
