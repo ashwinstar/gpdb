@@ -1,0 +1,3 @@
+Installcheck/exttab1
+Installcheck/partition
+Installcheck/sreh
