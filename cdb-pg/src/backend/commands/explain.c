@@ -75,7 +75,6 @@ static ErrorData *explain_defer_error(ExplainState *es);
 static void explain_outNode(StringInfo str,
 				Plan *plan, PlanState *planstate,
 				Plan *outer_plan,
-				bool *isDirectDispatchOut,
 				int indent, ExplainState *es);
 static void show_plan_tlist(Plan *plan,
 				StringInfo str, int indent, ExplainState *es);
@@ -361,7 +360,6 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt,
     EState     *estate = NULL;
 	int			eflags;
     int         nb;
-    bool		isDirectDispatch = false;
 
 	/*
 	 * Use a snapshot with an updated command ID to ensure this query sees
@@ -507,12 +505,73 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt,
      */
     PG_TRY();
     {
-	    explain_outNode(buf, queryDesc->plannedstmt->planTree, queryDesc->planstate,
-					    NULL, &isDirectDispatch, 0, es);
-	    if (isDirectDispatch && Test_print_direct_dispatch_info)
-	    {
-	    	appendStringInfoString(buf, "Direct dispatch (true)\n");
-	    }
+     	int indent = 0;
+    	CmdType cmd = queryDesc->plannedstmt->commandType;
+    	Plan *childPlan = queryDesc->plannedstmt->planTree;
+
+    	if (cmd == CMD_DELETE || cmd == CMD_INSERT || cmd == CMD_UPDATE)
+    	{
+    		float		scaleFactor = 1.0; /* we will divide planner estimates by this factor to produce
+    										  per-segment estimates */
+    	   	int sliceNum = queryDesc->plannedstmt->nMotionNodes + 1;
+    	   	int numSegments = getgpsegmentCount();
+	    	char *cmdName = NULL;
+
+			/**
+			 * Estimates will have to be scaled down to be per-segment (except in a few cases).
+			 */
+   			scaleFactor = getgpsegmentCount();
+			if (childPlan->flow != NULL)
+			{
+				/**
+				 * Data is unified in one place (singleQE or QD). We scale up
+				 * estimates to make it global.
+				 */
+				if (CdbPathLocus_IsEntry(*(childPlan->flow))
+						|| CdbPathLocus_IsSingleQE(*(childPlan->flow)))
+				{
+					scaleFactor = 1.0;
+				}
+			}
+			switch (cmd)
+			{
+				case CMD_DELETE:
+					cmdName = "Delete";
+					break;
+				case CMD_INSERT:
+					cmdName = "Insert";
+					break;
+				case CMD_UPDATE:
+					cmdName = "Update";
+					break;
+				default:
+					// This should never be reached
+					Assert(!"Unexpected statement type");
+					break;
+			}
+			appendStringInfo(buf, "%s", cmdName);
+
+			if (IsA(childPlan, Motion))
+			{
+				Motion	   *pMotion = (Motion *) childPlan;
+				if (pMotion->motionType == MOTIONTYPE_FIXED && pMotion->numOutputSegs != 0)
+				{
+					// Gather Motion
+					numSegments = 1;
+				}
+				// else: other motion nodes execute on all segments
+			}
+			else if ((childPlan->directDispatch).isDirectDispatch)
+			{
+				numSegments = 1;
+			}
+			appendStringInfo(buf, " (slice%d; segments: %d)", sliceNum, numSegments);
+			appendStringInfo(buf, "  (rows=%.0f width=%d)\n", ceil(childPlan->plan_rows / scaleFactor), childPlan->plan_width);
+			appendStringInfo(buf, "  ->  ");
+			indent = 3;
+		}
+	    explain_outNode(buf, childPlan, queryDesc->planstate,
+					    NULL, indent, es);
     }
     PG_CATCH();
     {
@@ -727,20 +786,22 @@ appendGangAndDirectDispatchInfo(StringInfo str, PlanState *planstate, int sliceI
 
 		case GANGTYPE_PRIMARY_WRITER:
 		case GANGTYPE_PRIMARY_READER:
-			appendStringInfo(str, "  (slice%d", sliceId);
+		{
+			int numSegments;
+			appendStringInfo(str, "  (slice%d;", sliceId);
 
-			if ( Test_print_direct_dispatch_info &&
-			     slice->directDispatch.isDirectDispatch )
+			if (slice->directDispatch.isDirectDispatch)
 			{
 				Assert( list_length(slice->directDispatch.contentIds) == 1);
-				appendStringInfo(str, " on content:%d)", linitial_int(slice->directDispatch.contentIds));
+				numSegments = list_length(slice->directDispatch.contentIds);
 			}
 			else
 			{
-				appendStringInfo(str, ")");
+				numSegments = slice->numGangMembersToBeActive;
 			}
+			appendStringInfo(str, " segments: %d)", numSegments);
 			break;
-
+		}
 		case GANGTYPE_MIRROR_WRITER:
 			/* Shouldn't see this in a slice->gangType. */
 			Assert(FALSE);
@@ -765,7 +826,7 @@ static void
 explain_outNode(StringInfo str,
 				Plan *plan, PlanState *planstate,
 				Plan *outer_plan,
-				bool *isDirectDispatchOut,
+
 				int indent, ExplainState *es)
 {
 	const char	   *pname = NULL;
@@ -801,11 +862,6 @@ explain_outNode(StringInfo str,
 	{
 		appendStringInfoChar(str, '\n');
 		return;
-	}
-
-	if (plan->directDispatch.isDirectDispatch)
-	{
-		*isDirectDispatchOut = true;
 	}
 
 	switch (nodeTag(plan))
@@ -1023,15 +1079,6 @@ explain_outNode(StringInfo str,
                 int         nSenders = slice->numGangMembersToBeActive;
 				int         nReceivers = 0;
 
-				if ( ! Test_print_direct_dispatch_info)
-				{
-					/* restore full # of segments if not printing direct dispatch info */
-					if (  slice->directDispatch.isDirectDispatch && slice->gangSize != 1 )
-					{
-						nSenders = getgpsegmentCount();
-					}
-				}
-
 				switch (pMotion->motionType)
 				{
 					case MOTIONTYPE_HASH:
@@ -1175,7 +1222,7 @@ explain_outNode(StringInfo str,
 
 	appendStringInfo(str, "  (cost=%.2f..%.2f rows=%.0f width=%d)",
 					 plan->startup_cost, plan->total_cost,
-					 plan->plan_rows / scaleFactor, plan->plan_width);
+					 ceil(plan->plan_rows / scaleFactor), plan->plan_width);
     appendStringInfoChar(str, '\n');
 
 #ifdef DEBUG_EXPLAIN
@@ -1498,7 +1545,6 @@ explain_outNode(StringInfo str,
 							exec_subplan_get_plan(es->pstmt, sp),
 							sps->planstate,
 							NULL,
-							isDirectDispatchOut,
 							indent + 4, es);
 		}
         es->currentSlice = saved_slice;
@@ -1521,7 +1567,6 @@ explain_outNode(StringInfo str,
 						outerPlanState(planstate),
 						(IsA(plan, BitmapHeapScan) |
 						 IsA(plan, BitmapAppendOnlyScan)) ? outer_plan : NULL,
-						isDirectDispatchOut,
 						indent + 3, es);
 	}
     else if (skip_outer)
@@ -1542,7 +1587,6 @@ explain_outNode(StringInfo str,
 		explain_outNode(str, innerPlan(plan),
 						innerPlanState(planstate),
 						outerPlan(plan),
-						isDirectDispatchOut,
 						indent + 3, es);
 	}
 
@@ -1571,7 +1615,6 @@ explain_outNode(StringInfo str,
 			explain_outNode(str, subnode,
 							appendstate->appendplans[j],
 							outer_plan,
-							isDirectDispatchOut,
 							indent + 3, es);
 			j++;
 		}
@@ -1596,7 +1639,6 @@ explain_outNode(StringInfo str,
 			explain_outNode(str, subnode,
 							bitmapandstate->bitmapplans[j],
 							outer_plan, /* pass down same outer plan */
-							isDirectDispatchOut,
 							indent + 3, es);
 			j++;
 		}
@@ -1621,7 +1663,6 @@ explain_outNode(StringInfo str,
 			explain_outNode(str, subnode,
 							bitmaporstate->bitmapplans[j],
 							outer_plan, /* pass down same outer plan */
-							isDirectDispatchOut,
 							indent + 3, es);
 			j++;
 		}
@@ -1640,7 +1681,6 @@ explain_outNode(StringInfo str,
 		explain_outNode(str, subnode,
 						subquerystate->subplan,
 						NULL,
-						isDirectDispatchOut,
 						indent + 3, es);
 	}
 
@@ -1666,7 +1706,6 @@ explain_outNode(StringInfo str,
 							exec_subplan_get_plan(es->pstmt, sp),
 							sps->planstate,
 							NULL,
-							isDirectDispatchOut,
 							indent + 4, es);
 		}
 	}
