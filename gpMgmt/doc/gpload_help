@@ -325,12 +325,11 @@ NULL_AS - Optional. Specifies the string that represents a null value. The
 QUOTE - Required when FORMAT is CSV. Specifies the quotation character 
         for CSV mode. The default is double-quote (").
 
-HEADER - Optional. For CSV formatted data, specifies that the first 
-         line in the data file(s) is a header row (contains the names 
-         of the columns) and should not be included as data to be loaded. 
-         If using multiple source files, all files must have a header row. 
-         The default is to assume that the input files do not have 
-         a header row.
+HEADER - Optional. Specifies that the first line in the data file(s) is 
+         a header row (contains the names of the columns) and should not 
+         be included as data to be loaded. If using multiple data source 
+         files, all files must have a header row. The default is to assume 
+         that the input files do not have a header row.
 
 ENCODING - Optional. Character set encoding of the source data. 
            Specify a string constant (such as 'SQL_ASCII'), an 

@@ -26,12 +26,13 @@ CREATE [READABLE] EXTERNAL TABLE table_name
       LOCATION ('file://seghost[:port]/path/file' [, ...])
           | ('gpfdist://filehost[:port]/file_pattern' [, ...])
       FORMAT 'TEXT' 
-               [( [DELIMITER [AS] 'delimiter' | 'OFF']
+            [( [HEADER]
+               [DELIMITER [AS] 'delimiter' | 'OFF']
                [NULL [AS] 'null string']
                [ESCAPE [AS] 'escape' | 'OFF']
                [FILL MISSING FIELDS] )]
            | 'CSV'
-               [( [HEADER]
+            [( [HEADER]
                [QUOTE [AS] 'quote'] 
                [DELIMITER [AS] 'delimiter']
                [NULL [AS] 'null string']
@@ -52,12 +53,13 @@ CREATE [READABLE] EXTERNAL WEB TABLE table_name
                           | HOST ['segment_hostname'] 
                           | SEGMENT segment_id ]
       FORMAT 'TEXT' 
-               [( [DELIMITER [AS] 'delimiter' | 'OFF']
+            [( [HEADER]
+               [DELIMITER [AS] 'delimiter' | 'OFF']
                [NULL [AS] 'null string']
                [ESCAPE [AS] 'escape' | 'OFF']
                [FILL MISSING FIELDS] )]
            | 'CSV'
-               [( [HEADER]
+            [( [HEADER]
                [QUOTE [AS] 'quote'] 
                [DELIMITER [AS] 'delimiter']
                [NULL [AS] 'null string']
