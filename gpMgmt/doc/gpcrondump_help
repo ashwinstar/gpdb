@@ -92,7 +92,7 @@ Dump data as INSERT commands with column names.
 
 -d <master_data_directory>
 
-Optional. The master host data directory. If not specified, 
+The master host data directory. If not specified, 
 the value set for $MASTER_DATA_DIRECTORY will be used.
 
 
@@ -167,7 +167,7 @@ Do not output commands to set object privileges (GRANT/REVOKE commands).
 -o (clear old dump files only)
 
 Clear out old dump files only, but do not run a dump. This will 
-remove the oldest dump directory except not the current date's 
+remove the oldest dump directory except the current date's 
 dump directory. All dump sets within that directory will be removed.
 
 
@@ -178,7 +178,8 @@ Include object identifiers (oid) in dump data.
 
 -p (primary segments only)
 
-Dump all primary segments. It is also the default. Note: this option is deprecated.
+Dump all primary segments, which is the default behavior. 
+Note: this option is deprecated.
 
 
 -q (no screen output)
@@ -203,7 +204,7 @@ location on the master and all segment hosts.
 
 -s <schema_name>
 
-Optional. Dump only the named schema in the named database.
+Dump only the named schema in the named database.
 
 
 -t <schema>.<table_name>
