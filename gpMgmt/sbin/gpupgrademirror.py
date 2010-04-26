@@ -64,6 +64,8 @@ PID_FILE = "gpupgrademirror.pid"
 
 GPUPGRADEMIRROR_TEMP_DIR = "gpupgrademirrortempdir"
 
+GPMIGRATOR_TEMP_DIR = "gpmigrator"
+
 
 #-----------------------------------------------------------                                                                             
 def Shutdown(env, utility=False):
@@ -312,19 +314,32 @@ def parseargs():
         logger.error('Unknown argument %s' % args[0])
         parser.exit()
 
+    """
+     Make a directory to hold information about this run. We will need this information in the
+     event we run again in rollback or continue mode. We use temporary directory gpmigrator create
+     under the master data directory, or the one it creates under the segment data directory (i.e.
+     the directory passed in via the -t option.  
+    """
     try:
         if len(options.temp_dir) > 0:
            options.info_data_directory = options.temp_dir
         else:
-           options.info_data_directory = get_masterdatadir() + INFO_DIR 
+           mDir = os.path.split(get_masterdatadir())
+           dirPrefix = mDir[0]
+           if len(dirPrefix) == 1 and str(dirPrefix) == str('/'):
+              """ Special case where the directory is '/'. """
+              dirPrefix = ""
+           dirSuffix = mDir[1]
+           options.info_data_directory = dirPrefix + "/" + GPMIGRATOR_TEMP_DIR + "/" + dirSuffix + INFO_DIR 
     except GpError, msg:
         logger.error(msg)
         parser.exit()
 
     if not os.path.exists(options.info_data_directory):
-       MakeDirectory.local( name = 'gpupgrademirror make info dir: %s' % options.info_data_directory
-                          , directory = options.info_data_directory
-                          )
+       MakeDirectoryWithMode.local( name = 'gpupgrademirror make info dir: %s' % options.info_data_directory
+                                  , directory = options.info_data_directory
+                                  , mode = 700
+                                  )
     return options, args
 
 #-------------------------------------------------------------------------------
@@ -1849,7 +1864,7 @@ class PySyncPlus(PySync):
 class GPUpgradeMirrorMinion(Command):
     """ This class represents a gpugprademirror minion process. """
 
-    def __init__(self, name, options, segs, minionSeg, tempdir, ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, options, segs, minionSeg, segmentDir, ctxt=LOCAL, remoteHost=None):
         self.name = name
         if options != None:
            self.options = options
@@ -1857,10 +1872,18 @@ class GPUpgradeMirrorMinion(Command):
             options = ""
         self.segList = segs
         self.minionSeg = minionSeg
-        self.tempdir = tempdir
+        self.segmentDir = segmentDir
         self.ctxt = ctxt
         self.remoteHost = remoteHost
-        self.minionDir = self.tempdir + INFO_DIR + str(minionSeg)
+        
+        mDir = os.path.split(self.segmentDir)
+        dirPrefix = mDir[0]
+        if len(dirPrefix) == 1 and str(dirPrefix) == str('/'):
+           """ Special case where the directory is '/'. """
+           dirPrefix = ""
+        dirSuffix = mDir[1]
+        self.minionDir = dirPrefix + "/" + GPMIGRATOR_TEMP_DIR + "/" + dirSuffix + INFO_DIR  + str(minionSeg)
+        
         self.gpupgrademirror_executable = "$GPHOME/sbin/" + EXECNAME
         self.cmdStr = "%s %s -i %s -t %s" % ( self.gpupgrademirror_executable
                                             , self.options
@@ -1994,13 +2017,15 @@ class GpUpgradeMirrorStatus():
     """ Note, Both safe and un-safe mode values are valid, therefore their values are the same '2' """
     _overallStatusValues = { 'PHASE1_SAFE_MODE'       : 2
                            , 'PHASE1_UNSAFE_MODE'     : 2
-                           , 'START_SETUP'            : 3
-                           , 'SETUP_DONE'             : 4
+                           , 'START_PHASE1_SETUP'     : 3
+                           , 'END_PHASE1_SETUP'       : 4
                            , 'MINION_START_SETUP'     : 5
                            , 'MINION_SETUP_DONE'      : 6
                            , 'PHASE1_DONE'            : 7
                            , 'START_PHASE2'           : 8
-                           , 'PHASE2_DONE'            : 9
+                           , 'START_PHASE2_SETUP'     : 9
+                           , 'END_PHASE2_SETUP'       : 10
+                           , 'PHASE2_DONE'            : 11
                            }
     
     
@@ -2072,6 +2097,13 @@ class GpUpgradeMirrorStatus():
         if not self._status_values.has_key(self._status[-1]):
             raise InvalidStatusError('Invalid status file.  Unknown status %s' % self._status)
 
+   #-------------------------------------------------------------------------------
+    def status_file_exists(self):
+        """ Return true if the status file already exists. """
+        if os.path.exists(self._status_filename):
+           return True
+        else:
+           return False
 
    #-------------------------------------------------------------------------------
     def create_status_file(self):
@@ -2909,7 +2941,7 @@ class Phase2(threading.Thread):
                                           )
             self.statusList.append(status)
 
-            """ gpmigrator has removed or moved the mirror data directory, so we will attemplt to make it."""
+            """ gpmigrator has removed or moved the mirror data directory, so we will attempt to make it."""
             cmdComplete = False
             while cmdComplete == False:
                 rmCmd = CreateDirIfNecessaryWithMode( name = 'gpupgrademirror make the mirror data directory: %s' % seg.mirror_data_directory
@@ -2933,8 +2965,22 @@ class Phase2(threading.Thread):
                 cmdComplete = runAndCheckCommandComplete(rmCmd)
             rmCmd.validate()
             
+            """ Create a temp gpmigrator directory in each primary if it isn't already there."""
+            """ In theory, this only happens in unit testing of gpupgrademirror, otherwise it should always be there."""
+            seg.gpmigratorTempDir = seg.primary_data_directory + "/" + GPMIGRATOR_TEMP_DIR
+            cmdComplete = False
+            while cmdComplete == False:
+                rmCmd = CreateDirIfNecessaryWithMode( name = 'gpupgrademirror make temp dir: %s' % seg.gpmigratorTempDir
+                             , directory = seg.gpmigratorTempDir
+                             , ctxt = REMOTE
+                             , remoteHost = seg.primary_host
+                             , mode = "0700"
+                             )
+                cmdComplete = runAndCheckCommandComplete(rmCmd)
+            rmCmd.validate()
+            
             """ Create a temp directory in each primary segment for our use"""
-            seg.primaryTempDir = seg.primary_data_directory + "/" + GPUPGRADEMIRROR_TEMP_DIR
+            seg.primaryTempDir = seg.primary_data_directory + "/" + GPMIGRATOR_TEMP_DIR + "/" + GPUPGRADEMIRROR_TEMP_DIR
             cmdComplete = False
             while cmdComplete == False:
                 rmCmd = CreateDirIfNecessaryWithMode( name = 'gpupgrademirror make temp dir: %s' % seg.primaryTempDir
@@ -3107,8 +3153,6 @@ MirrorNodeList = []
 MirrorInfoList = []
 phase2MirrorList = []
 
-
-
 coverage = GpCoverage()
 coverage.start()
 
@@ -3150,8 +3194,23 @@ try:
      sys.exit(1)
   else:
      create_pid_file(options.info_data_directory)
-
-  dbUrl = dbconn.DbURL(dbname = 'template1')
+     
+  if options.phase2 == True:
+     phase = 2
+  else:
+     phase = 1
+  overallStatus = GpUpgradeMirrorStatus( logger = logger
+                                       , info_data_directory = options.info_data_directory
+                                       , segment_dbid = 0
+                                       , phase = phase
+                                       , overall = True
+                                       )   
+  if options.continue_upgrade == True and \
+     len(options.ids) == 0  and \
+     overallStatus.get_current_status() == (None, None):
+     """ If there is no status, then we haven't gotten anywhere. Reset options.continue_upgrade to False"""
+     logger.warning("Although continue was specified, the upgrade are not far enough elong to continue. gpupgrademirror will attempt to restart this phase of upgrade")
+     options.continue_upgrade = False
      
   """ 
       We will start the database in master only mode unless we are in phase 1 and 
@@ -3159,10 +3218,15 @@ try:
       or continuing, we will get the information we need from a flat file we
       created on the first phase 1 attempt.   
   """
+  dbUrl = dbconn.DbURL(dbname = 'template1')
   gpstartStatus = None
-  if options.phase2 == False and (options.rollback == True or options.continue_upgrade == True):
+  if options.rollback == True:
+     """ Never start the database in rollback mode. """
      pass
-  else:
+  elif options.phase2 == False and overallStatus.compare_status("END_PHASE1_SETUP") >= 0:
+     """ If we are past getting all the information we need, then don't start the database. """
+     pass
+  elif len(options.ids) == 0:
      if options.phase2 == True:
         GpStart.local('gpupgrademirror start database', masterOnly = True)
      else:
@@ -3171,18 +3235,7 @@ try:
         Startup(env = env, utility = True)
      gpstartStatus = "MASTER"
 
-  if options.phase2 == True:
-     phase = 2
-  else:
-     phase = 1
-
-  overallStatus = GpUpgradeMirrorStatus( logger = logger
-                                       , info_data_directory = options.info_data_directory
-                                       , segment_dbid = 0
-                                       , phase = phase
-                                       , overall = True
-                                       )
-  if options.rollback == True:
+  if options.rollback == True and options.phase2 == False:
      ''' setup for rollback '''
      if overallStatus.get_current_status() == (None, None):
         logging.warning('There is no upgrade mirror in progress')
@@ -3193,7 +3246,7 @@ try:
                            )
         rmCmd.run(validateAfter = False)
         exit(0)
-     elif overallStatus.compare_status("SETUP_DONE") < 0:
+     elif overallStatus.compare_status("END_PHASE1_SETUP") < 0:
         """
            We have not gotten past the setup phase,             
            so remove the gpugprademirr info directory and exit. 
@@ -3206,7 +3259,6 @@ try:
         rmCmd.run(validateAfter = False)
         exit(0)
   elif options.continue_upgrade == True:
-     ''' Setup to continue upgrade '''
      pass
   elif options.phase2 == False:
      if (overallStatus.get_current_status() != (None, None)):
@@ -3214,8 +3266,10 @@ try:
         logging.error("You must either rollback or continue mirror upgrade") 
         raise ValidationError("Unable to continue")
      else:
-        """  We are in normal phase 1 or phase 2 mode """
+        """  We are in normal phase 1 mode """
         overallStatus.create_status_file()
+  elif options.phase2 == True:
+     pass
 
   if options.phase2 == True:
      """
@@ -3224,6 +3278,7 @@ try:
         There are a number of special files that we need to copy from the primary in phase 2.
         Most of these files are catalog files.
      """
+
      databaseList = []
           
      if options.rollback == True:
@@ -3302,7 +3357,6 @@ try:
         GpStop.local('gpupgrademirror stop databse', fast=True, masterOnly = True)
         gpstartStatus = "STOPPED"
 
-
      """
        There is a theoretical issue with running too many threads at once,
        so we will limit the number of threads running at once to 64. 
@@ -3375,6 +3429,7 @@ try:
         for node in phase2MirrorList:
             for segStatus in node.statusList:
                 segStatus.remove_status_file()
+
         rmCmd = RemoveFiles( name = 'gpupgrademirror remove info directory: %s' % (options.info_data_directory)
                            , directory = options.info_data_directory
                            , ctxt = LOCAL
@@ -3386,8 +3441,8 @@ try:
       Phase 1 
     """
     
-    if overallStatus.compare_status("START_SETUP") < 0:
-        overallStatus.set_status("START_SETUP")
+    if overallStatus.compare_status("START_PHASE1_SETUP") < 0:
+        overallStatus.set_status("START_PHASE1_SETUP")
     
     try:
        p1MirrorInfo = Phase1and2MirrorInfo(dbUrl)
@@ -3399,8 +3454,8 @@ try:
     
     allSegMirrorInfo = p1MirrorInfo.getAllMirrorInfoList()
         
-    if overallStatus.compare_status("SETUP_DONE") < 0:
-       overallStatus.set_status("SETUP_DONE")
+    if overallStatus.compare_status("END_PHASE1_SETUP") < 0:
+       overallStatus.set_status("END_PHASE1_SETUP")
 
     """ 
       At this point, all setup that requires database access is done. We can continue from here
@@ -3479,7 +3534,7 @@ try:
                                         , options = minionOptions
                                         , segs = ":".join(segdbidList)
                                         , minionSeg = minionSegdbid
-                                        , tempdir = firstMirrorDataDir
+                                        , segmentDir = firstMirrorDataDir
                                         , ctxt = REMOTE
                                         , remoteHost = str(minionNode)
                                         )
@@ -3493,7 +3548,7 @@ try:
           overallStatus.set_status(status = "MINION_START_SETUP", status_info = minionSegs)           
           """ Copy all the needed files to the minion hosts """
           for minion in minionList:
-              logger.debug("Creating and copying files for minion: %s:%s" % (minion.remoteHost, minion.tempdir))
+              logger.debug("Creating and copying files for minion: %s:%s" % (minion.remoteHost, minion.minionDir))
               minion.createInfoDirectory()
               minion.copyStatusFileToHost()
               minion.copyInfoFileToHost()
@@ -3700,3 +3755,4 @@ finally:
 
     coverage.stop()
     coverage.generate_report()
+    
