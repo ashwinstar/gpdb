@@ -44,18 +44,18 @@ new host (using -p), on an alternative data directory location
 on your remaining live segment hosts (using -s), or by supplying 
 a recovery configuration file (using -i) in the format of:
 
-<failed_host_name>:<port>:<datadir> [<recovery_host_address>:<recovery_host_name>:<port>:<replication_port>:<fselocation>]
+<failed_host_name>:<port>:<datadir> [<recovery_host_address>:<port>:<replication_port>:<fselocation>]
 
 For example (if recovering to a different host than the failed host):
 
-sdw5:50002:/gpdata/gpseg2 sdw9-2:sdw9:50002:53002:/gpdata/gpseg2
+sdw5:50002:/gpdata/gpseg2 sdw9-2:50002:53002:/gpdata/gpseg2
 
 The gp_segment_configuration and pg_filespace_entry system catalog 
 tables can help you determine your current segment configuration 
 so that you can plan your mirror recovery configuration. 
 For example, run the following query:
 
-=# SELECT dbid, content, hostname, address, port, 
+=# SELECT dbid, content, address, port, 
    replication_port, fselocation as datadir 
    FROM gp_segment_configuration, pg_filespace_entry 
    WHERE dbid=fsedbid 
@@ -118,7 +118,7 @@ OPTIONS
  Specifies the name of a configuration file that has information 
  about which failed segments to recover, and where to recover them. 
  Each line in the file is in the following format:
-  <failed_host_name>:<port>:<datadir> [<recovery_host_address>:<recovery_host_name>:<port>:<replication_port>:<fselocation>]
+  <failed_host_name>:<port>:<datadir> [<recovery_host_address>:<port>:<replication_port>:<fselocation>]
  You can use the -o option to output a sample recovery 
  configuration file to use as a starting point.
 
