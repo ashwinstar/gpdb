@@ -90,13 +90,16 @@ static void buf_make_space(Relation rel,
 static void verify_bitmappages(Relation rel, BMLOVItem lovitem);
 #endif
 static int16 buf_add_tid_with_fill(Relation rel, BMTIDBuffer *buf,
-								   BlockNumber lov_block, OffsetNumber off,
+								   Buffer lovBuffer, OffsetNumber off,
 								   uint64 tidnum, bool use_wal);
 static uint16 buf_extend(BMTIDBuffer *buf);
 static uint16 buf_ensure_head_space(Relation rel, BMTIDBuffer *buf,
-								   BlockNumber lov_block, OffsetNumber off, 
+								   Buffer lovBuffer, OffsetNumber off,
 								   bool use_wal);
-static uint16 buf_free_mem(Relation rel, BMTIDBuffer *buf, 
+static uint16 buf_free_mem_block(Relation rel, BMTIDBuffer *buf,
+			  			         Buffer lovBuffer, OffsetNumber off,
+						         bool use_wal);
+static uint16 buf_free_mem(Relation rel, BMTIDBuffer *buf,
 			  			   BlockNumber lov_block, OffsetNumber off, 
 						   bool use_wal);
 
@@ -1587,9 +1590,12 @@ buf_add_tid(Relation rel, BMTidBuildBuf *tids, uint64 tidnum,
 		else
 			elog(NOTICE, "buf is empty");
 #endif
-													  
-		buf_add_tid_with_fill(rel, buf, lov_block, off, 
+
+		Buffer lovbuf = _bitmap_getbuf(rel, lov_block, BM_WRITE);
+		buf_add_tid_with_fill(rel, buf, lovbuf, off,
 							  tidnum, state->use_wal);
+		_bitmap_relbuf(lovbuf);
+
 #ifdef DEBUG_BITMAP1
 		elog(NOTICE, "after add tid= %llu(%llu),word = %i,fill = %s,wordno = %i",
 			 tidnum, BM_INT_GET_BLOCKNO(tidnum), buf->cwords[buf->curword],
@@ -1607,7 +1613,7 @@ buf_add_tid(Relation rel, BMTidBuildBuf *tids, uint64 tidnum,
 		
 		buf = (BMTIDBuffer *)palloc0(sizeof(BMTIDBuffer));
 		
-		lovbuf = _bitmap_getbuf(rel, lov_block, BM_READ);
+		lovbuf = _bitmap_getbuf(rel, lov_block, BM_WRITE);
 		page = BufferGetPage(lovbuf);
 		lovitem = (BMLOVItem)PageGetItem(page, PageGetItemId(page, off));
 
@@ -1616,8 +1622,6 @@ buf_add_tid(Relation rel, BMTidBuildBuf *tids, uint64 tidnum,
 		buf->last_word = lovitem->bm_last_word;
 		buf->is_last_compword_fill = (lovitem->lov_words_header == 2);
 
-		_bitmap_relbuf(lovbuf); /* we don't care about locking */
-
 		MemSet(buf->hwords, 0, BM_NUM_OF_HEADER_WORDS * sizeof(BM_HRL_WORD));
 
 		bytes_added = buf_extend(buf);
@@ -1625,8 +1629,10 @@ buf_add_tid(Relation rel, BMTidBuildBuf *tids, uint64 tidnum,
 		buf->curword = 0;
 		buf->start_wordno = 0;
 
-		buf_add_tid_with_fill(rel, buf, lov_block, off, tidnum, 
+		buf_add_tid_with_fill(rel, buf, lovbuf, off, tidnum,
 							  state->use_wal);
+
+		_bitmap_relbuf(lovbuf);
 
 		lov_buf->bufs[off - 1] = buf;
 		tids->byte_size += bytes_added;
@@ -1642,7 +1648,7 @@ buf_add_tid(Relation rel, BMTidBuildBuf *tids, uint64 tidnum,
  */
 static int16
 buf_add_tid_with_fill(Relation rel, BMTIDBuffer *buf,
-					  BlockNumber lov_block, OffsetNumber off,
+					  Buffer lovBuffer, OffsetNumber off,
 					  uint64 tidnum, bool use_wal)
 {
 	int64 zeros;
@@ -1650,10 +1656,10 @@ buf_add_tid_with_fill(Relation rel, BMTIDBuffer *buf,
 	int16 bytes_used = 0;
 
 #ifdef DEBUG_BITMAP
-	elog(WARNING, "buf_add_tid_with_fill: lov_blockno=%d, "
+	elog(WARNING, "buf_add_tid_with_fill: lov_buffer=%d, "
 		 "buf->last_tid=" INT64_FORMAT ", tidnum=" INT64_FORMAT 
 		 ", last_compword=" INT64_FORMAT ", last_word=" INT64_FORMAT,
-		 lov_block, buf->last_tid, tidnum, buf->last_compword, buf->last_word);
+		 lovBuffer, buf->last_tid, tidnum, buf->last_compword, buf->last_word);
 #endif
 
 	/*
@@ -1692,7 +1698,7 @@ buf_add_tid_with_fill(Relation rel, BMTIDBuffer *buf,
 			 * last bitmap complete word.
 			 */
 			bytes_used -=
-				buf_ensure_head_space(rel, buf, lov_block, off, use_wal);
+				buf_ensure_head_space(rel, buf, lovBuffer, off, use_wal);
 
 			bytes_used += mergewords(buf, false);
 			zeros -= zerosNeeded;
@@ -1719,7 +1725,7 @@ buf_add_tid_with_fill(Relation rel, BMTIDBuffer *buf,
 			buf->last_word = BM_MAKE_FILL_WORD(0, numOfFillWords);
 
 			bytes_used -= 
-				buf_ensure_head_space(rel, buf, lov_block, off, use_wal);
+				buf_ensure_head_space(rel, buf, lovBuffer, off, use_wal);
 			bytes_used += mergewords(buf, true);
 
 			numOfTotalFillWords -= numOfFillWords;
@@ -1749,7 +1755,7 @@ buf_add_tid_with_fill(Relation rel, BMTIDBuffer *buf,
 		}
 
 		bytes_used -=
-			buf_ensure_head_space(rel, buf, lov_block, off, use_wal);
+			buf_ensure_head_space(rel, buf, lovBuffer, off, use_wal);
 		bytes_used += mergewords(buf, lastWordFill);
 	}
 
@@ -1779,13 +1785,13 @@ buf_add_tid_with_fill(Relation rel, BMTIDBuffer *buf,
  */
 static uint16
 buf_ensure_head_space(Relation rel, BMTIDBuffer *buf, 
-					  BlockNumber lov_block, OffsetNumber off, bool use_wal)
+					  Buffer lovBuffer, OffsetNumber off, bool use_wal)
 {
 	uint16 bytes_freed = 0;
 
 	if (buf->curword >= (BM_NUM_OF_HEADER_WORDS * BM_HRL_WORD_SIZE))
 	{
-		bytes_freed = buf_free_mem(rel, buf, lov_block, off, use_wal);
+		bytes_freed = buf_free_mem_block(rel, buf, lovBuffer, off, use_wal);
 		bytes_freed -= buf_extend(buf);
 	}
 
@@ -1830,10 +1836,15 @@ buf_extend(BMTIDBuffer *buf)
 
 /*
  * Spill some HRL compressed tids to disk
+ *
+ * Use buf_free_mem_block if the caller already holds a BM_WRITE lock
+ * on lovbuf (Buffer item). Else, buf_free_mem will get and lock lovBuffer
+ * by its block number, internally call buf_free_mem_block and finally
+ * release lovBuffer.
  */
 
 static uint16
-buf_free_mem(Relation rel, BMTIDBuffer *buf, BlockNumber lov_block, 
+buf_free_mem(Relation rel, BMTIDBuffer *buf, BlockNumber lov_block,
 			 OffsetNumber off, bool use_wal)
 {
 	Buffer lovbuf;
@@ -1845,13 +1856,24 @@ buf_free_mem(Relation rel, BMTIDBuffer *buf, BlockNumber lov_block,
 
 	lovbuf = _bitmap_getbuf(rel, lov_block, BM_WRITE);
 
-	_bitmap_write_new_bitmapwords(rel, lovbuf, off, buf, use_wal);
+	bytes_freed = buf_free_mem_block(rel, buf, lovbuf, off, use_wal);
 
 	_bitmap_relbuf(lovbuf);
 
-	bytes_freed = _bitmap_free_tidbuf(buf);
-
 	return bytes_freed;
+}
+
+static uint16
+buf_free_mem_block(Relation rel, BMTIDBuffer *buf, Buffer lovbuf,
+			 OffsetNumber off, bool use_wal)
+{
+	/* already done */
+	if (buf->num_cwords == 0)
+		return 0;
+
+	_bitmap_write_new_bitmapwords(rel, lovbuf, off, buf, use_wal);
+
+	return _bitmap_free_tidbuf(buf);
 }
 
 /*
@@ -1973,20 +1995,11 @@ insertsetbit(Relation rel, BlockNumber lovBlock, OffsetNumber lovOffset,
 	}
 
 	/*
-	 * Need to release lovBuffer before calling buf_add_tid_with_fill,
-	 * since we may require an exclusive lock on the same buffer to free
-	 * up space.
-	 */
-	_bitmap_relbuf(lovBuffer);
-	
-	/*
 	 * To insert this new set bit, we also need to add all zeros between
 	 * this set bit and last set bit. We construct all new words here.
 	 */
-	buf_add_tid_with_fill(rel, buf, lovBlock, lovOffset, tidnum, use_wal);
+	buf_add_tid_with_fill(rel, buf, lovBuffer, lovOffset, tidnum, use_wal);
 	
-	lovBuffer = _bitmap_getbuf(rel, lovBlock, BM_WRITE);
-
 	/*
 	 * If there are only updates to the last bitmap complete word and
 	 * last bitmp word, we simply needs to update the lov buffer.
