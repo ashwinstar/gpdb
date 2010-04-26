@@ -435,6 +435,26 @@ AFTER - Optional. An SQL command to run after the load operation completes.
 
 
 *****************************************************
+NOTES
+*****************************************************
+
+If your database object names were created using a double-quoted 
+identifier (delimited identifier), you must specify the delimited 
+name within single quotes in the gpload control file. For example, 
+if you create a table as follows:
+
+     CREATE TABLE "MyTable" ("MyColumn" text);
+
+Your YAML-formatted gpload control file would refer to the above 
+table and column names as follows:
+
+        - COLUMNS:
+          - '"MyColumn"': text
+    
+    OUTPUT:
+        - TABLE: public.'"MyTable"'
+
+*****************************************************
 LOG FILE FORMAT
 *****************************************************
 
