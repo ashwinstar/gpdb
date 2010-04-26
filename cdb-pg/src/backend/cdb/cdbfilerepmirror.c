@@ -2011,98 +2011,59 @@ FileRepMirror_RemoveFileName(FileName  fileName)
 static int
 FileRepMirror_Validation(FileName fileName)
 {
-	int				mirrorStatus = FileRepStatusSuccess;
-	DIR				*dir = NULL;
-	struct dirent	*de;
-	struct stat		st;
+	int			 mirrorStatus = FileRepStatusSuccess;
+	char        *parentdir	  = NULL;
+	struct stat	 st;
 	
 	errno = 0;
 	/* Does the path exist? */
 	if (stat(fileName, &st) >= 0)
 	{
-		/* Is it actually a directory? */
-		if (! S_ISDIR(st.st_mode))
-		{
-			mirrorStatus = FileRepStatusNotDirectory;
-			ereport(LOG,
-					(errcode_for_file_access(),
-					 errmsg("ERROR(filerep): %s : Not a directory : %m", fileName)));
-			goto exit;
-		}
-		
-		/* The directory must be owned by gpadmin user account */
-		if (st.st_uid != geteuid())
-		{
-			mirrorStatus = FileRepStatusNoPermissions;
-			ereport(LOG,
-					(errcode_for_file_access(),
-					 errmsg("ERROR(filerep): %s : Permission denied : %m", fileName)));
-			goto exit;
-		}
-		
-		/* Check that the directory is empty */
-		if ((dir = AllocateDir(fileName)) == NULL)
-		{
-			mirrorStatus = FileRepStatusErrorReadingDirectory;
-			ereport(LOG,
-					(errcode_for_file_access(),
-					 errmsg("ERROR(filerep): %s : Error reading directory : %m", fileName)));
-			goto exit;
-		}
-		
-		while ((de = ReadDir(dir, fileName)) != NULL)
-		{
-			if (strcmp(de->d_name, ".") == 0 ||
-				strcmp(de->d_name, "..") == 0)
-				continue;
-			
-			mirrorStatus = FileRepStatusNotEmptyDirectory;
-			ereport(LOG,
-					(errcode_for_file_access(),
-					 errmsg("ERROR(filerep): %s : Directory not empty : %m", fileName)));
-			goto exit;
-		}
+		mirrorStatus = FileRepStatusDirectoryExist;
+		ereport(LOG,
+				(errcode_for_file_access(),
+				 errmsg("ERROR(filerep): %s : File Exists : %m", fileName)));
+		goto exit;
 	}
-	else
+	
+	/* path does not exist, run checks on parent */
+	parentdir = pstrdup(fileName);
+	get_parent_directory(parentdir);
+		
+	/* Does the parent directory exist? */
+	if (stat(parentdir, &st) < 0)
 	{
-		/* path does not exist, run checks on parent */
-		char *parentdir = pstrdup(fileName);
-		get_parent_directory(parentdir);
-		
-		/* Does the parent directory exist? */
-		if (stat(parentdir, &st) < 0)
-		{
-			mirrorStatus = FileRepStatusNoSuchFileOrDirectory;
-			ereport(LOG,
-					(errcode_for_file_access(),
-					 errmsg("ERROR(filerep): %s : No such file or directory : %m", parentdir)));
-			goto exit;
-		}
-		
-		/* Is it actually a directory? */
-		if (! S_ISDIR(st.st_mode))
-		{
-			mirrorStatus = FileRepStatusNotDirectory;
-			ereport(LOG,
-					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-					 errmsg("ERROR(filerep): %s : Not a directory : %m", parentdir)));
-			goto exit;
-		}
-		
-		/* Check write permissions */
-		if (access(parentdir, W_OK) < 0)
-		{
-			mirrorStatus = FileRepStatusNoWritePermissions;
-			ereport(LOG,
-					(errcode_for_file_access(),
-					 errmsg("ERROR(filerep): %s: No write permissions : %m", parentdir)));
-			goto exit;
-		}
+		mirrorStatus = FileRepStatusNoSuchFileOrDirectory;
+		ereport(LOG,
+				(errcode_for_file_access(),
+				 errmsg("ERROR(filerep): %s : No such file or directory : %m", parentdir)));
+		goto exit;
 	}
+		
+	/* Is it actually a directory? */
+	if (! S_ISDIR(st.st_mode))
+	{
+		mirrorStatus = FileRepStatusNotDirectory;
+		ereport(LOG,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 errmsg("ERROR(filerep): %s : Not a directory : %m", parentdir)));
+		goto exit;
+	}
+		
+	/* Check write permissions */
+	if (access(parentdir, W_OK) < 0)
+	{
+		mirrorStatus = FileRepStatusNoWritePermissions;
+		ereport(LOG,
+				(errcode_for_file_access(),
+				 errmsg("ERROR(filerep): %s: No write permissions : %m", parentdir)));
+		goto exit;
+	}
+
 exit:
-	if (dir)
+	if (parentdir)
 	{
-		FreeDir(dir);
+		pfree(parentdir);
 	}
 	return mirrorStatus;
 }

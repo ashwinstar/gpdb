@@ -68,8 +68,8 @@ static void DeleteFilespaceEntryTuples(Oid fsoid);
  * Create a filespace
  *
  * Only superusers can create a filespace. This seems a reasonable restriction
- * since we're determining the system layout and, anyway, we probably have
- * root if we're doing this kind of activity
+ * since we're determining the system layout and, anyway, we probably have root
+ * if we're doing this kind of activity
  */
 void
 CreateFileSpace(CreateFileSpaceStmt *stmt)
@@ -108,8 +108,8 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 		ownerId = GetUserId();
 
 	/*
-	 * Disallow creation of filespaces named "pg_xxx"; we reserve this
-	 * namespace for system purposes.
+	 * Disallow creation of filespaces named "pg_xxx"; we reserve this namespace
+	 * for system purposes.
 	 */
 	if (!allowSystemTableMods && IsReservedName(stmt->filespacename))
 		ereport(ERROR,
@@ -120,9 +120,9 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 	namestrcpy(&fsname, stmt->filespacename);
 
 	/*
-	 * Because rollback of filespace creation is unpleasant we prefer to
-	 * ensure that we fully serialize CREATE FILESPACE operations.  Therfore
-	 * we take a big lock up-front.
+	 * Because rollback of filespace creation is unpleasant we prefer to ensure
+	 * that we fully serialize CREATE FILESPACE operations.  Therefore we take a
+	 * big lock up-front.
 	 */
 	rel = heap_open(FileSpaceRelationId, AccessExclusiveLock);
 
@@ -143,7 +143,7 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 		/* 
 		 * We need to have a path specified for every segment
 		 * This is an N^2 algorithm on number of segments.
-		 * we can probably do better
+		 * We can probably do better
 		 */
 		segments = getCdbComponentDatabases();
 
@@ -167,10 +167,9 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 					found = true;
 
 					/* 
-					 * Set the contentid for in the statement node to
-					 * prepare for dispatch - this will be used by the
-					 * segments to identify which dbids correspond to
-					 * their mirrors.
+					 * Set the contentid for in the statement node to prepare
+					 * for dispatch - this will be used by the segments to
+					 * identify which dbids correspond to their mirrors.
 					 */
 					fse->contentid = contentid;
 				}
@@ -204,10 +203,9 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 					found = true;
 
 					/* 
-					 * Set the contentid for in the statement node to
-					 * prepare for dispatch - this will be used by the
-					 * segments to identify which dbids correspond to
-					 * their mirrors.
+					 * Set the contentid for in the statement node to prepare
+					 * for dispatch - this will be used by the segments to
+					 * identify which dbids correspond to their mirrors.
 					 */
 					fse->contentid = contentid;
 				}
@@ -305,17 +303,22 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 			 GpIdentity.dbid);
 
 	/* 
-	 * Check the path for the primary.  It is better to error here before we 
-	 * ask the persistent object layer to create the directory because we aren't
-	 * supposed to ask the persistent layer to do the impossible.
+	 * Check the path for the primary and mirror.  
 	 *
-	 * Ideally we would also like to check the path for the mirror, but that is
-	 * on a different host so is not currently possible. If the path is bad it 
-	 * may cause the mirror to fail, so we hope this came through the 
-	 * gpfilespace script and the directory location was checked correctly 
-	 * there.
+	 * We need to check this this before we ask the persistent object layer to
+	 * create the directory because once we switch to "CreatePending" any
+	 * failure will remove any directories that exist on the assumption that we
+	 * created them, but if they already existed then that is a mistake.
+	 *
+	 * Note that this is theoretically a race condidition with someone manually
+	 * creating the directories in the filesystem between when we check the
+	 * paths and when we mark "CreatePending".  The race condition doesn't exist
+	 * purely in the database because we have a giant lock and only a single
+	 * transaction can create filespaces at one time.
 	 */
 	checkpath2(primary_location);
+	if (mirror_location)
+		MirroredFileSysObj_ValidateFilespaceDir(mirror_location);
 
 	/* 
 	 * We've checked everything possible, go forward with actually creating 
@@ -905,12 +908,8 @@ static void checkpath(char *path)
  * path exists, but that the segment extension does not and must be created.
  * Or... if the extension path does exist then it must be an empty directory.
  *
- *  - if the path exists:
- *    - Validate that the path is a directory
- *    - Validate that the path is owned by the admin user
- *    - Validate that the path is empty
- *
- *  - if the path does not exist:
+ *  We must:
+ *    - Validate that the specifed path does not exist
  *    - Validate that the parent directory exists
  *    - Validate that the parent is a directory.
  *    - Validate that the parent has apropriate permissions
@@ -924,70 +923,45 @@ static void checkpath(char *path)
  * the directories for the segments.
  *
  * Note: May need to add additional checks that there is not a pending
- *   background delete on this directory location?
+ * background delete on this directory location?
+ *
+ * Note: See FileRepMirror_Validation() in cdb/cdbfilerepmirror.c for the same
+ * checks run on the mirror side.
  */
 static void checkpath2(char *path)
 {
-	DIR           *dir;
-	struct dirent *de;
-	struct stat    st;
+	struct stat st;
+	char *parentdir;
 
-	/* Does the path exist? */
+	/* The specified path should not exist yet */
 	if (stat(path, &st) >= 0)
 	{
-		/* Is it actually a directory? */
-		if (! S_ISDIR(st.st_mode))
-			ereport(ERROR,
+		ereport(ERROR, 
 				(errcode_for_file_access(),
-				 errmsg("%s : Not a directory", path)));
-
-		/* The directory must be owned by gpadmin user account */
-		if (st.st_uid != geteuid())
-			ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("%s : Permission denied", path)));
-
-		/* Check that the directory is empty */
-		if ((dir = AllocateDir(path)) == NULL)
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("%s : Error reading directory", path)));
-		while ((de = ReadDir(dir, path)) != NULL)
-		{
-			if (strcmp(de->d_name, ".") == 0 ||
-				strcmp(de->d_name, "..") == 0)
-				continue;
-
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("%s : Directory not empty", path)));
-		}
-		FreeDir(dir);
+				 errmsg("%s : File exists", path)));
 	}
-	else
-	{
-		/* path does not exist, run checks on parent */
-		char *parentdir = pstrdup(path);
-		get_parent_directory(parentdir);
 
-		/* Does the parent directory exist? */
-		if (stat(parentdir, &st) < 0)
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("%s : No such file or directory", parentdir)));
+	/* Find the parent directory */
+	parentdir = pstrdup(path);
+	get_parent_directory(parentdir);
+
+	/* The parent directory must already exist */
+	if (stat(parentdir, &st) < 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("%s : No such file or directory", parentdir)));
 		
-		/* Is it actually a directory? */
-		if (! S_ISDIR(st.st_mode))
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-					 errmsg("%s : Not a directory", parentdir)));
+	/* The parent directory must be a directory */
+	if (! S_ISDIR(st.st_mode))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 errmsg("%s : Not a directory", parentdir)));
 
-		/* Check write permissions */
-		if (access(parentdir, W_OK) < 0)
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("%s: No write permissions", parentdir)));
-	}
+	/* Check write permissions of the parent directory */
+	if (access(parentdir, W_OK) < 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("%s: No write permissions", parentdir)));
 }
 
 /*

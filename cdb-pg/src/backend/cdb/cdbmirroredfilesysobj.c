@@ -143,11 +143,59 @@ static void MirroredFileSysObj_FinishMirroredCreate(
 											/* flushToXLog */ false);
 }
 
-int MirroredFileSysObj_ValidateFilespaceDir(char *mirrorFilespaceLocation)
+void MirroredFileSysObj_ValidateFilespaceDir(char *mirrorFilespaceLocation)
 {
-	return(FileRepPrimary_MirrorValidation(
-									FileRep_GetDirFilespaceIdentifier(mirrorFilespaceLocation),
-									FileRepRelationTypeDir));
+	char *parentdir;
+
+	int status = FileRepPrimary_MirrorValidation(
+		FileRep_GetDirFilespaceIdentifier(mirrorFilespaceLocation),
+		FileRepRelationTypeDir
+		);
+
+	/* If everything was fine the error status will be zero */
+	if (status == FileRepStatusSuccess)
+		return;
+
+	/* 
+	 * Otherwise report the error, there are currently four known errors:
+	 *  - File or directory exists
+	 *  - Parent directory does not exist
+	 *  - Parent directory not a directory
+	 *  - No write permission on parent directory
+	 */
+	parentdir = pstrdup(mirrorFilespaceLocation);
+	get_parent_directory(parentdir);
+	switch (status)
+	{
+		/* Errors on the specified directory */
+		case FileRepStatusDirectoryExist:
+			ereport(ERROR, 
+					(errcode_for_file_access(),
+					 errmsg("%s : %s", 
+							mirrorFilespaceLocation,
+							FileRepStatusToString[status])));
+			break;
+
+		/* Errors on the parent directory */
+		case FileRepStatusNoSuchFileOrDirectory:
+		case FileRepStatusNotDirectory:
+		case FileRepStatusNoWritePermissions:
+			ereport(ERROR, 
+					(errcode_for_file_access(),
+					 errmsg("%s : %s", 
+							parentdir,
+							FileRepStatusToString[status])));
+			break;
+
+		/* Status that should never occur */
+		default:
+			elog(ERROR, "%s : %s", 
+				 mirrorFilespaceLocation,
+				 FileRepStatusToString[status]);
+			break;
+	}
+
+	return;
 }
 
 void MirroredFileSysObj_TransactionCreateFilespaceDir(
