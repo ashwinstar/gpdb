@@ -22,8 +22,11 @@
 #undef EAGAIN					/* doesn't apply on sockets */
 #undef EINTR
 #define EINTR WSAEINTR
+#undef EWOULDBOCK
 #define EWOULDBLOCK WSAEWOULDBLOCK
+#undef ECONNRESET
 #define ECONNRESET WSAECONNRESET
+#undef EINPROGRESS
 #define EINPROGRESS WSAEINPROGRESS
 
 /*
