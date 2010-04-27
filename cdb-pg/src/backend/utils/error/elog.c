@@ -187,7 +187,7 @@ static void setup_formatted_start_time(void);
  * OpenSolaris has this header, but Solaris 10 doesn't.
  * Linux and OSX 10.5 have it.
  */
-#if !defined(pg_on_solaris)
+#if !defined(pg_on_solaris) && !defined(_WIN32) && !defined(_WIN64)
 #include <execinfo.h>
 #endif
 
