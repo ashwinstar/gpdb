@@ -41,7 +41,7 @@ typedef struct SharedOidSearchObjHeader
 	Oid	oid1;
 	Oid oid2;
 
-	uint8	clientData[0];
+	uint8	clientData[];
 } SharedOidSearchObjHeader;
 
 typedef struct SharedOidSearchTable
