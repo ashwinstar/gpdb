@@ -74,7 +74,7 @@ SparseData makeSparseDataCopy(SparseData source_sdata)
 /*
  * Create a SparseData of size dimension from a constant
  */
-SparseData makeSparseDataFromDouble(double constant,int64_t dimension)
+SparseData makeSparseDataFromDouble(double constant,int64 dimension)
 {
 	char *bytestore=(char *)palloc(sizeof(char)*9);
 	SparseData sdata = float8arr_to_sdata(&constant,1);
@@ -140,7 +140,7 @@ StringInfo makeStringInfoFromData(char *data,int len) {
  */
 SparseData float8arr_to_sdata(double *array, int count) {
 	double run_val=array[0];
-	int64_t run_len=1;
+	int64 run_len=1;
 	SparseData sdata = makeSparseData();
 
 	sdata->type_of_data=FLOAT8OID;
@@ -213,11 +213,11 @@ double *sdata_to_float8arr(SparseData sdata) {
 	return array;
 }
 
-int64_t *sdata_index_to_int64arr(SparseData sdata)
+int64 *sdata_index_to_int64arr(SparseData sdata)
 {
 	char *iptr;
-	int64_t *array_ix = (int64_t *)palloc(
-			sizeof(int64_t)*(sdata->unique_value_count));
+	int64 *array_ix = (int64 *)palloc(
+			sizeof(int64)*(sdata->unique_value_count));
 
 	iptr = sdata->index->data;
 	for (int i=0; i<sdata->unique_value_count; i++,
