@@ -46,7 +46,7 @@ gpaotidin(PG_FUNCTION_ARGS)
 			   *coord[NAOTIDARGS];
 	int			i;
 	AOTupleId	*result;
-	uint		segmentFileNum;
+	unsigned int	segmentFileNum;
 	int64		rowNum;
 	char	   *badp;
 
@@ -97,7 +97,7 @@ Datum
 gpaotidout(PG_FUNCTION_ARGS)
 {
 	AOTupleId *aoTupleId = PG_GETARG_AOTID(0);
-	uint 	segmentFileNum;
+	unsigned int 	segmentFileNum;
 	int64 	rowNum;
 	char		buf[32];
 
@@ -118,7 +118,7 @@ gpaotidrecv(PG_FUNCTION_ARGS)
 {
 	StringInfo	buf = (StringInfo) PG_GETARG_POINTER(0);
 	AOTupleId	*result;
-	uint		segmentFileNum;
+	unsigned int		segmentFileNum;
 	int64		rowNum;
 
 	segmentFileNum = pq_getmsgint(buf, sizeof(segmentFileNum));
@@ -141,7 +141,7 @@ Datum
 gpaotidsend(PG_FUNCTION_ARGS)
 {
 	AOTupleId *aoTupleId = PG_GETARG_AOTID(0);
-	uint 	segmentFileNum;
+	unsigned int 	segmentFileNum;
 	int64 	rowNum;
 	StringInfoData buf;
 
