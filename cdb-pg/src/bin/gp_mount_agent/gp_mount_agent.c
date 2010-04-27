@@ -20,6 +20,7 @@ static int storagegroup_main(int argc, char **argv);
 static void parse_target_dev(char *input, char **WWN, char **SP, char **SG_NAME, char **ARGS, char **FSTYPE);
 static int match(char **p, char **val, const char *token);
 
+static
 void usage(const char *exec)
 {
 	fprintf(stderr,
@@ -177,6 +178,9 @@ storagegroup_main(int argc, char **argv)
 	setuid(0);
 
 	execl(argv[1], argv[1], "display", "dev=all", 0);
+
+	/* not reached */
+	return(1);
 }
 
 static int
@@ -343,19 +347,19 @@ agent_main(int argc, char **argv)
 
 		if (!arg_safe(target_host, strlen(target_host)))
 		{
-			fprintf(stderr, "invalid host string [%s]\n");
+			fprintf(stderr, "invalid host string [%s]\n", target_host);
 			exit(1);
 		}
 
 		if (!arg_safe(target_dev, strlen(target_dev)))
 		{
-			fprintf(stderr, "invalid host string [%s]\n");
+			fprintf(stderr, "invalid dev string [%s]\n", target_dev);
 			exit(1);
 		}
 
 		if (!arg_safe(target_mountpoint, strlen(target_mountpoint)))
 		{
-			fprintf(stderr, "invalid host string [%s]\n");
+			fprintf(stderr, "invalid mountpoint string [%s]\n", target_mountpoint);
 			exit(1);
 		}
 
@@ -419,9 +423,8 @@ agent_main(int argc, char **argv)
 	}
 	else if (type == 'e')
 	{
-		int		fd;
+		int	fd;
 		char	*WWN=NULL, *SP=NULL, *SG_NAME=NULL, *ARGS=NULL, *FSTYPE=NULL;
-		char	*old_pri=NULL;
 		char	tmpfilename[80];
 
 		FILE	*tmpfile;
@@ -515,7 +518,7 @@ agent_main(int argc, char **argv)
 
 			fclose(tmpfile);
 			unlink(tmpfilename);
-			fprintf(stderr, "Couldn't read dev_name from inquiry results\n", s_errno);
+			fprintf(stderr, "Couldn't read dev_name from inquiry results: %d\n", s_errno);
 			exit(1);
 		}
 
