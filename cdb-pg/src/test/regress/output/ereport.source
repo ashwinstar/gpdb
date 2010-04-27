@@ -3975,9 +3975,9 @@ select * from get_ereport order by 1;
  cabh: cdbdtxcontextinfo:00000073:  ereport(ERROR, 
  cabh: cdbdtxcontextinfo:00000074:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  cabh: cdbdtxcontextinfo:00000075:  errmsg("out of memory"))); 
- cabh: cdbdtxcontextinfo:00000510:  ereport(ERROR, 
- cabh: cdbdtxcontextinfo:00000511:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cabh: cdbdtxcontextinfo:00000512:  errmsg("out of memory"))); 
+ cabh: cdbdtxcontextinfo:00000511:  ereport(ERROR, 
+ cabh: cdbdtxcontextinfo:00000512:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cabh: cdbdtxcontextinfo:00000513:  errmsg("out of memory"))); 
  cabh: cdbfilerepservice:00000516:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
  cabh: cdbfilerepservice:00000517:  errmsg("database 'postgres' does not exist"))); 
  cabh: cdbfilerepservice:00000571:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
@@ -5789,40 +5789,40 @@ select * from get_ereport order by 1;
  faai: freelist:00000130:  )); 
  faai: ftsprobe:00000356:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
  faai: ftsprobe:00000357:  errmsg("database 'postgres' does not exist"))); 
- faai: ftsprobe:00001529:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- faai: ftsprobe:00001530:  errmsg("FTS: out of memory"))); 
- faai: ftsprobe:00001551:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- faai: ftsprobe:00001552:  errmsg("FTS: out of memory"))); 
- faai: ftsprobe:00001585:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- faai: ftsprobe:00001586:  errmsg("FTS: out of memory"))); 
- faai: ftsprobe:00001638:  ereport(ERROR, 
- faai: ftsprobe:00001639:  (errcode(ERRCODE_INTERNAL_ERROR), 
- faai: ftsprobe:00001640:  errmsg("FTS: could not insert into configuration history: format command string failure dbid %d", change->dbid))); 
- faai: ftsprobe:00001649:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- faai: ftsprobe:00001650:  errmsg("FTS: out of memory"))); 
- faai: ftsprobe:00001721:  ereport(ERROR, 
- faai: ftsprobe:00001722:  (errcode(ERRCODE_INTERNAL_ERROR), 
- faai: ftsprobe:00001723:  errmsg("FTS: could not invalidate invalid node in config: format command string failure dbid %d", changes[i].dbid))); 
- faai: ftsprobe:00001753:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- faai: ftsprobe:00001754:  errmsg("FTS: out of memory"))); 
- faai: ftsprobe:00002124:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),  
- faai: ftsprobe:00002125:  errmsg("FTS: out of memory")));  
- faai: ftsprobe:00002126:   
- faai: ftsprobe:00002127:  PQclear(rs);  
- faai: ftsprobe:00002128:  PQfinish(entryConn);  
- faai: ftsprobe:00002129:  entryConn = NULL;  
- faai: ftsprobe:00002130:   
- faai: ftsprobe:00002131:  elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message);  
- faai: ftsprobe:00002132:  }  
- faai: ftsprobe:00002133:  } 
- faai: ftsprobe:00002134:  
- faai: ftsprobe:00002135: /** 
- faai: ftsprobe:00002136:  * Marks the given db as in-sync in the segment configuration. 
- faai: ftsprobe:00002137:  */ 
- faai: ftsprobe:00002138: static void 
- faai: ftsprobe:00002139: markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *dbInfo) 
- faai: ftsprobe:00002140: { 
- faai: ftsprobe:00002141:  char cmd[2000]; 
+ faai: ftsprobe:00001552:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ faai: ftsprobe:00001553:  errmsg("FTS: out of memory"))); 
+ faai: ftsprobe:00001574:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ faai: ftsprobe:00001575:  errmsg("FTS: out of memory"))); 
+ faai: ftsprobe:00001608:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ faai: ftsprobe:00001609:  errmsg("FTS: out of memory"))); 
+ faai: ftsprobe:00001661:  ereport(ERROR, 
+ faai: ftsprobe:00001662:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ faai: ftsprobe:00001663:  errmsg("FTS: could not insert into configuration history: format command string failure dbid %d", change->dbid))); 
+ faai: ftsprobe:00001672:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ faai: ftsprobe:00001673:  errmsg("FTS: out of memory"))); 
+ faai: ftsprobe:00001768:  ereport(ERROR, 
+ faai: ftsprobe:00001769:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ faai: ftsprobe:00001770:  errmsg("FTS: could not modify config: format command string failure dbid %d", changes[i].dbid))); 
+ faai: ftsprobe:00001800:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ faai: ftsprobe:00001801:  errmsg("FTS: out of memory"))); 
+ faai: ftsprobe:00002171:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),  
+ faai: ftsprobe:00002172:  errmsg("FTS: out of memory")));  
+ faai: ftsprobe:00002173:   
+ faai: ftsprobe:00002174:  PQclear(rs);  
+ faai: ftsprobe:00002175:  PQfinish(entryConn);  
+ faai: ftsprobe:00002176:  entryConn = NULL;  
+ faai: ftsprobe:00002177:   
+ faai: ftsprobe:00002178:  elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message);  
+ faai: ftsprobe:00002179:  }  
+ faai: ftsprobe:00002180:  } 
+ faai: ftsprobe:00002181:  
+ faai: ftsprobe:00002182: /** 
+ faai: ftsprobe:00002183:  * Marks the given db as in-sync in the segment configuration. 
+ faai: ftsprobe:00002184:  */ 
+ faai: ftsprobe:00002185: static void 
+ faai: ftsprobe:00002186: markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *dbInfo) 
+ faai: ftsprobe:00002187: { 
+ faai: ftsprobe:00002188:  char cmd[2000]; 
  faai: function:00000185:  ereport(ERROR, ( 
  faai: function:00000186:  errcode(ERRCODE_SYNTAX_ERROR), 
  faai: function:00000187:  errmsg("To many parameters - expected %d ", top))); 
@@ -17716,75 +17716,75 @@ select * from get_ereport order by 1;
  xaae: xact:00000981:  "Only the single Writer qExec can do so. "), 
  xaae: xact:00000982:  errhint("This is most likely the result of a feature being turned " 
  xaae: xact:00000983:  "on that violates the single WRITER principle"))); 
- xaae: xact:00002404:  ereport(ERROR, 
- xaae: xact:00002405:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- xaae: xact:00002406:  errmsg("StartTransaction timed out waiting for Writer to set the shared snapshot."), 
- xaae: xact:00002407:  errdetail("We are waiting for the shared snapshot to have XID: %d/%u but the value " 
- xaae: xact:00002408:  "is currently: %d/%u. Our slotindex is: %d our writer-pid %d
+ xaae: xact:00002411:  ereport(ERROR, 
+ xaae: xact:00002412:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ xaae: xact:00002413:  errmsg("StartTransaction timed out waiting for Writer to set the shared snapshot."), 
+ xaae: xact:00002414:  errdetail("We are waiting for the shared snapshot to have XID: %d/%u but the value " 
+ xaae: xact:00002415:  "is currently: %d/%u. Our slotindex is: %d our writer-pid %d
  " 
- xaae: xact:00002409:  "DistributedTransactionContext = %s." 
- xaae: xact:00002410:  "Dump of all sharedsnapshots in shmem: %s", 
- xaae: xact:00002411:  QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync, 
- xaae: xact:00002412:  SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync, 
- xaae: xact:00002413:  SharedLocalSnapshotSlot->slotindex, (int)SharedLocalSnapshotSlot->pid, 
- xaae: xact:00002414:  DtxContextToString(DistributedTransactionContext), 
- xaae: xact:00002415:  SharedSnapshotDump()))); 
- xaae: xact:00003879:  ereport(ERROR, 
- xaae: xact:00003880:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00003881:  /* translator: %s represents an SQL statement name */ 
- xaae: xact:00003882:  errmsg("%s cannot run inside a transaction block", 
- xaae: xact:00003883:  stmtType), 
- xaae: xact:00003884:  errOmitLocation(true))); 
- xaae: xact:00003890:  ereport(ERROR, 
- xaae: xact:00003891:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00003892:  /* translator: %s represents an SQL statement name */ 
- xaae: xact:00003893:  errmsg("%s cannot run inside a subtransaction", 
- xaae: xact:00003894:  stmtType), 
- xaae: xact:00003895:  errOmitLocation(true))); 
- xaae: xact:00003903:  ereport(ERROR, 
- xaae: xact:00003904:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00003905:  /* translator: %s represents an SQL statement name */ 
- xaae: xact:00003906:  errmsg("%s cannot be executed from a function", stmtType), 
- xaae: xact:00003907:  errOmitLocation(true))); 
- xaae: xact:00003955:  ereport(ERROR, 
- xaae: xact:00003956:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00003957:  /* translator: %s represents an SQL statement name */ 
- xaae: xact:00003958:  errmsg("%s may only be used in transaction blocks", 
- xaae: xact:00003959:  stmtType))); 
- xaae: xact:00004195:  ereport(WARNING, 
- xaae: xact:00004196:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00004197:  errmsg("there is already a transaction in progress"))); 
- xaae: xact:00004369:  ereport(WARNING, 
- xaae: xact:00004370:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00004371:  errmsg("there is no transaction in progress"))); 
- xaae: xact:00004468:  ereport(WARNING, 
- xaae: xact:00004469:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00004470:  errmsg("there is no transaction in progress"))); 
- xaae: xact:00004597:  ereport(ERROR, 
- xaae: xact:00004598:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004599:  errmsg("no such savepoint"), 
- xaae: xact:00004600:  errOmitLocation(true))); 
- xaae: xact:00004681:  ereport(ERROR, 
- xaae: xact:00004682:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004683:  errmsg("no such savepoint"))); 
- xaae: xact:00004687:  ereport(ERROR, 
- xaae: xact:00004688:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004689:  errmsg("no such savepoint"))); 
- xaae: xact:00004731:  ereport(ERROR, 
- xaae: xact:00004732:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004733:  errmsg("no such savepoint"))); 
- xaae: xact:00004779:  ereport(ERROR, 
- xaae: xact:00004780:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004781:  errmsg("no such savepoint"))); 
- xaae: xact:00004785:  ereport(ERROR, 
- xaae: xact:00004786:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004787:  errmsg("no such savepoint"))); 
- xaae: xact:00005489:  ereport(ERROR, 
- xaae: xact:00005490:  (errcode(ERRCODE_GP_SUBTRANS_LIMIT_EXCEEDED), 
- xaae: xact:00005491:  errmsg("cannot have more than 100 subtransactions in a transaction"))); 
- xaae: xact:00005508:  ereport(ERROR, 
- xaae: xact:00005509:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- xaae: xact:00005510:  errmsg("cannot have more than 2^32-1 subtransactions in a transaction"))); 
+ xaae: xact:00002416:  "DistributedTransactionContext = %s." 
+ xaae: xact:00002417:  "Dump of all sharedsnapshots in shmem: %s", 
+ xaae: xact:00002418:  QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync, 
+ xaae: xact:00002419:  SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync, 
+ xaae: xact:00002420:  SharedLocalSnapshotSlot->slotindex, (int)SharedLocalSnapshotSlot->pid, 
+ xaae: xact:00002421:  DtxContextToString(DistributedTransactionContext), 
+ xaae: xact:00002422:  SharedSnapshotDump()))); 
+ xaae: xact:00003886:  ereport(ERROR, 
+ xaae: xact:00003887:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00003888:  /* translator: %s represents an SQL statement name */ 
+ xaae: xact:00003889:  errmsg("%s cannot run inside a transaction block", 
+ xaae: xact:00003890:  stmtType), 
+ xaae: xact:00003891:  errOmitLocation(true))); 
+ xaae: xact:00003897:  ereport(ERROR, 
+ xaae: xact:00003898:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00003899:  /* translator: %s represents an SQL statement name */ 
+ xaae: xact:00003900:  errmsg("%s cannot run inside a subtransaction", 
+ xaae: xact:00003901:  stmtType), 
+ xaae: xact:00003902:  errOmitLocation(true))); 
+ xaae: xact:00003910:  ereport(ERROR, 
+ xaae: xact:00003911:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00003912:  /* translator: %s represents an SQL statement name */ 
+ xaae: xact:00003913:  errmsg("%s cannot be executed from a function", stmtType), 
+ xaae: xact:00003914:  errOmitLocation(true))); 
+ xaae: xact:00003962:  ereport(ERROR, 
+ xaae: xact:00003963:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00003964:  /* translator: %s represents an SQL statement name */ 
+ xaae: xact:00003965:  errmsg("%s may only be used in transaction blocks", 
+ xaae: xact:00003966:  stmtType))); 
+ xaae: xact:00004202:  ereport(WARNING, 
+ xaae: xact:00004203:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00004204:  errmsg("there is already a transaction in progress"))); 
+ xaae: xact:00004376:  ereport(WARNING, 
+ xaae: xact:00004377:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00004378:  errmsg("there is no transaction in progress"))); 
+ xaae: xact:00004475:  ereport(WARNING, 
+ xaae: xact:00004476:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00004477:  errmsg("there is no transaction in progress"))); 
+ xaae: xact:00004604:  ereport(ERROR, 
+ xaae: xact:00004605:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004606:  errmsg("no such savepoint"), 
+ xaae: xact:00004607:  errOmitLocation(true))); 
+ xaae: xact:00004688:  ereport(ERROR, 
+ xaae: xact:00004689:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004690:  errmsg("no such savepoint"))); 
+ xaae: xact:00004694:  ereport(ERROR, 
+ xaae: xact:00004695:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004696:  errmsg("no such savepoint"))); 
+ xaae: xact:00004738:  ereport(ERROR, 
+ xaae: xact:00004739:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004740:  errmsg("no such savepoint"))); 
+ xaae: xact:00004786:  ereport(ERROR, 
+ xaae: xact:00004787:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004788:  errmsg("no such savepoint"))); 
+ xaae: xact:00004792:  ereport(ERROR, 
+ xaae: xact:00004793:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004794:  errmsg("no such savepoint"))); 
+ xaae: xact:00005496:  ereport(ERROR, 
+ xaae: xact:00005497:  (errcode(ERRCODE_GP_SUBTRANS_LIMIT_EXCEEDED), 
+ xaae: xact:00005498:  errmsg("cannot have more than 100 subtransactions in a transaction"))); 
+ xaae: xact:00005515:  ereport(ERROR, 
+ xaae: xact:00005516:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ xaae: xact:00005517:  errmsg("cannot have more than 2^32-1 subtransactions in a transaction"))); 
  xaae: xlog:00000719:  ereport(ERROR, 
  xaae: xlog:00000720:  (errmsg("Reader qExec had local changes to commit! (rmid = %u)", 
  xaae: xlog:00000721:  rmid), 

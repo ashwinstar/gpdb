@@ -1211,6 +1211,9 @@ fillTimestampStr(char *str, int maxLength )
     pg_strftime(str, maxLength, "%+", time_tm); /* "%+" is the format used by the Unix date command */
 }
 
+/*
+ * Build a set of changes, based on our current state, and the probe results.
+ */
 static bool
 probePublishUpdate(uint8 *probe_results)
 {
@@ -1256,7 +1259,7 @@ probePublishUpdate(uint8 *probe_results)
 			{
 				primary = segInfo;
 
-				if ((probe_results[primary->dbid] & PROBE_TO_IN_SYNC ) == PROBE_TO_IN_SYNC )
+				if ((probe_results[primary->dbid] & PROBE_TO_IN_SYNC) == PROBE_TO_IN_SYNC)
 				{
 					mirror = getMirrorEntryByContent(cdb_component_dbs, primary->segindex, primary->dbid);
 
@@ -1352,10 +1355,20 @@ probePublishUpdate(uint8 *probe_results)
 							if (failover_strategy == 'f')
 							{
 								/* If the mirror is not currently synchronized, we can't use it */
-								if (FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status) &&
-									((probe_results[mirror->dbid] & PROBE_ALIVE) == PROBE_ALIVE))
+								if (FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status))
 								{
-									updateMirror = true;
+									if ((probe_results[mirror->dbid] & PROBE_ALIVE) == PROBE_ALIVE)
+									{
+										updateMirror = true;
+									}
+								}
+								else
+								{
+									/* If the mirror was being synchronized, we need to mark it down. */
+									if ((probe_results[mirror->dbid] & PROBE_ALIVE) == PROBE_ALIVE)
+									{
+										updateMirror = true;
+									}
 								}
 							}
 							else if (failover_strategy == 's')
@@ -1376,16 +1389,26 @@ probePublishUpdate(uint8 *probe_results)
 						changes[mirrorChange].dbid = mirror->dbid;
 						changes[mirrorChange].segindex = mirror->segindex;
 						changes[mirrorChange].oldStatus = segStatus;
-						changes[mirrorChange].newStatus = segStatus | FTS_STATUS_PRIMARY;
 
-						/* update primary */
-						/*
-						 * MPP-8764/MPP-8765: We only clear the Primary-status if we successfully found an
-						 * alive mirror. This means that the way we detect a second failure is that we have
-						 * a "newStatus" which is an *invalid primary* (see addChangeHistory() and
-						 * probeUpdateConfig()).
-						 */
-						changes[primaryChange].newStatus &= ~FTS_STATUS_PRIMARY;
+						if (failover_strategy == 's' ||
+							FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status))
+						{
+							changes[mirrorChange].newStatus = segStatus | FTS_STATUS_PRIMARY;
+
+							/* update primary */
+							/*
+							 * MPP-8764/MPP-8765: We only clear the Primary-status if we successfully found an
+							 * alive mirror. This means that the way we detect a second failure is that we have
+							 * a "newStatus" which is an *invalid primary* (see addChangeHistory() and
+							 * probeUpdateConfig()).
+							 */
+							changes[primaryChange].newStatus &= ~FTS_STATUS_PRIMARY;
+						}
+						else
+						{
+							/* we can't take over, we aren't up-to-date */
+							changes[mirrorChange].newStatus = segStatus & (~FTS_STATUS_ALIVE);
+						}
 					}
 
 					updated_bitmap = true;
@@ -1686,28 +1709,52 @@ probeUpdateConfig(PGconn *entryConn, struct segmentStatusChange *changes, int ch
 			valid   = (changes[i].newStatus & FTS_STATUS_ALIVE) ? true : false;
 			primary = (changes[i].newStatus & FTS_STATUS_PRIMARY) ? true : false;
 
-			/*
-			 * MPP-8764/MPP-8765: if we wound up with an invalid primary,
-			 * we are "down" but we aren't going to record it.
-			 * 
-			 * See the changelist generation logic in probePublishUpdate() for
-			 * details.
-			 */
-			if (!valid && primary)
-				continue;
-
 			if (failover_strategy == 'f')
 			{
-                count = snprintf(cmd, sizeof(cmd),
-                                 "update %s set role='%c', status='%c'%s where dbid=CAST(%d AS SMALLINT)",
-                                 GpSegmentConfigRelationName,
-                                 primary ? 'p' : 'm',
-                                 valid ? 'u' : 'd',
-                                 (valid && primary) ? ", mode = 'c'" : "",
-                                 changes[i].dbid);
+				/*
+				 * MPP-8764/MPP-8765: if we wound up with an invalid primary,
+				 * we are "down" but we aren't going to record it.
+				 * 
+				 * See the changelist generation logic in probePublishUpdate() for
+				 * details.
+				 *
+				 * This means that we also had an out-of-date or dead
+				 * mirror, so someday if we recover, we want to log
+				 * changes.
+				 */
+				if (!valid && primary)
+				{
+					count = snprintf(cmd, sizeof(cmd),
+									 "update %s set mode = 'c' where dbid=CAST(%d AS SMALLINT)",
+									 GpSegmentConfigRelationName,
+									 changes[i].dbid);
+
+				}
+				else
+				{
+					count = snprintf(cmd, sizeof(cmd),
+									 "update %s set role='%c', status='%c'%s where dbid=CAST(%d AS SMALLINT)",
+									 GpSegmentConfigRelationName,
+									 primary ? 'p' : 'm',
+									 valid ? 'u' : 'd',
+									 (valid && primary) ? ", mode = 'c'" : "",
+									 changes[i].dbid);
+				}
 			}
 			else
 			{
+				/*
+				 * MPP-8764/MPP-8765: if we wound up with an invalid primary,
+				 * we are "down" but we aren't going to record it.
+				 * 
+				 * See the changelist generation logic in probePublishUpdate() for
+				 * details.
+				 *
+				 * For SAN we're done on second failure.
+				 */
+				if (!valid && primary)
+					continue;
+
 				count = snprintf(cmd, sizeof(cmd),
 								 "update %s set role='%c', status='%c' where dbid=CAST(%d AS SMALLINT)",
 								 GpSegmentConfigRelationName,
@@ -1720,7 +1767,7 @@ probeUpdateConfig(PGconn *entryConn, struct segmentStatusChange *changes, int ch
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("FTS: could not invalidate invalid node in config: format command string failure dbid %d", changes[i].dbid)));
+						 errmsg("FTS: could not modify config: format command string failure dbid %d", changes[i].dbid)));
 				break;
 			}
 
