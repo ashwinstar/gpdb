@@ -1035,7 +1035,7 @@ if (1)
     my ($query, $plan);
     
     my $tpch_format=0;
-    my $bigdash = '-' x 70;
+    my $bigdash = '-' x 40; # make big dash smaller
 
     my $magic;
 
@@ -1155,6 +1155,10 @@ if (1)
                     next;
                 }
             }
+			# a bit weird here -- just ignore the separator.  But
+			# maybe we should invest some effort to determine that the
+			# separator is the next line after the header (and only
+			# ignore it once) ?
             next
                 if ($ini =~ m/$bigdash/);
 

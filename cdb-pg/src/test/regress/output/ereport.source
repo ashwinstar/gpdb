@@ -122,8 +122,10 @@ select * from get_ereport order by 1;
  aaaaa GP_IGNORE: cabf: cdbdatabaseinfo - @abs_builddir@/../../backend/cdb/cdbdatabaseinfo.c
  aaaaa GP_IGNORE: cabh: cdbbufferedappend - @abs_builddir@/../../backend/cdb/cdbbufferedappend.c
  aaaaa GP_IGNORE: cabh: cdbdtxcontextinfo - @abs_builddir@/../../backend/cdb/cdbdtxcontextinfo.c
+ aaaaa GP_IGNORE: cabh: cdbfilerepprimary - @abs_builddir@/../../backend/cdb/cdbfilerepprimary.c
  aaaaa GP_IGNORE: cabh: cdbfilerepservice - @abs_builddir@/../../backend/cdb/cdbfilerepservice.c
  aaaaa GP_IGNORE: cabj: cdbmirroredflatfile - @abs_builddir@/../../backend/cdb/cdbmirroredflatfile.c
+ aaaaa GP_IGNORE: caca: cdbfilerepconnclient - @abs_builddir@/../../backend/cdb/cdbfilerepconnclient.c
  aaaaa GP_IGNORE: caca: cdbfilerepconnserver - @abs_builddir@/../../backend/cdb/cdbfilerepconnserver.c
  aaaaa GP_IGNORE: caca: cdbfilerepprimaryack - @abs_builddir@/../../backend/cdb/cdbfilerepprimaryack.c
  aaaaa GP_IGNORE: cacb: cdbmirroredappendonly - @abs_builddir@/../../backend/cdb/cdbmirroredappendonly.c
@@ -2385,15 +2387,15 @@ select * from get_ereport order by 1;
  babb: bitmappages:00000414:  (errcode(ERRCODE_INTERNAL_ERROR), 
  babb: bitmappages:00000415:  errmsg("failed to add LOV item to "%s"", 
  babb: bitmappages:00000416:  RelationGetRelationName(rel)))); 
- babc: bitmapinsert:00001501:  ereport(ERROR, 
- babc: bitmapinsert:00001502:  (errcode(ERRCODE_INTERNAL_ERROR), 
- babc: bitmapinsert:00001503:  errmsg("failed to add LOV item to "%s"", 
- babc: bitmapinsert:00001504:  RelationGetRelationName(rel)))); 
- babc: bitmapinsert:00001670:  ereport(ERROR, 
- babc: bitmapinsert:00001671:  (errcode(ERRCODE_INTERNAL_ERROR), 
- babc: bitmapinsert:00001672:  errmsg("tids are not in order when building the bitmap index: " 
- babc: bitmapinsert:00001673:  "new tidnum " INT64_FORMAT ", last tidnum " INT64_FORMAT, 
- babc: bitmapinsert:00001674:  tidnum, buf->last_tid))); 
+ babc: bitmapinsert:00001504:  ereport(ERROR, 
+ babc: bitmapinsert:00001505:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ babc: bitmapinsert:00001506:  errmsg("failed to add LOV item to "%s"", 
+ babc: bitmapinsert:00001507:  RelationGetRelationName(rel)))); 
+ babc: bitmapinsert:00001676:  ereport(ERROR, 
+ babc: bitmapinsert:00001677:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ babc: bitmapinsert:00001678:  errmsg("tids are not in order when building the bitmap index: " 
+ babc: bitmapinsert:00001679:  "new tidnum " INT64_FORMAT ", last tidnum " INT64_FORMAT, 
+ babc: bitmapinsert:00001680:  tidnum, buf->last_tid))); 
  caae: cash:00000194:  ereport(ERROR, 
  caae: cash:00000195:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  caae: cash:00000196:  errmsg("invalid input syntax for type money: "%s"", str))); 
@@ -2829,6 +2831,8 @@ select * from get_ereport order by 1;
  caag: cdbcat:00000509:  isprimary ? "PRIMARY KEY" : "UNIQUE index", 
  caag: cdbcat:00000510:  RelationGetRelationName(rel)), 
  caag: cdbcat:00000511:  errOmitLocation(true))); 
+ caag: cdbfts:00000206:  ereport(LOG, (errmsg_internal("FTS: reconfiguration is in progress"), 
+ caag: cdbfts:00000207:  errSendAlert(true))); 
  caag: cdbfts:00000364:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
  caag: cdbfts:00000365:  errmsg("QDMirroringUpdate: out of memory"))); 
  caag: cdbfts:00000392:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
@@ -2869,6 +2873,8 @@ select * from get_ereport order by 1;
  caag: cdbfts:00000822:  errdetail(detail))); 
  caag: cdbfts:00001022:  ereport(ERROR, (errmsg_internal("MPP detected %d segment failures, system is reconnected", numOfFailed), 
  caag: cdbfts:00001023:  errSendAlert(true))); 
+ caag: cdbfts:00001084:  ereport(LOG, (errmsg_internal("FTS: found bad segment with dbid %d", segInfo->dbid), 
+ caag: cdbfts:00001085:  errSendAlert(true))); 
  caag: cdbfts:00001279:  ereport(ERROR, (errmsg_internal("Unexpected master mirroring state '%s'", 
  caag: cdbfts:00001280:  QDMirroringStateToString(state)))); 
  caag: cdbfts:00001375:  ereport(ERROR, (errmsg_internal("Unexpected master mirror state '%s'", 
@@ -3975,9 +3981,14 @@ select * from get_ereport order by 1;
  cabh: cdbdtxcontextinfo:00000073:  ereport(ERROR, 
  cabh: cdbdtxcontextinfo:00000074:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  cabh: cdbdtxcontextinfo:00000075:  errmsg("out of memory"))); 
- cabh: cdbdtxcontextinfo:00000511:  ereport(ERROR, 
- cabh: cdbdtxcontextinfo:00000512:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cabh: cdbdtxcontextinfo:00000513:  errmsg("out of memory"))); 
+ cabh: cdbdtxcontextinfo:00000510:  ereport(ERROR, 
+ cabh: cdbdtxcontextinfo:00000511:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cabh: cdbdtxcontextinfo:00000512:  errmsg("out of memory"))); 
+ cabh: cdbfilerepprimary:00000213:  ereport(LOG, 
+ cabh: cdbfilerepprimary:00000214:  (errmsg("LOG(filerep): failover is performed to the primary segment, " 
+ cabh: cdbfilerepprimary:00000215:  "segment mirroring is suspended "), 
+ cabh: cdbfilerepprimary:00000216:  errSendAlert(true), 
+ cabh: cdbfilerepprimary:00000217:  FileRep_errcontext())); 
  cabh: cdbfilerepservice:00000516:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
  cabh: cdbfilerepservice:00000517:  errmsg("database 'postgres' does not exist"))); 
  cabh: cdbfilerepservice:00000571:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
@@ -4044,6 +4055,14 @@ select * from get_ereport order by 1;
  cabj: cdbmirroredflatfile:00001127:  (errcode_for_file_access(), 
  cabj: cdbmirroredflatfile:00001128:  errmsg("could not read from position:%d in file "%s" : %m", 
  cabj: cdbmirroredflatfile:00001129:  startOffset, primaryOpen.path))); 
+ caca: cdbfilerepconnclient:00000056:  ereport(LOG, 
+ caca: cdbfilerepconnclient:00000057:  (errcode_for_socket_access(), 
+ caca: cdbfilerepconnclient:00000058:  errmsg("ERROR(filerep): could not establish connection with server, host:'%s' port:'%d' err:'%s' : %m", 
+ caca: cdbfilerepconnclient:00000059:  hostAddress, 
+ caca: cdbfilerepconnclient:00000060:  port, 
+ caca: cdbfilerepconnclient:00000061:  PQerrorMessage(conn)), 
+ caca: cdbfilerepconnclient:00000062:  errSendAlert(true), 
+ caca: cdbfilerepconnclient:00000063:  FileRep_errcontext())); 
  caca: cdbfilerepconnserver:00000079:  ereport(ERROR, 
  caca: cdbfilerepconnserver:00000080:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  caca: cdbfilerepconnserver:00000081:  (errmsg("ERROR(filerep): not enough memory to create connection")))); 
@@ -4063,6 +4082,18 @@ select * from get_ereport order by 1;
  caca: cdbfilerepprimaryack:00000387:  ereport(ERROR, 
  caca: cdbfilerepprimaryack:00000388:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  caca: cdbfilerepprimaryack:00000389:  (errmsg("Not enough shared memory for Mirroring.")))); 
+ caca: cdbfilerepprimaryack:00001035:  ereport(LOG, 
+ caca: cdbfilerepprimaryack:00001036:  (errmsg("ERROR(filerep): could not complete operation on mirror " 
+ caca: cdbfilerepprimaryack:00001037:  "msg header count:'%d' ack state:'%s' ", 
+ caca: cdbfilerepprimaryack:00001038:  fileRepMessageHeader->messageCount, 
+ caca: cdbfilerepprimaryack:00001039:  FileRepAckStateToString[fileRepMessageHeader->fileRepAckState]), 
+ caca: cdbfilerepprimaryack:00001040:  errSendAlert(true), 
+ caca: cdbfilerepprimaryack:00001041:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+ caca: cdbfilerepprimaryack:00001042:  fileRepMessageHeader->fileRepRelationType, 
+ caca: cdbfilerepprimaryack:00001043:  fileRepMessageHeader->fileRepOperation), 
+ caca: cdbfilerepprimaryack:00001044:  FileRep_errdetail_Shmem(), 
+ caca: cdbfilerepprimaryack:00001045:  FileRep_errdetail_ShmemAck(), 
+ caca: cdbfilerepprimaryack:00001046:  FileRep_errcontext())); 
  cacb: cdbmirroredappendonly:00000865:  ereport(ERROR, 
  cacb: cdbmirroredappendonly:00000866:  (errcode_for_file_access(), 
  cacb: cdbmirroredappendonly:00000867:  errmsg("could not read from position: " INT64_FORMAT " in file %d/%d/%d.%d : %m", 
@@ -4094,53 +4125,63 @@ select * from get_ereport order by 1;
  cacb: cdbmirroredbufferpool:00000683:  errmsg("could not seek in file to position %d in file "%s", segment file %d: %m", 
  cacb: cdbmirroredbufferpool:00000684:  position, 
  cacb: cdbmirroredbufferpool:00000685:  relpath(open->relFileNode), open->segmentFileNum))); 
- cacb: cdbmirroredfilesysobj:00000231:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000232:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000233:  errmsg("could not create filespace directory %u: %s", 
- cacb: cdbmirroredfilesysobj:00000234:  filespaceOid, 
- cacb: cdbmirroredfilesysobj:00000235:  strerror(primaryError)))); 
- cacb: cdbmirroredfilesysobj:00000381:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000382:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000383:  errmsg("could not create tablespace directory %u: %s", 
- cacb: cdbmirroredfilesysobj:00000384:  tablespaceDirNode->tablespace, 
- cacb: cdbmirroredfilesysobj:00000385:  strerror(primaryError)))); 
- cacb: cdbmirroredfilesysobj:00000509:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000510:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000511:  errmsg("could not create database directory %s: %s", 
- cacb: cdbmirroredfilesysobj:00000512:  GetDatabasePath(dbDirNode->database, dbDirNode->tablespace), 
- cacb: cdbmirroredfilesysobj:00000513:  strerror(primaryError)))); 
- cacb: cdbmirroredfilesysobj:00000679:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000680:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000681:  errmsg("could not create database directory %u/%u: %s", 
- cacb: cdbmirroredfilesysobj:00000682:  justInTimeDbDirNode->tablespace, 
- cacb: cdbmirroredfilesysobj:00000683:  justInTimeDbDirNode->database, 
- cacb: cdbmirroredfilesysobj:00000684:  strerror(primaryError)))); 
- cacb: cdbmirroredfilesysobj:00000705:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000706:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000707:  errmsg("could not create just-in-time database directory %u/%u: %s", 
- cacb: cdbmirroredfilesysobj:00000708:  justInTimeDbDirNode->tablespace, 
- cacb: cdbmirroredfilesysobj:00000709:  justInTimeDbDirNode->database, 
- cacb: cdbmirroredfilesysobj:00000710:  strerror(primaryError)))); 
- cacb: cdbmirroredfilesysobj:00000816:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000817:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000818:  errmsg("could not create relation file '%s', relation name '%s': %s", 
- cacb: cdbmirroredfilesysobj:00000819:  relpath(smgrOpen->smgr_rnode), 
- cacb: cdbmirroredfilesysobj:00000820:  relationName, 
- cacb: cdbmirroredfilesysobj:00000821:  strerror(primaryError)))); 
- cacb: cdbmirroredfilesysobj:00000936:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000937:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000938:  errmsg("could not create relation file '%s', relation name '%s': %s", 
- cacb: cdbmirroredfilesysobj:00000939:  relpath(*relFileNode), 
- cacb: cdbmirroredfilesysobj:00000940:  relationName, 
- cacb: cdbmirroredfilesysobj:00000941:  strerror(primaryError)))); 
- cacb: cdbmirroredfilesysobj:00001074:  ereport(WARNING, 
- cacb: cdbmirroredfilesysobj:00001075:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00001076:  errmsg("could not remove relation %u/%u/%u (segment file #%d): %s", 
- cacb: cdbmirroredfilesysobj:00001077:  relFileNode->spcNode, 
- cacb: cdbmirroredfilesysobj:00001078:  relFileNode->dbNode, 
- cacb: cdbmirroredfilesysobj:00001079:  relFileNode->relNode, 
- cacb: cdbmirroredfilesysobj:00001080:  segmentFileNum, 
- cacb: cdbmirroredfilesysobj:00001081:  strerror(primaryError)))); 
+ cacb: cdbmirroredfilesysobj:00000172:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000173:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000174:  errmsg("%s : %s", 
+ cacb: cdbmirroredfilesysobj:00000175:  mirrorFilespaceLocation, 
+ cacb: cdbmirroredfilesysobj:00000176:  FileRepStatusToString[status]))); 
+ cacb: cdbmirroredfilesysobj:00000183:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000184:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000185:  errmsg("%s : %s", 
+ cacb: cdbmirroredfilesysobj:00000186:  parentdir, 
+ cacb: cdbmirroredfilesysobj:00000187:  FileRepStatusToString[status]))); 
+ cacb: cdbmirroredfilesysobj:00000279:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000280:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000281:  errmsg("could not create filespace directory %u: %s", 
+ cacb: cdbmirroredfilesysobj:00000282:  filespaceOid, 
+ cacb: cdbmirroredfilesysobj:00000283:  strerror(primaryError)))); 
+ cacb: cdbmirroredfilesysobj:00000429:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000430:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000431:  errmsg("could not create tablespace directory %u: %s", 
+ cacb: cdbmirroredfilesysobj:00000432:  tablespaceDirNode->tablespace, 
+ cacb: cdbmirroredfilesysobj:00000433:  strerror(primaryError)))); 
+ cacb: cdbmirroredfilesysobj:00000557:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000558:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000559:  errmsg("could not create database directory %s: %s", 
+ cacb: cdbmirroredfilesysobj:00000560:  GetDatabasePath(dbDirNode->database, dbDirNode->tablespace), 
+ cacb: cdbmirroredfilesysobj:00000561:  strerror(primaryError)))); 
+ cacb: cdbmirroredfilesysobj:00000727:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000728:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000729:  errmsg("could not create database directory %u/%u: %s", 
+ cacb: cdbmirroredfilesysobj:00000730:  justInTimeDbDirNode->tablespace, 
+ cacb: cdbmirroredfilesysobj:00000731:  justInTimeDbDirNode->database, 
+ cacb: cdbmirroredfilesysobj:00000732:  strerror(primaryError)))); 
+ cacb: cdbmirroredfilesysobj:00000753:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000754:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000755:  errmsg("could not create just-in-time database directory %u/%u: %s", 
+ cacb: cdbmirroredfilesysobj:00000756:  justInTimeDbDirNode->tablespace, 
+ cacb: cdbmirroredfilesysobj:00000757:  justInTimeDbDirNode->database, 
+ cacb: cdbmirroredfilesysobj:00000758:  strerror(primaryError)))); 
+ cacb: cdbmirroredfilesysobj:00000864:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000865:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000866:  errmsg("could not create relation file '%s', relation name '%s': %s", 
+ cacb: cdbmirroredfilesysobj:00000867:  relpath(smgrOpen->smgr_rnode), 
+ cacb: cdbmirroredfilesysobj:00000868:  relationName, 
+ cacb: cdbmirroredfilesysobj:00000869:  strerror(primaryError)))); 
+ cacb: cdbmirroredfilesysobj:00000984:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000985:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000986:  errmsg("could not create relation file '%s', relation name '%s': %s", 
+ cacb: cdbmirroredfilesysobj:00000987:  relpath(*relFileNode), 
+ cacb: cdbmirroredfilesysobj:00000988:  relationName, 
+ cacb: cdbmirroredfilesysobj:00000989:  strerror(primaryError)))); 
+ cacb: cdbmirroredfilesysobj:00001122:  ereport(WARNING, 
+ cacb: cdbmirroredfilesysobj:00001123:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00001124:  errmsg("could not remove relation %u/%u/%u (segment file #%d): %s", 
+ cacb: cdbmirroredfilesysobj:00001125:  relFileNode->spcNode, 
+ cacb: cdbmirroredfilesysobj:00001126:  relFileNode->dbNode, 
+ cacb: cdbmirroredfilesysobj:00001127:  relFileNode->relNode, 
+ cacb: cdbmirroredfilesysobj:00001128:  segmentFileNum, 
+ cacb: cdbmirroredfilesysobj:00001129:  strerror(primaryError)))); 
  cacb: cdbpersistentrecovery:00001681:  ereport(ERROR, 
  cacb: cdbpersistentrecovery:00001682:  (errcode_for_file_access(), 
  cacb: cdbpersistentrecovery:00001683:  errmsg("could not write redo relation file : %m"))); 
@@ -5805,6 +5846,22 @@ select * from get_ereport order by 1;
  faai: ftsprobe:00001770:  errmsg("FTS: could not modify config: format command string failure dbid %d", changes[i].dbid))); 
  faai: ftsprobe:00001800:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
  faai: ftsprobe:00001801:  errmsg("FTS: out of memory"))); 
+ faai: ftsprobe:00002062:  ereport(LOG, 
+ faai: ftsprobe:00002063:  (errmsg("Mirror segment on %s:%d is taking over as primary in change tracking mode.", 
+ faai: ftsprobe:00002064:  seg_addr, seg_pm_port ), 
+ faai: ftsprobe:00002065:  errSendAlert(true))); 
+ faai: ftsprobe:00002069:  ereport(LOG, 
+ faai: ftsprobe:00002070:  (errmsg("Primary segment on %s:%d is going into change tracking mode.", 
+ faai: ftsprobe:00002071:  seg_addr, seg_pm_port ), 
+ faai: ftsprobe:00002072:  errSendAlert(true))); 
+ faai: ftsprobe:00002135:  ereport(LOG, 
+ faai: ftsprobe:00002136:  (errmsg("Changing mirror segment on %s:%d to be the primary in change tracking mode completed successfully.", 
+ faai: ftsprobe:00002137:  seg_addr, seg_pm_port ), 
+ faai: ftsprobe:00002138:  errSendAlert(true))); 
+ faai: ftsprobe:00002141:  ereport(LOG, 
+ faai: ftsprobe:00002142:  (errmsg("Changing primary segment on %s:%d to change tracking mode completed successfully.", 
+ faai: ftsprobe:00002143:  seg_addr, seg_pm_port ), 
+ faai: ftsprobe:00002144:  errSendAlert(true))); 
  faai: ftsprobe:00002171:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),  
  faai: ftsprobe:00002172:  errmsg("FTS: out of memory")));  
  faai: ftsprobe:00002173:   
@@ -5823,6 +5880,14 @@ select * from get_ereport order by 1;
  faai: ftsprobe:00002186: markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *dbInfo) 
  faai: ftsprobe:00002187: { 
  faai: ftsprobe:00002188:  char cmd[2000]; 
+ faai: ftsprobe:00002239:  ereport(LOG, 
+ faai: ftsprobe:00002240:  (errmsg("Resynchronization of mirror segment on %s:%d has completed.", 
+ faai: ftsprobe:00002241:  dbInfo->address, dbInfo->port ), 
+ faai: ftsprobe:00002242:  errSendAlert(true))); 
+ faai: ftsprobe:00002517:  ereport(LOG, 
+ faai: ftsprobe:00002518:  (errmsg("SAN mirror segment on %s:%d is taking over as primary.", 
+ faai: ftsprobe:00002519:  host, port ), 
+ faai: ftsprobe:00002520:  errSendAlert(true))); 
  faai: function:00000185:  ereport(ERROR, ( 
  faai: function:00000186:  errcode(ERRCODE_SYNTAX_ERROR), 
  faai: function:00000187:  errmsg("To many parameters - expected %d ", top))); 
@@ -5864,96 +5929,87 @@ select * from get_ereport order by 1;
  faaj: filespace:00000164:  ereport(ERROR, 
  faaj: filespace:00000165:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
  faaj: filespace:00000166:  errmsg("duplicate segment id %d", segid))); 
- faaj: filespace:00000181:  ereport(ERROR, 
- faaj: filespace:00000182:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
- faaj: filespace:00000183:  errmsg("no path specified for segment id %d", segid))); 
- faaj: filespace:00000201:  ereport(ERROR, 
- faaj: filespace:00000202:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
- faaj: filespace:00000203:  errmsg("duplicate segment id %d", segid))); 
- faaj: filespace:00000217:  ereport(ERROR, 
- faaj: filespace:00000218:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
- faaj: filespace:00000219:  errmsg("no path specified for segment id %d", segid))); 
- faaj: filespace:00000260:  ereport(ERROR, 
- faaj: filespace:00000261:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
- faaj: filespace:00000262:  errmsg("Specified Segment id %d does not exist " 
- faaj: filespace:00000263:  "in configuration", fse->dbid))); 
- faaj: filespace:00000433:  ereport(ERROR, 
- faaj: filespace:00000434:  (errcode(ERRCODE_SYNTAX_ERROR), 
- faaj: filespace:00000435:  errmsg("filespace name may not be qualified"))); 
- faaj: filespace:00000440:  ereport(ERROR, 
- faaj: filespace:00000441:  (errcode(ERRCODE_SYNTAX_ERROR), 
- faaj: filespace:00000442:  errmsg("syntax at or near "cascade""))); 
- faaj: filespace:00000460:  ereport(NOTICE, 
- faaj: filespace:00000461:  (errmsg("filespace "%s" does not exist, skipping", 
- faaj: filespace:00000462:  fsname))); 
- faaj: filespace:00000467:  ereport(ERROR, 
- faaj: filespace:00000468:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- faaj: filespace:00000469:  errmsg("filespace "%s" does not exist", fsname))); 
- faaj: filespace:00000479:  ereport(ERROR, 
- faaj: filespace:00000480:  (errmsg("cannot drop filespace %s because it is required " 
- faaj: filespace:00000481:  "by the database system", fsname))); 
- faaj: filespace:00000605:  ereport(ERROR, 
- faaj: filespace:00000606:  (errcode(ERRCODE_SYNTAX_ERROR), 
- faaj: filespace:00000607:  errmsg("filespace name may not be qualified"))); 
- faaj: filespace:00000619:  ereport(ERROR, 
- faaj: filespace:00000620:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- faaj: filespace:00000621:  errmsg("filespace "%s" does not exist", fsname))); 
- faaj: filespace:00000627:  ereport(ERROR, 
- faaj: filespace:00000628:  (errcode(ERRCODE_RESERVED_NAME), 
- faaj: filespace:00000629:  errmsg("permission denied: "%s" is a system filespace", 
- faaj: filespace:00000630:  fsname))); 
- faaj: filespace:00000714:  ereport(ERROR, 
- faaj: filespace:00000715:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- faaj: filespace:00000716:  errmsg("filespace "%s" does not exist", 
- faaj: filespace:00000717:  oldname))); 
- faaj: filespace:00000724:  ereport(ERROR, 
- faaj: filespace:00000725:  (errcode(ERRCODE_RESERVED_NAME), 
- faaj: filespace:00000726:  errmsg("permission denied: "%s" is a system filespace", 
- faaj: filespace:00000727:  oldname))); 
- faaj: filespace:00000736:  ereport(ERROR, 
- faaj: filespace:00000737:  (errcode(ERRCODE_RESERVED_NAME), 
- faaj: filespace:00000738:  errmsg("unacceptable filespace name "%s"", newname), 
- faaj: filespace:00000739:  errdetail("The prefix "pg_" is reserved for system filespaces."))); 
- faaj: filespace:00000748:  ereport(ERROR, 
- faaj: filespace:00000749:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
- faaj: filespace:00000750:  errmsg("filespace "%s" already exists", newname))); 
- faaj: filespace:00000872:  ereport(ERROR, 
- faaj: filespace:00000873:  (errcode(ERRCODE_INVALID_NAME), 
- faaj: filespace:00000874:  errmsg("filespace location "%s" " 
- faaj: filespace:00000875:  "cannot contain single quotes", path))); 
- faaj: filespace:00000883:  ereport(ERROR, 
- faaj: filespace:00000884:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- faaj: filespace:00000885:  errmsg("filespace locations "%s" " 
- faaj: filespace:00000886:  "must be an absolute path", path))); 
- faaj: filespace:00000892:  ereport(ERROR, 
- faaj: filespace:00000893:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- faaj: filespace:00000894:  errmsg("filespace location "%s" is too long", 
- faaj: filespace:00000895:  path))); 
- faaj: filespace:00000940:  ereport(ERROR, 
- faaj: filespace:00000941:  (errcode_for_file_access(), 
- faaj: filespace:00000942:  errmsg("%s : Not a directory", path))); 
- faaj: filespace:00000946:  ereport(ERROR, 
- faaj: filespace:00000947:  (errcode_for_file_access(), 
- faaj: filespace:00000948:  errmsg("%s : Permission denied", path))); 
- faaj: filespace:00000952:  ereport(ERROR, 
- faaj: filespace:00000953:  (errcode_for_file_access(), 
- faaj: filespace:00000954:  errmsg("%s : Error reading directory", path))); 
- faaj: filespace:00000961:  ereport(ERROR, 
- faaj: filespace:00000962:  (errcode_for_file_access(), 
- faaj: filespace:00000963:  errmsg("%s : Directory not empty", path))); 
- faaj: filespace:00000975:  ereport(ERROR, 
- faaj: filespace:00000976:  (errcode_for_file_access(), 
- faaj: filespace:00000977:  errmsg("%s : No such file or directory", parentdir))); 
- faaj: filespace:00000981:  ereport(ERROR, 
- faaj: filespace:00000982:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- faaj: filespace:00000983:  errmsg("%s : Not a directory", parentdir))); 
- faaj: filespace:00000987:  ereport(ERROR, 
- faaj: filespace:00000988:  (errcode_for_file_access(), 
- faaj: filespace:00000989:  errmsg("%s: No write permissions", parentdir))); 
- faaj: filespace:00001014:  ereport(ERROR, 
- faaj: filespace:00001015:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- faaj: filespace:00001016:  errmsg("filespace "%s" is not empty", 
- faaj: filespace:00001017:  get_filespace_name(fsoid)))); 
+ faaj: filespace:00000180:  ereport(ERROR, 
+ faaj: filespace:00000181:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+ faaj: filespace:00000182:  errmsg("no path specified for segment id %d", segid))); 
+ faaj: filespace:00000200:  ereport(ERROR, 
+ faaj: filespace:00000201:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+ faaj: filespace:00000202:  errmsg("duplicate segment id %d", segid))); 
+ faaj: filespace:00000215:  ereport(ERROR, 
+ faaj: filespace:00000216:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+ faaj: filespace:00000217:  errmsg("no path specified for segment id %d", segid))); 
+ faaj: filespace:00000258:  ereport(ERROR, 
+ faaj: filespace:00000259:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+ faaj: filespace:00000260:  errmsg("Specified Segment id %d does not exist " 
+ faaj: filespace:00000261:  "in configuration", fse->dbid))); 
+ faaj: filespace:00000436:  ereport(ERROR, 
+ faaj: filespace:00000437:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ faaj: filespace:00000438:  errmsg("filespace name may not be qualified"))); 
+ faaj: filespace:00000443:  ereport(ERROR, 
+ faaj: filespace:00000444:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ faaj: filespace:00000445:  errmsg("syntax at or near "cascade""))); 
+ faaj: filespace:00000463:  ereport(NOTICE, 
+ faaj: filespace:00000464:  (errmsg("filespace "%s" does not exist, skipping", 
+ faaj: filespace:00000465:  fsname))); 
+ faaj: filespace:00000470:  ereport(ERROR, 
+ faaj: filespace:00000471:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ faaj: filespace:00000472:  errmsg("filespace "%s" does not exist", fsname))); 
+ faaj: filespace:00000482:  ereport(ERROR, 
+ faaj: filespace:00000483:  (errmsg("cannot drop filespace %s because it is required " 
+ faaj: filespace:00000484:  "by the database system", fsname))); 
+ faaj: filespace:00000608:  ereport(ERROR, 
+ faaj: filespace:00000609:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ faaj: filespace:00000610:  errmsg("filespace name may not be qualified"))); 
+ faaj: filespace:00000622:  ereport(ERROR, 
+ faaj: filespace:00000623:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ faaj: filespace:00000624:  errmsg("filespace "%s" does not exist", fsname))); 
+ faaj: filespace:00000630:  ereport(ERROR, 
+ faaj: filespace:00000631:  (errcode(ERRCODE_RESERVED_NAME), 
+ faaj: filespace:00000632:  errmsg("permission denied: "%s" is a system filespace", 
+ faaj: filespace:00000633:  fsname))); 
+ faaj: filespace:00000717:  ereport(ERROR, 
+ faaj: filespace:00000718:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ faaj: filespace:00000719:  errmsg("filespace "%s" does not exist", 
+ faaj: filespace:00000720:  oldname))); 
+ faaj: filespace:00000727:  ereport(ERROR, 
+ faaj: filespace:00000728:  (errcode(ERRCODE_RESERVED_NAME), 
+ faaj: filespace:00000729:  errmsg("permission denied: "%s" is a system filespace", 
+ faaj: filespace:00000730:  oldname))); 
+ faaj: filespace:00000739:  ereport(ERROR, 
+ faaj: filespace:00000740:  (errcode(ERRCODE_RESERVED_NAME), 
+ faaj: filespace:00000741:  errmsg("unacceptable filespace name "%s"", newname), 
+ faaj: filespace:00000742:  errdetail("The prefix "pg_" is reserved for system filespaces."))); 
+ faaj: filespace:00000751:  ereport(ERROR, 
+ faaj: filespace:00000752:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+ faaj: filespace:00000753:  errmsg("filespace "%s" already exists", newname))); 
+ faaj: filespace:00000875:  ereport(ERROR, 
+ faaj: filespace:00000876:  (errcode(ERRCODE_INVALID_NAME), 
+ faaj: filespace:00000877:  errmsg("filespace location "%s" " 
+ faaj: filespace:00000878:  "cannot contain single quotes", path))); 
+ faaj: filespace:00000886:  ereport(ERROR, 
+ faaj: filespace:00000887:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ faaj: filespace:00000888:  errmsg("filespace locations "%s" " 
+ faaj: filespace:00000889:  "must be an absolute path", path))); 
+ faaj: filespace:00000895:  ereport(ERROR, 
+ faaj: filespace:00000896:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ faaj: filespace:00000897:  errmsg("filespace location "%s" is too long", 
+ faaj: filespace:00000898:  path))); 
+ faaj: filespace:00000939:  ereport(ERROR, 
+ faaj: filespace:00000940:  (errcode_for_file_access(), 
+ faaj: filespace:00000941:  errmsg("%s : File exists", path))); 
+ faaj: filespace:00000950:  ereport(ERROR, 
+ faaj: filespace:00000951:  (errcode_for_file_access(), 
+ faaj: filespace:00000952:  errmsg("%s : No such file or directory", parentdir))); 
+ faaj: filespace:00000956:  ereport(ERROR, 
+ faaj: filespace:00000957:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ faaj: filespace:00000958:  errmsg("%s : Not a directory", parentdir))); 
+ faaj: filespace:00000962:  ereport(ERROR, 
+ faaj: filespace:00000963:  (errcode_for_file_access(), 
+ faaj: filespace:00000964:  errmsg("%s: No write permissions", parentdir))); 
+ faaj: filespace:00000988:  ereport(ERROR, 
+ faaj: filespace:00000989:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ faaj: filespace:00000990:  errmsg("filespace "%s" is not empty", 
+ faaj: filespace:00000991:  get_filespace_name(fsoid)))); 
  faaj: flatfiles:00000243:  ereport(ERROR, 
  faaj: flatfiles:00000244:  (errcode_for_file_access(), 
  faaj: flatfiles:00000245:  errmsg("could not write to temporary file "%s": %m", 
@@ -6646,323 +6702,323 @@ select * from get_ereport order by 1;
  gaad: guc:00009610:  ereport(ERROR, 
  gaad: guc:00009611:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  gaad: guc:00009612:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
- gaae: gram:00018642:  ereport(ERROR, 
- gaae: gram:00018643:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00018644:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"), 
- gaae: gram:00018645:  scanner_errposition((yylsp[(3) - (3)])))); 
- gaae: gram:00018657:  ereport(ERROR, 
- gaae: gram:00018658:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00018659:  errmsg("INTERVAL(%d) precision must not be negative", (yyvsp[(3) - (6)].ival)), 
- gaae: gram:00018660:  scanner_errposition((yylsp[(3) - (6)])))); 
- gaae: gram:00018663:  ereport(WARNING, 
- gaae: gram:00018664:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00018665:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00018666:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
- gaae: gram:00018672:  ereport(ERROR, 
- gaae: gram:00018673:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00018674:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"))); 
- gaae: gram:00019357:  ereport(ERROR, 
- gaae: gram:00019358:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00019359:  errmsg("Cannot specify a name, rank, " 
- gaae: gram:00019360:  "or value for a DEFAULT partition " 
- gaae: gram:00019361:  "in this context"))); 
- gaae: gram:00019425:  ereport(ERROR, 
- gaae: gram:00019426:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00019427:  errmsg("Can only ADD a partition by name"), 
- gaae: gram:00019428:  errOmitLocation(true))); 
- gaae: gram:00019466:  ereport(ERROR, 
- gaae: gram:00019467:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00019468:  errmsg("Can only ADD a partition by name"))); 
- gaae: gram:00019545:  ereport(ERROR, 
- gaae: gram:00019546:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00019547:  errmsg("Can only COALESCE a partition by name"))); 
- gaae: gram:00019811:  ereport(ERROR, 
- gaae: gram:00019812:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00019813:  errmsg("template cannot contain " 
- gaae: gram:00019814:  "specification for child " 
- gaae: gram:00019815:  "partition"))); 
- gaae: gram:00020764:  ereport(ERROR, 
- gaae: gram:00020765:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00020766:  errmsg("MATCH PARTIAL not yet implemented"), 
- gaae: gram:00020767:  scanner_errposition((yylsp[(1) - (2)])))); 
- gaae: gram:00020949:  ereport(ERROR, 
- gaae: gram:00020950:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00020951:  errmsg("TABLESPACE not supported"), 
- gaae: gram:00020952:  scanner_errposition((yylsp[(1) - (4)])))); 
- gaae: gram:00020971:  ereport(ERROR, 
- gaae: gram:00020972:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00020973:  errmsg("TABLESPACE not supported"), 
- gaae: gram:00020974:  scanner_errposition((yylsp[(1) - (2)])))); 
- gaae: gram:00020993:  ereport(ERROR, 
- gaae: gram:00020994:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00020995:  errmsg("TABLESPACE not supported"), 
- gaae: gram:00020996:  scanner_errposition((yylsp[(1) - (2)])))); 
- gaae: gram:00021494:  ereport(ERROR, 
- gaae: gram:00021495:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00021496:  errmsg("PARTITION BY must specify RANGE or LIST"), 
- gaae: gram:00021497:  errOmitLocation(true))); 
- gaae: gram:00021543:  ereport(ERROR, 
- gaae: gram:00021544:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00021545:  errmsg("PARTITION BY must specify RANGE or LIST"))); 
- gaae: gram:00021547:  ereport(ERROR, 
- gaae: gram:00021548:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00021549:  errmsg("PARTITION BY must specify RANGE, HASH, or LIST"))); 
- gaae: gram:00021605:  ereport(ERROR, 
- gaae: gram:00021606:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00021607:  errmsg("template cannot contain " 
- gaae: gram:00021608:  "specification for child " 
- gaae: gram:00021609:  "partition"), 
- gaae: gram:00021610:  errOmitLocation(true))); 
- gaae: gram:00021703:  ereport(ERROR, 
- gaae: gram:00021704:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00021705:  errmsg("CREATE TABLE AS cannot specify INTO"), 
- gaae: gram:00021706:  scanner_errposition(exprLocation((Node *) n->intoClause)))); 
- gaae: gram:00021715:  ereport(ERROR, 
- gaae: gram:00021716:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00021717:  errmsg("Cannot create a partitioned table using CREATE TABLE AS SELECT"), 
- gaae: gram:00021718:  errhint("Use CREATE TABLE...LIKE (followed by INSERT...SELECT) instead"), 
- gaae: gram:00021719:  errOmitLocation(true))); 
- gaae: gram:00021829:  ereport(ERROR, 
- gaae: gram:00021830:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00021831:  errmsg("EXECUTE may not be used with a regular external table"), 
- gaae: gram:00021832:  errhint("Use CREATE EXTERNAL WEB TABLE instead"), 
- gaae: gram:00021833:  errOmitLocation(true))); 
- gaae: gram:00021843:  ereport(ERROR, 
- gaae: gram:00021844:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00021845:  errmsg("ON clause may not be used with a writable external table"), 
- gaae: gram:00021846:  errOmitLocation(true))); 
- gaae: gram:00021851:  ereport(ERROR, 
- gaae: gram:00021852:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00021853:  errmsg("Single row error handling may not be used with a writable external table"))); 
- gaae: gram:00022110:  ereport(ERROR, 
- gaae: gram:00022111:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00022112:  errmsg("invalid PERCENT value. Should be (1 - 100)"))); 
- gaae: gram:00022116:  ereport(ERROR, 
- gaae: gram:00022117:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00022118:  errmsg("invalid (ROWS) reject limit. Should be 2 or larger"))); 
- gaae: gram:00023072:  ereport(ERROR, 
- gaae: gram:00023073:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00023074:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"), 
- gaae: gram:00023075:  scanner_errposition((yylsp[(1) - (2)])))); 
- gaae: gram:00023094:  ereport(ERROR, 
- gaae: gram:00023095:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00023096:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"), 
- gaae: gram:00023097:  scanner_errposition((yylsp[(1) - (2)])))); 
- gaae: gram:00023163:  ereport(ERROR, 
- gaae: gram:00023164:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00023165:  errmsg("CREATE ASSERTION is not yet implemented"))); 
- gaae: gram:00023179:  ereport(ERROR, 
- gaae: gram:00023180:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00023181:  errmsg("DROP ASSERTION is not yet implemented"))); 
- gaae: gram:00023282:  ereport(ERROR, 
- gaae: gram:00023283:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00023284:  errmsg("improper qualified name (too many dotted names): %s", 
- gaae: gram:00023285:  NameListToString((yyvsp[(3) - (7)].list))), 
- gaae: gram:00023286:  scanner_errposition((yylsp[(3) - (7)])))); 
- gaae: gram:00024957:  ereport(ERROR, 
- gaae: gram:00024958:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00024959:  errmsg("missing argument"), 
- gaae: gram:00024960:  errhint("Use NONE to denote the missing argument of a unary operator."), 
- gaae: gram:00024961:  errOmitLocation(true), 
- gaae: gram:00024962:  scanner_errposition((yylsp[(1) - (1)])))); 
- gaae: gram:00025908:  ereport(ERROR, 
- gaae: gram:00025909:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00025910:  errmsg("WITH CHECK OPTION is not implemented"))); 
- gaae: gram:00025917:  ereport(ERROR, 
- gaae: gram:00025918:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00025919:  errmsg("WITH CHECK OPTION is not implemented"))); 
- gaae: gram:00025926:  ereport(ERROR, 
- gaae: gram:00025927:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00025928:  errmsg("WITH CHECK OPTION is not implemented"))); 
- gaae: gram:00026378:  ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00026379:  errmsg("cannot use force with explain statement") 
- gaae: gram:00026380:  )); 
- gaae: gram:00026389:  ereport(ERROR, 
- gaae: gram:00026390:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00026391:  errmsg("cannot EXPLAIN CREATE TABLE without AS " 
- gaae: gram:00026392:  "clause"))); 
- gaae: gram:00026457:  ereport(ERROR, 
- gaae: gram:00026458:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00026459:  errmsg("column name list not allowed in CREATE TABLE / AS EXECUTE"))); 
- gaae: gram:00026724:  ereport(ERROR, 
- gaae: gram:00026725:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00026726:  errmsg("number of columns does not match number of values"), 
- gaae: gram:00026727:  scanner_errposition((yylsp[(1) - (5)])))); 
- gaae: gram:00027205:  ereport(ERROR, 
- gaae: gram:00027206:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00027207:  errmsg("LIMIT #,# syntax is not supported"), 
- gaae: gram:00027208:  errhint("Use separate LIMIT and OFFSET clauses."), 
- gaae: gram:00027209:  scanner_errposition((yylsp[(1) - (4)])))); 
- gaae: gram:00027789:  ereport(ERROR, 
- gaae: gram:00027790:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00027791:  errmsg("VALUES in FROM must have an alias"), 
- gaae: gram:00027792:  errhint("For example, FROM (VALUES ...) [AS] foo."), 
- gaae: gram:00027793:  scanner_errposition((yylsp[(1) - (1)])))); 
- gaae: gram:00027795:  ereport(ERROR, 
- gaae: gram:00027796:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00027797:  errmsg("subquery in FROM must have an alias"), 
- gaae: gram:00027798:  errhint("For example, FROM (SELECT ...) [AS] foo."), 
- gaae: gram:00027799:  scanner_errposition((yylsp[(1) - (1)])))); 
- gaae: gram:00028183:  ereport(ERROR, 
- gaae: gram:00028184:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028185:  errmsg("INTERVAL(%d) precision must not be negative", (yyvsp[(3) - (5)].ival)), 
- gaae: gram:00028186:  scanner_errposition((yylsp[(3) - (5)])))); 
- gaae: gram:00028189:  ereport(WARNING, 
- gaae: gram:00028190:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028191:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00028192:  (yyvsp[(3) - (5)].ival), MAX_INTERVAL_PRECISION), 
- gaae: gram:00028193:  scanner_errposition((yylsp[(3) - (5)])))); 
- gaae: gram:00028339:  ereport(ERROR, 
- gaae: gram:00028340:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028341:  errmsg("precision for type float must be at least 1 bit"), 
- gaae: gram:00028342:  scanner_errposition((yylsp[(2) - (3)])))); 
- gaae: gram:00028348:  ereport(ERROR, 
- gaae: gram:00028349:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028350:  errmsg("precision for type float must be less than 54 bits"), 
- gaae: gram:00028351:  scanner_errposition((yylsp[(2) - (3)])))); 
- gaae: gram:00028366:  ereport(ERROR, 
- gaae: gram:00028367:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028368:  errmsg("NUMERIC precision %d must be between 1 and %d", 
- gaae: gram:00028369:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
- gaae: gram:00028371:  ereport(ERROR, 
- gaae: gram:00028372:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028373:  errmsg("NUMERIC scale %d must be between 0 and precision %d", 
- gaae: gram:00028374:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
- gaae: gram:00028384:  ereport(ERROR, 
- gaae: gram:00028385:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028386:  errmsg("NUMERIC precision %d must be between 1 and %d", 
- gaae: gram:00028387:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
- gaae: gram:00028405:  ereport(ERROR, 
- gaae: gram:00028406:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028407:  errmsg("DECIMAL precision %d must be between 1 and %d", 
- gaae: gram:00028408:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
- gaae: gram:00028410:  ereport(ERROR, 
- gaae: gram:00028411:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028412:  errmsg("DECIMAL scale %d must be between 0 and precision %d", 
- gaae: gram:00028413:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
- gaae: gram:00028423:  ereport(ERROR, 
- gaae: gram:00028424:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028425:  errmsg("DECIMAL precision %d must be between 1 and %d", 
- gaae: gram:00028426:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
- gaae: gram:00028477:  ereport(ERROR, 
- gaae: gram:00028478:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028479:  errmsg("length for type %s must be at least 1", 
- gaae: gram:00028480:  typname))); 
- gaae: gram:00028482:  ereport(ERROR, 
- gaae: gram:00028483:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028484:  errmsg("length for type %s cannot exceed %d", 
- gaae: gram:00028485:  typname, MaxAttrSize * BITS_PER_BYTE))); 
- gaae: gram:00028560:  ereport(ERROR, 
- gaae: gram:00028561:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028562:  errmsg("length for type %s must be at least 1", 
- gaae: gram:00028563:  (yyvsp[(1) - (5)].str)))); 
- gaae: gram:00028565:  ereport(ERROR, 
- gaae: gram:00028566:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028567:  errmsg("length for type %s cannot exceed %d", 
- gaae: gram:00028568:  (yyvsp[(1) - (5)].str), MaxAttrSize))); 
- gaae: gram:00028665:  ereport(ERROR, 
- gaae: gram:00028666:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028667:  errmsg("TIMESTAMP(%d)%s precision must not be negative", 
- gaae: gram:00028668:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
- gaae: gram:00028671:  ereport(WARNING, 
- gaae: gram:00028672:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028673:  errmsg("TIMESTAMP(%d)%s precision reduced to maximum allowed, %d", 
- gaae: gram:00028674:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
- gaae: gram:00028675:  MAX_TIMESTAMP_PRECISION))); 
- gaae: gram:00028706:  ereport(ERROR, 
- gaae: gram:00028707:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028708:  errmsg("TIME(%d)%s precision must not be negative", 
- gaae: gram:00028709:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
- gaae: gram:00028712:  ereport(WARNING, 
- gaae: gram:00028713:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028714:  errmsg("TIME(%d)%s precision reduced to maximum allowed, %d", 
- gaae: gram:00028715:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
- gaae: gram:00028716:  MAX_TIME_PRECISION))); 
- gaae: gram:00029348:  ereport(ERROR, 
- gaae: gram:00029349:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00029350:  errmsg("UNIQUE predicate is not yet implemented"), 
- gaae: gram:00029351:  scanner_errposition((yylsp[(1) - (2)])))); 
- gaae: gram:00029479:  ereport(ERROR, 
- gaae: gram:00029480:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00029481:  errmsg("window OVER clause can only be used " 
- gaae: gram:00029482:  "with an aggregate"))); 
- gaae: gram:00029765:  ereport(ERROR, 
- gaae: gram:00029766:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00029767:  errmsg("CURRENT_TIME(%d) precision must not be negative", 
- gaae: gram:00029768:  (yyvsp[(3) - (4)].ival)))); 
- gaae: gram:00029771:  ereport(WARNING, 
- gaae: gram:00029772:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00029773:  errmsg("CURRENT_TIME(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00029774:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
- gaae: gram:00029817:  ereport(ERROR, 
- gaae: gram:00029818:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00029819:  errmsg("CURRENT_TIMESTAMP(%d) precision must not be negative", 
- gaae: gram:00029820:  (yyvsp[(3) - (4)].ival)))); 
- gaae: gram:00029823:  ereport(WARNING, 
- gaae: gram:00029824:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00029825:  errmsg("CURRENT_TIMESTAMP(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00029826:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
- gaae: gram:00029870:  ereport(ERROR, 
- gaae: gram:00029871:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00029872:  errmsg("LOCALTIME(%d) precision must not be negative", 
- gaae: gram:00029873:  (yyvsp[(3) - (4)].ival)))); 
- gaae: gram:00029876:  ereport(WARNING, 
- gaae: gram:00029877:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00029878:  errmsg("LOCALTIME(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00029879:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
- gaae: gram:00029924:  ereport(ERROR, 
- gaae: gram:00029925:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00029926:  errmsg("LOCALTIMESTAMP(%d) precision must not be negative", 
- gaae: gram:00029927:  (yyvsp[(3) - (4)].ival)))); 
- gaae: gram:00029930:  ereport(WARNING, 
- gaae: gram:00029931:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00029932:  errmsg("LOCALTIMESTAMP(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00029933:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
- gaae: gram:00030898:  ereport(ERROR, 
- gaae: gram:00030899:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00030900:  errmsg("improper qualified name (too many dotted names): %s", 
- gaae: gram:00030901:  NameListToString(lcons(makeString((yyvsp[(1) - (2)].str)), (yyvsp[(2) - (2)].list)))))); 
- gaae: gram:00031055:  ereport(ERROR, 
- gaae: gram:00031056:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00031057:  errmsg("INTERVAL(%d) precision must not be negative", 
- gaae: gram:00031058:  (yyvsp[(3) - (6)].ival)))); 
- gaae: gram:00031061:  ereport(WARNING, 
- gaae: gram:00031062:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00031063:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00031064:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
- gaae: gram:00031217:  ereport(ERROR, 
- gaae: gram:00031218:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00031219:  errmsg("OLD used in query that is not in a rule"))); 
- gaae: gram:00031229:  ereport(ERROR, 
- gaae: gram:00031230:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00031231:  errmsg("NEW used in query that is not in a rule"))); 
- gaae: gram:00031664:  ereport(ERROR, 
- gaae: gram:00031665:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00031666:  errmsg("wrong number of parameters on left side of OVERLAPS expression"), 
- gaae: gram:00031667:  scanner_errposition(location))); 
- gaae: gram:00031671:  ereport(ERROR, 
- gaae: gram:00031672:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00031673:  errmsg("wrong number of parameters on right side of OVERLAPS expression"), 
- gaae: gram:00031674:  scanner_errposition(location))); 
- gaae: gram:00031777:  ereport(ERROR, 
- gaae: gram:00031778:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00031779:  errmsg("multiple ORDER BY clauses not allowed"), 
- gaae: gram:00031780:  scanner_errposition(exprLocation((Node *) sortClause)))); 
- gaae: gram:00031788:  ereport(ERROR, 
- gaae: gram:00031789:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00031790:  errmsg("multiple OFFSET clauses not allowed"), 
- gaae: gram:00031791:  scanner_errposition(exprLocation(limitOffset)))); 
- gaae: gram:00031797:  ereport(ERROR, 
- gaae: gram:00031798:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00031799:  errmsg("multiple LIMIT clauses not allowed"), 
- gaae: gram:00031800:  scanner_errposition(exprLocation(limitCount)))); 
- gaae: gram:00031807:  ereport(ERROR, 
- gaae: gram:00031808:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00031809:  errmsg("multiple WITH clauses not allowed"))); 
- gaae: gram:00031953:  ereport(ERROR, 
- gaae: gram:00031954:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00031955:  errmsg("OUT and INOUT arguments aren't allowed in " 
- gaae: gram:00031956:  "TABLE functions"))); 
+ gaae: gram:00018333:  ereport(ERROR, 
+ gaae: gram:00018334:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00018335:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"), 
+ gaae: gram:00018336:  scanner_errposition((yylsp[0])))); 
+ gaae: gram:00018348:  ereport(ERROR, 
+ gaae: gram:00018349:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00018350:  errmsg("INTERVAL(%d) precision must not be negative", (yyvsp[-3].ival)), 
+ gaae: gram:00018351:  scanner_errposition((yylsp[-3])))); 
+ gaae: gram:00018354:  ereport(WARNING, 
+ gaae: gram:00018355:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00018356:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00018357:  (yyvsp[-3].ival), MAX_INTERVAL_PRECISION))); 
+ gaae: gram:00018363:  ereport(ERROR, 
+ gaae: gram:00018364:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00018365:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"))); 
+ gaae: gram:00019048:  ereport(ERROR, 
+ gaae: gram:00019049:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00019050:  errmsg("Cannot specify a name, rank, " 
+ gaae: gram:00019051:  "or value for a DEFAULT partition " 
+ gaae: gram:00019052:  "in this context"))); 
+ gaae: gram:00019116:  ereport(ERROR, 
+ gaae: gram:00019117:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00019118:  errmsg("Can only ADD a partition by name"), 
+ gaae: gram:00019119:  errOmitLocation(true))); 
+ gaae: gram:00019157:  ereport(ERROR, 
+ gaae: gram:00019158:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00019159:  errmsg("Can only ADD a partition by name"))); 
+ gaae: gram:00019236:  ereport(ERROR, 
+ gaae: gram:00019237:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00019238:  errmsg("Can only COALESCE a partition by name"))); 
+ gaae: gram:00019502:  ereport(ERROR, 
+ gaae: gram:00019503:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00019504:  errmsg("template cannot contain " 
+ gaae: gram:00019505:  "specification for child " 
+ gaae: gram:00019506:  "partition"))); 
+ gaae: gram:00020455:  ereport(ERROR, 
+ gaae: gram:00020456:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00020457:  errmsg("MATCH PARTIAL not yet implemented"), 
+ gaae: gram:00020458:  scanner_errposition((yylsp[-1])))); 
+ gaae: gram:00020640:  ereport(ERROR, 
+ gaae: gram:00020641:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00020642:  errmsg("TABLESPACE not supported"), 
+ gaae: gram:00020643:  scanner_errposition((yylsp[-3])))); 
+ gaae: gram:00020662:  ereport(ERROR, 
+ gaae: gram:00020663:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00020664:  errmsg("TABLESPACE not supported"), 
+ gaae: gram:00020665:  scanner_errposition((yylsp[-1])))); 
+ gaae: gram:00020684:  ereport(ERROR, 
+ gaae: gram:00020685:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00020686:  errmsg("TABLESPACE not supported"), 
+ gaae: gram:00020687:  scanner_errposition((yylsp[-1])))); 
+ gaae: gram:00021185:  ereport(ERROR, 
+ gaae: gram:00021186:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00021187:  errmsg("PARTITION BY must specify RANGE or LIST"), 
+ gaae: gram:00021188:  errOmitLocation(true))); 
+ gaae: gram:00021234:  ereport(ERROR, 
+ gaae: gram:00021235:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00021236:  errmsg("PARTITION BY must specify RANGE or LIST"))); 
+ gaae: gram:00021238:  ereport(ERROR, 
+ gaae: gram:00021239:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00021240:  errmsg("PARTITION BY must specify RANGE, HASH, or LIST"))); 
+ gaae: gram:00021296:  ereport(ERROR, 
+ gaae: gram:00021297:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00021298:  errmsg("template cannot contain " 
+ gaae: gram:00021299:  "specification for child " 
+ gaae: gram:00021300:  "partition"), 
+ gaae: gram:00021301:  errOmitLocation(true))); 
+ gaae: gram:00021394:  ereport(ERROR, 
+ gaae: gram:00021395:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00021396:  errmsg("CREATE TABLE AS cannot specify INTO"), 
+ gaae: gram:00021397:  scanner_errposition(exprLocation((Node *) n->intoClause)))); 
+ gaae: gram:00021406:  ereport(ERROR, 
+ gaae: gram:00021407:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00021408:  errmsg("Cannot create a partitioned table using CREATE TABLE AS SELECT"), 
+ gaae: gram:00021409:  errhint("Use CREATE TABLE...LIKE (followed by INSERT...SELECT) instead"), 
+ gaae: gram:00021410:  errOmitLocation(true))); 
+ gaae: gram:00021520:  ereport(ERROR, 
+ gaae: gram:00021521:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00021522:  errmsg("EXECUTE may not be used with a regular external table"), 
+ gaae: gram:00021523:  errhint("Use CREATE EXTERNAL WEB TABLE instead"), 
+ gaae: gram:00021524:  errOmitLocation(true))); 
+ gaae: gram:00021534:  ereport(ERROR, 
+ gaae: gram:00021535:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00021536:  errmsg("ON clause may not be used with a writable external table"), 
+ gaae: gram:00021537:  errOmitLocation(true))); 
+ gaae: gram:00021542:  ereport(ERROR, 
+ gaae: gram:00021543:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00021544:  errmsg("Single row error handling may not be used with a writable external table"))); 
+ gaae: gram:00021801:  ereport(ERROR, 
+ gaae: gram:00021802:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00021803:  errmsg("invalid PERCENT value. Should be (1 - 100)"))); 
+ gaae: gram:00021807:  ereport(ERROR, 
+ gaae: gram:00021808:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00021809:  errmsg("invalid (ROWS) reject limit. Should be 2 or larger"))); 
+ gaae: gram:00022763:  ereport(ERROR, 
+ gaae: gram:00022764:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00022765:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"), 
+ gaae: gram:00022766:  scanner_errposition((yylsp[-1])))); 
+ gaae: gram:00022785:  ereport(ERROR, 
+ gaae: gram:00022786:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00022787:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"), 
+ gaae: gram:00022788:  scanner_errposition((yylsp[-1])))); 
+ gaae: gram:00022854:  ereport(ERROR, 
+ gaae: gram:00022855:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00022856:  errmsg("CREATE ASSERTION is not yet implemented"))); 
+ gaae: gram:00022870:  ereport(ERROR, 
+ gaae: gram:00022871:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00022872:  errmsg("DROP ASSERTION is not yet implemented"))); 
+ gaae: gram:00022973:  ereport(ERROR, 
+ gaae: gram:00022974:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00022975:  errmsg("improper qualified name (too many dotted names): %s", 
+ gaae: gram:00022976:  NameListToString((yyvsp[-4].list))), 
+ gaae: gram:00022977:  scanner_errposition((yylsp[-4])))); 
+ gaae: gram:00024648:  ereport(ERROR, 
+ gaae: gram:00024649:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00024650:  errmsg("missing argument"), 
+ gaae: gram:00024651:  errhint("Use NONE to denote the missing argument of a unary operator."), 
+ gaae: gram:00024652:  errOmitLocation(true), 
+ gaae: gram:00024653:  scanner_errposition((yylsp[0])))); 
+ gaae: gram:00025599:  ereport(ERROR, 
+ gaae: gram:00025600:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00025601:  errmsg("WITH CHECK OPTION is not implemented"))); 
+ gaae: gram:00025608:  ereport(ERROR, 
+ gaae: gram:00025609:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00025610:  errmsg("WITH CHECK OPTION is not implemented"))); 
+ gaae: gram:00025617:  ereport(ERROR, 
+ gaae: gram:00025618:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00025619:  errmsg("WITH CHECK OPTION is not implemented"))); 
+ gaae: gram:00026069:  ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00026070:  errmsg("cannot use force with explain statement") 
+ gaae: gram:00026071:  )); 
+ gaae: gram:00026080:  ereport(ERROR, 
+ gaae: gram:00026081:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00026082:  errmsg("cannot EXPLAIN CREATE TABLE without AS " 
+ gaae: gram:00026083:  "clause"))); 
+ gaae: gram:00026148:  ereport(ERROR, 
+ gaae: gram:00026149:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00026150:  errmsg("column name list not allowed in CREATE TABLE / AS EXECUTE"))); 
+ gaae: gram:00026415:  ereport(ERROR, 
+ gaae: gram:00026416:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00026417:  errmsg("number of columns does not match number of values"), 
+ gaae: gram:00026418:  scanner_errposition((yylsp[-4])))); 
+ gaae: gram:00026896:  ereport(ERROR, 
+ gaae: gram:00026897:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00026898:  errmsg("LIMIT #,# syntax is not supported"), 
+ gaae: gram:00026899:  errhint("Use separate LIMIT and OFFSET clauses."), 
+ gaae: gram:00026900:  scanner_errposition((yylsp[-3])))); 
+ gaae: gram:00027480:  ereport(ERROR, 
+ gaae: gram:00027481:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00027482:  errmsg("VALUES in FROM must have an alias"), 
+ gaae: gram:00027483:  errhint("For example, FROM (VALUES ...) [AS] foo."), 
+ gaae: gram:00027484:  scanner_errposition((yylsp[0])))); 
+ gaae: gram:00027486:  ereport(ERROR, 
+ gaae: gram:00027487:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00027488:  errmsg("subquery in FROM must have an alias"), 
+ gaae: gram:00027489:  errhint("For example, FROM (SELECT ...) [AS] foo."), 
+ gaae: gram:00027490:  scanner_errposition((yylsp[0])))); 
+ gaae: gram:00027874:  ereport(ERROR, 
+ gaae: gram:00027875:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00027876:  errmsg("INTERVAL(%d) precision must not be negative", (yyvsp[-2].ival)), 
+ gaae: gram:00027877:  scanner_errposition((yylsp[-2])))); 
+ gaae: gram:00027880:  ereport(WARNING, 
+ gaae: gram:00027881:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00027882:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00027883:  (yyvsp[-2].ival), MAX_INTERVAL_PRECISION), 
+ gaae: gram:00027884:  scanner_errposition((yylsp[-2])))); 
+ gaae: gram:00028030:  ereport(ERROR, 
+ gaae: gram:00028031:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028032:  errmsg("precision for type float must be at least 1 bit"), 
+ gaae: gram:00028033:  scanner_errposition((yylsp[-1])))); 
+ gaae: gram:00028039:  ereport(ERROR, 
+ gaae: gram:00028040:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028041:  errmsg("precision for type float must be less than 54 bits"), 
+ gaae: gram:00028042:  scanner_errposition((yylsp[-1])))); 
+ gaae: gram:00028057:  ereport(ERROR, 
+ gaae: gram:00028058:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028059:  errmsg("NUMERIC precision %d must be between 1 and %d", 
+ gaae: gram:00028060:  (yyvsp[-3].ival), NUMERIC_MAX_PRECISION))); 
+ gaae: gram:00028062:  ereport(ERROR, 
+ gaae: gram:00028063:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028064:  errmsg("NUMERIC scale %d must be between 0 and precision %d", 
+ gaae: gram:00028065:  (yyvsp[-1].ival), (yyvsp[-3].ival)))); 
+ gaae: gram:00028075:  ereport(ERROR, 
+ gaae: gram:00028076:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028077:  errmsg("NUMERIC precision %d must be between 1 and %d", 
+ gaae: gram:00028078:  (yyvsp[-1].ival), NUMERIC_MAX_PRECISION))); 
+ gaae: gram:00028096:  ereport(ERROR, 
+ gaae: gram:00028097:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028098:  errmsg("DECIMAL precision %d must be between 1 and %d", 
+ gaae: gram:00028099:  (yyvsp[-3].ival), NUMERIC_MAX_PRECISION))); 
+ gaae: gram:00028101:  ereport(ERROR, 
+ gaae: gram:00028102:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028103:  errmsg("DECIMAL scale %d must be between 0 and precision %d", 
+ gaae: gram:00028104:  (yyvsp[-1].ival), (yyvsp[-3].ival)))); 
+ gaae: gram:00028114:  ereport(ERROR, 
+ gaae: gram:00028115:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028116:  errmsg("DECIMAL precision %d must be between 1 and %d", 
+ gaae: gram:00028117:  (yyvsp[-1].ival), NUMERIC_MAX_PRECISION))); 
+ gaae: gram:00028168:  ereport(ERROR, 
+ gaae: gram:00028169:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028170:  errmsg("length for type %s must be at least 1", 
+ gaae: gram:00028171:  typname))); 
+ gaae: gram:00028173:  ereport(ERROR, 
+ gaae: gram:00028174:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028175:  errmsg("length for type %s cannot exceed %d", 
+ gaae: gram:00028176:  typname, MaxAttrSize * BITS_PER_BYTE))); 
+ gaae: gram:00028251:  ereport(ERROR, 
+ gaae: gram:00028252:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028253:  errmsg("length for type %s must be at least 1", 
+ gaae: gram:00028254:  (yyvsp[-4].str)))); 
+ gaae: gram:00028256:  ereport(ERROR, 
+ gaae: gram:00028257:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028258:  errmsg("length for type %s cannot exceed %d", 
+ gaae: gram:00028259:  (yyvsp[-4].str), MaxAttrSize))); 
+ gaae: gram:00028356:  ereport(ERROR, 
+ gaae: gram:00028357:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028358:  errmsg("TIMESTAMP(%d)%s precision must not be negative", 
+ gaae: gram:00028359:  (yyvsp[-2].ival), ((yyvsp[0].boolean) ? " WITH TIME ZONE": "")))); 
+ gaae: gram:00028362:  ereport(WARNING, 
+ gaae: gram:00028363:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028364:  errmsg("TIMESTAMP(%d)%s precision reduced to maximum allowed, %d", 
+ gaae: gram:00028365:  (yyvsp[-2].ival), ((yyvsp[0].boolean) ? " WITH TIME ZONE": ""), 
+ gaae: gram:00028366:  MAX_TIMESTAMP_PRECISION))); 
+ gaae: gram:00028397:  ereport(ERROR, 
+ gaae: gram:00028398:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028399:  errmsg("TIME(%d)%s precision must not be negative", 
+ gaae: gram:00028400:  (yyvsp[-2].ival), ((yyvsp[0].boolean) ? " WITH TIME ZONE": "")))); 
+ gaae: gram:00028403:  ereport(WARNING, 
+ gaae: gram:00028404:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028405:  errmsg("TIME(%d)%s precision reduced to maximum allowed, %d", 
+ gaae: gram:00028406:  (yyvsp[-2].ival), ((yyvsp[0].boolean) ? " WITH TIME ZONE": ""), 
+ gaae: gram:00028407:  MAX_TIME_PRECISION))); 
+ gaae: gram:00029039:  ereport(ERROR, 
+ gaae: gram:00029040:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00029041:  errmsg("UNIQUE predicate is not yet implemented"), 
+ gaae: gram:00029042:  scanner_errposition((yylsp[-1])))); 
+ gaae: gram:00029170:  ereport(ERROR, 
+ gaae: gram:00029171:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00029172:  errmsg("window OVER clause can only be used " 
+ gaae: gram:00029173:  "with an aggregate"))); 
+ gaae: gram:00029456:  ereport(ERROR, 
+ gaae: gram:00029457:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00029458:  errmsg("CURRENT_TIME(%d) precision must not be negative", 
+ gaae: gram:00029459:  (yyvsp[-1].ival)))); 
+ gaae: gram:00029462:  ereport(WARNING, 
+ gaae: gram:00029463:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00029464:  errmsg("CURRENT_TIME(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00029465:  (yyvsp[-1].ival), MAX_TIME_PRECISION))); 
+ gaae: gram:00029508:  ereport(ERROR, 
+ gaae: gram:00029509:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00029510:  errmsg("CURRENT_TIMESTAMP(%d) precision must not be negative", 
+ gaae: gram:00029511:  (yyvsp[-1].ival)))); 
+ gaae: gram:00029514:  ereport(WARNING, 
+ gaae: gram:00029515:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00029516:  errmsg("CURRENT_TIMESTAMP(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00029517:  (yyvsp[-1].ival), MAX_TIMESTAMP_PRECISION))); 
+ gaae: gram:00029561:  ereport(ERROR, 
+ gaae: gram:00029562:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00029563:  errmsg("LOCALTIME(%d) precision must not be negative", 
+ gaae: gram:00029564:  (yyvsp[-1].ival)))); 
+ gaae: gram:00029567:  ereport(WARNING, 
+ gaae: gram:00029568:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00029569:  errmsg("LOCALTIME(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00029570:  (yyvsp[-1].ival), MAX_TIME_PRECISION))); 
+ gaae: gram:00029615:  ereport(ERROR, 
+ gaae: gram:00029616:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00029617:  errmsg("LOCALTIMESTAMP(%d) precision must not be negative", 
+ gaae: gram:00029618:  (yyvsp[-1].ival)))); 
+ gaae: gram:00029621:  ereport(WARNING, 
+ gaae: gram:00029622:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00029623:  errmsg("LOCALTIMESTAMP(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00029624:  (yyvsp[-1].ival), MAX_TIMESTAMP_PRECISION))); 
+ gaae: gram:00030589:  ereport(ERROR, 
+ gaae: gram:00030590:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00030591:  errmsg("improper qualified name (too many dotted names): %s", 
+ gaae: gram:00030592:  NameListToString(lcons(makeString((yyvsp[-1].str)), (yyvsp[0].list)))))); 
+ gaae: gram:00030746:  ereport(ERROR, 
+ gaae: gram:00030747:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00030748:  errmsg("INTERVAL(%d) precision must not be negative", 
+ gaae: gram:00030749:  (yyvsp[-3].ival)))); 
+ gaae: gram:00030752:  ereport(WARNING, 
+ gaae: gram:00030753:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00030754:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00030755:  (yyvsp[-3].ival), MAX_INTERVAL_PRECISION))); 
+ gaae: gram:00030908:  ereport(ERROR, 
+ gaae: gram:00030909:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00030910:  errmsg("OLD used in query that is not in a rule"))); 
+ gaae: gram:00030920:  ereport(ERROR, 
+ gaae: gram:00030921:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00030922:  errmsg("NEW used in query that is not in a rule"))); 
+ gaae: gram:00031372:  ereport(ERROR, 
+ gaae: gram:00031373:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00031374:  errmsg("wrong number of parameters on left side of OVERLAPS expression"), 
+ gaae: gram:00031375:  scanner_errposition(location))); 
+ gaae: gram:00031379:  ereport(ERROR, 
+ gaae: gram:00031380:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00031381:  errmsg("wrong number of parameters on right side of OVERLAPS expression"), 
+ gaae: gram:00031382:  scanner_errposition(location))); 
+ gaae: gram:00031485:  ereport(ERROR, 
+ gaae: gram:00031486:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00031487:  errmsg("multiple ORDER BY clauses not allowed"), 
+ gaae: gram:00031488:  scanner_errposition(exprLocation((Node *) sortClause)))); 
+ gaae: gram:00031496:  ereport(ERROR, 
+ gaae: gram:00031497:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00031498:  errmsg("multiple OFFSET clauses not allowed"), 
+ gaae: gram:00031499:  scanner_errposition(exprLocation(limitOffset)))); 
+ gaae: gram:00031505:  ereport(ERROR, 
+ gaae: gram:00031506:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00031507:  errmsg("multiple LIMIT clauses not allowed"), 
+ gaae: gram:00031508:  scanner_errposition(exprLocation(limitCount)))); 
+ gaae: gram:00031515:  ereport(ERROR, 
+ gaae: gram:00031516:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00031517:  errmsg("multiple WITH clauses not allowed"))); 
+ gaae: gram:00031661:  ereport(ERROR, 
+ gaae: gram:00031662:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00031663:  errmsg("OUT and INOUT arguments aren't allowed in " 
+ gaae: gram:00031664:  "TABLE functions"))); 
  gaah: genfile:00000072:  ereport(ERROR, 
  gaah: genfile:00000073:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
  gaah: genfile:00000074:  (errmsg("reference to parent directory ("..") not allowed")))); 
@@ -11685,6 +11741,25 @@ select * from get_ereport order by 1;
  paba: postmaster:00002517:  errmsg("sorry, too many clients already"))); 
  paba: postmaster:00003231:  ereport(WARNING, 
  paba: postmaster:00003232:  (errmsg("pg_hba.conf not reloaded"))); 
+ paba: postmaster:00003274:  ereport(LOG, 
+ paba: postmaster:00003275:  (errmsg("received smart shutdown request"), 
+ paba: postmaster:00003276:  errSendAlert(true), 
+ paba: postmaster:00003277:  errOmitLocation(true))); 
+ paba: postmaster:00003295:  ereport(LOG, 
+ paba: postmaster:00003296:  (errmsg("received fast shutdown request"), 
+ paba: postmaster:00003297:  errSendAlert(true), 
+ paba: postmaster:00003298:  errOmitLocation(true))); 
+ paba: postmaster:00003319:  ereport(LOG, 
+ paba: postmaster:00003320:  (errmsg("received immediate shutdown request"), 
+ paba: postmaster:00003321:  errSendAlert(true), 
+ paba: postmaster:00003322:  errOmitLocation(true))); 
+ paba: postmaster:00003512:  ereport(LOG, 
+ paba: postmaster:00003513:  (errmsg("database system is ready to accept connections"), 
+ paba: postmaster:00003514:  errSendAlert(true), 
+ paba: postmaster:00003515:  errOmitLocation(true))); 
+ paba: postmaster:00003841:  ereport(LOG, 
+ paba: postmaster:00003842:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+ paba: postmaster:00004770:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
  paba: postmaster:00005354:  ereport(WARNING, 
  paba: postmaster:00005355:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
  paba: postmaster:00005356:  gai_strerror(ret)))); 
@@ -17716,75 +17791,75 @@ select * from get_ereport order by 1;
  xaae: xact:00000981:  "Only the single Writer qExec can do so. "), 
  xaae: xact:00000982:  errhint("This is most likely the result of a feature being turned " 
  xaae: xact:00000983:  "on that violates the single WRITER principle"))); 
- xaae: xact:00002411:  ereport(ERROR, 
- xaae: xact:00002412:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- xaae: xact:00002413:  errmsg("StartTransaction timed out waiting for Writer to set the shared snapshot."), 
- xaae: xact:00002414:  errdetail("We are waiting for the shared snapshot to have XID: %d/%u but the value " 
- xaae: xact:00002415:  "is currently: %d/%u. Our slotindex is: %d our writer-pid %d
+ xaae: xact:00002404:  ereport(ERROR, 
+ xaae: xact:00002405:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ xaae: xact:00002406:  errmsg("StartTransaction timed out waiting for Writer to set the shared snapshot."), 
+ xaae: xact:00002407:  errdetail("We are waiting for the shared snapshot to have XID: %d/%u but the value " 
+ xaae: xact:00002408:  "is currently: %d/%u. Our slotindex is: %d our writer-pid %d
  " 
- xaae: xact:00002416:  "DistributedTransactionContext = %s." 
- xaae: xact:00002417:  "Dump of all sharedsnapshots in shmem: %s", 
- xaae: xact:00002418:  QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync, 
- xaae: xact:00002419:  SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync, 
- xaae: xact:00002420:  SharedLocalSnapshotSlot->slotindex, (int)SharedLocalSnapshotSlot->pid, 
- xaae: xact:00002421:  DtxContextToString(DistributedTransactionContext), 
- xaae: xact:00002422:  SharedSnapshotDump()))); 
- xaae: xact:00003886:  ereport(ERROR, 
- xaae: xact:00003887:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00003888:  /* translator: %s represents an SQL statement name */ 
- xaae: xact:00003889:  errmsg("%s cannot run inside a transaction block", 
- xaae: xact:00003890:  stmtType), 
- xaae: xact:00003891:  errOmitLocation(true))); 
- xaae: xact:00003897:  ereport(ERROR, 
- xaae: xact:00003898:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00003899:  /* translator: %s represents an SQL statement name */ 
- xaae: xact:00003900:  errmsg("%s cannot run inside a subtransaction", 
- xaae: xact:00003901:  stmtType), 
- xaae: xact:00003902:  errOmitLocation(true))); 
- xaae: xact:00003910:  ereport(ERROR, 
- xaae: xact:00003911:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00003912:  /* translator: %s represents an SQL statement name */ 
- xaae: xact:00003913:  errmsg("%s cannot be executed from a function", stmtType), 
- xaae: xact:00003914:  errOmitLocation(true))); 
- xaae: xact:00003962:  ereport(ERROR, 
- xaae: xact:00003963:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00003964:  /* translator: %s represents an SQL statement name */ 
- xaae: xact:00003965:  errmsg("%s may only be used in transaction blocks", 
- xaae: xact:00003966:  stmtType))); 
- xaae: xact:00004202:  ereport(WARNING, 
- xaae: xact:00004203:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00004204:  errmsg("there is already a transaction in progress"))); 
- xaae: xact:00004376:  ereport(WARNING, 
- xaae: xact:00004377:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00004378:  errmsg("there is no transaction in progress"))); 
- xaae: xact:00004475:  ereport(WARNING, 
- xaae: xact:00004476:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00004477:  errmsg("there is no transaction in progress"))); 
- xaae: xact:00004604:  ereport(ERROR, 
- xaae: xact:00004605:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004606:  errmsg("no such savepoint"), 
- xaae: xact:00004607:  errOmitLocation(true))); 
- xaae: xact:00004688:  ereport(ERROR, 
- xaae: xact:00004689:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004690:  errmsg("no such savepoint"))); 
- xaae: xact:00004694:  ereport(ERROR, 
- xaae: xact:00004695:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004696:  errmsg("no such savepoint"))); 
- xaae: xact:00004738:  ereport(ERROR, 
- xaae: xact:00004739:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004740:  errmsg("no such savepoint"))); 
- xaae: xact:00004786:  ereport(ERROR, 
- xaae: xact:00004787:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004788:  errmsg("no such savepoint"))); 
- xaae: xact:00004792:  ereport(ERROR, 
- xaae: xact:00004793:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004794:  errmsg("no such savepoint"))); 
- xaae: xact:00005496:  ereport(ERROR, 
- xaae: xact:00005497:  (errcode(ERRCODE_GP_SUBTRANS_LIMIT_EXCEEDED), 
- xaae: xact:00005498:  errmsg("cannot have more than 100 subtransactions in a transaction"))); 
- xaae: xact:00005515:  ereport(ERROR, 
- xaae: xact:00005516:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- xaae: xact:00005517:  errmsg("cannot have more than 2^32-1 subtransactions in a transaction"))); 
+ xaae: xact:00002409:  "DistributedTransactionContext = %s." 
+ xaae: xact:00002410:  "Dump of all sharedsnapshots in shmem: %s", 
+ xaae: xact:00002411:  QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync, 
+ xaae: xact:00002412:  SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync, 
+ xaae: xact:00002413:  SharedLocalSnapshotSlot->slotindex, (int)SharedLocalSnapshotSlot->pid, 
+ xaae: xact:00002414:  DtxContextToString(DistributedTransactionContext), 
+ xaae: xact:00002415:  SharedSnapshotDump()))); 
+ xaae: xact:00003879:  ereport(ERROR, 
+ xaae: xact:00003880:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00003881:  /* translator: %s represents an SQL statement name */ 
+ xaae: xact:00003882:  errmsg("%s cannot run inside a transaction block", 
+ xaae: xact:00003883:  stmtType), 
+ xaae: xact:00003884:  errOmitLocation(true))); 
+ xaae: xact:00003890:  ereport(ERROR, 
+ xaae: xact:00003891:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00003892:  /* translator: %s represents an SQL statement name */ 
+ xaae: xact:00003893:  errmsg("%s cannot run inside a subtransaction", 
+ xaae: xact:00003894:  stmtType), 
+ xaae: xact:00003895:  errOmitLocation(true))); 
+ xaae: xact:00003903:  ereport(ERROR, 
+ xaae: xact:00003904:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00003905:  /* translator: %s represents an SQL statement name */ 
+ xaae: xact:00003906:  errmsg("%s cannot be executed from a function", stmtType), 
+ xaae: xact:00003907:  errOmitLocation(true))); 
+ xaae: xact:00003955:  ereport(ERROR, 
+ xaae: xact:00003956:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00003957:  /* translator: %s represents an SQL statement name */ 
+ xaae: xact:00003958:  errmsg("%s may only be used in transaction blocks", 
+ xaae: xact:00003959:  stmtType))); 
+ xaae: xact:00004195:  ereport(WARNING, 
+ xaae: xact:00004196:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00004197:  errmsg("there is already a transaction in progress"))); 
+ xaae: xact:00004369:  ereport(WARNING, 
+ xaae: xact:00004370:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00004371:  errmsg("there is no transaction in progress"))); 
+ xaae: xact:00004468:  ereport(WARNING, 
+ xaae: xact:00004469:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00004470:  errmsg("there is no transaction in progress"))); 
+ xaae: xact:00004597:  ereport(ERROR, 
+ xaae: xact:00004598:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004599:  errmsg("no such savepoint"), 
+ xaae: xact:00004600:  errOmitLocation(true))); 
+ xaae: xact:00004681:  ereport(ERROR, 
+ xaae: xact:00004682:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004683:  errmsg("no such savepoint"))); 
+ xaae: xact:00004687:  ereport(ERROR, 
+ xaae: xact:00004688:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004689:  errmsg("no such savepoint"))); 
+ xaae: xact:00004731:  ereport(ERROR, 
+ xaae: xact:00004732:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004733:  errmsg("no such savepoint"))); 
+ xaae: xact:00004779:  ereport(ERROR, 
+ xaae: xact:00004780:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004781:  errmsg("no such savepoint"))); 
+ xaae: xact:00004785:  ereport(ERROR, 
+ xaae: xact:00004786:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004787:  errmsg("no such savepoint"))); 
+ xaae: xact:00005489:  ereport(ERROR, 
+ xaae: xact:00005490:  (errcode(ERRCODE_GP_SUBTRANS_LIMIT_EXCEEDED), 
+ xaae: xact:00005491:  errmsg("cannot have more than 100 subtransactions in a transaction"))); 
+ xaae: xact:00005508:  ereport(ERROR, 
+ xaae: xact:00005509:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ xaae: xact:00005510:  errmsg("cannot have more than 2^32-1 subtransactions in a transaction"))); 
  xaae: xlog:00000719:  ereport(ERROR, 
  xaae: xlog:00000720:  (errmsg("Reader qExec had local changes to commit! (rmid = %u)", 
  xaae: xlog:00000721:  rmid), 
@@ -18057,6 +18132,18 @@ select * from get_ereport order by 1;
  xaae: xlog:00005733:  RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE))); 
  xaae: xlog:00006014:  ereport(FATAL, 
  xaae: xlog:00006015:  (errmsg("control file contains invalid data"))); 
+ xaae: xlog:00006026:  ereport(LOG, 
+ xaae: xlog:00006027:  (errmsg("database system was interrupted while in recovery at %s", 
+ xaae: xlog:00006028:  str_time(ControlFile->time)), 
+ xaae: xlog:00006029:  errhint("This probably means that some data is corrupted and" 
+ xaae: xlog:00006030:  " you will have to use the last backup for recovery."), 
+ xaae: xlog:00006031:  errSendAlert(true))); 
+ xaae: xlog:00006033:  ereport(LOG, 
+ xaae: xlog:00006034:  (errmsg("database system was interrupted while in recovery at log time %s", 
+ xaae: xlog:00006035:  str_time(ControlFile->checkPointCopy.time)), 
+ xaae: xlog:00006036:  errhint("If this has occurred more than once some data may be corrupted" 
+ xaae: xlog:00006037:  " and you may need to choose an earlier recovery target."), 
+ xaae: xlog:00006038:  errSendAlert(true))); 
  xaae: xlog:00006078:  ereport(FATAL, 
  xaae: xlog:00006079:  (errmsg("requested timeline %u is not a child of database system timeline %u", 
  xaae: xlog:00006080:  recoveryTargetTLI, 
@@ -18093,6 +18180,9 @@ select * from get_ereport order by 1;
  xaae: xlog:00007016:  ereport(ERROR, 
  xaae: xlog:00007017:  (errmsg("%s: first redo record before checkpoint not found at %s", 
  xaae: xlog:00007018:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
+ xaae: xlog:00007562:  ereport(LOG, 
+ xaae: xlog:00007563:  (errmsg("database system is shut down"), 
+ xaae: xlog:00007564:  errSendAlert(true),errOmitLocation(true))); 
  xaae: xlog:00008353:  ereport(ERROR, 
  xaae: xlog:00008354:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
  xaae: xlog:00008355:  (errmsg("must be superuser to run a backup")))); 
@@ -18200,6 +18290,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000076:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000077:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000078:  str))); 
-(18133 rows)
+(18223 rows)
 
 drop external table get_ereport;

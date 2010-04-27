@@ -178,22 +178,61 @@ if (1)
 		
 		my $fh;
 
+        # $$$ $$$ undefine input record separator (\n")
+        # and slurp entire file into variable
+
+        local $/;
+        undef $/;
+
 		open ($fh, "<$filnam") or die "can't open $filnam: $!";
+
+		my $whole_file = <$fh>;
+
+		close $fh;
+
+		# split file into separate lines
+		my @lines = split(/\n/, $whole_file);
 
 		$linecnt = 1;
 
 		my $orig_filnam = $filnam;
 
-		for (<$fh>)
+		for my $ii (0..(scalar(@lines) - 1) )
 		{
-			my $ini = $_;
+			my $ini = $lines[$ii] . "\n"; # add the newline back...
 
-			if (($ini =~ m/ereport/)
-				&& ($ini =~ m/ereport\s*\(\s*(ERROR|WARNING|NOTICE|FATAL)\,/))
+			if ($ini =~ m/ereport/)
 			{
-				$gotmsg = 1;
-				$msgcnt++;
-				$totmsgcnt++;
+			   if ($ini =~ m/ereport\s*\(\s*(ERROR|WARNING|NOTICE|FATAL)\,/)
+			   {
+				   $gotmsg = 1;
+				   $msgcnt++;
+				   $totmsgcnt++;
+			   }
+			   else
+			   {
+				   # check for errSendAlert in next 10 lines
+				   
+				   my $lookahead = (scalar(@lines) - 1);
+
+				   $lookahead = $ii + 10
+					   if (($lookahead - $ii) > 10);
+
+				   for my $jj ($ii..$lookahead)
+				   {
+					   my $l2 = $lines[$jj];
+
+					   if ($l2 =~ m/errSendAlert\(\s*true\s*\)/)
+					   {
+						   $gotmsg = 1;
+						   $msgcnt++;
+						   $totmsgcnt++;
+						   last;
+					   }
+					   last # check for semicolon ending statement
+						   if ($l2 =~ m/\;/);
+				   }
+			   }
 			}
 
 			if ($gotmsg)
@@ -280,7 +319,6 @@ if (1)
 			$linecnt++;
 		}
 
-		close $fh;
 		if ($msgcnt)
 		{
 			print "\n", $orig_filnam, ":  ", $msgcnt, " messages\n\n"
