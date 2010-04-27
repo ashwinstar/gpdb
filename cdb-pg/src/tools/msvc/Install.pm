@@ -38,7 +38,8 @@ sub Install
 
     my $target = shift;
     our $config;
-    require 'config.pl';
+    require "config_default.pl";
+    require "config.pl" if (-f "config.pl");
 
     chdir("../../..") if (-f "../../../configure");
     chdir("../../../..") if (-f "../../../../configure");
@@ -259,7 +260,8 @@ sub GenerateTsearchFiles
         my $txt = $tmpl;
         my $stop = '';
 
-        if (-s "src/backend/snowball/stopwords/$lang.stop") {
+        if (-s "src/backend/snowball/stopwords/$lang.stop")
+        {
             $stop = ", StopWords=$lang";
         }
 
