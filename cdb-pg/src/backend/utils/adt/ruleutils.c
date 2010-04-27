@@ -5527,14 +5527,14 @@ quote_identifier(const char *ident)
  * is NULL, quoting each component if necessary.  The result is palloc'd.
  */
 char *
-quote_qualified_identifier(const char *namespace,
+quote_qualified_identifier(const char *qualifier,
 						   const char *ident)
 {
 	StringInfoData buf;
 
 	initStringInfo(&buf);
-	if (namespace)
-		appendStringInfo(&buf, "%s.", quote_identifier(namespace));
+	if (qualifier)
+		appendStringInfo(&buf, "%s.", quote_identifier(qualifier));
 	appendStringInfoString(&buf, quote_identifier(ident));
 	return buf.data;
 }
