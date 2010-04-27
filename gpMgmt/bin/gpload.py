@@ -702,7 +702,7 @@ def bytestr(size, precision=1):
 
 class CatThread(threading.Thread):
     """
-    Simply threading wrapper to read a file descriptor and put the contents
+    Simple threading wrapper to read a file descriptor and put the contents
     in the log file.
 
     The fd is assumed to be stdout and stderr from gpfdist. We must use select.select
@@ -1408,17 +1408,17 @@ class gpload:
             Reading from stderr and stdout on a Popen object can result in a dead lock if done at the same time.
             Create a lock to share when reading stderr and stdout from gpfdist. 
             """
-            outputLock = threading.Lock()
+            readLock = threading.Lock()
 
             # get all the output from the daemon(s)
-            t = CatThread(self,a.stderr, outputLock)
+            t = CatThread(self,a.stderr, readLock)
             t.start()
             self.threads.append(t)
 
             while 1:
-                outputLock.acquire()
+                readLock.acquire()
                 line = a.stdout.readline()
-                outputLock.release()
+                readLock.release()
                 if line=='':
                     self.log(self.ERROR,'failed to start gpfdist: ' +
                              'gpfdist command line: ' + ' '.join(popenList))
@@ -1434,7 +1434,7 @@ class gpload:
             if port in availablePorts:
                 availablePorts.remove(port)
             self.ports.append(port)
-            t = CatThread(self,a.stdout,outputLock)
+            t = CatThread(self,a.stdout,readLock)
             t.start()
             self.threads.append(t)
 
