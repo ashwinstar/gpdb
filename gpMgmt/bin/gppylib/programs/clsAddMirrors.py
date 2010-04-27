@@ -18,7 +18,8 @@ from gppylib.programs import programIoUtils
 from gppylib.system import configurationInterface as configInterface
 from gppylib.system.environment import GpMasterEnvironment
 from gppylib.test.testUtils import *
-from gppylib.utils import toNonNoneString, checkNotNone, writeLinesToFile, readAllLinesFromFile, parseMirroringConfigFile
+from gppylib.utils import toNonNoneString, checkNotNone, writeLinesToFile, readAllLinesFromFile, \
+                    parseMirroringConfigFile, PathNormalizationException, normalizeAndValidateInputPath
 from lib import gpmlib
 from gppylib.gphostcache import GpInterfaceToHostNameCache
 
@@ -260,11 +261,12 @@ class GpAddMirrorsProgram:
             port = int(fixedValues['port'])
             replicationPort = int(fixedValues['replicationPort'])
             primarySegmentReplicationPort = int(fixedValues['primarySegmentReplicationPort'])
-            dataDir = fixedValues['dataDirectory']
+            dataDir = normalizeAndValidateInputPath( fixedValues['dataDirectory'], "in config file", row.getLine())
             hostName = interfaceLookup.getHostName(address)
             
             filespaceOidToPathMap = {}
             for fsName, path in flexibleValues.iteritems():
+                path = normalizeAndValidateInputPath( path, "in config file", row.getLine())
                 filespaceOidToPathMap[filespaceNameToFilespace[fsName].getOid()] = path
 
             primary = segsByContentId[contentId]
@@ -319,11 +321,6 @@ class GpAddMirrorsProgram:
         writeLinesToFile(self.__options.outputSampleConfigFile, lines)
 
     def __getDataDirectoriesForMirrors(self, maxPrimariesPerHost, gpArray):
-
-        def cleanPath(line):
-            (ok, out) = gpmlib.run('echo %s' % line)
-            return out[0].strip()
-
         dirs = []
         filespaceOidToPathMaps = []
         while len(filespaceOidToPathMaps) < maxPrimariesPerHost:
@@ -339,13 +336,13 @@ class GpAddMirrorsProgram:
             #
             # load from config file
             #
-            lines = readAllLinesFromFile(configFile)
+            lines = readAllLinesFromFile(configFile, stripLines=True, skipEmptyLines=True)
 
             labelOfPathsBeingRead = "data"
             index = 0
             fsOid = gparray.SYSTEM_FILESPACE
             enteredFilespaces = {}
-            for line in [s.strip() for s in lines]:
+            for line in lines:
                 if line.startswith("filespace "):
                     if index < maxPrimariesPerHost:
                         raise Exception('Number of %s directories must equal %d but %d were read from %s' % \
@@ -370,7 +367,7 @@ class GpAddMirrorsProgram:
                         raise Exception('Number of %s directories must equal %d but more were read from %s' % \
                             (labelOfPathsBeingRead, maxPrimariesPerHost, configFile))
 
-                    path = cleanPath(line)
+                    path = normalizeAndValidateInputPath(line, "config file")
                     if fsOid == gparray.SYSTEM_FILESPACE:
                         dirs.append(path)
                     else:
@@ -392,7 +389,11 @@ class GpAddMirrorsProgram:
                 print 'Enter mirror segment data directory location %d of %d >' % (len(dirs)+1, maxPrimariesPerHost)
                 line = sys.stdin.readline().strip()
                 if len(line) > 0:
-                    dirs.append(cleanPath(line))
+                    try:
+                        dirs.append(normalizeAndValidateInputPath(line))
+                    except PathNormalizationException, e:
+                        print "\n%s\n" % e
+
 
             for fs in gpArray.getFilespaces(False):
                 index = 0
@@ -401,8 +402,11 @@ class GpAddMirrorsProgram:
                                 (fs.getName(), index+1, maxPrimariesPerHost)
                     line = sys.stdin.readline().strip()
                     if len(line) > 0:
-                        filespaceOidToPathMaps[index][fs.getOid()] = cleanPath(line)
-                        index += 1
+                        try:
+                            filespaceOidToPathMaps[index][fs.getOid()] = normalizeAndValidateInputPath(line)
+                            index += 1
+                        except PathNormalizationException, e:
+                            print "\n%s\n" % e
 
         return (dirs, filespaceOidToPathMaps)
 
@@ -429,12 +433,14 @@ class GpAddMirrorsProgram:
         for mirToBuild in toBuild:
             # mirToBuild is a GpMirrorToBuild object
             mir = mirToBuild.getFailoverSegment()
-            dir = os.path.join(mir.getSegmentDataDirectory(), '%s%d' % (gpPrefix, mir.getSegmentContentId()))
-            mir.setSegmentDataDirectory(dir)
+
+            dataDir = utils.createSegmentSpecificPath(mir.getSegmentDataDirectory(), gpPrefix, mir)
+            mir.setSegmentDataDirectory(dataDir)
 
             fsMap = mir.getSegmentFilespaces()
             for oid, path in copy.copy(fsMap).iteritems():
-                fsMap[oid] = os.path.join(path, '%s%d' % (gpPrefix, mir.getSegmentContentId()))
+                fsMap[oid] = utils.createSegmentSpecificPath( path, gpPrefix, mir)
+            fsMap[gparray.SYSTEM_FILESPACE] = dataDir
 
         return GpMirrorListToBuild(toBuild, self.__pool, self.__options.quiet, self.__options.parallelDegree)
 

@@ -513,7 +513,10 @@ PersistentRecovery_ShouldHandlePass1XLogRec(
 		RelFileNode *xlogRelFileNode;
 
 		xlogRelFileNode = &relationChangeInfoArray[0].relFileNode;
-
+		
+		if(RelFileNode_IsEmpty(xlogRelFileNode))
+			elog(ERROR, "Invalid RelFileNode (0,0,0)");
+		
 		if (GpPersistent_IsPersistentRelation(xlogRelFileNode->relNode))
 		{
 			if (Debug_persistent_recovery_print)
@@ -1671,6 +1674,9 @@ PersistentRecovery_SerializeRedoRelationFile(
 		if (fsObjEntry == NULL)
 			break;
 
+		if (fsObjEntry->state == PersistentFileSysState_Free)
+			continue;
+
 		redoRelationEntryData.relFileNode = PersistentFileSysObjName_GetRelFileNode(&fsObjEntry->fsObjName);
 		redoRelationEntryData.persistentTid = fsObjEntry->key.persistentTid;
 		redoRelationEntryData.persistentSerialNum = fsObjEntry->persistentSerialNum;
@@ -1726,6 +1732,9 @@ PersistentRecovery_CreateRedoRelationEntry(
 	RedoRelationEntry createdEntry;
 
 	bool found;
+
+	if(RelFileNode_IsEmpty(&redoRelationEntry->relFileNode))
+		elog(ERROR, "Invalid RelFileNode (0,0,0)");
 
 	if (redoRelationHashTable == NULL)
 		PersistentRecovery_RedoRelationHashTableInit();
@@ -1824,8 +1833,13 @@ PersistentRecovery_DeserializeRedoRelationFile(
 			     redoRelationEntryData.persistentSerialNum,
 			     ItemPointerToString(&redoRelationEntryData.persistentTid));
 
-		if (Debug_enable_new_startup_pass)
-			PersistentRecovery_CreateRedoRelationEntry(&redoRelationEntryData);
+		if(RelFileNode_IsEmpty(&redoRelationEntryData.relFileNode))
+			elog(ERROR, "Invalid RelFileNode (0,0,0)");
+
+		if (!Debug_enable_new_startup_pass)
+			continue;	// UNDONE: Fow now, don't add the entry until we've moved to new Crash Recovery.
+
+		PersistentRecovery_CreateRedoRelationEntry(&redoRelationEntryData);
 	}
 	
 	if (Debug_persistent_recovery_print)
@@ -1844,6 +1858,9 @@ PersistentRecovery_RedoRelationExists(
 {
 	RedoRelationEntry redoRelationEntry;
 
+	if(RelFileNode_IsEmpty(relFileNode))
+		elog(ERROR, "Invalid RelFileNode (0,0,0)");
+	
 	redoRelationEntry = PersistentRecovery_FindRedoRelationEntry(relFileNode);
 	if (redoRelationEntry == NULL)
 	{

@@ -49,7 +49,9 @@ from gppylib.programs.clsAddMirrors import validateFlexibleHeadersListAllFilespa
 from gppylib.system import configurationInterface as configInterface
 from gppylib.system.environment import GpMasterEnvironment
 from gppylib.test.testUtils import *
-from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile, writeLinesToFile
+from lib import gpmlib
+from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile, writeLinesToFile, \
+                                PathNormalizationException, normalizeAndValidateInputPath
 from gppylib.gphostcache import GpInterfaceToHostNameCache
 
 logger = gplog.get_default_logger()
@@ -122,7 +124,7 @@ class GpRecoverSegmentProgram:
         filespaceNameToFilespace = dict([ (fs.getName(), fs) for fs in gpArray.getFilespaces(False)])
 
         allAddresses = [row.getFixedValuesMap()["newAddress"] for row in fileData.getRows()
-                                                if row.getFixedValuesMap()["newAddress"] is not None]
+                                                if "newAddress" in row.getFixedValuesMap()]
         allNoneArr = [None for a in allAddresses]
         interfaceLookup = GpInterfaceToHostNameCache(self.__pool, allAddresses, allNoneArr)
 
@@ -135,7 +137,8 @@ class GpRecoverSegmentProgram:
             # find the failed segment
             failedAddress = fixedValues['failedAddress']
             failedPort = fixedValues['failedPort']
-            failedDataDirectory = fixedValues['failedDataDirectory']
+            failedDataDirectory = normalizeAndValidateInputPath( fixedValues['failedDataDirectory'],
+                                                                        "config file", row.getLine())
             failedSegment = None
             for segment in gpArray.getDbList():
                 if segment.getSegmentAddress() == failedAddress and \
@@ -165,12 +168,16 @@ class GpRecoverSegmentProgram:
                     replicationPort = int(fixedValues["newReplicationPort"])
                 except ValueError:
                     raise Exception( 'Config file format error, invalid number value in line: %s' % (row.getLine()))
-                dataDirectory = fixedValues["newDataDirectory"]
+
+                dataDirectory = normalizeAndValidateInputPath(fixedValues["newDataDirectory"], "config file", row.getLine())
 
                 hostName = interfaceLookup.getHostName(address)
+                if hostName is None:
+                    raise Exception( 'Unable to find host name for address %s from line:%s' % (address, row.getLine()))
 
                 filespaceOidToPathMap = {}
                 for fsName, path in flexibleValues.iteritems():
+                    path = normalizeAndValidateInputPath(path, "config file", row.getLine())
                     filespaceOidToPathMap[filespaceNameToFilespace[fsName].getOid()] = path
 
                 # now update values in failover segment
@@ -209,7 +216,64 @@ class GpRecoverSegmentProgram:
                         (peer.getSegmentContentId(), getProgramName()))
         return peersForFailedSegments
 
-    def getRecoveryActionsFromConfiguration(self, gpArray):
+    def __outputSpareDataDirectoryFile( self, gpEnv, gpArray, outputFile):
+        lines=[fs.getName() + "=enterFilespacePath" for fs in gpArray.getFilespaces()]
+        lines.sort()
+        utils.writeLinesToFile(outputFile, lines)
+
+        logger.info("Wrote sample configuration file %s" % outputFile)
+        logger.info("MODIFY IT and then run with      gprecoverseg -s %s" % outputFile)
+
+    def __readSpareDirectoryMap(self, gpArray, spareDataDirectoryFile):
+        """
+        Read filespaceName=path configuration from spareDataDirectoryFile
+
+        File format should be in sync with format printed by __outputSpareDataDirectoryFile
+
+        @return a dictionary mapping filespace oid to path
+        """
+        filespaceNameToFilespace = dict([ (fs.getName(), fs) for fs in gpArray.getFilespaces()])
+
+        specifiedFilespaceNames = {}
+        fsOidToPath = {}
+        for line in utils.readAllLinesFromFile(spareDataDirectoryFile, skipEmptyLines=True, stripLines=True):
+            arr = line.split("=")
+            if len(arr) != 2:
+                raise Exception("Invalid line in spare directory configuration file: %s" % line)
+            fsName = arr[0]
+            path = arr[1]
+
+            if fsName in specifiedFilespaceNames:
+                raise Exception("Filespace %s has multiple entries in spare directory configuration file." % fsName )
+            specifiedFilespaceNames[fsName] = True
+
+            if fsName not in filespaceNameToFilespace:
+                raise Exception("Invalid filespace %s in spare directory configuration file." % fsName )
+            oid = filespaceNameToFilespace[fsName].getOid()
+
+            path = normalizeAndValidateInputPath(path, "config file" )
+
+            fsOidToPath[oid] = path
+
+        if len(fsOidToPath) != len(filespaceNameToFilespace):
+            raise Exception("Filespace configuration file only lists %s of needed %s filespace directories.  "
+                            "Use -S option to create sample input file." %
+                            (len(fsOidToPath), len(filespaceNameToFilespace)))
+        return fsOidToPath
+
+    def __applySpareDirectoryMapToSegment( self, gpEnv, gpArray, spareDirectoryMap, segment):
+        gpPrefix = gpmlib.get_gp_prefix(gpEnv.getMasterDataDir())
+        if not gpPrefix:
+            gpPrefix = 'gp-'
+
+        fsMap = segment.getSegmentFilespaces()
+        for oid, path in spareDirectoryMap.iteritems():
+            newPath = utils.createSegmentSpecificPath( path, gpPrefix, segment)
+            fsMap[oid] = newPath
+            if oid == gparray.SYSTEM_FILESPACE:
+                segment.setSegmentDataDirectory( newPath )
+
+    def getRecoveryActionsFromConfiguration(self, gpEnv, gpArray):
         """
         getRecoveryActionsFromConfiguration
 
@@ -224,6 +288,12 @@ class GpRecoverSegmentProgram:
         if newRecoverAddress is not None:
             interfaceLookup = GpInterfaceToHostNameCache(self.__pool, [newRecoverAddress], [None])
             newRecoverHost = interfaceLookup.getHostName(newRecoverAddress)
+            if newRecoverHost is None:
+                raise Exception( 'Unable to find host name for address %s' % (newRecoverAddress))
+
+        spareDirectoryMap = None
+        if self.__options.spareDataDirectoryFile is not None:
+            spareDirectoryMap = self.__readSpareDirectoryMap(gpArray, self.__options.spareDataDirectoryFile)
 
         forceFull = self.__options.forceFullResynchronization
         segs = []
@@ -240,11 +310,11 @@ class GpRecoverSegmentProgram:
                 failoverSegment.setSegmentHostName( newRecoverHost )
                 failoverSegment.setSegmentAddress( newRecoverAddress )
 
-            if self.__options.spareDataDirectory is not None:
+            if spareDirectoryMap is not None:
                 # these two lines make it so that failoverSegment points to the object that is registered in gparray
                 failoverSegment = failedSegment
                 failedSegment = failoverSegment.copy()
-                failoverSegment.setSegmentDataDirectory( self.__options.spareDataDirectory )
+                self.__applySpareDirectoryMapToSegment( gpEnv, gpArray, spareDirectoryMap, failoverSegment)
 
             segs.append( GpMirrorToBuild(failedSegment, liveSegment, failoverSegment, forceFull ))
 
@@ -477,11 +547,11 @@ class GpRecoverSegmentProgram:
 
         return 0
 
-    def getRecoveryActionsBasedOnOptions(self, gpArray):
+    def getRecoveryActionsBasedOnOptions(self, gpEnv, gpArray):
         if self.__options.recoveryConfigFile is not None:
             return self.getRecoveryActionsFromConfigFile(gpArray)
         else:
-            return self.getRecoveryActionsFromConfiguration(gpArray)
+            return self.getRecoveryActionsFromConfiguration(gpEnv, gpArray)
 
     def displayRecovery(self, mirrorBuilder, gpArray):
         logger.info('Greenplum instance recovery parameters')
@@ -490,15 +560,15 @@ class GpRecoverSegmentProgram:
         if self.__options.recoveryConfigFile:
             logger.info('Recovery from configuration -i option supplied')
         elif self.__options.newRecoverHost is not None:
-            logger.info('Recovery type             = Pool Host')
-            logger.info('Pool host for recovery    = %s' % self.__options.newRecoverHost)
+            logger.info('Recovery type              = Pool Host')
+            logger.info('Pool host for recovery     = %s' % self.__options.newRecoverHost)
             type_text = 'Pool    '
-        elif self.__options.spareDataDirectory is not None:
-            logger.info('Recovery type             = Pool Directory')
-            logger.info('Mirror pool directory     = %s' % self.__options.spareDataDirectory)
+        elif self.__options.spareDataDirectoryFile is not None:
+            logger.info('Recovery type              = Pool Directory')
+            logger.info('Mirror pool directory file = %s' % self.__options.spareDataDirectoryFile)
             type_text = 'Pool dir'
         else:
-            logger.info('Recovery type             = Standard')
+            logger.info('Recovery type              = Standard')
             type_text = 'Failed  '
 
         count = 0
@@ -538,9 +608,11 @@ class GpRecoverSegmentProgram:
         optionCnt = 0
         if self.__options.newRecoverHost is not None:
             optionCnt += 1
-        if self.__options.spareDataDirectory is not None:
+        if self.__options.spareDataDirectoryFile is not None:
             optionCnt += 1
         if self.__options.recoveryConfigFile is not None:
+            optionCnt += 1
+        if self.__options.outputSpareDataDirectoryFile is not None:
             optionCnt += 1
         if optionCnt > 1:
             raise ProgramArgumentValidationException(\
@@ -567,10 +639,14 @@ class GpRecoverSegmentProgram:
 
             # We have phys-rep/filerep mirrors.
 
+            if self.__options.outputSpareDataDirectoryFile is not None:
+                self.__outputSpareDataDirectoryFile(gpEnv, gpArray, self.__options.outputSpareDataDirectoryFile)
+                return 0
+
             faultProber.pauseFaultProber()
 
             # figure out what needs to be done
-            mirrorBuilder = self.getRecoveryActionsBasedOnOptions(gpArray)
+            mirrorBuilder = self.getRecoveryActionsBasedOnOptions(gpEnv, gpArray)
 
             if self.__options.outputSampleConfigFile is not None:
                 # just output config file and done
@@ -641,9 +717,13 @@ class GpRecoverSegmentProgram:
                             metavar="<targetHost>",
                             help="Spare new host to which to recover segments")
         addTo.add_option("-s", None, type="string",
-                            dest="spareDataDirectory", 
-                            metavar="<targetDirectory>",
-                            help="Spare data directories on current hosts")
+                            dest="spareDataDirectoryFile",
+                            metavar="<spareDataDirectoryFile>",
+                            help="File listing spare data directories (in filespaceName=path format) on current hosts")
+        addTo.add_option("-S", None, type="string",
+                            dest="outputSpareDataDirectoryFile",
+                            metavar="<outputSpareDataDirectoryFile>",
+                            help="Write a sample file to be modified for use by -s <spareDirectoryFile> option")
 
         addTo = OptionGroup(parser, "Recovery Options")
         parser.add_option_group(addTo)

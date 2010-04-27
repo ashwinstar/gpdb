@@ -758,15 +758,11 @@ void PersistentRelation_MarkBufPoolRelationPhysicallyTruncated(
 		elog(ERROR, "Persistent '%s' serial number for mark physcially truncated is invalid (0)",
 			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName));
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
-	
 	PersistentFileSysObj_MarkBufPoolRelationPhysicallyTruncated(
 										&fsObjName,
 										persistentTid,
 										persistentSerialNum,
 										/* flushToXlog */ true);
-
-	LWLockRelease(PersistentObjLock);
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 

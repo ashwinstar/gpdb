@@ -66,12 +66,24 @@ def isNone( value):
         isN= True
     return isN 
 
-def readAllLinesFromFile(fileName):
+def readAllLinesFromFile(fileName, stripLines=False, skipEmptyLines=False):
+    """
+    @param stripLines if true then line.strip() is called on each line read
+    @param skipEmptyLines if true then empty lines are not returned.  Beware!  This will throw off your line counts
+                             if you are relying on line counts
+    """
     res = []
     f = open(fileName)
     try:
         for line in f:
-            res.append(line)
+            if stripLines:
+                line = line.strip()
+
+            if skipEmptyLines and len(line) == 0:
+                # skip it!
+                pass
+            else:
+                res.append(line)
     finally:
         f.close()
     return res
@@ -504,7 +516,9 @@ def parseMirroringConfigFile( lines, fileLabelForExceptions, fixedHeaderNames, k
         if len(flexHeaderLineSplit) != 2 or flexHeaderLineSplit[0] != keyForFlexibleHeaders:
             raise Exception('%s format error for first line %s' % (fileLabelForExceptions, lines[0]))
 
-        flexibleHeaders = flexHeaderLineSplit[1].split(":")
+        str = flexHeaderLineSplit[1].strip()
+        if len(str) > 0:
+            flexibleHeaders = str.split(":")
 
         lines = lines[1:]
 
@@ -526,7 +540,7 @@ def parseMirroringConfigFile( lines, fileLabelForExceptions, fixedHeaderNames, k
             arr = line.split()
             if len(arr) == 1:
                 numExpectedThisLine = numberRequiredHeadersForRecoversegFormat
-                fixedToRead = fixedHeaderNames[1:numberRequiredHeadersForRecoversegFormat]
+                fixedToRead = fixedHeaderNames[0:numberRequiredHeadersForRecoversegFormat]
                 flexibleToRead = []
             elif len(arr) == 2:
                 # read the full ones, treat it like one big line
@@ -534,22 +548,54 @@ def parseMirroringConfigFile( lines, fileLabelForExceptions, fixedHeaderNames, k
             else: raise Exception('config file format error. %s' % line)
 
         arr = line.split(":")
-        if len(arr) != numExpectedValuesPerLine:
+        if len(arr) != numExpectedThisLine:
             raise Exception('%s format error for line (wrong number of values.  '
                             'Found %d but expected %d) : %s' %
-                            (fileLabelForExceptions, len(mirror), numExpectedValuesPerLine, line))
+                            (fileLabelForExceptions, len(arr), numExpectedThisLine, line))
 
         fixedValuesMap = {}
         flexibleValuesMap = {}
 
         index = 0
-        for name in fixedHeaderNames:
+        for name in fixedToRead:
             fixedValuesMap[name] = arr[index]
             index += 1
-        for name in flexibleHeaders:
+        for name in flexibleToRead:
             flexibleValuesMap[name] = arr[index]
             index += 1
 
         rows.append(ParsedConfigFileRow(fixedValuesMap, flexibleValuesMap, origLine))
 
     return ParsedConfigFile( flexibleHeaders, rows)
+
+def createSegmentSpecificPath(path, gpPrefix, segment):
+    """
+    Create a segment specific path for the given gpPrefix and segment
+
+    @param gpPrefix a string used to prefix directory names
+    @param segment a GpDB value
+    """
+    return os.path.join(path, '%s%d' % (gpPrefix, segment.getSegmentContentId()))
+
+class PathNormalizationException(Exception):
+    pass
+
+def normalizeAndValidateInputPath(path, errorMessagePathSource=None, errorMessagePathFullInput=None):
+    """
+    Raises a PathNormalizationException if the path is not an absolute path.  The exception msg will use
+        errorMessagePathSource and errorMessagePathFullInput to build the error message.
+
+    Does not check that the path exists
+
+    @param errorMessagePathSource from where the path was read such as "by user", "in file"
+    @param errorMessagePathFullInput the full input (line, for example) from which the path was read; for example,
+              if the path is part of a larger line of input read then you can pass the full line here
+
+    """
+    path = path.strip()
+    if not os.path.isabs(path):
+        firstPart = " " if errorMessagePathSource is None else " " + errorMessagePathSource + " "
+        secondPart = "" if errorMessagePathFullInput is None else " from: %s" % errorMessagePathFullInput
+        raise PathNormalizationException("Path entered%sis invalid; it must be a full path.  Path: '%s'%s" %
+                ( firstPart, path, secondPart ))
+    return os.path.normpath(path)

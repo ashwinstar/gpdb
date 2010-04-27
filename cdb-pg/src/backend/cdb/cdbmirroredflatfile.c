@@ -1027,6 +1027,7 @@ PgVersionRecoverMirror(void)
 	int32					startOffset = 0;
 	int32					bufferLen = 0;
 	int						retval = 0;
+	int						status = STATUS_OK;
 	
 	PersistentDatabase_DirIterateInit();
 	
@@ -1069,6 +1070,16 @@ PgVersionRecoverMirror(void)
 												  /* suppressError */ true);
 
 			if (! MirroredFlatFile_IsActive(&primaryOpen) || retval != 0) {
+								
+				/* it is expected that PG_VERSION may not exist */
+				if (retval != ENOENT)
+				{
+					status = STATUS_ERROR;
+					ereport(LOG,
+							(errcode_for_file_access(),
+							 errmsg("ERROR(filerep): could not open file \"%s\" : %m",
+									primaryOpen.path)));					
+				}
 				break;
 			}
 						
@@ -1077,33 +1088,30 @@ PgVersionRecoverMirror(void)
 			 */
 			endOffset = MirroredFlatFile_SeekEnd(&primaryOpen);
 			if (endOffset < 0) {
-				ereport(ERROR,
+				status = STATUS_ERROR;
+				ereport(LOG,
 						(errcode_for_file_access(),
-						 errmsg("could not seek to end of file \"%s\" : %m",
+						 errmsg("ERROR(filerep): could not seek to end of file \"%s\" : %m",
 								primaryOpen.path)));
 				break;
 			}
 			
-			retval = MirroredFlatFile_Drop(
-										   subDirectoryMirror,
-										   PGVERSION,
-										   /* suppressError */ false,
-										   /*isMirrorRecovery */ TRUE);
-			if (retval != 0)
-				break;
+			MirroredFlatFile_Drop(
+								   subDirectoryMirror,
+								   PGVERSION,
+								   /* suppressError */ false,
+								   /*isMirrorRecovery */ TRUE);
 			
-			retval = MirroredFlatFile_Open(
-										   &mirroredOpen,
-										   subDirectoryMirror,
-										   PGVERSION,
-										   O_CREAT | O_EXCL | O_RDWR | PG_BINARY,
-										   S_IRUSR | S_IWUSR,
-										   /* suppressError */ false,
-										   /*isMirrorRecovery */ TRUE);
+			MirroredFlatFile_Open(
+								   &mirroredOpen,
+								   subDirectoryMirror,
+								   PGVERSION,
+								   O_CREAT | O_EXCL | O_RDWR | PG_BINARY,
+								   S_IRUSR | S_IWUSR,
+								   /* suppressError */ false,
+								   /*isMirrorRecovery */ TRUE);
 			
-			if (! MirroredFlatFile_IsActive(&mirroredOpen) || retval != 0) {
-				break;
-			}
+			Assert(MirroredFlatFile_IsActive(&mirroredOpen));
 			
 			bufferLen = (Size) Min(BLCKSZ, endOffset - startOffset);
 			buffer = (char*) palloc(bufferLen);
@@ -1123,36 +1131,32 @@ PgVersionRecoverMirror(void)
 											   bufferLen);
 				
 				if (retval != bufferLen) {
-					ereport(ERROR,
+					status = STATUS_ERROR;
+					ereport(LOG,
 							(errcode_for_file_access(),
-							 errmsg("could not read from position:%d in file \"%s\" : %m",
+							 errmsg("ERROR(filerep): could not read from position:'%d' in file '%s' : %m",
 									startOffset, primaryOpen.path)));
 					
 					break;
 				}
 				
-				retval = MirroredFlatFile_Append(
-												 &mirroredOpen,
-												 buffer,
-												 bufferLen,
-												 /* suppressError */ false);
-				
-				if (retval != 0)
-					break;
-				
+				MirroredFlatFile_Append(
+										&mirroredOpen,
+										buffer,
+										bufferLen,
+										/* suppressError */ false);
+								
 				startOffset += bufferLen;
 				
 				bufferLen = (Size) Min(BLCKSZ, endOffset - startOffset);
 			} // while
 			
-			if (retval != 0)
+			if (status != STATUS_OK)
 				break;
 			
-			retval = MirroredFlatFile_Flush(
-											&mirroredOpen,
-											/* suppressError */ false);
-			if (retval != 0)
-				break;
+			MirroredFlatFile_Flush(
+									&mirroredOpen,
+									/* suppressError */ false);
 						
 			break;
 		} // while(1)
@@ -1188,6 +1192,6 @@ PgVersionRecoverMirror(void)
 			
 	PersistentDatabase_DirIterateClose();
 	
-	return retval;
+	return status;
 }
 

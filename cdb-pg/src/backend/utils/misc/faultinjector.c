@@ -100,6 +100,10 @@ FaultInjectorIdentifierEnumToString[] = {
 		 */
 	"filerep_flush",
 		/* inject fault before fsync is issued to file system */
+	"transaction_commit",
+		/* inject fault after it is recorded in XLOG for commit of prepared transaction */
+	"transaction_abort",
+		/* inject fault after it is recorded in XLOG for abort of prepared transaction */
 	"not recognized",
 };
 
@@ -523,6 +527,32 @@ FaultInjector_NewHashEntry(
 		
 		goto exit;
 	}
+	
+	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
+	switch (entry->faultInjectorIdentifier)
+	{
+		case TransactionCommitPrepared:
+		case TransactionAbortPrepared:
+			
+			if (fileRepRole == FileRepMirrorRole)
+			{
+				LockRelease();
+				status = STATUS_ERROR;
+				ereport(LOG,
+						(errmsg("ERROR(fault injector): could not insert fault injection entry into table, segment not in Primary role"
+								"identifier:'%s' ",
+								FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier])));
+				snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
+						 "could not insert fault injection, segment not in Primary role");
+				
+				goto exit;
+			}			
+			break;
+			
+		default:
+			break;
+	}
+	
 
 	entryLocal = FaultInjector_InsertHashEntry(entry->faultInjectorIdentifier, &exists);
 		

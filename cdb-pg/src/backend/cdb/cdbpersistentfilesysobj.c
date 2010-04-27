@@ -1372,7 +1372,7 @@ void PersistentFileSysObj_DropObject(
 		 * Leave this persistent object in 'Drop Pending' state with an indication that
 		 * Re-Drop will be needed during Resynchronize.
 		 */
-		PersistentFileSysObj_UpdateMirrorExistenceState(
+		PersistentFileSysObj_ChangeMirrorExistenceState(
 												fsObjName->type,
 												persistentTid,
 												persistentSerialNum,
@@ -2123,7 +2123,7 @@ static void PersistentFileSysObj_UpdateTupleMirrorBufPoolPhysicallyTruncated(
 								flushToXLog);
 }
 
-void PersistentFileSysObj_UpdateMirrorExistenceState(
+void PersistentFileSysObj_ChangeMirrorExistenceState(
 	PersistentFsObjType				fsObjType,
 
 	ItemPointer 					persistentTid,
@@ -2157,7 +2157,9 @@ void PersistentFileSysObj_UpdateMirrorExistenceState(
 			 PersistentFileSysObjName_TypeName(fsObjType));
 
 	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes * sizeof(Datum));
-
+		 
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+		 
 	PersistentFileSysObj_ReadTuple(
 							fsObjType,
 							persistentTid,
@@ -2174,7 +2176,9 @@ void PersistentFileSysObj_UpdateMirrorExistenceState(
 												mirrorExistenceState,
 												relDataSynchronizationState,
 												flushToXLog);
-
+	
+	LWLockRelease(PersistentObjLock);
+	
 	pfree(values);
 }
 
@@ -2224,7 +2228,9 @@ void PersistentFileSysObj_MarkBufPoolRelationPhysicallyTruncated(
 			 PersistentFileSysObjName_TypeAndObjectName(fsObjName));
 
 	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes * sizeof(Datum));
-
+		 
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+		 
 	PersistentFileSysObj_ReadTuple(
 							PersistentFsObjType_RelationFile,
 							persistentTid,
@@ -2271,7 +2277,9 @@ void PersistentFileSysObj_MarkBufPoolRelationPhysicallyTruncated(
 											persistentSerialNum,
 											/* newmirrorBufpoolPhysicallyTruncated */ true,
 											flushToXLog);
-
+	
+	LWLockRelease(PersistentObjLock);
+	
 	pfree(values);
 }
 
@@ -2328,7 +2336,7 @@ bool PersistentFileSysObj_CheckForAppendOnlyCatchup(
 			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName));
 
 	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes * sizeof(Datum));
-
+		 
 	PersistentFileSysObj_ReadTuple(
 							PersistentFsObjType_RelationFile,
 							persistentTid,
@@ -2410,7 +2418,9 @@ static void PersistentFileSysObj_ScanStateAction(
 								&fileSysObjSharedData);
 	 
 	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes * sizeof(Datum));
-	
+		 
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+		 
 	PersistentStore_BeginScan(
 						&fileSysObjData->storeData,
 						&fileSysObjSharedData->storeSharedData,
@@ -2509,7 +2519,9 @@ static void PersistentFileSysObj_ScanStateAction(
 						 MirroredObjectExistenceState_Name(mirrorExistenceState),
 						 serialNum,
 						 ItemPointerToString(&persistentTid));
-
+				
+				LWLockRelease(PersistentObjLock);	// Don't hold lock during physical file-system operation.
+				
 				// UNDONE: Pass this in from the resync worker?
 				mirrorDataLossTrackingState = 
 							FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
@@ -2528,6 +2540,9 @@ static void PersistentFileSysObj_ScanStateAction(
 				FileRepResync_ResetReCreateRequest();
 
 				// UNDONE: Act on mirrorDataLossOccurred
+				
+				LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+				
 			}
 			else
 			{
@@ -2617,7 +2632,9 @@ static void PersistentFileSysObj_ScanStateAction(
 						 serialNum,
 						 ItemPointerToString(&persistentTid));
 
-
+				
+				LWLockRelease(PersistentObjLock);	// Don't hold lock during physical file-system operation.
+				
 				// UNDONE: Pass this in from the resync worker?
 				mirrorDataLossTrackingState = 
 							FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
@@ -2632,6 +2649,9 @@ static void PersistentFileSysObj_ScanStateAction(
 										&mirrorDataLossOccurred);
 
 				// UNDONE: Act on mirrorDataLossOccurred
+				
+				LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+				
 			}
 			else
 			{
@@ -2650,7 +2670,14 @@ static void PersistentFileSysObj_ScanStateAction(
 			elog(ERROR, "Unexpected state-action: %d",
 				 stateAction);
 		}
+
+		LWLockRelease(PersistentObjLock);
+		
+		LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+		
 	}
+
+	LWLockRelease(PersistentObjLock);
 
 	PersistentStore_EndScan(&storeScan);
 
@@ -2756,6 +2783,8 @@ void PersistentFileSysObj_MarkWholeMirrorScanIncremental(void)
 								&fileSysObjData,
 								&fileSysObjSharedData);
 		 
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+		 
 	PersistentStore_BeginScan(
 						&fileSysObjData->storeData,
 						&fileSysObjSharedData->storeSharedData,
@@ -2850,7 +2879,13 @@ void PersistentFileSysObj_MarkWholeMirrorScanIncremental(void)
 					 ItemPointerToString(&persistentTid));
 		}
 
+		LWLockRelease(PersistentObjLock);
+		
+		LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+		
 	}
+
+	LWLockRelease(PersistentObjLock);
 
 	PersistentStore_EndScan(&storeScan);
 }
@@ -3186,6 +3221,8 @@ static void PersistentFileSysObj_MarkPageIncremental(
 								PersistentFsObjType_RelationFile,
 								&fileSysObjData,
 								&fileSysObjSharedData);
+	
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
 	PersistentFileSysObj_ReadTuple(
 							PersistentFsObjType_RelationFile,
@@ -3221,8 +3258,11 @@ static void PersistentFileSysObj_MarkPageIncremental(
 				 persistentSerialNum,
 				 serialNum,
 				 ItemPointerToString(persistentTid));
-
+		
 		heap_freetuple(tupleCopy);
+		
+		LWLockRelease(PersistentObjLock);
+		
 		return;
 	}
 
@@ -3236,6 +3276,9 @@ static void PersistentFileSysObj_MarkPageIncremental(
 				 ItemPointerToString(persistentTid));
 
 		heap_freetuple(tupleCopy);
+		
+		LWLockRelease(PersistentObjLock);
+		
 		return;
 	}
 
@@ -3282,6 +3325,9 @@ static void PersistentFileSysObj_MarkPageIncremental(
 
 		heap_freetuple(tupleCopy);
 	}
+
+	LWLockRelease(PersistentObjLock);
+
 }
 
 void PersistentFileSysObj_MarkPageIncrementalFromChangeLog(void)
@@ -3568,6 +3614,8 @@ void PersistentFileSysObj_ResynchronizeBufferPoolCkpt(
 								PersistentFsObjType_RelationFile,
 								&fileSysObjData,
 								&fileSysObjSharedData);
+	
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
 	PersistentFileSysObj_ReadTuple(
 							PersistentFsObjType_RelationFile,
@@ -3593,6 +3641,8 @@ void PersistentFileSysObj_ResynchronizeBufferPoolCkpt(
 								newValues,
 								replaces,
 								flushToXLog);
+
+	LWLockRelease(PersistentObjLock);
 
 }
 
@@ -3633,6 +3683,9 @@ void PersistentFileSysObj_ResynchronizeRelationComplete(
 								PersistentFsObjType_RelationFile,
 								&fileSysObjData,
 								&fileSysObjSharedData);
+
+	
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
 	PersistentFileSysObj_ReadTuple(
 							PersistentFsObjType_RelationFile,
@@ -3682,6 +3735,8 @@ void PersistentFileSysObj_ResynchronizeRelationComplete(
 								newValues,
 								replaces,
 								flushToXLog);
+
+	LWLockRelease(PersistentObjLock);
 
 }
 

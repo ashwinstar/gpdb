@@ -34,6 +34,10 @@ typedef enum FaultInjectorIdentifier_e {
 	
 	FileRepFlush,
 	
+	TransactionCommitPrepared,
+	
+	TransactionAbortPrepared,
+	
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,
 	

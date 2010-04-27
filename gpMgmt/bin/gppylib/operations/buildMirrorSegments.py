@@ -175,6 +175,8 @@ class GpMirrorListToBuild:
 
         logger.info("%s segment(s) to %s" % (len(self.__mirrorsToBuild), actionName))
 
+        self.__verifyGpArrayContents(gpArray)
+
         # make sure the target directories are up-to-date
         #  by cleaning them, if needed, and then copying a basic directory there
         #  the postgresql.conf in that basic directory will need updating (to change the port)
@@ -251,6 +253,15 @@ class GpMirrorListToBuild:
 
         self.__startAll(gpEnv, gpArray, mirrorsToStart)
         self.__convertAllPrimaries(gpEnv, gpArray, primariesToConvert, convertPrimaryUsingFullResync)
+
+    def __verifyGpArrayContents(self, gpArray):
+        """
+        Run some simple assertions against gpArray contents
+        """
+        for seg in gpArray.getDbList():
+            if seg.getSegmentDataDirectory() != seg.getSegmentFilespaces()[gparray.SYSTEM_FILESPACE]:
+                raise Exception("Mismatch between segment data directory and filespace entry for segment %s" %
+                            seg.getSegmentDbId())
 
     def checkForPortAndDirectoryConflicts(self, gpArray):
         """

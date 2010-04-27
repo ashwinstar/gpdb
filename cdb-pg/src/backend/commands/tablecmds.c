@@ -9865,7 +9865,7 @@ copy_append_only_data(
 										newRelFileNode,
 										segmentFileNum,
 										relationName,
-										eof,
+										/* logicalEof */ 0, // NOTE: This is the START EOF.  Since we are copying, we start at 0.
 										persistentTid,
 										persistentSerialNum,
 										&primaryError,
@@ -9883,7 +9883,7 @@ copy_append_only_data(
 	 */
 	endOffset = eof;
 	readOffset = 0;
-	bufferLen = (Size) Min(BLCKSZ, endOffset);
+	bufferLen = (Size) Min(2*BLCKSZ, endOffset);
 	while (readOffset < endOffset)
 	{
 		CHECK_FOR_INTERRUPTS();
@@ -9915,7 +9915,7 @@ copy_append_only_data(
 		
 		readOffset += bufferLen;
 		
-		bufferLen = (Size) Min(BLCKSZ, endOffset - readOffset); 					
+		bufferLen = (Size) Min(2*BLCKSZ, endOffset - readOffset); 					
 	}
 
 	MirroredAppendOnly_FlushAndClose(

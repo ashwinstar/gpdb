@@ -219,7 +219,7 @@ extern void PersistentFileSysObj_EndXactAction(
 	
 	bool							isCommit);
 
-extern void PersistentFileSysObj_UpdateMirrorExistenceState(
+extern void PersistentFileSysObj_ChangeMirrorExistenceState(
 	PersistentFsObjType 			fsObjType,
 
 	ItemPointer 					persistentTid,

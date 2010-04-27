@@ -6761,6 +6761,10 @@ StartupXLOG_Pass3(void)
 {
 	int redoRelationFile;
 	
+	XLogRecord *record;
+	
+	int 		rmid;
+	
 	if (Debug_persistent_recovery_print)
 		elog(Debug_persistent_recovery_print_level, 
 		     "Entering StartupXLOG_Pass3");
@@ -6773,120 +6777,116 @@ StartupXLOG_Pass3(void)
 
 	UnlinkRedoRelationFile();
 
-	if (Debug_enable_new_startup_pass)
+	if (!Debug_enable_new_startup_pass)
+		goto bypass;	// Do this so when we go to new Crash Recovery, no re-indent.
+
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level, 
+			 "StartupXLOG_Pass3: Begin re-scanning XLOG");
+
+	/*
+	 * Read control file and verify XLOG status looks valid.
+	 *
+	 */
+	ReadControlFile();
+	
+	if (ControlFile->logSeg == 0 ||
+		ControlFile->state < DB_SHUTDOWNED ||
+		ControlFile->state > DB_IN_PRODUCTION ||
+		!XRecOffIsValid(ControlFile->checkPoint.xrecoff))
+		ereport(FATAL,
+				(errmsg("Startup Pass 2: control file contains invalid data")));
+	
+	recoveryTargetTLI = ControlFile->checkPointCopy.ThisTimeLineID;
+		
+	/* Now we can determine the list of expected TLIs */
+	expectedTLIs = readTimeLineHistory(recoveryTargetTLI);
+	
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level,
+			 "ControlFile with recoveryTargetTLI %u, transaction log to start location is %s",
+			 recoveryTargetTLI, 
+			 XLogLocationToString(&XLogCtl->pass1StartLoc));
+
+	/* Start up the recovery environment */
+	XLogInitRelationCache();
+
+	UtilityModeFindOrCreateDtmRedoFile();
+
+	for (rmid = 0; rmid <= RM_MAX_ID; rmid++)
 	{
-		XLogRecord *record;
-
-		int			rmid;
-
-		if (Debug_persistent_recovery_print)
-			elog(Debug_persistent_recovery_print_level, 
-				 "StartupXLOG_Pass3: Begin re-scanning XLOG");
-
-		/*
-		 * Read control file and verify XLOG status looks valid.
-		 *
-		 */
-		ReadControlFile();
-		
-		if (ControlFile->logSeg == 0 ||
-			ControlFile->state < DB_SHUTDOWNED ||
-			ControlFile->state > DB_IN_PRODUCTION ||
-			!XRecOffIsValid(ControlFile->checkPoint.xrecoff))
-			ereport(FATAL,
-					(errmsg("Startup Pass 2: control file contains invalid data")));
-		
-		recoveryTargetTLI = ControlFile->checkPointCopy.ThisTimeLineID;
-			
-		/* Now we can determine the list of expected TLIs */
-		expectedTLIs = readTimeLineHistory(recoveryTargetTLI);
-		
-		if (Debug_persistent_recovery_print)
-			elog(Debug_persistent_recovery_print_level,
-				 "ControlFile with recoveryTargetTLI %u, transaction log to start location is %s",
-				 recoveryTargetTLI, 
-				 XLogLocationToString(&XLogCtl->pass1StartLoc));
-
-		/* Start up the recovery environment */
-		XLogInitRelationCache();
-
-		UtilityModeFindOrCreateDtmRedoFile();
-
-		for (rmid = 0; rmid <= RM_MAX_ID; rmid++)
-		{
-			if (RmgrTable[rmid].rm_startup != NULL)
-				RmgrTable[rmid].rm_startup();
-		}
-
-		record = ReadRecord(&XLogCtl->pass1StartLoc, PANIC);
-		
-		/*
-		 * Pass 3 XLOG scan
-		 */
-		while (true)
-		{
-			{
-				StringInfoData buf;
-			
-				initStringInfo(&buf);
-				appendStringInfo(&buf, "PASS 3 @ %s; LSN %s: ",
-								 XLogLocationToString(&ReadRecPtr),
-								 XLogLocationToString2(&EndRecPtr));
-				XLog_OutRec(&buf, record);
-				appendStringInfo(&buf, " - ");
-				RmgrTable[record->xl_rmid].rm_desc(&buf,
-												   record->xl_info,
-												 XLogRecGetData(record));
-				elog(LOG, "%s", buf.data);
-				pfree(buf.data);
-			}
-
-			if (PersistentRecovery_ShouldHandlePass3XLogRec(&ReadRecPtr, &EndRecPtr, record))
-				ApplyStartupRedo(&ReadRecPtr, &EndRecPtr, record);
-			
-			if (XLByteEQ(ReadRecPtr, XLogCtl->pass1LastLoc))
-				break;
-		
-			Assert(XLByteLE(ReadRecPtr,XLogCtl->pass1LastLoc));
-		
-			record = ReadRecord(NULL, PANIC);
-		}
-
-		ShutdownReadFile();
-
-		/*
-		 * Allow resource managers to do any required cleanup.
-		 */
-		for (rmid = 0; rmid <= RM_MAX_ID; rmid++)
-		{
-			if (RmgrTable[rmid].rm_cleanup != NULL)
-				RmgrTable[rmid].rm_cleanup();
-		}
-
-		/*
-		 * Check to see if the XLOG sequence contained any unresolved
-		 * references to uninitialized pages.
-		 */
-		XLogCheckInvalidPages();
-
-		/*
-		 * Reset pgstat data, because it may be invalid after recovery.
-		 */
-		pgstat_reset_all();
-
-		/*
-		 * Close down recovery environment
-		 */
-		XLogCloseRelationCache();
-
-		UtilityModeCloseDtmRedoFile();
-
-		if (Debug_persistent_recovery_print)
-			elog(Debug_persistent_recovery_print_level, 
-				 "StartupXLOG_Pass3: End re-scanning XLOG");
-
+		if (RmgrTable[rmid].rm_startup != NULL)
+			RmgrTable[rmid].rm_startup();
 	}
 
+	record = ReadRecord(&XLogCtl->pass1StartLoc, PANIC);
+	
+	/*
+	 * Pass 3 XLOG scan
+	 */
+	while (true)
+	{
+		{
+			StringInfoData buf;
+		
+			initStringInfo(&buf);
+			appendStringInfo(&buf, "PASS 3 @ %s; LSN %s: ",
+							 XLogLocationToString(&ReadRecPtr),
+							 XLogLocationToString2(&EndRecPtr));
+			XLog_OutRec(&buf, record);
+			appendStringInfo(&buf, " - ");
+			RmgrTable[record->xl_rmid].rm_desc(&buf,
+											   record->xl_info,
+											 XLogRecGetData(record));
+			elog(LOG, "%s", buf.data);
+			pfree(buf.data);
+		}
+
+		if (PersistentRecovery_ShouldHandlePass3XLogRec(&ReadRecPtr, &EndRecPtr, record))
+			ApplyStartupRedo(&ReadRecPtr, &EndRecPtr, record);
+		
+		if (XLByteEQ(ReadRecPtr, XLogCtl->pass1LastLoc))
+			break;
+	
+		Assert(XLByteLE(ReadRecPtr,XLogCtl->pass1LastLoc));
+	
+		record = ReadRecord(NULL, PANIC);
+	}
+
+	ShutdownReadFile();
+
+	/*
+	 * Allow resource managers to do any required cleanup.
+	 */
+	for (rmid = 0; rmid <= RM_MAX_ID; rmid++)
+	{
+		if (RmgrTable[rmid].rm_cleanup != NULL)
+			RmgrTable[rmid].rm_cleanup();
+	}
+
+	/*
+	 * Check to see if the XLOG sequence contained any unresolved
+	 * references to uninitialized pages.
+	 */
+	XLogCheckInvalidPages();
+
+	/*
+	 * Reset pgstat data, because it may be invalid after recovery.
+	 */
+	pgstat_reset_all();
+
+	/*
+	 * Close down recovery environment
+	 */
+	XLogCloseRelationCache();
+
+	UtilityModeCloseDtmRedoFile();
+
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level, 
+			 "StartupXLOG_Pass3: End re-scanning XLOG");
+
+bypass:
 	StartupXLOG_InProduction();
 
 	if (Debug_persistent_recovery_print)
@@ -9242,6 +9242,10 @@ StartupProcessMain(int passNum)
 		RelationCacheInitializePhase2();	
 		
 		StartupXLOG_Pass2();
+		
+		ResourceOwnerRelease(CurrentResourceOwner,
+							 RESOURCE_RELEASE_BEFORE_LOCKS,
+							 false, true);							
 		break;
 
 	case 3:

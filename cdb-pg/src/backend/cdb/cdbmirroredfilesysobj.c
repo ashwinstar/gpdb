@@ -134,7 +134,7 @@ static void MirroredFileSysObj_FinishMirroredCreate(
 
 	// UNDONE: Don't fsync this change to the XLOG for now.  Determine
 	// UNDONE: what needs to be fsync'd.
-	PersistentFileSysObj_UpdateMirrorExistenceState(
+	PersistentFileSysObj_ChangeMirrorExistenceState(
 											fsObjName->type,
 											persistentTid,
 											persistentSerialNum,
@@ -143,59 +143,11 @@ static void MirroredFileSysObj_FinishMirroredCreate(
 											/* flushToXLog */ false);
 }
 
-void MirroredFileSysObj_ValidateFilespaceDir(char *mirrorFilespaceLocation)
+int MirroredFileSysObj_ValidateFilespaceDir(char *mirrorFilespaceLocation)
 {
-	char *parentdir;
-
-	int status = FileRepPrimary_MirrorValidation(
-		FileRep_GetDirFilespaceIdentifier(mirrorFilespaceLocation),
-		FileRepRelationTypeDir
-		);
-
-	/* If everything was fine the error status will be zero */
-	if (status == FileRepStatusSuccess)
-		return;
-
-	/* 
-	 * Otherwise report the error, there are currently four known errors:
-	 *  - File or directory exists
-	 *  - Parent directory does not exist
-	 *  - Parent directory not a directory
-	 *  - No write permission on parent directory
-	 */
-	parentdir = pstrdup(mirrorFilespaceLocation);
-	get_parent_directory(parentdir);
-	switch (status)
-	{
-		/* Errors on the specified directory */
-		case FileRepStatusDirectoryExist:
-			ereport(ERROR, 
-					(errcode_for_file_access(),
-					 errmsg("%s : %s", 
-							mirrorFilespaceLocation,
-							FileRepStatusToString[status])));
-			break;
-
-		/* Errors on the parent directory */
-		case FileRepStatusNoSuchFileOrDirectory:
-		case FileRepStatusNotDirectory:
-		case FileRepStatusNoWritePermissions:
-			ereport(ERROR, 
-					(errcode_for_file_access(),
-					 errmsg("%s : %s", 
-							parentdir,
-							FileRepStatusToString[status])));
-			break;
-
-		/* Status that should never occur */
-		default:
-			elog(ERROR, "%s : %s", 
-				 mirrorFilespaceLocation,
-				 FileRepStatusToString[status]);
-			break;
-	}
-
-	return;
+	return(FileRepPrimary_MirrorValidation(
+									FileRep_GetDirFilespaceIdentifier(mirrorFilespaceLocation),
+									FileRepRelationTypeDir));
 }
 
 void MirroredFileSysObj_TransactionCreateFilespaceDir(
