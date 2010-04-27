@@ -27,7 +27,7 @@ except ImportError, e:
 
 EXECNAME = os.path.split(__file__)[-1]
 
-DEFAULT_BATCH_SIZE=64
+DEFAULT_BATCH_SIZE=32
 MAX_BATCH_SIZE=128
 
 _description = """
@@ -190,6 +190,8 @@ def check_for_dump_files(options):
 # delete_system() - deletes a GPDB system
 #-------------------------------------------------------------------------
 def delete_cluster(options):
+    global g_warnings_generated
+    
     # check for dumps if needed
     dump_files_exist = check_for_dump_files(options)
     if not options.force and dump_files_exist:
@@ -217,7 +219,15 @@ def delete_cluster(options):
     
     # stop database
     logger.info('Stopping database...')
-    gp.GpStop.local('stop database', fast=True, datadir=options.master_data_dir)
+    try:
+        cmd = gp.GpStop('stop database', fast=True, datadir=options.master_data_dir)
+        cmd.run(validateAfter=True)
+    except:
+        results = cmd.get_results()
+        if results.rc > 1:
+            raise GpDeleteSystemException('Failed to stop database.')
+        logger.warn('Warnings were generated while stopping the database.')
+        g_warnings_generated=True
 
     # From this point on we don't want ctrl-c to happen
     signal.signal(signal.SIGINT,signal.SIG_IGN)
@@ -289,6 +299,11 @@ except GpDeleteSystemException, ex:
         logger.info(ex.__str__())
     else:
         logger.fatal(ex.__str__())
+    if options.verbose:
+        logger.exception(ex)
+except Exception, ex:
+    g_errors_generated = True
+    logger.fatal('Error deleting system: %s' % ex.__str__())
     if options.verbose:
         logger.exception(ex)
 finally:
