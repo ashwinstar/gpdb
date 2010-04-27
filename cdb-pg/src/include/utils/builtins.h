@@ -583,7 +583,7 @@ extern List *deparse_context_for_plan(int outer_varno, Node *outercontext,
 extern Node *deparse_context_for_subplan(const char *name, Node *subplan);
 extern const char *quote_literal_internal(const char *literal);
 extern const char *quote_identifier(const char *ident);
-extern char *quote_qualified_identifier(const char *namespace,
+extern char *quote_qualified_identifier(const char *qualifier,
 						   const char *ident);
 extern Datum pg_get_partition_def(PG_FUNCTION_ARGS);
 extern Datum pg_get_partition_def_ext(PG_FUNCTION_ARGS);
