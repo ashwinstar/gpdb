@@ -1008,7 +1008,7 @@ struct threadWorkerInfo {
 
 /*
  * one byte of status for each segment, dbids are int2, so we can represent a max
- * of 32
+ * of 32k
  */
 static uint8 scan_status[32768];
 
@@ -1299,10 +1299,24 @@ probePublishUpdate(uint8 *probe_results)
 						}
 						else
 						{
-							elog(LOG, "probePublishUpdate: dbid %d/0x%x reported fault mirror %d/0x%x looks good.",
-								 primary->dbid, probe_results[mirror->dbid], mirror->dbid, probe_results[mirror->dbid]);
-							/* mirror is happy */
-							probe_results[primary->dbid] &= ~PROBE_ALIVE;
+							/* If the mirror is "u" is it also "s" ? */
+							if (FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status))
+							{
+								/* The mirror was intact ? */
+								elog(LOG, "probePublishUpdate: dbid %d/0x%x reported fault mirror %d/0x%x looks good.",
+									 primary->dbid, probe_results[mirror->dbid], mirror->dbid, probe_results[mirror->dbid]);
+								/* mirror is happy */
+								probe_results[primary->dbid] &= ~PROBE_ALIVE;
+							}
+							else
+							{
+								/*
+								 * mirror must have been re-syncing,
+								 * so the primary is just reporting a
+								 * problem from the mirror.
+								 */
+								probe_results[mirror->dbid] &= ~PROBE_ALIVE;
+							}
 						}
 						probe_results[mirror->dbid] &= ~PROBE_FAULT;
 					}
@@ -1365,10 +1379,7 @@ probePublishUpdate(uint8 *probe_results)
 								else
 								{
 									/* If the mirror was being synchronized, we need to mark it down. */
-									if ((probe_results[mirror->dbid] & PROBE_ALIVE) == PROBE_ALIVE)
-									{
-										updateMirror = true;
-									}
+									updateMirror = true;
 								}
 							}
 							else if (failover_strategy == 's')
@@ -2506,8 +2517,8 @@ startSegment_forDbid(int dbid)
 		}
 		else
 		{
-			snprintf(cmd, sizeof(cmd), "ssh %s \"%s/bin/pg_ctl -w -D %s -l %s/pg_log/startup.log -o '-i -p %d --silent-mode=true -M mirrorless -b %d -C %d -z %d' start 2>&1 \" ",
-					 host, gphome_env, dir, dir, port, dbid, content_id, GpIdentity.numsegments);
+			snprintf(cmd, sizeof(cmd), "ssh %s \"source %s/greenplum_path.sh; %s/bin/pg_ctl -w -D %s -l %s/pg_log/startup.log -o '-i -p %d --silent-mode=true -M mirrorless -b %d -C %d -z %d' start 2>&1 \" ",
+					 host, gphome_env, gphome_env, dir, dir, port, dbid, content_id, GpIdentity.numsegments);
 		}
 
 		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
