@@ -4044,17 +4044,9 @@ select * from get_ereport order by 1;
  cabj: cdbmirroredflatfile:00000918:  (errcode_for_file_access(), 
  cabj: cdbmirroredflatfile:00000919:  errmsg("could not read from position:%d in file "%s" : %m", 
  cabj: cdbmirroredflatfile:00000920:  startOffset, primaryOpen.path))); 
- cabj: cdbmirroredflatfile:00001080:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00001081:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00001082:  errmsg("could not seek to end of file "%s" : %m", 
- cabj: cdbmirroredflatfile:00001083:  primaryOpen.path))); 
- cabj: cdbmirroredflatfile:00001111:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00001112:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cabj: cdbmirroredflatfile:00001113:  (errmsg("Not enough shared memory for Mirroring.")))); 
- cabj: cdbmirroredflatfile:00001126:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00001127:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00001128:  errmsg("could not read from position:%d in file "%s" : %m", 
- cabj: cdbmirroredflatfile:00001129:  startOffset, primaryOpen.path))); 
+ cabj: cdbmirroredflatfile:00001119:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00001120:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cabj: cdbmirroredflatfile:00001121:  (errmsg("Not enough shared memory for Mirroring.")))); 
  caca: cdbfilerepconnclient:00000056:  ereport(LOG, 
  caca: cdbfilerepconnclient:00000057:  (errcode_for_socket_access(), 
  caca: cdbfilerepconnclient:00000058:  errmsg("ERROR(filerep): could not establish connection with server, host:'%s' port:'%d' err:'%s' : %m", 
@@ -4125,69 +4117,59 @@ select * from get_ereport order by 1;
  cacb: cdbmirroredbufferpool:00000683:  errmsg("could not seek in file to position %d in file "%s", segment file %d: %m", 
  cacb: cdbmirroredbufferpool:00000684:  position, 
  cacb: cdbmirroredbufferpool:00000685:  relpath(open->relFileNode), open->segmentFileNum))); 
- cacb: cdbmirroredfilesysobj:00000172:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000173:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000174:  errmsg("%s : %s", 
- cacb: cdbmirroredfilesysobj:00000175:  mirrorFilespaceLocation, 
- cacb: cdbmirroredfilesysobj:00000176:  FileRepStatusToString[status]))); 
- cacb: cdbmirroredfilesysobj:00000183:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000184:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000185:  errmsg("%s : %s", 
- cacb: cdbmirroredfilesysobj:00000186:  parentdir, 
- cacb: cdbmirroredfilesysobj:00000187:  FileRepStatusToString[status]))); 
- cacb: cdbmirroredfilesysobj:00000279:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000280:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000281:  errmsg("could not create filespace directory %u: %s", 
- cacb: cdbmirroredfilesysobj:00000282:  filespaceOid, 
- cacb: cdbmirroredfilesysobj:00000283:  strerror(primaryError)))); 
- cacb: cdbmirroredfilesysobj:00000429:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000430:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000431:  errmsg("could not create tablespace directory %u: %s", 
- cacb: cdbmirroredfilesysobj:00000432:  tablespaceDirNode->tablespace, 
- cacb: cdbmirroredfilesysobj:00000433:  strerror(primaryError)))); 
- cacb: cdbmirroredfilesysobj:00000557:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000558:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000559:  errmsg("could not create database directory %s: %s", 
- cacb: cdbmirroredfilesysobj:00000560:  GetDatabasePath(dbDirNode->database, dbDirNode->tablespace), 
- cacb: cdbmirroredfilesysobj:00000561:  strerror(primaryError)))); 
- cacb: cdbmirroredfilesysobj:00000727:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000728:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000729:  errmsg("could not create database directory %u/%u: %s", 
- cacb: cdbmirroredfilesysobj:00000730:  justInTimeDbDirNode->tablespace, 
- cacb: cdbmirroredfilesysobj:00000731:  justInTimeDbDirNode->database, 
- cacb: cdbmirroredfilesysobj:00000732:  strerror(primaryError)))); 
- cacb: cdbmirroredfilesysobj:00000753:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000754:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000755:  errmsg("could not create just-in-time database directory %u/%u: %s", 
- cacb: cdbmirroredfilesysobj:00000756:  justInTimeDbDirNode->tablespace, 
- cacb: cdbmirroredfilesysobj:00000757:  justInTimeDbDirNode->database, 
- cacb: cdbmirroredfilesysobj:00000758:  strerror(primaryError)))); 
- cacb: cdbmirroredfilesysobj:00000864:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000865:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000866:  errmsg("could not create relation file '%s', relation name '%s': %s", 
- cacb: cdbmirroredfilesysobj:00000867:  relpath(smgrOpen->smgr_rnode), 
- cacb: cdbmirroredfilesysobj:00000868:  relationName, 
- cacb: cdbmirroredfilesysobj:00000869:  strerror(primaryError)))); 
- cacb: cdbmirroredfilesysobj:00000984:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000985:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000986:  errmsg("could not create relation file '%s', relation name '%s': %s", 
- cacb: cdbmirroredfilesysobj:00000987:  relpath(*relFileNode), 
- cacb: cdbmirroredfilesysobj:00000988:  relationName, 
- cacb: cdbmirroredfilesysobj:00000989:  strerror(primaryError)))); 
- cacb: cdbmirroredfilesysobj:00001122:  ereport(WARNING, 
- cacb: cdbmirroredfilesysobj:00001123:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00001124:  errmsg("could not remove relation %u/%u/%u (segment file #%d): %s", 
- cacb: cdbmirroredfilesysobj:00001125:  relFileNode->spcNode, 
- cacb: cdbmirroredfilesysobj:00001126:  relFileNode->dbNode, 
- cacb: cdbmirroredfilesysobj:00001127:  relFileNode->relNode, 
- cacb: cdbmirroredfilesysobj:00001128:  segmentFileNum, 
- cacb: cdbmirroredfilesysobj:00001129:  strerror(primaryError)))); 
- cacb: cdbpersistentrecovery:00001681:  ereport(ERROR, 
- cacb: cdbpersistentrecovery:00001682:  (errcode_for_file_access(), 
- cacb: cdbpersistentrecovery:00001683:  errmsg("could not write redo relation file : %m"))); 
- cacb: cdbpersistentrecovery:00001813:  ereport(ERROR, 
- cacb: cdbpersistentrecovery:00001814:  (errcode_for_file_access(), 
- cacb: cdbpersistentrecovery:00001815:  errmsg("error reading redo relation file: %m"))); 
+ cacb: cdbmirroredfilesysobj:00000231:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000232:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000233:  errmsg("could not create filespace directory %u: %s", 
+ cacb: cdbmirroredfilesysobj:00000234:  filespaceOid, 
+ cacb: cdbmirroredfilesysobj:00000235:  strerror(primaryError)))); 
+ cacb: cdbmirroredfilesysobj:00000381:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000382:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000383:  errmsg("could not create tablespace directory %u: %s", 
+ cacb: cdbmirroredfilesysobj:00000384:  tablespaceDirNode->tablespace, 
+ cacb: cdbmirroredfilesysobj:00000385:  strerror(primaryError)))); 
+ cacb: cdbmirroredfilesysobj:00000509:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000510:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000511:  errmsg("could not create database directory %s: %s", 
+ cacb: cdbmirroredfilesysobj:00000512:  GetDatabasePath(dbDirNode->database, dbDirNode->tablespace), 
+ cacb: cdbmirroredfilesysobj:00000513:  strerror(primaryError)))); 
+ cacb: cdbmirroredfilesysobj:00000679:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000680:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000681:  errmsg("could not create database directory %u/%u: %s", 
+ cacb: cdbmirroredfilesysobj:00000682:  justInTimeDbDirNode->tablespace, 
+ cacb: cdbmirroredfilesysobj:00000683:  justInTimeDbDirNode->database, 
+ cacb: cdbmirroredfilesysobj:00000684:  strerror(primaryError)))); 
+ cacb: cdbmirroredfilesysobj:00000705:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000706:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000707:  errmsg("could not create just-in-time database directory %u/%u: %s", 
+ cacb: cdbmirroredfilesysobj:00000708:  justInTimeDbDirNode->tablespace, 
+ cacb: cdbmirroredfilesysobj:00000709:  justInTimeDbDirNode->database, 
+ cacb: cdbmirroredfilesysobj:00000710:  strerror(primaryError)))); 
+ cacb: cdbmirroredfilesysobj:00000816:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000817:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000818:  errmsg("could not create relation file '%s', relation name '%s': %s", 
+ cacb: cdbmirroredfilesysobj:00000819:  relpath(smgrOpen->smgr_rnode), 
+ cacb: cdbmirroredfilesysobj:00000820:  relationName, 
+ cacb: cdbmirroredfilesysobj:00000821:  strerror(primaryError)))); 
+ cacb: cdbmirroredfilesysobj:00000936:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000937:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000938:  errmsg("could not create relation file '%s', relation name '%s': %s", 
+ cacb: cdbmirroredfilesysobj:00000939:  relpath(*relFileNode), 
+ cacb: cdbmirroredfilesysobj:00000940:  relationName, 
+ cacb: cdbmirroredfilesysobj:00000941:  strerror(primaryError)))); 
+ cacb: cdbmirroredfilesysobj:00001074:  ereport(WARNING, 
+ cacb: cdbmirroredfilesysobj:00001075:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00001076:  errmsg("could not remove relation %u/%u/%u (segment file #%d): %s", 
+ cacb: cdbmirroredfilesysobj:00001077:  relFileNode->spcNode, 
+ cacb: cdbmirroredfilesysobj:00001078:  relFileNode->dbNode, 
+ cacb: cdbmirroredfilesysobj:00001079:  relFileNode->relNode, 
+ cacb: cdbmirroredfilesysobj:00001080:  segmentFileNum, 
+ cacb: cdbmirroredfilesysobj:00001081:  strerror(primaryError)))); 
+ cacb: cdbpersistentrecovery:00001687:  ereport(ERROR, 
+ cacb: cdbpersistentrecovery:00001688:  (errcode_for_file_access(), 
+ cacb: cdbpersistentrecovery:00001689:  errmsg("could not write redo relation file : %m"))); 
+ cacb: cdbpersistentrecovery:00001822:  ereport(ERROR, 
+ cacb: cdbpersistentrecovery:00001823:  (errcode_for_file_access(), 
+ cacb: cdbpersistentrecovery:00001824:  errmsg("error reading redo relation file: %m"))); 
  cacc: cdbdistributedsnapshot:00000298:  ereport(ERROR, 
  cacc: cdbdistributedsnapshot:00000299:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  cacc: cdbdistributedsnapshot:00000300:  errmsg("out of memory"))); 
@@ -6615,18 +6597,18 @@ select * from get_ereport order by 1;
  fabc: functioncmds:00001582:  errmsg("function "%s" already exists in schema "%s"", 
  fabc: functioncmds:00001583:  NameStr(proc->proname), 
  fabc: functioncmds:00001584:  newschema))); 
- fabd: faultinjector:00000239:  ereport(ERROR, 
- fabd: faultinjector:00000240:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- fabd: faultinjector:00000241:  (errmsg("Not enough shared memory for Mirroring.")))); 
- fabd: faultinjector:00000265:  ereport(ERROR, 
- fabd: faultinjector:00000266:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- fabd: faultinjector:00000267:  (errmsg("Not enough shared memory for Fault Injector.")))); 
- fabd: faultinjector:00000357:  ereport(FATAL, 
- fabd: faultinjector:00000358:  (errmsg("Fault is injected identifier:'%s' ", 
- fabd: faultinjector:00000359:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier]))); 
- fabd: faultinjector:00000377:  ereport(ERROR, 
- fabd: faultinjector:00000378:  (errmsg("Fault is injected identifier:'%s' ", 
- fabd: faultinjector:00000379:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier]))); 
+ fabd: faultinjector:00000243:  ereport(ERROR, 
+ fabd: faultinjector:00000244:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ fabd: faultinjector:00000245:  (errmsg("Not enough shared memory for Mirroring.")))); 
+ fabd: faultinjector:00000269:  ereport(ERROR, 
+ fabd: faultinjector:00000270:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ fabd: faultinjector:00000271:  (errmsg("Not enough shared memory for Fault Injector.")))); 
+ fabd: faultinjector:00000361:  ereport(FATAL, 
+ fabd: faultinjector:00000362:  (errmsg("Fault is injected identifier:'%s' ", 
+ fabd: faultinjector:00000363:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier]))); 
+ fabd: faultinjector:00000381:  ereport(ERROR, 
+ fabd: faultinjector:00000382:  (errmsg("Fault is injected identifier:'%s' ", 
+ fabd: faultinjector:00000383:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier]))); 
  gaad: guc:00007249:  ereport(ERROR, 
  gaad: guc:00007250:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
  gaad: guc:00007251:  errmsg("unrecognized configuration parameter "%s"", name))); 
@@ -10385,104 +10367,104 @@ select * from get_ereport order by 1;
  paah: plxexec:00003987:  ereport(ERROR, 
  paah: plxexec:00003988:  (errcode(ERRCODE_SYNTAX_ERROR), 
  paah: plxexec:00003989:  errmsg("query "%s" is not a SELECT", expr->query))); 
- paah: plxgram:00001933:  ereport(ERROR, 
- paah: plxgram:00001934:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- paah: plxgram:00001935:  errmsg("row or record variable cannot be CONSTANT"))); 
- paah: plxgram:00001942:  ereport(ERROR, 
- paah: plxgram:00001943:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- paah: plxgram:00001944:  errmsg("row or record variable cannot be NOT NULL"))); 
- paah: plxgram:00001951:  ereport(ERROR, 
- paah: plxgram:00001952:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- paah: plxgram:00001953:  errmsg("default value for row or record variable is not supported"))); 
- paah: plxgram:00002114:  ereport(ERROR, 
- paah: plxgram:00002115:  (errcode(ERRCODE_UNDEFINED_PARAMETER), 
- paah: plxgram:00002116:  errmsg("function has no parameter "%s"", 
- paah: plxgram:00002117:  name))); 
- paah: plxgram:00002702:  ereport(ERROR, 
- paah: plxgram:00002703:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00002704:  errmsg("integer FOR loop must have just one target variable"))); 
- paah: plxgram:00002812:  ereport(ERROR, 
- paah: plxgram:00002813:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00002814:  errmsg(""%s" is not a scalar variable", 
- paah: plxgram:00002815:  (yyval.forvariable).name))); 
- paah: plxgram:00003063:  ereport(ERROR, 
- paah: plxgram:00003064:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003065:  errmsg("syntax error at "%s"", 
- paah: plxgram:00003066:  yytext), 
- paah: plxgram:00003067:  errdetail("Expected FOR to open a reference cursor."))); 
- paah: plxgram:00003091:  ereport(ERROR, 
- paah: plxgram:00003092:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003093:  errmsg("cursor "%s" has arguments", 
- paah: plxgram:00003094:  (yyvsp[(3) - (3)].var)->refname))); 
- paah: plxgram:00003143:  ereport(ERROR, 
- paah: plxgram:00003144:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003145:  errmsg("cursor "%s" has no arguments", 
- paah: plxgram:00003146:  (yyvsp[(3) - (3)].var)->refname))); 
- paah: plxgram:00003152:  ereport(ERROR, 
- paah: plxgram:00003153:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003154:  errmsg("syntax error at "%s"", 
- paah: plxgram:00003155:  yytext))); 
- paah: plxgram:00003202:  ereport(ERROR, 
- paah: plxgram:00003203:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxgram:00003204:  errmsg(""%s" must be of type cursor or refcursor", 
- paah: plxgram:00003205:  ((PLpgSQL_var *) yylval.scalar)->refname))); 
- paah: plxgram:00003220:  ereport(ERROR, 
- paah: plxgram:00003221:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxgram:00003222:  errmsg(""%s" must be of type refcursor", 
- paah: plxgram:00003223:  ((PLpgSQL_var *) yylval.scalar)->refname))); 
- paah: plxgram:00003653:  ereport(ERROR, 
- paah: plxgram:00003654:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- paah: plxgram:00003655:  errmsg("too many variables specified in SQL statement"))); 
- paah: plxgram:00003723:  ereport(ERROR, 
- paah: plxgram:00003724:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003725:  errmsg("mismatched parentheses"))); 
- paah: plxgram:00003736:  ereport(ERROR, 
- paah: plxgram:00003737:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003738:  errmsg("mismatched parentheses"))); 
- paah: plxgram:00003740:  ereport(ERROR, 
- paah: plxgram:00003741:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003742:  errmsg("missing "%s" at end of SQL expression", 
- paah: plxgram:00003743:  expected))); 
- paah: plxgram:00003745:  ereport(ERROR, 
- paah: plxgram:00003746:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003747:  errmsg("missing "%s" at end of SQL statement", 
- paah: plxgram:00003748:  expected))); 
- paah: plxgram:00003830:  ereport(ERROR, 
- paah: plxgram:00003831:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003832:  errmsg("mismatched parentheses"))); 
- paah: plxgram:00003833:  ereport(ERROR, 
- paah: plxgram:00003834:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003835:  errmsg("incomplete datatype declaration"))); 
- paah: plxgram:00003907:  ereport(ERROR, 
- paah: plxgram:00003908:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003909:  errmsg("unexpected end of function definition"))); 
- paah: plxgram:00003917:  ereport(ERROR, 
- paah: plxgram:00003918:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00003919:  errmsg("INTO specified more than once"))); 
- paah: plxgram:00004126:  ereport(ERROR, 
- paah: plxgram:00004127:  (errcode(ERRCODE_ERROR_IN_ASSIGNMENT), 
- paah: plxgram:00004128:  errmsg(""%s" is declared CONSTANT", 
- paah: plxgram:00004129:  ((PLpgSQL_var *) datum)->refname))); 
- paah: plxgram:00004193:  ereport(ERROR, 
- paah: plxgram:00004194:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00004195:  errmsg("syntax error at "%s"", yytext), 
- paah: plxgram:00004196:  errdetail("Expected record variable, row variable, " 
- paah: plxgram:00004197:  "or list of scalar variables following INTO."))); 
- paah: plxgram:00004228:  ereport(ERROR, 
- paah: plxgram:00004229:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- paah: plxgram:00004230:  errmsg("too many INTO variables specified"))); 
- paah: plxgram:00004244:  ereport(ERROR, 
- paah: plxgram:00004245:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00004246:  errmsg(""%s" is not a scalar variable", 
- paah: plxgram:00004247:  yytext))); 
- paah: plxgram:00004379:  ereport(ERROR, 
- paah: plxgram:00004380:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00004381:  errmsg("end label "%s" specified for unlabelled block", 
- paah: plxgram:00004382:  end_label))); 
- paah: plxgram:00004388:  ereport(ERROR, 
- paah: plxgram:00004389:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxgram:00004390:  errmsg("end label "%s" differs from block's label "%s"", 
- paah: plxgram:00004391:  end_label, start_label))); 
+ paah: plxgram:00001625:  ereport(ERROR, 
+ paah: plxgram:00001626:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ paah: plxgram:00001627:  errmsg("row or record variable cannot be CONSTANT"))); 
+ paah: plxgram:00001634:  ereport(ERROR, 
+ paah: plxgram:00001635:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ paah: plxgram:00001636:  errmsg("row or record variable cannot be NOT NULL"))); 
+ paah: plxgram:00001643:  ereport(ERROR, 
+ paah: plxgram:00001644:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ paah: plxgram:00001645:  errmsg("default value for row or record variable is not supported"))); 
+ paah: plxgram:00001806:  ereport(ERROR, 
+ paah: plxgram:00001807:  (errcode(ERRCODE_UNDEFINED_PARAMETER), 
+ paah: plxgram:00001808:  errmsg("function has no parameter "%s"", 
+ paah: plxgram:00001809:  name))); 
+ paah: plxgram:00002394:  ereport(ERROR, 
+ paah: plxgram:00002395:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00002396:  errmsg("integer FOR loop must have just one target variable"))); 
+ paah: plxgram:00002504:  ereport(ERROR, 
+ paah: plxgram:00002505:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00002506:  errmsg(""%s" is not a scalar variable", 
+ paah: plxgram:00002507:  (yyval.forvariable).name))); 
+ paah: plxgram:00002755:  ereport(ERROR, 
+ paah: plxgram:00002756:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00002757:  errmsg("syntax error at "%s"", 
+ paah: plxgram:00002758:  yytext), 
+ paah: plxgram:00002759:  errdetail("Expected FOR to open a reference cursor."))); 
+ paah: plxgram:00002783:  ereport(ERROR, 
+ paah: plxgram:00002784:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00002785:  errmsg("cursor "%s" has arguments", 
+ paah: plxgram:00002786:  (yyvsp[0].var)->refname))); 
+ paah: plxgram:00002835:  ereport(ERROR, 
+ paah: plxgram:00002836:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00002837:  errmsg("cursor "%s" has no arguments", 
+ paah: plxgram:00002838:  (yyvsp[0].var)->refname))); 
+ paah: plxgram:00002844:  ereport(ERROR, 
+ paah: plxgram:00002845:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00002846:  errmsg("syntax error at "%s"", 
+ paah: plxgram:00002847:  yytext))); 
+ paah: plxgram:00002894:  ereport(ERROR, 
+ paah: plxgram:00002895:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxgram:00002896:  errmsg(""%s" must be of type cursor or refcursor", 
+ paah: plxgram:00002897:  ((PLpgSQL_var *) yylval.scalar)->refname))); 
+ paah: plxgram:00002912:  ereport(ERROR, 
+ paah: plxgram:00002913:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxgram:00002914:  errmsg(""%s" must be of type refcursor", 
+ paah: plxgram:00002915:  ((PLpgSQL_var *) yylval.scalar)->refname))); 
+ paah: plxgram:00003361:  ereport(ERROR, 
+ paah: plxgram:00003362:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ paah: plxgram:00003363:  errmsg("too many variables specified in SQL statement"))); 
+ paah: plxgram:00003431:  ereport(ERROR, 
+ paah: plxgram:00003432:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003433:  errmsg("mismatched parentheses"))); 
+ paah: plxgram:00003444:  ereport(ERROR, 
+ paah: plxgram:00003445:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003446:  errmsg("mismatched parentheses"))); 
+ paah: plxgram:00003448:  ereport(ERROR, 
+ paah: plxgram:00003449:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003450:  errmsg("missing "%s" at end of SQL expression", 
+ paah: plxgram:00003451:  expected))); 
+ paah: plxgram:00003453:  ereport(ERROR, 
+ paah: plxgram:00003454:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003455:  errmsg("missing "%s" at end of SQL statement", 
+ paah: plxgram:00003456:  expected))); 
+ paah: plxgram:00003538:  ereport(ERROR, 
+ paah: plxgram:00003539:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003540:  errmsg("mismatched parentheses"))); 
+ paah: plxgram:00003541:  ereport(ERROR, 
+ paah: plxgram:00003542:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003543:  errmsg("incomplete datatype declaration"))); 
+ paah: plxgram:00003615:  ereport(ERROR, 
+ paah: plxgram:00003616:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003617:  errmsg("unexpected end of function definition"))); 
+ paah: plxgram:00003625:  ereport(ERROR, 
+ paah: plxgram:00003626:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003627:  errmsg("INTO specified more than once"))); 
+ paah: plxgram:00003834:  ereport(ERROR, 
+ paah: plxgram:00003835:  (errcode(ERRCODE_ERROR_IN_ASSIGNMENT), 
+ paah: plxgram:00003836:  errmsg(""%s" is declared CONSTANT", 
+ paah: plxgram:00003837:  ((PLpgSQL_var *) datum)->refname))); 
+ paah: plxgram:00003901:  ereport(ERROR, 
+ paah: plxgram:00003902:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003903:  errmsg("syntax error at "%s"", yytext), 
+ paah: plxgram:00003904:  errdetail("Expected record variable, row variable, " 
+ paah: plxgram:00003905:  "or list of scalar variables following INTO."))); 
+ paah: plxgram:00003936:  ereport(ERROR, 
+ paah: plxgram:00003937:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ paah: plxgram:00003938:  errmsg("too many INTO variables specified"))); 
+ paah: plxgram:00003952:  ereport(ERROR, 
+ paah: plxgram:00003953:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00003954:  errmsg(""%s" is not a scalar variable", 
+ paah: plxgram:00003955:  yytext))); 
+ paah: plxgram:00004087:  ereport(ERROR, 
+ paah: plxgram:00004088:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00004089:  errmsg("end label "%s" specified for unlabelled block", 
+ paah: plxgram:00004090:  end_label))); 
+ paah: plxgram:00004096:  ereport(ERROR, 
+ paah: plxgram:00004097:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxgram:00004098:  errmsg("end label "%s" differs from block's label "%s"", 
+ paah: plxgram:00004099:  end_label, start_label))); 
  paah: plxscan:00000858: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
  paah: plxscan:00000859:  
  paah: plxscan:00000860: #define unify_version(a,b,c) ((a<<16)+(b<<8)+c) 
@@ -13794,79 +13776,79 @@ select * from get_ereport order by 1;
  saae: smgr:00000303:  reln->smgr_rnode.spcNode, 
  saae: smgr:00000304:  reln->smgr_rnode.dbNode, 
  saae: smgr:00000305:  reln->smgr_rnode.relNode))); 
- saae: smgr:00000913:  ereport(WARNING, 
- saae: smgr:00000914:  (errcode_for_file_access(), 
- saae: smgr:00000915:  errmsg("could not remove relation %u/%u/%u: %m", 
- saae: smgr:00000916:  rnode.spcNode, 
- saae: smgr:00000917:  rnode.dbNode, 
- saae: smgr:00000918:  rnode.relNode))); 
- saae: smgr:00000920:  ereport(WARNING, 
- saae: smgr:00000921:  (errcode_for_file_access(), 
- saae: smgr:00000922:  errmsg("could not remove relation %u/%u/%u '%s': %m", 
- saae: smgr:00000923:  rnode.spcNode, 
- saae: smgr:00000924:  rnode.dbNode, 
- saae: smgr:00000925:  rnode.relNode, 
- saae: smgr:00000926:  relationName))); 
- saae: smgr:00000999:  ereport(WARNING, 
- saae: smgr:00001000:  (errcode_for_file_access(), 
- saae: smgr:00001001:  errmsg("could not remove filespace directory %u: %m", 
- saae: smgr:00001002:  filespaceOid))); 
- saae: smgr:00001103:  ereport(WARNING, 
- saae: smgr:00001104:  (errcode_for_file_access(), 
- saae: smgr:00001105:  errmsg("could not remove tablespace directory %u: %m", 
- saae: smgr:00001106:  tablespaceOid))); 
- saae: smgr:00001129:  ereport(WARNING, 
- saae: smgr:00001130:  (errcode_for_file_access(), 
- saae: smgr:00001131:  errmsg("could not remove database directory %u/%u: %m", 
- saae: smgr:00001132:  dbDirNode->tablespace, 
- saae: smgr:00001133:  dbDirNode->database))); 
- saae: smgr:00001193:  ereport(ERROR, 
- saae: smgr:00001194:  (errcode_for_file_access(), 
- saae: smgr:00001195:  errmsg("could not extend relation %u/%u/%u: %m", 
- saae: smgr:00001196:  reln->smgr_rnode.spcNode, 
- saae: smgr:00001197:  reln->smgr_rnode.dbNode, 
- saae: smgr:00001198:  reln->smgr_rnode.relNode), 
- saae: smgr:00001199:  errhint("Check free disk space."))); 
- saae: smgr:00001214:  ereport(ERROR, 
- saae: smgr:00001215:  (errcode_for_file_access(), 
- saae: smgr:00001216:  errmsg("could not read block %u of relation %u/%u/%u: %m", 
- saae: smgr:00001217:  blocknum, 
- saae: smgr:00001218:  reln->smgr_rnode.spcNode, 
- saae: smgr:00001219:  reln->smgr_rnode.dbNode, 
- saae: smgr:00001220:  reln->smgr_rnode.relNode))); 
- saae: smgr:00001238:  ereport(ERROR, 
- saae: smgr:00001239:  (errcode_for_file_access(), 
- saae: smgr:00001240:  errmsg("could not write block %u of relation %u/%u/%u: %m", 
- saae: smgr:00001241:  blocknum, 
- saae: smgr:00001242:  reln->smgr_rnode.spcNode, 
- saae: smgr:00001243:  reln->smgr_rnode.dbNode, 
- saae: smgr:00001244:  reln->smgr_rnode.relNode))); 
- saae: smgr:00001268:  ereport(ERROR, 
- saae: smgr:00001269:  (errcode_for_file_access(), 
- saae: smgr:00001270:  errmsg("could not count blocks of relation %u/%u/%u: %m", 
- saae: smgr:00001271:  reln->smgr_rnode.spcNode, 
- saae: smgr:00001272:  reln->smgr_rnode.dbNode, 
- saae: smgr:00001273:  reln->smgr_rnode.relNode))); 
- saae: smgr:00001306:  ereport(ERROR, 
- saae: smgr:00001307:  (errcode_for_file_access(), 
- saae: smgr:00001308:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
- saae: smgr:00001309:  reln->smgr_rnode.spcNode, 
- saae: smgr:00001310:  reln->smgr_rnode.dbNode, 
- saae: smgr:00001311:  reln->smgr_rnode.relNode, 
- saae: smgr:00001312:  nblocks))); 
- saae: smgr:00001368:  ereport(ERROR, 
- saae: smgr:00001369:  (errcode_for_file_access(), 
- saae: smgr:00001370:  errmsg("could not sync relation %u/%u/%u: %m", 
- saae: smgr:00001371:  reln->smgr_rnode.spcNode, 
- saae: smgr:00001372:  reln->smgr_rnode.dbNode, 
- saae: smgr:00001373:  reln->smgr_rnode.relNode))); 
- saae: smgr:00002480:  ereport(WARNING, 
- saae: smgr:00002481:  (errcode_for_file_access(), 
- saae: smgr:00002482:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
- saae: smgr:00002483:  reln->smgr_rnode.spcNode, 
- saae: smgr:00002484:  reln->smgr_rnode.dbNode, 
- saae: smgr:00002485:  reln->smgr_rnode.relNode, 
- saae: smgr:00002486:  xlrec->blkno))); 
+ saae: smgr:00000916:  ereport(WARNING, 
+ saae: smgr:00000917:  (errcode_for_file_access(), 
+ saae: smgr:00000918:  errmsg("could not remove relation %u/%u/%u: %m", 
+ saae: smgr:00000919:  rnode.spcNode, 
+ saae: smgr:00000920:  rnode.dbNode, 
+ saae: smgr:00000921:  rnode.relNode))); 
+ saae: smgr:00000923:  ereport(WARNING, 
+ saae: smgr:00000924:  (errcode_for_file_access(), 
+ saae: smgr:00000925:  errmsg("could not remove relation %u/%u/%u '%s': %m", 
+ saae: smgr:00000926:  rnode.spcNode, 
+ saae: smgr:00000927:  rnode.dbNode, 
+ saae: smgr:00000928:  rnode.relNode, 
+ saae: smgr:00000929:  relationName))); 
+ saae: smgr:00001002:  ereport(WARNING, 
+ saae: smgr:00001003:  (errcode_for_file_access(), 
+ saae: smgr:00001004:  errmsg("could not remove filespace directory %u: %m", 
+ saae: smgr:00001005:  filespaceOid))); 
+ saae: smgr:00001106:  ereport(WARNING, 
+ saae: smgr:00001107:  (errcode_for_file_access(), 
+ saae: smgr:00001108:  errmsg("could not remove tablespace directory %u: %m", 
+ saae: smgr:00001109:  tablespaceOid))); 
+ saae: smgr:00001132:  ereport(WARNING, 
+ saae: smgr:00001133:  (errcode_for_file_access(), 
+ saae: smgr:00001134:  errmsg("could not remove database directory %u/%u: %m", 
+ saae: smgr:00001135:  dbDirNode->tablespace, 
+ saae: smgr:00001136:  dbDirNode->database))); 
+ saae: smgr:00001196:  ereport(ERROR, 
+ saae: smgr:00001197:  (errcode_for_file_access(), 
+ saae: smgr:00001198:  errmsg("could not extend relation %u/%u/%u: %m", 
+ saae: smgr:00001199:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00001200:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00001201:  reln->smgr_rnode.relNode), 
+ saae: smgr:00001202:  errhint("Check free disk space."))); 
+ saae: smgr:00001217:  ereport(ERROR, 
+ saae: smgr:00001218:  (errcode_for_file_access(), 
+ saae: smgr:00001219:  errmsg("could not read block %u of relation %u/%u/%u: %m", 
+ saae: smgr:00001220:  blocknum, 
+ saae: smgr:00001221:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00001222:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00001223:  reln->smgr_rnode.relNode))); 
+ saae: smgr:00001241:  ereport(ERROR, 
+ saae: smgr:00001242:  (errcode_for_file_access(), 
+ saae: smgr:00001243:  errmsg("could not write block %u of relation %u/%u/%u: %m", 
+ saae: smgr:00001244:  blocknum, 
+ saae: smgr:00001245:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00001246:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00001247:  reln->smgr_rnode.relNode))); 
+ saae: smgr:00001271:  ereport(ERROR, 
+ saae: smgr:00001272:  (errcode_for_file_access(), 
+ saae: smgr:00001273:  errmsg("could not count blocks of relation %u/%u/%u: %m", 
+ saae: smgr:00001274:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00001275:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00001276:  reln->smgr_rnode.relNode))); 
+ saae: smgr:00001309:  ereport(ERROR, 
+ saae: smgr:00001310:  (errcode_for_file_access(), 
+ saae: smgr:00001311:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
+ saae: smgr:00001312:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00001313:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00001314:  reln->smgr_rnode.relNode, 
+ saae: smgr:00001315:  nblocks))); 
+ saae: smgr:00001371:  ereport(ERROR, 
+ saae: smgr:00001372:  (errcode_for_file_access(), 
+ saae: smgr:00001373:  errmsg("could not sync relation %u/%u/%u: %m", 
+ saae: smgr:00001374:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00001375:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00001376:  reln->smgr_rnode.relNode))); 
+ saae: smgr:00002490:  ereport(WARNING, 
+ saae: smgr:00002491:  (errcode_for_file_access(), 
+ saae: smgr:00002492:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
+ saae: smgr:00002493:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00002494:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00002495:  reln->smgr_rnode.relNode, 
+ saae: smgr:00002496:  xlrec->blkno))); 
  saaf: shmem:00000128:  ereport(ERROR, 
  saaf: shmem:00000129:  (errcode(ERRCODE_INTERNAL_ERROR), 
  saaf: shmem:00000130:  errmsg("invalid page size %d; must be a power of two and not an error", ShmemSystemPageSize))); 
@@ -14510,96 +14492,96 @@ select * from get_ereport order by 1;
  taai: toasting:00000177:  ereport(ERROR, 
  taai: toasting:00000178:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
  taai: toasting:00000179:  errmsg("shared tables cannot be toasted after initdb"))); 
- taai: twophase:00000231:  ereport(ERROR, 
- taai: twophase:00000232:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- taai: twophase:00000233:  errmsg("transaction identifier "%s" is too long (%d > %d max)", 
- taai: twophase:00000234:  gid, idlen, GIDSIZE))); 
- taai: twophase:00000265:  ereport(ERROR, 
- taai: twophase:00000266:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
- taai: twophase:00000267:  errmsg("transaction identifier "%s" is already in use", 
- taai: twophase:00000268:  gid))); 
- taai: twophase:00000274:  ereport(ERROR, 
- taai: twophase:00000275:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- taai: twophase:00000276:  errmsg("maximum number of prepared transactions reached"), 
- taai: twophase:00000277:  errhint("Increase max_prepared_transactions (currently %d).", 
- taai: twophase:00000278:  max_prepared_xacts))); 
- taai: twophase:00000406:  ereport(ERROR, 
- taai: twophase:00000407:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- taai: twophase:00000408:  errmsg("prepared transaction with identifier "%s" is busy", 
- taai: twophase:00000409:  gid))); 
- taai: twophase:00000418:  ereport(ERROR, 
- taai: twophase:00000419:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- taai: twophase:00000420:  errmsg("permission denied to finish prepared transaction"), 
- taai: twophase:00000421:  errhint("Must be superuser or the user that prepared the transaction."))); 
- taai: twophase:00000433:  ereport(ERROR, 
- taai: twophase:00000434:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- taai: twophase:00000435:  errmsg("prepared transaction belongs to another database"), 
- taai: twophase:00000436:  errhint("Connect to the database where the transaction was prepared to finish it."))); 
- taai: twophase:00000454:  ereport(ERROR, 
- taai: twophase:00000455:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- taai: twophase:00000456:  errmsg("prepared transaction with identifier "%s" does not exist", 
- taai: twophase:00000457:  gid))); 
- taai: twophase:00000933:  ereport(ERROR, 
- taai: twophase:00000934:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- taai: twophase:00000935:  errmsg("two-phase state file maximum length exceeded"))); 
- taai: twophase:00001100:  ereport(WARNING, 
- taai: twophase:00001101:  (errcode_for_file_access(), 
- taai: twophase:00001102:  errmsg("could not open two-phase state file "%s": %m", 
- taai: twophase:00001103:  path))); 
- taai: twophase:00001116:  ereport(WARNING, 
- taai: twophase:00001117:  (errcode_for_file_access(), 
- taai: twophase:00001118:  errmsg("could not stat two-phase state file "%s": %m", 
- taai: twophase:00001119:  path))); 
- taai: twophase:00001128:  ereport(WARNING, 
- taai: twophase:00001129:  (errmsg("file size less than minimum %d", minimumLen))); 
- taai: twophase:00001136:  ereport(WARNING, 
- taai: twophase:00001137:  (errmsg("two phase commit file larger than memory limit %lu", 
- taai: twophase:00001138:  (long unsigned int)MaxAllocSize))); 
- taai: twophase:00001147:  ereport(WARNING, 
- taai: twophase:00001148:  (errmsg("CRC offset not aligned (offset %d, aligned %d)", 
- taai: twophase:00001149:  crc_offset, alignedOffset))); 
- taai: twophase:00001161:  ereport(WARNING, 
- taai: twophase:00001162:  (errcode_for_file_access(), 
- taai: twophase:00001163:  errmsg("could not read two-phase state file "%s": %m", 
- taai: twophase:00001164:  path))); 
- taai: twophase:00001176:  ereport(WARNING, 
- taai: twophase:00001177:  (errmsg("two-phase identifier doesn't match (identifer 0x%X, expected 0x%X)", 
- taai: twophase:00001178:  hdr->magic, twoPhaseMagic))); 
- taai: twophase:00001184:  ereport(WARNING, 
- taai: twophase:00001185:  (errmsg("length field doesn't match length (field %d, actual length %d)", 
- taai: twophase:00001186:  hdr->total_len, (int)stat.st_size))); 
- taai: twophase:00001199:  ereport(WARNING, 
- taai: twophase:00001200:  (errmsg("two phase state file checksum failed: expected 0x%X " 
- taai: twophase:00001201:  "but calculated 0x%X", 
- taai: twophase:00001202:  file_crc, calc_crc))); 
- taai: twophase:00001248:  ereport(ERROR, 
- taai: twophase:00001249:  (errcode(ERRCODE_DATA_CORRUPTED), 
- taai: twophase:00001250:  errmsg("two-phase state file for transaction %u is corrupt", 
- taai: twophase:00001251:  xid), 
- taai: twophase:00001252:  errSendAlert(true))); 
- taai: twophase:00001399:  ereport(WARNING, 
- taai: twophase:00001400:  (errcode_for_file_access(), 
- taai: twophase:00001401:  errmsg("could not remove two-phase state file "%s": %m", 
- taai: twophase:00001402:  path))); 
- taai: twophase:00001543:  ereport(ERROR, 
- taai: twophase:00001544:  (errcode_for_file_access(), 
- taai: twophase:00001545:  errmsg("could not open two-phase state file "%s": %m", 
- taai: twophase:00001546:  path))); 
- taai: twophase:00001607:  ereport(WARNING, 
- taai: twophase:00001608:  (errmsg("removing future two-phase state file "%s"", 
- taai: twophase:00001609:  clde->d_name))); 
- taai: twophase:00001623:  ereport(WARNING, 
- taai: twophase:00001624:  (errmsg("removing corrupt two-phase state file "%s"", 
- taai: twophase:00001625:  clde->d_name))); 
- taai: twophase:00001634:  ereport(WARNING, 
- taai: twophase:00001635:  (errmsg("removing corrupt two-phase state file "%s"", 
- taai: twophase:00001636:  clde->d_name))); 
- taai: twophase:00001718:  ereport(WARNING, 
- taai: twophase:00001719:  (errmsg("removing stale two-phase state file "%s"", 
- taai: twophase:00001720:  clde->d_name))); 
- taai: twophase:00001729:  ereport(WARNING, 
- taai: twophase:00001730:  (errmsg("removing corrupt two-phase state file "%s"", 
- taai: twophase:00001731:  clde->d_name))); 
+ taai: twophase:00000232:  ereport(ERROR, 
+ taai: twophase:00000233:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ taai: twophase:00000234:  errmsg("transaction identifier "%s" is too long (%d > %d max)", 
+ taai: twophase:00000235:  gid, idlen, GIDSIZE))); 
+ taai: twophase:00000266:  ereport(ERROR, 
+ taai: twophase:00000267:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+ taai: twophase:00000268:  errmsg("transaction identifier "%s" is already in use", 
+ taai: twophase:00000269:  gid))); 
+ taai: twophase:00000275:  ereport(ERROR, 
+ taai: twophase:00000276:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ taai: twophase:00000277:  errmsg("maximum number of prepared transactions reached"), 
+ taai: twophase:00000278:  errhint("Increase max_prepared_transactions (currently %d).", 
+ taai: twophase:00000279:  max_prepared_xacts))); 
+ taai: twophase:00000407:  ereport(ERROR, 
+ taai: twophase:00000408:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ taai: twophase:00000409:  errmsg("prepared transaction with identifier "%s" is busy", 
+ taai: twophase:00000410:  gid))); 
+ taai: twophase:00000419:  ereport(ERROR, 
+ taai: twophase:00000420:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ taai: twophase:00000421:  errmsg("permission denied to finish prepared transaction"), 
+ taai: twophase:00000422:  errhint("Must be superuser or the user that prepared the transaction."))); 
+ taai: twophase:00000434:  ereport(ERROR, 
+ taai: twophase:00000435:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ taai: twophase:00000436:  errmsg("prepared transaction belongs to another database"), 
+ taai: twophase:00000437:  errhint("Connect to the database where the transaction was prepared to finish it."))); 
+ taai: twophase:00000455:  ereport(ERROR, 
+ taai: twophase:00000456:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ taai: twophase:00000457:  errmsg("prepared transaction with identifier "%s" does not exist", 
+ taai: twophase:00000458:  gid))); 
+ taai: twophase:00000934:  ereport(ERROR, 
+ taai: twophase:00000935:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ taai: twophase:00000936:  errmsg("two-phase state file maximum length exceeded"))); 
+ taai: twophase:00001101:  ereport(WARNING, 
+ taai: twophase:00001102:  (errcode_for_file_access(), 
+ taai: twophase:00001103:  errmsg("could not open two-phase state file "%s": %m", 
+ taai: twophase:00001104:  path))); 
+ taai: twophase:00001117:  ereport(WARNING, 
+ taai: twophase:00001118:  (errcode_for_file_access(), 
+ taai: twophase:00001119:  errmsg("could not stat two-phase state file "%s": %m", 
+ taai: twophase:00001120:  path))); 
+ taai: twophase:00001129:  ereport(WARNING, 
+ taai: twophase:00001130:  (errmsg("file size less than minimum %d", minimumLen))); 
+ taai: twophase:00001137:  ereport(WARNING, 
+ taai: twophase:00001138:  (errmsg("two phase commit file larger than memory limit %lu", 
+ taai: twophase:00001139:  (long unsigned int)MaxAllocSize))); 
+ taai: twophase:00001148:  ereport(WARNING, 
+ taai: twophase:00001149:  (errmsg("CRC offset not aligned (offset %d, aligned %d)", 
+ taai: twophase:00001150:  crc_offset, alignedOffset))); 
+ taai: twophase:00001162:  ereport(WARNING, 
+ taai: twophase:00001163:  (errcode_for_file_access(), 
+ taai: twophase:00001164:  errmsg("could not read two-phase state file "%s": %m", 
+ taai: twophase:00001165:  path))); 
+ taai: twophase:00001177:  ereport(WARNING, 
+ taai: twophase:00001178:  (errmsg("two-phase identifier doesn't match (identifer 0x%X, expected 0x%X)", 
+ taai: twophase:00001179:  hdr->magic, twoPhaseMagic))); 
+ taai: twophase:00001185:  ereport(WARNING, 
+ taai: twophase:00001186:  (errmsg("length field doesn't match length (field %d, actual length %d)", 
+ taai: twophase:00001187:  hdr->total_len, (int)stat.st_size))); 
+ taai: twophase:00001200:  ereport(WARNING, 
+ taai: twophase:00001201:  (errmsg("two phase state file checksum failed: expected 0x%X " 
+ taai: twophase:00001202:  "but calculated 0x%X", 
+ taai: twophase:00001203:  file_crc, calc_crc))); 
+ taai: twophase:00001249:  ereport(ERROR, 
+ taai: twophase:00001250:  (errcode(ERRCODE_DATA_CORRUPTED), 
+ taai: twophase:00001251:  errmsg("two-phase state file for transaction %u is corrupt", 
+ taai: twophase:00001252:  xid), 
+ taai: twophase:00001253:  errSendAlert(true))); 
+ taai: twophase:00001416:  ereport(WARNING, 
+ taai: twophase:00001417:  (errcode_for_file_access(), 
+ taai: twophase:00001418:  errmsg("could not remove two-phase state file "%s": %m", 
+ taai: twophase:00001419:  path))); 
+ taai: twophase:00001560:  ereport(ERROR, 
+ taai: twophase:00001561:  (errcode_for_file_access(), 
+ taai: twophase:00001562:  errmsg("could not open two-phase state file "%s": %m", 
+ taai: twophase:00001563:  path))); 
+ taai: twophase:00001624:  ereport(WARNING, 
+ taai: twophase:00001625:  (errmsg("removing future two-phase state file "%s"", 
+ taai: twophase:00001626:  clde->d_name))); 
+ taai: twophase:00001640:  ereport(WARNING, 
+ taai: twophase:00001641:  (errmsg("removing corrupt two-phase state file "%s"", 
+ taai: twophase:00001642:  clde->d_name))); 
+ taai: twophase:00001651:  ereport(WARNING, 
+ taai: twophase:00001652:  (errmsg("removing corrupt two-phase state file "%s"", 
+ taai: twophase:00001653:  clde->d_name))); 
+ taai: twophase:00001735:  ereport(WARNING, 
+ taai: twophase:00001736:  (errmsg("removing stale two-phase state file "%s"", 
+ taai: twophase:00001737:  clde->d_name))); 
+ taai: twophase:00001746:  ereport(WARNING, 
+ taai: twophase:00001747:  (errmsg("removing corrupt two-phase state file "%s"", 
+ taai: twophase:00001748:  clde->d_name))); 
  taai: typcache:00000143:  ereport(ERROR, 
  taai: typcache:00000144:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
  taai: typcache:00000145:  errmsg("type "%s" is only a shell", 
@@ -18169,8 +18151,8 @@ select * from get_ereport order by 1;
  xaae: xlog:00006671:  errmsg("could not unlink redo relation file "%s": %m", path))); 
  xaae: xlog:00006698:  ereport(FATAL, 
  xaae: xlog:00006699:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
- xaae: xlog:00006796:  ereport(FATAL, 
- xaae: xlog:00006797:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
+ xaae: xlog:00006797:  ereport(FATAL, 
+ xaae: xlog:00006798:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
  xaae: xlog:00006941:  ereport(FATAL, 
  xaae: xlog:00006942:  (errmsg("%s: control file contains invalid data", callerStr))); 
  xaae: xlog:00006988:  ereport(ERROR, 
@@ -18290,6 +18272,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000076:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000077:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000078:  str))); 
-(18223 rows)
+(18205 rows)
 
 drop external table get_ereport;
