@@ -40,6 +40,7 @@ except Exception, e:
  
 import datetime,getpass,os,signal,socket,subprocess,threading,time,traceback,re
 import platform
+import select
 
 EXECNAME = 'gpload'
 
@@ -701,19 +702,38 @@ def bytestr(size, precision=1):
 
 class CatThread(threading.Thread):
     """
-    Simply therading wrapper to read a file descriptor and put the contents
+    Simply threading wrapper to read a file descriptor and put the contents
     in the log file.
+
+    The fd is assumed to be stdout and stderr from gpfdist. We must use select.select
+    and locks to ensure both threads are not read at the same time. A dead lock 
+    situation could happen if they did. communicate() is not used since it blocks.
+    We will wait 1 second between read attempts.
+
     """
-    def __init__(self,gpload,fd):
+    def __init__(self,gpload,fd,sharedLock):
         threading.Thread.__init__(self)
         self.gpload = gpload
         self.fd = fd
+        self.theLock = sharedLock
+
     def run(self):
         while 1:
-            line = self.fd.readline()
+            retList = select.select( [self.fd]
+                                   , []
+                                   , []
+                                   , 1
+                                   )
+            if retList[0] == [self.fd]: 
+               self.theLock.acquire()
+               line = self.fd.readline()
+               self.theLock.release()
+            else:
+               continue
             if line=='':
                 break
             self.gpload.log(self.gpload.DEBUG, 'gpfdist: ' + line.strip('\n'))
+
 
 class Progress(threading.Thread):
     """
@@ -1383,13 +1403,22 @@ class gpload:
                 self.log(self.ERROR, "could not run %s: %s" % \
                                 (' '.join(popenList), str(e)))
 
+
+            """ 
+            Reading from stderr and stdout on a Popen object can result in a dead lock if done at the same time.
+            Create a lock to share when reading stderr and stdout from gpfdist. 
+            """
+            outputLock = threading.Lock()
+
             # get all the output from the daemon(s)
-            t = CatThread(self,a.stderr)
+            t = CatThread(self,a.stderr, outputLock)
             t.start()
             self.threads.append(t)
 
             while 1:
+                outputLock.acquire()
                 line = a.stdout.readline()
+                outputLock.release()
                 if line=='':
                     self.log(self.ERROR,'failed to start gpfdist: ' +
                              'gpfdist command line: ' + ' '.join(popenList))
@@ -1405,7 +1434,7 @@ class gpload:
             if port in availablePorts:
                 availablePorts.remove(port)
             self.ports.append(port)
-            t = CatThread(self,a.stdout)
+            t = CatThread(self,a.stdout,outputLock)
             t.start()
             self.threads.append(t)
 
