@@ -335,6 +335,7 @@ FileRepPrimary_ConstructAndInsertMessage(
 		case FileRepOperationRename:
 		case FileRepOperationHeartBeat:
 		case FileRepOperationCreateAndOpen:
+		case FileRepOperationCreate:
 			
 			fileRepMessageHeader->fileRepOperationDescription = fileRepOperationDescription;
 			break;
