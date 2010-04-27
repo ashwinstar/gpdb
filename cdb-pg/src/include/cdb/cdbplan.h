@@ -85,9 +85,15 @@ static inline void plan_tree_base_subplan_put_plan(plan_tree_base_prefix *base, 
 {
 	Assert(base);
 	if (IsA(base->node, PlannedStmt))
-		return exec_subplan_put_plan((PlannedStmt*)base->node, subplan, plan);
+	{
+		exec_subplan_put_plan((PlannedStmt*)base->node, subplan, plan);
+		return;
+	}
 	else if (IsA(base->node, PlannerInfo))
-		return planner_subplan_put_plan((PlannerInfo*)base->node, subplan, plan);
+	{
+		planner_subplan_put_plan((PlannerInfo*)base->node, subplan, plan);
+		return;
+	}
 	Assert(false && "Must provide relevant base info.");
 }
 
