@@ -108,7 +108,7 @@ svec_eq(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(sparsedata_eq(left,right));
 }
 
-static int32_t
+static int32
 svec_l2_cmp_internal(SvecType *svec1, SvecType *svec2)
 {
 	SparseData left  = sdata_from_svec(svec1);
