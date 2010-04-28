@@ -216,7 +216,7 @@ DefineIndex(RangeVar *heapRelation,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("\"%s\" is not a table",
 						heapRelation->relname),
-								   errOmitLocation(true)));
+				 errOmitLocation(true)));
 
 	/*
 	 * Don't try to CREATE INDEX on temp tables of other backends.
@@ -225,7 +225,7 @@ DefineIndex(RangeVar *heapRelation,
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot create indexes on temporary tables of other sessions"),
-						   errOmitLocation(true)));
+				 errOmitLocation(true)));
 
 	/*
 	 * Verify we (still) have CREATE rights in the rel's namespace.
@@ -258,7 +258,7 @@ DefineIndex(RangeVar *heapRelation,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("tablespace \"%s\" does not exist",
 							tableSpaceName),
-									   errOmitLocation(true)));
+					 errOmitLocation(true)));
 	}
 	else
 	{
@@ -654,22 +654,37 @@ DefineIndex(RangeVar *heapRelation,
         {
 			CdbDispatcherState ds = {NULL, NULL};
 
-        	/*
-			 * Dispatch the command to all primary and mirror segdbs.
-	         * Doesn't start a global transaction.  Doesn't wait for
-	         * the QEs to finish execution.
-	         */
-	        cdbdisp_dispatchUtilityStatement((Node *)stmt,
-	                                         true,      /* cancelOnError */
-	                                         false,      /* startTransaction */
-	                                         true,      /* withSnapshot */
-	                                         &ds,
-											 "DefineIndex");
-			/* Wait for all QEs to finish.	Throw up if error. */
-			cdbdisp_finishCommand(&ds, NULL, NULL);
+			PG_TRY();
+			{
+				/*
+				 * Dispatch the command to all primary and mirror segdbs.
+				 * Doesn't start a global transaction.  Doesn't wait for
+				 * the QEs to finish execution.
+				 */
+				cdbdisp_dispatchUtilityStatement((Node *)stmt,
+												 true,      /* cancelOnError */
+												 false,      /* startTransaction */
+												 true,      /* withSnapshot */
+												 &ds,
+												 "DefineIndex");
+				/* Wait for all QEs to finish.	Throw up if error. */
+				cdbdisp_finishCommand(&ds, NULL, NULL);
+			}
+			PG_CATCH();
+			{
+				/* If dispatched, stop QEs and clean up after them. */
+				if (ds.primaryResults)
+					cdbdisp_handleError(&ds);
+
+				PG_RE_THROW();
+				/* not reached */
+			}
+			PG_END_TRY();
         }
         else
+		{
         	CdbDispatchUtilityStatement((Node *)stmt, "DefineIndex");
+		}
 	}
 
 	/* save lockrelid for below, then close rel */

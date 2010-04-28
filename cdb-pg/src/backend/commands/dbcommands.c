@@ -60,6 +60,7 @@
 #include "utils/syscache.h"
 
 #include "cdb/cdbdisp.h"
+#include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
@@ -620,8 +621,21 @@ createdb(CreatedbStmt *stmt)
 {
 	CdbDispatcherState ds = {NULL, NULL};
 
-    createdb_int(stmt, &ds);
-	cdbdisp_finishCommand(&ds, NULL, NULL);
+	PG_TRY();
+	{
+		createdb_int(stmt, &ds);
+		cdbdisp_finishCommand(&ds, NULL, NULL);
+	}
+	PG_CATCH();
+	{
+		/* If dispatched, stop QEs and clean up after them. */
+		if (ds.primaryResults)
+			cdbdisp_handleError(&ds);
+
+		PG_RE_THROW();
+		/* not reached */
+	}
+	PG_END_TRY();
 }
 
 static void
