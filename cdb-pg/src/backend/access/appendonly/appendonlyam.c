@@ -656,6 +656,7 @@ AppendOnlyExecutorReadBlock_GetBlockInfo(
 	AppendOnlyStorageRead			*storageRead,
 	AppendOnlyExecutorReadBlock		*executorReadBlock)
 {
+	int64 blockFirstRowNum = executorReadBlock->blockFirstRowNum;
 	if (!AppendOnlyStorageRead_GetBlockInfo(
 									storageRead,
 									&executorReadBlock->dataLen,
@@ -666,6 +667,19 @@ AppendOnlyExecutorReadBlock_GetBlockInfo(
 									&executorReadBlock->isCompressed))
 	{
 		return false;			
+	}
+
+	/* If the firstRowNum is not stored in the AOBlock,
+	 * executorReadBlock->blockFirstRowNum is set to -1.
+	 * Since this is properly updated by calling functions
+	 * AppendOnlyExecutionReadBlock_SetPositionInfo and
+	 * AppendOnlyExecutionReadBlock_FinishedScanBlock,
+	 * we restore the last value when the block does not
+	 * contain firstRowNum.
+	 */
+	if (executorReadBlock->blockFirstRowNum < 0)
+	{
+		executorReadBlock->blockFirstRowNum = blockFirstRowNum;
 	}
 
 	executorReadBlock->headerOffsetInFile = 
