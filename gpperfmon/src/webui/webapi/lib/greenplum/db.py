@@ -700,7 +700,7 @@ def queryplan_get_username_now(tmid, ssid, ccnt):
 def queryplan_sql(table, tmid, ssid, ccnt, start='', end=''):
     query = """select
        min(ctime) as sample_time, tmid, ssid, ccnt, nid, min(pnid) as pnid,
-       min(ntype) as ntype, array_to_string(iterators_array_accum(distinct nstatus), ',') as nstatus,
+       min(ntype) as ntype, nstatus as nstatus,
        min(tstart) as tstart, avg(tduration) as tduration,
        avg(pmemsize) as pmemsize, avg(pmemmax) as pmemmax,
        avg(memsize) as memsize, avg(memresid) as memresid,
@@ -732,7 +732,7 @@ def queryplan_sql(table, tmid, ssid, ccnt, start='', end=''):
     query += "\nwhere tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
     if start != '' and end != '':
         query += " and ctime>='%s' and ctime<='%s'" % (start, end)
-    query += "\ngroup by tmid, ssid, ccnt, nid"
+    query += "\ngroup by tmid, ssid, ccnt, nid, nstatus"
 
     return query
 
