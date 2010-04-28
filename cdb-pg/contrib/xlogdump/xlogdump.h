@@ -40,7 +40,9 @@ static const char * const RM_names[RM_MAX_ID+1] = {
 	"HASH ",					/* 12 */
 	"GIN",						/* 13 */
 	"GIST ",					/* 14 */
-	"SEQ  "						/* 15 */
+	"SEQ  ",					/* 15 */
+	"BM   ",					/* 16 */
+	"DXLOG"						/* 17 */
 };
 
 /* Transactions status used only with -t option */
