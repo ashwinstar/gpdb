@@ -652,7 +652,7 @@ DefineIndex(RangeVar *heapRelation,
          */
         if (stmt->concurrent)
         {
-			CdbDispatcherState ds = {NULL, NULL};
+			volatile struct CdbDispatcherState ds = {NULL, NULL};
 
 			PG_TRY();
 			{
@@ -665,16 +665,16 @@ DefineIndex(RangeVar *heapRelation,
 												 true,      /* cancelOnError */
 												 false,      /* startTransaction */
 												 true,      /* withSnapshot */
-												 &ds,
+												 (struct CdbDispatcherState *)&ds,
 												 "DefineIndex");
 				/* Wait for all QEs to finish.	Throw up if error. */
-				cdbdisp_finishCommand(&ds, NULL, NULL);
+				cdbdisp_finishCommand((struct CdbDispatcherState *)&ds, NULL, NULL);
 			}
 			PG_CATCH();
 			{
 				/* If dispatched, stop QEs and clean up after them. */
 				if (ds.primaryResults)
-					cdbdisp_handleError(&ds);
+					cdbdisp_handleError((struct CdbDispatcherState *)&ds);
 
 				PG_RE_THROW();
 				/* not reached */

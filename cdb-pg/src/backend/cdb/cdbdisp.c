@@ -1187,7 +1187,7 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 						  StringInfo errmsgbuf,
 						  int *numresults)
 {
-	CdbDispatcherState ds = {NULL, NULL};
+	volatile struct CdbDispatcherState ds = {NULL, NULL};
 	
 	PGresult  **resultSets = NULL;
 
@@ -1204,15 +1204,15 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 		cdbdisp_dispatchCommand(strCommand, NULL, 0,
 								/* cancelOnError */false,
 								needTwoPhase, withSnapshot,
-								&ds);
+								(struct CdbDispatcherState *)&ds);
 
 		/* Wait for all QEs to finish.	Don't cancel. */
-		CdbCheckDispatchResult(&ds, false);
+		CdbCheckDispatchResult((struct CdbDispatcherState *)&ds, false);
 	}
 	PG_CATCH();
 	{
 		/* Something happend, clean up after ourselves */
-		CdbCheckDispatchResult(&ds, false);
+		CdbCheckDispatchResult((struct CdbDispatcherState *)&ds, false);
 
 		cdbdisp_destroyDispatchResults(ds.primaryResults);
 
@@ -3986,7 +3986,7 @@ CdbDispatchUtilityStatement_NoTwoPhase(struct Node *stmt, char *debugCaller __at
 static void
 CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase, char *debugCaller)
 {
-	CdbDispatcherState ds = {NULL, NULL};
+	volatile struct CdbDispatcherState ds = {NULL, NULL};
 	
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),
 		 "cdbdisp_dispatchUtilityStatement called (needTwoPhase = %s, debugCaller = %s)",
@@ -3998,16 +3998,16 @@ CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase, char 
 										 true /* cancelOnError */, 
 										 needTwoPhase, 
 										 true /* withSnapshot */,
-										 &ds,
+										 (struct CdbDispatcherState *)&ds,
 										 debugCaller);
 
 		/* Wait for all QEs to finish.	Throw up if error. */
-		cdbdisp_finishCommand(&ds, NULL, NULL);
+		cdbdisp_finishCommand((struct CdbDispatcherState *)&ds, NULL, NULL);
 	}
 	PG_CATCH();
 	{
 		/* Something happend, clean up after ourselves */
-		CdbCheckDispatchResult(&ds, true);
+		CdbCheckDispatchResult((struct CdbDispatcherState *)&ds, true);
 
 		cdbdisp_destroyDispatchResults(ds.primaryResults);
 

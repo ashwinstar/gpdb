@@ -619,18 +619,18 @@ static void copy_append_only_segment_file(
 void
 createdb(CreatedbStmt *stmt)
 {
-	CdbDispatcherState ds = {NULL, NULL};
+	volatile struct CdbDispatcherState ds = {NULL, NULL};
 
 	PG_TRY();
 	{
-		createdb_int(stmt, &ds);
-		cdbdisp_finishCommand(&ds, NULL, NULL);
+		createdb_int(stmt, (struct CdbDispatcherState *)&ds);
+		cdbdisp_finishCommand((struct CdbDispatcherState *)&ds, NULL, NULL);
 	}
 	PG_CATCH();
 	{
 		/* If dispatched, stop QEs and clean up after them. */
 		if (ds.primaryResults)
-			cdbdisp_handleError(&ds);
+			cdbdisp_handleError((struct CdbDispatcherState *)&ds);
 
 		PG_RE_THROW();
 		/* not reached */

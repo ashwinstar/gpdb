@@ -442,20 +442,20 @@ static void ATPartitionCheck(Relation rel, AlterTableType typ, bool recursing);
 Oid
 DefineRelation(CreateStmt *stmt, char relkind, char relstorage)
 {
-	CdbDispatcherState ds = {NULL, NULL};
+	volatile struct CdbDispatcherState ds = {NULL, NULL};
 
     Oid reloid = 0;
     Assert(stmt->relation->schemaname == NULL || strlen(stmt->relation->schemaname)>0);
 
     PG_TRY();
     {
-        reloid = DefineRelation_int(stmt, relkind, relstorage, &ds);
+        reloid = DefineRelation_int(stmt, relkind, relstorage, (struct CdbDispatcherState *)&ds);
     }
 	PG_CATCH();
 	{
         /* If dispatched, stop QEs and clean up after them. */
         if (ds.primaryResults)
-            cdbdisp_handleError(&ds);
+            cdbdisp_handleError((struct CdbDispatcherState *)&ds);
 
         /* Carry on with error handling. */
 		PG_RE_THROW();
@@ -467,7 +467,7 @@ DefineRelation(CreateStmt *stmt, char relkind, char relstorage)
 	 * qExecs, if dispatched.  This waits for them to all finish, and exits
 	 * via ereport(ERROR,...) if unsuccessful.
 	 */
-	cdbdisp_finishCommand(&ds, NULL, NULL);
+	cdbdisp_finishCommand((struct CdbDispatcherState *)&ds, NULL, NULL);
 
     return reloid;
 }
@@ -883,7 +883,7 @@ DefineRelation_int(CreateStmt *stmt,
 extern void
 DefineExternalRelation(CreateExternalStmt *createExtStmt)
 {
-	CdbDispatcherState			ds = {NULL, NULL};
+	volatile struct CdbDispatcherState ds = {NULL, NULL};
 	CreateStmt				  *createStmt = makeNode(CreateStmt);
 	ExtTableTypeDesc 		  *exttypeDesc = (ExtTableTypeDesc *)createExtStmt->exttypedesc;
 	SingleRowErrorDesc 		  *singlerowerrorDesc = NULL;
@@ -1091,7 +1091,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	 * Under the covers this will dispatch a CREATE TABLE statement to all the
 	 * QEs.
 	 */
-	if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
+	if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
 		reloid = DefineRelation(createStmt, RELKIND_RELATION, RELSTORAGE_EXTERNAL);
 
 	/*
@@ -1106,7 +1106,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 		 * us and therefore we have a local entry in pg_class. get the OID
 		 * from cache.
 		 */
-		if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
+		if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
 			Assert(reloid != InvalidOid);
 		else
 			reloid = RangeVarGetRelid(createExtStmt->relation, true);
@@ -1160,7 +1160,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 											 true,      /* cancelOnError */
 											 true,      /* startTransaction */
 											 true,      /* withSnapshot */
-											 &ds,
+											 (struct CdbDispatcherState *)&ds,
 											 "DefineExternalRelation");
 		}
     }
@@ -1168,7 +1168,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	{
         /* If dispatched, stop QEs and clean up after them. */
         if (ds.primaryResults)
-            cdbdisp_handleError(&ds);
+            cdbdisp_handleError((struct CdbDispatcherState *)&ds);
 
         /* Carry on with error handling. */
 		PG_RE_THROW();
@@ -1180,7 +1180,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	 * qExecs, if dispatched.  This waits for them to all finish, and exits
 	 * via ereport(ERROR,...) if unsuccessful.
 	 */
-	cdbdisp_finishCommand(&ds, NULL, NULL);
+	cdbdisp_finishCommand((struct CdbDispatcherState *)&ds, NULL, NULL);
 }
 
 extern void
