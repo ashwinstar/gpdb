@@ -12,7 +12,11 @@
 #include <windows.h>
 #endif
 #ifdef WIN32
+#ifndef _WIN64
 typedef long ssize_t;
+#else
+typedef _int64 ssize_t;
+#endif
 #endif
 
 
