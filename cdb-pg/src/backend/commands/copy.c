@@ -2057,7 +2057,7 @@ CopyTo(CopyState cstate)
 		/* header should not be printed in execute mode. */
 		if (Gp_role != GP_ROLE_EXECUTE)
 		{
-		bool		hdr_delim = false;
+			bool		hdr_delim = false;
 
 			foreach(cur, cstate->attnumlist)
 			{
@@ -5720,8 +5720,20 @@ CopyAttributeOutCSV(CopyState cstate, char *string,
 	char	   *start;
 	char		c;
 	char		delimc = cstate->delim[0];
-	char		quotec = cstate->quote[0];
+	char		quotec;
 	char		escapec = cstate->escape[0];
+
+	/*
+	 * MPP-8075. We may get called with cstate->quote == NULL.
+	 */
+	if (cstate->quote == NULL)
+	{
+		quotec = '"';
+	}
+	else
+	{
+		quotec = cstate->quote[0];
+	}
 
 	/* force quoting if it matches null_print (before conversion!) */
 	if (!use_quote && strcmp(string, cstate->null_print) == 0)
