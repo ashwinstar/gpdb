@@ -766,45 +766,7 @@ class GpArray:
             version_str = row[0]
         version = GpVersion(version_str)
 
-        if version.isVersionCurrentRelease():
-
-            strategy_rows = dbconn.execSQL(conn, '''
-                SELECT fault_strategy FROM gp_fault_strategy
-            ''')
-
-            config_rows = dbconn.execSQL(conn, '''
-                SELECT dbid, content, role, preferred_role, mode, status, 
-                       hostname, address, port, replication_port, fs.oid, 
-                       fselocation
-                FROM pg_catalog.gp_segment_configuration
-                JOIN pg_catalog.pg_filespace_entry on (dbid = fsedbid)
-                JOIN pg_catalog.pg_filespace fs on (fsefsoid = fs.oid)
-                ORDER BY content, preferred_role DESC, fs.oid
-            ''')
-
-            san_segs_rows = dbconn.execSQL(conn, '''
-                SELECT dbid, content, status, unnest(san_mounts)
-                FROM pg_catalog.gp_segment_configuration
-                WHERE content >= 0
-                ORDER BY content, dbid
-            ''')
-
-            san_rows = dbconn.execSQL(conn, '''
-                SELECT mountid, active_host, san_type,
-                       primary_host, primary_mountpoint, primary_device,
-                       mirror_host, mirror_mountpoint, mirror_device
-                FROM pg_catalog.gp_san_configuration
-                ORDER BY mountid
-            ''')
-
-            filespaceRows = dbconn.execSQL(conn, '''
-                SELECT oid, fsname
-                FROM pg_filespace
-                ORDER BY fsname;
-            ''')
-            filespaceArr = [GpFilespaceObj(fsRow[0], fsRow[1]) for fsRow in filespaceRows]
-
-        elif version.getVersionRelease() in ("3.0", "3.1", "3.2", "3.3"):
+        if version.getVersionRelease() in ("3.0", "3.1", "3.2", "3.3"):
 
             # In older releases we get the fault strategy using the 
             # gp_fault_action guc.
@@ -842,10 +804,44 @@ class GpArray:
 
             # no filespace support in older releases.
             filespaceArr = []
+
         else:
-            logger.error("Unsupported version: %s" % str(version))
-            raise Exception("GpArray() - Unsupported version: %s" % 
-                            str(version))
+
+            strategy_rows = dbconn.execSQL(conn, '''
+                SELECT fault_strategy FROM gp_fault_strategy
+            ''')
+
+            config_rows = dbconn.execSQL(conn, '''
+                SELECT dbid, content, role, preferred_role, mode, status, 
+                       hostname, address, port, replication_port, fs.oid, 
+                       fselocation
+                FROM pg_catalog.gp_segment_configuration
+                JOIN pg_catalog.pg_filespace_entry on (dbid = fsedbid)
+                JOIN pg_catalog.pg_filespace fs on (fsefsoid = fs.oid)
+                ORDER BY content, preferred_role DESC, fs.oid
+            ''')
+
+            san_segs_rows = dbconn.execSQL(conn, '''
+                SELECT dbid, content, status, unnest(san_mounts)
+                FROM pg_catalog.gp_segment_configuration
+                WHERE content >= 0
+                ORDER BY content, dbid
+            ''')
+
+            san_rows = dbconn.execSQL(conn, '''
+                SELECT mountid, active_host, san_type,
+                       primary_host, primary_mountpoint, primary_device,
+                       mirror_host, mirror_mountpoint, mirror_device
+                FROM pg_catalog.gp_san_configuration
+                ORDER BY mountid
+            ''')
+
+            filespaceRows = dbconn.execSQL(conn, '''
+                SELECT oid, fsname
+                FROM pg_filespace
+                ORDER BY fsname;
+            ''')
+            filespaceArr = [GpFilespaceObj(fsRow[0], fsRow[1]) for fsRow in filespaceRows]
 
         conn.close()
 
