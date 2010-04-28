@@ -620,6 +620,8 @@ errcontext_persistent_relation_state_change(
 
 	PersistentFileSysState	expectedState2,
 
+	PersistentFileSysState	expectedState3,
+
 	PersistentFileSysState	nextState)
 	
 {
@@ -628,10 +630,15 @@ errcontext_persistent_relation_state_change(
 	if ((int)expectedState2 == -1)
 		sprintf(states, "state '%s'", 
 		        PersistentFileSysObjState_Name(expectedState1));
-	else
+	else if ((int)expectedState3 == -1)
 		sprintf(states, "states '%s' or '%s'",
 			    PersistentFileSysObjState_Name(expectedState1),
 			    PersistentFileSysObjState_Name(expectedState2));
+	else
+		sprintf(states, "states '%s', '%s', or '%s'",
+			    PersistentFileSysObjState_Name(expectedState1),
+			    PersistentFileSysObjState_Name(expectedState2),
+			    PersistentFileSysObjState_Name(expectedState3));
 
 	errcontext( 
 		 "State change is for persistent '%s' to go from %s to state '%s' with serial number " INT64_FORMAT " at TID %s",
@@ -661,6 +668,8 @@ static void PersistentFileSysObj_VerifyExpected(
 	PersistentFileSysState			expectedState1,
 
 	PersistentFileSysState			expectedState2,
+
+	PersistentFileSysState			expectedState3,
 
 	PersistentFileSysState			nextState,
 
@@ -701,6 +710,8 @@ static void PersistentFileSysObj_VerifyExpected(
 	expectedStateMatch = (actualState == expectedState1);
 	if (!expectedStateMatch && ((int)expectedState2 != -1))
 		expectedStateMatch = (actualState == expectedState2);
+	if (!expectedStateMatch && ((int)expectedState3 != -1))
+		expectedStateMatch = (actualState == expectedState3);
 
 	if (actualState == PersistentFileSysState_Free)
 	{
@@ -713,6 +724,7 @@ static void PersistentFileSysObj_VerifyExpected(
 								 						serialNum,
 								 						expectedState1,
 								 						expectedState2,
+								 						expectedState3,
 								 						nextState)));
 	}
 	
@@ -730,6 +742,7 @@ static void PersistentFileSysObj_VerifyExpected(
 								 						serialNum,
 								 						expectedState1,
 								 						expectedState2,
+														expectedState3,
 								 						nextState)));
 	}
 
@@ -745,6 +758,7 @@ static void PersistentFileSysObj_VerifyExpected(
 														serialNum,
 														expectedState1,
 														expectedState2,
+														expectedState3,
 														nextState)));
 	}
 
@@ -776,6 +790,7 @@ void PersistentFileSysObj_StateChange(
 
 	PersistentFileSysState	expectedState1;
 	PersistentFileSysState	expectedState2 = -1;	// -1 means no second possibility.
+	PersistentFileSysState	expectedState3 = -1;	// -1 means no third possibility.
 
 	if (PersistentStore_IsZeroTid(persistentTid))
 		elog(ERROR, "TID for persistent '%s' state-change tuple is invalid (0,0)",
@@ -823,6 +838,8 @@ void PersistentFileSysObj_StateChange(
 	case PersistentFileSysState_Free:
 		expectedState1 = PersistentFileSysState_DropPending;
 		expectedState2 = PersistentFileSysState_AbortingCreate;
+		if (fsObjType == PersistentFsObjType_DatabaseDir)
+			expectedState3 = PersistentFileSysState_JustInTimeCreatePending;
 		break;
 			
 	default:
@@ -840,6 +857,7 @@ void PersistentFileSysObj_StateChange(
 									values,
 									expectedState1,
 									expectedState2,
+									expectedState3,
 									nextState,
 									oldState);
 

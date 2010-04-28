@@ -255,6 +255,7 @@ char* ChangeTracking_CopyRdataBuffers(XLogRecData *rdata,
 		ptr = ptr->next;
 
 	/* Copy the main (first) rdata data block */
+	Assert(ptr->len <= CHANGETRACKING_XLOGDATASZ);
 	memcpy(changeTrackingXlogDataBuffer, ptr->data, ptr->len);
 	pos += ptr->len;
 	

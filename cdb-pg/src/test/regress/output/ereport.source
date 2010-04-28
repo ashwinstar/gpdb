@@ -4210,40 +4210,43 @@ select * from get_ereport order by 1;
  cacd: cdbfilerepresyncmanager:00000431:  ereport(ERROR, 
  cacd: cdbfilerepresyncmanager:00000432:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  cacd: cdbfilerepresyncmanager:00000433:  (errmsg("Not enough shared memory for FileRep Resync.")))); 
- cacd: cdbpersistentfilesysobj:00000707:  ereport(ERROR, 
- cacd: cdbpersistentfilesysobj:00000708:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cacd: cdbpersistentfilesysobj:00000709:  errmsg("Did not expect to find a 'Free' entry"), 
- cacd: cdbpersistentfilesysobj:00000710:  errcontext_persistent_relation_state_change( 
- cacd: cdbpersistentfilesysobj:00000711:  fsObjName, 
- cacd: cdbpersistentfilesysobj:00000712:  persistentTid, 
- cacd: cdbpersistentfilesysobj:00000713:  serialNum, 
- cacd: cdbpersistentfilesysobj:00000714:  expectedState1, 
- cacd: cdbpersistentfilesysobj:00000715:  expectedState2, 
- cacd: cdbpersistentfilesysobj:00000716:  nextState))); 
- cacd: cdbpersistentfilesysobj:00000721:  ereport(ERROR, 
- cacd: cdbpersistentfilesysobj:00000722:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cacd: cdbpersistentfilesysobj:00000723:  errmsg("Found different serial number " INT64_FORMAT " than expected (persistent file-system object found is '%s', state '%s')", 
- cacd: cdbpersistentfilesysobj:00000724:  actualSerialNum, 
- cacd: cdbpersistentfilesysobj:00000725:  PersistentFileSysObjName_TypeAndObjectName(&actualFsObjName), 
- cacd: cdbpersistentfilesysobj:00000726:  PersistentFileSysObjState_Name(actualState)), 
- cacd: cdbpersistentfilesysobj:00000727:  errcontext_persistent_relation_state_change( 
- cacd: cdbpersistentfilesysobj:00000728:  fsObjName, 
- cacd: cdbpersistentfilesysobj:00000729:  persistentTid, 
- cacd: cdbpersistentfilesysobj:00000730:  serialNum, 
- cacd: cdbpersistentfilesysobj:00000731:  expectedState1, 
- cacd: cdbpersistentfilesysobj:00000732:  expectedState2, 
- cacd: cdbpersistentfilesysobj:00000733:  nextState))); 
- cacd: cdbpersistentfilesysobj:00000738:  ereport(ERROR, 
- cacd: cdbpersistentfilesysobj:00000739:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cacd: cdbpersistentfilesysobj:00000740:  errmsg("Found persistent file-system object in unexpected state '%s'", 
- cacd: cdbpersistentfilesysobj:00000741:  PersistentFileSysObjState_Name(actualState)), 
- cacd: cdbpersistentfilesysobj:00000742:  errcontext_persistent_relation_state_change( 
- cacd: cdbpersistentfilesysobj:00000743:  fsObjName, 
- cacd: cdbpersistentfilesysobj:00000744:  persistentTid, 
- cacd: cdbpersistentfilesysobj:00000745:  serialNum, 
- cacd: cdbpersistentfilesysobj:00000746:  expectedState1, 
- cacd: cdbpersistentfilesysobj:00000747:  expectedState2, 
- cacd: cdbpersistentfilesysobj:00000748:  nextState))); 
+ cacd: cdbpersistentfilesysobj:00000718:  ereport(ERROR, 
+ cacd: cdbpersistentfilesysobj:00000719:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cacd: cdbpersistentfilesysobj:00000720:  errmsg("Did not expect to find a 'Free' entry"), 
+ cacd: cdbpersistentfilesysobj:00000721:  errcontext_persistent_relation_state_change( 
+ cacd: cdbpersistentfilesysobj:00000722:  fsObjName, 
+ cacd: cdbpersistentfilesysobj:00000723:  persistentTid, 
+ cacd: cdbpersistentfilesysobj:00000724:  serialNum, 
+ cacd: cdbpersistentfilesysobj:00000725:  expectedState1, 
+ cacd: cdbpersistentfilesysobj:00000726:  expectedState2, 
+ cacd: cdbpersistentfilesysobj:00000727:  expectedState3, 
+ cacd: cdbpersistentfilesysobj:00000728:  nextState))); 
+ cacd: cdbpersistentfilesysobj:00000733:  ereport(ERROR, 
+ cacd: cdbpersistentfilesysobj:00000734:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cacd: cdbpersistentfilesysobj:00000735:  errmsg("Found different serial number " INT64_FORMAT " than expected (persistent file-system object found is '%s', state '%s')", 
+ cacd: cdbpersistentfilesysobj:00000736:  actualSerialNum, 
+ cacd: cdbpersistentfilesysobj:00000737:  PersistentFileSysObjName_TypeAndObjectName(&actualFsObjName), 
+ cacd: cdbpersistentfilesysobj:00000738:  PersistentFileSysObjState_Name(actualState)), 
+ cacd: cdbpersistentfilesysobj:00000739:  errcontext_persistent_relation_state_change( 
+ cacd: cdbpersistentfilesysobj:00000740:  fsObjName, 
+ cacd: cdbpersistentfilesysobj:00000741:  persistentTid, 
+ cacd: cdbpersistentfilesysobj:00000742:  serialNum, 
+ cacd: cdbpersistentfilesysobj:00000743:  expectedState1, 
+ cacd: cdbpersistentfilesysobj:00000744:  expectedState2, 
+ cacd: cdbpersistentfilesysobj:00000745:  expectedState3, 
+ cacd: cdbpersistentfilesysobj:00000746:  nextState))); 
+ cacd: cdbpersistentfilesysobj:00000751:  ereport(ERROR, 
+ cacd: cdbpersistentfilesysobj:00000752:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cacd: cdbpersistentfilesysobj:00000753:  errmsg("Found persistent file-system object in unexpected state '%s'", 
+ cacd: cdbpersistentfilesysobj:00000754:  PersistentFileSysObjState_Name(actualState)), 
+ cacd: cdbpersistentfilesysobj:00000755:  errcontext_persistent_relation_state_change( 
+ cacd: cdbpersistentfilesysobj:00000756:  fsObjName, 
+ cacd: cdbpersistentfilesysobj:00000757:  persistentTid, 
+ cacd: cdbpersistentfilesysobj:00000758:  serialNum, 
+ cacd: cdbpersistentfilesysobj:00000759:  expectedState1, 
+ cacd: cdbpersistentfilesysobj:00000760:  expectedState2, 
+ cacd: cdbpersistentfilesysobj:00000761:  expectedState3, 
+ cacd: cdbpersistentfilesysobj:00000762:  nextState))); 
  cacd: cdbpersistenttablespace:00000844:  ereport(FATAL, 
  cacd: cdbpersistenttablespace:00000845:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  cacd: cdbpersistenttablespace:00000846:  errmsg("Not enough shared memory for persistent tablespace hash table"))); 
@@ -4501,59 +4504,59 @@ select * from get_ereport order by 1;
  cacf: cdbappendonlystoragewrite:00001198:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
  cacf: cdbappendonlystoragewrite:00001199:  errmsg("We do not expect files to be have a maximum length"), 
  cacf: cdbappendonlystoragewrite:00001200:  errcontext_appendonly_write_storage_block(storageWrite))); 
- cada: cdbresynchronizechangetracking:00001140:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001141:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001142:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
- cada: cdbresynchronizechangetracking:00001143:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001144:  path), 
- cada: cdbresynchronizechangetracking:00001145:  errSendAlert(true))); 
- cada: cdbresynchronizechangetracking:00001231:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- cada: cdbresynchronizechangetracking:00001232:  errmsg("Unable to obtain change tracking information from segment database."), 
- cada: cdbresynchronizechangetracking:00001233:  errdetail("SPI_connect failed in ChangeTracking_GetIncrementalChangeList()"))); 
- cada: cdbresynchronizechangetracking:00001498:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- cada: cdbresynchronizechangetracking:00001499:  errmsg("Unable to obtain change tracking information from segment database."), 
- cada: cdbresynchronizechangetracking:00001500:  errdetail("SPI_connect failed in ChangeTracking_GetChanges()"))); 
- cada: cdbresynchronizechangetracking:00001796:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001797:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001798:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
- cada: cdbresynchronizechangetracking:00001799:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001800:  path), 
- cada: cdbresynchronizechangetracking:00001801:  errSendAlert(true))); 
- cada: cdbresynchronizechangetracking:00001810:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001811:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001812:  errmsg("ERROR(filerep): unable to write change tracking log file "%s", " 
- cada: cdbresynchronizechangetracking:00001813:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001814:  path), 
- cada: cdbresynchronizechangetracking:00001815:  errSendAlert(true))); 
- cada: cdbresynchronizechangetracking:00001876:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001877:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001878:  errmsg("ERROR(filerep): no disk space for change tracking meta file "%s", " 
- cada: cdbresynchronizechangetracking:00001879:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001880:  path), 
- cada: cdbresynchronizechangetracking:00001881:  errSendAlert(true))); 
- cada: cdbresynchronizechangetracking:00001890:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001891:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001892:  errmsg("ERROR(filerep): unable to write change tracking meta file "%s", " 
- cada: cdbresynchronizechangetracking:00001893:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001894:  path), 
- cada: cdbresynchronizechangetracking:00001895:  errSendAlert(true))); 
- cada: cdbresynchronizechangetracking:00001929:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001930:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001931:  errmsg("ERROR(filerep): unable to read change tracking meta file "%s", " 
- cada: cdbresynchronizechangetracking:00001932:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001933:  path), 
- cada: cdbresynchronizechangetracking:00001934:  errSendAlert(true))); 
- cada: cdbresynchronizechangetracking:00002147:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00002148:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00002149:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
- cada: cdbresynchronizechangetracking:00002150:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00002151:  path))); 
- cada: cdbresynchronizechangetracking:00002293:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- cada: cdbresynchronizechangetracking:00002294:  errmsg("Unable to obtain change tracking information from segment database."), 
- cada: cdbresynchronizechangetracking:00002295:  errdetail("SPI_connect failed in ChangeTracking_ReadLastLocOnDisk()"))); 
- cada: cdbresynchronizechangetracking:00002396:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- cada: cdbresynchronizechangetracking:00002397:  errmsg("Unable to obtain change tracking information from segment database."), 
- cada: cdbresynchronizechangetracking:00002398:  errdetail("SPI_connect failed in ChangeTracking_GetTotalBlocksToSync()"))); 
+ cada: cdbresynchronizechangetracking:00001141:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001142:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001143:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
+ cada: cdbresynchronizechangetracking:00001144:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001145:  path), 
+ cada: cdbresynchronizechangetracking:00001146:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001232:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ cada: cdbresynchronizechangetracking:00001233:  errmsg("Unable to obtain change tracking information from segment database."), 
+ cada: cdbresynchronizechangetracking:00001234:  errdetail("SPI_connect failed in ChangeTracking_GetIncrementalChangeList()"))); 
+ cada: cdbresynchronizechangetracking:00001499:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ cada: cdbresynchronizechangetracking:00001500:  errmsg("Unable to obtain change tracking information from segment database."), 
+ cada: cdbresynchronizechangetracking:00001501:  errdetail("SPI_connect failed in ChangeTracking_GetChanges()"))); 
+ cada: cdbresynchronizechangetracking:00001797:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001798:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001799:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
+ cada: cdbresynchronizechangetracking:00001800:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001801:  path), 
+ cada: cdbresynchronizechangetracking:00001802:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001811:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001812:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001813:  errmsg("ERROR(filerep): unable to write change tracking log file "%s", " 
+ cada: cdbresynchronizechangetracking:00001814:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001815:  path), 
+ cada: cdbresynchronizechangetracking:00001816:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001877:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001878:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001879:  errmsg("ERROR(filerep): no disk space for change tracking meta file "%s", " 
+ cada: cdbresynchronizechangetracking:00001880:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001881:  path), 
+ cada: cdbresynchronizechangetracking:00001882:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001891:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001892:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001893:  errmsg("ERROR(filerep): unable to write change tracking meta file "%s", " 
+ cada: cdbresynchronizechangetracking:00001894:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001895:  path), 
+ cada: cdbresynchronizechangetracking:00001896:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001930:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001931:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001932:  errmsg("ERROR(filerep): unable to read change tracking meta file "%s", " 
+ cada: cdbresynchronizechangetracking:00001933:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001934:  path), 
+ cada: cdbresynchronizechangetracking:00001935:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00002148:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00002149:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00002150:  errmsg("ERROR(filerep): no disk space for change tracking log file "%s", " 
+ cada: cdbresynchronizechangetracking:00002151:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00002152:  path))); 
+ cada: cdbresynchronizechangetracking:00002294:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ cada: cdbresynchronizechangetracking:00002295:  errmsg("Unable to obtain change tracking information from segment database."), 
+ cada: cdbresynchronizechangetracking:00002296:  errdetail("SPI_connect failed in ChangeTracking_ReadLastLocOnDisk()"))); 
+ cada: cdbresynchronizechangetracking:00002397:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ cada: cdbresynchronizechangetracking:00002398:  errmsg("Unable to obtain change tracking information from segment database."), 
+ cada: cdbresynchronizechangetracking:00002399:  errdetail("SPI_connect failed in ChangeTracking_GetTotalBlocksToSync()"))); 
  daae: date:00000083:  ereport(ERROR, 
  daae: date:00000084:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  daae: date:00000085:  errmsg("date/time value "current" is no longer supported"))); 
@@ -5812,64 +5815,64 @@ select * from get_ereport order by 1;
  faai: freelist:00000130:  )); 
  faai: ftsprobe:00000356:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
  faai: ftsprobe:00000357:  errmsg("database 'postgres' does not exist"))); 
- faai: ftsprobe:00001552:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- faai: ftsprobe:00001553:  errmsg("FTS: out of memory"))); 
- faai: ftsprobe:00001574:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- faai: ftsprobe:00001575:  errmsg("FTS: out of memory"))); 
- faai: ftsprobe:00001608:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- faai: ftsprobe:00001609:  errmsg("FTS: out of memory"))); 
- faai: ftsprobe:00001661:  ereport(ERROR, 
- faai: ftsprobe:00001662:  (errcode(ERRCODE_INTERNAL_ERROR), 
- faai: ftsprobe:00001663:  errmsg("FTS: could not insert into configuration history: format command string failure dbid %d", change->dbid))); 
- faai: ftsprobe:00001672:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- faai: ftsprobe:00001673:  errmsg("FTS: out of memory"))); 
- faai: ftsprobe:00001768:  ereport(ERROR, 
- faai: ftsprobe:00001769:  (errcode(ERRCODE_INTERNAL_ERROR), 
- faai: ftsprobe:00001770:  errmsg("FTS: could not modify config: format command string failure dbid %d", changes[i].dbid))); 
- faai: ftsprobe:00001800:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- faai: ftsprobe:00001801:  errmsg("FTS: out of memory"))); 
- faai: ftsprobe:00002062:  ereport(LOG, 
- faai: ftsprobe:00002063:  (errmsg("Mirror segment on %s:%d is taking over as primary in change tracking mode.", 
- faai: ftsprobe:00002064:  seg_addr, seg_pm_port ), 
- faai: ftsprobe:00002065:  errSendAlert(true))); 
- faai: ftsprobe:00002069:  ereport(LOG, 
- faai: ftsprobe:00002070:  (errmsg("Primary segment on %s:%d is going into change tracking mode.", 
- faai: ftsprobe:00002071:  seg_addr, seg_pm_port ), 
- faai: ftsprobe:00002072:  errSendAlert(true))); 
- faai: ftsprobe:00002135:  ereport(LOG, 
- faai: ftsprobe:00002136:  (errmsg("Changing mirror segment on %s:%d to be the primary in change tracking mode completed successfully.", 
- faai: ftsprobe:00002137:  seg_addr, seg_pm_port ), 
- faai: ftsprobe:00002138:  errSendAlert(true))); 
- faai: ftsprobe:00002141:  ereport(LOG, 
- faai: ftsprobe:00002142:  (errmsg("Changing primary segment on %s:%d to change tracking mode completed successfully.", 
- faai: ftsprobe:00002143:  seg_addr, seg_pm_port ), 
- faai: ftsprobe:00002144:  errSendAlert(true))); 
- faai: ftsprobe:00002171:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),  
- faai: ftsprobe:00002172:  errmsg("FTS: out of memory")));  
- faai: ftsprobe:00002173:   
- faai: ftsprobe:00002174:  PQclear(rs);  
- faai: ftsprobe:00002175:  PQfinish(entryConn);  
- faai: ftsprobe:00002176:  entryConn = NULL;  
- faai: ftsprobe:00002177:   
- faai: ftsprobe:00002178:  elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message);  
- faai: ftsprobe:00002179:  }  
- faai: ftsprobe:00002180:  } 
- faai: ftsprobe:00002181:  
- faai: ftsprobe:00002182: /** 
- faai: ftsprobe:00002183:  * Marks the given db as in-sync in the segment configuration. 
- faai: ftsprobe:00002184:  */ 
- faai: ftsprobe:00002185: static void 
- faai: ftsprobe:00002186: markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *dbInfo) 
- faai: ftsprobe:00002187: { 
- faai: ftsprobe:00002188:  char cmd[2000]; 
- faai: ftsprobe:00002239:  ereport(LOG, 
- faai: ftsprobe:00002240:  (errmsg("Resynchronization of mirror segment on %s:%d has completed.", 
- faai: ftsprobe:00002241:  dbInfo->address, dbInfo->port ), 
- faai: ftsprobe:00002242:  errSendAlert(true))); 
- faai: ftsprobe:00002517:  ereport(LOG, 
- faai: ftsprobe:00002518:  (errmsg("SAN mirror segment on %s:%d is taking over as primary.", 
- faai: ftsprobe:00002519:  host, port ), 
- faai: ftsprobe:00002520:  errSendAlert(true))); 
+ faai: ftsprobe:00001563:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ faai: ftsprobe:00001564:  errmsg("FTS: out of memory"))); 
+ faai: ftsprobe:00001585:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ faai: ftsprobe:00001586:  errmsg("FTS: out of memory"))); 
+ faai: ftsprobe:00001619:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ faai: ftsprobe:00001620:  errmsg("FTS: out of memory"))); 
+ faai: ftsprobe:00001672:  ereport(ERROR, 
+ faai: ftsprobe:00001673:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ faai: ftsprobe:00001674:  errmsg("FTS: could not insert into configuration history: format command string failure dbid %d", change->dbid))); 
+ faai: ftsprobe:00001683:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ faai: ftsprobe:00001684:  errmsg("FTS: out of memory"))); 
+ faai: ftsprobe:00001779:  ereport(ERROR, 
+ faai: ftsprobe:00001780:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ faai: ftsprobe:00001781:  errmsg("FTS: could not modify config: format command string failure dbid %d", changes[i].dbid))); 
+ faai: ftsprobe:00001811:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ faai: ftsprobe:00001812:  errmsg("FTS: out of memory"))); 
+ faai: ftsprobe:00002073:  ereport(LOG, 
+ faai: ftsprobe:00002074:  (errmsg("Mirror segment on %s:%d is taking over as primary in change tracking mode.", 
+ faai: ftsprobe:00002075:  seg_addr, seg_pm_port ), 
+ faai: ftsprobe:00002076:  errSendAlert(true))); 
+ faai: ftsprobe:00002080:  ereport(LOG, 
+ faai: ftsprobe:00002081:  (errmsg("Primary segment on %s:%d is going into change tracking mode.", 
+ faai: ftsprobe:00002082:  seg_addr, seg_pm_port ), 
+ faai: ftsprobe:00002083:  errSendAlert(true))); 
+ faai: ftsprobe:00002146:  ereport(LOG, 
+ faai: ftsprobe:00002147:  (errmsg("Changing mirror segment on %s:%d to be the primary in change tracking mode completed successfully.", 
+ faai: ftsprobe:00002148:  seg_addr, seg_pm_port ), 
+ faai: ftsprobe:00002149:  errSendAlert(true))); 
+ faai: ftsprobe:00002152:  ereport(LOG, 
+ faai: ftsprobe:00002153:  (errmsg("Changing primary segment on %s:%d to change tracking mode completed successfully.", 
+ faai: ftsprobe:00002154:  seg_addr, seg_pm_port ), 
+ faai: ftsprobe:00002155:  errSendAlert(true))); 
+ faai: ftsprobe:00002182:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),  
+ faai: ftsprobe:00002183:  errmsg("FTS: out of memory")));  
+ faai: ftsprobe:00002184:   
+ faai: ftsprobe:00002185:  PQclear(rs);  
+ faai: ftsprobe:00002186:  PQfinish(entryConn);  
+ faai: ftsprobe:00002187:  entryConn = NULL;  
+ faai: ftsprobe:00002188:   
+ faai: ftsprobe:00002189:  elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message);  
+ faai: ftsprobe:00002190:  }  
+ faai: ftsprobe:00002191:  } 
+ faai: ftsprobe:00002192:  
+ faai: ftsprobe:00002193: /** 
+ faai: ftsprobe:00002194:  * Marks the given db as in-sync in the segment configuration. 
+ faai: ftsprobe:00002195:  */ 
+ faai: ftsprobe:00002196: static void 
+ faai: ftsprobe:00002197: markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *dbInfo) 
+ faai: ftsprobe:00002198: { 
+ faai: ftsprobe:00002199:  char cmd[2000]; 
+ faai: ftsprobe:00002250:  ereport(LOG, 
+ faai: ftsprobe:00002251:  (errmsg("Resynchronization of mirror segment on %s:%d has completed.", 
+ faai: ftsprobe:00002252:  dbInfo->address, dbInfo->port ), 
+ faai: ftsprobe:00002253:  errSendAlert(true))); 
+ faai: ftsprobe:00002528:  ereport(LOG, 
+ faai: ftsprobe:00002529:  (errmsg("SAN mirror segment on %s:%d is taking over as primary.", 
+ faai: ftsprobe:00002530:  host, port ), 
+ faai: ftsprobe:00002531:  errSendAlert(true))); 
  faai: function:00000185:  ereport(ERROR, ( 
  faai: function:00000186:  errcode(ERRCODE_SYNTAX_ERROR), 
  faai: function:00000187:  errmsg("To many parameters - expected %d ", top))); 
@@ -18272,6 +18275,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000076:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000077:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000078:  str))); 
-(18205 rows)
+(18208 rows)
 
 drop external table get_ereport;
