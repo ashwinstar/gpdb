@@ -7,12 +7,12 @@ a Greenplum Database system.
 SYNOPSIS
 *****************************************************
 
-
 gpconfig -c <param_name> -v <value> [-m <master_value> | --masteronly]
-       | -r <param_name>
-       | -s <param_name>       
-       | -l
-  [--skipvalidation] [--verbose] [--debug]
+       | -r <param_name> [--masteronly]
+       | -s <param_name>
+   [--skipvalidation] [--verbose] [--debug]
+
+gpconfig -l [--verbose] [--debug]
 
 gpconfig --help
 
