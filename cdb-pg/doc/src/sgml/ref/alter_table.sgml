@@ -81,9 +81,9 @@ where partition_action is one of:
    [ WITH | WITHOUT VALIDATION ]
   SET SUBPARTITION TEMPLATE (subpartition_spec)
   SPLIT DEFAULT PARTITION 
-      AT (list_value)
+    {  AT (list_value)
     | START([datatype] range_value) [INCLUSIVE | EXCLUSIVE] 
-       END([datatype] range_value) [INCLUSIVE | EXCLUSIVE]
+       END([datatype] range_value) [INCLUSIVE | EXCLUSIVE] }
     [ INTO ( PARTITION new_partition_name, 
              PARTITION default_partition_name ) ]
   SPLIT PARTITION { partition_name | FOR (RANK(number)) | 
@@ -913,4 +913,5 @@ ALTER TABLE myschema.distributors SET SCHEMA yourschema;
   </para>
  </refsect1>
 </refentry>
+
 
