@@ -756,6 +756,20 @@ DefineRelation_int(CreateStmt *stmt,
 		stmt->ownerid = GetUserId();
 	}
 
+	/* MPP-8405: disallow OIDS on partitioned tables */
+	if (0 && (stmt->partitionBy ||
+		 stmt->is_part_child) &&
+		descriptor->tdhasoid && 
+		IsNormalProcessingMode() &&
+        (Gp_role == GP_ROLE_DISPATCH))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg(
+							 "OIDS=TRUE is not allowed on partitioned tables. "
+							 "Use OIDS=FALSE"
+							 ),
+					 errOmitLocation(true)));
+
     if (stmt->oidInfo.relOid)
         elog(DEBUG4, "DefineRelation relOid=%d schemaname=%s shouldDispatch=%d",
              stmt->oidInfo.relOid,

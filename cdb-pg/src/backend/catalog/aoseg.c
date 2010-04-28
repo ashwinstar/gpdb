@@ -212,7 +212,7 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 						   -1, 0);
         TupleDescInitEntry(tupdesc, (AttrNumber) 4,
 						   "vpinfo",
-						   VARBITOID,
+						   BYTEAOID,
 						   -1, 0);
     }
 
