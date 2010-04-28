@@ -171,3 +171,11 @@ making runtime configuration parameter changes but do not
 shutdown the Greenplum Database array:
 
   gpstop -u
+
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+gpstart
+
