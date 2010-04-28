@@ -96,7 +96,7 @@ be used with -v.
 When specified, gpconfig only edits the master postgresql.conf file.
 
 
--r | --removeonly <param_name>
+-r | --remove <param_name>
 
 Specifies the configuration parameter name to unset or remove by 
 commenting out the entry in the postgresql.conf files.
