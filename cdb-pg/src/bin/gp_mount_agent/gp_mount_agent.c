@@ -177,7 +177,7 @@ storagegroup_main(int argc, char **argv)
 	 */
 	setuid(0);
 
-	execl(argv[1], argv[1], "display", "dev=all", 0);
+	execl(argv[1], argv[1], "display", "dev=all", NULL);
 
 	/* not reached */
 	return(1);
