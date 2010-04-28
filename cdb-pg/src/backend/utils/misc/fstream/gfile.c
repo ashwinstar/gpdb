@@ -70,7 +70,7 @@ closewinpipe(gfile_t*fd)
 static ssize_t
 readwinpipe(gfile_t* fd, void* ptr, size_t size)
 {
-	ssize_t i = 0;
+	long i = 0;
 	
 	assert(fd->is_win_pipe);
 #ifdef WIN32
@@ -88,7 +88,7 @@ readwinpipe(gfile_t* fd, void* ptr, size_t size)
 static ssize_t
 writewinpipe(gfile_t* fd, void* ptr, size_t size)
 {
-	ssize_t i = 0;
+	long i = 0;
 
 	assert(fd->is_win_pipe);
 #ifdef WIN32
