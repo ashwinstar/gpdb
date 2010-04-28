@@ -427,7 +427,11 @@ errstart(int elevel, const char *filename, int lineno,
     /* errno is saved here so that error parameter eval can't change it */
     edata->saved_errno = errno;
 
+#ifndef WIN32
     edata->stacktracesize = backtrace(edata->stacktracearray, 30);
+#else
+    edata->stacktracesize = 0;
+#endif
 
     recursion_depth--;
     return true;
@@ -482,7 +486,7 @@ errfinish(int dummy __attribute__((unused)),...)
          */
         if (!SuppressPanic)
         {  // GP: Don't indent so we can watch this section...
-        
+
         /*
 		 * We do some minimal cleanup before longjmp'ing so that handlers can
          * execute in a reasonably sane state.
@@ -502,7 +506,7 @@ errfinish(int dummy __attribute__((unused)),...)
 
         CritSectionCount = 0;	/* should be unnecessary, but... */
         }// GP: End watching section.
-        
+
         /*
          * Note that we leave CurrentMemoryContext set to ErrorContext. The
          * handler should reset it to something else soon.
@@ -534,8 +538,8 @@ errfinish(int dummy __attribute__((unused)),...)
     else
         EmitErrorReport();
 
-    /* 
-     * CDB: Let caller take care of terminating the process, if requested. 
+    /*
+     * CDB: Let caller take care of terminating the process, if requested.
      * Used by CdbProgramErrorHandler() to re-raise a signal such as SIGSEGV
      * in order to produce a core file.  We don't want to get involved in
      * platform dependent signal handling here, so let caller do it.
@@ -626,7 +630,7 @@ errfinish(int dummy __attribute__((unused)),...)
      * it's in a loop that otherwise fails to check for interrupts.
      */
     CHECK_FOR_INTERRUPTS();
-    
+
     errno = saved_errno;                /*CDB*/
 }
 
@@ -1253,8 +1257,8 @@ int errSuppressOutputToLog(void)
 
 
 /*
- * CDB: errFatalReturn -- set flag indicating errfinish() should return 
- * to the caller instead of calling proc_exit() after reporting a FATAL 
+ * CDB: errFatalReturn -- set flag indicating errfinish() should return
+ * to the caller instead of calling proc_exit() after reporting a FATAL
  * error.  Allows termination by re-raising a signal in order to obtain
  * a core dump.
  */
@@ -1607,7 +1611,7 @@ pg_re_throw(void)
  * then do PG_RE_THROW() to proceed to the next error handler.
  *
  * Clients using libpq cannot receive normal output together with an error.
- * The libpq frontend discards any results already buffered when a command 
+ * The libpq frontend discards any results already buffered when a command
  * completes with an error notification of level ERROR or higher.
  *
  * elog_demote() can be used to reduce the error level reported to the client
@@ -2014,7 +2018,7 @@ setup_formatted_log_time(void)
      * nonempty).
      */
     tz = log_timezone ? log_timezone : gmt_timezone;
-    
+
     pg_strftime(formatted_log_time, FORMATTED_TS_LEN,
                 /* leave room for milliseconds... */
                 "%Y-%m-%d %H:%M:%S     %Z",
@@ -2024,7 +2028,7 @@ setup_formatted_log_time(void)
     sprintf(msbuf, ".%03d", (int) (tv.tv_usec / 1000));
     strncpy(formatted_log_time + 19, msbuf, 4);
 }
-#endif 
+#endif
 
 /*
  * setup formatted_start_time
@@ -2272,13 +2276,13 @@ log_line_prefix(StringInfo buf)
                      * postmaster.	If we used src/timezone then local
                      * settings of the TimeZone GUC variable would confuse the
                      * log.
-                     * 
+                     *
                      * 	CDB:  It is not safe to call strftime since it is not async-safe, and it
                      * is expensive to call strftime to get timezone everytime, we use
                      * pg_strftime, but stick on a fixed timezone (log_timezone)
                      * instead a settable timezone as PostgreSQL does, since we want all
                      * log messages to have the same time format. See MPP-2591.
-                     * 
+                     *
                      */
                     pg_time_t		stamp_time;
                     char		strfbuf[128],
@@ -2317,7 +2321,7 @@ log_line_prefix(StringInfo buf)
                     char		strfbuf[128];
 
                     tz = log_timezone ? log_timezone : gmt_timezone;
-                    
+
                     pg_strftime(strfbuf, sizeof(strfbuf),
                     /* Win32 timezone names are too long so don't print them */
 #ifndef WIN32
@@ -2373,8 +2377,8 @@ log_line_prefix(StringInfo buf)
                         appendStringInfo(buf, "%u", InvalidTransactionId);
                 }
                 break;
-                
-            /* MPP SPECIFIC OPTIONS. */	
+
+            /* MPP SPECIFIC OPTIONS. */
             case 'C':
                 /* we use -2 to indicate that it hasn't been set yet.  we'll
                  * choose to not write anything for the very early log messages
@@ -2425,7 +2429,7 @@ log_line_prefix(StringInfo buf)
                     appendStringInfo(buf, uname && uname[0] ? uname : "postmaster");
                 }
                 else
-                    appendStringInfo(buf, "%s", role_to_string(Gp_role));	
+                    appendStringInfo(buf, "%s", role_to_string(Gp_role));
                 break;
             case 'S':
                 if (currentSliceId >= 0)
@@ -2443,7 +2447,7 @@ log_line_prefix(StringInfo buf)
                     else if (Gp_role == GP_ROLE_DISPATCHAGENT)
                         appendStringInfo(buf, "da");
                 }
-                break;	
+                break;
             case 'X':
                 {
                     DistributedTransactionId distribXid;
@@ -2459,14 +2463,14 @@ log_line_prefix(StringInfo buf)
                     {
                         if (distribXid >= FirstDistributedTransactionId)
                             appendStringInfo(buf, "dx%u, ", distribXid);
-                        
+
                         appendStringInfo(buf, "x%u", localXid);
-                        
+
                         if (subXid >= FirstNormalTransactionId)
                             appendStringInfo(buf, ", sx%u, ", subXid);
                     }
                 }
-                break;	
+                break;
             case '%':
                 appendStringInfoChar(buf, '%');
                 break;
@@ -2513,7 +2517,7 @@ gp_write_pipe_chunk(const char *buffer, int len)
 	while (retry_no < NUM_RETRIES)
 	{
 		CHECK_FOR_INTERRUPTS();
-		
+
 		retry_no++;
 
 		/*
@@ -2549,7 +2553,7 @@ gp_write_pipe_chunk(const char *buffer, int len)
 	if (retval == 1)
 	{
 		int bytes;
-		
+
 		do
 		{
 #ifdef USE_ASSERT_CHECKING
@@ -2561,7 +2565,7 @@ gp_write_pipe_chunk(const char *buffer, int len)
 				Assert(len <= PIPE_CHUNK_SIZE);
 			}
 #endif
-			
+
 			bytes = write(fileno(stderr), buffer, len);
 		}
 		while (bytes < 0 && errno == EINTR);
@@ -2584,26 +2588,26 @@ append_string_to_pipe_chunk(PipeProtoChunk *buffer, const char* input)
     int len = 0;
 
     char *data = buffer->data + buffer->hdr.len;
-    
+
     if(am_syslogger)
         return;
 
-    if (input) 
-        len = strlen(input); 
+    if (input)
+        len = strlen(input);
 
-    if (buffer->hdr.len == PIPE_MAX_PAYLOAD) 
+    if (buffer->hdr.len == PIPE_MAX_PAYLOAD)
     {
         gp_write_pipe_chunk((char *)buffer, PIPE_CHUNK_SIZE);
         buffer->hdr.len = 0;
         buffer->hdr.chunk_no++;
         data = buffer->data;
 
-        /* 
+        /*
          * If this is a really long message, it does not really
          * make lots of sense to print them all.  Truncate it.
          * Besides really huge, useless, slow log message, this
          * actually fix a sever crash.  Later in this function,
-         * we will recurse, without tail call optimization, a 
+         * we will recurse, without tail call optimization, a
          * huge string can drive us out of stack space.
          *
          * MPP-6682
@@ -2614,11 +2618,11 @@ append_string_to_pipe_chunk(PipeProtoChunk *buffer, const char* input)
             len = PIPE_MAX_PAYLOAD-1;
         }
     }
-    
+
     if (buffer->hdr.len + len >= PIPE_MAX_PAYLOAD)
     {
         int bytes = PIPE_MAX_PAYLOAD - buffer->hdr.len;
-            
+
         memcpy(data, input, bytes);
         buffer->hdr.len += bytes;
 
@@ -2626,7 +2630,7 @@ append_string_to_pipe_chunk(PipeProtoChunk *buffer, const char* input)
     }
     else
     {
-        memcpy(data, input, len); 
+        memcpy(data, input, len);
         data[len] = 0;
         buffer->hdr.len += len+1;
     }
@@ -2639,12 +2643,12 @@ append_string_to_pipe_chunk(PipeProtoChunk *buffer, const char* input)
  * is not async-safe, to allocate space for symbols. Even though we don't
  * really support async-safe error logging yet, the malloc has caused several
  * deadlock issues in the past, we should avoid using them in our error handler.
- * 
+ *
  * If buffer is NULL, the stack is written to the syslogger file if amsyslogger is true.
  * Otherwise, write to stderr.
  */
 static inline void
-append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray, 
+append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray,
                   int stacksize, bool amsyslogger)
 {
 #ifndef WIN32
@@ -2689,7 +2693,7 @@ append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray,
 	fd = popen(cmd,"r");
 	if (fd != NULL && errno == 0)
 		fd_ok = true;
-	
+
 	if (fd_ok)
 	{
 		for (stack_no = 0; stack_no < stacksize && stack_no < 100 && errno == 0; stack_no++)
@@ -2749,7 +2753,7 @@ append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray,
                 buffer->hdr.len --;
             }
         }
-        
+
         else
         {
             if (amsyslogger)
@@ -2808,17 +2812,17 @@ write_syslogger_in_csv(ErrorData *edata, bool amsyslogger)
         write_syslogger_file_string(MyProcPort->user_name, amsyslogger, true);
     else
         write_syslogger_file_string(NULL, amsyslogger, true);
-    
+
     /* databasename */
     if (MyProcPort != NULL && MyProcPort->database_name != NULL)
         write_syslogger_file_string(MyProcPort->database_name, amsyslogger, true);
     else
         write_syslogger_file_string(NULL, amsyslogger, true);
-    
+
     /* Process id, thread id */
     syslogger_write_int32(false, "p", MyProcPid, amsyslogger, true);
     syslogger_write_int32(false, "th", mythread(), amsyslogger, true);
-    
+
     /* Remote host, remote port */
     if (MyProcPort != NULL && MyProcPort->remote_host != NULL)
         write_syslogger_file_string(MyProcPort->remote_host, amsyslogger, true);
@@ -2828,12 +2832,12 @@ write_syslogger_in_csv(ErrorData *edata, bool amsyslogger)
         write_syslogger_file_string(MyProcPort->remote_port, amsyslogger, true);
     else
         write_syslogger_file_string(NULL, amsyslogger, true);
-    
+
     /* session start timestamp */
     syslogger_append_timestamp((MyProcPort != NULL ?
                                 (pg_time_t) timestamptz_to_time_t(MyProcPort->SessionStartTime): 0),
                                amsyslogger, true);
-    
+
     /* transaction id */
     if (MyProcPort != NULL && IsTransactionState())
         syslogger_write_int32(false, "", GetTopTransactionId(), amsyslogger, true);
@@ -2841,33 +2845,33 @@ write_syslogger_in_csv(ErrorData *edata, bool amsyslogger)
         syslogger_write_int32(false, "", InvalidTransactionId, amsyslogger, true);
 
     /* GPDB specific options */
-    syslogger_write_int32(true, "con", gp_session_id, amsyslogger, true); 
-    syslogger_write_int32(true, "cmd", gp_command_count, amsyslogger, true); 
-    syslogger_write_int32(false, "seg", Gp_segment, amsyslogger, true); 
-    syslogger_write_int32(true, "slice", currentSliceId, amsyslogger, true); 
+    syslogger_write_int32(true, "con", gp_session_id, amsyslogger, true);
+    syslogger_write_int32(true, "cmd", gp_command_count, amsyslogger, true);
+    syslogger_write_int32(false, "seg", Gp_segment, amsyslogger, true);
+    syslogger_write_int32(true, "slice", currentSliceId, amsyslogger, true);
     {
         DistributedTransactionId dist_trans_id;
         TransactionId local_trans_id;
         TransactionId subtrans_id;
-        
+
         GetAllTransactionXids(&dist_trans_id,
                               &local_trans_id,
                               &subtrans_id);
 
         syslogger_write_int32(true, "dx", dist_trans_id, amsyslogger, true);
-        syslogger_write_int32(true, "x", local_trans_id, amsyslogger, true); 
-        syslogger_write_int32(true, "sx", subtrans_id, amsyslogger, true); 
+        syslogger_write_int32(true, "x", local_trans_id, amsyslogger, true);
+        syslogger_write_int32(true, "sx", subtrans_id, amsyslogger, true);
     }
 
     /* error severity */
     write_syslogger_file_string(error_severity(edata->elevel), amsyslogger, true);
-    
+
     /* sql state code */
     write_syslogger_file_string(unpack_sql_state(edata->sqlerrcode), amsyslogger, true);
-    
+
     /* error message */
     write_syslogger_file_string(edata->message, amsyslogger, true);
-    
+
     /* errdetail */
     if (edata->detail_log)
     	write_syslogger_file_string(edata->detail_log, amsyslogger, true);
@@ -2881,16 +2885,16 @@ write_syslogger_in_csv(ErrorData *edata, bool amsyslogger)
     write_syslogger_file_string(edata->internalquery, amsyslogger, true);
 
     /* internal query pos */
-    syslogger_write_int32(true, "", edata->internalpos, amsyslogger, true); 
+    syslogger_write_int32(true, "", edata->internalpos, amsyslogger, true);
 
     /* error context */
     write_syslogger_file_string(edata->context, amsyslogger, true);
-    
+
     /* user query */
     write_syslogger_file_string(debug_query_string, amsyslogger, true);
 
     /* cursor pos */
-    syslogger_write_int32(true, "", edata->cursorpos, amsyslogger, true); 
+    syslogger_write_int32(true, "", edata->cursorpos, amsyslogger, true);
 
     /* func name */
     write_syslogger_file_string(edata->funcname, amsyslogger, true);
@@ -2899,7 +2903,7 @@ write_syslogger_in_csv(ErrorData *edata, bool amsyslogger)
     write_syslogger_file_string(edata->filename, amsyslogger, true);
 
     /* line number */
-    syslogger_write_int32(true, "", edata->lineno, amsyslogger, true); 
+    syslogger_write_int32(true, "", edata->lineno, amsyslogger, true);
 
     /* stack trace */
 
@@ -2950,7 +2954,7 @@ write_message_to_server_log(int elevel,
                             bool omit_location,
                             bool send_alert,
                             void* const *stacktracearray
-                ) 
+                )
 {
     PipeProtoChunk buffer;
 
@@ -2959,7 +2963,7 @@ write_message_to_server_log(int elevel,
     static uint64 log_line_number = 0;
 
     Assert(!am_syslogger);
-    
+
     buffer.hdr.zero = 0;
     buffer.hdr.len = 0;
     buffer.hdr.pid = MyProcPid;
@@ -2971,7 +2975,7 @@ write_message_to_server_log(int elevel,
     buffer.hdr.log_line_number = log_line_number++;
     buffer.hdr.next = -1;
 
-    
+
     /* Serialize edata in the order defined in GpErrorData. */
 
     fix_fields.session_start_time =
@@ -2994,8 +2998,8 @@ write_message_to_server_log(int elevel,
                           &(fix_fields.local_trans_id),
                           &(fix_fields.subtrans_id));
 
-    Assert(buffer.hdr.len + sizeof(GpErrorDataFixFields) <= PIPE_MAX_PAYLOAD); 
-    
+    Assert(buffer.hdr.len + sizeof(GpErrorDataFixFields) <= PIPE_MAX_PAYLOAD);
+
     memcpy(data, &fix_fields, sizeof(GpErrorDataFixFields));
     buffer.hdr.len += sizeof(GpErrorDataFixFields);
 
@@ -3006,7 +3010,7 @@ write_message_to_server_log(int elevel,
         append_string_to_pipe_chunk(&buffer, NULL);
     else
         append_string_to_pipe_chunk(&buffer, MyProcPort->user_name);
-    
+
     /* databasename */
     if (MyProcPort == NULL || MyProcPort->database_name == NULL)
         append_string_to_pipe_chunk(&buffer, NULL);
@@ -3033,7 +3037,7 @@ write_message_to_server_log(int elevel,
 
     /* error_message */
     append_string_to_pipe_chunk(&buffer, message);
-    
+
     /* error_detail */
     append_string_to_pipe_chunk(&buffer, detail);
 
@@ -3045,7 +3049,7 @@ write_message_to_server_log(int elevel,
 
     /* error_context  */
     append_string_to_pipe_chunk(&buffer, context);
-    
+
     /* debug_query_string */
     append_string_to_pipe_chunk(&buffer, debug_query_string);
 
@@ -3054,10 +3058,10 @@ write_message_to_server_log(int elevel,
         append_string_to_pipe_chunk(&buffer, funcname);
     else
         append_string_to_pipe_chunk(&buffer, NULL);
-    
+
     /* error_filename */
     append_string_to_pipe_chunk(&buffer, filename);
-        
+
     /* stacktrace */
 
     if (elevel >= ERROR &&
@@ -3118,7 +3122,7 @@ send_message_to_server_log(ErrorData *edata)
             {
                 write_syslogger_in_csv(edata, false);
             }
-            
+
             return;
         }
     }
@@ -3242,15 +3246,16 @@ send_message_to_server_log(ErrorData *edata)
     }
 
 
-        
+
     if (edata->elevel >= ERROR &&
         (edata->elevel == PANIC || !edata->omit_location) &&
         edata->stacktracesize > 0 &&
         edata->stacktracearray != NULL)
     {
+#ifndef WIN32
         char	  **strings;
         size_t		i;
-    
+
         strings = backtrace_symbols(edata->stacktracearray, edata->stacktracesize);
         if (strings != NULL)
         {
@@ -3262,6 +3267,7 @@ send_message_to_server_log(ErrorData *edata)
             }
             free(strings);
         }
+#endif
     }
 
 
@@ -3359,7 +3365,7 @@ write_pipe_chunks(char *data, int len)
 
     Assert(len > 0);
 
-    p.hdr.zero = 0; 
+    p.hdr.zero = 0;
     p.hdr.pid = MyProcPid;
         p.hdr.thid = mythread();
         p.hdr.main_thid = mainthread();
@@ -3765,7 +3771,7 @@ write_stderr(const char *fmt,...)
     if (Redirect_stderr && gp_log_format == 1)
     {
         char		errbuf[2048];		/* Arbitrary size? */
-        
+
         vsnprintf(errbuf, sizeof(errbuf), fmt, ap);
 
         if (!am_syslogger)
@@ -3881,7 +3887,7 @@ elog_debug_linger(ErrorData *edata)
             "Note that its locks and other resources will not be released until then.",
             edata->hint ? edata->hint : "",
             edata->hint ? "\n" : "",
-            MyProcPid, 
+            MyProcPid,
             seconds_to_linger);
 
     /* Log the error and notify the client. */
@@ -3890,7 +3896,7 @@ elog_debug_linger(ErrorData *edata)
     fflush(stderr);
 
     /* Terminate the client connection. */
-    pq_comm_close_fatal();  
+    pq_comm_close_fatal();
 
     while (seconds_lingered < seconds_to_linger)
     {
@@ -4057,7 +4063,7 @@ backtrace_symbols(void *const *buffer, int size)
         }
         else
         {
-            bufsize += snprintf(NULL, 0, "%p: %s %s+0x%x", buffer[i], 
+            bufsize += snprintf(NULL, 0, "%p: %s %s+0x%x", buffer[i],
                         dli.dli_fname, dli.dli_sname,
                         (int)((char *)(buffer[i]) - (char *)(dli.dli_saddr))) + 1;
         }
@@ -4066,7 +4072,7 @@ backtrace_symbols(void *const *buffer, int size)
     result = malloc(bufsize);
 
     if(!result)
-        ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+        ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
                     errmsg("Failed to get backtrace symbol: out of memory")));
 
     {
@@ -4085,7 +4091,7 @@ backtrace_symbols(void *const *buffer, int size)
             }
             else
             {
-                n = sprintf(cur, "%p: %s %s+0x%x", buffer[i], 
+                n = sprintf(cur, "%p: %s %s+0x%x", buffer[i],
                             dli.dli_fname, dli.dli_sname,
                             (int)((char *)(buffer[i]) - (char *)(dli.dli_saddr)));
             }
@@ -4098,14 +4104,16 @@ backtrace_symbols(void *const *buffer, int size)
 }
 #endif
 
-void 
+void
 debug_backtrace(void)
 {
+#ifndef WIN32
 	int 		stacktracesize;
 	void	   *stacktracearray[30];
 
 	stacktracesize = backtrace(stacktracearray, 30);
 
 	append_stacktrace(NULL, stacktracearray, stacktracesize, false);
+#endif
 
 }
