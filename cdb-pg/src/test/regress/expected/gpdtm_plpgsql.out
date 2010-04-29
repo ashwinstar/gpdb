@@ -426,10 +426,13 @@ INSERT INTO foo VALUES (0, 1);
 DECLARE c1 NO SCROLL CURSOR FOR SELECT b FROM foo;
 UPDATE foo SET b = 2;
 FETCH ALL FROM c1;
-ERROR:  Cursor-Reader gang not able to provide correct visibility 0/0, writer modified table while cursor was scanning. (combocid.c:304)  (seg1 slice1 localhost:60002 pid=81405) (cdbdisp.c:1486)
+ b 
+---
+ 1
+(1 row)
+
 COMMIT;
 DROP TABLE foo;
-ERROR:  table "foo" does not exist
 BEGIN;
 SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 CREATE TABLE foo (a int, b int);
@@ -440,10 +443,13 @@ UPDATE foo SET b = 2;
 DECLARE c1 NO SCROLL CURSOR FOR SELECT b FROM foo;
 UPDATE foo SET b = 3;
 FETCH ALL FROM c1;
-ERROR:  Cursor-Reader gang not able to provide correct visibility 1/1, writer modified table while cursor was scanning. (combocid.c:304)  (seg1 slice1 localhost:60002 pid=81401) (cdbdisp.c:1486)
+ b 
+---
+ 2
+(1 row)
+
 COMMIT;
 DROP TABLE foo;
-ERROR:  table "foo" does not exist
 BEGIN;
 SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 CREATE TABLE foo (a int, b int);
@@ -457,5 +463,9 @@ INSERT INTO foo VALUES (0, 3);
 UPDATE foo SET b = 4;
 INSERT INTO foo VALUES (0, 5);
 FETCH ALL FROM c1;
-ERROR:  Cursor-Reader gang not able to provide correct visibility 1/1, writer modified table while cursor was scanning. (combocid.c:304)  (seg1 slice1 localhost:60002 pid=81403) (cdbdisp.c:1486)
+ b 
+---
+ 2
+(1 row)
+
 COMMIT;
