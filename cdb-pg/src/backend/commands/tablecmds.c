@@ -757,7 +757,7 @@ DefineRelation_int(CreateStmt *stmt,
 	}
 
 	/* MPP-8405: disallow OIDS on partitioned tables */
-	if (0 && (stmt->partitionBy ||
+	if ((stmt->partitionBy ||
 		 stmt->is_part_child) &&
 		descriptor->tdhasoid && 
 		IsNormalProcessingMode() &&

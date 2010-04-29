@@ -1491,10 +1491,15 @@ drop table foo;
 drop table bar;
 drop role part_role;
 -- with and without OIDs
+-- MPP-8405: disallow OIDS on partitioned tables 
 create table foo (i int, j int) with (oids = true) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
-create table bar (i int, j int) with (oids = false) distributed by (i);
+-- but disallow exchange if different oid settings
+create table foo (i int, j int) with (oids = false) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+create table bar (i int, j int) with (oids = true) distributed by (i);
 -- should fail
 alter table foo exchange partition for(rank(6)) with table bar;
 drop table foo;
@@ -3068,7 +3073,11 @@ alter table mpp_5397 add partition z end (20);
 drop table mpp_5397;
 
 -- MPP-4987 -- make sure we can't damage a partitioning configuration
+-- MPP-8405: disallow OIDS on partitioned tables 
 create table rank (i int, j int) with oids partition by range(j) (start(1) end(10)
+every(1));
+-- this works
+create table rank (i int, j int)  partition by range(j) (start(1) end(10)
 every(1));
 -- should all fail
 alter table rank_1_prt_1 no inherit rank;
