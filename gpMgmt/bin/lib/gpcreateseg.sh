@@ -47,7 +47,7 @@ GP_TBL=gp_id
 # System table names
 GP_CONFIGURATION_TBL=gp_segment_configuration
 EXIT_STATUS=0
-# ED_FILE search text values
+# ED_PG_CONF search text values
 PORT_TXT="#port"
 LOG_STATEMENT_TXT="#log_statement ="
 LISTEN_ADR_TXT="listen_addresses"
@@ -124,11 +124,11 @@ PROCESS_QE () {
 	$TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO \"#----------------------\" >> ${GP_DIR}/$PG_CONF"
 	RETVAL=$?
 	PARA_EXIT $RETVAL "Update ${GP_DIR}/$PG_CONF file"
-	ED_FILE ${GP_DIR}/$PG_CONF "$PORT_TXT" port=$GP_PORT 0 $GP_HOSTADDRESS
+	ED_PG_CONF ${GP_DIR}/$PG_CONF "$PORT_TXT" port=$GP_PORT 0 $GP_HOSTADDRESS
 	PARA_EXIT $RETVAL "Update port number to $GP_PORT"
-	ED_FILE ${GP_DIR}/$PG_CONF "$LISTEN_ADR_TXT" listen_addresses=\'*\' 0 $GP_HOSTADDRESS
+	ED_PG_CONF ${GP_DIR}/$PG_CONF "$LISTEN_ADR_TXT" listen_addresses=\'*\' 0 $GP_HOSTADDRESS
 	PARA_EXIT $RETVAL "Update listen address"
-	ED_FILE ${GP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS 0 $GP_HOSTADDRESS
+	ED_PG_CONF ${GP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS 0 $GP_HOSTADDRESS
 	PARA_EXIT $RETVAL "Update checkpoint segments"
 
 	if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
@@ -137,7 +137,7 @@ PROCESS_QE () {
 		do
 			LOG_MSG "[INFO][$INST_COUNT]:-Adding config $NEW_PARAM to segment"
 			SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
-			ED_FILE ${GP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM 0 $GP_HOSTADDRESS
+			ED_PG_CONF ${GP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM 0 $GP_HOSTADDRESS
 			PARA_EXIT $RETVAL "Update $PG_CONF $SEARCH_TXT $NEW_PARAM"
 		done
 	fi

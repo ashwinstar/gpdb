@@ -429,7 +429,7 @@ ERROR_CHK () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"	
 }
 
-ED_FILE () {
+ED_PG_CONF () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	ED_TMP_FILE=/tmp/ed_text.$$
 	APPEND=0
@@ -439,11 +439,11 @@ ED_FILE () {
 	KEEP_PREV=$1;shift
 	ED_HOST=$1
 	if [ x"" == x"$ED_HOST" ]; then
-			if [ `$GREP -c "${SEARCH_TXT}" $FILENAME` -gt 1 ]; then
+			if [ `$GREP -c "${SEARCH_TXT}[ ]*=" $FILENAME` -gt 1 ]; then
 				LOG_MSG "[INFO]:-Found more than 1 instance of $SEARCH_TXT in $FILENAME, will append" 1
 				APPEND=1
 			fi
-			if [ `$GREP -c "${SEARCH_TXT}" $FILENAME` -eq 0 ] || [ $APPEND -eq 1 ]; then
+			if [ `$GREP -c "${SEARCH_TXT}[ ]*=" $FILENAME` -eq 0 ] || [ $APPEND -eq 1 ]; then
 				$ECHO $SUB_TXT >> $FILENAME
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
