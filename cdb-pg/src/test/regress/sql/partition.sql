@@ -3086,6 +3086,7 @@ alter table rank_1_prt_1 inherit rank2;
 alter table rank_1_prt_1 alter column i type bigint;
 alter table rank_1_prt_1 set without oids;
 alter table rank_1_prt_1 drop constraint rank_1_prt_1_check;
+alter table rank add partition ppo end (22) with (oids = true);
 drop table rank, rank2;
 
 -- MPP-5831, type cast in SPLIT

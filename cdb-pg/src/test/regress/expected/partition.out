@@ -1000,7 +1000,7 @@ insert into ggg values (7, 7);
 insert into ggg values (8, 8);
 insert into ggg values (9, 9);
 insert into ggg values (10, 10);
-ERROR:  no partition for partitioning key  (seg1 jeff-cohens-computer.local:11002 pid=8936)
+ERROR:  no partition for partitioning key  (seg1 jeff-cohens-computer.local:11002 pid=9995)
 select * from ggg order by 1, 2;
  id | a 
 ----+---
@@ -1323,8 +1323,8 @@ COPY foz FROM stdin DELIMITER '|';
 select * from foz_1_prt_1;
  i |     d      
 ---+------------
- 2 | 10-10-2001
  1 | 01-02-2001
+ 2 | 10-10-2001
 (2 rows)
 
 select * from foz_1_prt_2;
@@ -1426,7 +1426,7 @@ NOTICE:  CREATE TABLE will create partition "hhh_1_prt_cc" for table "hhh"
 -- works - anonymous partition MPP-3350
 alter table hhh add partition end ('2010-02-01');
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "hhh_1_prt_r2011558897" for table "hhh"
+NOTICE:  CREATE TABLE will create partition "hhh_1_prt_r1468073761" for table "hhh"
 -- MPP-3607 - ADD PARTITION with open intervals
 create table no_end1 (aa int, bb int) partition by range (bb)
 (partition foo start(3));
@@ -1714,11 +1714,11 @@ NOTICE:  dropped partition "boys" for relation "rank" and its children
 select * from rank ;
  id | rank |    year    | gender 
 ----+------+------------+--------
-  7 |    1 | 02-15-2002 | F
- 10 |    1 | 05-15-2005 | F
   6 |    1 | 01-15-2001 | F
   8 |    1 | 03-15-2003 | F
   9 |    1 | 04-15-2004 | F
+  7 |    1 | 02-15-2002 | F
+ 10 |    1 | 05-15-2005 | F
 (5 rows)
 
 -- MPP-3722: complain if for(value) matches the default partition 
@@ -2076,8 +2076,8 @@ insert into foz values(2, '2010-04-01');
 select * from foz;
  i |     d      
 ---+------------
- 1 | 04-01-2003
  2 | 04-01-2010
+ 1 | 04-01-2003
 (2 rows)
 
 select * from foz_1_prt_dsf;
@@ -2099,7 +2099,7 @@ insert into d values(1, 10);
 insert into d values(1, 11);
 insert into d values(1, 55);
 insert into d values(1, 70);
-ERROR:  no partition for partitioning key  (seg0 jeff-cohens-computer.local:11001 pid=8935)
+ERROR:  no partition for partitioning key  (seg0 jeff-cohens-computer.local:11001 pid=9994)
 select * from d;
  i | j  
 ---+----
@@ -2182,7 +2182,7 @@ NOTICE:  CREATE TABLE will create partition "d_1_prt_b" for table "d"
 insert into d values (1, 1);
 insert into d values (1, 2);
 insert into d values (1, NULL);
-ERROR:  no partition for partitioning key  (seg0 jeff-cohens-computer.local:11001 pid=8935)
+ERROR:  no partition for partitioning key  (seg0 jeff-cohens-computer.local:11001 pid=9994)
 drop table  d cascade;
 -- allow NULLs into the default partition
 create table d (i int,  j int) partition by range(j)
@@ -2216,10 +2216,10 @@ insert into d values(1, 1, 2);
 insert into d values(1, 3, 4);
 insert into d values(1, 100, 20);
 insert into d values(1, 100, 2000);
-ERROR:  no partition for partitioning key  (seg0 jeff-cohens-computer.local:11001 pid=8935)
+ERROR:  no partition for partitioning key  (seg0 jeff-cohens-computer.local:11001 pid=9994)
 insert into d values(1, '1000', '1001'), (1, '1001', '1002'), (1, '1003', '1004');
 insert into d values(1, 100, NULL);
-ERROR:  no partition for partitioning key  (seg0 jeff-cohens-computer.local:11001 pid=8935)
+ERROR:  no partition for partitioning key  (seg0 jeff-cohens-computer.local:11001 pid=9994)
 select * from d_1_prt_a;
  a | b | c 
 ---+---+---
@@ -2455,7 +2455,7 @@ select * from region where r_regionkey = '7';
 -- tables since we cannot enfoce them. But since this insert maps to a 
 -- single definitive partition, we can detect it.
 insert into region values(7, 'abc', 'def');
-ERROR:  duplicate key violates unique constraint "region_1_prt_p1_2_prt_sp1_3_prt_1_pkey"  (seg0 jeff-cohens-computer.local:11001 pid=8935)
+ERROR:  duplicate key violates unique constraint "region_1_prt_p1_2_prt_sp1_3_prt_1_pkey"  (seg0 jeff-cohens-computer.local:11001 pid=9994)
 drop table region;
 -- exchange
 -- 1) test all sanity checking
@@ -2818,7 +2818,7 @@ insert into bar values(6);
 insert into bar values(100);
 -- should fail
 alter table foo exchange partition for(rank(6)) with table bar;
-ERROR:  exchange table contains a row which violates the partitioning specification of "foo"  (seg1 jeff-cohens-computer.local:11002 pid=8950)
+ERROR:  exchange table contains a row which violates the partitioning specification of "foo"  (seg1 jeff-cohens-computer.local:11002 pid=10003)
 alter table foo exchange partition for(rank(6)) with table bar without
 validation;
 select * from foo;
@@ -2909,10 +2909,10 @@ alter table foo exchange partition for(rank(6)) with table bar;
 select * from foo;
  i | j 
 ---+---
- 2 | 1
- 6 | 6
  1 | 1
  3 | 1
+ 2 | 1
+ 6 | 6
 (4 rows)
 
 drop table bar;
@@ -2937,10 +2937,10 @@ alter table foo exchange partition for(rank(6)) with table bar;
 select * from foo;
  i | j 
 ---+---
- 2 | 1
- 6 | 6
  1 | 1
  3 | 2
+ 2 | 1
+ 6 | 6
 (4 rows)
 
 drop table bar;
@@ -2965,10 +2965,10 @@ alter table foo exchange partition for(rank(6)) with table bar;
 select * from foo;
  i | j 
 ---+---
- 2 | 3
- 6 | 6
  1 | 2
  3 | 4
+ 2 | 3
+ 6 | 6
 (4 rows)
 
 drop table bar;
@@ -3285,7 +3285,7 @@ select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
 insert into foo values(5994400);
 insert into foo values(1);
 insert into foo values(6000002);
-ERROR:  no partition for partitioning key  (seg1 jeff-cohens-computer.local:11002 pid=8950)
+ERROR:  no partition for partitioning key  (seg1 jeff-cohens-computer.local:11002 pid=10003)
 insert into foo values(5994376);
 drop table foo;
 create table foo (i int) 
@@ -3363,9 +3363,9 @@ select * from foo;
 select * from foo_1_prt_p1;
  i 
 ---
+ 2
  1
  3
- 2
 (3 rows)
 
 select * from foo_1_prt_p2;
@@ -3398,9 +3398,9 @@ select * from foo;
 select * from foo_1_prt_p1;
  i 
 ---
+ 2
  1
  3
- 2
 (3 rows)
 
 select * from foo_1_prt_p2;
@@ -4694,7 +4694,7 @@ insert into j select i from generate_series(1, 8) i;
 alter table j split partition for(1) at (2, 3) into (partition fa, partition
 fb);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_177676"
+NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_244706"
 NOTICE:  dropped partition "a" for relation "j"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "j_1_prt_fa" for table "j"
@@ -4703,8 +4703,8 @@ NOTICE:  CREATE TABLE will create partition "j_1_prt_fb" for table "j"
 select * from j_1_prt_fa;
  i 
 ---
- 4
  1
+ 4
 (2 rows)
 
 select * from j_1_prt_fb;
@@ -4716,12 +4716,12 @@ select * from j_1_prt_fb;
 
 alter table j split partition for(5) at (6);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "b" of relation "j" with relation "pg_temp_177676"
+NOTICE:  exchanged partition "b" of relation "j" with relation "pg_temp_244706"
 NOTICE:  dropped partition "b" for relation "j"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "j_1_prt_r1948180589" for table "j"
+NOTICE:  CREATE TABLE will create partition "j_1_prt_r1763249589" for table "j"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "j_1_prt_r1913798304" for table "j"
+NOTICE:  CREATE TABLE will create partition "j_1_prt_r712747019" for table "j"
 select * from j;
  i 
 ---
@@ -4770,7 +4770,7 @@ insert into k select i from generate_series(1, 30) i;
 alter table k split default partition start(15) end(20) into
 (partition mydef, partition foo);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_178346"
+NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_245376"
 NOTICE:  dropped partition "mydef" for relation "k"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "k_1_prt_foo" for table "k"
@@ -4779,17 +4779,17 @@ NOTICE:  CREATE TABLE will create partition "k_1_prt_mydef" for table "k"
 select * from k_1_prt_foo;
  i  
 ----
+ 16
+ 18
  15
  17
  19
- 16
- 18
 (5 rows)
 
 alter table k split default partition start(22) exclusive end(25) inclusive
 into (partition bar, partition mydef);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_178346"
+NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_245376"
 NOTICE:  dropped partition "mydef" for relation "k"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "k_1_prt_bar" for table "k"
@@ -4805,7 +4805,7 @@ select * from k_1_prt_bar;
 
 alter table k split partition bar at (23) into (partition baz, partition foz);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "bar" of relation "k" with relation "pg_temp_178346"
+NOTICE:  exchanged partition "bar" of relation "k" with relation "pg_temp_245376"
 NOTICE:  dropped partition "bar" for relation "k"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "k_1_prt_baz" for table "k"
@@ -4873,7 +4873,7 @@ insert into v values(1, 1) ;
 update v set j = 2;
 -- should fail
 update v set j = 3;
-ERROR:  moving tuple from partition "v_1_prt_1" to partition "v_1_prt_2" not supported  (seg0 jeff-cohens-computer.local:11001 pid=8949)
+ERROR:  moving tuple from partition "v_1_prt_1" to partition "v_1_prt_2" not supported  (seg0 jeff-cohens-computer.local:11001 pid=10002)
 drop table v;
 -- test ao seg totals
 create  or replace function aototal(relname text) returns float8 as $$
@@ -5078,7 +5078,7 @@ grant insert on a to part_role;
 alter table a split partition for(rank(1)) at (date '2006-01-01')
   into (partition f, partition g);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "f_1" of relation "a" with relation "pg_temp_180382"
+NOTICE:  exchanged partition "f_1" of relation "a" with relation "pg_temp_247412"
 NOTICE:  dropped partition "f_1" for relation "a"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "a_1_prt_f" for table "a"
@@ -5090,7 +5090,7 @@ NOTICE:  CREATE TABLE will create partition "a_1_prt_mydef" for table "a"
 alter table a split default partition start(date '2010-01-01') end(date
 '2011-01-01') into(partition mydef, partition other);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "mydef" of relation "a" with relation "pg_temp_180382"
+NOTICE:  exchanged partition "mydef" of relation "a" with relation "pg_temp_247412"
 NOTICE:  dropped partition "mydef" for relation "a"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "a_1_prt_other" for table "a"
@@ -5151,7 +5151,7 @@ ERROR:  default partition name missing from INTO clause
 alter table k split default partition start ('2009-01-01') end ('2009-02-01')
 into (partition aa, partition default_part);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "default_part" of relation "k" with relation "pg_temp_180824"
+NOTICE:  exchanged partition "default_part" of relation "k" with relation "pg_temp_247854"
 NOTICE:  dropped partition "default_part" for relation "k"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "k_1_prt_aa" for table "k"
@@ -5160,10 +5160,10 @@ NOTICE:  CREATE TABLE will create partition "k_1_prt_default_part" for table "k"
 -- check that it works without INTO
 alter table k split default partition start ('2009-02-01') end ('2009-03-01');
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "default_part" of relation "k" with relation "pg_temp_180824"
+NOTICE:  exchanged partition "default_part" of relation "k" with relation "pg_temp_247854"
 NOTICE:  dropped partition "default_part" for relation "k"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "k_1_prt_r402885143" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_r1365207588" for table "k"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "k_1_prt_default_part" for table "k"
 drop table k;
@@ -5179,7 +5179,7 @@ alter table k split partition mydef at (5) into (partition foo, partition bar);
 ERROR:  default partition name missing from INTO clause
 alter table k split partition mydef at (5) into (partition foo, partition mydef);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_181624"
+NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_248654"
 NOTICE:  dropped partition "mydef" for relation "k"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "k_1_prt_foo" for table "k"
@@ -5187,10 +5187,10 @@ NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution 
 NOTICE:  CREATE TABLE will create partition "k_1_prt_mydef" for table "k"
 alter table k split partition mydef at (10);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_181624"
+NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_248654"
 NOTICE:  dropped partition "mydef" for relation "k"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "k_1_prt_r2012282639" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_r956315293" for table "k"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "k_1_prt_mydef" for table "k"
 drop table k;
@@ -5203,7 +5203,7 @@ NOTICE:  CREATE TABLE will create partition "j_1_prt_a" for table "j"
 NOTICE:  CREATE TABLE will create partition "j_1_prt_b" for table "j"
 alter table j split partition for(1) at (1,2) into (partition fa, partition fb);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_182064"
+NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_249094"
 NOTICE:  dropped partition "a" for relation "j"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "j_1_prt_fa" for table "j"
@@ -5224,7 +5224,7 @@ NOTICE:  CREATE TABLE will create partition "j_1_prt_default_part" for table "j"
 alter table j split partition for(1) at (1,2) into (partition f1a, partition
 f1b);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_182322"
+NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_249352"
 NOTICE:  dropped partition "a" for relation "j"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "j_1_prt_f1a" for table "j"
@@ -5240,7 +5240,7 @@ NOTICE:  CREATE TABLE will create partition "j_1_prt_default_part" for table "j"
 NOTICE:  CREATE TABLE will create partition "j_1_prt_a" for table "j"
 alter table j split partition for(1) at (5) into (partition f1a, partition f1b);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_182604"
+NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_249634"
 NOTICE:  dropped partition "a" for relation "j"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "j_1_prt_f1a" for table "j"
@@ -5295,7 +5295,7 @@ NOTICE:  CREATE TABLE will create partition "list_test_1_prt_baz" for table "lis
 alter table list_test split default partition at ('baz') into (partition bing,
 default partition);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "baz" of relation "list_test" with relation "pg_temp_183333"
+NOTICE:  exchanged partition "baz" of relation "list_test" with relation "pg_temp_250363"
 NOTICE:  dropped partition "baz" for relation "list_test"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "list_test_1_prt_bing" for table "list_test"
@@ -5365,7 +5365,7 @@ select * from rank;
 alter table rank alter partition boys split default partition start ('2007')
 end ('2008') into (partition bfuture, partition year7);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "bfuture" of partition "boys" of relation "rank" with relation "pg_temp_183749"
+NOTICE:  exchanged partition "bfuture" of partition "boys" of relation "rank" with relation "pg_temp_250779"
 NOTICE:  dropped partition "bfuture" for partition "boys" of relation "rank"
 NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_year7" for table "rank_1_prt_boys"
 NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_bfuture" for table "rank_1_prt_boys"
@@ -5384,8 +5384,8 @@ select * from rank_1_prt_boys_2_prt_year7;
 select * from rank;
  id | rank | year | gender | count 
 ----+------+------+--------+-------
-  1 |    1 | 2007 | M      |     1
   2 |    2 | 2008 | M      |     3
+  1 |    1 | 2007 | M      |     1
 (2 rows)
 
 --exchange test
@@ -5425,7 +5425,7 @@ select * from r;
 alter table rank alter partition girls split default partition start('2008')
   end('2020') into (partition years, partition gfuture);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "gfuture" of partition "girls" of relation "rank" with relation "pg_temp_183749"
+NOTICE:  exchanged partition "gfuture" of partition "girls" of relation "rank" with relation "pg_temp_250779"
 NOTICE:  dropped partition "gfuture" for partition "girls" of relation "rank"
 NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_years" for table "rank_1_prt_girls"
 NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_gfuture" for table "rank_1_prt_girls"
@@ -5471,7 +5471,7 @@ alter table bar alter partition for ('5') alter partition for ('5')
   drop partition for ('5');
 insert into bar values(1, 1);
 insert into bar values(5, 5);
-ERROR:  no partition for partitioning key  (seg0 jeff-cohens-computer.local:11001 pid=8969)
+ERROR:  no partition for partitioning key  (seg0 jeff-cohens-computer.local:11001 pid=10022)
 drop table bar;
 select parrelid::regclass, * from pg_partition;
  parrelid | parrelid | parkind | parlevel | paristemplate | parnatts | paratts | parclass 
@@ -6016,6 +6016,10 @@ ERROR:  "rank_1_prt_1" is a member of a partitioning configuration
 HINT:  Perform the operation on the master table.
 alter table rank_1_prt_1 drop constraint rank_1_prt_1_check;
 ERROR:  cannot remove constraint "rank_1_prt_1_check" on "rank_1_prt_1" as it is part of a partitioning configuration
+alter table rank add partition ppo end (22) with (oids = true);
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_ppo" for table "rank"
+ERROR:  OIDS=TRUE is not allowed on partitioned tables. Use OIDS=FALSE
 drop table rank, rank2;
 -- MPP-5831, type cast in SPLIT
 CREATE TABLE sg_cal_event_silvertail_hour (
@@ -6044,7 +6048,7 @@ START ('2009-04-29 07:00:00'::timestamp) INCLUSIVE END ('2009-04-29
 08:00:00'::timestamp) EXCLUSIVE INTO ( PARTITION P2009042907 ,
 PARTITION st_default );
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "st_default" of relation "sg_cal_event_silvertail_hour" with relation "pg_temp_189436"
+NOTICE:  exchanged partition "st_default" of relation "sg_cal_event_silvertail_hour" with relation "pg_temp_256499"
 NOTICE:  dropped partition "st_default" for relation "sg_cal_event_silvertail_hour"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "sg_cal_event_silvertail_hour_1_prt_p2009042907" for table "sg_cal_event_silvertail_hour"
@@ -6071,7 +6075,7 @@ insert into foo select i, i+1, repeat('fooo', 9000) from generate_series(1, 100)
 alter table foo split default partition start (10) end(20) 
 into (partition p10_20, partition def);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "def" of relation "foo" with relation "pg_temp_189740"
+NOTICE:  exchanged partition "def" of relation "foo" with relation "pg_temp_256803"
 NOTICE:  dropped partition "def" for relation "foo"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "foo_1_prt_p10_20" for table "foo"
@@ -6109,7 +6113,7 @@ insert into foo select i, i+1, repeat('fooo', 9000) from generate_series(1, 100)
 alter table foo split default partition start (10) end(20) 
 into (partition p10_20, partition def);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "def" of relation "foo" with relation "pg_temp_190352"
+NOTICE:  exchanged partition "def" of relation "foo" with relation "pg_temp_257415"
 NOTICE:  dropped partition "def" for relation "foo"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "foo_1_prt_p10_20" for table "foo"
@@ -6415,7 +6419,7 @@ alter table partsupp split partition p2 at (NULL);
 ERROR:  AT clause parameter is not a member of the target partition specification
 alter table partsupp split default partition start(null) end(200);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "def" of relation "partsupp" with relation "pg_temp_193058"
+NOTICE:  exchanged partition "def" of relation "partsupp" with relation "pg_temp_260121"
 NOTICE:  dropped partition "def" for relation "partsupp"
 ERROR:  cannot use NULL with range partition specification
 drop table partsupp;
@@ -6575,7 +6579,7 @@ select * from pg_indexes where schemaname = 'public' and tablename like 'ti%';
 (8 rows)
 
 alter table ti split partition p3 at (7) into (partition pnew1, partition pnew2);
-NOTICE:  exchanged partition "p3" of relation "ti" with relation "pg_temp_193962"
+NOTICE:  exchanged partition "p3" of relation "ti" with relation "pg_temp_261025"
 NOTICE:  dropped partition "p3" for relation "ti"
 NOTICE:  CREATE TABLE will create partition "ti_1_prt_pnew1" for table "ti"
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "ti_1_prt_pnew1_pkey" for table "ti_1_prt_pnew1"
@@ -6833,7 +6837,7 @@ ERROR:  cannot specify EVERY when adding RANGE partition to relation "mpp6297"
 -- this is legal but it doesn't fix the EVERY clause
 alter table mpp6297 add partition start (3) end (4) ;
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "mpp6297_1_prt_r1816079697" for table "mpp6297"
+NOTICE:  CREATE TABLE will create partition "mpp6297_1_prt_r708290322" for table "mpp6297"
 -- note that the every clause is still splits into two parts: 1-3 and
 -- 4-10, because the new partition from 3 to 4 doesn't have an EVERY
 -- attribute
@@ -7068,7 +7072,7 @@ ALTER TABLE mpp6589a
 SPLIT PARTITION p20090312 AT( '20090310' ) 
 INTO( PARTITION p20090309, PARTITION p20090312_tmp);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "p20090312" of relation "mpp6589a" with relation "pg_temp_197594"
+NOTICE:  exchanged partition "p20090312" of relation "mpp6589a" with relation "pg_temp_264657"
 NOTICE:  dropped partition "p20090312" for relation "mpp6589a"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "mpp6589a_1_prt_p20090309" for table "mpp6589a"
@@ -7108,7 +7112,7 @@ ERROR:  new partition overlaps existing partition
 -- should work - make sure can add an open-ended final partition
 ALTER TABLE mpp6589i ADD PARTITION start (3);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "mpp6589i_1_prt_r259748847" for table "mpp6589i"
+NOTICE:  CREATE TABLE will create partition "mpp6589i_1_prt_r647204897" for table "mpp6589i"
 select pg_get_partition_def('mpp6589i'::regclass,true);
      pg_get_partition_def      
 -------------------------------
@@ -7146,7 +7150,7 @@ ALTER TABLE mpp6589b
 SPLIT PARTITION p20090312 AT( '20090310' ) 
 INTO( PARTITION p20090309, PARTITION p20090312_tmp);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "p20090312" of relation "mpp6589b" with relation "pg_temp_197934"
+NOTICE:  exchanged partition "p20090312" of relation "mpp6589b" with relation "pg_temp_264997"
 NOTICE:  dropped partition "p20090312" for relation "mpp6589b"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "mpp6589b_1_prt_p20090309" for table "mpp6589b"
