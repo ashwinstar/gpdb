@@ -984,7 +984,7 @@ class Phase1and2MirrorInfo:
     #-------------------------------------------------------------------------------
     def getMirrorInfoFromMirrordbid(self, mirrordbid):
         retValue = None
-        
+    
         for mirrorSeg in self.allMirrorInfoList:
             if str(mirrorSeg.mirror_dbid) == str(mirrordbid):
                retValue = mirrorSeg
@@ -2150,7 +2150,7 @@ class GpUpgradeMirrorStatus():
         # Only allow state transitions forward or backward 1
         ''' KAS note to self. Should probably not skip checking if in rollback '''
         if self._status and options.rollback == False:
-           if options.continue_upgrade == False and self._status_values[status] != self._status_values[self._status[-1]] + 1:
+           if options.continue_upgrade == False and self._status_values[status] != self._status_values[self._status[-1]] + 1 and self._status_values[status] != self._status_values[self._status[-1]]:
               raise InvalidStatusError('Invalid status transition from %s to %s' % (self._status[-1], status))
            elif options.continue_upgrade == True and \
               self._status_values[status] != self._status_values[self._status[-1]] and \
@@ -3038,7 +3038,7 @@ class Phase2(threading.Thread):
         """ First, get a list of all files in the base directory """
         fixupFileExtsList = []
         baseDir = seg.primary_data_directory + "/base"
-        primaryTempFile =  seg.primaryTempDir + '/tempfilesindir'
+        primaryTempFile =  seg.primaryTempDir + '/tempfilesindir' + str(seg.mirror_dbid)
         cmdComplete = False
         while cmdComplete == False:
            fdCmd = FilesInDir( name = "gpupgrademirror files in dir %s:%s" % (seg.primary_host, baseDir)
@@ -3049,7 +3049,7 @@ class Phase2(threading.Thread):
                              )
            cmdComplete = runAndCheckCommandComplete(fdCmd)
         fdCmd.validate()
-        allBaseList = fdCmd.get_result_list(localTempFile = options.info_data_directory + "/tempallbase")
+        allBaseList = fdCmd.get_result_list(localTempFile = options.info_data_directory + "/tempallbase" + str(seg.mirror_dbid))
 
         allBaseList.sort()
 
