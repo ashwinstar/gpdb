@@ -319,7 +319,15 @@ extern void smgrwrite(SMgrRelation reln, BlockNumber blocknum, char *buffer,
 		  bool isTemp);
 extern BlockNumber smgrnblocks(SMgrRelation reln);
 extern BlockNumber smgrtruncate(SMgrRelation reln, BlockNumber nblocks,
-			 bool isTemp, bool isLocalBuf);
+			 bool isTemp, bool isLocalBuf, ItemPointer persistentTid, int64 persistentSerialNum);
+extern bool smgrgetpersistentinfo(	
+	XLogRecord		*record,
+
+	RelFileNode	*relFileNode,
+
+	ItemPointer	persistentTid,
+
+	int64		*persistentSerialNum);
 extern void smgrimmedsync(SMgrRelation reln);
 extern void smgrappendonlymirrorresynceofs(
 	RelFileNode						*relFileNode,

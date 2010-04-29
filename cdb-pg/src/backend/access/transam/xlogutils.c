@@ -25,6 +25,7 @@
 
 #include "cdb/cdbmirroredfilesysobj.h"
 #include "cdb/cdbfilerepprimary.h"
+#include "utils/guc.h"
 
 
 /*
@@ -424,12 +425,6 @@ XLogOpenRelation(RelFileNode rnode)
 	}
 	else
 	{
-		MirrorDataLossTrackingState mirrorDataLossTrackingState;
-		int64 mirrorDataLossTrackingSessionNum;
-
-		int primaryError;
-		bool mirrorDataLossOccurred;
-
 		res = _xl_new_reldesc();
 
 		sprintf(RelationGetRelationName(&(res->reldata)), "%u", rnode.relNode);
@@ -458,30 +453,43 @@ XLogOpenRelation(RelFileNode rnode)
 		res->reldata.rd_smgr = NULL;
 		RelationOpenSmgr(&(res->reldata));
 
-		/*
-		 * Create the target file if it doesn't already exist.  This lets us
-		 * cope if the replay sequence contains writes to a relation that is
-		 * later deleted.  (The original coding of this routine would instead
-		 * return NULL, causing the writes to be suppressed. But that seems
-		 * like it risks losing valuable data if the filesystem loses an inode
-		 * during a crash.	Better to write the data until we are actually
-		 * told to delete the file.)
-		 */
-		// UNDONE: What about the persistent rel files table???
-		// UNDONE: This condition should not occur anymore.
-		// UNDONE: segmentFileNum and AO?
-		mirrorDataLossTrackingState = 
-					FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
-													&mirrorDataLossTrackingSessionNum);
-		smgrcreate(
-			res->reldata.rd_smgr, 
-			res->reldata.rd_isLocalBuf, 
-			/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
-			mirrorDataLossTrackingState,
-			mirrorDataLossTrackingSessionNum,
-			/* ignoreAlreadyExists */ true,
-			&primaryError,
-			&mirrorDataLossOccurred);
+		// NOTE: We no longer re-create files automatically because
+		// new FileRep persistent objects will ensure files exist.
+
+		if (!Debug_enable_new_startup_pass)
+		{
+			MirrorDataLossTrackingState mirrorDataLossTrackingState;
+			int64 mirrorDataLossTrackingSessionNum;
+			
+			int primaryError;
+			bool mirrorDataLossOccurred;
+			
+			/*
+			 * Create the target file if it doesn't already exist.  This lets us
+			 * cope if the replay sequence contains writes to a relation that is
+			 * later deleted.  (The original coding of this routine would instead
+			 * return NULL, causing the writes to be suppressed. But that seems
+			 * like it risks losing valuable data if the filesystem loses an inode
+			 * during a crash.	Better to write the data until we are actually
+			 * told to delete the file.)
+			 */
+			// UNDONE: What about the persistent rel files table???
+			// UNDONE: This condition should not occur anymore.
+			// UNDONE: segmentFileNum and AO?
+			mirrorDataLossTrackingState = 
+						FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
+														&mirrorDataLossTrackingSessionNum);
+			smgrcreate(
+				res->reldata.rd_smgr, 
+				res->reldata.rd_isLocalBuf, 
+				/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
+				mirrorDataLossTrackingState,
+				mirrorDataLossTrackingSessionNum,
+				/* ignoreAlreadyExists */ true,
+				&primaryError,
+				&mirrorDataLossOccurred);
+			
+		}
 	}
 
 	res->moreRecently = &(_xlrelarr[0]);

@@ -62,12 +62,4 @@ extern void
 PersistentRecovery_DeserializeRedoRelationFile(
 	int redoRelationFile);
 
-extern bool
-PersistentRecovery_RedoRelationExists(
-	RelFileNode 	*relFileNode,
-	
-	ItemPointer 	persistentTid,
-	
-	int64			*persistentSerialNum);
-
 #endif   /* PERSISTENTRECOVERY_H */

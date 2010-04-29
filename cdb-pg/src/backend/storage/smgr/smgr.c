@@ -143,6 +143,8 @@ typedef struct xl_smgr_truncate
 {
 	BlockNumber blkno;
 	RelFileNode rnode;
+	ItemPointerData persistentTid;
+	int64 persistentSerialNum;
 } xl_smgr_truncate;
 
 
@@ -1286,7 +1288,7 @@ smgrnblocks(SMgrRelation reln)
  *		transaction on failure.
  */
 BlockNumber
-smgrtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp, bool isLocalBuf)
+smgrtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp, bool isLocalBuf, ItemPointer persistentTid, int64 persistentSerialNum)
 {
 	BlockNumber newblks;
 
@@ -1328,6 +1330,8 @@ smgrtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp, bool isLocalBu
 
 		xlrec.blkno = newblks;
 		xlrec.rnode = reln->smgr_rnode;
+		xlrec.persistentTid = *persistentTid;
+		xlrec.persistentSerialNum = persistentSerialNum;
 
 		rdata.data = (char *) &xlrec;
 		rdata.len = sizeof(xlrec);
@@ -1339,6 +1343,34 @@ smgrtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp, bool isLocalBu
 	}
 
 	return newblks;
+}
+
+bool smgrgetpersistentinfo(	
+	XLogRecord		*record,
+
+	RelFileNode	*relFileNode,
+
+	ItemPointer	persistentTid,
+
+	int64		*persistentSerialNum)
+{
+	uint8 info;
+
+	Assert (record->xl_rmid == RM_SMGR_ID);
+	
+	info = record->xl_info & ~XLR_INFO_MASK;
+
+	if (info == XLOG_SMGR_TRUNCATE)
+	{
+		xl_smgr_truncate *xlrec = (xl_smgr_truncate *) XLogRecGetData(record);
+
+		*relFileNode = xlrec->rnode;
+		*persistentTid = xlrec->persistentTid;
+		*persistentSerialNum = xlrec->persistentSerialNum;
+		return true;
+	}
+
+	return false;
 }
 
 /*

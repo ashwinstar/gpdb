@@ -2110,6 +2110,9 @@ RelationTruncate(Relation rel, BlockNumber nblocks, bool markPersistentAsPhysica
 {
 	MIRROREDLOCK_BUFMGR_DECLARE;
 
+	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	RelationFetchGpRelationNodeForXLog(rel);
+
 	if (markPersistentAsPhysicallyTruncated)
 	{
 		LockRelationForResynchronize(&rel->rd_node, AccessExclusiveLock);
@@ -2145,7 +2148,13 @@ RelationTruncate(Relation rel, BlockNumber nblocks, bool markPersistentAsPhysica
 	rel->rd_targblock = InvalidBlockNumber;
 
 	/* Do the real work */
-	smgrtruncate(rel->rd_smgr, nblocks, rel->rd_istemp, rel->rd_isLocalBuf); /*CDB*/
+	smgrtruncate(
+			rel->rd_smgr, 
+			nblocks, 
+			rel->rd_istemp, 
+			rel->rd_isLocalBuf,
+			&rel->rd_segfile0_relationnodeinfo.persistentTid,
+			rel->rd_segfile0_relationnodeinfo.persistentSerialNum);
 
 	MIRROREDLOCK_BUFMGR_UNLOCK;
 	// -------- MirroredLock ----------

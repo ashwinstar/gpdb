@@ -5905,6 +5905,22 @@ static void ShutdownReadFile(void)
 static void
 StartupXLOG_InProduction(void)
 {
+	TransactionId oldestActiveXID;
+
+	/* Pre-scan prepared transactions to find out the range of XIDs present */
+	oldestActiveXID = PrescanPreparedTransactions();
+
+	/* Start up the commit log and related stuff, too */
+	StartupCLOG();
+	StartupSUBTRANS(oldestActiveXID);
+	StartupMultiXact();
+	DistributedLog_Startup(
+						oldestActiveXID, 
+						ShmemVariableCache->nextXid);
+
+	/* Reload shared-memory state for prepared transactions */
+	RecoverPreparedTransactions();
+
 	/*
 	 * Perform a checkpoint to update all our recovery activity to disk.
 	 *
@@ -5994,7 +6010,6 @@ StartupXLOG(void)
 	uint32		endLogSeg;
 	XLogRecord *record;
 	uint32		freespace;
-	TransactionId oldestActiveXID;
 	char* 		dtxCheckPointInfo;
 	int			dtmCheckPointInfoSize;
 
@@ -6511,11 +6526,11 @@ StartupXLOG(void)
 		XLogCtl->Write.curridx = NextBufIdx(0);
 	}
 
-	/* Pre-scan prepared transactions to find out the range of XIDs present */
-	oldestActiveXID = PrescanPreparedTransactions();
-
 	if (InRecovery)
 	{
+		/*
+		 * Close down Recovery for Startup PASS 1.
+		 */
 		int			rmid;
 
 		/*
@@ -6571,18 +6586,7 @@ StartupXLOG(void)
 	/* initialize shared-memory copy of latest checkpoint XID/epoch */
 	XLogCtl->ckptXidEpoch = ControlFile->checkPointCopy.nextXidEpoch;
 	XLogCtl->ckptXid = ControlFile->checkPointCopy.nextXid;
-
-	/* Start up the commit log and related stuff, too */
-	StartupCLOG();
-	StartupSUBTRANS(oldestActiveXID);
-	StartupMultiXact();
-	DistributedLog_Startup(
-						oldestActiveXID, 
-						ShmemVariableCache->nextXid);
-
-	/* Reload shared-memory state for prepared transactions */
-	RecoverPreparedTransactions();
-
+	
 	if (!XLogCtl->multiplePassesNeeded)
 	{
 		if (Debug_persistent_recovery_print)
@@ -6783,6 +6787,8 @@ StartupXLOG_Pass3(void)
 		elog(Debug_persistent_recovery_print_level, 
 			 "StartupXLOG_Pass3: Begin re-scanning XLOG");
 
+	InRecovery = true;
+
 	/*
 	 * Read control file and verify XLOG status looks valid.
 	 *
@@ -6884,6 +6890,8 @@ StartupXLOG_Pass3(void)
 	if (Debug_persistent_recovery_print)
 		elog(Debug_persistent_recovery_print_level, 
 			 "StartupXLOG_Pass3: End re-scanning XLOG");
+
+	InRecovery = false;
 
 bypass:
 	StartupXLOG_InProduction();
