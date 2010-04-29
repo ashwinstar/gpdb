@@ -325,6 +325,8 @@ DatumStream *create_datumstream(CompressorType compType, int32 compLevel, int32 
         acc->lobbuf = NULL;
     }
 
+    acc->blockFirstRowNum = 1;
+
     acc->memctxt = CurrentMemoryContext;
 
     /* Set up current position */
@@ -576,7 +578,7 @@ static void
 datumstream_read_block_content(DatumStream *acc,
 							   int32 contentLen,
 							   int execBlockKind,
-							   int64 firstRow,
+							   int64 firstRow,		/* is expected to be -1 for pre-4.0 blocks */
 							   int rowCnt,
 							   bool isLarge,
 							   bool isCompressed)
@@ -625,7 +627,12 @@ datumstream_read_block_content(DatumStream *acc,
         acc->nullbit = 1;
         acc->datump = buffer + acc->block->nullsz; 
 
-		Assert(acc->block->ndatum == rowCnt);
+        /*
+         * Pre-4.0 code did not enforce the following assertion.
+         * We identify this exception through firstRow, which is -1
+         * for pre-4.0 blocks (not stored inside the block).
+         */
+        Assert(acc->block->ndatum == rowCnt || firstRow < 0);
     }
     else
     {
@@ -676,6 +683,8 @@ int datumstream_read_block(DatumStream *acc)
     
     Assert(acc && acc->is_reader && acc->ao_read && !acc->ao_write);
     
+    acc->blockFirstRowNum += acc->blockRowCount;
+
     readOK = AppendOnlyStorageRead_GetBlockInfo(acc->ao_read,
 												&contentLen,
 												&execBlockKind,
@@ -683,8 +692,16 @@ int datumstream_read_block(DatumStream *acc)
 												&rowCnt,
 												&isLarge,
 												&isCompressed);
-
-	acc->blockFirstRowNum = firstRow;
+    /*
+     * Pre-4.0 blocks do not store firstRowNum, so the returned value
+     * for firstRow is -1. In this case, acc->blockFirstRowNum keeps
+     * its last value, i.e. is incremented by the blockRowCount of the
+     * previous block.
+     */
+    if (firstRow >= 0)
+    {
+    	acc->blockFirstRowNum = firstRow;
+    }
 	acc->blockFileOffset = acc->ao_read->current.headerOffsetInFile;
 	acc->blockRowCount = rowCnt;
 
