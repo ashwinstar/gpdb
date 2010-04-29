@@ -80,7 +80,7 @@ def Shutdown(env, utility=False):
            cmd = 'gpstop -a -f'
 
         logger.debug("Stopping cluster with env = %s" % str(env))
-        pid = subprocess.Popen( cmd
+        pid = subprocess.Popen( args = cmd
                               , preexec_fn = os.setpgrp
                               , env = env
                               , shell = True
@@ -523,7 +523,7 @@ class RelFileNodes():
                    aTable.append(str(db.databaseDirectory) + '/' + str(indexEntry.relfilenode))
                self.tableRelFileList.append(aTable)
            conn.close()
-
+           
    #-------------------------------------------------------------------------------
     def _read_rel_file_node_file(self):
         """Reads in an existing relfile node file"""
@@ -892,7 +892,7 @@ class Phase1and2MirrorInfo:
                mirrorHostName = self.gpHostCacheInfo.getHost(mirrorInfo.mirror_host)
                if mirrorHostName in self.mirrorNodeList:
                   pass
-               else:
+               elif len(options.ids) == 0 or mirrorInfo.mirror_dbid in options.ids:
                   self.mirrorNodeList.append(mirrorHostName)
         else:
            """ We are in normal Phase1 or normal Phase 2 (no rollback or continue) """
@@ -1036,12 +1036,13 @@ class NetworkSpeed(Command):
     that no other traffic is present between the two nodes.
     """
     
-    def __init__(self,name, host1, host2, tempDir, ctxt=LOCAL, remoteHost=None):        
+    def __init__(self,name, host1, host2, tempDir1, tempDir2, ctxt=LOCAL, remoteHost=None):        
         self.host1 = host1
         self.host2 = host2
-        self.tempDir = tempDir
+        self.tempDir1 = tempDir1
+        self.tempDir2 = tempDir2
         self.remoteHost = remoteHost
-        cmdStr="gpchecknet -h %s -h %s -d %s" % (host1, host2, tempDir)
+        cmdStr="gpcheckperf -h %s -h %s -r N -d %s -d %s" % (host1, host2, tempDir1, tempDir2)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
         
     def getSpeed(self):
@@ -1882,7 +1883,8 @@ class GPUpgradeMirrorMinion(Command):
            """ Special case where the directory is '/'. """
            dirPrefix = ""
         dirSuffix = mDir[1]
-        self.minionDir = dirPrefix + "/" + GPMIGRATOR_TEMP_DIR + "/" + dirSuffix + INFO_DIR  + str(minionSeg)
+        self.minionGpmigratorDir = dirPrefix + "/" + GPMIGRATOR_TEMP_DIR
+        self.minionDir = self.minionGpmigratorDir + "/" + dirSuffix + INFO_DIR  + str(minionSeg)
         
         self.gpupgrademirror_executable = "$GPHOME/sbin/" + EXECNAME
         self.cmdStr = "%s %s -i %s -t %s" % ( self.gpupgrademirror_executable
@@ -1901,6 +1903,13 @@ class GPUpgradeMirrorMinion(Command):
     def createInfoDirectory(self):
         """ Create a info directory for the minion """
         logger.debug("Create info directory for minion: %s:%s" % (self.remoteHost, self.minionDir))
+        mkDirCmd = CreateDirIfNecessaryWithMode( name = 'Create the minion info dir: %s:%s' % (self.remoteHost, self.minionGpmigratorDir)
+                             , directory = self.minionGpmigratorDir
+                             , ctxt = REMOTE
+                             , remoteHost = self.remoteHost
+                             , mode = '0700'
+                             )
+        mkDirCmd.run(validateAfter=True)
         mkDirCmd = CreateDirIfNecessaryWithMode( name = 'Create the minion info dir: %s:%s' % (self.remoteHost, self.minionDir)
                              , directory = self.minionDir
                              , ctxt = REMOTE
@@ -2495,7 +2504,9 @@ class Phase1(threading.Thread):
                availableNicQueue.put(nicToUse)
                continue
             else:
-               pysyncCmd = PySyncPlus( name = 'gpupgrademirror pysync primary to mirror: %s:%s' % (self.nodeName, seg.mirror_data_directory)
+               nameStr = 'gpupgrademirror pysync primary to mirror: %s:%s' % (self.nodeName, seg.mirror_data_directory)
+               nameStr = nameStr + " SourceHost=%s NICname=%s " %(seg.primary_host, nicToUse)  
+               pysyncCmd = PySyncPlus( name = nameStr
                              , srcDir = sourceDir
                              , dstHost = nicToUse
                              , dstDir = targetDir
@@ -3477,10 +3488,12 @@ try:
            netMBCmd = NetworkSpeed( name = "gpupgrademirror get nextwork speed for: " + str(aSeg.primary_host)
                                , host1 = aSeg.primary_host
                                , host2 = aSeg.mirror_host
-                               , tempDir = aSeg.primary_data_directory
+                               , tempDir1 = aSeg.primary_data_directory
+                               , tempDir2 = aSeg.mirror_data_directory
                                , ctxt = REMOTE
                                , remoteHost = aSeg.primary_host
                                )
+           logger.debug("Testing network speed. This will take about 15 seconds....")
            cmdComplete = runAndCheckCommandComplete(netMBCmd)
        netMBSpeed = netMBCmd.getSpeed()
        logger.debug("Net speed for primary %s to mirror %s is estimated to be %s Meg per Sec." % (aSeg.primary_host, aSeg.mirror_host, str(netMBSpeed)))
