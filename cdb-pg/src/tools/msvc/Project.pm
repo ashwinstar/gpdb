@@ -31,7 +31,7 @@ sub new
         prefixincludes  => '',
         defines         => ';',
         solution        => $solution,
-        disablewarnings => '4018;4244;4273;4102;4090;4267',
+        disablewarnings => '4018;4244;4273;4102;4090;4267;',
         disablelinkerwarnings => '',
         vcver           => $solution->{vcver},
         platform        => $solution->{platform},
@@ -521,7 +521,7 @@ EOF
 		WarningLevel="3" SuppressStartupBanner="TRUE" DebugInformationFormat="3" CompileAs="0"/>
 	<Tool Name="VCLinkerTool" OutputFile=".\\$cfgname\\$self->{name}\\$self->{name}.$self->{type}"
 		AdditionalDependencies="$libs"
-		LinkIncremental="0" SuppressStartupBanner="TRUE" AdditionalLibraryDirectories="" IgnoreDefaultLibraryNames="libc"
+		LinkIncremental="0" SuppressStartupBanner="TRUE" AdditionalLibraryDirectories=" " IgnoreDefaultLibraryNames="libc"
 		StackReserveSize="4194304" DisableSpecificWarnings="$self->{disablewarnings}"
 		GenerateDebugInformation="TRUE" ProgramDatabaseFile=".\\$cfgname\\$self->{name}\\$self->{name}.pdb"
 		GenerateMapFile="FALSE" MapFileName=".\\$cfgname\\$self->{name}\\$self->{name}.map"

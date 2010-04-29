@@ -29,12 +29,12 @@ my $contrib_defines = {'refint' => 'REFINT_VERBOSE'};
 my @contrib_uselibpq = ('dblink', 'oid2name', 'pgbench', 'vacuumlo', 'xlogdump');
 my @contrib_uselibpgport = ('oid2name', 'pgbench', 'pg_standby', 'vacuumlo', 'xlogdump');
 my $contrib_extralibs = {'pgbench' => ['wsock32.lib']};
-my $contrib_extraincludes = {'tsearch2' => ['contrib/tsearch2']};
+my $contrib_extraincludes = {'tsearch2' => ['contrib/tsearch2'], 'dblink' => ['src/backend']};
 my $contrib_extrasource = {
     'cube' => ['cubescan.l','cubeparse.y'],
     'seg' => ['segscan.l','segparse.y']
 };
-my @contrib_excludes = ('pgcrypto','intagg','uuid-ossp','bufferedtest', 'varblocktest', 'gp_filedump', 'tsearch2');
+my @contrib_excludes = ('pgcrypto','intagg','uuid-ossp','bufferedtest', 'varblocktest', 'hstore', 'gp_filedump', 'tsearch2', 'dblink', 'xlogdump','xlogviewer', 'changetrackingdump','gp_sparse_vector','xml2','adminpack');
 
 sub mkvcbuild
 {
@@ -281,22 +281,22 @@ sub mkvcbuild
     $pgdump->AddFile('src\bin\pg_dump\pg_dump.c');
     $pgdump->AddFile('src\bin\pg_dump\common.c');
     $pgdump->AddFile('src\bin\pg_dump\pg_dump_sort.c');
-    #$pgdump->AddFile('src\bin\pg_dump\keywords.c');
-    #$pgdump->AddFile('src\backend\parser\kwlookup.c');
+    $pgdump->AddFile('src\bin\pg_dump\keywords.c');
+    $pgdump->AddFile('src\backend\parser\kwlookup.c');
 
     my $pgdumpall = AddSimpleFrontend('pg_dump', 1);
     $pgdumpall->{name} = 'pg_dumpall';
     $pgdumpall->AddIncludeDir('src\backend');
     $pgdumpall->AddFile('src\bin\pg_dump\pg_dumpall.c');
-    #$pgdumpall->AddFile('src\bin\pg_dump\keywords.c');
-    #$pgdumpall->AddFile('src\backend\parser\kwlookup.c');
+    $pgdumpall->AddFile('src\bin\pg_dump\keywords.c');
+    $pgdumpall->AddFile('src\backend\parser\kwlookup.c');
 
     my $pgrestore = AddSimpleFrontend('pg_dump', 1);
     $pgrestore->{name} = 'pg_restore';
     $pgrestore->AddIncludeDir('src\backend');
     $pgrestore->AddFile('src\bin\pg_dump\pg_restore.c');
-    #$pgrestore->AddFile('src\bin\pg_dump\keywords.c');
-    #$pgrestore->AddFile('src\backend\parser\kwlookup.c');
+    $pgrestore->AddFile('src\bin\pg_dump\keywords.c');
+    $pgrestore->AddFile('src\backend\parser\kwlookup.c');
 
     my $zic = $solution->AddProject('zic','exe','utils');
     $zic->AddFiles('src\timezone','zic.c','ialloc.c','scheck.c','localtime.c');
