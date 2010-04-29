@@ -6027,6 +6027,7 @@ comment_type:
 			| TABLESPACE						{ $$ = OBJECT_TABLESPACE; }
 			| ROLE								{ $$ = OBJECT_ROLE; }
 			| FILESPACE                         { $$ = OBJECT_FILESPACE; }
+			| RESOURCE QUEUE                    { $$ = OBJECT_RESQUEUE; }
 		;
 
 comment_text:

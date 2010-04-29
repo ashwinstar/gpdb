@@ -2218,14 +2218,14 @@ select * from get_ereport order by 1;
  baag: bufmgr:00000487:  errmsg("invalid page header in block %u of relation """, 
  baag: bufmgr:00000488:  blockNum/*, relpath(reln->smgr_rnode)*/), 
  baag: bufmgr:00000489:  errSendAlert(true))); 
- baag: bufmgr:00002897:  ereport(WARNING, 
- baag: bufmgr:00002898:  (errcode(ERRCODE_IO_ERROR), 
- baag: bufmgr:00002899:  errmsg("could not write block %u of %u/%u/%u", 
- baag: bufmgr:00002900:  buf->tag.blockNum, 
- baag: bufmgr:00002901:  buf->tag.rnode.spcNode, 
- baag: bufmgr:00002902:  buf->tag.rnode.dbNode, 
- baag: bufmgr:00002903:  buf->tag.rnode.relNode), 
- baag: bufmgr:00002904:  errdetail("Multiple failures --- write error might be permanent."))); 
+ baag: bufmgr:00002903:  ereport(WARNING, 
+ baag: bufmgr:00002904:  (errcode(ERRCODE_IO_ERROR), 
+ baag: bufmgr:00002905:  errmsg("could not write block %u of %u/%u/%u", 
+ baag: bufmgr:00002906:  buf->tag.blockNum, 
+ baag: bufmgr:00002907:  buf->tag.rnode.spcNode, 
+ baag: bufmgr:00002908:  buf->tag.rnode.dbNode, 
+ baag: bufmgr:00002909:  buf->tag.rnode.relNode), 
+ baag: bufmgr:00002910:  errdetail("Multiple failures --- write error might be permanent."))); 
  baah: backend:00000171:  ereport(ERROR, ( 
  baah: backend:00000172:  errcode(ERRCODE_INTERNAL_ERROR), 
  baah: backend:00000173:  errmsg("Unable to initialize java security"))); 
@@ -3171,112 +3171,127 @@ select * from get_ereport order by 1;
  caah: cluster:00000501:  ereport(ERROR, 
  caah: cluster:00000502:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  caah: cluster:00000503:  errmsg("cannot cluster temporary tables of other sessions"))); 
- caah: comment:00000474:  ereport(ERROR, 
- caah: comment:00000475:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- caah: comment:00000476:  errmsg(""%s" is not an index", 
- caah: comment:00000477:  RelationGetRelationName(relation)))); 
- caah: comment:00000481:  ereport(ERROR, 
- caah: comment:00000482:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- caah: comment:00000483:  errmsg(""%s" is not a sequence", 
- caah: comment:00000484:  RelationGetRelationName(relation)))); 
- caah: comment:00000488:  ereport(ERROR, 
- caah: comment:00000489:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- caah: comment:00000490:  errmsg(""%s" is not a table", 
- caah: comment:00000491:  RelationGetRelationName(relation)))); 
- caah: comment:00000495:  ereport(ERROR, 
- caah: comment:00000496:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- caah: comment:00000497:  errmsg(""%s" is not a view", 
- caah: comment:00000498:  RelationGetRelationName(relation)))); 
- caah: comment:00000551:  ereport(ERROR, 
- caah: comment:00000552:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- caah: comment:00000553:  errmsg("column "%s" of relation "%s" does not exist", 
- caah: comment:00000554:  attrname, RelationGetRelationName(relation)))); 
- caah: comment:00000581:  ereport(ERROR, 
- caah: comment:00000582:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caah: comment:00000583:  errmsg("database name may not be qualified"))); 
- caah: comment:00000598:  ereport(WARNING, 
- caah: comment:00000599:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- caah: comment:00000600:  errmsg("database "%s" does not exist", database))); 
- caah: comment:00000629:  ereport(ERROR, 
- caah: comment:00000630:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caah: comment:00000631:  errmsg("tablespace name may not be qualified"))); 
- caah: comment:00000637:  ereport(ERROR, 
- caah: comment:00000638:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- caah: comment:00000639:  errmsg("tablespace "%s" does not exist", tablespace))); 
- caah: comment:00000666:  ereport(ERROR, 
- caah: comment:00000667:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caah: comment:00000668:  errmsg("role name may not be qualified"))); 
- caah: comment:00000675:  ereport(ERROR, 
- caah: comment:00000676:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- caah: comment:00000677:  errmsg("must be member of role "%s" to comment upon it", role))); 
- caah: comment:00000699:  ereport(ERROR, 
- caah: comment:00000700:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caah: comment:00000701:  errmsg("schema name may not be qualified"))); 
- caah: comment:00000708:  ereport(ERROR, 
- caah: comment:00000709:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
- caah: comment:00000710:  errmsg("schema "%s" does not exist", namespace))); 
- caah: comment:00000776:  ereport(ERROR, 
- caah: comment:00000777:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- caah: comment:00000778:  errmsg("rule "%s" does not exist", rulename))); 
- caah: comment:00000784:  ereport(ERROR, 
- caah: comment:00000785:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
- caah: comment:00000786:  errmsg("there are multiple rules named "%s"", rulename), 
- caah: comment:00000787:  errhint("Specify a relation name as well as a rule name."))); 
- caah: comment:00000813:  ereport(ERROR, 
- caah: comment:00000814:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- caah: comment:00000815:  errmsg("rule "%s" for relation "%s" does not exist", 
- caah: comment:00000816:  rulename, RelationGetRelationName(relation)))); 
- caah: comment:00001008:  ereport(ERROR, 
- caah: comment:00001009:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- caah: comment:00001010:  errmsg("trigger "%s" for table "%s" does not exist", 
- caah: comment:00001011:  trigname, RelationGetRelationName(relation)))); 
- caah: comment:00001087:  ereport(ERROR, 
- caah: comment:00001088:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
- caah: comment:00001089:  errmsg("table "%s" has multiple constraints named "%s"", 
- caah: comment:00001090:  RelationGetRelationName(relation), conName))); 
- caah: comment:00001099:  ereport(ERROR, 
- caah: comment:00001100:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- caah: comment:00001101:  errmsg("constraint "%s" for table "%s" does not exist", 
- caah: comment:00001102:  conName, RelationGetRelationName(relation)))); 
- caah: comment:00001128:  ereport(ERROR, 
- caah: comment:00001129:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- caah: comment:00001130:  errmsg("conversion "%s" does not exist", 
- caah: comment:00001131:  NameListToString(qualname)), 
- caah: comment:00001132:  errOmitLocation(true))); 
- caah: comment:00001159:  ereport(ERROR, 
- caah: comment:00001160:  (errcode(ERRCODE_SYNTAX_ERROR), 
- caah: comment:00001161:  errmsg("language name may not be qualified"))); 
- caah: comment:00001168:  ereport(ERROR, 
- caah: comment:00001169:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
- caah: comment:00001170:  errmsg("language "%s" does not exist", language))); 
- caah: comment:00001174:  ereport(ERROR, 
- caah: comment:00001175:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- caah: comment:00001176:  errmsg("must be superuser to comment on procedural language"))); 
- caah: comment:00001211:  ereport(ERROR, 
- caah: comment:00001212:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- caah: comment:00001213:  errmsg("access method "%s" does not exist", 
- caah: comment:00001214:  amname))); 
- caah: comment:00001240:  ereport(ERROR, 
- caah: comment:00001241:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- caah: comment:00001242:  errmsg("operator class "%s" does not exist for access method "%s"", 
- caah: comment:00001243:  opcname, amname))); 
- caah: comment:00001250:  ereport(ERROR, 
- caah: comment:00001251:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- caah: comment:00001252:  errmsg("operator class "%s" does not exist for access method "%s"", 
- caah: comment:00001253:  NameListToString(qualname), amname))); 
- caah: comment:00001310:  ereport(ERROR, 
- caah: comment:00001311:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- caah: comment:00001312:  errmsg("large object %u does not exist", loid))); 
- caah: comment:00001353:  ereport(ERROR, 
- caah: comment:00001354:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- caah: comment:00001355:  errmsg("cast from type %s to type %s does not exist", 
- caah: comment:00001356:  TypeNameToString(sourcetype), 
- caah: comment:00001357:  TypeNameToString(targettype)))); 
- caah: comment:00001365:  ereport(ERROR, 
- caah: comment:00001366:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- caah: comment:00001367:  errmsg("must be owner of type %s or type %s", 
- caah: comment:00001368:  TypeNameToString(sourcetype), 
- caah: comment:00001369:  TypeNameToString(targettype)))); 
+ caah: comment:00000484:  ereport(ERROR, 
+ caah: comment:00000485:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ caah: comment:00000486:  errmsg(""%s" is not an index", 
+ caah: comment:00000487:  RelationGetRelationName(relation)))); 
+ caah: comment:00000491:  ereport(ERROR, 
+ caah: comment:00000492:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ caah: comment:00000493:  errmsg(""%s" is not a sequence", 
+ caah: comment:00000494:  RelationGetRelationName(relation)))); 
+ caah: comment:00000498:  ereport(ERROR, 
+ caah: comment:00000499:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ caah: comment:00000500:  errmsg(""%s" is not a table", 
+ caah: comment:00000501:  RelationGetRelationName(relation)))); 
+ caah: comment:00000505:  ereport(ERROR, 
+ caah: comment:00000506:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ caah: comment:00000507:  errmsg(""%s" is not a view", 
+ caah: comment:00000508:  RelationGetRelationName(relation)))); 
+ caah: comment:00000561:  ereport(ERROR, 
+ caah: comment:00000562:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ caah: comment:00000563:  errmsg("column "%s" of relation "%s" does not exist", 
+ caah: comment:00000564:  attrname, RelationGetRelationName(relation)))); 
+ caah: comment:00000591:  ereport(ERROR, 
+ caah: comment:00000592:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caah: comment:00000593:  errmsg("database name may not be qualified"))); 
+ caah: comment:00000608:  ereport(WARNING, 
+ caah: comment:00000609:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ caah: comment:00000610:  errmsg("database "%s" does not exist", database))); 
+ caah: comment:00000639:  ereport(ERROR, 
+ caah: comment:00000640:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caah: comment:00000641:  errmsg("tablespace name may not be qualified"))); 
+ caah: comment:00000647:  ereport(ERROR, 
+ caah: comment:00000648:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ caah: comment:00000649:  errmsg("tablespace "%s" does not exist", tablespace))); 
+ caah: comment:00000678:  ereport(ERROR, 
+ caah: comment:00000679:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caah: comment:00000680:  errmsg("filespace name may not be qualified"))); 
+ caah: comment:00000688:  ereport(ERROR, 
+ caah: comment:00000689:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ caah: comment:00000690:  errmsg("filespace "%s" does not exist", filespace))); 
+ caah: comment:00000717:  ereport(ERROR, 
+ caah: comment:00000718:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caah: comment:00000719:  errmsg("role name may not be qualified"))); 
+ caah: comment:00000726:  ereport(ERROR, 
+ caah: comment:00000727:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ caah: comment:00000728:  errmsg("must be member of role "%s" to comment upon it", role))); 
+ caah: comment:00000750:  ereport(ERROR, 
+ caah: comment:00000751:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caah: comment:00000752:  errmsg("schema name may not be qualified"))); 
+ caah: comment:00000759:  ereport(ERROR, 
+ caah: comment:00000760:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+ caah: comment:00000761:  errmsg("schema "%s" does not exist", namespace))); 
+ caah: comment:00000827:  ereport(ERROR, 
+ caah: comment:00000828:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ caah: comment:00000829:  errmsg("rule "%s" does not exist", rulename))); 
+ caah: comment:00000835:  ereport(ERROR, 
+ caah: comment:00000836:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+ caah: comment:00000837:  errmsg("there are multiple rules named "%s"", rulename), 
+ caah: comment:00000838:  errhint("Specify a relation name as well as a rule name."))); 
+ caah: comment:00000864:  ereport(ERROR, 
+ caah: comment:00000865:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ caah: comment:00000866:  errmsg("rule "%s" for relation "%s" does not exist", 
+ caah: comment:00000867:  rulename, RelationGetRelationName(relation)))); 
+ caah: comment:00001059:  ereport(ERROR, 
+ caah: comment:00001060:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ caah: comment:00001061:  errmsg("trigger "%s" for table "%s" does not exist", 
+ caah: comment:00001062:  trigname, RelationGetRelationName(relation)))); 
+ caah: comment:00001138:  ereport(ERROR, 
+ caah: comment:00001139:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+ caah: comment:00001140:  errmsg("table "%s" has multiple constraints named "%s"", 
+ caah: comment:00001141:  RelationGetRelationName(relation), conName))); 
+ caah: comment:00001150:  ereport(ERROR, 
+ caah: comment:00001151:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ caah: comment:00001152:  errmsg("constraint "%s" for table "%s" does not exist", 
+ caah: comment:00001153:  conName, RelationGetRelationName(relation)))); 
+ caah: comment:00001179:  ereport(ERROR, 
+ caah: comment:00001180:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ caah: comment:00001181:  errmsg("conversion "%s" does not exist", 
+ caah: comment:00001182:  NameListToString(qualname)), 
+ caah: comment:00001183:  errOmitLocation(true))); 
+ caah: comment:00001210:  ereport(ERROR, 
+ caah: comment:00001211:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caah: comment:00001212:  errmsg("language name may not be qualified"))); 
+ caah: comment:00001219:  ereport(ERROR, 
+ caah: comment:00001220:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+ caah: comment:00001221:  errmsg("language "%s" does not exist", language))); 
+ caah: comment:00001225:  ereport(ERROR, 
+ caah: comment:00001226:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ caah: comment:00001227:  errmsg("must be superuser to comment on procedural language"))); 
+ caah: comment:00001262:  ereport(ERROR, 
+ caah: comment:00001263:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ caah: comment:00001264:  errmsg("access method "%s" does not exist", 
+ caah: comment:00001265:  amname))); 
+ caah: comment:00001291:  ereport(ERROR, 
+ caah: comment:00001292:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ caah: comment:00001293:  errmsg("operator class "%s" does not exist for access method "%s"", 
+ caah: comment:00001294:  opcname, amname))); 
+ caah: comment:00001301:  ereport(ERROR, 
+ caah: comment:00001302:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ caah: comment:00001303:  errmsg("operator class "%s" does not exist for access method "%s"", 
+ caah: comment:00001304:  NameListToString(qualname), amname))); 
+ caah: comment:00001361:  ereport(ERROR, 
+ caah: comment:00001362:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ caah: comment:00001363:  errmsg("large object %u does not exist", loid))); 
+ caah: comment:00001404:  ereport(ERROR, 
+ caah: comment:00001405:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ caah: comment:00001406:  errmsg("cast from type %s to type %s does not exist", 
+ caah: comment:00001407:  TypeNameToString(sourcetype), 
+ caah: comment:00001408:  TypeNameToString(targettype)))); 
+ caah: comment:00001416:  ereport(ERROR, 
+ caah: comment:00001417:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ caah: comment:00001418:  errmsg("must be owner of type %s or type %s", 
+ caah: comment:00001419:  TypeNameToString(sourcetype), 
+ caah: comment:00001420:  TypeNameToString(targettype)))); 
+ caah: comment:00001449:  ereport(ERROR, 
+ caah: comment:00001450:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ caah: comment:00001451:  errmsg("resource queue name may not be qualified"))); 
+ caah: comment:00001466:  ereport(ERROR, 
+ caah: comment:00001467:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ caah: comment:00001468:  errmsg("resource queue "%s" does not exist", queueName))); 
+ caah: comment:00001477:  ereport(ERROR, 
+ caah: comment:00001478:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ caah: comment:00001479:  errmsg("must be superuser to comment on resource queue"))); 
  caah: complex:00000057:  ereport(ERROR, 
  caah: complex:00000058:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  caah: complex:00000059:  errmsg("invalid input syntax for complex: "%s"", 
@@ -3574,10 +3589,10 @@ select * from get_ereport order by 1;
  caaj: cdbmutate:00001130:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
  caaj: cdbmutate:00001131:  errmsg("no equality operator for typid %d", 
  caaj: cdbmutate:00001132:  typeoid))); 
- caaj: chklocale:00000324:  ereport(WARNING, 
- caaj: chklocale:00000325:  (errmsg("could not determine encoding for locale "%s": codeset is "%s"", 
- caaj: chklocale:00000326:  ctype, sys), 
- caaj: chklocale:00000327:  errdetail("Please report this to <pgsql-bugs@postgresql.org>."))); 
+ caaj: chklocale:00000325:  ereport(WARNING, 
+ caaj: chklocale:00000326:  (errmsg("could not determine encoding for locale "%s": codeset is "%s"", 
+ caaj: chklocale:00000327:  ctype, sys), 
+ caaj: chklocale:00000328:  errdetail("Please report this to <pgsql-bugs@postgresql.org>."))); 
  caaj: composite:00000128:  ereport(ERROR, (errmsg("Unable to find tuple descriptor"))); 
  caaj: composite:00000213:  ereport(ERROR, 
  caaj: composite:00000214:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
@@ -3609,12 +3624,12 @@ select * from get_ereport order by 1;
  caba: cdbfilerep:00000452:  ereport(ERROR, 
  caba: cdbfilerep:00000453:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  caba: cdbfilerep:00000454:  (errmsg("Not enough shared memory for Mirroring.")))); 
- caba: cdbfilerep:00000497:  ereport(ERROR, 
- caba: cdbfilerep:00000498:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- caba: cdbfilerep:00000499:  (errmsg("Not enough shared memory for Mirroring.")))); 
- caba: cdbfilerep:00000657:  ereport(ERROR, 
- caba: cdbfilerep:00000658:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- caba: cdbfilerep:00000659:  (errmsg("shared memory for Mirroring not initialized.")))); 
+ caba: cdbfilerep:00000518:  ereport(ERROR, 
+ caba: cdbfilerep:00000519:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ caba: cdbfilerep:00000520:  (errmsg("Not enough shared memory for Mirroring.")))); 
+ caba: cdbfilerep:00000678:  ereport(ERROR, 
+ caba: cdbfilerep:00000679:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ caba: cdbfilerep:00000680:  (errmsg("shared memory for Mirroring not initialized.")))); 
  caba: cdblogsync:00000081:  ereport(ERROR, 
  caba: cdblogsync:00000082:  (errcode_for_file_access(), 
  caba: cdblogsync:00000083:  errmsg("error writing file: %m"))); 
@@ -3981,14 +3996,14 @@ select * from get_ereport order by 1;
  cabh: cdbdtxcontextinfo:00000073:  ereport(ERROR, 
  cabh: cdbdtxcontextinfo:00000074:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  cabh: cdbdtxcontextinfo:00000075:  errmsg("out of memory"))); 
- cabh: cdbdtxcontextinfo:00000511:  ereport(ERROR, 
- cabh: cdbdtxcontextinfo:00000512:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cabh: cdbdtxcontextinfo:00000513:  errmsg("out of memory"))); 
- cabh: cdbfilerepprimary:00000213:  ereport(LOG, 
- cabh: cdbfilerepprimary:00000214:  (errmsg("LOG(filerep): failover is performed to the primary segment, " 
- cabh: cdbfilerepprimary:00000215:  "segment mirroring is suspended "), 
- cabh: cdbfilerepprimary:00000216:  errSendAlert(true), 
- cabh: cdbfilerepprimary:00000217:  FileRep_errcontext())); 
+ cabh: cdbdtxcontextinfo:00000510:  ereport(ERROR, 
+ cabh: cdbdtxcontextinfo:00000511:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cabh: cdbdtxcontextinfo:00000512:  errmsg("out of memory"))); 
+ cabh: cdbfilerepprimary:00000229:  ereport(LOG, 
+ cabh: cdbfilerepprimary:00000230:  (errmsg("LOG(filerep): failover is performed to the primary segment, " 
+ cabh: cdbfilerepprimary:00000231:  "segment mirroring is suspended "), 
+ cabh: cdbfilerepprimary:00000232:  errSendAlert(true), 
+ cabh: cdbfilerepprimary:00000233:  FileRep_errcontext())); 
  cabh: cdbfilerepservice:00000516:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
  cabh: cdbfilerepservice:00000517:  errmsg("database 'postgres' does not exist"))); 
  cabh: cdbfilerepservice:00000571:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
@@ -4106,17 +4121,17 @@ select * from get_ereport order by 1;
  cacb: cdbmirroredappendonly:00001150:  relpath(*relFileNode), 
  cacb: cdbmirroredappendonly:00001151:  relationName, 
  cacb: cdbmirroredappendonly:00001152:  strerror(primaryError)))); 
- cacb: cdbmirroredbufferpool:00000623:  ereport(ERROR, 
- cacb: cdbmirroredbufferpool:00000624:  (errcode_for_file_access(), 
- cacb: cdbmirroredbufferpool:00000625:  errmsg("could not seek in file to position %d in file "%s", segment file %d: %m", 
- cacb: cdbmirroredbufferpool:00000626:  position, 
- cacb: cdbmirroredbufferpool:00000627:  relpath(open->relFileNode), 
- cacb: cdbmirroredbufferpool:00000628:  open->segmentFileNum))); 
- cacb: cdbmirroredbufferpool:00000681:  ereport(ERROR, 
- cacb: cdbmirroredbufferpool:00000682:  (errcode_for_file_access(), 
- cacb: cdbmirroredbufferpool:00000683:  errmsg("could not seek in file to position %d in file "%s", segment file %d: %m", 
- cacb: cdbmirroredbufferpool:00000684:  position, 
- cacb: cdbmirroredbufferpool:00000685:  relpath(open->relFileNode), open->segmentFileNum))); 
+ cacb: cdbmirroredbufferpool:00000624:  ereport(ERROR, 
+ cacb: cdbmirroredbufferpool:00000625:  (errcode_for_file_access(), 
+ cacb: cdbmirroredbufferpool:00000626:  errmsg("could not seek in file to position %d in file "%s", segment file %d: %m", 
+ cacb: cdbmirroredbufferpool:00000627:  position, 
+ cacb: cdbmirroredbufferpool:00000628:  relpath(open->relFileNode), 
+ cacb: cdbmirroredbufferpool:00000629:  open->segmentFileNum))); 
+ cacb: cdbmirroredbufferpool:00000682:  ereport(ERROR, 
+ cacb: cdbmirroredbufferpool:00000683:  (errcode_for_file_access(), 
+ cacb: cdbmirroredbufferpool:00000684:  errmsg("could not seek in file to position %d in file "%s", segment file %d: %m", 
+ cacb: cdbmirroredbufferpool:00000685:  position, 
+ cacb: cdbmirroredbufferpool:00000686:  relpath(open->relFileNode), open->segmentFileNum))); 
  cacb: cdbmirroredfilesysobj:00000231:  ereport(ERROR, 
  cacb: cdbmirroredfilesysobj:00000232:  (errcode_for_file_access(), 
  cacb: cdbmirroredfilesysobj:00000233:  errmsg("could not create filespace directory %u: %s", 
@@ -4167,89 +4182,89 @@ select * from get_ereport order by 1;
  cacb: cdbpersistentrecovery:00001687:  ereport(ERROR, 
  cacb: cdbpersistentrecovery:00001688:  (errcode_for_file_access(), 
  cacb: cdbpersistentrecovery:00001689:  errmsg("could not write redo relation file : %m"))); 
- cacb: cdbpersistentrecovery:00001822:  ereport(ERROR, 
- cacb: cdbpersistentrecovery:00001823:  (errcode_for_file_access(), 
- cacb: cdbpersistentrecovery:00001824:  errmsg("error reading redo relation file: %m"))); 
+ cacb: cdbpersistentrecovery:00001826:  ereport(ERROR, 
+ cacb: cdbpersistentrecovery:00001827:  (errcode_for_file_access(), 
+ cacb: cdbpersistentrecovery:00001828:  errmsg("error reading redo relation file: %m"))); 
  cacc: cdbdistributedsnapshot:00000298:  ereport(ERROR, 
  cacc: cdbdistributedsnapshot:00000299:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  cacc: cdbdistributedsnapshot:00000300:  errmsg("out of memory"))); 
- cacc: cdbfilerepresyncworker:00000485:  ereport(ERROR, 
- cacc: cdbfilerepresyncworker:00000486:  (errcode_for_file_access(), 
- cacc: cdbfilerepresyncworker:00000487:  errmsg("could not open file %u/%u/%u.%u : %s", 
- cacc: cdbfilerepresyncworker:00000488:  entry->relFileNode.dbNode, 
- cacc: cdbfilerepresyncworker:00000489:  entry->relFileNode.spcNode, 
- cacc: cdbfilerepresyncworker:00000490:  entry->relFileNode.relNode, 
- cacc: cdbfilerepresyncworker:00000491:  entry->segmentFileNum, 
- cacc: cdbfilerepresyncworker:00000492:  strerror(primaryError)))); 
- cacc: cdbfilerepresyncworker:00000504:  ereport(ERROR, 
- cacc: cdbfilerepresyncworker:00000505:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cacc: cdbfilerepresyncworker:00000506:  (errmsg("Not enough memory for Resynchronization.")))); 
- cacc: cdbfilerepresyncworker:00000519:  ereport(ERROR, 
- cacc: cdbfilerepresyncworker:00000520:  (errcode_for_file_access(), 
- cacc: cdbfilerepresyncworker:00000521:  errmsg("could not read from position:" INT64_FORMAT " in file %u/%u/%u.%u : %m", 
- cacc: cdbfilerepresyncworker:00000522:  startOffset, 
- cacc: cdbfilerepresyncworker:00000523:  entry->relFileNode.dbNode, 
- cacc: cdbfilerepresyncworker:00000524:  entry->relFileNode.spcNode, 
- cacc: cdbfilerepresyncworker:00000525:  entry->relFileNode.relNode, 
- cacc: cdbfilerepresyncworker:00000526:  entry->segmentFileNum))); 
- cacc: cdbpersistentfilespace:00000538:  ereport(FATAL, 
- cacc: cdbpersistentfilespace:00000539:  (errcode(ERRCODE_INTERNAL_ERROR), 
- cacc: cdbpersistentfilespace:00000540:  errmsg("Unable to determine dbid for filespace lookup"))); 
- cacc: cdbpersistentfilespace:00001005:  ereport(FATAL, 
- cacc: cdbpersistentfilespace:00001006:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cacc: cdbpersistentfilespace:00001007:  errmsg("Not enough shared memory for persistent filespace hash table"))); 
- cacd: cdbfilerepresyncmanager:00000345:  ereport(ERROR, 
- cacd: cdbfilerepresyncmanager:00000346:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cacd: cdbfilerepresyncmanager:00000347:  (errmsg("Not enough shared memory for Mirroring.")))); 
- cacd: cdbfilerepresyncmanager:00000387:  ereport(ERROR, 
- cacd: cdbfilerepresyncmanager:00000388:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cacd: cdbfilerepresyncmanager:00000389:  (errmsg("Not enough shared memory for FileRep Resync.")))); 
- cacd: cdbfilerepresyncmanager:00000405:  ereport(ERROR, 
- cacd: cdbfilerepresyncmanager:00000406:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cacd: cdbfilerepresyncmanager:00000407:  (errmsg("Not enough shared memory for Mirroring.")))); 
- cacd: cdbfilerepresyncmanager:00000431:  ereport(ERROR, 
- cacd: cdbfilerepresyncmanager:00000432:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cacd: cdbfilerepresyncmanager:00000433:  (errmsg("Not enough shared memory for FileRep Resync.")))); 
- cacd: cdbpersistentfilesysobj:00000718:  ereport(ERROR, 
- cacd: cdbpersistentfilesysobj:00000719:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cacd: cdbpersistentfilesysobj:00000720:  errmsg("Did not expect to find a 'Free' entry"), 
- cacd: cdbpersistentfilesysobj:00000721:  errcontext_persistent_relation_state_change( 
- cacd: cdbpersistentfilesysobj:00000722:  fsObjName, 
- cacd: cdbpersistentfilesysobj:00000723:  persistentTid, 
- cacd: cdbpersistentfilesysobj:00000724:  serialNum, 
- cacd: cdbpersistentfilesysobj:00000725:  expectedState1, 
- cacd: cdbpersistentfilesysobj:00000726:  expectedState2, 
- cacd: cdbpersistentfilesysobj:00000727:  expectedState3, 
- cacd: cdbpersistentfilesysobj:00000728:  nextState))); 
- cacd: cdbpersistentfilesysobj:00000733:  ereport(ERROR, 
- cacd: cdbpersistentfilesysobj:00000734:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cacd: cdbpersistentfilesysobj:00000735:  errmsg("Found different serial number " INT64_FORMAT " than expected (persistent file-system object found is '%s', state '%s')", 
- cacd: cdbpersistentfilesysobj:00000736:  actualSerialNum, 
- cacd: cdbpersistentfilesysobj:00000737:  PersistentFileSysObjName_TypeAndObjectName(&actualFsObjName), 
- cacd: cdbpersistentfilesysobj:00000738:  PersistentFileSysObjState_Name(actualState)), 
- cacd: cdbpersistentfilesysobj:00000739:  errcontext_persistent_relation_state_change( 
- cacd: cdbpersistentfilesysobj:00000740:  fsObjName, 
- cacd: cdbpersistentfilesysobj:00000741:  persistentTid, 
- cacd: cdbpersistentfilesysobj:00000742:  serialNum, 
- cacd: cdbpersistentfilesysobj:00000743:  expectedState1, 
- cacd: cdbpersistentfilesysobj:00000744:  expectedState2, 
- cacd: cdbpersistentfilesysobj:00000745:  expectedState3, 
- cacd: cdbpersistentfilesysobj:00000746:  nextState))); 
- cacd: cdbpersistentfilesysobj:00000751:  ereport(ERROR, 
- cacd: cdbpersistentfilesysobj:00000752:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cacd: cdbpersistentfilesysobj:00000753:  errmsg("Found persistent file-system object in unexpected state '%s'", 
- cacd: cdbpersistentfilesysobj:00000754:  PersistentFileSysObjState_Name(actualState)), 
- cacd: cdbpersistentfilesysobj:00000755:  errcontext_persistent_relation_state_change( 
- cacd: cdbpersistentfilesysobj:00000756:  fsObjName, 
- cacd: cdbpersistentfilesysobj:00000757:  persistentTid, 
- cacd: cdbpersistentfilesysobj:00000758:  serialNum, 
- cacd: cdbpersistentfilesysobj:00000759:  expectedState1, 
- cacd: cdbpersistentfilesysobj:00000760:  expectedState2, 
- cacd: cdbpersistentfilesysobj:00000761:  expectedState3, 
- cacd: cdbpersistentfilesysobj:00000762:  nextState))); 
- cacd: cdbpersistenttablespace:00000844:  ereport(FATAL, 
- cacd: cdbpersistenttablespace:00000845:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cacd: cdbpersistenttablespace:00000846:  errmsg("Not enough shared memory for persistent tablespace hash table"))); 
+ cacc: cdbfilerepresyncworker:00000495:  ereport(ERROR, 
+ cacc: cdbfilerepresyncworker:00000496:  (errcode_for_file_access(), 
+ cacc: cdbfilerepresyncworker:00000497:  errmsg("could not open file %u/%u/%u.%u : %s", 
+ cacc: cdbfilerepresyncworker:00000498:  entry->relFileNode.dbNode, 
+ cacc: cdbfilerepresyncworker:00000499:  entry->relFileNode.spcNode, 
+ cacc: cdbfilerepresyncworker:00000500:  entry->relFileNode.relNode, 
+ cacc: cdbfilerepresyncworker:00000501:  entry->segmentFileNum, 
+ cacc: cdbfilerepresyncworker:00000502:  strerror(primaryError)))); 
+ cacc: cdbfilerepresyncworker:00000514:  ereport(ERROR, 
+ cacc: cdbfilerepresyncworker:00000515:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cacc: cdbfilerepresyncworker:00000516:  (errmsg("Not enough memory for Resynchronization.")))); 
+ cacc: cdbfilerepresyncworker:00000529:  ereport(ERROR, 
+ cacc: cdbfilerepresyncworker:00000530:  (errcode_for_file_access(), 
+ cacc: cdbfilerepresyncworker:00000531:  errmsg("could not read from position:" INT64_FORMAT " in file %u/%u/%u.%u : %m", 
+ cacc: cdbfilerepresyncworker:00000532:  startOffset, 
+ cacc: cdbfilerepresyncworker:00000533:  entry->relFileNode.dbNode, 
+ cacc: cdbfilerepresyncworker:00000534:  entry->relFileNode.spcNode, 
+ cacc: cdbfilerepresyncworker:00000535:  entry->relFileNode.relNode, 
+ cacc: cdbfilerepresyncworker:00000536:  entry->segmentFileNum))); 
+ cacc: cdbpersistentfilespace:00000541:  ereport(FATAL, 
+ cacc: cdbpersistentfilespace:00000542:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ cacc: cdbpersistentfilespace:00000543:  errmsg("Unable to determine dbid for filespace lookup"))); 
+ cacc: cdbpersistentfilespace:00001022:  ereport(FATAL, 
+ cacc: cdbpersistentfilespace:00001023:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cacc: cdbpersistentfilespace:00001024:  errmsg("Not enough shared memory for persistent filespace hash table"))); 
+ cacd: cdbfilerepresyncmanager:00000368:  ereport(ERROR, 
+ cacd: cdbfilerepresyncmanager:00000369:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cacd: cdbfilerepresyncmanager:00000370:  (errmsg("Not enough shared memory for Mirroring.")))); 
+ cacd: cdbfilerepresyncmanager:00000412:  ereport(ERROR, 
+ cacd: cdbfilerepresyncmanager:00000413:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cacd: cdbfilerepresyncmanager:00000414:  (errmsg("Not enough shared memory for FileRep Resync.")))); 
+ cacd: cdbfilerepresyncmanager:00000430:  ereport(ERROR, 
+ cacd: cdbfilerepresyncmanager:00000431:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cacd: cdbfilerepresyncmanager:00000432:  (errmsg("Not enough shared memory for Mirroring.")))); 
+ cacd: cdbfilerepresyncmanager:00000458:  ereport(ERROR, 
+ cacd: cdbfilerepresyncmanager:00000459:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cacd: cdbfilerepresyncmanager:00000460:  (errmsg("Not enough shared memory for FileRep Resync.")))); 
+ cacd: cdbpersistentfilesysobj:00000720:  ereport(ERROR, 
+ cacd: cdbpersistentfilesysobj:00000721:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cacd: cdbpersistentfilesysobj:00000722:  errmsg("Did not expect to find a 'Free' entry"), 
+ cacd: cdbpersistentfilesysobj:00000723:  errcontext_persistent_relation_state_change( 
+ cacd: cdbpersistentfilesysobj:00000724:  fsObjName, 
+ cacd: cdbpersistentfilesysobj:00000725:  persistentTid, 
+ cacd: cdbpersistentfilesysobj:00000726:  serialNum, 
+ cacd: cdbpersistentfilesysobj:00000727:  expectedState1, 
+ cacd: cdbpersistentfilesysobj:00000728:  expectedState2, 
+ cacd: cdbpersistentfilesysobj:00000729:  expectedState3, 
+ cacd: cdbpersistentfilesysobj:00000730:  nextState))); 
+ cacd: cdbpersistentfilesysobj:00000735:  ereport(ERROR, 
+ cacd: cdbpersistentfilesysobj:00000736:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cacd: cdbpersistentfilesysobj:00000737:  errmsg("Found different serial number " INT64_FORMAT " than expected (persistent file-system object found is '%s', state '%s')", 
+ cacd: cdbpersistentfilesysobj:00000738:  actualSerialNum, 
+ cacd: cdbpersistentfilesysobj:00000739:  PersistentFileSysObjName_TypeAndObjectName(&actualFsObjName), 
+ cacd: cdbpersistentfilesysobj:00000740:  PersistentFileSysObjState_Name(actualState)), 
+ cacd: cdbpersistentfilesysobj:00000741:  errcontext_persistent_relation_state_change( 
+ cacd: cdbpersistentfilesysobj:00000742:  fsObjName, 
+ cacd: cdbpersistentfilesysobj:00000743:  persistentTid, 
+ cacd: cdbpersistentfilesysobj:00000744:  serialNum, 
+ cacd: cdbpersistentfilesysobj:00000745:  expectedState1, 
+ cacd: cdbpersistentfilesysobj:00000746:  expectedState2, 
+ cacd: cdbpersistentfilesysobj:00000747:  expectedState3, 
+ cacd: cdbpersistentfilesysobj:00000748:  nextState))); 
+ cacd: cdbpersistentfilesysobj:00000753:  ereport(ERROR, 
+ cacd: cdbpersistentfilesysobj:00000754:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cacd: cdbpersistentfilesysobj:00000755:  errmsg("Found persistent file-system object in unexpected state '%s'", 
+ cacd: cdbpersistentfilesysobj:00000756:  PersistentFileSysObjState_Name(actualState)), 
+ cacd: cdbpersistentfilesysobj:00000757:  errcontext_persistent_relation_state_change( 
+ cacd: cdbpersistentfilesysobj:00000758:  fsObjName, 
+ cacd: cdbpersistentfilesysobj:00000759:  persistentTid, 
+ cacd: cdbpersistentfilesysobj:00000760:  serialNum, 
+ cacd: cdbpersistentfilesysobj:00000761:  expectedState1, 
+ cacd: cdbpersistentfilesysobj:00000762:  expectedState2, 
+ cacd: cdbpersistentfilesysobj:00000763:  expectedState3, 
+ cacd: cdbpersistentfilesysobj:00000764:  nextState))); 
+ cacd: cdbpersistenttablespace:00000863:  ereport(FATAL, 
+ cacd: cdbpersistenttablespace:00000864:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cacd: cdbpersistenttablespace:00000865:  errmsg("Not enough shared memory for persistent tablespace hash table"))); 
  cace: cdbappendonlystorageread:00000301:  ereport(ERROR, 
  cace: cdbappendonlystorageread:00000302:  (errcode(ERRCODE_IO_ERROR), 
  cace: cdbappendonlystorageread:00000303:  errmsg("Append-only Storage Read error on segment file '%s' for relation '%s'. FileSeek offset = 0. Error code = %d (%s)", 
@@ -5897,104 +5912,104 @@ select * from get_ereport order by 1;
  faai: function:00000455:  ereport(ERROR, ( 
  faai: function:00000456:  errcode(ERRCODE_SYNTAX_ERROR), 
  faai: function:00000457:  errmsg("Unknown UDT function %s", info->methodName))); 
- faaj: filespace:00000098:  ereport(ERROR, 
- faaj: filespace:00000099:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- faaj: filespace:00000100:  errmsg("permission denied to create filespace "%s"", 
- faaj: filespace:00000101:  stmt->filespacename), 
- faaj: filespace:00000102:  errhint("Must be superuser to create a filespace."))); 
- faaj: filespace:00000115:  ereport(ERROR, 
- faaj: filespace:00000116:  (errcode(ERRCODE_RESERVED_NAME), 
- faaj: filespace:00000117:  errmsg("unacceptable filespace name "%s"", 
- faaj: filespace:00000118:  stmt->filespacename), 
- faaj: filespace:00000119:  errdetail("The prefix "pg_" is reserved for system filespaces."))); 
- faaj: filespace:00000132:  ereport(ERROR, 
- faaj: filespace:00000133:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
- faaj: filespace:00000134:  errmsg("filespace "%s" already exists", 
- faaj: filespace:00000135:  stmt->filespacename))); 
- faaj: filespace:00000164:  ereport(ERROR, 
- faaj: filespace:00000165:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
- faaj: filespace:00000166:  errmsg("duplicate segment id %d", segid))); 
- faaj: filespace:00000180:  ereport(ERROR, 
- faaj: filespace:00000181:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
- faaj: filespace:00000182:  errmsg("no path specified for segment id %d", segid))); 
- faaj: filespace:00000200:  ereport(ERROR, 
- faaj: filespace:00000201:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
- faaj: filespace:00000202:  errmsg("duplicate segment id %d", segid))); 
- faaj: filespace:00000215:  ereport(ERROR, 
- faaj: filespace:00000216:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
- faaj: filespace:00000217:  errmsg("no path specified for segment id %d", segid))); 
- faaj: filespace:00000258:  ereport(ERROR, 
- faaj: filespace:00000259:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
- faaj: filespace:00000260:  errmsg("Specified Segment id %d does not exist " 
- faaj: filespace:00000261:  "in configuration", fse->dbid))); 
- faaj: filespace:00000436:  ereport(ERROR, 
- faaj: filespace:00000437:  (errcode(ERRCODE_SYNTAX_ERROR), 
- faaj: filespace:00000438:  errmsg("filespace name may not be qualified"))); 
- faaj: filespace:00000443:  ereport(ERROR, 
- faaj: filespace:00000444:  (errcode(ERRCODE_SYNTAX_ERROR), 
- faaj: filespace:00000445:  errmsg("syntax at or near "cascade""))); 
- faaj: filespace:00000463:  ereport(NOTICE, 
- faaj: filespace:00000464:  (errmsg("filespace "%s" does not exist, skipping", 
- faaj: filespace:00000465:  fsname))); 
- faaj: filespace:00000470:  ereport(ERROR, 
- faaj: filespace:00000471:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- faaj: filespace:00000472:  errmsg("filespace "%s" does not exist", fsname))); 
- faaj: filespace:00000482:  ereport(ERROR, 
- faaj: filespace:00000483:  (errmsg("cannot drop filespace %s because it is required " 
- faaj: filespace:00000484:  "by the database system", fsname))); 
- faaj: filespace:00000608:  ereport(ERROR, 
- faaj: filespace:00000609:  (errcode(ERRCODE_SYNTAX_ERROR), 
- faaj: filespace:00000610:  errmsg("filespace name may not be qualified"))); 
- faaj: filespace:00000622:  ereport(ERROR, 
- faaj: filespace:00000623:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- faaj: filespace:00000624:  errmsg("filespace "%s" does not exist", fsname))); 
+ faaj: filespace:00000099:  ereport(ERROR, 
+ faaj: filespace:00000100:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ faaj: filespace:00000101:  errmsg("permission denied to create filespace "%s"", 
+ faaj: filespace:00000102:  stmt->filespacename), 
+ faaj: filespace:00000103:  errhint("Must be superuser to create a filespace."))); 
+ faaj: filespace:00000116:  ereport(ERROR, 
+ faaj: filespace:00000117:  (errcode(ERRCODE_RESERVED_NAME), 
+ faaj: filespace:00000118:  errmsg("unacceptable filespace name "%s"", 
+ faaj: filespace:00000119:  stmt->filespacename), 
+ faaj: filespace:00000120:  errdetail("The prefix "pg_" is reserved for system filespaces."))); 
+ faaj: filespace:00000133:  ereport(ERROR, 
+ faaj: filespace:00000134:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+ faaj: filespace:00000135:  errmsg("filespace "%s" already exists", 
+ faaj: filespace:00000136:  stmt->filespacename))); 
+ faaj: filespace:00000165:  ereport(ERROR, 
+ faaj: filespace:00000166:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+ faaj: filespace:00000167:  errmsg("duplicate segment id %d", segid))); 
+ faaj: filespace:00000181:  ereport(ERROR, 
+ faaj: filespace:00000182:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+ faaj: filespace:00000183:  errmsg("no path specified for segment id %d", segid))); 
+ faaj: filespace:00000201:  ereport(ERROR, 
+ faaj: filespace:00000202:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+ faaj: filespace:00000203:  errmsg("duplicate segment id %d", segid))); 
+ faaj: filespace:00000216:  ereport(ERROR, 
+ faaj: filespace:00000217:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+ faaj: filespace:00000218:  errmsg("no path specified for segment id %d", segid))); 
+ faaj: filespace:00000259:  ereport(ERROR, 
+ faaj: filespace:00000260:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+ faaj: filespace:00000261:  errmsg("Specified Segment id %d does not exist " 
+ faaj: filespace:00000262:  "in configuration", fse->dbid))); 
+ faaj: filespace:00000437:  ereport(ERROR, 
+ faaj: filespace:00000438:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ faaj: filespace:00000439:  errmsg("filespace name may not be qualified"))); 
+ faaj: filespace:00000444:  ereport(ERROR, 
+ faaj: filespace:00000445:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ faaj: filespace:00000446:  errmsg("syntax at or near "cascade""))); 
+ faaj: filespace:00000464:  ereport(NOTICE, 
+ faaj: filespace:00000465:  (errmsg("filespace "%s" does not exist, skipping", 
+ faaj: filespace:00000466:  fsname))); 
+ faaj: filespace:00000471:  ereport(ERROR, 
+ faaj: filespace:00000472:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ faaj: filespace:00000473:  errmsg("filespace "%s" does not exist", fsname))); 
+ faaj: filespace:00000483:  ereport(ERROR, 
+ faaj: filespace:00000484:  (errmsg("cannot drop filespace %s because it is required " 
+ faaj: filespace:00000485:  "by the database system", fsname))); 
+ faaj: filespace:00000616:  ereport(ERROR, 
+ faaj: filespace:00000617:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ faaj: filespace:00000618:  errmsg("filespace name may not be qualified"))); 
  faaj: filespace:00000630:  ereport(ERROR, 
- faaj: filespace:00000631:  (errcode(ERRCODE_RESERVED_NAME), 
- faaj: filespace:00000632:  errmsg("permission denied: "%s" is a system filespace", 
- faaj: filespace:00000633:  fsname))); 
- faaj: filespace:00000717:  ereport(ERROR, 
- faaj: filespace:00000718:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- faaj: filespace:00000719:  errmsg("filespace "%s" does not exist", 
- faaj: filespace:00000720:  oldname))); 
- faaj: filespace:00000727:  ereport(ERROR, 
- faaj: filespace:00000728:  (errcode(ERRCODE_RESERVED_NAME), 
- faaj: filespace:00000729:  errmsg("permission denied: "%s" is a system filespace", 
- faaj: filespace:00000730:  oldname))); 
- faaj: filespace:00000739:  ereport(ERROR, 
- faaj: filespace:00000740:  (errcode(ERRCODE_RESERVED_NAME), 
- faaj: filespace:00000741:  errmsg("unacceptable filespace name "%s"", newname), 
- faaj: filespace:00000742:  errdetail("The prefix "pg_" is reserved for system filespaces."))); 
- faaj: filespace:00000751:  ereport(ERROR, 
- faaj: filespace:00000752:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
- faaj: filespace:00000753:  errmsg("filespace "%s" already exists", newname))); 
- faaj: filespace:00000875:  ereport(ERROR, 
- faaj: filespace:00000876:  (errcode(ERRCODE_INVALID_NAME), 
- faaj: filespace:00000877:  errmsg("filespace location "%s" " 
- faaj: filespace:00000878:  "cannot contain single quotes", path))); 
- faaj: filespace:00000886:  ereport(ERROR, 
- faaj: filespace:00000887:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- faaj: filespace:00000888:  errmsg("filespace locations "%s" " 
- faaj: filespace:00000889:  "must be an absolute path", path))); 
- faaj: filespace:00000895:  ereport(ERROR, 
- faaj: filespace:00000896:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- faaj: filespace:00000897:  errmsg("filespace location "%s" is too long", 
- faaj: filespace:00000898:  path))); 
- faaj: filespace:00000939:  ereport(ERROR, 
- faaj: filespace:00000940:  (errcode_for_file_access(), 
- faaj: filespace:00000941:  errmsg("%s : File exists", path))); 
- faaj: filespace:00000950:  ereport(ERROR, 
- faaj: filespace:00000951:  (errcode_for_file_access(), 
- faaj: filespace:00000952:  errmsg("%s : No such file or directory", parentdir))); 
- faaj: filespace:00000956:  ereport(ERROR, 
- faaj: filespace:00000957:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- faaj: filespace:00000958:  errmsg("%s : Not a directory", parentdir))); 
- faaj: filespace:00000962:  ereport(ERROR, 
- faaj: filespace:00000963:  (errcode_for_file_access(), 
- faaj: filespace:00000964:  errmsg("%s: No write permissions", parentdir))); 
- faaj: filespace:00000988:  ereport(ERROR, 
- faaj: filespace:00000989:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- faaj: filespace:00000990:  errmsg("filespace "%s" is not empty", 
- faaj: filespace:00000991:  get_filespace_name(fsoid)))); 
+ faaj: filespace:00000631:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ faaj: filespace:00000632:  errmsg("filespace "%s" does not exist", fsname))); 
+ faaj: filespace:00000638:  ereport(ERROR, 
+ faaj: filespace:00000639:  (errcode(ERRCODE_RESERVED_NAME), 
+ faaj: filespace:00000640:  errmsg("permission denied: "%s" is a system filespace", 
+ faaj: filespace:00000641:  fsname))); 
+ faaj: filespace:00000725:  ereport(ERROR, 
+ faaj: filespace:00000726:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ faaj: filespace:00000727:  errmsg("filespace "%s" does not exist", 
+ faaj: filespace:00000728:  oldname))); 
+ faaj: filespace:00000735:  ereport(ERROR, 
+ faaj: filespace:00000736:  (errcode(ERRCODE_RESERVED_NAME), 
+ faaj: filespace:00000737:  errmsg("permission denied: "%s" is a system filespace", 
+ faaj: filespace:00000738:  oldname))); 
+ faaj: filespace:00000747:  ereport(ERROR, 
+ faaj: filespace:00000748:  (errcode(ERRCODE_RESERVED_NAME), 
+ faaj: filespace:00000749:  errmsg("unacceptable filespace name "%s"", newname), 
+ faaj: filespace:00000750:  errdetail("The prefix "pg_" is reserved for system filespaces."))); 
+ faaj: filespace:00000759:  ereport(ERROR, 
+ faaj: filespace:00000760:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+ faaj: filespace:00000761:  errmsg("filespace "%s" already exists", newname))); 
+ faaj: filespace:00000883:  ereport(ERROR, 
+ faaj: filespace:00000884:  (errcode(ERRCODE_INVALID_NAME), 
+ faaj: filespace:00000885:  errmsg("filespace location "%s" " 
+ faaj: filespace:00000886:  "cannot contain single quotes", path))); 
+ faaj: filespace:00000894:  ereport(ERROR, 
+ faaj: filespace:00000895:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ faaj: filespace:00000896:  errmsg("filespace locations "%s" " 
+ faaj: filespace:00000897:  "must be an absolute path", path))); 
+ faaj: filespace:00000903:  ereport(ERROR, 
+ faaj: filespace:00000904:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ faaj: filespace:00000905:  errmsg("filespace location "%s" is too long", 
+ faaj: filespace:00000906:  path))); 
+ faaj: filespace:00000947:  ereport(ERROR, 
+ faaj: filespace:00000948:  (errcode_for_file_access(), 
+ faaj: filespace:00000949:  errmsg("%s : File exists", path))); 
+ faaj: filespace:00000958:  ereport(ERROR, 
+ faaj: filespace:00000959:  (errcode_for_file_access(), 
+ faaj: filespace:00000960:  errmsg("%s : No such file or directory", parentdir))); 
+ faaj: filespace:00000964:  ereport(ERROR, 
+ faaj: filespace:00000965:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ faaj: filespace:00000966:  errmsg("%s : Not a directory", parentdir))); 
+ faaj: filespace:00000970:  ereport(ERROR, 
+ faaj: filespace:00000971:  (errcode_for_file_access(), 
+ faaj: filespace:00000972:  errmsg("%s: No write permissions", parentdir))); 
+ faaj: filespace:00000996:  ereport(ERROR, 
+ faaj: filespace:00000997:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ faaj: filespace:00000998:  errmsg("filespace "%s" is not empty", 
+ faaj: filespace:00000999:  get_filespace_name(fsoid)))); 
  faaj: flatfiles:00000243:  ereport(ERROR, 
  faaj: flatfiles:00000244:  (errcode_for_file_access(), 
  faaj: flatfiles:00000245:  errmsg("could not write to temporary file "%s": %m", 
@@ -6687,323 +6702,323 @@ select * from get_ereport order by 1;
  gaad: guc:00009610:  ereport(ERROR, 
  gaad: guc:00009611:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  gaad: guc:00009612:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
- gaae: gram:00018642:  ereport(ERROR, 
- gaae: gram:00018643:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00018644:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"), 
- gaae: gram:00018645:  scanner_errposition((yylsp[(3) - (3)])))); 
- gaae: gram:00018657:  ereport(ERROR, 
- gaae: gram:00018658:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00018659:  errmsg("INTERVAL(%d) precision must not be negative", (yyvsp[(3) - (6)].ival)), 
- gaae: gram:00018660:  scanner_errposition((yylsp[(3) - (6)])))); 
- gaae: gram:00018663:  ereport(WARNING, 
- gaae: gram:00018664:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00018665:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00018666:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
- gaae: gram:00018672:  ereport(ERROR, 
- gaae: gram:00018673:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00018674:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"))); 
- gaae: gram:00019357:  ereport(ERROR, 
- gaae: gram:00019358:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00019359:  errmsg("Cannot specify a name, rank, " 
- gaae: gram:00019360:  "or value for a DEFAULT partition " 
- gaae: gram:00019361:  "in this context"))); 
- gaae: gram:00019425:  ereport(ERROR, 
- gaae: gram:00019426:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00019427:  errmsg("Can only ADD a partition by name"), 
- gaae: gram:00019428:  errOmitLocation(true))); 
- gaae: gram:00019466:  ereport(ERROR, 
- gaae: gram:00019467:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00019468:  errmsg("Can only ADD a partition by name"))); 
- gaae: gram:00019545:  ereport(ERROR, 
- gaae: gram:00019546:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00019547:  errmsg("Can only COALESCE a partition by name"))); 
- gaae: gram:00019811:  ereport(ERROR, 
- gaae: gram:00019812:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00019813:  errmsg("template cannot contain " 
- gaae: gram:00019814:  "specification for child " 
- gaae: gram:00019815:  "partition"))); 
- gaae: gram:00020764:  ereport(ERROR, 
- gaae: gram:00020765:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00020766:  errmsg("MATCH PARTIAL not yet implemented"), 
- gaae: gram:00020767:  scanner_errposition((yylsp[(1) - (2)])))); 
- gaae: gram:00020949:  ereport(ERROR, 
- gaae: gram:00020950:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00020951:  errmsg("TABLESPACE not supported"), 
- gaae: gram:00020952:  scanner_errposition((yylsp[(1) - (4)])))); 
- gaae: gram:00020971:  ereport(ERROR, 
- gaae: gram:00020972:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00020973:  errmsg("TABLESPACE not supported"), 
- gaae: gram:00020974:  scanner_errposition((yylsp[(1) - (2)])))); 
- gaae: gram:00020993:  ereport(ERROR, 
- gaae: gram:00020994:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00020995:  errmsg("TABLESPACE not supported"), 
- gaae: gram:00020996:  scanner_errposition((yylsp[(1) - (2)])))); 
- gaae: gram:00021494:  ereport(ERROR, 
- gaae: gram:00021495:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00021496:  errmsg("PARTITION BY must specify RANGE or LIST"), 
- gaae: gram:00021497:  errOmitLocation(true))); 
- gaae: gram:00021543:  ereport(ERROR, 
- gaae: gram:00021544:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00021545:  errmsg("PARTITION BY must specify RANGE or LIST"))); 
- gaae: gram:00021547:  ereport(ERROR, 
- gaae: gram:00021548:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00021549:  errmsg("PARTITION BY must specify RANGE, HASH, or LIST"))); 
- gaae: gram:00021605:  ereport(ERROR, 
- gaae: gram:00021606:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00021607:  errmsg("template cannot contain " 
- gaae: gram:00021608:  "specification for child " 
- gaae: gram:00021609:  "partition"), 
- gaae: gram:00021610:  errOmitLocation(true))); 
- gaae: gram:00021703:  ereport(ERROR, 
- gaae: gram:00021704:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00021705:  errmsg("CREATE TABLE AS cannot specify INTO"), 
- gaae: gram:00021706:  scanner_errposition(exprLocation((Node *) n->intoClause)))); 
- gaae: gram:00021715:  ereport(ERROR, 
- gaae: gram:00021716:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00021717:  errmsg("Cannot create a partitioned table using CREATE TABLE AS SELECT"), 
- gaae: gram:00021718:  errhint("Use CREATE TABLE...LIKE (followed by INSERT...SELECT) instead"), 
- gaae: gram:00021719:  errOmitLocation(true))); 
- gaae: gram:00021829:  ereport(ERROR, 
- gaae: gram:00021830:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00021831:  errmsg("EXECUTE may not be used with a regular external table"), 
- gaae: gram:00021832:  errhint("Use CREATE EXTERNAL WEB TABLE instead"), 
- gaae: gram:00021833:  errOmitLocation(true))); 
- gaae: gram:00021843:  ereport(ERROR, 
- gaae: gram:00021844:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00021845:  errmsg("ON clause may not be used with a writable external table"), 
- gaae: gram:00021846:  errOmitLocation(true))); 
- gaae: gram:00021851:  ereport(ERROR, 
- gaae: gram:00021852:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00021853:  errmsg("Single row error handling may not be used with a writable external table"))); 
- gaae: gram:00022110:  ereport(ERROR, 
- gaae: gram:00022111:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00022112:  errmsg("invalid PERCENT value. Should be (1 - 100)"))); 
- gaae: gram:00022116:  ereport(ERROR, 
- gaae: gram:00022117:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00022118:  errmsg("invalid (ROWS) reject limit. Should be 2 or larger"))); 
- gaae: gram:00023072:  ereport(ERROR, 
- gaae: gram:00023073:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00023074:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"), 
- gaae: gram:00023075:  scanner_errposition((yylsp[(1) - (2)])))); 
- gaae: gram:00023094:  ereport(ERROR, 
- gaae: gram:00023095:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00023096:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"), 
- gaae: gram:00023097:  scanner_errposition((yylsp[(1) - (2)])))); 
- gaae: gram:00023163:  ereport(ERROR, 
- gaae: gram:00023164:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00023165:  errmsg("CREATE ASSERTION is not yet implemented"))); 
- gaae: gram:00023179:  ereport(ERROR, 
- gaae: gram:00023180:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00023181:  errmsg("DROP ASSERTION is not yet implemented"))); 
- gaae: gram:00023282:  ereport(ERROR, 
- gaae: gram:00023283:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00023284:  errmsg("improper qualified name (too many dotted names): %s", 
- gaae: gram:00023285:  NameListToString((yyvsp[(3) - (7)].list))), 
- gaae: gram:00023286:  scanner_errposition((yylsp[(3) - (7)])))); 
- gaae: gram:00024957:  ereport(ERROR, 
- gaae: gram:00024958:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00024959:  errmsg("missing argument"), 
- gaae: gram:00024960:  errhint("Use NONE to denote the missing argument of a unary operator."), 
- gaae: gram:00024961:  errOmitLocation(true), 
- gaae: gram:00024962:  scanner_errposition((yylsp[(1) - (1)])))); 
- gaae: gram:00025908:  ereport(ERROR, 
- gaae: gram:00025909:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00025910:  errmsg("WITH CHECK OPTION is not implemented"))); 
- gaae: gram:00025917:  ereport(ERROR, 
- gaae: gram:00025918:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00025919:  errmsg("WITH CHECK OPTION is not implemented"))); 
- gaae: gram:00025926:  ereport(ERROR, 
- gaae: gram:00025927:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00025928:  errmsg("WITH CHECK OPTION is not implemented"))); 
- gaae: gram:00026378:  ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00026379:  errmsg("cannot use force with explain statement") 
- gaae: gram:00026380:  )); 
- gaae: gram:00026389:  ereport(ERROR, 
- gaae: gram:00026390:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00026391:  errmsg("cannot EXPLAIN CREATE TABLE without AS " 
- gaae: gram:00026392:  "clause"))); 
- gaae: gram:00026457:  ereport(ERROR, 
- gaae: gram:00026458:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00026459:  errmsg("column name list not allowed in CREATE TABLE / AS EXECUTE"))); 
- gaae: gram:00026724:  ereport(ERROR, 
- gaae: gram:00026725:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00026726:  errmsg("number of columns does not match number of values"), 
- gaae: gram:00026727:  scanner_errposition((yylsp[(1) - (5)])))); 
- gaae: gram:00027205:  ereport(ERROR, 
- gaae: gram:00027206:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00027207:  errmsg("LIMIT #,# syntax is not supported"), 
- gaae: gram:00027208:  errhint("Use separate LIMIT and OFFSET clauses."), 
- gaae: gram:00027209:  scanner_errposition((yylsp[(1) - (4)])))); 
- gaae: gram:00027789:  ereport(ERROR, 
- gaae: gram:00027790:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00027791:  errmsg("VALUES in FROM must have an alias"), 
- gaae: gram:00027792:  errhint("For example, FROM (VALUES ...) [AS] foo."), 
- gaae: gram:00027793:  scanner_errposition((yylsp[(1) - (1)])))); 
- gaae: gram:00027795:  ereport(ERROR, 
- gaae: gram:00027796:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00027797:  errmsg("subquery in FROM must have an alias"), 
- gaae: gram:00027798:  errhint("For example, FROM (SELECT ...) [AS] foo."), 
- gaae: gram:00027799:  scanner_errposition((yylsp[(1) - (1)])))); 
- gaae: gram:00028183:  ereport(ERROR, 
- gaae: gram:00028184:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028185:  errmsg("INTERVAL(%d) precision must not be negative", (yyvsp[(3) - (5)].ival)), 
- gaae: gram:00028186:  scanner_errposition((yylsp[(3) - (5)])))); 
- gaae: gram:00028189:  ereport(WARNING, 
- gaae: gram:00028190:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028191:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00028192:  (yyvsp[(3) - (5)].ival), MAX_INTERVAL_PRECISION), 
- gaae: gram:00028193:  scanner_errposition((yylsp[(3) - (5)])))); 
- gaae: gram:00028339:  ereport(ERROR, 
- gaae: gram:00028340:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028341:  errmsg("precision for type float must be at least 1 bit"), 
- gaae: gram:00028342:  scanner_errposition((yylsp[(2) - (3)])))); 
- gaae: gram:00028348:  ereport(ERROR, 
- gaae: gram:00028349:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028350:  errmsg("precision for type float must be less than 54 bits"), 
- gaae: gram:00028351:  scanner_errposition((yylsp[(2) - (3)])))); 
- gaae: gram:00028366:  ereport(ERROR, 
- gaae: gram:00028367:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028368:  errmsg("NUMERIC precision %d must be between 1 and %d", 
- gaae: gram:00028369:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
- gaae: gram:00028371:  ereport(ERROR, 
- gaae: gram:00028372:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028373:  errmsg("NUMERIC scale %d must be between 0 and precision %d", 
- gaae: gram:00028374:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
- gaae: gram:00028384:  ereport(ERROR, 
- gaae: gram:00028385:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028386:  errmsg("NUMERIC precision %d must be between 1 and %d", 
- gaae: gram:00028387:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
- gaae: gram:00028405:  ereport(ERROR, 
- gaae: gram:00028406:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028407:  errmsg("DECIMAL precision %d must be between 1 and %d", 
- gaae: gram:00028408:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
- gaae: gram:00028410:  ereport(ERROR, 
- gaae: gram:00028411:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028412:  errmsg("DECIMAL scale %d must be between 0 and precision %d", 
- gaae: gram:00028413:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
- gaae: gram:00028423:  ereport(ERROR, 
- gaae: gram:00028424:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028425:  errmsg("DECIMAL precision %d must be between 1 and %d", 
- gaae: gram:00028426:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
- gaae: gram:00028477:  ereport(ERROR, 
- gaae: gram:00028478:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028479:  errmsg("length for type %s must be at least 1", 
- gaae: gram:00028480:  typname))); 
- gaae: gram:00028482:  ereport(ERROR, 
- gaae: gram:00028483:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028484:  errmsg("length for type %s cannot exceed %d", 
- gaae: gram:00028485:  typname, MaxAttrSize * BITS_PER_BYTE))); 
- gaae: gram:00028560:  ereport(ERROR, 
- gaae: gram:00028561:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028562:  errmsg("length for type %s must be at least 1", 
- gaae: gram:00028563:  (yyvsp[(1) - (5)].str)))); 
- gaae: gram:00028565:  ereport(ERROR, 
- gaae: gram:00028566:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028567:  errmsg("length for type %s cannot exceed %d", 
- gaae: gram:00028568:  (yyvsp[(1) - (5)].str), MaxAttrSize))); 
- gaae: gram:00028665:  ereport(ERROR, 
- gaae: gram:00028666:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028667:  errmsg("TIMESTAMP(%d)%s precision must not be negative", 
- gaae: gram:00028668:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
- gaae: gram:00028671:  ereport(WARNING, 
- gaae: gram:00028672:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028673:  errmsg("TIMESTAMP(%d)%s precision reduced to maximum allowed, %d", 
- gaae: gram:00028674:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
- gaae: gram:00028675:  MAX_TIMESTAMP_PRECISION))); 
- gaae: gram:00028706:  ereport(ERROR, 
- gaae: gram:00028707:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028708:  errmsg("TIME(%d)%s precision must not be negative", 
- gaae: gram:00028709:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
- gaae: gram:00028712:  ereport(WARNING, 
- gaae: gram:00028713:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00028714:  errmsg("TIME(%d)%s precision reduced to maximum allowed, %d", 
- gaae: gram:00028715:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
- gaae: gram:00028716:  MAX_TIME_PRECISION))); 
- gaae: gram:00029348:  ereport(ERROR, 
- gaae: gram:00029349:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaae: gram:00029350:  errmsg("UNIQUE predicate is not yet implemented"), 
- gaae: gram:00029351:  scanner_errposition((yylsp[(1) - (2)])))); 
- gaae: gram:00029479:  ereport(ERROR, 
- gaae: gram:00029480:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00029481:  errmsg("window OVER clause can only be used " 
- gaae: gram:00029482:  "with an aggregate"))); 
- gaae: gram:00029765:  ereport(ERROR, 
- gaae: gram:00029766:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00029767:  errmsg("CURRENT_TIME(%d) precision must not be negative", 
- gaae: gram:00029768:  (yyvsp[(3) - (4)].ival)))); 
- gaae: gram:00029771:  ereport(WARNING, 
- gaae: gram:00029772:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00029773:  errmsg("CURRENT_TIME(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00029774:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
- gaae: gram:00029817:  ereport(ERROR, 
- gaae: gram:00029818:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00029819:  errmsg("CURRENT_TIMESTAMP(%d) precision must not be negative", 
- gaae: gram:00029820:  (yyvsp[(3) - (4)].ival)))); 
- gaae: gram:00029823:  ereport(WARNING, 
- gaae: gram:00029824:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00029825:  errmsg("CURRENT_TIMESTAMP(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00029826:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
- gaae: gram:00029870:  ereport(ERROR, 
- gaae: gram:00029871:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00029872:  errmsg("LOCALTIME(%d) precision must not be negative", 
- gaae: gram:00029873:  (yyvsp[(3) - (4)].ival)))); 
- gaae: gram:00029876:  ereport(WARNING, 
- gaae: gram:00029877:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00029878:  errmsg("LOCALTIME(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00029879:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
- gaae: gram:00029924:  ereport(ERROR, 
- gaae: gram:00029925:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00029926:  errmsg("LOCALTIMESTAMP(%d) precision must not be negative", 
- gaae: gram:00029927:  (yyvsp[(3) - (4)].ival)))); 
- gaae: gram:00029930:  ereport(WARNING, 
- gaae: gram:00029931:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00029932:  errmsg("LOCALTIMESTAMP(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00029933:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
- gaae: gram:00030898:  ereport(ERROR, 
- gaae: gram:00030899:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00030900:  errmsg("improper qualified name (too many dotted names): %s", 
- gaae: gram:00030901:  NameListToString(lcons(makeString((yyvsp[(1) - (2)].str)), (yyvsp[(2) - (2)].list)))))); 
- gaae: gram:00031055:  ereport(ERROR, 
- gaae: gram:00031056:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00031057:  errmsg("INTERVAL(%d) precision must not be negative", 
- gaae: gram:00031058:  (yyvsp[(3) - (6)].ival)))); 
- gaae: gram:00031061:  ereport(WARNING, 
- gaae: gram:00031062:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaae: gram:00031063:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
- gaae: gram:00031064:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
- gaae: gram:00031217:  ereport(ERROR, 
- gaae: gram:00031218:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00031219:  errmsg("OLD used in query that is not in a rule"))); 
- gaae: gram:00031229:  ereport(ERROR, 
- gaae: gram:00031230:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00031231:  errmsg("NEW used in query that is not in a rule"))); 
- gaae: gram:00031664:  ereport(ERROR, 
- gaae: gram:00031665:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00031666:  errmsg("wrong number of parameters on left side of OVERLAPS expression"), 
- gaae: gram:00031667:  scanner_errposition(location))); 
- gaae: gram:00031671:  ereport(ERROR, 
- gaae: gram:00031672:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00031673:  errmsg("wrong number of parameters on right side of OVERLAPS expression"), 
- gaae: gram:00031674:  scanner_errposition(location))); 
- gaae: gram:00031777:  ereport(ERROR, 
- gaae: gram:00031778:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00031779:  errmsg("multiple ORDER BY clauses not allowed"), 
- gaae: gram:00031780:  scanner_errposition(exprLocation((Node *) sortClause)))); 
- gaae: gram:00031788:  ereport(ERROR, 
- gaae: gram:00031789:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00031790:  errmsg("multiple OFFSET clauses not allowed"), 
- gaae: gram:00031791:  scanner_errposition(exprLocation(limitOffset)))); 
- gaae: gram:00031797:  ereport(ERROR, 
- gaae: gram:00031798:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00031799:  errmsg("multiple LIMIT clauses not allowed"), 
- gaae: gram:00031800:  scanner_errposition(exprLocation(limitCount)))); 
- gaae: gram:00031807:  ereport(ERROR, 
- gaae: gram:00031808:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00031809:  errmsg("multiple WITH clauses not allowed"))); 
- gaae: gram:00031953:  ereport(ERROR, 
- gaae: gram:00031954:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaae: gram:00031955:  errmsg("OUT and INOUT arguments aren't allowed in " 
- gaae: gram:00031956:  "TABLE functions"))); 
+ gaae: gram:00018692:  ereport(ERROR, 
+ gaae: gram:00018693:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00018694:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"), 
+ gaae: gram:00018695:  scanner_errposition((yylsp[(3) - (3)])))); 
+ gaae: gram:00018707:  ereport(ERROR, 
+ gaae: gram:00018708:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00018709:  errmsg("INTERVAL(%d) precision must not be negative", (yyvsp[(3) - (6)].ival)), 
+ gaae: gram:00018710:  scanner_errposition((yylsp[(3) - (6)])))); 
+ gaae: gram:00018713:  ereport(WARNING, 
+ gaae: gram:00018714:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00018715:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00018716:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
+ gaae: gram:00018722:  ereport(ERROR, 
+ gaae: gram:00018723:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00018724:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"))); 
+ gaae: gram:00019407:  ereport(ERROR, 
+ gaae: gram:00019408:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00019409:  errmsg("Cannot specify a name, rank, " 
+ gaae: gram:00019410:  "or value for a DEFAULT partition " 
+ gaae: gram:00019411:  "in this context"))); 
+ gaae: gram:00019475:  ereport(ERROR, 
+ gaae: gram:00019476:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00019477:  errmsg("Can only ADD a partition by name"), 
+ gaae: gram:00019478:  errOmitLocation(true))); 
+ gaae: gram:00019516:  ereport(ERROR, 
+ gaae: gram:00019517:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00019518:  errmsg("Can only ADD a partition by name"))); 
+ gaae: gram:00019595:  ereport(ERROR, 
+ gaae: gram:00019596:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00019597:  errmsg("Can only COALESCE a partition by name"))); 
+ gaae: gram:00019861:  ereport(ERROR, 
+ gaae: gram:00019862:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00019863:  errmsg("template cannot contain " 
+ gaae: gram:00019864:  "specification for child " 
+ gaae: gram:00019865:  "partition"))); 
+ gaae: gram:00020814:  ereport(ERROR, 
+ gaae: gram:00020815:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00020816:  errmsg("MATCH PARTIAL not yet implemented"), 
+ gaae: gram:00020817:  scanner_errposition((yylsp[(1) - (2)])))); 
+ gaae: gram:00020999:  ereport(ERROR, 
+ gaae: gram:00021000:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00021001:  errmsg("TABLESPACE not supported"), 
+ gaae: gram:00021002:  scanner_errposition((yylsp[(1) - (4)])))); 
+ gaae: gram:00021021:  ereport(ERROR, 
+ gaae: gram:00021022:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00021023:  errmsg("TABLESPACE not supported"), 
+ gaae: gram:00021024:  scanner_errposition((yylsp[(1) - (2)])))); 
+ gaae: gram:00021043:  ereport(ERROR, 
+ gaae: gram:00021044:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00021045:  errmsg("TABLESPACE not supported"), 
+ gaae: gram:00021046:  scanner_errposition((yylsp[(1) - (2)])))); 
+ gaae: gram:00021544:  ereport(ERROR, 
+ gaae: gram:00021545:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00021546:  errmsg("PARTITION BY must specify RANGE or LIST"), 
+ gaae: gram:00021547:  errOmitLocation(true))); 
+ gaae: gram:00021593:  ereport(ERROR, 
+ gaae: gram:00021594:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00021595:  errmsg("PARTITION BY must specify RANGE or LIST"))); 
+ gaae: gram:00021597:  ereport(ERROR, 
+ gaae: gram:00021598:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00021599:  errmsg("PARTITION BY must specify RANGE, HASH, or LIST"))); 
+ gaae: gram:00021655:  ereport(ERROR, 
+ gaae: gram:00021656:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00021657:  errmsg("template cannot contain " 
+ gaae: gram:00021658:  "specification for child " 
+ gaae: gram:00021659:  "partition"), 
+ gaae: gram:00021660:  errOmitLocation(true))); 
+ gaae: gram:00021753:  ereport(ERROR, 
+ gaae: gram:00021754:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00021755:  errmsg("CREATE TABLE AS cannot specify INTO"), 
+ gaae: gram:00021756:  scanner_errposition(exprLocation((Node *) n->intoClause)))); 
+ gaae: gram:00021765:  ereport(ERROR, 
+ gaae: gram:00021766:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00021767:  errmsg("Cannot create a partitioned table using CREATE TABLE AS SELECT"), 
+ gaae: gram:00021768:  errhint("Use CREATE TABLE...LIKE (followed by INSERT...SELECT) instead"), 
+ gaae: gram:00021769:  errOmitLocation(true))); 
+ gaae: gram:00021879:  ereport(ERROR, 
+ gaae: gram:00021880:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00021881:  errmsg("EXECUTE may not be used with a regular external table"), 
+ gaae: gram:00021882:  errhint("Use CREATE EXTERNAL WEB TABLE instead"), 
+ gaae: gram:00021883:  errOmitLocation(true))); 
+ gaae: gram:00021893:  ereport(ERROR, 
+ gaae: gram:00021894:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00021895:  errmsg("ON clause may not be used with a writable external table"), 
+ gaae: gram:00021896:  errOmitLocation(true))); 
+ gaae: gram:00021901:  ereport(ERROR, 
+ gaae: gram:00021902:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00021903:  errmsg("Single row error handling may not be used with a writable external table"))); 
+ gaae: gram:00022160:  ereport(ERROR, 
+ gaae: gram:00022161:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00022162:  errmsg("invalid PERCENT value. Should be (1 - 100)"))); 
+ gaae: gram:00022166:  ereport(ERROR, 
+ gaae: gram:00022167:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00022168:  errmsg("invalid (ROWS) reject limit. Should be 2 or larger"))); 
+ gaae: gram:00023122:  ereport(ERROR, 
+ gaae: gram:00023123:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00023124:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"), 
+ gaae: gram:00023125:  scanner_errposition((yylsp[(1) - (2)])))); 
+ gaae: gram:00023144:  ereport(ERROR, 
+ gaae: gram:00023145:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00023146:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"), 
+ gaae: gram:00023147:  scanner_errposition((yylsp[(1) - (2)])))); 
+ gaae: gram:00023213:  ereport(ERROR, 
+ gaae: gram:00023214:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00023215:  errmsg("CREATE ASSERTION is not yet implemented"))); 
+ gaae: gram:00023229:  ereport(ERROR, 
+ gaae: gram:00023230:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00023231:  errmsg("DROP ASSERTION is not yet implemented"))); 
+ gaae: gram:00023332:  ereport(ERROR, 
+ gaae: gram:00023333:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00023334:  errmsg("improper qualified name (too many dotted names): %s", 
+ gaae: gram:00023335:  NameListToString((yyvsp[(3) - (7)].list))), 
+ gaae: gram:00023336:  scanner_errposition((yylsp[(3) - (7)])))); 
+ gaae: gram:00025012:  ereport(ERROR, 
+ gaae: gram:00025013:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00025014:  errmsg("missing argument"), 
+ gaae: gram:00025015:  errhint("Use NONE to denote the missing argument of a unary operator."), 
+ gaae: gram:00025016:  errOmitLocation(true), 
+ gaae: gram:00025017:  scanner_errposition((yylsp[(1) - (1)])))); 
+ gaae: gram:00025963:  ereport(ERROR, 
+ gaae: gram:00025964:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00025965:  errmsg("WITH CHECK OPTION is not implemented"))); 
+ gaae: gram:00025972:  ereport(ERROR, 
+ gaae: gram:00025973:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00025974:  errmsg("WITH CHECK OPTION is not implemented"))); 
+ gaae: gram:00025981:  ereport(ERROR, 
+ gaae: gram:00025982:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00025983:  errmsg("WITH CHECK OPTION is not implemented"))); 
+ gaae: gram:00026433:  ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00026434:  errmsg("cannot use force with explain statement") 
+ gaae: gram:00026435:  )); 
+ gaae: gram:00026444:  ereport(ERROR, 
+ gaae: gram:00026445:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00026446:  errmsg("cannot EXPLAIN CREATE TABLE without AS " 
+ gaae: gram:00026447:  "clause"))); 
+ gaae: gram:00026512:  ereport(ERROR, 
+ gaae: gram:00026513:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00026514:  errmsg("column name list not allowed in CREATE TABLE / AS EXECUTE"))); 
+ gaae: gram:00026779:  ereport(ERROR, 
+ gaae: gram:00026780:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00026781:  errmsg("number of columns does not match number of values"), 
+ gaae: gram:00026782:  scanner_errposition((yylsp[(1) - (5)])))); 
+ gaae: gram:00027260:  ereport(ERROR, 
+ gaae: gram:00027261:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00027262:  errmsg("LIMIT #,# syntax is not supported"), 
+ gaae: gram:00027263:  errhint("Use separate LIMIT and OFFSET clauses."), 
+ gaae: gram:00027264:  scanner_errposition((yylsp[(1) - (4)])))); 
+ gaae: gram:00027844:  ereport(ERROR, 
+ gaae: gram:00027845:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00027846:  errmsg("VALUES in FROM must have an alias"), 
+ gaae: gram:00027847:  errhint("For example, FROM (VALUES ...) [AS] foo."), 
+ gaae: gram:00027848:  scanner_errposition((yylsp[(1) - (1)])))); 
+ gaae: gram:00027850:  ereport(ERROR, 
+ gaae: gram:00027851:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00027852:  errmsg("subquery in FROM must have an alias"), 
+ gaae: gram:00027853:  errhint("For example, FROM (SELECT ...) [AS] foo."), 
+ gaae: gram:00027854:  scanner_errposition((yylsp[(1) - (1)])))); 
+ gaae: gram:00028238:  ereport(ERROR, 
+ gaae: gram:00028239:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028240:  errmsg("INTERVAL(%d) precision must not be negative", (yyvsp[(3) - (5)].ival)), 
+ gaae: gram:00028241:  scanner_errposition((yylsp[(3) - (5)])))); 
+ gaae: gram:00028244:  ereport(WARNING, 
+ gaae: gram:00028245:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028246:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00028247:  (yyvsp[(3) - (5)].ival), MAX_INTERVAL_PRECISION), 
+ gaae: gram:00028248:  scanner_errposition((yylsp[(3) - (5)])))); 
+ gaae: gram:00028394:  ereport(ERROR, 
+ gaae: gram:00028395:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028396:  errmsg("precision for type float must be at least 1 bit"), 
+ gaae: gram:00028397:  scanner_errposition((yylsp[(2) - (3)])))); 
+ gaae: gram:00028403:  ereport(ERROR, 
+ gaae: gram:00028404:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028405:  errmsg("precision for type float must be less than 54 bits"), 
+ gaae: gram:00028406:  scanner_errposition((yylsp[(2) - (3)])))); 
+ gaae: gram:00028421:  ereport(ERROR, 
+ gaae: gram:00028422:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028423:  errmsg("NUMERIC precision %d must be between 1 and %d", 
+ gaae: gram:00028424:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
+ gaae: gram:00028426:  ereport(ERROR, 
+ gaae: gram:00028427:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028428:  errmsg("NUMERIC scale %d must be between 0 and precision %d", 
+ gaae: gram:00028429:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
+ gaae: gram:00028439:  ereport(ERROR, 
+ gaae: gram:00028440:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028441:  errmsg("NUMERIC precision %d must be between 1 and %d", 
+ gaae: gram:00028442:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
+ gaae: gram:00028460:  ereport(ERROR, 
+ gaae: gram:00028461:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028462:  errmsg("DECIMAL precision %d must be between 1 and %d", 
+ gaae: gram:00028463:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
+ gaae: gram:00028465:  ereport(ERROR, 
+ gaae: gram:00028466:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028467:  errmsg("DECIMAL scale %d must be between 0 and precision %d", 
+ gaae: gram:00028468:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
+ gaae: gram:00028478:  ereport(ERROR, 
+ gaae: gram:00028479:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028480:  errmsg("DECIMAL precision %d must be between 1 and %d", 
+ gaae: gram:00028481:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
+ gaae: gram:00028532:  ereport(ERROR, 
+ gaae: gram:00028533:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028534:  errmsg("length for type %s must be at least 1", 
+ gaae: gram:00028535:  typname))); 
+ gaae: gram:00028537:  ereport(ERROR, 
+ gaae: gram:00028538:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028539:  errmsg("length for type %s cannot exceed %d", 
+ gaae: gram:00028540:  typname, MaxAttrSize * BITS_PER_BYTE))); 
+ gaae: gram:00028615:  ereport(ERROR, 
+ gaae: gram:00028616:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028617:  errmsg("length for type %s must be at least 1", 
+ gaae: gram:00028618:  (yyvsp[(1) - (5)].str)))); 
+ gaae: gram:00028620:  ereport(ERROR, 
+ gaae: gram:00028621:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028622:  errmsg("length for type %s cannot exceed %d", 
+ gaae: gram:00028623:  (yyvsp[(1) - (5)].str), MaxAttrSize))); 
+ gaae: gram:00028720:  ereport(ERROR, 
+ gaae: gram:00028721:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028722:  errmsg("TIMESTAMP(%d)%s precision must not be negative", 
+ gaae: gram:00028723:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
+ gaae: gram:00028726:  ereport(WARNING, 
+ gaae: gram:00028727:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028728:  errmsg("TIMESTAMP(%d)%s precision reduced to maximum allowed, %d", 
+ gaae: gram:00028729:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
+ gaae: gram:00028730:  MAX_TIMESTAMP_PRECISION))); 
+ gaae: gram:00028761:  ereport(ERROR, 
+ gaae: gram:00028762:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028763:  errmsg("TIME(%d)%s precision must not be negative", 
+ gaae: gram:00028764:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
+ gaae: gram:00028767:  ereport(WARNING, 
+ gaae: gram:00028768:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00028769:  errmsg("TIME(%d)%s precision reduced to maximum allowed, %d", 
+ gaae: gram:00028770:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
+ gaae: gram:00028771:  MAX_TIME_PRECISION))); 
+ gaae: gram:00029403:  ereport(ERROR, 
+ gaae: gram:00029404:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaae: gram:00029405:  errmsg("UNIQUE predicate is not yet implemented"), 
+ gaae: gram:00029406:  scanner_errposition((yylsp[(1) - (2)])))); 
+ gaae: gram:00029534:  ereport(ERROR, 
+ gaae: gram:00029535:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00029536:  errmsg("window OVER clause can only be used " 
+ gaae: gram:00029537:  "with an aggregate"))); 
+ gaae: gram:00029820:  ereport(ERROR, 
+ gaae: gram:00029821:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00029822:  errmsg("CURRENT_TIME(%d) precision must not be negative", 
+ gaae: gram:00029823:  (yyvsp[(3) - (4)].ival)))); 
+ gaae: gram:00029826:  ereport(WARNING, 
+ gaae: gram:00029827:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00029828:  errmsg("CURRENT_TIME(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00029829:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
+ gaae: gram:00029872:  ereport(ERROR, 
+ gaae: gram:00029873:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00029874:  errmsg("CURRENT_TIMESTAMP(%d) precision must not be negative", 
+ gaae: gram:00029875:  (yyvsp[(3) - (4)].ival)))); 
+ gaae: gram:00029878:  ereport(WARNING, 
+ gaae: gram:00029879:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00029880:  errmsg("CURRENT_TIMESTAMP(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00029881:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
+ gaae: gram:00029925:  ereport(ERROR, 
+ gaae: gram:00029926:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00029927:  errmsg("LOCALTIME(%d) precision must not be negative", 
+ gaae: gram:00029928:  (yyvsp[(3) - (4)].ival)))); 
+ gaae: gram:00029931:  ereport(WARNING, 
+ gaae: gram:00029932:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00029933:  errmsg("LOCALTIME(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00029934:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
+ gaae: gram:00029979:  ereport(ERROR, 
+ gaae: gram:00029980:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00029981:  errmsg("LOCALTIMESTAMP(%d) precision must not be negative", 
+ gaae: gram:00029982:  (yyvsp[(3) - (4)].ival)))); 
+ gaae: gram:00029985:  ereport(WARNING, 
+ gaae: gram:00029986:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00029987:  errmsg("LOCALTIMESTAMP(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00029988:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
+ gaae: gram:00030953:  ereport(ERROR, 
+ gaae: gram:00030954:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00030955:  errmsg("improper qualified name (too many dotted names): %s", 
+ gaae: gram:00030956:  NameListToString(lcons(makeString((yyvsp[(1) - (2)].str)), (yyvsp[(2) - (2)].list)))))); 
+ gaae: gram:00031110:  ereport(ERROR, 
+ gaae: gram:00031111:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00031112:  errmsg("INTERVAL(%d) precision must not be negative", 
+ gaae: gram:00031113:  (yyvsp[(3) - (6)].ival)))); 
+ gaae: gram:00031116:  ereport(WARNING, 
+ gaae: gram:00031117:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaae: gram:00031118:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
+ gaae: gram:00031119:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
+ gaae: gram:00031272:  ereport(ERROR, 
+ gaae: gram:00031273:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00031274:  errmsg("OLD used in query that is not in a rule"))); 
+ gaae: gram:00031284:  ereport(ERROR, 
+ gaae: gram:00031285:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00031286:  errmsg("NEW used in query that is not in a rule"))); 
+ gaae: gram:00031719:  ereport(ERROR, 
+ gaae: gram:00031720:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00031721:  errmsg("wrong number of parameters on left side of OVERLAPS expression"), 
+ gaae: gram:00031722:  scanner_errposition(location))); 
+ gaae: gram:00031726:  ereport(ERROR, 
+ gaae: gram:00031727:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00031728:  errmsg("wrong number of parameters on right side of OVERLAPS expression"), 
+ gaae: gram:00031729:  scanner_errposition(location))); 
+ gaae: gram:00031832:  ereport(ERROR, 
+ gaae: gram:00031833:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00031834:  errmsg("multiple ORDER BY clauses not allowed"), 
+ gaae: gram:00031835:  scanner_errposition(exprLocation((Node *) sortClause)))); 
+ gaae: gram:00031843:  ereport(ERROR, 
+ gaae: gram:00031844:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00031845:  errmsg("multiple OFFSET clauses not allowed"), 
+ gaae: gram:00031846:  scanner_errposition(exprLocation(limitOffset)))); 
+ gaae: gram:00031852:  ereport(ERROR, 
+ gaae: gram:00031853:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00031854:  errmsg("multiple LIMIT clauses not allowed"), 
+ gaae: gram:00031855:  scanner_errposition(exprLocation(limitCount)))); 
+ gaae: gram:00031862:  ereport(ERROR, 
+ gaae: gram:00031863:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00031864:  errmsg("multiple WITH clauses not allowed"))); 
+ gaae: gram:00032008:  ereport(ERROR, 
+ gaae: gram:00032009:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaae: gram:00032010:  errmsg("OUT and INOUT arguments aren't allowed in " 
+ gaae: gram:00032011:  "TABLE functions"))); 
  gaah: genfile:00000072:  ereport(ERROR, 
  gaah: genfile:00000073:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
  gaah: genfile:00000074:  (errmsg("reference to parent directory ("..") not allowed")))); 
@@ -8535,20 +8550,20 @@ select * from get_ereport order by 1;
  laba: likexmatch:00000290:  (errcode(ERRCODE_INVALID_ESCAPE_SEQUENCE), 
  laba: likexmatch:00000291:  errmsg("invalid escape string"), 
  laba: likexmatch:00000292:  errhint("Escape string must be empty or one character."))); 
- maac: md:00001079:  ereport(ERROR, 
- maac: md:00001080:  (errcode_for_file_access(), 
- maac: md:00001081:  errmsg("could not open relation %u/%u/%u: %m", 
- maac: md:00001082:  reln->smgr_rnode.spcNode, 
- maac: md:00001083:  reln->smgr_rnode.dbNode, 
- maac: md:00001084:  reln->smgr_rnode.relNode))); 
- maac: md:00001939:  ereport(ERROR, 
- maac: md:00001940:  (errcode_for_file_access(), 
- maac: md:00001941:  errmsg("could not open segment %u of relation %u/%u/%u (target block %u): %m", 
- maac: md:00001942:  nextsegno, 
- maac: md:00001943:  reln->smgr_rnode.spcNode, 
- maac: md:00001944:  reln->smgr_rnode.dbNode, 
- maac: md:00001945:  reln->smgr_rnode.relNode, 
- maac: md:00001946:  blkno))); 
+ maac: md:00001069:  ereport(ERROR, 
+ maac: md:00001070:  (errcode_for_file_access(), 
+ maac: md:00001071:  errmsg("could not open relation %u/%u/%u: %m", 
+ maac: md:00001072:  reln->smgr_rnode.spcNode, 
+ maac: md:00001073:  reln->smgr_rnode.dbNode, 
+ maac: md:00001074:  reln->smgr_rnode.relNode))); 
+ maac: md:00001929:  ereport(ERROR, 
+ maac: md:00001930:  (errcode_for_file_access(), 
+ maac: md:00001931:  errmsg("could not open segment %u of relation %u/%u/%u (target block %u): %m", 
+ maac: md:00001932:  nextsegno, 
+ maac: md:00001933:  reln->smgr_rnode.spcNode, 
+ maac: md:00001934:  reln->smgr_rnode.dbNode, 
+ maac: md:00001935:  reln->smgr_rnode.relNode, 
+ maac: md:00001936:  blkno))); 
  maad: mac:00000063:  ereport(ERROR, 
  maad: mac:00000064:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  maad: mac:00000065:  errmsg("invalid input syntax for type macaddr: "%s"", str))); 
@@ -12732,168 +12747,168 @@ select * from get_ereport order by 1;
  pabi: pgxbackendxsupport:00000421:  ereport(ERROR, 
  pabi: pgxbackendxsupport:00000422:  (errcode(ERRCODE_INVALID_NAME), 
  pabi: pgxbackendxsupport:00000423:  errmsg("DYNAMIC_LIBRARY_PATH component is not absolute"))); 
- qaaf: queue:00000139:  ereport(ERROR, 
- qaaf: queue:00000140:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00000141:  errmsg("unknown resource type "%d"", 
- qaaf: queue:00000142:  resTypeInt))); 
- qaaf: queue:00000148:  ereport(ERROR, 
- qaaf: queue:00000149:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00000150:  errmsg("Invalid parameter value "%s" for " 
- qaaf: queue:00000151:  "resource type "%s"", 
- qaaf: queue:00000152:  pResSetting, restyp))); 
- qaaf: queue:00000277:  ereport(ERROR, 
- qaaf: queue:00000278:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00000279:  errmsg("option "%s" is not a valid resource type", 
- qaaf: queue:00000280:  defel->defname))); 
- qaaf: queue:00000315:  ereport(ERROR, 
- qaaf: queue:00000316:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00000317:  errmsg("option "%s" cannot be disabled", 
- qaaf: queue:00000318:  defel->defname))); 
- qaaf: queue:00000336:  ereport(ERROR, 
- qaaf: queue:00000337:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00000338:  errmsg("required option "%s" cannot be disabled", 
- qaaf: queue:00000339:  defel->defname))); 
- qaaf: queue:00000366:  ereport(ERROR, 
- qaaf: queue:00000367:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00000368:  errmsg("conflicting or redundant option for "%s"", 
- qaaf: queue:00000369:  defel->defname))); 
- qaaf: queue:00000704:  ereport(ERROR, 
- qaaf: queue:00000705:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- qaaf: queue:00000706:  errmsg("must be superuser to create resource queues"))); 
- qaaf: queue:00000727:  ereport(ERROR, 
- qaaf: queue:00000728:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00000729:  errmsg("conflicting or redundant options"))); 
- qaaf: queue:00000735:  ereport(ERROR, 
- qaaf: queue:00000736:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00000737:  errmsg("conflicting or redundant options"))); 
- qaaf: queue:00000743:  ereport(ERROR, 
- qaaf: queue:00000744:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00000745:  errmsg("conflicting or redundant options"))); 
- qaaf: queue:00000751:  ereport(ERROR, 
- qaaf: queue:00000752:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00000753:  errmsg("conflicting or redundant options"))); 
- qaaf: queue:00000760:  ereport(ERROR, 
- qaaf: queue:00000761:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00000762:  errmsg("option "%s" is not a valid resource type", 
- qaaf: queue:00000763:  defel->defname))); 
- qaaf: queue:00000785:  ereport(ERROR, 
- qaaf: queue:00000786:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00000787:  errmsg("active threshold cannot be less than %d or equal to 0", 
- qaaf: queue:00000788:  INVALID_RES_LIMIT_THRESHOLD))); 
- qaaf: queue:00000795:  ereport(ERROR, 
- qaaf: queue:00000796:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00000797:  errmsg("cost threshold cannot be less than %d or equal to 0", 
- qaaf: queue:00000798:  INVALID_RES_LIMIT_THRESHOLD))); 
- qaaf: queue:00000810:  ereport(ERROR, 
- qaaf: queue:00000811:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00000812:  errmsg("min_cost threshold cannot be negative"))); 
- qaaf: queue:00000820:  ereport(ERROR, 
- qaaf: queue:00000821:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00000822:  errmsg("at least one threshold must be specified"), 
- qaaf: queue:00000823:  errOmitLocation(true))); 
- qaaf: queue:00000828:  ereport(ERROR, 
- qaaf: queue:00000829:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00000830:  errmsg("at least one valid threshold must be specified"), 
- qaaf: queue:00000831:  errOmitLocation(true))); 
- qaaf: queue:00000838:  ereport(ERROR, 
- qaaf: queue:00000839:  (errcode(ERRCODE_RESERVED_NAME), 
- qaaf: queue:00000840:  errmsg("resource queue name "%s" is reserved", 
- qaaf: queue:00000841:  stmt->queue), 
- qaaf: queue:00000842:  errOmitLocation(true))); 
- qaaf: queue:00000862:  ereport(ERROR, 
- qaaf: queue:00000863:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
- qaaf: queue:00000864:  errmsg("resource queue "%s" already exists", 
- qaaf: queue:00000865:  stmt->queue))); 
- qaaf: queue:00000912:  ereport(ERROR, 
- qaaf: queue:00000913:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
- qaaf: queue:00000914:  errmsg("insufficient resource queues available"), 
- qaaf: queue:00000915:  errhint("Increase max_resource_queues"))); 
- qaaf: queue:00000919:  ereport(WARNING, 
- qaaf: queue:00000920:  (errmsg("resource scheduling is disabled"), 
- qaaf: queue:00000921:  errhint("To enable set resource_scheduler=on"))); 
- qaaf: queue:00000987:  ereport(ERROR, 
- qaaf: queue:00000988:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- qaaf: queue:00000989:  errmsg("must be superuser to alter resource queues"))); 
- qaaf: queue:00001010:  ereport(ERROR, 
- qaaf: queue:00001011:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00001012:  errmsg("conflicting or redundant options"))); 
- qaaf: queue:00001026:  ereport(ERROR, 
- qaaf: queue:00001027:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00001028:  errmsg("conflicting or redundant options"))); 
- qaaf: queue:00001042:  ereport(ERROR, 
- qaaf: queue:00001043:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00001044:  errmsg("conflicting or redundant options"))); 
- qaaf: queue:00001058:  ereport(ERROR, 
- qaaf: queue:00001059:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00001060:  errmsg("conflicting or redundant options"))); 
- qaaf: queue:00001076:  ereport(ERROR, 
- qaaf: queue:00001077:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00001078:  errmsg("option "%s" is not a valid resource type", 
- qaaf: queue:00001079:  defel->defname))); 
- qaaf: queue:00001089:  ereport(ERROR, 
- qaaf: queue:00001090:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00001091:  errmsg("option "%s" is not a valid resource type", 
- qaaf: queue:00001092:  defel->defname))); 
- qaaf: queue:00001134:  ereport(ERROR, 
- qaaf: queue:00001135:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00001136:  errmsg("active threshold cannot be less than %d or equal to 0", 
- qaaf: queue:00001137:  INVALID_RES_LIMIT_THRESHOLD), 
- qaaf: queue:00001138:  errOmitLocation(true))); 
- qaaf: queue:00001145:  ereport(ERROR, 
- qaaf: queue:00001146:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00001147:  errmsg("cost threshold must be equal to %d or greater than 0", 
- qaaf: queue:00001148:  INVALID_RES_LIMIT_THRESHOLD), 
- qaaf: queue:00001149:  errOmitLocation(true))); 
- qaaf: queue:00001162:  ereport(ERROR, 
- qaaf: queue:00001163:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00001164:  errmsg("min_cost threshold cannot be negative"), 
- qaaf: queue:00001165:  errOmitLocation(true))); 
- qaaf: queue:00001182:  ereport(ERROR, 
- qaaf: queue:00001183:  (errcode(ERRCODE_SYNTAX_ERROR), 
- qaaf: queue:00001184:  errmsg("at least one threshold, overcommit or ignore limit must be specified"), 
- qaaf: queue:00001185:  errOmitLocation(true))); 
- qaaf: queue:00001207:  ereport(ERROR, 
- qaaf: queue:00001208:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- qaaf: queue:00001209:  errmsg("resource queue "%s" does not exist", 
- qaaf: queue:00001210:  stmt->queue), 
- qaaf: queue:00001211:  errOmitLocation(true))); 
- qaaf: queue:00001280:  ereport(ERROR, 
- qaaf: queue:00001281:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- qaaf: queue:00001282:  errmsg("at least one threshold must be different from %d", 
- qaaf: queue:00001283:  INVALID_RES_LIMIT_THRESHOLD))); 
- qaaf: queue:00001317:  ereport(ERROR, 
- qaaf: queue:00001318:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
- qaaf: queue:00001319:  errmsg("thresholds cannot be less than current values"))); 
- qaaf: queue:00001321:  ereport(ERROR, 
- qaaf: queue:00001322:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
- qaaf: queue:00001323:  errmsg("disabling overcommit cannot leave queue in possibly overcommitted state"))); 
- qaaf: queue:00001325:  ereport(ERROR, 
- qaaf: queue:00001326:  (errcode(ERRCODE_INTERNAL_ERROR), 
- qaaf: queue:00001327:  errmsg("queue hash table corrupted"))); 
- qaaf: queue:00001334:  ereport(WARNING, 
- qaaf: queue:00001335:  (errmsg("resource scheduling is disabled"), 
- qaaf: queue:00001336:  errhint("To enable set resource_scheduler=on"))); 
- qaaf: queue:00001371:  ereport(ERROR, 
- qaaf: queue:00001372:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- qaaf: queue:00001373:  errmsg("must be superuser to drop resource queues"))); 
- qaaf: queue:00001394:  ereport(ERROR, 
- qaaf: queue:00001395:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- qaaf: queue:00001396:  errmsg("resource queue "%s" does not exist", 
- qaaf: queue:00001397:  stmt->queue))); 
- qaaf: queue:00001422:  ereport(ERROR, 
- qaaf: queue:00001423:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
- qaaf: queue:00001424:  errmsg("resource queue "%s" is used by at least one role", 
- qaaf: queue:00001425:  stmt->queue))); 
- qaaf: queue:00001433:  ereport(ERROR, 
- qaaf: queue:00001434:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- qaaf: queue:00001435:  errmsg("cannot drop default resource queue "%s"", 
- qaaf: queue:00001436:  stmt->queue))); 
- qaaf: queue:00001456:  ereport(ERROR, 
- qaaf: queue:00001457:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
- qaaf: queue:00001458:  errmsg("resource queue cannot be dropped as is in use"))); 
- qaaf: queue:00001462:  ereport(WARNING, 
- qaaf: queue:00001463:  (errmsg("resource scheduling is disabled"), 
- qaaf: queue:00001464:  errhint("To enable set resource_scheduler=on"))); 
+ qaaf: queue:00000140:  ereport(ERROR, 
+ qaaf: queue:00000141:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00000142:  errmsg("unknown resource type "%d"", 
+ qaaf: queue:00000143:  resTypeInt))); 
+ qaaf: queue:00000149:  ereport(ERROR, 
+ qaaf: queue:00000150:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00000151:  errmsg("Invalid parameter value "%s" for " 
+ qaaf: queue:00000152:  "resource type "%s"", 
+ qaaf: queue:00000153:  pResSetting, restyp))); 
+ qaaf: queue:00000278:  ereport(ERROR, 
+ qaaf: queue:00000279:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00000280:  errmsg("option "%s" is not a valid resource type", 
+ qaaf: queue:00000281:  defel->defname))); 
+ qaaf: queue:00000316:  ereport(ERROR, 
+ qaaf: queue:00000317:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00000318:  errmsg("option "%s" cannot be disabled", 
+ qaaf: queue:00000319:  defel->defname))); 
+ qaaf: queue:00000337:  ereport(ERROR, 
+ qaaf: queue:00000338:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00000339:  errmsg("required option "%s" cannot be disabled", 
+ qaaf: queue:00000340:  defel->defname))); 
+ qaaf: queue:00000367:  ereport(ERROR, 
+ qaaf: queue:00000368:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00000369:  errmsg("conflicting or redundant option for "%s"", 
+ qaaf: queue:00000370:  defel->defname))); 
+ qaaf: queue:00000705:  ereport(ERROR, 
+ qaaf: queue:00000706:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ qaaf: queue:00000707:  errmsg("must be superuser to create resource queues"))); 
+ qaaf: queue:00000728:  ereport(ERROR, 
+ qaaf: queue:00000729:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00000730:  errmsg("conflicting or redundant options"))); 
+ qaaf: queue:00000736:  ereport(ERROR, 
+ qaaf: queue:00000737:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00000738:  errmsg("conflicting or redundant options"))); 
+ qaaf: queue:00000744:  ereport(ERROR, 
+ qaaf: queue:00000745:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00000746:  errmsg("conflicting or redundant options"))); 
+ qaaf: queue:00000752:  ereport(ERROR, 
+ qaaf: queue:00000753:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00000754:  errmsg("conflicting or redundant options"))); 
+ qaaf: queue:00000761:  ereport(ERROR, 
+ qaaf: queue:00000762:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00000763:  errmsg("option "%s" is not a valid resource type", 
+ qaaf: queue:00000764:  defel->defname))); 
+ qaaf: queue:00000786:  ereport(ERROR, 
+ qaaf: queue:00000787:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00000788:  errmsg("active threshold cannot be less than %d or equal to 0", 
+ qaaf: queue:00000789:  INVALID_RES_LIMIT_THRESHOLD))); 
+ qaaf: queue:00000796:  ereport(ERROR, 
+ qaaf: queue:00000797:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00000798:  errmsg("cost threshold cannot be less than %d or equal to 0", 
+ qaaf: queue:00000799:  INVALID_RES_LIMIT_THRESHOLD))); 
+ qaaf: queue:00000811:  ereport(ERROR, 
+ qaaf: queue:00000812:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00000813:  errmsg("min_cost threshold cannot be negative"))); 
+ qaaf: queue:00000821:  ereport(ERROR, 
+ qaaf: queue:00000822:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00000823:  errmsg("at least one threshold must be specified"), 
+ qaaf: queue:00000824:  errOmitLocation(true))); 
+ qaaf: queue:00000829:  ereport(ERROR, 
+ qaaf: queue:00000830:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00000831:  errmsg("at least one valid threshold must be specified"), 
+ qaaf: queue:00000832:  errOmitLocation(true))); 
+ qaaf: queue:00000839:  ereport(ERROR, 
+ qaaf: queue:00000840:  (errcode(ERRCODE_RESERVED_NAME), 
+ qaaf: queue:00000841:  errmsg("resource queue name "%s" is reserved", 
+ qaaf: queue:00000842:  stmt->queue), 
+ qaaf: queue:00000843:  errOmitLocation(true))); 
+ qaaf: queue:00000863:  ereport(ERROR, 
+ qaaf: queue:00000864:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+ qaaf: queue:00000865:  errmsg("resource queue "%s" already exists", 
+ qaaf: queue:00000866:  stmt->queue))); 
+ qaaf: queue:00000913:  ereport(ERROR, 
+ qaaf: queue:00000914:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
+ qaaf: queue:00000915:  errmsg("insufficient resource queues available"), 
+ qaaf: queue:00000916:  errhint("Increase max_resource_queues"))); 
+ qaaf: queue:00000920:  ereport(WARNING, 
+ qaaf: queue:00000921:  (errmsg("resource scheduling is disabled"), 
+ qaaf: queue:00000922:  errhint("To enable set resource_scheduler=on"))); 
+ qaaf: queue:00000988:  ereport(ERROR, 
+ qaaf: queue:00000989:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ qaaf: queue:00000990:  errmsg("must be superuser to alter resource queues"))); 
+ qaaf: queue:00001011:  ereport(ERROR, 
+ qaaf: queue:00001012:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00001013:  errmsg("conflicting or redundant options"))); 
+ qaaf: queue:00001027:  ereport(ERROR, 
+ qaaf: queue:00001028:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00001029:  errmsg("conflicting or redundant options"))); 
+ qaaf: queue:00001043:  ereport(ERROR, 
+ qaaf: queue:00001044:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00001045:  errmsg("conflicting or redundant options"))); 
+ qaaf: queue:00001059:  ereport(ERROR, 
+ qaaf: queue:00001060:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00001061:  errmsg("conflicting or redundant options"))); 
+ qaaf: queue:00001077:  ereport(ERROR, 
+ qaaf: queue:00001078:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00001079:  errmsg("option "%s" is not a valid resource type", 
+ qaaf: queue:00001080:  defel->defname))); 
+ qaaf: queue:00001090:  ereport(ERROR, 
+ qaaf: queue:00001091:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00001092:  errmsg("option "%s" is not a valid resource type", 
+ qaaf: queue:00001093:  defel->defname))); 
+ qaaf: queue:00001135:  ereport(ERROR, 
+ qaaf: queue:00001136:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00001137:  errmsg("active threshold cannot be less than %d or equal to 0", 
+ qaaf: queue:00001138:  INVALID_RES_LIMIT_THRESHOLD), 
+ qaaf: queue:00001139:  errOmitLocation(true))); 
+ qaaf: queue:00001146:  ereport(ERROR, 
+ qaaf: queue:00001147:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00001148:  errmsg("cost threshold must be equal to %d or greater than 0", 
+ qaaf: queue:00001149:  INVALID_RES_LIMIT_THRESHOLD), 
+ qaaf: queue:00001150:  errOmitLocation(true))); 
+ qaaf: queue:00001163:  ereport(ERROR, 
+ qaaf: queue:00001164:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00001165:  errmsg("min_cost threshold cannot be negative"), 
+ qaaf: queue:00001166:  errOmitLocation(true))); 
+ qaaf: queue:00001183:  ereport(ERROR, 
+ qaaf: queue:00001184:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ qaaf: queue:00001185:  errmsg("at least one threshold, overcommit or ignore limit must be specified"), 
+ qaaf: queue:00001186:  errOmitLocation(true))); 
+ qaaf: queue:00001208:  ereport(ERROR, 
+ qaaf: queue:00001209:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ qaaf: queue:00001210:  errmsg("resource queue "%s" does not exist", 
+ qaaf: queue:00001211:  stmt->queue), 
+ qaaf: queue:00001212:  errOmitLocation(true))); 
+ qaaf: queue:00001281:  ereport(ERROR, 
+ qaaf: queue:00001282:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ qaaf: queue:00001283:  errmsg("at least one threshold must be different from %d", 
+ qaaf: queue:00001284:  INVALID_RES_LIMIT_THRESHOLD))); 
+ qaaf: queue:00001318:  ereport(ERROR, 
+ qaaf: queue:00001319:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
+ qaaf: queue:00001320:  errmsg("thresholds cannot be less than current values"))); 
+ qaaf: queue:00001322:  ereport(ERROR, 
+ qaaf: queue:00001323:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
+ qaaf: queue:00001324:  errmsg("disabling overcommit cannot leave queue in possibly overcommitted state"))); 
+ qaaf: queue:00001326:  ereport(ERROR, 
+ qaaf: queue:00001327:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ qaaf: queue:00001328:  errmsg("queue hash table corrupted"))); 
+ qaaf: queue:00001335:  ereport(WARNING, 
+ qaaf: queue:00001336:  (errmsg("resource scheduling is disabled"), 
+ qaaf: queue:00001337:  errhint("To enable set resource_scheduler=on"))); 
+ qaaf: queue:00001372:  ereport(ERROR, 
+ qaaf: queue:00001373:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ qaaf: queue:00001374:  errmsg("must be superuser to drop resource queues"))); 
+ qaaf: queue:00001395:  ereport(ERROR, 
+ qaaf: queue:00001396:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ qaaf: queue:00001397:  errmsg("resource queue "%s" does not exist", 
+ qaaf: queue:00001398:  stmt->queue))); 
+ qaaf: queue:00001423:  ereport(ERROR, 
+ qaaf: queue:00001424:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
+ qaaf: queue:00001425:  errmsg("resource queue "%s" is used by at least one role", 
+ qaaf: queue:00001426:  stmt->queue))); 
+ qaaf: queue:00001434:  ereport(ERROR, 
+ qaaf: queue:00001435:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ qaaf: queue:00001436:  errmsg("cannot drop default resource queue "%s"", 
+ qaaf: queue:00001437:  stmt->queue))); 
+ qaaf: queue:00001457:  ereport(ERROR, 
+ qaaf: queue:00001458:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
+ qaaf: queue:00001459:  errmsg("resource queue cannot be dropped as is in use"))); 
+ qaaf: queue:00001463:  ereport(WARNING, 
+ qaaf: queue:00001464:  (errmsg("resource scheduling is disabled"), 
+ qaaf: queue:00001465:  errhint("To enable set resource_scheduler=on"))); 
  qaba: quicklzone:00000015:  ereport(ERROR, 
  qaba: quicklzone:00000016:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
  qaba: quicklzone:00000017:  errmsg("quicklz1.c and quicklz1.h have different versions"))); 
@@ -17783,75 +17798,75 @@ select * from get_ereport order by 1;
  xaae: xact:00000981:  "Only the single Writer qExec can do so. "), 
  xaae: xact:00000982:  errhint("This is most likely the result of a feature being turned " 
  xaae: xact:00000983:  "on that violates the single WRITER principle"))); 
- xaae: xact:00002411:  ereport(ERROR, 
- xaae: xact:00002412:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- xaae: xact:00002413:  errmsg("StartTransaction timed out waiting for Writer to set the shared snapshot."), 
- xaae: xact:00002414:  errdetail("We are waiting for the shared snapshot to have XID: %d/%u but the value " 
- xaae: xact:00002415:  "is currently: %d/%u. Our slotindex is: %d our writer-pid %d
+ xaae: xact:00002404:  ereport(ERROR, 
+ xaae: xact:00002405:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ xaae: xact:00002406:  errmsg("StartTransaction timed out waiting for Writer to set the shared snapshot."), 
+ xaae: xact:00002407:  errdetail("We are waiting for the shared snapshot to have XID: %d/%u but the value " 
+ xaae: xact:00002408:  "is currently: %d/%u. Our slotindex is: %d our writer-pid %d
  " 
- xaae: xact:00002416:  "DistributedTransactionContext = %s." 
- xaae: xact:00002417:  "Dump of all sharedsnapshots in shmem: %s", 
- xaae: xact:00002418:  QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync, 
- xaae: xact:00002419:  SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync, 
- xaae: xact:00002420:  SharedLocalSnapshotSlot->slotindex, (int)SharedLocalSnapshotSlot->pid, 
- xaae: xact:00002421:  DtxContextToString(DistributedTransactionContext), 
- xaae: xact:00002422:  SharedSnapshotDump()))); 
- xaae: xact:00003886:  ereport(ERROR, 
- xaae: xact:00003887:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00003888:  /* translator: %s represents an SQL statement name */ 
- xaae: xact:00003889:  errmsg("%s cannot run inside a transaction block", 
- xaae: xact:00003890:  stmtType), 
- xaae: xact:00003891:  errOmitLocation(true))); 
- xaae: xact:00003897:  ereport(ERROR, 
- xaae: xact:00003898:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00003899:  /* translator: %s represents an SQL statement name */ 
- xaae: xact:00003900:  errmsg("%s cannot run inside a subtransaction", 
- xaae: xact:00003901:  stmtType), 
- xaae: xact:00003902:  errOmitLocation(true))); 
- xaae: xact:00003910:  ereport(ERROR, 
- xaae: xact:00003911:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00003912:  /* translator: %s represents an SQL statement name */ 
- xaae: xact:00003913:  errmsg("%s cannot be executed from a function", stmtType), 
- xaae: xact:00003914:  errOmitLocation(true))); 
- xaae: xact:00003962:  ereport(ERROR, 
- xaae: xact:00003963:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00003964:  /* translator: %s represents an SQL statement name */ 
- xaae: xact:00003965:  errmsg("%s may only be used in transaction blocks", 
- xaae: xact:00003966:  stmtType))); 
- xaae: xact:00004202:  ereport(WARNING, 
- xaae: xact:00004203:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00004204:  errmsg("there is already a transaction in progress"))); 
- xaae: xact:00004376:  ereport(WARNING, 
- xaae: xact:00004377:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00004378:  errmsg("there is no transaction in progress"))); 
- xaae: xact:00004475:  ereport(WARNING, 
- xaae: xact:00004476:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
- xaae: xact:00004477:  errmsg("there is no transaction in progress"))); 
- xaae: xact:00004604:  ereport(ERROR, 
- xaae: xact:00004605:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004606:  errmsg("no such savepoint"), 
- xaae: xact:00004607:  errOmitLocation(true))); 
- xaae: xact:00004688:  ereport(ERROR, 
- xaae: xact:00004689:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004690:  errmsg("no such savepoint"))); 
- xaae: xact:00004694:  ereport(ERROR, 
- xaae: xact:00004695:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004696:  errmsg("no such savepoint"))); 
- xaae: xact:00004738:  ereport(ERROR, 
- xaae: xact:00004739:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004740:  errmsg("no such savepoint"))); 
- xaae: xact:00004786:  ereport(ERROR, 
- xaae: xact:00004787:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004788:  errmsg("no such savepoint"))); 
- xaae: xact:00004792:  ereport(ERROR, 
- xaae: xact:00004793:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
- xaae: xact:00004794:  errmsg("no such savepoint"))); 
- xaae: xact:00005496:  ereport(ERROR, 
- xaae: xact:00005497:  (errcode(ERRCODE_GP_SUBTRANS_LIMIT_EXCEEDED), 
- xaae: xact:00005498:  errmsg("cannot have more than 100 subtransactions in a transaction"))); 
- xaae: xact:00005515:  ereport(ERROR, 
- xaae: xact:00005516:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- xaae: xact:00005517:  errmsg("cannot have more than 2^32-1 subtransactions in a transaction"))); 
+ xaae: xact:00002409:  "DistributedTransactionContext = %s." 
+ xaae: xact:00002410:  "Dump of all sharedsnapshots in shmem: %s", 
+ xaae: xact:00002411:  QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync, 
+ xaae: xact:00002412:  SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync, 
+ xaae: xact:00002413:  SharedLocalSnapshotSlot->slotindex, (int)SharedLocalSnapshotSlot->pid, 
+ xaae: xact:00002414:  DtxContextToString(DistributedTransactionContext), 
+ xaae: xact:00002415:  SharedSnapshotDump()))); 
+ xaae: xact:00003879:  ereport(ERROR, 
+ xaae: xact:00003880:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00003881:  /* translator: %s represents an SQL statement name */ 
+ xaae: xact:00003882:  errmsg("%s cannot run inside a transaction block", 
+ xaae: xact:00003883:  stmtType), 
+ xaae: xact:00003884:  errOmitLocation(true))); 
+ xaae: xact:00003890:  ereport(ERROR, 
+ xaae: xact:00003891:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00003892:  /* translator: %s represents an SQL statement name */ 
+ xaae: xact:00003893:  errmsg("%s cannot run inside a subtransaction", 
+ xaae: xact:00003894:  stmtType), 
+ xaae: xact:00003895:  errOmitLocation(true))); 
+ xaae: xact:00003903:  ereport(ERROR, 
+ xaae: xact:00003904:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00003905:  /* translator: %s represents an SQL statement name */ 
+ xaae: xact:00003906:  errmsg("%s cannot be executed from a function", stmtType), 
+ xaae: xact:00003907:  errOmitLocation(true))); 
+ xaae: xact:00003955:  ereport(ERROR, 
+ xaae: xact:00003956:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00003957:  /* translator: %s represents an SQL statement name */ 
+ xaae: xact:00003958:  errmsg("%s may only be used in transaction blocks", 
+ xaae: xact:00003959:  stmtType))); 
+ xaae: xact:00004195:  ereport(WARNING, 
+ xaae: xact:00004196:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00004197:  errmsg("there is already a transaction in progress"))); 
+ xaae: xact:00004369:  ereport(WARNING, 
+ xaae: xact:00004370:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00004371:  errmsg("there is no transaction in progress"))); 
+ xaae: xact:00004468:  ereport(WARNING, 
+ xaae: xact:00004469:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
+ xaae: xact:00004470:  errmsg("there is no transaction in progress"))); 
+ xaae: xact:00004597:  ereport(ERROR, 
+ xaae: xact:00004598:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004599:  errmsg("no such savepoint"), 
+ xaae: xact:00004600:  errOmitLocation(true))); 
+ xaae: xact:00004681:  ereport(ERROR, 
+ xaae: xact:00004682:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004683:  errmsg("no such savepoint"))); 
+ xaae: xact:00004687:  ereport(ERROR, 
+ xaae: xact:00004688:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004689:  errmsg("no such savepoint"))); 
+ xaae: xact:00004731:  ereport(ERROR, 
+ xaae: xact:00004732:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004733:  errmsg("no such savepoint"))); 
+ xaae: xact:00004779:  ereport(ERROR, 
+ xaae: xact:00004780:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004781:  errmsg("no such savepoint"))); 
+ xaae: xact:00004785:  ereport(ERROR, 
+ xaae: xact:00004786:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+ xaae: xact:00004787:  errmsg("no such savepoint"))); 
+ xaae: xact:00005489:  ereport(ERROR, 
+ xaae: xact:00005490:  (errcode(ERRCODE_GP_SUBTRANS_LIMIT_EXCEEDED), 
+ xaae: xact:00005491:  errmsg("cannot have more than 100 subtransactions in a transaction"))); 
+ xaae: xact:00005508:  ereport(ERROR, 
+ xaae: xact:00005509:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ xaae: xact:00005510:  errmsg("cannot have more than 2^32-1 subtransactions in a transaction"))); 
  xaae: xlog:00000719:  ereport(ERROR, 
  xaae: xlog:00000720:  (errmsg("Reader qExec had local changes to commit! (rmid = %u)", 
  xaae: xlog:00000721:  rmid), 
@@ -17859,417 +17874,417 @@ select * from get_ereport order by 1;
  xaae: xlog:00000723:  "Only the single Writer qExec can do so. "), 
  xaae: xlog:00000724:  errhint("This is most likely the result of a feature being turned " 
  xaae: xlog:00000725:  "on that violates the single WRITER principle"))); 
- xaae: xlog:00001783:  ereport(ERROR, 
- xaae: xlog:00001784:  (errcode_for_file_access(), 
- xaae: xlog:00001785:  errmsg("could not open transaction log file for catch-up purposes -- it has been reclaimed ("%s")", 
- xaae: xlog:00001786:  path))); 
- xaae: xlog:00001788:  ereport(ERROR, 
- xaae: xlog:00001789:  (errcode_for_file_access(), 
- xaae: xlog:00001790:  errmsg("could not open transaction log file for catch-up purposes ("%s"): %m", 
- xaae: xlog:00001791:  path))); 
- xaae: xlog:00001801:  ereport(ERROR, 
- xaae: xlog:00001802:  (errcode_for_file_access(), 
- xaae: xlog:00001803:  errmsg("could not seek to end of file "%s" (log file %u, segment %u): %m", 
- xaae: xlog:00001804:  path, logId, seg))); 
- xaae: xlog:00001811:  ereport(ERROR, 
- xaae: xlog:00001812:  (errcode_for_file_access(), 
- xaae: xlog:00001813:  errmsg("could not seek to offset %u file "%s" (log file %u, segment %u): %m", 
- xaae: xlog:00001814:  offset, path, logId, seg))); 
- xaae: xlog:00001832:  ereport(ERROR, 
- xaae: xlog:00001833:  (errcode_for_file_access(), 
- xaae: xlog:00001834:  errmsg("could not read at offset %u file "%s" (log file %u, segment %u): %m", 
- xaae: xlog:00001835:  offset, path, logId, seg))); 
- xaae: xlog:00002698:  ereport(ERROR, 
- xaae: xlog:00002699:  (errcode_for_file_access(), 
- xaae: xlog:00002700:  errmsg("could not open file "%s" (log file %u, segment %u): %m", 
- xaae: xlog:00002701:  path, log, seg))); 
- xaae: xlog:00002765:  ereport(ERROR, 
- xaae: xlog:00002766:  (errcode_for_file_access(), 
- xaae: xlog:00002767:  errmsg("could not write to file "%s": %m", tmppath))); 
- xaae: xlog:00002843:  ereport(ERROR, 
- xaae: xlog:00002844:  (errcode_for_file_access(), 
- xaae: xlog:00002845:  errmsg("could not open file "%s": %m", path))); 
- xaae: xlog:00002861:  ereport(ERROR, 
- xaae: xlog:00002862:  (errcode_for_file_access(), 
- xaae: xlog:00002863:  errmsg("could not create file "%s": %m", tmppath))); 
- xaae: xlog:00002874:  ereport(ERROR, 
- xaae: xlog:00002875:  (errcode_for_file_access(), 
- xaae: xlog:00002876:  errmsg("could not read file "%s": %m", path))); 
- xaae: xlog:00002878:  ereport(ERROR, 
- xaae: xlog:00002879:  (errmsg("not enough data in file "%s"", path))); 
- xaae: xlog:00002893:  ereport(ERROR, 
- xaae: xlog:00002894:  (errcode_for_file_access(), 
- xaae: xlog:00002895:  errmsg("could not write to file "%s": %m", tmppath))); 
- xaae: xlog:00002900:  ereport(ERROR, 
- xaae: xlog:00002901:  (errcode_for_file_access(), 
- xaae: xlog:00002902:  errmsg("could not fsync file "%s": %m", tmppath))); 
- xaae: xlog:00002905:  ereport(ERROR, 
- xaae: xlog:00002906:  (errcode_for_file_access(), 
- xaae: xlog:00002907:  errmsg("could not close file "%s": %m", tmppath))); 
- xaae: xlog:00003023:  ereport(ERROR, 
- xaae: xlog:00003024:  (errcode_for_file_access(), 
- xaae: xlog:00003025:  errmsg("could not link file "%s" to "%s" (initialization of log file %u, segment %u): %m", 
- xaae: xlog:00003026:  tmppath, path, *log, *seg))); 
- xaae: xlog:00003066:  ereport(ERROR, 
- xaae: xlog:00003067:  (errcode_for_file_access(), 
- xaae: xlog:00003068:  errmsg("could not rename file "%s" to "%s" (initialization of log file %u, segment %u): %m", 
- xaae: xlog:00003069:  tmppath, path, *log, *seg))); 
- xaae: xlog:00003273:  ereport(FATAL, 
- xaae: xlog:00003274:  (errcode_for_file_access(), 
- xaae: xlog:00003275:  errmsg("could not stat file "%s": %m", 
- xaae: xlog:00003276:  xlogpath))); 
- xaae: xlog:00003281:  ereport(FATAL, 
- xaae: xlog:00003282:  (errcode_for_file_access(), 
- xaae: xlog:00003283:  errmsg("could not remove file "%s": %m", 
- xaae: xlog:00003284:  xlogpath))); 
- xaae: xlog:00003357:  ereport(FATAL, 
- xaae: xlog:00003358:  (errmsg("archive file "%s" has wrong size: %lu instead of %lu", 
- xaae: xlog:00003359:  xlogfname, 
- xaae: xlog:00003360:  (unsigned long) stat_buf.st_size, 
- xaae: xlog:00003361:  (unsigned long) expectedSize))); 
- xaae: xlog:00003375:  ereport(FATAL, 
- xaae: xlog:00003376:  (errcode_for_file_access(), 
- xaae: xlog:00003377:  errmsg("could not stat file "%s": %m", 
- xaae: xlog:00003378:  xlogpath))); 
- xaae: xlog:00003480:  ereport(ERROR, 
- xaae: xlog:00003481:  (errcode_for_file_access(), 
- xaae: xlog:00003482:  errmsg("could not open transaction log directory "%s": %m", 
- xaae: xlog:00003483:  XLOGDIR))); 
- xaae: xlog:00003571:  ereport(ERROR, 
- xaae: xlog:00003572:  (errcode_for_file_access(), 
- xaae: xlog:00003573:  errmsg("QDSYNC: could not open standby transaction log directory "%s": %m", 
- xaae: xlog:00003574:  XLOGDIR))); 
- xaae: xlog:00003599:  ereport(WARNING, 
- xaae: xlog:00003600:  (errcode_for_file_access(), 
- xaae: xlog:00003601:  errmsg("QDSYNC: could not unlink standby transaction log file "%s": %m", 
- xaae: xlog:00003602:  xlde->d_name))); 
- xaae: xlog:00003632:  ereport(ERROR, 
- xaae: xlog:00003633:  (errcode_for_file_access(), 
- xaae: xlog:00003634:  errmsg("could not open transaction log directory "%s": %m", 
- xaae: xlog:00003635:  XLOGDIR))); 
- xaae: xlog:00003667:  ereport(ERROR, 
- xaae: xlog:00003668:  (errcode_for_file_access(), 
- xaae: xlog:00003669:  errmsg("could not open transaction log directory "%s": %m", 
- xaae: xlog:00003670:  XLOGDIR))); 
- xaae: xlog:00004389:  ereport(FATAL, 
- xaae: xlog:00004390:  (errcode_for_file_access(), 
- xaae: xlog:00004391:  errmsg("could not open file "%s": %m", path))); 
- xaae: xlog:00004419:  ereport(FATAL, 
- xaae: xlog:00004420:  (errmsg("syntax error in history file: %s", fline), 
- xaae: xlog:00004421:  errhint("Expected a numeric timeline ID."))); 
- xaae: xlog:00004425:  ereport(FATAL, 
- xaae: xlog:00004426:  (errmsg("invalid data in history file: %s", fline), 
- xaae: xlog:00004427:  errhint("Timeline IDs must be in increasing sequence."))); 
- xaae: xlog:00004439:  ereport(FATAL, 
- xaae: xlog:00004440:  (errmsg("invalid data in history file "%s"", path), 
- xaae: xlog:00004441:  errhint("Timeline IDs must be less than child timeline's ID."))); 
- xaae: xlog:00004479:  ereport(FATAL, 
- xaae: xlog:00004480:  (errcode_for_file_access(), 
- xaae: xlog:00004481:  errmsg("could not open file "%s": %m", path))); 
- xaae: xlog:00004558:  ereport(ERROR, 
- xaae: xlog:00004559:  (errcode_for_file_access(), 
- xaae: xlog:00004560:  errmsg("could not create file "%s": %m", tmppath))); 
- xaae: xlog:00004577:  ereport(ERROR, 
- xaae: xlog:00004578:  (errcode_for_file_access(), 
- xaae: xlog:00004579:  errmsg("could not open file "%s": %m", path))); 
- xaae: xlog:00004589:  ereport(ERROR, 
- xaae: xlog:00004590:  (errcode_for_file_access(), 
- xaae: xlog:00004591:  errmsg("could not read file "%s": %m", path))); 
- xaae: xlog:00004610:  ereport(ERROR, 
- xaae: xlog:00004611:  (errcode_for_file_access(), 
- xaae: xlog:00004612:  errmsg("could not write to file "%s": %m", tmppath))); 
- xaae: xlog:00004648:  ereport(ERROR, 
- xaae: xlog:00004649:  (errcode_for_file_access(), 
- xaae: xlog:00004650:  errmsg("could not write to file "%s": %m", tmppath))); 
- xaae: xlog:00004654:  ereport(ERROR, 
- xaae: xlog:00004655:  (errcode_for_file_access(), 
- xaae: xlog:00004656:  errmsg("could not fsync file "%s": %m", tmppath))); 
- xaae: xlog:00004659:  ereport(ERROR, 
- xaae: xlog:00004660:  (errcode_for_file_access(), 
- xaae: xlog:00004661:  errmsg("could not close file "%s": %m", tmppath))); 
- xaae: xlog:00004676:  ereport(ERROR, 
- xaae: xlog:00004677:  (errcode_for_file_access(), 
- xaae: xlog:00004678:  errmsg("could not link file "%s" to "%s": %m", 
- xaae: xlog:00004679:  tmppath, path))); 
- xaae: xlog:00004683:  ereport(ERROR, 
- xaae: xlog:00004684:  (errcode_for_file_access(), 
- xaae: xlog:00004685:  errmsg("could not rename file "%s" to "%s": %m", 
- xaae: xlog:00004686:  tmppath, path))); 
- xaae: xlog:00004886:  ereport(FATAL, 
- xaae: xlog:00004887:  (errmsg("database files are incompatible with server"), 
- xaae: xlog:00004888:  errdetail("The database cluster was initialized with PG_CONTROL_VERSION %d," 
- xaae: xlog:00004889:  " but the server was compiled with PG_CONTROL_VERSION %d.", 
- xaae: xlog:00004890:  ControlFile->pg_control_version, PG_CONTROL_VERSION), 
- xaae: xlog:00004891:  errhint("It looks like you need to initdb."))); 
- xaae: xlog:00004900:  ereport(FATAL, 
- xaae: xlog:00004901:  (errmsg("incorrect checksum in control file"))); 
- xaae: xlog:00004915:  ereport(FATAL, 
- xaae: xlog:00004916:  (errmsg("database files are incompatible with server"), 
- xaae: xlog:00004917:  errdetail("The database cluster was initialized with CATALOG_VERSION_NO %d," 
- xaae: xlog:00004918:  " but the server was compiled with CATALOG_VERSION_NO %d.", 
- xaae: xlog:00004919:  ControlFile->catalog_version_no, CATALOG_VERSION_NO), 
- xaae: xlog:00004920:  errhint("It looks like you need to initdb."))); 
- xaae: xlog:00004922:  ereport(FATAL, 
- xaae: xlog:00004923:  (errmsg("database files are incompatible with server"), 
- xaae: xlog:00004924:  errdetail("The database cluster was initialized with MAXALIGN %d," 
- xaae: xlog:00004925:  " but the server was compiled with MAXALIGN %d.", 
- xaae: xlog:00004926:  ControlFile->maxAlign, MAXIMUM_ALIGNOF), 
- xaae: xlog:00004927:  errhint("It looks like you need to initdb."))); 
- xaae: xlog:00004929:  ereport(FATAL, 
- xaae: xlog:00004930:  (errmsg("database files are incompatible with server"), 
- xaae: xlog:00004931:  errdetail("The database cluster appears to use a different floating-point number format than the server executable."), 
- xaae: xlog:00004932:  errhint("It looks like you need to initdb."))); 
- xaae: xlog:00004934:  ereport(FATAL, 
- xaae: xlog:00004935:  (errmsg("database files are incompatible with server"), 
- xaae: xlog:00004936:  errdetail("The database cluster was initialized with BLCKSZ %d," 
- xaae: xlog:00004937:  " but the server was compiled with BLCKSZ %d.", 
- xaae: xlog:00004938:  ControlFile->blcksz, BLCKSZ), 
- xaae: xlog:00004939:  errhint("It looks like you need to recompile or initdb."))); 
- xaae: xlog:00004941:  ereport(FATAL, 
- xaae: xlog:00004942:  (errmsg("database files are incompatible with server"), 
- xaae: xlog:00004943:  errdetail("The database cluster was initialized with RELSEG_SIZE %d," 
- xaae: xlog:00004944:  " but the server was compiled with RELSEG_SIZE %d.", 
- xaae: xlog:00004945:  ControlFile->relseg_size, RELSEG_SIZE), 
- xaae: xlog:00004946:  errhint("It looks like you need to recompile or initdb."))); 
- xaae: xlog:00004948:  ereport(FATAL, 
- xaae: xlog:00004949:  (errmsg("database files are incompatible with server"), 
- xaae: xlog:00004950:  errdetail("The database cluster was initialized with XLOG_BLCKSZ %d," 
- xaae: xlog:00004951:  " but the server was compiled with XLOG_BLCKSZ %d.", 
- xaae: xlog:00004952:  ControlFile->xlog_blcksz, XLOG_BLCKSZ), 
- xaae: xlog:00004953:  errhint("It looks like you need to recompile or initdb."))); 
- xaae: xlog:00004955:  ereport(FATAL, 
- xaae: xlog:00004956:  (errmsg("database files are incompatible with server"), 
- xaae: xlog:00004957:  errdetail("The database cluster was initialized with XLOG_SEG_SIZE %d," 
- xaae: xlog:00004958:  " but the server was compiled with XLOG_SEG_SIZE %d.", 
- xaae: xlog:00004959:  ControlFile->xlog_seg_size, XLOG_SEG_SIZE), 
- xaae: xlog:00004960:  errhint("It looks like you need to recompile or initdb."))); 
- xaae: xlog:00004962:  ereport(FATAL, 
- xaae: xlog:00004963:  (errmsg("database files are incompatible with server"), 
- xaae: xlog:00004964:  errdetail("The database cluster was initialized with NAMEDATALEN %d," 
- xaae: xlog:00004965:  " but the server was compiled with NAMEDATALEN %d.", 
- xaae: xlog:00004966:  ControlFile->nameDataLen, NAMEDATALEN), 
- xaae: xlog:00004967:  errhint("It looks like you need to recompile or initdb."))); 
- xaae: xlog:00004969:  ereport(FATAL, 
- xaae: xlog:00004970:  (errmsg("database files are incompatible with server"), 
- xaae: xlog:00004971:  errdetail("The database cluster was initialized with INDEX_MAX_KEYS %d," 
- xaae: xlog:00004972:  " but the server was compiled with INDEX_MAX_KEYS %d.", 
- xaae: xlog:00004973:  ControlFile->indexMaxKeys, INDEX_MAX_KEYS), 
- xaae: xlog:00004974:  errhint("It looks like you need to recompile or initdb."))); 
- xaae: xlog:00004978:  ereport(FATAL, 
- xaae: xlog:00004979:  (errmsg("database files are incompatible with server"), 
- xaae: xlog:00004980:  errdetail("The database cluster was initialized without HAVE_INT64_TIMESTAMP" 
- xaae: xlog:00004981:  " but the server was compiled with HAVE_INT64_TIMESTAMP."), 
- xaae: xlog:00004982:  errhint("It looks like you need to recompile or initdb."))); 
- xaae: xlog:00004985:  ereport(FATAL, 
- xaae: xlog:00004986:  (errmsg("database files are incompatible with server"), 
- xaae: xlog:00004987:  errdetail("The database cluster was initialized with HAVE_INT64_TIMESTAMP" 
- xaae: xlog:00004988:  " but the server was compiled without HAVE_INT64_TIMESTAMP."), 
- xaae: xlog:00004989:  errhint("It looks like you need to recompile or initdb."))); 
- xaae: xlog:00004993:  ereport(FATAL, 
- xaae: xlog:00004994:  (errmsg("database files are incompatible with server"), 
- xaae: xlog:00004995:  errdetail("The database cluster was initialized with LOCALE_NAME_BUFLEN %d," 
- xaae: xlog:00004996:  " but the server was compiled with LOCALE_NAME_BUFLEN %d.", 
- xaae: xlog:00004997:  ControlFile->localeBuflen, LOCALE_NAME_BUFLEN), 
- xaae: xlog:00004998:  errhint("It looks like you need to recompile or initdb."))); 
- xaae: xlog:00005000:  ereport(FATAL, 
- xaae: xlog:00005001:  (errmsg("database files are incompatible with operating system"), 
- xaae: xlog:00005002:  errdetail("The database cluster was initialized with LC_COLLATE "%s"," 
- xaae: xlog:00005003:  " which is not recognized by setlocale().", 
- xaae: xlog:00005004:  ControlFile->lc_collate), 
- xaae: xlog:00005005:  errhint("It looks like you need to initdb or install locale support."))); 
- xaae: xlog:00005007:  ereport(FATAL, 
- xaae: xlog:00005008:  (errmsg("database files are incompatible with operating system"), 
- xaae: xlog:00005009:  errdetail("The database cluster was initialized with LC_CTYPE "%s"," 
- xaae: xlog:00005010:  " which is not recognized by setlocale().", 
- xaae: xlog:00005011:  ControlFile->lc_ctype), 
- xaae: xlog:00005012:  errhint("It looks like you need to initdb or install locale support."))); 
- xaae: xlog:00005406:  ereport(FATAL, 
- xaae: xlog:00005407:  (errcode_for_file_access(), 
- xaae: xlog:00005408:  errmsg("could not open recovery command file "%s": %m", 
- xaae: xlog:00005409:  RECOVERY_COMMAND_FILE))); 
- xaae: xlog:00005427:  ereport(FATAL, 
- xaae: xlog:00005428:  (errcode_for_file_access(), 
- xaae: xlog:00005429:  errmsg("could not rename file "%s" to "%s": %m", 
- xaae: xlog:00005430:  RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE))); 
- xaae: xlog:00005458:  ereport(FATAL, 
- xaae: xlog:00005459:  (errcode_for_file_access(), 
- xaae: xlog:00005460:  errmsg("could not open recovery command file "%s": %m", 
- xaae: xlog:00005461:  RECOVERY_COMMAND_FILE))); 
- xaae: xlog:00005523:  ereport(FATAL, 
- xaae: xlog:00005524:  (errmsg("recovery_target_timeline is not a valid number: "%s"", 
- xaae: xlog:00005525:  tok2))); 
- xaae: xlog:00005539:  ereport(FATAL, 
- xaae: xlog:00005540:  (errmsg("recovery_target_xid is not a valid number: "%s"", 
- xaae: xlog:00005541:  tok2))); 
- xaae: xlog:00005588:  ereport(FATAL, 
- xaae: xlog:00005589:  (errmsg("unrecognized recovery parameter "%s"", 
- xaae: xlog:00005590:  tok1))); 
- xaae: xlog:00005596:  ereport(FATAL, 
- xaae: xlog:00005597:  (errmsg("syntax error in recovery command file: %s", 
- xaae: xlog:00005598:  cmdline), 
- xaae: xlog:00005599:  errhint("Lines should have the format parameter = 'value'."))); 
- xaae: xlog:00005603:  ereport(FATAL, 
- xaae: xlog:00005604:  (errmsg("recovery command file "%s" did not specify restore_command", 
- xaae: xlog:00005605:  RECOVERY_COMMAND_FILE))); 
- xaae: xlog:00005622:  ereport(FATAL, 
- xaae: xlog:00005623:  (errmsg("recovery_target_timeline %u does not exist", 
- xaae: xlog:00005624:  rtli))); 
- xaae: xlog:00005689:  ereport(FATAL, 
- xaae: xlog:00005690:  (errcode_for_file_access(), 
- xaae: xlog:00005691:  errmsg("could not rename file "%s" to "%s": %m", 
- xaae: xlog:00005692:  recoveryPath, xlogpath))); 
- xaae: xlog:00005730:  ereport(FATAL, 
- xaae: xlog:00005731:  (errcode_for_file_access(), 
- xaae: xlog:00005732:  errmsg("could not rename file "%s" to "%s": %m", 
- xaae: xlog:00005733:  RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE))); 
- xaae: xlog:00006014:  ereport(FATAL, 
- xaae: xlog:00006015:  (errmsg("control file contains invalid data"))); 
- xaae: xlog:00006026:  ereport(LOG, 
- xaae: xlog:00006027:  (errmsg("database system was interrupted while in recovery at %s", 
- xaae: xlog:00006028:  str_time(ControlFile->time)), 
- xaae: xlog:00006029:  errhint("This probably means that some data is corrupted and" 
- xaae: xlog:00006030:  " you will have to use the last backup for recovery."), 
- xaae: xlog:00006031:  errSendAlert(true))); 
- xaae: xlog:00006033:  ereport(LOG, 
- xaae: xlog:00006034:  (errmsg("database system was interrupted while in recovery at log time %s", 
- xaae: xlog:00006035:  str_time(ControlFile->checkPointCopy.time)), 
- xaae: xlog:00006036:  errhint("If this has occurred more than once some data may be corrupted" 
- xaae: xlog:00006037:  " and you may need to choose an earlier recovery target."), 
- xaae: xlog:00006038:  errSendAlert(true))); 
- xaae: xlog:00006078:  ereport(FATAL, 
- xaae: xlog:00006079:  (errmsg("requested timeline %u is not a child of database system timeline %u", 
- xaae: xlog:00006080:  recoveryTargetTLI, 
- xaae: xlog:00006081:  ControlFile->checkPointCopy.ThisTimeLineID))); 
- xaae: xlog:00006271:  ereport(FATAL, 
- xaae: xlog:00006272:  (errcode_for_file_access(), 
- xaae: xlog:00006273:  errmsg("could not rename file "%s" to "%s": %m", 
- xaae: xlog:00006274:  BACKUP_LABEL_FILE, BACKUP_LABEL_OLD))); 
- xaae: xlog:00006411:  ereport(FATAL, 
- xaae: xlog:00006412:  (errmsg("requested recovery stop point is before end time of backup dump"))); 
- xaae: xlog:00006414:  ereport(FATAL, 
- xaae: xlog:00006415:  (errmsg("WAL ends before end time of backup dump"))); 
- xaae: xlog:00006631:  ereport(ERROR, 
- xaae: xlog:00006632:  (errcode_for_file_access(), 
- xaae: xlog:00006633:  errmsg("could not create redo relation file "%s"", 
- xaae: xlog:00006634:  path))); 
- xaae: xlog:00006652:  ereport(ERROR, 
- xaae: xlog:00006653:  (errcode_for_file_access(), 
- xaae: xlog:00006654:  errmsg("could not open redo relation file "%s"", 
- xaae: xlog:00006655:  path))); 
- xaae: xlog:00006669:  ereport(ERROR, 
- xaae: xlog:00006670:  (errcode_for_file_access(), 
- xaae: xlog:00006671:  errmsg("could not unlink redo relation file "%s": %m", path))); 
- xaae: xlog:00006698:  ereport(FATAL, 
- xaae: xlog:00006699:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
- xaae: xlog:00006797:  ereport(FATAL, 
- xaae: xlog:00006798:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
- xaae: xlog:00006941:  ereport(FATAL, 
- xaae: xlog:00006942:  (errmsg("%s: control file contains invalid data", callerStr))); 
- xaae: xlog:00006988:  ereport(ERROR, 
- xaae: xlog:00006989:  (errmsg("%s: could not locate a valid checkpoint record", callerStr))); 
- xaae: xlog:00007006:  ereport(ERROR, 
- xaae: xlog:00007007:  (errmsg("%s: invalid redo in checkpoint record", callerStr))); 
- xaae: xlog:00007016:  ereport(ERROR, 
- xaae: xlog:00007017:  (errmsg("%s: first redo record before checkpoint not found at %s", 
- xaae: xlog:00007018:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
- xaae: xlog:00007562:  ereport(LOG, 
- xaae: xlog:00007563:  (errmsg("database system is shut down"), 
- xaae: xlog:00007564:  errSendAlert(true),errOmitLocation(true))); 
- xaae: xlog:00008353:  ereport(ERROR, 
- xaae: xlog:00008354:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- xaae: xlog:00008355:  (errmsg("must be superuser to run a backup")))); 
- xaae: xlog:00008358:  ereport(ERROR, 
- xaae: xlog:00008359:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008360:  (errmsg("WAL archiving is not active"), 
- xaae: xlog:00008361:  (errhint("archive_command must be defined before " 
- xaae: xlog:00008362:  "online backups can be made safely."))))); 
- xaae: xlog:00008388:  ereport(ERROR, 
- xaae: xlog:00008389:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008390:  errmsg("a backup is already in progress"), 
- xaae: xlog:00008391:  errhint("Run pg_stop_backup() and try again."))); 
- xaae: xlog:00008436:  ereport(ERROR, 
- xaae: xlog:00008437:  (errcode_for_file_access(), 
- xaae: xlog:00008438:  errmsg("could not stat file "%s": %m", 
- xaae: xlog:00008439:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008442:  ereport(ERROR, 
- xaae: xlog:00008443:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008444:  errmsg("a backup is already in progress"), 
- xaae: xlog:00008445:  errhint("If you're sure there is no backup in progress, remove file "%s" and try again.", 
- xaae: xlog:00008446:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008453:  ereport(ERROR, 
- xaae: xlog:00008454:  (errcode_for_file_access(), 
- xaae: xlog:00008455:  errmsg("could not create file "%s": %m", 
- xaae: xlog:00008456:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008464:  ereport(ERROR, 
- xaae: xlog:00008465:  (errcode_for_file_access(), 
- xaae: xlog:00008466:  errmsg("could not write file "%s": %m", 
- xaae: xlog:00008467:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008519:  ereport(ERROR, 
- xaae: xlog:00008520:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- xaae: xlog:00008521:  (errmsg("must be superuser to run a backup")))); 
- xaae: xlog:00008553:  ereport(ERROR, 
- xaae: xlog:00008554:  (errcode_for_file_access(), 
- xaae: xlog:00008555:  errmsg("could not read file "%s": %m", 
- xaae: xlog:00008556:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008557:  ereport(ERROR, 
- xaae: xlog:00008558:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008559:  errmsg("a backup is not in progress"))); 
- xaae: xlog:00008569:  ereport(ERROR, 
- xaae: xlog:00008570:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008571:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
- xaae: xlog:00008581:  ereport(ERROR, 
- xaae: xlog:00008582:  (errcode_for_file_access(), 
- xaae: xlog:00008583:  errmsg("could not create file "%s": %m", 
- xaae: xlog:00008584:  histfilepath))); 
- xaae: xlog:00008594:  ereport(ERROR, 
- xaae: xlog:00008595:  (errcode_for_file_access(), 
- xaae: xlog:00008596:  errmsg("could not write file "%s": %m", 
- xaae: xlog:00008597:  histfilepath))); 
- xaae: xlog:00008603:  ereport(ERROR, 
- xaae: xlog:00008604:  (errcode_for_file_access(), 
- xaae: xlog:00008605:  errmsg("could not read file "%s": %m", 
- xaae: xlog:00008606:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008608:  ereport(ERROR, 
- xaae: xlog:00008609:  (errcode_for_file_access(), 
- xaae: xlog:00008610:  errmsg("could not remove file "%s": %m", 
- xaae: xlog:00008611:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008641:  ereport(ERROR, 
- xaae: xlog:00008642:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- xaae: xlog:00008643:  (errmsg("must be superuser to switch transaction log files")))); 
- xaae: xlog:00008749:  ereport(ERROR, 
- xaae: xlog:00008750:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- xaae: xlog:00008751:  errmsg("could not parse transaction log location "%s"", 
- xaae: xlog:00008752:  locationstr))); 
- xaae: xlog:00008818:  ereport(ERROR, 
- xaae: xlog:00008819:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- xaae: xlog:00008820:  errmsg("could not parse transaction log location "%s"", 
- xaae: xlog:00008821:  locationstr))); 
- xaae: xlog:00008878:  ereport(FATAL, 
- xaae: xlog:00008879:  (errcode_for_file_access(), 
- xaae: xlog:00008880:  errmsg("could not read file "%s": %m", 
- xaae: xlog:00008881:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008893:  ereport(FATAL, 
- xaae: xlog:00008894:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008895:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
- xaae: xlog:00008899:  ereport(FATAL, 
- xaae: xlog:00008900:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008901:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
- xaae: xlog:00008903:  ereport(FATAL, 
- xaae: xlog:00008904:  (errcode_for_file_access(), 
- xaae: xlog:00008905:  errmsg("could not read file "%s": %m", 
- xaae: xlog:00008906:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008930:  ereport(FATAL, 
- xaae: xlog:00008931:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008932:  errmsg("invalid data in file "%s"", histfilename))); 
- xaae: xlog:00008936:  ereport(FATAL, 
- xaae: xlog:00008937:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008938:  errmsg("invalid data in file "%s"", histfilename))); 
- xaae: xlog:00008941:  ereport(FATAL, 
- xaae: xlog:00008942:  (errcode_for_file_access(), 
- xaae: xlog:00008943:  errmsg("could not read file "%s": %m", 
- xaae: xlog:00008944:  histfilepath))); 
- xaae: xlog:00009198:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
- xaae: xlog:00009199:  errmsg("database 'postgres' does not exist"))); 
+ xaae: xlog:00001782:  ereport(ERROR, 
+ xaae: xlog:00001783:  (errcode_for_file_access(), 
+ xaae: xlog:00001784:  errmsg("could not open transaction log file for catch-up purposes -- it has been reclaimed ("%s")", 
+ xaae: xlog:00001785:  path))); 
+ xaae: xlog:00001787:  ereport(ERROR, 
+ xaae: xlog:00001788:  (errcode_for_file_access(), 
+ xaae: xlog:00001789:  errmsg("could not open transaction log file for catch-up purposes ("%s"): %m", 
+ xaae: xlog:00001790:  path))); 
+ xaae: xlog:00001800:  ereport(ERROR, 
+ xaae: xlog:00001801:  (errcode_for_file_access(), 
+ xaae: xlog:00001802:  errmsg("could not seek to end of file "%s" (log file %u, segment %u): %m", 
+ xaae: xlog:00001803:  path, logId, seg))); 
+ xaae: xlog:00001810:  ereport(ERROR, 
+ xaae: xlog:00001811:  (errcode_for_file_access(), 
+ xaae: xlog:00001812:  errmsg("could not seek to offset %u file "%s" (log file %u, segment %u): %m", 
+ xaae: xlog:00001813:  offset, path, logId, seg))); 
+ xaae: xlog:00001831:  ereport(ERROR, 
+ xaae: xlog:00001832:  (errcode_for_file_access(), 
+ xaae: xlog:00001833:  errmsg("could not read at offset %u file "%s" (log file %u, segment %u): %m", 
+ xaae: xlog:00001834:  offset, path, logId, seg))); 
+ xaae: xlog:00002697:  ereport(ERROR, 
+ xaae: xlog:00002698:  (errcode_for_file_access(), 
+ xaae: xlog:00002699:  errmsg("could not open file "%s" (log file %u, segment %u): %m", 
+ xaae: xlog:00002700:  path, log, seg))); 
+ xaae: xlog:00002764:  ereport(ERROR, 
+ xaae: xlog:00002765:  (errcode_for_file_access(), 
+ xaae: xlog:00002766:  errmsg("could not write to file "%s": %m", tmppath))); 
+ xaae: xlog:00002842:  ereport(ERROR, 
+ xaae: xlog:00002843:  (errcode_for_file_access(), 
+ xaae: xlog:00002844:  errmsg("could not open file "%s": %m", path))); 
+ xaae: xlog:00002860:  ereport(ERROR, 
+ xaae: xlog:00002861:  (errcode_for_file_access(), 
+ xaae: xlog:00002862:  errmsg("could not create file "%s": %m", tmppath))); 
+ xaae: xlog:00002873:  ereport(ERROR, 
+ xaae: xlog:00002874:  (errcode_for_file_access(), 
+ xaae: xlog:00002875:  errmsg("could not read file "%s": %m", path))); 
+ xaae: xlog:00002877:  ereport(ERROR, 
+ xaae: xlog:00002878:  (errmsg("not enough data in file "%s"", path))); 
+ xaae: xlog:00002892:  ereport(ERROR, 
+ xaae: xlog:00002893:  (errcode_for_file_access(), 
+ xaae: xlog:00002894:  errmsg("could not write to file "%s": %m", tmppath))); 
+ xaae: xlog:00002899:  ereport(ERROR, 
+ xaae: xlog:00002900:  (errcode_for_file_access(), 
+ xaae: xlog:00002901:  errmsg("could not fsync file "%s": %m", tmppath))); 
+ xaae: xlog:00002904:  ereport(ERROR, 
+ xaae: xlog:00002905:  (errcode_for_file_access(), 
+ xaae: xlog:00002906:  errmsg("could not close file "%s": %m", tmppath))); 
+ xaae: xlog:00003022:  ereport(ERROR, 
+ xaae: xlog:00003023:  (errcode_for_file_access(), 
+ xaae: xlog:00003024:  errmsg("could not link file "%s" to "%s" (initialization of log file %u, segment %u): %m", 
+ xaae: xlog:00003025:  tmppath, path, *log, *seg))); 
+ xaae: xlog:00003065:  ereport(ERROR, 
+ xaae: xlog:00003066:  (errcode_for_file_access(), 
+ xaae: xlog:00003067:  errmsg("could not rename file "%s" to "%s" (initialization of log file %u, segment %u): %m", 
+ xaae: xlog:00003068:  tmppath, path, *log, *seg))); 
+ xaae: xlog:00003272:  ereport(FATAL, 
+ xaae: xlog:00003273:  (errcode_for_file_access(), 
+ xaae: xlog:00003274:  errmsg("could not stat file "%s": %m", 
+ xaae: xlog:00003275:  xlogpath))); 
+ xaae: xlog:00003280:  ereport(FATAL, 
+ xaae: xlog:00003281:  (errcode_for_file_access(), 
+ xaae: xlog:00003282:  errmsg("could not remove file "%s": %m", 
+ xaae: xlog:00003283:  xlogpath))); 
+ xaae: xlog:00003356:  ereport(FATAL, 
+ xaae: xlog:00003357:  (errmsg("archive file "%s" has wrong size: %lu instead of %lu", 
+ xaae: xlog:00003358:  xlogfname, 
+ xaae: xlog:00003359:  (unsigned long) stat_buf.st_size, 
+ xaae: xlog:00003360:  (unsigned long) expectedSize))); 
+ xaae: xlog:00003374:  ereport(FATAL, 
+ xaae: xlog:00003375:  (errcode_for_file_access(), 
+ xaae: xlog:00003376:  errmsg("could not stat file "%s": %m", 
+ xaae: xlog:00003377:  xlogpath))); 
+ xaae: xlog:00003479:  ereport(ERROR, 
+ xaae: xlog:00003480:  (errcode_for_file_access(), 
+ xaae: xlog:00003481:  errmsg("could not open transaction log directory "%s": %m", 
+ xaae: xlog:00003482:  XLOGDIR))); 
+ xaae: xlog:00003570:  ereport(ERROR, 
+ xaae: xlog:00003571:  (errcode_for_file_access(), 
+ xaae: xlog:00003572:  errmsg("QDSYNC: could not open standby transaction log directory "%s": %m", 
+ xaae: xlog:00003573:  XLOGDIR))); 
+ xaae: xlog:00003598:  ereport(WARNING, 
+ xaae: xlog:00003599:  (errcode_for_file_access(), 
+ xaae: xlog:00003600:  errmsg("QDSYNC: could not unlink standby transaction log file "%s": %m", 
+ xaae: xlog:00003601:  xlde->d_name))); 
+ xaae: xlog:00003631:  ereport(ERROR, 
+ xaae: xlog:00003632:  (errcode_for_file_access(), 
+ xaae: xlog:00003633:  errmsg("could not open transaction log directory "%s": %m", 
+ xaae: xlog:00003634:  XLOGDIR))); 
+ xaae: xlog:00003666:  ereport(ERROR, 
+ xaae: xlog:00003667:  (errcode_for_file_access(), 
+ xaae: xlog:00003668:  errmsg("could not open transaction log directory "%s": %m", 
+ xaae: xlog:00003669:  XLOGDIR))); 
+ xaae: xlog:00004388:  ereport(FATAL, 
+ xaae: xlog:00004389:  (errcode_for_file_access(), 
+ xaae: xlog:00004390:  errmsg("could not open file "%s": %m", path))); 
+ xaae: xlog:00004418:  ereport(FATAL, 
+ xaae: xlog:00004419:  (errmsg("syntax error in history file: %s", fline), 
+ xaae: xlog:00004420:  errhint("Expected a numeric timeline ID."))); 
+ xaae: xlog:00004424:  ereport(FATAL, 
+ xaae: xlog:00004425:  (errmsg("invalid data in history file: %s", fline), 
+ xaae: xlog:00004426:  errhint("Timeline IDs must be in increasing sequence."))); 
+ xaae: xlog:00004438:  ereport(FATAL, 
+ xaae: xlog:00004439:  (errmsg("invalid data in history file "%s"", path), 
+ xaae: xlog:00004440:  errhint("Timeline IDs must be less than child timeline's ID."))); 
+ xaae: xlog:00004478:  ereport(FATAL, 
+ xaae: xlog:00004479:  (errcode_for_file_access(), 
+ xaae: xlog:00004480:  errmsg("could not open file "%s": %m", path))); 
+ xaae: xlog:00004557:  ereport(ERROR, 
+ xaae: xlog:00004558:  (errcode_for_file_access(), 
+ xaae: xlog:00004559:  errmsg("could not create file "%s": %m", tmppath))); 
+ xaae: xlog:00004576:  ereport(ERROR, 
+ xaae: xlog:00004577:  (errcode_for_file_access(), 
+ xaae: xlog:00004578:  errmsg("could not open file "%s": %m", path))); 
+ xaae: xlog:00004588:  ereport(ERROR, 
+ xaae: xlog:00004589:  (errcode_for_file_access(), 
+ xaae: xlog:00004590:  errmsg("could not read file "%s": %m", path))); 
+ xaae: xlog:00004609:  ereport(ERROR, 
+ xaae: xlog:00004610:  (errcode_for_file_access(), 
+ xaae: xlog:00004611:  errmsg("could not write to file "%s": %m", tmppath))); 
+ xaae: xlog:00004647:  ereport(ERROR, 
+ xaae: xlog:00004648:  (errcode_for_file_access(), 
+ xaae: xlog:00004649:  errmsg("could not write to file "%s": %m", tmppath))); 
+ xaae: xlog:00004653:  ereport(ERROR, 
+ xaae: xlog:00004654:  (errcode_for_file_access(), 
+ xaae: xlog:00004655:  errmsg("could not fsync file "%s": %m", tmppath))); 
+ xaae: xlog:00004658:  ereport(ERROR, 
+ xaae: xlog:00004659:  (errcode_for_file_access(), 
+ xaae: xlog:00004660:  errmsg("could not close file "%s": %m", tmppath))); 
+ xaae: xlog:00004675:  ereport(ERROR, 
+ xaae: xlog:00004676:  (errcode_for_file_access(), 
+ xaae: xlog:00004677:  errmsg("could not link file "%s" to "%s": %m", 
+ xaae: xlog:00004678:  tmppath, path))); 
+ xaae: xlog:00004682:  ereport(ERROR, 
+ xaae: xlog:00004683:  (errcode_for_file_access(), 
+ xaae: xlog:00004684:  errmsg("could not rename file "%s" to "%s": %m", 
+ xaae: xlog:00004685:  tmppath, path))); 
+ xaae: xlog:00004885:  ereport(FATAL, 
+ xaae: xlog:00004886:  (errmsg("database files are incompatible with server"), 
+ xaae: xlog:00004887:  errdetail("The database cluster was initialized with PG_CONTROL_VERSION %d," 
+ xaae: xlog:00004888:  " but the server was compiled with PG_CONTROL_VERSION %d.", 
+ xaae: xlog:00004889:  ControlFile->pg_control_version, PG_CONTROL_VERSION), 
+ xaae: xlog:00004890:  errhint("It looks like you need to initdb."))); 
+ xaae: xlog:00004899:  ereport(FATAL, 
+ xaae: xlog:00004900:  (errmsg("incorrect checksum in control file"))); 
+ xaae: xlog:00004914:  ereport(FATAL, 
+ xaae: xlog:00004915:  (errmsg("database files are incompatible with server"), 
+ xaae: xlog:00004916:  errdetail("The database cluster was initialized with CATALOG_VERSION_NO %d," 
+ xaae: xlog:00004917:  " but the server was compiled with CATALOG_VERSION_NO %d.", 
+ xaae: xlog:00004918:  ControlFile->catalog_version_no, CATALOG_VERSION_NO), 
+ xaae: xlog:00004919:  errhint("It looks like you need to initdb."))); 
+ xaae: xlog:00004921:  ereport(FATAL, 
+ xaae: xlog:00004922:  (errmsg("database files are incompatible with server"), 
+ xaae: xlog:00004923:  errdetail("The database cluster was initialized with MAXALIGN %d," 
+ xaae: xlog:00004924:  " but the server was compiled with MAXALIGN %d.", 
+ xaae: xlog:00004925:  ControlFile->maxAlign, MAXIMUM_ALIGNOF), 
+ xaae: xlog:00004926:  errhint("It looks like you need to initdb."))); 
+ xaae: xlog:00004928:  ereport(FATAL, 
+ xaae: xlog:00004929:  (errmsg("database files are incompatible with server"), 
+ xaae: xlog:00004930:  errdetail("The database cluster appears to use a different floating-point number format than the server executable."), 
+ xaae: xlog:00004931:  errhint("It looks like you need to initdb."))); 
+ xaae: xlog:00004933:  ereport(FATAL, 
+ xaae: xlog:00004934:  (errmsg("database files are incompatible with server"), 
+ xaae: xlog:00004935:  errdetail("The database cluster was initialized with BLCKSZ %d," 
+ xaae: xlog:00004936:  " but the server was compiled with BLCKSZ %d.", 
+ xaae: xlog:00004937:  ControlFile->blcksz, BLCKSZ), 
+ xaae: xlog:00004938:  errhint("It looks like you need to recompile or initdb."))); 
+ xaae: xlog:00004940:  ereport(FATAL, 
+ xaae: xlog:00004941:  (errmsg("database files are incompatible with server"), 
+ xaae: xlog:00004942:  errdetail("The database cluster was initialized with RELSEG_SIZE %d," 
+ xaae: xlog:00004943:  " but the server was compiled with RELSEG_SIZE %d.", 
+ xaae: xlog:00004944:  ControlFile->relseg_size, RELSEG_SIZE), 
+ xaae: xlog:00004945:  errhint("It looks like you need to recompile or initdb."))); 
+ xaae: xlog:00004947:  ereport(FATAL, 
+ xaae: xlog:00004948:  (errmsg("database files are incompatible with server"), 
+ xaae: xlog:00004949:  errdetail("The database cluster was initialized with XLOG_BLCKSZ %d," 
+ xaae: xlog:00004950:  " but the server was compiled with XLOG_BLCKSZ %d.", 
+ xaae: xlog:00004951:  ControlFile->xlog_blcksz, XLOG_BLCKSZ), 
+ xaae: xlog:00004952:  errhint("It looks like you need to recompile or initdb."))); 
+ xaae: xlog:00004954:  ereport(FATAL, 
+ xaae: xlog:00004955:  (errmsg("database files are incompatible with server"), 
+ xaae: xlog:00004956:  errdetail("The database cluster was initialized with XLOG_SEG_SIZE %d," 
+ xaae: xlog:00004957:  " but the server was compiled with XLOG_SEG_SIZE %d.", 
+ xaae: xlog:00004958:  ControlFile->xlog_seg_size, XLOG_SEG_SIZE), 
+ xaae: xlog:00004959:  errhint("It looks like you need to recompile or initdb."))); 
+ xaae: xlog:00004961:  ereport(FATAL, 
+ xaae: xlog:00004962:  (errmsg("database files are incompatible with server"), 
+ xaae: xlog:00004963:  errdetail("The database cluster was initialized with NAMEDATALEN %d," 
+ xaae: xlog:00004964:  " but the server was compiled with NAMEDATALEN %d.", 
+ xaae: xlog:00004965:  ControlFile->nameDataLen, NAMEDATALEN), 
+ xaae: xlog:00004966:  errhint("It looks like you need to recompile or initdb."))); 
+ xaae: xlog:00004968:  ereport(FATAL, 
+ xaae: xlog:00004969:  (errmsg("database files are incompatible with server"), 
+ xaae: xlog:00004970:  errdetail("The database cluster was initialized with INDEX_MAX_KEYS %d," 
+ xaae: xlog:00004971:  " but the server was compiled with INDEX_MAX_KEYS %d.", 
+ xaae: xlog:00004972:  ControlFile->indexMaxKeys, INDEX_MAX_KEYS), 
+ xaae: xlog:00004973:  errhint("It looks like you need to recompile or initdb."))); 
+ xaae: xlog:00004977:  ereport(FATAL, 
+ xaae: xlog:00004978:  (errmsg("database files are incompatible with server"), 
+ xaae: xlog:00004979:  errdetail("The database cluster was initialized without HAVE_INT64_TIMESTAMP" 
+ xaae: xlog:00004980:  " but the server was compiled with HAVE_INT64_TIMESTAMP."), 
+ xaae: xlog:00004981:  errhint("It looks like you need to recompile or initdb."))); 
+ xaae: xlog:00004984:  ereport(FATAL, 
+ xaae: xlog:00004985:  (errmsg("database files are incompatible with server"), 
+ xaae: xlog:00004986:  errdetail("The database cluster was initialized with HAVE_INT64_TIMESTAMP" 
+ xaae: xlog:00004987:  " but the server was compiled without HAVE_INT64_TIMESTAMP."), 
+ xaae: xlog:00004988:  errhint("It looks like you need to recompile or initdb."))); 
+ xaae: xlog:00004992:  ereport(FATAL, 
+ xaae: xlog:00004993:  (errmsg("database files are incompatible with server"), 
+ xaae: xlog:00004994:  errdetail("The database cluster was initialized with LOCALE_NAME_BUFLEN %d," 
+ xaae: xlog:00004995:  " but the server was compiled with LOCALE_NAME_BUFLEN %d.", 
+ xaae: xlog:00004996:  ControlFile->localeBuflen, LOCALE_NAME_BUFLEN), 
+ xaae: xlog:00004997:  errhint("It looks like you need to recompile or initdb."))); 
+ xaae: xlog:00004999:  ereport(FATAL, 
+ xaae: xlog:00005000:  (errmsg("database files are incompatible with operating system"), 
+ xaae: xlog:00005001:  errdetail("The database cluster was initialized with LC_COLLATE "%s"," 
+ xaae: xlog:00005002:  " which is not recognized by setlocale().", 
+ xaae: xlog:00005003:  ControlFile->lc_collate), 
+ xaae: xlog:00005004:  errhint("It looks like you need to initdb or install locale support."))); 
+ xaae: xlog:00005006:  ereport(FATAL, 
+ xaae: xlog:00005007:  (errmsg("database files are incompatible with operating system"), 
+ xaae: xlog:00005008:  errdetail("The database cluster was initialized with LC_CTYPE "%s"," 
+ xaae: xlog:00005009:  " which is not recognized by setlocale().", 
+ xaae: xlog:00005010:  ControlFile->lc_ctype), 
+ xaae: xlog:00005011:  errhint("It looks like you need to initdb or install locale support."))); 
+ xaae: xlog:00005405:  ereport(FATAL, 
+ xaae: xlog:00005406:  (errcode_for_file_access(), 
+ xaae: xlog:00005407:  errmsg("could not open recovery command file "%s": %m", 
+ xaae: xlog:00005408:  RECOVERY_COMMAND_FILE))); 
+ xaae: xlog:00005426:  ereport(FATAL, 
+ xaae: xlog:00005427:  (errcode_for_file_access(), 
+ xaae: xlog:00005428:  errmsg("could not rename file "%s" to "%s": %m", 
+ xaae: xlog:00005429:  RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE))); 
+ xaae: xlog:00005457:  ereport(FATAL, 
+ xaae: xlog:00005458:  (errcode_for_file_access(), 
+ xaae: xlog:00005459:  errmsg("could not open recovery command file "%s": %m", 
+ xaae: xlog:00005460:  RECOVERY_COMMAND_FILE))); 
+ xaae: xlog:00005522:  ereport(FATAL, 
+ xaae: xlog:00005523:  (errmsg("recovery_target_timeline is not a valid number: "%s"", 
+ xaae: xlog:00005524:  tok2))); 
+ xaae: xlog:00005538:  ereport(FATAL, 
+ xaae: xlog:00005539:  (errmsg("recovery_target_xid is not a valid number: "%s"", 
+ xaae: xlog:00005540:  tok2))); 
+ xaae: xlog:00005587:  ereport(FATAL, 
+ xaae: xlog:00005588:  (errmsg("unrecognized recovery parameter "%s"", 
+ xaae: xlog:00005589:  tok1))); 
+ xaae: xlog:00005595:  ereport(FATAL, 
+ xaae: xlog:00005596:  (errmsg("syntax error in recovery command file: %s", 
+ xaae: xlog:00005597:  cmdline), 
+ xaae: xlog:00005598:  errhint("Lines should have the format parameter = 'value'."))); 
+ xaae: xlog:00005602:  ereport(FATAL, 
+ xaae: xlog:00005603:  (errmsg("recovery command file "%s" did not specify restore_command", 
+ xaae: xlog:00005604:  RECOVERY_COMMAND_FILE))); 
+ xaae: xlog:00005621:  ereport(FATAL, 
+ xaae: xlog:00005622:  (errmsg("recovery_target_timeline %u does not exist", 
+ xaae: xlog:00005623:  rtli))); 
+ xaae: xlog:00005688:  ereport(FATAL, 
+ xaae: xlog:00005689:  (errcode_for_file_access(), 
+ xaae: xlog:00005690:  errmsg("could not rename file "%s" to "%s": %m", 
+ xaae: xlog:00005691:  recoveryPath, xlogpath))); 
+ xaae: xlog:00005729:  ereport(FATAL, 
+ xaae: xlog:00005730:  (errcode_for_file_access(), 
+ xaae: xlog:00005731:  errmsg("could not rename file "%s" to "%s": %m", 
+ xaae: xlog:00005732:  RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE))); 
+ xaae: xlog:00006013:  ereport(FATAL, 
+ xaae: xlog:00006014:  (errmsg("control file contains invalid data"))); 
+ xaae: xlog:00006025:  ereport(LOG, 
+ xaae: xlog:00006026:  (errmsg("database system was interrupted while in recovery at %s", 
+ xaae: xlog:00006027:  str_time(ControlFile->time)), 
+ xaae: xlog:00006028:  errhint("This probably means that some data is corrupted and" 
+ xaae: xlog:00006029:  " you will have to use the last backup for recovery."), 
+ xaae: xlog:00006030:  errSendAlert(true))); 
+ xaae: xlog:00006032:  ereport(LOG, 
+ xaae: xlog:00006033:  (errmsg("database system was interrupted while in recovery at log time %s", 
+ xaae: xlog:00006034:  str_time(ControlFile->checkPointCopy.time)), 
+ xaae: xlog:00006035:  errhint("If this has occurred more than once some data may be corrupted" 
+ xaae: xlog:00006036:  " and you may need to choose an earlier recovery target."), 
+ xaae: xlog:00006037:  errSendAlert(true))); 
+ xaae: xlog:00006077:  ereport(FATAL, 
+ xaae: xlog:00006078:  (errmsg("requested timeline %u is not a child of database system timeline %u", 
+ xaae: xlog:00006079:  recoveryTargetTLI, 
+ xaae: xlog:00006080:  ControlFile->checkPointCopy.ThisTimeLineID))); 
+ xaae: xlog:00006270:  ereport(FATAL, 
+ xaae: xlog:00006271:  (errcode_for_file_access(), 
+ xaae: xlog:00006272:  errmsg("could not rename file "%s" to "%s": %m", 
+ xaae: xlog:00006273:  BACKUP_LABEL_FILE, BACKUP_LABEL_OLD))); 
+ xaae: xlog:00006410:  ereport(FATAL, 
+ xaae: xlog:00006411:  (errmsg("requested recovery stop point is before end time of backup dump"))); 
+ xaae: xlog:00006413:  ereport(FATAL, 
+ xaae: xlog:00006414:  (errmsg("WAL ends before end time of backup dump"))); 
+ xaae: xlog:00006630:  ereport(ERROR, 
+ xaae: xlog:00006631:  (errcode_for_file_access(), 
+ xaae: xlog:00006632:  errmsg("could not create redo relation file "%s"", 
+ xaae: xlog:00006633:  path))); 
+ xaae: xlog:00006651:  ereport(ERROR, 
+ xaae: xlog:00006652:  (errcode_for_file_access(), 
+ xaae: xlog:00006653:  errmsg("could not open redo relation file "%s"", 
+ xaae: xlog:00006654:  path))); 
+ xaae: xlog:00006668:  ereport(ERROR, 
+ xaae: xlog:00006669:  (errcode_for_file_access(), 
+ xaae: xlog:00006670:  errmsg("could not unlink redo relation file "%s": %m", path))); 
+ xaae: xlog:00006697:  ereport(FATAL, 
+ xaae: xlog:00006698:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
+ xaae: xlog:00006796:  ereport(FATAL, 
+ xaae: xlog:00006797:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
+ xaae: xlog:00006940:  ereport(FATAL, 
+ xaae: xlog:00006941:  (errmsg("%s: control file contains invalid data", callerStr))); 
+ xaae: xlog:00006987:  ereport(ERROR, 
+ xaae: xlog:00006988:  (errmsg("%s: could not locate a valid checkpoint record", callerStr))); 
+ xaae: xlog:00007005:  ereport(ERROR, 
+ xaae: xlog:00007006:  (errmsg("%s: invalid redo in checkpoint record", callerStr))); 
+ xaae: xlog:00007015:  ereport(ERROR, 
+ xaae: xlog:00007016:  (errmsg("%s: first redo record before checkpoint not found at %s", 
+ xaae: xlog:00007017:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
+ xaae: xlog:00007561:  ereport(LOG, 
+ xaae: xlog:00007562:  (errmsg("database system is shut down"), 
+ xaae: xlog:00007563:  errSendAlert(true),errOmitLocation(true))); 
+ xaae: xlog:00008352:  ereport(ERROR, 
+ xaae: xlog:00008353:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ xaae: xlog:00008354:  (errmsg("must be superuser to run a backup")))); 
+ xaae: xlog:00008357:  ereport(ERROR, 
+ xaae: xlog:00008358:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008359:  (errmsg("WAL archiving is not active"), 
+ xaae: xlog:00008360:  (errhint("archive_command must be defined before " 
+ xaae: xlog:00008361:  "online backups can be made safely."))))); 
+ xaae: xlog:00008387:  ereport(ERROR, 
+ xaae: xlog:00008388:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008389:  errmsg("a backup is already in progress"), 
+ xaae: xlog:00008390:  errhint("Run pg_stop_backup() and try again."))); 
+ xaae: xlog:00008435:  ereport(ERROR, 
+ xaae: xlog:00008436:  (errcode_for_file_access(), 
+ xaae: xlog:00008437:  errmsg("could not stat file "%s": %m", 
+ xaae: xlog:00008438:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008441:  ereport(ERROR, 
+ xaae: xlog:00008442:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008443:  errmsg("a backup is already in progress"), 
+ xaae: xlog:00008444:  errhint("If you're sure there is no backup in progress, remove file "%s" and try again.", 
+ xaae: xlog:00008445:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008452:  ereport(ERROR, 
+ xaae: xlog:00008453:  (errcode_for_file_access(), 
+ xaae: xlog:00008454:  errmsg("could not create file "%s": %m", 
+ xaae: xlog:00008455:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008463:  ereport(ERROR, 
+ xaae: xlog:00008464:  (errcode_for_file_access(), 
+ xaae: xlog:00008465:  errmsg("could not write file "%s": %m", 
+ xaae: xlog:00008466:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008518:  ereport(ERROR, 
+ xaae: xlog:00008519:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ xaae: xlog:00008520:  (errmsg("must be superuser to run a backup")))); 
+ xaae: xlog:00008552:  ereport(ERROR, 
+ xaae: xlog:00008553:  (errcode_for_file_access(), 
+ xaae: xlog:00008554:  errmsg("could not read file "%s": %m", 
+ xaae: xlog:00008555:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008556:  ereport(ERROR, 
+ xaae: xlog:00008557:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008558:  errmsg("a backup is not in progress"))); 
+ xaae: xlog:00008568:  ereport(ERROR, 
+ xaae: xlog:00008569:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008570:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008580:  ereport(ERROR, 
+ xaae: xlog:00008581:  (errcode_for_file_access(), 
+ xaae: xlog:00008582:  errmsg("could not create file "%s": %m", 
+ xaae: xlog:00008583:  histfilepath))); 
+ xaae: xlog:00008593:  ereport(ERROR, 
+ xaae: xlog:00008594:  (errcode_for_file_access(), 
+ xaae: xlog:00008595:  errmsg("could not write file "%s": %m", 
+ xaae: xlog:00008596:  histfilepath))); 
+ xaae: xlog:00008602:  ereport(ERROR, 
+ xaae: xlog:00008603:  (errcode_for_file_access(), 
+ xaae: xlog:00008604:  errmsg("could not read file "%s": %m", 
+ xaae: xlog:00008605:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008607:  ereport(ERROR, 
+ xaae: xlog:00008608:  (errcode_for_file_access(), 
+ xaae: xlog:00008609:  errmsg("could not remove file "%s": %m", 
+ xaae: xlog:00008610:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008640:  ereport(ERROR, 
+ xaae: xlog:00008641:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ xaae: xlog:00008642:  (errmsg("must be superuser to switch transaction log files")))); 
+ xaae: xlog:00008748:  ereport(ERROR, 
+ xaae: xlog:00008749:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ xaae: xlog:00008750:  errmsg("could not parse transaction log location "%s"", 
+ xaae: xlog:00008751:  locationstr))); 
+ xaae: xlog:00008817:  ereport(ERROR, 
+ xaae: xlog:00008818:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ xaae: xlog:00008819:  errmsg("could not parse transaction log location "%s"", 
+ xaae: xlog:00008820:  locationstr))); 
+ xaae: xlog:00008877:  ereport(FATAL, 
+ xaae: xlog:00008878:  (errcode_for_file_access(), 
+ xaae: xlog:00008879:  errmsg("could not read file "%s": %m", 
+ xaae: xlog:00008880:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008892:  ereport(FATAL, 
+ xaae: xlog:00008893:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008894:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008898:  ereport(FATAL, 
+ xaae: xlog:00008899:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008900:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008902:  ereport(FATAL, 
+ xaae: xlog:00008903:  (errcode_for_file_access(), 
+ xaae: xlog:00008904:  errmsg("could not read file "%s": %m", 
+ xaae: xlog:00008905:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008929:  ereport(FATAL, 
+ xaae: xlog:00008930:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008931:  errmsg("invalid data in file "%s"", histfilename))); 
+ xaae: xlog:00008935:  ereport(FATAL, 
+ xaae: xlog:00008936:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008937:  errmsg("invalid data in file "%s"", histfilename))); 
+ xaae: xlog:00008940:  ereport(FATAL, 
+ xaae: xlog:00008941:  (errcode_for_file_access(), 
+ xaae: xlog:00008942:  errmsg("could not read file "%s": %m", 
+ xaae: xlog:00008943:  histfilepath))); 
+ xaae: xlog:00009197:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ xaae: xlog:00009198:  errmsg("database 'postgres' does not exist"))); 
  xaah: xlogloc:00000060:  ereport(ERROR, 
  xaah: xlogloc:00000061:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000062:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
@@ -18282,6 +18297,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000076:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000077:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000078:  str))); 
-(18215 rows)
+(18230 rows)
 
 drop external table get_ereport;

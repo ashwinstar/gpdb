@@ -1030,7 +1030,8 @@ typedef enum ObjectType
 	OBJECT_TABLESPACE,
 	OBJECT_TRIGGER,
 	OBJECT_TYPE,
-	OBJECT_VIEW
+	OBJECT_VIEW,
+	OBJECT_RESQUEUE
 } ObjectType;
 
 /* ----------------------

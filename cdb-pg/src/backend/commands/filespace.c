@@ -22,6 +22,7 @@
 #include "catalog/pg_filespace.h"
 #include "catalog/pg_filespace_entry.h"
 #include "catalog/pg_tablespace.h"
+#include "commands/comment.h"
 #include "commands/filespace.h"
 #include "storage/fd.h"
 #include "utils/acl.h"
@@ -497,7 +498,14 @@ RemoveFileSpace(List *names, DropBehavior behavior, bool missing_ok)
 	object.objectSubId = 0;
 	performDeletion(&object, DROP_RESTRICT);
 
-	/* Keep the lock until commit/abort */
+	/*
+	 * Remove any comments on this filespace
+	 */
+	DeleteSharedComments(fsoid, FileSpaceRelationId);
+
+	/* 
+	 * Keep the lock until commit/abort 
+	 */
 	heap_close(rel, NoLock);
 
 	/* 

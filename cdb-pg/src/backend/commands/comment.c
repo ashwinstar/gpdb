@@ -23,12 +23,14 @@
 #include "catalog/pg_conversion.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_description.h"
+#include "catalog/pg_filespace.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_largeobject.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_resqueue.h"
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_shdescription.h"
 #include "catalog/pg_tablespace.h"
@@ -36,6 +38,7 @@
 #include "catalog/pg_type.h"
 #include "commands/comment.h"
 #include "commands/dbcommands.h"
+#include "commands/filespace.h"
 #include "commands/tablespace.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -76,8 +79,9 @@ static void CommentOpClass(List *qualname, List *arguments, char *comment);
 static void CommentLargeObject(List *qualname, char *comment);
 static void CommentCast(List *qualname, List *arguments, char *comment);
 static void CommentTablespace(List *qualname, char *comment);
+static void CommentFilespace(List *qualname, char *comment);
 static void CommentRole(List *qualname, char *comment);
-
+static void CommentResourceQueue(List *qualname, char *comment);
 
 /*
  * CommentObject --
@@ -144,8 +148,14 @@ CommentObject(CommentStmt *stmt)
 		case OBJECT_TABLESPACE:
 			CommentTablespace(stmt->objname, stmt->comment);
 			break;
+		case OBJECT_FILESPACE:
+			CommentFilespace(stmt->objname, stmt->comment);
+			break;
 		case OBJECT_ROLE:
 			CommentRole(stmt->objname, stmt->comment);
+			break;
+		case OBJECT_RESQUEUE:
+			CommentResourceQueue(stmt->objname, stmt->comment);
 			break;
 		default:
 			elog(ERROR, "unrecognized object type: %d",
@@ -646,6 +656,47 @@ CommentTablespace(List *qualname, char *comment)
 
 	/* Call CreateSharedComments() to create/drop the comments */
 	CreateSharedComments(oid, TableSpaceRelationId, comment);
+}
+
+/*
+ * CommentFilespace --
+ *
+ * This routine is used to add/drop any user-comments a user might
+ * have regarding a filespace.  The filespace is specified by name
+ * and, if found, and the user has appropriate permissions, a
+ * comment will be added/dropped using the CreateSharedComments() routine.
+ *
+ */
+static void
+CommentFilespace(List *qualname, char *comment)
+{
+	Relation    rel;
+	char	   *filespace;
+	Oid			oid;
+
+	if (list_length(qualname) != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("filespace name may not be qualified")));
+	filespace = strVal(linitial(qualname));
+
+	rel = heap_open(FileSpaceRelationId, RowShareLock);
+	oid = get_filespace_oid(rel, filespace);
+	heap_close(rel, RowShareLock);
+	if (!OidIsValid(oid))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("filespace \"%s\" does not exist", filespace)));
+		return;
+	}
+
+	/* Check object security */
+	if (!pg_filespace_ownercheck(oid, GetUserId()))
+		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_FILESPACE, filespace);
+
+	/* Call CreateSharedComments() to create/drop the comments */
+	CreateSharedComments(oid, FileSpaceRelationId, comment);
 }
 
 /*
@@ -1372,4 +1423,61 @@ CommentCast(List *qualname, List *arguments, char *comment)
 
 	/* Call CreateComments() to create/drop the comments */
 	CreateComments(castOid, CastRelationId, 0, comment);
+}
+
+
+/*
+ * CommentResourceQueue --
+ *
+ * This routine is used to add/drop any user-comments a user might
+ * have regarding a filespace.  The resource queue is specified by name
+ * and, if found, and the user has appropriate permissions, a
+ * comment will be added/dropped using the CreateSharedComments() routine.
+ *
+ */
+static void
+CommentResourceQueue(List *qualname, char *comment)
+{
+	Relation	 queueRel;
+	char		*queueName;
+	SysScanDesc	 queueScan;
+	ScanKeyData	 key;
+	HeapTuple	 tuple;
+	Oid			 oid = InvalidOid;
+
+	if (list_length(qualname) != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("resource queue name may not be qualified")));
+	queueName = strVal(linitial(qualname));
+
+	queueRel = heap_open(ResQueueRelationId, RowShareLock);
+	ScanKeyInit(&key,
+				Anum_pg_resqueue_rsqname,
+				BTEqualStrategyNumber,
+				F_NAMEEQ,
+				CStringGetDatum(queueName));
+
+	queueScan = systable_beginscan(queueRel, ResQueueRsqnameIndexId, true, 
+								   SnapshotNow, 1, &key);
+	tuple = systable_getnext(queueScan);
+	if (!HeapTupleIsValid(tuple))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("resource queue \"%s\" does not exist", queueName)));
+		return;
+	}
+	oid = HeapTupleGetOid(tuple);
+	systable_endscan(queueScan);
+	heap_close(queueRel, RowShareLock);
+
+	/* Check object security */
+	if (!superuser())
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("must be superuser to comment on resource queue")));
+
+	/* Call CreateSharedComments() to create/drop the comments */
+	CreateSharedComments(oid, ResQueueRelationId, comment);
 }

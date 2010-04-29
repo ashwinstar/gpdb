@@ -22,6 +22,7 @@
 #include "catalog/pg_resqueue.h"
 #include "nodes/makefuncs.h"
 #include "cdb/cdbvars.h"
+#include "commands/comment.h"
 #include "commands/defrem.h"
 #include "commands/queue.h"
 #include "libpq/crypt.h"
@@ -1468,6 +1469,11 @@ DropQueue(DropQueueStmt *stmt)
 	systable_endscan(rsqscan);
 
 	heap_close(pg_resqueue_rel, NoLock);
+
+	/*
+	 * Remove any comments on this resource queue
+	 */
+	DeleteSharedComments(queueid, ResQueueRelationId);
 
 	/* MPP-6929, MPP-7583: metadata tracking */
 	MetaTrackDropObject(ResQueueRelationId,
