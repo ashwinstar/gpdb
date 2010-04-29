@@ -206,8 +206,10 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 													FileRepResync_GetEndFullResyncLSN() :
 													FileRepResync_GetEndIncrResyncLSN());
 						
+						FileRepResync_SetReadBufferRequest();
 						buf = ReadBuffer_ResyncEx(smgr_relation, 
 										 blkno);
+						FileRepResync_ResetReadBufferRequest();
 						
 						LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 						page = BufferGetPage(buf);
@@ -276,9 +278,13 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 													   &entry->mirrorBufpoolResyncCkptLoc,   //beginIncrResyncLSN,
 													   &endResyncLSN);
 					}
-				
+					
+					/* allow flushing buffers from buffer pool during scan */
+					FileRepResync_SetReadBufferRequest();
 					if ((result = ChangeTracking_GetChanges(request)) != NULL) 
 					{
+						FileRepResync_ResetReadBufferRequest();
+
 #ifdef FILEREP_DEBUG
 						elog(LOG, "FileRepPrimary_ResyncWrite() relfilenode:'%u/%u/%u' ",
 							 result->entries[0].relFileNode.spcNode,
@@ -333,9 +339,12 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 								
 								continue;
 							}
-								
+							
+							/* allow flushing buffers from buffer pool during scan */
+							FileRepResync_SetReadBufferRequest();
 							buf = ReadBuffer_ResyncEx(smgr_relation, 
 											 result->entries[ii].block_num);
+							FileRepResync_ResetReadBufferRequest();
 							
 							Assert(result->entries[ii].block_num < numBlocks);
 							
@@ -415,7 +424,8 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 												   
 					}
 					
-					
+					FileRepResync_ResetReadBufferRequest();
+
 					if (smgr_relation != NULL) 
 					{
 						if (! mirrorDataLossOccurred)

@@ -18,6 +18,7 @@
 #include "utils/palloc.h"
 #include "cdb/cdbfilerepprimary.h"
 #include "cdb/cdbmirroredbufferpool.h"
+#include "cdb/cdbfilerepresyncmanager.h"
 #include "storage/fd.h"
 #include "cdb/cdbpersistenttablespace.h"
 #include "storage/smgr.h"
@@ -319,7 +320,7 @@ void MirroredBufferPool_Open(
 							mirrorDataLossTrackingSessionNum,
 							/* create */ false,
 							/* mirrorOnly */ false,
-							/* copyToMirror */ FileRepPrimary_IsResyncWorker(),
+							/* copyToMirror */ FileRepPrimary_IsResyncWorker() && ! FileRepResync_IsReadBuffer(),
 							primaryError,
 							mirrorDataLossOccurred);
 

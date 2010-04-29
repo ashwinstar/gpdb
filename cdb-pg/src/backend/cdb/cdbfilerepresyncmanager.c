@@ -169,6 +169,9 @@ typedef struct FileRepResyncShmem_s {
 	
 	bool		reCreateRequest;
 	
+	bool		readBufferRequest;
+		/* allow flushing buffers from buffer pool to primary and mirror from resync worker process */
+	
 	slock_t		lock;
 	
 	XLogRecPtr	endFullResyncLSN;
@@ -280,15 +283,27 @@ FileRepResyncManager_SetEndResyncLSN(XLogRecPtr endResyncLSN)
 }
 
 void
+FileRepResync_ResetReCreateRequest(void)
+{
+	fileRepResyncShmem->reCreateRequest = FALSE;
+}
+
+void
 FileRepResync_SetReCreateRequest(void)
 {
 	fileRepResyncShmem->reCreateRequest = TRUE;
 }
 
 void
-FileRepResync_ResetReCreateRequest(void)
+FileRepResync_ResetReadBufferRequest(void)
 {
-	fileRepResyncShmem->reCreateRequest = FALSE;
+	fileRepResyncShmem->readBufferRequest = FALSE;
+}
+
+void
+FileRepResync_SetReadBufferRequest(void)
+{
+	fileRepResyncShmem->readBufferRequest = TRUE;
 }
 
 bool 
@@ -305,6 +320,14 @@ FileRepResync_IsReCreate(void)
 	return((fileRepResyncShmem != NULL)?
 		   (fileRepResyncShmem->reCreateRequest == TRUE &&
 			fileRepProcessType == FileRepProcessTypeResyncManager):false);	
+}
+
+bool
+FileRepResync_IsReadBuffer(void)
+{
+	return((fileRepResyncShmem != NULL)?
+		   (fileRepResyncShmem->readBufferRequest == TRUE &&
+			FileRepPrimary_IsResyncWorker()):false);	
 }
 
 /****************************************************************
@@ -357,6 +380,8 @@ FileRepResync_ShmemInit(void)
 	fileRepResyncShmem->checkpointRequest = FALSE;
 	
 	fileRepResyncShmem->reCreateRequest = FALSE;	
+	
+	fileRepResyncShmem->readBufferRequest = FALSE;
 	
 	SpinLockInit(&fileRepResyncShmem->lock);
 	
@@ -412,6 +437,8 @@ FileRepResync_ShmemReInit(void)
 	fileRepResyncShmem->checkpointRequest = FALSE;
 	
 	fileRepResyncShmem->reCreateRequest = FALSE;	
+	
+	fileRepResyncShmem->readBufferRequest = FALSE;
 	
 	SpinLockInit(&fileRepResyncShmem->lock);
 	

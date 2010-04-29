@@ -217,6 +217,9 @@ void PersistentDatabase_DirIterateInit(void)
 
 	PersistentDatabase_ReleaseDirIterator();
 
+	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
+	// acquire the MirroredLock.
+
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
 	if (!iterateOnShmemExitArmed)
@@ -245,6 +248,9 @@ bool PersistentDatabase_DirIterateNext(
 	Assert(persistentDatabaseSharedData != NULL);
 
 	MemSet(dbDirNode, 0, sizeof(DbDirNode));
+
+	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
+	// acquire the MirroredLock.
 
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
@@ -384,6 +390,8 @@ void PersistentDatabase_MarkCreatePending(
 				/* When true, the XLOG record for this change will be flushed to disk. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	DatabaseDirEntry databaseDirEntry;
 	SharedOidSearchAddResult addResult;
 
@@ -401,7 +409,7 @@ void PersistentDatabase_MarkCreatePending(
 
 	PersistentDatabase_InitScan();
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	databaseDirEntry =
 			(DatabaseDirEntry)
@@ -446,7 +454,7 @@ void PersistentDatabase_MarkCreatePending(
 	*persistentTid = databaseDirEntry->persistentTid;
 	*persistentSerialNum = databaseDirEntry->persistentSerialNum;
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
 void PersistentDatabase_AddCreated(
@@ -462,6 +470,8 @@ void PersistentDatabase_AddCreated(
 				/* When true, the XLOG record for this change will be flushed to disk. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	DatabaseDirEntry databaseDirEntry;
 	SharedOidSearchAddResult addResult;
 
@@ -469,7 +479,7 @@ void PersistentDatabase_AddCreated(
 
 	PersistentDatabase_InitScan();
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	databaseDirEntry =
 			(DatabaseDirEntry)
@@ -513,7 +523,7 @@ void PersistentDatabase_AddCreated(
 
 	*persistentTid = databaseDirEntry->persistentTid;
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
 // -----------------------------------------------------------------------------
@@ -534,6 +544,8 @@ void PersistentDatabase_Created(
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjName fsObjName;
 
 	DatabaseDirEntry databaseDirEntry;
@@ -554,7 +566,7 @@ void PersistentDatabase_Created(
 
 	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	PersistentDatabase_LookupExistingDbDir(
 									dbDirNode,
@@ -577,7 +589,7 @@ void PersistentDatabase_Created(
 
 	databaseDirEntry->state = PersistentFileSysState_Created;
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
 /*
@@ -601,6 +613,8 @@ void PersistentDatabase_MarkDropPending(
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjName fsObjName;
 
 	DatabaseDirEntry databaseDirEntry;
@@ -621,7 +635,7 @@ void PersistentDatabase_MarkDropPending(
 
 	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	PersistentDatabase_LookupExistingDbDir(
 									dbDirNode,
@@ -645,7 +659,7 @@ void PersistentDatabase_MarkDropPending(
 
 	databaseDirEntry->state = PersistentFileSysState_DropPending;
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
 /*
@@ -664,6 +678,8 @@ void PersistentDatabase_MarkAbortingCreate(
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjName fsObjName;
 
 	DatabaseDirEntry databaseDirEntry;
@@ -684,7 +700,7 @@ void PersistentDatabase_MarkAbortingCreate(
 
 	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	PersistentDatabase_LookupExistingDbDir(
 								dbDirNode,
@@ -708,7 +724,7 @@ void PersistentDatabase_MarkAbortingCreate(
 
 	databaseDirEntry->state = PersistentFileSysState_AbortingCreate;
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
 /*
@@ -725,6 +741,8 @@ void PersistentDatabase_Dropped(
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjName fsObjName;
 
 	DatabaseDirEntry databaseDirEntry;
@@ -745,7 +763,7 @@ void PersistentDatabase_Dropped(
 
 	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	PersistentDatabase_LookupExistingDbDir(
 								dbDirNode,
@@ -774,12 +792,14 @@ void PersistentDatabase_Dropped(
 					&persistentDatabaseSharedData->databaseDirSearchTable,
 					&databaseDirEntry->header);
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
 bool PersistentDatabase_DirIsCreated(
 		DbDirNode		*dbDirNode)
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	DatabaseDirEntry databaseDirEntry;
 	bool result;
 
@@ -797,7 +817,7 @@ bool PersistentDatabase_DirIsCreated(
 
 	PersistentDatabase_InitScan();
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	databaseDirEntry =
 			(DatabaseDirEntry)
@@ -815,7 +835,7 @@ bool PersistentDatabase_DirIsCreated(
 				  dbDirNode->tablespace),
 			 PersistentFileSysObjState_Name(databaseDirEntry->state));
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	return result;
 }
@@ -831,6 +851,8 @@ void PersistentDatabase_MarkJustInTimeCreatePending(
 	int64			*persistentSerialNum)
 				
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	DatabaseDirEntry databaseDirEntry;
 
 	SharedOidSearchAddResult addResult;
@@ -849,7 +871,7 @@ void PersistentDatabase_MarkJustInTimeCreatePending(
 
 	PersistentDatabase_InitScan();
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	databaseDirEntry =
 			(DatabaseDirEntry)
@@ -898,7 +920,7 @@ void PersistentDatabase_MarkJustInTimeCreatePending(
 	*persistentTid = databaseDirEntry->persistentTid;
 	*persistentSerialNum = databaseDirEntry->persistentSerialNum;
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 }
 
@@ -915,6 +937,8 @@ void PersistentDatabase_JustInTimeCreated(
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjName fsObjName;
 
 	DatabaseDirEntry databaseDirEntry;
@@ -935,7 +959,7 @@ void PersistentDatabase_JustInTimeCreated(
 
 	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	PersistentDatabase_LookupExistingDbDir(
 								dbDirNode,
@@ -958,7 +982,7 @@ void PersistentDatabase_JustInTimeCreated(
 
 	databaseDirEntry->state = PersistentFileSysState_Created;
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
 /*
@@ -974,6 +998,8 @@ void PersistentDatabase_AbandonJustInTimeCreatePending(
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjName fsObjName;
 
 	DatabaseDirEntry databaseDirEntry;
@@ -994,7 +1020,7 @@ void PersistentDatabase_AbandonJustInTimeCreatePending(
 
 	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	PersistentDatabase_LookupExistingDbDir(
 								dbDirNode,
@@ -1022,7 +1048,7 @@ void PersistentDatabase_AbandonJustInTimeCreatePending(
 					&persistentDatabaseSharedData->databaseDirSearchTable,
 					&databaseDirEntry->header);
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
 

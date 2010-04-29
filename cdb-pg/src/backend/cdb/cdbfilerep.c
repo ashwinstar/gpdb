@@ -483,6 +483,27 @@ FileRep_IpcSignal(PGSemaphoreData sem, int refCount)
 	}	
 }
 
+void
+FileRep_IpcSignalAll(void)
+{
+	int ii;
+	int	jj;
+	
+	for (ii=0; ii < FILEREP_MAX_IPC_ARRAY; ii++)
+	{
+		for (jj=0; jj < fileRepIpcArray[ii]->refCountSemP; jj++)
+		{
+			PGSemaphoreUnlock(&fileRepIpcArray[ii]->semP);
+		}
+		
+		for (jj=0; jj < fileRepIpcArray[ii]->refCountSemC; jj++)
+		{
+			PGSemaphoreUnlock(&fileRepIpcArray[ii]->semC);
+		}		
+	}
+}
+
+
 static FileRepShmem_s *FileRep_ShmemInitOneBuffer(const char *bufferLabel, int shmemSize, int bufSize)
 {
 	bool	foundPtr;
@@ -1565,6 +1586,7 @@ FileRep_ProcessSignals()
     		processExit = true;
     		FileRep_SetState(FileRepStateShutdown);
     		FileRep_SignalChildren(SIGUSR2, false);
+			FileRep_IpcSignalAll();
 		}
 	}
 
@@ -1575,6 +1597,7 @@ FileRep_ProcessSignals()
 		FileRep_SignalChildren(SIGQUIT, false);
 		processExit = true;
 		FileRep_SetState(FileRepStateImmediateShutdown);
+		FileRep_IpcSignalAll();
 	}
 	
 	/*
@@ -1587,6 +1610,7 @@ FileRep_ProcessSignals()
 		FileRep_SignalChildren(SIGQUIT, false);
 		processExit = true;
 		FileRep_SetState(FileRepStateImmediateShutdown);
+		FileRep_IpcSignalAll();
 	}
 	
 	if (childTermination)

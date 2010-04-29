@@ -261,6 +261,8 @@ void PersistentStore_Scan(
 
 	PersistentStoreScanTupleCallback	scanTupleCallback)
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	PersistentStoreScan storeScan;
 
 	ItemPointerData			persistentTid;
@@ -270,7 +272,7 @@ void PersistentStore_Scan(
 
 	values = (Datum*)palloc(storeData->numAttributes * sizeof(Datum));
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	PersistentStore_BeginScan(
 						storeData,
@@ -298,7 +300,7 @@ void PersistentStore_Scan(
 	
 	PersistentStore_EndScan(&storeScan);
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	pfree(values);
 }
@@ -696,8 +698,8 @@ static bool PersistentStore_GetFreeTuple(
 
 	MemSet(freeTid, 0, sizeof(ItemPointerData));
 
-	if (Debug_persistent_recovery_print)
-		elog(Debug_persistent_recovery_print_level, 
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
 			 "PersistentStore_GetFreeTuple: Enter: maximum free order number " INT64_FORMAT ", free TID %s",
 			 storeSharedData->maxFreeOrderNum, 
 			 ItemPointerToString2(&storeSharedData->freeTid));
@@ -750,8 +752,8 @@ static bool PersistentStore_GetFreeTuple(
 
 	heap_freetuple(tupleCopy);
 
-	if (Debug_persistent_recovery_print)
-		elog(Debug_persistent_recovery_print_level, 
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
 			 "PersistentStore_GetFreeTuple: Exit: maximum free order number " INT64_FORMAT ", free TID %s (token %d)",
 			 storeSharedData->maxFreeOrderNum, 
 			 ItemPointerToString2(&storeSharedData->freeTid),

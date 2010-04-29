@@ -86,6 +86,12 @@ extern void FileRepResync_SetReCreateRequest(void);
 
 extern void FileRepResync_ResetReCreateRequest(void);
 
+extern bool FileRepResync_IsReadBuffer(void);
+
+extern void FileRepResync_ResetReadBufferRequest(void);
+
+extern void FileRepResync_SetReadBufferRequest(void);
+
 extern void FileRepResyncManager_ResyncFlatFiles(void);
 
 #endif  /* CDBFILEREPRESYNCMANAGER_H */

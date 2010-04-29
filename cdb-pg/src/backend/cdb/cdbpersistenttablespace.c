@@ -181,6 +181,9 @@ PersistentTablespace_GetState(
 		return PersistentFileSysState_Created; 
 	}
 
+	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
+	// acquire the MirroredLock.
+
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
 	tablespaceDirEntry = 
@@ -327,6 +330,9 @@ extern void PersistentTablespace_LookupTidAndSerialNum(
 {
 	TablespaceDirEntry tablespaceDirEntry;
 
+	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
+	// acquire the MirroredLock.
+
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
 	tablespaceDirEntry = 
@@ -412,6 +418,9 @@ void PersistentTablespace_GetPrimaryAndMirrorFilespaces(
 
 	PersistentTablespace_InitScan();
 
+	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
+	// acquire the MirroredLock.
+
 	lockHeldByMe = LWLockHeldByMe(PersistentObjLock);
 
 	/*
@@ -470,6 +479,8 @@ void PersistentTablespace_MarkCreatePending(
 				/* When true, the XLOG record for this change will be flushed to disk. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	TablespaceDirEntry tablespaceDirEntry;
 
 	if (PersistentFileSysObj_BeforePersistenceWork())
@@ -484,7 +495,7 @@ void PersistentTablespace_MarkCreatePending(
 
 	PersistentTablespace_InitScan();
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	tablespaceDirEntry = 
 				PersistentTablespace_CreateEntryUnderLock(
@@ -503,7 +514,7 @@ void PersistentTablespace_MarkCreatePending(
 	*persistentTid = tablespaceDirEntry->persistentTid;
 	*persistentSerialNum = tablespaceDirEntry->persistentSerialNum;
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
 // -----------------------------------------------------------------------------
@@ -524,6 +535,8 @@ void PersistentTablespace_Created(
 				/* Serial number for the tablespace.	Distinquishes the uses of the tuple. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjName fsObjName;
 
 	TablespaceDirEntry tablespaceDirEntry;
@@ -542,7 +555,7 @@ void PersistentTablespace_Created(
 
 	PersistentFileSysObjName_SetTablespaceDir(&fsObjName,tablespaceOid);
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	tablespaceDirEntry = 
 				PersistentTablespace_FindEntryUnderLock(
@@ -566,7 +579,7 @@ void PersistentTablespace_Created(
 
 	tablespaceDirEntry->state = PersistentFileSysState_Created;
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
 /*
@@ -590,6 +603,8 @@ void PersistentTablespace_MarkDropPending(
 				/* Serial number for the tablespace.	Distinquishes the uses of the tuple. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjName fsObjName;
 
 	TablespaceDirEntry tablespaceDirEntry;
@@ -608,7 +623,7 @@ void PersistentTablespace_MarkDropPending(
 
 	PersistentFileSysObjName_SetTablespaceDir(&fsObjName,tablespaceOid);
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	tablespaceDirEntry = 
 				PersistentTablespace_FindEntryUnderLock(
@@ -633,7 +648,7 @@ void PersistentTablespace_MarkDropPending(
 
 	tablespaceDirEntry->state = PersistentFileSysState_DropPending;
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
 /*
@@ -652,6 +667,8 @@ void PersistentTablespace_MarkAbortingCreate(
 				/* Serial number for the tablespace.	Distinquishes the uses of the tuple. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjName fsObjName;
 
 	TablespaceDirEntry tablespaceDirEntry;
@@ -670,7 +687,7 @@ void PersistentTablespace_MarkAbortingCreate(
 
 	PersistentFileSysObjName_SetTablespaceDir(&fsObjName,tablespaceOid);
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	tablespaceDirEntry = 
 				PersistentTablespace_FindEntryUnderLock(
@@ -694,7 +711,7 @@ void PersistentTablespace_MarkAbortingCreate(
 
 	tablespaceDirEntry->state = PersistentFileSysState_AbortingCreate;
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
 /*
@@ -711,6 +728,8 @@ void PersistentTablespace_Dropped(
 				/* Serial number for the tablespace.	Distinquishes the uses of the tuple. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjName fsObjName;
 
 	TablespaceDirEntry tablespaceDirEntry;
@@ -729,7 +748,7 @@ void PersistentTablespace_Dropped(
 
 	PersistentFileSysObjName_SetTablespaceDir(&fsObjName,tablespaceOid);
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	tablespaceDirEntry = 
 				PersistentTablespace_FindEntryUnderLock(
@@ -756,7 +775,7 @@ void PersistentTablespace_Dropped(
 
 	PersistentTablespace_RemoveEntryUnderLock(tablespaceDirEntry);
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
 // -----------------------------------------------------------------------------

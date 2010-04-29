@@ -1177,8 +1177,7 @@ begin:;
 	 * if in changetracking mode we make a copy of the relevant rdata 
 	 * information to use later in ChangeTracking_AddRecordFromXlog().
 	 */
-	if ((OkToConsiderChangeTrackingLogging && ChangeTracking_ShouldTrackChanges()) ||
-	     Debug_print_xlog_relation_change_info)
+	if (OkToConsiderChangeTrackingLogging && ChangeTracking_ShouldTrackChanges()) 
 	{
 		rdatabuf = ChangeTracking_CopyRdataBuffers(rdata, rmid, info, &rdata_iscopy);
 	}

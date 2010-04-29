@@ -1114,8 +1114,8 @@ InsertGpRelationNodeTuple(
 	memset(values, 0, sizeof(values));
 	memset(nulls, false, sizeof(nulls));
 
-	if (Debug_persistent_recovery_print)
-		elog(Debug_persistent_recovery_print_level, 
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
 			 "InsertGpRelationNodeTuple: Inserting into relation id %u '%s', relfilenode %u, segment file #%d, serial number " INT64_FORMAT ", TID %s",
 			 relationId,
 			 relname,

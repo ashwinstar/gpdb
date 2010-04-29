@@ -242,6 +242,12 @@ extern void FileRep_IpcWait(PGSemaphoreData sem);
  * Unblock 
  */
 extern void FileRep_IpcSignal(PGSemaphoreData sem, int refCount);
+
+/*
+ * Unblock all waiting semaphores
+ */
+extern void FileRep_IpcSignalAll(void);
+
 /*
  * Return the required shared-memory size for this module.
  */

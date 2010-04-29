@@ -331,6 +331,9 @@ extern void PersistentFilespace_LookupTidAndSerialNum(
 {
 	FilespaceDirEntry filespaceDirEntry;
 
+	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
+	// acquire the MirroredLock.
+
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
 	filespaceDirEntry = 
@@ -567,6 +570,10 @@ void PersistentFilespace_GetPrimaryAndMirror(
 				/* The primary filespace directory path.  Return NULL for global and base. 
 				 * Or, returns NULL when mirror not configured. */
 {
+
+	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
+	// acquire the MirroredLock.
+
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
 	PersistentFilespace_GetPrimaryAndMirrorUnderLock(
@@ -619,6 +626,8 @@ void PersistentFilespace_MarkCreatePending(
 				/* When true, the XLOG record for this change will be flushed to disk. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjName fsObjName;
 
 	FilespaceDirEntry filespaceDirEntry;
@@ -637,7 +646,7 @@ void PersistentFilespace_MarkCreatePending(
 
 	PersistentFileSysObjName_SetFilespaceDir(&fsObjName,filespaceOid);
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	filespaceDirEntry = 
 				PersistentFilespace_CreateDirUnderLock(
@@ -665,7 +674,7 @@ void PersistentFilespace_MarkCreatePending(
 	*persistentTid = filespaceDirEntry->persistentTid;
 	*persistentSerialNum = filespaceDirEntry->persistentSerialNum;
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
 // -----------------------------------------------------------------------------
@@ -686,6 +695,8 @@ void PersistentFilespace_Created(
 				/* Serial number for the filespace.	Distinquishes the uses of the tuple. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjName fsObjName;
 
 	FilespaceDirEntry filespaceDirEntry;
@@ -704,7 +715,7 @@ void PersistentFilespace_Created(
 
 	PersistentFileSysObjName_SetFilespaceDir(&fsObjName,filespaceOid);
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	filespaceDirEntry = 
 				PersistentFilespace_FindDirUnderLock(
@@ -728,7 +739,7 @@ void PersistentFilespace_Created(
 
 	filespaceDirEntry->state = PersistentFileSysState_Created;
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
 /*
@@ -752,6 +763,8 @@ void PersistentFilespace_MarkDropPending(
 				/* Serial number for the filespace.	Distinquishes the uses of the tuple. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjName fsObjName;
 
 	FilespaceDirEntry filespaceDirEntry;
@@ -770,7 +783,7 @@ void PersistentFilespace_MarkDropPending(
 
 	PersistentFileSysObjName_SetFilespaceDir(&fsObjName,filespaceOid);
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	filespaceDirEntry = 
 				PersistentFilespace_FindDirUnderLock(
@@ -795,7 +808,7 @@ void PersistentFilespace_MarkDropPending(
 
 	filespaceDirEntry->state = PersistentFileSysState_DropPending;
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
 /*
@@ -814,6 +827,8 @@ void PersistentFilespace_MarkAbortingCreate(
 				/* Serial number for the filespace.	Distinquishes the uses of the tuple. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjName fsObjName;
 
 	FilespaceDirEntry filespaceDirEntry;
@@ -832,7 +847,7 @@ void PersistentFilespace_MarkAbortingCreate(
 
 	PersistentFileSysObjName_SetFilespaceDir(&fsObjName,filespaceOid);
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	filespaceDirEntry = 
 				PersistentFilespace_FindDirUnderLock(
@@ -856,7 +871,7 @@ void PersistentFilespace_MarkAbortingCreate(
 
 	filespaceDirEntry->state = PersistentFileSysState_AbortingCreate;
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
 /*
@@ -873,6 +888,8 @@ void PersistentFilespace_Dropped(
 				/* Serial number for the filespace.	Distinquishes the uses of the tuple. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjName fsObjName;
 
 	FilespaceDirEntry filespaceDirEntry;
@@ -891,7 +908,7 @@ void PersistentFilespace_Dropped(
 
 	PersistentFileSysObjName_SetFilespaceDir(&fsObjName,filespaceOid);
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	filespaceDirEntry = 
 				PersistentFilespace_FindDirUnderLock(
@@ -918,7 +935,7 @@ void PersistentFilespace_Dropped(
 
 	PersistentFilespace_RemoveDirUnderLock(filespaceDirEntry);
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
 // -----------------------------------------------------------------------------

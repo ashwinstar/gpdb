@@ -17,6 +17,7 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "utils/rel.h"
+#include "cdb/cdbfilerepprimary.h"
 
 #define PersistentStoreSharedData_StaticInit {false,0,0,{{0,0},0},{{0,0},0}}
 
@@ -85,6 +86,53 @@ inline static bool PersistentStore_IsZeroTid(
 	
 	return (ItemPointerCompare(testTid, &zeroTid) == 0);
 }
+
+
+#define MIRRORED_LOCK_DECLARE \
+	bool mirroredLockIsHeldByMe = false; \
+	bool specialResyncManagerFlag = false;
+
+#define MIRRORED_LOCK \
+	{ \
+		mirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
+		specialResyncManagerFlag = FileRepPrimary_IsResyncManagerOrWorker(); \
+		\
+		if (!mirroredLockIsHeldByMe && !specialResyncManagerFlag) \
+			LWLockAcquire(MirroredLock , LW_SHARED); \
+	}
+	
+#define MIRRORED_UNLOCK \
+	{ \
+		if (!mirroredLockIsHeldByMe && !specialResyncManagerFlag) \
+			LWLockRelease(MirroredLock); \
+	}
+
+// Helper DEFINEs for MirroredLock within the Persistent state-change modules
+// so we can maintain the lock ordering when calls under the PersistentObjLock
+// access the Buffer Pool:
+//
+//     MirroredLock
+//     PersistentObjLock
+//
+// NOTE: Reading the Buffer Pool must also be covered, since getting a Buffer Pool
+// page may require forcing another page out...
+//
+#define MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE \
+	MIRRORED_LOCK_DECLARE;
+
+#define MIRRORED_PERSISTENTOBJ_ORDERED_LOCK \
+	{ \
+		MIRRORED_LOCK; \
+		\
+		LWLockAcquire(PersistentObjLock , LW_EXCLUSIVE); \
+	}
+	
+#define MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK \
+	{ \
+		LWLockRelease(PersistentObjLock); \
+		\
+		MIRRORED_UNLOCK; \
+	}
 
 
 extern void PersistentStore_InitShared(

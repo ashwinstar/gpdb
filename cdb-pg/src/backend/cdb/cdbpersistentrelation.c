@@ -106,6 +106,9 @@ int64 PersistentRelation_CurrentMaxSerialNum(void)
 
 	int64 value;
 
+	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
+	// acquire the MirroredLock.
+
 	lockHeldByMe = LWLockHeldByMe(PersistentObjLock);
 
 	if (!lockHeldByMe)
@@ -242,6 +245,8 @@ void PersistentRelation_AddCreatePending(
 				/* When true, the XLOG record for this change will be flushed to disk. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjName fsObjName;
 
 	XLogRecPtr mirrorBufpoolResyncCkptLoc;
@@ -275,7 +280,7 @@ void PersistentRelation_AddCreatePending(
 										relFileNode,
 										segmentFileNum);
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	GpPersistentRelationNode_SetDatumValues(
 										values,
@@ -303,7 +308,7 @@ void PersistentRelation_AddCreatePending(
 							persistentTid,
 							serialNum);
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
@@ -345,6 +350,8 @@ void PersistentRelation_AddCreated(
 				/* When true, the XLOG record for this change will be flushed to disk. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjName fsObjName;
 
 	XLogRecPtr mirrorBufpoolResyncCkptLoc;
@@ -367,7 +374,7 @@ void PersistentRelation_AddCreated(
 										relFileNode,
 										segmentFileNum);
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	GpPersistentRelationNode_SetDatumValues(
 										values,
@@ -395,7 +402,7 @@ void PersistentRelation_AddCreated(
 							persistentTid,
 							persistentSerialNum);
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
@@ -429,6 +436,8 @@ void PersistentRelation_Created(
 				/* Serial number for the relation.  Distinquishes the uses of the tuple. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjName fsObjName;
 
 	if(RelFileNode_IsEmpty(relFileNode))
@@ -460,7 +469,7 @@ void PersistentRelation_Created(
 		elog(ERROR, "Persistent '%s' serial number for 'Created' is invalid (0)",
 			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName));
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	PersistentFileSysObj_StateChange(
 								&fsObjName,
@@ -470,7 +479,7 @@ void PersistentRelation_Created(
 								/* flushToXlog */ false,
 								NULL);
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
@@ -503,6 +512,8 @@ void PersistentRelation_MarkDropPending(
 				/* Serial number for the relation.  Distinquishes the uses of the tuple. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjName fsObjName;
 
 	PersistentFileSysState oldState;
@@ -536,7 +547,7 @@ void PersistentRelation_MarkDropPending(
 		elog(ERROR, "Persistent '%s' serial number for mark DROP pending is invalid (0)",
 			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName));
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 	
 	PersistentFileSysObj_StateChange(
 								&fsObjName,
@@ -546,7 +557,7 @@ void PersistentRelation_MarkDropPending(
 								/* flushToXlog */ false,
 								&oldState);
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
@@ -575,6 +586,8 @@ void PersistentRelation_MarkAbortingCreate(
 				/* Serial number for the relation.  Distinquishes the uses of the tuple. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjName fsObjName;
 
 	if(RelFileNode_IsEmpty(relFileNode))
@@ -606,7 +619,7 @@ void PersistentRelation_MarkAbortingCreate(
 		elog(ERROR, "Persistent '%s' serial number for mark DROP pending is invalid (0)",
 			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName));
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 	
 	PersistentFileSysObj_StateChange(
 								&fsObjName,
@@ -616,7 +629,7 @@ void PersistentRelation_MarkAbortingCreate(
 								/* flushToXlog */ false,
 								NULL);
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
@@ -642,6 +655,8 @@ void PersistentRelation_Dropped(
 				/* Serial number for the relation.  Distinquishes the uses of the tuple. */
 
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjName fsObjName;
 
 	PersistentFileSysState oldState;
@@ -675,7 +690,7 @@ void PersistentRelation_Dropped(
 		elog(ERROR, "Persistent '%s' serial number for mark DROP pending is invalid (0)",
 			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName));
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	PersistentFileSysObj_StateChange(
 								&fsObjName,
@@ -685,7 +700,7 @@ void PersistentRelation_Dropped(
 								/* flushToXlog */ false,
 								&oldState);
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 

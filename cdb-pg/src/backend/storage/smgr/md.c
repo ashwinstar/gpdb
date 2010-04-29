@@ -288,8 +288,6 @@ mdcreatetablespacedir(
 	char *primaryFilespaceLocation;
 	char *mirrorFilespaceLocation;
 	char tablespacePath[MAXPGPATH];
-	int  mirrorStatus = FileRepStatusSuccess;
-
 
 	*primaryError = 0;
 	*mirrorDataLossOccurred = false;
@@ -302,19 +300,16 @@ mdcreatetablespacedir(
 	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&
 		!*mirrorDataLossOccurred)
 	{
-		mirrorStatus = FileRepPrimary_MirrorCreate(
-												   FileRep_GetDirTablespaceIdentifier(
-																					  mirrorFilespaceLocation,
-																					  tablespaceOid),
-												   FileRepRelationTypeDir,
-												   TRUE);
-			
-		if (mirrorStatus != FileRepStatusSuccess) 	
+		if (FileRepPrimary_MirrorCreate(
+										FileRep_GetDirTablespaceIdentifier(
+																		   mirrorFilespaceLocation,
+																		   tablespaceOid),
+										FileRepRelationTypeDir,
+										FALSE) != 0) 
 		{
 			*mirrorDataLossOccurred = true;
 			ereport(LOG,
-					(errmsg("ERROR(filerep): could not sent create dbdir to mirror '%s' ",
-					 FileRepStatusToString[mirrorStatus])));
+					(errmsg("ERROR(filerep): could not sent create dbdir to mirror")));
 		}
 	}
 	
@@ -332,20 +327,15 @@ mdcreatetablespacedir(
 	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&
 		!*mirrorDataLossOccurred)
 	{
-		FileRepPrimary_IsOperationCompleted(
-											FileRep_GetDirTablespaceIdentifier(
-																			   mirrorFilespaceLocation,
-																			   tablespaceOid),
-											FileRepRelationTypeDir);
-		
-		mirrorStatus = FileRepPrimary_GetMirrorStatus();
-			
-		if (mirrorStatus != FileRepStatusSuccess) 
+		if (FileRepPrimary_IsOperationCompleted(
+												FileRep_GetDirTablespaceIdentifier(
+																				   mirrorFilespaceLocation,
+																				   tablespaceOid),
+												FileRepRelationTypeDir) == FALSE)	
 		{
 			*mirrorDataLossOccurred = true;
 			ereport(LOG,
-					(errmsg("ERROR(filerep): could not create dbdir on mirror '%s' ",
-					 FileRepStatusToString[mirrorStatus])));	
+					(errmsg("ERROR(filerep): could not create dbdir on mirror ")));	
 		}
 	}
 		

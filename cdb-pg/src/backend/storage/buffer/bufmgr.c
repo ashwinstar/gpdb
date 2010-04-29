@@ -660,14 +660,20 @@ BufferAlloc_Resync(SMgrRelation reln,
 			 * happens to be trying to split the page the first one got from
 			 * StrategyGetBuffer.)
 			 */
-			
-			/*
-			 * Someone else has pinned the buffer, so give it up and loop
-			 * back to get another one.
-			 * Resync Worker does not flush any buffers.
-			 */
-			UnpinBuffer(buf, true, false /* evidently recently used */ );
-			continue;
+			if ( ConditionalAcquireContentLock(buf, LW_SHARED))
+			{
+				FlushBuffer(buf, NULL);
+				ReleaseContentLock(buf);
+			}
+			else
+			{
+				/*
+				 * Someone else has pinned the buffer, so give it up and loop
+				 * back to get another one.
+				 */
+				UnpinBuffer(buf, true, false /* evidently recently used */ );
+				continue;
+			}
 		}
 		
 		/*

@@ -1748,13 +1748,17 @@ PersistentRecovery_CreateRedoRelationEntry(
 
 	if (found)
 	{
+		Assert(createdEntry != NULL);
 		elog(ERROR, 
-			 "Duplicate redo relation entry: %u/%u/%u, serial number " INT64_FORMAT ", TID %s",
+			 "Duplicate redo relation entry: %u/%u/%u, existing serial number " INT64_FORMAT ", existing TID %s, "
+			 "new serial number " INT64_FORMAT ", new TID %s",
 		     redoRelationEntry->relFileNode.spcNode,
 		     redoRelationEntry->relFileNode.dbNode,
 		     redoRelationEntry->relFileNode.relNode,
+			 createdEntry->persistentSerialNum,
+		     ItemPointerToString(&createdEntry->persistentTid),
 		     redoRelationEntry->persistentSerialNum,
-		     ItemPointerToString(&redoRelationEntry->persistentTid));
+		     ItemPointerToString2(&redoRelationEntry->persistentTid));
 	}
 
 	createdEntry->persistentSerialNum = redoRelationEntry->persistentSerialNum;

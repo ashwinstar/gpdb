@@ -37,7 +37,9 @@ static volatile sig_atomic_t stateChangeRequested = false;
 
 /* NOTE configure signaling for stateChangeRequested */
 
-static bool FileRepPrimary_IsMirroringRequired(FileRepRelationType_e fileRepRelationType);
+static bool FileRepPrimary_IsMirroringRequired(
+											   FileRepRelationType_e fileRepRelationType,
+											   FileRepOperation_e	 fileRepOperation);
 
 /****************************************************************
  * SENDER THREAD definitions
@@ -124,7 +126,9 @@ FileRepPrimary_FinishedAppendOnlyCommitWork(int count)
  * to decide about the next action (failover, stop, ...). 
  */
 static bool
-FileRepPrimary_IsMirroringRequired(FileRepRelationType_e fileRepRelationType)
+FileRepPrimary_IsMirroringRequired(
+								   FileRepRelationType_e	fileRepRelationType,
+								   FileRepOperation_e		fileRepOperation)
 {
 	bool	isMirroringRequired = FALSE; 
 	int		report = FALSE;
@@ -189,6 +193,12 @@ FileRepPrimary_IsMirroringRequired(FileRepRelationType_e fileRepRelationType)
 				{
 					isMirroringRequired = TRUE;
 				} else {
+					/* shutdown request has to be let through in order to transition to change tracking */
+					if (FileRep_IsIpcSleep(fileRepOperation))
+					{
+						break;
+					}
+					
 					if (! report) {
 						ereport(LOG,
 								(errmsg("WARNING(filerep): failure is detected in segment mirroring, "
@@ -206,6 +216,12 @@ FileRepPrimary_IsMirroringRequired(FileRepRelationType_e fileRepRelationType)
 					(segmentState == SegmentStateInChangeTrackingTransition &&
 					 fileRepRelationType != FileRepRelationTypeFlatFile))
 				{
+					/* shutdown request has to be let through in order to recover */
+					if (FileRep_IsIpcSleep(fileRepOperation))
+					{
+						break;
+					}
+					
 					pg_usleep(500000L); /* 500 ms */
 					continue;
 				}
@@ -275,7 +291,10 @@ FileRepPrimary_ConstructAndInsertMessage(
 			SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
 		}					
 		
-		FileRepPrimary_IsMirroringRequired(fileRepRelationType);
+		FileRepPrimary_IsMirroringRequired(
+										   fileRepRelationType,
+										   fileRepOperation);
+		
 		return status;
 	}	
 		
@@ -307,8 +326,9 @@ FileRepPrimary_ConstructAndInsertMessage(
 			SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
 		}					
 		
-		FileRepPrimary_IsMirroringRequired(fileRepRelationType);
-		
+		FileRepPrimary_IsMirroringRequired(
+										   fileRepRelationType,
+										   fileRepOperation);
 		return status;
 	}
 		
@@ -436,27 +456,27 @@ FileRepPrimary_MirrorOpen(FileRepIdentifier_u	fileRepIdentifier,
 	descr.open.fileMode = fileMode;
 	descr.open.logicalEof = logicalEof;
 	descr.open.suppressError = suppressError;
-		
-	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
+	
+	if ((fileFlags & O_CREAT) == O_CREAT)
+	{
+		fileRepOperation = FileRepOperationCreateAndOpen;
+	}
+	
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, fileRepOperation))
 	{
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
 			   segmentState != SegmentStateInSyncTransition))
-		{
-			if ((fileFlags & O_CREAT) == O_CREAT)
-			{
-				fileRepOperation = FileRepOperationCreateAndOpen;
-				mirrorCreateAndOpen = TRUE;
-			}
-			
+		{			
 			status = FileRepPrimary_ConstructAndInsertMessage(
 							  fileRepIdentifier,
 							  fileRepRelationType,
 							  fileRepOperation, 
 							  descr);
-			if (status != STATUS_OK)
+			if (fileRepOperation == FileRepOperationCreateAndOpen && 
+				status == STATUS_OK)
 			{
-				mirrorCreateAndOpen = FALSE;
+				mirrorCreateAndOpen = TRUE;
 			}	
 		}
 	}
@@ -495,7 +515,7 @@ FileRepPrimary_MirrorFlush(FileRepIdentifier_u		fileRepIdentifier,
 	
 	FileRepOperationDescription_u descr;
 	
-	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationFlush)) 
 	{
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
@@ -532,7 +552,7 @@ FileRepPrimary_MirrorClose(FileRepIdentifier_u		fileRepIdentifier,
 	
 	FileRepOperationDescription_u descr;
 			
-	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationClose)) 
 	{
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
@@ -570,7 +590,7 @@ FileRepPrimary_MirrorFlushAndClose(FileRepIdentifier_u		fileRepIdentifier,
 	
 	FileRepOperationDescription_u descr;
 
-	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationFlushAndClose)) 
 	{
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
@@ -615,7 +635,7 @@ FileRepPrimary_MirrorTruncate(
 	
 	descr.truncate.position = position;
 	
-	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationTruncate)) 
 	{
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
@@ -658,7 +678,7 @@ int FileRepPrimary_ReconcileXLogEof(
 	
 	descr.reconcile.xLogEof = primaryXLogEof;
 	
-	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) {	
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationReconcileXLogEof)) {	
 		status = FileRepPrimary_ConstructAndInsertMessage(
 								  fileRepIdentifier,
 								  fileRepRelationType,
@@ -684,7 +704,7 @@ int FileRepPrimary_MirrorRename(
 	
 	descr.rename.fileRepIdentifier = newFileRepIdentifier;
 	
-	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationRename)) 
 	{
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
@@ -734,7 +754,7 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 	int							status = STATUS_OK;
 	uint32						spareField;
 
-	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationWrite)) 
 	{
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
@@ -773,7 +793,7 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 					SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
 				}					
 				
-				FileRepPrimary_IsMirroringRequired(fileRepRelationType);
+				FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationWrite);
 
 				break;
 			}
@@ -908,7 +928,7 @@ FileRepPrimary_MirrorCreate(FileRepIdentifier_u		fileRepIdentifier,
 	
 	descr.create.reportStatus = reportStatus;
 
-	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationCreate)) 
 	{
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
@@ -949,7 +969,7 @@ FileRepPrimary_MirrorDrop(FileRepIdentifier_u	fileRepIdentifier,
 	
 	FileRepOperationDescription_u descr;
 			
-	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationDrop)) 
 	{
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
@@ -987,7 +1007,7 @@ FileRepPrimary_MirrorDropFilesFromDir(FileRepIdentifier_u	fileRepIdentifier,
 	
 	FileRepOperationDescription_u descr;
 	
-	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationDropFilesFromDir)) 
 	{
 		status = FileRepPrimary_ConstructAndInsertMessage(
 														  fileRepIdentifier,
@@ -1021,7 +1041,7 @@ FileRepPrimary_MirrorValidation(FileRepIdentifier_u		fileRepIdentifier,
 	
 	FileRepOperationDescription_u descr;
 	
-	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationValidation)) 
 	{
 		status = FileRepPrimary_ConstructAndInsertMessage(
 														  fileRepIdentifier,
@@ -1126,7 +1146,7 @@ FileRepPrimary_MirrorInSyncTransition(void)
 	
 	fileRepIdentifier = FileRep_GetUnknownIdentifier("inSyncTransition");
 	
-	if (FileRepPrimary_IsMirroringRequired(FileRepRelationTypeUnknown)) 
+	if (FileRepPrimary_IsMirroringRequired(FileRepRelationTypeUnknown, FileRepOperationInSyncTransition)) 
 	{
 		status = FileRepPrimary_ConstructAndInsertMessage(
 														  fileRepIdentifier,
@@ -1175,7 +1195,7 @@ FileRepPrimary_MirrorHeartBeat(FileRepConsumerProcIndex_e index)
 	
 	fileRepIdentifier = FileRep_GetUnknownIdentifier("heartBeat");
 	
-	if (FileRepPrimary_IsMirroringRequired(FileRepRelationTypeUnknown)) 
+	if (FileRepPrimary_IsMirroringRequired(FileRepRelationTypeUnknown, FileRepOperationHeartBeat)) 
 	{
 		status = FileRepPrimary_ConstructAndInsertMessage(
 														  fileRepIdentifier,
@@ -1215,7 +1235,7 @@ FileRepPrimary_IsOperationCompleted(
 {
 	bool retval = TRUE;
 	
-	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType)) 
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationNotSpecified)) 
 	{
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
@@ -1239,7 +1259,8 @@ FileRepPrimary_IsOperationCompleted(
 					SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
 				}			
 				
-				FileRepPrimary_IsMirroringRequired(fileRepRelationType);
+				FileRepPrimary_IsMirroringRequired(fileRepRelationType,
+												   FileRepOperationNotSpecified);
 			}
 		}
 	}
