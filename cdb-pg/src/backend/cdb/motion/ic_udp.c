@@ -2325,10 +2325,20 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 				continue;
 			}
 
-			/* Has this connection already received a stop request ?
+			if (pkt.flags & UDPIC_FLAGS_NAK)
+			{
+				/* this packet needs to get retried -- the receiver isn't ready to receive it yet. */
+				elog(DEBUG2, "got NAK; srcpid %d dstpid %d srccontent %d dstcontent %d cmd %d flags 0x%x pktseq %d connseq %d",
+					 pkt.srcPid, pkt.dstPid, pkt.srcContentId, pkt.dstContentId, pkt.icId, pkt.flags, pkt.seq, ackConn->conn_info.seq);
+				continue;
+			}
+
+			/*
+			 * Has this connection already received a stop request ?
 			 * once we processed the first stop request, we are
 			 * waiting for the ack of our ack (which will have EOS
-			 * set). Ignore anything else. */
+			 * set). Ignore anything else.
+			 */
 			if (ackConn->stopRequested)
 			{
 				if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
@@ -2340,14 +2350,6 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 					if (ackConn->activeXmit)
 						ackConn->activeXmit = NULL;
 				}
-				continue;
-			}
-
-			if (pkt.flags & UDPIC_FLAGS_NAK)
-			{
-				/* this packet needs to get retried -- the receiver isn't ready to receive it yet. */
-				elog(DEBUG2, "got NAK; srcpid %d dstpid %d srccontent %d dstcontent %d cmd %d flags 0x%x pktseq %d connseq %d",
-					 pkt.srcPid, pkt.dstPid, pkt.srcContentId, pkt.dstContentId, pkt.icId, pkt.flags, pkt.seq, ackConn->conn_info.seq);
 				continue;
 			}
 
