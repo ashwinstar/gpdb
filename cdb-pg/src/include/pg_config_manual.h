@@ -318,3 +318,10 @@
 #ifndef _DARWIN_C_SOURCE
 #define _DARWIN_C_SOURCE 1
 #endif 
+
+/*
+ * AIX wants this if XOPEN_SOURCE is defined
+ */
+#ifdef _AIX
+#define _ALL_SOURCE
+#endif
