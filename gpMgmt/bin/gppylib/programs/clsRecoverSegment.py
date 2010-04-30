@@ -390,6 +390,7 @@ class GpRecoverSegmentProgram:
         ok = not e
         if not ok:
             logger.error('Failed to shutdown Greenplum Database: segment recovery cannot proceed.')
+            raise Exception("Failed to shutdown GPDB. Segment recovery failed.")
         else:
             logger.info('Successfully shutdown the Greenplum Database')
 
@@ -428,6 +429,7 @@ class GpRecoverSegmentProgram:
         ok = not e
         if not ok:
             logger.error('Failed to bring Greenplum Database up in management mode: segment recovery failed')
+            raise Exception("Failed to start GPDB in management mode.")
         else:
             logger.info('Greenplum Database restarted for configuration update')
 
@@ -502,6 +504,7 @@ class GpRecoverSegmentProgram:
         ok = not e
         if not ok:
             logger.error('Failed to stop Greenplum Database up in management mode: segment recovery failed')
+            raise Exception("Failed to stop GPDB, from management mode.")
         else:
             logger.info('Greenplum Database stopped, preparing for full restart.')
 
@@ -510,6 +513,7 @@ class GpRecoverSegmentProgram:
         ok = not e
         if not ok:
             logger.error('Failed to restart Greenplum Database: segment recovery failed')
+            raise Exception("Failed to restart GPDB.")
         else:
             logger.info('Successfully restarted the Greenplum Database')
 
@@ -544,6 +548,7 @@ class GpRecoverSegmentProgram:
         ok = not e
         if not ok:
             logger.error('gp_mount_agent: failed to relocate mount point %d' % mp_id)
+            raise Exception("Failed to relocate mountpoint for mount id %d" % mp_id)
 
         return 0
 
