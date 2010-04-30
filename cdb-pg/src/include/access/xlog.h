@@ -17,6 +17,26 @@
 #include "storage/buf.h"
 #include "utils/pg_crc.h"
 #include "catalog/pg_control.h"
+#include "utils/relcache.h"
+
+/*
+ * REDO Tracking DEFINEs.
+ */
+#define REDO_PRINT_READ_BUFFER_NOT_FOUND(reln,blkno,buffer,lsn) \
+{ \
+	if (Debug_persistent_recovery_print && !BufferIsValid(buffer)) \
+	{ \
+		xlog_print_redo_read_buffer_not_found(reln, blkno, lsn, PG_FUNCNAME_MACRO); \
+	} \
+}
+
+#define REDO_PRINT_LSN_APPLICATION(reln,blkno,page,lsn) \
+{ \
+	if (Debug_persistent_recovery_print) \
+	{ \
+		xlog_print_redo_lsn_application(reln, blkno, (void*)page, lsn, PG_FUNCNAME_MACRO); \
+	} \
+}
 
 /*
  * The overall layout of an XLOG record is:
@@ -207,5 +227,17 @@ extern int XLogReconcileEofMirror(
 extern int XLogRecoverMirrorControlFile(void);
 extern int XLogAddRecordsToChangeTracking(void);
 extern void XLogInChangeTrackingTransition(void);
+
+extern void xlog_print_redo_read_buffer_not_found(
+		Relation		reln,
+		BlockNumber 	blkno,
+		XLogRecPtr 		lsn,
+		const char		*funcName);
+extern void xlog_print_redo_lsn_application(
+		Relation		reln,
+		BlockNumber 	blkno,
+		void			*page,
+		XLogRecPtr		lsn,
+		const char		*funcName);
 
 #endif   /* XLOG_H */

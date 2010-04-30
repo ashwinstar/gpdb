@@ -17,6 +17,7 @@
 #include "access/heapam.h"
 #include "miscadmin.h"
 #include "utils/memutils.h"
+#include "utils/guc.h"
 
 
 typedef struct
@@ -209,6 +210,7 @@ gistRedoPageUpdateRecord(XLogRecPtr lsn, XLogRecord *record, bool isnewroot)
 
 	reln = XLogOpenRelation(xlrec.data->node);
 	buffer = XLogReadBuffer(reln, xlrec.data->blkno, false);
+	REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xlrec.data->blkno, buffer, lsn);
 	if (!BufferIsValid(buffer))
 		return;
 	page = (Page) BufferGetPage(buffer);
@@ -271,6 +273,7 @@ gistRedoPageDeleteRecord(XLogRecPtr lsn, XLogRecord *record)
 
 	reln = XLogOpenRelation(xldata->node);
 	buffer = XLogReadBuffer(reln, xldata->blkno, false);
+	REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xldata->blkno, buffer, lsn);
 	if (!BufferIsValid(buffer))
 		return;
 

@@ -9063,6 +9063,67 @@ XLogLocationToString5_Long(XLogRecPtr *loc)
 }
 
 
+void xlog_print_redo_read_buffer_not_found(
+	Relation 		reln,
+	BlockNumber 	blkno,
+	XLogRecPtr 		lsn,
+	const char 		*funcName)
+{
+	if (funcName != NULL)
+		elog(Debug_persistent_recovery_print_level, 
+			 "%s redo for %u/%u/%u did not find buffer for block %d (LSN %s)",
+			 funcName,
+			 reln->rd_node.spcNode,
+			 reln->rd_node.dbNode,
+			 reln->rd_node.relNode,
+			 blkno,
+			 XLogLocationToString(&lsn));
+	else
+		elog(Debug_persistent_recovery_print_level, 
+			 "Redo for %u/%u/%u did not find buffer for block %d (LSN %s)",
+			 reln->rd_node.spcNode,
+			 reln->rd_node.dbNode,
+			 reln->rd_node.relNode,
+			 blkno,
+			 XLogLocationToString(&lsn));
+}
+
+void xlog_print_redo_lsn_application(
+	Relation 		reln,
+	BlockNumber 	blkno,
+	void			*pagePtr,
+	XLogRecPtr 		lsn,
+	const char 		*funcName)
+{
+	Page page = (Page)pagePtr;
+	XLogRecPtr	pageCurrentLsn = PageGetLSN(page);
+	bool willApplyChange;
+	
+	willApplyChange = XLByteLT(pageCurrentLsn, lsn);
+	
+	if (funcName != NULL)
+		elog(Debug_persistent_recovery_print_level, 
+			 "%s redo application for %u/%u/%u, block %d, willApplyChange = %s, current LSN %s, change LSN %s",
+			 funcName,
+			 reln->rd_node.spcNode,
+			 reln->rd_node.dbNode,
+			 reln->rd_node.relNode,
+			 blkno,
+			 (willApplyChange ? "true" : "false"),
+			 XLogLocationToString(&pageCurrentLsn),
+			 XLogLocationToString2(&lsn));
+	else
+		elog(Debug_persistent_recovery_print_level, 
+			 "Redo application for %u/%u/%u, block %d, willApplyChange = %s, current LSN %s, change LSN %s",
+			 reln->rd_node.spcNode,
+			 reln->rd_node.dbNode,
+			 reln->rd_node.relNode,
+			 blkno,
+			 (willApplyChange ? "true" : "false"),
+			 XLogLocationToString(&pageCurrentLsn),
+			 XLogLocationToString2(&lsn));
+}
+
 /* ------------------------------------------------------
  *  Startup Process main entry point and signal handlers
  * ------------------------------------------------------

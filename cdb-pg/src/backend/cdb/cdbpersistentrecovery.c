@@ -1496,6 +1496,12 @@ PersistentRecovery_DropType(
 				elog(Debug_persistent_recovery_print_level, 
 				     "Drop REDO: %s", FsObjEntryToString(fsObjEntry));
 
+			if (fsObjType == PersistentFsObjType_RelationFile &&
+				!PersistentFileSysRelStorageMgr_IsValid(fsObjEntry->relStorageMgr))
+				elog(ERROR, "Relation storage manager for persistent '%s' for Crash Recovery is invalid (%d)",
+					 PersistentFileSysObjName_TypeAndObjectName(&fsObjEntry->fsObjName),
+					 fsObjEntry->relStorageMgr);
+			
 			PersistentFileSysObj_DropObject(
 							&fsObjEntry->fsObjName,
 							fsObjEntry->relStorageMgr,

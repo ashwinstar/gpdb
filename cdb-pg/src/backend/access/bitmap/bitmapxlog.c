@@ -16,6 +16,7 @@
 
 #include "access/bitmap.h"
 #include "access/xlogutils.h"
+#include "utils/guc.h"
 
 static void forget_incomplete_insert_bitmapwords(RelFileNode node,
 									 xl_bm_bitmapwords* newWords);
@@ -112,6 +113,7 @@ _bitmap_xlog_newpage(XLogRecPtr lsn, XLogRecord *record)
 	page = BufferGetPage(buffer);
 	Assert(PageIsNew(page));
 
+	REDO_PRINT_LSN_APPLICATION(reln, xlrec->bm_new_blkno, page, lsn);
 	if (XLByteLT(PageGetLSN(page), lsn))
 	{
 		switch (info)
@@ -155,6 +157,7 @@ _bitmap_xlog_insert_lovitem(XLogRecPtr lsn, XLogRecord *record)
 	else
 	{
 		lovBuffer = XLogReadBuffer(reln, xlrec->bm_lov_blkno, false);
+		REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xlrec->bm_lov_blkno, lovBuffer, lsn);
 		if (!BufferIsValid(lovBuffer))
 			return;
 	}
@@ -167,6 +170,7 @@ _bitmap_xlog_insert_lovitem(XLogRecPtr lsn, XLogRecord *record)
 	elog(DEBUG1, "In redo, processing a lovItem: (blockno, offset)=(%d,%d)",
 		 xlrec->bm_lov_blkno, xlrec->bm_lov_offset);
 
+	REDO_PRINT_LSN_APPLICATION(reln, xlrec->bm_lov_blkno, lovPage, lsn);
 	if (XLByteLT(PageGetLSN(lovPage), lsn))
 	{
 		OffsetNumber	newOffset, itemSize;
@@ -205,6 +209,7 @@ _bitmap_xlog_insert_lovitem(XLogRecPtr lsn, XLogRecord *record)
 		{
 			Buffer metabuf = XLogReadBuffer(reln, BM_METAPAGE, false);
 			BMMetaPage metapage;
+			REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, BM_METAPAGE, metabuf, lsn);
 			if (!BufferIsValid(metabuf))
 			{
 				_bitmap_relbuf(lovBuffer);
@@ -252,6 +257,7 @@ _bitmap_xlog_insert_meta(XLogRecPtr lsn, XLogRecord *record)
 	if (PageIsNew(mp))
 		PageInit(mp, BufferGetPageSize(metabuf), 0);
 
+	REDO_PRINT_LSN_APPLICATION(reln, BM_METAPAGE, mp, lsn);
 	if (XLByteLT(PageGetLSN(mp), lsn))
 	{
 		metapage = (BMMetaPage)PageGetContents(mp);
@@ -292,10 +298,12 @@ _bitmap_xlog_insert_bitmap_lastwords(XLogRecPtr lsn,
 		return;
 
 	lovBuffer = XLogReadBuffer(reln, xlrec->bm_lov_blkno, false);
+	REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xlrec->bm_lov_blkno, lovBuffer, lsn);
 	if (BufferIsValid(lovBuffer))
 	{
 		lovPage = BufferGetPage(lovBuffer);
 
+		REDO_PRINT_LSN_APPLICATION(reln, xlrec->bm_lov_blkno, lovPage, lsn);
 		if (XLByteLT(PageGetLSN(lovPage), lsn))
 		{
 			ItemId item = PageGetItemId(lovPage, xlrec->bm_lov_offset);
@@ -353,6 +361,7 @@ _bitmap_xlog_insert_bitmapwords(XLogRecPtr lsn, XLogRecord *record)
 	bitmapPageOpaque =
 		(BMBitmapOpaque)PageGetSpecialPointer(bitmapPage);
 
+	REDO_PRINT_LSN_APPLICATION(reln, xlrec->bm_blkno, bitmapPage, lsn);
 	if (XLByteLT(PageGetLSN(bitmapPage), lsn))
 	{
 		Buffer		lovBuffer;
@@ -406,6 +415,7 @@ _bitmap_xlog_insert_bitmapwords(XLogRecPtr lsn, XLogRecord *record)
 		Assert(bitmapPageOpaque->bm_last_tid_location == xlrec->bm_last_tid);
 
 		lovBuffer = XLogReadBuffer(reln, xlrec->bm_lov_blkno, false);
+		REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xlrec->bm_lov_blkno, lovBuffer, lsn);
 		if (!BufferIsValid(lovBuffer))
 		{
 			_bitmap_relbuf(bitmapBuffer);
@@ -505,6 +515,7 @@ _bitmap_xlog_updateword(XLogRecPtr lsn, XLogRecord *record)
 		 xlrec->bm_hword);
 
 	bitmapBuffer = XLogReadBuffer(reln, xlrec->bm_blkno, false);
+	REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xlrec->bm_blkno, bitmapBuffer, lsn);
 	if (BufferIsValid(bitmapBuffer))
 	{
 		bitmapPage = BufferGetPage(bitmapBuffer);
@@ -512,6 +523,7 @@ _bitmap_xlog_updateword(XLogRecPtr lsn, XLogRecord *record)
 			(BMBitmapOpaque)PageGetSpecialPointer(bitmapPage);
 		bitmap = (BMBitmap) PageGetContentsMaxAligned(bitmapPage);
 
+		REDO_PRINT_LSN_APPLICATION(reln, xlrec->bm_blkno, bitmapPage, lsn);
 		if (XLByteLT(PageGetLSN(bitmapPage), lsn))
 		{
 			Assert(bitmapOpaque->bm_hrl_words_used > xlrec->bm_word_no);
@@ -557,6 +569,7 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
 		 xlrec->bm_second_last_tid, xlrec->bm_next_blkno);
 
 	firstBuffer = XLogReadBuffer(reln, xlrec->bm_first_blkno, false);
+	REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xlrec->bm_first_blkno, firstBuffer, lsn);
 	if (BufferIsValid(firstBuffer))
 	{
 		firstPage = BufferGetPage(firstBuffer);
@@ -564,6 +577,7 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
 			(BMBitmapOpaque)PageGetSpecialPointer(firstPage);
 		firstBitmap = (BMBitmap) PageGetContentsMaxAligned(firstPage);
 
+		REDO_PRINT_LSN_APPLICATION(reln, xlrec->bm_first_blkno, firstPage, lsn);
 		if (XLByteLT(PageGetLSN(firstPage), lsn))
 		{
 			if (xlrec->bm_two_pages)
@@ -611,6 +625,7 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
 				BMLOVItem	lovItem;
 				
 				lovBuffer = XLogReadBuffer(reln, xlrec->bm_lov_blkno, false);
+				REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xlrec->bm_lov_blkno, lovBuffer, lsn);
 				if (!BufferIsValid(lovBuffer))
 				{
 					_bitmap_relbuf(firstBuffer);

@@ -57,6 +57,7 @@
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 #include "storage/freespace.h"
+#include "utils/guc.h"
 
 
 static XLogRecPtr log_heap_update(Relation reln, Buffer oldbuf,
@@ -4079,10 +4080,12 @@ heap_xlog_clean(XLogRecPtr lsn, XLogRecord *record)
 
 	reln = XLogOpenRelation(xlrec->heapnode.node);
 	buffer = XLogReadBuffer(reln, xlrec->block, false);
+	REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xlrec->block, buffer, lsn);
 	if (!BufferIsValid(buffer))
 		return;
 	page = (Page) BufferGetPage(buffer);
 
+	REDO_PRINT_LSN_APPLICATION(reln, xlrec->block, page, lsn);
 	if (XLByteLE(lsn, PageGetLSN(page)))
 	{
 		UnlockReleaseBuffer(buffer);
@@ -4129,10 +4132,12 @@ heap_xlog_freeze(XLogRecPtr lsn, XLogRecord *record)
 
 	reln = XLogOpenRelation(xlrec->heapnode.node);
 	buffer = XLogReadBuffer(reln, xlrec->block, false);
+	REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xlrec->block, buffer, lsn);
 	if (!BufferIsValid(buffer))
 		return;
 	page = (Page) BufferGetPage(buffer);
 
+	REDO_PRINT_LSN_APPLICATION(reln, xlrec->block, page, lsn);
 	if (XLByteLE(lsn, PageGetLSN(page)))
 	{
 		UnlockReleaseBuffer(buffer);
@@ -4208,10 +4213,12 @@ heap_xlog_delete(XLogRecPtr lsn, XLogRecord *record)
 	buffer = XLogReadBuffer(reln,
 							ItemPointerGetBlockNumber(&(xlrec->target.tid)),
 							false);
+	REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, ItemPointerGetBlockNumber(&(xlrec->target.tid)), buffer, lsn);
 	if (!BufferIsValid(buffer))
 		return;
 	page = (Page) BufferGetPage(buffer);
 
+	REDO_PRINT_LSN_APPLICATION(reln, ItemPointerGetBlockNumber(&(xlrec->target.tid)), page, lsn);
 	if (XLByteLE(lsn, PageGetLSN(page)))		/* changes are applied */
 	{
 		UnlockReleaseBuffer(buffer);
@@ -4279,10 +4286,12 @@ heap_xlog_insert(XLogRecPtr lsn, XLogRecord *record)
 		buffer = XLogReadBuffer(reln,
 							 ItemPointerGetBlockNumber(&(xlrec->target.tid)),
 								false);
+		REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, ItemPointerGetBlockNumber(&(xlrec->target.tid)), buffer, lsn);
 		if (!BufferIsValid(buffer))
 			return;
 		page = (Page) BufferGetPage(buffer);
 
+		REDO_PRINT_LSN_APPLICATION(reln, ItemPointerGetBlockNumber(&(xlrec->target.tid)), page, lsn);
 		if (XLByteLE(lsn, PageGetLSN(page)))	/* changes are applied */
 		{
 			UnlockReleaseBuffer(buffer);
@@ -4359,10 +4368,12 @@ heap_xlog_update(XLogRecPtr lsn, XLogRecord *record, bool move)
 	buffer = XLogReadBuffer(reln,
 							ItemPointerGetBlockNumber(&(xlrec->target.tid)),
 							false);
+	REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, ItemPointerGetBlockNumber(&(xlrec->target.tid)), buffer, lsn);
 	if (!BufferIsValid(buffer))
 		goto newt;
 	page = (Page) BufferGetPage(buffer);
 
+	REDO_PRINT_LSN_APPLICATION(reln, ItemPointerGetBlockNumber(&(xlrec->target.tid)), page, lsn);
 	if (XLByteLE(lsn, PageGetLSN(page)))		/* changes are applied */
 	{
 		UnlockReleaseBuffer(buffer);
@@ -4436,10 +4447,12 @@ newt:;
 		buffer = XLogReadBuffer(reln,
 								ItemPointerGetBlockNumber(&(xlrec->newtid)),
 								false);
+		REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, ItemPointerGetBlockNumber(&(xlrec->newtid)), buffer, lsn);
 		if (!BufferIsValid(buffer))
 			return;
 		page = (Page) BufferGetPage(buffer);
 
+		REDO_PRINT_LSN_APPLICATION(reln, ItemPointerGetBlockNumber(&(xlrec->newtid)), page, lsn);
 		if (XLByteLE(lsn, PageGetLSN(page)))	/* changes are applied */
 		{
 			UnlockReleaseBuffer(buffer);
@@ -4520,10 +4533,12 @@ heap_xlog_lock(XLogRecPtr lsn, XLogRecord *record)
 	buffer = XLogReadBuffer(reln,
 							ItemPointerGetBlockNumber(&(xlrec->target.tid)),
 							false);
+	REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, ItemPointerGetBlockNumber(&(xlrec->target.tid)), buffer, lsn);
 	if (!BufferIsValid(buffer))
 		return;
 	page = (Page) BufferGetPage(buffer);
 
+	REDO_PRINT_LSN_APPLICATION(reln, ItemPointerGetBlockNumber(&(xlrec->target.tid)), page, lsn);
 	if (XLByteLE(lsn, PageGetLSN(page)))		/* changes are applied */
 	{
 		UnlockReleaseBuffer(buffer);
@@ -4579,10 +4594,12 @@ heap_xlog_inplace(XLogRecPtr lsn, XLogRecord *record)
 	buffer = XLogReadBuffer(reln,
 							ItemPointerGetBlockNumber(&(xlrec->target.tid)),
 							false);
+	REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, ItemPointerGetBlockNumber(&(xlrec->target.tid)), buffer, lsn);
 	if (!BufferIsValid(buffer))
 		return;
 	page = (Page) BufferGetPage(buffer);
 
+	REDO_PRINT_LSN_APPLICATION(reln, ItemPointerGetBlockNumber(&(xlrec->target.tid)), page, lsn);
 	if (XLByteLE(lsn, PageGetLSN(page)))		/* changes are applied */
 	{
 		UnlockReleaseBuffer(buffer);

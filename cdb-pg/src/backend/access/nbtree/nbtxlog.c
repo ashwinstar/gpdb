@@ -16,6 +16,7 @@
 
 #include "access/nbtree.h"
 #include "access/transam.h"
+#include "utils/guc.h"
 
 /*
  * We must keep track of expected insertions due to page splits, and apply
@@ -225,10 +226,12 @@ btree_xlog_insert(bool isleaf, bool ismeta,
 		buffer = XLogReadBuffer(reln,
 							 ItemPointerGetBlockNumber(&(xlrec->target.tid)),
 								false);
+		REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, ItemPointerGetBlockNumber(&(xlrec->target.tid)), buffer, lsn);
 		if (BufferIsValid(buffer))
 		{
 			page = (Page) BufferGetPage(buffer);
 
+			REDO_PRINT_LSN_APPLICATION(reln, ItemPointerGetBlockNumber(&(xlrec->target.tid)), page, lsn);
 			if (XLByteLE(lsn, PageGetLSN(page)))
 			{
 				UnlockReleaseBuffer(buffer);
@@ -351,10 +354,12 @@ btree_xlog_split(bool onleft, bool isroot,
 		if (xlrec->rightblk != P_NONE)
 		{
 			buffer = XLogReadBuffer(reln, xlrec->rightblk, false);
+			REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xlrec->rightblk, buffer, lsn);
 			if (BufferIsValid(buffer))
 			{
 				page = (Page) BufferGetPage(buffer);
 
+				REDO_PRINT_LSN_APPLICATION(reln, xlrec->rightblk, page, lsn);
 				if (XLByteLE(lsn, PageGetLSN(page)))
 				{
 					UnlockReleaseBuffer(buffer);
@@ -397,10 +402,12 @@ btree_xlog_delete(XLogRecPtr lsn, XLogRecord *record)
 	xlrec = (xl_btree_delete *) XLogRecGetData(record);
 	reln = XLogOpenRelation(xlrec->btreenode.node);
 	buffer = XLogReadBuffer(reln, xlrec->block, false);
+	REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xlrec->block, buffer, lsn);
 	if (!BufferIsValid(buffer))
 		return;
 	page = (Page) BufferGetPage(buffer);
 
+	REDO_PRINT_LSN_APPLICATION(reln, xlrec->block, page, lsn);
 	if (XLByteLE(lsn, PageGetLSN(page)))
 	{
 		UnlockReleaseBuffer(buffer);
@@ -454,10 +461,12 @@ btree_xlog_delete_page(uint8 info, XLogRecPtr lsn, XLogRecord *record)
 	if (!(record->xl_info & XLR_BKP_BLOCK_1))
 	{
 		buffer = XLogReadBuffer(reln, parent, false);
+		REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, parent, buffer, lsn);
 		if (BufferIsValid(buffer))
 		{
 			page = (Page) BufferGetPage(buffer);
 			pageop = (BTPageOpaque) PageGetSpecialPointer(page);
+			REDO_PRINT_LSN_APPLICATION(reln, parent, page, lsn);
 			if (XLByteLE(lsn, PageGetLSN(page)))
 			{
 				UnlockReleaseBuffer(buffer);
@@ -500,9 +509,11 @@ btree_xlog_delete_page(uint8 info, XLogRecPtr lsn, XLogRecord *record)
 	if (!(record->xl_info & XLR_BKP_BLOCK_2))
 	{
 		buffer = XLogReadBuffer(reln, rightsib, false);
+		REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, rightsib, buffer, lsn);
 		if (BufferIsValid(buffer))
 		{
 			page = (Page) BufferGetPage(buffer);
+			REDO_PRINT_LSN_APPLICATION(reln, rightsib, page, lsn);
 			if (XLByteLE(lsn, PageGetLSN(page)))
 			{
 				UnlockReleaseBuffer(buffer);
@@ -526,9 +537,11 @@ btree_xlog_delete_page(uint8 info, XLogRecPtr lsn, XLogRecord *record)
 		if (leftsib != P_NONE)
 		{
 			buffer = XLogReadBuffer(reln, leftsib, false);
+			REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, leftsib, buffer, lsn);
 			if (BufferIsValid(buffer))
 			{
 				page = (Page) BufferGetPage(buffer);
+				REDO_PRINT_LSN_APPLICATION(reln, leftsib, page, lsn);
 				if (XLByteLE(lsn, PageGetLSN(page)))
 				{
 					UnlockReleaseBuffer(buffer);

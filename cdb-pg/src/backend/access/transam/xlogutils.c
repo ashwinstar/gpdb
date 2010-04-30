@@ -497,6 +497,8 @@ XLogOpenRelation(RelFileNode rnode)
 	_xlrelarr[0].lessRecently = res;
 	res->lessRecently->moreRecently = res;
 
+	Assert(&(res->reldata) != NULL);	// Assert what it says in the interface -- we don't return NULL anymore.
+
 	return &(res->reldata);
 }
 

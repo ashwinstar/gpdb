@@ -188,6 +188,12 @@ PersistentEndXactRec_VerifyFsObjs(
 
 	for (i = 0; i < count; i++)
 	{
+		if (!PersistentFsObjType_IsValid(fsObjs[i].fsObjName.type))
+			elog(ERROR, "Persistent file-system object type for file-system %s is invalid (%d) (index %d)",
+				 name,
+				 fsObjs[i].fsObjName.type,
+				 i);
+			
 		if (PersistentStore_IsZeroTid(&fsObjs[i].persistentTid))
 			elog(ERROR, "TID for persistent '%s' tuple for file-system %s is invalid (0,0) (index %d)",
 				 PersistentFileSysObjName_TypeName(fsObjs[i].fsObjName.type),
@@ -198,6 +204,14 @@ PersistentEndXactRec_VerifyFsObjs(
 			elog(ERROR, "Persistent '%s' serial number for file-system %s is invalid (0) (index %d)",
 				 PersistentFileSysObjName_TypeName(fsObjs[i].fsObjName.type),
 				 name,
+				 i);
+
+		if (fsObjs[i].fsObjName.type == PersistentFsObjType_RelationFile &&
+			!PersistentFileSysRelStorageMgr_IsValid(fsObjs[i].relStorageMgr))
+			elog(ERROR, "Persistent '%s' relation storage manager for file-system %s has invalid value (%d) (index %d)",
+				 PersistentFileSysObjName_TypeName(fsObjs[i].fsObjName.type),
+				 name,
+				 fsObjs[i].relStorageMgr,
 				 i);
 	}
 }

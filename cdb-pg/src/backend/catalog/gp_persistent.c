@@ -104,6 +104,10 @@ void GpPersistentRelationNode_SetDatumValues(
 	int64							serialNum,
 	ItemPointerData 				*previousFreeTid)
 {
+	if (persistentState != PersistentFileSysState_Free && !PersistentFileSysRelStorageMgr_IsValid(relationStorageManager))
+		elog(ERROR, "Invalid value for relation storage manager (%d)",
+		     relationStorageManager);
+
 	values[Anum_gp_persistent_relation_node_tablespace_oid - 1] = 
 									ObjectIdGetDatum(tablespaceOid);
 	values[Anum_gp_persistent_relation_node_database_oid - 1] = 

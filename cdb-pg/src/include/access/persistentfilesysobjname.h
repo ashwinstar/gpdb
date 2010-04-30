@@ -26,6 +26,13 @@ typedef enum PersistentFsObjType
 	CountPersistentFsObjType = PersistentFsObjType_Last - PersistentFsObjType_First + 1
 } PersistentFsObjType;
 
+inline static bool PersistentFsObjType_IsValid(
+	PersistentFsObjType	fsObjType)
+{
+	return (fsObjType >= PersistentFsObjType_First &&
+		    fsObjType <= PersistentFsObjType_Last);
+}
+
 typedef union PersistentFileSysObjNameVariant
 {
 	struct rel
@@ -124,6 +131,14 @@ typedef enum PersistentFileSysRelStorageMgr
 	PersistentFileSysRelStorageMgr_AppendOnly = 2,
 	MaxPersistentFileSysRelStorageMgr /* must always be last */
 } PersistentFileSysRelStorageMgr;
+
+inline static bool PersistentFileSysRelStorageMgr_IsValid(
+	PersistentFileSysRelStorageMgr	relStorageMgr)
+{
+	return (relStorageMgr == PersistentFileSysRelStorageMgr_BufferPool ||
+		    relStorageMgr == PersistentFileSysRelStorageMgr_AppendOnly);
+}
+
 
 /*
  * The states of a persistent file-system object.

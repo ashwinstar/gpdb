@@ -16,6 +16,7 @@
 #include "access/gin.h"
 #include "access/heapam.h"
 #include "utils/memutils.h"
+#include "utils/guc.h"
 
 static MemoryContext opCtx;		/* working memory for operations */
 static MemoryContext topCtx;
@@ -135,6 +136,7 @@ ginRedoInsert(XLogRecPtr lsn, XLogRecord *record)
 		Assert(data->isDelete == FALSE);
 		Assert(GinPageIsData(page));
 
+		REDO_PRINT_LSN_APPLICATION(reln, data->blkno, page, lsn);
 		if ( ! XLByteLE(lsn, PageGetLSN(page)) )
 		{
 			if (data->isLeaf)
@@ -180,6 +182,7 @@ ginRedoInsert(XLogRecPtr lsn, XLogRecord *record)
 
 		Assert(!GinPageIsData(page));
 
+		REDO_PRINT_LSN_APPLICATION(reln, data->blkno, page, lsn);
 		if ( ! XLByteLE(lsn, PageGetLSN(page)) )
 		{
 			if (data->updateBlkno != InvalidBlockNumber)

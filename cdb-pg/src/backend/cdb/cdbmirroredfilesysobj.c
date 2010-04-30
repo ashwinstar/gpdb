@@ -1098,7 +1098,6 @@ void MirroredFileSysObj_DropRelFile(
 
 	switch (relStorageMgr)
 	{
-	case PersistentFileSysRelStorageMgr_None:	// UNDONE: Assume.
 	case PersistentFileSysRelStorageMgr_BufferPool:
 		smgrdounlink(
 				relFileNode, 

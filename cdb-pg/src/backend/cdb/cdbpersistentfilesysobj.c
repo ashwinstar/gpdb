@@ -1251,6 +1251,11 @@ void PersistentFileSysObj_DropObject(
 		{
 			RelFileNode *relFileNode = PersistentFileSysObjName_GetRelFileNodePtr(fsObjName);
 			int32 segmentFileNum = PersistentFileSysObjName_GetSegmentFileNum(fsObjName);
+
+			if (!PersistentFileSysRelStorageMgr_IsValid(relStorageMgr))
+				elog(ERROR, "Relation storage manager for persistent '%s' tuple for DROP is invalid (%d)",
+					 PersistentFileSysObjName_TypeName(fsObjName->type),
+					 relStorageMgr);
 			
 			MirroredFileSysObj_DropRelFile(
 								relFileNode,
