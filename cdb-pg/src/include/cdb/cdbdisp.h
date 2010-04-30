@@ -132,14 +132,15 @@ typedef struct DispatchCommandParms
 	Oid			currUserId;
 	bool		sessUserId_is_super;
 	bool		outerUserId_is_super;
-	
-	
+
 	/*
 	 * dispatchResultPtrArray: Array[0..db_count-1] of CdbDispatchResult*
 	 * Each CdbDispatchResult object points to a SegmentDatabaseDescriptor
 	 * that this thread is responsible for dispatching the command to.
 	 */
 	struct CdbDispatchResult **dispatchResultPtrArray;
+
+	volatile bool pleaseCancel;
 
 	/*
 	 * mpp_fd_set supports more file descriptors than an ordinary fd_set

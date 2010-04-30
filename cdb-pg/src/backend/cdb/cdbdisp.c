@@ -87,7 +87,7 @@ CdbCheckDispatchResultInt(struct CdbDispatcherState *ds,
                           bool          cancelUnfinishedWork);
 
 static bool
-shouldStillDispatchCommand(CdbDispatchResult * dispatchResult);
+shouldStillDispatchCommand(DispatchCommandParms *pParms, CdbDispatchResult * dispatchResult);
 
 static
 void dispatchCommandQuery(CdbDispatchResult *dispatchResult,
@@ -218,14 +218,14 @@ static Node *pre_dispatch_function_evaluation_mutator(Node *node,
 static void
 CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase, char* debugCaller);
 
-/* ====================================================
+/* 
+ * ====================================================
  * STATIC STATE VARIABLES should not be declared!
  * global state will break the ability to run cursors.
  * only globals with a higher granularity than a running
  * command (i.e: transaction, session) are ok.
- * ==================================================== */
-
-static volatile bool pleaseCancel = false; /* (transaction granularity) */
+ * ====================================================
+ */
 
 static DtxContextInfo TempQDDtxContextInfo = DtxContextInfo_StaticInit;
 
@@ -717,12 +717,13 @@ cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
 	
 				pParms->thread_valid = false;
 	
-				/* Error during thread create (this should be caused by
+				/*
+				 * Error during thread create (this should be caused by
 				 * resource constraints). If we leave the threads running,
 				 * they'll immediately have some problems -- so we need to
-				 * join them, and *then* we can issue our FATAL error */
-	
-				pleaseCancel = true;
+				 * join them, and *then* we can issue our FATAL error
+				 */
+				pParms->pleaseCancel = true;
 	
 				for (j = 0; j < ds->dispatchThreads->threadCount + (i - 1); j++)
 				{
@@ -988,10 +989,6 @@ CdbCheckDispatchResultInt(struct CdbDispatcherState *ds,
 		return;
 	}
 
-	/* Does caller want to stop short? */
-	if (cancelUnfinishedWork)
-		pleaseCancel = true;
-
 	/*
 	 * Wait for threads to finish.
 	 */
@@ -999,6 +996,12 @@ CdbCheckDispatchResultInt(struct CdbDispatcherState *ds,
 	{							/* loop over threads */		
 		pParms = &ds->dispatchThreads->dispatchCommandParmsAr[i];
 		Assert(pParms != NULL);
+
+		/* Does caller want to stop short? */
+		if (cancelUnfinishedWork)
+		{
+			pParms->pleaseCancel = true;
+		}
 		
 		if (gp_connections_per_thread==0)
 		{
@@ -1090,9 +1093,6 @@ CdbCheckDispatchResultInt(struct CdbDispatcherState *ds,
 	/* reset thread state (will be destroyed later on in finishCommand) */
     ds->dispatchThreads->threadCount = 0;
 			
-	/* Reset dispatcher state. */
-	pleaseCancel = false;
-
 	/* It looks like everything went fine, make sure we don't miss a
 	 * user cancellation ?
 	 *
@@ -1596,7 +1596,8 @@ cdbdisp_check_estate_for_cancel(EState *estate)
 
 	Assert(meleeResults);
 
-	if (pleaseCancel || meleeResults->errcode)
+//	if (pleaseCancel || meleeResults->errcode)
+	if (meleeResults->errcode)
 	{
 		return true;
 	}
@@ -1755,7 +1756,7 @@ thread_DispatchOut(DispatchCommandParms *pParms)
         dispatchResult->requestedCancel = false;
         dispatchResult->wasCanceled = false;
 
-        if (!shouldStillDispatchCommand(dispatchResult))
+        if (!shouldStillDispatchCommand(pParms, dispatchResult))
         {
             /* Don't dispatch if cancellation pending or no connection. */
             dispatchResult->stillRunning = false;
@@ -2294,7 +2295,7 @@ thread_DispatchCommand(void *arg)
  *		 thread_DispatchCommand absolutely no elog'ing.
  */
 bool
-shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
+shouldStillDispatchCommand(DispatchCommandParms *pParms, CdbDispatchResult * dispatchResult)
 {
 	SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
 	CdbDispatchResults *gangResults = dispatchResult->meleeResults;
@@ -2331,12 +2332,12 @@ shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
 	 * Don't submit if already encountered an error. The error has already
 	 * been noted, so just keep quiet.
 	 */
-	if (pleaseCancel ||
-		gangResults->errcode)
+	if (pParms->pleaseCancel || gangResults->errcode)
 	{
 		if (gangResults->cancelOnError)
 		{
 			dispatchResult->wasCanceled = true;
+
 			if (DEBUG4 >= log_min_messages)
 			{
 				/* Don't use elog, it's not thread-safe */
@@ -2623,9 +2624,7 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 		 * here on the QD. Don't cancel if requestor said not to, if no longer
 		 * connected, or if we have already sent a cancellation request.
 		 */
-		if (pleaseCancel ||
-			InterruptPending ||
-			meleeResults->errcode)
+		if (InterruptPending || pParms->pleaseCancel || meleeResults->errcode)
 		{
 			if (meleeResults->cancelOnError &&
 				!dispatchResult->requestedCancel &&
@@ -3349,20 +3348,24 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			if (slice->directDispatch.isDirectDispatch)
 			{
 				direct.directed_dispatch = true;
-				direct.count = list_length( slice->directDispatch.contentIds );
+				direct.count = list_length(slice->directDispatch.contentIds);
 				Assert(direct.count == 1); /* only support to single content right now.  If this changes then we need to change from a list to another structure to avoid n^2 cases */
-				direct.content[0] = linitial_int( slice->directDispatch.contentIds );
+				direct.content[0] = linitial_int(slice->directDispatch.contentIds);
 
-				if ( Test_print_direct_dispatch_info )
+				if (Test_print_direct_dispatch_info)
+				{
 					elog(INFO, "Dispatch command to SINGLE content");
+				}
 			}
 			else
 			{
 				direct.directed_dispatch = false;
 				direct.count = 0;
 
-				if ( Test_print_direct_dispatch_info )
+				if (Test_print_direct_dispatch_info)
+				{
 					elog(INFO, "Dispatch command to ALL contents");
+				}
 			}
 		}
 		else
@@ -3370,8 +3373,10 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			direct.directed_dispatch = false;
 			direct.count = 0;
 
-			if ( Test_print_direct_dispatch_info )
+			if (Test_print_direct_dispatch_info)
+			{
 				elog(INFO, "Dispatch command to ALL contents");
+			}
 
 			/*
 			 *  Non-sliced, used specified gangs
@@ -3644,7 +3649,9 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 * interesting test cases for segmate-sync.
 	 */
 	if (queryDesc->cursor_query)
+	{
 		verify_shared_snapshot_ready();
+	}
 
 	/*
 	 * serialized plan tree. Note that we're called for a single
