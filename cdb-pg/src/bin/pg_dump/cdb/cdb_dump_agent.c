@@ -5193,6 +5193,8 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				{
 					resetPQExpBuffer(query);
 
+					appendPQExpBuffer(q, ";\n");
+
 					appendPQExpBuffer(
 							query, 
 							"SELECT "

@@ -7480,6 +7480,9 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			if (testPartitionTemplateSupport())
 			{
 				resetPQExpBuffer(query);
+
+				appendPQExpBuffer(q, ";\n");
+
 				appendPQExpBuffer(
 						query, "SELECT "
 						"pg_get_partition_template_def('%u'::pg_catalog.oid, true, true) ",

@@ -6448,6 +6448,7 @@ pg_get_partition_template_def_worker(Oid relid, int prettyFlags,
 	deparse_context		bodyc;
 	deparse_context		partidc;
 	int					templatelevel = 1;
+	bool				bFirstOne	  = true;
 
 	if (!pn)
 	{
@@ -6584,9 +6585,16 @@ pg_get_partition_template_def_worker(Oid relid, int prettyFlags,
 			/* build the new statement in sid1, then append the
 			 * previous (shallower) statements 
 			 */
-			appendStringInfo(&sid1, "%s\nSET SUBPARTITION TEMPLATE %s;\n", 
-							 altr.data, body.data);
+			appendStringInfo(&sid1, "%s\nSET SUBPARTITION TEMPLATE %s%s",
+							 altr.data, body.data,
+							 bFirstOne ? "" : ";\n" );
 			appendStringInfo(&sid1, "\n%s", sid2.data);
+
+			/* no trailing semicolon on end of statement -- dumper
+			 * will add it 
+			 */
+			if (bFirstOne)
+				bFirstOne = false;
 		}
 
 		/* increase the partitioning depth */
