@@ -4,6 +4,7 @@
 *	  pg_dump is a utility for dumping out a postgres database
 *	  into a script file.
 *
+* Portions Copyright (c) 2005-2010, Greenplum inc
 * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
 * Portions Copyright (c) 1994, Regents of the University of California
 *
@@ -842,9 +843,11 @@ void dumpMain(bool oids, const char* dumpencoding, int outputBlobs, int plainTex
 	do_sql_command(g_conn, "SET extra_float_digits TO 2");
 
 	/*
-	 * Let cdb_dump_include functions know whether or not to include partitioning support.
+	 * Let cdb_dump_include functions know whether or not to include
+	 * partitioning support.
 	 */
-	g_gp_supportsPartitioning = g_fout->remoteVersion >= 80209;
+	g_gp_supportsPartitioning		= g_fout->remoteVersion >= 80209;
+	g_gp_supportsPartitionTemplates = g_fout->remoteVersion >= 80214;
 	
 	/*
 	 * Process the schema and table include/exclude lists and develop a
@@ -5164,6 +5167,62 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				appendPQExpBuffer(q, " %s", PQgetvalue(res, 0, 0));
 
 			PQclear(res);
+
+			/* MPP-6095: dump ALTER TABLE statements for 
+			 * subpartition templates 
+			 */
+			if (g_gp_supportsPartitionTemplates)
+			{
+				bool		isSupported;
+
+				resetPQExpBuffer(query);
+
+				/* be paranoid and check for function */
+				appendPQExpBuffer(query, 
+							  "SELECT 1 FROM pg_proc WHERE "
+							  "proname = 'pg_get_partition_template_def' and "
+							  "proowner = 10;");
+				res = PQexec(g_conn, query->data);
+				check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+				isSupported = ( PQntuples(res) == 1 );
+
+				PQclear(res);
+
+				if (isSupported)
+				{
+					resetPQExpBuffer(query);
+
+					appendPQExpBuffer(
+							query, 
+							"SELECT "
+							"pg_get_partition_template_def('%u'::pg_catalog.oid, true, true) ",
+							tbinfo->dobj.catId.oid);
+					res = PQexec(g_conn, query->data);
+					check_sql_result(res, g_conn, query->data, 
+									 PGRES_TUPLES_OK);
+
+					if (PQntuples(res) != 1)
+					{
+						if (PQntuples(res) < 1)
+							write_msg(
+									NULL, 
+									"query to obtain definition of table \"%s\" returned no data\n",
+									tbinfo->dobj.name);
+						else
+							write_msg(
+									NULL, 
+									"query to obtain definition of table \"%s\" returned more than one definition\n",
+									tbinfo->dobj.name);
+						exit_nicely();
+					}
+					if (!PQgetisnull(res, 0, 0))
+						appendPQExpBuffer(q, " %s", PQgetvalue(res, 0, 0));
+
+					PQclear(res);
+				} /* end if isSupported */
+			} /* end if g_gp_SupportsPartitionTemplates */
+
 		}
 		appendPQExpBuffer(q, ";\n");
 

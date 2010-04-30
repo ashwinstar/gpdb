@@ -5,6 +5,7 @@
  *	  set of tables to be included in a dump.  These functions are
  *	  largely extracted from pg_dump.c.
  *
+ * Portions Copyright (c) 2005-2010, Greenplum inc
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -45,6 +46,13 @@ const char *table_lock_mode = "ACCESS SHARE";
  * of cdb_dump_include functions may declare otherwise.
  */
 bool g_gp_supportsPartitioning = true;
+
+/*
+ * MPP-6095: Partition templates are presumed supported by this code
+ * level.  The caller of cdb_dump_include functions may declare
+ * otherwise.
+ */
+bool g_gp_supportsPartitionTemplates = true;
 
 /*
  * When true, indicates that only the MPP schema is being dumped.

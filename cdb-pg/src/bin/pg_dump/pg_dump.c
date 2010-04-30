@@ -4,6 +4,7 @@
  *	  pg_dump is a utility for dumping out a postgres database
  *	  into a script file.
  *
+ * Portions Copyright (c) 2005-2010, Greenplum inc
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -197,6 +198,7 @@ static const char *convertOperatorReference(const char *opr);
 static void selectSourceSchema(const char *schemaName);
 static bool testGPbackend(void);
 static bool testPartitioningSupport(void);
+static bool testPartitionTemplateSupport(void);
 static char *getFormattedTypeName(Oid oid, OidOptions opts);
 static const char *fmtQualifiedId(const char *schema, const char *id);
 static bool hasBlobs(Archive *AH);
@@ -7442,11 +7444,12 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			addDistributedBy(q, tbinfo, actual_atts);
 
 		/*
-		 * If GP partitioning is supported add the partitioning constraints to the table definition.
+		 * If GP partitioning is supported add the partitioning
+		 * constraints to the table definition.
 		 */
 		if ( gp_partitioning_available )
 		{
-			//does support GP partitioning. */
+			/* does support GP partitioning. */
 			resetPQExpBuffer(query);
 			/* MPP-6297: dump by tablename */ 
 			appendPQExpBuffer(query, "SELECT "
@@ -7470,6 +7473,42 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				appendPQExpBuffer(q, " %s", PQgetvalue(res, 0, 0));
 
 			PQclear(res);
+
+			/* MPP-6095: dump ALTER TABLE statements for 
+			 * subpartition templates 
+			 */
+			if (testPartitionTemplateSupport())
+			{
+				resetPQExpBuffer(query);
+				appendPQExpBuffer(
+						query, "SELECT "
+						"pg_get_partition_template_def('%u'::pg_catalog.oid, true, true) ",
+						tbinfo->dobj.catId.oid);
+
+				res = PQexec(g_conn, query->data);
+				check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+				if (PQntuples(res) != 1)
+				{
+					if (PQntuples(res) < 1)
+						write_msg(
+								NULL, 
+								"query to obtain definition of table \"%s\" returned no data\n",
+								tbinfo->dobj.name);
+					else
+						write_msg(
+								NULL, 
+								"query to obtain definition of table \"%s\" returned more than one definition\n",
+								tbinfo->dobj.name);
+					exit_nicely();
+				}
+				if (!PQgetisnull(res, 0, 0))
+					appendPQExpBuffer(q, " %s", PQgetvalue(res, 0, 0));
+				
+				PQclear(res);
+
+			}
+
 		}
 
 		/* END MPP ADDITION */
@@ -8733,8 +8772,8 @@ testGPbackend(void)
 }
 
 /*
- * testPartitioningSupport - tests whether or not the current GP database includes
- * support for partitioning.
+ * testPartitioningSupport - tests whether or not the current GP
+ * database includes support for partitioning.
  */
 static bool
 testPartitioningSupport(void)
@@ -8746,6 +8785,35 @@ testPartitioningSupport(void)
 	query = createPQExpBuffer();
 
 	appendPQExpBuffer(query, "SELECT 1 FROM pg_class WHERE relname = 'pg_partition' and relnamespace = 11;");
+	res = PQexec(g_conn, query->data);
+	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+	isSupported = ( PQntuples(res) == 1 );
+
+	PQclear(res);
+	destroyPQExpBuffer(query);
+
+	return isSupported;
+}
+
+/*
+ * MPP-6095: testPartitionTemplateSupport - tests whether or not the
+ * current GP database includes support for dumping partition
+ * templates
+ */
+static bool
+testPartitionTemplateSupport(void)
+{
+	PQExpBuffer query;
+	PGresult   *res;
+	bool		isSupported;
+
+	query = createPQExpBuffer();
+
+	appendPQExpBuffer(query, 
+					  "SELECT 1 FROM pg_proc WHERE "
+					  "proname = 'pg_get_partition_template_def' and "
+					  "proowner = 10;");
 	res = PQexec(g_conn, query->data);
 	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
 

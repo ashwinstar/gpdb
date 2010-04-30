@@ -125,6 +125,8 @@ my $glob_filedump;
 
 my $glob_exit;
 
+my $glob_mm = 0; # set to 1 for master mirroring
+
 BEGIN {
     my $man  = 0;
     my $help = 0;
@@ -296,6 +298,25 @@ sub get_presh_txt
 # my $sz = $size;
 # print $filnam, " ", $sz, " ";
 # print `openssl dgst -md5 -hex $filnam`
+#}
+EOF_bigstr
+
+	$bigstr =~ s/^\#//gm;
+
+	return $bigstr;
+}
+
+# For the case of master mirroring, build the "pre" sh script, but
+# only check file names -- supply zero for size and hash to prevent
+# subsequent "enhanced" diff phases.
+sub get_mm_presh_txt
+{
+	my $bigstr = <<'EOF_bigstr';
+##tiny perl script to list filename, filesize, md5 hash
+#for my $filnam (@ARGV) # xargs supplies up to 5000 args
+#{
+# my $sz = 0;
+# print $filnam, " ", $sz, " 0\n";
 #}
 EOF_bigstr
 
@@ -1655,7 +1676,7 @@ if (1)
 
 #	print Data::Dumper->Dump([$gp_seg_config]);
 
-	my $presh_txt = get_presh_txt();
+	my $presh_txt = $glob_mm ? get_mm_presh_txt() : get_presh_txt();
 	my $presh2_txt = get_presh2_txt();
 
 	my $ignore_arr = ignore_list($glob_ignore);

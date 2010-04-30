@@ -3,6 +3,7 @@
  * cdb_dump.c
  *	  cdb_dump is a utility for dumping out a cdb cluster of postgres databases
  *
+ * Portions Copyright (c) 2005-2010, Greenplum inc
  * Portions Copyright (c) 1996-2003, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -552,8 +553,8 @@ cleanup:
 
 
 /*
- * testPartitioningSupport - tests whether or not the current GP database includes
- * support for partitioning.
+ * testPartitioningSupport - tests whether or not the current GP
+ * database includes support for partitioning.
  */
 static bool
 testPartitioningSupport(void)
@@ -575,7 +576,6 @@ testPartitioningSupport(void)
 
 	return isSupported;
 }
-
 
 /*
  * execCommit: This function simply issues a commit command using the pConn PGconn* parameter.
