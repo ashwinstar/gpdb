@@ -896,6 +896,7 @@ mgmtcopy :
 		$(INSTLOC)/bin/gpstop \
 		$(INSTLOC)/bin/gpsys1 \
 		$(INSTLOC)/bin/gpmigrator \
+		$(INSTLOC)/bin/gpfilespace \
 		$(INSTLOC)/bin/gpload.py \
 		$(INSTLOC)/bin/lib/gpcheckcat
 	# Remove unwanted files.
