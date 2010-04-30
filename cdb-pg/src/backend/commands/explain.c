@@ -511,29 +511,11 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt,
 
     	if (cmd == CMD_DELETE || cmd == CMD_INSERT || cmd == CMD_UPDATE)
     	{
-    		float		scaleFactor = 1.0; /* we will divide planner estimates by this factor to produce
-    										  per-segment estimates */
     	   	int sliceNum = queryDesc->plannedstmt->nMotionNodes + 1;
     	   	int numSegments = getgpsegmentCount();
 	    	char *cmdName = NULL;
 
-			/**
-			 * Estimates will have to be scaled down to be per-segment (except in a few cases).
-			 */
-   			scaleFactor = getgpsegmentCount();
-			if (childPlan->flow != NULL)
-			{
-				/**
-				 * Data is unified in one place (singleQE or QD). We scale up
-				 * estimates to make it global.
-				 */
-				if (CdbPathLocus_IsEntry(*(childPlan->flow))
-						|| CdbPathLocus_IsSingleQE(*(childPlan->flow)))
-				{
-					scaleFactor = 1.0;
-				}
-			}
-			switch (cmd)
+   			switch (cmd)
 			{
 				case CMD_DELETE:
 					cmdName = "Delete";
@@ -545,7 +527,7 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt,
 					cmdName = "Update";
 					break;
 				default:
-					// This should never be reached
+					/* This should never be reached */
 					Assert(!"Unexpected statement type");
 					break;
 			}
@@ -556,17 +538,18 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt,
 				Motion	   *pMotion = (Motion *) childPlan;
 				if (pMotion->motionType == MOTIONTYPE_FIXED && pMotion->numOutputSegs != 0)
 				{
-					// Gather Motion
+					/* Gather Motion: this should not be reached in the current implementation */
+					Assert(!"Gather motion node cannot appear below a DML statement.");
 					numSegments = 1;
 				}
-				// else: other motion nodes execute on all segments
+				/* else: other motion nodes execute on all segments */
 			}
 			else if ((childPlan->directDispatch).isDirectDispatch)
 			{
 				numSegments = 1;
 			}
 			appendStringInfo(buf, " (slice%d; segments: %d)", sliceNum, numSegments);
-			appendStringInfo(buf, "  (rows=%.0f width=%d)\n", ceil(childPlan->plan_rows / scaleFactor), childPlan->plan_width);
+			appendStringInfo(buf, "  (rows=%.0f width=%d)\n", ceil(childPlan->plan_rows / numSegments), childPlan->plan_width);
 			appendStringInfo(buf, "  ->  ");
 			indent = 3;
 		}
@@ -842,21 +825,25 @@ explain_outNode(StringInfo str,
 		/**
 		 * Estimates will have to be scaled down to be per-segment (except in a few cases).
 		 */
-		scaleFactor = getgpsegmentCount();
-
-		if (plan->flow != NULL) 
+		if ((plan->directDispatch).isDirectDispatch)
+		{
+			scaleFactor = 1.0;
+		}
+		else if (plan->flow != NULL && CdbPathLocus_IsBottleneck(*(plan->flow)))
 		{
 			/**
-			 * Data is unified in one place (singleQE or QD). We scale up
-			 * estimates to make it global.
+			 * Data is unified in one place (singleQE or QD), or executed on a single segment.
+			 * We scale up estimates to make it global.
+			 * We will later amend this for Motion nodes.
 			 */
-			if (CdbPathLocus_IsEntry(*(plan->flow))
-					|| CdbPathLocus_IsSingleQE(*(plan->flow)))
-				scaleFactor = 1.0;
+			scaleFactor = 1.0;
+		}
+		else
+		{
+			/* the plan node is executed on multiple nodes, so scale down the number of rows seen by each segment */
+			scaleFactor = getgpsegmentCount();
 		}
 	}
-
-	Assert(scaleFactor > 0.0);
 
 	if (plan == NULL)
 	{
@@ -1102,7 +1089,8 @@ explain_outNode(StringInfo str,
 
 				appendStringInfo(str, "%s %d:%d", pname,
 						nSenders, nReceivers);
-
+				/* scale the number of rows by the number of segments sending data */
+				scaleFactor = nSenders;
 				appendGangAndDirectDispatchInfo(str, planstate, pMotion->motionID);
 				pname = "";
 
@@ -1219,6 +1207,8 @@ explain_outNode(StringInfo str,
 		default:
 			break;
 	}
+
+	Assert(scaleFactor > 0.0);
 
 	appendStringInfo(str, "  (cost=%.2f..%.2f rows=%.0f width=%d)",
 					 plan->startup_cost, plan->total_cost,
