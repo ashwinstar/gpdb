@@ -1884,7 +1884,7 @@ class GPUpgrade:
                FROM   pg_class c 
                  join pg_namespace n on (c.relnamespace = n.oid) 
                  join pg_am m on (c.relam = m.oid) 
-               WHERE  c.relkind = 'i' and m.amname in ('hash')
+               WHERE  c.relkind = 'i' and m.amname in ('gin', 'hash')
             ''', db=db)
             if len(indexes) > 0:
                 if found == False:
