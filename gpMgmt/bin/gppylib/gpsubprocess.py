@@ -150,7 +150,10 @@ class Popen(subprocess.Popen):
                     break
                 else:
                     error.append(buffer)
-            
+
+        """ Close stdout and stderr PIPEs """
+        self.stdout.close()
+        self.stderr.close()
 
 
     def _check_status(self):
