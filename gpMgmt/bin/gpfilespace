@@ -51,6 +51,7 @@ try:
     from gppylib.gparray import *        # Greenplum Array datastructures
     from gppylib.gplog import *          # Greenplum logging facility
     from gppylib.gpcoverage import GpCoverage
+    from getpass import getpass
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
@@ -645,8 +646,12 @@ class GPFilespace:
             host = self.options.host 
             port = self.options.port
             db   = 'template1'
+            if self.options.password:
+                password = getpass("Password: ")
+            else:
+                password = None
             dburl = dbconn.DbURL(username=user, hostname=host, 
-                                 port=port, dbname=db)
+                                 port=port, dbname=db, password=password)
             conn = dbconn.connect(dburl)
 
             q = "SELECT usesuper FROM pg_user where usename = user"
