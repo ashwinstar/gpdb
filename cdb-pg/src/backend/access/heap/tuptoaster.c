@@ -1582,18 +1582,18 @@ toast_fetch_datum(struct varlena *attr)
 		if (residx < numchunks - 1)
 		{
 			if (chunksize != TOAST_MAX_CHUNK_SIZE)
-				elog(ERROR, "unexpected chunk size %d in chunk %d of %d for toast value %u (expected %lu)",
+				elog(ERROR, "unexpected chunk size %d in chunk %d of %d for toast value %u (expected %d)",
 					 chunksize, residx,
 					 ((varattrib *)attr)->va_external.va_valueid, numchunks-1,
-					 TOAST_MAX_CHUNK_SIZE);
+					 (int)TOAST_MAX_CHUNK_SIZE);
 		}
 		else if (residx == numchunks-1)
 		{
 			if ((residx * TOAST_MAX_CHUNK_SIZE + chunksize) != ressize)
-				elog(ERROR, "unexpected chunk size %d in final chunk %d for toast value %u (expected %lu)",
+				elog(ERROR, "unexpected chunk size %d in final chunk %d for toast value %u (expected %d)",
 					 chunksize, residx,
 					 ((varattrib *)attr)->va_external.va_valueid,
-					 ressize - residx*TOAST_MAX_CHUNK_SIZE);
+					 ressize - residx*(int)TOAST_MAX_CHUNK_SIZE);
 		}
 		else
 			elog(ERROR, "unexpected chunk number %d for toast value %u (expected in %d..%d)",
@@ -1767,18 +1767,18 @@ toast_fetch_datum_slice(struct varlena *attr, int32 sliceoffset, int32 length)
 		if (residx < totalchunks - 1)
 		{
 			if (chunksize != TOAST_MAX_CHUNK_SIZE)
-				elog(ERROR, "unexpected chunk size %d in chunk %d for toast value %u of %d when fetching slice (expected %lu)",
+				elog(ERROR, "unexpected chunk size %d in chunk %d for toast value %u of %d when fetching slice (expected %d)",
 					 chunksize, residx,
 					 ((varattrib *)attr)->va_external.va_valueid, totalchunks-1,
-					 TOAST_MAX_CHUNK_SIZE);
+					 (int)TOAST_MAX_CHUNK_SIZE);
 		}
 		else if (residx == totalchunks-1)
 		{
 			if ((residx * TOAST_MAX_CHUNK_SIZE + chunksize) != attrsize)
-				elog(ERROR, "unexpected chunk size %d in chunk %d for final toast value %u when fetching slice (expected %lu)",
+				elog(ERROR, "unexpected chunk size %d in chunk %d for final toast value %u when fetching slice (expected %d)",
 					 chunksize, residx,
 					 ((varattrib *)attr)->va_external.va_valueid,
-					 attrsize - residx * TOAST_MAX_CHUNK_SIZE);
+					 attrsize - residx * (int)TOAST_MAX_CHUNK_SIZE);
 		}
 		else 
 		{
