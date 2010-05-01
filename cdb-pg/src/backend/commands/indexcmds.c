@@ -3,7 +3,7 @@
  * indexcmds.c
  *	  POSTGRES define and remove index code.
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
+ * Portions Copyright (c) 2005-2010, Greenplum inc
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -351,6 +351,12 @@ DefineIndex(RangeVar *heapRelation,
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("hash indexes are not supported")));
+
+	/* MPP-9329: disable creation of GIN indexes */
+	if (accessMethodId == GIN_AM_OID)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("GIN indexes are not supported")));
 
 	if (unique && !accessMethodForm->amcanunique)
 		ereport(ERROR,
