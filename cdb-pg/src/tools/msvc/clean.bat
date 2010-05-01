@@ -9,9 +9,21 @@ if exist ..\msvc if exist ..\..\..\src cd ..\..\..
 
 if exist debug rd /s /q debug
 if exist release rd /s /q release
+if exist _UpgradeReport_Files rd /s /q _UpgradeReport_Files
+if exist backup rd /s /q backup
+if exist ipch rd /s /q ipch
 for %%f in (*.vcproj) do del %%f
+REM Also clean Visual Studio 2010 files
+for %%f in (*.vcxproj) do del %%f
+for %%f in (*.vcxproj.filters) do del %%f
+for %%f in (*.user) do del %%f
+for %%f in (UpgradeLog*.XML) do del %%f
 if exist pgsql.sln del /q pgsql.sln
 if exist pgsql.sln.cache del /q pgsql.sln.cache
+if exist pgsql.ncb del /q pgsql.ncb
+if exist pgsql.sdf del /q pgsql.sdf
+if exist pgsql.vssscc del /q pgsql.vssscc
+if exist MSSCCPRJ.SCC del /q MSSCCPRJ.SCC
 del /s /q src\bin\win32ver.rc 2> NUL
 del /s /q src\interfaces\win32ver.rc 2> NUL
 if exist src\backend\win32ver.rc del /q src\backend\win32ver.rc

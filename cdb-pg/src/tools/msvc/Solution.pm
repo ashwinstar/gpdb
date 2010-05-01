@@ -433,7 +433,8 @@ sub AddProject
     {
         $proj->AddIncludeDir($self->{options}->{zlib} . '\include');
         $proj->AddLibrary($self->{options}->{zlib} . '\lib\zlib.lib');
-	    $proj->AddLibrary($self->{options}->{zlib} . '\lib\libcurl.lib');
+        #$proj->AddLibrary($self->{options}->{zlib} . '\lib\zdll.lib');
+        $proj->AddLibrary($self->{options}->{curl} . '\lib\libcurl.lib');
     }
 	if ($self->{options}->{bzlib})
     {

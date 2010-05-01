@@ -19,7 +19,7 @@ our $config = {
     xml=>undef,				# --with-libxml=<path>
     xslt=>undef,			# --with-libxslt=<path>
     iconv=>undef,			# (not in configure, path to iconv)
-    zlib=>'c:\zlib',			# --with-zlib=<path>  (GPDB needs zlib)
+    zlib=>'c:\zlib64',			# --with-zlib=<path>  (GPDB needs zlib)
     pthread=>'c:\pthreads',  		# gpdb needs pthreads 
     curl=>'c:\zlib', 			# gpdb needs libcurl
     bzlib=>'c:\pgbuild\bzlib'
