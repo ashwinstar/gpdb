@@ -2674,51 +2674,63 @@ append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray,
 #else
     const char * prog = "addr2line -s -e";
 #endif
+    static bool in_translate_stacktrace = false;
 
     if (stacksize == 0)
     	return;
 
-    snprintf(cmd,1024,"%s %s ",prog,my_exec_path);
-
-    for (stack_no = 0; stack_no < stacksize && stack_no < 100; stack_no++)
+    if (!in_translate_stacktrace)
     {
-    	cmdresult[stack_no][0] = '\0';   /* clear this array for later */
-		snprintf(addrtxt,20,"%p ",stackarray[stack_no]);
-		if (strlen(addrtxt) + strlen(cmd) >= 1024)
-			break;
-		strcat(cmd,addrtxt);
-    }
+    	/*
+    	 * Keep a record that we are doing this work, so if we crash during it, we don't
+    	 * try to do it again when we recurse back here,
+    	 */
+    	in_translate_stacktrace = true;
 
-    cmdresult[0][0] = '\0';
-	fd = popen(cmd,"r");
-	if (fd != NULL && errno == 0)
-		fd_ok = true;
+		snprintf(cmd,1024,"%s %s ",prog,my_exec_path);
 
-	if (fd_ok)
-	{
-		for (stack_no = 0; stack_no < stacksize && stack_no < 100 && errno == 0; stack_no++)
+		for (stack_no = 0; stack_no < stacksize && stack_no < 100; stack_no++)
 		{
-			/* initialize the string */
-			cmdresult[stack_no][0] = '\0';
-			// Get one line of the result from addr2line (or atos)
-			if (fgets(cmdresult[stack_no],SYMBOL_SIZE,fd) == NULL)
+			cmdresult[stack_no][0] = '\0';   /* clear this array for later */
+			snprintf(addrtxt,20,"%p ",stackarray[stack_no]);
+			if (strlen(addrtxt) + strlen(cmd) >= 1024)
 				break;
-			// Force it to be a valid string (in case it was too long)
-			cmdresult[stack_no][SYMBOL_SIZE-1] = '\0';
-			// Get rid of the newline at the end.
-			if (strlen(cmdresult[stack_no]) > 0 &&
-				cmdresult[stack_no][strlen(cmdresult[stack_no])-1] == '\n')
-				cmdresult[stack_no][strlen(cmdresult[stack_no])-1] = '\0';
+			strcat(cmd,addrtxt);
 		}
-	}
 
-	if (fd_ok && strlen(cmdresult[0]) > 1)
-	{
-		addr2line_ok = true;
-	}
+		cmdresult[0][0] = '\0';
+		fd = popen(cmd,"r");
+		if (fd != NULL && errno == 0)
+			fd_ok = true;
 
-	if (fd != NULL)
-	    pclose(fd);
+		if (fd_ok)
+		{
+			for (stack_no = 0; stack_no < stacksize && stack_no < 100 && errno == 0; stack_no++)
+			{
+				/* initialize the string */
+				cmdresult[stack_no][0] = '\0';
+				// Get one line of the result from addr2line (or atos)
+				if (fgets(cmdresult[stack_no],SYMBOL_SIZE,fd) == NULL)
+					break;
+				// Force it to be a valid string (in case it was too long)
+				cmdresult[stack_no][SYMBOL_SIZE-1] = '\0';
+				// Get rid of the newline at the end.
+				if (strlen(cmdresult[stack_no]) > 0 &&
+					cmdresult[stack_no][strlen(cmdresult[stack_no])-1] == '\n')
+					cmdresult[stack_no][strlen(cmdresult[stack_no])-1] = '\0';
+			}
+		}
+
+		if (fd_ok && strlen(cmdresult[0]) > 1)
+		{
+			addr2line_ok = true;
+		}
+
+		if (fd != NULL)
+			pclose(fd);
+
+		in_translate_stacktrace = false;
+    }
 
     for (stack_no = 0; stack_no < stacksize; stack_no++)
     {
