@@ -168,6 +168,7 @@ SET enable_seqscan = OFF;
 SET enable_indexscan = ON;
 SET enable_bitmapscan = ON;
 CREATE INDEX intarrayidx ON array_index_op_test USING gin (i);
+ERROR:  GIN indexes are not supported
 SELECT * FROM array_index_op_test WHERE i @> '{32}' ORDER BY seqno;
  seqno |                i                |                                                                 t                                                                  
 -------+---------------------------------+------------------------------------------------------------------------------------------------------------------------------------
@@ -255,6 +256,7 @@ SELECT * FROM array_index_op_test WHERE i = '{47,77}' ORDER BY seqno;
 (1 row)
 
 CREATE INDEX textarrayidx ON array_index_op_test USING gin (t);
+ERROR:  GIN indexes are not supported
 SELECT * FROM array_index_op_test WHERE t @> '{AAAAAAAA72908}' ORDER BY seqno;
  seqno |           i           |                                                                     t                                                                      
 -------+-----------------------+--------------------------------------------------------------------------------------------------------------------------------------------
@@ -384,7 +386,7 @@ INSERT INTO concur_heap VALUES  ('b','b');
 CREATE UNIQUE INDEX CONCURRENTLY concur_index2 ON concur_heap(f1);
 -- check if constraint is set up properly to be enforced
 INSERT INTO concur_heap VALUES ('b','x');
-ERROR:  duplicate key violates unique constraint "concur_index2"  (seg1 localhost:12003 pid=62805)
+ERROR:  duplicate key violates unique constraint "concur_index2"  (seg1 jeff-cohens-computer.local:11002 pid=20451)
 -- check if constraint is enforced properly at build time
 --CREATE UNIQUE INDEX CONCURRENTLY concur_index3 ON concur_heap(f2);
 -- test that expression indexes and partial indexes work concurrently
@@ -471,16 +473,6 @@ select * from bm_test where i=5 and t='5';
 select * from bm_test where i=5 or t='6';
  i | t 
 ---+---
- 6 | 6
- 6 | 6
- 6 | 6
- 6 | 6
- 6 | 6
- 6 | 6
- 6 | 6
- 6 | 6
- 6 | 6
- 6 | 6
  5 | 5
  5 | 5
  5 | 5
@@ -491,6 +483,16 @@ select * from bm_test where i=5 or t='6';
  5 | 5
  5 | 5
  5 | 5
+ 6 | 6
+ 6 | 6
+ 6 | 6
+ 6 | 6
+ 6 | 6
+ 6 | 6
+ 6 | 6
+ 6 | 6
+ 6 | 6
+ 6 | 6
 (20 rows)
 
 select * from bm_test where i between 1 and 10 and i::text = t;
@@ -623,15 +625,15 @@ create index bm_n_null_idx on bm_test using bitmap(n) WHERE n ISNULL;
 select a.t from bm_test a, bm_test b where a.i2 = b.i2;
             t             
 --------------------------
- Mon Jan 01 01:01:01 2007
  Tue Jan 02 01:01:01 2007
+ Mon Jan 01 01:01:01 2007
 (2 rows)
 
 select a.t from bm_test a, bm_test b where a.i2 = b.i4;
             t             
 --------------------------
- Mon Jan 01 01:01:01 2007
  Tue Jan 02 01:01:01 2007
+ Mon Jan 01 01:01:01 2007
 (2 rows)
 
 select a.t from bm_test a, bm_test b where a.i2 = b.i8;
@@ -679,8 +681,8 @@ select a.t from bm_test a, bm_test b where a.ip=b.ip and a.b = b.b and a.i2=1;
 select a.t from bm_test a where d in(select d from bm_test b where a.g=b.g);
             t             
 --------------------------
- Mon Jan 01 01:01:01 2007
  Tue Jan 02 01:01:01 2007
+ Mon Jan 01 01:01:01 2007
 (2 rows)
 
 -- functional and predicate indexes
@@ -853,7 +855,7 @@ set enable_bitmapscan=off;
 explain select * from bm_test where j = 1;
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1)  (cost=0.00..400.28 rows=1 width=8)
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..400.28 rows=1 width=8)
    ->  Index Scan using bm_test_j on bm_test  (cost=0.00..400.28 rows=1 width=8)
          Index Cond: j = 1
  Settings:  enable_bitmapscan=off; enable_indexscan=on; enable_seqscan=off
@@ -888,10 +890,10 @@ insert into ijk values (1, NULL, NULL);
 insert into ijk values (1, NULL, NULL);
 -- should fail.
 create unique index ijk_i on ijk(i);
-ERROR:  could not create unique index  (seg0 localhost:12002 pid=62804)
+ERROR:  could not create unique index  (seg0 jeff-cohens-computer.local:11001 pid=20450)
 DETAIL:  Table contains duplicate values.
 create unique index ijk_ij on ijk(i,j);
-ERROR:  could not create unique index  (seg0 localhost:12002 pid=62804)
+ERROR:  could not create unique index  (seg0 jeff-cohens-computer.local:11001 pid=20450)
 DETAIL:  Table contains duplicate values.
 -- should OK.
 create unique index ijk_ijk on ijk(i,j,k);
@@ -908,10 +910,10 @@ insert into ijk values (1, NULL, NULL);
 insert into ijk values (1, NULL, NULL);
 -- should fail.
 create unique index ijk_i on ijk(i);
-ERROR:  could not create unique index  (seg0 localhost:12002 pid=62804)
+ERROR:  could not create unique index  (seg0 jeff-cohens-computer.local:11001 pid=20450)
 DETAIL:  Table contains duplicate values.
 create unique index ijk_ij on ijk(i,j);
-ERROR:  could not create unique index  (seg0 localhost:12002 pid=62804)
+ERROR:  could not create unique index  (seg0 jeff-cohens-computer.local:11001 pid=20450)
 DETAIL:  Table contains duplicate values.
 -- should OK.
 create unique index ijk_ijk on ijk(i,j,k);
