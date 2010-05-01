@@ -4,9 +4,9 @@ MSVC build
 ==========
 
 This directory contains the tools required to build PostgreSQL using
-Microsoft Visual Studio 2005. This builds the whole backend, not just
+Microsoft Visual Studio 2005 or 2008. This builds the whole backend, not just
 the libpq frontend library. For more information, see the documentation
-chapter "Installation on Windows".
+chapter "Installation from Source Code on Windows".
 
 
 Notes about code indention
@@ -34,69 +34,171 @@ This should work for both GUI and commandline builds, but a restart
 may be necessary.
 
 
-Build Notes  (old... I left these in for now)
+Build Notes  (From the PostgreSQL 9.0 Manual)
 -----------
 
-Note that PostgreSQL builds natively with Visual C++. You must therefore
-make sure that you do *NOT* have any tools from Cygwin or Mingw present
-in the system PATH. Also, make sure you don't have any Cygwin/Mingw
-environment variables "leaking" through.
+Building with Visual C++ or the Platform SDK
 
-First, edit config.pl to reflect what "configure options" you want set.
+PostgreSQL can be built using the Visual C++ compiler suite from Microsoft. 
+These compilers can be either from Visual Studio, Visual Studio Express or recent versions of the Platform SDK. 
+If you do not already have a Visual Studio environment set up, the easiest way us to use the compilers in the Platform SDK, which is a free download from Microsoft. 
 
-If you need to modify the environment for calling external tools, such as
-flex or bison, create a file called "buildenv.bat". This file will be called
-by all scripts before anything is done, so the environment can be set up.
-(for example, include SET PATH=%PATH%;c:\some\where\bison\bin)
+PostgreSQL supports the compilers from Visual Studio 2005 and Visual Studio 2008. 
+When using the Platform SDK only, or when building for 64-bit Windows, only Visual Studio 2008 is supported. 
 
-Then, to build all of PostgreSQL in debug configuration, run the command
-	build DEBUG
-from a Visual Studio Command Prompt (to get all environment
-variables set correctly).
+The tools for building using Visual C++, are in the src/tools/msvc directory.
+When building, make sure that if there are tools from MinGW or Cygwin present in your system PATH, they are at the end of the path, after all Visual Studio paths. 
+Also, make sure you have all the required Visual C++ tools available in the PATH. 
+In Visual Studio, start the Visual Studio Command Prompt. 
+In the Platform SDK, start the CMD shell listed under the SDK on the Start Menu. 
+If you wish to build a 64-bit version, you must use the 64-bit version of the command, and vice versa. 
+All commands should be run from the src\tools\msvc directory. 
 
-To build all of PostgreSQL in release configuration, run
-	build RELEASE
+Before you build, you may need to edit the file config.pl to reflect any configuration options you want to change, or the paths to any third party libraries to use. 
+The complete configuration is determined by first reading and parsing the file config_default.pl, and then apply any changes from config.pl. 
+For example, to specify the location of your Python installation, put the following in config.pl: 
 
-To build just a single project, for example psql, run
-	build psql
-or
-	build RELEASE psql
+   $config->{python} = 'c:\python26';
+
+  You only need to specify those parameters that are different from what's in config_default.pl. 
+
+If you need to set any other environment variables, create a file called buildenv.pl and put the required commands there. 
+For example, to add the path for bison when it's not in the PATH, create a file containing: 
+
+   $ENV{PATH}=$ENV{PATH} . ';c:\some\where\bison\bin';
+
+  
+16.1.1. Requirements
+
+PostgreSQL will build using either the professional versions (any edition) or the free Express edition of Visual Studio 2005 or 2008. 
+
+The following additional products are required to build the complete package. 
+Use the config.pl file to specify which directories the libraries are available in. 
+
+Microsoft Platform SDK
+
+It is recommended that you upgrade to the latest available version of the Microsoft Platform SDK, available for download from http://www.microsoft.com/downloads/. 
+
+You must always include the Windows Headers and Libraries part of the SDK. 
+If you install the Platform SDK including the Visual C++ Compilers, you don't need Visual Studio to build. 
 
 
-Dependencies
-------------
+ActiveState Perl
 
-The following packages are needed for the different config options:
+ActiveState Perl is required to run the build generation scripts. 
+MinGW or Cygwin Perl will not work. 
+It must also be present in the PATH. 
+Binaries can be downloaded from http://www.activestate.com (Note: version 5.8 is required, the free Standard Distribution is sufficient). 
 
-pthreads - always required by Greenplum DB
-Download from ftp://sources.redhat.com/pub/pthreads-win32
+ActiveState TCL
 
-perl - always required
-Get ActiveState Perl from www.activestate.com
+Required for building PL/TCL (Note: version 8.4 is required, the free Standard Distribution is sufficient). 
 
-flex & bison - required to build from CVS (as opposed to a release tarball)
-Download from http://gnuwin32.sourceforge.net.  Note that bison version 2.0
-will not work.  Use either version 1.875, or version 2.2 or newer.
-For flex, use version 2.5.4.
+Bison and Flex
 
-python - required for pl/python
-Get from www.python.org
+Bison and Flex are required to build from CVS, but not required when building from a release file. 
+Note that only Bison 1.875 or versions 2.2 and later will work. 
+Bison and Flex can be downloaded from http://gnuwin32.sourceforge.net. 
+(Chuck's note:  You can use cygwin's bison and flex, if cygwin is the LAST thing in the PATH, after all Visual Studio and SDK items)
 
-tcl - required for pl/tcl
-Get ActiveState TCL from www.activestate.com
+Diff
 
-openssl - required for SSL support
-Get from http://www.slproweb.com/products/Win32OpenSSL.html, or build
-from source from www.openssl.org.
+Diff is required to run the regression tests, and can be downloaded from http://gnuwin32.sourceforge.net. 
 
-Kerberos - required for Kerberos support
-Get from http://web.mit.edu/Kerberos/dist/index.html
+Gettext
 
-zlib - required for Greenplum Database
-Get from http://www.zlib.net
+Gettext is required to build with NLS support, and can be downloaded from http://gnuwin32.sourceforge.net. 
+Note that binaries, dependencies and developer files are all needed. 
 
-libxml2 and libxslt - required for XML support
-Get from http://www.zlatkovic.com/pub/libxml or build from source from
-http://xmlsoft.org. Note that libxml2 requires iconv.
+Microsoft Platform SDK
 
-curl - required by Greenplum Database
+It is recommended that you upgrade to the latest available version of the Microsoft Platform SDK, available for download from http://www.microsoft.com/downloads/. 
+
+MIT Kerberos
+
+Required for Kerberos authentication support.
+MIT Kerberos can be downloaded from http://web.mit.edu/Kerberos/dist/index.html. 
+
+libxml2 and libxslt  
+
+Required for XML support.  (Not needed for GPDB)
+Binaries can be downloaded from http://zlatkovic.com/pub/libxml or source from http://xmlsoft.org. Note that libxml2 requires iconv, which is available from the same download location. 
+
+openssl
+
+Required for SSL support. 
+Binaries can be downloaded from http://www.slproweb.com/products/Win32OpenSSL.html or source from http://www.openssl.org. 
+
+ossp-uuid
+
+Required for UUID-OSSP support (contrib only). (Not needed for GPDB)
+Source can be downloaded from http://www.ossp.org/pkg/lib/uuid/. 
+
+Python
+
+Required for building PL/Python. 
+Binaries can be downloaded from http://www.python.org. 
+
+zlib
+
+Required for compression support in pg_dump and pg_restore. Always required for GPDB.
+Binaries can be downloaded from http://www.zlib.net. 
+
+
+16.1.2. Building
+
+To build all of PostgreSQL in release configuration (the default), run the command: 
+
+         build
+    
+   To build all of PostgreSQL in debug configuration, run the command: 
+
+         build DEBUG
+    
+   To build just a single project, for example psql, run the commands: 
+
+         build psql
+    
+         build DEBUG psql
+    
+   To change the default build configuration to debug, put the following in the buildenv.pl file: 
+
+         $ENV{CONFIG}="Debug";
+    
+   
+It is also possible to build from inside the Visual Studio GUI. In this case, you need to run: 
+
+         perl mkvcbuild.pl
+    
+   from the command prompt, and then open the generated pgsql.sln (in the root directory of the source tree) in Visual Studio. 
+
+16.1.3. Cleaning and installing
+
+Most of the time, the automatic dependency tracking in Visual Studio will handle changed files. 
+But if there have been large changes, you may need to clean the installation. 
+To do this, simply run the clean.bat command, which will automatically clean out all generated files. 
+You can also run it with the dist parameter, in which case it will behave like make distclean and remove the flex/bison output files as well. 
+
+By default, all files are written into a subdirectory of the debug or release directories. To install these files using the standard layout, and also generate the files required to initialize and use the database, run the command: 
+
+         perl install.pl c:\destination\directory
+    
+   
+16.1.4. Running the regression tests
+
+To run the regression tests, make sure you have completed the build of all required parts first. 
+Also, make sure that the DLLs required to load all parts of the system (such as the Perl and Python DLLs for the procedural languages) are present in the system path. 
+If they are not, set it through the buildenv.pl file. 
+To run the tests, run one of the following commands from the src\tools\msvc directory: 
+
+         vcregress check
+    
+         vcregress installcheck
+    
+         vcregress plcheck
+    
+         vcregress contribcheck
+    
+   To change the schedule used (default is the parallel), append it to the command line like: 
+
+         vcregress check serial
