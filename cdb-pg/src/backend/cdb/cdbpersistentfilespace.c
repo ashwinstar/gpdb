@@ -952,6 +952,109 @@ void PersistentFilespace_Dropped(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
+/*
+ * Add a mirror.
+ */
+void
+PersistentFilespace_AddMirror(Oid filespace,
+							  char *mirpath,
+							  int16 pridbid, int16 mirdbid)
+{
+	PersistentFileSysObjName fsObjName;
+	char *newpath;
+
+	FilespaceDirEntry fde;
+
+	PersistentFilespace_InitScan();
+
+	PersistentFileSysObjName_SetFilespaceDir(&fsObjName, filespace);
+
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+
+	fde = PersistentFilespace_FindDirUnderLock(filespace);
+	if (fde == NULL)
+		elog(ERROR, "Did not find persistent filespace entry %u", 
+			 filespace);
+
+	if (fde->dbId1 == pridbid)
+	{
+		fde->dbId2 = mirdbid;
+		PersistentFilespace_BlankPadCopyLocation(
+										fde->locationBlankPadded2,
+										mirpath);
+		newpath = fde->locationBlankPadded2;
+	}
+	else if (fde->dbId2 == pridbid)
+	{
+		fde->dbId1 = mirdbid;
+		PersistentFilespace_BlankPadCopyLocation(
+										fde->locationBlankPadded1,
+										mirpath);
+		newpath = fde->locationBlankPadded1;
+	}
+	else
+	{
+		Insist(false);
+	}
+
+	PersistentFileSysObj_AddMirror(&fsObjName,
+								   &fde->persistentTid,
+								   fde->persistentSerialNum,
+								   pridbid,
+								   mirdbid,
+								   (void *)newpath,
+								   /* flushToXlog */ false);
+		
+	LWLockRelease(PersistentObjLock);
+}
+
+/*
+ * Add a mirror.
+ */
+void
+PersistentFilespace_RemoveSegment(int16 dbid, bool ismirror)
+{
+	HASH_SEQ_STATUS hstat;
+	FilespaceDirEntry fde;
+
+	hash_seq_init(&hstat, persistentFilespaceSharedHashTable);
+
+	PersistentFilespace_InitScan();
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+
+	while ((fde = hash_seq_search(&hstat)) != NULL)
+	{
+		Oid filespace = fde->key.filespaceOid;
+		PersistentFileSysObjName fsObjName;
+
+		PersistentFileSysObjName_SetFilespaceDir(&fsObjName, filespace);
+
+		if (fde->dbId1 == dbid)
+		{
+			fde->dbId1 = dbid;
+			PersistentFilespace_BlankPadCopyLocation(
+										fde->locationBlankPadded1,
+										"");
+		}
+		else if (fde->dbId2 == dbid)
+		{
+			fde->dbId2 = dbid;
+			PersistentFilespace_BlankPadCopyLocation(
+										fde->locationBlankPadded2,
+										"");
+		}
+
+		PersistentFileSysObj_RemoveSegment(&fsObjName,
+								   &fde->persistentTid,
+								   fde->persistentSerialNum,
+								   dbid,
+								   ismirror,
+								   /* flushToXlog */ false);
+	}
+
+	LWLockRelease(PersistentObjLock);
+}
+
 // -----------------------------------------------------------------------------
 // Shmem
 // -----------------------------------------------------------------------------

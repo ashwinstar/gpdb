@@ -389,4 +389,19 @@ extern Size PersistentFileSysObj_ShmemSize(void);
 
 extern void PersistentFileSysObj_ShmemInit(void);
 
+extern void PersistentFileSysObj_AddMirror(PersistentFileSysObjName *fsObjName,
+										   ItemPointer persistentTid,
+										   int64 persistentSerialNum,
+										   int16 pridbid,
+										   int16 mirdbid,
+										   void *arg,
+										   bool flushToXLog);
+
+extern void PersistentFileSysObj_RemoveSegment(
+								   PersistentFileSysObjName *fsObjName,
+								   ItemPointer persistentTid,
+								   int64 persistentSerialNum,
+								   int16 dbid,
+								   bool ismirror,
+								   bool flushToXLog);
 #endif   /* CDBPERSISTENTFILESYSOBJ_H */

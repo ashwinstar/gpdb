@@ -33,6 +33,7 @@ CATALOG(pg_partition_rule,5011)
 	text parrangeevery;
 	text parlistvalues;
 	text parreloptions[1];
+	Oid partemplatespace;
 } FormData_pg_partition_rule;
 
 
@@ -43,7 +44,7 @@ CATALOG(pg_partition_rule,5011)
  */
 typedef FormData_pg_partition_rule *Form_pg_partition_rule;
 
-#define Natts_pg_partition_rule						13
+#define Natts_pg_partition_rule						14
 #define Anum_pg_partition_rule_paroid				1
 #define Anum_pg_partition_rule_parchildrelid		2
 #define Anum_pg_partition_rule_parparentrule		3
@@ -57,5 +58,6 @@ typedef FormData_pg_partition_rule *Form_pg_partition_rule;
 #define Anum_pg_partition_rule_parrangeevery		11
 #define Anum_pg_partition_rule_parlistvalues		12
 #define Anum_pg_partition_rule_parreloptions		13
+#define Anum_pg_partition_rule_partemplatespace		14
 
 #endif   /* PG_PARTITION_RULE_H */

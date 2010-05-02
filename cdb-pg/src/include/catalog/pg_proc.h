@@ -1009,6 +1009,7 @@ DATA(insert OID = 747 (  array_dims		   PGNSP PGUID 12 f f t f i 1 25 f "2277" _
 DESCR("array dimensions");
 DATA(insert OID = 750 (  array_in		   PGNSP PGUID 12 f f t f s 3 2277 f "2275 26 23" _null_ _null_ _null_	array_in - _null_ ));
 DESCR("I/O");
+#define ARRAY_OUT_OID 751
 DATA(insert OID = 751 (  array_out		   PGNSP PGUID 12 f f t f s 1 2275 f "2277" _null_ _null_ _null_	array_out - _null_ ));
 DESCR("I/O");
 DATA(insert OID = 2091 (  array_lower	   PGNSP PGUID 12 f f t f i 2 23 f "2277 23" _null_ _null_ _null_ array_lower - _null_ ));
@@ -2318,10 +2319,8 @@ DESCR("partition configuration for a given relation");
 DATA(insert OID = 5027 (  pg_get_partition_rule_def	PGNSP PGUID 12 f f t f s 1 25 f "26" _null_ _null_ _null_	pg_get_partition_rule_def - _null_ ));
 DATA(insert OID = 5028 (  pg_get_partition_rule_def	PGNSP PGUID 12 f f t f s 2 25 f "26 16" _null_ _null_ _null_	pg_get_partition_rule_def_ext - _null_ ));
 DESCR("partition configuration for a given rule");
-#ifdef MPP6095
-XXATA(insert OID = 5037 (  pg_get_partition_template_def	PGNSP PGUID 12 f f t f s 3 25 f "26 16 16" _null_ _null_ _null_	pg_get_partition_template_def - _null_ ));
-XXESCR("ALTER statement to recreate subpartition templates for a give relation");
-#endif
+DATA(insert OID = 5037 (  pg_get_partition_template_def	PGNSP PGUID 12 f f t f s 3 25 f "26 16 16" _null_ _null_ _null_	pg_get_partition_template_def - _null_ ));
+DESCR("ALTER statement to recreate subpartition templates for a give relation");
 
 DATA(insert OID = 821 (  pg_get_keywords		PGNSP PGUID 12 f f t t s 0 2249 f "" "{25,18,25}" "{o,o,o}" "{word,catcode,catdesc}" pg_get_keywords - _null_ ));
 DESCR("list of SQL keywords");
@@ -4953,10 +4952,103 @@ DATA(insert OID = 5042 (  gp_list_backend_priorities   PGNSP PGUID 12 f f f t v 
 DESCR("list priorities of backends");
 
 /* elog related */
-DATA(insert OID = 5044 (  pg_elog			   PGNSP PGUID 12 f f t f i 1 2278 f "25" _null_ _null_ _null_ pg_elog - _null_ ));
+DATA(insert OID = 5044 (  gp_elog			   PGNSP PGUID 12 f f t f i 1 2278 f "25" _null_ _null_ _null_ gp_elog - _null_ ));
 DESCR("Insert text into the error log");
-DATA(insert OID = 5045 (  pg_elog			   PGNSP PGUID 12 f f t f i 2 2278 f "25 16" _null_ _null_ _null_ pg_elog - _null_ ));
+DATA(insert OID = 5045 (  gp_elog			   PGNSP PGUID 12 f f t f i 2 2278 f "25 16" _null_ _null_ _null_ gp_elog - _null_ ));
 DESCR("Insert text into the error log");
+
+/* Segment and master administration functions, see utils/gp/segadmin.c */
+DATA(insert OID = 5046 ( gp_add_master_standby PGNSP PGUID 12 f f f f v 3 21 f "25 25 1009" _null_ _null_ _null_ gp_add_master_standby - _null_ ));
+DESCR("Perform the catalog operations necessary for adding a new standby");
+
+DATA(insert OID = 5047 ( gp_remove_master_standby PGNSP PGUID 12 f f f f v 0 16 f "" _null_ _null_ _null_ gp_remove_master_standby - _null_ ));
+DESCR("Remove a master standby from the system catalog");
+
+DATA(insert OID = 5048 ( gp_add_segment_mirror PGNSP PGUID 12 f f f f v 6 21 f "21 25 25 23 23 1009" _null_ _null_ _null_ gp_add_segment_mirror - _null_ ));
+DESCR("Perform the catalog operations necessary for adding a new segment mirror");
+
+DATA(insert OID = 5049 ( gp_remove_segment_mirror PGNSP PGUID 12 f f f f v 1 16 f "21" _null_ _null_ _null_ gp_remove_segment_mirror - _null_ )); 
+DESCR("Remove a segment mirror from the system catalog");
+
+DATA(insert OID = 5050 ( gp_add_segment PGNSP PGUID 12 f f f f v 4 21 f "25 25 23 1009" _null_ _null_ _null_ gp_add_segment - _null_ ));
+DESCR("Perform the catalog operations necessary for adding a new primary segment");
+
+DATA(insert OID = 5051 ( gp_remove_segment PGNSP PGUID 12 f f f f v 1 16 f "21" _null_ _null_ _null_ gp_remove_segment - _null_ ));
+DESCR("Remove a primary segment from the system catalog");
+
+DATA(insert OID = 5052 ( gp_prep_new_segment PGNSP PGUID 12 f f f f v 1 16 f "1009" _null_ _null_ _null_ gp_prep_new_segment - _null_ ));
+DESCR("Convert a cloned master catalog for use as a segment");
+
+DATA(insert OID = 5053 ( gp_activate_standby PGNSP PGUID 12 f f f f v 0 16 f "" _null_ _null_ _null_ gp_activate_standby - _null_ ));
+DESCR("Activate a standby");
+
+/* 
+ * We cheat in the following two functions: they are technically volatile but
+ * we can only dispatch them if they're immutable :(.
+ */
+DATA(insert OID = 5054 ( gp_add_segment_persistent_entries PGNSP PGUID 12 f f f f i 3 16 f "21 21 1009" _null_ _null_ _null_ gp_add_segment_persistent_entries - _null_ ));
+DESCR("Persist object nodes on a segment");
+
+DATA(insert OID = 5055 ( gp_remove_segment_persistent_entries PGNSP PGUID 12 f f f f i 2 16 f "21 21" _null_ _null_ _null_ gp_remove_segment_persistent_entries - _null_ ));
+DESCR("Remove persistent object node references at a segment");
+
+/*
+ * persistent table repair functions.
+ */
+DATA(insert OID = 5056 ( gp_add_persistent_filespace_node_entry PGNSP PGUID 12 f f f f v 11 16 f "27 26 21 25 21 25 21 21 23 20 27" _null_ _null_ _null_ gp_add_persistent_filespace_node_entry - _null_ ));
+DESCR("Add a new entry to gp_persistent_filespace_node");
+
+DATA(insert OID = 5057 ( gp_add_persistent_tablespace_node_entry PGNSP PGUID 12 f f f f v 8 16 f "27 26 26 21 21 23 20 27" _null_ _null_ _null_ gp_add_persistent_tablespace_node_entry - _null_ ));
+DESCR("Add a new entry to gp_persistent_tablespace_node");
+
+DATA(insert OID = 5058 ( gp_add_persistent_databases_node_entry PGNSP PGUID 12 f f f f v 8 16 f "27 26 26 21 21 23 20 27" _null_ _null_ _null_ gp_add_persistent_database_node_entry - _null_ ));
+DESCR("Add a new entry to gp_persistent_database_node");
+
+DATA(insert OID = 5059 ( gp_add_persistent_relation_node_entry PGNSP PGUID 12 f f f f v 17 16 f "27 26 26 26 23 21 21 21 21 16 3310 23 20 20 23 20 27" _null_ _null_ _null_ gp_add_persistent_relation_node_entry - _null_ ));
+DESCR("Add a new entry to gp_persistent_relation_node");
+
+DATA(insert OID = 5060 ( gp_add_global_sequence_entry PGNSP PGUID 12 f f f f v 2 16 f "27 20" _null_ _null_ _null_ gp_add_global_sequence_entry - _null_ ));
+DESCR("Add a new entry to gp_global_sequence");
+
+DATA(insert OID = 5061 ( gp_add_relation_node_entry PGNSP PGUID 12 f f f f v 5 16 f "27 26 23 27 20" _null_ _null_ _null_ gp_add_relation_node_entry - _null_ ));
+DESCR("Add a new entry to gp_relation_node");
+
+DATA(insert OID = 5062 ( gp_update_persistent_filespace_node_entry PGNSP PGUID 12 f f f f v 11 16 f "27 26 21 25 21 25 21 21 23 20 27" _null_ _null_ _null_ gp_update_persistent_filespace_node_entry - _null_ ));
+DESCR("Update an entry in gp_persistent_filespace_node");
+
+DATA(insert OID = 5063 ( gp_update_persistent_tablespace_node_entry PGNSP PGUID 12 f f f f v 8 16 f "27 26 26 21 21 23 20 27" _null_ _null_ _null_ gp_update_persistent_tablespace_node_entry - _null_ ));
+DESCR("Update an entry in gp_persistent_tablespace_node");
+
+DATA(insert OID = 5064 ( gp_update_persistent_databases_node_entry PGNSP PGUID 12 f f f f v 8 16 f "27 26 26 21 21 23 20 27" _null_ _null_ _null_ gp_update_persistent_database_node_entry - _null_ ));
+DESCR("Update an entry in gp_persistent_database_node");
+
+DATA(insert OID = 5065 ( gp_update_persistent_relation_node_entry PGNSP PGUID 12 f f f f v 17 16 f "27 26 26 26 23 21 21 21 21 16 3310 23 20 20 23 20 27" _null_ _null_ _null_ gp_update_persistent_relation_node_entry - _null_ ));
+DESCR("Update an entry in gp_persistent_relation_node");
+
+DATA(insert OID = 5066 ( gp_update_global_sequence_entry PGNSP PGUID 12 f f f f v 2 16 f "27 20" _null_ _null_ _null_ gp_update_global_sequence_entry - _null_ ));
+DESCR("Update an entry in gp_global_sequence");
+
+DATA(insert OID = 5067 ( gp_update_relation_node_entry PGNSP PGUID 12 f f f f v 5 16 f "27 26 23 27 20" _null_ _null_ _null_ gp_update_relation_node_entry - _null_ ));
+DESCR("Update an entry in gp_relation_node");
+
+DATA(insert OID = 5068 ( gp_delete_persistent_filespace_node_entry PGNSP PGUID 12 f f f f v 1 16 f "27" _null_ _null_ _null_ gp_delete_persistent_filespace_node_entry - _null_ ));
+DESCR("Remove an entry from gp_persistent_filespace_node");
+
+DATA(insert OID = 5069 ( gp_delete_persistent_tablespace_node_entry PGNSP PGUID 12 f f f f v 1 16 f "27" _null_ _null_ _null_ gp_delete_persistent_tablespace_node_entry - _null_ ));
+DESCR("Remove an entry from gp_persistent_tablespace_node");
+
+DATA(insert OID = 5070 ( gp_delete_persistent_databases_node_entry PGNSP PGUID 12 f f f f v 1 16 f "27" _null_ _null_ _null_ gp_delete_persistent_database_node_entry - _null_ ));
+DESCR("Remove an entry from gp_persistent_database_node");
+
+DATA(insert OID = 5071 ( gp_delete_persistent_relation_node_entry PGNSP PGUID 12 f f f f v 1 16 f "27" _null_ _null_ _null_ gp_delete_persistent_relation_node_entry - _null_ ));
+DESCR("Remove an entry from gp_persistent_relation_node");
+
+DATA(insert OID = 5072 ( gp_delete_global_sequence_entry PGNSP PGUID 12 f f f f v 1 16 f "27" _null_ _null_ _null_ gp_delete_global_sequence_entry - _null_ ));
+DESCR("Remove an entry from gp_global_sequence");
+
+DATA(insert OID = 5073 ( gp_delete_relation_node_entry PGNSP PGUID 12 f f f f v 1 16 f "27" _null_ _null_ _null_ gp_delete_relation_node_entry - _null_ ));
+DESCR("Remove an entry from gp_relation_node");
+
 /*
  * Symbolic values for provolatile column: these indicate whether the result
  * of a function is dependent *only* on the values of its explicit arguments,

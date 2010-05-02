@@ -30,6 +30,7 @@ CATALOG(pg_appendonly,6105) BKI_WITHOUT_OIDS
     Oid             segidxid;           /* if aoseg table, OID of segno index */
     Oid             blkdirrelid;        /* OID of aoblkdir table; 0 if none */
     Oid             blkdiridxid;        /* if aoblkdir table, OID of aoblkdir index */
+    int4            version;    /* Version of the MemTuple layout for this AO table */
 } FormData_pg_appendonly;
 
 
@@ -40,7 +41,7 @@ CATALOG(pg_appendonly,6105) BKI_WITHOUT_OIDS
 */
 typedef FormData_pg_appendonly *Form_pg_appendonly;
 
-#define Natts_pg_appendonly					13
+#define Natts_pg_appendonly					14
 #define Anum_pg_appendonly_relid			1
 #define Anum_pg_appendonly_blocksize		2
 #define Anum_pg_appendonly_safefswritesize	3
@@ -54,6 +55,7 @@ typedef FormData_pg_appendonly *Form_pg_appendonly;
 #define Anum_pg_appendonly_segidxid         11
 #define Anum_pg_appendonly_blkdirrelid      12
 #define Anum_pg_appendonly_blkdiridxid      13
+#define Anum_pg_appendonly_version          14
 
 /*
  * Descriptor of a single AO relation.

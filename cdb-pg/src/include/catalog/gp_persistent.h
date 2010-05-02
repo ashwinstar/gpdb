@@ -96,7 +96,7 @@ typedef FormData_gp_persistent_relation_node *Form_gp_persistent_relation_node;
 { GpPersistentRelationNodeRelationId, {"mirror_existence_state"}, 				21, -1, 2, 7, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
 { GpPersistentRelationNodeRelationId, {"mirror_data_synchronization_state"},	21, -1, 2, 8, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
 { GpPersistentRelationNodeRelationId, {"mirror_bufpool_physically_truncated"},	16, -1, 1, 9, 0, -1, -1, true, 'p', 'c', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"mirror_bufpool_resync_ckpt_loc"},		3310, -1, 8, 10, 0, -1, -1, false, 'p', 's', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"mirror_bufpool_resync_ckpt_loc"},		3310, -1, 8, 10, 0, -1, -1, false, 'p', 'i', true, false, false, true, 0 }, \
 { GpPersistentRelationNodeRelationId, {"mirror_bufpool_resync_ckpt_block_num"},	23, -1, 4, 11, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
 { GpPersistentRelationNodeRelationId, {"mirror_append_only_loss_eof"},			20, -1, 8, 12, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
 { GpPersistentRelationNodeRelationId, {"mirror_append_only_new_eof"},			20, -1, 8, 13, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \

@@ -48,4 +48,34 @@ objoid|classoid|objsubid|description
 3331|1255|0|I/O
 6435|1255|0|view logged change tracking records
 2905|1255|0|btree less-equal-greater
+5046|1255|0|Perform the catalog operations necessary for adding a new standby
+5047|1255|0|Remove a master standby from the system catalog
+5048|1255|0|Perform the catalog operations necessary for adding a new segment mirror
+5049|1255|0|Remove a segment mirror from the system catalog
+5050|1255|0|Perform the catalog operations necessary for adding a new primary segment
+5051|1255|0|Remove a primary segment from the system catalog
+5052|1255|0|Convert a cloned master catalog for use as a segment
+5053|1255|0|Activate a standby
+5054|1255|0|Persist object nodes on a segment
+5055|1255|0|Remove persistent object node references at a segment
+5037|1255|0|ALTER statement to recreate subpartition templates for a give relation
+8001|2615|0|Greenplum toolkit schema
+5056|1255|0|Add a new entry to gp_persistent_filespace_node
+5057|1255|0|Add a new entry to gp_persistent_tablespace_node
+5058|1255|0|Add a new entry to gp_persistent_database_node
+5059|1255|0|Add a new entry to gp_persistent_relation_node
+5060|1255|0|Add a new entry to gp_global_sequence
+5061|1255|0|Add a new entry to gp_relation_node
+5062|1255|0|Update an entry in gp_persistent_filespace_node
+5063|1255|0|Update an entry in gp_persistent_tablespace_node
+5064|1255|0|Update an entry in gp_persistent_database_node
+5065|1255|0|Update an entry in gp_persistent_relation_node
+5066|1255|0|Update an entry in gp_global_sequence
+5067|1255|0|Update an entry in gp_relation_node
+5068|1255|0|Remove an entry from gp_persistent_filespace_node
+5069|1255|0|Remove an entry from gp_persistent_tablespace_node
+5070|1255|0|Remove an entry from gp_persistent_database_node
+5071|1255|0|Remove an entry from gp_persistent_relation_node
+5072|1255|0|Remove an entry from gp_global_sequence
+5073|1255|0|Remove an entry from gp_relation_node
 \.

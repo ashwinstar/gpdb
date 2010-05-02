@@ -2714,43 +2714,13 @@ class GPUpgrade:
                 logger.debug('creating AO rewrite: %s' % fname)
                 f = open(fname, 'w')
 
-                # The user might have already upgraded the database
-                # once in which case some (but maybe not all) ao seg
-                # relations will have been upgraded
-                if self.upgrade:
-                    aos = self.Select(
-                        '''select 'alter table pg_aoseg.' || relname || 
-                           ' add column ' ||
-                           ' eofuncompressed double precision;'
-                           from pg_class where relnamespace = 6104 and 
-                           relkind = 'o' and relnatts = '4';''',
-                           db=db, port=port)
-                else:
-                    aos = self.Select(
-                        '''select 'update table pg_aoseg.' || relname
-                           || ' set eofuncompressed = NULL;'
-                           from pg_class
-                           where relnamespace = 6104
-                           and relkind = 'o' and relnatts = '5';''',
-                           db=db, port=port)
-
-                if aos:
-                    # side step issue with AO: we can only work on
-                    # 1,000 odd AO tables at once otherwise we run out
-                    # of shared memory. No idea why, we just do.
-                    i = 1
-                    f.write('begin;\n')
-                    for a in aos:
-                        logger.debug(a)
-                        # need to add newline as postgres --single
-                        # uses it as a delimiter
-                        f.write(a + '\n')
-                        i += 1
-                        if i % 1000 == 0:
-                            i = 1
-                            f.write('commit;\nbegin;\n')
-                    f.write('commit;\n')
-
+                # The addition of eofuncompressed was 32 => 33
+                #
+                # Because this version of the upgrader does not support upgrades
+                # directly from 32 the old query is removed.  
+                #
+                # See the version of gpmigrator that shipped with 33 for
+                # details.
                 f.close()
             fname = os.path.join(logdir, 'aoseg_template0_rewrite.sql')
             f = open(fname, 'w')
@@ -2758,6 +2728,8 @@ class GPUpgrade:
             f.close()
 
 
+            # upgrade to persistent tables:  33 => 40
+            #
             # Produce upgrade files for persistent tables:
             #   - template1 must be processed first and handles the updates for
             #     the shared tables
@@ -3454,6 +3426,34 @@ class GPUpgrade:
         logger.debug(r)
 
     #------------------------------------------------------------
+    def InstallToolkit(self):
+        '''
+        Populates the gp_toolkit schema
+        '''
+        logger.info("Installing gp_toolkit")
+
+        try:
+
+            # Get the admin role
+            rolname = self.Select("select rolname from pg_authid where oid=10")[0]
+
+            # Read the toolkit sql file into memory
+            fname = '%s/share/postgresql/gp_toolkit.sql' % self.newhome
+            sql = open(fname, 'r').read()
+
+        # Set our role to the admin role then execute the sql script
+            sql = "SET SESSION AUTHORIZATION %s;\n%s" % (rolname, sql)
+            for _, db in self.dbs.iteritems():
+                if db == 'template0':
+                    continue
+                self.Update(sql, db=db)
+
+        except BaseException, e:
+            sys.stderr.write(traceback.format_exc())
+            sys.stderr.write(str(e))
+            raise e
+
+    #------------------------------------------------------------
     def Run(self):
         """
         The main execution method - switches between submodes.
@@ -3730,14 +3730,14 @@ class GPUpgrade:
             #  - unlock database
             if self.faultinjection == 6:
                 raise UpgradeError("faultinjection=%d" % self.faultinjection)
+
+            # Release the lockdown on the old database
+            self.ReleaseLockdown(self.oldenv)
     
             # Test failure
             #  - unlock database
             if self.faultinjection == 7:
                 raise UpgradeError("faultinjection=%d" % self.faultinjection)
-
-            # Release the lockdown on the old database
-            self.ReleaseLockdown(self.oldenv)
 
             # We are now at the state where we have a fully upgraded version
             # but we haven't yet installed it or brought the mirrors in sync.
@@ -3870,6 +3870,13 @@ It should now be possible to take a zfs snapshot before finalizing the upgrade.
             # + Release the lockdown
             # + Mark install valid
             self.Startup(self.newenv)
+
+            # Install the gp_toolkit schema
+            # + Requires a fully running 4.0 system including dispatch
+            #   and thus must occur after remirroring.  
+            if 'GPTOOLKIT' not in current_state:
+                self.InstallToolkit()
+                self.SetState('GPTOOLKIT')
 
             # VACUUM FREEZE template1, since we haven't already
             self.Update('VACUUM FREEZE;', db='template1')

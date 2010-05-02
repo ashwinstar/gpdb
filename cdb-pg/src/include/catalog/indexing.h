@@ -203,7 +203,7 @@ DECLARE_UNIQUE_INDEX(pg_filespace_fsname_index, 2859, on pg_filespace using btre
 /* The following index is not used for a cache and is not unique */
 DECLARE_INDEX(pg_filespace_entry_fs_index, 2893, on pg_filespace_entry using btree(fsefsoid oid_ops));
 #define FilespaceEntryFsIndexId  2893
-DECLARE_UNIQUE_INDEX(pg_filespace_entry_fsdb_index, 2894, on pg_filespace_entry using btree(fsefsoid oid_ops, fsedbid int4_ops));
+DECLARE_UNIQUE_INDEX(pg_filespace_entry_fsdb_index, 2894, on pg_filespace_entry using btree(fsefsoid oid_ops, fsedbid int2_ops));
 #define FilespaceEntryFsDbIndexId  2894
 
 DECLARE_UNIQUE_INDEX(pg_tablespace_oid_index, 2697, on pg_tablespace using btree(oid oid_ops));

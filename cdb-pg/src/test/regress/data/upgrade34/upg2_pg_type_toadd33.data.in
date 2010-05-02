@@ -3,7 +3,7 @@ oid|typname|typnamespace|typowner|typlen|typbyval|typtype|typisdefined|typdelim|
 2907|pg_toast_5033|99|10|-1|f|c|t|,|2902|0|record_in|record_out|record_recv|record_send|-|d|x|f|0|-1|0|\N|\N
 3300|gpaotid|11|10|6|f|b|t|,|0|0|gpaotidin|gpaotidout|gpaotidrecv|gpaotidsend|-|s|p|f|0|-1|0|\N|\N
 3301|_gpaotid|11|10|-1|f|b|t|,|0|3300|array_in|array_out|array_recv|array_send|-|i|x|f|0|-1|0|\N|\N
-3310|gpxlogloc|11|10|8|f|b|t|,|0|0|gpxloglocin|gpxloglocout|gpxloglocrecv|gpxloglocsend|-|s|p|f|0|-1|0|\N|\N
+3310|gpxlogloc|11|10|8|f|b|t|,|0|0|gpxloglocin|gpxloglocout|gpxloglocrecv|gpxloglocsend|-|i|p|f|0|-1|0|\N|\N
 3311|_gpxlogloc|11|10|-1|f|b|t|,|0|3310|array_in|array_out|array_recv|array_send|-|i|x|f|0|-1|0|\N|\N
 6438|pg_filespace|11|10|-1|f|c|t|,|5009|0|record_in|record_out|record_recv|record_send|-|d|x|f|0|-1|0|\N|\N
 6439|pg_filespace_entry|11|10|-1|f|c|t|,|5033|0|record_in|record_out|record_recv|record_send|-|d|x|f|0|-1|0|\N|\N

@@ -78,7 +78,7 @@
 
 #include "utils/elog.h" /* backtrace() prototype for solaris */
 #include "utils/debugbreak.h"
-#include "utils/builtins.h"  /* pg_elog() */
+#include "utils/builtins.h"  /* gp_elog() */
 
 #include "miscadmin.h"
 
@@ -3935,7 +3935,7 @@ elog_debug_linger(ErrorData *edata)
 }                               /* elog_debug_linger */
 
 /*
- * pg_elog
+ * gp_elog
  *
  * This externally callable function allows a user or application to insert records into the log.
  * Only superusers are allowed to call this function due to the potential for abuse.
@@ -3947,7 +3947,7 @@ elog_debug_linger(ErrorData *edata)
  *
  */
 Datum
-pg_elog(PG_FUNCTION_ARGS)
+gp_elog(PG_FUNCTION_ARGS)
 {
 	ErrorData  		edata;
 	char	   	   *errormsg;
@@ -3958,24 +3958,24 @@ pg_elog(PG_FUNCTION_ARGS)
 	if (PG_NARGS() != 1 && PG_NARGS() != 2)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("pg_elog(): called with %hd arguments",
+				 errmsg("gp_elog(): called with %hd arguments",
 						PG_NARGS())));
 	if (PG_ARGISNULL(0))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("pg_elog(): called with null arguments")));
+				 errmsg("gp_elog(): called with null arguments")));
 
 	if (PG_NARGS() == 2 && PG_ARGISNULL(1))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("pg_elog(): called with null arguments")));
+					 errmsg("gp_elog(): called with null arguments")));
 
 	/* Must be super user */
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied"),
-				 errhint("pg_elog(): requires superuser privileges.")));
+				 errhint("gp_elog(): requires superuser privileges.")));
 
 	errormsg = text_to_cstring(PG_GETARG_TEXT_PP(0));
 	/* text_to_cstring is guaranteed to not return a NULL, so we don't need to check */

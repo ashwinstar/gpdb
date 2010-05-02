@@ -61,8 +61,14 @@ typedef struct CdbComponentDatabaseInfo
 	char	   *hostaddrs[COMPONENT_DBS_MAX_ADDRS];	/* cached lookup of names */	
 } CdbComponentDatabaseInfo;
 
-#define SEGMENT_IS_ACTIVE_MIRROR(p) ((p)->role == 'm' ? true : false)
-#define SEGMENT_IS_ACTIVE_PRIMARY(p) ((p)->role == 'p' ? true : false)
+#define SEGMENT_ROLE_PRIMARY 'p'
+#define SEGMENT_ROLE_MIRROR 'm'
+
+#define SEGMENT_IS_ACTIVE_MIRROR(p) \
+	((p)->role == SEGMENT_ROLE_MIRROR ? true : false)
+#define SEGMENT_IS_ACTIVE_PRIMARY(p) \
+	((p)->role == SEGMENT_ROLE_PRIMARY ? true : false)
+
 #define SEGMENT_IS_ALIVE(p) ((p)->status == 'u' ? true : false)
 
 
@@ -151,5 +157,9 @@ extern bool *makeRandomSegMap(int total_primaries, int total_to_skip);
  * do a host:port to IP lookup, bypass caching.
  */
 extern char *getDnsAddress(char *name, int port, int elevel);
+
+extern int16 master_standby_dbid(void);
+extern CdbComponentDatabaseInfo *dbid_get_dbinfo(int16 dbid);
+extern int16 contentid_get_dbid(int16 contentid, char role);
 
 #endif   /* CDBUTIL_H */

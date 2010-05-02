@@ -10,6 +10,9 @@
 
 #define GpSegmentConfigRelationId 5036
 
+#define MASTER_DBID 1
+#define MASTER_CONTENT_ID (-1)
+
 CATALOG(gp_segment_configuration,5036) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 {
 	int2		dbid;			/* up to 32767 segment databases */

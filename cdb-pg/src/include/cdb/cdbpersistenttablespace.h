@@ -148,7 +148,8 @@ extern Size PersistentTablespace_ShmemSize(void);
  * Initialize the shared-memory for this module.
  */
 extern void PersistentTablespace_ShmemInit(void);
-																																																																
+
+extern void PersistentTablespace_AddMirrorAll(int16 pridbid,
+											  int16 mirdbid);
+extern void PersistentTablespace_RemoveSegment(int16 dbid, bool ismirror);
 #endif   /* CDBPERSISTENTTABLESPACE_H */
-
-

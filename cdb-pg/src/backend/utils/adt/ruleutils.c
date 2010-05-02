@@ -6426,7 +6426,6 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 }
 
 /* MPP-6095: dump template definitions */
-#ifdef MPP6095
 static char *
 pg_get_partition_template_def_worker(Oid relid, int prettyFlags, 
 									 int bLeafTablename)
@@ -6494,7 +6493,7 @@ pg_get_partition_template_def_worker(Oid relid, int prettyFlags,
 	while (pn)
 	{
 		PartitionRule	*prule = NULL; 
-		const char		*partIdStr;
+		const char		*partIdStr = "";
 
 		truncateStringInfo(&head, 0);
 		truncateStringInfo(&body, 0);
@@ -6606,7 +6605,6 @@ pg_get_partition_template_def_worker(Oid relid, int prettyFlags,
 
 	return sid1.data;
 } /* end pg_get_partition_template_def_worker */
-#endif
 
 static char *
 pg_get_partition_def_worker(Oid relid, int prettyFlags, int bLeafTablename)
@@ -6805,7 +6803,6 @@ pg_get_partition_def_ext2(PG_FUNCTION_ARGS)
 }
 
 /* MPP-6095: dump template definitions */
-#ifdef MPP6095
 Datum
 pg_get_partition_template_def(PG_FUNCTION_ARGS)
 {
@@ -6825,4 +6822,3 @@ pg_get_partition_template_def(PG_FUNCTION_ARGS)
 
 	PG_RETURN_TEXT_P(string_to_text(str));
 }
-#endif

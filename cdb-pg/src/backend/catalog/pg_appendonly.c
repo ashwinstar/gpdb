@@ -58,7 +58,7 @@ InsertAppendOnlyEntry(Oid relid,
      * Open and lock the pg_appendonly catalog.
      */
 	pg_appendonly_rel = heap_open(AppendOnlyRelationId, RowExclusiveLock);
-	natts = RelationGetDescr(pg_appendonly_rel)->natts;
+	natts = Natts_pg_appendonly;
 	values = palloc0(sizeof(Datum) * natts);
 	nulls = palloc0(sizeof(bool) * natts);
 	
@@ -74,6 +74,7 @@ InsertAppendOnlyEntry(Oid relid,
 	values[Anum_pg_appendonly_segidxid - 1] = ObjectIdGetDatum(segidxid);
 	values[Anum_pg_appendonly_blkdirrelid - 1] = ObjectIdGetDatum(blkdirrelid);
 	values[Anum_pg_appendonly_blkdiridxid - 1] = ObjectIdGetDatum(blkdiridxid);
+	values[Anum_pg_appendonly_version - 1] = Int32GetDatum(1);
 	
 	if(compresstype)
 	{

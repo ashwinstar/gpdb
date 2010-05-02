@@ -382,7 +382,7 @@ int main(int argc, char *argv[])
 	/*
 	 * Log that we are up and monitoring the database.  Ignore any error from this command
 	 */
-	qryRes = PQexec(dbconn, "select pg_elog('gpsnmpd is running and monitoring the system')");
+	qryRes = PQexec(dbconn, "select gp_elog('gpsnmpd is running and monitoring the system')");
 	PQclear(qryRes);
 
 
@@ -468,7 +468,7 @@ int main(int argc, char *argv[])
 	 */
 	if (pgsqlState == 1)
 	{
-		qryRes = PQexec(dbconn, "select pg_elog('gpsnmpd has stopped')");
+		qryRes = PQexec(dbconn, "select gp_elog('gpsnmpd has stopped')");
 		PQclear(qryRes);
 	}
 

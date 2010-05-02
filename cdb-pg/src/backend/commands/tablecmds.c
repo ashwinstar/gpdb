@@ -12867,6 +12867,8 @@ add_partition_rule(PartitionRule *rule)
 			 transformRelOptions((Datum) 0, rule->parreloptions, true, false);
 	else
 		isnull[Anum_pg_partition_rule_parreloptions - 1] = true;
+	
+	values[Anum_pg_partition_rule_partemplatespace -1] = ObjectIdGetDatum(InvalidOid);
 
 	rulerel = heap_open(PartitionRuleRelationId, RowExclusiveLock);
 

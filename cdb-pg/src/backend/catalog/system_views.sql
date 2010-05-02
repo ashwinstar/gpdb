@@ -21,7 +21,10 @@ CREATE VIEW pg_roles AS
         rolvaliduntil,
         rolconfig,
 		rolresqueue,
-        oid
+        oid,
+        rolcreaterextgpfd,
+		rolcreaterexthttp,
+		rolcreatewextgpfd   
     FROM pg_authid;
 
 CREATE VIEW pg_shadow AS
@@ -435,7 +438,9 @@ create view pg_partitions as
           end as partitionendinclusive, 
       partitioneveryclause, 
       parisdefault as partitionisdefault, 
-      partitionboundary
+      partitionboundary,
+      parentspace as parenttablespace,
+      partspace as partitiontablespace
   from 
       ( 
           select 
@@ -471,11 +476,15 @@ create view pg_partitions as
                   partition by pp.oid, cl.relname, pp.parlevel, cl3.relname
                   order by pr1.parruleord) as partitionnodefault, 
               pr1.parisdefault, 
-              pg_get_partition_rule_def(pr1.oid, true) as partitionboundary
+              pg_get_partition_rule_def(pr1.oid, true) as partitionboundary,
+              coalesce(sp.spcname, dfltspcname) as parentspace,
+              coalesce(sp3.spcname, dfltspcname) as partspace
           from 
               pg_namespace n, 
               pg_namespace n2, 
-              pg_class cl, 
+              pg_class cl
+                  left join
+              pg_tablespace sp on cl.reltablespace = sp.oid, 
               pg_class cl2, 
               pg_partition pp, 
               pg_partition_rule pr1
@@ -483,6 +492,12 @@ create view pg_partitions as
               pg_partition_rule pr2 on pr1.parparentrule = pr2.oid
                   left join 
               pg_class cl3 on pr2.parchildrelid = cl3.oid
+                  left join
+              pg_tablespace sp3 on cl3.reltablespace = sp3.oid,
+              (select s.spcname
+               from pg_database, pg_tablespace s
+               where datname = current_database()
+                 and dattablespace = s.oid) d(dfltspcname)
       where 
           pp.paristemplate = false and 
           pp.parrelid = cl.oid and 

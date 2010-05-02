@@ -47,8 +47,8 @@
  * index, or append-only (row- or column-store).
  */
 
+/* This value is the gp_max_tablespaces * gp_max_databases. */
 int		MaxPersistentDatabaseDirectories = 0;
-						// This value is the gp_max_tablespaces * gp_max_databases.
 
 typedef struct PersistentDatabaseSharedData
 {
@@ -592,6 +592,108 @@ void PersistentDatabase_Created(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
+void
+PersistentDatabase_RemoveSegment(int16 dbid, bool ismirror)
+{
+	Relation rel;
+	HeapScanDesc scandesc;
+	HeapTuple tuple;
+
+	if (PersistentFileSysObj_BeforePersistenceWork())
+	{	
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "skipping persistent database mirror addition");
+
+		return;
+	}
+
+	rel = heap_open(GpPersistentDatabaseNodeRelationId,
+					AccessExclusiveLock);
+	scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
+
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+
+	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
+	{
+		Form_gp_persistent_database_node form =
+			(Form_gp_persistent_database_node)GETSTRUCT(tuple);
+		Oid tblspcoid = form->tablespace_oid;
+		Oid dboid = form->database_oid;
+		int64 serial = form->persistent_serial_num;
+
+		PersistentFileSysObjName fsObjName;
+
+		PersistentFileSysObjName_SetDatabaseDir(&fsObjName,
+												tblspcoid,
+												dboid);
+
+	    PersistentFileSysObj_RemoveSegment(&fsObjName,
+										   &tuple->t_self,
+										   serial,
+										   dbid,
+										   ismirror,
+										   /* flushToXlog */ false);
+	}
+
+	LWLockRelease(PersistentObjLock);
+
+	heap_endscan(scandesc);
+	heap_close(rel, NoLock);
+}
+
+void
+PersistentDatabase_AddMirrorAll(
+	int16			pridbid,
+	int16			mirdbid)
+{
+	Relation rel;
+	HeapScanDesc scandesc;
+	HeapTuple tuple;
+
+	if (PersistentFileSysObj_BeforePersistenceWork())
+	{	
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "skipping persistent database mirror addition");
+
+		return;
+	}
+
+	rel = heap_open(GpPersistentDatabaseNodeRelationId,
+					AccessExclusiveLock);
+	scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
+
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+
+	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
+	{
+		Form_gp_persistent_database_node form =
+			(Form_gp_persistent_database_node)GETSTRUCT(tuple);
+		Oid tblspcoid = form->tablespace_oid;
+		Oid dboid = form->database_oid;
+		int64 serial = form->persistent_serial_num;
+
+		PersistentFileSysObjName fsObjName;
+
+		PersistentFileSysObjName_SetDatabaseDir(&fsObjName,
+												tblspcoid,
+												dboid);
+
+	    PersistentFileSysObj_AddMirror(&fsObjName,
+									   &tuple->t_self,
+									   serial,
+									   pridbid,
+           	        	               mirdbid,
+									   NULL,
+                   	        	       /* flushToXlog */ false);
+	}
+
+	LWLockRelease(PersistentObjLock);
+
+	heap_endscan(scandesc);
+	heap_close(rel, NoLock);
+}
 /*
  * Indicate we intend to drop a relation file as part of the current transaction.
  *

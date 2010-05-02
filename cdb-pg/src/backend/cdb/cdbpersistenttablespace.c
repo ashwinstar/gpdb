@@ -599,6 +599,95 @@ void PersistentTablespace_Created(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
+void
+PersistentTablespace_RemoveSegment(int16 dbid, bool ismirror)
+{
+	TablespaceDirEntry tablespaceDirEntry;
+	HASH_SEQ_STATUS hstat;
+
+	hash_seq_init(&hstat, persistentTablespaceSharedHashTable);
+
+	if (PersistentFileSysObj_BeforePersistenceWork())
+	{	
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "skipping persistent tablespace mirror addition");
+
+		return;
+	}
+
+	PersistentTablespace_InitScan();
+
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+
+	while ((tablespaceDirEntry = hash_seq_search(&hstat)) != NULL)
+	{
+		PersistentFileSysObjName fsObjName;
+		Oid tblspc = tablespaceDirEntry->key.tablespaceOid;
+
+		tablespaceDirEntry = PersistentTablespace_FindEntryUnderLock(tblspc);
+
+		if (tablespaceDirEntry == NULL)
+			elog(ERROR, "Did not find persistent tablespace entry %u", 
+				 tblspc);
+
+	    PersistentFileSysObj_RemoveSegment(&fsObjName,
+										   &tablespaceDirEntry->persistentTid,
+										   tablespaceDirEntry->persistentSerialNum,
+										   dbid,
+										   ismirror,
+										   /* flushToXlog */ false);
+	}
+
+	LWLockRelease(PersistentObjLock);
+}
+
+void
+PersistentTablespace_AddMirrorAll(
+	int16			pridbid,
+	int16			mirdbid)
+{
+	TablespaceDirEntry tablespaceDirEntry;
+	HASH_SEQ_STATUS hstat;
+
+	hash_seq_init(&hstat, persistentTablespaceSharedHashTable);
+
+	if (PersistentFileSysObj_BeforePersistenceWork())
+	{	
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "skipping persistent tablespace mirror addition");
+
+		return;
+	}
+
+	PersistentTablespace_InitScan();
+
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+
+	while ((tablespaceDirEntry = hash_seq_search(&hstat)) != NULL)
+	{
+		PersistentFileSysObjName fsObjName;
+		Oid tblspc = tablespaceDirEntry->key.tablespaceOid;
+
+		tablespaceDirEntry = PersistentTablespace_FindEntryUnderLock(tblspc);
+
+		if (tablespaceDirEntry == NULL)
+			elog(ERROR, "Did not find persistent tablespace entry %u", 
+				 tblspc);
+
+	    PersistentFileSysObj_AddMirror(&fsObjName,
+    	                               &tablespaceDirEntry->persistentTid,
+        	                           tablespaceDirEntry->persistentSerialNum,
+									   pridbid,
+            	                       mirdbid,
+									   NULL,
+                    	               /* flushToXlog */ false);
+	}
+
+	LWLockRelease(PersistentObjLock);
+}
+
 /*
  * Indicate we intend to drop a tablespace file as part of the current transaction.
  *
@@ -891,4 +980,3 @@ void PersistentTablespace_ShmemInit(void)
 	Assert(persistentTablespaceSharedData != NULL);
 	Assert(persistentTablespaceSharedHashTable != NULL);
 }
-

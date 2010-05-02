@@ -92,6 +92,23 @@ where
  p.paristemplate = 't'
  ) p1;
 
+-- pg_catalog.pg_roles
+create view public.pg_roles as 
+    select 
+        rolname,
+        rolsuper,
+        rolinherit,
+        rolcreaterole,
+        rolcreatedb,
+        rolcatupdate,
+        rolcanlogin,
+        rolconnlimit,
+        '********'::text as rolpassword,
+        rolvaliduntil,
+        rolconfig,
+		rolresqueue,
+        oid 
+    from pg_authid;
 
 --
 -- INFORMATION_SCHEMA views
@@ -374,6 +391,46 @@ CREATE VIEW public.element_types AS
               ( SELECT object_schema, object_name, object_type, dtd_identifier
                     FROM data_type_privileges );
 
+-- information_schema.tables
+CREATE VIEW public.tables AS
+    SELECT CAST(current_database() AS sql_identifier) AS table_catalog,
+           CAST(nc.nspname AS sql_identifier) AS table_schema,
+           CAST(c.relname AS sql_identifier) AS table_name,
+
+           CAST(
+             CASE WHEN nc.oid = pg_my_temp_schema() THEN 'LOCAL TEMPORARY'
+                  WHEN c.relkind = 'r' THEN 'BASE TABLE'
+                  WHEN c.relkind = 'v' THEN 'VIEW'
+                  ELSE null END
+             AS character_data) AS table_type,
+
+           CAST(null AS sql_identifier) AS self_referencing_column_name,
+           CAST(null AS character_data) AS reference_generation,
+
+           CAST(null AS sql_identifier) AS user_defined_type_catalog,
+           CAST(null AS sql_identifier) AS user_defined_type_schema,
+           CAST(null AS sql_identifier) AS user_defined_type_name,
+
+           CAST(CASE WHEN c.relkind = 'r'
+                THEN 'YES' ELSE 'NO' END AS character_data) AS is_insertable_into,
+           CAST('NO' AS character_data) AS is_typed,
+           CAST(
+             CASE WHEN nc.oid = pg_my_temp_schema() THEN 'PRESERVE' -- FIXME
+                  ELSE null END
+             AS character_data) AS commit_action
+
+    FROM pg_namespace nc, pg_class c
+
+    WHERE c.relnamespace = nc.oid
+          AND c.relkind IN ('r', 'v')
+          AND (NOT pg_is_other_temp_schema(nc.oid))
+          AND (pg_has_role(c.relowner, 'USAGE')
+               OR has_table_privilege(c.oid, 'SELECT')
+               OR has_table_privilege(c.oid, 'INSERT')
+               OR has_table_privilege(c.oid, 'UPDATE')
+               OR has_table_privilege(c.oid, 'DELETE')
+               OR has_table_privilege(c.oid, 'REFERENCES')
+               OR has_table_privilege(c.oid, 'TRIGGER') );
 
 -- Done creating views, restore search path to public
 set search_path='public';

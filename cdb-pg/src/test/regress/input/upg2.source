@@ -55,7 +55,6 @@ create table public.pg_shdescription (like pg_catalog.pg_shdescription);
 create table public.pg_rewrite (like pg_catalog.pg_rewrite) with oids;
 create table public.pg_conversion (like pg_catalog.pg_conversion);
 create table public.pg_operator (like pg_catalog.pg_operator) with oids;
-create table public.pg_authid (like pg_catalog.pg_authid);
 create table public.pg_resqueue (like pg_catalog.pg_resqueue) with oids;
 create table public.pg_amop (like pg_catalog.pg_amop);
 create table public.pg_amproc (like pg_catalog.pg_amproc);
@@ -95,6 +94,31 @@ create table public.pg_tablespace(spcname name not null,
 								  spcprilocations text[],
 								  spcmirlocations text[]
  								  ) with oids;
+create table public.pg_authid ( rolname name NOT NULL,
+    							rolsuper boolean NOT NULL,
+								rolinherit boolean NOT NULL,
+								rolcreaterole boolean NOT NULL,
+								rolcreatedb boolean NOT NULL,
+								rolcatupdate boolean NOT NULL,
+								rolcanlogin boolean NOT NULL,
+								rolconnlimit integer NOT NULL,
+								rolpassword text,
+								rolvaliduntil timestamp with time zone,
+								rolconfig text[],
+								rolresqueue oid);
+create table public.pg_partition_rule ( paroid oid NOT NULL,
+										parchildrelid oid NOT NULL,
+										parparentrule oid NOT NULL,
+										parname name NOT NULL,
+										parisdefault boolean NOT NULL,
+										parruleord smallint NOT NULL,
+										parrangestartincl boolean NOT NULL,
+										parrangeendincl boolean NOT NULL,
+										parrangestart text,
+										parrangeend text,
+										parrangeevery text,
+										parlistvalues text,
+										parreloptions text[]);
 
 -- These tables we only create so that the REINDEX statements wont error
 create table public.gp_configuration(like pg_catalog.gp_configuration);
@@ -153,7 +177,6 @@ create table public.pg_shdescription_v33(like pg_catalog.pg_shdescription);
 create table public.pg_rewrite_v33(like pg_catalog.pg_rewrite) with oids;
 create table public.pg_conversion_v33(like pg_catalog.pg_conversion);
 create table public.pg_operator_v33 (like pg_catalog.pg_operator) with oids;
-create table public.pg_authid_v33 (like pg_catalog.pg_authid);
 create table public.pg_resqueue_v33 (like pg_catalog.pg_resqueue) with oids;
 create table public.pg_amop_v33 (like pg_catalog.pg_amop);
 create table public.pg_amproc_v33 (like pg_catalog.pg_amproc);
@@ -178,6 +201,32 @@ create table public.pg_exttable_v33 (reloid oid not null,
 								 	 rejectlimittype char,
 								 	 fmterrtbl oid,
 								 	 encoding integer);
+create table public.pg_authid_v33 ( rolname name NOT NULL,
+    								rolsuper boolean NOT NULL,
+								    rolinherit boolean NOT NULL,
+								    rolcreaterole boolean NOT NULL,
+								    rolcreatedb boolean NOT NULL,
+								    rolcatupdate boolean NOT NULL,
+								    rolcanlogin boolean NOT NULL,
+								    rolconnlimit integer NOT NULL,
+								    rolpassword text,
+								    rolvaliduntil timestamp with time zone,
+								    rolconfig text[],
+								    rolresqueue oid);
+create table public.pg_partition_rule_v33 ( paroid oid NOT NULL,
+											parchildrelid oid NOT NULL,
+											parparentrule oid NOT NULL,
+											parname name NOT NULL,
+											parisdefault boolean NOT NULL,
+											parruleord smallint NOT NULL,
+											parrangestartincl boolean NOT NULL,
+											parrangeendincl boolean NOT NULL,
+											parrangestart text,
+											parrangeend text,
+											parrangeevery text,
+											parlistvalues text,
+											parreloptions text[]);
+
 --
 -- 3. Load the 32 catalog into public
 --
@@ -353,6 +402,23 @@ where
  cl2.relnamespace = n2.oid
 ) as p1;
 
+-- pg_catalog.pg_roles (had not changed from 3.2. changes in 4.0
+create view public.pg_roles_v33 as 
+    select 
+        rolname,
+        rolsuper,
+        rolinherit,
+        rolcreaterole,
+        rolcreatedb,
+        rolcatupdate,
+        rolcanlogin,
+        rolconnlimit,
+        '********'::text as rolpassword,
+        rolvaliduntil,
+        rolconfig,
+		rolresqueue,
+        oid 
+    from pg_authid;
 
 --
 -- 5. Run the scripts that upgrade from 32->33
@@ -397,6 +463,14 @@ where
 a.ev_class = 'public.pg_partitions'::regclass and
 b.ev_class = 'public.pg_partitions_v33'::regclass;
 
+-- pg_roles
+--   the view did not change, just a sanity check for now.
+--
+select pg_get_viewdef(a.ev_class) = pg_get_viewdef(b.ev_class)
+from pg_rewrite a, pg_rewrite b
+where
+a.ev_class = 'public.pg_roles'::regclass and
+b.ev_class = 'public.pg_roles_v33'::regclass;
 
 -- pg_attribute 
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
@@ -716,8 +790,9 @@ insert into public.pg_attribute
 							          ('public.pg_appendonly'::regclass, 10),
 							 		  ('public.pg_appendonly'::regclass, 11),
 							 		  ('public.pg_appendonly'::regclass, 12),
-							 		  ('public.pg_appendonly'::regclass, 13) );
-update public.pg_class set relnatts=13 where oid = 'pg_catalog.pg_appendonly'::regclass;
+							 		  ('public.pg_appendonly'::regclass, 13),
+							 		  ('public.pg_appendonly'::regclass, 14));
+update public.pg_class set relnatts=14 where oid = 'pg_catalog.pg_appendonly'::regclass;
 
 -- System views that have changed, update fake schema.
 --   We upgrade "public.viewname", which is a view defined in the _actual_
@@ -745,7 +820,8 @@ where ac.oid = av.ev_class
      'public.usage_privileges'::regclass,
      'public.views'::regclass,
 	 'public.pg_partitions'::regclass,
-	 'public.pg_partition_templates'::regclass
+	 'public.pg_partition_templates'::regclass,
+	 'public.tables'::regclass
   );
 
 -- System views that are new
@@ -818,6 +894,16 @@ where
 a.ev_class = 'public.pg_partitions'::regclass and
 b.ev_class = 'pg_catalog.pg_partitions'::regclass;
 
+
+-- new pg_roles 
+--   note that the view changed, pg_catalog.pg_roles should now
+--   be the same as public.pg_roles
+--
+select pg_get_viewdef(a.ev_class) = pg_get_viewdef(b.ev_class)
+from pg_rewrite a, pg_rewrite b
+where
+a.ev_class = 'public.pg_roles'::regclass and
+b.ev_class = 'pg_catalog.pg_roles'::regclass;
 
 -- pg_attribute 
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
@@ -1004,7 +1090,7 @@ select * from pg_catalog.pg_shdepend where objid < 10000 and refobjid < 10000;
 --   We must take care to mask out OIDS that may not match between our catalog
 --   versions (any oid >= 10000, so we simply mask out all occurances of 5+ digits).
 --
--- Note: the diff in pg_tables and pg_indexes is due to pg_tablespace having an
+-- Note: the diff in those relations is due to pg_tablespace and pg_authid having an
 -- extra column that is not actually referenced in the views.  This is a typical
 -- difference you see in otherwise identical views when underlying tables have
 -- added columns through normal operations and is harmless.

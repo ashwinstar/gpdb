@@ -78,6 +78,7 @@ install-data: $(BKIFILES) installdirs
 	$(INSTALL_DATA) cdb_schema.sql '$(DESTDIR)$(datadir)/cdb_schema.sql'
 	$(INSTALL_DATA) cdb_util.sql '$(DESTDIR)$(datadir)/cdb_util.sql'
 	$(INSTALL_DATA) $(srcdir)/sql_features.txt '$(DESTDIR)$(datadir)/sql_features.txt'
+	$(INSTALL_DATA) $(srcdir)/gp_toolkit.sql '$(DESTDIR)$(datadir)/gp_toolkit.sql'
 
 installdirs:
 	$(mkinstalldirs) '$(DESTDIR)$(datadir)'

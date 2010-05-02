@@ -5479,8 +5479,8 @@ select parrelid::regclass, * from pg_partition;
 (0 rows)
 
 select * from pg_partition_rule;
- paroid | parchildrelid | parparentrule | parname | parisdefault | parruleord | parrangestartincl | parrangeendincl | parrangestart | parrangeend | parrangeevery | parlistvalues | parreloptions 
---------+---------------+---------------+---------+--------------+------------+-------------------+-----------------+---------------+-------------+---------------+---------------+---------------
+ paroid | parchildrelid | parparentrule | parname | parisdefault | parruleord | parrangestartincl | parrangeendincl | parrangestart | parrangeend | parrangeevery | parlistvalues | parreloptions | partemplatespace 
+--------+---------------+---------------+---------+--------------+------------+-------------------+-----------------+---------------+-------------+---------------+---------------+---------------+------------------
 (0 rows)
 
 -- MPP-4172

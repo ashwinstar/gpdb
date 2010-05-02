@@ -462,14 +462,15 @@ IsAoSegmentNamespace(Oid namespaceId)
  *		For some classes of objects, the prefix pg_ is reserved for
  *		system objects only.  As of 8.0, this is only true for
  *		schema and tablespace names.
+ *
+ *      As of Greenplum 4.0 we also reserve the prefix gp_
  */
 bool
 IsReservedName(const char *name)
 {
 	/* ugly coding for speed */
-	return (name[0] == 'p' &&
-			name[1] == 'g' &&
-			name[2] == '_');
+	return ((name[0] == 'p' && name[1] == 'g' && name[2] == '_') ||
+			(name[0] == 'g' && name[1] == 'p' && name[2] == '_'));
 }
 
 

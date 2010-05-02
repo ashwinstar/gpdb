@@ -106,7 +106,7 @@ WHERE p1.oid < p2.oid AND
  3212 | int2_matrix_accum | 3214 | int8_matrix_accum
  3213 | int4_matrix_accum | 3215 | float8_matrix_accum
  3212 | int2_matrix_accum | 3215 | float8_matrix_accum
- 5044 | pg_elog           | 5045 | pg_elog
+ 5044 | gp_elog           | 5045 | gp_elog
 (13 rows)
 
 -- Look for uses of different type OIDs in the argument/result type fields
@@ -278,6 +278,10 @@ SELECT proname, pronargs
 FROM pg_proc 
 WHERE pronargs > 8 and prolang = 12 AND
 	prosrc NOT IN ('gp_deprecated') AND
+	proname NOT IN ('gp_add_persistent_filespace_node_entry',
+					'gp_add_persistent_relation_node_entry',
+					'gp_update_persistent_filespace_node_entry',
+					'gp_update_persistent_relation_node_entry') AND
     NOT proisagg AND 
     NOT proiswin;
  proname | pronargs 

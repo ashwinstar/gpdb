@@ -164,8 +164,9 @@ extern Size PersistentFilespace_ShmemSize(void);
  * Initialize the shared-memory for this module.
  */
 extern void PersistentFilespace_ShmemInit(void);
-																																																																
+
+extern void PersistentFilespace_AddMirror(Oid filespace, char *mirpath,
+							  			  int16 pridbid, int16 mirdbid);
+extern void PersistentFilespace_RemoveSegment(int16 dbid, bool ismirror);
+
 #endif   /* CDBPERSISTENTFILEESPACE_H */
-
-
-

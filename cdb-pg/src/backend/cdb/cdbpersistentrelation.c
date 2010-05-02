@@ -490,6 +490,120 @@ void PersistentRelation_Created(
 }
 
 /*
+ * Set mirror for all relation files.
+ */
+void
+PersistentRelation_AddMirrorAll(int16 pridbid, int16 mirdbid)
+{
+	Relation rel;
+	HeapScanDesc scandesc;
+	HeapTuple tuple;
+
+	if (PersistentFileSysObj_BeforePersistenceWork())
+	{	
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "skipping persistent database mirror addition");
+
+		return;
+	}
+	rel = heap_open(GpPersistentRelationNodeRelationId,
+				    AccessExclusiveLock);
+	scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
+
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+
+	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
+	{
+		Form_gp_persistent_relation_node form =
+			(Form_gp_persistent_relation_node)GETSTRUCT(tuple);
+		Oid tblspcoid = form->tablespace_oid;
+		Oid dboid = form->database_oid;
+		Oid relfilenode_oid = form->relfilenode_oid;
+		int32 segment_file_num = form->segment_file_num;
+		int64 serial = form->persistent_serial_num;
+
+		PersistentFileSysObjName fsObjName;
+		RelFileNode node;
+
+		node.spcNode = tblspcoid;
+		node.dbNode = dboid;
+		node.relNode = relfilenode_oid;
+
+		PersistentFileSysObjName_SetRelationFile(&fsObjName,
+												 &node,
+												 segment_file_num);
+
+	    PersistentFileSysObj_AddMirror(&fsObjName,
+    	   	                           &tuple->t_self,
+									   serial,
+									   pridbid,
+           	        	               mirdbid,
+									   NULL,
+                   	        	       /* flushToXlog */ false);
+	}
+
+	LWLockRelease(PersistentObjLock);
+	heap_endscan(scandesc);
+	heap_close(rel, NoLock);
+}
+
+void
+PersistentRelation_RemoveSegment(int16 dbid, bool ismirror)
+{
+	Relation rel;
+	HeapScanDesc scandesc;
+	HeapTuple tuple;
+
+	if (PersistentFileSysObj_BeforePersistenceWork())
+	{	
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "skipping persistent database mirror addition");
+
+		return;
+	}
+	rel = heap_open(GpPersistentRelationNodeRelationId,
+				    AccessExclusiveLock);
+	scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
+
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+
+	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
+	{
+		Form_gp_persistent_relation_node form =
+			(Form_gp_persistent_relation_node)GETSTRUCT(tuple);
+		Oid tblspcoid = form->tablespace_oid;
+		Oid dboid = form->database_oid;
+		Oid relfilenode_oid = form->relfilenode_oid;
+		int32 segment_file_num = form->segment_file_num;
+		int64 serial = form->persistent_serial_num;
+
+		PersistentFileSysObjName fsObjName;
+		RelFileNode node;
+
+		node.spcNode = tblspcoid;
+		node.dbNode = dboid;
+		node.relNode = relfilenode_oid;
+
+		PersistentFileSysObjName_SetRelationFile(&fsObjName,
+												 &node,
+												 segment_file_num);
+
+	    PersistentFileSysObj_RemoveSegment(&fsObjName,
+										   &tuple->t_self,
+										   serial,
+										   dbid,
+										   ismirror,
+										   /* flushToXlog */ false);
+	}
+
+	LWLockRelease(PersistentObjLock);
+	heap_endscan(scandesc);
+	heap_close(rel, NoLock);
+}
+
+/*
  * Indicate we intend to drop a relation file as part of the current transaction.
  *
  * This relation file to drop will be listed inside a commit, distributed commit, a distributed 

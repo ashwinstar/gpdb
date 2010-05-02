@@ -208,6 +208,8 @@ extern Size PersistentDatabase_ShmemSize(void);
  * Initialize the shared-memory for this module.
  */
 extern void PersistentDatabase_ShmemInit(void);
-																																																																
+extern void PersistentDatabase_AddMirrorAll(int16 pridbid, int16 mirdbid);
+extern void PersistentDatabase_RemoveSegment(int16 dbid, bool ismirror);
+
 #endif   /* CDBPERSISTENTDATABASE_H */
 

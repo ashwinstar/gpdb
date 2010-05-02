@@ -1,0 +1,1149 @@
+--------------------------------------------------------------------------------
+-- Greenplum Database
+-- Copyright (C) 2009 by Greenplum, Inc. All rights reserved.
+--
+-- jetpack 1.0.0.1
+--
+-- This software is subject to change without notice. It is furnished under a 
+-- license agreement, and may be used or copied only in accordance with the
+-- terms of that agreement. Upgrades are provided only at regularly scheduled 
+-- software release dates. No part of this file may be reproduced, transmitted, 
+-- or translated in any form or by any means, electronic, mechanical, manual, 
+-- optical, or otherwise without the prior written permission of Greenplum, Inc.
+--
+--------------------------------------------------------------------------------
+
+BEGIN;
+
+GRANT USAGE ON SCHEMA gp_toolkit TO PUBLIC;
+SET search_path TO gp_toolkit, public;
+
+
+--------------------------------------------------------------------------------
+-- @function: 
+--        gp_toolkit_version
+-- @in:    
+-- @out:
+--        text - version string
+--
+-- @doc:
+--        Returns current version of toolkit
+--        
+--------------------------------------------------------------------------------
+CREATE FUNCTION gp_toolkit_version()
+RETURNS text
+AS
+$$
+    SELECT '1.0.0.1'::text;
+$$
+LANGUAGE SQL
+IMMUTABLE;
+
+GRANT EXECUTE ON FUNCTION gp_toolkit_version() TO public;
+
+
+--------------------------------------------------------------------------------
+-- Auxiliary functions & views
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+-- @view: 
+--        __gp_is_append_only
+--
+-- @doc:
+--        Determines if a table is an AOT; returns true if OID refers to an AOT,
+--        false if OID refers to a non-AOT relation; empty rowset if OID is invalid
+--        
+--------------------------------------------------------------------------------
+CREATE VIEW __gp_is_append_only
+AS
+    SELECT
+        oid as iaooid,
+        CASE 
+            WHEN relaosegrelid = 0 THEN false ELSE true 
+        END
+        AS iaotype
+    FROM 
+        pg_catalog.pg_class;
+
+GRANT SELECT ON TABLE __gp_is_append_only TO public;
+
+
+--------------------------------------------------------------------------------
+-- @view: 
+--        __gp_fullname
+--
+-- @doc:
+--        Constructs fully qualified names
+--        
+--------------------------------------------------------------------------------
+CREATE VIEW __gp_fullname
+AS
+    SELECT 
+        pgc.oid AS fnoid,
+        nspname AS fnnspname,
+        relname AS fnrelname
+    FROM 
+        pg_catalog.pg_class pgc, 
+        pg_catalog.pg_namespace pgn
+    WHERE pgc.relnamespace = pgn.oid;
+
+GRANT SELECT ON TABLE __gp_fullname TO public;    
+
+
+--------------------------------------------------------------------------------
+-- @view: 
+--        __gp_user_namespaces
+--
+-- @doc:
+--        Shorthand for namespaces that contain user data
+--        
+--------------------------------------------------------------------------------
+CREATE VIEW __gp_user_namespaces
+AS
+    SELECT 
+        oid as aunoid,
+        nspname as aunnspname
+    FROM 
+        pg_catalog.pg_namespace
+    WHERE 
+        nspname NOT LIKE 'pg_%'
+    AND nspname <> 'gp_toolkit'
+    AND nspname <> 'information_schema';
+
+GRANT SELECT ON TABLE __gp_user_namespaces TO public;    
+
+
+--------------------------------------------------------------------------------
+-- @view: 
+--        __gp_user_tables
+--
+-- @doc:
+--        Shorthand for tables in user namespaces
+--        
+--------------------------------------------------------------------------------
+CREATE VIEW __gp_user_tables
+AS
+    SELECT 
+        fn.fnnspname as autnspname, 
+        fn.fnrelname as autrelname, 
+        relkind as autrelkind,
+        reltuples as autreltuples,
+        relpages as autrelpages,
+        relacl as autrelacl,
+        pgc.oid as autoid
+    FROM 
+        pg_catalog.pg_class pgc,
+        __gp_fullname fn
+    WHERE pgc.relnamespace IN 
+    (
+        SELECT aunoid 
+        FROM __gp_user_namespaces
+    )
+    AND pgc.relkind = 'r'
+    AND pgc.oid = fn.fnoid;
+
+GRANT SELECT ON TABLE __gp_user_tables TO public;
+
+
+--------------------------------------------------------------------------------
+-- @view: 
+--        __gp_user_data_tables
+--
+-- @doc:
+--        Shorthand for tables in user namespaces that may hold data
+--        
+--------------------------------------------------------------------------------
+CREATE VIEW __gp_user_data_tables
+AS
+    SELECT aut.*
+    FROM 
+        __gp_user_tables aut
+    LEFT OUTER JOIN 
+        pg_catalog.pg_partition pgp 
+    ON aut.autoid = pgp.parrelid
+    WHERE pgp.parrelid IS NULL;
+
+GRANT SELECT ON TABLE __gp_user_data_tables TO public;
+
+
+--------------------------------------------------------------------------------
+-- @view: 
+--        __gp_user_data_tables_readable
+--
+-- @doc:
+--        Shorthand for tables in user namespaces that may hold data and are 
+--        readable by current user
+--        
+--------------------------------------------------------------------------------
+CREATE VIEW __gp_user_data_tables_readable
+AS
+    SELECT *
+    FROM __gp_user_tables aut
+    WHERE has_table_privilege(quote_ident(autnspname)||'.'||quote_ident(autrelname), 'select');
+
+GRANT SELECT ON TABLE __gp_user_data_tables_readable TO public;
+
+
+--------------------------------------------------------------------------------
+-- @table: 
+--        __gp_localid
+--
+-- @doc:
+--        External table that determines the local segment id
+--        
+--------------------------------------------------------------------------------
+CREATE EXTERNAL WEB TABLE __gp_localid
+(
+    localid    int
+)
+EXECUTE E'echo $GP_SEGMENT_ID' FORMAT 'TEXT';
+
+GRANT SELECT ON TABLE __gp_localid TO public;
+
+
+--------------------------------------------------------------------------------
+-- @table: 
+--        __gp_masterid
+--
+-- @doc:
+--        External table that determines the master's segment id
+--        
+--------------------------------------------------------------------------------
+CREATE EXTERNAL WEB TABLE __gp_masterid
+(
+    masterid    int
+)
+EXECUTE E'echo $GP_SEGMENT_ID' ON MASTER FORMAT 'TEXT';
+
+GRANT SELECT ON TABLE __gp_masterid TO public;
+
+
+--------------------------------------------------------------------------------
+-- @view: 
+--        __gp_number_of_segments
+--
+-- @doc:
+--        Determines number of segments in a system
+--        
+--------------------------------------------------------------------------------
+CREATE VIEW __gp_number_of_segments
+AS
+  SELECT count(*)::smallint as numsegments
+  FROM gp_segment_configuration
+  WHERE preferred_role = 'p'
+    AND content >= 0;
+
+GRANT SELECT ON TABLE __gp_number_of_segments TO public;
+
+
+--------------------------------------------------------------------------------
+-- log-reading external tables and views
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+-- @table: 
+--        gp_log_segment_ext
+--
+-- @doc:
+--        External table to read segment log; requires superuser privilege
+--        
+--------------------------------------------------------------------------------
+CREATE EXTERNAL WEB TABLE __gp_log_segment_ext
+(
+    logtime timestamp with time zone,
+    loguser text,
+    logdatabase text,
+    logpid text,
+    logthread text,
+    loghost text,
+    logport text,
+    logsessiontime timestamp with time zone,
+    logtransaction int,
+    logsession text,
+    logcmdcount text,
+    logsegment text,
+    logslice text,
+    logdistxact text,
+    loglocalxact text,
+    logsubxact text,
+    logseverity text,
+    logstate text,
+    logmessage text,
+    logdetail text,
+    loghint text,
+    logquery text,
+    logquerypos int,
+    logcontext text,
+    logdebug text,
+    logcursorpos int,
+    logfunction text,
+    logfile text,
+    logline int,
+    logstack text
+)
+EXECUTE E'cat $GP_SEG_DATADIR/pg_log/*.csv' 
+FORMAT 'CSV' (DELIMITER AS ',' NULL AS '' QUOTE AS '"');
+
+REVOKE ALL ON TABLE __gp_log_segment_ext FROM public;
+
+
+--------------------------------------------------------------------------------
+-- @table: 
+--        gp_log_master
+--
+-- @doc:
+--        External table to read the master log; requires superuser privilege
+--        
+--------------------------------------------------------------------------------
+CREATE EXTERNAL WEB TABLE __gp_log_master_ext
+(
+    logtime timestamp with time zone,
+    loguser text,
+    logdatabase text,
+    logpid text,
+    logthread text,
+    loghost text,
+    logport text,
+    logsessiontime timestamp with time zone,
+    logtransaction int,
+    logsession text,
+    logcmdcount text,
+    logsegment text,
+    logslice text,
+    logdistxact text,
+    loglocalxact text,
+    logsubxact text,
+    logseverity text,
+    logstate text,
+    logmessage text,
+    logdetail text,
+    loghint text,
+    logquery text,
+    logquerypos int,
+    logcontext text,
+    logdebug text,
+    logcursorpos int,
+    logfunction text,
+    logfile text,
+    logline int,
+    logstack text
+)
+EXECUTE E'cat $GP_SEG_DATADIR/pg_log/*.csv' ON MASTER
+FORMAT 'CSV' (DELIMITER AS ',' NULL AS '' QUOTE AS '"');
+
+REVOKE ALL ON TABLE __gp_log_master_ext FROM public;
+
+
+--------------------------------------------------------------------------------
+-- @view: 
+--        gp_log_system
+--
+-- @doc:
+--        View of segment and master logs
+--        
+--------------------------------------------------------------------------------
+CREATE VIEW gp_log_system 
+AS
+    SELECT * FROM __gp_log_segment_ext
+    UNION ALL
+    SELECT * FROM __gp_log_master_ext
+    ORDER BY logtime;
+
+REVOKE ALL ON TABLE gp_log_system FROM public;
+
+
+--------------------------------------------------------------------------------
+-- @view: 
+--        gp_log_database
+--
+-- @doc:
+--        Shorthand to view error logs of current database only;
+--        requires superuser privilege
+--        
+--------------------------------------------------------------------------------
+CREATE VIEW gp_log_database 
+AS
+    SELECT * FROM gp_log_system
+    WHERE logdatabase = current_database();
+
+REVOKE ALL ON TABLE gp_log_database FROM public;
+
+
+--------------------------------------------------------------------------------
+-- @view: 
+--        gp_log_master_concise
+--
+-- @doc:
+--        Shorthand to view most important columns of master log only;
+--        requires superuser privilege
+--        
+--------------------------------------------------------------------------------
+CREATE VIEW gp_log_master_concise
+AS
+    SELECT 
+        logtime
+--        ,loguser
+        ,logdatabase
+--        ,logpid
+--        ,logthread
+--        ,loghost
+--        ,logport
+--        ,logsessiontime
+--        ,logtransaction
+        ,logsession
+        ,logcmdcount
+--        ,logsegment
+--        ,logslice
+--        ,logdistxact
+--        ,loglocalxact
+--        ,logsubxact
+        ,logseverity
+--        ,logstate
+        ,logmessage
+--        ,logdetail
+--        ,loghint
+--        ,logquery
+--        ,logquerypos
+--        ,logcontext
+--        ,logdebug
+--        ,logcursorpos
+--        ,logfunction
+--        ,logfile
+--        ,logline
+--        ,logstack
+    FROM __gp_log_master_ext;
+
+REVOKE ALL ON TABLE gp_log_master_concise FROM public;
+
+
+--------------------------------------------------------------------------------
+-- @view: 
+--        gp_log_command_timings
+--
+-- @doc:
+--        list all commands together with first and last timestamp of logged 
+--        activity; requires superuser privilege
+--        
+--------------------------------------------------------------------------------
+CREATE VIEW gp_log_command_timings
+AS
+    SELECT
+        logsession, 
+        logcmdcount, 
+        logdatabase,
+        loguser,
+        logpid,
+        MIN(logtime) AS logtimemin,
+        MAX(logtime) AS logtimemax,
+        MAX(logtime) - MIN(logtime) AS logduration
+    FROM 
+        __gp_log_master_ext 
+    WHERE 
+        logsession IS NOT NULL
+        AND logcmdcount IS NOT NULL
+        AND logdatabase IS NOT NULL
+    GROUP BY 1,2,3,4,5;
+
+REVOKE ALL ON TABLE gp_log_command_timings FROM public;
+
+
+--------------------------------------------------------------------------------
+-- PARAM specific views
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+-- @type: 
+--        gp_param_setting_t
+--
+-- @doc:
+--        Record type to combine segment id, param's name and param's value
+--        
+--------------------------------------------------------------------------------
+CREATE TYPE gp_param_setting_t
+AS 
+(
+    paramsegment int, 
+    paramname text, 
+    paramvalue text
+);
+
+
+--------------------------------------------------------------------------------
+-- @function: 
+--        __gp_param_local_setting
+-- @in:
+--        varchar - name of PARAM
+-- @out:
+--        int - segment id
+--        text - name of PARAM
+--        text - value of PARAM
+--
+-- @doc:
+--        Evaluate current_setting for a PARAM; function is immutable and may be
+--        executed on segments;
+--        
+--------------------------------------------------------------------------------
+CREATE FUNCTION __gp_param_local_setting(varchar)
+RETURNS SETOF gp_param_setting_t
+AS
+$$
+    SELECT gp_execution_segment(), $1, current_setting($1)::text;
+$$
+LANGUAGE SQL
+IMMUTABLE;
+
+GRANT EXECUTE ON FUNCTION __gp_param_local_setting(varchar) TO public;
+
+
+--------------------------------------------------------------------------------
+-- @function: 
+--        gp_param_setting
+-- @in:
+--        varchar - name of PARAM
+-- @out:
+--        int - segment id
+--        text - name of PARAM
+--        text - value of PARAM
+--
+-- @doc:
+--        Collect value of a PARAM from all segments
+--        
+--------------------------------------------------------------------------------
+CREATE FUNCTION gp_param_setting(varchar)
+RETURNS SETOF gp_param_setting_t
+AS
+$$
+DECLARE
+    paramsettings gp_param_setting_t;
+    paramdummy record;
+    
+BEGIN
+    -- attempt local execution first to validate the name of the PARAM
+    SELECT __gp_param_local_setting($1) INTO paramdummy;
+
+    FOR paramsettings IN
+        SELECT gs.*
+        FROM __gp_localid, __gp_param_local_setting($1) AS gs
+        
+        UNION ALL
+        
+        SELECT gs.*
+        FROM __gp_masterid, __gp_param_local_setting($1) AS gs
+        
+    LOOP
+        RETURN NEXT paramsettings;
+    END LOOP;
+END
+$$
+LANGUAGE plpgSQL;
+
+GRANT EXECUTE ON FUNCTION gp_param_setting(varchar) TO public;
+
+
+--------------------------------------------------------------------------------
+-- skew analysis
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- @type: 
+--        gp_skew_details_t
+--
+-- @doc:
+--        Type to accomodate skew details
+--        
+--------------------------------------------------------------------------------
+CREATE TYPE gp_skew_details_t
+AS
+(
+    segoid oid,
+    segid int,
+    segtupcount bigint
+);
+
+--------------------------------------------------------------------------------
+-- @function: 
+--        gp_skew_details
+-- @in:
+--        oid - oid of table for which to determine distribution
+-- @out:
+--        oid - input oid
+--        int - segment id
+--        bigint - number of rows on segment
+--
+-- @doc:
+--        Get details for skew
+--        
+--------------------------------------------------------------------------------
+CREATE FUNCTION gp_skew_details(oid)
+RETURNS setof gp_skew_details_t
+AS
+$$
+DECLARE
+    skewcrs refcursor;
+    skewrec record;
+    skewarray bigint[];
+    skewaot bool;
+    skewsegid int;
+    skewtablename record;
+
+BEGIN
+
+    SELECT INTO skewrec * 
+    FROM pg_catalog.pg_appendonly pga, pg_catalog.pg_roles pgr
+    WHERE pga.relid = $1::regclass and pgr.rolname = current_user and pgr.rolsuper = 't';
+
+    IF FOUND THEN
+        -- append only table
+    
+        FOR skewrec IN
+            SELECT $1, segid, COALESCE(tupcount, 0)::bigint AS cnt
+            FROM (SELECT generate_series(0, numsegments - 1) FROM __gp_number_of_segments) segs(segid)
+            LEFT OUTER JOIN pg_catalog.get_ao_distribution($1)
+            ON segid = segmentid
+        LOOP
+            RETURN NEXT skewrec;
+        END LOOP;
+
+    ELSE
+        -- heap table
+    
+        SELECT * INTO skewtablename FROM __gp_fullname
+        WHERE fnoid = $1;
+
+        OPEN skewcrs 
+            FOR 
+            EXECUTE 
+                'SELECT ' || $1 || '::oid, segid, CASE WHEN gp_segment_id IS NULL THEN 0 ELSE cnt END ' ||
+                'FROM (SELECT generate_series(0, numsegments - 1) FROM __gp_number_of_segments) segs(segid) ' ||
+                'LEFT OUTER JOIN ' ||
+                    '(SELECT gp_segment_id, COUNT(*) AS cnt FROM ' || 
+                        quote_ident(skewtablename.fnnspname) || 
+                        '.' || 
+                        quote_ident(skewtablename.fnrelname) ||
+                    ' GROUP BY 1) details ' ||
+                'ON segid = gp_segment_id';
+
+        FOR skewsegid IN 
+            SELECT generate_series(1, numsegments)
+            FROM __gp_number_of_segments
+        LOOP 
+            FETCH skewcrs INTO skewrec;            
+            IF FOUND THEN
+                RETURN NEXT skewrec;
+            ELSE
+                RETURN;
+            END IF;
+        END LOOP;
+        CLOSE skewcrs;
+    END IF;
+    
+    RETURN;    
+END
+$$
+LANGUAGE plpgSQL;
+
+GRANT EXECUTE ON FUNCTION gp_skew_details(oid) TO public;
+
+
+--------------------------------------------------------------------------------
+-- @type: 
+--        gp_skew_analysis_t
+--
+-- @doc:
+--        Type to accomodate skew analysis
+--        
+--------------------------------------------------------------------------------
+CREATE TYPE gp_skew_analysis_t
+AS
+(
+    skewoid oid,
+    skewval numeric
+);
+
+
+--------------------------------------------------------------------------------
+-- @function: 
+--        gp_skew_coefficient
+-- @in:
+--        oid - oid of table for which to compute skew coefficient
+-- @out:
+--        oid - input oid
+--        numeric - skew coefficient
+--
+-- @doc:
+--        Compute coefficient of variance given an array of rowcounts;
+--        Multiply by 100 to be in sync with gpperfmon's measure
+--        
+--------------------------------------------------------------------------------
+CREATE FUNCTION gp_skew_coefficient(targetoid oid, OUT skcoid oid, OUT skccoeff numeric)
+RETURNS record
+AS
+$$
+    SELECT 
+        $1 as skcoid,
+        CASE 
+            WHEN skewmean > 0 THEN ((skewdev/skewmean) * 100.0) 
+            ELSE 0
+        END
+        AS skccoeff
+    FROM
+    (
+        SELECT STDDEV(segtupcount) AS skewdev, AVG(segtupcount) AS skewmean, COUNT(*) AS skewcnt
+        FROM gp_skew_details($1)
+    ) AS skew
+
+$$
+LANGUAGE sql;
+
+GRANT EXECUTE ON FUNCTION gp_skew_coefficient(oid, OUT oid, OUT numeric) TO public;
+
+
+--------------------------------------------------------------------------------
+-- @function: 
+--        __gp_skew_coefficients
+-- @in:
+-- @out:
+--        oid - oid of analyzed table
+--        numeric - skew coefficient of table
+--
+-- @doc:
+--        Wrapper to call coefficient function on all user tables
+--        
+--------------------------------------------------------------------------------
+CREATE FUNCTION __gp_skew_coefficients()
+RETURNS SETOF gp_skew_analysis_t
+AS
+$$
+DECLARE
+    skcoid oid;
+    skcrec record;
+    
+BEGIN
+    FOR skcoid IN SELECT autoid from __gp_user_data_tables_readable
+    LOOP
+        SELECT * INTO skcrec
+        FROM
+            gp_skew_coefficient(skcoid);
+        RETURN NEXT skcrec;
+    END LOOP;
+END
+$$
+LANGUAGE plpgsql;
+
+GRANT EXECUTE ON FUNCTION __gp_skew_coefficients() TO public;
+
+
+--------------------------------------------------------------------------------
+-- @function: 
+--        gp_skew_coefficients
+--
+-- @doc:
+--        Wrapper view around previous function
+--        
+--------------------------------------------------------------------------------
+CREATE VIEW gp_skew_coefficients
+AS
+    SELECT 
+        skewoid AS skcoid,
+        skewval AS skccoeff
+    FROM __gp_skew_coefficients();
+
+GRANT SELECT ON TABLE gp_skew_coefficients TO public;
+
+
+--------------------------------------------------------------------------------
+-- @view: 
+--        gp_skew_idle_fraction
+-- @in:
+--        oid - oid of table for which to compute idle fraction due to skew
+-- @out:
+--        oid - input oid
+--        numeric - idle fraction
+--
+-- @doc:
+--        Compute skew area quotient for a given table
+--        
+--------------------------------------------------------------------------------
+CREATE FUNCTION gp_skew_idle_fraction(targetoid oid, OUT sifoid oid, OUT siffraction numeric)
+RETURNS record
+AS
+$$
+    SELECT 
+        $1 as sifoid,
+        CASE
+            WHEN MIN(skewmax) = 0 THEN 0
+            ELSE (SUM(skewmax - segtupcount) / (MIN(skewmax) * MIN(numsegments)))
+        END
+        AS siffraction
+    FROM
+    (
+        SELECT segid, segtupcount, COUNT(segid) OVER () AS numsegments, MAX(segtupcount) OVER () AS skewmax
+        FROM gp_skew_details($1)
+    ) AS skewbaseline
+
+$$
+LANGUAGE sql;
+
+GRANT EXECUTE ON FUNCTION gp_skew_idle_fraction(oid, OUT oid, OUT numeric) TO public;
+
+
+--------------------------------------------------------------------------------
+-- @function: 
+--        __gp_skew_idle_fractions
+-- @in:
+-- @out:
+--        oid - oid of analyzed table
+--        numeric - idle fraction
+--
+-- @doc:
+--        Wrapper to call fraction calculation on all user tables
+--        
+--------------------------------------------------------------------------------
+CREATE FUNCTION __gp_skew_idle_fractions()
+RETURNS SETOF gp_skew_analysis_t
+AS
+$$
+DECLARE
+    skcoid oid;
+    skcrec record;
+    
+BEGIN
+    FOR skcoid IN SELECT autoid from __gp_user_data_tables_readable
+    LOOP
+        SELECT * INTO skcrec
+        FROM
+            gp_skew_idle_fraction(skcoid);
+        RETURN NEXT skcrec;
+    END LOOP;
+END
+$$
+LANGUAGE plpgsql;
+
+GRANT EXECUTE ON FUNCTION __gp_skew_idle_fractions() TO public;
+
+
+--------------------------------------------------------------------------------
+-- @view:
+--        gp_skew_idle_fractions
+--
+-- @doc:
+--        Wrapper view around previous function
+--        
+--------------------------------------------------------------------------------
+CREATE VIEW gp_skew_idle_fractions
+AS
+    SELECT
+        skewoid AS sifoid,
+        skewval AS siffraction
+    FROM __gp_skew_idle_fractions();
+
+GRANT SELECT ON TABLE gp_skew_idle_fractions TO public;
+
+--------------------------------------------------------------------------------
+-- detection of missing stats
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+-- @view: 
+--        gp_stats_missing_all
+--
+-- @doc:
+--        List all tables with no or insufficient stats; includes empty tables
+--        
+--------------------------------------------------------------------------------
+CREATE VIEW gp_stats_missing
+AS
+    SELECT 
+        aut.autnspname as smischema,
+        aut.autrelname as smitable,
+        CASE WHEN aut.autrelpages = 0 OR aut.autreltuples = 0 THEN false ELSE true END AS smisize,
+        attcnt AS smicols,
+        COALESCE(stacnt, 0) AS smirecs
+    FROM 
+        __gp_user_tables aut
+        
+        JOIN
+        (
+            SELECT attrelid, count(*) AS attcnt
+            FROM pg_catalog.pg_attribute
+            WHERE attnum > 0
+            GROUP BY attrelid
+        ) attrs 
+        ON aut.autoid = attrelid
+        
+        LEFT OUTER JOIN
+        (
+            SELECT starelid, count(*) AS stacnt
+            FROM pg_catalog.pg_statistic
+            GROUP BY starelid
+        ) bar 
+        ON aut.autoid = starelid
+    WHERE aut.autrelkind = 'r'
+    AND (aut.autrelpages = 0 OR aut.autreltuples = 0) OR (stacnt IS NOT NULL AND attcnt > stacnt);
+
+GRANT SELECT ON TABLE gp_stats_missing TO public;
+
+
+--------------------------------------------------------------------------------
+-- Misc
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+-- @table: 
+--        gp_disk_free
+--
+-- @doc:
+--        External table to determine free space on disk on a per-segment basis
+--        
+--------------------------------------------------------------------------------
+CREATE EXTERNAL WEB TABLE gp_disk_free
+(
+    dfsegment int,
+    dfspace bigint
+)
+EXECUTE E'python -c "from gppylib.commands import unix; print ''%s, %s'' % (''$GP_SEGMENT_ID'', unix.DiskFree.get_size_local(''token'',''$GP_SEG_DATADIR''))"' FORMAT 'CSV';
+
+
+--------------------------------------------------------------------------------
+-- Determine table bloat
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+-- @view: 
+--        gp_bloat_expected_pages
+--
+-- @doc:
+--        compute number of expected pages for given table;
+--        do not attempt to model sophisticated aspects of row width -- the
+--        statistics this is based on are not stable enough to allow a finer
+--        granularity of modelling
+--        
+--------------------------------------------------------------------------------
+CREATE VIEW gp_bloat_expected_pages
+AS
+    SELECT
+        oid as btdrelid,
+        pgc.relpages as btdrelpages,
+        CEIL((pgc.reltuples * (25 + width))::numeric / current_setting('block_size')::numeric) AS btdexppages
+    FROM 
+        (
+            SELECT pgc.oid, pgc.reltuples, pgc.relpages
+            FROM pg_class pgc
+            WHERE NOT EXISTS 
+            (
+                SELECT iaooid 
+                FROM __gp_is_append_only 
+                WHERE iaooid = pgc.oid AND iaotype = 't'
+            )
+        )
+        AS pgc
+    LEFT OUTER JOIN
+        (
+            SELECT  starelid, SUM(stawidth * (1.0 - stanullfrac)) AS width
+            FROM pg_statistic pgs
+            GROUP BY 1
+        ) 
+        AS btwcols
+    ON pgc.oid = btwcols.starelid
+    WHERE starelid IS NOT NULL;
+
+GRANT SELECT ON TABLE gp_bloat_expected_pages TO public;    
+
+
+--------------------------------------------------------------------------------
+-- @function: 
+--        gp_bloat_diag
+-- @in:
+--        int - actual number of pages according to statistics
+--        int - expecte number of pages
+--        bool - is AO table?
+-- @out:
+--        int - bloat indicator
+--        text - textual version of bloat indicator
+--
+-- @doc:
+--        diagnose table bloat based on expected and actual number of pages
+--        
+--------------------------------------------------------------------------------
+CREATE FUNCTION gp_bloat_diag(btdrelpages int, btdexppages int, aotable bool,
+    OUT bltidx int, OUT bltdiag text)
+AS
+$$
+    SELECT 
+        bloatidx,
+        CASE
+            WHEN bloatidx = 0
+                THEN 'no bloat detected'::text
+            WHEN bloatidx = 1
+                THEN 'moderate amount of bloat suspected'::text
+            WHEN bloatidx = 2
+                THEN 'significant amount of bloat suspected'::text
+            WHEN bloatidx = -1
+                THEN 'diagnosis inconclusive or no bloat suspected'::text
+        END AS bloatdiag
+    FROM 
+    (
+        SELECT 
+            CASE
+                WHEN $3 = 't' THEN 0 
+                WHEN $1 < 10 AND $2 = 0 THEN -1
+                WHEN $2 = 0 THEN 2
+                WHEN ($1/$2)::numeric > 10 THEN 2
+                WHEN ($1/$2)::numeric > 3 THEN 1
+                ELSE -1
+            END AS bloatidx
+    ) AS bloatmapping
+        
+$$
+LANGUAGE SQL;
+
+GRANT EXECUTE ON FUNCTION gp_bloat_diag(int, int, bool, OUT int, OUT text) TO public;    
+
+
+--------------------------------------------------------------------------------
+-- @view: 
+--        gp_bloat_diag
+--
+-- @doc:
+--        Shorthand for running bloat diag over all tables, incl. catalog
+--        
+--------------------------------------------------------------------------------
+CREATE VIEW gp_bloat_diag
+AS
+    SELECT 
+        btdrelid AS bdirelid,
+        fnnspname AS bdinspname, 
+        fnrelname AS bdirelname,
+        btdrelpages AS bdirelpages,
+        btdexppages AS bdiexppages,
+        bltdiag(bd) AS bdidiag
+    FROM
+    (
+        SELECT 
+            fn.*, beg.*,
+            gp_bloat_diag(btdrelpages::int, btdexppages::int, iao.iaotype::bool) AS bd
+        FROM 
+            gp_bloat_expected_pages beg, 
+            pg_catalog.pg_class pgc,            
+            __gp_fullname fn,
+            __gp_is_append_only iao
+            
+        WHERE beg.btdrelid = pgc.oid 
+            AND pgc.oid = fn.fnoid
+            AND iao.iaooid = pgc.oid
+    ) as bloatsummary
+    WHERE bltidx(bd) > 0;
+    
+GRANT SELECT ON TABLE gp_bloat_diag TO public;    
+
+
+--------------------------------------------------------------------------------
+-- resource queue diagnostics
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+-- @view: 
+--        gp_resq_activity
+--
+-- @doc:
+--        View that summarizes all activity in the system wrt resource queues
+--        
+--------------------------------------------------------------------------------
+CREATE VIEW gp_resq_activity
+AS
+    SELECT 
+        psa.procpid as resqprocpid,
+        psa.usename as resqrole,
+        resq.resqoid,
+        resq.rsqname as resqname,
+        psa.query_start as resqstart,
+        CASE 
+            WHEN resqgranted = 'f' THEN 'waiting' ELSE 'running'
+        END as resqstatus
+    FROM
+        pg_catalog.pg_stat_activity psa
+    LEFT OUTER JOIN
+    (
+        SELECT 
+            pgrq.oid as resqoid,
+            pgrq.rsqname,
+            pgl.pid as resqprocid,
+            pgl.granted as resqgranted
+        FROM
+            pg_catalog.pg_roles pgr,
+            pg_catalog.pg_resqueue pgrq,
+            pg_catalog.pg_locks pgl
+        WHERE
+            pgr.rolresqueue = pgl.objid AND
+            pgl.objid = pgrq.oid
+    ) as resq
+    ON resqprocid = procpid
+    WHERE current_query !~ '<IDLE>'
+    ORDER BY resqstart;
+
+GRANT SELECT ON TABLE gp_resq_activity TO public;
+
+
+--------------------------------------------------------------------------------
+-- @view: 
+--        gp_resq_activity_by_queue
+--
+-- @doc:
+--        Rollup of activity view
+--        
+--------------------------------------------------------------------------------
+CREATE VIEW gp_resq_activity_by_queue
+AS
+    SELECT 
+        resqoid,
+        resqname,
+        MAX(resqstart) as resqlast,
+        resqstatus,
+        COUNT(*) as resqtotal
+    FROM
+        gp_resq_activity
+    GROUP BY
+        resqoid, resqname, resqstatus
+    ORDER BY resqoid, resqlast;
+
+GRANT SELECT ON TABLE gp_resq_activity_by_queue TO public;
+
+--------------------------------------------------------------------------------
+-- @view: 
+--        gp_list_backend_priorities
+--
+-- @doc:
+--        Lists priorities associated with each backend executing currently.
+--        
+--------------------------------------------------------------------------------
+CREATE VIEW gp_list_backend_priorities
+AS
+   SELECT * FROM gp_list_backend_priorities() AS L(session_id int, command_count int, priority text, weight int);
+
+GRANT SELECT ON TABLE gp_list_backend_priorities TO public;
+
+--------------------------------------------------------------------------------
+-- @view: 
+--        gp_gp_statement_priorities
+--
+-- @doc:
+--        Lists priorities associated with each statement
+--        
+--------------------------------------------------------------------------------
+CREATE VIEW gp_statement_priorities
+AS
+   SELECT a.datname, a.usename, b.session_id, b.command_count, b.priority, b.weight, a.current_query
+   FROM 
+       gp_list_backend_priorities b, pg_stat_activity a
+   WHERE
+    b.session_id = a.sess_id
+    AND a.current_query != '<IDLE>'
+    ;
+
+GRANT SELECT ON TABLE gp_statement_priorities TO public;
+
+-- Finalize install
+COMMIT;
+
+
+-- EOF

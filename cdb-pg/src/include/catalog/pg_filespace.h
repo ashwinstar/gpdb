@@ -62,5 +62,6 @@ DATA(insert OID = 3052 ( pg_system PGUID ));
 SHDESCR("System catalog filespace");
 
 #define SYSTEMFILESPACE_OID 3052
+#define SYSTEMFILESPACE_NAME "pg_system"
 
 #endif   /* PG_FILESPACE_H */

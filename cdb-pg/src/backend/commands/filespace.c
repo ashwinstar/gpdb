@@ -17,6 +17,7 @@
 
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
+#include "catalog/gp_segment_config.h"
 #include "catalog/heap.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_filespace.h"
@@ -93,6 +94,9 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 	char        *mirror_location = NULL;
 	ItemPointerData persistentTid;
 	int64		persistentSerialNum;
+
+	if (Gp_role == GP_ROLE_UTILITY)
+		elog(ERROR, "cannot create filespaces in utility mode");
 
 	/* Must be super user */
 	if (!superuser())
@@ -300,7 +304,7 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 	 * we hit this condition here.
 	 */
 	if (!primary_location)
-		elog(ERROR, "Could not find filespace location for segment %d",
+		elog(ERROR, "cannot find filespace location for segment %d",
 			 GpIdentity.dbid);
 
 	/* 
@@ -374,15 +378,7 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 		{
 			FileSpaceEntry *fse  = (FileSpaceEntry*) lfirst(cell);
 			
-			evalues[Anum_pg_filespace_entry_fsedbid - 1] = 
-				Int32GetDatum(fse->dbid);
-			evalues[Anum_pg_filespace_entry_fselocation - 1 ] =
-				DirectFunctionCall1(textin, CStringGetDatum(fse->location));
-			
-			tuple = heap_form_tuple(tupdesc, evalues, enulls);
-			simple_heap_insert(rel, tuple);
-			CatalogUpdateIndexes(rel, tuple);
-			heap_freetuple(tuple);
+			add_catalog_filespace_entry(rel, fsoid, fse->dbid, fse->location);
 		}
 
 		heap_close(rel, RowExclusiveLock);
@@ -974,13 +970,13 @@ static void checkpath2(char *path)
 
 /*
  */
-static void filespace_check_empty(Oid fsoid)
+static void
+filespace_check_empty(Oid fsoid)
 {
 	HeapScanDesc scandesc;
 	Relation	 rel;
 	HeapTuple	 tuple;
 	ScanKeyData  entry[1];
-
 
 	rel = heap_open(TableSpaceRelationId, AccessShareLock);
 
@@ -988,7 +984,7 @@ static void filespace_check_empty(Oid fsoid)
 	ScanKeyInit(&entry[0],
 				Anum_pg_tablespace_spcfsoid,
 				BTEqualStrategyNumber, F_OIDEQ,
-				fsoid);
+				ObjectIdGetDatum(fsoid));
 	scandesc = heap_beginscan(rel, SnapshotNow, 1, entry);
 	tuple = heap_getnext(scandesc, ForwardScanDirection);
 	if (HeapTupleIsValid(tuple))
@@ -1000,4 +996,118 @@ static void filespace_check_empty(Oid fsoid)
 	}
 	heap_endscan(scandesc);
 	heap_close(rel, AccessShareLock);
+}
+
+char *
+get_filespace_path(Oid fseoid, int16 dbid)
+{
+	SysScanDesc scandesc;
+	Relation	 rel;
+	HeapTuple	 tuple;
+	ScanKeyData  entry[2];
+	char *path;
+	Datum d;
+	bool isnull;
+
+	rel = heap_open(FileSpaceEntryRelationId, AccessShareLock);
+
+	ScanKeyInit(&entry[0],
+				Anum_pg_filespace_entry_fsefsoid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(fseoid));
+
+	ScanKeyInit(&entry[1],
+				Anum_pg_filespace_entry_fsedbid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				Int16GetDatum(dbid));
+
+	scandesc = systable_beginscan(rel,
+								  FilespaceEntryFsDbIndexId,
+								  true,
+								  SnapshotNow, 2, entry);
+	tuple = systable_getnext(scandesc);
+
+	if (!HeapTupleIsValid(tuple))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("filespace \"%u\" does not exist", 
+						fseoid)));
+	}
+
+	d = heap_getattr(tuple, Anum_pg_filespace_entry_fselocation,
+					 RelationGetDescr(rel), &isnull);
+
+	path = DatumGetCString(DirectFunctionCall1(textout,
+											   d));
+	systable_endscan(scandesc);
+	heap_close(rel, AccessShareLock);
+
+	return path;
+}
+
+/* Add a pg_filespace_entry for a given filespace definition. */
+void
+add_catalog_filespace_entry(Relation rel, Oid fsoid, int16 dbid, char *location)
+{
+	HeapTuple tuple;
+	Datum evalues[Natts_pg_filespace_entry];
+	bool enulls[Natts_pg_filespace_entry];
+
+	MemSet(enulls, false, sizeof(enulls));
+
+	evalues[Anum_pg_filespace_entry_fsefsoid - 1] = ObjectIdGetDatum(fsoid);
+
+	evalues[Anum_pg_filespace_entry_fsedbid - 1] = Int16GetDatum(dbid);
+	evalues[Anum_pg_filespace_entry_fselocation - 1] =
+				DirectFunctionCall1(textin, CStringGetDatum(location));
+			
+	tuple = heap_form_tuple(RelationGetDescr(rel), evalues, enulls);
+	simple_heap_insert(rel, tuple);
+	CatalogUpdateIndexes(rel, tuple);
+	heap_freetuple(tuple);
+}
+
+void
+dbid_remove_filespace_entries(Relation rel, int16 dbid)
+{
+	HeapScanDesc scan;
+	HeapTuple	tuple;
+	ScanKeyData entry;
+
+	/* Use the index to scan only attributes of the target relation */
+	ScanKeyInit(&entry,
+				Anum_pg_filespace_entry_fsedbid,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum(dbid));
+
+	scan = heap_beginscan(rel, SnapshotNow, 1, &entry);
+
+	/* Delete all the matching tuples */
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+		simple_heap_delete(rel, &tuple->t_self);
+
+	/* Clean up after the scan */
+	heap_endscan(scan);
+}
+
+int
+num_filespaces(void)
+{
+	Relation rel = heap_open(FileSpaceRelationId, AccessShareLock);
+	HeapScanDesc scan;
+	int n = 0;
+
+	Insist(GpIdentity.dbid == MASTER_DBID);
+
+	/* XXX: should we do this via gp_persistent_filespace_node? */
+
+	scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
+
+	while (heap_getnext(scan, ForwardScanDirection) != NULL) n++;
+
+	heap_endscan(scan);
+	heap_close(rel, NoLock);
+
+	return n;
 }

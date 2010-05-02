@@ -46,7 +46,7 @@
 CATALOG(pg_filespace_entry,5033) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 {
 	Oid			fsefsoid;	    /* foreign key to pg_filespace */
-	int4        fsedbid;        /* segment dbid this refers to */
+	int2        fsedbid;        /* segment dbid this refers to */
 	text        fselocation;    /* location of filespace directory */
 } FormData_pg_filespace_entry;
 

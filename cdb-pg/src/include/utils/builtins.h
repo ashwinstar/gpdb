@@ -590,9 +590,7 @@ extern Datum pg_get_partition_def_ext(PG_FUNCTION_ARGS);
 extern Datum pg_get_partition_def_ext2(PG_FUNCTION_ARGS);
 extern Datum pg_get_partition_rule_def(PG_FUNCTION_ARGS);
 extern Datum pg_get_partition_rule_def_ext(PG_FUNCTION_ARGS);
-#ifdef MPP6095
 extern Datum pg_get_partition_template_def(PG_FUNCTION_ARGS);
-#endif
 
 /* tid.c */
 extern Datum tidin(PG_FUNCTION_ARGS);
@@ -1085,9 +1083,46 @@ Datum pseudoinverse(PG_FUNCTION_ARGS);
 Datum gp_persistent_build_db(PG_FUNCTION_ARGS);
 
 /* utils/error/elog.c */
-extern Datum pg_elog(PG_FUNCTION_ARGS);
+extern Datum gp_elog(PG_FUNCTION_ARGS);
 
 /* utils/fmgr/deprecated.c */
 extern Datum gp_deprecated(PG_FUNCTION_ARGS);
+
+/* utils/gp/segadmin.c */
+extern Datum gp_add_master_standby(PG_FUNCTION_ARGS);
+extern Datum gp_remove_master_standby(PG_FUNCTION_ARGS);
+extern Datum gp_activate_standby(PG_FUNCTION_ARGS);
+
+extern Datum gp_add_segment_mirror(PG_FUNCTION_ARGS);
+extern Datum gp_remove_segment_mirror(PG_FUNCTION_ARGS);
+extern Datum gp_add_segment(PG_FUNCTION_ARGS);
+extern Datum gp_remove_segment(PG_FUNCTION_ARGS);
+
+extern Datum gp_prep_new_segment(PG_FUNCTION_ARGS);
+
+extern Datum gp_add_segment_persistent_entries(PG_FUNCTION_ARGS);
+extern Datum gp_remove_segment_persistent_entries(PG_FUNCTION_ARGS);
+
+/* utils/gp/persistentutil.c */
+extern Datum gp_add_persistent_filespace_node_entry(PG_FUNCTION_ARGS);
+extern Datum gp_add_persistent_tablespace_node_entry(PG_FUNCTION_ARGS);
+extern Datum gp_add_persistent_database_node_entry(PG_FUNCTION_ARGS);
+extern Datum gp_add_persistent_relation_node_entry(PG_FUNCTION_ARGS);
+extern Datum gp_add_global_sequence_entry(PG_FUNCTION_ARGS);
+extern Datum gp_add_relation_node_entry(PG_FUNCTION_ARGS);
+
+extern Datum gp_update_persistent_filespace_node_entry(PG_FUNCTION_ARGS);
+extern Datum gp_update_persistent_tablespace_node_entry(PG_FUNCTION_ARGS);
+extern Datum gp_update_persistent_database_node_entry(PG_FUNCTION_ARGS);
+extern Datum gp_update_persistent_relation_node_entry(PG_FUNCTION_ARGS);
+extern Datum gp_update_global_sequence_entry(PG_FUNCTION_ARGS);
+extern Datum gp_update_relation_node_entry(PG_FUNCTION_ARGS);
+
+extern Datum gp_delete_persistent_filespace_node_entry(PG_FUNCTION_ARGS);
+extern Datum gp_delete_persistent_tablespace_node_entry(PG_FUNCTION_ARGS);
+extern Datum gp_delete_persistent_database_node_entry(PG_FUNCTION_ARGS);
+extern Datum gp_delete_persistent_relation_node_entry(PG_FUNCTION_ARGS);
+extern Datum gp_delete_global_sequence_entry(PG_FUNCTION_ARGS);
+extern Datum gp_delete_relation_node_entry(PG_FUNCTION_ARGS);
 
 #endif   /* BUILTINS_H */

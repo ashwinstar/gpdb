@@ -38,6 +38,7 @@
 #include "access/heapam.h"
 #include "access/transam.h"
 #include "utils/guc.h"
+#include "utils/builtins.h"
 
 typedef struct PersistentFileSysObjPrivateSharedMemory
 {
@@ -898,6 +899,198 @@ void PersistentFileSysObj_StateChange(
 									flushToXLog);
 	}
 
+	pfree(values);
+}
+
+void
+PersistentFileSysObj_RemoveSegment(PersistentFileSysObjName *fsObjName,
+								   ItemPointer persistentTid,
+								   int64 persistentSerialNum,
+								   int16 dbid,
+								   bool ismirror,
+								   bool flushToXLog)
+{
+	PersistentFsObjType				fsObjType;
+
+	PersistentFileSysObjData 		*fileSysObjData;
+	PersistentFileSysObjSharedData 	*fileSysObjSharedData;
+
+	Datum *values;
+
+	HeapTuple tupleCopy;
+
+	fsObjType = fsObjName->type;
+
+	PersistentFileSysObj_GetDataPtrs(
+								fsObjType,
+								&fileSysObjData,
+								&fileSysObjSharedData);
+	
+	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes *
+							sizeof(Datum));
+
+	PersistentFileSysObj_ReadTuple(
+							fsObjType,
+							persistentTid,
+							values,
+							&tupleCopy);
+
+	{
+		Datum *newValues;
+		bool *replaces;
+
+		newValues = (Datum*)palloc0(fileSysObjData->storeData.numAttributes *
+									sizeof(Datum));
+		replaces = (bool*)palloc0(fileSysObjData->storeData.numAttributes *
+								  sizeof(bool));
+
+		replaces[fileSysObjData->attNumParentXid - 1] = true;
+		newValues[fileSysObjData->attNumParentXid - 1] =
+			Int32GetDatum(InvalidTransactionId);
+
+		if (ismirror)
+		{
+			replaces[fileSysObjData->attNumMirrorExistenceState - 1] = true;
+			newValues[fileSysObjData->attNumMirrorExistenceState - 1] =
+				Int32GetDatum(MirroredObjectExistenceState_NotMirrored);
+		}
+
+
+		if (fsObjType == PersistentFsObjType_FilespaceDir)
+		{
+			int dbidattnum;
+			int locattnum;
+			int dbid_1_attnum = Anum_gp_persistent_filespace_node_db_id_1;
+			char ep[FilespaceLocationBlankPaddedWithNullTermLen];
+
+			MemSet(ep, ' ', FilespaceLocationBlankPaddedWithNullTermLen - 1);
+			ep[FilespaceLocationBlankPaddedWithNullTermLen - 1] = '\0';
+
+			if (DatumGetInt16(values[dbid_1_attnum - 1]) == dbid)
+			{
+				dbidattnum = Anum_gp_persistent_filespace_node_db_id_1;
+				locattnum = Anum_gp_persistent_filespace_node_location_1;
+			}
+			else
+			{
+				dbidattnum = Anum_gp_persistent_filespace_node_db_id_2;
+				locattnum = Anum_gp_persistent_filespace_node_location_2;
+			}
+
+			replaces[dbidattnum - 1] = true;
+			newValues[dbidattnum - 1] = Int16GetDatum(0);
+
+			replaces[locattnum - 1] = true;
+			newValues[locattnum - 1] = CStringGetTextDatum(ep);
+
+		}
+
+		PersistentFileSysObj_ReplaceTuple(
+									fsObjType,
+									persistentTid,
+									tupleCopy,
+									newValues,
+									replaces,
+									flushToXLog);
+
+		pfree(newValues);
+		pfree(replaces);
+	}
+	pfree(values);
+}
+
+void
+PersistentFileSysObj_AddMirror(PersistentFileSysObjName *fsObjName,
+							   ItemPointer persistentTid,
+							   int64 persistentSerialNum,
+							   int16 pridbid,
+							   int16 mirdbid,
+							   void *arg,
+							   bool	flushToXLog)
+{
+	PersistentFsObjType				fsObjType;
+
+	PersistentFileSysObjData 		*fileSysObjData;
+	PersistentFileSysObjSharedData 	*fileSysObjSharedData;
+
+	Datum *values;
+
+	HeapTuple tupleCopy;
+
+	fsObjType = fsObjName->type;
+
+	PersistentFileSysObj_GetDataPtrs(
+								fsObjType,
+								&fileSysObjData,
+								&fileSysObjSharedData);
+	
+	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes * sizeof(Datum));
+
+	PersistentFileSysObj_ReadTuple(
+							fsObjType,
+							persistentTid,
+							values,
+							&tupleCopy);
+
+	{
+		Datum *newValues;
+		bool *replaces;
+
+		newValues = (Datum*)palloc0(fileSysObjData->storeData.numAttributes *
+									sizeof(Datum));
+		replaces = (bool*)palloc0(fileSysObjData->storeData.numAttributes *
+								  sizeof(bool));
+
+		replaces[fileSysObjData->attNumParentXid - 1] = true;
+		newValues[fileSysObjData->attNumParentXid - 1] =
+			Int32GetDatum(InvalidTransactionId);
+
+		/* 
+		 * XXX: does this even make sense? We need to tell the 
+		 * system we're about to be mirrored but should we phase this
+		 * in?
+		 */
+		replaces[fileSysObjData->attNumMirrorExistenceState - 1] = true;
+		newValues[fileSysObjData->attNumMirrorExistenceState - 1] =
+			Int32GetDatum(MirroredObjectExistenceState_MirrorCreated);
+
+
+		if (fsObjType == PersistentFsObjType_FilespaceDir)
+		{
+			int dbidattnum;
+			int locattnum;
+			int dbid_1_attnum = Anum_gp_persistent_filespace_node_db_id_1;
+
+			if (DatumGetInt16(values[dbid_1_attnum - 1]) == pridbid)
+			{
+				dbidattnum = Anum_gp_persistent_filespace_node_db_id_2;
+				locattnum = Anum_gp_persistent_filespace_node_location_2;
+			}
+			else
+			{
+				dbidattnum = Anum_gp_persistent_filespace_node_db_id_1;
+				locattnum = Anum_gp_persistent_filespace_node_location_1;
+			}
+
+			replaces[dbidattnum - 1] = true;
+			newValues[dbidattnum - 1] = Int16GetDatum(mirdbid);
+
+			replaces[locattnum - 1] = true;
+			newValues[locattnum - 1] = CStringGetTextDatum((char *)arg);
+
+		}
+
+		PersistentFileSysObj_ReplaceTuple(
+									fsObjType,
+									persistentTid,
+									tupleCopy,
+									newValues,
+									replaces,
+									flushToXLog);
+
+		pfree(newValues);
+		pfree(replaces);
+	}
 	pfree(values);
 }
 

@@ -1,0 +1,1019 @@
+/*-------------------------------------------------------------------------
+ *
+ * Copyright (c) 2010 Greenplum
+ *
+ * Functions to support administrative tasks with GPDB segments.
+ *
+ */
+#include "postgres.h"
+#include "miscadmin.h"
+
+#include "catalog/gp_segment_config.h"
+#include "catalog/pg_filespace.h"
+#include "catalog/pg_filespace_entry.h"
+#include "catalog/pg_proc.h"
+#include "cdb/cdbdisp.h"
+#include "cdb/cdbpersistentdatabase.h"
+#include "cdb/cdbpersistentfilespace.h"
+#include "cdb/cdbpersistentrelation.h"
+#include "cdb/cdbpersistenttablespace.h"
+#include "cdb/cdbutil.h"
+#include "cdb/cdbvars.h"
+#include "commands/filespace.h"
+#include "utils/builtins.h"
+#include "utils/fmgroids.h"
+
+#define MASTER_ONLY 0x1
+#define UTILITY_MODE 0x2
+#define SUPERUSER 0x4
+#define READ_ONLY 0x8
+#define SEGMENT_ONLY 0x10
+
+/* Encapsulation of information about a given segment. */
+typedef struct seginfo
+{
+	CdbComponentDatabaseInfo db;
+	char *system_filespace;
+} seginfo;
+
+/* look up a particular segment */
+static seginfo *
+get_seginfo(int16 dbid)
+{
+	seginfo *i = palloc(sizeof(seginfo));
+	CdbComponentDatabaseInfo *c = dbid_get_dbinfo(dbid);
+	memcpy(&(i->db), c, sizeof(CdbComponentDatabaseInfo));
+
+	return i;
+}
+
+/* Convenience routine to look up the mirror for a given segment index */
+static int16
+content_get_mirror_dbid(int16 contentid)
+{
+	return contentid_get_dbid(contentid, SEGMENT_ROLE_MIRROR);
+}
+
+/* Tell the caller whether a mirror exists at a given segment index */
+static bool
+segment_has_mirror(int16 contentid)
+{
+	return content_get_mirror_dbid(contentid) != 0;
+}
+
+/*
+ * Tell the caller whether a standby master is defined in the system.
+ */
+static bool
+standby_exists()
+{
+	return segment_has_mirror(MASTER_CONTENT_ID);
+}
+
+/*
+ * Get the highest dbid defined in the system. We AccessExclusiveLock
+ * gp_segment_configuration to prevent races but no one should be calling
+ * this code concurrently if we've done our job right.
+ */
+static int16
+get_maxdbid()
+{
+	Relation rel = heap_open(GpSegmentConfigRelationId, AccessExclusiveLock);
+	int16 dbid = 0;
+	HeapTuple tuple;
+	HeapScanDesc scandesc;
+
+	scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
+
+	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
+		dbid = Max(dbid, ((Form_gp_segment_config)GETSTRUCT(tuple))->dbid);
+
+	heap_endscan(scandesc);
+	heap_close(rel, NoLock);
+
+	return dbid;
+}
+
+/*
+ * Get the highest contentid defined in the system. As above, we
+ * AccessExclusiveLock gp_segment_configuration to prevent races but no 
+ * one should be calling this code concurrently if we've done our job right.
+ */
+static int16
+get_maxcontentid()
+{
+	Relation rel = heap_open(GpSegmentConfigRelationId, AccessExclusiveLock);
+	int16 contentid = 0;
+	HeapTuple tuple;
+	HeapScanDesc scandesc;
+
+	scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
+
+	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
+		contentid = Max(contentid,
+						((Form_gp_segment_config)GETSTRUCT(tuple))->content);
+
+	heap_endscan(scandesc);
+	heap_close(rel, NoLock);
+
+	return contentid;
+}
+
+/*
+ * Verify that a filespace map looks like:
+ * ARRAY[
+ *   ARRAY[name, path],
+ *   ...
+ *  ]
+ */
+static void
+check_array_bounds(ArrayType *map)
+{
+	if (ARR_NDIM(map) != 2)
+	   elog(ERROR, "filespace map must be a two dimensional array");
+
+	if (ARR_DIMS(map)[1] != 2)
+		elog(ERROR, "filespace map must be an array of two element arrays");
+}
+
+/*
+ * Ensure that the map looks right and that it has the right number of
+ * filespace mappings.
+ */
+static void
+check_fsmap(ArrayType *map)
+{
+	int n;
+	int an = (ArrayGetNItems(ARR_NDIM(map), ARR_DIMS(map)) / 2);
+
+	check_array_bounds(map);
+
+	/* get number of filespaces defined */
+	n = num_filespaces();
+
+	if (n != an)
+		elog(ERROR, "system contains %i filespaces but filespace map contains "
+			 "only %i filespaces", n, an);
+}
+
+/*
+ * Check that the code is being called in right context.
+ */
+static void
+mirroring_sanity_check(int flags, char *func)
+{
+	if ((flags & MASTER_ONLY) == MASTER_ONLY)
+	{
+		if (GpIdentity.dbid != MASTER_DBID)
+			elog(ERROR, "%s must be run on the master", func);
+	}
+
+	if ((flags & UTILITY_MODE) == UTILITY_MODE)
+	{
+		if (Gp_role != GP_ROLE_UTILITY)
+			elog(ERROR, "%s must be run in utility mode", func);
+	}
+
+	if ((flags & SUPERUSER) == SUPERUSER)
+	{
+		if (!superuser())
+			elog(ERROR, "%s can only be run by a superuser", func);
+	}
+
+	if ((flags & READ_ONLY) == READ_ONLY)
+	{
+		if (gp_set_read_only != true)
+			elog(ERROR, "%s can only be run if the system is in read only mode",
+				 func);
+	}
+
+	if ((flags & SEGMENT_ONLY) == SEGMENT_ONLY)
+	{
+		if (GpIdentity.segindex == -1)
+			elog(ERROR, "%s cannot be run on the master", func);
+	}
+}
+
+/*
+ * Add knowledge of filespaces for a new segment to the standard system
+ * catalog.
+ */
+static void
+catalog_filespaces(Relation fsentryrel, int16 dbid, ArrayType *map)
+{
+	Datum *d;
+	int n, i;
+	Relation fsrel = heap_open(FileSpaceRelationId, AccessShareLock);
+
+	deconstruct_array(map, TEXTOID, -1, false, 'i', &d, NULL, &n);
+
+	/* need to check that this is an array of name, value pairs */
+	for (i = 0; i < n; i += 2)
+	{
+		char *fsname = DatumGetCString(DirectFunctionCall1(textout, d[i]));
+		char *path;
+		Oid fsoid;
+
+		fsoid = get_filespace_oid(fsrel, (const char *)fsname);
+
+		if (!OidIsValid(fsoid))
+			elog(ERROR, "filespace \"%s\" does not exist", fsname);
+
+		Insist(i + 1 < n);
+		path = DatumGetCString(DirectFunctionCall1(textout, d[i + 1]));
+
+		add_catalog_filespace_entry(fsentryrel, fsoid, dbid, path);
+	}
+	heap_close(fsrel, NoLock);
+}
+
+/*
+ * Add knowledge of filespaces for a new segment to the persistent
+ * catalogs.
+ */
+static void
+persist_all_filespaces(int16 pridbid, int16 mirdbid, ArrayType *fsmap)
+{
+	Datum *d;
+	int n, i;
+	Relation rel = heap_open(FileSpaceRelationId, AccessShareLock);
+
+	deconstruct_array(fsmap, TEXTOID, -1, false, 'i', &d, NULL, &n);
+
+	/* need to check that this is an array of name, value pairs */
+	for (i = 0; i < n; i += 2)
+	{
+		char *fsname = DatumGetCString(DirectFunctionCall1(textout, d[i]));
+		char *path;
+		Oid fsoid;
+
+		/* we do not persist system filespaces */
+		if (strcmp(fsname, SYSTEMFILESPACE_NAME) == 0)
+			continue;
+		fsoid = get_filespace_oid(rel, (const char *)fsname);
+
+		if (!OidIsValid(fsoid))
+			elog(ERROR, "filespace \"%s\" does not exist", fsname);
+
+		Insist(i + 1 < n);
+		path = DatumGetCString(DirectFunctionCall1(textout, d[i + 1]));
+
+		PersistentFilespace_AddMirror(fsoid, path, pridbid, mirdbid);
+	}
+	heap_close(rel, NoLock);
+}
+
+/*
+ * Remove knowledge of filespaces for a given segment from the persistent
+ * catalog.
+ */
+static void
+desist_all_filespaces(int16 dbid)
+{
+	PersistentFilespace_RemoveSegment(dbid, true);
+}
+
+/*
+ * Either add or remove knowledge of filespaces for a given segment.
+ */
+static void
+update_filespaces(int16 pridbid, seginfo *i, bool add, ArrayType *fsmap)
+{
+	Assert((add && PointerIsValid(fsmap)) || !add);
+
+	/* 
+	 * If we're on the master, process the pg_filespace_entry rows for this
+	 * segment.
+	 */
+	if (GpIdentity.dbid == MASTER_DBID)
+	{
+		Relation rel = heap_open(FileSpaceEntryRelationId,
+								 RowExclusiveLock);
+		if (add)
+			catalog_filespaces(rel, i->db.dbid, fsmap);
+		else
+			dbid_remove_filespace_entries(rel, i->db.dbid);
+
+		heap_close(rel, NoLock);
+	}
+
+	/* if we're adding a new primary (for expansion), bail out */
+	if (i->db.role == SEGMENT_ROLE_PRIMARY)
+		return;
+
+	/* if we're adding a mirror for host that is not this machine, return */
+	if (i->db.role == SEGMENT_ROLE_MIRROR && pridbid != GpIdentity.dbid)
+		return;
+
+	/*
+	 * Teach the persistent filespace table about us.
+	 */
+	if (add)
+		persist_all_filespaces(pridbid, i->db.dbid, fsmap);
+	else
+		desist_all_filespaces(i->db.dbid);
+}
+
+/* As above, for tablespaces */
+static void
+update_tablespaces(int16 pridbid, seginfo *i, bool add)
+{
+	/* if we're adding a new primary (for expansion), bail out */
+	if (pridbid == i->db.dbid)
+	{
+		Insist(i->db.role == SEGMENT_ROLE_PRIMARY);
+		return;
+	}
+
+	/*
+	 * Teach the persistent tablespace table about us.
+	 */
+	if (add)
+		PersistentTablespace_AddMirrorAll(pridbid, i->db.dbid);
+	else
+		PersistentTablespace_RemoveSegment(i->db.dbid,
+										   i->db.role == SEGMENT_ROLE_MIRROR);
+}
+
+/* As above, for databases. */
+static void
+update_databases(int16 pridbid, seginfo *i, bool add)
+{
+	/* if we're adding a new primary (for expansion), bail out */
+	if (pridbid == i->db.dbid)
+	{
+		Insist(i->db.role == SEGMENT_ROLE_PRIMARY);
+		return;
+	}
+
+	/*
+	 * Teach the persistent database table about us.
+	 */
+	if (add)
+		PersistentDatabase_AddMirrorAll(pridbid, i->db.dbid);
+	else
+		PersistentDatabase_RemoveSegment(i->db.dbid,
+										 i->db.role == SEGMENT_ROLE_MIRROR);
+}
+
+/* As above, for relations */
+static void
+update_relations(int16 pridbid, seginfo *i, bool add)
+{
+	/* if we're adding a new primary (for expansion), bail out */
+	if (pridbid == i->db.dbid)
+	{
+		Insist(i->db.role == SEGMENT_ROLE_PRIMARY);
+		return;
+	}
+
+	/*
+	 * Teach the persistent relation table about us.
+	 */
+	if (add)
+		PersistentRelation_AddMirrorAll(pridbid, i->db.dbid);
+	else
+		PersistentRelation_RemoveSegment(i->db.dbid,
+										 i->db.role == SEGMENT_ROLE_MIRROR);
+}
+
+/*
+ * Groups together the adding of knowledge about a new segment to
+ * all persistent catalogs.
+ */
+static void
+add_segment_persistent_entries(int16 pridbid, seginfo *i, ArrayType *fsmap)
+{
+	/* 
+	 * Add filespace entries in pg_filespace_entry and
+	 * gp_persistent_filespace_node
+	 */
+	update_filespaces(pridbid, i, true, fsmap);
+
+	/* 
+	 * Update gp_persistent_tablespace_node.
+	 */
+	update_tablespaces(pridbid, i, true);
+
+	/*
+	 * Update gp_persistent_database_node table
+	 */
+	update_databases(pridbid, i, true);
+
+	/*
+	 * Update gp_persistent_relation_node table
+	 */
+	update_relations(pridbid, i, true);
+
+	/* 
+	 * If we're adding a new segment mirror, we need to dispatch to that
+	 * segment's primary.
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH && i->db.role == SEGMENT_ROLE_MIRROR)
+	{
+		/* 
+		 * We want to dispatch the statement:
+		 *
+		 *   SELECT gp_add_segment_persistent_entries(targetdbid, mirdbid,
+		 *   										  fsmap);
+		 *
+		 * targetdbid is the dbid of the primary for the mirror in question.
+		 * mirdbid is its mirror.
+		 *
+		 * Unfortunately, we do not have targetted dispatch at this point
+		 * in the code so we must dispatch to all segments.
+		 */
+		StringInfoData *q = makeStringInfo();
+		FmgrInfo flinfo;
+		char *a;
+
+		/* 
+		 * array_out caches data in flinfo, as we cannot just
+		 * do a DirectFunctionCall1().
+		 */
+		fmgr_info(ARRAY_OUT_OID, &flinfo);
+		a = OutputFunctionCall(&flinfo, PointerGetDatum(fsmap));
+
+		appendStringInfo(q,
+						 "SELECT gp_add_segment_persistent_entries(%i::int2, "
+						 "%i::int2, '%s');",
+						 pridbid,
+						 i->db.dbid,
+						 a);
+
+		CdbDoCommand(q->data, true, false);
+	}
+}
+
+/*
+ * The opposite of the above, we remove knowledge from the persistent
+ * catalogs.
+ */
+static void
+remove_segment_persistent_entries(int16 pridbid, seginfo *i)
+{
+	/* 
+	 * Remove filespace entries in pg_filespace_entry and
+	 * gp_persistent_filespace_node
+	 */
+	update_filespaces(pridbid, i, false, NULL);
+
+	/* 
+	 * Update gp_persistent_tablespace_node.
+	 */
+	update_tablespaces(pridbid, i, false);
+
+	/*
+	 * Update gp_persistent_database_node table
+	 */
+	update_databases(pridbid, i, false);
+
+	/*
+	 * Update gp_persistent_relation_node table
+	 */
+	update_relations(pridbid, i, false);
+
+	/* 
+	 * If we're adding a segment mirror, we need to dispatch to that
+	 * segment's primary.
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH && i->db.role == SEGMENT_ROLE_MIRROR)
+	{
+		StringInfoData *q = makeStringInfo();
+
+		appendStringInfo(q,
+						 "SELECT gp_remove_segment_persistent_entries(%i::int2,"
+						 "%i::int2);",
+						 pridbid,
+						 i->db.dbid);
+
+		CdbDoCommand(q->data, true, false);
+	}
+}
+
+/*
+ * Add a new row to gp_segment_configuration.
+ */
+static void
+add_segment_config(seginfo *i)
+{
+	Relation rel = heap_open(GpSegmentConfigRelationId, AccessExclusiveLock);
+	Datum values[Natts_gp_segment_config];
+	bool nulls[Natts_gp_segment_config];
+	HeapTuple tuple;
+
+	MemSet(nulls, false, sizeof(nulls));
+
+	values[Anum_gp_segment_config_dbid - 1] = Int16GetDatum(i->db.dbid);
+	values[Anum_gp_segment_config_content - 1] = Int16GetDatum(i->db.segindex);
+	values[Anum_gp_segment_config_role - 1] = CharGetDatum(i->db.role);
+	values[Anum_gp_segment_config_preferred_role - 1] = 
+		CharGetDatum(i->db.preferred_role);
+	values[Anum_gp_segment_config_mode - 1] =
+		CharGetDatum(i->db.mode);
+	values[Anum_gp_segment_config_status - 1] =
+		CharGetDatum(i->db.status);
+	values[Anum_gp_segment_config_port - 1] =
+		Int32GetDatum(i->db.port);
+	values[Anum_gp_segment_config_hostname - 1] =
+		CStringGetTextDatum(i->db.hostname);
+	values[Anum_gp_segment_config_address - 1] =
+		CStringGetTextDatum(i->db.address);
+
+	if (i->db.filerep_port != -1)
+		values[Anum_gp_segment_config_replication_port - 1] =
+			Int32GetDatum(i->db.filerep_port);
+	else
+		nulls[Anum_gp_segment_config_replication_port - 1] = true;
+
+	nulls[Anum_gp_segment_config_san_mounts - 1] = true;
+
+	tuple = heap_form_tuple(RelationGetDescr(rel),
+							values,
+							nulls);
+
+	simple_heap_insert(rel, tuple);
+	CatalogUpdateIndexes(rel, tuple);
+
+	heap_close(rel, NoLock);
+}
+
+/*
+ * Master function for adding a new segment
+ */
+static void
+add_segment_config_entry(int16 pridbid, seginfo *i, ArrayType *fsmap)
+{
+	/* Add gp_segment_configuration entry */
+	add_segment_config(i);
+
+	/* and the rest */
+	add_segment_persistent_entries(pridbid, i, fsmap);
+}
+
+/*
+ * Remove a gp_segment_configuration entry
+ */
+static void
+remove_segment_config(int16 dbid)
+{
+	HeapTuple tuple;
+	HeapScanDesc scandesc;
+	ScanKeyData key;
+	Relation rel = heap_open(GpSegmentConfigRelationId,
+							 RowExclusiveLock);
+
+	ScanKeyInit(&key,
+				Anum_gp_segment_config_dbid,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum(dbid));
+	scandesc = heap_beginscan(rel, SnapshotNow, 1, &key);
+
+	tuple = heap_getnext(scandesc, ForwardScanDirection);
+
+	Insist(HeapTupleIsValid(tuple));
+
+	simple_heap_delete(rel, &tuple->t_self);
+
+	heap_endscan(scandesc);
+	heap_close(rel, NoLock);
+}
+
+/*
+ * Tell the master about a new segment.
+ *
+ * gp_add_segment(hostname, address, port,
+ *				  replication_port, filespace_map)
+ *
+ * Args:
+ *   hostname - host name string
+ *   address - either hostname or something else
+ *   port - port number
+ *   filespace_map - A 2-d mapping of filespace to path on the new node
+ *
+ * Returns the dbid of the new segment.
+ */
+Datum
+gp_add_segment(PG_FUNCTION_ARGS)
+{
+	Relation rel;
+	seginfo new;
+	char *hostname;
+	char *address;
+	int32 port;
+	ArrayType *fsmap;
+
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "hostname cannot be NULL");
+	hostname = TextDatumGetCString(PG_GETARG_DATUM(0));
+
+	if (PG_ARGISNULL(1))
+		elog(ERROR, "address cannot be NULL");
+	address = TextDatumGetCString(PG_GETARG_DATUM(1));
+
+	if (PG_ARGISNULL(2))
+		elog(ERROR, "port cannot be NULL");
+	port = PG_GETARG_INT32(2);
+
+	if (PG_ARGISNULL(3))
+		elog(ERROR, "filespace_map cannot be NULL");
+	fsmap = PG_GETARG_ARRAYTYPE_P(3);
+
+	mirroring_sanity_check(MASTER_ONLY | SUPERUSER, "gp_add_segment");
+
+	/* avoid races */
+	rel = heap_open(GpSegmentConfigRelationId, AccessExclusiveLock);
+
+	MemSet(&new, 0, sizeof(seginfo));
+
+	new.db.segindex = get_maxcontentid() + 1;
+	new.db.dbid = get_maxdbid() + 1;
+	new.db.hostname = hostname;
+	new.db.address = address;
+	new.db.port = port;
+	new.db.filerep_port = -1;
+	new.db.mode = 's';
+	new.db.status = 'u';
+	new.db.role = SEGMENT_ROLE_PRIMARY;
+	new.db.preferred_role = SEGMENT_ROLE_PRIMARY;
+
+	add_segment_config_entry(new.db.dbid, &new, fsmap);
+
+	heap_close(rel, NoLock);
+
+	PG_RETURN_INT16(new.db.dbid);
+
+	PG_RETURN_INT16(0);
+}
+
+/*
+ * Master function to remove a segment from all catalogs
+ */
+static void
+remove_segment(int16 pridbid, int16 mirdbid)
+{
+	seginfo *i;
+
+	/* Check that we're removing a mirror, not a primary */
+	i = get_seginfo(mirdbid);
+
+	remove_segment_config(mirdbid);
+
+	remove_segment_persistent_entries(pridbid, i);
+}
+
+/*
+ * Remove knowledge of a segment from the master.
+ *
+ * gp_remove_segment(dbid)
+ *
+ * Args:
+ *   dbid - db identifier
+ *
+ * Returns:
+ *   true on success, otherwise error.
+ */
+Datum
+gp_remove_segment(PG_FUNCTION_ARGS)
+{
+	int16 dbid;
+
+ 	if (PG_ARGISNULL(0))
+		elog(ERROR, "dbid cannot be NULL");
+
+	dbid = PG_GETARG_INT16(0);
+
+	mirroring_sanity_check(MASTER_ONLY | SUPERUSER | UTILITY_MODE,
+						   "gp_remove_segment");
+	remove_segment(dbid, dbid);
+
+	PG_RETURN_BOOL(true);
+}
+
+/*
+ * Add a mirror of an existing segment.
+ *
+ * gp_add_segment_mirror(contentid, hostname, address, port,
+ * 						 replication_port, filespace_map)
+ */
+Datum
+gp_add_segment_mirror(PG_FUNCTION_ARGS)
+{
+	Relation rel;
+	int16 contentid;
+	seginfo new;
+	char *hostname;
+	char *address;
+	int32 port;
+	int32 rep_port;
+	ArrayType *fsmap;
+	int16 pridbid;
+
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "contentid cannot be NULL");
+	contentid = PG_GETARG_INT16(0);
+
+	if (PG_ARGISNULL(1))
+		elog(ERROR, "hostname cannot be NULL");
+	hostname = TextDatumGetCString(PG_GETARG_DATUM(1));
+
+	if (PG_ARGISNULL(2))
+		elog(ERROR, "address cannot be NULL");
+	address = TextDatumGetCString(PG_GETARG_DATUM(2));
+
+	if (PG_ARGISNULL(3))
+		elog(ERROR, "port cannot be NULL");
+	port = PG_GETARG_INT32(3);
+
+	if (PG_ARGISNULL(4))
+		elog(ERROR, "replication_port cannot be NULL");
+	rep_port = PG_GETARG_INT32(4);
+
+	if (PG_ARGISNULL(5))
+		elog(ERROR, "filespace_map cannot be NULL");
+	fsmap = PG_GETARG_ARRAYTYPE_P(5);
+
+	mirroring_sanity_check(MASTER_ONLY | SUPERUSER, "gp_add_segment_mirror");
+
+	/* avoid races */
+	rel = heap_open(GpSegmentConfigRelationId, AccessExclusiveLock);
+
+	pridbid = contentid_get_dbid(contentid, SEGMENT_ROLE_PRIMARY);
+	if (!pridbid)
+		elog(ERROR, "contentid %i does not point to an existing segment",
+			 contentid);
+
+	/* no mirrors should be defined */
+	if (segment_has_mirror(contentid))
+		elog(ERROR, "segment already has a mirror defined");
+
+	new.db.segindex = contentid;
+	new.db.dbid = get_maxdbid() + 1;
+	new.db.hostname = hostname;
+	new.db.address = address;
+	new.db.port = port;
+	new.db.filerep_port = rep_port;
+	new.db.mode = 's';
+	new.db.status = 'u';
+	new.db.role = SEGMENT_ROLE_MIRROR;
+	new.db.preferred_role = SEGMENT_ROLE_MIRROR;
+
+	add_segment_config_entry(pridbid, &new, fsmap);
+
+	heap_close(rel, NoLock);
+
+	PG_RETURN_INT16(new.db.dbid);
+}
+
+/*
+ * Remove a segment mirror.
+ *
+ * gp_remove_segment_mirror(contentid)
+ *
+ * Args:
+ *   contentid - segment index at which to remove the mirror
+ *
+ * Returns:
+ *   true upon success, otherwise throws error.
+ */
+Datum
+gp_remove_segment_mirror(PG_FUNCTION_ARGS)
+{
+	int16 contentid = 0;
+	Relation rel;
+	int16 pridbid;
+	int16 mirdbid;
+
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "dbid cannot be NULL");
+	contentid = PG_GETARG_INT16(0);
+
+	/* avoid races */
+	rel = heap_open(GpSegmentConfigRelationId, AccessExclusiveLock);
+
+	pridbid = contentid_get_dbid(contentid, SEGMENT_ROLE_PRIMARY);
+
+	if (!pridbid)
+		elog(ERROR, "no dbid for contentid %i", contentid);
+
+	if (!segment_has_mirror(contentid))
+		elog(ERROR, "segment does not have a mirror");
+
+	mirdbid = contentid_get_dbid(contentid, SEGMENT_ROLE_MIRROR);
+	if (!mirdbid)
+		elog(ERROR, "no mirror dbid for contentid %i", contentid);
+
+	remove_segment(pridbid, mirdbid);
+
+	heap_close(rel, NoLock);
+
+	PG_RETURN_BOOL(true);
+}
+
+/*
+ * Add a master standby.
+ *
+ * gp_add_master_standby(hostname, address, filespace_map)
+ *
+ * Args:
+ *  hostname - as above
+ *  address - as above
+ *  filespace_map - as above
+ *
+ * Returns:
+ *  dbid of the new standby
+ */
+Datum
+gp_add_master_standby(PG_FUNCTION_ARGS)
+{
+	seginfo *i;
+	seginfo new;
+	int maxdbid;
+	Relation gprel;
+	ArrayType *fsmap;
+   
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "host name cannot be NULL");
+	if (PG_ARGISNULL(1))
+		elog(ERROR, "address cannot be NULL");
+	if (PG_ARGISNULL(2))
+		elog(ERROR, "filespace map cannot be NULL");
+
+	mirroring_sanity_check(MASTER_ONLY | UTILITY_MODE,
+						   "gp_add_master_standby");
+
+	fsmap = PG_GETARG_ARRAYTYPE_P(2);
+
+	check_fsmap(fsmap);
+
+	/* Lock exclusively to avoid concurrent changes */
+	gprel = heap_open(GpSegmentConfigRelationId, AccessExclusiveLock);
+
+	if (standby_exists())
+		elog(ERROR, "only a single master standby may be defined");
+
+	maxdbid = get_maxdbid();
+	i = get_seginfo(MASTER_DBID); /* master dbid */
+	memcpy(&new, i, sizeof(seginfo));
+
+	new.db.dbid = maxdbid + 1;
+	new.db.role = SEGMENT_ROLE_MIRROR;
+	new.db.preferred_role = SEGMENT_ROLE_MIRROR;
+	new.db.mode = 's';
+	new.db.status = 'u';
+
+	new.db.hostname = DatumGetCString(DirectFunctionCall1(textout,
+									  PointerGetDatum(PG_GETARG_TEXT_P(0))));
+
+	new.db.address = DatumGetCString(DirectFunctionCall1(textout,
+								PointerGetDatum(PG_GETARG_TEXT_P(1))));
+
+	add_segment_config_entry(MASTER_DBID, &new, fsmap);
+
+	heap_close(gprel, NoLock);
+
+	PG_RETURN_INT16(new.db.dbid);
+}
+
+/*
+ * Remove the master standby.
+ *
+ * gp_remove_master_standby()
+ *
+ * Returns:
+ *  true upon success otherwise false
+ */
+Datum
+gp_remove_master_standby(PG_FUNCTION_ARGS)
+{
+	int16 dbid = master_standby_dbid();
+
+	if (!dbid)
+		elog(ERROR, "no master standby defined");
+
+	remove_segment(MASTER_DBID, dbid);
+
+	PG_RETURN_BOOL(true);
+}
+
+/*
+ * Run only on a segment, we use this to clean out the catalog in preparation
+ * for building a full segment. Used by gpexpand.
+ *
+ * gp_prep_new_segment(filespace_map)
+ *
+ * Args:
+ *   filespace_map - as above
+ *
+ * Returns:
+ *   true upon success, otherwise throws error
+ */
+Datum
+gp_prep_new_segment(PG_FUNCTION_ARGS)
+{
+	elog(ERROR, "not implemented");
+	PG_RETURN_BOOL(true);
+}
+
+/*
+ * Activate a standby.
+ *
+ * gp_activate_standby()
+ *
+ * Returns:
+ *  true upon success, otherwise throws error.
+ */
+Datum
+gp_activate_standby(PG_FUNCTION_ARGS)
+{
+	elog(ERROR, "not implemented");
+	PG_RETURN_BOOL(true);
+}
+
+/*
+ * Add entries to persistent tables on a segment.
+ *
+ * gp_add_segment_persistent_entries(dbid, mirdbid, filespace_map)
+ *
+ * Args:
+ *  dbid of the primary
+ *  mirdbid - dbid of the mirror
+ *  filespace_map - as above
+ *
+ * Returns:
+ *  true upon success otherwise false
+ *
+ * Runs only at the segment level.
+ */
+Datum
+gp_add_segment_persistent_entries(PG_FUNCTION_ARGS)
+{
+	int16 dbid;
+	int16 mirdbid;
+	ArrayType *fsmap;
+	seginfo seg;
+
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "dbid cannot be NULL");
+	if (PG_ARGISNULL(1))
+		elog(ERROR, "mirror_dbid cannot be NULL");
+	if (PG_ARGISNULL(2))
+		elog(ERROR, "filespace_map cannot be NULL");
+
+	mirroring_sanity_check(SEGMENT_ONLY | SUPERUSER,
+						   "gp_add_segment_persistent_entries");
+
+	dbid = PG_GETARG_INT16(0);
+	mirdbid = PG_GETARG_INT16(1);
+	fsmap = PG_GETARG_ARRAYTYPE_P(2);
+
+	elog(LOG, "received request to execute %s on %i, desired site %i",
+		 PG_FUNCNAME_MACRO, GpIdentity.dbid, dbid);
+
+	if (dbid != GpIdentity.dbid)
+		PG_RETURN_BOOL(true);
+
+	MemSet(&seg, 0, sizeof(seginfo));
+	seg.db.dbid = mirdbid;
+	seg.db.role = SEGMENT_ROLE_MIRROR;
+
+	add_segment_persistent_entries(dbid, &seg, fsmap);
+
+	PG_RETURN_BOOL(true);
+}
+
+/*
+ * Opposite of gp_add_segment_persistent_entries()
+ */
+Datum
+gp_remove_segment_persistent_entries(PG_FUNCTION_ARGS)
+{
+	int16 dbid;
+	int16 mirdbid;
+	seginfo seg;
+
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "dbid cannot be NULL");
+	if (PG_ARGISNULL(1))
+		elog(ERROR, "mirdbid cannot be NULL");
+
+	mirroring_sanity_check(SEGMENT_ONLY | SUPERUSER,
+						   "gp_remove_segment_persistent_entries");
+
+	dbid = PG_GETARG_INT16(0);
+	mirdbid = PG_GETARG_INT16(1);
+
+	elog(LOG, "received request to execute %s on %i, desired site %i",
+		 PG_FUNCNAME_MACRO, GpIdentity.dbid, dbid);
+
+	if (dbid != GpIdentity.dbid)
+		PG_RETURN_BOOL(true);
+
+	MemSet(&seg, 0, sizeof(seginfo));
+	seg.db.dbid = mirdbid;
+	seg.db.role = SEGMENT_ROLE_MIRROR;
+
+	remove_segment_persistent_entries(dbid, &seg);
+
+	PG_RETURN_BOOL(true);
+}

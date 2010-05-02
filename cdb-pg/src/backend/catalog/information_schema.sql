@@ -1897,15 +1897,26 @@ CREATE VIEW tables AS
            CAST(null AS sql_identifier) AS user_defined_type_schema,
            CAST(null AS sql_identifier) AS user_defined_type_name,
 
-           CAST(CASE WHEN c.relkind = 'r'
-                THEN 'YES' ELSE 'NO' END AS character_data) AS is_insertable_into,
+           CAST(CASE WHEN (c.relkind != 'r' 
+           				   OR (nc.nspname = 'pg_catalog' 
+           				       AND (c.relname LIKE 'gp_persistent_%'
+           				            OR c.relname = 'gp_global_sequence'))
+           				   OR c.relstorage = 'f'
+           				   OR (c.relstorage = 'x'
+           				       AND x.writable = 'f'))
+           
+                THEN 'NO' ELSE 'YES' END AS character_data) AS is_insertable_into,
            CAST('NO' AS character_data) AS is_typed,
            CAST(
              CASE WHEN nc.oid = pg_my_temp_schema() THEN 'PRESERVE' -- FIXME
                   ELSE null END
              AS character_data) AS commit_action
 
-    FROM pg_namespace nc, pg_class c
+    FROM pg_class c 
+    		LEFT OUTER JOIN 
+    	 pg_exttable x 
+    	 	ON c.oid = x.reloid, 
+    	 pg_namespace nc
 
     WHERE c.relnamespace = nc.oid
           AND c.relkind IN ('r', 'v')

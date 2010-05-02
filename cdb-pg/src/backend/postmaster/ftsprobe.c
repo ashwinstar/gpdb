@@ -2477,7 +2477,7 @@ startSegment_forDbid(int dbid)
 		ScanKeyInit(&fse_scankey[0], 
 					Anum_pg_filespace_entry_fsedbid,
 					BTEqualStrategyNumber, F_INT4EQ,
-					Int32GetDatum((int32) dbid));  /* Current dbid */
+					Int16GetDatum((int2)dbid));  /* Current dbid */
 		ScanKeyInit(&fse_scankey[1], 
 					Anum_pg_filespace_entry_fsefsoid,
 					BTEqualStrategyNumber, F_OIDEQ,

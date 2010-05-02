@@ -998,4 +998,196 @@ makeRandomSegMap(int total_primaries, int total_to_skip)
 	return skip_map;
 }
 
+/*
+ * Determine the dbid for the master standby
+ */
+int16
+master_standby_dbid(void)
+{
+	int16 dbid = 0;
+	int16 contentid = -1;
+	ScanKeyData key[2];
+	HeapScanDesc scandesc;
+	Relation rel;
+	HeapTuple tup;
 
+	rel = heap_open(GpSegmentConfigRelationId, AccessShareLock);
+
+	ScanKeyInit(&key[0], Anum_gp_segment_config_content,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum(contentid));
+	ScanKeyInit(&key[1], Anum_gp_segment_config_role,
+				BTEqualStrategyNumber, F_CHAREQ,
+				CharGetDatum('m'));
+
+	scandesc = heap_beginscan(rel, SnapshotNow, 2, key);
+	tup = heap_getnext(scandesc, ForwardScanDirection);
+
+	if (HeapTupleIsValid(tup))
+	{
+		dbid = ((Form_gp_segment_config) GETSTRUCT(tup))->dbid;
+
+		/* We expect a single result, assert this */
+		Assert(!HeapTupleIsValid(heap_getnext(scandesc, ForwardScanDirection)));
+	}
+
+	heap_endscan(scandesc);
+
+	/* no need to hold the lock, it's a catalog */
+	heap_close(rel, AccessShareLock);
+
+	return dbid;
+}
+
+CdbComponentDatabaseInfo *
+dbid_get_dbinfo(int16 dbid)
+{
+	SysScanDesc scandesc;
+	HeapTuple tuple;
+	Relation rel;
+	ScanKeyData key;
+	CdbComponentDatabaseInfo *i = NULL;
+
+	rel = heap_open(GpSegmentConfigRelationId, AccessShareLock);
+	ScanKeyInit(&key, Anum_gp_segment_config_dbid,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum(dbid));
+	scandesc = systable_beginscan(rel, GpSegmentConfigDbidIndexId,
+								  true, SnapshotNow, 1, &key);
+	tuple = systable_getnext(scandesc);
+
+	if (HeapTupleIsValid(tuple))
+	{
+		Datum attr;
+		bool isNull;
+
+		i = palloc(sizeof(CdbComponentDatabaseInfo));
+
+		/*
+		 * dbid
+		 */
+		attr = heap_getattr(tuple, Anum_gp_segment_config_dbid,
+							RelationGetDescr(rel), &isNull);
+		Assert(!isNull);
+		i->dbid = DatumGetInt16(attr);
+
+		/*
+		 * content
+		 */
+		attr = heap_getattr(tuple, Anum_gp_segment_config_content,
+							RelationGetDescr(rel), &isNull);
+		Assert(!isNull);
+		i->segindex = DatumGetInt16(attr);
+
+		/*
+		 * role
+		 */
+		attr = heap_getattr(tuple, Anum_gp_segment_config_role,
+							RelationGetDescr(rel), &isNull);
+		Assert(!isNull);
+		i->role = DatumGetChar(attr);
+
+		/*
+		 * preferred-role
+		 */
+		attr = heap_getattr(tuple,
+							Anum_gp_segment_config_preferred_role,
+							RelationGetDescr(rel), &isNull);
+		Assert(!isNull);
+		i->preferred_role = DatumGetChar(attr);
+
+		/*
+		 * mode
+		 */
+		attr = heap_getattr(tuple, Anum_gp_segment_config_mode,
+							RelationGetDescr(rel), &isNull);
+		Assert(!isNull);
+		i->mode = DatumGetChar(attr);
+
+		/*
+		 * status
+		 */
+		attr = heap_getattr(tuple, Anum_gp_segment_config_status,
+							RelationGetDescr(rel), &isNull);
+		Assert(!isNull);
+		i->status = DatumGetChar(attr);
+
+		/*
+		 * hostname
+		 */
+		attr = heap_getattr(tuple, Anum_gp_segment_config_hostname,
+							RelationGetDescr(rel), &isNull);
+		Assert(!isNull);
+		i->hostname = TextDatumGetCString(attr);
+
+		/*
+		 * address
+		 */
+		attr = heap_getattr(tuple, Anum_gp_segment_config_address,
+							RelationGetDescr(rel), &isNull);
+		Assert(!isNull);
+		i->address = TextDatumGetCString(attr);
+		
+		/*
+		 * port
+		 */
+		attr = heap_getattr(tuple, Anum_gp_segment_config_port,
+							RelationGetDescr(rel), &isNull);
+		Assert(!isNull);
+		i->port = DatumGetInt32(attr);
+
+		/*
+		 * Filerep_port
+		 */
+		attr = heap_getattr(tuple, Anum_gp_segment_config_replication_port,
+							RelationGetDescr(rel), &isNull);
+		if (!isNull)
+			i->filerep_port = DatumGetInt32(attr);
+		else
+			i->filerep_port = -1;
+
+		Assert(!HeapTupleIsValid(systable_getnext(scandesc)));
+	}
+
+	systable_endscan(scandesc);
+	heap_close(rel, NoLock);
+
+	return i;
+}
+
+int16
+contentid_get_dbid(int16 contentid, char role)
+{
+	int16 dbid = 0;
+	ScanKeyData key[2];
+	HeapScanDesc scandesc;
+	Relation rel;
+	HeapTuple tup;
+
+	rel = heap_open(GpSegmentConfigRelationId, AccessShareLock);
+
+	ScanKeyInit(&key[0], Anum_gp_segment_config_content,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum(contentid));
+	ScanKeyInit(&key[1], Anum_gp_segment_config_role,
+				BTEqualStrategyNumber, F_CHAREQ,
+				CharGetDatum(role));
+
+	scandesc = heap_beginscan(rel, SnapshotNow, 2, key);
+	tup = heap_getnext(scandesc, ForwardScanDirection);
+
+	if (HeapTupleIsValid(tup))
+	{
+		dbid = ((Form_gp_segment_config) GETSTRUCT(tup))->dbid;
+
+		/* We expect a single result, assert this */
+		Assert(!HeapTupleIsValid(heap_getnext(scandesc, ForwardScanDirection)));
+	}
+
+	heap_endscan(scandesc);
+
+	/* no need to hold the lock, it's a catalog */
+	heap_close(rel, AccessShareLock);
+
+	return dbid;
+}
