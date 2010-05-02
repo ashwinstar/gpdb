@@ -115,6 +115,9 @@ PersistentFilespace_FindDirUnderLock(
 
 	FilespaceDirEntryKey key;
 
+	if (persistentFilespaceSharedHashTable == NULL)
+		elog(PANIC, "Persistent filespace information shared-memory not setup");
+
 	key.filespaceOid = filespaceOid;
 
 	filespaceDirEntry = 
@@ -123,6 +126,8 @@ PersistentFilespace_FindDirUnderLock(
 								(void *) &key,
 								HASH_FIND,
 								&found);
+	if (!found)
+		return NULL;
 
 	return filespaceDirEntry;
 }
@@ -136,6 +141,9 @@ PersistentFilespace_CreateDirUnderLock(
 	FilespaceDirEntry	filespaceDirEntry;
 
 	FilespaceDirEntryKey key;
+
+	if (persistentFilespaceSharedHashTable == NULL)
+		elog(PANIC, "Persistent filespace information shared-memory not setup");
 
 	key.filespaceOid = filespaceOid;
 
@@ -161,6 +169,9 @@ PersistentFilespace_RemoveDirUnderLock(
 	FilespaceDirEntry	filespaceDirEntry)
 {
 	FilespaceDirEntry	removeFilespaceDirEntry;
+
+	if (persistentFilespaceSharedHashTable == NULL)
+		elog(PANIC, "Persistent filespace information shared-memory not setup");
 
 	removeFilespaceDirEntry = 
 				(FilespaceDirEntry) 
@@ -330,6 +341,8 @@ extern void PersistentFilespace_LookupTidAndSerialNum(
 	int64			*persistentSerialNum)
 {
 	FilespaceDirEntry filespaceDirEntry;
+
+	PersistentFilespace_InitScan();
 
 	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
 	// acquire the MirroredLock.
@@ -570,6 +583,7 @@ void PersistentFilespace_GetPrimaryAndMirror(
 				/* The primary filespace directory path.  Return NULL for global and base. 
 				 * Or, returns NULL when mirror not configured. */
 {
+	PersistentFilespace_InitScan();
 
 	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
 	// acquire the MirroredLock.

@@ -115,6 +115,8 @@ static XactEntry PersistentRecovery_FindXactEntry(
 								(void *) &xid,
 								HASH_FIND,
 								&found);
+	if (!found)
+		return NULL;
 
 	return xactEntry;
 }
@@ -151,10 +153,11 @@ FsObjEntryToBuffer(char *buffer, FsObjEntry fsObjEntry)
 {
 	if (fsObjEntry->state != PersistentFileSysState_Free)	
 		sprintf(buffer,
-			    "%s: state '%s', transaction %u, persistent serial number " INT64_FORMAT ", TID %s, fsObjEntry address %p",
+			    "%s: state '%s', transaction %u, relation storage manager '%s', persistent serial number " INT64_FORMAT ", TID %s, fsObjEntry address %p",
 				PersistentFileSysObjName_TypeAndObjectName(&fsObjEntry->fsObjName),
 				PersistentFileSysObjState_Name(fsObjEntry->state),
 				fsObjEntry->xid,
+				PersistentFileSysRelStorageMgr_Name(fsObjEntry->relStorageMgr),
 				fsObjEntry->persistentSerialNum,
 				ItemPointerToString(&fsObjEntry->key.persistentTid),
 				fsObjEntry);
@@ -246,6 +249,7 @@ static FsObjEntry PersistentRecovery_FindOrCreateFsObjEntry(
 		DoubleLinks_Init(&fsObjEntry->xactLinks);
 		fsObjEntry->persistentSerialNum = 0;
 		MemSet(&fsObjEntry->fsObjName, 0, sizeof(PersistentFileSysObjName));
+		fsObjEntry->relStorageMgr = PersistentFileSysRelStorageMgr_None;
 		fsObjEntry->xid = InvalidTransactionId;
 		fsObjEntry->state = -1;
 		fsObjEntry->updateNeeded = false;
@@ -277,6 +281,8 @@ static FsObjEntry PersistentRecovery_FindFsObjEntry(
 									(void *) &key,
 									HASH_FIND,
 									&found);
+	if (!found)
+		return NULL;
 
 	return fsObjEntry;
 }
@@ -322,7 +328,22 @@ static void PersistentRecovery_AddEndXactFsObj(
 	}
 
 	fsObjEntry->fsObjName = fsObj->fsObjName;
-	fsObjEntry->relStorageMgr = fsObj->relStorageMgr;
+
+	if (fsObj->fsObjName.type == PersistentFsObjType_RelationFile)
+	{
+		if (!PersistentFileSysRelStorageMgr_IsValid(fsObj->relStorageMgr))
+			elog(ERROR, "Relation storage manager for persistent '%s' for Crash Recovery is invalid (%d)",
+				 PersistentFileSysObjName_TypeAndObjectName(&fsObj->fsObjName),
+				 fsObj->relStorageMgr);
+
+		fsObjEntry->relStorageMgr = fsObj->relStorageMgr;
+	}
+	else
+	{
+		// Not a 'Relation File'.
+		fsObjEntry->relStorageMgr = PersistentFileSysRelStorageMgr_None;
+	}
+		
 	fsObjEntry->persistentSerialNum = fsObj->persistentSerialNum;
 	fsObjEntry->xid = xid;
 	fsObjEntry->state = state;
@@ -915,7 +936,9 @@ PersistentRecovery_AddScanEntry(
 	ItemPointer				persistentTid,
 
 	PersistentFileSysObjName	*fsObjName,
-	
+
+	PersistentFileSysRelStorageMgr relStorageMgr,
+
 	PersistentFileSysState	state,
 	
 	TransactionId			parentXid,
@@ -965,6 +988,7 @@ PersistentRecovery_AddScanEntry(
 	if (!found)
 	{
 		fsObjEntry->fsObjName = *fsObjName;
+		fsObjEntry->relStorageMgr = relStorageMgr;
 		fsObjEntry->persistentSerialNum = persistentSerialNum;
 		fsObjEntry->xid = parentXid;
 		fsObjEntry->state = state;
@@ -1005,14 +1029,16 @@ PersistentRecovery_AddScanEntry(
 	{
 		if (Debug_persistent_recovery_print)
 			elog(Debug_persistent_recovery_print_level, 
-			     "Scan REDO: Overwriting obsolete %s with '%s', state '%s', transaction %u, serial number " INT64_FORMAT,
+			     "Scan REDO: Overwriting obsolete %s with '%s', relation storage manager '%s', state '%s', transaction %u, serial number " INT64_FORMAT,
 				 FsObjEntryToString(fsObjEntry),
 				 PersistentFileSysObjName_TypeAndObjectName(fsObjName),
+				 PersistentFileSysRelStorageMgr_Name(relStorageMgr),
 				 PersistentFileSysObjState_Name(state),
 				 parentXid,
 				 persistentSerialNum);
 
 		fsObjEntry->fsObjName = *fsObjName;
+		fsObjEntry->relStorageMgr = relStorageMgr;
 		fsObjEntry->state = state;
 		fsObjEntry->xid = parentXid;
 		fsObjEntry->persistentSerialNum = persistentSerialNum;
@@ -1037,7 +1063,9 @@ static void PersistentRecovery_ScanTuple(
 	
 	PersistentFileSysState	state;
 
-	MirroredObjectExistenceState		mirrorExistenceState;	// UNDONE
+	MirroredObjectExistenceState		mirrorExistenceState;
+
+	PersistentFileSysRelStorageMgr relStorageMgr;
 
 	TransactionId			parentXid;
 	int64					serialNum;
@@ -1052,10 +1080,24 @@ static void PersistentRecovery_ScanTuple(
 							&serialNum);
 	Assert(serialNum == persistentSerialNum);
 
+	if (fsObjType == PersistentFsObjType_RelationFile)
+	{
+		relStorageMgr = 
+			(PersistentFileSysRelStorageMgr)
+							DatumGetInt16(
+									values[Anum_gp_persistent_relation_node_relation_storage_manager - 1]);
+	}
+	else
+	{
+		// Not a 'Relation File'.
+		relStorageMgr = PersistentFileSysRelStorageMgr_None;
+	}
+	
 	PersistentRecovery_AddScanEntry(
 							fsObjType,
 							persistentTid,
 							&fsObjName,
+							relStorageMgr,
 							state,
 							parentXid,
 							persistentSerialNum);
@@ -1302,6 +1344,7 @@ PersistentRecovery_CrashAbort(void)
 			if (fsObjEntry->state == PersistentFileSysState_CreatePending)
 			{
 				endXactFsObjs[e].fsObjName = fsObjEntry->fsObjName;
+				endXactFsObjs[e].relStorageMgr = fsObjEntry->relStorageMgr;
 				endXactFsObjs[e].persistentTid = fsObjEntry->key.persistentTid;
 				endXactFsObjs[e].persistentSerialNum = fsObjEntry->persistentSerialNum;
 				e++;
@@ -1808,7 +1851,8 @@ PersistentRecovery_FindRedoRelationEntry(
 								(void *) &key,
 								HASH_FIND,
 								&found);
-
+	if (!found)
+		return NULL;
 
 	return foundEntry;
 }

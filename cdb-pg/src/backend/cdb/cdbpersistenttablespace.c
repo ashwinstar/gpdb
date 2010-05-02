@@ -101,6 +101,9 @@ PersistentTablespace_FindEntryUnderLock(
 
 	TablespaceDirEntryKey key;
 
+	if (persistentTablespaceSharedHashTable == NULL)
+		elog(PANIC, "Persistent tablespace information shared-memory not setup");
+
 	key.tablespaceOid = tablespaceOid;
 
 	tablespaceDirEntry = 
@@ -109,6 +112,8 @@ PersistentTablespace_FindEntryUnderLock(
 								(void *) &key,
 								HASH_FIND,
 								&found);
+	if (!found)
+		return NULL;
 
 	return tablespaceDirEntry;
 }
@@ -124,6 +129,9 @@ PersistentTablespace_CreateEntryUnderLock(
 	TablespaceDirEntry	tablespaceDirEntry;
 
 	TablespaceDirEntryKey key;
+
+	if (persistentTablespaceSharedHashTable == NULL)
+		elog(PANIC, "Persistent tablespace information shared-memory not setup");
 
 	key.tablespaceOid = tablespaceOid;
 
@@ -151,6 +159,9 @@ PersistentTablespace_RemoveEntryUnderLock(
 	TablespaceDirEntry	tablespaceDirEntry)
 {
 	TablespaceDirEntry	removeTablespaceDirEntry;
+
+	if (persistentTablespaceSharedHashTable == NULL)
+		elog(PANIC, "Persistent tablespace information shared-memory not setup");
 
 	removeTablespaceDirEntry = 
 				(TablespaceDirEntry) 
@@ -180,6 +191,8 @@ PersistentTablespace_GetState(
 	{ 
 		return PersistentFileSysState_Created; 
 	}
+
+	PersistentTablespace_InitScan();
 
 	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
 	// acquire the MirroredLock.
@@ -309,6 +322,8 @@ static bool PersistentTablespace_CheckScanTupleCallback(
 bool PersistentTablespace_Check(
 	Oid				tablespace)
 {
+	PersistentTablespace_InitScan();
+
 	persistentTablespaceCheck = tablespace;
 	persistentTablespaceCheckFound = false;
 
@@ -329,6 +344,8 @@ extern void PersistentTablespace_LookupTidAndSerialNum(
 	int64			*persistentSerialNum)
 {
 	TablespaceDirEntry tablespaceDirEntry;
+
+	PersistentTablespace_InitScan();
 
 	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
 	// acquire the MirroredLock.

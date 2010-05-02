@@ -115,6 +115,8 @@ static void FileRep_SignalChildren(int signal, bool backendsOnly);
 static bool FileRep_ProcessSignals(void);
 static void FileRep_ConfigureSignals(void);
 
+static pg_crc32 FileRep_CalculateAdler32(unsigned char *buf, int len);
+
 #define MaxFileRepSubProc 17	
 
 /**
@@ -2062,6 +2064,31 @@ FileRep_Sleep1ms(int retry)
 	}
 }
 
+#define ADLER_BASE 65521 /* largest prime smaller than 65536 */
+
+/*
+ * An Adler-32 checksum is obtained by calculating two 16-bit checksums A and B and concatenating their bits 
+ * into a 32-bit integer. A is the sum of all bytes in the string plus one, and B is the sum of the individual 
+ * values of A  from each step.
+ *
+ * At the beginning of an Adler-32 run, A is initialized to 1, B to 0. The sums are done modulo 65521 
+ * (the largest prime number smaller than 216). The bytes are stored in network order (big endian), 
+ * B occupying the two most significant bytes.
+ */
+static pg_crc32 
+FileRep_CalculateAdler32(unsigned char *buf, int len)
+{
+	uint32 adler = 1L;
+	uint32 s1 = adler & 0xffff;
+	uint32 s2 = (adler >> 16) & 0xffff;
+	int n;
+	
+	for (n = 0; n < len; n++) {
+		s1 = (s1 + buf[n]) % ADLER_BASE;
+		s2 = (s2 + s1)     % ADLER_BASE;
+	}
+	return (s2 << 16) + s1;
+}
 
 /*
  *
@@ -2076,12 +2103,8 @@ FileRep_CalculateCrc(
 
 	if (Debug_filerep_crc_on)
 	{
-		/* Compute Crc */
-		INIT_CRC32(_crc);
-		
-		COMP_CRC32(_crc, (char *) data, length);
-		
-		FIN_CRC32(_crc);
+		/* Compute Adler 32 */
+		_crc = FileRep_CalculateAdler32((unsigned char *) data, length);
 	}
 
 	*crc = _crc;

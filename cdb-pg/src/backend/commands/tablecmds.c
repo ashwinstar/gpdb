@@ -10041,7 +10041,7 @@ ATExecSetTableSpace_AppendOnly(
 			 newRelFileNode->spcNode);
 
 	/* Use palloc to ensure we get a maxaligned buffer */		
-	buffer = palloc(BLCKSZ);
+	buffer = palloc(2*BLCKSZ);
 
 	aoEntry = GetAppendOnlyEntry(RelationGetRelid(rel));
 

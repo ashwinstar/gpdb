@@ -498,7 +498,7 @@ static void BufFileDumpBuffer(BufFile *file, const void* buffer, Size nbytes)
 			file->offsets[file->curFile] = file->curOffset;
 		}
 		wrote = FileWrite(thisfile, (char *)buffer + wpos, (int)bytestowrite);
-		if (wrote <= 0)
+		if (wrote != bytestowrite)
 		{
 			elog(ERROR, "Workfile I/O error.  FileWrite offset=%d amount=%d.  errno %d, error: %s",
 				 file->curOffset, (int)bytestowrite, errno, strerror(errno));

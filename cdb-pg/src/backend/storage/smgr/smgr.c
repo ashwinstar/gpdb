@@ -1801,6 +1801,59 @@ smgrDoDeleteActions(
 	Assert(*list == NULL);
 }
 
+static void
+smgrDoAppendOnlyResyncEofs(bool forCommit)
+{
+	int appendOnlyMirrorResyncEofsCount = 0;
+
+	HASH_SEQ_STATUS iterateStatus;
+	AppendOnlyMirrorResyncEofs *entry;
+
+	hash_seq_init(
+			&iterateStatus, 
+			AppendOnlyMirrorResyncEofsTable);
+	
+	while ((entry = hash_seq_search(&iterateStatus)) != NULL)
+	{
+		if (forCommit)
+		{
+			PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
+															&entry->key.relFileNode,
+															entry->key.segmentFileNum,
+															&entry->persistentTid,
+															entry->persistentSerialNum,
+															entry->mirrorLossEof,
+															entry->mirrorNewEof,
+															/* recovery */ false,
+															/* flushToXLog */ false);
+		}
+
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "Storage Manager: Append-Only mirror resync eofs list entry #%d: %u/%u/%u, segment file #%d, relation name '%s' (forCommit %s, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
+				 appendOnlyMirrorResyncEofsCount,
+				 entry->key.relFileNode.spcNode,
+				 entry->key.relFileNode.dbNode,
+				 entry->key.relFileNode.relNode,
+				 entry->key.segmentFileNum,
+				 (entry->relationName == NULL ? "<null>" : entry->relationName),
+				 (forCommit ? "true" : "false"),
+				 ItemPointerToString(&entry->persistentTid),
+				 entry->persistentSerialNum,
+				 entry->mirrorLossEof,
+				 entry->mirrorNewEof);
+
+		appendOnlyMirrorResyncEofsCount++;
+		FileRepPrimary_IntentAppendOnlyCommitWork();
+	}
+
+	/*
+	 * For both COMMIT and ABORT, release our intent to add Append-Only mirror resync EOFs.
+	 */
+	if (appendOnlyMirrorResyncEofsCount > 0)
+		FileRepPrimary_FinishedAppendOnlyCommitWork(appendOnlyMirrorResyncEofsCount);
+}
+
 /*
  * A compare function for 2 PendingDelete.
  */
@@ -2394,6 +2447,11 @@ AtEOXact_smgr(bool forCommit)
 	Assert(pendingDeletesCount == 0);
 	pendingDeletesSorted = false;
 
+	/*
+	 * Update the Append-Only mirror resync EOFs.
+	 */
+	smgrDoAppendOnlyResyncEofs(forCommit);
+	
 	/*
 	 * Free the Append-Only mirror resync EOFs hash table.
 	 */

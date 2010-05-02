@@ -298,9 +298,36 @@ AOCSFileSegInfo **GetAllAOCSFileSegInfo(Relation prel,
 										Snapshot snapshot,
 										int32 *totalseg)
 {
-    int32 nvp = prel->rd_att->natts;
+    Relation 			pg_aocsseg_rel;
 
-    Relation segrel;
+	AOCSFileSegInfo 	**results;
+	
+	pg_aocsseg_rel = relation_open(aoEntry->segrelid, AccessShareLock);
+
+	results = GetAllAOCSFileSegInfo_pg_aocsseg_rel(
+											prel->rd_att->natts,
+											NameStr(prel->rd_rel->relname),
+											aoEntry,
+											pg_aocsseg_rel,
+											snapshot,
+											totalseg);
+
+    heap_close(pg_aocsseg_rel, AccessShareLock);
+
+	return results;
+}
+
+AOCSFileSegInfo **GetAllAOCSFileSegInfo_pg_aocsseg_rel(
+										int numOfColumns,
+										char *relationName,
+										AppendOnlyEntry *aoEntry,
+									    Relation pg_aocsseg_rel,
+										Snapshot snapshot,
+										int32 *totalseg)
+{
+
+    int32 nvp = numOfColumns;
+
     HeapScanDesc scan;
     HeapTuple tup;
 
@@ -312,8 +339,7 @@ AOCSFileSegInfo **GetAllAOCSFileSegInfo(Relation prel,
 
 	Assert(aoEntry != NULL);
 
-    segrel = heap_open(aoEntry->segrelid, AccessShareLock);
-    scan = heap_beginscan(segrel, snapshot, 0, NULL);
+    scan = heap_beginscan(pg_aocsseg_rel, snapshot, 0, NULL);
 
     *totalseg = 0;
     while ((tup = heap_getnext(scan, ForwardScanDirection)) != NULL)
@@ -323,7 +349,6 @@ AOCSFileSegInfo **GetAllAOCSFileSegInfo(Relation prel,
 
     if(*totalseg == 0)
     {
-        heap_close(segrel, AccessShareLock);
         return NULL;
     }
 
@@ -333,7 +358,7 @@ AOCSFileSegInfo **GetAllAOCSFileSegInfo(Relation prel,
 
     cur_seg = 0;
 
-    scan = heap_beginscan(segrel, snapshot, 0, NULL);
+    scan = heap_beginscan(pg_aocsseg_rel, snapshot, 0, NULL);
     while ((tup = heap_getnext(scan, ForwardScanDirection)) != NULL)
     {
         seginfo = (AOCSFileSegInfo *) palloc0(aocsfileseginfo_size(nvp));
@@ -341,7 +366,7 @@ AOCSFileSegInfo **GetAllAOCSFileSegInfo(Relation prel,
         Assert(cur_seg < *totalseg);
         allseg[cur_seg] = seginfo;
 
-        heap_deform_tuple(tup, segrel->rd_att, d, null);
+        heap_deform_tuple(tup, pg_aocsseg_rel->rd_att, d, null);
 
         Assert(!null[Anum_pg_aocs_segno - 1]);
         seginfo->segno = DatumGetInt32(d[Anum_pg_aocs_segno - 1]);
@@ -376,7 +401,6 @@ AOCSFileSegInfo **GetAllAOCSFileSegInfo(Relation prel,
     pfree(null);
 
     heap_endscan(scan);
-    heap_close(segrel, AccessShareLock);
 
     return allseg;
 }

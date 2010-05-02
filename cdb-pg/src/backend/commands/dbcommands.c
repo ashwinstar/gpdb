@@ -1139,7 +1139,7 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 			pg_rusage_init(&ru_start);
 		
 		/* Use palloc to ensure we get a maxaligned buffer */		
-		buffer = palloc(BLCKSZ);
+		buffer = palloc(2*BLCKSZ);
 
 		for (r = 0; r < info->dbInfoRelArrayCount; r++)
 		{
@@ -1236,17 +1236,21 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 														/* doJustInTimeDirCreate */ false,
 														&dbInfoGpRelationNode->persistentTid,			// OUTPUT
 														&dbInfoGpRelationNode->persistentSerialNum); 	// OUTPUT
-										
-					copy_append_only_segment_file(
-									&srcRelFileNode,
-									&dstRelFileNode,
-									dbInfoGpRelationNode->segmentFileNum,
-									dbInfoRel->relname,
-									dbInfoGpRelationNode->logicalEof,
-									&dbInfoGpRelationNode->persistentTid,
-									dbInfoGpRelationNode->persistentSerialNum,
-									buffer,
-									&mirrorDataLossOccurred);
+
+
+					if (dbInfoGpRelationNode->logicalEof > 0)
+					{
+						copy_append_only_segment_file(
+										&srcRelFileNode,
+										&dstRelFileNode,
+										dbInfoGpRelationNode->segmentFileNum,
+										dbInfoRel->relname,
+										dbInfoGpRelationNode->logicalEof,
+										&dbInfoGpRelationNode->persistentTid,
+										dbInfoGpRelationNode->persistentSerialNum,
+										buffer,
+										&mirrorDataLossOccurred);
+					}
 				}
 			}			
 		}

@@ -81,6 +81,7 @@ extern AOCSFileSegInfo *GetAOCSFileSegInfoForWrite(Relation prel, AppendOnlyEntr
 extern AOCSFileSegInfo *GetAOCSFileSegInfoForVacuum(Relation prel, AppendOnlyEntry *aoEntry, int32 segno);
 
 extern AOCSFileSegInfo **GetAllAOCSFileSegInfo(Relation prel, AppendOnlyEntry *aoEntry, Snapshot snapshot, int *totalseg);
+extern AOCSFileSegInfo **GetAllAOCSFileSegInfo_pg_aocsseg_rel(int numOfColumsn, char *relationName, AppendOnlyEntry *aoEntry, Relation pg_aocsseg_rel, Snapshot snapshot, int32 *totalseg);
 
 extern int64 GetAOCSTotalBytes(Relation parentrel);
 

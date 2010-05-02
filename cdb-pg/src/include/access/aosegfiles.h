@@ -81,6 +81,9 @@ GetFileSegInfoForRead(Relation parentrel, AppendOnlyEntry *aoEntry, int segno);
 extern FileSegInfo **
 GetAllFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, Snapshot snapshot, int *totalsegs);
 
+extern FileSegInfo **
+GetAllFileSegInfo_pg_aoseg_rel(char *relationName, AppendOnlyEntry *aoEntry, Relation pg_aoseg_rel, Snapshot snapshot, int *totalsegs);
+
 extern void
 UpdateFileSegInfo(Relation parentrel,
 				  AppendOnlyEntry *aoEntry,

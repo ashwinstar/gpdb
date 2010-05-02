@@ -430,8 +430,31 @@ FileSegInfo **GetAllFileSegInfo(Relation parentrel,
 								Snapshot snapshot,
 								int *totalsegs)
 {
-
 	Relation		pg_aoseg_rel;
+
+	FileSegInfo		**result;
+
+	pg_aoseg_rel = heap_open(aoEntry->segrelid, AccessShareLock);
+
+	result = GetAllFileSegInfo_pg_aoseg_rel(
+									NameStr(parentrel->rd_rel->relname),
+									aoEntry,
+									pg_aoseg_rel,
+									snapshot,
+									totalsegs);
+	
+	heap_close(pg_aoseg_rel, AccessShareLock);
+
+	return result;
+}
+
+FileSegInfo **GetAllFileSegInfo_pg_aoseg_rel(
+								char *relationName,
+								AppendOnlyEntry *aoEntry,
+								Relation pg_aoseg_rel,
+								Snapshot snapshot,
+								int *totalsegs)
+{
 	TupleDesc		pg_aoseg_dsc;
 	HeapTuple		tuple;
 	HeapScanDesc	aoscan;
@@ -444,7 +467,6 @@ FileSegInfo **GetAllFileSegInfo(Relation parentrel,
 					varblockcount;
 	bool			isNull;
 
-	pg_aoseg_rel = heap_open(aoEntry->segrelid, AccessShareLock);
 	pg_aoseg_dsc = pg_aoseg_rel->rd_att;
 
 	*totalsegs = 0;
@@ -463,7 +485,6 @@ FileSegInfo **GetAllFileSegInfo(Relation parentrel,
 
 	if (*totalsegs == 0)
 	{
-		heap_close(pg_aoseg_rel, AccessShareLock);
 		return NULL;
 	}
 
@@ -511,8 +532,8 @@ FileSegInfo **GetAllFileSegInfo(Relation parentrel,
 			elog(LOG,"Append-only found existing segno %d with eof " INT64_FORMAT " for table '%s' out of total %d segs",
 				oneseginfo->segno,
 				oneseginfo->eof,
-				 NameStr(parentrel->rd_rel->relname),
-				 *totalsegs);
+				relationName,
+				*totalsegs);
 
 		seginfo_no++;
 
@@ -520,7 +541,6 @@ FileSegInfo **GetAllFileSegInfo(Relation parentrel,
 	}
 
 	heap_endscan(aoscan);
-	heap_close(pg_aoseg_rel, AccessShareLock);
 
 	return allseginfo;
 }
