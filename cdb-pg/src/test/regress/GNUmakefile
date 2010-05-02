@@ -166,6 +166,9 @@ endif
 upg2_data := $(wildcard data/upgrade*/*.data)
 upg2_in   := $(wildcard data/upgrade*/*.in)
 upg2_out  := $(basename $(addprefix data/, $(notdir $(upg2_in))))
+upg2_temp_files := $(addprefix data/, $(notdir $(upg2_data))) \
+			       $(addprefix data/, $(notdir $(upg2_in))) \
+				   $(upg2_out)
 upg2-setup:
 	@cp -f input/loadcat33.source.in input/loadcat33.source
 	@gpstringsubs.pl input/loadcat33.source
@@ -228,6 +231,10 @@ clean distclean maintainer-clean: clean-lib
 	rm -rf results tmp_check log
 	rm -f regression.diffs regression.out regress.out run_check.out
 	rm -f data/pg_class32.data
+	rm -f input/loadcat33.source
+	rm -f input/loadcat34.source
+	rm -f input/loadcat34_sh.source
+	rm -f $(upg2_temp_files)
 ifeq ($(PORTNAME), cygwin)
 	rm -f regress.def
 endif

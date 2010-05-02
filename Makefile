@@ -1077,6 +1077,8 @@ distclean :
 	@if [ -d $(GPPERFMON) ]; then cd $(GPPERFMON); $(MAKE) clean; fi
 	@if [ -d jetpack ]; then cd jetpack; $(MAKE) clean; fi
 	@if [ -d client/odbc/src ]; then cd client/odbc/src; $(MAKE) clean; fi
+	@rm -f VERSION
+	@rm -f env.sh
 	
 distprep : $(ISCONFIG)
 	@cd $(GPPGDIR) && $(MAKE) distprep
