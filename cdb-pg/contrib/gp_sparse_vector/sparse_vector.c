@@ -16,15 +16,17 @@
 #include "fmgr.h"
 #include "funcapi.h"
 #include "utils/fmgroids.h"
+#include "lib/stringinfo.h"
+#include "utils/memutils.h"
 
 /*
  * Sparse Vector Datatype
- * 		  We would like to store sparse arrays in a terse representation that fits in a small amount of memory.
- * 		  We also want to be able to compare the number of instances where the svec of one document intersects
- * 		  another.
+ *   We would like to store sparse arrays in a terse representation that fits in a small amount of memory.
+ *   We also want to be able to compare the number of instances where the svec of one document intersects
+ *   another.
  *
- * 	License: Use of this code is restricted to those with explicit authorization from Greenplum.
- * 		 All rights to this code are asserted.
+ * License: Use of this code is restricted to those with explicit authorization from Greenplum.
+ * 	 All rights to this code are asserted.
  *
  */
 /*
@@ -73,8 +75,7 @@ svec_send(PG_FUNCTION_ARGS)
 {
 	StringInfoData buf;
 	SvecType *svec = PG_GETARG_SVECTYPE_P(0);
-	SparseData sdata;
-	sdata = sdata_from_svec(svec);
+	SparseData sdata = sdata_from_svec(svec);
 
 	pq_begintypsend(&buf);
 	pq_sendint(&buf,sdata->type_of_data,sizeof(Oid));
@@ -84,7 +85,6 @@ svec_send(PG_FUNCTION_ARGS)
 	pq_sendint(&buf,sdata->index->len,sizeof(int));
 	pq_sendbytes(&buf,sdata->vals->data,sdata->vals->len);
 	pq_sendbytes(&buf,sdata->index->data,sdata->index->len);
-
 
 	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
 }
@@ -96,17 +96,18 @@ Datum
 svec_recv(PG_FUNCTION_ARGS)
 {
 	StringInfo buf = (StringInfo) PG_GETARG_POINTER(0);
-	SparseData sdata=makeEmptySparseData();;
 	SvecType *svec;
-	sdata->type_of_data 	  = pq_getmsgint(buf, sizeof(int));
+
+	SparseData sdata=makeEmptySparseData();;
+	sdata->type_of_data       = pq_getmsgint(buf, sizeof(int));
 	sdata->unique_value_count = pq_getmsgint(buf, sizeof(int));
 	sdata->total_value_count  = pq_getmsgint(buf, sizeof(int));
 	sdata->vals->len          = pq_getmsgint(buf, sizeof(int));
 	sdata->index->len         = pq_getmsgint(buf, sizeof(int));
-	sdata->vals->data	  = (char *)pq_getmsgbytes(buf,sdata->vals->len);
-	sdata->index->data	  = (char *)pq_getmsgbytes(buf,sdata->index->len);
-
-	svec = svec_from_sparsedata(sdata); //Note that this copies the data
+	sdata->vals->data         = (char *)pq_getmsgbytes(buf,sdata->vals->len);
+	sdata->index->data        = (char *)pq_getmsgbytes(buf,sdata->index->len);
+	svec = svec_from_sparsedata(sdata,true); //Note that this copies the data
+//	freeSparseDataAndData(sdata);
 	pfree(sdata);
 
 	PG_RETURN_SVECTYPE_P(svec);
@@ -253,7 +254,7 @@ svec_in(PG_FUNCTION_ARGS)
 			num_values,total_value_count);
 	sdata->type_of_data = FLOAT8OID;
 
-	result = svec_from_sparsedata(sdata);
+	result = svec_from_sparsedata(sdata,true);
 	if (total_value_count==1) result->dimension = -1; //Scalar
 
 	pfree(str); /* str is allocated from a strdup */
@@ -263,9 +264,21 @@ svec_in(PG_FUNCTION_ARGS)
 	PG_RETURN_SVECTYPE_P(result);
 }
 
-SvecType *svec_from_sparsedata(SparseData sdata)
+SvecType *svec_from_sparsedata(SparseData sdata,bool trim)
 {
-	int size=SVECHDRSIZE + SIZEOF_SPARSEDATASERIAL(sdata);
+	int size;
+
+	if (trim)
+	{
+		/*
+		 * Trim the extra space off of the StringInfo dynamic strings
+		 * before serializing the SparseData
+		 */
+		sdata->vals->maxlen=sdata->vals->len;
+		sdata->index->maxlen=sdata->index->len;
+	}
+
+	size=SVECHDRSIZE + SIZEOF_SPARSEDATASERIAL(sdata);
 
 	SvecType *result = (SvecType *)palloc(size);
 	SET_VARSIZE(result,size);
@@ -278,9 +291,51 @@ SvecType *svec_from_sparsedata(SparseData sdata)
 SvecType *svec_from_float8arr(float8 *array, int dimension)
 {
 	SparseData sdata = float8arr_to_sdata(array,dimension);
-	SvecType *result = svec_from_sparsedata(sdata);
+	SvecType *result = svec_from_sparsedata(sdata,true);
 	return result;
 }
+
+SvecType *makeEmptySvec(int allocation)
+{
+	int val_len = sizeof(float8)*allocation+1;
+	int ind_len = 9*allocation+1;
+	SvecType *svec;
+	SparseData sdata = makeEmptySparseData();
+	sdata->vals->data    = (char *)palloc(val_len);
+	sdata->vals->len = 0;
+	sdata->vals->maxlen  = val_len;
+	sdata->index->data   = (char *)palloc(ind_len);
+	sdata->index->len = 0;
+	sdata->index->maxlen = ind_len;
+	svec = svec_from_sparsedata(sdata,false);
+	freeSparseDataAndData(sdata);
+	return(svec);
+}
+
+SvecType *reallocSvec(SvecType *source)
+{
+	SvecType *svec;
+	SparseData sdata = sdata_from_svec(source);
+	int val_newmaxlen = MAX(9,2*(sdata->vals->maxlen));
+	char *newvals = (char *)palloc(val_newmaxlen);
+	int ind_newmaxlen = MAX(10,2*(sdata->index->maxlen));
+	char *newindex = (char *)palloc(ind_newmaxlen);
+	/*
+	 * This space was never allocated with palloc, so we can't repalloc it!
+	 */
+	memcpy(newvals ,sdata->vals->data ,sdata->vals->len);
+	memcpy(newindex,sdata->index->data,sdata->index->len);
+	sdata->vals->data [sdata->vals->len]  = '\0';
+	sdata->index->data[sdata->index->len] = '\0';
+	sdata->vals->data    = newvals;
+	sdata->vals->maxlen  = val_newmaxlen;
+	sdata->index->data   = newindex;
+	sdata->index->maxlen = ind_newmaxlen;
+	svec = svec_from_sparsedata(sdata,false);
+//	pfree(source);
+	return(svec);
+}
+
 
 typedef struct
 {

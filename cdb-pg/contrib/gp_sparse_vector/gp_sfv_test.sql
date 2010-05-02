@@ -42,5 +42,5 @@ SELECT docnum, (a*logidf) tf_idf FROM (SELECT log(count(a)/count_vec(a)) logidf 
 DROP TABLE IF EXISTS WEIGHTS;
 CREATE TABLE weights AS (SELECT docnum, (a*logidf) tf_idf FROM (SELECT log(count(a)/count_vec(a)) logidf FROM corpus) foo, corpus ORDER BY docnum) DISTRIBUTED RANDOMLY;
 
-\qecho Calculate the angular distance between the first document to each other document (NaN happens due to roundoff error, means its the same document)
-SELECT docnum,180.*(ACOS(dmin(1.,(tf_idf%*%testdoc)/(svec_l2norm(tf_idf)*svec_l2norm(testdoc))))/3.141592654) angular_distance FROM weights,(SELECT tf_idf testdoc FROM weights WHERE docnum = 1 LIMIT 1) foo ORDER BY 1;
+\qecho Calculate the angular distance between the first document to each other document
+SELECT docnum,trunc((180.*(ACOS(dmin(1.,(tf_idf%*%testdoc)/(l2norm(tf_idf)*l2norm(testdoc))))/(4.*ATAN(1.))))::numeric,2) angular_distance FROM weights,(SELECT tf_idf testdoc FROM weights WHERE docnum = 1 LIMIT 1) foo ORDER BY 1;

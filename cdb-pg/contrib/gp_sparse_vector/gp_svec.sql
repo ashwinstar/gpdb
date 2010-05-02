@@ -85,8 +85,9 @@ CREATE OR REPLACE FUNCTION svec_cast_numeric(numeric) RETURNS svec AS 'gp_svec.s
 CREATE OR REPLACE FUNCTION svec_return_array(svec) RETURNS float8[] AS 'gp_svec.so', 'svec_return_array' LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION svec_concat(svec,svec) RETURNS svec AS 'gp_svec.so', 'svec_concat' LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION svec_concat_replicate(int4,svec) RETURNS svec AS 'gp_svec.so', 'svec_concat_replicate' LANGUAGE C IMMUTABLE; 
-CREATE OR REPLACE FUNCTION svec_dimension(svec) RETURNS integer AS 'gp_svec.so', 'svec_dimension' LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION dimension(svec) RETURNS integer AS 'gp_svec.so', 'svec_dimension' LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION svec_unnest(svec) RETURNS setof float8  AS 'gp_svec.so', 'svec_unnest' LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION svec_pivot(svec,float8) RETURNS svec  AS 'gp_svec.so', 'svec_pivot' LANGUAGE C IMMUTABLE; 
 
 
 CREATE OPERATOR || (
@@ -257,6 +258,13 @@ CREATE AGGREGATE count_vec (svec) (
 	SFUNC = svec_count,
 	PREFUNC = svec_plus,
  	INITCOND = '{1}:{0.}', -- Zero
+	STYPE = svec
+);
+
+DROP AGGREGATE IF EXISTS pivot(float8);
+CREATE AGGREGATE pivot (float8) (
+	SFUNC = svec_pivot,
+	PREFUNC = svec_concat,
 	STYPE = svec
 );
 

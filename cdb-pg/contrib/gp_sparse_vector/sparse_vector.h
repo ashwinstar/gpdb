@@ -35,10 +35,13 @@ typedef struct {
 
 /* Below are the locations of the SparseData values within the serialized
  * inline SparseData below the Svec header
+ *
+ * All macros take an (SvecType *) as argument
  */
 #define SVECHDRSIZE	(VARHDRSZ + sizeof(int4))
 /* Beginning of the serialized SparseData */
 #define SVEC_SDATAPTR(x)	((char *)(x)+SVECHDRSIZE)
+#define SVEC_SIZEOFSERIAL(x)	(SVECHDRSIZE+SIZEOF_SPARSEDATASERIAL((SparseData)SVEC_SDATAPTR(x)))
 #define SVEC_UNIQUE_VALCNT(x)	(SDATA_UNIQUE_VALCNT(SVEC_SDATAPTR(x)))
 #define SVEC_TOTAL_VALCNT(x)	(SDATA_TOTAL_VALCNT(SVEC_SDATAPTR(x)))
 #define SVEC_DATA_SIZE(x) 	(SDATA_DATA_SIZE(SVEC_SDATAPTR(x)))
@@ -67,13 +70,21 @@ static inline int check_scalar(SvecType *svec_1,SvecType *svec_2) {
 	return(0);
 }
 
+/*
+ * This routine supplies a pointer to a SparseData derived from an SvecType.
+ * The SvecType is a serialized structure with fixed memory allocations, so
+ * care must be taken not to append to the embedded StringInfo structs
+ * without re-serializing the SparseData into the SvecType.
+ */
 static inline SparseData sdata_from_svec(SvecType *svec)
 {
-	SparseData result = makeInplaceSparseData(
-		SVEC_VALS_PTR(svec),SVEC_INDEX_PTR(svec),
-		SVEC_DATA_SIZE(svec),SVEC_INDEX_SIZE(svec),FLOAT8OID,
-		SVEC_UNIQUE_VALCNT(svec),SVEC_TOTAL_VALCNT(svec));
-	return(result);
+	char *sdataptr   = SVEC_SDATAPTR(svec);
+	SparseData sdata = (SparseData)sdataptr;
+	sdata->vals  = (StringInfo)SDATA_DATA_SINFO(sdataptr);
+	sdata->index = (StringInfo)SDATA_INDEX_SINFO(sdataptr);
+	sdata->vals->data  = SVEC_VALS_PTR(svec);
+	sdata->index->data = SVEC_INDEX_PTR(svec);
+	return(sdata);
 }
 
 static inline void printout_svec(SvecType *svec, char *msg, int stop);
@@ -85,13 +96,15 @@ static inline void printout_svec(SvecType *svec, char *msg, int stop)
 
 
 char *svec_out_internal(SvecType *svec);
-SvecType *svec_from_sparsedata(SparseData sdata);
+SvecType *svec_from_sparsedata(SparseData sdata,bool trim);
 ArrayType *svec_return_array_internal(SvecType *svec);
 char *svec_out_internal(SvecType *svec);
 SvecType *svec_make_scalar(float8 value, int dimension);
 SvecType *svec_from_float8arr(float8 *array, int dimension);
 SvecType *
 op_svec_by_svec_internal(int operation, SvecType *svec1, SvecType *svec2);
+SvecType *makeEmptySvec(int allocation);
+SvecType *reallocSvec(SvecType *source);
 
 //#define VERBOSE
 
@@ -140,5 +153,6 @@ Datum svec_cast_float8(PG_FUNCTION_ARGS);
 Datum svec_cast_float8arr(PG_FUNCTION_ARGS);
 Datum svec_cast_numeric(PG_FUNCTION_ARGS);
 Datum svec_unnest(PG_FUNCTION_ARGS);
+Datum svec_pivot(PG_FUNCTION_ARGS);
 
 #endif  /* SPARSEVECTOR_H */

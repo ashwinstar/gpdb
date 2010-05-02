@@ -23,20 +23,27 @@ SparseData makeSparseData(void)
 	/* Allocate the included elements */
 	sdata->vals  = makeStringInfo();
 	sdata->index = makeStringInfo();
+	sdata->vals->len = 0;
+	sdata->index->len = 0;
+	sdata->vals->cursor = 0;
+	sdata->index->cursor = 0;
 	sdata->unique_value_count=0;
 	sdata->total_value_count=0;
+	sdata->type_of_data = FLOAT8OID;
 	return sdata;
 }
 SparseData makeEmptySparseData(void)
 {
 	/* Allocate the struct */
-	SparseData sdata = (SparseData)palloc(sizeof(SparseDataStruct));
-	/* Allocate the included elements */
-	sdata->vals  = (StringInfo)palloc(sizeof(StringInfoData));
-	sdata->vals->len = 0;
+	SparseData sdata = makeSparseData();
+	/*
+	 * Free the data area
+	 */
+	pfree(sdata->vals->data);
+	pfree(sdata->index->data);
+	sdata->vals->data  = palloc(1);
+	sdata->index->data = palloc(1);
 	sdata->vals->maxlen=0;
-	sdata->index  = (StringInfo)palloc(sizeof(StringInfoData));
-	sdata->index->len = 0;
 	sdata->index->maxlen=0;
 	return sdata;
 }
@@ -231,15 +238,27 @@ void serializeSparseData(char *target, SparseData source)
 {
 	/* SparseDataStruct header */
 	memcpy(target,source,SIZEOF_SPARSEDATAHDR);
-	/* Two integers describing the size of data and index */
-	memcpy(SDATA_DATA_SIZEPTR(target),&(source->vals->len),sizeof(int));
-	memcpy(SDATA_INDEX_SIZEPTR(target),&(source->index->len),sizeof(int));
+	/* Two StringInfo structures describing the data and index */
+	memcpy(SDATA_DATA_SINFO(target), source->vals,sizeof(StringInfoData));
+	memcpy(SDATA_INDEX_SINFO(target),source->index,sizeof(StringInfoData));
 	/* The unique data values */
-	memcpy(SDATA_VALS_PTR(target),source->vals->data,source->vals->len);
+	memcpy(SDATA_VALS_PTR(target),source->vals->data,source->vals->maxlen);
 	/* The index values */
-	memcpy(SDATA_INDEX_PTR(target),source->index->data,source->index->len);
+	memcpy(SDATA_INDEX_PTR(target),source->index->data,source->index->maxlen);
+
+	/*
+	 * Set pointers to the data areas of the serialized structure
+	 * First the two StringInfo structures contained in the SparseData,
+	 * then the data areas inside each of the two StringInfos.
+	 */
+	((SparseData)target)->vals = (StringInfo)SDATA_DATA_SINFO(target);
+	((SparseData)target)->index = (StringInfo)SDATA_INDEX_SINFO(target);
+	((StringInfo)(SDATA_DATA_SINFO(target)))->data  = SDATA_VALS_PTR(target);
+	((StringInfo)(SDATA_INDEX_SINFO(target)))->data = SDATA_INDEX_PTR(target);
 }
 
+#ifdef NOT
+//TODO
 SparseData deserializeSparseData(char *source)
 {
 	SparseData sdata = makeEmptySparseData();
@@ -268,6 +287,7 @@ SparseData deserializeSparseData(char *source)
 
 	return(sdata);
 }
+#endif
 
 void printSparseData(SparseData sdata);
 void printSparseData(SparseData sdata) {

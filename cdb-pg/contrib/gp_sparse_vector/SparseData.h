@@ -81,35 +81,42 @@ typedef SparseDataStruct *SparseData;
  * SparseDataStruct Contents
  * StringInfoData Contents for "vals"
  * StringInfoData Contents for "index"
+ * data contents for "vals" (size is vals->maxlen)
+ * data contents for "index" (size is index->maxlen)
  *
- * 	The vals and index fields are serialized as StringInfoData followed by
- * 	the data itself. Each serialized StringInfo will lay out like:
+ * 	The vals and index fields are serialized as StringInfoData, then the
+ * 	data contents are serialized at the end.
+ *
+ * 	Since two StringInfoData structs together are 64-bit aligned, there's
+ * 	no need for padding.
+ *
+ * 	For reference, here is the format of the StringInfoData:
  * 		char * dataptr;
  * 			-> a placeholder in the serialized version, is filled
  * 			   when the serialized version is used in-place
  * 		int len;
  * 		int maxlen;
  * 		int cursor;
- * 		4 bytes of padding
- * 			-> necessary to 64-bit align the data field
- * 		char[len] data;
- * 			-> the serialized data
  */ 
-#define SIZEOF_SPARSEDATAHDR	(sizeof(SparseDataStruct)-2*sizeof(StringInfo))
+#define SIZEOF_SPARSEDATAHDR	(sizeof(SparseDataStruct)+4)
 /* Size of the sparse data structure minus the dynamic variables, plus two integers
  * describing the length of the data area and index
  * Takes a SparseData argument 
  */
 #define SIZEOF_SPARSEDATASERIAL(x) (SIZEOF_SPARSEDATAHDR + \
-		2*sizeof(int)+\
-		(x)->vals->len + (x)->index->len)
+		(2*sizeof(StringInfoData))+ \
+		(x)->vals->maxlen + (x)->index->maxlen)
 
-#define SDATA_DATA_SIZEPTR(x)	((char *)(x)+SIZEOF_SPARSEDATAHDR)
-#define SDATA_INDEX_SIZEPTR(x)	(SDATA_DATA_SIZEPTR(x)+sizeof(int))
-#define SDATA_VALS_PTR(x)       (SDATA_INDEX_SIZEPTR(x)+sizeof(int))
-#define SDATA_DATA_SIZE(x)	(*((int *)SDATA_DATA_SIZEPTR(x)))
+/*
+ * The following take a serialized SparseData as an argument and return
+ * pointers to locations inside.
+ */
+#define SDATA_DATA_SINFO(x)	((char *)(x)+SIZEOF_SPARSEDATAHDR)
+#define SDATA_INDEX_SINFO(x)	(SDATA_DATA_SINFO(x)+sizeof(StringInfoData))
+#define SDATA_DATA_SIZE(x)	(((StringInfo)SDATA_DATA_SINFO(x))->maxlen)
+#define SDATA_INDEX_SIZE(x)	(((StringInfo)SDATA_INDEX_SINFO(x))->maxlen)
+#define SDATA_VALS_PTR(x)       (SDATA_INDEX_SINFO(x)+sizeof(StringInfoData))
 #define SDATA_INDEX_PTR(x) 	(SDATA_VALS_PTR(x)+SDATA_DATA_SIZE(x))
-#define SDATA_INDEX_SIZE(x)	(*((int *)SDATA_INDEX_SIZEPTR(x)))
 
 #define SDATA_UNIQUE_VALCNT(x)	(((SparseData)(x))->unique_value_count)
 #define SDATA_TOTAL_VALCNT(x)	(((SparseData)(x))->total_value_count)
@@ -156,7 +163,6 @@ static inline void add_run_to_sdata(double run_val, int64 run_len,
 	sdata->unique_value_count++;
 	sdata->total_value_count+=run_len;
 }
-
 /*------------------------------------------------------------------------------
  * Each integer count in the RLE index is stored in a number of bytes determined
  * by it's size.  The larger the integer count, the larger the size of storage.
@@ -259,6 +265,55 @@ static inline int64 compword_to_int8(const char *entry)
 
 	return num;
 }
+
+static inline void printout_double(double *vals, int num_values, int stop);
+static inline void printout_index(char *ix, int num_values, int stop);
+static inline void printout_double(double *vals, int num_values, int stop)
+{
+	char *output_str = (char *)palloc(sizeof(char)*(num_values*(6+18+2))+1);
+	char *str = output_str;
+	int numout;
+	for (int i=0; i<num_values; i++) {
+		numout=snprintf(str,26,"%6.2f,%#llX,",vals[i],*((long long unsigned int *)(&(vals[i]))));
+		str+=numout-1;
+	}
+	*str = '\0';
+	elog(NOTICE,"doubles:%s",output_str);
+}
+static inline void printout_index(char *ix, int num_values, int stop)
+{
+	char *output_str = (char *)palloc(sizeof(char)*(num_values*(6+1))+1);
+	char *str = output_str;
+	int numout;
+	for (int i=0; i<num_values; i++,ix+=int8compstoragesize(ix)) {
+		numout=snprintf(str,6,"%lld,",(long long int)compword_to_int8(ix));
+		str+=numout;
+	}
+	*str = '\0';
+	elog(NOTICE,"index:%s",output_str);
+}
+static inline void printout_sdata(SparseData sdata, char *msg, int stop);
+static inline void printout_sdata(SparseData sdata, char *msg, int stop)
+{
+	elog(NOTICE,"%s ==> unvct,tvct,ilen,dlen,datatype=%d,%d,%d,%d,%d",
+			msg,
+			sdata->unique_value_count,sdata->total_value_count,
+			sdata->index->len,sdata->vals->len,
+			sdata->type_of_data);
+	{
+		char *ix=sdata->index->data;
+		double *ar=(double *)(sdata->vals->data);
+		printout_double(ar,sdata->unique_value_count,0);
+		printout_index(ix,sdata->unique_value_count,0);
+	}
+
+	if (stop)
+	  ereport(ERROR, 
+			  (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			   errOmitLocation(true),
+			   errmsg("LAL STOP")));
+}
+
 /*------------------------------------------------------------------------------
  * Multiplication, Addition, Division by scalars
  *------------------------------------------------------------------------------
@@ -759,56 +814,14 @@ static inline SparseData op_sdata_by_sdata(int operation,SparseData left,
 	if (tot_run_length!=0)
 		add_run_to_sdata(new_value,tot_run_length,sdata);
 
+	/*
+	 * Set the return data type
+	 */
+	sdata->type_of_data = left->type_of_data;
+
 	return sdata;
 }
 
-static inline void printout_double(double *vals, int num_values, int stop);
-static inline void printout_index(char *ix, int num_values, int stop);
-static inline void printout_double(double *vals, int num_values, int stop)
-{
-	char *output_str = (char *)palloc(sizeof(char)*(num_values*(6+18+2))+1);
-	char *str = output_str;
-	int numout;
-	for (int i=0; i<num_values; i++) {
-		numout=snprintf(str,26,"%6.2f,%#llX,",vals[i],*((long long unsigned int *)(&(vals[i]))));
-		str+=numout;
-	}
-	*str = '\0';
-	elog(NOTICE,"doubles:%s",output_str);
-}
-static inline void printout_index(char *ix, int num_values, int stop)
-{
-	char *output_str = (char *)palloc(sizeof(char)*(num_values*(6+1))+1);
-	char *str = output_str;
-	int numout;
-	for (int i=0; i<num_values; i++,ix+=int8compstoragesize(ix)) {
-		numout=snprintf(str,6,"%lld,",(long long int)compword_to_int8(ix));
-		str+=numout;
-	}
-	*str = '\0';
-	elog(NOTICE,"index:%s",output_str);
-}
-static inline void printout_sdata(SparseData sdata, char *msg, int stop);
-static inline void printout_sdata(SparseData sdata, char *msg, int stop)
-{
-	elog(NOTICE,"%s ==> unvct,tvct,isize,dsize,datatype=%d,%d,%d,%d,%d",
-			msg,
-			sdata->unique_value_count,sdata->total_value_count,
-			sdata->index->len,sdata->vals->len,
-			sdata->type_of_data);
-	{
-		char *ix=sdata->index->data;
-		double *ar=(double *)(sdata->vals->data);
-		printout_double(ar,sdata->unique_value_count,0);
-		printout_index(ix,sdata->unique_value_count,0);
-	}
-
-	if (stop)
-	  ereport(ERROR, 
-			  (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			   errOmitLocation(true),
-			   errmsg("LAL STOP")));
-}
 /*------------------------------------------------------------------------------
  * When compressing out duplicate (double) values in a data array, we need a
  * way to reliably test for equivalence of double floating point values that

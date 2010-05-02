@@ -7,6 +7,7 @@
 #include "catalog/pg_type.h"
 #include "utils/numeric.h"
 #include "utils/builtins.h"
+#include "utils/memutils.h"
 #include "access/hash.h"
 
 #include "sparse_vector.h"
@@ -50,11 +51,11 @@ svec_concat_replicate(PG_FUNCTION_ARGS)
 
 	sdata->vals  = makeStringInfoFromData(vals,val_len);
 	sdata->index = makeStringInfoFromData(index,ind_len);
-	sdata->type_of_data = FLOAT8OID;
+	sdata->type_of_data = left->type_of_data;
 	sdata->unique_value_count = multiplier * left->unique_value_count;
 	sdata->total_value_count  = multiplier * left->total_value_count;
 
-	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata,true));
 }
 
 
@@ -63,36 +64,49 @@ PG_FUNCTION_INFO_V1( svec_concat );
 Datum
 svec_concat(PG_FUNCTION_ARGS)
 {
-	SvecType *svec1 = PG_GETARG_SVECTYPE_P(0);
-	SvecType *svec2 = PG_GETARG_SVECTYPE_P(1);
-	SparseData left  = sdata_from_svec(svec1);
-	SparseData right = sdata_from_svec(svec2);
-	SparseData sdata = makeEmptySparseData();
-	char *vals,*index;
-	int l_val_len = left->vals->len;
-	int r_val_len = right->vals->len;
-	int l_ind_len = left->index->len;
-	int r_ind_len = right->index->len;
-	int val_len=l_val_len+r_val_len;
-	int ind_len=l_ind_len+r_ind_len;
+	if (PG_ARGISNULL(0) && (!PG_ARGISNULL(1)))
+	{
+		PG_RETURN_SVECTYPE_P(PG_GETARG_SVECTYPE_P(1));
+	} else if (PG_ARGISNULL(0) && PG_ARGISNULL(1))
+	{
+		PG_RETURN_NULL();
+	} else if (PG_ARGISNULL(1))
+	{
+		PG_RETURN_SVECTYPE_P(PG_GETARG_SVECTYPE_P(0));
+	} else
+	{
 
-	vals = (char *)palloc(sizeof(char)*val_len);
-	index = (char *)palloc(sizeof(char)*ind_len);
+		SvecType *svec1 = PG_GETARG_SVECTYPE_P(0);
+		SvecType *svec2 = PG_GETARG_SVECTYPE_P(1);
+		SparseData left  = sdata_from_svec(svec1);
+		SparseData right = sdata_from_svec(svec2);
+		SparseData sdata = makeEmptySparseData();
+		char *vals,*index;
+		int l_val_len = left->vals->len;
+		int r_val_len = right->vals->len;
+		int l_ind_len = left->index->len;
+		int r_ind_len = right->index->len;
+		int val_len=l_val_len+r_val_len;
+		int ind_len=l_ind_len+r_ind_len;
 
-	memcpy(vals          ,left->vals->data,l_val_len);
-	memcpy(vals+l_val_len,right->vals->data,r_val_len);
-	memcpy(index,          left->index->data,l_ind_len);
-	memcpy(index+l_ind_len,right->index->data,r_ind_len);
+		vals = (char *)palloc(sizeof(char)*val_len);
+		index = (char *)palloc(sizeof(char)*ind_len);
 
-	sdata->vals  = makeStringInfoFromData(vals,val_len);
-	sdata->index = makeStringInfoFromData(index,ind_len);
-	sdata->type_of_data = FLOAT8OID;
-	sdata->unique_value_count = left->unique_value_count+
-				    right->unique_value_count;
-	sdata->total_value_count  = left->total_value_count+
-				    right->total_value_count;
+		memcpy(vals          ,left->vals->data,l_val_len);
+		memcpy(vals+l_val_len,right->vals->data,r_val_len);
+		memcpy(index,          left->index->data,l_ind_len);
+		memcpy(index+l_ind_len,right->index->data,r_ind_len);
 
-	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+		sdata->vals  = makeStringInfoFromData(vals,val_len);
+		sdata->index = makeStringInfoFromData(index,ind_len);
+		sdata->type_of_data = left->type_of_data;
+		sdata->unique_value_count = left->unique_value_count+
+			right->unique_value_count;
+		sdata->total_value_count  = left->total_value_count+
+			right->total_value_count;
+
+		PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata,true));
+	}
 }
 
 
@@ -244,7 +258,7 @@ op_svec_by_svec_internal(int operation, SvecType *svec1, SvecType *svec2)
 			break;
 	}
 
-	return(svec_from_sparsedata(sdata));
+	return(svec_from_sparsedata(sdata,true));
 }
 
 /*
@@ -290,7 +304,7 @@ pow_svec_by_scalar_internal(SvecType *svec1, SvecType *svec2)
 			break;
 	}
 
-	return(svec_from_sparsedata(sdata));
+	return(svec_from_sparsedata(sdata,true));
 }
 
 PG_FUNCTION_INFO_V1( svec_pow );
@@ -355,14 +369,8 @@ svec_count(PG_FUNCTION_ARGS)
 {
 	SvecType *svec1 = PG_GETARG_SVECTYPE_P(0);
 	SvecType *svec2 = PG_GETARG_SVECTYPE_P(1);
-	SparseData left = makeInplaceSparseData(
-		SVEC_VALS_PTR(svec1),SVEC_INDEX_PTR(svec1),
-		SVEC_DATA_SIZE(svec1),SVEC_INDEX_SIZE(svec1),FLOAT8OID,
-		SVEC_UNIQUE_VALCNT(svec1),SVEC_TOTAL_VALCNT(svec1));
-	SparseData right = makeInplaceSparseData(
-		SVEC_VALS_PTR(svec2),SVEC_INDEX_PTR(svec2),
-		SVEC_DATA_SIZE(svec2),SVEC_INDEX_SIZE(svec2),FLOAT8OID,
-		SVEC_UNIQUE_VALCNT(svec2),SVEC_TOTAL_VALCNT(svec2));
+	SparseData left  = sdata_from_svec(svec1);
+	SparseData right = sdata_from_svec(svec2);
 	double *right_vals=(double *)(right->vals->data);
 	SvecType *result;
 	double *clamped_vals;
@@ -402,7 +410,7 @@ svec_count(PG_FUNCTION_ARGS)
 
 			/* Create the output SVEC */
 			sdata_result = op_sdata_by_sdata(1,left,right_clamped);
-			result = svec_from_sparsedata(sdata_result);
+			result = svec_from_sparsedata(sdata_result,true);
 
 			pfree(clamped_vals);
 			pfree(right_clamped);
@@ -434,8 +442,6 @@ svec_dot(PG_FUNCTION_ARGS)
 
 	mult_result = op_sdata_by_sdata(2,left,right);
 	accum = sum_sdata_values_double(mult_result);
-	freeSparseData(left);
-	freeSparseData(right);
 	freeSparseDataAndData(mult_result);
 
 	PG_RETURN_FLOAT8(accum);
@@ -521,7 +527,7 @@ Datum svec_cast_numeric(PG_FUNCTION_ARGS) {
 
 SvecType *svec_make_scalar(float8 value, int dimension) {
 	SparseData sdata=float8arr_to_sdata(&value,1);
-	SvecType *result=svec_from_sparsedata(sdata);
+	SvecType *result=svec_from_sparsedata(sdata,true);
 	result->dimension=-dimension;
 	return result;
 }
@@ -573,7 +579,7 @@ svec_cast_float8arr(PG_FUNCTION_ARGS) {
 
 		/* Create the output SVEC */
 		SparseData sdata = float8arr_to_sdata(array,dimension);
-		output_svec = svec_from_sparsedata(sdata);
+		output_svec = svec_from_sparsedata(sdata,true);
 	}
 
 	PG_RETURN_SVECTYPE_P(output_svec);
@@ -761,7 +767,7 @@ float8arr_minus_float8arr(PG_FUNCTION_ARGS)
 	SparseData left  = sdata_uncompressed_from_float8arr_internal(arr1);
 	SparseData right = sdata_uncompressed_from_float8arr_internal(arr2);
 	SparseData sdata = op_sdata_by_sdata(0,left,right);
-	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata,true));
 }
 PG_FUNCTION_INFO_V1( svec_minus_float8arr );
 Datum
@@ -772,7 +778,7 @@ svec_minus_float8arr(PG_FUNCTION_ARGS)
 	SparseData left = sdata_from_svec(svec);
 	SparseData right = sdata_uncompressed_from_float8arr_internal(arr);
 	SparseData sdata = op_sdata_by_sdata(0,left,right);
-	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata,true));
 }
 PG_FUNCTION_INFO_V1( float8arr_minus_svec );
 Datum
@@ -783,7 +789,7 @@ float8arr_minus_svec(PG_FUNCTION_ARGS)
 	SparseData left = sdata_uncompressed_from_float8arr_internal(arr);
 	SparseData right = sdata_from_svec(svec);
 	SparseData sdata = op_sdata_by_sdata(0,left,right);
-	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata,true));
 }
 PG_FUNCTION_INFO_V1( float8arr_plus_float8arr );
 Datum
@@ -794,7 +800,7 @@ float8arr_plus_float8arr(PG_FUNCTION_ARGS)
 	SparseData left  = sdata_uncompressed_from_float8arr_internal(arr1);
 	SparseData right = sdata_uncompressed_from_float8arr_internal(arr2);
 	SparseData sdata = op_sdata_by_sdata(1,left,right);
-	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata,true));
 }
 PG_FUNCTION_INFO_V1( svec_plus_float8arr );
 Datum
@@ -805,7 +811,7 @@ svec_plus_float8arr(PG_FUNCTION_ARGS)
 	SparseData left = sdata_from_svec(svec);
 	SparseData right = sdata_uncompressed_from_float8arr_internal(arr);
 	SparseData sdata = op_sdata_by_sdata(1,left,right);
-	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata,true));
 }
 PG_FUNCTION_INFO_V1( float8arr_plus_svec );
 Datum
@@ -816,7 +822,7 @@ float8arr_plus_svec(PG_FUNCTION_ARGS)
 	SparseData left = sdata_uncompressed_from_float8arr_internal(arr);
 	SparseData right = sdata_from_svec(svec);
 	SparseData sdata = op_sdata_by_sdata(1,left,right);
-	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata,true));
 }
 PG_FUNCTION_INFO_V1( float8arr_mult_float8arr );
 Datum
@@ -827,7 +833,7 @@ float8arr_mult_float8arr(PG_FUNCTION_ARGS)
 	SparseData left  = sdata_uncompressed_from_float8arr_internal(arr1);
 	SparseData right = sdata_uncompressed_from_float8arr_internal(arr2);
 	SparseData sdata = op_sdata_by_sdata(2,left,right);
-	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata,true));
 }
 PG_FUNCTION_INFO_V1( svec_mult_float8arr );
 Datum
@@ -838,7 +844,7 @@ svec_mult_float8arr(PG_FUNCTION_ARGS)
 	SparseData left = sdata_from_svec(svec);
 	SparseData right = sdata_uncompressed_from_float8arr_internal(arr);
 	SparseData sdata = op_sdata_by_sdata(2,left,right);
-	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata,true));
 }
 PG_FUNCTION_INFO_V1( float8arr_mult_svec );
 Datum
@@ -849,7 +855,7 @@ float8arr_mult_svec(PG_FUNCTION_ARGS)
 	SparseData left = sdata_uncompressed_from_float8arr_internal(arr);
 	SparseData right = sdata_from_svec(svec);
 	SparseData sdata = op_sdata_by_sdata(2,left,right);
-	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata,true));
 }
 PG_FUNCTION_INFO_V1( float8arr_div_float8arr );
 Datum
@@ -860,7 +866,7 @@ float8arr_div_float8arr(PG_FUNCTION_ARGS)
 	SparseData left  = sdata_uncompressed_from_float8arr_internal(arr1);
 	SparseData right = sdata_uncompressed_from_float8arr_internal(arr2);
 	SparseData sdata = op_sdata_by_sdata(3,left,right);
-	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata,true));
 }
 PG_FUNCTION_INFO_V1( svec_div_float8arr );
 Datum
@@ -871,7 +877,7 @@ svec_div_float8arr(PG_FUNCTION_ARGS)
 	SparseData left = sdata_from_svec(svec);
 	SparseData right = sdata_uncompressed_from_float8arr_internal(arr);
 	SparseData sdata = op_sdata_by_sdata(3,left,right);
-	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata,true));
 }
 PG_FUNCTION_INFO_V1( float8arr_div_svec );
 Datum
@@ -882,7 +888,7 @@ float8arr_div_svec(PG_FUNCTION_ARGS)
 	SparseData left = sdata_uncompressed_from_float8arr_internal(arr);
 	SparseData right = sdata_from_svec(svec);
 	SparseData sdata = op_sdata_by_sdata(3,left,right);
-	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata));
+	PG_RETURN_SVECTYPE_P(svec_from_sparsedata(sdata,true));
 }
 PG_FUNCTION_INFO_V1( svec_dot_float8arr );
 Datum
@@ -896,7 +902,6 @@ svec_dot_float8arr(PG_FUNCTION_ARGS)
 	double accum;
 	mult_result = op_sdata_by_sdata(2,left,right);
 	accum = sum_sdata_values_double(mult_result);
-	freeSparseData(left);
 	freeSparseData(right);
 	freeSparseDataAndData(mult_result);
 
@@ -915,7 +920,6 @@ float8arr_dot_svec(PG_FUNCTION_ARGS)
 	mult_result = op_sdata_by_sdata(2,left,right);
 	accum = sum_sdata_values_double(mult_result);
 	freeSparseData(left);
-	freeSparseData(right);
 	freeSparseDataAndData(mult_result);
 
 	PG_RETURN_FLOAT8(accum);
@@ -944,3 +948,96 @@ float8arr_hash(PG_FUNCTION_ARGS) {
 
 	PG_RETURN_INT32(float8arr_hash_internal(array));
 }
+
+/*
+ * Aggregate function svec_pivot takes it's float8 argument and appends it
+ * to the state variable (an svec) to produce the concatenated return variable.
+ * The StringInfo variables within the state variable svec are used in a way
+ * that minimizes the number of memory re-allocations.
+ *
+ * Note that the first time this is called, the state variable should be null.
+ */
+PG_FUNCTION_INFO_V1( svec_pivot );
+Datum
+svec_pivot(PG_FUNCTION_ARGS)
+{
+	SvecType *svec;
+	SparseData sdata;
+	float8 value = PG_GETARG_FLOAT8(1);
+
+	if (! PG_ARGISNULL(0))
+	{
+		svec = PG_GETARG_SVECTYPE_P(0);
+	} else {	//first call, construct a new svec
+		/*
+		 * Allocate space for the unique values and index
+		 *
+		 * Note that we do this manually because we are going to
+		 * manage the memory allocations for the StringInfo structures
+		 * manually within this aggregate so that we can preserve
+		 * the intermediate state without re-serializing until there is
+		 * a need to re-alloc, at which point we will re-serialize to
+		 * form the returned state variable.
+		 */
+		svec = makeEmptySvec(1);
+	}
+	sdata = sdata_from_svec(svec);
+
+	/*
+	 * Add the incoming float8 value to the svec.
+	 *
+	 * First check to see if there is room in both the data area and index
+	 * and if there isn't, re-alloc and recreate the svec
+	 */
+	if (   ((sdata->vals->len + sizeof(float8)+1) > sdata->vals->maxlen)
+	    || ((sdata->index->len + 9 +1)            > sdata->index->maxlen) )
+	{
+		svec = reallocSvec(svec);
+		sdata = sdata_from_svec(svec);
+	}
+	/*
+	 * Now let's check to see if we're adding a new value or appending to the last
+	 * run.  If the incoming value is the same as the last value, just increment
+	 * the last run.  Note that we need to use the index cursor to find where the
+	 * last index counter is located.
+	 */
+	{
+		char *index_location = sdata->index->data + sdata->index->cursor;
+		int old_index_storage_size,run_count;
+		float8 last_value;
+		bool new_run;
+
+		if (sdata->index->len==0) //New vector
+		{
+			new_run=true;
+		} else
+		{
+			index_location = sdata->index->data + sdata->index->cursor;
+			old_index_storage_size = int8compstoragesize(index_location);
+			run_count = compword_to_int8(index_location);
+			last_value = *((float8 *)(sdata->vals->data+(sdata->vals->len-sizeof(float8))));
+
+			if (last_value == value)
+			{
+				new_run=false;
+			} else {
+				new_run=true;
+			}
+		}
+		if (!new_run)
+		{
+			run_count++;
+			int8_to_compword(run_count,index_location);
+			sdata->index->len += (int8compstoragesize(index_location)
+					- old_index_storage_size);
+			sdata->total_value_count++;
+		} else {
+			add_run_to_sdata(value,1,sdata);
+			sdata->index->cursor = sdata->index->len
+				- int8compstoragesize(index_location);
+		}
+	}
+
+	PG_RETURN_SVECTYPE_P(svec);
+}
+
