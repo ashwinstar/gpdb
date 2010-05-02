@@ -14,7 +14,14 @@
 # or
 #     vcvarsall.bat amd64
 
+# This line to use GNUwin32 for Bison and Flex
+$ENV{'PATH'} = $ENV{'PATH'} . ';C:\PROGRA~2\GnuWin32\bin;C:\PROGRA~1\GnuWin32\bin';
+
+# These two lines to use Cygwin for Bison and Flex
 $ENV{'CYGWIN'} = 'nodosfilewarning';
-$ENV{'PATH'} = $ENV{'PATH'} . ';c:\cygwin\bin';
+#$ENV{'PATH'} = $ENV{'PATH'} . ';c:\cygwin\bin';
+
+print $ENV{'PATH'};
+
 
 
