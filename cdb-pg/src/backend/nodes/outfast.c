@@ -3255,6 +3255,7 @@ _outFileSpaceEntry(StringInfo str, FileSpaceEntry *node)
 	WRITE_INT_FIELD(dbid);
 	WRITE_INT_FIELD(contentid);
 	WRITE_STRING_FIELD(location);
+	WRITE_STRING_FIELD(hostname);
 }
 
 static void

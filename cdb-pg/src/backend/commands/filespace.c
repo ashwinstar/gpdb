@@ -36,8 +36,9 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbutil.h"
 
-static void checkpath(char*);
-static void checkpath2(char*);
+static void checkPathFormat(char *path);
+static void checkPathPermissions(char *path);
+static void duplicatePathCheck(FileSpaceEntry *fse1, FileSpaceEntry *fse2);
 static void filespace_check_empty(Oid fsoid);
 
 static void DeleteFilespaceEntryTuples(Oid fsoid);
@@ -66,6 +67,12 @@ static void DeleteFilespaceEntryTuples(Oid fsoid);
 #define MAX_FILESPACES 64
 
 
+typedef struct
+{
+	int32                dbid;
+	FileSpaceEntry		*fse;
+} segHashElem;
+
 /*
  * Create a filespace
  *
@@ -76,24 +83,23 @@ static void DeleteFilespaceEntryTuples(Oid fsoid);
 void
 CreateFileSpace(CreateFileSpaceStmt *stmt)
 {
-	Relation     rel;	
-	HeapTuple	 tuple;
-	TupleDesc    tupdesc;
-	NameData     fsname;       /* filespace name */
-	Oid          ownerId;      /* OID of the OWNER of the filespace */
-	Oid          fsoid;        /* OID of the created filespace */
-	ListCell    *cell;         /* List loop variable */
-	int          i;            /* Array loop variable */
-	bool         nulls[Natts_pg_filespace];
-	Datum        values[Natts_pg_filespace];
-	bool         enulls[Natts_pg_filespace_entry];
-	Datum        evalues[Natts_pg_filespace_entry];
-	int          primary_dbid = -2;
-	int          mirror_dbid = -2;
-	char        *primary_location = NULL;
-	char        *mirror_location = NULL;
-	ItemPointerData persistentTid;
-	int64		persistentSerialNum;
+	Relation			 rel;	
+	HeapTuple			 tuple;
+	TupleDesc			 tupdesc;
+	NameData			 fsname;		/* filespace name */
+	Oid					 ownerId;		/* OID of the OWNER of the filespace */
+	Oid					 fsoid;	/* OID of the created filespace */
+	ListCell			*cell;	/* List loop variable */
+	int					 i;     /* Array loop variable */
+	bool				 nulls[Natts_pg_filespace];
+	Datum				 values[Natts_pg_filespace];
+	bool				 enulls[Natts_pg_filespace_entry];
+	Datum				 evalues[Natts_pg_filespace_entry];
+	FileSpaceEntry      *primary  = NULL;
+	FileSpaceEntry      *mirror	  = NULL;
+	List                *nodeSegs = NULL;
+	ItemPointerData		 persistentTid;
+	int64				 persistentSerialNum;
 
 	if (Gp_role == GP_ROLE_UTILITY)
 		elog(ERROR, "cannot create filespaces in utility mode");
@@ -142,131 +148,140 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 	/* Check specification against configuration information */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbComponentDatabases *segments;
-		int                    numsegs;
+		CdbComponentDatabases	*segments;
+		int						 numsegs;
+		HTAB					*segHash;
+		HASHCTL					 segInfo;
+		int						 segFlags;
+		segHashElem				*segElem;
+		HASH_SEQ_STATUS          status;
+		bool					 found;
+
+		/* Get the segment information */
+		segments = getCdbComponentDatabases();
+		numsegs = segments->total_segment_dbs + segments->total_entry_dbs;
 
 		/* 
-		 * We need to have a path specified for every segment
-		 * This is an N^2 algorithm on number of segments.
-		 * We can probably do better
+		 * We need to perform several checks:
+		 *   - Does every segment have a path specified?
+		 *   - Does any segment have more than one path specified?
+		 *   - Are there paths specified for non-existent segments?
+		 *   - Are any paths duplicated between segments on the same host?
+		 * 
+		 * In order to answer those questions in a reasonable O(N) calculation
+		 * we build a hash table mapping dbid => filespace entries
+		 *   - segHash[dbid]      => {FileSpaceEntry}
+		 *
+		 * Note: the segHash is hashed on a 32 bit version of dbid.  This is due
+		 * to the existence of a int32_hash function, to accomadate this we must
+		 * be sure to upcast the 16 bit dbid to 32 bit versions before lookup in
+		 * the hash.
 		 */
-		segments = getCdbComponentDatabases();
+		memset(&segInfo,  0, sizeof(segInfo));
+		segInfo.keysize    = sizeof(int32);
+		segInfo.entrysize  = sizeof(segHashElem);
+		segInfo.hash       = int32_hash;
+		segInfo.hcxt       = CurrentMemoryContext;
+		segFlags           = HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT;
+		segHash = hash_create("filespace segHash", 
+							  numsegs, &segInfo, segFlags);
+		
+		/* 
+		 * Pass 1 - Loop through all locations specified in the statement:
+		 *   - segHash[dbid] => { _, FileSpaceEntry} 
+		 *   - check for any duplicate dbids
+		*/
+		foreach (cell, stmt->locations) 
+		{
+			FileSpaceEntry		*fse  = (FileSpaceEntry*) lfirst(cell); 
+			int32				 dbid = (int32) fse->dbid;
 
-		/* First check that the master and standby master are accounted for */
+			/* Check for existing entry */
+			segElem = (segHashElem *) \
+				hash_search(segHash, (void *) &dbid, HASH_ENTER, &found);
+
+			if (found)
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_COMMAND_ERROR),
+						 errmsg("multiple filespace locations specified "
+								"for dbid %d", dbid)));
+
+			/* Populate the hash entry */
+			segElem->fse = fse;
+		}
+		
+		/* 
+		 * Pass 2 - Loop through segment information in the array.
+		 *   - check for any segments not specified in the command.
+		 *   - annotates the FileSpaceEntry with the contentid and hostname
+		 *
+		 * Done in two loops, one through the "entry_dbs" list, the second
+		 * through the "segment_dbs" list.
+		 */
 		for (i = 0; i < segments->total_entry_dbs; i++)
 		{
-			int  segid     = segments->entry_db_info[i].dbid;
-			int  contentid = segments->entry_db_info[i].segindex;
-			bool found = false;
-
-			foreach(cell, stmt->locations)
-			{
-				FileSpaceEntry *fse  = (FileSpaceEntry*) lfirst(cell);
-
-				if (fse->dbid == segid)
-				{
-					if (found)
-						ereport(ERROR,
-								(errcode(ERRCODE_GP_COMMAND_ERROR),
-								 errmsg("duplicate segment id %d", segid)));
-					found = true;
-
-					/* 
-					 * Set the contentid for in the statement node to prepare
-					 * for dispatch - this will be used by the segments to
-					 * identify which dbids correspond to their mirrors.
-					 */
-					fse->contentid = contentid;
-				}
-			}
+			int32		 dbid	   = segments->entry_db_info[i].dbid;
+			int32		 contentid = segments->entry_db_info[i].segindex;
+			char		*hostname  = segments->entry_db_info[i].hostname;
 			
+			/* Lookup the entry in the segHash */
+			segElem = (segHashElem *) \
+				hash_search(segHash, (void *) &dbid, HASH_FIND, &found);
+
 			if (!found)
-			{
 				ereport(ERROR,
 						(errcode(ERRCODE_GP_COMMAND_ERROR),
-						 errmsg("no path specified for segment id %d", segid)));
-			}
-		}
+						 errmsg("missing filespace location for dbid %d",
+								dbid)));
 
-		/* Then check that all segments are accounted for */
+			Assert(segElem->fse);  /* should have been populated in pass 1 */
+			segElem->fse->hostname  = hostname;
+			segElem->fse->contentid = contentid;
+		}
 		for (i = 0; i < segments->total_segment_dbs; i++)
 		{
-			int  segid = segments->segment_db_info[i].dbid;
-			int  contentid = segments->segment_db_info[i].segindex;
-			bool found = false;
+			int32		dbid	  = segments->segment_db_info[i].dbid;
+			int32		contentid = segments->segment_db_info[i].segindex;
+			char       *hostname  = segments->segment_db_info[i].hostname;
 
-			foreach(cell, stmt->locations)
-			{
-				FileSpaceEntry *fse  = (FileSpaceEntry*) lfirst(cell);
+			/* Lookup the entry in the segHash */
+			segElem = (segHashElem *) \
+				hash_search(segHash, (void *) &dbid, HASH_FIND, &found);
 
-				if (fse->dbid == segid)
-				{
-					if (found)
-						ereport(ERROR,
-								(errcode(ERRCODE_GP_COMMAND_ERROR),
-								 errmsg("duplicate segment id %d", segid)));
-					found = true;
-
-					/* 
-					 * Set the contentid for in the statement node to prepare
-					 * for dispatch - this will be used by the segments to
-					 * identify which dbids correspond to their mirrors.
-					 */
-					fse->contentid = contentid;
-				}
-			}
 			if (!found)
-			{
 				ereport(ERROR,
 						(errcode(ERRCODE_GP_COMMAND_ERROR),
-						 errmsg("no path specified for segment id %d", segid)));
-			}
+						 errmsg("missing filespace location for dbid %d",
+								dbid)));
+
+			Assert(segElem->fse);  /* should have been populated in pass 1 */
+			segElem->fse->hostname  = hostname;
+			segElem->fse->contentid = contentid;
 		}
 
-		/* 
-		 * Finally check that we haven't specified anything "extra".
-		 * First check that the count matches since this is the expected
-		 * result, only perform the N^2 check for the invalid entry when
-		 * we know that something is wrong.
+		/*
+		 * Scan through the segHash to see any locations were specified for
+		 * segments that do not exist.
 		 */
-		numsegs = segments->total_segments + segments->total_entry_dbs;
-		foreach(cell, stmt->locations)
+		hash_seq_init(&status, segHash);
+		while ((segElem = (segHashElem *) hash_seq_search(&status)) != NULL)
 		{
-			FileSpaceEntry *fse  = (FileSpaceEntry*) lfirst(cell);
+			Assert(segElem->fse);  /* should have been populated in pass 1 */
+			Assert(segElem->fse->location);
 
-			checkpath(fse->location);  /* Simple validation of paths */
-			numsegs--;
+			/* Check that the path is well formed */
+			checkPathFormat(segElem->fse->location);
+
+			/* Check that the path is for a segment that exists */
+			if (segElem->fse->hostname == NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_COMMAND_ERROR),
+						 errmsg("filespace location specified for non-existent "
+								"dbid %d", segElem->dbid)));
 		}
 
-		if (numsegs != 0)
-		{
-			foreach(cell, stmt->locations)
-			{
-				FileSpaceEntry *fse  = (FileSpaceEntry*) lfirst(cell);
-				bool     found = false;
-
-				for (i = 0; !found && i < segments->total_entry_dbs; i++)
-				{
-					int  segid = segments->entry_db_info[i].dbid;
-					if (fse->dbid == segid)
-						found = true;
-				}
-				for (i = 0; !found && i < segments->total_segment_dbs; i++)
-				{
-					int  segid = segments->segment_db_info[i].dbid;
-					if (fse->dbid == segid)
-						found = true;
-				}
-				
-				if (!found)
-				{
-					ereport(ERROR,
-							(errcode(ERRCODE_GP_COMMAND_ERROR),
-							 errmsg("Specified Segment id %d does not exist "
-									"in configuration", fse->dbid)));
-				}
-			}
-		}
+		/* Done with the hash, cleanup */
+		hash_destroy(segHash);
 	}
 
 	/* 
@@ -283,8 +298,8 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 		 */
 		if (fse->dbid == GpIdentity.dbid)
 		{
-			primary_dbid = fse->dbid;
-			primary_location = fse->location;
+			Assert(primary == NULL);
+			primary = fse;
 		}
 		else if (fse->contentid == GpIdentity.segindex)
 		{
@@ -292,10 +307,8 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 			 * This will require work if we start supporting multiple 
 			 * mirrors per segment. 
 			 */
-			Assert(mirror_location == NULL);
-
-			mirror_dbid     = fse->dbid;
-			mirror_location = fse->location;
+			Assert(mirror == NULL);
+			mirror = fse;
 		}
 	}
 
@@ -303,8 +316,8 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 	 * Should have been checked before QE dispatch, something is weird if
 	 * we hit this condition here.
 	 */
-	if (!primary_location)
-		elog(ERROR, "cannot find filespace location for segment %d",
+	if (primary == NULL)
+		elog(ERROR, "filespace location not specified for dbid %d",
 			 GpIdentity.dbid);
 
 	/* 
@@ -321,16 +334,62 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 	 * purely in the database because we have a giant lock and only a single
 	 * transaction can create filespaces at one time.
 	 */
-	checkpath2(primary_location);
-	if (mirror_location)
-		MirroredFileSysObj_ValidateFilespaceDir(mirror_location);
+	checkPathPermissions(primary->location);
+	if (mirror)
+		MirroredFileSysObj_ValidateFilespaceDir(mirror->location);
 
 	/* 
-	 * We've checked everything possible, go forward with actually creating 
-	 * the filespace!
+	 * Having identified the fse entry for this segment we now know what
+	 * the canonical hostname is for this host and can identify the other
+	 * segments running on this host.  
+	 *
+	 * Note: since we need to check the mirrors against other mirrors and
+	 * we can't do this on the mirror side it is the responsibility of
+	 * the primaries on the node to check the mirrors.  Since they can't
+	 * currently differentiate which of the other segments are primaries
+	 * and which are mirrors all of them end up checking everything. 
+	 * This is redundant, but its the only way we can check the mirrors.
+	 *
+	 * Note: This is only a best effort attempt at verifying the mirrors.
+	 * If there is a configuration where some node has no primaries
+	 * then this methodology means that there is no primary available to
+	 * check those mirrors and we will not be able pre-validate against
+	 * duplicate paths.  This could result in much uglier error messages,
+	 * but the underlying code in TransactionCreateFilespaceDir() should
+	 * be able to handle this.  (MPP-8595)
+	 */
+	foreach(cell, stmt->locations)
+	{
+		FileSpaceEntry	*outer = (FileSpaceEntry*) lfirst(cell);
+		ListCell        *cell2;
+
+		/* 
+		 * For every segment on this host:
+		 *  - compare against every segments found so far
+		 *  - add to the list of segments
+		 *
+		 * Segments on other hosts are not compared and are not added to the
+		 * list of segments to compare against.
+		 */
+		if ((strcmp(outer->hostname, primary->hostname) == 0))
+		{
+			foreach(cell2, nodeSegs)
+			{
+				FileSpaceEntry  *inner = (FileSpaceEntry *) lfirst(cell2);
+				duplicatePathCheck(outer, inner);
+			}
+			nodeSegs = lappend(nodeSegs, outer);
+		}
+	}
+	list_free(nodeSegs);
+	nodeSegs = NULL;
+
+	/* 
+	 * Everything possible has been checked: 
+	 *  - Begin actual creation of the filespace
 	 */
 
-	/* We opened the relation up at the top of the function */
+	/* The relation was opened up at the top of the function */
 	Assert(rel);
 
 	/* Insert tuple into pg_filespace */
@@ -405,10 +464,20 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 	 * mechanisms know how to use this to cleanup after a hard failure or 
 	 * replay the creation for mirror resynchronisation.
 	 */
-	MirroredFileSysObj_TransactionCreateFilespaceDir(fsoid, 
-										  primary_dbid, primary_location,
-										  mirror_dbid, mirror_location,
-										  &persistentTid, &persistentSerialNum);
+	if (mirror == NULL)
+	{
+		MirroredFileSysObj_TransactionCreateFilespaceDir(
+			fsoid, 
+			primary->dbid, primary->location, 0, NULL,
+			&persistentTid, &persistentSerialNum);
+	}
+	else
+	{
+		MirroredFileSysObj_TransactionCreateFilespaceDir(
+			fsoid, 
+			primary->dbid, primary->location, mirror->dbid, mirror->location,
+			&persistentTid, &persistentSerialNum);
+	}
 }
 
 /*
@@ -858,7 +927,7 @@ get_filespace_oid(Relation rel, const char *filespacename)
 
 
 /*
- * checkpath(path)
+ * checkPathFormat(path)
  *
  * Runs simple validations on a path supplied to CREATE FILESPACE:
  *  - Standardizes paths via canonicalize_path()
@@ -869,7 +938,8 @@ get_filespace_oid(Relation rel, const char *filespacename)
  * We have other checks to perform, but these are the only ones that we
  * can run based only on the name without the local file system present.
  */
-static void checkpath(char *path)
+static void 
+checkPathFormat(char *path)
 {
 	/* Unix-ify the offered path and strip any trailing slashes */
 	canonicalize_path(path);
@@ -889,7 +959,7 @@ static void checkpath(char *path)
 	if (!is_absolute_path(path))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-				 errmsg("filespace locations \"%s\" "
+				 errmsg("filespace location \"%s\" "
 						"must be an absolute path", path)));
 
 	/*
@@ -899,11 +969,13 @@ static void checkpath(char *path)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 				 errmsg("filespace location \"%s\" is too long",
-						path)));
+						path),
+				 errhint("maximum length %d characters", 
+						 MAX_FILESPACE_PATH)));
 }
 
 /*
- * checkpath2(path)
+ * checkPathPermissions(path)
  *
  * Runs additional validations on a path supplied to CREATE FILESPACE.
  * The assumption is that the path given to us is the original path
@@ -913,7 +985,7 @@ static void checkpath(char *path)
  * Or... if the extension path does exist then it must be an empty directory.
  *
  *  We must:
- *    - Validate that the specifed path does not exist
+ *    - Validate that the specified path does not exist
  *    - Validate that the parent directory exists
  *    - Validate that the parent is a directory.
  *    - Validate that the parent has apropriate permissions
@@ -932,7 +1004,8 @@ static void checkpath(char *path)
  * Note: See FileRepMirror_Validation() in cdb/cdbfilerepmirror.c for the same
  * checks run on the mirror side.
  */
-static void checkpath2(char *path)
+static void 
+checkPathPermissions(char *path)
 {
 	struct stat st;
 	char *parentdir;
@@ -942,7 +1015,7 @@ static void checkpath2(char *path)
 	{
 		ereport(ERROR, 
 				(errcode_for_file_access(),
-				 errmsg("%s : File exists", path)));
+				 errmsg("%s: File exists", path)));
 	}
 
 	/* Find the parent directory */
@@ -953,24 +1026,109 @@ static void checkpath2(char *path)
 	if (stat(parentdir, &st) < 0)
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("%s : No such file or directory", parentdir)));
+				 errmsg("%s: No such file or directory", 
+						parentdir)));
 		
 	/* The parent directory must be a directory */
 	if (! S_ISDIR(st.st_mode))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-				 errmsg("%s : Not a directory", parentdir)));
+				 errmsg("%s: Not a directory", parentdir)));
 
-	/* Check write permissions of the parent directory */
-	if (access(parentdir, W_OK) < 0)
+	/* 
+	 * Check write permissions of the parent directory 
+	 *
+	 * Note: Accornding to the BSD manual access shouldn't be used because it
+	 * is a security hole, but what they are actually refering to is the fact
+	 * that the permissions could change between the time of the check and the
+	 * time an action is taken.  This is primarily a courtousy check to produce
+	 * a cleaner error message.  If the filesystem should change between now
+	 * and the actual mkdir() then the transaction will abort later with an
+	 * uglier error message, but it is not actually a security hole.
+	 */
+	if (access(parentdir, W_OK|X_OK) < 0)
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("%s: No write permissions", parentdir)));
+				 errmsg("%s: Permission denied", path)));
 }
 
 /*
+ * duplicatePathCheck()
+ *
+ * Compares two filespace entries to determine if they have the same location.
+ * 
+ * The main complication is that two paths that look different from
+ * each other could in fact be the same due to links, mount points, etc.
+ *
+ * Note: it is assumed that both paths have already been canonicalized.
  */
 static void
+duplicatePathCheck(FileSpaceEntry *fse1, FileSpaceEntry *fse2)
+{
+	char		*path1 = fse1->location;
+	char		*path2 = fse2->location;
+	char		*parent1;
+	char		*parent2;
+	char		*tail1;
+	char		*tail2;
+	struct stat	 st1;
+	struct stat	 st2;
+
+	/* Split both paths into parent directory and tail */
+	parent1 = pstrdup(path1);
+	parent2 = pstrdup(path2);
+	get_parent_directory(parent1);
+	get_parent_directory(parent2);
+	tail1 = path1 + strlen(parent1) + 1;
+	tail2 = path2 + strlen(parent2) + 1;
+
+	/* 
+	 * It is assumed that we have run at least one of these two paths through
+	 * checkPathPermissions, which means that it's parent directory exists.  If
+	 * the OTHER paths parent doesn't exist, then they aren't the same path.
+	 */
+	if (stat(parent1, &st1) < 0 || stat(parent2, &st2) < 0)
+		goto dup_path_return;
+
+	/*
+	 * If the parent paths have different inodes then they are not the same.
+	 */
+	if (st1.st_ino != st2.st_ino)
+		goto dup_path_return;
+
+	/*
+	 * Parents are the same; check if the tails are the same.
+	 *
+	 * We don't know if the underlying file system is case-sensitive or not,
+	 * so it is possible that this check is over-aggressive.  But it is
+	 * probably not reasonable to name one directory /gpdata/gp0 and a second
+	 * one /gpdata/Gp0 so we'll go ahead and complain about case-insentive
+	 * matches on the tail even for case-sensitive filesystems.  This saves
+	 * us the trouble of trying to figure out what this file system supports.
+	 */
+	if (strcasecmp(tail1, tail2) == 0)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_OBJECT),
+				 errmsg("duplicate filespace locations: "
+						"(%d: '%s', %d: '%s')",
+						fse2->dbid, fse2->location,
+						fse1->dbid, fse1->location)));
+	}
+
+dup_path_return:
+	/* Release memory and return */
+	pfree(parent1);
+	pfree(parent2);
+}
+
+/*
+ * filespace_check_empty(fsoid):
+ *
+ * Checks the gp_persistent_tablespace_node table to determine if the specified
+ * filespace is empty.
+ */
+static void 
 filespace_check_empty(Oid fsoid)
 {
 	HeapScanDesc scandesc;

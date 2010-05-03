@@ -78,7 +78,7 @@ static void MirroredFileSysObj_BeginMirroredCreate(
 		break;
 		
 	default:
-		elog(ERROR, "Unexpected mirror data loss tracking state: %d",
+		elog(ERROR, "unexpected mirror data loss tracking state: %d",
 			 mirrorDataLossTrackingState);
 		*mirrorMode = StorageManagerMirrorMode_None;	// A happy optimizer is the sound of one hand clapping.
 	}
@@ -146,56 +146,49 @@ static void MirroredFileSysObj_FinishMirroredCreate(
 void 
 MirroredFileSysObj_ValidateFilespaceDir(char *mirrorFilespaceLocation)
 {
-	char *parentdir;
+	char		*parentdir = NULL;
+	char		*errdir	   = NULL;
+	int			 status;
 
-	int status = FileRepPrimary_MirrorValidation(
+	status = FileRepPrimary_MirrorValidation(
 		FileRep_GetDirFilespaceIdentifier(mirrorFilespaceLocation),
 		FileRepRelationTypeDir
 		);
-
-	/* If everything was fine the error status will be zero */
-	if (status == FileRepStatusSuccess)
-		return;
-
+		
 	/* 
-	 * Otherwise report the error, there are currently four known errors:
+	 * Check return status and return or report error.  
+	 *
+	 * Known errors:
 	 *  - File or directory exists
 	 *  - Parent directory does not exist
 	 *  - Parent directory not a directory
 	 *  - No write permission on parent directory
 	 */
-	parentdir = pstrdup(mirrorFilespaceLocation);
-	get_parent_directory(parentdir);
 	switch (status)
 	{
-		/* Errors on the specified directory */
-		case FileRepStatusDirectoryExist:
-			ereport(ERROR, 
-					(errcode_for_file_access(),
-					 errmsg("%s : %s", 
-							mirrorFilespaceLocation,
-							FileRepStatusToString[status])));
-			break;
+		case FileRepStatusSuccess:
+			return;
 
 		/* Errors on the parent directory */
 		case FileRepStatusNoSuchFileOrDirectory:
 		case FileRepStatusNotDirectory:
-		case FileRepStatusNoWritePermissions:
-			ereport(ERROR, 
-					(errcode_for_file_access(),
-					 errmsg("%s : %s", 
-							parentdir,
-							FileRepStatusToString[status])));
+			parentdir = pstrdup(mirrorFilespaceLocation);
+			get_parent_directory(parentdir);
+			errdir = parentdir;
 			break;
 
-		/* Status that should never occur */
+		/* All other errors use the specified directory */
+		case FileRepStatusDirectoryExist:
+		case FileRepStatusNoPermissions:
 		default:
-			elog(ERROR, "%s : %s", 
-				 mirrorFilespaceLocation,
-				 FileRepStatusToString[status]);
+			errdir = mirrorFilespaceLocation;
 			break;
 	}
-
+	ereport(ERROR, 
+			(errcode_for_file_access(),
+			 errmsg("%s: %s", errdir, FileRepStatusToString[status])));
+	
+	/* unreachable */
 	return;
 }
 
@@ -241,6 +234,41 @@ void MirroredFileSysObj_TransactionCreateFilespaceDir(
 	mirrorDataLossTrackingState = 
 				FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
 												&mirrorDataLossTrackingSessionNum);
+
+	/*
+	 * MPP-8595 - In order to prevent commiting to filespace locations that can
+	 * never be instatiated (parent directory doesn't exist, path conflicts with
+	 * another segment, etc) the only solution is to block filespace creation if
+	 * we do not have connectivity to the mirror.
+	 *
+	 * In order to remove this restriction it will be necessary to tightly 
+	 * integrate with gprecoverseg support and be able to change the directory 
+	 * of a filespace during recovery as a means of fixing badly specified 
+	 * filespace locations.
+	 */
+	switch (mirrorDataLossTrackingState)
+	{
+		case MirrorDataLossTrackingState_MirrorNotConfigured:
+		case MirrorDataLossTrackingState_MirrorCurrentlyUpInSync:
+			break;
+
+	   /*
+		* We might be able to handle resync mode, but it is disabled for now
+		* as a matter of precaution.
+		*/   
+		case MirrorDataLossTrackingState_MirrorCurrentlyUpInResync:
+		case MirrorDataLossTrackingState_MirrorDown:
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_COMMAND_ERROR),
+					 errmsg("cannot create filespaces in change tracking mode"),
+					 errhint("run gprecoverseg to re-establish mirror connectivity")));
+			break;
+		
+		default:
+			elog(ERROR, "unexpected mirror data loss tracking state: %d",
+				 mirrorDataLossTrackingState);
+			break;
+	}
 
 	MirroredFileSysObj_BeginMirroredCreate(
 									&fsObjName,
@@ -1130,7 +1158,7 @@ void MirroredFileSysObj_DropRelFile(
 		break;
 
 	default:
-		elog(ERROR, "Unexpected relation storage manager %d", relStorageMgr);
+		elog(ERROR, "unexpected relation storage manager %d", relStorageMgr);
 	}
 }
 

@@ -173,134 +173,134 @@ static void FileRep_ReportLogEntry(int	index);
 
 const char*
 FileRepProcessTypeToString[] = {
-	"FileRep Uninitialized Process",
-	"FileRep Main Process", /* note that this one is actually changed when we set the title */
-	"FileRep Primary Sender Process",
-	"FileRep Mirror Receiver Process",
-	"FileRep Mirror Consumer Process",
+	_("FileRep Uninitialized Process"),
+	_("FileRep Main Process"), /* note that this one is actually changed when we set the title */
+	_("FileRep Primary Sender Process"),
+	_("FileRep Mirror Receiver Process"),
+	_("FileRep Mirror Consumer Process"),
 
-	"FileRep Mirror Sender Ack Process",
-	"FileRep Primary Receiver Ack Process",
-	"FileRep Primary Consumer Ack Process",
-	"FileRep Primary Recovery Process",
-	"FileRep Mirror Consumer Writer Process",
+	_("FileRep Mirror Sender Ack Process"),
+	_("FileRep Primary Receiver Ack Process"),
+	_("FileRep Primary Consumer Ack Process"),
+	_("FileRep Primary Recovery Process"),
+	_("FileRep Mirror Consumer Writer Process"),
 
-	"FileRep Mirror Consumer Append Only 1 Process",
-	"FileRep Mirror Consumer Append Only 2 Process",
+	_("FileRep Mirror Consumer Append Only 1 Process"),
+	_("FileRep Mirror Consumer Append Only 2 Process"),
 
-	"FileRep Primary Resync Manager Process",
+	_("FileRep Primary Resync Manager Process"),
 
-	"FileRep Primary Resync Worker 1 Process",
-	"FileRep Primary Resync Worker 2 Process",
-	"FileRep Primary Resync Worker 3 Process",
-	"FileRep Primary Resync Worker 4 Process",
+	_("FileRep Primary Resync Worker 1 Process"),
+	_("FileRep Primary Resync Worker 2 Process"),
+	_("FileRep Primary Resync Worker 3 Process"),
+	_("FileRep Primary Resync Worker 4 Process"),
 };
 
 const char*
 FileRepRoleToString[] = {
-	"Role not Initialized",
-	"Role not Configured",
-	"Primary Role",
-	"Mirror Role",
+	_("Role not Initialized"),
+	_("Role not Configured"),
+	_("Primary Role"),
+	_("Mirror Role"),
 };
 
 const char*
 SegmentStateToString[] = {
-	"Not Initialized",
-	"Initialization and Recovery",
-	"Transition to InChangeTracking",
-	"Transition to InResync",	
-	"Transition to InSync",
-	"Up and Running",
-	"Change Tracking Disabled",
-	"In Fault",
-	"In Shutdown of Backends",
-	"In Shutdown",
-	"In Immediate Shutdown",
+	_("Not Initialized"),
+	_("Initialization and Recovery"),
+	_("Transition to InChangeTracking"),
+	_("Transition to InResync"),	
+	_("Transition to InSync"),
+	_("Up and Running"),
+	_("Change Tracking Disabled"),
+	_("In Fault"),
+	_("In Shutdown of Backends"),
+	_("In Shutdown"),
+	_("In Immediate Shutdown"),
 };
 
 const char*
 DataStateToString[] = {
-	"Not Initialized",
-	"In Sync",
-	"In Change Tracking",
-	"In Resync",
+	_("Not Initialized"),
+	_("In Sync"),
+	_("In Change Tracking"),
+	_("In Resync"),
 };
 
 const char*
 FileRepStateToString[] = {
-	"Not Initialized",
-	"Initialization and Recovery",
-	"Up and Running",
-	"In Fault",
-	"In Shutdown of Backends",
-	"In Shutdown",
-	"In Immediate Shutdown",	
+	_("Not Initialized"),
+	_("Initialization and Recovery"),
+	_("Up and Running"),
+	_("In Fault"),
+	_("In Shutdown of Backends"),
+	_("In Shutdown"),
+	_("In Immediate Shutdown"),
 };
 						  
 const char*
 FileRepOperationToString[] = {
-	"Open",
-	"Write",
-	"Flush (fsync)",
-	"Close",
-	"Flush (fsync) and Close",
-	"Truncate",
-	"Create",
-	"Drop",
-	"Reconcile xlog",
-	"Link or Rename",
-	"Shutdown",
-	"In Sync Transition",
-	"Heart Beat",
-	"Create and Open",
-	"Validation FileSpace Dir",
-	"Drop files from Dir",
-	"Not Specified",
+	_("Open"),
+	_("Write"),
+	_("Flush (fsync)"),
+	_("Close"),
+	_("Flush (fsync) and Close"),
+	_("Truncate"),
+	_("Create"),
+	_("Drop"),
+	_("Reconcile xlog"),
+	_("Link or Rename"),
+	_("Shutdown"),
+	_("In Sync Transition"),
+	_("Heart Beat"),
+	_("Create and Open"),
+	_("Validation FileSpace Dir"),
+	_("Drop files from Dir"),
+	_("Not Specified"),
 };
 
 const char *
 FileRepRelationTypeToString[] = {
-	"Flat File",
-	"Append Only",
-	"Buffer Pool",
-	"Bulk",
-	"Directory",
-	"Control Message",
-	"Not Specified",
+	_("Flat File"),
+	_("Append Only"),
+	_("Buffer Pool"),
+	_("Bulk"),
+	_("Directory"),
+	_("Control Message"),
+	_("Not Specified"),
 };
 
 const char *
 FileRepAckStateToString[] = {
-	"Not Initialized",
-	"Waiting for Ack",
-	"Ack Completed",
-	"Mirror In Fault",
+	_("Not Initialized"),
+	_("Waiting for Ack"),
+	_("Ack Completed"),
+	_("Mirror In Fault"),
 };
 
 const char*
 FileRepConsumerProcIndexToString[] = {
-	"xlog",
-	"writer",
-	"append only 1",
-	"append only 2",
-	"shutdown",
-	"undefined"
+	_("xlog"),
+	_("writer"),
+	_("append only 1"),
+	_("append only 2"),
+	_("shutdown"),
+	_("undefined"),
 };
 
 const char*
 FileRepStatusToString[] = {
-	"success",
-	"not a directory",
-	"no such file or directory",
-	"error reading directory",
-	"not empty directory",
-	"directory exist",
-	"no space",
-	"no permissions",
-	"no write permissions",
-	"mirror loss occurred",
-	"mirror error",
+	_("Success"),
+	_("Not a directory"),
+	_("No such file or directory"),
+	_("Error reading directory"),
+	_("Directory not empty"),
+	_("File exists"),
+	_("No space"),
+	_("Permission denied"),
+	_("Read-only file system"),
+	_("Mirror loss occurred"),
+	_("Mirror error"),
 };
 
 /****************************************************************

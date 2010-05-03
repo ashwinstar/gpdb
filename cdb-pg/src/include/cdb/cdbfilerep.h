@@ -360,7 +360,7 @@ typedef enum FileRepStatus_e {
 	
 	FileRepStatusNoPermissions,
 
-	FileRepStatusNoWritePermissions,
+	FileRepStatusReadOnlyFileSystem,
 	
 	FileRepStatusMirrorLossOccurred,
 	

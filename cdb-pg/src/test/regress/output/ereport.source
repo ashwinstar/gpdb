@@ -3999,11 +3999,11 @@ select * from get_ereport order by 1;
  cabh: cdbdtxcontextinfo:00000510:  ereport(ERROR, 
  cabh: cdbdtxcontextinfo:00000511:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  cabh: cdbdtxcontextinfo:00000512:  errmsg("out of memory"))); 
- cabh: cdbfilerepprimary:00000229:  ereport(LOG, 
- cabh: cdbfilerepprimary:00000230:  (errmsg("LOG(filerep): failover is performed to the primary segment, " 
- cabh: cdbfilerepprimary:00000231:  "segment mirroring is suspended "), 
- cabh: cdbfilerepprimary:00000232:  errSendAlert(true), 
- cabh: cdbfilerepprimary:00000233:  FileRep_errcontext())); 
+ cabh: cdbfilerepprimary:00000235:  ereport(LOG, 
+ cabh: cdbfilerepprimary:00000236:  (errmsg("LOG(filerep): failover is performed to the primary segment, " 
+ cabh: cdbfilerepprimary:00000237:  "segment mirroring is suspended "), 
+ cabh: cdbfilerepprimary:00000238:  errSendAlert(true), 
+ cabh: cdbfilerepprimary:00000239:  FileRep_errcontext())); 
  cabh: cdbfilerepservice:00000516:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
  cabh: cdbfilerepservice:00000517:  errmsg("database 'postgres' does not exist"))); 
  cabh: cdbfilerepservice:00000571:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
@@ -4132,69 +4132,66 @@ select * from get_ereport order by 1;
  cacb: cdbmirroredbufferpool:00000684:  errmsg("could not seek in file to position %d in file "%s", segment file %d: %m", 
  cacb: cdbmirroredbufferpool:00000685:  position, 
  cacb: cdbmirroredbufferpool:00000686:  relpath(open->relFileNode), open->segmentFileNum))); 
- cacb: cdbmirroredfilesysobj:00000173:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000174:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000175:  errmsg("%s : %s", 
- cacb: cdbmirroredfilesysobj:00000176:  mirrorFilespaceLocation, 
- cacb: cdbmirroredfilesysobj:00000177:  FileRepStatusToString[status]))); 
- cacb: cdbmirroredfilesysobj:00000184:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000185:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000186:  errmsg("%s : %s", 
- cacb: cdbmirroredfilesysobj:00000187:  parentdir, 
- cacb: cdbmirroredfilesysobj:00000188:  FileRepStatusToString[status]))); 
- cacb: cdbmirroredfilesysobj:00000280:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000281:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000282:  errmsg("could not create filespace directory %u: %s", 
- cacb: cdbmirroredfilesysobj:00000283:  filespaceOid, 
- cacb: cdbmirroredfilesysobj:00000284:  strerror(primaryError)))); 
- cacb: cdbmirroredfilesysobj:00000430:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000431:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000432:  errmsg("could not create tablespace directory %u: %s", 
- cacb: cdbmirroredfilesysobj:00000433:  tablespaceDirNode->tablespace, 
- cacb: cdbmirroredfilesysobj:00000434:  strerror(primaryError)))); 
- cacb: cdbmirroredfilesysobj:00000558:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000559:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000560:  errmsg("could not create database directory %s: %s", 
- cacb: cdbmirroredfilesysobj:00000561:  GetDatabasePath(dbDirNode->database, dbDirNode->tablespace), 
- cacb: cdbmirroredfilesysobj:00000562:  strerror(primaryError)))); 
- cacb: cdbmirroredfilesysobj:00000728:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000729:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000730:  errmsg("could not create database directory %u/%u: %s", 
- cacb: cdbmirroredfilesysobj:00000731:  justInTimeDbDirNode->tablespace, 
- cacb: cdbmirroredfilesysobj:00000732:  justInTimeDbDirNode->database, 
- cacb: cdbmirroredfilesysobj:00000733:  strerror(primaryError)))); 
- cacb: cdbmirroredfilesysobj:00000754:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000755:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000756:  errmsg("could not create just-in-time database directory %u/%u: %s", 
- cacb: cdbmirroredfilesysobj:00000757:  justInTimeDbDirNode->tablespace, 
- cacb: cdbmirroredfilesysobj:00000758:  justInTimeDbDirNode->database, 
- cacb: cdbmirroredfilesysobj:00000759:  strerror(primaryError)))); 
- cacb: cdbmirroredfilesysobj:00000865:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000866:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000867:  errmsg("could not create relation file '%s', relation name '%s': %s", 
- cacb: cdbmirroredfilesysobj:00000868:  relpath(smgrOpen->smgr_rnode), 
- cacb: cdbmirroredfilesysobj:00000869:  relationName, 
- cacb: cdbmirroredfilesysobj:00000870:  strerror(primaryError)))); 
- cacb: cdbmirroredfilesysobj:00000985:  ereport(ERROR, 
- cacb: cdbmirroredfilesysobj:00000986:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00000987:  errmsg("could not create relation file '%s', relation name '%s': %s", 
- cacb: cdbmirroredfilesysobj:00000988:  relpath(*relFileNode), 
- cacb: cdbmirroredfilesysobj:00000989:  relationName, 
- cacb: cdbmirroredfilesysobj:00000990:  strerror(primaryError)))); 
- cacb: cdbmirroredfilesysobj:00001122:  ereport(WARNING, 
- cacb: cdbmirroredfilesysobj:00001123:  (errcode_for_file_access(), 
- cacb: cdbmirroredfilesysobj:00001124:  errmsg("could not remove relation %u/%u/%u (segment file #%d): %s", 
- cacb: cdbmirroredfilesysobj:00001125:  relFileNode->spcNode, 
- cacb: cdbmirroredfilesysobj:00001126:  relFileNode->dbNode, 
- cacb: cdbmirroredfilesysobj:00001127:  relFileNode->relNode, 
- cacb: cdbmirroredfilesysobj:00001128:  segmentFileNum, 
- cacb: cdbmirroredfilesysobj:00001129:  strerror(primaryError)))); 
- cacb: cdbpersistentrecovery:00001736:  ereport(ERROR, 
- cacb: cdbpersistentrecovery:00001737:  (errcode_for_file_access(), 
- cacb: cdbpersistentrecovery:00001738:  errmsg("could not write redo relation file : %m"))); 
- cacb: cdbpersistentrecovery:00001885:  ereport(ERROR, 
- cacb: cdbpersistentrecovery:00001886:  (errcode_for_file_access(), 
- cacb: cdbpersistentrecovery:00001887:  errmsg("error reading redo relation file: %m"))); 
+ cacb: cdbmirroredfilesysobj:00000187:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000188:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000189:  errmsg("%s: %s", errdir, FileRepStatusToString[status]))); 
+ cacb: cdbmirroredfilesysobj:00000261:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000262:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+ cacb: cdbmirroredfilesysobj:00000263:  errmsg("cannot create filespaces in change tracking mode"), 
+ cacb: cdbmirroredfilesysobj:00000264:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
+ cacb: cdbmirroredfilesysobj:00000308:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000309:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000310:  errmsg("could not create filespace directory %u: %s", 
+ cacb: cdbmirroredfilesysobj:00000311:  filespaceOid, 
+ cacb: cdbmirroredfilesysobj:00000312:  strerror(primaryError)))); 
+ cacb: cdbmirroredfilesysobj:00000458:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000459:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000460:  errmsg("could not create tablespace directory %u: %s", 
+ cacb: cdbmirroredfilesysobj:00000461:  tablespaceDirNode->tablespace, 
+ cacb: cdbmirroredfilesysobj:00000462:  strerror(primaryError)))); 
+ cacb: cdbmirroredfilesysobj:00000586:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000587:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000588:  errmsg("could not create database directory %s: %s", 
+ cacb: cdbmirroredfilesysobj:00000589:  GetDatabasePath(dbDirNode->database, dbDirNode->tablespace), 
+ cacb: cdbmirroredfilesysobj:00000590:  strerror(primaryError)))); 
+ cacb: cdbmirroredfilesysobj:00000756:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000757:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000758:  errmsg("could not create database directory %u/%u: %s", 
+ cacb: cdbmirroredfilesysobj:00000759:  justInTimeDbDirNode->tablespace, 
+ cacb: cdbmirroredfilesysobj:00000760:  justInTimeDbDirNode->database, 
+ cacb: cdbmirroredfilesysobj:00000761:  strerror(primaryError)))); 
+ cacb: cdbmirroredfilesysobj:00000782:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000783:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000784:  errmsg("could not create just-in-time database directory %u/%u: %s", 
+ cacb: cdbmirroredfilesysobj:00000785:  justInTimeDbDirNode->tablespace, 
+ cacb: cdbmirroredfilesysobj:00000786:  justInTimeDbDirNode->database, 
+ cacb: cdbmirroredfilesysobj:00000787:  strerror(primaryError)))); 
+ cacb: cdbmirroredfilesysobj:00000893:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00000894:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00000895:  errmsg("could not create relation file '%s', relation name '%s': %s", 
+ cacb: cdbmirroredfilesysobj:00000896:  relpath(smgrOpen->smgr_rnode), 
+ cacb: cdbmirroredfilesysobj:00000897:  relationName, 
+ cacb: cdbmirroredfilesysobj:00000898:  strerror(primaryError)))); 
+ cacb: cdbmirroredfilesysobj:00001013:  ereport(ERROR, 
+ cacb: cdbmirroredfilesysobj:00001014:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00001015:  errmsg("could not create relation file '%s', relation name '%s': %s", 
+ cacb: cdbmirroredfilesysobj:00001016:  relpath(*relFileNode), 
+ cacb: cdbmirroredfilesysobj:00001017:  relationName, 
+ cacb: cdbmirroredfilesysobj:00001018:  strerror(primaryError)))); 
+ cacb: cdbmirroredfilesysobj:00001150:  ereport(WARNING, 
+ cacb: cdbmirroredfilesysobj:00001151:  (errcode_for_file_access(), 
+ cacb: cdbmirroredfilesysobj:00001152:  errmsg("could not remove relation %u/%u/%u (segment file #%d): %s", 
+ cacb: cdbmirroredfilesysobj:00001153:  relFileNode->spcNode, 
+ cacb: cdbmirroredfilesysobj:00001154:  relFileNode->dbNode, 
+ cacb: cdbmirroredfilesysobj:00001155:  relFileNode->relNode, 
+ cacb: cdbmirroredfilesysobj:00001156:  segmentFileNum, 
+ cacb: cdbmirroredfilesysobj:00001157:  strerror(primaryError)))); 
+ cacb: cdbpersistentrecovery:00001742:  ereport(ERROR, 
+ cacb: cdbpersistentrecovery:00001743:  (errcode_for_file_access(), 
+ cacb: cdbpersistentrecovery:00001744:  errmsg("could not write redo relation file : %m"))); 
+ cacb: cdbpersistentrecovery:00001891:  ereport(ERROR, 
+ cacb: cdbpersistentrecovery:00001892:  (errcode_for_file_access(), 
+ cacb: cdbpersistentrecovery:00001893:  errmsg("error reading redo relation file: %m"))); 
  cacc: cdbdistributedsnapshot:00000298:  ereport(ERROR, 
  cacc: cdbdistributedsnapshot:00000299:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  cacc: cdbdistributedsnapshot:00000300:  errmsg("out of memory"))); 
@@ -4223,18 +4220,18 @@ select * from get_ereport order by 1;
  cacc: cdbpersistentfilespace:00001139:  ereport(FATAL, 
  cacc: cdbpersistentfilespace:00001140:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  cacc: cdbpersistentfilespace:00001141:  errmsg("Not enough shared memory for persistent filespace hash table"))); 
- cacd: cdbfilerepresyncmanager:00000368:  ereport(ERROR, 
- cacd: cdbfilerepresyncmanager:00000369:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cacd: cdbfilerepresyncmanager:00000370:  (errmsg("Not enough shared memory for Mirroring.")))); 
- cacd: cdbfilerepresyncmanager:00000412:  ereport(ERROR, 
- cacd: cdbfilerepresyncmanager:00000413:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cacd: cdbfilerepresyncmanager:00000414:  (errmsg("Not enough shared memory for FileRep Resync.")))); 
- cacd: cdbfilerepresyncmanager:00000430:  ereport(ERROR, 
- cacd: cdbfilerepresyncmanager:00000431:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cacd: cdbfilerepresyncmanager:00000432:  (errmsg("Not enough shared memory for Mirroring.")))); 
- cacd: cdbfilerepresyncmanager:00000458:  ereport(ERROR, 
- cacd: cdbfilerepresyncmanager:00000459:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cacd: cdbfilerepresyncmanager:00000460:  (errmsg("Not enough shared memory for FileRep Resync.")))); 
+ cacd: cdbfilerepresyncmanager:00000381:  ereport(ERROR, 
+ cacd: cdbfilerepresyncmanager:00000382:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cacd: cdbfilerepresyncmanager:00000383:  (errmsg("Not enough shared memory for Mirroring.")))); 
+ cacd: cdbfilerepresyncmanager:00000425:  ereport(ERROR, 
+ cacd: cdbfilerepresyncmanager:00000426:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cacd: cdbfilerepresyncmanager:00000427:  (errmsg("Not enough shared memory for FileRep Resync.")))); 
+ cacd: cdbfilerepresyncmanager:00000443:  ereport(ERROR, 
+ cacd: cdbfilerepresyncmanager:00000444:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cacd: cdbfilerepresyncmanager:00000445:  (errmsg("Not enough shared memory for Mirroring.")))); 
+ cacd: cdbfilerepresyncmanager:00000471:  ereport(ERROR, 
+ cacd: cdbfilerepresyncmanager:00000472:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cacd: cdbfilerepresyncmanager:00000473:  (errmsg("Not enough shared memory for FileRep Resync.")))); 
  cacd: cdbpersistentfilesysobj:00000721:  ereport(ERROR, 
  cacd: cdbpersistentfilesysobj:00000722:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
  cacd: cdbpersistentfilesysobj:00000723:  errmsg("Did not expect to find a 'Free' entry"), 
@@ -5131,22 +5128,22 @@ select * from get_ereport order by 1;
  eaae: elog:00001798:  (errcode_for_file_access(), 
  eaae: elog:00001799:  errmsg("could not reopen file "%s" as stdout: %m", 
  eaae: elog:00001800:  OutputFileName))); 
- eaae: elog:00003959:  ereport(ERROR, 
- eaae: elog:00003960:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- eaae: elog:00003961:  errmsg("gp_elog(): called with %hd arguments", 
- eaae: elog:00003962:  PG_NARGS()))); 
- eaae: elog:00003964:  ereport(ERROR, 
- eaae: elog:00003965:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- eaae: elog:00003966:  errmsg("gp_elog(): called with null arguments"))); 
- eaae: elog:00003969:  ereport(ERROR, 
- eaae: elog:00003970:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- eaae: elog:00003971:  errmsg("gp_elog(): called with null arguments"))); 
- eaae: elog:00003975:  ereport(ERROR, 
- eaae: elog:00003976:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- eaae: elog:00003977:  errmsg("permission denied"), 
- eaae: elog:00003978:  errhint("gp_elog(): requires superuser privileges."))); 
- eaae: elog:00004087:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- eaae: elog:00004088:  errmsg("Failed to get backtrace symbol: out of memory"))); 
+ eaae: elog:00003962:  ereport(ERROR, 
+ eaae: elog:00003963:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ eaae: elog:00003964:  errmsg("gp_elog(): called with %hd arguments", 
+ eaae: elog:00003965:  PG_NARGS()))); 
+ eaae: elog:00003967:  ereport(ERROR, 
+ eaae: elog:00003968:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ eaae: elog:00003969:  errmsg("gp_elog(): called with null arguments"))); 
+ eaae: elog:00003972:  ereport(ERROR, 
+ eaae: elog:00003973:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ eaae: elog:00003974:  errmsg("gp_elog(): called with null arguments"))); 
+ eaae: elog:00003978:  ereport(ERROR, 
+ eaae: elog:00003979:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ eaae: elog:00003980:  errmsg("permission denied"), 
+ eaae: elog:00003981:  errhint("gp_elog(): requires superuser privileges."))); 
+ eaae: elog:00004090:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ eaae: elog:00004091:  errmsg("Failed to get backtrace symbol: out of memory"))); 
  eaag: encode:00000053:  ereport(ERROR, 
  eaag: encode:00000054:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  eaag: encode:00000055:  errmsg("unrecognized encoding: "%s"", namebuf))); 
@@ -5922,108 +5919,117 @@ select * from get_ereport order by 1;
  faai: function:00000455:  ereport(ERROR, ( 
  faai: function:00000456:  errcode(ERRCODE_SYNTAX_ERROR), 
  faai: function:00000457:  errmsg("Unknown UDT function %s", info->methodName))); 
- faaj: filespace:00000103:  ereport(ERROR, 
- faaj: filespace:00000104:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- faaj: filespace:00000105:  errmsg("permission denied to create filespace "%s"", 
- faaj: filespace:00000106:  stmt->filespacename), 
- faaj: filespace:00000107:  errhint("Must be superuser to create a filespace."))); 
- faaj: filespace:00000120:  ereport(ERROR, 
- faaj: filespace:00000121:  (errcode(ERRCODE_RESERVED_NAME), 
- faaj: filespace:00000122:  errmsg("unacceptable filespace name "%s"", 
- faaj: filespace:00000123:  stmt->filespacename), 
- faaj: filespace:00000124:  errdetail("The prefix "pg_" is reserved for system filespaces."))); 
- faaj: filespace:00000137:  ereport(ERROR, 
- faaj: filespace:00000138:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
- faaj: filespace:00000139:  errmsg("filespace "%s" already exists", 
- faaj: filespace:00000140:  stmt->filespacename))); 
- faaj: filespace:00000169:  ereport(ERROR, 
- faaj: filespace:00000170:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
- faaj: filespace:00000171:  errmsg("duplicate segment id %d", segid))); 
- faaj: filespace:00000185:  ereport(ERROR, 
- faaj: filespace:00000186:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
- faaj: filespace:00000187:  errmsg("no path specified for segment id %d", segid))); 
- faaj: filespace:00000205:  ereport(ERROR, 
- faaj: filespace:00000206:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
- faaj: filespace:00000207:  errmsg("duplicate segment id %d", segid))); 
- faaj: filespace:00000220:  ereport(ERROR, 
- faaj: filespace:00000221:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
- faaj: filespace:00000222:  errmsg("no path specified for segment id %d", segid))); 
- faaj: filespace:00000263:  ereport(ERROR, 
- faaj: filespace:00000264:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
- faaj: filespace:00000265:  errmsg("Specified Segment id %d does not exist " 
- faaj: filespace:00000266:  "in configuration", fse->dbid))); 
- faaj: filespace:00000433:  ereport(ERROR, 
- faaj: filespace:00000434:  (errcode(ERRCODE_SYNTAX_ERROR), 
- faaj: filespace:00000435:  errmsg("filespace name may not be qualified"))); 
- faaj: filespace:00000440:  ereport(ERROR, 
- faaj: filespace:00000441:  (errcode(ERRCODE_SYNTAX_ERROR), 
- faaj: filespace:00000442:  errmsg("syntax at or near "cascade""))); 
- faaj: filespace:00000460:  ereport(NOTICE, 
- faaj: filespace:00000461:  (errmsg("filespace "%s" does not exist, skipping", 
- faaj: filespace:00000462:  fsname))); 
- faaj: filespace:00000467:  ereport(ERROR, 
- faaj: filespace:00000468:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- faaj: filespace:00000469:  errmsg("filespace "%s" does not exist", fsname))); 
- faaj: filespace:00000479:  ereport(ERROR, 
- faaj: filespace:00000480:  (errmsg("cannot drop filespace %s because it is required " 
- faaj: filespace:00000481:  "by the database system", fsname))); 
- faaj: filespace:00000612:  ereport(ERROR, 
- faaj: filespace:00000613:  (errcode(ERRCODE_SYNTAX_ERROR), 
- faaj: filespace:00000614:  errmsg("filespace name may not be qualified"))); 
- faaj: filespace:00000626:  ereport(ERROR, 
- faaj: filespace:00000627:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- faaj: filespace:00000628:  errmsg("filespace "%s" does not exist", fsname))); 
- faaj: filespace:00000634:  ereport(ERROR, 
- faaj: filespace:00000635:  (errcode(ERRCODE_RESERVED_NAME), 
- faaj: filespace:00000636:  errmsg("permission denied: "%s" is a system filespace", 
- faaj: filespace:00000637:  fsname))); 
- faaj: filespace:00000721:  ereport(ERROR, 
- faaj: filespace:00000722:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- faaj: filespace:00000723:  errmsg("filespace "%s" does not exist", 
- faaj: filespace:00000724:  oldname))); 
- faaj: filespace:00000731:  ereport(ERROR, 
- faaj: filespace:00000732:  (errcode(ERRCODE_RESERVED_NAME), 
- faaj: filespace:00000733:  errmsg("permission denied: "%s" is a system filespace", 
- faaj: filespace:00000734:  oldname))); 
- faaj: filespace:00000743:  ereport(ERROR, 
- faaj: filespace:00000744:  (errcode(ERRCODE_RESERVED_NAME), 
- faaj: filespace:00000745:  errmsg("unacceptable filespace name "%s"", newname), 
- faaj: filespace:00000746:  errdetail("The prefix "pg_" is reserved for system filespaces."))); 
- faaj: filespace:00000755:  ereport(ERROR, 
- faaj: filespace:00000756:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
- faaj: filespace:00000757:  errmsg("filespace "%s" already exists", newname))); 
- faaj: filespace:00000879:  ereport(ERROR, 
- faaj: filespace:00000880:  (errcode(ERRCODE_INVALID_NAME), 
- faaj: filespace:00000881:  errmsg("filespace location "%s" " 
- faaj: filespace:00000882:  "cannot contain single quotes", path))); 
- faaj: filespace:00000890:  ereport(ERROR, 
- faaj: filespace:00000891:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- faaj: filespace:00000892:  errmsg("filespace locations "%s" " 
- faaj: filespace:00000893:  "must be an absolute path", path))); 
- faaj: filespace:00000899:  ereport(ERROR, 
- faaj: filespace:00000900:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- faaj: filespace:00000901:  errmsg("filespace location "%s" is too long", 
- faaj: filespace:00000902:  path))); 
- faaj: filespace:00000943:  ereport(ERROR, 
- faaj: filespace:00000944:  (errcode_for_file_access(), 
- faaj: filespace:00000945:  errmsg("%s : File exists", path))); 
- faaj: filespace:00000954:  ereport(ERROR, 
- faaj: filespace:00000955:  (errcode_for_file_access(), 
- faaj: filespace:00000956:  errmsg("%s : No such file or directory", parentdir))); 
+ faaj: filespace:00000109:  ereport(ERROR, 
+ faaj: filespace:00000110:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ faaj: filespace:00000111:  errmsg("permission denied to create filespace "%s"", 
+ faaj: filespace:00000112:  stmt->filespacename), 
+ faaj: filespace:00000113:  errhint("Must be superuser to create a filespace."))); 
+ faaj: filespace:00000126:  ereport(ERROR, 
+ faaj: filespace:00000127:  (errcode(ERRCODE_RESERVED_NAME), 
+ faaj: filespace:00000128:  errmsg("unacceptable filespace name "%s"", 
+ faaj: filespace:00000129:  stmt->filespacename), 
+ faaj: filespace:00000130:  errdetail("The prefix "pg_" is reserved for system filespaces."))); 
+ faaj: filespace:00000143:  ereport(ERROR, 
+ faaj: filespace:00000144:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+ faaj: filespace:00000145:  errmsg("filespace "%s" already exists", 
+ faaj: filespace:00000146:  stmt->filespacename))); 
+ faaj: filespace:00000204:  ereport(ERROR, 
+ faaj: filespace:00000205:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+ faaj: filespace:00000206:  errmsg("multiple filespace locations specified " 
+ faaj: filespace:00000207:  "for dbid %d", dbid))); 
+ faaj: filespace:00000232:  ereport(ERROR, 
+ faaj: filespace:00000233:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+ faaj: filespace:00000234:  errmsg("missing filespace location for dbid %d", 
+ faaj: filespace:00000235:  dbid))); 
+ faaj: filespace:00000252:  ereport(ERROR, 
+ faaj: filespace:00000253:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+ faaj: filespace:00000254:  errmsg("missing filespace location for dbid %d", 
+ faaj: filespace:00000255:  dbid))); 
+ faaj: filespace:00000277:  ereport(ERROR, 
+ faaj: filespace:00000278:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+ faaj: filespace:00000279:  errmsg("filespace location specified for non-existent " 
+ faaj: filespace:00000280:  "dbid %d", segElem->dbid))); 
+ faaj: filespace:00000502:  ereport(ERROR, 
+ faaj: filespace:00000503:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ faaj: filespace:00000504:  errmsg("filespace name may not be qualified"))); 
+ faaj: filespace:00000509:  ereport(ERROR, 
+ faaj: filespace:00000510:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ faaj: filespace:00000511:  errmsg("syntax at or near "cascade""))); 
+ faaj: filespace:00000529:  ereport(NOTICE, 
+ faaj: filespace:00000530:  (errmsg("filespace "%s" does not exist, skipping", 
+ faaj: filespace:00000531:  fsname))); 
+ faaj: filespace:00000536:  ereport(ERROR, 
+ faaj: filespace:00000537:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ faaj: filespace:00000538:  errmsg("filespace "%s" does not exist", fsname))); 
+ faaj: filespace:00000548:  ereport(ERROR, 
+ faaj: filespace:00000549:  (errmsg("cannot drop filespace %s because it is required " 
+ faaj: filespace:00000550:  "by the database system", fsname))); 
+ faaj: filespace:00000681:  ereport(ERROR, 
+ faaj: filespace:00000682:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ faaj: filespace:00000683:  errmsg("filespace name may not be qualified"))); 
+ faaj: filespace:00000695:  ereport(ERROR, 
+ faaj: filespace:00000696:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ faaj: filespace:00000697:  errmsg("filespace "%s" does not exist", fsname))); 
+ faaj: filespace:00000703:  ereport(ERROR, 
+ faaj: filespace:00000704:  (errcode(ERRCODE_RESERVED_NAME), 
+ faaj: filespace:00000705:  errmsg("permission denied: "%s" is a system filespace", 
+ faaj: filespace:00000706:  fsname))); 
+ faaj: filespace:00000790:  ereport(ERROR, 
+ faaj: filespace:00000791:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ faaj: filespace:00000792:  errmsg("filespace "%s" does not exist", 
+ faaj: filespace:00000793:  oldname))); 
+ faaj: filespace:00000800:  ereport(ERROR, 
+ faaj: filespace:00000801:  (errcode(ERRCODE_RESERVED_NAME), 
+ faaj: filespace:00000802:  errmsg("permission denied: "%s" is a system filespace", 
+ faaj: filespace:00000803:  oldname))); 
+ faaj: filespace:00000812:  ereport(ERROR, 
+ faaj: filespace:00000813:  (errcode(ERRCODE_RESERVED_NAME), 
+ faaj: filespace:00000814:  errmsg("unacceptable filespace name "%s"", newname), 
+ faaj: filespace:00000815:  errdetail("The prefix "pg_" is reserved for system filespaces."))); 
+ faaj: filespace:00000824:  ereport(ERROR, 
+ faaj: filespace:00000825:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+ faaj: filespace:00000826:  errmsg("filespace "%s" already exists", newname))); 
+ faaj: filespace:00000949:  ereport(ERROR, 
+ faaj: filespace:00000950:  (errcode(ERRCODE_INVALID_NAME), 
+ faaj: filespace:00000951:  errmsg("filespace location "%s" " 
+ faaj: filespace:00000952:  "cannot contain single quotes", path))); 
  faaj: filespace:00000960:  ereport(ERROR, 
  faaj: filespace:00000961:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- faaj: filespace:00000962:  errmsg("%s : Not a directory", parentdir))); 
- faaj: filespace:00000966:  ereport(ERROR, 
- faaj: filespace:00000967:  (errcode_for_file_access(), 
- faaj: filespace:00000968:  errmsg("%s: No write permissions", parentdir))); 
- faaj: filespace:00000992:  ereport(ERROR, 
- faaj: filespace:00000993:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- faaj: filespace:00000994:  errmsg("filespace "%s" is not empty", 
- faaj: filespace:00000995:  get_filespace_name(fsoid)))); 
- faaj: filespace:00001032:  ereport(ERROR, 
- faaj: filespace:00001033:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- faaj: filespace:00001034:  errmsg("filespace "%u" does not exist", 
- faaj: filespace:00001035:  fseoid))); 
+ faaj: filespace:00000962:  errmsg("filespace location "%s" " 
+ faaj: filespace:00000963:  "must be an absolute path", path))); 
+ faaj: filespace:00000969:  ereport(ERROR, 
+ faaj: filespace:00000970:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ faaj: filespace:00000971:  errmsg("filespace location "%s" is too long", 
+ faaj: filespace:00000972:  path), 
+ faaj: filespace:00000973:  errhint("maximum length %d characters", 
+ faaj: filespace:00000974:  MAX_FILESPACE_PATH))); 
+ faaj: filespace:00001016:  ereport(ERROR, 
+ faaj: filespace:00001017:  (errcode_for_file_access(), 
+ faaj: filespace:00001018:  errmsg("%s: File exists", path))); 
+ faaj: filespace:00001027:  ereport(ERROR, 
+ faaj: filespace:00001028:  (errcode_for_file_access(), 
+ faaj: filespace:00001029:  errmsg("%s: No such file or directory", 
+ faaj: filespace:00001030:  parentdir))); 
+ faaj: filespace:00001034:  ereport(ERROR, 
+ faaj: filespace:00001035:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ faaj: filespace:00001036:  errmsg("%s: Not a directory", parentdir))); 
+ faaj: filespace:00001050:  ereport(ERROR, 
+ faaj: filespace:00001051:  (errcode_for_file_access(), 
+ faaj: filespace:00001052:  errmsg("%s: Permission denied", path))); 
+ faaj: filespace:00001111:  ereport(ERROR, 
+ faaj: filespace:00001112:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+ faaj: filespace:00001113:  errmsg("duplicate filespace locations: " 
+ faaj: filespace:00001114:  "(%d: '%s', %d: '%s')", 
+ faaj: filespace:00001115:  fse2->dbid, fse2->location, 
+ faaj: filespace:00001116:  fse1->dbid, fse1->location))); 
+ faaj: filespace:00001150:  ereport(ERROR, 
+ faaj: filespace:00001151:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ faaj: filespace:00001152:  errmsg("filespace "%s" is not empty", 
+ faaj: filespace:00001153:  get_filespace_name(fsoid)))); 
+ faaj: filespace:00001190:  ereport(ERROR, 
+ faaj: filespace:00001191:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ faaj: filespace:00001192:  errmsg("filespace "%u" does not exist", 
+ faaj: filespace:00001193:  fseoid))); 
  faaj: flatfiles:00000243:  ereport(ERROR, 
  faaj: flatfiles:00000244:  (errcode_for_file_access(), 
  faaj: flatfiles:00000245:  errmsg("could not write to temporary file "%s": %m", 
@@ -13865,13 +13871,13 @@ select * from get_ereport order by 1;
  saae: smgr:00001406:  reln->smgr_rnode.spcNode, 
  saae: smgr:00001407:  reln->smgr_rnode.dbNode, 
  saae: smgr:00001408:  reln->smgr_rnode.relNode))); 
- saae: smgr:00002580:  ereport(WARNING, 
- saae: smgr:00002581:  (errcode_for_file_access(), 
- saae: smgr:00002582:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
- saae: smgr:00002583:  reln->smgr_rnode.spcNode, 
- saae: smgr:00002584:  reln->smgr_rnode.dbNode, 
- saae: smgr:00002585:  reln->smgr_rnode.relNode, 
- saae: smgr:00002586:  xlrec->blkno))); 
+ saae: smgr:00002595:  ereport(WARNING, 
+ saae: smgr:00002596:  (errcode_for_file_access(), 
+ saae: smgr:00002597:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
+ saae: smgr:00002598:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00002599:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00002600:  reln->smgr_rnode.relNode, 
+ saae: smgr:00002601:  xlrec->blkno))); 
  saaf: shmem:00000128:  ereport(ERROR, 
  saaf: shmem:00000129:  (errcode(ERRCODE_INTERNAL_ERROR), 
  saaf: shmem:00000130:  errmsg("invalid page size %d; must be a power of two and not an error", ShmemSystemPageSize))); 
@@ -18313,6 +18319,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000076:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000077:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000078:  str))); 
-(18246 rows)
+(18252 rows)
 
 drop external table get_ereport;

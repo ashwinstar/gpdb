@@ -3258,6 +3258,7 @@ _copyFileSpaceEntry(FileSpaceEntry *from)
 	COPY_SCALAR_FIELD(dbid);
 	COPY_SCALAR_FIELD(contentid);	
 	COPY_STRING_FIELD(location);
+	COPY_STRING_FIELD(hostname);
 
 	return newnode;
 }

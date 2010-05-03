@@ -3341,6 +3341,7 @@ _readFileSpaceEntry(const char ** str)
 	READ_INT_FIELD(dbid);
 	READ_INT_FIELD(contentid);
 	READ_STRING_FIELD(location);
+	READ_STRING_FIELD(hostname);
 
 	READ_DONE();
 }

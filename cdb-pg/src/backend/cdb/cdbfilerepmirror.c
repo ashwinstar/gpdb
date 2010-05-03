@@ -1505,7 +1505,7 @@ FileRepMirror_RunConsumer(void)
 							fileRepMessageHeader->fileRepOperationDescription.create.mirrorStatus = FileRepStatusNotDirectory;
 							break;
 						case EROFS:
-							fileRepMessageHeader->fileRepOperationDescription.create.mirrorStatus = FileRepStatusNoWritePermissions;
+							fileRepMessageHeader->fileRepOperationDescription.create.mirrorStatus = FileRepStatusReadOnlyFileSystem;
 							break;
 						case ENOSPC:
 							fileRepMessageHeader->fileRepOperationDescription.create.mirrorStatus = FileRepStatusNoSpace;
@@ -2013,6 +2013,7 @@ FileRepMirror_Validation(FileName fileName)
 {
 	int			 mirrorStatus = FileRepStatusSuccess;
 	char        *parentdir	  = NULL;
+	char        *errordir     = NULL;
 	struct stat	 st;
 	
 	errno = 0;
@@ -2020,9 +2021,7 @@ FileRepMirror_Validation(FileName fileName)
 	if (stat(fileName, &st) >= 0)
 	{
 		mirrorStatus = FileRepStatusDirectoryExist;
-		ereport(LOG,
-				(errcode_for_file_access(),
-				 errmsg("ERROR(filerep): %s : File Exists : %m", fileName)));
+		errordir = fileName;
 		goto exit;
 	}
 	
@@ -2034,9 +2033,7 @@ FileRepMirror_Validation(FileName fileName)
 	if (stat(parentdir, &st) < 0)
 	{
 		mirrorStatus = FileRepStatusNoSuchFileOrDirectory;
-		ereport(LOG,
-				(errcode_for_file_access(),
-				 errmsg("ERROR(filerep): %s : No such file or directory : %m", parentdir)));
+		errordir = parentdir;
 		goto exit;
 	}
 		
@@ -2044,23 +2041,27 @@ FileRepMirror_Validation(FileName fileName)
 	if (! S_ISDIR(st.st_mode))
 	{
 		mirrorStatus = FileRepStatusNotDirectory;
-		ereport(LOG,
-				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-				 errmsg("ERROR(filerep): %s : Not a directory : %m", parentdir)));
+		errordir = parentdir;
 		goto exit;
 	}
 		
 	/* Check write permissions */
-	if (access(parentdir, W_OK) < 0)
+	if (access(parentdir, W_OK|X_OK) < 0)
 	{
-		mirrorStatus = FileRepStatusNoWritePermissions;
-		ereport(LOG,
-				(errcode_for_file_access(),
-				 errmsg("ERROR(filerep): %s: No write permissions : %m", parentdir)));
+		mirrorStatus = FileRepStatusNoPermissions;
+		errordir = fileName;
 		goto exit;
 	}
 
 exit:
+	if (mirrorStatus != FileRepStatusSuccess)
+	{
+		Assert(errordir != NULL);
+		ereport(LOG,
+				(errcode_for_file_access(),
+				 errmsg("ERROR(filerep): %s: %s", 
+						errordir, FileRepStatusToString[mirrorStatus])));
+	}
 	if (parentdir)
 	{
 		pfree(parentdir);

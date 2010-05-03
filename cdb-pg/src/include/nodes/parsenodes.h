@@ -1621,6 +1621,7 @@ typedef struct FileSpaceEntry
 	int         dbid;
 	int         contentid;
 	char       *location;
+	char       *hostname;
 } FileSpaceEntry;
 
 /* ----------------------
