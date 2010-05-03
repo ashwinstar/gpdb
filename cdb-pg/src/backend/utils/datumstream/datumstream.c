@@ -632,7 +632,19 @@ datumstream_read_block_content(DatumStream *acc,
          * We identify this exception through firstRow, which is -1
          * for pre-4.0 blocks (not stored inside the block).
          */
-        Assert(acc->block->ndatum == rowCnt || firstRow < 0);
+        Assert(acc->block->ndatum == rowCnt || firstRow == -1);
+
+        /*
+         * In pre-4.0 blocks, the maximum value of ndatum is
+		 * 32000 while rowCnt cannot exceed 16384, so we set
+		 * rowCnt to ndatum to build the block directory
+		 * consistently.
+		 */
+		if (acc->block->ndatum > rowCnt && firstRow == -1)
+        {
+			rowCnt = acc->block->ndatum;
+			acc->blockRowCount = acc->block->ndatum;
+        }
     }
     else
     {
@@ -715,6 +727,8 @@ int datumstream_read_block(DatumStream *acc)
 								   rowCnt,
 								   isLarge,
 								   isCompressed);
+
+	rowCnt = acc->blockRowCount;	/* rowCnt may be invalid for pre-4.0 blocks */
 
     return 0;
 }
@@ -819,6 +833,7 @@ datumstream_find_block(DatumStream *datumStream,
 		/*
 		 * Update the current block info.
 		 */
+		const bool isOldBlockFormat = (firstRow == -1);
 		datumStreamFetchDesc->currentBlock.have = true;
 		datumStreamFetchDesc->currentBlock.fileOffset =
 			AppendOnlyStorageRead_CurrentHeaderOffsetInFile(
@@ -826,7 +841,7 @@ datumstream_find_block(DatumStream *datumStream,
 		datumStreamFetchDesc->currentBlock.overallBlockLen =
 			AppendOnlyStorageRead_OverallBlockLen (datumStream->ao_read);
 		datumStreamFetchDesc->currentBlock.firstRowNum =
-			(firstRow != -1) ? firstRow : datumStreamFetchDesc->scanNextRowNum;
+			(!isOldBlockFormat) ? firstRow : datumStreamFetchDesc->scanNextRowNum;
 		datumStreamFetchDesc->currentBlock.lastRowNum =
 			datumStreamFetchDesc->currentBlock.firstRowNum + rowCnt - 1;
 		datumStreamFetchDesc->currentBlock.isCompressed =
@@ -836,9 +851,12 @@ datumstream_find_block(DatumStream *datumStream,
 		if (rowNum < datumStreamFetchDesc->currentBlock.firstRowNum)
 			return false;
 
-		if (rowNum <= datumStreamFetchDesc->currentBlock.lastRowNum)
+		if (isOldBlockFormat)
 		{
-			/* Find the block that contains the row. We are done. */
+			/*
+			 * rowCnt may not be valid for pre-4.0 blocks, we need to
+			 * read the block content to restore the correct value.
+			 */
 			datumstream_read_block_content(datumStream,
 										   contentLen,
 										   execBlockKind,
@@ -846,6 +864,28 @@ datumstream_find_block(DatumStream *datumStream,
 										   rowCnt,
 										   isLarge,
 										   isCompressed);
+
+			rowCnt = datumStream->blockRowCount;
+			datumStreamFetchDesc->currentBlock.lastRowNum =
+				datumStreamFetchDesc->currentBlock.firstRowNum + rowCnt - 1;
+		}
+
+		if (rowNum <= datumStreamFetchDesc->currentBlock.lastRowNum)
+		{
+			/*
+			 * Found the block that contains the row.
+			 * Read the block content if it was not read above.
+			 */
+			if (!isOldBlockFormat)
+			{
+				datumstream_read_block_content(datumStream,
+											   contentLen,
+											   execBlockKind,
+											   firstRow,
+											   rowCnt,
+											   isLarge,
+											   isCompressed);
+			}
 			break;
 		}
 		
