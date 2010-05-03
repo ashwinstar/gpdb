@@ -1691,6 +1691,9 @@ class gpload:
 
         sql += "location(%s)"%','.join(map(quote,self.locations))
         sql += "format%s("%quote(format)
+
+        if len(str(self.getconfig('gpload:input:delimiter', unicode, False))) != 1:
+           self.log(self.ERROR, "A delimiter must have a length of one. Special characters must be quoted.")
         if self.getconfig('gpload:input:delimiter', unicode, False):
             sql += "delimiter%s" % \
                 quote(self.getconfig('gpload:input:delimiter', unicode))
