@@ -204,6 +204,7 @@ CHK_PARAMS () {
 
 		if [ x"" != x"$REQ_LOCALE_SETTING" ];then LOCALE_SETTING=$REQ_LOCALE_SETTING;fi
 
+		
 		if [ x"" == x"$INPUT_CONFIG" ] ; then 
 		    if [ x"" != x"$MACHINE_LIST_FILE_ALT" ];then
                         MACHINE_LIST_FILE=$MACHINE_LIST_FILE_ALT
@@ -1128,7 +1129,34 @@ CREATE_QD_DB () {
         #
         # note: is_filerep_mirrored is no because the QD is not mirrored by filerep right now (standby master works differently)
         #
-		RUN_COMMAND "$INITDB -E $ENCODING -D $GP_DIR --locale=$LOCALE_SETTING --max_connections=$MASTER_MAX_CONNECT --shared_buffers=$MASTER_SHARED_BUFFERS --is_filerep_mirrored=no"
+        
+        if [ x"" != x"$LCCOLLATE" ]; then
+			LC_COLLATE_SETTING="--lc-collate=$LCCOLLATE"
+		fi
+		
+        if [ x"" != x"$LCCTYPE" ]; then
+			LC_CTYPE_SETTING="--lc-ctype=$LCCTYPE"
+		fi
+		
+		if [ x"" != x"$LCMESSAGES" ]; then
+			LC_MESSAGES_SETTING="--lc-messages=$LCMESSAGES"
+		fi
+		
+		if [ x"" != x"$LCMONETARY" ]; then
+			LC_MONETARY_SETTING="--lc-monetary=$LCMONETARY"
+		fi
+		
+		if [ x"" != x"$LCNUMERIC" ]; then
+			LC_NUMERIC_SETTING="--lc-numeric=$LCNUMERIC"
+		fi
+		
+        if [ x"" != x"$LCTIME" ]; then
+			LC_TIME_SETTING="--lc-time=$LCTIME"
+		fi
+		
+		LC_ALL_SETTINGS=" $LC_COLLATE_SETTING $LC_CTYPE_SETTING $LC_MESSAGES_SETTING $LC_MONETARY_SETTING $LC_NUMERIC_SETTING $LC_TIME_SETTING"
+
+		RUN_COMMAND "$INITDB -E $ENCODING -D $GP_DIR --locale=$LOCALE_SETTING $LC_ALL_SETTINGS --max_connections=$MASTER_MAX_CONNECT --shared_buffers=$MASTER_SHARED_BUFFERS --is_filerep_mirrored=no"
 		BACKOUT_COMMAND "if [ -d $GP_DIR ]; then $RM -Rf $GP_DIR; fi"
 		BACKOUT_COMMAND "$ECHO Removing Master data directory files"
 		LOG_MSG "[INFO]:-Completed Master instance initialization"
@@ -1315,6 +1343,7 @@ CREATE_QES_PRIMARY () {
 			export STANDBY_HOSTNAME
 			export ENCODING
 			export LOCALE_SETTING
+			export LC_ALL_SETTINGS
 			export BACKOUT_FILE
 			export LOG_FILE
 			export PARALLEL_STATUS_FILE
@@ -1640,7 +1669,7 @@ READ_INPUT_CONFIG () {
 # Main Section
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Received INT or TERM signal" 2' INT TERM
-while getopts ":v'?'aiqe:c:l:p:m:h:on:s:rb:!DB:SI:O:" opt
+while getopts ":v'?'aiqe:c:l:-:p:m:h:on:s:rb:!DB:SI:O:" opt
 		do
 		case $opt in
 				v ) VERSION_INFO ;;
@@ -1665,6 +1694,23 @@ while getopts ":v'?'aiqe:c:l:p:m:h:on:s:rb:!DB:SI:O:" opt
 				S ) MIRROR_TYPE=1 ;;
 		                I ) INPUT_CONFIG=$OPTARG ;;
 		                O ) OUTPUT_CONFIG=$OPTARG ;;
+				- ) # Long options ...
+					NAME=${OPTARG%%=*}
+					VAL=${OPTARG#*=} 
+					case $NAME in
+						"max_connections" ) MASTER_MAX_CONNECT=$VAL ;;
+						"shared_buffers"  ) NEW_BUFFERS=$VAL ;;
+						"su_password"     ) GP_PASSWD=$VAL ;;
+						"locale"          ) REQ_LOCALE_SETTING=$VAL ;;
+						"lc-collate"      ) LCCOLLATE=$VAL ;;
+						"lc-ctype"        ) LCCTYPE=$VAL ;;
+						"lc-messages"     ) LCMESSAGES=$VAL ;;
+						"lc-monetary"     ) LCMONETARY=$VAL ;;
+						"lc-numeric"      ) LCNUMERIC=$VAL ;;
+						"lc-time"         ) LCTIME=$VAL ;;
+						* ) USAGE ;;
+					esac
+					;;
 				* ) USAGE ;;
 		esac
 done
