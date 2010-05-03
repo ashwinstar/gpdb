@@ -24,7 +24,7 @@ package model
  		[Embed(source='../assets/img/spyglass_cursor.png')]
    		public static var spyglassCursor:Class;
    		
-   		public static var flexBuildNumber:String = "2.0.1";
+   		public static var flexBuildNumber:String = "4.0.0";
    		  				
 		public static var copyright:String = "Copyright (c) 2008 Greenplum, Inc. All Rights Reserved";
 
