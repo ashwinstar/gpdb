@@ -1405,18 +1405,25 @@ typedef struct PlannerParamItem
 		Index		abslevel;		/* its absolute query level */
 	} PlannerParamItem;
 
-/* Partitioning meta data */
+/* 
+ * Partitioning meta data 
+ */
+
+/*
+ * convenient representation of a row of pg_partition -- a partitioning level of
+ * a partitioned table or a template for all the partitioning branches at a level.
+ */
 typedef struct Partition
 {
 	NodeTag type;
-	Oid partid;
-	Oid parrelid; /* partitioned relation */
-	char parkind;
-	int2 parlevel;
-	bool paristemplate;
-	int2 parnatts;
-	AttrNumber *paratts;
-	Oid *parclass;
+	Oid partid;			/* OID of row in pg_partition. */
+	Oid parrelid;		/* OID in pg_class of top-level partitioned relation */
+	char parkind;		/* 'r', 'l', or (unsupported) 'h' */
+	int2 parlevel;		/* depth below parent partitioned table */
+	bool paristemplate;	/* just a template, or really a part? */
+	int2 parnatts;		/* number of partitioning attributes */
+	AttrNumber *paratts;/* attribute number vector */ 
+	Oid *parclass;		/* operator class vector */
 } Partition;
 
 struct PartitionNode

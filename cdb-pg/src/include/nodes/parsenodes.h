@@ -1067,8 +1067,14 @@ typedef struct AlterTableStmt
 	RangeVar   *relation;		/* table to work on */
 	List	   *cmds;			/* list of subcommands */
 	ObjectType	relkind;		/* type of object */
-	int			oidInfoCount;
-	TableOidInfo *oidInfo;		/* MPP Allow for heirarchy of tables to alter */
+
+	/* Workspace for use during AT processing/dispatch.  It might be better
+	 * to package there in a "context" node than to lay them out here. 
+	 */
+	List		 *oidmap;		/* For reindex_relation */
+	int			oidInfoCount;	/* Vector of TableOidInfo pointers: */
+	TableOidInfo *oidInfo;		/* MPP Allow for hierarchy of tables to alter */
+	
 } AlterTableStmt;
 
 typedef enum AlterTableType
@@ -1132,6 +1138,7 @@ typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
 	Node	   *transform;		/* transformation expr for ALTER TYPE */
 	DropBehavior behavior;		/* RESTRICT or CASCADE for DROP cases */
 	bool		part_expanded;	/* expands from another command, for partitioning */
+	List	   *partoids;		/* If applicable, OIDs of partition part tables */
 } AlterTableCmd;
 
 typedef enum AlterPartitionIdType

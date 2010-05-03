@@ -2322,6 +2322,8 @@ _copyAlterTableStmt(AlterTableStmt *from)
 	COPY_NODE_FIELD(relation);
 	COPY_NODE_FIELD(cmds);
 	COPY_SCALAR_FIELD(relkind);
+	
+	/* No need to copy AT workspace fields. */
 
 	return newnode;
 }
@@ -2337,6 +2339,9 @@ _copyAlterTableCmd(AlterTableCmd *from)
 	COPY_NODE_FIELD(transform);
 	COPY_SCALAR_FIELD(behavior);
 	COPY_SCALAR_FIELD(part_expanded);
+	
+	/* Need to copy AT workspace since process uses copy internally. */
+	COPY_NODE_FIELD(partoids);
 
 	return newnode;
 }

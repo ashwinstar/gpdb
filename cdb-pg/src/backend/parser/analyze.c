@@ -37,6 +37,7 @@
 #include "commands/defrem.h"
 #include "commands/prepare.h"
 #include "commands/tablecmds.h"
+#include "commands/tablespace.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -6744,14 +6745,22 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 	child_tab_stmt->options = stmt->options;
 
 	/* allow WITH clause for appendonly tables */
-	if (pStoreAttr && ((AlterPartitionCmd *)pStoreAttr)->arg1)
+	if ( pStoreAttr )
 	{
-		child_tab_stmt->options = (List *)
-				(((AlterPartitionCmd *)pStoreAttr)->arg1);
+		AlterPartitionCmd *psa_apc = (AlterPartitionCmd *)pStoreAttr;
+		
+		/* Options */
+		if ( psa_apc->arg1 )
+			child_tab_stmt->options = (List *)psa_apc->arg1;
+		/* Tablespace from parent (input CreateStmt)... */
+		if ( psa_apc->arg2 && *strVal(psa_apc->arg2) )
+			child_tab_stmt->tablespacename = strVal(psa_apc->arg2);
 	}
+	/* ...or tablespace from root. */
+	if ( !child_tab_stmt->tablespacename && stmt->tablespacename )
+		child_tab_stmt->tablespacename = stmt->tablespacename;
 
 	child_tab_stmt->oncommit = stmt->oncommit;
-	child_tab_stmt->tablespacename = stmt->tablespacename;
 	child_tab_stmt->distributedBy = stmt->distributedBy;
 
 	/* use the newSub as the partitionBy if the current
@@ -6760,7 +6769,32 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 	child_tab_stmt->partitionBy = (Node *)newSub;
 
 	child_tab_stmt->relKind = RELKIND_RELATION;
-
+	
+	/*
+	 * Adjust tablespace name for the CREATE TABLE via ADD PARTITION. (MPP-8047)
+	 *
+	 * The way we traverse the hierarchy, parents are visited before children, so
+	 * we can usually pick up tablespace from the parent relation.  If the child
+	 * is a top-level branch, though, we take the tablespace from the root.
+	 * Ultimately, we take the tablespace as specified in the command, or, if none
+	 * was specified, the one from the root paritioned table.
+	 */
+	if ( ! child_tab_stmt->tablespacename )
+	{
+		Oid poid = RangeVarGetRelid(cxt->relation, true); /* parent branch */
+		
+		if ( ! poid )
+		{
+			poid = RangeVarGetRelid(stmt->relation, true); /* whole partitioned table */
+		}
+		if ( poid )
+		{
+			Relation prel = RelationIdGetRelation(poid);
+			child_tab_stmt->tablespacename = get_tablespace_name(prel->rd_rel->reltablespace);
+			RelationClose(prel);
+		}
+	}
+	
 #if 0
 	/*
 	 * XXX XXX: it would be nice to copy the parent table's

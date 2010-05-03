@@ -2037,3 +2037,36 @@ set gp_setwith_alter_storage = false;
 create table atsdb (i int, j text) distributed by (j);
 alter table atsdb set with(appendonly = true);
 drop table atsdb;
+
+-- MPP-8474: Index relfilenode mismatch: entry db to segment db.
+--
+-- XXX This really belongs in alter_table.sql but this is not 
+--     in use in current_good_schedule.
+drop table if exists mpp8474 cascade; --ignore
+
+create table mpp8474(a int, b int, c text) 
+    with (appendonly=true) 
+    distributed by (b);
+create index mpp8474_a 
+    on mpp8474(a);
+alter table mpp8474 
+    add column d int default 10;
+
+select 
+    'Mismatched relfilenodes:' as oops,
+    e.oid::regclass as entry_oid,
+    e.relkind,
+    e.relfilenode as entry_relfilenode,
+    s.segid,
+    s.segfilenode as segment_relfilenode
+from 
+    pg_class e,
+    (   select gp_execution_segment(), oid, relfilenode
+        from gp_dist_random('pg_class')
+    ) s (segid, segoid, segfilenode)
+where 
+    e.oid = s.segoid 
+    and e.relfilenode != s.segfilenode
+    and e.relname ~ '^mpp8474.*';
+
+drop table mpp8474;

@@ -280,7 +280,6 @@ bool		gp_enable_hash_partitioned_tables = FALSE;
 bool		gp_foreign_data_access = FALSE;
 bool		gp_setwith_alter_storage = FALSE;
 
-bool		gp_enable_tablespaces = FALSE;
 bool		gp_enable_tablespace_auto_mkdir = FALSE;
 
 /* Enable check for compatibility of encoding and locale in createdb */

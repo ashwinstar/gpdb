@@ -2033,6 +2033,7 @@ _outAlterTableStmt(StringInfo str, AlterTableStmt *node)
 	WRITE_NODE_FIELD(relation);
 	WRITE_NODE_FIELD(cmds);
 	WRITE_ENUM_FIELD(relkind, ObjectType);
+	WRITE_NODE_FIELD(oidmap);
 	WRITE_INT_FIELD(oidInfoCount);
 	for (m = 0; m < node->oidInfoCount; m++)
 	{
@@ -2061,6 +2062,7 @@ _outAlterTableCmd(StringInfo str, AlterTableCmd *node)
 	WRITE_NODE_FIELD(transform);
 	WRITE_ENUM_FIELD(behavior, DropBehavior);
 	WRITE_BOOL_FIELD(part_expanded);
+	WRITE_NODE_FIELD(partoids);
 }
 
 static void

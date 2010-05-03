@@ -1536,9 +1536,9 @@ ERROR:  cannot add RANGE partition "j5" to relation "jjj" with DEFAULT partition
 HINT:  need to SPLIT partition "j3"
 drop table jjj cascade;
 alter table hhh alter partition cc set tablespace foo;
-ERROR:  cannot ALTER PARTITION for relation "hhh"
+ERROR:  tablespace "foo" does not exist
 alter table hhh alter partition aa set tablespace foo;
-ERROR:  cannot ALTER PARTITION for relation "hhh"
+ERROR:  tablespace "foo" does not exist
 alter table hhh coalesce partition cc;
 ERROR:  cannot COALESCE PARTITION for relation "hhh"
 alter table hhh coalesce partition aa;

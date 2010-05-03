@@ -690,6 +690,7 @@ _readAlterTableStmt(const char ** str)
 	READ_NODE_FIELD(relation);
 	READ_NODE_FIELD(cmds);
 	READ_ENUM_FIELD(relkind, ObjectType); Assert(local_node->relkind <= OBJECT_VIEW);
+	READ_NODE_FIELD(oidmap);
 	READ_INT_FIELD(oidInfoCount);
 	local_node->oidInfo = NULL;
 	if (local_node->oidInfoCount > 0)
@@ -725,6 +726,7 @@ _readAlterTableCmd(const char ** str)
 	READ_NODE_FIELD(transform);
 	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);
 	READ_BOOL_FIELD(part_expanded);
+	READ_NODE_FIELD(partoids);
 	READ_DONE();
 }
 

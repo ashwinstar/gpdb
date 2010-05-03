@@ -841,6 +841,8 @@ _equalAlterTableStmt(AlterTableStmt *a, AlterTableStmt *b)
 	COMPARE_NODE_FIELD(relation);
 	COMPARE_NODE_FIELD(cmds);
 	COMPARE_SCALAR_FIELD(relkind);
+	
+	/* No need to compare AT workspace fields.  */
 
 	return true;
 }
@@ -854,6 +856,8 @@ _equalAlterTableCmd(AlterTableCmd *a, AlterTableCmd *b)
 	COMPARE_NODE_FIELD(transform);
 	COMPARE_SCALAR_FIELD(behavior);
 	COMPARE_SCALAR_FIELD(part_expanded);
+	
+	/* No need to compare AT workspace field, partoids.  */
 
 	return true;
 }

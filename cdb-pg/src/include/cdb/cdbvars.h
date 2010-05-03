@@ -880,10 +880,6 @@ extern bool	gp_foreign_data_access;
 
 extern bool	gp_setwith_alter_storage;
 
-/* turn tablespace on */
-
-extern bool	gp_enable_tablespaces;
-
 /* let tablespace make missing LOCATION directory if necessary */
 
 extern bool	gp_enable_tablespace_auto_mkdir;

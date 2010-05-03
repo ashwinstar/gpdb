@@ -278,13 +278,17 @@ static void validateForeignKeyConstraint(FkConstraint *fkconstraint,
 static void createForeignKeyTriggers(Relation rel, FkConstraint *fkconstraint,
 						 Oid constrOid);
 static char *fkMatchTypeToString(char match_type);
-static void ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOidInfo ** oidInfo);
+static void ATController(Relation rel, List *cmds, bool recurse, 
+						 int * oidInfoCount, TableOidInfo ** oidInfo, List **poidmap);
 static void ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		  bool recurse, bool recursing);
-static void ATRewriteCatalogs(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo);
-static void ATAddToastIfNeeded(List **wqueue, int oidInfoCount,TableOidInfo * oidInfo);
+static void ATRewriteCatalogs(List **wqueue, 
+							  int oidInfoCount, TableOidInfo * oidInfo, List **poidmap);
+static void ATAddToastIfNeeded(List **wqueue, 
+							   int oidInfoCount,TableOidInfo * oidInfo, List **poidmap);
 static void ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd);
-static void ATRewriteTables(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo);
+static void ATRewriteTables(List **wqueue, 
+							int oidInfoCount, TableOidInfo * oidInfo, List **poidmap);
 static void ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap);
 static AlteredTableInfo *ATGetQueueEntry(List **wqueue, Relation rel);
 static void ATSimplePermissions(Relation rel, bool allowView);
@@ -336,6 +340,8 @@ static void ATExecClusterOn(Relation rel, const char *indexName);
 static void ATExecDropCluster(Relation rel);
 static void ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel,
 					char *tablespacename);
+static void ATPartsPrepSetTableSpace(List **wqueue, Relation rel, AlterTableCmd *cmd, 
+									 List *oids);
 static void ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, 
 								TableOidInfo *oidInfo);
 static void ATExecSetRelOptions(Relation rel, List *defList, bool isReset);
@@ -345,6 +351,7 @@ static void ATExecAddInherit(Relation rel, Node *node);
 static void ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition);
 static void ATExecSetDistributedBy(Relation rel, Node *node,
 								   AlterTableCmd *cmd);
+static List *all_prule_relids(PartitionRule *prule);
 static PartStatus rel_part_status(Oid relid);
 static bool can_implement_dist_on_part(Relation rel, List *dist_cnames);
 
@@ -426,7 +433,7 @@ static RangeVar *make_temp_table_name(Relation rel, BackendId id);
 static bool prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro,
 								List *opts, List **hidden_types);
 static void ATPartitionCheck(Relation rel, AlterTableType typ, bool recursing);
-
+static Oid get_settable_tablespace_oid(char *tablespacename);
 
 #define parkindIsHash(c)   ((c) == 'h')
 #define parkindIsRange(c)  ((c) == 'r')
@@ -3641,7 +3648,8 @@ AlterTable(AlterTableStmt *stmt)
 				 stmt->cmds,
 				 interpretInhOption(stmt->relation->inhOpt),
 				 &stmt->oidInfoCount,
-				 &stmt->oidInfo);
+				 &stmt->oidInfo,
+				 &stmt->oidmap);
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 		CdbDispatchUtilityStatement((Node *) stmt, "AlterTable");
@@ -3671,16 +3679,16 @@ AlterTableInternal(Oid relid, List *cmds, bool recurse)
 				 cmds,
 				 recurse,
 				 0,
+				 NULL,
 				 NULL);
 }
 
 static void
-ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOidInfo ** oidInfo)
+ATController(Relation rel, List *cmds, bool recurse, 
+			 int * oidInfoCount, TableOidInfo ** oidInfo, List **poidmap)
 {
 	List	   *wqueue = NIL;
 	ListCell   *lcmd;
-	int			ltabcount = 0;
-	ListCell	*ltab;
 	int			ocount = 0;
 	TableOidInfo * oids = NULL;
 	bool is_partition = false;
@@ -3710,13 +3718,8 @@ ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOi
 
 	if (Gp_role == GP_ROLE_DISPATCH && oidInfoCount != NULL)
 	{
-		foreach(ltab, wqueue)
-		{
-			ltabcount++;
-		}
-		*oidInfoCount = ltabcount;
-		ocount = ltabcount;
-		*oidInfo = palloc0(sizeof(TableOidInfo)*ltabcount);
+		*oidInfoCount = list_length(wqueue);
+		*oidInfo = palloc0(sizeof(TableOidInfo)*(*oidInfoCount));
 	}
 
 	if (oidInfoCount != NULL)
@@ -3725,7 +3728,7 @@ ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOi
 		oids = *oidInfo;
 
 	/* Phase 2: update system catalogs */
-	ATRewriteCatalogs(&wqueue, ocount, oids);
+	ATRewriteCatalogs(&wqueue, ocount, oids, poidmap);
 
 	/*
 	 * Build OID map info.
@@ -3815,9 +3818,9 @@ ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOi
 	 */
 	if (!is_data_remote)
 	{
-		ATRewriteTables(&wqueue, ocount, oids);
+		ATRewriteTables(&wqueue, ocount, oids, poidmap);
 
-		ATAddToastIfNeeded(&wqueue, ocount, oids);		
+		ATAddToastIfNeeded(&wqueue, ocount, oids, poidmap);		
 	}
 
 }
@@ -3844,6 +3847,99 @@ relation_has_supers(Oid relid)
 	heap_close(catalogRelation, AccessShareLock);
 
 	return found;
+}
+
+/* Construct the PgPartRule for a branch of a partitioning hierarchy.
+ *
+ * 		rel - the partitioned relation (top-level)
+ *		cmd - an AlterTableCmd, possibly nested in type AT_PartAlter AlterTableCmds
+ *            identifying a subset of the parts of the partitioned relation.
+ */
+static PgPartRule *
+get_pprule_from_ATC(Relation rel, AlterTableCmd *cmd)
+{
+	List *pids = NIL; /* of AlterPartitionId */
+	AlterPartitionId *pid = NULL;
+	PgPartRule *pprule = NULL;
+	AlterPartitionId *work_partid = NULL;
+	
+	AlterTableCmd *atc = cmd;
+	
+	
+	/* Get list of enclosing ALTER PARTITION ids. */
+	while ( atc->subtype == AT_PartAlter )
+	{
+		AlterPartitionCmd *apc = (AlterPartitionCmd*)atc->def;
+		
+		pid = (AlterPartitionId*)apc->partid;
+		Insist(IsA(pid, AlterPartitionId));
+		
+		atc = (AlterTableCmd*)apc->arg1;
+		Insist(IsA(atc, AlterTableCmd));
+		
+		pids = lappend(pids, pid);
+	}
+	
+	/* The effective ALTER TABLE command is in atc.
+	 * The pids list (of AlterPartitionId nodes) represents the path to 
+	 * top partitioning branch of rel.  Since we are only called for
+	 * branches and leaves (never the root) of the partition, the pid
+	 * list should not empty.
+	 *
+	 * Use the AlterPartitionId interpretter, get_part_rule, to do
+	 * the interpretation.
+	 */
+	Insist( list_length(pids) > 0 );
+	
+	work_partid = makeNode(AlterPartitionId);
+	
+	work_partid->idtype = AT_AP_IDList;
+	work_partid->partiddef = (Node*)pids;
+	work_partid->location = -1;
+	
+	pprule = get_part_rule(rel, 
+						   work_partid, 
+						   true, true, /* parts must exist */
+						   CurrentMemoryContext,
+						   NULL, /* no implicit results */
+						   false /* no template rules */
+						   );
+	
+	return pprule;
+}
+
+/* Return the pg_class OIDs of the relations representing the parts of
+ * a partitioned table designated by the given AlterTable command.  
+ *
+ * 		rel - the partitioned relation (top-level)
+ *		cmd - an AlterTableCmd, possibly nested in type AT_PartAlter AlterTableCmds
+ *            identifying a subset of the parts of the partitioned relation.
+ */
+static List *
+basic_AT_oids(Relation rel, AlterTableCmd *cmd)
+{
+	PgPartRule *pprule = get_pprule_from_ATC(rel, cmd);
+	
+	if ( ! pprule )
+		return NIL;
+	
+	return all_prule_relids(pprule->topRule);	
+}
+
+/*
+ * Return the basic AlterTableCmd found by peeling off intervening layers of
+ * ALTER PARTITION from the given AlterTableCmd.
+ */
+static AlterTableCmd *basic_AT_cmd(AlterTableCmd *cmd)
+{
+	while ( cmd->subtype == AT_PartAlter )
+	{
+		AlterPartitionCmd *apc = (AlterPartitionCmd*)cmd->def;
+		Insist(IsA(apc, AlterPartitionCmd));
+		cmd = (AlterTableCmd*)apc->arg1;
+		Insist(IsA(cmd, AlterTableCmd));
+	}
+	return cmd;
 }
 
 /*
@@ -4031,8 +4127,40 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			break;
 		case AT_SetTableSpace:	/* SET TABLESPACE */
 			ATSimplePermissionsRelationOrIndex(rel);
-			/* This command never recurses */
-			ATPrepSetTableSpace(tab, rel, cmd->name);
+			/* This command never recurses, but the offered relation may be partitioned, 
+			 * in which case, we need to act as if the command specified the top-level
+			 * list of parts.
+			 */
+			if (Gp_role == GP_ROLE_DISPATCH && rel_is_partitioned(rel->rd_id) )
+			{
+				PartitionNode *pnode = NULL;
+				List *all_oids = NIL;
+				
+				pnode = get_parts(rel->rd_id, 
+								  0, /**/
+								  InvalidOid, /**/
+								  false, /**/
+								  CurrentMemoryContext);
+				
+				all_oids = lcons_oid(rel->rd_id, all_partition_relids(pnode));
+				
+				Assert( cmd->partoids == NIL );
+				cmd->partoids = all_oids;
+				
+				ATPartsPrepSetTableSpace(wqueue, rel, cmd, all_oids);
+			}
+			else if (Gp_role == GP_ROLE_EXECUTE && cmd->partoids)
+			{
+				ATPartsPrepSetTableSpace(wqueue, rel, cmd, cmd->partoids);
+			}
+			else if (Gp_role == GP_ROLE_UTILITY)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ 						 errmsg("SET TABLESPACE is not supported in utility mode")));
+			}
+			else
+				ATPrepSetTableSpace(tab, rel, cmd->name);
 			pass = AT_PASS_MISC;	/* doesn't actually matter */
 			break;
 		case AT_SetRelOptions:	/* SET (...) */
@@ -4887,9 +5015,50 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			pass = AT_PASS_MISC;
 			break;
 		}
-		break;
-		case AT_PartAdd:				/* Add */
+
 		case AT_PartAlter:				/* Alter */
+			if ( Gp_role == GP_ROLE_DISPATCH && recurse && ! recursing )
+			{
+				AlterTableCmd *basecmd = basic_AT_cmd(cmd);
+				
+				switch ( basecmd->subtype )
+				{
+					case AT_SetTableSpace:
+						cmd->partoids = basic_AT_oids(rel,cmd);
+						ATPartsPrepSetTableSpace(wqueue, rel, basecmd, cmd->partoids);
+						break;
+					
+					default:
+						/* Not a for-each-subsumed-part-type command. */
+						break;
+				}
+			}
+			else if (Gp_role == GP_ROLE_EXECUTE && cmd->partoids)
+			{
+				AlterTableCmd *basecmd = basic_AT_cmd(cmd);
+
+				switch ( basecmd->subtype )
+				{
+					case AT_SetTableSpace:
+						ATPartsPrepSetTableSpace(wqueue, rel, basecmd, cmd->partoids);
+						break;
+						
+					default:
+						/* Not a for-each-subsumed-part-type command. */
+						break;
+				}
+			}
+			else if (Gp_role == GP_ROLE_UTILITY)
+			{
+				if (basic_AT_cmd(cmd)->subtype == AT_SetTableSpace)
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("SET TABLESPACE is not supported in utility mode")));
+			}
+			pass = AT_PASS_MISC;
+			break;				
+			
+		case AT_PartAdd:				/* Add */
 		case AT_PartCoalesce:			/* Coalesce */
 		case AT_PartDrop:				/* Drop */
 		case AT_PartRename:				/* Rename */
@@ -4925,7 +5094,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
  * conflicts).
  */
 static void
-ATRewriteCatalogs(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
+ATRewriteCatalogs(List **wqueue, 
+				  int oidInfoCount, TableOidInfo * oidInfo, List **poidmap)
 {
 	int			pass;
 	ListCell   *ltab;
@@ -4959,7 +5129,7 @@ ATRewriteCatalogs(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 			{
 				AlterTableCmd *atc = lfirst(lcmd);
 
-				ATExecCmd(tab, rel, (AlterTableCmd *) lfirst(lcmd));
+				ATExecCmd(tab, rel, atc);
 
 				/*
 				 * SET DISTRIBUTED BY() calls RelationForgetRelation(),
@@ -4983,7 +5153,8 @@ ATRewriteCatalogs(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 }
 
 static void
-ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
+ATAddToastIfNeeded(List **wqueue, 
+				   int oidInfoCount, TableOidInfo * oidInfo, List **poidmap)
 {
 
 	ListCell   *ltab;
@@ -5255,7 +5426,8 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
  * ATRewriteTables: ALTER TABLE phase 3
  */
 static void
-ATRewriteTables(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
+ATRewriteTables(List **wqueue, 
+				int oidInfoCount, TableOidInfo * oidInfo, List **poidmap)
 {
 	ListCell   *ltab;
 	int			m = 0;
@@ -5373,13 +5545,14 @@ ATRewriteTables(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 			 * Rebuild each index on the relation (but not the toast table,
 			 * which is all-new anyway).  We do not need
 			 * CommandCounterIncrement() because reindex_relation does it.
-			 *
-			 * MPP-8011 - XXX - this is still broken
-			 * 
+			 * reindex_relation also checks for non-NULL poidmap, so we don't
+			 * need to.
+			 *	
 			 * It is not legal to reindex without dispatch of the associated
 			 * oids!
 			 */
-			reindex_relation(tab->relid, false, false, false, NULL, false);
+			reindex_relation(tab->relid, false, false, false, 
+							 poidmap, poidmap && Gp_role == GP_ROLE_DISPATCH);
 		}
 		else
 		{
@@ -9647,23 +9820,38 @@ ATExecDropCluster(Relation rel)
 /*
  * ALTER TABLE SET TABLESPACE
  */
-static void
-ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel, char *tablespacename)
+
+/* 
+ * Convert tablespace name to pg_tablespace Oid.  Error out if not valid and
+ * settable by the current user.
+ */
+static Oid
+get_settable_tablespace_oid(char *tablespacename)
 {
 	Oid			tablespaceId;
 	AclResult	aclresult;
-
+	
 	/* Check that the tablespace exists */
 	tablespaceId = get_tablespace_oid(tablespacename);
 	if (!OidIsValid(tablespaceId))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("tablespace \"%s\" does not exist", tablespacename)));
-
+	
 	/* Check its permissions */
 	aclresult = pg_tablespace_aclcheck(tablespaceId, GetUserId(), ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, ACL_KIND_TABLESPACE, tablespacename);
+	
+	return tablespaceId;
+}
+
+static void
+ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel, char *tablespacename)
+{
+	Oid			tablespaceId;
+
+	tablespaceId = get_settable_tablespace_oid(tablespacename);
 
 	/* Save info for Phase 3 to do the real work */
 	if (OidIsValid(tab->newTableSpace))
@@ -9672,6 +9860,56 @@ ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel, char *tablespacename)
 				 errmsg("cannot have multiple SET TABLESPACE subcommands"),
 						   errOmitLocation(true)));
 	tab->newTableSpace = tablespaceId;
+}
+
+/* 
+ * ATPartsPrepSetTableSpace is like ATPrepSetTableSpace except that it generates work queue
+ * entries for the command (an ALTER TABLE ... SET TABLESPACE ...)  for each part within the 
+ * sub-hierarchy indicated by the oid list. 
+ *
+ * Designed to be called from the AT_PartAlter case of ATPrepCmd.
+ */
+static void
+ATPartsPrepSetTableSpace(List **wqueue, Relation rel, AlterTableCmd *cmd, List *oids)
+{
+	ListCell *lc;
+	Oid tablespaceId;
+	int pass = AT_PASS_MISC;
+	
+	Assert( cmd && cmd->subtype == AT_SetTableSpace );
+	Assert( oids );
+	
+	tablespaceId = get_settable_tablespace_oid(cmd->name);
+	Assert(tablespaceId);
+	
+	ereport(DEBUG1,
+			(errmsg("Expanding ALTER TABLE %s SET TABLESPACE...", 
+					RelationGetRelationName(rel))
+			 ));
+	
+	foreach(lc, oids)
+	{
+		Oid partrelid = lfirst_oid(lc);
+		Relation partrel = relation_open(partrelid, NoLock); 
+		/* NoLock because we should be holding AccessExclusiveLock on parent */
+		AlterTableCmd *partcmd = copyObject(cmd);
+		AlteredTableInfo *parttab = ATGetQueueEntry(wqueue, partrel);
+		if( OidIsValid(parttab->newTableSpace) )
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("conflicting SET TABLESPACE subcommands for \"%s\"",
+							RelationGetRelationName(partrel)),
+					 errOmitLocation(true)));
+		
+		parttab->newTableSpace = tablespaceId;
+		parttab->subcmds[pass] = lappend(parttab->subcmds[pass], partcmd);
+		
+		ereport(DEBUG1,
+				(errmsg("Will SET TABLESPACE on \"%s\"", 
+						RelationGetRelationName(partrel))));
+		
+		relation_close(partrel, NoLock);
+	}
 }
 
 /*
@@ -12882,6 +13120,9 @@ add_partition_rule(PartitionRule *rule)
 	heap_close(rulerel, NoLock);
 }
 
+/*
+ * Oid of the row of pg_partition corresponding to the given relation and level.
+ */
 static Oid
 get_part_oid(Oid rootrelid, int16 parlevel, bool istemplate)
 {
@@ -12889,8 +13130,20 @@ get_part_oid(Oid rootrelid, int16 parlevel, bool istemplate)
 	Oid paroid = InvalidOid;
 	ScanKeyData key[3];
 	SysScanDesc scan;
+	
+	/* select oid
+	 * from pg_partition
+	 * where
+	 *     parrelid = :rootrelid and
+	 *     parlevel = :parlevel and
+	 *     paristemplate = :istemplate;
+	 */
 	Relation rel = heap_open(PartitionRelationId, AccessShareLock);
-
+	
+	/* pg_partition and  pg_partition_rule are populated only on the 
+	 * entry database, so our result is only meaningful there. */
+	Insist(Gp_segment == -1);
+	
 	ScanKeyInit(&key[0],
 				Anum_pg_partition_parrelid,
 				BTEqualStrategyNumber, F_OIDEQ,
@@ -13600,6 +13853,10 @@ ruleMakePartitionRule(HeapTuple tuple, TupleDesc tupdesc, MemoryContext mcxt)
 	return rule;
 }
 
+/*
+ * Construct a Partition node from a pg_partition tuple and its description.
+ * Result is in the given memory context.
+ */
 Partition *
 partMakePartition(HeapTuple tuple, TupleDesc tupdesc, MemoryContext mcxt)
 {
@@ -13639,18 +13896,43 @@ partMakePartition(HeapTuple tuple, TupleDesc tupdesc, MemoryContext mcxt)
 	return p;
 }
 
+/*
+ * Construct a PartitionNode-PartitionRule tree for the given part. 
+ * Recurs to contruct branches.  Note that the ParitionRule (and,
+ * hence, the Oid) of the given part itself is not included in the
+ * result.
+ *
+ *    relid			--	pg_class.oid of the partitioned table
+ *    level			--	partitioning level
+ *    parent		--	pg_partition_rule.oid of the parent of 
+ *    inctemplate	--	should the tree include template rules?
+ */
 PartitionNode *
 get_parts(Oid relid, int2 level, Oid parent, bool inctemplate,
 		  MemoryContext mcxt)
 {
-	PartitionNode *n;
+	PartitionNode *pnode = NULL;
 	MemoryContext oldcxt;
 	ScanKeyData key[3];
 	HeapTuple tuple;
 	Relation rel;
 	SysScanDesc scan;
 	List *rules = NIL;
-
+	
+	/* Though pg_partition and  pg_partition_rule are populated only
+	 * on the entry database, we accept calls from QEs running on a
+	 * segment database, but always return NULL; so our result is
+	 * only meaningful on the entry database. */
+	if (Gp_segment != -1)
+		return pnode;
+	
+	/* select oid as partid, * 
+	 * from pg_partition
+	 * where 
+	 *     parrelid = :relid and 
+	 *     parlevel = :level and 
+	 *     par_istemplate = :inctemplate;
+	 */
 	rel = heap_open(PartitionRelationId, AccessShareLock);
 
 	ScanKeyInit(&key[0],
@@ -13674,25 +13956,28 @@ get_parts(Oid relid, int2 level, Oid parent, bool inctemplate,
 
 	if (HeapTupleIsValid(tuple))
 	{
-		n = makeNode(PartitionNode);
-		n->part = partMakePartition(tuple, RelationGetDescr(rel), mcxt);
-	}
-	else
-	{
-		systable_endscan(scan);
-		heap_close(rel, AccessShareLock);
-		return NULL;
+		pnode = makeNode(PartitionNode);
+		pnode->part = partMakePartition(tuple, RelationGetDescr(rel), mcxt);
 	}
 
 	systable_endscan(scan);
 	heap_close(rel, AccessShareLock);
+	
+	if ( ! pnode )
+		return pnode;
 
+	/* select * 
+	 * from pg_partition_rule 
+	 * where 
+	 *     paroid = :pnode->part->partid and -- pg_partition.oid
+	 *     parparentrule = :parent;
+	 */
 	rel = heap_open(PartitionRuleRelationId, AccessShareLock);
 
 	ScanKeyInit(&key[0],
 				Anum_pg_partition_rule_paroid,
 				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(n->part->partid));
+				ObjectIdGetDatum(pnode->part->partid));
 	ScanKeyInit(&key[1],
 				Anum_pg_partition_rule_parparentrule,
 				BTEqualStrategyNumber, F_INT2EQ,
@@ -13710,7 +13995,7 @@ get_parts(Oid relid, int2 level, Oid parent, bool inctemplate,
 								   inctemplate, mcxt);
 
 		if (rule->parisdefault)
-			n->default_part = rule;
+			pnode->default_part = rule;
 		else
 		{
 			oldcxt = MemoryContextSwitchTo(mcxt);
@@ -13723,12 +14008,12 @@ get_parts(Oid relid, int2 level, Oid parent, bool inctemplate,
 	 * drop the last partition before re-adding the new pieces, which
 	 * violates this invariant
 	 */
-/*	Assert(inctemplate || list_length(rules) || n->default_part); */
-	n->rules = rules;
+/*	Assert(inctemplate || list_length(rules) || pnode->default_part); */
+	pnode->rules = rules;
 
 	systable_endscan(scan);
 	heap_close(rel, AccessShareLock);
-	return n;
+	return pnode;
 }
 
 PartitionNode *
@@ -13913,6 +14198,9 @@ num_partition_levels(PartitionNode *pn)
 	return level;
 }
 
+/* Return the pg_class Oids of the relations representing parts of the
+ * PartitionNode tree headed by the argument PartitionNode.
+ */
 List *
 all_partition_relids(PartitionNode *pn)
 {
@@ -13942,22 +14230,66 @@ all_partition_relids(PartitionNode *pn)
 	}
 }
 
+/* Return the pg_class Oids of the relations representing the parts
+ * of the PartitionRule tree headed by the argument PartitionRule.
+ *
+ * This local function is similar to all_partition_relids but enters
+ * at a PartitionRule which is more convenient in some cases, e.g.,
+ * on the topRule of a PgPartRule.
+ */
+static List *
+all_prule_relids(PartitionRule *prule)
+{
+	ListCell *lcr;
+	PartitionNode *pnode = NULL;
+	
+	List *oids = NIL; /* of pg_class Oid */
+	
+	if ( prule )
+	{
+		oids = lappend_oid(oids, prule->parchildrelid);
+		
+		pnode = prule->children;
+		if ( pnode )
+		{
+			oids = list_concat(oids, all_prule_relids(pnode->default_part));
+			foreach (lcr, pnode->rules)
+			{
+				PartitionRule *child = (PartitionRule*)lfirst(lcr);
+				oids = list_concat(oids, all_prule_relids(child));
+			}
+		}
+	}
+	return oids;
+}
+
 /* Is the given relation the top relation of a partitioned table?
  *
  *   exists (select *
  *           from pg_partition
  *           where parrelid = relid)
  *
- * False for interior branches and leaves.
+ * False for interior branches and leaves or when called other
+ * then on the entry database, i.e., only meaningful on the
+ * entry database.
  */
 bool
 rel_is_partitioned(Oid relid)
 {
-	Relation rel = heap_open(PartitionRelationId, AccessShareLock);
+	Relation rel;
 	ScanKeyData key;
 	SysScanDesc scan;
 	HeapTuple tuple;
 	bool found = false;
+	
+	/* Though pg_partition and pg_partition_rule are only populated
+	 * on the entry database, we accept calls from QEs running a
+	 * segment, but return false.
+	 */
+	if (Gp_segment != -1)
+		return false;
+
+	rel = heap_open(PartitionRelationId, AccessShareLock);
 
 	ScanKeyInit(&key,
 				Anum_pg_partition_parrelid,
@@ -13995,7 +14327,11 @@ rel_partition_get_master(Oid relid)
 	HeapTuple tuple;
 	Oid paroid = InvalidOid;
 	Oid masteroid = InvalidOid;
-
+	
+	/* pg_partition and  pg_partition_rule are populated only on the 
+	 * entry database, so our result is only meaningful there. */
+	Insist(Gp_segment == -1);
+	
 	ScanKeyInit(&key,
 				Anum_pg_partition_rule_parchildrelid,
 				BTEqualStrategyNumber, F_OIDEQ,
@@ -14053,7 +14389,12 @@ static List *rel_get_part_path1(Oid relid)
 	Oid			 paroid		   = InvalidOid;
 	Oid			 parparentrule = InvalidOid;
 	List		*lrelid		   = NIL;
+	
 
+	/* pg_partition and  pg_partition_rule are populated only on the 
+	 * entry database, so our result is only meaningful there. */
+	Insist(Gp_segment == -1);
+	
 	/* use the relid of the table to find the first rule */
 	ScanKeyInit(&key,
 				Anum_pg_partition_rule_parchildrelid,
@@ -14445,15 +14786,26 @@ rel_needs_long_lock(Oid relid)
 	return needs_lock;
 }
 
+/*
+ *
+ */
 bool
 rel_is_child_partition(Oid relid)
 {
-	Relation rel = heap_open(PartitionRuleRelationId, AccessShareLock);
+	Relation rel;
 	ScanKeyData key;
 	SysScanDesc scan;
 	HeapTuple tuple;
 	bool found;
-
+	
+	/* Though pg_partition and  pg_partition_rule are populated only on the 
+	 * entry database, are some unguarded calles that may come from segments,
+	 * so we return false, even though we don't actually know. */
+	if (Gp_segment != -1)
+		return false;
+	
+	rel = heap_open(PartitionRuleRelationId, AccessShareLock);
+	
 	ScanKeyInit(&key,
 				Anum_pg_partition_rule_parchildrelid,
 				BTEqualStrategyNumber, F_OIDEQ,
@@ -14493,7 +14845,11 @@ rel_is_leaf_partition(Oid relid)
 	Oid partitioned_rel = InvalidOid; /* OID of the root table of the
 									   * partition set
 									   */
-
+	
+	/* pg_partition and  pg_partition_rule are populated only on the 
+	 * entry database, so our result is only meaningful there. */
+	Insist(Gp_segment == -1);
+	
 	/*
 	 * Find the pg_partition_rule entry to see if this is a child at
 	 * all and, if so, to locate the OID for the pg_partition entry.
@@ -18005,6 +18361,7 @@ ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
 				break;
 
 		/* Next, list of ALTER TABLE commands applicable to a child table */
+		case AT_SetTableSpace:			/* Set Tablespace */
 		case AT_SetDistributedBy:	/* SET DISTRIBUTED BY */
 				bPartitionCmd = false;
 				break;
@@ -18804,7 +19161,11 @@ exchange_part_rule(Oid oldrelid, Oid newrelid)
 	SysScanDesc scan;
 	HeapTuple tuple;
 	Relation catalogRelation;
-
+	
+	/* pg_partition and  pg_partition_rule are populated only on the 
+	 * entry database, so our result is only meaningful there. */
+	Insist(Gp_segment == -1);
+	
 	catalogRelation = heap_open(PartitionRuleRelationId, RowExclusiveLock);
 	ScanKeyInit(&key,
 				Anum_pg_partition_rule_parchildrelid,

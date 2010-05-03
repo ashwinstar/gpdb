@@ -887,6 +887,7 @@ _readAlterTableStmt(void)
 	READ_NODE_FIELD(relation);
 	READ_NODE_FIELD(cmds);
 	READ_ENUM_FIELD(relkind, ObjectType);
+	READ_NODE_FIELD(oidmap);
 	READ_INT_FIELD(oidInfoCount);
 	local_node->oidInfo = NULL;
 	if (local_node->oidInfoCount > 0)
@@ -922,6 +923,7 @@ _readAlterTableCmd(void)
 	READ_NODE_FIELD(transform);
 	READ_ENUM_FIELD(behavior, DropBehavior);
 	READ_BOOL_FIELD(part_expanded);
+	READ_NODE_FIELD(partoids);
 
 	READ_DONE();
 }

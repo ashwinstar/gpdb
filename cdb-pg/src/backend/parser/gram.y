@@ -3668,18 +3668,9 @@ OptTabPartitionStorageAttr: WITH definition TABLESPACE name
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
                     pc->partid = NULL;
                     pc->arg1 = (Node *)$2;
-                    pc->arg2 = (Node *)$4;
+                    pc->arg2 = (Node *)makeString($4);
                     pc->location = @1;
 					$$ = (Node *)pc;
-
-                    if (pc->arg2 && !gp_enable_tablespaces)
-                    {
-                        ereport(ERROR,
-                                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                                 errmsg("TABLESPACE not supported"),
-                                 scanner_errposition(@1)));
-                    }
-
                 }
 			| WITH definition
 				{
@@ -3690,34 +3681,16 @@ OptTabPartitionStorageAttr: WITH definition TABLESPACE name
                     pc->arg2 = NULL;
                     pc->location = @1;
 					$$ = (Node *)pc;
-
-                    if (pc->arg2 && !gp_enable_tablespaces)
-                    {
-                        ereport(ERROR,
-                                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                                 errmsg("TABLESPACE not supported"),
-                                 scanner_errposition(@1)));
-                    }
-
-				}
+ 				}
 			| TABLESPACE name 
 				{
                     /* re-use alterpartitioncmd struct here... */
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
                     pc->partid = NULL;
                     pc->arg1 = NULL;
-                    pc->arg2 = (Node *)$2;
+                    pc->arg2 = (Node *)makeString($2);
                     pc->location = @1;
 					$$ = (Node *)pc;
-
-                    if (pc->arg2 && !gp_enable_tablespaces)
-                    {
-                        ereport(ERROR,
-                                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                                 errmsg("TABLESPACE not supported"),
-                                 scanner_errposition(@1)));
-                    }
-
 				}
 			| /*EMPTY*/ { $$ = NULL; }
 		;
@@ -12739,8 +12712,8 @@ makeAddPartitionCreateStmt(Node *n, Node *subSpec)
 
     ct->oncommit = ONCOMMIT_NOOP;
         
-    if (pc_StAttr)
-        ct->tablespacename = (char *)pc_StAttr->arg2;
+    if (pc_StAttr && pc_StAttr->arg2)
+        ct->tablespacename = strVal(pc_StAttr->arg2);
     else
         ct->tablespacename = NULL;
 
