@@ -186,15 +186,17 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
          * XXX We do not handle add/drop column etc nicely yet.
          */
 
-        /*
-         * Assuming full vertical partition, we want to include
-         * the following in the seg table.
-         *
-         * segno int,			-- whatever purpose ao use it
-         * tupcount bigint 		-- total tup
-         * varblockcount bigint,	-- total varblock
-         * vpinfo varbinary(max)        -- vertial partition info encoded in bianry.
-         */
+		/*
+		 * Assuming full vertical partition, we want to include
+		 * the following in the seg table.
+		 *
+		 * segno int,               -- whatever purpose ao use it
+		 * tupcount bigint          -- total tup
+		 * varblockcount bigint,    -- total varblock
+		 * vpinfo varbinary(max)    -- vertical partition info encoded in 
+		 *                             binary. NEEDS TO BE REFACTORED
+		 *                             INTO MULTIPLE COLUMNS!!
+		 */
 
         tupdesc = CreateTemplateTupleDesc(4, false);
 
