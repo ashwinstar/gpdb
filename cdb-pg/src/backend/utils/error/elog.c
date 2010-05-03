@@ -2516,7 +2516,10 @@ gp_write_pipe_chunk(const char *buffer, int len)
 
 	while (retry_no < NUM_RETRIES)
 	{
-		CHECK_FOR_INTERRUPTS();
+		if (pthread_equal(main_tid, pthread_self()))
+		{
+			CHECK_FOR_INTERRUPTS();
+		}
 
 		retry_no++;
 
