@@ -1080,16 +1080,22 @@ static void PersistentRecovery_ScanTuple(
 							&serialNum);
 	Assert(serialNum == persistentSerialNum);
 
-	if (fsObjType == PersistentFsObjType_RelationFile)
+	if (state != PersistentFileSysState_Free &&
+		fsObjType == PersistentFsObjType_RelationFile)
 	{
 		relStorageMgr = 
 			(PersistentFileSysRelStorageMgr)
 							DatumGetInt16(
 									values[Anum_gp_persistent_relation_node_relation_storage_manager - 1]);
+		
+		if (!PersistentFileSysRelStorageMgr_IsValid(relStorageMgr))
+			elog(ERROR, "Relation storage manager for persistent '%s' for Crash Recovery is invalid (%d)",
+				 PersistentFileSysObjName_TypeAndObjectName(&fsObjName),
+				 relStorageMgr);
 	}
 	else
 	{
-		// Not a 'Relation File'.
+		// 'Free' entry or not a 'Relation File'.
 		relStorageMgr = PersistentFileSysRelStorageMgr_None;
 	}
 	

@@ -246,6 +246,19 @@ FileRepResync_DecAppendOnlyCommitCount(int	count)
 	}		
 }
 
+int
+FileRepResync_GetAppendOnlyCommitCount(void)
+{
+	if (fileRepResyncShmem != NULL)
+	{
+		return fileRepResyncShmem->appendOnlyCommitCount;
+	}
+	else
+	{
+		return 0;
+	}
+}
+
 XLogRecPtr
 FileRepResync_GetEndIncrResyncLSN(void)
 {

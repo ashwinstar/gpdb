@@ -1809,6 +1809,14 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 	HASH_SEQ_STATUS iterateStatus;
 	AppendOnlyMirrorResyncEofs *entry;
 
+	if (AppendOnlyMirrorResyncEofsTable == NULL)
+		return;
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "Storage Manager: Enter Append-Only mirror resync eofs list entries (Append-Only commit work count %d)",
+			 FileRepPrimary_GetAppendOnlyCommitWorkCount());
+
 	hash_seq_init(
 			&iterateStatus, 
 			AppendOnlyMirrorResyncEofsTable);
@@ -1844,14 +1852,20 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 				 entry->mirrorNewEof);
 
 		appendOnlyMirrorResyncEofsCount++;
-		FileRepPrimary_IntentAppendOnlyCommitWork();
 	}
 
 	/*
-	 * For both COMMIT and ABORT, release our intent to add Append-Only mirror resync EOFs.
+	 * Only for COMMIT do we collect Append-Only mirror resync EOFs for the commit record and issue intents.
 	 */
-	if (appendOnlyMirrorResyncEofsCount > 0)
+	if (forCommit &&
+		appendOnlyMirrorResyncEofsCount > 0)
 		FileRepPrimary_FinishedAppendOnlyCommitWork(appendOnlyMirrorResyncEofsCount);
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "Storage Manager: Exit Append-Only mirror resync eofs list entries (Append-Only commit work count %d)",
+			 FileRepPrimary_GetAppendOnlyCommitWorkCount());
+
 }
 
 /*
@@ -2251,8 +2265,9 @@ smgrGetAppendOnlyMirrorResyncEofs(PersistentEndXactAppendOnlyMirrorResyncEofs **
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
-			 "Storage Manager: Get Append-Only mirror resync eofs list entries (current transaction nest level %d)",
-			 nestLevel);
+			 "Storage Manager: Get Append-Only mirror resync eofs list entries (current transaction nest level %d, Append-Only commit work count %d)",
+			 nestLevel,
+			 FileRepPrimary_GetAppendOnlyCommitWorkCount());
 
 	rptr = (PersistentEndXactAppendOnlyMirrorResyncEofs *) 
 							palloc(nentries * sizeof(PersistentEndXactAppendOnlyMirrorResyncEofs));

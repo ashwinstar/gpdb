@@ -2290,7 +2290,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
 		&gp_disable_tuple_hints,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
  	{
  		{"debug_print_server_processes", PGC_SUSET, LOGGING_WHAT,

@@ -117,6 +117,12 @@ FileRepPrimary_FinishedAppendOnlyCommitWork(int count)
 	FileRepResync_DecAppendOnlyCommitCount(count);
 }
 
+int 
+FileRepPrimary_GetAppendOnlyCommitWorkCount(void)
+{
+	return FileRepResync_GetAppendOnlyCommitCount();
+}
+
 /*
  *
  * If (dataState == Change Logging) then mirroring is not required.

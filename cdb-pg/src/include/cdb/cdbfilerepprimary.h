@@ -31,6 +31,8 @@ extern void FileRepPrimary_IntentAppendOnlyCommitWork(void);
 
 extern void FileRepPrimary_FinishedAppendOnlyCommitWork(int count);
 
+extern int FileRepPrimary_GetAppendOnlyCommitWorkCount(void);
+
 // -----------------------------------------------------------------------------
 // Construct Messages for Open, Flush, Close, and Write 
 // -----------------------------------------------------------------------------

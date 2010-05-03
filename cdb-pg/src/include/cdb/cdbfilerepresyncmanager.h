@@ -78,6 +78,8 @@ extern void FileRepResync_IncAppendOnlyCommitCount(void);
 
 extern void FileRepResync_DecAppendOnlyCommitCount(int	count);
 
+extern int FileRepResync_GetAppendOnlyCommitCount(void);
+
 extern bool FileRepResync_IsTransitionFromResyncToInSync(void);
 
 extern bool FileRepResync_IsReCreate(void);
