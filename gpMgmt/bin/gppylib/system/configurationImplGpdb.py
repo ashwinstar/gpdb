@@ -73,7 +73,7 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
         conn = None
         try:
             conn = dbconn.connect(self.__masterDbUrl, self.__useUtilityMode)
-            dbconn.execSQL(conn, "SELECT PG_ELOG(" +
+            dbconn.execSQL(conn, "SELECT GP_ELOG(" +
                         self.__toSqlCharValue(msg) + "," +
                         ("true" if sendAlerts else "false") + ")")
         finally:
