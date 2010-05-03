@@ -26,10 +26,14 @@ EXECNAME = os.path.split(__file__)[-1]
 MAX_PARALLEL_REINDEX=16
 
 GET_BITMAP_INDEXES_SQL="""
-SELECT relname 
+SELECT pg_class.oid, relname 
 FROM pg_class, pg_am 
 WHERE pg_class.relam = pg_am.oid 
 AND pg_am.amname = 'bitmap'
+"""
+
+GET_BITMAP_INDEX_DEF_SQL="""
+SELECT pg_get_indexdef(%s)
 """
 
 REINDEX_SQL="""
@@ -150,11 +154,15 @@ def parseargs():
     parser.add_option_group(optgrp)
     
     optgrp = OptionGroup(parser, 'Mode Options')
-    optgrp.add_option('-m', '--mode', type='choice', choices=['d','drop','r','reindex'],
-                      help='Mode of operation.  Can be either r[eindex] or d[rop].')
+    optgrp.add_option('-m', '--mode', type='choice', choices=['d','drop','r','reindex', 'l', 'list'],
+                      help='Mode of operation.  Can be either r[eindex], d[rop] or l[ist].  '
+                      '\'list\' can be used with --outfile to dump the CREATE INDEX sql file')
     parser.add_option_group(optgrp)
     
     optgrp = OptionGroup(parser, 'Logging Options')
+    optgrp.add_option('-o', '--outfile', type='string', metavar='<outfile>', 
+                      help='Create a sql file containing the CREATE INDEX sql of all bitmap indexes.' 
+                      'These statements will be written as the indexes are dropped or reindexed.')
     optgrp.add_option('-v','--verbose', action='store_true', help='Debug output.')
     parser.add_option_group(optgrp)
 
@@ -182,8 +190,8 @@ def parseargs():
         logger.error('Invalid port given.  Value must be less than 65535.')
         parser.exit(1)
         
-    if options.mode not in ['d', 'drop', 'r', 'reindex']:
-        logger.error('Invalid mode option.  Must be either \'drop\' or \'reindex\'')
+    if options.mode not in ['d', 'drop', 'r', 'reindex', 'l', 'list']:
+        logger.error('Invalid mode option.  Must be either \'drop\', \'reindex\', or \'list\'.')
         parser.exit(1)
         
     if options.mode == 'drop' or options.mode == 'd':
@@ -220,7 +228,7 @@ def get_bitmap_indexes(options):
             for idx in cur:
                 logger.debug('Adding bitmap index %s from database %s' % 
                              (idx[0], db[0]))
-                bitmap_indexes.append((db[0], idx[0]))
+                bitmap_indexes.append((db[0], idx[0], idx[1]))
             conn.close()
     except:
         raise
@@ -228,30 +236,60 @@ def get_bitmap_indexes(options):
     return bitmap_indexes
 
 
+def get_bitmap_index_def(options, db_name, oid):
+    conn = None
+    try:
+        dburl = dbconn.DbURL(hostname=options.hostname, port=options.port, dbname=db_name)
+        conn = dbconn.connect(dburl)
+        index_def = dbconn.execSQL(conn, GET_BITMAP_INDEX_DEF_SQL % oid).fetchall()
+        if len(index_def) == 1:
+            return index_def[0][0]
+        else:
+            return None
+    except:
+        pass
+    finally:
+        if conn:
+            conn.close()
+
 def update_bitmap_indexes(options, bitmap_indexes):
     """Creates a worker pool and adds a command for every index
     that needs to be reindexed or dropped."""
     
     pool = WorkerPool(numWorkers=options.parallel)
-    
+    fp = None
     dburl = dbconn.DbURL(hostname=options.hostname, port=options.port)
-    
-    for (db_name, idx_name) in bitmap_indexes:
-        logger.debug('Adding reindex command for %s in database %s to pool.' % 
-                     (idx_name, db_name))
-        if options.mode == 'reindex' or options.mode == 'r':
-            cmd = ReindexCommand('Reindex %s' % idx_name, dburl.pghost, 
-                                 dburl.pgport, db_name, idx_name)
-        elif options.mode == 'drop' or options.mode == 'd':
-            cmd = DropIndexCommand('Drop Index %s' % idx_name, dburl.pghost,
-                                   dburl.pgport, db_name, idx_name)
-        else:
-            # just a safety check, but this should have been caught in the 
-            # option parser.
-            logger.error('Invalid mode.  Exiting...')
-            sys.exit(1)
+    try:
+        if options.outfile:
+            fp = open(options.outfile, 'w')
+        for (db_name, idx_oid, idx_name) in bitmap_indexes:
+            logger.debug('Adding reindex command for %s in database %s to pool.' % 
+                         (idx_name, db_name))
+            if options.outfile:
+                index_def = get_bitmap_index_def(options, db_name, idx_oid)
+                if index_def:
+                    fp.write("\\c %s;\n" % db_name)
+                    fp.write("%s;\n\n" % index_def)
+            if options.mode == 'reindex' or options.mode == 'r':
+                cmd = ReindexCommand('Reindex %s' % idx_name, dburl.pghost, 
+                                     dburl.pgport, db_name, idx_name)
+                pool.addCommand(cmd)
+            elif options.mode == 'drop' or options.mode == 'd':
+                cmd = DropIndexCommand('Drop Index %s' % idx_name, dburl.pghost,
+                                       dburl.pgport, db_name, idx_name)
+                pool.addCommand(cmd)
+            elif options.mode == 'list' or options.mode == 'l':
+                logger.info('Bitmap index: %s.%s' % (db_name, idx_name))
+            else:
+                # just a safety check, but this should have been caught in the 
+                # option parser.
+                logger.error('Invalid mode.  Exiting...')
+                sys.exit(1)
             
-        pool.addCommand(cmd)
+    except Exception, ex:
+        pool.haltWork()
+        pool.joinWorkers()
+        raise ex
 
     logger.info('Waiting for workers to finish...')
     try:
@@ -269,7 +307,9 @@ def update_bitmap_indexes(options, bitmap_indexes):
     except:
         # Ok to ignore this, we are done.
         pass
-
+    
+    if fp:
+        fp.close()
 
 
 logger = get_default_logger()
