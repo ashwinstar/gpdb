@@ -3818,7 +3818,6 @@ class GPUpgrade:
                 logger.info("Stage 2 complete")
                 logger.info("--------------------------------------------------")
 
-                self.snapshot = True
                 if self.snapshot and not self.resume:
                     logger.info("""
 
