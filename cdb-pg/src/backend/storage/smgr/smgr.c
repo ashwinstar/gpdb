@@ -1503,7 +1503,29 @@ AppendOnlyMirrorResyncEofs_Merge(
 			entry->mirrorLossEof = mirrorLossEof;
 		}
 		else
-			Assert(entry->mirrorLossEof < mirrorLossEof);	// Old value should be less.  Keep it.
+		{
+			/*
+			 * Old value should be less.  Keep it.
+			 */
+			if (entry->mirrorLossEof >= mirrorLossEof)
+			{
+				elog(ERROR,
+					"%s Append-Only mirror resync mirror loss EOF current value should be less : %u/%u/%u, segment file #%d, relation name '%s' (transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", input mirror loss EOF " INT64_FORMAT ", current mirror loss EOF " INT64_FORMAT ", input mirror new EOF " INT64_FORMAT ", current mirror new EOF " INT64_FORMAT ")",
+					(found ? "Merge" : "New"),
+					entry->key.relFileNode.spcNode,
+					entry->key.relFileNode.dbNode,
+					entry->key.relFileNode.relNode,
+					entry->key.segmentFileNum,
+					(entry->relationName == NULL ? "<null>" : entry->relationName),
+					entry->key.nestLevel,
+					ItemPointerToString(&entry->persistentTid),
+					entry->persistentSerialNum,
+					mirrorLossEof,
+					entry->mirrorLossEof,
+					mirrorNewEof,
+					entry->mirrorNewEof);
+			}
+		}
 		
 		if (mirrorNewEof > entry->mirrorNewEof)
 			entry->mirrorNewEof = mirrorNewEof;
