@@ -35,7 +35,7 @@ class GpFaultProberImplGpdb(GpFaultProber):
 
         logger.debug("Pausing fault prober")
         
-        conn = dbconn.connect(self.__masterDbUrl, False)
+        conn = dbconn.connect(self.__masterDbUrl, True) # use utility mode so we don't do any segment connection stuff
         dbconn.execSQL( conn, "set gp_fts_probe_pause = on")
         conn.close()
 
@@ -47,7 +47,7 @@ class GpFaultProberImplGpdb(GpFaultProber):
 
         logger.debug("Unpausing fault prober")
 
-        conn = dbconn.connect(self.__masterDbUrl, False)
+        conn = dbconn.connect(self.__masterDbUrl, True) # use utility mode so we don't do any segment connection stuff
         dbconn.execSQL( conn, "set gp_fts_probe_pause = off")
         conn.close()
         self.__isPaused = False

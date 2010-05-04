@@ -108,7 +108,7 @@ static void FileRepMirror_DropFilesFromDir(FileName fileName);
 
 static int SegmentFileFillZero(File fd, int64 writeOffset);
 
-static int FileRepMirror_DropBufferPoolSegmentFiles(FileName  fileName);
+static int FileRepMirror_DropBufferPoolSegmentFiles(FileName  fileName, int segmentFileNum);
 
 static int FileRepMirror_Drop(FileName fileName);
 
@@ -1447,6 +1447,27 @@ FileRepMirror_RunConsumer(void)
 					break;
 				}
 				
+				if (fileRepMessageHeader->fileRepRelationType == FileRepRelationTypeBufferPool)
+				{
+					FileName	fileNameLocal = NULL;
+					int			segmentFileNumLocal = fileRepMessageHeader->fileRepIdentifier.fileRepRelationIdentifier.segmentFileNum;
+					
+					fileRepMessageHeader->fileRepIdentifier.fileRepRelationIdentifier.segmentFileNum = 0;
+					
+					fileNameLocal = FileRep_GetFileName(
+												   fileRepMessageHeader->fileRepIdentifier,
+												   fileRepMessageHeader->fileRepRelationType);
+					
+					fileRepMessageHeader->fileRepIdentifier.fileRepRelationIdentifier.segmentFileNum = segmentFileNumLocal;			
+					
+					status = FileRepMirror_DropBufferPoolSegmentFiles(fileNameLocal, 
+																	  segmentFileNumLocal);
+					if (fileNameLocal) {
+						pfree(fileNameLocal);
+						fileNameLocal = NULL;
+					}							
+				}
+				
 				break;				
 				
 			case FileRepOperationReconcileXLogEof:
@@ -1627,8 +1648,8 @@ FileRepMirror_RunConsumer(void)
 						break;
 						
 					case FileRepRelationTypeBufferPool:
-						
-						status = FileRepMirror_DropBufferPoolSegmentFiles(fileName);
+						/* Buffer Pool drops segmentFileNum = 0 */
+						status = FileRepMirror_DropBufferPoolSegmentFiles(fileName, 0);
 						if (status != STATUS_OK)
 						{
 							break;
@@ -2261,7 +2282,7 @@ FileRepMirror_Drop(FileName fileName)
  *
  */
 static int
-FileRepMirror_DropBufferPoolSegmentFiles(FileName  fileName)
+FileRepMirror_DropBufferPoolSegmentFiles(FileName  fileName, int segmentFileNum)
 {
 	char	tmp[MAXPGPATH+1];
 	char	fileNameLocal[MAXPGPATH+1];
@@ -2285,7 +2306,7 @@ FileRepMirror_DropBufferPoolSegmentFiles(FileName  fileName)
 		{
 			char	*match = g.gl_pathv[n];
 			int		scanCount;
-			int		segmentFileNum;
+			int		segmentFileNumLocal;
 			
 			if (strncmp(match, tmp, constantPrefixLen) != 0)
 			{
@@ -2293,15 +2314,20 @@ FileRepMirror_DropBufferPoolSegmentFiles(FileName  fileName)
 				continue;
 			}
 			
-			scanCount = sscanf(&match[constantPrefixLen], "%u", &segmentFileNum);
+			scanCount = sscanf(&match[constantPrefixLen], "%u", &segmentFileNumLocal);
 			
-			if (segmentFileNum <= 0)
+			if (segmentFileNumLocal <= 0)
 			{
-				elog(LOG, "LOG(filerep): Invalid segment file num:'%u' ", segmentFileNum);
+				elog(LOG, "LOG(filerep): Invalid segment file num:'%u' ", segmentFileNumLocal);
 				continue;
 			}
 			
-			sprintf(fileNameLocal, "%s.%u", fileName, segmentFileNum);
+			if (segmentFileNumLocal <= segmentFileNum)
+			{
+				continue;
+			}
+			
+			sprintf(fileNameLocal, "%s.%u", fileName, segmentFileNumLocal);
 			
 			status = FileRepMirror_Drop(fileNameLocal);
 			

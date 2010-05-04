@@ -1156,7 +1156,7 @@ dbid_get_dbinfo(int16 dbid)
 }
 
 int16
-contentid_get_dbid(int16 contentid, char role)
+contentid_get_dbid(int16 contentid, char role, bool getPreferredRoleNotCurrentRole)
 {
 	int16 dbid = 0;
 	ScanKeyData key[2];
@@ -1169,7 +1169,10 @@ contentid_get_dbid(int16 contentid, char role)
 	ScanKeyInit(&key[0], Anum_gp_segment_config_content,
 				BTEqualStrategyNumber, F_INT2EQ,
 				Int16GetDatum(contentid));
-	ScanKeyInit(&key[1], Anum_gp_segment_config_role,
+
+    int roleColumn = getPreferredRoleNotCurrentRole ? Anum_gp_segment_config_preferred_role :
+                                                      Anum_gp_segment_config_role; 
+	ScanKeyInit(&key[1], roleColumn,
 				BTEqualStrategyNumber, F_CHAREQ,
 				CharGetDatum(role));
 

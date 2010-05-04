@@ -12,6 +12,7 @@ from gppylib.gplog import *
 from gppylib.utils import checkNotNone
 from gppylib.system.configurationInterface import *
 from gppylib.gparray import GpArray, GpDB
+from gppylib import gparray
 from gppylib.db import dbconn
 
 logger = get_default_logger()
@@ -114,75 +115,66 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
 
                 logger.debug("Inserting dbid %s" % seg.getSegmentDbId())
 
-                # run an insert
-                sql = "INSERT INTO pg_catalog.gp_segment_configuration\n" + \
-                      "(dbid, content, role, preferred_role, mode, status, port, hostname, address, replication_port, san_mounts)\n" + \
-                      "VALUES(\n" + \
-                        self.__toSqlIntValue(seg.getSegmentDbId()) + ",\n  " + \
-                        self.__toSqlIntValue(seg.getSegmentContentId()) + ",\n  " + \
-                        self.__toSqlCharValue(seg.getSegmentRole()) + ",\n  " + \
-                        self.__toSqlCharValue(seg.getSegmentPreferredRole()) + ",\n  " + \
-                        self.__toSqlCharValue(seg.getSegmentMode()) + ",\n  " + \
-                        self.__toSqlCharValue(seg.getSegmentStatus()) + ",\n  " + \
-                        self.__toSqlIntValue(seg.getSegmentPort()) + ",\n  " + \
-                        self.__toSqlTextValue(seg.getSegmentHostName()) + ",\n  " + \
-                        self.__toSqlTextValue(seg.getSegmentAddress()) + ",\n  " + \
-                        self.__toSqlIntValue(seg.getSegmentReplicationPort()) + ",\n  " + \
-                        "null\n" + \
-                      ")"
-                dbconn.executeUpdateOrInsert(conn, sql, 1)
+                if seg.getSegmentPreferredRole() != gparray.ROLE_MIRROR:
+                    raise Exception("Internal error: Can only add new mirrors")
+                if seg.getSegmentRole() != gparray.ROLE_MIRROR:
+                    raise Exception("Internal error: Can only add new mirrors")
 
-                # insert into filespaces
-                sql = "INSERT INTO pg_catalog.pg_filespace_entry (fsefsoid, fsedbid, fselocation)\n" + \
-                      "SELECT fs.oid, " + \
-                       self.__toSqlIntValue(seg.getSegmentDbId()) + ",\n" + \
-                       self.__toSqlTextValue(seg.getSegmentDataDirectory()) + "\n" + \
-                       "FROM pg_catalog.pg_filespace fs WHERE fs.fsname = 'pg_system'"
-                dbconn.executeUpdateOrInsert(conn, sql, 1)
+                dbId = self.__callSegmentAddMirror(conn, gpArray, seg)
+                seg.setSegmentDbId(dbId)
 
-                changeDescription = textForConfigTable + ": inserted segment configuration"
+                # now update mode/status since this is not done by gp_add_segment_mirror
+                self.__updateSegmentModeStatus(conn, seg)
+
+                self.__insertConfigHistory(conn, seg.getSegmentDbId(),
+                                           textForConfigTable + ": inserted segment configuration")
 
             else:
 
                 if seg == originalSeg:
-                    changeDescription = None
+                    #
+                    # No need to update
+                    #
+                    pass
+                elif self.__equalIgnoringModeAndStatusAndReplicationPort(seg, originalSeg):
+                    #
+                    # Just update mode and status
+                    #
+                    logger.debug("Updating mode and status for dbid %s" % seg.getSegmentDbId())
+
+                    self.__updateSegmentModeStatus(conn, seg)
+                    if seg.getSegmentReplicationPort() != originalSeg.getSegmentReplicationPort():
+                        # when adding a mirror, the replication port may change as well
+                        self.__updateSegmentReplicationPort(conn, seg)
+                        self.__insertConfigHistory(conn, seg.getSegmentDbId(),
+                                               textForConfigTable + ": updated segment mode, status, and replication port")
+                    else:
+                        self.__insertConfigHistory(conn, seg.getSegmentDbId(),
+                                               textForConfigTable + ": updated segment mode and status")
                 else:
-                    logger.debug("Updating dbid %s" % seg.getSegmentDbId())
+                    #
+                    # filespace and other core has changed
+                    #
+                    logger.info("Seg is %s" % repr(seg))
 
-                    # run an update
-                    sql = "UPDATE pg_catalog.gp_segment_configuration\n" + \
-                            "  SET content = " + self.__toSqlIntValue(seg.getSegmentContentId()) + ",\n" \
-                            "  role = " + self.__toSqlCharValue(seg.getSegmentRole()) + ",\n" \
-                            "  preferred_role = " + self.__toSqlCharValue(seg.getSegmentPreferredRole()) + ",\n" \
-                            "  mode = " + self.__toSqlCharValue(seg.getSegmentMode()) + ",\n" \
-                            "  status = " + self.__toSqlCharValue(seg.getSegmentStatus()) + ",\n" \
-                            "  port = " + self.__toSqlIntValue(seg.getSegmentPort()) + ",\n" \
-                            "  hostname = " + self.__toSqlTextValue(seg.getSegmentHostName()) + ",\n" \
-                            "  address = " + self.__toSqlTextValue(seg.getSegmentAddress()) + ",\n" \
-                            "  replication_port = " + self.__toSqlIntValue(seg.getSegmentReplicationPort()) + "\n" \
-                            "WHERE dbid = " + self.__toSqlIntValue(seg.getSegmentDbId())
-                    dbconn.executeUpdateOrInsert(conn, sql, 1)
+                    if seg.getSegmentRole() != gparray.ROLE_MIRROR:
+                        raise Exception("Internal error: Can only change core details of mirrors, not primaries" \
+                                        " (on segment %s)" % (seg.getSegmentDbId()))
 
-                    sql = "UPDATE pg_catalog.pg_filespace_entry\n" + \
-                            "  SET fselocation = " + self.__toSqlTextValue(seg.getSegmentDataDirectory()) + "\n" \
-                            "WHERE fsedbid = " + self.__toSqlIntValue(seg.getSegmentDbId()) + "\n" \
-                            "  AND fsefsoid = (SELECT oid FROM pg_catalog.pg_filespace WHERE fsname='pg_system')"
-                    dbconn.executeUpdateOrInsert(conn, sql, 1)
-                    
-                    changeDescription = textForConfigTable + ": updated segment configuration"
+                    origDbId = seg.getSegmentDbId()
 
+                    self.__callSegmentRemoveMirror(conn, seg)
 
-            if changeDescription is not None:
+                    dbId = self.__callSegmentAddMirror(conn, gpArray, seg)
+                    seg.setSegmentDbId(dbId)
 
-                logger.debug("Change description is %s" % changeDescription)
+                    # now update mode/status since this is not done by gp_add_segment_mirror
+                    self.__updateSegmentModeStatus(conn, seg)
 
-                # now update change history
-                sql = "INSERT INTO gp_configuration_history (time, dbid, \"desc\") VALUES(\n" \
-                            "now(),\n  " + \
-                            self.__toSqlIntValue(seg.getSegmentDbId()) + ",\n  " + \
-                            self.__toSqlCharValue(changeDescription) + "\n)"
-
-                dbconn.executeUpdateOrInsert(conn, sql, 1)
+                    self.__insertConfigHistory(conn, seg.getSegmentDbId(),
+                                "%s: inserted segment configuration for recovering to new "
+                                "location for original dbid %s" %
+                                (textForConfigTable, origDbId))
 
         if gpArray.getStrategyAsLoadedFromDb() != gpArray.getFaultStrategy():
             logger.debug("Setting fault strategy to " + gpArray.getFaultStrategy())
@@ -196,11 +188,123 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
 
         gpArray.setStrategyAsLoadedFromDb( [gpArray.getFaultStrategy()])
         gpArray.setSegmentsAsLoadedFromDb([seg.copy() for seg in gpArray.getDbList()])
-        
+
+    def __equalIgnoringModeAndStatusAndReplicationPort(self, firstSeg, secondSeg):
+
+        firstMode = firstSeg.getSegmentMode()
+        firstStatus = firstSeg.getSegmentStatus()
+        firstReplicationPort = firstSeg.getSegmentReplicationPort()
+        try:
+
+            # make the elements we don't want to compare match and see if they are then equal
+            firstSeg.setSegmentMode(secondSeg.getSegmentMode())
+            firstSeg.setSegmentStatus(secondSeg.getSegmentStatus())
+            firstSeg.setSegmentReplicationPort(secondSeg.getSegmentReplicationPort())
+
+            return firstSeg == secondSeg
+        finally:
+            #
+            # restore mode and status after comaprison 
+            #
+            firstSeg.setSegmentMode(firstMode)
+            firstSeg.setSegmentStatus(firstStatus)
+            firstSeg.setSegmentReplicationPort(firstReplicationPort)
+
+    def __getSegmentUpdateSql(self, seg):
+        # run an update
+        return "UPDATE pg_catalog.gp_segment_configuration\n" + \
+            "  SET content = " + self.__toSqlIntValue(seg.getSegmentContentId()) + ",\n" \
+            "  role = " + self.__toSqlCharValue(seg.getSegmentRole()) + ",\n" \
+            "  preferred_role = " + self.__toSqlCharValue(seg.getSegmentPreferredRole()) + ",\n" \
+            "  mode = " + self.__toSqlCharValue(seg.getSegmentMode()) + ",\n" \
+            "  status = " + self.__toSqlCharValue(seg.getSegmentStatus()) + ",\n" \
+            "  port = " + self.__toSqlIntValue(seg.getSegmentPort()) + ",\n" \
+            "  hostname = " + self.__toSqlTextValue(seg.getSegmentHostName()) + ",\n" \
+            "  address = " + self.__toSqlTextValue(seg.getSegmentAddress()) + ",\n" \
+            "  replication_port = " + self.__toSqlIntValue(seg.getSegmentReplicationPort()) + "\n" \
+            "WHERE dbid = " + self.__toSqlIntValue(seg.getSegmentDbId())
+
+    def __callSegmentRemoveMirror(self, conn, seg):
+        sql = "SELECT gp_remove_segment_mirror(%s::int2)" % (self.__toSqlIntValue(seg.getSegmentContentId()))
+        result = self.__fetchSingleOutputRow(conn, sql)
+        assert result[0] # must return True
+
+    def __callSegmentAddMirror(self, conn, gpArray, seg):
+
+        filespaceArrayString = []
+        for fs in gpArray.getFilespaces():
+            path = seg.getSegmentFilespaces()[fs.getOid()]
+            filespaceArrayString.append("{%s,%s}" % \
+                        (self.__toSqlArrayStringValue(fs.getName()), \
+                         self.__toSqlArrayStringValue(path)))
+
+        filespaceMapStr = "{" + ",".join(filespaceArrayString) + "}"
+
+        sql = "SELECT gp_add_segment_mirror(%s::int2, %s, %s, %s, %s, %s)" \
+                    % \
+                    (
+                        self.__toSqlIntValue(seg.getSegmentContentId()),
+                        self.__toSqlTextValue(seg.getSegmentHostName()),
+                        self.__toSqlTextValue(seg.getSegmentAddress()),
+                        self.__toSqlIntValue(seg.getSegmentPort()),
+                        self.__toSqlIntValue(seg.getSegmentReplicationPort()),
+                        self.__toSqlTextValue(filespaceMapStr)
+                    )
+
+        sqlResult = self.__fetchSingleOutputRow(conn, sql)
+        dbId = int(sqlResult[0])
+        return dbId
+
+    def __updateSegmentReplicationPort(self, conn, seg):
+        # run an update
+        sql = "UPDATE pg_catalog.gp_segment_configuration\n" + \
+            "  SET\n" + \
+            "  replication_port = " + self.__toSqlIntValue(seg.getSegmentReplicationPort()) + "\n" \
+            "WHERE dbid = " + self.__toSqlIntValue(seg.getSegmentDbId())
+        dbconn.executeUpdateOrInsert(conn, sql, 1)
+
+
+    def __updateSegmentModeStatus(self, conn, seg):
+        # run an update
+        sql = "UPDATE pg_catalog.gp_segment_configuration\n" + \
+            "  SET\n" + \
+            "  mode = " + self.__toSqlCharValue(seg.getSegmentMode()) + ",\n" \
+            "  status = " + self.__toSqlCharValue(seg.getSegmentStatus()) + "\n" \
+            "WHERE dbid = " + self.__toSqlIntValue(seg.getSegmentDbId())
+        dbconn.executeUpdateOrInsert(conn, sql, 1)
+
+    def __fetchSingleOutputRow(self, conn, sql):
+        cursor = dbconn.execSQL(conn, sql)
+        if cursor.rowcount != 1:
+            raise Exception("SQL did not return expected row:\n%s" % (sql))
+        res = None
+        for row in cursor:
+            assert res is None
+            res = row
+            assert res is not None
+        cursor.close()
+        return res
+
+    def __insertConfigHistory(self, conn, dbId, msg ):
+        logger.debug("Change description is %s" % msg)
+
+        # now update change history
+        sql = "INSERT INTO gp_configuration_history (time, dbid, \"desc\") VALUES(\n" \
+                    "now(),\n  " + \
+                    self.__toSqlIntValue(dbId) + ",\n  " + \
+                    self.__toSqlCharValue(msg) + "\n)"
+        dbconn.executeUpdateOrInsert(conn, sql, 1)
+
+
     def __toSqlIntValue(self, val):
         if val is None:
             return "null"
         return str(val)
+
+    def __toSqlArrayStringValue(self, val):
+        if val is None:
+            return "null"
+        return '"' + val.replace('"','\\"').replace('\\','\\\\') + '"'
 
     def __toSqlCharValue(self, val):
         return self.__toSqlTextValue(val)

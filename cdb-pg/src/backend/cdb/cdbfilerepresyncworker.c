@@ -20,6 +20,7 @@
 #include "cdb/cdbfilerepresyncworker.h"
 #include "cdb/cdbmirroredappendonly.h"
 #include "storage/bufmgr.h"
+#include "storage/lmgr.h"
 #include "storage/smgr.h"
 #include "utils/relcache.h"
 
@@ -257,6 +258,19 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 						
 					if (mirrorDataLossOccurred)
 						break;
+					
+					LockRelationForResyncExtension(&smgr_relation->smgr_rnode, ExclusiveLock);
+					
+					numBlocks = smgrnblocks(smgr_relation);
+					
+					smgrtruncate(smgr_relation, 
+								 numBlocks,
+								 TRUE /* isTemp, TRUE means to not record in XLOG */,
+								 FALSE /* isLocalBuf */,
+								 &entry->persistentTid,
+								 entry->persistentSerialNum);
+								 
+					UnlockRelationForResyncExtension(&smgr_relation->smgr_rnode, ExclusiveLock);
 					
 					smgrimmedsync(smgr_relation);
 					

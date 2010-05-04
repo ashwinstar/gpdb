@@ -28,7 +28,8 @@ DEFAULT_BATCH_SIZE=8
 EXECNAME = os.path.split(__file__)[-1]
 
 class ConfExpSegCmd(Command):
-    def __init__(self, name, cmdstr, datadir, port, newseg, tarfile, useLighterDirectoryValidation, verbose=False):
+    def __init__(self, name, cmdstr, datadir, port, newseg, tarfile, useLighterDirectoryValidation, isPrimary,
+                    filespaceDirs, verbose=False):
         """
         @param useLighterDirectoryValidation if True then we don't require an empty directory; we just require that
                                              database stuff is not there.
@@ -39,39 +40,67 @@ class ConfExpSegCmd(Command):
         self.tarfile = tarfile
         self.verbose = verbose
         self.useLighterDirectoryValidation = useLighterDirectoryValidation
+        self.filespaceDirs = filespaceDirs
+        self.isPrimary = isPrimary
         Command.__init__(self, name, cmdstr)
-        
-        
+
+
     def __str__(self):
         if self.results:
             return "%s cmdStr='%s'  had result: %s" % (self.name,self.cmdStr,self.results)
         else:
             return "%s cmdStr='%s'" % (self.name,self.cmdStr)
-        
+
+    def validatePath(self,path, isSystemFilespaceDir):
+        if not os.path.exists(self.datadir):
+            return
+
+        if self.useLighterDirectoryValidation:
+
+            if isSystemFilespaceDir:
+                # validate that we don't contain database directories or files
+                for toCheck in gDatabaseDirectories:
+                    if os.path.exists(os.path.join(self.datadir, toCheck)):
+                        raise Exception('Segment directory %s contains directory %s but should not!' %
+                                    (self.datadir, toCheck))
+                for toCheck in gDatabaseFiles:
+                    if os.path.exists(os.path.join(self.datadir, toCheck)):
+                        raise Exception('Segment directory %s contains file %s but should not!' %
+                                    (self.datadir, toCheck))
+            else:
+
+                for name in os.listdir( self.datadir):
+                    if name[0] in "0123456789": # the database files here will have  
+                        raise Exception("Filespace directory contains invalid file(s): %s" % path)
+        else:
+            # it better be empty
+            if len(os.listdir(self.datadir)) != 0:
+                raise Exception('Segment directory %s exists but is not empty!' % self.datadir)
+
+    def makeOrUpdatePathAsNeeded(self,path):
+        if os.path.exists(self.datadir):
+            os.chmod(self.datadir,0700)
+        else:
+            os.mkdir(self.datadir,0700)
+
     def run(self):
         try:
-            # update postgresql.conf
+            # make directories, extract template update postgresql.conf
             if self.newseg:
-                try:
-                    if os.path.exists(self.datadir):
-                        if self.useLighterDirectoryValidation:
-                            # validate that we don't contain database directories or files
-                            for toCheck in gDatabaseDirectories:
-                                if os.path.exists(os.path.join(self.datadir, toCheck)):
-                                    raise Exception('Segment directory %s contains directory %s but should not!' %
-                                                (self.datadir, toCheck))
-                            for toCheck in gDatabaseFiles:
-                                if os.path.exists(os.path.join(self.datadir, toCheck)):
-                                    raise Exception('Segment directory %s contains file %s but should not!' % 
-                                                (self.datadir, toCheck))
-                        else:
-                            # it better be empty
-                            if len(os.listdir(self.datadir)) != 0:
-                                raise Exception('Segment directory %s exists but is not empty!' % self.datadir)
 
-                        os.chmod(self.datadir,0700)
-                    else:
-                        os.mkdir(self.datadir,0700)
+                logger.info("Validate and create data directories for new segment")
+                try:
+                    self.validatePath(self.datadir, True)
+                    for path in self.filespaceDirs:
+                        self.validatePath(path, False)
+
+                    self.makeOrUpdatePathAsNeeded(self.datadir)
+                    if self.isPrimary:
+                        # only on primary do we create it -- otherwise, mirroring code creates it on
+                        # replay
+                        for path in self.filespaceDirs:
+                            self.makeOrUpdatePathAsNeeded(path)
+
                 except Exception, e:
                     self.set_results(CommandResult(1,'',e,True,False))
                     raise
@@ -85,7 +114,6 @@ class ConfExpSegCmd(Command):
                     self.set_results(extractTarCmd.get_results())
                     logger.error(extractTarCmd.get_results())
                     raise
-        
         
                 logger.info("Updating %s/postgresql.conf" % self.datadir)
                 modifyPostgresqlConfCmd = ModifyPostgresqlConfSetting('Updating %s/postgresql.conf' % self.datadir,
@@ -169,13 +197,15 @@ def parseargs():
     conf_lines = options.confinfo.split(',')
     for line in conf_lines:
         conf_vals = line.split(':')
-        if len(conf_vals) != 3:
+        if len(conf_vals) < 4:
             raise Exception('Invalid configuration value: %s' % conf_vals)
         if conf_vals[0] == '':
             raise Exception('Missing data directory in: %s' % conf_vals)
         if conf_vals[1] < 1024:
             raise Exception('Invalid port in: %s' % conf_vals)
         if conf_vals[2] != 'true' and conf_vals[2] != 'false':
+            raise Exception('Invalid isPrimary option in: %s' % conf_vals)
+        if conf_vals[3] != 'true' and conf_vals[3] != 'false':
             raise Exception('Invalid directory validation option in: %s' % conf_vals)
         seg_info.append(conf_vals)
 
@@ -201,9 +231,16 @@ try:
     pool = WorkerPool(numWorkers=options.batch_size)
     
     for seg in seg_info:
-        cmd = ConfExpSegCmd('Configure segment directory', ' '.join(sys.argv), seg[0], seg[1],
-                            options.newsegments, options.tarfile, seg[2] == "true",
-                            options.verbose)
+        dataDir = seg[0]
+        port = seg[1]
+        isPrimary = seg[2] == "true"
+        directoryValidationLevel = seg[3] == "true"
+        filespaceDirs = seg[4:]
+
+        cmd = ConfExpSegCmd('Configure segment directory', ' '.join(sys.argv), dataDir, port,
+                            options.newsegments, options.tarfile, directoryValidationLevel,
+                            isPrimary,
+                            filespaceDirs, options.verbose)
         pool.addCommand(cmd)
 
     pool.join()

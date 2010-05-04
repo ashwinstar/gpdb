@@ -48,10 +48,10 @@ class GpCleanSegmentDirectoryProgram:
         for segment in segments:
             for filespaceOid, dir in segment.getSegmentFilespaces().iteritems():
                 if filespaceOid != gparray.SYSTEM_FILESPACE:
-                    # the filespace directory will contain
-                    toCleanArr = ["1*", "2*", "3*", "4*", "5*", "6*", "7*", "8*", "9*", "0*"]
-                    for toClean in toCleanArr:
-                        unix.RemoveFiles('clean segment', dir + "/" + toClean).run( validateAfter=True )
+                    #
+                    # delete entire filespace directory -- filerep code on server will recreate it
+                    #
+                    unix.RemoveFiles('clean segment filespace dir', dir ).run( validateAfter=True )
 
     def cleanup(self):
         pass

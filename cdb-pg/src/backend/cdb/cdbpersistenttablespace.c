@@ -631,6 +631,8 @@ PersistentTablespace_RemoveSegment(int16 dbid, bool ismirror)
 			elog(ERROR, "Did not find persistent tablespace entry %u", 
 				 tblspc);
 
+        PersistentFileSysObjName_SetTablespaceDir(&fsObjName, tblspc);
+
 	    PersistentFileSysObj_RemoveSegment(&fsObjName,
 										   &tablespaceDirEntry->persistentTid,
 										   tablespaceDirEntry->persistentSerialNum,
@@ -675,6 +677,8 @@ PersistentTablespace_AddMirrorAll(
 		if (tablespaceDirEntry == NULL)
 			elog(ERROR, "Did not find persistent tablespace entry %u", 
 				 tblspc);
+
+        PersistentFileSysObjName_SetTablespaceDir(&fsObjName, tblspc);
 
 	    PersistentFileSysObj_AddMirror(&fsObjName,
     	                               &tablespaceDirEntry->persistentTid,

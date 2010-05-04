@@ -348,6 +348,36 @@ UnlockRelationForExtension(Relation relation, LOCKMODE lockmode)
 	LockRelease(&tag, lockmode, false);
 }
 
+/*
+ * Separate routine for LockRelationForExtension() because resync workers do not have relation.  
+ */
+void
+LockRelationForResyncExtension(RelFileNode *relFileNode, LOCKMODE lockmode)
+{
+	LOCKTAG		tag;
+	
+	SET_LOCKTAG_RELATION_EXTEND(tag,
+								relFileNode->dbNode,
+								relFileNode->relNode);
+	
+	(void) LockAcquire(&tag, lockmode, false, false);
+}
+
+/*
+ * Separate routine for UnlockRelationForExtension() because resync workers do not have relation.
+ */
+void
+UnlockRelationForResyncExtension(RelFileNode *relFileNode, LOCKMODE lockmode)
+{
+	LOCKTAG		tag;
+	
+	SET_LOCKTAG_RELATION_EXTEND(tag,
+								relFileNode->dbNode,
+								relFileNode->relNode);
+	
+	LockRelease(&tag, lockmode, false);
+}
+
 void
 LockRelationForResynchronize(RelFileNode *relFileNode, LOCKMODE lockmode)
 {

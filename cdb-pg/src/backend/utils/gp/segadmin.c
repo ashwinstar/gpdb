@@ -51,7 +51,7 @@ get_seginfo(int16 dbid)
 static int16
 content_get_mirror_dbid(int16 contentid)
 {
-	return contentid_get_dbid(contentid, SEGMENT_ROLE_MIRROR);
+	return contentid_get_dbid(contentid, SEGMENT_ROLE_MIRROR, false /* false == current, not preferred, role */);
 }
 
 /* Tell the caller whether a mirror exists at a given segment index */
@@ -738,7 +738,7 @@ gp_add_segment_mirror(PG_FUNCTION_ARGS)
 	/* avoid races */
 	rel = heap_open(GpSegmentConfigRelationId, AccessExclusiveLock);
 
-	pridbid = contentid_get_dbid(contentid, SEGMENT_ROLE_PRIMARY);
+	pridbid = contentid_get_dbid(contentid, SEGMENT_ROLE_PRIMARY, false /* false == current, not preferred, role */);
 	if (!pridbid)
 		elog(ERROR, "contentid %i does not point to an existing segment",
 			 contentid);
@@ -746,6 +746,10 @@ gp_add_segment_mirror(PG_FUNCTION_ARGS)
 	/* no mirrors should be defined */
 	if (segment_has_mirror(contentid))
 		elog(ERROR, "segment already has a mirror defined");
+
+    /* figure out if the preferred role of this mirror needs to be primary or mirror (no preferred primary -- make this
+     *   one the preferred primary) */
+    int preferredPrimaryDbId = contentid_get_dbid(contentid, SEGMENT_ROLE_PRIMARY, true /* preferred role */);
 
 	new.db.segindex = contentid;
 	new.db.dbid = get_maxdbid() + 1;
@@ -756,7 +760,7 @@ gp_add_segment_mirror(PG_FUNCTION_ARGS)
 	new.db.mode = 's';
 	new.db.status = 'u';
 	new.db.role = SEGMENT_ROLE_MIRROR;
-	new.db.preferred_role = SEGMENT_ROLE_MIRROR;
+	new.db.preferred_role = preferredPrimaryDbId == 0 ? SEGMENT_ROLE_PRIMARY : SEGMENT_ROLE_MIRROR;
 
 	add_segment_config_entry(pridbid, &new, fsmap);
 
@@ -791,7 +795,7 @@ gp_remove_segment_mirror(PG_FUNCTION_ARGS)
 	/* avoid races */
 	rel = heap_open(GpSegmentConfigRelationId, AccessExclusiveLock);
 
-	pridbid = contentid_get_dbid(contentid, SEGMENT_ROLE_PRIMARY);
+	pridbid = contentid_get_dbid(contentid, SEGMENT_ROLE_PRIMARY, false /* false == current, not preferred, role */);
 
 	if (!pridbid)
 		elog(ERROR, "no dbid for contentid %i", contentid);
@@ -799,7 +803,7 @@ gp_remove_segment_mirror(PG_FUNCTION_ARGS)
 	if (!segment_has_mirror(contentid))
 		elog(ERROR, "segment does not have a mirror");
 
-	mirdbid = contentid_get_dbid(contentid, SEGMENT_ROLE_MIRROR);
+	mirdbid = contentid_get_dbid(contentid, SEGMENT_ROLE_MIRROR, false /* false == current, not preferred, role */);
 	if (!mirdbid)
 		elog(ERROR, "no mirror dbid for contentid %i", contentid);
 

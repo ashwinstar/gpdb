@@ -11,6 +11,7 @@ import os, pickle, base64
 from gppylib.gplog import *
 from gppylib.db import dbconn
 from gppylib.db import catalog
+from gppylib import gparray
 from base import *
 from unix import *
 import pg
@@ -607,8 +608,16 @@ class ConfigureNewSegment(Command):
 
             isTargetReusedLocation = isTargetReusedLocationArr and isTargetReusedLocationArr[segIndex]
 
-            result[hostname] += '%s:%d:%s' %  (seg.getSegmentDataDirectory(), seg.getSegmentPort(),
-                        "true" if isTargetReusedLocation else "false")
+            filespaces = []
+            for fsOid, path in seg.getSegmentFilespaces().iteritems():
+                if fsOid not in [gparray.SYSTEM_FILESPACE]:
+                    filespaces.append(path)
+
+            result[hostname] += '%s:%d:%s:%s%s' %  (seg.getSegmentDataDirectory(), seg.getSegmentPort(),
+                        "true" if seg.isSegmentPrimary(current_role=True) else "false",
+                        "true" if isTargetReusedLocation else "false",
+                        "" if len(filespaces) == 0 else (":" + ":".join(filespaces))  
+            )
         return result
 
 
