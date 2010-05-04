@@ -145,7 +145,6 @@ extern bool gp_appendonly_verify_write_block;
 extern bool	Debug_appendonly_rezero_quicklz_compress_scratch;
 extern bool	Debug_appendonly_rezero_quicklz_decompress_scratch;
 extern bool	Debug_appendonly_guard_end_quicklz_scratch;
-extern bool	Debug_enable_new_startup_pass;
 extern bool	Debug_persistent_print;
 extern int	Debug_persistent_print_level;
 extern bool	Debug_persistent_recovery_print;

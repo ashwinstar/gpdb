@@ -671,31 +671,6 @@ void smgrcreatepending(
 	bool							flushToXLog)
 {
 	PendingDelete *pending;
-
-	if (!Debug_enable_new_startup_pass)
-	{
-		XLogRecPtr	lsn;
-		XLogRecData rdata;
-		xl_smgr_create xlrec;
-
-		/*
-		 * NEW Crash Recovery does not need this kind of re-create anymore.
-		 */
-		 
-		/*
-		 * Make a non-transactional XLOG entry showing the file creation. It's
-		 * non-transactional because we should replay it whether the transaction
-		 * commits or not; if not, the file will be dropped at abort time.
-		 */
-		xlrec.rnode = *relFileNode;
-		
-		rdata.data = (char *) &xlrec;
-		rdata.len = sizeof(xlrec);
-		rdata.buffer = InvalidBuffer;
-		rdata.next = NULL;
-		
-		lsn = XLogInsert(RM_SMGR_ID, XLOG_SMGR_CREATE | XLOG_NO_TRAN, &rdata);
-	}
 		
 	PersistentRelation_AddCreatePending(
 								relFileNode,
@@ -2539,36 +2514,6 @@ smgr_redo(XLogRecPtr lsn, XLogRecord *record)
 		BlockNumber newblks;
 
 		reln = smgropen(xlrec->rnode);
-
-		if (!Debug_enable_new_startup_pass)
-		{
-			MirrorDataLossTrackingState mirrorDataLossTrackingState;
-			int64 mirrorDataLossTrackingSessionNum;
-			
-			/*
-			 * NEW Crash Recovery does not need this kind of re-create anymore.
-			 */
-
-			/*
-			 * Forcibly create relation if it doesn't exist (which suggests that
-			 * it was dropped somewhere later in the WAL sequence).  As in
-			 * XLogOpenRelation, we prefer to recreate the rel and replay the
-			 * log as best we can until the drop is seen.
-			 */
-			
-			mirrorDataLossTrackingState = 
-						FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
-														&mirrorDataLossTrackingSessionNum);
-			smgrcreate(
-					reln,
-					/* isLocalBuf */ false, 
-					/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
-					mirrorDataLossTrackingState,
-					mirrorDataLossTrackingSessionNum,
-					/* ignoreAlreadyExists */ true,
-					&primaryError,
-					&mirrorDataLossOccurred);
-		}
 		
 		/* Can't use smgrtruncate because it would try to xlog */
 

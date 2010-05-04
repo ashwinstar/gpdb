@@ -260,7 +260,6 @@ bool 		gp_appendonly_verify_write_block = false;
 bool		Debug_appendonly_rezero_quicklz_compress_scratch = false;
 bool		Debug_appendonly_rezero_quicklz_decompress_scratch = false;
 bool		Debug_appendonly_guard_end_quicklz_scratch = false;
-bool		Debug_enable_new_startup_pass = false;
 bool 		gp_local_distributed_cache_stats = false;
 bool		Debug_persistent_print = false;
 int			Debug_persistent_print_level = LOG;
@@ -1730,16 +1729,6 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 				
-	{
-		{"debug_enable_new_startup_pass", PGC_USERSET, DEVELOPER_OPTIONS,
-		 gettext_noop("Enable Startup Pass 3 REDO."),
-		 NULL,
-		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
-		},
-		&Debug_enable_new_startup_pass,
-		false, NULL, NULL
-	},
-			
 	{
 		{"gp_cost_hashjoin_chainwalk", PGC_USERSET, QUERY_TUNING_COST,
 			gettext_noop("Enable the cost for walking the chain in the hash join"),

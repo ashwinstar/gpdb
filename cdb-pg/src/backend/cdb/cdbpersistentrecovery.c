@@ -510,9 +510,6 @@ PersistentRecovery_ShouldHandlePass1XLogRec(
 																			 record->xl_info);
 	RelationChangeInfo 	relationChangeInfoArray[arrlen];
 	
-	if (!Debug_enable_new_startup_pass)
-		return true;	// UNDONE: Fow now, redo everything in Pass 1.  Later we'll move most of it to Pass 3.
-
 	if (Debug_persistent_recovery_print)
 		ChangeTracking_PrintRelationChangeInfo(
 											record->xl_rmid,
@@ -1904,9 +1901,6 @@ PersistentRecovery_DeserializeRedoRelationFile(
 
 		if(RelFileNode_IsEmpty(&redoRelationEntryData.relFileNode))
 			elog(ERROR, "Invalid RelFileNode (0,0,0)");
-
-		if (!Debug_enable_new_startup_pass)
-			continue;	// UNDONE: Fow now, don't add the entry until we've moved to new Crash Recovery.
 
 		PersistentRecovery_CreateRedoRelationEntry(&redoRelationEntryData);
 	}

@@ -456,7 +456,7 @@ XLogOpenRelation(RelFileNode rnode)
 		// NOTE: We no longer re-create files automatically because
 		// new FileRep persistent objects will ensure files exist.
 
-		if (!Debug_enable_new_startup_pass)
+		// UNDONE: Can't remove this block of code yet until boot time calls to this routine are analyzed...
 		{
 			MirrorDataLossTrackingState mirrorDataLossTrackingState;
 			int64 mirrorDataLossTrackingSessionNum;

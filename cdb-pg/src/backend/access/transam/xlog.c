@@ -6780,9 +6780,6 @@ StartupXLOG_Pass3(void)
 
 	UnlinkRedoRelationFile();
 
-	if (!Debug_enable_new_startup_pass)
-		goto bypass;	// Do this so when we go to new Crash Recovery, no re-indent.
-
 	if (Debug_persistent_recovery_print)
 		elog(Debug_persistent_recovery_print_level, 
 			 "StartupXLOG_Pass3: Begin re-scanning XLOG");
@@ -6893,7 +6890,6 @@ StartupXLOG_Pass3(void)
 
 	InRecovery = false;
 
-bypass:
 	StartupXLOG_InProduction();
 
 	if (Debug_persistent_recovery_print)
