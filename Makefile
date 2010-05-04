@@ -39,7 +39,7 @@ all : devel
 .PHONY : test2 test3
 
 # Internal functions which are invoked by other rules within this makefile
-.PHONY : groupSession mkgpcc mkgpperfmon copydocs mgmtcopy pkgplr copylibs jetpack
+.PHONY : groupSession mkgpcc mkgpperfmon copydocs mgmtcopy pkgplr copylibs
 .PHONY : greenplum_path RECONFIG HOMEDEP GPROOTDEP GPROOTDEP GPROOTFAIL
 .PHONY : version gccVersionCheck pygres authlibs clients loaders connectivity
 
@@ -88,7 +88,6 @@ GPPGDIR=cdb-pg
 GPMGMT=gpMgmt
 GPCC=gpcc
 GPPERFMON=gpperfmon
-JETPACK=jetpack
 
 RELEASE=$(shell $(CURDIR)/releasetag)
 GPDIR=greenplum-db$(RELEASE)
@@ -289,7 +288,6 @@ define BUILD_STEPS
 	@$(MAKE) clients INSTLOC=$(INSTLOC) CLIENTINSTLOC=$(CLIENTINSTLOC)
 	@$(MAKE) connectivity INSTLOC=$(INSTLOC) CONNECTIVITYINSTLOC=$(CONNECTIVITYINSTLOC)
 	@$(MAKE) loaders INSTLOC=$(INSTLOC) LOADERSINSTLOC=$(LOADERSINSTLOC)
-	@$(MAKE) jetpack INSTLOC=$(INSTLOC)
 
 endef
 
@@ -1026,13 +1024,6 @@ greenplum_path:
 	unset LIBPATH; \
 	  releng/generate-greenplum-path.sh $(INSTLOC) > $(INSTLOC)/greenplum_path.sh
 
-jetpack: 
-	# ---- build and install jetpack ----
-	@cd $(JETPACK) && $(MAKE)
-	mkdir -p $(INSTLOC)/lib/jetpack
-	cp -p $(JETPACK)/jetpack.sql $(INSTLOC)/lib/jetpack
-	cp -p $(JETPACK)/JETPACK_README $(INSTLOC)/lib/jetpack
-
 HOMEDEP :
 	@#If the HOME variable isn't set, then execute the usage() path
 	@if [ x"$(HOME)" = x ]; then $(MAKE) HOMEFAIL; fi
@@ -1066,7 +1057,6 @@ clean :
 	@if [ -d $(GPMGMT)/bin ]; then cd $(GPMGMT)/bin; $(MAKE) clean; fi
 	@if [ -d $(GPCC) ]; then cd $(GPCC); $(MAKE) clean; fi
 	@if [ -d $(GPPERFMON) ]; then cd $(GPPERFMON); $(MAKE) clean; fi
-	@if [ -d jetpack ]; then cd jetpack; $(MAKE) clean; fi
 	@if [ -d client/odbc/src ]; then cd client/odbc/src; $(MAKE) clean; fi
 
 distclean :
@@ -1075,7 +1065,6 @@ distclean :
 	@if [ -d $(GPMGMT)/bin ]; then cd $(GPMGMT)/bin; $(MAKE) distclean; fi
 	@if [ -d $(GPCC) ]; then cd $(GPCC); $(MAKE) clean; fi
 	@if [ -d $(GPPERFMON) ]; then cd $(GPPERFMON); $(MAKE) clean; fi
-	@if [ -d jetpack ]; then cd jetpack; $(MAKE) clean; fi
 	@if [ -d client/odbc/src ]; then cd client/odbc/src; $(MAKE) clean; fi
 	@rm -f VERSION
 	@rm -f env.sh
