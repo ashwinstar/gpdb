@@ -154,7 +154,8 @@ selectDumpableNamespace(NamespaceInfo *nsinfo)
 		nsinfo->dobj.dump = simple_oid_list_member(&schema_include_oids,
 												   nsinfo->dobj.catId.oid);
 	else if (strncmp(nsinfo->dobj.name, "pg_", 3) == 0 ||
-			 strcmp(nsinfo->dobj.name, "information_schema") == 0)
+			 strcmp(nsinfo->dobj.name, "information_schema") == 0 ||
+			 strcmp(nsinfo->dobj.name, "gp_toolkit") == 0)
 		nsinfo->dobj.dump = false;
 	else
 		nsinfo->dobj.dump = true;
