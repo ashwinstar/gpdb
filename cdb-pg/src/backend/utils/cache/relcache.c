@@ -287,8 +287,6 @@ GpRelationNodeBeginScan(
 
 	GpRelationNodeScan 	*gpRelationNodeScan)
 {
-	ScanKeyData key[1];
-
 	Assert (relfilenode != 0);
 
 	MemSet(gpRelationNodeScan, 0, sizeof(GpRelationNodeScan));
@@ -296,7 +294,7 @@ GpRelationNodeBeginScan(
 	/*
 	 * form a scan key
 	 */
-	ScanKeyInit(&key[0],
+	ScanKeyInit(&gpRelationNodeScan->scankey[0],
 				Anum_gp_relation_node_relfilenode_oid,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(relfilenode));
@@ -307,11 +305,12 @@ GpRelationNodeBeginScan(
 	 * without a pg_internal.init file).  The caller can also force a heap
 	 * scan by setting indexOK == false.
 	 */
-	gpRelationNodeScan->scan = 
-				systable_beginscan(gp_relation_node, GpRelationNodeOidIndexId,
-								   /* indexOK */ true,
-								   SnapshotNow,
-								   1, key);
+	gpRelationNodeScan->scan = \
+		systable_beginscan(gp_relation_node, GpRelationNodeOidIndexId,
+						   /* indexOK */ true,
+						   SnapshotNow,
+						   /* nKeys */ 1, 
+						   gpRelationNodeScan->scankey);
 
 	gpRelationNodeScan->gp_relation_node = gp_relation_node;
 	gpRelationNodeScan->relationId = relationId;

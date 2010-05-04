@@ -15,12 +15,15 @@
 #ifndef RELCACHE_H
 #define RELCACHE_H
 
-#include "access/tupdesc.h"
 #include "access/htup.h"
+#include "access/skey.h"
+#include "access/tupdesc.h"
 #include "nodes/bitmapset.h"
 #include "nodes/pg_list.h"
 #include "catalog/pg_class.h"
 
+
+struct SysScanDescData; /* defined in access/genam.h */
 
 typedef struct RelationData *Relation;
 
@@ -59,8 +62,10 @@ typedef struct GpRelationNodeScan
 	Oid				relationId;
 
 	Oid				relfilenode;
+
+	ScanKeyData     scankey[1];
 	
-	void		 	*scan;		// Actual type is SysScanDesc (type pointer).
+	struct SysScanDescData  *scan;
 } GpRelationNodeScan;
 
 extern void
