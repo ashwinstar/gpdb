@@ -714,6 +714,28 @@ EOF_bigstr
 	return $bigstr;
 } # end get_relation_info_query_txt
 
+sub get_pg_class_query_txt
+{
+	my $bigstr = <<'EOF_bigstr';
+select
+gp_segment_id,* from gp_dist_random($q$pg_class$q$)
+where relfilenode in (
+EOF_bigstr
+
+	return $bigstr;
+} # end get_pg_class_query_txt
+
+sub get_prn_query_txt
+{
+	my $bigstr = <<'EOF_bigstr';
+select
+gp_segment_id,* from gp_dist_random($q$gp_persistent_relation_node$q$)
+where relfilenode_oid in (
+EOF_bigstr
+
+	return $bigstr;
+} # end get_prn_query_txt
+
 # Ugh.  column store tables shove a vpinfo c struct directly into the
 # catalog, so we have to jump thru hoops to unpack it.  The vpinfo has
 # a variable length array, which encodes the eofs for the multiple
@@ -742,6 +764,13 @@ sub find_eof_in_vpinfo
 
 		for my $cc (@foo)
 		{
+			# oh, did I neglect to mention that postgres returns the
+			# bytea as a combination of octal values (3 digit strings
+			# prefixed with a "\") and printable characters?  Well,
+			# now I have mentioned it.  How convenient.  So we need to
+			# translate the string back to raw byte values and build a
+			# buffer to unpack.
+
 			next unless length($cc);
 			if ($cc =~ m/\\\d\d\d/)
 			{
@@ -799,8 +828,13 @@ sub find_eof_in_vpinfo
 				'varblockcount' => $rr->{varblockcount},
 				'tupcount' => $rr->{tupcount}
 			};
-			$new_entry->{eof} = $ppp[4*$column_num];
-			$new_entry->{eofuncompressed} = $ppp[(4*$column_num) + 2];
+
+			# We unpack each 64-bit value as two 32-bit ints. 
+			# Hope this works!
+			$new_entry->{eof} = $ppp[4*$column_num] + 
+				((2**32) * $ppp[(4*$column_num) + 1] );
+			$new_entry->{eofuncompressed} = $ppp[(4*$column_num) + 2] +
+				((2**32) * $ppp[(4*$column_num) + 3] );
 
 			# such fun! a normal ao table has a relfilenode composed
 			# of multiple segments, which have corresponding files
@@ -1008,6 +1042,8 @@ sub get_relfilenode_func
 	# sanity check
 	my $bstat = 1;
 
+	my %unknown;
+
 	# for all db's
 	while (my ($kk, $vv) = each(%dbs))	
 	{
@@ -1039,6 +1075,10 @@ sub get_relfilenode_func
 				print Data::Dumper->Dump([$vv2]),"\n";
 				warn "bad relfilenode $kk2 for $dbname -- no relname";
 				$relname = "relfilenode: $kk2";
+				$unknown{$kk} = []
+					unless (exists($unknown{$kk}));
+				push @{$unknown{$kk}}, $kk2;
+
 				next;
 			}
 
@@ -1095,6 +1135,78 @@ sub get_relfilenode_func
 		} # end for all relfilenodes
 
 	} # end for all db's
+		
+	# check for unknown relfilenodes separately across pg_class and
+	# gp_persistent_relation_node on all segments
+	if (scalar(keys(%unknown)))
+	{
+		print "\nFound ", scalar(keys(%unknown)), " unknown relfilenodes\n";
+		print "Checking for pg_class/gp_persistent_relation_node mismatch\n";
+
+		while (my ($ukk, $uvv) = each(%unknown))
+		{
+			# see if have connectable database first...
+			if (exists($dbs{$ukk}))
+			{
+				print "Checking db: ", $dbs{$ukk}->{dbname}, "\n";
+			}
+			else
+			{
+				print Data::Dumper->Dump($uvv);
+				warn "found ", scalar(@{$uvv}), 
+				" relfilenodes in unknown database dbid: ", $ukk, 
+				" -- no lookup possible!\n";
+				next;
+			}
+
+			$psql_str = "psql ";
+
+			# XXX XXX: need portnumber!!
+			$psql_str .= "-p $glob_port " . $dbs{$ukk}->{dbname};
+
+			# select from gp_persistent_relation_node, pg_class, etc
+			$psql_str .= " -c \' ". get_pg_class_query_txt()
+				. join (", ", @{$uvv}) . ") \'";
+
+#		print $psql_str, "\n";
+
+			$tabdef = `$psql_str`;
+
+			if ($tabdef !~ m/\(0 rows\)/)
+			{
+				print $tabdef;
+			}
+			else
+			{
+				print "no pg_class entries for (",
+				join (", ", @{$uvv}) . ")\n";
+			}
+
+			$psql_str = "psql ";
+
+			# XXX XXX: need portnumber!!
+			$psql_str .= "-p $glob_port " . $dbs{$ukk}->{dbname};
+
+			# select from gp_persistent_relation_node, pg_class, etc
+			$psql_str .= " -c \' ". get_prn_query_txt()
+				. join (", ", @{$uvv}) . ") \'";
+
+#		print $psql_str, "\n";
+
+			$tabdef = `$psql_str`;
+			if ($tabdef !~ m/\(0 rows\)/)
+			{
+				print $tabdef;
+			}
+			else
+			{
+				print "no gp_persistent_relation_node entries for (",
+				join (", ", @{$uvv}) . ")\n";
+			}
+
+		}
+
+	} # end if unknowns
 
 	my $do_anyway = 1;
 
@@ -1884,6 +1996,29 @@ if (1)
 				&& scalar(keys(%{($bigh->{hashdiff})})))
 			{
 				$dbs2 = resolve_hashdiff($diffi, $row, $fselochsh, $bigh);
+			}
+
+			# lookup extra files to see what is going on.
+			if (exists($bigh->{extrafiles})
+				&& scalar(@{($bigh->{extrafiles})}))
+			{
+				my $extras = {};
+
+				print "trying to resolve extra files in catalog\n";
+
+				for my $extrafil (@{($bigh->{extrafiles})})
+				{
+					$extrafil =~ s/^p\://;
+					$extrafil =~ s/^m\://;
+
+					$extras->{$extrafil} = [0,0];
+				}
+
+				my $dbs3 = 
+					get_relfilenode_func($extras,
+										 $diffi, $row, $fselochsh, $bigh);
+
+				print "extra files:\n", Data::Dumper->Dump([$dbs3]);
 			}
 
 			diff_again($dbs1, $dbs2,
