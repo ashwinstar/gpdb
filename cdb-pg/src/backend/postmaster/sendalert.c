@@ -493,11 +493,16 @@ int send_alert(const GpErrorData * errorData)
 #endif
 	char subject[128];
 
+	static char previous_subject[128];
+	pg_time_t current_time;
+	static pg_time_t previous_time;
+	static GpErrorDataFixFields previous_fix_fields;
+
 	elog(DEBUG2,"send_alert: %s: %s",errorData->error_severity, errorData->error_message);
 
 	/*
 	 * SIGPIPE must be ignored, or we will have problems.
-	 *errorData->sql_state
+	 *
 	 * but this is already set in syslogger.c, so we are OK
 	 * //pqsignal(SIGPIPE, SIG_IGN);  // already set in syslogger.c
 	 *
@@ -511,14 +516,90 @@ int send_alert(const GpErrorData * errorData)
 	else
 		snprintf(subject, 127, "%s: %s",errorData->error_severity, errorData->error_message);
 	subject[127] = '\0'; /* Guarantee subject is zero terminated */
+	previous_subject[127] = '\0';
+
+	/*
+	 * Check to see if we are sending the same message as last time.
+	 * This could mean the system is in a loop generating an error over and over,
+	 * or the application is just re-doing the same bad request over and over.
+	 *
+	 * This is pretty crude, as we don't consider loops where we alternate between a small
+	 * number of messages.
+	 */
+
+	if (strcmp(subject,previous_subject)==0)
+	{
+		/*
+		 * Looks like the same message based on the errMsg, but we need to
+		 * investigate further.
+		 */
+		bool same_message_repeated = true;
+
+#if 0
+		/*
+		 * User message from gp_elog()?  Don't Suppress it.
+		 * Assume the user knows what they are doing.
+		 * Can we do that?  The user might have screwed up things too.
+		 */
+		if (strcmp(errorData->sql_state,"XX001") == 0)
+			same_message_repeated = false;
+#endif
+
+		/*
+		 * If the message is from a different segDB, consider it a different message.
+		 */
+		if (errorData->fix_fields.gp_segment_id != previous_fix_fields.gp_segment_id)
+			same_message_repeated = false;
+		if (errorData->fix_fields.gp_is_primary != previous_fix_fields.gp_is_primary)
+			same_message_repeated = false;
+		/*
+		 * If the message is from a different user, consider it a different message,
+		 * unless it is a FATAL, because an application repeatedly sending in a request
+		 * that crashes (SIGSEGV) will get a new session ID each time
+		 */
+		if (errorData->fix_fields.gp_session_id != previous_fix_fields.gp_session_id)
+			if (strcmp(errorData->error_severity,"FATAL") != 0)
+				same_message_repeated = false;
+		/*
+		 * Don't consider gp_command_count, because a loop where the application is repeatedly
+		 * sending a bad request will have a changing command_count.
+		 *
+		 * Likewise, the transaction ids will be changing each time, so don't consider them.
+		 */
+
+		if (same_message_repeated)
+		{
+			current_time = (pg_time_t)time(NULL);
+			/*
+			 * This is the same alert as last time.  Limit us to one repeat alert every 30 seconds
+			 * to avoid spamming the sysAdmin's mailbox or the snmp network monitor.
+			 *
+			 * We don't just turn off the alerting until a different message comes in, because
+			 * if enough time has passed, this message might (probably?) refer to a new issue.
+			 *
+			 * Note that the message will still exist in the log, it's just that we won't
+			 * send it via e-mail or snmp notification.
+			 */
+
+			if (current_time - previous_time < 30)
+			{
+				/* Bail out here rather than send the alert. */
+				elog(DEBUG2,"Supressing repeats of this alert messages...");
+				return -1;
+			}
+		}
+
+	}
+
+	strcpy(previous_subject, subject);
+	previous_time = (pg_time_t)time(NULL);
+	memcpy(&previous_fix_fields,&errorData->fix_fields,sizeof(GpErrorDataFixFields));
 
 #if USE_SNMP
 	send_snmp_inform_or_trap(errorData);
 #endif
 
 #if USE_EMAIL
-
-	//host = "smtpx18.msoutlookonline.net:587";
 
 	if (gp_email_to == NULL || strlen(gp_email_to) == 0)
 	{
@@ -653,17 +734,23 @@ int send_alert(const GpErrorData * errorData)
 			/*
 			 * RFC 2822 doesn't require recipient headers but a To: header would
 			 * be nice to have if not present.
+			 *
+			 * First string is free-form text which is the real name of the person (not really used)
+			 * The second string is the e-mail address.
 			 */
 			if (!smtp_set_header(message, "To", cur_gp_email_addr, cur_gp_email_addr))
 			{
 				char buf[128];
 
-				elog(LOG, "smtp_set_header failed:  %d  %s", smtp_errno(), smtp_strerror(smtp_errno(),
-								buf, sizeof buf));
+				elog(LOG, "smtp_set_header failed:  %d  %s  for e-mail %s", smtp_errno(), smtp_strerror(smtp_errno(),
+								buf, sizeof buf), cur_gp_email_addr);
 			}
 
 			/* Recipient must be in RFC2821 format */
 			recipient = smtp_add_recipient(message, cur_gp_email_addr);
+
+			if (recipient == NULL)
+				elog(LOG, "stmp_add_recipient failed for e-mail:  %s", cur_gp_email_addr);
 
 			smtp_dsn_set_notify(recipient, notify);
 
