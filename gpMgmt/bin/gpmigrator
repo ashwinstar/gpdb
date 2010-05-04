@@ -1676,7 +1676,7 @@ class GPUpgrade:
         f = open(db_file, 'r')
         for line in f:
             (oid, name) = line.split(':', 1)
-            self.dbs[oid] = name
+            self.dbs[oid] = name.strip()
         f.close()
 
         # self.hostcache - cache of hostnames
@@ -2359,6 +2359,10 @@ class GPUpgrade:
                 logger.info('Linking skeleton')
                 logger.info('... This may take a while')
                 includeMirrors = False
+            else:
+                logger.info('Reverting to backup')
+                logger.info('... This may take a while')
+                includeMirrors = True
 
 
             # Have all hosts perform the link first
@@ -3813,7 +3817,8 @@ class GPUpgrade:
                 logger.info("--------------------------------------------------")
                 logger.info("Stage 2 complete")
                 logger.info("--------------------------------------------------")
-        
+
+                self.snapshot = True
                 if self.snapshot and not self.resume:
                     logger.info("""
 
