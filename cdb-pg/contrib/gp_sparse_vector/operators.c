@@ -896,8 +896,8 @@ svec_dot_float8arr(PG_FUNCTION_ARGS)
 {
 	SvecType *svec = PG_GETARG_SVECTYPE_P(0);
 	ArrayType *arr = PG_GETARG_ARRAYTYPE_P(1);
-	SparseData left = sdata_uncompressed_from_float8arr_internal(arr);
-	SparseData right = sdata_from_svec(svec);
+	SparseData right = sdata_uncompressed_from_float8arr_internal(arr);
+	SparseData left = sdata_from_svec(svec);
 	SparseData mult_result;
 	double accum;
 	mult_result = op_sdata_by_sdata(2,left,right);
@@ -963,15 +963,7 @@ svec_pivot(PG_FUNCTION_ARGS)
 {
 	SvecType *svec;
 	SparseData sdata;
-	float8 value;
-
-	if (PG_ARGISNULL(1))
-	{
-		value = 0.;
-	} else
-	{
-		value = PG_GETARG_FLOAT8(1);
-	}
+	float8 value = PG_GETARG_FLOAT8(1);
 
 	if (! PG_ARGISNULL(0))
 	{
