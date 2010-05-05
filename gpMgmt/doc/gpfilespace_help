@@ -10,7 +10,7 @@ SYNOPSIS
 *****************************************************
 
 gpfilespace [<connection_option> ...] [-l <logfile_directory>] 
-            -o <output_file>
+            [-o [<output_fs_config_file>]]
 
 gpfilespace [<connection_option> ...] [-l <logfile_directory>] 
             -c <fs_config_file>
@@ -33,9 +33,12 @@ When used with the -o option, the gpfilespace utility looks up your
 system configuration information in the Greenplum Database catalog 
 tables and prompts you for the appropriate file system locations 
 needed to create the filespace. It then outputs a configuration 
-file that can be used to create a filespace. After you have a 
-configuration file, you can run gpfilespace with the -c option to 
-create the filespace in Greenplum Database.
+file that can be used to create a filespace. If a file name is 
+not specified, a gpfilespace_config_<#> file will be created 
+in the current directory by default.  
+
+Once you have a configuration file, you can run gpfilespace with 
+the -c option to create the filespace in Greenplum Database.
 
 
 *****************************************************
@@ -55,12 +58,12 @@ OPTIONS
    <hostname>:<dbid>:/<filesystem_dir>/<seg_datadir_name>
 
 
--l | --logdir logfile_directory
+-l | --logdir <logfile_directory>
 
  The directory to write the log file. Defaults to ~/gpAdminLogs.
 
 
--o | --output output_file
+-o | --output <output_file_name>
 
  The directory location and file name to output the generated 
  filespace configuration file. You will be prompted to enter a 
