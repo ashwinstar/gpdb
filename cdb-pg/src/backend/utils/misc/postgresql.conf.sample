@@ -394,7 +394,6 @@ log_autostats=off	# print additional autostats information
 
 #dynamic_library_path = '$libdir'
 #explain_pretty_print = on
-#gin_fuzzy_search_limit = 0
 #local_preload_libraries = ''
 
 

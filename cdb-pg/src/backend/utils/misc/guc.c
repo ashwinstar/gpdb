@@ -3629,11 +3629,12 @@ static struct config_int ConfigureNamesInt[] =
 		1, 1, 3600, gpvars_assign_gp_gpperfmon_send_interval, NULL
 	},
 
+	/* MPP-9413: gin indexes are disabled */
 	{
 		{"gin_fuzzy_search_limit", PGC_USERSET, CLIENT_CONN_OTHER,
 			gettext_noop("Sets the maximum allowed result for exact search by GIN."),
 			NULL,
-			0
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&GinFuzzySearchLimit,
 		0, 0, INT_MAX, NULL, NULL
