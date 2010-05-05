@@ -699,6 +699,7 @@ prn.relfilenode_oid,
 pc.relfilenode,
 pc.relisshared,
 pc.relstorage,
+pc.reltablespace,
 pc.relkind
 from gp_persistent_relation_node as prn,
 pg_class as pc,
@@ -1029,11 +1030,12 @@ sub get_relfilenode_func
 			{
 				my $rnod = $dbs{$dbkey}->{relfilenodeh}->{$rr2->{relfilenode}};
 
-				$rnod->{relname}	 = $rr2->{relname};
-				$rnod->{relid}		 = $rr2->{relid};
-				$rnod->{relisshared} = $rr2->{relisshared};
-				$rnod->{relstorage}	 = $rr2->{relstorage};
-				$rnod->{relkind}	 = $rr2->{relkind};
+				$rnod->{relname}	   = $rr2->{relname};
+				$rnod->{relid}		   = $rr2->{relid};
+				$rnod->{relisshared}   = $rr2->{relisshared};
+				$rnod->{relstorage}	   = $rr2->{relstorage};
+				$rnod->{relkind}	   = $rr2->{relkind};
+				$rnod->{reltablespace} = $rr2->{reltablespace};
 			}
 		}
 
@@ -1146,7 +1148,7 @@ sub get_relfilenode_func
 		while (my ($ukk, $uvv) = each(%unknown))
 		{
 			# see if have connectable database first...
-			if (exists($dbs{$ukk}))
+			if (exists($dbs{$ukk}) && exists($dbs{$ukk}->{dbname}))
 			{
 				print "Checking db: ", $dbs{$ukk}->{dbname}, "\n";
 			}
@@ -1321,7 +1323,18 @@ sub diff_again
 				{
 					my @filpref;
 					
-					push @filpref, "base" unless ($kk eq "global");
+					# MPP-9415: use "base" or tablespace oid in directory name
+					push @filpref, "base" 
+						unless (($kk eq "global")
+								# MPP-9415: no "base" for other filespaces
+								|| ($row->{fsoid} != 3052)); # pg_system
+					
+					# MPP-9415: and use the tablespace oid in the name
+					# if not in pg_system filespace
+					push @filpref, $rnod->{reltablespace}
+						if (($row->{fsoid} != 3052)
+							&& exists($rnod->{reltablespace}));
+
 					push @filpref, $kk; # dbid
 
 					# build full path to filename
@@ -1746,6 +1759,7 @@ if (1)
 		"fep.fselocation as ploc, " .
 		"gscm.hostname as mhostname, gscm.address as maddress, " .
 		"fem.fselocation as mloc, " .
+		"pfs.oid fsoid, " .
 		"pfs.fsname " .
 		"from " .
 		"gp_segment_configuration gscp, pg_filespace_entry fep, " .
