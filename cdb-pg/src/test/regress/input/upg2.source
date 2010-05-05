@@ -473,37 +473,41 @@ a.ev_class = 'public.pg_roles'::regclass and
 b.ev_class = 'public.pg_roles_v33'::regclass;
 
 -- pg_attribute 
-select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from public.pg_attribute a,
-     public.pg_class c,
-     public.pg_type t
-     where c.oid = a.attrelid and a.attnum > 0
-     and t.oid = a.atttypid
-     and c.oid < 10000
+select c.relname, a.attname, a.attnum, t.typname, 
+	   a.attlen, a.attndims, a.attcacheoff, a.atttypmod, a.attbyval, 
+	   a.attstorage, a.attalign, a.attnotnull, a.atthasdef, a.attisdropped,
+	   a.attislocal, a.attinhcount
+from public.pg_attribute a
+     left join public.pg_class c on (c.oid = a.attrelid)
+     left join public.pg_type t on (t.oid = a.atttypid)
+     where a.attrelid < 10000
 except all
-select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from public.pg_attribute_v33 a,
-     public.pg_class_v33 c,
-     public.pg_type_v33 t
-     where c.oid = a.attrelid and a.attnum > 0
-     and t.oid = a.atttypid
-     and c.oid < 10000;
+select c.relname, a.attname, a.attnum, t.typname, 
+	   a.attlen, a.attndims, a.attcacheoff, a.atttypmod, a.attbyval, 
+	   a.attstorage, a.attalign, a.attnotnull, a.atthasdef, a.attisdropped,
+	   a.attislocal, a.attinhcount
+from public.pg_attribute_v33 a
+     left join public.pg_class_v33 c on (c.oid = a.attrelid)
+     left join public.pg_type_v33 t on (t.oid = a.atttypid)
+     where a.attrelid < 10000;
 
-select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from public.pg_attribute_v33 a,
-     public.pg_class_v33 c,
-     public.pg_type_v33 t
-     where c.oid = a.attrelid and a.attnum > 0
-     and t.oid = a.atttypid
-     and c.oid < 10000
+select c.relname, a.attname, a.attnum, t.typname, 
+	   a.attlen, a.attndims, a.attcacheoff, a.atttypmod, a.attbyval, 
+	   a.attstorage, a.attalign, a.attnotnull, a.atthasdef, a.attisdropped,
+	   a.attislocal, a.attinhcount
+from public.pg_attribute_v33 a
+     left join public.pg_class_v33 c on (c.oid = a.attrelid)
+     left join public.pg_type_v33 t on (t.oid = a.atttypid)
+     where a.attrelid < 10000
 except all
-select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from public.pg_attribute a,
-     public.pg_class c,
-     public.pg_type t
-     where c.oid = a.attrelid and a.attnum > 0
-     and t.oid = a.atttypid
-     and c.oid < 10000;
+select c.relname, a.attname, a.attnum, t.typname, 
+	   a.attlen, a.attndims, a.attcacheoff, a.atttypmod, a.attbyval, 
+	   a.attstorage, a.attalign, a.attnotnull, a.atthasdef, a.attisdropped,
+	   a.attislocal, a.attinhcount
+from public.pg_attribute a
+     left join public.pg_class c on (c.oid = a.attrelid)
+     left join public.pg_type t on (t.oid = a.atttypid)
+     where a.attrelid < 10000;
 
 -- compare old and new pg_index
 select * from public.pg_index_v33 where indexrelid < 10000
@@ -906,37 +910,41 @@ a.ev_class = 'public.pg_roles'::regclass and
 b.ev_class = 'pg_catalog.pg_roles'::regclass;
 
 -- pg_attribute 
-select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from public.pg_attribute a,
-     public.pg_class c,
-     public.pg_type t
-     where c.oid = a.attrelid and a.attnum > 0
-     and t.oid = a.atttypid
-     and c.oid < 10000
+select c.relname, a.attname, a.attnum, t.typname, 
+	   a.attlen, a.attndims, a.attcacheoff, a.atttypmod, a.attbyval, 
+	   a.attstorage, a.attalign, a.attnotnull, a.atthasdef, a.attisdropped,
+	   a.attislocal, a.attinhcount
+from public.pg_attribute a
+     left join public.pg_class c on (c.oid = a.attrelid)
+     left join public.pg_type t on (t.oid = a.atttypid)
+     where a.attrelid < 10000
 except all
-select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from pg_catalog.pg_attribute a,
-     pg_catalog.pg_class c,
-     pg_catalog.pg_type t
-     where c.oid = a.attrelid and a.attnum > 0
-     and t.oid = a.atttypid
-     and c.oid < 10000;
+select c.relname, a.attname, a.attnum, t.typname, 
+	   a.attlen, a.attndims, a.attcacheoff, a.atttypmod, a.attbyval, 
+	   a.attstorage, a.attalign, a.attnotnull, a.atthasdef, a.attisdropped,
+	   a.attislocal, a.attinhcount
+from pg_catalog.pg_attribute a
+     left join pg_catalog.pg_class c on (c.oid = a.attrelid)
+     left join pg_catalog.pg_type t on (t.oid = a.atttypid)
+     where a.attrelid < 10000;
 
-select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from pg_catalog.pg_attribute a,
-     pg_catalog.pg_class c,
-     pg_catalog.pg_type t
-     where c.oid = a.attrelid and a.attnum > 0
-     and t.oid = a.atttypid
-     and c.oid < 10000
+select c.relname, a.attname, a.attnum, t.typname, 
+	   a.attlen, a.attndims, a.attcacheoff, a.atttypmod, a.attbyval, 
+	   a.attstorage, a.attalign, a.attnotnull, a.atthasdef, a.attisdropped,
+	   a.attislocal, a.attinhcount
+from pg_catalog.pg_attribute a
+     left join pg_catalog.pg_class c on (c.oid = a.attrelid)
+     left join pg_catalog.pg_type t on (t.oid = a.atttypid)
+     where a.attrelid < 10000
 except all
-select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from public.pg_attribute a,
-     public.pg_class c,
-     public.pg_type t
-     where c.oid = a.attrelid and a.attnum > 0
-     and t.oid = a.atttypid
-     and c.oid < 10000;
+select c.relname, a.attname, a.attnum, t.typname, 
+	   a.attlen, a.attndims, a.attcacheoff, a.atttypmod, a.attbyval, 
+	   a.attstorage, a.attalign, a.attnotnull, a.atthasdef, a.attisdropped,
+	   a.attislocal, a.attinhcount
+from public.pg_attribute a
+     left join public.pg_class c on (c.oid = a.attrelid)
+     left join public.pg_type t on (t.oid = a.atttypid)
+     where a.attrelid < 10000;
 
 -- compare old and new pg_index
 select * from pg_catalog.pg_index where indexrelid < 10000
