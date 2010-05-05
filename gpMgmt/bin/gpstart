@@ -88,9 +88,10 @@ class GpStart:
 
         self._startMaster()
         logger.info("Master Started...")
-        self._check_standby_activated()
 
         if not self.masteronly:
+            self._check_standby_activated()
+            
             logger.info("Shutting down master")
             cmd=gp.GpStop("Shutting down master", masterOnly=True, 
                           fast=True, quiet=logging_is_quiet(),
@@ -187,7 +188,9 @@ class GpStart:
 
     def _check_standby_activated(self):
         logger.debug("Checking if standby has been activated...")
+
         if self.gparray.standbyMaster:
+            
             syncmaster_pid = gp.getSyncmasterPID(self.gparray.standbyMaster.getSegmentHostName(),
                                                  self.gparray.standbyMaster.getSegmentDataDirectory())
             if syncmaster_pid <= 0:
@@ -198,6 +201,7 @@ class GpStart:
                                   remoteHost=self.gparray.standbyMaster.getSegmentHostName())
                 cmd.run(validateAfter=False)
                 if cmd.is_running():
+                    # stop the master we've started up.
                     cmd=gp.GpStop("Shutting down master", masterOnly=True, 
                                   fast=True, quiet=logging_is_quiet(),
                                   verbose=logging_is_verbose(),

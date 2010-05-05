@@ -368,18 +368,18 @@ def create_new_standby_master(options):
     """Creates a new standby master."""
     
     logger.info('Creating new standby master...')
-    try:
-        cmd = gp.GpInitStandby('Create new standby master', options.new_standby)
-        cmd.run()
-        if cmd.get_results().rc != 0:
-            logger.error('Failed to create the new standby master on %s' % options.new_standby)
-            logger.error('Results: %s' % cmd.get_results())
-            logger.warning('You will need to manually run \'gpinitstandby -s %s\' to create the new standby master.' % options.new_standby)
-    except Exception, e:
+
+    gphome = os.environ.get("GPHOME")
+    # we have to use os.system here because gpinitstandby will be interactive
+    # due to filespace remapping.
+    rc = os.system("%s/bin/gpinitstandby -s %s" % (gphome, options.new_standby))
+    if rc != 0:
+        logger.warnings('Failed to create the new standby master on %s' % options.new_standby)
+        logger.warning('You will need to manually run \'gpinitstandby -s %s\' to create the new standby master.' % options.new_standby)
         logger.warning('There was a problem creating the new standby master on host %s.' % options.new_standby)
         logger.warning('The error was: %s' % e)
         logger.warning('You will need to manually run \'gpinitstandby -s %s\' to create the new standby master.' % options.new_standby)
-        raise GpActivateStandbyException(e)
+        raise GpActivateStandbyException('Failed to create new standby')
 
 
 #-------------------------------------------------------------------------
