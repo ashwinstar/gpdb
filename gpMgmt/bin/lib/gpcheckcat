@@ -67,6 +67,7 @@ class Global():
         usage('Error: either $USER or $LOGNAME must be set')
 
 GV = Global()
+
 # array of SQL statements. Key is dbid
 Remove = {}
 
@@ -1157,6 +1158,37 @@ def checkOwners():
                 % (row['nspname'], row['relname'], row['rolname']))
             fixupowners(row['nspname'], row['relname'], row['rolname'])
 
+
+def checkDeprecatedIndexes():
+    logger.info('-----------------------------------')
+    logger.info('Checking indexes')
+
+    db = connect2(GV.cfg[1], utilityMode=False)
+    qry = '''    
+    SELECT quote_ident(n.nspname) || '.' || quote_ident(c.relname) as index, m.amname as kind
+    FROM   pg_class c join pg_namespace n on (c.relnamespace = n.oid) join pg_am m on (c.relam = m.oid) 
+    WHERE  c.relkind = 'i' and m.amname in ('gin', 'hash')
+    '''
+    curs = db.query(qry)
+
+    rows = []
+    for row in curs.dictresult():
+        rows.append(row)
+    if len(rows) == 0:
+        logger.info('[OK] indexes')
+    
+    else:
+        GV.retcode = 1
+        if len(rows) == 1:
+            logger.info('[ERROR] there is 1 deprecated index')
+        else:
+            logger.info('[ERROR] there are %d deprecated indexes' % len(rows))
+        logger.info('[ERROR] %s' % qry)
+        for row in rows:
+            logger.info('[ERROR] %s [%s]' % (row['index'], row['kind']))
+    
+
+
 def closeDbs():
     for key, conns in GV.db.iteritems():
         db = conns[0]
@@ -1203,6 +1235,7 @@ if __name__ == '__main__':
     checkPGNamespace()
     checkDistribPolicy()
     checkOwners()
+    checkDeprecatedIndexes()
 
     checkBitmapIndexes()
 
