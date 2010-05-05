@@ -8,6 +8,7 @@ BUGS
 ==========================================================================================
 OPEN
 DONE
+- Direct operations between float8[] and svec
 - Fixed: Constant (Scalar) handling is broken for left operators
 - Fixed: Lack of a binary send/recv function causes interconnect to SEGV
 - Added ^ operator for exponentiation
@@ -22,12 +23,14 @@ DONE
 IMPROVEMENTS
 ==========================================================================================
 TODO
+- phrase match that returns the weight of a match and the locations where the phrases are
+	for each document relative to an input phrase
+- set "contains" operator that returns the intersection of two vectors (Elbit, LinkedIn)
 - slice operator that returns an svec and takes svec,min,max input
 - svec_pivot_count aggregate returns svec and takes (array dictionary,text term)
 - svec_pivot_sum aggregate returns svec and takes (array dictionary, text term, double value)
 - The complete set of scalar operators present in Postgres
 - Complete set of R vector operators
-- Direct operations between float8[] and svec
 - Rename or alias svec to _float8_sparse
 - Serialization format should avoid copies more often
 - Hash function for the type (for GROUP BY and HASH JOIN)
