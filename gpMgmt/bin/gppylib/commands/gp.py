@@ -16,7 +16,7 @@ from base import *
 from unix import *
 import pg
 from gppylib import pgconf
-from gppylib.utils import writeLinesToFile
+from gppylib.utils import writeLinesToFile, createFromSingleHostFile
 
 logger = get_default_logger()
 
@@ -35,6 +35,16 @@ def check_passive_standby(name,dir):
     else:
         return 0
 
+def getSyncmasterPID(hostname, datadir):
+    cmdStr="ps -ef | grep gpsyncmaster | grep -v grep | awk '{print $2}' | grep `cat %s/postmaster.pid | head -1` || echo -1" % (datadir)
+    name="get gpsyncmaster"
+    cmd=Command(name,cmdStr,ctxt=REMOTE,remoteHost=hostname)
+    try:
+        cmd.run(validateAfter=True)
+        sout=cmd.get_results().stdout.lstrip(' ')
+        return int(sout.split()[1])
+    except:
+        return -1
 
 def get_max_dbid(name,conn):
     try:
@@ -61,8 +71,8 @@ class PySync(Command):
 
 #-----------------------------------------------
 class MasterStart(Command):
-    def __init__(self, name, dataDir, port, dbid, numContentsInCluster, 
-                 restrictedMode=False, timeout=SEGMENT_TIMEOUT_DEFAULT, 
+    def __init__(self, name, dataDir, port, dbid, numContentsInCluster,
+                 restrictedMode=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
                  max_connections=1, disableMasterMirror=False,
                  utilityMode=False, ctxt=LOCAL, remoteHost=None):
         self.dataDir=dataDir
@@ -93,11 +103,13 @@ class MasterStart(Command):
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
     @staticmethod
-    def local(name,dataDir,port,dbid, numContentsInCluster, restrictedMode=False, 
-              timeout=SEGMENT_TIMEOUT_DEFAULT, max_connections=1, disableMasterMirror=False,
+    def local(name,dataDir,port,dbid, numContentsInCluster,
+              restrictedMode=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
+              max_connections=1, disableMasterMirror=False,
               utilityMode=False):
-        cmd=MasterStart(name,dataDir,port,dbid, numContentsInCluster, restrictedMode, timeout, 
-                        max_connections,disableMasterMirror,utilityMode)
+        cmd=MasterStart(name,dataDir,port,dbid, numContentsInCluster,
+                        restrictedMode, timeout,max_connections,
+                        disableMasterMirror,utilityMode)
         cmd.run(validateAfter=True)
 
 #-----------------------------------------------
@@ -121,8 +133,8 @@ class SegmentStart(Command):
     all of the segments on a specified GpHost.
     """
 
-    def __init__(self, name, gpdb, numContentsInCluster, mirroringMode, 
-                 utilityMode=False, ctxt=LOCAL, remoteHost=None, 
+    def __init__(self, name, gpdb, numContentsInCluster, mirroringMode,
+                 utilityMode=False, ctxt=LOCAL, remoteHost=None,
                  noWait=False, timeout=SEGMENT_TIMEOUT_DEFAULT):
 
         # This is referenced from calling code
@@ -256,6 +268,10 @@ class SegmentStop(Command):
         cmd=SegmentStop(name, dataDir,mode)
         cmd.run(validateAfter=True)
 
+    @staticmethod
+    def remote(name, hostname, dataDir, mode='smart'):
+        cmd=SegmentStop(name, dataDir, mode, ctxt=REMOTE, remoteHost=hostname)
+        cmd.run(validateAfter=True)
 
 def getSegmentsReprArgWithoutFilespaces(segments):
     dirlist=[]
@@ -390,15 +406,20 @@ class GpSegStopCmd(Command):
 
 #-----------------------------------------------
 class GpStandbyStart(Command):
-    def __init__(self,name,datadir,port,ctxt=LOCAL, remoteHost=None):
+    def __init__(self,name,datadir,port,ncontents,ctxt=LOCAL,
+                 remoteHost=None,dbid=None):
         self.datadir=datadir
         self.port=port
-        cmdStr="exec $GPHOME/sbin/gpstandbystart.sh %s %d" % (datadir,port)
+        self.dbid=dbid
+        self.ncontents=ncontents
+        cmdStr="exec $GPHOME/sbin/gpstandbystart.sh %s %d %s %d" % \
+            (datadir,port,dbid,ncontents)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
     @staticmethod
-    def remote(name,host,datadir,port):
-        cmd=GpStandbyStart(name,datadir,port,ctxt=REMOTE,remoteHost=host)
+    def remote(name,host,datadir,port,ncontents,dbid):
+        cmd=GpStandbyStart(name,datadir,port,ncontents,
+                           ctxt=REMOTE,remoteHost=host,dbid=dbid)
         cmd.run(validateAfter=True)
         return cmd
 
@@ -805,6 +826,47 @@ class GpAddConfigScript(Command):
 
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
+#-----------------------------------------------        
+class GpLogFilter(Command):
+    def __init__(self, name, filename, start=None, end=None, duration=None, 
+                 case=None, count=None, search_string=None,
+                 exclude_string=None, search_regex=None, exclude_regex=None, 
+                 trouble=None, ctxt=LOCAL,remoteHost=None):
+        cmdfrags = []
+        if start:
+            cmdfrags.append('--begin=%s' % start)
+        if end:
+            cmdfrags.append('--end=%s' % end)
+        if duration:
+            cmdfrags.append('--duration=%s' % duration)
+        if case:
+            cmdfrags.append('--case=%s' % case)
+        if search_string:
+            cmdfrags.append('--find=\'%s\'' % search_string)
+        if exclude_string:
+            cmdfrags.append('--nofind=\'%s\'' % exclude_string)
+        if search_regex:
+            cmdfrags.append('--match=\'%s\'' % search_regex)
+        if count:
+            cmdfrags.append('-n %s' % count)
+        if exclude_regex:
+            cmdfrags.append('--nomatch=\'%s\'' % exclude_regex)
+        if trouble:
+            cmdfrags.append('-t')
+        cmdfrags.append(filename)
+        
+        self.cmdStr = "$GPHOME/bin/gplogfilter %s" % ' '.join(cmdfrags)
+        Command.__init__(self, name, self.cmdStr, ctxt,remoteHost)
+
+    @staticmethod
+    def local(name, filename, start=None, end=None, duration=None, 
+               case=None, count=None, search_string=None,
+               exclude_string=None, search_regex=None, exclude_regex=None, 
+               trouble=None):
+        cmd = GpLogFilter(name, filename, start, end, duration, case, count, search_string,
+                          exclude_string, search_regex, exclude_regex, trouble)
+        cmd.run(validateAfter=True)
+        return "".join(cmd.get_results().stdout).split("\r\n")
 
 #-----------------------------------------------
 def distribute_tarball(queue,list,tarball):
@@ -868,7 +930,7 @@ def standby_check(master_datadir):
 
 #=-=-=-=-=-=-=-=-=-= Bash Migration Helper Functions =-=-=-=-=-=-=-=-
 
-def start_standbymaster(host,datadir,port):
+def start_standbymaster(host,datadir,port,dbid,ncontents):
     logger.info("Starting standby master")
 
     logger.info("Checking if standby master is running on host: %s  in directory: %s" % (host,datadir))
@@ -881,7 +943,8 @@ def start_standbymaster(host,datadir,port):
     CreateDirIfNecessary.remote('create standby logdir if needed', host, datadir + "/pg_log")
 
 
-    cmd=GpStandbyStart.remote('start standby master',host,datadir,port)
+    cmd=GpStandbyStart.remote('start standby master',host,datadir,port,
+                              ncontents,dbid)
     logger.debug("Starting standby: %s" % cmd )
 
     logger.debug("Starting standby master results: %s" % cmd.get_results() )
@@ -1084,3 +1147,22 @@ def createTempDirectoryName(masterDataDirectory, tempDirPrefix):
                                 tempDirPrefix,
                                 datetime.datetime.now().strftime('%m%d%Y'),
                                 os.getpid())
+
+def get_dbid(datadir, host=None):
+    import re
+    try:
+        file = os.path.join(datadir, "gp_dbid")
+        data = createFromSingleHostFile(file)
+        RE = re.compile(r"dbid\s*=\s*(\d+)")
+    except Exception, e:
+        logger.fatal("Failed to read dbid from %s. %s" % (file, str(e)))
+
+    dbid = None
+    for l in data:
+        if not l: continue
+        m = re.match(RE, l)
+        if m:
+            (dbid,) = m.groups()
+            break
+
+    return dbid

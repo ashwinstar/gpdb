@@ -165,8 +165,13 @@ extern Size PersistentFilespace_ShmemSize(void);
  */
 extern void PersistentFilespace_ShmemInit(void);
 
+extern void xlog_persistent_filespace_create(Oid filespaceoid,
+                                 			 int16 pri_dbid, char *pri_loc,
+                                 			 int16 mir_dbid, char *mir_loc);
+
 extern void PersistentFilespace_AddMirror(Oid filespace, char *mirpath,
 							  			  int16 pridbid, int16 mirdbid);
 extern void PersistentFilespace_RemoveSegment(int16 dbid, bool ismirror);
-
+extern void PersistentFilespace_ActivateStandby(int16 oldmaster,
+												int16 newmaster);
 #endif   /* CDBPERSISTENTFILEESPACE_H */

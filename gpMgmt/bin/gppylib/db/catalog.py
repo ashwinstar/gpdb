@@ -93,6 +93,38 @@ def doesSchemaExist(conn,schemaname):
             cursor.close()
 
 
+def get_master_filespace_map(conn):
+    """Returns an array of [fsname, fspath] arrays that represents
+    all the filespaces on the master."""
+    sql = """SELECT fsname, fselocation 
+    FROM pg_filespace, pg_filespace_entry 
+WHERE pg_filespace.oid = pg_filespace_entry.fsefsoid 
+    AND fsedbid = 1"""
+    cursor = None
+    try:
+        cursor = dbconn.execSQL(conn, sql)
+        return cursor.fetchall()
+    finally:
+        if cursor:
+            cursor.close()
+            
+def get_standby_filespace_map(conn):
+    """Returns an array of [fsname, fspath] arrays that represents
+    all the filespaces on the standby master."""
+    sql = """SELECT fsname, fselocation 
+    FROM pg_filespace, pg_filespace_entry 
+WHERE pg_filespace.oid = pg_filespace_entry.fsefsoid 
+    AND fsedbid = (SELECT MAX(dbid) FROM gp_segment_configuration)"""
+    cursor = None
+    try:
+        cursor = dbconn.execSQL(conn, sql)
+        return cursor.fetchall()
+    finally:
+        if cursor:
+            cursor.close()
+    
+    
+
 def get_catalogtable_list(conn):
     sql = """SELECT schemaname || '.' ||  tablename 
              FROM pg_tables 

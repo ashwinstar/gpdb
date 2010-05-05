@@ -355,6 +355,11 @@ void MirroredBufferPool_Create(
 	*primaryError = 0;
 	*mirrorDataLossOccurred = false;
 
+#ifdef MASTER_MIRROR_SYNC
+    mmxlog_log_create_relfilenode(relFileNode->spcNode, relFileNode->dbNode, relFileNode->relNode,
+								  segmentFileNum);
+#endif
+
 	// -------- MirroredLock ----------
 	MIRROREDLOCK_BUFMGR_LOCK;
 
@@ -847,7 +852,12 @@ void MirroredBufferPool_Drop(
 {
 	MirrorDataLossTrackingState mirrorDataLossTrackingState;
 	int64 mirrorDataLossTrackingSessionNum;
-	
+
+#ifdef MASTER_MIRROR_SYNC
+    mmxlog_log_remove_relfilenode(relFileNode->spcNode, relFileNode->dbNode, relFilenode->relNode,
+								  segmentFilNum);
+#endif
+
 	mirrorDataLossTrackingState = 
 				FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
 												&mirrorDataLossTrackingSessionNum);

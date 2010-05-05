@@ -23,13 +23,16 @@
 #include "catalog/pg_filespace.h"
 #include "catalog/pg_database.h"
 #include "catalog/gp_persistent.h"
+#include "catalog/gp_segment_config.h"
+#include "cdb/cdbmirroredfilesysobj.h"
+#include "postmaster/postmaster.h"
+#include "postmaster/primary_mirror_mode.h"
+#include "storage/ipc.h"
 #include "storage/itemptr.h"
 #include "storage/shmem.h"
+#include "storage/smgr.h"
 #include "utils/guc.h"
 #include "utils/hsearch.h"
-#include "postmaster/primary_mirror_mode.h"
-#include "storage/smgr.h"
-#include "storage/ipc.h"
 #include "utils/builtins.h"
 
 #include "cdb/cdbvars.h"
@@ -691,6 +694,42 @@ void PersistentFilespace_MarkCreatePending(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
+void
+xlog_persistent_filespace_create(Oid filespaceoid,
+								 int16 pri_dbid, char *pri_loc,
+								 int16 mir_dbid, char *mir_loc)
+{
+	PersistentFileSysObjName fsObjName;
+	FilespaceDirEntry fse;
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
+	PersistentFilespace_InitScan();
+
+	PersistentFileSysObjName_SetFilespaceDir(&fsObjName, filespaceoid);
+
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+
+	fse = PersistentFilespace_CreateDirUnderLock(filespaceoid);
+	Insist(fse != NULL);
+
+	fse->dbId1 = pri_dbid;
+	PersistentFilespace_BlankPadCopyLocation(
+										fse->locationBlankPadded1,
+										pri_loc);
+
+	fse->dbId2 = mir_dbid;
+	PersistentFilespace_BlankPadCopyLocation(
+										fse->locationBlankPadded2,
+										mir_loc);
+
+	fse->state = PersistentFileSysState_Created;
+
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	
+	elog(LOG, "replay filespace_create: oid = %u, %s(%i) %s(%i)",
+		 filespaceoid, pri_loc, pri_dbid, mir_loc, mir_dbid);
+}
+
 // -----------------------------------------------------------------------------
 // Transaction End  
 // -----------------------------------------------------------------------------
@@ -719,10 +758,14 @@ void PersistentFilespace_Created(
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent filespace %u because we are before persistence work",
+				 "Skipping persistent filespace %u because we are before "
+				 "persistence work",
 				 filespaceOid);
-
-		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
+	/* 
+	 * The initdb process will load the persistent table once we out of
+	 * bootstrap mode.
+	 */
+		return;
 	}
 
 	PersistentFilespace_InitScan();
@@ -735,11 +778,12 @@ void PersistentFilespace_Created(
 				PersistentFilespace_FindDirUnderLock(
 												filespaceOid);
 	if (filespaceDirEntry == NULL)
-		elog(ERROR, "Did not find persistent filespace entry %u", 
+		elog(ERROR, "did not find persistent filespace entry %u", 
 			 filespaceOid);
 
 	if (filespaceDirEntry->state != PersistentFileSysState_CreatePending)
-		elog(ERROR, "Persistent filespace entry %u expected to be in 'Create Pending' state (actual state '%s')", 
+		elog(ERROR, "persistent filespace entry %u expected to be in "
+			 "'Create Pending' state (actual state '%s')", 
 			 filespaceOid,
 			 PersistentFileSysObjState_Name(filespaceDirEntry->state));
 
@@ -962,18 +1006,22 @@ PersistentFilespace_AddMirror(Oid filespace,
 {
 	PersistentFileSysObjName fsObjName;
 	char *newpath;
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
 	FilespaceDirEntry fde;
+
+	if (PersistentFileSysObj_BeforePersistenceWork())
+		elog(ERROR, "persistent table changes forbidden");
 
 	PersistentFilespace_InitScan();
 
 	PersistentFileSysObjName_SetFilespaceDir(&fsObjName, filespace);
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	fde = PersistentFilespace_FindDirUnderLock(filespace);
 	if (fde == NULL)
-		elog(ERROR, "Did not find persistent filespace entry %u", 
+		elog(ERROR, "did not find persistent filespace entry %u", 
 			 filespace);
 
 	if (fde->dbId1 == pridbid)
@@ -1005,22 +1053,27 @@ PersistentFilespace_AddMirror(Oid filespace,
 								   (void *)newpath,
 								   /* flushToXlog */ false);
 		
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
 /*
- * Add a mirror.
+ * Remove all reference to a segment from the gp_persistent_filespace_node table
+ * and share memory structure.
  */
 void
 PersistentFilespace_RemoveSegment(int16 dbid, bool ismirror)
 {
 	HASH_SEQ_STATUS hstat;
 	FilespaceDirEntry fde;
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
+	if (PersistentFileSysObj_BeforePersistenceWork())
+		elog(ERROR, "persistent table changes forbidden");
 
 	hash_seq_init(&hstat, persistentFilespaceSharedHashTable);
 
 	PersistentFilespace_InitScan();
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	while ((fde = hash_seq_search(&hstat)) != NULL)
 	{
@@ -1031,14 +1084,12 @@ PersistentFilespace_RemoveSegment(int16 dbid, bool ismirror)
 
 		if (fde->dbId1 == dbid)
 		{
-			fde->dbId1 = dbid;
 			PersistentFilespace_BlankPadCopyLocation(
 										fde->locationBlankPadded1,
 										"");
 		}
 		else if (fde->dbId2 == dbid)
 		{
-			fde->dbId2 = dbid;
 			PersistentFilespace_BlankPadCopyLocation(
 										fde->locationBlankPadded2,
 										"");
@@ -1051,8 +1102,63 @@ PersistentFilespace_RemoveSegment(int16 dbid, bool ismirror)
 								   ismirror,
 								   /* flushToXlog */ false);
 	}
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+}
 
-	LWLockRelease(PersistentObjLock);
+/*
+ * Activate a standby master by removing reference to the dead master
+ * and changing our dbid to the old master's dbid
+ */
+void
+PersistentFilespace_ActivateStandby(int16 oldmaster, int16 newmaster)
+{
+	HASH_SEQ_STATUS hstat;
+	FilespaceDirEntry fde;
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
+	if (PersistentFileSysObj_BeforePersistenceWork())
+		elog(ERROR, "persistent table changes forbidden");
+
+	hash_seq_init(&hstat, persistentFilespaceSharedHashTable);
+
+	PersistentFilespace_InitScan();
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+
+	while ((fde = hash_seq_search(&hstat)) != NULL)
+	{
+		Oid filespace = fde->key.filespaceOid;
+		PersistentFileSysObjName fsObjName;
+
+		PersistentFileSysObjName_SetFilespaceDir(&fsObjName, filespace);
+
+		if (fde->dbId1 == oldmaster)
+		{
+			fde->dbId1 = InvalidDbid;
+			fde->dbId2 = newmaster;
+
+			PersistentFilespace_BlankPadCopyLocation(
+										fde->locationBlankPadded1,
+										"");
+		}
+		else if (fde->dbId2 == oldmaster)
+		{
+			fde->dbId2 = InvalidDbid;
+			fde->dbId1 = newmaster;
+
+			PersistentFilespace_BlankPadCopyLocation(
+										fde->locationBlankPadded2,
+										"");
+		}
+
+		PersistentFileSysObj_ActivateStandby(&fsObjName,
+								   &fde->persistentTid,
+								   fde->persistentSerialNum,
+								   oldmaster,
+								   newmaster,
+								   /* flushToXlog */ false);
+	}
+
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
 // -----------------------------------------------------------------------------

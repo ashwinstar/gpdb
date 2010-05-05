@@ -93,64 +93,6 @@ static bool check_db_file_conflict(Oid db_id);
 static void createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds);
 
 /*
- * write out the PG_VERSION file in the new destination directory
- * UNDONE: Copied from tablespace.c -- make one common version...
- */
-static void
-set_short_version(DbDirNode *dbDirNode)
-{
-	char	   *short_version;
-	bool		gotdot = false;
-	int			end;
-
-	MirroredFlatFileOpen	mirroredOpen;
-
-	char		buffer[100];
-
-	/* Construct short version string (should match initdb.c) */
-	short_version = pstrdup(PG_VERSION);
-
-	for (end = 0; short_version[end] != '\0'; end++)
-	{
-		if (short_version[end] == '.')
-		{
-			Assert(end != 0);
-			if (gotdot)
-				break;
-			else
-				gotdot = true;
-		}
-		else if (short_version[end] < '0' || short_version[end] > '9')
-		{
-			/* gone past digits and dots */
-			break;
-		}
-	}
-	Assert(end > 0 && short_version[end - 1] != '.' && gotdot);
-	short_version[end] = '\0';
-
-	MirroredFlatFile_OpenInDbDir(
-							&mirroredOpen,
-							dbDirNode,
-							"PG_VERSION",
-							O_CREAT | O_WRONLY | PG_BINARY,
-							S_IRUSR | S_IWUSR,
-							/* suppressError */ false);
-
-	sprintf(buffer, "%s\n", short_version);
-	MirroredFlatFile_Append(
-					&mirroredOpen,
-					buffer,
-					strlen(buffer),
-					/* suppressError */ false);
-
-	MirroredFlatFile_Flush(&mirroredOpen, /* suppressError */ false);
-	MirroredFlatFile_Close(&mirroredOpen);
-
-	pfree(short_version);
-}
-
-/*
  * Create target database directories (under transaction).
  */
 static void create_target_directories(
@@ -188,7 +130,7 @@ static void create_target_directories(
 											&persistentTid,
 											&persistentSerialNum);
 
-		set_short_version(&dbDirNode);
+		set_short_version(NULL, &dbDirNode, true);
 	}
 }
 
@@ -345,7 +287,7 @@ static void copy_buffer_pool_segment_file(
 				(errcode_for_file_access(),
 				 errmsg("could not open file \"%s\": %m", srcFileName)));
 
-		dstrel = smgropen(*dstRelFileNode);
+	dstrel = smgropen(*dstRelFileNode);
 	
 	/*
 	 * Do the data copying.
@@ -379,6 +321,7 @@ static void copy_buffer_pool_segment_file(
 		/* NO ELOG(ERROR) from here till newpage op is logged */
 		START_CRIT_SECTION();
 	
+		/* XXX consolidate with heap_logpage() */
 		xlrec.heapnode.node = dstrel->smgr_rnode;
 		xlrec.heapnode.persistentTid = *persistentTid;
 		xlrec.heapnode.persistentSerialNum = persistentSerialNum;
@@ -678,8 +621,8 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 	if (Gp_role != GP_ROLE_EXECUTE)
 	{
 		/*
-		 * Don't allow master tp call this in a transaction block.  Segments are ok as
-		 * distributed transaction participants. 
+		 * Don't allow master to call this in a transaction block. Segments
+		 * are ok as distributed transaction participants. 
 		 */
 		PreventTransactionChain((void *) stmt, "CREATE DATABASE");
 	}
@@ -1365,29 +1308,29 @@ dropdb(const char *dbname, bool missing_ok)
 					 errmsg("database \"%s\" does not exist", dbname)));
 		}
 		else
-		if ( missing_ok && Gp_role == GP_ROLE_EXECUTE )
 		{
-			/* This branch exists just to facilitate cleanup of a failed
-			 * CREATE DATABASE.  Other callers will supply missing_ok as
-			 * FALSE.  The role check is just insurance. 
-			 */
-			ereport(DEBUG1, (
-				errmsg("ignored request to drop non-existent database \"%s\"", dbname)
-			));
-			
-			heap_close(pgdbrel, RowExclusiveLock); /* Keep lock, end of transaction will close. */
-			return;
+			if ( missing_ok && Gp_role == GP_ROLE_EXECUTE )
+			{
+				/* This branch exists just to facilitate cleanup of a failed
+				 * CREATE DATABASE.  Other callers will supply missing_ok as
+				 * FALSE.  The role check is just insurance. 
+				 */
+				elog(DEBUG1, "ignored request to drop non-existent "
+					 "database \"%s\"", dbname);
+				
+				heap_close(pgdbrel, RowExclusiveLock);
+				return;
+			}
+			else
+			{
+				/* Release the lock, since we changed nothing */
+				heap_close(pgdbrel, RowExclusiveLock);
+				ereport(NOTICE,
+						(errmsg("database \"%s\" does not exist, skipping",
+								dbname)));
+				return;
+			}
 		}
-		else
-		{
-			/* Close pg_database, release the lock, since we changed nothing */
-			heap_close(pgdbrel, RowExclusiveLock);
-			ereport(NOTICE,
-					(errmsg("database \"%s\" does not exist, skipping",
-							dbname)));
-			return;
-		}
-		
 	}
 
 	/*

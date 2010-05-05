@@ -404,4 +404,12 @@ extern void PersistentFileSysObj_RemoveSegment(
 								   int16 dbid,
 								   bool ismirror,
 								   bool flushToXLog);
+
+extern void PersistentFileSysObj_ActivateStandby(
+								   PersistentFileSysObjName *fsObjName,
+								   ItemPointer persistentTid,
+								   int64 persistentSerialNum,
+								   int16 oldmaster,
+								   int16 newmaster,
+								   bool flushToXLog);
 #endif   /* CDBPERSISTENTFILESYSOBJ_H */

@@ -12,6 +12,7 @@
 
 #define MASTER_DBID 1
 #define MASTER_CONTENT_ID (-1)
+#define InvalidDbid 0
 
 CATALOG(gp_segment_configuration,5036) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 {

@@ -221,6 +221,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 
 		if (GPAreFileReplicationStructuresRequired()) 
 		{
+			elog(LOG, "reserving filerep semaphores");
 			numSemas += FileRepSemas();
 		}
 		

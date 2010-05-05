@@ -1531,12 +1531,12 @@ STANDBY_CATALOG_UPDATE () {
 	MASTER_STANDBY_PORT=$1
 	STANDBY_HOST_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -d "$QD_DBNAME" -c"select distinct hostname from $CONFIG_TABLE a where hostname='${MASTER_STANDBY_HOSTNAME}';"|$WC -l`
 	ERROR_CHK $? "obtain standby host count" 2
-        LOG_MSG "[INFO]:-Creating new gp_configuration record for ${MASTER_STANDBY_HOSTNAME}"
-        MAX_DB_ID=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -d "$QD_DBNAME" -c"select max(dbid)+1 from $CONFIG_TABLE a;"`
+    LOG_MSG "[INFO]:-Creating new gp_segment_configuration record for ${MASTER_STANDBY_HOSTNAME}"
+    MAX_DB_ID=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -d "$QD_DBNAME" -c"select max(dbid)+1 from $CONFIG_TABLE a;"`
 	ERROR_CHK $? "obtain max dbid from gp_configuration" 2
-        $EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -d "$QD_DBNAME" -c"insert into gp_segment_configuration (dbid, content, role, preferred_role, mode, status, hostname, address, port) values (${MAX_DB_ID},-1,'m', 'm', 'u', 's', '${MASTER_STANDBY_HOSTNAME}','${MASTER_STANDBY_HOSTNAME}',${MASTER_STANDBY_PORT});"
-        $EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -d "$QD_DBNAME" -c"insert into pg_filespace_entry (fsefsoid, fsedbid, fselocation) values (3052, ${MAX_DB_ID},'${MASTER_STANDBY_DATADIR}');"
-        ERROR_CHK $? "add standby host gp_configuration record" 2
+    $EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -d "$QD_DBNAME" -c"insert into gp_segment_configuration (dbid, content, role, preferred_role, mode, status, hostname, address, port) values (${MAX_DB_ID},-1,'m', 'm', 'u', 's', '${MASTER_STANDBY_HOSTNAME}','${MASTER_STANDBY_HOSTNAME}',${MASTER_STANDBY_PORT});"
+    $EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -d "$QD_DBNAME" -c"insert into pg_filespace_entry (fsefsoid, fsedbid, fselocation) values (3052, ${MAX_DB_ID},'${MASTER_STANDBY_DATA_DIRECTORY}');"
+    ERROR_CHK $? "add standby host gp_configuration record" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -1770,6 +1770,47 @@ CHK_START_ERROR_TXT () {
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
+
+# Make a dbid file at a particular host. The dbid file is used by gpstart
+# to tell the process in question which segment/master it is.
+# Arguments:
+#   1 - DBID
+#   2 - host name
+#   3 - path to data directory
+MAKE_DBID_FILE() {
+	DBID=$1; shift
+	HOST=$1; shift
+	DATADIR=$1; shift
+
+	FILEPATH=$DATADIR/gp_dbid
+
+	if [ "$FILEPATH" = "/gp_dbid" ]; then # DATADIR is empty
+		ERROR_EXIT "[FATAL]:-Internal error -- expected non-empty data directory" 2
+	fi
+
+	$TRUSTED_SHELL $HOST \
+	  "$ECHO \"# Greenplum Database identifier for this master/segment.
+# Do not change the contents of this file.
+dbid = $DBID\" > $FILEPATH &&  chmod 400 $FILEPATH"
+}
+
+UPDATE_MPP () {
+	LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
+	U_DB=$DEFAULTDB
+	U_PT=$1
+	U_MPPNAME="$2"
+	U_NUMSEG=$3
+	U_DBID=$4
+	U_CONTENT=$5
+	TYPE=$6
+	U_HOST=$7
+	U_DIR=$8
+	LOG_MSG "[INFO][$INST_COUNT]:-Making dbid file @ $U_HOST:$U_DIR = $U_DBID"
+	MAKE_DBID_FILE $U_DBID $U_HOST $U_DIR
+	LOG_MSG "[INFO][$INST_COUNT]:-Successfully updated GPDB system table"
+	LOG_MSG "[INFO][$INST_COUNT]:-End Function $FUNCNAME"
+}
+
 #******************************************************************************
 # Main Section
 #******************************************************************************

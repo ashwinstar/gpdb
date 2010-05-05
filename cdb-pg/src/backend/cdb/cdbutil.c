@@ -1148,6 +1148,10 @@ dbid_get_dbinfo(int16 dbid)
 
 		Assert(!HeapTupleIsValid(systable_getnext(scandesc)));
 	}
+	else
+	{
+		elog(ERROR, "could not find configuration entry for dbid %i", dbid);
+	}
 
 	systable_endscan(scandesc);
 	heap_close(rel, NoLock);
@@ -1155,6 +1159,12 @@ dbid_get_dbinfo(int16 dbid)
 	return i;
 }
 
+/*
+ * Obtain the dbid of a of a segment at a given segment index (i.e., content id)
+ * currently fulfilling the role specified. This means that the segment is
+ * really performing the role of primary or mirror, irrespective of their
+ * preferred role.
+ */
 int16
 contentid_get_dbid(int16 contentid, char role, bool getPreferredRoleNotCurrentRole)
 {
@@ -1175,6 +1185,47 @@ contentid_get_dbid(int16 contentid, char role, bool getPreferredRoleNotCurrentRo
 	ScanKeyInit(&key[1], roleColumn,
 				BTEqualStrategyNumber, F_CHAREQ,
 				CharGetDatum(role));
+
+	scandesc = heap_beginscan(rel, SnapshotNow, 2, key);
+	tup = heap_getnext(scandesc, ForwardScanDirection);
+
+	if (HeapTupleIsValid(tup))
+	{
+		dbid = ((Form_gp_segment_config) GETSTRUCT(tup))->dbid;
+
+		/* We expect a single result, assert this */
+		Assert(!HeapTupleIsValid(heap_getnext(scandesc, ForwardScanDirection)));
+	}
+
+	heap_endscan(scandesc);
+
+	/* no need to hold the lock, it's a catalog */
+	heap_close(rel, AccessShareLock);
+	return dbid;
+}
+
+/* 
+ * Returns the dbid of the mirror. We can use the fact that
+ * mirrors have the same contentid (stored in GpIdentity) and go from
+ * there.
+ */
+int16
+my_mirror_dbid(void)
+{
+	int16 dbid = 0;
+	int16 contentid = (int16)GpIdentity.segindex;
+	ScanKeyData	key[2];
+	HeapScanDesc	scandesc;
+	Relation rel;
+	HeapTuple tup;
+
+	rel = heap_open(GpSegmentConfigRelationId, AccessShareLock);
+	ScanKeyInit(&key[0], Anum_gp_segment_config_content,
+				BTEqualStrategyNumber, F_INT2EQ,
+				ObjectIdGetDatum(contentid));
+	ScanKeyInit(&key[1], Anum_gp_segment_config_role,
+				BTEqualStrategyNumber, F_CHAREQ,
+				CharGetDatum('m'));
 
 	scandesc = heap_beginscan(rel, SnapshotNow, 2, key);
 	tup = heap_getnext(scandesc, ForwardScanDirection);

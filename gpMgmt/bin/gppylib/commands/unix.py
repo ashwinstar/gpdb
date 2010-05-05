@@ -127,6 +127,9 @@ class GenericPlatform():
 
     def getSadcCmd(self, interval, outfilename):
         return None
+    
+    def getIfconfigCmd(self):
+        return findCmdInPath('ifconfig')
         
 class LinuxPlatform(GenericPlatform):
     
@@ -170,6 +173,8 @@ class SolarisPlatform(GenericPlatform):
         cmd = "/usr/lib/sa/sadc " + str(interval) + " 100000 " + outfilename
         return cmd
 
+    def getIfconfigCmd(self):
+        return findCmdInPath('ifconfig') + ' -a inet'
 
 class DarwinPlatform(GenericPlatform):
     
@@ -628,6 +633,28 @@ class Hostname(Command):
         return self.results.stdout.strip()
 
     
+class InterfaceAddrs(Command):
+    """Returns list of interface IP Addresses.  List does not include loopback."""
+    def __init__(self, name, ctxt=LOCAL, remoteHost=None):
+        ifconfig = SYSTEM.getIfconfigCmd()
+        grep = findCmdInPath('grep')
+        awk = findCmdInPath('awk')
+        cut = findCmdInPath('cut')
+        cmdStr = '%s|%s "inet "|%s -v "127.0.0"|%s \'{print \$2}\'|%s -d: -f2' % (ifconfig, grep, grep, awk, cut)
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+        
+    @staticmethod
+    def local(name):
+        cmd=InterfaceAddrs(name)
+        cmd.run(validateAfter=True)
+        return cmd.get_results().stdout.split()
+    
+    @staticmethod
+    def remote(name, remoteHost):
+        cmd=InterfaceAddrs(name, ctxt=REMOTE, remoteHost=remoteHost)
+        cmd.run(validateAfter=True)
+        return cmd.get_results().stdout.split()
+        
 
 class FileContainsTerm(Command):    
     def __init__(self, name, search_term, file, ctxt=LOCAL, remoteHost=None):
@@ -689,6 +716,11 @@ class Chmod(Command):
     @staticmethod
     def local(name, dir, perm):
         cmd=Chmod(name, dir, perm)
+        cmd.run(validateAfter=True)
+        
+    @staticmethod
+    def remote(name, hostname, dir, perm):
+        cmd=Chmod(name, dir, perm, ctxt=REMOTE, remoteHost=hostname)
         cmd.run(validateAfter=True)
         
 #--------------get user id ----------------------

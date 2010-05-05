@@ -175,7 +175,7 @@ PROCESS_QE () {
         if [ x"" = x"$COPY_FROM_PRIMARY_HOSTADDRESS" ]; then
  		# Primary: start the segment to fill in configuration
 		START_QE
-		UPDATE_MPP $GP_PORT "$ARRAY_NAME" $TOTAL_SEG $GP_DBID $GP_CONTENT 1 $GP_HOSTADDRESS
+		UPDATE_MPP $GP_PORT "$ARRAY_NAME" $TOTAL_SEG $GP_DBID $GP_CONTENT 1 $GP_HOSTADDRESS $GP_DIR
 		STOP_QE
 	fi
 
@@ -206,26 +206,6 @@ START_QE() {
 	LOG_MSG "[INFO][$INST_COUNT]:-Successfully started segment instance on $GP_HOSTADDRESS"
 }
 
-UPDATE_MPP () {
-                LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
-                U_DB=$DEFAULTDB
-                U_PT=$1
-                U_MPPNAME="$2"
-                U_NUMSEG=$3
-                U_DBID=$4
-                U_CONTENT=$5
-                TYPE=$6
-                U_HOST=$7
-                if [ $TYPE -eq 0 ]; then
-                    $EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $U_PT -d "$U_DB" -c "insert into $GP_TBL values ('${U_MPPNAME}',-1,-1,-1);" >> $LOG_FILE 2>&1
-                    PARA_EXIT $? "add $U_DBID to Master gp_id"
-                else
-                    $TRUSTED_SHELL $U_HOST "$EXPORT_LIB_PATH;env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $U_PT -d \"$U_DB\" -c \"insert into $GP_TBL (gpname, numsegments, dbid, content) values ('${U_MPPNAME}',-1,-1,-1);\" " >> $LOG_FILE 2>&1
-    				PARA_EXIT $? "add $U_DBID to Master gp_id"
-                fi
-                LOG_MSG "[INFO][$INST_COUNT]:-Successfully updated GPDB system table"
-                LOG_MSG "[INFO][$INST_COUNT]:-End Function $FUNCNAME"
-}
 #******************************************************************************
 # Main Section
 #******************************************************************************

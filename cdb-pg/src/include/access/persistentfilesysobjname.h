@@ -155,7 +155,7 @@ typedef enum PersistentFileSysState
 } PersistentFileSysState;
 
 /*
- * The primary’s view of the state of a mirrored persistent file-system
+ * The primary's view of the state of a mirrored persistent file-system
  * object.
  */
 typedef enum MirroredObjectExistenceState
@@ -171,7 +171,7 @@ typedef enum MirroredObjectExistenceState
 } MirroredObjectExistenceState;
 
 /*
- * The primary’s view of the state of a mirrored persistent relation data
+ * The primary's view of the state of a mirrored persistent relation data
  * synchronization state.
  */
 typedef enum MirroredRelDataSynchronizationState

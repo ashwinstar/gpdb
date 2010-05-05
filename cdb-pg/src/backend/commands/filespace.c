@@ -896,9 +896,6 @@ get_filespace_name(Oid fsoid)
  * get_filespace_oid - given a filespace name, look up the OID
  *
  * Returns InvalidOid if filespace name not found.
- *
- * If a lockmode of anything other than NoLock is specified we retain
- * the lock on return, and will only release it on commit/abort.
  */
 Oid
 get_filespace_oid(Relation rel, const char *filespacename)
@@ -925,6 +922,53 @@ get_filespace_oid(Relation rel, const char *filespacename)
 	return result;
 }
 
+char *
+get_filespace_path(Oid fseoid, int16 dbid)
+{
+	Relation rel = heap_open(FileSpaceEntryRelationId, AccessShareLock);
+	ScanKeyData key[2];
+	SysScanDesc scan;
+	HeapTuple tup;
+	char *path = NULL;
+
+	ScanKeyInit(&key[0],
+				Anum_pg_filespace_entry_fsefsoid,
+				BTEqualStrategyNumber,
+				F_OIDEQ,
+				ObjectIdGetDatum(fseoid));
+
+	ScanKeyInit(&key[1],
+				Anum_pg_filespace_entry_fsedbid,
+				BTEqualStrategyNumber,
+				F_OIDEQ,
+				Int16GetDatum(dbid));
+
+	scan = systable_beginscan(rel, FilespaceEntryFsDbIndexId,
+							  true, /* index ok? */
+							  SnapshotSelf,
+							  2,
+							  key);
+
+	tup = systable_getnext(scan);
+
+	if (HeapTupleIsValid(tup))
+	{
+		bool isnull;
+
+		Datum d = heap_getattr(tup, Anum_pg_filespace_entry_fselocation,
+							   RelationGetDescr(rel), &isnull);
+
+		Assert(!isnull);
+
+		path = DatumGetCString(DirectFunctionCall1(textout, d));
+
+		Assert(!HeapTupleIsValid(systable_getnext(scan)));
+	}
+
+	systable_endscan(scan);
+	heap_close(rel, AccessShareLock);
+	return path;
+}
 
 /*
  * checkPathFormat(path)
@@ -1154,54 +1198,6 @@ filespace_check_empty(Oid fsoid)
 	}
 	heap_endscan(scandesc);
 	heap_close(rel, AccessShareLock);
-}
-
-char *
-get_filespace_path(Oid fseoid, int16 dbid)
-{
-	SysScanDesc scandesc;
-	Relation	 rel;
-	HeapTuple	 tuple;
-	ScanKeyData  entry[2];
-	char *path;
-	Datum d;
-	bool isnull;
-
-	rel = heap_open(FileSpaceEntryRelationId, AccessShareLock);
-
-	ScanKeyInit(&entry[0],
-				Anum_pg_filespace_entry_fsefsoid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(fseoid));
-
-	ScanKeyInit(&entry[1],
-				Anum_pg_filespace_entry_fsedbid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				Int16GetDatum(dbid));
-
-	scandesc = systable_beginscan(rel,
-								  FilespaceEntryFsDbIndexId,
-								  true,
-								  SnapshotNow, 2, entry);
-	tuple = systable_getnext(scandesc);
-
-	if (!HeapTupleIsValid(tuple))
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("filespace \"%u\" does not exist", 
-						fseoid)));
-	}
-
-	d = heap_getattr(tuple, Anum_pg_filespace_entry_fselocation,
-					 RelationGetDescr(rel), &isnull);
-
-	path = DatumGetCString(DirectFunctionCall1(textout,
-											   d));
-	systable_endscan(scandesc);
-	heap_close(rel, AccessShareLock);
-
-	return path;
 }
 
 /* Add a pg_filespace_entry for a given filespace definition. */

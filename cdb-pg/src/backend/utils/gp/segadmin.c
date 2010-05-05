@@ -12,6 +12,7 @@
 #include "catalog/pg_filespace.h"
 #include "catalog/pg_filespace_entry.h"
 #include "catalog/pg_proc.h"
+#include "cdb/cdbresynchronizechangetracking.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbpersistentdatabase.h"
 #include "cdb/cdbpersistentfilespace.h"
@@ -28,12 +29,12 @@
 #define SUPERUSER 0x4
 #define READ_ONLY 0x8
 #define SEGMENT_ONLY 0x10
+#define STANDBY_ONLY 0x20
 
 /* Encapsulation of information about a given segment. */
 typedef struct seginfo
 {
 	CdbComponentDatabaseInfo db;
-	char *system_filespace;
 } seginfo;
 
 /* look up a particular segment */
@@ -59,6 +60,18 @@ static bool
 segment_has_mirror(int16 contentid)
 {
 	return content_get_mirror_dbid(contentid) != 0;
+}
+
+/* 
+ * As the function name says, test whether a given dbid is the dbid of the
+ * standby master.
+ */
+static bool
+dbid_is_master_standby(int16 dbid)
+{
+	int16 standbydbid = content_get_mirror_dbid(MASTER_CONTENT_ID);
+
+	return (standbydbid == dbid);
 }
 
 /*
@@ -160,7 +173,7 @@ check_fsmap(ArrayType *map)
  * Check that the code is being called in right context.
  */
 static void
-mirroring_sanity_check(int flags, char *func)
+mirroring_sanity_check(int flags, const char *func)
 {
 	if ((flags & MASTER_ONLY) == MASTER_ONLY)
 	{
@@ -189,8 +202,15 @@ mirroring_sanity_check(int flags, char *func)
 
 	if ((flags & SEGMENT_ONLY) == SEGMENT_ONLY)
 	{
-		if (GpIdentity.segindex == -1)
+		if (GpIdentity.segindex == MASTER_CONTENT_ID)
 			elog(ERROR, "%s cannot be run on the master", func);
+	}
+
+	if ((flags && STANDBY_ONLY) == STANDBY_ONLY)
+	{
+		if (!(GpIdentity.segindex == MASTER_CONTENT_ID ||
+			  GpIdentity.dbid == MASTER_DBID))
+			elog(ERROR, "%s can only be run on the standby master", func);
 	}
 }
 
@@ -792,6 +812,8 @@ gp_remove_segment_mirror(PG_FUNCTION_ARGS)
 		elog(ERROR, "dbid cannot be NULL");
 	contentid = PG_GETARG_INT16(0);
 
+	mirroring_sanity_check(MASTER_ONLY | SUPERUSER, "gp_remove_segment_mirror");
+
 	/* avoid races */
 	rel = heap_open(GpSegmentConfigRelationId, AccessExclusiveLock);
 
@@ -892,6 +914,9 @@ gp_remove_master_standby(PG_FUNCTION_ARGS)
 {
 	int16 dbid = master_standby_dbid();
 
+	mirroring_sanity_check(SUPERUSER | MASTER_ONLY | UTILITY_MODE,
+						   "gp_remove_master_standby");
+
 	if (!dbid)
 		elog(ERROR, "no master standby defined");
 
@@ -919,8 +944,140 @@ gp_prep_new_segment(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(true);
 }
 
+/* 
+ * Perform operations necessary to mask a standby master the actual
+ * master in the persistent catalogs.
+ */
+static void
+persistent_activate_standby(int16 standbyid, int16 newdbid)
+{
+	/* for now primary master must be dbid 1 */
+	Insist(newdbid == MASTER_DBID);
+
+	PersistentFilespace_ActivateStandby(standbyid, newdbid);
+	PersistentTablespace_ActivateStandby(standbyid, newdbid);
+	PersistentDatabase_ActivateStandby(standbyid, newdbid);
+	PersistentRelation_ActivateStandby(standbyid, newdbid);
+}
+
+static void
+segment_config_activate_standby(int16 standbydbid, int16 newdbid)
+{
+	/* we use AccessExclusiveLock to prevent races */
+	Relation rel = heap_open(GpSegmentConfigRelationId, AccessExclusiveLock);
+	HeapTuple tuple;
+	HeapScanDesc scandesc;
+	ScanKeyData key;
+
+	/* first, delete the old master */
+	Insist(newdbid == MASTER_DBID);
+	ScanKeyInit(&key,
+				Anum_gp_segment_config_dbid,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum(newdbid));
+	scandesc = heap_beginscan(rel, SnapshotNow, 1, &key);
+	tuple = heap_getnext(scandesc, ForwardScanDirection);
+
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cannot find old master, dbid %i", newdbid);
+
+	simple_heap_delete(rel, &tuple->t_self);
+	heap_endscan(scandesc);
+
+	/* now, set out old dbid to the new dbid */
+	ScanKeyInit(&key,
+				Anum_gp_segment_config_dbid,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum(standbydbid));
+	scandesc = heap_beginscan(rel, SnapshotNow, 1, &key);
+	tuple = heap_getnext(scandesc, ForwardScanDirection);
+
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cannot find standby, dbid %i", standbydbid);
+	
+	tuple = heap_copytuple(tuple);
+	((Form_gp_segment_config)GETSTRUCT(tuple))->dbid = newdbid;
+	((Form_gp_segment_config)GETSTRUCT(tuple))->role = SEGMENT_ROLE_PRIMARY;
+	((Form_gp_segment_config)GETSTRUCT(tuple))->preferred_role = SEGMENT_ROLE_PRIMARY;
+	simple_heap_update(rel, &tuple->t_self, tuple);
+	CatalogUpdateIndexes(rel, tuple);
+
+	heap_endscan(scandesc);
+
+	heap_close(rel, NoLock);
+}
+
 /*
- * Activate a standby.
+ * Same as the above, but for pg_filespace_entry.
+ */
+static void
+filespace_entry_activate_standby(int standbydbid, int newdbid)
+{
+	/* 
+	 * Heavy lock isn't required here, we've serialised operations with
+	 * the lock on gp_segment_configuration.
+	 */
+	Relation rel = heap_open(FileSpaceEntryRelationId, RowExclusiveLock);
+	HeapTuple tuple;
+	HeapScanDesc scandesc;
+	ScanKeyData key;
+
+	/* first, delete the old master */
+	Insist(newdbid == MASTER_DBID);
+	ScanKeyInit(&key,
+				Anum_pg_filespace_entry_fsedbid,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum(newdbid));
+	scandesc = heap_beginscan(rel, SnapshotNow, 1, &key);
+	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
+		simple_heap_delete(rel, &tuple->t_self);
+
+	heap_endscan(scandesc);
+
+	ScanKeyInit(&key,
+				Anum_pg_filespace_entry_fsedbid,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum(standbydbid));
+	scandesc = heap_beginscan(rel, SnapshotNow, 1, &key);
+	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
+	{
+		tuple = heap_copytuple(tuple);
+		((Form_pg_filespace_entry)GETSTRUCT(tuple))->fsedbid = newdbid;
+		simple_heap_update(rel, &tuple->t_self, tuple);
+		CatalogUpdateIndexes(rel, tuple);
+	}
+
+	heap_endscan(scandesc);
+	heap_close(rel, NoLock);
+}
+
+/*
+ * Update pg_filespace_entry and gp_segment_configuration to activate a standby.
+ * This means deleting references to the old standby and changing out dbid from
+ * standbydbid to newdbid.
+ */
+static void
+catalog_activate_standby(int16 standbydbid, int16 newdbid)
+{
+	segment_config_activate_standby(standbydbid, newdbid);
+	filespace_entry_activate_standby(standbydbid, newdbid);
+}
+
+/*
+ * Activate a standby. To do this, we need to change
+ *
+ * 1. Check that we're actually the standby
+ * 2. Change our identity to the master (i.e., switch our dbid to
+ *    dbid 1)
+ * 3. Update pg_filespace_entry, switching our entries from the old dbid
+ *    to the new dbid
+ * 4. Remove references to the old master
+ * 5. Update the persistence tables to remove references to the master,
+ *    switching our old dbid for the new one
+ *
+ * Things are actually a little hairy here. The reason is that in order to
+ * read/write the filesystem, we need to lookup the gp_persistent_filespace_node
+ * table. However, if we change our dbid, we don't get the right results.
  *
  * gp_activate_standby()
  *
@@ -930,7 +1087,27 @@ gp_prep_new_segment(PG_FUNCTION_ARGS)
 Datum
 gp_activate_standby(PG_FUNCTION_ARGS)
 {
-	elog(ERROR, "not implemented");
+	int16 olddbid = GpIdentity.dbid;
+	int16 newdbid = MASTER_DBID;
+
+	mirroring_sanity_check(SUPERUSER | UTILITY_MODE | STANDBY_ONLY,
+						   PG_FUNCNAME_MACRO);
+
+	if (!dbid_is_master_standby(olddbid))
+		elog(ERROR, "%s must be run on the standby master",
+			 PG_FUNCNAME_MACRO);
+
+	persistent_activate_standby(olddbid, newdbid);
+
+	/* 
+	 * Now the persistent tables now about us, so we can switch our
+	 * identity
+	 */
+	GpIdentity.dbid = newdbid;
+
+	catalog_activate_standby(olddbid, newdbid);
+
+	/* done */
 	PG_RETURN_BOOL(true);
 }
 
@@ -982,6 +1159,9 @@ gp_add_segment_persistent_entries(PG_FUNCTION_ARGS)
 	seg.db.role = SEGMENT_ROLE_MIRROR;
 
 	add_segment_persistent_entries(dbid, &seg, fsmap);
+
+	/* tell filerep to start a full resync */
+	ChangeTracking_MarkFullResync();
 
 	PG_RETURN_BOOL(true);
 }

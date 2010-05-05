@@ -32,7 +32,7 @@ try:
     from gppylib import pgconf
     from gppylib.operations.startSegments import *
     from gppylib.gpcoverage import GpCoverage
-except ImportError, e:    
+except ImportError, e:
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
 
@@ -61,7 +61,7 @@ class GpStart:
                  interactive=False,
                  timeout=SEGMENT_TIMEOUT_DEFAULT):
         self.restricted=restricted
-        self.start_standby=start_standby        
+        self.start_standby=start_standby
         self.pool = None
         self.parallel=parallel
         self.attempt_standby_start=False
@@ -86,8 +86,9 @@ class GpStart:
     def system_start(self):
         self._prepare()
 
-        self._startMaster()    
+        self._startMaster()
         logger.info("Master Started...")
+        self._check_standby_activated()
 
         if not self.masteronly:
             logger.info("Shutting down master")
@@ -125,7 +126,7 @@ class GpStart:
         logger.info("Gathering information and validating the environment...")
         self._basic_setup()
 
-        if not self.masteronly:              
+        if not self.masteronly:
             gp.standby_check(self.master_datadir)
 
         self._check_version()
@@ -139,8 +140,8 @@ class GpStart:
         self.gphome=gp.get_gphome()
         if self.master_datadir is None:
             self.master_datadir=gp.get_masterdatadir()
-        self.user=gp.get_user()                                    
-        gp.check_permissions(self.user)                    
+        self.user=gp.get_user()
+        gp.check_permissions(self.user)
         self._read_postgresqlconf()
 
     ######
@@ -150,14 +151,14 @@ class GpStart:
     ######
     def _read_postgresqlconf(self):
         logger.debug("Obtaining master's port from master data directory")
-        pgconf_dict = pgconf.readfile(self.master_datadir + "/postgresql.conf")        
-        self.port = pgconf_dict.int('port')        
-        logger.debug("Read from postgresql.conf port=%s" % self.port)   
-        self.max_connections = pgconf_dict.int('max_connections') 
+        pgconf_dict = pgconf.readfile(self.master_datadir + "/postgresql.conf")
+        self.port = pgconf_dict.int('port')
+        logger.debug("Read from postgresql.conf port=%s" % self.port)
+        self.max_connections = pgconf_dict.int('max_connections')
         logger.debug("Read from postgresql.conf max_connections=%s" % self.max_connections)
 
     ######
-    def _check_version(self):    
+    def _check_version(self):
         self.gpversion=gp.GpVersion.local('local GP software version check',self.gphome)
         logger.info("Greenplum Binary Version: '%s'" % self.gpversion)
         
@@ -184,6 +185,26 @@ class GpStart:
 
         self._remove_postmaster_tmpfile(self.port)
 
+    def _check_standby_activated(self):
+        logger.debug("Checking if standby has been activated...")
+        if self.gparray.standbyMaster:
+            syncmaster_pid = gp.getSyncmasterPID(self.gparray.standbyMaster.getSegmentHostName(),
+                                                 self.gparray.standbyMaster.getSegmentDataDirectory())
+            if syncmaster_pid <= 0:
+                # we don't have a syncmaster running, so now check for postmaster.pid
+                cmd = pg.DbStatus('check standby postmaster', 
+                                  self.gparray.standbyMaster,
+                                  ctxt=base.REMOTE, 
+                                  remoteHost=self.gparray.standbyMaster.getSegmentHostName())
+                cmd.run(validateAfter=False)
+                if cmd.is_running():
+                    cmd=gp.GpStop("Shutting down master", masterOnly=True, 
+                                  fast=True, quiet=logging_is_quiet(),
+                                  verbose=logging_is_verbose(),
+                                  datadir=self._get_master_datadir())
+                    cmd.run(validateAfter=True)
+                    raise GpStartError("Standby activated")
+
     ######
     def _recovery_startup(self):
         logger.info("Commencing recovery startup checks")
@@ -197,7 +218,7 @@ class GpStart:
             logger.info("Have lock file %s and a process running on port %s" % (lockfile,self.port))
             raise GpStartError("Master instance process running")
         elif tmpfile_exists and not netstat_port_active:
-            logger.info("Have lock file %s but no process running on port %s" % (lockfile,self.port))            
+            logger.info("Have lock file %s but no process running on port %s" % (lockfile,self.port))
         elif not tmpfile_exists and netstat_port_active:
             logger.info("No lock file %s but a process running on port %s" % (lockfile,self.port))
             pass
@@ -207,11 +228,11 @@ class GpStart:
         logger.info("No Master instance process, entering recovery startup mode")
 
         if tmpfile_exists:
-            logger.info("Clearing Master instance lock files")        
+            logger.info("Clearing Master instance lock files")
             os.remove(lockfile)
 
         postmaster_pid_file = "%s/postmaster.pid" % self.master_datadir
-        if os.path.exists(postmaster_pid_file): 
+        if os.path.exists(postmaster_pid_file):
             logger.info("Clearing Master instance pid file")
             os.remove("%s/postmaster.pid" % self.master_datadir)
 
@@ -219,8 +240,9 @@ class GpStart:
 
         logger.info("Commencing forced instance shutdown")
 
-        gp.GpStop.local("forcing master shutdown", masterOnly=True, verbose=logging_is_verbose,
-                        quiet=self.quiet, fast=False, 
+        gp.GpStop.local("forcing master shutdown", masterOnly=True,
+                        verbose=logging_is_verbose,
+                        quiet=self.quiet, fast=False,
                         force=True, datadir=self.master_datadir)
 
     ######
@@ -279,12 +301,14 @@ class GpStart:
         return "%-" + str(host_len) + "s  %-" + str(dir_len) + "s  %-" + str(port_len) + "s  %s"
 
     ######
-    def _startMaster(self):    
+    def _startMaster(self):
         logger.info("Starting Master instance in admin mode")
-        dbid = -1
+        dbid = gp.get_dbid(datadir=self.master_datadir)
         numContentsInCluster = 0
-        cmd=gp.MasterStart('master in utility mode',self.master_datadir,self.port,dbid, 
-                           numContentsInCluster,utilityMode=True, timeout=self.timeout)
+        cmd=gp.MasterStart('master in utility mode',self.master_datadir,
+                           self.port,dbid,
+                           numContentsInCluster,utilityMode=True,
+                           timeout=self.timeout)
         cmd.run()
 
         if cmd.get_results().rc != 0:
@@ -305,7 +329,7 @@ class GpStart:
         pass
 
     ######
-    def _start(self):     
+    def _start(self):
         """ starts the standby master, all of the segments, and the master
             
             returns whether all segments were started successfully 
@@ -313,7 +337,7 @@ class GpStart:
         workers=min(len(self.gparray.get_hostlist()),self.parallel)
         self.pool = base.WorkerPool(numWorkers=workers)
 
-        if os.path.exists(self.master_datadir + "/gpexpand.status") and not self.restricted:            
+        if os.path.exists(self.master_datadir + "/gpexpand.status") and not self.restricted:
             raise GpStartError("Found a System Expansion Setup in progress. Please run 'gpexpand --rollback'")
 
         self.standby_was_started = self._start_standby()
@@ -327,7 +351,7 @@ class GpStart:
         # so we don't want to start them -- SAN-start works just like a mirror-less start.
         if strategy == FAULT_STRATEGY_FILE_REPLICATION:
             startMode = START_AS_PRIMARY_OR_MIRROR
-        else: 
+        else:
             startMode = START_AS_MIRRORLESS
 
         segmentStartResult = StartSegmentsOperation(self.pool,self.quiet,
@@ -468,7 +492,7 @@ class GpStart:
         failed = len(failedSegments)
         totalTriedToStart = started + failed
 
-        if failed > 0 or logging_is_verbose():             
+        if failed > 0 or logging_is_verbose():
             logger.info("----------------------------------------------------")
             if failed > 0:
                 for i in range(len(segmentStartResult.getFailedSegments())):
@@ -551,10 +575,10 @@ class GpStart:
             if standby_failure or hadSegmentFailuresOrInactive:
                 logger.warning("Database started but warnings generated       <<<<<")
                 logger.info("Check status of database with gpstate utility")
-            else:            
+            else:
                 logger.info("Database successfully started with no errors reported")
         else:
-            logger.warning("Command pg_ctl reports Master %s on port %d not running" % (self.gparray.master.datadir,self.gparray.master.port)) 
+            logger.warning("Command pg_ctl reports Master %s on port %d not running" % (self.gparray.master.datadir,self.gparray.master.port))
 
 
     ######
@@ -569,7 +593,9 @@ class GpStart:
                 host=self.gparray.standbyMaster.hostname
                 datadir=self.gparray.standbyMaster.datadir
                 port=self.gparray.standbyMaster.port
-                return gp.start_standbymaster(host,datadir,port)                                    
+                dbid=self.gparray.standbyMaster.dbid
+                ncontents = self.gparray.getNumSegmentContents()
+                return gp.start_standbymaster(host,datadir,port,dbid,ncontents)
             except base.ExecutionError, e:
                 logger.warning("Error occured while starting the standby master: %s" % e)
                 return False
@@ -596,7 +622,7 @@ def parseargs():
     parser.add_option_group(optgrp2)
     optgrp2.add_option('-a', dest="interactive" , action='store_false',default=True,
                         help="quiet mode, do not log progress to screen"\
-                             "[default:- verbose output to screen]")                          
+                             "[default:- verbose output to screen]")
     optgrp2.add_option('-q', '--quiet', action='store_true',
                         help='suppress status messages')
 
@@ -612,11 +638,11 @@ def parseargs():
     optgrp3 = OptionGroup(parser, 'Database startup options: ')
     parser.add_option_group(optgrp3)
     optgrp3.add_option('-m', '--master_only', action='store_true',
-                        help='start master instance only in maintenance mode')    
+                        help='start master instance only in maintenance mode')
     optgrp3.add_option('-y', '--no_standby', dest="start_standby", action='store_false',default=True,
                         help='do not start master standby server')
     optgrp3.add_option('-B', '--parallel', type="int", default=64, metavar="<parallel_processes>",
-                        help='number of segment hosts to run in parallel. Default is %d' % DEFAULT_NUM_WORKERS)    
+                        help='number of segment hosts to run in parallel. Default is %d' % DEFAULT_NUM_WORKERS)
     optgrp3.add_option('-R', '--restricted', action='store_true',
                         help='start in restricted mode. Only users with superuser privilege are allowed to connect.')
     optgrp3.add_option('-t', '--timeout', dest='timeout', default=SEGMENT_TIMEOUT_DEFAULT, type='int',
@@ -627,7 +653,7 @@ def parseargs():
     # Parse the command line arguments
     (options, args) = parser.parse_args()
 
-    proccount=os.environ.get('GP_MGMT_PROCESS_COUNT')    
+    proccount=os.environ.get('GP_MGMT_PROCESS_COUNT')
     if options.parallel == 64 and proccount is not None:
         options.parallel = int(proccount)
 
@@ -644,9 +670,9 @@ def parseargs():
     return options, args
 
 #------------------------------- Mainline --------------------------------
-def check_to_continue():    
+def check_to_continue():
     msg = "\nContinue with Greenplum instance startup"                
-    ans = userinput.ask_yesno(None,msg,'N')    
+    ans = userinput.ask_yesno(None,msg,'N')
 
     if not ans:
         logger.info("User abort requested, Exiting...")
@@ -696,7 +722,7 @@ def main():
                      (e.summary,e.cmd.cmdStr, e.cmd.results.rc, e.cmd.results.stdout,
                      e.cmd.results.stderr ))
         sys.exit(4)
-    except Exception, e:                
+    except Exception, e:
         if not options_parsed:
             logger.exception("gpstart failed. exiting...")
         else:
@@ -710,7 +736,7 @@ def main():
         sys.exit(3)
     except KeyboardInterrupt:
         if gpstart:
-            gpstart.cleanup()        
+            gpstart.cleanup()
         sys.exit('\nUser Interrupted')
     finally:
         coverage.stop()

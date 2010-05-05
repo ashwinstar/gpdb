@@ -3538,7 +3538,10 @@ heap_inplace_update_internal(Relation relation, HeapTuple tuple, TransactionId x
 	uint32		oldlen;
 	uint32		newlen;
 
-	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
+	/* 
+	 * Fetch gp_persistent_relation_node information that will be added
+	 * to XLOG record.
+	 */
 	RelationFetchGpRelationNodeForXLog(relation);
 
 	buffer = ReadBuffer(relation, ItemPointerGetBlockNumber(&(tuple->t_self)));

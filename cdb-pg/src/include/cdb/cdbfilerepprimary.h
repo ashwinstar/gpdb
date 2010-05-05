@@ -10,6 +10,7 @@
 #define CDBFILEREPPRIMARY_H
 
 #include "access/filerepdefs.h"
+#include "access/persistentfilesysobjname.h"
 #include "cdb/cdbfilerep.h"
 
 

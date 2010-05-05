@@ -152,4 +152,10 @@ extern void PersistentTablespace_ShmemInit(void);
 extern void PersistentTablespace_AddMirrorAll(int16 pridbid,
 											  int16 mirdbid);
 extern void PersistentTablespace_RemoveSegment(int16 dbid, bool ismirror);
+extern void PersistentTablespace_ActivateStandby(int16 oldmaster,
+												 int16 newmaster);
+extern void xlog_persistent_tablespace_create(Oid filespaceoid,
+											  Oid tablespaceoid);
+extern Oid PersistentTablespace_GetFileSpaceOid(Oid tablespaceOid);
+
 #endif   /* CDBPERSISTENTTABLESPACE_H */

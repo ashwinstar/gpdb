@@ -800,6 +800,17 @@ ServiceDie(SIGNAL_ARGS)
 	die(postgres_signal_arg);
 }
 
+static void
+HandleCrash(SIGNAL_ARGS)
+{
+    ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
+                    errFatalReturn(gp_reraise_signal),
+                    errOmitLocation(true),
+                    errmsg("Unexpected internal error")));
+
+}
+
+
 /*
  * Common service main.
  */
@@ -860,6 +871,14 @@ ServiceMain(ServiceCtrl *serviceCtrl)
 	pqsignal(SIGUSR2, serviceConfig->ServiceRequestShutdown);
 	pqsignal(SIGFPE, FloatExceptionHandler);
 	pqsignal(SIGCHLD, SIG_DFL);
+
+#ifdef SIGBUS
+	    pqsignal(SIGBUS, HandleCrash);
+#endif
+#ifdef SIGSEGV
+		    pqsignal(SIGSEGV, HandleCrash);
+#endif
+
 
 	/* Early initialization */
 	BaseInit();

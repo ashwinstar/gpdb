@@ -210,6 +210,8 @@ extern Size PersistentDatabase_ShmemSize(void);
 extern void PersistentDatabase_ShmemInit(void);
 extern void PersistentDatabase_AddMirrorAll(int16 pridbid, int16 mirdbid);
 extern void PersistentDatabase_RemoveSegment(int16 dbid, bool ismirror);
-
+extern void PersistentDatabase_ActivateStandby(int16 oldmaster,
+											   int16 newmaster);
+extern void xlog_create_database(DbDirNode *db);
 #endif   /* CDBPERSISTENTDATABASE_H */
 

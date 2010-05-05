@@ -18,29 +18,35 @@
  */
 #include "postgres.h"
 
+#include "access/persistentfilesysobjname.h"
 #include "access/xact.h"
+#include "access/xlogmm.h"
 #include "access/xlogutils.h"
 #include "catalog/catalog.h"
-#include "commands/tablespace.h"
-#include "storage/bufmgr.h"
-#include "storage/freespace.h"
-#include "storage/ipc.h"
-#include "access/persistentfilesysobjname.h"
+#include "catalog/indexing.h"
+#include "catalog/pg_filespace.h"
+#include "catalog/pg_resqueue.h"
+#include "catalog/pg_tablespace.h"
+#include "cdb/cdbfilerepprimary.h"
 #include "cdb/cdbpersistentfilespace.h"
 #include "cdb/cdbpersistenttablespace.h"
 #include "cdb/cdbpersistentdatabase.h"
 #include "cdb/cdbpersistentrelation.h"
 #include "cdb/cdbmirroredfilesysobj.h"
 #include "cdb/cdbpersistentfilesysobj.h"
-#include "cdb/cdbfilerepprimary.h"
+#include "cdb/cdbutil.h"
+#include "cdb/cdbvars.h"
+#include "commands/filespace.h"
+#include "commands/tablespace.h"
+#include "postmaster/postmaster.h"
+#include "storage/bufmgr.h"
+#include "storage/freespace.h"
+#include "storage/ipc.h"
 #include "storage/smgr.h"
+#include "utils/builtins.h"
+#include "utils/guc.h"
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
-#include "utils/guc.h"
-
-#include "catalog/pg_tablespace.h"
-#include "catalog/pg_resqueue.h"
-#include "catalog/indexing.h"
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -130,9 +136,13 @@ static HTAB* AppendOnlyMirrorResyncEofsTable = NULL;
  * actions is handled by xact.c, because it is part of transaction commit.
  */
 
-/* XLOG gives us high 4 bits */
+/* 
+ * XLOG gives us high 4 bits. Unlike in the xlog code, we need not
+ * make the flags OR-able, we we have 16 bits to play with here.
+ */
 #define XLOG_SMGR_CREATE	0x10
 #define XLOG_SMGR_TRUNCATE	0x20
+#define XLOG_SMGR_CREATE_DIR 0x30
 
 typedef struct xl_smgr_create
 {
@@ -146,7 +156,6 @@ typedef struct xl_smgr_truncate
 	ItemPointerData persistentTid;
 	int64 persistentSerialNum;
 } xl_smgr_truncate;
-
 
 /* local function prototypes */
 static void smgrshutdown(int code, Datum arg);
@@ -365,7 +374,7 @@ smgrclosenode(RelFileNode rnode)
 }
 
 /*
- *	smgrcreatefilespacedirpending() -- Create a new tablespace directory.
+ *	smgrcreatefilespacedirpending() -- Create a new filespace directory.
  *
  */
 void
@@ -389,7 +398,7 @@ smgrcreatefilespacedirpending(
 	bool							flushToXLog)
 {
 	PendingDelete *pending; 
-	
+
 	/* Add the filespace to the list of stuff to delete at abort */
 	pending = (PendingDelete *)
 		MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
@@ -409,7 +418,6 @@ smgrcreatefilespacedirpending(
 								persistentSerialNum,
 								flushToXLog);
 
-
 	pending->relationName = NULL;
 	pending->isLocalBuf = false;
 	pending->atCommit = false;	/* delete if abort */
@@ -424,7 +432,7 @@ smgrcreatefilespacedirpending(
 }
 
 /*
- *	smgrcreatefilespacedir() -- Create a new tablespace directory.
+ *	smgrcreatefilespacedir() -- Create a new filespace directory.
  *
  */
 void
@@ -446,7 +454,12 @@ smgrcreatefilespacedir(
 	int 						*primaryError,
 
 	bool						*mirrorDataLossOccurred)
-{	
+{
+
+#ifdef MASTER_MIRROR_SYNC
+	mmxlog_log_create_filespace(filespaceOid);	
+#endif
+
 	mdcreatefilespacedir(
 					filespaceOid, 
 					primaryFilespaceLocation, 
@@ -474,7 +487,7 @@ smgrcreatetablespacedirpending(
 	bool							flushToXLog)
 {
 	PendingDelete *pending; 
-	
+
 	/* Add the tablespace directory to the list of stuff to delete at abort */
 	pending = (PendingDelete *)
 		MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
@@ -503,7 +516,6 @@ smgrcreatetablespacedirpending(
 	pendingDeletesCount++;
 	pendingDeletesSorted = false;
 	
-
 }
 
 /*
@@ -522,6 +534,10 @@ smgrcreatetablespacedir(
 
 	bool						*mirrorDataLossOccurred)
 {
+#ifdef MASTER_MIRROR_SYNC
+	mmxlog_log_create_tablespace(tablespaceOid);	
+#endif
+
 	mdcreatetablespacedir(
 					tablespaceOid, 
 					mirrorMode,
@@ -547,17 +563,16 @@ smgrcreatedbdirpending(
 	bool							flushToXLog)
 {
 	PendingDelete *pending; 
-	Oid tablespace;
-	Oid database;
-
-	tablespace = dbDirNode->tablespace;
-	database = dbDirNode->database;
-
+	Oid tablespace = dbDirNode->tablespace;
+	Oid database = dbDirNode->database;
+	
 	/* Add the database directory to the list of stuff to delete at abort */
 	pending = (PendingDelete *)
 		MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
 	
-	PersistentFileSysObjName_SetDatabaseDir(&pending->fsObjName,tablespace,database);
+	PersistentFileSysObjName_SetDatabaseDir(&pending->fsObjName,
+											tablespace,
+											database);
 
 	PersistentDatabase_MarkCreatePending(
 								dbDirNode,
@@ -577,7 +592,6 @@ smgrcreatedbdirpending(
 	pendingDeletes = pending;
 	pendingDeletesCount++;
 	pendingDeletesSorted = false;
-
 }
 
 /*
@@ -596,6 +610,10 @@ smgrcreatedbdir(
 
 	bool						*mirrorDataLossOccurred)
 {
+#ifdef MASTER_MIRROR_SYNC
+	mmxlog_log_create_database(dbDirNode->tablespace, dbDirNode->database);	
+#endif
+
 	mdcreatedbdir(
 			dbDirNode, 
 			mirrorMode,
@@ -626,6 +644,11 @@ smgrcreatedbdirjustintime(
 											mirrorExistenceState,
 											persistentTid,
 											persistentSerialNum);
+
+#ifdef MASTER_MIRROR_SYNC
+	mmxlog_log_create_database(justInTimeDbDirNode->tablespace,
+							   justInTimeDbDirNode->database);	
+#endif
 
 	mdcreatedbdir(
 				justInTimeDbDirNode, 
@@ -737,6 +760,16 @@ smgrcreate(
 
 	bool						*mirrorDataLossOccurred)
 {
+
+#ifdef MASTER_MIRROR_SYNC
+	/* ignoreAlreadyExists will only be true if we're called during recovery */
+	if (!ignoreAlreadyExists)
+		mmxlog_log_create_relfilenode(reln->smgr_rnode.spcNode,
+									  reln->smgr_rnode.dbNode,
+									  reln->smgr_rnode.relNode,
+									  0);	
+#endif
+
 	mdcreate(
 			reln,
 			isLocalBuf,
@@ -963,6 +996,11 @@ smgrdormfilespacedir(
 
 	bool						*mirrorDataLossOccurred)
 {
+#ifdef MASTER_MIRROR_SYNC
+	if (!ignoreNonExistence)
+		mmxlog_log_remove_filespace(filespaceOid);
+#endif
+
 	/*
 	 * And remove the physical filespace directory.
 	 *
@@ -1073,6 +1111,11 @@ smgrdormtablespacedir(
 
 	bool						*mirrorDataLossOccurred)
 {
+#ifdef MASTER_MIRROR_SYNC
+	if (!ignoreNonExistence)
+		mmxlog_log_remove_tablespace(tablespaceOid);
+#endif
+
 	/*
 	 * And remove the physical tablespace directory.
 	 *
@@ -1123,6 +1166,11 @@ smgrdormdbdir(
 
 	bool						*mirrorDataLossOccurred)
 {
+#ifdef MASTER_MIRROR_SYNC
+	if (!ignoreNonExistence)
+		mmxlog_log_remove_database(dbDirNode->tablespace, dbDirNode->database);
+#endif
+
 	smgr_internal_rmdbdir(
 					dbDirNode, 
 					mirrorOnly,

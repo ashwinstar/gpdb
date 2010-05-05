@@ -14,7 +14,7 @@
 #include <fcntl.h>
 #include <sys/file.h>
 
-
+#include "access/xlogmm.h"
 #include "utils/palloc.h"
 #include "cdb/cdbfilerepprimary.h"
 #include "cdb/cdbmirroredappendonly.h"
@@ -349,6 +349,11 @@ void MirroredAppendOnly_Create(
 
 	*primaryError = 0;
 	*mirrorDataLossOccurred = false;
+
+#ifdef MASTER_MIRROR_SYNC
+	mmxlog_log_create_relfilenode(relFileNode->spcNode, relFileNode->dbNode, relFileNode->relNode,
+								  segmentFileNum);
+#endif
 
 	MirroredAppendOnly_DoOpen(
 					&mirroredOpen, 
@@ -1193,7 +1198,13 @@ static void MirroredAppendOnly_DoDrop(
 	char *mirrorFilespaceLocation;
 	char dbPath[MAXPGPATH];	
 	char path[MAXPGPATH];
-	
+
+#ifdef MASTER_MIRROR_SYNC
+	mmxlog_log_remove_relfilenode(relFileNode->spcNode, relFileNode->dbNode, relFileNode->relNode,
+								  segmentFileNum);
+#endif
+
+
 	*primaryError = 0;
 	*mirrorDataLossOccurred = false;
 

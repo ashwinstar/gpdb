@@ -1204,7 +1204,6 @@ CREATE_QD_DB () {
 		BACKOUT_COMMAND "$ECHO \"Stopping Master instance\""
 		LOG_MSG "[INFO]:-Completed starting the Master in admin mode"
 		$SLEEP 2
-		UPDATE_MPP $GP_PORT "$ARRAY_NAME" $TOTAL_SEG $GP_DBID $GP_CONTENT 0 X
 		GP_HOSTNAME=`HOST_LOOKUP $GP_HOSTADDRESS`
 		if [ x"$GP_HOSTNAME" = x"__lookup_of_hostname_failed__" ]; then
 			ERROR_EXIT "[FATAL]:-Hostname lookup for host $GP_HOSTADDRESS failed." 2
@@ -1260,6 +1259,10 @@ UPDATE_GPCONFIG () {
 		else
 				LOG_MSG "[INFO]:-Content $U_CONTENT already exists in gp_segment_configuration system table"
 		fi
+		if [ $U_CONTENT -eq -1 ]
+		then
+			MAKE_DBID_FILE $U_DBID $U_HOSTNAME $U_DIR
+		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -1303,29 +1306,6 @@ LOAD_QE_SYSTEM_DATA () {
 					LOG_MSG "[INFO]:-Successfully added segment $GP_HOSTADDRESS to Master system tables as mirror"
 				done
 		fi
-		LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-
-UPDATE_MPP () {
-		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		U_DB=$DEFAULTDB
-		MASTER_PORT=$1
-		U_MPPNAME="$2"
-		U_NUMSEG=$3
-		U_DBID=$4
-		U_CONTENT=$5
-		TYPE=$6
-		U_HOST=$7
-		if [ $TYPE -eq 0 ]; then
-			$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$U_DB" -c "INSERT INTO $GP_TBL VALUES ('${U_MPPNAME}',-1,-1,-1);" >> $LOG_FILE 2>&1
-			ERROR_CHK $? "add $U_DBID to Master gp_id" 2
-		else
-			RUN_COMMAND_REMOTE $U_HOST "$EXPORT_LIB_PATH;env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MASTER_PORT -d "$U_DB" -c \"INSERT INTO $GP_TBL (gpname, numsegments, dbid, content) VALUES ('${U_MPPNAME}',-1,-1,-1);\" 2>&1" >> $LOG_FILE 2>&1
-		fi	
-		if [ $RETVAL -ne 0 ]; then
-			ERROR_EXIT "[FATAL]:-Failed to update Greenplum system table" 2
-		fi
-		LOG_MSG "[INFO]:-Successfully updated Greenplum system table"
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 

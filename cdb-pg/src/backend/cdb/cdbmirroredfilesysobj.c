@@ -307,8 +307,8 @@ void MirroredFileSysObj_TransactionCreateFilespaceDir(
 		// UNDONE: Need equiv. of GetDatabasePath here for filespace.
 		ereport(ERROR,
 			(errcode_for_file_access(),
-			 errmsg("could not create filespace directory %u: %s",
-					filespaceOid,
+			 errmsg("could not create filespace directory %s: %s",
+					primaryFilespaceLocation,
 					strerror(primaryError))));
 	}
 	
@@ -1161,5 +1161,3 @@ void MirroredFileSysObj_DropRelFile(
 		elog(ERROR, "unexpected relation storage manager %d", relStorageMgr);
 	}
 }
-
- 

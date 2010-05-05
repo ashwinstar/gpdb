@@ -14,6 +14,7 @@
 #include "access/hash.h"
 #include "access/bitmap.h"
 #include "access/heapam.h"
+#include "access/xlogmm.h"
 #include "access/multixact.h"
 #include "access/nbtree.h"
 #include "access/xact.h"
@@ -43,4 +44,5 @@ const RmgrData RmgrTable[RM_MAX_ID + 1] = {
 	{"Sequence", seq_redo, seq_desc, NULL, NULL, NULL, NULL},
 	{"Bitmap", bitmap_redo, bitmap_desc, bitmap_xlog_startup, bitmap_xlog_cleanup, bitmap_safe_restartpoint, NULL},
 	{"DistributedLog", DistributedLog_redo, DistributedLog_desc, NULL, NULL, NULL, NULL},
+	{"Master Mirror Log Records", mmxlog_redo, mmxlog_desc, NULL, NULL, NULL, NULL}
 };

@@ -119,6 +119,11 @@ static bool PersistentDatabase_ScanTupleCallback(
 									&serialNum,
 									&previousFreeTid);
 
+	elog(LOG, "tablespace %u / database %u, state = %i",
+		 dbDirNode.tablespace,
+		 dbDirNode.database,
+		 state);
+
 	if (state == PersistentFileSysState_Free)
 	{
 		if (Debug_persistent_print)
@@ -403,8 +408,11 @@ void PersistentDatabase_MarkCreatePending(
 				 GetDatabasePath(
 					  dbDirNode->database, 
 					  dbDirNode->tablespace));
-
-		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
+		/*
+		 * The initdb process will load the persistent table once we 
+		 * out of bootstrap mode.
+		 */
+		return;
 	}
 
 	PersistentDatabase_InitScan();
@@ -524,7 +532,60 @@ void PersistentDatabase_AddCreated(
 	*persistentTid = databaseDirEntry->persistentTid;
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	elog(DEBUG5, "tablespace %u, database %u - state = %i",
+		 dbDirNode->tablespace,
+		 dbDirNode->database,
+		 databaseDirEntry->state);
 }
+
+void
+xlog_create_database(DbDirNode *db)
+{
+	DatabaseDirEntry dbe;
+	SharedOidSearchAddResult addResult;
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
+	PersistentDatabase_InitScan();
+
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+
+	dbe = (DatabaseDirEntry) SharedOidSearch_Find(
+				    	&persistentDatabaseSharedData->databaseDirSearchTable,
+				    							  db->database,
+				    							  db->tablespace);
+	if (dbe != NULL)
+		elog(ERROR, "persistent database entry '%s' already exists "
+			 		"in state '%s'", 
+			 GetDatabasePath(
+				   db->database, 
+				   db->tablespace),
+		     PersistentFileSysObjState_Name(dbe->state));
+
+	addResult = SharedOidSearch_Add(
+		    		&persistentDatabaseSharedData->databaseDirSearchTable,
+		    		db->database,
+		    		db->tablespace,
+		    		(SharedOidSearchObjHeader**)&dbe);
+
+	if (addResult == SharedOidSearchAddResult_NoMemory)
+		elog(ERROR, "out of shared-memory for persistent databases");
+	else if (addResult == SharedOidSearchAddResult_Exists)
+		elog(PANIC, "persistent database entry '%s' already exists in "
+			 		"state '%s'", 
+		     GetDatabasePath(
+		     		db->database, 
+		     		db->tablespace),
+		     PersistentFileSysObjState_Name(dbe->state));
+	else
+		Insist(addResult == SharedOidSearchAddResult_Ok);
+
+	dbe->state = PersistentFileSysState_Created;
+
+	dbe->iteratorRefCount = 0;
+
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+}
+
 
 // -----------------------------------------------------------------------------
 // Transaction End  
@@ -592,27 +653,26 @@ void PersistentDatabase_Created(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
+/*
+ * Iterate over gp_persistent_database_node, removing all
+ * references to dbid.
+ */
 void
 PersistentDatabase_RemoveSegment(int16 dbid, bool ismirror)
 {
 	Relation rel;
 	HeapScanDesc scandesc;
 	HeapTuple tuple;
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
 	if (PersistentFileSysObj_BeforePersistenceWork())
-	{	
-		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
-				 "skipping persistent database mirror addition");
-
-		return;
-	}
+		elog(ERROR, "persistent table changes forbidden");
 
 	rel = heap_open(GpPersistentDatabaseNodeRelationId,
 					AccessExclusiveLock);
 	scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
 	{
@@ -624,6 +684,10 @@ PersistentDatabase_RemoveSegment(int16 dbid, bool ismirror)
 
 		PersistentFileSysObjName fsObjName;
 
+		/* 
+		 * We need to perform this table for all (database, tablespace) pairs
+		 * that are defined in the persistent table.
+		 */
 		PersistentFileSysObjName_SetDatabaseDir(&fsObjName,
 												tblspcoid,
 												dboid);
@@ -636,7 +700,56 @@ PersistentDatabase_RemoveSegment(int16 dbid, bool ismirror)
 										   /* flushToXlog */ false);
 	}
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+
+	heap_endscan(scandesc);
+	heap_close(rel, NoLock);
+}
+
+void
+PersistentDatabase_ActivateStandby(int16 oldmaster, int16 newmaster)
+{
+	Relation rel;
+	HeapScanDesc scandesc;
+	HeapTuple tuple;
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
+	if (PersistentFileSysObj_BeforePersistenceWork())
+		elog(ERROR, "persistent table changes forbidden");
+
+	rel = heap_open(GpPersistentDatabaseNodeRelationId,
+					AccessExclusiveLock);
+	scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
+
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+
+	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
+	{
+		Form_gp_persistent_database_node form =
+			(Form_gp_persistent_database_node)GETSTRUCT(tuple);
+		Oid tblspcoid = form->tablespace_oid;
+		Oid dboid = form->database_oid;
+		int64 serial = form->persistent_serial_num;
+
+		PersistentFileSysObjName fsObjName;
+
+		/* 
+		 * We need to perform this table for all (database, tablespace) pairs
+		 * that are defined in the persistent table.
+		 */
+		PersistentFileSysObjName_SetDatabaseDir(&fsObjName,
+												tblspcoid,
+												dboid);
+
+	    PersistentFileSysObj_ActivateStandby(&fsObjName,
+											 &tuple->t_self,
+											 serial,
+											 oldmaster,
+											 newmaster,
+											 /* flushToXlog */ false);
+	}
+
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	heap_endscan(scandesc);
 	heap_close(rel, NoLock);
@@ -650,6 +763,7 @@ PersistentDatabase_AddMirrorAll(
 	Relation rel;
 	HeapScanDesc scandesc;
 	HeapTuple tuple;
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
 	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
@@ -664,7 +778,7 @@ PersistentDatabase_AddMirrorAll(
 					AccessExclusiveLock);
 	scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
 	{
@@ -689,7 +803,7 @@ PersistentDatabase_AddMirrorAll(
                    	        	       /* flushToXlog */ false);
 	}
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	heap_endscan(scandesc);
 	heap_close(rel, NoLock);
@@ -897,8 +1011,8 @@ void PersistentDatabase_Dropped(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
-bool PersistentDatabase_DirIsCreated(
-		DbDirNode		*dbDirNode)
+bool 
+PersistentDatabase_DirIsCreated(DbDirNode *dbDirNode)
 {
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
@@ -909,12 +1023,16 @@ bool PersistentDatabase_DirIsCreated(
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
-				 "Skipping persistent database '%s' because we are before persistence work",
+				 "Skipping persistent database '%s' because we are before "
+				 "persistence work",
 				 GetDatabasePath(
 					  dbDirNode->database, 
 					  dbDirNode->tablespace));
-
-		return true;	// The initdb process will load the persistent table once we out of bootstrap mode.
+		/* 
+		 * The initdb process will load the persistent table once we out of
+		 * bootstrap mode.
+		 */
+		return true;
 	}
 
 	PersistentDatabase_InitScan();
@@ -1024,6 +1142,10 @@ void PersistentDatabase_MarkJustInTimeCreatePending(
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
+	elog(DEBUG5, "tablespace %u, database %u - state = %i",
+		 dbDirNode->tablespace,
+		 dbDirNode->database,
+		 databaseDirEntry->state);
 }
 
 /*

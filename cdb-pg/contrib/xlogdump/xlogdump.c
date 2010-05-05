@@ -28,6 +28,7 @@
 #include "access/nbtree.h"
 #include "access/xact.h"
 #include "access/xlog_internal.h"
+#include "access/xlogmm.h"
 #include "catalog/pg_control.h"
 
 #include "libpq-fe.h"
@@ -1357,6 +1358,23 @@ dumpXLogRecord(XLogRecord *record, bool header_only)
 			dumpGIST(record);
 			break;
 		case RM_SEQ_ID:
+			break;
+		case RM_MMXLOG_ID:
+			switch (info)
+			{
+				case MMXLOG_CREATE_DIR:
+					printf("master mirror: create directory\n");
+					break;
+				case MMXLOG_REMOVE_DIR:
+					printf("master mirror: remove directory\n");
+					break;
+				case MMXLOG_CREATE_FILE:
+					printf("master mirror: create file\n");
+					break;
+				case MMXLOG_REMOVE_FILE:
+					printf("master mirror: remove file\n");
+					break;
+			}
 			break;
 	}
 }

@@ -14,18 +14,18 @@
 #include "storage/relfilenode.h"
 
 #include "access/persistentfilesysobjname.h"
-#include "cdb/cdbpersistentstore.h"
-#include "cdb/cdbpersistentfilesysobj.h"
-#include "cdb/cdbpersistentfilespace.h"
-#include "cdb/cdbpersistenttablespace.h"
-#include "cdb/cdbmirroredfilesysobj.h"
-
 #include "catalog/catalog.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_database.h"
 #include "catalog/gp_persistent.h"
+#include "catalog/gp_segment_config.h"
+#include "cdb/cdbpersistentstore.h"
+#include "cdb/cdbpersistentfilesysobj.h"
+#include "cdb/cdbpersistentfilespace.h"
+#include "cdb/cdbpersistenttablespace.h"
+#include "cdb/cdbmirroredfilesysobj.h"
 #include "cdb/cdbdirectopen.h"
 #include "cdb/cdbfilerepservice.h"
 #include "cdb/cdbfilerepresyncmanager.h"
@@ -980,9 +980,118 @@ PersistentFileSysObj_RemoveSegment(PersistentFileSysObjName *fsObjName,
 			replaces[dbidattnum - 1] = true;
 			newValues[dbidattnum - 1] = Int16GetDatum(0);
 
+			/*
+			 * Although ep is allocated on the stack, CStringGetTextDatum()
+			 * duplicates this and puts the result in palloc() allocated memory.
+			 */
 			replaces[locattnum - 1] = true;
 			newValues[locattnum - 1] = CStringGetTextDatum(ep);
+		}
 
+		PersistentFileSysObj_ReplaceTuple(
+									fsObjType,
+									persistentTid,
+									tupleCopy,
+									newValues,
+									replaces,
+									flushToXLog);
+
+		pfree(newValues);
+		pfree(replaces);
+	}
+	pfree(values);
+}
+
+void
+PersistentFileSysObj_ActivateStandby(PersistentFileSysObjName *fsObjName,
+								   ItemPointer persistentTid,
+								   int64 persistentSerialNum,
+								   int16 oldmaster,
+								   int16 newmaster,
+								   bool flushToXLog)
+{
+	PersistentFsObjType				fsObjType;
+
+	PersistentFileSysObjData 		*fileSysObjData;
+	PersistentFileSysObjSharedData 	*fileSysObjSharedData;
+
+	Datum *values;
+
+	HeapTuple tupleCopy;
+
+	fsObjType = fsObjName->type;
+
+	PersistentFileSysObj_GetDataPtrs(
+								fsObjType,
+								&fileSysObjData,
+								&fileSysObjSharedData);
+	
+	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes *
+							sizeof(Datum));
+
+	PersistentFileSysObj_ReadTuple(
+							fsObjType,
+							persistentTid,
+							values,
+							&tupleCopy);
+
+	{
+		Datum *newValues;
+		bool *replaces;
+		int olddbidattnum;
+		int newdbidattnum;
+
+		newValues = (Datum*)palloc0(fileSysObjData->storeData.numAttributes *
+									sizeof(Datum));
+		replaces = (bool*)palloc0(fileSysObjData->storeData.numAttributes *
+								  sizeof(bool));
+
+		replaces[fileSysObjData->attNumParentXid - 1] = true;
+		newValues[fileSysObjData->attNumParentXid - 1] =
+			Int32GetDatum(InvalidTransactionId);
+
+		replaces[fileSysObjData->attNumMirrorExistenceState - 1] = true;
+		newValues[fileSysObjData->attNumMirrorExistenceState - 1] =
+			Int32GetDatum(MirroredObjectExistenceState_NotMirrored);
+
+
+		if (fsObjType == PersistentFsObjType_FilespaceDir)
+		{
+			int locattnum;
+			char ep[FilespaceLocationBlankPaddedWithNullTermLen];
+			int dbid_1_attnum = Anum_gp_persistent_filespace_node_db_id_1;
+			int dbid_2_attnum = Anum_gp_persistent_filespace_node_db_id_2; 
+
+			MemSet(ep, ' ', FilespaceLocationBlankPaddedWithNullTermLen - 1);
+			ep[FilespaceLocationBlankPaddedWithNullTermLen - 1] = '\0';
+
+			if (DatumGetInt16(values[dbid_1_attnum - 1]) == oldmaster)
+			{
+				olddbidattnum = dbid_1_attnum;
+				newdbidattnum = dbid_2_attnum;
+				locattnum = Anum_gp_persistent_filespace_node_location_1;
+			}
+			else if (DatumGetInt16(values[dbid_2_attnum - 1]) == oldmaster)
+			{
+				olddbidattnum = dbid_1_attnum;
+				newdbidattnum = dbid_2_attnum;
+				locattnum = Anum_gp_persistent_filespace_node_location_2;
+			}
+			else
+			{
+				Insist(false);
+			}
+
+			/*
+			 * Although ep is allocated on the stack, CStringGetTextDatum()
+			 * duplicates this and puts the result in palloc() allocated memory.
+			 */
+			replaces[locattnum - 1] = true;
+			newValues[locattnum - 1] = CStringGetTextDatum(ep);
+			replaces[olddbidattnum - 1] = true;
+			newValues[olddbidattnum - 1] = Int16GetDatum(InvalidDbid);
+			replaces[newdbidattnum - 1] = true;
+			newValues[newdbidattnum - 1] = Int16GetDatum(newmaster);
 		}
 
 		PersistentFileSysObj_ReplaceTuple(
@@ -1074,6 +1183,9 @@ PersistentFileSysObj_AddMirror(PersistentFileSysObjName *fsObjName,
 
 			replaces[dbidattnum - 1] = true;
 			newValues[dbidattnum - 1] = Int16GetDatum(mirdbid);
+
+			/* arg must be of the fixed filespace location length */
+			Assert(strlen((char *)arg) == FilespaceLocationBlankPaddedWithNullTermLen - 1); 
 
 			replaces[locattnum - 1] = true;
 			newValues[locattnum - 1] = CStringGetTextDatum((char *)arg);

@@ -138,6 +138,7 @@ class ReadPostmasterTempFile(Command):
     def remote(name,port,host):
         cmd=ReadPostmasterTempFile(name,port,ctxt=REMOTE,remoteHost=host)
         cmd.run(validateAfter=True)
+        return cmd
  
 
 

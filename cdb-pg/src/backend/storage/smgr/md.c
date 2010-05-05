@@ -323,7 +323,7 @@ mdcreatetablespacedir(
 		if (mkdir(tablespacePath, 0700) < 0)
 			*primaryError = errno;
 	}
-	
+
 	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&
 		!*mirrorDataLossOccurred)
 	{

@@ -498,20 +498,16 @@ PersistentRelation_AddMirrorAll(int16 pridbid, int16 mirdbid)
 	Relation rel;
 	HeapScanDesc scandesc;
 	HeapTuple tuple;
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
 	if (PersistentFileSysObj_BeforePersistenceWork())
-	{	
-		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
-				 "skipping persistent database mirror addition");
+		elog(ERROR, "persistent table changes forbidden");
 
-		return;
-	}
 	rel = heap_open(GpPersistentRelationNodeRelationId,
 				    AccessExclusiveLock);
 	scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
 	{
@@ -543,7 +539,7 @@ PersistentRelation_AddMirrorAll(int16 pridbid, int16 mirdbid)
                    	        	       /* flushToXlog */ false);
 	}
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 	heap_endscan(scandesc);
 	heap_close(rel, NoLock);
 }
@@ -554,20 +550,16 @@ PersistentRelation_RemoveSegment(int16 dbid, bool ismirror)
 	Relation rel;
 	HeapScanDesc scandesc;
 	HeapTuple tuple;
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
 	if (PersistentFileSysObj_BeforePersistenceWork())
-	{	
-		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
-				 "skipping persistent database mirror addition");
+		elog(ERROR, "persistent table changes forbidden");	
 
-		return;
-	}
 	rel = heap_open(GpPersistentRelationNodeRelationId,
 				    AccessExclusiveLock);
 	scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
 	{
@@ -598,11 +590,61 @@ PersistentRelation_RemoveSegment(int16 dbid, bool ismirror)
 										   /* flushToXlog */ false);
 	}
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 	heap_endscan(scandesc);
 	heap_close(rel, NoLock);
 }
 
+void
+PersistentRelation_ActivateStandby(int16 oldmaster, int16 newmaster)
+{
+	Relation rel;
+	HeapScanDesc scandesc;
+	HeapTuple tuple;
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
+	if (PersistentFileSysObj_BeforePersistenceWork())
+		elog(ERROR, "persistent table changes forbidden");	
+
+	rel = heap_open(GpPersistentRelationNodeRelationId,
+				    AccessExclusiveLock);
+	scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
+
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+
+	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
+	{
+		Form_gp_persistent_relation_node form =
+			(Form_gp_persistent_relation_node)GETSTRUCT(tuple);
+		Oid tblspcoid = form->tablespace_oid;
+		Oid dboid = form->database_oid;
+		Oid relfilenode_oid = form->relfilenode_oid;
+		int32 segment_file_num = form->segment_file_num;
+		int64 serial = form->persistent_serial_num;
+
+		PersistentFileSysObjName fsObjName;
+		RelFileNode node;
+
+		node.spcNode = tblspcoid;
+		node.dbNode = dboid;
+		node.relNode = relfilenode_oid;
+
+		PersistentFileSysObjName_SetRelationFile(&fsObjName,
+												 &node,
+												 segment_file_num);
+
+	    PersistentFileSysObj_ActivateStandby(&fsObjName,
+											 &tuple->t_self,
+											 serial,
+											 oldmaster,
+											 newmaster,
+											 /* flushToXlog */ false);
+	}
+
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	heap_endscan(scandesc);
+	heap_close(rel, NoLock);
+}
 /*
  * Indicate we intend to drop a relation file as part of the current transaction.
  *

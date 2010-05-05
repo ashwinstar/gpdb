@@ -16,6 +16,7 @@
 
 #include "access/xlog.h"
 #include "nodes/parsenodes.h"
+#include "storage/dbdirnode.h"
 
 /* XLOG stuff */
 #define XLOG_TBLSPC_CREATE		0x00
@@ -50,5 +51,7 @@ extern bool directory_is_empty(const char *path);
 
 extern void tblspc_redo(XLogRecPtr lsn, XLogRecord *rptr);
 extern void tblspc_desc(StringInfo buf, uint8 xl_info, char *rec);
+extern void set_short_version(const char *path, DbDirNode *dbDirNode,
+							  bool mirror);
 
 #endif   /* TABLESPACE_H */

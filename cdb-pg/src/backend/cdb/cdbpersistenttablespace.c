@@ -13,19 +13,22 @@
 #include "storage/fd.h"
 #include "storage/relfilenode.h"
 
+#include "access/persistentfilesysobjname.h"
 #include "catalog/catalog.h"
+#include "catalog/gp_persistent.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_database.h"
-#include "catalog/gp_persistent.h"
+#include "catalog/pg_filespace.h"
 #include "cdb/cdbsharedoidsearch.h"
-#include "access/persistentfilesysobjname.h"
 #include "cdb/cdbdirectopen.h"
+#include "cdb/cdbmirroredfilesysobj.h"
 #include "cdb/cdbpersistentstore.h"
 #include "cdb/cdbpersistentfilesysobj.h"
 #include "cdb/cdbpersistentfilespace.h"
 #include "cdb/cdbpersistenttablespace.h"
+#include "postmaster/postmaster.h"
 #include "storage/itemptr.h"
 #include "utils/hsearch.h"
 #include "storage/shmem.h"
@@ -463,6 +466,51 @@ void PersistentTablespace_GetPrimaryAndMirrorFilespaces(
 		LWLockRelease(PersistentObjLock);
 }
 
+Oid
+PersistentTablespace_GetFileSpaceOid(Oid tablespaceOid)
+{
+	TablespaceDirEntry tablespaceDirEntry;
+	Oid filespace = InvalidOid;
+	bool lockHeldByMe;
+
+	if (tablespaceOid == GLOBALTABLESPACE_OID ||
+		tablespaceOid == DEFAULTTABLESPACE_OID)
+	{
+		/*
+		 * Optimize out the common cases.
+		 */
+		 return SYSTEMFILESPACE_OID;
+	}
+
+	PersistentTablespace_InitScan();
+
+	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
+	// acquire the MirroredLock.
+
+	lockHeldByMe = LWLockHeldByMe(PersistentObjLock);
+
+	/*
+	 * Try to prevent a performance issue from many processes gathering tablespace/filespace
+	 * information.
+	 */
+	if (!lockHeldByMe)
+		LWLockAcquire(PersistentObjLock, LW_SHARED);
+
+	tablespaceDirEntry =
+		PersistentTablespace_FindEntryUnderLock(
+										tablespaceOid);
+	if (tablespaceDirEntry == NULL)
+		elog(ERROR, "Did not find persistent tablespace entry %u", 
+			 tablespaceOid);
+
+	filespace = tablespaceDirEntry->filespaceOid;
+
+	if (!lockHeldByMe)
+		LWLockRelease(PersistentObjLock);
+
+	return filespace;
+}
+
 // -----------------------------------------------------------------------------
 // State Change 
 // -----------------------------------------------------------------------------
@@ -534,6 +582,26 @@ void PersistentTablespace_MarkCreatePending(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
+void
+xlog_persistent_tablespace_create(Oid filespaceoid, Oid tablespaceoid)
+{
+	TablespaceDirEntry tde;
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
+	PersistentTablespace_InitScan();
+
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+
+	tde = PersistentTablespace_CreateEntryUnderLock(filespaceoid,
+												    tablespaceoid);
+	Insist(tde != NULL);
+
+	tde->state = PersistentFileSysState_Created;
+
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+}
+
+
 // -----------------------------------------------------------------------------
 // Transaction End  
 // -----------------------------------------------------------------------------
@@ -604,21 +672,16 @@ PersistentTablespace_RemoveSegment(int16 dbid, bool ismirror)
 {
 	TablespaceDirEntry tablespaceDirEntry;
 	HASH_SEQ_STATUS hstat;
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
 	hash_seq_init(&hstat, persistentTablespaceSharedHashTable);
 
 	if (PersistentFileSysObj_BeforePersistenceWork())
-	{	
-		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
-				 "skipping persistent tablespace mirror addition");
-
-		return;
-	}
+		elog(ERROR, "persistent table changes forbidden");
 
 	PersistentTablespace_InitScan();
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	while ((tablespaceDirEntry = hash_seq_search(&hstat)) != NULL)
 	{
@@ -641,7 +704,46 @@ PersistentTablespace_RemoveSegment(int16 dbid, bool ismirror)
 										   /* flushToXlog */ false);
 	}
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+}
+
+void
+PersistentTablespace_ActivateStandby(int16 oldmaster, int16 newmaster)
+{
+	TablespaceDirEntry tablespaceDirEntry;
+	HASH_SEQ_STATUS hstat;
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
+	hash_seq_init(&hstat, persistentTablespaceSharedHashTable);
+
+	if (PersistentFileSysObj_BeforePersistenceWork())
+		elog(ERROR, "persistent table changes forbidden");
+
+	PersistentTablespace_InitScan();
+
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+
+	while ((tablespaceDirEntry = hash_seq_search(&hstat)) != NULL)
+	{
+		PersistentFileSysObjName fsObjName;
+		Oid tblspc = tablespaceDirEntry->key.tablespaceOid;
+
+		tablespaceDirEntry = PersistentTablespace_FindEntryUnderLock(tblspc);
+
+		if (tablespaceDirEntry == NULL)
+			elog(ERROR, "cannot find persistent tablespace entry %u", 
+				 tblspc);
+
+		PersistentFileSysObjName_SetTablespaceDir(&fsObjName, tblspc);
+		PersistentFileSysObj_ActivateStandby(&fsObjName,
+								   &tablespaceDirEntry->persistentTid,
+								   tablespaceDirEntry->persistentSerialNum,
+								   oldmaster,
+								   newmaster,
+								   /* flushToXlog */ false);
+	}
+
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
 void
@@ -651,21 +753,16 @@ PersistentTablespace_AddMirrorAll(
 {
 	TablespaceDirEntry tablespaceDirEntry;
 	HASH_SEQ_STATUS hstat;
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
 	hash_seq_init(&hstat, persistentTablespaceSharedHashTable);
 
 	if (PersistentFileSysObj_BeforePersistenceWork())
-	{	
-		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
-				 "skipping persistent tablespace mirror addition");
-
-		return;
-	}
+		elog(ERROR, "persistent table changes forbidden");
 
 	PersistentTablespace_InitScan();
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	while ((tablespaceDirEntry = hash_seq_search(&hstat)) != NULL)
 	{
@@ -689,7 +786,7 @@ PersistentTablespace_AddMirrorAll(
                     	               /* flushToXlog */ false);
 	}
 
-	LWLockRelease(PersistentObjLock);
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
 /*

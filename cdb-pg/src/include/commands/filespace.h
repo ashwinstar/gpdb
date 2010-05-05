@@ -35,7 +35,6 @@ extern char *get_filespace_name(Oid fsoid);
 extern char *get_filespace_path(Oid fseoid, int16 dbid);
 extern void add_catalog_filespace_entry(Relation rel, Oid fsoid, int16 dbid,
 										char *location);
-
 extern void dbid_remove_filespace_entries(Relation rel, int16 dbid);
 extern int num_filespaces(void);
 #endif   /* FILESPACE_H */

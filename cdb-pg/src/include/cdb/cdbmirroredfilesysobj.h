@@ -209,5 +209,6 @@ extern void MirroredFileSysObj_DropRelFile(
 
 	bool						*mirrorDataLossOccurred);
 
+extern MirroredObjectExistenceState mirror_existence_state(void);
 
 #endif   /* CDBMIRROREDFSOBJ_H */

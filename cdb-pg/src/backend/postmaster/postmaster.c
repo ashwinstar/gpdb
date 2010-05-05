@@ -1022,7 +1022,9 @@ PostmasterMain(int argc, char *argv[])
 	                                 gInitialMode == PMModeQuiescentSegment ||
 
 	                                 /* mirrorless could be promoted to have mirrors using gpaddmirrors */
-	                                 gInitialMode == PMModeMirrorlessSegment;
+	                                 gInitialMode == PMModeMirrorlessSegment ||
+									 /* master standby? */
+									 GPStandby() == true; 
 
 	/*
 	 * Postmaster accepts no non-option switch arguments.

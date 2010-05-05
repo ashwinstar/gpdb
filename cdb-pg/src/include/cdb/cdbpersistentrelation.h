@@ -195,5 +195,7 @@ extern Size PersistentRelation_ShmemSize(void);
 extern void PersistentRelation_ShmemInit(void);
 extern void PersistentRelation_AddMirrorAll(int16 pridbid, int16 mirdbid);
 extern void PersistentRelation_RemoveSegment(int16 dbid, bool ismirror);
+extern void PersistentRelation_ActivateStandby(int16 oldmaster,
+											   int16 newmaster);
  
 #endif   /* CDBPERSISTENTRELATION_H */

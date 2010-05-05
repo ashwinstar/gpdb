@@ -6327,6 +6327,7 @@ StartupXLOG(void)
 			XLogCtl->pass1StartLoc = ReadRecPtr;
 			XLogCtl->multiplePassesNeeded = true;
 			
+			CurrentResourceOwner = ResourceOwnerCreate(NULL, "xlog");
 			/*
 			 * main redo apply loop
 			 */
@@ -6386,6 +6387,7 @@ StartupXLOG(void)
 				record = ReadRecord(NULL, LOG);
 			} while (record != NULL && recoveryContinue);
 
+			CurrentResourceOwner = NULL;
 			/*
 			 * end of main redo apply loop
 			 */
@@ -7193,6 +7195,7 @@ XLogStandbyRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoin
 
 	InRecovery = true;
 	InRedo = true;
+	CurrentResourceOwner = ResourceOwnerCreate(NULL, "xlog");
 	while (true)
 	{
 		if (XLByteEQ(*lastRecordLoc,ReadRecPtr))
@@ -7257,6 +7260,7 @@ XLogStandbyRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoin
 			     XLogLocationToString2(&prevReadLoc));
 		}
 	}
+	CurrentResourceOwner = NULL;
 
 	InRedo = false;
 	InRecovery = false;
@@ -9176,6 +9180,16 @@ StartupProcShutdownHandler(SIGNAL_ARGS __attribute__((unused)))
 	proc_exit(1);
 }
 
+static void
+HandleCrash(SIGNAL_ARGS)
+{
+    ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
+                    errFatalReturn(gp_reraise_signal),
+                    errOmitLocation(true),
+                    errmsg("Unexpected internal error")));
+
+}
+
 extern bool FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace);
 
 static char *knownDatabase = "postgres";
@@ -9206,6 +9220,12 @@ StartupProcessMain(int passNum)
 	pqsignal(SIGPIPE, SIG_IGN);
 	pqsignal(SIGUSR1, SIG_IGN);
 	pqsignal(SIGUSR2, SIG_IGN);
+#ifdef SIGBUS
+	pqsignal(SIGBUS, HandleCrash);
+#endif
+#ifdef SIGSEGV
+	pqsignal(SIGSEGV, HandleCrash);
+#endif
 
 	/*
 	 * Reset some signals that are accepted by postmaster but not here

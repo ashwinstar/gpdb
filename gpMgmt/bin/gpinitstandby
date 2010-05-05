@@ -1,684 +1,865 @@
-#!/bin/bash
-#	Filename:-		gpinitstandby
-#	Version:-		$Revision$
-#	Updated:-		$Date$
-#	Status:-		Released.
-#	Author:-		G Coombe
-#	Contact:-		gcoombe@greenplum.com
-#	Release date:-		March 2006
-#	Release stat:-		Greenplum Co internal
-#                               Copyright (c) Metapa 2005. All Rights Reserved.
-#                               Copyright (c) Greenplum 2005. All Rights Reserved
-#	Brief descn:-		Creates a Greenplum master instance warm standby.
-#******************************************************************************
-# Update History
-#******************************************************************************
-# Ver	Date		Who		Update
-#******************************************************************************
-# Detailed Description
-#******************************************************************************
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 #
-#******************************************************************************
-# Prep Code
-# Source required functions file, this required for script to run
-# exit if cannot locate this file. Change location of FUNCTIONS variable
-# as required.
-WORKDIR=`dirname $0`
-FUNCTIONS=$WORKDIR/lib/gp_bash_functions.sh
-if [ -f $FUNCTIONS ]; then
-		. $FUNCTIONS
-else
-		echo "[FATAL:]-Cannot source $FUNCTIONS file Script Exits!"
-		exit 2
-fi
-#******************************************************************************
-# Location Variables
-#******************************************************************************
-
-#******************************************************************************
-# Command Variables
-#******************************************************************************
-
-#******************************************************************************
-# Script Specific Variables
-#******************************************************************************
-INTERACTIVE=1
-VERBOSE=1
-WAIT="-w"
-MODE=smart
-TIME=`$DATE +%H%M%S`
-CUR_DATE=`$DATE +%Y%m%d`
-PROG_NAME=`$BASENAME $0`
-HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
-QD_NAME=`hostname`
-EXIT_STATUS=0
-TEMP_PORT=55555
-ENCODING=UNICODE
-CHECK_POINT_SEGMENTS=8
-UPDATE_CATALOG=1
-TMP_PG_COMMENTS=/tmp/tmp_pga_comments.$$
-TMP_PG_VALUES=/tmp/tmp_pga_values.$$
-TMP_PG_NEW=/tmp/tmp_pga_new.$$
-PARALLEL_STATUS_FILE=/tmp/${PROG_NAME}_parallel_status_file.$$
-BATCH_DEFAULT=40
-GPSEGINITSB=${WORKDIR}/lib/gpseginitsb.sh
-REMOVE_STANDBY=0
-RESTART_GPDB_AFTER_DELETE=1
-GPSTOP_MODE_OPTION=
-GP_ID_TABLE=gp_id
-#******************************************************************************
-# Functions
-#******************************************************************************
+# Copyright (c) Greenplum Inc 2010. All Rights Reserved. 
 #
-USAGE () {
-	if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
-		$LESSCMD ${GPDOCDIR}/$HELP_DOC_NAME
-		exit 0
-	else
-		$ECHO	
-		$ECHO "      `basename $0 `"
-		$ECHO
-		$ECHO "      Initializes a standby Master host instance. Script will shutdown the"
-		$ECHO "      Master instance to be able to complete this operation"
-		$ECHO "      Will create a copy of the Master data directory on the designated"
-		$ECHO "      standby host and start the database replication process"
-		$ECHO
-		$ECHO "      Usage:"
-		$ECHO "      $0 [OPTIONS]"
-		$ECHO
-		$ECHO "      General options:"
-		$ECHO "      -?, display this help message & exit" 
-		$ECHO "      -v, display version information & exit"
-		$ECHO
-		$ECHO "      Logging options:"
-		$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
-		$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
-		$ECHO "      -a, don't ask to confirm re-build [default:- ask]"
-		$ECHO "      -D, set log output to debug level, shows all function calls"
-		$ECHO
-		$ECHO "      Standby initialization options:"
-		$ECHO "      -s, <standby hostname> [mandatory]" 
-		$ECHO "      -n, do not update system catalog tables [default:- add standby host details]"
-		$ECHO "          Only use this option if standby host already recorded in the Greenplum Database system catalog"
-		$ECHO "          tables and only need to re-sync the standby master data directory"
-		$ECHO "      -r, remove current warm master standby, use this option if the warm master standby host has"
-		$ECHO "          failed, this option will need to shutdown the GPDB array to be able to complete request"
-		$ECHO "      -M <smart|fast>, use specified mode when stopping the GPDB array.[default mode:- smart]"
-		$ECHO "      -L, leave the GPDB array in a stopped state after removing the warm standby master."
-		$ECHO "          This option is only valid when used with the -r option"		
-		$ECHO "      -B, <number> number of pg_hba.conf updates to run in parallel [default:-$BATCH_DEFAULT]"
-		$ECHO
-		$ECHO "      Return codes:"
-		$ECHO "      0 No problems encountered with requested operation"
-		$ECHO "      1 Warning generated, but master database active and standby sync process active"
-		$ECHO "      2 Fatal error, standby sync process failed, or in an inconsistent state"
-		$ECHO
-		exit $EXIT_STATUS
-	fi
-}
+import os
+import sys
+import signal
 
-UNKNOWN_OPTION () {
-		$ECHO
-		$ECHO "[ERROR]:-Unknown option $1"
-		USAGE
-}
+# import GPDB modules
+try:
+    from gppylib.gpparseopts import *
+    from gppylib.gplog import *
+    from gppylib.commands import unix, gp, base
+    from gppylib import gparray
+    from gppylib.db import dbconn
+    from gppylib.db import catalog
+    from gppylib.segcopy import GpSegCopy, SegcopyError
+    from gppylib.userinput import *
+except ImportError, e:
+    sys.exit('ERROR: Cannot import modules.  Please check that you '
+             'have sourced greenplum_path.sh.  Detail: ' + str(e))
 
-DELETE_STANDBY () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	GET_STANDBY_COUNT
-	if [ $STANDBY_COUNT -eq 0 ];then
-		ERROR_EXIT "[FATAL]:-Request made to remove warm master standby, but no standby located" 2
-	else
-		LOG_MSG "[INFO]:-Located a warm master standby, will continue" 1
-	fi
-	GET_STANDBY_DETAILS
-	MASTER_STANDBY_HOSTNAME=`$ECHO ${STANDBY_ARRAY[@]}|$AWK -F"|" '{print $1}'`
-	MASTER_STANDBY_DIRECTORY=`$ECHO ${STANDBY_ARRAY[@]}|$AWK -F"|" '{print $2}'`
-	MASTER_STANDBY_PORT=`$ECHO ${STANDBY_ARRAY[@]}|$AWK -F"|" '{print $3}'`
-	PING_HOST $MASTER_STANDBY_HOSTNAME 1
-	CLEAN_STANDBY=$RETVAL
-	if [ x"" != x"$INTERACTIVE" ];then 
-		DISPLAY_REMOVE_PARAM
-	fi
-	#Shutdown the cluster
-	LOG_MSG "[INFO]:-Commencing GPDB array shutdown, please wait..." 1
-	$GPSTOP -a $GPSTOP_MODE_OPTION
-	if [ $? -ne 0 ];then
-		LOG_MSG "[WARN]:-Attempt to shutdown the GPDB array with mode=smart failed" 1
-		LOG_MSG "[INFO]:-Ensure that all connections to the GPDB array are removed" 1
-		LOG_MSG "[INFO]:-Then re-call this utility" 1
-		ERROR_EXIT "[FATAL]:-Unable to continue due to active database connections" 2
-	fi
-	LOG_MSG "[INFO]:-Successfully completed GPDB array shutdown" 1
-	LOG_MSG "[INFO]:-Starting master in admin mode" 1
-	$GPSTART -am
-	if [ $? -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Failed to start master instance in admin mode, check the gpstart log file" 2
-	fi
-	LOG_MSG "[INFO]:-Deleting catalog entry for $MASTER_STANDBY_HOSTNAME" 1
-	${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$DEFAULTDB" -c "delete from gp_segment_configuration where content=-1 and dbid<>1 and preferred_role='m';" >> $LOG_FILE 2>&1
-	if [ $? -ne 0 ];then
-		LOG_MSG "[FATAL]:-Failed to delete catalog entry for $MASTER_STANDBY_HOSTNAME" 1
-		LOG_MSG "[INFO]:-Restarting the GPDB array" 1
-		$GPSTOP -am
-		$GPSTART -a
-		ERROR_EXIT "[FATAL]:-Unable to continue" 2
-	else
-		LOG_MSG "[INFO]:-Completed delete of catalog entry for $MASTER_STANDBY_HOSTNAME" 1
-	fi
-	LOG_MSG "[INFO]:-Restarting the GPDB array" 1
-	$GPSTOP -am
-	if [ $RESTART_GPDB_AFTER_DELETE -eq 1 ];then
-		$GPSTART -a
-	fi
-	if [ $CLEAN_STANDBY -eq 0 ];then
-		LOG_MSG "[INFO]:-Commencing clear down of $MASTER_STANDBY_HOSTNAME" 1
-		GET_PG_PID_ACTIVE $MASTER_PORT $MASTER_STANDBY_HOSTNAME
-		if [ $PID -gt 1 ];then
-			#Appears that we have a process running
-			STOP_SYNC_PROCESS $MASTER_STANDBY_HOSTNAME $MASTER_DATA_DIRECTORY
-		fi
-		#Now remove data directory
-		LOG_MSG "[INFO]:-Attempting to remove data directory $MASTER_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME" 1
-		$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "$RM -Rf $MASTER_DATA_DIRECTORY"
-		if [ $? -ne 0 ];then
-			LOG_MSG "[WARN]:-Issue with $RM -Rf $MASTER_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME" 1
-		else
-			LOG_MSG "[INFO]:-Successfully completed $RM -Rf $MASTER_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME" 1
-		fi
-		$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "$RM -f ${MASTER_DATA_DIRECTORY}.log"
-		if [ $? -ne 0 ];then
-			LOG_MSG "[WARN]:-Issue with $RM -f ${MASTER_DATA_DIRECTORY}.log on $MASTER_STANDBY_HOSTNAME" 1
-		else
-			LOG_MSG "[INFO]:-Successfully completed $RM -f ${MASTER_DATA_DIRECTORY}.log on $MASTER_STANDBY_HOSTNAME" 1
-		fi
-	fi
-	LOG_MSG "[INFO]:-Warm master standby removal processing complete" 1
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
+EXECNAME = os.path.split(__file__)[-1]
 
-DISPLAY_REMOVE_PARAM () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:--------------------------------------------------" 1
-	LOG_MSG "[INFO]:-Warm master standby removal parameters" 1
-	LOG_MSG "[INFO]:--------------------------------------------------" 1
-	LOG_MSG "[INFO]:-Warm master hostname                            = $MASTER_STANDBY_HOSTNAME" 1
-	LOG_MSG "[INFO]:-Warm master data directory                      = $MASTER_STANDBY_DIRECTORY" 1
-	LOG_MSG "[INFO]:-Warm master port                                = $MASTER_STANDBY_PORT" 1
-	if [ "$GPSTOP_MODE_OPTION" == "-M fast" ];then
-	LOG_MSG "[INFO]:-Shutdown mode                                   = fast" 1
-	else
-	LOG_MSG "[INFO]:-Shutdown mode                                   = smart" 1
-	fi
-	if [ $CLEAN_STANDBY -eq 0 ];then
-	LOG_MSG "[INFO]:-Clear warm master standby files and PID         = On" 1
-	else
-	LOG_MSG "[INFO]:-Clear warm master standby files and PID         = Off, unable to access host" 1
-	fi
-	if [ $RESTART_GPDB_AFTER_DELETE -eq 0 ];then
-	LOG_MSG "[INFO]:-Database will not be restarted" 1
-	fi
-	$ECHO	
-	$ECHO  "Continue with Greenplum standby master removal Yy/Nn>"
-	read REPLY
-	if [ -z $REPLY ]; then
-		LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
-		EXIT_STATUS=1
-		exit $EXIT_STATUS
-	fi
-	if [ $REPLY != Y ] && [ $REPLY != y ]; then
-		LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
-		EXIT_STATUS=1
-		exit $EXIT_STATUS
-	fi
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
+# initstandby state constants for rollback
+INIT_STANDBY_STATE_NOT_STARTED=0
+INIT_STANDBY_STATE_UPDATE_CATALOG=1
+INIT_STANDBY_STATE_COPY_FILES=2
+INIT_STANDBY_STATE_UPDATE_GPDBID=3
+INIT_STANDBY_STATE_DONE=4
 
-CHECK_PARAM () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	#Check that we are not trying to create a standby instance on this host
-	if [ "$MASTER_STANDBY_HOSTNAME" == "`$HOSTNAME`" ];then
-		ERROR_EXIT "[FATAL]:-Cannot run this script on the standby master host" 2
-	fi
-	#Check to see that hostname exists and can be reached
-	PING_HOST $MASTER_STANDBY_HOSTNAME
-	#Check to see if we already have a standby master configured
-	STANDBY_NAME=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname from $CONFIG_TABLE a where content=-1 and dbid<>1 ;"`
-	ERROR_CHK $? "obtained standby master host count" 2
-	if [ $UPDATE_CATALOG -eq 1 ];then
-		if [ x"" != x"$STANDBY_NAME" ];then
-			#Have requested a catalog update, but, a warm master standby already exists
-			ERROR_EXIT "[FATAL]:-Standby master host already configured" 2
-		fi
-	else
-		if [ x"" == x"$STANDBY_NAME" ];then
-			ERROR_EXIT "[FATAL]:-Standby master not configured and -n option supplied" 2
-		fi
-		if [ x"$STANDBY_NAME" != x"$MASTER_STANDBY_HOSTNAME" ];then	
-			#Have bypassed catalog update, but supplied a different warm master standby hostname
-			LOG_MSG "[FATAL]:-Incorrect standby Master hostname supplied via -s option" 1
-			ERROR_EXIT "[FATAL]:-Expected $STANDBY_NAME got $MASTER_STANDBY_HOSTNAME" 2
-		fi
-	fi
-	#Check to ensure that MASTER_DATA_DIRECTORY is not a file on the standby host
-	FILE_THERE=`$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "if [ -f $MASTER_DATA_DIRECTORY ];then echo 1;else echo 0;fi"`
-	if [ $FILE_THERE -eq 1 ];then
-		ERROR_EXIT "[FATAL]:-Directory $MASTER_DATA_DIRECTORY is a file on $MASTER_STANDBY_HOSTNAME" 2
-	fi
-	#Now check to see if have a MASTER_DATA_DIRECTORY on new host
-	if [ $UPDATE_CATALOG -eq 1 ];then 
-		CHK_DIR $MASTER_DATA_DIRECTORY $MASTER_STANDBY_HOSTNAME
-		if [ $EXISTS -eq 0 ];then
-			LOG_MSG "[WARN]:-Located directory $MASTER_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME" 1
-			#Now see if we have a pid file
-			GET_PG_PID_ACTIVE $MASTER_PORT $MASTER_STANDBY_HOSTNAME
-			if [ $PID -ne 0 ] && [ x"" != x"$FAIL_PRI_SEG" ];then
-				LOG_MSG "[WARN]:-Active read only master detected on $MASTER_STANDBY_HOSTNAME" 1
-				LOG_MSG "[INFO]:-Calling close down routine" 1
-				$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export GPHOME=$GPHOME;$GPSTOP -d $MASTER_DATA_DIRECTORY -m"
-			fi
-		else
-			#Now make sure we have the top level directory
-			TL_DIR=`dirname $MASTER_DATA_DIRECTORY`
-			CHK_DIR $TL_DIR $MASTER_STANDBY_HOSTNAME
-			if [ $EXISTS -ne 0 ];then
-				ERROR_EXIT "[FATAL]:-Directory $TL_DIR does not exist on $MASTER_STANDBY_HOSTNAME, please create and re-run this script" 2
-			fi
-			#Do not have a directory, but check to ensure we do not have a sync process
-			GET_PG_PID_ACTIVE $MASTER_PORT $MASTER_STANDBY_HOSTNAME
-			if [ $PID -ne 0 ];then
-				LOG_MSG "[FATAL]:-Have a warm master standby process PID=$PID on $MASTER_STANDBY_HOSTNAME" 1
-				LOG_MSG "[FATAL]:-But no $MASTER_DATA_DIRECTORY directory on $MASTER_STANDBY_HOSTNAME" 1
-				LOG_MSG "[INFO]:-Manually remove this process on $MASTER_STANDBY_HOSTNAME" 1
-				LOG_MSG "[INFO]:-Then run gpinitstandby -s $MASTER_STANDBY_HOSTNAME" 1
-				LOG_MSG "[INFO]:-To create the new warm master standby process" 1
-				ERROR_EXIT "[FATAL]:-Unable to continue" 2
-			fi
-			if [ $PG_LOCK_TMP -ne 0 ] || [ x"" != x"$PG_LOCK_NETSTAT" ];then
-			#Either have a lock file or a netstat entry
-				LOG_MSG "[FATAL]:-No $MASTER_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME but, have a possible" 1
-				LOG_MSG "[FATAL]:-Warm master standby process on $MASTER_STANDBY_HOSTNAME" 1
-				LOG_MSG "[INFO]:-Manually remove this process on $MASTER_STANDBY_HOSTNAME" 1
-				LOG_MSG "[INFO]:-Then run gpinitstandby -s $MASTER_STANDBY_HOSTNAME" 1
-				LOG_MSG "[INFO]:-To create the new warm master standby process" 1
-				ERROR_EXIT "[FATAL]:-Unable to continue" 2
-			fi
-		fi
-	fi
-	CHK_MULTI_HOME
-	if [ $MULTI_HOME -eq 0 ];then
-		#Now check to ensure that hostname supplied matches unix hostname output
-		SSH_HOSTNAME=`$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME $HOSTNAME|$TR -d ' '`
-		ERROR_CHK $? "obtain remote hostname value" 2
-		if [ $SSH_HOSTNAME != $MASTER_STANDBY_HOSTNAME ];then
-			LOG_MSG "[WARN]:-Hostname supplied does not match hostname output on $MASTER_STANDBY_HOSTNAME" 1
-			LOG_MSG "[INFO]:-Setting standby hostname to $SSH_HOSTNAME" 1
-			MASTER_STANDBY_HOSTNAME=$SSH_HOSTNAME
-		fi
-	else
-		LOG_MSG "[INFO]:-Multi-home array, bypassing hostname check" 1
-	fi
-	LOG_MSG "[INFO]:-Obtaining a list of segment instances" 1
-	GET_QE_DETAILS
-	LOG_MSG "[INFO]:-Testing remote access to $MASTER_STANDBY_HOSTNAME" 1
-	MASTER_STANDBY_TOP_LEVEL_DIR=`$DIRNAME $MASTER_STANDBY_DATA_DIRECTORY`
-	COMMAND="$ECHO test > ${MASTER_STANDBY_TOP_LEVEL_DIR}/remote_test1.$$"
-	RUN_COMMAND_REMOTE $MASTER_STANDBY_HOSTNAME "$COMMAND"
-	RETVAL=$?
-	if [ $RETVAL -ne 0 ]; then
-		ERROR_EXIT "[FATAL]:- Command $COMMAND on ${MASTER_STANDBY_HOSTNAME} failed with error status $RETVAL" 2
-	fi		
+g_init_standby_state=INIT_STANDBY_STATE_NOT_STARTED
+
+
+# default batch size
+DEFAULT_BATCH_SIZE=16
+
+# backup filename
+PG_HBA_BACKUP = 'pg_hba.conf.gpinitstandby.bak'
+
+_description = """The gpinitstandby utility adds a backup master host to your
+Greenplum Database system. If your system has an existing backup
+master host configured, use the -r option to remove it before adding 
+the new standby master host.
+
+Before running this utility, make sure 
+that the Greenplum Database software is installed on the backup master 
+host and that you have exchanged SSH keys between hosts. Also make sure 
+that the master port is set to the same port number on the master host 
+and the backup master host. This utility should be run on the currently 
+active primary master host.
+
+The utility will perform the following steps:
+* Shutdown your Greenplum Database system
+* Update the Greenplum Database system catalog to remove the 
+  existing backup master host information (if the -r option is supplied)
+* Update the Greenplum Database system catalog to add the new backup 
+  master host information (use the -n option to skip this step)
+* Edit the pg_hba.conf files of the segment instances to allow access 
+  from the newly added standby master.
+* Setup the backup master instance on the alternate master host
+* Start the synchronization process
+* Restart your Greenplum Database system
+
+A backup master host serves as a 'warm standby' in the event of the 
+primary master host becoming nonoperational. The backup master is kept 
+up to date by a transaction log replication process (gpsyncmaster), 
+which runs on the backup master host and keeps the data between the 
+primary and backup master hosts synchronized. If the primary master 
+fails, the log replication process is shutdown, and the backup master 
+can be activated in its place by using the gpactivatestandby utility. 
+Upon activation of the backup master, the replicated logs are used to 
+reconstruct the state of the master host at the time of the last 
+successfully committed transaction.
+"""
+
+_usage = """
+"""
+
+class GpInitStandbyException(Exception):
+    pass
+
+
+#-------------------------------------------------------------------------
+def parseargs():
+    """parses and validates command line args."""
+    
+    parser = OptParser(option_class=OptChecker,
+                       version='%prog version $Revision$')
+    parser.setHelp([])
+    parser.remove_option('-h')
+    
+    # General options section
+    optgrp = OptionGroup(parser, 'General options')
+    optgrp.add_option('-?', '--help', dest='help', action='store_true',
+                      help='display this help message and exit')
+    optgrp.add_option('-v', dest='version', action='store_true',
+                      help='display version information and exit')
+    parser.add_option_group(optgrp)
+
+    # Logging options section
+    optgrp = OptionGroup(parser, 'Logging options')
+    optgrp.add_option('-q', '--quiet', action='store_true',
+                      help='quiet mode, do not log progress to screen')
+    optgrp.add_option('-l', '--logfile', type='string', default=None,
+                      help='alternative logfile directory')
+    optgrp.add_option('-a', help='don\'t ask to confirm standby master activation',
+                      dest='confirm', default=True, action='store_false')
+    optgrp.add_option('-D', '--debug', action='store_true', default=False,
+                      help='enable debug logging')
+    parser.add_option_group(optgrp)
+
+    # Standby initialization options section
+    optgrp = OptionGroup(parser, 'Standby initialization options')
+    optgrp.add_option('-s', '--standby-host', type='string', dest='standby_host',
+                      help='hostname of system to create standby master on')
+    optgrp.add_option('-n', '--no-update', action='store_true', dest='no_update',
+                      help='do not update system catalog tables')
+    optgrp.add_option('-r', '--remove', action='store_true',
+                      help='remove current warm master standby.  Use this option '
+                      'if the warm master standby host has failed.  This option will '
+                      'need to shutdown the GPDB array to be able to complete the request')
+    optgrp.add_option('-M', '--mode', type='string', default='smart',
+                      help='use specified mode when stopping the GPDB array.  Default: smart')
+    optgrp.add_option('-L', '--no-restart', dest='no_restart', default=False, action='store_true',
+                      help='leave the GPDB array in a stopped state after removing the warm standby master')
+    parser.add_option_group(optgrp)
+
+    
+    # Parse the command line arguments
+    (options, args) = parser.parse_args()
+
+    if options.help:
+        parser.print_help()
+        parser.exit(0, None)
+
+    if options.version:
+        parser.print_version()
+        parser.exit(0, None)
+
+    if options.logfile and not os.path.exists(options.logfile):
+        logger.error('Log directory %s does not exist.' % options.logfile)
+        parser.exit(2, None)
+
+    # -s and -r are exclusive
+    if options.standby_host and options.remove:
+        logger.error('Options -s and -r cannot be specified together.')
+        parser.exit(2, None)
+    	
+    # -L and -s are exclusive
+    if options.standby_host and options.no_restart:
+        logger.error('Options -s and -L cannot be specified together.')
+        parser.exit(2, None)
+
+    # we either need to delete or create or sync
+    if not options.remove and not options.standby_host and not options.no_update:
+        logger.error('No action provided in the options.')
+        parser.print_help()
+        parser.exit(2, None)
+
+    # check that new standby host is up
+    if options.standby_host:
+        try:
+            gp.Ping.local('check new standby up', options.standby_host)
+        except:
+            logger.error('Unable to ping new standby host %s' % options.standby_host)
+            parser.exit(2, None)
+
+    # make sure we aren't trying to create a standby on this host
+    if options.standby_host and options.standby_host == unix.getLocalHostname():
+        logger.error('Cannot run this script on the standby master host')
+        parser.exit(2, None)
+
+    return options, args
+   
+   
+#-------------------------------------------------------------------------
+def print_summary(options, array, standby_filespace_map):
+    """Display summary of gpinitstandby operations."""
+    
+    logger.info('-----------------------------------------------------')
+    if options.remove:
+        logger.info('Warm master standby removal parameters')
+    else:
+        logger.info('Greenplum standby master initialization parameters')
+    logger.info('-----------------------------------------------------')
+    logger.info('Greenplum master hostname               = %s' \
+                    % array.master.getSegmentHostName())
+    logger.info('Greenplum master data directory         = %s' \
+                    % array.master.getSegmentDataDirectory())
+    logger.info('Greenplum master port                   = %s' \
+                    % array.master.getSegmentPort())
+    if options.remove:
+        logger.info('Greenplum standby master hostname       = %s' \
+                        % array.standbyMaster.getSegmentHostName())
+    else:
+        logger.info('Greenplum standby master hostname       = %s' \
+                        % options.standby_host)
+    logger.info('Greenplum standby master port           = %s' \
+                    % array.master.getSegmentPort())
+    if not array.standbyMaster:
+        pg_system = None
+        for fs in standby_filespace_map:
+            if fs[0] == 'pg_system':
+                pg_system = fs[1]
+                break
+        if pg_system:
+            logger.info('Greenplum standby master data directory = %s' % pg_system)
+        else:
+            GpInitStandbyException('Failed to find pg_system '
+                                   'filespace for standby master')
+    else:
+        logger.info('Greenplum standby master data directory = %s' \
+                        % array.standbyMaster.getSegmentDataDirectory())
+    if not options.remove and options.no_update:
+        logger.info('Greenplum update system catalog         = Off')
+    elif not options.remove:
+        logger.info('Greenplum update system catalog         = On')
+    logger.info('Greenplum stop database mode            = %s' % options.mode)
+    if options.remove and options.no_restart:
+        logger.info('Restart Greenplum database after delete = No')
+    elif options.remove:
+        logger.info('Restart Greenplum database after delete = Yes')
+        
+    if not options.remove and standby_filespace_map:
+        logger.info('-----------------------------------------------------')
+        logger.info(' Filespace locations')
+        logger.info('-----------------------------------------------------')
+        for item in standby_filespace_map:
+            logger.info('%s -> %s' % (item[0], item[1]))
+
+    # Confirm the action
+    if options.confirm:
+        if options.remove:
+            yn = ask_yesno(None, 'Do you want to continue with deleting '
+                           'the standby master?', 'N')
+        else:
+            yn = ask_yesno(None, 'Do you want to continue with '
+                           'standby master initialization?', 'N')
+        if not yn:
+            raise GpInitStandbyException('User canceled') 
+
+
+#-------------------------------------------------------------------------
+def stop_database(options):
+    """Stops the database."""
+    
+    try:
+        logger.info('Stopping database...')
+        if options.mode == 'fast':
+            gp.GpStop.local('Stop GPDB', fast=True)
+        else:
+            gp.GpStop.local('Stop GPDB')
+    except Exception, ex:
+        logger.error('Failed to stop the database.')
+        raise GpInitStandbyException(ex)
+
+
+#-------------------------------------------------------------------------
+def start_database():
+    """Starts the database."""
+    
+    logger.info('Starting database in production mode...')
+    try:
+        gp.GpStart.local('Start database in production mode')
+    except Exception, ex:
+        logger.error('Failed to start the database')
+        raise GpInitStandbyException(ex)
+
+#-------------------------------------------------------------------------
+def stop_master():
+    """Stops the master only."""
+    
+    logger.info('Stopping master...')
+    try:
+        gp.GpStop.local('Stop GPDB', masterOnly=True, fast=True)
+    except Exception, ex:
+        logger.error('Failed to stop the master.')
+        raise GpInitStandbyException(ex)
+
+#-------------------------------------------------------------------------
+def start_master():
+    """Starts the master in utility mode."""
+    
+    logger.info('Starting master in utility mode...')
+    try:
+        gp.GpStart.local('Start GPDB', masterOnly=True)
+    except Exception, ex:
+        logger.error('Failed to start the master.')
+        raise GpInitStandbyException(ex)
+
+#-------------------------------------------------------------------------
+def delete_standby(options):
+    """Removes the standby master."""
+    try:
+        dburl = dbconn.DbURL()
+        array = gparray.GpArray.initFromCatalog(dburl, utility=True)
+    except:
+        logger.error('Failed to retrieve configuration information from the master.')
+        raise
+    
+    # make sure we have a standby to delete
+    if not array.standbyMaster:
+        logger.error('Request made to remove warm master standby, '  
+                     'but no standby located.')
+        raise GpInitStandbyException('no standby configured')
+    
+    print_summary(options, array, None)
+
+    # Disable Ctrl-C
+    signal.signal(signal.SIGINT,signal.SIG_IGN)
+    
+    stop_database(options)
+    
+    try:
+        remove_standby_from_catalog(options, array)
+    except Exception, ex:
+        logger.error('Failed to remove standby master from catalog.')
+        raise GpInitStandbyException(ex)
+    
+    if not options.no_restart:
+        start_database()
 	
-	$ECHO test > /tmp/remote_test2.$$	
-	RUN_COMMAND "$SCP -pr /tmp/remote_test2.$$ ${MASTER_STANDBY_HOSTNAME}:${MASTER_STANDBY_TOP_LEVEL_DIR}"
-	COMMAND="$RM -f ${MASTER_STANDBY_TOP_LEVEL_DIR}/remote_test1.$$"
-	RUN_COMMAND_REMOTE $MASTER_STANDBY_HOSTNAME "$COMMAND"
-	RETVAL=$?
-	if [ $RETVAL -ne 0 ]; then
-		ERROR_EXIT "[FATAL]:- Command $COMMAND on ${MASTER_STANDBY_HOSTNAME} failed with error status $RETVAL" 2
-	fi
-	COMMAND="$RM -f ${MASTER_STANDBY_TOP_LEVEL_DIR}/remote_test2.$$"
-	RUN_COMMAND_REMOTE $MASTER_STANDBY_HOSTNAME "$COMMAND"
-	RETVAL=$?
-	if [ $RETVAL -ne 0 ]; then
-		ERROR_EXIT "[FATAL]:- Command $COMMAND on ${MASTER_STANDBY_HOSTNAME} failed with error status $RETVAL" 2
-	fi
-	RUN_COMMAND "$RM -f /tmp/remote_test2.$$"	
-	STANDBY_IP_ADDRESS_ALL=(`$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "$IFCONFIG $IFCONFIG_TXT |$GREP \"inet \"|$GREP -v \"127.0.0\"|$AWK '{print \\$2}'|$CUT -d: -f2" 2>>$LOG_FILE`)
-	ERROR_CHK $? "obtain IP address of standby Master host" 2
-	LOG_MSG "[INFO]:-Standby address array = ${STANDBY_IP_ADDRESS_ALL[@]}" 1
-	STANDBY_IP_ADDRESS=(`$ECHO ${STANDBY_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
-	MASTER_MPP_NAME=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d  $QD_DBNAME -A -t -c"select gpname from $GP_ID_TABLE;"`
-	ERROR_CHK $? "obtain master array name" 2
-	#Check to see if there are any other Greenplum instances on the proposed standby host
-	IN_USE_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE a where hostname='${MASTER_STANDBY_HOSTNAME}' ;"`
-	ERROR_CHK $? "obtain standby host in use count" 2
-	if [ $UPDATE_CATALOG -eq 1 ];then
-		if [ $IN_USE_COUNT -ne 0 ];then
-			LOG_MSG "[WARN]:-There are other segment instances active on $MASTER_STANDBY_HOSTNAME" 1
-			LOG_MSG "[WARN]:-This may have an impact on overall Greenplum Database segment instance performance" 1
-		fi
-		#Check to ensure that port requested not already in use on that host
-		PORT_IN_USE_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE a where hostname='${MASTER_STANDBY_HOSTNAME}' and port=${MASTER_STANDBY_PORT};"`
-		ERROR_CHK $? "obtain standby port check" 2
-		if [ $PORT_IN_USE_COUNT -ne 0 ];then
-			ERROR_EXIT "[FATAL]:-Port $MASTER_STANDBY_PORT already assigned on ${MASTER_STANDBY_HOSTNAME}" 2
-		fi
-	fi
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
+    # check if syncmaster running on standby
+    try:
+        gpsyncmaster_pid = gp.getSyncmasterPID(array.standbyMaster.getSegmentHostName(),
+                                               array.standbyMaster.getSegmentDataDirectory())
+        if gpsyncmaster_pid > 0:	
+            # stop it
+            logger.info('Stopping gpsyncmaster on %s' % 
+                        array.standbyMaster.getSegmentHostName())
+            gp.SegmentStop.remote('stop gpsyncmaster',
+                                  array.standbyMaster.getSegmentHostName(),
+                                  array.standbyMaster.getSegmentDataDirectory())
+    except Exception, ex:
+        logger.error('Failed to stop gpsyncmaster process on standby master.')
+        raise GpInitStandbyException(ex)
+    
+    # delete directory
+    remove_standby_filespace_dirs(array)
 
-UPDATE_PG_HBA () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Processing Standby IP address checks, Please wait..." 1
-	BATCH_LIMIT=$QE_ARRAY_COUNT
-	if [ $BATCH_DEFAULT -gt $BATCH_LIMIT ];then
-		BATCH_DEFAULT=$BATCH_LIMIT
-	fi
-	PARALLEL_SETUP  $PARALLEL_STATUS_FILE	
-	COUNT=1
-	for TNODE in "${QE_ARRAY[@]}"
-	do
-		GP_HOSTNAME=`$ECHO $TNODE|$CUT -d'|' -f1`
-		GP_DIR=`$ECHO $TNODE|$CUT -d'|' -f2`
-		IP_ADDRESS_LIST=`$ECHO ${STANDBY_IP_ADDRESS[@]}|$TR ' ' '~'`
-		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$GPSEGINITSB $$ $COUNT $LOG_FILE $GP_HOSTNAME $GP_DIR $IP_ADDRESS_LIST $PARALLEL_STATUS_FILE &
-		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
-		((COUNT=$COUNT+1))
-	done	
-	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
-	PARALLEL_SUMMARY_STATUS_REPORT $PARALLEL_STATUS_FILE
-	if [ $REPORT_FAIL -ne 0 ];then
-		LOG_MSG "[WARN]:-Failures detected, check $LOG_FILE for more details" 1
-		EXIT_STATUS=1
-	fi
-	$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE
-	$RM -f $PARALLEL_STATUS_FILE
-	LOG_MSG "[INFO]:-Processing Standby IP address checks for Master $PG_HBA file" 1
-	CHANGE_REQD=0
-	for STANDBY_IP in "${STANDBY_IP_ADDRESS[@]}"
-	do
-		CHK_COUNT=`$GREP -c "${STANDBY_IP}/" ${MASTER_DATA_DIRECTORY}/$PG_HBA`
-		if [ $CHK_COUNT -eq 0 ];then
-			ADD_STANDBY_IP_ADDRESS=(${ADD_STANDBY_IP_ADDRESS[@]} $STANDBY_IP)
-			CHANGE_REQD=1
-		else
-			LOG_MSG "[INFO]:-Standby IP address already exists in ${MASTER_DATA_DIRECTORY}/$PG_HBA"
-		fi 
-	done
-	if [ $CHANGE_REQD -ne 0 ];then
-		LOG_MSG "[INFO]:-Adding warm Master IP address to Master $PG_HBA" 1
-		$GREP "^#" ${MASTER_DATA_DIRECTORY}/$PG_HBA > $TMP_PG_COMMENTS
-		$GREP -v "^#" ${MASTER_DATA_DIRECTORY}/$PG_HBA > $TMP_PG_VALUES
-		for STANDBY_IP in "${ADD_STANDBY_IP_ADDRESS[@]}"
-		do
-			LOG_MSG "[INFO]:-Adding Standby IP address $STANDBY_IP to Master $PG_HBA file" 1
-			$ECHO host     all     $USER         ${STANDBY_IP}/32        trust >> $TMP_PG_NEW
-		done
-		$CAT $TMP_PG_VALUES >> $TMP_PG_NEW
-		$CAT $TMP_PG_NEW >> $TMP_PG_COMMENTS
-		$RM -f $TMP_PG_VALUES $TMP_PG_NEW
-		$MV $TMP_PG_COMMENTS ${MASTER_DATA_DIRECTORY}/$PG_HBA
-	fi	
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-
-UPDATE_CATALOG () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	#obtain a list of database names that need to be updated
-	STANDBY_CATALOG_UPDATE $MASTER_STANDBY_HOSTNAME $MASTER_STANDBY_DATA_DIRECTORY $MASTER_STANDBY_PORT
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-
-STOP_MASTER_DB () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	if [ ! -f ${MASTER_DATA_DIRECTORY}/$PG_PID ];then
-		ERROR_EXIT "[FATAL]:-Appears Master instance shutdown during this process, check Master instance log file" 2
-	else
-		LOG_MSG "[INFO]:-Commencing shutdown of Master instance" 1
-		if [ -f $GPSTOP ];then
-			if [ $UPDATE_CATALOG -eq 0 ];then
-			#Shutdown sync process as this is a re-synch of an array with a standby configured
-				$GPSTOP -d $MASTER_DATA_DIRECTORY -af
-				RETVAL=$?
-			else
-				$GPSTOP -d $MASTER_DATA_DIRECTORY -afy
-				RETVAL=$?
-			fi
-			ERROR_CHK $RETVAL "stop Master instance" 1
-		else
-			ERROR_EXIT "[FATAL]:-Unable to locate $GPSTOP" 2
-		fi
-	fi
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
+    # Reenable Ctrl-C
+    signal.signal(signal.SIGINT,signal.default_int_handler)
+  
+    
+#-------------------------------------------------------------------------
+def remove_standby_filespace_dirs(array):
+    """Removes the filespace directories on the standby master."""
+    
+    if array.standbyMaster:
+        logger.info('Removing filespace directories on standby master...')
+        
+        fs_dirs = array.standbyMaster.getSegmentFilespaces().values()
+        
+        pool = base.WorkerPool(numWorkers=DEFAULT_BATCH_SIZE)
+        
+        for fs_dir in fs_dirs:
+            cmd = unix.RemoveFiles('delete standby filespace dir',
+                                   fs_dir, ctxt=base.REMOTE,
+                                   remoteHost=array.standbyMaster.getSegmentHostName())
+            pool.addCommand(cmd)
+        
+        pool.join()
+        try:
+            pool.check_results()
+        except Exception, ex:
+            logger.error('Failed to remove filespace directories on standby master.')
+            raise GpInitStandbyException(ex)
+        finally:
+            pool.haltWork()
+            
 
 
-DISPLAY_PARAM () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:---------------------------------------------------" 1
-	LOG_MSG "[INFO]:-Greenplum standby master initialization parameters" 1
-	LOG_MSG "[INFO]:---------------------------------------------------" 1
-	LOG_MSG "[INFO]:-Greenplum master hostname               = $MASTER_HOSTNAME" 1
-	LOG_MSG "[INFO]:-Greenplum master data directory         = $MASTER_DATA_DIRECTORY" 1
-	LOG_MSG "[INFO]:-Greenplum master port                   = $MASTER_PORT" 1
-	LOG_MSG "[INFO]:-Greenplum standby master hostname       = $MASTER_STANDBY_HOSTNAME" 1
-	LOG_MSG "[INFO]:-Greenplum standby master port           = $MASTER_STANDBY_PORT" 1
-	LOG_MSG "[INFO]:-Greenplum array name                    = $MASTER_MPP_NAME" 1
-	LOG_MSG "[INFO]:-Greenplum standby master data directory = $MASTER_STANDBY_DATA_DIRECTORY" 1
-	LOG_MSG "[INFO]:-Parallel batch value                    = $BATCH_DEFAULT" 1
-	if [ $UPDATE_CATALOG -eq 1 ];then
-		LOG_MSG "[INFO]:-Greenplum update system catalog         = On" 1
-	else
-		LOG_MSG "[INFO]:-Greenplum update system catalog         = Off" 1
-	fi
-	if [ x"" != x"$FAIL_PRI_SEG" ];then
-		LOG_MSG "[INFO]:-Greenplum standby build type            = Dual active Read Only" 1
-	fi
-	if [ $INTERACTIVE ]; then
-		if [ $UPDATE_CATALOG -eq 1 ];then
-			$ECHO  "Continue with Greenplum standby master initialization Yy/Nn>"
-		else
-			$ECHO  "Continue with Greenplum standby master re-sync Yy/Nn>"
-		fi
-		read REPLY
-		if [ -z $REPLY ]; then
-			LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
-			EXIT_STATUS=1
-			exit $EXIT_STATUS
-		fi
-		if [ $REPLY != Y ] && [ $REPLY != y ]; then
-			LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
-			EXIT_STATUS=1
-			exit $EXIT_STATUS
-		fi
-	fi
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
+#-------------------------------------------------------------------------
+def create_standby(options):
+    """Creates the standby master."""
+    
+    global g_init_standby_state
+    
+    master_filespace_map = None
+    standby_filespace_map = None
+    array = None
+    conn = None
+    
+    # The mode the master was in when we started
+    # This is needed because when gpinitstandby is
+    # called by gpinitsystem the db is in master only
+    # mode and needs to remain that way. 
+    master_mode='production'
+    
+    try:
+        try:
+            dburl = dbconn.DbURL()
+            array = gparray.GpArray.initFromCatalog(dburl, utility=True)
+            
+            # get list of master filespaces for later
+            conn = dbconn.connect(dburl, utility=True)
+            master_filespace_map = catalog.get_master_filespace_map(conn)
+            
+            # get standby filespace map
+            if not options.no_update:
+                standby_filespace_map = get_filespace_mappings(master_filespace_map)
+            else:
+                standby_filespace_map = catalog.get_standby_filespace_map(conn)
+        except Exception, ex:
+            logger.error('Failed to retrieve configuration information from the master.')
+            raise GpInitStandbyException(ex)
+        finally:
+            if conn:
+                conn.close()
 
-STANDBY_ACTIVATE () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	#Check if we have a gpsyncmaster process running
-	GET_PG_PID_ACTIVE $MASTER_PORT $MASTER_STANDBY_HOSTNAME
-	if [ $PID -ne 0 ];then
-		LOG_MSG "[INFO]:-Stopping sync process on $MASTER_STANDBY_HOSTNAME" 1
-		STOP_SYNC_PROCESS $MASTER_STANDBY_HOSTNAME $MASTER_STANDBY_DATA_DIRECTORY
-	fi
-	#Check that the proposed master standby directory does not already exist
-	CHK_DIR $MASTER_STANDBY_DATA_DIRECTORY $MASTER_STANDBY_HOSTNAME
-	if [ $EXISTS -eq 0 ];then
-		if [ $UPDATE_CATALOG -eq 1 ];then
-			LOG_MSG "[WARN]:-Directory $MASTER_STANDBY_DATA_DIRECTORY exists on $MASTER_STANDBY_HOSTNAME"  1
-		fi
-		LOG_MSG "[INFO]:-Deleting directory $MASTER_STANDBY_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME" 1
-		COMMAND="$RM -Rf $MASTER_STANDBY_DATA_DIRECTORY"
-		RUN_COMMAND_REMOTE $MASTER_STANDBY_HOSTNAME "$COMMAND"
-		RETVAL=$?
-		if [ $RETVAL -ne 0 ]; then
-			ERROR_EXIT "[FATAL]:- Command $COMMAND on ${MASTER_STANDBY_HOSTNAME} failed with error status $RETVAL" 2
-		fi
-		EXIT_STATUS=1
-	fi
-	LOG_MSG "[INFO]:-Starting remote copy of $MASTER_DATA_DIRECTORY to $MASTER_STANDBY_HOSTNAME please wait..." 1
-	C_DIR=`pwd`;cd ${MASTER_DATA_DIRECTORY};sync;cd $C_DIR
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "mkdir ${MASTER_STANDBY_DATA_DIRECTORY}"
-	$WORKDIR/lib/pysync.py --delete -x db_dumps -x gpperfmon/data -x pg_log ${MASTER_DATA_DIRECTORY} ${MASTER_STANDBY_HOSTNAME}:${MASTER_STANDBY_DATA_DIRECTORY} 2>>$LOG_FILE
-	ERROR_CHK $? "remote copy of $MASTER_DATA_DIRECTORY to $MASTER_STANDBY_HOSTNAME" 2
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
+        # Get the mode the master is in so we can restore it to that mode
+        cmd = unix.FileContainsTerm('check mode', 'gp_role=utility', 
+                                    array.master.getSegmentDataDirectory() + '/postmaster.opts')
+        cmd.run(validateAfter=False)
+        
+        if cmd.contains_term():
+            master_mode = 'utility'
+        else:
+            master_mode = 'production'
+        
+        # validate
+        validate_standby_init(options, array, standby_filespace_map)
+        
+        # display summary
+        print_summary(options, array, standby_filespace_map)
+        
+        # Disable Ctrl-C
+        signal.signal(signal.SIGINT,signal.SIG_IGN)
+
+        if master_mode == 'utility':
+            stop_master()
+        else:
+            stop_database(options)
+    
+        # update the catalog if needed
+        if not options.no_update:
+            update_pg_hba_conf(options, array)
+            array = add_standby_to_catalog(options, 
+                                           standby_filespace_map)
+        else:
+            logger.info('-n option given, skipping catalog update')
+            
+        copy_master_filespaces_to_standby(options, array, 
+                                          master_filespace_map, 
+                                          standby_filespace_map)
+        update_gpdbid_file(options, array)
+        cleanup_pg_hba_conf_backup(array)
+
+        if master_mode == 'utility':
+            start_master()
+        else:
+            start_database()
+    
+        # Reenable Ctrl-C
+        signal.signal(signal.SIGINT,signal.default_int_handler)
+    except Exception, ex:
+        # Something went wrong.  Based on the current state, we can rollback
+        # the operation.
+        logger.info('Trying to rollback changes that have been made...')
+        if g_init_standby_state == INIT_STANDBY_STATE_NOT_STARTED:
+            # nothing to rollback
+            pass
+        elif g_init_standby_state == INIT_STANDBY_STATE_UPDATE_CATALOG:
+            undo_catalog_update(options, array)
+        elif g_init_standby_state == INIT_STANDBY_STATE_COPY_FILES or \
+             g_init_standby_state == INIT_STANDBY_STATE_UPDATE_GPDBID:
+            undo_update_pg_hba_conf(array)
+            undo_catalog_update(options, array)
+            undo_file_copy(options, array)
+        # at this point we are back at the original state so we'll start up
+        # the database.
+        if g_init_standby_state != INIT_STANDBY_STATE_NOT_STARTED:
+            start_database()            
+        raise GpInitStandbyException(ex)
+            
+            
+#-------------------------------------------------------------------------
+def update_pg_hba_conf(options, array):
+    """Updates the pg_hba.conf file to include the ip addresses of the
+    standby master."""
+    
+    logger.info('Updating pg_hba.conf file...')
+    try:
+        master_data_dir = array.master.getSegmentDataDirectory()
+        standby_ips = unix.InterfaceAddrs.remote('get standby ips', options.standby_host)
+        current_user = unix.UserId.local('get userid')
+        
+        # back it up
+        os.system('cp %s/pg_hba.conf %s/%s' \
+                  % (master_data_dir, master_data_dir, PG_HBA_BACKUP))
+        
+        # read in current pg_hba.conf file
+        fp = open(master_data_dir + '/pg_hba.conf', 'r')
+        pg_hba_conf = fp.readlines()
+        fp.close()
+        
+        # Find where the comments stop
+        index = 0
+        while pg_hba_conf[index].strip().startswith('#'):
+            index += 1
+        
+        new_section = ['# standby master host ip addresses\n']
+        for ip in standby_ips:
+            new_section.append('host\tall\t%s\t%s/32\ttrust\n' % (current_user, ip))
+            
+        # insert new section
+        pg_hba_conf[index:index] = new_section
+        
+        # write it out
+        fp = open(array.master.getSegmentDataDirectory() + '/pg_hba.conf', 'w')
+        fp.writelines(pg_hba_conf)
+        fp.close()
+        
+    except Exception, ex:
+        logger.error('Failed to update pg_hba.conf file on master.')
+        raise GpInitStandbyException(ex)
 
 
-START_ARRAY () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	CHK_FILE $GPSTART
-	if [ $EXISTS -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Could not locate $GPSTART to start Greenplum Database instance" 2
-	else
-		LOG_MSG "[INFO]:-Starting the Greenplum Database instance" 1
-		$GPSTART -d $MASTER_DATA_DIRECTORY -a
-	fi
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
+#-------------------------------------------------------------------------
+def cleanup_pg_hba_conf_backup(array):
+    """Removes the pg_hba.conf backup."""
+    
+    logger.info('Removing pg_hba.conf backup...')
+    master_data_dir = array.master.getSegmentDataDirectory()
+    standby_data_dir = array.standbyMaster.getSegmentDataDirectory()
+    
+    try:
+        unix.RemoveFiles.local('cleanup master pg_hba.conf backup', '%s/%s' % (master_data_dir, PG_HBA_BACKUP))
+        unix.RemoveFiles.remote('cleanup standby pg_hba.conf backup', 
+                                array.standbyMaster.getSegmentHostName(),
+                                '%s/%s' % (standby_data_dir, PG_HBA_BACKUP))
+    except:
+        # ignore...
+        pass
+    
 
-FAIL_PRIMARY_SEGMENTS () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	CHK_FILE $GPSTART $MASTER_STANDBY_HOSTNAME
-        if [ $EXISTS -eq 1 ];then
-                ERROR_EXIT "[FATAL]:-File $GPSTART does not exist on $MASTER_STANDBY_HOSTNAME" 2
-        fi
-	CHK_FILE $GPSTOP $MASTER_STANDBY_HOSTNAME
-        if [ $EXISTS -eq 1 ];then
-                ERROR_EXIT "[FATAL]:-File $GPSTOP does not exist on $MASTER_STANDBY_HOSTNAME" 2
-        fi
-	#Start the readonly master segment in utility mode
-	LOG_MSG "[INFO]:-Starting read only master segment instance in utility mode" 1
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export GPHOME=$GPHOME;$GPSTART -d $MASTER_DATA_DIRECTORY -m"
-	ERROR_CHK $? "start read only master segment instance" 2
-	#Now set primary segment instances port numbers to a negative number
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MASTER_PORT -d  $DEFAULTDB -c\" update gp_segment_configuration set port=dbid*-1 where preferred_role='p' and content<>-1;\""
-	ERROR_CHK $? "update primary segment port numbers" 2
-	#Now delete any reference to a master standby instance
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MASTER_PORT -d $DEFAULTDB -c\" delete from gp_segment_configuration where content=-1 and preferred_role = 'm';\""
-	ERROR_CHK $? "delete master standby record" 2
-	#Now change the master segment instance hostname
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MASTER_PORT -d $DEFAULTDB -c\" update gp_segment_configuration set hostname='$MASTER_STANDBY_HOSTNAME' where content=-1;\""
-	ERROR_CHK $? "update master instance hostname" 2
-	#Now shutdown the read only master from utility mode
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export GPHOME=$GPHOME;$GPSTOP -d $MASTER_DATA_DIRECTORY -m"
-	#Now start up the read only master
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export GPHOME=$GPHOME;$PG_CTL -l $MASTER_DATA_DIRECTORY/pg_log/startup.log -D $MASTER_DATA_DIRECTORY start >> /dev/null 2>&1"
-	ERROR_CHK $? "start readonly master instance" 2
-	#Now force an update of gp_pgdatabase
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT -d $DEFAULTDB -c\" \l\"" >/dev/null 2>&1
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT -d $DEFAULTDB -c\" \l\"" >/dev/null 2>&1
-	LOG_MSG "[INFO]:-Forced update of gp_pgdatabase complete" 1
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-#******************************************************************************
-# Main Section
-#******************************************************************************
-trap '$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE;$RM -f $PARALLEL_STATUS_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
-if [ $# -ne 0 ]; then
-	while getopts ":v'?'anfqs:l:!DB:rM:L" opt;do
-		case $opt in
-			v ) VERSION_INFO ;;
-			'?' ) USAGE ;;
-			! ) SCRIPT_USAGE=1
-			    USAGE ;;
-			s ) MASTER_STANDBY_HOSTNAME=$OPTARG ;;
-			a ) unset INTERACTIVE ;;
-			q ) unset VERBOSE ;;
-			l ) LOG_DIR=$OPTARG ;;
-			n ) UPDATE_CATALOG=0 ;;
-			f ) FAIL_PRI_SEG=1 ;;
-			D ) DEBUG_LEVEL=1 ;;
-			B ) BATCH_DEFAULT=$OPTARG ;;
-			M ) if [ "$OPTARG" != "fast" ] && [ "$OPTARG" != "smart" ]; then
-					ERROR_EXIT "[FATAL]:- Invalid shutdown option $OPTARG" 2
-				fi
-				GPSTOP_MODE_OPTION="-M $OPTARG" ;;
-			r ) REMOVE_STANDBY=1 ;;
-			L ) RESTART_GPDB_AFTER_DELETE=0 ;;
-			* ) USAGE ;;
-		esac
-	done	
-fi
-if [ x"" != x"$LOG_DIR" ];then
-	CHK_DIR $LOG_DIR
-	if [ $EXISTS -eq 1 ]; then
-		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory" 1
-		EXIT_STATUS=1
-		BACKOUT_FILE=$DEFLOGDIR/backout_${PROG_NAME}_${USER_NAME}_${CUR_DATE}_$TIME
-	else
-		LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
-		BACKOUT_FILE=$LOG_DIR/backout_${PROG_NAME}_${USER_NAME}_${CUR_DATE}_$TIME
-	fi
-else
-	BACKOUT_FILE=$DEFLOGDIR/backout_${PROG_NAME}_${USER_NAME}_${CUR_DATE}_$TIME
-fi
-CHK_GPDB_ID
-LOG_MSG "[INFO]:-Command line options passed to utility = $*"
-if [ $FAIL_PRI_SEG ] && [ $UPDATE_CATALOG -eq 1 ];then
-	LOG_MSG "[INFO]:-Option -f supplied setting update catalog to off" 1
-	UPDATE_CATALOG=0
-fi
-CHK_ON_PASSIVE_STANDBY
-MASTER_HOSTNAME=`$HOSTNAME`
-CHK_DB_RUNNING
-LOG_MSG "[INFO]:-Start Main"
-if [ $REMOVE_STANDBY -eq 1 ];then
-	DELETE_STANDBY
-	LOG_MSG "[INFO]:-End Main" 
-	exit $EXIT_STATUS
-fi
-CHK_MIRRORS_CONFIGURED
-if [ $FAIL_PRI_SEG ] && [ $MIRROR_COUNT -eq 1 ];then
-	ERROR_EXIT "[FATAL]:-Cannot use -f option if mirroring is not configured" 2
-fi
-GET_QD_DB_NAME
-if [ x"" == x"$MASTER_STANDBY_HOSTNAME" ];then
-	ERROR_EXIT "[FATAL]:-Must supply master standby hostname location with -s option" 2
-fi
-POSTGRES_VERSION_CHK $MASTER_STANDBY_HOSTNAME
-if [ $VERSION_MATCH -ne 1 ] ; then
-    ERROR_EXIT "[FATAL]:- Postgres version does not match." 2
-fi
+#-------------------------------------------------------------------------
+def validate_standby_init(options, array, standby_filespace_map):
+    """Validates the parameters and environment."""
+    
+    logger.info('Validating environment and parameters for standby initialization...')
+    if array.standbyMaster and not options.no_update:
+        logger.error('Standby master already configured')
+        logger.info('If you want to resync the standby master, use the -n option')
+        raise GpInitStandbyException('standby master already configured')
+    
+    if options.no_update:
+        # some sanity checks
+        if not array.standbyMaster:
+            logger.error('Cannot use -n option when standby master has not yet been configured')
+            raise GpInitStandbyException('Standby master not configured')
+        
+        if options.standby_host != array.standbyMaster.getSegmentHostName():
+            logger.error('Standby hostname passed in, %s, does not match configured' % options.standby_host)
+            logger.error('standby hostname %s' % array.standbyMaster.getSegmentHostName())
+            raise GpInitStandbyException('Standby hostname mismatch')
+    
+    # make sure we have top level dirs
+    for fs_name, fs_dir in standby_filespace_map:
+        base_dir = os.path.dirname(os.path.normpath(fs_dir))
+        if not unix.FileDirExists.remote('check for filespace dir', 
+                                         options.standby_host,
+                                         base_dir):        
+            logger.error('Parent directory %s does not exist on host %s' %(base_dir, options.standby_host))
+            logger.error('This directory must be created before running gpactivatestandby')
+            raise GpInitStandbyException('Parent directory %s does not exist' % base_dir)
+        
+        # check that master data dir does not exist on new host unless we are just re-syncing
+        logger.info('Checking for filespace directory %s on %s' % (fs_dir, options.standby_host))
+        if not options.no_update and unix.FileDirExists.remote('check for filespace dir', options.standby_host,
+                                                               fs_dir):
+            logger.error('Filespace directory already exists on host %s' % options.standby_host)
+            if array.standbyMaster:
+                logger.error('If you want to just sync the data directory, use the -n option')
+            raise GpInitStandbyException('master data directory exists')
 
-MASTER_STANDBY_DATA_DIRECTORY=$MASTER_DATA_DIRECTORY
-MASTER_STANDBY_PORT=$MASTER_PORT
-CHECK_PARAM
-if [ x"" != x"$INTERACTIVE" ];then 
-	DISPLAY_PARAM
-fi
-if [ $UPDATE_CATALOG -eq 1 ];then
-	UPDATE_CATALOG
-else
-	LOG_MSG "[WARN]:-By passing catalog update as -n option passed to script" 1
-	EXIT_STATUS=1
-fi
-if [ $UPDATE_CATALOG -eq 1 ];then
-	UPDATE_PG_HBA
-else
-	LOG_MSG "[INFO]:-Bypassing pg_hba.conf updates as -n option supplied" 1
-fi
-STOP_MASTER_DB
-STANDBY_ACTIVATE
-START_ARRAY
-if [ $FAIL_PRI_SEG ];then
-	FAIL_PRIMARY_SEGMENTS
-	LOG_MSG "[INFO]:------------------------------------------------" 1
-	LOG_MSG "[INFO]:-Successfully created a read only standby master" 1
-	LOG_MSG "[INFO]:------------------------------------------------" 1
-else
-	LOG_MSG "[INFO]:------------------------------------------------" 1
-	if [ $UPDATE_CATALOG -eq 1 ];then
-	LOG_MSG "[INFO]:-Successfully created master standby host on $MASTER_STANDBY_HOSTNAME " 1
-	LOG_MSG "[INFO]:-To review current process state use gpstate -f" 1
-	else
-	LOG_MSG "[INFO]:-Successfully completed standby master re-synch on host $MASTER_STANDBY_HOSTNAME " 1
-	fi
-	LOG_MSG "[INFO]:------------------------------------------------" 1
-fi
-LOG_MSG "[INFO]:-End Main" 
-exit $EXIT_STATUS
+
+#-------------------------------------------------------------------------
+def get_add_standby_sql(hostname, address, filespaces):
+    """Returns the SQL for adding a standby master."""
+    
+    filespaces_str = filespace_map_to_string(filespaces)
+    sql = "select gp_add_master_standby('%s', '%s', '%s')" % (hostname,
+                                                              address,
+                                                              filespaces_str)
+    return sql
+
+
+#-------------------------------------------------------------------------
+def get_remove_standby_sql():
+    """Returns the SQL for removing a standby master."""
+
+    sql = "select gp_remove_master_standby()"
+    return sql
+
+
+#-------------------------------------------------------------------------
+def filespace_map_to_string(filespace_map):
+    """Converts the filespace map into a postgres array string."""
+    
+    filespace_map_str = "{"
+    for item in filespace_map:
+        filespace_map_str += '{"%s","%s"},' % (item[0], item[1])
+    filespace_map_str =  filespace_map_str.rstrip(',') + "}"
+    return filespace_map_str
+
+    
+#-------------------------------------------------------------------------
+def get_filespace_mappings(master_filespace_map):
+    """Asks user for the mapping from master filespaces -> standby master.  
+    master_filespace_map should be a 2d array of:
+    [ ['master_fs1name', 'master_fs1path'],
+    ['master_fs2name', 'master_fs2path'],
+    ...
+    ['master_fsnname', 'master_fsnpath'] ]"""
+    
+    standby_filespace_map = []
+    tmp_validator = lambda str, default, ignore1: str if str and str != '' else default 
+    
+    if len(master_filespace_map) > 1:
+        print """The filespace locations on the master must be mapped to
+locations on the standby.  These locations must be empty on the
+standby master host.  The default provided is the location of
+the filespace on the master.  In most cases the defaults can be
+used.  The exception is the pg_system filespace which must be in
+the same location on both the master and standby master.
+    """
+    
+    for item in master_filespace_map:
+        if item[0] == 'pg_system':
+            fs_loc = item[1]
+        else:
+            fs_loc = ask_input(None,'Enter standby filespace location for filespace %s (default: %s)' % (item[0], item[1]), '',
+                               item[1], tmp_validator, None)
+        if not os.path.isabs(fs_loc):
+            raise GpInitStandbyException('Filespace paths must be absolute paths.  %s is a relative path.' % fs_loc)
+        standby_filespace_map.append([item[0], fs_loc])
+    
+    return standby_filespace_map
+
+
+
+#-------------------------------------------------------------------------   
+def add_standby_to_catalog(options, standby_filespace_map):
+    """Adds the standby to the catalog."""
+    
+    global g_init_standby_state
+    
+    try:
+        g_init_standby_state=INIT_STANDBY_STATE_UPDATE_CATALOG
+        start_master()
+        dburl = dbconn.DbURL()
+        conn = dbconn.connect(dburl, utility=True)
+    
+        logger.info('Adding standby master to catalog...')
+    
+        sql = get_add_standby_sql(options.standby_host, options.standby_host, 
+                                  standby_filespace_map)
+    
+        dbconn.execSQL(conn, sql)
+        conn.commit()
+        conn.close()
+        logger.info('Database catalog updated successfully.')
+        array = gparray.GpArray.initFromCatalog(dburl, utility=True)
+        stop_master()
+
+        return array
+    except Exception, ex:
+        logger.error('Failed to add standby to master catalog.')
+        raise GpInitStandbyException(ex)
+
+
+#-------------------------------------------------------------------------  
+def remove_standby_from_catalog(options, array):
+    """Removes the standby from the catalog."""
+    # update catalog
+    try:
+        start_master()
+        dburl = dbconn.DbURL()
+        conn = dbconn.connect(dburl, utility=True)
+
+        logger.info('Removing standby master from catalog...')
+        sql = get_remove_standby_sql()
+        
+        dbconn.execSQL(conn, sql)
+        conn.commit()
+        conn.close()
+        
+        logger.info('Database catalog updated successfully.')
+        
+        stop_master()
+    except Exception, ex:
+        logger.error('Failed to remove standby from master catalog.')
+        stop_master()
+        raise GpInitStandbyException(ex)
+        
+
+#-------------------------------------------------------------------------   
+def copy_master_filespaces_to_standby(options, array, master_filespace_map, standby_filespace_map):
+    """Copies the filespaces from the master to the standby according to
+    the maps provided."""
+    
+    global g_init_standby_state
+
+    g_init_standby_state=INIT_STANDBY_STATE_COPY_FILES
+    #maps -> dicts
+    master_fs_dict = {}
+    standby_fs_dict = {}
+    for i in master_filespace_map:
+        master_fs_dict[i[0]] = i[1]
+    for i in standby_filespace_map:
+        standby_fs_dict[i[0]] = i[1]
+
+    # The worker pool for the copies
+    pool = base.WorkerPool(numWorkers=DEFAULT_BATCH_SIZE)
+
+    # need to make sure file spaces are sync'd
+    for fs_name, fs_dir in master_fs_dict.iteritems():
+        cwd = os.getcwd()
+        os.chdir(fs_dir)
+        logger.info('Forcing changed blocks to disk for filespace %s...' % fs_dir)
+        os.system('sync')
+        os.chdir(cwd)
+    
+        # resolve the mapping
+        standby_fs_dir = standby_fs_dict[fs_name]
+    
+        # create the directory
+        if not unix.FileDirExists.remote('check dir', options.standby_host, standby_fs_dir):
+            logger.info('Filespace directory does not exist on %s' % options.standby_host)
+            logger.info('Creating %s:%s' % (options.standby_host, standby_fs_dir))
+            unix.MakeDirectory.remote('create dir', options.standby_host, standby_fs_dir)
+            unix.Chmod.remote('chmod', options.standby_host, standby_fs_dir, "0700")
+        
+        # Do the copy using pysync
+        logger.info('Copying filespace directory to %s' % options.standby_host)
+            
+        exclude_dirs = ['gpperfmon/data', 'pg_log', 'db_dumps']
+        pysync_options = '-x ' + ' -x '.join(exclude_dirs)
+        
+        if options.debug:
+            pysync_options = pysync_options + ' -v'
+            
+        cmd = gp.PySync('master data dir sync', fs_dir,
+                     options.standby_host, standby_fs_dir, 
+                     options=pysync_options)
+        pool.addCommand(cmd)
+
+    pool.join()
+    try:
+        pool.check_results()
+    except Exception, ex:
+        logger.error('Failed to copy filespace directories from master to standby.')
+        raise GpInitStandbyException(ex)
+    finally:
+        pool.haltWork()
+        
+
+#-------------------------------------------------------------------------
+def update_gpdbid_file(options, array):
+    """Updates the gp_dbid file on the standby master to reflect the correct dbid."""
+    global g_init_standby_state
+    
+    g_init_standby_state = INIT_STANDBY_STATE_UPDATE_GPDBID
+    
+    standby_dbid = array.standbyMaster.getSegmentDbId()
+    standby_datadir = os.path.normpath(array.standbyMaster.getSegmentDataDirectory())
+    try:
+        cmd = unix.InlinePerlReplace('update gp_dbid file', 'dbid = 1', 
+                                     'dbid = %s' % standby_dbid,
+                                     standby_datadir + '/gp_dbid',
+                                     ctxt=base.REMOTE,
+                                     remoteHost=options.standby_host)
+        cmd.run(validateAfter=True)
+    except Exception, ex:
+        logger.error('Failed to update standby master\'s gp_dbid file.')
+        raise GpInitStandbyException(ex)
+
+#-------------------------------------------------------------------------
+# Rollback functions
+#-------------------------------------------------------------------------
+
+def undo_catalog_update(options, array):
+    """Undoes the catalog updates."""
+    
+    # See if we can connect to master
+    conn = None
+    try:
+        dburl = dbconn.DbURL()
+        conn = dbconn.connect(dubrl, utility=True)
+        stop_master()
+    except:
+        pass
+    finally:
+        if conn:
+            conn.close()
+    
+    try:
+        remove_standby_from_catalog(options, array)
+    except:
+        # Can't undo because the update never occured.  Ok to 
+        # ignore this exception and continue
+        pass
+        
+
+#-------------------------------------------------------------------------
+def undo_file_copy(options, array):
+    """Undoes the filespace copy."""
+    
+    try:
+        remove_standby_filespace_dirs(array)
+    except Exception, ex:
+        # Just log a warning here.
+        logger.warn('There was an error trying to cleanup the filespace')
+        logger.warn('directories on the standby host %s' % options.standby_host)
+
+
+#-------------------------------------------------------------------------
+def undo_update_pg_hba_conf(array):
+    """Undoes the pg_hba.conf update."""
+    
+    logger.info('Backing up pg_hba.conf file...')
+    master_data_dir = array.master.getSegmentDataDirectory()
+    os.system('mv %s/%s %s/pg_hba.conf' % (master_data_dir, PG_HBA_BACKUP, master_data_dir))
+
+#-------------------------------------------------------------------------
+# Main
+#-------------------------------------------------------------------------
+try:
+    # setup logging
+    logger = get_default_logger()
+    setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName())
+
+    (options, args) = parseargs()
+
+    # Turn on debug logging if needed
+    if options.debug:
+        enable_verbose_logging()
+    elif options.quiet:
+        quiet_stdout_logging()
+
+    # Kick off the work
+    if options.remove:
+        delete_standby(options)
+        logger.info('Successfully removed standby master')
+    else:
+        create_standby(options)
+        if options.no_update:
+            logger.info('Successfully syncronized standby master.')
+        else:
+            logger.info('Successfully created standby master on %s' % options.standby_host)
+
+except KeyboardInterrupt:
+    logger.error('User canceled')
+    sys.exit(2) 
+except Exception, ex:
+    if options.remove:
+        logger.error('Error removing standby master: %s' % str(ex))        
+    else:
+        logger.error('Error initializing standby master: %s' % str(ex))
+    if options.debug:
+        logger.exception(ex)
+	sys.exit(2)
