@@ -249,22 +249,9 @@ GetAppendOnlyEntry(Oid relid)
 	ScanKeyData	key;
 	SysScanDesc	aoscan;
 
-	Datum		blocksize,
-				safefswritesize,
-				compresslevel,
-				compresstype,
-				majorversion,
-				minorversion,
-                checksum,
-				columnstore,
-				segrelid,
-				segidxid,
-				blkdirrelid,
-				blkdiridxid
-				;
-
-	bool		isNull;
 	AppendOnlyEntry *aoentry;
+
+	Oid			relationId;
 	
 	/*
 	 * Check the pg_appendonly relation to be certain the ao table 
@@ -292,9 +279,62 @@ GetAppendOnlyEntry(Oid relid)
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("missing pg_appendonly entry for relation \"%s\"",
 						get_rel_name(relid))));
+
+	aoentry = GetAppendOnlyEntryFromTuple(
+								pg_appendonly_rel,
+								pg_appendonly_dsc,
+								tuple,
+								&relationId);
+	Assert(relid == relationId);
+									
+	/* Finish up scan and close pg_appendonly catalog. */
+	systable_endscan(aoscan);
 	
-	
+	heap_close(pg_appendonly_rel, RowExclusiveLock);
+
+	return aoentry;
+}
+
+/*
+ * Get the catalog entry for an appendonly relation tuple.
+ */
+AppendOnlyEntry *
+GetAppendOnlyEntryFromTuple(
+	Relation	pg_appendonly_rel,
+	TupleDesc	pg_appendonly_dsc,
+	HeapTuple	tuple,
+	Oid			*relationId)
+{
+	Datum		relid,
+				blocksize,
+				safefswritesize,
+				compresslevel,
+				compresstype,
+				majorversion,
+				minorversion,
+                checksum,
+				columnstore,
+				segrelid,
+				segidxid,
+				blkdirrelid,
+				blkdiridxid
+				;
+
+	bool		isNull;
+	AppendOnlyEntry *aoentry;
+
 	aoentry = (AppendOnlyEntry *) palloc(sizeof(AppendOnlyEntry));
+
+	/* get the relid */
+	relid = heap_getattr(tuple, 
+							 Anum_pg_appendonly_relid, 
+							 pg_appendonly_rel->rd_att, 
+							 &isNull);
+	
+	if(isNull)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("got invalid relid value: NULL")));	
 	
 	/* get the blocksize */
 	blocksize = heap_getattr(tuple, 
@@ -436,11 +476,8 @@ GetAppendOnlyEntry(Oid relid)
     aoentry->segidxid = DatumGetObjectId(segidxid);
     aoentry->blkdirrelid = DatumGetObjectId(blkdirrelid);
     aoentry->blkdiridxid = DatumGetObjectId(blkdiridxid);
-	
-	/* Finish up scan and close pg_appendonly catalog. */
-	systable_endscan(aoscan);
-	
-	heap_close(pg_appendonly_rel, RowExclusiveLock);
+
+	*relationId = DatumGetObjectId(relid);
 	
 	return aoentry;
 }

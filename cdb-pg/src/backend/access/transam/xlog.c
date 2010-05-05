@@ -9327,9 +9327,9 @@ StartupProcessMain(int passNum)
 		
 		StartupXLOG_Pass2();
 		
-		ResourceOwnerRelease(CurrentResourceOwner,
-							 RESOURCE_RELEASE_BEFORE_LOCKS,
-							 false, true);							
+//		ResourceOwnerRelease(CurrentResourceOwner,
+//							 RESOURCE_RELEASE_BEFORE_LOCKS,
+//							 false, true);							
 		break;
 
 	case 3:

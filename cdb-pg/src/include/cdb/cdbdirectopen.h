@@ -32,17 +32,7 @@
 
 typedef struct DirectOpen
 {
-	bool isInit;
-
-	int natts;
-
-	int relId;
-
-	int relType;
-
 	bool hasOid;
-
-	bool noGpRelationNode;
 
 	// The following fields initialize to 0, with minor exceptions.
 
@@ -58,46 +48,52 @@ typedef struct DirectOpen
 
 // HUGE MAGIC DEFINE parameterize by: 
 //     Class tuple values, 
-//     Number of attributes, 
 //     Schema (i.e. pg_attribute) values and array,
-//     Relation id, and 
-//     Relation type id.
 //     (NOTE: REMAINING FIELDS 0)
 
-#define DirectOpenDefine(name,pgClassStatic,natts,attrArrayStatic,attrPtrArrayStatic,relId,relType,relHasOid,noGpRelationNode) \
+#define DirectOpenDefine(name,pgClassStatic,attrArrayStatic,relHasOid) \
 \
 static FormData_pg_class *name##RelPgClass = &pgClassStatic; \
 static FormData_pg_attribute *name##RelAttrArray = attrArrayStatic; \
-static Form_pg_attribute *name##RelAttrPtrArray = attrPtrArrayStatic; \
 \
 static DirectOpen name##RelDirectOpen = \
-	{ false, \
-	  natts, \
-	  relId, \
-	  relType, \
-	  relHasOid, \
-	  noGpRelationNode}; \
+	{ relHasOid }; \
 \
 static inline Relation name##OpenShared(void) \
 { \
 	return DirectOpen_Open( \
 				&name##RelDirectOpen, \
+				-1, \
 				GLOBALTABLESPACE_OID, \
 				0, \
+				-1, \
 				name##RelPgClass, \
-				name##RelAttrArray, \
-				name##RelAttrPtrArray); \
+				name##RelAttrArray); \
 } \
 \
 static inline Relation name##Open(Oid tablespace, Oid database) \
 { \
 	return DirectOpen_Open( \
 				&name##RelDirectOpen, \
+				-1, \
 				tablespace, \
 				database, \
+				-1, \
 				name##RelPgClass, \
-				name##RelAttrArray, \
-				name##RelAttrPtrArray); \
+				name##RelAttrArray); \
+} \
+\
+\
+static inline Relation name##OpenDynamic(Oid relationId, Oid tablespace, Oid database, Oid relfilenode) \
+{ \
+	return DirectOpen_Open( \
+				&name##RelDirectOpen, \
+				relationId, \
+				tablespace, \
+				database, \
+				relfilenode, \
+				name##RelPgClass, \
+				name##RelAttrArray); \
 } \
 \
 static inline void name##Close( \
@@ -111,15 +107,17 @@ static inline void name##Close( \
 extern Relation DirectOpen_Open(
 	DirectOpen *direct,
 
+	Oid relationId,
+
 	Oid tablespace,
 
 	Oid database,
 
+	Oid relfilenode,
+
 	FormData_pg_class *pgClass,
 
-	FormData_pg_attribute *attrArray,
-
-	Form_pg_attribute *attrPtrArray);
+	FormData_pg_attribute *attrArray);
 
 
 extern void DirectOpen_Close(

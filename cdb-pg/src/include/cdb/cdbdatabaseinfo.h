@@ -13,6 +13,7 @@
 #include "storage/fd.h"
 #include "storage/itemptr.h"
 #include "storage/dbdirnode.h"
+#include "catalog/pg_appendonly.h"
 
 typedef struct MiscEntry
 {
@@ -74,6 +75,8 @@ typedef struct DbInfoRel
 	char		relkind;
 	char		relstorage;
 
+	int			relnatts;
+
 	DbInfoGpRelationNode 	*gpRelationNodes;
 	int32		gpRelationNodesCount;
 	int32		gpRelationNodesMaxCount;
@@ -100,6 +103,17 @@ typedef struct DbInfoExtraSegmentFile
 
 	int64			eof;
 } DbInfoExtraSegmentFile;
+
+typedef struct PgAppendOnlyHashEntry
+{
+	// Key.
+
+	Oid				relationId;
+
+	// Pointer.
+	
+	AppendOnlyEntry *aoEntry;
+} PgAppendOnlyHashEntry;
 
 typedef struct DatabaseInfo
 {

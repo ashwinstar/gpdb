@@ -504,5 +504,22 @@ extern void GpPersistent_GetCommonValues(
 	TransactionId					*parentXid,
 	int64							*persistentSerialNum);
 
+extern void GpRelationNode_GetValues(
+	Datum							*values,
+
+	Oid 							*relfilenodeOid,
+	int32							*segmentFileNum,
+	ItemPointer						persistentTid,
+	int64							*persistentSerialNum);
+
+extern void GpRelationNode_SetDatumValues(
+	Datum							*values,
+
+	Oid 							relfilenodeOid,
+	int32							segmentFileNum,
+	ItemPointer		 				persistentTid,
+	int64							persistentSerialNum);
+
+
 #endif   /* GP_PERSISTENT_H */
 

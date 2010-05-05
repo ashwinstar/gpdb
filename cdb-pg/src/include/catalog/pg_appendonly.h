@@ -10,6 +10,8 @@
 #define PG_APPENDONLY_H
 
 #include "catalog/genbki.h"
+#include "utils/relcache.h"
+
 /*
  * pg_appendonly definition.
  */
@@ -58,6 +60,38 @@ typedef FormData_pg_appendonly *Form_pg_appendonly;
 #define Anum_pg_appendonly_version          14
 
 /*
+ * pg_appendonly table values for FormData_pg_attribute.
+ *
+ * [Similar examples are Schema_pg_type, Schema_pg_proc, Schema_pg_attribute, etc, in
+ *  pg_attribute.h]
+ */
+#define Schema_pg_appendonly \
+{ AppendOnlyRelationId, {"relid"}, 					26, -1,	4, 1, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ AppendOnlyRelationId, {"blocksize"}, 				23, -1, 4, 2, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ AppendOnlyRelationId, {"safefswritesize"},		27, -1, 4, 3, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ AppendOnlyRelationId, {"compresslevel"},			21, -1, 2, 4, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
+{ AppendOnlyRelationId, {"majorversion"},			21, -1, 2, 5, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
+{ AppendOnlyRelationId, {"minorversion"},			21, -1, 2, 6, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
+{ AppendOnlyRelationId, {"checksum"},				16, -1, 1, 7, 0, -1, -1, true, 'p', 'c', true, false, false, true, 0 }, \
+{ AppendOnlyRelationId, {"compresstype"},			25, -1, -1, 8, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
+{ AppendOnlyRelationId, {"columnstore"},			16, -1, 1, 9, 0, -1, -1, true, 'p', 'c', false, false, false, true, 0 }, \
+{ AppendOnlyRelationId, {"segrelid"},				26, -1, 4, 10, 0, -1, -1, true, 'p', 'i', false, false, false, true, 0 }, \
+{ AppendOnlyRelationId, {"segidxid"},				26, -1, 4, 11, 0, -1, -1, true, 'p', 'i', false, false, false, true, 0 }, \
+{ AppendOnlyRelationId, {"blkdirrelid"},			26, -1, 4, 12, 0, -1, -1, true, 'p', 'i', false, false, false, true, 0 }, \
+{ AppendOnlyRelationId, {"blkdiridxid"},			26, -1, 4, 13, 0, -1, -1, true, 'p', 'i', false, false, false, true, 0 }, \
+{ AppendOnlyRelationId, {"version"},				23, -1, 4, 14, 0, -1, -1, true, 'p', 'i', false, false, false, true, 0 }
+
+/*
+ * pg_appendonly table values for FormData_pg_class.
+ */
+#define Class_pg_appendonly \
+  {"pg_appendonly"}, PG_CATALOG_NAMESPACE, 10293, BOOTSTRAP_SUPERUSERID, 0, \
+               AppendOnlyRelationId, DEFAULTTABLESPACE_OID, \
+               25, 10000, 0, 0, 0, 0, false, false, RELKIND_RELATION, RELSTORAGE_HEAP, Natts_pg_appendonly, \
+               0, 0, 0, 0, 0, false, false, false, false, FirstNormalTransactionId, {0}, {{{'\0','\0','\0','\0'},{'\0'}}}
+
+
+/*
  * Descriptor of a single AO relation.
  * For now very similar to the catalog row itself but may change in time.
  */
@@ -94,6 +128,13 @@ InsertAppendOnlyEntry(Oid relid,
 
 extern AppendOnlyEntry *
 GetAppendOnlyEntry(Oid relid);
+
+extern AppendOnlyEntry *
+GetAppendOnlyEntryFromTuple(
+	Relation	pg_appendonly_rel,
+	TupleDesc	pg_appendonly_dsc,
+	HeapTuple	tuple,
+	Oid			*relationId);
 
 /*
  * Get the OIDs of the auxiliary relations and their indexes for an appendonly

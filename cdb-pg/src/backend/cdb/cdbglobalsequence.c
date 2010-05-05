@@ -43,13 +43,10 @@ static FormData_pg_attribute
 			GlobalSequence_AttrArray[Natts_gp_global_sequence] =
 							{Schema_gp_global_sequence};
 
-static Form_pg_attribute 
-			GlobalSequence_AttrPtrArray[Natts_gp_global_sequence];
-
 DirectOpenDefine(GlobalSequence_,\
-GlobalSequence_PgClass,Natts_gp_global_sequence,\
-GlobalSequence_AttrArray,GlobalSequence_AttrPtrArray,\
-GpGlobalSequenceRelationId,GP_GLOBAL_SEQUENCE_OID,false,false);
+GlobalSequence_PgClass,\
+GlobalSequence_AttrArray,\
+false);
 
 
 static void GlobalSequence_MakeTid(

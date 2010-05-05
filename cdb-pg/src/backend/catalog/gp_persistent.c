@@ -516,3 +516,42 @@ void GpPersistent_GetCommonValues(
 		
 }
 
+void GpRelationNode_GetValues(
+	Datum							*values,
+
+	Oid 							*relfilenodeOid,
+	int32							*segmentFileNum,
+	ItemPointer		 				persistentTid,
+	int64							*persistentSerialNum)
+{
+	*relfilenodeOid = DatumGetObjectId(values[Anum_gp_relation_node_relfilenode_oid - 1]);
+
+	*segmentFileNum = DatumGetInt32(values[Anum_gp_relation_node_segment_file_num - 1]);
+
+	*persistentTid = *((ItemPointer) DatumGetPointer(values[Anum_gp_relation_node_persistent_tid - 1]));
+
+	*persistentSerialNum = DatumGetInt64(values[Anum_gp_relation_node_persistent_serial_num - 1]);
+
+}
+
+void GpRelationNode_SetDatumValues(
+	Datum							*values,
+
+	Oid 							relfilenodeOid,
+	int32							segmentFileNum,
+	ItemPointer		 				persistentTid,
+	int64							persistentSerialNum)
+{
+	values[Anum_gp_relation_node_relfilenode_oid - 1] = 
+									ObjectIdGetDatum(relfilenodeOid);
+
+	values[Anum_gp_relation_node_segment_file_num - 1] = 
+									Int32GetDatum(segmentFileNum);
+
+	values[Anum_gp_relation_node_persistent_tid - 1] =
+									PointerGetDatum(persistentTid);
+	
+	values[Anum_gp_relation_node_persistent_serial_num - 1] = 
+									Int64GetDatum(persistentSerialNum);
+}
+

@@ -29,6 +29,7 @@
 #include "access/aosegfiles.h"
 #include "access/aocssegfiles.h"
 #include "access/appendonlytid.h"
+#include "utils/guc.h"
 
 // -----------------------------------------------------------------------------
 // Open/Close pg_class Relation 
@@ -48,13 +49,10 @@ static FormData_pg_attribute
 			DatabaseInfo_PgClassAttrArray[Natts_pg_class] =
 							{Schema_pg_class};
 
-static Form_pg_attribute 
-			DatabaseInfo_PgClassAttrPtrArray[Natts_pg_class];
-
 DirectOpenDefine(DatabaseInfo_PgClass,\
-DatabaseInfo_PgClassPgClass,Natts_pg_class,\
-DatabaseInfo_PgClassAttrArray,DatabaseInfo_PgClassAttrPtrArray,\
-RelationRelationId,PG_CLASS_RELTYPE_OID,true,true);
+DatabaseInfo_PgClassPgClass,\
+DatabaseInfo_PgClassAttrArray,\
+true);
 
 static FormData_pg_class 
 			DatabaseInfo_GpRelationNodePgClass = 
@@ -64,14 +62,50 @@ static FormData_pg_attribute
 			DatabaseInfo_GpRelationNodeAttrArray[Natts_gp_relation_node] =
 							{Schema_gp_relation_node};
 
-static Form_pg_attribute 
-			DatabaseInfo_GpRelationNodeAttrPtrArray[Natts_gp_relation_node];
-
 DirectOpenDefine(DatabaseInfo_GpRelationNode,\
-DatabaseInfo_GpRelationNodePgClass,Natts_gp_relation_node,\
-DatabaseInfo_GpRelationNodeAttrArray,DatabaseInfo_GpRelationNodeAttrPtrArray,\
-GpRelationNodeRelationId,GP_RELATION_NODE_OID,false,true);
+DatabaseInfo_GpRelationNodePgClass,\
+DatabaseInfo_GpRelationNodeAttrArray,\
+false);
 
+
+static FormData_pg_class 
+			DatabaseInfo_PgAppendOnlyPgClass = 
+						{Class_pg_appendonly};
+
+static FormData_pg_attribute 
+			DatabaseInfo_PgAppendOnlyAttrArray[Natts_pg_appendonly] =
+							{Schema_pg_appendonly};
+
+DirectOpenDefine(DatabaseInfo_PgAppendOnly,\
+DatabaseInfo_PgAppendOnlyPgClass,\
+DatabaseInfo_PgAppendOnlyAttrArray,\
+false);
+
+static FormData_pg_class 
+			DatabaseInfo_PgAoSegPgClass = 
+						{Class_pg_aoseg};
+
+static FormData_pg_attribute 
+			DatabaseInfo_PgAoSegAttrArray[Natts_pg_aoseg] =
+							{Schema_pg_aoseg};
+
+DirectOpenDefine(DatabaseInfo_PgAoSeg,\
+DatabaseInfo_PgAoSegPgClass,\
+DatabaseInfo_PgAoSegAttrArray,\
+false);
+
+static FormData_pg_class 
+			DatabaseInfo_PgAoCsSegPgClass = 
+						{Class_pg_aocsseg};
+
+static FormData_pg_attribute 
+			DatabaseInfo_PgAoCsSegAttrArray[Natts_pg_aocsseg] =
+							{Schema_pg_aocsseg};
+
+DirectOpenDefine(DatabaseInfo_PgAoCsSeg,\
+DatabaseInfo_PgAoCsSegPgClass,\
+DatabaseInfo_PgAoCsSegAttrArray,\
+false);
 
 static void DatabaseInfo_Grow(
 	void 	**array,
@@ -206,6 +240,73 @@ void DatabaseInfo_Trace(DatabaseInfo *info)
 
 #endif
 
+static void
+DatabaseInfo_PgAppendOnlyHashTableInit(
+	HTAB 	**pgAppendOnlyHashTable)
+{
+	HASHCTL			info;
+	int				hash_flags;
+
+	/* Set key and entry sizes. */
+	MemSet(&info, 0, sizeof(info));
+	info.keysize = sizeof(Oid);
+	info.entrysize = sizeof(PgAppendOnlyHashEntry);
+	info.hash = tag_hash;
+
+	hash_flags = (HASH_ELEM | HASH_FUNCTION);
+
+	*pgAppendOnlyHashTable = hash_create("PgAppendOnly", 100, &info, hash_flags);
+}
+
+static void DatabaseInfo_AddPgAppendOnly(
+	HTAB 				*pgAppendOnlyHashTable,
+	
+	Oid					relationId,
+	
+	AppendOnlyEntry 	*aoEntry)
+{
+	PgAppendOnlyHashEntry *pgAppendOnlyHashEntry;
+
+	bool found;
+	
+	pgAppendOnlyHashEntry = 
+			(PgAppendOnlyHashEntry*) 
+					hash_search(pgAppendOnlyHashTable,
+								(void *) &relationId,
+								HASH_ENTER,
+								&found);
+	if (found)
+		elog(ERROR, "More than one pg_appendonly entry (relation id %u)",
+			 relationId);
+
+	pgAppendOnlyHashEntry->aoEntry = aoEntry;
+}
+
+static AppendOnlyEntry *DatabaseInfo_FindPgAppendOnly(
+	HTAB 				*pgAppendOnlyHashTable,
+	
+	Oid					relationId)
+{
+	PgAppendOnlyHashEntry *pgAppendOnlyHashEntry;
+
+	bool found;
+	
+	pgAppendOnlyHashEntry = 
+			(PgAppendOnlyHashEntry*) 
+					hash_search(pgAppendOnlyHashTable,
+								(void *) &relationId,
+								HASH_FIND,
+								&found);
+	if (!found)
+	{
+		elog(ERROR, "pg_appendonly entry (relation id %u) not found",
+			 relationId);
+		return NULL;
+	}
+
+	return pgAppendOnlyHashEntry->aoEntry;
+}
+
 static void DatabaseInfo_AddTablespace(
 	DatabaseInfo 		*info,
 	Oid 				tablespace)
@@ -287,19 +388,30 @@ static void DatabaseInfo_AddAppendOnlyCatalogSegmentInfo(
 	appendOnlyCatalogSegmentInfo->segmentFileNum = segmentFileNum;
 	appendOnlyCatalogSegmentInfo->logicalEof = logicalEof;
 
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "DatabaseInfo_AddAppendOnlyCatalogSegmentInfo: relation id %u, relation name %s, relfilenode %u, segment file #%d, EOF " INT64_FORMAT,
+			 dbInfoRel->relationOid,
+			 dbInfoRel->relname,
+			 dbInfoRel->relfilenodeOid,
+			 segmentFileNum,
+			 logicalEof);
+
 }
 
 
 static void DatabaseInfo_AddPgClassStoredRelation(
 	DatabaseInfo 		*info,
 	HTAB 				*dbInfoRelHashTable,
+	HTAB 				*pgAppendOnlyHashTable,
 	Oid 				relfilenode,
 	ItemPointer			pgClassTid,
 	Oid					relationOid,
 	char				*relname,
 	Oid					reltablespace,
 	char				relkind,
-	char				relstorage)
+	char				relstorage,
+	int					relnatts)
 {
 	DbInfoRel *dbInfoRel;
 	bool found;
@@ -325,6 +437,7 @@ static void DatabaseInfo_AddPgClassStoredRelation(
 	dbInfoRel->reltablespace = reltablespace;
 	dbInfoRel->relkind = relkind;
 	dbInfoRel->relstorage = relstorage;
+	dbInfoRel->relnatts = relnatts;
 
 	dbInfoRel->gpRelationNodesMaxCount = 1;
 	dbInfoRel->gpRelationNodes = 
@@ -346,19 +459,53 @@ static void DatabaseInfo_AddPgClassStoredRelation(
 		(relstorage == RELSTORAGE_AOROWS ||
 		 relstorage == RELSTORAGE_AOCOLS))
 	{
-		Relation relation;
 		AppendOnlyEntry 	*aoEntry;
 		int i;
 			
-		relation = relation_open(relationOid, AccessShareLock);
-		aoEntry = GetAppendOnlyEntry(relationOid);
+		aoEntry = DatabaseInfo_FindPgAppendOnly(
+										pgAppendOnlyHashTable,
+										relationOid);
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "DatabaseInfo_AddPgClassStoredRelation: Append-Only entry for relation id %u, relation name %s, "
+			     "blocksize %d, safefswritesize %d, compresslevel %d, major version %d, minor version %d, "
+			     " checksum %s, compresstype %s, columnstore %s, segrelid %u, segidxid %u, blkdirrelid %u, blkdiridxid %u",
+			     relationOid,
+			     relname,
+				 aoEntry->blocksize,
+				 aoEntry->safefswritesize,
+				 aoEntry->compresslevel,
+				 aoEntry->majorversion,
+				 aoEntry->minorversion,
+				 (aoEntry->checksum ? "true" : "false"),
+				 aoEntry->compresstype,
+				 (aoEntry->columnstore ? "true" : "false"),
+				 aoEntry->segrelid,
+				 aoEntry->segidxid,
+				 aoEntry->blkdirrelid,
+				 aoEntry->blkdiridxid);
 
 		if (relstorage == RELSTORAGE_AOROWS)
 		{
 			FileSegInfo **aoSegfileArray;
 			int totalAoSegFiles;
+
+			Relation pg_aoseg_rel;
+
+			pg_aoseg_rel = 
+					DatabaseInfo_PgAoSegOpenDynamic(
+										aoEntry->segrelid,
+										dbInfoRel->reltablespace,
+										info->database,
+										aoEntry->segrelid);
 			
-			aoSegfileArray = GetAllFileSegInfo(relation, aoEntry, SnapshotNow, &totalAoSegFiles);
+			aoSegfileArray = 
+					GetAllFileSegInfo_pg_aoseg_rel(
+											relname, 
+											aoEntry,
+											pg_aoseg_rel,
+											SnapshotNow, 
+											&totalAoSegFiles);
 			for (i = 0; i < totalAoSegFiles; i++)
 			{
 				DatabaseInfo_AddAppendOnlyCatalogSegmentInfo(
@@ -366,13 +513,30 @@ static void DatabaseInfo_AddPgClassStoredRelation(
 														aoSegfileArray[i]->segno,
 														aoSegfileArray[i]->eof);
 			}
+
+			DatabaseInfo_PgAoSegClose(pg_aoseg_rel);
 		}
 		else if (relstorage == RELSTORAGE_AOCOLS)
 		{
 			struct AOCSFileSegInfo **aocsSegfileArray;
 			int totalAocsSegFiles;
 
-			aocsSegfileArray = GetAllAOCSFileSegInfo(relation, aoEntry, SnapshotNow, &totalAocsSegFiles);
+			Relation pg_aocsseg_rel;
+
+			pg_aocsseg_rel =
+					DatabaseInfo_PgAoCsSegOpenDynamic(
+										aoEntry->segrelid,
+										dbInfoRel->reltablespace,
+										info->database,
+										aoEntry->segrelid);
+			
+			aocsSegfileArray = GetAllAOCSFileSegInfo_pg_aocsseg_rel(
+															relnatts,
+															relname, 
+															aoEntry, 
+															pg_aocsseg_rel,
+															SnapshotNow, 
+															&totalAocsSegFiles);
 			for (i = 0; i < totalAocsSegFiles; i++)
 			{
 				int32 segmentFileNum;
@@ -380,7 +544,7 @@ static void DatabaseInfo_AddPgClassStoredRelation(
 
 				segmentFileNum = aocsSegfileArray[i]->segno;
 
-				for (columnNum = 0; columnNum < relation->rd_att->natts; columnNum++)
+				for (columnNum = 0; columnNum < relnatts; columnNum++)
 				{
                     AOCSVPInfoEntry *entry;
 
@@ -392,9 +556,9 @@ static void DatabaseInfo_AddPgClassStoredRelation(
 															entry->eof);
 				}
 			}
-		}
 
-		relation_close(relation, AccessShareLock);
+			DatabaseInfo_PgAoCsSegClose(pg_aocsseg_rel);
+		}
 	}
 }
 
@@ -456,6 +620,15 @@ static bool DatabaseInfo_AddGpRelationNode(
 	dbInfoGpRelationNode->persistentSerialNum = persistentSerialNum;
 	dbInfoGpRelationNode->logicalEof = 0;	// This will obtained from the other sources later (e.g. aoseg / aocsseg).
 
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "DatabaseInfo_AddGpRelationNode: gp_relation_node TID %s, relfilenode %u, segment file #%d, persistent serial number " INT64_FORMAT ", persistent TID %s",
+			 ItemPointerToString(gpRelationNodeTid),
+			 relfilenode,
+			 segmentFileNum,
+			 persistentSerialNum,
+			 ItemPointerToString(persistentTid));
+	
 	return found;
 }
 
@@ -688,7 +861,7 @@ static void DatabaseInfo_Scan(
 }
 
 static void
-DatabaseInfo_HashTableInit(
+DatabaseInfo_DbRelHashTableInit(
 	HTAB 	**dbInfoRelHashTable)
 {
 	HASHCTL			info;
@@ -731,9 +904,12 @@ DatabaseInfo *DatabaseInfo_Collect(
 	
 	HTAB 	*dbInfoRelHashTable;
 
+	HTAB 	*pgAppendOnlyHashTable;
+
 	HeapScanDesc scan;
 	Relation	pg_class_rel;
 	Relation	gp_relation_node_rel;
+	Relation	pg_appendonly_rel;
 	HeapTuple	tuple;
 	int			count;
 
@@ -767,7 +943,56 @@ DatabaseInfo *DatabaseInfo_Collect(
 
 	info->collectAppendOnlyCatalogSegmentInfo = collectAppendOnlyCatalogSegmentInfo;
 
-	DatabaseInfo_HashTableInit(&dbInfoRelHashTable);
+	DatabaseInfo_DbRelHashTableInit(&dbInfoRelHashTable);
+
+	DatabaseInfo_PgAppendOnlyHashTableInit(&pgAppendOnlyHashTable);
+
+	pg_appendonly_rel = DatabaseInfo_PgAppendOnlyOpen(defaultTablespace, database);
+	scan = heap_beginscan(pg_appendonly_rel, SnapshotNow, 0, NULL);
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		bool			nulls[Natts_pg_appendonly];
+		Datum			values[Natts_pg_appendonly];
+				
+		AppendOnlyEntry *aoEntry;
+
+		Oid				relationId;
+				
+		heap_deform_tuple(tuple, RelationGetDescr(pg_appendonly_rel), values, nulls);
+
+		aoEntry = GetAppendOnlyEntryFromTuple(
+									pg_appendonly_rel,
+									RelationGetDescr(pg_appendonly_rel),
+									tuple,
+									&relationId);
+
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "DatabaseInfo_Collect: Append-Only entry for relation id %u, "
+			     "blocksize %d, safefswritesize %d, compresslevel %d, major version %d, minor version %d, "
+			     " checksum %s, compresstype %s, columnstore %s, segrelid %u, segidxid %u, blkdirrelid %u, blkdiridxid %u",
+			     relationId,
+				 aoEntry->blocksize,
+				 aoEntry->safefswritesize,
+				 aoEntry->compresslevel,
+				 aoEntry->majorversion,
+				 aoEntry->minorversion,
+				 (aoEntry->checksum ? "true" : "false"),
+				 aoEntry->compresstype,
+				 (aoEntry->columnstore ? "true" : "false"),
+				 aoEntry->segrelid,
+				 aoEntry->segidxid,
+				 aoEntry->blkdirrelid,
+				 aoEntry->blkdiridxid);
+
+		DatabaseInfo_AddPgAppendOnly(
+								pgAppendOnlyHashTable,
+								relationId,
+								aoEntry);
+	}
+	heap_endscan(scan);
+	DatabaseInfo_PgAppendOnlyClose(pg_appendonly_rel);
+
 
 	/*
  	 * Iterate through all the relations of the database and determine which
@@ -786,6 +1011,8 @@ DatabaseInfo *DatabaseInfo_Collect(
 
 		char			relkind;
 		char			relstorage;
+
+		int				relnatts;
 
 		relationOid = HeapTupleGetOid(tuple);
 
@@ -810,6 +1037,8 @@ DatabaseInfo *DatabaseInfo_Collect(
 		if (relstorage == RELSTORAGE_EXTERNAL)
 			continue;
 
+		relnatts = form_pg_class->relnatts;
+
 		DatabaseInfo_AddTablespace(
 									info, 
 									reltablespace);
@@ -817,13 +1046,15 @@ DatabaseInfo *DatabaseInfo_Collect(
 		DatabaseInfo_AddPgClassStoredRelation(
 											info,
 											dbInfoRelHashTable,
+											pgAppendOnlyHashTable,
 											form_pg_class->relfilenode,
 											&tuple->t_self,
 											relationOid,
 											form_pg_class->relname.data,
 											reltablespace,
 											relkind,
-											relstorage);
+											relstorage,
+											relnatts);
 
 		count++;
 	}
@@ -843,18 +1074,13 @@ DatabaseInfo *DatabaseInfo_Collect(
 		int64				persistentSerialNum;
 		
 		heap_deform_tuple(tuple, RelationGetDescr(gp_relation_node_rel), values, nulls);
-				
-		Assert(!nulls[Anum_gp_relation_node_relfilenode_oid - 1]);
-		relfilenode = DatumGetObjectId(values[Anum_gp_relation_node_relfilenode_oid - 1]);
-		
-		Assert(!nulls[Anum_gp_relation_node_segment_file_num - 1]);
-		segmentFileNum = DatumGetInt32(values[Anum_gp_relation_node_segment_file_num - 1]);
-		
-		Assert(!nulls[Anum_gp_relation_node_persistent_tid - 1]);
-		persistentTid = *((ItemPointer) DatumGetPointer(values[Anum_gp_relation_node_persistent_tid - 1]));
-			
-		Assert(!nulls[Anum_gp_relation_node_persistent_serial_num - 1]);
-		persistentSerialNum = DatumGetInt64(values[Anum_gp_relation_node_persistent_serial_num - 1]);
+
+		GpRelationNode_GetValues(
+							values,
+							&relfilenode,
+							&segmentFileNum,
+							&persistentTid,
+							&persistentSerialNum);
 		
 		if (!DatabaseInfo_AddGpRelationNode(
 									info,
@@ -951,7 +1177,8 @@ void DatabaseInfo_AlignAppendOnly(
 			{
 				if (appendOnlyCatalogSegmentInfo->logicalEof == 0 &&
 					dbInfoRel->gpRelationNodes[g].segmentFileNum > 0)
-					elog(ERROR, "Append-Only relation '%s' segment files above #0 shouldn't exist in gp_relation_node relation when empty (segment file #%d)",
+					elog(ERROR, "Append-Only relation id %u, relation name '%s' segment files above #0 shouldn't exist in gp_relation_node relation when empty (segment file #%d)",
+						 dbInfoRel->relationOid,
 						 dbInfoRel->relname,
 						 dbInfoRel->gpRelationNodes[g].segmentFileNum);
 

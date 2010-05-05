@@ -1839,7 +1839,16 @@ RelationIncrementReferenceCount(Relation rel)
 void
 RelationDecrementReferenceCount(Relation rel)
 {
-	Assert(rel->rd_refcnt > 0);
+	if (rel->rd_refcnt <= 0)
+	{
+		elog(ERROR,
+			 "Relation decrement reference count found relation %u/%u/%u with bad count (reference count %d)",
+			 rel->rd_node.spcNode,
+			 rel->rd_node.dbNode,
+			 rel->rd_node.relNode,
+			 rel->rd_refcnt);
+	}
+	
 	rel->rd_refcnt -= 1;
 	if (!IsBootstrapProcessingMode())
 		ResourceOwnerForgetRelationRef(CurrentResourceOwner, rel);

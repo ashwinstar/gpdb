@@ -1553,13 +1553,12 @@ AppendOnlyMirrorResyncEofs_Merge(
 		else
 		{
 			/*
-			 * Old value should be less.  Keep it.
+			 * Old value should be less than or equal.  Keep it.
 			 */
-			if (entry->mirrorLossEof >= mirrorLossEof)
+			if (entry->mirrorLossEof > mirrorLossEof)
 			{
 				elog(ERROR,
-					"%s Append-Only mirror resync mirror loss EOF current value should be less : %u/%u/%u, segment file #%d, relation name '%s' (transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", input mirror loss EOF " INT64_FORMAT ", current mirror loss EOF " INT64_FORMAT ", input mirror new EOF " INT64_FORMAT ", current mirror new EOF " INT64_FORMAT ")",
-					(found ? "Merge" : "New"),
+					"Merge Append-Only mirror resync mirror loss EOF current value should be less than or equal : %u/%u/%u, segment file #%d, relation name '%s' (transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", input mirror loss EOF " INT64_FORMAT ", current mirror loss EOF " INT64_FORMAT ", input mirror new EOF " INT64_FORMAT ", current mirror new EOF " INT64_FORMAT ")",
 					entry->key.relFileNode.spcNode,
 					entry->key.relFileNode.dbNode,
 					entry->key.relFileNode.relNode,
@@ -1820,11 +1819,6 @@ smgrDoDeleteActions(
 
 		if (doDelete)
 		{
-			/*
-			 * UNDONE: Need to guard this for failure and continue to mark items
-			 * UNDONE: drop pending...
-			 * UNDONE: And handle other file-system object types...
-			 */
 			PersistentFileSysObj_EndXactDrop(
 							&current->fsObjName,
 							current->relStorageMgr,

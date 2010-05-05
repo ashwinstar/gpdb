@@ -61,13 +61,10 @@ static FormData_pg_attribute
 			PersistentFileSysObj_RelationAttrArray[Natts_gp_persistent_relation_node] =
 							{Schema_gp_persistent_relation_node};
 
-static Form_pg_attribute 
-			PersistentFileSysObj_RelationAttrPtrArray[Natts_gp_persistent_relation_node];
-
 DirectOpenDefine(PersistentFileSysObj_Relation,\
-PersistentFileSysObj_RelationPgClass,Natts_gp_persistent_relation_node,\
-PersistentFileSysObj_RelationAttrArray,PersistentFileSysObj_RelationAttrPtrArray,\
-GpPersistentRelationNodeRelationId,GP_PERSISTENT_RELATION_NODE_OID,false,false);
+PersistentFileSysObj_RelationPgClass,\
+PersistentFileSysObj_RelationAttrArray,\
+false);
 
 
 /*
@@ -84,13 +81,10 @@ static FormData_pg_attribute
 			PersistentFileSysObj_DatabaseAttrArray[Natts_gp_persistent_database_node] =
 							{Schema_gp_persistent_database_node};
 
-static Form_pg_attribute 
-			PersistentFileSysObj_DatabaseAttrPtrArray[Natts_gp_persistent_database_node];
-
 DirectOpenDefine(PersistentFileSysObj_Database,\
-PersistentFileSysObj_DatabasePgClass,Natts_gp_persistent_database_node,\
-PersistentFileSysObj_DatabaseAttrArray,PersistentFileSysObj_DatabaseAttrPtrArray,\
-GpPersistentDatabaseNodeRelationId,GP_PERSISTENT_DATABASE_NODE_OID,false,false);
+PersistentFileSysObj_DatabasePgClass,\
+PersistentFileSysObj_DatabaseAttrArray,\
+false);
 
 /*
  * This HUGE MAGIC DEFINE expands into module globals and two routines:
@@ -106,13 +100,10 @@ static FormData_pg_attribute
 			PersistentFileSysObj_TablespaceAttrArray[Natts_gp_persistent_tablespace_node] =
 							{Schema_gp_persistent_tablespace_node};
 
-static Form_pg_attribute 
-			PersistentFileSysObj_TablespaceAttrPtrArray[Natts_gp_persistent_tablespace_node];
-
 DirectOpenDefine(PersistentFileSysObj_Tablespace,\
-PersistentFileSysObj_TablespacePgClass,Natts_gp_persistent_tablespace_node,\
-PersistentFileSysObj_TablespaceAttrArray,PersistentFileSysObj_TablespaceAttrPtrArray,\
-GpPersistentTablespaceNodeRelationId,GP_PERSISTENT_TABLESPACE_NODE_OID,false,false);
+PersistentFileSysObj_TablespacePgClass,\
+PersistentFileSysObj_TablespaceAttrArray,\
+false);
 
 
 /*
@@ -129,13 +120,10 @@ static FormData_pg_attribute
 			PersistentFileSysObj_FilespaceAttrArray[Natts_gp_persistent_filespace_node] =
 							{Schema_gp_persistent_filespace_node};
 
-static Form_pg_attribute 
-			PersistentFileSysObj_FilespaceAttrPtrArray[Natts_gp_persistent_filespace_node];
-
 DirectOpenDefine(PersistentFileSysObj_Filespace,\
-PersistentFileSysObj_FilespacePgClass,Natts_gp_persistent_filespace_node,\
-PersistentFileSysObj_FilespaceAttrArray,PersistentFileSysObj_FilespaceAttrPtrArray,\
-GpPersistentFilespaceNodeRelationId,GP_PERSISTENT_FILESPACE_NODE_OID,false,false);
+PersistentFileSysObj_FilespacePgClass,\
+PersistentFileSysObj_FilespaceAttrArray,\
+false);
 
 void PersistentFileSysObj_InitShared(
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData)

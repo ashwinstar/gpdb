@@ -182,13 +182,10 @@ static FormData_pg_attribute
 			DbCommand_GpRelationNodeAttrArray[Natts_gp_relation_node] =
 							{Schema_gp_relation_node};
 
-static Form_pg_attribute 
-			DbCommand_GpRelationNodeAttrPtrArray[Natts_gp_relation_node];
-
 DirectOpenDefine(DbCommand_GpRelationNode,\
-DbCommand_GpRelationNodePgClass,Natts_gp_relation_node,\
-DbCommand_GpRelationNodeAttrArray,DbCommand_GpRelationNodeAttrPtrArray,\
-GpRelationNodeRelationId,GP_RELATION_NODE_OID,false,true);
+DbCommand_GpRelationNodePgClass,\
+DbCommand_GpRelationNodeAttrArray,\
+false);
 
 static void update_gp_relation_node(
 	Relation 				gpRelationNodeRel,
@@ -411,6 +408,19 @@ static void copy_append_only_segment_file(
 
 	int primaryError;
 
+	Assert(eof > 0);
+
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level, 
+			 "copy_append_only_segment_file: Enter %u/%u/%u, segment file #%d, serial number " INT64_FORMAT ", TID %s, EOF " INT64_FORMAT,
+			 dstRelFileNode->spcNode,
+			 dstRelFileNode->dbNode,
+			 dstRelFileNode->relNode,
+			 segmentFileNum,
+			 persistentSerialNum,
+			 ItemPointerToString(persistentTid),
+			 eof);
+
 	if (segmentFileNum > 0)
 	{
 		sprintf(extension, ".%u", segmentFileNum);
@@ -542,7 +552,7 @@ static void copy_append_only_segment_file(
 
 		if (Debug_persistent_recovery_print)
 			elog(Debug_persistent_recovery_print_level, 
-				 "copy_append_only_segment_file: %u/%u/%u, segment file #%d, serial number " INT64_FORMAT ", TID %s, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
+				 "copy_append_only_segment_file: Exit %u/%u/%u, segment file #%d, serial number " INT64_FORMAT ", TID %s, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
 				 dstRelFileNode->spcNode,
 				 dstRelFileNode->dbNode,
 				 dstRelFileNode->relNode,
