@@ -723,13 +723,15 @@ cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
 				 * they'll immediately have some problems -- so we need to
 				 * join them, and *then* we can issue our FATAL error
 				 */
-				pParms->pleaseCancel = true;
+				pParms->pleaseCancel = true; /* mark the failed thread*/
 	
 				for (j = 0; j < ds->dispatchThreads->threadCount + (i - 1); j++)
 				{
 					DispatchCommandParms *pParms;
 	
 					pParms = &ds->dispatchThreads->dispatchCommandParmsAr[j];
+
+					pParms->pleaseCancel = true; /* mark the rest of threads */
 					pParms->thread_valid = false;
 					pthread_join(pParms->thread, NULL);
 				}
