@@ -30,7 +30,7 @@ select ('{1,2}:{20.,10.}'::svec)^('{1}:{3.}'::svec);
 -- Test the multi-concatenation and show sizes compared with a normal array
 drop table if exists corpus_proj;
 drop table if exists corpus_proj_array;
-create table corpus_proj as (select 10000 *|| ('{45,2,35,4,15,1}:{0,1,0,1,0,2}'::svec) result );
+create table corpus_proj as (select 10000 *|| ('{45,2,35,4,15,1}:{0,1,0,1,0,2}'::svec) result ) distributed randomly;
 create table corpus_proj_array as (select result::float8[] from corpus_proj) distributed randomly;
 -- Calculate on-disk size of sparse vector
 select pg_size_pretty(pg_total_relation_size('corpus_proj'));
@@ -63,3 +63,11 @@ select ('{1,2,3,4}:{3,4,5,6}'::svec)            +  ('{1,2,3,4}:{3,4,5,6}'::svec)
 select ('{1,2,3,4}:{3,4,5,6}'::svec)::float8[]  +  ('{1,2,3,4}:{3,4,5,6}'::svec);
 select ('{1,2,3,4}:{3,4,5,6}'::svec)            -  ('{1,2,3,4}:{3,4,5,6}'::svec)::float8[];
 select ('{1,2,3,4}:{3,4,5,6}'::svec)::float8[]  -  ('{1,2,3,4}:{3,4,5,6}'::svec);
+
+-- Test the pivot operator in the presence of NULL values
+drop table if exists pivot_test;
+create table pivot_test(a float8) distributed randomly;
+insert into pivot_test values (0),(1),(NULL),(2),(3);
+select pivot(a) from pivot_test;
+select l1norm(pivot(a)) from pivot_test;
+drop table if exists pivot_test;

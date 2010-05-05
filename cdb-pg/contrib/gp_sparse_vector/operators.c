@@ -963,7 +963,15 @@ svec_pivot(PG_FUNCTION_ARGS)
 {
 	SvecType *svec;
 	SparseData sdata;
-	float8 value = PG_GETARG_FLOAT8(1);
+	float8 value;
+
+	if (PG_ARGISNULL(1))
+	{
+		value = 0.;
+	} else
+	{
+		value = PG_GETARG_FLOAT8(1);
+	}
 
 	if (! PG_ARGISNULL(0))
 	{
