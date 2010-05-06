@@ -4,7 +4,9 @@ ifeq "$(CC)" "icc"
 endif
 
 MODULE_big = gp_svec
-DATA = gp_svec.sql gp_sfv_test.sql
+#Removed the installation SQL file from normal installation
+#DATA = gp_svec.sql gp_sfv_test.sql gp_svec_test.sql
+DATA = gp_sfv_test.sql gp_svec_test.sql
 REGRESS = gp_svec_test.sql
 OBJS = gp_sfv.o sparse_vector.o operators.o SparseData.o
 ifdef USE_PGXS
