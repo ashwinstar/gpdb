@@ -131,7 +131,7 @@ my $glob_filedump;
 
 my $glob_exit;
 
-my $glob_mm = 0; # set to 1 for master mirroring
+my $glob_mm;
 
 my $glob_skipseg;
 
@@ -141,11 +141,13 @@ BEGIN {
     my $conn;
 	my @ignore;
 	my $skipseg;
+	my $mm;
 
     GetOptions(
                'help|?' => \$help, man => \$man, 
                "connect=s" => \$conn,
 		       'exclude|ignore:s' => \@ignore,
+		       'mm|mastermirror:s' => \$mm,
 		       'skipsegments:s' => \$skipseg
                )
         or pod2usage(2);
@@ -170,6 +172,15 @@ BEGIN {
 	else
 	{
 		$glob_skipseg = 1;
+	}
+
+	if (defined($mm))
+	{
+		$glob_mm = ($mm =~ m/^\s*(1|t|true|y|yes)/i) ? 1 : 0;
+	}
+	else
+	{
+		$glob_mm = 0;
 	}
 
 #    print "loading...\n" ;
@@ -262,6 +273,7 @@ sub ignore_list
 
 	# file/directory names
 	# MPP-8973: ignore changetracking files
+	# MPP-9461: ignore filespace gp_dbid files
 	my @m1 = qw(
 		pg_stat 
 		pg_log
@@ -271,6 +283,7 @@ sub ignore_list
 		pgstat
 		pgsql_tmp
 		pg_changetracking
+		gp_dbid
 		);
 
 	# file suffixes -- append a close paren ")"
@@ -1787,9 +1800,9 @@ if (1)
 		"gp_segment_configuration gscm, pg_filespace_entry fem, " .
 		"pg_filespace pfs " .
 		"where " .
-		"fep.fsedbid=gscp.dbid and gscp.content > -1 " .
+		"fep.fsedbid=gscp.dbid " . # and gscp.content > -1 " .
 		"and " .
-		"fem.fsedbid=gscm.dbid and gscm.content > -1 " .
+		"fem.fsedbid=gscm.dbid " . # and gscm.content > -1 " .
 		"and " .
 		# match the filespace ids
 		"fem.fsefsoid = fep.fsefsoid " . 
@@ -1835,6 +1848,13 @@ if (1)
 		my $prim_dd = $row->{ploc};
 		my $mirr_dd = $row->{mloc};
 		my $fsname  = $row->{fsname}; # MPP-9086: filespace name
+
+		if ($glob_mm)
+		{
+			next
+				unless (-1 == $row->{content});
+
+		}
 
 		my @foo = File::Spec->splitdir($prim_dd);
 		my $fil = pop @foo;
