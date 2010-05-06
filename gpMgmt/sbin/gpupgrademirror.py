@@ -302,6 +302,8 @@ def parseargs():
                       help='location of gphome for 3.3.x system')
     parser.add_option('-t', '--temp-dir', default='',
                       help='location for temp upgrade mirror data')
+    parser.add_option('-s', '--speed-network', default='',
+                      help='speed of NIC on he network')
     parser.add_option('--usage', action="briefhelp")
     
 
@@ -429,7 +431,8 @@ class GPHostCache:
                 
             for line in file:
                 (interface,hostname) = line.split(':')
-                self.hostcache[interface.strip()] = hostname.strip()                    
+                self.hostcache[interface.strip()] = hostname.strip()
+            file.close()             
         except IOError, ioe:
             logger.error("Can not read host cache file %s. Exception: %s" % (self.CACHEFILE, str(ioe)))
             raise Exception("Unable to read host cache file: %s" % self.CACHEFILE)                  
@@ -535,6 +538,7 @@ class RelFileNodes():
             for line in self._fp:
                 tableFileList = line.split(':')
                 tableRelFileList.append(tableFileList)
+            self._fp.close()
                 
         except IOErrormm, e:
            logger.error('Unable to read relfile node file: ' + str(e))
@@ -1050,6 +1054,7 @@ class NetworkSpeed(Command):
         Return the network speed in megabytes per second.
         Don't ever fail, just say it is 0 if something goes wrong.
         """
+        results = ""
         retValue = 0
         try:
            results = self.get_results()
@@ -1058,7 +1063,9 @@ class NetworkSpeed(Command):
            substring = resultStr[index:]
            substringList = substring.split(" ")
            retValue = int(float(substringList[2]))
-        except:
+        except Exception, e:
+           logger.warning("There was a problem getting network speed: command = >>>%s<<<. results = >>>%s<<<. exception = >>>%s<<<" % (str(self), str(results), str(e)))
+           exit(3)
            pass
         return retValue
         
@@ -3164,6 +3171,7 @@ MirrorNodeList = []
 MirrorInfoList = []
 phase2MirrorList = []
 
+
 coverage = GpCoverage()
 coverage.start()
 
@@ -3484,19 +3492,22 @@ try:
     
     netMBSpeed = 0
     if options.rollback == False:
-       while cmdComplete == False:
-           netMBCmd = NetworkSpeed( name = "gpupgrademirror get nextwork speed for: " + str(aSeg.primary_host)
-                               , host1 = aSeg.primary_host
-                               , host2 = aSeg.mirror_host
-                               , tempDir1 = aSeg.primary_data_directory
-                               , tempDir2 = aSeg.mirror_data_directory
-                               , ctxt = REMOTE
-                               , remoteHost = aSeg.primary_host
-                               )
-           logger.debug("Testing network speed. This will take about 15 seconds....")
-           cmdComplete = runAndCheckCommandComplete(netMBCmd)
-       netMBSpeed = netMBCmd.getSpeed()
-       logger.debug("Net speed for primary %s to mirror %s is estimated to be %s Meg per Sec." % (aSeg.primary_host, aSeg.mirror_host, str(netMBSpeed)))
+       if len(options.speed_network) > 0:
+           netMBSpeed = int(options.speed_network)
+       else:
+          while cmdComplete == False:
+              netMBCmd = NetworkSpeed( name = "gpupgrademirror get nextwork speed for: " + str(aSeg.primary_host)
+                                  , host1 = aSeg.primary_host
+                                  , host2 = aSeg.mirror_host
+                                  , tempDir1 = aSeg.primary_data_directory
+                                  , tempDir2 = aSeg.mirror_data_directory
+                                  , ctxt = REMOTE
+                                  , remoteHost = aSeg.primary_host
+                                  )
+              logger.debug("Testing network speed. This will take about 20 seconds....")
+              cmdComplete = runAndCheckCommandComplete(netMBCmd)
+          netMBSpeed = netMBCmd.getSpeed()
+          logger.debug("Net speed for primary %s to mirror %s is estimated to be %s Meg per Sec." % (aSeg.primary_host, aSeg.mirror_host, str(netMBSpeed)))
      
     if len(options.ids) > 0:
         """ I am a minion, so skip the minion setup. """
@@ -3541,6 +3552,7 @@ try:
              minionOptions = " -c "
           if options.verbose == True:
               minionOptions = minionOptions + " -v "
+          minionOptions = minionOptions + " -s " + str(netMBSpeed) + " "
           minionSegdbid = segdbidList[0]
           firstMirrorDataDir = p1MirrorInfo.getMirrorInfoFromMirrordbid(mirrordbid = minionSegdbid).mirror_data_directory
           minion = GPUpgradeMirrorMinion( name = "gpupgrademirror create a minion"
@@ -3614,11 +3626,17 @@ try:
     ''' Get a list of mirror nodes '''
     mirrorNodeCursor = p1MirrorInfo.getMirrorNodeList()
     numMirrorNodes = len(mirrorNodeCursor)   
-       
+ 
+    shiftIndex = 0      
     for mirrorName in mirrorNodeCursor:
         ''' Get info on mirror segments for this host'''
         mirrorInfoList = p1MirrorInfo.getMirrorInfo(mirrorName)
-                   
+        
+        """ Randomize the seg order to minimize the change of disk read/write at the same time."""
+        for rotateV in range(shiftIndex):
+            tempItem = mirrorInfoList.pop(0)
+            mirrorInfoList.append(tempItem)
+            
         ''' Create a gpupgrademirror object for each mirror node'''
         tempNode = Phase1( dburl = dbUrl
                          , logger = logger
@@ -3629,6 +3647,7 @@ try:
                          , continue_event = threading.Event()
                          )
         MirrorNodeList.append(tempNode)
+        shiftIndex = shiftIndex + 1
 
     if gpstartStatus != None and gpstartStatus == "MASTER":
        """GpStop.local('gpupgrademirror stop databse', fast=True, masterOnly = True)"""
@@ -3710,11 +3729,12 @@ try:
        p1RollbackCompleted = True
        for node in MirrorNodeList:
            for segStatus in node.statusList:
-               
-               if    (options.mode == 'S' and segStatus.get_current_status()[0] != 'PHASE1_SAFE_MODE') \
-                  or (options.mode == 'U' and segStatus.get_current_status()[0] != 'PHASE1_UNSAFE_MODE'):
-                  p1RollbackCompleted = False
-                  break
+               currentStatus = segStatus.get_current_status()[0]
+               if currentStatus != None:
+                  if    (options.mode == 'S' and currentStatus != 'PHASE1_SAFE_MODE') \
+                     or (options.mode == 'U' and currentStatus != 'PHASE1_UNSAFE_MODE'):
+                     p1RollbackCompleted = False
+                     break
            if p1RollbackCompleted == False:
               break
     
@@ -3768,4 +3788,3 @@ finally:
 
     coverage.stop()
     coverage.generate_report()
-    
