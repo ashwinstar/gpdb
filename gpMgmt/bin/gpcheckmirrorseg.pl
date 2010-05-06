@@ -27,6 +27,7 @@ Options:
     -man             full documentation
     -connect         psql connect parameters
     -ignore          filename pattern to ignore during comparison
+	-skipsegments    skip mirror check for segments which are not in sync
 
 =head1 OPTIONS
 
@@ -53,6 +54,11 @@ directories.  To specify multiple patterns, use multiple ignore
 arguments, eg:
 
   -ignore gp_dump -ignore pg_dump
+
+=item B<-skipsegments> 
+    
+Boolean flag to control whether to skip mirror check for segments
+which are not in sync (normally true).
 
 
 =back
@@ -127,16 +133,20 @@ my $glob_exit;
 
 my $glob_mm = 0; # set to 1 for master mirroring
 
+my $glob_skipseg;
+
 BEGIN {
     my $man  = 0;
     my $help = 0;
     my $conn;
 	my @ignore;
+	my $skipseg;
 
     GetOptions(
                'help|?' => \$help, man => \$man, 
                "connect=s" => \$conn,
-		       'exclude|ignore:s' => \@ignore
+		       'exclude|ignore:s' => \@ignore,
+		       'skipsegments:s' => \$skipseg
                )
         or pod2usage(2);
 
@@ -151,7 +161,16 @@ BEGIN {
 	chomp $gp_filedump;
 
 	$glob_filedump = $gp_filedump if (defined($gp_filedump) && 
-									  length($gp_filedump))
+									  length($gp_filedump));
+
+	if (defined($skipseg))
+	{
+		$glob_skipseg = ($skipseg =~ m/^\s*(1|t|true|y|yes)/i) ? 1 : 0;
+	}
+	else
+	{
+		$glob_skipseg = 1;
+	}
 
 #    print "loading...\n" ;
 }
@@ -1724,7 +1743,7 @@ if (1)
         if (defined($glob_connect));
 
 	# select from gp_segment_configuration and pg_filespace_entry,
-	# constructing a single row for each primary/mirror pair
+	# to get file system location and port number
 
     $psql_str .= " -c \' ".
 		"select g.hostname||f.fselocation as fselocation, " .
@@ -1760,7 +1779,9 @@ if (1)
 		"gscm.hostname as mhostname, gscm.address as maddress, " .
 		"fem.fselocation as mloc, " .
 		"pfs.oid fsoid, " .
-		"pfs.fsname " .
+		"pfs.fsname, " .
+		"gscp.mode, " .
+		"gscp.status " .
 		"from " .
 		"gp_segment_configuration gscp, pg_filespace_entry fep, " .
 		"gp_segment_configuration gscm, pg_filespace_entry fem, " .
@@ -1819,6 +1840,49 @@ if (1)
 		my $fil = pop @foo;
 
 		print "checking directory: ", $fil, "\nfilespace: $fsname\n";
+
+		# check that primary and mirror are in sync.  If they are not,
+		# don't bother checking for differences (unless skipseg is
+		# disabled)
+		unless (($row->{status} eq 'u') &&
+				($row->{mode} eq 's'))
+		{
+			if ($glob_skipseg)
+			{
+				my $msgstr = <<'EOF_msgstr';
+#******************************************************************
+#******************************************************************
+#**  Warning: primary and mirror are out of sync!!
+#**  
+#**  primary: MMPRIM
+#**  mirror:  MMMIRR
+#**  
+#**  status: MMSTAT
+#**  mode:   MMMODE
+#**  
+#**  Skipping...
+#**  
+#******************************************************************
+#******************************************************************
+EOF_msgstr
+				
+				$msgstr =~ s/^#//gm;
+				$msgstr =~ s/MMPRIM/$row->{ploc}/;
+				$msgstr =~ s/MMMIRR/$row->{mloc}/;
+				$msgstr =~ s/MMSTAT/$row->{status}/;
+				$msgstr =~ s/MMMODE/$row->{mode}/;
+
+				warn($msgstr);
+
+				# found differences (ie not in sync)
+				push @{$glob_exit}, $row->{ploc}." ".$row->{mloc} ; 
+				next;
+			}
+			else
+			{
+				warn "segment and mirror are out of sync - comparison will probably fail!";
+			}
+		}
 
 		my $primfil = $prim_dd;
 		my $mirrfil = $mirr_dd;
