@@ -261,8 +261,8 @@ CREATE AGGREGATE count_vec (svec) (
 	STYPE = svec
 );
 
-DROP AGGREGATE IF EXISTS pivot(float8);
-CREATE AGGREGATE pivot (float8) (
+DROP AGGREGATE IF EXISTS array_agg(float8);
+CREATE AGGREGATE array_agg (float8) (
 	SFUNC = svec_pivot,
 	PREFUNC = svec_concat,
 	STYPE = svec
