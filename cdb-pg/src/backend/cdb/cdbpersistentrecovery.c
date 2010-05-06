@@ -519,7 +519,8 @@ PersistentRecovery_ShouldHandlePass1XLogRec(
 											/* weAreGeneratingXLogNow */ false,
 											/* printSkipIssuesOnly */ false);
 
-	ChangeTracking_GetRelationChangeInfoFromXlog(
+	if (ChangeTracking_ShouldTrackChanges())
+		ChangeTracking_GetRelationChangeInfoFromXlog(
 										  record->xl_rmid,
 										  record->xl_info,
 										  (void*)XLogRecGetData(record), 
