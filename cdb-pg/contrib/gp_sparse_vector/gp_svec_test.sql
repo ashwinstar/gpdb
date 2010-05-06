@@ -68,6 +68,6 @@ select ('{1,2,3,4}:{3,4,5,6}'::svec)::float8[]  -  ('{1,2,3,4}:{3,4,5,6}'::svec)
 drop table if exists pivot_test;
 create table pivot_test(a float8) distributed randomly;
 insert into pivot_test values (0),(1),(NULL),(2),(3);
-select pivot(a) from pivot_test;
-select l1norm(pivot(a)) from pivot_test;
+select array_agg(a) from pivot_test;
+select l1norm(array_agg(a)) from pivot_test;
 drop table if exists pivot_test;
