@@ -183,7 +183,6 @@ void PersistentFileSysObj_Init(
 						fsObjType,
 						GpGlobalSequence_PersistentRelation,
 						PersistentFileSysObj_RelationOpenShared,
-						PersistentFileSysObj_RelationClose,
 						scanTupleCallback,
 						Natts_gp_persistent_relation_node,
 						Anum_gp_persistent_relation_node_persistent_serial_num,
@@ -203,7 +202,6 @@ void PersistentFileSysObj_Init(
 						fsObjType,
 						GpGlobalSequence_PersistentDatabase,
 						PersistentFileSysObj_DatabaseOpenShared,
-						PersistentFileSysObj_DatabaseClose,
 						scanTupleCallback,
 						Natts_gp_persistent_database_node,
 						Anum_gp_persistent_database_node_persistent_serial_num,
@@ -223,7 +221,6 @@ void PersistentFileSysObj_Init(
 						fsObjType,
 						GpGlobalSequence_PersistentTablespace,
 						PersistentFileSysObj_TablespaceOpenShared,
-						PersistentFileSysObj_TablespaceClose,
 						scanTupleCallback,
 						Natts_gp_persistent_tablespace_node,
 						Anum_gp_persistent_tablespace_node_persistent_serial_num,
@@ -243,7 +240,6 @@ void PersistentFileSysObj_Init(
 						fsObjType,
 						GpGlobalSequence_PersistentFilespace,
 						PersistentFileSysObj_FilespaceOpenShared,
-						PersistentFileSysObj_FilespaceClose,
 						scanTupleCallback,
 						Natts_gp_persistent_filespace_node,
 						Anum_gp_persistent_filespace_node_persistent_serial_num,
@@ -2977,7 +2973,7 @@ static void PersistentFileSysObj_ScanStateAction(
 void PersistentFileSysObj_MarkWholeMirrorFullCopy(void)
 {
 	PersistentFsObjType		fsObjType;
-	
+
 	for (fsObjType = PersistentFsObjType_First; 
 		 fsObjType <= PersistentFsObjType_Last;
 		 fsObjType++)

@@ -3966,20 +3966,20 @@ select * from get_ereport order by 1;
  cabf: cdbbufferedread:00000355:  errmsg("unable to seek to position for file "%s" (errcode %d)", 
  cabf: cdbbufferedread:00000356:  bufferedRead->filePathName, 
  cabf: cdbbufferedread:00000357:  errno))); 
- cabf: cdbdatabaseinfo:00000770:  ereport(ERROR, 
- cabf: cdbdatabaseinfo:00000771:  (errcode_for_file_access(), 
- cabf: cdbdatabaseinfo:00000772:  errmsg("Could not open segment file '%s'", 
- cabf: cdbdatabaseinfo:00000773:  path))); 
- cabf: cdbdatabaseinfo:00000777:  ereport(ERROR, 
- cabf: cdbdatabaseinfo:00000778:  (errcode_for_file_access(), 
- cabf: cdbdatabaseinfo:00000779:  errmsg("Could not seek to end of file "%s" : %m", 
- cabf: cdbdatabaseinfo:00000780:  path))); 
- cabf: cdbdatabaseinfo:00000818:  ereport(ERROR, 
- cabf: cdbdatabaseinfo:00000819:  (errcode_for_file_access(), 
- cabf: cdbdatabaseinfo:00000820:  errmsg("Could not open database directory "%s": %m", dbDirPath))); 
- cabf: cdbdatabaseinfo:00000837:  ereport(ERROR, 
- cabf: cdbdatabaseinfo:00000838:  (errcode_for_file_access(), 
- cabf: cdbdatabaseinfo:00000839:  errmsg("could not stat file "%s": %m", fromfile))); 
+ cabf: cdbdatabaseinfo:00000778:  ereport(ERROR, 
+ cabf: cdbdatabaseinfo:00000779:  (errcode_for_file_access(), 
+ cabf: cdbdatabaseinfo:00000780:  errmsg("Could not open segment file '%s'", 
+ cabf: cdbdatabaseinfo:00000781:  path))); 
+ cabf: cdbdatabaseinfo:00000785:  ereport(ERROR, 
+ cabf: cdbdatabaseinfo:00000786:  (errcode_for_file_access(), 
+ cabf: cdbdatabaseinfo:00000787:  errmsg("Could not seek to end of file "%s" : %m", 
+ cabf: cdbdatabaseinfo:00000788:  path))); 
+ cabf: cdbdatabaseinfo:00000826:  ereport(ERROR, 
+ cabf: cdbdatabaseinfo:00000827:  (errcode_for_file_access(), 
+ cabf: cdbdatabaseinfo:00000828:  errmsg("Could not open database directory "%s": %m", dbDirPath))); 
+ cabf: cdbdatabaseinfo:00000845:  ereport(ERROR, 
+ cabf: cdbdatabaseinfo:00000846:  (errcode_for_file_access(), 
+ cabf: cdbdatabaseinfo:00000847:  errmsg("could not stat file "%s": %m", fromfile))); 
  cabh: cdbbufferedappend:00000140:  ereport(ERROR, (errcode_for_file_access(), 
  cabh: cdbbufferedappend:00000141:  errmsg("unable to get current position for file "%s" (errcode %d)", 
  cabh: cdbbufferedappend:00000142:  bufferedAppend->filePathName, 
@@ -4232,43 +4232,43 @@ select * from get_ereport order by 1;
  cacd: cdbfilerepresyncmanager:00000471:  ereport(ERROR, 
  cacd: cdbfilerepresyncmanager:00000472:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  cacd: cdbfilerepresyncmanager:00000473:  (errmsg("Not enough shared memory for FileRep Resync.")))); 
- cacd: cdbpersistentfilesysobj:00000709:  ereport(ERROR, 
- cacd: cdbpersistentfilesysobj:00000710:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cacd: cdbpersistentfilesysobj:00000711:  errmsg("Did not expect to find a 'Free' entry"), 
- cacd: cdbpersistentfilesysobj:00000712:  errcontext_persistent_relation_state_change( 
- cacd: cdbpersistentfilesysobj:00000713:  fsObjName, 
- cacd: cdbpersistentfilesysobj:00000714:  persistentTid, 
- cacd: cdbpersistentfilesysobj:00000715:  serialNum, 
- cacd: cdbpersistentfilesysobj:00000716:  expectedState1, 
- cacd: cdbpersistentfilesysobj:00000717:  expectedState2, 
- cacd: cdbpersistentfilesysobj:00000718:  expectedState3, 
- cacd: cdbpersistentfilesysobj:00000719:  nextState))); 
- cacd: cdbpersistentfilesysobj:00000724:  ereport(ERROR, 
- cacd: cdbpersistentfilesysobj:00000725:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cacd: cdbpersistentfilesysobj:00000726:  errmsg("Found different serial number " INT64_FORMAT " than expected (persistent file-system object found is '%s', state '%s')", 
- cacd: cdbpersistentfilesysobj:00000727:  actualSerialNum, 
- cacd: cdbpersistentfilesysobj:00000728:  PersistentFileSysObjName_TypeAndObjectName(&actualFsObjName), 
- cacd: cdbpersistentfilesysobj:00000729:  PersistentFileSysObjState_Name(actualState)), 
- cacd: cdbpersistentfilesysobj:00000730:  errcontext_persistent_relation_state_change( 
- cacd: cdbpersistentfilesysobj:00000731:  fsObjName, 
- cacd: cdbpersistentfilesysobj:00000732:  persistentTid, 
- cacd: cdbpersistentfilesysobj:00000733:  serialNum, 
- cacd: cdbpersistentfilesysobj:00000734:  expectedState1, 
- cacd: cdbpersistentfilesysobj:00000735:  expectedState2, 
- cacd: cdbpersistentfilesysobj:00000736:  expectedState3, 
- cacd: cdbpersistentfilesysobj:00000737:  nextState))); 
- cacd: cdbpersistentfilesysobj:00000742:  ereport(ERROR, 
- cacd: cdbpersistentfilesysobj:00000743:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cacd: cdbpersistentfilesysobj:00000744:  errmsg("Found persistent file-system object in unexpected state '%s'", 
- cacd: cdbpersistentfilesysobj:00000745:  PersistentFileSysObjState_Name(actualState)), 
- cacd: cdbpersistentfilesysobj:00000746:  errcontext_persistent_relation_state_change( 
- cacd: cdbpersistentfilesysobj:00000747:  fsObjName, 
- cacd: cdbpersistentfilesysobj:00000748:  persistentTid, 
- cacd: cdbpersistentfilesysobj:00000749:  serialNum, 
- cacd: cdbpersistentfilesysobj:00000750:  expectedState1, 
- cacd: cdbpersistentfilesysobj:00000751:  expectedState2, 
- cacd: cdbpersistentfilesysobj:00000752:  expectedState3, 
- cacd: cdbpersistentfilesysobj:00000753:  nextState))); 
+ cacd: cdbpersistentfilesysobj:00000705:  ereport(ERROR, 
+ cacd: cdbpersistentfilesysobj:00000706:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cacd: cdbpersistentfilesysobj:00000707:  errmsg("Did not expect to find a 'Free' entry"), 
+ cacd: cdbpersistentfilesysobj:00000708:  errcontext_persistent_relation_state_change( 
+ cacd: cdbpersistentfilesysobj:00000709:  fsObjName, 
+ cacd: cdbpersistentfilesysobj:00000710:  persistentTid, 
+ cacd: cdbpersistentfilesysobj:00000711:  serialNum, 
+ cacd: cdbpersistentfilesysobj:00000712:  expectedState1, 
+ cacd: cdbpersistentfilesysobj:00000713:  expectedState2, 
+ cacd: cdbpersistentfilesysobj:00000714:  expectedState3, 
+ cacd: cdbpersistentfilesysobj:00000715:  nextState))); 
+ cacd: cdbpersistentfilesysobj:00000720:  ereport(ERROR, 
+ cacd: cdbpersistentfilesysobj:00000721:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cacd: cdbpersistentfilesysobj:00000722:  errmsg("Found different serial number " INT64_FORMAT " than expected (persistent file-system object found is '%s', state '%s')", 
+ cacd: cdbpersistentfilesysobj:00000723:  actualSerialNum, 
+ cacd: cdbpersistentfilesysobj:00000724:  PersistentFileSysObjName_TypeAndObjectName(&actualFsObjName), 
+ cacd: cdbpersistentfilesysobj:00000725:  PersistentFileSysObjState_Name(actualState)), 
+ cacd: cdbpersistentfilesysobj:00000726:  errcontext_persistent_relation_state_change( 
+ cacd: cdbpersistentfilesysobj:00000727:  fsObjName, 
+ cacd: cdbpersistentfilesysobj:00000728:  persistentTid, 
+ cacd: cdbpersistentfilesysobj:00000729:  serialNum, 
+ cacd: cdbpersistentfilesysobj:00000730:  expectedState1, 
+ cacd: cdbpersistentfilesysobj:00000731:  expectedState2, 
+ cacd: cdbpersistentfilesysobj:00000732:  expectedState3, 
+ cacd: cdbpersistentfilesysobj:00000733:  nextState))); 
+ cacd: cdbpersistentfilesysobj:00000738:  ereport(ERROR, 
+ cacd: cdbpersistentfilesysobj:00000739:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cacd: cdbpersistentfilesysobj:00000740:  errmsg("Found persistent file-system object in unexpected state '%s'", 
+ cacd: cdbpersistentfilesysobj:00000741:  PersistentFileSysObjState_Name(actualState)), 
+ cacd: cdbpersistentfilesysobj:00000742:  errcontext_persistent_relation_state_change( 
+ cacd: cdbpersistentfilesysobj:00000743:  fsObjName, 
+ cacd: cdbpersistentfilesysobj:00000744:  persistentTid, 
+ cacd: cdbpersistentfilesysobj:00000745:  serialNum, 
+ cacd: cdbpersistentfilesysobj:00000746:  expectedState1, 
+ cacd: cdbpersistentfilesysobj:00000747:  expectedState2, 
+ cacd: cdbpersistentfilesysobj:00000748:  expectedState3, 
+ cacd: cdbpersistentfilesysobj:00000749:  nextState))); 
  cacd: cdbpersistenttablespace:00001070:  ereport(FATAL, 
  cacd: cdbpersistenttablespace:00001071:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  cacd: cdbpersistenttablespace:00001072:  errmsg("Not enough shared memory for persistent tablespace hash table"))); 
@@ -4908,174 +4908,174 @@ select * from get_ereport order by 1;
  daaj: ddaserver:00000972:  "to non-blocking mode."), 
  daaj: ddaserver:00000973:  errdetail("%m%s sockfd=%d", "fcntl", ddaserverFd) 
  daaj: ddaserver:00000974:  )); 
- daba: dbcommands:00000341:  ereport(ERROR, 
- daba: dbcommands:00000342:  (errcode_for_file_access(), 
- daba: dbcommands:00000343:  errmsg("could not open file "%s": %m", srcFileName))); 
- daba: dbcommands:00000361:  ereport(ERROR, 
- daba: dbcommands:00000362:  (errcode_for_file_access(), 
- daba: dbcommands:00000363:  errmsg("could not read file "%s": %m", srcFileName))); 
+ daba: dbcommands:00000283:  ereport(ERROR, 
+ daba: dbcommands:00000284:  (errcode_for_file_access(), 
+ daba: dbcommands:00000285:  errmsg("could not open file "%s": %m", srcFileName))); 
+ daba: dbcommands:00000303:  ereport(ERROR, 
+ daba: dbcommands:00000304:  (errcode_for_file_access(), 
+ daba: dbcommands:00000305:  errmsg("could not read file "%s": %m", srcFileName))); 
+ daba: dbcommands:00000442:  ereport(ERROR, 
+ daba: dbcommands:00000443:  (errcode_for_file_access(), 
+ daba: dbcommands:00000444:  errmsg("could not open file "%s": %m", srcFileName))); 
+ daba: dbcommands:00000464:  ereport(ERROR, 
+ daba: dbcommands:00000465:  (errcode_for_file_access(), 
+ daba: dbcommands:00000466:  errmsg("could not open file "%s": %s", 
+ daba: dbcommands:00000467:  dstFileName, 
+ daba: dbcommands:00000468:  strerror(primaryError)))); 
+ daba: dbcommands:00000483:  ereport(ERROR, 
+ daba: dbcommands:00000484:  (errcode_for_file_access(), 
+ daba: dbcommands:00000485:  errmsg("could not read from position: " INT64_FORMAT " in file '%s' : %m", 
+ daba: dbcommands:00000486:  readOffset, 
+ daba: dbcommands:00000487:  srcFileName))); 
  daba: dbcommands:00000499:  ereport(ERROR, 
  daba: dbcommands:00000500:  (errcode_for_file_access(), 
- daba: dbcommands:00000501:  errmsg("could not open file "%s": %m", srcFileName))); 
- daba: dbcommands:00000521:  ereport(ERROR, 
- daba: dbcommands:00000522:  (errcode_for_file_access(), 
- daba: dbcommands:00000523:  errmsg("could not open file "%s": %s", 
- daba: dbcommands:00000524:  dstFileName, 
- daba: dbcommands:00000525:  strerror(primaryError)))); 
- daba: dbcommands:00000540:  ereport(ERROR, 
- daba: dbcommands:00000541:  (errcode_for_file_access(), 
- daba: dbcommands:00000542:  errmsg("could not read from position: " INT64_FORMAT " in file '%s' : %m", 
- daba: dbcommands:00000543:  readOffset, 
- daba: dbcommands:00000544:  srcFileName))); 
- daba: dbcommands:00000556:  ereport(ERROR, 
- daba: dbcommands:00000557:  (errcode_for_file_access(), 
- daba: dbcommands:00000558:  errmsg("could not write file "%s": %s", 
- daba: dbcommands:00000559:  dstFileName, 
- daba: dbcommands:00000560:  strerror(primaryError)))); 
- daba: dbcommands:00000572:  ereport(ERROR, 
- daba: dbcommands:00000573:  (errcode_for_file_access(), 
- daba: dbcommands:00000574:  errmsg("could not flush (fsync) file "%s": %s", 
- daba: dbcommands:00000575:  dstFileName, 
- daba: dbcommands:00000576:  strerror(primaryError)))); 
- daba: dbcommands:00000705:  ereport(ERROR, 
- daba: dbcommands:00000706:  (errcode(ERRCODE_SYNTAX_ERROR), 
- daba: dbcommands:00000707:  errmsg("conflicting or redundant options"))); 
- daba: dbcommands:00000713:  ereport(ERROR, 
- daba: dbcommands:00000714:  (errcode(ERRCODE_SYNTAX_ERROR), 
- daba: dbcommands:00000715:  errmsg("conflicting or redundant options"))); 
- daba: dbcommands:00000721:  ereport(ERROR, 
- daba: dbcommands:00000722:  (errcode(ERRCODE_SYNTAX_ERROR), 
- daba: dbcommands:00000723:  errmsg("conflicting or redundant options"))); 
- daba: dbcommands:00000729:  ereport(ERROR, 
- daba: dbcommands:00000730:  (errcode(ERRCODE_SYNTAX_ERROR), 
- daba: dbcommands:00000731:  errmsg("conflicting or redundant options"))); 
- daba: dbcommands:00000737:  ereport(ERROR, 
- daba: dbcommands:00000738:  (errcode(ERRCODE_SYNTAX_ERROR), 
- daba: dbcommands:00000739:  errmsg("conflicting or redundant options"))); 
- daba: dbcommands:00000744:  ereport(WARNING, 
- daba: dbcommands:00000745:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- daba: dbcommands:00000746:  errmsg("LOCATION is not supported anymore"), 
- daba: dbcommands:00000747:  errhint("Consider using tablespaces instead."))); 
- daba: dbcommands:00000768:  ereport(ERROR, 
- daba: dbcommands:00000769:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- daba: dbcommands:00000770:  errmsg("%d is not a valid encoding code", 
- daba: dbcommands:00000771:  encoding))); 
- daba: dbcommands:00000777:  ereport(ERROR, 
- daba: dbcommands:00000778:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- daba: dbcommands:00000779:  errmsg("%s is not a valid encoding name", 
- daba: dbcommands:00000780:  encoding_name))); 
- daba: dbcommands:00000789:  ereport(ERROR, 
- daba: dbcommands:00000790:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- daba: dbcommands:00000791:  errmsg("SQL_ASCII is no longer supported as a server encoding"), 
- daba: dbcommands:00000792:  errhint("Use another encoding, such as LATIN1 or UTF8") 
- daba: dbcommands:00000793:  )); 
+ daba: dbcommands:00000501:  errmsg("could not write file "%s": %s", 
+ daba: dbcommands:00000502:  dstFileName, 
+ daba: dbcommands:00000503:  strerror(primaryError)))); 
+ daba: dbcommands:00000515:  ereport(ERROR, 
+ daba: dbcommands:00000516:  (errcode_for_file_access(), 
+ daba: dbcommands:00000517:  errmsg("could not flush (fsync) file "%s": %s", 
+ daba: dbcommands:00000518:  dstFileName, 
+ daba: dbcommands:00000519:  strerror(primaryError)))); 
+ daba: dbcommands:00000648:  ereport(ERROR, 
+ daba: dbcommands:00000649:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ daba: dbcommands:00000650:  errmsg("conflicting or redundant options"))); 
+ daba: dbcommands:00000656:  ereport(ERROR, 
+ daba: dbcommands:00000657:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ daba: dbcommands:00000658:  errmsg("conflicting or redundant options"))); 
+ daba: dbcommands:00000664:  ereport(ERROR, 
+ daba: dbcommands:00000665:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ daba: dbcommands:00000666:  errmsg("conflicting or redundant options"))); 
+ daba: dbcommands:00000672:  ereport(ERROR, 
+ daba: dbcommands:00000673:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ daba: dbcommands:00000674:  errmsg("conflicting or redundant options"))); 
+ daba: dbcommands:00000680:  ereport(ERROR, 
+ daba: dbcommands:00000681:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ daba: dbcommands:00000682:  errmsg("conflicting or redundant options"))); 
+ daba: dbcommands:00000687:  ereport(WARNING, 
+ daba: dbcommands:00000688:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ daba: dbcommands:00000689:  errmsg("LOCATION is not supported anymore"), 
+ daba: dbcommands:00000690:  errhint("Consider using tablespaces instead."))); 
+ daba: dbcommands:00000711:  ereport(ERROR, 
+ daba: dbcommands:00000712:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ daba: dbcommands:00000713:  errmsg("%d is not a valid encoding code", 
+ daba: dbcommands:00000714:  encoding))); 
+ daba: dbcommands:00000720:  ereport(ERROR, 
+ daba: dbcommands:00000721:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ daba: dbcommands:00000722:  errmsg("%s is not a valid encoding name", 
+ daba: dbcommands:00000723:  encoding_name))); 
+ daba: dbcommands:00000732:  ereport(ERROR, 
+ daba: dbcommands:00000733:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ daba: dbcommands:00000734:  errmsg("SQL_ASCII is no longer supported as a server encoding"), 
+ daba: dbcommands:00000735:  errhint("Use another encoding, such as LATIN1 or UTF8") 
+ daba: dbcommands:00000736:  )); 
+ daba: dbcommands:00000756:  ereport(ERROR, 
+ daba: dbcommands:00000757:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ daba: dbcommands:00000758:  errmsg("permission denied to create database"))); 
+ daba: dbcommands:00000778:  ereport(ERROR, 
+ daba: dbcommands:00000779:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ daba: dbcommands:00000780:  errmsg("template database "%s" does not exist", 
+ daba: dbcommands:00000781:  dbtemplate))); 
+ daba: dbcommands:00000790:  ereport(ERROR, 
+ daba: dbcommands:00000791:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ daba: dbcommands:00000792:  errmsg("permission denied to copy database "%s"", 
+ daba: dbcommands:00000793:  dbtemplate))); 
+ daba: dbcommands:00000802:  ereport(ERROR, 
+ daba: dbcommands:00000803:  (errcode(ERRCODE_OBJECT_IN_USE), 
+ daba: dbcommands:00000804:  errmsg("source database "%s" is being accessed by other users", 
+ daba: dbcommands:00000805:  dbtemplate))); 
  daba: dbcommands:00000813:  ereport(ERROR, 
- daba: dbcommands:00000814:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- daba: dbcommands:00000815:  errmsg("permission denied to create database"))); 
- daba: dbcommands:00000835:  ereport(ERROR, 
- daba: dbcommands:00000836:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- daba: dbcommands:00000837:  errmsg("template database "%s" does not exist", 
- daba: dbcommands:00000838:  dbtemplate))); 
- daba: dbcommands:00000847:  ereport(ERROR, 
- daba: dbcommands:00000848:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- daba: dbcommands:00000849:  errmsg("permission denied to copy database "%s"", 
- daba: dbcommands:00000850:  dbtemplate))); 
- daba: dbcommands:00000859:  ereport(ERROR, 
- daba: dbcommands:00000860:  (errcode(ERRCODE_OBJECT_IN_USE), 
- daba: dbcommands:00000861:  errmsg("source database "%s" is being accessed by other users", 
- daba: dbcommands:00000862:  dbtemplate))); 
- daba: dbcommands:00000870:  ereport(ERROR, 
- daba: dbcommands:00000871:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- daba: dbcommands:00000872:  errmsg("invalid server encoding %d", encoding))); 
- daba: dbcommands:00000881:  ereport(ERROR, 
- daba: dbcommands:00000882:  (errmsg("Encoding mismatch"), 
- daba: dbcommands:00000883:  errdetail("The encoding you selected (%s) and the encoding that the
+ daba: dbcommands:00000814:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ daba: dbcommands:00000815:  errmsg("invalid server encoding %d", encoding))); 
+ daba: dbcommands:00000824:  ereport(ERROR, 
+ daba: dbcommands:00000825:  (errmsg("Encoding mismatch"), 
+ daba: dbcommands:00000826:  errdetail("The encoding you selected (%s) and the encoding that the
  " 
- daba: dbcommands:00000884:  "selected locale uses (%s) do not match. This would lead to
+ daba: dbcommands:00000827:  "selected locale uses (%s) do not match. This would lead to
  " 
- daba: dbcommands:00000885:  "misbehavior in various character string processing functions.
+ daba: dbcommands:00000828:  "misbehavior in various character string processing functions.
  ", 
- daba: dbcommands:00000886:  pg_encoding_to_char(encoding), 
- daba: dbcommands:00000887:  lc_ctype))); 
- daba: dbcommands:00000891:  ereport(ERROR, 
- daba: dbcommands:00000892:  (errmsg("Encoding mismatch"), 
- daba: dbcommands:00000893:  errdetail("The encoding you selected (%s) and the encoding that the
+ daba: dbcommands:00000829:  pg_encoding_to_char(encoding), 
+ daba: dbcommands:00000830:  lc_ctype))); 
+ daba: dbcommands:00000834:  ereport(ERROR, 
+ daba: dbcommands:00000835:  (errmsg("Encoding mismatch"), 
+ daba: dbcommands:00000836:  errdetail("The encoding you selected (%s) and the encoding that the
  " 
- daba: dbcommands:00000894:  "selected locale uses (%s) do not match. This would lead to
+ daba: dbcommands:00000837:  "selected locale uses (%s) do not match. This would lead to
  " 
- daba: dbcommands:00000895:  "misbehavior in various character string processing functions.
+ daba: dbcommands:00000838:  "misbehavior in various character string processing functions.
  ", 
- daba: dbcommands:00000896:  pg_encoding_to_char(encoding), 
- daba: dbcommands:00000897:  lc_collate))); 
- daba: dbcommands:00000910:  ereport(ERROR, 
- daba: dbcommands:00000911:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- daba: dbcommands:00000912:  errmsg("tablespace "%s" does not exist", 
- daba: dbcommands:00000913:  tablespacename))); 
- daba: dbcommands:00000923:  ereport(ERROR, 
- daba: dbcommands:00000924:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- daba: dbcommands:00000925:  errmsg("pg_global cannot be used as default tablespace"))); 
- daba: dbcommands:00000949:  ereport(ERROR, 
- daba: dbcommands:00000950:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- daba: dbcommands:00000951:  errmsg("cannot assign new default tablespace "%s"", 
- daba: dbcommands:00000952:  tablespacename), 
- daba: dbcommands:00000953:  errdetail("There is a conflict because database "%s" already has some tables in this tablespace.", 
- daba: dbcommands:00000954:  dbtemplate))); 
- daba: dbcommands:00000971:  ereport(ERROR, 
- daba: dbcommands:00000972:  (errcode(ERRCODE_DUPLICATE_DATABASE), 
- daba: dbcommands:00000973:  errmsg("database "%s" already exists", dbname))); 
- daba: dbcommands:00001355:  ereport(ERROR, 
- daba: dbcommands:00001356:  (errcode(ERRCODE_OBJECT_IN_USE), 
- daba: dbcommands:00001357:  errmsg("cannot drop the currently open database"))); 
- daba: dbcommands:00001373:  ereport(ERROR, 
- daba: dbcommands:00001374:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- daba: dbcommands:00001375:  errmsg("database "%s" does not exist", dbname))); 
- daba: dbcommands:00001395:  ereport(NOTICE, 
- daba: dbcommands:00001396:  (errmsg("database "%s" does not exist, skipping", 
- daba: dbcommands:00001397:  dbname))); 
- daba: dbcommands:00001416:  ereport(ERROR, 
- daba: dbcommands:00001417:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- daba: dbcommands:00001418:  errmsg("cannot drop a template database"))); 
- daba: dbcommands:00001425:  ereport(ERROR, 
- daba: dbcommands:00001426:  (errcode(ERRCODE_OBJECT_IN_USE), 
- daba: dbcommands:00001427:  errmsg("database "%s" is being accessed by other users", 
- daba: dbcommands:00001428:  dbname))); 
- daba: dbcommands:00001652:  ereport(ERROR, 
- daba: dbcommands:00001653:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- daba: dbcommands:00001654:  errmsg("database "%s" does not exist", oldname))); 
- daba: dbcommands:00001663:  ereport(ERROR, 
- daba: dbcommands:00001664:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- daba: dbcommands:00001665:  errmsg("current database may not be renamed"))); 
- daba: dbcommands:00001672:  ereport(ERROR, 
- daba: dbcommands:00001673:  (errcode(ERRCODE_OBJECT_IN_USE), 
- daba: dbcommands:00001674:  errmsg("database "%s" is being accessed by other users", 
- daba: dbcommands:00001675:  oldname))); 
- daba: dbcommands:00001679:  ereport(ERROR, 
- daba: dbcommands:00001680:  (errcode(ERRCODE_DUPLICATE_DATABASE), 
- daba: dbcommands:00001681:  errmsg("database "%s" already exists", newname))); 
- daba: dbcommands:00001690:  ereport(ERROR, 
- daba: dbcommands:00001691:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- daba: dbcommands:00001692:  errmsg("permission denied to rename database"))); 
- daba: dbcommands:00001753:  ereport(ERROR, 
- daba: dbcommands:00001754:  (errcode(ERRCODE_SYNTAX_ERROR), 
- daba: dbcommands:00001755:  errmsg("conflicting or redundant options"))); 
- daba: dbcommands:00001780:  ereport(ERROR, 
- daba: dbcommands:00001781:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- daba: dbcommands:00001782:  errmsg("database "%s" does not exist", stmt->dbname))); 
- daba: dbcommands:00001876:  ereport(ERROR, 
- daba: dbcommands:00001877:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- daba: dbcommands:00001878:  errmsg("database "%s" does not exist", stmt->dbname))); 
- daba: dbcommands:00002034:  ereport(ERROR, 
- daba: dbcommands:00002035:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- daba: dbcommands:00002036:  errmsg("database "%s" does not exist", dbname))); 
- daba: dbcommands:00002075:  ereport(ERROR, 
- daba: dbcommands:00002076:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- daba: dbcommands:00002077:  errmsg("permission denied to change owner of database"))); 
- daba: dbcommands:00002420:  ereport(WARNING, 
- daba: dbcommands:00002421:  (errmsg("could not remove database directory "%s"", 
- daba: dbcommands:00002422:  dst_path))); 
- daba: dbcommands:00002460:  ereport(WARNING, 
- daba: dbcommands:00002461:  (errmsg("could not remove database directory "%s"", 
- daba: dbcommands:00002462:  dst_path))); 
+ daba: dbcommands:00000839:  pg_encoding_to_char(encoding), 
+ daba: dbcommands:00000840:  lc_collate))); 
+ daba: dbcommands:00000853:  ereport(ERROR, 
+ daba: dbcommands:00000854:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ daba: dbcommands:00000855:  errmsg("tablespace "%s" does not exist", 
+ daba: dbcommands:00000856:  tablespacename))); 
+ daba: dbcommands:00000866:  ereport(ERROR, 
+ daba: dbcommands:00000867:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ daba: dbcommands:00000868:  errmsg("pg_global cannot be used as default tablespace"))); 
+ daba: dbcommands:00000892:  ereport(ERROR, 
+ daba: dbcommands:00000893:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ daba: dbcommands:00000894:  errmsg("cannot assign new default tablespace "%s"", 
+ daba: dbcommands:00000895:  tablespacename), 
+ daba: dbcommands:00000896:  errdetail("There is a conflict because database "%s" already has some tables in this tablespace.", 
+ daba: dbcommands:00000897:  dbtemplate))); 
+ daba: dbcommands:00000914:  ereport(ERROR, 
+ daba: dbcommands:00000915:  (errcode(ERRCODE_DUPLICATE_DATABASE), 
+ daba: dbcommands:00000916:  errmsg("database "%s" already exists", dbname))); 
+ daba: dbcommands:00001302:  ereport(ERROR, 
+ daba: dbcommands:00001303:  (errcode(ERRCODE_OBJECT_IN_USE), 
+ daba: dbcommands:00001304:  errmsg("cannot drop the currently open database"))); 
+ daba: dbcommands:00001320:  ereport(ERROR, 
+ daba: dbcommands:00001321:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ daba: dbcommands:00001322:  errmsg("database "%s" does not exist", dbname))); 
+ daba: dbcommands:00001342:  ereport(NOTICE, 
+ daba: dbcommands:00001343:  (errmsg("database "%s" does not exist, skipping", 
+ daba: dbcommands:00001344:  dbname))); 
+ daba: dbcommands:00001363:  ereport(ERROR, 
+ daba: dbcommands:00001364:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ daba: dbcommands:00001365:  errmsg("cannot drop a template database"))); 
+ daba: dbcommands:00001372:  ereport(ERROR, 
+ daba: dbcommands:00001373:  (errcode(ERRCODE_OBJECT_IN_USE), 
+ daba: dbcommands:00001374:  errmsg("database "%s" is being accessed by other users", 
+ daba: dbcommands:00001375:  dbname))); 
+ daba: dbcommands:00001599:  ereport(ERROR, 
+ daba: dbcommands:00001600:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ daba: dbcommands:00001601:  errmsg("database "%s" does not exist", oldname))); 
+ daba: dbcommands:00001610:  ereport(ERROR, 
+ daba: dbcommands:00001611:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ daba: dbcommands:00001612:  errmsg("current database may not be renamed"))); 
+ daba: dbcommands:00001619:  ereport(ERROR, 
+ daba: dbcommands:00001620:  (errcode(ERRCODE_OBJECT_IN_USE), 
+ daba: dbcommands:00001621:  errmsg("database "%s" is being accessed by other users", 
+ daba: dbcommands:00001622:  oldname))); 
+ daba: dbcommands:00001626:  ereport(ERROR, 
+ daba: dbcommands:00001627:  (errcode(ERRCODE_DUPLICATE_DATABASE), 
+ daba: dbcommands:00001628:  errmsg("database "%s" already exists", newname))); 
+ daba: dbcommands:00001637:  ereport(ERROR, 
+ daba: dbcommands:00001638:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ daba: dbcommands:00001639:  errmsg("permission denied to rename database"))); 
+ daba: dbcommands:00001700:  ereport(ERROR, 
+ daba: dbcommands:00001701:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ daba: dbcommands:00001702:  errmsg("conflicting or redundant options"))); 
+ daba: dbcommands:00001727:  ereport(ERROR, 
+ daba: dbcommands:00001728:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ daba: dbcommands:00001729:  errmsg("database "%s" does not exist", stmt->dbname))); 
+ daba: dbcommands:00001823:  ereport(ERROR, 
+ daba: dbcommands:00001824:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ daba: dbcommands:00001825:  errmsg("database "%s" does not exist", stmt->dbname))); 
+ daba: dbcommands:00001981:  ereport(ERROR, 
+ daba: dbcommands:00001982:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ daba: dbcommands:00001983:  errmsg("database "%s" does not exist", dbname))); 
+ daba: dbcommands:00002022:  ereport(ERROR, 
+ daba: dbcommands:00002023:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ daba: dbcommands:00002024:  errmsg("permission denied to change owner of database"))); 
+ daba: dbcommands:00002367:  ereport(WARNING, 
+ daba: dbcommands:00002368:  (errmsg("could not remove database directory "%s"", 
+ daba: dbcommands:00002369:  dst_path))); 
+ daba: dbcommands:00002407:  ereport(WARNING, 
+ daba: dbcommands:00002408:  (errmsg("could not remove database directory "%s"", 
+ daba: dbcommands:00002409:  dst_path))); 
  daba: dependency:00000186:  ereport(ERROR, 
  daba: dependency:00000187:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
  daba: dependency:00000188:  errmsg("cannot drop %s because other objects depend on it", 
@@ -13798,85 +13798,85 @@ select * from get_ereport order by 1;
  saae: slru:00000819:  errmsg("could not access status of transaction %u", xid), 
  saae: slru:00000820:  errdetail("Could not close file "%s": %m.", 
  saae: slru:00000821:  path))); 
- saae: smgr:00000302:  ereport(ERROR, 
- saae: smgr:00000303:  (errcode_for_file_access(), 
- saae: smgr:00000304:  errmsg("could not close relation %u/%u/%u: %m", 
- saae: smgr:00000305:  reln->smgr_rnode.spcNode, 
- saae: smgr:00000306:  reln->smgr_rnode.dbNode, 
- saae: smgr:00000307:  reln->smgr_rnode.relNode))); 
- saae: smgr:00000893:  ereport(WARNING, 
- saae: smgr:00000894:  (errcode_for_file_access(), 
- saae: smgr:00000895:  errmsg("could not remove relation %u/%u/%u: %m", 
- saae: smgr:00000896:  rnode.spcNode, 
- saae: smgr:00000897:  rnode.dbNode, 
- saae: smgr:00000898:  rnode.relNode))); 
- saae: smgr:00000900:  ereport(WARNING, 
- saae: smgr:00000901:  (errcode_for_file_access(), 
- saae: smgr:00000902:  errmsg("could not remove relation %u/%u/%u '%s': %m", 
- saae: smgr:00000903:  rnode.spcNode, 
- saae: smgr:00000904:  rnode.dbNode, 
- saae: smgr:00000905:  rnode.relNode, 
- saae: smgr:00000906:  relationName))); 
- saae: smgr:00000979:  ereport(WARNING, 
- saae: smgr:00000980:  (errcode_for_file_access(), 
- saae: smgr:00000981:  errmsg("could not remove filespace directory %u: %m", 
- saae: smgr:00000982:  filespaceOid))); 
- saae: smgr:00001083:  ereport(WARNING, 
- saae: smgr:00001084:  (errcode_for_file_access(), 
- saae: smgr:00001085:  errmsg("could not remove tablespace directory %u: %m", 
- saae: smgr:00001086:  tablespaceOid))); 
- saae: smgr:00001109:  ereport(WARNING, 
- saae: smgr:00001110:  (errcode_for_file_access(), 
- saae: smgr:00001111:  errmsg("could not remove database directory %u/%u: %m", 
- saae: smgr:00001112:  dbDirNode->tablespace, 
- saae: smgr:00001113:  dbDirNode->database))); 
- saae: smgr:00001173:  ereport(ERROR, 
- saae: smgr:00001174:  (errcode_for_file_access(), 
- saae: smgr:00001175:  errmsg("could not extend relation %u/%u/%u: %m", 
- saae: smgr:00001176:  reln->smgr_rnode.spcNode, 
- saae: smgr:00001177:  reln->smgr_rnode.dbNode, 
- saae: smgr:00001178:  reln->smgr_rnode.relNode), 
- saae: smgr:00001179:  errhint("Check free disk space."))); 
- saae: smgr:00001194:  ereport(ERROR, 
- saae: smgr:00001195:  (errcode_for_file_access(), 
- saae: smgr:00001196:  errmsg("could not read block %u of relation %u/%u/%u: %m", 
- saae: smgr:00001197:  blocknum, 
- saae: smgr:00001198:  reln->smgr_rnode.spcNode, 
- saae: smgr:00001199:  reln->smgr_rnode.dbNode, 
- saae: smgr:00001200:  reln->smgr_rnode.relNode))); 
- saae: smgr:00001218:  ereport(ERROR, 
- saae: smgr:00001219:  (errcode_for_file_access(), 
- saae: smgr:00001220:  errmsg("could not write block %u of relation %u/%u/%u: %m", 
- saae: smgr:00001221:  blocknum, 
- saae: smgr:00001222:  reln->smgr_rnode.spcNode, 
- saae: smgr:00001223:  reln->smgr_rnode.dbNode, 
- saae: smgr:00001224:  reln->smgr_rnode.relNode))); 
- saae: smgr:00001248:  ereport(ERROR, 
- saae: smgr:00001249:  (errcode_for_file_access(), 
- saae: smgr:00001250:  errmsg("could not count blocks of relation %u/%u/%u: %m", 
- saae: smgr:00001251:  reln->smgr_rnode.spcNode, 
- saae: smgr:00001252:  reln->smgr_rnode.dbNode, 
- saae: smgr:00001253:  reln->smgr_rnode.relNode))); 
- saae: smgr:00001286:  ereport(ERROR, 
- saae: smgr:00001287:  (errcode_for_file_access(), 
- saae: smgr:00001288:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
- saae: smgr:00001289:  reln->smgr_rnode.spcNode, 
- saae: smgr:00001290:  reln->smgr_rnode.dbNode, 
- saae: smgr:00001291:  reln->smgr_rnode.relNode, 
- saae: smgr:00001292:  nblocks))); 
- saae: smgr:00001378:  ereport(ERROR, 
- saae: smgr:00001379:  (errcode_for_file_access(), 
- saae: smgr:00001380:  errmsg("could not sync relation %u/%u/%u: %m", 
- saae: smgr:00001381:  reln->smgr_rnode.spcNode, 
- saae: smgr:00001382:  reln->smgr_rnode.dbNode, 
- saae: smgr:00001383:  reln->smgr_rnode.relNode))); 
- saae: smgr:00002556:  ereport(WARNING, 
- saae: smgr:00002557:  (errcode_for_file_access(), 
- saae: smgr:00002558:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
- saae: smgr:00002559:  reln->smgr_rnode.spcNode, 
- saae: smgr:00002560:  reln->smgr_rnode.dbNode, 
- saae: smgr:00002561:  reln->smgr_rnode.relNode, 
- saae: smgr:00002562:  xlrec->blkno))); 
+ saae: smgr:00000311:  ereport(ERROR, 
+ saae: smgr:00000312:  (errcode_for_file_access(), 
+ saae: smgr:00000313:  errmsg("could not close relation %u/%u/%u: %m", 
+ saae: smgr:00000314:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00000315:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00000316:  reln->smgr_rnode.relNode))); 
+ saae: smgr:00000926:  ereport(WARNING, 
+ saae: smgr:00000927:  (errcode_for_file_access(), 
+ saae: smgr:00000928:  errmsg("could not remove relation %u/%u/%u: %m", 
+ saae: smgr:00000929:  rnode.spcNode, 
+ saae: smgr:00000930:  rnode.dbNode, 
+ saae: smgr:00000931:  rnode.relNode))); 
+ saae: smgr:00000933:  ereport(WARNING, 
+ saae: smgr:00000934:  (errcode_for_file_access(), 
+ saae: smgr:00000935:  errmsg("could not remove relation %u/%u/%u '%s': %m", 
+ saae: smgr:00000936:  rnode.spcNode, 
+ saae: smgr:00000937:  rnode.dbNode, 
+ saae: smgr:00000938:  rnode.relNode, 
+ saae: smgr:00000939:  relationName))); 
+ saae: smgr:00001017:  ereport(WARNING, 
+ saae: smgr:00001018:  (errcode_for_file_access(), 
+ saae: smgr:00001019:  errmsg("could not remove filespace directory %u: %m", 
+ saae: smgr:00001020:  filespaceOid))); 
+ saae: smgr:00001126:  ereport(WARNING, 
+ saae: smgr:00001127:  (errcode_for_file_access(), 
+ saae: smgr:00001128:  errmsg("could not remove tablespace directory %u: %m", 
+ saae: smgr:00001129:  tablespaceOid))); 
+ saae: smgr:00001152:  ereport(WARNING, 
+ saae: smgr:00001153:  (errcode_for_file_access(), 
+ saae: smgr:00001154:  errmsg("could not remove database directory %u/%u: %m", 
+ saae: smgr:00001155:  dbDirNode->tablespace, 
+ saae: smgr:00001156:  dbDirNode->database))); 
+ saae: smgr:00001221:  ereport(ERROR, 
+ saae: smgr:00001222:  (errcode_for_file_access(), 
+ saae: smgr:00001223:  errmsg("could not extend relation %u/%u/%u: %m", 
+ saae: smgr:00001224:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00001225:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00001226:  reln->smgr_rnode.relNode), 
+ saae: smgr:00001227:  errhint("Check free disk space."))); 
+ saae: smgr:00001242:  ereport(ERROR, 
+ saae: smgr:00001243:  (errcode_for_file_access(), 
+ saae: smgr:00001244:  errmsg("could not read block %u of relation %u/%u/%u: %m", 
+ saae: smgr:00001245:  blocknum, 
+ saae: smgr:00001246:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00001247:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00001248:  reln->smgr_rnode.relNode))); 
+ saae: smgr:00001266:  ereport(ERROR, 
+ saae: smgr:00001267:  (errcode_for_file_access(), 
+ saae: smgr:00001268:  errmsg("could not write block %u of relation %u/%u/%u: %m", 
+ saae: smgr:00001269:  blocknum, 
+ saae: smgr:00001270:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00001271:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00001272:  reln->smgr_rnode.relNode))); 
+ saae: smgr:00001296:  ereport(ERROR, 
+ saae: smgr:00001297:  (errcode_for_file_access(), 
+ saae: smgr:00001298:  errmsg("could not count blocks of relation %u/%u/%u: %m", 
+ saae: smgr:00001299:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00001300:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00001301:  reln->smgr_rnode.relNode))); 
+ saae: smgr:00001334:  ereport(ERROR, 
+ saae: smgr:00001335:  (errcode_for_file_access(), 
+ saae: smgr:00001336:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
+ saae: smgr:00001337:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00001338:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00001339:  reln->smgr_rnode.relNode, 
+ saae: smgr:00001340:  nblocks))); 
+ saae: smgr:00001426:  ereport(ERROR, 
+ saae: smgr:00001427:  (errcode_for_file_access(), 
+ saae: smgr:00001428:  errmsg("could not sync relation %u/%u/%u: %m", 
+ saae: smgr:00001429:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00001430:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00001431:  reln->smgr_rnode.relNode))); 
+ saae: smgr:00002604:  ereport(WARNING, 
+ saae: smgr:00002605:  (errcode_for_file_access(), 
+ saae: smgr:00002606:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
+ saae: smgr:00002607:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00002608:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00002609:  reln->smgr_rnode.relNode, 
+ saae: smgr:00002610:  xlrec->blkno))); 
  saaf: shmem:00000128:  ereport(ERROR, 
  saaf: shmem:00000129:  (errcode(ERRCODE_INTERNAL_ERROR), 
  saaf: shmem:00000130:  errmsg("invalid page size %d; must be a power of two and not an error", ShmemSystemPageSize))); 
@@ -18199,121 +18199,121 @@ select * from get_ereport order by 1;
  xaae: xlog:00006674:  ereport(ERROR, 
  xaae: xlog:00006675:  (errcode_for_file_access(), 
  xaae: xlog:00006676:  errmsg("could not unlink redo relation file "%s": %m", path))); 
- xaae: xlog:00006703:  ereport(FATAL, 
- xaae: xlog:00006704:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
- xaae: xlog:00006801:  ereport(FATAL, 
- xaae: xlog:00006802:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
- xaae: xlog:00006946:  ereport(FATAL, 
- xaae: xlog:00006947:  (errmsg("%s: control file contains invalid data", callerStr))); 
- xaae: xlog:00006993:  ereport(ERROR, 
- xaae: xlog:00006994:  (errmsg("%s: could not locate a valid checkpoint record", callerStr))); 
- xaae: xlog:00007011:  ereport(ERROR, 
- xaae: xlog:00007012:  (errmsg("%s: invalid redo in checkpoint record", callerStr))); 
- xaae: xlog:00007021:  ereport(ERROR, 
- xaae: xlog:00007022:  (errmsg("%s: first redo record before checkpoint not found at %s", 
- xaae: xlog:00007023:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
- xaae: xlog:00007569:  ereport(LOG, 
- xaae: xlog:00007570:  (errmsg("database system is shut down"), 
- xaae: xlog:00007571:  errSendAlert(true),errOmitLocation(true))); 
- xaae: xlog:00008360:  ereport(ERROR, 
- xaae: xlog:00008361:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- xaae: xlog:00008362:  (errmsg("must be superuser to run a backup")))); 
- xaae: xlog:00008365:  ereport(ERROR, 
- xaae: xlog:00008366:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008367:  (errmsg("WAL archiving is not active"), 
- xaae: xlog:00008368:  (errhint("archive_command must be defined before " 
- xaae: xlog:00008369:  "online backups can be made safely."))))); 
- xaae: xlog:00008395:  ereport(ERROR, 
- xaae: xlog:00008396:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008397:  errmsg("a backup is already in progress"), 
- xaae: xlog:00008398:  errhint("Run pg_stop_backup() and try again."))); 
- xaae: xlog:00008443:  ereport(ERROR, 
- xaae: xlog:00008444:  (errcode_for_file_access(), 
- xaae: xlog:00008445:  errmsg("could not stat file "%s": %m", 
- xaae: xlog:00008446:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008449:  ereport(ERROR, 
- xaae: xlog:00008450:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008451:  errmsg("a backup is already in progress"), 
- xaae: xlog:00008452:  errhint("If you're sure there is no backup in progress, remove file "%s" and try again.", 
- xaae: xlog:00008453:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008460:  ereport(ERROR, 
- xaae: xlog:00008461:  (errcode_for_file_access(), 
- xaae: xlog:00008462:  errmsg("could not create file "%s": %m", 
- xaae: xlog:00008463:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008471:  ereport(ERROR, 
- xaae: xlog:00008472:  (errcode_for_file_access(), 
- xaae: xlog:00008473:  errmsg("could not write file "%s": %m", 
- xaae: xlog:00008474:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008526:  ereport(ERROR, 
- xaae: xlog:00008527:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- xaae: xlog:00008528:  (errmsg("must be superuser to run a backup")))); 
- xaae: xlog:00008560:  ereport(ERROR, 
- xaae: xlog:00008561:  (errcode_for_file_access(), 
- xaae: xlog:00008562:  errmsg("could not read file "%s": %m", 
- xaae: xlog:00008563:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00006705:  ereport(FATAL, 
+ xaae: xlog:00006706:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
+ xaae: xlog:00006805:  ereport(FATAL, 
+ xaae: xlog:00006806:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
+ xaae: xlog:00006950:  ereport(FATAL, 
+ xaae: xlog:00006951:  (errmsg("%s: control file contains invalid data", callerStr))); 
+ xaae: xlog:00006997:  ereport(ERROR, 
+ xaae: xlog:00006998:  (errmsg("%s: could not locate a valid checkpoint record", callerStr))); 
+ xaae: xlog:00007015:  ereport(ERROR, 
+ xaae: xlog:00007016:  (errmsg("%s: invalid redo in checkpoint record", callerStr))); 
+ xaae: xlog:00007025:  ereport(ERROR, 
+ xaae: xlog:00007026:  (errmsg("%s: first redo record before checkpoint not found at %s", 
+ xaae: xlog:00007027:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
+ xaae: xlog:00007573:  ereport(LOG, 
+ xaae: xlog:00007574:  (errmsg("database system is shut down"), 
+ xaae: xlog:00007575:  errSendAlert(true),errOmitLocation(true))); 
+ xaae: xlog:00008364:  ereport(ERROR, 
+ xaae: xlog:00008365:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ xaae: xlog:00008366:  (errmsg("must be superuser to run a backup")))); 
+ xaae: xlog:00008369:  ereport(ERROR, 
+ xaae: xlog:00008370:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008371:  (errmsg("WAL archiving is not active"), 
+ xaae: xlog:00008372:  (errhint("archive_command must be defined before " 
+ xaae: xlog:00008373:  "online backups can be made safely."))))); 
+ xaae: xlog:00008399:  ereport(ERROR, 
+ xaae: xlog:00008400:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008401:  errmsg("a backup is already in progress"), 
+ xaae: xlog:00008402:  errhint("Run pg_stop_backup() and try again."))); 
+ xaae: xlog:00008447:  ereport(ERROR, 
+ xaae: xlog:00008448:  (errcode_for_file_access(), 
+ xaae: xlog:00008449:  errmsg("could not stat file "%s": %m", 
+ xaae: xlog:00008450:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008453:  ereport(ERROR, 
+ xaae: xlog:00008454:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008455:  errmsg("a backup is already in progress"), 
+ xaae: xlog:00008456:  errhint("If you're sure there is no backup in progress, remove file "%s" and try again.", 
+ xaae: xlog:00008457:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008464:  ereport(ERROR, 
+ xaae: xlog:00008465:  (errcode_for_file_access(), 
+ xaae: xlog:00008466:  errmsg("could not create file "%s": %m", 
+ xaae: xlog:00008467:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008475:  ereport(ERROR, 
+ xaae: xlog:00008476:  (errcode_for_file_access(), 
+ xaae: xlog:00008477:  errmsg("could not write file "%s": %m", 
+ xaae: xlog:00008478:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008530:  ereport(ERROR, 
+ xaae: xlog:00008531:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ xaae: xlog:00008532:  (errmsg("must be superuser to run a backup")))); 
  xaae: xlog:00008564:  ereport(ERROR, 
- xaae: xlog:00008565:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008566:  errmsg("a backup is not in progress"))); 
- xaae: xlog:00008576:  ereport(ERROR, 
- xaae: xlog:00008577:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008578:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
- xaae: xlog:00008588:  ereport(ERROR, 
- xaae: xlog:00008589:  (errcode_for_file_access(), 
- xaae: xlog:00008590:  errmsg("could not create file "%s": %m", 
- xaae: xlog:00008591:  histfilepath))); 
- xaae: xlog:00008601:  ereport(ERROR, 
- xaae: xlog:00008602:  (errcode_for_file_access(), 
- xaae: xlog:00008603:  errmsg("could not write file "%s": %m", 
- xaae: xlog:00008604:  histfilepath))); 
- xaae: xlog:00008610:  ereport(ERROR, 
- xaae: xlog:00008611:  (errcode_for_file_access(), 
- xaae: xlog:00008612:  errmsg("could not read file "%s": %m", 
- xaae: xlog:00008613:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008615:  ereport(ERROR, 
- xaae: xlog:00008616:  (errcode_for_file_access(), 
- xaae: xlog:00008617:  errmsg("could not remove file "%s": %m", 
- xaae: xlog:00008618:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008648:  ereport(ERROR, 
- xaae: xlog:00008649:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- xaae: xlog:00008650:  (errmsg("must be superuser to switch transaction log files")))); 
- xaae: xlog:00008756:  ereport(ERROR, 
- xaae: xlog:00008757:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- xaae: xlog:00008758:  errmsg("could not parse transaction log location "%s"", 
- xaae: xlog:00008759:  locationstr))); 
- xaae: xlog:00008825:  ereport(ERROR, 
- xaae: xlog:00008826:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- xaae: xlog:00008827:  errmsg("could not parse transaction log location "%s"", 
- xaae: xlog:00008828:  locationstr))); 
- xaae: xlog:00008885:  ereport(FATAL, 
- xaae: xlog:00008886:  (errcode_for_file_access(), 
- xaae: xlog:00008887:  errmsg("could not read file "%s": %m", 
- xaae: xlog:00008888:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008900:  ereport(FATAL, 
- xaae: xlog:00008901:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008902:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
- xaae: xlog:00008906:  ereport(FATAL, 
- xaae: xlog:00008907:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008908:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008565:  (errcode_for_file_access(), 
+ xaae: xlog:00008566:  errmsg("could not read file "%s": %m", 
+ xaae: xlog:00008567:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008568:  ereport(ERROR, 
+ xaae: xlog:00008569:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008570:  errmsg("a backup is not in progress"))); 
+ xaae: xlog:00008580:  ereport(ERROR, 
+ xaae: xlog:00008581:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008582:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008592:  ereport(ERROR, 
+ xaae: xlog:00008593:  (errcode_for_file_access(), 
+ xaae: xlog:00008594:  errmsg("could not create file "%s": %m", 
+ xaae: xlog:00008595:  histfilepath))); 
+ xaae: xlog:00008605:  ereport(ERROR, 
+ xaae: xlog:00008606:  (errcode_for_file_access(), 
+ xaae: xlog:00008607:  errmsg("could not write file "%s": %m", 
+ xaae: xlog:00008608:  histfilepath))); 
+ xaae: xlog:00008614:  ereport(ERROR, 
+ xaae: xlog:00008615:  (errcode_for_file_access(), 
+ xaae: xlog:00008616:  errmsg("could not read file "%s": %m", 
+ xaae: xlog:00008617:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008619:  ereport(ERROR, 
+ xaae: xlog:00008620:  (errcode_for_file_access(), 
+ xaae: xlog:00008621:  errmsg("could not remove file "%s": %m", 
+ xaae: xlog:00008622:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008652:  ereport(ERROR, 
+ xaae: xlog:00008653:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ xaae: xlog:00008654:  (errmsg("must be superuser to switch transaction log files")))); 
+ xaae: xlog:00008760:  ereport(ERROR, 
+ xaae: xlog:00008761:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ xaae: xlog:00008762:  errmsg("could not parse transaction log location "%s"", 
+ xaae: xlog:00008763:  locationstr))); 
+ xaae: xlog:00008829:  ereport(ERROR, 
+ xaae: xlog:00008830:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ xaae: xlog:00008831:  errmsg("could not parse transaction log location "%s"", 
+ xaae: xlog:00008832:  locationstr))); 
+ xaae: xlog:00008889:  ereport(FATAL, 
+ xaae: xlog:00008890:  (errcode_for_file_access(), 
+ xaae: xlog:00008891:  errmsg("could not read file "%s": %m", 
+ xaae: xlog:00008892:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008904:  ereport(FATAL, 
+ xaae: xlog:00008905:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008906:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
  xaae: xlog:00008910:  ereport(FATAL, 
- xaae: xlog:00008911:  (errcode_for_file_access(), 
- xaae: xlog:00008912:  errmsg("could not read file "%s": %m", 
- xaae: xlog:00008913:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008937:  ereport(FATAL, 
- xaae: xlog:00008938:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008939:  errmsg("invalid data in file "%s"", histfilename))); 
- xaae: xlog:00008943:  ereport(FATAL, 
- xaae: xlog:00008944:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008945:  errmsg("invalid data in file "%s"", histfilename))); 
- xaae: xlog:00008948:  ereport(FATAL, 
- xaae: xlog:00008949:  (errcode_for_file_access(), 
- xaae: xlog:00008950:  errmsg("could not read file "%s": %m", 
- xaae: xlog:00008951:  histfilepath))); 
- xaae: xlog:00009186:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
- xaae: xlog:00009187:  errFatalReturn(gp_reraise_signal), 
- xaae: xlog:00009188:  errOmitLocation(true), 
- xaae: xlog:00009189:  errmsg("Unexpected internal error"))); 
- xaae: xlog:00009282:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
- xaae: xlog:00009283:  errmsg("database 'postgres' does not exist"))); 
+ xaae: xlog:00008911:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008912:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008914:  ereport(FATAL, 
+ xaae: xlog:00008915:  (errcode_for_file_access(), 
+ xaae: xlog:00008916:  errmsg("could not read file "%s": %m", 
+ xaae: xlog:00008917:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008941:  ereport(FATAL, 
+ xaae: xlog:00008942:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008943:  errmsg("invalid data in file "%s"", histfilename))); 
+ xaae: xlog:00008947:  ereport(FATAL, 
+ xaae: xlog:00008948:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008949:  errmsg("invalid data in file "%s"", histfilename))); 
+ xaae: xlog:00008952:  ereport(FATAL, 
+ xaae: xlog:00008953:  (errcode_for_file_access(), 
+ xaae: xlog:00008954:  errmsg("could not read file "%s": %m", 
+ xaae: xlog:00008955:  histfilepath))); 
+ xaae: xlog:00009190:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
+ xaae: xlog:00009191:  errFatalReturn(gp_reraise_signal), 
+ xaae: xlog:00009192:  errOmitLocation(true), 
+ xaae: xlog:00009193:  errmsg("Unexpected internal error"))); 
+ xaae: xlog:00009286:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ xaae: xlog:00009287:  errmsg("database 'postgres' does not exist"))); 
  xaah: xlogloc:00000060:  ereport(ERROR, 
  xaah: xlogloc:00000061:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000062:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 

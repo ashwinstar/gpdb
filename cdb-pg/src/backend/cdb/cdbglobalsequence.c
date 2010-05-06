@@ -68,6 +68,7 @@ static void GlobalSequence_UpdateTuple(
 
 {
 	Relation	gpGlobalSequenceRel;
+	DirectOpen	gpGlobalSequenceDirectOpen;
 	bool 		nulls[Anum_gp_global_sequence_sequence_num];
 	Datum 		values[Anum_gp_global_sequence_sequence_num];
 	HeapTuple	globalSequenceTuple = NULL;
@@ -78,7 +79,9 @@ static void GlobalSequence_UpdateTuple(
 								values,
 								newSequenceNum);
 	
-	gpGlobalSequenceRel = GlobalSequence_OpenShared();
+	gpGlobalSequenceRel = 
+				GlobalSequence_OpenShared(
+									&gpGlobalSequenceDirectOpen);
 		
 	/*
 	 * Form the tuple.
@@ -98,7 +101,9 @@ static void GlobalSequence_UpdateTuple(
 
 	heap_freetuple(globalSequenceTuple);
 
-	GlobalSequence_Close(gpGlobalSequenceRel);
+	DirectOpen_Close(
+				&gpGlobalSequenceDirectOpen,
+				gpGlobalSequenceRel);
 }
 
 static void GlobalSequence_ReadTuple(
@@ -107,13 +112,16 @@ static void GlobalSequence_ReadTuple(
 	int64					*currentSequenceNum)
 {
 	Relation	gpGlobalSequenceRel;
+	DirectOpen	gpGlobalSequenceDirectOpen;
 	bool 		nulls[Anum_gp_global_sequence_sequence_num];
 	Datum 		values[Anum_gp_global_sequence_sequence_num];
 
 	HeapTupleData 	globalSequenceTuple;
 	Buffer			buffer;
 
-	gpGlobalSequenceRel = GlobalSequence_OpenShared();
+	gpGlobalSequenceRel = 
+				GlobalSequence_OpenShared(
+									&gpGlobalSequenceDirectOpen);
 
 	GlobalSequence_MakeTid(
 						gpGlobalSequence,
@@ -136,7 +144,9 @@ static void GlobalSequence_ReadTuple(
 
 	ReleaseBuffer(buffer);
 	
-	GlobalSequence_Close(gpGlobalSequenceRel);
+	DirectOpen_Close(
+				&gpGlobalSequenceDirectOpen,
+				gpGlobalSequenceRel);
 }
 
 int64 GlobalSequence_Next(

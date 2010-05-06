@@ -6690,6 +6690,8 @@ StartupXLOG_Pass2(void)
 		elog(Debug_persistent_recovery_print_level, 
 		     "Entering StartupXLOG_Pass2");
 
+//	pg_usleep(45 * 1000000L);
+
 	/*
 	 * Read control file and verify XLOG status looks valid.
 	 *
@@ -6731,6 +6733,8 @@ StartupXLOG_Pass2(void)
 		record = ReadRecord(NULL, PANIC);
 	}
 	ShutdownReadFile();
+
+	PersistentFileSysObj_InitScan();
 
 	PersistentRecovery_Scan();
 	

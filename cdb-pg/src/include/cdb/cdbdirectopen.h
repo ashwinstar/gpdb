@@ -32,9 +32,7 @@
 
 typedef struct DirectOpen
 {
-	bool hasOid;
-
-	// The following fields initialize to 0, with minor exceptions.
+	bool isOpen;
 
 	struct tupleConstr constrData;
 
@@ -55,53 +53,55 @@ typedef struct DirectOpen
 \
 static FormData_pg_class *name##RelPgClass = &pgClassStatic; \
 static FormData_pg_attribute *name##RelAttrArray = attrArrayStatic; \
+static bool name##RelHasOid = relHasOid; \
 \
-static DirectOpen name##RelDirectOpen = \
-	{ relHasOid }; \
-\
-static inline Relation name##OpenShared(void) \
+static inline Relation name##OpenShared( \
+	DirectOpen *directOpen) \
 { \
 	return DirectOpen_Open( \
-				&name##RelDirectOpen, \
-				-1, \
-				GLOBALTABLESPACE_OID, \
-				0, \
-				-1, \
-				name##RelPgClass, \
-				name##RelAttrArray); \
+					directOpen, \
+					-1, \
+					GLOBALTABLESPACE_OID, \
+					0, \
+					-1, \
+					name##RelPgClass, \
+					name##RelAttrArray, \
+					name##RelHasOid); \
 } \
 \
-static inline Relation name##Open(Oid tablespace, Oid database) \
+static inline Relation name##Open( \
+					DirectOpen *directOpen, \
+					Oid tablespace, \
+					Oid database) \
 { \
 	return DirectOpen_Open( \
-				&name##RelDirectOpen, \
-				-1, \
-				tablespace, \
-				database, \
-				-1, \
-				name##RelPgClass, \
-				name##RelAttrArray); \
+					directOpen, \
+					-1, \
+					tablespace, \
+					database, \
+					-1, \
+					name##RelPgClass, \
+					name##RelAttrArray, \
+					name##RelHasOid); \
 } \
 \
 \
-static inline Relation name##OpenDynamic(Oid relationId, Oid tablespace, Oid database, Oid relfilenode) \
+static inline Relation name##OpenDynamic( \
+					DirectOpen *directOpen, \
+					Oid relationId, \
+					Oid tablespace, \
+					Oid database, \
+					Oid relfilenode) \
 { \
 	return DirectOpen_Open( \
-				&name##RelDirectOpen, \
-				relationId, \
-				tablespace, \
-				database, \
-				relfilenode, \
-				name##RelPgClass, \
-				name##RelAttrArray); \
-} \
-\
-static inline void name##Close( \
-	Relation	rel) \
-{ \
-	DirectOpen_Close( \
-				&name##RelDirectOpen, \
-				rel); \
+					directOpen, \
+					relationId, \
+					tablespace, \
+					database, \
+					relfilenode, \
+					name##RelPgClass, \
+					name##RelAttrArray, \
+					name##RelHasOid); \
 }
 
 extern Relation DirectOpen_Open(
@@ -117,7 +117,9 @@ extern Relation DirectOpen_Open(
 
 	FormData_pg_class *pgClass,
 
-	FormData_pg_attribute *attrArray);
+	FormData_pg_attribute *attrArray,
+
+	bool relHasOid);
 
 
 extern void DirectOpen_Close(

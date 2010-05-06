@@ -491,9 +491,11 @@ static void DatabaseInfo_AddPgClassStoredRelation(
 			int totalAoSegFiles;
 
 			Relation pg_aoseg_rel;
+			DirectOpen pg_aoseg_direct_open;
 
 			pg_aoseg_rel = 
 					DatabaseInfo_PgAoSegOpenDynamic(
+										&pg_aoseg_direct_open,
 										aoEntry->segrelid,
 										dbInfoRel->reltablespace,
 										info->database,
@@ -514,7 +516,9 @@ static void DatabaseInfo_AddPgClassStoredRelation(
 														aoSegfileArray[i]->eof);
 			}
 
-			DatabaseInfo_PgAoSegClose(pg_aoseg_rel);
+			DirectOpen_Close(
+						&pg_aoseg_direct_open,
+						pg_aoseg_rel);
 		}
 		else if (relstorage == RELSTORAGE_AOCOLS)
 		{
@@ -522,9 +526,11 @@ static void DatabaseInfo_AddPgClassStoredRelation(
 			int totalAocsSegFiles;
 
 			Relation pg_aocsseg_rel;
+			DirectOpen pg_aocsseg_direct_open;
 
 			pg_aocsseg_rel =
 					DatabaseInfo_PgAoCsSegOpenDynamic(
+										&pg_aocsseg_direct_open,
 										aoEntry->segrelid,
 										dbInfoRel->reltablespace,
 										info->database,
@@ -557,7 +563,9 @@ static void DatabaseInfo_AddPgClassStoredRelation(
 				}
 			}
 
-			DatabaseInfo_PgAoCsSegClose(pg_aocsseg_rel);
+			DirectOpen_Close(
+						&pg_aocsseg_direct_open,
+						pg_aocsseg_rel);
 		}
 	}
 }
@@ -908,8 +916,11 @@ DatabaseInfo *DatabaseInfo_Collect(
 
 	HeapScanDesc scan;
 	Relation	pg_class_rel;
+	DirectOpen	pg_class_direct_open;
 	Relation	gp_relation_node_rel;
+	DirectOpen	gp_relation_node_direct_open;
 	Relation	pg_appendonly_rel;
+	DirectOpen	pg_appendonly_direct_open;
 	HeapTuple	tuple;
 	int			count;
 
@@ -947,7 +958,11 @@ DatabaseInfo *DatabaseInfo_Collect(
 
 	DatabaseInfo_PgAppendOnlyHashTableInit(&pgAppendOnlyHashTable);
 
-	pg_appendonly_rel = DatabaseInfo_PgAppendOnlyOpen(defaultTablespace, database);
+	pg_appendonly_rel = 
+				DatabaseInfo_PgAppendOnlyOpen(
+							&pg_appendonly_direct_open,
+							defaultTablespace, 
+							database);
 	scan = heap_beginscan(pg_appendonly_rel, SnapshotNow, 0, NULL);
 	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
@@ -991,7 +1006,9 @@ DatabaseInfo *DatabaseInfo_Collect(
 								aoEntry);
 	}
 	heap_endscan(scan);
-	DatabaseInfo_PgAppendOnlyClose(pg_appendonly_rel);
+	DirectOpen_Close(
+				&pg_appendonly_direct_open,
+				pg_appendonly_rel);
 
 
 	/*
@@ -999,7 +1016,11 @@ DatabaseInfo *DatabaseInfo_Collect(
  	 * database directories are active.  I.e. Fill up the tablespaces array.
 	 */
 	count = 0;
-	pg_class_rel = DatabaseInfo_PgClassOpen(defaultTablespace, database);
+	pg_class_rel = 
+			DatabaseInfo_PgClassOpen(
+							&pg_class_direct_open,
+							defaultTablespace, 
+							database);
 	scan = heap_beginscan(pg_class_rel, SnapshotNow, 0, NULL);
 	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
@@ -1059,9 +1080,15 @@ DatabaseInfo *DatabaseInfo_Collect(
 		count++;
 	}
 	heap_endscan(scan);
-	DatabaseInfo_PgClassClose(pg_class_rel);
+	DirectOpen_Close(
+				&pg_class_direct_open,
+				pg_class_rel);
 
-	gp_relation_node_rel = DatabaseInfo_GpRelationNodeOpen(defaultTablespace, database);
+	gp_relation_node_rel = 
+			DatabaseInfo_GpRelationNodeOpen(
+							&gp_relation_node_direct_open,
+							defaultTablespace, 
+							database);
 	scan = heap_beginscan(gp_relation_node_rel, SnapshotNow, 0, NULL);
 	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
@@ -1096,7 +1123,9 @@ DatabaseInfo *DatabaseInfo_Collect(
 		}
 	}
 	heap_endscan(scan);
-	DatabaseInfo_GpRelationNodeClose(gp_relation_node_rel);
+	DirectOpen_Close(
+				&gp_relation_node_direct_open,
+				gp_relation_node_rel);
 
 	/*
 	 * Scan each used directory for its relation segment files and misc files/dirs.

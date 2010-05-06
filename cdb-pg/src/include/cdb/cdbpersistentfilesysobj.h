@@ -30,7 +30,7 @@ typedef struct PersistentFileSysObjSharedData
 
 } PersistentFileSysObjSharedData;
 
-#define PersistentFileSysObjData_StaticInit {0,PersistentStoreData_StaticInit}
+#define PersistentFileSysObjData_StaticInit {0,PersistentStoreData_StaticInit,0,0,0}
 
 typedef struct PersistentFileSysObjData
 {

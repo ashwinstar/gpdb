@@ -24,7 +24,9 @@ Relation DirectOpen_Open(
 
 	FormData_pg_class *pgClass,
 
-	FormData_pg_attribute *attrArray)
+	FormData_pg_attribute *attrArray,
+
+	bool relHasOid)
 {
 	int i;
 
@@ -33,6 +35,8 @@ Relation DirectOpen_Open(
 
 	if (relfilenode == -1)
 		relfilenode = pgClass->relfilenode;
+
+	MemSet(direct, 0, sizeof(DirectOpen));
 
 	/*
 	 * Lots of Hard-coded construction of the gp_persistent* RelationS and
@@ -75,7 +79,7 @@ Relation DirectOpen_Open(
 	direct->descData.constr = &direct->constrData;
 	direct->descData.tdtypeid = pgClass->reltype;
 	direct->descData.tdtypmod = -1;
-	direct->descData.tdhasoid = direct->hasOid;
+	direct->descData.tdhasoid = relHasOid;
 	direct->descData.tdrefcount = 1;
 
 	direct->relationData.rd_att = &direct->descData;
@@ -91,6 +95,8 @@ Relation DirectOpen_Open(
 
 	direct->relationData.rd_refcnt++;
 
+	direct->isOpen = true;
+
 	RelationOpenSmgr(&direct->relationData);
 	
 	return &direct->relationData;
@@ -103,6 +109,7 @@ void DirectOpen_Close(
 	int i;
 
 	Assert(rel == &direct->relationData);
+	Assert (direct->isOpen);
 	Assert(direct->descData.attrs != NULL);
 
 	RelationCloseSmgr(&direct->relationData);

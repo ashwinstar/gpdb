@@ -1031,6 +1031,7 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 		ItemPointerData	gpRelationNodePersistentTid;
 		int64 gpRelationNodePersistentSerialNum;
 		Relation gp_relation_node;
+		DirectOpen gpRelationNodeDirectOpen;
 
 		MemSet(&gpRelationNodePersistentTid, 0, sizeof(ItemPointerData));
 		gpRelationNodePersistentSerialNum = 0;
@@ -1221,6 +1222,7 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 		 */
 		gp_relation_node = 
 				DbCommand_GpRelationNodeOpen(
+								&gpRelationNodeDirectOpen,
 								dst_deftablespace, 
 								dboid);
 
@@ -1256,7 +1258,9 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 
 		}
 
-		DbCommand_GpRelationNodeClose(gp_relation_node);
+		DirectOpen_Close(
+					&gpRelationNodeDirectOpen,
+					gp_relation_node);
 	}
 
 	/*
