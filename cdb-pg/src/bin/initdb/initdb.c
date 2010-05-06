@@ -130,7 +130,6 @@ static char *info_schema_file;
 static char *cdb_schema_file;
 static char *features_file;
 static char *system_views_file;
-static char *gp_toolkit_schema_file;
 static bool made_new_pgdata = false;
 static bool found_existing_pgdata = false;
 static bool made_new_xlogdir = false;
@@ -1876,41 +1875,6 @@ setup_sysviews(void)
 	check_ok();
 }
 
-static void
-setup_gp_toolkit(void)
-{
-	PG_CMD_DECL;
-	char	  **line;
-	char	  **gp_toolkit_setup;
-
-	fputs(_("creating gp_toolkit... "), stdout);
-	fflush(stdout);
-
-	gp_toolkit_setup = readfile(gp_toolkit_schema_file);
-
-	/*
-	 * We use -j here to avoid backslashing stuff in gp_toolkit.sql
-	 */
-	snprintf(cmd, sizeof(cmd),
-			 "\"%s\" %s -j template1 >%s",
-			 backend_exec, backend_options,
-			 DEVNULL);
-
-	PG_CMD_OPEN;
-
-	for (line = gp_toolkit_setup; *line != NULL; line++)
-	{
-		PG_CMD_PUTS(*line);
-		free(*line);
-	}
-
-	PG_CMD_CLOSE;
-
-	free(gp_toolkit_setup);
-
-	check_ok();
-}
-
 /*
  * load description data
  */
@@ -3215,7 +3179,6 @@ main(int argc, char *argv[])
 	set_input(&cdb_schema_file, "cdb_schema.sql");
 	set_input(&features_file, "sql_features.txt");
 	set_input(&system_views_file, "system_views.sql");
-	set_input(&gp_toolkit_schema_file, "gp_toolkit.sql");
 
 	set_info_version();
 
@@ -3248,7 +3211,6 @@ main(int argc, char *argv[])
 	check_input(cdb_schema_file);
 	check_input(features_file);
 	check_input(system_views_file);
-	check_input(gp_toolkit_schema_file);
 
 	setlocales();
 
@@ -3552,8 +3514,6 @@ main(int argc, char *argv[])
 
 		/* sets up the Greenplum Database admin schema */
 		setup_cdb_schema();
-
-		setup_gp_toolkit();
 
 		vacuum_db();
 

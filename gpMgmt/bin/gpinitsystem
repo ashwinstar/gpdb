@@ -1645,6 +1645,37 @@ READ_INPUT_CONFIG () {
    
 }
 
+LOAD_GP_TOOLKIT () {
+	LOG_MSG "[INFO]:-Loading gp_toolkit..." 1
+	ROLNAME=`$PSQL -q -t -A -c "select rolname from pg_authid where oid=10" template1`
+	if [ x"$ROLNAME" == x"" ];then
+		ERROR_EXIT "[FATAL]:-Failed to retrieve rolname." 2
+	fi
+
+	BACKOUT_COMMAND "$RM -f /tmp/_gp_toolkit_tmp_${CUR_DATE}_$FILE_TIME"
+
+	# We need SET SESSION AUTH here to load the toolkit
+	$ECHO "SET SESSION AUTHORIZATION $ROLNAME;" >> /tmp/_gp_toolkit_tmp_${CUR_DATE}_$FILE_TIME 2>&1
+	RETVAL=$?
+	if [ $RETVAL -ne 0 ];then
+		ERROR_EXIT "[FATAL]:-Failed to create the gp_toolkit sql file." 2
+	fi
+
+	$CAT $GPHOME/share/postgresql/gp_toolkit.sql >> /tmp/_gp_toolkit_tmp_${CUR_DATE}_$FILE_TIME 2>&1
+	RETVAL=$?
+	if [ $RETVAL -ne 0 ];then
+		ERROR_EXIT "[FATAL]:-Failed to create the gp_toolkit sql file." 2
+	fi
+
+	$PSQL -q -f /tmp/_gp_toolkit_tmp_${CUR_DATE}_$FILE_TIME template1 >> $LOG_FILE 2>&1 
+	RETVAL=$?
+	if [ $RETVAL -ne 0 ];then
+		ERROR_EXIT "[FATAL]:-Failed to create the gp_toolkit schema." 2
+	fi
+
+	$RM /tmp/_gp_toolkit_tmp_${CUR_DATE}_$FILE_TIME
+}
+
 #******************************************************************************
 # Main Section
 #******************************************************************************
@@ -1747,7 +1778,6 @@ else
     ARRAY_REORDER
 fi
 
-
 CREATE_QD_DB		
 if [ $QD_ONLY ]; then
 		LOG_MSG "[INFO]:-----------------------------------------" 1
@@ -1799,6 +1829,7 @@ fi
 STOP_QD_PRODUCTION
 START_QD_PRODUCTION
 
+LOAD_GP_TOOLKIT
 
 if [ x"" != x"$DATABASE_NAME" ]; then
 	CREATE_DATABASE
