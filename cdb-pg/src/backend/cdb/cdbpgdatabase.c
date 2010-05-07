@@ -112,7 +112,12 @@ gp_pgdatabase__(PG_FUNCTION_ARGS)
 		if (db->status == 'u')
 		{
 			if (db->mode == 's' || db->mode == 'c')
+			{
 				values[3] = BoolGetDatum(true);
+			} else if (db->mode == 'r' && db->role == 'p')
+			{
+				values[3] = BoolGetDatum(true);
+			}
 		}
 		values[4] = BoolGetDatum(db->preferred_role == 'p');
 
