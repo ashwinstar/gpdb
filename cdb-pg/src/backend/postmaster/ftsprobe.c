@@ -930,8 +930,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 						ret |= PROBE_FAULT;
 					}
 					
-					if ( d_state == DataStateInSync &&
-						 dbInfo->mode == 'r')
+					if (d_state == DataStateInSync && dbInfo->mode == 'r')
 					{
 					    ret |= PROBE_TO_IN_SYNC;
 					}
@@ -1277,11 +1276,13 @@ probePublishUpdate(uint8 *probe_results)
 					mirror = getMirrorEntryByContent(cdb_component_dbs, primary->segindex, primary->dbid);
 
 					/*
-					 * There are 3 possibilities here:
+					 * There are a few possibilities here:
 					 *    1) primary in fault, mirror happy:
 					 *             mirror is promoted.
 					 *    2) primary in fault, mirror dead
 					 *    3) primary in fault, mirror in fault
+					 *             primary-changelogging, mirror considered dead.
+					 *    4) primary and mirror busy resynching.
 					 *             primary-changelogging, mirror considered dead.
 					 *
 					 * We're going to depend on the code further down to make the actual changes,
@@ -1293,8 +1294,8 @@ probePublishUpdate(uint8 *probe_results)
 							((probe_results[mirror->dbid] & PROBE_ALIVE) == 0))
 						{
 							elog(LOG, "probePublishUpdate: dbid %d/0x%x reported fault mirror %d/0x%x considered dead.",
-								 primary->dbid, probe_results[mirror->dbid], mirror->dbid, probe_results[mirror->dbid]);
-							/* consider mirror dead */
+								 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
+							/* consider mirror dead (2) */
 							probe_results[mirror->dbid] &= ~PROBE_ALIVE;
 						}
 						else
@@ -1304,17 +1305,20 @@ probePublishUpdate(uint8 *probe_results)
 							{
 								/* The mirror was intact ? */
 								elog(LOG, "probePublishUpdate: dbid %d/0x%x reported fault mirror %d/0x%x looks good.",
-									 primary->dbid, probe_results[mirror->dbid], mirror->dbid, probe_results[mirror->dbid]);
-								/* mirror is happy */
+									 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
+								/* mirror is happy (1) */
 								probe_results[primary->dbid] &= ~PROBE_ALIVE;
 							}
 							else
 							{
+								elog(LOG, "probePublishUpdate: dbid %d/0x%x reported fault mirror %d/0x%x was resyncing, now considered dead.",
+									 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
 								/*
 								 * mirror must have been re-syncing,
 								 * so the primary is just reporting a
 								 * problem from the mirror.
 								 */
+								/* consider mirror dead (3)(4) */
 								probe_results[mirror->dbid] &= ~PROBE_ALIVE;
 							}
 						}
@@ -1413,7 +1417,17 @@ probePublishUpdate(uint8 *probe_results)
 							 * a "newStatus" which is an *invalid primary* (see addChangeHistory() and
 							 * probeUpdateConfig()).
 							 */
+							/* 'p'/'u'/'s' */
 							changes[primaryChange].newStatus &= ~FTS_STATUS_PRIMARY;
+						}
+						else if (FTS_STATUS_ISPRIMARY(mirror->dbid, ftsProbeInfo->fts_status))
+						{
+							/*
+							 *'p'/'u'/'r': We have valid contents and
+							 * were already the primary! No status
+							 * change required.
+							 */
+							changes[mirrorChange].newStatus = segStatus;
 						}
 						else
 						{
