@@ -69,6 +69,9 @@ class GpHostCacheLookup:
         parser = OptParser(option_class=OptChecker,
                     description='  '.join(description.split()),
                     version='%prog version $Revision: #1 $')
+
+        addStandardLoggingAndHelpOptions(parser, False)
+
         parser.setHelp(help)
 
         parser.set_defaults()
