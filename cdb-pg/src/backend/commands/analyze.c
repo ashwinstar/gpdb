@@ -337,8 +337,6 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 		if (stmt->va_cols)
 			lExplicitAttNames = buildExplicitAttributeNames(relationOid, stmt);
 	}
-
-	Assert(lRelOids);
 	
 	/*
 	 * Decide whether we need to start/commit our own transactions.
