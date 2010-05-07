@@ -1,7 +1,8 @@
+===========================================
 04/06/10
 
-	Svec / Smat / Dmat
-	Mathematics extensions to Greenplum
+    Svec / Smat / Dmat
+    Mathematics extensions to Greenplum
 
 ==========================================================================================
 BUGS
@@ -18,13 +19,15 @@ DONE
 - unnest operator that returns setof(double) and takes svec input
 - svec_dimension operator that returns an int and takes svec input
 - concat operator mapped to "||" that returns svec and takes (svec,svec)
+- Serialization format should avoid copies more often
+- array_agg function converts relation to svec
 
 ==========================================================================================
 IMPROVEMENTS
 ==========================================================================================
 TODO
 - phrase match that returns the weight of a match and the locations where the phrases are
-	for each document relative to an input phrase
+    for each document relative to an input phrase (see README_term_proximity)
 - set "contains" operator that returns the intersection of two vectors (Elbit, LinkedIn)
 - slice operator that returns an svec and takes svec,min,max input
 - svec_pivot_count aggregate returns svec and takes (array dictionary,text term)
@@ -32,7 +35,6 @@ TODO
 - The complete set of scalar operators present in Postgres
 - Complete set of R vector operators
 - Rename or alias svec to _float8_sparse
-- Serialization format should avoid copies more often
 - Hash function for the type (for GROUP BY and HASH JOIN)
 ---- Like hash_numeric()
 - Vector cross product, outer product %o%
