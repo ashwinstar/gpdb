@@ -998,7 +998,7 @@ class GpArray:
 
         if self.__strategy not in VALID_FAULT_STRATEGY:
             raise Exception("Fault strategy is not set correctly: '%s'" % 
-                            self.strategy)
+                            self.__strategy)
 
         return self.__strategy
 
