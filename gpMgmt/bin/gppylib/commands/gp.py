@@ -1159,7 +1159,7 @@ def get_dbid(datadir, host=None):
         data = createFromSingleHostFile(file)
         RE = re.compile(r"dbid\s*=\s*(\d+)")
     except Exception, e:
-        raise ExecutionError("Failed to read dbid from %s. %s" % (file, str(e)))
+        raise Exception("Failed to read dbid from %s. %s" % (file, str(e)))
 
     dbid = None
     for l in data:
