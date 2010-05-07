@@ -44,6 +44,7 @@ def getProgramName():
 # mainOptions can include:   forceQuietOutput (map to bool),
 #                            programNameOverride (map to string)
 #                            suppressStartupLogMessage (map to bool)
+#                            useHelperToolLogging (map to bool)
 #
 #
 def simple_main( createOptionParserFn, createCommandFn, mainOptions=None) :
@@ -64,9 +65,17 @@ def simple_main( createOptionParserFn, createCommandFn, mainOptions=None) :
         gProgramName = mainOptions.get("programNameOverride")
     suppressStartupLogMessage = mainOptions is not None and mainOptions.get("suppressStartupLogMessage")
 
+    useHelperToolLogging = mainOptions is not None and mainOptions.get("useHelperToolLogging")
+
     # NOTE: if this logic is changed then also change test_main in testUtils.py
     try:
-        gplog.setup_tool_logging(getProgramName(), unix.getLocalHostname(), unix.getUserName(), nonuser=False)
+        execname = getProgramName()
+        hostname = unix.getLocalHostname()
+        username = unix.getUserName
+        if useHelperToolLogging:
+            gplog.setup_helper_tool_logging(execname, hostname, username)
+        else:
+            gplog.setup_tool_logging(execname, hostname, username, nonuser=False)
 
         parser = createOptionParserFn()
         (options, args) = parser.parse_args()

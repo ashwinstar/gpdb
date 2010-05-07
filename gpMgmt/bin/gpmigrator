@@ -46,6 +46,7 @@ try:
     from gppylib.gplog import *          # Greenplum logging facility
     from gppylib.commands import base    # Greenplum layer for worker pools
     from gppylib.commands import unix    # Greenplum layer for unix interaction
+    from gppylib.commands.gp import GpCreateDBIdFile
     from gppylib.db import dbconn
     from gppylib.gpversion import GpVersion
     from gppylib.gparray import GpArray, GpDB
@@ -2482,6 +2483,11 @@ class GPUpgrade:
         Touch up the config for a transform method upgrade/downgrade
         '''
 
+        # Before we can start the master we need to tag it with a gp_dbid file.
+        # We will tag all the other segment directories after re-mirroring.
+        GpCreateDBIdFile.local('create master gp_dbid file',
+                               directory=self.newmaster, dbid=1)
+
         # We can do this in utility mode since the master host is the only
         # host that contains gp_configuration information
         self.Startup(self.newenv, utility=True)
@@ -3457,6 +3463,28 @@ class GPUpgrade:
             sys.stderr.write(str(e))
             raise e
 
+    
+
+    #------------------------------------------------------------
+    def StampDBId(self):
+        '''
+        Populates the gp_dbid file for every segment
+        '''
+        logger.info("Adding gp_dbid file")
+        
+        # Already handled the master during TouchupConfig()
+        for seg in self.segments:
+            GpCreateDBIdFile.remote('create gp_dbid file',
+                                    seg.getSegmentAddress(),
+                                    seg.getSegmentDataDirectory(),
+                                    seg.getSegmentDbId())
+        for seg in self.mirrors:
+            GpCreateDBIdFile.remote('create gp_dbid file',
+                                    seg.getSegmentAddress(),
+                                    seg.getSegmentDataDirectory(),
+                                    seg.getSegmentDbId())            
+
+
     #------------------------------------------------------------
     def Run(self):
         """
@@ -3833,6 +3861,12 @@ It should now be possible to take a zfs snapshot before finalizing the upgrade.
         if self.faultinjection == 8:
             raise UpgradeError("faultinjection=%d" % self.faultinjection)
                
+        # Add the gp_dbid file to every segment
+        #  + Requires all mirror directories to exist
+        if 'GP_DBID' not in current_state:
+            self.StampDBId()
+            self.SetState('GP_DBID')
+
         # To install the new db under the old master path we go through
         # pains to make it as robust as possible.  This is done via a
         # combination of redundancy and hard links.
