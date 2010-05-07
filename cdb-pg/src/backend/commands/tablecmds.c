@@ -354,6 +354,8 @@ static void ATExecSetDistributedBy(Relation rel, Node *node,
 static List *all_prule_relids(PartitionRule *prule);
 static PartStatus rel_part_status(Oid relid);
 static bool can_implement_dist_on_part(Relation rel, List *dist_cnames);
+static void ATPrepExchange(Relation rel, AlterPartitionCmd *pc);
+static bool is_exchangeable(Relation rel, Relation oldrel, Relation newrel, bool throw);
 
 static const char* synthetic_sql = "(internally generated SQL command)";
 
@@ -4274,176 +4276,19 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			break;
 			/* CDB: Partitioned Table commands */
 		case AT_PartExchange:			/* Exchange */
-		{
-			AlterPartitionCmd  	*pc    	= (AlterPartitionCmd *) cmd->def;
-			PgPartRule   	   	*prule 	= NULL;
-			Relation			 oldrel = NULL;
-			Relation			 newrel = NULL;
-			int					 i;
-
+			
 			ATPartitionCheck(rel, cmd->subtype, recursing);
-			pass = AT_PASS_MISC;
+			
 			if (Gp_role == GP_ROLE_UTILITY)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
  						 errmsg("EXCHANGE is not supported in utility mode")));
-			else if (Gp_role == GP_ROLE_DISPATCH)
-			{
-				AlterPartitionId *pid = (AlterPartitionId *) pc->partid;
-				bool				is_split;
-
-				is_split = ((AlterPartitionCmd *)pc->arg2)->arg2 != NULL;
-
-				if (is_split)
-					break;
-
-				prule = get_part_rule(rel, pid, true, true,
-									  CurrentMemoryContext, NULL, false);
-				if (prule)
-				{
-					/* cannot exchange a hash partition */
-					if ('h' == prule->pNode->part->parkind)
-						ereport(ERROR,
-							(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
-								 errmsg("cannot exchange HASH partition%s "
-									    "of relation \"%s\"", prule->partIdStr,
-										RelationGetRelationName(rel))));
-				}
-				oldrel = heap_open(prule->topRule->parchildrelid,
-								   AccessExclusiveLock);
-				newrel = heap_openrv((RangeVar *)pc->arg1,
-									 AccessExclusiveLock);
-			}
-			else
-			{
-				oldrel = heap_openrv((RangeVar *)pc->partid,
-								   AccessExclusiveLock);
-				newrel = heap_openrv((RangeVar *)pc->arg1,
-									 AccessExclusiveLock);
-
-			}
-			ATSimplePermissions(rel, false);
-			ATSimplePermissions(oldrel, false);
-			ATSimplePermissions(newrel, false);
-
-			/* check that things all look the same */
-			if (Gp_role == GP_ROLE_DISPATCH)
-			{
-				GpPolicy *oldpol = oldrel->rd_cdbpolicy;
-				GpPolicy *newpol = newrel->rd_cdbpolicy;
-
-				if (oldpol->ptype != oldpol->ptype ||
-					oldpol->nattrs != newpol->nattrs ||
-					memcmp(oldpol->attrs, newpol->attrs,
-						   sizeof(AttrNumber) * oldpol->nattrs))
-				{
-					ereport(ERROR,
-							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("distribution policy for \"%s\" "
-									"must be the same as that for \"%s\"",
-								RelationGetRelationName(newrel),
-								RelationGetRelationName(rel)),
-							 errOmitLocation(true)));
-				}
-			}
-
-			if (!(oldrel->rd_rel->relkind == RELKIND_RELATION ||
-				  newrel->rd_rel->relkind == RELKIND_RELATION))
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("cannot exchange relation "
-								"which is not a table")));
-
-
-			}
-
-			if (oldrel->rd_rel->relnatts != newrel->rd_rel->relnatts)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("relation \"%s\" must have the same number "
-								"columns as relation \"%s\"",
-						 		RelationGetRelationName(newrel),
-						 		RelationGetRelationName(rel)),
-						 errOmitLocation(true)));
-
-			for (i = 0; i < oldrel->rd_rel->relnatts; i++)
-			{
-				/* Same columns in the same order */
-				Form_pg_attribute oldatt = oldrel->rd_att->attrs[i];
-				Form_pg_attribute newatt = newrel->rd_att->attrs[i];
-
-				/* attribute name */
-				if (memcmp(NameStr(oldatt->attname),
-						   NameStr(newatt->attname),
-						   NAMEDATALEN) != 0)
-					ereport(ERROR,
-							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("relation \"%s\" must have the same "
-									"column names and column order as \"%s\"",
-									RelationGetRelationName(newrel),
-									RelationGetRelationName(rel)),
-							 errOmitLocation(true)));
-
-				/* attribute type */
-				if (oldatt->atttypid != newatt->atttypid ||
-					oldatt->atttypmod != newatt->atttypmod)
-					ereport(ERROR,
-							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("type mismatch for attribute \"%s\"",
-									NameStr((oldatt->attname))),
-							 errOmitLocation(true)));
-			}
-
-			/* owner */
-			if (oldrel->rd_rel->relowner != newrel->rd_rel->relowner)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("owner of \"%s\" must be the same as that "
-								"of \"%s\"",
-								RelationGetRelationName(newrel),
-								RelationGetRelationName(rel)),
-						 errOmitLocation(true)));
-
-
-			/* both tables must have the same OIDs setting */
-			if (oldrel->rd_rel->relhasoids != newrel->rd_rel->relhasoids)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("\"%s\" and \"%s\" must have same OIDs setting",
-								RelationGetRelationName(rel),
-								RelationGetRelationName(newrel)),
-						 errOmitLocation(true)));
-
-			/* new relation between not be involved in inheritance */
-			if (has_subclass(RelationGetRelid(newrel)))
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("cannot EXCHANGE table \"%s\" as it has "
-								"child table(s)",
-								RelationGetRelationName(newrel)),
-						 errOmitLocation(true)));
-
-			if (relation_has_supers(RelationGetRelid(newrel)))
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("cannot exchange table \"%s\" as it "
-								"inherits other table(s)",
-								RelationGetRelationName(newrel)),
-						 errOmitLocation(true)));
-
-			if (newrel->rd_rules || oldrel->rd_rules)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("cannot exchange table which has rules "
-								"defined on it"),
-						 errOmitLocation(true)));
-
-			heap_close(oldrel, NoLock);
-			heap_close(newrel, NoLock);
-
+			
+			pass = AT_PASS_MISC;
+			
+			ATPrepExchange(rel, (AlterPartitionCmd *)cmd->def);
+			
 			break;
-		}
 		case AT_PartMerge:
 		{
 			AlterPartitionCmd  *pc    	= (AlterPartitionCmd *) cmd->def;
@@ -23150,3 +22995,269 @@ bool can_implement_dist_on_part(Relation rel, List *dist_cnames)
 	}
 	return true;
 }
+
+/* ALTER TABLE EXCHANGE
+ *
+ * NB different signature from non-partitioned table Prep functions.
+ */
+static void
+ATPrepExchange(Relation rel, AlterPartitionCmd *pc)
+{
+	PgPartRule   	   	*prule 	= NULL;
+	Relation			 oldrel = NULL;
+	Relation			 newrel = NULL;
+	
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		AlterPartitionId *pid = (AlterPartitionId *) pc->partid;
+		bool				is_split;
+		
+		is_split = ((AlterPartitionCmd *)pc->arg2)->arg2 != NULL;
+		
+		if (is_split)
+			return;
+		
+		prule = get_part_rule(rel, pid, true, true,
+							  CurrentMemoryContext, NULL, false);
+		if (prule)
+		{
+			/* cannot exchange a hash partition */
+			if ('h' == prule->pNode->part->parkind)
+				ereport(ERROR,
+						(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+						 errmsg("cannot exchange HASH partition%s "
+								"of relation \"%s\"", prule->partIdStr,
+								RelationGetRelationName(rel))));
+		}
+		oldrel = heap_open(prule->topRule->parchildrelid,
+						   AccessExclusiveLock);
+		newrel = heap_openrv((RangeVar *)pc->arg1,
+							 AccessExclusiveLock);
+	}
+	else
+	{
+		oldrel = heap_openrv((RangeVar *)pc->partid,
+							 AccessExclusiveLock);
+		newrel = heap_openrv((RangeVar *)pc->arg1,
+							 AccessExclusiveLock);
+		
+	}
+	ATSimplePermissions(rel, false);
+	ATSimplePermissions(oldrel, false);
+	ATSimplePermissions(newrel, false);
+	
+	/* Check that old and new look the same, error if not. */
+	is_exchangeable(rel, oldrel, newrel, true);
+	
+	heap_close(oldrel, NoLock);
+	heap_close(newrel, NoLock);
+}
+
+
+/* Test whether we can exchange newrel into oldrel's space within the 
+ * partitioning hierarchy of rel.
+ *
+ * If throw is true, throw an appropriate error in case the answer is
+ * "no, can't exchange".  If throw is false, just return the answer
+ * quietly.
+ */
+static bool
+is_exchangeable(Relation rel, Relation oldrel, Relation newrel, bool throw)
+{
+	int i;
+	
+	/* Both parts must be relations. */
+	if (!(oldrel->rd_rel->relkind == RELKIND_RELATION ||
+		  newrel->rd_rel->relkind == RELKIND_RELATION))
+	{
+		if ( !throw )
+			return false;
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("cannot exchange relation "
+							"which is not a table")));
+	}
+	
+	/* Both parts must have the same number of attributes */
+	if (oldrel->rd_rel->relnatts != newrel->rd_rel->relnatts)
+	{
+		int ocnt = 0;
+		int ncnt = 0;
+		
+		if ( !throw )
+			return false;
+		
+		for (i = 0; i < oldrel->rd_rel->relnatts; i++)
+			ocnt += ( oldrel->rd_att->attrs[i]->attisdropped ? 0 : 1 );
+		
+		for (i = 0; i < newrel->rd_rel->relnatts; i++)
+			ncnt += ( newrel->rd_att->attrs[i]->attisdropped ? 0 : 1 );
+		
+		if (ocnt != ncnt)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("relation \"%s\" must have the same number "
+							"columns as relation \"%s\"",
+							RelationGetRelationName(newrel),
+							RelationGetRelationName(rel)),
+					 errOmitLocation(true)));
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("relation \"%s\" and relation \"%s\" "
+							"have mismatched dropped attributes",
+							RelationGetRelationName(newrel),
+							RelationGetRelationName(rel)),
+					 errOmitLocation(true)));
+		
+	}
+	
+	/* Part attributes must match in name, type, and order. */
+	for (i = 0; i < oldrel->rd_rel->relnatts; i++)
+	{
+		/* Same columns in the same order */
+		Form_pg_attribute oldatt = oldrel->rd_att->attrs[i];
+		Form_pg_attribute newatt = newrel->rd_att->attrs[i];
+		
+		/* both attributes exist or both are dropped */
+		if ( oldatt->attisdropped != newatt->attisdropped )
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("relation \"%s\" and relation \"%s\" "
+							"have mismatched dropped attributes",
+							RelationGetRelationName(newrel),
+							RelationGetRelationName(rel)),
+					 errOmitLocation(true)));
+		
+		/* attribute name */
+		if (memcmp(NameStr(oldatt->attname),
+				   NameStr(newatt->attname),
+				   NAMEDATALEN) != 0)
+		{
+			if ( !throw )
+				return false;
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("relation \"%s\" must have the same "
+								"column names and column order as \"%s\"",
+								RelationGetRelationName(newrel),
+								RelationGetRelationName(rel)),
+						 errOmitLocation(true)));
+		}
+		
+		/* attribute type */
+		if (oldatt->atttypid != newatt->atttypid ||
+			oldatt->atttypmod != newatt->atttypmod )
+		{
+			if ( !throw )
+				return false;
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("type mismatch for attribute \"%s\"",
+								NameStr((oldatt->attname))),
+						 errOmitLocation(true)));
+		}
+	}
+	
+	/* Both parts must have the same owner. */
+	if (oldrel->rd_rel->relowner != newrel->rd_rel->relowner)
+	{
+		if ( !throw )
+			return false;
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("owner of \"%s\" must be the same as that "
+							"of \"%s\"",
+							RelationGetRelationName(newrel),
+							RelationGetRelationName(rel)),
+					 errOmitLocation(true)));
+	}
+	
+	/* Both part tables must have the same "WITH OID"s setting */
+	if (oldrel->rd_rel->relhasoids != newrel->rd_rel->relhasoids)
+	{
+		if ( !throw )
+			return false;
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("\"%s\" and \"%s\" must have same OIDs setting",
+							RelationGetRelationName(rel),
+							RelationGetRelationName(newrel)),
+					 errOmitLocation(true)));
+	}
+	
+	/* The new part table must not be involved in inheritance. */
+	if (has_subclass(RelationGetRelid(newrel)))
+	{
+		if ( !throw )
+			return false;
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("cannot EXCHANGE table \"%s\" as it has "
+							"child table(s)",
+							RelationGetRelationName(newrel)),
+					 errOmitLocation(true)));
+	}
+	
+	if (relation_has_supers(RelationGetRelid(newrel)))
+	{
+		if ( !throw )
+			return false;
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("cannot exchange table \"%s\" as it "
+							"inherits other table(s)",
+							RelationGetRelationName(newrel)),
+					 errOmitLocation(true)));
+	}
+	
+	/* The new part table must not have rules on it. */
+	if (newrel->rd_rules || oldrel->rd_rules)
+	{
+		if ( !throw )
+			return false;
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("cannot exchange table which has rules "
+							"defined on it"),
+					 errOmitLocation(true)));
+	}
+	
+	/* The distribution policies of the parts (and BTW the whole partitioned
+	 * table) must match.  However, we can only check this where the policy
+	 * table is populated, i.e., on the entry database.
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		GpPolicy *oldpol = oldrel->rd_cdbpolicy;
+		GpPolicy *newpol = newrel->rd_cdbpolicy;
+		
+		if (oldpol->ptype != oldpol->ptype ||
+			oldpol->nattrs != newpol->nattrs ||
+			memcmp(oldpol->attrs, newpol->attrs,
+				   sizeof(AttrNumber) * oldpol->nattrs))
+		{
+			if ( !throw )
+				return false;
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("distribution policy for \"%s\" "
+								"must be the same as that for \"%s\"",
+								RelationGetRelationName(newrel),
+								RelationGetRelationName(rel)),
+						 errOmitLocation(true)));
+		}
+	}
+	
+	return true;
+}
+	
