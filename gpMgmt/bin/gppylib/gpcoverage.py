@@ -94,7 +94,7 @@ class GpFigleafCoverage():
                     directory = os.path.normpath(os.path.dirname(self.filename))
                 RemoveFiles.local('Remove html files', directory + '/*.html')
             except:
-                logger.error('Failed to clean up coverage files')
+                self.logger.error('Failed to clean up coverage files')
         
                 
                 
