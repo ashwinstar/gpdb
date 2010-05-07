@@ -7778,38 +7778,34 @@ select * from get_ereport order by 1;
  iaad: ipc:00000284:  ereport(FATAL, 
  iaad: ipc:00000285:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
  iaad: ipc:00000286:  errmsg_internal("out of on_shmem_exit slots"))); 
- iaaf: index:00000555:  ereport(ERROR, 
- iaaf: index:00000556:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- iaaf: index:00000557:  errmsg("user-defined indexes on system catalog tables are not supported"))); 
- iaaf: index:00000565:  ereport(ERROR, 
- iaaf: index:00000566:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- iaaf: index:00000567:  errmsg("concurrent index creation on system catalog tables is not supported"))); 
- iaaf: index:00000580:  ereport(ERROR, 
- iaaf: index:00000581:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- iaaf: index:00000582:  errmsg("shared indexes cannot be created after initdb"))); 
- iaaf: index:00000585:  ereport(ERROR, 
- iaaf: index:00000586:  (errcode(ERRCODE_DUPLICATE_TABLE), 
- iaaf: index:00000587:  errmsg("relation "%s" already exists", 
- iaaf: index:00000588:  indexRelationName))); 
- iaaf: index:00001819:  ereport(ERROR, 
- iaaf: index:00001820:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
- iaaf: index:00001821:  errmsg("can not create index concurrently since the block " 
- iaaf: index:00001822:  "directory for %s does not exist. Use CREATE INDEX " 
- iaaf: index:00001823:  "to create the index and the block directory.", 
- iaaf: index:00001824:  RelationGetRelationName(parentRelation)))); 
- iaaf: index:00001974:  ereport(ERROR, 
- iaaf: index:00001975:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
- iaaf: index:00001976:  errmsg("can not create index concurrently since the block " 
- iaaf: index:00001977:  "directory for %s does not exist. Use CREATE INDEX " 
- iaaf: index:00001978:  "to create the index and the block directory.", 
- iaaf: index:00001979:  RelationGetRelationName(parentRelation)))); 
- iaaf: index:00002459:  ereport(ERROR, 
- iaaf: index:00002460:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- iaaf: index:00002461:  errmsg("cannot reindex temporary tables of other sessions"))); 
- iaaf: index:00002487:  ereport(ERROR, 
- iaaf: index:00002488:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- iaaf: index:00002489:  errmsg("shared index "%s" can only be reindexed in stand-alone mode", 
- iaaf: index:00002490:  RelationGetRelationName(iRel)))); 
+ iaaf: index:00000555:  ereport(ERROR,
+ iaaf: index:00000556:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ iaaf: index:00000557:  errmsg("user-defined indexes on system catalog tables are not supported")));
+ iaaf: index:00000565:  ereport(ERROR,
+ iaaf: index:00000566:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ iaaf: index:00000567:  errmsg("concurrent index creation on system catalog tables is not supported")));
+ iaaf: index:00000580:  ereport(ERROR,
+ iaaf: index:00000581:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+ iaaf: index:00000582:  errmsg("shared indexes cannot be created after initdb")));
+ iaaf: index:00000585:  ereport(ERROR,
+ iaaf: index:00000586:  (errcode(ERRCODE_DUPLICATE_TABLE),
+ iaaf: index:00000587:  errmsg("relation "%s" already exists",
+ iaaf: index:00000588:  indexRelationName)));
+ iaaf: index:00001819:  ereport(ERROR,
+ iaaf: index:00001820:  (errcode(ERRCODE_GP_COMMAND_ERROR),
+ iaaf: index:00001821:  errmsg("Cannot create index concurrently. Create an index non-concurrently "
+ iaaf: index:00001822:  "before creating an index concurrently in an appendonly table.")));
+ iaaf: index:00001972:  ereport(ERROR,
+ iaaf: index:00001973:  (errcode(ERRCODE_GP_COMMAND_ERROR),
+ iaaf: index:00001974:  errmsg("Cannot create index concurrently. Create an index non-concurrently "
+ iaaf: index:00001975:  "before creating an index concurrently in an appendonly table.")));
+ iaaf: index:00002455:  ereport(ERROR,
+ iaaf: index:00002456:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ iaaf: index:00002457:  errmsg("cannot reindex temporary tables of other sessions")));
+ iaaf: index:00002483:  ereport(ERROR,
+ iaaf: index:00002484:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+ iaaf: index:00002485:  errmsg("shared index "%s" can only be reindexed in stand-alone mode",
+ iaaf: index:00002486:  RelationGetRelationName(iRel))));
  iaag: icxtcp:00000247:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
  iaag: icxtcp:00000248:  errmsg("Interconnect Error: Could not set up tcp listener socket."), 
  iaag: icxtcp:00000249:  errdetail("%m%s", fun))); 
@@ -18326,6 +18322,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000076:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000077:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000078:  str))); 
-(18259 rows)
+(18255 rows)
 
 drop external table get_ereport;

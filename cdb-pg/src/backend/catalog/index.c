@@ -1818,10 +1818,8 @@ IndexBuildAppendOnlyRowScan(Relation parentRelation,
 		if (indexInfo->ii_Concurrent)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_COMMAND_ERROR),
-					 errmsg("can not create index concurrently since the block "
-							"directory for %s does not exist. Use CREATE INDEX "
-							"to create the index and the block directory.",
-							RelationGetRelationName(parentRelation))));
+					 errmsg("Cannot create index concurrently. Create an index non-concurrently "
+					        "before creating an index concurrently in an appendonly table.")));
 		
 		/* Obtain the oids from IndexInfo. */
 		Assert(indexInfo->opaque != NULL);
@@ -1973,10 +1971,8 @@ IndexBuildAppendOnlyColScan(Relation parentRelation,
 		if (indexInfo->ii_Concurrent)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_COMMAND_ERROR),
-					 errmsg("can not create index concurrently since the block "
-							"directory for %s does not exist. Use CREATE INDEX "
-							"to create the index and the block directory.",
-							RelationGetRelationName(parentRelation))));
+					 errmsg("Cannot create index concurrently. Create an index non-concurrently "
+					        "before creating an index concurrently in an appendonly table.")));
 
 		/* Obtain the oids from IndexInfo. */
 		Assert(indexInfo->opaque != NULL);
