@@ -79,14 +79,15 @@ def simple_main( createOptionParserFn, createCommandFn, mainOptions=None) :
         if useHelperToolLogging:
             gplog.setup_helper_tool_logging(execname, hostname, username)
         else:
-            gplog.setup_tool_logging(execname, hostname, username, logdir=options.logfileDirectory, nonuser=False )
+            gplog.setup_tool_logging(execname, hostname, username,
+                                        logdir=options.ensure_value("logfileDirectory", None), nonuser=False )
 
         if forceQuiet:
             gplog.quiet_stdout_logging()
         else:
-            if options.verbose:
+            if options.ensure_value("verbose", False):
                 gplog.enable_verbose_logging()
-            if options.quiet:
+            if options.ensure_value("quiet", False):
                 gplog.quiet_stdout_logging()
 
         if not suppressStartupLogMessage:
@@ -111,7 +112,7 @@ def simple_main( createOptionParserFn, createCommandFn, mainOptions=None) :
         if options is None:
             logger.exception("%s failed.  exiting...", gProgramName)
         else:
-            if options.verbose:
+            if options.ensure_value("verbose", False):
                 logger.exception("%s failed.  exiting...", gProgramName)
             else:
                 logger.fatal("%s failed. (Reason='%s') exiting..." % (gProgramName, e))
