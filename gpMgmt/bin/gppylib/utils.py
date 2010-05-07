@@ -599,3 +599,27 @@ def normalizeAndValidateInputPath(path, errorMessagePathSource=None, errorMessag
         raise PathNormalizationException("Path entered%sis invalid; it must be a full path.  Path: '%s'%s" %
                 ( firstPart, path, secondPart ))
     return os.path.normpath(path)
+
+
+def writeGpDbidFile(directory, dbid):
+    """
+    Writes the gp_dbid file to the given directory, marking it as for the given dbid
+    """
+    filename = os.path.join(directory, 'gp_dbid')
+    f = open(filename, 'w')
+    f.write("# Greenplum Database identifier for this master/segment.\n")
+    f.write("# Do not change the contents of this file.\n")
+    f.write('dbid = %d\n' % dbid)
+    f.close()
+    return
+
+def canStringBeParsedAsInt(str):
+    """
+    return True if int(str) would produce a value rather than throwing an error,
+          else return False
+    """
+    try:
+        int(str)
+        return True
+    except ValueError:
+        return False

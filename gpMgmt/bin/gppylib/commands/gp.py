@@ -634,9 +634,10 @@ class ConfigureNewSegment(Command):
                 if fsOid not in [gparray.SYSTEM_FILESPACE]:
                     filespaces.append(path)
 
-            result[hostname] += '%s:%d:%s:%s%s' %  (seg.getSegmentDataDirectory(), seg.getSegmentPort(),
+            result[hostname] += '%s:%d:%s:%s:%d%s' % (seg.getSegmentDataDirectory(), seg.getSegmentPort(),
                         "true" if seg.isSegmentPrimary(current_role=True) else "false",
                         "true" if isTargetReusedLocation else "false",
+                        seg.getSegmentDbId(),
                         "" if len(filespaces) == 0 else (":" + ":".join(filespaces))  
             )
         return result

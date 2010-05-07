@@ -34,14 +34,8 @@ class GpSetDBId:
         self.__directory = options.directory
         self.__dbid      = options.dbid
 
-    def run(self):        
-        filename = os.path.join(self.__directory, 'gp_dbid')
-        f = open(filename, 'w')
-        f.write("# Greenplum Database identifier for this master/segment.\n")
-        f.write("# Do not change the contents of this file.\n")
-        f.write('dbid = %d\n' % self.__dbid)
-        f.close()
-        return
+    def run(self):
+        utils.writeGpDbidFile(self.__directory, self.__dbid)
 
     def cleanup(self):
         pass

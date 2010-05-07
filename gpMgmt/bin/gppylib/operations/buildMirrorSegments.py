@@ -49,7 +49,8 @@ gDatabaseFiles = [
     "postgresql.conf",
     "postmaster.log",
     "postmaster.opts",
-    "postmaster.pid"
+    "postmaster.pid",
+    "gp_dbid"
         ]
 
 #

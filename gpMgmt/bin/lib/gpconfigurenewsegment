@@ -13,6 +13,7 @@ from gppylib.commands.pg import DbStatus
 from gppylib import gplog
 from gppylib.commands.base import *
 from gppylib.gparray import GpDB
+from gppylib.utils import canStringBeParsedAsInt, writeGpDbidFile
 from time import sleep
 from gppylib.operations.buildMirrorSegments import gDatabaseDirectories, gDatabaseFiles
 
@@ -28,7 +29,7 @@ DEFAULT_BATCH_SIZE=8
 EXECNAME = os.path.split(__file__)[-1]
 
 class ConfExpSegCmd(Command):
-    def __init__(self, name, cmdstr, datadir, port, newseg, tarfile, useLighterDirectoryValidation, isPrimary,
+    def __init__(self, name, cmdstr, datadir, port, dbid, newseg, tarfile, useLighterDirectoryValidation, isPrimary,
                     filespaceDirs, verbose=False):
         """
         @param useLighterDirectoryValidation if True then we don't require an empty directory; we just require that
@@ -36,6 +37,7 @@ class ConfExpSegCmd(Command):
         """
         self.datadir = datadir
         self.port = int(port)
+        self.dbid = dbid
         self.newseg = newseg
         self.tarfile = tarfile
         self.verbose = verbose
@@ -104,8 +106,8 @@ class ConfExpSegCmd(Command):
                 except Exception, e:
                     self.set_results(CommandResult(1,'',e,True,False))
                     raise
-        
-                logger.info("extract tar file to new segment")    
+
+                logger.info("extract tar file to new segment")
                 extractTarCmd = unix.ExtractTar('extract tar file to new segment', self.tarfile, self.datadir )
                 try:
                     logger.debug('Extracting tar file %s to %s' % (self.tarfile, self.datadir))
@@ -115,6 +117,9 @@ class ConfExpSegCmd(Command):
                     logger.error(extractTarCmd.get_results())
                     raise
         
+                logger.info("create gp_dbid file for segment")
+                writeGpDbidFile( self.datadir, self.dbid )
+
                 logger.info("Updating %s/postgresql.conf" % self.datadir)
                 modifyPostgresqlConfCmd = ModifyPostgresqlConfSetting('Updating %s/postgresql.conf' % self.datadir,
                                                                       self.datadir + '/postgresql.conf',
@@ -197,16 +202,18 @@ def parseargs():
     conf_lines = options.confinfo.split(',')
     for line in conf_lines:
         conf_vals = line.split(':')
-        if len(conf_vals) < 4:
+        if len(conf_vals) < 5:
             raise Exception('Invalid configuration value: %s' % conf_vals)
         if conf_vals[0] == '':
             raise Exception('Missing data directory in: %s' % conf_vals)
-        if conf_vals[1] < 1024:
+        if not canStringBeParsedAsInt(conf_vals[1]) or conf_vals[1] < 1024:
             raise Exception('Invalid port in: %s' % conf_vals)
         if conf_vals[2] != 'true' and conf_vals[2] != 'false':
             raise Exception('Invalid isPrimary option in: %s' % conf_vals)
         if conf_vals[3] != 'true' and conf_vals[3] != 'false':
             raise Exception('Invalid directory validation option in: %s' % conf_vals)
+        if not canStringBeParsedAsInt(conf_vals[4]):
+            raise Exception('Invalid dbid option in: %s' % conf_vals)
         seg_info.append(conf_vals)
 
     seg_info_len = len(seg_info)
@@ -235,9 +242,10 @@ try:
         port = seg[1]
         isPrimary = seg[2] == "true"
         directoryValidationLevel = seg[3] == "true"
-        filespaceDirs = seg[4:]
+        dbid = int(seg[4])
+        filespaceDirs = seg[5:]
 
-        cmd = ConfExpSegCmd('Configure segment directory', ' '.join(sys.argv), dataDir, port,
+        cmd = ConfExpSegCmd('Configure segment directory', ' '.join(sys.argv), dataDir, port, dbid,
                             options.newsegments, options.tarfile, directoryValidationLevel,
                             isPrimary,
                             filespaceDirs, options.verbose)
