@@ -105,7 +105,7 @@ static AOCSFileSegInfo *GetAOCSFileSegInfo(Relation prel,
     Snapshot usesnapshot = (forupdate ? SnapshotSelf : GetTransactionSnapshot());
 
     if(forupdate)
-        LWLockAcquire(AppendOnlyLock, LW_EXCLUSIVE);
+        LWLockAcquire(AOSegFileAddNewEntryLock, LW_EXCLUSIVE);
 
     segrel = heap_open(aoEntry->segrelid, lkmode);
     segidx = index_open(aoEntry->segidxid, lkmode);
@@ -133,7 +133,7 @@ static AOCSFileSegInfo *GetAOCSFileSegInfo(Relation prel,
             AssertImply(Gp_role == GP_ROLE_EXECUTE, Gp_is_writer);
 
             InsertInitialAOCSFileSegInfo(aoEntry->segrelid, segno, nvp);
-            LWLockRelease(AppendOnlyLock);
+            LWLockRelease(AOSegFileAddNewEntryLock);
 
             return GetAOCSFileSegInfo(prel, aoEntry, segno, lkst);
         }
@@ -155,7 +155,7 @@ static AOCSFileSegInfo *GetAOCSFileSegInfo(Relation prel,
         TransactionId 	update_xmax;
         LockTupleWaitType waittype;
 
-        LWLockRelease(AppendOnlyLock);
+        LWLockRelease(AOSegFileAddNewEntryLock);
 lmark:
         segtupdata = *segtup;
 

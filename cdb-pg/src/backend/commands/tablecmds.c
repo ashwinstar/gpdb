@@ -6175,9 +6175,9 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 			 * old relation so we are guaranteed to not drop the hash
 			 * entry from under any concurrent operation.
 			 */
-			LWLockAcquire(AppendOnlyLock, LW_EXCLUSIVE);
+			LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
 			AORelRemoveHashEntry(RelationGetRelid(oldrel));
-			LWLockRelease(AppendOnlyLock);
+			LWLockRelease(AOSegFileLock);
 		}
 		else
 		{

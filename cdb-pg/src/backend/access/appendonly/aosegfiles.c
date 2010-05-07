@@ -192,7 +192,7 @@ GetFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, int segno, SegfileL
 	LockTupleWaitType waittype;
 
 	if(forupdate)
-		LWLockAcquire(AppendOnlyLock, LW_EXCLUSIVE);
+		LWLockAcquire(AOSegFileAddNewEntryLock, LW_EXCLUSIVE);
 
 	/*
 	 * Check the pg_aoseg relation to be certain the ao table
@@ -239,7 +239,7 @@ GetFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, int segno, SegfileL
 						"writer gang");
 
 			InsertInitialSegnoEntry(aoEntry, segno);
-			LWLockRelease(AppendOnlyLock);
+			LWLockRelease(AOSegFileAddNewEntryLock);
 			return GetFileSegInfo(parentrel, aoEntry, segno, lockstrategy); /* recurse */
 		}
 		else
@@ -253,9 +253,6 @@ GetFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, int segno, SegfileL
 
 	index_endscan(aoscan);
 	index_close(pg_aoseg_idx, lockmode);
-
-	if(forupdate)
-		LWLockRelease(AppendOnlyLock);
 
 	Assert(HeapTupleIsValid(tuple));
 
@@ -280,6 +277,8 @@ GetFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, int segno, SegfileL
 	 */
 	if(forupdate)
 	{
+		LWLockRelease(AOSegFileAddNewEntryLock);
+		
 lmark:	;
 		tupdata = *tuple;
 		Assert(ItemPointerIsValid(&tupdata.t_self));

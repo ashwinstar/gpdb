@@ -241,7 +241,7 @@ AORelCreateHashEntry(Oid relid)
  * AORelRemoveEntry -- remove the hash entry for a given relation.
  *
  * Notes
- *	The append only lightweight lock (AppendOnlyLock) *must* be held for
+ *	The append only lightweight lock (AOSegFileLock) *must* be held for
  *	this operation.
  */
 bool
@@ -316,7 +316,7 @@ AORelGetHashEntry(Oid relid)
  * AppendOnlyRelHashNew -- return a new (empty) aorel hash object to initialize.
  *
  * Notes
- *	The appendonly lightweight lock (AppendOnlyLock) *must* be held for
+ *	The appendonly lightweight lock (AOSegFileLock) *must* be held for
  *	this operation.
  */
 static AORelHashEntry
@@ -489,12 +489,12 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 									 "relation \"%s\" (%d) ", 
 									 get_rel_name(relid), relid)));
 
-			LWLockAcquire(AppendOnlyLock, LW_EXCLUSIVE);
+			LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
 
 			/* create a hash entry for this relation if one doesn't yet exist */
 			if(!AORelCreateHashEntry(relid))
 			{
-				LWLockRelease(AppendOnlyLock);
+				LWLockRelease(AOSegFileLock);
 				ereport(ERROR, (errmsg("can't have more than %d different append-only "
 						    "tables open for writing data at the same time. "
 						    "if tables are heavily partitioned or if your "
@@ -575,7 +575,7 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 			aoentry->relsegfiles[usesegno].inuse = true;
 			aoentry->relsegfiles[usesegno].xid = CurrentXid;
 
-			LWLockRelease(AppendOnlyLock);
+			LWLockRelease(AOSegFileLock);
 
 			Assert(usesegno >= 0);
 			Assert(usesegno != RESERVED_SEGNO);
@@ -729,7 +729,7 @@ AtCommit_AppendOnly(void)
 
 	hash_seq_init(&status, AppendOnlyHash);
 
-	LWLockAcquire(AppendOnlyLock, LW_EXCLUSIVE);
+	LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
 
 	/*
 	 * for each AO table hash entry
@@ -778,7 +778,7 @@ AtCommit_AppendOnly(void)
 		}
 	}
 
-	LWLockRelease(AppendOnlyLock);
+	LWLockRelease(AOSegFileLock);
 }
 
 /*
@@ -802,7 +802,7 @@ AtAbort_AppendOnly(void)
 
 	hash_seq_init(&status, AppendOnlyHash);
 
-	LWLockAcquire(AppendOnlyLock, LW_EXCLUSIVE);
+	LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
 
 	/*
 	 * for each AO table hash entry
@@ -847,7 +847,7 @@ AtAbort_AppendOnly(void)
 		}
 	}
 
-	LWLockRelease(AppendOnlyLock);
+	LWLockRelease(AOSegFileLock);
 }
 
 /*
@@ -872,7 +872,7 @@ AtEOXact_AppendOnly(void)
 
 	hash_seq_init(&status, AppendOnlyHash);
 
-	LWLockAcquire(AppendOnlyLock, LW_EXCLUSIVE);
+	LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
 
 	/*
 	 * for each AO table hash entry
@@ -929,7 +929,7 @@ AtEOXact_AppendOnly(void)
 		}
 	}
 
-	LWLockRelease(AppendOnlyLock);
+	LWLockRelease(AOSegFileLock);
 
 }
 
