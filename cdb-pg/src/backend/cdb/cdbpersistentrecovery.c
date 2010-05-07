@@ -510,7 +510,7 @@ PersistentRecovery_ShouldHandlePass1XLogRec(
 																			 record->xl_info);
 	RelationChangeInfo 	relationChangeInfoArray[arrlen];
 	
-	if (Debug_persistent_recovery_print)
+	if (Debug_persistent_recovery_print && ChangeTracking_ShouldTrackChanges())
 		ChangeTracking_PrintRelationChangeInfo(
 											record->xl_rmid,
 											record->xl_info,
@@ -731,7 +731,7 @@ PersistentRecovery_ShouldHandlePass3XLogRec(
 
 	bool exists;
 
-	if (Debug_persistent_recovery_print)
+	if (Debug_persistent_recovery_print && ChangeTracking_ShouldTrackChanges())
 		ChangeTracking_PrintRelationChangeInfo(
 											record->xl_rmid,
 											record->xl_info,
@@ -740,7 +740,8 @@ PersistentRecovery_ShouldHandlePass3XLogRec(
 											/* weAreGeneratingXLogNow */ false,
 											/* printSkipIssuesOnly */ false);
 
-	ChangeTracking_GetRelationChangeInfoFromXlog(
+	if (ChangeTracking_ShouldTrackChanges())
+		ChangeTracking_GetRelationChangeInfoFromXlog(
 										  record->xl_rmid,
 										  record->xl_info,
 										  (void*)XLogRecGetData(record), 

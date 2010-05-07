@@ -1825,7 +1825,7 @@ fi
 if [ x"" != x"$STANDBY_HOSTNAME" ];then
 	CREATE_STANDBY_QD
 fi
-
+env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$U_DB" -c "CHECKPOINT;" >> $LOG_FILE 2>&1
 STOP_QD_PRODUCTION
 START_QD_PRODUCTION
 
