@@ -108,7 +108,12 @@ gp_pgdatabase__(PG_FUNCTION_ARGS)
 		values[1] = BoolGetDatum(SEGMENT_IS_ACTIVE_PRIMARY(db));
 		values[2] = UInt16GetDatum(db->segindex);
 
-		values[3] = BoolGetDatum(SEGMENT_IS_ACTIVE_PRIMARY(db));
+		values[3] = BoolGetDatum(false);
+		if (db->status == 'u')
+		{
+			if (db->mode == 's' || db->mode == 'c')
+				values[3] = BoolGetDatum(true);
+		}
 		values[4] = BoolGetDatum(db->preferred_role == 'p');
 
 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
