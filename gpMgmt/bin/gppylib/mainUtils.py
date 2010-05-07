@@ -72,13 +72,14 @@ def simple_main( createOptionParserFn, createCommandFn, mainOptions=None) :
         execname = getProgramName()
         hostname = unix.getLocalHostname()
         username = unix.getUserName
-        if useHelperToolLogging:
-            gplog.setup_helper_tool_logging(execname, hostname, username)
-        else:
-            gplog.setup_tool_logging(execname, hostname, username, nonuser=False)
 
         parser = createOptionParserFn()
         (options, args) = parser.parse_args()
+
+        if useHelperToolLogging:
+            gplog.setup_helper_tool_logging(execname, hostname, username)
+        else:
+            gplog.setup_tool_logging(execname, hostname, username, logdir=options.logfileDirectory, nonuser=False )
 
         if forceQuiet:
             gplog.quiet_stdout_logging()
