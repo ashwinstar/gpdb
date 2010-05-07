@@ -2135,8 +2135,15 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	}
 	else
 	{
-		/* check there is not space for an OID */
-		Assert(!(tup->t_data->t_infomask & HEAP_HASOID));
+ 		/* Check there is not space for an OID, since pgclass.relhasoids says
+ 		 * there shouldn't be one.  The hidden "escape hatch" GUC is here so 
+ 		 * that we can revert to the old (no error) behavior in the unlikely
+ 		 * event of an emergency in the field.
+		 */
+ 		if ( tup->t_data->t_infomask & HEAP_HASOID && gp_heap_require_relhasoids_match )
+ 		{
+ 			elog(ERROR, "tuple has oid, but schema does not");
+ 		}
 	}
 
 	tup->t_data->t_infomask &= ~(HEAP_XACT_MASK);
