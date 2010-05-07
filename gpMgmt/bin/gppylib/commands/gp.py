@@ -562,7 +562,10 @@ class ModifyPostgresqlConfSetting(Command):
 #-----------------------------------------------
 class GpCleanSegmentDirectories(Command):
     """
-    Clean all of the directories for a set of segments on the host
+    Clean all of the directories for a set of segments on the host.
+
+    Does NOT delete all files in the data directories -- tries to preserve logs and any non-database
+       files the user has placed there
     """
     def __init__(self, name, segmentsToClean, ctxt, remoteHost):
         pickledSegmentsStr = base64.urlsafe_b64encode(pickle.dumps(segmentsToClean))

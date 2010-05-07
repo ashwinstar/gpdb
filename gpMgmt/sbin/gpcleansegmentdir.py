@@ -41,7 +41,8 @@ class GpCleanSegmentDirectoryProgram:
             logger.info("Cleaning %s" % dir)
 
             for toClean in gDatabaseDirectories:
-                unix.RemoveFiles('clean segment', os.path.join(dir, toClean)).run( validateAfter=True )
+                if toClean != "pg_log":
+                    unix.RemoveFiles('clean segment', os.path.join(dir, toClean)).run( validateAfter=True )
             for toClean in gDatabaseFiles:
                 unix.RemoveFiles('clean segment', os.path.join(dir, toClean)).run( validateAfter=True )
 

@@ -62,9 +62,10 @@ class ConfExpSegCmd(Command):
             if isSystemFilespaceDir:
                 # validate that we don't contain database directories or files
                 for toCheck in gDatabaseDirectories:
-                    if os.path.exists(os.path.join(self.datadir, toCheck)):
-                        raise Exception('Segment directory %s contains directory %s but should not!' %
-                                    (self.datadir, toCheck))
+                    if toCheck != "pg_log": # it's okay to have pg_log -- to save old logs around to look at
+                        if os.path.exists(os.path.join(self.datadir, toCheck)):
+                            raise Exception('Segment directory %s contains directory %s but should not!' %
+                                        (self.datadir, toCheck))
                 for toCheck in gDatabaseFiles:
                     if os.path.exists(os.path.join(self.datadir, toCheck)):
                         raise Exception('Segment directory %s contains file %s but should not!' %
