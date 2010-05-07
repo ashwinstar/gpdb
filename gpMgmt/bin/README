@@ -36,14 +36,12 @@ run_operator_tests.pl   -  ???
 
 List of Management Scripts Written in Bash
 ------------------------------------------
-bin/gpactivatestandby   -  Activates the Standby Master
 bin/gpcheckos.bash      -  Like gpcheckos, but in bash
 bin/gpcrondump          -  Dumps a database 
 bin/gpdbrestore         -  Restores a database dumped from gpcrondump
-bin/gpdeletesystem      -  Deletes a Greenplum Database
 bin/gpinitsystem        -  Creates a new Greenplum Database
 bin/gpload              -  Sets env variables and calls gpload.py
-bin/gpprintdbsizes      -  Executes SQL to compute total database size
+bin/gpprintdbsizes      -  Removed in 4.0
 bin/gprebuildsystem     -  Deprecated in 3.4
 
 
@@ -68,10 +66,13 @@ bin/gpssh-exkeys        -  Exchange ssh keys between many hosts
 
 List of Management Scripts Written in Python (gppylib - current libraries)
 --------------------------------------------------------------------------
+bin/gpactivatestandby   -  Activates the Standby Master
 bin/gpaddconfig         -  Edits postgresql.conf file for all segments
 bin/gpcheckos           -  Check operating system settings
+bin/gpdeletesystem      -  Deletes a Greenplum Database
 bin/gpexpand            -  Adds additional segments to a Greenplum Database
 bin/gpfilespace         -  Adds a filespace to a Greenplum Database (partial use of libraries)
+bin/gpinitstandby       -  Initializes standby master
 bin/gplogfilter         -  Filters log files
 bin/gpstart             -  Start a Greenplum Database
 bin/gpstop              -  Stop a Greenplum Database
@@ -84,8 +85,8 @@ sbin/gpsegcopy          -  Helper script for gpexpand
 sbin/gpsegstart.py      -  Helper script for gpstart
 sbin/gpsegstop.py       -  Helper script for gpstop
 sbin/gpsegtoprimaryormirror.py  - Helper script for failover
-sbin/gpstandbystart.sh  -  Unused Helper script for standby master  (unused)
-sbin/gpage.py           -  Greenplum Age (???)
+sbin/gpstandbystart.sh  -  Removed in 4.0
+sbin/gpage.py           -  Removed in 4.0 due to query prioritization
 sbin/gpsuspend.py       -  Unused Helper script for ???  (unused)
 
 
