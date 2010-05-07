@@ -127,29 +127,35 @@ class Popen(subprocess.Popen):
         """This function reads the rest of stderr and stdout and appends
         it to error and output.  This ensures that all output is received"""
         bytesRead=0
-        readList=[]
-        readList.append(self.stdout)
-        readList.append(self.stderr)
-        writeList = []
-        errorList=[]
         
         # consume rest of output
-        (rset,wset,eset) = self.__select(readList,writeList, errorList, timeout)
-        if self.stdout in rset:
-            while (True):
+        try:
+            (rset,wset,eset) = self.__select([self.stdout],[],[], timeout)
+            while (self.stdout in rset):
                 buffer = os.read(self.stdout.fileno(), 8192)
                 if buffer == '':
                     break
                 else:
                     output.append(buffer)
+                (rset,wset,eset) = self.__select([self.stdout],[],[], timeout)
+        except OSError:
+            # Pipe closed when we tried to read.  
+            pass 
     
-        if self.stderr in rset:
-            while (True):
+        try:
+            (rset,wset,eset) = self.__select([self.stderr],[],[], timeout)    
+            while (self.stderr in rset):
                 buffer = os.read(self.stderr.fileno(), 8192)
                 if buffer == '':
                     break
                 else:
                     error.append(buffer)
+                (rset, wset, eset) = self.__select([self.stderr], [], [], timeout)
+        except OSError:
+            # Pipe closed when we tried to read.
+            pass 
+            
+
 
         """ Close stdout and stderr PIPEs """
         self.stdout.close()

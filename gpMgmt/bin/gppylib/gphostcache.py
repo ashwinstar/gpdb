@@ -265,7 +265,7 @@ class GpHostCache:
 
         for cmd in cmds:
             # Look for commands that failed to ping
-            if cmd.get_results().rc != 0:
+            if not cmd.was_successful() != 0:
                 hostname=cmd.hostToPing
                 logger.warning("Ping to host: '%s' FAILED" % hostname)
                 logger.debug("  ping details: %s" % cmd)
