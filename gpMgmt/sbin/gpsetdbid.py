@@ -11,18 +11,15 @@ This script does NOT modify the configuration information stored within
 the database.
 '''
 
-import sys, os
+import os
 
 from optparse            import OptionGroup
-from gppylib.mainUtils   import simple_main, addStandardLoggingAndHelpOptions
-from gppylib.gpcoverage  import GpCoverage
+from gppylib.utils       import writeGpDbidFile
+from gppylib.mainUtils   import *
 from gppylib.gpparseopts import OptParser, OptChecker
-from gppylib.commands    import unix
-from gppylib.gplog       import setup_helper_tool_logging
+from gppylib.gpcoverage  import GpCoverage
 
 __help__ = [""]
-
-EXECNAME = os.path.split(sys.argv[0])[-1]
 
 #------------------------------- GpSetDBId --------------------------------
 class GpSetDBId:
@@ -35,7 +32,7 @@ class GpSetDBId:
         self.__dbid      = options.dbid
 
     def run(self):
-        utils.writeGpDbidFile(self.__directory, self.__dbid)
+        writeGpDbidFile(self.__directory, self.__dbid)
 
     def cleanup(self):
         pass

@@ -3474,15 +3474,34 @@ class GPUpgrade:
         
         # Already handled the master during TouchupConfig()
         for seg in self.segments:
-            GpCreateDBIdFile.remote('create gp_dbid file',
-                                    seg.getSegmentAddress(),
-                                    seg.getSegmentDataDirectory(),
-                                    seg.getSegmentDbId())
+            c = GpCreateDBIdFile('create gp_dbid file',
+                                 seg.getSegmentDataDirectory(),
+                                 seg.getSegmentDbId(),
+                                 ctxt=base.REMOTE,
+                                 remoteHost=seg.getSegmentAddress())
+            self.pool.addCommand(c)
         for seg in self.mirrors:
-            GpCreateDBIdFile.remote('create gp_dbid file',
-                                    seg.getSegmentAddress(),
-                                    seg.getSegmentDataDirectory(),
-                                    seg.getSegmentDbId())            
+            c = GpCreateDBIdFile('create gp_dbid file',
+                                 seg.getSegmentDataDirectory(),
+                                 seg.getSegmentDbId(),
+                                 ctxt=base.REMOTE,
+                                 remoteHost=seg.getSegmentAddress())
+            self.pool.addCommand(c)
+
+        try:
+            self.pool.join()
+        except:
+            self.pool.haltWork()
+            self.pool.joinWorkers()
+
+        failure = False
+        for cmd in self.pool.getCompletedItems():
+            if not cmd.was_successful():
+                msg = cmd.get_results().stdout.strip()
+                log_literal(logger, logging.ERROR, msg)
+                failure = True
+        if failure:
+            raise UpgradeError("Fatal Segment Error")
 
 
     #------------------------------------------------------------

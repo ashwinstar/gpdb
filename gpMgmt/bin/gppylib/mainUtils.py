@@ -71,7 +71,7 @@ def simple_main( createOptionParserFn, createCommandFn, mainOptions=None) :
     try:
         execname = getProgramName()
         hostname = unix.getLocalHostname()
-        username = unix.getUserName
+        username = unix.getUserName()
 
         parser = createOptionParserFn()
         (options, args) = parser.parse_args()

@@ -1,5 +1,6 @@
 import shutil, filecmp,re
 import os, fcntl, select, getpass, socket
+import stat
 from subprocess import *
 from sys import *
 from xml.dom import minidom
@@ -606,11 +607,14 @@ def writeGpDbidFile(directory, dbid):
     Writes the gp_dbid file to the given directory, marking it as for the given dbid
     """
     filename = os.path.join(directory, 'gp_dbid')
+    if os.path.exists(filename):
+        os.remove(filename)
     f = open(filename, 'w')
     f.write("# Greenplum Database identifier for this master/segment.\n")
     f.write("# Do not change the contents of this file.\n")
     f.write('dbid = %d\n' % dbid)
     f.close()
+    os.chmod(filename, stat.S_IRUSR)  # user read permissions (0400)
     return
 
 def canStringBeParsedAsInt(str):
