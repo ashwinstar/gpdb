@@ -5678,7 +5678,7 @@ select * from locktest;
 (14 rows)
 
 commit;
--- AO table (ao segments, block directory)
+-- AO table (ao segments, block directory won't exist after create)
 begin;
 -- creation
 create table g (i int, t text, n numeric)
@@ -5747,8 +5747,6 @@ select * from locktest;
  dropped table              | AccessExclusiveLock
  dropped table              | AccessExclusiveLock
  dropped table              | AccessExclusiveLock
- dropped table              | AccessExclusiveLock
- dropped table              | AccessExclusiveLock
  gp_distribution_policy     | RowExclusiveLock
  locktest                   | AccessShareLock
  pg_appendonly              | RowExclusiveLock
@@ -5761,7 +5759,7 @@ select * from locktest;
  pg_partition               | RowExclusiveLock
  pg_partition_rule          | RowExclusiveLock
  pg_type                    | RowExclusiveLock
-(19 rows)
+(17 rows)
 
 commit;
 -- Indexing

@@ -621,7 +621,7 @@ rebuild_relation(Relation OldHeap, Oid indexOid, ClusterStmt *stmt)
 	snprintf(NewHeapName, sizeof(NewHeapName), "pg_temp_%u", tableOid);
 
 	OIDNewHeap = make_new_heap(tableOid, NewHeapName, tableSpace,
-					&stmt->oidInfo);
+					&stmt->oidInfo, true /* createAoBlockDirectory */);
 
 	/*
 	 * We don't need CommandCounterIncrement() because make_new_heap did it.
@@ -667,7 +667,7 @@ rebuild_relation(Relation OldHeap, Oid indexOid, ClusterStmt *stmt)
  */
 Oid
 make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
-			  TableOidInfo * oidInfo)
+			  TableOidInfo * oidInfo, bool createAoBlockDirectory)
 {
 	TupleDesc	OldHeapDesc,
 				tupdesc;
@@ -776,9 +776,12 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 									  toastComptypeOid, is_part);
 	AlterTableCreateAoSegTableWithOid(OIDNewHeap, aOid, aiOid,
 									  aosegComptypeOid, is_part);
-	AlterTableCreateAoBlkdirTableWithOid(OIDNewHeap, blkdirOid, blkdirIdxOid,
-										 aoblkdirComptypeOid, is_part);
 
+    if ( createAoBlockDirectory )
+    {
+	    AlterTableCreateAoBlkdirTableWithOid(OIDNewHeap, blkdirOid, blkdirIdxOid,
+										 aoblkdirComptypeOid, is_part);
+    }
 	heap_close(OldHeap, NoLock);
 
 	return OIDNewHeap;

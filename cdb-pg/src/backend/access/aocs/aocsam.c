@@ -165,7 +165,9 @@ static int open_next_scan_seg(AOCSScanDesc scan)
 
     while(++scan->cur_seg < scan->total_seg)
     {
-        if(scan->seginfo[scan->cur_seg]->tupcount > 0)
+        AOCSFileSegInfo * curSegInfo = scan->seginfo[scan->cur_seg];
+
+        if(curSegInfo->tupcount > 0)
         {
             int i = 0;
             bool emptySeg = false;
@@ -173,7 +175,7 @@ static int open_next_scan_seg(AOCSScanDesc scan)
             {
                 if (scan->proj[i])
                 {
-                    AOCSVPInfoEntry *e = getAOCSVPEntry(scan->seginfo[scan->cur_seg], i);
+                    AOCSVPInfoEntry *e = getAOCSVPEntry(curSegInfo, i);
                     if (e->eof == 0)
                         emptySeg = true;
 
@@ -183,6 +185,7 @@ static int open_next_scan_seg(AOCSScanDesc scan)
 
             if (!emptySeg)
             {
+
 				/* If the scan also builds the block directory, initialize it here. */
 				if (scan->buildBlockDirectory)
 				{
@@ -190,24 +193,40 @@ static int open_next_scan_seg(AOCSScanDesc scan)
 					
 					Assert(scan->blockDirectory != NULL);
 					Assert(scan->aoEntry != NULL);
-					
+
+                    /*
+                     * if building the block directory, we need to make sure the sequence
+                     *   starts higher than our highest tuple's rownum.  In the case of upgraded blocks,
+                     *   the highest tuple will have tupCount as its row num
+                     * for non-upgrade cases, which use the sequence, it will be enough to start
+                     *   off the end of the sequence; note that this is not ideal -- if we are at
+                     *   least curSegInfo->tupcount + 1 then we don't even need to update
+                     *   the sequence value
+                     */
+                    int64 firstSequence =
+                        GetFastSequences(scan->aoEntry->segrelid,
+                                         curSegInfo->segno,
+                                         curSegInfo->tupcount + 1,
+                                         NUM_FAST_SEQUENCES,
+                                         &tid);
+
 					AppendOnlyBlockDirectory_Init_forInsert(scan->blockDirectory,
 															scan->aoEntry,
-															(FileSegInfo *)scan->seginfo[scan->cur_seg],
-															0, /* lastSequence */
+															(FileSegInfo *) curSegInfo,
+															0 /* lastSequence */,
 															scan->aos_rel,
-															scan->seginfo[scan->cur_seg]->segno,
+															curSegInfo->segno,
 															nvp,
 															true);
 
-					InsertFastSequenceEntry(scan->aoEntry->segrelid,
-											scan->seginfo[scan->cur_seg]->segno,
-											scan->seginfo[scan->cur_seg]->tupcount,
+                    InsertFastSequenceEntry(scan->aoEntry->segrelid,
+											curSegInfo->segno,
+											firstSequence,
 											&tid);
 				}
 
 				open_all_datumstream_segfiles(scan->aos_rel,
-											  scan->seginfo[scan->cur_seg],
+											  curSegInfo,
 											  scan->ds,
 											  scan->proj,
 											  nvp,
@@ -556,15 +575,15 @@ Oid aocs_insert_values(AOCSInsertDesc idesc, Datum *d, bool * null, AOTupleId *a
 				(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 				 errmsg("append-only column-oriented tables do not support rows with OIDs")));
 
-    /* As usual, at this momnet, we assume one col per vp */
+    /* As usual, at this moment, we assume one col per vp */
     for(i=0; i<rel->rd_att->natts; ++i)
     {
         int err = datumstream_put(idesc->ds[i], d[i], null[i]);
-
         if(err < 0)
         {
 			int itemCount = idesc->ds[i]->nth;
-			
+
+			/* write the block up to this one */
             datumstream_write_block(idesc->ds[i]);
 			if (itemCount > 0)
 			{
@@ -576,11 +595,16 @@ Oid aocs_insert_values(AOCSInsertDesc idesc, Datum *d, bool * null, AOTupleId *a
 					idesc->ds[i]->blockFirstRowNum,
 					AppendOnlyStorageWrite_LastWriteBeginPosition(idesc->ds[i]->ao_write),
 					itemCount);
-				
-				/* Set blockFirstRowNum to the next row number.*/
-				idesc->ds[i]->blockFirstRowNum = idesc->lastSequence + 1;
+
+    			/* since we have written all up to the new tuple,
+	    		  *   the new blockFirstRowNum is the inserted tuple's row number */
+                idesc->ds[i]->blockFirstRowNum = idesc->lastSequence + 1;
 			}
-			
+
+			Assert(idesc->ds[i]->blockFirstRowNum == idesc->lastSequence + 1);
+
+
+            /* now write this new item to the new block */
             err = datumstream_put(idesc->ds[i], d[i], null[i]);
             if (err < 0)
             {
@@ -588,21 +612,24 @@ Oid aocs_insert_values(AOCSInsertDesc idesc, Datum *d, bool * null, AOTupleId *a
                 err = datumstream_write_lob(idesc->ds[i], d[i]);
                 Assert(err >= 0);
 
-				itemCount = idesc->ds[i]->nth;
-				
-				/* Insert an entry to the block directory */
-				Assert(idesc->ds[i]->ao_write != NULL);
-				AppendOnlyBlockDirectory_InsertEntry(
-					&idesc->blockDirectory,
-					i,
-					idesc->ds[i]->blockFirstRowNum,
-					AppendOnlyStorageWrite_LastWriteBeginPosition(idesc->ds[i]->ao_write),
-					itemCount);
-				
-				/* Set blockFirstRowNum to the next row number.*/
-				idesc->ds[i]->blockFirstRowNum = idesc->lastSequence + 1;
-            }
+                /* Insert an entry to the block directory */
+                Assert(idesc->ds[i]->ao_write != NULL);
+                AppendOnlyBlockDirectory_InsertEntry(
+                    &idesc->blockDirectory,
+                    i,
+                    idesc->ds[i]->blockFirstRowNum,
+                    AppendOnlyStorageWrite_LastWriteBeginPosition(idesc->ds[i]->ao_write),
+                    1 /*itemCount -- always just the lob just inserted */
+                );
 
+
+                /**
+                 * A lob will live by itself in the block so
+                 * this assignment is for the block that contains tuples
+                 * AFTER the one we are inserting
+                 */
+                idesc->ds[i]->blockFirstRowNum = idesc->lastSequence + 2;
+            }
         }
     }
 

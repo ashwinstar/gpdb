@@ -935,11 +935,6 @@ ProcessUtility(Node *parsetree,
 						((CreateStmt *) parsetree)->oidInfo.aosegIndexOid,
 						&(((CreateStmt *) parsetree)->oidInfo.aosegComptypeOid),
 						((CreateStmt *)parsetree)->is_part_child);
-					AlterTableCreateAoBlkdirTableWithOid(relOid,
-						((CreateStmt *) parsetree)->oidInfo.aoblkdirOid,
-						((CreateStmt *) parsetree)->oidInfo.aoblkdirIndexOid,
-						&(((CreateStmt *) parsetree)->oidInfo.aoblkdirComptypeOid),
-						((CreateStmt *)parsetree)->is_part_child);
 				}
 			}
 			break;

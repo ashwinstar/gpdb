@@ -5514,8 +5514,10 @@ ATRewriteTables(List **wqueue,
 			snprintf(NewHeapName, sizeof(NewHeapName),
 					 "pg_temp_%u", tab->relid);
 
-			OIDNewHeap = make_new_heap(tab->relid, NewHeapName, newTableSpace, 
-									   &oidInfo[m]);
+            List *indexIds = RelationGetIndexList(rel);
+            OIDNewHeap = make_new_heap(tab->relid, NewHeapName, newTableSpace,
+                                       &oidInfo[m], list_length(indexIds) > 0);
+            list_free(indexIds);
 
 			/*
 			 * Copy the heap data into the new table with the desired

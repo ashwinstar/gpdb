@@ -4048,11 +4048,7 @@ OpenIntoRel(QueryDesc *queryDesc)
 									  intoClause->oidInfo.aosegIndexOid,
 									  &intoClause->oidInfo.aosegComptypeOid, 
 									  false);
-	AlterTableCreateAoBlkdirTableWithOid(intoRelationId, 
-                                      intoClause->oidInfo.aoblkdirOid, 
-                                      intoClause->oidInfo.aoblkdirIndexOid, 
-                                      &intoClause->oidInfo.aoblkdirComptypeOid, 
-                                      false);
+    /* don't create AO block directory here, it'll be created when needed */
 	/*
 	 * And open the constructed table for writing.
 	 */

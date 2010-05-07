@@ -195,6 +195,23 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 			if (scan->buildBlockDirectory)
 			{
 				ItemPointerData tid;
+
+                /*
+                 * if building the block directory, we need to make sure the sequence
+                 *   starts higher than our highest tuple's rownum.  In the case of upgraded blocks,
+                 *   the highest tuple will have tupCount as its row num
+                 * for non-upgrade cases, which use the sequence, it will be enough to start
+                 *   off the end of the sequence; note that this is not ideal -- if we are at
+                 *   least curSegInfo->tupcount + 1 then we don't even need to update
+                 *   the sequence value
+                 */
+                int64 firstSequence =
+                    GetFastSequences(scan->aoEntry->segrelid,
+                                     segno,
+                                     fsinfo->tupcount + 1,
+                                     NUM_FAST_SEQUENCES,
+                                     &tid);
+
 				
 				AppendOnlyBlockDirectory_Init_forInsert(scan->blockDirectory,
 														scan->aoEntry,
@@ -207,7 +224,7 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 				
 				InsertFastSequenceEntry(scan->aoEntry->segrelid,
 										segno,
-										fsinfo->tupcount,
+										firstSequence,
 										&tid);
 			}
 		

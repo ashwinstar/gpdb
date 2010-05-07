@@ -2948,7 +2948,7 @@ drop table g;
 select * from locktest;
 commit;
 
--- AO table (ao segments, block directory)
+-- AO table (ao segments, block directory won't exist after create)
 begin;
 -- creation
 create table g (i int, t text, n numeric)
