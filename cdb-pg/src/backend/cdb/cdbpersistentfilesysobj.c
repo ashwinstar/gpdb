@@ -47,84 +47,6 @@ typedef struct PersistentFileSysObjPrivateSharedMemory
 
 static PersistentFileSysObjPrivateSharedMemory *persistentFileSysObjPrivateSharedData = NULL;
 
-/*
- * This HUGE MAGIC DEFINE expands into module globals and two routines:
- *     PersistentFileSysObj_RelationOpenShared
- *     PersistentFileSysObj_RelationClose
- * It allows for opening the relation without going through pg_class, etc.
- */
-static FormData_pg_class 
-			PersistentFileSysObj_RelationPgClass = 
-							{Class_gp_persistent_relation_node};
-
-static FormData_pg_attribute 
-			PersistentFileSysObj_RelationAttrArray[Natts_gp_persistent_relation_node] =
-							{Schema_gp_persistent_relation_node};
-
-DirectOpenDefine(PersistentFileSysObj_Relation,\
-PersistentFileSysObj_RelationPgClass,\
-PersistentFileSysObj_RelationAttrArray,\
-false);
-
-
-/*
- * This HUGE MAGIC DEFINE expands into module globals and two routines:
- *     PersistentFileSysObj_DatabaseOpenShared
- *     PersistentFileSysObj_DatabaseClose
- * It allows for opening the relation without going through pg_class, etc.
- */
-static FormData_pg_class 
-			PersistentFileSysObj_DatabasePgClass = 
-							{Class_gp_persistent_database_node};
-
-static FormData_pg_attribute 
-			PersistentFileSysObj_DatabaseAttrArray[Natts_gp_persistent_database_node] =
-							{Schema_gp_persistent_database_node};
-
-DirectOpenDefine(PersistentFileSysObj_Database,\
-PersistentFileSysObj_DatabasePgClass,\
-PersistentFileSysObj_DatabaseAttrArray,\
-false);
-
-/*
- * This HUGE MAGIC DEFINE expands into module globals and two routines:
- *     PersistentFileSysObj_TablespaceOpenShared
- *     PersistentFileSysObj_TablespaceClose
- * It allows for opening the relation without going through pg_class, etc.
- */
-static FormData_pg_class 
-			PersistentFileSysObj_TablespacePgClass = 
-							{Class_gp_persistent_tablespace_node};
-
-static FormData_pg_attribute 
-			PersistentFileSysObj_TablespaceAttrArray[Natts_gp_persistent_tablespace_node] =
-							{Schema_gp_persistent_tablespace_node};
-
-DirectOpenDefine(PersistentFileSysObj_Tablespace,\
-PersistentFileSysObj_TablespacePgClass,\
-PersistentFileSysObj_TablespaceAttrArray,\
-false);
-
-
-/*
- * This HUGE MAGIC DEFINE expands into module globals and two routines:
- *     PersistentFileSysObj_FilespaceOpenShared
- *     PersistentFileSysObj_FilespaceClose
- * It allows for opening the relation without going through pg_class, etc.
- */
-static FormData_pg_class 
-			PersistentFileSysObj_FilespacePgClass = 
-							{Class_gp_persistent_filespace_node};
-
-static FormData_pg_attribute 
-			PersistentFileSysObj_FilespaceAttrArray[Natts_gp_persistent_filespace_node] =
-							{Schema_gp_persistent_filespace_node};
-
-DirectOpenDefine(PersistentFileSysObj_Filespace,\
-PersistentFileSysObj_FilespacePgClass,\
-PersistentFileSysObj_FilespaceAttrArray,\
-false);
-
 void PersistentFileSysObj_InitShared(
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData)
 {
@@ -182,7 +104,8 @@ void PersistentFileSysObj_Init(
 						storeData,
 						fsObjType,
 						GpGlobalSequence_PersistentRelation,
-						PersistentFileSysObj_RelationOpenShared,
+						DirectOpen_GpPersistentRelationNodeOpenShared,
+						DirectOpen_GpPersistentRelationNodeClose,
 						scanTupleCallback,
 						Natts_gp_persistent_relation_node,
 						Anum_gp_persistent_relation_node_persistent_serial_num,
@@ -201,7 +124,8 @@ void PersistentFileSysObj_Init(
 						storeData,
 						fsObjType,
 						GpGlobalSequence_PersistentDatabase,
-						PersistentFileSysObj_DatabaseOpenShared,
+						DirectOpen_GpPersistentDatabaseNodeOpenShared,
+						DirectOpen_GpPersistentDatabaseNodeClose,
 						scanTupleCallback,
 						Natts_gp_persistent_database_node,
 						Anum_gp_persistent_database_node_persistent_serial_num,
@@ -220,7 +144,8 @@ void PersistentFileSysObj_Init(
 						storeData,
 						fsObjType,
 						GpGlobalSequence_PersistentTablespace,
-						PersistentFileSysObj_TablespaceOpenShared,
+						DirectOpen_GpPersistentTableSpaceNodeOpenShared,
+						DirectOpen_GpPersistentTableSpaceNodeClose,
 						scanTupleCallback,
 						Natts_gp_persistent_tablespace_node,
 						Anum_gp_persistent_tablespace_node_persistent_serial_num,
@@ -239,7 +164,8 @@ void PersistentFileSysObj_Init(
 						storeData,
 						fsObjType,
 						GpGlobalSequence_PersistentFilespace,
-						PersistentFileSysObj_FilespaceOpenShared,
+						DirectOpen_GpPersistentFileSpaceNodeOpenShared,
+						DirectOpen_GpPersistentFileSpaceNodeClose,
 						scanTupleCallback,
 						Natts_gp_persistent_filespace_node,
 						Anum_gp_persistent_filespace_node_persistent_serial_num,
@@ -3192,6 +3118,8 @@ void PersistentFileSysObj_MarkSpecialScanIncremental(void)
 	 
 	ItemPointerData persistentTid;
 	int64 persistentSerialNum;
+
+	pg_usleep(45 * 1000000L);
 
 	PersistentFileSysObj_GetDataPtrs(
 								PersistentFsObjType_RelationFile,
