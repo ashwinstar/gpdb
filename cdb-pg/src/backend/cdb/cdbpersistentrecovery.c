@@ -510,7 +510,7 @@ PersistentRecovery_ShouldHandlePass1XLogRec(
 																			 record->xl_info);
 	RelationChangeInfo 	relationChangeInfoArray[arrlen];
 	
-	if (Debug_persistent_recovery_print && ChangeTracking_ShouldTrackChanges())
+	if (Debug_persistent_recovery_print)
 		ChangeTracking_PrintRelationChangeInfo(
 											record->xl_rmid,
 											record->xl_info,
@@ -519,15 +519,16 @@ PersistentRecovery_ShouldHandlePass1XLogRec(
 											/* weAreGeneratingXLogNow */ false,
 											/* printSkipIssuesOnly */ false);
 
-	if (ChangeTracking_ShouldTrackChanges())
-		ChangeTracking_GetRelationChangeInfoFromXlog(
-										  record->xl_rmid,
-										  record->xl_info,
-										  (void*)XLogRecGetData(record), 
-										  relationChangeInfoArray,
-										  &relationChangeInfoArrayCount,
-										  arrlen);
-
+	/*
+	 * Gather vital peristence information from the XLOG record about relations ONLY.
+	 */
+	ChangeTracking_GetRelationChangeInfoFromXlog(
+									  record->xl_rmid,
+									  record->xl_info,
+									  (void*)XLogRecGetData(record), 
+									  relationChangeInfoArray,
+									  &relationChangeInfoArrayCount,
+									  arrlen);
 	if (relationChangeInfoArrayCount == 0)
 	{
 		/*
@@ -594,26 +595,6 @@ PersistentRecovery_HandlePass2XLogRec(
 			relFileNode.relNode != GpPersistentTablespaceNodeRelationId &&
 			relFileNode.relNode != GpPersistentFilespaceNodeRelationId)
 			return;
-
-		/*
-		 * The XLOG record applies to one of our persistent relations.
-		 */
-		if (Debug_persistent_recovery_print)
-		{
-			StringInfoData buf;
-		
-			initStringInfo(&buf);
-			appendStringInfo(&buf, "Persistent Relation REDO @ %s; LSN %s: ",
-							 XLogLocationToString(beginLoc),
-							 XLogLocationToString2(lsn));
-			XLog_OutRec(&buf, record);
-			appendStringInfo(&buf, " - ");
-			RmgrTable[record->xl_rmid].rm_desc(&buf,
-											   record->xl_info,
-											   XLogRecGetData(record));
-			elog(Debug_persistent_recovery_print_level, "%s", buf.data);
-			pfree(buf.data);
-		}
 	}
 	else if (rmid == RM_XACT_ID)
 	{
@@ -627,23 +608,6 @@ PersistentRecovery_HandlePass2XLogRec(
 		/*
 		 * The XLOG record is for transaction module...
 		 */
-		if (Debug_persistent_recovery_print)
-		{
-			StringInfoData buf;
-		
-			initStringInfo(&buf);
-			appendStringInfo(&buf, "Transaction Module REDO @ %s; LSN %s: ",
-							 XLogLocationToString(beginLoc),
-							 XLogLocationToString2(lsn));
-			XLog_OutRec(&buf, record);
-			appendStringInfo(&buf, " - ");
-			RmgrTable[record->xl_rmid].rm_desc(&buf,
-											   record->xl_info,
-											   XLogRecGetData(record));
-			elog(Debug_persistent_recovery_print_level, "%s", buf.data);
-			pfree(buf.data);
-		}
-
 		if (!xact_redo_get_info(
 							record,
 							&infoKind,
@@ -740,14 +704,16 @@ PersistentRecovery_ShouldHandlePass3XLogRec(
 											/* weAreGeneratingXLogNow */ false,
 											/* printSkipIssuesOnly */ false);
 
-	if (ChangeTracking_ShouldTrackChanges())
-		ChangeTracking_GetRelationChangeInfoFromXlog(
-										  record->xl_rmid,
-										  record->xl_info,
-										  (void*)XLogRecGetData(record), 
-										  relationChangeInfoArray,
-										  &relationChangeInfoArrayCount,
-										  arrlen);
+	/*
+	 * Gather vital peristence information from the XLOG record about relations ONLY.
+	 */
+	ChangeTracking_GetRelationChangeInfoFromXlog(
+									  record->xl_rmid,
+									  record->xl_info,
+									  (void*)XLogRecGetData(record), 
+									  relationChangeInfoArray,
+									  &relationChangeInfoArrayCount,
+									  arrlen);
 
 	if (relationChangeInfoArrayCount == 0)
 	{
@@ -1262,9 +1228,8 @@ PersistentRecovery_CrashAbort(void)
 	xactCount = 0;
 	while (true)
 	{
-		int count;
 		bool needsAbort;
-		int i;
+		int createPendingCount;
 		int e;
 		PersistentEndXactFsObj *endXactFsObjs;
 		PersistentEndXactRecObjects persistentObjects;
@@ -1292,9 +1257,6 @@ PersistentRecovery_CrashAbort(void)
 		 * We don't know the status of the transaction until we examine the
 		 * persistent node states.
 		 */
-
-		count = DoublyLinkedHead_Count(&xactEntry->fsObjEntryList);
-
 		needsAbort = false;
 
 		fsObjEntry = 
@@ -1302,7 +1264,7 @@ PersistentRecovery_CrashAbort(void)
 									offsetof(FsObjEntryData, xactLinks),
 									&xactEntry->fsObjEntryList);
 									
-		e = 0;
+		createPendingCount = 0;
 		while (fsObjEntry != NULL)
 		{
 			if (fsObjEntry->state == PersistentFileSysState_CreatePending)
@@ -1314,11 +1276,13 @@ PersistentRecovery_CrashAbort(void)
  						 "Needs-Abort REDO: (New state 'Aborting Create') %s",
  						 FsObjEntryToString(fsObjEntry));
 
-				e++;
+				createPendingCount++;
 			}
 			else if (fsObjEntry->state != PersistentFileSysState_Free)
 			{
-				Assert(!needsAbort);
+				if (needsAbort)
+					elog(ERROR, "Found persistent '%s' entry among 'Create Pending' entries",
+						 FsObjEntryToString(fsObjEntry));
 				break;
 			}
 
@@ -1330,14 +1294,19 @@ PersistentRecovery_CrashAbort(void)
 		}
 
 		if (!needsAbort)
+		{
+			Assert(createPendingCount == 0);
 			continue;
+		}
 
-		if (e == 0)
-			continue;
+		if (Debug_persistent_recovery_print)
+			elog(Debug_persistent_recovery_print_level, 
+				 "PersistentRecovery_CrashAbort: Found %d 'Create Pending' persistent file-system objects",
+				 createPendingCount);
 
 		endXactFsObjs = 
 			(PersistentEndXactFsObj*)
-				palloc(count * sizeof(PersistentEndXactFsObj));
+				palloc0(createPendingCount * sizeof(PersistentEndXactFsObj));
 		
 		fsObjEntry = 
 			(FsObjEntry) DoublyLinkedHead_First(
@@ -1348,6 +1317,8 @@ PersistentRecovery_CrashAbort(void)
 		{
 			if (fsObjEntry->state == PersistentFileSysState_CreatePending)
 			{
+				Assert(e < createPendingCount);
+
 				endXactFsObjs[e].fsObjName = fsObjEntry->fsObjName;
 				endXactFsObjs[e].relStorageMgr = fsObjEntry->relStorageMgr;
 				endXactFsObjs[e].persistentTid = fsObjEntry->key.persistentTid;
@@ -1366,18 +1337,20 @@ PersistentRecovery_CrashAbort(void)
 		PersistentEndXactRec_AddCreateFsObjs(
 										&persistentObjects,
 										endXactFsObjs, 
-										count);
+										createPendingCount);
 
 		RecordCrashTransactionAbortRecord(
 									xactEntry->xid, 
 									&persistentObjects);
-		
+
+		pfree(endXactFsObjs);
+
 		fsObjEntry = 
 			(FsObjEntry) DoublyLinkedHead_First(
 									offsetof(FsObjEntryData, xactLinks),
 									&xactEntry->fsObjEntryList);
 
-		for (i = 0; i < count; i++)
+		while (fsObjEntry != NULL)
 		{
 			if (fsObjEntry->state == PersistentFileSysState_CreatePending)
 			{
@@ -1389,13 +1362,14 @@ PersistentRecovery_CrashAbort(void)
 								&fsObjEntry->fsObjName,
 								&fsObjEntry->key.persistentTid,
 								fsObjEntry->persistentSerialNum);
+
+				fsObjEntry->state = PersistentFileSysState_AbortingCreate;
+				
 			}
 			else if (fsObjEntry->state != PersistentFileSysState_Free)
 				elog(ERROR, "Unexpected persistent file-system state: %d",
 					 fsObjEntry->state);
 
-			fsObjEntry->state = PersistentFileSysState_AbortingCreate;
-			
 			fsObjEntry = 
 				(FsObjEntry) DoublyLinkedHead_Next(
 										offsetof(FsObjEntryData, xactLinks),
@@ -1409,6 +1383,7 @@ PersistentRecovery_CrashAbort(void)
 		elog(Debug_persistent_recovery_print_level, 
 			 "Exiting PersistentRecovery_CrashAbort (transaction count %d)", xactCount);
 }
+
 
 static void
 PersistentRecovery_UpdateType(

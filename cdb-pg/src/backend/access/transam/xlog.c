@@ -5905,22 +5905,6 @@ static void ShutdownReadFile(void)
 static void
 StartupXLOG_InProduction(void)
 {
-	TransactionId oldestActiveXID;
-
-	/* Pre-scan prepared transactions to find out the range of XIDs present */
-	oldestActiveXID = PrescanPreparedTransactions();
-
-	/* Start up the commit log and related stuff, too */
-	StartupCLOG();
-	StartupSUBTRANS(oldestActiveXID);
-	StartupMultiXact();
-	DistributedLog_Startup(
-						oldestActiveXID, 
-						ShmemVariableCache->nextXid);
-
-	/* Reload shared-memory state for prepared transactions */
-	RecoverPreparedTransactions();
-
 	/*
 	 * Perform a checkpoint to update all our recovery activity to disk.
 	 *
@@ -6010,6 +5994,7 @@ StartupXLOG(void)
 	uint32		endLogSeg;
 	XLogRecord *record;
 	uint32		freespace;
+	TransactionId oldestActiveXID;
 	char* 		dtxCheckPointInfo;
 	int			dtmCheckPointInfoSize;
 
@@ -6333,41 +6318,6 @@ StartupXLOG(void)
 			 */
 			do
 			{
-#ifdef WAL_DEBUG
-				if (XLOG_DEBUG)
-				{
-					StringInfoData buf;
-
-					initStringInfo(&buf);
-					appendStringInfo(&buf, "REDO @ %X/%X; LSN %X/%X: ",
-									 ReadRecPtr.xlogid, ReadRecPtr.xrecoff,
-									 EndRecPtr.xlogid, EndRecPtr.xrecoff);
-					XLog_OutRec(&buf, record);
-					appendStringInfo(&buf, " - ");
-					RmgrTable[record->xl_rmid].rm_desc(&buf,
-													   record->xl_info,
-													 XLogRecGetData(record));
-					elog(LOG, "%s", buf.data);
-					pfree(buf.data);
-				}
-#endif
-				if (Debug_print_qd_mirroring)
-				{
-					StringInfoData buf;
-
-					initStringInfo(&buf);
-					appendStringInfo(&buf, "REDO @ %s; LSN %s: ",
-									 XLogLocationToString(&ReadRecPtr),
-									 XLogLocationToString2(&EndRecPtr));
-					XLog_OutRec(&buf, record);
-					appendStringInfo(&buf, " - ");
-					RmgrTable[record->xl_rmid].rm_desc(&buf,
-													   record->xl_info,
-													 XLogRecGetData(record));
-					elog(LOG, "%s", buf.data);
-					pfree(buf.data);
-				}
-
 				/*
 				 * Have we reached our recovery target?
 				 */
@@ -6380,7 +6330,25 @@ StartupXLOG(void)
 				}
 
 				if (PersistentRecovery_ShouldHandlePass1XLogRec(&ReadRecPtr, &EndRecPtr, record))
+				{
+					if (Debug_persistent_recovery_print)
+					{
+						StringInfoData buf;
+					
+						initStringInfo(&buf);
+						appendStringInfo(&buf, "REDO 1 @ %s; LSN %s: ",
+										 XLogLocationToString(&ReadRecPtr),
+										 XLogLocationToString2(&EndRecPtr));
+						XLog_OutRec(&buf, record);
+						appendStringInfo(&buf, " - ");
+						RmgrTable[record->xl_rmid].rm_desc(&buf,
+														   record->xl_info,
+														   XLogRecGetData(record));
+						elog(Debug_persistent_recovery_print_level, "%s", buf.data);
+						pfree(buf.data);
+					}
 					ApplyStartupRedo(&ReadRecPtr, &EndRecPtr, record);
+				}
 
 				LastRec = ReadRecPtr;
 
@@ -6528,6 +6496,9 @@ StartupXLOG(void)
 		XLogCtl->Write.curridx = NextBufIdx(0);
 	}
 
+	/* Pre-scan prepared transactions to find out the range of XIDs present */
+	oldestActiveXID = PrescanPreparedTransactions();
+
 	if (InRecovery)
 	{
 		/*
@@ -6588,7 +6559,18 @@ StartupXLOG(void)
 	/* initialize shared-memory copy of latest checkpoint XID/epoch */
 	XLogCtl->ckptXidEpoch = ControlFile->checkPointCopy.nextXidEpoch;
 	XLogCtl->ckptXid = ControlFile->checkPointCopy.nextXid;
-	
+
+	/* Start up the commit log and related stuff, too */
+	StartupCLOG();
+	StartupSUBTRANS(oldestActiveXID);
+	StartupMultiXact();
+	DistributedLog_Startup(
+						oldestActiveXID, 
+						ShmemVariableCache->nextXid);
+
+	/* Reload shared-memory state for prepared transactions */
+	RecoverPreparedTransactions();
+
 	if (!XLogCtl->multiplePassesNeeded)
 	{
 		if (Debug_persistent_recovery_print)

@@ -95,9 +95,9 @@ Relation DirectOpen_Open(
 
 	direct->relationData.rd_refcnt++;
 
-	direct->isOpen = true;
+	direct->relationData.rd_smgr = smgropen(direct->relationData.rd_node);
 
-	RelationOpenSmgr(&direct->relationData);
+	direct->isOpen = true;
 	
 	return &direct->relationData;
 }
@@ -112,7 +112,8 @@ void DirectOpen_Close(
 	Assert (direct->isOpen);
 	Assert(direct->descData.attrs != NULL);
 
-	RelationCloseSmgr(&direct->relationData);
+	if (direct->relationData.rd_smgr != NULL)
+		smgrclose(rel->rd_smgr);
 	
 	direct->relationData.rd_refcnt--;
 
