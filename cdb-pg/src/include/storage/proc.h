@@ -153,14 +153,13 @@ typedef struct PROC_HDR
  * Background writer, WAL writer, and autovacuum launcher run during
  * normal operation. Startup process also consumes one slot, but WAL
  * writer and autovacuum launcher are launched only after it has
- * exited.
+ * exited (4 slots).
  *
- * FileRep Process uses 8 slots on Primary (Sender, Receiver Ack,
- * Consumer Ack, and (Recovery or (Resync Manager and Resync Worker 1, 2, 3, 4)) and 
- * 6 slots on Mirror (Receiver, 4 Consumer, 
- * Sender Ack).
+ * FileRep Process uses 9 slots on Primary (Sender, Receiver Ack,
+ * Consumer Ack, and (Recovery, Resync Manager and Resync Worker 1, 2, 3, 4) and 
+ * 6 slots on Mirror (Receiver, 4 Consumer, Sender Ack).
  */
-#define NUM_AUXILIARY_PROCS	 12
+#define NUM_AUXILIARY_PROCS	 13
 
 /* configurable options */
 extern int	DeadlockTimeout;
