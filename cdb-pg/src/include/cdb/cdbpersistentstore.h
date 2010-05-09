@@ -36,14 +36,15 @@ typedef struct PersistentStoreSharedData
 
 } PersistentStoreSharedData;
 
-typedef Relation (*PersistentStoreOpenRel) (DirectOpen *directOpen);
+typedef Relation (*PersistentStoreOpenRel) (void);
+typedef void (*PersistentStoreCloseRel) (Relation relation);
 typedef bool (*PersistentStoreScanTupleCallback) (
 								int 					token,
 								ItemPointer 			persistentTid,
 								int64					persistentSerialNum,
 								Datum					*values);
 
-#define PersistentStoreData_StaticInit {0,0,NULL,NULL,0,0,0,0}
+#define PersistentStoreData_StaticInit {0,0,NULL,NULL,NULL,0,0,0,0}
 
 typedef struct PersistentStoreData
 {
@@ -52,6 +53,8 @@ typedef struct PersistentStoreData
 	GpGlobalSequence			gpGlobalSequence;
 
 	PersistentStoreOpenRel		openRel;
+
+	PersistentStoreCloseRel		closeRel;
 
 	PersistentStoreScanTupleCallback	scanTupleCallback;
 
@@ -71,8 +74,6 @@ typedef struct PersistentStoreScan
 	PersistentStoreSharedData 	*storeSharedData;
 
 	Relation					persistentRel;
-
-	DirectOpen					persistentDirectOpen;
 
 	HeapScanDesc				scan;
 
@@ -146,6 +147,8 @@ extern void PersistentStore_Init(
 	GpGlobalSequence			gpGlobalSequence,
 	
 	PersistentStoreOpenRel		openRel,
+
+	PersistentStoreCloseRel		closeRel,
 
 	PersistentStoreScanTupleCallback	scanTupleCallback,
 

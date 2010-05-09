@@ -39,6 +39,8 @@ void PersistentStore_Init(
 	
 	PersistentStoreOpenRel		openRel,
 
+	PersistentStoreCloseRel		closeRel,
+
 	PersistentStoreScanTupleCallback	scanTupleCallback,
 
 	int 						numAttributes,
@@ -52,6 +54,7 @@ void PersistentStore_Init(
 	storeData->token = token;
 	storeData->gpGlobalSequence = gpGlobalSequence;
 	storeData->openRel = openRel;
+	storeData->closeRel = closeRel;
 	storeData->scanTupleCallback = scanTupleCallback;
 	storeData->numAttributes = numAttributes;
 	storeData->attNumPersistentSerialNum = attNumPersistentSerialNum;
@@ -316,8 +319,7 @@ void PersistentStore_BeginScan(
 	storeScan->storeData = storeData;
 	storeScan->storeSharedData = storeSharedData;
 
-	storeScan->persistentRel = (*storeData->openRel)(
-									&storeScan->persistentDirectOpen);
+	storeScan->persistentRel = (*storeData->openRel)();
 
 	storeScan->scan = heap_beginscan(
 							storeScan->persistentRel, 
@@ -370,9 +372,7 @@ void PersistentStore_EndScan(
 {
 	heap_endscan(storeScan->scan);
 
-	DirectOpen_Close(
-				&storeScan->persistentDirectOpen,
-				storeScan->persistentRel);
+	(*storeScan->storeData->closeRel)(storeScan->persistentRel);
 }
 
 // -----------------------------------------------------------------------------
@@ -502,10 +502,8 @@ static void PersistentStore_InsertTuple(
 
 {
 	Relation	persistentRel;
-	DirectOpen	persistentDirectOpen;
 
-	persistentRel = (*storeData->openRel)(
-							&persistentDirectOpen);
+	persistentRel = (*storeData->openRel)();
 
 	PersistentStore_DoInsertTuple(
 								storeData,
@@ -515,9 +513,7 @@ static void PersistentStore_InsertTuple(
 								flushToXLog,
 								persistentTid);
 
-	DirectOpen_Close(
-				&persistentDirectOpen,
-				persistentRel);
+	(*storeData->closeRel)(persistentRel);
 }
 
 void PersistentStore_UpdateTuple(
@@ -535,13 +531,11 @@ void PersistentStore_UpdateTuple(
 
 {
 	Relation	persistentRel;
-	DirectOpen	persistentDirectOpen;
 	bool 		*nulls;
 	HeapTuple	persistentTuple = NULL;
 	XLogRecPtr 	xlogUpdateEndLoc;
 	
-	persistentRel = (*storeData->openRel)(
-							&persistentDirectOpen);
+	persistentRel = (*storeData->openRel)();
 
 	/*
 	 * In order to keep the tuples the exact same size to enable direct reuse of
@@ -567,9 +561,7 @@ void PersistentStore_UpdateTuple(
 
 	heap_freetuple(persistentTuple);
 
-	DirectOpen_Close(
-				&persistentDirectOpen,
-				persistentRel);
+	(*storeData->closeRel)(persistentRel);
 
 	if (flushToXLog)
 	{
@@ -599,13 +591,11 @@ void PersistentStore_ReplaceTuple(
 
 {
 	Relation	persistentRel;
-	DirectOpen	persistentDirectOpen;
 	bool 		*nulls;
 	HeapTuple	replacementTuple = NULL;
 	XLogRecPtr 	xlogUpdateEndLoc;
 	
-	persistentRel = (*storeData->openRel)(
-							&persistentDirectOpen);
+	persistentRel = (*storeData->openRel)();
 
 	/*
 	 * In order to keep the tuples the exact same size to enable direct reuse of
@@ -630,9 +620,7 @@ void PersistentStore_ReplaceTuple(
 
 	heap_freetuple(replacementTuple);
 
-	DirectOpen_Close(
-				&persistentDirectOpen,
-				persistentRel);
+	(*storeData->closeRel)(persistentRel);
 
 	if (flushToXLog)
 	{
@@ -656,7 +644,6 @@ void PersistentStore_ReadTuple(
 	HeapTuple					*tupleCopy)
 {
 	Relation	persistentRel;
-	DirectOpen	persistentDirectOpen;
 
 	HeapTupleData 	tuple;
 	Buffer			buffer;
@@ -667,8 +654,7 @@ void PersistentStore_ReadTuple(
 		elog(ERROR, "TID for fetch persistent tuple is invalid (0,0) (token %d)",
 			 storeData->token);
 
-	persistentRel = (*storeData->openRel)(
-							&persistentDirectOpen);
+	persistentRel = (*storeData->openRel)();
 
 	tuple.t_self = *readTid;
 	
@@ -693,9 +679,7 @@ void PersistentStore_ReadTuple(
 
 	heap_deform_tuple(*tupleCopy, persistentRel->rd_att, values, nulls);
 
-	DirectOpen_Close(
-				&persistentDirectOpen,
-				persistentRel);
+	(*storeData->closeRel)(persistentRel);
 
 	pfree(nulls);
 }
@@ -852,7 +836,6 @@ void PersistentStore_FreeTuple(
 
 {
 	Relation	persistentRel;
-	DirectOpen	persistentDirectOpen;
 	HeapTuple	persistentTuple = NULL;
 	ItemPointerData prevFreeTid;
 	XLogRecPtr xlogEndLoc;
@@ -860,8 +843,7 @@ void PersistentStore_FreeTuple(
 
 	Assert(persistentTid->ip_posid != 0);
 
-	persistentRel = (*storeData->openRel)(
-									&persistentDirectOpen);
+	persistentRel = (*storeData->openRel)();
 
 	storeSharedData->maxFreeOrderNum++;
 	if (storeSharedData->maxFreeOrderNum == 1)
@@ -889,9 +871,7 @@ void PersistentStore_FreeTuple(
 
 	heap_freetuple(persistentTuple);
 
-	DirectOpen_Close(
-				&persistentDirectOpen,
-				persistentRel);
+	(*storeData->closeRel)(persistentRel);
 
 	if (flushToXLog)
 	{

@@ -20,6 +20,13 @@
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_tablespace.h"
+#include "catalog/pg_class.h"
+#include "catalog/gp_persistent.h"
+#include "catalog/gp_global_sequence.h"
+#include "catalog/pg_appendonly.h"
+#include "access/transam.h"
+#include "access/aosegfiles.h"
+#include "access/aocssegfiles.h"
 
 /*
  * The goal here is to open any relations without going through
@@ -32,7 +39,7 @@
 
 typedef struct DirectOpen
 {
-	bool isOpen;
+	bool isInit;
 
 	struct tupleConstr constrData;
 
@@ -44,22 +51,27 @@ typedef struct DirectOpen
 
 } DirectOpen;
 
-// HUGE MAGIC DEFINE parameterize by: 
+// HUGE MAGIC DEFINE creates static variables with values for DirectOpen_Open. 
 //     Class tuple values, 
 //     Schema (i.e. pg_attribute) values and array,
-//     (NOTE: REMAINING FIELDS 0)
-
-#define DirectOpenDefine(name,pgClassStatic,attrArrayStatic,relHasOid) \
+//
+//     There can only be ONE instance of a kind of open per process (backend).
+//
+//     IMPORTANT: Arrange to share the ONE instance globally.
+//     IMPORTANT: Use the *Static define in the .c file and the *Extern define in the .h.
+//
+#define DirectOpenDefineStatic(name,pgClassStatic,attrArrayStatic,relHasOid) \
 \
 static FormData_pg_class *name##RelPgClass = &pgClassStatic; \
 static FormData_pg_attribute *name##RelAttrArray = attrArrayStatic; \
 static bool name##RelHasOid = relHasOid; \
 \
-static inline Relation name##OpenShared( \
-	DirectOpen *directOpen) \
+static DirectOpen name##RelDirectOpen; \
+\
+Relation name##OpenShared(void) \
 { \
 	return DirectOpen_Open( \
-					directOpen, \
+					&name##RelDirectOpen, \
 					-1, \
 					GLOBALTABLESPACE_OID, \
 					0, \
@@ -69,13 +81,12 @@ static inline Relation name##OpenShared( \
 					name##RelHasOid); \
 } \
 \
-static inline Relation name##Open( \
-					DirectOpen *directOpen, \
+Relation name##Open( \
 					Oid tablespace, \
 					Oid database) \
 { \
 	return DirectOpen_Open( \
-					directOpen, \
+					&name##RelDirectOpen, \
 					-1, \
 					tablespace, \
 					database, \
@@ -85,16 +96,14 @@ static inline Relation name##Open( \
 					name##RelHasOid); \
 } \
 \
-\
-static inline Relation name##OpenDynamic( \
-					DirectOpen *directOpen, \
+Relation name##OpenDynamic( \
 					Oid relationId, \
 					Oid tablespace, \
 					Oid database, \
 					Oid relfilenode) \
 { \
 	return DirectOpen_Open( \
-					directOpen, \
+					&name##RelDirectOpen, \
 					relationId, \
 					tablespace, \
 					database, \
@@ -102,7 +111,52 @@ static inline Relation name##OpenDynamic( \
 					name##RelPgClass, \
 					name##RelAttrArray, \
 					name##RelHasOid); \
-}
+} \
+\
+void name##Close(Relation relation) \
+{ \
+	return DirectOpen_Close( \
+					&name##RelDirectOpen, \
+					relation); \
+} \
+\
+
+
+#define DirectOpenDefineExtern(name) \
+\
+extern Relation name##OpenShared(void); \
+\
+extern Relation name##Open( \
+					Oid tablespace, \
+					Oid database); \
+\
+extern Relation name##OpenDynamic( \
+					Oid relationId, \
+					Oid tablespace, \
+					Oid database, \
+					Oid relfilenode); \
+\
+extern void name##Close(Relation relation);
+
+DirectOpenDefineExtern(DirectOpen_PgClass);
+
+DirectOpenDefineExtern(DirectOpen_GpRelationNode);
+
+DirectOpenDefineExtern(DirectOpen_PgAppendOnly);
+
+DirectOpenDefineExtern(DirectOpen_PgAoSeg);
+
+DirectOpenDefineExtern(DirectOpen_PgAoCsSeg);
+
+DirectOpenDefineExtern(DirectOpen_GpGlobalSequence);
+
+DirectOpenDefineExtern(DirectOpen_GpPersistentRelationNode);
+
+DirectOpenDefineExtern(DirectOpen_GpPersistentDatabaseNode);
+
+DirectOpenDefineExtern(DirectOpen_GpPersistentTableSpaceNode);
+
+DirectOpenDefineExtern(DirectOpen_GpPersistentFileSpaceNode);
 
 extern Relation DirectOpen_Open(
 	DirectOpen *direct,

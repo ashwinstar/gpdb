@@ -29,26 +29,6 @@
 #include "storage/smgr.h"
 #include "storage/ipc.h"
 
-/*
- * This HUGE MAGIC DEFINE expands into module globals and two routines:
- *     GlobalSequence_OpenShared
- *     GlobalSequence_Close
- * It allows for opening the relation without going through pg_class, etc.
- */
-static FormData_pg_class 
-			GlobalSequence_PgClass = 
-							{Class_gp_global_sequence};
-
-static FormData_pg_attribute 
-			GlobalSequence_AttrArray[Natts_gp_global_sequence] =
-							{Schema_gp_global_sequence};
-
-DirectOpenDefine(GlobalSequence_,\
-GlobalSequence_PgClass,\
-GlobalSequence_AttrArray,\
-false);
-
-
 static void GlobalSequence_MakeTid(
 	GpGlobalSequence		gpGlobalSequence,
 
@@ -68,7 +48,6 @@ static void GlobalSequence_UpdateTuple(
 
 {
 	Relation	gpGlobalSequenceRel;
-	DirectOpen	gpGlobalSequenceDirectOpen;
 	bool 		nulls[Anum_gp_global_sequence_sequence_num];
 	Datum 		values[Anum_gp_global_sequence_sequence_num];
 	HeapTuple	globalSequenceTuple = NULL;
@@ -80,8 +59,7 @@ static void GlobalSequence_UpdateTuple(
 								newSequenceNum);
 	
 	gpGlobalSequenceRel = 
-				GlobalSequence_OpenShared(
-									&gpGlobalSequenceDirectOpen);
+				DirectOpen_GpGlobalSequenceOpenShared();
 		
 	/*
 	 * Form the tuple.
@@ -101,9 +79,7 @@ static void GlobalSequence_UpdateTuple(
 
 	heap_freetuple(globalSequenceTuple);
 
-	DirectOpen_Close(
-				&gpGlobalSequenceDirectOpen,
-				gpGlobalSequenceRel);
+	DirectOpen_GpGlobalSequenceClose(gpGlobalSequenceRel);
 }
 
 static void GlobalSequence_ReadTuple(
@@ -112,7 +88,6 @@ static void GlobalSequence_ReadTuple(
 	int64					*currentSequenceNum)
 {
 	Relation	gpGlobalSequenceRel;
-	DirectOpen	gpGlobalSequenceDirectOpen;
 	bool 		nulls[Anum_gp_global_sequence_sequence_num];
 	Datum 		values[Anum_gp_global_sequence_sequence_num];
 
@@ -120,8 +95,7 @@ static void GlobalSequence_ReadTuple(
 	Buffer			buffer;
 
 	gpGlobalSequenceRel = 
-				GlobalSequence_OpenShared(
-									&gpGlobalSequenceDirectOpen);
+				DirectOpen_GpGlobalSequenceOpenShared();
 
 	GlobalSequence_MakeTid(
 						gpGlobalSequence,
@@ -144,9 +118,7 @@ static void GlobalSequence_ReadTuple(
 
 	ReleaseBuffer(buffer);
 	
-	DirectOpen_Close(
-				&gpGlobalSequenceDirectOpen,
-				gpGlobalSequenceRel);
+	DirectOpen_GpGlobalSequenceClose(gpGlobalSequenceRel);
 }
 
 int64 GlobalSequence_Next(

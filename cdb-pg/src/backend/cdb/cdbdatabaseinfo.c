@@ -31,82 +31,6 @@
 #include "access/appendonlytid.h"
 #include "utils/guc.h"
 
-// -----------------------------------------------------------------------------
-// Open/Close pg_class Relation 
-// -----------------------------------------------------------------------------
-
-/*
- * This HUGE MAGIC DEFINE expands into module globals and two routines:
- *     DbCommand_PgClassOpen
- *     DbCommand_PgClassClose
- * It allows for opening the relation without going through pg_class, etc.
- */
-static FormData_pg_class 
-			DatabaseInfo_PgClassPgClass = 
-						{Class_pg_class};
-
-static FormData_pg_attribute 
-			DatabaseInfo_PgClassAttrArray[Natts_pg_class] =
-							{Schema_pg_class};
-
-DirectOpenDefine(DatabaseInfo_PgClass,\
-DatabaseInfo_PgClassPgClass,\
-DatabaseInfo_PgClassAttrArray,\
-true);
-
-static FormData_pg_class 
-			DatabaseInfo_GpRelationNodePgClass = 
-						{Class_gp_relation_node};
-
-static FormData_pg_attribute 
-			DatabaseInfo_GpRelationNodeAttrArray[Natts_gp_relation_node] =
-							{Schema_gp_relation_node};
-
-DirectOpenDefine(DatabaseInfo_GpRelationNode,\
-DatabaseInfo_GpRelationNodePgClass,\
-DatabaseInfo_GpRelationNodeAttrArray,\
-false);
-
-
-static FormData_pg_class 
-			DatabaseInfo_PgAppendOnlyPgClass = 
-						{Class_pg_appendonly};
-
-static FormData_pg_attribute 
-			DatabaseInfo_PgAppendOnlyAttrArray[Natts_pg_appendonly] =
-							{Schema_pg_appendonly};
-
-DirectOpenDefine(DatabaseInfo_PgAppendOnly,\
-DatabaseInfo_PgAppendOnlyPgClass,\
-DatabaseInfo_PgAppendOnlyAttrArray,\
-false);
-
-static FormData_pg_class 
-			DatabaseInfo_PgAoSegPgClass = 
-						{Class_pg_aoseg};
-
-static FormData_pg_attribute 
-			DatabaseInfo_PgAoSegAttrArray[Natts_pg_aoseg] =
-							{Schema_pg_aoseg};
-
-DirectOpenDefine(DatabaseInfo_PgAoSeg,\
-DatabaseInfo_PgAoSegPgClass,\
-DatabaseInfo_PgAoSegAttrArray,\
-false);
-
-static FormData_pg_class 
-			DatabaseInfo_PgAoCsSegPgClass = 
-						{Class_pg_aocsseg};
-
-static FormData_pg_attribute 
-			DatabaseInfo_PgAoCsSegAttrArray[Natts_pg_aocsseg] =
-							{Schema_pg_aocsseg};
-
-DirectOpenDefine(DatabaseInfo_PgAoCsSeg,\
-DatabaseInfo_PgAoCsSegPgClass,\
-DatabaseInfo_PgAoCsSegAttrArray,\
-false);
-
 static void DatabaseInfo_Grow(
 	void 	**array,
 	int32	arrayCount,
@@ -491,11 +415,9 @@ static void DatabaseInfo_AddPgClassStoredRelation(
 			int totalAoSegFiles;
 
 			Relation pg_aoseg_rel;
-			DirectOpen pg_aoseg_direct_open;
 
 			pg_aoseg_rel = 
-					DatabaseInfo_PgAoSegOpenDynamic(
-										&pg_aoseg_direct_open,
+					DirectOpen_PgAoSegOpenDynamic(
 										aoEntry->segrelid,
 										dbInfoRel->reltablespace,
 										info->database,
@@ -516,9 +438,7 @@ static void DatabaseInfo_AddPgClassStoredRelation(
 														aoSegfileArray[i]->eof);
 			}
 
-			DirectOpen_Close(
-						&pg_aoseg_direct_open,
-						pg_aoseg_rel);
+			DirectOpen_PgAoSegClose(pg_aoseg_rel);
 		}
 		else if (relstorage == RELSTORAGE_AOCOLS)
 		{
@@ -526,11 +446,9 @@ static void DatabaseInfo_AddPgClassStoredRelation(
 			int totalAocsSegFiles;
 
 			Relation pg_aocsseg_rel;
-			DirectOpen pg_aocsseg_direct_open;
 
 			pg_aocsseg_rel =
-					DatabaseInfo_PgAoCsSegOpenDynamic(
-										&pg_aocsseg_direct_open,
+					DirectOpen_PgAoCsSegOpenDynamic(
 										aoEntry->segrelid,
 										dbInfoRel->reltablespace,
 										info->database,
@@ -563,9 +481,7 @@ static void DatabaseInfo_AddPgClassStoredRelation(
 				}
 			}
 
-			DirectOpen_Close(
-						&pg_aocsseg_direct_open,
-						pg_aocsseg_rel);
+			DirectOpen_PgAoCsSegClose(pg_aocsseg_rel);
 		}
 	}
 }
@@ -916,11 +832,8 @@ DatabaseInfo *DatabaseInfo_Collect(
 
 	HeapScanDesc scan;
 	Relation	pg_class_rel;
-	DirectOpen	pg_class_direct_open;
 	Relation	gp_relation_node_rel;
-	DirectOpen	gp_relation_node_direct_open;
 	Relation	pg_appendonly_rel;
-	DirectOpen	pg_appendonly_direct_open;
 	HeapTuple	tuple;
 	int			count;
 
@@ -959,10 +872,9 @@ DatabaseInfo *DatabaseInfo_Collect(
 	DatabaseInfo_PgAppendOnlyHashTableInit(&pgAppendOnlyHashTable);
 
 	pg_appendonly_rel = 
-				DatabaseInfo_PgAppendOnlyOpen(
-							&pg_appendonly_direct_open,
-							defaultTablespace, 
-							database);
+				DirectOpen_PgAppendOnlyOpen(
+									defaultTablespace, 
+									database);
 	scan = heap_beginscan(pg_appendonly_rel, SnapshotNow, 0, NULL);
 	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
@@ -1006,9 +918,8 @@ DatabaseInfo *DatabaseInfo_Collect(
 								aoEntry);
 	}
 	heap_endscan(scan);
-	DirectOpen_Close(
-				&pg_appendonly_direct_open,
-				pg_appendonly_rel);
+
+	DirectOpen_PgAppendOnlyClose(pg_appendonly_rel);
 
 
 	/*
@@ -1017,8 +928,7 @@ DatabaseInfo *DatabaseInfo_Collect(
 	 */
 	count = 0;
 	pg_class_rel = 
-			DatabaseInfo_PgClassOpen(
-							&pg_class_direct_open,
+			DirectOpen_PgClassOpen(
 							defaultTablespace, 
 							database);
 	scan = heap_beginscan(pg_class_rel, SnapshotNow, 0, NULL);
@@ -1080,13 +990,11 @@ DatabaseInfo *DatabaseInfo_Collect(
 		count++;
 	}
 	heap_endscan(scan);
-	DirectOpen_Close(
-				&pg_class_direct_open,
-				pg_class_rel);
+	
+	DirectOpen_PgClassClose(pg_class_rel);
 
 	gp_relation_node_rel = 
-			DatabaseInfo_GpRelationNodeOpen(
-							&gp_relation_node_direct_open,
+			DirectOpen_GpRelationNodeOpen(
 							defaultTablespace, 
 							database);
 	scan = heap_beginscan(gp_relation_node_rel, SnapshotNow, 0, NULL);
@@ -1123,9 +1031,8 @@ DatabaseInfo *DatabaseInfo_Collect(
 		}
 	}
 	heap_endscan(scan);
-	DirectOpen_Close(
-				&gp_relation_node_direct_open,
-				gp_relation_node_rel);
+
+	DirectOpen_GpRelationNodeClose(gp_relation_node_rel);
 
 	/*
 	 * Scan each used directory for its relation segment files and misc files/dirs.

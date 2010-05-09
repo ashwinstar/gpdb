@@ -164,29 +164,6 @@ typedef struct StoredRelationPersistentInfo
 	int32				serialNum;
 } StoredRelationPersistentInfo;
 
-// -----------------------------------------------------------------------------
-// Open/Close pg_class Relation 
-// -----------------------------------------------------------------------------
-
-/*
- * This HUGE MAGIC DEFINE expands into module globals and two routines:
- *     DbCommand_PgClassOpen
- *     PersistentDatabaseRel_Close
- * It allows for opening the relation without going through pg_class, etc.
- */
-static FormData_pg_class 
-			DbCommand_GpRelationNodePgClass = 
-						{Class_gp_relation_node};
-
-static FormData_pg_attribute 
-			DbCommand_GpRelationNodeAttrArray[Natts_gp_relation_node] =
-							{Schema_gp_relation_node};
-
-DirectOpenDefine(DbCommand_GpRelationNode,\
-DbCommand_GpRelationNodePgClass,\
-DbCommand_GpRelationNodeAttrArray,\
-false);
-
 static void update_gp_relation_node(
 	Relation 				gpRelationNodeRel,
 	Oid						dstDefaultTablespace,
@@ -1031,7 +1008,6 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 		ItemPointerData	gpRelationNodePersistentTid;
 		int64 gpRelationNodePersistentSerialNum;
 		Relation gp_relation_node;
-		DirectOpen gpRelationNodeDirectOpen;
 
 		MemSet(&gpRelationNodePersistentTid, 0, sizeof(ItemPointerData));
 		gpRelationNodePersistentSerialNum = 0;
@@ -1221,8 +1197,7 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 		 * Note:  The index will not get inserts -- we'll rebuild afterwards.
 		 */
 		gp_relation_node = 
-				DbCommand_GpRelationNodeOpen(
-								&gpRelationNodeDirectOpen,
+				DirectOpen_GpRelationNodeOpen(
 								dst_deftablespace, 
 								dboid);
 
@@ -1258,9 +1233,7 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 
 		}
 
-		DirectOpen_Close(
-					&gpRelationNodeDirectOpen,
-					gp_relation_node);
+		DirectOpen_GpRelationNodeClose(gp_relation_node);
 	}
 
 	/*
