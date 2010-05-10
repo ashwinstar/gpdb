@@ -186,6 +186,10 @@ BEGIN {
 	if (defined($mm))
 	{
 		$glob_mm = ($mm =~ m/^\s*(1|t|true|y|yes)/i) ? 1 : 0;
+
+		push @{$glob_ignore}, "recovery.conf"
+			if ($glob_mm);
+
 	}
 	else
 	{
