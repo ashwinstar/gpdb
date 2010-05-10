@@ -1673,6 +1673,12 @@ LOAD_GP_TOOLKIT () {
 		ERROR_EXIT "[FATAL]:-Failed to create the gp_toolkit schema." 2
 	fi
 
+	$PSQL -q -f /tmp/_gp_toolkit_tmp_${CUR_DATE}_$FILE_TIME postgres >> $LOG_FILE 2>&1 
+	RETVAL=$?
+	if [ $RETVAL -ne 0 ];then
+		ERROR_EXIT "[FATAL]:-Failed to create the gp_toolkit schema." 2
+	fi
+
 	$RM /tmp/_gp_toolkit_tmp_${CUR_DATE}_$FILE_TIME
 }
 
