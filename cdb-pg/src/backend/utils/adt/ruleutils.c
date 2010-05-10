@@ -5953,6 +5953,29 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 			appendStringInfo(&sid1, "tablename=\'%s\'", 
 							 get_rel_name(rule->parchildrelid));
 
+			/* MPP-7191, MPP-7193: fully-qualify storage type if not
+			 * specified (and not a template)
+			 */
+			if (!part->paristemplate)
+			{
+				if (!reloptions)
+				{
+					appendStringInfo(&sid1, ", %s ", 
+									 "appendonly=false");
+				}
+				else
+				{
+					if (!strstr(reloptions, "appendonly="))
+						appendStringInfo(&sid1, ", %s ", 
+										 "appendonly=false");
+
+					if ((!strstr(reloptions, "orientation=")) &&
+						strstr(reloptions, "appendonly=true"))
+						appendStringInfo(&sid1, ", %s ", 
+										 "orientation=row");
+				}
+			}
+
 			if (reloptions)
 			{
 				appendStringInfo(&sid1, ", %s ", reloptions);
