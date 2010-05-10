@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 #
 # gplogfilter [options] [inputfile]...
 # 
@@ -25,8 +26,39 @@ try:
 except ImportError, e:    
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
-
-
+# These values are from cdb-pg/src/backend/po/*.po
+TROUBLE_VALUES=[
+                'ERROR', 'FATAL', 'PANIC',                                      # EN
+                bytearray(b'\x46\x4F\x55\x54').decode('iso-8859-1'),            # AF "ERROR"
+                bytearray(b'\x46\x41\x54\x41\x41\x4C').decode('iso-8859-1'),    # AF "FATAL"
+                bytearray(b'\x57\x41\x4E\x48\x4F\x4F\x50').decode('iso-8859-1'),# AF "PANIC"
+                bytearray(b'\x46\x45\x48\x4C\x45\x52').decode('ISO-8859-1'),    # DE "ERROR"
+                bytearray(b'\x46\x41\x54\x41\x4C').decode('ISO-8859-1'),        # DE "FATAL"
+                bytearray(b'\x50\x41\x4E\x49\x43').decode('ISO-8859-1'),        # DE "PANIC"
+                bytearray(b'\x45\x52\x52\x45\x55\x52').decode('ISO-8859-15'),   # FR "ERROR"
+                bytearray(b'\x46\x41\x54\x41\x4C').decode('ISO-8859-15'),       # FR "FATAL"
+                bytearray(b'\x50\x41\x4E\x49\x43').decode('ISO-8859-15'),       # FR "PANIC"
+                u'오류', u'치명적오류', u'손상',                                    # KO
+                bytearray(b'\x46\x45\x49\x4C').decode('ISO-8859-1'),            # NB "ERROR"
+                bytearray(b'\x50\x41\x4E\x49\x4B\x4B').decode('ISO-8859-1'),    # NB "PANIC"
+                bytearray(b'\x45\x52\x52\x4F').decode('ISO-8859-1'),            # PT_BR "ERROR"
+                bytearray(b'\x46\x41\x54\x41\x4C').decode('ISO-8859-1'),        # PT_BR "FATAL"
+                bytearray(b'\x50\xC2\x4E\x49\x43\x4F').decode('ISO-8859-1'),    # PT_BR "PANIC"
+                bytearray(b'\x43\x48\x59\x42\x41').decode('ISO-8859-2'),        # SK "ERROR"
+                bytearray(b'\x46\x41\x54\xC1\x4C\x4E\x45').decode('ISO-8859-2'),# SK "FATAL"
+                bytearray(b'\x50\x41\x4E\x49\x4B\x41').decode('ISO-8859-2'),    # SK "PANIC"
+                bytearray(b'\x4E\x41\x50\x41\x4B\x41').decode('ISO-8859-2'),    # SL "ERROR"
+                bytearray(b'\x55\x53\x4F\x44\x4E\x41\x20\x4E\x41\x50\x41\x4B\x41').decode('ISO-8859-2'),    # SL "FATAL"
+                bytearray(b'\x50\x41\x4E\x49\x4B\x41').decode('ISO-8859-2'),    # SL "PANIC"
+                bytearray(b'\x46\x45\x4C').decode('ISO-8859-1'),                # SV "ERROR"
+                bytearray(b'\x46\x41\x54\x41\x4C\x54').decode('ISO-8859-1'),    # SV "FATAL"
+                bytearray(b'\x50\x41\x4E\x49\x4B').decode('ISO-8859-1'),        # SV "PANIC"
+                u'HATA', u'ÖLÜMCÜL', u'KRİTİK',                                 # TR
+                bytearray(b'\xB4\xED\xCE\xF3').decode('gb2312'),                # ZH_CN "ERROR"
+                bytearray(b'\xD6\xC2\xC3\xFC\xB4\xED\xCE\xF3').decode('gb2312'),# ZH_CN "FATAL"
+                bytearray(b'\xB1\xC8\xD6\xC2\xC3\xFC\xB4\xED\xCE\xF3\xBB\xB9\xB9\xFD\xB7\xD6\xB5\xC4\xB4\xED\xCE\xF3').decode('gb2312'),    # ZH_CN "PANIC"
+                u'錯誤', u'嚴重錯誤'                                              # ZH_TW
+                ]
 
 description = ("""
 Reads GPDB log file(s), extracts log entries which meet
@@ -315,7 +347,7 @@ if end:
 # Insert trouble message filter ahead of other pattern matching filters
 if options.trouble:
     options.filters.insert(0, filterize(MatchInFirstLine,
-                                        'ERROR: |FATAL: |PANIC: '))
+                                        (': |'.join(TROUBLE_VALUES)) + u': ' ))
 
 # Limit output to last N entries if requested.  Let --tail override --slice.
 if options.tail is None:
