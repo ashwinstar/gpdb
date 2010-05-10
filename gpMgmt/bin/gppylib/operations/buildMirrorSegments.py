@@ -349,7 +349,6 @@ class GpMirrorListToBuild:
         #
         # Copy remote files from the sample segment to the master
         #
-        logger.info('Copying postgresql.conf from existing segment into template')
         for toCopyFromRemote in ["postgresql.conf", "pg_hba.conf"]:
             cmd = gp.RemoteCopy('copying %s from a segment' % toCopyFromRemote,
                                sampleSegment.getSegmentDataDirectory() + '/' + toCopyFromRemote,
@@ -389,39 +388,61 @@ class GpMirrorListToBuild:
         destSegmentByHost = GpArray.getSegmentsByHostName(destSegments)
         newSegmentInfo = gp.ConfigureNewSegment.buildSegmentInfoForNewSegment(destSegments, isTargetReusedLocation)
 
+        logger.info('Building template directory')
         (tempDir, blankTarFile, tarFileName) = self.__buildTarFileForTransfer(gpEnv, gpArray.master, srcSegments[0], destSegments)
 
-        cmds = []
-        for hostName, segments in destSegmentByHost.iteritems():
-            #
-            # copy set of files from the master itself to each target segment
-            #
-            cmds.append( gp.RemoteCopy("copy segment tar", blankTarFile, hostName, tarFileName ))
-
-        self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "building and transferring basic segment directory")
-
-        cmds = []
-        for hostName, segments in destSegmentByHost.iteritems():
+        def createConfigureNewSegmentCommand(hostName, cmdLabel, validationOnly):
             segmentInfo = newSegmentInfo[hostName]
             checkNotNone("segmentInfo for %s" % hostName, segmentInfo)
-
-            cmds.append(gp.ConfigureNewSegment('configure blank segments',
+            return gp.ConfigureNewSegment(cmdLabel,
                                             segmentInfo,
                                             tarFile=tarFileName,
                                             newSegments=True,
                                             verbose=gplog.logging_is_verbose(),
                                             batchSize=self.__parallelDegree,
                                             ctxt=gp.REMOTE,
-                                            remoteHost=hostName))
+                                            remoteHost=hostName,
+                                            validationOnly=validationOnly)
+        #
+        # validate directories for target segments
+        #
+        logger.info('Validating remote directories')
+        cmds = []
+        for hostName in destSegmentByHost.keys():
+            cmds.append(createConfigureNewSegmentCommand(hostName, 'validate blank segments', True))
+        self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "validating basic segment directory")
+
+        #
+        # copy tar from master to target hosts
+        #
+        logger.info('Copying template directory file')
+        cmds = []
+        for hostName in destSegmentByHost.keys():
+            cmds.append( gp.RemoteCopy("copy segment tar", blankTarFile, hostName, tarFileName ))
+
+        self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "building and transferring basic segment directory")
+
+        #
+        # unpack and configure new segments
+        #
+        logger.info('Configuring new segments')
+        cmds = []
+        for hostName in destSegmentByHost.keys():
+            cmds.append(createConfigureNewSegmentCommand(hostName, 'configure blank segments', False))
         self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "unpacking basic segment directory")
-        
+
+        #
+        # Clean up copied tar from each remote host
+        #
+        logger.info('Cleaning files')
         cmds = []
         for hostName, segments in destSegmentByHost.iteritems():
             cmds.append(unix.RemoveFiles('remove tar file', tarFileName, ctxt=gp.REMOTE, remoteHost=hostName))
-            
         self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "cleaning up tar file on segment hosts")
-        
-        # clean up the temp directory
+
+        #
+        # clean up the local temp directory
+        #
         unix.RemoveFiles.local('remove temp directory', tempDir)
 
     def __ensureStopped(self, gpEnv, directives):

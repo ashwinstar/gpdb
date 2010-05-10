@@ -30,7 +30,7 @@ EXECNAME = os.path.split(__file__)[-1]
 
 class ConfExpSegCmd(Command):
     def __init__(self, name, cmdstr, datadir, port, dbid, newseg, tarfile, useLighterDirectoryValidation, isPrimary,
-                    filespaceDirs, verbose=False):
+                    filespaceDirs, verbose, validationOnly):
         """
         @param useLighterDirectoryValidation if True then we don't require an empty directory; we just require that
                                              database stuff is not there.
@@ -44,6 +44,12 @@ class ConfExpSegCmd(Command):
         self.useLighterDirectoryValidation = useLighterDirectoryValidation
         self.filespaceDirs = filespaceDirs
         self.isPrimary = isPrimary
+
+        #
+        # validationOnly if True then we validate directories and other simple things only; we don't
+        #                actually configure the segment
+        #
+        self.validationOnly = validationOnly
         Command.__init__(self, name, cmdstr)
 
 
@@ -53,8 +59,16 @@ class ConfExpSegCmd(Command):
         else:
             return "%s cmdStr='%s'" % (self.name,self.cmdStr)
 
-    def validatePath(self,path, isSystemFilespaceDir):
+    def validatePath(self, path, isSystemFilespaceDir):
+
+        if not os.path.exists(os.path.dirname(self.datadir)):
+            raise Exception("Parent directory for %s directory %s does not exist" %
+                    ( "system data" if isSystemFilespaceDir else "filespace", path) )
+
         if not os.path.exists(self.datadir):
+            #
+            # dir doesn't exist is okay -- other scripts, or filerep mirroring code, will create it
+            #
             return
 
         if self.useLighterDirectoryValidation:
@@ -91,22 +105,30 @@ class ConfExpSegCmd(Command):
             # make directories, extract template update postgresql.conf
             if self.newseg:
 
-                logger.info("Validate and create data directories for new segment")
+                logger.info("Validate data directories for new segment")
                 try:
                     self.validatePath(self.datadir, True)
                     for path in self.filespaceDirs:
                         self.validatePath(path, False)
-
-                    self.makeOrUpdatePathAsNeeded(self.datadir)
-                    if self.isPrimary:
-                        # only on primary do we create it -- otherwise, mirroring code creates it on
-                        # replay
-                        for path in self.filespaceDirs:
-                            self.makeOrUpdatePathAsNeeded(path)
-
                 except Exception, e:
                     self.set_results(CommandResult(1,'',e,True,False))
                     raise
+
+                if self.validationOnly:
+                    self.set_results(CommandResult(0,'','',True,False))
+                    return
+
+                logger.info("Create or update data directories for new segment")
+                try:
+                    self.makeOrUpdatePathAsNeeded(self.datadir)
+                    if self.isPrimary:
+                        # only on primary do we create it -- otherwise, mirroring code creates it on replay
+                        for path in self.filespaceDirs:
+                            self.makeOrUpdatePathAsNeeded(path)
+                except Exception, e:
+                    self.set_results(CommandResult(1,'',e,True,False))
+                    raise
+
 
                 logger.info("extract tar file to new segment")
                 extractTarCmd = unix.ExtractTar('extract tar file to new segment', self.tarfile, self.datadir )
@@ -183,6 +205,7 @@ def parseargs():
     parser.add_option('-t', '--tarfile', type='string')
     parser.add_option('-n', '--newsegments', action='store_true')
     parser.add_option('-B', '--batch-size', type='int', default=DEFAULT_BATCH_SIZE, metavar='<batch_size>')
+    parser.add_option("-V", "--validation-only", dest="validationOnly", action='store_true', default=False)
 
     parser.set_defaults(verbose=False,filters=[], slice=(None, None))
     
@@ -248,8 +271,7 @@ try:
 
         cmd = ConfExpSegCmd('Configure segment directory', ' '.join(sys.argv), dataDir, port, dbid,
                             options.newsegments, options.tarfile, directoryValidationLevel,
-                            isPrimary,
-                            filespaceDirs, options.verbose)
+                            isPrimary, filespaceDirs, options.verbose, options.validationOnly)
         pool.addCommand(cmd)
 
     pool.join()

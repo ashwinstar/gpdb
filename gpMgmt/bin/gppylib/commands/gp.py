@@ -598,7 +598,7 @@ class ConfigureNewSegment(Command):
     """
 
     def __init__(self, name, confinfo, newSegments=False, tarFile=None,
-                 batchSize=None, verbose=False,ctxt=LOCAL, remoteHost=None):
+                 batchSize=None, verbose=False,ctxt=LOCAL, remoteHost=None, validationOnly=False):
         cmdStr = '$GPHOME/bin/lib/gpconfigurenewsegment -c \"%s\"' % (confinfo)
         if newSegments:
             cmdStr += ' -n'
@@ -608,6 +608,8 @@ class ConfigureNewSegment(Command):
             cmdStr += ' -v '
         if batchSize:
             cmdStr += ' -B %s' % batchSize
+        if validationOnly:
+            cmdStr += " --validation-only"
 
         Command.__init__(self, name, cmdStr, ctxt, remoteHost)
 
