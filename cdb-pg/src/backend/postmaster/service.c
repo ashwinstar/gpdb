@@ -774,17 +774,16 @@ ServiceQuickDie(SIGNAL_ARGS)
 	ereport(LOG,
 			(errmsg("terminating immediately")));
 
+
+	/* DO ANY SPECIAL SERVICE QUICKDIE HANDLING HERE */
+
 	/*
-	 * DO NOT proc_exit() -- we're here because shared memory may be
-	 * corrupted, so we don't want to try to clean up our transaction. Just
-	 * nail the windows shut and get out of town.
-	 *
-	 * Note we do exit(2) not exit(0).	This is to force the postmaster into a
-	 * system reset cycle if some idiot DBA sends a manual SIGQUIT to a random
-	 * backend.  This is necessary precisely because we don't clean up our
-	 * shared memory state.
+	 * NOTE: see MPP-9518, MPP-9396, we need to make sure the atexit()
+	 * hooks get cleaned up before calling exit(). quickdie() knows how
+	 * to do that.
 	 */
-	exit(2);
+	quickdie(PASS_SIGNAL_ARGS);
+	/* not reached */
 }
 
 /*
@@ -798,6 +797,7 @@ ServiceDie(SIGNAL_ARGS)
 			(errmsg("terminating")));
 
 	die(postgres_signal_arg);
+	/* not reached */
 }
 
 static void

@@ -1174,7 +1174,7 @@ NON_EXEC_STATIC void BackoffSweeperMain(int argc, char *argv[])
 	pqsignal(SIGUSR1, SIG_IGN);
 
 	pqsignal(SIGTERM, die);
-	pqsignal(SIGQUIT, die);
+	pqsignal(SIGQUIT, quickdie);
 	pqsignal(SIGUSR2, BackoffRequestShutdown);
 
 	pqsignal(SIGFPE, FloatExceptionHandler);
