@@ -3100,6 +3100,12 @@ IsTransactionStmtList(List *nodes)
  *
  * Some backend has bought the farm,
  * so we need to stop what we're doing and exit.
+ *
+ * NOTE: see MPP-9518 and MPP-7564, there are other backend processes
+ * which come through here, there isn't anything specific to any particular
+ * backend here. If these other processes need to do their own handling
+ * they should override the signal handler for SIGQUIT (and in that handler
+ * call this one ?).
  */
 void
 quickdie(SIGNAL_ARGS)

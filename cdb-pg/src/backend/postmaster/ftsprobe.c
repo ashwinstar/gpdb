@@ -72,6 +72,8 @@
 
 #include "cdb/ml_ipc.h" /* gettime_elapsed_ms */
 
+#include "tcop/tcopprot.h" /* quickdie() */
+
 #ifdef HAVE_POLL_H
 #include <poll.h>
 #endif
@@ -231,30 +233,6 @@ ReqFtsFullScan(SIGNAL_ARGS)
 }
 
 /*
- * fp_quickdie() occurs when signalled SIGQUIT by the postmaster.
- *
- * Some backend has bought the farm,
- * so we need to stop what we're doing and exit.
- */
-static void
-fp_quickdie(SIGNAL_ARGS)
-{
-	PG_SETMASK(&BlockSig);
-
-	/*
-	 * DO NOT proc_exit() -- we're here because shared memory may be
-	 * corrupted, so we don't want to try to clean up our transaction. Just
-	 * nail the windows shut and get out of town.
-	 *
-	 * Note we do exit(2) not exit(0).	This is to force the postmaster into a
-	 * system reset cycle if some idiot DBA sends a manual SIGQUIT to a random
-	 * backend.  This is necessary precisely because we don't clean up our
-	 * shared memory state.
-	 */
-	exit(2);
-}
-
-/*
  * FtsProbeMain
  */
 NON_EXEC_STATIC void
@@ -293,7 +271,7 @@ FtsProbeMain(int argc, char *argv[])
 	 */
 	pqsignal(SIGINT, ReqFtsFullScan);		/* request full-scan */
 	pqsignal(SIGTERM, die);
-	pqsignal(SIGQUIT, fp_quickdie);
+	pqsignal(SIGQUIT, quickdie); /* we don't do any ftsprobe specific cleanup, just use the standard. */
 	pqsignal(SIGALRM, handle_sig_alarm);
 
 	pqsignal(SIGPIPE, SIG_IGN);

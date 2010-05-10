@@ -63,6 +63,7 @@
 #include "utils/memutils.h"
 #include "utils/resowner.h"
 
+#include "tcop/tcopprot.h" /* quickdie() */
 
 /*----------
  * Shared memory area for communication between bgwriter and backends
@@ -148,12 +149,9 @@ static bool ckpt_active = false;
 static time_t last_checkpoint_time;
 static time_t last_xlog_switch_time;
 
-
-static void bg_quickdie(SIGNAL_ARGS);
 static void BgSigHupHandler(SIGNAL_ARGS);
 static void ReqCheckpointHandler(SIGNAL_ARGS);
 static void ReqShutdownHandler(SIGNAL_ARGS);
-
 
 /*
  * Main entry point for bgwriter process
@@ -196,7 +194,7 @@ BackgroundWriterMain(void)
 	pqsignal(SIGHUP, BgSigHupHandler);	/* set flag to read config file */
 	pqsignal(SIGINT, ReqCheckpointHandler);		/* request checkpoint */
 	pqsignal(SIGTERM, SIG_IGN); /* ignore SIGTERM */
-	pqsignal(SIGQUIT, bg_quickdie);		/* hard crash time */
+	pqsignal(SIGQUIT, quickdie);		/* hard crash time: nothing bg-writer specific, just use the standard */
 	pqsignal(SIGALRM, SIG_IGN);
 	pqsignal(SIGPIPE, SIG_IGN);
 	pqsignal(SIGUSR1, SIG_IGN); /* reserve for sinval */
@@ -514,38 +512,6 @@ BackgroundWriterMain(void)
  *		signal handler routines
  * --------------------------------
  */
-
-/*
- * bg_quickdie() occurs when signalled SIGQUIT by the postmaster.
- *
- * Some backend has bought the farm,
- * so we need to stop what we're doing and exit.
- */
-static void
-bg_quickdie(SIGNAL_ARGS)
-{
-	PG_SETMASK(&BlockSig);
-
-	/*
-	 * We DO NOT want to run proc_exit() callbacks -- we're here because
-	 * shared memory may be corrupted, so we don't want to try to clean up our
-	 * transaction.  Just nail the windows shut and get out of town.  Now that
-	 * there's an atexit callback to prevent third-party code from breaking
-	 * things by calling exit() directly, we have to reset the callbacks
-	 * explicitly to make this work as intended.
-	 */
-	on_exit_reset();
-
-	/*
-	 * Note we do exit(2) not exit(0).	This is to force the postmaster into a
-	 * system reset cycle if some idiot DBA sends a manual SIGQUIT to a random
-	 * backend.  This is necessary precisely because we don't clean up our
-	 * shared memory state.  (The "dead man switch" mechanism in pmsignal.c
-	 * should ensure the postmaster sees this as a crash, too, but no harm in
-	 * being doubly sure.)
-	 */
-	exit(2);
-}
 
 /* SIGHUP: set flag to re-read config file at next convenient time */
 static void
