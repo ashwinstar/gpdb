@@ -27,6 +27,7 @@ Options:
     -man             full documentation
     -connect         psql connect parameters
     -ignore          filename pattern to ignore during comparison
+	-mastermirror    compare master and standby only 
 	-skipsegments    skip mirror check for segments which are not in sync
 
 =head1 OPTIONS
@@ -54,6 +55,14 @@ directories.  To specify multiple patterns, use multiple ignore
 arguments, eg:
 
   -ignore gp_dump -ignore pg_dump
+
+=item B<-mastermirror> 
+    
+Boolean flag to control whether to only compare the state of the
+master with the standby (normally false).  If true, only checks that
+the master and standby have identical relfilenode layout, ie the
+datafiles are identical in name and number.  Does not compare file
+contents, which may differ due to logical mirroring.
 
 =item B<-skipsegments> 
     
