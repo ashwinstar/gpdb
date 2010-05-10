@@ -329,6 +329,28 @@ bool cdbCopyGetData(CdbCopy *c, bool copy_cancel, uint64 *rows_processed)
 	gp = c->primary_writer;
 
 	/*
+	 * MPP-7712: we used to issue the cancel-requests for each *row* we got back
+	 * from each segment -- this is potentially millions of cancel-requests.
+	 * Cancel requests consist of an out-of-band connection to the segment-postmaster,
+	 * this is *not* a lightweight operation!
+	 */
+	if (copy_cancel)
+	{
+		ListCell   *cur;
+		
+		/* iterate through all the segments that still have data to give */
+		foreach(cur, c->outseglist)
+		{
+			int			source_seg = lfirst_int(cur);
+
+			q = getSegmentDescriptorFromGang(gp, source_seg);
+
+			/* send a query cancel request to that segdb */
+			PQrequestCancel(q->conn);
+		}
+	}
+
+	/*
 	 * Collect data rows from the segments that still have rows to 
 	 * give until chunk minimum size is reached
 	 */
@@ -341,16 +363,12 @@ bool cdbCopyGetData(CdbCopy *c, bool copy_cancel, uint64 *rows_processed)
 		{
 			int			source_seg = lfirst_int(cur);
 			char		*buffer;
-					
+
 			q = getSegmentDescriptorFromGang(gp, source_seg);
-			
-			/* send a query cancel request to that segdb */
-			if (copy_cancel)
-				PQrequestCancel(q->conn);
-			
+
 			/* get 1 row of COPY data */
 			nbytes = PQgetCopyData(q->conn, &buffer, false);
-			
+
 			/* 
 			 * SUCCESS -- got a row of data 
 			 */
@@ -358,13 +376,13 @@ bool cdbCopyGetData(CdbCopy *c, bool copy_cancel, uint64 *rows_processed)
 			{
 				/* append the data row to the data chunk */
 				appendBinaryStringInfo(&(c->copy_out_buf), buffer, nbytes);
-				
+
 				/* increment the rows processed counter for the end tag */
 				(*rows_processed)++;
-				
+
 				PQfreemem(buffer);
 			}
-			
+
 			/* 
 			 * DONE -- Got all the data rows from this segment, or a cancel request. 
 			 */
@@ -382,22 +400,22 @@ bool cdbCopyGetData(CdbCopy *c, bool copy_cancel, uint64 *rows_processed)
 										 source_seg, PQresultErrorMessage(res));
 						c->remote_data_err = true;
 					}
-					
+
 					/* free the PGresult object */
 					PQclear(res);
 				}
-				
+
 				/* remove the segment that completed sending data from the list*/
 				c->outseglist = list_delete_int(c->outseglist, source_seg);
-				
+
 				/* no more segments with data on the list. we are done */
 				if (list_length(c->outseglist) == 0)
 					return true; /* done */
-				
+
 				/* start over from first seg as we just changes the seg list */
 				break;
 			}
-				
+
 			/* 
 			 * ERROR!
 			 */
@@ -408,28 +426,28 @@ bool cdbCopyGetData(CdbCopy *c, bool copy_cancel, uint64 *rows_processed)
 					appendStringInfo(&(c->err_msg),
 									 "Failed to get data from segment %d, attempt blocked\n",
 									 source_seg);
-				
+
 				if (nbytes == -2)
 				{
 					appendStringInfo(&(c->err_msg),
 									 "Failed to get data from segment %d: %s\n",
 									 source_seg, PQerrorMessage(q->conn));
-									 
+
 					/* remove the segment that completed sending data from the list*/
 					c->outseglist = list_delete_int(c->outseglist, source_seg);
-					
+
 					/* no more segments with data on the list. we are done */
 					if (list_length(c->outseglist) == 0)
 						return true; /* done */
-					
+
 					/* start over from first seg as we just changes the seg list */
 					break;
 				}
-				
+
 				c->io_errors = true;
 			}
 		}
-		
+
 		if (c->copy_out_buf.len > COPYOUT_CHUNK_SIZE)
 			break;
 	}
