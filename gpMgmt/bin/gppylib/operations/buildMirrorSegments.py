@@ -57,8 +57,6 @@ gDatabaseFiles = [
 # note: it's a little quirky that caller must set up failed/failover so that failover is in gparray but
 #                                 failed is not (if both set)...change that, or at least protect against problems
 #
-# todo update hba.conf in existing segments as well
-#
 
 class GpMirrorToBuild:
 
@@ -69,11 +67,11 @@ class GpMirrorToBuild:
         if failedSegment is None and failoverSegment is None:
             raise Exception( "No mirror passed to GpMirrorToBuild")
 
-        if not liveSegment.isSegmentPrimary(True):
-            raise ExceptionNoStackTraceNeeded("Segment to recover from for content %s is not a primary" % liveSegment.getSegmentContentId())
         if not liveSegment.isSegmentQE():
             raise ExceptionNoStackTraceNeeded("Segment to recover from for content %s is not a correct segment " \
                     "(it is a master or standby master)" % liveSegment.getSegmentContentId())
+        if not liveSegment.isSegmentPrimary(True):
+            raise ExceptionNoStackTraceNeeded("Segment to recover from for content %s is not a primary" % liveSegment.getSegmentContentId())
         if not liveSegment.isSegmentUp():
             raise ExceptionNoStackTraceNeeded("Primary segment is not up for content %s" % liveSegment.getSegmentContentId())
 
@@ -271,7 +269,7 @@ class GpMirrorListToBuild:
         A detected problem causes an Exception to be raised
         """
 
-        for hostName, segmentArr in gpArray.getSegmentsByHostName(gpArray.getDbList()).iteritems():
+        for hostName, segmentArr in GpArray.getSegmentsByHostName(gpArray.getDbList()).iteritems():
             usedPorts = {}
             usedDataDirectories = {}
             for segment in segmentArr:
@@ -281,15 +279,21 @@ class GpMirrorListToBuild:
                 port = segment.getSegmentPort()
                 dbid = segment.getSegmentDbId()
                 if port in usedPorts:
-                    raise Exception("A port for segment with dbid %s conflicts with a port for segment dbid %s" \
-                            % (dbid, usedPorts.get(port)))
+                    raise Exception("On host %s, a port for segment with dbid %s conflicts with a port for segment dbid %s" \
+                            % (hostName, dbid, usedPorts.get(port)))
 
-                if replicationPort in usedPorts:
-                    raise Exception("A port for segment with dbid %s conflicts with a port for segment dbid %s" \
-                            % (dbid, usedPorts.get(replicationPort)))
+                if segment.isSegmentQE():
+                    if replicationPort is None:
+                        raise Exception("On host %s, the replication port is not set for segment with dbid %s" \
+                                % (hostName, dbid))
 
-                if port == replicationPort:
-                    raise Exception("Segment with dbid %s has equal port and replication port" % dbid)
+                    if replicationPort in usedPorts:
+                        raise Exception("On host %s, a port for segment with dbid %s conflicts with a port for segment dbid %s" \
+                                % (hostName, dbid, usedPorts.get(replicationPort)))
+
+                    if port == replicationPort:
+                        raise Exception("On host %s, segment with dbid %s has equal port and replication port" \
+                        % (hostName, dbid))
 
                 usedPorts[port] = dbid
                 usedPorts[replicationPort] = dbid
@@ -300,9 +304,9 @@ class GpMirrorListToBuild:
 
                 for path in paths:
                     if path in usedDataDirectories:
-                        raise Exception("A directory (base or filespace) for segment with dbid %s conflicts with a " \
+                        raise Exception("On host %s, directory (base or filespace) for segment with dbid %s conflicts with a " \
                                         "directory (base or filespace) for segment dbid %s; directory: %s" % \
-                                        (dbid, usedDataDirectories.get(path), path))
+                                        (hostName, dbid, usedDataDirectories.get(path), path))
                     usedDataDirectories[path] = dbid
 
 

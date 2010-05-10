@@ -2,24 +2,6 @@
 #
 # Copyright (c) Greenplum Inc 2010. All Rights Reserved.
 #
-#
-# todo MIRRORING move over checks for newRecoverHost (chk_pool_host) from old code
-# todo MIRRORING I may have changed the semantics for 'spareDataDirectory'.  review old semantics
-#
-# todo MIRRORING check that segment is actually in changetracking mode
-# todo MIRRORING if recovering using input file, need to make sure change is still possible to apply
-#
-# todo MIRRORING what is: multi_home = gpmlib.chk_multi_home(hosts) (from other gprecoverseg)
-#
-# todo MIRRORING checks for being able to build target directory
-# todo MIRRORING make sure we get good errors out when trying to build mirror data directories but can't
-#
-# todo MIRRORING what about chk_pool_dir_available from gprecoverseg?  Is that needed herE?
-# todo MIRRORING include check for passive standby master
-#
-# todo MIRRORING when failing over to another host we may need to change port numbers as well!
-# todo MIRRORING open question: okay to pause fault prober while prompt to user is up?
-#
 # Note: the option to recover to a new host is not very good if we have a multi-home configuration
 #
 # Options removed when 4.0 gprecoverseg was implemented:
@@ -55,6 +37,52 @@ from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile, w
 from gppylib.gphostcache import GpInterfaceToHostNameCache
 
 logger = gplog.get_default_logger()
+
+class PortAssigner:
+    """
+    Used to assign new ports to segments on a host
+
+    Note that this could be improved so that we re-use ports for segments that are being recovered but this
+      does not seem necessary.
+
+    """
+
+    MAX_PORT_EXCLUSIVE=65536
+
+    def __init__(self, gpArray):
+        #
+        # determine port information for recovering to a new host --
+        #   we need to know the ports that are in use and the valid range of ports
+        #
+        segments = gpArray.getDbList()
+        self.__minPort = min([seg.getSegmentPort() for seg in segments if seg.isSegmentQE()])
+        self.__minReplicationPort = min([seg.getSegmentReplicationPort() for seg in segments if seg.getSegmentReplicationPort() is not None])
+        self.__usedPortsByHostName = {}
+
+        byHost = GpArray.getSegmentsByHostName(segments)
+        for hostName, segments in byHost.iteritems():
+            usedPorts = self.__usedPortsByHostName[hostName] = {}
+            for seg in segments:
+                usedPorts[seg.getSegmentPort()] = True
+                usedPorts[seg.getSegmentReplicationPort()] = True
+
+    def findAndReservePort(self, getReplicationPortNotPostmasterPort, hostName, address):
+        """
+        Find an unused port of the given type (normal postmaster or replication port)
+        When found, add an entry:  usedPorts[port] = True   and return the port found
+        Otherwise raise an exception labeled with the given address
+        """
+        if hostName not in self.__usedPortsByHostName:
+            self.__usedPortsByHostName[hostName] = {}
+        usedPorts = self.__usedPortsByHostName[hostName]
+
+        minPort = self.__minReplicationPort if getReplicationPortNotPostmasterPort else self.__minPort
+        for port in range(minPort, PortAssigner.MAX_PORT_EXCLUSIVE):
+            if port not in usedPorts:
+                usedPorts[port] = True
+                return port
+        raise Exception("Unable to assign port on %s" % address)
+
 
 #-------------------------------------------------------------------------
 class GpRecoverSegmentProgram:
@@ -295,6 +323,8 @@ class GpRecoverSegmentProgram:
         if self.__options.spareDataDirectoryFile is not None:
             spareDirectoryMap = self.__readSpareDirectoryMap(gpArray, self.__options.spareDataDirectoryFile)
 
+        portAssigner = PortAssigner(gpArray)
+
         forceFull = self.__options.forceFullResynchronization
         segs = []
         for i in range(len(failedSegments)):
@@ -309,12 +339,18 @@ class GpRecoverSegmentProgram:
                 failedSegment = failoverSegment.copy()
                 failoverSegment.setSegmentHostName( newRecoverHost )
                 failoverSegment.setSegmentAddress( newRecoverAddress )
+                port = portAssigner.findAndReservePort(False, newRecoverHost, newRecoverAddress )
+                replicationPort = portAssigner.findAndReservePort(True, newRecoverHost, newRecoverAddress )
+                failoverSegment.setSegmentPort( port )
+                failoverSegment.setSegmentReplicationPort( replicationPort)
 
             if spareDirectoryMap is not None:
+                #
                 # these two lines make it so that failoverSegment points to the object that is registered in gparray
                 failoverSegment = failedSegment
                 failedSegment = failoverSegment.copy()
                 self.__applySpareDirectoryMapToSegment( gpEnv, gpArray, spareDirectoryMap, failoverSegment)
+                # we're failing over to different location on same host so we don't need to assign new ports
 
             segs.append( GpMirrorToBuild(failedSegment, liveSegment, failoverSegment, forceFull ))
 
@@ -602,6 +638,33 @@ class GpRecoverSegmentProgram:
 
         logger.info('---------------------------------------------------------')
 
+    def __getSimpleSegmentLabel(self, seg):
+        return "%s:%s" % (seg.getSegmentAddress(), seg.getSegmentDataDirectory())
+
+    def __displayRecoveryWarnings(self, mirrorBuilder):
+        for warning in self._getRecoveryWarnings(mirrorBuilder):
+            logger.warn(warning)
+
+    def _getRecoveryWarnings(self, mirrorBuilder):
+        """
+        return an array of string warnings regarding the recovery
+        """
+        res = []
+        for toRecover in mirrorBuilder.getMirrorsToBuild():
+
+            if toRecover.getFailoverSegment() is not None:
+                #
+                # user specified a failover location -- warn if it's the same host as its primary
+                #
+                src = toRecover.getLiveSegment()
+                dest = toRecover.getFailoverSegment()
+
+                if src.getSegmentHostName() == dest.getSegmentHostName():
+                    res.append("Segment is being recovered to the same host as its primary: "
+                            "primary %s    failover target: %s"
+                            % (self.__getSimpleSegmentLabel(src), self.__getSimpleSegmentLabel(dest)))
+        return res
+
     def run(self):
         if self.__options.parallelDegree < 1 or self.__options.parallelDegree > 64:
             raise ProgramArgumentValidationException("Invalid parallelDegree provided with -B argument: %d" % self.__options.parallelDegree)
@@ -621,10 +684,7 @@ class GpRecoverSegmentProgram:
             optionCnt += 1
         if optionCnt > 1:
             raise ProgramArgumentValidationException(\
-                    "Only one of -i, -p, -s may be specified")
-
-        # if gpmlib.chk_on_passive_standby(masterPort): # todo: what is this doing?  Proper error message
-         #    raise Exception('Unable to process requested command')
+                    "Only one of -i, -p, -s, and -S may be specified")
 
         faultProber = faultProberInterface.getFaultProber().initializeProber(gpEnv.getMasterPort())
         try:
@@ -633,9 +693,6 @@ class GpRecoverSegmentProgram:
 
             # check that we actually have mirrors
             if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_SAN:
-                if self.__options.newRecoverHost is not None:
-                    raise ProgramArgumentValidationException("")
-
                 self.SanFailback(gpArray, gpEnv)
                 return 0
             elif gpArray.getFaultStrategy() != gparray.FAULT_STRATEGY_FILE_REPLICATION:
@@ -664,8 +721,11 @@ class GpRecoverSegmentProgram:
 
                 if self.__options.interactive:
                     self.displayRecovery(mirrorBuilder, gpArray)
+                    self.__displayRecoveryWarnings(mirrorBuilder)
                     if not userinput.ask_yesno(None, "\nContinue with segment recovery procedure", 'N'):
                         raise UserAbortedException()
+                else:
+                    self.__displayRecoveryWarnings(mirrorBuilder)
 
                 mirrorBuilder.buildMirrors("recover", gpEnv, gpArray )
 
