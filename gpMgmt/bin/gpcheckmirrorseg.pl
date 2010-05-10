@@ -1868,6 +1868,11 @@ if (1)
 				unless (-1 == $row->{content});
 
 		}
+		else
+		{
+			next
+				if (-1 == $row->{content});
+		}
 
 		my @foo = File::Spec->splitdir($prim_dd);
 		my $fil = pop @foo;
