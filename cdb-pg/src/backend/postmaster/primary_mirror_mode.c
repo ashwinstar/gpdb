@@ -540,9 +540,15 @@ getFileRepRoleAndState(
 
 	acquireModuleSpinLock();
 	{
-		/* todo: only fetch mode from transition in some cases (or never?) */
+        /**
+         * if we are in TSNone then we still haven't done the trivial validation so don't
+         *           count as being inside transition (otherwise the caller may be told we're
+         *           in a transition when we don't actually plan on taking the transition)
+         */
+        isInTransition = pmModuleState->isTransitionRequested && pmModuleState->transitionState > TSNone;
+
 		volatile PrimaryMirrorModeTransitionArguments *args = &pmModuleState->requestedTransition;
-		PrimaryMirrorMode mode = args->mode;
+		PrimaryMirrorMode mode = isInTransition ? args->mode : pmModuleState->mode;
 		switch (mode)
 		{
 			case PMModePrimarySegment:
@@ -554,14 +560,12 @@ getFileRepRoleAndState(
 				    
                 /* check to see if postmaster is still processing a transition.  Note that here we don't
                  *  need to check to see if the listener is complete */
-                if ( pmModuleState->isTransitionRequested )
+                if ( isInTransition )
                 {
-                    isInTransition = true;
                     transitionTargetDataState = args->dataState;
                 }
                 else
                 {
-                    isInTransition = false;
                     transitionTargetDataState = DataStateNotInitialized;
                 }
 				    
@@ -570,7 +574,7 @@ getFileRepRoleAndState(
                 fileRepRole = FileRepNoRoleConfigured;
                 dataState = DataStateNotInitialized;
                 segmentState = SegmentStateNotInitialized;
-                isInTransition = false;
+                isInTransition = false; /* filerep not used so we can't be in a filerep transition */
                 transitionTargetDataState = DataStateNotInitialized;
 				break;
 		}
@@ -1415,8 +1419,6 @@ applyStepForTransitionToMasterOrMirrorlessMode(PrimaryMirrorModeTransitionArgume
                 default:
                     return invalidMode(args);
             }
-            return PMTransitionSuccess;
-
             return PMTransitionSuccess;
 
         case TSDoDatabaseStartup:
