@@ -3691,3 +3691,71 @@ select pg_get_partition_def('mpp6589b'::regclass,true);
 
 drop table mpp6589b;
 
+-- MPP-7191, MPP-7193: partitioned tables - fully-qualify storage type
+-- if not specified (and not a template)
+CREATE TABLE mpp5992 (a int, b date, c char,
+                     d char(4), e varchar(20), f timestamp)
+WITH (orientation=column,appendonly=true)
+partition by range (b)
+subpartition by list (a)
+subpartition template (
+subpartition l1 values (1,2,3,4,5),
+subpartition l2 values (6,7,8,9,10) ),
+subpartition by list (e)
+subpartition template (
+subpartition ll1 values ('Engineering'),
+subpartition ll2 values ('QA') ),
+subpartition by list (c)
+subpartition template (
+subpartition lll1 values ('M'),
+subpartition lll2 values ('F') )
+(
+  start (date '2007-01-01')
+  end (date '2010-01-01') every (interval '1 year')
+);
+
+-- Delete subpartition template
+alter table mpp5992 alter partition for ('2008-01-01')
+set subpartition template ();
+alter table mpp5992 alter partition for ('2008-01-01')
+alter partition for (1)
+set subpartition template ();
+alter table mpp5992 set subpartition template ();
+
+-- Add subpartition template
+alter table mpp5992 alter partition for ('2008-01-01')
+alter partition for (1)
+set subpartition template ( subpartition lll1 values ('M'),
+subpartition lll2 values ('F'));
+
+alter table mpp5992 alter partition for ('2008-01-01')
+set subpartition template (
+subpartition ll1 values ('Engineering'),
+subpartition ll2 values ('QA')
+);
+alter table mpp5992 
+set subpartition template (subpartition l1 values (1,2,3,4,5), 
+subpartition l2 values (6,7,8,9,10) );
+alter table mpp5992 
+set subpartition template (subpartition l1 values (1,2,3), 
+subpartition l2 values (4,5,6), subpartition l3 values (7,8,9,10));
+select * from pg_partition_templates where tablename='mpp5992';
+
+-- Now we can add a new partition
+alter table mpp5992 
+add partition foo1 
+start (date '2011-01-01') 
+end (date '2012-01-01'); -- should inherit from parent storage option
+
+alter table mpp5992 
+add partition foo2 
+start (date '2012-01-01') 
+end (date '2013-01-01') WITH (orientation=column,appendonly=true);
+
+alter table mpp5992 
+add partition foo3 
+start (date '2013-01-01') end (date '2014-01-01') WITH (appendonly=true);
+
+select pg_get_partition_def('mpp5992'::regclass,true, true);
+
+drop table mpp5992;
