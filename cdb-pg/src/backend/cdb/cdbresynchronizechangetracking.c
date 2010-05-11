@@ -1199,13 +1199,14 @@ IncrementalChangeList* ChangeTracking_InitIncrementalChangeList(int count)
  * change tracking log, with unique tid values, each paired with the newest
  * serial num found for it.
  */
-IncrementalChangeList* ChangeTracking_GetIncrementalChangeList(void)
+IncrementalChangeList *
+ChangeTracking_GetIncrementalChangeList(void)
 {
 	IncrementalChangeList* result = NULL;
 	StringInfoData 	sqlstmt;
 	int 			ret;
 	int 			proc;
-	bool 			connected = false;
+	volatile bool 	connected = false;
 	ResourceOwner 	save = CurrentResourceOwner;
 	MemoryContext 	oldcontext = CurrentMemoryContext;
 
@@ -1226,7 +1227,7 @@ IncrementalChangeList* ChangeTracking_GetIncrementalChangeList(void)
 		
 		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
 		
-		SetSessionUserId(10,true); /* TODO: HACK!!! find a solution */
+		SetSessionUserId(BOOTSTRAP_SUPERUSERID, true);
 
 		if (SPI_OK_CONNECT != SPI_connect())
 		{
@@ -1441,6 +1442,9 @@ ChangeTrackingResult* ChangeTracking_GetChanges(ChangeTrackingRequest *request)
 	volatile bool 	connected = false; /* needs to survive PG_TRY()/CATCH() */
 	ResourceOwner 	save = CurrentResourceOwner;
 	MemoryContext 	oldcontext = CurrentMemoryContext;
+	bool old_enable_groupagg = enable_groupagg;
+
+	enable_groupagg = false; /* disable sort group agg -- our query works better with hash agg */
 
 	Assert(dataState == DataStateInResync);	
 	
@@ -1476,10 +1480,6 @@ ChangeTrackingResult* ChangeTracking_GetChanges(ChangeTrackingRequest *request)
 	appendStringInfo(&sqlstmt, "GROUP BY space, db, rel, blocknum "
 							   "ORDER BY space, db, rel, blocknum");
 	
-	//elog(LOG, "ChangeTracking_GetChanges query: %s", sqlstmt.data);
-	bool old_enable_groupagg = enable_groupagg;
-	enable_groupagg = false; /* disable sort group agg -- our query works better with hash agg */
-
 	PG_TRY();
 	{
 		/* must be in a transaction in order to use SPI */
@@ -1488,7 +1488,7 @@ ChangeTrackingResult* ChangeTracking_GetChanges(ChangeTrackingRequest *request)
 		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
 
 		/* 
-		 * TODO: HACK!!! find a solution
+		 * TODO:
 		 * It's possible that the bootstrap superuser has been removed from the
 		 * system. ftsprobe has a routine for determining a valid superuser by
 		 * scanning pg_authid.
@@ -2264,7 +2264,7 @@ XLogRecPtr* ChangeTracking_ReadLastLocOnDisk(void)
 {	
 	StringInfoData 	sqlstmt;
 	int 			ret;
-	bool 			connected = false;
+	volatile bool 	connected = false;
 	XLogRecPtr*		endlsn;
 	ResourceOwner 	save = CurrentResourceOwner;
 	MemoryContext 	oldcontext = CurrentMemoryContext;
@@ -2364,7 +2364,7 @@ int64 ChangeTracking_GetTotalBlocksToSync(void)
 {	
 	StringInfoData 	sqlstmt;
 	int 			ret;
-	bool 			connected = false;
+	volatile bool 	connected = false;
 	int64			count = 0;
 	ResourceOwner 	save = CurrentResourceOwner;
 	MemoryContext 	oldcontext = CurrentMemoryContext;
