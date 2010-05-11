@@ -1581,12 +1581,24 @@ class gpload:
            tableSchema = quote_unident(self.schema)
         else:
            tableSchema = 'public'
-        queryString = """select *, data_type in ('int4', 'bigint') and 
-                               column_default ~ E'nextval\\\\(.*regclass' as 
-                               has_sequence 
-                               from information_schema.columns where 
-                               table_name='%s' and table_schema='%s' order by 
-                               ordinal_position""" % (tableName, tableSchema)
+
+        queryString = """select nt.nspname as table_schema,
+         c.relname as table_name,
+         a.attname as column_name,
+         a.attnum as ordinal_position, 
+         format_type(a.atttypid, a.atttypmod) as data_type,
+         c.relkind = 'r' AS is_updatable,
+         a.atttypid in (23, 20) and a.atthasdef and 
+             (select position ( 'nextval(' in pg_catalog.pg_get_expr(adbin,adrelid) ) > 0 and 
+                          position ( '::regclass)' in pg_catalog.pg_get_expr(adbin,adrelid) ) > 0  
+              FROM pg_catalog.pg_attrdef d
+              WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef) as has_sequence 
+          from pg_catalog.pg_class c join pg_catalog.pg_namespace nt on (c.relnamespace = nt.oid) 
+             join pg_attribute a on (a.attrelid = c.oid) 
+         where c.relname = '%s' and nt.nspname = '%s'
+         and a.attnum > 0
+         order by a.attnum """ % (tableName, tableSchema)
+
         count = 0
         self.into_columns = []
         self.into_columns_dict = dict()
@@ -1595,27 +1607,13 @@ class gpload:
             row = resultList[count]
             count += 1
             ct = unicode(row['data_type'])
-            if ct=='numeric':
-                stuff = ('numeric_precision','numeric_scale')
-            elif ct=='character' or ct=='character varying' or ct == 'bpchar':
-                stuff = ('character_maximum_length',)
-            elif ct == 'bigserial':
-                ct = 'bigint'
+            if ct == 'bigserial':
+               ct = 'bigint'
             elif ct == 'serial':
-                ct = 'int4'
-            elif ct == 'bit' or ct == 'varbit':
-                stuff = ('character_maximum_length',)
-            else:
-                stuff = ()
-            stuff2 = []
-            for a in stuff:
-                if row[a]!=None:
-                    stuff2.append(unicode(row[a]))
-            if stuff2:
-                ct += '('+','.join(stuff2)+')'
+               ct = 'int4'
             name = unicode(row['column_name'])
             name = quote_ident(name)
-            if row['has_sequence'] == True:
+            if unicode(row['has_sequence']) != unicode('f'):
                 has_seq = True
             else:
                 has_seq = False
