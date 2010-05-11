@@ -31,13 +31,12 @@ from gppylib import gparray
 from gppylib.commands import base
 from gppylib.commands import unix
 from gppylib import gplog
+from gppylib.utils import readAllLinesFromFile
 FILEDIR=os.path.expanduser("~")
 FILENAME=".gphostcache"
 CACHEFILE=FILEDIR + "/" + FILENAME
 
 logger = gplog.get_default_logger()
-
-
 
 class GpHost:
     def __init__(self, hostname):
@@ -57,19 +56,20 @@ class GpInterfaceToHostNameCache:
 
     def __init__(self, pool, interfacesToLookup, currentHostNameAnswersForInterfaces):
         self.__hostCache={}         # interface -> hostname
+
         # Read the .gphostcache file if it exists
-        #   Todo: handle failure more cleanly Should be able to deal with:
-        #     - lack of permissions on file
-        #     - file in unexpected format
         if os.path.isfile(CACHEFILE):
             try:
-                fp = open(CACHEFILE, 'r')
-                for line in fp:
-                    (interface, hostname) = line.split(':')
-                    self.__hostCache[interface.strip()]=hostname.strip()
+                for line in readAllLinesFromFile(CACHEFILE, stripLines=True, skipEmptyLines=True):
+                    if line[0] == '#': # okay check because empty lines are skipped
+                        continue
+
+                    arr = line.split(':')
+                    if len(arr) == 2 and len(arr[0]) > 0 and len(arr[1]) > 0:
+                        (interface, hostname) = arr
+                        self.__hostCache[interface.strip()]=hostname.strip()
             except Exception, e:
-                logger.warn(str(e))
-                logger.warn("Error reading file '%s'" % CACHEFILE)
+                logger.warn("Error reading file '%s': %s" % (CACHEFILE, str(e)))
 
         #
         # check to see which values are inconsistent with the cache and need lookup again
