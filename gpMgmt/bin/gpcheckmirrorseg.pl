@@ -360,7 +360,9 @@ sub get_mm_presh_txt
 ##tiny perl script to list filename, filesize, md5 hash
 #for my $filnam (@ARGV) # xargs supplies up to 5000 args
 #{
-# my $sz = 0;
+#  my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,
+#      $atime,$mtime,$ctime,$blksize,$blocks) = stat($filnam);
+# my $sz = $size ? 1 : 0; # nonzero size normalized to 1
 # print $filnam, " ", $sz, " 0\n";
 #}
 EOF_bigstr
