@@ -1153,7 +1153,7 @@ sub get_relfilenode_func
 					&& ($rnod->{relstorage} =~ m/a|c/))
 			{
 				$rnod->{aoseg} = 
-					get_aoseg_func($kk2, $rnod, $dbname,
+					get_aoseg_func($rnod->{relid}, $rnod, $dbname,
 								   $diffi, $row, $fselochsh, $bigh);
 
 				$rnod->{aoseg_eof} = {};
