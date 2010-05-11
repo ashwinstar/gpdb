@@ -107,6 +107,20 @@ it generates an Adler32 hash for each block.  The final diff compares
 the hashes for each block, highlighting the exact location where each
 file differs.
 
+=head2 Master Mirror Comparison
+
+When -mastermirror=true, the comparison is slightly different.  The
+master and standby are synchronized using logical mirroring, not
+file-based replication, so the contents of the relfilenodes can vary.
+Thus, the master mirror comparison checks that the master and standby
+have an indentical complement of relfilenodes, with the additional
+requirement that all files are categorized as zero-length or
+non-zero-length.  A zero-length file on the master must have a
+matching zero-length file on the standby, while a non-zero-length file
+on the master must have a corresponding non-zero file on the standby
+(which is not necessarily the same length, as its contents may be
+slightly different).
+
 =head1 CAVEATS/LIMITATIONS 
 
 Note that the preprocessing routine for heap files that filters hint
@@ -384,15 +398,20 @@ sub get_presh2_txt
 ## else if noadler, just preprocesses each block according to ao/heap rules
 ## and prints it out.
 #
+#use POSIX; # for floor
 #my $glob_adler = 0;
+#my $zero_adler = 2147483649; # for case of blank block
 #
 #sub doprint
 #{
-#    my ($blockno, $buf) = @_;
+#    my ($blockno, $buf, $isLastblock) = @_;
 #	
 #    if ($glob_adler)
 #    {
-#		print $blockno, ":", adler32(1, [$buf]), "\n";
+#		my $adlerval = adler32(1, [$buf]);
+#		# NOTE: can ignore the last block if it is empty
+#		print "GP_IGNORE: " if ($isLastblock && ($adlerval == $zero_adler));
+#		print $blockno, ":", $adlerval, "\n";
 #    }
 #    else
 #    {
@@ -495,13 +514,17 @@ sub get_presh2_txt
 #	} # else heap
 #	else
 #	{
+#		my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$statsize,
+#      $atime,$mtime,$ctime,$statblksize,$statblocks) = stat($filnam);
+#
 #		my $fh;
 #		
 #		open ($fh, "<", $filnam) or die ("cannot open $filnam: $!");
 #		
 #		my $bufsiz = 32768;
 #		my $buf;
-#		my $realsiz;
+#		my $realsiz = 0;
+#		my $lastblock = POSIX::floor($statsize/$bufsiz);
 #		
 #		while (1)
 #		{
@@ -509,7 +532,7 @@ sub get_presh2_txt
 #			
 #			if ($realsiz < $bufsiz)
 #			{
-#	            doprint($blockno, $buf);
+#				doprint($blockno, $buf, ($blockno == $lastblock)) if $realsiz;
 #				last;
 #			}
 #			
@@ -575,7 +598,7 @@ sub get_presh2_txt
 #				
 #			} # end while
 #			
-#	        doprint($blockno, $buf);
+#	        doprint($blockno, $buf, ($blockno == $lastblock)) if ($realsiz);
 #			$blockno++;
 #		}
 #		
@@ -1303,7 +1326,7 @@ sub resolve_sizediff
 			{
 				$bstat = 0;
 				print Data::Dumper->Dump([$vv2]),"\n";
-				warn "bad sizediff for non-ao file $relname for db $dbname";
+				warn "bad sizediff for non-ao file $relname for db $dbname (but could be ok - see block by block results)";
 			}
 		} # end for all relfilenodes
 
@@ -1588,7 +1611,6 @@ sub diff_again
 					\@aofiles, \@heapfiles, \@unknownfiles
 			);
 
-		push @{$glob_exit}, $row->{ploc}." ".$row->{mloc} ; # found differences
 	}
 	else
 	{
@@ -1733,30 +1755,32 @@ sub diff_thrice
 	$primtmp .= '1';
 	$mirrtmp .= '1';
 
-	my $diffi3 = `diff -b $primtmp $mirrtmp`;
+	my $diffi3 = `diff -I GP_IGNORE -b $primtmp $mirrtmp`;
 
 	{
-		print "raw diff:\n";
-		print $diffi;
-
-		print "\nenhanced diff:\n";
-		print $diffi2;
-
 		if (length($diffi3))
 		{
+			print "raw diff:\n";
+			print $diffi;
+
+			print "\nenhanced diff:\n";
+			print $diffi2;
+
 			print "\nblock by block diff:\n";
 			print $diffi3;
+
+			print Data::Dumper->Dump([$row]);
+			
+			print Data::Dumper->Dump([$bigh]);	 
+			
+			# found differences
+			push @{$glob_exit}, $row->{ploc}." ".$row->{mloc} ; 
 		}
 		else
 		{
-			print "\block by block diff [$floc]: no differences\n\n";
+			print "\nblock by block diff [$floc]: no differences\n\n";
 		}
 
-		print Data::Dumper->Dump([$row]);
-		
-		print Data::Dumper->Dump([$bigh]);	 
-
-		push @{$glob_exit}, $row->{ploc}." ".$row->{mloc} ; # found differences
 	}
 
 } # end diff_thrice
