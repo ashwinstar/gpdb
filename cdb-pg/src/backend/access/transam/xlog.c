@@ -5905,6 +5905,24 @@ static void ShutdownReadFile(void)
 static void
 StartupXLOG_InProduction(void)
 {
+	TransactionId oldestActiveXID;
+
+	/* Pre-scan prepared transactions to find out the range of XIDs present */
+	oldestActiveXID = PrescanPreparedTransactions();
+
+	elog(LOG, "Oldest active transaction from prepared transactions %u", oldestActiveXID);
+
+	/* Start up the commit log and related stuff, too */
+	StartupCLOG();
+	StartupSUBTRANS(oldestActiveXID);
+	StartupMultiXact();
+	DistributedLog_Startup(
+						oldestActiveXID, 
+						ShmemVariableCache->nextXid);
+
+	/* Reload shared-memory state for prepared transactions */
+	RecoverPreparedTransactions();
+
 	/*
 	 * Perform a checkpoint to update all our recovery activity to disk.
 	 *
@@ -5994,7 +6012,6 @@ StartupXLOG(void)
 	uint32		endLogSeg;
 	XLogRecord *record;
 	uint32		freespace;
-	TransactionId oldestActiveXID;
 	char* 		dtxCheckPointInfo;
 	int			dtmCheckPointInfoSize;
 
@@ -6496,9 +6513,6 @@ StartupXLOG(void)
 		XLogCtl->Write.curridx = NextBufIdx(0);
 	}
 
-	/* Pre-scan prepared transactions to find out the range of XIDs present */
-	oldestActiveXID = PrescanPreparedTransactions();
-
 	if (InRecovery)
 	{
 		/*
@@ -6559,17 +6573,6 @@ StartupXLOG(void)
 	/* initialize shared-memory copy of latest checkpoint XID/epoch */
 	XLogCtl->ckptXidEpoch = ControlFile->checkPointCopy.nextXidEpoch;
 	XLogCtl->ckptXid = ControlFile->checkPointCopy.nextXid;
-
-	/* Start up the commit log and related stuff, too */
-	StartupCLOG();
-	StartupSUBTRANS(oldestActiveXID);
-	StartupMultiXact();
-	DistributedLog_Startup(
-						oldestActiveXID, 
-						ShmemVariableCache->nextXid);
-
-	/* Reload shared-memory state for prepared transactions */
-	RecoverPreparedTransactions();
 
 	if (!XLogCtl->multiplePassesNeeded)
 	{
