@@ -109,6 +109,9 @@ static int	fail_ignore_count = 0;
 static bool directory_exists(const char *dir);
 static void make_directory(const char *dir);
 
+static void create_database(const char *dbname);
+static void drop_database_if_exists(const char *dbname);
+
 static int
 run_diff(const char *cmd, const char *filename);
 
@@ -1589,6 +1592,13 @@ run_schedule(const char *schedule, test_function tfunc)
 		gettimeofday(&start_time, NULL);
 		if (num_tests == 1)
 		{
+#ifdef TEST_EACH_SCRIPT_IN_ITS_OWN_DB
+		    _stringlist *strList;
+            for (strList = dblist; strList; strList = strList->next)
+        	    drop_database_if_exists(strList->str);
+            for (strList = dblist; strList; strList = strList->next)
+        		create_database(strList->str);
+#endif
 			status(_("test %-20s ... "), tests[0]);
 			pids[0] = (tfunc) (tests[0], &resultfiles[0], &expectfiles[0], &tags[0]);
 			wait_for_tests(pids, statuses, NULL, 1);

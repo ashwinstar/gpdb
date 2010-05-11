@@ -1,6 +1,211 @@
 --
 -- HOROLOGY
 --
+-- create needed tables
+CREATE TABLE ABSTIME_HOROLOGY_TBL (f1 abstime);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'f1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+INSERT INTO ABSTIME_HOROLOGY_TBL (f1) VALUES ('Jan 14, 1973 03:14:21'),
+(abstime 'Mon May  1 00:30:30 1995'),
+(abstime 'epoch'),
+(abstime 'infinity'),
+(abstime '-infinity'),
+(abstime 'May 10, 1947 23:59:12'),
+('Jun 10, 1843');
+CREATE TABLE INTERVAL_HOROLOGY_TBL (f1 interval);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'f1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+INSERT INTO INTERVAL_HOROLOGY_TBL (f1) VALUES ('@ 1 minute'),
+('@ 5 hour'),
+('@ 10 day'),
+('@ 34 year'),
+('@ 3 months'),
+('@ 14 seconds ago'),
+('1 day 2 hours 3 minutes 4 seconds'),
+('6 years'),
+('5 months'),
+('5 months 12 hours');
+CREATE TABLE RELTIME_HOROLOGY_TBL (f1 reltime);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'f1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+INSERT INTO RELTIME_HOROLOGY_TBL (f1) VALUES ('@ 1 minute'),
+('@ 5 hour'),
+('@ 10 day'),
+('@ 34 year'),
+('@ 3 months'),
+('@ 14 seconds ago');
+CREATE TABLE TIME_HOROLOGY_TBL (f1 time(2));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'f1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+INSERT INTO TIME_HOROLOGY_TBL VALUES ('00:00'),
+('01:00'),
+('02:03 PST'),
+('11:59 EDT'),
+('12:00'),
+('12:01'),
+('23:59'),
+('11:59:59.99 PM'),
+('2003-03-07 15:36:39 America/New_York'),
+('2003-07-07 15:36:39 America/New_York');
+CREATE TABLE TIMETZ_HOROLOGY_TBL (f1 time(2) with time zone);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'f1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+INSERT INTO TIMETZ_HOROLOGY_TBL VALUES ('00:01 PDT'),
+('01:00 PDT'),
+('02:03 PDT'),
+('07:07 PST'),
+('08:08 EDT'),
+('11:59 PDT'),
+('12:00 PDT'),
+('12:01 PDT'),
+('23:59 PDT'),
+('11:59:59.99 PM PDT'),
+('2003-03-07 15:36:39 America/New_York'),
+('2003-07-07 15:36:39 America/New_York');
+CREATE TABLE TIMESTAMP_HOROLOGY_TBL (d1 timestamp(2) without time zone);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'd1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+INSERT INTO TIMESTAMP_HOROLOGY_TBL VALUES ('-infinity'),
+('infinity'),
+('epoch'),
+('Mon Feb 10 17:32:01 1997 PST'),
+('Mon Feb 10 17:32:01.000001 1997 PST'),
+('Mon Feb 10 17:32:01.999999 1997 PST'),
+('Mon Feb 10 17:32:01.4 1997 PST'),
+('Mon Feb 10 17:32:01.5 1997 PST'),
+('Mon Feb 10 17:32:01.6 1997 PST'),
+('1997-01-02'),
+('1997-01-02 03:04:05'),
+('1997-02-10 17:32:01-08'),
+('1997-02-10 17:32:01-0800'),
+('1997-02-10 17:32:01 -08:00'),
+('19970210 173201 -0800'),
+('1997-06-10 17:32:01 -07:00'),
+('2001-09-22T18:19:20'),
+('2000-03-15 08:14:01 GMT+8'),
+('2000-03-15 13:14:02 GMT-1'),
+('2000-03-15 12:14:03 GMT-2'),
+('2000-03-15 03:14:04 PST+8'),
+('2000-03-15 02:14:05 MST+7:00'),
+('Feb 10 17:32:01 1997 -0800'),
+('Feb 10 17:32:01 1997'),
+('Feb 10 5:32PM 1997'),
+('1997/02/10 17:32:01-0800'),
+('1997-02-10 17:32:01 PST'),
+('Feb-10-1997 17:32:01 PST'),
+('02-10-1997 17:32:01 PST'),
+('19970210 173201 PST'),
+('1997.041 17:32:01 UTC'),
+('19970210 173201 America/New_York'),
+('1997-06-10 18:32:01 PDT'),
+('Feb 10 17:32:01 1997'),
+('Feb 11 17:32:01 1997'),
+('Feb 12 17:32:01 1997'),
+('Feb 13 17:32:01 1997'),
+('Feb 14 17:32:01 1997'),
+('Feb 15 17:32:01 1997'),
+('Feb 16 17:32:01 1997'),
+('Feb 16 17:32:01 0097 BC'),
+('Feb 16 17:32:01 0097'),
+('Feb 16 17:32:01 0597'),
+('Feb 16 17:32:01 1097'),
+('Feb 16 17:32:01 1697'),
+('Feb 16 17:32:01 1797'),
+('Feb 16 17:32:01 1897'),
+('Feb 16 17:32:01 1997'),
+('Feb 16 17:32:01 2097'),
+('Feb 28 17:32:01 1996'),
+('Feb 29 17:32:01 1996'),
+('Mar 01 17:32:01 1996'),
+('Dec 30 17:32:01 1996'),
+('Dec 31 17:32:01 1996'),
+('Jan 01 17:32:01 1997'),
+('Feb 28 17:32:01 1997'),
+('Mar 01 17:32:01 1997'),
+('Dec 30 17:32:01 1997'),
+('Dec 31 17:32:01 1997'),
+('Dec 31 17:32:01 1999'),
+('Jan 01 17:32:01 2000'),
+('Dec 31 17:32:01 2000'),
+('Jan 01 17:32:01 2001');
+set datestyle to ymd;
+INSERT INTO TIMESTAMP_HOROLOGY_TBL VALUES ('97FEB10 5:32:01PM UTC'),
+('97/02/10 17:32:01 UTC');
+reset datestyle;
+CREATE TABLE TIMESTAMPTZ_HOROLOGY_TBL (d1 timestamp(2) with time zone);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'd1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+INSERT INTO TIMESTAMPTZ_HOROLOGY_TBL VALUES ('-infinity'),
+('infinity'),
+('epoch'),
+('Mon Feb 10 17:32:01 1997 PST'),
+('Mon Feb 10 17:32:01.000001 1997 PST'),
+('Mon Feb 10 17:32:01.999999 1997 PST'),
+('Mon Feb 10 17:32:01.4 1997 PST'),
+('Mon Feb 10 17:32:01.5 1997 PST'),
+('Mon Feb 10 17:32:01.6 1997 PST'),
+('1997-01-02'),
+('1997-01-02 03:04:05'),
+('1997-02-10 17:32:01-08'),
+('1997-02-10 17:32:01-0800'),
+('1997-02-10 17:32:01 -08:00'),
+('19970210 173201 -0800'),
+('1997-06-10 17:32:01 -07:00'),
+('2001-09-22T18:19:20'),
+('2000-03-15 08:14:01 GMT+8'),
+('2000-03-15 13:14:02 GMT-1'),
+('2000-03-15 12:14:03 GMT-2'),
+('2000-03-15 03:14:04 PST+8'),
+('2000-03-15 02:14:05 MST+7:00'),
+('Feb 10 17:32:01 1997 -0800'),
+('Feb 10 17:32:01 1997'),
+('Feb 10 5:32PM 1997'),
+('1997/02/10 17:32:01-0800'),
+('1997-02-10 17:32:01 PST'),
+('Feb-10-1997 17:32:01 PST'),
+('02-10-1997 17:32:01 PST'),
+('19970210 173201 PST'),
+('1997.041 17:32:01 UTC'),
+('19970210 173201 America/New_York'),
+('19970710 173201 America/New_York'),
+('1997-06-10 18:32:01 PDT'),
+('Feb 10 17:32:01 1997'),
+('Feb 11 17:32:01 1997'),
+('Feb 12 17:32:01 1997'),
+('Feb 13 17:32:01 1997'),
+('Feb 14 17:32:01 1997'),
+('Feb 15 17:32:01 1997'),
+('Feb 16 17:32:01 1997'),
+('Feb 16 17:32:01 0097 BC'),
+('Feb 16 17:32:01 0097'),
+('Feb 16 17:32:01 0597'),
+('Feb 16 17:32:01 1097'),
+('Feb 16 17:32:01 1697'),
+('Feb 16 17:32:01 1797'),
+('Feb 16 17:32:01 1897'),
+('Feb 16 17:32:01 1997'),
+('Feb 16 17:32:01 2097'),
+('Feb 28 17:32:01 1996'),
+('Feb 29 17:32:01 1996'),
+('Mar 01 17:32:01 1996'),
+('Dec 30 17:32:01 1996'),
+('Dec 31 17:32:01 1996'),
+('Jan 01 17:32:01 1997'),
+('Feb 28 17:32:01 1997'),
+('Mar 01 17:32:01 1997'),
+('Dec 30 17:32:01 1997'),
+('Dec 31 17:32:01 1997'),
+('Dec 31 17:32:01 1999'),
+('Jan 01 17:32:01 2000'),
+('Dec 31 17:32:01 2000'),
+('Jan 01 17:32:01 2001');
+set datestyle to ymd;
+INSERT INTO TIMESTAMPTZ_HOROLOGY_TBL VALUES ('97FEB10 5:32:01PM UTC'),
+('97/02/10 17:32:01 UTC');
+reset datestyle;
+--
+--
+--
 SET DateStyle = 'Postgres, MDY';
 --
 -- Test various input formats
@@ -414,7 +619,7 @@ SELECT timestamptz(date '1994-01-01', time with time zone '11:00-5') AS "Jan_01_
  Sat Jan 01 08:00:00 1994 PST
 (1 row)
 
-SELECT '' AS "64", d1 + interval '1 year' AS one_year FROM TIMESTAMP_TBL ORDER BY 2;
+SELECT '' AS "64", d1 + interval '1 year' AS one_year FROM TIMESTAMP_HOROLOGY_TBL ORDER BY 2;
  64 |          one_year           
 ----+-----------------------------
     | -infinity
@@ -484,7 +689,7 @@ SELECT '' AS "64", d1 + interval '1 year' AS one_year FROM TIMESTAMP_TBL ORDER B
     | infinity
 (65 rows)
 
-SELECT '' AS "64", d1 - interval '1 year' AS one_year FROM TIMESTAMP_TBL ORDER BY 2;
+SELECT '' AS "64", d1 - interval '1 year' AS one_year FROM TIMESTAMP_HOROLOGY_TBL ORDER BY 2;
  64 |          one_year           
 ----+-----------------------------
     | -infinity
@@ -629,6 +834,7 @@ SELECT timestamp with time zone '2005-04-03 12:00-06' - interval '24 hours' as "
 (1 row)
 
 RESET TIME ZONE;
+SET TIME ZONE 'PST8PDT';
 SELECT timestamptz(date '1994-01-01', time '11:00') AS "Jan_01_1994_10am";
        Jan_01_1994_10am       
 ------------------------------
@@ -659,7 +865,7 @@ SELECT timestamptz(date '1994-01-01', time with time zone '11:00-5') AS "Jan_01_
  Sat Jan 01 08:00:00 1994 PST
 (1 row)
 
-SELECT '' AS "64", d1 + interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL ORDER BY 2;
+SELECT '' AS "64", d1 + interval '1 year' AS one_year FROM TIMESTAMPTZ_HOROLOGY_TBL ORDER BY 2;
  64 |            one_year             
 ----+---------------------------------
     | -infinity
@@ -730,7 +936,7 @@ SELECT '' AS "64", d1 + interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL ORDER
     | infinity
 (66 rows)
 
-SELECT '' AS "64", d1 - interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL ORDER BY 2;
+SELECT '' AS "64", d1 - interval '1 year' AS one_year FROM TIMESTAMPTZ_HOROLOGY_TBL ORDER BY 2;
  64 |            one_year             
 ----+---------------------------------
     | -infinity
@@ -879,7 +1085,7 @@ SELECT CAST(cast(date 'today' + time with time zone '03:30'
  07:31:00
 (1 row)
 
-SELECT t.d1 + i.f1 AS "102" FROM TIMESTAMP_TBL t, INTERVAL_TBL i
+SELECT t.d1 + i.f1 AS "102" FROM TIMESTAMP_HOROLOGY_TBL t, INTERVAL_HOROLOGY_TBL i
   WHERE t.d1 BETWEEN '1990-01-01' AND '2001-01-01'
     AND i.f1 BETWEEN '00:00' AND '23:00' ORDER BY 1;
             102             
@@ -990,7 +1196,7 @@ SELECT t.d1 + i.f1 AS "102" FROM TIMESTAMP_TBL t, INTERVAL_TBL i
  Sun Dec 31 22:32:01 2000
 (104 rows)
 
-SELECT t.d1 - i.f1 AS "102" FROM TIMESTAMP_TBL t, INTERVAL_TBL i
+SELECT t.d1 - i.f1 AS "102" FROM TIMESTAMP_HOROLOGY_TBL t, INTERVAL_HOROLOGY_TBL i
   WHERE t.d1 BETWEEN '1990-01-01' AND '2001-01-01'
     AND i.f1 BETWEEN '00:00' AND '23:00' ORDER BY 1;
             102             
@@ -1101,7 +1307,7 @@ SELECT t.d1 - i.f1 AS "102" FROM TIMESTAMP_TBL t, INTERVAL_TBL i
  Sun Dec 31 17:31:01 2000
 (104 rows)
 
-SELECT t.f1 + i.f1 AS "80" FROM TIME_TBL t, INTERVAL_TBL i ORDER BY 1;
+SELECT t.f1 + i.f1 AS "80" FROM TIME_HOROLOGY_TBL t, INTERVAL_HOROLOGY_TBL i ORDER BY 1;
      80      
 -------------
  00:00:00
@@ -1206,7 +1412,7 @@ SELECT t.f1 + i.f1 AS "80" FROM TIME_TBL t, INTERVAL_TBL i ORDER BY 1;
  23:59:59.99
 (100 rows)
 
-SELECT t.f1 - i.f1 AS "80" FROM TIME_TBL t, INTERVAL_TBL i ORDER BY 1;
+SELECT t.f1 - i.f1 AS "80" FROM TIME_HOROLOGY_TBL t, INTERVAL_HOROLOGY_TBL i ORDER BY 1;
      80      
 -------------
  00:00:00
@@ -1311,7 +1517,7 @@ SELECT t.f1 - i.f1 AS "80" FROM TIME_TBL t, INTERVAL_TBL i ORDER BY 1;
  23:59:59.99
 (100 rows)
 
-SELECT t.f1 + i.f1 AS "100" FROM TIMETZ_TBL t, INTERVAL_TBL i ORDER BY 1;
+SELECT t.f1 + i.f1 AS "100" FROM TIMETZ_HOROLOGY_TBL t, INTERVAL_HOROLOGY_TBL i ORDER BY 1;
       100       
 ----------------
  00:00:00-07
@@ -1436,7 +1642,7 @@ SELECT t.f1 + i.f1 AS "100" FROM TIMETZ_TBL t, INTERVAL_TBL i ORDER BY 1;
  23:59:59.99-07
 (120 rows)
 
-SELECT t.f1 - i.f1 AS "100" FROM TIMETZ_TBL t, INTERVAL_TBL i ORDER BY 1;
+SELECT t.f1 - i.f1 AS "100" FROM TIMETZ_HOROLOGY_TBL t, INTERVAL_HOROLOGY_TBL i ORDER BY 1;
       100       
 ----------------
  00:00:00-07
@@ -1683,7 +1889,7 @@ SELECT (time '00:00', interval '1 hour')
 CREATE TABLE TEMP_TIMESTAMP (f1 timestamp with time zone);
 -- get some candidate input values
 INSERT INTO TEMP_TIMESTAMP (f1)
-  SELECT d1 FROM TIMESTAMP_TBL
+  SELECT d1 FROM TIMESTAMP_HOROLOGY_TBL
   WHERE d1 BETWEEN '13-jun-1957' AND '1-jan-1997'
    OR d1 BETWEEN '1-jan-1999' AND '1-jan-2010';
 SELECT '' AS "16", f1 AS "timestamp"
@@ -1710,7 +1916,7 @@ SELECT '' AS "16", f1 AS "timestamp"
 (16 rows)
 
 SELECT '' AS "160", d.f1 AS "timestamp", t.f1 AS "interval", d.f1 + t.f1 AS plus
-  FROM TEMP_TIMESTAMP d, INTERVAL_TBL t
+  FROM TEMP_TIMESTAMP d, INTERVAL_HOROLOGY_TBL t
   ORDER BY plus, "timestamp", "interval";
  160 |          timestamp           |           interval            |             plus             
 -----+------------------------------+-------------------------------+------------------------------
@@ -1877,7 +2083,7 @@ SELECT '' AS "160", d.f1 AS "timestamp", t.f1 AS "interval", d.f1 + t.f1 AS plus
 (160 rows)
 
 SELECT '' AS "160", d.f1 AS "timestamp", t.f1 AS "interval", d.f1 - t.f1 AS minus
-  FROM TEMP_TIMESTAMP d, INTERVAL_TBL t
+  FROM TEMP_TIMESTAMP d, INTERVAL_HOROLOGY_TBL t
   WHERE isfinite(d.f1)
   ORDER BY minus, "timestamp", "interval";
  160 |          timestamp           |           interval            |            minus             
@@ -2335,9 +2541,9 @@ SELECT '' AS "226", d1.f1 AS timestamp1, d2.f1 AS timestamp2, d1.f1 - d2.f1 AS d
 --
 -- abstime, reltime arithmetic
 --
-SELECT '' AS ten, ABSTIME_TBL.f1 AS abstime, RELTIME_TBL.f1 AS reltime
-    FROM ABSTIME_TBL, RELTIME_TBL
-   WHERE (ABSTIME_TBL.f1 + RELTIME_TBL.f1) < abstime 'Jan 14 14:00:00 1971'
+SELECT '' AS ten, ABSTIME_HOROLOGY_TBL.f1 AS abstime, RELTIME_HOROLOGY_TBL.f1 AS reltime
+    FROM ABSTIME_HOROLOGY_TBL, RELTIME_HOROLOGY_TBL
+   WHERE (ABSTIME_HOROLOGY_TBL.f1 + RELTIME_HOROLOGY_TBL.f1) < abstime 'Jan 14 14:00:00 1971'
    ORDER BY abstime, reltime;
  ten |           abstime            |    reltime    
 -----+------------------------------+---------------
@@ -2354,10 +2560,10 @@ SELECT '' AS ten, ABSTIME_TBL.f1 AS abstime, RELTIME_TBL.f1 AS reltime
 (10 rows)
 
 -- these four queries should return the same answer
--- the "infinity" and "-infinity" tuples in ABSTIME_TBL cannot be added and
+-- the "infinity" and "-infinity" tuples in ABSTIME_HOROLOGY_TBL cannot be added and
 -- therefore, should not show up in the results.
-SELECT '' AS three, * FROM ABSTIME_TBL
-  WHERE  (ABSTIME_TBL.f1 + reltime '@ 3 year')         -- +3 years
+SELECT '' AS three, * FROM ABSTIME_HOROLOGY_TBL
+  WHERE  (ABSTIME_HOROLOGY_TBL.f1 + reltime '@ 3 year')         -- +3 years
     < abstime 'Jan 14 14:00:00 1977' ORDER BY 2;
  three |              f1              
 -------+------------------------------
@@ -2366,8 +2572,8 @@ SELECT '' AS three, * FROM ABSTIME_TBL
        | Sun Jan 14 03:14:21 1973 PST
 (3 rows)
 
-SELECT '' AS three, * FROM ABSTIME_TBL
-   WHERE  (ABSTIME_TBL.f1 + reltime '@ 3 year ago')    -- -3 years
+SELECT '' AS three, * FROM ABSTIME_HOROLOGY_TBL
+   WHERE  (ABSTIME_HOROLOGY_TBL.f1 + reltime '@ 3 year ago')    -- -3 years
      < abstime 'Jan 14 14:00:00 1971' ORDER BY 2;
  three |              f1              
 -------+------------------------------
@@ -2376,8 +2582,8 @@ SELECT '' AS three, * FROM ABSTIME_TBL
        | Sun Jan 14 03:14:21 1973 PST
 (3 rows)
 
-SELECT '' AS three, * FROM ABSTIME_TBL
-   WHERE  (ABSTIME_TBL.f1 - reltime '@ 3 year')        -- -(+3) years
+SELECT '' AS three, * FROM ABSTIME_HOROLOGY_TBL
+   WHERE  (ABSTIME_HOROLOGY_TBL.f1 - reltime '@ 3 year')        -- -(+3) years
     < abstime 'Jan 14 14:00:00 1971' ORDER BY 2;
  three |              f1              
 -------+------------------------------
@@ -2386,8 +2592,8 @@ SELECT '' AS three, * FROM ABSTIME_TBL
        | Sun Jan 14 03:14:21 1973 PST
 (3 rows)
 
-SELECT '' AS three, * FROM ABSTIME_TBL
-   WHERE  (ABSTIME_TBL.f1 - reltime '@ 3 year ago')    -- -(-3) years
+SELECT '' AS three, * FROM ABSTIME_HOROLOGY_TBL
+   WHERE  (ABSTIME_HOROLOGY_TBL.f1 - reltime '@ 3 year ago')    -- -(-3) years
      < abstime 'Jan 14 14:00:00 1977' ORDER BY 2;
  three |              f1              
 -------+------------------------------
@@ -2447,7 +2653,7 @@ SELECT '' AS "16", f1 AS "timestamp", abstime(f1) AS abstime
 (16 rows)
 
 SELECT '' AS four, f1 AS abstime, date(f1) AS date
-  FROM ABSTIME_TBL
+  FROM ABSTIME_HOROLOGY_TBL
   WHERE isfinite(f1) AND f1 <> abstime 'now'
   ORDER BY date, abstime;
  four |           abstime            |    date    
@@ -2459,7 +2665,7 @@ SELECT '' AS four, f1 AS abstime, date(f1) AS date
 (4 rows)
 
 SELECT '' AS two, d1 AS "timestamp", abstime(d1) AS abstime
-  FROM TIMESTAMP_TBL WHERE NOT isfinite(d1) ORDER BY 2;
+  FROM TIMESTAMP_HOROLOGY_TBL WHERE NOT isfinite(d1) ORDER BY 2;
  two | timestamp |  abstime  
 -----+-----------+-----------
      | -infinity | -infinity
@@ -2467,10 +2673,10 @@ SELECT '' AS two, d1 AS "timestamp", abstime(d1) AS abstime
 (2 rows)
 
 SELECT '' AS three, f1 as abstime, cast(f1 as timestamp) AS "timestamp"
-  FROM ABSTIME_TBL WHERE NOT isfinite(f1) ORDER BY 2;
+  FROM ABSTIME_HOROLOGY_TBL WHERE NOT isfinite(f1) ORDER BY 2;
 ERROR:  cannot convert abstime "invalid" to timestamp
 SELECT '' AS ten, f1 AS interval, reltime(f1) AS reltime
-  FROM INTERVAL_TBL ORDER BY 2;
+  FROM INTERVAL_HOROLOGY_TBL ORDER BY 2;
  ten |           interval            |            reltime            
 -----+-------------------------------+-------------------------------
      | @ 14 secs ago                 | @ 14 secs ago
@@ -2486,7 +2692,7 @@ SELECT '' AS ten, f1 AS interval, reltime(f1) AS reltime
 (10 rows)
 
 SELECT '' AS six, f1 as reltime, CAST(f1 AS interval) AS interval
-  FROM RELTIME_TBL ORDER BY 2;
+  FROM RELTIME_HOROLOGY_TBL ORDER BY 2;
  six |    reltime    |   interval    
 -----+---------------+---------------
      | @ 14 secs ago | @ 14 secs ago
@@ -2508,7 +2714,7 @@ SHOW DateStyle;
  Postgres, MDY
 (1 row)
 
-SELECT '' AS "64", d1 AS us_postgres FROM TIMESTAMP_TBL ORDER BY 2;
+SELECT '' AS "64", d1 AS us_postgres FROM TIMESTAMP_HOROLOGY_TBL ORDER BY 2;
  64 |         us_postgres         
 ----+-----------------------------
     | -infinity
@@ -2578,7 +2784,7 @@ SELECT '' AS "64", d1 AS us_postgres FROM TIMESTAMP_TBL ORDER BY 2;
     | infinity
 (65 rows)
 
-SELECT '' AS seven, f1 AS us_postgres FROM ABSTIME_TBL ORDER BY 2;
+SELECT '' AS seven, f1 AS us_postgres FROM ABSTIME_HOROLOGY_TBL ORDER BY 2;
  seven |         us_postgres          
 -------+------------------------------
        | -infinity
@@ -2591,7 +2797,7 @@ SELECT '' AS seven, f1 AS us_postgres FROM ABSTIME_TBL ORDER BY 2;
 (7 rows)
 
 SET DateStyle TO 'US,ISO';
-SELECT '' AS "64", d1 AS us_iso FROM TIMESTAMP_TBL ORDER BY 2;
+SELECT '' AS "64", d1 AS us_iso FROM TIMESTAMP_HOROLOGY_TBL ORDER BY 2;
  64 |         us_iso         
 ----+------------------------
     | -infinity
@@ -2661,7 +2867,7 @@ SELECT '' AS "64", d1 AS us_iso FROM TIMESTAMP_TBL ORDER BY 2;
     | infinity
 (65 rows)
 
-SELECT '' AS seven, f1 AS us_iso FROM ABSTIME_TBL ORDER BY 2;
+SELECT '' AS seven, f1 AS us_iso FROM ABSTIME_HOROLOGY_TBL ORDER BY 2;
  seven |         us_iso         
 -------+------------------------
        | -infinity
@@ -2680,7 +2886,7 @@ SHOW DateStyle;
  SQL, MDY
 (1 row)
 
-SELECT '' AS "64", d1 AS us_sql FROM TIMESTAMP_TBL ORDER BY 2;
+SELECT '' AS "64", d1 AS us_sql FROM TIMESTAMP_HOROLOGY_TBL ORDER BY 2;
  64 |         us_sql         
 ----+------------------------
     | -infinity
@@ -2750,7 +2956,7 @@ SELECT '' AS "64", d1 AS us_sql FROM TIMESTAMP_TBL ORDER BY 2;
     | infinity
 (65 rows)
 
-SELECT '' AS seven, f1 AS us_sql FROM ABSTIME_TBL ORDER BY 2;
+SELECT '' AS seven, f1 AS us_sql FROM ABSTIME_HOROLOGY_TBL ORDER BY 2;
  seven |         us_sql          
 -------+-------------------------
        | -infinity
@@ -2769,14 +2975,14 @@ SHOW DateStyle;
  Postgres, DMY
 (1 row)
 
-INSERT INTO TIMESTAMP_TBL VALUES('13/06/1957');
-SELECT count(*) as one FROM TIMESTAMP_TBL WHERE d1 = 'Jun 13 1957';
+INSERT INTO TIMESTAMP_HOROLOGY_TBL VALUES('13/06/1957');
+SELECT count(*) as one FROM TIMESTAMP_HOROLOGY_TBL WHERE d1 = 'Jun 13 1957';
  one 
 -----
    1
 (1 row)
 
-SELECT '' AS "65", d1 AS european_postgres FROM TIMESTAMP_TBL ORDER BY 2;
+SELECT '' AS "65", d1 AS european_postgres FROM TIMESTAMP_HOROLOGY_TBL ORDER BY 2;
  65 |      european_postgres      
 ----+-----------------------------
     | -infinity
@@ -2847,7 +3053,7 @@ SELECT '' AS "65", d1 AS european_postgres FROM TIMESTAMP_TBL ORDER BY 2;
     | infinity
 (66 rows)
 
-SELECT '' AS seven, f1 AS european_postgres FROM ABSTIME_TBL ORDER BY 2;
+SELECT '' AS seven, f1 AS european_postgres FROM ABSTIME_HOROLOGY_TBL ORDER BY 2;
  seven |      european_postgres       
 -------+------------------------------
        | -infinity
@@ -2866,7 +3072,7 @@ SHOW DateStyle;
  ISO, DMY
 (1 row)
 
-SELECT '' AS "65", d1 AS european_iso FROM TIMESTAMP_TBL ORDER BY 2;
+SELECT '' AS "65", d1 AS european_iso FROM TIMESTAMP_HOROLOGY_TBL ORDER BY 2;
  65 |      european_iso      
 ----+------------------------
     | -infinity
@@ -2937,7 +3143,7 @@ SELECT '' AS "65", d1 AS european_iso FROM TIMESTAMP_TBL ORDER BY 2;
     | infinity
 (66 rows)
 
-SELECT '' AS seven, f1 AS european_iso FROM ABSTIME_TBL ORDER BY 2;
+SELECT '' AS seven, f1 AS european_iso FROM ABSTIME_HOROLOGY_TBL ORDER BY 2;
  seven |      european_iso      
 -------+------------------------
        | -infinity
@@ -2956,7 +3162,7 @@ SHOW DateStyle;
  SQL, DMY
 (1 row)
 
-SELECT '' AS "65", d1 AS european_sql FROM TIMESTAMP_TBL ORDER BY 2;
+SELECT '' AS "65", d1 AS european_sql FROM TIMESTAMP_HOROLOGY_TBL ORDER BY 2;
  65 |      european_sql      
 ----+------------------------
     | -infinity
@@ -3027,7 +3233,7 @@ SELECT '' AS "65", d1 AS european_sql FROM TIMESTAMP_TBL ORDER BY 2;
     | infinity
 (66 rows)
 
-SELECT '' AS seven, f1 AS european_sql FROM ABSTIME_TBL ORDER BY 2;
+SELECT '' AS seven, f1 AS european_sql FROM ABSTIME_HOROLOGY_TBL ORDER BY 2;
  seven |      european_sql       
 -------+-------------------------
        | -infinity
