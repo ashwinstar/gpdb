@@ -707,6 +707,10 @@ class GPUpgrade:
                 if includeMirrors or seg.isSegmentPrimary():
                     datadirs.append(seg.getSegmentDataDirectory())
 
+            # Skip any hosts that have no applicable data directories
+            if len(datadirs) == 0:
+               continue
+
             c = GpUpgradeCmd("gpmigrator remote call",
                              oldHome=self.oldhome,
                              newHome=self.newhome,
