@@ -449,9 +449,9 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 			char		*allargtypes = "";
 			char		*rettype	 = NULL;
 			char        *yaml_rettypes = "";
-			char        *type, *typetokens;
-			char        *name, *nametokens;
-			char        *mode, *modetokens;
+			char        *type, *typetokens = NULL;
+			char        *name, *nametokens = NULL;
+			char        *mode, *modetokens = NULL;
 				
 			value = PQgetvalue(result, 0, 0);   /* Column 0: proretset */
 			retset = (value[0] == 't');
