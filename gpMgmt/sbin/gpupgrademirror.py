@@ -1054,8 +1054,8 @@ class NetworkSpeed(Command):
         Return the network speed in megabytes per second.
         Don't ever fail, just say it is 0 if something goes wrong.
         """
-        results = ""
         retValue = 0
+        results = ""
         try:
            results = self.get_results()
            resultStr = results.printResult()
@@ -1064,8 +1064,7 @@ class NetworkSpeed(Command):
            substringList = substring.split(" ")
            retValue = int(float(substringList[2]))
         except Exception, e:
-           logger.warning("There was a problem getting network speed: command = >>>%s<<<. results = >>>%s<<<. exception = >>>%s<<<" % (str(self), str(results), str(e)))
-           exit(3)
+           logger.warning("There was a problem getting network speed: results = %s. exception = %s" % (str(results), str(e)))
            pass
         return retValue
         
@@ -3171,7 +3170,6 @@ MirrorNodeList = []
 MirrorInfoList = []
 phase2MirrorList = []
 
-
 coverage = GpCoverage()
 coverage.start()
 
@@ -3604,6 +3602,7 @@ try:
        if minionError == False:
           minionWP.haltWork()
           minionWP.joinWorkers()
+          minionWP = None
        
        logFile = get_logfile()
        for minion in minionList:
@@ -3781,10 +3780,17 @@ finally:
                   Shutdown(env = env, utility = True)
                gpstartStatus = "STOPPED"
         except Exception:
-            pass         
+            pass
+        try:
+            if minionWP != None:
+               minionWP.haltWork()
+               minionWP.joinWorkers()
+        except Exception:
+            pass
     except NameError:
         pass
     logger.info("gpupgrademirror exit")
 
     coverage.stop()
     coverage.generate_report()
+    
