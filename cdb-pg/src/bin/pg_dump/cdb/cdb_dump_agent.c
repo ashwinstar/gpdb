@@ -5193,8 +5193,6 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				{
 					resetPQExpBuffer(query);
 
-					appendPQExpBuffer(q, ";\n");
-
 					appendPQExpBuffer(
 							query, 
 							"SELECT "
@@ -5218,8 +5216,12 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 									tbinfo->dobj.name);
 						exit_nicely();
 					}
-					if (!PQgetisnull(res, 0, 0))
-						appendPQExpBuffer(q, " %s", PQgetvalue(res, 0, 0));
+					/* MPP-9537: terminate (with semicolon) the previous
+					 * statement, and dump the template definitions 
+					 */
+					if (!PQgetisnull(res, 0, 0) &&
+						PQgetlength(res, 0, 0))
+						appendPQExpBuffer(q, ";\n %s", PQgetvalue(res, 0, 0));
 
 					PQclear(res);
 				} /* end if isSupported */
