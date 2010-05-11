@@ -819,7 +819,7 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 	Plan *gather_agg_plan = NULL;
 	Query *query_for_gather = NULL;
 	List *pathkeys_for_gather = NULL;
-	GroupExtContext context_copy;
+	GroupExtContext context_copy = { };
 	double numGroups = *(context->p_dNumGroups);
 	double numGroups_for_gather = 0;
 
