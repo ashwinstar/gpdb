@@ -2188,7 +2188,34 @@ void PersistentFileSysObj_EndXactAction(
 	 * For both COMMIT and ABORT, release our intent to add Append-Only mirror resync EOFs.
 	 */
 	if (persistentObjects->typed.appendOnlyMirrorResyncEofsCount > 0)
+	{
+		MIRRORED_LOCK_DECLARE;
+
+		int currentAppendOnlyCommitWorkCount;
+		
+		MIRRORED_LOCK;
+		
+		currentAppendOnlyCommitWorkCount = FileRepPrimary_GetAppendOnlyCommitWorkCount();
+
+		if (currentAppendOnlyCommitWorkCount - persistentObjects->typed.appendOnlyMirrorResyncEofsCount < 0)
+			elog(ERROR, 
+				 "Append-Only Mirror Resync EOFs intent count would go negative "
+				 "(current count %d, subtract count %d)",
+				 currentAppendOnlyCommitWorkCount,
+				 persistentObjects->typed.appendOnlyMirrorResyncEofsCount);
+		
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "PersistentFileSysObj_EndXactAction: Append-Only Mirror Resync EOFs finishing commit work "
+				 "(current count %d, subtract count %d)",
+				 currentAppendOnlyCommitWorkCount,
+				 persistentObjects->typed.appendOnlyMirrorResyncEofsCount);
+
 		FileRepPrimary_FinishedAppendOnlyCommitWork(persistentObjects->typed.appendOnlyMirrorResyncEofsCount);
+
+		MIRRORED_UNLOCK;
+		
+	}
 }
 
 static void PersistentFileSysObj_UpdateTupleMirrorExistenceState(

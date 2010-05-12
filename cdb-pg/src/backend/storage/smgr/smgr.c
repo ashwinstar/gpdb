@@ -1896,14 +1896,53 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 	/*
 	 * Only for COMMIT do we collect Append-Only mirror resync EOFs for the commit record and issue intents.
 	 */
-	if (forCommit &&
-		appendOnlyMirrorResyncEofsCount > 0)
-		FileRepPrimary_FinishedAppendOnlyCommitWork(appendOnlyMirrorResyncEofsCount);
+	if (appendOnlyMirrorResyncEofsCount > 0)
+	{
+		MIRRORED_LOCK_DECLARE;
 
-	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
-			 "Storage Manager: Exit Append-Only mirror resync eofs list entries (Append-Only commit work count %d)",
-			 FileRepPrimary_GetAppendOnlyCommitWorkCount());
+		int oldSystemAppendOnlyCommitWorkCount;
+
+		MIRRORED_LOCK;	// NOTE: When we use the MirroredLock for the whole routine, this can go.
+		
+		oldSystemAppendOnlyCommitWorkCount = FileRepPrimary_GetAppendOnlyCommitWorkCount();	// Snapshot.
+
+		if (forCommit)
+		{
+			int newSystemAppendOnlyCommitWorkCount;
+
+			newSystemAppendOnlyCommitWorkCount = 
+							oldSystemAppendOnlyCommitWorkCount - 
+							appendOnlyMirrorResyncEofsCount;
+
+			if (newSystemAppendOnlyCommitWorkCount < 0)
+				elog(ERROR, 
+					 "Append-Only Mirror Resync EOFs intent count would go negative "
+					 "(system count %d, entry count %d)",
+					 oldSystemAppendOnlyCommitWorkCount,
+					 appendOnlyMirrorResyncEofsCount);
+			
+			if (Debug_persistent_print)
+				elog(Debug_persistent_print_level, 
+					 "Storage Manager: Append-Only Mirror Resync EOFs intent count finishing commit work with system count %d remaining "
+					 "(old system count %d, entry count %d)",
+					 newSystemAppendOnlyCommitWorkCount,
+					 oldSystemAppendOnlyCommitWorkCount,
+					 appendOnlyMirrorResyncEofsCount);
+
+			FileRepPrimary_FinishedAppendOnlyCommitWork(appendOnlyMirrorResyncEofsCount);
+		}
+		else
+		{
+			if (Debug_persistent_print)
+				elog(Debug_persistent_print_level, 
+					 "Storage Manager: Append-Only Mirror Resync EOFs intent count finishing abort work with system count %d remaining "
+					 " (entry count %d)",
+					 oldSystemAppendOnlyCommitWorkCount,
+					 appendOnlyMirrorResyncEofsCount);
+		}
+			
+		MIRRORED_UNLOCK;
+	}
 
 }
 
@@ -2304,7 +2343,7 @@ smgrGetAppendOnlyMirrorResyncEofs(PersistentEndXactAppendOnlyMirrorResyncEofs **
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
-			 "Storage Manager: Get Append-Only mirror resync eofs list entries (current transaction nest level %d, Append-Only commit work count %d)",
+			 "Storage Manager: Get Append-Only mirror resync eofs list entries (current transaction nest level %d, Append-Only commit work system count %d)",
 			 nestLevel,
 			 FileRepPrimary_GetAppendOnlyCommitWorkCount());
 
@@ -2323,6 +2362,8 @@ smgrGetAppendOnlyMirrorResyncEofs(PersistentEndXactAppendOnlyMirrorResyncEofs **
 		returned = false;
 		if (entry->key.nestLevel >= nestLevel)
 		{
+			MIRRORED_LOCK_DECLARE;
+
 			rptr->relFileNode = entry->key.relFileNode;
 			rptr->segmentFileNum = entry->key.segmentFileNum;
 
@@ -2336,9 +2377,11 @@ smgrGetAppendOnlyMirrorResyncEofs(PersistentEndXactAppendOnlyMirrorResyncEofs **
 			returned = true;
 
 			/*
-			 * Don't know if this is really the best place for this.
+			 * UNDONE: Don't know if this is really the best place for this.
 			 */
+			MIRRORED_LOCK;
 			FileRepPrimary_IntentAppendOnlyCommitWork();
+			MIRRORED_UNLOCK;
 		}
 
 		if (Debug_persistent_print)
