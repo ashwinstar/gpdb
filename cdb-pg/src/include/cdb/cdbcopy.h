@@ -62,7 +62,6 @@ void		cdbCopyStart(CdbCopy *cdbCopy, char *copyCmd);
 void		cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer, int nbytes);
 void		cdbCopySendDataSingle(CdbCopy *c, int target_seg, const char *buffer, int nbytes);
 bool		cdbCopyGetData(CdbCopy *c, bool cancel, uint64 *rows_processed);
-bool		cdbCopyRelayData(CdbCopy *c, bool copy_cancel, uint64 *rows_processed);
 int			cdbCopyEnd(CdbCopy *c);
 void		cdbCopyStartTransaction(void);
 
