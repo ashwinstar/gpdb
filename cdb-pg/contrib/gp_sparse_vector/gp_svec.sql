@@ -73,6 +73,8 @@ CREATE OR REPLACE FUNCTION l2norm(svec) RETURNS float8 AS 'gp_svec.so', 'svec_l2
 CREATE OR REPLACE FUNCTION l2norm(float8[]) RETURNS float8 AS 'gp_svec.so', 'float8arr_l2norm' LANGUAGE C IMMUTABLE;
 CREATE OR REPLACE FUNCTION l1norm(svec) RETURNS float8 AS 'gp_svec.so', 'svec_l1norm' STRICT LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION l1norm(float8[]) RETURNS float8 AS 'gp_svec.so', 'float8arr_l1norm' STRICT LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION sumvec(svec) RETURNS float8 AS 'gp_svec.so', 'svec_summate' STRICT LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION sumvec(float8[]) RETURNS float8 AS 'gp_svec.so', 'float8arr_summate' STRICT LANGUAGE C IMMUTABLE; 
 
 -- Casts and transforms
 CREATE OR REPLACE FUNCTION svec_cast_int2(int2) RETURNS svec AS 'gp_svec.so', 'svec_cast_int2' STRICT LANGUAGE C IMMUTABLE; 
@@ -80,8 +82,16 @@ CREATE OR REPLACE FUNCTION svec_cast_int4(int4) RETURNS svec AS 'gp_svec.so', 's
 CREATE OR REPLACE FUNCTION svec_cast_int8(bigint) RETURNS svec AS 'gp_svec.so', 'svec_cast_int8' STRICT LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION svec_cast_float4(float4) RETURNS svec AS 'gp_svec.so', 'svec_cast_float4' STRICT LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION svec_cast_float8(float8) RETURNS svec AS 'gp_svec.so', 'svec_cast_float8' STRICT LANGUAGE C IMMUTABLE; 
-CREATE OR REPLACE FUNCTION svec_cast_float8arr(float8[]) RETURNS svec AS 'gp_svec.so', 'svec_cast_float8arr' STRICT LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION svec_cast_numeric(numeric) RETURNS svec AS 'gp_svec.so', 'svec_cast_numeric' STRICT LANGUAGE C IMMUTABLE; 
+
+CREATE OR REPLACE FUNCTION float8arr_cast_int2(int2) RETURNS float8[] AS 'gp_svec.so', 'float8arr_cast_int2' STRICT LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION float8arr_cast_int4(int4) RETURNS float8[] AS 'gp_svec.so', 'float8arr_cast_int4' STRICT LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION float8arr_cast_int8(bigint) RETURNS float8[] AS 'gp_svec.so', 'float8arr_cast_int8' STRICT LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION float8arr_cast_float4(float4) RETURNS float8[] AS 'gp_svec.so', 'float8arr_cast_float4' STRICT LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION float8arr_cast_float8(float8) RETURNS float8[] AS 'gp_svec.so', 'float8arr_cast_float8' STRICT LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION float8arr_cast_numeric(numeric) RETURNS float8[] AS 'gp_svec.so', 'float8arr_cast_numeric' STRICT LANGUAGE C IMMUTABLE; 
+
+CREATE OR REPLACE FUNCTION svec_cast_float8arr(float8[]) RETURNS svec AS 'gp_svec.so', 'svec_cast_float8arr' STRICT LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION svec_return_array(svec) RETURNS float8[] AS 'gp_svec.so', 'svec_return_array' LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION svec_concat(svec,svec) RETURNS svec AS 'gp_svec.so', 'svec_concat' LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION svec_concat_replicate(int4,svec) RETURNS svec AS 'gp_svec.so', 'svec_concat_replicate' LANGUAGE C IMMUTABLE; 
@@ -234,9 +244,24 @@ CREATE CAST (integer AS svec) WITH FUNCTION svec_cast_int4(integer) AS IMPLICIT;
 CREATE CAST (bigint AS svec) WITH FUNCTION svec_cast_int8(bigint) AS IMPLICIT;
 CREATE CAST (float4 AS svec) WITH FUNCTION svec_cast_float4(float4) AS IMPLICIT;
 CREATE CAST (float8 AS svec) WITH FUNCTION svec_cast_float8(float8) AS IMPLICIT;
+CREATE CAST (numeric AS svec) WITH FUNCTION svec_cast_numeric(numeric) AS IMPLICIT;
+
+DROP CAST IF EXISTS (int2 AS float8[]) ;
+DROP CAST IF EXISTS (integer AS float8[]) ;
+DROP CAST IF EXISTS (bigint AS float8[]) ;
+DROP CAST IF EXISTS (float4 AS float8[]) ;
+DROP CAST IF EXISTS (float8 AS float8[]) ;
+DROP CAST IF EXISTS (numeric AS float8[]) ;
+
+-- CREATE CAST (int2 AS float8[]) WITH FUNCTION float8arr_cast_int2(int2) AS IMPLICIT;
+-- CREATE CAST (integer AS float8[]) WITH FUNCTION float8arr_cast_int4(integer) AS IMPLICIT;
+-- CREATE CAST (bigint AS float8[]) WITH FUNCTION float8arr_cast_int8(bigint) AS IMPLICIT;
+-- CREATE CAST (float4 AS float8[]) WITH FUNCTION float8arr_cast_float4(float4) AS IMPLICIT;
+-- CREATE CAST (float8 AS float8[]) WITH FUNCTION float8arr_cast_float8(float8) AS IMPLICIT;
+-- CREATE CAST (numeric AS float8[]) WITH FUNCTION float8arr_cast_numeric(numeric) AS IMPLICIT;
+
 CREATE CAST (svec AS float8[]) WITH FUNCTION svec_return_array(svec) AS IMPLICIT;
 CREATE CAST (float8[] AS svec) WITH FUNCTION svec_cast_float8arr(float8[]) AS IMPLICIT;
-CREATE CAST (numeric AS svec) WITH FUNCTION svec_cast_numeric(numeric) AS IMPLICIT;
 
 CREATE OPERATOR = (
 	leftarg = svec, rightarg = svec, procedure = svec_eq,

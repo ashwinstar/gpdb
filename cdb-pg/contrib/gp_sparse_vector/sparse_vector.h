@@ -56,8 +56,8 @@ typedef struct {
 #define IS_SCALAR(x)	(((x)->dimension) < 0 ? 1 : 0 )
 #undef VERBOSE
 
-static inline int check_scalar(SvecType *svec_1,SvecType *svec_2) {
-	int i1=IS_SCALAR(svec_1),i2=IS_SCALAR(svec_2);
+static inline int check_scalar(int i1, int i2)
+{
 	if ((!i1) && (!i2)) {
 		return(0);
 	} else if (i1 && i2) {
@@ -82,8 +82,14 @@ static inline SparseData sdata_from_svec(SvecType *svec)
 	SparseData sdata = (SparseData)sdataptr;
 	sdata->vals  = (StringInfo)SDATA_DATA_SINFO(sdataptr);
 	sdata->index = (StringInfo)SDATA_INDEX_SINFO(sdataptr);
-	sdata->vals->data  = SVEC_VALS_PTR(svec);
-	sdata->index->data = SVEC_INDEX_PTR(svec);
+	sdata->vals->data   = SVEC_VALS_PTR(svec);
+	if (sdata->index->len == 0)
+	{
+		sdata->index->data = NULL;
+	} else
+	{
+		sdata->index->data  = SVEC_INDEX_PTR(svec);
+	}
 	return(sdata);
 }
 
@@ -101,8 +107,8 @@ ArrayType *svec_return_array_internal(SvecType *svec);
 char *svec_out_internal(SvecType *svec);
 SvecType *svec_make_scalar(float8 value, int dimension);
 SvecType *svec_from_float8arr(float8 *array, int dimension);
-SvecType *
-op_svec_by_svec_internal(int operation, SvecType *svec1, SvecType *svec2);
+SvecType *op_svec_by_svec_internal(int operation, SvecType *svec1, SvecType *svec2);
+SvecType *svec_operate_on_sdata_pair(int scalar_args,int operation,SparseData left,SparseData right);
 SvecType *makeEmptySvec(int allocation);
 SvecType *reallocSvec(SvecType *source);
 
@@ -127,6 +133,7 @@ Datum svec_count(PG_FUNCTION_ARGS);
 Datum svec_mult(PG_FUNCTION_ARGS);
 Datum svec_log(PG_FUNCTION_ARGS);
 Datum svec_l1norm(PG_FUNCTION_ARGS);
+Datum svec_summate(PG_FUNCTION_ARGS);
 
 Datum float8arr_minus_float8arr(PG_FUNCTION_ARGS);
 Datum svec_minus_float8arr(PG_FUNCTION_ARGS);
@@ -150,8 +157,16 @@ Datum svec_cast_int4(PG_FUNCTION_ARGS);
 Datum svec_cast_int8(PG_FUNCTION_ARGS);
 Datum svec_cast_float4(PG_FUNCTION_ARGS);
 Datum svec_cast_float8(PG_FUNCTION_ARGS);
-Datum svec_cast_float8arr(PG_FUNCTION_ARGS);
 Datum svec_cast_numeric(PG_FUNCTION_ARGS);
+
+Datum float8arr_cast_int2(PG_FUNCTION_ARGS);
+Datum float8arr_cast_int4(PG_FUNCTION_ARGS);
+Datum float8arr_cast_int8(PG_FUNCTION_ARGS);
+Datum float8arr_cast_float4(PG_FUNCTION_ARGS);
+Datum float8arr_cast_float8(PG_FUNCTION_ARGS);
+Datum float8arr_cast_numeric(PG_FUNCTION_ARGS);
+
+Datum svec_cast_float8arr(PG_FUNCTION_ARGS);
 Datum svec_unnest(PG_FUNCTION_ARGS);
 Datum svec_pivot(PG_FUNCTION_ARGS);
 
