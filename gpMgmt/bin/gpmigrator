@@ -1902,6 +1902,16 @@ class GPUpgrade:
             raise UpgradeError("Deprecated index types must be removed prior "
                                "to upgrade")
 
+        # Check for SQL_ASCII database encoding
+        logger.info("Validating database encoding")
+        encoding = self.Select("SELECT datname FROM pg_database WHERE encoding=0")
+        if len(encoding) > 0:
+            logger.error("Deprecated database encodings found:")
+            for datname in encoding:
+                logger.error("    %s  [SQL_ASCII]" % datname)
+            raise UpgradeError("Deprecated database encodings found - contact "
+                               "Greenplum Support")
+
         # ARRAY_NAME
         arrayname = self.Select('SELECT gpname FROM gp_id')
         self.config['ARRAY_NAME'] = arrayname[0]
