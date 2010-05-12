@@ -1088,7 +1088,7 @@ def checkBitmapIndexes():
     for host in hostsegmap.keys():
         segs = hostsegmap[host]
         # supply just the relfilenodes, not the full mapping
-        thread = fileCheckThread(host+'a', segs, env)
+        thread = fileCheckThread(host, segs, env)
         thread.start()
         threads.append(thread)
 
