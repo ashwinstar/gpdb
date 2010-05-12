@@ -1690,9 +1690,13 @@ class gpload:
         sql += "location(%s)"%','.join(map(quote,self.locations))
         sql += "format%s("%quote(format)
 
-        if len(str(self.getconfig('gpload:input:delimiter', unicode, False))) != 1:
-           self.log(self.ERROR, "A delimiter must have a length of one. Special characters must be quoted.")
-        if self.getconfig('gpload:input:delimiter', unicode, False):
+        delimiterValue = self.getconfig('gpload:input:delimiter', unicode, False)
+        if isinstance(delimiterValue, bool) and delimiterValue == False:
+            """ implies the DELIMITER option has no value in the yaml file, so use default """
+            pass
+        elif len(delimiterValue) != 1:
+            self.log(self.ERROR, "A delimiter must have a length of one. Special characters must be quoted.")
+        else:
             sql += "delimiter%s" % \
                 quote(self.getconfig('gpload:input:delimiter', unicode))
 
