@@ -446,24 +446,23 @@ agent_main(int argc, char **argv)
 
 		if (u_mount)
 		{
-			if (active == 'p')
-			{
-				old_host = p_host;
-				old_mountpoint = p_mp;
-			}
-			else
-			{
-				old_host = m_host;
-				old_mountpoint = m_mp;
-			}
-
 			/* We need to unfence before we can scan the target-device name! */
 			if (SP != NULL && SG_NAME != NULL)
 			{
-				/* DO OUR I/O UN-FENCING OPERATION HERE */
+				/* We issue out "unfence"/SG-reconnect operation here. */
 				/*
-				  yes | head -1 | /opt/Navisphere/bin/naviseccli -h 172.16.10.6 storagegroup -connecthost -host emc2 -gname cx4-960
-				*/
+				 * echo y | /opt/Navisphere/bin/naviseccli -h 172.16.10.6 storagegroup -connecthost -host emc2 -gname cx4-960
+				 */
+				snprintf(cmd, sizeof(cmd), "echo y | /opt/Navisphere/bin/naviseccli -h %s storagegroup -connecthost -host %s -gname %s", SP, target_host, SG_NAME);
+				fprintf(stdout, "I/O Unfencing command [%s]\n", cmd);
+
+				status = system(cmd);
+
+				if (status != 0)
+				{
+					fprintf(stderr, "Failed reconnect on storage processor, proceeding.");
+					//exit(1);
+				}
 			}
 		}
 
@@ -538,19 +537,38 @@ agent_main(int argc, char **argv)
 
 		if (SP != NULL && SG_NAME != NULL)
 		{
+			if (active == 'p')
+			{
+				old_host = p_host;
+				old_mountpoint = p_mp;
+			}
+			else
+			{
+				old_host = m_host;
+				old_mountpoint = m_mp;
+			}
+
 			if (u_mount)
 			{
 				/* NOTHING TO DO HERE, SEE ABOVE */
 			}
 			else
 			{
-				/* DO OUR I/O FENCING OPERATION HERE ?!*/
-				/* naviseccli -h <SP-IP> storagegroup -disconnecthost <OLD-PRIMARY>*/
-
+				/* DO OUR I/O FENCING OPERATION HERE */
 				/*
 				 * This is the exact command:
-				 yes | head -1 | /opt/Navisphere/bin/naviseccli -h 172.16.10.6 storagegroup -disconnecthost -host emc2 -gname cx4-960
-				*/
+				 * "echo y | /opt/Navisphere/bin/naviseccli -h 172.16.10.6 storagegroup -disconnecthost -host emc2 -gname cx4-960"
+				 */
+				snprintf(cmd, sizeof(cmd), "echo y | /opt/Navisphere/bin/naviseccli -h %s storagegroup -disconnecthost -host %s -gname %s", SP, old_host, SG_NAME);
+				fprintf(stdout, "I/O Fencing command [%s]\n", cmd);
+
+				status = system(cmd);
+
+				if (status != 0)
+				{
+					fprintf(stderr, "Failed disconnect on storage processor, proceeding.");
+					//exit(1);
+				}
 			}
 		}
 
