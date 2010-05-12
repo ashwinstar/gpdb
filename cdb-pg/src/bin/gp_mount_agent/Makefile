@@ -24,6 +24,8 @@ LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl
 #override CPPFLAGS := -Wno-deprecated-declarations -DFRONTEND -I$(libpq_srcdir) $(CPPFLAGS)
 override CPPFLAGS :=
 
+override LDFLAGS := -static
+
 OBJS=gp_mount_agent.o $(WIN32RES)
 
 EXTRA_OBJS = $(top_builddir)/src/backend/libpq/ip.o 

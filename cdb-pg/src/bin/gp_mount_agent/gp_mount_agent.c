@@ -196,6 +196,8 @@ agent_main(int argc, char **argv)
 
 	char cmd[1000];
 	char *target_host=NULL, *target_dev=NULL, *target_mountpoint=NULL;
+
+	char *old_host=NULL, *old_mountpoint=NULL;
 	int status;
 
 	while ((opt = getopt(argc, argv, "uht:a:p:d:m:q:e:n:")) != -1)
@@ -320,15 +322,45 @@ agent_main(int argc, char **argv)
 		target_host = m_host;
 		target_dev = m_dev;
 		target_mountpoint = m_mp;
+
+		old_host = p_host;
+		old_mountpoint = p_mp;
 	}
 	else
 	{
 		target_host = p_host;
 		target_dev = p_dev;
 		target_mountpoint = p_mp;
+
+		old_host = m_host;
+		old_mountpoint = m_mp;
 	}
 
 	fprintf(stdout, "agent_main: p_host '%s' p_mp '%s' m_host '%s' m_mp '%s'\n", p_host, p_mp, m_host, m_mp);
+
+	if (!arg_safe(target_host, strlen(target_host)))
+	{
+		fprintf(stderr, "invalid host string [%s]\n", target_host);
+		exit(1);
+	}
+
+	if (!arg_safe(old_host, strlen(old_host)))
+	{
+		fprintf(stderr, "invalid host string [%s]\n", old_host);
+		exit(1);
+	}
+
+	if (!arg_safe(target_mountpoint, strlen(target_mountpoint)))
+	{
+		fprintf(stderr, "invalid mountpoint string [%s]\n", target_mountpoint);
+		exit(1);
+	}
+
+	if (!arg_safe(old_mountpoint, strlen(old_mountpoint)))
+	{
+		fprintf(stderr, "invalid mountpoint [%s]\n", old_mountpoint);
+		exit(1);
+	}
 
 	/*
 	  GPHOME=os.environ.get('GPHOME')
@@ -345,39 +377,14 @@ agent_main(int argc, char **argv)
 
 		//fprintf(stdout, "getuid %d geteuid %d\n", getuid(), geteuid());
 
-		if (!arg_safe(target_host, strlen(target_host)))
-		{
-			fprintf(stderr, "invalid host string [%s]\n", target_host);
-			exit(1);
-		}
-
 		if (!arg_safe(target_dev, strlen(target_dev)))
 		{
 			fprintf(stderr, "invalid dev string [%s]\n", target_dev);
 			exit(1);
 		}
 
-		if (!arg_safe(target_mountpoint, strlen(target_mountpoint)))
-		{
-			fprintf(stderr, "invalid mountpoint string [%s]\n", target_mountpoint);
-			exit(1);
-		}
-
 		if (u_mount)
 		{
-			char *old_host=NULL, *old_mountpoint=NULL;
-
-			if (active == 'p')
-			{
-				old_host = p_host;
-				old_mountpoint = p_mp;
-			}
-			else
-			{
-				old_host = m_host;
-				old_mountpoint = m_mp;
-			}
-
 			snprintf(cmd, sizeof(cmd), "ssh %s /bin/umount %s", old_host, old_mountpoint);
 
 			fprintf(stdout, "unmount old host [%s]\n", old_host);
@@ -430,8 +437,6 @@ agent_main(int argc, char **argv)
 		FILE	*tmpfile;
 		char	dev_name[256];
 		int	name_len;
-
-		char *old_host=NULL, *old_mountpoint=NULL;
 
 		fprintf(stdout, "getuid %d geteuid %d\n", getuid(), geteuid());
 
@@ -534,20 +539,8 @@ agent_main(int argc, char **argv)
 		}
 
 		/* 3) FENCE I/O ? */
-
 		if (SP != NULL && SG_NAME != NULL)
 		{
-			if (active == 'p')
-			{
-				old_host = p_host;
-				old_mountpoint = p_mp;
-			}
-			else
-			{
-				old_host = m_host;
-				old_mountpoint = m_mp;
-			}
-
 			if (u_mount)
 			{
 				/* NOTHING TO DO HERE, SEE ABOVE */
@@ -582,21 +575,9 @@ agent_main(int argc, char **argv)
 
 		fprintf(stdout, "getuid %d geteuid %d\n", getuid(), geteuid());
 
-		if (!arg_safe(target_host, strlen(target_host)))
-		{
-			fprintf(stderr, "invalid host string [%s]\n", target_host);
-			exit(1);
-		}
-
 		if (!arg_safe(dev_name, strlen(dev_name)))
 		{
 			fprintf(stderr, "invalid device-name [%s]\n", dev_name);
-			exit(1);
-		}
-
-		if (!arg_safe(target_mountpoint, strlen(target_mountpoint)))
-		{
-			fprintf(stderr, "invalid mountpoint [%s]\n", target_mountpoint);
 			exit(1);
 		}
 
@@ -606,10 +587,7 @@ agent_main(int argc, char **argv)
 
 			fprintf(stdout, "unmount old host [%s]\n", old_host);
 			fprintf(stdout, "unmount old mountpoint [%s]\n", old_mountpoint);
-
 			fprintf(stdout, "unmount cmd [%s]\n", cmd);
-
-			fflush(stdout);
 
 			status = system(cmd);
 
@@ -627,7 +605,6 @@ agent_main(int argc, char **argv)
 
 			fprintf(stdout, "unmount new host [%s]\n", target_host);
 			fprintf(stdout, "unmount new mountpoint [%s]\n", target_mountpoint);
-
 			fprintf(stdout, "unmount cmd [%s]\n", cmd);
 
 			status = system(cmd);
