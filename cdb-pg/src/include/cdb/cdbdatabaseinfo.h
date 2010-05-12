@@ -118,6 +118,7 @@ typedef struct PgAppendOnlyHashEntry
 typedef struct DatabaseInfo
 {
 	Oid		database;
+	Oid		defaultTablespace;
 
 	Oid		*tablespaces;
 	int32	tablespacesCount;
