@@ -1539,8 +1539,8 @@ buf_add_tid(Relation rel, BMTidBuildBuf *tids, uint64 tidnum,
 	 * tids is lazily initialized. If we do not have a current LOV block 
 	 * buffer, initialize one.
 	 */
-	if(!BlockNumberIsValid(tids->max_lov_block) || 
-	   tids->max_lov_block < lov_block)
+	if (!BlockNumberIsValid(tids->max_lov_block) || 
+		tids->max_lov_block < lov_block)
 	{
 		/*
 		 * XXX: We're currently not including the size of this data structure
@@ -1894,27 +1894,27 @@ buf_make_space(Relation rel, BMTidBuildBuf *locbuf, bool use_wal)
 		BMTIDLOVBuffer *lov_buf = (BMTIDLOVBuffer *)lfirst(cell);
 		BlockNumber lov_block = lov_buf->lov_block;
 
-		for(i = 0; i < BM_MAX_LOVITEMS_PER_PAGE; i++)
+		for (i = 0; i < BM_MAX_LOVITEMS_PER_PAGE; i++)
 		{
 			BMTIDBuffer *buf = (BMTIDBuffer *)lov_buf->bufs[i];
 			OffsetNumber off;
 
-			CHECK_FOR_INTERRUPTS();
-
 			/* return if we've freed enough space */
 #ifdef NOT_USED
-			if(locbuf->byte_size < (maintenance_work_mem * 1024L))
+			if (locbuf->byte_size < (maintenance_work_mem * 1024L))
 				return;
 #endif
-			if(!buf || buf->num_cwords == 0)
+			if (!buf || buf->num_cwords == 0)
 				continue;
 
 			off = i + 1;
-			locbuf->byte_size -= buf_free_mem(rel, buf, lov_block, off, 
-											  use_wal);
+			locbuf->byte_size -= buf_free_mem(rel, buf, lov_block, off, use_wal);
+
+			if (QueryCancelPending || ProcDiePending)
+				return;
 		}
 #ifdef NOT_USED
-		if(locbuf->byte_size < (maintenance_work_mem * 1024L))
+		if (locbuf->byte_size < (maintenance_work_mem * 1024L))
 			return;
 #endif
 	}
@@ -2051,14 +2051,14 @@ _bitmap_write_alltids(Relation rel, BMTidBuildBuf *tids,
 		BMTIDLOVBuffer *lov_buf = (BMTIDLOVBuffer *)lfirst(cell);
 		BlockNumber lov_block = lov_buf->lov_block;
 
-		for(i = 0; i < BM_MAX_LOVITEMS_PER_PAGE; i++)
+		for (i = 0; i < BM_MAX_LOVITEMS_PER_PAGE; i++)
 		{
 			BMTIDBuffer *buf = (BMTIDBuffer *)lov_buf->bufs[i];
 			OffsetNumber off;
 
 			CHECK_FOR_INTERRUPTS();
 
-			if(!buf || buf->num_cwords == 0)
+			if (!buf || buf->num_cwords == 0)
 				continue;
 
 			off = i + 1;
@@ -2090,8 +2090,8 @@ _bitmap_write_alltids(Relation rel, BMTidBuildBuf *tids,
  */
 static void
 build_inserttuple(Relation rel, uint64 tidnum,
-				   ItemPointerData ht_ctid  __attribute__((unused)), TupleDesc tupDesc,
-				   Datum *attdata, bool *nulls, BMBuildState *state)
+				  ItemPointerData ht_ctid  __attribute__((unused)), TupleDesc tupDesc,
+				  Datum *attdata, bool *nulls, BMBuildState *state)
 {
 	Buffer 			metabuf;
 	BlockNumber		lovBlock;
@@ -2102,6 +2102,8 @@ build_inserttuple(Relation rel, uint64 tidnum,
 	int				attno;
 	bool			allNulls = true;
 	BMBuildHashKey  *entry;
+
+	CHECK_FOR_INTERRUPTS();
 
 	tidLocsBuffer = state->bm_tidLocsBuffer;
 
@@ -2148,7 +2150,7 @@ build_inserttuple(Relation rel, uint64 tidnum,
 					Form_pg_attribute at = tupDesc->attrs[attno];
 
 					entry->attributeValueArr[attno] = datumCopy(entry->attributeValueArr[attno], at->attbyval,
-												  at->attlen);
+																at->attlen);
 				}
 
 				/*
@@ -2180,7 +2182,7 @@ build_inserttuple(Relation rel, uint64 tidnum,
 			for (attno = 0; attno<tupDesc->natts; attno++)
 			{
 				ScanKey theScanKey = (ScanKey)(((char*)state->bm_lov_scanKeys) +
-									 attno * sizeof(ScanKeyData));
+											   attno * sizeof(ScanKeyData));
 				if (nulls[attno])
 				{
 					theScanKey->sk_flags = SK_ISNULL;
@@ -2196,8 +2198,8 @@ build_inserttuple(Relation rel, uint64 tidnum,
 			index_rescan(state->bm_lov_scanDesc, state->bm_lov_scanKeys);	
 
 			found = _bitmap_findvalue(state->bm_lov_heap, state->bm_lov_index,
-				state->bm_lov_scanKeys, state->bm_lov_scanDesc,
-				&lovBlock, &blockNull, &lovOffset, &offsetNull);
+									  state->bm_lov_scanKeys, state->bm_lov_scanDesc,
+									  &lovBlock, &blockNull, &lovOffset, &offsetNull);
 
 			if (!found)
 			{
@@ -2214,6 +2216,8 @@ build_inserttuple(Relation rel, uint64 tidnum,
 
 	buf_add_tid(rel, tidLocsBuffer, tidnum, state, lovBlock, lovOffset);
 	_bitmap_wrtbuf(metabuf);
+
+	CHECK_FOR_INTERRUPTS();
 }
 
 /*
