@@ -3795,7 +3795,7 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 	Query	   *q = NULL;
 
 	/* should these be marked volatile ? */
-	CdbDispatcherState ds = {NULL, NULL};
+	volatile struct CdbDispatcherState ds = {NULL, NULL};
 
 	volatile int disp_phase=0;
 
@@ -3848,7 +3848,7 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 		cdbdisp_dispatchCommand( "vacuum" , pszVacuum, pszVacuum_len,
 								 true /* cancelOnError */, true /* needTwoPhase */,
 								 true /* withSnapshot */,
-								 &ds);
+								 (struct CdbDispatcherState *)&ds);
 
 		disp_phase = 1;
 
@@ -3861,7 +3861,7 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 		 * NOTE: this has the side-effect of calling pfree() on
 		 * pszVacuum! (we re-serialize for our mirrors below).
 		 */
-		cdbdisp_finishCommand(&ds, vacuum_combine_stats, ctx);
+		cdbdisp_finishCommand((struct CdbDispatcherState *)&ds, vacuum_combine_stats, ctx);
 	}
 	PG_CATCH();
 	{
@@ -3889,7 +3889,7 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 		 * two dispatch operations above.
 		 */
 		if (dispatch_inflight && ds.primaryResults)
-			cdbdisp_handleError(&ds);
+			cdbdisp_handleError((struct CdbDispatcherState *)&ds);
 
 		PG_RE_THROW();
 	}
