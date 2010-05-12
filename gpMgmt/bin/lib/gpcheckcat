@@ -959,6 +959,7 @@ class fileCheckThread(Thread):
        self.segs = segs
        self.env = env
        self.badinds = []
+       self.exception = None
        Thread.__init__(self)
 
     def run(self):
@@ -1001,7 +1002,8 @@ class fileCheckThread(Thread):
             result  = pipe.communicate();
         except OSError, e:
             logger.info('%s, %s' % (' '.join(cmd),  str(e)))
-            raise
+            self.exception = e
+            return
     
         logger.debug('directory listing:\n%s' % result[0])
         if pipe.returncode == 0:
@@ -1019,6 +1021,7 @@ class fileCheckThread(Thread):
 
             for seg in self.segs:
                 segid = seg['dbid']
+                # XXX: this doesn't handle tablespaces correctly
                 if not oidseghash.get(segid):
                     for oid, row in oidsbyseg[segid].iteritems():
                         self.badinds.append(row)
@@ -1032,11 +1035,11 @@ class fileCheckThread(Thread):
                         logger.debug('Could not find index with relfilenode %s' % oid)
 
         else:
-            # XXX: fix to set all indexes bad
-            for segid in oidsbyseg:
-                for oid, row in oidsbyseg[segid]:
-                    self.badinds.append(row)
-            pass
+            msg = 'Failed to fetch directory listing on host %s' % self.host
+            logger.info('[ERROR] %s' % result[1].strip())
+            self.exception = Exception(msg)
+            return
+
 
 
 def checkBitmapIndexes():
@@ -1071,6 +1074,7 @@ def checkBitmapIndexes():
     if mod == 0:
         mod = 1
 
+    raised = False
     badinds = []
 
     hostsegmap = {}
@@ -1084,7 +1088,7 @@ def checkBitmapIndexes():
     for host in hostsegmap.keys():
         segs = hostsegmap[host]
         # supply just the relfilenodes, not the full mapping
-        thread = fileCheckThread(host, segs, env)
+        thread = fileCheckThread(host+'a', segs, env)
         thread.start()
         threads.append(thread)
 
@@ -1093,6 +1097,7 @@ def checkBitmapIndexes():
                 logger.debug('waiting on thread %s' % th.getName())
                 th.join()
                 badinds += th.badinds
+                raised |= (th.exception != None)
 
             threads = []
 
@@ -1102,10 +1107,14 @@ def checkBitmapIndexes():
                        th.getName())
         th.join()
         badinds += th.badinds
+        raised |= (th.exception != None)
 
     threads = []
 
-    if badinds:
+    if raised:
+        GV.retcode = 1
+        logger.info('[ERROR] Failed bitmap validation')
+    elif badinds:
         GV.retcode = 1
         # unique
         reindex = []
