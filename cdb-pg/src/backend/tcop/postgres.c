@@ -3310,8 +3310,9 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
     write_stderr("\nUnexpected internal error: %s %d received signal %s\n\n",
                  pts, MyProcPid, signame);
 
-#ifndef __darwin__
+#if 0
 
+    /// This code seems to produce bad core file on some systems, so disable it.
     /*
      * re-raising the signal will dump core, but if we aren't going to re-raise,
      * let's try an ugly way to get a core file:  Call gcore.
