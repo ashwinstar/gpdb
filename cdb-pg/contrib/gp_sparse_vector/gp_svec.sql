@@ -75,6 +75,7 @@ CREATE OR REPLACE FUNCTION l1norm(svec) RETURNS float8 AS 'gp_svec.so', 'svec_l1
 CREATE OR REPLACE FUNCTION l1norm(float8[]) RETURNS float8 AS 'gp_svec.so', 'float8arr_l1norm' STRICT LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION sumvec(svec) RETURNS float8 AS 'gp_svec.so', 'svec_summate' STRICT LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION sumvec(float8[]) RETURNS float8 AS 'gp_svec.so', 'float8arr_summate' STRICT LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION median(float8[]) RETURNS float8 AS 'gp_svec.so', 'float8arr_median' STRICT LANGUAGE C IMMUTABLE; 
 
 -- Casts and transforms
 CREATE OR REPLACE FUNCTION svec_cast_int2(int2) RETURNS svec AS 'gp_svec.so', 'svec_cast_int2' STRICT LANGUAGE C IMMUTABLE; 

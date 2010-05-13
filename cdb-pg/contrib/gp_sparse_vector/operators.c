@@ -1120,3 +1120,64 @@ svec_pivot(PG_FUNCTION_ARGS)
 	PG_RETURN_SVECTYPE_P(svec);
 }
 
+#define RANDOM_RANGE	(((double)random())/(2147483647.+1))
+#define RANDOM_INT(x,y)	((int)(x)+(int)(((y+1)-(x))*RANDOM_RANGE))
+#define SWAPVAL(x,y,temp)	{ (temp) = (x); (x) = (y); (y) = (temp); }
+/*
+ * Implements the partition selection algorithm with randomized selection
+ */
+static int
+float8_partition(float8 *list,int left,int right,int pivotIndex)
+{
+	float8 pivotValue = list[pivotIndex];
+	int storeIndex = left;
+	float8 tmp;
+	SWAPVAL(list[pivotIndex],list[right],tmp)
+	for (int i=left;i<right;i++)
+	{
+		if (list[i] < pivotValue)
+		{
+			SWAPVAL(list[storeIndex],list[i],tmp)
+			storeIndex++;
+		}
+	}
+	SWAPVAL(list[right],list[storeIndex],tmp)
+	return(storeIndex);
+}
+
+static float8
+float8_select (float8 *list,int left,int right,int k)
+{
+	int pivotIndex,pivotNewIndex;
+	while (1)
+	{
+		pivotIndex = RANDOM_INT(left+1,right-1);
+		pivotNewIndex = float8_partition(list,left,right,pivotIndex);
+		if (k == pivotNewIndex)
+		{
+			return(list[k]);
+		} else if (k < pivotNewIndex)
+		{
+			right = pivotNewIndex-1;
+		} else
+		{
+			left = pivotNewIndex+1;
+		}
+	}
+}
+
+Datum float8arr_median(PG_FUNCTION_ARGS);
+
+PG_FUNCTION_INFO_V1( float8arr_median);
+
+Datum
+float8arr_median(PG_FUNCTION_ARGS) {
+	ArrayType *array  = PG_GETARG_ARRAYTYPE_P(0);
+	SparseData sdata = sdata_uncompressed_from_float8arr_internal(array);
+
+	PG_RETURN_FLOAT8(float8_select(
+				(float8 *)(sdata->vals->data),
+				0,sdata->total_value_count,
+				sdata->total_value_count/2));
+}
+
