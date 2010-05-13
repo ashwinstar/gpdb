@@ -24,6 +24,7 @@ extern Datum window_dummy(PG_FUNCTION_ARGS);
 
 /* Internal-use function to tag tuples with originating segment. */
 extern Datum mpp_execution_segment(PG_FUNCTION_ARGS);
+extern Datum gp_execution_dbid(PG_FUNCTION_ARGS);
 
 /* Declarations for window function implementations. */
 extern Datum row_number_immed(PG_FUNCTION_ARGS);

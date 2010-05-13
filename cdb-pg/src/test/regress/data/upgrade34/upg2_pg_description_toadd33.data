@@ -78,4 +78,6 @@ objoid|classoid|objsubid|description
 5071|1255|0|Remove an entry from gp_persistent_relation_node
 5072|1255|0|Remove an entry from gp_global_sequence
 5073|1255|0|Remove an entry from gp_relation_node
+5074|1255|0|physical filesystem information
+6068|1255|0|dbid executing function
 \.

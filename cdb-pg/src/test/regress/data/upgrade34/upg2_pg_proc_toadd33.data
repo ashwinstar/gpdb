@@ -78,4 +78,6 @@ oid|proname|pronamespace|proowner|prolang|proisagg|prosecdef|proisstrict|prorets
 5071|gp_delete_persistent_relation_node_entry|11|10|12|f|f|f|f|v|1|16|f|27|\N|\N|\N|gp_delete_persistent_relation_node_entry|-|\N
 5072|gp_delete_global_sequence_entry|11|10|12|f|f|f|f|v|1|16|f|27|\N|\N|\N|gp_delete_global_sequence_entry|-|\N
 5073|gp_delete_relation_node_entry|11|10|12|f|f|f|f|v|1|16|f|27|\N|\N|\N|gp_delete_relation_node_entry|-|\N
+5074|gp_persistent_relation_node_check|11|10|12|f|f|f|t|v|0|6990|f||\N|\N|\N|gp_persistent_relation_node_check|-|\N
+6068|gp_execution_dbid|11|10|12|f|f|f|f|v|0|23|f||\N|\N|\N|gp_execution_dbid|-|\N
 \.

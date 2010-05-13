@@ -4534,8 +4534,9 @@ DATA(insert OID = 6044 (  gp_distributed_log   PGNSP PGUID 12 f f f t v 0 2249 f
 DESCR("view logged distributed transaction status");
 DATA(insert OID = 6435 (  gp_changetracking_log   PGNSP PGUID 12 f f f t v 1 2249 f "23" "{23,21,21,26,26,26,3310,23,27,20}" "{i,o,o,o,o,o,o,o,o,o}" "{filetype,segment_id,dbid,space,db,rel,xlogloc,blocknum,persistent_tid,persistent_sn}" gp_changetracking_log - _null_ ));
 DESCR("view logged change tracking records");
-// DATA(insert OID = 6055 (  gp_memory_database_directories   PGNSP PGUID 12 f f f t v 0 2249 f "" _null_ _null_ _null_ gp_memory_database_directories - _null_ ));
-// DESCR("view in-memory status of persistent database directories");
+DATA(insert OID = 6068 (  gp_execution_dbid PGNSP PGUID 12 f f f f v 0 23 f "" _null_ _null_ _null_ gp_execution_dbid - _null_ ));
+DESCR("dbid executing function");
+
 
 /* Greenplum MPP window function implementation */
 DATA(insert OID = 7100 (  row_number_immed   PGNSP PGUID 12 f f t f i 1 20 f "2281" _null_ _null_ _null_ row_number_immed - _null_ ));
@@ -5048,6 +5049,11 @@ DESCR("Remove an entry from gp_global_sequence");
 
 DATA(insert OID = 5073 ( gp_delete_relation_node_entry PGNSP PGUID 12 f f f f v 1 16 f "27" _null_ _null_ _null_ gp_delete_relation_node_entry - _null_ ));
 DESCR("Remove an entry from gp_relation_node");
+
+DATA(insert OID = 5074 ( gp_persistent_relation_node_check PGNSP PGUID 12 f f f t v 0 6990 f "" _null_ _null_ _null_ gp_persistent_relation_node_check - _null_ ));
+DESCR("physical filesystem information");
+
+
 
 /*
  * Symbolic values for provolatile column: these indicate whether the result

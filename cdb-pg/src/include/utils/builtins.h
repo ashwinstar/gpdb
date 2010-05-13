@@ -1125,4 +1125,6 @@ extern Datum gp_delete_persistent_relation_node_entry(PG_FUNCTION_ARGS);
 extern Datum gp_delete_global_sequence_entry(PG_FUNCTION_ARGS);
 extern Datum gp_delete_relation_node_entry(PG_FUNCTION_ARGS);
 
+extern Datum gp_persistent_relation_node_check(PG_FUNCTION_ARGS);
+
 #endif   /* BUILTINS_H */

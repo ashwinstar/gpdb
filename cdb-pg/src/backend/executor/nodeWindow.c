@@ -5770,7 +5770,8 @@ window_dummy(PG_FUNCTION_ARGS)
 }
 
 /*
- *
+ * Implements the gp_execution_segment() function to return the contentid
+ * of the current executing segment.
  */
 Datum
 mpp_execution_segment(PG_FUNCTION_ARGS)
@@ -5778,6 +5779,15 @@ mpp_execution_segment(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(Gp_segment);
 }
 
+/*
+ * Implements the gp_execution_dbid() function to return the dbid of the 
+ * current executing segment.
+ */
+Datum
+gp_execution_dbid(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_INT32(GpIdentity.dbid);
+}
 
 /*
  * ROW_NUMBER() OVER (...) --> BIGINT
