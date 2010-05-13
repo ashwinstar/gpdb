@@ -73,9 +73,12 @@ CREATE OR REPLACE FUNCTION l2norm(svec) RETURNS float8 AS 'gp_svec.so', 'svec_l2
 CREATE OR REPLACE FUNCTION l2norm(float8[]) RETURNS float8 AS 'gp_svec.so', 'float8arr_l2norm' LANGUAGE C IMMUTABLE;
 CREATE OR REPLACE FUNCTION l1norm(svec) RETURNS float8 AS 'gp_svec.so', 'svec_l1norm' STRICT LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION l1norm(float8[]) RETURNS float8 AS 'gp_svec.so', 'float8arr_l1norm' STRICT LANGUAGE C IMMUTABLE; 
-CREATE OR REPLACE FUNCTION sumvec(svec) RETURNS float8 AS 'gp_svec.so', 'svec_summate' STRICT LANGUAGE C IMMUTABLE; 
-CREATE OR REPLACE FUNCTION sumvec(float8[]) RETURNS float8 AS 'gp_svec.so', 'float8arr_summate' STRICT LANGUAGE C IMMUTABLE; 
-CREATE OR REPLACE FUNCTION median(float8[]) RETURNS float8 AS 'gp_svec.so', 'float8arr_median' STRICT LANGUAGE C IMMUTABLE; 
+
+CREATE OR REPLACE FUNCTION unnest(svec) RETURNS setof float8  AS 'gp_svec.so', 'svec_unnest' LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION vec_pivot(svec,float8) RETURNS svec  AS 'gp_svec.so', 'svec_pivot' LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION vec_sum(svec) RETURNS float8 AS 'gp_svec.so', 'svec_summate' STRICT LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION vec_sum(float8[]) RETURNS float8 AS 'gp_svec.so', 'float8arr_summate' STRICT LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION vec_median(float8[]) RETURNS float8 AS 'gp_svec.so', 'float8arr_median' STRICT LANGUAGE C IMMUTABLE; 
 
 -- Casts and transforms
 CREATE OR REPLACE FUNCTION svec_cast_int2(int2) RETURNS svec AS 'gp_svec.so', 'svec_cast_int2' STRICT LANGUAGE C IMMUTABLE; 
@@ -97,8 +100,6 @@ CREATE OR REPLACE FUNCTION svec_return_array(svec) RETURNS float8[] AS 'gp_svec.
 CREATE OR REPLACE FUNCTION svec_concat(svec,svec) RETURNS svec AS 'gp_svec.so', 'svec_concat' LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION svec_concat_replicate(int4,svec) RETURNS svec AS 'gp_svec.so', 'svec_concat_replicate' LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION dimension(svec) RETURNS integer AS 'gp_svec.so', 'svec_dimension' LANGUAGE C IMMUTABLE; 
-CREATE OR REPLACE FUNCTION svec_unnest(svec) RETURNS setof float8  AS 'gp_svec.so', 'svec_unnest' LANGUAGE C IMMUTABLE; 
-CREATE OR REPLACE FUNCTION svec_pivot(svec,float8) RETURNS svec  AS 'gp_svec.so', 'svec_pivot' LANGUAGE C IMMUTABLE; 
 
 
 CREATE OPERATOR || (
@@ -279,8 +280,16 @@ CREATE AGGREGATE sum (svec) (
 	STYPE = svec
 );
 
-DROP AGGREGATE IF EXISTS count_vec(svec);
-CREATE AGGREGATE count_vec (svec) (
+-- Aggregate that provides a tally of nonzero entries in a list of vectors
+DROP AGGREGATE IF EXISTS count_vec(svec); -- Legacy name for vec_count_nonzero
+CREATE AGGREGATE count_vec (svec) ( -- Legacy name for vec_count_nonzero
+	SFUNC = svec_count, -- Legacy name for vec_count_nonzero
+	PREFUNC = svec_plus, -- Legacy name for vec_count_nonzero
+ 	INITCOND = '{1}:{0.}', -- Zero -- Legacy name for vec_count_nonzero
+	STYPE = svec -- Legacy name for vec_count_nonzero
+);
+DROP AGGREGATE IF EXISTS vec_count_nonzero(svec);
+CREATE AGGREGATE vec_count_nonzero (svec) (
 	SFUNC = svec_count,
 	PREFUNC = svec_plus,
  	INITCOND = '{1}:{0.}', -- Zero
@@ -289,7 +298,7 @@ CREATE AGGREGATE count_vec (svec) (
 
 DROP AGGREGATE IF EXISTS array_agg(float8);
 CREATE AGGREGATE array_agg (float8) (
-	SFUNC = svec_pivot,
+	SFUNC = vec_pivot,
 	PREFUNC = svec_concat,
 	STYPE = svec
 );

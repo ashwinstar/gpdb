@@ -71,3 +71,5 @@ insert into pivot_test values (0),(1),(NULL),(2),(3);
 select array_agg(a) from pivot_test;
 select l1norm(array_agg(a)) from pivot_test;
 drop table if exists pivot_test;
+-- Answer should be 5
+select vec_median(array_agg(a)) from (select generate_series(1,9) a) foo;

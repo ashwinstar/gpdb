@@ -1125,6 +1125,8 @@ svec_pivot(PG_FUNCTION_ARGS)
 #define SWAPVAL(x,y,temp)	{ (temp) = (x); (x) = (y); (y) = (temp); }
 /*
  * Implements the partition selection algorithm with randomized selection
+ *
+ * From: http://en.wikipedia.org/wiki/Selection_algorithm#Linear_general_selection_algorithm_-_.22Median_of_Medians_algorithm.22
  */
 static int
 float8_partition(float8 *list,int left,int right,int pivotIndex)
@@ -1132,16 +1134,16 @@ float8_partition(float8 *list,int left,int right,int pivotIndex)
 	float8 pivotValue = list[pivotIndex];
 	int storeIndex = left;
 	float8 tmp;
-	SWAPVAL(list[pivotIndex],list[right],tmp)
+	SWAPVAL(list[pivotIndex],list[right],tmp) // Move pivot to end
 	for (int i=left;i<right;i++)
 	{
-		if (list[i] < pivotValue)
+		if (list[i] <= pivotValue)
 		{
-			SWAPVAL(list[storeIndex],list[i],tmp)
+			SWAPVAL(list[i],list[storeIndex],tmp)
 			storeIndex++;
 		}
 	}
-	SWAPVAL(list[right],list[storeIndex],tmp)
+	SWAPVAL(list[storeIndex],list[right],tmp) // Move pivot to its final place
 	return(storeIndex);
 }
 
@@ -1151,7 +1153,7 @@ float8_select (float8 *list,int left,int right,int k)
 	int pivotIndex,pivotNewIndex;
 	while (1)
 	{
-		pivotIndex = RANDOM_INT(left+1,right-1);
+		pivotIndex = RANDOM_INT(left,right);
 		pivotNewIndex = float8_partition(list,left,right,pivotIndex);
 		if (k == pivotNewIndex)
 		{
@@ -1177,7 +1179,7 @@ float8arr_median(PG_FUNCTION_ARGS) {
 
 	PG_RETURN_FLOAT8(float8_select(
 				(float8 *)(sdata->vals->data),
-				0,sdata->total_value_count,
-				sdata->total_value_count/2));
+				0,sdata->total_value_count-1,
+				(sdata->total_value_count-1)/2));
 }
 

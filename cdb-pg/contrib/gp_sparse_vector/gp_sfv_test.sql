@@ -27,20 +27,20 @@ SELECT docnum Document_Number, a document FROM documents ORDER BY 1;
 SELECT docnum Document_Number, a::float8[] feature_vector FROM corpus ORDER BY 1;
 
 \qecho Count the number of times each feature occurs at least once in all documents
-SELECT (count_vec(a))::float8[] count_in_document FROM corpus;
+SELECT (vec_count_nonzero(a))::float8[] count_in_document FROM corpus;
 
 \qecho Count all occurrences of each term in all documents
 SELECT (sum(a))::float8[] sum_in_document FROM corpus;
 
 \qecho Calculate Term Frequency / Inverse Document Frequency
-SELECT docnum, (a*logidf)::float8[] tf_idf FROM (SELECT log(count(a)/count_vec(a)) logidf FROM corpus) foo, corpus ORDER BY docnum;
+SELECT docnum, (a*logidf)::float8[] tf_idf FROM (SELECT log(count(a)/vec_count_nonzero(a)) logidf FROM corpus) foo, corpus ORDER BY docnum;
 
 \qecho Show the same calculation in compressed vector format
-SELECT docnum, (a*logidf) tf_idf FROM (SELECT log(count(a)/count_vec(a)) logidf FROM corpus) foo, corpus ORDER BY docnum;
+SELECT docnum, (a*logidf) tf_idf FROM (SELECT log(count(a)/vec_count_nonzero(a)) logidf FROM corpus) foo, corpus ORDER BY docnum;
 
 \qecho Create a table with TF / IDF weighted vectors in it
 DROP TABLE IF EXISTS WEIGHTS;
-CREATE TABLE weights AS (SELECT docnum, (a*logidf) tf_idf FROM (SELECT log(count(a)/count_vec(a)) logidf FROM corpus) foo, corpus ORDER BY docnum) DISTRIBUTED RANDOMLY;
+CREATE TABLE weights AS (SELECT docnum, (a*logidf) tf_idf FROM (SELECT log(count(a)/vec_count_nonzero(a)) logidf FROM corpus) foo, corpus ORDER BY docnum) DISTRIBUTED RANDOMLY;
 
 \qecho Calculate the angular distance between the first document to each other document
 SELECT docnum,trunc((180.*(ACOS(dmin(1.,(tf_idf%*%testdoc)/(l2norm(tf_idf)*l2norm(testdoc))))/(4.*ATAN(1.))))::numeric,2) angular_distance FROM weights,(SELECT tf_idf testdoc FROM weights WHERE docnum = 1 LIMIT 1) foo ORDER BY 1;
