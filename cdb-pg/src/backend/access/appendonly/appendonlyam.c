@@ -335,7 +335,7 @@ errdetail_appendonly_insert_block_header(AppendOnlyInsertDesc aoInsertDesc)
 
 	usingChecksum = aoInsertDesc->usingChecksum;
 	
-	return errdetail_appendonly_storage_block_header(header, usingChecksum);
+	return errdetail_appendonly_storage_block_header(header, usingChecksum, aoInsertDesc->storageAttributes.version);
 }
 
 /*
@@ -782,7 +782,28 @@ AppendOnlyExecutorReadBlock_ProcessTuple(
 	
 	if(slot)
 	{
-		ExecStoreMemTuple(tuple, slot, false);
+		/*
+		 * MPP-7372: If the AO table was created before the fix for this issue, it may
+		 * contain tuples with misaligned bindings. Here we check if the stored memtuple
+		 * is problematic and then create a clone of the tuple with properly aligned
+		 * bindings to be used by the executor.
+		 */
+		if (!IsAOBlockAndMemtupleAlignmentFixed(executorReadBlock->storageRead->storageAttributes.version) &&
+			memtuple_has_misaligned_attribute(tuple, slot->tts_mt_bind))
+		{
+			/*
+			 * Create a properly aligned clone of the memtuple.
+			 * We p'alloc memory for the clone, so the slot is
+			 * responsible for releasing the allocated memory.
+			 */
+			tuple = memtuple_aligned_clone(tuple, slot->tts_mt_bind, true /* upgrade */);
+			Assert(tuple);
+			ExecStoreMemTuple(tuple, slot, true /* shouldFree */);
+		}
+		else
+		{
+			ExecStoreMemTuple(tuple, slot, false);
+		}
 
 		slot_set_ctid(slot, &(executorReadBlock->cdb_fake_ctid));
 	}
@@ -813,6 +834,8 @@ AppendOnlyExecutorReadBlock_ScanNextTuple(
 {
 	MemTuple	tuple;
 	
+	Assert(slot);
+
 	switch (executorReadBlock->executorBlockKind)
 	{
 	case AoExecutorBlockKind_VarBlock:
@@ -857,7 +880,7 @@ AppendOnlyExecutorReadBlock_ScanNextTuple(
 												nkeys,
 												key,
 												slot))
-					return tuple;
+					return TupGetMemTuple(slot);
 			}
 			
 		}
@@ -902,7 +925,7 @@ AppendOnlyExecutorReadBlock_ScanNextTuple(
 											nkeys,
 											key,
 											slot))
-				return tuple;
+				return TupGetMemTuple(slot);
 		}
 		break;
 		
@@ -1340,6 +1363,9 @@ appendonly_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey ke
 	attr->checksum			= aoentry->checksum;
 	attr->use32BitAlignment	= true;	   // Old-style 32-bit alignment of storage blocks.
 	attr->safeFSWriteSize	= aoentry->safefswritesize;
+	attr->version			= aoentry->version;
+
+	AORelationVersion_CheckValid(attr->version);
 
 	/*
 	 * Adding a NOTOAST table attribute in 3.3.3 would require a catalog change,
@@ -1764,6 +1790,9 @@ appendonly_fetch_init(
 	attr->checksum			= aoentry->checksum;
 	attr->use32BitAlignment = true;    // Old-style 32-bit alignment of storage blocks.
 	attr->safeFSWriteSize	= aoentry->safefswritesize;
+	attr->version			= aoentry->version;
+
+	AORelationVersion_CheckValid(attr->version);
 
 	aoFetchDesc->usableBlockSize = 
 				AppendOnlyStorage_GetUsableBlockSize(aoentry->blocksize);
@@ -2064,7 +2093,10 @@ appendonly_insert_init(Relation rel, int segno)
 	attr->checksum			= aoentry->checksum;
 	attr->use32BitAlignment	= true;	   // Old-style 32-bit alignment of storage blocks.
 	attr->safeFSWriteSize	= aoentry->safefswritesize;
+	attr->version			= aoentry->version;
 	
+	AORelationVersion_CheckValid(attr->version);
+
 	AppendOnlyStorageWrite_Init(
 						&aoInsertDesc->storageWrite,
 						NULL,
@@ -2211,6 +2243,25 @@ appendonly_insert_init(Relation rel, int segno)
 												aoInsertDesc->toast_tuple_target);
 	else
 		tup = instup;
+
+	/*
+	 * MPP-7372: If the AO table was created before the fix for this issue, it may contain
+	 * tuples with misaligned bindings. Here we check if the memtuple to be stored is
+	 * problematic and then create a clone of the tuple with the old (misaligned) bindings
+	 * to preserve consistency.
+	 */
+	if (!IsAOBlockAndMemtupleAlignmentFixed(aoInsertDesc->storageAttributes.version) &&
+		memtuple_has_misaligned_attribute(tup, aoInsertDesc->mt_bind))
+	{
+		/* Create a clone of the memtuple using misaligned bindings. */
+		MemTuple tuple = memtuple_aligned_clone(tup, aoInsertDesc->mt_bind, false /* downgrade */);
+		Assert(tuple);
+		if(tup != instup)
+		{
+			pfree(tup);
+		}
+		tup = tuple;
+	}
 
 	/* 
 	 * get space to insert our next item (tuple) 

@@ -32,7 +32,7 @@ CATALOG(pg_appendonly,6105) BKI_WITHOUT_OIDS
     Oid             segidxid;           /* if aoseg table, OID of segno index */
     Oid             blkdirrelid;        /* OID of aoblkdir table; 0 if none */
     Oid             blkdiridxid;        /* if aoblkdir table, OID of aoblkdir index */
-    int4            version;    /* Version of the MemTuple layout for this AO table */
+    int4            version;            /* version of MemTuples and block layout for this table */
 } FormData_pg_appendonly;
 
 
@@ -109,9 +109,50 @@ typedef struct AppendOnlyEntry
 	Oid     segidxid;
 	Oid     blkdirrelid;
 	Oid     blkdiridxid;
+	int4    version;
 } AppendOnlyEntry;
 
 /* No initial contents. */
+
+/*
+ * AORelationVersion defines valid values for the version of AppendOnlyEntry.
+ * NOTE: When this is updated, AoRelationVersion_GetLatest() must be updated accordingly.
+ */
+typedef enum AORelationVersion
+{
+	AORelationVersion_None =  0,
+	AORelationVersion_Original =  1,		/* first valid version */
+	AORelationVersion_Aligned64bit = 2,		/* version where the fixes for AOBlock and MemTuple
+											 * were introduced, see MPP-7251 and MPP-7372. */
+	MaxAORelationVersion                    /* must always be last */
+} AORelationVersion;
+
+#define AORelationVersion_GetLatest() AORelationVersion_Aligned64bit
+
+#define AORelationVersion_IsValid(version) \
+	(version > AORelationVersion_None && version < MaxAORelationVersion)
+
+static inline void AORelationVersion_CheckValid(int version)
+{
+	if (!AORelationVersion_IsValid(version))
+	{
+		ereport(ERROR,
+	 		    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+	 		     errmsg("append-only table version %d is invalid", version)));
+	}
+}
+
+/*
+ * Versions higher than AORelationVersion_Original include the fixes for AOBlock and
+ * MemTuple alignment.
+ */
+#define IsAOBlockAndMemtupleAlignmentFixed(version) \
+( \
+	AORelationVersion_CheckValid(version), \
+	(version > AORelationVersion_Original) \
+)
+
+extern int test_appendonly_version_default;
 
 extern void
 InsertAppendOnlyEntry(Oid relid, 

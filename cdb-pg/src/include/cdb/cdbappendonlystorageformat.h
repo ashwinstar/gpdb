@@ -16,6 +16,7 @@ extern void AppendOnlyStorageFormat_MakeSmallContentHeader(
 	uint8			*headerPtr,
 	bool			usingChecksums,
 	bool			hasFirstRowNum,
+	int				version,
 	int64			firstRowNum,
 	int				executorKind,
 	int				rowCount,
@@ -27,11 +28,13 @@ extern void AppendOnlyStorageFormat_LogBlockHeader(
 	char			*segmentFileName,
 	int64			headerOffsetInFile,
 	uint8			*headerPtr,
-	bool			usingChecksums);
+	bool			usingChecksums,
+	int				version);
 
 extern int errdetail_appendonly_storage_block_header(
 	uint8	*header,
-	bool	usingChecksum);
+	bool	usingChecksum,
+	int		version);
 
 extern int errdetail_appendonly_storage_smallcontent_header(
 	uint8	*header,
@@ -45,6 +48,7 @@ extern void AppendOnlyStorageFormat_MakeLargeContentHeader(
 	uint8			*headerPtr,
 	bool			usingChecksums,
 	bool			hasFirstRowNum,
+	int				version,
 	int64			firstRowNum,
 	int				executorKind,
 	int				largeRowCount,
@@ -68,6 +72,7 @@ extern AOHeaderCheckError AppendOnlyStorageFormat_GetSmallContentHeaderInfo(
 	int32			*uncompressedLen,
 	int				*executorBlockKind,
 	bool			*hasFirstRowNum,
+	int				version,
 	int64			*firstRowNum,
 	int				*rowCount,
 	bool			*isCompressed,

@@ -727,7 +727,7 @@ errdetail_appendonly_read_storage_block_header(AppendOnlyStorageRead *storageRea
 
 	checksum = storageRead->storageAttributes.checksum;
 	
-	return errdetail_appendonly_storage_block_header(header, checksum);
+	return errdetail_appendonly_storage_block_header(header, checksum, storageRead->storageAttributes.version);
 }
 
 /*
@@ -899,6 +899,7 @@ static bool AppendOnlyStorageRead_InternalGetBlockInfo(
 								&storageRead->current.uncompressedLen,
 								&storageRead->current.executorBlockKind,
 								&storageRead->current.hasFirstRowNum,
+								storageRead->storageAttributes.version,
 								&storageRead->current.firstRowNum,
 								&storageRead->current.rowCount,
 								&storageRead->current.isCompressed,
@@ -946,7 +947,8 @@ static bool AppendOnlyStorageRead_InternalGetBlockInfo(
 							storageRead->segmentFileName,
 							storageRead->current.headerOffsetInFile,
 							header,
-							storageRead->storageAttributes.checksum);
+							storageRead->storageAttributes.checksum,
+							storageRead->storageAttributes.version);
 	
 	if (storageRead->current.hasFirstRowNum)
 	{

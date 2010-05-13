@@ -104,6 +104,7 @@ AppendOnlyStorageFormat_AddBlockHeaderChecksums(
 	uint8			*headerPtr,
 	bool			isCompressed,
 	bool			hasFirstRowNum,
+	int				version,
 	int32			dataLength,
 	int32			compressedLength)
 {
@@ -122,7 +123,8 @@ AppendOnlyStorageFormat_AddBlockHeaderChecksums(
 	if (hasFirstRowNum)
 		overallBlockLen += sizeof(int64);
 	overallBlockLen += AOStorage_RoundUp(
-	                        (isCompressed ? compressedLength : dataLength));
+	                        (isCompressed ? compressedLength : dataLength),
+	                        version);
 	
 	/*
 	 * Calculate block checksum first since it is included in the 
@@ -157,6 +159,7 @@ AppendOnlyStorageFormat_MakeSmallContentHeader(
 	uint8			*headerPtr,
 	bool			usingChecksums,
 	bool			hasFirstRowNum,
+	int				version,
 	int64			firstRowNum,
 	int				executorKind,
 	int				rowCount,
@@ -219,6 +222,7 @@ AppendOnlyStorageFormat_MakeSmallContentHeader(
 											headerPtr,
 											isCompressed,
 											hasFirstRowNum,
+											version,
 											dataLength,
 											compressedLength);
 	}
@@ -239,7 +243,8 @@ AppendOnlyStorageFormat_LogBlockHeader(
 	char			*segmentFileName,
 	int64			headerOffsetInFile,
 	uint8			*headerPtr,
-	bool			usingChecksums)
+	bool			usingChecksums,
+	int				version)
 {
 	AOBlockHeader 	*blockHeader;
 	int32			headerLen;
@@ -274,7 +279,8 @@ AppendOnlyStorageFormat_LogBlockHeader(
 
 	overallBlockLen =		wholeHeaderLen +
 	                        AOStorage_RoundUp(
-	                        	(compressedLength == 0 ? dataLength : compressedLength));
+	                        	(compressedLength == 0 ? dataLength : compressedLength),
+	                        	version);
 
 	if (usingChecksums)
 	{
@@ -322,7 +328,8 @@ AppendOnlyStorageFormat_LogBlockHeader(
 int
 errdetail_appendonly_storage_block_header(
 	uint8	*header,
-	bool	usingChecksum)
+	bool	usingChecksum,
+	int		version)
 {
 	AOBlockHeader 	*blockHeader;
 	int32			headerLen;
@@ -355,7 +362,8 @@ errdetail_appendonly_storage_block_header(
 
 	overallBlockLen =		wholeHeaderLen +
 	                        AOStorage_RoundUp(
-	                        	(compressedLength == 0 ? uncompressedLength : compressedLength));
+	                        	(compressedLength == 0 ? uncompressedLength : compressedLength),
+	                        	version);
 
 	if (usingChecksum)
 	{
@@ -419,6 +427,7 @@ AppendOnlyStorageFormat_MakeLargeContentHeader(
 	uint8			*headerPtr,
 	bool			usingChecksums,
 	bool			hasFirstRowNum,
+	int				version,
 	int64			firstRowNum,
 	int				executorKind,
 	int				largeRowCount,
@@ -474,6 +483,7 @@ AppendOnlyStorageFormat_MakeLargeContentHeader(
 											headerPtr,
 											/* isCompressed */ false,
 											/* hasFirstRowNum */ false,
+											version,
 											/* dataLength */ 0,
 											/* compressedLength */ 0);
 	}
@@ -597,6 +607,7 @@ AppendOnlyStorageFormat_GetSmallContentHeaderInfo(
 	int32			*uncompressedLen,
 	int				*executorBlockKind,
 	bool			*hasFirstRowNum,
+	int				version,
 	int64			*firstRowNum,
 	int				*rowCount,
 	bool			*isCompressed,
@@ -661,7 +672,7 @@ AppendOnlyStorageFormat_GetSmallContentHeaderInfo(
 	}
 	
 	*overallBlockLen =		*offset +
-	                        AOStorage_RoundUp(length);
+	                        AOStorage_RoundUp(length, version);
 
 	if (*overallBlockLen > blockLimitLen)
 	{

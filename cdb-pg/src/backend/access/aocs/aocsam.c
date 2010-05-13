@@ -108,7 +108,7 @@ static void open_all_datumstream_segfiles(Relation rel,
 }
 
 static void open_ds(Relation rel, CompressorType compType, int32 compLv, int32 blocksz, 
-        DatumStream **ds, int nvp, bool *proj)
+        DatumStream **ds, int nvp, bool *proj, AORelationVersion version)
 {
     int i;
     TupleDesc tupdesc = RelationGetDescr(rel);
@@ -121,12 +121,12 @@ static void open_ds(Relation rel, CompressorType compType, int32 compLv, int32 b
          if(proj)
         {
             if(proj[i])
-                ds[i] = create_datumstream(compType, compLv, blocksz, attr, rel->rd_rel->relname.data, true);
+                ds[i] = create_datumstream(compType, compLv, blocksz, version, attr, rel->rd_rel->relname.data, true);
             else
                 ds[i] = NULL;
         }
         else 
-            ds[i] = create_datumstream(compType, compLv, blocksz, attr, rel->rd_rel->relname.data, false);
+            ds[i] = create_datumstream(compType, compLv, blocksz, version, attr, rel->rd_rel->relname.data, false);
     }
 }
 
@@ -154,7 +154,7 @@ static void aocs_initscan(AOCSScanDesc scan, ScanKey key)
     scan->cur_seg_row = 0;
 
     open_ds(scan->aos_rel, scan->compType, scan->compLevel, scan->blocksz,
-            scan->ds, scan->aos_rel->rd_att->natts, scan->proj);
+            scan->ds, scan->aos_rel->rd_att->natts, scan->proj, scan->aoEntry->version);
 
     pgstat_count_heap_scan(scan->aos_rel);
 }
@@ -468,7 +468,7 @@ static void OpenAOCSDatumStreams(AOCSInsertDesc desc)
 
     desc->ds = (DatumStream **) palloc0(sizeof(DatumStream *) * nvp);
     open_ds(desc->aoi_rel, desc->compType, desc->compLevel, desc->blocksz, 
-            desc->ds, nvp, NULL);
+            desc->ds, nvp, NULL, desc->aoEntry->version);
 
     /* Now open seg info file and get eof mark. */
     seginfo = GetAOCSFileSegInfoForWrite(desc->aoi_rel, desc->aoEntry, desc->cur_segno);
@@ -902,6 +902,9 @@ aocs_fetch_init(Relation relation,
 	attr->checksum = aoentry->checksum;
 	attr->use32BitAlignment = true; /* Old-style 32-bit alignment of storage blocks */
 	attr->safeFSWriteSize = aoentry->safefswritesize;
+	attr->version = aoentry->version;
+
+	AORelationVersion_CheckValid(attr->version);
 
 	aocsFetchDesc->blockSize = aoentry->blocksize;
 
@@ -934,6 +937,7 @@ aocs_fetch_init(Relation relation,
 				create_datumstream(attr->compressType,
 								   attr->compressLevel,
 								   aocsFetchDesc->blockSize,
+								   attr->version,
 								   tupleDesc->attrs[colno],
 								   relation->rd_rel->relname.data,
 								   true);

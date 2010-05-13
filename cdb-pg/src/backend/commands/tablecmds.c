@@ -5757,13 +5757,13 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 			 */
 			oldCxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
-			while ((mtuple = appendonly_getnext(aoscan, ForwardScanDirection, NULL)) != NULL)
+			while ((mtuple = appendonly_getnext(aoscan, ForwardScanDirection, oldslot)) != NULL)
 			{
 				if (newrel)
 				{
 					Oid			tupOid = InvalidOid;
 
-					ExecStoreMemTuple(mtuple, oldslot, false);
+					TupClearShouldFree(oldslot);
 					econtext->ecxt_scantuple = oldslot;
 
 					/* Extract data from old tuple */
@@ -20704,11 +20704,11 @@ split_rows(Relation intoa, Relation intob, Relation temprel)
 		{
 			MemTuple mtuple;
 
-			mtuple = appendonly_getnext(aoscan, ForwardScanDirection, NULL);
+			mtuple = appendonly_getnext(aoscan, ForwardScanDirection, tts);
 			if (!PointerIsValid(mtuple))
 				break;
 
-			ExecStoreMemTuple(mtuple, tts, false);
+			TupClearShouldFree(tts);
 		}
 		else if (RelationIsAoCols(temprel))
 		{

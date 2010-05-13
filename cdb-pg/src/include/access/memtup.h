@@ -29,7 +29,8 @@ typedef enum MemTupleBindFlag
 typedef struct MemTupleAttrBinding
 {
 	int offset; 		/* offset of attr in memtuple */
-	int len;		/* lenth */
+	int len;				/* attribute length */
+	int len_aligned;		/* attribute length, padded for aligning the physically following attribute */
 	MemTupleBindFlag flag;	/* binding flag */
 	int null_byte;		/* which byte holds the null flag for the attr */
 	unsigned char null_mask;		/* null bit mask */
@@ -39,7 +40,10 @@ typedef struct MemTupleBindingCols
 {
 	uint32 var_start; 	/* varlen fields start */
 	MemTupleAttrBinding *bindings; /* bindings for attrs (cols) */
-	short *null_saves;
+	short *null_saves;				/* saved space from each attribute when null */
+	short *null_saves_aligned;		/* saved space from each attribute when null - uses aligned length */
+	bool has_null_saves_alignment_mismatch;		/* true if one or more attributes has mismatching alignment and length  */
+	bool has_dropped_attr_alignment_mismatch;	/* true if one or more dropped attributes has mismatching alignment and length */
 } MemTupleBindingCols;
 
 typedef struct MemTupleBinding
@@ -167,7 +171,7 @@ extern MemTupleBinding* create_memtuple_binding(TupleDesc tupdesc);
 extern Datum memtuple_getattr(MemTuple mtup, MemTupleBinding *pbind, int attnum, bool *isnull);
 extern bool memtuple_attisnull(MemTuple mtup, MemTupleBinding *pbind, int attnum);
 
-extern uint32 compute_memtuple_size(MemTupleBinding *pbind, Datum *values, bool *isnull, bool hasnull, uint32 *nullsaves);
+extern uint32 compute_memtuple_size(MemTupleBinding *pbind, Datum *values, bool *isnull, bool hasnull, uint32 *nullsaves, bool use_null_saves_aligned);
 
 extern MemTuple memtuple_copy_to(MemTuple mtup, MemTupleBinding *pbind, MemTuple dest, uint32 *destlen);
 extern MemTuple memtuple_form_to(MemTupleBinding *pbind, Datum *values, bool *isnull, MemTuple dest, uint32 *destlen, bool inline_toast);
@@ -177,4 +181,8 @@ extern Oid MemTupleGetOid(MemTuple mtup, MemTupleBinding *pbind);
 extern void MemTupleSetOid(MemTuple mtup, MemTupleBinding *pbind, Oid oid);
 
 extern bool MemTupleHasExternal(MemTuple mtup, MemTupleBinding *pbind);
+
+extern bool memtuple_has_misaligned_attribute(MemTuple mtup, MemTupleBinding *pbind);
+extern MemTuple memtuple_aligned_clone(MemTuple mtup, MemTupleBinding *pbind, bool use_null_saves_aligned);
+
 #endif /* _MEM_TUP_H_ */

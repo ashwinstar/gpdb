@@ -366,6 +366,9 @@ char	   *gp_snmp_monitor_address;
 char	   *gp_snmp_use_inform_or_trap;
 #endif
 
+/* The following GUC holds the default version for append-only tables */
+int	test_appendonly_version_default = AORelationVersion_GetLatest();
+
 /*
  * These variables are all dummies that don't do anything, except in some
  * cases provide the value for SHOW to display.  The real state is elsewhere
@@ -3287,6 +3290,16 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&MaxAppendOnlyTables,
 		2048, 0, INT_MAX, NULL, NULL
+	},
+
+	{
+		{"test_appendonly_version_default", PGC_USERSET, APPENDONLY_TABLES,
+		 gettext_noop("Align append-only blocks to 64 bits."),
+		 NULL,
+		 GUC_GPDB_ADDOPT | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&test_appendonly_version_default,
+		AORelationVersion_GetLatest(), 0, INT_MAX, NULL, NULL
 	},
 
 	{

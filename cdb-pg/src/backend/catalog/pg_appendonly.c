@@ -74,7 +74,7 @@ InsertAppendOnlyEntry(Oid relid,
 	values[Anum_pg_appendonly_segidxid - 1] = ObjectIdGetDatum(segidxid);
 	values[Anum_pg_appendonly_blkdirrelid - 1] = ObjectIdGetDatum(blkdirrelid);
 	values[Anum_pg_appendonly_blkdiridxid - 1] = ObjectIdGetDatum(blkdiridxid);
-	values[Anum_pg_appendonly_version - 1] = Int32GetDatum(1);
+	values[Anum_pg_appendonly_version - 1] = test_appendonly_version_default;
 	
 	if(compresstype)
 	{
@@ -317,7 +317,8 @@ GetAppendOnlyEntryFromTuple(
 				segrelid,
 				segidxid,
 				blkdirrelid,
-				blkdiridxid
+				blkdiridxid,
+				version
 				;
 
 	bool		isNull;
@@ -465,6 +466,17 @@ GetAppendOnlyEntryFromTuple(
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("got invalid blkdiridxid value: NULL")));	
 
+	/* get the version */
+	version = heap_getattr(tuple,
+						   Anum_pg_appendonly_version,
+						   pg_appendonly_rel->rd_att,
+						   &isNull);
+
+	if(isNull)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("got invalid version value: NULL")));
+
 	aoentry->blocksize = DatumGetInt32(blocksize);
 	aoentry->safefswritesize = DatumGetInt32(safefswritesize);
 	aoentry->compresslevel = DatumGetInt16(compresslevel);
@@ -476,8 +488,11 @@ GetAppendOnlyEntryFromTuple(
     aoentry->segidxid = DatumGetObjectId(segidxid);
     aoentry->blkdirrelid = DatumGetObjectId(blkdirrelid);
     aoentry->blkdiridxid = DatumGetObjectId(blkdiridxid);
+    aoentry->version = DatumGetInt32(version);
 
-	*relationId = DatumGetObjectId(relid);
+    AORelationVersion_CheckValid(aoentry->version);
+
+    *relationId = DatumGetObjectId(relid);
 	
 	return aoentry;
 }

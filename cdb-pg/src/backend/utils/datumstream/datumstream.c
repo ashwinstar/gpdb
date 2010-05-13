@@ -273,9 +273,11 @@ int datumstream_put(DatumStream *acc, Datum d, bool null)
     return acc->datumlen;
 }
 
-DatumStream *create_datumstream(CompressorType compType, int32 compLevel, int32 maxsz,  
-        Form_pg_attribute attr, char *relname, bool isreader) 
+DatumStream *create_datumstream(CompressorType compType, int32 compLevel, int32 maxsz,
+		AORelationVersion version, Form_pg_attribute attr, char *relname, bool isreader)
 {
+	AORelationVersion_CheckValid(version);
+
     DatumStream *acc = palloc0(sizeof(DatumStream));
 
 	/*
@@ -298,6 +300,7 @@ DatumStream *create_datumstream(CompressorType compType, int32 compLevel, int32 
     acc->ao_attr.compress = (compLevel > 0);
     acc->ao_attr.compressType = compType;
     acc->ao_attr.compressLevel = compLevel;
+    acc->ao_attr.version = version;
 
     if (acc->is_reader)
     {

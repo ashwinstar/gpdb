@@ -12548,6 +12548,9 @@ select * from get_ereport order by 1;
  pabd: pgxappendonly:00000464:  ereport(ERROR, 
  pabd: pgxappendonly:00000465:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
  pabd: pgxappendonly:00000466:  errmsg("got invalid blkdiridxid value: NULL"))); 
+ pabd: pgxappendonly:00000475:  ereport(ERROR, 
+ pabd: pgxappendonly:00000476:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ pabd: pgxappendonly:00000477:  errmsg("got invalid version value: NULL"))); 
  pabd: pgxappendonly:00000527:  ereport(ERROR, 
  pabd: pgxappendonly:00000528:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
  pabd: pgxappendonly:00000529:  errmsg("missing pg_appendonly entry for relation "%s"", 
@@ -18336,6 +18339,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000076:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000077:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000078:  str))); 
-(18269 rows)
+(18272 rows)
 
 drop external table get_ereport;

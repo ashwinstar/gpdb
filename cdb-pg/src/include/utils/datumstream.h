@@ -122,7 +122,7 @@ extern int datumstream_put(DatumStream *ds, Datum d, bool n);
 
 /* ctor and dtor */
 extern DatumStream *create_datumstream(CompressorType compType, int32 compLv, int32 maxsz, 
-        Form_pg_attribute attr, char *relname, bool isreader);
+		AORelationVersion version, Form_pg_attribute attr, char *relname, bool isreader);
 extern void datumstream_open_file(
 		DatumStream *ds, 
 		char *fn, 

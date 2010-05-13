@@ -184,6 +184,11 @@ static inline HeapTuple TupGetHeapTuple(TupleTableSlot *slot)
 	Assert(!is_heaptuple_memtuple(slot->PRIVATE_tts_heaptuple));
 	return slot->PRIVATE_tts_heaptuple; 
 }
+static inline MemTuple TupGetMemTuple(TupleTableSlot *slot)
+{
+	Assert(TupHasMemTuple(slot));
+	return slot->PRIVATE_tts_memtuple;
+}
 
 static inline void free_heaptuple_memtuple(TupleTableSlot *slot)
 {

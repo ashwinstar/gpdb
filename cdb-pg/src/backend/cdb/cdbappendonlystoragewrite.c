@@ -804,7 +804,7 @@ errdetail_appendonly_write_storage_block_header(AppendOnlyStorageWrite *storageW
 
 	checksum = storageWrite->storageAttributes.checksum;
 	
-	return errdetail_appendonly_storage_block_header(header, checksum);
+	return errdetail_appendonly_storage_block_header(header, checksum, storageWrite->storageAttributes.version);
 }
 
 
@@ -999,6 +999,7 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 								&uncompressedLen,
 								&executorBlockKind,
 								&hasFirstRowNum,
+								storageWrite->storageAttributes.version,
 								&firstRowNum,
 								&rowCount,
 								&isCompressed,
@@ -1061,7 +1062,8 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 								storageWrite->segmentFileName,
 								headerOffsetInFile,
 								header,
-								storageWrite->storageAttributes.checksum);
+								storageWrite->storageAttributes.checksum,
+								storageWrite->storageAttributes.version);
 		
 
 		if (isCompressed)
@@ -1187,7 +1189,6 @@ AppendOnlyStorageWrite_CompressAppend(
 	int32 			dataRoundedUpLen = 0;	// Shutup compiler.
 	int32			dataBufferWithOverrrunLen;
 
-
 	// UNDONE: This can be a duplicate call...
 	storageWrite->currentCompleteHeaderLen = 
 				AppendOnlyStorageWrite_CompleteHeaderLen(storageWrite);
@@ -1231,7 +1232,7 @@ AppendOnlyStorageWrite_CompressAppend(
 		/*
 		 * Compression successful.
 		 */
-		dataRoundedUpLen = AOStorage_RoundUp(*compressedLen);
+		dataRoundedUpLen = AOStorage_RoundUp(*compressedLen, storageWrite->storageAttributes.version);
 
 		AOStorage_ZeroPad(
 					dataBuffer,
@@ -1245,6 +1246,7 @@ AppendOnlyStorageWrite_CompressAppend(
 									header,
 									storageWrite->storageAttributes.checksum,
 									storageWrite->isFirstRowNumSet,
+									storageWrite->storageAttributes.version,
 									storageWrite->firstRowNum,
 									executorBlockKind,
 									itemCount,
@@ -1257,7 +1259,8 @@ AppendOnlyStorageWrite_CompressAppend(
 								storageWrite->segmentFileName,
 								BufferedAppendCurrentBufferPosition(&storageWrite->bufferedAppend),
 								header,
-								storageWrite->storageAttributes.checksum);
+								storageWrite->storageAttributes.checksum,
+								storageWrite->storageAttributes.version);
 		
 		if (Debug_appendonly_print_insert)
 			elog(LOG,"Append-only insert finished compressed block for table '%s' "
@@ -1274,7 +1277,7 @@ AppendOnlyStorageWrite_CompressAppend(
 	else if (res == Z_BUF_ERROR)
 	{
 		int32 	overallBlockLen;
-		
+
 		/*
 		 * Unable to compress the data to smaller the input size.
 		 * Solution: Indicate in the header we are storing an non-compressed
@@ -1282,7 +1285,7 @@ AppendOnlyStorageWrite_CompressAppend(
 		 */
 		*compressedLen = 0;
 		
-		dataRoundedUpLen = AOStorage_RoundUp(sourceLen);
+		dataRoundedUpLen = AOStorage_RoundUp(sourceLen, storageWrite->storageAttributes.version);
 
 		overallBlockLen = storageWrite->currentCompleteHeaderLen + dataRoundedUpLen;
 
@@ -1303,6 +1306,7 @@ AppendOnlyStorageWrite_CompressAppend(
 								header,
 								storageWrite->storageAttributes.checksum,
 								storageWrite->isFirstRowNumSet,
+								storageWrite->storageAttributes.version,
 								storageWrite->firstRowNum,
 								executorBlockKind,
 								itemCount,
@@ -1315,7 +1319,8 @@ AppendOnlyStorageWrite_CompressAppend(
 							    storageWrite->segmentFileName,
 							    BufferedAppendCurrentBufferPosition(&storageWrite->bufferedAppend),
 								header,
-								storageWrite->storageAttributes.checksum);
+								storageWrite->storageAttributes.checksum,
+								storageWrite->storageAttributes.version);
 	
 		if (Debug_appendonly_print_insert)
 			elog(LOG,"Append-only insert could not compress block for table '%s' smaller -- non-compressed block stored "
@@ -1368,7 +1373,7 @@ void AppendOnlyStorageWrite_FinishBuffer(
 {
 	int64	headerOffsetInFile;
 	int32	bufferLen;
-	
+
 	Assert(storageWrite != NULL);
 	Assert(storageWrite->isActive);
 	
@@ -1399,7 +1404,7 @@ void AppendOnlyStorageWrite_FinishBuffer(
 			
 		nonCompressedData = &nonCompressedHeader[storageWrite->currentCompleteHeaderLen];
 		
-		dataRoundedUpLen = AOStorage_RoundUp(contentLen);
+		dataRoundedUpLen = AOStorage_RoundUp(contentLen, storageWrite->storageAttributes.version);
 
 		AOStorage_ZeroPad(
 				nonCompressedData,
@@ -1413,6 +1418,7 @@ void AppendOnlyStorageWrite_FinishBuffer(
 								nonCompressedHeader,
 								storageWrite->storageAttributes.checksum,
 								storageWrite->isFirstRowNumSet,
+								storageWrite->storageAttributes.version,
 								storageWrite->firstRowNum,
 								executorBlockKind,
 								rowCount,
@@ -1426,7 +1432,8 @@ void AppendOnlyStorageWrite_FinishBuffer(
 								storageWrite->segmentFileName,
 								headerOffsetInFile,
 								nonCompressedHeader,
-								storageWrite->storageAttributes.checksum);
+								storageWrite->storageAttributes.checksum,
+								storageWrite->storageAttributes.version);
 
 
 		bufferLen = storageWrite->currentCompleteHeaderLen + dataRoundedUpLen;
@@ -1504,7 +1511,8 @@ void AppendOnlyStorageWrite_FinishBuffer(
 		BufferedAppendFinishBuffer(
 							&storageWrite->bufferedAppend,
 							bufferLen,
-							storageWrite->currentCompleteHeaderLen + AOStorage_RoundUp(contentLen) /* non-compressed size */);
+							storageWrite->currentCompleteHeaderLen +
+							AOStorage_RoundUp(contentLen, storageWrite->storageAttributes.version) /* non-compressed size */);
 		// Declare it finished.
 		storageWrite->currentCompleteHeaderLen = 0;
 	}
@@ -1643,7 +1651,8 @@ void AppendOnlyStorageWrite_Content(
 			BufferedAppendFinishBuffer(
 								&storageWrite->bufferedAppend,
 								bufferLen,
-								storageWrite->currentCompleteHeaderLen + AOStorage_RoundUp(contentLen) /* non-compressed size */);
+								storageWrite->currentCompleteHeaderLen +
+								AOStorage_RoundUp(contentLen, storageWrite->storageAttributes.version) /* non-compressed size */);
 
 			// Declare it finished.
 			storageWrite->currentCompleteHeaderLen = 0;
@@ -1681,6 +1690,7 @@ void AppendOnlyStorageWrite_Content(
 								largeContentHeader,
 								storageWrite->storageAttributes.checksum,
 								storageWrite->isFirstRowNumSet,
+								storageWrite->storageAttributes.version,
 								storageWrite->firstRowNum,
 								executorBlockKind,
 								rowCount,
@@ -1756,7 +1766,8 @@ void AppendOnlyStorageWrite_Content(
 				BufferedAppendFinishBuffer(
 									&storageWrite->bufferedAppend,
 									bufferLen,
-									smallContentHeaderLen + AOStorage_RoundUp(smallContentLen) /* non-compressed size */);
+									smallContentHeaderLen +
+									AOStorage_RoundUp(smallContentLen, storageWrite->storageAttributes.version) /* non-compressed size */);
 				
 				// Declare it finished.
 				storageWrite->currentCompleteHeaderLen = 0;

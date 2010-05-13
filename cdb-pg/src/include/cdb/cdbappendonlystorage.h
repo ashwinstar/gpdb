@@ -30,7 +30,12 @@
 #define AOLargeContentHeader_MaxLargeContentLength   0x3FFFFFFF 
 										  // 30 bits, or 1,073,741,823 (1Gb-1).
 
-#define AOStorage_RoundUp(l) ((((l)+3)/4)*4)
+#define AOStorage_RoundUp4(l) ((((l)+3)/4)*4) /* 32-bit alignment */
+
+#define AOStorage_RoundUp8(l) ((((l)+7)/8)*8) /* 64-bit alignment */
+
+#define AOStorage_RoundUp(l, version) \
+	((IsAOBlockAndMemtupleAlignmentFixed(version)) ? (AOStorage_RoundUp8(l)) : (AOStorage_RoundUp4(l)))
 
 #define	AOStorage_ZeroPad(\
 			buf,\
