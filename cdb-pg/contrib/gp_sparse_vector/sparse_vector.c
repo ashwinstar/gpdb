@@ -163,12 +163,12 @@ svec_out_internal(SvecType *svec)
 	char *ix_string,*vals_string,*result;
 	int ixlen,vslen;
 	SparseData sdata=sdata_from_svec(svec);
-	int64_t *array_ix =sdata_index_to_int64arr(sdata);
+	int64 *array_ix =sdata_index_to_int64arr(sdata);
 	ArrayType *pgarray_ix,*pgarray_vals;
 
 	pgarray_ix = construct_array((Datum *)array_ix,
 		sdata->unique_value_count,INT8OID,
-		sizeof(int64_t),true,'d');
+		sizeof(int64),true,'d');
 
 	ix_string=DatumGetPointer(OidFunctionCall1(F_ARRAY_OUT,
 				PointerGetDatum(pgarray_ix)));
@@ -200,7 +200,7 @@ svec_in(PG_FUNCTION_ARGS)
 	ArrayType *pgarray_vals,*pgarray_ix;
 	double *vals;
 	StringInfo index;
-	int64_t *u_index;
+	int64 *u_index;
 	int32_t num_values,total_value_count;
 	SparseData sdata;
 	SvecType *result;
@@ -233,7 +233,7 @@ svec_in(PG_FUNCTION_ARGS)
 	pgarray_ix = DatumGetArrayTypeP(OidFunctionCall3(F_ARRAY_IN,CStringGetDatum(str),
 				ObjectIdGetDatum(INT8OID),Int32GetDatum(-1)));
 
-	u_index = (int64_t *)ARR_DATA_PTR(pgarray_ix);
+	u_index = (int64 *)ARR_DATA_PTR(pgarray_ix);
 	if (num_values != *(ARR_DIMS(pgarray_ix)))
 	{
 		ereport(ERROR,
