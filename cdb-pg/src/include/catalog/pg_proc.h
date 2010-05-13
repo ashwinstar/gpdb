@@ -5002,7 +5002,7 @@ DESCR("Add a new entry to gp_persistent_filespace_node");
 DATA(insert OID = 5057 ( gp_add_persistent_tablespace_node_entry PGNSP PGUID 12 f f f f v 10 16 f "27 26 26 21 20 21 23 23 20 27" _null_ _null_ _null_ gp_add_persistent_tablespace_node_entry - _null_ ));
 DESCR("Add a new entry to gp_persistent_tablespace_node");
 
-DATA(insert OID = 5058 ( gp_add_persistent_databases_node_entry PGNSP PGUID 12 f f f f v 10 16 f "27 26 26 21 20 21 23 23 20 27" _null_ _null_ _null_ gp_add_persistent_database_node_entry - _null_ ));
+DATA(insert OID = 5058 ( gp_add_persistent_database_node_entry PGNSP PGUID 12 f f f f v 10 16 f "27 26 26 21 20 21 23 23 20 27" _null_ _null_ _null_ gp_add_persistent_database_node_entry - _null_ ));
 DESCR("Add a new entry to gp_persistent_database_node");
 
 DATA(insert OID = 5059 ( gp_add_persistent_relation_node_entry PGNSP PGUID 12 f f f f v 20 16 f "27 26 26 26 23 21 21 20 21 21 16 20 3310 23 20 20 23 23 20 27" _null_ _null_ _null_ gp_add_persistent_relation_node_entry - _null_ ));
@@ -5020,7 +5020,7 @@ DESCR("Update an entry in gp_persistent_filespace_node");
 DATA(insert OID = 5063 ( gp_update_persistent_tablespace_node_entry PGNSP PGUID 12 f f f f v 10 16 f "27 26 26 21 20 21 23 23 20 27" _null_ _null_ _null_ gp_update_persistent_tablespace_node_entry - _null_ ));
 DESCR("Update an entry in gp_persistent_tablespace_node");
 
-DATA(insert OID = 5064 ( gp_update_persistent_databases_node_entry PGNSP PGUID 12 f f f f v 10 16 f "27 26 26 21 20 21 23 23 20 27" _null_ _null_ _null_ gp_update_persistent_database_node_entry - _null_ ));
+DATA(insert OID = 5064 ( gp_update_persistent_database_node_entry PGNSP PGUID 12 f f f f v 10 16 f "27 26 26 21 20 21 23 23 20 27" _null_ _null_ _null_ gp_update_persistent_database_node_entry - _null_ ));
 DESCR("Update an entry in gp_persistent_database_node");
 
 DATA(insert OID = 5065 ( gp_update_persistent_relation_node_entry PGNSP PGUID 12 f f f f v 20 16 f "27 26 26 26 23 21 21 20 21 21 16 20 3310 23 20 20 23 23 20 27" _null_ _null_ _null_ gp_update_persistent_relation_node_entry - _null_ ));
@@ -5038,7 +5038,7 @@ DESCR("Remove an entry from gp_persistent_filespace_node");
 DATA(insert OID = 5069 ( gp_delete_persistent_tablespace_node_entry PGNSP PGUID 12 f f f f v 1 16 f "27" _null_ _null_ _null_ gp_delete_persistent_tablespace_node_entry - _null_ ));
 DESCR("Remove an entry from gp_persistent_tablespace_node");
 
-DATA(insert OID = 5070 ( gp_delete_persistent_databases_node_entry PGNSP PGUID 12 f f f f v 1 16 f "27" _null_ _null_ _null_ gp_delete_persistent_database_node_entry - _null_ ));
+DATA(insert OID = 5070 ( gp_delete_persistent_database_node_entry PGNSP PGUID 12 f f f f v 1 16 f "27" _null_ _null_ _null_ gp_delete_persistent_database_node_entry - _null_ ));
 DESCR("Remove an entry from gp_persistent_database_node");
 
 DATA(insert OID = 5071 ( gp_delete_persistent_relation_node_entry PGNSP PGUID 12 f f f f v 1 16 f "27" _null_ _null_ _null_ gp_delete_persistent_relation_node_entry - _null_ ));

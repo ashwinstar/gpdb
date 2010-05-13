@@ -62,19 +62,19 @@ oid|proname|pronamespace|proowner|prolang|proisagg|prosecdef|proisstrict|prorets
 5037|pg_get_partition_template_def|11|10|12|f|f|t|f|s|3|25|f|26 16 16|\N|\N|\N|pg_get_partition_template_def|-|\N
 5056|gp_add_persistent_filespace_node_entry|11|10|12|f|f|f|f|v|13|16|f|27 26 21 25 21 25 21 20 21 23 23 20 27|\N|\N|\N|gp_add_persistent_filespace_node_entry|-|\N
 5057|gp_add_persistent_tablespace_node_entry|11|10|12|f|f|f|f|v|10|16|f|27 26 26 21 20 21 23 23 20 27|\N|\N|\N|gp_add_persistent_tablespace_node_entry|-|\N
-5058|gp_add_persistent_databases_node_entry|11|10|12|f|f|f|f|v|10|16|f|27 26 26 21 20 21 23 23 20 27|\N|\N|\N|gp_add_persistent_database_node_entry|-|\N
+5058|gp_add_persistent_database_node_entry|11|10|12|f|f|f|f|v|10|16|f|27 26 26 21 20 21 23 23 20 27|\N|\N|\N|gp_add_persistent_database_node_entry|-|\N
 5059|gp_add_persistent_relation_node_entry|11|10|12|f|f|f|f|v|20|16|f|27 26 26 26 23 21 21 20 21 21 16 20 3310 23 20 20 23 23 20 27|\N|\N|\N|gp_add_persistent_relation_node_entry|-|\N
 5060|gp_add_global_sequence_entry|11|10|12|f|f|f|f|v|2|16|f|27 20|\N|\N|\N|gp_add_global_sequence_entry|-|\N
 5061|gp_add_relation_node_entry|11|10|12|f|f|f|f|v|6|16|f|27 26 23 20 27 20|\N|\N|\N|gp_add_relation_node_entry|-|\N
 5062|gp_update_persistent_filespace_node_entry|11|10|12|f|f|f|f|v|13|16|f|27 26 21 25 21 25 21 20 21 23 23 20 27|\N|\N|\N|gp_update_persistent_filespace_node_entry|-|\N
 5063|gp_update_persistent_tablespace_node_entry|11|10|12|f|f|f|f|v|10|16|f|27 26 26 21 20 21 23 23 20 27|\N|\N|\N|gp_update_persistent_tablespace_node_entry|-|\N
-5064|gp_update_persistent_databases_node_entry|11|10|12|f|f|f|f|v|10|16|f|27 26 26 21 20 21 23 23 20 27|\N|\N|\N|gp_update_persistent_database_node_entry|-|\N
+5064|gp_update_persistent_database_node_entry|11|10|12|f|f|f|f|v|10|16|f|27 26 26 21 20 21 23 23 20 27|\N|\N|\N|gp_update_persistent_database_node_entry|-|\N
 5065|gp_update_persistent_relation_node_entry|11|10|12|f|f|f|f|v|20|16|f|27 26 26 26 23 21 21 20 21 21 16 20 3310 23 20 20 23 23 20 27|\N|\N|\N|gp_update_persistent_relation_node_entry|-|\N
 5066|gp_update_global_sequence_entry|11|10|12|f|f|f|f|v|2|16|f|27 20|\N|\N|\N|gp_update_global_sequence_entry|-|\N
 5067|gp_update_relation_node_entry|11|10|12|f|f|f|f|v|6|16|f|27 26 23 20 27 20|\N|\N|\N|gp_update_relation_node_entry|-|\N
 5068|gp_delete_persistent_filespace_node_entry|11|10|12|f|f|f|f|v|1|16|f|27|\N|\N|\N|gp_delete_persistent_filespace_node_entry|-|\N
 5069|gp_delete_persistent_tablespace_node_entry|11|10|12|f|f|f|f|v|1|16|f|27|\N|\N|\N|gp_delete_persistent_tablespace_node_entry|-|\N
-5070|gp_delete_persistent_databases_node_entry|11|10|12|f|f|f|f|v|1|16|f|27|\N|\N|\N|gp_delete_persistent_database_node_entry|-|\N
+5070|gp_delete_persistent_database_node_entry|11|10|12|f|f|f|f|v|1|16|f|27|\N|\N|\N|gp_delete_persistent_database_node_entry|-|\N
 5071|gp_delete_persistent_relation_node_entry|11|10|12|f|f|f|f|v|1|16|f|27|\N|\N|\N|gp_delete_persistent_relation_node_entry|-|\N
 5072|gp_delete_global_sequence_entry|11|10|12|f|f|f|f|v|1|16|f|27|\N|\N|\N|gp_delete_global_sequence_entry|-|\N
 5073|gp_delete_relation_node_entry|11|10|12|f|f|f|f|v|1|16|f|27|\N|\N|\N|gp_delete_relation_node_entry|-|\N
