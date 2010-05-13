@@ -864,7 +864,6 @@ mgmtcopy :
 	cp $(GPPGDIR)/src/test/regress/*.pl $(INSTLOC)/bin
 	if [ ! -d ${INSTLOC}/docs ] ; then mkdir ${INSTLOC}/docs ; fi
 	if [ -d $(GPMGMT)/doc ]; then cp -rp $(GPMGMT)/doc $(INSTLOC)/docs/cli_help; fi
-	if [ -d $(GPMGMT)/demo/gpdemo ]; then mkdir $(INSTLOC)/demo; gtar --exclude \*CVS\* -C $(GPMGMT)/demo -czf $(INSTLOC)/demo/gpdemo.tar.gz gpdemo; fi
 	if [ -d $(GPMGMT)/demo/gpmapreduce ]; then \
 	  mkdir -p $(INSTLOC)/demo; \
 	  gtar -C $(GPMGMT)/demo -czf $(INSTLOC)/demo/gpmapreduce.tar.gz gpmapreduce; \
