@@ -1,4 +1,6 @@
-import os, pickle
+import os
+import pickle
+import signal
 
 from gppylib.mainUtils import *
 
@@ -233,25 +235,31 @@ class GpMirrorListToBuild:
             seg = toRecover.getLiveSegment()
             seg.setSegmentMode(gparray.MODE_RESYNCHRONIZATION)
 
-        # should use mainUtils.getProgramName but I can't make it work!
-        programName = os.path.split(sys.argv[0])[-1]
-        configInterface.getConfigurationProvider().updateSystemConfig(gpArray, "%s: segment resync" % programName )
+        # Disable Ctrl-C
+        signal.signal(signal.SIGINT,signal.SIG_IGN)
 
-        # stop/start new mirrors
-        mirrorsToStart = []
-        primariesToConvert = []
-        convertPrimaryUsingFullResync = []
-        for toRecover in self.__mirrorsToBuild:
-            seg = toRecover.getFailoverSegment()
-            if seg is None:
-                seg = toRecover.getFailedSegment() # we are recovering in place
-            mirrorsToStart.append(seg)
-            primariesToConvert.append(toRecover.getLiveSegment())
-            convertPrimaryUsingFullResync.append(toRecover.isFullSynchronization())
+        try:
+            # should use mainUtils.getProgramName but I can't make it work!
+            programName = os.path.split(sys.argv[0])[-1]
+            configInterface.getConfigurationProvider().updateSystemConfig(gpArray, "%s: segment resync" % programName )
 
+            # stop/start new mirrors
+            mirrorsToStart = []
+            primariesToConvert = []
+            convertPrimaryUsingFullResync = []
+            for toRecover in self.__mirrorsToBuild:
+                seg = toRecover.getFailoverSegment()
+                if seg is None:
+                    seg = toRecover.getFailedSegment() # we are recovering in place
+                mirrorsToStart.append(seg)
+                primariesToConvert.append(toRecover.getLiveSegment())
+                convertPrimaryUsingFullResync.append(toRecover.isFullSynchronization())
 
-        self.__startAll(gpEnv, gpArray, mirrorsToStart)
-        self.__convertAllPrimaries(gpEnv, gpArray, primariesToConvert, convertPrimaryUsingFullResync)
+            self.__startAll(gpEnv, gpArray, mirrorsToStart)
+            self.__convertAllPrimaries(gpEnv, gpArray, primariesToConvert, convertPrimaryUsingFullResync)
+        finally:
+            # Reenable Ctrl-C
+            signal.signal(signal.SIGINT,signal.default_int_handler)
 
     def __verifyGpArrayContents(self, gpArray):
         """
