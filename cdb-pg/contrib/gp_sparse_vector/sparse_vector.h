@@ -83,7 +83,7 @@ static inline SparseData sdata_from_svec(SvecType *svec)
 	sdata->vals  = (StringInfo)SDATA_DATA_SINFO(sdataptr);
 	sdata->index = (StringInfo)SDATA_INDEX_SINFO(sdataptr);
 	sdata->vals->data   = SVEC_VALS_PTR(svec);
-	if (sdata->index->len == 0)
+	if (sdata->index->maxlen == 0)
 	{
 		sdata->index->data = NULL;
 	} else

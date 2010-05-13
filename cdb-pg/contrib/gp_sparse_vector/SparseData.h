@@ -302,7 +302,6 @@ static inline void printout_sdata(SparseData sdata, char *msg, int stop)
 			sdata->unique_value_count,sdata->total_value_count,
 			sdata->index->len,sdata->vals->len,
 			sdata->type_of_data);
-	elog(NOTICE,"Index pointer value,len = %ld,%d",(long int)(sdata->index->data),sdata->index->len);
 	{
 		char *ix=sdata->index->data;
 		double *ar=(double *)(sdata->vals->data);
