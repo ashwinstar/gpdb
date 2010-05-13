@@ -1,20 +1,18 @@
 
-set role = foouser;
 
-set search_path = %%JETPACK_TEST_SCHEMA%%, %%JETPACK_SCHEMA%% ;
-
-select %%JETPACK_PREFIX%%%%JETPACK_NAME%%_version();
-
-drop table if exists %%JETPACK_TEST_SCHEMA%%.fooaot;
+drop table if exists fooaot;
 create table fooaot(a int, b int) with (appendonly=true);
 
-drop table if exists %%JETPACK_TEST_SCHEMA%%.fooheap;
+drop table if exists fooheap;
 create table fooheap(a int, b int);
 
 --
 
 select * from %%JETPACK_PREFIX_AUX%%is_append_only
 where iaooid = 'fooaot'::regclass;
+
+select * from %%JETPACK_PREFIX_AUX%%is_append_only
+where iaooid = 'fooheap'::regclass;
 
 select * from %%JETPACK_PREFIX_AUX%%fullname
 where fnoid = 'fooaot'::regclass;
@@ -37,8 +35,10 @@ select count(*) from %%JETPACK_PREFIX%%log_database;
 select count(*) from %%JETPACK_PREFIX%%log_master_concise;
 select count(*) from %%JETPACK_PREFIX%%log_command_timings;
 
-select * FROM %%JETPACK_PREFIX_AUX%%guc_local_setting('max_connections');
-select * FROM %%JETPACK_PREFIX%%guc_setting('max_connections');
+select * FROM %%JETPACK_PREFIX_AUX%%param_local_setting('max_connections');
+select * FROM %%JETPACK_PREFIX%%param_setting('max_connections');
+select * from %%JETPACK_PREFIX%%param_settings() limit 10;
+select * from %%JETPACK_PREFIX%%param_settings_seg_value_diffs;
 
 select * FROM %%JETPACK_PREFIX%%skew_details('fooaot'::regclass);
 select * FROM %%JETPACK_PREFIX%%skew_details('fooheap'::regclass);
@@ -75,4 +75,25 @@ select * from %%JETPACK_PREFIX%%bloat_diag;
 select * from %%JETPACK_PREFIX%%resq_activity_by_queue;
 select * from %%JETPACK_PREFIX%%resq_priority_statement;
 select * from %%JETPACK_PREFIX%%resq_priority_backend;
+
+
+select * from %%JETPACK_PREFIX%%pgdatabase_invalid;
+
+select * from %%JETPACK_PREFIX%%resq_role;
+
+select * from %%JETPACK_PREFIX%%locks_on_resqueue;
+select * from %%JETPACK_PREFIX%%locks_on_relation;
+
+select * from %%JETPACK_PREFIX%%roles_assigned;
+
+select * from %%JETPACK_PREFIX%%size_of_index;
+select * from %%JETPACK_PREFIX%%size_of_table_disk;
+select * from %%JETPACK_PREFIX%%size_of_table_uncompressed;
+select * from %%JETPACK_PREFIX%%table_indexes limit 10;
+select * from %%JETPACK_PREFIX%%size_of_all_table_indexes;
+select * from %%JETPACK_PREFIX%%size_of_table_and_indexes_disk;
+select * from %%JETPACK_PREFIX%%size_of_partition_and_indexes_disk;
+select * from %%JETPACK_PREFIX%%size_of_schema_disk;
+select * from %%JETPACK_PREFIX%%size_of_database;
+
 

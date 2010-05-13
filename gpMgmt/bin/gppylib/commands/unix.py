@@ -322,13 +322,26 @@ class DiskFree(Command):
         dfCmd.run(validateAfter=True)
         return dfCmd.get_bytes_free()
 
-    def get_bytes_free(self):
-        '''expected output of the form:        
+    @staticmethod
+    def get_disk_free_info_local(name, directory):
+        dfCmd = DiskFree(name,directory)
+        dfCmd.run(validateAfter=True)
+        return dfCmd.get_disk_free_output()
+
+    def get_disk_free_output(self):
+        '''expected output of the form:
            Filesystem   512-blocks      Used Available Capacity  Mounted on
            /dev/disk0s2  194699744 158681544  35506200    82%    /
+
+           Returns data in list format:
+           ['/dev/disk0s2', '194699744', '158681544', '35506200', '82%', '/']
         '''
-        rawIn=self.results.stdout.split('\n')[1]
-        bytesFree=int(rawIn.split()[3])*1024
+        rawIn = self.results.stdout.split('\n')[1]
+        return rawIn.split();
+
+    def get_bytes_free(self):
+        disk_free = self.get_disk_free_output()
+        bytesFree = int(disk_free[3])*1024
         return bytesFree
 
    

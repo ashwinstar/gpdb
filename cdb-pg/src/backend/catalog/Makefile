@@ -20,7 +20,7 @@ BKIFILES = postgres.bki postgres.description postgres.shdescription
 
 include $(top_srcdir)/src/backend/common.mk
 
-all: cdb_util.sql cdb_schema.sql  $(BKIFILES)
+all: cdb_util.sql cdb_schema.sql  gp_toolkit.sql gp_toolkit_test.sql $(BKIFILES)
 
 cdb_schema.sql: cdb_schema.in
 			sed -e 's,@pkglibdir@,$(pkglibdir),g' \
@@ -31,6 +31,31 @@ cdb_util.sql: cdb_util.in
 			sed -e 's,@pkglibdir@,$(pkglibdir),g' \
                 -e 's,@dlsuffix@,$(DLSUFFIX),g' \
              $< > cdb_util.sql
+
+JETPACK_NAME = toolkit
+JETPACK_SCHEMA = gp_$(JETPACK_NAME)
+JETPACK_OBJECT_PREFIX = gp_
+JETPACK_PREFIX = $(JETPACK_SCHEMA).$(JETPACK_OBJECT_PREFIX)
+JETPACK_PREFIX_AUX = $(JETPACK_SCHEMA).__$(JETPACK_OBJECT_PREFIX)
+
+gp_toolkit.sql: gp_toolkit.sql.in
+	sed \
+	-e 's/%%JETPACK_NAME%%/$(JETPACK_NAME)/g' \
+	-e 's/%%JETPACK_SCHEMA%%/$(JETPACK_SCHEMA)/g' \
+	-e 's/%%JETPACK_PREFIX%%/$(JETPACK_PREFIX)/g' \
+	-e 's/%%JETPACK_PREFIX_AUX%%/$(JETPACK_PREFIX_AUX)/g' \
+	-e 's/	/    /g' \
+	$< > $@
+
+gp_toolkit_test.sql: gp_toolkit_test.sql.in
+	sed \
+	-e 's/%%JETPACK_NAME%%/$(JETPACK_NAME)/g' \
+	-e 's/%%JETPACK_SCHEMA%%/$(JETPACK_SCHEMA)/g' \
+	-e 's/%%JETPACK_PREFIX%%/$(JETPACK_PREFIX)/g' \
+	-e 's/%%JETPACK_PREFIX_AUX%%/$(JETPACK_PREFIX_AUX)/g' \
+	-e 's/	/    /g' \
+	$< > $@
+
 
 
 # Note: there are some undocumented dependencies on the ordering in which
@@ -88,4 +113,4 @@ uninstall-data:
 	rm -f $(addprefix '$(DESTDIR)$(datadir)'/, $(BKIFILES) system_views.sql information_schema.sql cdb_schema.sql sql_features.txt)
 
 clean:
-	rm -f SUBSYS.o $(OBJS) $(BKIFILES) cdb_schema.sql
+	rm -f SUBSYS.o $(OBJS) $(BKIFILES) cdb_schema.sql gp_toolkit_test.sql gp_toolkit.sql
