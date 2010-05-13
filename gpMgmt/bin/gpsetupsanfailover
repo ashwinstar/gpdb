@@ -6,36 +6,17 @@ Helps an administrator configure Greenplum Database with shared-storage ("san") 
 
 gpsanitize -- helper for generated SAN-failover configuration information.
 
-Usage: gpsanitize [--version] [-?aq] [-D] [-d master_data_dir] [-l log_dir] [-p port_offset] [-o outfile] [-s] [-t <n|e>] [-i mirror_config] [-m mirror_datadir_config] [-B number]
+Usage: gpsanitize [--version] [-?] [-D] [-d master_data_dir] [-l log_dir] [-p port_offset] [-t <n|e>]
            
           --version : print version information
           -?        : print this help screen
           -D        : set logging output to debug level
-          -q        : quiet mode, do not log progress to screen [default: verbose output to screen]
-          -a        : non-interactive mode [default: interactive mode]
           -d        : master data directory
           -l        : <log directory> alternative log file directory [optional]
-          -o        : file to output configuration
-          -i        : mirror configuration file
-          -s        : spread mirror mode
           -t        : "type" of shared-storage technology (e: EMC Clariion, n: NFS).
           -p        : mirror offset, if not supplied, script will calculate a suitable
                       port offset for the mirror segment instances, range 7000 - 61000
                       current offset value is 1000
-          -m        : mirror data directory config file
-          -B        : number of parallel process to spawn to process mirror creation
-
-
-          Format of the input configuration file:
-          mirror[N]=host:port:data_dir
-          where N is content in gp_configuration table
-
-          Format of the mirror data directory config file:
-          data_dir1
-          data_dir2
-          ...
-          data_dirN
-          where N is the number of segment data directory per host
 '''
 
 from __future__ import with_statement
@@ -59,14 +40,7 @@ from gpmlib import ENV
 
 script_name = os.path.split(__file__)[-1]
 opt = {}
-opt['-q'] = False
 opt['-d'] = None
-opt['-m'] = None
-opt['-B'] = 64
-opt['-a'] = False
-opt['-s'] = False
-opt['-i'] = None
-opt['-o'] = None
 opt['-p'] = 1000
 opt['-l'] = None
 opt['-D'] = False
@@ -89,7 +63,7 @@ def print_version():
 def parseCommandLine():
     global opt
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?vqasi:o:d:m:B:p:l:Dc:T:t:', ['version'])
+        (options, args) = getopt.getopt(sys.argv[1:], '?vd:p:l:Dt:', ['version'])
     except Exception, e:
         usage(str(e))
 
@@ -97,14 +71,9 @@ def parseCommandLine():
         if (switch == '-?'):          usage(0)
         elif (switch == '-v'):        print_version()
         elif (switch == '--version'): print_version()
-        elif (switch == '-q'):        opt[switch] = True
-        elif (switch == '-m'):        opt[switch] = val
         elif (switch == '-t'):        opt[switch] = val
-        elif (switch == '-B'):        opt[switch] = int(val)
-        elif (switch == '-a'):        opt[switch] = True
         elif (switch == '-s'):        opt[switch] = True
         elif (switch == '-i'):        opt[switch] = val
-        elif (switch == '-o'):        opt[switch] = val
         elif (switch == '-p'):        opt[switch] = int(val)
         elif (switch == '-d'):        opt[switch] = val
         elif (switch == '-l'):        opt[switch] = val
@@ -112,9 +81,6 @@ def parseCommandLine():
         elif (switch == '-T'):        gpmlib.log_info('Option -T is obsolete.  This option will be ignored')
 
     gpmlib.log_set_module(script_name)
-
-    if opt['-q']:
-        gpmlib.log_set_verbose(False)
 
     if opt['-l']:
         if not gpmlib.directory_exists(opt['-l']):
@@ -133,18 +99,12 @@ def parseCommandLine():
         opt['-l'] = os.path.join(logdir, '%s_%s.log' % (script_name, date.today().strftime('%Y%m%d')))
         gpmlib.log_set_file(opt['-l'])
 
-    if opt['-i'] and not os.path.isfile(opt['-i']):
-        usage('Input configuration file %s does not exist' % opt['-i'])
-
     if not opt['-d']:
         opt['-d'] = os.getenv('MASTER_DATA_DIRECTORY')
         if not opt['-d']:
             gpmlib.error('MASTER_DATA_DIRECTORY not set')
     else:
         os.environ['MASTER_DATA_DIRECTORY'] = opt['-d']
-
-    if opt['-i'] and opt['-p']:
-        gpmlib.log_warn('-p option not valid when used with -i option.  -p will be ignored')
 
     if not os.path.isdir(opt['-d']):
         gpmlib.error('MASTER_DATA_DIRECTORY %s does not exist or is not a directory' % opt['-d'])
@@ -506,9 +466,6 @@ try:
                     gpmlib.log_info('dbid %d on %s has data-dir on %s (%s) EMC %s @ %s SG %s' % (k, v['host'], v['mountpoint'], v['device'], v['WWN'], v['SPIP'], v['SG_NAME']))
 
         ########################
-
-        if opt['-i']:
-            raise Exception("PARSING FAILOVER INPUT NOT SUPPORTED YET")
 
         # So now we need to retrieve our failover mappings.
         san_config = get_failover_info(devmap)
