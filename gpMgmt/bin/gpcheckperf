@@ -359,7 +359,7 @@ def copyExecOver(fname):
     try: pathStat = os.stat(path)
     except: sys.exit('[Error] cannot stat file ' + path)
     if not stat.S_ISREG(pathStat.st_mode): sys.exit('[Error] invalid file ' + path)
-    if not pathStat.st_mode & os.X_OK: sys.exit('[Exit] file not executable: ' + path)
+    if not os.access(path, os.X_OK): sys.exit('[Exit] file not executable: ' + path)
 
     (ok, out) = gpscp(path, '=:%s' % target)
     if not ok: sys.exit('[Error] command failed: gpscp %s =:%s' % (path, target))
