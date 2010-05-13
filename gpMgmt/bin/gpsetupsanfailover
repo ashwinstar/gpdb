@@ -39,9 +39,9 @@ Usage: gpsanitize [--version] [-?aq] [-D] [-d master_data_dir] [-l log_dir] [-p 
 '''
 
 from __future__ import with_statement
-import os, sys, getopt, socket
-from threading import Thread
-from datetime import date, datetime, timedelta
+
+import os, sys, getopt
+from datetime import date
 
 from gppylib.db import *
 from gppylib.gparray import *
@@ -316,23 +316,30 @@ try:
 
     if ENV.GP_MOUNT_AGENT == '':
         if ENV.GPHOME == '':
-            gpmlib.error('Cannot locate GPDB mount mangement utility')
+            gpmlib.error('Cannot locate GPDB mount management utility')
+            raise Exception("Cannot locate GPDB mount management utility")
         else:
             ENV.GP_MOUNT_AGENT = '%s/bin/gp_mount_agent' % ENV.GPHOME
+
+    gpmlib.log_info('Using mount agent: %s' % ENV.GP_MOUNT_AGENT)
 
     if opt['-t'] == 'e':
         if ENV.INQ == '':
             gpmlib.error('Cannot locate SCSI-Inquiry utility for use in EMC Clariion scan.')
+            raise Exception("Cannot locate SCSI-Inquiry utility for use in EMC Clariion scan.")
         if ENV.NAVISECCLI == '':
             gpmlib.error('Cannot locate EMC management naviseccli utility for use in EMC Clariion scan.')
+            raise Exception("Cannot locate EMC management naviseccli utility for use in EMC Clariion scan.")
         if ENV.POWERMT == '':
             gpmlib.error('Cannot locate EMC PowerPath powermt utility for storage-group lookup')
+            raise Exception("Cannot locate EMC PowerPath powermt utility for storage-group lookup")
 
     dburl = dbconn.DbURL(port=master_port, dbname='template1')
     gparray = GpArray.initFromCatalog(dburl, utility=True)
 
     if gparray.get_mirroring_enabled():
         gpmlib.error('System already has mirrors. SAN-mirroring cannot coexist with mirrors.')
+        raise Exception("Cannot locate EMC PowerPath powermt utility for storage-group lookup")
 
     qes = None
     new_addr = []
@@ -364,10 +371,9 @@ try:
         if opt['-t'] == 'e':
             for host in hosts:
                 if not verify_setuid_root(host, ENV.GP_MOUNT_AGENT):
-                    gpmlib.error('Host %s has invalid permissions for %s' % (host, ENV.GP_MOUNT_AGENT))
+                    raise Exception('Host %s has invalid permissions for %s' % (host, ENV.GP_MOUNT_AGENT))
                 if not verify_setuid_root(host, ENV.INQ):
-                    gpmlib.error('Host %s has invalid permissions for %s' % (host, ENV.INQ))
-
+                    raise Exception('Host %s has invalid permissions for %s' % (host, ENV.INQ))
 
         ########################
         # Get the raw mountpoint info for every host.
@@ -375,7 +381,7 @@ try:
         for host in hosts:
             (ok, out) = gpmlib.run('%s %s' % (gplib.ssh_prefix(host=host), ENV.MOUNT))
             if not ok:
-                error('failed to run mount on remote host')
+                raise Exception("failed to run mount on remote host")
 
             # we have a list of strings, find the dev and mp.
             mps = []
@@ -431,7 +437,7 @@ try:
                     gpmlib.log_info('dbid %d on %s has data-dir on %s (%s): Does not appear to be NFS share' % (k, v['host'], v['mountpoint'], v['device']))
                     bad_device_count = bad_device_count + 1
             if bad_device_count > 0:
-                gpmlib.error('Database system has %d segments which are not on NFS, cannot proceed in NFS-mode' % bad_device_count)
+                raise Exception('Database system has %d segments which are not on NFS, cannot proceed in NFS-mode' % bad_device_count)
 
         # If we're in EMC/Clariion-mode, we need to find the WWNs for the devices so we
         # can figure out which hosts have access to them.
@@ -451,7 +457,7 @@ try:
                 # gpmlib.log_info('%s %s -clar_wwn -no_dots' % (gplib.ssh_prefix(host=v['host']), ENV.INQ))
                 (ok, out) = gpmlib.run('%s %s -clar_wwn -no_dots' % (gplib.ssh_prefix(host=v['host']), ENV.INQ))
                 if not ok:
-                    gpmlib.error('failed to run inquiry-tool on remote host %s' % host)
+                    raise Exception('failed to run inquiry-tool on remote host %s' % host)
 
                 # We're parsing the output of the "inq" utility here.
                 # lines of interest look like:
@@ -486,7 +492,7 @@ try:
 
             if missing_wwn:
                 gpmlib.log_error('Could not find some WWN entries')
-                gpmlib.error('Cannot resolve shared-storage location for EMC-SAN')
+                raise Exception("Cannot resolve shared-storage location for EMC-SAN")
 
             # At this point we have all of the information we need (except possibly the Storage-group names).
             #
@@ -502,7 +508,7 @@ try:
         ########################
 
         if opt['-i']:
-            gpmlib.error('PARSING FAILOVER INPUT NOT SUPPORTED YET')
+            raise Exception("PARSING FAILOVER INPUT NOT SUPPORTED YET")
 
         # So now we need to retrieve our failover mappings.
         san_config = get_failover_info(devmap)
@@ -517,7 +523,7 @@ try:
             if ok:
                 (ok, out) = gpmlib.run('%s "%s -f %s"' % (gplib.ssh_prefix(host=v['failoverhost']), ENV.RM, tmpfile))            
             else:
-                gpmlib.error('Cannot find mountpoint %s on failover host %s' % (v['failovermp'], v['failoverhost']))
+                raise Exception('Cannot find mountpoint %s on failover host %s' % (v['failovermp'], v['failoverhost']))
 
         # Now we have all of the information we need for gp_san_configuration, build a final dictionary
         # to store our work. As we go, we're going to add the failover-data-directory to devmap.
@@ -528,7 +534,7 @@ try:
             san_key = (v['host'], v['mountpoint'])
 
             if not san_config.has_key(san_key):
-                gpmlib.error('Resolving final config: cannot find configuration for %s:%s' % (v['host'], v['mountpoint']))
+                raise Exception('Resolving final config: cannot find configuration for %s:%s' % (v['host'], v['mountpoint']))
 
             san_val = san_config[san_key]
             
@@ -556,7 +562,7 @@ try:
                     device = new_device
                 # Got the entire device string
             else:
-                gpmlib.error('Unknown device-type %s' % opt['-t'])
+                raise Exception('Unknown device-type %s' % opt['-t'])
 
             final_map[map_id] = {'primaryhost':primaryhost, 'primarymp':primarymp, 'failoverhost':failoverhost, 'failovermp':failovermp, 'device':device}
             map_id = map_id + 1
@@ -595,7 +601,7 @@ try:
         print('UPDATE GP_FAULT_STRATEGY SET fault_strategy = \'s\' ;')
 
         ########################
-    except Exception,e:
+    except Exception, e:
         gpmlib.error(e)
 
     sys.exit(0)
