@@ -105,7 +105,7 @@ extern void smgrcreatefilespacedirpending(
 
 	char							*mirrorFilespaceLocation,
 
-	MirroredObjectExistenceState	mirrorExistenceState,
+	MirroredObjectExistenceState 	mirrorExistenceState,
 
 	ItemPointer 					persistentTid,
 
@@ -258,6 +258,8 @@ extern void smgrdounlink(
 
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
+	
+	bool  						primaryOnly,
 
 	bool 						ignoreNonExistence,
 
@@ -290,6 +292,8 @@ extern void smgrdormfilespacedir(
 								 */
 
 	char						*mirrorFilespaceLocation,
+	
+	bool  						primaryOnly,
 
 	bool						mirrorOnly,
 
@@ -298,6 +302,8 @@ extern void smgrdormfilespacedir(
 	bool						*mirrorDataLossOccurred);
 extern void smgrdormtablespacedir(
 	Oid 						tablespaceOid,
+	
+	bool  						primaryOnly,
 
 	bool						mirrorOnly,
 
@@ -307,6 +313,8 @@ extern void smgrdormtablespacedir(
 extern void smgrdormdbdir(
 	DbDirNode 					*dropDbDirNode,
 	
+	bool  						primaryOnly,
+
 	bool						mirrorOnly,
 
 	bool 						ignoreNonExistence,
@@ -343,8 +351,14 @@ extern void smgrappendonlymirrorresynceofs(
 	int64							mirrorLossEof,
 
 	int64							mirrorNewEof);
-extern int	smgrGetPendingDeletes(bool forCommit, PersistentEndXactFsObj **ptr);
-extern int	smgrGetAppendOnlyMirrorResyncEofs(PersistentEndXactAppendOnlyMirrorResyncEofs **ptr);
+extern int	smgrGetPendingDeletes(
+	EndXactRecKind						endXactRecKind,
+
+	PersistentEndXactFileSysActionInfo	**ptr);
+extern int	smgrGetAppendOnlyMirrorResyncEofs(
+	EndXactRecKind									endXactRecKind,
+
+	PersistentEndXactAppendOnlyMirrorResyncEofs 	**ptr);
 extern bool	smgrIsPendingDeletes(bool forCommit);
 extern void AtSubCommit_smgr(void);
 extern void AtSubAbort_smgr(void);
@@ -423,6 +437,8 @@ extern bool mdunlink(
 
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
+	
+	bool  						primaryOnly,
 
 	bool 						ignoreNonExistence,
 
@@ -437,6 +453,8 @@ extern bool mdrmfilespacedir(
 								 */
 
 	char						*mirrorFilespaceLocation,
+	
+	bool						primaryOnly,
 
 	bool						mirrorOnly,
 
@@ -445,6 +463,8 @@ extern bool mdrmfilespacedir(
 	bool						*mirrorDataLossOccurred);
 extern bool mdrmtablespacedir(
 	Oid 						tablespaceOid,
+	
+	bool						primaryOnly,
 
 	bool						mirrorOnly,
 
@@ -453,6 +473,8 @@ extern bool mdrmtablespacedir(
 	bool						*mirrorDataLossOccurred);
 extern bool mdrmdbdir(
 	DbDirNode					*dbDirNode,
+	
+	bool						primaryOnly,
 
 	bool						mirrorOnly,
 

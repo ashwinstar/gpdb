@@ -1124,10 +1124,14 @@ InsertGpRelationNodeTuple(
 			 persistentSerialNum,
 			 ItemPointerToString(persistentTid));
 
-	values[Anum_gp_relation_node_relfilenode_oid - 1] = ObjectIdGetDatum(relfilenode);
-	values[Anum_gp_relation_node_segment_file_num - 1] = Int32GetDatum(segmentFileNum);
-	values[Anum_gp_relation_node_persistent_tid- 1] = PointerGetDatum(persistentTid);
-	values[Anum_gp_relation_node_persistent_serial_num - 1] = Int64GetDatum(persistentSerialNum);
+	
+	GpRelationNode_SetDatumValues(
+								values,
+								relfilenode,
+								segmentFileNum,
+								/* createMirrorDataLossTrackingSessionNum */ 0,
+								persistentTid,
+								persistentSerialNum);
 
 	tuple = heap_form_tuple(RelationGetDescr(gp_relation_node), values, nulls);
 
@@ -1163,11 +1167,20 @@ UpdateGpRelationNodeTuple(
 
 	memset(repl_val, 0, sizeof(repl_val));
 	memset(repl_null, false, sizeof(repl_null));
-	memset(repl_repl, true, sizeof(repl_null));
+	memset(repl_repl, false, sizeof(repl_null));
 
+	repl_repl[Anum_gp_relation_node_relfilenode_oid - 1] = true;
 	repl_val[Anum_gp_relation_node_relfilenode_oid - 1] = ObjectIdGetDatum(relfilenode);
+	
+	repl_repl[Anum_gp_relation_node_segment_file_num - 1] = true;
 	repl_val[Anum_gp_relation_node_segment_file_num - 1] = Int32GetDatum(segmentFileNum);
+
+	// UNDONE: createMirrorDataLossTrackingSessionNum
+
+	repl_repl[Anum_gp_relation_node_persistent_tid- 1] = true;
 	repl_val[Anum_gp_relation_node_persistent_tid- 1] = PointerGetDatum(persistentTid);
+	
+	repl_repl[Anum_gp_relation_node_persistent_serial_num - 1] = true;
 	repl_val[Anum_gp_relation_node_persistent_serial_num - 1] = Int64GetDatum(persistentSerialNum);
 
 	newtuple = heap_modify_tuple(tuple, RelationGetDescr(gp_relation_node), repl_val, repl_null, repl_repl);

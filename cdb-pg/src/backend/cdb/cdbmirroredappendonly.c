@@ -89,7 +89,8 @@ static void MirroredAppendOnly_SetUpMirrorAccess(
 			*mirrorMode = StorageManagerMirrorMode_Both;
 		else
 			*mirrorMode = StorageManagerMirrorMode_MirrorOnly;
-		break;	
+		break;
+
 	case MirrorDataLossTrackingState_MirrorDown:
 		if (!mirrorOnly)
 			*mirrorMode = StorageManagerMirrorMode_PrimaryOnly;
@@ -1185,6 +1186,8 @@ static void MirroredAppendOnly_DoDrop(
 	MirrorDataLossTrackingState mirrorDataLossTrackingState,
 
 	int64						mirrorDataLossTrackingSessionNum,
+	
+	bool  						primaryOnly,
 
 	bool						mirrorOnly,
 	
@@ -1216,7 +1219,7 @@ static void MirroredAppendOnly_DoDrop(
 									mirrorDataLossTrackingSessionNum,
 									/* create */ false,
 									/* drop */ true,
-									/* primaryOnly */ false,
+									primaryOnly,
 									mirrorOnly,
 									/* copyToMirror */ false,
 									&mirrorMode,
@@ -1303,6 +1306,8 @@ void MirroredAppendOnly_Drop(
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
 	
+	bool  						primaryOnly,
+
 	int							*primaryError,
 
 	bool						*mirrorDataLossOccurred)
@@ -1320,6 +1325,7 @@ void MirroredAppendOnly_Drop(
 						relationName,
 						mirrorDataLossTrackingState,
 						mirrorDataLossTrackingSessionNum,
+						primaryOnly,
 						/* mirrorOnly */ false,
 						primaryError,
 						mirrorDataLossOccurred);
@@ -1345,10 +1351,21 @@ void MirroredAppendOnly_MirrorReDrop(
 						/* relationName */ NULL,
 						mirrorDataLossTrackingState,
 						mirrorDataLossTrackingSessionNum,
+						/* primaryOnly */ false,
 						/* mirrorOnly */ true,
 						&primaryError,
 						mirrorDataLossOccurred);
-	Assert(primaryError == 0);	// Only doing mirror work here.
+	if (primaryError != 0)
+	{
+		// Only doing mirror work here?
+		elog(LOG, "%u/%u/%u, segment file #%d: Not expecting a primary error %d ('%s') here!",
+			 relFileNode->spcNode,
+			 relFileNode->dbNode,
+			 relFileNode->relNode,
+			 segmentFileNum,
+			 primaryError,
+		     strerror(primaryError));
+	}
 }
 
 // -----------------------------------------------------------------------------

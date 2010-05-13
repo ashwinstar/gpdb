@@ -19,28 +19,52 @@
 #define CHANGETRACKING_BLCKSZ BLCKSZ
 #define	CHANGETRACKING_XLOGDATASZ (128 * 1024)
 #define CHANGETRACKING_METABUFLEN 128
-#define CHANGETRACKING_FILESEGMENT 1 /* for now, doesn't change and doesn't mean anything. a single file */
-
+#define CHANGETRACKING_MAX_RESULT_SIZE (64 * 1024)
 /*
  * The LOG file is where all the incremental buffer
- * pool changes are stored.
- */
-#define ChangeTrackingLogFileName(fname)	\
-	snprintf(fname, MAXFNAMELEN, "CT%08X", CHANGETRACKING_FILESEGMENT)
-
-#define ChangeTrackingLogFilePath(path)	\
-	snprintf(path, MAXPGPATH, CHANGETRACKINGDIR "/CT%08X", CHANGETRACKING_FILESEGMENT)
-
-/*
+ * pool changes are stored. The "Full" log includes
+ * all the changetracking records that were accumulated
+ * during changetracking mode, and the "Compact" is a
+ * much smaller version used for incremental resync, 
+ * and is essentially the same as the full file but
+ * with un-needed records removed.
+ * 
  * The META file is where we store information about
- * if it's a full resync and the last resync lsn.
+ * if it's a full resync and the last resync lsn, and
+ * other meta info.
+ * 
  */
+typedef enum CTFType
+{
+	CTF_LOG = 0,
+	CTF_META
+} CTFType;
+
+#define ChangeTrackingFullLogFileName(fname)	\
+	snprintf(fname, MAXFNAMELEN, "CT_LOG_FULL")
+
+#define ChangeTrackingFullLogFilePath(path)	\
+	snprintf(path, MAXPGPATH, CHANGETRACKINGDIR "/CT_LOG_FULL")
+
+#define ChangeTrackingCompactLogFileName(fname)	\
+	snprintf(fname, MAXFNAMELEN, "CT_LOG_COMPACT")
+
+#define ChangeTrackingCompactLogFilePath(path)	\
+	snprintf(path, MAXPGPATH, CHANGETRACKINGDIR "/CT_LOG_COMPACT")
+
 #define ChangeTrackingMetaFileName(fname)	\
-	snprintf(fname, MAXFNAMELEN, "MD%08X", CHANGETRACKING_FILESEGMENT)
+	snprintf(fname, MAXFNAMELEN, "CT_METADATA")
 
 #define ChangeTrackingMetaFilePath(path)	\
-	snprintf(path, MAXPGPATH, CHANGETRACKINGDIR "/MD%08X", CHANGETRACKING_FILESEGMENT)
+	snprintf(path, MAXPGPATH, CHANGETRACKINGDIR "/CT_METADATA")
 
+/* 
+ * these are currently extern for gp_changetracking_log() use 
+ * other modules should NOT need to use those. 
+ * TODO: make this more secure 
+ */
+extern File ChangeTracking_OpenFile(CTFType ftype);
+extern void ChangeTracking_CloseFile(File file);
 
 
 /*
@@ -96,6 +120,8 @@ extern void ChangeTracking_AddRecordFromXlog(RmgrId rmid,
 											 void*  data,
 											 XLogRecPtr*	loc);
 
+extern int ChangeTracking_CreateCompactLogFromFull(void);
+
 /*
  * The information needed for a change tracking record to be
  * stored.
@@ -107,9 +133,6 @@ typedef struct RelationChangeInfo
 	ItemPointerData persistentTid;
 	int64	  		persistentSerialNum;
 } RelationChangeInfo;
-
-//#define MaxRelChangeInfoReturns 5
-//#define MaxRelChangeInfoReturns_GistSplit 1024 //arbitrary very large number for gist split processing.
 
 extern void ChangeTracking_GetRelationChangeInfoFromXlog(
 									  RmgrId	xl_rmid,
@@ -148,6 +171,10 @@ extern XLogRecPtr* ChangeTracking_ReadLastLocOnDisk(void);
  * error.
  */
 extern int64 ChangeTracking_GetTotalBlocksToSync(void);
+
+extern bool ChangeTracking_DoesFileExist(CTFType ftype);
+
+extern bool ChangeTracking_IsFileModeCompact(void);
 
 /*
  * Drop the resynchronize change log and meta files.
@@ -233,6 +260,7 @@ typedef struct IncrementalChangeEntry
 {
 	ItemPointerData persistentTid;
 	int64 			persistentSerialNum;
+	int64			numblocks;
 
 } IncrementalChangeEntry;
 
@@ -282,6 +310,8 @@ typedef struct ChangeTrackingResult
 	ChangeTrackingResultEntry*  entries;
 	int							count;
 	int							max_count;
+	bool						ask_for_more;		/* there are more results for this rel. ask for them */
+	XLogRecPtr					next_start_lsn;		/* when asking again, use this lsn as start lsn      */
 	
 } ChangeTrackingResult;
 
@@ -306,6 +336,7 @@ typedef struct ChangeTrackingBufStatusData
 	uint32			bufsize;		/* Current buffer size                          	*/
 	uint32			fileseg;		/* The change log file segment we are writing into	*/
 	int64			nextwritepos;   /* The next file position to append buffer data to  */
+	bool			compactmode;	/* Using compact log file or full log file?			*/
 	
 } ChangeTrackingBufStatusData;
 

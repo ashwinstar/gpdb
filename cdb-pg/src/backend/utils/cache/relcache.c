@@ -333,6 +333,8 @@ GpRelationNodeGetNext(
 	Datum			values[Natts_gp_relation_node];
 	
 	Oid actualRelationNode;
+	
+	int64 createMirrorDataLossTrackingSessionNum;
 
 	tuple = systable_getnext((SysScanDesc)gpRelationNodeScan->scan);
 
@@ -348,22 +350,18 @@ GpRelationNodeGetNext(
 	
 	heap_deform_tuple(tuple, RelationGetDescr(gpRelationNodeScan->gp_relation_node), values, nulls);
 		
-	Assert(!nulls[Anum_gp_relation_node_relfilenode_oid - 1]);
-	actualRelationNode = DatumGetObjectId(values[Anum_gp_relation_node_relfilenode_oid - 1]);
+	GpRelationNode_GetValues(
+						values,
+						&actualRelationNode,
+						segmentFileNum,
+						&createMirrorDataLossTrackingSessionNum,
+						persistentTid,
+						persistentSerialNum);
 	if (actualRelationNode != gpRelationNodeScan->relfilenode)
 		elog(FATAL, "Mismatch in node tuple for gp_relation_node for relation %u, relfilenode %u, relation node %u",
 			 gpRelationNodeScan->relationId, 
 			 gpRelationNodeScan->relfilenode,
 			 actualRelationNode);
-		
-	Assert(!nulls[Anum_gp_relation_node_segment_file_num - 1]);
-	*segmentFileNum = DatumGetInt32(values[Anum_gp_relation_node_segment_file_num - 1]);
-	
-	Assert(!nulls[Anum_gp_relation_node_persistent_tid - 1]);
-	*persistentTid = *((ItemPointer) DatumGetPointer(values[Anum_gp_relation_node_persistent_tid - 1]));
-		
-	Assert(!nulls[Anum_gp_relation_node_persistent_serial_num - 1]);
-	*persistentSerialNum = DatumGetInt64(values[Anum_gp_relation_node_persistent_serial_num - 1]);
 
 	return tuple;
 }
@@ -443,7 +441,9 @@ FetchGpRelationNodeTuple(
 	
 	Oid actualRelationNode;
 	int32 actualSegmentFileNum;
-	
+
+	int64 createMirrorDataLossTrackingSessionNum;
+
 	Assert (relationId != 0);
 	Assert (relfilenode != 0);
 	
@@ -464,22 +464,18 @@ FetchGpRelationNodeTuple(
 	
 	heap_deform_tuple(tuple, RelationGetDescr(gp_relation_node), values, nulls);
 		
-	Assert(!nulls[Anum_gp_relation_node_relfilenode_oid - 1]);
-	actualRelationNode = DatumGetObjectId(values[Anum_gp_relation_node_relfilenode_oid - 1]);
+	GpRelationNode_GetValues(
+						values,
+						&actualRelationNode,
+						&actualSegmentFileNum,
+						&createMirrorDataLossTrackingSessionNum,
+						persistentTid,
+						persistentSerialNum);
 	if (actualRelationNode != relfilenode)
 		elog(FATAL, "Mismatch in node tuple for gp_relation_node for relation %u, relfilenode %u, relation node %u",
 			 relationId, 
 			 relfilenode,
 			 actualRelationNode);
-		
-	Assert(!nulls[Anum_gp_relation_node_segment_file_num - 1]);
-	actualSegmentFileNum = DatumGetInt32(values[Anum_gp_relation_node_segment_file_num - 1]);
-	
-	Assert(!nulls[Anum_gp_relation_node_persistent_tid - 1]);
-	*persistentTid = *((ItemPointer) DatumGetPointer(values[Anum_gp_relation_node_persistent_tid - 1]));
-		
-	Assert(!nulls[Anum_gp_relation_node_persistent_serial_num - 1]);
-	*persistentSerialNum = DatumGetInt64(values[Anum_gp_relation_node_persistent_serial_num - 1]);
 	
 	return tuple;
 }

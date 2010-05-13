@@ -231,8 +231,11 @@ static bool PersistentTablespace_ScanTupleCallback(
 	
 	PersistentFileSysState	state;
 
-	MirroredObjectExistenceState		mirrorExistenceState;	// UNDONE
+	int64	createMirrorDataLossTrackingSessionNum;
 
+	MirroredObjectExistenceState		mirrorExistenceState;
+
+	int32					reserved;
 	TransactionId			parentXid;
 	int64					serialNum;
 	ItemPointerData			previousFreeTid;
@@ -246,7 +249,9 @@ static bool PersistentTablespace_ScanTupleCallback(
 									&filespaceOid,
 									&tablespaceOid,
 									&state,
+									&createMirrorDataLossTrackingSessionNum,
 									&mirrorExistenceState,
+									&reserved,
 									&parentXid,
 									&serialNum,
 									&previousFreeTid);
@@ -295,7 +300,9 @@ static bool PersistentTablespace_CheckScanTupleCallback(
 	Oid		tablespaceOid;
 	
 	PersistentFileSysState	state;
-	MirroredObjectExistenceState		mirrorExistenceState;	// UNDONE
+	int64					createMirrorDataLossTrackingSessionNum;
+	MirroredObjectExistenceState		mirrorExistenceState;
+	int32					reserved;
 	TransactionId			parentXid;
 	int64					serialNum;
 	ItemPointerData			previousFreeTid;
@@ -307,7 +314,9 @@ static bool PersistentTablespace_CheckScanTupleCallback(
 									&filespaceOid,
 									&tablespaceOid,
 									&state,
+									&createMirrorDataLossTrackingSessionNum,
 									&mirrorExistenceState,
+									&reserved,
 									&parentXid,
 									&serialNum,
 									&previousFreeTid);
@@ -375,9 +384,13 @@ extern void PersistentTablespace_LookupTidAndSerialNum(
 static void PersistentTablespace_AddTuple(
 	TablespaceDirEntry tablespaceDirEntry,
 
-	MirroredObjectExistenceState mirrorObjectState,
+	int64			createMirrorDataLossTrackingSessionNum,
 
-	TransactionId parentXid,
+	MirroredObjectExistenceState mirrorExistenceState,
+
+	int32			reserved,
+
+	TransactionId 	parentXid,
 
 	bool			flushToXLog)
 				/* When true, the XLOG record for this change will be flushed to disk. */
@@ -396,7 +409,9 @@ static void PersistentTablespace_AddTuple(
 								filespaceOid,
 								tablespaceOid,
 								tablespaceDirEntry->state,
-								mirrorObjectState,		// UNDONE
+								createMirrorDataLossTrackingSessionNum,
+								mirrorExistenceState,
+								reserved,
 								parentXid,
 								/* persistentSerialNum */ 0,	// This will be set by PersistentFileSysObj_AddTuple.
 								&previousFreeTid);
@@ -572,7 +587,9 @@ void PersistentTablespace_MarkCreatePending(
 
 	PersistentTablespace_AddTuple(
 							tablespaceDirEntry,
+							/* createMirrorDataLossTrackingSessionNum */ 0,
 							mirrorExistenceState,
+							/* reserved */ 0,
 							/* parentXid */ GetTopTransactionId(),
 							flushToXLog);
 

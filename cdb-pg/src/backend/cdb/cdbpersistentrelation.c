@@ -140,15 +140,19 @@ static bool PersistentRelation_CheckTablespaceScanTupleCallback(
 
 	PersistentFileSysState	state;
 
+	int64			createMirrorDataLossTrackingSessionNum;
+
 	MirroredObjectExistenceState		mirrorExistenceState;
 
 	MirroredRelDataSynchronizationState mirrorDataSynchronizationState;
-	bool							mirrorBufpoolPhysicallyTruncated;
+	bool							mirrorBufpoolMarkedForScanIncrementalResync;
+	int64							mirrorBufpoolResyncChangedPageCount;
 	XLogRecPtr						mirrorBufpoolResyncCkptLoc;
 	BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
 
 	int64					mirrorAppendOnlyLossEof;
 	int64					mirrorAppendOnlyNewEof;
+	int32					reserved;
 	TransactionId			parentXid;
 	int64					serialNum;
 	ItemPointerData			previousFreeTid;
@@ -163,13 +167,16 @@ static bool PersistentRelation_CheckTablespaceScanTupleCallback(
 									&segmentFileNum,
 									&relationStorageManager,
 									&state,
+									&createMirrorDataLossTrackingSessionNum,
 									&mirrorExistenceState,
 									&mirrorDataSynchronizationState,
-									&mirrorBufpoolPhysicallyTruncated,
+									&mirrorBufpoolMarkedForScanIncrementalResync,
+									&mirrorBufpoolResyncChangedPageCount,
 									&mirrorBufpoolResyncCkptLoc,
 									&mirrorBufpoolResyncCkptBlockNum,
 									&mirrorAppendOnlyLossEof,
 									&mirrorAppendOnlyNewEof,
+									&reserved,
 									&parentXid,
 									&serialNum,
 									&previousFreeTid);
@@ -290,13 +297,16 @@ void PersistentRelation_AddCreatePending(
 										segmentFileNum,
 										relStorageMgr,
 										PersistentFileSysState_CreatePending,
+										/* createMirrorDataLossTrackingSessionNum */ 0,
 										mirrorExistenceState,
 										relDataSynchronizationState,
-										/* mirrorBufpoolPhysicallyTruncated */ false,
+										/* mirrorBufpoolMarkedForScanIncrementalResync */ false,
+										/* mirrorBufpoolResyncChangedPageCount */ 0,
 										&mirrorBufpoolResyncCkptLoc,
 										/* mirrorBufpoolResyncCkptBlockNum */ 0,
 										/* mirrorAppendOnlyLossEof */ 0,
 										/* mirrorAppendOnlyNewEof */ 0,
+										/* reseved */ 0,
 										GetTopTransactionId(),
 										/* persistentSerialNum */ 0,	// This will be set by PersistentFileSysObj_AddTuple.
 										&previousFreeTid);
@@ -384,13 +394,16 @@ void PersistentRelation_AddCreated(
 										segmentFileNum,
 										relStorageMgr,
 										PersistentFileSysState_Created,
+										/* createMirrorDataLossTrackingSessionNum */ 0,
 										mirrorExistenceState,
 										relDataSynchronizationState,
-										/* mirrorBufpoolPhysicallyTruncated */ false,
+										/* mirrorBufpoolMarkedForScanIncrementalResync */ false,
+										/* mirrorBufpoolResyncChangedPageCount */ 0,
 										&mirrorBufpoolResyncCkptLoc,
 										/* mirrorBufpoolResyncCkptBlockNum */ 0,
 										mirrorAppendOnlyLossEof,
 										mirrorAppendOnlyNewEof,
+										/* reserved */ 0,
 										InvalidTransactionId,
 										/* persistentSerialNum */ 0,	// This will be set by PersistentFileSysObj_AddTuple.
 										&previousFreeTid);
@@ -867,7 +880,7 @@ void PersistentRelation_Dropped(
 			 ItemPointerToString(persistentTid));
 }
 
-void PersistentRelation_MarkBufPoolRelationPhysicallyTruncated(
+void PersistentRelation_MarkBufPoolRelationForScanIncrementalResync(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the created relation. */
 
@@ -929,7 +942,7 @@ void PersistentRelation_MarkBufPoolRelationPhysicallyTruncated(
 		elog(ERROR, "Persistent '%s' serial number for mark physcially truncated is invalid (0)",
 			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName));
 
-	PersistentFileSysObj_MarkBufPoolRelationPhysicallyTruncated(
+	PersistentFileSysObj_MarkBufPoolRelationForScanIncrementalResync(
 										&fsObjName,
 										persistentTid,
 										persistentSerialNum,

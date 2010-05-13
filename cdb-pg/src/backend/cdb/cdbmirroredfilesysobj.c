@@ -42,6 +42,8 @@ static void MirroredFileSysObj_BeginMirroredCreate(
 	MirrorDataLossTrackingState 	mirrorDataLossTrackingState,
 
 	MirroredObjectExistenceState 	*mirrorExistenceState,
+
+	MirroredRelDataSynchronizationState *relDataSynchronizationState,
 	
 	StorageManagerMirrorMode 		*mirrorMode)
 {
@@ -49,6 +51,7 @@ static void MirroredFileSysObj_BeginMirroredCreate(
 	if (gp_initdb_mirrored)
 	{
 		*mirrorExistenceState = MirroredObjectExistenceState_MirrorCreatePending;
+		*relDataSynchronizationState = MirroredRelDataSynchronizationState_DataSynchronized;
 		*mirrorMode = StorageManagerMirrorMode_Both;
 		
 		if (Debug_persistent_print)
@@ -63,31 +66,39 @@ static void MirroredFileSysObj_BeginMirroredCreate(
 	{
 	case MirrorDataLossTrackingState_MirrorNotConfigured:
 		*mirrorExistenceState = MirroredObjectExistenceState_NotMirrored;
+		*relDataSynchronizationState = MirroredRelDataSynchronizationState_None;
 		*mirrorMode = StorageManagerMirrorMode_PrimaryOnly;
 		break;
 		
 	case MirrorDataLossTrackingState_MirrorCurrentlyUpInSync:
 	case MirrorDataLossTrackingState_MirrorCurrentlyUpInResync:		// Since we are creating a new object.
 		*mirrorExistenceState = MirroredObjectExistenceState_MirrorCreatePending;
+		*relDataSynchronizationState = MirroredRelDataSynchronizationState_DataSynchronized;
 		*mirrorMode = StorageManagerMirrorMode_Both;
 		break;
 			
 	case MirrorDataLossTrackingState_MirrorDown:
-		*mirrorExistenceState = MirroredObjectExistenceState_MirrorReCreateNeeded;
+		*mirrorExistenceState = MirroredObjectExistenceState_MirrorDownBeforeCreate;
+		*relDataSynchronizationState = MirroredRelDataSynchronizationState_FullCopy;
 		*mirrorMode = StorageManagerMirrorMode_PrimaryOnly;
 		break;
 		
 	default:
 		elog(ERROR, "unexpected mirror data loss tracking state: %d",
 			 mirrorDataLossTrackingState);
+		
+		*mirrorExistenceState = MirroredObjectExistenceState_None;
+		*relDataSynchronizationState = MirroredRelDataSynchronizationState_None;
 		*mirrorMode = StorageManagerMirrorMode_None;	// A happy optimizer is the sound of one hand clapping.
+		break;
 	}
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
-			 "MirroredFileSysObj_BeginMirroredCreate (%s): mirror existence state '%s', mirror mode %s",
+			 "MirroredFileSysObj_BeginMirroredCreate (%s): mirror existence state '%s', relation data synchronization state '%s', mirror mode %s",
 			 PersistentFileSysObjName_TypeAndObjectName(fsObjName),
 			 MirroredObjectExistenceState_Name(*mirrorExistenceState),
+			 MirroredRelDataSynchronizationState_Name(*relDataSynchronizationState),
 			 StorageManagerMirrorMode_Name(*mirrorMode));
 }
 
@@ -102,9 +113,6 @@ static void MirroredFileSysObj_FinishMirroredCreate(
 	
 	bool 							mirrorDataLossOccurred)
 {
-	MirroredObjectExistenceState 	newMirrorExistenceState;
-	MirroredRelDataSynchronizationState newRelDataSynchronizationState;
-
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
 			 "MirroredFileSysObj_FinishMirroredCreate (%s): mirror existence state '%s', mirror data loss occurred %s, "
@@ -116,30 +124,27 @@ static void MirroredFileSysObj_FinishMirroredCreate(
 			 ItemPointerToString(persistentTid));
 
 	if (mirrorExistenceState == MirroredObjectExistenceState_NotMirrored ||
-		mirrorExistenceState == MirroredObjectExistenceState_MirrorReCreateNeeded)
+		mirrorExistenceState == MirroredObjectExistenceState_MirrorDownBeforeCreate)
 		return;
 
 	Assert(mirrorExistenceState == MirroredObjectExistenceState_MirrorCreatePending);
 
 	if (!mirrorDataLossOccurred)
 	{
-		newMirrorExistenceState = MirroredObjectExistenceState_MirrorCreated;
-		newRelDataSynchronizationState = MirroredRelDataSynchronizationState_Synchronized;
-	}
-	else
-	{
-		newMirrorExistenceState = MirroredObjectExistenceState_MirrorReCreateNeeded;
-		newRelDataSynchronizationState = MirroredRelDataSynchronizationState_FullCopy;
+		return;
 	}
 
+	/*
+	 * Our create attempt may or may not have succeeded.
+	 */
 	// UNDONE: Don't fsync this change to the XLOG for now.  Determine
 	// UNDONE: what needs to be fsync'd.
 	PersistentFileSysObj_ChangeMirrorExistenceState(
 											fsObjName->type,
 											persistentTid,
 											persistentSerialNum,
-											newMirrorExistenceState,
-											newRelDataSynchronizationState,
+											MirroredObjectExistenceState_MirrorDownDuringCreate,
+											MirroredRelDataSynchronizationState_FullCopy,
 											/* flushToXLog */ false);
 }
 
@@ -219,6 +224,7 @@ void MirroredFileSysObj_TransactionCreateFilespaceDir(
 	int64 mirrorDataLossTrackingSessionNum;
 	
 	MirroredObjectExistenceState mirrorExistenceState = MirroredObjectExistenceState_None;
+	MirroredRelDataSynchronizationState relDataSynchronizationState = MirroredRelDataSynchronizationState_None;
 	StorageManagerMirrorMode mirrorMode = StorageManagerMirrorMode_None;
 	int primaryError;
 	bool mirrorDataLossOccurred;
@@ -274,6 +280,7 @@ void MirroredFileSysObj_TransactionCreateFilespaceDir(
 									&fsObjName,
 									mirrorDataLossTrackingState,
 									&mirrorExistenceState,
+									&relDataSynchronizationState,
 									&mirrorMode);
 	/*
 	 * We write our intention or 'Create Pending' persistent information before we do
@@ -379,6 +386,8 @@ void MirroredFileSysObj_DropFilespaceDir(
 	
 	char						*mirrorFilespaceLocation,
 
+	bool						primaryOnly,
+
 	bool					 	mirrorOnly,
 
 	bool 						ignoreNonExistence,
@@ -390,7 +399,8 @@ void MirroredFileSysObj_DropFilespaceDir(
 	smgrdormfilespacedir(
 				filespaceOid, 
 				primaryFilespaceLocation, 
-				mirrorFilespaceLocation, 
+				mirrorFilespaceLocation,
+				primaryOnly,
 				mirrorOnly,
 				ignoreNonExistence,
 				mirrorDataLossOccurred);
@@ -412,6 +422,7 @@ void MirroredFileSysObj_TransactionCreateTablespaceDir(
 	int64 mirrorDataLossTrackingSessionNum;
 	
 	MirroredObjectExistenceState mirrorExistenceState = MirroredObjectExistenceState_None;
+	MirroredRelDataSynchronizationState relDataSynchronizationState = MirroredRelDataSynchronizationState_None;
 	StorageManagerMirrorMode mirrorMode = StorageManagerMirrorMode_None;
 	int primaryError;
 	bool mirrorDataLossOccurred;
@@ -430,6 +441,7 @@ void MirroredFileSysObj_TransactionCreateTablespaceDir(
 									&fsObjName,
 									mirrorDataLossTrackingState,
 									&mirrorExistenceState,
+									&relDataSynchronizationState,
 									&mirrorMode);
 	/*
 	 * We write our intention or 'Create Pending' persistent information before we do
@@ -510,6 +522,8 @@ void MirroredFileSysObj_ScheduleDropTablespaceDir(
 
 void MirroredFileSysObj_DropTablespaceDir(
 	Oid							tablespaceOid,
+	
+	bool						primaryOnly,
 
 	bool					 	mirrorOnly,
 
@@ -518,7 +532,8 @@ void MirroredFileSysObj_DropTablespaceDir(
 	bool						*mirrorDataLossOccurred)
 {
 	smgrdormtablespacedir(
-				tablespaceOid, 
+				tablespaceOid,
+				primaryOnly,
 				mirrorOnly,
 				ignoreNonExistence,
 				mirrorDataLossOccurred);
@@ -540,6 +555,7 @@ void MirroredFileSysObj_TransactionCreateDbDir(
 	int64 mirrorDataLossTrackingSessionNum;
 	
 	MirroredObjectExistenceState mirrorExistenceState = MirroredObjectExistenceState_None;
+	MirroredRelDataSynchronizationState relDataSynchronizationState = MirroredRelDataSynchronizationState_None;
 	StorageManagerMirrorMode mirrorMode = StorageManagerMirrorMode_None;
 	int primaryError;
 	bool mirrorDataLossOccurred;
@@ -559,6 +575,7 @@ void MirroredFileSysObj_TransactionCreateDbDir(
 									&fsObjName,
 									mirrorDataLossTrackingState,
 									&mirrorExistenceState,
+									&relDataSynchronizationState,
 									&mirrorMode);
 	/*
 	 * We write our intention or 'Create Pending' persistent information before we do
@@ -639,6 +656,8 @@ void MirroredFileSysObj_ScheduleDropDbDir(
 
 void MirroredFileSysObj_DropDbDir(
 	DbDirNode					*dbDirNode,
+	
+	bool						primaryOnly,
 
 	bool 						mirrorOnly,
 
@@ -649,7 +668,8 @@ void MirroredFileSysObj_DropDbDir(
 	Assert(dbDirNode != NULL);
 
 	smgrdormdbdir(
-			dbDirNode, 
+			dbDirNode,
+			primaryOnly,
 			mirrorOnly, 
 			ignoreNonExistence,
 			mirrorDataLossOccurred);
@@ -664,6 +684,7 @@ static void MirroredFileSysObj_JustInTimeDbDirCreate(
 	int64 mirrorDataLossTrackingSessionNum;
 	
 	MirroredObjectExistenceState mirrorExistenceState = MirroredObjectExistenceState_None;
+	MirroredRelDataSynchronizationState relDataSynchronizationState = MirroredRelDataSynchronizationState_None;
 	StorageManagerMirrorMode mirrorMode = StorageManagerMirrorMode_None;
 
 	ItemPointerData 		persistentTid;
@@ -715,6 +736,7 @@ static void MirroredFileSysObj_JustInTimeDbDirCreate(
 									&fsObjName,
 									mirrorDataLossTrackingState,
 									&mirrorExistenceState,
+									&relDataSynchronizationState,
 									&mirrorMode);
 
 
@@ -821,6 +843,7 @@ void MirroredFileSysObj_TransactionCreateBufferPoolFile(
 	int64 mirrorDataLossTrackingSessionNum;
 	
 	MirroredObjectExistenceState mirrorExistenceState = MirroredObjectExistenceState_None;
+	MirroredRelDataSynchronizationState relDataSynchronizationState = MirroredRelDataSynchronizationState_None;
 	StorageManagerMirrorMode mirrorMode = StorageManagerMirrorMode_None;
 
 	int primaryError;
@@ -857,6 +880,7 @@ void MirroredFileSysObj_TransactionCreateBufferPoolFile(
 									&fsObjName,
 									mirrorDataLossTrackingState,
 									&mirrorExistenceState,
+									&relDataSynchronizationState,
 									&mirrorMode);
 
 	/*
@@ -868,7 +892,7 @@ void MirroredFileSysObj_TransactionCreateBufferPoolFile(
 				/* segmentFileNum */ 0,
 				PersistentFileSysRelStorageMgr_BufferPool,
 				mirrorExistenceState,
-				MirroredRelDataSynchronizationState_None,	// ~_FinishMirroredCreate will update this to ~_Synchronized.
+				relDataSynchronizationState,
 				relationName,
 				persistentTid, 
 				persistentSerialNum, 
@@ -942,6 +966,7 @@ void MirroredFileSysObj_TransactionCreateAppendOnlyFile(
 	int64 mirrorDataLossTrackingSessionNum;
 	
 	MirroredObjectExistenceState mirrorExistenceState = MirroredObjectExistenceState_None;
+	MirroredRelDataSynchronizationState relDataSynchronizationState = MirroredRelDataSynchronizationState_None;
 	StorageManagerMirrorMode mirrorMode = StorageManagerMirrorMode_None;
 
 	int primaryError;
@@ -978,6 +1003,7 @@ void MirroredFileSysObj_TransactionCreateAppendOnlyFile(
 									&fsObjName,
 									mirrorDataLossTrackingState,
 									&mirrorExistenceState,
+									&relDataSynchronizationState,
 									&mirrorMode);
 
 	/*
@@ -989,7 +1015,7 @@ void MirroredFileSysObj_TransactionCreateAppendOnlyFile(
 				segmentFileNum,
 				PersistentFileSysRelStorageMgr_AppendOnly,
 				mirrorExistenceState,
-				MirroredRelDataSynchronizationState_None,	// ~_FinishMirroredCreate will update this to ~_Synchronized.
+				relDataSynchronizationState,
 				relationName,
 				persistentTid, 
 				persistentSerialNum, 
@@ -1117,6 +1143,8 @@ void MirroredFileSysObj_DropRelFile(
 					/* For tracing only.  Can be NULL in some execution paths. */
 
 	bool 						isLocalBuf,
+	
+	bool  						primaryOnly,
 
 	bool 						ignoreNonExistence,
 
@@ -1131,6 +1159,7 @@ void MirroredFileSysObj_DropRelFile(
 				relFileNode, 
 				isLocalBuf,
 				relationName,
+				primaryOnly,
 				ignoreNonExistence,
 				mirrorDataLossOccurred);
 		break;
@@ -1140,6 +1169,7 @@ void MirroredFileSysObj_DropRelFile(
 					relFileNode,
 					segmentFileNum,
 					relationName,
+					primaryOnly,
 					&primaryError,
 					mirrorDataLossOccurred);
 		if (ignoreNonExistence && primaryError == ENOENT)

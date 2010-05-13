@@ -400,14 +400,15 @@ dumpChangeTracking(char* fname)
 		fnamebase = fname;
 	
 	/* verify it's a valid changetracking file */
-	if (strcmp(fnamebase, "CT00000001") != 0 &&
-		strcmp(fnamebase, "MD00000001") != 0)
+	if (strcmp(fnamebase, "CT_LOG_FULL") != 0 &&
+		strcmp(fnamebase, "CT_LOG_COMPACT") != 0 &&
+		strcmp(fnamebase, "CT_METADATA") != 0)
 	{
 		fprintf(stderr, "file '%s' is not a change tracking log or meta file.\n", fnamebase);
 		return;
 	}
 	
-	if (strncmp(fnamebase, "CT", 2) == 0)
+	if (strncmp(fnamebase, "CT_LOG_", strlen("CT_LOG_")) == 0)
 		file_is_log = 1; /* CT */
 	else
 		file_is_log = 0; /* MD */

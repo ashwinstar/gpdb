@@ -37,7 +37,7 @@ oid|proname|pronamespace|proowner|prolang|proisagg|prosecdef|proisstrict|prorets
 2905|btgpxlogloccmp|11|10|12|f|f|t|f|i|2|23|f|3310 3310|\N|\N|\N|btgpxlogloccmp|-|\N
 3332|max|11|10|12|t|f|f|f|i|1|3310|f|3310|\N|\N|\N|aggregate_dummy|-|\N
 3333|min|11|10|12|t|f|f|f|i|1|3310|f|3310|\N|\N|\N|aggregate_dummy|-|\N
-6435|gp_changetracking_log|11|10|12|f|f|f|t|v|0|2249|f|""|{21,21,26,26,26,3310,23,27,20}|{o,o,o,o,o,o,o,o,o}|{segment_id,dbid,space,db,rel,xlogloc,blocknum,persistent_tid,persistent_sn}|gp_changetracking_log|-|\N
+6435|gp_changetracking_log|11|10|12|f|f|f|t|v|1|2249|f|23|{23,21,21,26,26,26,3310,23,27,20}|{i,o,o,o,o,o,o,o,o,o}|{filetype,segment_id,dbid,space,db,rel,xlogloc,blocknum,persistent_tid,persistent_sn}|gp_changetracking_log|-|\N
 5032|gp_statistics_estimate_reltuples_relpages_oid|11|10|12|f|f|t|f|v|1|1021|f|26|\N|\N|\N|gp_statistics_estimate_reltuples_relpages_oid|-|\N
 5034|pg_get_partition_def|11|10|12|f|f|t|f|s|3|25|f|26 16 16|\N|\N|\N|pg_get_partition_def_ext2|-|\N
 5040|gp_adjust_priority|11|10|12|f|f|t|f|v|3|23|f|23 23 23|\N|\N|\N|gp_adjust_priority_int|-|\N

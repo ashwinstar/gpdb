@@ -116,10 +116,10 @@ gp_changetracking_log(PG_FUNCTION_ARGS)
 
 	if (isFirstCall)
 	{
-		TupleDesc	tupdesc;
-		MemoryContext oldcontext;
-		char	path[MAXPGPATH];
-
+		TupleDesc		tupdesc;
+		MemoryContext 	oldcontext;
+		int		   		ct_filetype = PG_GETARG_INT32(0);
+		
 		/* create a function context for cross-call persistence */
 		funcctx = SRF_FIRSTCALL_INIT();
 
@@ -147,21 +147,26 @@ gp_changetracking_log(PG_FUNCTION_ARGS)
 		 * out as a result set.
 		 */
 		context = (CTContext *) palloc(sizeof(CTContext));
-		
-		/* set up correct change tracking file path */
-		ChangeTrackingLogFilePath(path);
-		
-		/* open it. error out if doesn't exist */
-		context->file = PathNameOpenFile(path, 
-										 O_RDONLY | PG_BINARY, 
-										 S_IRUSR | S_IWUSR);
-
-		if(context->file < 0)
+	
+		/* This check/error is only temporary, will be removed soon */
+		if(ct_filetype != CTF_LOG)
+			elog(ERROR, "internal error in gp_changetracking_log()");
+	
+		/* make sure log file exists. then open it */
+		if(!ChangeTracking_DoesFileExist(ct_filetype))
 			ereport(ERROR,
 					(errcode_for_file_access(),
-					 errmsg("gp_changetracking_log couldn't open file '%s' on segment %d dbid %d", 
-							 path, Gp_segment, GpIdentity.dbid)));
-
+					 errmsg("gp_changetracking_log couldn't open %s log file on segment %d dbid %d", 
+							 (ChangeTracking_IsFileModeCompact() ? "compact" : "full"),
+							 Gp_segment, GpIdentity.dbid)));
+		
+		elog(LOG, "gp_changetracking_log successfully found and opened %s log file",
+				(ChangeTracking_IsFileModeCompact() ? "compact" : "full"));
+		
+		context->file = ChangeTracking_OpenFile(CTF_LOG);
+		FileSeek(context->file, 0, SEEK_SET); 
+		Assert(context->file >= 0);
+		
 		context->block_number = 0;
 		context->logPageOff = -CHANGETRACKING_BLCKSZ; /* so 1st increment will give 0 */
 		context->logRecOff = 0;

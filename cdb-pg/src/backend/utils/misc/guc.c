@@ -276,6 +276,7 @@ int			gp_max_tablespaces = GP_MAX_TABLESPACES_DEFAULT;
 int			gp_max_filespaces = GP_MAX_FILESPACES_DEFAULT;
 bool 		gp_initdb_mirrored = false;
 bool 		gp_before_persistence_work = false;
+bool		gp_change_tracking = true;
 bool 		Debug_print_xlog_relation_change_info = false;
 bool 		Debug_print_xlog_relation_change_info_skip_issues_only = false;
 bool 		Debug_print_xlog_relation_change_info_backtrace_skip_issues = false;
@@ -2425,6 +2426,16 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&gp_hash_index,
 		false, NULL, NULL
+	},
+
+	{
+		{"gp_change_tracking", PGC_SUSET, UNGROUPED,
+			gettext_noop("Allows disabling change tracking."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE 
+		},
+		&gp_change_tracking,
+		true, NULL, NULL
 	},
 
 	{

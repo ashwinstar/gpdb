@@ -236,9 +236,10 @@ char *MirroredObjectExistenceState_Name(
 	case MirroredObjectExistenceState_NotMirrored: 				return "Not Mirrored";
 	case MirroredObjectExistenceState_MirrorCreatePending: 		return "Mirror Create Pending";
 	case MirroredObjectExistenceState_MirrorCreated: 			return "Mirror Created";
-	case MirroredObjectExistenceState_MirrorReCreateNeeded: 	return "Mirror (Re)Create Needed";
-	case MirroredObjectExistenceState_MirrorReDropNeeded: 		return "Mirror (Re)Drop Needed";
-	case MirroredObjectExistenceState_MirrorDropped: 			return "Mirror Dropped";
+	case MirroredObjectExistenceState_MirrorDownBeforeCreate: 	return "Mirror Down Before Create";
+	case MirroredObjectExistenceState_MirrorDownDuringCreate: 	return "Mirror Down During Create";
+	case MirroredObjectExistenceState_MirrorDropPending:		return "Mirror Drop Pending";
+	case MirroredObjectExistenceState_OnlyMirrorDropRemains:	return "Only Mirror Drop Remains";
 
 	default:
 		return "Unknown";
@@ -265,11 +266,11 @@ char *MirroredRelDataSynchronizationState_Name(
 	switch (relDataSynchronizationState)
 	{
 	case MirroredRelDataSynchronizationState_None:						return "None";
-	case MirroredRelDataSynchronizationState_Synchronized:				return "Synchronized";
-	case MirroredRelDataSynchronizationState_FullCopy:					return "Full Copy";
+	case MirroredRelDataSynchronizationState_DataSynchronized:			return "Data Synchronized";
+	case MirroredRelDataSynchronizationState_FullCopy:					return "Full Copy Needed";
 	case MirroredRelDataSynchronizationState_BufferPoolPageIncremental:	return "Buffer Pool Page Incremental";
 	case MirroredRelDataSynchronizationState_BufferPoolScanIncremental:	return "Buffer Pool Scan Incremental";
-	case MirroredRelDataSynchronizationState_AppendOnlyCatchup:			return "Append-Only Catch-up";
+	case MirroredRelDataSynchronizationState_AppendOnlyCatchup:			return "Append-Only Catch-Up";
 
 	default:
 		return "Unknown";

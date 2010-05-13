@@ -4532,7 +4532,7 @@ DATA(insert OID = 6043 (  gp_transaction_log   PGNSP PGUID 12 f f f t v 0 2249 f
 DESCR("view logged local transaction status");
 DATA(insert OID = 6044 (  gp_distributed_log   PGNSP PGUID 12 f f f t v 0 2249 f "" _null_ _null_ _null_ gp_distributed_log - _null_ ));
 DESCR("view logged distributed transaction status");
-DATA(insert OID = 6435 (  gp_changetracking_log   PGNSP PGUID 12 f f f t v 0 2249 f "" "{21,21,26,26,26,3310,23,27,20}" "{o,o,o,o,o,o,o,o,o}" "{segment_id,dbid,space,db,rel,xlogloc,blocknum,persistent_tid,persistent_sn}" gp_changetracking_log - _null_ ));
+DATA(insert OID = 6435 (  gp_changetracking_log   PGNSP PGUID 12 f f f t v 1 2249 f "23" "{23,21,21,26,26,26,3310,23,27,20}" "{i,o,o,o,o,o,o,o,o,o}" "{filetype,segment_id,dbid,space,db,rel,xlogloc,blocknum,persistent_tid,persistent_sn}" gp_changetracking_log - _null_ ));
 DESCR("view logged change tracking records");
 // DATA(insert OID = 6055 (  gp_memory_database_directories   PGNSP PGUID 12 f f f t v 0 2249 f "" _null_ _null_ _null_ gp_memory_database_directories - _null_ ));
 // DESCR("view in-memory status of persistent database directories");

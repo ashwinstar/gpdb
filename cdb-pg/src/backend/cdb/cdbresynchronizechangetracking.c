@@ -46,10 +46,7 @@ extern bool enable_groupagg; /* from guc.h */
 /*
  * Local functions
  */
-static File ChangeTracking_OpenLogFile(void);
-static void ChangeTracking_CloseLogFile(File file);
-static File ChangeTracking_LogFileExists(void);
-static void ChangeTracking_WriteBuffer(File file);
+static int ChangeTracking_WriteBuffer(File file);
 static void ChangeTracking_AddBufferPoolChange(XLogRecPtr* 	xlogLocation,
 													   RelFileNode*	relFileNode,
 													   BlockNumber	blockNum,
@@ -63,8 +60,8 @@ static void ChangeTracking_AddResultEntry(ChangeTrackingResult *result,
 										  Oid rel,
 										  BlockNumber blocknum,
 										  XLogRecPtr* lsn_end);
-static void ChangeTracking_MarkFullResyncLockAcquired(void);
-
+static int ChangeTracking_MarkFullResyncLockAcquired(void);
+static void ChangeTracking_HandleWriteError(CTFType ft);
 
 /*
  * Return the required shared-memory size for this module.
@@ -128,8 +125,9 @@ extern void ChangeTrackingShmemInit(void)
 	changeTrackingBufStatus->recordcount = 0;
 	changeTrackingBufStatus->maxbufsize = bufsize1;
 	changeTrackingBufStatus->bufsize = 0;
-	changeTrackingBufStatus->fileseg = CHANGETRACKING_FILESEGMENT;
+	changeTrackingBufStatus->fileseg = 0; /* never changes in this release */
 	changeTrackingBufStatus->nextwritepos = CHANGETRACKING_FILE_EOF;
+	changeTrackingBufStatus->compactmode = false;
 	
 	/* init meta data */
 	changeTrackingResyncMeta->resync_mode_full = false;
@@ -153,12 +151,19 @@ extern void ChangeTrackingShmemInit(void)
  */
 void ChangeTracking_CreateInitialFromPreviousCheckpoint(void)
 {	
-	int 	count;
-	
-	count = XLogAddRecordsToChangeTracking();
+	if (gp_change_tracking)
+	{
+		int 	count = XLogAddRecordsToChangeTracking();
 
-	elog(LOG, "scanned through %d initial xlog records since last checkpoint "
-			  "for writing into the resynchronize change log", count);		
+		elog(LOG, "scanned through %d initial xlog records since last checkpoint "
+				  "for writing into the resynchronize change log", count);		
+	}
+	else
+	{
+		elog(WARNING, "Change logging is disabled. This should only occur after "
+					  "a manual intervention of an administrator, and only with "
+					  "guidance from greenplum support.");
+	}
 }
 
 
@@ -217,9 +222,10 @@ static void ChangeTracking_AddBufferPoolChange(XLogRecPtr* 		xlogLocation,
 		 * for now we keep it in the local fd.c cache and open and close each 
 		 * time until a better solution is found.
 		 */
-		File file = ChangeTracking_OpenLogFile();
-		ChangeTracking_WriteBuffer(file);
-		ChangeTracking_CloseLogFile(file);
+		File file = ChangeTracking_OpenFile(CTF_LOG);
+		if (ChangeTracking_WriteBuffer(file) < 0)
+			ChangeTracking_HandleWriteError(CTF_LOG);
+		ChangeTracking_CloseFile(file);
 	}
 	
 	LWLockRelease(ChangeTrackingWriteLock);
@@ -323,7 +329,9 @@ void ChangeTracking_AddRecordFromXlog(RmgrId rmid,
 	int					i;
 	int					arrlen = ChangeTracking_GetInfoArrayDesiredMaxLength(rmid, info);
 	RelationChangeInfo 	relationChangeInfoArray[arrlen];
-		
+	
+	Assert(gp_change_tracking);
+	
 	ChangeTracking_GetRelationChangeInfoFromXlog(
 										  rmid,
 										  info,
@@ -1103,7 +1111,33 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 }
 
 
+static void ChangeTracking_FsyncDataIntoLog(void)
+{
+	File file;
+	
+	LWLockAcquire(ChangeTrackingWriteLock, LW_EXCLUSIVE);
+	
+	/* 
+	 * see comment in ChangeTracking_AddBufferPoolChange 
+	 * for why we open and close the file here.
+	 */
+	file = ChangeTracking_OpenFile(CTF_LOG);
+	
+	/* write the existing (non-full) shmem buffer */
+	if(changeTrackingBufStatus->recordcount > 0)
+	{
+		if(ChangeTracking_WriteBuffer(file) < 0)
+			ChangeTracking_HandleWriteError(CTF_LOG);
+	}
+		
+	errno = 0;
+	/* time to fsync change log to disk */
+	if(FileSync(file) < 0)
+		ChangeTracking_HandleWriteError(CTF_LOG);
 
+	ChangeTracking_CloseFile(file);
+	LWLockRelease(ChangeTrackingWriteLock);
+}
 /*
  * CheckPointChangeTracking
  * 
@@ -1115,46 +1149,11 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
  */
 void CheckPointChangeTracking(void)
 {
-	File	file;
-	char	path[MAXPGPATH];
-	
 	/* do nothing if not in proper operating mode */
 	if(!ChangeTracking_ShouldTrackChanges())
 		return;
 	
-	LWLockAcquire(ChangeTrackingWriteLock, LW_EXCLUSIVE);
-
-	/* 
-	 * see comment in ChangeTracking_AddBufferPoolChange 
-	 * for why we open and close the file here.
-	 */
-	file = ChangeTracking_OpenLogFile();
-	
-	/* write the existing (non-full) shmem buffer */
-	if(changeTrackingBufStatus->recordcount > 0)
-		ChangeTracking_WriteBuffer(file);
-	
-	errno = 0;
-	/* time to fsync change log to disk */
-	if(FileSync(file) < 0)
-	{
-		ChangeTrackingLogFilePath(path);
-		ereport(WARNING, 
-				(errcode_for_file_access(),
-				 errmsg("ERROR(filerep): no disk space for change tracking log file \"%s\", "
-						"change tracking disabled : %m", 
-						path),
-				 errSendAlert(true)));
-		
-		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
-		
-		ChangeTracking_MarkFullResyncLockAcquired();
-	}
-
-	ChangeTracking_CloseLogFile(file);
-
-	LWLockRelease(ChangeTrackingWriteLock);
-
+	ChangeTracking_FsyncDataIntoLog();
 }
 
 void ChangeTracking_RecoverUsingXLog(void)
@@ -1173,6 +1172,7 @@ void ChangeTracking_Shutdown(void)
 
 	changeTrackingBufStatus->bufsize = 0;
 	changeTrackingBufStatus->recordcount = 0;
+	changeTrackingBufStatus->compactmode = false;
 	changeTrackingBufStatus->nextwritepos = CHANGETRACKING_FILE_EOF;
 
 	LWLockRelease(ChangeTrackingWriteLock);
@@ -1195,9 +1195,10 @@ IncrementalChangeList* ChangeTracking_InitIncrementalChangeList(int count)
 }
 
 /*
- * Get an ordered list of [persistent_tid,persistent_serialnum] from the
- * change tracking log, with unique tid values, each paired with the newest
- * serial num found for it.
+ * Get an ordered list of [persistent_tid,persistent_serialnum, numblocks] 
+ * from the change tracking log, with unique tid values, each paired with 
+ * the newest serial num found for it, and number of blocks changed for that
+ * serial number.
  */
 IncrementalChangeList *
 ChangeTracking_GetIncrementalChangeList(void)
@@ -1211,13 +1212,27 @@ ChangeTracking_GetIncrementalChangeList(void)
 	MemoryContext 	oldcontext = CurrentMemoryContext;
 
 	Assert(dataState == DataStateInResync);	
+	Assert(ChangeTracking_IsFileModeCompact());
+	Assert(gp_change_tracking);
 	
 	/* assemble our query string */
 	initStringInfo(&sqlstmt);
-	appendStringInfo(&sqlstmt, "SELECT persistent_tid, max(persistent_sn) "
-							   "FROM gp_changetracking_log() " 
-							   "GROUP BY persistent_tid "
-							   "ORDER BY persistent_tid");
+	
+	/* TODO: there must be a more efficient query to use here */
+	appendStringInfo(&sqlstmt, 	"SELECT t1.persistent_tid, t1.persistent_sn, t1.numblocks "
+								"FROM (SELECT persistent_tid, persistent_sn, count(distinct blocknum) as numblocks "
+								"      FROM gp_changetracking_log() "
+								"      GROUP BY persistent_tid, persistent_sn) as t1, "
+								"     (SELECT persistent_tid, max(persistent_sn) as persistent_sn " 
+								"	   FROM gp_changetracking_log() "
+								"      GROUP BY persistent_tid) as t2 "			
+								"WHERE t1.persistent_tid = t2.persistent_tid "
+								"AND   t1.persistent_sn = t2.persistent_sn");
+	
+//	appendStringInfo(&sqlstmt, "SELECT persistent_tid, max(persistent_sn) "
+//							   "FROM gp_changetracking_log() " 
+//							   "GROUP BY persistent_tid "
+//							   "ORDER BY persistent_tid");
 	
 	PG_TRY();
 	{
@@ -1227,7 +1242,7 @@ ChangeTracking_GetIncrementalChangeList(void)
 		
 		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
 		
-		SetSessionUserId(BOOTSTRAP_SUPERUSERID, true);
+		SetSessionUserId(BOOTSTRAP_SUPERUSERID,true); /* TODO: HACK!!! find a solution */
 
 		if (SPI_OK_CONNECT != SPI_connect())
 		{
@@ -1259,14 +1274,17 @@ ChangeTracking_GetIncrementalChangeList(void)
 				IncrementalChangeEntry* entry;
 				ItemPointer		persistentTid;
 				int64 			persistentSerialNum;
+				int64			numblocks;
 				char*			str_tid;
 				char*			str_sn;
+				char*			str_numb;
 				
 				/* get result columns from SPI (as strings) */
 				str_tid = SPI_getvalue(tuple, tupdesc, 1);
 				str_sn = SPI_getvalue(tuple, tupdesc, 2);
-
-				//elog(NOTICE,"tuple %d: tid %s sn %s", i, str_tid, str_sn);
+				str_numb = SPI_getvalue(tuple, tupdesc, 3);
+				
+				//elog(LOG,"tuple %d: tid %s sn %s numb %s", i, str_tid, str_sn, str_numb);
 
 				/* use our own context so that SPI won't free our stuff later */
 				cxt_save = MemoryContextSwitchTo(oldcontext);
@@ -1278,11 +1296,13 @@ ChangeTracking_GetIncrementalChangeList(void)
 				/* convert to desired data type */
 				persistentTid = DatumGetPointer(DirectFunctionCall1(tidin, CStringGetDatum(str_tid)));
 				persistentSerialNum = DatumGetInt64(DirectFunctionCall1(int8in, CStringGetDatum(str_sn)));
+				numblocks = DatumGetInt64(DirectFunctionCall1(int8in, CStringGetDatum(str_numb)));
 				
 				/* populate this entry */
 				entry = &(result->entries[i]);
 				entry->persistentTid = *persistentTid;
 				entry->persistentSerialNum = persistentSerialNum;
+				entry->numblocks = numblocks;
 				
 				MemoryContextSwitchTo(cxt_save);
 			}
@@ -1394,10 +1414,12 @@ static ChangeTrackingResult* ChangeTracking_FormResult(int max_count)
 	result = (ChangeTrackingResult*) palloc0(sizeof(ChangeTrackingResult));
 	result->count = 0;
 	result->max_count = max_count;
+	result->ask_for_more = false;
+	result->next_start_lsn.xlogid = 0;
+	result->next_start_lsn.xrecoff = 0;	
 	result->entries = (ChangeTrackingResultEntry*) palloc(sizeof(ChangeTrackingResultEntry) * max_count);
 	
 	return result;
-
 }
 
 static void ChangeTracking_AddResultEntry(ChangeTrackingResult *result, 
@@ -1431,6 +1453,15 @@ static void ChangeTracking_AddResultEntry(ChangeTrackingResult *result,
  * found in the change tracking log file this routine will return
  * the list of block numbers and the end LSN of each.
  * 
+ * We restrict the total number of changes that this routine returns
+ * to CHANGETRACKING_MAX_RESULT_SIZE, in order to not overflow memory.
+ * If a specific relation is expected to have more than this number
+ * of changes, this routine will return the first CHANGETRACKING_MAX_RESULT_SIZE
+ * change, along with setting the 'ask_for_more' flag in the result to
+ * indicate to the caller that a request with the same relation should
+ * be issued when ready. When this happens the caller should use the
+ * value returned in 'next_start_lsn' in each subsequent calls as the
+ * begin lsn value in the request entry for this relation.
  */
 ChangeTrackingResult* ChangeTracking_GetChanges(ChangeTrackingRequest *request)
 {
@@ -1447,12 +1478,14 @@ ChangeTrackingResult* ChangeTracking_GetChanges(ChangeTrackingRequest *request)
 	enable_groupagg = false; /* disable sort group agg -- our query works better with hash agg */
 
 	Assert(dataState == DataStateInResync);	
-	
+	Assert(ChangeTracking_IsFileModeCompact());
+	Assert(gp_change_tracking);
+
 	/* assemble our query string */
 	initStringInfo(&sqlstmt);
 	appendStringInfo(&sqlstmt, "SELECT space, db, rel, blocknum, max(xlogloc) "
-							   "FROM gp_changetracking_log() "
-							   "WHERE ");
+							   "FROM gp_changetracking_log(%d) "
+							   "WHERE ", CTF_LOG);
 
 	for(i = 0 ; i < request->count ;  i++)
 	{
@@ -1476,9 +1509,19 @@ ChangeTrackingResult* ChangeTracking_GetChanges(ChangeTrackingRequest *request)
 		
 		/* TODO: use gpxloglocout() to format the '(%X/%X)' instead of doing it manually here */
 	}
-	
 	appendStringInfo(&sqlstmt, "GROUP BY space, db, rel, blocknum "
-							   "ORDER BY space, db, rel, blocknum");
+							   "ORDER BY space, db, rel, blocknum ");
+	
+	/*
+	 * We limit the result to our max value so that we don't use too much memory both
+	 * in the query result and in the actual result returned to the caller.
+	 * 
+	 * The +1 is there in order to "peek" if there's more data to be returned. Therefore
+	 * if MAX+1 records were returned from the query we return MAX records to the caller
+	 * and indicate that there are more records to return in the next call with the same
+	 * request (we don't return the last record found. we'll return it next time).
+	 */
+	appendStringInfo(&sqlstmt, "LIMIT %d", CHANGETRACKING_MAX_RESULT_SIZE + 1);
 	
 	PG_TRY();
 	{
@@ -1514,6 +1557,13 @@ ChangeTrackingResult* ChangeTracking_GetChanges(ChangeTrackingRequest *request)
 			SPITupleTable*	tuptable = SPI_tuptable;
 			MemoryContext 	cxt_save;
 			int i;
+			
+			/* 
+			 * if got CHANGETRACKING_MAX_RESULT_SIZE changes or less, it means we 
+			 * satisfied all the requests. If not, it means there are still more 
+			 * results to return in the next calls.
+			 */
+			bool	satisfied_request = (proc <= CHANGETRACKING_MAX_RESULT_SIZE);
 
 			/*
 			 * Iterate through each result tuple
@@ -1533,6 +1583,7 @@ ChangeTrackingResult* ChangeTracking_GetChanges(ChangeTrackingRequest *request)
 				char*		str_blocknum;
 				char*		str_endlsn;
 				
+				
 				/* get result columns from SPI (as strings) */
 				str_space = SPI_getvalue(tuple, tupdesc, 1);
 				str_db = SPI_getvalue(tuple, tupdesc, 2);
@@ -1547,8 +1598,29 @@ ChangeTrackingResult* ChangeTracking_GetChanges(ChangeTrackingRequest *request)
 
 				/* init the result memory on first pass */
 				if(i == 0)
-					result = ChangeTracking_FormResult(proc);
+				{
+					if (satisfied_request)
+					{
+						/* prepare memory for 'proc' entries (full result) */
+						result = ChangeTracking_FormResult(proc);
+					}
+					else
+					{
+						/* prepare memory for partial result */
+						if(request->count != 1)
+							elog(ERROR, "internal error in ChangeTracking_GetChanges(): caller "
+										"passed in an invalid request (expecting more than %d "
+										"result entries for more than a single relation)",
+										CHANGETRACKING_MAX_RESULT_SIZE);
+						
+						result = ChangeTracking_FormResult(CHANGETRACKING_MAX_RESULT_SIZE);
+						
+						/* tell caller to call us again with the same relation (but different start lsn) */
+						result->ask_for_more = true;
+					}
+				}
 				
+					
 				/* convert to desired data type */
 				space = DatumGetObjectId(DirectFunctionCall1(oidin, CStringGetDatum(str_space)));
 				db = DatumGetObjectId(DirectFunctionCall1(oidin, CStringGetDatum(str_db)));
@@ -1556,7 +1628,21 @@ ChangeTrackingResult* ChangeTracking_GetChanges(ChangeTrackingRequest *request)
 				blocknum = DatumGetUInt32(DirectFunctionCall1(int4in, CStringGetDatum(str_blocknum)));
 				endlsn = (XLogRecPtr*) DatumGetPointer(DirectFunctionCall1(gpxloglocin, CStringGetDatum(str_endlsn)));
 				/* TODO: in the above should use DatumGetXLogLoc instead, but it's not public */
-				
+			
+				/* 
+				 * skip the last "extra" entry if satisfied_request is false, and suggest
+				 * the lsn to use in the next request for this same relation. 
+				 */
+				if(i == CHANGETRACKING_MAX_RESULT_SIZE)
+				{
+					Assert(!satisfied_request);
+					Assert(result->ask_for_more);
+					result->next_start_lsn = *endlsn;
+					MemoryContextSwitchTo(cxt_save);
+					
+					break;
+				}
+
 				/* add our entry to the result */
 				ChangeTracking_AddResultEntry(result, 
 											  space,
@@ -1621,74 +1707,77 @@ void ChangeTracking_FreeResult(ChangeTrackingResult *result)
  *************************************/
 
 /*
- * Open change tracking log file for write, and seek to eof
+ * Open change tracking log file for write, and seek if needed
  */
-static File ChangeTracking_OpenLogFile(void)
+File ChangeTracking_OpenFile(CTFType ftype)
 {
 	File	file;
 	char	path[MAXPGPATH];
 
-	/* set up correct path */
-	ChangeTrackingLogFilePath(path);
-	
-	/* open it (and create if doesn't exist) */
-	file = 	PathNameOpenFile(path, 
-							 O_WRONLY | O_CREAT | PG_BINARY, 
-							 S_IRUSR | S_IWUSR);
-		
-	/* 
-	 * seek to eof for appending. 
-	 * (can't use O_APPEND because we may like to reposition later on).
-	 */
-	FileSeek(file, 0, SEEK_END); 
-	
+	switch (ftype)
+	{
+		case CTF_META:
+			
+			ChangeTrackingMetaFilePath(path);
+			
+			/* open it (and create if doesn't exist) */
+			file = 	PathNameOpenFile(path, 
+									 O_RDWR | O_CREAT | PG_BINARY, 
+									 S_IRUSR | S_IWUSR);
+
+			/* 
+			 * seek to beginning of file. The meta file only has a single
+			 * block. we will overwrite it each time with new meta data.
+			 */
+			FileSeek(file, 0, SEEK_SET); 
+			break;
+
+		case CTF_LOG:
+			
+			if (!changeTrackingBufStatus->compactmode)
+				ChangeTrackingFullLogFilePath(path);
+			else
+				ChangeTrackingCompactLogFilePath(path);
+			
+			/* open it (and create if doesn't exist) */
+			file = 	PathNameOpenFile(path, 
+									 O_RDWR | O_CREAT | PG_BINARY, 
+									 S_IRUSR | S_IWUSR);
+				
+			/* 
+			 * seek to eof for appending. 
+			 * (can't use O_APPEND because we may like to reposition later on).
+			 */
+			FileSeek(file, 0, SEEK_END); 
+			break;
+			
+		default:
+			file = -1;
+			elog(ERROR, "internal error in ChangeTracking_OpenFile. type %d", ftype);
+	}
+
 	return file;
 }
 
-static void ChangeTracking_CloseLogFile(File file)
+void ChangeTracking_CloseFile(File file)
 {
 	FileClose(file);
 }
 
-/*
- * Open change tracking meta file for write, and seek to beginning.
- */
-static File ChangeTracking_OpenMetaFile(void)
+bool ChangeTracking_DoesFileExist(CTFType ftype)
 {
 	File	file;
 	char	path[MAXPGPATH];
 
 	/* set up correct path */
-	ChangeTrackingMetaFilePath(path);
+	if (ftype == CTF_LOG && !changeTrackingBufStatus->compactmode)
+		ChangeTrackingFullLogFilePath(path);
+	else if (ftype == CTF_LOG && changeTrackingBufStatus->compactmode)
+		ChangeTrackingCompactLogFilePath(path);
+	else
+		ChangeTrackingMetaFilePath(path);
 	
-	/* open it (and create if doesn't exist) */
-	file = 	PathNameOpenFile(path, 
-							 O_RDWR | O_CREAT | PG_BINARY, 
-							 S_IRUSR | S_IWUSR);
-		
-	/* 
-	 * seek to beginning of file. The meta file only has a single
-	 * block. we will overwrite it each time with new meta data.
-	 */
-	FileSeek(file, 0, SEEK_SET); 
-	
-	return file;
-}
-
-static void ChangeTracking_CloseMetaFile(File file)
-{
-	FileClose(file);
-}
-
-static File ChangeTracking_LogFileExists(void)
-{
-	File	file;
-	char	path[MAXPGPATH];
-
-	/* set up correct path */
-	ChangeTrackingLogFilePath(path);
-	
-	/* open it (and create if doesn't exist) */
+	/* open it (don't create if doesn't exist) */
 	file = 	PathNameOpenFile(path, 
 							 O_RDONLY | PG_BINARY, 
 							 S_IRUSR | S_IWUSR);
@@ -1696,30 +1785,37 @@ static File ChangeTracking_LogFileExists(void)
 	if(file < 0)
 		return false;
 	else
-		ChangeTracking_CloseLogFile(file);
+		ChangeTracking_CloseFile(file);
 	
 	return true;
 }
 
-static void ChangeTracking_DropLogFile(void)
+static void ChangeTracking_DropLogFiles(void)
 {
-	File	file;
+	File	log_full;
+	File	log_compact;
 
-	file = ChangeTracking_OpenLogFile();
+	changeTrackingBufStatus->compactmode = true; /* little hack, but ok */
+	log_compact = ChangeTracking_OpenFile(CTF_LOG);
+	changeTrackingBufStatus->compactmode = false;
+	log_full = ChangeTracking_OpenFile(CTF_LOG);
 	
 	changeTrackingBufStatus->bufsize = 0;
 	changeTrackingBufStatus->recordcount = 0;
+	changeTrackingBufStatus->compactmode = false;
 	changeTrackingBufStatus->nextwritepos = CHANGETRACKING_FILE_EOF;
 
-	/* delete the change tracking log file*/
-	FileUnlink(file);
+	/* delete the change tracking log files*/
+	FileUnlink(log_full);
+	FileUnlink(log_compact);
 }
+
 
 static void ChangeTracking_DropMetaFile(void)
 {
 	File	file;
 
-	file = ChangeTracking_OpenMetaFile();
+	file = ChangeTracking_OpenFile(CTF_META);
 	
 	changeTrackingResyncMeta->resync_mode_full = false;
 	changeTrackingResyncMeta->resync_lsn_end.xlogid = 0;
@@ -1738,7 +1834,7 @@ void ChangeTracking_DropAll(void)
 {
 	LWLockAcquire(ChangeTrackingWriteLock, LW_EXCLUSIVE);
 	
-	ChangeTracking_DropLogFile();
+	ChangeTracking_DropLogFiles();
 	ChangeTracking_DropMetaFile();
 	
 	LWLockRelease(ChangeTrackingWriteLock);
@@ -1752,11 +1848,10 @@ void ChangeTracking_DropAll(void)
  * NOTE: caller must hold a LW lock before calling this function.
  * NOTE: caller must also verify that the buffer isn't empty.
  */
-static void ChangeTracking_WriteBuffer(File file)
+static int ChangeTracking_WriteBuffer(File file)
 {
 	ChangeTrackingPageHeader	header;
 	void	*headerptr;
-	char	path[MAXPGPATH];
 	int 	freespace = changeTrackingBufStatus->maxbufsize - changeTrackingBufStatus->bufsize;
 	int 	wrote = 0;
 	int64	restartpos;
@@ -1791,36 +1886,10 @@ static void ChangeTracking_WriteBuffer(File file)
 					  changeTrackingBuffer, 
 					  changeTrackingBufStatus->maxbufsize);
 
-	/* TODO: should these be PANIC instead of ERROR? */
-	if (wrote == 0)
-	{
-		ChangeTrackingLogFilePath(path);
-		ereport(WARNING, 
-				(errcode_for_file_access(),
-				 errmsg("ERROR(filerep): no disk space for change tracking log file \"%s\", "
-						"change tracking disabled : %m", 
-					   path),
-			     errSendAlert(true)));
-		
-		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
-		
-		ChangeTracking_MarkFullResyncLockAcquired();
-	}
-	else if (wrote < 0)
-	{
-		ChangeTrackingLogFilePath(path);
-		ereport(WARNING, 
-				(errcode_for_file_access(),
-				 errmsg("ERROR(filerep): unable to write change tracking log file \"%s\", "
-						"change tracking disabled : %m", 
-					   path),
-			     errSendAlert(true)));
-		
-		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
-		
-		ChangeTracking_MarkFullResyncLockAcquired();
-	}
-
+	/* was there a write error? */
+	if (wrote <= 0)
+		return -1;
+	
 	/*
 	 * check if there's room for more records in this buffer. 
 	 */
@@ -1843,16 +1912,16 @@ static void ChangeTracking_WriteBuffer(File file)
 		changeTrackingBufStatus->nextwritepos = restartpos;
 	}
 	
+	return 0;
 }
 
 /*
  * Write a meta record to the meta file.
  */
-static void ChangeTracking_WriteMeta(File file)
+static int ChangeTracking_WriteMeta(File file)
 {
 	
 	ChangeTrackingMetaRecord rec;
-	char			path[MAXPGPATH];
 	int 			wrote = 0;
 
 	Assert(CHANGETRACKING_METABUFLEN >= sizeof(rec));
@@ -1871,35 +1940,11 @@ static void ChangeTracking_WriteMeta(File file)
 	errno = 0;
 	wrote = FileWrite(file, metabuf, CHANGETRACKING_METABUFLEN);
 
-	/* TODO: should these be PANIC instead of ERROR? */
-	if (wrote == 0)
-	{
-		ChangeTrackingMetaFilePath(path);
-		ereport(WARNING, 
-				(errcode_for_file_access(),
-				 errmsg("ERROR(filerep): no disk space for change tracking meta file \"%s\", "
-						"change tracking disabled : %m", 
-					   path),
-				 errSendAlert(true)));
-		
-		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
-		
-		ChangeTracking_MarkFullResyncLockAcquired();
-	}
-	else if (wrote < 0)
-	{
-		ChangeTrackingMetaFilePath(path);
-		ereport(WARNING, 
-				(errcode_for_file_access(),
-				 errmsg("ERROR(filerep): unable to write change tracking meta file \"%s\", "
-						"change tracking disabled : %m", 
-					   path),
-			     errSendAlert(true)));
-		
-		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
-		
-		ChangeTracking_MarkFullResyncLockAcquired();
-	}
+	/* was there a write error? */
+	if (wrote <= 0)
+		return -1;
+	
+	return 0;
 }
 
 /*
@@ -1948,7 +1993,7 @@ ChangeTracking_ReadMeta(File file, ChangeTrackingMetaRecord* rec)
 
 bool ChangeTracking_ShouldTrackChanges(void)
 {
-	return (FileRep_IsInChangeTracking());
+	return (FileRep_IsInChangeTracking() && gp_change_tracking);
 }	
 	
 /*************************************
@@ -1974,16 +2019,16 @@ void ChangeTracking_MarkFullResync(void)
 {
 	LWLockAcquire(ChangeTrackingWriteLock, LW_EXCLUSIVE);
 	
-	ChangeTracking_MarkFullResyncLockAcquired();
+	ChangeTracking_MarkFullResyncLockAcquired(); /* no need to check return code here */
 	
 	LWLockRelease(ChangeTrackingWriteLock);
 }
 
-static void
+static int
 ChangeTracking_MarkFullResyncLockAcquired(void)
 {
 	File	file;
-	char	path[MAXPGPATH];
+	bool	emit_error = false;
 
 	// can enable this when all callers are updated Assert( LWLockHeldByMe(ChangeTrackingWriteLock));
 
@@ -2003,57 +2048,64 @@ ChangeTracking_MarkFullResyncLockAcquired(void)
 	 */
 	elog(LOG, "CHANGETRACKING: marking full resync");
 	changeTrackingResyncMeta->resync_mode_full = true;
-	file = ChangeTracking_OpenMetaFile();	
-	ChangeTracking_WriteMeta(file);
+	file = ChangeTracking_OpenFile(CTF_META);	
 	
-	if(FileSync(file) < 0)
+	/*
+	 * Write and fsync the file. If we fail here we can't recover
+	 * from the error. Must call FileRep_SetPostmasterReset()
+	 */
+	if (ChangeTracking_WriteMeta(file) < 0)
 	{
-		ChangeTrackingMetaFilePath(path);
-		ereport(LOG,
-				(errcode_for_file_access(),
-				 errmsg("ERROR(filerep): could not fsync change tracking meta file \"%s\": %m", 
-						path)));
-		FileRep_SetState(FileRepStateFault);
+		emit_error = true;
+		FileRep_SetPostmasterReset();		
 	}
 	
-	ChangeTracking_CloseMetaFile(file);
+	if (FileSync(file) < 0)
+	{
+		emit_error = true;
+		FileRep_SetPostmasterReset();		
+	}
+	
+	if (emit_error)
+	{
+		ereport(WARNING, 
+				(errcode_for_file_access(),
+				 errmsg("write error for change tracking meta file in "
+						"ChangeTracking_MarkFullResyncLockAcquired. "
+						"Change Tracking disabled : %m"),
+						errSendAlert(true)));	
+		return -1;
+	}
+
+	ChangeTracking_CloseFile(file);
 		
-	/*
-	 * Delete Change Tracking log file (if exists)
-	 * 
-	 * TODO: should ereport(ERROR) if file doesn't exist?
-	 */
-	ChangeTracking_DropLogFile();
+	/* Delete Change Tracking log file (if exists) */
+	ChangeTracking_DropLogFiles();
+	
+	return 0;
 }
 
 void
 ChangeTracking_MarkTransitionToResyncCompleted(void)
 {
 	File		file;
-	char		path[MAXPGPATH];
 	
 	LWLockAcquire(ChangeTrackingWriteLock, LW_EXCLUSIVE);
 
 	elog(LOG, "CHANGETRACKING: setting resync_transition_completed to true");
 	changeTrackingResyncMeta->resync_transition_completed = true;
-	file = ChangeTracking_OpenMetaFile();	
-	ChangeTracking_WriteMeta(file);
+	file = ChangeTracking_OpenFile(CTF_META);	
+	
+	if(ChangeTracking_WriteMeta(file) > 0)
+		ChangeTracking_HandleWriteError(CTF_META);
 
 	errno = 0;
 	
 	/* fsync meta file to disk */
 	if(FileSync(file) < 0)
-	{
-		ChangeTrackingMetaFilePath(path);
-		ereport(LOG,
-				(errcode_for_file_access(),
-				 errmsg("ERROR(filerep): could not fsync change tracking meta file \"%s\" "
-						"in ChangeTracking_MarkTransitionToResyncCompleted: %m", 
-						path)));
-		FileRep_SetState(FileRepStateFault);
-	}
+		ChangeTracking_HandleWriteError(CTF_META);
 	
-	ChangeTracking_CloseMetaFile(file);
+	ChangeTracking_CloseFile(file);
 	
 	LWLockRelease(ChangeTrackingWriteLock);
 }
@@ -2062,30 +2114,23 @@ void
 ChangeTracking_MarkTransitionToInsyncCompleted(void)
 {
 	File		file;
-	char		path[MAXPGPATH];
 	
 	LWLockAcquire(ChangeTrackingWriteLock, LW_EXCLUSIVE);
 
 	elog(LOG, "CHANGETRACKING: setting insync_transition_completed to true");
 	changeTrackingResyncMeta->insync_transition_completed = true;
-	file = ChangeTracking_OpenMetaFile();	
-	ChangeTracking_WriteMeta(file);
+	file = ChangeTracking_OpenFile(CTF_META);	
+	
+	if (ChangeTracking_WriteMeta(file) < 0)
+		ChangeTracking_HandleWriteError(CTF_META);
 
 	errno = 0;
 	
 	/* fsync meta file to disk */
 	if(FileSync(file) < 0)
-	{
-		ChangeTrackingMetaFilePath(path);
-		ereport(LOG,
-				(errcode_for_file_access(),
-				 errmsg("ERROR(filerep): could not fsync change tracking meta file \"%s\" "
-						"in ChangeTracking_MarkTransitionToInsyncCompleted: %m", 
-						path)));
-		FileRep_SetState(FileRepStateFault);
-	}
+		ChangeTracking_HandleWriteError(CTF_META);
 	
-	ChangeTracking_CloseMetaFile(file);
+	ChangeTracking_CloseFile(file);
 	
 	LWLockRelease(ChangeTrackingWriteLock);
 }
@@ -2099,7 +2144,6 @@ void
 ChangeTracking_RecordLastChangeTrackedLoc(void)
 {
 	File		file;
-	char		path[MAXPGPATH];
 	XLogRecPtr 	endResyncLSN;
 	
 	LWLockAcquire(ChangeTrackingWriteLock, LW_EXCLUSIVE);
@@ -2117,45 +2161,34 @@ ChangeTracking_RecordLastChangeTrackedLoc(void)
 	 */
 	elog(LOG, "CHANGETRACKING: setting resync lsn");
 	changeTrackingResyncMeta->resync_lsn_end = endResyncLSN;
-	file = ChangeTracking_OpenMetaFile();	
-	ChangeTracking_WriteMeta(file);
+	file = ChangeTracking_OpenFile(CTF_META);	
+	
+	if(ChangeTracking_WriteMeta(file) < 0)
+		ChangeTracking_HandleWriteError(CTF_LOG);
 
 	errno = 0;
 	
 	/* fsync meta file to disk */
 	if(FileSync(file) < 0)
-	{
-		ChangeTrackingMetaFilePath(path);
-		ereport(LOG,
-				(errcode_for_file_access(),
-				 errmsg("ERROR(filerep): could not fsync change tracking meta file \"%s\": %m", 
-						path)));
-		FileRep_SetState(FileRepStateFault);
-	}
+		ChangeTracking_HandleWriteError(CTF_META);
 	
-	ChangeTracking_CloseMetaFile(file);
+	ChangeTracking_CloseFile(file);
 			
 	/* 
 	 * log file: write the existing (non-full) buffer and fsync it 
 	 */
-	file = ChangeTracking_OpenLogFile();	
+	file = ChangeTracking_OpenFile(CTF_LOG);	
 	
 	if(changeTrackingBufStatus->recordcount > 0)
-		ChangeTracking_WriteBuffer(file);
-	
-	if(FileSync(file) < 0)
 	{
-		ChangeTrackingLogFilePath(path);
-		ereport(WARNING, 
-				(errcode_for_file_access(),
-				 errmsg("ERROR(filerep): no disk space for change tracking log file \"%s\", "
-						"change tracking disabled : %m", 
-						path)));	
-		
-		FileRep_SetState(FileRepStateFault);
+		if(ChangeTracking_WriteBuffer(file) < 0)
+			ChangeTracking_HandleWriteError(CTF_LOG);
 	}
 	
-	ChangeTracking_CloseLogFile(file);
+	if(FileSync(file) < 0)
+		ChangeTracking_HandleWriteError(CTF_LOG);
+	
+	ChangeTracking_CloseFile(file);
 
 	LWLockRelease(ChangeTrackingWriteLock);
 }
@@ -2181,7 +2214,7 @@ ChangeTracking_RetrieveLastChangeTrackedLoc(void)
 	XLogRecPtr					DummyRecPtr = {0, 0};
 	File						file;
 	
-	file = ChangeTracking_OpenMetaFile();	
+	file = ChangeTracking_OpenFile(CTF_META);	
 
 	recptr = ChangeTracking_ReadMeta(file, &rec);
 	
@@ -2214,7 +2247,7 @@ ChangeTracking_RetrieveLastChangeTrackedLoc(void)
 		elog(LOG, "CHANGETRACKING: didn't find an MD record");
 
 	
-	ChangeTracking_CloseMetaFile(file);
+	ChangeTracking_CloseFile(file);
 	
 	return false;
 }
@@ -2230,7 +2263,7 @@ ChangeTracking_RetrieveIsTransitionToInsync(void)
 	File						file;
 	bool						res = false;
 	
-	file = ChangeTracking_OpenMetaFile();	
+	file = ChangeTracking_OpenFile(CTF_META);	
 
 	recptr = ChangeTracking_ReadMeta(file, &rec);
 	
@@ -2245,7 +2278,7 @@ ChangeTracking_RetrieveIsTransitionToInsync(void)
 	else
 		elog(LOG, "CHANGETRACKING: didn't find an MD record");
 
-	ChangeTracking_CloseMetaFile(file);
+	ChangeTracking_CloseFile(file);
 	
 	return res;
 }
@@ -2271,14 +2304,14 @@ XLogRecPtr* ChangeTracking_ReadLastLocOnDisk(void)
 	
 
 	/* first find out if log file exists, if not return NULL */
-	if(!ChangeTracking_LogFileExists())
+	if(!ChangeTracking_DoesFileExist(CTF_LOG))
 		return NULL;
 	
 	
 	/* assemble our query string */
 	initStringInfo(&sqlstmt);
 	appendStringInfo(&sqlstmt, "SELECT max(xlogloc) "
-							   "FROM gp_changetracking_log()");
+							   "FROM gp_changetracking_log(%d)", CTF_LOG);
 	
 	PG_TRY();
 	{
@@ -2288,7 +2321,7 @@ XLogRecPtr* ChangeTracking_ReadLastLocOnDisk(void)
 
 		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
 		
-		SetSessionUserId(10,true); /* TODO: HACK!!! find a solution */
+		SetSessionUserId(BOOTSTRAP_SUPERUSERID,true); /* TODO: HACK!!! find a solution */
 
 		if (SPI_OK_CONNECT != SPI_connect())
 		{
@@ -2369,9 +2402,10 @@ int64 ChangeTracking_GetTotalBlocksToSync(void)
 	ResourceOwner 	save = CurrentResourceOwner;
 	MemoryContext 	oldcontext = CurrentMemoryContext;
 	
+	Assert(gp_change_tracking);
 
 	/* first find out if log file exists, if not return -1 */
-	if(!ChangeTracking_LogFileExists())
+	if(!ChangeTracking_DoesFileExist(CTF_LOG))
 		return -1;
 	
 	
@@ -2379,9 +2413,9 @@ int64 ChangeTracking_GetTotalBlocksToSync(void)
 	initStringInfo(&sqlstmt);
 	appendStringInfo(&sqlstmt, "SELECT COUNT(*) "
 							   "FROM (SELECT COUNT(*) "
-							   "      FROM gp_changetracking_log() "
+							   "      FROM gp_changetracking_log(%d) "
 							   "      GROUP BY (space, db, rel, blocknum) ) "
-							   "      AS foo");
+							   "      AS foo", CTF_LOG);
 	
 	PG_TRY();
 	{
@@ -2391,7 +2425,7 @@ int64 ChangeTracking_GetTotalBlocksToSync(void)
 
 		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
 		
-		SetSessionUserId(10,true); /* TODO: HACK!!! find a solution */
+		SetSessionUserId(BOOTSTRAP_SUPERUSERID, true); /* TODO: HACK!!! find a solution */
 
 		if (SPI_OK_CONNECT != SPI_connect())
 		{
@@ -2450,6 +2484,170 @@ int64 ChangeTracking_GetTotalBlocksToSync(void)
 }
 
 /*
+ * Switch to compact mode. This means that from now on all
+ * changetracking writes will be made into the compact
+ * file and all changetracking reads will be from it too.
+ */
+static void ChangeTracking_SwitchToCompactMode(void)
+{
+	changeTrackingBufStatus->compactmode = true;
+	changeTrackingBufStatus->bufsize = 0;
+	changeTrackingBufStatus->recordcount = 0;
+	changeTrackingBufStatus->nextwritepos = CHANGETRACKING_FILE_EOF;
+
+	/* If compact file already exists (recovery??) *must* remove it */
+	if(ChangeTracking_DoesFileExist(CTF_LOG))
+	{
+		File compact = ChangeTracking_OpenFile(CTF_LOG);
+		FileUnlink(compact);
+	}
+}
+
+int ChangeTracking_CreateCompactLogFromFull(void)
+{	
+	StringInfoData 	sqlstmt;
+	int 			ret;
+	int 			proc;
+	bool 			connected = false;
+	int64			count = 0;
+	ResourceOwner 	save = CurrentResourceOwner;
+	MemoryContext 	oldcontext = CurrentMemoryContext;	
+	
+	/* find out if full log file exists, if not return error */
+	if(!ChangeTracking_DoesFileExist(CTF_LOG))
+		return -1;
+
+	elog(LOG, "ChangeTracking started creating a compact version of the log file");
+	
+	/* assemble our query string */
+	initStringInfo(&sqlstmt);
+	
+	appendStringInfo(&sqlstmt, "SELECT space, db, rel, blocknum, max(xlogloc), persistent_tid, persistent_sn "
+							   "FROM gp_changetracking_log(%d) "
+							   "GROUP BY space, db, rel, blocknum, persistent_tid, persistent_sn ", CTF_LOG);
+
+	PG_TRY();
+	{
+
+		/* must be in a transaction in order to use SPI */
+		StartTransactionCommand();
+
+		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
+
+		SetSessionUserId(BOOTSTRAP_SUPERUSERID, true); /* TODO: HACK!!! find a solution */
+
+		if (SPI_OK_CONNECT != SPI_connect())
+		{
+			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+							errmsg("Unable to obtain change tracking information from segment database."),
+							errdetail("SPI_connect failed in ChangeTracking_CreateCompactLogFromFull()")));
+		}
+		connected = true;
+
+		/* Do the query. */
+		ret = SPI_execute(sqlstmt.data, true, 0);
+		proc = SPI_processed;
+		
+		ChangeTracking_SwitchToCompactMode();
+		
+		if (ret > 0 && SPI_tuptable != NULL)
+		{
+			TupleDesc 		tupdesc = SPI_tuptable->tupdesc;
+			SPITupleTable*	tuptable = SPI_tuptable;
+			MemoryContext 	cxt_save;
+			int 			i;
+
+			for (i = 0; i < proc; i++)
+			{
+				HeapTuple 	tuple = tuptable->vals[i];
+				RelFileNode relfile;
+				
+				BlockNumber 	blocknum;
+				XLogRecPtr*		endlsn;
+				ItemPointer		persistentTid;
+				int64 			persistentSerialNum;
+				char*			str_space;
+				char*			str_db;
+				char*			str_rel;
+				char*			str_blocknum;
+				char*			str_endlsn;
+				char*			str_tid;
+				char*			str_sn;
+	
+				/* get result columns from SPI (as strings) */
+				str_space = SPI_getvalue(tuple, tupdesc, 1);
+				str_db = SPI_getvalue(tuple, tupdesc, 2);
+				str_rel = SPI_getvalue(tuple, tupdesc, 3);
+				str_blocknum = SPI_getvalue(tuple, tupdesc, 4);
+				str_endlsn = SPI_getvalue(tuple, tupdesc, 5);
+				str_tid = SPI_getvalue(tuple, tupdesc, 6);
+				str_sn = SPI_getvalue(tuple, tupdesc, 7);
+				
+				//elog(NOTICE,"tuple %d: %s %s %s block %s lsn %s", i, str_space, str_db, str_rel, str_blocknum, str_endlsn);
+	
+				/* use our own context so that SPI won't free our stuff later */
+				cxt_save = MemoryContextSwitchTo(oldcontext);
+	
+				/* convert to desired data type */
+				relfile.spcNode = DatumGetObjectId(DirectFunctionCall1(oidin, CStringGetDatum(str_space)));
+				relfile.dbNode = DatumGetObjectId(DirectFunctionCall1(oidin, CStringGetDatum(str_db)));
+				relfile.relNode = DatumGetObjectId(DirectFunctionCall1(oidin, CStringGetDatum(str_rel)));
+				blocknum = DatumGetUInt32(DirectFunctionCall1(int4in, CStringGetDatum(str_blocknum)));
+				endlsn = (XLogRecPtr*) DatumGetPointer(DirectFunctionCall1(gpxloglocin, CStringGetDatum(str_endlsn)));
+				persistentTid = DatumGetPointer(DirectFunctionCall1(tidin, CStringGetDatum(str_tid)));
+				persistentSerialNum = DatumGetInt64(DirectFunctionCall1(int8in, CStringGetDatum(str_sn)));
+	
+				/* write this record to the compact file */
+				ChangeTracking_AddBufferPoolChange(endlsn, 
+												   &relfile, 
+												   blocknum, 
+												   *persistentTid, 
+												   persistentSerialNum);
+				
+				count++;
+
+				MemoryContextSwitchTo(cxt_save);
+			}
+		}
+		
+		connected = false;
+		SPI_finish();
+		
+		CommitTransactionCommand();
+	}
+
+	/* Clean up in case of error. */
+	PG_CATCH();
+	{
+		if (connected)
+			SPI_finish();
+
+		AbortCurrentTransaction();
+		
+		/* Carry on with error handling. */
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	/* done writing to the compact file. must fsync now */
+	ChangeTracking_FsyncDataIntoLog();
+	
+	elog(LOG, "ChangeTracking done creating the compact version. reduced to " INT64_FORMAT " records", count);
+	
+	MemoryContextSwitchTo(oldcontext);
+	CurrentResourceOwner = save;
+
+	pfree(sqlstmt.data);
+
+	return 0;
+}
+
+bool ChangeTracking_IsFileModeCompact(void)
+{
+	return changeTrackingBufStatus->compactmode;
+}
+
+/*
  * Any RM will not change more than 5 blocks per xlog record. The only exception
  * is a GIST RM SPLIT xlog record, which has an undefined number of blocks to change.
  * This function will return the maximum number of change infos that could occur, so
@@ -2463,4 +2661,23 @@ int ChangeTracking_GetInfoArrayDesiredMaxLength(RmgrId rmid, uint8 info)
 	int		arrLen = (!gist_split ? MaxRelChangeInfoReturns : MaxRelChangeInfoReturns_GistSplit);
 	
 	return arrLen;
+}
+
+static void ChangeTracking_HandleWriteError(CTFType ft)
+{
+
+	if(ChangeTracking_MarkFullResyncLockAcquired() != -1)
+	{
+		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
+		
+		ereport(WARNING, 
+				(errcode_for_file_access(),
+				 errmsg("write error for change tracking %s file, "
+						"change tracking disabled : %m", 
+						(ft == CTF_LOG ? ((ChangeTracking_IsFileModeCompact() ? 
+										"compact log" : "full log")) : 
+										"meta")),
+				 errSendAlert(true)));	
+	}
+	
 }

@@ -170,7 +170,7 @@ extern void PersistentRelation_Dropped(
 	int64				persistentSerialNum);
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
-extern void PersistentRelation_MarkBufPoolRelationPhysicallyTruncated(
+extern void PersistentRelation_MarkBufPoolRelationForScanIncrementalResync(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the created relation. */
 

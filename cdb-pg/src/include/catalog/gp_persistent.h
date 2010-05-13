@@ -47,35 +47,41 @@ CATALOG(gp_persistent_relation_node,5090) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 	int4		segment_file_num;
 	int2		relation_storage_manager;
 	int2		persistent_state;
+	int8		create_mirror_data_loss_tracking_session_num;
 	int2		mirror_existence_state;
 	int2		mirror_data_synchronization_state;
-	bool		mirror_bufpool_physically_truncated;
+	bool		mirror_bufpool_marked_for_scan_incremental_resync;
+	int8		mirror_bufpool_resync_changed_page_count;
 	gpxlogloc	mirror_bufpool_resync_ckpt_loc;
 	int4		mirror_bufpool_resync_ckpt_block_num;
 	int8		mirror_append_only_loss_eof;
 	int8		mirror_append_only_new_eof;
+	int4		reserved;
 	int4		parent_xid;
 	int8		persistent_serial_num;
 	tid			previous_free_tid;
 } FormData_gp_persistent_relation_node;
 
-#define Natts_gp_persistent_relation_node				    				  16
-#define Anum_gp_persistent_relation_node_tablespace_oid  					  1
-#define Anum_gp_persistent_relation_node_database_oid   					  2
-#define Anum_gp_persistent_relation_node_relfilenode_oid					  3
-#define Anum_gp_persistent_relation_node_segment_file_num					  4
-#define Anum_gp_persistent_relation_node_relation_storage_manager			  5
-#define Anum_gp_persistent_relation_node_persistent_state					  6
-#define Anum_gp_persistent_relation_node_mirror_existence_state				  7
-#define Anum_gp_persistent_relation_node_mirror_data_synchronization_state	  8
-#define Anum_gp_persistent_relation_node_mirror_bufpool_physically_truncated  9
-#define Anum_gp_persistent_relation_node_mirror_bufpool_resync_ckpt_loc		  10
-#define Anum_gp_persistent_relation_node_mirror_bufpool_resync_ckpt_block_num 11
-#define Anum_gp_persistent_relation_node_mirror_append_only_loss_eof		  12
-#define Anum_gp_persistent_relation_node_mirror_append_only_new_eof			  13
-#define Anum_gp_persistent_relation_node_parent_xid  						  14
-#define Anum_gp_persistent_relation_node_persistent_serial_num     			  15
-#define Anum_gp_persistent_relation_node_previous_free_tid  				  16
+#define Natts_gp_persistent_relation_node				    				  					19
+#define Anum_gp_persistent_relation_node_tablespace_oid  					  					1
+#define Anum_gp_persistent_relation_node_database_oid   					  					2
+#define Anum_gp_persistent_relation_node_relfilenode_oid					  					3
+#define Anum_gp_persistent_relation_node_segment_file_num					  					4
+#define Anum_gp_persistent_relation_node_relation_storage_manager			  					5
+#define Anum_gp_persistent_relation_node_persistent_state					  					6
+#define Anum_gp_persistent_relation_node_create_mirror_data_loss_tracking_session_num	  		7
+#define Anum_gp_persistent_relation_node_mirror_existence_state				  					8
+#define Anum_gp_persistent_relation_node_mirror_data_synchronization_state	  					9
+#define Anum_gp_persistent_relation_node_mirror_bufpool_marked_for_scan_incremental_resync 		10
+#define Anum_gp_persistent_relation_node_mirror_bufpool_resync_changed_page_count				11
+#define Anum_gp_persistent_relation_node_mirror_bufpool_resync_ckpt_loc		  					12
+#define Anum_gp_persistent_relation_node_mirror_bufpool_resync_ckpt_block_num 					13
+#define Anum_gp_persistent_relation_node_mirror_append_only_loss_eof		  					14
+#define Anum_gp_persistent_relation_node_mirror_append_only_new_eof			  					15
+#define Anum_gp_persistent_relation_node_reserved	  											16
+#define Anum_gp_persistent_relation_node_parent_xid  						  					17
+#define Anum_gp_persistent_relation_node_persistent_serial_num     			  					18
+#define Anum_gp_persistent_relation_node_previous_free_tid  				  					19
  
 typedef FormData_gp_persistent_relation_node *Form_gp_persistent_relation_node;
 
@@ -87,22 +93,25 @@ typedef FormData_gp_persistent_relation_node *Form_gp_persistent_relation_node;
  *  pg_attribute.h]
  */
 #define Schema_gp_persistent_relation_node \
-{ GpPersistentRelationNodeRelationId, {"tablespace_oid"}, 						26, -1,	4, 1, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"database_oid"}, 						26, -1,	4, 2, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"relfilenode_oid"}, 						26, -1,	4, 3, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"segment_file_num"}, 					23, -1, 4, 4, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"relation_storage_manager"},				21, -1, 2, 5, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"persistent_state"}, 					21, -1, 2, 6, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"mirror_existence_state"}, 				21, -1, 2, 7, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"mirror_data_synchronization_state"},	21, -1, 2, 8, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"mirror_bufpool_physically_truncated"},	16, -1, 1, 9, 0, -1, -1, true, 'p', 'c', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"mirror_bufpool_resync_ckpt_loc"},		3310, -1, 8, 10, 0, -1, -1, false, 'p', 'i', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"mirror_bufpool_resync_ckpt_block_num"},	23, -1, 4, 11, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"mirror_append_only_loss_eof"},			20, -1, 8, 12, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"mirror_append_only_new_eof"},			20, -1, 8, 13, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"parent_xid"},							23, -1, 4, 14, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"persistent_serial_num"},				20, -1, 8, 15, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"previous_free_tid"},					27, -1, 6, 16, 0, -1, -1, false, 'p', 's', true, false, false, true, 0 }
+{ GpPersistentRelationNodeRelationId, {"tablespace_oid"}, 										26, -1,	4, 1, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"database_oid"}, 										26, -1,	4, 2, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"relfilenode_oid"}, 										26, -1,	4, 3, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"segment_file_num"}, 									23, -1, 4, 4, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"relation_storage_manager"},								21, -1, 2, 5, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"persistent_state"}, 									21, -1, 2, 6, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"create_mirror_data_loss_tracking_session_num"}, 		20, -1, 8, 7, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"mirror_existence_state"}, 								21, -1, 2, 8, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"mirror_data_synchronization_state"},					21, -1, 2, 9, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"mirror_bufpool_marked_for_scan_incremental_resync"},	20, -1, 8, 18, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"mirror_bufpool_resync_changed_page_count"}, 			23, -1, 4, 11, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"mirror_bufpool_resync_ckpt_loc"},						3310, -1, 8, 12, 0, -1, -1, false, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"mirror_bufpool_resync_ckpt_block_num"},					23, -1, 4, 13, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"mirror_append_only_loss_eof"},							20, -1, 8, 14, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"mirror_append_only_new_eof"},							20, -1, 8, 15, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"reserved"},												23, -1, 4, 16, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"parent_xid"},											23, -1, 4, 17, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"persistent_serial_num"},								20, -1, 8, 18, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"previous_free_tid"},									27, -1, 6, 19, 0, -1, -1, false, 'p', 's', true, false, false, true, 0 }
 
 /*
  * gp_persistent_relation_node table values for FormData_pg_class.
@@ -126,15 +135,17 @@ CATALOG(gp_relation_node,5094) BKI_WITHOUT_OIDS
 {
 	Oid			relfilenode_oid;
 	int4		segment_file_num;
+	int8		create_mirror_data_loss_tracking_session_num;
 	tid			persistent_tid;
 	int8		persistent_serial_num;
 } FormData_gp_relation_node;
 
-#define Natts_gp_relation_node				    		4
-#define Anum_gp_relation_node_relfilenode_oid			1
-#define Anum_gp_relation_node_segment_file_num			2
-#define Anum_gp_relation_node_persistent_tid      		3
-#define Anum_gp_relation_node_persistent_serial_num     4
+#define Natts_gp_relation_node				    							5
+#define Anum_gp_relation_node_relfilenode_oid								1
+#define Anum_gp_relation_node_segment_file_num								2
+#define Anum_gp_relation_node_create_mirror_data_loss_tracking_session_num	3
+#define Anum_gp_relation_node_persistent_tid      							4
+#define Anum_gp_relation_node_persistent_serial_num     					5
  
 typedef FormData_gp_relation_node *Form_gp_relation_node;
 
@@ -145,10 +156,11 @@ typedef FormData_gp_relation_node *Form_gp_relation_node;
  *  pg_attribute.h]
  */
 #define Schema_gp_relation_node \
-{ GpRelationNodeRelationId, {"relfilenode_oid"}, 		26, -1,	4, 1, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpRelationNodeRelationId, {"segment_file_num"}, 		23, -1, 4, 2, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpRelationNodeRelationId, {"persistent_tid"},			27, -1, 6, 3, 0, -1, -1, false, 'p', 's', true, false, false, true, 0 }, \
-{ GpRelationNodeRelationId, {"persistent_serial_num"},	20, -1, 8, 4, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }
+{ GpRelationNodeRelationId, {"relfilenode_oid"}, 									26, -1,	4, 1, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpRelationNodeRelationId, {"segment_file_num"}, 									23, -1, 4, 2, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpRelationNodeRelationId, {"create_mirror_data_loss_tracking_session_num"}, 		20, -1, 8, 3, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
+{ GpRelationNodeRelationId, {"persistent_tid"},										27, -1, 6, 4, 0, -1, -1, false, 'p', 's', true, false, false, true, 0 }, \
+{ GpRelationNodeRelationId, {"persistent_serial_num"},								20, -1, 8, 5, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }
 
 /*
  * gp_relation_node table values for FormData_pg_class.
@@ -172,20 +184,24 @@ CATALOG(gp_persistent_database_node,5091) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 	Oid			tablespace_oid;
 	Oid			database_oid;
 	int2		persistent_state;
+	int8		create_mirror_data_loss_tracking_session_num;
 	int2		mirror_existence_state;
+	int4		reserved;
 	int4		parent_xid;
 	int8		persistent_serial_num;
 	tid			previous_free_tid;
 } FormData_gp_persistent_database_node;
 
-#define Natts_gp_persistent_database_node				    	7
-#define Anum_gp_persistent_database_node_tablespace_oid  		1
-#define Anum_gp_persistent_database_node_database_oid   		2
-#define Anum_gp_persistent_database_node_persistent_state      	3
-#define Anum_gp_persistent_database_node_mirror_existence_state 4
-#define Anum_gp_persistent_database_node_parent_xid  			5
-#define Anum_gp_persistent_database_node_persistent_serial_num  6
-#define Anum_gp_persistent_database_node_previous_free_tid	  	7
+#define Natts_gp_persistent_database_node				    							9
+#define Anum_gp_persistent_database_node_tablespace_oid  								1
+#define Anum_gp_persistent_database_node_database_oid   								2
+#define Anum_gp_persistent_database_node_persistent_state      							3
+#define Anum_gp_persistent_database_node_create_mirror_data_loss_tracking_session_num	4
+#define Anum_gp_persistent_database_node_mirror_existence_state 						5
+#define Anum_gp_persistent_database_node_reserved  										6
+#define Anum_gp_persistent_database_node_parent_xid  									7
+#define Anum_gp_persistent_database_node_persistent_serial_num  						8
+#define Anum_gp_persistent_database_node_previous_free_tid	  							9
  
 typedef FormData_gp_persistent_database_node *Form_gp_persistent_database_node;
 
@@ -197,13 +213,15 @@ typedef FormData_gp_persistent_database_node *Form_gp_persistent_database_node;
  *  pg_attribute.h]
  */
 #define Schema_gp_persistent_database_node \
-{ GpPersistentDatabaseNodeRelationId, {"tablespace_oid"}, 			26, -1,	4, 1, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpPersistentDatabaseNodeRelationId, {"database_oid"}, 			26, -1,	4, 2, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpPersistentDatabaseNodeRelationId, {"persistent_state"}, 		21, -1, 2, 3, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
-{ GpPersistentDatabaseNodeRelationId, {"mirror_existence_state"}, 	21, -1, 2, 4, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
-{ GpPersistentDatabaseNodeRelationId, {"parent_xid"},				23, -1, 4, 5, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpPersistentDatabaseNodeRelationId, {"persistent_serial_num"},	20, -1, 8, 6, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
-{ GpPersistentDatabaseNodeRelationId, {"previous_free_tid"},		27, -1, 6, 7, 0, -1, -1, false, 'p', 's', true, false, false, true, 0 }
+{ GpPersistentDatabaseNodeRelationId, {"tablespace_oid"}, 									26, -1,	4, 1, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentDatabaseNodeRelationId, {"database_oid"}, 									26, -1,	4, 2, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentDatabaseNodeRelationId, {"persistent_state"}, 								21, -1, 2, 3, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
+{ GpPersistentDatabaseNodeRelationId, {"create_mirror_data_loss_tracking_session_num"},		20, -1, 8, 4, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
+{ GpPersistentDatabaseNodeRelationId, {"mirror_existence_state"}, 							21, -1, 2, 5, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
+{ GpPersistentDatabaseNodeRelationId, {"reserved"},											23, -1, 4, 6, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentDatabaseNodeRelationId, {"parent_xid"},										23, -1, 4, 7, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentDatabaseNodeRelationId, {"persistent_serial_num"},							20, -1, 8, 8, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
+{ GpPersistentDatabaseNodeRelationId, {"previous_free_tid"},								27, -1, 6, 9, 0, -1, -1, false, 'p', 's', true, false, false, true, 0 }
 
 /*
  * gp_persistent_database_node table values for FormData_pg_class.
@@ -227,20 +245,24 @@ CATALOG(gp_persistent_tablespace_node,5092) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 	Oid			filespace_oid;
 	Oid			tablespace_oid;
 	int2		persistent_state;
+	int8		create_mirror_data_loss_tracking_session_num;
 	int2		mirror_existence_state;
+	int4		reserved;
 	int4		parent_xid;
 	int8		persistent_serial_num;
 	tid			previous_free_tid;
 } FormData_gp_persistent_tablespace_node;
 
-#define Natts_gp_persistent_tablespace_node				    		7
-#define Anum_gp_persistent_tablespace_node_filespace_oid  			1
-#define Anum_gp_persistent_tablespace_node_tablespace_oid  			2
-#define Anum_gp_persistent_tablespace_node_persistent_state      	3
-#define Anum_gp_persistent_tablespace_node_mirror_existence_state   4
-#define Anum_gp_persistent_tablespace_node_parent_xid  				5
-#define Anum_gp_persistent_tablespace_node_persistent_serial_num    6
-#define Anum_gp_persistent_tablespace_node_previous_free_tid		7
+#define Natts_gp_persistent_tablespace_node				    								9
+#define Anum_gp_persistent_tablespace_node_filespace_oid  									1
+#define Anum_gp_persistent_tablespace_node_tablespace_oid  									2
+#define Anum_gp_persistent_tablespace_node_persistent_state      							3
+#define Anum_gp_persistent_tablespace_node_create_mirror_data_loss_tracking_session_num		4
+#define Anum_gp_persistent_tablespace_node_mirror_existence_state   						5
+#define Anum_gp_persistent_tablespace_node_reserved				    						6
+#define Anum_gp_persistent_tablespace_node_parent_xid  										7
+#define Anum_gp_persistent_tablespace_node_persistent_serial_num    						8
+#define Anum_gp_persistent_tablespace_node_previous_free_tid								9
  
 typedef FormData_gp_persistent_tablespace_node *Form_gp_persistent_tablespace_node;
 
@@ -252,13 +274,15 @@ typedef FormData_gp_persistent_tablespace_node *Form_gp_persistent_tablespace_no
  *  pg_attribute.h]
  */
 #define Schema_gp_persistent_tablespace_node \
-{ GpPersistentTablespaceNodeRelationId, {"filespace_oid"},			26, -1, 4, 1, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpPersistentTablespaceNodeRelationId, {"tablespace_oid"}, 		26, -1,	4, 2, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpPersistentTablespaceNodeRelationId, {"persistent_state"},		21, -1, 2, 3, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
-{ GpPersistentTablespaceNodeRelationId, {"mirror_existence_state"},	21, -1, 2, 4, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
-{ GpPersistentTablespaceNodeRelationId, {"parent_xid"},				23, -1, 4, 5, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpPersistentTablespaceNodeRelationId, {"persistent_serial_num"},	20, -1, 8, 6, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
-{ GpPersistentTablespaceNodeRelationId, {"previous_free_tid"},		27, -1, 6, 7, 0, -1, -1, false, 'p', 's', true, false, false, true, 0 }
+{ GpPersistentTablespaceNodeRelationId, {"filespace_oid"},									26, -1, 4, 1, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentTablespaceNodeRelationId, {"tablespace_oid"}, 								26, -1,	4, 2, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentTablespaceNodeRelationId, {"persistent_state"},								21, -1, 2, 3, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
+{ GpPersistentTablespaceNodeRelationId, {"create_mirror_data_loss_tracking_session_num"}, 	20, -1, 8, 4, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
+{ GpPersistentTablespaceNodeRelationId, {"mirror_existence_state"},							21, -1, 2, 5, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
+{ GpPersistentTablespaceNodeRelationId, {"reserved"}, 										23, -1, 4, 6, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentTablespaceNodeRelationId, {"parent_xid"},										23, -1, 4, 7, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentTablespaceNodeRelationId, {"persistent_serial_num"},							20, -1, 8, 8, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
+{ GpPersistentTablespaceNodeRelationId, {"previous_free_tid"},								27, -1, 6, 9, 0, -1, -1, false, 'p', 's', true, false, false, true, 0 }
 
 /*
  * gp_persistent_tablespace_node table values for FormData_pg_class.
@@ -285,23 +309,27 @@ CATALOG(gp_persistent_filespace_node,5093) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 	int2		db_id_2;
 	text		location_2;
 	int2		persistent_state;
+	int8		create_mirror_data_loss_tracking_session_num;
 	int2		mirror_existence_state;
+	int4		reserved;
 	int4		parent_xid;
 	int8		persistent_serial_num;
 	tid			previous_free_tid;
 } FormData_gp_persistent_filespace_node;
 
-#define Natts_gp_persistent_filespace_node				    	 10
-#define Anum_gp_persistent_filespace_node_filespace_oid  		 1
-#define Anum_gp_persistent_filespace_node_db_id_1  				 2
-#define Anum_gp_persistent_filespace_node_location_1			 3
-#define Anum_gp_persistent_filespace_node_db_id_2  				 4
-#define Anum_gp_persistent_filespace_node_location_2			 5
-#define Anum_gp_persistent_filespace_node_persistent_state       6
-#define Anum_gp_persistent_filespace_node_mirror_existence_state 7
-#define Anum_gp_persistent_filespace_node_parent_xid  			 8
-#define Anum_gp_persistent_filespace_node_persistent_serial_num  9
-#define Anum_gp_persistent_filespace_node_previous_free_tid		 10
+#define Natts_gp_persistent_filespace_node				    	 						12
+#define Anum_gp_persistent_filespace_node_filespace_oid  		 						1
+#define Anum_gp_persistent_filespace_node_db_id_1  				 						2
+#define Anum_gp_persistent_filespace_node_location_1			 						3
+#define Anum_gp_persistent_filespace_node_db_id_2  				 						4
+#define Anum_gp_persistent_filespace_node_location_2			 						5
+#define Anum_gp_persistent_filespace_node_persistent_state       						6
+#define Anum_gp_persistent_filespace_node_create_mirror_data_loss_tracking_session_num  7
+#define Anum_gp_persistent_filespace_node_mirror_existence_state 						8
+#define Anum_gp_persistent_filespace_node_reserved				 						9
+#define Anum_gp_persistent_filespace_node_parent_xid  			 						10
+#define Anum_gp_persistent_filespace_node_persistent_serial_num  						11
+#define Anum_gp_persistent_filespace_node_previous_free_tid		 						12
  
 typedef FormData_gp_persistent_filespace_node *Form_gp_persistent_filespace_node;
 
@@ -315,16 +343,18 @@ typedef FormData_gp_persistent_filespace_node *Form_gp_persistent_filespace_node
  * NOTE: The use of type text triggers all columns afterward to be NOT NULL....
  */
 #define Schema_gp_persistent_filespace_node \
-{ GpPersistentFilespaceNodeRelationId, {"filespace_oid"}, 			26, -1,	4, 1, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ GpPersistentFilespaceNodeRelationId, {"db_id_1"},					21, -1, 2, 2, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
-{ GpPersistentFilespaceNodeRelationId, {"location_1"},				25, -1, -1, 3, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
-{ GpPersistentFilespaceNodeRelationId, {"db_id_2"}, 				21, -1, 2, 4, 0, -1, -1, true, 'p', 's', false, false, false, true, 0 }, \
-{ GpPersistentFilespaceNodeRelationId, {"location_2"},				25, -1, -1, 5, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
-{ GpPersistentFilespaceNodeRelationId, {"persistent_state"},		21, -1, 2, 6, 0, -1, -1, true, 'p', 's', false, false, false, true, 0 }, \
-{ GpPersistentFilespaceNodeRelationId, {"mirror_existence_state"},	21, -1, 2, 7, 0, -1, -1, true, 'p', 's', false, false, false, true, 0 }, \
-{ GpPersistentFilespaceNodeRelationId, {"parent_xid"},				23, -1, 4, 8, 0, -1, -1, true, 'p', 'i', false, false, false, true, 0 }, \
-{ GpPersistentFilespaceNodeRelationId, {"persistent_serial_num"},	20, -1, 8, 9, 0, -1, -1, true, 'p', 'd', false, false, false, true, 0 }, \
-{ GpPersistentFilespaceNodeRelationId, {"previous_free_tid"},		27, -1, 6, 10, 0, -1, -1, false, 'p', 's', false, false, false, true, 0 }
+{ GpPersistentFilespaceNodeRelationId, {"filespace_oid"}, 									26, -1,	4, 1, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentFilespaceNodeRelationId, {"db_id_1"},											21, -1, 2, 2, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
+{ GpPersistentFilespaceNodeRelationId, {"location_1"},										25, -1, -1, 3, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
+{ GpPersistentFilespaceNodeRelationId, {"db_id_2"}, 										21, -1, 2, 4, 0, -1, -1, true, 'p', 's', false, false, false, true, 0 }, \
+{ GpPersistentFilespaceNodeRelationId, {"location_2"},										25, -1, -1, 5, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
+{ GpPersistentFilespaceNodeRelationId, {"persistent_state"},								21, -1, 2, 6, 0, -1, -1, true, 'p', 's', false, false, false, true, 0 }, \
+{ GpPersistentFilespaceNodeRelationId, {"create_mirror_data_loss_tracking_session_num"},	20, -1, 8, 7, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
+{ GpPersistentFilespaceNodeRelationId, {"mirror_existence_state"},							21, -1, 2, 8, 0, -1, -1, true, 'p', 's', false, false, false, true, 0 }, \
+{ GpPersistentFilespaceNodeRelationId, {"reserved"},										23, -1, 4, 9, 0, -1, -1, true, 'p', 'i', false, false, false, true, 0 }, \
+{ GpPersistentFilespaceNodeRelationId, {"parent_xid"},										23, -1, 4, 10, 0, -1, -1, true, 'p', 'i', false, false, false, true, 0 }, \
+{ GpPersistentFilespaceNodeRelationId, {"persistent_serial_num"},							20, -1, 8, 11, 0, -1, -1, true, 'p', 'd', false, false, false, true, 0 }, \
+{ GpPersistentFilespaceNodeRelationId, {"previous_free_tid"},								27, -1, 6, 12, 0, -1, -1, false, 'p', 's', false, false, false, true, 0 }
 
 /*
  * gp_persistent_filespace_node table values for FormData_pg_class.
@@ -383,44 +413,50 @@ inline static bool GpPersistent_SkipXLogInfo(
 
 
 extern void GpPersistentRelationNode_GetValues(
-	Datum							*values,
+	Datum									*values,
 
-	Oid 							*tablespaceOid,
-	Oid 							*databaseOid,
-	Oid 							*relfilenodeOid,
-	int32							*segmentFileNum,
-	PersistentFileSysRelStorageMgr	*relationStorageManager,
-	PersistentFileSysState			*persistentState,
-	MirroredObjectExistenceState	*mirrorExistenceState,
-	MirroredRelDataSynchronizationState *mirrorDataSynchronizationState,
-	bool							*mirrorBufpoolPhysicallyTruncated,
-	XLogRecPtr						*mirrorBufpoolResyncCkptLoc,
-	BlockNumber						*mirrorBufpoolResyncCkptBlockNum,
-	int64							*mirrorAppendOnlyLossEof,
-	int64							*mirrorAppendOnlyNewEof,
-	TransactionId					*parentXid,
-	int64							*serialNum,
-	ItemPointerData 				*previousFreeTid);
+	Oid 									*tablespaceOid,
+	Oid 									*databaseOid,
+	Oid 									*relfilenodeOid,
+	int32									*segmentFileNum,
+	PersistentFileSysRelStorageMgr			*relationStorageManager,
+	PersistentFileSysState					*persistentState,
+	int64									*createMirrorDataLossTrackingSessionNum,
+	MirroredObjectExistenceState			*mirrorExistenceState,
+	MirroredRelDataSynchronizationState 	*mirrorDataSynchronizationState,
+	bool									*mirrorBufpoolMarkedForScanIncrementalResync,
+	int64									*mirrorBufpoolResyncChangedPageCount,
+	XLogRecPtr								*mirrorBufpoolResyncCkptLoc,
+	BlockNumber								*mirrorBufpoolResyncCkptBlockNum,
+	int64									*mirrorAppendOnlyLossEof,
+	int64									*mirrorAppendOnlyNewEof,
+	int32									*reserved,
+	TransactionId							*parentXid,
+	int64									*persistentSerialNum,
+	ItemPointerData 						*previousFreeTid);
 
 extern void GpPersistentRelationNode_SetDatumValues(
-	Datum							*values,
+	Datum									*values,
 
-	Oid 							tablespaceOid,
-	Oid 							databaseOid,
-	Oid 							relfilenodeOid,
-	int32							segmentFileNum,
-	PersistentFileSysRelStorageMgr	relationStorageManager,
-	PersistentFileSysState			persistentState,
-	MirroredObjectExistenceState	mirrorExistenceState,
-	MirroredRelDataSynchronizationState mirrorDataSynchronizationState,
-	bool							mirrorBufpoolPhysicallyTruncated,
-	XLogRecPtr						*mirrorBufpoolResyncCkptLoc,
-	BlockNumber						mirrorBufpoolResyncCkptBlockNum,
-	int64							mirrorAppendOnlyLossEof,
-	int64							mirrorAppendOnlyNewEof,
-	TransactionId					parentXid,
-	int64							serialNum,
-	ItemPointerData 				*previousFreeTid);
+	Oid 									tablespaceOid,
+	Oid 									databaseOid,
+	Oid 									relfilenodeOid,
+	int32									segmentFileNum,
+	PersistentFileSysRelStorageMgr			relationStorageManager,
+	PersistentFileSysState					persistentState,
+	int64									createMirrorDataLossTrackingSessionNum,
+	MirroredObjectExistenceState			mirrorExistenceState,
+	MirroredRelDataSynchronizationState 	mirrorDataSynchronizationState,
+	bool									mirrorBufpoolMarkedForScanIncrementalResync,
+	int64									mirrorBufpoolResyncChangedPageCount,
+	XLogRecPtr								*mirrorBufpoolResyncCkptLoc,
+	BlockNumber								mirrorBufpoolResyncCkptBlockNum,
+	int64									mirrorAppendOnlyLossEof,
+	int64									mirrorAppendOnlyNewEof,
+	int32									reserved,
+	TransactionId							parentXid,
+	int64									persistentSerialNum,
+	ItemPointerData 						*previousFreeTid);
 
 extern void GpPersistentDatabaseNode_GetValues(
 	Datum							*values,
@@ -428,9 +464,11 @@ extern void GpPersistentDatabaseNode_GetValues(
 	Oid 							*tablespaceOid,
 	Oid 							*databaseOid,
 	PersistentFileSysState			*persistentState,
+	int64							*createMirrorDataLossTrackingSessionNum,
 	MirroredObjectExistenceState 	*mirrorExistenceState,
+	int32							*reserved,
 	TransactionId					*parentXid,
-	int64							*serialNum,
+	int64							*persistentSerialNum,
 	ItemPointerData 				*previousFreeTid);
 
 extern void GpPersistentDatabaseNode_SetDatumValues(
@@ -439,9 +477,11 @@ extern void GpPersistentDatabaseNode_SetDatumValues(
 	Oid 							tablespaceOid,
 	Oid 							databaseOid,
 	PersistentFileSysState			persistentState,
+	int64							createMirrorDataLossTrackingSessionNum,
 	MirroredObjectExistenceState	mirrorExistenceState,
+	int32							reserved,
 	TransactionId					parentXid,
-	int64							serialNum,
+	int64							persistentSerialNum,
 	ItemPointerData 				*previousFreeTid);
 
 extern void GpPersistentTablespaceNode_GetValues(
@@ -450,9 +490,11 @@ extern void GpPersistentTablespaceNode_GetValues(
 	Oid 							*filespaceOid,
 	Oid 							*tablespaceOid,
 	PersistentFileSysState			*persistentState,
+	int64							*createMirrorDataLossTrackingSessionNum,
 	MirroredObjectExistenceState	*mirrorExistenceState,
+	int32							*reserved,
 	TransactionId					*parentXid,
-	int64							*serialNum,
+	int64							*persistentSerialNum,
 	ItemPointerData 				*previousFreeTid);
 
 extern void GpPersistentTablespaceNode_SetDatumValues(
@@ -461,9 +503,11 @@ extern void GpPersistentTablespaceNode_SetDatumValues(
 	Oid 							filespaceOid,
 	Oid 							tablespaceOid,
 	PersistentFileSysState			persistentState,
+	int64							createMirrorDataLossTrackingSessionNum,
 	MirroredObjectExistenceState	mirrorExistenceState,
+	int32							reserved,
 	TransactionId					parentXid,
-	int64							serialNum,
+	int64							persistentSerialNum,
 	ItemPointerData 				*previousFreeTid);
 
 extern void GpPersistentFilespaceNode_GetValues(
@@ -475,9 +519,11 @@ extern void GpPersistentFilespaceNode_GetValues(
 	int16							*dbId2,
 	char							locationBlankPadded2[FilespaceLocationBlankPaddedWithNullTermLen],
 	PersistentFileSysState			*persistentState,
+	int64							*createMirrorDataLossTrackingSessionNum,
 	MirroredObjectExistenceState	*mirrorExistenceState,
+	int32							*reserved,
 	TransactionId					*parentXid,
-	int64							*serialNum,
+	int64							*persistentSerialNum,
 	ItemPointerData 				*previousFreeTid);
 
 extern void GpPersistentFilespaceNode_SetDatumValues(
@@ -489,9 +535,11 @@ extern void GpPersistentFilespaceNode_SetDatumValues(
 	int16							dbId2,
 	char							locationBlankPadded2[FilespaceLocationBlankPaddedWithNullTermLen],
 	PersistentFileSysState			persistentState,
+	int64							createMirrorDataLossTrackingSessionNum,
 	MirroredObjectExistenceState	mirrorExistenceState,
+	int32							reserved,
 	TransactionId					parentXid,
-	int64							serialNum,
+	int64							persistentSerialNum,
 	ItemPointerData 				*previousFreeTid);
 
 extern void GpPersistent_GetCommonValues(
@@ -509,6 +557,7 @@ extern void GpRelationNode_GetValues(
 
 	Oid 							*relfilenodeOid,
 	int32							*segmentFileNum,
+	int64							*createMirrorDataLossTrackingSessionNum,
 	ItemPointer						persistentTid,
 	int64							*persistentSerialNum);
 
@@ -517,6 +566,7 @@ extern void GpRelationNode_SetDatumValues(
 
 	Oid 							relfilenodeOid,
 	int32							segmentFileNum,
+	int64							createMirrorDataLossTrackingSessionNum,
 	ItemPointer		 				persistentTid,
 	int64							persistentSerialNum);
 

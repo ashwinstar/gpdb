@@ -212,7 +212,7 @@ extern void PersistentFileSysObj_EndXactDrop(
 
 	int64						persistentSerialNum,
 
-	bool						abortingCreate);
+	bool						ignoreNonExistence);
 
 extern void PersistentFileSysObj_EndXactAction(
 	PersistentEndXactRecObjects 	*persistentObjects,
@@ -232,7 +232,7 @@ extern void PersistentFileSysObj_ChangeMirrorExistenceState(
 
 	bool							flushToXLog);
 
-extern void PersistentFileSysObj_MarkBufPoolRelationPhysicallyTruncated(
+extern void PersistentFileSysObj_MarkBufPoolRelationForScanIncrementalResync(
 	PersistentFileSysObjName 	*fsObjName,
 
 	ItemPointer					persistentTid,
@@ -312,7 +312,9 @@ extern bool PersistentFileSysObj_ResynchronizeScan(
 	PersistentFileSysRelStorageMgr 	*relStorageMgr,
 
 	MirroredRelDataSynchronizationState *mirrorDataSynchronizationState,
-
+	
+	int64							*mirrorBufpoolResyncChangedPageCount,
+	
 	XLogRecPtr						*mirrorBufpoolResyncCkptLoc,
 
 	BlockNumber 					*mirrorBufpoolResyncCkptBlockNum,

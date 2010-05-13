@@ -15,6 +15,72 @@
 #include "utils/guc.h"
 #include "cdb/cdbpersistentstore.h"
 
+
+char *PersistentXactObjKind_Name(
+	PersistentEndXactObjKind objKind)
+{
+	switch (objKind)
+	{
+	case PersistentEndXactObjKind_FileSysAction: 				return "File-System Action";
+	case PersistentEndXactObjKind_AppendOnlyMirrorResyncEofs:	return "Append-Only Mirror Resync EOFs";
+		
+	default:
+		return "Unknown";
+	}
+}
+
+char *EndXactRecKind_Name(
+	EndXactRecKind endXactRecKind)
+{
+	switch (endXactRecKind)
+	{
+	case EndXactRecKind_Commit:		return "Commit";
+	case EndXactRecKind_Abort:		return "Abort";
+	case EndXactRecKind_Prepare:	return "Prepare";
+		
+	default:
+		return "Unknown";
+	}
+}
+
+bool EndXactRecKind_NeedsAction(
+	EndXactRecKind 					endXactRecKind,
+
+	PersistentEndXactFileSysAction 	action)
+{
+	switch (action)
+	{
+	case PersistentEndXactFileSysAction_Create:
+		return true;		// Go to 'Created' state on commit, or 'Aborting Create' state and perform DROP on abort.
+
+	case PersistentEndXactFileSysAction_Drop:
+		return (endXactRecKind != EndXactRecKind_Abort);
+							// Peform DROP on commit.
+
+	case PersistentEndXactFileSysAction_AbortingCreateNeeded:
+		return true;		// Clean-up required on commit or abort.
+		
+	default:
+		elog(ERROR, "Unexpected persistent end transaction file-system action: %d",
+			 action);
+		return false;	// Not reached.
+	}
+}
+
+char *PersistentEndXactFileSysAction_Name(
+	PersistentEndXactFileSysAction action)
+{
+	switch (action)
+	{
+	case PersistentEndXactFileSysAction_Create:					return "CREATE";
+	case PersistentEndXactFileSysAction_Drop:					return "DROP";
+	case PersistentEndXactFileSysAction_AbortingCreateNeeded:	return "Aborting Create Needed";
+		
+	default:
+		return "Unknown";
+	}
+}
+
 /*
  * Structure containing an object.
  */
@@ -38,50 +104,35 @@ void PersistentEndXactRec_Print(
 	int i;
 
 	elog(Debug_persistent_print_level, 
-		 "%s: create count %d, drop count %d, Append-Only mirror resync EOFs count %d",
+		 "%s: file-system action count %d, Append-Only mirror resync EOFs count %d",
 		 procName,
-		 objects->typed.createFsObjsCount,
-		 objects->typed.dropFsObjsCount,
+		 objects->typed.fileSysActionInfosCount,
 		 objects->typed.appendOnlyMirrorResyncEofsCount);
 
-	for (i = 0; i < objects->typed.createFsObjsCount; i++)
+	for (i = 0; i < objects->typed.fileSysActionInfosCount; i++)
 	{
-		PersistentEndXactFsObj *fsObj = 
-					&objects->typed.createFsObjs[i];
+		PersistentEndXactFileSysActionInfo	*fileSysActionInfos =
+										&objects->typed.fileSysActionInfos[i];
 
 		elog(Debug_persistent_print_level, 
-			 "%s: [%d] %s, relation storage manager '%s', persistent serial num " INT64_FORMAT ", TID %s, Create on Commit",
+			 "%s: [%d] action '%s' %s, relation storage manager '%s', persistent serial num " INT64_FORMAT ", TID %s",
 			 procName,
 			 i,
-			 PersistentFileSysObjName_TypeAndObjectName(&fsObj->fsObjName),
-			 PersistentFileSysRelStorageMgr_Name(fsObj->relStorageMgr),
-			 fsObj->persistentSerialNum,
-			 ItemPointerToString(&fsObj->persistentTid));
+			 PersistentEndXactFileSysAction_Name(fileSysActionInfos->action),
+			 PersistentFileSysObjName_TypeAndObjectName(&fileSysActionInfos->fsObjName),
+			 PersistentFileSysRelStorageMgr_Name(fileSysActionInfos->relStorageMgr),
+			 fileSysActionInfos->persistentSerialNum,
+			 ItemPointerToString(&fileSysActionInfos->persistentTid));
 		
 	}
 
-	for (i = 0; i < objects->typed.dropFsObjsCount; i++)
-	{
-		PersistentEndXactFsObj *fsObj = 
-					&objects->typed.dropFsObjs[i];
-
-		elog(Debug_persistent_print_level, 
-			 "%s: [%d] %s, relation storage manager '%s', persistent serial num " INT64_FORMAT ", TID %s, Drop on Commit",
-			 procName,
-			 i,
-			 PersistentFileSysObjName_TypeAndObjectName(&fsObj->fsObjName),
-			 PersistentFileSysRelStorageMgr_Name(fsObj->relStorageMgr),
-			 fsObj->persistentSerialNum,
-			 ItemPointerToString(&fsObj->persistentTid));
-	}
-	
 	for (i = 0; i < objects->typed.appendOnlyMirrorResyncEofsCount; i++)
 	{
 		PersistentEndXactAppendOnlyMirrorResyncEofs *eofs = 
 					&objects->typed.appendOnlyMirrorResyncEofs[i];
 
 		elog(Debug_persistent_print_level, 
-			 "%s: [%d] %u/%u/%u, segment file #%d, Append-Only Mirror Resync EOFs -- persistent serial num " INT64_FORMAT ", TID %s, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
+			 "%s: [%d] Append-Only Mirror Resync EOFs %u/%u/%u, segment file #%d -- persistent serial num " INT64_FORMAT ", TID %s, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
 			 procName,
 			 i,
 			 eofs->relFileNode.spcNode,
@@ -96,7 +147,7 @@ void PersistentEndXactRec_Print(
 }
 
 static int PersistentEndXactRec_CountForObject(
-	PersistentXactObjKind objKind,
+	PersistentEndXactObjKind objKind,
 
 	int32 len)
 {
@@ -104,12 +155,11 @@ static int PersistentEndXactRec_CountForObject(
 	
 	switch (objKind)
 	{
-	case PersistentXactObjKind_CreateFsObjs:
-	case PersistentXactObjKind_DropFsObjs:
-		count = len / sizeof(PersistentEndXactFsObj);
+	case PersistentEndXactObjKind_FileSysAction:
+		count = len / sizeof(PersistentEndXactFileSysActionInfo);
 		break;
 		
-	case PersistentXactObjKind_AppendOnlyMirrorResyncEofs:
+	case PersistentEndXactObjKind_AppendOnlyMirrorResyncEofs:
 		count = len / sizeof(PersistentEndXactAppendOnlyMirrorResyncEofs);
 		break;
 		
@@ -124,7 +174,7 @@ static int PersistentEndXactRec_CountForObject(
 static void PersistentEndXactRec_SetObjectInfo(
 	PersistentEndXactRecObjects	*objects,
 	
-	PersistentXactObjKind 		objKind,
+	PersistentEndXactObjKind 	objKind,
 
 	void *data,
 
@@ -142,7 +192,7 @@ static void PersistentEndXactRec_SetObjectInfo(
 static void PersistentEndXactRec_GetObjectInfo(
 	PersistentEndXactRecObjects	*objects,
 	
-	PersistentXactObjKind 		objKind,
+	PersistentEndXactObjKind 	objKind,
 
 	uint8 **data,
 
@@ -157,18 +207,6 @@ static void PersistentEndXactRec_GetObjectInfo(
 	*len = untyped->len;
 }
 
-static bool PersistentEndXactRec_IncludeObjKind(
-	PersistentXactObjKind	objKind,
-
-	EndXactRecKind			endXactRecKind)
-{
-	if (endXactRecKind == EndXactRecKind_Abort &&
-		objKind != PersistentXactObjKind_CreateFsObjs)
-		return false;
-
-	return true;
-}
-
 void PersistentEndXactRec_Init(
 	PersistentEndXactRecObjects	*objects)
 {
@@ -176,10 +214,12 @@ void PersistentEndXactRec_Init(
 }
 
 static void
-PersistentEndXactRec_VerifyFsObjs(
-	PersistentEndXactFsObj		*fsObjs,
-	int 						count,
-	char						*name)
+PersistentEndXactRec_VerifyFileSysActionInfos(
+	EndXactRecKind						endXactRecKind,
+
+	PersistentEndXactFileSysActionInfo	*fileSysActionInfos,
+
+	int 								count)
 {
 	int i;
 
@@ -188,47 +228,57 @@ PersistentEndXactRec_VerifyFsObjs(
 
 	for (i = 0; i < count; i++)
 	{
-		if (!PersistentFsObjType_IsValid(fsObjs[i].fsObjName.type))
-			elog(ERROR, "Persistent file-system object type for file-system %s is invalid (%d) (index %d)",
-				 name,
-				 fsObjs[i].fsObjName.type,
-				 i);
+		if (!PersistentEndXactFileSysAction_IsValid(fileSysActionInfos[i].action))
+			elog(ERROR, "Persistent file-system action is invalid (%d) (index %d, transaction kind '%s')",
+				 fileSysActionInfos[i].action,
+				 i,
+				 EndXactRecKind_Name(endXactRecKind));
 			
-		if (PersistentStore_IsZeroTid(&fsObjs[i].persistentTid))
-			elog(ERROR, "TID for persistent '%s' tuple for file-system %s is invalid (0,0) (index %d)",
-				 PersistentFileSysObjName_TypeName(fsObjs[i].fsObjName.type),
-				 name,
-				 i);
+		if (!PersistentFsObjType_IsValid(fileSysActionInfos[i].fsObjName.type))
+			elog(ERROR, "Persistent file-system object type is invalid (%d) (index %d, transaction kind '%s')",
+				 fileSysActionInfos[i].fsObjName.type,
+				 i,
+				 EndXactRecKind_Name(endXactRecKind));
+			
+		if (PersistentStore_IsZeroTid(&fileSysActionInfos[i].persistentTid))
+			elog(ERROR, "TID for persistent '%s' tuple is invalid (0,0) (index %d, transaction kind '%s')",
+				 PersistentFileSysObjName_TypeName(fileSysActionInfos[i].fsObjName.type),
+				 i,
+				 EndXactRecKind_Name(endXactRecKind));
 
-		if (fsObjs[i].persistentSerialNum == 0)
-			elog(ERROR, "Persistent '%s' serial number for file-system %s is invalid (0) (index %d)",
-				 PersistentFileSysObjName_TypeName(fsObjs[i].fsObjName.type),
-				 name,
-				 i);
+		if (fileSysActionInfos[i].persistentSerialNum == 0)
+			elog(ERROR, "Persistent '%s' serial number is invalid (0) (index %d, transaction kind '%s')",
+				 PersistentFileSysObjName_TypeName(fileSysActionInfos[i].fsObjName.type),
+				 i,
+				 EndXactRecKind_Name(endXactRecKind));
 
-		if (fsObjs[i].fsObjName.type == PersistentFsObjType_RelationFile &&
-			!PersistentFileSysRelStorageMgr_IsValid(fsObjs[i].relStorageMgr))
-			elog(ERROR, "Persistent '%s' relation storage manager for file-system %s has invalid value (%d) (index %d)",
-				 PersistentFileSysObjName_TypeName(fsObjs[i].fsObjName.type),
-				 name,
-				 fsObjs[i].relStorageMgr,
-				 i);
+		if (fileSysActionInfos[i].fsObjName.type == PersistentFsObjType_RelationFile &&
+			!PersistentFileSysRelStorageMgr_IsValid(fileSysActionInfos[i].relStorageMgr))
+			elog(ERROR, "Persistent '%s' relation storage manager has invalid value (%d) (index %d, transaction kind '%s')",
+				 PersistentFileSysObjName_TypeName(fileSysActionInfos[i].fsObjName.type),
+				 fileSysActionInfos[i].relStorageMgr,
+				 i,
+				 EndXactRecKind_Name(endXactRecKind));
 	}
 }
 
-void PersistentEndXactRec_AddCreateFsObjs(
-	PersistentEndXactRecObjects	*objects,
-	PersistentEndXactFsObj		*createFsObjs,
-	int							count)
-{
-	objects->typed.createFsObjs = createFsObjs;
-	objects->typed.createFsObjsCount = count;
-	objects->typed.createFsObjsLen = count * sizeof(PersistentEndXactFsObj);
+void PersistentEndXactRec_AddFileSysActionInfos(
+	PersistentEndXactRecObjects			*objects,
 
-	PersistentEndXactRec_VerifyFsObjs(
-								createFsObjs,
-								count,
-								"CREATE");
+	EndXactRecKind						endXactRecKind,
+
+	PersistentEndXactFileSysActionInfo	*fileSysActionInfos,
+
+	int									count)
+{
+	objects->typed.fileSysActionInfos = fileSysActionInfos;
+	objects->typed.fileSysActionInfosCount = count;
+	objects->typed.fileSysActionInfosLen = count * sizeof(PersistentEndXactFileSysActionInfo);
+
+	PersistentEndXactRec_VerifyFileSysActionInfos(
+										endXactRecKind,
+										fileSysActionInfos,
+										count);
 }
 
 int32 PersistentEndXactRec_FetchObjectsFromSmgr(
@@ -249,42 +299,28 @@ int32 PersistentEndXactRec_FetchObjectsFromSmgr(
 	*objectCount = 0;
 	serializeLen = 0;
 
-	for (objKind = 1; objKind < MaxPersistentXactObjKind; objKind++)
+	for (objKind = 1; objKind < MaxPersistentEndXactObjKind; objKind++)
 	{
-		if (!PersistentEndXactRec_IncludeObjKind(objKind, endXactRecKind))
-			continue;
-
 		data = NULL;
 		count = 0;
 		len = 0;
 		switch (objKind)
 		{
-		case PersistentXactObjKind_CreateFsObjs:
+		case PersistentEndXactObjKind_FileSysAction:
 			count = smgrGetPendingDeletes(
-									/* forCommit */ false,
-									(PersistentEndXactFsObj**)&data);
-			len = count * sizeof(PersistentEndXactFsObj);
+									endXactRecKind,
+									(PersistentEndXactFileSysActionInfo**)&data);
+			len = count * sizeof(PersistentEndXactFileSysActionInfo);
 
-			PersistentEndXactRec_VerifyFsObjs(
-										(PersistentEndXactFsObj*)data,
-										count,
-										"CREATE");
+			PersistentEndXactRec_VerifyFileSysActionInfos(
+										endXactRecKind,
+										(PersistentEndXactFileSysActionInfo*)data,
+										count);
 			break;
 			
-		case PersistentXactObjKind_DropFsObjs:
-			count = smgrGetPendingDeletes(
-									/* forCommit */ true,
-									(PersistentEndXactFsObj**)&data);
-			len = count * sizeof(PersistentEndXactFsObj);
-
-			PersistentEndXactRec_VerifyFsObjs(
-										(PersistentEndXactFsObj*)data,
-										count,
-										"DROP");
-			break;
-
-		case PersistentXactObjKind_AppendOnlyMirrorResyncEofs:
+		case PersistentEndXactObjKind_AppendOnlyMirrorResyncEofs:
 			count = smgrGetAppendOnlyMirrorResyncEofs(
+									endXactRecKind,
 									(PersistentEndXactAppendOnlyMirrorResyncEofs**)&data);
 			len = count * sizeof(PersistentEndXactAppendOnlyMirrorResyncEofs);
 			break;
@@ -322,11 +358,8 @@ int16 PersistentEndXactRec_ObjectCount(
 
 	objectCount = 0;
 
-	for (objKind = 1; objKind < MaxPersistentXactObjKind; objKind++)
+	for (objKind = 1; objKind < MaxPersistentEndXactObjKind; objKind++)
 	{
-		if (!PersistentEndXactRec_IncludeObjKind(objKind, endXactRecKind))
-			continue;
-
 		PersistentEndXactRec_GetObjectInfo(
 									objects, objKind, &data, &count, &len);
 		if (len > 0)
@@ -353,11 +386,8 @@ int32 PersistentEndXactRec_SerializeLen(
 
 	fillLen = 0;
 
-	for (objKind = 1; objKind < MaxPersistentXactObjKind; objKind++)
+	for (objKind = 1; objKind < MaxPersistentEndXactObjKind; objKind++)
 	{
-		if (!PersistentEndXactRec_IncludeObjKind(objKind, endXactRecKind))
-			continue;
-
 		PersistentEndXactRec_GetObjectInfo(
 									objects, objKind, &data, &count, &len);
 		if (len > 0)
@@ -370,17 +400,17 @@ int32 PersistentEndXactRec_SerializeLen(
 }
 
 static void PersistentEndXactRec_AddSection(
-	uint8 					*buffer,
+	uint8 						*buffer,
 
-	int32					bufferLen,
+	int32						bufferLen,
 
-	int32					*currentLen,
+	int32						*currentLen,
 
-	PersistentXactObjKind	objKind,
+	PersistentEndXactObjKind	objKind,
 
-	uint8					*data,
+	uint8						*data,
 
-	int32					len)
+	int32						len)
 {
 	uint8 *next;
 	PersistentEndXactRecObjHdr *header;
@@ -423,11 +453,8 @@ void PersistentEndXactRec_Serialize(
 	*numOfObjects = 0;
 
 	currentLen = 0;
-	for (objKind = 1; objKind < MaxPersistentXactObjKind; objKind++)
+	for (objKind = 1; objKind < MaxPersistentEndXactObjKind; objKind++)
 	{
-		if (!PersistentEndXactRec_IncludeObjKind(objKind, endXactRecKind))
-			continue;
-
 		PersistentEndXactRec_GetObjectInfo(
 									objects, objKind, &data, &count, &len);
 		if (len > 0)

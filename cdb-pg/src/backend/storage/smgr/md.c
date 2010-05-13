@@ -515,6 +515,8 @@ mdunlink(
 
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
+	
+	bool  						primaryOnly,
 
 	bool 						ignoreNonExistence,
 
@@ -536,6 +538,7 @@ mdunlink(
 						&rnode, 
 						/* segmentFileNum */ 0,
 						relationName,
+						primaryOnly,
 						&primaryError,
 						mirrorDataLossOccurred);
 	if (primaryError != 0)
@@ -592,6 +595,7 @@ mdunlink(
 													&rnode, 
 													segmentFileNum, 
 													relationName,
+													primaryOnly,
 													&primaryError,
 													mirrorDataLossOccurred);
 								if (primaryError != 0)
@@ -612,7 +616,9 @@ mdunlink(
 	return status;
 }
 
-static void mdsetupdropobjmirroraccess(
+static void mdsetupdropobjmirroraccess(	
+	bool						primaryOnly,
+
 	bool						mirrorOnly,
 	
 	StorageManagerMirrorMode	*mirrorMode,
@@ -646,14 +652,18 @@ static void mdsetupdropobjmirroraccess(
 			break;
 			
 		case MirrorDataLossTrackingState_MirrorCurrentlyUpInSync:
-			if (!mirrorOnly)
+			if (primaryOnly)
+				*mirrorMode = StorageManagerMirrorMode_PrimaryOnly;
+			else if (!mirrorOnly)
 				*mirrorMode = StorageManagerMirrorMode_Both;
 			else
 				*mirrorMode = StorageManagerMirrorMode_MirrorOnly;
 			break;
 				
 		case MirrorDataLossTrackingState_MirrorCurrentlyUpInResync:
-			if (!mirrorOnly)
+			if (primaryOnly)
+				*mirrorMode = StorageManagerMirrorMode_PrimaryOnly;
+			else if (!mirrorOnly)
 				*mirrorMode = StorageManagerMirrorMode_Both;
 			else
 				*mirrorMode = StorageManagerMirrorMode_MirrorOnly;
@@ -692,6 +702,8 @@ mdrmfilespacedir(
 								 */
 	
 	char						*mirrorFilespaceLocation,
+	
+	bool						primaryOnly,
 
 	bool					 	mirrorOnly,
 
@@ -706,6 +718,7 @@ mdrmfilespacedir(
 	*mirrorDataLossOccurred = false;
 
 	mdsetupdropobjmirroraccess(
+							primaryOnly,
 							mirrorOnly,
 							&mirrorMode,
 							mirrorDataLossOccurred);
@@ -758,6 +771,8 @@ mdrmfilespacedir(
 bool
 mdrmtablespacedir(
 	Oid							tablespaceOid,
+	
+	bool						primaryOnly,
 
 	bool					 	mirrorOnly,
 
@@ -775,6 +790,7 @@ mdrmtablespacedir(
 	*mirrorDataLossOccurred = false;
 
 	mdsetupdropobjmirroraccess(
+							primaryOnly,
 							mirrorOnly,
 							&mirrorMode,
 							mirrorDataLossOccurred);
@@ -848,6 +864,8 @@ mdrmtablespacedir(
 bool
 mdrmdbdir(
 	DbDirNode					*dbDirNode,
+	
+	bool						primaryOnly,
 
 	bool					 	mirrorOnly,
 
@@ -865,6 +883,7 @@ mdrmdbdir(
 	*mirrorDataLossOccurred = false;
 
 	mdsetupdropobjmirroraccess(
+							primaryOnly,
 							mirrorOnly,
 							&mirrorMode,
 							mirrorDataLossOccurred);

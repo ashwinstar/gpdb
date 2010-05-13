@@ -98,8 +98,11 @@ static bool PersistentDatabase_ScanTupleCallback(
 	
 	PersistentFileSysState	state;
 
-	MirroredObjectExistenceState		mirrorExistenceState;	// UNDONE
+	int64			createMirrorDataLossTrackingSessionNum;
 
+	MirroredObjectExistenceState		mirrorExistenceState;
+
+	int32					reserved;
 	TransactionId			parentXid;
 	int64					serialNum;
 	ItemPointerData			previousFreeTid;
@@ -114,7 +117,9 @@ static bool PersistentDatabase_ScanTupleCallback(
 									&dbDirNode.tablespace,
 									&dbDirNode.database,
 									&state,
+									&createMirrorDataLossTrackingSessionNum,
 									&mirrorExistenceState,
+									&reserved,
 									&parentXid,
 									&serialNum,
 									&previousFreeTid);
@@ -332,9 +337,13 @@ static void PersistentDatabase_LookupExistingDbDir(
 static void PersistentDatabase_AddTuple(
 	DatabaseDirEntry databaseDirEntry,
 
+	int64			createMirrorDataLossTrackingSessionNum,
+
 	MirroredObjectExistenceState mirrorExistenceState,
 
-	TransactionId parentXid,
+	int32			reserved,
+
+	TransactionId 	parentXid,
 
 	bool			flushToXLog)
 				/* When true, the XLOG record for this change will be flushed to disk. */
@@ -353,7 +362,9 @@ static void PersistentDatabase_AddTuple(
 								tablespaceOid,
 								databaseOid,
 								databaseDirEntry->state,
+								createMirrorDataLossTrackingSessionNum,
 								mirrorExistenceState,
+								reserved,
 								parentXid,
 								/* persistentSerialNum */ 0,	// This will be set by PersistentFileSysObj_AddTuple.
 								&previousFreeTid);
@@ -455,7 +466,9 @@ void PersistentDatabase_MarkCreatePending(
 
 	PersistentDatabase_AddTuple(
 							databaseDirEntry,
+							/* createMirrorDataLossTrackingSessionNum */ 0,
 							mirrorExistenceState,
+							/* reserved */ 0,
 							/* parentXid */ GetTopTransactionId(),
 							flushToXLog);
 
@@ -525,7 +538,9 @@ void PersistentDatabase_AddCreated(
 
 	PersistentDatabase_AddTuple(
 							databaseDirEntry,
+							/* createMirrorDataLossTrackingSessionNum */ 0,
 							mirrorExistenceState,
+							/* reserved */ 0,
 							InvalidTransactionId,
 							flushToXLog);
 
@@ -1132,7 +1147,9 @@ void PersistentDatabase_MarkJustInTimeCreatePending(
 
 	PersistentDatabase_AddTuple(
 							databaseDirEntry,
+							/* createMirrorDataLossTrackingSessionNum */ 0,
 							mirrorExistenceState,
+							/* reserved */ 0,
 							/* parentXid */ InvalidTransactionId,
 							/* flushToXLog */ true);
 

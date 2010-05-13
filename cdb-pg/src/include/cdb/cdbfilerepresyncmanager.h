@@ -11,6 +11,7 @@
 
 #include "cdb/cdbfilerep.h"
 #include "access/persistentfilesysobjname.h"
+#include "cdb/cdbresynchronizechangetracking.h"
 
 /* 
  * Resync Hash Table lacated in shared memory keeps 
@@ -36,7 +37,9 @@ typedef struct FileRepResyncHashEntry_s {
 	
 	MirroredRelDataSynchronizationState mirrorDataSynchronizationState;
 	/* relationOperation (Full, IncrPage or IncrScan) */
-	
+
+	int64							mirrorBufpoolResyncChangedPageCount;
+
 	XLogRecPtr						mirrorBufpoolResyncCkptLoc;
 	/* beginIncrResyncLSN */
 	
@@ -62,7 +65,7 @@ extern void FileRepResync_ShmemInit(void);
 
 extern void FileRepPrimary_StartResyncManager(void);
 
-extern FileRepResyncHashEntry_s* FileRepPrimary_GetResyncEntry(void);
+extern FileRepResyncHashEntry_s* FileRepPrimary_GetResyncEntry(ChangeTrackingRequest **request);
 
 extern int FileRepResync_UpdateEntry(
 									 FileRepResyncHashEntry_s*	entry);

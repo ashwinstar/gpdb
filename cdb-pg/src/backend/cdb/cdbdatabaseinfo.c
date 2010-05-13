@@ -845,6 +845,7 @@ DatabaseInfo_CollectGpRelationNode(
 		
 		Oid					relfilenode;
 		int32				segmentFileNum;
+		int64				createMirrorDataLossTrackingSessionNum;
 		ItemPointerData		persistentTid;
 		int64				persistentSerialNum;
 		
@@ -854,6 +855,7 @@ DatabaseInfo_CollectGpRelationNode(
 							values,
 							&relfilenode,
 							&segmentFileNum,
+							&createMirrorDataLossTrackingSessionNum,
 							&persistentTid,
 							&persistentSerialNum);
 		

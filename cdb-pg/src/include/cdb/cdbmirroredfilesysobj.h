@@ -71,6 +71,8 @@ extern void MirroredFileSysObj_DropFilespaceDir(
 								 */
 	
 	char						*mirrorFilespaceLocation,
+	
+	bool						primaryOnly,
 
 	bool					 	mirrorOnly,
 
@@ -103,6 +105,8 @@ extern void MirroredFileSysObj_ScheduleDropTablespaceDir(
 
 extern void MirroredFileSysObj_DropTablespaceDir(
 	Oid							tablespaceOid,
+	
+	bool						primaryOnly,
 
 	bool					 	mirrorOnly,
 
@@ -139,6 +143,8 @@ extern void MirroredFileSysObj_ScheduleDropDbDir(
 
 extern void MirroredFileSysObj_DropDbDir(
 	DbDirNode					*dbDirNode,
+	
+	bool						primaryOnly,
 
 	bool					 	mirrorOnly,
 
@@ -204,6 +210,8 @@ extern void MirroredFileSysObj_DropRelFile(
 					/* For tracing only.  Can be NULL in some execution paths. */
 
 	bool 						isLocalBuf,
+	
+	bool  						primaryOnly,
 
 	bool 						ignoreNonExistence,
 

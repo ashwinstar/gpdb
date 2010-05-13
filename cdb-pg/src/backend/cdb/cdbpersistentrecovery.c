@@ -288,10 +288,13 @@ static FsObjEntry PersistentRecovery_FindFsObjEntry(
 }
 
 static void PersistentRecovery_AddEndXactFsObj(
-	TransactionId 			xid,
-	bool 					isCommit,
-	PersistentEndXactFsObj *fsObj,
-	PersistentFileSysState	state)
+	TransactionId 						xid,
+
+	bool 								isCommit,
+
+	PersistentEndXactFileSysActionInfo	*fileSysActionInfo,
+
+	PersistentFileSysState				state)
 {
 	XactInfoKind		infoKind;
 	XactEntry 			xactEntry;
@@ -319,24 +322,24 @@ static void PersistentRecovery_AddEndXactFsObj(
 	 */
 	fsObjEntry = 
 		PersistentRecovery_FindOrCreateFsObjEntry(
-									fsObj->fsObjName.type, 
-									&fsObj->persistentTid, 
+									fileSysActionInfo->fsObjName.type, 
+									&fileSysActionInfo->persistentTid, 
 									&found);
 	if (found)
 	{
 		memcpy(&prevFsObjEntry, fsObjEntry, sizeof(FsObjEntryData));
 	}
 
-	fsObjEntry->fsObjName = fsObj->fsObjName;
+	fsObjEntry->fsObjName = fileSysActionInfo->fsObjName;
 
-	if (fsObj->fsObjName.type == PersistentFsObjType_RelationFile)
+	if (fileSysActionInfo->fsObjName.type == PersistentFsObjType_RelationFile)
 	{
-		if (!PersistentFileSysRelStorageMgr_IsValid(fsObj->relStorageMgr))
+		if (!PersistentFileSysRelStorageMgr_IsValid(fileSysActionInfo->relStorageMgr))
 			elog(ERROR, "Relation storage manager for persistent '%s' for Crash Recovery is invalid (%d)",
-				 PersistentFileSysObjName_TypeAndObjectName(&fsObj->fsObjName),
-				 fsObj->relStorageMgr);
+				 PersistentFileSysObjName_TypeAndObjectName(&fileSysActionInfo->fsObjName),
+				 fileSysActionInfo->relStorageMgr);
 
-		fsObjEntry->relStorageMgr = fsObj->relStorageMgr;
+		fsObjEntry->relStorageMgr = fileSysActionInfo->relStorageMgr;
 	}
 	else
 	{
@@ -344,7 +347,7 @@ static void PersistentRecovery_AddEndXactFsObj(
 		fsObjEntry->relStorageMgr = PersistentFileSysRelStorageMgr_None;
 	}
 		
-	fsObjEntry->persistentSerialNum = fsObj->persistentSerialNum;
+	fsObjEntry->persistentSerialNum = fileSysActionInfo->persistentSerialNum;
 	fsObjEntry->xid = xid;
 	fsObjEntry->state = state;
 
@@ -604,6 +607,7 @@ PersistentRecovery_HandlePass2XLogRec(
 		int subXidCount;
 		XactInfoKind infoKind;
 		int i;
+		PersistentFileSysState newState;
 
 		/*
 		 * The XLOG record is for transaction module...
@@ -619,28 +623,40 @@ PersistentRecovery_HandlePass2XLogRec(
 
 		if (infoKind == XACT_INFOKIND_COMMIT)
 		{
-			for (i = 0; i < persistentObjects.typed.createFsObjsCount; i++)
+			for (i = 0; i < persistentObjects.typed.fileSysActionInfosCount; i++)
 			{
-				PersistentEndXactFsObj *fsObj = 
-							&persistentObjects.typed.createFsObjs[i];
+				PersistentEndXactFileSysActionInfo	*fileSysActionInfo =
+							&persistentObjects.typed.fileSysActionInfos[i];
 
+				PersistentEndXactFileSysAction action;
+				
+				action = fileSysActionInfo->action;
+
+				switch (action)
+				{
+					case PersistentEndXactFileSysAction_Create:
+						newState = PersistentFileSysState_Created;
+						break;
+					case PersistentEndXactFileSysAction_Drop:
+						newState = PersistentFileSysState_DropPending;
+						break;
+					case PersistentEndXactFileSysAction_AbortingCreateNeeded:
+						newState = PersistentFileSysState_AbortingCreate;
+						break;
+					default:
+						elog(ERROR, "Unexpected persistent end transaction file-system action: %d",
+							 action);
+						newState = PersistentFileSysState_Free;		// Not reached.
+						break;
+				}
+			
 				PersistentRecovery_AddEndXactFsObj(
 												xid,
 												/* isCommit */ true,
-												fsObj,
-												PersistentFileSysState_Created);
+												fileSysActionInfo,
+												newState);
 			}
-			for (i = 0; i < persistentObjects.typed.dropFsObjsCount; i++)
-			{
-				PersistentEndXactFsObj *fsObj = 
-							&persistentObjects.typed.dropFsObjs[i];
 
-				PersistentRecovery_AddEndXactFsObj(
-												xid,
-												/* isCommit */ true,
-												fsObj,
-												PersistentFileSysState_DropPending);
-			}
 			for (i = 0; i < persistentObjects.typed.appendOnlyMirrorResyncEofsCount; i++)
 			{
 				PersistentEndXactAppendOnlyMirrorResyncEofs *eofs = 
@@ -653,16 +669,36 @@ PersistentRecovery_HandlePass2XLogRec(
 		}
 		else if (infoKind == XACT_INFOKIND_ABORT)
 		{
-			for (i = 0; i < persistentObjects.typed.createFsObjsCount; i++)
+			for (i = 0; i < persistentObjects.typed.fileSysActionInfosCount; i++)
 			{
-				PersistentEndXactFsObj *fsObj = 
-							&persistentObjects.typed.createFsObjs[i];
+				PersistentEndXactFileSysActionInfo	*fileSysActionInfo =
+							&persistentObjects.typed.fileSysActionInfos[i];
 
+				PersistentEndXactFileSysAction action;
+				
+				action = fileSysActionInfo->action;
+
+				switch (action)
+				{
+					case PersistentEndXactFileSysAction_Create:
+						newState = PersistentFileSysState_AbortingCreate;
+						break;
+					case PersistentEndXactFileSysAction_Drop:
+						continue;
+					case PersistentEndXactFileSysAction_AbortingCreateNeeded:
+						newState = PersistentFileSysState_AbortingCreate;
+						break;
+					default:
+						elog(ERROR, "Unexpected persistent end transaction file-system action: %d",
+							 action);
+						newState = PersistentFileSysState_Free;		// Not reached.
+				}
+			
 				PersistentRecovery_AddEndXactFsObj(
 												xid,
 												/* isCommit */ false,
-												fsObj,
-												PersistentFileSysState_AbortingCreate);
+												fileSysActionInfo,
+												newState);
 			}
 		}
 		else
@@ -1231,7 +1267,7 @@ PersistentRecovery_CrashAbort(void)
 		bool needsAbort;
 		int createPendingCount;
 		int e;
-		PersistentEndXactFsObj *endXactFsObjs;
+		PersistentEndXactFileSysActionInfo	*fileSysActionInfos;
 		PersistentEndXactRecObjects persistentObjects;
 
 		xactEntry = 
@@ -1304,9 +1340,9 @@ PersistentRecovery_CrashAbort(void)
 				 "PersistentRecovery_CrashAbort: Found %d 'Create Pending' persistent file-system objects",
 				 createPendingCount);
 
-		endXactFsObjs = 
-			(PersistentEndXactFsObj*)
-				palloc0(createPendingCount * sizeof(PersistentEndXactFsObj));
+		fileSysActionInfos = 
+			(PersistentEndXactFileSysActionInfo*)
+				palloc0(createPendingCount * sizeof(PersistentEndXactFileSysActionInfo));
 		
 		fsObjEntry = 
 			(FsObjEntry) DoublyLinkedHead_First(
@@ -1319,10 +1355,11 @@ PersistentRecovery_CrashAbort(void)
 			{
 				Assert(e < createPendingCount);
 
-				endXactFsObjs[e].fsObjName = fsObjEntry->fsObjName;
-				endXactFsObjs[e].relStorageMgr = fsObjEntry->relStorageMgr;
-				endXactFsObjs[e].persistentTid = fsObjEntry->key.persistentTid;
-				endXactFsObjs[e].persistentSerialNum = fsObjEntry->persistentSerialNum;
+				fileSysActionInfos[e].action = PersistentEndXactFileSysAction_Create;
+				fileSysActionInfos[e].fsObjName = fsObjEntry->fsObjName;
+				fileSysActionInfos[e].relStorageMgr = fsObjEntry->relStorageMgr;
+				fileSysActionInfos[e].persistentTid = fsObjEntry->key.persistentTid;
+				fileSysActionInfos[e].persistentSerialNum = fsObjEntry->persistentSerialNum;
 				e++;
 			}
 
@@ -1334,16 +1371,17 @@ PersistentRecovery_CrashAbort(void)
 		}
 
 		PersistentEndXactRec_Init(&persistentObjects);
-		PersistentEndXactRec_AddCreateFsObjs(
+		PersistentEndXactRec_AddFileSysActionInfos(
 										&persistentObjects,
-										endXactFsObjs, 
+										EndXactRecKind_Abort,
+										fileSysActionInfos, 
 										createPendingCount);
 
 		RecordCrashTransactionAbortRecord(
 									xactEntry->xid, 
 									&persistentObjects);
 
-		pfree(endXactFsObjs);
+		pfree(fileSysActionInfos);
 
 		fsObjEntry = 
 			(FsObjEntry) DoublyLinkedHead_First(

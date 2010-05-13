@@ -31,21 +31,40 @@ typedef enum EndXactRecKind
 /*
  * The persistent transaction object possibilities.
  */
-typedef enum PersistentXactObjKind
+typedef enum PersistentEndXactObjKind
 {
-	PersistentXactObjKind_None = 0,
-	PersistentXactObjKind_CreateFsObjs = 1,
-	PersistentXactObjKind_DropFsObjs = 2,
-	PersistentXactObjKind_AppendOnlyMirrorResyncEofs = 3,
-	MaxPersistentXactObjKind /* must always be last */
-} PersistentXactObjKind;
+	PersistentEndXactObjKind_None = 0,
+	PersistentEndXactObjKind_FileSysAction = 1,
+	PersistentEndXactObjKind_AppendOnlyMirrorResyncEofs = 2,
+	MaxPersistentEndXactObjKind /* must always be last */
+} PersistentEndXactObjKind;
 
+/*
+ * The persistent transaction object possibilities.
+ */
+typedef enum PersistentEndXactFileSysAction
+{
+	PersistentEndXactFileSysAction_None = 0,
+	PersistentEndXactFileSysAction_Create = 1,
+	PersistentEndXactFileSysAction_Drop = 2,
+	PersistentEndXactFileSysAction_AbortingCreateNeeded = 3,
+	MaxPersistentEndXactFileSysAction /* must always be last */
+} PersistentEndXactFileSysAction;
+
+static inline bool PersistentEndXactFileSysAction_IsValid(
+	PersistentEndXactFileSysAction action)
+{
+	return (action >= PersistentEndXactFileSysAction_Create &&
+		    action <= PersistentEndXactFileSysAction_AbortingCreateNeeded);
+}
 
 /*
  * Structure containing the end transaction information for a relation file.
  */
-typedef struct PersistentEndXactFsObj
+typedef struct PersistentEndXactFileSysActionInfo
 {
+	PersistentEndXactFileSysAction	action;
+
 	PersistentFileSysObjName 	fsObjName;
 
 	PersistentFileSysRelStorageMgr relStorageMgr;
@@ -54,7 +73,7 @@ typedef struct PersistentEndXactFsObj
 
 	int64					persistentSerialNum;
 
-} PersistentEndXactFsObj;
+} PersistentEndXactFileSysActionInfo;
 
 typedef struct PersistentEndXactAppendOnlyMirrorResyncEofs
 {
@@ -86,17 +105,13 @@ typedef struct PeristentEndXaxtUntyped
  */
 typedef union PersistentEndXactRecObjects
 {
-	PeristentEndXaxtUntyped		untyped[MaxPersistentXactObjKind];
+	PeristentEndXaxtUntyped		untyped[MaxPersistentEndXactObjKind];
 
 	struct typed
 	{
-		PersistentEndXactFsObj 		*createFsObjs;
-		int32 						createFsObjsLen;
-		int32 						createFsObjsCount;
-		
-		PersistentEndXactFsObj 		*dropFsObjs;
-		int32 						dropFsObjsLen;
-		int32 						dropFsObjsCount;
+		PersistentEndXactFileSysActionInfo 		*fileSysActionInfos;
+		int32 									fileSysActionInfosLen;
+		int32 									fileSysActionInfosCount;
 		
 		PersistentEndXactAppendOnlyMirrorResyncEofs 	*appendOnlyMirrorResyncEofs;
 		int32 											appendOnlyMirrorResyncEofsLen;
@@ -105,13 +120,31 @@ typedef union PersistentEndXactRecObjects
 	
 } PersistentEndXactRecObjects;
 
+char *PersistentXactObjKind_Name(
+	PersistentEndXactObjKind objKind);
+
+extern char *EndXactRecKind_Name(
+	EndXactRecKind endXactRecKind);
+
+extern bool EndXactRecKind_NeedsAction(
+		EndXactRecKind					endXactRecKind,
+	
+		PersistentEndXactFileSysAction	action);
+
+extern char *PersistentEndXactFileSysAction_Name(
+	PersistentEndXactFileSysAction action);
+
 extern void PersistentEndXactRec_Init(
 	PersistentEndXactRecObjects	*objects);
 
-extern void PersistentEndXactRec_AddCreateFsObjs(
-	PersistentEndXactRecObjects	*objects,
-	PersistentEndXactFsObj		*createFsObjs,
-	int							count);
+extern void PersistentEndXactRec_AddFileSysActionInfos(
+	PersistentEndXactRecObjects			*objects,
+
+	EndXactRecKind						endXactRecKind,
+
+	PersistentEndXactFileSysActionInfo	*fileSysActionInfos,
+
+	int									count);
 
 extern int32 PersistentEndXactRec_FetchObjectsFromSmgr(
 	PersistentEndXactRecObjects	*objects,

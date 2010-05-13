@@ -74,13 +74,16 @@ static void PersistentBuild_ScanGpPersistentRelationNodeForGlobal(
 		
 		PersistentFileSysRelStorageMgr	relationStorageManager;
 		PersistentFileSysState			persistentState;
+		int64							createMirrorDataLossTrackingSessionNum;
 		MirroredObjectExistenceState	mirrorExistenceState;
 		MirroredRelDataSynchronizationState mirrorDataSynchronizationState;
-		bool							mirrorBufpoolPhysicallyTruncated;
+		bool							mirrorBufpoolMarkedForScanIncrementalResync;
+		int64							mirrorBufpoolResyncChangedPageCount;
 		XLogRecPtr						mirrorBufpoolResyncCkptLoc;
 		BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
 		int64							mirrorAppendOnlyLossEof;
 		int64							mirrorAppendOnlyNewEof;
+		int32							reserved;
 		TransactionId					parentXid;
 		int64							serialNum;
 		ItemPointerData					previousFreeTid;
@@ -95,13 +98,16 @@ static void PersistentBuild_ScanGpPersistentRelationNodeForGlobal(
 										&segmentFileNum,
 										&relationStorageManager,
 										&persistentState,
+										&createMirrorDataLossTrackingSessionNum,
 										&mirrorExistenceState,
 										&mirrorDataSynchronizationState,
-										&mirrorBufpoolPhysicallyTruncated,
+										&mirrorBufpoolMarkedForScanIncrementalResync,
+										&mirrorBufpoolResyncChangedPageCount,
 										&mirrorBufpoolResyncCkptLoc,
 										&mirrorBufpoolResyncCkptBlockNum,
 										&mirrorAppendOnlyLossEof,
 										&mirrorAppendOnlyNewEof,
+										&reserved,
 										&parentXid,
 										&serialNum,
 										&previousFreeTid);
@@ -321,7 +327,7 @@ gp_persistent_build_db(PG_FUNCTION_ARGS)
 	if (mirrored)
 	{
 		mirrorExistenceState = MirroredObjectExistenceState_MirrorCreated;
-		relDataSynchronizationState = MirroredRelDataSynchronizationState_Synchronized;
+		relDataSynchronizationState = MirroredRelDataSynchronizationState_DataSynchronized;
 	}
 	else
 	{

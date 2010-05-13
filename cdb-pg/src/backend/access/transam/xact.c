@@ -6169,29 +6169,24 @@ xact_desc_commit(StringInfo buf, xl_xact_commit *xlrec)
 	
 	sub_xids = (TransactionId *)data; 
 
-	if (persistentCommitObjects.typed.dropFsObjsCount > 0)
+	if (persistentCommitObjects.typed.fileSysActionInfosCount > 0)
 	{
-		appendStringInfo(buf, "; dropped relations:");
-		for (i = 0; i < persistentCommitObjects.typed.dropFsObjsCount; i++)
+		appendStringInfo(buf, "; drop file-system objects:");
+		for (i = 0; i < persistentCommitObjects.typed.fileSysActionInfosCount; i++)
 		{
-			PersistentEndXactFsObj *fsObj = 
-						&persistentCommitObjects.typed.dropFsObjs[i];
+			PersistentEndXactFileSysActionInfo	*fileSysActionInfo =
+						&persistentCommitObjects.typed.fileSysActionInfos[i];
 
-			// UNDONE: Ignore the other object types for now...
-			if (fsObj->fsObjName.type == PersistentFsObjType_RelationFile)
+			if (fileSysActionInfo->action == PersistentEndXactFileSysAction_Drop)
 			{
-				RelFileNode *relFileNode = &fsObj->fsObjName.variant.rel.relFileNode;
-			
 				if (i > 10)
 				{
 					appendStringInfo(buf, " ...");
 					break;
 				}
 
-				appendStringInfo(buf, " %u/%u/%u",
-								 relFileNode->spcNode, 
-								 relFileNode->dbNode, 
-								 relFileNode->relNode);
+				appendStringInfo(buf, " %s",
+								 PersistentFileSysObjName_TypeAndObjectName(&fileSysActionInfo->fsObjName));
 			}
 		}
 	}
@@ -6261,30 +6256,22 @@ xact_desc_abort(StringInfo buf, xl_xact_abort *xlrec)
 	
 	sub_xids = (TransactionId *)data; 
 
-	if (persistentAbortObjects.typed.createFsObjsCount > 0)
+	if (persistentAbortObjects.typed.fileSysActionInfosCount > 0)
 	{
-		appendStringInfo(buf, "; aborted create relations:");
-		for (i = 0; i < persistentAbortObjects.typed.createFsObjsCount; i++)
+		appendStringInfo(buf, "; aborted create file-system objects:");
+		for (i = 0; i < persistentAbortObjects.typed.fileSysActionInfosCount; i++)
 		{
-			PersistentEndXactFsObj *fsObj = 
-						&persistentAbortObjects.typed.createFsObjs[i];
+			PersistentEndXactFileSysActionInfo	*fileSysActionInfo =
+						&persistentAbortObjects.typed.fileSysActionInfos[i];
 		
-			// UNDONE: Ignore the other object types for now...
-			if (fsObj->fsObjName.type == PersistentFsObjType_RelationFile)
+			if (i > 10)
 			{
-				RelFileNode *relFileNode = &fsObj->fsObjName.variant.rel.relFileNode;
-			
-				if (i > 10)
-				{
-					appendStringInfo(buf, " ...");
-					break;
-				}
-
-				appendStringInfo(buf, " %u/%u/%u",
-								 relFileNode->spcNode, 
-								 relFileNode->dbNode, 
-								 relFileNode->relNode);
+				appendStringInfo(buf, " ...");
+				break;
 			}
+
+			appendStringInfo(buf, " %s",
+							 PersistentFileSysObjName_TypeAndObjectName(&fileSysActionInfo->fsObjName));
 		}
 	}
 	if (xlrec->nsubxacts > 0)

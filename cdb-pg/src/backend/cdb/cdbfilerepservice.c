@@ -359,10 +359,28 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
 
     switch (fileRepState) {
         case FileRepStateNotInitialized:
+			
+			fileRepState = fileRepStateLocal;
+            break;
+
         case FileRepStateInitialization:
 
-            fileRepState = fileRepStateLocal;
-            break;
+            switch (fileRepStateLocal) 
+			{
+                case FileRepStateNotInitialized:
+                    Assert(0);
+					ereport(LOG,
+							(errmsg("unexpected filerep state transition from '%s' to '%s' ",
+									FileRepStateToString[fileRepState], FileRepStateToString[fileRepStateLocal])));
+					fileRepState = FileRepStateFault;							 
+					break;
+					
+				default:
+					fileRepState = fileRepStateLocal;
+					break;
+			}
+			break;
+			
         case FileRepStateReady:
 
             switch (fileRepStateLocal) {
@@ -373,6 +391,10 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
                     break;
                 case FileRepStateNotInitialized:
                     Assert(0);
+					ereport(LOG,
+							(errmsg("unexpected filerep state transition from '%s' to '%s' ",
+							 FileRepStateToString[fileRepState], FileRepStateToString[fileRepStateLocal])));
+					fileRepState = FileRepStateFault;
                     break;
                 case FileRepStateInitialization:
                     /* don't do assignment -- this can happen when going from segmentState Ready to InSyncTransition */
@@ -397,6 +419,11 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
                 case FileRepStateInitialization:
                 case FileRepStateReady:
                     Assert(0);
+					ereport(LOG,
+							(errmsg("unexpected filerep state transition from '%s' to '%s' ",
+							FileRepStateToString[fileRepState], FileRepStateToString[fileRepStateLocal])));
+					fileRepState = FileRepStateFault;
+									  
                     break;
                 default:
                     Assert(0);
@@ -418,6 +445,11 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
                 case FileRepStateInitialization:
                 case FileRepStateReady:
                     Assert(0);
+					ereport(LOG,
+						 (errmsg("unexpected filerep state transition from '%s' to '%s' ",
+					 	 FileRepStateToString[fileRepState], FileRepStateToString[fileRepStateLocal])));
+					fileRepState = FileRepStateFault;
+									  
                 case FileRepStateFault:
                     break;
                 default:

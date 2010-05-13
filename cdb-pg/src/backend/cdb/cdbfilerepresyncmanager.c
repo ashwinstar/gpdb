@@ -756,7 +756,7 @@ FileRepPrimary_RunResyncManager(void)
 {
 	int		status = STATUS_OK;
 	bool	retval;
-	int ii=0;
+	int		ii=0;
 	bool	locked = FALSE;
 	bool	mirroredLock = FALSE;
 		
@@ -780,7 +780,7 @@ FileRepPrimary_RunResyncManager(void)
 			break;
 		}
 
-		if (FileRepResync_CheckProgress() == FALSE)
+		if (FileRepResync_CheckProgress() == FILEREP_MAX_RESYNC_FILES)
 		{
 			pg_usleep(50000L);  // 50ms
 			continue;
@@ -800,15 +800,24 @@ FileRepPrimary_RunResyncManager(void)
 											   &entry.segmentFileNum,
 											   &entry.relStorageMgr,
 											   &entry.mirrorDataSynchronizationState,
+											   &entry.mirrorBufpoolResyncChangedPageCount,
 											   &entry.mirrorBufpoolResyncCkptLoc,
 											   &entry.mirrorBufpoolResyncCkptBlockNum,
 											   &entry.mirrorAppendOnlyLossEof,											   
-											   &entry.mirrorAppendOnlyNewEof, 											
+											   &entry.mirrorAppendOnlyNewEof, 	
 											   &entry.persistentTid,
 											   &entry.persistentSerialNum);
 		
 		if (retval == FALSE)
 		{
+			/* wait that resync workers are completed */
+			while (FileRepResync_CheckProgress() > 0)
+			{
+				pg_usleep(50000L);  // 50ms
+			}
+			
+			Assert(FileRepResync_CheckProgress() == 0);
+			
 			if (mirroredLock == TRUE)
 			{
 				LWLockRelease(MirroredLock);
@@ -816,7 +825,7 @@ FileRepPrimary_RunResyncManager(void)
 				mirroredLock = FALSE;
 				break;
 			}
-			
+						
 			LWLockAcquire(MirroredLock, LW_EXCLUSIVE);
 			mirroredLock = TRUE;
 						
@@ -847,7 +856,7 @@ FileRepPrimary_RunResyncManager(void)
 			}
 		}
 		
-		if (entry.mirrorDataSynchronizationState == MirroredRelDataSynchronizationState_Synchronized ||
+		if (entry.mirrorDataSynchronizationState == MirroredRelDataSynchronizationState_DataSynchronized ||
 			entry.mirrorDataSynchronizationState == MirroredRelDataSynchronizationState_None)
 		{
 			continue;
@@ -888,7 +897,8 @@ FileRepPrimary_RunResyncManager(void)
 				 "ResyncCkptLoc:'%d/%d' "
 				 "ResyncCkptBlockNum:'%u' "
 				 "AppendOnlyLossEof:" INT64_FORMAT " "
-				 "AppendOnlyNewEof:" INT64_FORMAT " ",
+				 "AppendOnlyNewEof:" INT64_FORMAT " "
+				 "mirrorBufpoolResyncChangedPageCount:" INT64_FORMAT " ", 
 				 entry.fileName, ii++,
 				 PersistentFileSysRelStorageMgr_Name(entry.relStorageMgr),
 			     entry.relStorageMgr,
@@ -898,8 +908,8 @@ FileRepPrimary_RunResyncManager(void)
 				 entry.mirrorBufpoolResyncCkptLoc.xrecoff,
 				 entry.mirrorBufpoolResyncCkptBlockNum,
 				 entry.mirrorAppendOnlyLossEof,
-				 entry.mirrorAppendOnlyNewEof);
-
+				 entry.mirrorAppendOnlyNewEof,
+				 entry.mirrorBufpoolResyncChangedPageCount);
 		
 		FileRepResync_InsertEntry(&entry);
 		
@@ -1102,6 +1112,8 @@ FileRepResync_InsertEntry(
 		entryLocal->mirrorAppendOnlyLossEof = entry->mirrorAppendOnlyLossEof;
 		entryLocal->mirrorAppendOnlyNewEof = entry->mirrorAppendOnlyNewEof;
 		
+		entryLocal->mirrorBufpoolResyncChangedPageCount = entry->mirrorBufpoolResyncChangedPageCount;
+		
 		entryLocal->persistentTid = entry->persistentTid;
 		entryLocal->persistentSerialNum = entry->persistentSerialNum;
 								
@@ -1177,7 +1189,7 @@ FileRepResync_CheckProgress(void)
 {
 	FileRepResyncHashEntry_s	*entry = NULL;
 	HASH_SEQ_STATUS				hash_status;
-	bool						doProgress = FALSE;
+	int							countProgress = 0;
 	
 	FileRepResync_LockAcquire();
 	
@@ -1199,7 +1211,8 @@ FileRepResync_CheckProgress(void)
 					
 				case FileRepResyncStateCompleted:
 					if (FileRepResync_RemoveEntry(entry->fileName) == TRUE) {
-						fileRepResyncShmem->resyncCompletedCount--;		
+						fileRepResyncShmem->resyncCompletedCount--;	
+						Assert(fileRepResyncShmem->resyncCompletedCount >= 0);
 					} else {
 						Assert(0);
 					}
@@ -1210,21 +1223,15 @@ FileRepResync_CheckProgress(void)
 							TRUE); 
 					
 					if (Debug_filerep_print)
-						elog(LOG, "FileRepResync_CheckProgress() identifier:'%s' state:'%d' ", 
+						elog(LOG, "FileRepResync_CheckProgress() identifier:'%s' state:'%d' resyncCompletedCount:'%d' ", 
 							 entry->fileName,
-							 entry->fileRepResyncState);
+							 entry->fileRepResyncState,
+							 fileRepResyncShmem->resyncCompletedCount);
 					
 					break;
 					
-				case FileRepResyncStateFault:
-										
-					if (Debug_filerep_print)
-						elog(LOG, "FileRepResync_CheckProgress() identifier:'%s' state:'%d' ", 
-							 entry->fileName,
-							 entry->fileRepResyncState);
-										
-					break;
-		
+				/* 	FileRepResyncStateFault is not in use */
+				case FileRepResyncStateFault:					
 				case FileRepResyncStateNotInitialized:
 					Assert(0);
 					break;
@@ -1232,28 +1239,27 @@ FileRepResync_CheckProgress(void)
 		}
 	}
 
-	if ((fileRepResyncShmem->resyncCompletedCount +
-		 fileRepResyncShmem->writeCount + 
-		 fileRepResyncShmem->resyncInProgressCount ) == 0) 
-	{
-		doProgress = TRUE;
-	}
-	
+	countProgress = fileRepResyncShmem->resyncCompletedCount + 
+					fileRepResyncShmem->writeCount + 
+					fileRepResyncShmem->resyncInProgressCount;
 	
 	FileRepResync_LockRelease();
 	
-	return doProgress;
+	return countProgress;
 }
 
 /* 
  * 
  */
 FileRepResyncHashEntry_s*
-FileRepPrimary_GetResyncEntry(void)
+FileRepPrimary_GetResyncEntry(ChangeTrackingRequest **request)
 {
 	bool						found = FALSE;
 	FileRepResyncHashEntry_s	*entry = NULL;
 	HASH_SEQ_STATUS				hash_status;
+	int							NumberOfRelations = 0;
+	ChangeTrackingRequest		*requestLocal = NULL;
+	int64						changedPageCount = 0;
 		
 	FileRepResync_LockAcquire();
 	
@@ -1263,31 +1269,138 @@ FileRepPrimary_GetResyncEntry(void)
 		
 		hash_seq_init(&hash_status, fileRepResyncShmem->fileRepResyncHash);
 		
-		while ((entry = (FileRepResyncHashEntry_s *) hash_seq_search(&hash_status)) != NULL) {
+		while ((entry = (FileRepResyncHashEntry_s *) hash_seq_search(&hash_status)) != NULL) 
+		{
+			if (entry->fileRepResyncState != FileRepResyncStateInitialized)
+			{
+				continue;
+			}
 			
-			hash_seq_term(&hash_status);
-			found = TRUE;
-			fileRepResyncShmem->writeCount--;
-			fileRepResyncShmem->resyncInProgressCount++;
-			break;
-		}
-	}
+			if (entry->mirrorDataSynchronizationState == MirroredRelDataSynchronizationState_BufferPoolPageIncremental)
+			{
+				changedPageCount += entry->mirrorBufpoolResyncChangedPageCount;
+				
+				if (changedPageCount > CHANGETRACKING_MAX_RESULT_SIZE )
+				{
+					if (NumberOfRelations == 0)
+					{
+						NumberOfRelations++;
+					}
+					hash_seq_term(&hash_status);
+					break;
+				}
+				
+				NumberOfRelations++;
+			}
+			else 
+			{
+				if (NumberOfRelations > 0)
+				{	
+					/* 
+					 * if first entry has BufferPoolPageIncremental state then group only 
+					 * relations with BufferPoolPageIncremental for next resync.
+					 */
+					continue;
+				}
+				hash_seq_term(&hash_status);
+				found = TRUE;
+				entry->fileRepResyncState = FileRepResyncStateInProgress;
+				fileRepResyncShmem->writeCount--;
+				fileRepResyncShmem->resyncInProgressCount++;
+				
+				Assert(fileRepResyncShmem->writeCount >= 0);
+				
+				if (Debug_filerep_print) 
+					elog(LOG, 
+						 "FileRepPrimary_GetResyncEntry() identifier:'%s' "
+						 "mirrorDataSynchronizationState:'%s(%d)' ",
+						 entry->fileName,
+						 MirroredRelDataSynchronizationState_Name(entry->mirrorDataSynchronizationState),
+						 entry->mirrorDataSynchronizationState);									
+								
+				break;
+			}
+		}  // while()
+		
+		if (NumberOfRelations > 0)
+		{
+			int			count = 0;
+			XLogRecPtr	endResyncLSN = FileRepResync_GetEndIncrResyncLSN();
+			
+			requestLocal = ChangeTracking_FormRequest(NumberOfRelations);				
+			
+			hash_seq_init(&hash_status, fileRepResyncShmem->fileRepResyncHash);
+			
+			while (count < NumberOfRelations &&
+				   (entry = (FileRepResyncHashEntry_s *) hash_seq_search(&hash_status)) != NULL)
+			{
+				if (entry->fileRepResyncState != FileRepResyncStateInitialized)
+				{
+					continue;
+				}
+				
+				if (entry->mirrorDataSynchronizationState == MirroredRelDataSynchronizationState_BufferPoolPageIncremental)
+				{
+					
+					/*
+					 * When a single SN has more than 64K, it must be called in GetChanges by itself 
+					 * (without other relfilenodes). The GetChanges() routine will return the first 64K changes, 
+					 * plus an indication that GetChanges() did not finish with this relation. When the consumer 
+					 * sees this “not done yet” flag, he needs to call GetChanges() for this relfilenode again 
+					 * (when ready) and pass the end lsn from the previous call as the beginning lsn for this call. 
+					 * GetChanges() will then return the next 64K changes, etc, etc. 
+					 *
+					 * If GetChanges() was called with more than 1 relfilenode/SN at a time AND it sees more than 
+					 * 64K changes it will be an internal error.
+					 */
+					if (entry->mirrorBufpoolResyncChangedPageCount > CHANGETRACKING_MAX_RESULT_SIZE)
+					{
+						Assert(NumberOfRelations == 1);
+					}
+					
+					ChangeTracking_AddRequestEntry(requestLocal, 
+												   entry->relFileNode,
+												   &entry->mirrorBufpoolResyncCkptLoc,   //beginIncrResyncLSN,
+												   &endResyncLSN);	
+										
+					found = TRUE;
+					fileRepResyncShmem->writeCount--;
+					fileRepResyncShmem->resyncInProgressCount++;
+					entry->fileRepResyncState = FileRepResyncStateInProgress;
+					count++;
+					
+					Assert(fileRepResyncShmem->writeCount >= 0);
+
+					if (Debug_filerep_print) 
+						elog(LOG, 
+							 "FileRepPrimary_GetResyncEntry() identifier:'%s' NumberOfRelations:'%d' "
+							 "mirrorDataSynchronizationState:'%s(%d)' count:'%d' ",
+							 entry->fileName,
+							 NumberOfRelations,
+							 MirroredRelDataSynchronizationState_Name(entry->mirrorDataSynchronizationState),
+							 entry->mirrorDataSynchronizationState,
+							 count);					
+				}
+			}
+			if (entry != NULL)
+			{
+				hash_seq_term(&hash_status);
+				entry = NULL;
+			}
+						
+			*request = requestLocal;
+						
+		} // if (NumberOfRelations > 0)
+		
+	} // if (fileRepResyncShmem->writeCount > 0)
+		
+	FileRepResync_LockRelease();
 	
-	if (found) {		
-		Assert(entry != NULL);
-		entry->fileRepResyncState = FileRepResyncStateInProgress;
-	} else {
+	if (found == FALSE)
+	{
 		entry = NULL;
 	}
-	
-	FileRepResync_LockRelease();
-
-	if (entry != NULL)
-	{
-		if (Debug_filerep_print) 
-			elog(LOG, "FileRepPrimary_GetResyncEntry() identifier:'%s' ", entry->fileName);
-	}
-	
+		
 	return entry;
 }
 
@@ -1303,22 +1416,25 @@ FileRepResync_UpdateEntry(
 	entryLocal = FileRepResync_LookupEntry(entry->fileName);
 	
 	if (entryLocal != NULL) {
-		entryLocal->fileRepResyncState = entry->fileRepResyncState;
-
 		fileRepResyncShmem->resyncCompletedCount++;
 		fileRepResyncShmem->resyncInProgressCount--;
+		
+		entryLocal->fileRepResyncState = FileRepResyncStateCompleted;
+		
+		Assert(fileRepResyncShmem->resyncInProgressCount >= 0);
+
 	} else {
 		Assert(0);
 		status = STATUS_ERROR;
 	}
 	
+	if (Debug_filerep_print)
+		elog(LOG, "FileRepResync_UpdateEntry() identifier:'%s' state:'%d' resyncCompletedCount:'%d' ", 
+			 entry->fileName,
+			 entry->fileRepResyncState,
+			 fileRepResyncShmem->resyncCompletedCount);
+	
 	FileRepResync_LockRelease();
 	
-	if (Debug_filerep_print)
-		elog(LOG, "FileRepResync_UpdateEntry() identifier:'%s' state:'%d' ", 
-			 entry->fileName,
-			 entry->fileRepResyncState);
-
 	return status;
 }
-

@@ -90,7 +90,7 @@ typedef struct PendingDelete
 	char		*relationName;
 	
 	bool		isLocalBuf;	    /* CDB: true => uses local buffer mgr */
-	bool		atCommit;		/* T=delete at commit; F=delete at abort */
+	bool		dropForCommit;		/* T=delete at commit; F=delete at abort */
 	bool		sameTransCreateDrop; /* Collapsed create-delete? */
 	ItemPointerData persistentTid;
 	int64		persistentSerialNum;
@@ -103,6 +103,19 @@ static int pendingDeletesCount = 0;
 static bool pendingDeletesSorted = false;
 
 typedef PendingDelete *PendingDeletePtr;
+
+static inline PersistentEndXactFileSysAction PendingDelete_Action(
+	PendingDelete *pendingDelete)
+{
+	if (pendingDelete->dropForCommit)
+	{
+		return (pendingDelete->sameTransCreateDrop ?
+						PersistentEndXactFileSysAction_AbortingCreateNeeded :
+						PersistentEndXactFileSysAction_Drop);
+	}
+	else
+		return PersistentEndXactFileSysAction_Create;
+}
 
 typedef struct AppendOnlyMirrorResyncEofsKey
 {
@@ -166,6 +179,8 @@ static void smgr_internal_unlink(
 
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
+	
+	bool  						primaryOnly,
 
 	bool 						ignoreNonExistence,
 
@@ -420,7 +435,7 @@ smgrcreatefilespacedirpending(
 
 	pending->relationName = NULL;
 	pending->isLocalBuf = false;
-	pending->atCommit = false;	/* delete if abort */
+	pending->dropForCommit = false;	/* delete if abort */
 	pending->sameTransCreateDrop = false;
 	pending->nestLevel = GetCurrentTransactionNestLevel();
 	pending->persistentTid = *persistentTid;
@@ -506,7 +521,7 @@ smgrcreatetablespacedirpending(
 
 	pending->relationName = NULL;
 	pending->isLocalBuf = false;
-	pending->atCommit = false;	/* delete if abort */
+	pending->dropForCommit = false;	/* delete if abort */
 	pending->sameTransCreateDrop = false;
 	pending->nestLevel = GetCurrentTransactionNestLevel();
 	pending->persistentTid = *persistentTid;
@@ -583,7 +598,7 @@ smgrcreatedbdirpending(
 
 	pending->relationName = NULL;
 	pending->isLocalBuf = false;
-	pending->atCommit = false;	/* delete if abort */
+	pending->dropForCommit = false;	/* delete if abort */
 	pending->sameTransCreateDrop = false;
 	pending->nestLevel = GetCurrentTransactionNestLevel();
 	pending->persistentTid = *persistentTid;
@@ -719,7 +734,7 @@ void smgrcreatepending(
 	pending->relationName = MemoryContextStrdup(TopMemoryContext, relationName);
 
 	pending->isLocalBuf = isLocalBuf;	/*CDB*/
-	pending->atCommit = false;	/* delete if abort */
+	pending->dropForCommit = false;	/* delete if abort */
 	pending->sameTransCreateDrop = false;
 	pending->nestLevel = GetCurrentTransactionNestLevel();
 	pending->persistentTid = *persistentTid;
@@ -823,7 +838,7 @@ smgrscheduleunlink(
 
 	pending->relationName = NULL;
 	pending->isLocalBuf = isLocalBuf;   /*CDB*/
-	pending->atCommit = true;	/* delete if commit */
+	pending->dropForCommit = true;	/* delete if commit */
 	pending->sameTransCreateDrop = false;
 	pending->persistentTid = *persistentTid;
 	pending->persistentSerialNum = persistentSerialNum;
@@ -866,6 +881,8 @@ smgrdounlink(
 
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
+	
+	bool  						primaryOnly,
 
 	bool 						ignoreNonExistence,
 
@@ -875,6 +892,7 @@ smgrdounlink(
 				*relFileNode, 
 				isLocalBuf,
 				relationName,
+				primaryOnly,
 				ignoreNonExistence,
 				mirrorDataLossOccurred);
 }
@@ -890,6 +908,8 @@ smgr_internal_unlink(
 
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
+	
+	bool  						primaryOnly,
 
 	bool 						ignoreNonExistence,
 
@@ -920,7 +940,7 @@ smgr_internal_unlink(
 	 * Note: we treat deletion failure as a WARNING, not an error, because
 	 * we've already decided to commit or abort the current xact.
 	 */
-	if (!mdunlink(rnode, relationName, ignoreNonExistence, mirrorDataLossOccurred))
+	if (!mdunlink(rnode, relationName, primaryOnly, ignoreNonExistence, mirrorDataLossOccurred))
 	{
 		if (relationName == NULL)
 			ereport(WARNING,
@@ -967,7 +987,7 @@ smgrschedulermfilespacedir(
 	
 	pending->relationName = NULL;
 	pending->isLocalBuf = false;
-	pending->atCommit = true;	/* delete if commit */
+	pending->dropForCommit = true;	/* delete if commit */
 	pending->sameTransCreateDrop = false;
 	pending->persistentTid = *persistentTid;
 	pending->persistentSerialNum = persistentSerialNum;
@@ -989,6 +1009,8 @@ smgrdormfilespacedir(
 								 */
 	
 	char						*mirrorFilespaceLocation,
+	
+	bool						primaryOnly,
 
 	bool					 	mirrorOnly,
 
@@ -1011,6 +1033,7 @@ smgrdormfilespacedir(
 						filespaceOid,
 						primaryFilespaceLocation,
 						mirrorFilespaceLocation,
+						primaryOnly,
 						mirrorOnly,
 						ignoreNonExistence,
 						mirrorDataLossOccurred))
@@ -1048,7 +1071,7 @@ smgrschedulermtablespacedir(
 	
 	pending->relationName = NULL;
 	pending->isLocalBuf = false;
-	pending->atCommit = true;	/* delete if commit */
+	pending->dropForCommit = true;	/* delete if commit */
 	pending->sameTransCreateDrop = false;
 	pending->persistentTid = *persistentTid;
 	pending->persistentSerialNum = persistentSerialNum;
@@ -1090,7 +1113,7 @@ smgrschedulermdbdir(
 	
 	pending->relationName = NULL;
 	pending->isLocalBuf = false;
-	pending->atCommit = true;	/* delete if commit */
+	pending->dropForCommit = true;	/* delete if commit */
 	pending->sameTransCreateDrop = false;
 	pending->persistentTid = *persistentTid;
 	pending->persistentSerialNum = persistentSerialNum;
@@ -1104,6 +1127,8 @@ smgrschedulermdbdir(
 void
 smgrdormtablespacedir(
 	Oid							tablespaceOid,
+	
+	bool						primaryOnly,
 
 	bool					 	mirrorOnly,
 
@@ -1122,7 +1147,7 @@ smgrdormtablespacedir(
 	 * Note: we treat deletion failure as a WARNING, not an error, because
 	 * we've already decided to commit or abort the current xact.
 	 */
-	if (!mdrmtablespacedir(tablespaceOid, mirrorOnly, ignoreNonExistence, mirrorDataLossOccurred))
+	if (!mdrmtablespacedir(tablespaceOid, primaryOnly, mirrorOnly, ignoreNonExistence, mirrorDataLossOccurred))
 		ereport(WARNING,
 				(errcode_for_file_access(),
 				 errmsg("could not remove tablespace directory %u: %m",
@@ -1135,6 +1160,8 @@ smgrdormtablespacedir(
 static void
 smgr_internal_rmdbdir(
 	DbDirNode					*dbDirNode,
+	
+	bool						primaryOnly,
 
 	bool					 	mirrorOnly,
 
@@ -1148,7 +1175,7 @@ smgr_internal_rmdbdir(
 	 * Note: we treat deletion failure as a WARNING, not an error, because
 	 * we've already decided to commit or abort the current xact.
 	 */
-	if (!mdrmdbdir(dbDirNode, mirrorOnly, ignoreNonExistence, mirrorDataLossOccurred))
+	if (!mdrmdbdir(dbDirNode, primaryOnly, mirrorOnly, ignoreNonExistence, mirrorDataLossOccurred))
 		ereport(WARNING,
 				(errcode_for_file_access(),
 				 errmsg("could not remove database directory %u/%u: %m",
@@ -1159,6 +1186,8 @@ smgr_internal_rmdbdir(
 void
 smgrdormdbdir(
 	DbDirNode					*dbDirNode,
+	
+	bool						primaryOnly,
 
 	bool					 	mirrorOnly,
 
@@ -1172,7 +1201,8 @@ smgrdormdbdir(
 #endif
 
 	smgr_internal_rmdbdir(
-					dbDirNode, 
+					dbDirNode,
+					primaryOnly, 
 					mirrorOnly,
 					ignoreNonExistence,
 					mirrorDataLossOccurred);
@@ -1726,10 +1756,121 @@ smgrDoDeleteActions(
 	int					*listCount,
 	bool				forCommit)
 {
+	MIRRORED_LOCK_DECLARE;
+
 	PendingDelete *current;
 	int entryIndex;
-	bool doDelete;
 
+	PersistentEndXactFileSysAction action;
+	
+	bool dropPending;
+	bool abortingCreate;
+	
+	/*
+	 * We need to do the transition to 'Aborting Create' or 'Drop Pending' and perform
+	 * the file-system drop while under one acquistion of the MirroredLock.  Otherwise,
+	 * we could race with resynchronize's ReDrop.
+	 */
+	MIRRORED_LOCK;
+
+	/*
+	 * First pass does the initial State-Changes.
+	 */
+	entryIndex = 0;
+	current = *list;
+	while (true)
+	{
+		/*
+		 * Keep adjusting the list to maintain its integrity.
+		 */
+		if (current == NULL)
+			break;
+		
+		action = PendingDelete_Action(current);
+
+		if (Debug_persistent_print)
+		{
+			if (current->relationName == NULL)
+				elog(Debug_persistent_print_level, 
+					 "Storage Manager: Do 1st delete state-change action for list entry #%d: '%s' (persistent end transaction action '%s', transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ")",
+					 entryIndex,
+					 PersistentFileSysObjName_TypeAndObjectName(&current->fsObjName),
+					 PersistentEndXactFileSysAction_Name(action),
+					 current->nestLevel,
+					 ItemPointerToString(&current->persistentTid),
+					 current->persistentSerialNum);
+			else
+				elog(Debug_persistent_print_level, 
+					 "Storage Manager: Do 1st delete state-change action for list entry #%d: '%s', relation name '%s' (persistent end transaction action '%s', transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ")",
+					 entryIndex,
+					 PersistentFileSysObjName_TypeAndObjectName(&current->fsObjName),
+					 current->relationName,
+					 PersistentEndXactFileSysAction_Name(action),
+					 current->nestLevel,
+					 ItemPointerToString(&current->persistentTid),
+					 current->persistentSerialNum);
+		}
+
+		switch (action)
+		{
+		case PersistentEndXactFileSysAction_Create:
+			if (forCommit)
+			{
+				PersistentFileSysObj_Created(
+								&current->fsObjName,
+								&current->persistentTid,
+								current->persistentSerialNum);
+			}
+			else
+			{
+				PersistentFileSysObj_MarkAbortingCreate(
+								&current->fsObjName,
+								&current->persistentTid,
+								current->persistentSerialNum);
+			}
+			break;
+
+		case PersistentEndXactFileSysAction_Drop:
+			if (forCommit)
+			{
+				PersistentFileSysObj_MarkDropPending(
+								&current->fsObjName,
+								&current->persistentTid,
+								current->persistentSerialNum);
+			}
+			break;
+
+		case PersistentEndXactFileSysAction_AbortingCreateNeeded:
+			/*
+			 * Always whether transaction commits or aborts.
+			 */
+			PersistentFileSysObj_MarkAbortingCreate(
+							&current->fsObjName,
+							&current->persistentTid,
+							current->persistentSerialNum);
+			break;
+				
+		default:
+			elog(ERROR, "Unexpected persistent end transaction file-system action: %d",
+				 action);
+		}
+
+		current = current->next;
+		entryIndex++;
+
+	}
+
+	/*
+	 * Make the above State-Changes permanent.
+	 */
+	// UNDONE: Suppress this here until we resolve the lock ordering issues with ChangeTrackingTransitionLock...
+	// UNDONE: It has been moved down below the MIRRORED_UNLOCK.
+	// UNDONE: Restore this for correctness.
+//	PersistentFileSysObj_FlushXLog();
+
+	/*
+	 * Second pass does physical drops and final State-Changes.
+	 */
 	entryIndex = 0;
 	while (true)
 	{
@@ -1745,79 +1886,40 @@ smgrDoDeleteActions(
 
 		*list = current->next;
 
-		if (Debug_persistent_print)
-		{
-			if (current->relationName == NULL)
-				elog(Debug_persistent_print_level, 
-					 "Storage Manager: Do delete action for list entry #%d: '%s' relation name '%s' (forCommit %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", sameTransCreateDrop %s)",
-					 entryIndex,
-					 PersistentFileSysObjName_TypeAndObjectName(&current->fsObjName),
-					 (current->relationName == NULL ? "<null>" : current->relationName),
-					 (forCommit ? "true" : "false"),
-					 current->nestLevel,
-					 ItemPointerToString(&current->persistentTid),
-					 current->persistentSerialNum,
-					 (current->sameTransCreateDrop ? "true" : "false"));
-			else
-				elog(Debug_persistent_print_level, 
-					 "Storage Manager: Do delete action for list entry #%d: '%s', relation name '%s' (forCommit %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", sameTransCreateDrop %s)",
-					 entryIndex,
-					 PersistentFileSysObjName_TypeAndObjectName(&current->fsObjName),
-					 (current->relationName == NULL ? "<null>" : current->relationName),
-					 (forCommit ? "true" : "false"),
-					 current->nestLevel,
-					 ItemPointerToString(&current->persistentTid),
-					 current->persistentSerialNum,
-					 (current->sameTransCreateDrop ? "true" : "false"));
-		}
+		action = PendingDelete_Action(current);
 
-		doDelete = false;	// Assume.
-		if (forCommit)
+		dropPending = false;		// Assume.
+		abortingCreate = false;		// Assume.
+
+		switch (action)
 		{
+		case PersistentEndXactFileSysAction_Create:
+			if (!forCommit)
+			{
+				abortingCreate = true;
+			}
+			break;
+
+		case PersistentEndXactFileSysAction_Drop:
+			if (forCommit)
+			{
+				dropPending = true;
+			}
+			break;
+
+		case PersistentEndXactFileSysAction_AbortingCreateNeeded:
 			/*
-			 * Do commit processing.
+			 * Always whether transaction commits or aborts.
 			 */
-			if (current->atCommit)
-			{
-				/*
-				 * DROP on commit.
-				 */
-				PersistentFileSysObj_MarkDropPending(
-								&current->fsObjName,
-								&current->persistentTid,
-								current->persistentSerialNum);
-
-				doDelete = true;
-			}
-			else
-			{
-				PersistentFileSysObj_Created(
-								&current->fsObjName,
-								&current->persistentTid,
-								current->persistentSerialNum);
-			}
+			abortingCreate = true;
+			break;
+				
+		default:
+			elog(ERROR, "Unexpected persistent end transaction file-system action: %d",
+				 action);
 		}
-		else
-		{
-			/*
-			 * Do abort processing.
-			 */
-			if (!current->atCommit || current->sameTransCreateDrop)
-			{
-				/*
-				 * Abort the CREATE, or 
-				 * delete the same transaction CREATE-DROP.
-				 */
-				PersistentFileSysObj_MarkAbortingCreate(
-								&current->fsObjName,
-								&current->persistentTid,
-								current->persistentSerialNum);
-
-				doDelete = true;
-			}
-		}
-
-		if (doDelete)
+		
+		if (abortingCreate || dropPending)
 		{
 			PersistentFileSysObj_EndXactDrop(
 							&current->fsObjName,
@@ -1825,19 +1927,23 @@ smgrDoDeleteActions(
 							current->relationName,
 							&current->persistentTid,
 							current->persistentSerialNum,
-							/* abortingCreate */ !forCommit);
+							/* ignoreNonExistence */ abortingCreate);
 		}
 
 		/* must explicitly free the list entry */
 		PendingDelete_Free(&current);
 
 		entryIndex++;
-
 		
 	}
-
 	Assert(*listCount == 0);
 	Assert(*list == NULL);
+
+	MIRRORED_UNLOCK;
+
+	// UNDONE: See note in middle.
+	PersistentFileSysObj_FlushXLog();
+
 }
 
 static void
@@ -1962,9 +2068,9 @@ PendingDelete_Compare(const PendingDelete *entry1, const PendingDelete *entry2)
 		/*
 		 * Sort CREATE before DROP for detecting same transaction create-drops.
 		 */
-		if (entry1->atCommit == entry2->atCommit)
+		if (entry1->dropForCommit == entry2->dropForCommit)
 			return 0;
-		else if (entry1->atCommit)
+		else if (entry1->dropForCommit)
 			return 1;
 		else
 			return -1;
@@ -2055,14 +2161,14 @@ smgrSortDeletesList(
 								&prev->fsObjName, 
 								&current->fsObjName) == 0))
 		{
-			if (prev->atCommit)
+			if (prev->dropForCommit)
 				elog(ERROR, "Expected a CREATE for file-system object name '%s'",
 					PersistentFileSysObjName_ObjectName(&prev->fsObjName));
-			if (!current->atCommit)
+			if (!current->dropForCommit)
 				elog(ERROR, "Expected a DROP for file-system object name '%s'",
 					PersistentFileSysObjName_ObjectName(&current->fsObjName));
 
-			prev->atCommit = true;				// Make the CREATE a DROP.
+			prev->dropForCommit = true;				// Make the CREATE a DROP.
 			prev->sameTransCreateDrop = true;	// Don't ignore DROP on abort.
 			collapseCount++;
 
@@ -2231,13 +2337,24 @@ smgrSubTransAbort(void)
  * by upper-level transactions.
  */
 int
-smgrGetPendingDeletes(bool forCommit, PersistentEndXactFsObj **ptr)
+smgrGetPendingDeletes(
+	EndXactRecKind						endXactRecKind,
+
+	PersistentEndXactFileSysActionInfo 	**ptr)
 {
 	int			nestLevel = GetCurrentTransactionNestLevel();
 	int			nrels;
-	PersistentEndXactFsObj *rptr;
+
+	PersistentEndXactFileSysActionInfo *rptr;
+
 	PendingDelete *pending;
 	int			entryIndex;
+
+	PersistentEndXactFileSysAction action;
+
+	Assert(endXactRecKind == EndXactRecKind_Commit ||
+		   endXactRecKind == EndXactRecKind_Abort ||
+		   endXactRecKind == EndXactRecKind_Prepare);
 
 	if (!pendingDeletesSorted)
 	{
@@ -2256,9 +2373,13 @@ smgrGetPendingDeletes(bool forCommit, PersistentEndXactFsObj **ptr)
 	nrels = 0;
 	for (pending = pendingDeletes; pending != NULL; pending = pending->next)
 	{
-		if (pending->nestLevel >= nestLevel && 
-			pending->atCommit == forCommit)
+		action = PendingDelete_Action(pending);
+
+		if (pending->nestLevel >= nestLevel &&
+			EndXactRecKind_NeedsAction(endXactRecKind, action))
+		{
 			nrels++;
+		}
 	}
 	if (nrels == 0)
 	{
@@ -2268,22 +2389,25 @@ smgrGetPendingDeletes(bool forCommit, PersistentEndXactFsObj **ptr)
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
-			 "Storage Manager: Get list entries (forCommit %s, current transaction nest level %d)",
-			 (forCommit ? "true" : "false"),
+			 "Storage Manager: Get list entries (transaction kind '%s', current transaction nest level %d)",
+			 EndXactRecKind_Name(endXactRecKind),
 			 nestLevel);
 
-	rptr = (PersistentEndXactFsObj *) 
-							palloc(nrels * sizeof(PersistentEndXactFsObj));
+	rptr = (PersistentEndXactFileSysActionInfo *) 
+							palloc(nrels * sizeof(PersistentEndXactFileSysActionInfo));
 	*ptr = rptr;
 	entryIndex = 0;
 	for (pending = pendingDeletes; pending != NULL; pending = pending->next)
 	{
 		bool returned;
 
+		action = PendingDelete_Action(pending);
 		returned = false;
+
 		if (pending->nestLevel >= nestLevel && 
-			pending->atCommit == forCommit)
+			EndXactRecKind_NeedsAction(endXactRecKind, action))
 		{
+			rptr->action = action;
 			rptr->fsObjName = pending->fsObjName;
 			rptr->relStorageMgr = pending->relStorageMgr;
 			rptr->persistentTid = pending->persistentTid;
@@ -2294,25 +2418,41 @@ smgrGetPendingDeletes(bool forCommit, PersistentEndXactFsObj **ptr)
 		}
 
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
-				 "Storage Manager: Get list entry #%d: '%s', relation name '%s' (forCommit %s, returned %s, transaction nest level %d, relation storage manager '%s', persistent TID %s, persistent serial number " INT64_FORMAT ", sameTransCreateDrop %s)",
-				 entryIndex,
-				 PersistentFileSysObjName_TypeAndObjectName(&pending->fsObjName),
-				 (pending->relationName == NULL ? "<null>" : pending->relationName),
-				 (forCommit ? "true" : "false"),
-				 (returned ? "true" : "false"),
-				 pending->nestLevel,
-				 PersistentFileSysRelStorageMgr_Name(pending->relStorageMgr),
-				 ItemPointerToString(&pending->persistentTid),
-				 pending->persistentSerialNum,
-				 (pending->sameTransCreateDrop ? "true" : "false"));
+		{
+			if (pending->relationName == NULL)
+				elog(Debug_persistent_print_level, 
+					 "Storage Manager: Get list entry #%d: '%s' (transaction kind '%s', returned %s, transaction nest level %d, relation storage manager '%s', persistent TID %s, persistent serial number " INT64_FORMAT ")",
+					 entryIndex,
+					 PersistentFileSysObjName_TypeAndObjectName(&pending->fsObjName),
+					 EndXactRecKind_Name(endXactRecKind),
+					 (returned ? "true" : "false"),
+					 pending->nestLevel,
+					 PersistentFileSysRelStorageMgr_Name(pending->relStorageMgr),
+					 ItemPointerToString(&pending->persistentTid),
+					 pending->persistentSerialNum);
+			else
+				elog(Debug_persistent_print_level, 
+					 "Storage Manager: Get list entry #%d: '%s', relation name '%s' (transaction kind '%s', returned %s, transaction nest level %d, relation storage manager '%s', persistent TID %s, persistent serial number " INT64_FORMAT ")",
+					 entryIndex,
+					 PersistentFileSysObjName_TypeAndObjectName(&pending->fsObjName),
+					 pending->relationName,
+					 EndXactRecKind_Name(endXactRecKind),
+					 (returned ? "true" : "false"),
+					 pending->nestLevel,
+					 PersistentFileSysRelStorageMgr_Name(pending->relStorageMgr),
+					 ItemPointerToString(&pending->persistentTid),
+					 pending->persistentSerialNum);
+		}
 		entryIndex++;
 	}
 	return nrels;
 }
 
 int
-smgrGetAppendOnlyMirrorResyncEofs(PersistentEndXactAppendOnlyMirrorResyncEofs **ptr)
+smgrGetAppendOnlyMirrorResyncEofs(
+	EndXactRecKind									endXactRecKind,
+
+	PersistentEndXactAppendOnlyMirrorResyncEofs 	**ptr)
 {
 	int			nestLevel = GetCurrentTransactionNestLevel();
 	int			nentries;
@@ -2385,20 +2525,37 @@ smgrGetAppendOnlyMirrorResyncEofs(PersistentEndXactAppendOnlyMirrorResyncEofs **
 		}
 
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
-				 "Storage Manager: Get Append-Only mirror resync eofs list entry #%d: %u/%u/%u, segment file #%d, relation name '%s' (returned %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
-				 entryIndex,
-				 entry->key.relFileNode.spcNode,
-				 entry->key.relFileNode.dbNode,
-				 entry->key.relFileNode.relNode,
-				 entry->key.segmentFileNum,
-				 (entry->relationName == NULL ? "<null>" : entry->relationName),
-				 (returned ? "true" : "false"),
-				 entry->key.nestLevel,
-				 ItemPointerToString(&entry->persistentTid),
-				 entry->persistentSerialNum,
-				 entry->mirrorLossEof,
-				 entry->mirrorNewEof);
+		{
+			if (entry->relationName == NULL)
+				elog(Debug_persistent_print_level, 
+					 "Storage Manager: Get Append-Only mirror resync eofs list entry #%d: %u/%u/%u, segment file #%d (returned %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
+					 entryIndex,
+					 entry->key.relFileNode.spcNode,
+					 entry->key.relFileNode.dbNode,
+					 entry->key.relFileNode.relNode,
+					 entry->key.segmentFileNum,
+					 (returned ? "true" : "false"),
+					 entry->key.nestLevel,
+					 ItemPointerToString(&entry->persistentTid),
+					 entry->persistentSerialNum,
+					 entry->mirrorLossEof,
+					 entry->mirrorNewEof);
+			else
+				elog(Debug_persistent_print_level, 
+					 "Storage Manager: Get Append-Only mirror resync eofs list entry #%d: %u/%u/%u, segment file #%d, relation name '%s' (returned %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
+					 entryIndex,
+					 entry->key.relFileNode.spcNode,
+					 entry->key.relFileNode.dbNode,
+					 entry->key.relFileNode.relNode,
+					 entry->key.segmentFileNum,
+					 entry->relationName,
+					 (returned ? "true" : "false"),
+					 entry->key.nestLevel,
+					 ItemPointerToString(&entry->persistentTid),
+					 entry->persistentSerialNum,
+					 entry->mirrorLossEof,
+					 entry->mirrorNewEof);
+		}
 		entryIndex++;
 	}
 	return nentries;
@@ -2420,7 +2577,7 @@ smgrIsPendingDeletes(bool forCommit)
 
 	for (pending = pendingDeletes; pending != NULL; pending = pending->next)
 	{
-		if (pending->nestLevel >= nestLevel && pending->atCommit == forCommit)
+		if (pending->nestLevel >= nestLevel && pending->dropForCommit == forCommit)
 			return true;
 	}
 

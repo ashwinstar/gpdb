@@ -164,11 +164,22 @@ typedef enum MirroredObjectExistenceState
 	MirroredObjectExistenceState_NotMirrored = 1,
 	MirroredObjectExistenceState_MirrorCreatePending = 2,
 	MirroredObjectExistenceState_MirrorCreated = 3,
-	MirroredObjectExistenceState_MirrorReCreateNeeded = 4,
-	MirroredObjectExistenceState_MirrorReDropNeeded = 5,
-	MirroredObjectExistenceState_MirrorDropped = 6,
+	MirroredObjectExistenceState_MirrorDownBeforeCreate = 4,
+	MirroredObjectExistenceState_MirrorDownDuringCreate = 5,
+	MirroredObjectExistenceState_MirrorDropPending = 6,
+	MirroredObjectExistenceState_OnlyMirrorDropRemains = 7,
 	MaxMirroredObjectExistenceState /* must always be last */
 } MirroredObjectExistenceState;
+
+inline static bool MirroredObjectExistenceState_IsResynchCreated(
+	MirroredObjectExistenceState	mirrorExistenceState)
+{
+	return (mirrorExistenceState == MirroredObjectExistenceState_MirrorCreatePending ||
+		    mirrorExistenceState == MirroredObjectExistenceState_MirrorCreated ||
+		    mirrorExistenceState == MirroredObjectExistenceState_MirrorDownBeforeCreate ||
+		    mirrorExistenceState == MirroredObjectExistenceState_MirrorDownDuringCreate);
+}
+
 
 /*
  * The primary's view of the state of a mirrored persistent relation data
@@ -177,7 +188,7 @@ typedef enum MirroredObjectExistenceState
 typedef enum MirroredRelDataSynchronizationState
 {
 	MirroredRelDataSynchronizationState_None = 0,
-	MirroredRelDataSynchronizationState_Synchronized = 1,
+	MirroredRelDataSynchronizationState_DataSynchronized = 1,
 	MirroredRelDataSynchronizationState_FullCopy = 2,
 	MirroredRelDataSynchronizationState_BufferPoolPageIncremental = 3,
 	MirroredRelDataSynchronizationState_BufferPoolScanIncremental = 4,

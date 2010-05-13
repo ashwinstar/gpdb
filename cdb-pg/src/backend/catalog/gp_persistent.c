@@ -31,24 +31,27 @@
 #include "utils/builtins.h"
 
 void GpPersistentRelationNode_GetValues(
-	Datum							*values,
+	Datum									*values,
 
-	Oid 							*tablespaceOid,
-	Oid 							*databaseOid,
-	Oid 							*relfilenodeOid,
-	int32							*segmentFileNum,
-	PersistentFileSysRelStorageMgr	*relationStorageManager,
-	PersistentFileSysState			*persistentState,
-	MirroredObjectExistenceState	*mirrorExistenceState,
-	MirroredRelDataSynchronizationState *mirrorDataSynchronizationState,
-	bool							*mirrorBufpoolPhysicallyTruncated,
-	XLogRecPtr						*mirrorBufpoolResyncCkptLoc,
-	BlockNumber						*mirrorBufpoolResyncCkptBlockNum,
-	int64							*mirrorAppendOnlyLossEof,
-	int64							*mirrorAppendOnlyNewEof,
-	TransactionId					*parentXid,
-	int64							*serialNum,
-	ItemPointerData 				*previousFreeTid)
+	Oid 									*tablespaceOid,
+	Oid 									*databaseOid,
+	Oid 									*relfilenodeOid,
+	int32									*segmentFileNum,
+	PersistentFileSysRelStorageMgr			*relationStorageManager,
+	PersistentFileSysState					*persistentState,
+	int64									*createMirrorDataLossTrackingSessionNum,
+	MirroredObjectExistenceState			*mirrorExistenceState,
+	MirroredRelDataSynchronizationState 	*mirrorDataSynchronizationState,
+	bool									*mirrorBufpoolMarkedForScanIncrementalResync,
+	int64									*mirrorBufpoolResyncChangedPageCount,
+	XLogRecPtr								*mirrorBufpoolResyncCkptLoc,
+	BlockNumber								*mirrorBufpoolResyncCkptBlockNum,
+	int64									*mirrorAppendOnlyLossEof,
+	int64									*mirrorAppendOnlyNewEof,
+	int32									*reserved,
+	TransactionId							*parentXid,
+	int64									*persistentSerialNum,
+	ItemPointerData 						*previousFreeTid)
 {
 	*tablespaceOid = DatumGetObjectId(values[Anum_gp_persistent_relation_node_tablespace_oid - 1]);
 
@@ -62,11 +65,15 @@ void GpPersistentRelationNode_GetValues(
 
 	*persistentState = (PersistentFileSysState)DatumGetInt16(values[Anum_gp_persistent_relation_node_persistent_state - 1]);
 
+	*createMirrorDataLossTrackingSessionNum = DatumGetInt64(values[Anum_gp_persistent_relation_node_create_mirror_data_loss_tracking_session_num - 1]);
+
 	*mirrorExistenceState = (MirroredObjectExistenceState)DatumGetInt16(values[Anum_gp_persistent_relation_node_mirror_existence_state - 1]);
 
 	*mirrorDataSynchronizationState = (MirroredRelDataSynchronizationState)DatumGetInt16(values[Anum_gp_persistent_relation_node_mirror_data_synchronization_state - 1]);
 
-	*mirrorBufpoolPhysicallyTruncated = DatumGetBool(values[Anum_gp_persistent_relation_node_mirror_bufpool_physically_truncated - 1]);
+	*mirrorBufpoolMarkedForScanIncrementalResync = DatumGetBool(values[Anum_gp_persistent_relation_node_mirror_bufpool_marked_for_scan_incremental_resync - 1]);
+
+	*mirrorBufpoolResyncChangedPageCount = DatumGetInt64(values[Anum_gp_persistent_relation_node_mirror_bufpool_resync_changed_page_count - 1]);
 
 	*mirrorBufpoolResyncCkptLoc = *((XLogRecPtr*) DatumGetPointer(values[Anum_gp_persistent_relation_node_mirror_bufpool_resync_ckpt_loc - 1]));
 
@@ -76,9 +83,11 @@ void GpPersistentRelationNode_GetValues(
 
 	*mirrorAppendOnlyNewEof = DatumGetInt64(values[Anum_gp_persistent_relation_node_mirror_append_only_new_eof - 1]);
 
+	*reserved = DatumGetInt32(values[Anum_gp_persistent_relation_node_reserved - 1]);
+
 	*parentXid = (TransactionId)DatumGetInt32(values[Anum_gp_persistent_relation_node_parent_xid - 1]);
 
-	*serialNum = DatumGetInt64(values[Anum_gp_persistent_relation_node_persistent_serial_num - 1]);
+	*persistentSerialNum = DatumGetInt64(values[Anum_gp_persistent_relation_node_persistent_serial_num - 1]);
 
 	*previousFreeTid = *((ItemPointer) DatumGetPointer(values[Anum_gp_persistent_relation_node_previous_free_tid - 1]));
 
@@ -93,15 +102,18 @@ void GpPersistentRelationNode_SetDatumValues(
 	int32							segmentFileNum,
 	PersistentFileSysRelStorageMgr	relationStorageManager,
 	PersistentFileSysState			persistentState,
+	int64							createMirrorDataLossTrackingSessionNum,
 	MirroredObjectExistenceState	mirrorExistenceState,
 	MirroredRelDataSynchronizationState mirrorDataSynchronizationState,
-	bool							mirrorBufpoolPhysicallyTruncated,
+	bool							mirrorBufpoolMarkedForScanIncrementalResync,
+	int64							mirrorBufpoolResyncChangedPageCount,
 	XLogRecPtr						*mirrorBufpoolResyncCkptLoc,
 	BlockNumber						mirrorBufpoolResyncCkptBlockNum,
 	int64							mirrorAppendOnlyLossEof,
 	int64							mirrorAppendOnlyNewEof,
+	int32							reserved,
 	TransactionId					parentXid,
-	int64							serialNum,
+	int64							persistentSerialNum,
 	ItemPointerData 				*previousFreeTid)
 {
 	if (persistentState != PersistentFileSysState_Free && !PersistentFileSysRelStorageMgr_IsValid(relationStorageManager))
@@ -124,14 +136,20 @@ void GpPersistentRelationNode_SetDatumValues(
 	values[Anum_gp_persistent_relation_node_persistent_state - 1] = 
 									Int16GetDatum(persistentState);
 
+	values[Anum_gp_persistent_relation_node_create_mirror_data_loss_tracking_session_num - 1] = 
+									Int64GetDatum(createMirrorDataLossTrackingSessionNum);
+
 	values[Anum_gp_persistent_relation_node_mirror_existence_state - 1] = 
 									Int16GetDatum(mirrorExistenceState);
 
 	values[Anum_gp_persistent_relation_node_mirror_data_synchronization_state - 1] = 
 									Int16GetDatum(mirrorDataSynchronizationState);
 
-	values[Anum_gp_persistent_relation_node_mirror_bufpool_physically_truncated - 1] = 
-									BoolGetDatum(mirrorBufpoolPhysicallyTruncated);
+	values[Anum_gp_persistent_relation_node_mirror_bufpool_marked_for_scan_incremental_resync - 1] = 
+									BoolGetDatum(mirrorBufpoolMarkedForScanIncrementalResync);
+
+	values[Anum_gp_persistent_relation_node_mirror_bufpool_resync_changed_page_count - 1] = 
+									Int64GetDatum(mirrorBufpoolResyncChangedPageCount);
 
 	values[Anum_gp_persistent_relation_node_mirror_bufpool_resync_ckpt_loc - 1] =
 									PointerGetDatum(mirrorBufpoolResyncCkptLoc);
@@ -145,11 +163,14 @@ void GpPersistentRelationNode_SetDatumValues(
 	values[Anum_gp_persistent_relation_node_mirror_append_only_new_eof - 1] = 
 									Int64GetDatum(mirrorAppendOnlyNewEof);
 
+	values[Anum_gp_persistent_relation_node_reserved - 1] = 
+									Int32GetDatum(reserved);
+
 	values[Anum_gp_persistent_relation_node_parent_xid - 1] = 
 									Int32GetDatum(parentXid);
 
 	values[Anum_gp_persistent_relation_node_persistent_serial_num - 1] = 
-									Int64GetDatum(serialNum);
+									Int64GetDatum(persistentSerialNum);
 
 	values[Anum_gp_persistent_relation_node_previous_free_tid - 1] =
 									PointerGetDatum(previousFreeTid);
@@ -161,9 +182,11 @@ void GpPersistentDatabaseNode_GetValues(
 	Oid 							*tablespaceOid,
 	Oid 							*databaseOid,
 	PersistentFileSysState			*persistentState,
+	int64							*createMirrorDataLossTrackingSessionNum,
 	MirroredObjectExistenceState	*mirrorExistenceState,
+	int32							*reserved,
 	TransactionId					*parentXid,
-	int64							*serialNum,
+	int64							*persistentSerialNum,
 	ItemPointerData 				*previousFreeTid)
 {
     *tablespaceOid = DatumGetObjectId(values[Anum_gp_persistent_database_node_tablespace_oid - 1]);
@@ -172,11 +195,15 @@ void GpPersistentDatabaseNode_GetValues(
 
     *persistentState = DatumGetInt16(values[Anum_gp_persistent_database_node_persistent_state - 1]);
 
+    *createMirrorDataLossTrackingSessionNum = DatumGetInt64(values[Anum_gp_persistent_database_node_create_mirror_data_loss_tracking_session_num - 1]);
+
     *mirrorExistenceState = DatumGetInt16(values[Anum_gp_persistent_database_node_mirror_existence_state - 1]);
+
+	*reserved = DatumGetInt32(values[Anum_gp_persistent_database_node_reserved - 1]);
 
 	*parentXid = (TransactionId)DatumGetInt32(values[Anum_gp_persistent_database_node_parent_xid - 1]);
 
-    *serialNum = DatumGetInt64(values[Anum_gp_persistent_database_node_persistent_serial_num - 1]);
+    *persistentSerialNum = DatumGetInt64(values[Anum_gp_persistent_database_node_persistent_serial_num - 1]);
 
     *previousFreeTid = *((ItemPointer) DatumGetPointer(values[Anum_gp_persistent_database_node_previous_free_tid - 1]));
 
@@ -188,9 +215,11 @@ void GpPersistentDatabaseNode_SetDatumValues(
 	Oid 							tablespaceOid,
 	Oid 							databaseOid,
 	PersistentFileSysState			persistentState,
+	int64							createMirrorDataLossTrackingSessionNum,
 	MirroredObjectExistenceState	mirrorExistenceState,
+	int32							reserved,
 	TransactionId					parentXid,
-	int64							serialNum,
+	int64							persistentSerialNum,
 	ItemPointerData 				*previousFreeTid)
 {
 	values[Anum_gp_persistent_database_node_tablespace_oid - 1] = 
@@ -201,14 +230,20 @@ void GpPersistentDatabaseNode_SetDatumValues(
 	values[Anum_gp_persistent_database_node_persistent_state - 1] = 
 									Int16GetDatum(persistentState);
 
+	values[Anum_gp_persistent_database_node_create_mirror_data_loss_tracking_session_num - 1] = 
+									Int64GetDatum(createMirrorDataLossTrackingSessionNum);
+
 	values[Anum_gp_persistent_database_node_mirror_existence_state - 1] = 
 									Int16GetDatum(mirrorExistenceState);
+
+	values[Anum_gp_persistent_database_node_reserved - 1] = 
+									Int32GetDatum(reserved);
 
 	values[Anum_gp_persistent_database_node_parent_xid - 1] = 
 									Int32GetDatum(parentXid);
 
 	values[Anum_gp_persistent_database_node_persistent_serial_num - 1] = 
-									Int64GetDatum(serialNum);
+									Int64GetDatum(persistentSerialNum);
 
 	values[Anum_gp_persistent_database_node_previous_free_tid - 1] =
 									PointerGetDatum(previousFreeTid);
@@ -220,9 +255,11 @@ void GpPersistentTablespaceNode_GetValues(
 	Oid 							*filespaceOid,
 	Oid 							*tablespaceOid,
 	PersistentFileSysState			*persistentState,
+	int64							*createMirrorDataLossTrackingSessionNum,
 	MirroredObjectExistenceState	*mirrorExistenceState,
+	int32							*reserved,
 	TransactionId					*parentXid,
-	int64							*serialNum,
+	int64							*persistentSerialNum,
 	ItemPointerData 				*previousFreeTid)
 {
     *filespaceOid = DatumGetObjectId(values[Anum_gp_persistent_tablespace_node_filespace_oid - 1]);
@@ -231,11 +268,15 @@ void GpPersistentTablespaceNode_GetValues(
 
     *persistentState = DatumGetInt16(values[Anum_gp_persistent_tablespace_node_persistent_state - 1]);
 
+    *createMirrorDataLossTrackingSessionNum = DatumGetInt64(values[Anum_gp_persistent_tablespace_node_create_mirror_data_loss_tracking_session_num - 1]);
+
     *mirrorExistenceState = DatumGetInt16(values[Anum_gp_persistent_tablespace_node_mirror_existence_state - 1]);
+
+	*reserved = DatumGetInt32(values[Anum_gp_persistent_tablespace_node_reserved - 1]);
 
 	*parentXid = (TransactionId)DatumGetInt32(values[Anum_gp_persistent_tablespace_node_parent_xid - 1]);
 
-    *serialNum = DatumGetInt64(values[Anum_gp_persistent_tablespace_node_persistent_serial_num - 1]);
+    *persistentSerialNum = DatumGetInt64(values[Anum_gp_persistent_tablespace_node_persistent_serial_num - 1]);
 
     *previousFreeTid = *((ItemPointer) DatumGetPointer(values[Anum_gp_persistent_tablespace_node_previous_free_tid - 1]));
 
@@ -247,9 +288,11 @@ void GpPersistentTablespaceNode_SetDatumValues(
 	Oid 							filespaceOid,
 	Oid 							tablespaceOid,
 	PersistentFileSysState			persistentState,
+	int64							createMirrorDataLossTrackingSessionNum,
 	MirroredObjectExistenceState	mirrorExistenceState,
+	int32							reserved,
 	TransactionId					parentXid,
-	int64							serialNum,
+	int64							persistentSerialNum,
 	ItemPointerData 				*previousFreeTid)
 {
 	values[Anum_gp_persistent_tablespace_node_filespace_oid - 1] = 
@@ -261,14 +304,20 @@ void GpPersistentTablespaceNode_SetDatumValues(
 	values[Anum_gp_persistent_tablespace_node_persistent_state - 1] = 
 									Int16GetDatum(persistentState);
 
+	values[Anum_gp_persistent_tablespace_node_create_mirror_data_loss_tracking_session_num - 1] = 
+									Int64GetDatum(createMirrorDataLossTrackingSessionNum);
+
 	values[Anum_gp_persistent_tablespace_node_mirror_existence_state - 1] = 
 									Int16GetDatum(mirrorExistenceState);
+
+	values[Anum_gp_persistent_tablespace_node_reserved - 1] = 
+									Int32GetDatum(reserved);
 
 	values[Anum_gp_persistent_tablespace_node_parent_xid - 1] = 
 									Int32GetDatum(parentXid);
 
 	values[Anum_gp_persistent_tablespace_node_persistent_serial_num - 1] = 
-									Int64GetDatum(serialNum);
+									Int64GetDatum(persistentSerialNum);
 
 	values[Anum_gp_persistent_tablespace_node_previous_free_tid - 1] =
 									PointerGetDatum(previousFreeTid);
@@ -283,9 +332,11 @@ void GpPersistentFilespaceNode_GetValues(
 	int16							*dbId2,
 	char							locationBlankPadded2[FilespaceLocationBlankPaddedWithNullTermLen],
 	PersistentFileSysState			*persistentState,
+	int64							*createMirrorDataLossTrackingSessionNum,
 	MirroredObjectExistenceState	*mirrorExistenceState,
+	int32							*reserved,
 	TransactionId					*parentXid,
-	int64							*serialNum,
+	int64							*persistentSerialNum,
 	ItemPointerData 				*previousFreeTid)
 {
 	char *locationPtr;
@@ -317,11 +368,15 @@ void GpPersistentFilespaceNode_GetValues(
 
     *persistentState = DatumGetInt16(values[Anum_gp_persistent_filespace_node_persistent_state - 1]);
 
+    *createMirrorDataLossTrackingSessionNum = DatumGetInt64(values[Anum_gp_persistent_filespace_node_create_mirror_data_loss_tracking_session_num - 1]);
+
     *mirrorExistenceState = DatumGetInt16(values[Anum_gp_persistent_filespace_node_mirror_existence_state - 1]);
+
+	*reserved = DatumGetInt32(values[Anum_gp_persistent_filespace_node_reserved - 1]);
 
 	*parentXid = (TransactionId)DatumGetInt32(values[Anum_gp_persistent_filespace_node_parent_xid - 1]);
 
-    *serialNum = DatumGetInt64(values[Anum_gp_persistent_filespace_node_persistent_serial_num - 1]);
+    *persistentSerialNum = DatumGetInt64(values[Anum_gp_persistent_filespace_node_persistent_serial_num - 1]);
 
     *previousFreeTid = *((ItemPointer) DatumGetPointer(values[Anum_gp_persistent_filespace_node_previous_free_tid - 1]));
 
@@ -336,9 +391,11 @@ void GpPersistentFilespaceNode_SetDatumValues(
 	int16							dbId2,
 	char							locationBlankPadded2[FilespaceLocationBlankPaddedWithNullTermLen],
 	PersistentFileSysState			persistentState,
+	int64							createMirrorDataLossTrackingSessionNum,
 	MirroredObjectExistenceState	mirrorExistenceState,
+	int32							reserved,
 	TransactionId					parentXid,
-	int64							serialNum,
+	int64							persistentSerialNum,
 	ItemPointerData 				*previousFreeTid)
 {
 	int locationLen;
@@ -373,14 +430,20 @@ void GpPersistentFilespaceNode_SetDatumValues(
 	values[Anum_gp_persistent_filespace_node_persistent_state - 1] = 
 									Int16GetDatum(persistentState);
 
+	values[Anum_gp_persistent_filespace_node_create_mirror_data_loss_tracking_session_num - 1] = 
+									Int64GetDatum(createMirrorDataLossTrackingSessionNum);
+
 	values[Anum_gp_persistent_filespace_node_mirror_existence_state - 1] = 
 									Int16GetDatum(mirrorExistenceState);
+
+	values[Anum_gp_persistent_filespace_node_reserved - 1] = 
+									Int32GetDatum(reserved);
 
 	values[Anum_gp_persistent_filespace_node_parent_xid - 1] = 
 									Int32GetDatum(parentXid);
 
 	values[Anum_gp_persistent_filespace_node_persistent_serial_num - 1] = 
-									Int64GetDatum(serialNum);
+									Int64GetDatum(persistentSerialNum);
 
 	values[Anum_gp_persistent_filespace_node_previous_free_tid - 1] =
 									PointerGetDatum(previousFreeTid);
@@ -396,6 +459,8 @@ void GpPersistent_GetCommonValues(
 	TransactionId					*parentXid,
 	int64							*persistentSerialNum)
 {
+	int64 createMirrorDataLossTrackingSessionNum;
+	int32 reserved;
 	ItemPointerData previousFreeTid;
 
 	switch (fsObjType)
@@ -407,7 +472,8 @@ void GpPersistent_GetCommonValues(
 
 			PersistentFileSysRelStorageMgr	relationStorageManager;
 			MirroredRelDataSynchronizationState mirrorDataSynchronizationState;
-			bool							mirrorBufpoolPhysicallyTruncated;
+			bool							mirrorBufpoolMarkedForScanIncrementalResync;
+			int64							mirrorBufpoolResyncChangedPageCount;
 			XLogRecPtr						mirrorBufpoolResyncCkptLoc;
 			BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
 			int64							mirrorAppendOnlyLossEof;
@@ -421,13 +487,16 @@ void GpPersistent_GetCommonValues(
 											&segmentFileNum,
 											&relationStorageManager,
 											persistentState,
+											&createMirrorDataLossTrackingSessionNum,
 											mirrorExistenceState,
 											&mirrorDataSynchronizationState,
-											&mirrorBufpoolPhysicallyTruncated,
+											&mirrorBufpoolMarkedForScanIncrementalResync,
+											&mirrorBufpoolResyncChangedPageCount,
 											&mirrorBufpoolResyncCkptLoc,
 											&mirrorBufpoolResyncCkptBlockNum,
 											&mirrorAppendOnlyLossEof,
 											&mirrorAppendOnlyNewEof,
+											&reserved,
 											parentXid,
 											persistentSerialNum,
 											&previousFreeTid);
@@ -449,7 +518,9 @@ void GpPersistent_GetCommonValues(
 									&dbDirNode.tablespace,
 									&dbDirNode.database,
 									persistentState,
+									&createMirrorDataLossTrackingSessionNum,
 									mirrorExistenceState,
+									&reserved,
 									parentXid,
 									persistentSerialNum,
 									&previousFreeTid);
@@ -471,7 +542,9 @@ void GpPersistent_GetCommonValues(
 											&filespaceOid,
 											&tablespaceOid,
 											persistentState,
+											&createMirrorDataLossTrackingSessionNum,
 											mirrorExistenceState,
+											&reserved,
 											parentXid,
 											persistentSerialNum,
 											&previousFreeTid);
@@ -498,7 +571,9 @@ void GpPersistent_GetCommonValues(
 											&dbId2,
 											locationBlankPadded2,
 											persistentState,
+											&createMirrorDataLossTrackingSessionNum,
 											mirrorExistenceState,
+											&reserved,
 											parentXid,
 											persistentSerialNum,
 											&previousFreeTid);
@@ -521,12 +596,15 @@ void GpRelationNode_GetValues(
 
 	Oid 							*relfilenodeOid,
 	int32							*segmentFileNum,
+	int64							*createMirrorDataLossTrackingSessionNum,
 	ItemPointer		 				persistentTid,
 	int64							*persistentSerialNum)
 {
 	*relfilenodeOid = DatumGetObjectId(values[Anum_gp_relation_node_relfilenode_oid - 1]);
 
 	*segmentFileNum = DatumGetInt32(values[Anum_gp_relation_node_segment_file_num - 1]);
+
+	*createMirrorDataLossTrackingSessionNum = DatumGetInt64(values[Anum_gp_relation_node_create_mirror_data_loss_tracking_session_num - 1]);
 
 	*persistentTid = *((ItemPointer) DatumGetPointer(values[Anum_gp_relation_node_persistent_tid - 1]));
 
@@ -539,6 +617,7 @@ void GpRelationNode_SetDatumValues(
 
 	Oid 							relfilenodeOid,
 	int32							segmentFileNum,
+	int64							createMirrorDataLossTrackingSessionNum,
 	ItemPointer		 				persistentTid,
 	int64							persistentSerialNum)
 {
@@ -547,6 +626,9 @@ void GpRelationNode_SetDatumValues(
 
 	values[Anum_gp_relation_node_segment_file_num - 1] = 
 									Int32GetDatum(segmentFileNum);
+
+	values[Anum_gp_relation_node_create_mirror_data_loss_tracking_session_num - 1] = 
+									Int64GetDatum(createMirrorDataLossTrackingSessionNum);
 
 	values[Anum_gp_relation_node_persistent_tid - 1] =
 									PointerGetDatum(persistentTid);

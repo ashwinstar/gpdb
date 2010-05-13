@@ -219,6 +219,8 @@ extern void MirroredAppendOnly_Drop(
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
 	
+	bool  						primaryOnly,
+
 	int							*primaryError,
 
 	bool						*mirrorDataLossOccurred);

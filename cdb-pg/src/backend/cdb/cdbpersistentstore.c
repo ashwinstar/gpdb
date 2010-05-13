@@ -224,9 +224,10 @@ static void PersistentStore_DoInitScan(
 
 	/* Only test this outside of recovery scenarios */
 	if (!InRecovery && globalSequenceNum < storeSharedData->maxInUseSerialNum)
-		elog(ERROR, "Global sequence number " INT64_FORMAT " less than maximum value " INT64_FORMAT " found in scan",
+		elog(ERROR, "Global sequence number " INT64_FORMAT " less than maximum value " INT64_FORMAT " found in scan (token %d)",
 		     globalSequenceNum,
-		     storeSharedData->maxInUseSerialNum);
+		     storeSharedData->maxInUseSerialNum,
+		     storeData->token);
 
 	storeSharedData->maxInUseSerialNum = globalSequenceNum;
 	

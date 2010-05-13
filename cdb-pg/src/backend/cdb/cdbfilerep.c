@@ -400,6 +400,7 @@ FileRepShmem_s	*fileRepShmemArray[FILEREP_MAX_PROC];
 FileRepShmem_s *fileRepAckShmem = NULL;
 
 static void FileRep_ShmemInitArray(void);
+static void FileRepIpc_ShmemReInit(void);
 
 FileRepIpcShmem_s	*fileRepIpcArray[FILEREP_MAX_IPC_ARRAY];
 
@@ -462,6 +463,28 @@ FileRepIpc_ShmemInit(void)
 		
 		PGSemaphoreCreate(&fileRepIpcArray[ii]->semP);
 		PGSemaphoreCreate(&fileRepIpcArray[ii]->semC);
+		
+		fileRepIpcArray[ii]->refCountSemP = 0;
+		fileRepIpcArray[ii]->refCountSemC = 0;		
+	}
+}
+
+static void
+FileRepIpc_ShmemReInit(void)
+{
+	int		ii;
+	
+	for (ii=0; ii < FILEREP_MAX_IPC_ARRAY; ii++)
+	{
+		if (fileRepIpcArray[ii] == NULL) 
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 (errmsg("shared memory for filerep ipc not initialized"))));
+		}	
+				
+		PGSemaphoreReset(&fileRepIpcArray[ii]->semP);
+		PGSemaphoreReset(&fileRepIpcArray[ii]->semC);
 		
 		fileRepIpcArray[ii]->refCountSemP = 0;
 		fileRepIpcArray[ii]->refCountSemC = 0;		
@@ -546,7 +569,7 @@ static FileRepShmem_s *FileRep_ShmemInitOneBuffer(const char *bufferLabel, int s
 	
 	result->state = FileRepStateNotInitialized;
 
-	elog(LOG, "FileRep_ShmemInit result:%p insert:%p end:%p ", 
+	elog(DEBUG1, "FileRep_ShmemInit result:%p insert:%p end:%p ", 
 		 result, 
 		 result->positionBegin,
 		 result->positionEnd);
@@ -573,7 +596,7 @@ FileRep_ShmemInit(void)
 	
 	fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex = IndexIpcArrayShmem;
 		
-	elog(LOG, "FileRep_ShmemInit shmemArray:%p array index:'%d' ", 
+	elog(DEBUG1, "FileRep_ShmemInit shmemArray:%p array index:'%d' ", 
 		 fileRepShmemArray[fileRepProcIndex], fileRepProcIndex);
 }
 
@@ -1021,7 +1044,7 @@ FileRep_ReserveShmem(
 	
 	if (insert == false) {
 		ereport(LOG,
-			(errmsg("Reserving FileRep Shared Memory fail.")));
+			(errmsg("reserving filerep shared memory fail")));
 	}
 	
 	return (msgPositionInsert);
@@ -1645,7 +1668,24 @@ FileRep_ProcessSignals()
 			{
 				if (term_pid == FileRepSubProcList[i].pid)
 				{
-					LogChildExit(LOG, (FileRepProcessTypeToString[i]),
+					int level = LOG;
+					
+					switch (WTERMSIG(term_status))
+					{
+						case SIGSEGV:							
+						case SIGABRT:
+						case SIGBUS:
+							//if (Debug_filerep_print)
+							//{
+								level = FATAL;
+							//}
+							break;
+							
+						default:
+							level = LOG;
+							break;
+					}
+					LogChildExit(level, (FileRepProcessTypeToString[i]),
 								 FileRepSubProcList[i].pid,
 								 term_status);
 					
@@ -2658,6 +2698,7 @@ void FileRep_Main(void)
 	
 	FileRep_SetState(FileRepStateInitialization);
 	
+	FileRepIpc_ShmemReInit();
 	FileRep_ShmemReInit();
 	FileRepAck_ShmemReInit();
 

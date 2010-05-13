@@ -377,6 +377,9 @@ LWLockTryLockWaiting(
 
 #endif
 
+// Turn this on if we find a deadlock or missing unlock issue...
+// #define LWLOCK_TRACE_MIRROREDLOCK
+
 /*
  * LWLockAcquire - acquire a lightweight lock in the specified mode
  *
@@ -532,6 +535,11 @@ LWLockAcquire(LWLockId lockid, LWLockMode mode)
 		 */
 		LOG_LWDEBUG("LWLockAcquire", lockid, "waiting");
 
+#ifdef LWLOCK_TRACE_MIRROREDLOCK
+	if (lockid == MirroredLock)
+		elog(LOG, "LWLockAcquire: waiting for MirroredLock (PID %u)", MyProcPid);
+#endif
+
 #ifdef LWLOCK_STATS
 		block_counts[lockid]++;
 #endif
@@ -561,6 +569,10 @@ LWLockAcquire(LWLockId lockid, LWLockMode mode)
 
 		LOG_LWDEBUG("LWLockAcquire", lockid, "awakened");
 
+#ifdef LWLOCK_TRACE_MIRROREDLOCK
+		if (lockid == MirroredLock)
+			elog(LOG, "LWLockAcquire: awakened for MirroredLock (PID %u)", MyProcPid);
+#endif
 		/* Now loop back and try to acquire lock again. */
 		retry = true;
 	}
@@ -569,6 +581,14 @@ LWLockAcquire(LWLockId lockid, LWLockMode mode)
 	SpinLockRelease(&lock->mutex);
 
 	PG_TRACE2(lwlock__acquire, lockid, mode);
+
+#ifdef LWLOCK_TRACE_MIRROREDLOCK
+	if (lockid == MirroredLock)
+		elog(LOG, "LWLockAcquire: MirroredLock by PID %u in held_lwlocks[%d] %s", 
+			 MyProcPid, 
+			 num_held_lwlocks,
+			 (mode == LW_EXCLUSIVE ? "Exclusive" : "Shared"));
+#endif
 
 	/* Add lock to list of locks held by this backend */
 	held_lwlocks_exclusive[num_held_lwlocks] = (mode == LW_EXCLUSIVE);
@@ -647,6 +667,13 @@ LWLockConditionalAcquire(LWLockId lockid, LWLockMode mode)
 	}
 	else
 	{
+#ifdef LWLOCK_TRACE_MIRROREDLOCK
+		if (lockid == MirroredLock)
+			elog(LOG, "LWLockConditionalAcquire: MirroredLock by PID %u in held_lwlocks[%d] %s", 
+				 MyProcPid, 
+				 num_held_lwlocks,
+				 (mode == LW_EXCLUSIVE ? "Exclusive" : "Shared"));
+#endif
 		/* Add lock to list of locks held by this backend */
 		held_lwlocks_exclusive[num_held_lwlocks] = (mode == LW_EXCLUSIVE);
 		held_lwlocks[num_held_lwlocks++] = lockid;
@@ -680,12 +707,26 @@ LWLockRelease(LWLockId lockid)
 	}
 	if (i < 0)
 		elog(ERROR, "lock %d is not held", (int) lockid);
+
+#ifdef LWLOCK_TRACE_MIRROREDLOCK
+	if (lockid == MirroredLock)
+		elog(LOG, 
+			 "LWLockRelease: release for MirroredLock by PID %u in held_lwlocks[%d] %s", 
+			 MyProcPid, 
+			 i,
+			 (held_lwlocks_exclusive[i] ? "Exclusive" : "Shared"));
+#endif
+	
 	num_held_lwlocks--;
 	for (; i < num_held_lwlocks; i++)
 	{
 		held_lwlocks_exclusive[i] = held_lwlocks_exclusive[i + 1];
 		held_lwlocks[i] = held_lwlocks[i + 1];
 	}
+
+	// Clear out old last entry.
+	held_lwlocks_exclusive[num_held_lwlocks] = false;
+	held_lwlocks[num_held_lwlocks] = 0;
 
 	/* Acquire mutex.  Time spent holding mutex should be short! */
 	SpinLockAcquire(&lock->mutex);
@@ -750,6 +791,10 @@ LWLockRelease(LWLockId lockid)
 	 */
 	while (head != NULL)
 	{
+#ifdef LWLOCK_TRACE_MIRROREDLOCK
+		if (lockid == MirroredLock)
+			elog(LOG, "LWLockRelease: release waiter for MirroredLock (this PID %u", MyProcPid);
+#endif
 		LOG_LWDEBUG("LWLockRelease", lockid, "release waiter");
 		proc = head;
 		head = proc->lwWaitLink;

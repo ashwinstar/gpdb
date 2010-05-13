@@ -6819,6 +6819,7 @@ StartupXLOG_Pass3(void)
 	 */
 	while (true)
 	{
+		if (Debug_persistent_recovery_print)
 		{
 			StringInfoData buf;
 		
@@ -6831,7 +6832,7 @@ StartupXLOG_Pass3(void)
 			RmgrTable[record->xl_rmid].rm_desc(&buf,
 											   record->xl_info,
 											 XLogRecGetData(record));
-			elog(LOG, "%s", buf.data);
+			elog(Debug_persistent_recovery_print_level, "%s", buf.data);
 			pfree(buf.data);
 		}
 

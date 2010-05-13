@@ -26,7 +26,7 @@
 
 static int FileRepPrimary_RunResyncWorker(void);
 static int FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry);
-
+static int FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request);
 
 /*
  * FileRepPrimary_StartResyncWorker()
@@ -84,6 +84,8 @@ FileRepPrimary_RunResyncWorker(void)
 {
 	int							status = STATUS_OK;
 	FileRepResyncHashEntry_s	*entry = NULL;
+	ChangeTrackingRequest		*request = NULL;
+
 	
 	
 	elog(LOG, "FileRepPrimary_RunResyncWorker()");
@@ -99,26 +101,31 @@ FileRepPrimary_RunResyncWorker(void)
 			break;
 		}
 
-		entry = FileRepPrimary_GetResyncEntry();
+		entry = FileRepPrimary_GetResyncEntry(&request);
 				
-		if (entry == NULL) {
+		if (entry == NULL && request == NULL) {
 			
 			pg_usleep(100000L); /* 100 ms */
 			continue;
 		}
+		
+		Assert(! (entry != NULL && request != NULL));
 
-		status = FileRepPrimary_ResyncWrite(entry);
-		
-		if (status == STATUS_OK)
-		{
-			entry->fileRepResyncState = FileRepResyncStateCompleted;
+		if (entry != NULL)
+		{			
+			status = FileRepPrimary_ResyncWrite(entry);
+			
+			if (status == STATUS_OK)
+			{
+				status = FileRepResync_UpdateEntry(entry);
+			}
 		}
-		else
-		{
-			entry->fileRepResyncState = FileRepResyncStateFault;
-		}
 		
-		status = FileRepResync_UpdateEntry(entry);
+		if (request != NULL)
+		{
+			status = FileRepPrimary_ResyncBufferPoolIncrementalWrite(request);
+			request = NULL;
+		}
 		
 		if (status != STATUS_OK)
 		{
@@ -161,17 +168,11 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 	BlockNumber		numBlocks;
 	BlockNumber		blkno;
 	SMgrRelation	smgr_relation = NULL;
-	int				NumberOfRelations = 1;	
-	int				ii;
 	XLogRecPtr		loc;
-	XLogRecPtr		loc1;
 	int				count = 0;
 	int				thresholdCount = 0;
 	bool			mirrorDataLossOccurred = FALSE;
-	
-	ChangeTrackingRequest*	request = NULL;
-	ChangeTrackingResult*	result = NULL;
-	
+		
 	switch (entry->relStorageMgr)
 	{
 
@@ -279,201 +280,19 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 					smgr_relation = NULL;
 					break;
 					
-				case MirroredRelDataSynchronizationState_BufferPoolPageIncremental:
-					
-					request = ChangeTracking_FormRequest(NumberOfRelations);				
-				
-					for (ii = 0; ii < NumberOfRelations; ii++) 
-					{
-						XLogRecPtr	endResyncLSN = FileRepResync_GetEndIncrResyncLSN();
-						
-						ChangeTracking_AddRequestEntry(request, 
-													   entry->relFileNode,
-													   &entry->mirrorBufpoolResyncCkptLoc,   //beginIncrResyncLSN,
-													   &endResyncLSN);
-					}
-					
-					/* allow flushing buffers from buffer pool during scan */
-					FileRepResync_SetReadBufferRequest();
-					if ((result = ChangeTracking_GetChanges(request)) != NULL) 
-					{
-						FileRepResync_ResetReadBufferRequest();
-
-#ifdef FILEREP_DEBUG
-						elog(LOG, "FileRepPrimary_ResyncWrite() relfilenode:'%u/%u/%u' ",
-							 result->entries[0].relFileNode.spcNode,
-							 result->entries[0].relFileNode.dbNode,
-							 result->entries[0].relFileNode.relNode);
-#endif
-						if (smgr_relation == NULL)
-						{
-							smgr_relation = smgropen(result->entries[0].relFileNode);
-							
-							smgr_relation->smgr_rnode.relNode = result->entries[0].relFileNode.relNode;
-							smgr_relation->smgr_rnode.spcNode = result->entries[0].relFileNode.spcNode;
-							smgr_relation->smgr_rnode.dbNode = result->entries[0].relFileNode.dbNode;
-						}
-						
-						numBlocks = smgrnblocks(smgr_relation);
-						if (Debug_filerep_print)
-							elog(LOG, "FileRepPrimary_ResyncWrite() relfilenode:'%u/%u/%u' "
-									  "numBlocks:'%d' ",
-									 smgr_relation->smgr_rnode.spcNode,
-									 smgr_relation->smgr_rnode.dbNode,
-									 smgr_relation->smgr_rnode.relNode,
-									 numBlocks);
-					
-						thresholdCount = Min(numBlocks, 1024);
-
-						for (ii = 0; ii < result->count; ii++)
-						{
-							loc1 =  result->entries[ii].lsn_end;
-							
-							/*
-							 * if relation was truncated then block_num from change tracking can be beyond numBlocks 
-							 */
-							if (result->entries[ii].block_num >=  numBlocks)
-							{
-								ereport(LOG, 
-										(errmsg("WARNING(filerep): did not resync (maybe due to truncate) "
-												"relfilenode:'%u/%u/%u' numBlocks:'%d' " 
-												"blkno:''%d' "
-												"lsn_begin:'%u'/'%u' "
-												"lsn_end:'%u'/'%u' '%s' ",
-												smgr_relation->smgr_rnode.spcNode,
-												smgr_relation->smgr_rnode.dbNode,
-												smgr_relation->smgr_rnode.relNode,
-												numBlocks,
-												result->entries[ii].block_num,
-												entry->mirrorBufpoolResyncCkptLoc.xlogid,
-												entry->mirrorBufpoolResyncCkptLoc.xrecoff,
-												loc1.xlogid,
-												loc1.xrecoff,
-												XLogLocationToString(&loc1))));
-								
-								continue;
-							}
-							
-							/* allow flushing buffers from buffer pool during scan */
-							FileRepResync_SetReadBufferRequest();
-							buf = ReadBuffer_ResyncEx(smgr_relation, 
-											 result->entries[ii].block_num);
-							FileRepResync_ResetReadBufferRequest();
-							
-							Assert(result->entries[ii].block_num < numBlocks);
-							
-							LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
-							page = BufferGetPage(buf);
-							
-							loc = PageGetLSN(page); 
-							
-							if (Debug_filerep_print)
-								elog(LOG, "FileRepPrimary_ResyncWrite() blkno:'%d' "
-									 "lsn_begin:'%u'/'%u' "
-									 "lsn_page:'%u'/'%u' '%s' "
-									 "lsn_end:'%u'/'%u' '%s' ",
-									 result->entries[ii].block_num,
-									 entry->mirrorBufpoolResyncCkptLoc.xlogid,
-									 entry->mirrorBufpoolResyncCkptLoc.xrecoff,
-									 loc.xlogid,
-									 loc.xrecoff,
-									 XLogLocationToString(&loc),
-									 loc1.xlogid,
-									 loc1.xrecoff,
-									 XLogLocationToString(&loc1));
-
-							if (XLByteEQ(PageGetLSN(page), result->entries[ii].lsn_end)) 	
-							{
-			
-								smgrwrite(smgr_relation, 
-										  result->entries[ii].block_num,
-										  (char *)BufferGetBlock(buf),
-										  FALSE);
-								
-							}
-							else
-							{
-								ereport(LOG, 
-										(errmsg("WARNING(filerep): did not resync "
-												"relfilenode:'%u/%u/%u' numBlocks:'%d' " 
-												"blkno:''%d' "
-												"lsn_begin:'%u'/'%u' "
-												"lsn_page:'%u'/'%u' '%s' "
-												"lsn_end:'%u'/'%u' '%s' ",
-												smgr_relation->smgr_rnode.spcNode,
-												smgr_relation->smgr_rnode.dbNode,
-												smgr_relation->smgr_rnode.relNode,
-												numBlocks,
-												result->entries[ii].block_num,
-												entry->mirrorBufpoolResyncCkptLoc.xlogid,
-												entry->mirrorBufpoolResyncCkptLoc.xrecoff,
-												loc.xlogid,
-												loc.xrecoff,
-												XLogLocationToString(&loc),
-												loc1.xlogid,
-												loc1.xrecoff,
-												XLogLocationToString(&loc1))));
-								
-								Assert(XLByteLT(result->entries[ii].lsn_end, PageGetLSN(page)));
-								
-							}
-								
-							UnlockReleaseBuffer(buf); 
-							
-							if (count > thresholdCount)
-							{
-								count = 0;
-								FileRepSubProcess_ProcessSignals();
-								
-								if (! (FileRepSubProcess_GetState() == FileRepStateReady && 
-									   dataState == DataStateInResync))
-								{
-									mirrorDataLossOccurred = TRUE;
-									break;
-								}
-							}
-							else
-								count++;
-						}
-												   
-					}
-					
-					FileRepResync_ResetReadBufferRequest();
-
-					if (smgr_relation != NULL) 
-					{
-						if (! mirrorDataLossOccurred)
-						{
-							smgrimmedsync(smgr_relation);
-									
-							smgrclose(smgr_relation);
-						}
-					}
-					else 
-					{
-						ereport(LOG, 
-								(errmsg("LOG(filerep): no blocks were resynced "
-										"relfilenode:'%u/%u/%u' "
-										"SynchronizationState:'%s' ",
-										 entry->relFileNode.relNode,
-										 entry->relFileNode.spcNode,
-										 entry->relFileNode.dbNode,
-										 MirroredRelDataSynchronizationState_Name(entry->mirrorDataSynchronizationState))));
-						
-					}
-					smgr_relation = NULL;
-					
-					ChangeTracking_FreeRequest(request);
-					ChangeTracking_FreeResult(result);
+				case MirroredRelDataSynchronizationState_None:										
+				case MirroredRelDataSynchronizationState_DataSynchronized:
 					break;
 					
-				case MirroredRelDataSynchronizationState_Synchronized:
-					break;
 				default:
-					elog(LOG, "FileRepPrimary_ResyncWrite() SynchronizationState:'%s(%d)' ",
-							   MirroredRelDataSynchronizationState_Name(entry->mirrorDataSynchronizationState),
-							   entry->mirrorDataSynchronizationState);					
-					Assert(0);
+					ereport(ERROR, 
+							(errmsg("could not resynchronize file '%u/%u/%u' "
+									"mirror synchronization state:'%s(%d)' ",
+									entry->relFileNode.relNode,
+									entry->relFileNode.spcNode,
+									entry->relFileNode.dbNode,
+									MirroredRelDataSynchronizationState_Name(entry->mirrorDataSynchronizationState),
+									entry->mirrorDataSynchronizationState)));
 					break;
 			}
 			break;
@@ -527,7 +346,7 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 					if (buffer == NULL)
 						ereport(ERROR,
 								(errcode(ERRCODE_OUT_OF_MEMORY),
-								 (errmsg("Not enough memory for Resynchronization."))));
+								 (errmsg("not enough memory for resynchronization"))));
 					
 					MemSet(buffer, 0, bufferLen);
 					
@@ -595,11 +414,19 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 								
 					break;
 					
+				case MirroredRelDataSynchronizationState_None:										
+				case MirroredRelDataSynchronizationState_DataSynchronized:
+					break;					
+					
 				default:
-					 elog(LOG, "FileRepPrimary_ResyncWrite() SynchronizationState:'%s(%d)' ",
-						  MirroredRelDataSynchronizationState_Name(entry->mirrorDataSynchronizationState),
-						  entry->mirrorDataSynchronizationState);					
-					 Assert(0);
+					ereport(ERROR, 
+							(errmsg("could not resynchronize file '%u/%u/%u' "
+									"mirror synchronization state:'%s(%d)' ",
+									entry->relFileNode.relNode,
+									entry->relFileNode.spcNode,
+									entry->relFileNode.dbNode,
+									MirroredRelDataSynchronizationState_Name(entry->mirrorDataSynchronizationState),
+									entry->mirrorDataSynchronizationState)));
 					break;
 			}
 			
@@ -614,4 +441,227 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 		status = STATUS_ERROR;
 	
 	return status;
+}
+
+static int
+FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request)
+{
+	int				status = STATUS_OK;
+	Page			page;
+	Buffer			buf; 
+	BlockNumber		numBlocks = 0;
+	SMgrRelation	smgr_relation = NULL;
+	int				ii;
+	XLogRecPtr		loc;
+	XLogRecPtr		loc1;
+	int				count = 0;
+	int				thresholdCount = 0;
+	bool			mirrorDataLossOccurred = FALSE;
+	
+	FileRepResyncHashEntry_s	entry;
+	ChangeTrackingResult		*result = NULL;	
+
+	
+	while (1)
+	{
+		/* allow flushing buffers from buffer pool during scan */
+		FileRepResync_SetReadBufferRequest();
+		if ((result = ChangeTracking_GetChanges(request)) != NULL) 
+		{
+			FileRepResync_ResetReadBufferRequest();
+					
+			for (ii = 0; ii < result->count; ii++)
+			{
+
+				if (smgr_relation == NULL)
+				{
+	#ifdef FILEREP_DEBUG
+					elog(LOG, "FileRepPrimary_ResyncBufferPoolIncrementalWrite() file:'%u/%u/%u' ",
+						 result->entries[ii].relFileNode.spcNode,
+						 result->entries[ii].relFileNode.dbNode,
+						 result->entries[ii].relFileNode.relNode);
+	#endif				
+					
+					smgr_relation = smgropen(result->entries[ii].relFileNode);
+					
+					smgr_relation->smgr_rnode.relNode = result->entries[ii].relFileNode.relNode;
+					smgr_relation->smgr_rnode.spcNode = result->entries[ii].relFileNode.spcNode;
+					smgr_relation->smgr_rnode.dbNode = result->entries[ii].relFileNode.dbNode;
+				
+					if (smgr_relation == NULL)
+					{
+						ereport(ERROR, 
+								(errmsg("could not resynchronize (incremental) file '%u/%u/%u' ",
+										result->entries[ii].relFileNode.spcNode,
+										result->entries[ii].relFileNode.dbNode,
+										result->entries[ii].relFileNode.relNode)));
+						goto flush_check;
+					}
+					
+					numBlocks = smgrnblocks(smgr_relation);
+					if (Debug_filerep_print)
+						elog(LOG, "FileRepPrimary_ResyncBufferPoolIncrementalWrite() file:'%u/%u/%u' "
+							 "numBlocks:'%u' ",
+							 smgr_relation->smgr_rnode.spcNode,
+							 smgr_relation->smgr_rnode.dbNode,
+							 smgr_relation->smgr_rnode.relNode,
+							 numBlocks);
+					
+					thresholdCount = Min(numBlocks, 1024);
+				}
+				
+				loc1 =  result->entries[ii].lsn_end;
+				
+				/*
+				 * if relation was truncated then block_num from change tracking can be beyond numBlocks 
+				 */
+				if (result->entries[ii].block_num >=  numBlocks)
+				{
+					ereport(LOG, 
+							(errmsg("WARNING(filerep): did not resync (maybe due to truncate) "
+									"file:'%u/%u/%u' numBlocks:'%d' " 
+									"blkno:''%d' "
+									"lsn end:'%u'/'%u' '%s' ",
+									smgr_relation->smgr_rnode.spcNode,
+									smgr_relation->smgr_rnode.dbNode,
+									smgr_relation->smgr_rnode.relNode,
+									numBlocks,
+									result->entries[ii].block_num,
+									loc1.xlogid,
+									loc1.xrecoff,
+									XLogLocationToString(&loc1))));
+					
+					goto flush_check;
+				}
+				
+				/* allow flushing buffers from buffer pool during scan */
+				FileRepResync_SetReadBufferRequest();
+				buf = ReadBuffer_ResyncEx(smgr_relation, 
+										  result->entries[ii].block_num);
+				FileRepResync_ResetReadBufferRequest();
+				
+				Assert(result->entries[ii].block_num < numBlocks);
+				
+				LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
+				page = BufferGetPage(buf);
+				
+				loc = PageGetLSN(page); 
+				
+				if (Debug_filerep_print)
+					elog(LOG, "FileRepPrimary_ResyncBufferPoolIncrementalWrite() file:'%u/%u/%u' "
+						 "numBlocks:'%d' blkno:'%d' "
+						 "lsn page:'%u'/'%u' '%s' "
+						 "lsn end:'%u'/'%u' '%s' ",
+						 smgr_relation->smgr_rnode.spcNode,
+						 smgr_relation->smgr_rnode.dbNode,
+						 smgr_relation->smgr_rnode.relNode,		
+						 numBlocks,
+						 result->entries[ii].block_num,
+						 loc.xlogid,
+						 loc.xrecoff,
+						 XLogLocationToString(&loc),
+						 loc1.xlogid,
+						 loc1.xrecoff,
+						 XLogLocationToString(&loc1));
+				
+				if (XLByteEQ(PageGetLSN(page), result->entries[ii].lsn_end)) 	
+				{
+					
+					smgrwrite(smgr_relation, 
+							  result->entries[ii].block_num,
+							  (char *)BufferGetBlock(buf),
+							  FALSE);
+					
+				}
+				else
+				{
+					ereport(LOG, 
+							(errmsg("WARNING(filerep): did not resync "
+									"file:'%u/%u/%u' num blocks:'%d' " 
+									"blkno:''%d' "
+									"lsn page:'%u'/'%u' '%s' "
+									"lsn end:'%u'/'%u' '%s' ",
+									smgr_relation->smgr_rnode.spcNode,
+									smgr_relation->smgr_rnode.dbNode,
+									smgr_relation->smgr_rnode.relNode,
+									numBlocks,
+									result->entries[ii].block_num,
+									loc.xlogid,
+									loc.xrecoff,
+									XLogLocationToString(&loc),
+									loc1.xlogid,
+									loc1.xrecoff,
+									XLogLocationToString(&loc1))));
+					
+					Assert(XLByteLT(result->entries[ii].lsn_end, PageGetLSN(page)));
+					
+				}
+				
+				UnlockReleaseBuffer(buf); 
+		
+	flush_check:			
+				if (((ii + 1) == result->count && result->ask_for_more == false) ||
+					! (result->entries[ii].relFileNode.spcNode == result->entries[ii+1].relFileNode.spcNode &&
+					   result->entries[ii].relFileNode.dbNode == result->entries[ii+1].relFileNode.dbNode &&
+					   result->entries[ii].relFileNode.relNode == result->entries[ii+1].relFileNode.relNode))
+				{
+								 
+						smgrimmedsync(smgr_relation);
+						
+						smgrclose(smgr_relation);
+								 
+						smgr_relation = NULL;
+							
+						FileRep_GetRelationPath(
+												 entry.fileName, 
+												 result->entries[ii].relFileNode, 
+												 0 /* segment file number is always 0 for Buffer Pool */);							 
+								 
+						status = FileRepResync_UpdateEntry(&entry);
+						if (status != STATUS_OK)
+						{
+							 break;
+						}
+								 
+				}			
+							
+				if (count > thresholdCount)
+				{
+					count = 0;
+					FileRepSubProcess_ProcessSignals();
+					
+					if (! (FileRepSubProcess_GetState() == FileRepStateReady && 
+						   dataState == DataStateInResync))
+					{
+						mirrorDataLossOccurred = TRUE;
+						break;
+					}
+				}
+				else
+					count++;
+			}  // for (ii = 0; ii < result->count; ii++)
+			
+		} // if ((result = ChangeTracking_GetChanges(request)) != NULL) 
+		
+		FileRepResync_ResetReadBufferRequest();
+			
+		if (result->ask_for_more == true)
+		{
+			Assert(request->count == 1);
+			request->entries[0].lsn_start = result->next_start_lsn;
+		}
+		else
+		{
+			break;
+		}
+	
+	} // while(1) 
+		
+	ChangeTracking_FreeRequest(request);
+	ChangeTracking_FreeResult(result);
+	
+	if (mirrorDataLossOccurred)
+		status = STATUS_ERROR;
+	
+	return status;	
 }

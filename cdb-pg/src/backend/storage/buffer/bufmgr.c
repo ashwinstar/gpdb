@@ -2129,7 +2129,7 @@ RelationTruncate(Relation rel, BlockNumber nblocks, bool markPersistentAsPhysica
 			 * end of new last segment file, we need to indicate to resynchronize that
 			 * it should use 'Scan Incremental' only.
 			 */
-			PersistentRelation_MarkBufPoolRelationPhysicallyTruncated(
+			PersistentRelation_MarkBufPoolRelationForScanIncrementalResync(
 															&rel->rd_node,
 															&rel->rd_segfile0_relationnodeinfo.persistentTid,
 															rel->rd_segfile0_relationnodeinfo.persistentSerialNum);
