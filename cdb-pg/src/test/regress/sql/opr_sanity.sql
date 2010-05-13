@@ -210,8 +210,11 @@ WHERE pronargs > 8 and prolang = 12 AND
 	proname NOT IN ('gp_add_persistent_filespace_node_entry',
 					'gp_add_persistent_relation_node_entry',
 					'gp_update_persistent_filespace_node_entry',
-					'gp_update_persistent_relation_node_entry') AND
-
+					'gp_update_persistent_relation_node_entry',
+					'gp_add_persistent_databases_node_entry',
+					'gp_add_persistent_tablespace_node_entry',
+					'gp_update_persistent_databases_node_entry',
+					'gp_update_persistent_tablespace_node_entry') AND
     NOT proisagg AND 
     NOT proiswin;
 
