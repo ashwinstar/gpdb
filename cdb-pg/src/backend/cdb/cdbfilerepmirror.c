@@ -1733,42 +1733,49 @@ FileRepMirror_RunConsumer(void)
 				
 				/****/
 				
-#if HAVE_WORKING_LINK
-				elog(DEBUG1, "LINK from filename:%s to %s", fileName, newFileName);	
 
-				errno = 0;	
-				if (link(fileName, newFileName) < 0 && errno != ENOENT) {
-					status = STATUS_ERROR;
-					ereport(LOG,
-							(errcode_for_file_access(),
-							errmsg("ERROR(filerep): could not link to:'%s' : %m",
-								   newFileName),
-							FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
-											  fileRepMessageHeader->fileRepRelationType,
-											  fileRepMessageHeader->fileRepOperation),
-							FileRep_errcontext()));					
-					break;
-					
-				}
-#else				
-				elog(DEBUG1, "FileRepOperationRename()  from filename:%s to %s", fileName, newFileName);	
+				/* XXX: hacky, I know. By damn, we need to ship 4.0 some day */
+				if (strcmp(newFileName, "global/pg_database") == 0 ||
+					strcmp(newFileName, "global/pg_auth") == 0)
+				{
+					elog(DEBUG1, "FileRepOperationRename()  from filename:%s to %s",
+						 fileName, newFileName);	
 
-				errno = 0;
-				if (rename(fileName, newFileName) < 0 && errno != ENOENT) {
-					status = STATUS_ERROR;
-					ereport(LOG,
-							(errcode_for_file_access(),
-							 errmsg("ERROR(filerep): could not rename to:'%s' : %m",
-									newFileName),
-							 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
-											   fileRepMessageHeader->fileRepRelationType,
-											   fileRepMessageHeader->fileRepOperation),
-							 FileRep_errcontext()));					
-					
-					break;
-					
+					errno = 0;
+					if (rename(fileName, newFileName) < 0 && errno != ENOENT)
+					{
+						status = STATUS_ERROR;
+						ereport(LOG,
+								(errcode_for_file_access(),
+								 errmsg("ERROR(filerep): could not rename to:'%s' : %m",
+										newFileName),
+								 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
+												   fileRepMessageHeader->fileRepRelationType,
+												   fileRepMessageHeader->fileRepOperation),
+								 FileRep_errcontext()));					
+				
+						break;
+					}
 				}
-#endif			
+				else
+				{
+					elog(DEBUG1, "LINK from filename:%s to %s", fileName, newFileName);	
+	
+					errno = 0;
+					if (link(fileName, newFileName) < 0 && errno != ENOENT) {
+						status = STATUS_ERROR;
+						ereport(LOG,
+								(errcode_for_file_access(),
+								errmsg("ERROR(filerep): could not link to:'%s' : %m",
+									   newFileName),
+								FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
+												  fileRepMessageHeader->fileRepRelationType,
+												  fileRepMessageHeader->fileRepOperation),
+								FileRep_errcontext()));					
+						break;
+						
+					}
+				}
 				if (newFileName) {
 					pfree(newFileName);
 					newFileName = NULL;
