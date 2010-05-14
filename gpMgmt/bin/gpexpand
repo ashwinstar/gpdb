@@ -2109,7 +2109,11 @@ We'll now ask you a few questions to try and build this file for you.
 You'll have the opportunity to save this file and inspect it/modify it
 before continuing by re-running this utility and providing the input file. """
 
-    tmp_validator = lambda str, ingore1, ignore2: str
+    def datadir_validator(input, ignore1, ignore2):
+        if not input or input.find(' ') != -1 or input == '':
+            return None
+        else:
+            return input
 
     if options.hosts_file:
         new_hosts=read_hosts_file()
@@ -2165,7 +2169,7 @@ before continuing by re-running this utility and providing the input file. """
 
         for i in range(1,num_new_datadirs + 1):
             new_datadir = ask_input(None,'Enter new primary data directory %d' % i, '',
-                                    '/data/gpdb_p%d' % i, tmp_validator, None)
+                                    '/data/gpdb_p%d' % i, datadir_validator, None)
             new_datadirs.append(new_datadir.strip())
 
         if len(new_datadirs) != num_new_datadirs:
@@ -2174,7 +2178,7 @@ before continuing by re-running this utility and providing the input file. """
         if gparray.get_mirroring_enabled():
             for i in range(1,num_new_datadirs + 1):
                 new_mirrordir = ask_input(None,'Enter new mirror data directory %d' % i, '',
-                                          '/data/gpdb_m%d' % i, tmp_validator, None)
+                                          '/data/gpdb_m%d' % i, datadir_validator, None)
                 new_mirrordirs.append(new_mirrordir.strip())
 
             if len(new_mirrordirs) != num_new_datadirs:
