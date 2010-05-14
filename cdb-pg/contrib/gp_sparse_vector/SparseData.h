@@ -25,6 +25,7 @@
  */
 
 #include <math.h>
+#include <string.h>
 #include "postgres.h"
 #include "lib/stringinfo.h"
 #include "utils/array.h"
@@ -140,10 +141,32 @@ SparseData makeSparseData(void);
 void freeSparseData(SparseData sdata);
 void freeSparseDataAndData(SparseData sdata);
 SparseData float8arr_to_sdata(double *array, int count);
+SparseData arr_to_sdata(char *array, size_t width, Oid type_of_data, int count);
 double *sdata_to_float8arr(SparseData sdata);
 StringInfo copyStringInfo(StringInfo source_sinfo);
 StringInfo makeStringInfoFromData(char *data,int len);
 static inline void int8_to_compword(int64 num, char entry[9]);
+
+static inline size_t
+size_of_type(Oid type)
+{
+	switch (type)
+	{ 
+		case FLOAT4OID:
+			return(4);
+		case FLOAT8OID:
+			return(8);
+		case CHAROID:
+			return(1);
+		case INT2OID:
+			return(2);
+		case INT4OID:
+			return(4);
+		case INT8OID:
+			return(8);
+	}
+	return(1);
+}
 
 static inline void append_to_rle_index(StringInfo index, int64 run_len)
 {
@@ -154,13 +177,13 @@ static inline void append_to_rle_index(StringInfo index, int64 run_len)
 	appendBinaryStringInfo(index,bytes,int8compstoragesize(bytes));
 }
 
-static inline void add_run_to_sdata(double run_val, int64 run_len,
+static inline void add_run_to_sdata(char *run_val, int64 run_len, size_t width,
 		SparseData sdata)
 {
 	StringInfo index = sdata->index;
 	StringInfo vals  = sdata->vals;
 
-	appendBinaryStringInfo(vals,(char *)(&run_val),sizeof(double));
+	appendBinaryStringInfo(vals,run_val,width);
 	append_to_rle_index(index, run_len);
 	sdata->unique_value_count++;
 	sdata->total_value_count+=run_len;
@@ -320,6 +343,7 @@ static inline void printout_sdata(SparseData sdata, char *msg, int stop)
  * Multiplication, Addition, Division by scalars
  *------------------------------------------------------------------------------
  */
+#define typref(type,ptr) (*((type *)(ptr)))
 #define valref(type,val,i) (((type *)(val)->vals->data)[(i)])
 #define valsquare(val)	(val*val)
 #define valcube(val)	(val*valsquare(val))
@@ -328,22 +352,22 @@ static inline void printout_sdata(SparseData sdata, char *msg, int stop)
 	switch ((sdata)->type_of_data) \
 { \
 	case FLOAT4OID: \
-		valref(float,sdata,i) op (scalar); \
+		valref(float,sdata,i) op typref(float,scalar); \
 		break; \
 	case FLOAT8OID: \
-		valref(double,sdata,i) op (scalar); \
+		valref(float8,sdata,i) op typref(float8,scalar); \
 		break; \
 	case CHAROID: \
-		valref(char,sdata,i) op (scalar); \
+		valref(char,sdata,i) op typref(char,scalar); \
 		break; \
 	case INT2OID: \
-		valref(int16_t,sdata,i) op (scalar); \
+		valref(int16,sdata,i) op typref(int16,scalar); \
 		break; \
 	case INT4OID: \
-		valref(int32_t,sdata,i) op (scalar); \
+		valref(int32,sdata,i) op typref(int32,scalar); \
 		break; \
 	case INT8OID: \
-		((int64 *)(sdata)->vals->data)[(i)] op (scalar); \
+		valref(int64,sdata,i) op typref(int64,scalar); \
 		break; \
 }
 
@@ -352,27 +376,27 @@ static inline void printout_sdata(SparseData sdata, char *msg, int stop)
 { \
 	case FLOAT4OID: \
 		valref(float,sdata,i) = \
-		(scalar) op valref(float,sdata,i); \
+		typref(float,scalar) op valref(float,sdata,i); \
 		break; \
 	case FLOAT8OID: \
-		valref(double,sdata,i) = \
-		(scalar) op valref(double,sdata,i); \
+		valref(float8,sdata,i) = \
+		typref(float8,scalar) op valref(float8,sdata,i); \
 		break; \
 	case CHAROID: \
 		valref(char,sdata,i) = \
-		(scalar) op valref(char,sdata,i); \
+		typref(char,scalar) op valref(char,sdata,i); \
 		break; \
 	case INT2OID: \
-		valref(int16_t,sdata,i) = \
-		(scalar) op valref(int16_t,sdata,i); \
+		valref(int16,sdata,i) = \
+		typref(int16,scalar) op valref(int16_t,sdata,i); \
 		break; \
 	case INT4OID: \
-		valref(int32_t,sdata,i) = \
-		(scalar) op valref(int32_t,sdata,i); \
+		valref(int32,sdata,i) = \
+		typref(int32,scalar) op valref(int32_t,sdata,i); \
 		break; \
 	case INT8OID: \
 		valref(int64,sdata,i) = \
-		(scalar) op valref(int64,sdata,i); \
+		typref(int64,scalar) op valref(int64,sdata,i); \
 		break; \
 }
 
@@ -380,32 +404,32 @@ static inline void printout_sdata(SparseData sdata, char *msg, int stop)
 	switch ((left)->type_of_data) \
 { \
 	case FLOAT4OID: \
-		(result) = \
+		typref(float,result) = \
 		valref(float,left,i) op \
 		valref(float,right,j); \
 		break; \
 	case FLOAT8OID: \
-		(result) = \
-		valref(double,left,i) op \
-		valref(double,right,j); \
+		typref(float8,result) = \
+		valref(float8,left,i) op \
+		valref(float8,right,j); \
 		break; \
 	case CHAROID: \
-		(result) = \
+		typref(char,result) = \
 		valref(char,left,i) op \
 		valref(char,right,j); \
 		break; \
 	case INT2OID: \
-		(result) = \
-		valref(int16_t,left,i) op \
-		valref(int16_t,right,j); \
+		typref(int16,result) = \
+		valref(int16,left,i) op \
+		valref(int16,right,j); \
 		break; \
 	case INT4OID: \
-		(result) = \
-		valref(int32_t,left,i) op \
-		valref(int32_t,right,j); \
+		typref(int32,result) = \
+		valref(int32,left,i) op \
+		valref(int32,right,j); \
 		break; \
 	case INT8OID: \
-		(result) = \
+		typref(int64,result) = \
 		valref(int64,left,i) op \
 		valref(int64,right,j); \
 		break; \
@@ -416,27 +440,27 @@ static inline void printout_sdata(SparseData sdata, char *msg, int stop)
 { \
 	case FLOAT4OID: \
 		valref(float,result,i) =\
-		func(valref(float,left,i),scalar); \
+		func(valref(float,left,i),typref(float,scalar)); \
 		break; \
 	case FLOAT8OID: \
-		valref(double,result,i) =\
-		func(valref(double,left,i),scalar); \
+		valref(float8,result,i) =\
+		func(valref(float8,left,i),typref(float8,scalar)); \
 		break; \
 	case CHAROID: \
 		valref(char,result,i) =\
-		func(valref(char,left,i),scalar); \
+		func(valref(char,left,i),typref(char,scalar)); \
 		break; \
 	case INT2OID: \
-		valref(int16_t,result,i) =\
-		func(valref(int16_t,left,i),scalar); \
+		valref(int16,result,i) =\
+		func(valref(int16,left,i),typref(int16,scalar)); \
 		break; \
 	case INT4OID: \
-		valref(int32_t,result,i) =\
-		func(valref(int32_t,left,i),scalar); \
+		valref(int32,result,i) =\
+		func(valref(int32,left,i),typref(int32,scalar)); \
 		break; \
 	case INT8OID: \
 		valref(int64,result,i) =\
-		func(valref(int64,left,i),scalar); \
+		func(valref(int64,left,i),typref(int64,scalar)); \
 		break; \
 }
 
@@ -546,7 +570,7 @@ check_sdata_dimensions(SparseData left, SparseData right)
  * whether the scalar is on the left (1) or right (2)
  */
 static inline void op_sdata_by_scalar_inplace(int operation,
-		double scalar, SparseData sdata, int direction)
+		char *scalar, SparseData sdata, int direction)
 {
 	if (direction == 2) //scalar is on the right
 	{
@@ -591,7 +615,7 @@ static inline void op_sdata_by_scalar_inplace(int operation,
 
 }
 static inline SparseData op_sdata_by_scalar_copy(int operation,
-		double scalar, SparseData source_sdata, int direction) {
+		char *scalar, SparseData source_sdata, int direction) {
 	SparseData sdata = makeSparseDataCopy(source_sdata);
 	op_sdata_by_scalar_inplace(operation,scalar,sdata,direction);
 	return sdata;
@@ -601,7 +625,7 @@ static inline SparseData op_sdata_by_scalar_copy(int operation,
  * Exponentiate an sdata left argument with a right scalar
  */
 static inline SparseData pow_sdata_by_scalar(SparseData sdata,
-		double scalar)
+		char *scalar)
 {
 	SparseData result = makeSparseDataCopy(sdata);
 	for(int i=0; i<sdata->unique_value_count; i++)
@@ -643,13 +667,13 @@ static inline bool sparsedata_eq(SparseData left, SparseData right)
 	 * We'll take a two phase approach to enhance speed:
 	 * Check the unique values for equivalence, then check the run lengths
 	 */
-	for (int i=0;i<left->vals->len;i++)
+	if (memcmp(left->vals->data,right->vals->data,left->vals->len))
 	{
-		if (left->vals->data[i] != right->vals->data[i]) return(0);
+		return(0);
 	}
-	for (int i=0;i<left->index->len;i++)
+	if (memcmp(left->index->data,right->index->data,left->index->len))
 	{
-		if (left->index->data[i] != right->index->data[i]) return(0);
+		return(0);
 	}
 
 	return(1);
@@ -728,17 +752,20 @@ static inline SparseData op_sdata_by_sdata(int operation,SparseData left,
 	char *liptr=left->index->data;
 	char *riptr=right->index->data;
 	int left_run_length, right_run_length;
-	double new_value=0.;
+	char *new_value,*last_new_value;
 	int tot_run_length=-1;
-	double last_new_value=0;
 	left_run_length = compword_to_int8(liptr);
 	right_run_length = compword_to_int8(riptr);
 	int left_lst=0,right_lst=0;
 	int left_nxt=left_run_length,right_nxt=right_run_length;
 	int nextpos = MIN(left_nxt,right_nxt),lastpos=0;
 	int i=0,j=0;
+	size_t width = size_of_type(left->type_of_data);
 
 	check_sdata_dimensions(left,right);
+
+	new_value      = (char *)palloc(width);
+	last_new_value = (char *)palloc(width);
 
 	if ((operation > 3)|| (operation < 0))
 		ereport(ERROR, 
@@ -773,14 +800,14 @@ static inline SparseData op_sdata_by_sdata(int operation,SparseData left,
 		 */
 		if (tot_run_length==-1)
 		{
-			last_new_value = new_value;
+			memcpy(last_new_value,new_value,width);
 			tot_run_length=0;
 		}
-		if (new_value!=last_new_value)
+		if (memcmp(new_value,last_new_value,width))
 		{
-			add_run_to_sdata(last_new_value,tot_run_length,sdata);
+			add_run_to_sdata(last_new_value,tot_run_length,sizeof(float8),sdata);
 			tot_run_length = 0;
-			last_new_value = new_value;
+			memcpy(last_new_value,new_value,width);
 		}
 		tot_run_length += (nextpos-lastpos);
 //		printf("New_value,runlength = %f,%d\n",new_value,nextpos-lastpos);
@@ -814,21 +841,21 @@ static inline SparseData op_sdata_by_sdata(int operation,SparseData left,
 	 * Add the last run if we ended with a repeating value
 	 */
 	if (tot_run_length!=0)
-		add_run_to_sdata(new_value,tot_run_length,sdata);
+		add_run_to_sdata(new_value,tot_run_length,sizeof(float8),sdata);
 
 	/*
 	 * Set the return data type
 	 */
 	sdata->type_of_data = left->type_of_data;
 
+	pfree(new_value);
+	pfree(last_new_value);
+
 	return sdata;
 }
 
 /*------------------------------------------------------------------------------
- * When compressing out duplicate (double) values in a data array, we need a
- * way to reliably test for equivalence of double floating point values that
- * bypasses the floating point handling for unusual values.  We define a set of
- * macros that will test equivalence and also will test whether a given double
+ * macros that will test test whether a given double
  * value is in the normal range or is in the special range (denormals,
  * exceptions).
  *------------------------------------------------------------------------------
@@ -847,11 +874,5 @@ static inline SparseData op_sdata_by_sdata(int operation,SparseData left,
 #define DBL_IS_A_SPECIAL(x) \
   (MASKTEST_double(SPEC_MASK_HIGH,(x)) || MASKTEST_double(SPEC_MASK_LOW,(x)) \
    || ((x) == 0.))
-
-/* 
- * DBL_IS_EQUIV  tests the equivalence of two doubles using a bitwise
- * comparison the entry values should both be doubles
- */
-#define DBL_IS_EQUIV(x,y) (*((int64 *)(&(x))) == *((int64 *)(&(y))))
 
 #endif	/* SPARSEDATA_H */

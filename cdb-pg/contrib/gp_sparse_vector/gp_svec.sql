@@ -303,6 +303,14 @@ CREATE AGGREGATE array_agg (float8) (
 	STYPE = svec
 );
 
+-- DROP AGGREGATE IF EXISTS median_inmemory(float8);
+-- CREATE AGGREGATE median_inmemory (float8) (
+	-- SFUNC = vec_pivot,
+	-- PREFUNC = svec_concat,
+	-- FINALFUNC = vec_median,
+	-- STYPE = svec
+-- );
+
 -- Comparisons based on L2 Norm
 CREATE OR REPLACE FUNCTION svec_l2_lt(svec,svec) RETURNS bool AS 'gp_svec.so', 'svec_l2_lt' LANGUAGE C IMMUTABLE;
 CREATE OR REPLACE FUNCTION svec_l2_le(svec,svec) RETURNS bool AS 'gp_svec.so', 'svec_l2_le' LANGUAGE C IMMUTABLE;

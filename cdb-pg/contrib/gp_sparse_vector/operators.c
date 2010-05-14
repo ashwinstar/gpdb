@@ -215,9 +215,9 @@ SvecType *
 svec_operate_on_sdata_pair(int scalar_args,int operation,SparseData left,SparseData right)
 {
 	SparseData sdata=NULL;
-	double *left_vals =(double *)(left->vals->data);
-	double *right_vals=(double *)(right->vals->data);
-	double data_result;
+	float8 *left_vals =(float8 *)(left->vals->data);
+	float8 *right_vals=(float8 *)(right->vals->data);
+	float8 data_result;
 
 	switch(scalar_args) {
 		case 0: 		//neither arg is scalar
@@ -225,11 +225,11 @@ svec_operate_on_sdata_pair(int scalar_args,int operation,SparseData left,SparseD
 			break;
 		case 1:			//left arg is scalar
 			
-			sdata = op_sdata_by_scalar_copy(operation,left_vals[0],
+			sdata = op_sdata_by_scalar_copy(operation,(char *)left_vals,
 					right,1);
 			break;
 		case 2:			//right arg is scalar
-			sdata = op_sdata_by_scalar_copy(operation,right_vals[0],
+			sdata = op_sdata_by_scalar_copy(operation,(char *)right_vals,
 					left,2);
 			break;
 		case 3:			//both args are scalar
@@ -302,7 +302,7 @@ pow_svec_by_scalar_internal(SvecType *svec1, SvecType *svec2)
 			{
 			  sdata = quad_sdata(left);
 			} else {
-			  sdata = pow_sdata_by_scalar(left,right_vals[0]);
+			  sdata = pow_sdata_by_scalar(left,(char *)right_vals);
 			}
 			break;
 		case 3:			//both args are scalar
@@ -1111,7 +1111,7 @@ svec_pivot(PG_FUNCTION_ARGS)
 					- old_index_storage_size);
 			sdata->total_value_count++;
 		} else {
-			add_run_to_sdata(value,1,sdata);
+			add_run_to_sdata((char *)&value,1,sizeof(float8),sdata);
 			sdata->index->cursor = sdata->index->len
 				- int8compstoragesize(index_location);
 		}

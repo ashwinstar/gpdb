@@ -153,19 +153,18 @@ StringInfo makeStringInfoFromData(char *data,int len) {
  *------------------------------------------------------------------------------
  */
 SparseData float8arr_to_sdata(double *array, int count) {
-	double run_val=array[0];
+	char *run_val=(char *)array;
 	int64 run_len=1;
 	SparseData sdata = makeSparseData();
 
 	sdata->type_of_data=FLOAT8OID;
 
 	for (int i=1; i<count; i++) {
-		double curr_val=array[i  ];
-			if (! DBL_IS_EQUIV(curr_val,run_val))
-//			if (curr_val != run_val)
+		char *curr_val=(char *)(array+i);
+			if (memcmp(curr_val,run_val,sizeof(float8)))
 			{ /*run is interrupted, initiate new run */
 				/* package up the finished run */
-				add_run_to_sdata(run_val, run_len, sdata);
+				add_run_to_sdata(run_val, run_len, sizeof(float8), sdata);
 				/* mark beginning of new run */
 				run_val=curr_val;
 				run_len=1;
@@ -174,10 +173,40 @@ SparseData float8arr_to_sdata(double *array, int count) {
 				run_len++;
 			}
 	}
-	add_run_to_sdata(run_val, run_len, sdata); /* package up the last run */
+	add_run_to_sdata(run_val, run_len, sizeof(float8), sdata); /* package up the last run */
 
 	/* Add the final tallies */
 	sdata->unique_value_count = sdata->vals->len/sizeof(double);
+	sdata->total_value_count = count;
+
+	return sdata;
+}
+
+SparseData arr_to_sdata(char *array, size_t width, Oid type_of_data, int count) {
+	char *run_val=array;
+	int64 run_len=1;
+	SparseData sdata = makeSparseData();
+
+	sdata->type_of_data=type_of_data;
+
+	for (int i=1; i<count; i++) {
+		char *curr_val=array+i;
+			if (memcmp(curr_val,run_val,width))
+			{ /*run is interrupted, initiate new run */
+				/* package up the finished run */
+				add_run_to_sdata(run_val, run_len, width, sdata);
+				/* mark beginning of new run */
+				run_val=curr_val;
+				run_len=1;
+			} else
+			{ /* we're still in the same run */
+				run_len++;
+			}
+	}
+	add_run_to_sdata(run_val, run_len, width, sdata); /* package up the last run */
+
+	/* Add the final tallies */
+	sdata->unique_value_count = sdata->vals->len/width;
 	sdata->total_value_count = count;
 
 	return sdata;
