@@ -449,6 +449,14 @@ def start_database():
     logger.info('Starting database in production mode...')
     gp.GpStart.local('Start database in production mode')
 
+#-------------------------------------------------------------------------
+def stop_database():
+    """Stops the database."""
+    
+    logger.info('Stopping database...')
+    gp.GpStop.local('Stopping database')
+
+
 
 #-------------------------------------------------------------------------
 # Main
@@ -481,7 +489,14 @@ try:
     array = get_config(options)
     update_config(array, hostname, options)
     update_gpdbid_file(options, array)
-    stop_master(options)
+    # XXX: This should be stop_master, but due to filerep issue (MPP-9559)
+    # we need to stop all the segments too.
+    # Catch the exception that can be thrown if some segments are already down.
+    try:
+        stop_database()
+    except:
+        pass # ignore
+    
     start_database()
     
     # At this point, cancel isn't all that bad so re-enable 
