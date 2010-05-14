@@ -110,7 +110,7 @@ class GpInjectFaultProgram:
         #
         # load from master db
         #
-        conf = configurationInterface.getConfigurationProvider().initializeProvider(self.options.masterPort, False)
+        conf = configurationInterface.getConfigurationProvider().initializeProvider(self.options.masterPort, True)
         segments = conf.loadSystemConfig().getDbList()
 
         #
