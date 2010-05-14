@@ -993,6 +993,16 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
 
         return True
 
+    def validate_no_down_segments(self):
+        for segdb in self.gparray.getSegDbList():
+            if segdb.isSegmentDown():
+                logger.error('There are currently segments in the array marked as \'down\'.')
+                logger.error('You must correct these errors prior to starting a new expansion.')
+                return False
+            
+        return True
+
+
     def validate_unalterable_tables(self):
         conn = None
         max_connections = 0
@@ -2291,6 +2301,9 @@ try:
         logger.info('If you want to expand again, run gpexpand -c to remove')
         logger.info('the gpexpand schema and begin a new expansion')
     elif gpexpand_db_status == None and gpexpand_file_status == None and options.filename:
+        # We can't do setup if there are downed hosts.
+        if not gp_expand.validate_no_down_segments():
+            raise ValidationError('Down segments exist')
         if not gp_expand.validate_unalterable_tables():
             raise ValidationError()
         if gp_expand.check_unique_indexes():
