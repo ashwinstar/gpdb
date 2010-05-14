@@ -507,7 +507,7 @@ bool MirroredBufferPool_Flush(
 	}
 	
 	if (StorageManagerMirrorMode_DoPrimaryWork(open->mirrorMode) &&
-		(!open->copyToMirror || (FileRepPrimary_IsResyncWorker() && FileRepResync_IsReadBuffer())))
+		! (FileRepPrimary_IsResyncWorker() && ! FileRepResync_IsReadBuffer()))
 	{
 		errno = 0;
 
@@ -655,7 +655,7 @@ bool MirroredBufferPool_Write(
 	}
 	
 	if (StorageManagerMirrorMode_DoPrimaryWork(open->mirrorMode) &&
-		(!open->copyToMirror || (FileRepPrimary_IsResyncWorker() && FileRepResync_IsReadBuffer())))
+		! (FileRepPrimary_IsResyncWorker() && ! FileRepResync_IsReadBuffer()))
 	{
 		errno = 0;
 		
@@ -993,7 +993,7 @@ bool MirroredBufferPool_Truncate(
 	}
 	
 	if (StorageManagerMirrorMode_DoPrimaryWork(open->mirrorMode) &&
-		!open->copyToMirror)
+		! (FileRepPrimary_IsResyncWorker() && ! FileRepResync_IsReadBuffer()))
 	{
 		errno = 0;
 		
