@@ -2760,12 +2760,6 @@ class GPUpgrade:
             #   - the master is always called with gp_persistent_build_db(false)
             #   - segments call gp_peristent_build_db(true) when there are 
             #     mirrors
-            fname = os.path.join(logdir, 'persistent_template1.sql')
-            f = open(fname, 'w')
-            f.write('insert into pg_catalog.gp_global_sequence'
-                    '  select 0 from generate_series(1,15);\n')
-            f.close()
-
             fname = os.path.join(logdir, 'persistent_master.sql')
             f = open(fname, 'w')
             f.write('select gp_persistent_build_db(false);\n')
@@ -3186,13 +3180,6 @@ class GPUpgrade:
             for dboid, dbname in dbs.iteritems():
                 if dbname != 'template1':
                     continue
-
-                # Special template1 processing
-                file = os.path.join(d, WORKDIR, 'persistent_template1.sql')
-                transform_db(dir, dbname, dboid, file)
-
-                # this also needs to be done on template1 before handling
-                # other segments.
                 if self.cmd == 'MASTER':
                     file = os.path.join(d, WORKDIR, 'persistent_master.sql')
                 else:

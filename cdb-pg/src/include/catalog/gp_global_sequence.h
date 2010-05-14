@@ -50,23 +50,6 @@ typedef FormData_gp_global_sequence *Form_gp_global_sequence;
 
 #undef int8
 
-// 0 initial values for the sequences
-DATA(insert ( 0 ));
-DATA(insert ( 0 ));
-DATA(insert ( 0 ));
-DATA(insert ( 0 ));
-DATA(insert ( 0 ));
-DATA(insert ( 0 ));
-DATA(insert ( 0 ));
-DATA(insert ( 0 ));
-DATA(insert ( 0 ));
-DATA(insert ( 0 ));
-DATA(insert ( 0 ));
-DATA(insert ( 0 ));
-DATA(insert ( 0 ));
-DATA(insert ( 0 ));
-DATA(insert ( 0 ));
-
 /*
  * The assigned sequence counters.
  */
@@ -78,6 +61,14 @@ typedef enum GpGlobalSequence
 	GpGlobalSequence_PersistentFilespace = 4,
 } GpGlobalSequence;
 
+/*
+ * This is the number of rows that the gp_global_sequence sequence table
+ * should have, they should be a contiguous set of tids from (0,1)-(0,N)
+ *
+ * This is populated during the gp_persistent_build_db() function rather
+ * than as part of normal dbinit operations.
+ */
+#define GpGlobalSequence_MaxSequenceTid 15
 
 extern void GpGlobalSequence_GetValues(
 	Datum						*values,

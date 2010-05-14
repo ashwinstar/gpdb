@@ -302,32 +302,32 @@ static void PersistentBuild_PopulateGpRelationNode(
 Datum
 gp_persistent_build_db(PG_FUNCTION_ARGS)
 {
-	bool mirrored = PG_GETARG_BOOL(0);
+	MirroredObjectExistenceState		 mirrorExistenceState;
+	MirroredRelDataSynchronizationState	 relDataSynchronizationState;
 
-	MirroredObjectExistenceState mirrorExistenceState;
-	MirroredRelDataSynchronizationState relDataSynchronizationState;
+	bool				 mirrored = PG_GETARG_BOOL(0);
+	int64				 count = 0;
+	Relation			 gp_global_sequence;
+	Relation			 pg_database;
+	HeapTuple			 tuple;
+	HeapScanDesc		 scandesc;
+	Form_pg_database	 form_pg_database;
+	DatabaseInfo		*info;
+	Oid					 defaultTablespace;
+	int					 t;
 
-	int64 count = 0;
-
-	Relation pg_database;
-	HeapTuple tuple;
-	Form_pg_database form_pg_database;
-
-	DatabaseInfo *info;
-
-	Oid defaultTablespace;
-
-	int t;
-
-	// Turn this on so we don't try to fetch persistence information from gp_releation_node
-	// for gp_relation_node and its index until we've done the assignment with
-	// PersistentRelation_AddCreated.
+	/*
+	 * Turn this on so we don't try to fetch persistence information from
+	 * gp_releation_node for gp_relation_node and its index until we've done the
+	 * assignment with PersistentRelation_AddCreated.
+	 */
 	gp_before_persistence_work = true;
 
 	if (mirrored)
 	{
 		mirrorExistenceState = MirroredObjectExistenceState_MirrorCreated;
-		relDataSynchronizationState = MirroredRelDataSynchronizationState_DataSynchronized;
+		relDataSynchronizationState = 
+			MirroredRelDataSynchronizationState_DataSynchronized;
 	}
 	else
 	{
@@ -337,10 +337,42 @@ gp_persistent_build_db(PG_FUNCTION_ARGS)
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
-			"gp_persistent_build_db: Using mirror existence state '%s', data synchronization state '%s'",
-			MirroredObjectExistenceState_Name(mirrorExistenceState),
-			MirroredRelDataSynchronizationState_Name(relDataSynchronizationState));
+			 "gp_persistent_build_db: Using mirror existence state '%s', "
+			 "data synchronization state '%s'",
+			 MirroredObjectExistenceState_Name(mirrorExistenceState),
+			 MirroredRelDataSynchronizationState_Name(
+				 relDataSynchronizationState));
 
+	/* 
+	 * If the gp_global_sequence table hasn't been populated yet then we need 
+	 * to populate it before we can procede with building the rest of the 
+	 * persistent tables. 
+	 */
+	gp_global_sequence = heap_open(GpGlobalSequenceRelationId, RowExclusiveLock);
+	scandesc = heap_beginscan(gp_global_sequence, SnapshotAny, 0, NULL);
+	tuple = heap_getnext(scandesc, ForwardScanDirection);
+	if (!HeapTupleIsValid(tuple))
+	{
+		TupleDesc		tupDesc;
+		Datum			values[Natts_gp_global_sequence];
+		bool			nulls[Natts_gp_global_sequence];
+
+		/* Insert N frozen tuples of value 0 */
+		tupDesc = RelationGetDescr(gp_global_sequence);
+		MemSet(nulls, false, sizeof(nulls));
+		values[Anum_gp_global_sequence_sequence_num-1] = Int64GetDatum(0);
+		tuple = heap_form_tuple(tupDesc, values, nulls);
+
+		if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "failed to build global sequence tuple");
+		
+		for (t = 0; t < GpGlobalSequence_MaxSequenceTid; t++)
+			frozen_heap_insert(gp_global_sequence, tuple);
+	}
+	heap_endscan(scandesc);
+	heap_close(gp_global_sequence, RowExclusiveLock);
+
+	/* Lookup the information for the current database */
 	pg_database = heap_open(DatabaseRelationId, AccessShareLock);
 
 	/* Fetch a copy of the tuple to scribble on */
@@ -360,9 +392,8 @@ gp_persistent_build_db(PG_FUNCTION_ARGS)
 
 	for (t = 0; t < info->tablespacesCount; t++)
 	{
-		Oid tablespace = info->tablespaces[t];
-		DbDirNode dbDirNode;
-	
+		Oid				tablespace = info->tablespaces[t];
+		DbDirNode		dbDirNode;
 		ItemPointerData persistentTid;
 
 		if (tablespace == GLOBALTABLESPACE_OID)
@@ -390,10 +421,10 @@ gp_persistent_build_db(PG_FUNCTION_ARGS)
 	gp_before_persistence_work = false;
 
 	/* 
-	 * Since we have written XLOG records with <persistentTid, persistentSerialNum> of
-	 * zeroes because of the gp_before_persistence_work GUC, lets do a checkpoint
-	 * to force out all buffer pool pages so we never try to redo those XLOG records
-	 * in Crash Recovery.
+	 * Since we have written XLOG records with <persistentTid,
+	 * persistentSerialNum> of zeroes because of the gp_before_persistence_work
+	 * GUC, lets do a checkpoint to force out all buffer pool pages so we never
+	 * try to redo those XLOG records in Crash Recovery.
 	 */
 	CreateCheckPoint(false, true);
 
