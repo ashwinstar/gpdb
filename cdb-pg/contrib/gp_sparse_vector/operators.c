@@ -1123,41 +1123,50 @@ svec_pivot(PG_FUNCTION_ARGS)
 #define RANDOM_RANGE	(((double)random())/(2147483647.+1))
 #define RANDOM_INT(x,y)	((int)(x)+(int)(((y+1)-(x))*RANDOM_RANGE))
 #define SWAPVAL(x,y,temp)	{ (temp) = (x); (x) = (y); (y) = (temp); }
+#define SWAP(x,y,tmp,size)	{ memcpy((tmp),(x),(size)); memcpy((x),(y),(size)); memcpy((y),(tmp),(size)); }
 /*
  * Implements the partition selection algorithm with randomized selection
  *
  * From: http://en.wikipedia.org/wiki/Selection_algorithm#Linear_general_selection_algorithm_-_.22Median_of_Medians_algorithm.22
  */
 static int
-float8_partition(float8 *list,int left,int right,int pivotIndex)
+partition(char *list,size_t width, int left,int right,int pivotIndex, int (*compar)(const void *, const void *),void *tmp,void *pvalue)
 {
-	float8 pivotValue = list[pivotIndex];
 	int storeIndex = left;
-	float8 tmp;
-	SWAPVAL(list[pivotIndex],list[right],tmp) // Move pivot to end
+
+	memcpy(pvalue,list+pivotIndex*width,width);
+
+	SWAP(list+pivotIndex*width,list+right*width,tmp,width) // Move pivot to end
 	for (int i=left;i<right;i++)
 	{
-		if (list[i] <= pivotValue)
+		if (compar(list+i*width,pvalue) <= 0)
 		{
-			SWAPVAL(list[i],list[storeIndex],tmp)
+			SWAP(list+i*width,list+storeIndex*width,tmp,width)
 			storeIndex++;
 		}
 	}
-	SWAPVAL(list[storeIndex],list[right],tmp) // Move pivot to its final place
+	SWAP(list+storeIndex*width,list+right*width,tmp,width) // Move pivot to its final place
 	return(storeIndex);
 }
 
-static float8
-float8_select (float8 *list,int left,int right,int k)
+static int
+select (char *list, size_t width, int left,int right,int k, int (*compar)(const void *, const void *))
 {
 	int pivotIndex,pivotNewIndex;
+	void *tmp,*pvalue;
+
+	tmp = (void *)palloc(width);
+	pvalue = (void *)palloc(width);
+
 	while (1)
 	{
 		pivotIndex = RANDOM_INT(left,right);
-		pivotNewIndex = float8_partition(list,left,right,pivotIndex);
+		pivotNewIndex = partition(list,width,left,right,pivotIndex,compar,tmp,pvalue);
 		if (k == pivotNewIndex)
 		{
-			return(list[k]);
+			pfree(tmp);
+			pfree(pvalue);
+			return(k);
 		} else if (k < pivotNewIndex)
 		{
 			right = pivotNewIndex-1;
@@ -1168,6 +1177,10 @@ float8_select (float8 *list,int left,int right,int k)
 	}
 }
 
+static int
+compar_float8(const void *left,const void *right)
+{if(*(float8 *)left<*(float8 *)right){return -1;}else if(*(float8 *)left==*(float8 *)right){return 0;}else{return 1;}}
+
 Datum float8arr_median(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1( float8arr_median);
@@ -1176,10 +1189,9 @@ Datum
 float8arr_median(PG_FUNCTION_ARGS) {
 	ArrayType *array  = PG_GETARG_ARRAYTYPE_P(0);
 	SparseData sdata = sdata_uncompressed_from_float8arr_internal(array);
+	int index = select(sdata->vals->data,sizeof(float8),0,
+			   sdata->total_value_count-1,
+			   (sdata->total_value_count-1)/2,compar_float8);
 
-	PG_RETURN_FLOAT8(float8_select(
-				(float8 *)(sdata->vals->data),
-				0,sdata->total_value_count-1,
-				(sdata->total_value_count-1)/2));
+	PG_RETURN_FLOAT8(((float8 *)(sdata->vals->data))[index]);
 }
-
