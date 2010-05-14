@@ -1130,7 +1130,7 @@ svec_pivot(PG_FUNCTION_ARGS)
  * From: http://en.wikipedia.org/wiki/Selection_algorithm#Linear_general_selection_algorithm_-_.22Median_of_Medians_algorithm.22
  */
 static int
-partition(char *list,size_t width, int left,int right,int pivotIndex, int (*compar)(const void *, const void *),void *tmp,void *pvalue)
+partition_pivot(char *list,size_t width, int left,int right,int pivotIndex, int (*compar)(const void *, const void *),void *tmp,void *pvalue)
 {
 	int storeIndex = left;
 
@@ -1150,7 +1150,7 @@ partition(char *list,size_t width, int left,int right,int pivotIndex, int (*comp
 }
 
 static int
-select (char *list, size_t width, int left,int right,int k, int (*compar)(const void *, const void *))
+partition_select (char *list, size_t width, int left,int right,int k, int (*compar)(const void *, const void *))
 {
 	int pivotIndex,pivotNewIndex;
 	void *tmp,*pvalue;
@@ -1161,7 +1161,7 @@ select (char *list, size_t width, int left,int right,int k, int (*compar)(const 
 	while (1)
 	{
 		pivotIndex = RANDOM_INT(left,right);
-		pivotNewIndex = partition(list,width,left,right,pivotIndex,compar,tmp,pvalue);
+		pivotNewIndex = partition_pivot(list,width,left,right,pivotIndex,compar,tmp,pvalue);
 		if (k == pivotNewIndex)
 		{
 			pfree(tmp);
@@ -1189,7 +1189,7 @@ Datum
 float8arr_median(PG_FUNCTION_ARGS) {
 	ArrayType *array  = PG_GETARG_ARRAYTYPE_P(0);
 	SparseData sdata = sdata_uncompressed_from_float8arr_internal(array);
-	int index = select(sdata->vals->data,sizeof(float8),0,
+	int index = partition_select(sdata->vals->data,sizeof(float8),0,
 			   sdata->total_value_count-1,
 			   (sdata->total_value_count-1)/2,compar_float8);
 
