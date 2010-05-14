@@ -21,11 +21,30 @@ DONE
 - concat operator mapped to "||" that returns svec and takes (svec,svec)
 - Serialization format should avoid copies more often
 - array_agg function converts relation to svec
+- vec_median implements partition selection on float8[]
 
 ==========================================================================================
 IMPROVEMENTS
 ==========================================================================================
 TODO
+- implement vec_median for svec (using the sparsity to drive the partition selection)
+- implement an svec_agg_distinct that reorders and distincts to maximize RLE compression
+	- implement an in memory median aggregate MEDIAN_INMEMORY that uses svec_agg_distinct
+	as a PREFUNC and feeds svecs into svec_concat as the SFUNC, then vec_median as
+	FINALFUNC
+- [off topic] implement MEDIAN using only a FINALFUNC that implements an out-of-core
+	partition selection algorithm as follows:
+		- As the data arrives, fill runs of svec using svec_agg_distinct until
+		work_mem size is reached.
+		- when a run is filled, partition select it into lower and upper halves
+		and output both to disk appending to two files (lower, upper)
+		- repeat until end of input with the same pivot value, there are now
+		two files pivoted around one value
+		- Choose random pivot index, continue partition selection using runs
+		of svec, discarding whichever file is not needed
+		- There should be no more than 2 writes of relation to disk, all 
+		sequential IO
+- implement PERCENTILE using the same logic as vec_median
 - phrase match that returns the weight of a match and the locations where the phrases are
     for each document relative to an input phrase (see README_term_proximity)
 - set "contains" operator that returns the intersection of two vectors (Elbit, LinkedIn)
