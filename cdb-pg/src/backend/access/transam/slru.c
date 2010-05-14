@@ -572,6 +572,7 @@ SlruPhysicalReadPage(SlruCtl ctl, int pageno, int slotno)
 						O_RDWR | PG_BINARY,
 						S_IRUSR | S_IWUSR,
 						/* suppressError */ true,
+						/* atomic operation */ false,
 						/*isMirrorRecovery */ false))
 	{
 		if (errno != ENOENT || !InRecovery)
@@ -678,6 +679,7 @@ SlruPhysicalWritePage(SlruCtl ctl, int pageno, int slotno, SlruFlush fdata)
 						O_RDWR | O_CREAT | PG_BINARY,
 						S_IRUSR | S_IWUSR,
 						/* suppressError */ true,
+						/* atomic operation */ false,
 						/*isMirrorRecovery */ false))
 		{
 			slru_errcause = SLRU_OPEN_FAILED;

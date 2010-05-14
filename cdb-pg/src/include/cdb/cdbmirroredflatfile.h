@@ -49,6 +49,13 @@ typedef struct MirroredFlatFileOpen
 	
 	bool	isMirrorRecovery;
 
+	/* 
+	 * Perform the entire operation atomically. We implement this by writing to
+	 * a temporary file and then renaming.
+	 */
+	bool	atomic_op;
+	char   *tmp_ext; /* extension for temporary file */
+
 } MirroredFlatFileOpen;
 
 #define MirroredFlatFileOpen_Init {false, false, {0, 0}, NULL, NULL, NULL, -1, 0, false}
@@ -83,6 +90,8 @@ extern int MirroredFlatFile_Open(
 	int 			fileMode,
 
 	bool			suppressError,
+
+	bool			atomic_op,
 
 	bool			isMirrorRecovery);
 

@@ -952,6 +952,7 @@ EndPrepare(GlobalTransaction gxact)
 					O_CREAT | O_EXCL | O_WRONLY | PG_BINARY,
 					S_IRUSR | S_IWUSR,
 					/* suppressError */ false,
+					/* atomic operation */ false,
 					/*isMirrorRecovery */ false);
 
 	/* Write data to file, and calculate CRC as we pass over it */
@@ -1448,6 +1449,7 @@ RecreateTwoPhaseFile(TransactionId xid, void *content, int len)
 					O_CREAT | O_TRUNC | O_WRONLY | PG_BINARY,
 					S_IRUSR | S_IWUSR,
 					/* suppressError */ false,
+					/* atomic operation */ false,
 					/*isMirrorRecovery */ false);
 
 	/* Write content and CRC */
@@ -1542,6 +1544,7 @@ CheckPointTwoPhase(XLogRecPtr redo_horizon)
 							O_RDWR | PG_BINARY, 
 							0,
 							/* suppressError */ true,
+							/* atomic operation */ false,
 							/*isMirrorRecovery */ false))
 		{
 			char		path[MAXPGPATH];

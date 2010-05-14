@@ -2687,6 +2687,7 @@ XLogFileInit(
 							O_RDWR | PG_BINARY | XLOG_SYNC_BIT,
 						    S_IRUSR | S_IWUSR,
 						    /* suppressError */ true,
+							/* atomic operation */ false,
 							/*isMirrorRecovery */ false))
 		{
 			char		path[MAXPGPATH];
@@ -2726,6 +2727,7 @@ XLogFileInit(
 						O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
 					    S_IRUSR | S_IWUSR,
 					    /* suppressError */ false,
+						/* atomic operation */ false,
 						/*isMirrorRecovery */ false);
 
 	/*
@@ -2807,6 +2809,7 @@ XLogFileInit(
 						O_RDWR | PG_BINARY | XLOG_SYNC_BIT,
 					    S_IRUSR | S_IWUSR,
 					    /* suppressError */ false,
+						/* atomic operation */ false,
 						/*isMirrorRecovery */ false);
 }
 
@@ -3012,7 +3015,7 @@ InstallXLogFileSegment(uint32 *log, uint32 *seg, char *tmppath,
 										 XLOGDIR,
 										 /* old name */ tmpsimpleFileName,
 										 /* new name */ simpleFileName,
-										 /* suppressError */ false,
+										 /* can exist? */ false,
 										 /* isMirrorRecovery */ false);
 	} else {
 		retval = link(tmppath, path);
@@ -3041,7 +3044,7 @@ InstallXLogFileSegment(uint32 *log, uint32 *seg, char *tmppath,
 						  XLOGDIR,
 						  /* old name */ tmpsimpleFileName,
 						  /* new name */ simpleFileName,
-						  /* suppressError */ false,
+						  /* can exist */ false,
 							/* isMirrorRecovery */ false);
 	} else {
 		retval = rename(tmppath, path);
@@ -3095,6 +3098,7 @@ XLogFileOpen(
 					O_RDWR | PG_BINARY | XLOG_SYNC_BIT,
 					S_IRUSR | S_IWUSR,
 					/* suppressError */ false,
+					/* atomic operation */ false,
 					/*isMirrorRecovery */ false))
 	{
 		char		path[MAXPGPATH];
@@ -4832,6 +4836,7 @@ WriteControlFile(void)
 					O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
 					S_IRUSR | S_IWUSR,
 					/* suppressError */ false,
+					/* atomic operation */ false,
 					/*isMirrorRecovery */ false);
 				
 	MirroredFlatFile_Write(
@@ -5101,6 +5106,7 @@ UpdateControlFile(void)
 					O_RDWR | PG_BINARY,
 					S_IRUSR | S_IWUSR,
 					/* suppressError */ false,
+					/* atomic operation */ false,
 					/*isMirrorRecovery */ false);
 				
 	MirroredFlatFile_Write(
@@ -9724,6 +9730,7 @@ XLogRecoverMirrorControlFile(void)
 							  O_CREAT | O_EXCL | O_RDWR | PG_BINARY,
 							  S_IRUSR | S_IWUSR,
 							  /* suppressError */ false,
+							  /* atomic operation */ false,
 							  /*isMirrorRecovery */ TRUE);
 		if (retval != 0)
 			break;

@@ -7,6 +7,7 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
+#include "miscadmin.h"
 
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -48,28 +49,51 @@ int MirroredFlatFile_Open(
 
 	bool			suppressError,
 
+	bool			atomic_op,
+
 	bool			isMirrorRecovery) 
 /* NOTE do we need to consider supressError on mirror */
 
 {
 	int save_errno = 0;
+	char tmp_filename[MAXPGPATH + 1];
 	
 	Assert(open != NULL);
+
+	/* If the user wants an atomic write, they better be creating a file */
+	Assert((atomic_op && (fileFlags & O_CREAT) == O_CREAT) ||
+		   !atomic_op);
 	
 	MemSet(open, 0, sizeof(MirroredFlatFileOpen));
+
+	open->atomic_op = atomic_op;
+
+	if (atomic_op)
+	{
+		open->tmp_ext = MemoryContextAlloc(TopMemoryContext, 11);
+	  	snprintf(open->tmp_ext, 11, "%i", MyProcPid);
+		snprintf(tmp_filename, sizeof(tmp_filename), "%s.%s",
+				 simpleFileName, open->tmp_ext);
+	}
+	else
+	{
+		strncpy(tmp_filename, simpleFileName, sizeof(tmp_filename));
+	}
+
 
 	open->isMirrorRecovery = isMirrorRecovery;
 	open->usingDbDirNode = false;
 	open->subDirectory = MemoryContextStrdup(TopMemoryContext, subDirectory);
 	open->simpleFileName = MemoryContextStrdup(TopMemoryContext, simpleFileName);
-	open->path = MemoryContextAlloc(TopMemoryContext, strlen(subDirectory) + 1 + strlen(simpleFileName) + 1);
+	open->path = MemoryContextAlloc(TopMemoryContext, strlen(subDirectory) + 1 +
+									strlen(tmp_filename) + 1);
 
-	sprintf(open->path, "%s/%s", subDirectory, simpleFileName);
+	sprintf(open->path, "%s/%s", subDirectory, tmp_filename);
 	
 	if (FileRepPrimary_MirrorOpen(
 				  FileRep_GetFlatFileIdentifier(
 								subDirectory, 
-								simpleFileName),
+								tmp_filename),
 				  FileRepRelationTypeFlatFile,
 				  FILEREP_OFFSET_UNDEFINED,
 				  fileFlags,
@@ -318,6 +342,7 @@ void MirroredFlatFile_Close(
 {
 	Assert(open != NULL);
 	Assert(open->isActive);
+
 	
 	if (FileRepPrimary_MirrorClose(
 				   FileRep_GetFlatFileIdentifier(
@@ -332,6 +357,21 @@ void MirroredFlatFile_Close(
 		FileClose(open->primaryFile);
 	}
 	
+	if (open->atomic_op)
+	{
+		char oldfile[MAXPGPATH + 1];
+
+		snprintf(oldfile, sizeof(oldfile), "%s.%s",
+				 open->simpleFileName,
+				 open->tmp_ext);
+
+		MirroredFlatFile_Rename(open->subDirectory,
+								oldfile,
+								open->simpleFileName,
+								true,
+								false);
+	}
+
 	Assert(open->subDirectory != NULL);
 	pfree(open->subDirectory);
 	open->subDirectory = NULL;
@@ -341,6 +381,9 @@ void MirroredFlatFile_Close(
 	Assert(open->path != NULL);
 	pfree(open->path);
 	open->path = NULL;
+
+	if (open->atomic_op)
+		pfree(open->tmp_ext);
 
 	open->isActive = false;
 }
@@ -358,7 +401,7 @@ int MirroredFlatFile_Rename(
 							char			*newSimpleFileName,
 								/* The simple file name. */
 						
-							bool			suppressError,
+							bool			new_can_exist,
 							
 							bool			isMirrorRecovery) 
 					/* if TRUE then request is not performed on primary */
@@ -367,10 +410,19 @@ int MirroredFlatFile_Rename(
 	char newPath[MAXPGPATH];
 	bool mirrorRename = TRUE;
 	int	 save_errno = 0;
+	struct stat buf;
 	
 	sprintf(oldPath, "%s/%s", subDirectory, oldSimpleFileName);
 	sprintf(newPath, "%s/%s", subDirectory, newSimpleFileName);
 	
+	if (!new_can_exist)
+	{
+		if (stat(newPath, &buf) == 0)
+			elog(ERROR, "cannot rename flat file %s to %s: File exists",
+				 oldPath,
+				 newPath);
+	}
+
 	if (FileRepPrimary_MirrorRename(
 								   FileRep_GetFlatFileIdentifier(
 												subDirectory, 
@@ -386,16 +438,8 @@ int MirroredFlatFile_Rename(
 						oldPath, newPath)));
 	}
 
-	if (! isMirrorRecovery) {
-#if HAVE_WORKING_LINK
-		if (link(oldPath, newPath) < 0)
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not link file from \"%s\" to \"%s\": %m", 
-							oldPath, newPath)));
-		else
-			errno = 0;
-#else
+	if (!isMirrorRecovery)
+	{
 		if (rename(oldPath, newPath) != 0)
 			ereport(ERROR,
 					(errcode_for_file_access(),
@@ -403,15 +447,14 @@ int MirroredFlatFile_Rename(
 							oldPath, newPath)));
 		else
 			errno = 0;
-#endif
 		save_errno = errno;
 	}
 	
-	if (mirrorRename) {
+	if (mirrorRename)
+	{
 		if (FileRepPrimary_IsOperationCompleted(
-							FileRep_GetFlatFileIdentifier(
-													subDirectory, 
-													oldSimpleFileName),									
+							FileRep_GetFlatFileIdentifier(subDirectory, 
+														  oldSimpleFileName),	
 							FileRepRelationTypeFlatFile) == FALSE)	
 			ereport(LOG,
 					(errmsg("could not rename file on mirror from \"%s\" to \"%s\" ", 
@@ -891,6 +934,7 @@ MirrorFlatFile(
 									   O_CREAT | O_EXCL | O_RDWR | PG_BINARY,
 									   S_IRUSR | S_IWUSR,
 									   /* suppressError */ false,
+									   /* atomic write/ */ false,
 									   /*isMirrorRecovery */ TRUE);
 		
 		if (retval != 0)
@@ -1109,6 +1153,7 @@ PgVersionRecoverMirror(void)
 								   O_CREAT | O_EXCL | O_RDWR | PG_BINARY,
 								   S_IRUSR | S_IWUSR,
 								   /* suppressError */ false,
+								   /* atomic? */ false,
 								   /*isMirrorRecovery */ TRUE);
 			
 			Assert(MirroredFlatFile_IsActive(&mirroredOpen));
