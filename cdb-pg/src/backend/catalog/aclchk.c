@@ -25,6 +25,7 @@
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
+#include "catalog/gp_persistent.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_conversion.h"
 #include "catalog/pg_database.h"
@@ -2070,6 +2071,21 @@ pg_class_aclmask(Oid table_oid, Oid roleid,
 	{
 #ifdef ACLDEBUG
 		elog(DEBUG2, "permission denied for system catalog update");
+#endif
+		mask &= ~(ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_USAGE);
+	}
+
+	/* 
+	 * Deny even superusers with rolcatupdate permissions to modify the
+	 * persistent tables.  These tables are special and rely on precise
+	 * settings of the ctids within the tables, attempting to modify these
+	 * tables via INSERT/UPDATE/DELETE is a mistake.
+	 */
+	if ((mask & (ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_USAGE)) &&
+		GpPersistent_IsPersistentRelation(table_oid))
+	{
+#ifdef ACLDEBUG
+		elog(DEBUG2, "permission denied for persistent system catalog update");
 #endif
 		mask &= ~(ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_USAGE);
 	}
