@@ -18,6 +18,7 @@
 #include "access/heapam.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_tablespace.h"
+#include "cdb/cdbglobalsequence.h"
 #include "cdb/cdbpersistenttablespace.h"
 #include "executor/executor.h"
 #include "utils/builtins.h"
@@ -115,10 +116,56 @@ gp_update_persistent_relation_node_entry(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(true);
 }
 
+
+/*
+ * gp_update_global_sequence_entry(tid, bigint) => bool
+ * 
+ * Updates the given global sequence to the specified value:
+ *   - Only allows increasing the sequence value
+ *   - Only lets you set the tids '(0,1)' through '(0,4)'
+ *     * these are the only tids currently used by the system 
+ *       (see cdb/cdbglobalsequence.h)
+ */
 Datum
 gp_update_global_sequence_entry(PG_FUNCTION_ARGS)
 {
-	NYI;
+	ItemPointer			tid;
+	int8				sequenceVal;
+	GpGlobalSequence    sequence;
+
+	/* Must be super user */
+	if (!superuser())
+		elog(ERROR, "permission denied");
+
+	/* Check input arguments */
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+		elog(ERROR, "null input parameter");
+
+	tid = (ItemPointer) PG_GETARG_POINTER(0);
+	sequenceVal = PG_GETARG_INT64(1);
+
+	/* Check tid */
+	if (ItemPointerGetBlockNumber(tid) != 0)
+		elog(ERROR, "unexpected block number in tid");
+	sequence = (GpGlobalSequence) ItemPointerGetOffsetNumber(tid);
+	switch (sequence)
+	{
+		case GpGlobalSequence_PersistentRelation:
+		case GpGlobalSequence_PersistentDatabase:
+		case GpGlobalSequence_PersistentTablespace:
+		case GpGlobalSequence_PersistentFilespace:
+			break;
+
+		default:
+			elog(ERROR, "unexpected offset number in tid");
+	}
+
+	/* Check sequence value */
+	if (sequenceVal < GlobalSequence_Current(sequence))
+		elog(ERROR, "sequence number too low");
+
+	/* Everything looks good, update the value */
+	GlobalSequence_Set(sequence, sequenceVal);
 	PG_RETURN_BOOL(true);
 }
 
