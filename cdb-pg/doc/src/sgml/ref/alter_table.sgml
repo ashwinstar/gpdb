@@ -30,7 +30,7 @@ ALTER TABLE name SET SCHEMA new_schema
 ALTER TABLE [ONLY] name SET 
      DISTRIBUTED BY (column, [ ... ] ) 
    | DISTRIBUTED RANDOMLY 
-   | WITH (REORGANIZE=true|false)    | WITH (storage_parameter=value [, ... ])
+   | WITH (REORGANIZE=true|false)
 
 ALTER TABLE [ONLY] name action [, ... ]
 
