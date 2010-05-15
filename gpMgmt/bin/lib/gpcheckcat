@@ -2,17 +2,16 @@
 '''
 Usage: gpcheckcat [<option>] [dbname]
 
-	-? 
-	-B parallel: number of worker threads
-	-g dir     : generate SQL to rectify catalog corruption, put it in dir
-	-h host	   : DB host name
-	-p port    : DB port number
-	-P passwd  : DB password
-	-o         : check OID consistency
-	-U uname   : DB User Name
-	-v         : verbose
+    -? 
+    -B parallel: number of worker threads
+    -g dir     : generate SQL to rectify catalog corruption, put it in dir
+    -h host    : DB host name
+    -p port    : DB port number
+    -P passwd  : DB password
+    -o         : check OID consistency
+    -U uname   : DB User Name
+    -v         : verbose
     -T dir     : use <dir> as a temporary working directory
-
 '''
 import sys, os, subprocess, tempfile, stat
 from threading import Thread
@@ -38,10 +37,24 @@ def parse_int(val):
     except ValueError: val = 0
     return val
 
+SUCCESS=0
+ERROR_REPAIR=1
+ERROR_NOREPAIR=2
+def setError(level):
+    '''
+    Increases the error level to the specified level, if specified level is
+    lower than the existing level no change is made.
+    
+    error level 0 => success
+    error level 1 => error, with repair script
+    error level 2 => error, no repair script
+    '''
+    GV.retcode = max(level, GV.retcode)
+
 
 ###############################
 class Global():
-    retcode   = 0;
+    retcode   = SUCCESS
     opt       = {}
     opt['-h'] = None
     opt['-p'] = None
@@ -114,7 +127,7 @@ def parseCommandLine():
         usage('Error: ' + str(e))
 
     for (switch, val) in options:
-        if switch == '-?':	  usage(0)
+        if switch == '-?':      usage(0)
         elif switch[1] in 'hpBPUgT': GV.opt[switch] = val
         elif switch[1] in 'vot':   GV.opt[switch] = True
 
@@ -299,13 +312,14 @@ def getGPConfiguration():
 def checkDistribPolicy():
     logger.info('-----------------------------------')
     logger.info('Checking constraints on randomly distributed tables')
-    qry = '''select n.nspname, rel.relname,
-          pk.conname as constraint
-          from pg_constraint pk
-              join pg_class rel on (pk.conrelid = rel.oid)
-                  join pg_namespace n on (rel.relnamespace = n.oid)
-                      join gp_distribution_policy d on (rel.oid = d.localoid)
-                      where pk.contype in('p', 'u') and d.attrnums is null;'''
+    qry = '''
+    select n.nspname, rel.relname, pk.conname as constraint
+    from   pg_constraint pk
+      join pg_class rel on (pk.conrelid = rel.oid)
+      join pg_namespace n on (rel.relnamespace = n.oid)
+      join gp_distribution_policy d on (rel.oid = d.localoid)
+    where pk.contype in('p', 'u') and d.attrnums is null
+    '''
 
     db = connect2(GV.cfg[1])
     curs = db.query(qry)
@@ -317,11 +331,12 @@ def checkDistribPolicy():
     if not err:
         logger.info('[OK] randomly distributed tables')
     else:
-        GV.retcode = 1
-        logger.info('[ERROR] pg_constraint has %d issue(s)' % len(err))
-        logger.info('[ERROR] %s' % qry)
+        setError(ERROR_REPAIR)
+        logger.info('[FAIL] randomly distributed tables')
+        logger.error('pg_constraint has %d issue(s)' % len(err))
+        logger.error(qry)
         for e in err: 
-            logger.info('[ERROR] %s' % formatErr(e[0], e[1], e[2]))
+            logger.error(formatErr(e[0], e[1], e[2]))
         for e in err:
             cons = e[2]
             removeIndexConstraint(cons['nspname'], cons['relname'],
@@ -333,17 +348,16 @@ def checkDistribPolicy():
     # final part of the WHERE clause here is a little tricky: we want to make
     # sure that the set of distribution columns is a left subset of the
     # constraint. 
-    qry = '''Select  n.nspname, rel.relname,
-          pk.conname as constraint
-          from pg_constraint pk
-              join pg_class rel on (pk.conrelid = rel.oid)
-                  join pg_namespace n on (rel.relnamespace = n.oid)
-                      join gp_distribution_policy d on (rel.oid = d.localoid)
-                      where pk.contype in ('p', 'u') and
-                       (d.attrnums is null or not 
-                       d.attrnums operator(pg_catalog.<@)
-                       pk.conkey);'''
-
+    qry = '''
+    select  n.nspname, rel.relname, pk.conname as constraint
+    from    pg_constraint pk
+      join  pg_class rel on (pk.conrelid = rel.oid)
+      join  pg_namespace n on (rel.relnamespace = n.oid)
+      join  gp_distribution_policy d on (rel.oid = d.localoid)
+    where pk.contype in ('p', 'u') and
+          (d.attrnums is null or not 
+           d.attrnums operator(pg_catalog.<@) pk.conkey)
+    '''
     curs = db.query(qry)
 
     err = []
@@ -351,17 +365,17 @@ def checkDistribPolicy():
         err.append([GV.cfg[1], ('nspname', 'relname', 'constraint'), row])
 
     if not err:
-        logger.info('[OK] randomly distributed tables')
+        logger.info('[OK] unique constraints')
     else:
-        GV.retcode = 1
-        logger.info('[ERROR] pg_constraint has %d issue(s)' % len(err))
-        logger.info('[ERROR] %s' % qry)
-        for e in err: logger.info('[ERROR] %s' % formatErr(e[0], e[1], e[2]))
+        setError(ERROR_REPAIR)
+        logger.info('[FAIL] unique constraints')
+        logger.error('pg_constraint has %d issue(s)' % len(err))
+        logger.error(qry)
+        for e in err: logger.error(formatErr(e[0], e[1], e[2]))
         for e in err:
             cons = e[2]
             removeIndexConstraint(cons['nspname'], cons['relname'],
                                   cons['constraint'])
-
 
 
 #############
@@ -374,24 +388,20 @@ def checkPartitionIntegrity():
     err = []
     db = connect()
     qry = '''
-             select n1.nspname as scname, pc1.relname tname, 
-             n2.nspname as partscname, pc2.relname as parttname,
-             pp.parlevel,
-             pr.*
-             from pg_partition_rule pr, pg_partition pp,
-             pg_namespace n1, pg_namespace n2,
-             pg_class pc1, pg_class pc2 where
-             pc1.relnamespace = n1.oid and
-             pc2.relnamespace = n2.oid and
-             pp.paristemplate is false and
-             pp.parrelid = pc1.oid and
-             pr.parchildrelid = pc2.oid and
-             pr.paroid = pp.oid and
-             pr.paroid in
-             (select oid from pg_partition p1 where parlevel > 0 and
-             parlevel < (select max(parlevel) from pg_partition p2 where
-             p2.parrelid = p1.parrelid))
-        '''
+    select n1.nspname as scname, pc1.relname tname, n2.nspname as partscname, 
+           pc2.relname as parttname, pp.parlevel, pr.*
+    from   pg_partition_rule pr, pg_partition pp, pg_namespace n1, 
+           pg_namespace n2, pg_class pc1, pg_class pc2 
+    where  pc1.relnamespace = n1.oid and pc2.relnamespace = n2.oid and
+           pp.paristemplate is false and pp.parrelid = pc1.oid and
+           pr.parchildrelid = pc2.oid and pr.paroid = pp.oid and
+           pr.paroid in (
+             select oid from pg_partition p1 
+             where parlevel > 0 and parlevel < (
+                select max(parlevel) from pg_partition p2 
+                where p2.parrelid = p1.parrelid)
+           )
+    '''
     curs = db.query(qry)
     for row in curs.dictresult():
         qy2 = ('select count(*) as cc from only %s.%s limit(2)' %
@@ -403,36 +413,78 @@ def checkPartitionIntegrity():
                 continue
             err.append([row['scname'], row['tname'],
                         row['partscname'], row['parttname']])
-    db.close()
-    if not err:
-        logger.info('[OK] pg_partition')
-    else:
-        GV.retcode = 1
-        logger.info('[ERROR] pg_partition has %d issue(s)' % len(err))
-        logger.info('[ERROR] %s' % qry)
-        logger.info('[ERROR] Discovered row data in branch partitions')
-        for e in err: 
-            logger.info('[ERROR] table %s.%s, partition tablename %s.%s' % (e[0], e[1], e[2], e[3]))
 
+    if not err:
+        logger.info('[OK] pg_partition branch integrity')
+    else:
+        setError(ERROR_NOREPAIR)
+        logger.info('[FAIL] pg_partition branch integrity')
+        logger.error('pg_partition has %d issue(s)' % len(err))
+        logger.error(qry)
+        logger.error('Discovered row data in branch partitions')
+        for e in err[0:100]: 
+            logger.error(' table %s.%s, partition tablename %s.%s' % 
+                         (e[0], e[1], e[2], e[3]))
+        if len(err) > 100:
+            logger.error("...")
+
+    # MPP-9283: look for partitions create "with oids".
+    qry = '''
+    select n1.nspname, pc.relname, pc.oid
+    from   pg_class pc, pg_partition_rule pr, pg_namespace n1
+    where  pr.parchildrelid = pc.oid and pc.relnamespace = n1.oid and pc.relhasoids
+    union
+    select n1.nspname, pc.relname, pc.oid
+    from   pg_class pc, pg_partition pp, pg_namespace n1
+    where  pp.parrelid = pc.oid and pc.relnamespace = n1.oid and pc.relhasoids
+    '''
+    curs = db.query(qry)
+
+    err = []
+    for row in curs.dictresult():
+        err.append([GV.cfg[1], ('nspname', 'relname', 'oid'), row])
+
+    if not err:
+        logger.info('[OK] partition with oids check')
+    else:
+        setError(ERROR_NOREPAIR)
+        logger.info('[FAIL] partition with oids check')
+        logger.error('partition with oids check found %d issue(s)' % len(err))
+        logger.error(qry)
+        for e in err[0:100]: 
+            row = e[2]
+            logger.error(" table %s.%s oid %s" % 
+                         (row['nspname'], row['relname'], row['oid']))
+        if len(err) > 100:
+            logger.error("...")
+        # TODO: add repair script
+
+
+    db.close()
 
 #############
 def checkPGClass():
     logger.info('-----------------------------------')
     logger.info('Checking pg_class ...')
-    qry = '''SELECT relname, relkind, tc.oid as oid,
-              reltoastrelid, reltoastidxid 
-         FROM pg_class tc left outer join 
-              pg_attribute ta on (tc.oid = ta.attrelid)
-        WHERE ta.attrelid is NULL'''
+    qry = '''
+    SELECT relname, relkind, tc.oid as oid,
+           reltoastrelid, reltoastidxid 
+    FROM   pg_class tc left outer join 
+           pg_attribute ta on (tc.oid = ta.attrelid)
+    WHERE  ta.attrelid is NULL
+    '''
     err = connect2run(qry, ('relname', 'relkind', 'oid'))
     if not err:
         logger.info('[OK] pg_class')
     else:
-        GV.retcode = 1
-        logger.info('[ERROR] pg_class has %d issue(s)' % len(err))
-        logger.info('[ERROR] %s' % qry)
-        for e in err: 
-            logger.info('[ERROR] %s' % formatErr(e[0], e[1], e[2]))
+        setError(ERROR_REPAIR)
+        logger.info('[FAIL] pg_class')
+        logger.error('pg_class has %d issue(s)' % len(err))
+        logger.error(qry)
+        for e in err[0:100]: 
+            logger.error(formatErr(e[0], e[1], e[2]))
+        if len(err) > 100:
+            logger.error("...")
         relids = {}
         for e in err:
             seg = e[0]['dbid'] 
@@ -452,18 +504,24 @@ def checkPGClass():
 def checkPGAttribute():
     logger.info('-----------------------------------')
     logger.info('Checking pg_attribute ...')
-    qry = '''SELECT ta.attrelid, ta.attname 
-        FROM pg_attribute ta left outer join
-             pg_class tc on (tc.oid = ta.attrelid)
-       WHERE tc.relname is NULL'''
+    qry = '''
+    SELECT ta.attrelid, ta.attname 
+    FROM   pg_attribute ta left outer join
+           pg_class tc on (tc.oid = ta.attrelid)
+    WHERE  tc.relname is NULL
+    '''
     err = connect2run(qry, ('attrelid', 'attname'))
     if not err:
         logger.info('[OK] pg_attribute')
     else:
-        GV.retcode = 1
-        logger.info('[ERROR] pg_attribute has %d issue(s)' % len(err))
-        logger.info('[ERROR] %s' % qry)
-        for e in err: logger.info('[ERROR] %s' % formatErr(e[0], e[1], e[2]))
+        setError(ERROR_REPAIR)
+        logger.info('[FAIL] pg_attribute')
+        logger.error('pg_attribute has %d issue(s)' % len(err))
+        logger.error(qry)
+        for e in err[0:100]: 
+            logger.error(formatErr(e[0], e[1], e[2]))
+        if len(err) > 100:
+            logger.error("...")
 
         relids = {}
         for e in err:
@@ -485,18 +543,25 @@ def checkPGAttribute():
 def checkPGType():
     logger.info('-----------------------------------')
     logger.info('Checking pg_type ...')
-    qry = '''SELECT typname, typtype, typrelid
-         FROM pg_type tt left outer join 
-              pg_class tc on (tt.typname = tc.relname) 
-        WHERE tt.typtype = 'c' and tc.relname is NULL'''
+    qry = '''
+    SELECT typname, typtype, typrelid
+    FROM   pg_type tt left outer join 
+           pg_class tc on (tt.typname = tc.relname) 
+    WHERE tt.typtype = 'c' and tc.relname is NULL
+    '''
     err = connect2run(qry, ('typname', 'typtype'))
     if not err:
         logger.info('[OK] pg_type')
     else:
-        GV.retcode = 1
-        logger.info('[ERROR] pg_type has %d issue(s)' % len(err))
-        logger.info('[ERROR] %s' % qry)
-        for e in err: logger.info('[ERROR] %s' % formatErr(e[0], e[1], e[2]))
+        setError(ERROR_REPAIR)
+        logger.info('[FAIL] pg_type')
+        logger.error('pg_type has %d issue(s)' % len(err))
+        logger.error(qry)
+        for e in err[0:100]: 
+            logger.error(formatErr(e[0], e[1], e[2]))
+        if len(err) > 100:
+            logger.error("...")
+
         relids = {}
         for e in err:
             seg = e[0]['dbid'] 
@@ -518,24 +583,33 @@ def checkPGExtTable():
     logger.info('Checking pg_exttable ...')
 
     if GV.version < "4.0":
-        qry = '''SELECT reloid
-             FROM pg_exttable te left outer join 
-                  pg_class tc on (te.reloid = tc.oid and tc.relkind = 'x')
-             WHERE tc.oid is NULL'''
+        qry = '''
+    SELECT reloid
+    FROM   pg_exttable te left outer join 
+           pg_class tc on (te.reloid = tc.oid and tc.relkind = 'x')
+    WHERE tc.oid is NULL
+    '''
     else:
-        qry = '''SELECT reloid
-             FROM pg_exttable te left outer join 
-                  pg_class tc on (te.reloid = tc.oid and tc.relstorage = 'x')
-             WHERE tc.oid is NULL'''
+        qry = '''
+    SELECT reloid
+    FROM   pg_exttable te left outer join 
+           pg_class tc on (te.reloid = tc.oid and tc.relstorage = 'x')
+    WHERE tc.oid is NULL
+    '''
 
     err = connect2run(qry, ('reloid',))
     if not err:
         logger.info('[OK] pg_exttable')
     else:
-        GV.retcode = 1
-        logger.info('[ERROR] pg_exttable has %d issue(s)' % len(err))
-        logger.info('[ERROR] %s' % qry)
-        for e in err: logger.info('[ERROR] %s' % formatErr(e[0], e[1], e[2]))
+        setError(ERROR_REPAIR)
+        logger.info('[FAIL] pg_exttable')
+        logger.error('pg_exttable has %d issue(s)' % len(err))
+        logger.error(qry)
+        for e in err[0:100]: 
+            logger.error(formatErr(e[0], e[1], e[2]))
+        if len(err) > 100:
+            logger.error("...")
+
         relids = {}
         for e in err:
             seg = e[0]['dbid'] 
@@ -544,7 +618,7 @@ def checkPGExtTable():
             
             relids[seg].append(e[2]['reloid'])    
         for seg in relids:
-        	# unique
+            # unique
             rels = set(relids[seg])
             for relid in rels:
                 c = GV.cfg[seg]
@@ -556,18 +630,25 @@ def checkPGExtTable():
 def checkPGClassToast():
     logger.info('-----------------------------------')
     logger.info('Checking pg_class.reltoastrelid')
-    qry = '''SELECT c1.reltoastrelid 
-         FROM pg_class c1 left outer join 
-              pg_class c2 on (c1.reltoastrelid = c2.oid)
-        WHERE c1.reltoastrelid <> 0 AND c2.oid is NULL'''
+    qry = '''
+    SELECT c1.reltoastrelid 
+    FROM   pg_class c1 left outer join 
+           pg_class c2 on (c1.reltoastrelid = c2.oid)
+    WHERE c1.reltoastrelid <> 0 AND c2.oid is NULL
+    '''
     err = connect2run(qry, ('reltoastrelid',))
     if not err:
         logger.info('[OK] pg_class.reltoastrelid')
     else:
-        GV.retcode = 1
-        logger.info('[ERROR] pg_class.reltoastrelid has %d issue(s)' % len(err))
-        logger.info('[ERROR] %s' % qry)
-        for e in err: logger.info('[ERROR] %s' % formatErr(e[0], e[1], e[2]))
+        setError(ERROR_NOREPAIR)
+        logger.info('[FAIL] pg_class.reltoastrelid')
+        logger.error('pg_class.reltoastrelid has %d issue(s)' % len(err))
+        logger.error(qry)
+        for e in err[0:100]: 
+            logger.error(formatErr(e[0], e[1], e[2]))
+        if len(err) > 100:
+            logger.error("...")
+
 
 #############
 def checkPGNamespace():
@@ -617,10 +698,14 @@ def checkPGNamespace():
         if not err:
             logger.info('[OK] schema test %i' % count)
         else:
-            GV.retcode = 1
-            logger.info('[ERROR] schema test %i has %d issue(s)' % (count, len(err)))
-            logger.info('[ERROR] %s' % qry)
-            for e in err: logger.info('[ERROR] %s' % formatErr(e[0], e[1], e[2]))
+            setError(ERROR_REPAIR)
+            logger.info('[FAIL] schema test %i' % count)
+            logger.error('schema test %i has %d issue(s)' % (count, len(err)))
+            logger.error(qry)
+            for e in err[0:100]: 
+                logger.error(formatErr(e[0], e[1], e[2]))
+            if len(err) > 100:
+                logger.error("...")
             schemaids = {}
             for e in err:
                 seg = e[0]['dbid'] 
@@ -670,7 +755,7 @@ def removeSchema(seg, db, schemaid):
 def removeTable(seg, db, reloid):
     # see if table has a toast table and if so, remove that
     curs = db.query('select oid, reltoastrelid, reltoastidxid from pg_class ' + 
-			   'where oid = %i' % reloid)
+               'where oid = %i' % reloid)
     for row in curs.dictresult():
         if row['reltoastrelid'] != 0:
             removeTable(seg, db, row['reltoastrelid'])
@@ -808,12 +893,12 @@ class sysCatThread(Thread):
     
 
 def row2str(row):
-	keys = row.keys()
-	keys.sort()
+    keys = row.keys()
+    keys.sort()
 
-	l = [ "%s: '%s'" % (key, str(row[key])) for key in keys ]
-	strout = ', '.join(l)
-	return strout
+    l = [ "%s: '%s'" % (key, str(row[key])) for key in keys ]
+    strout = ', '.join(l)
+    return strout
 
 def crossDbCheck():
     logger.info('-------------------------------------------')
@@ -829,17 +914,20 @@ def crossDbCheck():
         oids       = ''
         nspexclude = 'pg_(temp_.*|toast)'
 
-	# 1: get catalog from every node
+    # 1: get catalog from every node
     # we use copy (...) to stdout here in case the result set is huge (which is
     # often with pg_attribute). Otherwise, psql caches the whole result set in
     # its local memory, then copies to stdout.
     # Note the complex sorting of relacl. This is necessary because relacls
     # might be in different orders when you compare the master to segments.
+    
+    # pg_class
+    #   Since relowner and relhasindex have checks run above, we exclude them
+    #   here since the other checks produce cleaner error output.
     catalogs = {
                 'pg_class':  '''
 copy (
-SELECT nspname, relname, typname, usename, amname, spcname, relnatts,
-       relhasindex, relkind,
+SELECT nspname, relname, typname, amname, spcname, relnatts, relkind,
        array(select relacl[i] from 
                generate_series(array_lower(relacl,1), array_upper(relacl,1)) i
                order by textin(aclitemout(relacl[i]))) as acl
@@ -847,7 +935,6 @@ SELECT nspname, relname, typname, usename, amname, spcname, relnatts,
 FROM pg_catalog.pg_class x
      LEFT OUTER JOIN pg_catalog.pg_namespace n on (relnamespace = n.oid)
      LEFT OUTER JOIN pg_catalog.pg_type t on (reltype = t.oid)
-     LEFT OUTER JOIN pg_catalog.pg_user u on (relowner = u.usesysid)
      LEFT OUTER JOIN pg_catalog.pg_tablespace spc on (reltablespace = spc.oid)
      LEFT OUTER JOIN pg_catalog.pg_am am on (relam = am.oid)
 WHERE (nspname is null or nspname !~ '%s')
@@ -870,12 +957,11 @@ ORDER BY nspname, relname, attnum
 
                 'pg_type': '''
 copy (
-SELECT nspname, typname, relname, usename, 
+SELECT nspname, typname, relname, 
        typlen, typbyval, typtype, typisdefined, typdelim, typelem %s
 FROM pg_catalog.pg_type x
      LEFT OUTER JOIN pg_catalog.pg_namespace n on (typnamespace = n.oid)
      LEFT OUTER JOIN pg_catalog.pg_class c on (typrelid = c.oid)
-     LEFT OUTER JOIN pg_catalog.pg_user u on (typowner = usesysid)
 WHERE (nspname is null or nspname !~ '%s')
 ORDER BY nspname, typname
 ) to stdout delimiter ','
@@ -936,13 +1022,12 @@ ORDER BY nspname
                 lines += line
 
             if len(lines) > 0:
-                logger.info('\n')
-                logger.info('[ERROR] inconsistency between master and seg %i' % \
-                         dbid)
+                setError(ERROR_NOREPAIR)
+                logger.error('\n')
+                logger.error('inconsistency between master and seg %i' % dbid)
                 #logger.info("return code %i\n" % pipe.returncode)
-                logger.info(lines)
+                logger.error(lines)
                 error = True
-                GV.retcode = 1
 
             os.unlink('%s/gpcheckcat.%s.%s_s' % (GV.tmpdir, dbid, cid))
 
@@ -1036,24 +1121,34 @@ class fileCheckThread(Thread):
 
         else:
             msg = 'Failed to fetch directory listing on host %s' % self.host
-            logger.info('[ERROR] %s' % result[1].strip())
+            logger.error(result[1].strip())
             self.exception = Exception(msg)
             return
 
 
 
 def checkBitmapIndexes():
+    # In 4.0 the bitmap index check, which looks for bitmap indexes
+    # where the relfilenode does not exist on disk, is subsumed by the
+    # persistent object validation, which checks the same thing for
+    # every object using a more efficient methodology.
+    #
+    # However, the persistent validation functions only exist in 4.0+,
+    # for older versions we still want to at least check for the
+    # issue we know to be possible with bitmaps, so this test remains.
+    if GV.version >= "4.0":
+        return
+
     logger.info('-----------------------------------')
     logger.info('Checking bitmap indexes')
 
     db = connect2(GV.cfg[1])
     curs = db.query('''
-    select d.oid as dboid, nspname, relname, relfilenode from 
-    pg_class c, pg_index i, pg_namespace n, pg_am a,
-    pg_database d where c.relam = a.oid and 
-    a.amname = 'bitmap' and i.indexrelid = c.oid and c.relnamespace = n.oid
-    and d.datname = current_database();
-            ''')
+    select d.oid as dboid, nspname, relname, relfilenode 
+    from   pg_class c, pg_index i, pg_namespace n, pg_am a, pg_database d 
+    where  c.relam = a.oid and a.amname = 'bitmap' and i.indexrelid = c.oid 
+      and c.relnamespace = n.oid and d.datname = current_database();
+    ''')
     if curs.ntuples() == 0:
         logger.info('[OK] no bitmaps to check')
         return
@@ -1112,10 +1207,11 @@ def checkBitmapIndexes():
     threads = []
 
     if raised:
-        GV.retcode = 1
-        logger.info('[ERROR] Failed bitmap validation')
+        setError(ERROR_NOREPAIR)
+        logger.info('[FAIL] bitmap indexes')
     elif badinds:
-        GV.retcode = 1
+        setError(ERROR_REPAIR)
+
         # unique
         reindex = []
 
@@ -1123,9 +1219,14 @@ def checkBitmapIndexes():
             reindex.append(row['nspname'] + '.' + row['relname'])
 
         a = list(set(reindex))
-        logger.info('[ERROR] %d bitmap issue(s)' % len(a))
+        logger.info('bitmap test found %d bitmap issue(s)' % len(a))
+        for index in a[0:100]:
+            logger.error(index)
+        if len(a) > 100:
+            logger.error("...")
+
+        # Generate a repair script for all broken indexes
         for index in a:
-            logger.info('[ERROR] %s' % index)
             Reindex.append(index)
 
     else:
@@ -1136,19 +1237,22 @@ def fixupowners(nspname, relname, rolename):
                                                            rolename))
 
 def checkOwners():
-
     logger.info('-----------------------------------')
     logger.info('Checking table ownership')
     if GV.version < "3.3":
         logger.info('Skipping...')
         return
 
+    # Check owners in pg_class
     db = connect2(GV.cfg[1], utilityMode=False)
     qry = '''
-    select distinct n.nspname, c.relname, a.rolname from
-    gp_dist_random('pg_class') r, pg_class c, pg_namespace n, pg_authid a where
-    r.oid = c.oid and r.relowner <> c.relowner and c.relnamespace = n.oid and
-    c.relowner = a.oid;
+    select distinct n.nspname, c.relname, a.rolname, m.rolname as master_rolname
+    from gp_dist_random('pg_class') r
+      join pg_class c on (c.oid = r.oid)
+      join pg_namespace n on (n.oid = c.relnamespace)
+      join pg_authid a on (a.oid = r.relowner)
+      join pg_authid m on (m.oid = c.relowner)
+    where r.relowner <> c.relowner
     '''
     curs = db.query(qry)
 
@@ -1159,23 +1263,103 @@ def checkOwners():
     if len(rows) == 0:
         logger.info('[OK] table ownership')
     else:
-        GV.retcode = 1
-        logger.info('[ERROR] there are %d ownership issue(s)' % len(rows))
-        logger.info('[ERROR] %s' % qry)
+        setError(ERROR_REPAIR)
+        logger.info('[FAIL] table ownership')
+        logger.error('found %d table ownership issue(s)' % len(rows))
+        logger.error('%s' % qry)
+        for row in rows[0:100]:
+            logger.error('  %s.%s relowner %s != %s'
+                % (row['nspname'], row['relname'], row['rolname'],
+                   row['master_rolname']))
+        if len(rows) > 100:
+            logger.error("...")
         for row in rows:
-            logger.info('[ERROR] %s %s %s'
-                % (row['nspname'], row['relname'], row['rolname']))
             fixupowners(row['nspname'], row['relname'], row['rolname'])
 
 
-def checkDeprecatedIndexes():
+    # Check owners in pg_type
+    db = connect2(GV.cfg[1], utilityMode=False)
+    qry = '''
+    select distinct n.nspname, t.typname, a.rolname, m.rolname as master_rolname
+    from gp_dist_random('pg_type') r
+      join pg_type t on (t.oid = r.oid)
+      join pg_namespace n on (n.oid = t.typnamespace)
+      join pg_authid a on (a.oid = r.typowner)
+      join pg_authid m on (m.oid = t.typowner)
+    where r.typowner <> t.typowner
+    '''
+    curs = db.query(qry)
+
+    rows = []
+    for row in curs.dictresult():
+        rows.append(row)
+
+    if len(rows) == 0:
+        logger.info('[OK] type ownership')
+    else:
+        setError(ERROR_NOREPAIR)
+        logger.info('[FAIL] type ownership')
+        logger.error('found %d type ownership issue(s)' % len(rows))
+        logger.error('%s' % qry)
+        for row in rows[0:100]:
+            logger.error('  %s.%s typeowner %s != %s'
+                % (row['nspname'], row['typname'], row['rolname'],
+                   row['master_rolname']))
+        if len(rows) > 100:
+            logger.error("...")
+        # FIXME: add repair script
+        # NOTE: types with typrelid probably will be repaired by the
+        # script generated by the table ownership test above.
+
+    # TODO:
+    # Check owners in pg_proc
+    # Check owners in pg_database
+    # Check owners in pg_tablespace
+    # Check owners in pg_filespace
+    # Check owners in pg_namespace
+    # Check owners in pg_operator
+    # Check owners in pg_opclass
+    # ...
+
+
+def checkIndexes():
     logger.info('-----------------------------------')
     logger.info('Checking indexes')
 
+    # Check for relhasindex variations amongst the segments
+    db = connect2(GV.cfg[1], utilityMode=False)
+    qry = '''
+    select distinct n.nspname, c.relname
+    from gp_dist_random('pg_class') r, pg_class c, pg_namespace n
+    where r.oid = c.oid and r.relhasindex <> c.relhasindex 
+      and c.relnamespace = n.oid
+    '''
+    curs = db.query(qry)
+
+    rows = []
+    for row in curs.dictresult():
+        rows.append(row)
+
+    if len(rows) == 0:
+        logger.info('[OK] relhasindex')
+    else:
+        setError(ERROR_NOREPAIR)
+        logger.info('[FAIL] relhasindex')
+        logger.error('there are %d relhasindex issue(s)' % len(rows))
+        logger.error(qry)
+        for row in rows[0:100]:
+            logger.error('%s.%s' % (row['nspname'], row['relname']))
+        if len(rows) > 100:
+            logger.error("...")
+        # FIXME: add repair script
+
+    # Check for deprecated indexes (gin, hash)
     db = connect2(GV.cfg[1], utilityMode=False)
     qry = '''    
-    SELECT quote_ident(n.nspname) || '.' || quote_ident(c.relname) as index, m.amname as kind
-    FROM   pg_class c join pg_namespace n on (c.relnamespace = n.oid) join pg_am m on (c.relam = m.oid) 
+    SELECT quote_ident(n.nspname) || '.' || quote_ident(c.relname) as index, 
+           m.amname as kind
+    FROM   pg_class c join pg_namespace n on (c.relnamespace = n.oid) 
+      join pg_am m on (c.relam = m.oid) 
     WHERE  c.relkind = 'i' and m.amname in ('gin', 'hash')
     '''
     curs = db.query(qry)
@@ -1184,18 +1368,360 @@ def checkDeprecatedIndexes():
     for row in curs.dictresult():
         rows.append(row)
     if len(rows) == 0:
-        logger.info('[OK] indexes')
+        logger.info('[OK] deprecated indexes')
     
     else:
-        GV.retcode = 1
-        if len(rows) == 1:
-            logger.info('[ERROR] there is 1 deprecated index')
-        else:
-            logger.info('[ERROR] there are %d deprecated indexes' % len(rows))
-        logger.info('[ERROR] %s' % qry)
-        for row in rows:
-            logger.info('[ERROR] %s [%s]' % (row['index'], row['kind']))
+        setError(ERROR_NOREPAIR)
+        logger.info('[FAIL] deprecated indexes')
+        logger.error('there are %d deprecated indexes' % len(rows))
+        logger.error(qry)
+        for row in rows[0:100]:
+            logger.error('%s [%s]' % (row['index'], row['kind']))
+        if len(rows) > 100:
+            logger.error("...")
     
+
+def checkPersistentTables():
+    logger.info('-----------------------------------')
+    logger.info('Checking persistent tables')
+
+    # Persistent tables only exist in 4.0+
+    if GV.version < "4.0":
+        logger.info("Skipping...")
+        return
+
+    queries = []
+
+    qname = "gp_persistent_filespace_node  <=> pg_filespace"
+    qry = """
+    SELECT  coalesce(f.oid, p.filespace_oid) as filespace_oid, 
+        f.fsname as "filespace", 
+        case when p.persistent_state = 0 then 'free'
+             when p.persistent_state = 1 then 'create pending'
+             when p.persistent_state = 2 then 'created'
+             when p.persistent_state = 3 then 'drop pending'
+             when p.persistent_state = 4 then 'abort create'
+             when p.persistent_state = 5 then 'JIT create pending'
+             else 'unknown state: ' || p.persistent_state
+        end as persistent_state
+    FROM (SELECT * FROM gp_persistent_filespace_node 
+          WHERE persistent_state != 0) p 
+      FULL OUTER JOIN (SELECT oid, fsname FROM pg_filespace 
+                       WHERE oid != 3052) f 
+        ON (p.filespace_oid = f.oid)
+    WHERE  (p.filespace_oid is NULL OR f.oid is NULL)
+    """
+    queries.append([qname, qry])
+
+    qname = "gp_persistent_filespace_node  <=> gp_global_sequence"
+    qry = """
+    SELECT  p.filespace_oid, f.fsname as "filespace", 
+        case when p.persistent_state = 0 then 'free'
+             when p.persistent_state = 1 then 'create pending'
+             when p.persistent_state = 2 then 'created'
+             when p.persistent_state = 3 then 'drop pending'
+             when p.persistent_state = 4 then 'abort create'
+             when p.persistent_state = 5 then 'JIT create pending'
+             else 'unknown state: ' || p.persistent_state
+        end as persistent_state,
+        p.persistent_serial_num, s.sequence_num
+    FROM    gp_global_sequence s, gp_persistent_filespace_node p
+      LEFT JOIN pg_filespace f ON (f.oid = p.filespace_oid)
+    WHERE   s.ctid = '(0,4)' and p.persistent_serial_num > s.sequence_num
+    """
+    queries.append([qname, qry])
+    
+    qname = "gp_persistent_database_node   <=> pg_database"
+    qry = """
+    SELECT coalesce(d.oid, p.database_oid) as database_oid,
+       d.datname as database, 
+       case when p.persistent_state = 0 then 'free'
+            when p.persistent_state = 1 then 'create pending'
+         when p.persistent_state = 2 then 'created'
+            when p.persistent_state = 3 then 'drop pending'
+            when p.persistent_state = 4 then 'abort create'
+            when p.persistent_state = 5 then 'JIT create pending'
+            else 'unknown state: ' || p.persistent_state
+       end as persistent_state
+    FROM (SELECT * FROM gp_persistent_database_node 
+          WHERE persistent_state != 0) p
+      FULL OUTER JOIN pg_database d 
+        ON (d.oid = p.database_oid)
+    WHERE d.datname is null or p.database_oid is null
+    """
+    queries.append([qname, qry])
+
+    qname = "gp_persistent_database_node   <=> pg_tablespace"
+    qry = """
+    SELECT  coalesce(t.oid, p.database_oid) as database_oid, 
+        t.spcname as tablespace, 
+        case when p.persistent_state = 0 then 'free'
+             when p.persistent_state = 1 then 'create pending'
+             when p.persistent_state = 2 then 'created'
+             when p.persistent_state = 3 then 'drop pending'
+             when p.persistent_state = 4 then 'abort create'
+             when p.persistent_state = 5 then 'JIT create pending'
+             else 'unknown state: ' || p.persistent_state
+        end as persistent_state
+    FROM (SELECT * FROM gp_persistent_database_node 
+          WHERE persistent_state != 0) p
+      FULL OUTER JOIN (SELECT oid, spcname FROM pg_tablespace 
+                       WHERE oid != 1664) t
+        ON (t.oid = p.tablespace_oid)
+    WHERE  t.spcname is null or p.tablespace_oid is null
+    """
+    queries.append([qname, qry])
+
+    qname = "gp_persistent_database_node   <=> gp_global_sequence"
+    qry = """
+    SELECT  p.database_oid, p.tablespace_oid, d.datname as "database",
+        case when p.persistent_state = 0 then 'free'
+             when p.persistent_state = 1 then 'create pending'
+             when p.persistent_state = 2 then 'created'
+             when p.persistent_state = 3 then 'drop pending'
+             when p.persistent_state = 4 then 'abort create'
+             when p.persistent_state = 5 then 'JIT create pending'
+             else 'unknown state: ' || p.persistent_state
+        end as persistent_state,
+        p.persistent_serial_num, s.sequence_num
+    FROM    gp_global_sequence s, gp_persistent_database_node p
+      LEFT JOIN pg_database d ON (d.oid = p.database_oid)
+    WHERE   s.ctid = '(0,2)' and p.persistent_serial_num > s.sequence_num
+    """
+    queries.append([qname, qry])
+
+    qname = "gp_persistent_tablespace_node <=> pg_tablespace"
+    qry = """
+    SELECT  coalesce(t.oid, p.tablespace_oid) as tablespace_oid, 
+        t.spcname as tablespace, 
+        case when p.persistent_state = 0 then 'free'
+             when p.persistent_state = 1 then 'create pending'
+             when p.persistent_state = 2 then 'created'
+             when p.persistent_state = 3 then 'drop pending'
+             when p.persistent_state = 4 then 'abort create'
+             when p.persistent_state = 5 then 'JIT create pending'
+             else 'unknown state: ' || p.persistent_state
+        end as persistent_state
+    FROM (SELECT * FROM gp_persistent_tablespace_node 
+          WHERE persistent_state != 0) p 
+      FULL OUTER JOIN (
+        SELECT oid, spcname FROM pg_tablespace WHERE oid not in (1663, 1664)
+      ) t ON (t.oid = p.tablespace_oid)
+    WHERE  t.spcname is null or p.tablespace_oid is null
+    """
+    queries.append([qname, qry])
+
+    qname = "gp_persistent_tablespace_node <=> pg_filespace"
+    qry = """
+    SELECT  p.filespace_oid, 
+        f.fsname as "filespace", 
+        case when p.persistent_state = 0 then 'free'
+             when p.persistent_state = 1 then 'create pending'
+             when p.persistent_state = 2 then 'created'
+             when p.persistent_state = 3 then 'drop pending'
+             when p.persistent_state = 4 then 'abort create'
+             when p.persistent_state = 5 then 'JIT create pending'
+             else 'unknown state: ' || p.persistent_state
+        end as persistent_state
+    FROM (SELECT * FROM gp_persistent_tablespace_node 
+          WHERE persistent_state != 0) p
+      LEFT OUTER JOIN pg_filespace f 
+        ON (f.oid = p.filespace_oid)
+    WHERE  f.fsname is null
+    """
+    queries.append([qname, qry])
+
+    qname = "gp_persistent_tablespace_node <=> gp_global_sequence"
+    qry = """
+    SELECT  p.filespace_oid, p.tablespace_oid, t.spcname as "tablespace",
+        case when p.persistent_state = 0 then 'free'
+             when p.persistent_state = 1 then 'create pending'
+             when p.persistent_state = 2 then 'created'
+             when p.persistent_state = 3 then 'drop pending'
+             when p.persistent_state = 4 then 'abort create'
+             when p.persistent_state = 5 then 'JIT create pending'
+             else 'unknown state: ' || p.persistent_state
+        end as persistent_state,
+        p.persistent_serial_num, s.sequence_num
+    FROM    gp_global_sequence s, gp_persistent_tablespace_node p
+      LEFT JOIN pg_tablespace t ON (t.oid = p.tablespace_oid)
+    WHERE   s.ctid = '(0,3)' and p.persistent_serial_num > s.sequence_num
+    """
+    queries.append([qname, qry])
+
+    qname = "gp_persistent_relation_node   <=> pg_tablespace"
+    qry = """
+    SELECT  p.tablespace_oid, 
+        case when p.persistent_state = 0 then 'free'
+             when p.persistent_state = 1 then 'create pending'
+             when p.persistent_state = 2 then 'created'
+             when p.persistent_state = 3 then 'drop pending'
+             when p.persistent_state = 4 then 'abort create'
+             when p.persistent_state = 5 then 'JIT create pending'
+             else 'unknown state: ' || p.persistent_state
+        end as persistent_state
+    FROM (SELECT * FROM gp_persistent_relation_node 
+          WHERE persistent_state != 0) p
+      LEFT OUTER JOIN pg_tablespace t 
+        ON (t.oid = p.tablespace_oid)
+    WHERE  t.oid is null
+    """
+    queries.append([qname, qry])
+
+    qname = "gp_persistent_relation_node   <=> pg_database"
+    qry = """
+    SELECT  datname, oid, count(*)
+    FROM (
+      SELECT  d.datname as datname, p.database_oid as oid
+      FROM    gp_persistent_relation_node p
+        full outer join
+              pg_database d on (d.oid = p.database_oid)
+      WHERE p.database_oid != 0
+    ) x
+    GROUP BY 1,2
+    HAVING  datname is null or oid is null or count(*) < 100
+    """
+    queries.append([qname, qry])
+
+    qname = "gp_persistent_relation_node   <=> gp_relation_node"
+    qry = """
+    SELECT  coalesce(p.relfilenode_oid, r.relfilenode_oid) as relfilenode,
+        p.ctid, r.persistent_tid,
+        case when p.persistent_state = 0 then 'free'
+             when p.persistent_state = 1 then 'create pending'
+             when p.persistent_state = 2 then 'created'
+             when p.persistent_state = 3 then 'drop pending'
+             when p.persistent_state = 4 then 'abort create'
+             when p.persistent_state = 5 then 'JIT create pending'
+             else 'unknown state: ' || p.persistent_state
+        end as persistent_state
+    FROM  (
+      SELECT p.ctid, p.* FROM gp_persistent_relation_node p
+      WHERE persistent_state != 0 AND p.database_oid in (
+        SELECT oid FROM pg_database WHERE datname = current_database()
+        UNION ALL
+        SELECT 0
+        )
+      ) p
+      FULL OUTER JOIN gp_relation_node r
+        ON (p.relfilenode_oid = r.relfilenode_oid)
+    WHERE  (p.relfilenode_oid is NULL OR 
+            r.relfilenode_oid is NULL OR 
+            p.ctid != r.persistent_tid)
+    """
+    queries.append([qname, qry])
+
+    qname = "gp_persistent_relation_node   <=> pg_class"
+    qry = """
+    SELECT  coalesce(p.relfilenode_oid, c.relfilenode) as relfilenode,
+        c.nspname, c.relname, c.relkind, c.relstorage, 
+        case when p.persistent_state = 0 then 'free'
+             when p.persistent_state = 1 then 'create pending'
+             when p.persistent_state = 2 then 'created'
+             when p.persistent_state = 3 then 'drop pending'
+             when p.persistent_state = 4 then 'abort create'
+             when p.persistent_state = 5 then 'JIT create pending'
+             else 'unknown state: ' || p.persistent_state
+        end as persistent_state
+    FROM (
+      SELECT * FROM gp_persistent_relation_node
+      WHERE persistent_state != 0 AND database_oid in (
+        SELECT oid FROM pg_database WHERE datname = current_database()
+        UNION ALL
+        SELECT 0
+        )
+      ) p
+      FULL OUTER JOIN (
+        SELECT  n.nspname, c.relname, c.relfilenode, c.relstorage, c.relkind
+        FROM  pg_class c 
+          LEFT OUTER JOIN pg_namespace n ON (c.relnamespace = n.oid)
+        WHERE  c.relstorage not in ('v', 'x', 'f')
+      ) c ON (p.relfilenode_oid = c.relfilenode)
+    WHERE  p.relfilenode_oid is NULL OR c.relfilenode is NULL
+    """
+    queries.append([qname, qry])
+
+    qname = "gp_persistent_relation_node   <=> gp_global_sequence"
+    qry = """
+    SELECT  p.tablespace_oid, p.database_oid, p.relfilenode_oid,
+        p.segment_file_num, 
+        case when p.persistent_state = 0 then 'free'
+             when p.persistent_state = 1 then 'create pending'
+             when p.persistent_state = 2 then 'created'
+             when p.persistent_state = 3 then 'drop pending'
+             when p.persistent_state = 4 then 'abort create'
+             when p.persistent_state = 5 then 'JIT create pending'
+             else 'unknown state: ' || p.persistent_state
+        end as persistent_state,
+        p.persistent_serial_num, s.sequence_num
+    FROM    gp_global_sequence s, gp_persistent_relation_node p
+      LEFT JOIN pg_tablespace t ON (t.oid = p.tablespace_oid)
+    WHERE   s.ctid = '(0,1)' and p.persistent_serial_num > s.sequence_num
+    """
+    queries.append([qname, qry])
+
+    qname = "gp_persistent_relation_node   <=> filesystem"
+    qry = """
+    SELECT coalesce(a.tablespace_oid, b.tablespace_oid) as tablespace_oid,
+       coalesce(a.database_oid, b.database_oid) as database_oid,
+       coalesce(a.relfilenode_oid, b.relfilenode_oid) as database_oid,
+       coalesce(a.segment_file_num, b.segment_file_num) as segment_file_num,
+       a.relfilenode_oid is null as filesystem,
+       b.relfilenode_oid is null as persistent
+    FROM   gp_persistent_relation_node a
+    FULL OUTER JOIN 
+           gp_persistent_relation_node_check() b
+      ON (a.tablespace_oid   = b.tablespace_oid    and
+          a.database_oid     = b.database_oid      and
+          a.relfilenode_oid  = b.relfilenode_oid   and
+          a.segment_file_num = b.segment_file_num)
+    WHERE a.relfilenode_oid is null 
+       OR (a.persistent_state = 2 and b.relfilenode_oid is null);
+    """
+    queries.append([qname, qry])
+
+    # Phew, that was a lot of queries, eh?
+    # now execute them on every segment.
+    for (qname, qry) in queries:
+        err = connect2run(qry, ())
+        if not err:
+            logger.info('[OK] ' + qname)
+        else:
+            setError(ERROR_NOREPAIR)
+            logger.info('[FAIL] ' + qname)
+            logger.error('%s found %d issue(s)' % (qname, len(err)))
+            logger.error(qry)
+            
+            # Report at most 100 rows per segment, for brevity
+            columns = None
+            last    = None
+            count   = 0
+            for e in err:
+                cfg = e[0]
+                row = e[2]
+                
+                # If this is a new host start again
+                if last != cfg:
+                    count = 0
+                    last = cfg
+
+                if count == 100:
+                    logger.error("...")
+                    count += 1
+                if count > 100:
+                    continue
+
+                # Actual formatting could be prettied up more
+                if count == 0:
+                    logger.error("--------")
+                    logger.error("%s:%s:%s" % (cfg['hostname'], 
+                                               cfg['port'], 
+                                               cfg['datadir']))
+                    logger.error("  " + " | ".join(map(str, row.keys())))
+                logger.error("  " + " | ".join(map(str, row.values())))
+                count += 1
+
+    return
 
 
 def closeDbs():
@@ -1228,8 +1754,8 @@ if __name__ == '__main__':
             GV.tmpdir = tempfile.mkdtemp()
         logger.debug('Created temporary working directory %s' % GV.tmpdir)
     except Exception, e:
-        logger.info('[ERROR] ' + str(e))
-        logger.info('[ERROR] Unable to create temporary directory')
+        logger.fatal(str(e))
+        logger.fatal('Unable to create temporary directory')
         sys.exit(1)
 
     checkPartitionIntegrity()        
@@ -1244,9 +1770,9 @@ if __name__ == '__main__':
     checkPGNamespace()
     checkDistribPolicy()
     checkOwners()
-    checkDeprecatedIndexes()
-
+    checkIndexes()
     checkBitmapIndexes()
+    checkPersistentTables()
 
     closeDbs()
 
@@ -1259,7 +1785,8 @@ if __name__ == '__main__':
             if not os.path.exists(GV.opt['-g']):
                 os.mkdir(GV.opt['-g'])
         except Exception, e:
-            logger.info('[FATAL] unable to create directory "%s": %s' % (GV.opt['-g'], str(e)))
+            logger.fatal('Unable to create directory "%s": %s' % 
+                         (GV.opt['-g'], str(e)))
             sys.exit(1)
                    
         logger.debug('Building catalog repair scripts')
@@ -1276,8 +1803,8 @@ if __name__ == '__main__':
             try:
                 file = open(fullpath, 'w')
             except Exception, e:
-                logger.info('[FATAL] unable to create file "%s": %s' %  \
-                        (fullpath, str(e)))
+                logger.fatal('Unable to create file "%s": %s' % 
+                             (fullpath, str(e)))
                 sys.exit(1)
 
             #unique
@@ -1304,8 +1831,8 @@ if __name__ == '__main__':
             try:
                 file = open(fullpath, 'w')
             except Exception, e:
-                logger.info('[FATAL] unable to create file "%s": %s' %  \
-                        (fullpath, str(e)))
+                logger.fatal('Unable to create file "%s": %s' % 
+                             (fullpath, str(e)))
                 sys.exit(1)
 
             for r in Reindex:
@@ -1324,8 +1851,8 @@ if __name__ == '__main__':
             try:
                 file = open(fullpath, 'w')
             except Exception, e:
-                logger.info('[FATAL] unable to create file "%s": %s' %  \
-                        (fullpath, str(e)))
+                logger.fatal('Unable to create file "%s": %s' % 
+                             (fullpath, str(e)))
                 sys.exit(1)
 
             for r in Constraints:
@@ -1345,8 +1872,8 @@ if __name__ == '__main__':
             try:
                 file = open(fullpath, 'w')
             except Exception, e:
-                logger.info('[FATAL] unable to create file "%s": %s' %  \
-                        (fullpath, str(e)))
+                logger.fatal('Unable to create file "%s": %s' %
+                             (fullpath, str(e)))
                 sys.exit(1)
 
             for r in Owners:
@@ -1366,9 +1893,12 @@ if __name__ == '__main__':
             file.close()
             os.chmod(path, stat.S_IXUSR | stat.S_IRUSR | stat.S_IWUSR)
         except Exception, e:
-            logger.info('[FATAL] could not write script: %s' % str(e))
+            logger.fatal('Could not write script: %s' % str(e))
             sys.exit(1)
 
         logger.info('repair scripts generated in directory %s' % GV.opt['-g'])
     subprocess.call('rm -rf ' + GV.tmpdir, shell=True, close_fds=True)
+
+    if GV.retcode >= ERROR_NOREPAIR:
+        logger.warn('unable to generate repairs for some issues')
     sys.exit(GV.retcode)
