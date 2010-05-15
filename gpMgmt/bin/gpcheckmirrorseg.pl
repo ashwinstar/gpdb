@@ -311,6 +311,7 @@ sub ignore_list
 		pgsql_tmp
 		pg_changetracking
 		gp_dbid
+		core
 		);
 
 	# file suffixes -- append a close paren ")"
@@ -2121,9 +2122,8 @@ EOF_msgstr
 
 				print Data::Dumper->Dump([$bigh]);	 
 
-				warn "found extra files in data directory";
+				warn "found extra files in data directory (could be ok for zero length heap files)";
 
-				push @{$glob_exit}, $row->{ploc}." ".$row->{mloc} ; # found differences
 			}
 
 			print "\n\nraw diff mismatch for $fil: will diff again using storage-specific techniques\n\n";
