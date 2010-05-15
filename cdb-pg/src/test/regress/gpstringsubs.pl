@@ -2,7 +2,7 @@
 #
 # $Header$
 #
-# Copyright (c) 2007 GreenPlum.  All rights reserved.  
+# Copyright (c) 2007-2010 GreenPlum.  All rights reserved.  
 # Author: Jeffrey I Cohen
 #
 #
@@ -69,6 +69,10 @@ The tokens are:
  from the gp_configuration table and replaces all 
  instances of the token @hostname@.
 
+=item gpfilespace_(filespacename)
+
+ filespace segment list for current configuration
+
 =item gphome
 
  location of the greenplum installation
@@ -132,7 +136,7 @@ The tokens are:
 
 Jeffrey I Cohen
 
-Copyright (c) 2007 GreenPlum.  All rights reserved.  
+Copyright (c) 2007-2010 GreenPlum.  All rights reserved.  
 
 Address bug reports and comments to: jcohen@greenplum.com
 
@@ -168,7 +172,8 @@ BEGIN {
     $glob_connect = "-p $porti -d template1"
         unless (defined($glob_connect));
 
-#    print "loading...\n" ;                                                     
+#    print "loading...\n" ;      
+
 }
 
 
@@ -233,6 +238,87 @@ sub tablelizer
     return \@rows;
 }
 
+sub get_filespace_seglist
+{
+	my $fsname = shift;
+
+	$fsname = "fsx" unless (defined($fsname));
+
+    my $psql_str = "psql ";
+    
+    $psql_str .= $glob_connect
+        if (defined($glob_connect));
+
+    $psql_str .= " -c \'" .
+"select gscp.dbid, " .
+"gscp.content, " .
+"gscp.hostname as hostname, gscp.address as address, " .
+"fep.fselocation as loc, " .
+"pfs.oid fsoid, " .
+"pfs.fsname, " .
+"gscp.mode, " .
+"gscp.status, " .
+"gscp.preferred_role " .
+"from " .
+"gp_segment_configuration gscp, pg_filespace_entry fep, " .
+"pg_filespace pfs " .
+"where " .
+'fsname = $q$pg_system$q$  ' .
+"and " .
+"fep.fsedbid=gscp.dbid " .
+"and pfs.oid = fep.fsefsoid " .
+"order by 1,2  \' " ;
+
+#    print $psql_str, "\n";
+
+    my $tabdef = `$psql_str`;
+
+#    print $tabdef;
+
+    my $seg_config_table = tablelizer($tabdef);
+
+#	print Data::Dumper->Dump([$seg_config_table]);
+	
+	my @seg_list;
+
+    for my $rowh (@{$seg_config_table})	
+	{
+		my $fsseg;
+
+		$fsseg = $rowh->{1} . ": ";
+
+		my $dir = $rowh->{5};
+
+		my @foo = File::Spec->splitdir($dir);		
+
+		pop @foo;
+
+		$dir = File::Spec->catdir(@foo, 
+								  "gpregr_" . 
+								  $fsname . "_" . $rowh->{10} . $rowh->{1});
+
+		my $outi = `gpssh -h $rowh->{4} rmdir -rf $dir`;
+		
+		$fsseg .= "\'" . $dir . "\'";
+#		$fsseg .= '$q$'. $dir . '$q$';
+
+		$seg_list[$rowh->{1}] = $fsseg;
+	}
+
+	shift @seg_list unless (defined($seg_list[0]));
+
+#	print Data::Dumper->Dump(\@seg_list);
+
+#	return quotemeta("( " . join(", ", @seg_list) . " )");
+	return "( " . join(", ", @seg_list) . " )";
+} # end get_filespace_seglist
+
+if (0)
+{
+	print get_filespace_seglist(), "\n";
+	print get_filespace_seglist("foo"), "\n";
+
+}
 
 if (1)
 {
@@ -351,14 +437,75 @@ if (1)
         # error!
     }
 
-    my $gpwhich_all = `grep gpwhich_ $filnam`;
-    my $gpuname_all = `grep uname_ $filnam`;
+    my $gpfspace_all = `grep gpfilespace_ $filnam`;
+    my $gpwhich_all  = `grep gpwhich_ $filnam`;
+    my $gpuname_all  = `grep uname_ $filnam`;
 	my $curdir = `pwd`;
 	chomp $curdir;
 
 #    print "$filnam\n";
     system "perl -i -ple \' s/$hostexp/$hostname/gm; s,$gphomeexp,$gphome,gm; s/$psexp/$locps/gm; s/$isainfoexp/$locisainfo/gm; s/$perlosexp/$locperlos/gm; s/$numsegexp/$numsegs/gm; s/$unexp/$username/gm; s/$schema/public/gm; s/$infoschema/public/gm; s,$ugdir,$curdir/data/,gm; \' $filnam\n";
 
+    # replace all "which" expressions with binary
+    if (defined($gpfspace_all) && length($gpfspace_all))
+    {
+        my @foo = split(/\@/, $gpfspace_all);
+
+#        print Data::Dumper->Dump(\@foo);
+
+        my @gpfspace_list;
+
+        if (scalar(@foo))
+        {
+            for my $gpfs (@foo)
+            {
+                my @exe_thing;
+
+                next
+                    if (($gpfs =~ m/is\_transformed\_to/));
+
+                next
+                    unless (($gpfs =~ m/gpfilespace\_\w/));
+
+                my @fsname_thing = ($gpfs =~ m/gpfilespace\_(.*)/);
+
+                next
+                    unless (scalar(@fsname_thing));
+
+                my $fsname = $fsname_thing[0];
+
+                next
+                    unless (length($fsname));
+
+                chomp $fsname;
+
+				my $fspaceseglist = get_filespace_seglist($fsname);
+
+                my $fspaceexp = '\\@gpfilespace_' . $fsname_thing[0] . '\\@';
+
+				{
+					local $/;
+					undef $/;
+ 
+					my $ifh;
+					open ($ifh, "<", $filnam);
+
+					my $whole_file = <$ifh>;
+
+					close $ifh;
+
+					$whole_file =~ s|$fspaceexp|$fspaceseglist|gm;
+
+					my $ofh;
+
+					open ($ofh, ">", $filnam);
+					print $ofh $whole_file;
+					close $ofh;
+				}
+            } # end for
+        } # end if scalar foo
+    } # end if gpfilespace
+	
     # replace all "which" expressions with binary
     if (defined($gpwhich_all) && length($gpwhich_all))
     {

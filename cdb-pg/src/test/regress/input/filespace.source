@@ -1,0 +1,35 @@
+--
+-- filespaces
+-- 
+--
+-- *********************************************************************
+-- *********************************************************************
+-- If you want to change the results of this script, you must make the
+-- changes in regress/output/filespace.source, not regress/results,
+-- and use gpsourcify.pl to regenerate the ".source" file.
+--
+-- From the regress directory invoke the command:
+--
+--    gpsourcify.pl results/filespace.out > output/filespace.source
+--
+-- *********************************************************************
+-- *********************************************************************
+
+create filespace fs1 @gpfilespace_fs1@ 
+
+;
+
+create tablespace ts1 filespace fs1;
+
+create table fstest(a int, b int) tablespace ts1;
+
+insert into fstest select i, i from generate_series (1,1000) i;
+
+select * from fstest;
+
+drop table fstest;
+
+drop tablespace ts1;
+
+drop filespace fs1;
+
