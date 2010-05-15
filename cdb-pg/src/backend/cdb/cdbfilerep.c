@@ -108,6 +108,7 @@ static void FileRep_ImmediateShutdownHandler(SIGNAL_ARGS);
 static void FileRep_ShutdownHandler(SIGNAL_ARGS);
 static void FileRep_ChildTerminationHandler(SIGNAL_ARGS);
 static void FileRep_StateHandler(SIGNAL_ARGS);
+static void FileRep_HandleCrash(SIGNAL_ARGS);
 
 static bool FileRep_IsAnyChildAlive(void);
 static bool FileRep_IsAnyBackendChildAlive(void);
@@ -1411,6 +1412,15 @@ FileRep_StateHandler(SIGNAL_ARGS)
 	elog(FILEREP_PROCESS_LOG_LEVEL, "FileRep_StateHandler() stateChangeRequestCounter %d", stateChangeRequestCounter);
 }
 
+static void
+FileRep_HandleCrash(SIGNAL_ARGS)
+{
+    ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
+                    errFatalReturn(gp_reraise_signal),
+                    errOmitLocation(true),
+                    errmsg("Unexpected internal error")));
+}
+
 /*
  * NOTE - should we report fault
  *
@@ -1668,24 +1678,7 @@ FileRep_ProcessSignals()
 			{
 				if (term_pid == FileRepSubProcList[i].pid)
 				{
-					int level = LOG;
-					
-					switch (WTERMSIG(term_status))
-					{
-						case SIGSEGV:							
-						case SIGABRT:
-						case SIGBUS:
-							//if (Debug_filerep_print)
-							//{
-								level = FATAL;
-							//}
-							break;
-							
-						default:
-							level = LOG;
-							break;
-					}
-					LogChildExit(level, (FileRepProcessTypeToString[i]),
+					LogChildExit(LOG, (FileRepProcessTypeToString[i]),
 								 FileRepSubProcList[i].pid,
 								 term_status);
 					
@@ -2003,6 +1996,14 @@ FileRep_ConfigureSignals(void)
 	
 	/* data or segment state changed */
 	pqsignal(SIGUSR1, FileRep_StateHandler);
+	
+#ifdef SIGBUS
+	pqsignal(SIGBUS, FileRep_HandleCrash);
+#endif
+	
+#ifdef SIGSEGV
+	pqsignal(SIGSEGV, FileRep_HandleCrash);
+#endif	
 	
 /* Ignore Signals */
 	pqsignal(SIGTERM, SIG_IGN);

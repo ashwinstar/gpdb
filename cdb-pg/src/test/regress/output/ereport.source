@@ -584,138 +584,138 @@ select * from get_ereport order by 1;
  aaaf: async:00000342:  ereport(ERROR, 
  aaaf: async:00000343:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  aaaf: async:00000344:  errmsg("cannot PREPARE a transaction that has executed LISTEN or UNLISTEN"))); 
- aaag: aclchk:00000133:  ereport(ERROR, 
- aaag: aclchk:00000134:  (errcode(ERRCODE_INVALID_GRANT_OPERATION), 
- aaag: aclchk:00000135:  errmsg("grant options can only be granted to roles"))); 
- aaag: aclchk:00000243:  ereport(WARNING, 
- aaag: aclchk:00000244:  (errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED), 
- aaag: aclchk:00000245:  errmsg("no privileges were granted for "%s"", objname))); 
- aaag: aclchk:00000247:  ereport(WARNING, 
- aaag: aclchk:00000248:  (errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED), 
- aaag: aclchk:00000249:  errmsg("not all privileges were granted for "%s"", objname))); 
- aaag: aclchk:00000254:  ereport(WARNING, 
- aaag: aclchk:00000255:  (errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED), 
- aaag: aclchk:00000256:  errmsg("no privileges could be revoked for "%s"", objname))); 
- aaag: aclchk:00000258:  ereport(WARNING, 
- aaag: aclchk:00000259:  (errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED), 
- aaag: aclchk:00000260:  errmsg("not all privileges could be revoked for "%s"", objname))); 
- aaag: aclchk:00000462:  ereport(ERROR, 
- aaag: aclchk:00000463:  (errcode(ERRCODE_INVALID_GRANT_OPERATION), 
- aaag: aclchk:00000464:  errmsg(errormsg, 
- aaag: aclchk:00000465:  privilege_to_string(priv)))); 
- aaag: aclchk:00000559:  ereport(ERROR, 
- aaag: aclchk:00000560:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- aaag: aclchk:00000561:  errmsg("database "%s" does not exist", 
- aaag: aclchk:00000562:  dbname))); 
- aaag: aclchk:00000587:  ereport(ERROR, 
- aaag: aclchk:00000588:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- aaag: aclchk:00000589:  errmsg("language "%s" does not exist", 
- aaag: aclchk:00000590:  langname))); 
- aaag: aclchk:00000607:  ereport(ERROR, 
- aaag: aclchk:00000608:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
- aaag: aclchk:00000609:  errmsg("schema "%s" does not exist", 
- aaag: aclchk:00000610:  nspname))); 
- aaag: aclchk:00000636:  ereport(ERROR, 
- aaag: aclchk:00000637:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- aaag: aclchk:00000638:  errmsg("tablespace "%s" does not exist", spcname))); 
- aaag: aclchk:00000718:  ereport(ERROR, 
- aaag: aclchk:00000719:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- aaag: aclchk:00000720:  errmsg(""%s" is an index", 
- aaag: aclchk:00000721:  NameStr(pg_class_tuple->relname)))); 
- aaag: aclchk:00000725:  ereport(ERROR, 
- aaag: aclchk:00000726:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- aaag: aclchk:00000727:  errmsg(""%s" is a composite type", 
- aaag: aclchk:00000728:  NameStr(pg_class_tuple->relname)))); 
- aaag: aclchk:00000733:  ereport(ERROR, 
- aaag: aclchk:00000734:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- aaag: aclchk:00000735:  errmsg(""%s" is not a sequence", 
- aaag: aclchk:00000736:  NameStr(pg_class_tuple->relname)))); 
- aaag: aclchk:00000809:  ereport(WARNING, 
- aaag: aclchk:00000810:  (errcode(ERRCODE_INVALID_GRANT_OPERATION), 
- aaag: aclchk:00000811:  errmsg("sequence "%s" only supports USAGE, SELECT, and UPDATE", 
- aaag: aclchk:00000812:  NameStr(pg_class_tuple->relname)))); 
- aaag: aclchk:00000826:  ereport(ERROR, 
- aaag: aclchk:00000827:  (errcode(ERRCODE_INVALID_GRANT_OPERATION), 
- aaag: aclchk:00000828:  errmsg("invalid privilege type USAGE for table"))); 
- aaag: aclchk:00001455:  ereport(ERROR, 
- aaag: aclchk:00001456:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
- aaag: aclchk:00001457:  errmsg("language "%s" is not trusted", 
- aaag: aclchk:00001458:  NameStr(pg_language_tuple->lanname)), 
- aaag: aclchk:00001459:  errhint("Only superusers may use untrusted languages."))); 
- aaag: aclchk:00001826:  ereport(ERROR, 
- aaag: aclchk:00001827:  (errcode(ERRCODE_SYNTAX_ERROR), 
- aaag: aclchk:00001828:  errmsg("unrecognized privilege type "%s"", privname))); 
- aaag: aclchk:00001947:  ereport(ERROR, 
- aaag: aclchk:00001948:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- aaag: aclchk:00001949:  errmsg(no_priv_msg[objectkind], objectname), 
- aaag: aclchk:00001950:  errOmitLocation(true))); 
- aaag: aclchk:00001953:  ereport(ERROR, 
- aaag: aclchk:00001954:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- aaag: aclchk:00001955:  errmsg(not_owner_msg[objectkind], objectname), 
- aaag: aclchk:00001956:  errOmitLocation(true))); 
- aaag: aclchk:00001976:  ereport(ERROR, 
- aaag: aclchk:00001977:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- aaag: aclchk:00001978:  errmsg("role with OID %u does not exist", roleid))); 
- aaag: aclchk:00002050:  ereport(ERROR, 
- aaag: aclchk:00002051:  (errcode(ERRCODE_UNDEFINED_TABLE), 
- aaag: aclchk:00002052:  errmsg("relation with OID %u does not exist", 
- aaag: aclchk:00002053:  table_oid))); 
- aaag: aclchk:00002146:  ereport(ERROR, 
- aaag: aclchk:00002147:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- aaag: aclchk:00002148:  errmsg("database with OID %u does not exist", db_oid))); 
- aaag: aclchk:00002202:  ereport(ERROR, 
- aaag: aclchk:00002203:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
- aaag: aclchk:00002204:  errmsg("function with OID %u does not exist", proc_oid))); 
- aaag: aclchk:00002258:  ereport(ERROR, 
- aaag: aclchk:00002259:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- aaag: aclchk:00002260:  errmsg("language with OID %u does not exist", lang_oid))); 
- aaag: aclchk:00002343:  ereport(ERROR, 
- aaag: aclchk:00002344:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
- aaag: aclchk:00002345:  errmsg("schema with OID %u does not exist", nsp_oid))); 
- aaag: aclchk:00002416:  ereport(ERROR, 
- aaag: aclchk:00002417:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- aaag: aclchk:00002418:  errmsg("tablespace with OID %u does not exist", spc_oid))); 
- aaag: aclchk:00002477:  ereport(ERROR, 
- aaag: aclchk:00002478:  (errmsg("foreign-data wrapper with OID %u does not exist", 
- aaag: aclchk:00002479:  fdw_oid))); 
- aaag: aclchk:00002540:  ereport(ERROR, 
- aaag: aclchk:00002541:  (errmsg("foreign server with OID %u does not exist", 
- aaag: aclchk:00002542:  srv_oid))); 
- aaag: aclchk:00002694:  ereport(ERROR, 
- aaag: aclchk:00002695:  (errcode(ERRCODE_UNDEFINED_TABLE), 
- aaag: aclchk:00002696:  errmsg("relation with OID %u does not exist", class_oid))); 
- aaag: aclchk:00002722:  ereport(ERROR, 
- aaag: aclchk:00002723:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- aaag: aclchk:00002724:  errmsg("type with OID %u does not exist", type_oid))); 
- aaag: aclchk:00002750:  ereport(ERROR, 
- aaag: aclchk:00002751:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
- aaag: aclchk:00002752:  errmsg("operator with OID %u does not exist", oper_oid))); 
- aaag: aclchk:00002778:  ereport(ERROR, 
- aaag: aclchk:00002779:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
- aaag: aclchk:00002780:  errmsg("function with OID %u does not exist", proc_oid))); 
- aaag: aclchk:00002806:  ereport(ERROR, 
- aaag: aclchk:00002807:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
- aaag: aclchk:00002808:  errmsg("schema with OID %u does not exist", nsp_oid))); 
- aaag: aclchk:00002845:  ereport(ERROR, 
- aaag: aclchk:00002846:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- aaag: aclchk:00002847:  errmsg("tablespace with OID %u does not exist", spc_oid))); 
- aaag: aclchk:00002885:  ereport(ERROR, 
- aaag: aclchk:00002886:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- aaag: aclchk:00002887:  errmsg("filepace with OID %u does not exist", fsoid))); 
- aaag: aclchk:00002915:  ereport(ERROR, 
- aaag: aclchk:00002916:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- aaag: aclchk:00002917:  errmsg("operator class with OID %u does not exist", 
- aaag: aclchk:00002918:  opc_oid))); 
- aaag: aclchk:00002944:  ereport(ERROR, 
- aaag: aclchk:00002945:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- aaag: aclchk:00002946:  errmsg("foreign server with OID %u does not exist", 
- aaag: aclchk:00002947:  srv_oid))); 
- aaag: aclchk:00002973:  ereport(ERROR, 
- aaag: aclchk:00002974:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
- aaag: aclchk:00002975:  errmsg("database with OID %u does not exist", db_oid))); 
- aaag: aclchk:00003001:  ereport(ERROR, 
- aaag: aclchk:00003002:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- aaag: aclchk:00003003:  errmsg("conversion with OID %u does not exist", conv_oid))); 
+ aaag: aclchk:00000134:  ereport(ERROR, 
+ aaag: aclchk:00000135:  (errcode(ERRCODE_INVALID_GRANT_OPERATION), 
+ aaag: aclchk:00000136:  errmsg("grant options can only be granted to roles"))); 
+ aaag: aclchk:00000244:  ereport(WARNING, 
+ aaag: aclchk:00000245:  (errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED), 
+ aaag: aclchk:00000246:  errmsg("no privileges were granted for "%s"", objname))); 
+ aaag: aclchk:00000248:  ereport(WARNING, 
+ aaag: aclchk:00000249:  (errcode(ERRCODE_WARNING_PRIVILEGE_NOT_GRANTED), 
+ aaag: aclchk:00000250:  errmsg("not all privileges were granted for "%s"", objname))); 
+ aaag: aclchk:00000255:  ereport(WARNING, 
+ aaag: aclchk:00000256:  (errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED), 
+ aaag: aclchk:00000257:  errmsg("no privileges could be revoked for "%s"", objname))); 
+ aaag: aclchk:00000259:  ereport(WARNING, 
+ aaag: aclchk:00000260:  (errcode(ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED), 
+ aaag: aclchk:00000261:  errmsg("not all privileges could be revoked for "%s"", objname))); 
+ aaag: aclchk:00000463:  ereport(ERROR, 
+ aaag: aclchk:00000464:  (errcode(ERRCODE_INVALID_GRANT_OPERATION), 
+ aaag: aclchk:00000465:  errmsg(errormsg, 
+ aaag: aclchk:00000466:  privilege_to_string(priv)))); 
+ aaag: aclchk:00000560:  ereport(ERROR, 
+ aaag: aclchk:00000561:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ aaag: aclchk:00000562:  errmsg("database "%s" does not exist", 
+ aaag: aclchk:00000563:  dbname))); 
+ aaag: aclchk:00000588:  ereport(ERROR, 
+ aaag: aclchk:00000589:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aaag: aclchk:00000590:  errmsg("language "%s" does not exist", 
+ aaag: aclchk:00000591:  langname))); 
+ aaag: aclchk:00000608:  ereport(ERROR, 
+ aaag: aclchk:00000609:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+ aaag: aclchk:00000610:  errmsg("schema "%s" does not exist", 
+ aaag: aclchk:00000611:  nspname))); 
+ aaag: aclchk:00000637:  ereport(ERROR, 
+ aaag: aclchk:00000638:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aaag: aclchk:00000639:  errmsg("tablespace "%s" does not exist", spcname))); 
+ aaag: aclchk:00000719:  ereport(ERROR, 
+ aaag: aclchk:00000720:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ aaag: aclchk:00000721:  errmsg(""%s" is an index", 
+ aaag: aclchk:00000722:  NameStr(pg_class_tuple->relname)))); 
+ aaag: aclchk:00000726:  ereport(ERROR, 
+ aaag: aclchk:00000727:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ aaag: aclchk:00000728:  errmsg(""%s" is a composite type", 
+ aaag: aclchk:00000729:  NameStr(pg_class_tuple->relname)))); 
+ aaag: aclchk:00000734:  ereport(ERROR, 
+ aaag: aclchk:00000735:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ aaag: aclchk:00000736:  errmsg(""%s" is not a sequence", 
+ aaag: aclchk:00000737:  NameStr(pg_class_tuple->relname)))); 
+ aaag: aclchk:00000810:  ereport(WARNING, 
+ aaag: aclchk:00000811:  (errcode(ERRCODE_INVALID_GRANT_OPERATION), 
+ aaag: aclchk:00000812:  errmsg("sequence "%s" only supports USAGE, SELECT, and UPDATE", 
+ aaag: aclchk:00000813:  NameStr(pg_class_tuple->relname)))); 
+ aaag: aclchk:00000827:  ereport(ERROR, 
+ aaag: aclchk:00000828:  (errcode(ERRCODE_INVALID_GRANT_OPERATION), 
+ aaag: aclchk:00000829:  errmsg("invalid privilege type USAGE for table"))); 
+ aaag: aclchk:00001456:  ereport(ERROR, 
+ aaag: aclchk:00001457:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+ aaag: aclchk:00001458:  errmsg("language "%s" is not trusted", 
+ aaag: aclchk:00001459:  NameStr(pg_language_tuple->lanname)), 
+ aaag: aclchk:00001460:  errhint("Only superusers may use untrusted languages."))); 
+ aaag: aclchk:00001827:  ereport(ERROR, 
+ aaag: aclchk:00001828:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ aaag: aclchk:00001829:  errmsg("unrecognized privilege type "%s"", privname))); 
+ aaag: aclchk:00001948:  ereport(ERROR, 
+ aaag: aclchk:00001949:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ aaag: aclchk:00001950:  errmsg(no_priv_msg[objectkind], objectname), 
+ aaag: aclchk:00001951:  errOmitLocation(true))); 
+ aaag: aclchk:00001954:  ereport(ERROR, 
+ aaag: aclchk:00001955:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ aaag: aclchk:00001956:  errmsg(not_owner_msg[objectkind], objectname), 
+ aaag: aclchk:00001957:  errOmitLocation(true))); 
+ aaag: aclchk:00001977:  ereport(ERROR, 
+ aaag: aclchk:00001978:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aaag: aclchk:00001979:  errmsg("role with OID %u does not exist", roleid))); 
+ aaag: aclchk:00002051:  ereport(ERROR, 
+ aaag: aclchk:00002052:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+ aaag: aclchk:00002053:  errmsg("relation with OID %u does not exist", 
+ aaag: aclchk:00002054:  table_oid))); 
+ aaag: aclchk:00002162:  ereport(ERROR, 
+ aaag: aclchk:00002163:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ aaag: aclchk:00002164:  errmsg("database with OID %u does not exist", db_oid))); 
+ aaag: aclchk:00002218:  ereport(ERROR, 
+ aaag: aclchk:00002219:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+ aaag: aclchk:00002220:  errmsg("function with OID %u does not exist", proc_oid))); 
+ aaag: aclchk:00002274:  ereport(ERROR, 
+ aaag: aclchk:00002275:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aaag: aclchk:00002276:  errmsg("language with OID %u does not exist", lang_oid))); 
+ aaag: aclchk:00002359:  ereport(ERROR, 
+ aaag: aclchk:00002360:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+ aaag: aclchk:00002361:  errmsg("schema with OID %u does not exist", nsp_oid))); 
+ aaag: aclchk:00002432:  ereport(ERROR, 
+ aaag: aclchk:00002433:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aaag: aclchk:00002434:  errmsg("tablespace with OID %u does not exist", spc_oid))); 
+ aaag: aclchk:00002493:  ereport(ERROR, 
+ aaag: aclchk:00002494:  (errmsg("foreign-data wrapper with OID %u does not exist", 
+ aaag: aclchk:00002495:  fdw_oid))); 
+ aaag: aclchk:00002556:  ereport(ERROR, 
+ aaag: aclchk:00002557:  (errmsg("foreign server with OID %u does not exist", 
+ aaag: aclchk:00002558:  srv_oid))); 
+ aaag: aclchk:00002710:  ereport(ERROR, 
+ aaag: aclchk:00002711:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+ aaag: aclchk:00002712:  errmsg("relation with OID %u does not exist", class_oid))); 
+ aaag: aclchk:00002738:  ereport(ERROR, 
+ aaag: aclchk:00002739:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aaag: aclchk:00002740:  errmsg("type with OID %u does not exist", type_oid))); 
+ aaag: aclchk:00002766:  ereport(ERROR, 
+ aaag: aclchk:00002767:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+ aaag: aclchk:00002768:  errmsg("operator with OID %u does not exist", oper_oid))); 
+ aaag: aclchk:00002794:  ereport(ERROR, 
+ aaag: aclchk:00002795:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+ aaag: aclchk:00002796:  errmsg("function with OID %u does not exist", proc_oid))); 
+ aaag: aclchk:00002822:  ereport(ERROR, 
+ aaag: aclchk:00002823:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+ aaag: aclchk:00002824:  errmsg("schema with OID %u does not exist", nsp_oid))); 
+ aaag: aclchk:00002861:  ereport(ERROR, 
+ aaag: aclchk:00002862:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aaag: aclchk:00002863:  errmsg("tablespace with OID %u does not exist", spc_oid))); 
+ aaag: aclchk:00002901:  ereport(ERROR, 
+ aaag: aclchk:00002902:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aaag: aclchk:00002903:  errmsg("filepace with OID %u does not exist", fsoid))); 
+ aaag: aclchk:00002931:  ereport(ERROR, 
+ aaag: aclchk:00002932:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aaag: aclchk:00002933:  errmsg("operator class with OID %u does not exist", 
+ aaag: aclchk:00002934:  opc_oid))); 
+ aaag: aclchk:00002960:  ereport(ERROR, 
+ aaag: aclchk:00002961:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aaag: aclchk:00002962:  errmsg("foreign server with OID %u does not exist", 
+ aaag: aclchk:00002963:  srv_oid))); 
+ aaag: aclchk:00002989:  ereport(ERROR, 
+ aaag: aclchk:00002990:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ aaag: aclchk:00002991:  errmsg("database with OID %u does not exist", db_oid))); 
+ aaag: aclchk:00003017:  ereport(ERROR, 
+ aaag: aclchk:00003018:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ aaag: aclchk:00003019:  errmsg("conversion with OID %u does not exist", conv_oid))); 
  aaag: aocsam:00000574:  ereport(ERROR, 
  aaag: aocsam:00000575:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
  aaag: aocsam:00000576:  errmsg("append-only column-oriented tables do not support rows with OIDs"))); 
@@ -3621,18 +3621,22 @@ select * from get_ereport order by 1;
  caba: cdbexplain:00000506:  errhint("Please verify that all instances are using " 
  caba: cdbexplain:00000507:  "the correct %s software version.", 
  caba: cdbexplain:00000508:  PACKAGE_NAME))); 
- caba: cdbfilerep:00000455:  ereport(ERROR, 
- caba: cdbfilerep:00000456:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- caba: cdbfilerep:00000457:  (errmsg("Not enough shared memory for Mirroring.")))); 
- caba: cdbfilerep:00000481:  ereport(ERROR, 
- caba: cdbfilerep:00000482:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- caba: cdbfilerep:00000483:  (errmsg("shared memory for filerep ipc not initialized")))); 
- caba: cdbfilerep:00000543:  ereport(ERROR, 
- caba: cdbfilerep:00000544:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- caba: cdbfilerep:00000545:  (errmsg("Not enough shared memory for Mirroring.")))); 
- caba: cdbfilerep:00000703:  ereport(ERROR, 
- caba: cdbfilerep:00000704:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- caba: cdbfilerep:00000705:  (errmsg("shared memory for Mirroring not initialized.")))); 
+ caba: cdbfilerep:00000456:  ereport(ERROR, 
+ caba: cdbfilerep:00000457:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ caba: cdbfilerep:00000458:  (errmsg("Not enough shared memory for Mirroring.")))); 
+ caba: cdbfilerep:00000482:  ereport(ERROR, 
+ caba: cdbfilerep:00000483:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ caba: cdbfilerep:00000484:  (errmsg("shared memory for filerep ipc not initialized")))); 
+ caba: cdbfilerep:00000544:  ereport(ERROR, 
+ caba: cdbfilerep:00000545:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ caba: cdbfilerep:00000546:  (errmsg("Not enough shared memory for Mirroring.")))); 
+ caba: cdbfilerep:00000704:  ereport(ERROR, 
+ caba: cdbfilerep:00000705:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ caba: cdbfilerep:00000706:  (errmsg("shared memory for Mirroring not initialized.")))); 
+ caba: cdbfilerep:00001418:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
+ caba: cdbfilerep:00001419:  errFatalReturn(gp_reraise_signal), 
+ caba: cdbfilerep:00001420:  errOmitLocation(true), 
+ caba: cdbfilerep:00001421:  errmsg("Unexpected internal error"))); 
  caba: cdblogsync:00000081:  ereport(ERROR, 
  caba: cdblogsync:00000082:  (errcode_for_file_access(), 
  caba: cdblogsync:00000083:  errmsg("error writing file: %m"))); 
@@ -4012,55 +4016,55 @@ select * from get_ereport order by 1;
  cabh: cdbfilerepservice:00000603:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
  cabh: cdbfilerepservice:00000604:  errOmitLocation(true), 
  cabh: cdbfilerepservice:00000605:  errmsg("Unexpected internal error"))); 
- cabj: cdbmirroredflatfile:00000117:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000118:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000119:  errmsg("could not open file "%s": %m", open->path))); 
- cabj: cdbmirroredflatfile:00000239:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000240:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000241:  errmsg("could not open file "%s": %m", open->path))); 
- cabj: cdbmirroredflatfile:00000312:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000313:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000314:  errmsg("could not fsync file "%s": %m", open->path))); 
- cabj: cdbmirroredflatfile:00000444:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000445:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000446:  errmsg("could not rename file from "%s" to "%s": %m", 
- cabj: cdbmirroredflatfile:00000447:  oldPath, newPath))); 
- cabj: cdbmirroredflatfile:00000516:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000517:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000518:  errmsg("could not write to file "%s": %m", open->path))); 
- cabj: cdbmirroredflatfile:00000588:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000589:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000590:  errmsg("could not seek in file to position '%d' in file '%s': %m", 
- cabj: cdbmirroredflatfile:00000591:  position, 
- cabj: cdbmirroredflatfile:00000592:  open->path))); 
- cabj: cdbmirroredflatfile:00000601:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000602:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000603:  errmsg("could not write to file "%s": %m", open->path))); 
- cabj: cdbmirroredflatfile:00000653:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000654:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000655:  errmsg("could not open file "%s": %m", open->path))); 
- cabj: cdbmirroredflatfile:00000737:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000738:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000739:  errmsg("could not seek in file to position %d in file "%s": %m", 
- cabj: cdbmirroredflatfile:00000740:  position, 
- cabj: cdbmirroredflatfile:00000741:  open->path))); 
- cabj: cdbmirroredflatfile:00000806:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000807:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000808:  errmsg("could not unlink file "%s": %m", path))); 
- cabj: cdbmirroredflatfile:00000915:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000916:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000917:  errmsg("could not seek to end of file "%s" : %m", 
- cabj: cdbmirroredflatfile:00000918:  primaryOpen.path))); 
- cabj: cdbmirroredflatfile:00000946:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000947:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cabj: cdbmirroredflatfile:00000948:  (errmsg("Not enough shared memory for Mirroring.")))); 
- cabj: cdbmirroredflatfile:00000961:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00000962:  (errcode_for_file_access(), 
- cabj: cdbmirroredflatfile:00000963:  errmsg("could not read from position:%d in file "%s" : %m", 
- cabj: cdbmirroredflatfile:00000964:  startOffset, primaryOpen.path))); 
- cabj: cdbmirroredflatfile:00001164:  ereport(ERROR, 
- cabj: cdbmirroredflatfile:00001165:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- cabj: cdbmirroredflatfile:00001166:  (errmsg("Not enough shared memory for Mirroring.")))); 
+ cabj: cdbmirroredflatfile:00000116:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000117:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000118:  errmsg("could not open file "%s": %m", open->path))); 
+ cabj: cdbmirroredflatfile:00000238:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000239:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000240:  errmsg("could not open file "%s": %m", open->path))); 
+ cabj: cdbmirroredflatfile:00000311:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000312:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000313:  errmsg("could not fsync file "%s": %m", open->path))); 
+ cabj: cdbmirroredflatfile:00000437:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000438:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000439:  errmsg("could not rename file from "%s" to "%s": %m", 
+ cabj: cdbmirroredflatfile:00000440:  oldPath, newPath))); 
+ cabj: cdbmirroredflatfile:00000509:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000510:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000511:  errmsg("could not write to file "%s": %m", open->path))); 
+ cabj: cdbmirroredflatfile:00000581:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000582:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000583:  errmsg("could not seek in file to position '%d' in file '%s': %m", 
+ cabj: cdbmirroredflatfile:00000584:  position, 
+ cabj: cdbmirroredflatfile:00000585:  open->path))); 
+ cabj: cdbmirroredflatfile:00000594:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000595:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000596:  errmsg("could not write to file "%s": %m", open->path))); 
+ cabj: cdbmirroredflatfile:00000646:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000647:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000648:  errmsg("could not open file "%s": %m", open->path))); 
+ cabj: cdbmirroredflatfile:00000730:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000731:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000732:  errmsg("could not seek in file to position %d in file "%s": %m", 
+ cabj: cdbmirroredflatfile:00000733:  position, 
+ cabj: cdbmirroredflatfile:00000734:  open->path))); 
+ cabj: cdbmirroredflatfile:00000799:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000800:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000801:  errmsg("could not unlink file "%s": %m", path))); 
+ cabj: cdbmirroredflatfile:00000908:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000909:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000910:  errmsg("could not seek to end of file "%s" : %m", 
+ cabj: cdbmirroredflatfile:00000911:  primaryOpen.path))); 
+ cabj: cdbmirroredflatfile:00000939:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000940:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cabj: cdbmirroredflatfile:00000941:  (errmsg("Not enough shared memory for Mirroring.")))); 
+ cabj: cdbmirroredflatfile:00000954:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00000955:  (errcode_for_file_access(), 
+ cabj: cdbmirroredflatfile:00000956:  errmsg("could not read from position:%d in file "%s" : %m", 
+ cabj: cdbmirroredflatfile:00000957:  startOffset, primaryOpen.path))); 
+ cabj: cdbmirroredflatfile:00001157:  ereport(ERROR, 
+ cabj: cdbmirroredflatfile:00001158:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ cabj: cdbmirroredflatfile:00001159:  (errmsg("Not enough shared memory for Mirroring.")))); 
  caca: cdbfilerepconnclient:00000056:  ereport(LOG, 
  caca: cdbfilerepconnclient:00000057:  (errcode_for_socket_access(), 
  caca: cdbfilerepconnclient:00000058:  errmsg("ERROR(filerep): could not establish connection with server, host:'%s' port:'%d' err:'%s' : %m", 
@@ -4546,41 +4550,41 @@ select * from get_ereport order by 1;
  cacf: cdbappendonlystoragewrite:00001199:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
  cacf: cdbappendonlystoragewrite:00001200:  errmsg("We do not expect files to be have a maximum length"), 
  cacf: cdbappendonlystoragewrite:00001201:  errcontext_appendonly_write_storage_block(storageWrite))); 
- cada: cdbresynchronizechangetracking:00001249:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- cada: cdbresynchronizechangetracking:00001250:  errmsg("Unable to obtain change tracking information from segment database."), 
- cada: cdbresynchronizechangetracking:00001251:  errdetail("SPI_connect failed in ChangeTracking_GetIncrementalChangeList()"))); 
- cada: cdbresynchronizechangetracking:00001543:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- cada: cdbresynchronizechangetracking:00001544:  errmsg("Unable to obtain change tracking information from segment database."), 
- cada: cdbresynchronizechangetracking:00001545:  errdetail("SPI_connect failed in ChangeTracking_GetChanges()"))); 
- cada: cdbresynchronizechangetracking:00001976:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00001977:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00001978:  errmsg("ERROR(filerep): unable to read change tracking meta file "%s", " 
- cada: cdbresynchronizechangetracking:00001979:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00001980:  path), 
- cada: cdbresynchronizechangetracking:00001981:  errSendAlert(true))); 
- cada: cdbresynchronizechangetracking:00002071:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00002072:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00002073:  errmsg("write error for change tracking meta file in " 
- cada: cdbresynchronizechangetracking:00002074:  "ChangeTracking_MarkFullResyncLockAcquired. " 
- cada: cdbresynchronizechangetracking:00002075:  "Change Tracking disabled : %m"), 
- cada: cdbresynchronizechangetracking:00002076:  errSendAlert(true))); 
- cada: cdbresynchronizechangetracking:00002328:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- cada: cdbresynchronizechangetracking:00002329:  errmsg("Unable to obtain change tracking information from segment database."), 
- cada: cdbresynchronizechangetracking:00002330:  errdetail("SPI_connect failed in ChangeTracking_ReadLastLocOnDisk()"))); 
- cada: cdbresynchronizechangetracking:00002432:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- cada: cdbresynchronizechangetracking:00002433:  errmsg("Unable to obtain change tracking information from segment database."), 
- cada: cdbresynchronizechangetracking:00002434:  errdetail("SPI_connect failed in ChangeTracking_GetTotalBlocksToSync()"))); 
- cada: cdbresynchronizechangetracking:00002541:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- cada: cdbresynchronizechangetracking:00002542:  errmsg("Unable to obtain change tracking information from segment database."), 
- cada: cdbresynchronizechangetracking:00002543:  errdetail("SPI_connect failed in ChangeTracking_CreateCompactLogFromFull()"))); 
- cada: cdbresynchronizechangetracking:00002673:  ereport(WARNING, 
- cada: cdbresynchronizechangetracking:00002674:  (errcode_for_file_access(), 
- cada: cdbresynchronizechangetracking:00002675:  errmsg("write error for change tracking %s file, " 
- cada: cdbresynchronizechangetracking:00002676:  "change tracking disabled : %m", 
- cada: cdbresynchronizechangetracking:00002677:  (ft == CTF_LOG ? ((ChangeTracking_IsFileModeCompact() ? 
- cada: cdbresynchronizechangetracking:00002678:  "compact log" : "full log")) : 
- cada: cdbresynchronizechangetracking:00002679:  "meta")), 
- cada: cdbresynchronizechangetracking:00002680:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00001258:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ cada: cdbresynchronizechangetracking:00001259:  errmsg("Unable to obtain change tracking information from segment database."), 
+ cada: cdbresynchronizechangetracking:00001260:  errdetail("SPI_connect failed in ChangeTracking_GetIncrementalChangeList()"))); 
+ cada: cdbresynchronizechangetracking:00001552:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ cada: cdbresynchronizechangetracking:00001553:  errmsg("Unable to obtain change tracking information from segment database."), 
+ cada: cdbresynchronizechangetracking:00001554:  errdetail("SPI_connect failed in ChangeTracking_GetChanges()"))); 
+ cada: cdbresynchronizechangetracking:00001985:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00001986:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00001987:  errmsg("ERROR(filerep): unable to read change tracking meta file "%s", " 
+ cada: cdbresynchronizechangetracking:00001988:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00001989:  path), 
+ cada: cdbresynchronizechangetracking:00001990:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00002080:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00002081:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00002082:  errmsg("write error for change tracking meta file in " 
+ cada: cdbresynchronizechangetracking:00002083:  "ChangeTracking_MarkFullResyncLockAcquired. " 
+ cada: cdbresynchronizechangetracking:00002084:  "Change Tracking disabled : %m"), 
+ cada: cdbresynchronizechangetracking:00002085:  errSendAlert(true))); 
+ cada: cdbresynchronizechangetracking:00002337:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ cada: cdbresynchronizechangetracking:00002338:  errmsg("Unable to obtain change tracking information from segment database."), 
+ cada: cdbresynchronizechangetracking:00002339:  errdetail("SPI_connect failed in ChangeTracking_ReadLastLocOnDisk()"))); 
+ cada: cdbresynchronizechangetracking:00002441:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ cada: cdbresynchronizechangetracking:00002442:  errmsg("Unable to obtain change tracking information from segment database."), 
+ cada: cdbresynchronizechangetracking:00002443:  errdetail("SPI_connect failed in ChangeTracking_GetTotalBlocksToSync()"))); 
+ cada: cdbresynchronizechangetracking:00002550:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ cada: cdbresynchronizechangetracking:00002551:  errmsg("Unable to obtain change tracking information from segment database."), 
+ cada: cdbresynchronizechangetracking:00002552:  errdetail("SPI_connect failed in ChangeTracking_CreateCompactLogFromFull()"))); 
+ cada: cdbresynchronizechangetracking:00002682:  ereport(WARNING, 
+ cada: cdbresynchronizechangetracking:00002683:  (errcode_for_file_access(), 
+ cada: cdbresynchronizechangetracking:00002684:  errmsg("write error for change tracking %s file, " 
+ cada: cdbresynchronizechangetracking:00002685:  "change tracking disabled : %m", 
+ cada: cdbresynchronizechangetracking:00002686:  (ft == CTF_LOG ? ((ChangeTracking_IsFileModeCompact() ? 
+ cada: cdbresynchronizechangetracking:00002687:  "compact log" : "full log")) : 
+ cada: cdbresynchronizechangetracking:00002688:  "meta")), 
+ cada: cdbresynchronizechangetracking:00002689:  errSendAlert(true))); 
  daae: date:00000083:  ereport(ERROR, 
  daae: date:00000084:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  daae: date:00000085:  errmsg("date/time value "current" is no longer supported"))); 
@@ -12709,14 +12713,14 @@ select * from get_ereport order by 1;
  pabe: parsexrelation:00002106:  rte->eref->aliasname) : 0)), 
  pabe: parsexrelation:00002107:  errOmitLocation(true), 
  pabe: parsexrelation:00002108:  parser_errposition(pstate, location))); 
- pabe: persistentutil:00000343:  ereport(ERROR, 
- pabe: persistentutil:00000344:  (errcode_for_file_access(), 
- pabe: persistentutil:00000345:  errmsg("could not open directory "%s": %m", 
- pabe: persistentutil:00000346:  fdata->databaseDirName))); 
- pabe: persistentutil:00000385:  ereport(ERROR, 
- pabe: persistentutil:00000386:  (errcode_for_file_access(), 
- pabe: persistentutil:00000387:  errmsg("could not open directory "%s": %m", 
- pabe: persistentutil:00000388:  fdata->tablespaceDirName))); 
+ pabe: persistentutil:00000390:  ereport(ERROR, 
+ pabe: persistentutil:00000391:  (errcode_for_file_access(), 
+ pabe: persistentutil:00000392:  errmsg("could not open directory "%s": %m", 
+ pabe: persistentutil:00000393:  fdata->databaseDirName))); 
+ pabe: persistentutil:00000432:  ereport(ERROR, 
+ pabe: persistentutil:00000433:  (errcode_for_file_access(), 
+ pabe: persistentutil:00000434:  errmsg("could not open directory "%s": %m", 
+ pabe: persistentutil:00000435:  fdata->tablespaceDirName))); 
  pabe: pgxlargeobject:00000105:  ereport(ERROR, 
  pabe: pgxlargeobject:00000106:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
  pabe: pgxlargeobject:00000107:  errmsg("large object %u does not exist", loid))); 
@@ -18326,6 +18330,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000076:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000077:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000078:  str))); 
-(18259 rows)
+(18263 rows)
 
 drop external table get_ereport;

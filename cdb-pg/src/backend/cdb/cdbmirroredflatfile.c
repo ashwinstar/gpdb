@@ -70,30 +70,29 @@ int MirroredFlatFile_Open(
 
 	if (atomic_op)
 	{
-		open->tmp_ext = MemoryContextAlloc(TopMemoryContext, 11);
-	  	snprintf(open->tmp_ext, 11, "%i", MyProcPid);
-		snprintf(tmp_filename, sizeof(tmp_filename), "%s.%s",
-				 simpleFileName, open->tmp_ext);
+		open->atomicSimpleFileName = MemoryContextStrdup(TopMemoryContext, simpleFileName);
+		snprintf(tmp_filename, sizeof(tmp_filename), "%s.%i",
+				 simpleFileName, MyProcPid);
+		open->simpleFileName = MemoryContextStrdup(TopMemoryContext, tmp_filename);
 	}
 	else
 	{
-		strncpy(tmp_filename, simpleFileName, sizeof(tmp_filename));
+		open->simpleFileName = MemoryContextStrdup(TopMemoryContext, simpleFileName);
 	}
 
 
 	open->isMirrorRecovery = isMirrorRecovery;
 	open->usingDbDirNode = false;
 	open->subDirectory = MemoryContextStrdup(TopMemoryContext, subDirectory);
-	open->simpleFileName = MemoryContextStrdup(TopMemoryContext, simpleFileName);
 	open->path = MemoryContextAlloc(TopMemoryContext, strlen(subDirectory) + 1 +
-									strlen(tmp_filename) + 1);
+									strlen(open->simpleFileName) + 1);
 
-	sprintf(open->path, "%s/%s", subDirectory, tmp_filename);
+	sprintf(open->path, "%s/%s", subDirectory, open->simpleFileName);
 	
 	if (FileRepPrimary_MirrorOpen(
 				  FileRep_GetFlatFileIdentifier(
 								subDirectory, 
-								tmp_filename),
+								open->simpleFileName),
 				  FileRepRelationTypeFlatFile,
 				  FILEREP_OFFSET_UNDEFINED,
 				  fileFlags,
@@ -359,15 +358,9 @@ void MirroredFlatFile_Close(
 	
 	if (open->atomic_op)
 	{
-		char oldfile[MAXPGPATH + 1];
-
-		snprintf(oldfile, sizeof(oldfile), "%s.%s",
-				 open->simpleFileName,
-				 open->tmp_ext);
-
 		MirroredFlatFile_Rename(open->subDirectory,
-								oldfile,
 								open->simpleFileName,
+								open->atomicSimpleFileName,
 								true,
 								false);
 	}
@@ -383,7 +376,7 @@ void MirroredFlatFile_Close(
 	open->path = NULL;
 
 	if (open->atomic_op)
-		pfree(open->tmp_ext);
+		pfree(open->atomicSimpleFileName);
 
 	open->isActive = false;
 }

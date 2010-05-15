@@ -54,11 +54,11 @@ typedef struct MirroredFlatFileOpen
 	 * a temporary file and then renaming.
 	 */
 	bool	atomic_op;
-	char   *tmp_ext; /* extension for temporary file */
+	char   *atomicSimpleFileName; /* original file that will be replaced with temporary file */
 
 } MirroredFlatFileOpen;
 
-#define MirroredFlatFileOpen_Init {false, false, {0, 0}, NULL, NULL, NULL, -1, 0, false}
+#define MirroredFlatFileOpen_Init {false, false, {0, 0}, NULL, NULL, NULL, -1, 0, false, false, NULL}
 
 // -----------------------------------------------------------------------------
 // CleanMirrorDirectory, Create, Open, Flush, and Close 

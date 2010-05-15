@@ -1221,19 +1221,27 @@ ChangeTracking_GetIncrementalChangeList(void)
 	/* TODO: there must be a more efficient query to use here */
 	appendStringInfo(&sqlstmt, 	"SELECT t1.persistent_tid, t1.persistent_sn, t1.numblocks "
 								"FROM (SELECT persistent_tid, persistent_sn, count(distinct blocknum) as numblocks "
-								"      FROM gp_changetracking_log() "
+								"      FROM gp_changetracking_log(%d) "
 								"      GROUP BY persistent_tid, persistent_sn) as t1, "
 								"     (SELECT persistent_tid, max(persistent_sn) as persistent_sn " 
-								"	   FROM gp_changetracking_log() "
+								"	   FROM gp_changetracking_log(%d) "
 								"      GROUP BY persistent_tid) as t2 "			
 								"WHERE t1.persistent_tid = t2.persistent_tid "
-								"AND   t1.persistent_sn = t2.persistent_sn");
+								"AND   t1.persistent_sn = t2.persistent_sn",
+								CTF_LOG, CTF_LOG);
 	
-//	appendStringInfo(&sqlstmt, "SELECT persistent_tid, max(persistent_sn) "
-//							   "FROM gp_changetracking_log() " 
-//							   "GROUP BY persistent_tid "
-//							   "ORDER BY persistent_tid");
-	
+	/* 
+	 * NOTE: here's a cleaner version of the same query. compare which runs more efficiently.
+	 * 		 minimal testing shows it's the one above, but by small margin 
+	 */
+	//	appendStringInfo(&sqlstmt,  "SELECT persistent_tid, persistent_sn, count(distinct blocknum) "
+	//								"FROM gp_changetracking_log(%d) "
+	//								"GROUP BY persistent_tid, persistent_sn "
+	//								"HAVING (persistent_tid, persistent_sn) "
+	//								"IN (SELECT persistent_tid, max(persistent_sn) "
+	//									"FROM gp_changetracking_log(%d) "
+	//									"GROUP BY persistent_tid", CTF_LOG, CTF_LOG);
+
 	PG_TRY();
 	{
 
@@ -1242,7 +1250,8 @@ ChangeTracking_GetIncrementalChangeList(void)
 		
 		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
 		
-		SetSessionUserId(BOOTSTRAP_SUPERUSERID,true); /* TODO: HACK!!! find a solution */
+		SetSessionUserId(BOOTSTRAP_SUPERUSERID,true); 
+
 
 		if (SPI_OK_CONNECT != SPI_connect())
 		{
@@ -1318,7 +1327,7 @@ ChangeTracking_GetIncrementalChangeList(void)
 		
 		CommitTransactionCommand();
 	}
-
+	
 	/* Clean up in case of error. */
 	PG_CATCH();
 	{
@@ -1476,7 +1485,7 @@ ChangeTrackingResult* ChangeTracking_GetChanges(ChangeTrackingRequest *request)
 	bool old_enable_groupagg = enable_groupagg;
 
 	enable_groupagg = false; /* disable sort group agg -- our query works better with hash agg */
-
+	
 	Assert(dataState == DataStateInResync);	
 	Assert(ChangeTracking_IsFileModeCompact());
 	Assert(gp_change_tracking);
