@@ -2393,10 +2393,10 @@ CREATE TABLE partsupp (
 drop table partsupp;
 
 -- Accept negative values trivially:
-create table g (i int) partition by range(i) (start((-1)) end(10));
-drop table g;
-create table g (i int) partition by range(i) (start(-1) end(10));
-drop table g;
+create table partition_g (i int) partition by range(i) (start((-1)) end(10));
+drop table partition_g;
+create table partition_g (i int) partition by range(i) (start(-1) end(10));
+drop table partition_g;
 
 CREATE TABLE orders (
     o_orderkey bigint,

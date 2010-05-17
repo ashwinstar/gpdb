@@ -479,12 +479,13 @@ def makeSpecifiedScheduleMain(argv=None):
 
     enableTimeBasedSorting = False # note: if enabled, this causes errors in the product for me
     parallelTestLimit = 1
-    doAll = False
+    doAll = True
     testsToRun = []
     for arg in argv[1:]:
         for test in arg.split(","):
-            if test == "tt_all":
-                doAll = True
+            test = test.strip()
+            if test == "":
+                pass
             elif test == "tt_parallel":
                 parallelTestLimit = 4 # default parallel limit
             elif test.startswith("tt_parallel="):
@@ -494,6 +495,7 @@ def makeSpecifiedScheduleMain(argv=None):
             elif test == "tt_sort_duration_desc":
                 enableTimeBasedSorting = True
             else:
+                doAll = False
                 testsToRun.append(test)
 
     TestScheduler().printSchedule("known_good_schedule", testsToRun, doAll, enableTimeBasedSorting, parallelTestLimit)
