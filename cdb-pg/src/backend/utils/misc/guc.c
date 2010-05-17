@@ -3904,7 +3904,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_segworker_relative_priority", PGC_POSTMASTER, RESOURCES_MGM,
 		gettext_noop("Priority for the segworkers relative to the postmaster's priority."),
 		NULL,
-		GUC_NOT_IN_SAMPLE
+		GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_segworker_relative_priority,
 		0,
