@@ -1078,6 +1078,9 @@ sub get_relfilenode_func
 		next
 			unless (exists($dbs{$dbkey}->{dbname}));
 
+		next
+			unless (scalar(@relfnods)); # MPP-9689: fix syntax error 
+
 		$psql_str = "psql ";
 
 		# XXX XXX: need portnumber!!
@@ -1219,6 +1222,9 @@ sub get_relfilenode_func
 
 		while (my ($ukk, $uvv) = each(%unknown))
 		{
+			my $relfnod2;
+			my $bad_relfnod;
+
 			# see if have connectable database first...
 			if (exists($dbs{$ukk}) && exists($dbs{$ukk}->{dbname}))
 			{
@@ -1233,6 +1239,32 @@ sub get_relfilenode_func
 				next;
 			}
 
+			$relfnod2	 = []; # MPP-9689: fix syntax error 
+			$bad_relfnod = [];
+
+			for my $rnod (@{$uvv})
+			{
+				if ($rnod =~ m/^\d+$/)
+				{
+					push @{$relfnod2}, $rnod;
+				}
+				else
+				{
+					push @{$bad_relfnod}, $rnod;
+				}
+			}
+			
+			if (scalar(@{$bad_relfnod}))
+			{
+				my $str1 = "invalid relfilenodes: " . 
+					join(", ", @{$bad_relfnod}) . 
+					"\n in db -- no lookup possible";
+				warn $str1;
+			}
+
+			next
+				unless (scalar(@{$relfnod2}));
+
 			$psql_str = "psql ";
 
 			# XXX XXX: need portnumber!!
@@ -1240,7 +1272,7 @@ sub get_relfilenode_func
 
 			# select from gp_persistent_relation_node, pg_class, etc
 			$psql_str .= " -c \' ". get_pg_class_query_txt()
-				. join (", ", @{$uvv}) . ") \'";
+				. join (", ", @{$relfnod2}) . ") \'";
 
 #		print $psql_str, "\n";
 
@@ -1253,7 +1285,7 @@ sub get_relfilenode_func
 			else
 			{
 				print "no pg_class entries for (",
-				join (", ", @{$uvv}) . ")\n";
+				join (", ", @{$relfnod2}) . ")\n";
 			}
 
 			$psql_str = "psql ";
@@ -1263,7 +1295,7 @@ sub get_relfilenode_func
 
 			# select from gp_persistent_relation_node, pg_class, etc
 			$psql_str .= " -c \' ". get_prn_query_txt()
-				. join (", ", @{$uvv}) . ") \'";
+				. join (", ", @{$relfnod2}) . ") \'";
 
 #		print $psql_str, "\n";
 
@@ -1275,7 +1307,7 @@ sub get_relfilenode_func
 			else
 			{
 				print "no gp_persistent_relation_node entries for (",
-				join (", ", @{$uvv}) . ")\n";
+				join (", ", @{$relfnod2}) . ")\n";
 			}
 
 		}
