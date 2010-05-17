@@ -2921,7 +2921,11 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_MS | GUC_GPDB_ADDOPT
 		},
 		&IdleSessionGangTimeout,
+#ifdef USE_ASSERT_CHECKING
+		600000, 0, INT_MAX, NULL, NULL /* 10 minutes by default on debug builds.*/
+#else
 		18000, 0, INT_MAX, NULL, NULL
+#endif
 	},
 
 	{
