@@ -1922,7 +1922,8 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"resource_scheduler", PGC_POSTMASTER, RESOURCES_MGM,
 			gettext_noop("Enable resource scheduling."),
-			NULL
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&ResourceScheduler,
 		true, NULL, NULL
