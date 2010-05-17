@@ -75,3 +75,6 @@ drop table if exists pivot_test;
 select vec_median(array_agg(a)) from (select generate_series(1,9) a) foo;
 -- Answer should be a 10-wide vector
 select array_agg(a) from (select trunc(random()*10) a,generate_series(1,100000) order by a) foo;
+-- Average is 4.50034, median is 5
+select vec_median('{9960,9926,10053,9993,10080,10050,9938,9941,10030,10029}:{1,9,8,7,6,5,4,3,2,0}'::svec);
+select vec_median('{9960,9926,10053,9993,10080,10050,9938,9941,10030,10029}:{1,9,8,7,6,5,4,3,2,0}'::svec::float8[]);

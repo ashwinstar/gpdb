@@ -3,19 +3,19 @@
 Timing is on.
 drop table if exists test;
 DROP TABLE
-Time: 1.242 ms
+Time: 1.163 ms
 create table test (a int, b svec) DISTRIBUTED BY (a);
 CREATE TABLE
-Time: 98.619 ms
+Time: 67.692 ms
 insert into test (select 1,gp_extract_feature_histogram('{"one","two","three","four","five","six"}','{"twe","four","five","six","one","three","two","one"}'));
 INSERT 0 1
-Time: 75.459 ms
+Time: 72.360 ms
 insert into test (select 2,gp_extract_feature_histogram('{"one","two","three","four","five","six"}','{"the","brown","cat","ran","across","three","dogs"}'));
 INSERT 0 1
-Time: 4.234 ms
+Time: 4.543 ms
 insert into test (select 3,gp_extract_feature_histogram('{"one","two","three","four","five","six"}','{"two","four","five","six","one","three","two","one"}'));
 INSERT 0 1
-Time: 3.843 ms
+Time: 3.701 ms
 -- Test the equals operator (should be only 3 rows)
 select a,b::float8[] cross_product_equals from (select a,b from test) foo where b = foo.b order by a;
  a | cross_product_equals 
@@ -25,13 +25,13 @@ select a,b::float8[] cross_product_equals from (select a,b from test) foo where 
  3 | {2,2,1,1,1,1}
 (3 rows)
 
-Time: 4.053 ms
+Time: 4.044 ms
 drop table if exists test2;
 DROP TABLE
-Time: 0.218 ms
+Time: 0.217 ms
 create table test2 as select * from test DISTRIBUTED BY (a);
 SELECT 3
-Time: 65.775 ms
+Time: 64.780 ms
 -- Test the plus operator (should be 9 rows)
 select (t1.b+t2.b)::float8[] cross_product_sum from test t1, test2 t2 order by t1.a;
  cross_product_sum 
@@ -47,7 +47,7 @@ select (t1.b+t2.b)::float8[] cross_product_sum from test t1, test2 t2 order by t
  {2,2,2,1,1,1}
 (9 rows)
 
-Time: 6.993 ms
+Time: 7.121 ms
 -- Test ORDER BY
 select (t1.b+t2.b)::float8[] cross_product_sum, l2norm(t1.b+t2.b) l2norm, (t1.b+t2.b) sparse_vector from test t1, test2 t2 order by 3;
  cross_product_sum |      l2norm      |    sparse_vector    
@@ -63,14 +63,14 @@ select (t1.b+t2.b)::float8[] cross_product_sum, l2norm(t1.b+t2.b) l2norm, (t1.b+
  {4,4,2,2,2,2}     | 6.92820323027551 | {2,4}:{4,2}
 (9 rows)
 
-Time: 5.084 ms
+Time: 5.359 ms
  select (sum(t1.b))::float8[] as features_sum from test t1;
  features_sum  
 ---------------
  {4,3,3,2,2,2}
 (1 row)
 
-Time: 3.693 ms
+Time: 2.844 ms
 -- Test the div operator
  select (t1.b/(select sum(b) from test))::float8[] as weights from test t1 order by a;
                         weights                        
@@ -80,7 +80,7 @@ Time: 3.693 ms
  {0.5,0.666666666666667,0.333333333333333,0.5,0.5,0.5}
 (3 rows)
 
-Time: 4.169 ms
+Time: 4.229 ms
 -- Test the * operator
  select t1.b %*% (t1.b/(select sum(b) from test)) as raw_score from test t1 order by a;
      raw_score     
@@ -90,7 +90,7 @@ Time: 4.169 ms
   4.16666666666667
 (3 rows)
 
-Time: 6.180 ms
+Time: 4.098 ms
 -- Test the * and l2norm operators
  select (t1.b %*% (t1.b/(select sum(b) from test))) / (l2norm(t1.b) * l2norm((select sum(b) from test))) as norm_score from test t1 order by a;
     norm_score     
@@ -100,7 +100,7 @@ Time: 6.180 ms
  0.177345110574739
 (3 rows)
 
-Time: 7.523 ms
+Time: 6.295 ms
 -- Test the ^ and l1norm operators
 select ('{1,2}:{20.,10.}'::svec)^('{1}:{3.}'::svec);
      ?column?      
@@ -108,7 +108,7 @@ select ('{1,2}:{20.,10.}'::svec)^('{1}:{3.}'::svec);
  {1,2}:{8000,1000}
 (1 row)
 
-Time: 0.997 ms
+Time: 1.060 ms
  select (t1.b %*% (t1.b/(select sum(b) from test))) / (l1norm(t1.b) * l1norm((select sum(b) from test))) as norm_score from test t1 order by a;
      norm_score     
 --------------------
@@ -117,20 +117,20 @@ Time: 0.997 ms
  0.0325520833333333
 (3 rows)
 
-Time: 8.366 ms
+Time: 6.715 ms
 -- Test the multi-concatenation and show sizes compared with a normal array
 drop table if exists corpus_proj;
 DROP TABLE
-Time: 0.256 ms
+Time: 0.258 ms
 drop table if exists corpus_proj_array;
 DROP TABLE
-Time: 0.258 ms
+Time: 0.225 ms
 create table corpus_proj as (select 10000 *|| ('{45,2,35,4,15,1}:{0,1,0,1,0,2}'::svec) result ) distributed randomly;
 SELECT 1
-Time: 81.776 ms
+Time: 91.366 ms
 create table corpus_proj_array as (select result::float8[] from corpus_proj) distributed randomly;
 SELECT 1
-Time: 320.993 ms
+Time: 318.754 ms
 -- Calculate on-disk size of sparse vector
 select pg_size_pretty(pg_total_relation_size('corpus_proj'));
  pg_size_pretty 
@@ -138,7 +138,7 @@ select pg_size_pretty(pg_total_relation_size('corpus_proj'));
  192 kB
 (1 row)
 
-Time: 5.115 ms
+Time: 5.393 ms
 -- Calculate on-disk size of normal array
 select pg_size_pretty(pg_total_relation_size('corpus_proj_array'));
  pg_size_pretty 
@@ -146,7 +146,7 @@ select pg_size_pretty(pg_total_relation_size('corpus_proj_array'));
  288 kB
 (1 row)
 
-Time: 3.435 ms
+Time: 3.488 ms
 \timing
 Timing is off.
 -- Calculate L1 norm from sparse vector
@@ -256,7 +256,7 @@ INSERT 0 5
 select array_agg(a) from pivot_test;
       array_agg      
 ---------------------
- {2,1,1,1}:{0,3,1,2}
+ {1,1,2,1}:{1,2,0,3}
 (1 row)
 
 select l1norm(array_agg(a)) from pivot_test;
@@ -278,6 +278,19 @@ select vec_median(array_agg(a)) from (select generate_series(1,9) a) foo;
 select array_agg(a) from (select trunc(random()*10) a,generate_series(1,100000) order by a) foo;
                                    array_agg                                   
 -------------------------------------------------------------------------------
- {10130,9923,9976,9999,9907,10075,9963,10026,9916,10085}:{0,1,2,3,4,5,6,7,8,9}
+ {9946,10172,10063,9850,9874,10139,9964,9923,10131,9938}:{0,1,2,3,4,5,6,7,8,9}
+(1 row)
+
+-- Average is 4.50034, median is 5
+select vec_median('{9960,9926,10053,9993,10080,10050,9938,9941,10030,10029}:{1,9,8,7,6,5,4,3,2,0}'::svec);
+ vec_median 
+------------
+          5
+(1 row)
+
+select vec_median('{9960,9926,10053,9993,10080,10050,9938,9941,10030,10029}:{1,9,8,7,6,5,4,3,2,0}'::svec::float8[]);
+ vec_median 
+------------
+          5
 (1 row)
 

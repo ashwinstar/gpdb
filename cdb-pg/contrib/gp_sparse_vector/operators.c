@@ -1214,6 +1214,7 @@ partition_select (char **lists, size_t nlists, size_t *widths,
 {
 	int pivotIndex,pivotNewIndex,realIndex;
 	char **tmp,*pvalue;
+	int maxlen = right;
 
 	/*
 	 * Allocate memory for the temporary variables
@@ -1234,26 +1235,38 @@ partition_select (char **lists, size_t nlists, size_t *widths,
 					tmp,pvalue);
 		realIndex = realIndexCalc(pivotNewIndex,
 				(const char **)lists,nlists,widths);
-		if (k == realIndex)
+		int nextRealIndex = realIndexCalc(MIN(maxlen,pivotNewIndex+1),
+	                                (const char **)lists,nlists,widths);
+//		elog(NOTICE,"k,realIndex,nextRealIndex,pni=%d,%d,%d,%d",k,realIndex,nextRealIndex,
+//				pivotNewIndex);
+		if ((realIndex <= k) && (k < nextRealIndex ))
 		{
-			/*
-			 * Free temporary variables
-			 */
-			for (int i=0;i<nlists;i++)
-			{
-				pfree(tmp[i]);
-			}
-			pfree(tmp);
-			pfree(pvalue);
-			return(k);
+			break;
 		} else if (k < realIndex)
 		{
 			right = pivotNewIndex-1;
 		} else
 		{
 			left = pivotNewIndex+1;
+			if (left >= maxlen) 
+			{
+				pivotNewIndex = maxlen;
+				break;
+			}
 		}
 	}
+
+	/*
+	 * Free temporary variables
+	 */
+	for (int i=0;i<nlists;i++)
+	{
+		pfree(tmp[i]);
+	}
+	pfree(tmp);
+	pfree(pvalue);
+
+	return(pivotNewIndex); //This index is in the compressed coordinate system
 }
 
 static int
@@ -1261,21 +1274,21 @@ compar_float8(const void *left,const void *right)
 {if(*(float8 *)left<*(float8 *)right){return -1;}else if(*(float8 *)left==*(float8 *)right){return 0;}else{return 1;}}
 
 static int
-real_index_calc_dense(const int k,const char **lists,const size_t nlists,const size_t *widths) {return k;}
+real_index_calc_dense(const int idx,const char **lists,const size_t nlists,const size_t *widths) {return idx;}
 
 static int
-real_index_calc_sparse_RLE(const int k,const char **lists,const size_t nlists,const size_t *widths)
+real_index_calc_sparse_RLE(const int idx,const char **lists,const size_t nlists,const size_t *widths)
 {
 	int index=0;
-	for (int i=0;i<k;i++)
+	for (int i=0;i<idx;i++)
 	{
 		index = index + ((int64 *)(lists[1]))[i];
 	}
 	/*
-	 * We add 1 to the index calculation to correspond to the beginning
-	 * of the run located at (k).
+	 * The index calculation corresponds to the beginning
+	 * of the run located at (idx).
 	 */
-	return (index+1);
+	return (index);
 }
 
 static int
@@ -1344,6 +1357,18 @@ svec_median(PG_FUNCTION_ARGS) {
 					0,sdata->unique_value_count-1,
 			   		median_index,compar_float8,
 					real_index_calc_sparse_RLE);
+		/*
+		 * Convert the uncompressed index into the compressed index
+		 */
+		i_ptr = sdata->index->data;
+		for (int i=0;i<sdata->unique_value_count;i++,i_ptr+=int8compstoragesize(i_ptr))
+		{
+			int8_to_compword(rle_index[i],i_ptr);
+		}
+
+		pfree(lists);
+		pfree(widths);
+		pfree(rle_index);
 	} else
 	{
 		index = float8arr_partition_internal((double *)(sdata->vals->data),
