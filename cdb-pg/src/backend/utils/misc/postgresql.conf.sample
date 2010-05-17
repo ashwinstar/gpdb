@@ -334,7 +334,6 @@
 #track_activities = on
 #track_counts = off
 #update_process_title = on
-#stats_temp_directory = 'pg_stat_tmp'
 
 #stats_queue_level = off
 
@@ -413,7 +412,6 @@ log_autostats=off	# print additional autostats information
 # RESOURCE SCHEDULING
 #---------------------------------------------------------------------------
 
-#resource_scheduler = on		# enable resource scheduling
 #max_resource_queues = 9		# no. of resource queues to create.
 #max_resource_portals_per_transaction = 64	# no. of portals per backend.
 #resource_select_only = on		# resource lock SELECT queries only.
