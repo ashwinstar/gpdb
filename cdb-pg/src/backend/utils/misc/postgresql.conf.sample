@@ -472,6 +472,7 @@ gp_interconnect_type=udp
 
 # - Resource limits -
 gp_vmem_protect_limit = 8192  #Virtual memory limit (in MB).
+#gp_vmem_idle_resource_timeout = 18000 # idle-time before gang-release, in milliseconds (zero disables release).
 
 #------------------------------------------------------------------------------
 # CUSTOMIZED OPTIONS
