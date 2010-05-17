@@ -1092,9 +1092,21 @@ get_ao_distribution_oid(PG_FUNCTION_ARGS)
 		 * assemble our query string
 		 */
 		initStringInfo(&sqlstmt);
-		appendStringInfo(&sqlstmt, "select gp_segment_id,sum(tupcount) "
-						"from gp_dist_random('pg_aoseg.%s') "
-						"group by (gp_segment_id)", aoseg_relname);
+		if (RelationIsAoRows(parentrel))
+			appendStringInfo(&sqlstmt, "select gp_segment_id,sum(tupcount) "
+							"from gp_dist_random('pg_aoseg.%s') "
+							"group by (gp_segment_id)", aoseg_relname);
+		else
+		{
+			Assert(RelationIsAoCols(parentrel));
+
+			/*
+			 * Type cast the bigint tupcount to the expected output type float8.
+			 */
+			appendStringInfo(&sqlstmt, "select gp_segment_id,sum(tupcount::float8) "
+							"from gp_dist_random('pg_aoseg.%s') "
+							"group by (gp_segment_id)", aoseg_relname);
+		}
 
 		PG_TRY();
 		{
