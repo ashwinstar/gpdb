@@ -292,7 +292,6 @@ static inline int64 compword_to_int8(const char *entry)
 }
 
 static inline void printout_double(double *vals, int num_values, int stop);
-static inline void printout_index(char *ix, int num_values, int stop);
 static inline void printout_double(double *vals, int num_values, int stop)
 {
 	char *output_str = (char *)palloc(sizeof(char)*(num_values*(6+18+2))+1);
@@ -305,13 +304,15 @@ static inline void printout_double(double *vals, int num_values, int stop)
 	*str = '\0';
 	elog(NOTICE,"doubles:%s",output_str);
 }
+static inline void printout_index(char *ix, int num_values, int stop);
 static inline void printout_index(char *ix, int num_values, int stop)
 {
-	char *output_str = (char *)palloc(sizeof(char)*(num_values*(6+1))+1);
+	char *output_str = (char *)palloc(sizeof(char)*((num_values*7)+1));
 	char *str = output_str;
 	int numout;
+	elog(NOTICE,"num_values=%d",num_values);
 	for (int i=0; i<num_values; i++,ix+=int8compstoragesize(ix)) {
-		numout=snprintf(str,6,"%lld,",(long long int)compword_to_int8(ix));
+		numout=snprintf(str,7,"%lld,",(long long int)compword_to_int8(ix));
 		str+=numout;
 	}
 	*str = '\0';

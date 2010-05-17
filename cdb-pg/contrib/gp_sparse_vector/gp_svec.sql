@@ -79,6 +79,7 @@ CREATE OR REPLACE FUNCTION vec_pivot(svec,float8) RETURNS svec  AS 'gp_svec.so',
 CREATE OR REPLACE FUNCTION vec_sum(svec) RETURNS float8 AS 'gp_svec.so', 'svec_summate' STRICT LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION vec_sum(float8[]) RETURNS float8 AS 'gp_svec.so', 'float8arr_summate' STRICT LANGUAGE C IMMUTABLE; 
 CREATE OR REPLACE FUNCTION vec_median(float8[]) RETURNS float8 AS 'gp_svec.so', 'float8arr_median' STRICT LANGUAGE C IMMUTABLE; 
+CREATE OR REPLACE FUNCTION vec_median(svec) RETURNS float8 AS 'gp_svec.so', 'svec_median' STRICT LANGUAGE C IMMUTABLE; 
 
 -- Casts and transforms
 CREATE OR REPLACE FUNCTION svec_cast_int2(int2) RETURNS svec AS 'gp_svec.so', 'svec_cast_int2' STRICT LANGUAGE C IMMUTABLE; 

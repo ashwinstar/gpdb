@@ -22,12 +22,13 @@ DONE
 - Serialization format should avoid copies more often
 - array_agg function converts relation to svec
 - vec_median implements partition selection on float8[]
+- Bug: array_agg would fail with incorrect results when there were many duplicate values
+- implement vec_median for svec (using the sparsity to drive the partition selection)
 
 ==========================================================================================
 IMPROVEMENTS
 ==========================================================================================
 TODO
-- implement vec_median for svec (using the sparsity to drive the partition selection)
 - implement an svec_agg_distinct that reorders and distincts to maximize RLE compression
 	- implement an in memory median aggregate MEDIAN_INMEMORY that uses svec_agg_distinct
 	as a PREFUNC and feeds svecs into svec_concat as the SFUNC, then vec_median as

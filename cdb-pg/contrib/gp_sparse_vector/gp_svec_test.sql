@@ -73,3 +73,5 @@ select l1norm(array_agg(a)) from pivot_test;
 drop table if exists pivot_test;
 -- Answer should be 5
 select vec_median(array_agg(a)) from (select generate_series(1,9) a) foo;
+-- Answer should be a 10-wide vector
+select array_agg(a) from (select trunc(random()*10) a,generate_series(1,100000) order by a) foo;

@@ -1081,14 +1081,18 @@ svec_pivot(PG_FUNCTION_ARGS)
 	 * last index counter is located.
 	 */
 	{
-		char *index_location = sdata->index->data + sdata->index->cursor;
-		int old_index_storage_size,run_count;
-		float8 last_value;
+		char *index_location;
+		int old_index_storage_size;
+		int64 run_count;
+		float8 last_value=-100000;
 		bool new_run;
 
 		if (sdata->index->len==0) //New vector
 		{
 			new_run=true;
+			index_location = sdata->index->data;
+			sdata->index->cursor = 0;
+			run_count = 0;
 		} else
 		{
 			index_location = sdata->index->data + sdata->index->cursor;
@@ -1112,8 +1116,14 @@ svec_pivot(PG_FUNCTION_ARGS)
 			sdata->total_value_count++;
 		} else {
 			add_run_to_sdata((char *)&value,1,sizeof(float8),sdata);
-			sdata->index->cursor = sdata->index->len
-				- int8compstoragesize(index_location);
+			char *i_ptr=sdata->index->data;
+			int len=0;
+			for (int j=0;j<sdata->unique_value_count-1;j++)
+			{
+				len+=int8compstoragesize(i_ptr);
+				i_ptr+=int8compstoragesize(i_ptr);
+			}
+			sdata->index->cursor = len;
 		}
 	}
 
@@ -1124,50 +1134,119 @@ svec_pivot(PG_FUNCTION_ARGS)
 #define RANDOM_INT(x,y)	((int)(x)+(int)(((y+1)-(x))*RANDOM_RANGE))
 #define SWAPVAL(x,y,temp)	{ (temp) = (x); (x) = (y); (y) = (temp); }
 #define SWAP(x,y,tmp,size)	{ memcpy((tmp),(x),(size)); memcpy((x),(y),(size)); memcpy((y),(tmp),(size)); }
+#define SWAPN(lists,nlists,widths,tmp,I,J) \
+{ \
+	for (int III=0;III<nlists;III++) /* This should be unrolled as nlists will be small */ \
+	{ \
+	  	memcpy((tmp)[III]                  ,(lists)[III]+I*(widths)[III],(widths)[III]); \
+		memcpy((lists)[III]+I*(widths)[III],(lists)[III]+J*(widths)[III],(widths)[III]); \
+		memcpy((lists)[III]+J*(widths)[III],(tmp)[III]                  ,(widths)[III]); \
+	} \
+}
 /*
  * Implements the partition selection algorithm with randomized selection
  *
  * From: http://en.wikipedia.org/wiki/Selection_algorithm#Linear_general_selection_algorithm_-_.22Median_of_Medians_algorithm.22
+ *
+ * Arguments:
+ * 	char **lists:	A list of lists, the first of which contains the values used for pivots
+ * 			the 2nd and further lists will be pivoted alongside the first.
+ * 			A common usage would be to have the first list point to an array
+ * 			of values, then the second would point to another char ** list of
+ * 			strings.  The second list would have it's pointer values moved
+ * 			around as part of the pivots, and the index location where the
+ * 			partition value (say for the median) occurs would allow a reference
+ * 			to the associated strings in the second list.
+ * 	size_t nlists	the number of lists
+ * 	size_t *widths	An array of widths, one for each list
+ * 	int left,right	The left and right boundary of the list to be pivoted
+ * 	int pivotIndex	The index around which to pivot the list.  A common use-case is
+ * 			to choose pivotIndex = listLength/2, then the pivot will provide
+ * 			the median location.
+ * 	int (*compar)	A comparison function for the first list, which takes two pointers
+ * 			to values in the first list and returns 0,-1 or 1 when the first
+ * 			value is equal, less than or greater than the second.
+ * 	char **tmp 	A list of temporary variables, allocated with the size of the value
+ * 			in each list
+ * 	void *pvalue	Pointers to temporary variable allocated with the width of the
+ * 			values of the first list.
  */
 static int
-partition_pivot(char *list,size_t width, int left,int right,int pivotIndex, int (*compar)(const void *, const void *),void *tmp,void *pvalue)
+partition_pivot(char **lists, size_t nlists, size_t *widths,
+		int left, int right, int pivotIndex,
+		int (*compar)(const void *, const void *),
+		char **tmp, void *pvalue)
 {
 	int storeIndex = left;
 
-	memcpy(pvalue,list+pivotIndex*width,width);
+	memcpy(pvalue,lists[0]+pivotIndex*widths[0],widths[0]);
 
-	SWAP(list+pivotIndex*width,list+right*width,tmp,width) // Move pivot to end
+	SWAPN(lists,nlists,widths,tmp,pivotIndex,right) // Move pivot to end
 	for (int i=left;i<right;i++)
 	{
-		if (compar(list+i*width,pvalue) <= 0)
+		if (compar(lists[0]+i*widths[0],pvalue) <= 0)
 		{
-			SWAP(list+i*width,list+storeIndex*width,tmp,width)
+			SWAPN(lists,nlists,widths,tmp,i,storeIndex)
 			storeIndex++;
 		}
 	}
-	SWAP(list+storeIndex*width,list+right*width,tmp,width) // Move pivot to its final place
+	SWAPN(lists,nlists,widths,tmp,storeIndex,right) // Move pivot to its final place
 	return(storeIndex);
 }
 
+/*
+ * The call interface to partition_select has one complicated looking feature:
+ * you must pass in a "Real Index Calculation" function that will return an integer
+ * corresponding to the actual partition index.  This is used to enable the same routine to
+ * work with dense and compressed structures.  This function can just return the input
+ * integer unmodified if using a dense array of values as input.
+ * The arguments to realIndexCalc() should be:
+ * 	int: 		the pivot index (returned from the pivot function)
+ * 	char **:	the list of lists
+ * 	size_t:		the number of lists
+ * 	size_t *:	the width of each value in the list
+ */
 static int
-partition_select (char *list, size_t width, int left,int right,int k, int (*compar)(const void *, const void *))
+partition_select (char **lists, size_t nlists, size_t *widths,
+		int left, int right, int k,
+		int (*compar)(const void *, const void *),
+		int (*realIndexCalc)(const int, const char **, const size_t, const size_t *))
 {
-	int pivotIndex,pivotNewIndex;
-	void *tmp,*pvalue;
+	int pivotIndex,pivotNewIndex,realIndex;
+	char **tmp,*pvalue;
 
-	tmp = (void *)palloc(width);
-	pvalue = (void *)palloc(width);
+	/*
+	 * Allocate memory for the temporary variables
+	 */
+	tmp = (char **)palloc(nlists*sizeof(char *));
+	for (int i=0;i<nlists;i++)
+	{
+		tmp[i] = (void *)palloc(widths[i]);
+	}
+	pvalue = (char *)palloc(widths[0]);
 
 	while (1)
 	{
 		pivotIndex = RANDOM_INT(left,right);
-		pivotNewIndex = partition_pivot(list,width,left,right,pivotIndex,compar,tmp,pvalue);
-		if (k == pivotNewIndex)
+		pivotNewIndex = partition_pivot(lists,nlists,widths,
+					left,right,pivotIndex,
+					compar,
+					tmp,pvalue);
+		realIndex = realIndexCalc(pivotNewIndex,
+				(const char **)lists,nlists,widths);
+		if (k == realIndex)
 		{
+			/*
+			 * Free temporary variables
+			 */
+			for (int i=0;i<nlists;i++)
+			{
+				pfree(tmp[i]);
+			}
 			pfree(tmp);
 			pfree(pvalue);
 			return(k);
-		} else if (k < pivotNewIndex)
+		} else if (k < realIndex)
 		{
 			right = pivotNewIndex-1;
 		} else
@@ -1181,6 +1260,36 @@ static int
 compar_float8(const void *left,const void *right)
 {if(*(float8 *)left<*(float8 *)right){return -1;}else if(*(float8 *)left==*(float8 *)right){return 0;}else{return 1;}}
 
+static int
+real_index_calc_dense(const int k,const char **lists,const size_t nlists,const size_t *widths) {return k;}
+
+static int
+real_index_calc_sparse_RLE(const int k,const char **lists,const size_t nlists,const size_t *widths)
+{
+	int index=0;
+	for (int i=0;i<k;i++)
+	{
+		index = index + ((int64 *)(lists[1]))[i];
+	}
+	/*
+	 * We add 1 to the index calculation to correspond to the beginning
+	 * of the run located at (k).
+	 */
+	return (index+1);
+}
+
+static int
+float8arr_partition_internal(float8 *array,int len,int k)
+{
+	size_t width=sizeof(float8);
+	char *list = (char *)array;
+	int index = partition_select(&list,1,&width,
+				0,len-1,
+			   	k,compar_float8,
+				real_index_calc_dense);
+	return (index);
+}
+
 Datum float8arr_median(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1( float8arr_median);
@@ -1189,9 +1298,58 @@ Datum
 float8arr_median(PG_FUNCTION_ARGS) {
 	ArrayType *array  = PG_GETARG_ARRAYTYPE_P(0);
 	SparseData sdata = sdata_uncompressed_from_float8arr_internal(array);
-	int index = partition_select(sdata->vals->data,sizeof(float8),0,
-			   sdata->total_value_count-1,
-			   (sdata->total_value_count-1)/2,compar_float8);
+	int index,median_index = (sdata->total_value_count-1)/2;
+
+	index = float8arr_partition_internal((double *)(sdata->vals->data),
+					     sdata->total_value_count,
+					     median_index);
+
+	PG_RETURN_FLOAT8(((float8 *)(sdata->vals->data))[index]);
+}
+
+Datum svec_median(PG_FUNCTION_ARGS);
+
+PG_FUNCTION_INFO_V1( svec_median);
+
+Datum
+svec_median(PG_FUNCTION_ARGS) {
+	SvecType *svec  = PG_GETARG_SVECTYPE_P(0);
+	SparseData sdata = sdata_from_svec(svec);
+	int index,median_index = (sdata->total_value_count-1)/2;
+	char *i_ptr;
+	int64 *rle_index;
+
+	if (sdata->index->data != NULL) //Sparse vector
+	{
+		/*
+	 	 * We need to create an uncompressed run length index to
+	 	 * feed to the partition select routine
+	 	 */
+		rle_index = (int64 *)palloc(sizeof(int64)*(sdata->unique_value_count));
+		i_ptr = sdata->index->data;
+		for (int i=0;i<sdata->unique_value_count;i++,i_ptr+=int8compstoragesize(i_ptr))
+		{
+			rle_index[i] = compword_to_int8(i_ptr);
+		}
+		/*
+		 * Allocate the outer "list of lists"
+		 */
+		char **lists = (char **)palloc(sizeof(char *)*2);
+		lists[0] = sdata->vals->data;
+		lists[1] = (char *)rle_index;
+		size_t *widths = (size_t *)palloc(sizeof(size_t)*2);
+		widths[0] = sizeof(float8);
+		widths[1] = sizeof(int64);
+		index = partition_select(lists,2,widths,
+					0,sdata->unique_value_count-1,
+			   		median_index,compar_float8,
+					real_index_calc_sparse_RLE);
+	} else
+	{
+		index = float8arr_partition_internal((double *)(sdata->vals->data),
+				sdata->total_value_count,
+				median_index);
+	}
 
 	PG_RETURN_FLOAT8(((float8 *)(sdata->vals->data))[index]);
 }
