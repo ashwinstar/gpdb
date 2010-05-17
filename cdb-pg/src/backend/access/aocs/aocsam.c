@@ -1,7 +1,7 @@
 /* 
  * Append only columnar access methods
  *
- *	Copyright (c), 2009, Greenplum Inc.
+ *	Copyright (c), 2009-2010, Greenplum Inc.
  */
 
 #include "postgres.h"
