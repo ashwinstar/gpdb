@@ -134,7 +134,11 @@ export PYTHONHOME=$(BLD_PYTHON)
 endif
 endif
 
-ifeq "$(DISABLE_MAKE_WARNING)" ""
+##
+## Control if PATH and LD_LIBRARY_PATH|DYLD_LIBRARY_PATH values are displayed.
+##
+
+ifeq "$(ENABLE_MAKE_WARNING)" "true"
 $(warning PATH=$(PATH))
 $(warning $(BLD_WHERE_THE_LIBRARY_THINGS_ARE)=$($(BLD_WHERE_THE_LIBRARY_THINGS_ARE)))
 endif
