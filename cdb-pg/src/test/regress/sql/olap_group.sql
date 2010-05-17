@@ -200,35 +200,35 @@ select count(*) from sale group by rollup((cn,vn),(pn,dt));
 
 -- Distinguish grouping value NULLs from summarization NULLs --
 
-create table olap_tmp (a int, b int, c int);
+create table olap_tmp_for_group (a int, b int, c int);
 
-insert into olap_tmp values (1,1,1),(1,2,1),(1,2,1),(2,1,1),(2,2,1);
+insert into olap_tmp_for_group values (1,1,1),(1,2,1),(1,2,1),(2,1,1),(2,2,1);
 
 --start_equiv
-select * from olap_tmp;
+select * from olap_tmp_for_group;
 select * from (values (1,1,1),(1,2,1),(1,2,1),(2,1,1),(2,2,1)) r(a,b,c);
 --end_equiv
 
 --start_equiv
-select a,b,sum(c) from olap_tmp group by rollup(a,b);
+select a,b,sum(c) from olap_tmp_for_group group by rollup(a,b);
 select * from (values (1,1,1), (1,2,2), (1,null,3), (2,1,1), (2,2,1),(2,null,2),(null,null,5)) r(a,b,"sum");
 --end_equiv
 
-insert into olap_tmp values (1,null,1);
+insert into olap_tmp_for_group values (1,null,1);
 
 --start_equiv
-select a,b,sum(c) from olap_tmp group by rollup(a,b);
+select a,b,sum(c) from olap_tmp_for_group group by rollup(a,b);
 select * from (values (1,1,1), (1,2,2), (1,null,1), (1,null,4), (2,1,1), (2,2,1), (2,null,2), (null,null,6)) r(a,b,"sum");
 --end_equiv
 
-insert into olap_tmp values (null,null,1);
+insert into olap_tmp_for_group values (null,null,1);
 
 --start_equiv
-select a,b,sum(c) from olap_tmp group by rollup(a,b);
+select a,b,sum(c) from olap_tmp_for_group group by rollup(a,b);
 select * from (values (1,1,1), (1,2,2), (1,null,1), (1,null,4), (2,1,1), (2,2,1), (2,null,2), (null,null,1), (null,null,1), (null,null,7)) r(a,b,"sum");
 --end_equiv
 
-drop table olap_tmp; --ignore
+drop table olap_tmp_for_group; --ignore
 
 -- Grouping extension combination
 --start_equiv

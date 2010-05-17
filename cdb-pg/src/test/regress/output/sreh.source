@@ -354,21 +354,21 @@ DROP TABLE sreh_copy_errtbl;
 -- ###########################################################
 -- External Tables 
 -- ###########################################################
-CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
+CREATE EXTERNAL WEB TABLE gpfdist_sreh_start (x text)
 execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_srcdir@/data  </dev/null >/dev/null 2>&1 &); sleep 7; echo "starting...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
-CREATE EXTERNAL WEB TABLE gpfdist_stop (x text)
+CREATE EXTERNAL WEB TABLE gpfdist_sreh_stop (x text)
 execute E'(/bin/pkill gpfdist || killall gpfdist) > /dev/null 2>&1; echo "stopping..."'
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
-select * from gpfdist_stop;
+select * from gpfdist_sreh_stop;
       x      
 -------------
  stopping...
 (1 row)
 
-select * from gpfdist_start;
+select * from gpfdist_sreh_start;
       x      
 -------------
  starting...
@@ -624,14 +624,14 @@ NOTICE:  Found 9 data formatting errors (9 or more input rows). Rejected related
 
 set gp_reject_percent_threshold = 300; -- reset
 -- cleanup
-select * from gpfdist_stop;
+select * from gpfdist_sreh_stop;
       x      
 -------------
  stopping...
 (1 row)
 
-DROP EXTERNAL WEB TABLE gpfdist_stop;
-DROP EXTERNAL WEB TABLE gpfdist_start;
+DROP EXTERNAL WEB TABLE gpfdist_sreh_stop;
+DROP EXTERNAL WEB TABLE gpfdist_sreh_start;
 DROP EXTERNAL TABLE sreh_ext_2percent;
 DROP EXTERNAL TABLE sreh_ext_10percent;
 DROP EXTERNAL TABLE sreh_ext_20percent;

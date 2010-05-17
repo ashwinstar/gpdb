@@ -1,50 +1,50 @@
-drop table if exists skewed;
-drop table if exists spread;
+drop table if exists skewed_for_gpic;
+drop table if exists spread_for_gpic;
 
-drop table if exists foo;
+drop table if exists foo_for_gpic;
 
-create table skewed (a int, b int);
-create table spread (a int, b int);
+create table skewed_for_gpic (a int, b int);
+create table spread_for_gpic (a int, b int);
 
 set gp_interconnect_type=tcp;
 set gp_enable_mk_sort = off;
 
-insert into skewed select 1, i from generate_series(1, 1000) i;
-insert into spread select i, 1 from generate_series(1, 1000) i;
+insert into skewed_for_gpic select 1, i from generate_series(1, 1000) i;
+insert into spread_for_gpic select i, 1 from generate_series(1, 1000) i;
 
-select * from skewed, spread where skewed.a = spread.b order by 1, 2, 3, 4 desc limit 20;
+select * from skewed_for_gpic, spread_for_gpic where skewed_for_gpic.a = spread_for_gpic.b order by 1, 2, 3, 4 desc limit 20;
 
-create table foo as select *, 'Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'::text as c from skewed;
+create table foo_for_gpic as select *, 'Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'::text as c from skewed_for_gpic;
 
-select foo.a, spread.a, c from foo, spread where foo.a = spread.b order by foo.a, spread.a desc, c limit 20;
+select foo_for_gpic.a, spread_for_gpic.a, c from foo_for_gpic, spread_for_gpic where foo_for_gpic.a = spread_for_gpic.b order by foo_for_gpic.a, spread_for_gpic.a desc, c limit 20;
 
-truncate skewed;
-truncate spread;
+truncate skewed_for_gpic;
+truncate spread_for_gpic;
 
-drop table if exists foo;
+drop table if exists foo_for_gpic;
 
 set gp_interconnect_type=udp;
 
-insert into skewed select 1, i from generate_series(1, 1000) i;
-insert into spread select i, 1 from generate_series(1, 1000) i;
+insert into skewed_for_gpic select 1, i from generate_series(1, 1000) i;
+insert into spread_for_gpic select i, 1 from generate_series(1, 1000) i;
 
-create table foo as select *, 'Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'::text as c from skewed;
+create table foo_for_gpic as select *, 'Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'::text as c from skewed_for_gpic;
 
-select foo.a, spread.a, c from foo, spread where foo.a = spread.b order by foo.a, spread.a desc, c limit 20;
+select foo_for_gpic.a, spread_for_gpic.a, c from foo_for_gpic, spread_for_gpic where foo_for_gpic.a = spread_for_gpic.b order by foo_for_gpic.a, spread_for_gpic.a desc, c limit 20;
 
-select * from skewed, spread where skewed.a = spread.b order by 1 asc, 2, 3 asc, 4 limit 20;
+select * from skewed_for_gpic, spread_for_gpic where skewed_for_gpic.a = spread_for_gpic.b order by 1 asc, 2, 3 asc, 4 limit 20;
 
-drop table if exists foo;
-create table foo (a int, b text);
+drop table if exists foo_for_gpic;
+create table foo_for_gpic (a int, b text);
 
 begin;
 set gp_interconnect_type=nil;
-insert into foo values (1, 'test');
-select * from foo;
+insert into foo_for_gpic values (1, 'test');
+select * from foo_for_gpic;
 abort;
 
 set gp_enable_mk_sort = on;
-drop table if exists foo;
+drop table if exists foo_for_gpic;
 
 set gp_interconnect_type=udp;
 create temp table gpic_test1 (timet numeric(16,6));

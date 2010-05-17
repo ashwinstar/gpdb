@@ -1176,10 +1176,10 @@ FROM sale;
 SELECT count(distinct sale.pn) OVER (order by sale.pn) from sale;
 ERROR:  DISTINCT cannot be used with window specification containing an ORDER BY clause
 -- Aggregate nesting --
-create table olap_tmp(g integer, h integer, i integer, x integer);
+create table olap_tmp_for_window_seq(g integer, h integer, i integer, x integer);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'g' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-insert into olap_tmp values 
+insert into olap_tmp_for_window_seq values 
     (9,1,1,1),
     (9,1,1,0),
     (9,1,1,1),
@@ -1213,7 +1213,7 @@ insert into olap_tmp values
     (9,4,2,1),
     (9,4,2,0);
 select g,h,i,avg(x) as ax
-from olap_tmp
+from olap_tmp_for_window_seq
 group by g,h,i;
  g | h | i | ax  
 ---+---+---+-----
@@ -1229,7 +1229,7 @@ select
   ax, 
   avg(g) over (partition by h order by i), 
   sum(ax) over (partition by i order by g)
-from (select g,h,i,avg(x) as ax from olap_tmp group by g,h,i) rr;
+from (select g,h,i,avg(x) as ax from olap_tmp_for_window_seq group by g,h,i) rr;
  g | ax  | avg | sum 
 ---+-----+-----+-----
  9 | 0.5 |   9 | 1.0
@@ -1243,7 +1243,7 @@ select
   avg(x),
   avg(g) over (partition by h order by i),
   sum(avg(x)) over (partition by i order by g)
-from olap_tmp
+from olap_tmp_for_window_seq
 group by g,h,i;
  g | avg | avg | sum 
 ---+-----+-----+-----
@@ -1254,7 +1254,7 @@ group by g,h,i;
 (4 rows)
 
 -- end equivalent
-drop table olap_tmp;
+drop table olap_tmp_for_window_seq;
 -- begin equivalent
 select g, cn, vn, pn, s, rank() over (partition by g order by s)
 from
@@ -1263,7 +1263,7 @@ from
     cn, vn, pn,
     sum(qty*prc)
   from sale
-  group by rollup(cn,vn,pn)) olap_tmp(g,cn,vn,pn,s)
+  group by rollup(cn,vn,pn)) olap_tmp_for_window_seq(g,cn,vn,pn,s)
 order by 1,5; -- order 1,5
  g | cn | vn | pn  |    s    | rank 
 ---+----+----+-----+---------+------
@@ -2445,17 +2445,17 @@ unbounded following) as fv from sale; --mvd 1,2->3
 (12 rows)
 
 -- Test obscure types
-create table typetest (i int[], j box, k bit, l bytea, m text[]);
+create table typetest_for_window_seq (i int[], j box, k bit, l bytea, m text[]);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-insert into typetest values('{1, 2, 3}', '(1, 2), (3, 4)', '1', E'\012\001', 
+insert into typetest_for_window_seq values('{1, 2, 3}', '(1, 2), (3, 4)', '1', E'\012\001', 
 '{foo, bar}');
-insert into typetest values('{4, 5, 6}', '(3, 4), (6, 7)', '0', E'\002', 
+insert into typetest_for_window_seq values('{4, 5, 6}', '(3, 4), (6, 7)', '0', E'\002', 
 '{bar, baz}');
 select i, lead(i, 1, '{1}') over (w), 
 lead(j, 1, '(0, 0), (1, 1)') over (w), lead(k, 1) over(w),
 lead(l, 1, E'\015') over (w), lead(m, 1, '{test}') over (w)
-from typetest window w as (order by i);
+from typetest_for_window_seq window w as (order by i);
     i    |  lead   |    lead     | lead | lead |   lead    
 ---------+---------+-------------+------+------+-----------
  {1,2,3} | {4,5,6} | (6,7),(3,4) | 0    | \002 | {bar,baz}
@@ -2465,7 +2465,7 @@ from typetest window w as (order by i);
 select i, lag(i, 1, '{1}') over (w), 
 lag(j, 1, '(0, 0), (1, 1)') over (w), lag(k, 1) over(w),
 lag(l, 1, E'\015') over (w), lag(m, 1, '{test}') over (w)
-from typetest window w as (order by i);
+from typetest_for_window_seq window w as (order by i);
     i    |   lag   |     lag     | lag |   lag    |    lag    
 ---------+---------+-------------+-----+----------+-----------
  {1,2,3} | {1}     | (1,1),(0,0) |     | \015     | {test}
@@ -2475,7 +2475,7 @@ from typetest window w as (order by i);
 select i, first_value(i) over (w), 
 first_value(j) over (w), first_value(k) over(w),
 first_value(l) over (w), first_value(m) over (w)
-from typetest window w as (order by i rows 1 preceding);
+from typetest_for_window_seq window w as (order by i rows 1 preceding);
     i    | first_value | first_value | first_value | first_value | first_value 
 ---------+-------------+-------------+-------------+-------------+-------------
  {1,2,3} | {1,2,3}     | (3,4),(1,2) | 1           | \012\001    | {foo,bar}
@@ -2485,14 +2485,14 @@ from typetest window w as (order by i rows 1 preceding);
 select i, last_value(i) over (w), 
 last_value(j) over (w), last_value(k) over(w),
 last_value(l) over (w), last_value(m) over (w)
-from typetest window w as (order by i rows between current row and 1 following);
+from typetest_for_window_seq window w as (order by i rows between current row and 1 following);
     i    | last_value | last_value  | last_value | last_value | last_value 
 ---------+------------+-------------+------------+------------+------------
  {1,2,3} | {4,5,6}    | (6,7),(3,4) | 0          | \002       | {bar,baz}
  {4,5,6} | {4,5,6}    | (6,7),(3,4) | 0          | \002       | {bar,baz}
 (2 rows)
 
-drop table typetest;
+drop table typetest_for_window_seq;
 -- MPP-1881
 SELECT sale.pn,
 COUNT(pn) OVER(order by sale.pn asc range between unbounded preceding and unbounded following) 
@@ -7450,12 +7450,12 @@ View definition:
 
 drop view v1;
 -- MPP-2194, MPP-2236
-drop table if exists win_test;
-create table win_test (i int, j int);
+drop table if exists win_test_for_window_seq;
+create table win_test_for_window_seq (i int, j int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-insert into win_test values (0,0), (1,null), (2, null), (3,null);
-select i,j,sum(i) over(order by j range 1 preceding) from win_test; --mvd 2->3
+insert into win_test_for_window_seq values (0,0), (1,null), (2, null), (3,null);
+select i,j,sum(i) over(order by j range 1 preceding) from win_test_for_window_seq; --mvd 2->3
  i | j | sum 
 ---+---+-----
  0 | 0 |   0
@@ -7464,7 +7464,7 @@ select i,j,sum(i) over(order by j range 1 preceding) from win_test; --mvd 2->3
  1 |   |   6
 (4 rows)
 
-select i,j,sum(j) over(order by i rows 1 preceding) from win_test;
+select i,j,sum(j) over(order by i rows 1 preceding) from win_test_for_window_seq;
  i | j | sum 
 ---+---+-----
  0 | 0 |   0
@@ -7549,40 +7549,40 @@ select ord, cn,vn,sum(vn) over (order by ord rows between 3 following and floor(
 
 -- Test use of window functions in places they shouldn't be allowed: MPP-2382
 -- CHECK constraints
-CREATE TABLE wintest (i int check (i < count(*) over (order by i)));
+CREATE TABLE wintest_for_window_seq (i int check (i < count(*) over (order by i)));
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 ERROR:  cannot use window function in check constraint
-CREATE TABLE wintest (i int default count(*) over (order by i));
+CREATE TABLE wintest_for_window_seq (i int default count(*) over (order by i));
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 ERROR:  cannot use window function in default expression
 -- index expression and function
-CREATE TABLE wintest (i int);
+CREATE TABLE wintest_for_window_seq (i int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-CREATE INDEX wintest_idx on wintest (i) where i < count(*) over (order by i);
+CREATE INDEX wintest_idx_for_window_seq on wintest_for_window_seq (i) where i < count(*) over (order by i);
 ERROR:  cannot use window function in index predicate
-CREATE INDEX wintest_idx on wintest (sum(i) over (order by i));
+CREATE INDEX wintest_idx_for_window_seq on wintest_for_window_seq (sum(i) over (order by i));
 ERROR:  syntax error at or near "("
-LINE 1: CREATE INDEX wintest_idx on wintest (sum(i) over (order by i...
+LINE 1: ...window_seq on wintest_for_window_seq (sum(i) over (order by ...
                                                          ^
 -- alter table
-ALTER TABLE wintest alter i set default count(*) over (order by i);
+ALTER TABLE wintest_for_window_seq alter i set default count(*) over (order by i);
 ERROR:  cannot use window function in default expression
-alter table wintest alter column i type float using count(*) over (order by
+alter table wintest_for_window_seq alter column i type float using count(*) over (order by
 i)::float;
 ERROR:  cannot use window function in transform expression
 -- update
-insert into wintest values(1);
-update wintest set i = count(*) over (order by i);
+insert into wintest_for_window_seq values(1);
+update wintest_for_window_seq set i = count(*) over (order by i);
 ERROR:  cannot use window function in UPDATE
 -- domain suport
 create domain wintestd as int default count(*) over ();
 ERROR:  cannot use window function in default expression
 create domain wintestd as int check (value < count(*) over ());
 ERROR:  cannot use window function in check constraint
-drop table wintest;
+drop table wintest_for_window_seq;
 -- MPP-3295
 -- begin equivalent
 select cn,vn,rank() over (partition by cn order by vn) as rank

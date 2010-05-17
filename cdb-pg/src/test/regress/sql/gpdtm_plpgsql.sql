@@ -145,104 +145,104 @@ select a.c1 from t1234 a, t3456 b where a.c1 = b.c1 order by b.c1;
 
 create language plpgsql;
 
-drop table if exists foo;
-drop table if exists bar;
-drop table if exists baz;
+drop table if exists dtm_plpg_foo;
+drop table if exists dtm_plpg_bar;
+drop table if exists dtm_plpg_baz;
 
 CREATE OR REPLACE FUNCTION foo_func() RETURNS void AS '
 BEGIN
-update foo set a = a + 3;
-insert into baz select bar.b from bar where bar.b >= (select max(a) from foo);
-update foo set a = a + 3;
-insert into baz select bar.b from bar where bar.b >= (select max(a) from foo);
+update dtm_plpg_foo set a = a + 3;
+insert into dtm_plpg_baz select dtm_plpg_bar.b from dtm_plpg_bar where dtm_plpg_bar.b >= (select max(a) from dtm_plpg_foo);
+update dtm_plpg_foo set a = a + 3;
+insert into dtm_plpg_baz select dtm_plpg_bar.b from dtm_plpg_bar where dtm_plpg_bar.b >= (select max(a) from dtm_plpg_foo);
 END;
 ' LANGUAGE plpgsql;
 
-create table foo (a int) distributed randomly;
-create table bar (b int) distributed randomly;
-create table baz (c int) distributed randomly;
+create table dtm_plpg_foo (a int) distributed randomly;
+create table dtm_plpg_bar (b int) distributed randomly;
+create table dtm_plpg_baz (c int) distributed randomly;
 
-insert into foo values (1), (2), (3), (4), (5), (6);
-insert into bar values (5), (6), (7), (8), (9), (10);
+insert into dtm_plpg_foo values (1), (2), (3), (4), (5), (6);
+insert into dtm_plpg_bar values (5), (6), (7), (8), (9), (10);
 
-insert into baz select bar.b from bar where bar.b >= (select max(a) from foo);
-select * from baz order by 1;
+insert into dtm_plpg_baz select dtm_plpg_bar.b from dtm_plpg_bar where dtm_plpg_bar.b >= (select max(a) from dtm_plpg_foo);
+select * from dtm_plpg_baz order by 1;
 
-truncate baz;
+truncate dtm_plpg_baz;
 begin;
-update foo set a = a + 3;
-insert into baz select bar.b from bar where bar.b >= (select max(a) from foo);
-select * from baz order by 1;
+update dtm_plpg_foo set a = a + 3;
+insert into dtm_plpg_baz select dtm_plpg_bar.b from dtm_plpg_bar where dtm_plpg_bar.b >= (select max(a) from dtm_plpg_foo);
+select * from dtm_plpg_baz order by 1;
 abort;
 
-truncate baz;
-begin;
-set transaction isolation level serializable;
-update foo set a = a + 3;
-insert into baz select bar.b from bar where bar.b >= (select max(a) from foo);
-select * from baz order by 1;
-update foo set a = a + 3;
-insert into baz select bar.b from bar where bar.b >= (select max(a) from foo);
-select * from baz order by 1;
-abort;
-
-truncate baz;
-begin;
-select * from foo order by 1;
-select * from bar order by 1;
-select foo_func();
-select * from foo order by 1;
-select * from baz order by 1;
-abort;
-
-truncate baz;
+truncate dtm_plpg_baz;
 begin;
 set transaction isolation level serializable;
-select * from foo order by 1;
-select * from bar order by 1;
-select foo_func();
-select * from foo order by 1;
-select * from baz order by 1;
+update dtm_plpg_foo set a = a + 3;
+insert into dtm_plpg_baz select dtm_plpg_bar.b from dtm_plpg_bar where dtm_plpg_bar.b >= (select max(a) from dtm_plpg_foo);
+select * from dtm_plpg_baz order by 1;
+update dtm_plpg_foo set a = a + 3;
+insert into dtm_plpg_baz select dtm_plpg_bar.b from dtm_plpg_bar where dtm_plpg_bar.b >= (select max(a) from dtm_plpg_foo);
+select * from dtm_plpg_baz order by 1;
 abort;
 
-DROP TABLE foo;
+truncate dtm_plpg_baz;
+begin;
+select * from dtm_plpg_foo order by 1;
+select * from dtm_plpg_bar order by 1;
+select foo_func();
+select * from dtm_plpg_foo order by 1;
+select * from dtm_plpg_baz order by 1;
+abort;
+
+truncate dtm_plpg_baz;
+begin;
+set transaction isolation level serializable;
+select * from dtm_plpg_foo order by 1;
+select * from dtm_plpg_bar order by 1;
+select foo_func();
+select * from dtm_plpg_foo order by 1;
+select * from dtm_plpg_baz order by 1;
+abort;
+
+DROP TABLE dtm_plpg_foo;
 
 -- try to guarantee race-condition failures on the tests below.
 SET GP_ENABLE_SLOW_CURSOR_TESTMODE=on;
 
 BEGIN;
 SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-CREATE TABLE foo (a int, b int);
-INSERT INTO foo VALUES (0, 1);
-DECLARE c1 NO SCROLL CURSOR FOR SELECT b FROM foo;
-UPDATE foo SET b = 2;
+CREATE TABLE dtm_plpg_foo (a int, b int);
+INSERT INTO dtm_plpg_foo VALUES (0, 1);
+DECLARE c1 NO SCROLL CURSOR FOR SELECT b FROM dtm_plpg_foo;
+UPDATE dtm_plpg_foo SET b = 2;
 FETCH ALL FROM c1;
 COMMIT;
 
-DROP TABLE foo;
+DROP TABLE dtm_plpg_foo;
 
 BEGIN;
 SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-CREATE TABLE foo (a int, b int);
-INSERT INTO foo VALUES (0, 1);
-UPDATE foo SET b = 2;
-DECLARE c1 NO SCROLL CURSOR FOR SELECT b FROM foo;
-UPDATE foo SET b = 3;
+CREATE TABLE dtm_plpg_foo (a int, b int);
+INSERT INTO dtm_plpg_foo VALUES (0, 1);
+UPDATE dtm_plpg_foo SET b = 2;
+DECLARE c1 NO SCROLL CURSOR FOR SELECT b FROM dtm_plpg_foo;
+UPDATE dtm_plpg_foo SET b = 3;
 FETCH ALL FROM c1;
 COMMIT;
 
-DROP TABLE foo;
+DROP TABLE dtm_plpg_foo;
 
 BEGIN;
 SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-CREATE TABLE foo (a int, b int);
-INSERT INTO foo VALUES (0, 1);
-UPDATE foo SET b = 2;
-DECLARE c1 NO SCROLL CURSOR FOR SELECT b FROM foo;
-DELETE FROM foo;
-INSERT INTO foo VALUES (0, 3);
-UPDATE foo SET b = 4;
-INSERT INTO foo VALUES (0, 5);
+CREATE TABLE dtm_plpg_foo (a int, b int);
+INSERT INTO dtm_plpg_foo VALUES (0, 1);
+UPDATE dtm_plpg_foo SET b = 2;
+DECLARE c1 NO SCROLL CURSOR FOR SELECT b FROM dtm_plpg_foo;
+DELETE FROM dtm_plpg_foo;
+INSERT INTO dtm_plpg_foo VALUES (0, 3);
+UPDATE dtm_plpg_foo SET b = 4;
+INSERT INTO dtm_plpg_foo VALUES (0, 5);
 FETCH ALL FROM c1;
 COMMIT;
 

@@ -1,20 +1,20 @@
-drop table if exists skewed;
-NOTICE:  table "skewed" does not exist, skipping
-drop table if exists spread;
-NOTICE:  table "spread" does not exist, skipping
-drop table if exists foo;
-NOTICE:  table "foo" does not exist, skipping
-create table skewed (a int, b int);
+drop table if exists skewed_for_gpic;
+NOTICE:  table "skewed_for_gpic" does not exist, skipping
+drop table if exists spread_for_gpic;
+NOTICE:  table "spread_for_gpic" does not exist, skipping
+drop table if exists foo_for_gpic;
+NOTICE:  table "foo_for_gpic" does not exist, skipping
+create table skewed_for_gpic (a int, b int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-create table spread (a int, b int);
+create table spread_for_gpic (a int, b int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 set gp_interconnect_type=tcp;
 set gp_enable_mk_sort = off;
-insert into skewed select 1, i from generate_series(1, 1000) i;
-insert into spread select i, 1 from generate_series(1, 1000) i;
-select * from skewed, spread where skewed.a = spread.b order by 1, 2, 3, 4 desc limit 20;
+insert into skewed_for_gpic select 1, i from generate_series(1, 1000) i;
+insert into spread_for_gpic select i, 1 from generate_series(1, 1000) i;
+select * from skewed_for_gpic, spread_for_gpic where skewed_for_gpic.a = spread_for_gpic.b order by 1, 2, 3, 4 desc limit 20;
  a | b | a  | b 
 ---+---+----+---
  1 | 1 |  1 | 1
@@ -39,10 +39,10 @@ select * from skewed, spread where skewed.a = spread.b order by 1, 2, 3, 4 desc 
  1 | 1 | 20 | 1
 (20 rows)
 
-create table foo as select *, 'Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'::text as c from skewed;
+create table foo_for_gpic as select *, 'Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'::text as c from skewed_for_gpic;
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-select foo.a, spread.a, c from foo, spread where foo.a = spread.b order by foo.a, spread.a desc, c limit 20;
+select foo_for_gpic.a, spread_for_gpic.a, c from foo_for_gpic, spread_for_gpic where foo_for_gpic.a = spread_for_gpic.b order by foo_for_gpic.a, spread_for_gpic.a desc, c limit 20;
  a |  a   |                                                              c                                                               
 ---+------+------------------------------------------------------------------------------------------------------------------------------
  1 | 1000 | Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
@@ -67,16 +67,16 @@ select foo.a, spread.a, c from foo, spread where foo.a = spread.b order by foo.a
  1 | 1000 | Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
 (20 rows)
 
-truncate skewed;
-truncate spread;
-drop table if exists foo;
+truncate skewed_for_gpic;
+truncate spread_for_gpic;
+drop table if exists foo_for_gpic;
 set gp_interconnect_type=udp;
-insert into skewed select 1, i from generate_series(1, 1000) i;
-insert into spread select i, 1 from generate_series(1, 1000) i;
-create table foo as select *, 'Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'::text as c from skewed;
+insert into skewed_for_gpic select 1, i from generate_series(1, 1000) i;
+insert into spread_for_gpic select i, 1 from generate_series(1, 1000) i;
+create table foo_for_gpic as select *, 'Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'::text as c from skewed_for_gpic;
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-select foo.a, spread.a, c from foo, spread where foo.a = spread.b order by foo.a, spread.a desc, c limit 20;
+select foo_for_gpic.a, spread_for_gpic.a, c from foo_for_gpic, spread_for_gpic where foo_for_gpic.a = spread_for_gpic.b order by foo_for_gpic.a, spread_for_gpic.a desc, c limit 20;
  a |  a   |                                                              c                                                               
 ---+------+------------------------------------------------------------------------------------------------------------------------------
  1 | 1000 | Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
@@ -101,7 +101,7 @@ select foo.a, spread.a, c from foo, spread where foo.a = spread.b order by foo.a
  1 | 1000 | Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
 (20 rows)
 
-select * from skewed, spread where skewed.a = spread.b order by 1 asc, 2, 3 asc, 4 limit 20;
+select * from skewed_for_gpic, spread_for_gpic where skewed_for_gpic.a = spread_for_gpic.b order by 1 asc, 2, 3 asc, 4 limit 20;
  a | b | a  | b 
 ---+---+----+---
  1 | 1 |  1 | 1
@@ -126,15 +126,15 @@ select * from skewed, spread where skewed.a = spread.b order by 1 asc, 2, 3 asc,
  1 | 1 | 20 | 1
 (20 rows)
 
-drop table if exists foo;
-create table foo (a int, b text);
+drop table if exists foo_for_gpic;
+create table foo_for_gpic (a int, b text);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 begin;
 set gp_interconnect_type=nil;
 WARNING:  Nil-Interconnect diagnostic mode enabled (tuple will be dropped).
-insert into foo values (1, 'test');
-select * from foo;
+insert into foo_for_gpic values (1, 'test');
+select * from foo_for_gpic;
  a | b 
 ---+---
 (0 rows)
@@ -142,7 +142,7 @@ select * from foo;
 abort;
 WARNING:  Nil-Interconnect diagnostic mode disabled.
 set gp_enable_mk_sort = on;
-drop table if exists foo;
+drop table if exists foo_for_gpic;
 set gp_interconnect_type=udp;
 create temp table gpic_test1 (timet numeric(16,6));
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'timet' as the Greenplum Database data distribution key for this table.

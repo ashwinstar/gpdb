@@ -189,33 +189,33 @@ select * from direct_test;
 -- A subquery
 --
 set test_print_direct_dispatch_info=off;
-CREATE TEMP TABLE foo (id integer) DISTRIBUTED BY (id);
-CREATE TEMP TABLE bar (id1 integer, id2 integer) DISTRIBUTED by (id1);
+CREATE TEMP TABLE direct_dispatch_foo (id integer) DISTRIBUTED BY (id);
+CREATE TEMP TABLE direct_dispatch_bar (id1 integer, id2 integer) DISTRIBUTED by (id1);
 
-INSERT INTO foo VALUES (1);
+INSERT INTO direct_dispatch_foo VALUES (1);
 
-INSERT INTO bar VALUES (1, 1);
-INSERT INTO bar VALUES (2, 2);
-INSERT INTO bar VALUES (3, 1);
+INSERT INTO direct_dispatch_bar VALUES (1, 1);
+INSERT INTO direct_dispatch_bar VALUES (2, 2);
+INSERT INTO direct_dispatch_bar VALUES (3, 1);
 
 set test_print_direct_dispatch_info=on;
-SELECT * FROM foo WHERE id IN
-    (SELECT id2 FROM (SELECT DISTINCT id1, id2 FROM bar WHERE bar.id1 = 1) AS s) ORDER BY 1;
+SELECT * FROM direct_dispatch_foo WHERE id IN
+    (SELECT id2 FROM (SELECT DISTINCT id1, id2 FROM direct_dispatch_bar WHERE direct_dispatch_bar.id1 = 1) AS s) ORDER BY 1;
 --
 -- this one will NOT do direct dispatch because it is a many slice query and those are disabled right now
-SELECT * FROM foo WHERE id IN
-    (SELECT id2 FROM (SELECT id1, id2 FROM bar WHERE bar.id1 = 1 UNION
-                      SELECT id1, id2 FROM bar WHERE bar.id1 = 2) AS s) ORDER BY 1;
+SELECT * FROM direct_dispatch_foo WHERE id IN
+    (SELECT id2 FROM (SELECT id1, id2 FROM direct_dispatch_bar WHERE direct_dispatch_bar.id1 = 1 UNION
+                      SELECT id1, id2 FROM direct_dispatch_bar WHERE direct_dispatch_bar.id1 = 2) AS s) ORDER BY 1;
 
 -- simple one using an expression on the variable
-SELECT * from foo WHERE id * id = 1;
-SELECT * from foo WHERE id * id = 1 OR id = 1;
-SELECT * from foo where id * id = 1 AND id = 1;
+SELECT * from direct_dispatch_foo WHERE id * id = 1;
+SELECT * from direct_dispatch_foo WHERE id * id = 1 OR id = 1;
+SELECT * from direct_dispatch_foo where id * id = 1 AND id = 1;
 
 -- init plan to see how transaction escalation happens
-delete from foo where id = (select max(id2) from bar where id1 = 5);
-delete from foo where id * id = (select max(id2) from bar where id1 = 5) AND id = 3;
-delete from foo where id * id = (select max(id2) from bar) AND id = 3;
+delete from direct_dispatch_foo where id = (select max(id2) from direct_dispatch_bar where id1 = 5);
+delete from direct_dispatch_foo where id * id = (select max(id2) from direct_dispatch_bar where id1 = 5) AND id = 3;
+delete from direct_dispatch_foo where id * id = (select max(id2) from direct_dispatch_bar) AND id = 3;
 
 ------------------------------------
 -- more type tests 
@@ -311,8 +311,8 @@ drop table direct_test_type_int;
 drop table direct_test_type_double;
 drop table direct_test_type_date;
 drop table direct_test_type_numeric;
-drop table foo;
-drop table bar;
+drop table direct_dispatch_foo;
+drop table direct_dispatch_bar;
 drop table direct_test_type_int2;
 drop table direct_test_type_int4;
 drop table direct_test_type_int8;

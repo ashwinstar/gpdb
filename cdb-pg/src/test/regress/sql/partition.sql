@@ -870,9 +870,9 @@ alter table jjj add partition j5 end (date '2010-01-01');
 
 drop table jjj cascade;
 
-alter table hhh alter partition cc set tablespace foo;
+alter table hhh alter partition cc set tablespace foo_p;
 
-alter table hhh alter partition aa set tablespace foo;
+alter table hhh alter partition aa set tablespace foo_p;
 
 alter table hhh coalesce partition cc;
 
@@ -1418,280 +1418,280 @@ drop table region;
 -- 1) test all sanity checking
 
 -- policies are different
-create table foo (i int, j int) distributed by (i)
+create table foo_p (i int, j int) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
-create table bar (i int, j int) distributed by (j);
+create table bar_p (i int, j int) distributed by (j);
 -- should fail
-alter table foo exchange partition for(rank(6)) with table bar;
-drop table foo;
-drop table bar;
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
+drop table foo_p;
+drop table bar_p;
 
 -- random policy vs. hash policy
-create table foo (i int, j int) distributed by (i)
+create table foo_p (i int, j int) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
-create table bar (i int, j int) distributed randomly;
+create table bar_p (i int, j int) distributed randomly;
 -- should fail
-alter table foo exchange partition for(rank(6)) with table bar;
-drop table foo;
-drop table bar;
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
+drop table foo_p;
+drop table bar_p;
 
 -- different number of columns
-create table foo (i int, j int, k text) distributed by (i)
+create table foo_p (i int, j int, k text) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
-create table bar (i int, j int) distributed by (i);
+create table bar_p (i int, j int) distributed by (i);
 -- should fail
-alter table foo exchange partition for(rank(6)) with table bar;
-drop table foo;
-drop table bar;
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
+drop table foo_p;
+drop table bar_p;
 
 -- different types
-create table foo (i int, j int) distributed by (i)
+create table foo_p (i int, j int) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
-create table bar (i int, j int8) distributed by (i);
+create table bar_p (i int, j int8) distributed by (i);
 -- should fail
-alter table foo exchange partition for(rank(6)) with table bar;
-drop table foo;
-drop table bar;
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
+drop table foo_p;
+drop table bar_p;
 
 -- different column names
-create table foo (i int, j int) distributed by (i)
+create table foo_p (i int, j int) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
-create table bar (i int, m int) distributed by (i);
+create table bar_p (i int, m int) distributed by (i);
 -- should fail
-alter table foo exchange partition for(rank(6)) with table bar;
-drop table foo;
-drop table bar;
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
+drop table foo_p;
+drop table bar_p;
 
 -- different owner 
 create role part_role;
-create table foo (i int, j int) distributed by (i)
+create table foo_p (i int, j int) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
-create table bar (i int, j int) distributed by (i);
+create table bar_p (i int, j int) distributed by (i);
 set session authorization part_role;
 -- should fail
-alter table foo exchange partition for(rank(6)) with table bar;
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
 
 -- back to super user
 \c -
-alter table bar owner to part_role;
+alter table bar_p owner to part_role;
 set session authorization part_role;
 -- should fail
-alter table foo exchange partition for(rank(6)) with table bar;
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
 \c -
 
 -- owners should be the same, error out 
-alter table foo exchange partition for(rank(6)) with table bar;
-drop table foo;
-drop table bar;
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
+drop table foo_p;
+drop table bar_p;
 drop role part_role;
 -- with and without OIDs
 -- MPP-8405: disallow OIDS on partitioned tables 
-create table foo (i int, j int) with (oids = true) distributed by (i)
+create table foo_p (i int, j int) with (oids = true) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
 -- but disallow exchange if different oid settings
-create table foo (i int, j int) with (oids = false) distributed by (i)
+create table foo_p (i int, j int) with (oids = false) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
-create table bar (i int, j int) with (oids = true) distributed by (i);
+create table bar_p (i int, j int) with (oids = true) distributed by (i);
 -- should fail
-alter table foo exchange partition for(rank(6)) with table bar;
-drop table foo;
-drop table bar;
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
+drop table foo_p;
+drop table bar_p;
 
 -- non-partition table involved in inheritance
-create table foo (i int, j int) distributed by (i)
+create table foo_p (i int, j int) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
 
 create table barparent(i int, j int) distributed by (i);
-create table bar () inherits(barparent);
+create table bar_p () inherits(barparent);
 -- should fail
-alter table foo exchange partition for(rank(6)) with table bar;
-drop table foo;
-drop table bar;
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
+drop table foo_p;
+drop table bar_p;
 drop table barparent;
 
 -- non-partition table involved in inheritance
-create table foo (i int, j int) distributed by (i)
+create table foo_p (i int, j int) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
 
-create table bar(i int, j int) distributed by (i);
-create table barchild () inherits(bar);
+create table bar_p(i int, j int) distributed by (i);
+create table barchild () inherits(bar_p);
 -- should fail
-alter table foo exchange partition for(rank(6)) with table bar;
-drop table foo;
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
+drop table foo_p;
 drop table barchild;
-drop table bar;
+drop table bar_p;
 -- rules on non-partition table
-create table foo (i int, j int) distributed by (i)
+create table foo_p (i int, j int) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
 
-create table bar(i int, j int) distributed by (i);
-create table baz(i int, j int) distributed by (i);
-create rule bar_baz as on insert to bar do instead insert into baz
+create table bar_p(i int, j int) distributed by (i);
+create table baz_p(i int, j int) distributed by (i);
+create rule bar_baz as on insert to bar_p do instead insert into baz_p
   values(NEW.i, NEW.j);
 
-alter table foo exchange partition for(rank(2)) with table bar;
-drop table foo, bar, baz;
+alter table foo_p exchange partition for(rank(2)) with table bar_p;
+drop table foo_p, bar_p, baz_p;
 
 -- not yet: constraints on non-partition table
 -- should fail, can't have constraints which would conflict with the
 -- partitioning constraints
-create table foo (i int, j int) distributed by (i)
+create table foo_p (i int, j int) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
 
-create table bar(i int, j int check (j > 1000)) distributed by (i);
-alter table foo exchange partition for(rank(2)) with table bar;
-drop table foo, bar;
+create table bar_p(i int, j int check (j > 1000)) distributed by (i);
+alter table foo_p exchange partition for(rank(2)) with table bar_p;
+drop table foo_p, bar_p;
 
 -- shouldn't fail: it's fine to have constraints on columns which are not
 -- the subject of partitioning.
-create table foo (i int, j int) distributed by (i)
+create table foo_p (i int, j int) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
 
-create table bar(i int check (i > 1000), j int) distributed by (i);
-alter table foo exchange partition for(rank(2)) with table bar;
-drop table foo, bar;
+create table bar_p(i int check (i > 1000), j int) distributed by (i);
+alter table foo_p exchange partition for(rank(2)) with table bar_p;
+drop table foo_p, bar_p;
 
 -- shouldn't fail: check constraint matches rule
-create table foo (i int, j int) distributed by (i)
+create table foo_p (i int, j int) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
 
-create table bar(i int check (i > 1000), j int check (j >= 2 and j < 3 ))
+create table bar_p(i int check (i > 1000), j int check (j >= 2 and j < 3 ))
 distributed by (i);
-insert into bar values(100000, 2);
-alter table foo exchange partition for(rank(2)) with table bar;
-insert into bar values(200000, 2);
-select * from bar;
-drop table foo, bar;
+insert into bar_p values(100000, 2);
+alter table foo_p exchange partition for(rank(2)) with table bar_p;
+insert into bar_p values(200000, 2);
+select * from bar_p;
+drop table foo_p, bar_p;
 
 -- permissions
 create role part_role;
-create table foo (i int) partition by range(i)
+create table foo_p (i int) partition by range(i)
 (start(1) end(10) every(1));
-create table bar (i int);
-grant select on foo to part_role;
-revoke all on bar from part_role;
-select has_table_privilege('part_role', 'foo_1_prt_6'::regclass, 'select');
-select has_table_privilege('part_role', 'bar'::regclass, 'select');
-alter table foo exchange partition for(rank(6)) with table bar;
-select has_table_privilege('part_role', 'foo_1_prt_6'::regclass, 'select');
-select has_table_privilege('part_role', 'bar'::regclass, 'select');
-drop table foo;
-drop table bar;
+create table bar_p (i int);
+grant select on foo_p to part_role;
+revoke all on bar_p from part_role;
+select has_table_privilege('part_role', 'foo_p_1_prt_6'::regclass, 'select');
+select has_table_privilege('part_role', 'bar_p'::regclass, 'select');
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
+select has_table_privilege('part_role', 'foo_p_1_prt_6'::regclass, 'select');
+select has_table_privilege('part_role', 'bar_p'::regclass, 'select');
+drop table foo_p;
+drop table bar_p;
 drop role part_role;
 
 -- validation
-create table foo (i int) partition by range(i)
+create table foo_p (i int) partition by range(i)
 (start(1) end(10) every(1));
-create table bar (i int);
+create table bar_p (i int);
 
-insert into bar values(6);
-insert into bar values(100);
+insert into bar_p values(6);
+insert into bar_p values(100);
 -- should fail
-alter table foo exchange partition for(rank(6)) with table bar;
-alter table foo exchange partition for(rank(6)) with table bar without
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
+alter table foo_p exchange partition for(rank(6)) with table bar_p without
 validation;
-select * from foo;
-drop table foo, bar;
+select * from foo_p;
+drop table foo_p, bar_p;
 
 -- basic test
-create table foo (i int, j int) distributed by (i)
+create table foo_p (i int, j int) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
-create table bar(i int, j int) distributed by (i);
+create table bar_p(i int, j int) distributed by (i);
 
-insert into bar values(6);
-alter table foo exchange partition for(rank(6)) with table bar;
-select * from foo;
-select * from bar;
+insert into bar_p values(6);
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
+select * from foo_p;
+select * from bar_p;
 -- test that we got the dependencies right
-drop table bar;
-select * from foo;
-drop table foo;
-create table foo (i int, j int) distributed by (i)
+drop table bar_p;
+select * from foo_p;
+drop table foo_p;
+create table foo_p (i int, j int) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
-create table bar(i int, j int) distributed by (i);
+create table bar_p(i int, j int) distributed by (i);
 
-insert into bar values(6, 6);
-alter table foo exchange partition for(rank(6)) with table bar;
-insert into bar values(10, 10);
-drop table foo;
-select * from bar;
-drop table bar;
+insert into bar_p values(6, 6);
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
+insert into bar_p values(10, 10);
+drop table foo_p;
+select * from bar_p;
+drop table bar_p;
 
 -- AO exchange with heap
-create table foo (i int, j int) with(appendonly = true) distributed by (i)
+create table foo_p (i int, j int) with(appendonly = true) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
-create table bar(i int, j int) distributed by (i);
+create table bar_p(i int, j int) distributed by (i);
 
-insert into foo values(1, 1), (2, 1), (3, 1);
-insert into bar values(6, 6);
-alter table foo exchange partition for(rank(6)) with table bar;
-select * from foo;
-drop table bar;
-drop table foo;
+insert into foo_p values(1, 1), (2, 1), (3, 1);
+insert into bar_p values(6, 6);
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
+select * from foo_p;
+drop table bar_p;
+drop table foo_p;
 
 -- other way around
-create table foo (i int, j int) with(appendonly = false) distributed by (i)
+create table foo_p (i int, j int) with(appendonly = false) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
-create table bar(i int, j int) with(appendonly = true) distributed by (i);
+create table bar_p(i int, j int) with(appendonly = true) distributed by (i);
 
-insert into foo values(1, 1), (2, 1), (3, 2);
-insert into bar values(6, 6);
-alter table foo exchange partition for(rank(6)) with table bar;
-select * from foo;
-drop table bar;
-drop table foo;
+insert into foo_p values(1, 1), (2, 1), (3, 2);
+insert into bar_p values(6, 6);
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
+select * from foo_p;
+drop table bar_p;
+drop table foo_p;
 
 -- exchange AO with AO
-create table foo (i int, j int) with(appendonly = true) distributed by (i)
+create table foo_p (i int, j int) with(appendonly = true) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
-create table bar(i int, j int) with(appendonly = true) distributed by (i);
+create table bar_p(i int, j int) with(appendonly = true) distributed by (i);
 
-insert into foo values(1, 2), (2, 3), (3, 4);
-insert into bar values(6, 6);
-alter table foo exchange partition for(rank(6)) with table bar;
-select * from foo;
-drop table bar;
-drop table foo;
+insert into foo_p values(1, 2), (2, 3), (3, 4);
+insert into bar_p values(6, 6);
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
+select * from foo_p;
+drop table bar_p;
+drop table foo_p;
 
 -- exchange same table more than once
-create table foo (i int, j int) distributed by (i)
+create table foo_p (i int, j int) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
-create table bar(i int, j int) distributed by (i);
+create table bar_p(i int, j int) distributed by (i);
 
-insert into bar values(6, 6);
-alter table foo exchange partition for(rank(6)) with table bar;
-select * from foo;
-select * from bar;
+insert into bar_p values(6, 6);
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
+select * from foo_p;
+select * from bar_p;
 
-alter table foo exchange partition for(rank(6)) with table bar;
-select * from foo;
-select * from bar;
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
+select * from foo_p;
+select * from bar_p;
 
-alter table foo exchange partition for(rank(6)) with table bar;
-select * from foo;
-select * from bar;
-drop table foo;
-drop table bar;
+alter table foo_p exchange partition for(rank(6)) with table bar_p;
+select * from foo_p;
+select * from bar_p;
+drop table foo_p;
+drop table bar_p;
 
 -- XXX: not yet: VALIDATE parameter
 
@@ -1724,55 +1724,55 @@ partition aa start (date '2007-01-01') end (date '2008-01-01')
       every (interval '0 days')
 );
 
-create table foo (i int) distributed by(i)
+create table foo_p (i int) distributed by(i)
 partition by range(i)
 (start (1) end (20) every(0));
 
 -- Check for ambiguous EVERY parameters
 -- should fail
-create table foo (i int) distributed by (i)
+create table foo_p (i int) distributed by (i)
 partition by range(i)
 (start (1) end (20) every (0.6));
 -- should fail
-create table foo (i int) distributed by (i)
+create table foo_p (i int) distributed by (i)
 partition by range(i)
 (start (1) end (20) every (0.3));
 -- should fail
-create table foo (i int) distributed by (i)
+create table foo_p (i int) distributed by (i)
 partition by range(i)
 (start (1) end (20) every (1.3));
 
 -- should fail
-create table foo (i int) distributed by (i)
+create table foo_p (i int) distributed by (i)
 partition by range(i)
 (start (1) end (20) every (10.9));
 
 -- should fail
-create table foo (i int, j date) distributed by (i)
+create table foo_p (i int, j date) distributed by (i)
 partition by range(j)
 (start ('2007-01-01') end ('2008-01-01') every (interval '0.5 days'));
 
 -- should fail
-create table foo (i int, j date) distributed by (i)
+create table foo_p (i int, j date) distributed by (i)
 partition by range(j)
 (start ('2007-01-01') end ('2008-01-01') every (interval '0.5 days'));
 
 -- should fail
-create table foo (i int, j date) distributed by (i)
+create table foo_p (i int, j date) distributed by (i)
 partition by range(j)
 (start ('2007-01-01') end ('2008-01-01') every (interval '12 hours'));
 
 -- should fail
-create table foo (i int, j date) distributed by (i)
+create table foo_p (i int, j date) distributed by (i)
 partition by range(j)
 (start ('2007-01-01') end ('2008-01-01') every (interval '1.2 days'));
 
 -- should work
-create table foo (i int, j timestamp) distributed by (i)
+create table foo_p (i int, j timestamp) distributed by (i)
 partition by range(j)
 (start ('2007-01-01') end ('2007-01-05') every (interval '1.2 days'));
 
-drop table foo;
+drop table foo_p;
 
 -- test inclusive/exclusive
 CREATE TABLE supplier2(
@@ -1811,7 +1811,7 @@ select * from supplier2_1_prt_p5 order by S_NATIONKEY;
 drop table supplier2;
 
 -- mpp3238
-create table foo (i int) partition by range (i)
+create table foo_p (i int) partition by range (i)
 (
  partition p1 start('1') ,
  partition p2 start('2639161') ,
@@ -1825,15 +1825,15 @@ select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
  pg_get_expr(parlistvalues, parchildrelid, false) as list from 
  pg_partition_rule
  r, pg_partition p where r.paroid = p.oid and p.parlevel = 0 and 
- p.parrelid = 'foo'::regclass order by 1;
+ p.parrelid = 'foo_p'::regclass order by 1;
 
-insert into foo values(5994400);
-insert into foo values(1);
-insert into foo values(6000002);
-insert into foo values(5994376);
-drop table foo;
+insert into foo_p values(5994400);
+insert into foo_p values(1);
+insert into foo_p values(6000002);
+insert into foo_p values(5994376);
+drop table foo_p;
 
-create table foo (i int) 
+create table foo_p (i int) 
 partition by range(i)
 (partition p1 start(1) end(5),
  partition p2 start(10),
@@ -1843,10 +1843,10 @@ select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
   pg_get_expr(parlistvalues, parchildrelid, false) as list from
    pg_partition_rule
     r, pg_partition p where r.paroid = p.oid and p.parlevel = 0 and
-	 p.parrelid = 'foo'::regclass order by 1;
+	 p.parrelid = 'foo_p'::regclass order by 1;
 
-drop table foo;
-create table foo (i int) 
+drop table foo_p;
+create table foo_p (i int) 
 partition by range(i)
 (partition p1 start(1) end(5),
  partition p2 start(10) exclusive,
@@ -1858,46 +1858,46 @@ select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
   pg_get_expr(parlistvalues, parchildrelid, false) as list from
    pg_partition_rule
     r, pg_partition p where r.paroid = p.oid and p.parlevel = 0 and
-	 p.parrelid = 'foo'::regclass order by 1;
+	 p.parrelid = 'foo_p'::regclass order by 1;
 
-insert into foo values(1), (5), (10);
-drop table foo;
+insert into foo_p values(1), (5), (10);
+drop table foo_p;
 
 -- MPP-3264
 -- mix AO with master HEAP and see if copy works
-create table foo (i int)
+create table foo_p (i int)
 partition by list(i)
 (partition p1 values(1, 2, 3) with (appendonly = true),
  partition p2 values(4)
 );
 
-copy foo from stdin;
+copy foo_p from stdin;
 1
 2
 3
 4
 \.
-select * from foo;
-select * from foo_1_prt_p1;
-select * from foo_1_prt_p2;
-drop table foo;
+select * from foo_p;
+select * from foo_p_1_prt_p1;
+select * from foo_p_1_prt_p2;
+drop table foo_p;
 -- other way around
-create table foo (i int) with(appendonly = true)
+create table foo_p (i int) with(appendonly = true)
 partition by list(i)
 (partition p1 values(1, 2, 3) with (appendonly = false),
  partition p2 values(4)
 );
 
-copy foo from stdin;
+copy foo_p from stdin;
 1
 2
 3
 4
 \.
-select * from foo;
-select * from foo_1_prt_p1;
-select * from foo_1_prt_p2;
-drop table foo;
+select * from foo_p;
+select * from foo_p_1_prt_p1;
+select * from foo_p_1_prt_p2;
+drop table foo_p;
 -- MPP-3283
 CREATE TABLE PARTSUPP (
 PS_PARTKEY INTEGER,
@@ -2607,8 +2607,8 @@ update v set j = 2;
 update v set j = 3;
 drop table v;
 
--- test ao seg totals
-create  or replace function aototal(relname text) returns float8 as $$
+-- test AO seg totals
+create  or replace function ao_ptotal(relname text) returns float8 as $$
 declare
   aosegname text;
   tupcount float8 := 0;
@@ -2622,34 +2622,34 @@ begin
   return tupcount;
 end; $$ language plpgsql volatile;
 
-create table ao (i int) with (appendonly = true)
+create table ao_p (i int) with (appendonly = true)
  partition by range(i)
  (start(1) end(10) every(1));
 
-insert into ao values(1), (2), (3);
+insert into ao_p values(1), (2), (3);
 
-select partitiontablename, aototal(partitiontablename)
-from pg_partitions where tablename = 'ao';
-truncate ao;
-select partitiontablename, aototal(partitiontablename)
-from pg_partitions where tablename = 'ao';
-copy ao from stdin;
+select partitiontablename, ao_ptotal(partitiontablename)
+from pg_partitions where tablename = 'ao_p';
+truncate ao_p;
+select partitiontablename, ao_ptotal(partitiontablename)
+from pg_partitions where tablename = 'ao_p';
+copy ao_p from stdin;
 4
 5
 6
 \.
-select partitiontablename, aototal(partitiontablename)
-from pg_partitions where tablename = 'ao';
+select partitiontablename, ao_ptotal(partitiontablename)
+from pg_partitions where tablename = 'ao_p';
 -- try SREH
-copy ao from stdin log errors into ao_err segment reject limit 100;
+copy ao_p from stdin log errors into ao_p_err segment reject limit 100;
 6
 7
 10000
 f
 \.
-select partitiontablename, aototal(partitiontablename)
-from pg_partitions where tablename = 'ao';
-drop table ao;
+select partitiontablename, ao_ptotal(partitiontablename)
+from pg_partitions where tablename = 'ao_p';
+drop table ao_p;
 
 -- MPP-3591: make sure we get inclusive/exclusive right with every().
 create table k (i int) partition by range(i)
@@ -2768,7 +2768,7 @@ drop table mpp3621;
 
 -- Check for MPP-3679
 create table list_test (a text, b text) partition by list (a) (partition foo
-values ('foo'), partition bar values ('bar'), default partition baz); 
+values ('foo'), partition bar values ('bar'), default partition baz);
 alter table list_test split default partition at ('baz') into (partition bing,
 default partition);
 drop table list_test;
@@ -2835,14 +2835,14 @@ drop table r;
 
 -- MPP-4245: remove virtual subpartition templates when we drop the partitioned
 -- table
-create table bar (i int, j int) partition by range(i) subpartition by range(j)
+create table bar_p (i int, j int) partition by range(i) subpartition by range(j)
 subpartition template(start(1) end(10) every(1)) subpartition by range(i)
 subpartition template(start(1) end(10) every(5)) (start(1) end(10));
-alter table bar alter partition for ('5') alter partition for ('5')
+alter table bar_p alter partition for ('5') alter partition for ('5')
   drop partition for ('5');
-insert into bar values(1, 1);
-insert into bar values(5, 5);
-drop table bar;
+insert into bar_p values(1, 1);
+insert into bar_p values(5, 5);
+drop table bar_p;
 select parrelid::regclass, * from pg_partition;
 select * from pg_partition_rule;
 
@@ -3118,26 +3118,26 @@ PARTITION st_default );
 drop table sg_cal_event_silvertail_hour;
 
 -- Make sure we inherit master's storage settings
-create table foo (i int, j int, k text)
+create table foo_p (i int, j int, k text)
 with (appendonly = true, compresslevel = 5)
 partition by range(j) (start(1) end(10) every(1), default partition def);
-insert into foo select i, i+1, repeat('fooo', 9000) from generate_series(1, 100) i;
-alter table foo split default partition start (10) end(20) 
+insert into foo_p select i, i+1, repeat('fooo', 9000) from generate_series(1, 100) i;
+alter table foo_p split default partition start (10) end(20) 
 into (partition p10_20, partition def);
-select reloptions from pg_class where relname = 'foo_1_prt_p10_20';
-select count(distinct k) from foo;
-drop table foo;
+select reloptions from pg_class where relname = 'foo_p_1_prt_p10_20';
+select count(distinct k) from foo_p;
+drop table foo_p;
 
-create table foo (i int, j int, k text)
+create table foo_p (i int, j int, k text)
 partition by range(j) (start(1) end(10) every(1), default partition def
 with(appendonly = true));
-insert into foo select i, i+1, repeat('fooo', 9000) from generate_series(1, 100) i;
-alter table foo split default partition start (10) end(20) 
+insert into foo_p select i, i+1, repeat('fooo', 9000) from generate_series(1, 100) i;
+alter table foo_p split default partition start (10) end(20) 
 into (partition p10_20, partition def);
-select reloptions from pg_class where relname = 'foo_1_prt_p10_20';
-select reloptions from pg_class where relname = 'foo_1_prt_def';
-select count(distinct k) from foo;
-drop table foo;
+select reloptions from pg_class where relname = 'foo_p_1_prt_p10_20';
+select reloptions from pg_class where relname = 'foo_p_1_prt_def';
+select count(distinct k) from foo_p;
+drop table foo_p;
 
 
 -- MPP-5878 - display correct partition boundary 

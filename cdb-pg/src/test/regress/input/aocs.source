@@ -16,7 +16,7 @@ begin
 end; $$ language plpgsql volatile;
 
 
-CREATE TABLE tenk_heap (
+CREATE TABLE tenk_heap_for_aocs (
 	unique1 	int4,
 	unique2 	int4,
 	two 	 	int4,
@@ -40,18 +40,18 @@ CREATE TABLE tenk_heap (
 -- of them (the first 4) for later testing.
 --
 -- valid
-CREATE TABLE tenk_aocs1 (like tenk_heap) with (appendonly=true, orientation=column, checksum=true) distributed by(unique1);
-CREATE TABLE tenk_aocs2 (like tenk_heap) with (appendonly=true, orientation=column, compresslevel=0, blocksize=262144) distributed by(unique1);
-CREATE TABLE tenk_aocs3 (like tenk_heap) with (appendonly=true, orientation=column, compresslevel=6, blocksize=1048576, checksum=true) distributed by(unique1);
-CREATE TABLE tenk_aocs4 (like tenk_heap) with (appendonly=true, orientation=column, compresslevel=1, compresstype=zlib) distributed by(unique1);
-CREATE TABLE tenk_aocs5 (like tenk_heap) with (appendonly=true, orientation=column, compresslevel=6, compresstype=zlib, blocksize=1048576, checksum=true) distributed by(unique1);
+CREATE TABLE tenk_aocs1 (like tenk_heap_for_aocs) with (appendonly=true, orientation=column, checksum=true) distributed by(unique1);
+CREATE TABLE tenk_aocs2 (like tenk_heap_for_aocs) with (appendonly=true, orientation=column, compresslevel=0, blocksize=262144) distributed by(unique1);
+CREATE TABLE tenk_aocs3 (like tenk_heap_for_aocs) with (appendonly=true, orientation=column, compresslevel=6, blocksize=1048576, checksum=true) distributed by(unique1);
+CREATE TABLE tenk_aocs4 (like tenk_heap_for_aocs) with (appendonly=true, orientation=column, compresslevel=1, compresstype=zlib) distributed by(unique1);
+CREATE TABLE tenk_aocs5 (like tenk_heap_for_aocs) with (appendonly=true, orientation=column, compresslevel=6, compresstype=zlib, blocksize=1048576, checksum=true) distributed by(unique1);
 -- invalid
-CREATE TABLE tenk_aocs6 (like tenk_heap) with (appendonly=false, orientation=column, compresslevel=6, checksum=true) distributed by(unique1);
-CREATE TABLE tenk_aocs7 (like tenk_heap) with (appendonly=true, orientation=column, compresslevel=6, compresstype=zlib) distributed by(unique1);
-CREATE TABLE tenk_aocs8 (like tenk_heap) with (appendonly=true, orientation=column, blocksize=100) distributed by(unique1);
-CREATE TABLE tenk_aocs9 (like tenk_heap) with (appendonly=true, orientation=column, compresslevel=0, compresstype=zlib) distributed by(unique1);
+CREATE TABLE tenk_aocs6 (like tenk_heap_for_aocs) with (appendonly=false, orientation=column, compresslevel=6, checksum=true) distributed by(unique1);
+CREATE TABLE tenk_aocs7 (like tenk_heap_for_aocs) with (appendonly=true, orientation=column, compresslevel=6, compresstype=zlib) distributed by(unique1);
+CREATE TABLE tenk_aocs8 (like tenk_heap_for_aocs) with (appendonly=true, orientation=column, blocksize=100) distributed by(unique1);
+CREATE TABLE tenk_aocs9 (like tenk_heap_for_aocs) with (appendonly=true, orientation=column, compresslevel=0, compresstype=zlib) distributed by(unique1);
 -- cs without ao is invalid.
-CREATE TABLE tenk_aocs10 (like tenk_heap) with (orientation=column) distributed by(unique1);
+CREATE TABLE tenk_aocs10 (like tenk_heap_for_aocs) with (orientation=column) distributed by(unique1);
 
 -------------------- 
 -- catalog checks
@@ -65,14 +65,14 @@ SELECT c.relname, a.blocksize, a.compresstype, a.compresslevel, a.checksum FROM 
 --------------------
 
 -- COPY
-COPY tenk_heap FROM '@abs_srcdir@/data/tenk.data';
+COPY tenk_heap_for_aocs FROM '@abs_srcdir@/data/tenk.data';
 COPY tenk_aocs1 FROM '@abs_srcdir@/data/tenk.data';
 COPY tenk_aocs2 FROM '@abs_srcdir@/data/tenk.data';
 COPY tenk_aocs3 FROM '@abs_srcdir@/data/tenk.data';
 COPY tenk_aocs4 FROM '@abs_srcdir@/data/tenk.data';
 
 -- SELECT
-SELECT count(*) FROM tenk_heap;
+SELECT count(*) FROM tenk_heap_for_aocs;
 SELECT count(*) FROM tenk_aocs1;
 SELECT count(*) FROM tenk_aocs2;
 SELECT count(*) FROM tenk_aocs3;
@@ -80,10 +80,10 @@ SELECT count(*) FROM tenk_aocs4;
 SELECT aototal('tenk_aocs1'), aototal('tenk_aocs2'), aototal('tenk_aocs3'), aototal('tenk_aocs4');
 
 -- INSERT SELECT
-INSERT INTO tenk_aocs1 SELECT * FROM tenk_heap;
-INSERT INTO tenk_aocs2 SELECT * FROM tenk_heap;
-INSERT INTO tenk_aocs3 SELECT * FROM tenk_heap;
-INSERT INTO tenk_aocs4 SELECT * FROM tenk_heap;
+INSERT INTO tenk_aocs1 SELECT * FROM tenk_heap_for_aocs;
+INSERT INTO tenk_aocs2 SELECT * FROM tenk_heap_for_aocs;
+INSERT INTO tenk_aocs3 SELECT * FROM tenk_heap_for_aocs;
+INSERT INTO tenk_aocs4 SELECT * FROM tenk_heap_for_aocs;
 
 -- mix and match some
 INSERT INTO tenk_aocs1 SELECT * FROM tenk_aocs1;
@@ -93,7 +93,7 @@ INSERT INTO tenk_aocs4 SELECT * FROM tenk_aocs3;
 SELECT aototal('tenk_aocs1'), aototal('tenk_aocs2'), aototal('tenk_aocs3'), aototal('tenk_aocs4');
 
 -- SELECT
-SELECT count(*) FROM tenk_heap;
+SELECT count(*) FROM tenk_heap_for_aocs;
 SELECT count(*) FROM tenk_aocs1;
 SELECT count(*) FROM tenk_aocs2;
 SELECT count(*) FROM tenk_aocs3;
@@ -133,7 +133,7 @@ SELECT aototal('tenk_aocs1'), aototal('tenk_aocs2'), aototal('tenk_aocs3'), aoto
 
 -- rollback
 BEGIN;
-INSERT INTO tenk_aocs1 SELECT * FROM tenk_heap;
+INSERT INTO tenk_aocs1 SELECT * FROM tenk_heap_for_aocs;
 SELECT count(*) FROM tenk_aocs1; -- should show new count
 ROLLBACK;
 SELECT count(*) FROM tenk_aocs1; -- should show previous count
@@ -141,7 +141,7 @@ SELECT aototal('tenk_aocs1');
 
 -- commit
 BEGIN;
-INSERT INTO tenk_aocs1 SELECT * FROM tenk_heap;
+INSERT INTO tenk_aocs1 SELECT * FROM tenk_heap_for_aocs;
 SELECT count(*) FROM tenk_aocs1; -- should show new count
 COMMIT;
 SELECT count(*) FROM tenk_aocs1; -- should show new count
@@ -203,10 +203,10 @@ DROP TABLE tenk_aocs3;
 DROP TABLE tenk_aocs4;
 
 -- CTAS
-CREATE TABLE tenk_aocs1 with(appendonly=true, orientation=column, checksum=true) AS SELECT * FROM tenk_heap;
-CREATE TABLE tenk_aocs2 with(appendonly=true, orientation=column, compresslevel=0, blocksize=262144) AS SELECT * FROM tenk_heap;
-CREATE TABLE tenk_aocs3 with(appendonly=true, orientation=column, compresslevel=6, blocksize=1048576, checksum=true) AS SELECT * FROM tenk_heap;
-CREATE TABLE tenk_aocs4 with(appendonly=true, orientation=column, compresslevel=1, compresstype=zlib) AS SELECT * FROM tenk_heap;
+CREATE TABLE tenk_aocs1 with(appendonly=true, orientation=column, checksum=true) AS SELECT * FROM tenk_heap_for_aocs;
+CREATE TABLE tenk_aocs2 with(appendonly=true, orientation=column, compresslevel=0, blocksize=262144) AS SELECT * FROM tenk_heap_for_aocs;
+CREATE TABLE tenk_aocs3 with(appendonly=true, orientation=column, compresslevel=6, blocksize=1048576, checksum=true) AS SELECT * FROM tenk_heap_for_aocs;
+CREATE TABLE tenk_aocs4 with(appendonly=true, orientation=column, compresslevel=1, compresstype=zlib) AS SELECT * FROM tenk_heap_for_aocs;
 SELECT c.relname, a.blocksize, a.compresstype, a.compresslevel, a.checksum FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'tenk_aocs%' AND c.oid=a.relid ORDER BY c.relname;
 SELECT count(*) FROM tenk_aocs1;
 SELECT count(*) FROM tenk_aocs2;
@@ -234,11 +234,11 @@ SELECT count(*) FROM tenk_aocs4;
 
 -- JOIN
 SELECT count(*) FROM tenk_aocs1 t1, tenk_aocs2 t2 where t1.unique1 = t2.unique2;
-SELECT count(*) FROM tenk_aocs1 t1, tenk_heap t2 where t1.unique1 = t2.unique2;
+SELECT count(*) FROM tenk_aocs1 t1, tenk_heap_for_aocs t2 where t1.unique1 = t2.unique2;
 
 -- EXCEPT
 SELECT unique1 FROM tenk_aocs1 EXCEPT SELECT unique1 FROM tenk_aocs1;
-SELECT unique1 FROM tenk_heap EXCEPT SELECT unique1 FROM tenk_aocs3;
+SELECT unique1 FROM tenk_heap_for_aocs EXCEPT SELECT unique1 FROM tenk_aocs3;
 
 -- TRUNCATE
 TRUNCATE tenk_aocs2;
@@ -313,7 +313,7 @@ DROP TABLE syscoltest;
 -------------------- 
 -- supported sql 
 --------------------
-DROP TABLE tenk_heap;
+DROP TABLE tenk_heap_for_aocs;
 DROP TABLE tenk_aocs1;
 DROP TABLE tenk_aocs2;
 DROP TABLE tenk_aocs3;

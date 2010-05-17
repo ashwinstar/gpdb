@@ -696,7 +696,7 @@ location ('file://@hostname@@abs_srcdir@/data/nation.tbl' )
 FORMAT 'text' (delimiter '|');
 -- Don't just return the row, as we'll get skew from OID differences between
 -- runs.
-select count(*) from pg_catalog.pg_exttable;
+select count(*) from pg_catalog.pg_exttable where reloid in (select r.oid from pg_class r where r.relname in ('ext_nation', 'ext_whois', 'gpfdist_status'));
  count 
 -------
      1
@@ -704,8 +704,8 @@ select count(*) from pg_catalog.pg_exttable;
 
 drop schema exttabletest cascade;
 NOTICE:  drop cascades to external table exttabletest.ext_nation
-select count(*) from pg_catalog.pg_exttable;
- count 
+select count(*) from pg_catalog.pg_exttable where reloid in (select r.oid from pg_class r where r.relname in ('ext_nation', 'ext_whois', 'gpfdist_status'));
+ count
 -------
      0
 (1 row)

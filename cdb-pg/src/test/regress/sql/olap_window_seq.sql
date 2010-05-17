@@ -340,9 +340,9 @@ SELECT count(distinct sale.pn) OVER (order by sale.pn) from sale;
 
 -- Aggregate nesting --
 
-create table olap_tmp(g integer, h integer, i integer, x integer);
+create table olap_tmp_for_window_seq(g integer, h integer, i integer, x integer);
 
-insert into olap_tmp values 
+insert into olap_tmp_for_window_seq values 
     (9,1,1,1),
     (9,1,1,0),
     (9,1,1,1),
@@ -378,7 +378,7 @@ insert into olap_tmp values
 
 
 select g,h,i,avg(x) as ax
-from olap_tmp
+from olap_tmp_for_window_seq
 group by g,h,i;
 
 -- begin equivalent
@@ -388,19 +388,19 @@ select
   ax, 
   avg(g) over (partition by h order by i), 
   sum(ax) over (partition by i order by g)
-from (select g,h,i,avg(x) as ax from olap_tmp group by g,h,i) rr;
+from (select g,h,i,avg(x) as ax from olap_tmp_for_window_seq group by g,h,i) rr;
 
 select
   g,
   avg(x),
   avg(g) over (partition by h order by i),
   sum(avg(x)) over (partition by i order by g)
-from olap_tmp
+from olap_tmp_for_window_seq
 group by g,h,i;
 
 -- end equivalent
 
-drop table olap_tmp;
+drop table olap_tmp_for_window_seq;
 
 -- begin equivalent
 
@@ -411,7 +411,7 @@ from
     cn, vn, pn,
     sum(qty*prc)
   from sale
-  group by rollup(cn,vn,pn)) olap_tmp(g,cn,vn,pn,s)
+  group by rollup(cn,vn,pn)) olap_tmp_for_window_seq(g,cn,vn,pn,s)
 order by 1,5; -- order 1,5
 
 select
@@ -675,33 +675,33 @@ last_VALUE(((cn*100 + (sale.pn+sale.pn)/100)%100)) OVER(order by sale.cn, sale.p
 unbounded following) as fv from sale; --mvd 1,2->3
 
 -- Test obscure types
-create table typetest (i int[], j box, k bit, l bytea, m text[]);
-insert into typetest values('{1, 2, 3}', '(1, 2), (3, 4)', '1', E'\012\001', 
+create table typetest_for_window_seq (i int[], j box, k bit, l bytea, m text[]);
+insert into typetest_for_window_seq values('{1, 2, 3}', '(1, 2), (3, 4)', '1', E'\012\001', 
 '{foo, bar}');
-insert into typetest values('{4, 5, 6}', '(3, 4), (6, 7)', '0', E'\002', 
+insert into typetest_for_window_seq values('{4, 5, 6}', '(3, 4), (6, 7)', '0', E'\002', 
 '{bar, baz}');
 
 select i, lead(i, 1, '{1}') over (w), 
 lead(j, 1, '(0, 0), (1, 1)') over (w), lead(k, 1) over(w),
 lead(l, 1, E'\015') over (w), lead(m, 1, '{test}') over (w)
-from typetest window w as (order by i);
+from typetest_for_window_seq window w as (order by i);
 
 select i, lag(i, 1, '{1}') over (w), 
 lag(j, 1, '(0, 0), (1, 1)') over (w), lag(k, 1) over(w),
 lag(l, 1, E'\015') over (w), lag(m, 1, '{test}') over (w)
-from typetest window w as (order by i);
+from typetest_for_window_seq window w as (order by i);
 
 select i, first_value(i) over (w), 
 first_value(j) over (w), first_value(k) over(w),
 first_value(l) over (w), first_value(m) over (w)
-from typetest window w as (order by i rows 1 preceding);
+from typetest_for_window_seq window w as (order by i rows 1 preceding);
 
 select i, last_value(i) over (w), 
 last_value(j) over (w), last_value(k) over(w),
 last_value(l) over (w), last_value(m) over (w)
-from typetest window w as (order by i rows between current row and 1 following);
+from typetest_for_window_seq window w as (order by i rows between current row and 1 following);
 
-drop table typetest;
+drop table typetest_for_window_seq;
 
 -- MPP-1881
 SELECT sale.pn,
@@ -1263,11 +1263,11 @@ from sale group by rollup(cn,dt);
 drop view v1;
 
 -- MPP-2194, MPP-2236
-drop table if exists win_test;
-create table win_test (i int, j int);
-insert into win_test values (0,0), (1,null), (2, null), (3,null);
-select i,j,sum(i) over(order by j range 1 preceding) from win_test; --mvd 2->3
-select i,j,sum(j) over(order by i rows 1 preceding) from win_test;
+drop table if exists win_test_for_window_seq;
+create table win_test_for_window_seq (i int, j int);
+insert into win_test_for_window_seq values (0,0), (1,null), (2, null), (3,null);
+select i,j,sum(i) over(order by j range 1 preceding) from win_test_for_window_seq; --mvd 2->3
+select i,j,sum(j) over(order by i rows 1 preceding) from win_test_for_window_seq;
 
 -- MPP-2305
 SELECT sale.vn,sale.cn,sale.pn,
@@ -1284,28 +1284,28 @@ select ord, cn,vn,sum(vn) over (order by ord rows between 3 following and floor(
 
 -- Test use of window functions in places they shouldn't be allowed: MPP-2382
 -- CHECK constraints
-CREATE TABLE wintest (i int check (i < count(*) over (order by i)));
+CREATE TABLE wintest_for_window_seq (i int check (i < count(*) over (order by i)));
 
-CREATE TABLE wintest (i int default count(*) over (order by i));
+CREATE TABLE wintest_for_window_seq (i int default count(*) over (order by i));
 
 -- index expression and function
-CREATE TABLE wintest (i int);
-CREATE INDEX wintest_idx on wintest (i) where i < count(*) over (order by i);
-CREATE INDEX wintest_idx on wintest (sum(i) over (order by i));
+CREATE TABLE wintest_for_window_seq (i int);
+CREATE INDEX wintest_idx_for_window_seq on wintest_for_window_seq (i) where i < count(*) over (order by i);
+CREATE INDEX wintest_idx_for_window_seq on wintest_for_window_seq (sum(i) over (order by i));
 -- alter table
-ALTER TABLE wintest alter i set default count(*) over (order by i);
-alter table wintest alter column i type float using count(*) over (order by
+ALTER TABLE wintest_for_window_seq alter i set default count(*) over (order by i);
+alter table wintest_for_window_seq alter column i type float using count(*) over (order by
 i)::float;
 
 -- update
-insert into wintest values(1);
-update wintest set i = count(*) over (order by i);
+insert into wintest_for_window_seq values(1);
+update wintest_for_window_seq set i = count(*) over (order by i);
 
 -- domain suport
 create domain wintestd as int default count(*) over ();
 create domain wintestd as int check (value < count(*) over ());
 
-drop table wintest;
+drop table wintest_for_window_seq;
 
 -- MPP-3295
 -- begin equivalent

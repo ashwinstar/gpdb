@@ -442,7 +442,7 @@ location ('file://@hostname@@abs_srcdir@/data/nation.tbl' )
 FORMAT 'text' (delimiter '|');
 -- Don't just return the row, as we'll get skew from OID differences between
 -- runs.
-select count(*) from pg_catalog.pg_exttable;
+select count(*) from pg_catalog.pg_exttable where reloid in (select r.oid from pg_class r where r.relname in ('ext_nation', 'ext_whois', 'gpfdist_status'));
 drop schema exttabletest cascade;
-select count(*) from pg_catalog.pg_exttable;
+select count(*) from pg_catalog.pg_exttable where reloid in (select r.oid from pg_class r where r.relname in ('ext_nation', 'ext_whois', 'gpfdist_status'));
 SET gp_foreign_data_access = false;

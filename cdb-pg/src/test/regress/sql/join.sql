@@ -44,23 +44,23 @@ INSERT INTO J2_TBL VALUES (NULL, 0);
 --
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL AS tx ORDER BY 2,3;
+  FROM J1_TBL AS tx_join ORDER BY 2,3;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL tx ORDER BY 2,3;
+  FROM J1_TBL tx_join ORDER BY 2,3;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL AS t1 (a, b, c) ORDER BY 2,3;
+  FROM J1_TBL AS t1_join (a, b, c) ORDER BY 2,3;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c) ORDER BY 2,3;
+  FROM J1_TBL t1_join (a, b, c) ORDER BY 2,3;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e) ORDER BY 2,3,4,5,6;
+  FROM J1_TBL t1_join (a, b, c), J2_TBL t2_join (d, e) ORDER BY 2,3,4,5,6;
 
-SELECT '' AS "xxx", t1.a, t2.e
-  FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e)
-  WHERE t1.a = t2.d ORDER BY 2,3;
+SELECT '' AS "xxx", t1_join.a, t2_join.e
+  FROM J1_TBL t1_join (a, b, c), J2_TBL t2_join (d, e)
+  WHERE t1_join.a = t2_join.d ORDER BY 2,3;
 
 
 --
@@ -77,16 +77,16 @@ SELECT '' AS "xxx", i, k, t
   FROM J1_TBL CROSS JOIN J2_TBL ORDER BY 2,3,4;
 
 -- resolve previous ambiguity by specifying the table name
-SELECT '' AS "xxx", t1.i, k, t
-  FROM J1_TBL t1 CROSS JOIN J2_TBL t2 ORDER BY 2,3,4;
+SELECT '' AS "xxx", t1_join.i, k, t
+  FROM J1_TBL t1_join CROSS JOIN J2_TBL t2_join ORDER BY 2,3,4;
 
 SELECT '' AS "xxx", ii, tt, kk
   FROM (J1_TBL CROSS JOIN J2_TBL)
-    AS tx (ii, jj, tt, ii2, kk) ORDER BY 2,3,4;
+    AS tx_join (ii, jj, tt, ii2, kk) ORDER BY 2,3,4;
 
-SELECT '' AS "xxx", tx.ii, tx.jj, tx.kk
-  FROM (J1_TBL t1 (a, b, c) CROSS JOIN J2_TBL t2 (d, e))
-    AS tx (ii, jj, tt, ii2, kk) ORDER BY 2,3,4;
+SELECT '' AS "xxx", tx_join.ii, tx_join.jj, tx_join.kk
+  FROM (J1_TBL t1_join (a, b, c) CROSS JOIN J2_TBL t2_join (d, e))
+    AS tx_join (ii, jj, tt, ii2, kk) ORDER BY 2,3,4;
 
 SELECT '' AS "xxx", *
   FROM J1_TBL CROSS JOIN J2_TBL a CROSS JOIN J2_TBL b ORDER BY 2,3,4,5,6,7,8;
@@ -113,12 +113,12 @@ SELECT '' AS "xxx", *
   FROM J1_TBL JOIN J2_TBL USING (i) ORDER BY 2,3,4,5;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c) JOIN J2_TBL t2 (a, d) USING (a)
+  FROM J1_TBL t1_join (a, b, c) JOIN J2_TBL t2_join (a, d) USING (a)
   ORDER BY a, d;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c) JOIN J2_TBL t2 (a, b) USING (b)
-  ORDER BY b, t1.a;
+  FROM J1_TBL t1_join (a, b, c) JOIN J2_TBL t2_join (a, b) USING (b)
+  ORDER BY b, t1_join.a;
 
 
 --
@@ -130,15 +130,15 @@ SELECT '' AS "xxx", *
   FROM J1_TBL NATURAL JOIN J2_TBL ORDER BY 2,3,4,5;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c) NATURAL JOIN J2_TBL t2 (a, d) ORDER BY 2,3,4,5;
+  FROM J1_TBL t1_join (a, b, c) NATURAL JOIN J2_TBL t2_join (a, d) ORDER BY 2,3,4,5;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c) NATURAL JOIN J2_TBL t2 (d, a) ORDER BY 2,3,4,5;
+  FROM J1_TBL t1_join (a, b, c) NATURAL JOIN J2_TBL t2_join (d, a) ORDER BY 2,3,4,5;
 
 -- mismatch number of columns
 -- currently, Postgres will fill in with underlying names
 SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b) NATURAL JOIN J2_TBL t2 (a) ORDER BY 2,3,4,5;
+  FROM J1_TBL t1_join (a, b) NATURAL JOIN J2_TBL t2_join (a) ORDER BY 2,3,4,5;
 
 
 --
@@ -202,19 +202,19 @@ SELECT '' AS "xxx", *
 -- Multiway full join
 --
 
-CREATE TABLE t1 (name TEXT, n INTEGER);
-CREATE TABLE t2 (name TEXT, n INTEGER);
-CREATE TABLE t3 (name TEXT, n INTEGER);
+CREATE TABLE t1_join (name TEXT, n INTEGER);
+CREATE TABLE t2_join (name TEXT, n INTEGER);
+CREATE TABLE t3_join (name TEXT, n INTEGER);
 
-INSERT INTO t1 VALUES ( 'aa', 11 );
-INSERT INTO t2 VALUES ( 'aa', 12 );
-INSERT INTO t2 VALUES ( 'bb', 22 );
-INSERT INTO t2 VALUES ( 'dd', 42 );
-INSERT INTO t3 VALUES ( 'aa', 13 );
-INSERT INTO t3 VALUES ( 'bb', 23 );
-INSERT INTO t3 VALUES ( 'cc', 33 );
+INSERT INTO t1_join VALUES ( 'aa', 11 );
+INSERT INTO t2_join VALUES ( 'aa', 12 );
+INSERT INTO t2_join VALUES ( 'bb', 22 );
+INSERT INTO t2_join VALUES ( 'dd', 42 );
+INSERT INTO t3_join VALUES ( 'aa', 13 );
+INSERT INTO t3_join VALUES ( 'bb', 23 );
+INSERT INTO t3_join VALUES ( 'cc', 33 );
 
-SELECT * FROM t1 FULL JOIN t2 USING (name) FULL JOIN t3 USING (name) ORDER BY 1,2,3,4;
+SELECT * FROM t1_join FULL JOIN t2_join USING (name) FULL JOIN t3_join USING (name) ORDER BY 1,2,3,4;
 
 --
 -- Test interactions of join syntax and subqueries
@@ -222,70 +222,70 @@ SELECT * FROM t1 FULL JOIN t2 USING (name) FULL JOIN t3 USING (name) ORDER BY 1,
 
 -- Basic cases (we expect planner to pull up the subquery here)
 SELECT * FROM
-(SELECT * FROM t2) as s2
+(SELECT * FROM t2_join) as s2
 INNER JOIN
-(SELECT * FROM t3) s3
+(SELECT * FROM t3_join) s3
 USING (name) ORDER BY 1,2,3;
 
 SELECT * FROM
-(SELECT * FROM t2) as s2
+(SELECT * FROM t2_join) as s2
 LEFT JOIN
-(SELECT * FROM t3) s3
+(SELECT * FROM t3_join) s3
 USING (name) ORDER BY 1,2,3;
 
 SELECT * FROM
-(SELECT * FROM t2) as s2
+(SELECT * FROM t2_join) as s2
 FULL JOIN
-(SELECT * FROM t3) s3
+(SELECT * FROM t3_join) s3
 USING (name) ORDER BY 1,2,3;
 
 -- Cases with non-nullable expressions in subquery results;
 -- make sure these go to null as expected
 SELECT * FROM
-(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
+(SELECT name, n as s2_n, 2 as s2_2 FROM t2_join) as s2
 NATURAL INNER JOIN
-(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 ORDER BY 1,2,3;
+(SELECT name, n as s3_n, 3 as s3_2 FROM t3_join) s3 ORDER BY 1,2,3;
 
 SELECT * FROM
-(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
+(SELECT name, n as s2_n, 2 as s2_2 FROM t2_join) as s2
 NATURAL LEFT JOIN
-(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 ORDER BY 1,2,3;
+(SELECT name, n as s3_n, 3 as s3_2 FROM t3_join) s3 ORDER BY 1,2,3;
 
 SELECT * FROM
-(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
+(SELECT name, n as s2_n, 2 as s2_2 FROM t2_join) as s2
 NATURAL FULL JOIN
-(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 ORDER BY 1,2,3;
+(SELECT name, n as s3_n, 3 as s3_2 FROM t3_join) s3 ORDER BY 1,2,3;
 
 SELECT * FROM
-(SELECT name, n as s1_n, 1 as s1_1 FROM t1) as s1
+(SELECT name, n as s1_n, 1 as s1_1 FROM t1_join) as s1
 NATURAL INNER JOIN
-(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
+(SELECT name, n as s2_n, 2 as s2_2 FROM t2_join) as s2
 NATURAL INNER JOIN
-(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 ORDER BY 1,2,3;
+(SELECT name, n as s3_n, 3 as s3_2 FROM t3_join) s3 ORDER BY 1,2,3;
 
 SELECT * FROM
-(SELECT name, n as s1_n, 1 as s1_1 FROM t1) as s1
+(SELECT name, n as s1_n, 1 as s1_1 FROM t1_join) as s1
 NATURAL FULL JOIN
-(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
+(SELECT name, n as s2_n, 2 as s2_2 FROM t2_join) as s2
 NATURAL FULL JOIN
-(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 ORDER BY 1,2,3;
+(SELECT name, n as s3_n, 3 as s3_2 FROM t3_join) s3 ORDER BY 1,2,3;
 
 SELECT * FROM
-(SELECT name, n as s1_n FROM t1) as s1
+(SELECT name, n as s1_n FROM t1_join) as s1
 NATURAL FULL JOIN
   (SELECT * FROM
-    (SELECT name, n as s2_n FROM t2) as s2
+    (SELECT name, n as s2_n FROM t2_join) as s2
     NATURAL FULL JOIN
-    (SELECT name, n as s3_n FROM t3) as s3
+    (SELECT name, n as s3_n FROM t3_join) as s3
   ) ss2 ORDER BY 1,2,3;
 
 SELECT * FROM
-(SELECT name, n as s1_n FROM t1) as s1
+(SELECT name, n as s1_n FROM t1_join) as s1
 NATURAL FULL JOIN
   (SELECT * FROM
-    (SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
+    (SELECT name, n as s2_n, 2 as s2_2 FROM t2_join) as s2
     NATURAL FULL JOIN
-    (SELECT name, n as s3_n FROM t3) as s3
+    (SELECT name, n as s3_n FROM t3_join) as s3
   ) ss2 ORDER BY 1,2,3;
 
 
@@ -348,9 +348,9 @@ select count(*) from tenk1 x where
 -- Clean up
 --
 
-DROP TABLE t1;
-DROP TABLE t2;
-DROP TABLE t3;
+DROP TABLE t1_join;
+DROP TABLE t2_join;
+DROP TABLE t3_join;
 
 DROP TABLE J1_TBL;
 DROP TABLE J2_TBL;
@@ -358,26 +358,26 @@ DROP TABLE J2_TBL;
 -- Both DELETE and UPDATE allow the specification of additional tables
 -- to "join" against to determine which rows should be modified.
 
-CREATE TEMP TABLE t1 (a int, b int);
-CREATE TEMP TABLE t2 (a int, b int);
-CREATE TEMP TABLE t3 (x int, y int);
+CREATE TEMP TABLE t1_join (a int, b int);
+CREATE TEMP TABLE t2_join (a int, b int);
+CREATE TEMP TABLE t3_join (x int, y int);
 
-INSERT INTO t1 VALUES (5, 10);
-INSERT INTO t1 VALUES (15, 20);
-INSERT INTO t1 VALUES (100, 100);
-INSERT INTO t1 VALUES (200, 1000);
-INSERT INTO t2 VALUES (200, 2000);
-INSERT INTO t3 VALUES (5, 20);
-INSERT INTO t3 VALUES (6, 7);
-INSERT INTO t3 VALUES (7, 8);
-INSERT INTO t3 VALUES (500, 100);
+INSERT INTO t1_join VALUES (5, 10);
+INSERT INTO t1_join VALUES (15, 20);
+INSERT INTO t1_join VALUES (100, 100);
+INSERT INTO t1_join VALUES (200, 1000);
+INSERT INTO t2_join VALUES (200, 2000);
+INSERT INTO t3_join VALUES (5, 20);
+INSERT INTO t3_join VALUES (6, 7);
+INSERT INTO t3_join VALUES (7, 8);
+INSERT INTO t3_join VALUES (500, 100);
 
-DELETE FROM t3 USING t1 table1 WHERE t3.x = table1.a;
-SELECT * FROM t3 ORDER BY 1,2;
-DELETE FROM t3 USING t1 JOIN t2 USING (a) WHERE t3.x > t1.a;
-SELECT * FROM t3 ORDER BY 1,2;
-DELETE FROM t3 USING t3 t3_other WHERE t3.x = t3_other.x AND t3.y = t3_other.y;
-SELECT * FROM t3 ORDER BY 1,2;
+DELETE FROM t3_join USING t1_join table1 WHERE t3_join.x = table1.a;
+SELECT * FROM t3_join ORDER BY 1,2;
+DELETE FROM t3_join USING t1_join JOIN t2_join USING (a) WHERE t3_join.x > t1_join.a;
+SELECT * FROM t3_join ORDER BY 1,2;
+DELETE FROM t3_join USING t3_join t3_other WHERE t3_join.x = t3_other.x AND t3_join.y = t3_other.y;
+SELECT * FROM t3_join ORDER BY 1,2;
 
 --
 -- regression test for 8.1 merge right join bug

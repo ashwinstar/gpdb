@@ -157,7 +157,7 @@ installcheck-good: all $(srcdir)/current_good_schedule upg2-setup ugpart-setup
 .PHONY: $(srcdir)/current_good_schedule
 $(srcdir)/current_good_schedule: $(srcdir)/known_good_schedule
 ifneq ($(origin TT), undefined)
-	./makespecifiedtestschedule "$(TT)" > $(srcdir)/current_good_schedule
+	./maketestschedule.py "$(TT)" > $(srcdir)/current_good_schedule
 else
 	./makeschedule $< $@
 endif
