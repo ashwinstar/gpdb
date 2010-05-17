@@ -174,6 +174,124 @@ static Node *replace_grouping_columns(Node *node,
 									  int start_colno,
 									  int end_colno);
 static bool contain_groupingfunc(Node *node);
+static void checkGroupExtensionQuery(CanonicalGroupingSets *cgs, List *targetList);
+
+/**
+ * These functions are to be used for debugging purpose only.
+ */
+#ifdef DEBUG_GROUPING_SETS
+char *canonicalRollupListToString(List *crl);
+char *canonicalRollupToString(CanonicalRollup *cr);
+char *canonicalGroupingSetsToString(CanonicalGroupingSets *cgs);
+char *bitmapsetToString(Bitmapset *bms);
+#endif
+
+/**
+ * Method returns the target entry from list which matches the ressortgroupref.
+ * It returns NULL if no match is found.
+ */
+static TargetEntry *tlist_member_by_ressortgroupref(List *targetList, int ressortgroupref)
+{
+	ListCell *lc = NULL;
+	foreach (lc, targetList)
+	{
+		TargetEntry *tle = (TargetEntry *) lfirst(lc);
+		if (tle->ressortgroupref == ressortgroupref)
+		{
+			return tle;
+		}
+	}
+	return NULL;
+}
+
+/**
+ * Grouping extension planner does not correctly support a scenario where multiple grouping sets contain
+ * references to expressions where one of which subsumes another in the select targetlist.
+ * For example:
+ * SELECT (sale.qty)  as a1,(sale.qty) as a2 FROM sale GROUP BY GROUPING SETS((1),(2));
+ * SELECT (sale.qty)  as a1,(sale.qty + 100) as a2 FROM sale GROUP BY GROUPING SETS((1),(2));
+ * 
+ * See MPP-8358 for details about this problem. For this release, we identify and disable these cases using
+ * this check.
+ */
+static void checkGroupExtensionQuery(CanonicalGroupingSets *cgs, List *targetList)
+{
+	Assert(cgs);
+	
+	if (cgs->ngrpsets < 2)
+	{
+		return;
+	}
+
+	Assert(cgs->grpsets);
+	
+	int i = 0;
+	int j = 0;
+	
+	for (i=0;i<cgs->ngrpsets-1;i++)
+	{
+		Bitmapset *bms1 = bms_copy(cgs->grpsets[i]);
+
+		/**
+		 * Reconstruct targetlist based on this bitmap set.
+		 */
+		List *bms1TargetList = NIL;
+		ListCell *lc = NULL;
+		foreach (lc, targetList)
+		{
+			TargetEntry *tle = (TargetEntry *) lfirst(lc);
+			if (bms_is_member(tle->ressortgroupref, bms1))
+			{
+				bms1TargetList = lappend(bms1TargetList, tle);
+			}
+		}
+		
+		for (j=i+1;j<cgs->ngrpsets;j++)
+		{
+			Bitmapset *bms2 = bms_copy(cgs->grpsets[j]);
+			
+			/* We are only interested in elements in bms2 that are not present in bms1. Compute the diff. */
+			
+			Bitmapset *bmsdiff = bms_difference(bms2, bms1);
+			
+			/* Look at the target entries corresponding to bmsdiff. If a duplicate entry exists in the target list corresponding to bms1, we do not support the case */
+			int bms2Entry = -1;
+			while ((bms2Entry = bms_first_member(bmsdiff)) >= 0)
+			{
+				TargetEntry *tle2 = tlist_member_by_ressortgroupref(targetList, bms2Entry);
+				Assert(tle2);
+				
+				/**
+				 * We need to check if any target entry expression from bms1TargetList subsumes tle2's expression or vice versa. In this case, we return false.
+				 */
+				lc = NULL;
+				foreach (lc, bms1TargetList)
+				{
+					TargetEntry *tle1 = lfirst(lc);
+					Expr *expr1 = tle1->expr;
+					Expr *expr2 = tle2->expr;
+					
+					/**
+					 * If expr1 subsumes expr2 or vice versa, we return false.
+					 */
+					if (subexpression_match(expr1, expr2) || subexpression_match(expr2, expr1))
+					{
+						ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+								errmsg("GROUPING SETS / ROLLUP / CUBE columns ambiguous.")
+						));
+					}
+				}
+			}
+			
+			bms_free(bms2);
+			bms_free(bmsdiff);
+		} /* for j */
+		
+		bms_free(bms1);
+	} /* for i */
+
+	return;
+}
 
 /*
  * Create the plan for grouping extensions
@@ -234,6 +352,11 @@ plan_grouping_extension(PlannerInfo *root,
 	context.querynode_changed = false;
 	context.canonical_rollups = NIL;
 	context.curr_grpset_no = 0;
+
+	/**
+	 * MPP-8358 - we don't handle certain situations in group extension correctly.
+	 */
+	checkGroupExtensionQuery(canonical_grpsets, tlist);
 
 	/*
 	 * Convert a list of grouping sets into multiple rollups.
@@ -2515,3 +2638,128 @@ contain_groupingfunc(Node *node)
 {
 	return contain_groupingfunc_walker(node, NULL);
 }
+
+#ifdef DEBUG_GROUPING_SETS
+
+/**
+ * Textual representation of a canonical rollup for debugging purposes.
+ */
+char *canonicalRollupToString(CanonicalRollup *cr)
+{
+	StringInfoData str;
+	int i = 0;
+	
+	initStringInfo(&str);
+	
+	appendStringInfo(&str, "(numcols=%d ", cr->numcols);
+	
+	appendStringInfo(&str, "colIdx=[");
+	for (i=0;i<cr->numcols;i++)
+	{
+		appendStringInfo(&str, "%d ", cr->colIdx[i]);
+	}
+	appendStringInfo(&str, "] ");
+	
+	appendStringInfo(&str, "grping_pos=[");
+	for (i=0;i<cr->numcols;i++)
+	{
+		appendStringInfo(&str, "%d ", cr->grping_pos[i]);
+	}
+	appendStringInfo(&str, "] ");
+
+	appendStringInfo(&str, "grpset_counts=[");
+	for (i=0;i<cr->numcols + 1;i++)
+	{
+		appendStringInfo(&str, "%d ", cr->grpset_counts[i]);
+	}
+	appendStringInfo(&str, "] ");
+
+	appendStringInfo(&str, "ngrpsets=%d)", cr->ngrpsets);
+
+	return str.data;
+}
+
+/**
+ * Textual representation of a list of canonical rollups for debugging purposes.
+ */
+char *canonicalRollupListToString(List *crl)
+{
+	StringInfoData str;
+	int i = 0;
+	ListCell *lc = NULL;
+	
+	initStringInfo(&str);
+
+	foreach (lc, crl)
+	{
+		CanonicalRollup *cr = (CanonicalRollup *) lfirst(lc);
+		appendStringInfo(&str, "%i: %s ", i, canonicalRollupToString(cr));
+		i++;
+	}
+	
+	return str.data;
+}
+
+/**
+ * Textual representation of a bitmapset for debugging purposes.
+ */
+char *bitmapsetToString(Bitmapset *bms)
+{
+	StringInfoData str;
+	int x = -1;
+
+	initStringInfo(&str);
+
+	Bitmapset *tmpset = bms_copy(bms);
+	
+	appendStringInfo(&str, "b(");
+	while ((x = bms_first_member(tmpset)) >= 0)
+	{
+		appendStringInfo(&str, " %d ", x);
+	}
+	bms_free(tmpset);
+	appendStringInfo(&str, ") ");
+
+	return str.data;
+}
+
+/**
+ * Textual representation of a canonical grouping set for debugging purposes.
+ */
+char *canonicalGroupingSetsToString(CanonicalGroupingSets *cgs)
+{
+	StringInfoData str;
+	int i = 0;
+	initStringInfo(&str);
+
+	appendStringInfo(&str, "(num_distcols=%d ", cgs->num_distcols);
+	appendStringInfo(&str, "ngrpsets=%d ", cgs->ngrpsets);
+
+	appendStringInfo(&str, "grpsets=[");
+	for (i=0;i<cgs->ngrpsets;i++)
+	{
+		Bitmapset *bms = cgs->grpsets[i];
+		Bitmapset *tmpset = bms_copy(bms);
+		int x = -1;
+		
+		appendStringInfo(&str, "b(");
+		while ((x = bms_first_member(tmpset)) >= 0)
+		{
+			appendStringInfo(&str, " %d ", x);
+		}
+		bms_free(tmpset);
+		appendStringInfo(&str, ") ");
+	}
+	appendStringInfo(&str, "] ");
+	
+	appendStringInfo(&str, "grpset_counts=[");
+	for (i=0;i<cgs->ngrpsets;i++)
+	{
+		appendStringInfo(&str, "%d ", cgs->grpset_counts[i]);
+	}
+	appendStringInfo(&str, "])");
+	
+	return str.data;
+}
+
+#endif

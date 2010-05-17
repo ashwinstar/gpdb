@@ -4661,3 +4661,45 @@ is_builtin_greenplum_hashable_equality_between_same_type(int opno)
         return false;
     }
 }
+
+/**
+ * Structs and Methods to support searching of matching subexpressions.
+ */
+
+typedef struct subexpression_matching_context
+{
+	Expr *needle;	/* This is the expression being searched */
+} subexpression_matching_context;
+
+/**
+ * expression_matching_walker checks if the expression 'needle' in context is a sub-expression of hayStack.
+ */
+static bool subexpression_matching_walker(Node *hayStack, void *context)
+{
+	Assert(context);
+	subexpression_matching_context *ctx = (subexpression_matching_context *) context;
+	Assert(ctx->needle);
+
+	if (!hayStack)
+	{
+		return false;
+	}
+
+	if (equal(ctx->needle, hayStack))
+	{
+		return true;
+	}
+
+	return expression_tree_walker(hayStack, subexpression_matching_walker, (void *) context);
+}
+
+/**
+ * Method checks if expr1 is a subexpression of expr2.
+ * For example, expr1 = (x + 2) and expr = (x + 2 ) * 100 + 20 would return true.
+ */
+bool subexpression_match(Expr *expr1, Expr *expr2)
+{
+	subexpression_matching_context ctx;
+	ctx.needle = expr1;
+	return subexpression_matching_walker((Node *) expr2, (void *) &ctx);
+}

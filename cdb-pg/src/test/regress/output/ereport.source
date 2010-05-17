@@ -316,6 +316,7 @@ select * from get_ereport order by 1;
  aaaaa GP_IGNORE: pabc: pgxaggregate - @abs_builddir@/../../backend/catalog/pg_aggregate.c
  aaaaa GP_IGNORE: pabc: pgxnamespace - @abs_builddir@/../../backend/catalog/pg_namespace.c
  aaaaa GP_IGNORE: pabc: pgxuserfuncs - @abs_builddir@/../../pl/plr/pg_userfuncs.c
+ aaaaa GP_IGNORE: pabc: plangroupext - @abs_builddir@/../../backend/optimizer/plan/plangroupext.c
  aaaaa GP_IGNORE: pabd: parsexutilcmd - @abs_builddir@/../../backend/parser/parse_utilcmd.c
  aaaaa GP_IGNORE: pabd: pgxappendonly - @abs_builddir@/../../backend/catalog/pg_appendonly.c
  aaaaa GP_IGNORE: pabd: pgxconversion - @abs_builddir@/../../backend/catalog/pg_conversion.c
@@ -1623,23 +1624,23 @@ select * from get_ereport order by 1;
  aaba: aosegfiles:00001076:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  aaba: aosegfiles:00001077:  errmsg("'%s' is not an append-only relation", 
  aaba: aosegfiles:00001078:  RelationGetRelationName(parentrel)))); 
- aaba: aosegfiles:00001104:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- aaba: aosegfiles:00001105:  errmsg("Unable to obtain AO relation information from segment databases."), 
- aaba: aosegfiles:00001106:  errdetail("SPI_connect failed in get_ao_distribution"))); 
- aaba: aosegfiles:00001253:  ereport(ERROR, 
- aaba: aosegfiles:00001254:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- aaba: aosegfiles:00001255:  errmsg("'%s' is not an append-only relation", 
- aaba: aosegfiles:00001256:  RelationGetRelationName(parentrel)))); 
- aaba: aosegfiles:00001282:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- aaba: aosegfiles:00001283:  errmsg("Unable to obtain AO relation information from segment databases."), 
- aaba: aosegfiles:00001284:  errdetail("SPI_connect failed in get_ao_distribution"))); 
- aaba: aosegfiles:00001463:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- aaba: aosegfiles:00001464:  errmsg("Unable to obtain AO relation information from segment databases."), 
- aaba: aosegfiles:00001465:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
- aaba: aosegfiles:00001559:  ereport(ERROR, 
- aaba: aosegfiles:00001560:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- aaba: aosegfiles:00001561:  errmsg("'%s' is not an append-only relation", 
- aaba: aosegfiles:00001562:  RelationGetRelationName(parentrel)))); 
+ aaba: aosegfiles:00001116:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ aaba: aosegfiles:00001117:  errmsg("Unable to obtain AO relation information from segment databases."), 
+ aaba: aosegfiles:00001118:  errdetail("SPI_connect failed in get_ao_distribution"))); 
+ aaba: aosegfiles:00001265:  ereport(ERROR, 
+ aaba: aosegfiles:00001266:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ aaba: aosegfiles:00001267:  errmsg("'%s' is not an append-only relation", 
+ aaba: aosegfiles:00001268:  RelationGetRelationName(parentrel)))); 
+ aaba: aosegfiles:00001294:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ aaba: aosegfiles:00001295:  errmsg("Unable to obtain AO relation information from segment databases."), 
+ aaba: aosegfiles:00001296:  errdetail("SPI_connect failed in get_ao_distribution"))); 
+ aaba: aosegfiles:00001475:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ aaba: aosegfiles:00001476:  errmsg("Unable to obtain AO relation information from segment databases."), 
+ aaba: aosegfiles:00001477:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
+ aaba: aosegfiles:00001571:  ereport(ERROR, 
+ aaba: aosegfiles:00001572:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ aaba: aosegfiles:00001573:  errmsg("'%s' is not an append-only relation", 
+ aaba: aosegfiles:00001574:  RelationGetRelationName(parentrel)))); 
  aaba: arrayfuncs:00000206:  ereport(ERROR, 
  aaba: arrayfuncs:00000207:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
  aaba: arrayfuncs:00000208:  errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)", 
@@ -6625,81 +6626,81 @@ select * from get_ereport order by 1;
  fabd: faultinjector:00000381:  ereport(ERROR, 
  fabd: faultinjector:00000382:  (errmsg("Fault is injected identifier:'%s' ", 
  fabd: faultinjector:00000383:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier]))); 
- gaad: guc:00007264:  ereport(ERROR, 
- gaad: guc:00007265:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00007266:  errmsg("unrecognized configuration parameter "%s"", name))); 
  gaad: guc:00007268:  ereport(ERROR, 
- gaad: guc:00007269:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- gaad: guc:00007270:  errmsg("must be superuser to examine "%s"", name))); 
- gaad: guc:00007304:  ereport(ERROR, 
- gaad: guc:00007305:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00007306:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00007269:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00007270:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00007272:  ereport(ERROR, 
+ gaad: guc:00007273:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ gaad: guc:00007274:  errmsg("must be superuser to examine "%s"", name))); 
  gaad: guc:00007308:  ereport(ERROR, 
- gaad: guc:00007309:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- gaad: guc:00007310:  errmsg("must be superuser to examine "%s"", name))); 
- gaad: guc:00007379:  ereport(ERROR, 
- gaad: guc:00007380:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00007381:  errmsg("unrecognized configuration parameter "%s"", name))); 
- gaad: guc:00007388:  ereport(ERROR, 
- gaad: guc:00007389:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00007390:  errmsg("SET %s takes only one argument", name))); 
- gaad: guc:00007561:  ereport(ERROR, 
- gaad: guc:00007562:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
- gaad: guc:00007563:  errmsg("SET requires parameter name"))); 
- gaad: guc:00007625:  ereport(ERROR, 
- gaad: guc:00007626:  (errcode(ERRCODE_INTERNAL_ERROR), 
- gaad: guc:00007627:  errmsg("attempt to redefine parameter "%s"", name))); 
- gaad: guc:00007946:  ereport(ERROR, 
- gaad: guc:00007947:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00007948:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00007309:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00007310:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00007312:  ereport(ERROR, 
+ gaad: guc:00007313:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ gaad: guc:00007314:  errmsg("must be superuser to examine "%s"", name))); 
+ gaad: guc:00007383:  ereport(ERROR, 
+ gaad: guc:00007384:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00007385:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00007392:  ereport(ERROR, 
+ gaad: guc:00007393:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00007394:  errmsg("SET %s takes only one argument", name))); 
+ gaad: guc:00007565:  ereport(ERROR, 
+ gaad: guc:00007566:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+ gaad: guc:00007567:  errmsg("SET requires parameter name"))); 
+ gaad: guc:00007629:  ereport(ERROR, 
+ gaad: guc:00007630:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ gaad: guc:00007631:  errmsg("attempt to redefine parameter "%s"", name))); 
  gaad: guc:00007950:  ereport(ERROR, 
- gaad: guc:00007951:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- gaad: guc:00007952:  errmsg("must be superuser to examine "%s"", name))); 
- gaad: guc:00008754:  ereport(FATAL, 
- gaad: guc:00008755:  (errcode_for_file_access(), 
- gaad: guc:00008756:  errmsg("could not read from file "%s": %m", 
- gaad: guc:00008757:  CONFIG_EXEC_PARAMS))); 
- gaad: guc:00008864:  ereport(WARNING, 
- gaad: guc:00008865:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaad: guc:00008866:  errmsg("could not parse setting for parameter "%s"", name))); 
- gaad: guc:00009060:  ereport(ERROR, 
- gaad: guc:00009061:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009062:  errmsg("invalid list syntax for parameter "log_destination""))); 
- gaad: guc:00009083:  ereport(ERROR, 
- gaad: guc:00009084:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009085:  errmsg("unrecognized "log_destination" key word: "%s"", 
- gaad: guc:00009086:  tok))); 
- gaad: guc:00009112:  ereport(ERROR, 
- gaad: guc:00009113:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009114:  errmsg("unrecognized "gp_log_format" key word: "%s"", 
- gaad: guc:00009115:  value))); 
- gaad: guc:00009458:  ereport(ERROR, 
- gaad: guc:00009459:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaad: guc:00009460:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
- gaad: guc:00009534:  ereport(ERROR, 
- gaad: guc:00009535:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009536:  errmsg("assertion checking is not supported by this build"))); 
- gaad: guc:00009555:  ereport(ERROR, 
- gaad: guc:00009556:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009557:  errmsg("SSL is not supported by this build"))); 
- gaad: guc:00009568:  ereport(ERROR, 
- gaad: guc:00009569:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009570:  errmsg("cannot enable parameter when "log_statement_stats" is true"))); 
- gaad: guc:00009585:  ereport(ERROR, 
- gaad: guc:00009586:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009587:  errmsg("cannot enable "log_statement_stats" when " 
- gaad: guc:00009588:  ""log_parser_stats", "log_planner_stats", " 
- gaad: guc:00009589:  ""log_dispatch_stats", " 
- gaad: guc:00009590:  "or "log_executor_stats" is true"))); 
- gaad: guc:00009605:  ereport(ERROR, 
- gaad: guc:00009606:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009607:  errmsg("cannot enable "log_dispatch_stats" when " 
- gaad: guc:00009608:  ""log_statement_stats", " 
- gaad: guc:00009609:  ""log_parser_stats", "log_planner_stats", " 
- gaad: guc:00009610:  "or "log_executor_stats" is true"))); 
- gaad: guc:00009625:  ereport(ERROR, 
- gaad: guc:00009626:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009627:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+ gaad: guc:00007951:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00007952:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00007954:  ereport(ERROR, 
+ gaad: guc:00007955:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ gaad: guc:00007956:  errmsg("must be superuser to examine "%s"", name))); 
+ gaad: guc:00008758:  ereport(FATAL, 
+ gaad: guc:00008759:  (errcode_for_file_access(), 
+ gaad: guc:00008760:  errmsg("could not read from file "%s": %m", 
+ gaad: guc:00008761:  CONFIG_EXEC_PARAMS))); 
+ gaad: guc:00008868:  ereport(WARNING, 
+ gaad: guc:00008869:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaad: guc:00008870:  errmsg("could not parse setting for parameter "%s"", name))); 
+ gaad: guc:00009064:  ereport(ERROR, 
+ gaad: guc:00009065:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009066:  errmsg("invalid list syntax for parameter "log_destination""))); 
+ gaad: guc:00009087:  ereport(ERROR, 
+ gaad: guc:00009088:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009089:  errmsg("unrecognized "log_destination" key word: "%s"", 
+ gaad: guc:00009090:  tok))); 
+ gaad: guc:00009116:  ereport(ERROR, 
+ gaad: guc:00009117:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009118:  errmsg("unrecognized "gp_log_format" key word: "%s"", 
+ gaad: guc:00009119:  value))); 
+ gaad: guc:00009462:  ereport(ERROR, 
+ gaad: guc:00009463:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaad: guc:00009464:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+ gaad: guc:00009538:  ereport(ERROR, 
+ gaad: guc:00009539:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009540:  errmsg("assertion checking is not supported by this build"))); 
+ gaad: guc:00009559:  ereport(ERROR, 
+ gaad: guc:00009560:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009561:  errmsg("SSL is not supported by this build"))); 
+ gaad: guc:00009572:  ereport(ERROR, 
+ gaad: guc:00009573:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009574:  errmsg("cannot enable parameter when "log_statement_stats" is true"))); 
+ gaad: guc:00009589:  ereport(ERROR, 
+ gaad: guc:00009590:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009591:  errmsg("cannot enable "log_statement_stats" when " 
+ gaad: guc:00009592:  ""log_parser_stats", "log_planner_stats", " 
+ gaad: guc:00009593:  ""log_dispatch_stats", " 
+ gaad: guc:00009594:  "or "log_executor_stats" is true"))); 
+ gaad: guc:00009609:  ereport(ERROR, 
+ gaad: guc:00009610:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009611:  errmsg("cannot enable "log_dispatch_stats" when " 
+ gaad: guc:00009612:  ""log_statement_stats", " 
+ gaad: guc:00009613:  ""log_parser_stats", "log_planner_stats", " 
+ gaad: guc:00009614:  "or "log_executor_stats" is true"))); 
+ gaad: guc:00009629:  ereport(ERROR, 
+ gaad: guc:00009630:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009631:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
  gaae: gram:00018692:  ereport(ERROR, 
  gaae: gram:00018693:  (errcode(ERRCODE_SYNTAX_ERROR), 
  gaae: gram:00018694:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"), 
@@ -12443,6 +12444,9 @@ select * from get_ereport order by 1;
  pabc: pgxuserfuncs:00000317:  (errcode(ERRCODE_SYNTAX_ERROR), 
  pabc: pgxuserfuncs:00000318:  errmsg("query-specified return tuple and " 
  pabc: pgxuserfuncs:00000319:  "function return type are not compatible"))); 
+ pabc: plangroupext:00000279:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+ pabc: plangroupext:00000280:  errmsg("GROUPING SETS / ROLLUP / CUBE columns ambiguous.") 
+ pabc: plangroupext:00000281:  )); 
  pabd: parsexutilcmd:00000281:  ereport(ERROR, 
  pabd: parsexutilcmd:00000282:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
  pabd: parsexutilcmd:00000283:  errmsg("multiple primary keys for table "%s" are not allowed", 
@@ -18330,6 +18334,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000076:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000077:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000078:  str))); 
-(18263 rows)
+(18267 rows)
 
 drop external table get_ereport;
