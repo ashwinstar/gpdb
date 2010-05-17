@@ -20,6 +20,8 @@ static int storagegroup_main(int argc, char **argv);
 static void parse_target_dev(char *input, char **WWN, char **SP, char **SG_NAME, char **ARGS, char **FSTYPE);
 static int match(char **p, char **val, const char *token);
 
+static int emc_fencer(const char *sp_name, const char *sg_name, const char *host, int unfence);
+
 static
 void usage(const char *exec)
 {
@@ -375,8 +377,6 @@ agent_main(int argc, char **argv)
 		 */
 		setuid(0);
 
-		//fprintf(stdout, "getuid %d geteuid %d\n", getuid(), geteuid());
-
 		if (!arg_safe(target_dev, strlen(target_dev)))
 		{
 			fprintf(stderr, "invalid dev string [%s]\n", target_dev);
@@ -455,19 +455,7 @@ agent_main(int argc, char **argv)
 			if (SP != NULL && SG_NAME != NULL)
 			{
 				/* We issue out "unfence"/SG-reconnect operation here. */
-				/*
-				 * echo y | /opt/Navisphere/bin/naviseccli -h 172.16.10.6 storagegroup -connecthost -host emc2 -gname cx4-960
-				 */
-				snprintf(cmd, sizeof(cmd), "echo y | /opt/Navisphere/bin/naviseccli -h %s storagegroup -connecthost -host %s -gname %s", SP, target_host, SG_NAME);
-				fprintf(stdout, "I/O Unfencing command [%s]\n", cmd);
-
-				status = system(cmd);
-
-				if (status != 0)
-				{
-					fprintf(stderr, "Failed reconnect on storage processor, proceeding.");
-					//exit(1);
-				}
+				emc_fencer(SP, SG_NAME, target_host, 1);
 			}
 		}
 
@@ -548,20 +536,7 @@ agent_main(int argc, char **argv)
 			else
 			{
 				/* DO OUR I/O FENCING OPERATION HERE */
-				/*
-				 * This is the exact command:
-				 * "echo y | /opt/Navisphere/bin/naviseccli -h 172.16.10.6 storagegroup -disconnecthost -host emc2 -gname cx4-960"
-				 */
-				snprintf(cmd, sizeof(cmd), "echo y | /opt/Navisphere/bin/naviseccli -h %s storagegroup -disconnecthost -host %s -gname %s", SP, old_host, SG_NAME);
-				fprintf(stdout, "I/O Fencing command [%s]\n", cmd);
-
-				status = system(cmd);
-
-				if (status != 0)
-				{
-					fprintf(stderr, "Failed disconnect on storage processor, proceeding.");
-					//exit(1);
-				}
+				emc_fencer(SP, SG_NAME, old_host, 0);
 			}
 		}
 
@@ -594,7 +569,7 @@ agent_main(int argc, char **argv)
 			if (status != 0)
 			{
 				fprintf(stderr, "Unmount command failed (%s:%s):%d '%s'\n", old_host, old_mountpoint, status, cmd);
-				//exit(0);
+				/* we try to proceed anyhow */
 			}
 
 			/* 
@@ -737,6 +712,144 @@ match(char **input, char **val, const char *token)
 		*input = *val + strlen(*val) + 1; /* skip NULL */
 
 		return 1;
+	}
+
+	return 0;
+}
+
+static int
+emc_check_fence(const char *sp_name, const char *sg_name, const char *host)
+{
+	char tmpfilename[80];
+	char cmd[1000];
+	char count_str[100];
+	int count = 0;
+
+	int	fd;
+	int status;
+	FILE *tmpfile=NULL;
+
+	/* 1. get a file */
+	snprintf(tmpfilename, sizeof(tmpfilename), "/tmp/gpdb_sg_lookup_results.XXXXXX");
+
+	fd = mkstemp(tmpfilename);
+	if (fd < 0)
+	{
+		fprintf(stderr, "failed to create sg_lookup-results file: %d\n", errno);
+
+		return 0;
+	}
+
+	if (fchown(fd, getuid(), -1) < 0)
+	{
+		close(fd);
+		unlink(tmpfilename);
+		fprintf(stderr, "Storage-processor inquiry on sp %s storage-group %s host %s\n", sp_name, sg_name, host);
+
+		return 0;
+	}
+
+	/* 2. go get the inquiry results about the device -> "/dev/xxx" mapping */
+	snprintf(cmd, sizeof(cmd), "/opt/Navisphere/bin/naviseccli -h %s storagegroup -list -gname %s -host | /usr/bin/grep %s | /usr/bin/wc -l >> %s", sp_name, sg_name, host, tmpfilename);
+
+	fprintf(stdout, "cmd [%s]\n", cmd);
+
+	status = system(cmd);
+
+	if (status != 0)
+	{
+		close(fd);
+		unlink(tmpfilename);
+		fprintf(stderr, "Storage-processor inquiry on sp %s storage-group %s host %s\n", sp_name, sg_name, host);
+
+		return 0;
+	}
+
+	tmpfile = fdopen(fd, "r");
+	if (tmpfile == NULL)
+	{
+		close(fd);
+		unlink(tmpfilename);
+		fprintf(stderr, "Couldn't open %s for storage-group lookup results\n", tmpfilename);
+
+		return 0;
+	}
+
+	memset(count_str, 0, sizeof(count_str));
+	if (fgets(count_str, sizeof(count_str) - 1, tmpfile) == NULL)
+	{
+		int s_errno = errno;
+
+		fclose(tmpfile);
+		unlink(tmpfilename);
+		fprintf(stderr, "Couldn't read results from storage-group lookup: %d\n", s_errno);
+
+		return 0;
+	}
+
+	fclose(tmpfile);
+	unlink(tmpfilename);
+
+	count = atoi(count_str);
+
+	return (count > 0) ? count : 0;
+}
+
+static int
+emc_fencer(const char *sp_name, const char *sg_name, const char *host, int unfence)
+{
+	char cmd[1000];
+	int host_connections=0;
+	int status;
+
+	/* Fence off the host, we don't care what the current status on the storage-processor is. */
+	if (unfence == 0)
+	{
+		snprintf(cmd, sizeof(cmd), "echo y | /opt/Navisphere/bin/naviseccli -h %s storagegroup -disconnecthost -host %s -gname %s", sp_name, host, sg_name);
+		fprintf(stdout, "I/O Fencing command [%s]\n", cmd);
+
+		status = system(cmd);
+
+		if (status != 0)
+		{
+			fprintf(stderr, "Failed disconnect on storage processor, proceeding.\n");
+		}
+
+		host_connections = emc_check_fence(sp_name, sg_name, host);
+
+		if (host_connections != 0)
+		{
+			fprintf(stderr, "I/O fenced, but %s is still connected to %s\n", host, sg_name);
+		}
+
+		return 0;
+	}
+
+	host_connections = emc_check_fence(sp_name, sg_name, host);
+
+	if (host_connections > 0)
+	{
+		fprintf(stdout, "I/O Unfencing unnecessary, %s is already connected to storage-group %s\n", host, sg_name);
+
+		return 0;
+	}
+
+	/* Unfence the host: if the host isn't fenced, we don't want to fence. */
+	snprintf(cmd, sizeof(cmd), "echo y | /opt/Navisphere/bin/naviseccli -h %s storagegroup -connecthost -host %s -gname %s", sp_name, host, sg_name);
+	fprintf(stdout, "I/O Unfencing command [%s]\n", cmd);
+
+	status = system(cmd);
+
+	if (status != 0)
+	{
+		fprintf(stderr, "Failed disconnect on storage processor, proceeding.\n");
+	}
+
+	host_connections = emc_check_fence(sp_name, sg_name, host);
+
+	if (host_connections > 0)
+	{
+		fprintf(stdout, "I/O Unfencing complete, %s is connected to storage-group %s\n", host, sg_name);
 	}
 
 	return 0;
