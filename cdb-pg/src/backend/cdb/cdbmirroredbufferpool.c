@@ -937,7 +937,7 @@ void MirroredBufferPool_MirrorReDrop(
 						/* relationName */ NULL,
 						mirrorDataLossTrackingState,
 						mirrorDataLossTrackingSessionNum,
-						MirroredObjectExistenceState_MirrorDropPending,
+						/* primaryOnly */ false,
 						/* mirrorOnly */ true,
 						&primaryError,
 						mirrorDataLossOccurred);
