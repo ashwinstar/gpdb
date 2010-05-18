@@ -242,20 +242,20 @@ PersistentEndXactRec_VerifyFileSysActionInfos(
 			
 		if (PersistentStore_IsZeroTid(&fileSysActionInfos[i].persistentTid))
 			elog(ERROR, "TID for persistent '%s' tuple is invalid (0,0) (index %d, transaction kind '%s')",
-				 PersistentFileSysObjName_TypeName(fileSysActionInfos[i].fsObjName.type),
+				 PersistentFileSysObjName_TypeAndObjectName(&fileSysActionInfos[i].fsObjName),
 				 i,
 				 EndXactRecKind_Name(endXactRecKind));
 
 		if (fileSysActionInfos[i].persistentSerialNum == 0)
 			elog(ERROR, "Persistent '%s' serial number is invalid (0) (index %d, transaction kind '%s')",
-				 PersistentFileSysObjName_TypeName(fileSysActionInfos[i].fsObjName.type),
+				 PersistentFileSysObjName_TypeAndObjectName(&fileSysActionInfos[i].fsObjName),
 				 i,
 				 EndXactRecKind_Name(endXactRecKind));
 
 		if (fileSysActionInfos[i].fsObjName.type == PersistentFsObjType_RelationFile &&
 			!PersistentFileSysRelStorageMgr_IsValid(fileSysActionInfos[i].relStorageMgr))
 			elog(ERROR, "Persistent '%s' relation storage manager has invalid value (%d) (index %d, transaction kind '%s')",
-				 PersistentFileSysObjName_TypeName(fileSysActionInfos[i].fsObjName.type),
+				 PersistentFileSysObjName_TypeAndObjectName(&fileSysActionInfos[i].fsObjName),
 				 fileSysActionInfos[i].relStorageMgr,
 				 i,
 				 EndXactRecKind_Name(endXactRecKind));
