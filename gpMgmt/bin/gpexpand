@@ -1864,7 +1864,7 @@ class ExpandTable():
                                     '%s','%s','%s','%s',%d,'%s','%s','%s',%d)
                     """ % (gpexpand_schema,status_detail_table,
                            self.dbname,self.fq_name,self.schema_oid,self.table_oid,
-                           self.dist_policy,self.dist_policy_names,self.distrib_policy_coloids,
+                           self.distrib_policy,self.distrib_policy_names,self.distrib_policy_coloids,
                            self.storage_options,self.rank,self.status,
                            self.expansion_started,self.expansion_finished,
                            self.source_bytes )

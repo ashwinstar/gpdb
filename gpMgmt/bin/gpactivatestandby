@@ -405,11 +405,11 @@ def stop_gpsync_process(options):
             db = gparray.GpDB(None, None, None, None, None, None, None, None, None, options.master_data_dir, None)
             # check that postmaster isn't already running
             if pg.DbStatus.local('check db status', db) == True:
-                    logger.error('Located a postgres process on this host')
-                    logger.error('Has the master standby instance already been activated?')
-                    logger.error('Run the gpstate utility to check.')
-                    logger.error('Possible standby master instance active')
-                    raise GpActivateStandbyException('postgres process already running')
+                logger.error('Located a postgres process on this host')
+                logger.error('Has the master standby instance already been activated?')
+                logger.error('Run the gpstate utility to check.')
+                logger.error('Possible standby master instance active')
+                raise GpActivateStandbyException('postgres process already running')
     else:
         gp.SegmentStop.local('stopping gpsyncmaster', options.master_data_dir, mode='fast')
         if unix.check_pid(pid):

@@ -48,7 +48,7 @@ class CommandNotFoundException(Exception):
         self.cmd=cmd
         self.paths=paths
     def __str__(self):
-        return "Could not locate command: '%' in this set of paths: %s" % (self.cmd,repr(self.paths))
+        return "Could not locate command: '%s' in this set of paths: %s" % (self.cmd,repr(self.paths))
     
     
 

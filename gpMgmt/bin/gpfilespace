@@ -379,13 +379,6 @@ class GPHost():
         self.segments.append(segment)
 
     # --------------------------------------------------------------------
-    def segments(self):
-        '''
-        Returns all the segments (primary/mirror/master) on the host
-        '''
-        return self.segments
-
-    # --------------------------------------------------------------------
     def primaries(self):
         '''
         Returns a list of primary segments on this host

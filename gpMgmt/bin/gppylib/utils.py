@@ -228,11 +228,11 @@ def docIter(node):
     return
 
 def makeNonBlocking(fd):
-    fl = fcntl.fcntl(fd, os.F_GETFL)
+    fl = fcntl.fcntl(fd, fcntl.F_GETFL)
     try:
-        fcntl.fcntl(fd, os.F_SETFL, fl | os.O_NDELAY)
-    except AttributeError:
-        fcntl.fcntl(fd, os.F_SETFL, fl | os.FNDELAY)
+        fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NDELAY)
+    except IOError:
+        fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NDELAY)
 
 def getCommandOutput2(command):
     child = popen2.Popen3(command, 1) # Capture stdout and stderr from command

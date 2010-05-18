@@ -481,7 +481,7 @@ def killProc(proc):
     if proc: 
         try:
             os.kill(proc.pid, signal.SIGKILL)
-        except os.OSError:
+        except OSError:
             pass
         return proc.wait()
     return 0

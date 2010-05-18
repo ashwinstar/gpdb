@@ -15,7 +15,7 @@ import sys, os, re
 if sys.version_info < (2, 5, 0) or sys.version_info >= (3, 0, 0):
     sys.stderr.write("Error: %s is supported on Python versions 2.5 or greater\n" 
                      "Please upgrade python installed on this machine." 
-                     % EXECNAME)
+                     % os.path.split(__file__)[-1])
     sys.exit(1)
 
 

@@ -880,7 +880,7 @@ try:
                 h.popen(cmd)
                 
     except:
-        errmsg = '[ERROR] cannot complete key exchange: %s' % sys.exec_info()[0]
+        errmsg = '[ERROR] cannot complete key exchange: %s' % sys.exc_info()[0]
         print >> sys.stderr, errmsg
         raise
     

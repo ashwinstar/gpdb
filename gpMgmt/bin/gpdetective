@@ -108,7 +108,7 @@ def truth (option, val):
     elif val.lower() == 'f' or val.lower() == 'false':
         return False
     else:
-        usage('Error: Invalid option for %: %s' % (option, val))
+        usage('Error: Invalid option for %s: %s' % (option, val))
 
 
 #============================================================

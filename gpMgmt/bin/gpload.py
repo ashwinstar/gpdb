@@ -2023,7 +2023,7 @@ class gpload:
                     truncateSQLtext = "truncate %s" % self.schemaTable
                     self.db.query(truncateSQLtext.encode('utf-8'))
                 except Exception, e:
-                    self.log(self.ERROR, 'could not execute truncate target %s: %s' % (self.schemaTable, str(p)))
+                    self.log(self.ERROR, 'could not execute truncate target %s: %s' % (self.schemaTable, str(e)))
 
         # sql pre or post processing?
         sql = self.getconfig('gpload:sql', list, default=None)

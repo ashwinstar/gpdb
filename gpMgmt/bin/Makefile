@@ -157,7 +157,7 @@ PYTHON_FILES=`grep -l --exclude=Makefile "/bin/env python" *`\
 			 `find ./gppylib -name "*.py"`\
 			 `find $(SRC)/../sbin/ -name "*.py"`
 
-checkcode:
+checkcode: pylint
 	$(PYLIB_DIR)/pylint/bin/pylint -f html -i y -E $(PYTHON_FILES) > $(SRC)/../pylint.html || true
 
 

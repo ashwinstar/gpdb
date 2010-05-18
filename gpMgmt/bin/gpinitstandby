@@ -789,7 +789,7 @@ def undo_catalog_update(options, array):
     conn = None
     try:
         dburl = dbconn.DbURL()
-        conn = dbconn.connect(dubrl, utility=True)
+        conn = dbconn.connect(dburl, utility=True)
         stop_master()
     except:
         pass
