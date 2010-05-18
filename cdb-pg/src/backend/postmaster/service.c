@@ -26,6 +26,7 @@
 #include "miscadmin.h"
 #include "libpq/pqsignal.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbselect.h"
 #include "commands/sequence.h"
 #include "postmaster/fork_process.h"
 #include "postmaster/postmaster.h"
@@ -345,7 +346,7 @@ ServiceClientWrite(ServiceClient *serviceClient, void* request, int requestLen)
 	int			saved_err;
 	char        *message;
 	bool		result = false;
-	fd_set		wset;
+	mpp_fd_set		wset;
 	struct timeval rundownTimeout;
 		// Use local variable since select modifies
 		// the timeout parameter with remaining time.
@@ -401,9 +402,9 @@ ServiceClientWrite(ServiceClient *serviceClient, void* request, int requestLen)
 					 */
 					do
 					{
-						FD_ZERO(&wset);
-						FD_SET(serviceClient->sockfd, &wset);
-						n = select(serviceClient->sockfd + 1, NULL, &wset, NULL, &rundownTimeout);
+						MPP_FD_ZERO(&wset);
+						MPP_FD_SET(serviceClient->sockfd, &wset);
+						n = select(serviceClient->sockfd + 1, NULL, (fd_set *)&wset, NULL, &rundownTimeout);
 						if (n == 0)
 						{
 							struct timeval wholeTimeout;
@@ -497,7 +498,7 @@ ServiceClientRead(ServiceClient *serviceClient, void* response, int responseLen,
 	int			saved_err;
 	char        *message;
 	bool		result = false;
-	fd_set		rset;
+	mpp_fd_set	rset;
 	struct timeval rundownTimeout = {0,0};
 	// Use local variable since select modifies
 	// the timeout parameter with remaining time.
@@ -549,9 +550,9 @@ ServiceClientRead(ServiceClient *serviceClient, void* response, int responseLen,
 					 */
 					do
 					{
-						FD_ZERO(&rset);
-						FD_SET(serviceClient->sockfd, &rset);
-						n = select(serviceClient->sockfd + 1, &rset, NULL, NULL, (timeout == NULL ? NULL : &rundownTimeout));
+						MPP_FD_ZERO(&rset);
+						MPP_FD_SET(serviceClient->sockfd, &rset);
+						n = select(serviceClient->sockfd + 1, (fd_set *)&rset, NULL, NULL, (timeout == NULL ? NULL : &rundownTimeout));
 						if (n == 0)
 						{
 							if (timeout != NULL)
@@ -939,7 +940,7 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 	int			n,
 				highsock = 0,
 				newsockfd;
-	fd_set		rset,
+	mpp_fd_set	rset,
 				rrset;
 
 	struct sockaddr_in addr;
@@ -957,8 +958,8 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 	 */
 	inputBuff = palloc(serviceConfig->requestLen);
 
-	FD_ZERO(&rset);
-	FD_SET(serviceCtrl->listenerFd, &rset);
+	MPP_FD_ZERO(&rset);
+	MPP_FD_SET(serviceCtrl->listenerFd, &rset);
 	highsock = serviceCtrl->listenerFd + 1;
 
 	/* we'll handle many incoming sockets but keep the sockets in blocking
@@ -996,9 +997,9 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 			}
 		}
 
-		memcpy(&rrset, &rset, sizeof(fd_set));
+		memcpy(&rrset, &rset, sizeof(mpp_fd_set));
 
-		n = select(highsock + 1, &rrset, NULL, NULL, &shutdownTimeout);
+		n = select(highsock + 1, (fd_set *)&rrset, NULL, NULL, &shutdownTimeout);
 		if (n == 0 || (n < 0 && errno == EINTR))
 		{
 			/* intr or timeout: Have we been here too long ? */
@@ -1018,7 +1019,7 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 		}
 
 		/* is it someone tickling our listener port? */
-		if (FD_ISSET(serviceCtrl->listenerFd, &rrset))
+		if (MPP_FD_ISSET(serviceCtrl->listenerFd, &rrset))
 		{
             addrlen = sizeof(addr);
 			if ((newsockfd = accept(serviceCtrl->listenerFd,
@@ -1051,7 +1052,7 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 			if (newsockfd > highsock)
 				highsock = newsockfd + 1;
 
-			FD_SET(newsockfd, &rset);
+			MPP_FD_SET(newsockfd, &rset);
 
 			/*
 			 * Read connection message.
@@ -1060,7 +1061,7 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 			if( !ServiceProcessRequest(serviceCtrl, newsockfd, inputBuff, false))
 			{
 				/* close it down */
-				FD_CLR( newsockfd, &rset);
+				MPP_FD_CLR( newsockfd, &rset);
 				shutdown(newsockfd, SHUT_WR);
 				close(newsockfd);
 			}
@@ -1081,12 +1082,12 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 			/* get the next cell ready before we delete */
 			cell = lnext(cell);
 
-			if (FD_ISSET(fd, &rrset))
+			if (MPP_FD_ISSET(fd, &rrset))
 			{
 				if( !ServiceProcessRequest(serviceCtrl, fd, inputBuff, false))
 				{
 					/* close it down */
-					FD_CLR( fd, &rset);
+					MPP_FD_CLR( fd, &rset);
 					connectedSockets = list_delete_int(connectedSockets, fd);
 					shutdown(fd, SHUT_WR);
 					close(fd);
@@ -1112,7 +1113,7 @@ ServiceProcessRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *inputBuff, bo
 	ServiceConnectionRequestMsg newConnectionRequestMsg;
 
 	int			saved_err;
-	fd_set		rset;
+	mpp_fd_set	rset;
 	struct timeval rundownTimeout;
 		// Use local variable since select modifies
 		// the timeout parameter with remaining time.
@@ -1178,9 +1179,9 @@ ServiceProcessRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *inputBuff, bo
 					if (serviceConfig->ServiceShutdownRequested())
 						return false;
 
-					FD_ZERO(&rset);
-					FD_SET(sockfd, &rset);
-					n = select(sockfd + 1, &rset, NULL, NULL, &rundownTimeout);
+					MPP_FD_ZERO(&rset);
+					MPP_FD_SET(sockfd, &rset);
+					n = select(sockfd + 1, (fd_set *)&rset, NULL, NULL, &rundownTimeout);
 					if (n == 0)
 					{
 						struct timeval wholeTimeout;
@@ -1232,7 +1233,7 @@ ServiceProcessRespond(ServiceCtrl *serviceCtrl, int sockfd, uint8 *response, int
 
 	int 		n;
 	int			saved_err;
-	fd_set		wset;
+	mpp_fd_set	wset;
 
 	int bytesWritten = 0;
 
@@ -1287,9 +1288,9 @@ ServiceProcessRespond(ServiceCtrl *serviceCtrl, int sockfd, uint8 *response, int
 				{
 					CHECK_FOR_INTERRUPTS();
 
-					FD_ZERO(&wset);
-					FD_SET(sockfd, &wset);
-					n = select(sockfd + 1, NULL, &wset, NULL, &rundownTimeout);
+					MPP_FD_ZERO(&wset);
+					MPP_FD_SET(sockfd, &wset);
+					n = select(sockfd + 1, NULL, (fd_set *)&wset, NULL, &rundownTimeout);
 					if (n == 0)
 					{
 						struct timeval wholeTimeout;

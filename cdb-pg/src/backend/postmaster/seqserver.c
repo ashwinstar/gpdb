@@ -25,6 +25,7 @@
 #include "miscadmin.h"
 #include "libpq/pqsignal.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbselect.h"
 #include "commands/sequence.h"
 #include "postmaster/fork_process.h"
 #include "postmaster/postmaster.h"
@@ -178,7 +179,7 @@ sendSequenceRequest(int     sockfd,
 	int    bytesWritten = 0;
 	int	   bytesRead = 0;
 	int			saved_err;
-	fd_set		rset,wset;
+	mpp_fd_set	rset, wset;
 	
 	/* request message */
     NextValRequest  request;
@@ -190,7 +191,7 @@ sendSequenceRequest(int     sockfd,
 	
 	
 	if (sockfd == -1)
-		elog( ERROR, "Lost Connection to seqserver");
+		elog(ERROR, "Lost Connection to seqserver");
 		
 	/*
 	 * send the sequence request to the sequence server
@@ -205,9 +206,8 @@ sendSequenceRequest(int     sockfd,
 	/*
 	 * write the request
 	 */	
-	while( bytesWritten < reqlen )
+	while (bytesWritten < reqlen)
 	{
-		
 		CHECK_FOR_INTERRUPTS();
 					
 		n = write(sockfd, ((char *)&request)+bytesWritten, reqlen - bytesWritten);
@@ -242,9 +242,9 @@ sendSequenceRequest(int     sockfd,
 					
 					CHECK_FOR_INTERRUPTS();
 					
-					FD_ZERO(&wset);
-					FD_SET(sockfd, &wset);
-					n = select(sockfd + 1, NULL, &wset, NULL, &timeout);
+					MPP_FD_ZERO(&wset);
+					MPP_FD_SET(sockfd, &wset);
+					n = select(sockfd + 1, NULL, (fd_set *)&wset, NULL, &timeout);
 					if (n == 0 || (n < 0 && errno == EINTR))
 						continue;
 					else if (n < 0)
@@ -306,9 +306,9 @@ sendSequenceRequest(int     sockfd,
 					
 					CHECK_FOR_INTERRUPTS();
 					
-					FD_ZERO(&rset);
-					FD_SET(sockfd, &rset);
-					n = select(sockfd + 1, &rset, NULL, NULL, &timeout);
+					MPP_FD_ZERO(&rset);
+					MPP_FD_SET(sockfd, &rset);
+					n = select(sockfd + 1, (fd_set *)&rset, NULL, NULL, &timeout);
 					if (n == 0 || (n < 0 && errno == EINTR))
 						continue;
 					else if (n < 0)
@@ -554,7 +554,7 @@ SeqServerLoop(void)
 	int			n,
 				highsock = 0,
 				newsockfd;
-	fd_set		rset,
+	mpp_fd_set	rset,
 				rrset;
 	
 	struct sockaddr_in addr;
@@ -566,8 +566,8 @@ SeqServerLoop(void)
 	tval.tv_sec = 3;
 	tval.tv_usec = 500000;
 	
-	FD_ZERO(&rset);
-	FD_SET(listenerFd, &rset);
+	MPP_FD_ZERO(&rset);
+	MPP_FD_SET(listenerFd, &rset);
 	highsock = listenerFd + 1;
 	
 	/* we'll handle many incoming sockets but keep the sockets in blocking
@@ -586,9 +586,9 @@ SeqServerLoop(void)
 		if (!PostmasterIsAlive(true))
 			exit(1);
 		
-		memcpy(&rrset, &rset, sizeof(fd_set));
+		memcpy(&rrset, &rset, sizeof(mpp_fd_set));
 		
-		n = select(highsock + 1, &rrset, NULL, NULL, &timeout);
+		n = select(highsock + 1, (fd_set *)&rrset, NULL, NULL, &timeout);
 		if (n == 0 || (n < 0 && errno == EINTR))
 		{
 			/* intr or timeout: Have we been here too long ? */			
@@ -608,7 +608,7 @@ SeqServerLoop(void)
 		elog(DEBUG5, "seqserver select() returned %d ready sockets", n);
 
 		/* is it someone tickling our listener port? */
-		if (FD_ISSET(listenerFd, &rrset))
+		if (MPP_FD_ISSET(listenerFd, &rrset))
 		{
 			elog(DEBUG3, "seqserver: accepting an Incoming Connection ");
             addrlen = sizeof(addr);
@@ -636,7 +636,7 @@ SeqServerLoop(void)
 			if (newsockfd > highsock)
 				highsock = newsockfd + 1;
 			
-			FD_SET(newsockfd, &rset);
+			MPP_FD_SET(newsockfd, &rset);
 			
 			connectedSockets = lappend_int(connectedSockets, newsockfd);
 						
@@ -652,12 +652,12 @@ SeqServerLoop(void)
 			/* get the next cell ready before we delete */			
 			cell = lnext(cell);
 			
-			if (FD_ISSET(fd, &rrset))
+			if (MPP_FD_ISSET(fd, &rrset))
 			{				
 				if( !processSequenceRequest(fd))
 				{
 					/* close it down */	
-					FD_CLR( fd, &rset);
+					MPP_FD_CLR( fd, &rset);
 					connectedSockets = list_delete_int(connectedSockets, fd);
 					shutdown(fd, SHUT_WR);
 					close(fd);
@@ -679,7 +679,7 @@ processSequenceRequest(int sockfd )
 	NextValRequest nextValRequest;
     NextValResponse response;
 	int			saved_err;
-	fd_set		rset,wset;
+	mpp_fd_set	rset, wset;
 	int64 plast;
 	int64 pcached;
 	int64 pincrement;
@@ -726,9 +726,9 @@ processSequenceRequest(int sockfd )
 					
 					CHECK_FOR_INTERRUPTS();
 					
-					FD_ZERO(&rset);
-					FD_SET(sockfd, &rset);
-					n = select(sockfd + 1, &rset, NULL, NULL, &timeout);
+					MPP_FD_ZERO(&rset);
+					MPP_FD_SET(sockfd, &rset);
+					n = select(sockfd + 1, (fd_set *)&rset, NULL, NULL, &timeout);
 					if (n == 0 || (n < 0 && errno == EINTR))
 						continue;
 					else if (n < 0)
@@ -827,9 +827,9 @@ processSequenceRequest(int sockfd )
 					
 					CHECK_FOR_INTERRUPTS();
 					
-					FD_ZERO(&wset);
-					FD_SET(sockfd, &wset);
-					n = select(sockfd + 1, NULL, &wset, NULL, &timeout);
+					MPP_FD_ZERO(&wset);
+					MPP_FD_SET(sockfd, &wset);
+					n = select(sockfd + 1, NULL, (fd_set *)&wset, NULL, &timeout);
 					if (n == 0 || (n < 0 && errno == EINTR))
 						continue;
 					else if (n < 0)

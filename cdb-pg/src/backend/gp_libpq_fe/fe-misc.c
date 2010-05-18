@@ -36,6 +36,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include "cdb/cdbselect.h"
+
 #ifdef WIN32
 #include "win32.h"
 #else
@@ -1097,24 +1099,24 @@ pqSocketPoll(int sock, int forRead, int forWrite, time_t end_time)
 	return poll(&input_fd, 1, timeout_ms);
 #else							/* !HAVE_POLL */
 
-	fd_set		input_mask;
-	fd_set		output_mask;
-	fd_set		except_mask;
+	mpp_fd_set		input_mask;
+	mpp_fd_set		output_mask;
+	mpp_fd_set		except_mask;
 	struct timeval timeout;
 	struct timeval *ptr_timeout;
 
 	if (!forRead && !forWrite)
 		return 0;
 
-	FD_ZERO(&input_mask);
-	FD_ZERO(&output_mask);
-	FD_ZERO(&except_mask);
+	MPP_FD_ZERO(&input_mask);
+	MPP_FD_ZERO(&output_mask);
+	MPP_FD_ZERO(&except_mask);
 	if (forRead)
-		FD_SET(sock, &input_mask);
+		MPP_FD_SET(sock, &input_mask);
 
 	if (forWrite)
-		FD_SET(sock, &output_mask);
-	FD_SET(sock, &except_mask);
+		MPP_FD_SET(sock, &output_mask);
+	MPP_FD_SET(sock, &except_mask);
 
 	/* Compute appropriate timeout interval */
 	if (end_time == ((time_t) -1))
@@ -1131,8 +1133,8 @@ pqSocketPoll(int sock, int forRead, int forWrite, time_t end_time)
 		ptr_timeout = &timeout;
 	}
 
-	return select(sock + 1, &input_mask, &output_mask,
-				  &except_mask, ptr_timeout);
+	return select(sock + 1, (fd_set *)&input_mask, (fd_set *)&output_mask,
+				  (fd_set *)&except_mask, ptr_timeout);
 #endif   /* HAVE_POLL */
 }
 

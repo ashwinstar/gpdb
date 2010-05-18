@@ -252,7 +252,7 @@ write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout, bool *shut
 	bool		failed = false;
 	char       *msg;
 	int			sock;
-	fd_set		rset;
+	mpp_fd_set	rset;
 	int			n;
 	char        *message;
 	bool		result = false;
@@ -326,8 +326,8 @@ write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout, bool *shut
 					if (timeout != NULL)
 						rundownTimeout = *timeout;
 					
-					FD_ZERO(&rset);
-					FD_SET(sock, &rset);
+					MPP_FD_ZERO(&rset);
+					MPP_FD_SET(sock, &rset);
 					while (true)
 					{
 						CHECK_FOR_INTERRUPTS();
@@ -336,7 +336,7 @@ write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout, bool *shut
 									(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 									 errmsg("Shutdown detected during send to standby master")));
 						
-						n = select(sock + 1, &rset, NULL, NULL, (timeout == NULL ? NULL : &rundownTimeout));
+						n = select(sock + 1, (fd_set *)&rset, NULL, NULL, (timeout == NULL ? NULL : &rundownTimeout));
 						if (n == 0)
 						{
 							Assert(timeout != NULL);
@@ -352,7 +352,7 @@ write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout, bool *shut
 							continue;
 						}
 						
-						if (FD_ISSET(sock, &rset))
+						if (MPP_FD_ISSET(sock, &rset))
 							break;
 					}
 				}
