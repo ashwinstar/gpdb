@@ -14,7 +14,7 @@
 --
 -- *********************************************************************
 -- *********************************************************************
-create filespace regressionfs1 ( 1: '/Users/@gpcurusername@/cdb-data/gpregr_regressionfs1_p1', 2: '/Users/@gpcurusername@/cdb-data/gpregr_regressionfs1_p2', 3: '/Users/@gpcurusername@/cdb-data/gpregr_regressionfs1_p3', 4: '/Users/@gpcurusername@/cdb-data/mirrors/gpregr_regressionfs1_m4', 5: '/Users/@gpcurusername@/cdb-data/mirrors/gpregr_regressionfs1_m5' ) 
+create filespace regressionfs1 @gpfilespace_regressionfs1@
 ;
 create tablespace regressionts1 filespace regressionfs1;
 create table fstest(a int, b int) tablespace regressionts1;

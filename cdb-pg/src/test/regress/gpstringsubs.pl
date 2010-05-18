@@ -238,11 +238,18 @@ sub tablelizer
     return \@rows;
 }
 
+# get_filespace_seglist
+#
+# build a seglist (basically as list of dbid : directory name)
+# for the gpfilespace_<fsname> token.  
+# 
+# TODO: options for missing/duplicate/pre-existing dirs, etc.
+#
 sub get_filespace_seglist
 {
 	my $fsname = shift;
 
-	$fsname = "fsx" unless (defined($fsname));
+	$fsname = "regressionfsx" unless (defined($fsname));
 
     my $psql_str = "psql ";
     
