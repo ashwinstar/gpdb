@@ -731,7 +731,7 @@ PersistentRecovery_ShouldHandlePass3XLogRec(
 
 	bool exists;
 
-	if (Debug_persistent_recovery_print && ChangeTracking_ShouldTrackChanges())
+	if (Debug_persistent_recovery_print)
 		ChangeTracking_PrintRelationChangeInfo(
 											record->xl_rmid,
 											record->xl_info,
@@ -764,6 +764,15 @@ PersistentRecovery_ShouldHandlePass3XLogRec(
 									&xlogPersistentTid,
 									&xlogPersistentSerialNum))
 			{
+				if (Debug_persistent_recovery_print)
+					elog(Debug_persistent_recovery_print_level, 
+						 "PersistentRecovery_ShouldHandlePass3XLogRec: truncate %u/%u/%u, serial number " INT64_FORMAT ", TID %s",
+						  xlogRelFileNode.spcNode,
+						  xlogRelFileNode.dbNode,
+						  xlogRelFileNode.relNode,
+						  xlogPersistentSerialNum,
+						  ItemPointerToString(&xlogPersistentTid));
+
 				return true;
 			}
 
@@ -774,6 +783,10 @@ PersistentRecovery_ShouldHandlePass3XLogRec(
 			/*
 			 * A non-data change XLOG record.
 			 */
+			if (Debug_persistent_recovery_print)
+				elog(Debug_persistent_recovery_print_level, 
+					 "PersistentRecovery_ShouldHandlePass3XLogRec: non-data change XLOG record");
+
 			return true;
 		}
 	}
@@ -820,6 +833,17 @@ PersistentRecovery_ShouldHandlePass3XLogRec(
 		if (Debug_persistent_recovery_print)
 			elog(Debug_persistent_recovery_print_level, 
 				 "PersistentRecovery_ShouldHandlePass3XLogRec: match %u/%u/%u, serial number " INT64_FORMAT ", TID %s",
+				  xlogRelFileNode.spcNode,
+				  xlogRelFileNode.dbNode,
+				  xlogRelFileNode.relNode,
+				  xlogPersistentSerialNum,
+				  ItemPointerToString(&xlogPersistentTid));
+	}
+	else
+	{
+		if (Debug_persistent_recovery_print)
+			elog(Debug_persistent_recovery_print_level, 
+				 "PersistentRecovery_ShouldHandlePass3XLogRec: relation has been dropped or the create aborted %u/%u/%u, serial number " INT64_FORMAT ", TID %s",
 				  xlogRelFileNode.spcNode,
 				  xlogRelFileNode.dbNode,
 				  xlogRelFileNode.relNode,

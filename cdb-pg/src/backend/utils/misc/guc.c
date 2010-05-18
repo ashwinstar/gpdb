@@ -264,7 +264,7 @@ bool		Debug_appendonly_guard_end_quicklz_scratch = false;
 bool 		gp_local_distributed_cache_stats = false;
 bool		Debug_persistent_print = false;
 int			Debug_persistent_print_level = LOG;
-bool		Debug_persistent_recovery_print = false;
+bool		Debug_persistent_recovery_print = true;
 int			Debug_persistent_recovery_print_level = LOG;
 bool		Debug_database_command_print = false;
 int			Debug_database_command_print_level = LOG;
@@ -2154,7 +2154,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_persistent_recovery_print,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 		
 	{

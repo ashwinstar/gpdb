@@ -124,11 +124,6 @@ static bool PersistentDatabase_ScanTupleCallback(
 									&serialNum,
 									&previousFreeTid);
 
-	elog(LOG, "tablespace %u / database %u, state = %i",
-		 dbDirNode.tablespace,
-		 dbDirNode.database,
-		 state);
-
 	if (state == PersistentFileSysState_Free)
 	{
 		if (Debug_persistent_print)

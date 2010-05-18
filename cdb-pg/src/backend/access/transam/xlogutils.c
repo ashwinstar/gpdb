@@ -67,11 +67,30 @@ log_invalid_page(RelFileNode node, BlockNumber blkno, bool present)
 	 * something about the XLOG record that generated the reference).
 	 */
 	if (present)
+	{
 		elog(DEBUG1, "page %u of relation %u/%u/%u is uninitialized",
 			 blkno, node.spcNode, node.dbNode, node.relNode);
+		if (Debug_persistent_recovery_print)
+			elog(Debug_persistent_recovery_print_level, 
+				 "log_invalid_page: page %u of relation %u/%u/%u is uninitialized",
+				 blkno,
+				 node.spcNode,
+				 node.dbNode,
+				 node.relNode);
+	}
 	else
+	{
 		elog(DEBUG1, "page %u of relation %u/%u/%u does not exist",
 			 blkno, node.spcNode, node.dbNode, node.relNode);
+		if (Debug_persistent_recovery_print)
+			elog(Debug_persistent_recovery_print_level, 
+				 "log_invalid_page: page %u of relation %u/%u/%u does not exist",
+				 blkno,
+				 node.spcNode,
+				 node.dbNode,
+				 node.relNode);
+	}
+
 
 	if (invalid_page_tab == NULL)
 	{
@@ -126,6 +145,13 @@ forget_invalid_pages(RelFileNode node, BlockNumber minblkno)
 			elog(DEBUG2, "page %u of relation %u/%u/%u has been dropped",
 				 hentry->key.blkno, hentry->key.node.spcNode,
 				 hentry->key.node.dbNode, hentry->key.node.relNode);
+			if (Debug_persistent_recovery_print)
+				elog(Debug_persistent_recovery_print_level, 
+					 "forget_invalid_pages: page %u of relation %u/%u/%u has been dropped",
+					 hentry->key.blkno,
+					 hentry->key.node.spcNode,
+					 hentry->key.node.dbNode, 
+					 hentry->key.node.relNode);
 
 			if (hash_search(invalid_page_tab,
 							(void *) &hentry->key,
@@ -154,6 +180,13 @@ forget_invalid_pages_db(Oid dbid)
 			elog(DEBUG2, "page %u of relation %u/%u/%u has been dropped",
 				 hentry->key.blkno, hentry->key.node.spcNode,
 				 hentry->key.node.dbNode, hentry->key.node.relNode);
+			if (Debug_persistent_recovery_print)
+				elog(Debug_persistent_recovery_print_level, 
+					 "forget_invalid_pages_db: %u of relation %u/%u/%u has been dropped",
+					 hentry->key.blkno,
+					 hentry->key.node.spcNode,
+					 hentry->key.node.dbNode, 
+					 hentry->key.node.relNode);
 
 			if (hash_search(invalid_page_tab,
 							(void *) &hentry->key,

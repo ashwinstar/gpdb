@@ -5965,6 +5965,57 @@ StartupXLOG_InProduction(void)
 		InitResQueues();
 }
 
+/*
+ * Error context callback for tracing or errors occurring during PASS 1 redo.
+ */
+static void
+StartupXLOG_RedoPass1Context(void *arg)
+{
+	XLogRecord		*record = (XLogRecord*) arg;
+
+	StringInfoData buf;
+	
+	initStringInfo(&buf);
+	appendStringInfo(&buf, "REDO PASS 1 @ %s; LSN %s: ",
+					 XLogLocationToString(&ReadRecPtr),
+					 XLogLocationToString2(&EndRecPtr));
+	XLog_OutRec(&buf, record);
+	appendStringInfo(&buf, " - ");
+	RmgrTable[record->xl_rmid].rm_desc(&buf,
+									   record->xl_info,
+									   XLogRecGetData(record));
+
+	errcontext("%s", buf.data);
+
+	pfree(buf.data);
+}
+
+/*
+ * Error context callback for tracing or errors occurring during PASS 1 redo.
+ */
+static void
+StartupXLOG_RedoPass3Context(void *arg)
+{
+	XLogRecord		*record = (XLogRecord*) arg;
+
+	StringInfoData buf;
+	
+	initStringInfo(&buf);
+	appendStringInfo(&buf, "REDO PASS 3 @ %s; LSN %s: ",
+					 XLogLocationToString(&ReadRecPtr),
+					 XLogLocationToString2(&EndRecPtr));
+	XLog_OutRec(&buf, record);
+	appendStringInfo(&buf, " - ");
+	RmgrTable[record->xl_rmid].rm_desc(&buf,
+									   record->xl_info,
+									   XLogRecGetData(record));
+
+	errcontext("%s", buf.data);
+
+	pfree(buf.data);
+}
+
+
 static void
 ApplyStartupRedo(
 	XLogRecPtr		*beginLoc,
@@ -6341,6 +6392,8 @@ StartupXLOG(void)
 			 */
 			do
 			{
+				ErrorContextCallback errcontext;
+				
 				/*
 				 * Have we reached our recovery target?
 				 */
@@ -6352,26 +6405,19 @@ StartupXLOG(void)
 						break;
 				}
 
+				/* Setup error traceback support for ereport() */
+				errcontext.callback = StartupXLOG_RedoPass1Context;
+				errcontext.arg = (void *) record;
+				errcontext.previous = error_context_stack;
+				error_context_stack = &errcontext;
+
 				if (PersistentRecovery_ShouldHandlePass1XLogRec(&ReadRecPtr, &EndRecPtr, record))
 				{
-					if (Debug_persistent_recovery_print)
-					{
-						StringInfoData buf;
-					
-						initStringInfo(&buf);
-						appendStringInfo(&buf, "REDO 1 @ %s; LSN %s: ",
-										 XLogLocationToString(&ReadRecPtr),
-										 XLogLocationToString2(&EndRecPtr));
-						XLog_OutRec(&buf, record);
-						appendStringInfo(&buf, " - ");
-						RmgrTable[record->xl_rmid].rm_desc(&buf,
-														   record->xl_info,
-														   XLogRecGetData(record));
-						elog(Debug_persistent_recovery_print_level, "%s", buf.data);
-						pfree(buf.data);
-					}
 					ApplyStartupRedo(&ReadRecPtr, &EndRecPtr, record);
 				}
+				
+				/* Pop the error context stack */
+				error_context_stack = errcontext.previous;
 
 				LastRec = ReadRecPtr;
 
@@ -6825,25 +6871,19 @@ StartupXLOG_Pass3(void)
 	 */
 	while (true)
 	{
-		if (Debug_persistent_recovery_print)
-		{
-			StringInfoData buf;
+		ErrorContextCallback errcontext;
 		
-			initStringInfo(&buf);
-			appendStringInfo(&buf, "PASS 3 @ %s; LSN %s: ",
-							 XLogLocationToString(&ReadRecPtr),
-							 XLogLocationToString2(&EndRecPtr));
-			XLog_OutRec(&buf, record);
-			appendStringInfo(&buf, " - ");
-			RmgrTable[record->xl_rmid].rm_desc(&buf,
-											   record->xl_info,
-											 XLogRecGetData(record));
-			elog(Debug_persistent_recovery_print_level, "%s", buf.data);
-			pfree(buf.data);
-		}
+		/* Setup error traceback support for ereport() */
+		errcontext.callback = StartupXLOG_RedoPass3Context;
+		errcontext.arg = (void *) record;
+		errcontext.previous = error_context_stack;
+		error_context_stack = &errcontext;
 
 		if (PersistentRecovery_ShouldHandlePass3XLogRec(&ReadRecPtr, &EndRecPtr, record))
 			ApplyStartupRedo(&ReadRecPtr, &EndRecPtr, record);
+		
+		/* Pop the error context stack */
+		error_context_stack = errcontext.previous;
 		
 		if (XLByteEQ(ReadRecPtr, XLogCtl->pass1LastLoc))
 			break;
