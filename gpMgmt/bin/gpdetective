@@ -54,8 +54,6 @@ except Exception, e:
 GPHOME=os.environ.get('GPHOME')
 SRC_GPPATH=". %s/greenplum_path.sh;" % GPHOME
 
-SYSTEM_FILESPACE_OID = 3052
-
 #============================================================
 def pretty_version(v):
     '''
@@ -587,35 +585,27 @@ class GPDetective:
         # Master directory
         rows = self.select(
         '''
-           SELECT hostname, fselocation, fs.oid 
+           SELECT hostname, fselocation 
            FROM   gp_segment_configuration
-           LEFT JOIN pg_filespace_entry on (fsedbid=dbid)
-           LEFT JOIN pg_filespace fs on (fs.oid = fsefsoid and fsname = 'pg_system')
+           INNER JOIN pg_filespace_entry on (fsedbid=dbid)
+           INNER JOIN pg_filespace fs on (fs.oid = fsefsoid and fsname = 'pg_system')
            WHERE  content = -1  AND preferred_role = 'p'
         ''')
-        for row in rows:
-           if row[2] != None and int(row[2]) == SYSTEM_FILESPACE_OID:
-              """ Only get master directory for system file space. """
-              self.opt['h'] = row[0]
-              self.masterdir = row[1]
-              break;
+        self.opt['h']  = rows[0][0]
+        self.masterdir = rows[0][1]
 
         # Backup (mirror) Master directory
         rows = self.select(
         '''
-           SELECT hostname, fselocation, fs.oid
+           SELECT hostname, fselocation
            FROM   gp_segment_configuration
-           LEFT JOIN pg_filespace_entry on (fsedbid=dbid)
-           LEFT JOIN pg_filespace fs on (fs.oid = fsefsoid and fsname = 'pg_system')
+           INNER JOIN pg_filespace_entry on (fsedbid=dbid)
+           INNER JOIN pg_filespace fs on (fs.oid = fsefsoid and fsname = 'pg_system')
            WHERE  content < 0 AND preferred_role != 'p'
         ''')
         if len(rows) > 0:
-            for row in rows:
-              if row[2] != None and int(row[2]) == SYSTEM_FILESPACE_OID:
-                 """ Only get master directory for system file space. """
-                 self.backupmasterhostname  = row[0]
-                 self.backupmasterhostdir   = row[1]
-                 break;
+           self.backupmasterhostname  = rows[0][0]
+           self.backupmasterhostdir   = rows[0][1]
 
         # List of hosts
         self.hosts = self.select(
@@ -628,20 +618,20 @@ class GPDetective:
         # list of segments
         self.segments = self.select(
         '''
-           SELECT dbid, hostname || ':' || fselocation, fs.oid
+           SELECT dbid, hostname || ':' || fselocation
            FROM   gp_segment_configuration
-           LEFT JOIN pg_filespace_entry on (fsedbid=dbid)
-           LEFT JOIN pg_filespace fs on (fs.oid = fsefsoid and fsname = 'pg_system')
+           INNER JOIN pg_filespace_entry on (fsedbid=dbid)
+           INNER JOIN pg_filespace fs on (fs.oid = fsefsoid and fsname = 'pg_system')
            WHERE  content >= 0  AND  preferred_role = 'p'
         ''')
 
         # list of mirrors
         self.mirrors = self.select(
         '''
-           SELECT dbid, hostname || ':' || fselocation, fs.oid
+           SELECT dbid, hostname || ':' || fselocation
            FROM   gp_segment_configuration
-           LEFT JOIN pg_filespace_entry on (fsedbid=dbid)
-           LEFT JOIN pg_filespace fs on (fs.oid = fsefsoid and fsname = 'pg_system')
+           INNER JOIN pg_filespace_entry on (fsedbid=dbid)
+           INNER JOIN pg_filespace fs on (fs.oid = fsefsoid and fsname = 'pg_system')
            WHERE  content >= 0  AND  preferred_role != 'p'
         ''')
 
@@ -851,9 +841,6 @@ class GPDetective:
            for seg in self.segments:
                if self.log_list != None and int(seg[0]) not in self.log_list:
                   continue
-               if seg[2] == None or int(seg[2]) != SYSTEM_FILESPACE_OID:
-                  """ Only get log files for system file spaces. """
-                  continue
                m = host_rx.search(seg[1])
                hostname = m.group(1)            
                out_name='%s/%s_rotated.log' % (m.group(1,3))            
@@ -871,9 +858,6 @@ class GPDetective:
            for mir in self.mirrors:
                if self.log_list != None and int(mir[0]) not in self.log_list:
                      continue
-               if mir[2] == None or int(mir[2]) != SYSTEM_FILESPACE_OID:
-                  """ Only get log files for system file spaces. """
-                  continue
                m = host_rx.search(mir[1])
                hostname = m.group(1)
                out_name = '%s/%s_rotated_mirror.log' % (m.group(1,3))
