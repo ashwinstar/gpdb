@@ -45,14 +45,30 @@ SELECT * FROM sreh_copy ORDER BY a,b,c;
 SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,rawdata,errmsg;
 
 --
+-- # different errors depending on dispatch timings (missing data vs
+-- # invalid input syntax)
+--
+-- start_matchsubs
+--
+-- m/ERROR\:\s+Segment reject limit reached\.\s+Aborting operation\.\s+Last error was\:\s+(missing data for column|invalid input syntax for integer)/
+-- s/Last error was\:(.*)/Last error was: MISSING_DATA_OR_INVALID_INPUT_SYNTAX_FOR_INTEGER/
+--
+-- m/CONTEXT\:\s+COPY sreh_copy\,\s+line/
+-- s/line \d+(.*)/line SOME_LINE/
+--
+-- end_matchsubs
+
+--
 -- error table - have low reject limit that gets reached, and see that data rolled back from target table and appended to err table
 --
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 2;
 SELECT * FROM sreh_copy ORDER BY a,b,c;
--- the error table will have different count of rows in different array configurations, as there's
--- a chance that arrays with more segdbs recorded more bad rows before one of the segments reached
--- the reject limit. Our only way to make sure data was indeed appended at ABORT is to count the 
--- number of distinct inserts into the error table. this is the 4th one, so must be 4.
+-- the error table will have different count of rows in different
+-- array configurations, as there's a chance that arrays with more
+-- segdbs recorded more bad rows before one of the segments reached
+-- the reject limit. Our only way to make sure data was indeed
+-- appended at ABORT is to count the number of distinct inserts into
+-- the error table. this is the 4th one, so must be 4.
 SELECT count(distinct(cmdtime)) FROM sreh_copy_errtbl;
 
 --

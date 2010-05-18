@@ -24,7 +24,7 @@ SELECT * FROM sreh_copy ORDER BY a,b,c;
 --
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' SEGMENT REJECT LIMIT 2;
 ERROR:  Segment reject limit reached. Aborting operation. Last error was: invalid input syntax for integer: "bad", column a
-CONTEXT:  COPY sreh_copy, line 8: "bad|8|8"
+CONTEXT:  COPY sreh_copy, line 8, column a
 SELECT * FROM sreh_copy ORDER BY a,b,c;
  a  | b  | c  
 ----+----+----
@@ -187,10 +187,23 @@ SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,raw
 (22 rows)
 
 --
+-- # different errors depending on dispatch timings (missing data vs
+-- # invalid input syntax)
+--
+-- start_matchsubs
+--
+-- m/ERROR\:\s+Segment reject limit reached\.\s+Aborting operation\.\s+Last error was\:\s+(missing data for column|invalid input syntax for integer)/
+-- s/Last error was\:(.*)/Last error was: MISSING_DATA_OR_INVALID_INPUT_SYNTAX_FOR_INTEGER/
+--
+-- m/CONTEXT\:\s+COPY sreh_copy\,\s+line/
+-- s/line \d+(.*)/line SOME_LINE/
+--
+-- end_matchsubs
+--
 -- error table - have low reject limit that gets reached, and see that data rolled back from target table and appended to err table
 --
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 2;
-ERROR:  Segment reject limit reached. Aborting operation. Last error was: missing data for column "c"  (seg0 @hostname@:11001 pid=14901)
+ERROR:  Segment reject limit reached. Aborting operation. Last error was: missing data for column "c"  (seg0 @hostname@:11001 pid=68456)
 CONTEXT:  COPY sreh_copy, line 3: "3|"
 SELECT * FROM sreh_copy ORDER BY a,b,c;
   a  |  b  |  c  
@@ -217,10 +230,12 @@ SELECT * FROM sreh_copy ORDER BY a,b,c;
  300 | 300 | 300
 (20 rows)
 
--- the error table will have different count of rows in different array configurations, as there's
--- a chance that arrays with more segdbs recorded more bad rows before one of the segments reached
--- the reject limit. Our only way to make sure data was indeed appended at ABORT is to count the 
--- number of distinct inserts into the error table. this is the 4th one, so must be 4.
+-- the error table will have different count of rows in different
+-- array configurations, as there's a chance that arrays with more
+-- segdbs recorded more bad rows before one of the segments reached
+-- the reject limit. Our only way to make sure data was indeed
+-- appended at ABORT is to count the number of distinct inserts into
+-- the error table. this is the 4th one, so must be 4.
 SELECT count(distinct(cmdtime)) FROM sreh_copy_errtbl;
  count 
 -------
@@ -245,9 +260,9 @@ LINE 1: SELECT * FROM sreh_copy_errtbl;
 -- autodrop - error table not auto-dropped when KEEP specified
 --
 COPY sreh_copy FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl KEEP SEGMENT REJECT LIMIT 1000;
+NOTICE:  Error table "sreh_copy_errtbl" does not exist. Auto generating an error table with the same name
 WARNING:  The error table was created in the same transaction as this operation. It will get dropped if transaction rolls back even if bad rows are present
 HINT:  To avoid this create the error table ahead of time using: CREATE TABLE <name> (cmdtime timestamp with time zone, relname text, filename text, linenum integer, bytenum integer, errmsg text, rawdata text, rawbytes bytea)
-NOTICE:  Error table "sreh_copy_errtbl" does not exist. Auto generating an error table with the same name
 SELECT * FROM sreh_copy_errtbl; -- should exist and be empty
  cmdtime | relname | filename | linenum | bytenum | errmsg | rawdata | rawbytes 
 ---------+---------+----------+---------+---------+--------+---------+----------
@@ -285,7 +300,7 @@ CREATE TABLE sreh_constr(a int check (a > 10));
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 COPY sreh_constr FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl KEEP SEGMENT REJECT LIMIT 1000;
-ERROR:  new row for relation "sreh_constr" violates check constraint "sreh_constr_a_check"  (seg0 @hostname@:11001 pid=14901)
+ERROR:  new row for relation "sreh_constr" violates check constraint "sreh_constr_a_check"  (seg0 @hostname@:11001 pid=68456)
 CONTEXT:  COPY sreh_constr, line 5: "9"
 SELECT COUNT(*) FROM sreh_copy_errtbl; -- should exist and have 1 bad format row
  count 
@@ -306,7 +321,7 @@ TRUNCATE sreh_copy_errtbl;
 CREATE TABLE sreh_constr(a int unique);
 NOTICE:  CREATE TABLE / UNIQUE will create implicit index "sreh_constr_a_key" for table "sreh_constr"
 COPY sreh_constr FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl KEEP SEGMENT REJECT LIMIT 1000;
-ERROR:  duplicate key violates unique constraint "sreh_constr_a_key"  (seg0 @hostname@:11001 pid=14901)
+ERROR:  duplicate key violates unique constraint "sreh_constr_a_key"  (seg0 @hostname@:11001 pid=68456)
 CONTEXT:  COPY sreh_constr, line 5: "9"
 SELECT COUNT(*) FROM sreh_copy_errtbl; -- should exist and have 1 bad format row
  count 
@@ -332,14 +347,14 @@ COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJ
 NOTICE:  Found 9 data formatting errors (9 or more input rows). Rejected related input data.
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 2 PERCENT; --fail
 ERROR:  Segment reject limit reached. Aborting operation. Last error was: invalid input syntax for integer: "BAD", column a
-CONTEXT:  COPY sreh_copy, line 107: "BAD|1|1"
+CONTEXT:  COPY sreh_copy, line 107, column a
 --
 -- test PERCENT reject limit logic with custom threshold 10 (only practical for test purposes)
 --
 set gp_reject_percent_threshold = 10;
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 10 PERCENT; --fail
 ERROR:  Segment reject limit reached. Aborting operation. Last error was: invalid input syntax for integer: "BAD", column a
-CONTEXT:  COPY sreh_copy, line 15: "BAD|1|1"
+CONTEXT:  COPY sreh_copy, line 15, column a
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 20 PERCENT; --pass
 NOTICE:  Found 9 data formatting errors (9 or more input rows). Rejected related input data.
 -- MPP-2933 (multiple dist-key attr conversion errors)
@@ -413,10 +428,10 @@ LOCATION ('gpfdist://@hostname@:8080/bad_data1.data' )
 FORMAT 'text' (delimiter '|')
 SEGMENT REJECT LIMIT 2;
 SELECT * FROM sreh_ext ORDER BY a;
-ERROR:  Segment reject limit reached. Aborting operation. Last error was: missing data for column "c"  (seg1 slice1 @hostname@:11002 pid=14902)
+ERROR:  Segment reject limit reached. Aborting operation. Last error was: missing data for column "c"  (seg1 slice1 @hostname@:11002 pid=68457)
 DETAIL:  External table sreh_ext, line 3 of gpfdist://@hostname@:8080/bad_data1.data: "3|"
 INSERT INTO sreh_target SELECT * FROM sreh_ext;
-ERROR:  Segment reject limit reached. Aborting operation. Last error was: missing data for column "c"  (seg1 slice1 @hostname@:11002 pid=14919)
+ERROR:  Segment reject limit reached. Aborting operation. Last error was: missing data for column "c"  (seg1 slice1 @hostname@:11002 pid=68459)
 DETAIL:  External table sreh_ext, line 3 of gpfdist://@hostname@:8080/bad_data1.data: "3|"
 SELECT count(*) FROM sreh_target;
  count 
@@ -564,7 +579,7 @@ LOG ERRORS INTO sreh_ext_errtbl
 SEGMENT REJECT LIMIT 1000;
 INSERT INTO sreh_constr SELECT * FROM sreh_ext;
 NOTICE:  Found 10 data formatting errors (10 or more input rows). Rejected related input data.
-ERROR:  new row for relation "sreh_constr" violates check constraint "sreh_constr_c_check"  (seg1 @hostname@:11002 pid=14902)
+ERROR:  new row for relation "sreh_constr" violates check constraint "sreh_constr_c_check"  (seg1 @hostname@:11002 pid=68457)
 SELECT COUNT(*) FROM sreh_ext_errtbl; -- should be empty
  count 
 -------
@@ -602,15 +617,15 @@ LOCATION ('gpfdist://@hostname@:8080/bad_data3.data' )
 FORMAT 'text' (delimiter '|')
 SEGMENT REJECT LIMIT 2 PERCENT;
 SELECT count(*) FROM sreh_ext_2percent; -- fail
-ERROR:  Segment reject limit reached. Aborting operation. Last error was: invalid input syntax for integer: "BAD", column a
-DETAIL: External table DUMMY_EX, line DUMMY_LINE of DUMMY_LOCATION
+ERROR:  Segment reject limit reached. Aborting operation. Last error was: invalid input syntax for integer: "BAD", column a  (seg0 slice1 @hostname@:11001 pid=68456)
+DETAIL:  External table sreh_ext_2percent, line 107 of gpfdist://@hostname@:8080/bad_data3.data, column a
 --
 -- test PERCENT reject limit logic with custom threshold 10 (only practical for test purposes)
 --
 set gp_reject_percent_threshold = 10;
 SELECT count(*) FROM sreh_ext_10percent; -- fail
-ERROR:  Segment reject limit reached. Aborting operation. Last error was: invalid input syntax for integer: "BAD", column a
-DETAIL: External table DUMMY_EX, line DUMMY_LINE of DUMMY_LOCATION
+ERROR:  Segment reject limit reached. Aborting operation. Last error was: invalid input syntax for integer: "BAD", column a  (seg0 slice1 @hostname@:11001 pid=68456)
+DETAIL:  External table sreh_ext_10percent, line 15 of gpfdist://@hostname@:8080/bad_data3.data, column a
 CREATE EXTERNAL TABLE sreh_ext_20percent(a int, b int, c int)
 LOCATION ('gpfdist://@hostname@:8080/bad_data3.data' )
 FORMAT 'text' (delimiter '|')

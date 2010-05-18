@@ -15,13 +15,13 @@
 -- *********************************************************************
 -- *********************************************************************
 
-create filespace fs1 @gpfilespace_fs1@ 
+create filespace regressionfs1 @gpfilespace_regressionfs1@ 
 
 ;
 
-create tablespace ts1 filespace fs1;
+create tablespace regressionts1 filespace regressionfs1;
 
-create table fstest(a int, b int) tablespace ts1;
+create table fstest(a int, b int) tablespace regressionts1;
 
 insert into fstest select i, i from generate_series (1,1000) i;
 
@@ -29,7 +29,7 @@ select * from fstest;
 
 drop table fstest;
 
-drop tablespace ts1;
+drop tablespace regressionts1;
 
-drop filespace fs1;
+drop filespace regressionfs1;
 

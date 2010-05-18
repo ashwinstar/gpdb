@@ -14,10 +14,10 @@
 --
 -- *********************************************************************
 -- *********************************************************************
-create filespace fs1 ( 1: '/Users/@gpcurusername@/cdb-data/gpregr_fs1_p1', 2: '/Users/@gpcurusername@/cdb-data/gpregr_fs1_p2', 3: '/Users/@gpcurusername@/cdb-data/gpregr_fs1_p3', 4: '/Users/@gpcurusername@/cdb-data/mirrors/gpregr_fs1_m4', 5: '/Users/@gpcurusername@/cdb-data/mirrors/gpregr_fs1_m5' ) 
+create filespace regressionfs1 ( 1: '/Users/@gpcurusername@/cdb-data/gpregr_regressionfs1_p1', 2: '/Users/@gpcurusername@/cdb-data/gpregr_regressionfs1_p2', 3: '/Users/@gpcurusername@/cdb-data/gpregr_regressionfs1_p3', 4: '/Users/@gpcurusername@/cdb-data/mirrors/gpregr_regressionfs1_m4', 5: '/Users/@gpcurusername@/cdb-data/mirrors/gpregr_regressionfs1_m5' ) 
 ;
-create tablespace ts1 filespace fs1;
-create table fstest(a int, b int) tablespace ts1;
+create tablespace regressionts1 filespace regressionfs1;
+create table fstest(a int, b int) tablespace regressionts1;
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into fstest select i, i from generate_series (1,1000) i;
@@ -1027,5 +1027,5 @@ select * from fstest;
 (1000 rows)
 
 drop table fstest;
-drop tablespace ts1;
-drop filespace fs1;
+drop tablespace regressionts1;
+drop filespace regressionfs1;

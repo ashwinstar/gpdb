@@ -297,7 +297,7 @@ sub get_filespace_seglist
 								  "gpregr_" . 
 								  $fsname . "_" . $rowh->{10} . $rowh->{1});
 
-		my $outi = `gpssh -h $rowh->{4} rmdir -rf $dir`;
+###		my $outi = `gpssh -h $rowh->{4} rmdir -rf $dir`;
 		
 		$fsseg .= "\'" . $dir . "\'";
 #		$fsseg .= '$q$'. $dir . '$q$';
