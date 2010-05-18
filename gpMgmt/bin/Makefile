@@ -125,6 +125,43 @@ pychecker:
 	cp -r $(PYLIB_SRC)/$(PYCHECKER_DIR)/build/lib/pychecker  $(PYLIB_DIR)/
 
 
+#
+# PYLINT
+#
+
+PYLINT_VERSION=0.21.0
+PYLINT_DIR=pylint-$(PYLINT_VERSION)
+LOGILAB_ASTNG_VERSION=0.20.1
+LOGILAB_ASTNG_DIR=logilab-astng-$(LOGILAB_ASTNG_VERSION)
+LOGILAB_COMMON_VERSION=0.50.1
+LOGILAB_COMMON_DIR=logilab-common-$(LOGILAB_COMMON_VERSION)
+
+pylint:
+	@echo "--- pylint"
+	cd $(PYLIB_SRC)/ && $(TAR) xzf $(PYLINT_DIR).tar.gz
+	cd $(PYLIB_SRC)/ && $(TAR) xzf $(LOGILAB_ASTNG_DIR).tar.gz
+	cd $(PYLIB_SRC)/ && $(TAR) xzf $(LOGILAB_COMMON_DIR).tar.gz
+	cd $(PYLIB_SRC)/$(PYLINT_DIR)/ && python setup.py build
+	cd $(PYLIB_SRC)/$(LOGILAB_ASTNG_DIR)/ && python setup.py build
+	cd $(PYLIB_SRC)/$(LOGILAB_COMMON_DIR)/ && python setup.py build
+	cp -r $(PYLIB_SRC)/$(PYLINT_DIR)/build/lib/pylint $(PYLIB_DIR)/
+	cp -r $(PYLIB_SRC)/$(PYLINT_DIR)/bin $(PYLIB_DIR)/pylint/
+	cp -r $(PYLIB_SRC)/$(LOGILAB_ASTNG_DIR)/build/lib/logilab $(PYLIB_DIR)/
+	cp -r $(PYLIB_SRC)/$(LOGILAB_COMMON_DIR)/build/lib/logilab $(PYLIB_DIR)/
+	touch $(PYLIB_DIR)/logilab/__init__.py
+
+
+
+PYTHON_FILES=`grep -l --exclude=Makefile "/bin/env python" *`\
+			 `grep "/bin/evn python" $(SRC)/../sbin/*`\
+			 `find ./gppylib -name "*.py"`\
+			 `find $(SRC)/../sbin/ -name "*.py"`
+
+checkcode:
+	$(PYLIB_DIR)/pylint/bin/pylint -f html -i y -E $(PYTHON_FILES) > $(SRC)/../pylint.html || true
+
+
+
 solarisTest:
 	@if [ `uname -s` = 'SunOS' ]; then \
 		echo "SOLARIS" ; \
