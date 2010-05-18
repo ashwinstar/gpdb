@@ -1255,17 +1255,23 @@ def checkOwners():
         return
 
     # Check owners in pg_class
+    #
     #  - Report each table that has an inconsistency with the master database,
     #    this can be on the table directly, or on one of the table subobjects
     #    (pg_toast, pg_aoseg, etc)
+    #
     #  - Theoretically this could result in multiple corrections for a given
     #    table based on having multiple "wrong" owners.  Realistically most
     #    of the problems we have seen with this problem the wrong owner is
     #    almost always the gpadmin user, so this is not expected.  If it does
     #    occur it won't be a problem, but we will issue more ALTER TABLE 
     #    commands than is strictly necessary.
+    #
+    #  - Between 3.3 and 4.0 the ao segment columns migrated from pg_class
+    #    to pg_appendonly.
     db = connect2(GV.cfg[1], utilityMode=False)
-    qry = '''
+    if GV.version >= "4.0":
+        qry = '''
     select distinct n.nspname, coalesce(o.relname, c.relname) as relname,
                     a.rolname, m.rolname as master_rolname
     from gp_dist_random('pg_class') r
@@ -1278,6 +1284,23 @@ def checkOwners():
       left join pg_class o on (o.oid = ao.relid or 
                                o.reltoastrelid = t.oid or
                                o.reltoastrelid = c.oid)
+      join pg_authid a on (a.oid = r.relowner)
+      join pg_authid m on (m.oid = coalesce(o.relowner, c.relowner))
+      join pg_namespace n on (n.oid = coalesce(o.relnamespace, c.relnamespace))
+    where a.oid <> m.oid
+    '''
+    else:
+        qry = '''
+    select distinct n.nspname, coalesce(o.relname, c.relname) as relname,
+                    a.rolname, m.rolname as master_rolname
+    from gp_dist_random('pg_class') r
+      join pg_class c on (c.oid = r.oid)
+      left join pg_class t on (t.reltoastidxid = c.oid or
+                               t.relaosegidxid = c.oid)
+      left join pg_class o on (o.reltoastrelid = t.oid or
+                               o.reltoastrelid = c.oid or
+                               o.relaosegrelid = t.oid or
+                               o.relaosegrelid = c.oid)
       join pg_authid a on (a.oid = r.relowner)
       join pg_authid m on (m.oid = coalesce(o.relowner, c.relowner))
       join pg_namespace n on (n.oid = coalesce(o.relnamespace, c.relnamespace))
@@ -1645,7 +1668,8 @@ def checkPersistentTables():
         )
       ) p
       FULL OUTER JOIN gp_relation_node r
-        ON (p.relfilenode_oid = r.relfilenode_oid)
+        ON (p.relfilenode_oid = r.relfilenode_oid and
+            p.segment_file_num = r.segment_file_num)
     WHERE  (p.relfilenode_oid is NULL OR 
             r.relfilenode_oid is NULL OR 
             p.ctid != r.persistent_tid)
