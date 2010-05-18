@@ -1376,15 +1376,23 @@ def checkIndexes():
     if len(rows) == 0:
         logger.info('[OK] relhasindex')
     else:
-        setError(ERROR_NOREPAIR)
-        logger.info('[FAIL] relhasindex')
-        logger.error('there are %d relhasindex issue(s)' % len(rows))
-        logger.error(qry)
-        for row in rows[0:100]:
-            logger.error('%s.%s' % (row['nspname'], row['relname']))
-        if len(rows) > 100:
-            logger.error("...")
-        # FIXME: add repair script
+        #
+        # Because this is a known issue with minimal impact we issue a 
+        # non-fatal warning instead of an error.
+        #
+        # relhasindex inconsistency results from the fact that relhasindex
+        # is not updated through regular DDL operations (DROP INDEX), but
+        # instead is updated while vacuuming or analyzing the table which
+        # does not run in a regular transaction.
+        #
+        # The main result of this is that old mirroring would only update
+        # the relhasindex on primaries, not on mirrors, and a cancelled
+        # vacuum may have updated some segments but not others (the master
+        # in particular).
+        #
+        # setError(ERROR_NOREPAIR)
+        logger.info('[WARN] relhasindex')
+        logger.warn('there are %d non-fatal relhasindex issue(s)' % len(rows))
 
     # Check for deprecated indexes (gin, hash)
     db = connect2(GV.cfg[1], utilityMode=False)
