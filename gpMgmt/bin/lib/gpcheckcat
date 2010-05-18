@@ -1232,9 +1232,20 @@ def checkBitmapIndexes():
     else:
         logger.info('[OK] bitmap indexes')
 
-def fixupowners(nspname, relname, rolename):
-    Owners.append('ALTER TABLE "%s"."%s" OWNER TO "%s";' % (nspname, relname,
-                                                           rolename))
+def fixupowners(nspname, relname, oldrole, newrole):
+    
+    # Must first alter the table to the wrong owner, then back to the right
+    # owner.  The purpose of this is that AT doesn't dispatch the change unless
+    # it think the table actually changed owner.
+    #
+    # Note: this means that the Owners list must be run in the order given.
+    #
+    Owners.append('-- owner for "%s"."%s"' % (nspname, relname))
+    Owners.append('ALTER TABLE "%s"."%s" OWNER TO "%s";' % 
+                  (nspname, relname, oldrole))
+    Owners.append('ALTER TABLE "%s"."%s" OWNER TO "%s";' % 
+                  (nspname, relname, newrole))
+
 
 def checkOwners():
     logger.info('-----------------------------------')
@@ -1244,15 +1255,33 @@ def checkOwners():
         return
 
     # Check owners in pg_class
+    #  - Report each table that has an inconsistency with the master database,
+    #    this can be on the table directly, or on one of the table subobjects
+    #    (pg_toast, pg_aoseg, etc)
+    #  - Theoretically this could result in multiple corrections for a given
+    #    table based on having multiple "wrong" owners.  Realistically most
+    #    of the problems we have seen with this problem the wrong owner is
+    #    almost always the gpadmin user, so this is not expected.  If it does
+    #    occur it won't be a problem, but we will issue more ALTER TABLE 
+    #    commands than is strictly necessary.
     db = connect2(GV.cfg[1], utilityMode=False)
     qry = '''
-    select distinct n.nspname, c.relname, a.rolname, m.rolname as master_rolname
+    select distinct n.nspname, coalesce(o.relname, c.relname) as relname,
+                    a.rolname, m.rolname as master_rolname
     from gp_dist_random('pg_class') r
       join pg_class c on (c.oid = r.oid)
-      join pg_namespace n on (n.oid = c.relnamespace)
+      left join pg_appendonly ao on (c.oid = ao.segrelid or 
+                                     c.oid = ao.segidxid or
+                                     c.oid = ao.blkdirrelid or 
+                                     c.oid = ao.blkdiridxid)
+      left join pg_class t on (t.reltoastidxid = c.oid)
+      left join pg_class o on (o.oid = ao.relid or 
+                               o.reltoastrelid = t.oid or
+                               o.reltoastrelid = c.oid)
       join pg_authid a on (a.oid = r.relowner)
-      join pg_authid m on (m.oid = c.relowner)
-    where r.relowner <> c.relowner
+      join pg_authid m on (m.oid = coalesce(o.relowner, c.relowner))
+      join pg_namespace n on (n.oid = coalesce(o.relnamespace, c.relnamespace))
+    where a.oid <> m.oid
     '''
     curs = db.query(qry)
 
@@ -1274,10 +1303,14 @@ def checkOwners():
         if len(rows) > 100:
             logger.error("...")
         for row in rows:
-            fixupowners(row['nspname'], row['relname'], row['rolname'])
+            fixupowners(row['nspname'], row['relname'], row['rolname'],
+                        row['master_rolname'])
 
 
     # Check owners in pg_type
+    #  - Ignore implementation types of pg_class entries - they should be
+    #    in the check above since ALTER TABLE is required to fix them, not
+    #    ALTER TYPE.
     db = connect2(GV.cfg[1], utilityMode=False)
     qry = '''
     select distinct n.nspname, t.typname, a.rolname, m.rolname as master_rolname
@@ -1286,7 +1319,7 @@ def checkOwners():
       join pg_namespace n on (n.oid = t.typnamespace)
       join pg_authid a on (a.oid = r.typowner)
       join pg_authid m on (m.oid = t.typowner)
-    where r.typowner <> t.typowner
+    where r.typowner <> t.typowner and r.typrelid = 0
     '''
     curs = db.query(qry)
 
@@ -1865,7 +1898,10 @@ if __name__ == '__main__':
                     (c['hostname'], c['port'], filename, GV.dbname, filename)
 
         if len(Owners) > 0:
-            Owners = list(set(Owners))
+            # Previously we removed duplicate statements from the "Owners" list
+            # by casting it through a "list(set(...))", however this does not work
+            # since the order of items in the list is important for correct 
+            # results.
             filename = 'fixowners.sql'
             fullpath = '%s/%s' % (GV.opt['-g'], filename)
 
