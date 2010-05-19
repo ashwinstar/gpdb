@@ -374,7 +374,7 @@ def create_new_standby_master(options):
     # due to filespace remapping.
     rc = os.system("%s/bin/gpinitstandby -s %s" % (gphome, options.new_standby))
     if rc != 0:
-        logger.warnings('Failed to create the new standby master on %s' % options.new_standby)
+        logger.warning('Failed to create the new standby master on %s' % options.new_standby)
         logger.warning('You will need to manually run \'gpinitstandby -s %s\' to create the new standby master.' % options.new_standby)
         logger.warning('There was a problem creating the new standby master on host %s.' % options.new_standby)
         logger.warning('The error was: %s' % e)
