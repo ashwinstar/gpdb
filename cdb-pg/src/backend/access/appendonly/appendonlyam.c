@@ -388,12 +388,19 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 	}
 	else
 	{
-		ReadGpRelationNode(
-					aoInsertDesc->aoi_rel->rd_id,
+		if (!ReadGpRelationNode(
 					aoInsertDesc->aoi_rel->rd_node.relNode,
 					aoInsertDesc->cur_segno,
 					&persistentTid,
-					&persistentSerialNum);
+					&persistentSerialNum))
+		{
+			elog(ERROR, "Did not find gp_relation_node entry for relation name %s, relation id %u, relfilenode %u, segment file #%d, logical eof " INT64_FORMAT,
+				 aoInsertDesc->aoi_rel->rd_rel->relname.data,
+				 aoInsertDesc->aoi_rel->rd_id,
+				 aoInsertDesc->aoi_rel->rd_node.relNode,
+				 aoInsertDesc->cur_segno,
+				 eof);
+		}
 	}
 
 	/*

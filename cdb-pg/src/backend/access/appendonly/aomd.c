@@ -138,12 +138,19 @@ OpenAOSegmentFile(
 	int primaryError;
 	bool mirrorDataLossOccurred;	// We'll look at this at close time.
 
-	ReadGpRelationNode(
-				rel->rd_id,
+	if (!ReadGpRelationNode(
 				rel->rd_node.relNode,
 				segmentFileNum,
 				&persistentTid,
-				&persistentSerialNum);
+				&persistentSerialNum))
+	{
+		elog(ERROR, "Did not find gp_relation_node entry for relation name %s, relation id %u, relfilenode %u, segment file #%d, logical eof " INT64_FORMAT,
+			 rel->rd_rel->relname.data,
+			 rel->rd_id,
+			 rel->rd_node.relNode,
+			 segmentFileNum,
+			 logicalEof);
+	}
 
 	MirroredAppendOnly_OpenReadWrite(
 							mirroredOpen, 

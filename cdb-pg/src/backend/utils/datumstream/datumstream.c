@@ -408,12 +408,17 @@ void datumstream_open_file(DatumStream *ds, char *fn, int64 eof, int64 eofUncomp
 		}
 		else
 		{
-			ReadGpRelationNode(
-						relFileNode.relNode,	// UNDONE: Need relationId for tracing...
+			if (!ReadGpRelationNode(
 						relFileNode.relNode,
 						segmentFileNum,
 						&persistentTid,
-						&persistentSerialNum);
+						&persistentSerialNum))
+			{
+				elog(ERROR, "Did not find gp_relation_node entry for relfilenode %u, segment file #%d, logical eof " INT64_FORMAT,
+					 relFileNode.relNode,
+					 segmentFileNum,
+					 eof);
+			}
 		}
 
 		/*

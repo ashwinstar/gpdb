@@ -428,7 +428,6 @@ ScanGpRelationNodeTuple(
 HeapTuple
 FetchGpRelationNodeTuple(
 	Relation 		gp_relation_node,
-	Oid				relationId,
 	Oid 			relfilenode,
 	int32			segmentFileNum,
 	ItemPointer		persistentTid,
@@ -444,7 +443,6 @@ FetchGpRelationNodeTuple(
 
 	int64 createMirrorDataLossTrackingSessionNum;
 
-	Assert (relationId != 0);
 	Assert (relfilenode != 0);
 	
 	tuple = ScanGpRelationNodeTuple(
@@ -471,19 +469,13 @@ FetchGpRelationNodeTuple(
 						&createMirrorDataLossTrackingSessionNum,
 						persistentTid,
 						persistentSerialNum);
-	if (actualRelationNode != relfilenode)
-		elog(FATAL, "Mismatch in node tuple for gp_relation_node for relation %u, relfilenode %u, relation node %u",
-			 relationId, 
-			 relfilenode,
-			 actualRelationNode);
+	Assert (actualRelationNode == relfilenode);
 	
 	return tuple;
 }
 
-void
+bool
 ReadGpRelationNode(
-	Oid				relationId,
-	
 	Oid 			relfilenode,
 	
 	int32			segmentFileNum,
@@ -494,6 +486,7 @@ ReadGpRelationNode(
 {
 	Relation gp_relation_node;
 	HeapTuple tuple;
+	bool found;
 
 	MemSet(persistentTid, 0, sizeof(ItemPointerData));
 	*persistentSerialNum = 0;
@@ -502,7 +495,6 @@ ReadGpRelationNode(
 
 	tuple = FetchGpRelationNodeTuple(
 						gp_relation_node,
-						relationId,
 						relfilenode,
 						segmentFileNum,
 						persistentTid,
@@ -513,14 +505,17 @@ ReadGpRelationNode(
 	 */
 	if (!HeapTupleIsValid(tuple))
 	{
-		elog(ERROR, "Did not find node tuple in gp_relation_node for relation %u, relation node %u",
-		     relationId,
-		     relfilenode);
+		found = false;
 	}
 	else
+	{
+		found = true;
 		heap_freetuple(tuple);
+	}
 
 	heap_close(gp_relation_node, AccessShareLock);
+
+	return found;
 }
 
 void
@@ -539,12 +534,17 @@ RelationFetchSegFile0GpRelationNode(
 			return; // The initdb process will load the persistent table once we out of bootstrap mode.
 		}
 
-		ReadGpRelationNode(
-					relation->rd_id,
+		if (!ReadGpRelationNode(
 					relation->rd_node.relNode,
 					/* segmentFileNum */ 0,
 					&relation->rd_segfile0_relationnodeinfo.persistentTid,
-					&relation->rd_segfile0_relationnodeinfo.persistentSerialNum);
+					&relation->rd_segfile0_relationnodeinfo.persistentSerialNum))
+		{
+			elog(ERROR, "Did not find gp_relation_node entry for relation name %s, relation id %u, relfilenode %u",
+				 relation->rd_rel->relname.data,
+				 relation->rd_id,
+				 relation->rd_node.relNode);
+		}
 
 		relation->rd_segfile0_relationnodeinfo.isPresent = true;
 		

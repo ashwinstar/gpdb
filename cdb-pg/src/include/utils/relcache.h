@@ -98,13 +98,11 @@ extern HeapTuple ScanGpRelationNodeTuple(
 	int32		segmentFileNum);
 extern HeapTuple FetchGpRelationNodeTuple(
 	Relation 		gp_relation_node,
-	Oid				relationId,
 	Oid 			relationNode,
 	int32			segmentFileNum,
 	ItemPointer		persistentTid,
 	int64			*persistentSerialNum);
-extern void ReadGpRelationNode(
-	Oid				relationId,
+extern bool ReadGpRelationNode(
 	Oid 			relfilenode,
 	int32			segmentFileNum,
 	ItemPointer		persistentTid,
