@@ -101,8 +101,70 @@ typedef struct PendingDelete
 static PendingDelete *pendingDeletes = NULL; /* head of linked list */
 static int pendingDeletesCount = 0;
 static bool pendingDeletesSorted = false;
+static bool pendingDeletesPerformed = true;
 
 typedef PendingDelete *PendingDeletePtr;
+
+static PendingDelete *PendingDelete_AddEntry(
+	PersistentFileSysObjName *fsObjName,
+
+	ItemPointer 			persistentTid,
+
+	int64					persistentSerialNum,
+
+	bool					dropForCommit)
+{
+	PendingDelete *pending; 
+
+	/* Add the filespace to the list of stuff to delete at abort */
+	pending = (PendingDelete *)
+		MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
+
+	pending->fsObjName = *fsObjName;
+	pending->isLocalBuf = false;
+	pending->relationName = NULL;
+	pending->relStorageMgr = PersistentFileSysRelStorageMgr_None;
+	pending->dropForCommit = dropForCommit;
+	pending->sameTransCreateDrop = false;
+	pending->nestLevel = GetCurrentTransactionNestLevel();
+	pending->persistentTid = *persistentTid;
+	pending->persistentSerialNum = persistentSerialNum;
+	pending->next = pendingDeletes;
+	pendingDeletes = pending;
+	pendingDeletesCount++;
+	pendingDeletesSorted = false;
+	pendingDeletesPerformed = false;
+
+	return pending;
+}
+
+static PendingDelete *PendingDelete_AddCreatePendingEntry(
+	PersistentFileSysObjName *fsObjName,
+
+	ItemPointer 			persistentTid,
+
+	int64					persistentSerialNum)
+{
+	return PendingDelete_AddEntry(
+							fsObjName,
+							persistentTid,
+							persistentSerialNum,
+							/* dropForCommit */ false);
+}
+
+static PendingDelete *PendingDelete_AddDropEntry(
+	PersistentFileSysObjName *fsObjName,
+
+	ItemPointer 			persistentTid,
+
+	int64					persistentSerialNum)
+{
+	return PendingDelete_AddEntry(
+							fsObjName,
+							persistentTid,
+							persistentSerialNum,
+							/* dropForCommit */ true);
+}
 
 static inline PersistentEndXactFileSysAction PendingDelete_Action(
 	PendingDelete *pendingDelete)
@@ -412,15 +474,11 @@ smgrcreatefilespacedirpending(
 
 	bool							flushToXLog)
 {
-	PendingDelete *pending; 
-
-	/* Add the filespace to the list of stuff to delete at abort */
-	pending = (PendingDelete *)
-		MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
+	PersistentFileSysObjName fsObjName;		
 	
 	PersistentFileSysObjName_SetFilespaceDir(
-								&pending->fsObjName,
-								filespaceOid);
+										&fsObjName,
+										filespaceOid);
 	
 	PersistentFilespace_MarkCreatePending(
 								filespaceOid,
@@ -433,17 +491,10 @@ smgrcreatefilespacedirpending(
 								persistentSerialNum,
 								flushToXLog);
 
-	pending->relationName = NULL;
-	pending->isLocalBuf = false;
-	pending->dropForCommit = false;	/* delete if abort */
-	pending->sameTransCreateDrop = false;
-	pending->nestLevel = GetCurrentTransactionNestLevel();
-	pending->persistentTid = *persistentTid;
-	pending->persistentSerialNum = *persistentSerialNum;
-	pending->next = pendingDeletes;
-	pendingDeletes = pending;
-	pendingDeletesCount++;
-	pendingDeletesSorted = false;
+	PendingDelete_AddCreatePendingEntry(
+								&fsObjName,
+								persistentTid,
+								*persistentSerialNum);
 }
 
 /*
@@ -501,14 +552,10 @@ smgrcreatetablespacedirpending(
 
 	bool							flushToXLog)
 {
-	PendingDelete *pending; 
+	PersistentFileSysObjName fsObjName;		
 
-	/* Add the tablespace directory to the list of stuff to delete at abort */
-	pending = (PendingDelete *)
-		MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
-	
 	PersistentFileSysObjName_SetTablespaceDir(
-								&pending->fsObjName,
+								&fsObjName,
 								tablespaceDirNode->tablespace);
 
 	PersistentTablespace_MarkCreatePending(
@@ -519,18 +566,10 @@ smgrcreatetablespacedirpending(
 								persistentSerialNum,
 								flushToXLog);
 
-	pending->relationName = NULL;
-	pending->isLocalBuf = false;
-	pending->dropForCommit = false;	/* delete if abort */
-	pending->sameTransCreateDrop = false;
-	pending->nestLevel = GetCurrentTransactionNestLevel();
-	pending->persistentTid = *persistentTid;
-	pending->persistentSerialNum = *persistentSerialNum;
-	pending->next = pendingDeletes;
-	pendingDeletes = pending;
-	pendingDeletesCount++;
-	pendingDeletesSorted = false;
-	
+	PendingDelete_AddCreatePendingEntry(
+						&fsObjName,
+						persistentTid,
+						*persistentSerialNum);
 }
 
 /*
@@ -577,17 +616,15 @@ smgrcreatedbdirpending(
 
 	bool							flushToXLog)
 {
-	PendingDelete *pending; 
+	PersistentFileSysObjName fsObjName;		
+	
 	Oid tablespace = dbDirNode->tablespace;
 	Oid database = dbDirNode->database;
-	
-	/* Add the database directory to the list of stuff to delete at abort */
-	pending = (PendingDelete *)
-		MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
-	
-	PersistentFileSysObjName_SetDatabaseDir(&pending->fsObjName,
-											tablespace,
-											database);
+		
+	PersistentFileSysObjName_SetDatabaseDir(
+									&fsObjName,
+									tablespace,
+									database);
 
 	PersistentDatabase_MarkCreatePending(
 								dbDirNode,
@@ -596,17 +633,10 @@ smgrcreatedbdirpending(
 								persistentSerialNum,
 								flushToXLog);
 
-	pending->relationName = NULL;
-	pending->isLocalBuf = false;
-	pending->dropForCommit = false;	/* delete if abort */
-	pending->sameTransCreateDrop = false;
-	pending->nestLevel = GetCurrentTransactionNestLevel();
-	pending->persistentTid = *persistentTid;
-	pending->persistentSerialNum = *persistentSerialNum;
-	pending->next = pendingDeletes;
-	pendingDeletes = pending;
-	pendingDeletesCount++;
-	pendingDeletesSorted = false;
+	PendingDelete_AddCreatePendingEntry(
+						&fsObjName,
+						persistentTid,
+						*persistentSerialNum);
 }
 
 /*
@@ -708,7 +738,14 @@ void smgrcreatepending(
 
 	bool							flushToXLog)
 {
+	PersistentFileSysObjName fsObjName;		
+	
 	PendingDelete *pending;
+		
+	PersistentFileSysObjName_SetRelationFile(
+										&fsObjName,
+										relFileNode,
+										segmentFileNum);
 		
 	PersistentRelation_AddCreatePending(
 								relFileNode,
@@ -721,28 +758,15 @@ void smgrcreatepending(
 								persistentSerialNum,
 								flushToXLog);
 	
-	/* Add the relation to the list of stuff to delete at abort */
-	pending = (PendingDelete *)
-		MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
 	
-	PersistentFileSysObjName_SetRelationFile(
-										&pending->fsObjName,
-										relFileNode,
-										segmentFileNum);
+	pending = PendingDelete_AddCreatePendingEntry(
+								&fsObjName,
+								persistentTid,
+								*persistentSerialNum);
+
 	pending->relStorageMgr = relStorageMgr;
-
 	pending->relationName = MemoryContextStrdup(TopMemoryContext, relationName);
-
 	pending->isLocalBuf = isLocalBuf;	/*CDB*/
-	pending->dropForCommit = false;	/* delete if abort */
-	pending->sameTransCreateDrop = false;
-	pending->nestLevel = GetCurrentTransactionNestLevel();
-	pending->persistentTid = *persistentTid;
-	pending->persistentSerialNum = *persistentSerialNum;
-	pending->next = pendingDeletes;
-	pendingDeletes = pending;
-	pendingDeletesCount++;
-	pendingDeletesSorted = false;
 }
 
 /*
@@ -820,33 +844,23 @@ smgrscheduleunlink(
 
 	int64 			persistentSerialNum)
 {
-	int	nestLevel = GetCurrentTransactionNestLevel();
-
+	PersistentFileSysObjName fsObjName;		
+	
 	PendingDelete *pending;
 
-	/* Add the relation to the list of stuff to delete at commit */
-	pending = (PendingDelete *)
-		MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
-
 	PersistentFileSysObjName_SetRelationFile(
-										&pending->fsObjName,
+										&fsObjName,
 										relFileNode,
 										segmentFileNum);
+
+	pending = PendingDelete_AddDropEntry(
+								&fsObjName,
+								persistentTid,
+								persistentSerialNum);
+
 	pending->relStorageMgr = relStorageMgr;
-
 	pending->relationName = MemoryContextStrdup(TopMemoryContext, relationName);
-
-	pending->relationName = NULL;
-	pending->isLocalBuf = isLocalBuf;   /*CDB*/
-	pending->dropForCommit = true;	/* delete if commit */
-	pending->sameTransCreateDrop = false;
-	pending->persistentTid = *persistentTid;
-	pending->persistentSerialNum = persistentSerialNum;
-	pending->nestLevel = nestLevel;
-	pending->next = pendingDeletes;
-	pendingDeletes = pending;
-	pendingDeletesCount++;
-	pendingDeletesSorted = false;
+	pending->isLocalBuf = isLocalBuf;	/*CDB*/
 
 	if (relStorageMgr == PersistentFileSysRelStorageMgr_AppendOnly)
 	{
@@ -858,7 +872,7 @@ smgrscheduleunlink(
 		AppendOnlyMirrorResyncEofs_RemoveForDrop(
 											relFileNode,
 											segmentFileNum,
-											nestLevel);
+											GetCurrentTransactionNestLevel());
 	}
 }
 
@@ -974,28 +988,16 @@ smgrschedulermfilespacedir(
 
 	int64				persistentSerialNum)
 {
-	PendingDelete *pending;
-
-	/* Add the database directory to the list of stuff to delete at commit */
-	pending = (PendingDelete *)
-		MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
-	
+	PersistentFileSysObjName fsObjName;		
+		
 	PersistentFileSysObjName_SetFilespaceDir(
-									&pending->fsObjName,
+									&fsObjName,
 									filespaceOid);
-	pending->relStorageMgr = PersistentFileSysRelStorageMgr_None;
 	
-	pending->relationName = NULL;
-	pending->isLocalBuf = false;
-	pending->dropForCommit = true;	/* delete if commit */
-	pending->sameTransCreateDrop = false;
-	pending->persistentTid = *persistentTid;
-	pending->persistentSerialNum = persistentSerialNum;
-	pending->nestLevel = GetCurrentTransactionNestLevel();
-	pending->next = pendingDeletes;
-	pendingDeletes = pending;
-	pendingDeletesCount++;
-	pendingDeletesSorted = false;
+	PendingDelete_AddDropEntry(
+						&fsObjName,
+						persistentTid,
+						persistentSerialNum);
 }
 
 void
@@ -1058,29 +1060,16 @@ smgrschedulermtablespacedir(
 
 	int64				persistentSerialNum)
 {
-	PendingDelete *pending;
-
-	/* Add the database directory to the list of stuff to delete at commit */
-	pending = (PendingDelete *)
-		MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
+	PersistentFileSysObjName fsObjName;		
 	
 	PersistentFileSysObjName_SetTablespaceDir(
-									&pending->fsObjName,
+									&fsObjName,
 									tablespaceOid);
-	pending->relStorageMgr = PersistentFileSysRelStorageMgr_None;
 	
-	pending->relationName = NULL;
-	pending->isLocalBuf = false;
-	pending->dropForCommit = true;	/* delete if commit */
-	pending->sameTransCreateDrop = false;
-	pending->persistentTid = *persistentTid;
-	pending->persistentSerialNum = persistentSerialNum;
-	pending->nestLevel = GetCurrentTransactionNestLevel();
-	pending->nestLevel = GetCurrentTransactionNestLevel();
-	pending->next = pendingDeletes;
-	pendingDeletes = pending;
-	pendingDeletesCount++;
-	pendingDeletesSorted = false;
+	PendingDelete_AddDropEntry(
+						&fsObjName,
+						persistentTid,
+						persistentSerialNum);
 }
 
 /*
@@ -1097,31 +1086,23 @@ smgrschedulermdbdir(
 
 	int64 				persistentSerialNum)
 {
-	PendingDelete *pending;
+	PersistentFileSysObjName fsObjName;		
+	
 	Oid tablespace;
 	Oid database;
-
-	/* Add the database directory to the list of stuff to delete at commit */
-	pending = (PendingDelete *)
-		MemoryContextAllocZero(TopMemoryContext, sizeof(PendingDelete));
 
 	tablespace = dbDirNode->tablespace;
 	database = dbDirNode->database;
 	
-	PersistentFileSysObjName_SetDatabaseDir(&pending->fsObjName,tablespace,database);
-	pending->relStorageMgr = PersistentFileSysRelStorageMgr_None;
+	PersistentFileSysObjName_SetDatabaseDir(
+									&fsObjName,
+									tablespace,
+									database);
 	
-	pending->relationName = NULL;
-	pending->isLocalBuf = false;
-	pending->dropForCommit = true;	/* delete if commit */
-	pending->sameTransCreateDrop = false;
-	pending->persistentTid = *persistentTid;
-	pending->persistentSerialNum = persistentSerialNum;
-	pending->nestLevel = GetCurrentTransactionNestLevel();
-	pending->next = pendingDeletes;
-	pendingDeletes = pending;
-	pendingDeletesCount++;
-	pendingDeletesSorted = false;
+	PendingDelete_AddDropEntry(
+						&fsObjName,
+						persistentTid,
+						persistentSerialNum);
 }
 
 void
@@ -1234,6 +1215,11 @@ void smgrappendonlymirrorresynceofs(
 								persistentSerialNum,
 								mirrorLossEof,
 								mirrorNewEof);
+
+	/*
+	 * Indicate we have work to do in AtEOXact_smgr.
+	 */
+	pendingDeletesPerformed = false;
 }
 
 /*
@@ -1741,6 +1727,7 @@ PostPrepare_smgr(void)
 
 	Assert(pendingDeletesCount == 0);
 	pendingDeletesSorted = false;
+	pendingDeletesPerformed = true;
 
 	/*
 	 * Free the Append-Only mirror resync EOFs hash table.
@@ -2688,28 +2675,40 @@ AtEOXact_smgr(bool forCommit)
 		pendingDeletesSorted = true;
 	}
 
-	/*
-	 * Do abort actions for the sub-transaction's creates and deletes.
-	 */
-	smgrDoDeleteActions(
-					&pendingDeletes, 
-					&pendingDeletesCount,
-					forCommit);
+	if (!pendingDeletesPerformed)
+	{
+		/*
+		 * We need to complete this work, or let Crash Recovery complete it.
+		 */
+		START_CRIT_SECTION();
+
+		/*
+		 * Do abort actions for the sub-transaction's creates and deletes.
+		 */
+		smgrDoDeleteActions(
+						&pendingDeletes, 
+						&pendingDeletesCount,
+						forCommit);
 
 
-	Assert(pendingDeletes == NULL);
-	Assert(pendingDeletesCount == 0);
-	pendingDeletesSorted = false;
+		Assert(pendingDeletes == NULL);
+		Assert(pendingDeletesCount == 0);
+		pendingDeletesSorted = false;
 
-	/*
-	 * Update the Append-Only mirror resync EOFs.
-	 */
-	smgrDoAppendOnlyResyncEofs(forCommit);
-	
-	/*
-	 * Free the Append-Only mirror resync EOFs hash table.
-	 */
-	AppendOnlyMirrorResyncEofs_HashTableRemove("AtEOXact_smgr");
+		/*
+		 * Update the Append-Only mirror resync EOFs.
+		 */
+		smgrDoAppendOnlyResyncEofs(forCommit);
+		
+		/*
+		 * Free the Append-Only mirror resync EOFs hash table.
+		 */
+		AppendOnlyMirrorResyncEofs_HashTableRemove("AtEOXact_smgr");
+
+		pendingDeletesPerformed = true;
+
+		END_CRIT_SECTION();
+	}
 }
 
 /*

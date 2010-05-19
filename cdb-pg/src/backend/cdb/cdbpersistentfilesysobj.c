@@ -2334,6 +2334,11 @@ void PersistentFileSysObj_EndXactAction(
 	MIRRORED_LOCK;
 
 	/*
+	 * We need to complete this work, or let Crash Recovery complete it.
+	 */
+	START_CRIT_SECTION();
+
+	/*
 	 * End transaction State-Changes.
 	 */
 	for (i = 0; i < persistentObjects->typed.fileSysActionInfosCount; i++)
@@ -2540,6 +2545,9 @@ void PersistentFileSysObj_EndXactAction(
 	}
 
 	MIRRORED_UNLOCK;
+
+	END_CRIT_SECTION();
+
 	// UNDONE: See note in middle.
 	PersistentFileSysObj_FlushXLog();
 
