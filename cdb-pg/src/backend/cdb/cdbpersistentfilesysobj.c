@@ -45,6 +45,56 @@ typedef struct PersistentFileSysObjPrivateSharedMemory
 	bool	needInitScan;
 } PersistentFileSysObjPrivateSharedMemory;
 
+typedef struct ReadTupleForUpdateInfo
+{
+	PersistentFsObjType 		fsObjType;
+
+	PersistentFileSysObjName 	*fsObjName;
+
+	ItemPointerData				persistentTid;
+
+	int64						persistentSerialNum;
+} ReadTupleForUpdateInfo;
+
+#define READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE \
+	ErrorContextCallback readTupleForUpdateErrContext; \
+	ReadTupleForUpdateInfo readTupleForUpdateInfo;
+
+#define READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHNAME(name, tid, serialNum) \
+{ \
+	readTupleForUpdateInfo.fsObjType = (name)->type; \
+    readTupleForUpdateInfo.fsObjName = (name); \
+	readTupleForUpdateInfo.persistentTid = *(tid); \
+	readTupleForUpdateInfo.persistentSerialNum = serialNum; \
+\
+	/* Setup error traceback support for ereport() */ \
+	readTupleForUpdateErrContext.callback = PersistentFileSysObj_ReadForUpdateErrContext; \
+	readTupleForUpdateErrContext.arg = (void *) &readTupleForUpdateInfo; \
+	readTupleForUpdateErrContext.previous = error_context_stack; \
+	error_context_stack = &readTupleForUpdateErrContext; \
+}
+
+#define READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHTYPE(type, tid, serialNum) \
+{ \
+	readTupleForUpdateInfo.fsObjType = (type); \
+    readTupleForUpdateInfo.fsObjName = NULL; \
+	readTupleForUpdateInfo.persistentTid = *(tid); \
+	readTupleForUpdateInfo.persistentSerialNum = (serialNum); \
+\
+	/* Setup error traceback support for ereport() */ \
+	readTupleForUpdateErrContext.callback = PersistentFileSysObj_ReadForUpdateErrContext; \
+	readTupleForUpdateErrContext.arg = (void *) &readTupleForUpdateInfo; \
+	readTupleForUpdateErrContext.previous = error_context_stack; \
+	error_context_stack = &readTupleForUpdateErrContext; \
+}
+
+
+#define READTUPLE_FOR_UPDATE_ERRCONTEXT_POP \
+{ \
+	/* Pop the error context stack */ \
+	error_context_stack = readTupleForUpdateErrContext.previous; \
+}
+
 static PersistentFileSysObjPrivateSharedMemory *persistentFileSysObjPrivateSharedData = NULL;
 
 void PersistentFileSysObj_InitShared(
@@ -523,6 +573,29 @@ void PersistentFileSysObj_FreeTuple(
 						flushToXLog);
 }
 
+static void
+PersistentFileSysObj_ReadForUpdateErrContext(void *arg)
+{
+	ReadTupleForUpdateInfo *info = (ReadTupleForUpdateInfo*) arg;
+
+	if (info->fsObjName != NULL)
+	{
+		errcontext( 
+			 "Reading tuple TID %s for possible update to persistent file-system object %s, persistent serial number " INT64_FORMAT,
+			 ItemPointerToString(&info->persistentTid),
+			 PersistentFileSysObjName_TypeAndObjectName(info->fsObjName),
+			 info->persistentSerialNum);
+	}
+	else
+	{
+		errcontext( 
+			 "Reading tuple TID %s for possible update to persistent file-system object type %s, persistent serial number " INT64_FORMAT,
+			 ItemPointerToString(&info->persistentTid),
+			 PersistentFileSysObjName_TypeName(info->fsObjType),
+			 info->persistentSerialNum);
+	}
+}
+
 /*
  * errcontext_persistent_relation_state_change
  *
@@ -702,6 +775,8 @@ void PersistentFileSysObj_StateChange(
 
 	PersistentFileSysState		*oldState)
 {
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
+
 	PersistentFsObjType				fsObjType;
 
 	PersistentFileSysObjData 		*fileSysObjData;
@@ -738,11 +813,15 @@ void PersistentFileSysObj_StateChange(
 	
 	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes * sizeof(Datum));
 
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHNAME(fsObjName, persistentTid, persistentSerialNum);
+
 	PersistentFileSysObj_ReadTuple(
 							fsObjType,
 							persistentTid,
 							values,
 							&tupleCopy);
+
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_POP;
 
 	switch (nextState)
 	{
@@ -932,6 +1011,8 @@ PersistentFileSysObj_RemoveSegment(PersistentFileSysObjName *fsObjName,
 								   bool ismirror,
 								   bool flushToXLog)
 {
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
+
 	PersistentFsObjType				fsObjType;
 
 	PersistentFileSysObjData 		*fileSysObjData;
@@ -951,11 +1032,15 @@ PersistentFileSysObj_RemoveSegment(PersistentFileSysObjName *fsObjName,
 	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes *
 							sizeof(Datum));
 
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHNAME(fsObjName, persistentTid, persistentSerialNum);
+
 	PersistentFileSysObj_ReadTuple(
 							fsObjType,
 							persistentTid,
 							values,
 							&tupleCopy);
+
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_POP;
 
 	{
 		Datum *newValues;
@@ -1032,6 +1117,8 @@ PersistentFileSysObj_ActivateStandby(PersistentFileSysObjName *fsObjName,
 								   int16 newmaster,
 								   bool flushToXLog)
 {
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
+
 	PersistentFsObjType				fsObjType;
 
 	PersistentFileSysObjData 		*fileSysObjData;
@@ -1051,11 +1138,15 @@ PersistentFileSysObj_ActivateStandby(PersistentFileSysObjName *fsObjName,
 	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes *
 							sizeof(Datum));
 
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHNAME(fsObjName, persistentTid, persistentSerialNum);
+
 	PersistentFileSysObj_ReadTuple(
 							fsObjType,
 							persistentTid,
 							values,
 							&tupleCopy);
+
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_POP;
 
 	{
 		Datum *newValues;
@@ -1139,6 +1230,8 @@ PersistentFileSysObj_AddMirror(PersistentFileSysObjName *fsObjName,
 							   void *arg,
 							   bool	flushToXLog)
 {
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
+
 	PersistentFsObjType				fsObjType;
 
 	PersistentFileSysObjData 		*fileSysObjData;
@@ -1157,11 +1250,15 @@ PersistentFileSysObj_AddMirror(PersistentFileSysObjName *fsObjName,
 	
 	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes * sizeof(Datum));
 
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHNAME(fsObjName, persistentTid, persistentSerialNum);
+
 	PersistentFileSysObj_ReadTuple(
 							fsObjType,
 							persistentTid,
 							values,
 							&tupleCopy);
+
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_POP;
 
 	{
 		Datum *newValues;
@@ -1551,6 +1648,8 @@ void PersistentFileSysObj_DropObject(
 
 	bool 					ignoreNonExistence)
 {
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
+
 	PersistentFsObjType				fsObjType;
 
 	PersistentFileSysObjData 		*fileSysObjData;
@@ -1600,11 +1699,15 @@ void PersistentFileSysObj_DropObject(
 		
 	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes * sizeof(Datum));
 
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHNAME(fsObjName, persistentTid, persistentSerialNum);
+
 	PersistentFileSysObj_ReadTuple(
 							fsObjType,
 							persistentTid,
 							values,
 							&tupleCopy);
+
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_POP;
 
 	GpPersistent_GetCommonValues(
 							fsObjType,
@@ -2007,6 +2110,8 @@ void PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 {
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
+
 	PersistentFileSysObjData		*fileSysObjData;
 	PersistentFileSysObjSharedData	*fileSysObjSharedData;
 	
@@ -2057,11 +2162,15 @@ void PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHTYPE(PersistentFsObjType_RelationFile, persistentTid, persistentSerialNum);
+
 	PersistentFileSysObj_ReadTuple(
 							PersistentFsObjType_RelationFile,
 							persistentTid,
 							values,
 							&tupleCopy);
+
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_POP;
 
 	GpPersistentRelationNode_GetValues(
 									values,
@@ -2627,6 +2736,8 @@ void PersistentFileSysObj_ChangeMirrorExistenceState(
 {
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
+
 	PersistentFileSysObjData 		*fileSysObjData;
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData;
 
@@ -2650,12 +2761,16 @@ void PersistentFileSysObj_ChangeMirrorExistenceState(
 	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes * sizeof(Datum));
 		 
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
-		 
+
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHTYPE(fsObjType, persistentTid, persistentSerialNum);
+
 	PersistentFileSysObj_ReadTuple(
 							fsObjType,
 							persistentTid,
 							values,
 							&tupleCopy);
+
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_POP;
 
 	PersistentFileSysObj_UpdateTupleMirrorExistenceState(
 												fileSysObjData,
@@ -2683,6 +2798,8 @@ void PersistentFileSysObj_MarkBufPoolRelationForScanIncrementalResync(
 	bool						flushToXLog)
 {
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
 
 	PersistentFileSysObjData 		*fileSysObjData;
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData;
@@ -2726,12 +2843,16 @@ void PersistentFileSysObj_MarkBufPoolRelationForScanIncrementalResync(
 	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes * sizeof(Datum));
 		 
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
-		 
+
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHNAME(fsObjName, persistentTid, persistentSerialNum);
+
 	PersistentFileSysObj_ReadTuple(
 							PersistentFsObjType_RelationFile,
 							persistentTid,
 							values,
 							&tupleCopy);
+
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_POP;
 
 	GpPersistentRelationNode_GetValues(
 									values,
@@ -2793,6 +2914,8 @@ bool PersistentFileSysObj_CheckForAppendOnlyCatchup(
 {
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
+
 	PersistentFileSysObjData 		*fileSysObjData;
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData;
 	
@@ -2842,12 +2965,16 @@ bool PersistentFileSysObj_CheckForAppendOnlyCatchup(
 	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes * sizeof(Datum));
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
-	
+
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHNAME(&fsObjName, persistentTid, persistentSerialNum);
+
 	PersistentFileSysObj_ReadTuple(
 							PersistentFsObjType_RelationFile,
 							persistentTid,
 							values,
 							&tupleCopy);
+
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_POP;
 
 	GpPersistentRelationNode_GetValues(
 									values,
@@ -3796,6 +3923,8 @@ static void PersistentFileSysObj_MarkPageIncremental(
 
 	int64				newMirrorBufpoolResyncChangedPageCount)
 {
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
+
 	PersistentFileSysObjData 		*fileSysObjData;
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData;
 
@@ -3841,12 +3970,15 @@ static void PersistentFileSysObj_MarkPageIncremental(
 
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHTYPE(PersistentFsObjType_RelationFile, persistentTid, persistentSerialNum);
+
 	PersistentFileSysObj_ReadTuple(
 							PersistentFsObjType_RelationFile,
 							persistentTid,
 							values,
 							&tupleCopy);
 
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_POP;
 
 	GpPersistentRelationNode_GetValues(
 									values,
@@ -4185,6 +4317,8 @@ bool PersistentFileSysObj_ResynchronizeRefetch(
 
 	int64							*mirrorAppendOnlyNewEof)
 {
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
+
 	PersistentFileSysObjData 		*fileSysObjData;
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData;
 
@@ -4222,11 +4356,15 @@ bool PersistentFileSysObj_ResynchronizeRefetch(
 
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHTYPE(PersistentFsObjType_RelationFile, persistentTid, persistentSerialNum);
+
 	PersistentFileSysObj_ReadTuple(
 							PersistentFsObjType_RelationFile,
 							persistentTid,
 							values,
 							&tupleCopy);
+
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_POP;
 
 	GpPersistentRelationNode_GetValues(
 									values,
@@ -4274,6 +4412,8 @@ void PersistentFileSysObj_ResynchronizeBufferPoolCkpt(
 
 	bool							flushToXLog)
 {
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
+
 	PersistentFileSysObjData 		*fileSysObjData;
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData;
 
@@ -4301,11 +4441,15 @@ void PersistentFileSysObj_ResynchronizeBufferPoolCkpt(
 
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHTYPE(PersistentFsObjType_RelationFile, persistentTid, persistentSerialNum);
+
 	PersistentFileSysObj_ReadTuple(
 							PersistentFsObjType_RelationFile,
 							persistentTid,
 							values,
 							&tupleCopy);
+
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_POP;
 
 	MemSet(newValues, 0, Natts_gp_persistent_relation_node * sizeof(Datum));
 	MemSet(replaces, 0, Natts_gp_persistent_relation_node * sizeof(bool));
@@ -4339,6 +4483,8 @@ void PersistentFileSysObj_ResynchronizeRelationComplete(
 														
 	bool							flushToXLog)
 {
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
+
 	PersistentFileSysObjData 		*fileSysObjData;
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData;
 
@@ -4372,11 +4518,15 @@ void PersistentFileSysObj_ResynchronizeRelationComplete(
 
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHTYPE(PersistentFsObjType_RelationFile, persistentTid, persistentSerialNum);
+
 	PersistentFileSysObj_ReadTuple(
 							PersistentFsObjType_RelationFile,
 							persistentTid,
 							values,
 							&tupleCopy);
+
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_POP;
 
 	MemSet(newValues, 0, Natts_gp_persistent_relation_node * sizeof(Datum));
 	MemSet(replaces, 0, Natts_gp_persistent_relation_node * sizeof(bool));
