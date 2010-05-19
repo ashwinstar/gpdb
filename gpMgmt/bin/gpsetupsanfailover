@@ -26,6 +26,9 @@ from datetime import date
 
 from gppylib.db import *
 from gppylib.gparray import *
+from gppylib.commands.unix import FileGetOwnerUid
+from gppylib.commands.unix import FileTestSuid
+from gppylib.commands.unix import FileDirExists
 from gppylib.gpcoverage import GpCoverage
 
 sys.path.append(sys.path[0] + '/lib')
@@ -224,18 +227,11 @@ def get_sgname_by_wwn(host, gp_mount_agent_cmd, powermt_cmd, wwn):
     return ''
 
 # Given a host and a command, verify that the command is setuid-root.
-# THIS DOESN'T WORK PROPERLY
 def verify_setuid_root(host, command):
-    (ok, out) = gpmlib.run('%s %s %s' % (gplib.ssh_prefix(host=host), ENV.STAT, command))
-    if not ok:
+    owner = FileGetOwnerUid.remote('verify owner', host, command)
+    if owner != 0:
         return False
-    else:
-        # NOTE: we don't actually check for SUID here "/usr/bin/stat" has different output on different
-        # platforms, and parsing isn't as straightforward as I'd expected. Python has some appropriate
-        # functions.
-        #
-        # So despite its name, this method actually only verifies that the command exists.
-        return True
+    return FileTestSuid.remote('verify suid', host, command)
 
 # Given a set of segment-mountpoints, we need to find out where to fail them over
 def get_failover_info(devmap):
@@ -328,10 +324,15 @@ try:
 
         ########################
         # Check the permissions on the utilities that we need.
-        if opt['-t'] == 'e':
-            for host in hosts:
-                if not verify_setuid_root(host, ENV.GP_MOUNT_AGENT):
-                    raise Exception('Host %s has invalid permissions for %s' % (host, ENV.GP_MOUNT_AGENT))
+        for host in hosts:
+            if not FileDirExists.remote('verifying existence', host, ENV.GP_MOUNT_AGENT):
+                raise Exception('Host %s doesn\'t have %s' % (host, ENV.GP_MOUNT_AGENT))
+            if not verify_setuid_root(host, ENV.GP_MOUNT_AGENT):
+                raise Exception('Host %s has invalid permissions for %s' % (host, ENV.GP_MOUNT_AGENT))
+
+            if opt['-t'] == 'e':
+                if not FileDirExists.remote('verifying existence', host, ENV.INQ):
+                    raise Exception('Host %s doesn\'t have %s' % (host, ENV.INQ))
                 if not verify_setuid_root(host, ENV.INQ):
                     raise Exception('Host %s has invalid permissions for %s' % (host, ENV.INQ))
 

@@ -750,7 +750,36 @@ class UserId(Command):
         cmd=UserId(name)
         cmd.run(validateAfter=True)
         return cmd.results.stdout.strip()
-        
+
+#-------------- test file for setuid bit ----------------------
+class FileTestSuid(Command):
+    def __init__(self,name,filename,ctxt=LOCAL,remoteHost=None):
+        cmdStr="""python -c "import os; import stat; testRes = os.stat('%s'); print (testRes.st_mode & stat.S_ISUID) == stat.S_ISUID" """ % filename
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+    
+    @staticmethod
+    def remote(name,remote_host,filename):
+        cmd=FileTestSuid(name,filename,ctxt=REMOTE,remoteHost=remote_host)
+        cmd.run(validateAfter=True)
+        return cmd.file_is_suid()
+
+    def file_is_suid(self):
+        return self.results.stdout.strip().upper()=='TRUE'
+
+#-------------- get file owner ----------------------
+class FileGetOwnerUid(Command):
+    def __init__(self,name,filename,ctxt=LOCAL,remoteHost=None):
+        cmdStr="""python -c "import os; import stat; testRes = os.stat('%s'); print testRes.st_uid " """ % filename
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+    
+    @staticmethod
+    def remote(name,remote_host,filename):
+        cmd=FileGetOwnerUid(name,filename,ctxt=REMOTE,remoteHost=remote_host)
+        cmd.run(validateAfter=True)
+        return cmd.file_uid()
+
+    def file_uid(self):
+        return int(self.results.stdout.strip().upper())
     
     
 #--------------get list of desecendant processes -------------------
