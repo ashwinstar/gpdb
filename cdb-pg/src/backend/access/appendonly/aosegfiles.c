@@ -699,6 +699,8 @@ FileSegTotals *GetSegFilesTotals(Relation parentrel)
 	bool			isNull;
 	AppendOnlyEntry *aoEntry = NULL;
 	
+	Assert(RelationIsAoRows(parentrel)); /* doesn't fit for AO column store. should implement same for CO */
+	
 	aoEntry = GetAppendOnlyEntry(RelationGetRelid(parentrel));
 
 	result = (FileSegTotals *) palloc0(sizeof(FileSegTotals));

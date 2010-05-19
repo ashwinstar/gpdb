@@ -20,6 +20,7 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "access/aocssegfiles.h"
 #include "catalog/gp_policy.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_exttable.h"
@@ -507,7 +508,7 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 			if(RelationIsExternal(rel))
 				break;
 			
-			if(RelationIsAoRows(rel) || RelationIsAoCols(rel))
+			if(RelationIsAoRows(rel))
 			{
 				/* MPP-7629 */
 				FileSegTotals	*fstotal = GetSegFilesTotals(rel);
@@ -515,6 +516,32 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 				Assert(fstotal);
 				curpages = RelationGuessNumberOfBlocks((double)fstotal->totalbytes);
 				pfree(fstotal);
+			}
+			else if (RelationIsAoCols(rel))
+			{
+				/* TODO: largely copied from gp_statistics_estimate_reltuples_relpages_ao_cs
+				 * but there really should be a CO equivalent to GetSegFilesTotals, this is
+				 * a little ugly */
+				
+				int					nsegs, i , j;
+				double				totalBytes = 0;
+				AppendOnlyEntry*	aoEntry = GetAppendOnlyEntry(RelationGetRelid(rel));
+				AOCSFileSegInfo**	aocsInfo = GetAllAOCSFileSegInfo(rel, aoEntry, SnapshotNow, &nsegs);
+				
+			    if (aocsInfo)
+			    {
+			    	for(i = 0; i < nsegs; i++)
+			    	{
+			    		for(j = 0; j < RelationGetNumberOfAttributes(rel); j++)
+			    		{
+			    			AOCSVPInfoEntry *e = getAOCSVPEntry(aocsInfo[i], j);
+			    			Assert(e);
+			    			totalBytes += e->eof_uncompressed;
+			    		}
+			    	}
+			    }
+			    curpages = RelationGuessNumberOfBlocks(totalBytes);
+			    pfree(aoEntry);
 			}
 			else
 			{
