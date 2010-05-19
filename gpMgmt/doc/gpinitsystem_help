@@ -147,10 +147,11 @@ DESCRIPTION
 
 -p <postgresql_conf_param_file>
 
- Optional. The name of a file that contains global postgresql.conf 
+ Optional. The name of a file that contains postgresql.conf 
  parameter settings that you want to set for Greenplum Database. 
  These settings will be used when the individual master and segment 
- instances are initialized.
+ instances are initialized. You can also set parameters after 
+ initialization using the gpconfig utility.
 
 
 -q (no screen output)
