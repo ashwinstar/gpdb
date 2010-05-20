@@ -71,6 +71,23 @@ static bool CLOGPagePrecedes(int page1, int page2);
 static void WriteZeroPageXlogRec(int pageno);
 static void WriteTruncateXlogRec(int pageno);
 
+static char *XidStatus_Name(XidStatus status)
+{
+	switch (status)
+	{
+	case TRANSACTION_STATUS_IN_PROGRESS:
+		return "In-Progress";
+	case TRANSACTION_STATUS_COMMITTED:
+		return "Committed";
+	case TRANSACTION_STATUS_ABORTED:
+		return "Aborted";
+	case TRANSACTION_STATUS_SUB_COMMITTED:
+		return "Sub-Transaction Committed";
+
+	default:
+		return "Unknown";
+	}
+}
 
 /*
  * Record the final state of a transaction in the commit log.
@@ -103,8 +120,12 @@ TransactionIdSetStatus(TransactionId xid, XidStatus status)
 		debugStatus != TRANSACTION_STATUS_SUB_COMMITTED &&
 		debugStatus != status)
 	{
-		elog(FATAL,"TransactionIdSetStatus found invalid for xid %d status = 0x%x (expected 0x%x)",
-			 xid, debugStatus, status);
+		elog(FATAL,"TransactionIdSetStatus invalid for transaction %u current status '%s' (0x%x) and new status '%s' (0x%x)",
+			 xid, 
+			 XidStatus_Name(debugStatus),
+			 debugStatus,
+			 XidStatus_Name(status),
+			 status);
 	}
 
 

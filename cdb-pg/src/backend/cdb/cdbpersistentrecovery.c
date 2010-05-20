@@ -39,6 +39,24 @@
 #include "cdb/cdbmirroredfilesysobj.h"
 #include "cdb/cdbresynchronizechangetracking.h"
 
+static char *XactInfoKind_Name(XactInfoKind kind)
+{
+	switch (kind)
+	{
+	case XACT_INFOKIND_NONE:
+		return "None";
+	case XACT_INFOKIND_COMMIT:
+		return "Commit";
+	case XACT_INFOKIND_ABORT:
+		return "Abort";
+	case XACT_INFOKIND_PREPARE:
+		return "Prepare";
+
+	default:
+		return "Unknown";
+	}
+}
+
 static bool
 PersistentRecovery_RedoRelationExists(
 	ItemPointer		persistentTid,
@@ -886,10 +904,7 @@ PersistentRecovery_PrintXactAndFsObjs(void)
 		elog(Debug_persistent_recovery_print_level, 
 		     "Summary REDO: Transaction %u (%s)",
 			 xactEntry->xid,
-			 (xactEntry->infoKind == XACT_INFOKIND_ABORT ? "Abort" :
-			     xactEntry->infoKind == XACT_INFOKIND_COMMIT ? "Commit" :
-				 	xactEntry->infoKind == XACT_INFOKIND_PREPARE ? "Prepare" :
-						"None"));
+			 XactInfoKind_Name(xactEntry->infoKind));
 
 		fsObjEntry = 
 			(FsObjEntry) DoublyLinkedHead_First(
@@ -1248,6 +1263,33 @@ PersistentRecovery_AttachFsObjTypeToXact(
 	}
 }
 
+typedef struct RecordCrashTransactionAbortRecordErrContext
+{
+	TransactionId 		xid;
+
+	PersistentEndXactFileSysActionInfo	*fileSysActionInfos;
+	
+	int createPendingCount;
+} RecordCrashTransactionAbortRecordErrContext;
+
+static void PersistentRecovery_RecordCrashTransactionAbortRecordErrContext(void *arg)
+{
+	RecordCrashTransactionAbortRecordErrContext	*errContext = (RecordCrashTransactionAbortRecordErrContext*) arg;
+
+	PersistentEndXactFileSysActionInfo	*firstFileSysActionInfo;
+
+	Assert(errContext->createPendingCount > 0);
+	firstFileSysActionInfo = &errContext->fileSysActionInfos[0];
+
+	errcontext( 
+		 "Record abort transaction record for crashed transaction %u with %d 'Create Pending' file-system objects "
+		 "(first file-system object %s, persistent serial number " INT64_FORMAT ", TID %s)",
+		 errContext->xid,
+		 errContext->createPendingCount,
+		 PersistentFileSysObjName_TypeAndObjectName(&firstFileSysActionInfo->fsObjName),
+		 firstFileSysActionInfo->persistentSerialNum,
+		 ItemPointerToString(&firstFileSysActionInfo->persistentTid));
+}
 
 void
 PersistentRecovery_CrashAbort(void)
@@ -1259,6 +1301,10 @@ PersistentRecovery_CrashAbort(void)
 	XactEntry xactEntry;
 	int xactCount;
 
+	ErrorContextCallback errcontext;
+
+	RecordCrashTransactionAbortRecordErrContext recordCrashTransactionAbortRecordErrContext;
+	
 	if (Debug_persistent_recovery_print)
 		elog(Debug_persistent_recovery_print_level, 
 		     "Entering PersistentRecovery_CrashAbort");
@@ -1310,6 +1356,13 @@ PersistentRecovery_CrashAbort(void)
 			 * If it is known Committed or Aborted because we found an XLOG Commit or
 			 * or Abort, we may have updates that will be handled later.
 			 */
+
+			if (Debug_persistent_recovery_print)
+				elog(Debug_persistent_recovery_print_level, 
+					 "PersistentRecovery_CrashAbort: Skipping transaction %u (state '%s')",
+					 xactEntry->xid,
+					 XactInfoKind_Name(xactEntry->infoKind));
+
 			continue;
 		}
 
@@ -1317,6 +1370,11 @@ PersistentRecovery_CrashAbort(void)
 		 * We don't know the status of the transaction until we examine the
 		 * persistent node states.
 		 */
+		if (Debug_persistent_recovery_print)
+			elog(Debug_persistent_recovery_print_level, 
+				 "PersistentRecovery_CrashAbort: Checking transaction %u",
+				 xactEntry->xid);
+
 		needsAbort = false;
 
 		fsObjEntry = 
@@ -1355,14 +1413,20 @@ PersistentRecovery_CrashAbort(void)
 
 		if (!needsAbort)
 		{
+			if (Debug_persistent_recovery_print)
+				elog(Debug_persistent_recovery_print_level, 
+					 "PersistentRecovery_CrashAbort: Skipping transaction %u due to no 'Create Pending' objects",
+					 xactEntry->xid);
+
 			Assert(createPendingCount == 0);
 			continue;
 		}
 
 		if (Debug_persistent_recovery_print)
 			elog(Debug_persistent_recovery_print_level, 
-				 "PersistentRecovery_CrashAbort: Found %d 'Create Pending' persistent file-system objects",
-				 createPendingCount);
+				 "PersistentRecovery_CrashAbort: Found %d 'Create Pending' persistent file-system objects for transaction %u",
+				 createPendingCount,
+				 xactEntry->xid);
 
 		fileSysActionInfos = 
 			(PersistentEndXactFileSysActionInfo*)
@@ -1401,10 +1465,24 @@ PersistentRecovery_CrashAbort(void)
 										fileSysActionInfos, 
 										createPendingCount);
 
+		
+		/* Setup error traceback support for ereport() */
+		recordCrashTransactionAbortRecordErrContext.xid = xactEntry->xid;
+		recordCrashTransactionAbortRecordErrContext.fileSysActionInfos = fileSysActionInfos;
+		recordCrashTransactionAbortRecordErrContext.createPendingCount = createPendingCount;
+
+		errcontext.callback = PersistentRecovery_RecordCrashTransactionAbortRecordErrContext;
+		errcontext.arg = (void *) &recordCrashTransactionAbortRecordErrContext;
+		errcontext.previous = error_context_stack;
+		error_context_stack = &errcontext;
+		
 		RecordCrashTransactionAbortRecord(
 									xactEntry->xid, 
 									&persistentObjects);
-
+		
+		/* Pop the error context stack */
+		error_context_stack = errcontext.previous;
+		
 		pfree(fileSysActionInfos);
 
 		fsObjEntry = 
