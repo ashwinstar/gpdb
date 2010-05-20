@@ -1892,7 +1892,12 @@ class GPUpgradeMirrorMinion(Command):
         self.minionGpmigratorDir = dirPrefix + "/" + GPMIGRATOR_TEMP_DIR
         self.minionDir = self.minionGpmigratorDir + "/" + dirSuffix + INFO_DIR  + str(minionSeg)
         
-        self.gpupgrademirror_executable = "$GPHOME/sbin/" + EXECNAME
+        fp = os.environ.get("GP_COMMAND_FAULT_POINT")
+        if fp != None and len(fp) > 0:
+           preCommand = "export GP_COMMAND_FAULT_POINT='%s';" % str(fp)
+        else:
+           preCommand = ""
+        self.gpupgrademirror_executable = preCommand + "$GPHOME/sbin/" + EXECNAME        
         self.cmdStr = "%s %s -i %s -t %s" % ( self.gpupgrademirror_executable
                                             , self.options
                                             , segs
@@ -2286,11 +2291,7 @@ class Phase1(threading.Thread):
             elif netMBSpeed < 400:
                seg.workersPerNic = 4
             else: 
-               seg.workersPerNic = 8
-            
-            ''' Make sure their is enough space for the largest segment '''
-            if options.rollback == False and options.continue_upgrade == False:
-               self.checkAvailableSpace(seg)            
+               seg.workersPerNic = 8          
             
             ''' Create a status object for each mirror segment '''
             status = GpUpgradeMirrorStatus( logger = self.logger
@@ -2299,6 +2300,11 @@ class Phase1(threading.Thread):
                                           , phase = 1
                                           )
             self.statusList.append(status)
+            
+            ''' Make sure their is enough space for the largest segment '''
+            if options.rollback == False and status.compare_status('START_PRIMARY_COPY') < 0:
+               self.checkAvailableSpace(seg)
+
             seg.rollForward = False
             if options.rollback == True:
                 ''' setup for rollback '''
@@ -2417,258 +2423,260 @@ class Phase1(threading.Thread):
 
     #-------------------------------------------------------------------------------                                              
     def copyPrimaryToMirror(self, seg):
-        self.logger.debug("in copyPrimaryToMirror for primary %s:%s" % (seg.primary_host, seg.primary_data_directory))
-
-        mirrorTempDataDir = seg.mirror_data_directory + self.tempNewMirrorDirSuffix 
-        cmdComplete = False
-        """ Make the <seg data dir>gpupgrademirrors.copyfromprimary directory """
-        while cmdComplete == False:
-            mkDirCmd = CreateDirIfNecessaryWithMode( name = 'gpupgrademirror make temp directory for old mirror special files: %s' % mirrorTempDataDir
-                             , directory = mirrorTempDataDir
-                             , ctxt = REMOTE
-                             , remoteHost = self.nodeNameNIC
-                             , mode = '0700'
-                             )
-            cmdComplete = runAndCheckCommandComplete(mkDirCmd)
-        mkDirCmd.validate()
-
-        mirrorTempBaseDataDir = mirrorTempDataDir + "/base"
-        cmdComplete = False
-        """ Make the <seg data dir>gpupgrademirrors.copyfromprimary/base directory """
-        while cmdComplete == False:
-           mkDirCmd = CreateDirIfNecessaryWithMode( name = 'gpupgrademirror make temp directory for old mirror special files: %s' % mirrorTempBaseDataDir
-                         , directory = mirrorTempBaseDataDir
-                         , ctxt = REMOTE
-                         , remoteHost = self.nodeNameNIC
-                         , mode = '0700'
-                         )
-           cmdComplete = runAndCheckCommandComplete(mkDirCmd)
-        mkDirCmd.validate()
-        
-        genLink = SegHardLinks(seg, self.logger)
-        dirList = genLink.getHardDirList()
-       
-        for dir in dirList:
-            targetTempDir = mirrorTempDataDir + "/base/" + SegHardLinks.getUnqualifiedLinkDir(dir)
-            if dir.endswith(".0"):
-               self.logger.debug("handle special directory *.0 for %s:%s" % (self.nodeName, targetTempDir))
-               """ Special directory """
-               cmdComplete = False
-               while cmdComplete == False:
-                  rmCmd = RemoveFiles( name = 'gpupgrademirror remove old mirror special directory: %s:%s' % (self.nodeName, dir)
-                              , directory = targetTempDir
-                              , ctxt = REMOTE
-                              , remoteHost = self.nodeNameNIC
-                              )
-                  cmdComplete = runAndCheckCommandComplete(rmCmd)
-               rmCmd.validate()
-               continue
-
+        try:
+            self.logger.debug("in copyPrimaryToMirror for primary %s:%s" % (seg.primary_host, seg.primary_data_directory))
+    
+            mirrorTempDataDir = seg.mirror_data_directory + self.tempNewMirrorDirSuffix 
             cmdComplete = False
+            """ Make the <seg data dir>gpupgrademirrors.copyfromprimary directory """
             while cmdComplete == False:
-               mkDirCmd = CreateDirIfNecessaryWithMode( name = 'gpupgrademirror make temp directory for old mirror special files: %s' % targetTempDir
-                                 , directory = targetTempDir
+                mkDirCmd = CreateDirIfNecessaryWithMode( name = 'gpupgrademirror make temp directory for old mirror special files: %s' % mirrorTempDataDir
+                                 , directory = mirrorTempDataDir
                                  , ctxt = REMOTE
                                  , remoteHost = self.nodeNameNIC
                                  , mode = '0700'
                                  )
+                cmdComplete = runAndCheckCommandComplete(mkDirCmd)
+            mkDirCmd.validate()
+    
+            mirrorTempBaseDataDir = mirrorTempDataDir + "/base"
+            cmdComplete = False
+            """ Make the <seg data dir>gpupgrademirrors.copyfromprimary/base directory """
+            while cmdComplete == False:
+               mkDirCmd = CreateDirIfNecessaryWithMode( name = 'gpupgrademirror make temp directory for old mirror special files: %s' % mirrorTempBaseDataDir
+                             , directory = mirrorTempBaseDataDir
+                             , ctxt = REMOTE
+                             , remoteHost = self.nodeNameNIC
+                             , mode = '0700'
+                             )
                cmdComplete = runAndCheckCommandComplete(mkDirCmd)
-            mkDirCmd.validate()      
-        
-        nicList = p1MirrorInfo.getInterfaceList(self.nodeName)
-        self.logger.debug("NICs for mirror %s are %s" % (self.nodeName, str(nicList)))
-        
-        totalWorkers = len(nicList) * seg.workersPerNic
-        availableNicQueue = Queue(totalWorkers)
-        
-        """ Need to prime the queue """
-        for wpn in range(seg.workersPerNic):
-            for nic in nicList:
-                availableNicQueue.put(nic)
-                
-        wPool = WorkerPool(numWorkers = totalWorkers)
-        
-        """ copy everyting in the base directory """
-        numCopiesStarted = 0
-        numCopiesCompleted = 0
-        for dir in dirList:
-            sourceDir = dir
-            specialSourceDir = sourceDir.endswith(".0")
-            targetDir = mirrorTempDataDir + "/base/" + SegHardLinks.getUnqualifiedLinkDir(sourceDir)
-            nicToUse = availableNicQueue.get()
-            if specialSourceDir == True:
-               self.logger.debug("handle special case directoryn %s:%s" % (seg.primary_host, str(dir)))
-               """ Special case of directory with empty files """
-               rmCopy = RemoteCopyPreserve( name = 'gpupgrademirror remotecopy special .0 file to mirror: %s:%s' % (self.nodeName, seg.mirror_data_directory)
-                         , srcDirectory = sourceDir
-                         , dstHost = nicToUse
-                         , dstDirectory = targetDir
-                         , ctxt = REMOTE
-                         , remoteHost = seg.primary_host
-                         )
-               rmCopy.run(validateAfter = True)
-               availableNicQueue.put(nicToUse)
-               continue
-            else:
-               nameStr = 'gpupgrademirror pysync primary to mirror: %s:%s' % (self.nodeName, seg.mirror_data_directory)
-               nameStr = nameStr + " SourceHost=%s NICname=%s " %(seg.primary_host, nicToUse)  
-               pysyncCmd = PySyncPlus( name = nameStr
-                             , srcDir = sourceDir
+            mkDirCmd.validate()
+            
+            genLink = SegHardLinks(seg, self.logger)
+            dirList = genLink.getHardDirList()
+           
+            for dir in dirList:
+                targetTempDir = mirrorTempDataDir + "/base/" + SegHardLinks.getUnqualifiedLinkDir(dir)
+                if dir.endswith(".0"):
+                   self.logger.debug("handle special directory *.0 for %s:%s" % (self.nodeName, targetTempDir))
+                   """ Special directory """
+                   cmdComplete = False
+                   while cmdComplete == False:
+                      rmCmd = RemoveFiles( name = 'gpupgrademirror remove old mirror special directory: %s:%s' % (self.nodeName, dir)
+                                  , directory = targetTempDir
+                                  , ctxt = REMOTE
+                                  , remoteHost = self.nodeNameNIC
+                                  )
+                      cmdComplete = runAndCheckCommandComplete(rmCmd)
+                   rmCmd.validate()
+                   continue
+    
+                cmdComplete = False
+                while cmdComplete == False:
+                   mkDirCmd = CreateDirIfNecessaryWithMode( name = 'gpupgrademirror make temp directory for old mirror special files: %s' % targetTempDir
+                                     , directory = targetTempDir
+                                     , ctxt = REMOTE
+                                     , remoteHost = self.nodeNameNIC
+                                     , mode = '0700'
+                                     )
+                   cmdComplete = runAndCheckCommandComplete(mkDirCmd)
+                mkDirCmd.validate()      
+            
+            nicList = p1MirrorInfo.getInterfaceList(self.nodeName)
+            self.logger.debug("NICs for mirror %s are %s" % (self.nodeName, str(nicList)))
+            
+            totalWorkers = len(nicList) * seg.workersPerNic
+            availableNicQueue = Queue(totalWorkers)
+            
+            """ Need to prime the queue """
+            for wpn in range(seg.workersPerNic):
+                for nic in nicList:
+                    availableNicQueue.put(nic)
+                    
+            wPool = WorkerPool(numWorkers = totalWorkers)
+            
+            """ copy everyting in the base directory """
+            numCopiesStarted = 0
+            numCopiesCompleted = 0
+            for dir in dirList:
+                sourceDir = dir
+                specialSourceDir = sourceDir.endswith(".0")
+                targetDir = mirrorTempDataDir + "/base/" + SegHardLinks.getUnqualifiedLinkDir(sourceDir)
+                nicToUse = availableNicQueue.get()
+                if specialSourceDir == True:
+                   self.logger.debug("handle special case directoryn %s:%s" % (seg.primary_host, str(dir)))
+                   """ Special case of directory with empty files """
+                   rmCopy = RemoteCopyPreserve( name = 'gpupgrademirror remotecopy special .0 file to mirror: %s:%s' % (self.nodeName, seg.mirror_data_directory)
+                             , srcDirectory = sourceDir
                              , dstHost = nicToUse
-                             , dstDir = targetDir
-                             , ctxt  = REMOTE
+                             , dstDirectory = targetDir
+                             , ctxt = REMOTE
                              , remoteHost = seg.primary_host
                              )
-            wPool.addCommand(pysyncCmd)
-            numCopiesStarted = numCopiesStarted + 1
-            if availableNicQueue.empty() == True:
-               while True:
-                   completedCmdList = wPool.getCompletedItems()
-                   if len(completedCmdList) > 0:
-                      numCopiesCompleted = numCopiesCompleted + len(completedCmdList)
-                      break;
-               for compCmd in completedCmdList:
-                   if sshBusy(compCmd) == True:  
-                      time.sleep(1)
-                      if isinstance(compCmd, PySyncPlus) == True:
-                         redoCmd = PySyncPlus( name = compCmd.namePlus
-                                                    , srcDir = compCmd.srcDirPlus
-                                                    , dstHost = compCmd.dstHostPlus
-                                                    , dstDir = compCmd.dstDirPlus
-                                                    , ctxt = compCmd.ctxtPlus
-                                                    , remoteHost = compCmd.remoteHostPlus
-                                                    , options = compCmd.optionsPlus
-                                                    )
-                      else:
-                         redoCmd = RemoteCopyPreserve( name = 'gpupgrademirror remotecopy special .0 file to mirror: %s:%s' % (compCmd.dstHost, compCmd.srcDirectory)
-                                                     , srcDirectory = compCmd.srcDirectory
-                                                     , dstHost = compCmd.dstHost
-                                                     , dstDirectory = compCmd.dstDirectory
-                                                     , ctxt = REMOTE
-                                                     , remoteHost = seg.primary_host
-                                                     )
-                      wPool.addCommand(redoCmd)
-                   else:
-                      compCmd.validate()
-                      availableNicQueue.put(compCmd.destinationHost)
-
-        """ Collect all the uncompleted copies. """
-        while numCopiesStarted > numCopiesCompleted:
-            completedCmdList = wPool.getCompletedItems()
-            if len(completedCmdList) > 0:
-               numCopiesCompleted = numCopiesCompleted + len(completedCmdList)
-               for compCmd in completedCmdList:
-                   """ Go through the last commands and see if we need to retry """
-                   retryPossible = sshBusy(compCmd)
-                   if retryPossible == True:
-                      cmdComplete = False
-                   else:
-                      cmdComplete = True     
-                   while cmdComplete == False:
-                      if isinstance(compCmd, PySyncPlus) == True:
-                         compCmd = PySyncPlus( name = compCmd.namePlus
-                                                    , srcDir = compCmd.srcDirPlus
-                                                    , dstHost = compCmd.dstHostPlus
-                                                    , dstDir = compCmd.dstDirPlus
-                                                    , ctxt = compCmd.ctxtPlus
-                                                    , remoteHost = compCmd.remoteHostPlus
-                                                    , options = compCmd.optionsPlus
-                                                    )
-                      else:
-                         compCmd = RemoteCopyPreserve( name = 'gpupgrademirror remotecopy special .0 file to mirror: %s:%s' % (compCmd.dstHost, compCmd.srcDirectory)
-                                                     , srcDirectory = compCmd.srcDirectory
-                                                     , dstHost = compCmd.dstHost
-                                                     , dstDirectory = compCmd.dstDirectory
-                                                     , ctxt = REMOTE
-                                                     , remoteHost = seg.primary_host
-                                                     )
-                      cmdComplete = runAndCheckCommandComplete(compCmd)
-                   compCmd.validate()                
-            else:
-               time.sleep(1)
-
-        wPool.haltWork()
-        wPool.joinWorkers()
-        genLink.removeLinks()
-
-        """
-          Now we need to copy everything but the base directory. We assume these files are small in
-          comparison to the base directory, so we will use scp instead of pysync. Also, there may
-          be some zero-lenght files, which pysync can not handle.
-        """
-        cmdComplete = False
-        while cmdComplete == False:
-           fdlCmd = FileDirectoryList( name = "gpupgrademirror find all non-base dirs and files for %s:%s " % (seg.primary_host, seg.primary_data_directory)
-                                     , filePattern = seg.primary_data_directory
-                                     , ctxt = REMOTE
-                                     , remoteHost = seg.primary_host
-                                     )
-           cmdComplete = runAndCheckCommandComplete(fdlCmd)
-        fdlCmd.validate()           
-        nonBaseList = fdlCmd.get_result_list()
-        nonBaseList.remove("base")
-        nonBaseList.remove(GPUPGRADEMIRROR_TEMP_DIR)
-        
-        for nonBase in nonBaseList:
-           cmdComplete = False
-           primaryNonBase = seg.primary_data_directory + "/" + nonBase
-           while cmdComplete == False:
-              self.logger.debug('remotecopy everything but base: %s:%s' % (self.nodeName, primaryNonBase))
-              rcCmd = RemoteCopyPreserve( name = 'gpupgrademirror remotecopy everything but base: %s:%s' % (self.nodeName, primaryNonBase)
-                                , srcDirectory = primaryNonBase
-                                , dstHost = seg.mirror_host
-                                , dstDirectory = mirrorTempDataDir
-                                , ctxt = REMOTE
-                                , remoteHost = seg.primary_host
-                                )
-              cmdComplete = runAndCheckCommandComplete(rcCmd)
-           rcCmd.validate()        
-
-        """ Put the base directory back together the way it was originally (e.g. 1.1 and 1.2 go into 1) """
-        dbDirs = DirectoryList( name = 'gpupgrademirror get database dirs for primary seg dbid +' + str(seg.primary_dbid)
-                              , dirLocation = seg.primary_data_directory + "/base"
-                              , ctxt = REMOTE
-                              , remoteHost = seg.primary_host 
-                              )
-        dbDirs.run(validateAfter = True)
-        dbDirList = dbDirs.get_result_list()
-        for db in dbDirList:
-            unqualDir = SegHardLinks.getUnqualifiedLinkDir(db)
-            qualDir = mirrorTempDataDir + "/base/" + unqualDir
-            cmdComplete = False
-            while cmdComplete == False:
-               rmCmd = MakeDirectoryWithMode( name = 'gpupgrademirror make consolidation directory: %s' % qualDir
-                                 , directory = qualDir
-                                 , ctxt = REMOTE
-                                 , remoteHost = seg.mirror_host
-                                 , mode = 700
+                   rmCopy.run(validateAfter = True)
+                   availableNicQueue.put(nicToUse)
+                   continue
+                else:
+                   nameStr = 'gpupgrademirror pysync primary to mirror: %s:%s' % (self.nodeName, seg.mirror_data_directory)
+                   nameStr = nameStr + " SourceHost=%s NICname=%s " %(seg.primary_host, nicToUse)  
+                   pysyncCmd = PySyncPlus( name = nameStr
+                                 , srcDir = sourceDir
+                                 , dstHost = nicToUse
+                                 , dstDir = targetDir
+                                 , ctxt  = REMOTE
+                                 , remoteHost = seg.primary_host
                                  )
-               cmdComplete = runAndCheckCommandComplete(rmCmd)
-            rmCmd.validate()
-        for dir in dirList:
-            unqualDir = SegHardLinks.getUnqualifiedLinkDir(dir)
-            srcDirFiles = mirrorTempDataDir + "/base/" + unqualDir
-            trgDir = mirrorTempDataDir + "/base/" + SegHardLinks.getUnqualifiedRealDir(dir)
+                wPool.addCommand(pysyncCmd)
+                numCopiesStarted = numCopiesStarted + 1
+                if availableNicQueue.empty() == True:
+                   while True:
+                       completedCmdList = wPool.getCompletedItems()
+                       if len(completedCmdList) > 0:
+                          numCopiesCompleted = numCopiesCompleted + len(completedCmdList)
+                          break;
+                   for compCmd in completedCmdList:
+                       if sshBusy(compCmd) == True:  
+                          time.sleep(1)
+                          if isinstance(compCmd, PySyncPlus) == True:
+                             redoCmd = PySyncPlus( name = compCmd.namePlus
+                                                        , srcDir = compCmd.srcDirPlus
+                                                        , dstHost = compCmd.dstHostPlus
+                                                        , dstDir = compCmd.dstDirPlus
+                                                        , ctxt = compCmd.ctxtPlus
+                                                        , remoteHost = compCmd.remoteHostPlus
+                                                        , options = compCmd.optionsPlus
+                                                        )
+                          else:
+                             redoCmd = RemoteCopyPreserve( name = 'gpupgrademirror remotecopy special .0 file to mirror: %s:%s' % (compCmd.dstHost, compCmd.srcDirectory)
+                                                         , srcDirectory = compCmd.srcDirectory
+                                                         , dstHost = compCmd.dstHost
+                                                         , dstDirectory = compCmd.dstDirectory
+                                                         , ctxt = REMOTE
+                                                         , remoteHost = seg.primary_host
+                                                         )
+                          wPool.addCommand(redoCmd)
+                       else:
+                          compCmd.validate()
+                          availableNicQueue.put(compCmd.destinationHost)
+    
+            """ Collect all the uncompleted copies. """
+            while numCopiesStarted > numCopiesCompleted:
+                completedCmdList = wPool.getCompletedItems()
+                if len(completedCmdList) > 0:
+                   numCopiesCompleted = numCopiesCompleted + len(completedCmdList)
+                   for compCmd in completedCmdList:
+                       """ Go through the last commands and see if we need to retry """
+                       retryPossible = sshBusy(compCmd)
+                       if retryPossible == True:
+                          cmdComplete = False
+                       else:
+                          cmdComplete = True     
+                       while cmdComplete == False:
+                          if isinstance(compCmd, PySyncPlus) == True:
+                             compCmd = PySyncPlus( name = compCmd.namePlus
+                                                        , srcDir = compCmd.srcDirPlus
+                                                        , dstHost = compCmd.dstHostPlus
+                                                        , dstDir = compCmd.dstDirPlus
+                                                        , ctxt = compCmd.ctxtPlus
+                                                        , remoteHost = compCmd.remoteHostPlus
+                                                        , options = compCmd.optionsPlus
+                                                        )
+                          else:
+                             compCmd = RemoteCopyPreserve( name = 'gpupgrademirror remotecopy special .0 file to mirror: %s:%s' % (compCmd.dstHost, compCmd.srcDirectory)
+                                                         , srcDirectory = compCmd.srcDirectory
+                                                         , dstHost = compCmd.dstHost
+                                                         , dstDirectory = compCmd.dstDirectory
+                                                         , ctxt = REMOTE
+                                                         , remoteHost = seg.primary_host
+                                                         )
+                          cmdComplete = runAndCheckCommandComplete(compCmd)
+                       compCmd.validate()                
+                else:
+                   time.sleep(1)
+    
+            wPool.haltWork()
+            wPool.joinWorkers()
+            genLink.removeLinks()
+    
+            """
+              Now we need to copy everything but the base directory. We assume these files are small in
+              comparison to the base directory, so we will use scp instead of pysync. Also, there may
+              be some zero-lenght files, which pysync can not handle.
+            """
             cmdComplete = False
             while cmdComplete == False:
-               mvCmd = GPumMoveDirectoryContents( name = 'gpupgrademirror consolidate a directory: %s' % srcDirFiles 
-                                     , srcDirectory = srcDirFiles
-                                     , dstDirectory = trgDir
+               fdlCmd = FileDirectoryList( name = "gpupgrademirror find all non-base dirs and files for %s:%s " % (seg.primary_host, seg.primary_data_directory)
+                                         , filePattern = seg.primary_data_directory
+                                         , ctxt = REMOTE
+                                         , remoteHost = seg.primary_host
+                                         )
+               cmdComplete = runAndCheckCommandComplete(fdlCmd)
+            fdlCmd.validate()           
+            nonBaseList = fdlCmd.get_result_list()
+            nonBaseList.remove("base")
+            nonBaseList.remove(GPUPGRADEMIRROR_TEMP_DIR)
+            
+            for nonBase in nonBaseList:
+               cmdComplete = False
+               primaryNonBase = seg.primary_data_directory + "/" + nonBase
+               while cmdComplete == False:
+                  self.logger.debug('remotecopy everything but base: %s:%s' % (self.nodeName, primaryNonBase))
+                  rcCmd = RemoteCopyPreserve( name = 'gpupgrademirror remotecopy everything but base: %s:%s' % (self.nodeName, primaryNonBase)
+                                    , srcDirectory = primaryNonBase
+                                    , dstHost = seg.mirror_host
+                                    , dstDirectory = mirrorTempDataDir
+                                    , ctxt = REMOTE
+                                    , remoteHost = seg.primary_host
+                                    )
+                  cmdComplete = runAndCheckCommandComplete(rcCmd)
+               rcCmd.validate()        
+    
+            """ Put the base directory back together the way it was originally (e.g. 1.1 and 1.2 go into 1) """
+            dbDirs = DirectoryList( name = 'gpupgrademirror get database dirs for primary seg dbid +' + str(seg.primary_dbid)
+                                  , dirLocation = seg.primary_data_directory + "/base"
+                                  , ctxt = REMOTE
+                                  , remoteHost = seg.primary_host 
+                                  )
+            dbDirs.run(validateAfter = True)
+            dbDirList = dbDirs.get_result_list()
+            for db in dbDirList:
+                unqualDir = SegHardLinks.getUnqualifiedLinkDir(db)
+                qualDir = mirrorTempDataDir + "/base/" + unqualDir
+                cmdComplete = False
+                while cmdComplete == False:
+                   rmCmd = MakeDirectoryWithMode( name = 'gpupgrademirror make consolidation directory: %s' % qualDir
+                                     , directory = qualDir
                                      , ctxt = REMOTE
                                      , remoteHost = seg.mirror_host
+                                     , mode = 700
                                      )
-               cmdComplete = runAndCheckCommandComplete(mvCmd)
-            mvCmd.validate()
-            cmdComplete = False
-            while cmdComplete == False:
-               rmCmd = RemoveDirectory( name = 'gpupgrademirror remove unconsolidated dir: %s' % srcDirFiles 
-                                          , directory = srcDirFiles
-                                          , ctxt = REMOTE
-                                          , remoteHost = seg.mirror_host 
-                                          )
-               cmdComplete = runAndCheckCommandComplete(rmCmd)
-            rmCmd.validate()
-            
+                   cmdComplete = runAndCheckCommandComplete(rmCmd)
+                rmCmd.validate()
+            for dir in dirList:
+                unqualDir = SegHardLinks.getUnqualifiedLinkDir(dir)
+                srcDirFiles = mirrorTempDataDir + "/base/" + unqualDir
+                trgDir = mirrorTempDataDir + "/base/" + SegHardLinks.getUnqualifiedRealDir(dir)
+                cmdComplete = False
+                while cmdComplete == False:
+                   mvCmd = GPumMoveDirectoryContents( name = 'gpupgrademirror consolidate a directory: %s' % srcDirFiles 
+                                         , srcDirectory = srcDirFiles
+                                         , dstDirectory = trgDir
+                                         , ctxt = REMOTE
+                                         , remoteHost = seg.mirror_host
+                                         )
+                   cmdComplete = runAndCheckCommandComplete(mvCmd)
+                mvCmd.validate()
+                cmdComplete = False
+                while cmdComplete == False:
+                   rmCmd = RemoveDirectory( name = 'gpupgrademirror remove unconsolidated dir: %s' % srcDirFiles 
+                                              , directory = srcDirFiles
+                                              , ctxt = REMOTE
+                                              , remoteHost = seg.mirror_host 
+                                              )
+                   cmdComplete = runAndCheckCommandComplete(rmCmd)
+                rmCmd.validate()
+        except Exception, e:
+            self.logger.error("An exception occured in copyPrimaryToMirror: " + str(e))     
     #------------------------------------------------------------------------------ 
     def newMirrorFileFixup(self, seg):
         self.logger.debug('in newMirrorFileFixup for %s:%s' % (self.nodeName, seg.mirror_data_directory))
