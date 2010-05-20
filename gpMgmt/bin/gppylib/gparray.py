@@ -124,8 +124,8 @@ class GpDB:
             )
 
     #
-    # Note that this is not an ideal comparison -- in particular, I don't know if filespace
-    #  information added to the representation is added in deterministic order
+    # Note that this is not an ideal comparison -- it uses the string representation
+    #   for comparison
     #
     def __cmp__(self,other):
         left = repr(self)
@@ -138,18 +138,21 @@ class GpDB:
     def __repr__(self):
         """
         Construct a string representation of class, must be sufficient
-        information to call initFromString on the result.
+        information to call initFromString on the result and deterministic
+        so it can be used for __cmp__ comparison
         """
         
         # Note: this doesn't currently handle "pending filespaces", but
         # this is not currently required since gpfilespace is the only code
         # that generates pending filespaces and it never serializes a gparray
         # object.
+        fsOids = [oid for oid in self.__filespaces]
+        fsOids.sort() # sort for determinism
         filespaces = []
-        for fsoid in self.__filespaces:
+        for fsoid in fsOids:
             if fsoid not in [SYSTEM_FILESPACE]:
                 filespaces.append("%d:%s" % (fsoid, self.__filespaces[fsoid]))
-        
+
         return '%d|%d|%s|%s|%s|%s|%s|%s|%d|%s|%s|%s' % (
             self.dbid,
             self.content,

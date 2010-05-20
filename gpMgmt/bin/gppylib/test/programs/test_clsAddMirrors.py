@@ -95,5 +95,36 @@ dbid  | content  | role  | preferred_role  | mode  | status  | hostname     | ad
 
 )
 
+#
+# Test segment copy and comparison
+#
+def testCopyAndComparison(args):
+    driver.initThreeHostMultiHomeNoMirrors()
+    gpArray = configInterface.getConfigurationProvider().initializeProvider(5432, False).loadSystemConfig()
+
+    testOutput("")
+    for seg in gpArray.getSegDbList():
+        seg.getSegmentFilespaces()[12334] = "/data/foo1"
+        seg.getSegmentFilespaces()[42334] = "/data/foo2"
+        seg.getSegmentFilespaces()[32334] = "/data/foo3"
+        seg.getSegmentFilespaces()[72334] = "/data/foo4"
+
+        segCopy = seg.copy()
+        testOutput("equalsCopy: %s" % (segCopy == seg))
+        if segCopy != seg:
+            testOutput("%s" % repr(seg))
+            testOutput("%s" % repr(segCopy))
+    testOutput("")
+
+simple_test("testCopyAndComparison", testCopyAndComparison, [],
+"""
+equalsCopy: True
+equalsCopy: True
+equalsCopy: True
+equalsCopy: True
+equalsCopy: True
+equalsCopy: True
+""")
+
 # All done tests
 printTestResults()

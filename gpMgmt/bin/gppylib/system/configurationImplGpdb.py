@@ -155,11 +155,21 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
                     #
                     # filespace and other core has changed
                     #
-                    logger.info("Seg is %s" % repr(seg))
+                    if seg.isSegmentMaster(current_role=True) or seg.isSegmentStandby(current_role=True):
+                        #
+                        # Assertion here -- user should not be allowed to change master/standby info.
+                        #
+                        raise Exception("Internal error: Can only change core details of primary segments, not masters" \
+                                    " (on segment %s) (seg %s vs original %s)" %
+                                    (seg.getSegmentDbId(), repr(seg), repr(originalSeg)))
 
-                    if seg.getSegmentRole() != gparray.ROLE_MIRROR:
+                    if not seg.isSegmentMirror(current_role=True):
+                        #
+                        # Assertion here -- user should not be allowed to change primary info.
+                        #
                         raise Exception("Internal error: Can only change core details of mirrors, not primaries" \
-                                        " (on segment %s)" % (seg.getSegmentDbId()))
+                                        " (on segment %s) (seg %s vs original %s)" %
+                                        (seg.getSegmentDbId(), repr(seg), repr(originalSeg)))
 
                     origDbId = seg.getSegmentDbId()
 
