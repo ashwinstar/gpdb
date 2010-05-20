@@ -135,7 +135,7 @@ LOGILAB_ASTNG_VERSION=0.20.1
 LOGILAB_ASTNG_DIR=logilab-astng-$(LOGILAB_ASTNG_VERSION)
 LOGILAB_COMMON_VERSION=0.50.1
 LOGILAB_COMMON_DIR=logilab-common-$(LOGILAB_COMMON_VERSION)
-PYLINT_PYTHONPATH=$(PYLIB_DIR):$(PYLIB_SRC)/$(PYLINT_DIR)/build/lib/:$(PYLIB_SRC)/$(LOGILAB_ASTNG_DIR)/build/lib:$(PYLIB_SRC)/$(LOGILAB_COMMON_DIR)/build/lib
+PYLINT_PYTHONPATH=$(PYLIB_DIR):$(PYLIB_SRC)/$(PYLINT_DIR)/build/lib/
 
 pylint:
 	@echo "--- pylint"
@@ -145,11 +145,10 @@ pylint:
 	@cd $(PYLIB_SRC)/$(PYLINT_DIR)/ && python setup.py build 1> /dev/null
 	@cd $(PYLIB_SRC)/$(LOGILAB_ASTNG_DIR)/ && python setup.py build 1> /dev/null
 	@cd $(PYLIB_SRC)/$(LOGILAB_COMMON_DIR)/ && python setup.py build 1> /dev/null
+	@cp -r $(PYLIB_SRC)/$(LOGILAB_COMMON_DIR)/build/lib/logilab $(PYLIB_SRC)/$(PYLINT_DIR)/build/lib/
+	@cp -r $(PYLIB_SRC)/$(LOGILAB_ASTNG_DIR)/build/lib/logilab $(PYLIB_SRC)/$(PYLINT_DIR)/build/lib/
 	@touch $(PYLIB_SRC)/$(PYLINT_DIR)/build/lib/__init__.py
-	@touch $(PYLIB_SRC)/$(LOGILAB_COMMON_DIR)/build/lib/__init__.py
-	@touch $(PYLIB_SRC)/$(LOGILAB_COMMON_DIR)/build/lib/logilab/__init__.py
-	@touch $(PYLIB_SRC)/$(LOGILAB_ASTNG_DIR)/build/lib/__init__.py
-	@touch $(PYLIB_SRC)/$(LOGILAB_ASTNG_DIR)/build/lib/logilab/__init__.py
+	@touch $(PYLIB_SRC)/$(PYLINT_DIR)/build/lib/logilab/__init__.py
 
 
 PYTHON_FILES=`grep -l --exclude=Makefile "/bin/env python" *`\
