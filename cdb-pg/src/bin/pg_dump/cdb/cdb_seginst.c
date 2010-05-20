@@ -66,7 +66,8 @@ void FreeRestorePairArray( RestorePairArray* restorePairAr )
  * that don't match the set.  bExcludeHead = true is used for restoring, because
  * the head is restored first seperately from the rest of the databases. 
  */
-bool GetDumpSegmentDatabaseArray(PGconn* pConn, 
+bool GetDumpSegmentDatabaseArray(PGconn* pConn, 							 
+								 int remote_version,
 								 SegmentDatabaseArray* pSegDBAr, 
 								 ActorSet actors, 
 								 char*	  dump_set_str,
@@ -90,14 +91,30 @@ bool GetDumpSegmentDatabaseArray(PGconn* pConn,
 	SegmentDatabase* pSegDB;
 	
 	pQry = createPQExpBuffer();
-	appendPQExpBuffer(pQry,  "SELECT" 
-							   " dbid," 
-							   " content,"  
-							   " hostname,"
-							   " port"
-							 " FROM"
-							   " gp_segment_configuration"
-							 " WHERE role='p'");
+	
+	if (remote_version >= 80214)
+		/* 4.0 and beyond */
+		appendPQExpBuffer(pQry,  "SELECT" 
+								 " dbid," 
+								 " content,"  
+								 " hostname,"
+								 " port "
+								 "FROM "
+								 " gp_segment_configuration "
+								 "WHERE role='p' " 
+								 "ORDER BY content DESC");
+	else
+		/* pre 4.0 */
+		appendPQExpBuffer(pQry,  "SELECT" 
+								 " dbid," 
+								 " content,"  
+								 " hostname,"
+								 " port "
+								 "FROM"
+								 " gp_configuration "
+								 "WHERE valid = 't' "
+								 "AND isPrimary = 't' "
+								 "ORDER BY content DESC");
 
 	pRes = PQexec(pConn, pQry->data);
 	if (!pRes || PQresultStatus(pRes) != PGRES_TUPLES_OK)
@@ -248,11 +265,11 @@ cleanup:
 	return bRtn;
 }
 
-bool GetRestoreSegmentDatabaseArray(PGconn* pConn, 
-							 RestorePairArray *restorePairAr,
-							 BackupLoc	backupLocation,
-							 char*	  restore_set_str,
-							 bool dataOnly)
+bool GetRestoreSegmentDatabaseArray (PGconn* pConn, 
+									 RestorePairArray *restorePairAr,
+									 BackupLoc	backupLocation,
+									 char*	  restore_set_str,
+									 bool dataOnly)
 {
 	bool		bRtn = true;
 	PQExpBuffer pQry = NULL;
@@ -272,17 +289,17 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 	SegmentDatabase* targetSegDB;
 	
 	pQry = createPQExpBuffer();
-	appendPQExpBuffer(pQry,  "SELECT" 
-					  " dbid," 
-					  " content,"  
-					  " hostname,"
-					  " port"
-					  " FROM"
-					  " gp_segment_configuration"
-					  " WHERE role='p'" 
-					  " ORDER BY content DESC"
-					  );
 	
+	appendPQExpBuffer(pQry,  "SELECT" 
+							 " dbid," 
+							 " content,"  
+							 " hostname,"
+							 " port "
+							 "FROM "
+							 " gp_segment_configuration "
+							 "WHERE role='p' " 
+							 "ORDER BY content DESC");
+
 	pRes = PQexec(pConn, pQry->data);
 	if (!pRes || PQresultStatus(pRes) != PGRES_TUPLES_OK)
 	{

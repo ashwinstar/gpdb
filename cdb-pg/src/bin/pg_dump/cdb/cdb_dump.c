@@ -58,6 +58,8 @@ static void spinOffThreads( PGconn* pConn, InputOptions* pInputOpts, const Segme
 static void* threadProc(void *arg);
 static bool testPartitioningSupport(void);
 static bool transformPassThroughParms(InputOptions* pInputOpts);
+static int getRemoteVersion(void);
+
 
 /*
  * static and extern global variables left over from pg_dump
@@ -111,7 +113,8 @@ int main( int argc, char** argv)
 {
     int failCount    = -1;
 	int rc = 0; /* return code */
-
+	int remote_version;
+	
 	InputOptions			inputOpts; /* command line parameters */
 	SegmentDatabaseArray	segDBAr;   /* array of the segdbs from the master mpp tables */
 	ThreadParmArray			parmAr;    /* array of the thread parameters */
@@ -139,8 +142,13 @@ int main( int argc, char** argv)
 	if ( master_db_conn == NULL )
 		goto cleanup;
 
+	remote_version = getRemoteVersion();
+
+	if (!remote_version)
+		goto cleanup;
+	
 	mpp_msg( logInfo, pszProgName, "Reading Greenplum Database configuration info from master database.\n");
-	if ( !GetDumpSegmentDatabaseArray(master_db_conn, &segDBAr, inputOpts.actors, inputOpts.pszRawDumpSet, dataOnly, schemaOnly) )
+	if ( !GetDumpSegmentDatabaseArray(master_db_conn, remote_version, &segDBAr, inputOpts.actors, inputOpts.pszRawDumpSet, dataOnly, schemaOnly) )
 		goto cleanup;
 
 	/* make changes and verifications (if any) needed to be made before shipping options to the agents */
@@ -575,6 +583,21 @@ testPartitioningSupport(void)
 	destroyPQExpBuffer(query);
 
 	return isSupported;
+}
+
+static int
+getRemoteVersion(void)
+{
+	const char *remoteversion_str;
+	int			remoteversion;
+
+	remoteversion_str = PQparameterStatus(g_conn, "server_version");
+	if (!remoteversion_str)
+		return 0; /* error */
+
+	remoteversion = parse_version(remoteversion_str);
+
+	return remoteversion;
 }
 
 /*

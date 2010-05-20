@@ -83,7 +83,7 @@ typedef enum backup_file_location
 extern void FreeSegmentDatabaseArray( SegmentDatabaseArray* pSegDBAr );
 extern void FreeRestorePairArray( RestorePairArray* restorePairAr );
 /* Read all the rows in the join */
-extern bool GetDumpSegmentDatabaseArray(PGconn* pConn, SegmentDatabaseArray* pSegDBAr, ActorSet actors, char *raw_dump_set, bool dataOnly, bool schemaOnly );
+extern bool GetDumpSegmentDatabaseArray(PGconn* pConn, int server_version, SegmentDatabaseArray* pSegDBAr, ActorSet actors, char *raw_dump_set, bool dataOnly, bool schemaOnly );
 extern bool GetRestoreSegmentDatabaseArray(PGconn* pConn, RestorePairArray* pSegDBPairAr, BackupLoc backupLocation, char *raw_restore_set, bool dataOnly );
 
 #endif /* CDB_SEGINST_H */
