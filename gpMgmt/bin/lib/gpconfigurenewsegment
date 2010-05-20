@@ -61,11 +61,11 @@ class ConfExpSegCmd(Command):
 
     def validatePath(self, path, isSystemFilespaceDir):
 
-        if not os.path.exists(os.path.dirname(self.datadir)):
+        if not os.path.exists(os.path.dirname(path)):
             raise Exception("Parent directory for %s directory %s does not exist" %
                     ( "system data" if isSystemFilespaceDir else "filespace", path) )
 
-        if not os.path.exists(self.datadir):
+        if not os.path.exists(path):
             #
             # dir doesn't exist is okay -- other scripts, or filerep mirroring code, will create it
             #
@@ -77,28 +77,28 @@ class ConfExpSegCmd(Command):
                 # validate that we don't contain database directories or files
                 for toCheck in gDatabaseDirectories:
                     if toCheck != "pg_log": # it's okay to have pg_log -- to save old logs around to look at
-                        if os.path.exists(os.path.join(self.datadir, toCheck)):
+                        if os.path.exists(os.path.join(path, toCheck)):
                             raise Exception('Segment directory %s contains directory %s but should not!' %
-                                        (self.datadir, toCheck))
+                                        (path, toCheck))
                 for toCheck in gDatabaseFiles:
-                    if os.path.exists(os.path.join(self.datadir, toCheck)):
+                    if os.path.exists(os.path.join(path, toCheck)):
                         raise Exception('Segment directory %s contains file %s but should not!' %
-                                    (self.datadir, toCheck))
+                                    (path, toCheck))
             else:
 
-                for name in os.listdir( self.datadir):
+                for name in os.listdir( path ):
                     if name[0] in "0123456789": # the database files here will have  
                         raise Exception("Filespace directory contains invalid file(s): %s" % path)
         else:
             # it better be empty
-            if len(os.listdir(self.datadir)) != 0:
-                raise Exception('Segment directory %s exists but is not empty!' % self.datadir)
+            if len(os.listdir(path)) != 0:
+                raise Exception('Segment directory %s exists but is not empty!' % path)
 
-    def makeOrUpdatePathAsNeeded(self,path):
-        if os.path.exists(self.datadir):
-            os.chmod(self.datadir,0700)
+    def makeOrUpdatePathAsNeeded(self, path):
+        if os.path.exists(path):
+            os.chmod(path,0700)
         else:
-            os.mkdir(self.datadir,0700)
+            os.mkdir(path,0700)
 
     def run(self):
         try:
