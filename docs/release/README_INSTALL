@@ -40,6 +40,8 @@ kernel parameters.
 ----------------
 MAC OS X
 ----------------
+Disable IPv6 network addressing.
+
 
 Add all of the following to /etc/sysctl.conf:
 
@@ -48,7 +50,15 @@ kern.sysv.shmmin=1
 kern.sysv.shmmni=64
 kern.sysv.shmseg=16
 kern.sysv.shmall=524288
+kern.maxfiles=65535
+kern.maxfilesperproc=65535
 net.inet.tcp.msl=60
+
+
+Add the following to your shell profile file ( such as .bashrc):
+
+ulimit -n 65535
+
 
 If using DHCP, add the following line to /etc/hostconfig:
 
