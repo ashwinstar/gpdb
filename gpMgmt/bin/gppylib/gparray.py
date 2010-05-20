@@ -1641,6 +1641,51 @@ class GpArray:
             curr_dbid += 1           
 
 
+    def guessIsMultiHome(self):
+        """
+        Guess whether self is a multi-home (multiple interfaces per node) cluster
+        """
+        segments = self.getSegDbList()
+        byHost = GpArray.getSegmentsByHostName(segments)
+        byAddress = GpArray.getSegmentsGroupedByValue(segments, GpDB.getSegmentAddress)
+        return len(byHost) != len(byAddress)
+
+    def guessIsSpreadMirror(self):
+        """
+        Guess whether self is a spread mirroring configuration.
+        """
+        if self.getFaultStrategy() != FAULT_STRATEGY_FILE_REPLICATION:
+            return False
+
+        mirrors = [seg for seg in self.getSegDbList() if seg.isSegmentMirror(current_role=False)]
+        primaries = [seg for seg in self.getSegDbList() if seg.isSegmentPrimary(current_role=False)]
+        assert len(mirrors) == len(primaries)
+
+        primaryHostNameToMirrorHostNameSet = {}
+        mirrorsByContentId = GpArray.getSegmentsByContentId(mirrors)
+        for primary in primaries:
+
+            mir = mirrorsByContentId[primary.getSegmentContentId()][0]
+
+            if primary.getSegmentHostName() not in primaryHostNameToMirrorHostNameSet:
+                primaryHostNameToMirrorHostNameSet[primary.getSegmentHostName()] = {}
+
+            primaryMap = primaryHostNameToMirrorHostNameSet[primary.getSegmentHostName()]
+            if mir.getSegmentHostName() not in primaryMap:
+                primaryMap[mir.getSegmentHostName()] = 0
+            primaryMap[mir.getSegmentHostName()] += 1
+
+            """
+            This primary host has more than one segment on a single host: assume group mirroring!
+            """
+            if primaryMap[mir.getSegmentHostName()] > 1:
+                return False
+
+        """
+        Fall-through -- note that for a 2 host system with 2 segments, this will cause the guess to be 'spread' 
+        """
+        return True
+
     @staticmethod
     def getSegmentsGroupedByValue(segments, segmentMethodToGetValue):
         result = {}

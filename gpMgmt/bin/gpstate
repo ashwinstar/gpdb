@@ -162,7 +162,7 @@ SORT_FILE () {
 QUICK_DATABASE_STATUS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 
-    $PYTHON_GPSTATE -Q -d $MASTER_DATA_DIRECTORY -M "$MIR_TYPE" $VERBOSE_PYTHON_OPTION
+    $PYTHON_GPSTATE -Q -d $MASTER_DATA_DIRECTORY $VERBOSE_PYTHON_OPTION
 
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -178,7 +178,7 @@ VERSION_INFO () {
 CLUSTER_CONFIG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 
-    $PYTHON_GPSTATE -c -d $MASTER_DATA_DIRECTORY -M "$MIR_TYPE" $VERBOSE_PYTHON_OPTION
+    $PYTHON_GPSTATE -c -d $MASTER_DATA_DIRECTORY $VERBOSE_PYTHON_OPTION
 
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -186,7 +186,23 @@ CLUSTER_CONFIG () {
 MIRROR_LIST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 
-    $PYTHON_GPSTATE -m -d $MASTER_DATA_DIRECTORY -M "$MIR_TYPE" $VERBOSE_PYTHON_OPTION
+    $PYTHON_GPSTATE -m -d $MASTER_DATA_DIRECTORY $VERBOSE_PYTHON_OPTION
+
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+LIST_GP_PORTS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+
+    $PYTHON_GPSTATE -p -d $MASTER_DATA_DIRECTORY $VERBOSE_PYTHON_OPTION
+
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+STANDBY_HOST_DETAILS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+
+    $PYTHON_GPSTATE -f -d $MASTER_DATA_DIRECTORY $VERBOSE_PYTHON_OPTION
 
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -626,80 +642,6 @@ SUMMARY_REPORT () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-LIST_GP_PORTS () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		GET_MAX_LEN
-		PORT_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"select hostname, port, datadir from $CONFIG_TABLE a where content<>-1 order by hostname, port asc;" `)
-		ERROR_CHK $? "obtain port assignments" 2
-		LOG_MSG "[INFO]:-Master segment instance  $MASTER_DATA_DIRECTORY  port = $MASTER_PORT" 1
-		LOG_MSG "[INFO]:-Segment instance port assignments" 1
-		LOG_MSG "[INFO]:----------------------------------" 1
-		HEADER=`$ECHO "Host:Datadir:Port"|$AWK -F":" '{printf "%-'"${LEN_ARRAY[0]}"'s %-'"${LEN_ARRAY[2]}"'s %-'"${LEN_ARRAY[1]}"'s\n", $1, $2, $3}'`
-		LOG_MSG "[INFO]:-$HEADER" 1
-		for PMODE in "${PORT_ARRAY[@]}"
-				do
-				TXT=`$ECHO $PMODE|$AWK -F"|" '{printf "%-'"${LEN_ARRAY[0]}"'s %-'"${LEN_ARRAY[2]}"'s %-'"${LEN_ARRAY[1]}"'s",$1, $3, $2}'`
-				if [ $VERBOSE ];then
-				LOG_MSG "[INFO]:-$TXT" 1
-				else
-				$ECHO $TXT | $TEE -a $LOG_FILE
-				fi
-		done
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-
-
-STANDBY_HOST_DETAILS () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	GET_STANDBY_DETAILS
-
-	if [ ${#STANDBY_ARRAY[@]} -eq 0 ];then
-		LOG_MSG "[INFO]:-Standby master instance not configured" 1
-	else
-		MASTER_STANDBY_HOSTNAME=`$ECHO $STANDBY_ARRAY|$CUT -d"|" -f1`
-		MASTER_STANDBY_DIR=`$ECHO $STANDBY_ARRAY|$CUT -d"|" -f2`
-		MASTER_STANDBY_PORT=`$ECHO $STANDBY_ARRAY|$CUT -d"|" -f3`
-		if [ `$HOSTNAME` == $MASTER_STANDBY_HOSTNAME ];then
-			STANDBY_STATE="STANDBY HOST ACTIVE INSTANCE MASTER"
-		else
-			STANDBY_STATE="Standby host passive";fi
-		GET_PG_PID_ACTIVE $MASTER_STANDBY_PORT $MASTER_STANDBY_HOSTNAME
-		LOG_MSG "[INFO]:-Standby master details" 1
-		LOG_MSG "[INFO]:-----------------------" 1
-		LOG_MSG "[INFO]:-Standby hostname        = $MASTER_STANDBY_HOSTNAME" 1
-		LOG_MSG "[INFO]:-Standby data directory  = $MASTER_STANDBY_DIR" 1
-		LOG_MSG "[INFO]:-Standby port            = $MASTER_STANDBY_PORT" 1
-		if [ $PID -ne 0 ];then
-		LOG_MSG "[INFO]:-Standby PID             = $PID" 1
-		LOG_MSG "[INFO]:-Standby status          = $STANDBY_STATE" 1
-		else
-		LOG_MSG "[INFO]:-Standby PID             = $PID $WARN_MARK" 1
-		LOG_MSG "[INFO]:-Standby status          = Standby process not running $WARN_MARK" 1
-		fi
-
-		LOG_MSG "[INFO]:-------------------------------------------------------------" 1
-	fi
-	GP_MASTER_MIRRORING=`${EXPORT_LIB_PATH};env PGOPTIOINS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c "select * from gp_master_mirroring;"` > /dev/null 2>&1
-	
-	LOG_MSG "[INFO]:-------------------------------------------------------------" 1
-	LOG_MSG "[INFO]:-gp_master_mirroring table" 1
-	LOG_MSG "[INFO]:-------------------------------------------------------------" 1
-	summary_state=`$ECHO $GP_MASTER_MIRRORING|$CUT -d"|" -f1`
-	detail_state=`$ECHO $GP_MASTER_MIRRORING|$CUT -d"|" -f2`
-	log_time=`$ECHO $GP_MASTER_MIRRORING|$CUT -d"|" -f3`
-	error_message=`$ECHO $GP_MASTER_MIRRORING|$CUT -d"|" -f4`
-
-	LOG_MSG "[INFO]:-Summary state: $summary_state" 1
-	LOG_MSG "[INFO]:-Detail state: $detail_state" 1
-	LOG_MSG "[INFO]:-Log time: $log_time" 1
-	if [ "$error_message" != "" ];then
-		LOG_MSG "[INFO]:-Error message: $error_message" 1
-	fi
-	LOG_MSG "[INFO]:-------------------------------------------------------------" 1
-	
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-
 GET_GP_VERSION () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GP_INIT_VERSION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c "select * from gp_version_at_initdb limit 1;" 2>/dev/null`
@@ -767,6 +709,23 @@ fi
 
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
+
+DONE_IN_PYTHON=1
+case $SELECT in
+		2 ) MIRROR_LIST ;;
+		3 ) CLUSTER_CONFIG ;;
+        4 ) LIST_GP_PORTS ;;
+		7 ) VERSION_INFO ;;
+        8 ) STANDBY_HOST_DETAILS ;;
+		9 ) QUICK_DATABASE_STATUS ;;
+        * ) DONE_IN_PYTHON=0;;
+esac
+
+if [ $DONE_IN_PYTHON -ne 0 ];then
+    LOG_MSG "[INFO]:-End Main"
+    exit $EXIT_STATUS
+fi
+
 CHK_GPDB_ID
 CHK_DB_RUNNING
 GET_MASTER_PORT $MASTER_DATA_DIRECTORY
@@ -781,14 +740,10 @@ fi
 GET_MIRROR_TYPE
 case $SELECT in
 		1 ) DATABASE_STATUS ;; 
-		2 ) MIRROR_LIST ;;
-		3 ) CLUSTER_CONFIG ;;
-		4 ) LIST_GP_PORTS ;;
 		6 ) GET_STATUS_INFORMATION ;;
-		7 ) VERSION_INFO ;;
-		8 ) STANDBY_HOST_DETAILS ;;
-		9 ) QUICK_DATABASE_STATUS ;;
 esac
 $RM -f $PARALLEL_STATUS_FILE
+
+
 LOG_MSG "[INFO]:-End Main"
 exit $EXIT_STATUS

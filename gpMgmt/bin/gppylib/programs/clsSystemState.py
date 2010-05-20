@@ -46,7 +46,23 @@ class GpSystemStateProgram:
         line.append(str(segment.getSegmentPort()))
         return line
 
-    def __displayClusterConfig(self, gpEnv, gpArray, mirrorType):
+    def __getMirrorType(self, gpArray):
+
+        if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_FILE_REPLICATION:
+            if gpArray.guessIsMultiHome():
+                if gpArray.guessIsSpreadMirror():
+                    return "Spread [Multi-home]"
+                else:
+                    return "Group [Multi-home]"
+            else:
+                if gpArray.guessIsSpreadMirror():
+                    return "Spread [Single-home]"
+                else:
+                    return "Group [Single-home]"
+        else:
+            return "No Mirror"
+
+    def __displayClusterConfig(self, gpEnv, gpArray):
         """
         Returns the exitCode
 
@@ -54,7 +70,7 @@ class GpSystemStateProgram:
         if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_FILE_REPLICATION:
             logger.info("-------------------------------------------------------------" )
             logger.info("-Current GPDB mirror list and status" )
-            logger.info("-Type = %s" % mirrorType )
+            logger.info("-Type = %s" % self.__getMirrorType(gpArray) )
             logger.info("-------------------------------------------------------------" )
 
             primarySegments = [ seg for seg in gpArray.getSegDbList() if seg.isSegmentPrimary(False) ]
@@ -101,7 +117,7 @@ class GpSystemStateProgram:
 
         return 0
 
-    def __displayMirrorList(self,gpEnv, gpArray, mirrorType):
+    def __displayMirrorList(self,gpEnv, gpArray):
         """
         Returns the exitCode
         """
@@ -146,7 +162,7 @@ class GpSystemStateProgram:
 
             logger.info("-------------------------------------------------------------" )
             logger.info("-Current GPDB mirror list and status" )
-            logger.info("-Type = %s" % mirrorType )
+            logger.info("-Type = %s" % self.__getMirrorType(gpArray) )
             logger.info("-------------------------------------------------------------" )
 
             utils.logLinesToTable(lines, warningLineNumbers)
@@ -158,7 +174,7 @@ class GpSystemStateProgram:
 
         return exitCode
 
-    def __showQuickStatus(self, gpEnv, gpArray, mirrorType):
+    def __showQuickStatus(self, gpEnv, gpArray):
 
         exitCode = 0
 
@@ -185,6 +201,113 @@ class GpSystemStateProgram:
 
         return exitCode
 
+    def __showPortInfo(self, gpEnv, gpArray):
+
+        logger.info("-Master segment instance  %s  port = %d" % (gpEnv.getMasterDataDir(), gpEnv.getMasterPort()))
+        logger.info("-Segment instance port assignments")
+        logger.info("----------------------------------")
+
+        lines = []
+        lines.append([ "Host", "Datadir", "Port"])
+        for seg in gpArray.getSegDbList():
+            lines.append(self.__appendSegmentTripletToArray(seg, []))
+        utils.logLinesToTable(lines, {}) # use {} for warningLineNumbers, this script doesn't warn right now
+
+    def __showStandbyMasterInformation(self, gpEnv, gpArray):
+        definedMasters = [seg for seg in gpArray.getDbList() if seg.isSegmentMaster(current_role=False)]
+        definedStandbys = [seg for seg in gpArray.getDbList() if seg.isSegmentStandby(current_role=False)]
+
+        #
+        # print standby configuration/status
+        #
+        if not definedStandbys:
+            logger.info("Standby master instance not configured")
+        else:
+            definedStandby = definedStandbys[0]
+
+            cmd = gp.GpGetSegmentStatusValues("get standby segment version status", [definedStandby],
+                               [gp.SEGMENT_STATUS__GET_PID], verbose=logging_is_verbose(), ctxt=base.REMOTE,
+                               remoteHost=definedStandby.getSegmentAddress())
+            cmd.run()
+
+            # fetch standby pid
+            (standbyPidFetchWarning, outputFromCmd) = cmd.decodeResults()
+            if standbyPidFetchWarning is None:
+                pidData = outputFromCmd[gp.SEGMENT_STATUS__GET_PID][definedStandby.getSegmentDbId()]
+            else:
+                pidData = {}
+                pidData['pid'] = 0
+                pidData['error'] = None
+
+            if definedStandby.isSegmentMaster(current_role=True):
+                standbyStatus = "STANDBY HOST ACTIVE INSTANCE MASTER"
+            else:
+                standbyStatus = "Standby host passive"
+
+            # Print output!
+            warningLineNumbers = {}
+            logger.info("Standby master details" )
+            logger.info("----------------------" )
+            lines = []
+            lines.append(["Standby address", "= %s" % definedStandby.getSegmentAddress()])
+            lines.append(["Standby data directory", "= %s" % definedStandby.getSegmentDataDirectory()])
+            lines.append(["Standby port", "= %s" % definedStandby.getSegmentPort()])
+            if standbyPidFetchWarning is not None:
+                warningLineNumbers[len(lines)] = True
+                lines.append(["Standby PID", "= %s" % standbyPidFetchWarning, "<<<<<<<<<<" ])
+
+                warningLineNumbers[len(lines)] = True
+                lines.append(["Standby status", "= Status could not be determined", "<<<<<<<<<<" ])
+            elif pidData['pid'] == 0:
+                warningLineNumbers[len(lines)] = True
+                lines.append(["Standby PID", "= 0", "<<<<<<<<<<" ])
+
+                warningLineNumbers[len(lines)] = True
+                lines.append(["Standby status", "= Standby process not running", "<<<<<<<<<<" ])
+            else:
+                if pidData['error'] is not None:
+                    #
+                    # we got a pid value but had some kind of error -- so possibly the PID
+                    #   is not actually active on its port.  Print the error
+                    #
+                    warningLineNumbers[len(lines)] = True
+                    lines.append(["Standby PID", "= %s" % pidData['pid'], "<<<<<<<<<< %s" % pidData['error']])
+                else:
+                    lines.append(["Standby PID", "= %s" % pidData['pid']])
+
+                lines.append(["Standby status", "= %s" % standbyStatus ])
+            utils.logLinesToTable(lines, warningLineNumbers)
+
+        #
+        # now print gp_master_mirroring table
+        #
+        dbUrl = dbconn.DbURL(port=gpEnv.getMasterPort(), dbname='template1')
+        conn = dbconn.connect(dbUrl, utility=True)
+
+        logger.info("-------------------------------------------------------------" )
+        logger.info("-gp_master_mirroring table" )
+        logger.info("-------------------------------------------------------------" )
+
+        isFirst = True # isFirst is used just for making sure it's a singleton
+        sql = "SELECT summary_state, detail_state, log_time, error_message FROM gp_master_mirroring"
+        for row in dbconn.execSQL( conn, sql):
+            assert isFirst, "Too many rows returned from expected single-row table 'gp_master_mirroring'"
+
+            row = ["" if val is None else val for val in row] # transform None to empty string
+
+            logger.info("-Summary state: %s" % row[0])
+            logger.info("-Detail state: %s" % row[1])
+            logger.info("-Log time: %s" % row[2])
+            if row[3] != "":
+                logger.info("-Error message: %s" % row[3])
+
+            isFirst = False
+        assert not isFirst, "No rows returned from expected single-row table 'gp_master_mirroring"
+        logger.info("-------------------------------------------------------------" )
+
+        conn.close()
+        # done printing gp_master_mirroring table
+
     def __showVersionInfo(self, gpEnv, gpArray):
 
         exitCode = 0
@@ -197,7 +320,8 @@ class GpSystemStateProgram:
         segmentsByHost = GpArray.getSegmentsByHostName(upSegmentsAndMaster)
         dispatchCount = 0
         for hostName, segments in segmentsByHost.iteritems():
-            cmd = gp.GpGetSegStatusUsingTransition("get segment version status", segments, "getVersion",
+            cmd = gp.GpGetSegmentStatusValues("get segment version status", segments,
+                               [gp.SEGMENT_STATUS__GET_VERSION],
                                verbose=logging_is_verbose(),
                                ctxt=base.REMOTE,
                                remoteHost=segments[0].getSegmentAddress())
@@ -210,25 +334,16 @@ class GpSystemStateProgram:
         dbIdToVersion = {}
         uniqueVersions = {}
         for cmd in self.__pool.getCompletedItems():
-            if cmd.get_results().rc == 0:
-                outputFromCmd = None
-                for line in cmd.get_results().stdout.split('\n'):
-                    if line.startswith("STATUS_RESULTS:"):
-                        toDecode = line[len("STATUS_RESULTS:"):]
-                        outputFromCmd = pickle.loads(base64.urlsafe_b64decode(toDecode))
-                        break
-                if outputFromCmd is None:
-                    logger.warn("No status output provided from host %s" % cmd.remoteHost)
-                else:
-                    segments = cmd.dblist
-                    for segIndex, seg in enumerate(segments):
-                        version = outputFromCmd[segIndex]
-                        if version is not None:
-                            version = version.rstrip()
-                            dbIdToVersion[segments[segIndex].getSegmentDbId()] = version
-                            uniqueVersions[version] = True
+            (warning, outputFromCmd) = cmd.decodeResults()
+            if warning is None:
+                for seg in cmd.dblist:
+                    version = outputFromCmd[gp.SEGMENT_STATUS__GET_VERSION][seg.getSegmentDbId()]
+                    if version is not None:
+                        version = version.rstrip()
+                        dbIdToVersion[seg.getSegmentDbId()] = version
+                        uniqueVersions[version] = True
             else:
-                logger.warn("Error getting status from host %s" % cmd.remoteHost)
+                logger.warn(warning)
 
         # print the list of all segments and warnings about trouble
         warningLineNumbers = {}
@@ -269,6 +384,8 @@ class GpSystemStateProgram:
         numSet = (1 if self.__options.showMirrorList else 0) + \
                  (1 if self.__options.showClusterConfig else 0) + \
                  (1 if self.__options.showQuickStatus else 0) + \
+                 (1 if self.__options.showPortInformation else 0) + \
+                 (1 if self.__options.showStandbyMasterInformation else 0) + \
                  (1 if self.__options.showVersionInfo else 0)
         if numSet > 1:
             raise ProgramArgumentValidationException("Too many output options specified")
@@ -285,13 +402,17 @@ class GpSystemStateProgram:
 
         # do it!
         if self.__options.showMirrorList:
-            exitCode = self.__displayMirrorList(gpEnv, gpArray, self.__options.mirrorType)
+            exitCode = self.__displayMirrorList(gpEnv, gpArray)
         elif self.__options.showClusterConfig:
-            exitCode = self.__displayClusterConfig(gpEnv, gpArray, self.__options.mirrorType)
+            exitCode = self.__displayClusterConfig(gpEnv, gpArray)
         elif self.__options.showQuickStatus:
-            exitCode = self.__showQuickStatus(gpEnv, gpArray, self.__options.mirrorType)
+            exitCode = self.__showQuickStatus(gpEnv, gpArray)
         elif self.__options.showVersionInfo:
-            exitCode = self.__showVersionInfo(gpEnv, gpArray )
+            exitCode = self.__showVersionInfo(gpEnv, gpArray)
+        elif self.__options.showStandbyMasterInformation:
+            exitCode = self.__showStandbyMasterInformation(gpEnv, gpArray)
+        elif self.__options.showPortInformation:
+            exitCode = self.__showPortInfo(gpEnv, gpArray)
         else:
             raise ProgramArgumentValidationException( "No output options specified")
 
@@ -337,13 +458,17 @@ class GpSystemStateProgram:
                             dest="showVersionInfo",
                             metavar="<showVersionInfo>",
                             help="Show version information")
+        addTo.add_option("-p", None, default=False, action="store_true",
+                            dest="showPortInformation",
+                            metavar="<showPortInformation>",
+                            help="Show port information")
+        addTo.add_option("-f", None, default=False, action="store_true",
+                            dest="showStandbyMasterInformation",
+                            metavar="<showStandbyMasterInformation>",
+                            help="Show standby master information")
 
         addTo = OptionGroup(parser, "Other Options")
         parser.add_option_group(addTo)
-        addTo.add_option("-M", None, default="", # this should be removed when bash is all gone
-                            dest="mirrorType",
-                            metavar="<mirrorType>",
-                            help="mirrorType, as calculated from $MIR_TYPE")
         addTo.add_option("-B", None, type="int", default=16,
                             dest="parallelDegree",
                             metavar="<parallelDegree>",

@@ -289,11 +289,38 @@ def getSegmentsReprArgWithoutFilespaces(segments):
     dirstr=" ".join(dirlist)
     return dirstr
 
-class GpGetSegStatusUsingTransition(Command):
+#
+# list of valid segment statuses that can be requested
+#
+
+# corresponds to a postmaster variable, also used in scripts; result is a string object
+SEGMENT_STATUS__GET_VERSION = "getVersion" 
+
+# fetch the active PID of this segment; result is a dict with "pid" and "error" values
+#
+# see comments on getPidStatus in GpSegStatusProgram class
+#
+SEGMENT_STATUS__GET_PID = "__getPid"
+
+# fetch True or False depending on whether the /tmp/.s.PSQL.<port>.lock file is there
+SEGMENT_STATUS__HAS_LOCKFILE = "__hasLockFile"
+
+# fetch True or False depending on whether the postmaster pid file is there
+SEGMENT_STATUS__HAS_POSTMASTER_PID_FILE = "__hasPostmasterPidFile"
+
+class GpGetSegmentStatusValues(Command):
     """
-    Fetch status for segments on a host, using the transition message method of getting status
+    Fetch status values for segments on a host
+
+    Results will be a bin-hexed/pickled value that, when unpacked, will give a
+    two-level map:
+
+    outer-map maps from dbid to inner map
+    inner-map maps from SEGMENT_STATUS__* value to result (which is usually a string, but may be different.
+
+    @param statusRequestArr an array of SEGMENT_STATUS__ constants
     """
-    def __init__(self, name, segments, statusRequest, verbose=False, ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, segments, statusRequestArr, verbose=False, ctxt=LOCAL, remoteHost=None):
 
         # clone the list
         self.dblist = [x for x in segments]
@@ -309,12 +336,32 @@ class GpGetSegStatusUsingTransition(Command):
         args = [
                 "$GPHOME/sbin/gpgetstatususingtransition.py",
                 setVerbose,
-                "-s %s" % statusRequest,
+                "-s %s" % ":".join(statusRequestArr),
                 dirStr
                 ]
         cmdStr = " ".join(args)
 
         Command.__init__(self, name, cmdStr, ctxt, remoteHost)
+
+    def decodeResults(self):
+        """
+        return (warning,outputFromCmd) tuple, where if warning is None then 
+           results were returned and outputFromCmd should be read.  Otherwise, the warning should
+           be logged and outputFromCmd ignored
+        """
+        if self.get_results().rc != 0:
+            return ("Error getting status from host %s" % self.remoteHost, None)
+
+        outputFromCmd = None
+        for line in self.get_results().stdout.split('\n'):
+            if line.startswith("STATUS_RESULTS:"):
+                toDecode = line[len("STATUS_RESULTS:"):]
+                outputFromCmd = pickle.loads(base64.urlsafe_b64decode(toDecode))
+                break
+        if outputFromCmd is None:
+            return ("No status output provided from host %s" % self.remoteHost, None)
+        return (None, outputFromCmd)
+
 
 #-----------------------------------------------
 class GpSegStartCmd(Command):
@@ -1014,31 +1061,52 @@ def chk_gpdb_id(username):
     pass
 
 
-def chk_local_db_running(datadir,port):
+def chk_local_db_running(datadir, port):
     """Perform a few checks to see if the db is running.  We 1st look at:
+
        1) /tmp/.s.PGSQL.<PORT> and /tmp/.s.PGSQL.<PORT>.lock
        2) DATADIR/postmaster.pid
        3) netstat
 
-       Returns tuple in format (master_pid_exists, tmpfile_exists, port_active)
+       Returns tuple in format (postmaster_pid_file_exists, tmpfile_exists, lockfile_exists, port_active, postmaster_pid)
+
+       postmaster_pid value is 0 if postmaster_pid_exists is False
 
     """
-    cmd=FileDirExists('check for master PID file',datadir + '/postmaster.pid')
+    cmd=FileDirExists('check for postmaster PID file', datadir + '/postmaster.pid')
     cmd.run(validateAfter=True)
-    master_pid_exists = cmd.filedir_exists()
+    postmaster_pid_exists = cmd.filedir_exists()
 
-
-    cmd=FileDirExists('check for /tmp/.s.PGSQL file file',"/tmp/.s.PGSQL.%d" % port)
+    cmd=FileDirExists('check for /tmp/.s.PGSQL file file', "/tmp/.s.PGSQL.%d" % port)
     cmd.run(validateAfter=True)
     tmpfile_exists = cmd.filedir_exists()
 
+    # determine if lockfile is there, grab pid from it
+    lockfile_exists = True
+    f = None
+    try:
+        f = open(get_lockfile_name(port))
+    except IOError:
+        lockfile_exists = False
 
-    netstat_port_active = PgPortIsActive.local('check netstat for master port',"/tmp/.s.PGSQL.%d" % port, port)
+    pid_value = 0
+    if lockfile_exists:
+        try:
+            for line in f:
+                pid_value = int(line) # grab first line only
+                break
+        finally:
+            f.close()
 
-    logger.debug("master_pid_exists: %s tmpfile_exists: %s netstat port: %s" %\
-                (master_pid_exists,tmpfile_exists,netstat_port_active))
+    netstat_port_active = PgPortIsActive.local('check netstat for postmaster port',"/tmp/.s.PGSQL.%d" % port, port)
 
-    return (master_pid_exists,tmpfile_exists,netstat_port_active)
+    logger.debug("postmaster_pid_exists: %s tmpfile_exists: %s lockfile_exists: %s netstat port: %s  pid: %s" %\
+                (postmaster_pid_exists, tmpfile_exists, lockfile_exists, netstat_port_active, pid_value))
+
+    return (postmaster_pid_exists, tmpfile_exists, lockfile_exists, netstat_port_active, pid_value)
+
+def get_lockfile_name(port):
+    return "/tmp/.s.PGSQL.%d.lock" % port
 
 
 def get_local_db_mode(master_data_dir):

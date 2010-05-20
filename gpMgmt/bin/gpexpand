@@ -901,7 +901,8 @@ class gpexpand:
 
     @staticmethod
     def get_gpdb_in_state(state):
-        gpdb_running = chk_local_db_running(options.master_data_directory, options.pgport) == (True, True, True)
+        runningStatus = chk_local_db_running(options.master_data_directory, options.pgport)
+        gpdb_running = runningStatus[0] and runningStatus[1] and runningStatus[2] and runningStatus[3]
         if gpdb_running:
             gpdb_mode = get_local_db_mode(options.master_data_directory)
 
