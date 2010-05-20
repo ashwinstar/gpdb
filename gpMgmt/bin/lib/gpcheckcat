@@ -1287,7 +1287,7 @@ def checkOwners():
       join pg_authid a on (a.oid = r.relowner)
       join pg_authid m on (m.oid = coalesce(o.relowner, c.relowner))
       join pg_namespace n on (n.oid = coalesce(o.relnamespace, c.relnamespace))
-    where a.oid <> m.oid
+    where c.relowner <> r.relowner
     '''
     else:
         qry = '''
@@ -1304,7 +1304,7 @@ def checkOwners():
       join pg_authid a on (a.oid = r.relowner)
       join pg_authid m on (m.oid = coalesce(o.relowner, c.relowner))
       join pg_namespace n on (n.oid = coalesce(o.relnamespace, c.relnamespace))
-    where a.oid <> m.oid
+    where c.relowner != r.relowner
     '''
     curs = db.query(qry)
 
@@ -1328,6 +1328,9 @@ def checkOwners():
         for row in rows:
             fixupowners(row['nspname'], row['relname'], row['rolname'],
                         row['master_rolname'])
+
+    # TODO: add a check that subobject owners agree with the main object owner.
+    # (The above checks only compare master vs segment)
 
 
     # Check owners in pg_type
