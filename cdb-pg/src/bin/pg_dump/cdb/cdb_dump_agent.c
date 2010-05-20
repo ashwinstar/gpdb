@@ -5144,11 +5144,19 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		/* lets see about partitioning */
 		if ( g_gp_supportsPartitioning )
 		{
+
 			resetPQExpBuffer(query);
+			
 			/* MPP-6297: dump by tablename */ 
-			appendPQExpBuffer(query, "SELECT "
-							  "pg_get_partition_def('%u'::pg_catalog.oid, true, true) ",
-							  tbinfo->dobj.catId.oid);
+			if (g_gp_supportsPartitionTemplates)
+				/* use 4.x version of function */
+				appendPQExpBuffer(query, "SELECT "
+								  "pg_get_partition_def('%u'::pg_catalog.oid, true, true) ",
+								  tbinfo->dobj.catId.oid);
+			else /* use 3.x version of function */
+				appendPQExpBuffer(query, "SELECT "
+								  "pg_get_partition_def('%u'::pg_catalog.oid, true) ",
+								  tbinfo->dobj.catId.oid);
 
 			res = PQexec(g_conn, query->data);
 			check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
@@ -5173,58 +5181,39 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			 */
 			if (g_gp_supportsPartitionTemplates)
 			{
-				bool		isSupported;
-
 				resetPQExpBuffer(query);
 
-				/* be paranoid and check for function */
-				appendPQExpBuffer(query, 
-							  "SELECT 1 FROM pg_proc WHERE "
-							  "proname = 'pg_get_partition_template_def' and "
-							  "proowner = 10;");
+				appendPQExpBuffer(
+						query, 
+						"SELECT "
+						"pg_get_partition_template_def('%u'::pg_catalog.oid, true, true) ",
+						tbinfo->dobj.catId.oid);
 				res = PQexec(g_conn, query->data);
-				check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+				check_sql_result(res, g_conn, query->data, 
+								 PGRES_TUPLES_OK);
 
-				isSupported = ( PQntuples(res) == 1 );
+				if (PQntuples(res) != 1)
+				{
+					if (PQntuples(res) < 1)
+						write_msg(
+								NULL, 
+								"query to obtain definition of table \"%s\" returned no data\n",
+								tbinfo->dobj.name);
+					else
+						write_msg(
+								NULL, 
+								"query to obtain definition of table \"%s\" returned more than one definition\n",
+								tbinfo->dobj.name);
+					exit_nicely();
+				}
+				/* MPP-9537: terminate (with semicolon) the previous
+				 * statement, and dump the template definitions 
+				 */
+				if (!PQgetisnull(res, 0, 0) &&
+					PQgetlength(res, 0, 0))
+					appendPQExpBuffer(q, ";\n %s", PQgetvalue(res, 0, 0));
 
 				PQclear(res);
-
-				if (isSupported)
-				{
-					resetPQExpBuffer(query);
-
-					appendPQExpBuffer(
-							query, 
-							"SELECT "
-							"pg_get_partition_template_def('%u'::pg_catalog.oid, true, true) ",
-							tbinfo->dobj.catId.oid);
-					res = PQexec(g_conn, query->data);
-					check_sql_result(res, g_conn, query->data, 
-									 PGRES_TUPLES_OK);
-
-					if (PQntuples(res) != 1)
-					{
-						if (PQntuples(res) < 1)
-							write_msg(
-									NULL, 
-									"query to obtain definition of table \"%s\" returned no data\n",
-									tbinfo->dobj.name);
-						else
-							write_msg(
-									NULL, 
-									"query to obtain definition of table \"%s\" returned more than one definition\n",
-									tbinfo->dobj.name);
-						exit_nicely();
-					}
-					/* MPP-9537: terminate (with semicolon) the previous
-					 * statement, and dump the template definitions 
-					 */
-					if (!PQgetisnull(res, 0, 0) &&
-						PQgetlength(res, 0, 0))
-						appendPQExpBuffer(q, ";\n %s", PQgetvalue(res, 0, 0));
-
-					PQclear(res);
-				} /* end if isSupported */
 			} /* end if g_gp_SupportsPartitionTemplates */
 
 		}

@@ -198,7 +198,6 @@ static const char *convertOperatorReference(const char *opr);
 static void selectSourceSchema(const char *schemaName);
 static bool testGPbackend(void);
 static bool testPartitioningSupport(void);
-static bool testPartitionTemplateSupport(void);
 static char *getFormattedTypeName(Oid oid, OidOptions opts);
 static const char *fmtQualifiedId(const char *schema, const char *id);
 static bool hasBlobs(Archive *AH);
@@ -7450,12 +7449,21 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		 */
 		if ( gp_partitioning_available )
 		{
+			bool		isTemplatesSupported = g_fout->remoteVersion >= 80214;
+
 			/* does support GP partitioning. */
 			resetPQExpBuffer(query);
 			/* MPP-6297: dump by tablename */ 
-			appendPQExpBuffer(query, "SELECT "
-							  "pg_get_partition_def('%u'::pg_catalog.oid, true, true) ",
-							  tbinfo->dobj.catId.oid);
+			if (isTemplatesSupported)
+				/* use 4.x version of function */
+				appendPQExpBuffer(query, "SELECT "
+								  "pg_get_partition_def('%u'::pg_catalog.oid, true, true) ",
+								  tbinfo->dobj.catId.oid);
+			else 	/* use 3.x version of function */
+				appendPQExpBuffer(query, "SELECT "
+								  "pg_get_partition_def('%u'::pg_catalog.oid, true) ",
+								  tbinfo->dobj.catId.oid);
+
 
 			res = PQexec(g_conn, query->data);
 			check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
@@ -7478,7 +7486,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			/* MPP-6095: dump ALTER TABLE statements for 
 			 * subpartition templates 
 			 */
-			if (testPartitionTemplateSupport())
+			if (isTemplatesSupported)
 			{
 				resetPQExpBuffer(query);
 
@@ -8802,34 +8810,6 @@ testPartitioningSupport(void)
 	return isSupported;
 }
 
-/*
- * MPP-6095: testPartitionTemplateSupport - tests whether or not the
- * current GP database includes support for dumping partition
- * templates
- */
-static bool
-testPartitionTemplateSupport(void)
-{
-	PQExpBuffer query;
-	PGresult   *res;
-	bool		isSupported;
-
-	query = createPQExpBuffer();
-
-	appendPQExpBuffer(query, 
-					  "SELECT 1 FROM pg_proc WHERE "
-					  "proname = 'pg_get_partition_template_def' and "
-					  "proowner = 10;");
-	res = PQexec(g_conn, query->data);
-	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
-
-	isSupported = ( PQntuples(res) == 1 );
-
-	PQclear(res);
-	destroyPQExpBuffer(query);
-
-	return isSupported;
-}
 
 /*
  * testSqlMedSupport - tests whether or not the current GP database includes
