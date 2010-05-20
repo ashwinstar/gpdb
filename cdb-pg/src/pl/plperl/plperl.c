@@ -1066,7 +1066,7 @@ plperl_create_sub(char *s, bool trusted)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("creation of Perl function failed"),
-				 errdetail(strip_trailing_ws(SvPV(ERRSV, PL_na))),
+				 errdetail("%s", strip_trailing_ws(SvPV(ERRSV, PL_na))),
 						   errOmitLocation(true)));
 	}
 
@@ -1196,7 +1196,7 @@ plperl_call_perl_func(plperl_proc_desc *desc, FunctionCallInfo fcinfo)
 		/* XXX need to find a way to assign an errcode here */
 		ereport(ERROR,
 				(errmsg("Perl function \"%s\" failed", desc->proname),
-				 errdetail(strip_trailing_ws(SvPV(ERRSV, PL_na)))));
+				 errdetail("%s", strip_trailing_ws(SvPV(ERRSV, PL_na)))));
 	}
 
 	retval = newSVsv(POPs);
@@ -1253,7 +1253,7 @@ plperl_call_perl_trigger_func(plperl_proc_desc *desc, FunctionCallInfo fcinfo,
 		/* XXX need to find a way to assign an errcode here */
 		ereport(ERROR,
 				(errmsg("Perl trigger function \"%s\" failed", desc->proname),
-				 errdetail(strip_trailing_ws(SvPV(ERRSV, PL_na)))));
+				 errdetail("%s", strip_trailing_ws(SvPV(ERRSV, PL_na)))));
 	}
 
 	retval = newSVsv(POPs);

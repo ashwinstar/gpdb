@@ -1564,7 +1564,7 @@ explain_outNode(StringInfo str,
 		for (i = 0; i < indent; i++)
 			appendStringInfo(str, "  ");
 		appendStringInfo(str, "  ->  ");
-		appendStringInfo(str, skip_outer_msg);
+		appendStringInfoString(str, skip_outer_msg);
 		appendStringInfo(str, "\n");
     }
 

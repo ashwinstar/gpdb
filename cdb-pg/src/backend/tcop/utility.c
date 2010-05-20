@@ -137,7 +137,7 @@ DropErrorMsgWrongType(char *relname, char wrongkind, char rightkind)
 	ereport(ERROR,
 			(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 			 errmsg(rentry->nota_msg, relname),
-			 (wentry->kind != '\0') ? errhint(wentry->drophint_msg) : 0,
+			 (wentry->kind != '\0') ? errhint("%s", wentry->drophint_msg) : 0,
 			 errOmitLocation(true)));
 }
 

@@ -304,7 +304,7 @@ if (IsRejectLimitReached(cstate->cdbsreh)) \
 \
 	ereport(ERROR, \
 			(errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \
-			(errmsg(finalmsg) \
+			(errmsg("%s", finalmsg) \
 			),errOmitLocation(true))); \
 }
 
@@ -3449,7 +3449,7 @@ CopyFromDispatch(CopyState cstate)
 	{
 		cstate->error_on_executor = true;
 		if(cdbCopy->err_context.len > 0)
-			appendStringInfo(&cstate->executor_err_context, cdbCopy->err_context.data);
+			appendStringInfoString(&cstate->executor_err_context, cdbCopy->err_context.data);
 	}
 
 	/*

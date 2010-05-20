@@ -356,7 +356,7 @@ AtEOXact_SPI(bool isCommit)
 
 		if (PQresultStatus(res) != PGRES_COMMAND_OK)
 		{
-			elog(NOTICE, PQerrorMessage(_QD_conn));
+			elog(NOTICE, "%s", PQerrorMessage(_QD_conn));
 		}
 		PQclear(res);
 

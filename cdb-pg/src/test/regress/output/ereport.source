@@ -2420,7 +2420,7 @@ select * from get_ereport order by 1;
  caae: conv:00000509:  errmsg("invalid encoding number: %d", encoding))); 
  caae: copy:00000305:  ereport(ERROR,  
  caae: copy:00000306:  (errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED),  
- caae: copy:00000307:  (errmsg(finalmsg)  
+ caae: copy:00000307:  (errmsg("%s", finalmsg)  
  caae: copy:00000308:  ),errOmitLocation(true)));  
  caae: copy:00000309: } 
  caae: copy:00000310:  
@@ -2863,15 +2863,15 @@ select * from get_ereport order by 1;
  caag: cdbfts:00000700:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
  caag: cdbfts:00000701:  errSendAlert(true), 
  caag: cdbfts:00000702:  errmsg("Master mirroring synchronization lost"), 
- caag: cdbfts:00000703:  errdetail(detail))); 
+ caag: cdbfts:00000703:  errdetail("%s", detail))); 
  caag: cdbfts:00000810:  ereport(ERROR, 
  caag: cdbfts:00000811:  (errcode(ERRCODE_INTERNAL_ERROR), 
  caag: cdbfts:00000812:  errmsg("Unexpected master mirror state '%s'", 
  caag: cdbfts:00000813:  QDMirroringStateToString(state)))); 
  caag: cdbfts:00000819:  ereport(NOTICE, 
  caag: cdbfts:00000820:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- caag: cdbfts:00000821:  errmsg(message), 
- caag: cdbfts:00000822:  errdetail(detail))); 
+ caag: cdbfts:00000821:  errmsg("%s", message), 
+ caag: cdbfts:00000822:  errdetail("%s", detail))); 
  caag: cdbfts:00001022:  ereport(ERROR, (errmsg_internal("MPP detected %d segment failures, system is reconnected", numOfFailed), 
  caag: cdbfts:00001023:  errSendAlert(true))); 
  caag: cdbfts:00001084:  ereport(LOG, (errmsg_internal("FTS: found bad segment with dbid %d", segInfo->dbid), 
@@ -3353,13 +3353,13 @@ select * from get_ereport order by 1;
  caai: cdbllize:00000238:  )); 
  caai: cdbllize:00000268:  ereport(ERROR, ( 
  caai: cdbllize:00000269:  errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED), 
- caai: cdbllize:00000270:  errmsg(notyet), 
+ caai: cdbllize:00000270:  errmsg("%s", notyet), 
  caai: cdbllize:00000271:  errdetail("The query contains a correlated subquery."), 
  caai: cdbllize:00000272:  errOmitLocation(true) 
  caai: cdbllize:00000273:  )); 
  caai: cdbllize:00000277:  ereport(ERROR, ( 
  caai: cdbllize:00000278:  errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED), 
- caai: cdbllize:00000279:  errmsg(notyet), 
+ caai: cdbllize:00000279:  errmsg("%s", notyet), 
  caai: cdbllize:00000280:  errdetail("The query contains a multi-row subquery."), 
  caai: cdbllize:00000281:  errOmitLocation(true) 
  caai: cdbllize:00000282:  )); 
@@ -5677,7 +5677,7 @@ select * from get_ereport order by 1;
  faag: fileam:00000495:  "segments that can write into them"))); 
  faag: fileam:00000728:  ereport(ERROR,  
  faag: fileam:00000729:  (errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED),  
- faag: fileam:00000730:  (errmsg(finalmsg)  
+ faag: fileam:00000730:  (errmsg("%s", finalmsg)  
  faag: fileam:00000731:  ),errOmitLocation(true)));  
  faag: fileam:00000732: } 
  faag: fileam:00000733:  
@@ -9850,14 +9850,14 @@ select * from get_ereport order by 1;
  paag: plperl:00001066:  ereport(ERROR, 
  paag: plperl:00001067:  (errcode(ERRCODE_SYNTAX_ERROR), 
  paag: plperl:00001068:  errmsg("creation of Perl function failed"), 
- paag: plperl:00001069:  errdetail(strip_trailing_ws(SvPV(ERRSV, PL_na))), 
+ paag: plperl:00001069:  errdetail("%s", strip_trailing_ws(SvPV(ERRSV, PL_na))), 
  paag: plperl:00001070:  errOmitLocation(true))); 
  paag: plperl:00001197:  ereport(ERROR, 
  paag: plperl:00001198:  (errmsg("Perl function "%s" failed", desc->proname), 
- paag: plperl:00001199:  errdetail(strip_trailing_ws(SvPV(ERRSV, PL_na))))); 
+ paag: plperl:00001199:  errdetail("%s", strip_trailing_ws(SvPV(ERRSV, PL_na))))); 
  paag: plperl:00001254:  ereport(ERROR, 
  paag: plperl:00001255:  (errmsg("Perl trigger function "%s" failed", desc->proname), 
- paag: plperl:00001256:  errdetail(strip_trailing_ws(SvPV(ERRSV, PL_na))))); 
+ paag: plperl:00001256:  errdetail("%s", strip_trailing_ws(SvPV(ERRSV, PL_na))))); 
  paag: plperl:00001294:  ereport(ERROR, 
  paag: plperl:00001295:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  paag: plperl:00001296:  errmsg("Unsupported Perl function "%s"", 

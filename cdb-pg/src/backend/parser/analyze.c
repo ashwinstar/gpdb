@@ -5388,7 +5388,7 @@ coerce_partition_value(Node *node, Oid typid, int32 typmod,
 		{
 			initStringInfo(&sid);
 			appendStringInfo(&sid, "(");
-			appendStringInfo(&sid, pparam);
+			appendStringInfoString(&sid, pparam);
 			appendStringInfo(&sid, ") ");
 
 			pfree(pparam);

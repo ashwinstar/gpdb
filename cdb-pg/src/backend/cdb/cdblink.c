@@ -479,7 +479,7 @@ cdblink_connectQD(SegmentDatabaseDescriptor * segdbDesc)
 						  buffer.data,
 						  PQerrorMessage(segdbDesc->conn));
 
-		elog(LOG, segdbDesc->error_message.data);
+		elog(LOG, "%s", segdbDesc->error_message.data);
 
 		PQfinish(segdbDesc->conn);
 		segdbDesc->conn = NULL;

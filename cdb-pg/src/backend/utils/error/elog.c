@@ -2426,10 +2426,10 @@ log_line_prefix(StringInfo buf)
                 if (!MyProcPort)
                 {
                     const char *uname = get_ps_display_username();
-                    appendStringInfo(buf, uname && uname[0] ? uname : "postmaster");
+                    appendStringInfoString(buf, uname && uname[0] ? uname : "postmaster");
                 }
                 else
-                    appendStringInfo(buf, "%s", role_to_string(Gp_role));
+                    appendStringInfoString(buf, role_to_string(Gp_role));
                 break;
             case 'S':
                 if (currentSliceId >= 0)

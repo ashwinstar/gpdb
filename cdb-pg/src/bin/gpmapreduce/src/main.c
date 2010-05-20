@@ -362,7 +362,7 @@ int main (int argc, char *argv[])
 			} while (needpass);
 
 			if (PQstatus(conn) == CONNECTION_BAD)
-				fprintf(stderr, PQerrorMessage(conn));
+				fprintf(stderr, "%s", PQerrorMessage(conn));
 			else
 			{
 				if (global_verbose_flag)
@@ -523,7 +523,7 @@ void check_version(PGconn *conn)
 	}
 	else
 	{
-		fprintf(stderr, PQerrorMessage(conn));
+		fprintf(stderr, "%s", PQerrorMessage(conn));
 		XRAISE(MAPRED_SQL_ERROR, "Unable to determine Greenplum version\n");
 	}
 
@@ -550,7 +550,7 @@ static void sigint_handler(SIGNAL_ARGS)
 		else
 		{
 			fprintf(stderr, "Could not send cancel request: ");
-			fprintf(stderr, errbuf);
+			fprintf(stderr, "%s", errbuf);
 		}
 	}
 

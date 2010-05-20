@@ -1146,7 +1146,7 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 				newinput->kind = MAPRED_INPUT;
 				len = strlen(obj->name) + 1;
 				newinput->name = mapred_malloc(len);
-				sprintf(newinput->name, obj->name);
+				sprintf(newinput->name, "%s", obj->name);
 				newinput->u.input.type = MAPRED_INPUT_QUERY;
 				len = strlen(doc->prefix) + strlen(obj->name) + 16;
 				newinput->u.input.desc = mapred_malloc(len);
@@ -2298,7 +2298,7 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 				if (global_verbose_flag)
 					fprintf(stderr, "  - RUN: ");
 				if (global_print_flag || global_debug_flag)
-					fprintf(stderr, buffer->buffer);
+					fprintf(stderr, "%s", buffer->buffer);
 				else
 					fprintf(stderr, "%s\n", olist->object->name);
 

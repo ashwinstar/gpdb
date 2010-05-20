@@ -727,7 +727,7 @@ if (IsRejectLimitReached(pstate->cdbsreh)) \
 \
 	ereport(ERROR, \
 			(errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \
-			(errmsg(finalmsg) \
+			(errmsg("%s", finalmsg) \
 			),errOmitLocation(true))); \
 }
 

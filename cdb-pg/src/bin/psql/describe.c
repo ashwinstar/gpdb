@@ -1434,7 +1434,7 @@ describeOneTableDetails(const char *schemaname,
 									 footers, &count_footers, tmpbuf, false))
 				{
 					appendPQExpBuffer(&buf, ", ");
-					appendPQExpBuffer(&buf, tmpbuf.data);
+					appendPQExpBuffer(&buf, "%s", tmpbuf.data);
 
 					count_footers -= 2;
 				}

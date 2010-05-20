@@ -677,7 +677,7 @@ set_short_version(const char *path, DbDirNode *dbDirNode, bool mirror)
 					(errcode_for_file_access(),
 					 errmsg("could not write to file \"%s\": %m",
 							fullname)));
-		fprintf(version_file, short_version);
+		fprintf(version_file, "%s", short_version);
 		if (FreeFile(version_file))
 			ereport(ERROR,
 					(errcode_for_file_access(),

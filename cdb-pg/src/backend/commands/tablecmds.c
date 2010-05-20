@@ -16109,7 +16109,7 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 
 		initStringInfo(&sid1);
 		initStringInfo(&sid2);
-		appendStringInfo(&sid1, relnamBuf);
+		appendStringInfoString(&sid1, relnamBuf);
 
 		foreach(lc, l1)
 		{

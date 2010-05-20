@@ -5955,7 +5955,7 @@ StartupXLOG_InProduction(void)
 #ifdef USE_ASSERT_CHECKING
 		strcat(version, " (with assert checking)");
 #endif 
-		ereport(LOG,(errmsg(version)));
+		ereport(LOG,(errmsg("%s", version)));
 		
 	}
 

@@ -700,7 +700,7 @@ disableQDMirroring(char *detail, char *errorMessage, QDMIRRORDisabledReason disa
 							(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							 errSendAlert(true),
 							 errmsg("Master mirroring synchronization lost"),
-							 errdetail(detail)));
+							 errdetail("%s", detail)));
 
 				gettimeofday(&lastLogTimeVal, NULL);
 
@@ -818,8 +818,8 @@ enableQDMirroring(char *message, char *detail)
 	ftsQDMirrorInfo->updateMask |= QDMIRROR_UPDATEMASK_MASTERMIRRORING;
 	ereport(NOTICE,
 			(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-			 errmsg(message),
-			 errdetail(detail)));
+			 errmsg("%s", message),
+			 errdetail("%s", detail)));
 	GetLastLogTimeVal(&ftsQDMirrorInfo->lastLogTimeVal);
 	gettimeofday(&ftsQDMirrorInfo->lastLogTimeVal, NULL);
 

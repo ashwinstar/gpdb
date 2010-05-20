@@ -1523,12 +1523,12 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
 	if ( fRptFile != NULL )
 	{
 		mpp_msg( logInfo, pszProgName, "Report results also written to %s.\n", pszReportPathName );
-		fprintf(fRptFile, reportBuf->data);
+		fprintf(fRptFile, "%s", reportBuf->data);
 		fclose( fRptFile );
 	}
 
 	/* write report to stdout */
-	fprintf(stdout, reportBuf->data);
+	fprintf(stdout, "%s", reportBuf->data);
 
 	if ( pszReportPathName != NULL )
 		free( pszReportPathName );
@@ -1650,12 +1650,12 @@ int reportMasterError(InputOptions inputopts, const ThreadParm* pMasterParm, con
 	if ( fRptFile != NULL )
 	{
 		mpp_msg( logInfo, pszProgName, "Report results also written to %s.\n", pszReportPathName );
-		fprintf(fRptFile, reportBuf->data);
+		fprintf(fRptFile, "%s", reportBuf->data);
 		fclose( fRptFile );
 	}
 
 	/* write report to stdout */
-	fprintf(stdout, reportBuf->data);
+	fprintf(stdout, "%s", reportBuf->data);
 
 	if ( pszReportPathName != NULL )
 		free( pszReportPathName );

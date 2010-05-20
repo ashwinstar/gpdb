@@ -267,7 +267,7 @@ cdbparallelize(PlannerInfo *root,
 		{
 			ereport(ERROR, (
 					errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-					errmsg(notyet),
+					errmsg("%s", notyet),
 					errdetail("The query contains a correlated subquery."),
 					errOmitLocation(true)
 			));
@@ -276,7 +276,7 @@ cdbparallelize(PlannerInfo *root,
 		{
 			ereport(ERROR, (
 					errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-					errmsg(notyet),
+					errmsg("%s", notyet),
 					errdetail("The query contains a multi-row subquery."),
 					errOmitLocation(true)
 			));
