@@ -931,11 +931,14 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args)
 
 			if (isDone)
 			{
-				elog(LOG, "TransitionResult: Transition to primary/mirror mode %s, "
-				"data state %s%s resulted in %s",
-					 getMirrorModeLabel(targetMode), getDataStateLabel(args->dataState),
-					 args->transitionToFault ? " (to fault)" : "",
-					 getTransitionResultLabel(result));
+			    /* this won't get transitionToFault, because that 'succeeds', but that's okay because
+			     *    that happens on a panic from in-sync anyway */
+			    int logLevel = result == PMTransitionError ? WARNING : LOG;
+				elog(logLevel, "TransitionResult: Transition to primary/mirror mode %s, "
+				    "data state %s%s resulted in %s",
+                        getMirrorModeLabel(targetMode), getDataStateLabel(args->dataState),
+					    args->transitionToFault ? " (to fault)" : "",
+					    getTransitionResultLabel(result));
 				return result;
 			}
 		}
@@ -1247,8 +1250,9 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 	}
 	else
 	{
-	    elog(LOG, "PostmasterPrimaryMirrorTransition (%d) Finished with %s",
-	        transitionNumber,getTransitionResultLabel(result));
+        int logLevel = result == PMTransitionError ? WARNING : LOG;
+	    elog(logLevel, "PostmasterPrimaryMirrorTransition (%d) Finished with %s",
+	        transitionNumber, getTransitionResultLabel(result));
 		acquireModuleSpinLock();
 		{
 			if (result == PMTransitionSuccess)
