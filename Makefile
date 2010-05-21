@@ -215,6 +215,7 @@ endif
 aix5_ppc_64_CONFIG_ADDITIONS=LDFLAGS="-Wl,-bbigtoc -L/usr/lib/threads"
 aix5_ppc_32_CONFIG_ADDITIONS=LDFLAGS="-L/usr/lib/threads"
 win32_CONFIG_ADDITIONS=--build=x86_x64-unknown-linux-gnu --host=i686-pc-mingw32 --without-zlib --enable-debug CC=/usr/local/mingw32/bin/mingw32-gcc LDFLAGS=-L/usr/local/mingw32/mingw32/lib CPP= CPPFLAGS=-I/usr/local/mingw32/mingw32/include
+win64_CONFIG_ADDITIONS=--build=x86_x64-unknown-linux-gnu --host=x86_64-pc-mingw64 --without-zlib --enable-debug CC=/usr/local/mingw64/bin/x86_64-w64-mingw32-gcc LDFLAGS=-L/usr/local/mingw64/x86_64-w64-mingw32/lib CPP= CPPFLAGS=-I/usr/local/mingw64/x86_64-w64-mingw32/include
 CONFIG_ADDITIONS=$($(BLD_ARCH)_CONFIG_ADDITIONS)
 
 CONFIGFLAGS+= $(CONFIG_ADDITIONS)
@@ -502,7 +503,7 @@ endef
 CLIENT_FILESET = $(strip $(tmpCLIENT_FILESET) $($(DOC_TYPE)_CLIENT_FILESET))
 
 # yes, the doubled gpload lines are correct
-# this gives win32 just gpload.py, as it wants, and wrappers on the unix platforms
+# this gives win32, win64 just gpload.py, as they want, and wrappers on the unix platforms
 define tmpLOADERS_FILESET_BIN
 	gpfdist$(EXE_EXT)
 	gpload$(PY_EXT)
@@ -1006,7 +1007,7 @@ copylibs : thirdparty-dist
 	mkdir -p $(INSTLOC)/etc
 	mkdir -p $(INSTLOC)/include
 	# Copy in openssl files needed by gpperfmon
-ifeq "$(findstring $(BLD_ARCH),aix5_ppc_32 aix5_ppc64 win32)" ""
+ifeq "$(findstring $(BLD_ARCH),aix5_ppc_32 aix5_ppc64 win32 win64)" ""
 ifneq "$(BLD_ARCH)" "osx104_x86"
 	cp -rp $(BLD_THIRDPARTY_BIN_DIR)/openssl $(INSTLOC)/bin/
 	cp -rp $(BLD_THIRDPARTY_INCLUDE_DIR)/openssl $(INSTLOC)/include/
