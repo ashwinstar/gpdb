@@ -159,7 +159,7 @@ FtsNotifyProber(void)
 		kill(ftsProbeInfo->fts_probePid, SIGINT);
 
 	/* sit and spin */
-	while (ftsProbeInfo->fts_probeScanRequested == ftsProbeInfo->fts_statusVersion);
+	while (ftsProbeInfo->fts_probeScanRequested == ftsProbeInfo->fts_statusVersion)
 	{
 		struct timeval tv;
 
