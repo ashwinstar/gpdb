@@ -14,6 +14,7 @@
 #include "storage/smgr.h"
 #include "utils/guc.h"
 #include "cdb/cdbpersistentstore.h"
+#include "cdb/cdbpersistentfilesysobj.h"
 
 
 char *PersistentXactObjKind_Name(
@@ -223,6 +224,8 @@ PersistentEndXactRec_VerifyFileSysActionInfos(
 {
 	int i;
 
+	ItemPointerData maxTid;
+
 	if (IsBootstrapProcessingMode())
 		return;
 
@@ -243,6 +246,17 @@ PersistentEndXactRec_VerifyFileSysActionInfos(
 		if (PersistentStore_IsZeroTid(&fileSysActionInfos[i].persistentTid))
 			elog(ERROR, "TID for persistent '%s' tuple is invalid (0,0) (index %d, transaction kind '%s')",
 				 PersistentFileSysObjName_TypeAndObjectName(&fileSysActionInfos[i].fsObjName),
+				 i,
+				 EndXactRecKind_Name(endXactRecKind));
+
+		if (!PersistentFileSysObj_TidIsKnown(
+									fileSysActionInfos[i].fsObjName.type,
+									&fileSysActionInfos[i].persistentTid,
+									&maxTid))
+			elog(ERROR, "TID for persistent '%s' tuple TID %s is beyond the last known TID %s (index %d, transaction kind '%s')",
+				 PersistentFileSysObjName_TypeAndObjectName(&fileSysActionInfos[i].fsObjName),
+				 ItemPointerToString(&fileSysActionInfos[i].persistentTid),
+				 ItemPointerToString2(&maxTid),
 				 i,
 				 EndXactRecKind_Name(endXactRecKind));
 

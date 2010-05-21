@@ -222,6 +222,7 @@ static void PersistentStore_DoInitScan(
 
 	globalSequenceNum = GlobalSequence_Current(storeData->gpGlobalSequence);
 
+	// UNDONE: I think the InRecovery test only applies to physical Master Mirroring on Standby.
 	/* Only test this outside of recovery scenarios */
 	if (!InRecovery && globalSequenceNum < storeSharedData->maxInUseSerialNum)
 		elog(ERROR, "Global sequence number " INT64_FORMAT " less than maximum value " INT64_FORMAT " found in scan (token %d)",
@@ -407,6 +408,25 @@ int64 PersistentStore_CurrentMaxSerialNum(
 	PersistentStoreSharedData 	*storeSharedData)
 {
 	return storeSharedData->maxInUseSerialNum;
+}
+
+bool PersistentStore_TidIsKnown(
+	PersistentStoreSharedData 	*storeSharedData,
+
+	ItemPointer 				persistentTid,
+	
+	ItemPointer 				maxTid)
+{
+	*maxTid = storeSharedData->maxTid;
+
+	// UNDONE: I think the InRecovery test only applies to physical Master Mirroring on Standby.
+	/* Only test this outside of recovery scenarios */
+	if (InRecovery)
+		return true;
+
+	return (ItemPointerCompare(
+						persistentTid,
+						&storeSharedData->maxTid) <= 0); // Less-than or equal.
 }
 
 static void PersistentStore_DoInsertTuple(
@@ -655,6 +675,19 @@ void PersistentStore_ReadTuple(
 		elog(ERROR, "TID for fetch persistent tuple is invalid (0,0) (token %d)",
 			 storeData->token);
 
+	// UNDONE: I think the InRecovery test only applies to physical Master Mirroring on Standby.
+	/* Only test this outside of recovery scenarios */
+	if (!InRecovery && 
+		ItemPointerCompare(
+						readTid,
+						&storeSharedData->maxTid) == 1) // Greater-than.
+	{
+		elog(ERROR, "TID %s for fetch persistent tuple is greater than the last known TID %s (token %d)",
+			 ItemPointerToString(readTid),
+			 ItemPointerToString2(&storeSharedData->maxTid),
+			 storeData->token);
+	}
+						
 	persistentRel = (*storeData->openRel)();
 
 	tuple.t_self = *readTid;

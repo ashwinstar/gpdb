@@ -200,6 +200,13 @@ extern int64 PersistentStore_MyHighestSerialNum(
 extern int64 PersistentStore_CurrentMaxSerialNum(
 	PersistentStoreSharedData 	*storeSharedData);
 
+extern bool PersistentStore_TidIsKnown(
+	PersistentStoreSharedData 	*storeSharedData,
+
+	ItemPointer 				persistentTid,
+	
+	ItemPointer 				maxTid);
+
 extern void PersistentStore_UpdateTuple(
 	PersistentStoreData 		*storeData,
 
