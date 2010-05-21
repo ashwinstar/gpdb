@@ -81,9 +81,9 @@ class GpSegStatusProgram:
 
         error = None
         if not lockFileExists and not netstatPortActive:
-            error = "No socket connection or lock file (%s) found for port=%d" % (lockFileName, seg.getSegmentPort())
+            error = "No socket connection or lock file (%s) found for port %s" % (lockFileName, seg.getSegmentPort())
         elif not lockFileExists and netstatPortActive:
-            error = "No lock file %s but process running on port " % (lockFileName, seg.getSegmentPort())
+            error = "No lock file %s but process running on port %s" % (lockFileName, seg.getSegmentPort())
         elif lockFileExists and not netstatPortActive:
             error = "Have lock file %s but no process running on port %s" % (lockFileName, seg.getSegmentPort())
         else:
