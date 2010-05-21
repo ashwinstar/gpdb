@@ -507,11 +507,11 @@ select * from get_ereport order by 1;
  aaad: acl:00003551:  errmsg("must be member of role "%s"", 
  aaad: acl:00003552:  GetUserNameFromId(role)), 
  aaad: acl:00003553:  errOmitLocation(true))); 
- aaae: aomd:00000159:  ereport(ERROR, 
- aaae: aomd:00000160:  (errcode_for_file_access(), 
- aaae: aomd:00000161:  errmsg("Could not open Append-Only segment file '%s': %s", 
- aaae: aomd:00000162:  filepathname, 
- aaae: aomd:00000163:  strerror(primaryError)))); 
+ aaae: aomd:00000166:  ereport(ERROR, 
+ aaae: aomd:00000167:  (errcode_for_file_access(), 
+ aaae: aomd:00000168:  errmsg("Could not open Append-Only segment file '%s': %s", 
+ aaae: aomd:00000169:  filepathname, 
+ aaae: aomd:00000170:  strerror(primaryError)))); 
  aaae: auth:00000281:  ereport(FATAL, 
  aaae: auth:00000282:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
  aaae: auth:00000283:  errmsg(errstr, port->user_name), 
@@ -1613,34 +1613,34 @@ select * from get_ereport order by 1;
  aaba: aosegfiles:00000635:  ereport(ERROR, 
  aaba: aosegfiles:00000636:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
  aaba: aosegfiles:00000637:  errmsg("got invalid pg_aoseg varblockcount value: NULL"))); 
- aaba: aosegfiles:00000823:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- aaba: aosegfiles:00000824:  errmsg("Unable to obtain AO relation information from segment databases."), 
- aaba: aosegfiles:00000825:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
- aaba: aosegfiles:00000959:  ereport(ERROR, 
- aaba: aosegfiles:00000960:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- aaba: aosegfiles:00000961:  errmsg("'%s' is not an append-only relation", 
- aaba: aosegfiles:00000962:  RelationGetRelationName(parentrel)))); 
- aaba: aosegfiles:00001075:  ereport(ERROR, 
- aaba: aosegfiles:00001076:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- aaba: aosegfiles:00001077:  errmsg("'%s' is not an append-only relation", 
- aaba: aosegfiles:00001078:  RelationGetRelationName(parentrel)))); 
- aaba: aosegfiles:00001116:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- aaba: aosegfiles:00001117:  errmsg("Unable to obtain AO relation information from segment databases."), 
- aaba: aosegfiles:00001118:  errdetail("SPI_connect failed in get_ao_distribution"))); 
- aaba: aosegfiles:00001265:  ereport(ERROR, 
- aaba: aosegfiles:00001266:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- aaba: aosegfiles:00001267:  errmsg("'%s' is not an append-only relation", 
- aaba: aosegfiles:00001268:  RelationGetRelationName(parentrel)))); 
- aaba: aosegfiles:00001294:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- aaba: aosegfiles:00001295:  errmsg("Unable to obtain AO relation information from segment databases."), 
- aaba: aosegfiles:00001296:  errdetail("SPI_connect failed in get_ao_distribution"))); 
- aaba: aosegfiles:00001475:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- aaba: aosegfiles:00001476:  errmsg("Unable to obtain AO relation information from segment databases."), 
- aaba: aosegfiles:00001477:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
- aaba: aosegfiles:00001571:  ereport(ERROR, 
- aaba: aosegfiles:00001572:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- aaba: aosegfiles:00001573:  errmsg("'%s' is not an append-only relation", 
- aaba: aosegfiles:00001574:  RelationGetRelationName(parentrel)))); 
+ aaba: aosegfiles:00000825:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ aaba: aosegfiles:00000826:  errmsg("Unable to obtain AO relation information from segment databases."), 
+ aaba: aosegfiles:00000827:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
+ aaba: aosegfiles:00000961:  ereport(ERROR, 
+ aaba: aosegfiles:00000962:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ aaba: aosegfiles:00000963:  errmsg("'%s' is not an append-only relation", 
+ aaba: aosegfiles:00000964:  RelationGetRelationName(parentrel)))); 
+ aaba: aosegfiles:00001077:  ereport(ERROR, 
+ aaba: aosegfiles:00001078:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ aaba: aosegfiles:00001079:  errmsg("'%s' is not an append-only relation", 
+ aaba: aosegfiles:00001080:  RelationGetRelationName(parentrel)))); 
+ aaba: aosegfiles:00001118:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ aaba: aosegfiles:00001119:  errmsg("Unable to obtain AO relation information from segment databases."), 
+ aaba: aosegfiles:00001120:  errdetail("SPI_connect failed in get_ao_distribution"))); 
+ aaba: aosegfiles:00001267:  ereport(ERROR, 
+ aaba: aosegfiles:00001268:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ aaba: aosegfiles:00001269:  errmsg("'%s' is not an append-only relation", 
+ aaba: aosegfiles:00001270:  RelationGetRelationName(parentrel)))); 
+ aaba: aosegfiles:00001296:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ aaba: aosegfiles:00001297:  errmsg("Unable to obtain AO relation information from segment databases."), 
+ aaba: aosegfiles:00001298:  errdetail("SPI_connect failed in get_ao_distribution"))); 
+ aaba: aosegfiles:00001477:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ aaba: aosegfiles:00001478:  errmsg("Unable to obtain AO relation information from segment databases."), 
+ aaba: aosegfiles:00001479:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
+ aaba: aosegfiles:00001573:  ereport(ERROR, 
+ aaba: aosegfiles:00001574:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ aaba: aosegfiles:00001575:  errmsg("'%s' is not an append-only relation", 
+ aaba: aosegfiles:00001576:  RelationGetRelationName(parentrel)))); 
  aaba: arrayfuncs:00000206:  ereport(ERROR, 
  aaba: arrayfuncs:00000207:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
  aaba: arrayfuncs:00000208:  errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)", 
@@ -1961,56 +1961,56 @@ select * from get_ereport order by 1;
  aabc: aocssegfiles:00000818:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
  aabc: aocssegfiles:00000819:  errmsg("Unable to obtain AO relation information from segment databases."), 
  aabc: aocssegfiles:00000820:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
- aabc: appendonlyam:00000603:  ereport(ERROR, 
- aabc: appendonlyam:00000604:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- aabc: appendonlyam:00000605:  errmsg("VarBlock is not valid. " 
- aabc: appendonlyam:00000606:  "Valid block check error %d, detail '%s'", 
- aabc: appendonlyam:00000607:  varBlockCheckError, 
- aabc: appendonlyam:00000608:  VarBlockGetCheckErrorStr()), 
- aabc: appendonlyam:00000609:  errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead), 
- aabc: appendonlyam:00000610:  errcontext_appendonly_read_storage_block(executorReadBlock->storageRead))); 
- aabc: appendonlyam:00000625:  ereport(ERROR, 
- aabc: appendonlyam:00000626:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- aabc: appendonlyam:00000627:  errmsg("Row count %d in append-only storage header does not match VarBlock item count %d", 
- aabc: appendonlyam:00000628:  executorReadBlock->rowCount, 
- aabc: appendonlyam:00000629:  executorReadBlock->readerItemCount), 
- aabc: appendonlyam:00000630:  errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead), 
- aabc: appendonlyam:00000631:  errcontext_appendonly_read_storage_block(executorReadBlock->storageRead))); 
- aabc: appendonlyam:00000646:  ereport(ERROR, 
- aabc: appendonlyam:00000647:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- aabc: appendonlyam:00000648:  errmsg("Row count %d in append-only storage header is not 1 for single row", 
- aabc: appendonlyam:00000649:  executorReadBlock->rowCount), 
- aabc: appendonlyam:00000650:  errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead), 
- aabc: appendonlyam:00000651:  errcontext_appendonly_read_storage_block(executorReadBlock->storageRead))); 
- aabc: appendonlyam:00001266:  ereport(ERROR, 
- aabc: appendonlyam:00001267:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- aabc: appendonlyam:00001268:  errmsg("Verify block during write found VarBlock is not valid. " 
- aabc: appendonlyam:00001269:  "Valid block check error %d, detail '%s'", 
- aabc: appendonlyam:00001270:  varBlockCheckError, 
- aabc: appendonlyam:00001271:  VarBlockGetCheckErrorStr()), 
- aabc: appendonlyam:00001272:  errdetail_appendonly_insert_block_header(aoInsertDesc), 
- aabc: appendonlyam:00001273:  errcontext_appendonly_insert_block(aoInsertDesc))); 
- aabc: appendonlyam:00001880:  ereport(WARNING, 
- aabc: appendonlyam:00001881:  (errmsg("Append-only fetch requires scan prior blocks: " 
- aabc: appendonlyam:00001882:  "segmentFileNum %d, rowNum " INT64_FORMAT ", " 
- aabc: appendonlyam:00001883:  "currentBlock.firstRowNum " INT64_FORMAT, 
- aabc: appendonlyam:00001884:  segmentFileNum, rowNum, 
- aabc: appendonlyam:00001885:  aoFetchDesc->currentBlock.firstRowNum))); 
- aabc: appendonlyam:00001929:  ereport(WARNING, 
- aabc: appendonlyam:00001930:  (errmsg("Append-only fetch requires scan prior segment file: " 
- aabc: appendonlyam:00001931:  "segmentFileNum %d, rowNum " INT64_FORMAT 
- aabc: appendonlyam:00001932:  ", currentSegmentFileNum %d", 
- aabc: appendonlyam:00001933:  segmentFileNum, rowNum, aoFetchDesc->currentSegmentFile.num))); 
- aabc: appendonlyam:00002306:  ereport(ERROR, 
- aabc: appendonlyam:00002307:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- aabc: appendonlyam:00002308:  errmsg("Item too long (check #1): length %d, maxBufferLen %d", 
- aabc: appendonlyam:00002309:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
- aabc: appendonlyam:00002310:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
- aabc: appendonlyam:00002348:  ereport(ERROR, 
- aabc: appendonlyam:00002349:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- aabc: appendonlyam:00002350:  errmsg("Item too long (check #2): length %d, maxBufferLen %d", 
- aabc: appendonlyam:00002351:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
- aabc: appendonlyam:00002352:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
+ aabc: appendonlyam:00000610:  ereport(ERROR, 
+ aabc: appendonlyam:00000611:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ aabc: appendonlyam:00000612:  errmsg("VarBlock is not valid. " 
+ aabc: appendonlyam:00000613:  "Valid block check error %d, detail '%s'", 
+ aabc: appendonlyam:00000614:  varBlockCheckError, 
+ aabc: appendonlyam:00000615:  VarBlockGetCheckErrorStr()), 
+ aabc: appendonlyam:00000616:  errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead), 
+ aabc: appendonlyam:00000617:  errcontext_appendonly_read_storage_block(executorReadBlock->storageRead))); 
+ aabc: appendonlyam:00000632:  ereport(ERROR, 
+ aabc: appendonlyam:00000633:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ aabc: appendonlyam:00000634:  errmsg("Row count %d in append-only storage header does not match VarBlock item count %d", 
+ aabc: appendonlyam:00000635:  executorReadBlock->rowCount, 
+ aabc: appendonlyam:00000636:  executorReadBlock->readerItemCount), 
+ aabc: appendonlyam:00000637:  errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead), 
+ aabc: appendonlyam:00000638:  errcontext_appendonly_read_storage_block(executorReadBlock->storageRead))); 
+ aabc: appendonlyam:00000653:  ereport(ERROR, 
+ aabc: appendonlyam:00000654:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ aabc: appendonlyam:00000655:  errmsg("Row count %d in append-only storage header is not 1 for single row", 
+ aabc: appendonlyam:00000656:  executorReadBlock->rowCount), 
+ aabc: appendonlyam:00000657:  errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead), 
+ aabc: appendonlyam:00000658:  errcontext_appendonly_read_storage_block(executorReadBlock->storageRead))); 
+ aabc: appendonlyam:00001273:  ereport(ERROR, 
+ aabc: appendonlyam:00001274:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ aabc: appendonlyam:00001275:  errmsg("Verify block during write found VarBlock is not valid. " 
+ aabc: appendonlyam:00001276:  "Valid block check error %d, detail '%s'", 
+ aabc: appendonlyam:00001277:  varBlockCheckError, 
+ aabc: appendonlyam:00001278:  VarBlockGetCheckErrorStr()), 
+ aabc: appendonlyam:00001279:  errdetail_appendonly_insert_block_header(aoInsertDesc), 
+ aabc: appendonlyam:00001280:  errcontext_appendonly_insert_block(aoInsertDesc))); 
+ aabc: appendonlyam:00001887:  ereport(WARNING, 
+ aabc: appendonlyam:00001888:  (errmsg("Append-only fetch requires scan prior blocks: " 
+ aabc: appendonlyam:00001889:  "segmentFileNum %d, rowNum " INT64_FORMAT ", " 
+ aabc: appendonlyam:00001890:  "currentBlock.firstRowNum " INT64_FORMAT, 
+ aabc: appendonlyam:00001891:  segmentFileNum, rowNum, 
+ aabc: appendonlyam:00001892:  aoFetchDesc->currentBlock.firstRowNum))); 
+ aabc: appendonlyam:00001936:  ereport(WARNING, 
+ aabc: appendonlyam:00001937:  (errmsg("Append-only fetch requires scan prior segment file: " 
+ aabc: appendonlyam:00001938:  "segmentFileNum %d, rowNum " INT64_FORMAT 
+ aabc: appendonlyam:00001939:  ", currentSegmentFileNum %d", 
+ aabc: appendonlyam:00001940:  segmentFileNum, rowNum, aoFetchDesc->currentSegmentFile.num))); 
+ aabc: appendonlyam:00002313:  ereport(ERROR, 
+ aabc: appendonlyam:00002314:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ aabc: appendonlyam:00002315:  errmsg("Item too long (check #1): length %d, maxBufferLen %d", 
+ aabc: appendonlyam:00002316:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
+ aabc: appendonlyam:00002317:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
+ aabc: appendonlyam:00002355:  ereport(ERROR, 
+ aabc: appendonlyam:00002356:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ aabc: appendonlyam:00002357:  errmsg("Item too long (check #2): length %d, maxBufferLen %d", 
+ aabc: appendonlyam:00002358:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
+ aabc: appendonlyam:00002359:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
  aabd: aggregatecmds:00000107:  ereport(WARNING, 
  aabd: aggregatecmds:00000108:  (errcode(ERRCODE_SYNTAX_ERROR), 
  aabd: aggregatecmds:00000109:  errmsg("aggregate attribute "%s" not recognized", 
@@ -4190,12 +4190,12 @@ select * from get_ereport order by 1;
  cacb: cdbmirroredfilesysobj:00001185:  relFileNode->relNode, 
  cacb: cdbmirroredfilesysobj:00001186:  segmentFileNum, 
  cacb: cdbmirroredfilesysobj:00001187:  strerror(primaryError)))); 
- cacb: cdbpersistentrecovery:00001754:  ereport(ERROR, 
- cacb: cdbpersistentrecovery:00001755:  (errcode_for_file_access(), 
- cacb: cdbpersistentrecovery:00001756:  errmsg("could not write redo relation file : %m"))); 
- cacb: cdbpersistentrecovery:00001903:  ereport(ERROR, 
- cacb: cdbpersistentrecovery:00001904:  (errcode_for_file_access(), 
- cacb: cdbpersistentrecovery:00001905:  errmsg("error reading redo relation file: %m"))); 
+ cacb: cdbpersistentrecovery:00001856:  ereport(ERROR, 
+ cacb: cdbpersistentrecovery:00001857:  (errcode_for_file_access(), 
+ cacb: cdbpersistentrecovery:00001858:  errmsg("could not write redo relation file : %m"))); 
+ cacb: cdbpersistentrecovery:00002005:  ereport(ERROR, 
+ cacb: cdbpersistentrecovery:00002006:  (errcode_for_file_access(), 
+ cacb: cdbpersistentrecovery:00002007:  errmsg("error reading redo relation file: %m"))); 
  cacc: cdbdistributedsnapshot:00000298:  ereport(ERROR, 
  cacc: cdbdistributedsnapshot:00000299:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  cacc: cdbdistributedsnapshot:00000300:  errmsg("out of memory"))); 
@@ -4257,43 +4257,43 @@ select * from get_ereport order by 1;
  cacd: cdbfilerepresyncmanager:00000471:  ereport(ERROR, 
  cacd: cdbfilerepresyncmanager:00000472:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  cacd: cdbfilerepresyncmanager:00000473:  (errmsg("Not enough shared memory for FileRep Resync.")))); 
- cacd: cdbpersistentfilesysobj:00000641:  ereport(ERROR, 
- cacd: cdbpersistentfilesysobj:00000642:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cacd: cdbpersistentfilesysobj:00000643:  errmsg("Did not expect to find a 'Free' entry"), 
- cacd: cdbpersistentfilesysobj:00000644:  errcontext_persistent_relation_state_change( 
- cacd: cdbpersistentfilesysobj:00000645:  fsObjName, 
- cacd: cdbpersistentfilesysobj:00000646:  persistentTid, 
- cacd: cdbpersistentfilesysobj:00000647:  serialNum, 
- cacd: cdbpersistentfilesysobj:00000648:  expectedState1, 
- cacd: cdbpersistentfilesysobj:00000649:  expectedState2, 
- cacd: cdbpersistentfilesysobj:00000650:  expectedState3, 
- cacd: cdbpersistentfilesysobj:00000651:  nextState))); 
- cacd: cdbpersistentfilesysobj:00000656:  ereport(ERROR, 
- cacd: cdbpersistentfilesysobj:00000657:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cacd: cdbpersistentfilesysobj:00000658:  errmsg("Found different serial number " INT64_FORMAT " than expected (persistent file-system object found is '%s', state '%s')", 
- cacd: cdbpersistentfilesysobj:00000659:  actualSerialNum, 
- cacd: cdbpersistentfilesysobj:00000660:  PersistentFileSysObjName_TypeAndObjectName(&actualFsObjName), 
- cacd: cdbpersistentfilesysobj:00000661:  PersistentFileSysObjState_Name(actualState)), 
- cacd: cdbpersistentfilesysobj:00000662:  errcontext_persistent_relation_state_change( 
- cacd: cdbpersistentfilesysobj:00000663:  fsObjName, 
- cacd: cdbpersistentfilesysobj:00000664:  persistentTid, 
- cacd: cdbpersistentfilesysobj:00000665:  serialNum, 
- cacd: cdbpersistentfilesysobj:00000666:  expectedState1, 
- cacd: cdbpersistentfilesysobj:00000667:  expectedState2, 
- cacd: cdbpersistentfilesysobj:00000668:  expectedState3, 
- cacd: cdbpersistentfilesysobj:00000669:  nextState))); 
- cacd: cdbpersistentfilesysobj:00000674:  ereport(ERROR, 
- cacd: cdbpersistentfilesysobj:00000675:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- cacd: cdbpersistentfilesysobj:00000676:  errmsg("Found persistent file-system object in unexpected state '%s'", 
- cacd: cdbpersistentfilesysobj:00000677:  PersistentFileSysObjState_Name(actualState)), 
- cacd: cdbpersistentfilesysobj:00000678:  errcontext_persistent_relation_state_change( 
- cacd: cdbpersistentfilesysobj:00000679:  fsObjName, 
- cacd: cdbpersistentfilesysobj:00000680:  persistentTid, 
- cacd: cdbpersistentfilesysobj:00000681:  serialNum, 
- cacd: cdbpersistentfilesysobj:00000682:  expectedState1, 
- cacd: cdbpersistentfilesysobj:00000683:  expectedState2, 
- cacd: cdbpersistentfilesysobj:00000684:  expectedState3, 
- cacd: cdbpersistentfilesysobj:00000685:  nextState))); 
+ cacd: cdbpersistentfilesysobj:00000743:  ereport(ERROR, 
+ cacd: cdbpersistentfilesysobj:00000744:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cacd: cdbpersistentfilesysobj:00000745:  errmsg("Did not expect to find a 'Free' entry"), 
+ cacd: cdbpersistentfilesysobj:00000746:  errcontext_persistent_relation_state_change( 
+ cacd: cdbpersistentfilesysobj:00000747:  fsObjName, 
+ cacd: cdbpersistentfilesysobj:00000748:  persistentTid, 
+ cacd: cdbpersistentfilesysobj:00000749:  serialNum, 
+ cacd: cdbpersistentfilesysobj:00000750:  expectedState1, 
+ cacd: cdbpersistentfilesysobj:00000751:  expectedState2, 
+ cacd: cdbpersistentfilesysobj:00000752:  expectedState3, 
+ cacd: cdbpersistentfilesysobj:00000753:  nextState))); 
+ cacd: cdbpersistentfilesysobj:00000758:  ereport(ERROR, 
+ cacd: cdbpersistentfilesysobj:00000759:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cacd: cdbpersistentfilesysobj:00000760:  errmsg("Found different serial number " INT64_FORMAT " than expected (persistent file-system object found is '%s', state '%s')", 
+ cacd: cdbpersistentfilesysobj:00000761:  actualSerialNum, 
+ cacd: cdbpersistentfilesysobj:00000762:  PersistentFileSysObjName_TypeAndObjectName(&actualFsObjName), 
+ cacd: cdbpersistentfilesysobj:00000763:  PersistentFileSysObjState_Name(actualState)), 
+ cacd: cdbpersistentfilesysobj:00000764:  errcontext_persistent_relation_state_change( 
+ cacd: cdbpersistentfilesysobj:00000765:  fsObjName, 
+ cacd: cdbpersistentfilesysobj:00000766:  persistentTid, 
+ cacd: cdbpersistentfilesysobj:00000767:  serialNum, 
+ cacd: cdbpersistentfilesysobj:00000768:  expectedState1, 
+ cacd: cdbpersistentfilesysobj:00000769:  expectedState2, 
+ cacd: cdbpersistentfilesysobj:00000770:  expectedState3, 
+ cacd: cdbpersistentfilesysobj:00000771:  nextState))); 
+ cacd: cdbpersistentfilesysobj:00000776:  ereport(ERROR, 
+ cacd: cdbpersistentfilesysobj:00000777:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ cacd: cdbpersistentfilesysobj:00000778:  errmsg("Found persistent file-system object in unexpected state '%s'", 
+ cacd: cdbpersistentfilesysobj:00000779:  PersistentFileSysObjState_Name(actualState)), 
+ cacd: cdbpersistentfilesysobj:00000780:  errcontext_persistent_relation_state_change( 
+ cacd: cdbpersistentfilesysobj:00000781:  fsObjName, 
+ cacd: cdbpersistentfilesysobj:00000782:  persistentTid, 
+ cacd: cdbpersistentfilesysobj:00000783:  serialNum, 
+ cacd: cdbpersistentfilesysobj:00000784:  expectedState1, 
+ cacd: cdbpersistentfilesysobj:00000785:  expectedState2, 
+ cacd: cdbpersistentfilesysobj:00000786:  expectedState3, 
+ cacd: cdbpersistentfilesysobj:00000787:  nextState))); 
  cacd: cdbpersistenttablespace:00001087:  ereport(FATAL, 
  cacd: cdbpersistenttablespace:00001088:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  cacd: cdbpersistenttablespace:00001089:  errmsg("Not enough shared memory for persistent tablespace hash table"))); 
@@ -6626,81 +6626,81 @@ select * from get_ereport order by 1;
  fabd: faultinjector:00000381:  ereport(ERROR, 
  fabd: faultinjector:00000382:  (errmsg("Fault is injected identifier:'%s' ", 
  fabd: faultinjector:00000383:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier]))); 
- gaad: guc:00007268:  ereport(ERROR, 
- gaad: guc:00007269:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00007270:  errmsg("unrecognized configuration parameter "%s"", name))); 
- gaad: guc:00007272:  ereport(ERROR, 
- gaad: guc:00007273:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- gaad: guc:00007274:  errmsg("must be superuser to examine "%s"", name))); 
- gaad: guc:00007308:  ereport(ERROR, 
- gaad: guc:00007309:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00007310:  errmsg("unrecognized configuration parameter "%s"", name))); 
- gaad: guc:00007312:  ereport(ERROR, 
- gaad: guc:00007313:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- gaad: guc:00007314:  errmsg("must be superuser to examine "%s"", name))); 
- gaad: guc:00007383:  ereport(ERROR, 
- gaad: guc:00007384:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00007385:  errmsg("unrecognized configuration parameter "%s"", name))); 
- gaad: guc:00007392:  ereport(ERROR, 
- gaad: guc:00007393:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00007394:  errmsg("SET %s takes only one argument", name))); 
- gaad: guc:00007565:  ereport(ERROR, 
- gaad: guc:00007566:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
- gaad: guc:00007567:  errmsg("SET requires parameter name"))); 
- gaad: guc:00007629:  ereport(ERROR, 
- gaad: guc:00007630:  (errcode(ERRCODE_INTERNAL_ERROR), 
- gaad: guc:00007631:  errmsg("attempt to redefine parameter "%s"", name))); 
- gaad: guc:00007950:  ereport(ERROR, 
- gaad: guc:00007951:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
- gaad: guc:00007952:  errmsg("unrecognized configuration parameter "%s"", name))); 
- gaad: guc:00007954:  ereport(ERROR, 
- gaad: guc:00007955:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- gaad: guc:00007956:  errmsg("must be superuser to examine "%s"", name))); 
- gaad: guc:00008758:  ereport(FATAL, 
- gaad: guc:00008759:  (errcode_for_file_access(), 
- gaad: guc:00008760:  errmsg("could not read from file "%s": %m", 
- gaad: guc:00008761:  CONFIG_EXEC_PARAMS))); 
- gaad: guc:00008868:  ereport(WARNING, 
- gaad: guc:00008869:  (errcode(ERRCODE_SYNTAX_ERROR), 
- gaad: guc:00008870:  errmsg("could not parse setting for parameter "%s"", name))); 
- gaad: guc:00009064:  ereport(ERROR, 
- gaad: guc:00009065:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009066:  errmsg("invalid list syntax for parameter "log_destination""))); 
- gaad: guc:00009087:  ereport(ERROR, 
- gaad: guc:00009088:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009089:  errmsg("unrecognized "log_destination" key word: "%s"", 
- gaad: guc:00009090:  tok))); 
- gaad: guc:00009116:  ereport(ERROR, 
- gaad: guc:00009117:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009118:  errmsg("unrecognized "gp_log_format" key word: "%s"", 
- gaad: guc:00009119:  value))); 
- gaad: guc:00009462:  ereport(ERROR, 
- gaad: guc:00009463:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- gaad: guc:00009464:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
- gaad: guc:00009538:  ereport(ERROR, 
- gaad: guc:00009539:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009540:  errmsg("assertion checking is not supported by this build"))); 
- gaad: guc:00009559:  ereport(ERROR, 
- gaad: guc:00009560:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009561:  errmsg("SSL is not supported by this build"))); 
- gaad: guc:00009572:  ereport(ERROR, 
- gaad: guc:00009573:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009574:  errmsg("cannot enable parameter when "log_statement_stats" is true"))); 
- gaad: guc:00009589:  ereport(ERROR, 
- gaad: guc:00009590:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009591:  errmsg("cannot enable "log_statement_stats" when " 
- gaad: guc:00009592:  ""log_parser_stats", "log_planner_stats", " 
- gaad: guc:00009593:  ""log_dispatch_stats", " 
- gaad: guc:00009594:  "or "log_executor_stats" is true"))); 
- gaad: guc:00009609:  ereport(ERROR, 
- gaad: guc:00009610:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009611:  errmsg("cannot enable "log_dispatch_stats" when " 
- gaad: guc:00009612:  ""log_statement_stats", " 
- gaad: guc:00009613:  ""log_parser_stats", "log_planner_stats", " 
- gaad: guc:00009614:  "or "log_executor_stats" is true"))); 
- gaad: guc:00009629:  ereport(ERROR, 
- gaad: guc:00009630:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- gaad: guc:00009631:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+ gaad: guc:00007269:  ereport(ERROR, 
+ gaad: guc:00007270:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00007271:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00007273:  ereport(ERROR, 
+ gaad: guc:00007274:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ gaad: guc:00007275:  errmsg("must be superuser to examine "%s"", name))); 
+ gaad: guc:00007309:  ereport(ERROR, 
+ gaad: guc:00007310:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00007311:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00007313:  ereport(ERROR, 
+ gaad: guc:00007314:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ gaad: guc:00007315:  errmsg("must be superuser to examine "%s"", name))); 
+ gaad: guc:00007384:  ereport(ERROR, 
+ gaad: guc:00007385:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00007386:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00007393:  ereport(ERROR, 
+ gaad: guc:00007394:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00007395:  errmsg("SET %s takes only one argument", name))); 
+ gaad: guc:00007566:  ereport(ERROR, 
+ gaad: guc:00007567:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+ gaad: guc:00007568:  errmsg("SET requires parameter name"))); 
+ gaad: guc:00007630:  ereport(ERROR, 
+ gaad: guc:00007631:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ gaad: guc:00007632:  errmsg("attempt to redefine parameter "%s"", name))); 
+ gaad: guc:00007951:  ereport(ERROR, 
+ gaad: guc:00007952:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+ gaad: guc:00007953:  errmsg("unrecognized configuration parameter "%s"", name))); 
+ gaad: guc:00007955:  ereport(ERROR, 
+ gaad: guc:00007956:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ gaad: guc:00007957:  errmsg("must be superuser to examine "%s"", name))); 
+ gaad: guc:00008759:  ereport(FATAL, 
+ gaad: guc:00008760:  (errcode_for_file_access(), 
+ gaad: guc:00008761:  errmsg("could not read from file "%s": %m", 
+ gaad: guc:00008762:  CONFIG_EXEC_PARAMS))); 
+ gaad: guc:00008869:  ereport(WARNING, 
+ gaad: guc:00008870:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ gaad: guc:00008871:  errmsg("could not parse setting for parameter "%s"", name))); 
+ gaad: guc:00009065:  ereport(ERROR, 
+ gaad: guc:00009066:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009067:  errmsg("invalid list syntax for parameter "log_destination""))); 
+ gaad: guc:00009088:  ereport(ERROR, 
+ gaad: guc:00009089:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009090:  errmsg("unrecognized "log_destination" key word: "%s"", 
+ gaad: guc:00009091:  tok))); 
+ gaad: guc:00009117:  ereport(ERROR, 
+ gaad: guc:00009118:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009119:  errmsg("unrecognized "gp_log_format" key word: "%s"", 
+ gaad: guc:00009120:  value))); 
+ gaad: guc:00009463:  ereport(ERROR, 
+ gaad: guc:00009464:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ gaad: guc:00009465:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+ gaad: guc:00009539:  ereport(ERROR, 
+ gaad: guc:00009540:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009541:  errmsg("assertion checking is not supported by this build"))); 
+ gaad: guc:00009560:  ereport(ERROR, 
+ gaad: guc:00009561:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009562:  errmsg("SSL is not supported by this build"))); 
+ gaad: guc:00009573:  ereport(ERROR, 
+ gaad: guc:00009574:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009575:  errmsg("cannot enable parameter when "log_statement_stats" is true"))); 
+ gaad: guc:00009590:  ereport(ERROR, 
+ gaad: guc:00009591:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009592:  errmsg("cannot enable "log_statement_stats" when " 
+ gaad: guc:00009593:  ""log_parser_stats", "log_planner_stats", " 
+ gaad: guc:00009594:  ""log_dispatch_stats", " 
+ gaad: guc:00009595:  "or "log_executor_stats" is true"))); 
+ gaad: guc:00009610:  ereport(ERROR, 
+ gaad: guc:00009611:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009612:  errmsg("cannot enable "log_dispatch_stats" when " 
+ gaad: guc:00009613:  ""log_statement_stats", " 
+ gaad: guc:00009614:  ""log_parser_stats", "log_planner_stats", " 
+ gaad: guc:00009615:  "or "log_executor_stats" is true"))); 
+ gaad: guc:00009630:  ereport(ERROR, 
+ gaad: guc:00009631:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ gaad: guc:00009632:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
  gaae: gram:00018692:  ereport(ERROR, 
  gaae: gram:00018693:  (errcode(ERRCODE_SYNTAX_ERROR), 
  gaae: gram:00018694:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"), 
@@ -7337,19 +7337,19 @@ select * from get_ereport order by 1;
  gaai: gpviewcp:00000338:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
  gaai: gpviewcp:00000339:  errmsg("gpviewreparse(): called with %hd arguments", 
  gaai: gpviewcp:00000340:  PG_NARGS()))); 
- gaai: gucxfile:00000542: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
- gaai: gucxfile:00000543:  
- gaai: gucxfile:00000544: enum { 
- gaai: gucxfile:00000545:  GUC_ID = 1, 
- gaai: gucxfile:00000546:  GUC_STRING = 2, 
- gaai: gucxfile:00000547:  GUC_INTEGER = 3, 
- gaai: gucxfile:00000548:  GUC_REAL = 4, 
- gaai: gucxfile:00000549:  GUC_EQUALS = 5, 
- gaai: gucxfile:00000550:  GUC_UNQUOTED_STRING = 6, 
- gaai: gucxfile:00000551:  GUC_QUALIFIED_ID = 7, 
- gaai: gucxfile:00000552:  GUC_EOL = 99, 
- gaai: gucxfile:00000553:  GUC_ERROR = 100 
- gaai: gucxfile:00000554: }; 
+ gaai: gucxfile:00000557: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
+ gaai: gucxfile:00000558:  
+ gaai: gucxfile:00000559: enum { 
+ gaai: gucxfile:00000560:  GUC_ID = 1, 
+ gaai: gucxfile:00000561:  GUC_STRING = 2, 
+ gaai: gucxfile:00000562:  GUC_INTEGER = 3, 
+ gaai: gucxfile:00000563:  GUC_REAL = 4, 
+ gaai: gucxfile:00000564:  GUC_EQUALS = 5, 
+ gaai: gucxfile:00000565:  GUC_UNQUOTED_STRING = 6, 
+ gaai: gucxfile:00000566:  GUC_QUALIFIED_ID = 7, 
+ gaai: gucxfile:00000567:  GUC_EOL = 99, 
+ gaai: gucxfile:00000568:  GUC_ERROR = 100 
+ gaai: gucxfile:00000569: }; 
  gaba: gistvacuum:00000574:  ereport(NOTICE, 
  gaba: gistvacuum:00000575:  (errmsg("index "%s" needs VACUUM FULL or REINDEX to finish crash recovery", 
  gaba: gistvacuum:00000576:  RelationGetRelationName(rel)))); 
@@ -9632,9 +9632,23 @@ select * from get_ereport order by 1;
  oabd: oraclexcompat:00001179:  ereport(ERROR, 
  oabd: oraclexcompat:00001180:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
  oabd: oraclexcompat:00001181:  errmsg("requested length too large"))); 
- oabd: oraclexcompat:00001335:  ereport(ERROR, 
- oabd: oraclexcompat:00001336:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
- oabd: oraclexcompat:00001337:  errmsg("requested length too large"))); 
+ oabd: oraclexcompat:00001316:  ereport(ERROR, 
+ oabd: oraclexcompat:00001317:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ oabd: oraclexcompat:00001318:  errmsg("requested character too large"))); 
+ oabd: oraclexcompat:00001362:  ereport(ERROR, 
+ oabd: oraclexcompat:00001363:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ oabd: oraclexcompat:00001364:  errmsg("requested character too large for encoding: %d", 
+ oabd: oraclexcompat:00001365:  cvalue))); 
+ oabd: oraclexcompat:00001409:  ereport(ERROR, 
+ oabd: oraclexcompat:00001410:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ oabd: oraclexcompat:00001411:  errmsg("null character not permitted"))); 
+ oabd: oraclexcompat:00001416:  ereport(ERROR, 
+ oabd: oraclexcompat:00001417:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ oabd: oraclexcompat:00001418:  errmsg("requested character too large for encoding: %d", 
+ oabd: oraclexcompat:00001419:  cvalue))); 
+ oabd: oraclexcompat:00001468:  ereport(ERROR, 
+ oabd: oraclexcompat:00001469:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+ oabd: oraclexcompat:00001470:  errmsg("requested length too large"))); 
  paad: plr:00000168:  ereport(ERROR, 
  paad: plr:00000169:  (errcode(ERRCODE_CONNECTION_FAILURE), 
  paad: plr:00000170:  errmsg("cannot connect to SPI manager"))); 
@@ -10067,20 +10081,20 @@ select * from get_ereport order by 1;
  paah: pgxtype:00000596:  ereport(ERROR, 
  paah: pgxtype:00000597:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
  paah: pgxtype:00000598:  errmsg("type "%s" already exists", newTypeName))); 
- paah: plancat:00001222:  ereport(NOTICE, 
- paah: plancat:00001223:  (errmsg("Query planner will use default statistics for index "%s" " 
- paah: plancat:00001224:  "on table "%s"", 
- paah: plancat:00001225:  indexname ? indexname : "??", 
- paah: plancat:00001226:  relname ? relname : "??"), 
- paah: plancat:00001227:  errhint("To cache a sample of the table's actual statistics for " 
- paah: plancat:00001228:  "optimization, use the ANALYZE or VACUUM ANALYZE command.") 
- paah: plancat:00001229:  )); 
- paah: plancat:00001252:  ereport(NOTICE, 
- paah: plancat:00001253:  (errmsg("Query planner will use default statistics for table "%s"", 
- paah: plancat:00001254:  relname ? relname : "??"), 
- paah: plancat:00001255:  errhint("To cache a sample of the table's actual statistics for " 
- paah: plancat:00001256:  "optimization, use the ANALYZE or VACUUM ANALYZE command.") 
- paah: plancat:00001257:  )); 
+ paah: plancat:00001249:  ereport(NOTICE, 
+ paah: plancat:00001250:  (errmsg("Query planner will use default statistics for index "%s" " 
+ paah: plancat:00001251:  "on table "%s"", 
+ paah: plancat:00001252:  indexname ? indexname : "??", 
+ paah: plancat:00001253:  relname ? relname : "??"), 
+ paah: plancat:00001254:  errhint("To cache a sample of the table's actual statistics for " 
+ paah: plancat:00001255:  "optimization, use the ANALYZE or VACUUM ANALYZE command.") 
+ paah: plancat:00001256:  )); 
+ paah: plancat:00001279:  ereport(NOTICE, 
+ paah: plancat:00001280:  (errmsg("Query planner will use default statistics for table "%s"", 
+ paah: plancat:00001281:  relname ? relname : "??"), 
+ paah: plancat:00001282:  errhint("To cache a sample of the table's actual statistics for " 
+ paah: plancat:00001283:  "optimization, use the ANALYZE or VACUUM ANALYZE command.") 
+ paah: plancat:00001284:  )); 
  paah: planner:00001005:  ereport(ERROR, ( 
  paah: planner:00001006:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
  paah: planner:00001007:  errmsg("incompatible loci in target inheritance set") )); 
@@ -10470,35 +10484,35 @@ select * from get_ereport order by 1;
  paah: plxgram:00004389:  (errcode(ERRCODE_SYNTAX_ERROR), 
  paah: plxgram:00004390:  errmsg("end label "%s" differs from block's label "%s"", 
  paah: plxgram:00004391:  end_label, start_label))); 
- paah: plxscan:00000858: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
- paah: plxscan:00000859:  
- paah: plxscan:00000860: #define unify_version(a,b,c) ((a<<16)+(b<<8)+c) 
- paah: plxscan:00000861: #if unify_version(YY_FLEX_MAJOR_VERSION,YY_FLEX_MINOR_VERSION,YY_FLEX_SUBMINOR_VERSION) < unify_version(2,5,35) 
- paah: plxscan:00000862: int plpgsql_base_yyget_lineno (void); 
- paah: plxscan:00001587:  ereport(ERROR, 
- paah: plxscan:00001588:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001589:  errmsg("unterminated quoted identifier"))); 
- paah: plxscan:00001638:  ereport(ERROR, 
- paah: plxscan:00001639:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001640:  errmsg("unterminated comment"))); 
- paah: plxscan:00001708:  ereport(ERROR, 
- paah: plxscan:00001709:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001710:  errmsg("unterminated string"))); 
- paah: plxscan:00001764:  ereport(ERROR, 
- paah: plxscan:00001765:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- paah: plxscan:00001766:  errmsg("unterminated dollar-quoted string"))); 
- paah: plxscan:00002784:  ereport(ERROR, 
- paah: plxscan:00002785:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxscan:00002786:  /* translator: %s is typically "syntax error" */ 
- paah: plxscan:00002787:  errmsg("%s at end of input", message), 
- paah: plxscan:00002788:  internalerrposition(cursorpos), 
- paah: plxscan:00002789:  internalerrquery(scanstr))); 
- paah: plxscan:00002793:  ereport(ERROR, 
- paah: plxscan:00002794:  (errcode(ERRCODE_SYNTAX_ERROR), 
- paah: plxscan:00002795:  /* translator: first %s is typically "syntax error" */ 
- paah: plxscan:00002796:  errmsg("%s at or near "%s"", message, loc), 
- paah: plxscan:00002797:  internalerrposition(cursorpos), 
- paah: plxscan:00002798:  internalerrquery(scanstr))); 
+ paah: plxscan:00001161: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
+ paah: plxscan:00001162:  
+ paah: plxscan:00001163: #define unify_version(a,b,c) ((a<<16)+(b<<8)+c) 
+ paah: plxscan:00001164: #if unify_version(YY_FLEX_MAJOR_VERSION,YY_FLEX_MINOR_VERSION,YY_FLEX_SUBMINOR_VERSION) < unify_version(2,5,35) 
+ paah: plxscan:00001165: int plpgsql_base_yyget_lineno (void); 
+ paah: plxscan:00001919:  ereport(ERROR, 
+ paah: plxscan:00001920:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00001921:  errmsg("unterminated quoted identifier"))); 
+ paah: plxscan:00001970:  ereport(ERROR, 
+ paah: plxscan:00001971:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00001972:  errmsg("unterminated comment"))); 
+ paah: plxscan:00002040:  ereport(ERROR, 
+ paah: plxscan:00002041:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00002042:  errmsg("unterminated string"))); 
+ paah: plxscan:00002096:  ereport(ERROR, 
+ paah: plxscan:00002097:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ paah: plxscan:00002098:  errmsg("unterminated dollar-quoted string"))); 
+ paah: plxscan:00003128:  ereport(ERROR, 
+ paah: plxscan:00003129:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxscan:00003130:  /* translator: %s is typically "syntax error" */ 
+ paah: plxscan:00003131:  errmsg("%s at end of input", message), 
+ paah: plxscan:00003132:  internalerrposition(cursorpos), 
+ paah: plxscan:00003133:  internalerrquery(scanstr))); 
+ paah: plxscan:00003137:  ereport(ERROR, 
+ paah: plxscan:00003138:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ paah: plxscan:00003139:  /* translator: first %s is typically "syntax error" */ 
+ paah: plxscan:00003140:  errmsg("%s at or near "%s"", message, loc), 
+ paah: plxscan:00003141:  internalerrposition(cursorpos), 
+ paah: plxscan:00003142:  internalerrquery(scanstr))); 
  paah: prepare:00000078:  ereport(ERROR, 
  paah: prepare:00000079:  (errcode(ERRCODE_INVALID_PSTATEMENT_DEFINITION), 
  paah: prepare:00000080:  errmsg("invalid statement name: must not be empty"))); 
@@ -13714,55 +13728,55 @@ select * from get_ereport order by 1;
  saad: spi:00002026:  (errcode(ERRCODE_WARNING), 
  saad: spi:00002027:  errmsg("A stable or volatile function is used as if it is immutable"), 
  saad: spi:00002028:  errhint("The function should be declared as stable or volatile in create function statement."))); 
- saae: scan:00014199: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
- saae: scan:00014200:  
- saae: scan:00014201: static int xcdepth = 0; /* depth of nesting in slash-star comments */ 
- saae: scan:00014202: static char *dolqstart; /* current $foo$ quote start string */ 
- saae: scan:00014203:  
- saae: scan:00014204: /* 
- saae: scan:00014205:  * GUC variables. This is a DIRECT violation of the warning given at the 
- saae: scan:00014206:  * head of gram.y, ie flex/bison code must not depend on any GUC variables; 
- saae: scan:00014827:  ereport(ERROR, 
- saae: scan:00014828:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- saae: scan:00014829:  errmsg("unsafe use of string constant with Unicode escapes"), 
- saae: scan:00014830:  errdetail("String constants with Unicode escapes cannot be used when standard_conforming_strings is off."), 
- saae: scan:00014831:  lexer_errposition())); 
- saae: scan:00014911:  ereport(ERROR, 
- saae: scan:00014912:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00014913:  errmsg("unsafe use of \' in a string literal"), 
- saae: scan:00014914:  errhint("Use '' to write quotes in strings. \' is insecure in client-only encodings."), 
- saae: scan:00014915:  errOmitLocation(true), 
- saae: scan:00014916:  lexer_errposition())); 
- saae: scan:00016337:  ereport(ERROR, 
- saae: scan:00016338:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saae: scan:00016339:  /* translator: %s is typically the translation of "syntax error" */ 
- saae: scan:00016340:  errmsg("%s at end of input", _(message)), 
- saae: scan:00016341:  errOmitLocation(true), 
- saae: scan:00016342:  lexer_errposition())); 
- saae: scan:00016346:  ereport(ERROR, 
- saae: scan:00016347:  (errcode(ERRCODE_SYNTAX_ERROR), 
- saae: scan:00016348:  /* translator: first %s is typically the translation of "syntax error" */ 
- saae: scan:00016349:  errmsg("%s at or near "%s"", _(message), loc), 
- saae: scan:00016350:  errOmitLocation(true), 
- saae: scan:00016351:  lexer_errposition())); 
- saae: scan:00016577:  ereport(WARNING, 
- saae: scan:00016578:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00016579:  errmsg("nonstandard use of \' in a string literal"), 
- saae: scan:00016580:  errhint("Use '' to write quotes in strings, or use the escape string syntax (E'...')."), 
- saae: scan:00016581:  errOmitLocation(true), 
- saae: scan:00016582:  lexer_errposition())); 
- saae: scan:00016588:  ereport(WARNING, 
- saae: scan:00016589:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00016590:  errmsg("nonstandard use of \\ in a string literal"), 
- saae: scan:00016591:  errhint("Use the escape string syntax for backslashes, e.g., E'\\'."), 
- saae: scan:00016592:  errOmitLocation(true), 
- saae: scan:00016593:  lexer_errposition())); 
- saae: scan:00016604:  ereport(WARNING, 
- saae: scan:00016605:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
- saae: scan:00016606:  errmsg("nonstandard use of escape in a string literal"), 
- saae: scan:00016607:  errhint("Use the escape string syntax for escapes, e.g., E'\r\n'."), 
- saae: scan:00016608:  errOmitLocation(true), 
- saae: scan:00016609:  lexer_errposition())); 
+ saae: scan:00014214: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
+ saae: scan:00014215:  
+ saae: scan:00014216: static int xcdepth = 0; /* depth of nesting in slash-star comments */ 
+ saae: scan:00014217: static char *dolqstart; /* current $foo$ quote start string */ 
+ saae: scan:00014218:  
+ saae: scan:00014219: /* 
+ saae: scan:00014220:  * GUC variables. This is a DIRECT violation of the warning given at the 
+ saae: scan:00014221:  * head of gram.y, ie flex/bison code must not depend on any GUC variables; 
+ saae: scan:00014871:  ereport(ERROR, 
+ saae: scan:00014872:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ saae: scan:00014873:  errmsg("unsafe use of string constant with Unicode escapes"), 
+ saae: scan:00014874:  errdetail("String constants with Unicode escapes cannot be used when standard_conforming_strings is off."), 
+ saae: scan:00014875:  lexer_errposition())); 
+ saae: scan:00014955:  ereport(ERROR, 
+ saae: scan:00014956:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00014957:  errmsg("unsafe use of \' in a string literal"), 
+ saae: scan:00014958:  errhint("Use '' to write quotes in strings. \' is insecure in client-only encodings."), 
+ saae: scan:00014959:  errOmitLocation(true), 
+ saae: scan:00014960:  lexer_errposition())); 
+ saae: scan:00016393:  ereport(ERROR, 
+ saae: scan:00016394:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saae: scan:00016395:  /* translator: %s is typically the translation of "syntax error" */ 
+ saae: scan:00016396:  errmsg("%s at end of input", _(message)), 
+ saae: scan:00016397:  errOmitLocation(true), 
+ saae: scan:00016398:  lexer_errposition())); 
+ saae: scan:00016402:  ereport(ERROR, 
+ saae: scan:00016403:  (errcode(ERRCODE_SYNTAX_ERROR), 
+ saae: scan:00016404:  /* translator: first %s is typically the translation of "syntax error" */ 
+ saae: scan:00016405:  errmsg("%s at or near "%s"", _(message), loc), 
+ saae: scan:00016406:  errOmitLocation(true), 
+ saae: scan:00016407:  lexer_errposition())); 
+ saae: scan:00016633:  ereport(WARNING, 
+ saae: scan:00016634:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00016635:  errmsg("nonstandard use of \' in a string literal"), 
+ saae: scan:00016636:  errhint("Use '' to write quotes in strings, or use the escape string syntax (E'...')."), 
+ saae: scan:00016637:  errOmitLocation(true), 
+ saae: scan:00016638:  lexer_errposition())); 
+ saae: scan:00016644:  ereport(WARNING, 
+ saae: scan:00016645:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00016646:  errmsg("nonstandard use of \\ in a string literal"), 
+ saae: scan:00016647:  errhint("Use the escape string syntax for backslashes, e.g., E'\\'."), 
+ saae: scan:00016648:  errOmitLocation(true), 
+ saae: scan:00016649:  lexer_errposition())); 
+ saae: scan:00016660:  ereport(WARNING, 
+ saae: scan:00016661:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+ saae: scan:00016662:  errmsg("nonstandard use of escape in a string literal"), 
+ saae: scan:00016663:  errhint("Use the escape string syntax for escapes, e.g., E'\r\n'."), 
+ saae: scan:00016664:  errOmitLocation(true), 
+ saae: scan:00016665:  lexer_errposition())); 
  saae: slru:00000785:  ereport(ERROR, 
  saae: slru:00000786:  (errcode_for_file_access(), 
  saae: slru:00000787:  errmsg("could not access status of transaction %u", xid), 
@@ -13792,85 +13806,85 @@ select * from get_ereport order by 1;
  saae: slru:00000821:  errmsg("could not access status of transaction %u", xid), 
  saae: slru:00000822:  errdetail("Could not close file "%s": %m.", 
  saae: slru:00000823:  path))); 
- saae: smgr:00000326:  ereport(ERROR, 
- saae: smgr:00000327:  (errcode_for_file_access(), 
- saae: smgr:00000328:  errmsg("could not close relation %u/%u/%u: %m", 
- saae: smgr:00000329:  reln->smgr_rnode.spcNode, 
- saae: smgr:00000330:  reln->smgr_rnode.dbNode, 
- saae: smgr:00000331:  reln->smgr_rnode.relNode))); 
- saae: smgr:00000946:  ereport(WARNING, 
- saae: smgr:00000947:  (errcode_for_file_access(), 
- saae: smgr:00000948:  errmsg("could not remove relation %u/%u/%u: %m", 
- saae: smgr:00000949:  rnode.spcNode, 
- saae: smgr:00000950:  rnode.dbNode, 
- saae: smgr:00000951:  rnode.relNode))); 
- saae: smgr:00000953:  ereport(WARNING, 
- saae: smgr:00000954:  (errcode_for_file_access(), 
- saae: smgr:00000955:  errmsg("could not remove relation %u/%u/%u '%s': %m", 
- saae: smgr:00000956:  rnode.spcNode, 
- saae: smgr:00000957:  rnode.dbNode, 
- saae: smgr:00000958:  rnode.relNode, 
- saae: smgr:00000959:  relationName))); 
- saae: smgr:00001040:  ereport(WARNING, 
- saae: smgr:00001041:  (errcode_for_file_access(), 
- saae: smgr:00001042:  errmsg("could not remove filespace directory %u: %m", 
- saae: smgr:00001043:  filespaceOid))); 
- saae: smgr:00001151:  ereport(WARNING, 
- saae: smgr:00001152:  (errcode_for_file_access(), 
- saae: smgr:00001153:  errmsg("could not remove tablespace directory %u: %m", 
- saae: smgr:00001154:  tablespaceOid))); 
- saae: smgr:00001179:  ereport(WARNING, 
- saae: smgr:00001180:  (errcode_for_file_access(), 
- saae: smgr:00001181:  errmsg("could not remove database directory %u/%u: %m", 
- saae: smgr:00001182:  dbDirNode->tablespace, 
- saae: smgr:00001183:  dbDirNode->database))); 
- saae: smgr:00001251:  ereport(ERROR, 
- saae: smgr:00001252:  (errcode_for_file_access(), 
- saae: smgr:00001253:  errmsg("could not extend relation %u/%u/%u: %m", 
- saae: smgr:00001254:  reln->smgr_rnode.spcNode, 
- saae: smgr:00001255:  reln->smgr_rnode.dbNode, 
- saae: smgr:00001256:  reln->smgr_rnode.relNode), 
- saae: smgr:00001257:  errhint("Check free disk space."))); 
- saae: smgr:00001272:  ereport(ERROR, 
- saae: smgr:00001273:  (errcode_for_file_access(), 
- saae: smgr:00001274:  errmsg("could not read block %u of relation %u/%u/%u: %m", 
- saae: smgr:00001275:  blocknum, 
- saae: smgr:00001276:  reln->smgr_rnode.spcNode, 
- saae: smgr:00001277:  reln->smgr_rnode.dbNode, 
- saae: smgr:00001278:  reln->smgr_rnode.relNode))); 
- saae: smgr:00001296:  ereport(ERROR, 
- saae: smgr:00001297:  (errcode_for_file_access(), 
- saae: smgr:00001298:  errmsg("could not write block %u of relation %u/%u/%u: %m", 
- saae: smgr:00001299:  blocknum, 
- saae: smgr:00001300:  reln->smgr_rnode.spcNode, 
- saae: smgr:00001301:  reln->smgr_rnode.dbNode, 
- saae: smgr:00001302:  reln->smgr_rnode.relNode))); 
- saae: smgr:00001326:  ereport(ERROR, 
- saae: smgr:00001327:  (errcode_for_file_access(), 
- saae: smgr:00001328:  errmsg("could not count blocks of relation %u/%u/%u: %m", 
- saae: smgr:00001329:  reln->smgr_rnode.spcNode, 
- saae: smgr:00001330:  reln->smgr_rnode.dbNode, 
- saae: smgr:00001331:  reln->smgr_rnode.relNode))); 
- saae: smgr:00001364:  ereport(ERROR, 
- saae: smgr:00001365:  (errcode_for_file_access(), 
- saae: smgr:00001366:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
- saae: smgr:00001367:  reln->smgr_rnode.spcNode, 
- saae: smgr:00001368:  reln->smgr_rnode.dbNode, 
- saae: smgr:00001369:  reln->smgr_rnode.relNode, 
- saae: smgr:00001370:  nblocks))); 
- saae: smgr:00001456:  ereport(ERROR, 
- saae: smgr:00001457:  (errcode_for_file_access(), 
- saae: smgr:00001458:  errmsg("could not sync relation %u/%u/%u: %m", 
- saae: smgr:00001459:  reln->smgr_rnode.spcNode, 
- saae: smgr:00001460:  reln->smgr_rnode.dbNode, 
- saae: smgr:00001461:  reln->smgr_rnode.relNode))); 
- saae: smgr:00002804:  ereport(WARNING, 
- saae: smgr:00002805:  (errcode_for_file_access(), 
- saae: smgr:00002806:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
- saae: smgr:00002807:  reln->smgr_rnode.spcNode, 
- saae: smgr:00002808:  reln->smgr_rnode.dbNode, 
- saae: smgr:00002809:  reln->smgr_rnode.relNode, 
- saae: smgr:00002810:  xlrec->blkno))); 
+ saae: smgr:00000388:  ereport(ERROR, 
+ saae: smgr:00000389:  (errcode_for_file_access(), 
+ saae: smgr:00000390:  errmsg("could not close relation %u/%u/%u: %m", 
+ saae: smgr:00000391:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00000392:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00000393:  reln->smgr_rnode.relNode))); 
+ saae: smgr:00000960:  ereport(WARNING, 
+ saae: smgr:00000961:  (errcode_for_file_access(), 
+ saae: smgr:00000962:  errmsg("could not remove relation %u/%u/%u: %m", 
+ saae: smgr:00000963:  rnode.spcNode, 
+ saae: smgr:00000964:  rnode.dbNode, 
+ saae: smgr:00000965:  rnode.relNode))); 
+ saae: smgr:00000967:  ereport(WARNING, 
+ saae: smgr:00000968:  (errcode_for_file_access(), 
+ saae: smgr:00000969:  errmsg("could not remove relation %u/%u/%u '%s': %m", 
+ saae: smgr:00000970:  rnode.spcNode, 
+ saae: smgr:00000971:  rnode.dbNode, 
+ saae: smgr:00000972:  rnode.relNode, 
+ saae: smgr:00000973:  relationName))); 
+ saae: smgr:00001042:  ereport(WARNING, 
+ saae: smgr:00001043:  (errcode_for_file_access(), 
+ saae: smgr:00001044:  errmsg("could not remove filespace directory %u: %m", 
+ saae: smgr:00001045:  filespaceOid))); 
+ saae: smgr:00001132:  ereport(WARNING, 
+ saae: smgr:00001133:  (errcode_for_file_access(), 
+ saae: smgr:00001134:  errmsg("could not remove tablespace directory %u: %m", 
+ saae: smgr:00001135:  tablespaceOid))); 
+ saae: smgr:00001160:  ereport(WARNING, 
+ saae: smgr:00001161:  (errcode_for_file_access(), 
+ saae: smgr:00001162:  errmsg("could not remove database directory %u/%u: %m", 
+ saae: smgr:00001163:  dbDirNode->tablespace, 
+ saae: smgr:00001164:  dbDirNode->database))); 
+ saae: smgr:00001237:  ereport(ERROR, 
+ saae: smgr:00001238:  (errcode_for_file_access(), 
+ saae: smgr:00001239:  errmsg("could not extend relation %u/%u/%u: %m", 
+ saae: smgr:00001240:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00001241:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00001242:  reln->smgr_rnode.relNode), 
+ saae: smgr:00001243:  errhint("Check free disk space."))); 
+ saae: smgr:00001258:  ereport(ERROR, 
+ saae: smgr:00001259:  (errcode_for_file_access(), 
+ saae: smgr:00001260:  errmsg("could not read block %u of relation %u/%u/%u: %m", 
+ saae: smgr:00001261:  blocknum, 
+ saae: smgr:00001262:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00001263:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00001264:  reln->smgr_rnode.relNode))); 
+ saae: smgr:00001282:  ereport(ERROR, 
+ saae: smgr:00001283:  (errcode_for_file_access(), 
+ saae: smgr:00001284:  errmsg("could not write block %u of relation %u/%u/%u: %m", 
+ saae: smgr:00001285:  blocknum, 
+ saae: smgr:00001286:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00001287:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00001288:  reln->smgr_rnode.relNode))); 
+ saae: smgr:00001312:  ereport(ERROR, 
+ saae: smgr:00001313:  (errcode_for_file_access(), 
+ saae: smgr:00001314:  errmsg("could not count blocks of relation %u/%u/%u: %m", 
+ saae: smgr:00001315:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00001316:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00001317:  reln->smgr_rnode.relNode))); 
+ saae: smgr:00001350:  ereport(ERROR, 
+ saae: smgr:00001351:  (errcode_for_file_access(), 
+ saae: smgr:00001352:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
+ saae: smgr:00001353:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00001354:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00001355:  reln->smgr_rnode.relNode, 
+ saae: smgr:00001356:  nblocks))); 
+ saae: smgr:00001442:  ereport(ERROR, 
+ saae: smgr:00001443:  (errcode_for_file_access(), 
+ saae: smgr:00001444:  errmsg("could not sync relation %u/%u/%u: %m", 
+ saae: smgr:00001445:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00001446:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00001447:  reln->smgr_rnode.relNode))); 
+ saae: smgr:00002803:  ereport(WARNING, 
+ saae: smgr:00002804:  (errcode_for_file_access(), 
+ saae: smgr:00002805:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
+ saae: smgr:00002806:  reln->smgr_rnode.spcNode, 
+ saae: smgr:00002807:  reln->smgr_rnode.dbNode, 
+ saae: smgr:00002808:  reln->smgr_rnode.relNode, 
+ saae: smgr:00002809:  xlrec->blkno))); 
  saaf: shmem:00000128:  ereport(ERROR, 
  saaf: shmem:00000129:  (errcode(ERRCODE_INTERNAL_ERROR), 
  saaf: shmem:00000130:  errmsg("invalid page size %d; must be a power of two and not an error", ShmemSystemPageSize))); 
@@ -13920,130 +13934,130 @@ select * from get_ereport order by 1;
  saah: scansup:00000180:  (errcode(ERRCODE_NAME_TOO_LONG), 
  saah: scansup:00000181:  errmsg("identifier "%s" will be truncated to "%.*s"", 
  saah: scansup:00000182:  ident, len, ident))); 
- saah: service:00000171:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00000172:  errmsg("Could not connect to '%s': %s", 
- saah: service:00000173:  serviceConfig->title, 
- saah: service:00000174:  strerror(saved_err)))); 
- saah: service:00000190:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00000191:  errmsg("Could not set '%s' socket to non-blocking mode: %s", 
- saah: service:00000192:  serviceConfig->title, 
- saah: service:00000193:  strerror(saved_err)))); 
- saah: service:00000297:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00000298:  errmsg("Not connected to '%s'", 
- saah: service:00000299:  serviceConfig->title))); 
- saah: service:00000303:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00000304:  errmsg("Expecting request length %d and actual length is %d for '%s'", 
- saah: service:00000305:  serviceClient->serviceConfig->requestLen, requestLen, 
- saah: service:00000306:  serviceConfig->title))); 
- saah: service:00000365:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00000366:  errmsg("Lost connection to '%s'", 
- saah: service:00000367:  serviceConfig->title))); 
- saah: service:00000381:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00000382:  errmsg("Connection to '%s' is closed", 
- saah: service:00000383:  serviceConfig->title))); 
- saah: service:00000390:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00000391:  errmsg("Write error to '%s': %s", 
- saah: service:00000392:  serviceConfig->title, 
- saah: service:00000393:  strerror(saved_err)))); 
- saah: service:00000413:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00000414:  errmsg("Write to '%s' timed out after %d.%03d seconds)", 
- saah: service:00000415:  serviceConfig->title, 
- saah: service:00000416:  (int)wholeTimeout.tv_sec, 
- saah: service:00000417:  (int)wholeTimeout.tv_usec / 1000))); 
- saah: service:00000425:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00000426:  errmsg("Write error to '%s': %s", 
- saah: service:00000427:  serviceConfig->title, 
- saah: service:00000428:  strerror(saved_err)))); 
- saah: service:00000529:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00000530:  errmsg("Connection to '%s' is closed (%d)", 
- saah: service:00000531:  serviceConfig->title, serviceClient->sockfd))); 
- saah: service:00000538:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00000539:  errmsg("Read error from '%s': %s (%d)", 
- saah: service:00000540:  serviceConfig->title, 
- saah: service:00000541:  strerror(saved_err), serviceClient->sockfd))); 
- saah: service:00000559:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00000560:  errmsg("Read from '%s' timed out after %d.%03d seconds", 
- saah: service:00000561:  serviceConfig->title, 
- saah: service:00000562:  (int)timeout->tv_sec, 
- saah: service:00000563:  (int)timeout->tv_usec / 1000))); 
- saah: service:00000572:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00000573:  errmsg("Read error from '%s': %s (%d)", 
- saah: service:00000574:  serviceConfig->title, 
- saah: service:00000575:  strerror(saved_err), serviceClient->sockfd))); 
- saah: service:00000669:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00000670:  errmsg("Connection to '%s' is closed", 
- saah: service:00000671:  serviceConfig->title))); 
- saah: service:00000684:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00000685:  errmsg("Read error from '%s': %s", 
- saah: service:00000686:  serviceConfig->title, 
- saah: service:00000687:  strerror(saved_err)))); 
- saah: service:00000692:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00000693:  errmsg("Expecting message length %d and actual read length was %d from '%s'", 
- saah: service:00000694:  responseLen, n, 
- saah: service:00000695:  serviceConfig->title))); 
- saah: service:00000806:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
- saah: service:00000807:  errFatalReturn(gp_reraise_signal), 
- saah: service:00000808:  errOmitLocation(true), 
- saah: service:00000809:  errmsg("Unexpected internal error"))); 
- saah: service:00001014:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00001015:  errmsg("'%s': error during select() call (error:%d).", 
- saah: service:00001016:  serviceConfig->title, errno))); 
- saah: service:00001032:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00001033:  errmsg("'%s': error from client connection: %s)", 
- saah: service:00001034:  serviceConfig->title, 
- saah: service:00001035:  strerror(errno)))); 
- saah: service:00001045:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00001046:  errmsg("'%s': could not set outbound socket to non-blocking mode: %s", 
- saah: service:00001047:  serviceConfig->title, 
- saah: service:00001048:  strerror(errno)))); 
- saah: service:00001161:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00001162:  errmsg("'%s': read error from backend process: %s", 
- saah: service:00001163:  serviceConfig->title, 
- saah: service:00001164:  strerror(saved_err)))); 
- saah: service:00001190:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00001191:  errmsg("'%s': read from backend process timed out after %d.%03d seconds", 
- saah: service:00001192:  serviceConfig->title, 
- saah: service:00001193:  (int)wholeTimeout.tv_sec, 
- saah: service:00001194:  (int)wholeTimeout.tv_usec / 1000))); 
- saah: service:00001203:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00001204:  errmsg("'%s': read error from backend process: %s", 
- saah: service:00001205:  serviceConfig->title, 
- saah: service:00001206:  strerror(saved_err)))); 
- saah: service:00001263:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00001264:  errmsg("'%s': connection to backend process is closed", 
- saah: service:00001265:  serviceConfig->title))); 
- saah: service:00001273:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00001274:  errmsg("'%s': write error to backend process: %s", 
- saah: service:00001275:  serviceConfig->title, 
- saah: service:00001276:  strerror(saved_err)))); 
- saah: service:00001299:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00001300:  errmsg("'%s': write to backend process timed out after %d.%03d seconds)", 
- saah: service:00001301:  serviceConfig->title, 
- saah: service:00001302:  (int)wholeTimeout.tv_sec, 
- saah: service:00001303:  (int)wholeTimeout.tv_usec / 1000))); 
- saah: service:00001312:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00001313:  errmsg("'%s': write error to backend process: %s)", 
- saah: service:00001314:  serviceConfig->title, 
- saah: service:00001315:  strerror(saved_err)))); 
- saah: service:00001366:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00001367:  errmsg("'%s' could not create listener socket: %s", 
- saah: service:00001368:  serviceConfig->title, 
- saah: service:00001369:  strerror(errno)))); 
- saah: service:00001388:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00001389:  errmsg("'%s' could not setup listener socket: %s", 
- saah: service:00001390:  serviceConfig->title, 
- saah: service:00001391:  strerror(errno)), 
- saah: service:00001392:  errdetail("error during bind() call (error:%d).", errno))); 
- saah: service:00001402:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
- saah: service:00001403:  errmsg("'%s' could not setup listener socket: %s", 
- saah: service:00001404:  serviceConfig->title, 
- saah: service:00001405:  strerror(errno)), 
- saah: service:00001406:  errdetail("error during listen() call (error:%d).", errno))); 
- saah: service:00001418:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
- saah: service:00001419:  errmsg("'%s' could not setup listener socket: %s", 
- saah: service:00001420:  serviceConfig->title, 
- saah: service:00001421:  strerror(errno)), 
- saah: service:00001422:  errdetail("error during getsockname() call (error:%d).", errno))); 
+ saah: service:00000172:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00000173:  errmsg("Could not connect to '%s': %s", 
+ saah: service:00000174:  serviceConfig->title, 
+ saah: service:00000175:  strerror(saved_err)))); 
+ saah: service:00000191:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00000192:  errmsg("Could not set '%s' socket to non-blocking mode: %s", 
+ saah: service:00000193:  serviceConfig->title, 
+ saah: service:00000194:  strerror(saved_err)))); 
+ saah: service:00000298:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00000299:  errmsg("Not connected to '%s'", 
+ saah: service:00000300:  serviceConfig->title))); 
+ saah: service:00000304:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00000305:  errmsg("Expecting request length %d and actual length is %d for '%s'", 
+ saah: service:00000306:  serviceClient->serviceConfig->requestLen, requestLen, 
+ saah: service:00000307:  serviceConfig->title))); 
+ saah: service:00000366:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00000367:  errmsg("Lost connection to '%s'", 
+ saah: service:00000368:  serviceConfig->title))); 
+ saah: service:00000382:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00000383:  errmsg("Connection to '%s' is closed", 
+ saah: service:00000384:  serviceConfig->title))); 
+ saah: service:00000391:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00000392:  errmsg("Write error to '%s': %s", 
+ saah: service:00000393:  serviceConfig->title, 
+ saah: service:00000394:  strerror(saved_err)))); 
+ saah: service:00000414:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00000415:  errmsg("Write to '%s' timed out after %d.%03d seconds)", 
+ saah: service:00000416:  serviceConfig->title, 
+ saah: service:00000417:  (int)wholeTimeout.tv_sec, 
+ saah: service:00000418:  (int)wholeTimeout.tv_usec / 1000))); 
+ saah: service:00000426:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00000427:  errmsg("Write error to '%s': %s", 
+ saah: service:00000428:  serviceConfig->title, 
+ saah: service:00000429:  strerror(saved_err)))); 
+ saah: service:00000530:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00000531:  errmsg("Connection to '%s' is closed (%d)", 
+ saah: service:00000532:  serviceConfig->title, serviceClient->sockfd))); 
+ saah: service:00000539:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00000540:  errmsg("Read error from '%s': %s (%d)", 
+ saah: service:00000541:  serviceConfig->title, 
+ saah: service:00000542:  strerror(saved_err), serviceClient->sockfd))); 
+ saah: service:00000560:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00000561:  errmsg("Read from '%s' timed out after %d.%03d seconds", 
+ saah: service:00000562:  serviceConfig->title, 
+ saah: service:00000563:  (int)timeout->tv_sec, 
+ saah: service:00000564:  (int)timeout->tv_usec / 1000))); 
+ saah: service:00000573:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00000574:  errmsg("Read error from '%s': %s (%d)", 
+ saah: service:00000575:  serviceConfig->title, 
+ saah: service:00000576:  strerror(saved_err), serviceClient->sockfd))); 
+ saah: service:00000670:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00000671:  errmsg("Connection to '%s' is closed", 
+ saah: service:00000672:  serviceConfig->title))); 
+ saah: service:00000685:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00000686:  errmsg("Read error from '%s': %s", 
+ saah: service:00000687:  serviceConfig->title, 
+ saah: service:00000688:  strerror(saved_err)))); 
+ saah: service:00000693:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00000694:  errmsg("Expecting message length %d and actual read length was %d from '%s'", 
+ saah: service:00000695:  responseLen, n, 
+ saah: service:00000696:  serviceConfig->title))); 
+ saah: service:00000807:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
+ saah: service:00000808:  errFatalReturn(gp_reraise_signal), 
+ saah: service:00000809:  errOmitLocation(true), 
+ saah: service:00000810:  errmsg("Unexpected internal error"))); 
+ saah: service:00001015:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00001016:  errmsg("'%s': error during select() call (error:%d).", 
+ saah: service:00001017:  serviceConfig->title, errno))); 
+ saah: service:00001033:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00001034:  errmsg("'%s': error from client connection: %s)", 
+ saah: service:00001035:  serviceConfig->title, 
+ saah: service:00001036:  strerror(errno)))); 
+ saah: service:00001046:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00001047:  errmsg("'%s': could not set outbound socket to non-blocking mode: %s", 
+ saah: service:00001048:  serviceConfig->title, 
+ saah: service:00001049:  strerror(errno)))); 
+ saah: service:00001162:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00001163:  errmsg("'%s': read error from backend process: %s", 
+ saah: service:00001164:  serviceConfig->title, 
+ saah: service:00001165:  strerror(saved_err)))); 
+ saah: service:00001191:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00001192:  errmsg("'%s': read from backend process timed out after %d.%03d seconds", 
+ saah: service:00001193:  serviceConfig->title, 
+ saah: service:00001194:  (int)wholeTimeout.tv_sec, 
+ saah: service:00001195:  (int)wholeTimeout.tv_usec / 1000))); 
+ saah: service:00001204:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00001205:  errmsg("'%s': read error from backend process: %s", 
+ saah: service:00001206:  serviceConfig->title, 
+ saah: service:00001207:  strerror(saved_err)))); 
+ saah: service:00001264:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00001265:  errmsg("'%s': connection to backend process is closed", 
+ saah: service:00001266:  serviceConfig->title))); 
+ saah: service:00001274:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00001275:  errmsg("'%s': write error to backend process: %s", 
+ saah: service:00001276:  serviceConfig->title, 
+ saah: service:00001277:  strerror(saved_err)))); 
+ saah: service:00001300:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00001301:  errmsg("'%s': write to backend process timed out after %d.%03d seconds)", 
+ saah: service:00001302:  serviceConfig->title, 
+ saah: service:00001303:  (int)wholeTimeout.tv_sec, 
+ saah: service:00001304:  (int)wholeTimeout.tv_usec / 1000))); 
+ saah: service:00001313:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00001314:  errmsg("'%s': write error to backend process: %s)", 
+ saah: service:00001315:  serviceConfig->title, 
+ saah: service:00001316:  strerror(saved_err)))); 
+ saah: service:00001367:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00001368:  errmsg("'%s' could not create listener socket: %s", 
+ saah: service:00001369:  serviceConfig->title, 
+ saah: service:00001370:  strerror(errno)))); 
+ saah: service:00001389:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00001390:  errmsg("'%s' could not setup listener socket: %s", 
+ saah: service:00001391:  serviceConfig->title, 
+ saah: service:00001392:  strerror(errno)), 
+ saah: service:00001393:  errdetail("error during bind() call (error:%d).", errno))); 
+ saah: service:00001403:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+ saah: service:00001404:  errmsg("'%s' could not setup listener socket: %s", 
+ saah: service:00001405:  serviceConfig->title, 
+ saah: service:00001406:  strerror(errno)), 
+ saah: service:00001407:  errdetail("error during listen() call (error:%d).", errno))); 
+ saah: service:00001419:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+ saah: service:00001420:  errmsg("'%s' could not setup listener socket: %s", 
+ saah: service:00001421:  serviceConfig->title, 
+ saah: service:00001422:  strerror(errno)), 
+ saah: service:00001423:  errdetail("error during getsockname() call (error:%d).", errno))); 
  saai: selfuncs:00003939:  ereport(ERROR, 
  saai: selfuncs:00003940:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
  saai: selfuncs:00003941:  errmsg("case insensitive matching not supported on type bytea"))); 
@@ -18170,158 +18184,158 @@ select * from get_ereport order by 1;
  xaae: xlog:00005736:  (errcode_for_file_access(), 
  xaae: xlog:00005737:  errmsg("could not rename file "%s" to "%s": %m", 
  xaae: xlog:00005738:  RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE))); 
- xaae: xlog:00006036:  ereport(FATAL, 
- xaae: xlog:00006037:  (errmsg("control file contains invalid data"))); 
- xaae: xlog:00006048:  ereport(LOG, 
- xaae: xlog:00006049:  (errmsg("database system was interrupted while in recovery at %s", 
- xaae: xlog:00006050:  str_time(ControlFile->time)), 
- xaae: xlog:00006051:  errhint("This probably means that some data is corrupted and" 
- xaae: xlog:00006052:  " you will have to use the last backup for recovery."), 
- xaae: xlog:00006053:  errSendAlert(true))); 
- xaae: xlog:00006055:  ereport(LOG, 
- xaae: xlog:00006056:  (errmsg("database system was interrupted while in recovery at log time %s", 
- xaae: xlog:00006057:  str_time(ControlFile->checkPointCopy.time)), 
- xaae: xlog:00006058:  errhint("If this has occurred more than once some data may be corrupted" 
- xaae: xlog:00006059:  " and you may need to choose an earlier recovery target."), 
- xaae: xlog:00006060:  errSendAlert(true))); 
- xaae: xlog:00006100:  ereport(FATAL, 
- xaae: xlog:00006101:  (errmsg("requested timeline %u is not a child of database system timeline %u", 
- xaae: xlog:00006102:  recoveryTargetTLI, 
- xaae: xlog:00006103:  ControlFile->checkPointCopy.ThisTimeLineID))); 
- xaae: xlog:00006293:  ereport(FATAL, 
- xaae: xlog:00006294:  (errcode_for_file_access(), 
- xaae: xlog:00006295:  errmsg("could not rename file "%s" to "%s": %m", 
- xaae: xlog:00006296:  BACKUP_LABEL_FILE, BACKUP_LABEL_OLD))); 
- xaae: xlog:00006418:  ereport(FATAL, 
- xaae: xlog:00006419:  (errmsg("requested recovery stop point is before end time of backup dump"))); 
- xaae: xlog:00006421:  ereport(FATAL, 
- xaae: xlog:00006422:  (errmsg("WAL ends before end time of backup dump"))); 
- xaae: xlog:00006627:  ereport(ERROR, 
- xaae: xlog:00006628:  (errcode_for_file_access(), 
- xaae: xlog:00006629:  errmsg("could not create redo relation file "%s"", 
- xaae: xlog:00006630:  path))); 
- xaae: xlog:00006648:  ereport(ERROR, 
- xaae: xlog:00006649:  (errcode_for_file_access(), 
- xaae: xlog:00006650:  errmsg("could not open redo relation file "%s"", 
- xaae: xlog:00006651:  path))); 
- xaae: xlog:00006665:  ereport(ERROR, 
- xaae: xlog:00006666:  (errcode_for_file_access(), 
- xaae: xlog:00006667:  errmsg("could not unlink redo relation file "%s": %m", path))); 
- xaae: xlog:00006696:  ereport(FATAL, 
- xaae: xlog:00006697:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
- xaae: xlog:00006796:  ereport(FATAL, 
- xaae: xlog:00006797:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
- xaae: xlog:00006942:  ereport(FATAL, 
- xaae: xlog:00006943:  (errmsg("%s: control file contains invalid data", callerStr))); 
- xaae: xlog:00006989:  ereport(ERROR, 
- xaae: xlog:00006990:  (errmsg("%s: could not locate a valid checkpoint record", callerStr))); 
- xaae: xlog:00007007:  ereport(ERROR, 
- xaae: xlog:00007008:  (errmsg("%s: invalid redo in checkpoint record", callerStr))); 
- xaae: xlog:00007017:  ereport(ERROR, 
- xaae: xlog:00007018:  (errmsg("%s: first redo record before checkpoint not found at %s", 
- xaae: xlog:00007019:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
- xaae: xlog:00007565:  ereport(LOG, 
- xaae: xlog:00007566:  (errmsg("database system is shut down"), 
- xaae: xlog:00007567:  errSendAlert(true),errOmitLocation(true))); 
- xaae: xlog:00008356:  ereport(ERROR, 
- xaae: xlog:00008357:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- xaae: xlog:00008358:  (errmsg("must be superuser to run a backup")))); 
- xaae: xlog:00008361:  ereport(ERROR, 
- xaae: xlog:00008362:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008363:  (errmsg("WAL archiving is not active"), 
- xaae: xlog:00008364:  (errhint("archive_command must be defined before " 
- xaae: xlog:00008365:  "online backups can be made safely."))))); 
- xaae: xlog:00008391:  ereport(ERROR, 
- xaae: xlog:00008392:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008393:  errmsg("a backup is already in progress"), 
- xaae: xlog:00008394:  errhint("Run pg_stop_backup() and try again."))); 
- xaae: xlog:00008439:  ereport(ERROR, 
- xaae: xlog:00008440:  (errcode_for_file_access(), 
- xaae: xlog:00008441:  errmsg("could not stat file "%s": %m", 
- xaae: xlog:00008442:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008445:  ereport(ERROR, 
- xaae: xlog:00008446:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008447:  errmsg("a backup is already in progress"), 
- xaae: xlog:00008448:  errhint("If you're sure there is no backup in progress, remove file "%s" and try again.", 
- xaae: xlog:00008449:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008456:  ereport(ERROR, 
- xaae: xlog:00008457:  (errcode_for_file_access(), 
- xaae: xlog:00008458:  errmsg("could not create file "%s": %m", 
- xaae: xlog:00008459:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008467:  ereport(ERROR, 
- xaae: xlog:00008468:  (errcode_for_file_access(), 
- xaae: xlog:00008469:  errmsg("could not write file "%s": %m", 
- xaae: xlog:00008470:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008522:  ereport(ERROR, 
- xaae: xlog:00008523:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- xaae: xlog:00008524:  (errmsg("must be superuser to run a backup")))); 
- xaae: xlog:00008556:  ereport(ERROR, 
- xaae: xlog:00008557:  (errcode_for_file_access(), 
- xaae: xlog:00008558:  errmsg("could not read file "%s": %m", 
- xaae: xlog:00008559:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008560:  ereport(ERROR, 
- xaae: xlog:00008561:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008562:  errmsg("a backup is not in progress"))); 
- xaae: xlog:00008572:  ereport(ERROR, 
- xaae: xlog:00008573:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008574:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
- xaae: xlog:00008584:  ereport(ERROR, 
- xaae: xlog:00008585:  (errcode_for_file_access(), 
- xaae: xlog:00008586:  errmsg("could not create file "%s": %m", 
- xaae: xlog:00008587:  histfilepath))); 
- xaae: xlog:00008597:  ereport(ERROR, 
- xaae: xlog:00008598:  (errcode_for_file_access(), 
- xaae: xlog:00008599:  errmsg("could not write file "%s": %m", 
- xaae: xlog:00008600:  histfilepath))); 
- xaae: xlog:00008606:  ereport(ERROR, 
- xaae: xlog:00008607:  (errcode_for_file_access(), 
- xaae: xlog:00008608:  errmsg("could not read file "%s": %m", 
- xaae: xlog:00008609:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008611:  ereport(ERROR, 
- xaae: xlog:00008612:  (errcode_for_file_access(), 
- xaae: xlog:00008613:  errmsg("could not remove file "%s": %m", 
- xaae: xlog:00008614:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008644:  ereport(ERROR, 
- xaae: xlog:00008645:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
- xaae: xlog:00008646:  (errmsg("must be superuser to switch transaction log files")))); 
- xaae: xlog:00008752:  ereport(ERROR, 
- xaae: xlog:00008753:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- xaae: xlog:00008754:  errmsg("could not parse transaction log location "%s"", 
- xaae: xlog:00008755:  locationstr))); 
- xaae: xlog:00008821:  ereport(ERROR, 
- xaae: xlog:00008822:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
- xaae: xlog:00008823:  errmsg("could not parse transaction log location "%s"", 
- xaae: xlog:00008824:  locationstr))); 
- xaae: xlog:00008881:  ereport(FATAL, 
- xaae: xlog:00008882:  (errcode_for_file_access(), 
- xaae: xlog:00008883:  errmsg("could not read file "%s": %m", 
- xaae: xlog:00008884:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008896:  ereport(FATAL, 
- xaae: xlog:00008897:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008898:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
- xaae: xlog:00008902:  ereport(FATAL, 
- xaae: xlog:00008903:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008904:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
- xaae: xlog:00008906:  ereport(FATAL, 
- xaae: xlog:00008907:  (errcode_for_file_access(), 
- xaae: xlog:00008908:  errmsg("could not read file "%s": %m", 
- xaae: xlog:00008909:  BACKUP_LABEL_FILE))); 
- xaae: xlog:00008933:  ereport(FATAL, 
- xaae: xlog:00008934:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008935:  errmsg("invalid data in file "%s"", histfilename))); 
- xaae: xlog:00008939:  ereport(FATAL, 
- xaae: xlog:00008940:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
- xaae: xlog:00008941:  errmsg("invalid data in file "%s"", histfilename))); 
- xaae: xlog:00008944:  ereport(FATAL, 
- xaae: xlog:00008945:  (errcode_for_file_access(), 
- xaae: xlog:00008946:  errmsg("could not read file "%s": %m", 
- xaae: xlog:00008947:  histfilepath))); 
- xaae: xlog:00009182:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
- xaae: xlog:00009183:  errFatalReturn(gp_reraise_signal), 
- xaae: xlog:00009184:  errOmitLocation(true), 
- xaae: xlog:00009185:  errmsg("Unexpected internal error"))); 
- xaae: xlog:00009278:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
- xaae: xlog:00009279:  errmsg("database 'postgres' does not exist"))); 
+ xaae: xlog:00006087:  ereport(FATAL, 
+ xaae: xlog:00006088:  (errmsg("control file contains invalid data"))); 
+ xaae: xlog:00006099:  ereport(LOG, 
+ xaae: xlog:00006100:  (errmsg("database system was interrupted while in recovery at %s", 
+ xaae: xlog:00006101:  str_time(ControlFile->time)), 
+ xaae: xlog:00006102:  errhint("This probably means that some data is corrupted and" 
+ xaae: xlog:00006103:  " you will have to use the last backup for recovery."), 
+ xaae: xlog:00006104:  errSendAlert(true))); 
+ xaae: xlog:00006106:  ereport(LOG, 
+ xaae: xlog:00006107:  (errmsg("database system was interrupted while in recovery at log time %s", 
+ xaae: xlog:00006108:  str_time(ControlFile->checkPointCopy.time)), 
+ xaae: xlog:00006109:  errhint("If this has occurred more than once some data may be corrupted" 
+ xaae: xlog:00006110:  " and you may need to choose an earlier recovery target."), 
+ xaae: xlog:00006111:  errSendAlert(true))); 
+ xaae: xlog:00006151:  ereport(FATAL, 
+ xaae: xlog:00006152:  (errmsg("requested timeline %u is not a child of database system timeline %u", 
+ xaae: xlog:00006153:  recoveryTargetTLI, 
+ xaae: xlog:00006154:  ControlFile->checkPointCopy.ThisTimeLineID))); 
+ xaae: xlog:00006344:  ereport(FATAL, 
+ xaae: xlog:00006345:  (errcode_for_file_access(), 
+ xaae: xlog:00006346:  errmsg("could not rename file "%s" to "%s": %m", 
+ xaae: xlog:00006347:  BACKUP_LABEL_FILE, BACKUP_LABEL_OLD))); 
+ xaae: xlog:00006464:  ereport(FATAL, 
+ xaae: xlog:00006465:  (errmsg("requested recovery stop point is before end time of backup dump"))); 
+ xaae: xlog:00006467:  ereport(FATAL, 
+ xaae: xlog:00006468:  (errmsg("WAL ends before end time of backup dump"))); 
+ xaae: xlog:00006673:  ereport(ERROR, 
+ xaae: xlog:00006674:  (errcode_for_file_access(), 
+ xaae: xlog:00006675:  errmsg("could not create redo relation file "%s"", 
+ xaae: xlog:00006676:  path))); 
+ xaae: xlog:00006694:  ereport(ERROR, 
+ xaae: xlog:00006695:  (errcode_for_file_access(), 
+ xaae: xlog:00006696:  errmsg("could not open redo relation file "%s"", 
+ xaae: xlog:00006697:  path))); 
+ xaae: xlog:00006711:  ereport(ERROR, 
+ xaae: xlog:00006712:  (errcode_for_file_access(), 
+ xaae: xlog:00006713:  errmsg("could not unlink redo relation file "%s": %m", path))); 
+ xaae: xlog:00006742:  ereport(FATAL, 
+ xaae: xlog:00006743:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
+ xaae: xlog:00006842:  ereport(FATAL, 
+ xaae: xlog:00006843:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
+ xaae: xlog:00006982:  ereport(FATAL, 
+ xaae: xlog:00006983:  (errmsg("%s: control file contains invalid data", callerStr))); 
+ xaae: xlog:00007029:  ereport(ERROR, 
+ xaae: xlog:00007030:  (errmsg("%s: could not locate a valid checkpoint record", callerStr))); 
+ xaae: xlog:00007047:  ereport(ERROR, 
+ xaae: xlog:00007048:  (errmsg("%s: invalid redo in checkpoint record", callerStr))); 
+ xaae: xlog:00007057:  ereport(ERROR, 
+ xaae: xlog:00007058:  (errmsg("%s: first redo record before checkpoint not found at %s", 
+ xaae: xlog:00007059:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
+ xaae: xlog:00007605:  ereport(LOG, 
+ xaae: xlog:00007606:  (errmsg("database system is shut down"), 
+ xaae: xlog:00007607:  errSendAlert(true),errOmitLocation(true))); 
+ xaae: xlog:00008396:  ereport(ERROR, 
+ xaae: xlog:00008397:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ xaae: xlog:00008398:  (errmsg("must be superuser to run a backup")))); 
+ xaae: xlog:00008401:  ereport(ERROR, 
+ xaae: xlog:00008402:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008403:  (errmsg("WAL archiving is not active"), 
+ xaae: xlog:00008404:  (errhint("archive_command must be defined before " 
+ xaae: xlog:00008405:  "online backups can be made safely."))))); 
+ xaae: xlog:00008431:  ereport(ERROR, 
+ xaae: xlog:00008432:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008433:  errmsg("a backup is already in progress"), 
+ xaae: xlog:00008434:  errhint("Run pg_stop_backup() and try again."))); 
+ xaae: xlog:00008479:  ereport(ERROR, 
+ xaae: xlog:00008480:  (errcode_for_file_access(), 
+ xaae: xlog:00008481:  errmsg("could not stat file "%s": %m", 
+ xaae: xlog:00008482:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008485:  ereport(ERROR, 
+ xaae: xlog:00008486:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008487:  errmsg("a backup is already in progress"), 
+ xaae: xlog:00008488:  errhint("If you're sure there is no backup in progress, remove file "%s" and try again.", 
+ xaae: xlog:00008489:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008496:  ereport(ERROR, 
+ xaae: xlog:00008497:  (errcode_for_file_access(), 
+ xaae: xlog:00008498:  errmsg("could not create file "%s": %m", 
+ xaae: xlog:00008499:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008507:  ereport(ERROR, 
+ xaae: xlog:00008508:  (errcode_for_file_access(), 
+ xaae: xlog:00008509:  errmsg("could not write file "%s": %m", 
+ xaae: xlog:00008510:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008562:  ereport(ERROR, 
+ xaae: xlog:00008563:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ xaae: xlog:00008564:  (errmsg("must be superuser to run a backup")))); 
+ xaae: xlog:00008596:  ereport(ERROR, 
+ xaae: xlog:00008597:  (errcode_for_file_access(), 
+ xaae: xlog:00008598:  errmsg("could not read file "%s": %m", 
+ xaae: xlog:00008599:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008600:  ereport(ERROR, 
+ xaae: xlog:00008601:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008602:  errmsg("a backup is not in progress"))); 
+ xaae: xlog:00008612:  ereport(ERROR, 
+ xaae: xlog:00008613:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008614:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008624:  ereport(ERROR, 
+ xaae: xlog:00008625:  (errcode_for_file_access(), 
+ xaae: xlog:00008626:  errmsg("could not create file "%s": %m", 
+ xaae: xlog:00008627:  histfilepath))); 
+ xaae: xlog:00008637:  ereport(ERROR, 
+ xaae: xlog:00008638:  (errcode_for_file_access(), 
+ xaae: xlog:00008639:  errmsg("could not write file "%s": %m", 
+ xaae: xlog:00008640:  histfilepath))); 
+ xaae: xlog:00008646:  ereport(ERROR, 
+ xaae: xlog:00008647:  (errcode_for_file_access(), 
+ xaae: xlog:00008648:  errmsg("could not read file "%s": %m", 
+ xaae: xlog:00008649:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008651:  ereport(ERROR, 
+ xaae: xlog:00008652:  (errcode_for_file_access(), 
+ xaae: xlog:00008653:  errmsg("could not remove file "%s": %m", 
+ xaae: xlog:00008654:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008684:  ereport(ERROR, 
+ xaae: xlog:00008685:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+ xaae: xlog:00008686:  (errmsg("must be superuser to switch transaction log files")))); 
+ xaae: xlog:00008792:  ereport(ERROR, 
+ xaae: xlog:00008793:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ xaae: xlog:00008794:  errmsg("could not parse transaction log location "%s"", 
+ xaae: xlog:00008795:  locationstr))); 
+ xaae: xlog:00008861:  ereport(ERROR, 
+ xaae: xlog:00008862:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+ xaae: xlog:00008863:  errmsg("could not parse transaction log location "%s"", 
+ xaae: xlog:00008864:  locationstr))); 
+ xaae: xlog:00008921:  ereport(FATAL, 
+ xaae: xlog:00008922:  (errcode_for_file_access(), 
+ xaae: xlog:00008923:  errmsg("could not read file "%s": %m", 
+ xaae: xlog:00008924:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008936:  ereport(FATAL, 
+ xaae: xlog:00008937:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008938:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008942:  ereport(FATAL, 
+ xaae: xlog:00008943:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008944:  errmsg("invalid data in file "%s"", BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008946:  ereport(FATAL, 
+ xaae: xlog:00008947:  (errcode_for_file_access(), 
+ xaae: xlog:00008948:  errmsg("could not read file "%s": %m", 
+ xaae: xlog:00008949:  BACKUP_LABEL_FILE))); 
+ xaae: xlog:00008973:  ereport(FATAL, 
+ xaae: xlog:00008974:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008975:  errmsg("invalid data in file "%s"", histfilename))); 
+ xaae: xlog:00008979:  ereport(FATAL, 
+ xaae: xlog:00008980:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+ xaae: xlog:00008981:  errmsg("invalid data in file "%s"", histfilename))); 
+ xaae: xlog:00008984:  ereport(FATAL, 
+ xaae: xlog:00008985:  (errcode_for_file_access(), 
+ xaae: xlog:00008986:  errmsg("could not read file "%s": %m", 
+ xaae: xlog:00008987:  histfilepath))); 
+ xaae: xlog:00009222:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
+ xaae: xlog:00009223:  errFatalReturn(gp_reraise_signal), 
+ xaae: xlog:00009224:  errOmitLocation(true), 
+ xaae: xlog:00009225:  errmsg("Unexpected internal error"))); 
+ xaae: xlog:00009318:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
+ xaae: xlog:00009319:  errmsg("database 'postgres' does not exist"))); 
  xaah: xlogloc:00000060:  ereport(ERROR, 
  xaah: xlogloc:00000061:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000062:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
@@ -18334,6 +18348,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000076:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000077:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000078:  str))); 
-(18267 rows)
+(18281 rows)
 
 drop external table get_ereport;
