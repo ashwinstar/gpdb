@@ -9,6 +9,7 @@ Note that this does NOT pay attention to the current pause state in the db.  It 
 
 """
 import os
+import time
 
 from gppylib.gplog import *
 from gppylib.utils import checkNotNone
@@ -36,7 +37,9 @@ class GpFaultProberImplGpdb(GpFaultProber):
         logger.debug("Pausing fault prober")
         
         conn = dbconn.connect(self.__masterDbUrl, True) # use utility mode so we don't do any segment connection stuff
+        dbconn.execSQL( conn, "BEGIN")
         dbconn.execSQL( conn, "set gp_fts_probe_pause = on")
+        dbconn.execSQL( conn, "COMMIT")
         conn.close()
 
         self.__isPaused = True
@@ -48,7 +51,9 @@ class GpFaultProberImplGpdb(GpFaultProber):
         logger.debug("Unpausing fault prober")
 
         conn = dbconn.connect(self.__masterDbUrl, True) # use utility mode so we don't do any segment connection stuff
+        dbconn.execSQL( conn, "BEGIN")
         dbconn.execSQL( conn, "set gp_fts_probe_pause = off")
+        dbconn.execSQL( conn, "COMMIT")
         conn.close()
         self.__isPaused = False
 
