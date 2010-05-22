@@ -85,7 +85,7 @@ def parseargs():
 
 class JetPackQuery:
     def __init__(self, name):
-        self.query = "select * from gp_jetpack.gp_param_setting('%s')" % name
+        self.query = "select * from gp_toolkit.gp_param_setting('%s')" % name
 
 class JetPackGuc:
     def __init__(self,row): 
@@ -204,8 +204,6 @@ def doShow(gucname):
 
         if re.search("unrecognized configuration parameter", ex.__str__()):
             logger.error('Failed to retrieve GUC information, guc does not exist: ' + gucname)
-        elif re.search("jetpack.*does not exist", ex.__str__()):
-            logger.error('Failed to retrieve GUC information, JetPack is not installed')
         elif re.search("could not connect to server", ex.__str__()):
             logger.error('Failed to retrieve GUC information, the database is not accesible')
         else:
