@@ -1003,7 +1003,7 @@ sub get_aoseg_func
 # helper function for resolve_sizediff, resolve_hashdiff
 sub get_relfilenode_func
 {
-	my ($h1, $diffi, $row, $fselochsh, $bigh) = @_;
+	my ($h1, $diffi, $row, $fselochsh, $bigh, $bstat_ref) = @_;
 
 	my @relfnods;
 	my %dbs;
@@ -1242,6 +1242,7 @@ sub get_relfilenode_func
 			}
 			else
 			{
+				$bstat = 0;
 				print Data::Dumper->Dump($uvv);
 				warn "found ", scalar(@{$uvv}), 
 				" relfilenodes in unknown database dbid: ", $ukk, 
@@ -1266,6 +1267,7 @@ sub get_relfilenode_func
 			
 			if (scalar(@{$bad_relfnod}))
 			{
+				$bstat = 0;
 				my $str1 = "invalid relfilenodes: " . 
 					join(", ", @{$bad_relfnod}) . 
 					"\n in db -- no lookup possible";
@@ -1294,6 +1296,7 @@ sub get_relfilenode_func
 			}
 			else
 			{
+				$bstat = 0;
 				print "no pg_class entries for (",
 				join (", ", @{$relfnod2}) . ")\n";
 			}
@@ -1316,6 +1319,7 @@ sub get_relfilenode_func
 			}
 			else
 			{
+				$bstat = 0;
 				print "no gp_persistent_relation_node entries for (",
 				join (", ", @{$relfnod2}) . ")\n";
 			}
@@ -1338,6 +1342,12 @@ sub get_relfilenode_func
 
 		die "too many failures resolving relfilenodes";
 		exit(1);
+	}
+
+	# XXX XXX: return status in array (for extra files check)
+	if (!($bstat) && defined($bstat_ref))
+	{
+		push @{$bstat_ref}, 1;
 	}
 
 	return \%dbs;
@@ -1551,7 +1561,7 @@ sub diff_again
 	my $numfiles = scalar(@allfiles1);
 	my $floc = $row->{ploc};
 
-	print "recheck $numfiles files for $floc\n";
+	print "enhanced diff: recheck $numfiles files for $floc\n";
 	print Data::Dumper->Dump(\@allfiles1);
 
 	$primsh .= "_deux";
@@ -1729,7 +1739,7 @@ sub diff_thrice
 	my $numfiles = scalar(@allfiles1);
 	my $floc = $row->{ploc};
 
-	print "recheck $numfiles files for $floc\n";
+	print "block by block diff: recheck $numfiles files for $floc\n";
 	print Data::Dumper->Dump(\@allfiles1);
 
 	$primsh  =~ s/deux/trois/;
@@ -2199,11 +2209,27 @@ EOF_msgstr
 					$extras->{$extrafil} = [0,0];
 				}
 
+				# XXX XXX: hackery: if could not resolve extra files in
+				# catalog, then need to complain here
+				my @bstat_ref_arr;
+
 				my $dbs3 = 
 					get_relfilenode_func($extras,
-										 $diffi, $row, $fselochsh, $bigh);
+										 $diffi, $row, $fselochsh, $bigh,
+										 \@bstat_ref_arr
+					);
 
 				print "extra files:\n", Data::Dumper->Dump([$dbs3]);
+
+				if (scalar(@bstat_ref_arr))
+				{
+					# found differences
+					push @{$glob_exit}, $row->{ploc}." ".$row->{mloc} ; 
+				}
+				else
+				{
+
+				}
 			}
 
 			diff_again($dbs1, $dbs2,
