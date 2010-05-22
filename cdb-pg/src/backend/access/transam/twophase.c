@@ -1342,7 +1342,7 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	 * NB: this code knows that we couldn't be dropping any temp rels ...
 	 */
 
-	PersistentFileSysObj_EndXactAction(
+	PersistentFileSysObj_PreparedEndXactAction(
 							&persistentPrepareObjects,
 							isCommit);
 

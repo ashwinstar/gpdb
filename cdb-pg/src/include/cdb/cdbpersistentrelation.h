@@ -111,8 +111,10 @@ extern void PersistentRelation_Created(
 	ItemPointer 		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
 
-	int64				persistentSerialNum);
+	int64				persistentSerialNum,
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
+
+	bool				retryPossible);
 
 /*
  * Indicate we intend to drop a relation file as part of the current transaction.
@@ -124,7 +126,7 @@ extern void PersistentRelation_Created(
  * file-system delete will occur.  The flush guarantees the action will be retried after system
  * crash.
  */
-extern void PersistentRelation_MarkDropPending(
+extern bool PersistentRelation_MarkDropPending(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the drop. */
 	
@@ -133,8 +135,10 @@ extern void PersistentRelation_MarkDropPending(
 	ItemPointer 		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
 
-	int64				persistentSerialNum);
+	int64				persistentSerialNum,
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
+
+	bool				retryPossible);
 					
 
 /*
@@ -142,7 +146,7 @@ extern void PersistentRelation_MarkDropPending(
  *
  * This state will make sure the relation gets dropped after a system crash.
  */
-extern void PersistentRelation_MarkAbortingCreate(
+extern bool PersistentRelation_MarkAbortingCreate(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the aborting create. */
 	
@@ -151,9 +155,10 @@ extern void PersistentRelation_MarkAbortingCreate(
 	ItemPointer 		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
 	
-	int64				persistentSerialNum);
+	int64				persistentSerialNum,
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
-	
+
+	bool				retryPossible);
 
 /*
  * Indicate we phsyicalled removed the relation file.

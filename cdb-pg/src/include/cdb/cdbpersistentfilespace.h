@@ -100,8 +100,10 @@ extern void PersistentFilespace_Created(
 	ItemPointer 	persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
 				
-	int64			serialNum);
+	int64			persistentSerialNum,
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
+
+	bool			retryPossible);
 					
 /*
  * Indicate we intend to drop a relation file as part of the current transaction.
@@ -113,30 +115,34 @@ extern void PersistentFilespace_Created(
  * file-system delete will occur.  The flush guarantees the action will be retried after system
  * crash.
  */
-extern void PersistentFilespace_MarkDropPending(
+extern bool PersistentFilespace_MarkDropPending(
 	Oid 		filespaceOid,
 				/* The filespace OID for the drop. */
 	
 	ItemPointer 	persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
 							
-	int64			serialNum);
+	int64			persistentSerialNum,
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
+
+	bool			retryPossible);
 
 /*
  * Indicate we are aborting the create of a relation file.
  *
  * This state will make sure the relation gets dropped after a system crash.
  */
-extern void PersistentFilespace_MarkAbortingCreate(
+extern bool PersistentFilespace_MarkAbortingCreate(
 	Oid 		filespaceOid,
 				/* The filespace OID for the aborting create. */
 							
 	ItemPointer 	persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
 							
-	int64			serialNum);
+	int64			persistentSerialNum,
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
+
+	bool			retryPossible);
 					
 /*
  * Indicate we phsyicalled removed the relation file.
@@ -148,7 +154,7 @@ extern void PersistentFilespace_Dropped(
 	ItemPointer 	persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
 							
-	int64			serialNum);
+	int64			persistentSerialNum);
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 	
 // -----------------------------------------------------------------------------

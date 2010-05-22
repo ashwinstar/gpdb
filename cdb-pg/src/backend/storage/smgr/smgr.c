@@ -1806,14 +1806,16 @@ smgrDoDeleteActions(
 				PersistentFileSysObj_Created(
 								&current->fsObjName,
 								&current->persistentTid,
-								current->persistentSerialNum);
+								current->persistentSerialNum,
+								/* retryPossible */ false);
 			}
 			else
 			{
 				PersistentFileSysObj_MarkAbortingCreate(
 								&current->fsObjName,
 								&current->persistentTid,
-								current->persistentSerialNum);
+								current->persistentSerialNum,
+								/* retryPossible */ false);
 			}
 			break;
 
@@ -1823,7 +1825,8 @@ smgrDoDeleteActions(
 				PersistentFileSysObj_MarkDropPending(
 								&current->fsObjName,
 								&current->persistentTid,
-								current->persistentSerialNum);
+								current->persistentSerialNum,
+								/* retryPossible */ false);
 			}
 			break;
 
@@ -1834,7 +1837,8 @@ smgrDoDeleteActions(
 			PersistentFileSysObj_MarkAbortingCreate(
 							&current->fsObjName,
 							&current->persistentTid,
-							current->persistentSerialNum);
+							current->persistentSerialNum,
+							/* retryPossible */ false);
 			break;
 				
 		default:

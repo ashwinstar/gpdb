@@ -561,6 +561,8 @@ void PersistentTablespace_MarkCreatePending(
 {
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
+	PersistentFileSysObjName fsObjName;
+
 	TablespaceDirEntry tablespaceDirEntry;
 
 	if (PersistentFileSysObj_BeforePersistenceWork())
@@ -574,6 +576,8 @@ void PersistentTablespace_MarkCreatePending(
 	}
 
 	PersistentTablespace_InitScan();
+
+	PersistentFileSysObjName_SetTablespaceDir(&fsObjName,tablespaceOid);
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
@@ -597,6 +601,14 @@ void PersistentTablespace_MarkCreatePending(
 	*persistentSerialNum = tablespaceDirEntry->persistentSerialNum;
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+		     "Persistent tablespace directory: Add '%s' in state 'Created', mirror existence state '%s', serial number " INT64_FORMAT " at TID %s",
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
+			 MirroredObjectExistenceState_Name(mirrorExistenceState),
+			 *persistentSerialNum,
+			 ItemPointerToString(persistentTid));
 }
 
 void
@@ -633,8 +645,10 @@ void PersistentTablespace_Created(
 	ItemPointer		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
 
-	int64			persistentSerialNum)
+	int64			persistentSerialNum,
 				/* Serial number for the tablespace.	Distinquishes the uses of the tuple. */
+
+	bool			retryPossible)
 
 {
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
@@ -676,12 +690,20 @@ void PersistentTablespace_Created(
 								persistentTid,
 								persistentSerialNum,
 								PersistentFileSysState_Created,
+								retryPossible,
 								/* flushToXlog */ false,
 								NULL);
 
 	tablespaceDirEntry->state = PersistentFileSysState_Created;
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+		     "Persistent tablespace directory: '%s' changed state from 'Create Pending' to 'Created', serial number " INT64_FORMAT " at TID %s",
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
+			 persistentSerialNum,
+			 ItemPointerToString(persistentTid));
 }
 
 void
@@ -816,15 +838,17 @@ PersistentTablespace_AddMirrorAll(
  * file-system delete will occur.  The flush guarantees the action will be retried after system
  * crash.
  */
-void PersistentTablespace_MarkDropPending(
+bool PersistentTablespace_MarkDropPending(
 	Oid 		tablespaceOid,
 				/* The tablespace OID for the drop. */
 
 	ItemPointer		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
 
-	int64			persistentSerialNum)
+	int64			persistentSerialNum,
 				/* Serial number for the tablespace.	Distinquishes the uses of the tuple. */
+
+	bool			retryPossible)
 
 {
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
@@ -833,6 +857,8 @@ void PersistentTablespace_MarkDropPending(
 
 	TablespaceDirEntry tablespaceDirEntry;
 
+	bool result;
+	
 	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
@@ -840,7 +866,7 @@ void PersistentTablespace_MarkDropPending(
 				 "Skipping persistent tablespace %u because we are before persistence work",
 				 tablespaceOid);
 
-		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
+		return false;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
 	PersistentTablespace_InitScan();
@@ -862,17 +888,29 @@ void PersistentTablespace_MarkDropPending(
 			 tablespaceOid,
 			 PersistentFileSysObjState_Name(tablespaceDirEntry->state));
 
-	PersistentFileSysObj_StateChange(
+	result =
+		PersistentFileSysObj_StateChange(
 								&fsObjName,
 								persistentTid,
 								persistentSerialNum,
 								PersistentFileSysState_DropPending,
+								retryPossible,
 								/* flushToXlog */ false,
 								NULL);
 
 	tablespaceDirEntry->state = PersistentFileSysState_DropPending;
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+		     "Persistent tablespace directory: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (deleteUnnecessary %s)",
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
+			 persistentSerialNum,
+			 ItemPointerToString(persistentTid),
+			 (result ? "true" : "false"));
+
+	return result;
 }
 
 /*
@@ -880,22 +918,25 @@ void PersistentTablespace_MarkDropPending(
  *
  * This state will make sure the tablespace gets dropped after a system crash.
  */
-void PersistentTablespace_MarkAbortingCreate(
+bool PersistentTablespace_MarkAbortingCreate(
 	Oid 		tablespaceOid,
 				/* The tablespace OID for the aborting create. */
 							
 	ItemPointer		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
 
-	int64			persistentSerialNum)
+	int64			persistentSerialNum,
 				/* Serial number for the tablespace.	Distinquishes the uses of the tuple. */
 
+	bool			retryPossible)
 {
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
 	PersistentFileSysObjName fsObjName;
 
 	TablespaceDirEntry tablespaceDirEntry;
+
+	bool result;
 	
 	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
@@ -904,7 +945,7 @@ void PersistentTablespace_MarkAbortingCreate(
 				 "Skipping persistent tablespace %u because we are before persistence work",
 				 tablespaceOid);
 
-		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
+		return false;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
 	PersistentTablespace_InitScan();
@@ -925,17 +966,29 @@ void PersistentTablespace_MarkAbortingCreate(
 			 tablespaceOid,
 			 PersistentFileSysObjState_Name(tablespaceDirEntry->state));
 
-	PersistentFileSysObj_StateChange(
+	result =
+		PersistentFileSysObj_StateChange(
 								&fsObjName,
 								persistentTid,
 								persistentSerialNum,
 								PersistentFileSysState_AbortingCreate,
+								retryPossible,
 								/* flushToXlog */ false,
 								NULL);
 
 	tablespaceDirEntry->state = PersistentFileSysState_AbortingCreate;
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+		     "Persistent tablespace directory: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (deleteUnnecessary %s)",
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
+			 persistentSerialNum,
+			 ItemPointerToString(persistentTid),
+			 (result ? "true" : "false"));
+
+	return result;
 }
 
 /*
@@ -957,6 +1010,8 @@ void PersistentTablespace_Dropped(
 	PersistentFileSysObjName fsObjName;
 
 	TablespaceDirEntry tablespaceDirEntry;
+
+	PersistentFileSysState oldState;
 
 	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
@@ -992,14 +1047,23 @@ void PersistentTablespace_Dropped(
 								persistentTid,
 								persistentSerialNum,
 								PersistentFileSysState_Free,
+								/* retryPossible */ false,
 								/* flushToXlog */ false,
-								NULL);
+								&oldState);
 
 	tablespaceDirEntry->state = PersistentFileSysState_Free;
 
 	PersistentTablespace_RemoveEntryUnderLock(tablespaceDirEntry);
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+		     "Persistent tablespace directory: '%s' changed state from '%s' to (Free), serial number " INT64_FORMAT " at TID %s",
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
+			 PersistentFileSysObjState_Name(oldState),
+			 persistentSerialNum,
+			 ItemPointerToString(persistentTid));
 }
 
 // -----------------------------------------------------------------------------

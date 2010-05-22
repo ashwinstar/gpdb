@@ -1501,7 +1501,8 @@ PersistentRecovery_CrashAbort(void)
 				PersistentFileSysObj_MarkAbortingCreate(
 								&fsObjEntry->fsObjName,
 								&fsObjEntry->key.persistentTid,
-								fsObjEntry->persistentSerialNum);
+								fsObjEntry->persistentSerialNum,
+								/* retryPossible */ false);
 
 				fsObjEntry->state = PersistentFileSysState_AbortingCreate;
 				
@@ -1566,21 +1567,24 @@ PersistentRecovery_UpdateType(
 					PersistentFileSysObj_Created(
 									&fsObjEntry->fsObjName,
 									&fsObjEntry->key.persistentTid,
-									fsObjEntry->persistentSerialNum);
+									fsObjEntry->persistentSerialNum,
+									/* retryPossible */ false);
 					break;
 				
 				case PersistentFileSysState_AbortingCreate:
 					PersistentFileSysObj_MarkAbortingCreate(
 									&fsObjEntry->fsObjName,
 									&fsObjEntry->key.persistentTid,
-									fsObjEntry->persistentSerialNum);
+									fsObjEntry->persistentSerialNum,
+									/* retryPossible */ false);
 					break;
 
 				case PersistentFileSysState_DropPending:
 					PersistentFileSysObj_MarkDropPending(
 									&fsObjEntry->fsObjName,
 									&fsObjEntry->key.persistentTid,
-									fsObjEntry->persistentSerialNum);
+									fsObjEntry->persistentSerialNum,
+									/* retryPossible */ false);
 					break;
 				default:
 					elog(ERROR, "Unexpected persistent file-system state: %d",

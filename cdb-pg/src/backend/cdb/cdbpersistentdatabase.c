@@ -488,12 +488,18 @@ void PersistentDatabase_AddCreated(
 {
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
+	PersistentFileSysObjName fsObjName;
+
 	DatabaseDirEntry databaseDirEntry;
 	SharedOidSearchAddResult addResult;
+
+	int64 persistentSerialNum;
 
 	Assert (PersistentFileSysObj_BeforePersistenceWork());
 
 	PersistentDatabase_InitScan();
+
+	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
@@ -540,12 +546,17 @@ void PersistentDatabase_AddCreated(
 							flushToXLog);
 
 	*persistentTid = databaseDirEntry->persistentTid;
+	persistentSerialNum = databaseDirEntry->persistentSerialNum;
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
-	elog(DEBUG5, "tablespace %u, database %u - state = %i",
-		 dbDirNode->tablespace,
-		 dbDirNode->database,
-		 databaseDirEntry->state);
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+		     "Persistent database directory: Add '%s' in state 'Created', mirror existence state '%s', serial number " INT64_FORMAT " at TID %s",
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
+			 MirroredObjectExistenceState_Name(mirrorExistenceState),
+			 persistentSerialNum,
+			 ItemPointerToString(persistentTid));
 }
 
 void
@@ -611,8 +622,10 @@ void PersistentDatabase_Created(
 	ItemPointer		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
 
-	int64			persistentSerialNum)
+	int64			persistentSerialNum,
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
+
+	bool			retryPossible)
 
 {
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
@@ -655,12 +668,20 @@ void PersistentDatabase_Created(
 								persistentTid,
 								persistentSerialNum,
 								PersistentFileSysState_Created,
+								retryPossible,
 								/* flushToXlog */ false,
 								NULL);
 
 	databaseDirEntry->state = PersistentFileSysState_Created;
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+		     "Persistent database directory: '%s' changed state from 'Create Pending' to 'Created', serial number " INT64_FORMAT " at TID %s",
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
+			 persistentSerialNum,
+			 ItemPointerToString(persistentTid));
 }
 
 /*
@@ -828,22 +849,25 @@ PersistentDatabase_AddMirrorAll(
  * file-system delete will occur.  The flush guarantees the action will be retried after system
  * crash.
  */
-void PersistentDatabase_MarkDropPending(
+bool PersistentDatabase_MarkDropPending(
 	DbDirNode 		*dbDirNode,
 				/* The tablespace and database OIDs for the drop. */
 
 	ItemPointer		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
 
-	int64			persistentSerialNum)
+	int64			persistentSerialNum,
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
+	bool			retryPossible)
 {
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
 	PersistentFileSysObjName fsObjName;
 
 	DatabaseDirEntry databaseDirEntry;
+
+	bool result;
 
 	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
@@ -854,7 +878,7 @@ void PersistentDatabase_MarkDropPending(
 					  dbDirNode->database, 
 					  dbDirNode->tablespace));
 
-		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
+		return false;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
 	PersistentDatabase_InitScan();
@@ -875,17 +899,29 @@ void PersistentDatabase_MarkDropPending(
 				   dbDirNode->tablespace),
 			 PersistentFileSysObjState_Name(databaseDirEntry->state));
 
-	PersistentFileSysObj_StateChange(
+	result =
+		PersistentFileSysObj_StateChange(
 								&fsObjName,
 								persistentTid,
 								persistentSerialNum,
 								PersistentFileSysState_DropPending,
+								retryPossible,
 								/* flushToXlog */ false,
 								NULL);
 
 	databaseDirEntry->state = PersistentFileSysState_DropPending;
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+		     "Persistent database directory: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (deleteUnnecessary %s)",
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
+			 persistentSerialNum,
+			 ItemPointerToString(persistentTid),
+			 (result ? "true" : "false"));
+
+	return result;
 }
 
 /*
@@ -893,22 +929,25 @@ void PersistentDatabase_MarkDropPending(
  *
  * This state will make sure the relation gets dropped after a system crash.
  */
-void PersistentDatabase_MarkAbortingCreate(
+bool PersistentDatabase_MarkAbortingCreate(
 	DbDirNode 		*dbDirNode,
 				/* The tablespace and database OIDs for the aborting create. */
 
 	ItemPointer		persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the rel file */
 
-	int64			persistentSerialNum)
+	int64			persistentSerialNum,
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
+	bool			retryPossible)
 {
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
 	PersistentFileSysObjName fsObjName;
 
 	DatabaseDirEntry databaseDirEntry;
+
+	bool result;
 	
 	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
@@ -919,7 +958,7 @@ void PersistentDatabase_MarkAbortingCreate(
 					  dbDirNode->database, 
 					  dbDirNode->tablespace));
 
-		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
+		return false;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
 	PersistentDatabase_InitScan();
@@ -940,17 +979,29 @@ void PersistentDatabase_MarkAbortingCreate(
 			 PersistentFileSysObjState_Name(databaseDirEntry->state));
 
 
-	PersistentFileSysObj_StateChange(
+	result =
+		PersistentFileSysObj_StateChange(
 								&fsObjName,
 								persistentTid,
 								persistentSerialNum,
 								PersistentFileSysState_AbortingCreate,
+								retryPossible,
 								/* flushToXlog */ false,
 								NULL);
 
 	databaseDirEntry->state = PersistentFileSysState_AbortingCreate;
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+		     "Persistent database directory: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (deleteUnnecessary %s)",
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
+			 persistentSerialNum,
+			 ItemPointerToString(persistentTid),
+			 (result ? "true" : "false"));
+
+	return result;
 }
 
 /*
@@ -972,6 +1023,8 @@ void PersistentDatabase_Dropped(
 	PersistentFileSysObjName fsObjName;
 
 	DatabaseDirEntry databaseDirEntry;
+
+	PersistentFileSysState oldState;
 
 	if (PersistentFileSysObj_BeforePersistenceWork())
 	{	
@@ -1008,8 +1061,9 @@ void PersistentDatabase_Dropped(
 								persistentTid,
 								persistentSerialNum,
 								PersistentFileSysState_Free,
+								/* retryPossible */ false,
 								/* flushToXlog */ false,
-								NULL);
+								&oldState);
 
 	databaseDirEntry->state = PersistentFileSysState_Free;
 
@@ -1019,6 +1073,14 @@ void PersistentDatabase_Dropped(
 					&databaseDirEntry->header);
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+		     "Persistent database directory: '%s' changed state from '%s' to (Free), serial number " INT64_FORMAT " at TID %s",
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
+			 PersistentFileSysObjState_Name(oldState),
+			 persistentSerialNum,
+			 ItemPointerToString(persistentTid));
 }
 
 bool 
@@ -1083,6 +1145,8 @@ void PersistentDatabase_MarkJustInTimeCreatePending(
 {
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
+	PersistentFileSysObjName fsObjName;
+
 	DatabaseDirEntry databaseDirEntry;
 
 	SharedOidSearchAddResult addResult;
@@ -1100,6 +1164,8 @@ void PersistentDatabase_MarkJustInTimeCreatePending(
 	}
 
 	PersistentDatabase_InitScan();
+
+	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
@@ -1154,10 +1220,13 @@ void PersistentDatabase_MarkJustInTimeCreatePending(
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
-	elog(DEBUG5, "tablespace %u, database %u - state = %i",
-		 dbDirNode->tablespace,
-		 dbDirNode->database,
-		 databaseDirEntry->state);
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+		     "Persistent database directory: Add '%s' in state 'Just-In-Time Create Pending', mirror existence state '%s', serial number " INT64_FORMAT " at TID %s",
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
+			 MirroredObjectExistenceState_Name(mirrorExistenceState),
+			 *persistentSerialNum,
+			 ItemPointerToString(persistentTid));
 }
 
 /*
@@ -1213,12 +1282,20 @@ void PersistentDatabase_JustInTimeCreated(
 								persistentTid,
 								persistentSerialNum,
 								PersistentFileSysState_Created,
+								/* retryPossible */ false,
 								/* flushToXlog */ false,
 								NULL);
 
 	databaseDirEntry->state = PersistentFileSysState_Created;
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+		     "Persistent database directory: '%s' changed state from 'Just-In-Time Create Pending' to 'Created', serial number " INT64_FORMAT " at TID %s",
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
+			 persistentSerialNum,
+			 ItemPointerToString(persistentTid));
 }
 
 /*
@@ -1274,6 +1351,7 @@ void PersistentDatabase_AbandonJustInTimeCreatePending(
 								persistentTid,
 								persistentSerialNum,
 								PersistentFileSysState_Free,
+								/* retryPossible */ false,
 								/* flushToXlog */ false,
 								NULL);
 
@@ -1285,6 +1363,13 @@ void PersistentDatabase_AbandonJustInTimeCreatePending(
 					&databaseDirEntry->header);
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+		     "Persistent database directory: Abandon '%s' in state 'Just-In-Time Create Pending', serial number " INT64_FORMAT " at TID %s",
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
+			 persistentSerialNum,
+			 ItemPointerToString(persistentTid));
 }
 
 

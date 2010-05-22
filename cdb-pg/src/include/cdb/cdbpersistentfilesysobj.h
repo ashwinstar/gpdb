@@ -159,7 +159,7 @@ extern void PersistentFileSysObj_FreeTuple(
 	bool						flushToXLog);
 				/* When true, the XLOG record for this change will be flushed to disk. */
 
-extern void PersistentFileSysObj_StateChange(
+extern bool PersistentFileSysObj_StateChange(
 	PersistentFileSysObjName	*fsObjName,
 
 	ItemPointer 				persistentTid,
@@ -167,6 +167,8 @@ extern void PersistentFileSysObj_StateChange(
 	int64						persistentSerialNum,
 	
 	PersistentFileSysState		nextState,
+
+	bool						retryPossible,
 
 	bool						flushToXLog,
 
@@ -177,21 +179,27 @@ extern void PersistentFileSysObj_Created(
 
 	ItemPointer 			persistentTid,
 
-	int64					persistentSerialNum);
+	int64					persistentSerialNum,
 
-extern void PersistentFileSysObj_MarkAbortingCreate(
+	bool					retryPossible);
+
+extern bool PersistentFileSysObj_MarkAbortingCreate(
 	PersistentFileSysObjName	*fsObjName,
 
 	ItemPointer 			persistentTid,
 
-	int64					persistentSerialNum);
+	int64					persistentSerialNum,
 
-extern void PersistentFileSysObj_MarkDropPending(
+	bool					retryPossible);
+
+extern bool PersistentFileSysObj_MarkDropPending(
 	PersistentFileSysObjName	*fsObjName,
 
 	ItemPointer 			persistentTid,
 
-	int64					persistentSerialNum);
+	int64					persistentSerialNum,
+
+	bool					retryPossible);
 
 extern void PersistentFileSysObj_DropObject(
 	PersistentFileSysObjName	*fsObjName,
@@ -221,7 +229,7 @@ extern void PersistentFileSysObj_EndXactDrop(
 
 	bool						ignoreNonExistence);
 
-extern void PersistentFileSysObj_EndXactAction(
+extern void PersistentFileSysObj_PreparedEndXactAction(
 	PersistentEndXactRecObjects 	*persistentObjects,
 	
 	bool							isCommit);

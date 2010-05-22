@@ -445,8 +445,10 @@ void PersistentRelation_Created(
 	ItemPointer			persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
 
-	int64				persistentSerialNum)
+	int64				persistentSerialNum,
 				/* Serial number for the relation.  Distinquishes the uses of the tuple. */
+
+	bool				retryPossible)
 
 {
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
@@ -489,6 +491,7 @@ void PersistentRelation_Created(
 								persistentTid,
 								persistentSerialNum,
 								PersistentFileSysState_Created,
+								retryPossible,
 								/* flushToXlog */ false,
 								NULL);
 
@@ -497,7 +500,7 @@ void PersistentRelation_Created(
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
 		     "Persistent relation: '%s' changed state from 'Create Pending' to 'Created', serial number " INT64_FORMAT " at TID %s",
-			 relpath(*relFileNode),
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
 			 ItemPointerToString(persistentTid));
 }
@@ -668,7 +671,7 @@ PersistentRelation_ActivateStandby(int16 oldmaster, int16 newmaster)
  * file-system delete will occur.  The flush guarantees the action will be retried after system
  * crash.
  */
-void PersistentRelation_MarkDropPending(
+bool PersistentRelation_MarkDropPending(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the drop. */
 
@@ -677,8 +680,10 @@ void PersistentRelation_MarkDropPending(
 	ItemPointer			persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
 
-	int64				persistentSerialNum)
+	int64				persistentSerialNum,
 				/* Serial number for the relation.  Distinquishes the uses of the tuple. */
+
+	bool				retryPossible)
 
 {
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
@@ -686,6 +691,8 @@ void PersistentRelation_MarkDropPending(
 	PersistentFileSysObjName fsObjName;
 
 	PersistentFileSysState oldState;
+
+	bool result;
 
 	if(RelFileNode_IsEmpty(relFileNode))
 		elog(ERROR, "Invalid RelFileNode (0,0,0)");
@@ -697,7 +704,7 @@ void PersistentRelation_MarkDropPending(
 			     "Skipping persistent relation '%s' because we are before persistence work",
 				 relpath(*relFileNode));
 
-		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
+		return false;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
 	PersistentRelation_InitScan();
@@ -717,12 +724,14 @@ void PersistentRelation_MarkDropPending(
 			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName));
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
-	
-	PersistentFileSysObj_StateChange(
+
+	result =
+		PersistentFileSysObj_StateChange(
 								&fsObjName,
 								persistentTid,
 								persistentSerialNum,
 								PersistentFileSysState_DropPending,
+								retryPossible,
 								/* flushToXlog */ false,
 								&oldState);
 
@@ -730,11 +739,14 @@ void PersistentRelation_MarkDropPending(
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
-		     "Persistent relation: '%s' changed state from '%s' to 'Drop Pending', serial number " INT64_FORMAT " TID %s",
-			 relpath(*relFileNode),
+		     "Persistent relation: '%s' changed state from '%s' to 'Drop Pending', serial number " INT64_FORMAT " TID %s (deleteUnnecessary %s)",
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 PersistentFileSysObjState_Name(oldState),
 			 persistentSerialNum,
-			 ItemPointerToString(persistentTid));
+			 ItemPointerToString(persistentTid),
+			 (result ? "true" : "false"));
+
+	return result;
 }
 
 /*
@@ -742,7 +754,7 @@ void PersistentRelation_MarkDropPending(
  *
  * This state will make sure the relation gets dropped after a system crash.
  */
-void PersistentRelation_MarkAbortingCreate(
+bool PersistentRelation_MarkAbortingCreate(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the aborting create. */
 
@@ -751,13 +763,17 @@ void PersistentRelation_MarkAbortingCreate(
 	ItemPointer			persistentTid,
 				/* TID of the gp_persistent_rel_files tuple for the relation. */
 
-	int64				persistentSerialNum)
+	int64				persistentSerialNum,
 				/* Serial number for the relation.  Distinquishes the uses of the tuple. */
+
+	bool				retryPossible)
 
 {
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
 	PersistentFileSysObjName fsObjName;
+
+	bool result;
 
 	if(RelFileNode_IsEmpty(relFileNode))
 		elog(ERROR, "Invalid RelFileNode (0,0,0)");
@@ -769,7 +785,7 @@ void PersistentRelation_MarkAbortingCreate(
 				 "Skipping persistent relation '%s' because we are before persistence work",
 				 relpath(*relFileNode));
 
-		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
+		return false;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
 	PersistentRelation_InitScan();
@@ -790,11 +806,13 @@ void PersistentRelation_MarkAbortingCreate(
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 	
-	PersistentFileSysObj_StateChange(
+	result =
+		PersistentFileSysObj_StateChange(
 								&fsObjName,
 								persistentTid,
 								persistentSerialNum,
 								PersistentFileSysState_AbortingCreate,
+								retryPossible,
 								/* flushToXlog */ false,
 								NULL);
 
@@ -802,10 +820,13 @@ void PersistentRelation_MarkAbortingCreate(
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
-		     "Persistent relation: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s",
-			 relpath(*relFileNode),
+		     "Persistent relation: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (deleteUnnecessary %s)",
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
-			 ItemPointerToString(persistentTid));
+			 ItemPointerToString(persistentTid),
+			 (result ? "true" : "false"));
+
+	return result;
 }
 
 /*
@@ -866,6 +887,7 @@ void PersistentRelation_Dropped(
 								persistentTid,
 								persistentSerialNum,
 								PersistentFileSysState_Free,
+								/* retryPossible */ false,
 								/* flushToXlog */ false,
 								&oldState);
 
@@ -874,7 +896,7 @@ void PersistentRelation_Dropped(
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
 		     "Persistent relation: '%s' changed state from '%s' to (Free), serial number " INT64_FORMAT " at TID %s",
-			 relpath(*relFileNode),
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 PersistentFileSysObjState_Name(oldState),
 			 persistentSerialNum,
 			 ItemPointerToString(persistentTid));
@@ -951,7 +973,7 @@ void PersistentRelation_MarkBufPoolRelationForScanIncrementalResync(
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
 		     "Persistent relation: '%s' marked physically truncated, serial number " INT64_FORMAT " at TID %s",
-			 relpath(*relFileNode),
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
 			 ItemPointerToString(persistentTid));
 }
