@@ -79,9 +79,13 @@ class GpSystemStateProgram:
 
             lines = []
             lines.append(["Status", "Data State", "Primary", "Datadir", "Port", "Mirror", "Datadir", "Port"])
+            numInChangeTracking = 0
+            numMirrorsActingAsPrimaries = 0
             for primary in primarySegments:
                 mirror = contentIdToMirror[primary.getSegmentContentId()][0]
 
+                warningLineNumbers = {}
+                doWarn = False
                 status = ""
                 if primary.isSegmentMirror(True):
                     actingPrimary = mirror
@@ -89,6 +93,9 @@ class GpSystemStateProgram:
 
                     actMirrorStatus = "Available" if actingMirror.isSegmentUp() else "Failed"
                     status = "Mirror Active, Primary %s" % (actMirrorStatus)
+
+                    doWarn = True
+                    numMirrorsActingAsPrimaries += 1
                 else:
                     actingPrimary = primary
                     actingMirror = mirror
@@ -96,16 +103,30 @@ class GpSystemStateProgram:
                     actMirrorStatus = "Available" if actingMirror.isSegmentUp() else "Failed"
                     status = "Primary Active, Mirror %s" % (actMirrorStatus)
 
-                dataStatus = gparray.getDataModeLabel(actingPrimary.getSegmentMode())
+                if actingPrimary.isSegmentModeInChangeLogging():
+                    doWarn = True
+                    numInChangeTracking += 1
 
+                extra = "<<<<<<<<<<" if doWarn else ""
+                warningLineNumbers[len(lines)] = doWarn
+
+                dataStatus = gparray.getDataModeLabel(actingPrimary.getSegmentMode())
                 line = [status, dataStatus]
                 self.__appendSegmentTripletToArray(primary, line)
                 self.__appendSegmentTripletToArray(mirror, line)
+                line.append(extra)
                 lines.append(line)
-            utils.logLinesToTable(lines, {})
+            utils.logLinesToTable(lines, warningLineNumbers)
+
+            logger.info("-------------------------------------------------------------" )
+            if numMirrorsActingAsPrimaries > 0:
+                logger.warn( "%s segment(s) configured as mirror(s) are acting as primaries" % numMirrorsActingAsPrimaries )
+            if numInChangeTracking > 0:
+                logger.warn( "%s segment(s) are in change tracking" % numInChangeTracking)
+
         else:
             logger.info("-------------------------------------------------------------" )
-            logger.info("-Primary list [%s not implemented]" % \
+            logger.info("-Primary list [%s not used]" % \
                         gparray.getFaultStrategyLabel(gparray.FAULT_STRATEGY_FILE_REPLICATION))
             logger.info("-------------------------------------------------------------" )
 
@@ -114,6 +135,7 @@ class GpSystemStateProgram:
             for seg in [ seg for seg in gpArray.getSegDbList()]:
                 lines.append(self.__appendSegmentTripletToArray(seg, []))
             utils.logLinesToTable(lines, {})
+            logger.info("-------------------------------------------------------------" )
 
         return 0
 
@@ -124,39 +146,43 @@ class GpSystemStateProgram:
         exitCode = 0
         if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_FILE_REPLICATION:
             lines = []
-            lines.append(["Mirror","Datadir", "Port", "Status", ""])
+            lines.append(["Mirror","Datadir", "Port", "Status", "Data Status", ""])
             warningLineNumbers = {}
 
             # based off the bash version of -m "mirror list" option,
             #    the mirror list prints information about defined mirrors only
             mirrorSegments = [ seg for seg in gpArray.getSegDbList() if seg.isSegmentMirror(False) ]
+            numMirrorsActingAsPrimaries = 0
+            numFailedMirrors = 0
+            numChangeTrackingMirrors = 0
             for seg in mirrorSegments:
                 doWarn = False
+                status = ""
+                dataStatus = gparray.getDataModeLabel(seg.getSegmentMode())
                 if seg.isSegmentPrimary(True):
-                    if seg.isSegmentModeSynchronized():
-                        status = "Active, Synchronized"
-                    elif seg.isSegmentModeInResynchronization():
-                        status = "Active, Resynchronizing"
-                    else:
-                        status = "Active, In Change Tracking"
+                    status = "Acting as Primary"
 
+                    if seg.isSegmentModeInChangeLogging():
+                        numChangeTrackingMirrors += 1
+
+                    numMirrorsActingAsPrimaries += 1
                     doWarn = True
-                    exitCode = 1
                 elif seg.isSegmentUp():
-                    if seg.isSegmentModeSynchronized():
-                        status = "Passive, Synchronized"
-                    elif seg.isSegmentModeInResynchronization():
-                        status = "Passive, Resynchronizing"
-                    else:
-                        status = "Passive" # this should not happen
+                    status = "Passive"
                 else:
-                    status="Failed"
+                    status = "Failed"
+                    dataStatus = ""
                     doWarn = True
+                    numFailedMirrors += 1
+
+                if doWarn:
+                    exitCode = 1
 
                 extra = "<<<<<<<<<<" if doWarn else ""
                 warningLineNumbers[len(lines)] = doWarn
                 line = self.__appendSegmentTripletToArray(seg, [])
                 line.append(status)
+                line.append(dataStatus)
                 line.append(extra)
                 lines.append(line)
 
@@ -166,6 +192,14 @@ class GpSystemStateProgram:
             logger.info("-------------------------------------------------------------" )
 
             utils.logLinesToTable(lines, warningLineNumbers)
+
+            logger.info("-------------------------------------------------------------" )
+            if numMirrorsActingAsPrimaries > 0:
+                logger.warn( "%s segment(s) configured as mirror(s) are acting as primaries" % numMirrorsActingAsPrimaries )
+            if numFailedMirrors > 0:
+                logger.warn( "%s segment(s) configured as mirror(s) have failed" % numFailedMirrors )
+            if numChangeTrackingMirrors > 0:
+                logger.warn( "%s mirror segment(s) acting as primaries are in change tracking" % numChangeTrackingMirrors)
 
         else:
             logger.warn("-------------------------------------------------------------" )
@@ -397,7 +431,7 @@ class GpSystemStateProgram:
 
         # load config
         gpEnv = GpMasterEnvironment(self.__options.masterDataDirectory, True)
-        confProvider = configInterface.getConfigurationProvider().initializeProvider(gpEnv.getMasterPort(), False)
+        confProvider = configInterface.getConfigurationProvider().initializeProvider(gpEnv.getMasterPort(), True)
         gpArray = confProvider.loadSystemConfig()
 
         # do it!

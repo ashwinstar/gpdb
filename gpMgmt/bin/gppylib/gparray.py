@@ -44,7 +44,7 @@ VALID_MODE = [
     MODE_RESYNCHRONIZATION,
 ]
 MODE_LABELS = {
-    MODE_CHANGELOGGING: "Changelogging",
+    MODE_CHANGELOGGING: "Change Tracking",
     MODE_SYNCHRONIZED: "Synchronized",
     MODE_RESYNCHRONIZATION: "Resynchronizing"
 }
@@ -1685,7 +1685,7 @@ class GpArray:
                 return False
 
         """
-        Fall-through -- note that for a 2 host system with 2 segments, this will cause the guess to be 'spread' 
+        Fall-through -- note that for a 2 host system with 1 segment per host, this will cause the guess to be 'spread' 
         """
         return True
 
