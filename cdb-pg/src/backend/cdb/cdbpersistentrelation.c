@@ -128,7 +128,6 @@ static int32 persistentRelationCheckTablespaceUseCount;
 static RelFileNode persistentRelationCheckTablespaceRelFileNode;
 
 static bool PersistentRelation_CheckTablespaceScanTupleCallback(
-	int 					token,
 	ItemPointer 			persistentTid,
 	int64					persistentSerialNum,
 	Datum					*values)
@@ -156,8 +155,6 @@ static bool PersistentRelation_CheckTablespaceScanTupleCallback(
 	TransactionId			parentXid;
 	int64					serialNum;
 	ItemPointerData			previousFreeTid;
-	
-	Assert(token == PersistentFsObjType_RelationFile);
 
 	GpPersistentRelationNode_GetValues(
 									values,

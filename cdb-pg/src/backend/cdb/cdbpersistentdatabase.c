@@ -89,7 +89,6 @@ static void PersistentDatabase_InitScan(void)
 // -----------------------------------------------------------------------------
 
 static bool PersistentDatabase_ScanTupleCallback(
-	int 					token,
 	ItemPointer 			persistentTid,
 	int64					persistentSerialNum,
 	Datum					*values)
@@ -109,8 +108,6 @@ static bool PersistentDatabase_ScanTupleCallback(
 	
 	SharedOidSearchAddResult addResult;
 	DatabaseDirEntry databaseDirEntry;
-
-	Assert(token == PersistentFsObjType_DatabaseDir);
 
 	GpPersistentDatabaseNode_GetValues(
 									values,

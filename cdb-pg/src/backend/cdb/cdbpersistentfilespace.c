@@ -193,7 +193,6 @@ PersistentFilespace_RemoveDirUnderLock(
 // -----------------------------------------------------------------------------
 
 static bool PersistentFilespace_ScanTupleCallback(
-	int 					token,
 	ItemPointer 			persistentTid,
 	int64					persistentSerialNum,
 	Datum					*values)
@@ -218,8 +217,6 @@ static bool PersistentFilespace_ScanTupleCallback(
 	ItemPointerData			previousFreeTid;
 	
 	FilespaceDirEntry filespaceDirEntry;
-
-	Assert(token == PersistentFsObjType_FilespaceDir);
 
 	GpPersistentFilespaceNode_GetValues(
 									values,
@@ -280,7 +277,6 @@ static Oid persistentFilespaceCheck;
 static bool persistentFilespaceCheckFound;
 
 static bool PersistentFilespace_CheckScanTupleCallback(
-	int 					token,
 	ItemPointer 			persistentTid,
 	int64					persistentSerialNum,
 	Datum					*values)
@@ -304,8 +300,6 @@ static bool PersistentFilespace_CheckScanTupleCallback(
 	int64					serialNum;
 	ItemPointerData			previousFreeTid;
 	
-	Assert(token == PersistentFsObjType_FilespaceDir);
-
 	GpPersistentFilespaceNode_GetValues(
 									values,
 									&filespaceOid,

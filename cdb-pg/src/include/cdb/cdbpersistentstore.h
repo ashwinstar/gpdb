@@ -39,7 +39,6 @@ typedef struct PersistentStoreSharedData
 typedef Relation (*PersistentStoreOpenRel) (void);
 typedef void (*PersistentStoreCloseRel) (Relation relation);
 typedef bool (*PersistentStoreScanTupleCallback) (
-								int 					token,
 								ItemPointer 			persistentTid,
 								int64					persistentSerialNum,
 								Datum					*values);
@@ -48,7 +47,7 @@ typedef bool (*PersistentStoreScanTupleCallback) (
 
 typedef struct PersistentStoreData
 {
-	int							token;
+	char						*tableName;
 
 	GpGlobalSequence			gpGlobalSequence;
 
@@ -142,7 +141,7 @@ extern void PersistentStore_InitShared(
 extern void PersistentStore_Init(
 	PersistentStoreData 		*storeData,
 
-	int							token,
+	char						*tableName,
 
 	GpGlobalSequence			gpGlobalSequence,
 	

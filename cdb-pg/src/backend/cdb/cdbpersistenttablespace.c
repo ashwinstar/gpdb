@@ -221,7 +221,6 @@ PersistentTablespace_GetState(
 // -----------------------------------------------------------------------------
 
 static bool PersistentTablespace_ScanTupleCallback(
-	int 					token,
 	ItemPointer 			persistentTid,
 	int64					persistentSerialNum,
 	Datum					*values)
@@ -241,8 +240,6 @@ static bool PersistentTablespace_ScanTupleCallback(
 	ItemPointerData			previousFreeTid;
 	
 	TablespaceDirEntry tablespaceDirEntry;
-
-	Assert(token == PersistentFsObjType_TablespaceDir);
 
 	GpPersistentTablespaceNode_GetValues(
 									values,
@@ -291,7 +288,6 @@ static Oid persistentTablespaceCheck;
 static bool persistentTablespaceCheckFound;
 
 static bool PersistentTablespace_CheckScanTupleCallback(
-	int 					token,
 	ItemPointer 			persistentTid,
 	int64					persistentSerialNum,
 	Datum					*values)
@@ -307,8 +303,6 @@ static bool PersistentTablespace_CheckScanTupleCallback(
 	int64					serialNum;
 	ItemPointerData			previousFreeTid;
 	
-	Assert(token == PersistentFsObjType_TablespaceDir);
-
 	GpPersistentTablespaceNode_GetValues(
 									values,
 									&filespaceOid,

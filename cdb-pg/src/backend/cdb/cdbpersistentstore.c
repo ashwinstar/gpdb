@@ -33,7 +33,7 @@ void PersistentStore_InitShared(
 void PersistentStore_Init(
 	PersistentStoreData 		*storeData,
 
-	int							token,
+	char						*tableName,
 
 	GpGlobalSequence			gpGlobalSequence,
 	
@@ -51,7 +51,7 @@ void PersistentStore_Init(
 {
 	MemSet(storeData, 0, sizeof(PersistentStoreData));
 
-	storeData->token = token;
+	storeData->tableName = tableName;
 	storeData->gpGlobalSequence = gpGlobalSequence;
 	storeData->openRel = openRel;
 	storeData->closeRel = closeRel;
@@ -187,8 +187,8 @@ static void PersistentStore_DoInitScan(
 		
 		if (Debug_persistent_recovery_print)
 			elog(Debug_persistent_recovery_print_level, 
-				 "PersistentStore_DoInitScan (token %d): TID %s, serial number " INT64_FORMAT ", previous free TID %s",
-				 storeData->token,
+				 "PersistentStore_DoInitScan ('%s'): TID %s, serial number " INT64_FORMAT ", previous free TID %s",
+				 storeData->tableName,
 				 ItemPointerToString(&persistentTid),
 				 persistentSerialNum, 
 				 ItemPointerToString2(&previousFreeTid));
@@ -209,7 +209,6 @@ static void PersistentStore_DoInitScan(
 
 		if (storeData->scanTupleCallback != NULL)
 			(*storeData->scanTupleCallback)(
-										storeData->token,
 										&persistentTid,
 										persistentSerialNum,
 										values);
@@ -225,20 +224,21 @@ static void PersistentStore_DoInitScan(
 	// UNDONE: I think the InRecovery test only applies to physical Master Mirroring on Standby.
 	/* Only test this outside of recovery scenarios */
 	if (!InRecovery && globalSequenceNum < storeSharedData->maxInUseSerialNum)
-		elog(ERROR, "Global sequence number " INT64_FORMAT " less than maximum value " INT64_FORMAT " found in scan (token %d)",
+		elog(ERROR, "Global sequence number " INT64_FORMAT " less than maximum value " INT64_FORMAT " found in scan ('%s')",
 		     globalSequenceNum,
 		     storeSharedData->maxInUseSerialNum,
-		     storeData->token);
+		     storeData->tableName);
 
 	storeSharedData->maxInUseSerialNum = globalSequenceNum;
 	
 	if (Debug_persistent_recovery_print)
 		elog(Debug_persistent_recovery_print_level, 
-			 "PersistentStore_DoInitScan (token %d): maximum in-use serial number " INT64_FORMAT ", maximum free order number " INT64_FORMAT ", free TID %s",
-			 storeData->token,
+			 "PersistentStore_DoInitScan ('%s'): maximum in-use serial number " INT64_FORMAT ", maximum free order number " INT64_FORMAT ", free TID %s, maximum known TID %s",
+			 storeData->tableName,
 			 storeSharedData->maxInUseSerialNum, 
 			 storeSharedData->maxFreeOrderNum, 
-			 ItemPointerToString2(&storeSharedData->freeTid));
+			 ItemPointerToString(&storeSharedData->freeTid),
+			 ItemPointerToString2(&storeSharedData->maxTid));
 }
 
 void PersistentStore_InitScanUnderLock(
@@ -292,7 +292,6 @@ void PersistentStore_Scan(
 		bool okToContinue;
 
 		okToContinue = (*scanTupleCallback)(
-								storeData->token,
 								&persistentTid,
 								persistentSerialNum,
 								values);
@@ -461,7 +460,8 @@ static void PersistentStore_DoInsertTuple(
 	 */
 	persistentTuple = heap_form_tuple(persistentRel->rd_att, values, nulls);
 	if (!HeapTupleIsValid(persistentTuple))
-		elog(ERROR, "Failed to build persistent relation node tuple");
+		elog(ERROR, "Failed to build persistent tuple ('%s')",
+		     storeData->tableName);
 
 	/*
 	 * (We have an exclusive lock (higher up) here so we can direct the insert to the last page.)
@@ -478,6 +478,12 @@ static void PersistentStore_DoInsertTuple(
 							blockNumber);
 	}
 
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "PersistentStore_DoInsertTuple: old maximum known TID %s, new insert TID %s ('%s')",
+			 ItemPointerToString(&storeSharedData->maxTid),
+			 ItemPointerToString2(&persistentTuple->t_self),
+			 storeData->tableName);
 	if (ItemPointerCompare(
 						&storeSharedData->maxTid,
 						&persistentTuple->t_self) == -1)		
@@ -569,7 +575,8 @@ void PersistentStore_UpdateTuple(
 	 */
 	persistentTuple = heap_form_tuple(persistentRel->rd_att, values, nulls);
 	if (!HeapTupleIsValid(persistentTuple))
-		elog(ERROR, "Failed to build persistent relation node tuple");
+		elog(ERROR, "Failed to build persistent tuple ('%s')",
+		     storeData->tableName);
 
 	persistentTuple->t_self = *persistentTid;
 		
@@ -672,8 +679,8 @@ void PersistentStore_ReadTuple(
 	bool *nulls;
 
 	if (PersistentStore_IsZeroTid(readTid))
-		elog(ERROR, "TID for fetch persistent tuple is invalid (0,0) (token %d)",
-			 storeData->token);
+		elog(ERROR, "TID for fetch persistent tuple is invalid (0,0) ('%s')",
+			 storeData->tableName);
 
 	// UNDONE: I think the InRecovery test only applies to physical Master Mirroring on Standby.
 	/* Only test this outside of recovery scenarios */
@@ -682,10 +689,10 @@ void PersistentStore_ReadTuple(
 						readTid,
 						&storeSharedData->maxTid) == 1) // Greater-than.
 	{
-		elog(ERROR, "TID %s for fetch persistent tuple is greater than the last known TID %s (token %d)",
+		elog(ERROR, "TID %s for fetch persistent tuple is greater than the last known TID %s ('%s')",
 			 ItemPointerToString(readTid),
 			 ItemPointerToString2(&storeSharedData->maxTid),
-			 storeData->token);
+			 storeData->tableName);
 	}
 						
 	persistentRel = (*storeData->openRel)();
@@ -695,9 +702,10 @@ void PersistentStore_ReadTuple(
 	if (!heap_fetch(persistentRel, SnapshotAny,
 					&tuple, &buffer, false, NULL))
 	{
-		elog(ERROR, "Failed to fetch persistent tuple at %s (token %d)",
+		elog(ERROR, "Failed to fetch persistent tuple at %s (maximum known TID %s, '%s')",
 			 ItemPointerToString(&tuple.t_self),
-			 storeData->token);
+			 ItemPointerToString2(&storeSharedData->maxTid),
+			 storeData->tableName);
 	}
 
 	
@@ -736,9 +744,10 @@ static bool PersistentStore_GetFreeTuple(
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
-			 "PersistentStore_GetFreeTuple: Enter: maximum free order number " INT64_FORMAT ", free TID %s",
+			 "PersistentStore_GetFreeTuple: Enter: maximum free order number " INT64_FORMAT ", free TID %s ('%s')",
 			 storeSharedData->maxFreeOrderNum, 
-			 ItemPointerToString2(&storeSharedData->freeTid));
+			 ItemPointerToString(&storeSharedData->freeTid),
+			 storeData->tableName);
 
 	if (storeSharedData->maxFreeOrderNum == 0)
 	{
@@ -766,19 +775,19 @@ static bool PersistentStore_GetFreeTuple(
 								&previousFreeTid);
 
 	if (PersistentStore_IsZeroTid(&previousFreeTid))
-		elog(ERROR, "Expected persistent store tuple at %s to be free (token %d)", 
+		elog(ERROR, "Expected persistent store tuple at %s to be free ('%s')", 
 			 ItemPointerToString(&storeSharedData->freeTid),
-			 storeData->token);
+			 storeData->tableName);
 
 	if (storeSharedData->maxFreeOrderNum == 1)
 		Assert(ItemPointerCompare(&previousFreeTid, &storeSharedData->freeTid) == 0);
 
 	if (persistentSerialNum != storeSharedData->maxFreeOrderNum)
-		elog(ERROR, "Expected persistent store tuple at %s to have order number " INT64_FORMAT " (found " INT64_FORMAT ", token %d)", 
+		elog(ERROR, "Expected persistent store tuple at %s to have order number " INT64_FORMAT " (found " INT64_FORMAT ", '%s')", 
 			 ItemPointerToString(&storeSharedData->freeTid),
 			 storeSharedData->maxFreeOrderNum,
 			 persistentSerialNum,
-			 storeData->token);
+			 storeData->tableName);
 
 	*freeTid = storeSharedData->freeTid;
 	storeSharedData->maxFreeOrderNum--;
@@ -790,10 +799,10 @@ static bool PersistentStore_GetFreeTuple(
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
-			 "PersistentStore_GetFreeTuple: Exit: maximum free order number " INT64_FORMAT ", free TID %s (token %d)",
+			 "PersistentStore_GetFreeTuple: Exit: maximum free order number " INT64_FORMAT ", free TID %s ('%s')",
 			 storeSharedData->maxFreeOrderNum, 
-			 ItemPointerToString2(&storeSharedData->freeTid),
-			 storeData->token);
+			 ItemPointerToString(&storeSharedData->freeTid),
+			 storeData->tableName);
 
 	return true;
 }

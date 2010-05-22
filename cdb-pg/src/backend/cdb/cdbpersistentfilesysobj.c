@@ -152,7 +152,7 @@ void PersistentFileSysObj_Init(
 	case PersistentFsObjType_RelationFile:
 		PersistentStore_Init(
 						storeData,
-						fsObjType,
+						"gp_persistent_relation_node",
 						GpGlobalSequence_PersistentRelation,
 						DirectOpen_GpPersistentRelationNodeOpenShared,
 						DirectOpen_GpPersistentRelationNodeClose,
@@ -172,7 +172,7 @@ void PersistentFileSysObj_Init(
 	case PersistentFsObjType_DatabaseDir:
 		PersistentStore_Init(
 						storeData,
-						fsObjType,
+						"gp_persistent_database_node",
 						GpGlobalSequence_PersistentDatabase,
 						DirectOpen_GpPersistentDatabaseNodeOpenShared,
 						DirectOpen_GpPersistentDatabaseNodeClose,
@@ -192,7 +192,7 @@ void PersistentFileSysObj_Init(
 	case PersistentFsObjType_TablespaceDir:
 		PersistentStore_Init(
 						storeData,
-						fsObjType,
+						"gp_persistent_tablespace_node",
 						GpGlobalSequence_PersistentTablespace,
 						DirectOpen_GpPersistentTableSpaceNodeOpenShared,
 						DirectOpen_GpPersistentTableSpaceNodeClose,
@@ -212,7 +212,7 @@ void PersistentFileSysObj_Init(
 	case PersistentFsObjType_FilespaceDir:
 		PersistentStore_Init(
 						storeData,
-						fsObjType,
+						"gp_persistent_filespace_node",
 						GpGlobalSequence_PersistentFilespace,
 						DirectOpen_GpPersistentFileSpaceNodeOpenShared,
 						DirectOpen_GpPersistentFileSpaceNodeClose,
