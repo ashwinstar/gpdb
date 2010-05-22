@@ -505,40 +505,35 @@ class GpAddMirrorsProgram:
         self.__pool = base.WorkerPool(self.__options.parallelDegree)
         gpEnv = GpMasterEnvironment(self.__options.masterDataDirectory, True)
 
-        faultProber = faultProberInterface.getFaultProber().initializeProber(gpEnv.getMasterPort())
-        try:
-            faultProber.pauseFaultProber()
-            confProvider = configInterface.getConfigurationProvider().initializeProvider(gpEnv.getMasterPort(), False)
-            gpArray = confProvider.loadSystemConfig()
+        faultProberInterface.getFaultProber().initializeProber(gpEnv.getMasterPort())
+        confProvider = configInterface.getConfigurationProvider().initializeProvider(gpEnv.getMasterPort(), False)
+        gpArray = confProvider.loadSystemConfig()
 
-            # check that we actually have mirrors
-            if gpArray.getFaultStrategy() != gparray.FAULT_STRATEGY_NONE:
-                raise ExceptionNoStackTraceNeeded( \
-                        "GPDB physical mirroring cannot be added.  The cluster is already configured with %s." % \
-                        gparray.getFaultStrategyLabel(gpArray.getFaultStrategy()))
+        # check that we actually have mirrors
+        if gpArray.getFaultStrategy() != gparray.FAULT_STRATEGY_NONE:
+            raise ExceptionNoStackTraceNeeded( \
+                    "GPDB physical mirroring cannot be added.  The cluster is already configured with %s." % \
+                    gparray.getFaultStrategyLabel(gpArray.getFaultStrategy()))
 
-            # figure out what needs to be done
-            mirrorBuilder = self.__getMirrorsToBuildBasedOnOptions(gpEnv, gpArray )
-            mirrorBuilder.checkForPortAndDirectoryConflicts(gpArray)
+        # figure out what needs to be done
+        mirrorBuilder = self.__getMirrorsToBuildBasedOnOptions(gpEnv, gpArray )
+        mirrorBuilder.checkForPortAndDirectoryConflicts(gpArray)
 
-            if self.__options.outputSampleConfigFile is not None:
-              # just output config file and done
-                self.__outputToFile(mirrorBuilder, self.__options.outputSampleConfigFile, gpArray)
-                logger.info('Configuration file output to %s successfully.' % self.__options.outputSampleConfigFile)
-            else:
-                if self.__options.interactive:
-                    self.__displayAddMirrors(gpEnv, mirrorBuilder, gpArray )
-                    if not userinput.ask_yesno(None, "\nContinue with add mirrors procedure", 'N'):
-                        raise UserAbortedException()
+        if self.__options.outputSampleConfigFile is not None:
+          # just output config file and done
+            self.__outputToFile(mirrorBuilder, self.__options.outputSampleConfigFile, gpArray)
+            logger.info('Configuration file output to %s successfully.' % self.__options.outputSampleConfigFile)
+        else:
+            if self.__options.interactive:
+                self.__displayAddMirrors(gpEnv, mirrorBuilder, gpArray )
+                if not userinput.ask_yesno(None, "\nContinue with add mirrors procedure", 'N'):
+                    raise UserAbortedException()
 
-                gpArray.setFaultStrategy(gparray.FAULT_STRATEGY_FILE_REPLICATION)
-                mirrorBuilder.buildMirrors("add", gpEnv, gpArray )
+            gpArray.setFaultStrategy(gparray.FAULT_STRATEGY_FILE_REPLICATION)
+            mirrorBuilder.buildMirrors("add", gpEnv, gpArray )
 
-                logger.info("Mirrors have been added; data synchronization is in progress.")
-                logger.info("Use gpstate to check the resynchronization progress.")
-        finally:
-            if faultProber.isFaultProberPaused():
-                faultProber.unpauseFaultProber()
+            logger.info("Mirrors have been added; data synchronization is in progress.")
+            logger.info("Use gpstate to check the resynchronization progress.")
                 
         return 0 # success -- exit code 0!
 

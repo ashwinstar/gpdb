@@ -686,58 +686,54 @@ class GpRecoverSegmentProgram:
             raise ProgramArgumentValidationException(\
                     "Only one of -i, -p, -s, and -S may be specified")
 
-        faultProber = faultProberInterface.getFaultProber().initializeProber(gpEnv.getMasterPort())
-        try:
-            confProvider = configInterface.getConfigurationProvider().initializeProvider(gpEnv.getMasterPort(), False)
-            gpArray = confProvider.loadSystemConfig()
+        faultProberInterface.getFaultProber().initializeProber(gpEnv.getMasterPort())
 
-            # check that we actually have mirrors
-            if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_SAN:
-                self.SanFailback(gpArray, gpEnv)
-                return 0
-            elif gpArray.getFaultStrategy() != gparray.FAULT_STRATEGY_FILE_REPLICATION:
-                raise ExceptionNoStackTraceNeeded( \
-                        'GPDB Mirroring replication is not configured for this Greenplum Database instance.')
+        confProvider = configInterface.getConfigurationProvider().initializeProvider(gpEnv.getMasterPort(), False)
+        gpArray = confProvider.loadSystemConfig()
 
-            # We have phys-rep/filerep mirrors.
+        # check that we actually have mirrors
+        if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_SAN:
+            self.SanFailback(gpArray, gpEnv)
+            return 0
+        elif gpArray.getFaultStrategy() != gparray.FAULT_STRATEGY_FILE_REPLICATION:
+            raise ExceptionNoStackTraceNeeded( \
+                    'GPDB Mirroring replication is not configured for this Greenplum Database instance.')
 
-            if self.__options.outputSpareDataDirectoryFile is not None:
-                self.__outputSpareDataDirectoryFile(gpEnv, gpArray, self.__options.outputSpareDataDirectoryFile)
-                return 0
+        # We have phys-rep/filerep mirrors.
 
-            faultProber.pauseFaultProber()
+        if self.__options.outputSpareDataDirectoryFile is not None:
+            self.__outputSpareDataDirectoryFile(gpEnv, gpArray, self.__options.outputSpareDataDirectoryFile)
+            return 0
 
-            # figure out what needs to be done
-            mirrorBuilder = self.getRecoveryActionsBasedOnOptions(gpEnv, gpArray)
+        # figure out what needs to be done
+        mirrorBuilder = self.getRecoveryActionsBasedOnOptions(gpEnv, gpArray)
 
-            if self.__options.outputSampleConfigFile is not None:
-                # just output config file and done
-                self.outputToFile(mirrorBuilder, gpArray, self.__options.outputSampleConfigFile)
-                logger.info('Configuration file output to %s successfully.' % self.__options.outputSampleConfigFile)
-            elif len(mirrorBuilder.getMirrorsToBuild()) == 0:
-                logger.info('No segments to recover')
+        if self.__options.outputSampleConfigFile is not None:
+            # just output config file and done
+            self.outputToFile(mirrorBuilder, gpArray, self.__options.outputSampleConfigFile)
+            logger.info('Configuration file output to %s successfully.' % self.__options.outputSampleConfigFile)
+        elif len(mirrorBuilder.getMirrorsToBuild()) == 0:
+            logger.info('No segments to recover')
+        else:
+            mirrorBuilder.checkForPortAndDirectoryConflicts(gpArray)
+
+            if self.__options.interactive:
+                self.displayRecovery(mirrorBuilder, gpArray)
+                self.__displayRecoveryWarnings(mirrorBuilder)
+                if not userinput.ask_yesno(None, "\nContinue with segment recovery procedure", 'N'):
+                    raise UserAbortedException()
             else:
-                mirrorBuilder.checkForPortAndDirectoryConflicts(gpArray)
+                self.__displayRecoveryWarnings(mirrorBuilder)
 
-                if self.__options.interactive:
-                    self.displayRecovery(mirrorBuilder, gpArray)
-                    self.__displayRecoveryWarnings(mirrorBuilder)
-                    if not userinput.ask_yesno(None, "\nContinue with segment recovery procedure", 'N'):
-                        raise UserAbortedException()
-                else:
-                    self.__displayRecoveryWarnings(mirrorBuilder)
+            mirrorBuilder.buildMirrors("recover", gpEnv, gpArray )
 
-                mirrorBuilder.buildMirrors("recover", gpEnv, gpArray )
+            confProvider.sendPgElogFromMaster("Recovery of %d segment(s) has been started." % \
+                    len(mirrorBuilder.getMirrorsToBuild()), True)
 
-                confProvider.sendPgElogFromMaster("Recovery of %d segment(s) has been started." % \
-                        len(mirrorBuilder.getMirrorsToBuild()), True)
+            logger.info("Segments have been recovered; data synchronization is in progress.")
+            logger.info("Use gpstate to check the resynchronization progress.")
 
-                logger.info("Segments have been recovered; data synchronization is in progress.")
-                logger.info("Use gpstate to check the resynchronization progress.")
 
-        finally:
-            if faultProber.isFaultProberPaused():
-                faultProber.unpauseFaultProber()
 
         return 0 # success -- exit code 0!
 

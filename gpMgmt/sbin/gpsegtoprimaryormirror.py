@@ -5,6 +5,12 @@
 #
 # Internal Use Function.
 #
+#
+# THIS IMPORT MUST COME FIRST
+#
+# import mainUtils FIRST to get python version check
+from gppylib.mainUtils import *
+
 import os, sys
 
 progname = os.path.split(sys.argv[0])[-1]
@@ -24,6 +30,7 @@ from gppylib.commands import base, gp, pg, unix
 from gppylib.db import catalog, dbconn
 from gppylib.gpcoverage import GpCoverage
 
+logger = gplog.get_default_logger()
 
 description = (""" 
 This utility is NOT SUPPORTED and is for internal-use only.
@@ -41,11 +48,6 @@ Return codes:
 
 """]
 
-EXECNAME = os.path.split(__file__)[-1]
-
-DEFAULT_TIMEOUT_FOR_SEGMENT_STARTUP=120
-
-
 #-------------------------------------------------------------------------
 class SegToPrimaryMirrorStatus():
     def __init__(self,datadir,modified,reason):
@@ -56,7 +58,11 @@ class SegToPrimaryMirrorStatus():
     def __str__(self):
         return "STATUS--DIR:%s--MODIFIED:%s--REASON:%s" % (self.datadir,self.modified,self.reason)
 
-#-------------------------------------------------------------------------    
+#-------------------------------------------------------------------------
+#
+# Be careful when modifying this -- this code should NOT attempt any database connections to the segment
+#    because the fault prober may be paused at the time this is called.
+#
 class GpSegToPrimaryMirror():
     ######
     def __init__(self,dblist,gpversion,collation,targetMirroringMode,pickledTransitionData):
@@ -90,9 +96,7 @@ class GpSegToPrimaryMirror():
 
         pass
 
-
-    ######
-    def start(self): 
+    def run(self):
         results=[]
         failures=False
         dirportmap = {}
@@ -121,31 +125,15 @@ class GpSegToPrimaryMirror():
                 results.append(status)
                 del dirportmap[cmd.dataDir]
                 failures=True
-        
-        if self.targetMirroringMode == 'primary':
-            self.pool.empty_completed_items()
-            for datadir,port in dirportmap.iteritems():
-                cmd = gp.GpSegCheckLocaleAndConnect('check on %s' % datadir,
-                                                datadir,
-                                                port,
-                                                self.expected_lc_collate,
-                                                self.expected_lc_monetary,
-                                                self.expected_lc_numeric,
-                                                DEFAULT_TIMEOUT_FOR_SEGMENT_STARTUP)
-                self.pool.addCommand(cmd)
-            self.pool.join()
-            
-            cmds=self.pool.getCompletedItems()
-            for cmd in cmds:
-                (success,error_str)=cmd.getResults()
-                
-                if success:
-                    results.append(SegToPrimaryMirrorStatus(cmd.datadir,True,"Conversion Succeeded"))
-                else:
-                    results.append(SegToPrimaryMirrorStatus(cmd.datadir,False,error_str))
-        else:
-            for datadir,port in dirportmap.iteritems():
-                results.append(SegToPrimaryMirrorStatus(datadir,True,"Conversion Succeeded"))
+
+        #
+        # note: we do not check whether we can connect to the database here (and do the local checking
+        #       like GpSegCheckLocaleAndConnect ) because we don't want to block the transition because
+        #       the fault prober is paused at this point.  If stuff fails just after conversion
+        #       then we could block on a connect call, waiting for the prober to unstick the process
+        #
+        for datadir,port in dirportmap.iteritems():
+            results.append(SegToPrimaryMirrorStatus(datadir,True,"Conversion Succeeded"))
                 
         #Log the results!
         status = '\nCOMMAND RESULTS\n'
@@ -155,86 +143,61 @@ class GpSegToPrimaryMirror():
         
         logger.info(status)
         
-        return failures
+        return 1 if failures else 0
     
     def cleanup(self):
         if self.pool:
             self.pool.haltWork()
-    
-#-------------------------------------------------------------------------
-def parseargs():
-    parser = OptParser(option_class=OptChecker,
-                description=' '.join(description.split()),
-                version='%prog version $Revision: #1 $')
-    parser.setHelp(_help)
-    parser.set_usage('%prog [--help] [options] ')
-    parser.remove_option('-h')
-    
-    parser.add_option('-h', '-?', '--help', action='help',help='show this help message and exit')
-    parser.add_option('-v','--verbose', action='store_true',help='debug output.')
-    parser.add_option('-q', '--quiet', action='store_true',help='suppress status messages')
-    parser.add_option("-C", "--collation", type="string", 
-                        help="values for lc_collate, lc_monetary, lc_numeric separated by :")
-    parser.add_option("-D","--datadir",dest="dblist", action="append", type="string")
-    parser.add_option("-p","--pickledTransitionData",dest="pickledTransitionData", type="string")
-    parser.add_option("-M","--mirroringMode",dest="mirroringMode", type="string")
-    parser.add_option("-V", "--gp-version", dest="gpversion",metavar="GP_VERSION",
-                    help="expected software version")      
-    
-    parser.set_defaults(verbose=False, filters=[], slice=(None, None))
-    
-    # Parse the command line arguments
-    (options, args) = parser.parse_args()
-        
-    return options, args
+
+    #-------------------------------------------------------------------------
+    @staticmethod
+    def createParser():
+        """
+        Constructs and returns an option parser.
+
+        Called by simple_main()
+        """
+        parser = OptParser(option_class=OptChecker,
+                    description=' '.join(description.split()),
+                    version='%prog version $Revision: #1 $')
+        parser.setHelp("")
+
+        addStandardLoggingAndHelpOptions(parser, includeNonInteractiveOption=False)
+
+        parser.add_option("-C", "--collation", type="string",
+                            help="values for lc_collate, lc_monetary, lc_numeric separated by :")
+        parser.add_option("-D","--datadir",dest="dblist", action="append", type="string")
+        parser.add_option("-p","--pickledTransitionData",dest="pickledTransitionData", type="string")
+        parser.add_option("-M","--mirroringMode",dest="mirroringMode", type="string")
+        parser.add_option("-V", "--gp-version", dest="gpversion",metavar="GP_VERSION",
+                        help="expected software version")
+
+        parser.set_defaults(verbose=False, filters=[], slice=(None, None))
+
+        return parser
 
 
+    #-------------------------------------------------------------------------
+    @staticmethod
+    def createProgram(options, args):
+        """
+        Construct and returns a GpSegToPrimaryMirror object.
 
-#-------------------------------------------------------------------------
-    
-def main():
+        Called by simple_main()
+        """
+
+        return GpSegToPrimaryMirror(options.dblist,options.gpversion,options.collation,options.mirroringMode,options.pickledTransitionData)
+
+#------------------------------------------------------------------------- 
+if __name__ == '__main__':
     coverage = GpCoverage()
     coverage.start()
 
-    conversionCmd=None
-    
     try:
-        gplog.setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName(),nonuser=True)
-        
-        options, args = parseargs()
-        
-        if options.verbose:
-            gplog.enable_verbose_logging()        
-        if options.quiet:
-            gplog.quiet_stdout_logging()
-
-        logger.info("Starting gpsegtoprimaryormirror with args: %s" % ' '.join(sys.argv[1:]))
-        
-        conversionCmd = GpSegToPrimaryMirror(options.dblist,options.gpversion,options.collation,options.mirroringMode,options.pickledTransitionData)
-        
-        failures = conversionCmd.start()
-        
-        if failures:
-            sys.exit(1)
-        else:    
-            sys.exit(0)
-
-    except Exception, e:
-        logger.exception("gpsegtoprimaryormirror failed. (Reason=%s) exiting..." % e)
-        sys.exit(2)
-    except KeyboardInterrupt:
-        sys.exit('\nUser Interrupted')
+        mainOptions = {}
+        simple_main(GpSegToPrimaryMirror.createParser,
+                    GpSegToPrimaryMirror.createProgram,
+                    mainOptions)
     finally:
-        if conversionCmd:
-            conversionCmd.cleanup()
-
         coverage.stop()
         coverage.generate_report()
-
-
-#------------------------------------------------------------------------- 
-logger = gplog.get_default_logger()    
-if __name__ == '__main__':
-    main()
-
- 

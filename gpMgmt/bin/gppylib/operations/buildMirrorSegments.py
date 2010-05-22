@@ -165,7 +165,6 @@ class GpMirrorListToBuild:
             from the mirrorsToBuild must be present in gpArray.
 
         """
-        assert faultProberInterface.getFaultProber().isFaultProberPaused()
         testOutput("building %s segment(s)" % len(self.__mirrorsToBuild))
 
         if len(self.__mirrorsToBuild) == 0:
@@ -212,7 +211,7 @@ class GpMirrorListToBuild:
         self.__cleanUpSegmentDirectories(cleanupDirectives)
         self.__copySegmentDirectories(gpEnv, gpArray, copyDirectives)
 
-        # update and save metadata
+        # update and save metadata in memory
         for toRecover in self.__mirrorsToBuild:
 
             if toRecover.getFailoverSegment() is None:
@@ -235,29 +234,35 @@ class GpMirrorListToBuild:
             seg = toRecover.getLiveSegment()
             seg.setSegmentMode(gparray.MODE_RESYNCHRONIZATION)
 
-        # Disable Ctrl-C
-        signal.signal(signal.SIGINT,signal.SIG_IGN)
+        faultProber = faultProberInterface.getFaultProber()
 
+        # figure out what needs to be started or transitioned
+        mirrorsToStart = []
+        primariesToConvert = []
+        convertPrimaryUsingFullResync = []
+        for toRecover in self.__mirrorsToBuild:
+            seg = toRecover.getFailoverSegment()
+            if seg is None:
+                seg = toRecover.getFailedSegment() # we are recovering in place
+            mirrorsToStart.append(seg)
+            primariesToConvert.append(toRecover.getLiveSegment())
+            convertPrimaryUsingFullResync.append(toRecover.isFullSynchronization())
+
+        # Disable Ctrl-C, going to save metadata in database and transition segments
+        signal.signal(signal.SIGINT,signal.SIG_IGN)
         try:
+            faultProber.pauseFaultProber()
+
             # should use mainUtils.getProgramName but I can't make it work!
             programName = os.path.split(sys.argv[0])[-1]
             configInterface.getConfigurationProvider().updateSystemConfig(gpArray, "%s: segment resync" % programName )
 
-            # stop/start new mirrors
-            mirrorsToStart = []
-            primariesToConvert = []
-            convertPrimaryUsingFullResync = []
-            for toRecover in self.__mirrorsToBuild:
-                seg = toRecover.getFailoverSegment()
-                if seg is None:
-                    seg = toRecover.getFailedSegment() # we are recovering in place
-                mirrorsToStart.append(seg)
-                primariesToConvert.append(toRecover.getLiveSegment())
-                convertPrimaryUsingFullResync.append(toRecover.isFullSynchronization())
-
             self.__startAll(gpEnv, gpArray, mirrorsToStart)
             self.__convertAllPrimaries(gpEnv, gpArray, primariesToConvert, convertPrimaryUsingFullResync)
         finally:
+            if faultProber.isFaultProberPaused():
+                faultProber.unpauseFaultProber()
+                
             # Reenable Ctrl-C
             signal.signal(signal.SIGINT,signal.default_int_handler)
 

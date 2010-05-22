@@ -22,6 +22,7 @@ class GpFaultProberImplGpdb(GpFaultProber):
     def __init__(self):
         self.__isPaused = False
         self.__masterDbUrl = None
+        self.__conn = None
 
     #
     # returns self
@@ -32,29 +33,25 @@ class GpFaultProberImplGpdb(GpFaultProber):
 
     def pauseFaultProber(self):
         assert not self.__isPaused
-        assert self.__masterDbUrl is not None
+        assert self.__masterDbUrl is not None # must be initialized
+        assert self.__conn is None
 
         logger.debug("Pausing fault prober")
         
-        conn = dbconn.connect(self.__masterDbUrl, True) # use utility mode so we don't do any segment connection stuff
-        dbconn.execSQL( conn, "BEGIN")
-        dbconn.execSQL( conn, "set gp_fts_probe_pause = on")
-        dbconn.execSQL( conn, "COMMIT")
-        conn.close()
+        self.__conn = dbconn.connect(self.__masterDbUrl, True) # use utility mode so we don't do any segment connection stuff
+        dbconn.execSQL( self.__conn, "set gp_fts_probe_pause = on")
 
         self.__isPaused = True
 
     def unpauseFaultProber(self):
         assert self.__isPaused
-        assert self.__masterDbUrl is not None
+        assert self.__masterDbUrl is not None  # must be initialized
+        assert self.__conn is not None
 
         logger.debug("Unpausing fault prober")
 
-        conn = dbconn.connect(self.__masterDbUrl, True) # use utility mode so we don't do any segment connection stuff
-        dbconn.execSQL( conn, "BEGIN")
-        dbconn.execSQL( conn, "set gp_fts_probe_pause = off")
-        dbconn.execSQL( conn, "COMMIT")
-        conn.close()
+        self.__conn.close() # closing connection will rollback GUC setting and so unpause prober
+        self.__conn = None
         self.__isPaused = False
 
     def isFaultProberPaused(self):
