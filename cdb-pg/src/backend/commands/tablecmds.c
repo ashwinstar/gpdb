@@ -12953,7 +12953,8 @@ add_partition_rule(PartitionRule *rule)
 	else
 		isnull[Anum_pg_partition_rule_parreloptions - 1] = true;
 	
-	values[Anum_pg_partition_rule_partemplatespace -1] = ObjectIdGetDatum(InvalidOid);
+	values[Anum_pg_partition_rule_partemplatespace -1] = 
+			ObjectIdGetDatum(rule->partemplatespaceId);
 
 	rulerel = heap_open(PartitionRuleRelationId, RowExclusiveLock);
 
@@ -13387,18 +13388,19 @@ add_part_to_catalog(Oid relid, PartitionBy *pby,
 			heap_close(rel, AccessShareLock);
 		}
 
-		rule->paroid = paroid;
-		rule->parchildrelid = relid;
-		rule->parparentoid = parentoid;
-		rule->parisdefault = el->isDefault;
-		rule->parname = parname;
-		rule->parruleord = parruleord;
-		rule->parrangestartincl = rangestartinc;
-		rule->parrangestart = rangestart;
-		rule->parrangeendincl = rangeendinc;
-		rule->parrangeend = rangeend;
-		rule->parrangeevery = rangeevery;
-		rule->parlistvalues = (List *)listvalues;
+		rule->paroid			 = paroid;
+		rule->parchildrelid		 = relid;
+		rule->parparentoid		 = parentoid;
+		rule->parisdefault		 = el->isDefault;
+		rule->parname			 = parname;
+		rule->parruleord		 = parruleord;
+		rule->parrangestartincl	 = rangestartinc;
+		rule->parrangestart		 = rangestart;
+		rule->parrangeendincl	 = rangeendinc;
+		rule->parrangeend		 = rangeend;
+		rule->parrangeevery		 = rangeevery;
+		rule->parlistvalues		 = (List *)listvalues;
+		rule->partemplatespaceId = InvalidOid; /* only valid for template */
 
 		if (!bTemplate_Only)
 			add_partition_rule(rule);
@@ -13409,11 +13411,26 @@ add_part_to_catalog(Oid relid, PartitionBy *pby,
 			rule->parparentoid = InvalidOid;
 			rule->parchildrelid = InvalidOid;
 
-			/* XXX XXX: what about tablespace ?? */
-			if (el->storeAttr && ((AlterPartitionCmd *)el->storeAttr)->arg1)
-				rule->parreloptions =
-					(List *)((AlterPartitionCmd *)el->storeAttr)->arg1;
+			if (el->storeAttr)
+			{
+				if (((AlterPartitionCmd *)el->storeAttr)->arg1)
+					rule->parreloptions =
+							(List *)((AlterPartitionCmd *)el->storeAttr)->arg1;
+				if (((AlterPartitionCmd *)el->storeAttr)->arg2)
+				{
+					Oid			tablespaceId;
 
+					tablespaceId = 
+							get_settable_tablespace_oid(
+						strVal(((AlterPartitionCmd *)el->storeAttr)->arg2));
+					
+					/* get_settable_tablespace_oid will error out for us */
+					Assert(OidIsValid(tablespaceId)); 
+
+					/* only valid for template definitions */
+					rule->partemplatespaceId = tablespaceId;
+				}
+			}
 			add_partition_rule(rule);
 		}
 	}
@@ -13576,17 +13593,17 @@ ruleMakePartitionRule(HeapTuple tuple, TupleDesc tupdesc, MemoryContext mcxt)
 	rule = makeNode(PartitionRule);
 	MemoryContextSwitchTo(oldcxt);
 
-	rule->parruleid = HeapTupleGetOid(tuple);
-	rule->paroid = rule_desc->paroid;
+	rule->parruleid		= HeapTupleGetOid(tuple);
+	rule->paroid		= rule_desc->paroid;
 	rule->parchildrelid = rule_desc->parchildrelid;
-	rule->parparentoid = rule_desc->parparentrule;
-	rule->parisdefault = rule_desc->parisdefault;
+	rule->parparentoid	= rule_desc->parparentrule;
+	rule->parisdefault	= rule_desc->parisdefault;
 
 	rule->parname = MemoryContextStrdup(mcxt, NameStr(rule_desc->parname));
 
-	rule->parruleord = rule_desc->parruleord;
+	rule->parruleord		= rule_desc->parruleord;
 	rule->parrangestartincl = rule_desc->parrangestartincl;
-	rule->parrangeendincl = rule_desc->parrangeendincl;
+	rule->parrangeendincl	= rule_desc->parrangeendincl;
 
 	/* start range */
 	rule_datum = heap_getattr(tuple,
@@ -13657,6 +13674,7 @@ ruleMakePartitionRule(HeapTuple tuple, TupleDesc tupdesc, MemoryContext mcxt)
 							  Anum_pg_partition_rule_parreloptions,
 							  tupdesc,
 							  &isnull);
+
 	if (isnull)
 		rule->parreloptions = NIL;
 	else
@@ -13674,7 +13692,6 @@ ruleMakePartitionRule(HeapTuple tuple, TupleDesc tupdesc, MemoryContext mcxt)
 		deconstruct_array(array, TEXTOID, -1, false, 'i',
 						  &options, NULL, &noptions);
 
-		/* XXX XXX: what about tablespace ?? */
 		/* key/value pairs for storage clause */
 		for (i = 0; i < noptions; i++)
 		{
@@ -13695,7 +13712,17 @@ ruleMakePartitionRule(HeapTuple tuple, TupleDesc tupdesc, MemoryContext mcxt)
 			opts = lappend(opts, makeDefElem(n, (Node *)v));
 		}
 		rule->parreloptions = opts;
+
 	}
+
+	rule_datum = heap_getattr(tuple,
+							  Anum_pg_partition_rule_partemplatespace,
+							  tupdesc,
+							  &isnull);
+	if (isnull)
+		rule->partemplatespaceId = InvalidOid;
+	else
+		rule->partemplatespaceId = DatumGetObjectId(rule_datum);
 
 	return rule;
 }
@@ -16598,16 +16625,24 @@ atpxPart_validate_spec(
 							el->isDefault = rule_tmpl->parisdefault;
 
 							/* MPP-6904: use storage options from template */
-							if (rule_tmpl->parreloptions)
+							if (rule_tmpl->parreloptions ||
+								rule_tmpl->partemplatespaceId)
 							{
+								Node *tspaceName = NULL;
 								AlterPartitionCmd *apc = 
 										makeNode(AlterPartitionCmd);
 
 								el->storeAttr = (Node *)apc;
-								/* XXX XXX: what about tablespace ?? */
+
+								if (rule_tmpl->partemplatespaceId)
+									tspaceName = 
+										(Node*)makeString(
+												get_tablespace_name(
+											rule_tmpl->partemplatespaceId
+														));
 
 								apc->partid = NULL;
-								apc->arg2	= NULL;
+								apc->arg2	= tspaceName;
 								apc->arg1	= (Node *)rule_tmpl->parreloptions;
 
 							}

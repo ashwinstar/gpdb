@@ -5932,15 +5932,40 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 						  Partition *part, bool handleevery, int prettyFlags,
 						  bool bLeafTablename)
 {
-	StringInfoData str;
-	deparse_context c;
-	char *reloptions = NULL;
-	bool needspace = false;
+	StringInfoData		 str;
+	deparse_context		 c;
+	char				*reloptions	   = NULL;
+	char				*tspaceoptions = NULL;
+	bool				 needspace	   = false;
 
 	if (OidIsValid(rule->parchildrelid))
 	{
-		reloptions = flatten_reloptions(rule->parchildrelid);
+		StringInfoData      	 sid2;
 
+		initStringInfo(&sid2);
+
+		truncateStringInfo(&sid2, 0);
+
+		/*
+		 * If it's in a nondefault tablespace, say so
+		 * (append after the reloptions)
+		 */
+		if (!part->paristemplate)
+		{
+			Oid			tblspc;
+
+			tblspc = get_rel_tablespace(rule->parchildrelid);
+			if (OidIsValid(tblspc))
+			{
+				appendStringInfo(&sid2, " TABLESPACE %s",
+								 quote_identifier(
+										 get_tablespace_name(tblspc)));
+
+				tspaceoptions = sid2.data;
+			}
+		}
+
+		reloptions = flatten_reloptions(rule->parchildrelid);
 
 		if (bLeafTablename) /* MPP-6297: dump by tablename */	
 		{
@@ -5949,6 +5974,7 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 			initStringInfo(&sid1);
 
 			truncateStringInfo(&sid1, 0);
+
 			/* always quote to make WITH (tablename=...) work correctly */
 			appendStringInfo(&sid1, "tablename=\'%s\'", 
 							 get_rel_name(rule->parchildrelid));
@@ -5985,16 +6011,20 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 			reloptions = sid1.data;
 
 		}
-
 	}
-	else if (PointerIsValid(rule->parreloptions)
+	else if ((PointerIsValid(rule->parreloptions) ||
+			  OidIsValid(rule->partemplatespaceId))
 			 || (bLeafTablename && part->paristemplate))
 	{
-		ListCell *lc;
-		List *opts;
-		StringInfoData buf;
+		ListCell		*lc;
+		List			*opts;
+		StringInfoData	 buf;
+		StringInfoData   sid3;
 
 		initStringInfo(&buf);
+		initStringInfo(&sid3);
+
+		truncateStringInfo(&sid3, 0);
 
 		/* NOTE: only the template case */
 		Assert(part->paristemplate);
@@ -6027,8 +6057,20 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 				if (e->arg)
 					appendStringInfo(&buf, "=%s", strVal(e->arg));
 			}
+			reloptions = buf.data;
 		}
-		reloptions = buf.data;
+		if (OidIsValid(rule->partemplatespaceId))
+		{
+			char *tname = get_tablespace_name(rule->partemplatespaceId);
+
+			Assert(tname);
+
+			appendStringInfo(&sid3, " TABLESPACE %s",
+							 quote_identifier(tname));
+
+			tspaceoptions = sid3.data;
+		}
+
 	}
 
 	initStringInfo(&str);
@@ -6045,6 +6087,8 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 
 		if (reloptions && strlen(reloptions))
 			appendStringInfo(&str, " WITH (%s)", reloptions);
+		if (tspaceoptions && strlen(tspaceoptions))
+			appendStringInfo(&str, " %s", tspaceoptions);
 
 		return str.data;
 	}
@@ -6052,7 +6096,8 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 	if (rule->parname && rule->parname[0] != '\0')
 		appendStringInfo(&str, "%sPARTITION %s ",
 						 part->parlevel > 0 ? "SUB" : "",
-						 quote_identifier(make_par_name(rule->parname, handleevery)));
+						 quote_identifier(make_par_name(rule->parname, 
+														handleevery)));
 			
 	switch (part->parkind)
 	{
@@ -6123,6 +6168,15 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 		appendStringInfo(&str, "%sWITH (%s)",
 						 needspace ? " " : "",
 						 reloptions);
+
+	if (tspaceoptions && strlen(tspaceoptions))
+	{
+		/* if have reloptions, then need a space, else just use needspace */
+		bool needspace2 = reloptions ? true : (needspace);
+		appendStringInfo(&str, "%s%s", 
+						 needspace2 ? " " : "",
+						 tspaceoptions);
+	}
 
 	return str.data;
 }

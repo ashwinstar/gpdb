@@ -1437,21 +1437,24 @@ struct PartitionNode
 /* Individual partitioning rule */
 typedef struct PartitionRule
 {
-	NodeTag type;
-	Oid parruleid;
-	Oid paroid;
-	Oid parchildrelid;
-	Oid parparentoid;
-	bool parisdefault;
-	char *parname;
-	Node *parrangestart;
-	bool parrangestartincl;
-	Node *parrangeend;
-	bool parrangeendincl;
-	Node *parrangeevery;
-	List *parlistvalues;
-	int2 parruleord;
-	List *parreloptions;
+	NodeTag		 type;
+	Oid			 parruleid;
+	Oid			 paroid;
+	Oid			 parchildrelid;
+	Oid			 parparentoid;
+	bool		 parisdefault;
+	char		*parname;
+	Node		*parrangestart;
+	bool		 parrangestartincl;
+	Node		*parrangeend;
+	bool		 parrangeendincl;
+	Node		*parrangeevery;
+	List		*parlistvalues;
+	int2		 parruleord;
+	List		*parreloptions;
+	Oid			 partemplatespaceId; 	/* the tablespace id for the
+										 * template (or InvalidOid for 
+										 * non-template rules */
 	struct PartitionNode *children; /* sub partition */
 } PartitionRule;
 

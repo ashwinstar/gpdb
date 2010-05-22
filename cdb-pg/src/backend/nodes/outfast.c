@@ -3,7 +3,7 @@
  * outfast.c
  *	  Fast serialization functions for Postgres tree nodes.
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
+ * Portions Copyright (c) 2005-2010, Greenplum inc
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -1845,6 +1845,7 @@ _outPartitionRule(StringInfo str, PartitionRule *node)
 	WRITE_NODE_FIELD(parlistvalues);
 	WRITE_BINARY_FIELD(parruleord, sizeof(int2));
 	WRITE_NODE_FIELD(parreloptions);
+	WRITE_OID_FIELD(partemplatespaceId);
 	WRITE_NODE_FIELD(children);
 }
 

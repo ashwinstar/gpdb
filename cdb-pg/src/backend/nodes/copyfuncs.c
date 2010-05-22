@@ -11,7 +11,7 @@
  * be handled easily in a simple depth-first traversal.
  *
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
+ * Portions Copyright (c) 2005-2010, Greenplum inc
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -2685,6 +2685,7 @@ _copyPartitionRule(PartitionRule *from)
 	COPY_NODE_FIELD(parlistvalues);
 	COPY_SCALAR_FIELD(parruleord);
 	COPY_NODE_FIELD(parreloptions);
+	COPY_SCALAR_FIELD(partemplatespaceId);
 	COPY_NODE_FIELD(children); /* sub partition */
 
 	return newnode;
