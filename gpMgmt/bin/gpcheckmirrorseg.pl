@@ -10,6 +10,7 @@ use Pod::Usage;
 use Getopt::Long;
 use Data::Dumper;
 use File::Spec;
+use Config;
 use strict;
 use warnings;
 
@@ -158,6 +159,8 @@ my $glob_mm;
 
 my $glob_skipseg;
 
+my $glob_diff;
+
 BEGIN {
     my $man  = 0;
     my $help = 0;
@@ -209,6 +212,13 @@ BEGIN {
 	{
 		$glob_mm = 0;
 	}
+
+	$glob_diff = "diff";
+    # MPP-9810: need gnu diff on solaris
+    if ($Config{'osname'} =~ m/solaris|sunos/i)
+    {
+        $glob_diff = "gdiff";
+    }
 
 #    print "loading...\n" ;
 }
@@ -1611,7 +1621,7 @@ sub diff_again
 	$primtmp .= '1';
 	$mirrtmp .= '1';
 
-	my $diffi2 = `diff -b $primtmp $mirrtmp`;
+	my $diffi2 = `$glob_diff -b $primtmp $mirrtmp`;
 
 	if (length($diffi2))
 	{
@@ -1789,7 +1799,7 @@ sub diff_thrice
 	$primtmp .= '1';
 	$mirrtmp .= '1';
 
-	my $diffi3 = `diff -I GP_IGNORE -b $primtmp $mirrtmp`;
+	my $diffi3 = `$glob_diff -I GP_IGNORE -b $primtmp $mirrtmp`;
 
 	{
 		if (length($diffi3))
@@ -2135,7 +2145,7 @@ EOF_msgstr
 		$primtmp .= '1';
 		$mirrtmp .= '1';
 
-		my $diffi = `diff -b $primtmp $mirrtmp`;
+		my $diffi = `$glob_diff -b $primtmp $mirrtmp`;
 
 		if (!length($diffi))
 		{
