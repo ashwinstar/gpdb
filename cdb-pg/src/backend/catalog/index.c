@@ -2505,7 +2505,7 @@ reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
 						/* markPersistentAsPhysicallyTruncated */ true);
 
 			retrelfilenode = iRel->rd_rel->relfilenode;
-			Assert(newrelfilenode == newrelfilenode ||
+			Assert(retrelfilenode == newrelfilenode ||
 				   !OidIsValid(newrelfilenode));
 		}
 		else
