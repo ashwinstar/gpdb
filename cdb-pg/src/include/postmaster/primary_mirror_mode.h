@@ -247,7 +247,7 @@ extern void getFileRepRoleAndState(
 								   FileRepRole_e *fileRepRole, 
 								   SegmentState_e *segmentState, 
 								   DataState_e *dataState,
-                                   bool *isInTransitionOut,
+                                   bool *isInFilerepTransitionOut,
                                    DataState_e *transitionTargetDataStateOut);
 
 /* functions for the postmaster/filerep interaction */

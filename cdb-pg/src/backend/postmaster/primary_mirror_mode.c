@@ -28,6 +28,9 @@
  * Note: if the order or # of values is changed then update the labels below.
  *
  * this implements a state machine.  Each transition manages its own transition order through this machine
+ *
+ * Note that some places (notably, getFileRepRoleAndState) rely on the order of these
+ *   for implementation.  Be careful of that when changing this.
  */
 typedef enum
 {
@@ -514,8 +517,10 @@ isDatabaseRunning(void)
  * @param fileRepRoleOut may be NULL.  If non-null, *fileRepRoleOut is filled in with the current filerep role
  * @param segmentStateOut may be NULL.  If non-null, *segmentStateOut is filled in with the current segment state
  * @param dataStateOut  may be NULL.  If non-null, *dataStateOut is filled in with the current segment state
- * @param isInTransitionOut  may be NULL.  If non-null, *isInTransitionOut is filled in with true or false depending on
+ * @param isInFilerepTransitionOut  may be NULL.  If non-null, *isInTransitionOut is filled in with true or false depending on
  *                           if the segment is in filerep transition to primary or mirror mode
+ *                           Note that this is true only if we have reached the point in the full transition
+ *                           where earlier values have been shutdown
  * @param transitionTargetDataStateOut  may be NULL.  If non-null, *transitionTargetDataStateOut is filled
  *                           in with the target data state, or DataStateNotInitialized if there is
  *                           no transition to primary or mirror mode is in progress.
@@ -526,7 +531,7 @@ getFileRepRoleAndState(
 			SegmentState_e	*segmentStateOut,
 			DataState_e		*dataStateOut,
 
-			bool *isInTransitionOut,
+			bool *isInFilerepTransitionOut,
 			DataState_e *transitionTargetDataStateOut
 			)
 {
@@ -535,14 +540,17 @@ getFileRepRoleAndState(
     FileRepRole_e fileRepRole;
     SegmentState_e	segmentState;
     DataState_e		dataState;
-    bool isInTransition;
+    bool isInFilerepTransition;
     DataState_e transitionTargetDataState;
 
 	acquireModuleSpinLock();
 	{
-		/* todo: only fetch mode from transition in some cases (or never?) */
-		volatile PrimaryMirrorModeTransitionArguments *args = &pmModuleState->requestedTransition;
-		PrimaryMirrorMode mode = args->mode;
+        /* check to see if postmaster is still processing a transition.  Note that here we don't
+         *  need to check to see if the listener is complete */
+	    isInFilerepTransition = pmModuleState->isTransitionRequested &&
+	                            pmModuleState->transitionState >= TSDoFilerepStartup;
+
+		PrimaryMirrorMode mode = pmModuleState->mode;
 		switch (mode)
 		{
 			case PMModePrimarySegment:
@@ -551,17 +559,12 @@ getFileRepRoleAndState(
                 dataState = pmModuleState->dataState;
                 segmentState = pmModuleState->segmentState;
 				    
-				    
-                /* check to see if postmaster is still processing a transition.  Note that here we don't
-                 *  need to check to see if the listener is complete */
-                if ( pmModuleState->isTransitionRequested )
+                if ( isInFilerepTransition )
                 {
-                    isInTransition = true;
-                    transitionTargetDataState = args->dataState;
+                    transitionTargetDataState = pmModuleState->requestedTransition.dataState;
                 }
                 else
                 {
-                    isInTransition = false;
                     transitionTargetDataState = DataStateNotInitialized;
                 }
 				    
@@ -570,7 +573,6 @@ getFileRepRoleAndState(
                 fileRepRole = FileRepNoRoleConfigured;
                 dataState = DataStateNotInitialized;
                 segmentState = SegmentStateNotInitialized;
-                isInTransition = false;
                 transitionTargetDataState = DataStateNotInitialized;
 				break;
 		}
@@ -585,8 +587,8 @@ getFileRepRoleAndState(
     if ( dataStateOut )
 	    *dataStateOut = dataState;
 
-    if ( isInTransitionOut )
-	    *isInTransitionOut = isInTransition ;
+    if ( isInFilerepTransitionOut )
+	    *isInFilerepTransitionOut = isInFilerepTransition;
     if ( transitionTargetDataStateOut )
 	    *transitionTargetDataStateOut = transitionTargetDataState;
 }
@@ -1063,7 +1065,6 @@ static void copyTransitionParametersToLocalMemoryIfNeeded(PrimaryMirrorModeTrans
 {
     Assert(pmModuleState->isTransitionRequested );
 
-
     if ( pmModuleState->hasPostmasterCopiedTransitionToLocalMemory)
     {
         return;
@@ -1095,6 +1096,9 @@ copyTransitionInputParameters(PrimaryMirrorModeTransitionArguments *args, Segmen
 		pmModuleState->segmentState = segmentState;
 
 		pmModuleState->isInFaultFromPostmasterReset = false;
+
+        /* we've reached the point of no-return, so update this */
+        pmModuleState->mode = args->mode;		
 	}
 	releaseModuleSpinLock();
 }
@@ -1205,6 +1209,12 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 
             if ( initialState != currentState)
             {
+                acquireModuleSpinLock();
+                {
+                    pmModuleState->transitionState = currentState;
+                }
+                releaseModuleSpinLock();
+
                 elog(LOG, "PostmasterPrimaryMirrorTransition (%d), after completed step, transition state is %s",
                     transitionNumber, getTransitionStateLabel(currentState));
             }
@@ -1224,7 +1234,6 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
                 break;
             }
 
-
             if ( currentState == TSDone)
             {
                 elog(LOG, "PostmasterPrimaryMirrorTransition: transition to %s done",
@@ -1242,8 +1251,7 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 
 	if (result == PMTransitionOkayButStillInProgress)
 	{
-		Assert(currentState != TSNone);
-		pmModuleState->transitionState = currentState;
+		Assert(pmModuleState->transitionState != TSNone);
     	elog(DEBUG1, "PostmasterPrimaryMirrorTransition (%d): in-progress, current state %s",
 	    	 transitionNumber,
 	    	 getTransitionStateLabel(currentState));
@@ -1255,10 +1263,6 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 	        transitionNumber, getTransitionResultLabel(result));
 		acquireModuleSpinLock();
 		{
-			if (result == PMTransitionSuccess)
-			{
-				pmModuleState->mode = requestedTransition.mode;
-			}
 			pmModuleState->transitionResult = result;
 			pmModuleState->isTransitionRequested = false;
 			elog(LOG, "PostmasterPrimaryMirrorTransition (%d): cleared isTransitionRequested (backend finished is %d)",
@@ -1289,6 +1293,15 @@ stepDoDatabaseStartup(TransitionState nextState, TransitionState *stateInOut)
 static PrimaryMirrorModeTransitionResult
 stepDoFilerepStartup(TransitionState nextState, TransitionState *stateInOut)
 {
+#ifdef USE_ASSERT_CHECKING
+    /* verify that filerep will get correct values when it asks for them */
+    bool isInTransition = false;
+    FileRepRole_e role = FileRepRoleNotInitialized;
+    getFileRepRoleAndState(&role, NULL, NULL, &isInTransition, NULL);
+    Assert(isInTransition);
+    Assert(role == FileRepPrimaryRole || role == FileRepMirrorRole);
+#endif
+
     StartFilerepProcesses();
     *stateInOut = nextState;
     return PMTransitionSuccess;
@@ -1421,9 +1434,8 @@ applyStepForTransitionToMasterOrMirrorlessMode(PrimaryMirrorModeTransitionArgume
             }
             return PMTransitionSuccess;
 
-            return PMTransitionSuccess;
-
         case TSDoDatabaseStartup:
+            copyTransitionInputParameters(args, SegmentStateNotInitialized);
             return stepDoDatabaseStartup(TSDone, stateInOut );
 
         default:
@@ -1467,7 +1479,9 @@ applyStepForTransitionToQuiescentSegmentMode(PrimaryMirrorModeTransitionArgument
         case TSAwaitingFilerepShutdown:
             return stepWaitForFilerepShutdown(TSDoneFilerepShutdown, stateInOut );
         case TSDoneFilerepShutdown:
+
             *stateInOut = TSDone;
+            copyTransitionInputParameters(args, SegmentStateNotInitialized);
             return PMTransitionSuccess;
 
         default:
@@ -1632,7 +1646,6 @@ applyStepForTransitionToMirrorSegmentMode(PrimaryMirrorModeTransitionArguments *
         case TSNone:
             switch (pmModuleState->mode)
             {
-                case PMModeMirrorSegment: /* todo: mirroring: is mirror to mirror transition really valid?  Should shut down previous filerep in that case? */
                 case PMModeQuiescentSegment:
                 case PMModeUninitialized:
                     *stateInOut = TSDoFilerepStartup;
@@ -1709,3 +1722,4 @@ pid_t primaryMirrorGetBGWriterPID(void)
     /* fetching single int field, no need for fancy locking */
     return pmModuleState->bgWriterPID;
 }
+
