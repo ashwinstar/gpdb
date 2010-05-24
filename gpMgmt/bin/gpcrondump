@@ -435,7 +435,7 @@ CHK_DUMP_SPACE () {
 		ACTUAL_DB_SIZE=0
 		for DUMP_TABLE_NAME in "${DUMP_TABLE_LIST[@]}"
 		do
-		    SZ=(`$GPSIZECALC -p -x "$DUMP_DATABASE" -t $DUMP_TABLE_NAME -fq|$GREP "|"`)
+		    SZ=(`$GPSIZECALC -p -a "$DUMP_DATABASE" -t $DUMP_TABLE_NAME -fq|$GREP "|"`)
 		    ACTUAL_DB_SIZE=$ACTUAL_DB_SIZE+$SZ
 		done
 	fi
