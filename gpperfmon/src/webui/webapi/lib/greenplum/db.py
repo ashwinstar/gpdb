@@ -1036,4 +1036,22 @@ def database_history(stime, etime, interval_code):
 
     return _database_consolidate(rows)
 
+def database_state():
+    
+    degradeState_query =  "select count(*) from gp_segment_configuration where mode <> 's'"
+    unbalancedState_query = "select count(*) from gp_segment_configuration where role <> preferred_role"
+   
+    result = execute_query(degradeState_query)
 
+    if result[0]['count'] != 0:
+       dbstatus = 'DEGRADED'
+    else:
+       result = execute_query(unbalancedState_query)
+       if result[0]['count'] != 0:
+          dbstatus = 'UNBALANCED'
+
+    if DEBUG:
+        sys.stderr.write("degrade state query: %s\n" % degradeState_query)
+        sys.stderr.write("unbalanced state query: %s\n" % unbalancedState_query)
+        
+    return dbstatus

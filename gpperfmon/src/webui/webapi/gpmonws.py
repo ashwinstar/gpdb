@@ -691,7 +691,7 @@ class database:
             sys.stderr.write("</database>\n\n")
 
         res = None
-
+	 	dbstatus = 'NORMAL'
         try:
             if i.start == 'NOW':
                 res = db.database_now(remote)
@@ -708,6 +708,7 @@ class database:
                     return mkerr(error.BADREQ, 'Exceeded maximum number of samples at specified interval')
 
                 res = db.database_history(i.start, i.end, interval_code)
+		    	dbstatus = db.database_state()
 
         except db.GPDBError, errorinfo:
             return mkerr(error.DATA_ACCESS, errorinfo)
@@ -716,9 +717,9 @@ class database:
 
         # check if the result set is empty
         if ckeys:
-            return render.database(i.start, i.end, i.interval, tkeys, ckeys, tab)
+            return render.database(i.start, i.end, i.interval, tkeys, ckeys, tab, dbstatus)
         else:
-            return render.database_noresult(i.start, i.end, i.interval)
+            return render.database_noresult(i.start, i.end, i.interval, dbstatus)
            
 
 

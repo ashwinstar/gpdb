@@ -291,7 +291,9 @@ package model
 			
 			var maxLength:int = 0;
 			var numColumns:int = 0;
-						
+			
+			databaseStatus(databaseData.@dbstatus);			
+
 			// Ensure the the array is empty
 			if (detail == '1min')
 				oneMinAggData.removeAll();
@@ -449,6 +451,37 @@ package model
 			}	
 		}
 		
+		/**
+		 * This function shows the database status on the main view.
+		 * It changes the icon and lable as per the result from the data base.
+		 * For NORMAL state nothing will be shown.
+		 * For DEGRADE and POTENTIALLY UNBALANCED states corresponding icons will be shown. 
+		 * @param dbState
+		 */		
+		public function databaseStatus(dbState:String):void
+		{
+			if(dbState == 'DEGRADED')
+			{
+				dbStatus = "Cluster State: DEGRADED";
+				dbStatusIcon = Resources.DBDegradeIcon;
+				showDBStatus = true;
+				dbStatusStyle = "dbDegradeStyle";
+				dbStatusToolTip = "One or more segments in the Greenplum cluster are not available for normal operations.";
+			}
+			else if(dbState == 'UNBALANCED')
+			{
+				dbStatus = "Cluster State: UNBALANCED"
+				dbStatusIcon = Resources.DBUnbalancedIcon;
+				showDBStatus = true;
+				dbStatusStyle = "dbUnBalancedStyle";
+				dbStatusToolTip = "One or more segments in the Greenplum cluster are not operating in the mode that they are intended to be used - e.g., a segment intended to be a mirror may be functioning as a primary, or vice-versa.";
+			}
+			else
+			{
+				showDBStatus = false;
+			}
+		}//end of databaseStatus
+
 
 		// Stores the most recent database now info, aggregated across databases
 		public var databaseNowAgg:DatabaseSample = null;
@@ -510,6 +543,14 @@ package model
 				      false, false, false));
 		
 		// Reference to the model
-		private var mdl:GPPerfMonModelLocator;	
+		private var mdl:GPPerfMonModelLocator;
+		
+		//Database Status
+		public var dbStatus:String = "";
+		public var dbStatusToolTip:String = "";
+		public var showDBStatus:Boolean = false;
+		public var dbStatusIcon:Class;
+		public var dbStatusStyle:String;	
+
 	}
 }
