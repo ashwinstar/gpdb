@@ -2278,17 +2278,32 @@ createDtx(
 	initGxact(gxact);
 	generateGID(gxact->gid, &gxact->gxid);
 
-	/*
-	 * This routine requires the ProcArrayLock to already be held.
-	 */
-	LocalDistribXact_StartOnMaster(
-		*shmDistribTimeStamp,
-		gxact->gxid,
-		&gxact->localXid,
-		&gxact->localDistribXactRef);
+	PG_TRY();
+	{
+		/*
+		 * This routine requires the ProcArrayLock to already be held.
+		 */
+		LocalDistribXact_StartOnMaster(
+			*shmDistribTimeStamp,
+			gxact->gxid,
+			&gxact->localXid,
+			&gxact->localDistribXactRef);
 
-	*distribXid = gxact->gxid;
-	*localXid = gxact->localXid;
+		*distribXid = gxact->gxid;
+		*localXid = gxact->localXid;
+	}
+	PG_CATCH();
+	{
+		/*
+		 * MPP-9829: don't hold these if we're throwing an error. if
+		 * we *do* hold them, we'll just cause a PANIC later.
+		 */
+		releaseTmLock();
+		LWLockRelease(ProcArrayLock);
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	/*
 	 * Until we get our first distributed snapshot, we use our
@@ -2307,8 +2322,6 @@ createDtx(
 	elog(DTM_DEBUG5,
 		 "createDtx created new distributed transaction gid = %s, gxid = %u.", 
 		 currentGxact->gid, currentGxact->gxid);
-
-
 }
 
 
