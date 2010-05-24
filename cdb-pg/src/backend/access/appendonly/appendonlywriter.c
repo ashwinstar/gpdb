@@ -727,6 +727,9 @@ AtCommit_AppendOnly(void)
 	AORelHashEntry	aoentry = NULL;
 	TransactionId 	CurrentXid = GetCurrentTransactionId();
 
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
+	
 	hash_seq_init(&status, AppendOnlyHash);
 
 	LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
@@ -800,6 +803,9 @@ AtAbort_AppendOnly(void)
 	AORelHashEntry	aoentry = NULL;
 	TransactionId 	CurrentXid = GetCurrentTransactionIdIfAny();
 
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
+
 	hash_seq_init(&status, AppendOnlyHash);
 
 	LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
@@ -869,6 +875,9 @@ AtEOXact_AppendOnly(void)
 	AORelHashEntry	aoentry = NULL;
 	TransactionId 	CurrentXid = GetCurrentTransactionIdIfAny();
 	bool			entry_updated = false;
+
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
 
 	hash_seq_init(&status, AppendOnlyHash);
 

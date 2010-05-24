@@ -2552,8 +2552,7 @@ CommitTransaction(void)
 		AtCommit_ResScheduler();
 
 	/* Perform any AO table commit processing */
-	if (Gp_role == GP_ROLE_DISPATCH)
-		AtCommit_AppendOnly();
+	AtCommit_AppendOnly();
 		
 	/*
 	 * Let ON COMMIT management do its thing (must happen after closing
@@ -3138,8 +3137,7 @@ AbortTransaction(void)
 		AtAbort_ResScheduler();
 		
 	/* Perform any AO table abort processing */
-	if (Gp_role == GP_ROLE_DISPATCH)
-		AtAbort_AppendOnly();
+	AtAbort_AppendOnly();
 
 	AtEOXact_LargeObject(false);	/* 'false' means it's abort */
 	AtAbort_Notify();
