@@ -1047,6 +1047,8 @@ DatabaseInfo_CollectPgAppendOnly(
 									tuple,
 									&relationId);
 
+		Assert(aoEntry != NULL);
+
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
 				 "DatabaseInfo_Collect: Append-Only entry for relation id %u, "
@@ -1059,7 +1061,7 @@ DatabaseInfo_CollectPgAppendOnly(
 				 aoEntry->majorversion,
 				 aoEntry->minorversion,
 				 (aoEntry->checksum ? "true" : "false"),
-				 aoEntry->compresstype,
+				 (aoEntry->compresstype ? aoEntry->compresstype : "NULL"),
 				 (aoEntry->columnstore ? "true" : "false"),
 				 aoEntry->segrelid,
 				 aoEntry->segidxid,
