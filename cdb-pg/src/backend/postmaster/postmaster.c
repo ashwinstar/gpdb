@@ -3997,6 +3997,17 @@ static void do_reaper()
             ExitPostmaster(1);
         }
 
+        if ( Shutdown > NoShutdown)
+        {
+    		ereport(LOG,
+				(errmsg("error during requested shutdown; exiting")));
+
+            /**
+             * We hit a fatal error because of, or prior to, a requested shutdown.  Just exit now.
+             */
+            ExitPostmaster(1);
+        }
+
 		ereport(LOG,
 				(errmsg("all server processes terminated; reinitializing")));
 
