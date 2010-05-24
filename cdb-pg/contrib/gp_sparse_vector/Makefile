@@ -3,6 +3,8 @@ ifeq "$(CC)" "icc"
 	USE_ICC = 1
 endif
 
+override CFLAGS+=-std=gnu99
+
 MODULE_big = gp_svec
 #Removed the installation SQL file from normal installation
 #DATA = gp_svec.sql gp_sfv_test.sql gp_svec_test.sql
