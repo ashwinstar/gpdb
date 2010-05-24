@@ -2431,6 +2431,9 @@ reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
 	Form_pg_index	indexForm;
 	Oid				retrelfilenode;
 	Oid				namespaceId;
+	
+	Assert(OidIsValid(indexId));
+	Assert(extra_oids != NULL);
 
 	/*
 	 * Open and lock the parent heap relation.	ShareLock is sufficient since
