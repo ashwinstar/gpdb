@@ -1208,26 +1208,26 @@ class gpload:
             else:
                 if default=='error':
                     self.log(self.ERROR,
-                             "A gpload control file processing error occured. The configuration must contain %s%s"%(a,extraStuff))
+                             "A gpload control file processing error occurred. The configuration must contain %s%s"%(a,extraStuff))
                     sys.exit(2)
                 return default
 
         if typ != None and type(config) != typ:
             if typ == list:
                 self.log(self.ERROR,
-                         "A gpload control file processing error occured. The %s entry must be a YAML sequence %s"% (a ,extraStuff))
+                         "A gpload control file processing error occurred. The %s entry must be a YAML sequence %s"% (a ,extraStuff))
             elif typ == dict:
                 self.log(self.ERROR,
-                         "A gpload control file processing error occured. The %s entry must be a YAML mapping %s"% (a, extraStuff))
+                         "A gpload control file processing error occurred. The %s entry must be a YAML mapping %s"% (a, extraStuff))
             elif typ == unicode or typ == str:
                 self.log(self.ERROR, "%s must be a string %s" % (a, extraStuff))
             elif typ == int:
                 self.log(self.ERROR,
-                         "A gpload control file processing error occured. The %s entry must be a YAML integer %s" % (a, extraStuff))
+                         "A gpload control file processing error occurred. The %s entry must be a YAML integer %s" % (a, extraStuff))
             else:
                 assert 0
 
-            self.log(self.ERROR,"A gpload control file processing error occured. Encountered unknown configuration type %s"% type(config))
+            self.log(self.ERROR,"A gpload control file processing error occurred. Encountered unknown configuration type %s"% type(config))
             sys.exit(2)
         return config
 
@@ -1347,14 +1347,14 @@ class gpload:
                     endPort = int(port_range[1])
                 except (IndexError,ValueError):
                     self.log(self.ERROR,
-                             "A gpload control file processing error occured. " + name + ":port_range must be a sequence of two integers")
+                             "A gpload control file processing error occurred. " + name + ":port_range must be a YAML sequence of two integers")
             else:
                 startPort = self.getconfig(name+':port',int,8000)
                 endPort = self.getconfig(name+':port',int,9000)
 
             if (startPort > 65535 or endPort > 65535):
                 # Do not allow invalid ports
-                self.log(self.ERROR, "A gpload control file processing error occured; invalid port. Port values must be less than 65535.")
+                self.log(self.ERROR, "A gpload control file processing error occurred; invalid port. Port values must be less than or equal to 65535.")
             elif not (set(xrange(startPort,endPort+1)) & availablePorts):
                 self.log(self.ERROR, "no more ports available for gpfdist")
 
@@ -1362,7 +1362,7 @@ class gpload:
             for i in file:
                 if type(i)!= unicode and type(i) != str:
                     self.log(self.ERROR,
-                             "A gpload control file processing error occured. " + name + ":file must be a sequence of strings")
+                             "A gpload control file processing error occurred. " + name + ":file must be a YAML sequence of strings")
             popenList = ['gpfdist','-p',str(startPort),'-P',str(endPort),
                          '-f','"' + ' '.join(file) + '"', '-t', '30']
             if self.options.qv == self.LOG:
@@ -1440,7 +1440,7 @@ class gpload:
             for l in local_hostname:
                 if type(l) != str and type(l) != unicode:
                     self.log(self.ERROR,
-                             "A gpload control file processing error occured. " + name + ":local_hostname must be a sequence " +
+                             "A gpload control file processing error occurred. " + name + ":local_hostname must be a YAML sequence " +
                                "of strings")
                 l = str(l)
                 sep = ''
@@ -1532,7 +1532,7 @@ class gpload:
             for d in columns:
                 if type(d)!=dict:
                     self.log(self.ERROR,
-                               "A gpload control file processing error occured. gpload:input:columns must be a sequence of YAML mappings")
+                               "A gpload control file processing error occurred. gpload:input:columns must be a sequence of YAML mappings")
                 tempkey = d.keys()[0]
                 value = d[tempkey]
                 """ remove leading or trailing spaces """
@@ -1638,7 +1638,7 @@ class gpload:
         if mapping:
             for key,value in mapping.iteritems():
                 if type(key) != unicode or type(value) != unicode:
-                    self.log(self.ERROR,'A gpload control file processing error occured. gpload:output:mapping must be a YAML type mapping from strings to strings')
+                    self.log(self.ERROR,'A gpload control file processing error occurred. gpload:output:mapping must be a YAML type mapping from strings to strings')
                 found = False
                 for a in self.into_columns:
                     if sqlIdentifierCompare(a[0], key) == True:
@@ -1692,7 +1692,7 @@ class gpload:
             """ implies the DELIMITER option has no value in the yaml file, so use default """
             pass
         elif len(delimiterValue) != 1:
-            self.log(self.ERROR, "A gpload control file processing error occured. A delimiter must have a length of one. Special characters must be quoted.")
+            self.log(self.ERROR, "A gpload control file processing error occurred. A delimiter must have a length of one. Special characters must be quoted.")
         else:
             sql += "delimiter%s" % \
                 quote(self.getconfig('gpload:input:delimiter', unicode))
@@ -1711,10 +1711,10 @@ class gpload:
         esc = self.getconfig('gpload:input:escape', None, None)
         if esc:
             if type(esc) != unicode and type(esc) != str:
-                self.log(self.ERROR, "A gpload control file processing error occured. gpload:input:escape must be a string")
+                self.log(self.ERROR, "A gpload control file processing error occurred. gpload:input:escape must be a string")
             if esc.lower() == 'off':
                 if format == 'csv':
-                    self.log(self.ERROR, "A gpload control file processing error occured. ESCAPE cannot be set to OFF for in CSV mode")
+                    self.log(self.ERROR, "A gpload control file processing error occurred. ESCAPE cannot be set to OFF in CSV mode")
                 sql += "escape 'off'"
             else:
                 sql += 'escape as ' + quote(esc)
@@ -1723,7 +1723,7 @@ class gpload:
         if force_not_null_columns:
             for i in force_not_null_columns:
                 if type(i) != unicode and type(i) != str:
-                    self.log(self.ERROR,'A gpload control file processing error occured. gpload:input:force_not_null must be a sequence of strings')
+                    self.log(self.ERROR,'A gpload control file processing error occurred. gpload:input:force_not_null must be a YAML sequence of strings')
             sql += "force not null %s " % ','.join(force_not_null_columns)
 
         sql += ")"
@@ -1734,14 +1734,14 @@ class gpload:
 
         limit = self.getconfig('gpload:input:error_limit',int, None)
         if self.error_table and not limit:
-            self.log(self.ERROR, "A gpload control file processing error occured. gpload:input:error_table requires " +
+            self.log(self.ERROR, "A gpload control file processing error occurred. gpload:input:error_table requires " +
                     "gpload:input:error_limit to be specified")
         if self.error_table:
             sql += "log errors into %s " % self.error_table
 
         if limit:
             if limit < 2:
-                self.log(self.ERROR, "A gpload control file processing error occured. error_limit must be 2 or higher")
+                self.log(self.ERROR, "A gpload control file processing error occurred. error_limit must be 2 or higher")
             sql += "segment reject limit %s "%limit
         self.log(self.LOG, sql)
 
@@ -1815,7 +1815,7 @@ class gpload:
         theList = convertListToDelimited(theList)
         for i in theList:
             if type(i) != unicode and type(i) != str:
-                self.log(self.ERROR,'A gpload control file processing error occured. %s must be a sequence of strings'%config)
+                self.log(self.ERROR,'A gpload control file processing error occurred. %s must be a YAML sequence of strings'%config)
             j = self.into_columns_dict.get(i)
             if not j:
                 self.log(self.ERROR,'column %s in %s does not exist'%(i,config))
@@ -1925,7 +1925,7 @@ class gpload:
         update_columns = set(update_columns)
         a = distkey.intersection(update_columns)
         if len(a):
-            self.log(self.ERROR, 'A gpload control file processing error occured. update_columns cannot reference column(s) ' +
+            self.log(self.ERROR, 'A gpload control file processing error occurred. update_columns cannot reference column(s) ' +
                         'in distribution key (%s)' % ', '.join(str(distkey)))
 
         # remember, match_columns might be a superset of the key
@@ -2046,7 +2046,7 @@ class gpload:
         elif method=='merge':
             self.do_method_merge()
         else:
-            self.log(self.ERROR, 'A gpload control file processing error occured; unsupported method %s' % method)
+            self.log(self.ERROR, 'A gpload control file processing error occurred; unsupported method %s' % method)
 
         if after:
             self.log(self.LOG, "Post-SQL from user: %s" % after)
