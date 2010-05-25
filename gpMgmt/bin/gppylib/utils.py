@@ -438,7 +438,7 @@ class TableLogger:
         """
         return self
         """
-        self.__warningLines[len(__lines)] = True
+        self.__warningLines[len(self.__lines)] = True
 
         line = [s for s in line]
         if self.__warnWithArrows:

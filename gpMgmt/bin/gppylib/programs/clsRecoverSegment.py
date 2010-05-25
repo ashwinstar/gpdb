@@ -33,7 +33,7 @@ from gppylib.system.environment import GpMasterEnvironment
 from gppylib.test.testUtils import *
 from lib import gpmlib
 from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile, writeLinesToFile, \
-                                PathNormalizationException, normalizeAndValidateInputPath
+                                PathNormalizationException, normalizeAndValidateInputPath, TableLogger
 from gppylib.gphostcache import GpInterfaceToHostNameCache
 
 logger = gplog.get_default_logger()
@@ -632,7 +632,7 @@ class GpRecoverSegmentProgram:
                 programIoUtils.appendSegmentInfoForOutput("Recovery Target", gpArray, toRecover.getFailoverSegment(), tabLog)
             else:
                 tabLog.info(["Recovery Target", "= in-place"])
-            tabLog.outputTable
+            tabLog.outputTable()
 
             i = i + 1
 
