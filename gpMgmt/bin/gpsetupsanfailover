@@ -13,7 +13,6 @@ Usage: gpsanitize [--version] [-?] [-D] [-d master_data_dir] [-l log_dir] [-p po
           -D        : set logging output to debug level
           -d        : master data directory
           -l        : <log directory> alternative log file directory [optional]
-          -t        : "type" of shared-storage technology (e: EMC Clariion, n: NFS).
           -p        : mirror offset, if not supplied, script will calculate a suitable
                       port offset for the mirror segment instances, range 7000 - 61000
                       current offset value is 1000
