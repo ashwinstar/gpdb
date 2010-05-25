@@ -2246,6 +2246,13 @@ createDtxSnapshot(
 	return true;
 }
 
+static void
+createDtxErrorCallback(int code, Datum arg)
+{
+	releaseTmLock();
+	LWLockRelease(ProcArrayLock);
+}
+
 /*
  * Create a global transaction context from share memory.
  */
@@ -2278,7 +2285,11 @@ createDtx(
 	initGxact(gxact);
 	generateGID(gxact->gid, &gxact->gxid);
 
-	PG_TRY();
+	/*
+	 * MPP-9829: don't hold these if we're throwing an error. if
+	 * we *do* hold them, we'll just cause a PANIC later.
+	 */
+	PG_ENSURE_ERROR_CLEANUP(createDtxErrorCallback, 0);
 	{
 		/*
 		 * This routine requires the ProcArrayLock to already be held.
@@ -2292,18 +2303,7 @@ createDtx(
 		*distribXid = gxact->gxid;
 		*localXid = gxact->localXid;
 	}
-	PG_CATCH();
-	{
-		/*
-		 * MPP-9829: don't hold these if we're throwing an error. if
-		 * we *do* hold them, we'll just cause a PANIC later.
-		 */
-		releaseTmLock();
-		LWLockRelease(ProcArrayLock);
-
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
+	PG_END_ENSURE_ERROR_CLEANUP(createDtxErrorCallback, 0);
 
 	/*
 	 * Until we get our first distributed snapshot, we use our
