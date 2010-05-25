@@ -387,32 +387,26 @@ def checkPartitionIntegrity():
     logger.info('Checking pg_partition ...')
     err = []
     db = connect()
-    qry = '''
-    select n1.nspname as scname, pc1.relname tname, n2.nspname as partscname, 
-           pc2.relname as parttname, pp.parlevel, pr.*
-    from   pg_partition_rule pr, pg_partition pp, pg_namespace n1, 
-           pg_namespace n2, pg_class pc1, pg_class pc2 
-    where  pc1.relnamespace = n1.oid and pc2.relnamespace = n2.oid and
-           pp.paristemplate is false and pp.parrelid = pc1.oid and
-           pr.parchildrelid = pc2.oid and pr.paroid = pp.oid and
-           pr.paroid in (
-             select oid from pg_partition p1 
-             where parlevel > 0 and parlevel < (
-                select max(parlevel) from pg_partition p2 
-                where p2.parrelid = p1.parrelid)
-           )
+    qry = ''' 
+    select distinct 
+           quote_ident(n.nspname) || '.' || quote_ident(c.relname) as parname
+    from   pg_partition_rule r1
+      join pg_partition_rule r2 on (r1.oid = r2.parparentrule)
+      join pg_class c on (r1.parchildrelid = c.oid)
+      join pg_namespace n on (c.relnamespace = n.oid)
+    where  r1.parchildrelid <> 0 and r2.parchildrelid <> 0
     '''
     curs = db.query(qry)
     for row in curs.dictresult():
-        qy2 = ('select count(*) as cc from only %s.%s limit(2)' %
-                (row['partscname'], row['parttname']))
+        qy2 = ('select count(*) as cc from (select 1 from only %s limit(2)) q'
+               % (row['parname']))
+
         # logger.info(qy2)
         curs2 = db.query(qy2)
         for row2 in curs2.dictresult():
             if row2['cc'] == 0 :
                 continue
-            err.append([row['scname'], row['tname'],
-                        row['partscname'], row['parttname']])
+            err.append([row['parname']])
 
     if not err:
         logger.info('[OK] pg_partition branch integrity')
@@ -420,13 +414,9 @@ def checkPartitionIntegrity():
         setError(ERROR_NOREPAIR)
         logger.info('[FAIL] pg_partition branch integrity')
         logger.error('pg_partition has %d issue(s)' % len(err))
-        logger.error(qry)
         logger.error('Discovered row data in branch partitions')
-        for e in err[0:100]: 
-            logger.error(' table %s.%s, partition tablename %s.%s' % 
-                         (e[0], e[1], e[2], e[3]))
-        if len(err) > 100:
-            logger.error("...")
+        for e in err: 
+            logger.error('  partition table name:  %s' % (e[0]))
 
     # MPP-9283: look for partitions create "with oids".
     qry = '''
