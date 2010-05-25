@@ -152,7 +152,7 @@ pylint:
 
 
 PYTHON_FILES=`grep -l --exclude=Makefile "/bin/env python" *`\
-			 `grep "/bin/evn python" $(SRC)/../sbin/*`\
+			 `grep "/bin/env python" $(SRC)/../sbin/*`\
 			 `find ./gppylib -name "*.py"`\
 			 `find $(SRC)/../sbin/ -name "*.py"`
 
