@@ -168,6 +168,25 @@ def execSQL(conn,sql):
     cursor.execute(sql)
     return cursor
 
+def execSQLForSingletonRow(conn, sql):
+    """
+    Run SQL that returns exactly one row, and return that one row
+    """
+    cursor=conn.cursor()
+    cursor.execute(sql)
+
+    if cursor.rowcount != 1 :
+        raise Exception("SQL retrieved %s rows but 1 was expected:\n%s" % \
+                        (cursor.rowcount, sql))
+
+    res = []
+    for row in cursor:
+        for col in row:
+            res.append(col)
+    cursor.close()
+
+    return res
+
 def executeUpdateOrInsert(conn, sql, expectedRowUpdatesOrInserts):
     cursor=conn.cursor()
     cursor.execute(sql)

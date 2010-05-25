@@ -407,29 +407,48 @@ def appendNewEntriesToHbaFile(fileName, segments):
     except Exception, msg:
         raise Exception('Failed to add new segments to template %s' % fileName)
 
+def appendWarningLogLine(lines, warningLineNumbers, line ):
+    """
+    Append a warning line for use with logLinesToTable
+    """
+    warningLineNumbers[len(lines)] = True
+    lines.append(line)
 
 def logLinesToTable(lines, warningLineNumbers):
     """
-    @param lines should be an array of arrays
+    @param lines should be an array of arrays of strings.  Note that if an array element is None then a separate line is printed
     @param warningLineNumbers should be dictionary mapping line number (0-indexed) to true for warning lines,
                  or unmapped or mapped to falsy value for info lines
     """
     lineWidth = []
     for line in lines:
-        while len(lineWidth) < len(line):
-            lineWidth.append(0)
+        if line is not None:
+            while len(lineWidth) < len(line):
+                lineWidth.append(0)
 
-        for i, field in enumerate(line):
-            lineWidth[i] = max(len(field), lineWidth[i])
+            for i, field in enumerate(line):
+                lineWidth[i] = max(len(field), lineWidth[i])
 
     # now print it all!
     for lineNumber, line in enumerate(lines):
         doWarn = warningLineNumbers.get(lineNumber)
 
-        outLine = []
-        for i, field in enumerate(line):
-            outLine.append(field.ljust(lineWidth[i] + 3))
-        msg = "".join(outLine)
+        if line is None:
+            #
+            # separator
+            #
+            msg = "------------------------------------------------"
+        else:
+            outLine = []
+            for i, field in enumerate(line):
+                if i == len(line) - 1:
+                    # don't pad the last one since it's not strictly needed,
+                    # and we could have a really long last column for some lines
+                    outLine.append(field)
+                else:
+                    outLine.append(field.ljust(lineWidth[i] + 3))
+            msg = "".join(outLine)
+
         if doWarn:
             logger.warn(msg)
         else:

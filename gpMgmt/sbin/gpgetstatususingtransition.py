@@ -38,9 +38,11 @@ class GpSegStatusProgram:
         self.__options = options
         self.__pool = None
 
-    def getStatusUsingTransition(self, seg, statusRequest, currentPmPid):
-
-        if currentPmPid == 0:
+    def getStatusUsingTransition(self, seg, statusRequest, currentPMPidData):
+        """
+        The data as from GpSegStatusProgram.getPidRunningStatus
+        """
+        if currentPMPidData is not None and currentPMPidData['pidValue'] == 0:
             logger.warn("Error getting data from segment %s; it is not running" % seg.getSegmentDataDirectory())
             return None
 
@@ -117,16 +119,16 @@ class GpSegStatusProgram:
         segments = map(gparray.GpDB.initFromString, self.__options.dirList)
 
         output = {}
-        for statusRequest in toFetch:
-            output[statusRequest] = {}
-
         for seg in segments:
             pidRunningStatus = self.getPidRunningStatus(seg)
 
+            outputThisSeg = output[seg.getSegmentDbId()] = {}
             for statusRequest in toFetch:
                 data = None
                 if statusRequest == gp.SEGMENT_STATUS__GET_VERSION:
-                     data = self.getStatusUsingTransition(seg, statusRequest, pidRunningStatus)
+                    data = self.getStatusUsingTransition(seg, statusRequest, pidRunningStatus)
+                    if data is not None:
+                        data = data.rstrip()
 
                 elif statusRequest == gp.SEGMENT_STATUS__GET_PID:
                     data = self.getPidStatus(seg, pidRunningStatus)
@@ -140,7 +142,7 @@ class GpSegStatusProgram:
                 else:
                     raise Exception("Invalid status request %s" % statusRequest )
                     
-                output[statusRequest][seg.getSegmentDbId()] = data
+                outputThisSeg[statusRequest] = data
 
         status = '\nSTATUS_RESULTS:' + base64.urlsafe_b64encode(pickle.dumps(output))
         logger.info(status)

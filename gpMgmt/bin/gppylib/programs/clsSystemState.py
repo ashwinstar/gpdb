@@ -19,7 +19,7 @@ from gppylib.programs import programIoUtils
 from gppylib.system import configurationInterface as configInterface
 from gppylib.system.environment import GpMasterEnvironment
 from gppylib.test.testUtils import *
-from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile, writeLinesToFile
+from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile, writeLinesToFile, appendWarningLogLine
 
 logger = gplog.get_default_logger()
 
@@ -208,6 +208,200 @@ class GpSystemStateProgram:
 
         return exitCode
 
+    def __showStatus(self, gpEnv, gpArray):
+        """
+        Prints out the current status of the cluster.
+
+        @param gpEnv the GpMasterEnvironment object
+        @param gpArray the array to display
+
+        returns the exit code
+        """
+        hasWarnings = False
+
+        #
+        # query for data
+        #
+        logger.info("Gathering data from segments...")
+        segmentsByHost = GpArray.getSegmentsByHostName(gpArray.getDbList())
+        segmentData = {}
+        dispatchCount = 0
+        hostNameToCmd = {}
+        for hostName, segments in segmentsByHost.iteritems():
+            cmd = gp.GpGetSegmentStatusValues("get segment version status", segments,
+                              [gp.SEGMENT_STATUS__GET_VERSION,
+                                gp.SEGMENT_STATUS__GET_PID,
+                                gp.SEGMENT_STATUS__HAS_LOCKFILE,
+                                gp.SEGMENT_STATUS__HAS_POSTMASTER_PID_FILE
+                                ],
+                               verbose=logging_is_verbose(),
+                               ctxt=base.REMOTE,
+                               remoteHost=segments[0].getSegmentAddress())
+            hostNameToCmd[hostName] = cmd
+            self.__pool.addCommand(cmd)
+            dispatchCount+=1
+        self.__pool.wait_and_printdots(dispatchCount, False) # False -- self.__quiet
+
+        hostNameToResults = {}
+        for hostName, cmd in hostNameToCmd.iteritems():
+            hostNameToResults[hostName] = cmd.decodeResults()
+
+        #
+        # fetch data about master
+        #
+        master = [seg for seg in gpArray.getDbList() if seg.isSegmentMaster(current_role=False)][0]
+        standbys = [seg for seg in gpArray.getDbList() if seg.isSegmentStandby(current_role=False)]
+        standby = standbys[0] if standbys else None
+        arrayConfigType = "Multi-Home" if gpArray.guessIsMultiHome() else "Standard"
+
+        dbUrl = dbconn.DbURL(port=gpEnv.getMasterPort(), dbname='template1' )
+        conn = dbconn.connect(dbUrl, utility=True)
+        initDbVersion = dbconn.execSQLForSingletonRow(conn, "select productversion from gp_version_at_initdb limit 1;")[0]
+        pgVersion = dbconn.execSQLForSingletonRow(conn, "show server_version;")[0]
+        conn.close()
+
+        try:
+            # note: this is how old gpstate did this but ... can we do it without requiring a non-utility-mode
+            #  connection?  non-utility-mode connections can take a long time to quit out if there
+            #  are segment failures and you need to wait for the prober (and this would print
+            #  role as "utility" even though it's really a failed-dispatcher.
+            conn = dbconn.connect(dbUrl, utility=False)
+            qdRole = "dispatch"
+        except Exception:
+            qdRole = "utility" # unable to connect in non-utility, but we've been able to connect in utility so...         
+        #
+        # print output about master
+        #
+        (statusFetchWarning, outputFromMasterCmd) = hostNameToResults[master.getSegmentHostName()]
+        masterData = outputFromMasterCmd[master.getSegmentDbId()] if statusFetchWarning is None else None
+
+        logger.info("-Master Configuration & Status")
+        logger.info( "------------------------------" )
+        lines = []
+        warningLines = {}
+        lines.append(["Master host", "= %s" % master.getSegmentHostName()])
+        if statusFetchWarning is None:
+            pidData = masterData[gp.SEGMENT_STATUS__GET_PID]
+            lines.append(["Master postgres process ID", "= %s" % pidData['pid']])
+        else:
+            warningLines[len(lines)] = True
+            lines.append(["Master port", "= Error fetching data: %s" % statusFetchWarning])
+        lines.append(["Master data directory", "= %s" % master.getSegmentDataDirectory()])
+        lines.append(["Master port", "= %d" % master.getSegmentPort()])
+
+        lines.append(["Master current role", "= %s" % qdRole])
+        lines.append(["Greenplum array configuration type", "= %s" % arrayConfigType])
+        lines.append(["Greenplum initsystem version", "= %s" % initDbVersion])
+
+        if statusFetchWarning is None:
+            if masterData[gp.SEGMENT_STATUS__GET_VERSION] is None:
+                lines.append(["Greenplum current version", "= Unknown"])
+            else:
+                lines.append(["Greenplum current version", "= %s" % masterData[gp.SEGMENT_STATUS__GET_VERSION]])
+        else:
+            appendWarningLogLine(lines, warningLines, \
+                        ["Greenplum current version", "= Error fetching data: %s" % statusFetchWarning])
+        lines.append(["Postgres version", "= %s" % pgVersion])
+            
+        lines.append(["Greenplum mirroring status", "= %s" % gparray.getFaultStrategyLabel(gpArray.getFaultStrategy())])
+        standbyState = ""
+        if standby is None:
+            lines.append(["Greenplum master standby", "= No master standby configured"])
+        else:
+            lines.append(["Greenplum master standby", "= %s" % standby.getSegmentHostName()])
+            if standby.isSegmentMaster(current_role=True):
+                standbyState = "STANDBY HOST ACTIVE INSTANCE MASTER"
+            else:
+                standbyState = "Standby host passive"
+        lines.append(["Greenplum standby master state", standbyState])
+        utils.logLinesToTable(lines, warningLines)
+        hasWarnings = hasWarnings or len(warningLines) > 0
+
+        #
+        # Output about segments
+        #
+        logger.info("------------------------------------------------")
+        logger.info("Segment Instance Status Report")
+
+        lines = []
+        warningLines = {}
+        for seg in gpArray.getSegDbList():
+            (statusFetchWarning, outputFromCmd) = hostNameToResults[seg.getSegmentHostName()]
+
+            type = "Primary" if seg.isSegmentPrimary(current_role=False) else "Mirror"
+            masterReportedStatus = "Valid" if seg.isSegmentUp() else "Failed"
+
+            lines.append(None) # separator
+            lines.append(["Segment instance hostname", "= %s" % seg.getSegmentHostName()])
+            lines.append(["Segment instance address", "= %s" % seg.getSegmentAddress()])
+            lines.append(["Segment instance datadir", "= %s" % seg.getSegmentDataDirectory()])
+            lines.append(["Type", "= %s" % type])
+            lines.append(["Master reports status as", "= %s" % masterReportedStatus])
+
+            if statusFetchWarning is not None:
+                appendWarningLogLine(lines, warningLines, ["Error retrieving segment status", "= %s" % statusFetchWarning])
+            else:
+                segmentData = outputFromCmd[seg.getSegmentDbId()]
+
+                #
+                # Able to fetch from that segment, proceed
+                #
+                pidData = segmentData[gp.SEGMENT_STATUS__GET_PID]
+
+                # has postmaster.pid
+                if segmentData[gp.SEGMENT_STATUS__HAS_POSTMASTER_PID_FILE]:
+                    lines.append(["File postmaster.pid", "= Found"])
+                else:
+                    appendWarningLogLine(lines, warningLines, ["File postmaster.pid", "= Missing"])
+
+                # PID from postmaster.pid
+                if pidData['pid'] == 0:
+                    warningLines[len(lines)] = True
+                lines.append(["PID from postmaster.pid file", "= %s" % pidData["pid"]])
+
+                # has lock fiel
+                if segmentData[gp.SEGMENT_STATUS__HAS_LOCKFILE]:
+                    lines.append(["Lock files in /tmp status", "= Found"])
+                else:
+                    appendWarningLogLine(lines, warningLines, ["Lock files in /tmp status", "= Missing"])
+
+                isValid = seg.isSegmentUp()
+
+                # Active PID
+                if pidData['error'] is None:
+                    lines.append(["Active PID", "= %s" % pidData["pid"]])
+                else:
+                    isValid = False
+                    appendWarningLogLine(lines, warningLines, ["Active PID", "= Missing"])
+
+                if seg.isSegmentPrimary(current_role=False):
+                    if seg.isSegmentPrimary(current_role=True):
+                        lines.append(["Mirror status", "= Active"])
+                    else:
+                        appendWarningLogLine(lines, warningLines, ["Mirror status", "= Passive as Mirror"])
+                else:
+                    if seg.isSegmentPrimary(current_role=True):
+                        appendWarningLogLine(lines, warningLines, ["Mirror status", "= Active as Primary"])
+                    else:
+                        lines.append(["Mirror status", "= Passive"])
+
+                # isValid depends on being marked up in metadata AND not having an error fetching the pid
+                if isValid:
+                    lines.append(["Instance Status", "= Valid"])
+                else:
+                    appendWarningLogLine(lines, warningLines, ["Instance Status", "= Failed"])
+
+        utils.logLinesToTable(lines, warningLines)
+        hasWarnings = hasWarnings or len(warningLines) > 0
+
+        if hasWarnings:
+            logger.info("*****************************************************" )
+            logger.warn("Warnings have been generated during status processing" )
+            logger.info("Check log file or review screen output" )
+            logger.info("*****************************************************" )
+
+        return 1 if hasWarnings else 0
+
     def __showQuickStatus(self, gpEnv, gpArray):
 
         exitCode = 0
@@ -267,7 +461,7 @@ class GpSystemStateProgram:
             # fetch standby pid
             (standbyPidFetchWarning, outputFromCmd) = cmd.decodeResults()
             if standbyPidFetchWarning is None:
-                pidData = outputFromCmd[gp.SEGMENT_STATUS__GET_PID][definedStandby.getSegmentDbId()]
+                pidData = outputFromCmd[definedStandby.getSegmentDbId()][gp.SEGMENT_STATUS__GET_PID]
             else:
                 pidData = {}
                 pidData['pid'] = 0
@@ -315,31 +509,25 @@ class GpSystemStateProgram:
         #
         # now print gp_master_mirroring table
         #
-        dbUrl = dbconn.DbURL(port=gpEnv.getMasterPort(), dbname='template1')
-        conn = dbconn.connect(dbUrl, utility=True)
 
         logger.info("-------------------------------------------------------------" )
         logger.info("-gp_master_mirroring table" )
         logger.info("-------------------------------------------------------------" )
 
-        isFirst = True # isFirst is used just for making sure it's a singleton
+        dbUrl = dbconn.DbURL(port=gpEnv.getMasterPort(), dbname='template1')
+        conn = dbconn.connect(dbUrl, utility=True)
         sql = "SELECT summary_state, detail_state, log_time, error_message FROM gp_master_mirroring"
-        for row in dbconn.execSQL( conn, sql):
-            assert isFirst, "Too many rows returned from expected single-row table 'gp_master_mirroring'"
+        row = dbconn.execSQLForSingletonRow(conn, sql)
+        row = ["" if val is None else val for val in row] # transform None to empty string
+        conn.close()
 
-            row = ["" if val is None else val for val in row] # transform None to empty string
-
-            logger.info("-Summary state: %s" % row[0])
-            logger.info("-Detail state: %s" % row[1])
-            logger.info("-Log time: %s" % row[2])
-            if row[3] != "":
-                logger.info("-Error message: %s" % row[3])
-
-            isFirst = False
-        assert not isFirst, "No rows returned from expected single-row table 'gp_master_mirroring"
+        logger.info("-Summary state: %s" % row[0])
+        logger.info("-Detail state: %s" % row[1])
+        logger.info("-Log time: %s" % row[2])
+        if row[3] != "":
+            logger.info("-Error message: %s" % row[3])
         logger.info("-------------------------------------------------------------" )
 
-        conn.close()
         # done printing gp_master_mirroring table
 
     def __showVersionInfo(self, gpEnv, gpArray):
@@ -371,9 +559,8 @@ class GpSystemStateProgram:
             (warning, outputFromCmd) = cmd.decodeResults()
             if warning is None:
                 for seg in cmd.dblist:
-                    version = outputFromCmd[gp.SEGMENT_STATUS__GET_VERSION][seg.getSegmentDbId()]
+                    version = outputFromCmd[seg.getSegmentDbId()][gp.SEGMENT_STATUS__GET_VERSION]
                     if version is not None:
-                        version = version.rstrip()
                         dbIdToVersion[seg.getSegmentDbId()] = version
                         uniqueVersions[version] = True
             else:
@@ -441,6 +628,8 @@ class GpSystemStateProgram:
             exitCode = self.__displayClusterConfig(gpEnv, gpArray)
         elif self.__options.showQuickStatus:
             exitCode = self.__showQuickStatus(gpEnv, gpArray)
+        elif self.__options.showStatus:
+            exitCode = self.__showStatus(gpEnv, gpArray)
         elif self.__options.showVersionInfo:
             exitCode = self.__showVersionInfo(gpEnv, gpArray)
         elif self.__options.showStandbyMasterInformation:
@@ -488,6 +677,10 @@ class GpSystemStateProgram:
                             dest="showQuickStatus",
                             metavar="<showQuickStatus>",
                             help="Show quick status")
+        addTo.add_option("-s", None, default=False, action="store_true",
+                            dest="showStatus",
+                            metavar="<showStatus>",
+                            help="Show status")
         addTo.add_option("-i", None, default=False, action="store_true",
                             dest="showVersionInfo",
                             metavar="<showVersionInfo>",

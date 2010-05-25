@@ -293,19 +293,26 @@ def getSegmentsReprArgWithoutFilespaces(segments):
 # list of valid segment statuses that can be requested
 #
 
+#
 # corresponds to a postmaster variable, also used in scripts; result is a string object
-SEGMENT_STATUS__GET_VERSION = "getVersion" 
+#
+SEGMENT_STATUS__GET_VERSION = "getVersion"
 
+#
 # fetch the active PID of this segment; result is a dict with "pid" and "error" values
 #
 # see comments on getPidStatus in GpSegStatusProgram class
 #
 SEGMENT_STATUS__GET_PID = "__getPid"
 
+#
 # fetch True or False depending on whether the /tmp/.s.PSQL.<port>.lock file is there
+#
 SEGMENT_STATUS__HAS_LOCKFILE = "__hasLockFile"
 
+#
 # fetch True or False depending on whether the postmaster pid file is there
+#
 SEGMENT_STATUS__HAS_POSTMASTER_PID_FILE = "__hasPostmasterPidFile"
 
 class GpGetSegmentStatusValues(Command):
@@ -315,8 +322,8 @@ class GpGetSegmentStatusValues(Command):
     Results will be a bin-hexed/pickled value that, when unpacked, will give a
     two-level map:
 
-    outer-map maps from dbid to inner map
-    inner-map maps from SEGMENT_STATUS__* value to result (which is usually a string, but may be different.
+    outer-map maps from SEGMENT_STATUS__* value to inner-map
+    inner-map maps from dbid to result (which is usually a string, but may be different)
 
     @param statusRequestArr an array of SEGMENT_STATUS__ constants
     """
@@ -1070,33 +1077,34 @@ def chk_local_db_running(datadir, port):
 
        Returns tuple in format (postmaster_pid_file_exists, tmpfile_exists, lockfile_exists, port_active, postmaster_pid)
 
-       postmaster_pid value is 0 if postmaster_pid_exists is False
+       postmaster_pid value is 0 if postmaster_pid_exists is False  Note that this is the PID from the postmaster.pid file
 
     """
-    cmd=FileDirExists('check for postmaster PID file', datadir + '/postmaster.pid')
-    cmd.run(validateAfter=True)
-    postmaster_pid_exists = cmd.filedir_exists()
 
-    cmd=FileDirExists('check for /tmp/.s.PGSQL file file', "/tmp/.s.PGSQL.%d" % port)
-    cmd.run(validateAfter=True)
-    tmpfile_exists = cmd.filedir_exists()
-
-    # determine if lockfile is there, grab pid from it
-    lockfile_exists = True
+    # determine if postmaster.pid is there, grab pid from it
+    postmaster_pid_exists = True
     f = None
     try:
-        f = open(get_lockfile_name(port))
+        f = open(datadir + "/postmaster.pid")
     except IOError:
-        lockfile_exists = False
+        postmaster_pid_exists = False
 
     pid_value = 0
-    if lockfile_exists:
+    if postmaster_pid_exists:
         try:
             for line in f:
                 pid_value = int(line) # grab first line only
                 break
         finally:
             f.close()
+
+    cmd=FileDirExists('check for /tmp/.s.PGSQL file file', "/tmp/.s.PGSQL.%d" % port)
+    cmd.run(validateAfter=True)
+    tmpfile_exists = cmd.filedir_exists()
+
+    cmd=FileDirExists('check for lock file', get_lockfile_name(port))
+    cmd.run(validateAfter=True)
+    lockfile_exists = cmd.filedir_exists()
 
     netstat_port_active = PgPortIsActive.local('check netstat for postmaster port',"/tmp/.s.PGSQL.%d" % port, port)
 
