@@ -524,7 +524,7 @@ RelationFetchSegFile0GpRelationNode(
 {
 	if (!relation->rd_segfile0_relationnodeinfo.isPresent)
 	{
-		if (PersistentFileSysObj_BeforePersistenceWork() || InRecovery)
+		if (Persistent_BeforePersistenceWork() || InRecovery)
 		{
 			MemSet(&relation->rd_segfile0_relationnodeinfo.persistentTid, 0, sizeof(ItemPointerData));
 			relation->rd_segfile0_relationnodeinfo.persistentSerialNum = 0;
