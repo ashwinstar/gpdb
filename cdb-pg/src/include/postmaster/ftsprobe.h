@@ -16,5 +16,6 @@
 
 extern int ftsprobe_start(void);
 
+extern char *find_superuser_name(bool try_bootstrap);
 
 #endif   /* FTSPROBE_H */

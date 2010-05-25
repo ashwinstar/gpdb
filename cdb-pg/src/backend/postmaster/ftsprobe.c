@@ -545,8 +545,8 @@ void FtsProbeLoop(void)
  * have been removed, or modified in other ways), find another which can login
  * and which has not expired yet.
  */
-static char *
-find_user(bool try_bootstrap)
+char *
+find_superuser_name(bool try_bootstrap)
 {
 	char *suser = NULL;
 	Relation auth_rel;
@@ -596,7 +596,10 @@ find_user(bool try_bootstrap)
 		userOid = DatumGetObjectId(attrNameOid);
 
 		SetSessionUserId(userOid, true);
+
+		break;
 	}
+
 	heap_endscan(auth_scan);
 	heap_close(auth_rel, AccessShareLock);
 	return suser;
@@ -611,9 +614,9 @@ retrieveUserAndDb(char **probeUser)
 	Assert(probeUser != NULL);
 
 	/* first, let's try the bootstrap super user */
-	*probeUser = find_user(true);
+	*probeUser = find_superuser_name(true);
 	if (!(*probeUser))
-		*probeUser = find_user(false);
+		*probeUser = find_superuser_name(false);
 
 	Assert(*probeUser != NULL);
 }
