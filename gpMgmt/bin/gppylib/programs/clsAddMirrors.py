@@ -428,7 +428,7 @@ class GpAddMirrorsProgram:
 
         gpPrefix = gpmlib.get_gp_prefix(gpEnv.getMasterDataDir())
         if not gpPrefix:
-            gpPrefix = 'gp-'
+            gpPrefix = 'gp'
 
         for mirToBuild in toBuild:
             # mirToBuild is a GpMirrorToBuild object

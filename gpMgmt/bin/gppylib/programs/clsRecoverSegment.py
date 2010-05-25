@@ -292,7 +292,7 @@ class GpRecoverSegmentProgram:
     def __applySpareDirectoryMapToSegment( self, gpEnv, gpArray, spareDirectoryMap, segment):
         gpPrefix = gpmlib.get_gp_prefix(gpEnv.getMasterDataDir())
         if not gpPrefix:
-            gpPrefix = 'gp-'
+            gpPrefix = 'gp'
 
         fsMap = segment.getSegmentFilespaces()
         for oid, path in spareDirectoryMap.iteritems():

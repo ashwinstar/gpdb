@@ -431,7 +431,7 @@ class TableLogger:
 
         returns self
         """
-        self.__warnWithArrows
+        self.__warnWithArrows = warnWithArrows
         return self
 
     def warn(self, line):

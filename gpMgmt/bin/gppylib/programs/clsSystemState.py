@@ -216,8 +216,9 @@ class GpSystemStateProgram:
             if standbyStatusFetchWarning is not None:
                 tabLog.warn(["Standby master state", "= Status could not be determined: %s" % standbyStatusFetchWarning])
 
-            elif hostNameToResults[standby.getSegmentHostName()][gp.SEGMENT_STATUS__HAS_POSTMASTER_PID_FILE] and \
-                    hostNameToResults[standby.getSegmentHostName()][gp.SEGMENT_STATUS__GET_PID]['pid'] > 0:
+            elif standbyData[gp.SEGMENT_STATUS__HAS_POSTMASTER_PID_FILE] and \
+                    standbyData[gp.SEGMENT_STATUS__GET_PID]['pid'] > 0 and \
+                    standbyData[gp.SEGMENT_STATUS__GET_PID]['error'] is None:
                 tabLog.info(["Standby master state", "= Standby host passive"])
                 
             else:
