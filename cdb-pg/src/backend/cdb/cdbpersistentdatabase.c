@@ -403,7 +403,7 @@ void PersistentDatabase_MarkCreatePending(
 	DatabaseDirEntry databaseDirEntry;
 	SharedOidSearchAddResult addResult;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -492,7 +492,7 @@ void PersistentDatabase_AddCreated(
 
 	int64 persistentSerialNum;
 
-	Assert (PersistentFileSysObj_BeforePersistenceWork());
+	Assert (Persistent_BeforePersistenceWork());
 
 	PersistentDatabase_InitScan();
 
@@ -631,7 +631,7 @@ void PersistentDatabase_Created(
 
 	DatabaseDirEntry databaseDirEntry;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -693,7 +693,7 @@ PersistentDatabase_RemoveSegment(int16 dbid, bool ismirror)
 	HeapTuple tuple;
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 		elog(ERROR, "persistent table changes forbidden");
 
 	rel = heap_open(GpPersistentDatabaseNodeRelationId,
@@ -742,7 +742,7 @@ PersistentDatabase_ActivateStandby(int16 oldmaster, int16 newmaster)
 	HeapTuple tuple;
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 		elog(ERROR, "persistent table changes forbidden");
 
 	rel = heap_open(GpPersistentDatabaseNodeRelationId,
@@ -793,7 +793,7 @@ PersistentDatabase_AddMirrorAll(
 	HeapTuple tuple;
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -866,7 +866,7 @@ bool PersistentDatabase_MarkDropPending(
 
 	bool result;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -946,7 +946,7 @@ bool PersistentDatabase_MarkAbortingCreate(
 
 	bool result;
 	
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -1023,7 +1023,7 @@ void PersistentDatabase_Dropped(
 
 	PersistentFileSysState oldState;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -1088,7 +1088,7 @@ PersistentDatabase_DirIsCreated(DbDirNode *dbDirNode)
 	DatabaseDirEntry databaseDirEntry;
 	bool result;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -1148,7 +1148,7 @@ void PersistentDatabase_MarkJustInTimeCreatePending(
 
 	SharedOidSearchAddResult addResult;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -1245,7 +1245,7 @@ void PersistentDatabase_JustInTimeCreated(
 
 	DatabaseDirEntry databaseDirEntry;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -1314,7 +1314,7 @@ void PersistentDatabase_AbandonJustInTimeCreatePending(
 
 	DatabaseDirEntry databaseDirEntry;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 

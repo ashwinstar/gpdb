@@ -601,7 +601,7 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 	bool		shouldDispatch = (Gp_role == GP_ROLE_DISPATCH);
 
 	if (shouldDispatch)
-		if (PersistentFileSysObj_BeforePersistenceWork())
+		if (Persistent_BeforePersistenceWork())
 			elog(NOTICE, " Create database dispatch before persistence work!");
 
 

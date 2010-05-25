@@ -353,7 +353,7 @@ int64 PersistentFileSysObj_CurrentMaxSerialNum(
 								&fileSysObjSharedData->storeSharedData);
 }
 
-bool PersistentFileSysObj_TidIsKnown(
+PersistentTidIsKnownResult PersistentFileSysObj_TidIsKnown(
 	PersistentFsObjType 	fsObjType,
 
 	ItemPointer 			persistentTid,
@@ -363,7 +363,7 @@ bool PersistentFileSysObj_TidIsKnown(
 	PersistentFileSysObjData 		*fileSysObjData;
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData;
 
-	bool value;
+	PersistentTidIsKnownResult result;
 
 	PersistentFileSysObj_GetDataPtrs(
 								fsObjType,
@@ -372,14 +372,14 @@ bool PersistentFileSysObj_TidIsKnown(
 	
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
-	value = PersistentStore_TidIsKnown(
+	result = PersistentStore_TidIsKnown(
 								&fileSysObjSharedData->storeSharedData,
 								persistentTid,
 								maxTid);
 	
 	LWLockRelease(PersistentObjLock);
 
-	return value;
+	return result;
 }
 
 void PersistentFileSysObj_UpdateTuple(
@@ -1541,7 +1541,7 @@ void PersistentFileSysObj_Created(
 
 	bool					retryPossible)
 {
-	if (!PersistentFileSysObj_BeforePersistenceWork())
+	if (!Persistent_BeforePersistenceWork())
 	{
 		if (PersistentStore_IsZeroTid(persistentTid))
 			elog(ERROR, "TID for persistent '%s' tuple for created is invalid (0,0)",
@@ -1610,7 +1610,7 @@ bool PersistentFileSysObj_MarkAbortingCreate(
 {
 	bool result;
 
-	if (!PersistentFileSysObj_BeforePersistenceWork())
+	if (!Persistent_BeforePersistenceWork())
 	{
 		if (PersistentStore_IsZeroTid(persistentTid))
 			elog(ERROR, "TID for persistent '%s' tuple for mark aborting CREATE is invalid (0,0)",
@@ -1685,7 +1685,7 @@ bool PersistentFileSysObj_MarkDropPending(
 {
 	bool result;
 
-	if (!PersistentFileSysObj_BeforePersistenceWork())
+	if (!Persistent_BeforePersistenceWork())
 	{
 		if (PersistentStore_IsZeroTid(persistentTid))
 			elog(ERROR, "TID for persistent '%s' tuple for mark DROP pending is invalid (0,0)",
@@ -1807,7 +1807,7 @@ void PersistentFileSysObj_DropObject(
 	errcontext.previous = error_context_stack;
 	error_context_stack = &errcontext;
 	
-	if (!PersistentFileSysObj_BeforePersistenceWork())
+	if (!Persistent_BeforePersistenceWork())
 	{
 		if (PersistentStore_IsZeroTid(persistentTid))
 			elog(ERROR, "TID for persistent '%s' tuple for DROP is invalid (0,0)",
@@ -4757,7 +4757,7 @@ bool PersistentFileSysObj_ScanForRelation(
 	if(RelFileNode_IsEmpty(relFileNode))
 		elog(ERROR, "Invalid RelFileNode (0,0,0)");
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		elog(ERROR, 
 		     "Cannot scan for persistent relation %u/%u/%u, segment file #%d because we are before persistence work",

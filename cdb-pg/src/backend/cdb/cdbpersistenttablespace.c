@@ -559,7 +559,7 @@ void PersistentTablespace_MarkCreatePending(
 
 	TablespaceDirEntry tablespaceDirEntry;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -651,7 +651,7 @@ void PersistentTablespace_Created(
 
 	TablespaceDirEntry tablespaceDirEntry;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -709,7 +709,7 @@ PersistentTablespace_RemoveSegment(int16 dbid, bool ismirror)
 
 	hash_seq_init(&hstat, persistentTablespaceSharedHashTable);
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 		elog(ERROR, "persistent table changes forbidden");
 
 	PersistentTablespace_InitScan();
@@ -749,7 +749,7 @@ PersistentTablespace_ActivateStandby(int16 oldmaster, int16 newmaster)
 
 	hash_seq_init(&hstat, persistentTablespaceSharedHashTable);
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 		elog(ERROR, "persistent table changes forbidden");
 
 	PersistentTablespace_InitScan();
@@ -790,7 +790,7 @@ PersistentTablespace_AddMirrorAll(
 
 	hash_seq_init(&hstat, persistentTablespaceSharedHashTable);
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 		elog(ERROR, "persistent table changes forbidden");
 
 	PersistentTablespace_InitScan();
@@ -853,7 +853,7 @@ bool PersistentTablespace_MarkDropPending(
 
 	bool result;
 	
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -932,7 +932,7 @@ bool PersistentTablespace_MarkAbortingCreate(
 
 	bool result;
 	
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -1007,7 +1007,7 @@ void PersistentTablespace_Dropped(
 
 	PersistentFileSysState oldState;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 

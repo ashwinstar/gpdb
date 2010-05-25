@@ -264,7 +264,7 @@ void PersistentRelation_AddCreatePending(
 	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
 	MemSet(&mirrorBufpoolResyncCkptLoc, 0, sizeof(XLogRecPtr));
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -372,7 +372,7 @@ void PersistentRelation_AddCreated(
 	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
 	MemSet(&mirrorBufpoolResyncCkptLoc, 0, sizeof(XLogRecPtr));
 
-	Assert (PersistentFileSysObj_BeforePersistenceWork());
+	Assert (Persistent_BeforePersistenceWork());
 
 	PersistentRelation_InitScan();
 
@@ -455,7 +455,7 @@ void PersistentRelation_Created(
 	if(RelFileNode_IsEmpty(relFileNode))
 		elog(ERROR, "Invalid RelFileNode (0,0,0)");
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -513,7 +513,7 @@ PersistentRelation_AddMirrorAll(int16 pridbid, int16 mirdbid)
 	HeapTuple tuple;
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 		elog(ERROR, "persistent table changes forbidden");
 
 	rel = heap_open(GpPersistentRelationNodeRelationId,
@@ -565,7 +565,7 @@ PersistentRelation_RemoveSegment(int16 dbid, bool ismirror)
 	HeapTuple tuple;
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 		elog(ERROR, "persistent table changes forbidden");	
 
 	rel = heap_open(GpPersistentRelationNodeRelationId,
@@ -616,7 +616,7 @@ PersistentRelation_ActivateStandby(int16 oldmaster, int16 newmaster)
 	HeapTuple tuple;
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 		elog(ERROR, "persistent table changes forbidden");	
 
 	rel = heap_open(GpPersistentRelationNodeRelationId,
@@ -694,7 +694,7 @@ bool PersistentRelation_MarkDropPending(
 	if(RelFileNode_IsEmpty(relFileNode))
 		elog(ERROR, "Invalid RelFileNode (0,0,0)");
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -775,7 +775,7 @@ bool PersistentRelation_MarkAbortingCreate(
 	if(RelFileNode_IsEmpty(relFileNode))
 		elog(ERROR, "Invalid RelFileNode (0,0,0)");
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -851,7 +851,7 @@ void PersistentRelation_Dropped(
 	if(RelFileNode_IsEmpty(relFileNode))
 		elog(ERROR, "Invalid RelFileNode (0,0,0)");
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -935,7 +935,7 @@ void PersistentRelation_MarkBufPoolRelationForScanIncrementalResync(
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 

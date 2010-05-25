@@ -409,7 +409,7 @@ int64 PersistentStore_CurrentMaxSerialNum(
 	return storeSharedData->maxInUseSerialNum;
 }
 
-bool PersistentStore_TidIsKnown(
+PersistentTidIsKnownResult PersistentStore_TidIsKnown(
 	PersistentStoreSharedData 	*storeSharedData,
 
 	ItemPointer 				persistentTid,
@@ -420,12 +420,18 @@ bool PersistentStore_TidIsKnown(
 
 	// UNDONE: I think the InRecovery test only applies to physical Master Mirroring on Standby.
 	/* Only test this outside of recovery scenarios */
-	if (InRecovery)
-		return true;
+	if (Persistent_BeforePersistenceWork())
+		return PersistentTidIsKnownResult_BeforePersistenceWork;
 
-	return (ItemPointerCompare(
+	if (storeSharedData->needToScanIntoSharedMemory)
+		return PersistentTidIsKnownResult_ScanNotPerformedYet;
+
+	if (ItemPointerCompare(
 						persistentTid,
-						&storeSharedData->maxTid) <= 0); // Less-than or equal.
+						&storeSharedData->maxTid) <= 0) // Less-than or equal.
+		return PersistentTidIsKnownResult_Known;
+	else
+		return PersistentTidIsKnownResult_NotKnown;
 }
 
 static void PersistentStore_DoInsertTuple(

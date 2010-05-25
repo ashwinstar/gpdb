@@ -46,18 +46,6 @@ typedef struct PersistentFileSysObjData
 
 } PersistentFileSysObjData;
 
-inline static bool PersistentFileSysObj_BeforePersistenceWork(void)
-{
-	if (IsBootstrapProcessingMode())
-		return true;
-
-	if (gp_before_persistence_work && !IsUnderPostmaster)
-		return true;
-
-	return false;
-}
-
-
 extern void PersistentFileSysObj_InitShared(
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData);
 
@@ -91,7 +79,7 @@ extern int64 PersistentFileSysObj_MyHighestSerialNum(
 extern int64 PersistentFileSysObj_CurrentMaxSerialNum(
 	PersistentFsObjType 	fsObjType);
 
-extern bool PersistentFileSysObj_TidIsKnown(
+extern PersistentTidIsKnownResult PersistentFileSysObj_TidIsKnown(
 	PersistentFsObjType 	fsObjType,
 
 	ItemPointer 			persistentTid,

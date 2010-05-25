@@ -659,7 +659,7 @@ void PersistentFilespace_MarkCreatePending(
 
 	FilespaceDirEntry filespaceDirEntry;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -776,7 +776,7 @@ void PersistentFilespace_Created(
 
 	FilespaceDirEntry filespaceDirEntry;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -861,7 +861,7 @@ bool PersistentFilespace_MarkDropPending(
 
 	bool result;
 	
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -941,7 +941,7 @@ bool PersistentFilespace_MarkAbortingCreate(
 
 	bool result;
 	
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -1016,7 +1016,7 @@ void PersistentFilespace_Dropped(
 
 	PersistentFileSysState oldState;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
 			elog(Debug_persistent_print_level, 
@@ -1083,7 +1083,7 @@ PersistentFilespace_AddMirror(Oid filespace,
 
 	FilespaceDirEntry fde;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 		elog(ERROR, "persistent table changes forbidden");
 
 	PersistentFilespace_InitScan();
@@ -1140,7 +1140,7 @@ PersistentFilespace_RemoveSegment(int16 dbid, bool ismirror)
 	FilespaceDirEntry fde;
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 		elog(ERROR, "persistent table changes forbidden");
 
 	hash_seq_init(&hstat, persistentFilespaceSharedHashTable);
@@ -1189,7 +1189,7 @@ PersistentFilespace_ActivateStandby(int16 oldmaster, int16 newmaster)
 	FilespaceDirEntry fde;
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
-	if (PersistentFileSysObj_BeforePersistenceWork())
+	if (Persistent_BeforePersistenceWork())
 		elog(ERROR, "persistent table changes forbidden");
 
 	hash_seq_init(&hstat, persistentFilespaceSharedHashTable);

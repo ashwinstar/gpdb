@@ -19,6 +19,7 @@
 #include "utils/rel.h"
 #include "cdb/cdbfilerepprimary.h"
 #include "cdb/cdbdirectopen.h"
+#include "utils/guc.h"
 
 #define PersistentStoreSharedData_StaticInit {false,0,0,{{0,0},0},{{0,0},0}}
 
@@ -134,6 +135,16 @@ inline static bool PersistentStore_IsZeroTid(
 		MIRRORED_UNLOCK; \
 	}
 
+inline static bool Persistent_BeforePersistenceWork(void)
+{
+	if (IsBootstrapProcessingMode())
+		return true;
+
+	if (gp_before_persistence_work && !IsUnderPostmaster)
+		return true;
+
+	return false;
+}
 
 extern void PersistentStore_InitShared(
 	PersistentStoreSharedData 	*storeSharedData);
@@ -199,7 +210,17 @@ extern int64 PersistentStore_MyHighestSerialNum(
 extern int64 PersistentStore_CurrentMaxSerialNum(
 	PersistentStoreSharedData 	*storeSharedData);
 
-extern bool PersistentStore_TidIsKnown(
+typedef enum PersistentTidIsKnownResult
+{
+	PersistentTidIsKnownResult_None = 0,
+	PersistentTidIsKnownResult_BeforePersistenceWork,
+	PersistentTidIsKnownResult_ScanNotPerformedYet,
+	PersistentTidIsKnownResult_Known,
+	PersistentTidIsKnownResult_NotKnown,
+	MaxPersistentTidIsKnownResult		/* must always be last */
+} PersistentTidIsKnownResult;
+
+extern PersistentTidIsKnownResult PersistentStore_TidIsKnown(
 	PersistentStoreSharedData 	*storeSharedData,
 
 	ItemPointer 				persistentTid,

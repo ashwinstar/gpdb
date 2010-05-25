@@ -226,11 +226,15 @@ PersistentEndXactRec_VerifyFileSysActionInfos(
 
 	ItemPointerData maxTid;
 
-	if (IsBootstrapProcessingMode())
+	if (InRecovery || Persistent_BeforePersistenceWork())
 		return;
+
+//	PersistentFileSysObj_InitScan();
 
 	for (i = 0; i < count; i++)
 	{
+		PersistentTidIsKnownResult persistentTidIsKnownResult;
+
 		if (!PersistentEndXactFileSysAction_IsValid(fileSysActionInfos[i].action))
 			elog(ERROR, "Persistent file-system action is invalid (%d) (index %d, transaction kind '%s')",
 				 fileSysActionInfos[i].action,
@@ -249,16 +253,40 @@ PersistentEndXactRec_VerifyFileSysActionInfos(
 				 i,
 				 EndXactRecKind_Name(endXactRecKind));
 
-		if (!PersistentFileSysObj_TidIsKnown(
-									fileSysActionInfos[i].fsObjName.type,
-									&fileSysActionInfos[i].persistentTid,
-									&maxTid))
+		persistentTidIsKnownResult = PersistentFileSysObj_TidIsKnown(
+													fileSysActionInfos[i].fsObjName.type,
+													&fileSysActionInfos[i].persistentTid,
+													&maxTid);
+		switch (persistentTidIsKnownResult)
+		{
+		case PersistentTidIsKnownResult_BeforePersistenceWork:
+			elog(ERROR, "Shouldn't being trying to verify persistent TID before persistence work");
+			break;
+
+		case PersistentTidIsKnownResult_ScanNotPerformedYet:
+			// UNDONE: For now, just debug log this.
+			if (Debug_persistent_print)
+				elog(Debug_persistent_print_level, 
+				     "Can't verify persistent TID if we haven't done the persistent scan yet");
+			break;
+
+		case PersistentTidIsKnownResult_NotKnown:
 			elog(ERROR, "TID for persistent '%s' tuple TID %s is beyond the last known TID %s (index %d, transaction kind '%s')",
 				 PersistentFileSysObjName_TypeAndObjectName(&fileSysActionInfos[i].fsObjName),
 				 ItemPointerToString(&fileSysActionInfos[i].persistentTid),
 				 ItemPointerToString2(&maxTid),
 				 i,
 				 EndXactRecKind_Name(endXactRecKind));
+			break;
+
+		case PersistentTidIsKnownResult_Known:
+			/* OK */
+			break;
+			
+		default:
+			elog(ERROR, "Unexpected persistent file-system TID is known result: %d",
+				 persistentTidIsKnownResult);
+		}
 
 		if (fileSysActionInfos[i].persistentSerialNum == 0)
 			elog(ERROR, "Persistent '%s' serial number is invalid (0) (index %d, transaction kind '%s')",
