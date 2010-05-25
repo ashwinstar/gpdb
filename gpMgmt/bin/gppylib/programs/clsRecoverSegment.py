@@ -621,18 +621,18 @@ class GpRecoverSegmentProgram:
             logger.info('Recovery %d of %d' % (i+1, total))
             logger.info('---------------------------------------------------------')
 
-            lines = []
+            tabLog = TableLogger()
 
             syncMode = "Full" if toRecover.isFullSynchronization() else "Incremental"
-            lines.append(["Synchronization mode", "= " + syncMode])
-            programIoUtils.appendSegmentInfoForOutput("Failed", gpArray, toRecover.getFailedSegment(), lines)
-            programIoUtils.appendSegmentInfoForOutput("Recovery Source", gpArray, toRecover.getLiveSegment(), lines)
+            tabLog.info(["Synchronization mode", "= " + syncMode])
+            programIoUtils.appendSegmentInfoForOutput("Failed", gpArray, toRecover.getFailedSegment(), tabLog)
+            programIoUtils.appendSegmentInfoForOutput("Recovery Source", gpArray, toRecover.getLiveSegment(), tabLog)
 
             if toRecover.getFailoverSegment() is not None:
-                programIoUtils.appendSegmentInfoForOutput("Recovery Target", gpArray, toRecover.getFailoverSegment(), lines)
+                programIoUtils.appendSegmentInfoForOutput("Recovery Target", gpArray, toRecover.getFailoverSegment(), tabLog)
             else:
-                lines.append(["Recovery Target", "= in-place"])
-            utils.logLinesToTable(lines, {})
+                tabLog.info(["Recovery Target", "= in-place"])
+            tabLog.outputTable
 
             i = i + 1
 

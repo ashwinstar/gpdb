@@ -19,7 +19,7 @@ from gppylib.system import configurationInterface as configInterface
 from gppylib.system.environment import GpMasterEnvironment
 from gppylib.test.testUtils import *
 from gppylib.utils import toNonNoneString, checkNotNone, writeLinesToFile, readAllLinesFromFile, \
-                    parseMirroringConfigFile, PathNormalizationException, normalizeAndValidateInputPath
+                    parseMirroringConfigFile, PathNormalizationException, normalizeAndValidateInputPath, TableLogger
 from lib import gpmlib
 from gppylib.gphostcache import GpInterfaceToHostNameCache
 
@@ -467,10 +467,10 @@ class GpAddMirrorsProgram:
             logger.info('Mirror %d of %d' % (i+1, total))
             logger.info('---------------------------------------------------------')
 
-            lines = []
-            programIoUtils.appendSegmentInfoForOutput("Primary", gpArray, toRecover.getLiveSegment(), lines)
-            programIoUtils.appendSegmentInfoForOutput("Mirror", gpArray, toRecover.getFailoverSegment(), lines)
-            utils.logLinesToTable(lines, {})
+            tabLog = TableLogger()
+            programIoUtils.appendSegmentInfoForOutput("Primary", gpArray, toRecover.getLiveSegment(), tabLog)
+            programIoUtils.appendSegmentInfoForOutput("Mirror", gpArray, toRecover.getFailoverSegment(), tabLog)
+            tabLog.outputTable()
 
         logger.info('---------------------------------------------------------')
 
