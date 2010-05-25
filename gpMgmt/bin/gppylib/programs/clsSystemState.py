@@ -208,20 +208,135 @@ class GpSystemStateProgram:
 
         return exitCode
 
-    def __showStatus(self, gpEnv, gpArray):
+    def __showStatusStatistics(self, gpEnv, gpArray):
         """
-        Prints out the current status of the cluster.
-
-        @param gpEnv the GpMasterEnvironment object
-        @param gpArray the array to display
+        Print high-level numeric stats about the cluster
 
         returns the exit code
         """
-        hasWarnings = False
+        hostNameToResults = self.__fetchAllSegmentData(gpArray)
+        standbys = [seg for seg in gpArray.getDbList() if seg.isSegmentStandby(current_role=False)]
+        standby = standbys[0] if standbys else None
 
-        #
-        # query for data
-        #
+        logger.info("Greenplum instance status summary")
+
+        # master summary info
+        lines = []
+        warningLines = {}
+
+        def appendLog(doWarn, line):
+            if doWarn:
+                warningLines[len(lines)] = True
+                line[len(line)-1] = line[len(line)-1] + " <<<<<<<<"
+            lines.append(line)
+            
+        lines.append(None)
+        lines.append(["Master instance", "= Active"])
+        if standby is None:
+            lines.append(["Master instance standby", "= NOT CONFIGURED"])
+        elif standby.isSegmentMaster(current_role=True):
+            lines.append(["Master instance standby", "= STANDBY HOST ACTIVE INSTANCE MASTER"])
+        elif hostNameToResults[standby.getSegmentHostName()][gp.SEGMENT_STATUS__HAS_POSTMASTER_PID_FILE] and \
+                    hostNameToResults[standby.getSegmentHostName()][gp.SEGMENT_STATUS__GET_PID]['pid'] > 0:
+            lines.append(["Master instance standby", "= Passive"])
+        else:
+            appendLog(True, ["Master instance standby", "= DOWN"])
+
+        arrayType = "Multi-Home" if  gpArray.guessIsMultiHome() else "Standard"
+        lines.append(["Greenplum array configuration type", "= %s" % arrayType])
+        lines.append(None)
+
+        lines.append(["Total segment instance count from meta data", "= %s" % len(gpArray.getSegDbList())])
+        lines.append(None)
+
+        # primary and mirror segment info
+        for whichType in ["Primary", "Mirror"]:
+            lines.append(["%s Segment Status" % whichType])
+            lines.append(None)
+
+            if whichType == "Primary":
+                segs = [seg for seg in gpArray.getSegDbList() if seg.isSegmentPrimary(current_role=False)]
+            else:
+                segs = [seg for seg in gpArray.getSegDbList() if seg.isSegmentMirror(current_role=False)]
+                if not segs:
+                    lines.append(["Mirrors not configured on this array"])
+                    lines.append(None)
+                    continue
+
+            numPostmasterPidFilesMissing = 0
+            numPostmasterProcessesMissing = 0
+            numLockFilesMissing = 0
+            numPostmasterPidsMissing = 0
+            for seg in segs:
+                (statusFetchWarning, outputFromCmd) = hostNameToResults[seg.getSegmentHostName()]
+                if statusFetchWarning is not None:
+                    # I guess if we can't contact the segment that we can do this?
+                    # or should add a new error row instead to account for this?
+                    numPostmasterPidFilesMissing += 1
+                    numLockFilesMissing += 1
+                    numPostmasterProcessesMissing += 1
+                    numPostmasterPidsMissing += 1                    
+                else:
+                    segmentData = outputFromCmd[seg.getSegmentDbId()]
+                    if not segmentData[gp.SEGMENT_STATUS__HAS_LOCKFILE]:
+                        numLockFilesMissing += 1
+                    if not segmentData[gp.SEGMENT_STATUS__HAS_POSTMASTER_PID_FILE]:
+                        numPostmasterPidFilesMissing += 1
+
+                    # note: this (which I think matches old behavior fairly closely)
+                    #        doesn't seem entirely correct -- we are checking whether netstat is
+                    #        there, but not really checking that the process is running on that port?
+                    if segmentData[gp.SEGMENT_STATUS__GET_PID] is None or \
+                            segmentData[gp.SEGMENT_STATUS__GET_PID]['pid'] == 0:
+                        numPostmasterPidsMissing += 1
+                        numPostmasterProcessesMissing += 1
+                    elif segmentData[gp.SEGMENT_STATUS__GET_PID]['error'] is not None:
+                        numPostmasterProcessesMissing += 1
+
+            numSegments = len(segs)
+            numValidAtMaster = len([seg for seg in segs if seg.isSegmentUp()])
+            numFailuresAtMaster = len([seg for seg in segs if seg.isSegmentDown()])
+            numPostmasterPidFilesFound = numSegments - numPostmasterPidFilesMissing
+            numLockFilesFound = numSegments - numLockFilesMissing
+            numPostmasterPidsFound = numSegments - numPostmasterPidsMissing
+            numPostmasterProcessesFound = numSegments - numPostmasterProcessesMissing
+
+            # print stuff
+            lines.append(["Total %s segments" % whichType.lower(), "= %d" % numSegments])
+            lines.append(["Total %s segment valid (at master)" % whichType.lower(), "= %d" % numValidAtMaster])
+            appendLog(numFailuresAtMaster > 0,
+                      ["Total %s segment failures (at master)" % whichType.lower(), "= %d" % numFailuresAtMaster])
+
+            appendLog(numPostmasterPidFilesMissing > 0,
+                      ["Total number of postmaster.pid files missing", "= %d" % numPostmasterPidFilesMissing])
+            lines.append( ["Total number of postmaster.pid files found", "= %d" % numPostmasterPidFilesFound])
+
+            appendLog(numPostmasterPidsMissing > 0,
+                      ["Total number of postmaster.pid PIDs missing", "= %d" % numPostmasterPidsMissing])
+            lines.append( ["Total number of postmaster.pid PIDs found", "= %d" % numPostmasterPidsFound])
+
+            appendLog(numLockFilesMissing > 0,
+                        ["Total number of /tmp lock files missing", "= %d" % numLockFilesMissing])
+            lines.append( ["Total number of /tmp lock files found", "= %d" % numLockFilesFound])
+
+            appendLog(numPostmasterProcessesMissing > 0,
+                        ["Total number postmaster processes missing", "= %d" % numPostmasterProcessesMissing])
+            lines.append( ["Total number postmaster processes found", "= %d" % numPostmasterProcessesFound])
+
+            if whichType == "Mirror":
+                numMirrorsActive = len([seg for seg in segs if seg.isSegmentPrimary(current_role=True)])
+                numMirrorsPassive = numSegments - numMirrorsActive
+                appendLog(numMirrorsActive > 0,
+                            ["Total number mirror segments active", "= %d" % numMirrorsActive])
+                lines.append( ["Total number mirror segments passive", "= %d" % numMirrorsPassive])
+
+            lines.append(None)
+        utils.logLinesToTable(lines, warningLines)
+
+    def __fetchAllSegmentData(self, gpArray):
+        """
+        returns a dict mapping hostName to the GpGetSgementStatusValues decoded result
+        """
         logger.info("Gathering data from segments...")
         segmentsByHost = GpArray.getSegmentsByHostName(gpArray.getDbList())
         segmentData = {}
@@ -245,6 +360,19 @@ class GpSystemStateProgram:
         hostNameToResults = {}
         for hostName, cmd in hostNameToCmd.iteritems():
             hostNameToResults[hostName] = cmd.decodeResults()
+        return hostNameToResults        
+
+    def __showStatus(self, gpEnv, gpArray):
+        """
+        Prints out the current status of the cluster.
+
+        @param gpEnv the GpMasterEnvironment object
+        @param gpArray the array to display
+
+        returns the exit code
+        """
+        hasWarnings = False
+        hostNameToResults = self.__fetchAllSegmentData(gpArray)
 
         #
         # fetch data about master
@@ -365,13 +493,10 @@ class GpSystemStateProgram:
                 else:
                     appendWarningLogLine(lines, warningLines, ["Lock files in /tmp status", "= Missing"])
 
-                isValid = seg.isSegmentUp()
-
                 # Active PID
                 if pidData['error'] is None:
                     lines.append(["Active PID", "= %s" % pidData["pid"]])
                 else:
-                    isValid = False
                     appendWarningLogLine(lines, warningLines, ["Active PID", "= Missing"])
 
                 if seg.isSegmentPrimary(current_role=False):
@@ -385,7 +510,8 @@ class GpSystemStateProgram:
                     else:
                         lines.append(["Mirror status", "= Passive"])
 
-                # isValid depends on being marked up in metadata AND not having an error fetching the pid
+                # is valid
+                isValid = seg.isSegmentUp() and pidData['error'] is None
                 if isValid:
                     lines.append(["Instance Status", "= Valid"])
                 else:
@@ -605,6 +731,8 @@ class GpSystemStateProgram:
         numSet = (1 if self.__options.showMirrorList else 0) + \
                  (1 if self.__options.showClusterConfig else 0) + \
                  (1 if self.__options.showQuickStatus else 0) + \
+                 (1 if self.__options.showStatus else 0) + \
+                 (1 if self.__options.showStatusStatistics else 0) + \
                  (1 if self.__options.showPortInformation else 0) + \
                  (1 if self.__options.showStandbyMasterInformation else 0) + \
                  (1 if self.__options.showVersionInfo else 0)
@@ -628,6 +756,8 @@ class GpSystemStateProgram:
             exitCode = self.__displayClusterConfig(gpEnv, gpArray)
         elif self.__options.showQuickStatus:
             exitCode = self.__showQuickStatus(gpEnv, gpArray)
+        elif self.__options.showStatusStatistics:
+            exitCode = self.__showStatusStatistics(gpEnv, gpArray)
         elif self.__options.showStatus:
             exitCode = self.__showStatus(gpEnv, gpArray)
         elif self.__options.showVersionInfo:
@@ -690,9 +820,13 @@ class GpSystemStateProgram:
                             metavar="<showPortInformation>",
                             help="Show port information")
         addTo.add_option("-f", None, default=False, action="store_true",
-                            dest="showStandbyMasterInformation",
-                            metavar="<showStandbyMasterInformation>",
-                            help="Show standby master information")
+                         dest="showStandbyMasterInformation",
+                         metavar="<showStandbyMasterInformation>",
+                         help="Show standby master information")
+        addTo.add_option("-b", None, default=False, action="store_true",
+                         dest="showStatusStatistics",
+                         metavar="<showStatusStatistics>",
+                         help="Show status statistics")
 
         addTo = OptionGroup(parser, "Other Options")
         parser.add_option_group(addTo)
