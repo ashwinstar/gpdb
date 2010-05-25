@@ -34,6 +34,14 @@ typedef enum FaultInjectorIdentifier_e {
 	
 	FileRepFlush,
 	
+	FileRepResync,
+	
+	FileRepTransitionToInResync,
+	
+	FileRepTransitionToInSync,
+	
+	Checkpoint,
+	
 	TransactionCommitPrepared,
 	
 	TransactionAbortPrepared,

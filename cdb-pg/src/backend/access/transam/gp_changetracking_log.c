@@ -118,7 +118,7 @@ gp_changetracking_log(PG_FUNCTION_ARGS)
 	{
 		TupleDesc		tupdesc;
 		MemoryContext 	oldcontext;
-		int		   		ct_filetype = PG_GETARG_INT32(0);
+		int		   		ftype = PG_GETARG_INT32(0);
 		
 		/* create a function context for cross-call persistence */
 		funcctx = SRF_FIRSTCALL_INIT();
@@ -148,22 +148,22 @@ gp_changetracking_log(PG_FUNCTION_ARGS)
 		 */
 		context = (CTContext *) palloc(sizeof(CTContext));
 	
-		/* This check/error is only temporary, will be removed soon */
-		if(ct_filetype != CTF_LOG)
-			elog(ERROR, "internal error in gp_changetracking_log()");
-	
+
+		if (ftype != CTF_LOG_FULL && 
+			ftype != CTF_LOG_COMPACT && 
+			ftype != CTF_LOG_TRANSIENT)
+			elog(ERROR, "invalid log file descriptor specified (%d). "
+						"valid values are %d (full), %d (compact), or %d (transient). ", 
+						ftype, CTF_LOG_FULL, CTF_LOG_COMPACT, CTF_LOG_TRANSIENT);
+
 		/* make sure log file exists. then open it */
-		if(!ChangeTracking_DoesFileExist(ct_filetype))
+		if(!ChangeTracking_DoesFileExist(ftype))
 			ereport(ERROR,
 					(errcode_for_file_access(),
-					 errmsg("gp_changetracking_log couldn't open %s log file on segment %d dbid %d", 
-							 (ChangeTracking_IsFileModeCompact() ? "compact" : "full"),
-							 Gp_segment, GpIdentity.dbid)));
-		
-		elog(LOG, "gp_changetracking_log successfully found and opened %s log file",
-				(ChangeTracking_IsFileModeCompact() ? "compact" : "full"));
-		
-		context->file = ChangeTracking_OpenFile(CTF_LOG);
+					 errmsg("gp_changetracking_log couldn't open %s file on segment %d dbid %d", 
+							 ChangeTracking_FtypeToString(ftype), Gp_segment, GpIdentity.dbid)));
+				
+		context->file = ChangeTracking_OpenFile(ftype);
 		FileSeek(context->file, 0, SEEK_SET); 
 		Assert(context->file >= 0);
 		

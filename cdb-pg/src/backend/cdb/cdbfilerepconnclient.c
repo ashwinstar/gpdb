@@ -65,6 +65,8 @@ FileRepConnClient_EstablishConnection(
 		status = STATUS_ERROR;
 		
 		if (conn) {
+			if (Debug_filerep_print)
+				elog(LOG, "LOG(filerep): close connection");
 			PQfinish(conn);
 			conn = NULL;
 		}
@@ -86,6 +88,8 @@ void
 FileRepConnClient_CloseConnection(void)
 {
 	if (conn) {
+		if (Debug_filerep_print)
+			elog(LOG, "LOG(filerep): close connection");
 		PQfinish(conn);
 		conn = NULL;
 	}

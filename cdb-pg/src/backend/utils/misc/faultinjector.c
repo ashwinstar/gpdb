@@ -100,6 +100,14 @@ FaultInjectorIdentifierEnumToString[] = {
 		 */
 	"filerep_flush",
 		/* inject fault before fsync is issued to file system */
+	"filerep_resync",
+		/* inject fault while InResync */
+	"filerep_transition_to_resync",
+		/* inject fault during transition to InResync */
+	"filerep_transition_to_sync",
+		/* inject fault during transition to InSync */
+	"checkpoint",
+		/* inject fault before checkpoint is taken */
 	"transaction_commit",
 		/* inject fault after it is recorded in XLOG for commit of prepared transaction */
 	"transaction_abort",
@@ -287,6 +295,11 @@ FaultInjector_InjectFaultIfSet(
 	char					tableNameLocal[NAMEDATALEN];
 	int						ii = 0;
 	
+	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
+	
+	if (fileRepRole != FileRepPrimaryRole && fileRepRole != FileRepMirrorRole)
+		return;
+		
 	LockAcquire();
 	
 	entryLocal = FaultInjector_LookupHashEntry(identifier);
@@ -531,8 +544,10 @@ FaultInjector_NewHashEntry(
 	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
 	switch (entry->faultInjectorIdentifier)
 	{
-		case TransactionCommitPrepared:
-		case TransactionAbortPrepared:
+		case FileRepResync:
+		case FileRepTransitionToInResync:
+		case FileRepTransitionToInSync:
+		case Checkpoint:
 			
 			if (fileRepRole == FileRepMirrorRole)
 			{
@@ -547,6 +562,22 @@ FaultInjector_NewHashEntry(
 				
 				goto exit;
 			}			
+			break;
+			
+		case TransactionCommitPrepared:
+		case TransactionAbortPrepared:
+			
+			LockRelease();
+			status = STATUS_ERROR;
+			ereport(LOG,
+					(errmsg("ERROR(fault injector): could not insert fault injection entry into table, not supported"
+							"identifier:'%s' ",
+							FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier])));
+			snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
+					 "could not insert fault injection, not supported");
+			
+			goto exit;			
+			
 			break;
 			
 		default:
@@ -659,6 +690,21 @@ FaultInjector_SetFaultInjection(
 {
 	int		status = STATUS_OK;
 	bool	isRemoved = FALSE;
+	
+	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
+
+	if (fileRepRole != FileRepPrimaryRole && fileRepRole != FileRepMirrorRole)
+	{
+		status = STATUS_ERROR;
+		ereport(LOG,
+				(errmsg("ERROR(fault injector): could not insert fault injection entry into table, segment not in Primary or Mirror role"
+						"identifier:'%s' ",
+						FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier])));
+		snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
+				 "could not insert fault injection, segment not in Primary or Mirror role");
+		
+		return status;
+	}
 	
 	switch (entry->faultInjectorType) {
 		case FaultInjectorTypeReset:

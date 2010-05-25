@@ -534,6 +534,8 @@ FileRepMirror_StartConsumer(void)
 			break;
 		}		
 		
+		Insist(FileRepSubProcess_GetState() == FileRepStateReady);
+		
 		status = FileRepMirror_RunConsumer();
 		
 	} // while(1)

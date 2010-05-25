@@ -193,6 +193,21 @@ FileRepPrimary_IsMirroringRequired(
 					break;
 				}
 				
+				/* 
+				 * If mirror is loss then backends should abort during shutdown in order
+				 * to avoid writing to local side (i.e. checkpoint occur on primary and not on mirror)
+				 */
+				if (segmentState == SegmentStateShutdownFilerepBackends &&
+					fileRepShmemArray[0]->state == FileRepStateFault &&
+					fileRepProcessType == FileRepProcessTypeNotInitialized &&
+					!(isInTransition == TRUE &&
+					  dataStateTransition == DataStateInChangeTracking))
+				{
+					ereport(ERROR,
+							(errmsg("failure is detected in segment mirroring during shutdown, abort requested (%d)",
+							 getpid())));
+				}
+				
 				if (segmentState != SegmentStateFault &&
 					!(isInTransition == TRUE &&
 					  dataStateTransition == DataStateInChangeTracking)) 
@@ -218,9 +233,9 @@ FileRepPrimary_IsMirroringRequired(
 				break;
 				
 			case DataStateInChangeTracking:
-				if (segmentState == SegmentStateInitialization ||
-					(segmentState == SegmentStateInChangeTrackingTransition &&
-					 fileRepRelationType != FileRepRelationTypeFlatFile))
+				if ((segmentState == SegmentStateInitialization ||
+					 segmentState == SegmentStateInChangeTrackingTransition) &&
+					 fileRepRelationType != FileRepRelationTypeFlatFile)
 				{
 					/* shutdown request has to be let through in order to recover */
 					if (FileRep_IsIpcSleep(fileRepOperation))
@@ -231,6 +246,7 @@ FileRepPrimary_IsMirroringRequired(
 					pg_usleep(500000L); /* 500 ms */
 					continue;
 				}
+
 				if (report) {
 					ereport(LOG,
 							(errmsg("LOG(filerep): failover is performed to the primary segment, "
@@ -293,9 +309,7 @@ FileRepPrimary_ConstructAndInsertMessage(
 				 FileRep_errdetail_Shmem(),
 				 FileRep_errcontext()));	
 		
-		if (updateSegmentState(SegmentStateFault)) {
-			SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
-		}					
+		FileRep_SetSegmentState(SegmentStateFault);
 		
 		FileRepPrimary_IsMirroringRequired(
 										   fileRepRelationType,
@@ -328,9 +342,7 @@ FileRepPrimary_ConstructAndInsertMessage(
 				 FileRep_errdetail_Shmem(),
 				 FileRep_errcontext()));	
 
-		if (updateSegmentState(SegmentStateFault)) {
-			SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
-		}					
+		FileRep_SetSegmentState(SegmentStateFault);
 		
 		FileRepPrimary_IsMirroringRequired(
 										   fileRepRelationType,
@@ -795,9 +807,7 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 						 FileRep_errdetail_Shmem(),
 						 FileRep_errcontext()));	
 				
-				if (updateSegmentState(SegmentStateFault)) {
-					SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
-				}					
+				FileRep_SetSegmentState(SegmentStateFault);
 				
 				FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationWrite);
 
@@ -1175,9 +1185,7 @@ FileRepPrimary_MirrorInSyncTransition(void)
 					 FileRep_errdetail_ShmemAck(),
 					 FileRep_errcontext()));	
 			
-			if (updateSegmentState(SegmentStateFault)) {
-				SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
-			}						
+			FileRep_SetSegmentState(SegmentStateFault);
 		}
 		
 	}
@@ -1225,9 +1233,7 @@ FileRepPrimary_MirrorHeartBeat(FileRepConsumerProcIndex_e index)
 					 FileRep_errdetail_ShmemAck(),
 					 FileRep_errcontext()));	
 			
-			if (updateSegmentState(SegmentStateFault)) {
-				SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
-			}			
+			FileRep_SetSegmentState(SegmentStateFault);
 		}		
 	}
 	
@@ -1261,9 +1267,7 @@ FileRepPrimary_IsOperationCompleted(
 						 FileRep_errdetail_ShmemAck(),
 						 FileRep_errcontext()));	
 				
-				if (updateSegmentState(SegmentStateFault)) {
-					SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
-				}			
+				FileRep_SetSegmentState(SegmentStateFault);
 				
 				FileRepPrimary_IsMirroringRequired(fileRepRelationType,
 												   FileRepOperationNotSpecified);

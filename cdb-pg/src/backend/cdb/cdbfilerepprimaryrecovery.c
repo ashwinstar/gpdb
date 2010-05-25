@@ -25,6 +25,7 @@
 
 static void FileRepPrimary_StartRecoveryInSync(void);
 static void FileRepPrimary_StartRecoveryInChangeTracking(void);
+static void FileRepPrimary_RunChangeTrackingCompacting(void);
 
 static int FileRepPrimary_RunRecoveryInSync(void);
 
@@ -48,6 +49,7 @@ FileRepPrimary_StartRecovery(void)
 			
 		case DataStateInChangeTracking:
 			FileRepPrimary_StartRecoveryInChangeTracking();
+			FileRepPrimary_RunChangeTrackingCompacting();
 			break;
 			
 		case DataStateInResync:
@@ -246,6 +248,7 @@ FileRepPrimary_StartRecoveryInChangeTracking(void)
 		}
 		
 		if (FileRepSubProcess_GetState() == FileRepStateShutdown ||
+			FileRepSubProcess_GetState() == FileRepStateShutdownBackends ||
 			FileRepSubProcess_GetState() == FileRepStateImmediateShutdown) {
 			
 			break;
@@ -270,7 +273,48 @@ FileRepPrimary_StartRecoveryInChangeTracking(void)
 	} // while(1)	
 }
 
-
+/*
+ * 
+ * FileRepPrimary_RunChangeTrackingCompacting()
+ *
+ */
+static void 
+FileRepPrimary_RunChangeTrackingCompacting(void)
+{
+	int		retry = 0;
+	
+	elog(LOG, "FileRepPrimary_StartRecoveryInChangeTracking()");
+	
+	while (1) {
+		
+		FileRepSubProcess_ProcessSignals();
+		
+		while (FileRepSubProcess_GetState() == FileRepStateFault) {			
+			FileRepSubProcess_ProcessSignals();
+			pg_usleep(50000L); /* 50 ms */	
+		}
+		
+		if (! (FileRepSubProcess_GetState() == FileRepStateReady &&
+			   dataState == DataStateInChangeTracking))
+		{
+			break;
+		}				
+				
+		Insist(fileRepRole == FileRepPrimaryRole);
+		Insist(dataState == DataStateInChangeTracking);		
+		Insist(FileRepSubProcess_GetState() == FileRepStateReady);
+		
+		/* retry compacting of chnage tracking log files once per minute */
+		pg_usleep(50000L); /* 50 ms */
+		
+		if (++retry == 1200)
+		{
+			ChangeTracking_CompactLogsIfPossible(); 
+			retry=0;
+		}
+	} 
+}
+	
 /*
  * 
  * FileRepPrimary_RunHeartBeat()

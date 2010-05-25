@@ -159,6 +159,7 @@
 #include "postmaster/bgwriter.h"
 #include "postmaster/primary_mirror_mode.h"
 #include "utils/flatfiles.h"
+#include "utils/faultinjector.h"
 
 
 typedef struct FileRepResyncShmem_s {
@@ -197,6 +198,8 @@ typedef struct FileRepResyncShmem_s {
 static FileRepResyncShmem_s *fileRepResyncShmem = NULL;
 
 static void FileRepResync_ShmemReInit(void);
+
+static void FileRepResync_Cleanup(void);
 
 static int FileRepResyncManager_InResyncTransition(bool isLastLocTracked);
 static int FileRepResyncManager_InSyncTransition(void);
@@ -487,6 +490,44 @@ FileRepResync_ShmemReInit(void)
 	return;						  
 }
 
+/*
+ *
+ */
+static void
+FileRepResync_Cleanup(void)
+{
+	HASH_SEQ_STATUS				hash_status;
+	FileRepResyncHashEntry_s	*entry;
+	
+	if (fileRepResyncShmem == NULL) {
+		return;
+	}	
+		
+	if (fileRepResyncShmem->fileRepResyncHash == NULL) 
+	{
+		return;
+	}
+	
+	FileRepResync_LockAcquire();
+	
+	hash_seq_init(&hash_status, fileRepResyncShmem->fileRepResyncHash);
+	
+	while ((entry = (FileRepResyncHashEntry_s *) hash_seq_search(&hash_status)) != NULL) {
+		
+		elog(LOG, "LOG(filerep) FileRepResync_Cleanup() mirror relation path:'%s' ",
+			 entry->fileName);
+			 
+		FileRepResync_RemoveEntry(entry->fileName);
+		UnlockRelationForResynchronize(
+									   &entry->relFileNode, 
+									   AccessExclusiveLock);		
+	}
+	
+	FileRepResync_LockRelease();
+	
+	return;						  
+}
+
 /****************************************************************
  * FILEREP SUB-PROCESS (FileRep Primary RECOVERY Process)
  ****************************************************************/
@@ -711,8 +752,16 @@ FileRepResyncManager_InResyncTransition(bool isLastLocTracked)
 		   dataState == DataStateInResync))
 	{
 		goto exit;
-	}						
-		
+	}		
+	
+#ifdef FAULT_INJECTOR	
+	FaultInjector_InjectFaultIfSet(
+								   FileRepTransitionToInResync, 
+								   DDLNotSpecified,
+								   "",	// databaseName
+								   ""); // tableName
+#endif
+	
 	PersistentFileSysObj_MirrorReCreate();	
 	elog(LOG, "FileRepResyncManager_InResyncTransition() PersistentFileSysObj_MirrorReCreate DONE");
 	
@@ -757,7 +806,6 @@ FileRepPrimary_RunResyncManager(void)
 	int		status = STATUS_OK;
 	bool	retval;
 	int		ii=0;
-	bool	locked = FALSE;
 	bool	mirroredLock = FALSE;
 		
 	FileRepResyncHashEntry_s	entry;
@@ -785,15 +833,7 @@ FileRepPrimary_RunResyncManager(void)
 			pg_usleep(50000L);  // 50ms
 			continue;
 		}
-				
-		if (locked == TRUE)
-		{
-			UnlockRelationForResynchronize(
-										   &entry.relFileNode, 
-										   AccessExclusiveLock);
-			locked = FALSE;
-		}
-		
+						
 		retval = PersistentFileSysObj_ResynchronizeScan(
 											   &token,
 											   &entry.relFileNode,
@@ -814,6 +854,13 @@ FileRepPrimary_RunResyncManager(void)
 			while (FileRepResync_CheckProgress() > 0)
 			{
 				pg_usleep(50000L);  // 50ms
+				
+				FileRepSubProcess_ProcessSignals();
+				if (! (FileRepSubProcess_GetState() == FileRepStateReady &&
+					   dataState == DataStateInResync))
+				{
+					break;
+				}				
 			}
 			
 			Assert(FileRepResync_CheckProgress() == 0);
@@ -825,7 +872,13 @@ FileRepPrimary_RunResyncManager(void)
 				mirroredLock = FALSE;
 				break;
 			}
-						
+			
+			if (! (FileRepSubProcess_GetState() == FileRepStateReady &&
+				   dataState == DataStateInResync))
+			{
+				break;
+			}				
+			
 			LWLockAcquire(MirroredLock, LW_EXCLUSIVE);
 			mirroredLock = TRUE;
 						
@@ -862,10 +915,12 @@ FileRepPrimary_RunResyncManager(void)
 			continue;
 		}
 		
+		/*
+		 * Resynchronize Lock is taken for particular relation to protect from drop and truncate for particular relation.
+		 */
 		LockRelationForResynchronize(
 									 &entry.relFileNode, 
 									 AccessExclusiveLock);
-		locked = TRUE;
 		
 		if (!PersistentFileSysObj_ResynchronizeRefetch(
 													   &entry.relFileNode,
@@ -882,16 +937,24 @@ FileRepPrimary_RunResyncManager(void)
 				UnlockRelationForResynchronize(
 											   &entry.relFileNode, 
 											   AccessExclusiveLock);
-				locked = FALSE;
 				continue;
 		}
-						
+		
+#ifdef FAULT_INJECTOR	
+		FaultInjector_InjectFaultIfSet(
+									   FileRepResync, 
+									   DDLNotSpecified,
+									   "",	// databaseName
+									   ""); // tableName
+#endif
+		
 		FileRep_GetRelationPath(
 								entry.fileName, 
 								entry.relFileNode, 
 								entry.segmentFileNum);
 								
-				
+		FileRepResync_InsertEntry(&entry);
+
 		elog(LOG, "FileRepPrimary_RunResyncManager() mirror relation path:'%s' index:'%d' "
 				 "relStorageMgr:'%s(%d)' mirrorDataSynchronizationState:'%s(%d)' "
 				 "ResyncCkptLoc:'%d/%d' "
@@ -911,17 +974,10 @@ FileRepPrimary_RunResyncManager(void)
 				 entry.mirrorAppendOnlyNewEof,
 				 entry.mirrorBufpoolResyncChangedPageCount);
 		
-		FileRepResync_InsertEntry(&entry);
 		
 	}
 	
-	if (locked == TRUE)
-	{
-		UnlockRelationForResynchronize(
-									   &entry.relFileNode, 
-									   AccessExclusiveLock);
-		locked = FALSE;
-	}	
+	FileRepResync_Cleanup();
 	
 	return status;
 }
@@ -977,6 +1033,14 @@ FileRepResyncManager_ResyncFlatFiles(void)
 	FileRep_SetSegmentState(SegmentStateInSyncTransition);
 	
 	elog(LOG, "FileRepResyncManager_ResyncFlatFiles()");
+	
+#ifdef FAULT_INJECTOR	
+	FaultInjector_InjectFaultIfSet(
+								   FileRepTransitionToInSync, 
+								   DDLNotSpecified,
+								   "",	// databaseName
+								   ""); // tableName
+#endif	
 	
 	while (1) 
 	{
@@ -1216,6 +1280,12 @@ FileRepResync_CheckProgress(void)
 					} else {
 						Assert(0);
 					}
+					
+					/* Release Resynchronize Lock on relation that was taken before fetching the relation */
+					UnlockRelationForResynchronize(
+												   &entry->relFileNode, 
+												   AccessExclusiveLock);
+					
 					PersistentFileSysObj_ResynchronizeRelationComplete(
 							&entry->persistentTid,
 							entry->persistentSerialNum,

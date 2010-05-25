@@ -56,7 +56,6 @@
 #include "storage/procarray.h"
 #include "storage/smgr.h"
 #include "utils/builtins.h"
-#include "utils/faultinjector.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "access/distributedlog.h"
@@ -1308,22 +1307,6 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 									   &persistentPrepareObjects);
 
 	ProcArrayRemove(&gxact->proc, /* forPrepare */ true, isCommit);
-	
-#ifdef FAULT_INJECTOR	
-	if (isCommit)
-		FaultInjector_InjectFaultIfSet(
-									   TransactionCommitPrepared, 
-									   DDLNotSpecified,
-									   "",	// databaseName
-									   ""); // tableName
-	else
-		FaultInjector_InjectFaultIfSet(
-									   TransactionAbortPrepared, 
-									   DDLNotSpecified,
-									   "",	// databaseName
-									   ""); // tableName	
-#endif
-	
 
 	/*
 	 * In case we fail while running the callbacks, mark the gxact invalid so

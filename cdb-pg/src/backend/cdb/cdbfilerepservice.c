@@ -25,6 +25,7 @@
 #include "cdb/cdbfilerepresyncmanager.h"
 #include "cdb/cdbfilerepresyncworker.h"
 #include "libpq/pqsignal.h"
+#include "postmaster/postmaster.h"
 #include "storage/backendid.h"
 #include "storage/ipc.h"
 #include "storage/pmsignal.h"
@@ -112,12 +113,33 @@ FileRepSubProcess_ImmediateShutdownHandler(SIGNAL_ARGS)
 static void 
 FileRepSubProcess_ShutdownHandler(SIGNAL_ARGS)
 {
+	bool	isInTransition = FALSE;
+	DataState_e dataStateTransition;
+
 	shutdownRequested = true;
 
 	if ( FileRepIsBackendSubProcess(fileRepProcessType))
 	{
-	    /* call the normal postgres die so that it requests query cancel/procdie */
-	    die(PASS_SIGNAL_ARGS);
+		if (FileRepPrimary_IsResyncWorker())
+		{
+			getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, &isInTransition, &dataStateTransition);
+			
+			if (isInTransition == TRUE &&
+				dataStateTransition == DataStateInChangeTracking)
+			{
+				/*
+				 * Resync worker may be waiting on lock that is acquired by backend process that is
+				 * suspended during transition to Change Tracking and so FileRep backend shutdown may 
+				 * never be completed.
+				 */
+				quickdie(PASS_SIGNAL_ARGS);
+				return;
+			}
+			
+		}
+			
+		/* call the normal postgres die so that it requests query cancel/procdie */
+		die(PASS_SIGNAL_ARGS);
     }
 
 	elog(DEBUG1, "FileRepSubProcess_ShutdownHandler()");
@@ -312,9 +334,17 @@ FileRepSubProcess_IsStateTransitionRequested(void)
 				
 				return TRUE;
 				
+			case SegmentStateShutdownFilerepBackends:
+				
+				if (fileRepShmemArray[0]->state == FileRepStateFault)
+					ereport(ERROR,
+						(errmsg("failure is detected in segment mirroring during backend shutdown, abort requested (%d)",
+						 getpid())));
+
 			default:
 				break;
 		}		
+		
 	}
 	
 	return FALSE;
@@ -475,9 +505,7 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
     /* now update in shared memory if needed */
 	switch (fileRepState) {
 		case FileRepStateReady:
-			if (updateSegmentState(SegmentStateReady)) {
-				SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
-			}
+			FileRep_SetSegmentState(SegmentStateReady);
 			break;
 			
 		case FileRepStateFault:
@@ -487,9 +515,7 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
 			 return FALSE if state was already set to FAULT
 			 change signal to PMSIGNAL_FILEREP_SEGMENT_STATE_CHANGE
 			 */
-			if (updateSegmentState(SegmentStateFault)) {
-				SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
-			}
+			FileRep_SetSegmentState(SegmentStateFault);
 			break;
 		
 		case FileRepStateInitialization:

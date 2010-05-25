@@ -299,8 +299,10 @@ class GpInjectFaultProgram:
 			      "filerep_sender (inject fault before data are sent to network), " \
 			      "filerep_receiver (inject fault after data are received from network), " \
 			      "filerep_flush (inject fault before fsync is issued to file system), " \
-			      "transaction_commit (inject fault after XLOG recorded commit), " \
-			      "transaction_abort (inject fault after XLOG recorded abort), " \
+			      "filerep_resync (inject fault while in resync), " \
+			      "filerep_transition_to_resync (inject fault during transition to InResync), " \
+			      "filerep_transition_to_sync (inject fault during transition to InSync), " \
+			      "checkpoint (inject fault before checkpoint is taken), " \
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
                          metavar="ddlStatement",

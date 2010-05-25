@@ -20,14 +20,26 @@
 #define	CHANGETRACKING_XLOGDATASZ (128 * 1024)
 #define CHANGETRACKING_METABUFLEN 128
 #define CHANGETRACKING_MAX_RESULT_SIZE (64 * 1024)
+#define CHANGETRACKING_COMPACT_THRESHOLD (1 * 1024 * 1024 * 1024) /* 1GB */
+
 /*
  * The LOG file is where all the incremental buffer
- * pool changes are stored. The "Full" log includes
- * all the changetracking records that were accumulated
- * during changetracking mode, and the "Compact" is a
- * much smaller version used for incremental resync, 
- * and is essentially the same as the full file but
- * with un-needed records removed.
+ * pool changes are stored. 
+ * 
+ * The "Full" log includes all the changetracking records that 
+ * were accumulated from the xlog. The full log is the first 
+ * "landing place" for all the relevant xlog records.
+ * 
+ * The "Compact" log is a much smaller version and includes 
+ * only the necessary change tracking records that are needed for 
+ * resync. This is essentially a shrinked down version of all
+ * the records that ever landed in the full log.
+ * 
+ * The "Transient" log is a temporary log file that is used
+ * to help with the process of compacting the full and compact 
+ * logs. In general, when we want to compact the full or compact
+ * log files, we rename them to be "transient" and then do
+ * the actual compacting into the new compact file.
  * 
  * The META file is where we store information about
  * if it's a full resync and the last resync lsn, and
@@ -36,7 +48,9 @@
  */
 typedef enum CTFType
 {
-	CTF_LOG = 0,
+	CTF_LOG_FULL = 0,
+	CTF_LOG_TRANSIENT,
+	CTF_LOG_COMPACT,
 	CTF_META
 } CTFType;
 
@@ -45,6 +59,12 @@ typedef enum CTFType
 
 #define ChangeTrackingFullLogFilePath(path)	\
 	snprintf(path, MAXPGPATH, CHANGETRACKINGDIR "/CT_LOG_FULL")
+
+#define ChangeTrackingTransientLogFileName(fname)	\
+	snprintf(fname, MAXFNAMELEN, "CT_LOG_TRANSIENT")
+
+#define ChangeTrackingTransientLogFilePath(path)	\
+	snprintf(path, MAXPGPATH, CHANGETRACKINGDIR "/CT_LOG_TRANSIENT")
 
 #define ChangeTrackingCompactLogFileName(fname)	\
 	snprintf(fname, MAXFNAMELEN, "CT_LOG_COMPACT")
@@ -120,7 +140,14 @@ extern void ChangeTracking_AddRecordFromXlog(RmgrId rmid,
 											 void*  data,
 											 XLogRecPtr*	loc);
 
-extern int ChangeTracking_CreateCompactLogFromFull(void);
+// -----------------------------------------------------------------------------
+// Various log compacting related routines
+// -----------------------------------------------------------------------------
+
+extern int ChangeTracking_CompactLogFile(CTFType source, CTFType dest);
+extern bool ChangeTracking_doesFileNeedCompacting(CTFType ftype);
+extern void ChangeTracking_CompactLogsIfPossible(void);
+extern void ChangeTracking_FinishCompactingLogs(void);
 
 /*
  * The information needed for a change tracking record to be
@@ -153,19 +180,6 @@ extern bool ChangeTracking_PrintRelationChangeInfo(
 extern int ChangeTracking_GetInfoArrayDesiredMaxLength(RmgrId rmid, uint8 info);
 
 /*
- * Recover the end of the resynchronize change log by determing the last good change record
- * and rebuilding from there.
- */
-extern void ChangeTracking_RecoverUsingXLog(void);
-
-/*
- * read the change tracking log and return the last loc
- * written into the file so far. This routine will be used for 
- * recovery purposes
- */
-extern XLogRecPtr* ChangeTracking_ReadLastLocOnDisk(void);
-
-/*
  * Get the total number of (unique) blocks that had changed and
  * need to be resynchronized. returns number of blocks or -1 for
  * error.
@@ -174,7 +188,7 @@ extern int64 ChangeTracking_GetTotalBlocksToSync(void);
 
 extern bool ChangeTracking_DoesFileExist(CTFType ftype);
 
-extern bool ChangeTracking_IsFileModeCompact(void);
+extern char *ChangeTracking_FtypeToString(CTFType ftype);
 
 /*
  * Drop the resynchronize change log and meta files.
@@ -247,10 +261,6 @@ typedef struct ChangeTrackingMetaRecord
  */
 extern void CheckPointChangeTracking(void);
 												
-/*
- * Shutdown the reschronize change log.
- */
-extern void ChangeTracking_Shutdown(void);
 
 // -----------------------------------------------------------------------------
 // Get incremental change entries for gp_persistent relation
@@ -336,7 +346,6 @@ typedef struct ChangeTrackingBufStatusData
 	uint32			bufsize;		/* Current buffer size                          	*/
 	uint32			fileseg;		/* The change log file segment we are writing into	*/
 	int64			nextwritepos;   /* The next file position to append buffer data to  */
-	bool			compactmode;	/* Using compact log file or full log file?			*/
 	
 } ChangeTrackingBufStatusData;
 
@@ -349,6 +358,14 @@ typedef struct ChangeTrackingResyncMetaData
 	bool			insync_transition_completed; /* transition to resync mode completed */
 	
 } ChangeTrackingResyncMetaData;
+
+typedef struct ChangeTrackingLogCompactingStateData
+{
+	uint32			ctfull_bufs_added;    /* num bufs added to LOG_FULL since last time ran compacting */
+	uint32			ctcompact_bufs_added; /* num bufs added to LOG_COMPACT since last time ran compacting */
+	bool			in_progress;
+	
+} ChangeTrackingLogCompactingStateData;
 
 /*
  * Return the required shared-memory size for this module.

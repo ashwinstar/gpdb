@@ -856,9 +856,6 @@ FileRepAck_ReserveShmem(
 			} else {
 				msgPositionInsert = fileRepAckShmem->positionInsert;
 				
-				MemSet(msgPositionInsert, 0, 
-					   msgLength + sizeof(FileRepShmemMessageDescr_s));
-				
 				Assert(msgPositionInsert + msgLength + sizeof(FileRepShmemMessageDescr_s) < fileRepAckShmem->positionEnd);
 				
 				fileRepShmemMessageDescr = 
@@ -990,9 +987,6 @@ FileRep_ReserveShmem(
 				insert = false;
 			} else {				
 				msgPositionInsert = fileRepShmem->positionInsert;
-				
-				MemSet(msgPositionInsert, 0, 
-					   msgLength + sizeof(FileRepShmemMessageDescr_s));
 				
 				Assert(msgPositionInsert + msgLength + sizeof(FileRepShmemMessageDescr_s) < fileRepShmem->positionEnd);
 				
@@ -1820,6 +1814,15 @@ FileRep_SetDataState(DataState_e dataState, bool signalPostmaster)
 void 
 FileRep_SetSegmentState(SegmentState_e segmentState)
 {	
+	/* 
+	 * Track mirror loss. That is required since segment state 
+	 * may get overwritten with other state (i.e. Shutdown, ...)
+	 */
+	if (segmentState == SegmentStateFault)
+	{
+		fileRepShmemArray[0]->state = FileRepStateFault;
+	}
+	
 	if (updateSegmentState(segmentState)) {
 		SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
 	}

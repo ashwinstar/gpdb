@@ -54,6 +54,7 @@
 #include "storage/procarray.h"
 #include "storage/spin.h"
 #include "utils/builtins.h"
+#include "utils/faultinjector.h"
 #include "utils/flatfiles.h"
 #include "utils/pg_locale.h"
 #include "utils/nabstime.h"
@@ -7629,6 +7630,14 @@ CreateCheckPoint(bool shutdown, bool force)
 	int			nsegsremoved = 0;
 	int			nsegsrecycled = 0;
 
+#ifdef FAULT_INJECTOR	
+	FaultInjector_InjectFaultIfSet(
+								   Checkpoint, 
+								   DDLNotSpecified,
+								   "",	// databaseName
+								   ""); // tableName
+#endif	
+	
 	/*
 	 * Acquire CheckpointLock to ensure only one checkpoint happens at a time.
 	 * (This is just pro forma, since in the present system structure there is
