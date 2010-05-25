@@ -19,7 +19,7 @@ from gppylib.programs import programIoUtils
 from gppylib.system import configurationInterface as configInterface
 from gppylib.system.environment import GpMasterEnvironment
 from gppylib.test.testUtils import *
-from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile, writeLinesToFile, appendWarningLogLine
+from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile, writeLinesToFile, TableLogger
 
 logger = gplog.get_default_logger()
 
@@ -77,14 +77,14 @@ class GpSystemStateProgram:
             mirrorSegments = [ seg for seg in gpArray.getSegDbList() if seg.isSegmentMirror(False) ]
             contentIdToMirror = GpArray.getSegmentsByContentId(mirrorSegments)
 
-            lines = []
-            lines.append(["Status", "Data State", "Primary", "Datadir", "Port", "Mirror", "Datadir", "Port"])
+
+            tabLog = TableLogger().setWarnWithArrows(True)
+            tabLog.info(["Status", "Data State", "Primary", "Datadir", "Port", "Mirror", "Datadir", "Port"])
             numInChangeTracking = 0
             numMirrorsActingAsPrimaries = 0
             for primary in primarySegments:
                 mirror = contentIdToMirror[primary.getSegmentContentId()][0]
 
-                warningLineNumbers = {}
                 doWarn = False
                 status = ""
                 if primary.isSegmentMirror(True):
@@ -107,16 +107,13 @@ class GpSystemStateProgram:
                     doWarn = True
                     numInChangeTracking += 1
 
-                extra = "<<<<<<<<<<" if doWarn else ""
-                warningLineNumbers[len(lines)] = doWarn
-
                 dataStatus = gparray.getDataModeLabel(actingPrimary.getSegmentMode())
                 line = [status, dataStatus]
                 self.__appendSegmentTripletToArray(primary, line)
                 self.__appendSegmentTripletToArray(mirror, line)
-                line.append(extra)
-                lines.append(line)
-            utils.logLinesToTable(lines, warningLineNumbers)
+
+                tabLog.infoOrWarn(doWarn, line)
+            tabLog.outputTable()
 
             logger.info("-------------------------------------------------------------" )
             if numMirrorsActingAsPrimaries > 0:
@@ -130,11 +127,11 @@ class GpSystemStateProgram:
                         gparray.getFaultStrategyLabel(gparray.FAULT_STRATEGY_FILE_REPLICATION))
             logger.info("-------------------------------------------------------------" )
 
-            lines = []
-            lines.append(["Primary", "Datadir", "Port"])
+            tabLog = TableLogger().setWarnWithArrows(True)
+            tabLog.info(["Primary", "Datadir", "Port"])
             for seg in [ seg for seg in gpArray.getSegDbList()]:
-                lines.append(self.__appendSegmentTripletToArray(seg, []))
-            utils.logLinesToTable(lines, {})
+                tabLog.info(self.__appendSegmentTripletToArray(seg, []))
+            tabLog.outputTable()
             logger.info("-------------------------------------------------------------" )
 
         return 0
@@ -145,9 +142,8 @@ class GpSystemStateProgram:
         """
         exitCode = 0
         if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_FILE_REPLICATION:
-            lines = []
-            lines.append(["Mirror","Datadir", "Port", "Status", "Data Status", ""])
-            warningLineNumbers = {}
+            tabLog = TableLogger().setWarnWithArrows(True)
+            tabLog.info(["Mirror","Datadir", "Port", "Status", "Data Status", ""])
 
             # based off the bash version of -m "mirror list" option,
             #    the mirror list prints information about defined mirrors only
@@ -178,20 +174,17 @@ class GpSystemStateProgram:
                 if doWarn:
                     exitCode = 1
 
-                extra = "<<<<<<<<<<" if doWarn else ""
-                warningLineNumbers[len(lines)] = doWarn
                 line = self.__appendSegmentTripletToArray(seg, [])
-                line.append(status)
-                line.append(dataStatus)
-                line.append(extra)
-                lines.append(line)
+                line.extend([status, dataStatus])
+
+                tabLog.infoOrWarn(doWarn, line)
 
             logger.info("-------------------------------------------------------------" )
             logger.info("-Current GPDB mirror list and status" )
             logger.info("-Type = %s" % self.__getMirrorType(gpArray) )
             logger.info("-------------------------------------------------------------" )
 
-            utils.logLinesToTable(lines, warningLineNumbers)
+            tabLog.outputTable()
 
             logger.info("-------------------------------------------------------------" )
             if numMirrorsActingAsPrimaries > 0:
@@ -208,6 +201,28 @@ class GpSystemStateProgram:
 
         return exitCode
 
+    def __appendStandbySummary(self, hostNameToResults, standby, tabLog):
+        """
+        Log information about the configured standby and its current status
+        """
+        if standby is None:
+            tabLog.info(["Master standby", "= No master standby configured"])
+        else:
+            tabLog.info(["Master standby", "= %s" % standby.getSegmentHostName()])
+
+            (standbyStatusFetchWarning, outputFromStandbyCmd) = hostNameToResults[standby.getSegmentHostName()]
+            standbyData = outputFromStandbyCmd[standby.getSegmentDbId()] if standbyStatusFetchWarning is None else None
+
+            if standbyStatusFetchWarning is not None:
+                tabLog.warn(["Standby master state", "= Status could not be determined: %s" % standbyStatusFetchWarning])
+
+            elif hostNameToResults[standby.getSegmentHostName()][gp.SEGMENT_STATUS__HAS_POSTMASTER_PID_FILE] and \
+                    hostNameToResults[standby.getSegmentHostName()][gp.SEGMENT_STATUS__GET_PID]['pid'] > 0:
+                tabLog.info(["Standby master state", "= Standby host passive"])
+                
+            else:
+                tabLog.warn(["Standby master state", "= Standby host DOWN"])
+
     def __showStatusStatistics(self, gpEnv, gpArray):
         """
         Print high-level numeric stats about the cluster
@@ -215,52 +230,36 @@ class GpSystemStateProgram:
         returns the exit code
         """
         hostNameToResults = self.__fetchAllSegmentData(gpArray)
-        standbys = [seg for seg in gpArray.getDbList() if seg.isSegmentStandby(current_role=False)]
-        standby = standbys[0] if standbys else None
 
         logger.info("Greenplum instance status summary")
 
         # master summary info
-        lines = []
-        warningLines = {}
+        tabLog = TableLogger().setWarnWithArrows(True)
 
-        def appendLog(doWarn, line):
-            if doWarn:
-                warningLines[len(lines)] = True
-                line[len(line)-1] = line[len(line)-1] + " <<<<<<<<"
-            lines.append(line)
-            
-        lines.append(None)
-        lines.append(["Master instance", "= Active"])
-        if standby is None:
-            lines.append(["Master instance standby", "= NOT CONFIGURED"])
-        elif standby.isSegmentMaster(current_role=True):
-            lines.append(["Master instance standby", "= STANDBY HOST ACTIVE INSTANCE MASTER"])
-        elif hostNameToResults[standby.getSegmentHostName()][gp.SEGMENT_STATUS__HAS_POSTMASTER_PID_FILE] and \
-                    hostNameToResults[standby.getSegmentHostName()][gp.SEGMENT_STATUS__GET_PID]['pid'] > 0:
-            lines.append(["Master instance standby", "= Passive"])
-        else:
-            appendLog(True, ["Master instance standby", "= DOWN"])
+        tabLog.addSeparator()
+        tabLog.info(["Master instance", "= Active"])
+
+        self.__appendStandbySummary(hostNameToResults, gpArray.standbyMaster, tabLog)
 
         arrayType = "Multi-Home" if  gpArray.guessIsMultiHome() else "Standard"
-        lines.append(["Greenplum array configuration type", "= %s" % arrayType])
-        lines.append(None)
+        tabLog.info(["Greenplum array configuration type", "= %s" % arrayType])
+        tabLog.addSeparator()
 
-        lines.append(["Total segment instance count from meta data", "= %s" % len(gpArray.getSegDbList())])
-        lines.append(None)
+        tabLog.info(["Total segment instance count from meta data", "= %s" % len(gpArray.getSegDbList())])
+        tabLog.addSeparator()
 
         # primary and mirror segment info
         for whichType in ["Primary", "Mirror"]:
-            lines.append(["%s Segment Status" % whichType])
-            lines.append(None)
+            tabLog.info(["%s Segment Status" % whichType])
+            tabLog.addSeparator()
 
             if whichType == "Primary":
                 segs = [seg for seg in gpArray.getSegDbList() if seg.isSegmentPrimary(current_role=False)]
             else:
                 segs = [seg for seg in gpArray.getSegDbList() if seg.isSegmentMirror(current_role=False)]
                 if not segs:
-                    lines.append(["Mirrors not configured on this array"])
-                    lines.append(None)
+                    tabLog.info(["Mirrors not configured on this array"])
+                    tabLog.addSeparator()
                     continue
 
             numPostmasterPidFilesMissing = 0
@@ -302,36 +301,36 @@ class GpSystemStateProgram:
             numPostmasterProcessesFound = numSegments - numPostmasterProcessesMissing
 
             # print stuff
-            lines.append(["Total %s segments" % whichType.lower(), "= %d" % numSegments])
-            lines.append(["Total %s segment valid (at master)" % whichType.lower(), "= %d" % numValidAtMaster])
-            appendLog(numFailuresAtMaster > 0,
+            tabLog.info(["Total %s segments" % whichType.lower(), "= %d" % numSegments])
+            tabLog.info(["Total %s segment valid (at master)" % whichType.lower(), "= %d" % numValidAtMaster])
+            tabLog.infoOrWarn(numFailuresAtMaster > 0,
                       ["Total %s segment failures (at master)" % whichType.lower(), "= %d" % numFailuresAtMaster])
 
-            appendLog(numPostmasterPidFilesMissing > 0,
+            tabLog.infoOrWarn(numPostmasterPidFilesMissing > 0,
                       ["Total number of postmaster.pid files missing", "= %d" % numPostmasterPidFilesMissing])
-            lines.append( ["Total number of postmaster.pid files found", "= %d" % numPostmasterPidFilesFound])
+            tabLog.info( ["Total number of postmaster.pid files found", "= %d" % numPostmasterPidFilesFound])
 
-            appendLog(numPostmasterPidsMissing > 0,
+            tabLog.infoOrWarn(numPostmasterPidsMissing > 0,
                       ["Total number of postmaster.pid PIDs missing", "= %d" % numPostmasterPidsMissing])
-            lines.append( ["Total number of postmaster.pid PIDs found", "= %d" % numPostmasterPidsFound])
+            tabLog.info( ["Total number of postmaster.pid PIDs found", "= %d" % numPostmasterPidsFound])
 
-            appendLog(numLockFilesMissing > 0,
+            tabLog.infoOrWarn(numLockFilesMissing > 0,
                         ["Total number of /tmp lock files missing", "= %d" % numLockFilesMissing])
-            lines.append( ["Total number of /tmp lock files found", "= %d" % numLockFilesFound])
+            tabLog.info( ["Total number of /tmp lock files found", "= %d" % numLockFilesFound])
 
-            appendLog(numPostmasterProcessesMissing > 0,
+            tabLog.infoOrWarn(numPostmasterProcessesMissing > 0,
                         ["Total number postmaster processes missing", "= %d" % numPostmasterProcessesMissing])
-            lines.append( ["Total number postmaster processes found", "= %d" % numPostmasterProcessesFound])
+            tabLog.info( ["Total number postmaster processes found", "= %d" % numPostmasterProcessesFound])
 
             if whichType == "Mirror":
                 numMirrorsActive = len([seg for seg in segs if seg.isSegmentPrimary(current_role=True)])
                 numMirrorsPassive = numSegments - numMirrorsActive
-                appendLog(numMirrorsActive > 0,
+                tabLog.infoOrWarn(numMirrorsActive > 0,
                             ["Total number mirror segments active", "= %d" % numMirrorsActive])
-                lines.append( ["Total number mirror segments passive", "= %d" % numMirrorsPassive])
+                tabLog.info( ["Total number mirror segments passive", "= %d" % numMirrorsPassive])
 
-            lines.append(None)
-        utils.logLinesToTable(lines, warningLines)
+            tabLog.addSeparator()
+        tabLog.outputTable()
 
     def __fetchAllSegmentData(self, gpArray):
         """
@@ -377,9 +376,7 @@ class GpSystemStateProgram:
         #
         # fetch data about master
         #
-        master = [seg for seg in gpArray.getDbList() if seg.isSegmentMaster(current_role=False)][0]
-        standbys = [seg for seg in gpArray.getDbList() if seg.isSegmentStandby(current_role=False)]
-        standby = standbys[0] if standbys else None
+        master = gpArray.master
         arrayConfigType = "Multi-Home" if gpArray.guessIsMultiHome() else "Standard"
 
         dbUrl = dbconn.DbURL(port=gpEnv.getMasterPort(), dbname='template1' )
@@ -405,45 +402,34 @@ class GpSystemStateProgram:
 
         logger.info("-Master Configuration & Status")
         logger.info( "------------------------------" )
-        lines = []
-        warningLines = {}
-        lines.append(["Master host", "= %s" % master.getSegmentHostName()])
+        tabLog = TableLogger().setWarnWithArrows(True)
+        tabLog.info(["Master host", "= %s" % master.getSegmentHostName()])
         if statusFetchWarning is None:
             pidData = masterData[gp.SEGMENT_STATUS__GET_PID]
-            lines.append(["Master postgres process ID", "= %s" % pidData['pid']])
+            tabLog.info(["Master postgres process ID", "= %s" % pidData['pid']])
         else:
-            warningLines[len(lines)] = True
-            lines.append(["Master port", "= Error fetching data: %s" % statusFetchWarning])
-        lines.append(["Master data directory", "= %s" % master.getSegmentDataDirectory()])
-        lines.append(["Master port", "= %d" % master.getSegmentPort()])
+            tabLog.warn(["Master port", "= Error fetching data: %s" % statusFetchWarning])
+        tabLog.info(["Master data directory", "= %s" % master.getSegmentDataDirectory()])
+        tabLog.info(["Master port", "= %d" % master.getSegmentPort()])
 
-        lines.append(["Master current role", "= %s" % qdRole])
-        lines.append(["Greenplum array configuration type", "= %s" % arrayConfigType])
-        lines.append(["Greenplum initsystem version", "= %s" % initDbVersion])
+        tabLog.info(["Master current role", "= %s" % qdRole])
+        tabLog.info(["Greenplum array configuration type", "= %s" % arrayConfigType])
+        tabLog.info(["Greenplum initsystem version", "= %s" % initDbVersion])
 
         if statusFetchWarning is None:
             if masterData[gp.SEGMENT_STATUS__GET_VERSION] is None:
-                lines.append(["Greenplum current version", "= Unknown"])
+                tabLog.warn(["Greenplum current version", "= Unknown"])
             else:
-                lines.append(["Greenplum current version", "= %s" % masterData[gp.SEGMENT_STATUS__GET_VERSION]])
+                tabLog.info(["Greenplum current version", "= %s" % masterData[gp.SEGMENT_STATUS__GET_VERSION]])
         else:
-            appendWarningLogLine(lines, warningLines, \
-                        ["Greenplum current version", "= Error fetching data: %s" % statusFetchWarning])
-        lines.append(["Postgres version", "= %s" % pgVersion])
+            tabLog.warn(["Greenplum current version", "= Error fetching data: %s" % statusFetchWarning])
+        tabLog.info(["Postgres version", "= %s" % pgVersion])
             
-        lines.append(["Greenplum mirroring status", "= %s" % gparray.getFaultStrategyLabel(gpArray.getFaultStrategy())])
-        standbyState = ""
-        if standby is None:
-            lines.append(["Greenplum master standby", "= No master standby configured"])
-        else:
-            lines.append(["Greenplum master standby", "= %s" % standby.getSegmentHostName()])
-            if standby.isSegmentMaster(current_role=True):
-                standbyState = "STANDBY HOST ACTIVE INSTANCE MASTER"
-            else:
-                standbyState = "Standby host passive"
-        lines.append(["Greenplum standby master state", standbyState])
-        utils.logLinesToTable(lines, warningLines)
-        hasWarnings = hasWarnings or len(warningLines) > 0
+        tabLog.info(["Greenplum mirroring status", "= %s" % gparray.getFaultStrategyLabel(gpArray.getFaultStrategy())])
+        
+        self.__appendStandbySummary(hostNameToResults, gpArray.standbyMaster, tabLog)
+        tabLog.outputTable()
+        hasWarnings = hasWarnings or tabLog.hasWarnings()
 
         #
         # Output about segments
@@ -451,23 +437,22 @@ class GpSystemStateProgram:
         logger.info("------------------------------------------------")
         logger.info("Segment Instance Status Report")
 
-        lines = []
-        warningLines = {}
+        tabLog = TableLogger().setWarnWithArrows(True)
         for seg in gpArray.getSegDbList():
             (statusFetchWarning, outputFromCmd) = hostNameToResults[seg.getSegmentHostName()]
 
             type = "Primary" if seg.isSegmentPrimary(current_role=False) else "Mirror"
             masterReportedStatus = "Valid" if seg.isSegmentUp() else "Failed"
 
-            lines.append(None) # separator
-            lines.append(["Segment instance hostname", "= %s" % seg.getSegmentHostName()])
-            lines.append(["Segment instance address", "= %s" % seg.getSegmentAddress()])
-            lines.append(["Segment instance datadir", "= %s" % seg.getSegmentDataDirectory()])
-            lines.append(["Type", "= %s" % type])
-            lines.append(["Master reports status as", "= %s" % masterReportedStatus])
+            tabLog.addSeparator()
+            tabLog.info(["Segment instance hostname", "= %s" % seg.getSegmentHostName()])
+            tabLog.info(["Segment instance address", "= %s" % seg.getSegmentAddress()])
+            tabLog.info(["Segment instance datadir", "= %s" % seg.getSegmentDataDirectory()])
+            tabLog.info(["Type", "= %s" % type])
+            tabLog.info(["Master reports status as", "= %s" % masterReportedStatus])
 
             if statusFetchWarning is not None:
-                appendWarningLogLine(lines, warningLines, ["Error retrieving segment status", "= %s" % statusFetchWarning])
+                tabLog.warn(["Error retrieving segment status", "= %s" % statusFetchWarning])
             else:
                 segmentData = outputFromCmd[seg.getSegmentDbId()]
 
@@ -478,47 +463,46 @@ class GpSystemStateProgram:
 
                 # has postmaster.pid
                 if segmentData[gp.SEGMENT_STATUS__HAS_POSTMASTER_PID_FILE]:
-                    lines.append(["File postmaster.pid", "= Found"])
+                    tabLog.info(["File postmaster.pid", "= Found"])
                 else:
-                    appendWarningLogLine(lines, warningLines, ["File postmaster.pid", "= Missing"])
+                    tabLog.warn(["File postmaster.pid", "= Missing"])
 
                 # PID from postmaster.pid
-                if pidData['pid'] == 0:
-                    warningLines[len(lines)] = True
-                lines.append(["PID from postmaster.pid file", "= %s" % pidData["pid"]])
+                tabLog.infoOrWarn(pidData['pid'] == 0, \
+                                ["PID from postmaster.pid file", "= %s" % pidData["pid"]])
 
                 # has lock fiel
                 if segmentData[gp.SEGMENT_STATUS__HAS_LOCKFILE]:
-                    lines.append(["Lock files in /tmp status", "= Found"])
+                    tabLog.info(["Lock files in /tmp status", "= Found"])
                 else:
-                    appendWarningLogLine(lines, warningLines, ["Lock files in /tmp status", "= Missing"])
+                    tabLog.warn(["Lock files in /tmp status", "= Missing"])
 
                 # Active PID
                 if pidData['error'] is None:
-                    lines.append(["Active PID", "= %s" % pidData["pid"]])
+                    tabLog.info(["Active PID", "= %s" % pidData["pid"]])
                 else:
-                    appendWarningLogLine(lines, warningLines, ["Active PID", "= Missing"])
+                    tabLog.warn(["Active PID", "= Missing"])
 
                 if seg.isSegmentPrimary(current_role=False):
                     if seg.isSegmentPrimary(current_role=True):
-                        lines.append(["Mirror status", "= Active"])
+                        tabLog.info(["Mirror status", "= Active"])
                     else:
-                        appendWarningLogLine(lines, warningLines, ["Mirror status", "= Passive as Mirror"])
+                        tabLog.warn(["Mirror status", "= Passive as Mirror"])
                 else:
                     if seg.isSegmentPrimary(current_role=True):
-                        appendWarningLogLine(lines, warningLines, ["Mirror status", "= Active as Primary"])
+                        tabLog.warn(["Mirror status", "= Active as Primary"])
                     else:
-                        lines.append(["Mirror status", "= Passive"])
+                        tabLog.info(["Mirror status", "= Passive"])
 
                 # is valid
                 isValid = seg.isSegmentUp() and pidData['error'] is None
                 if isValid:
-                    lines.append(["Instance Status", "= Valid"])
+                    tabLog.info(["Instance Status", "= Valid"])
                 else:
-                    appendWarningLogLine(lines, warningLines, ["Instance Status", "= Failed"])
+                    tabLog.warn(["Instance Status", "= Failed"])
 
-        utils.logLinesToTable(lines, warningLines)
-        hasWarnings = hasWarnings or len(warningLines) > 0
+        tabLog.outputTable()
+        hasWarnings = hasWarnings or tabLog.hasWarnings()
 
         if hasWarnings:
             logger.info("*****************************************************" )
@@ -545,11 +529,11 @@ class GpSystemStateProgram:
 
             logger.info("# of down segments, from configuration table   = %s" % (len(downSegments)))
 
-            lines = []
-            lines.append(["Down Segment", "Datadir", "Port"])
+            tabLog = TableLogger().setWarnWithArrows(True)
+            tabLog.info(["Down Segment", "Datadir", "Port"])
             for seg in downSegments:
-                lines.append(self.__appendSegmentTripletToArray(seg, []))
-            utils.logLinesToTable(lines, {}) # use {} for warningLineNumbers, this script doesn't warn right now
+                tabLog.info(self.__appendSegmentTripletToArray(seg, []))
+            tabLog.outputTable()
 
         logger.info( "----------------------------------------------------------")
 
@@ -561,76 +545,61 @@ class GpSystemStateProgram:
         logger.info("-Segment instance port assignments")
         logger.info("----------------------------------")
 
-        lines = []
-        lines.append([ "Host", "Datadir", "Port"])
+        tabLog = TableLogger().setWarnWithArrows(True)
+        tabLog.info([ "Host", "Datadir", "Port"])
         for seg in gpArray.getSegDbList():
-            lines.append(self.__appendSegmentTripletToArray(seg, []))
-        utils.logLinesToTable(lines, {}) # use {} for warningLineNumbers, this script doesn't warn right now
+            tabLog.info(self.__appendSegmentTripletToArray(seg, []))
+        tabLog.outputTable()
 
     def __showStandbyMasterInformation(self, gpEnv, gpArray):
-        definedMasters = [seg for seg in gpArray.getDbList() if seg.isSegmentMaster(current_role=False)]
-        definedStandbys = [seg for seg in gpArray.getDbList() if seg.isSegmentStandby(current_role=False)]
+
+        standby = gpArray.standbyMaster
 
         #
         # print standby configuration/status
         #
-        if not definedStandbys:
+        if standby is None:
             logger.info("Standby master instance not configured")
         else:
-            definedStandby = definedStandbys[0]
-
-            cmd = gp.GpGetSegmentStatusValues("get standby segment version status", [definedStandby],
+            cmd = gp.GpGetSegmentStatusValues("get standby segment version status", [standby],
                                [gp.SEGMENT_STATUS__GET_PID], verbose=logging_is_verbose(), ctxt=base.REMOTE,
-                               remoteHost=definedStandby.getSegmentAddress())
+                               remoteHost=standby.getSegmentAddress())
             cmd.run()
 
             # fetch standby pid
             (standbyPidFetchWarning, outputFromCmd) = cmd.decodeResults()
             if standbyPidFetchWarning is None:
-                pidData = outputFromCmd[definedStandby.getSegmentDbId()][gp.SEGMENT_STATUS__GET_PID]
+                pidData = outputFromCmd[standby.getSegmentDbId()][gp.SEGMENT_STATUS__GET_PID]
             else:
                 pidData = {}
                 pidData['pid'] = 0
                 pidData['error'] = None
 
-            if definedStandby.isSegmentMaster(current_role=True):
-                standbyStatus = "STANDBY HOST ACTIVE INSTANCE MASTER"
-            else:
-                standbyStatus = "Standby host passive"
-
             # Print output!
-            warningLineNumbers = {}
             logger.info("Standby master details" )
             logger.info("----------------------" )
-            lines = []
-            lines.append(["Standby address", "= %s" % definedStandby.getSegmentAddress()])
-            lines.append(["Standby data directory", "= %s" % definedStandby.getSegmentDataDirectory()])
-            lines.append(["Standby port", "= %s" % definedStandby.getSegmentPort()])
+            tabLog = TableLogger().setWarnWithArrows(True)
+            tabLog.info(["Standby address", "= %s" % standby.getSegmentAddress()])
+            tabLog.info(["Standby data directory", "= %s" % standby.getSegmentDataDirectory()])
+            tabLog.info(["Standby port", "= %s" % standby.getSegmentPort()])
             if standbyPidFetchWarning is not None:
-                warningLineNumbers[len(lines)] = True
-                lines.append(["Standby PID", "= %s" % standbyPidFetchWarning, "<<<<<<<<<<" ])
-
-                warningLineNumbers[len(lines)] = True
-                lines.append(["Standby status", "= Status could not be determined", "<<<<<<<<<<" ])
+                tabLog.warn(["Standby PID", "= %s" % standbyPidFetchWarning ])
+                tabLog.warn(["Standby status", "= Status could not be determined"])
             elif pidData['pid'] == 0:
-                warningLineNumbers[len(lines)] = True
-                lines.append(["Standby PID", "= 0", "<<<<<<<<<<" ])
-
-                warningLineNumbers[len(lines)] = True
-                lines.append(["Standby status", "= Standby process not running", "<<<<<<<<<<" ])
+                tabLog.warn(["Standby PID", "= 0"])
+                tabLog.warn(["Standby status", "= Standby process not running"])
             else:
                 if pidData['error'] is not None:
                     #
                     # we got a pid value but had some kind of error -- so possibly the PID
                     #   is not actually active on its port.  Print the error
                     #
-                    warningLineNumbers[len(lines)] = True
-                    lines.append(["Standby PID", "= %s" % pidData['pid'], "<<<<<<<<<< %s" % pidData['error']])
+                    tabLog.warn(["Standby PID", "= %s" % pidData['pid'], "%s" % pidData['error']])
+                    tabLog.warn(["Standby status", "= Status could not be determined" ])
                 else:
-                    lines.append(["Standby PID", "= %s" % pidData['pid']])
-
-                lines.append(["Standby status", "= %s" % standbyStatus ])
-            utils.logLinesToTable(lines, warningLineNumbers)
+                    tabLog.info(["Standby PID", "= %s" % pidData['pid']])
+                    tabLog.info(["Standby status", "= Standby host passive" ])
+            tabLog.outputTable()
 
         #
         # now print gp_master_mirroring table
@@ -693,22 +662,18 @@ class GpSystemStateProgram:
                 logger.warn(warning)
 
         # print the list of all segments and warnings about trouble
-        warningLineNumbers = {}
-        lines = []
-        lines.append(["Host","Datadir", "Port", "Version", ""])
+        tabLog = TableLogger().setWarnWithArrows(True)
+        tabLog.info(["Host","Datadir", "Port", "Version", ""])
         for seg in segmentsAndMaster:
             line = self.__appendSegmentTripletToArray(seg, [])
             version = dbIdToVersion.get(seg.getSegmentDbId())
-            doWarn = False
             if version is None:
-                warningLineNumbers[len(lines)] = True
                 line.append("unable to retrieve version")
-                line.append("<<<<<<<<<<")
+                tabLog.warn(line)
             else:
                 line.append(version)
-                line.append("")
-            lines.append(line)
-        utils.logLinesToTable(lines, warningLineNumbers)
+                tabLog.info(line)
+        tabLog.outputTable()
 
         if len(uniqueVersions) > 1:
             logger.warn("Versions for some segments do not match.  Review table above for details.")

@@ -407,53 +407,114 @@ def appendNewEntriesToHbaFile(fileName, segments):
     except Exception, msg:
         raise Exception('Failed to add new segments to template %s' % fileName)
 
-def appendWarningLogLine(lines, warningLineNumbers, line ):
+class TableLogger:
+
     """
-    Append a warning line for use with logLinesToTable
+    Use this by constructing it, then calling warn, info, and infoOrWarn with arrays of columns, then outputTable
     """
-    warningLineNumbers[len(lines)] = True
-    lines.append(line)
 
-def logLinesToTable(lines, warningLineNumbers):
-    """
-    @param lines should be an array of arrays of strings.  Note that if an array element is None then a separate line is printed
-    @param warningLineNumbers should be dictionary mapping line number (0-indexed) to true for warning lines,
-                 or unmapped or mapped to falsy value for info lines
-    """
-    lineWidth = []
-    for line in lines:
-        if line is not None:
-            while len(lineWidth) < len(line):
-                lineWidth.append(0)
+    def __init__(self):
+        self.__lines = []
+        self.__warningLines = {}
 
-            for i, field in enumerate(line):
-                lineWidth[i] = max(len(field), lineWidth[i])
+        #
+        # If True, then warn calls will produce arrows as well at the end of the lines
+        # Note that this affects subsequent calls to warn and infoOrWarn
+        #
+        self.__warnWithArrows = False
 
-    # now print it all!
-    for lineNumber, line in enumerate(lines):
-        doWarn = warningLineNumbers.get(lineNumber)
+    def setWarnWithArrows(self, warnWithArrows):
+        """
+        Change the "warn with arrows" behavior for subsequent calls to warn and infoOrWarn
 
-        if line is None:
-            #
-            # separator
-            #
-            msg = "------------------------------------------------"
-        else:
-            outLine = []
-            for i, field in enumerate(line):
-                if i == len(line) - 1:
-                    # don't pad the last one since it's not strictly needed,
-                    # and we could have a really long last column for some lines
-                    outLine.append(field)
-                else:
-                    outLine.append(field.ljust(lineWidth[i] + 3))
-            msg = "".join(outLine)
+        If warnWithArrows is True then warning lines are printed with arrows at the end
 
-        if doWarn:
-            logger.warn(msg)
-        else:
-            logger.info("   " + msg) # add 3 so that lines will line up even with the INFO and WARNING stuff on front
+        returns self
+        """
+        self.__warnWithArrows
+        return self
 
+    def warn(self, line):
+        """
+        return self
+        """
+        self.__warningLines[len(__lines)] = True
+
+        line = [s for s in line]
+        if self.__warnWithArrows:
+            line.append( "<<<<<<<<")
+        self.__lines.append(line)
+
+        return self
+
+    def info(self, line):
+        """
+        return self
+        """
+        self.__lines.append([s for s in line])
+        return self
+
+
+    def infoOrWarn(self, warnIfTrue, line):
+        """
+        return self
+        """
+        if warnIfTrue:
+            self.warn(line)
+        else: self.info(line)
+        return self
+
+    def outputTable(self):
+        """
+        return self
+        """
+        lines = self.__lines
+        warningLineNumbers = self.__warningLines
+
+        lineWidth = []
+        for line in lines:
+            if line is not None:
+                while len(lineWidth) < len(line):
+                    lineWidth.append(0)
+
+                for i, field in enumerate(line):
+                    lineWidth[i] = max(len(field), lineWidth[i])
+
+        # now print it all!
+        for lineNumber, line in enumerate(lines):
+            doWarn = warningLineNumbers.get(lineNumber)
+
+            if line is None:
+                #
+                # separator
+                #
+                msg = "------------------------------------------------"
+            else:
+                outLine = []
+                for i, field in enumerate(line):
+                    if i == len(line) - 1:
+                        # don't pad the last one since it's not strictly needed,
+                        # and we could have a really long last column for some lines
+                        outLine.append(field)
+                    else:
+                        outLine.append(field.ljust(lineWidth[i] + 3))
+                msg = "".join(outLine)
+
+            if doWarn:
+                logger.warn(msg)
+            else:
+                logger.info("   " + msg) # add 3 so that lines will line up even with the INFO and WARNING stuff on front
+
+        return self
+
+    def addSeparator(self):
+        self.__lines.append(None)
+
+    def getNumWarnings(self):
+        return len(self.__warningLines)
+
+    def hasWarnings(self):
+        return self.getNumWarnings() > 0
 
 class ParsedConfigFile:
     """

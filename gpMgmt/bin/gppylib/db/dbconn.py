@@ -179,12 +179,8 @@ def execSQLForSingletonRow(conn, sql):
         raise Exception("SQL retrieved %s rows but 1 was expected:\n%s" % \
                         (cursor.rowcount, sql))
 
-    res = []
-    for row in cursor:
-        for col in row:
-            res.append(col)
+    res = cursor.fetchall()[0]
     cursor.close()
-
     return res
 
 def executeUpdateOrInsert(conn, sql, expectedRowUpdatesOrInserts):
