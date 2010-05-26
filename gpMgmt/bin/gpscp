@@ -15,21 +15,24 @@ Usage: gpscp [--version] [-?v] [-r] [-p port] [-u user]
              -J character : character to be substitute as hostname [default='=']
 '''
 
-import os, sys
+#disable deprecationwarnings
+import warnings
+warnings.simplefilter('ignore', DeprecationWarning)
+
+import os
+import sys
+import getopt
+import popen2
+from gppylib.util import ssh_utils
+from gppylib.gpparseopts import OptParser
+from gppylib.gpcoverage import GpCoverage
+
 progname = os.path.split(sys.argv[0])[-1]
 
 if sys.version_info < (2, 5, 0):
     sys.exit(
 '''Error: %s is supported on Python versions 2.5 or greater
 Please upgrade python installed on this machine.''' % progname)
-
-sys.path.append(sys.path[0] + '/lib')
-try:
-    import gplib
-    import getopt, popen2, os
-    from gppylib.gpcoverage import GpCoverage
-except ImportError, e:
-    sys.exit('Error: unable to import module: ' + str(e))
 
 #
 # all the command line options
@@ -49,7 +52,11 @@ GV = Global()
 
 ################
 def usage(exitarg):
-    print gplib.cli_help() or __doc__
+    parser = OptParser()
+    try:
+        parser.print_help()
+    except:
+        print __doc__
     sys.exit(exitarg)
 
 
@@ -100,7 +107,7 @@ coverage.start()
     
 try:
     parseCommandLine()
-    hostlist = gplib.HostList()
+    hostlist = ssh_utils.HostList()
     for h in GV.opt['-h']:
         hostlist.add(h)
     if GV.opt['-f']:
@@ -108,14 +115,14 @@ try:
 
     try:
         hostlist.checkSSH()
-    except gplib.SSHError, e:
+    except ssh_utils.SSHError, e:
         sys.exit('[ERROR] ' + str(e))
 
     GV.opt['-h'] = hostlist.filterMultiHomedHosts()
     if len(GV.opt['-h']) == 0:
         usage('Error: missing hosts in -h and/or -f arguments')
 
-    scp = gplib.scp_prefix()
+    scp = 'scp -o "BatchMode yes" -o "StrictHostKeyChecking no"'
     if GV.opt['-r']:  scp += ' -r'
     
     proc = []

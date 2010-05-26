@@ -19,8 +19,8 @@ from gppylib.mainUtils import *
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 import os, sys, getopt, socket, StringIO, signal
-
 from gppylib import gparray, gplog, pgconf, userinput, utils
+from gppylib.util import gp_utils
 from gppylib.commands import base, gp, pg, unix
 from gppylib.db import catalog, dbconn
 from gppylib.gpparseopts import OptParser, OptChecker
@@ -31,7 +31,6 @@ from gppylib.programs.clsAddMirrors import validateFlexibleHeadersListAllFilespa
 from gppylib.system import configurationInterface as configInterface
 from gppylib.system.environment import GpMasterEnvironment
 from gppylib.test.testUtils import *
-from lib import gpmlib
 from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile, writeLinesToFile, \
                                 PathNormalizationException, normalizeAndValidateInputPath, TableLogger
 from gppylib.gphostcache import GpInterfaceToHostNameCache
@@ -290,7 +289,7 @@ class GpRecoverSegmentProgram:
         return fsOidToPath
 
     def __applySpareDirectoryMapToSegment( self, gpEnv, gpArray, spareDirectoryMap, segment):
-        gpPrefix = gpmlib.get_gp_prefix(gpEnv.getMasterDataDir())
+        gpPrefix = gp_utils.get_gp_prefix(gpEnv.getMasterDataDir())
         if not gpPrefix:
             gpPrefix = 'gp'
 
@@ -358,22 +357,9 @@ class GpRecoverSegmentProgram:
 
     # San-failback is handled separately from the Filerep-recovery operations.
     # 
-    # Apparently the gpmlib and gplib stuff was supposed to be deprecated, but 
-    # I cannot find the equivalent functionality anywhere else -- I need to
-    # walk through results returned by shell commands digging for information
+    # I need to walk through results returned by shell commands digging for information
     # this isn't as easy as I'd like.
     def SanFailback(self, array_config, gpEnv):
-
-        sys.path.append(sys.path[0] + '/lib')
-        try:
-            import gplib, gpmlib
-            import getopt, math, StringIO, stat, subprocess, signal
-            from gpmlib import ENV
-        except ImportError, e:
-            sys.exit('Error: unable to import module: ' + str(e))
-
-        # Verify the commands that we depend on.
-        ENV.chk_environ()
 
         # Get the configuration information maps.
         (san_mounts, san_mount_by_dbid) = array_config.getSanConfigMaps()
@@ -396,13 +382,13 @@ class GpRecoverSegmentProgram:
         # 3 Verify that the required hosts are back up (this may reduce the number of recoverable segments)
         recoverable_mps = {}
         for mount_id, v in bad_mounts.iteritems():
-            tmpfile = os.path.join('/tmp', 'gptmpfile_recovery')
-            #gpmlib.log_info('verifying host %s tmpfile %s' % (v['primary_host'], tmpfile))
-
-            (ok, out) = gpmlib.run_warn('%s "%s %s"' % (gplib.ssh_prefix(host=v['primaryhost']), ENV.TOUCH, tmpfile))
-            if ok:
-                (ok, out) = gpmlib.run('%s "%s -f %s"' % (gplib.ssh_prefix(host=v['primaryhost']), ENV.RM, tmpfile))            
+            try:
+                unix.Echo.remote('check host', 'Success', v['primaryhost'])
                 recoverable_mps[mount_id] = v
+            except:
+                # Host not available, not added to recoverable_mps.  We'll ignore
+                # because there may be others we can recover
+                pass
 
         # 4
         # From the recoverable mountpoints, we should now be able to identify the
@@ -420,6 +406,9 @@ class GpRecoverSegmentProgram:
                 recoverable_segs[dbid] = v
             else:
                 logger.warning('Unrecoverable segment dbid %d' % (dbid))
+
+        if len(recoverable_segs) == 0:
+            raise Exception("Found no recoverable segments.")
 
         # 4 Stop GPDB.
         e = os.system('gpstop -aq -d %s' % (os.environ.get('MASTER_DATA_DIRECTORY')))

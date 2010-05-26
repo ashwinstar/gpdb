@@ -16,12 +16,11 @@ import socket
 import subprocess
 import threading
 import zlib
-import gplib
-import gpmlib
 import pysync_remote
 from pysync_remote import Options
 from pysync_remote import ProgressUpdate, ProgressCounters
 from pysync_remote import statToTuple
+from gppylib.commands.gp import PySync
 
 bootstrapSource="""
 import os,sys
@@ -108,13 +107,11 @@ class PysyncProxy:
         to the self.stdout list.  Progress messages are written to stdout unless a 
         callback is set.
         '''
-        self.cmd = gpmlib.makeCommand('%s %s %s %s:%s' 
-                                      % (os.path.join(gpmlib.ENV.GPHOME, 'bin', 'lib', 'pysync.py'),
-                                         ' '.join(self.syncOptions),
-                                         self.sourceDir,
-                                         self.destHost,
-                                         self.destDir))
-
+        
+        pysyncCmd = PySync('pysync', self.sourceDir, self.destHost, self.destDir,
+                              options=' '.join(self.syncOptions))
+        self.cmd = '. %s/greenplum_path.sh && %s' % (os.environ.get('GPHOME'), pysyncCmd.cmdStr)
+        
         # save of ppid to allow the process to be stopped.
         self.ppid = os.getppid()
         pidFilename = '/tmp/pysync.py.%s.%s.ppid' % (self.destHost, self.destDir.replace('/', '_'))

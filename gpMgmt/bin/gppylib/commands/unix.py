@@ -32,11 +32,16 @@ platform_list = [SUNOS,LINUX,DARWIN,FREEBSD]
 
 curr_platform = platform.uname()[0].lower()
 
+GPHOME=os.environ.get('GPHOME', None)
 
 
 #---------------command path--------------------
-CMDPATH = ('/usr/kerberos/bin', '/usr/sfw/bin', '/opt/sfw/bin', '/bin', '/usr/local/bin', 
-               '/usr/bin', '/sbin', '/usr/sbin', '/usr/ucb', '/sw/bin')
+
+CMDPATH = ['/usr/kerberos/bin', '/usr/sfw/bin', '/opt/sfw/bin', '/bin', '/usr/local/bin', 
+               '/usr/bin', '/sbin', '/usr/sbin', '/usr/ucb', '/sw/bin', '/opt/Navisphere/bin']
+
+if GPHOME:
+    CMDPATH.append(GPHOME)
 
 CMD_CACHE = {}
 
@@ -52,23 +57,30 @@ class CommandNotFoundException(Exception):
     
     
 
-def findCmdInPath(cmd):
+def findCmdInPath(cmd, additionalPaths=[], printError=True):
     global CMD_CACHE
 
     if cmd not in CMD_CACHE:
+        # Search additional paths and don't add to cache.
+        for p in additionalPaths:
+            f = os.path.join(p, cmd)
+            if os.path.exists(f):
+                return f
+            
         for p in CMDPATH:
             f = os.path.join(p, cmd)
             if os.path.exists(f):
                 CMD_CACHE[cmd] = f
                 return f
-        logger.critical('Command %s not found' % cmd)
-        raise CommandNotFoundException(cmd,CMDPATH)
+            
+        if printError:
+            logger.critical('Command %s not found' % cmd)
+        search_path = CMDPATH[:]
+        search_path.extend(additionalPaths)
+        raise CommandNotFoundException(cmd,search_path)
     else:
         return CMD_CACHE[cmd]
     
-    
-
-
     
 #For now we'll leave some generic functions outside of the Platform framework    
 def getLocalHostname():
@@ -130,6 +142,9 @@ class GenericPlatform():
     
     def getIfconfigCmd(self):
         return findCmdInPath('ifconfig')
+    
+    def getMountDevFirst(self):
+        return True
         
 class LinuxPlatform(GenericPlatform):
     
@@ -151,6 +166,8 @@ class LinuxPlatform(GenericPlatform):
         cmd = "/usr/lib64/sa/sadc -F -d " + str(interval) + " " + outfilename
         return cmd
             
+    def getMountDevFirst(self):
+        return True
 
 class SolarisPlatform(GenericPlatform):
     
@@ -175,6 +192,9 @@ class SolarisPlatform(GenericPlatform):
 
     def getIfconfigCmd(self):
         return findCmdInPath('ifconfig') + ' -a inet'
+    
+    def getMountDevFirst(self):
+        return False
 
 class DarwinPlatform(GenericPlatform):
     
@@ -186,7 +206,9 @@ class DarwinPlatform(GenericPlatform):
     
     def get_machine_arch_cmd(self):
         return 'uname -m'
-    
+
+    def getMountDevFirst(self):
+        return True
     
 
     
@@ -200,7 +222,9 @@ class FreeBsdPlatform(GenericPlatform):
     
     def get_machine_arch_cmd(self):
         return 'uname -m'
-    
+
+    def getMountDevFirst(self):
+        return True    
 
 
     
@@ -736,6 +760,28 @@ class Chmod(Command):
         cmd=Chmod(name, dir, perm, ctxt=REMOTE, remoteHost=hostname)
         cmd.run(validateAfter=True)
         
+#--------------echo ----------------------
+class Echo(Command):
+    def __init__(self, name, echoString, ctxt=LOCAL, remoteHost=None):
+        cmdStr = '%s "%s"' % (findCmdInPath('echo'), echoString)
+        Command.__init__(self, name, cmdStr, ctxt, remoteHost)
+
+    @staticmethod
+    def remote(name, echoString, hostname):
+        cmd = Echo(name, echoString, ctxt=REMOTE, remoteHost=hostname)
+        cmd.run(validateAfter=True)
+
+#--------------touch ----------------------
+class Touch(Command):
+    def __init__(self, name, file, ctxt=LOCAL, remoteHost=None):
+        cmdStr = '%s %s' % (findCmdInPath('touch'), file)
+        Command.__init__(self, name, cmdStr, ctxt, remoteHost)
+        
+    @staticmethod
+    def remote(name, file, hostname):
+        cmd = Touch(name, file, ctxt=REMOTE, remoteHost=hostname)
+        cmd.run(validateAfter=True)
+
 #--------------get user id ----------------------
 class UserId(Command):
     def __init__(self, name, ctxt=LOCAL, remoteHost=None):

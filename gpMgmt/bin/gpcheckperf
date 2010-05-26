@@ -35,8 +35,9 @@ import os, sys
 
 sys.path.append(sys.path[0] + '/lib')
 try:
-    import gplib
     import getopt, math, StringIO, stat, subprocess, signal
+    from gppylib.gpparseopts import OptParser
+    from gppylib.util import ssh_utils
     from gppylib.gpcoverage import GpCoverage
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
@@ -53,7 +54,11 @@ if USER is None or USER is ' ':
 
 ################
 def usage(exitarg):
-    print gplib.cli_help() or __doc__
+    parser = OptParser()
+    try:
+        parser.print_help()
+    except:
+        print __doc__
     sys.exit(exitarg)
 
 
@@ -565,7 +570,7 @@ def setupNetPerfTest():
     print '--  NETPERF TEST'
     print '-------------------'
     
-    hostlist = gplib.HostList()
+    hostlist = ssh_utils.HostList()
     for h in GV.opt['-h']: hostlist.add(h)
     if GV.opt['-f']: hostlist.parseFile(GV.opt['-f'])
 

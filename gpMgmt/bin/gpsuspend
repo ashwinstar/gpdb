@@ -21,9 +21,8 @@ try:
     from gppylib.commands.unix import getLocalHostname, getUserName, SYSTEM
     from gppylib.db import dbconn
     from gppylib.userinput import ask_string
-    from pygresql.pgdb import DatabaseError
     from gppylib.gphostcache import GpHostCache
-    from pygresql.pg import DB     #  Need this for admin sql, such as create/drop db
+    from pygresql.pg import DB, DatabaseError     #  Need this for admin sql, such as create/drop db
     from gppylib.gpcoverage import GpCoverage
 
 except ImportError, e:    

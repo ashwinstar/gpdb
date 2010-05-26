@@ -40,12 +40,13 @@ Please upgrade python installed on this machine.''' % progname)
 
 sys.path.append(sys.path[0] + '/lib')
 try:
-    import gplib
     import paramiko
     import getopt, time, getpass, logging
     import tempfile, filecmp
     import array, socket, subprocess
     from gppylib.commands import unix
+    from gppylib.util import ssh_utils
+    from gppylib.gpparseopts import OptParser
     from gppylib.gpcoverage import GpCoverage
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
@@ -80,7 +81,11 @@ GV = Global()
 
 ################
 def usage(exitarg):
-    print gplib.cli_help() or __doc__
+    parser = OptParser()
+    try:
+        parser.print_help()
+    except:
+        print __doc__
     sys.exit(exitarg)
 
 #############
@@ -341,7 +346,7 @@ def collectHosts(hostlist, hostfile):
     '''
     try:
         hostlist.parseFile(hostfile)
-    except gplib.HostNameError:
+    except ssh_utils.HostNameError:
         print >> sys.stderr, '[ERROR] host name %s in file %s is not supported' % (str(sys.exc_info()[1]), hostfile)
         sys.exit(1)
     if not hostlist.get():
@@ -520,13 +525,13 @@ try:
     # identified by the -h or -f options for initial exchange processing
     # or by the -x option for expansion processing.  (Only one of the -h,
     # -f, or -x options is expected to have values.)
-    hostlist = gplib.HostList()
+    hostlist = ssh_utils.HostList()
     
     if len(GV.opt['-h']):
         for h in GV.opt['-h']:
             try:
                 hostlist.add(h)
-            except gplib.HostNameError:
+            except ssh_utils.HostNameError:
                 print >> sys.stderr, '[ERROR] host name %s is not supported' % str(sys.exc_info()[1])
                 sys.exit(1)
         if not hostlist.get():
@@ -562,7 +567,7 @@ try:
     # (The existing hosts list will exist iff the -x option is used
     # for new hosts.)
     localhostInOld = False
-    hostlist = gplib.HostList()
+    hostlist = ssh_utils.HostList()
     if GV.opt['-e']: 
         collectHosts(hostlist, GV.opt['-e'])
         

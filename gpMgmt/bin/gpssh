@@ -15,21 +15,26 @@ Usage: gpssh [--version] [-?v] [-h host] [-f hostfile] [cmd]
           cmd       : the command to execute. If not present, 
                       go into interactive mode
 '''
-import os, sys
+import os
+import sys
 
 progname = os.path.split(sys.argv[0])[-1]
+sys.path.append(sys.path[0] + '/lib')
 
 if sys.version_info < (2, 5, 0):
     sys.exit(
 '''Error: %s is supported on Python versions 2.5 or greater
 Please upgrade python installed on this machine.''' % progname)
 
-sys.path.append(sys.path[0] + '/lib')
-try:
-    import gplib, getopt, atexit, signal, pexpect, time
-    from gppylib.gpcoverage import GpCoverage
-except ImportError, e:
-    sys.exit('Error: unable to import module: ' + str(e))
+
+import getopt
+import atexit
+import signal
+import pexpect
+import time
+from gppylib.util import ssh_utils
+from gppylib.gpparseopts import OptParser
+from gppylib.gpcoverage import GpCoverage
 
 
 #
@@ -52,7 +57,11 @@ GV = __globals__()
 
 ################
 def usage(exitarg):
-    print gplib.cli_help() or __doc__
+    parser = OptParser()
+    try:
+        parser.print_help()
+    except:
+        print __doc__
     sys.exit(exitarg)
 
 
@@ -133,17 +142,17 @@ def interactive():
     while True:
         try:
             if not GV.session:
-                GV.session = gplib.Session()
+                GV.session = ssh_utils.Session()
                 GV.session.verbose=GV.opt['-v']
                 GV.session.login(GV.opt['-h'], GV.USER)
             GV.session.cmdloop()
         except pexpect.EOF:
             print '\n[Unexpected EOF from some hosts...]'
             pass
-        except gplib.Session.SessionCmdExit:
+        except ssh_utils.Session.SessionCmdExit:
                 print ''
                 break
-        except gplib.Session.SessionError, e:
+        except ssh_utils.Session.SessionError, e:
                 print 'Error: %s' % e
                 pass
         except KeyboardInterrupt:
@@ -159,7 +168,7 @@ try:
     parseCommandLine()              #Read options from the command line
 
     #Acquire the list of hosts from command line arguments
-    hostlist = gplib.HostList()
+    hostlist = ssh_utils.HostList()
     for h in GV.opt['-h']:
         hostlist.add(h)
     if GV.opt['-f']:
@@ -177,14 +186,14 @@ try:
     #If a single command was passed to us, implement a single command session
     if GV.argcmd:
             try:
-                GV.session = gplib.Session()
+                GV.session = ssh_utils.Session()
                 GV.session.verbose=GV.opt['-v']
                 GV.session.login(GV.opt['-h'], GV.USER)
                 output=GV.session.executeCommand(GV.argcmd)
                 GV.session.writeCommandOutput(output)
                 if GV.session.verbose: print '[INFO] completed successfully'
                 sys.stdout.flush()
-            except gplib.Session.SessionError, e:
+            except ssh_utils.Session.SessionError, e:
                 print 'Error: %s' % e
                 pass
 

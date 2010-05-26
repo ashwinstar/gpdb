@@ -9,6 +9,7 @@ from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRE
 import os, sys, getopt, socket, StringIO, signal, copy
 
 from gppylib import gparray, gplog, pgconf, userinput, utils
+from gppylib.util import gp_utils
 from gppylib.commands import base, gp, pg, unix
 from gppylib.db import catalog, dbconn
 from gppylib.gpparseopts import OptParser, OptChecker
@@ -20,7 +21,6 @@ from gppylib.system.environment import GpMasterEnvironment
 from gppylib.test.testUtils import *
 from gppylib.utils import toNonNoneString, checkNotNone, writeLinesToFile, readAllLinesFromFile, \
                     parseMirroringConfigFile, PathNormalizationException, normalizeAndValidateInputPath, TableLogger
-from lib import gpmlib
 from gppylib.gphostcache import GpInterfaceToHostNameCache
 
 logger = gplog.get_default_logger()
@@ -41,10 +41,7 @@ def validateFlexibleHeadersListAllFilespaces(configFileLabel, gpArray, fileData)
         raise Exception('%s specified only %d of %d filespaces' %
             (configFileLabel, len(fileData.getFlexibleHeaders()), len(filespaceNameToFilespace)))
 
-#
-# note: can we add unit testing for GpMirrorBuildCalculator and others
-# can we remove gpmlib run use (can we replace that echo with an os.path function?)?
-#
+
 class GpMirrorBuildCalculator:
     """
     Create mirror segment (GpDB) objects for an existing array, using different strategies.
@@ -426,7 +423,7 @@ class GpAddMirrorsProgram:
         else:
             toBuild = calc.getGroupMirrors()
 
-        gpPrefix = gpmlib.get_gp_prefix(gpEnv.getMasterDataDir())
+        gpPrefix = gp_utils.get_gp_prefix(gpEnv.getMasterDataDir())
         if not gpPrefix:
             gpPrefix = 'gp'
 
