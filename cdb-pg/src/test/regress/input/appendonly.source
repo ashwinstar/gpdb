@@ -312,6 +312,27 @@ INSERT INTO syscoltest VALUES(1);
 SELECT ctid FROM syscoltest;
 DROP TABLE syscoltest;
 
+--------------------
+-- relation size tests -- make sure can execute without block directory, sanity checks on relative sizes
+--
+--
+--------------------
+CREATE TABLE aosizetest_1(a int) WITH (appendonly=true);
+CREATE TABLE aosizetest_2(a int) WITH (appendonly=true);
+--
+-- size will be < total size because of segrelid
+--
+SELECT pg_relation_size('aosizetest_1') < pg_total_relation_size('aosizetest_1') as total_exceeds_regular;
+--
+-- create currently build block directory, but dropping last index does not delete block directory...
+--  so we will verify that the size of _2 is greater than the size of _1 after this
+--
+CREATE INDEX aosizetest_2_idx on aosizetest_2(a);
+DROP INDEX aosizetest_2_idx;
+SELECT pg_total_relation_size('aosizetest_1') < pg_total_relation_size('aosizetest_2') as with_block_dir_exceeds_without;
+DROP TABLE aosizetest_1;
+DROP TABLE aosizetest_2;
+
 -------------------- 
 -- supported sql 
 --------------------

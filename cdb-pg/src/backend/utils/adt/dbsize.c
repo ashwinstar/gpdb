@@ -623,10 +623,13 @@ calculate_total_relation_size(Oid Relid)
 	if (aoEntry != NULL)
 	{
 		Assert(OidIsValid(aoEntry->segrelid));
-		Assert(OidIsValid(aoEntry->blkdirrelid));
-		
 		size += calculate_total_relation_size(aoEntry->segrelid);
-		size += calculate_total_relation_size(aoEntry->blkdirrelid);
+
+        /* block directory may not exist, post upgrade or new table that never has indexes */
+   		if (OidIsValid(aoEntry->blkdirrelid))
+        {
+     		size += calculate_total_relation_size(aoEntry->blkdirrelid);
+        }
 	}
 
 	if (aoEntry != NULL)
