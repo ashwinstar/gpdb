@@ -15,11 +15,11 @@ FLEXSDK=$(HOME)/flex_sdk_3.4.0.9271_mpl
 
 p4_edit:
 	cd src/webui/flexGUI/bin-release; \
-	ls -l; \
 	p4 edit GPPerfMon_2.0.0.0.swf
 
 p4_submit:
-	p4 submit -d "Update of flexGUI" src/webui/flexGUI/bin-release/GPPerfMon_2.0.0.0.swf
+	cd src/webui/flexGUI/bin-release; \
+	p4 submit -d "Update of flexGUI" GPPerfMon_2.0.0.0.swf
 
 flexGUI:
 	@echo flexGUI
