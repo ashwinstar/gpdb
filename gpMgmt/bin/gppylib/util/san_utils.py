@@ -19,7 +19,7 @@ class SanCmds():
         gphome = os.getenv('GPHOME', None) + '/bin/'
         
         try:
-            self.GP_MOUNT_AGENT = unix.findCmdInPath('gp_mount_agent', gphome, False)
+            self.GP_MOUNT_AGENT = unix.findCmdInPath('gp_mount_agent', [gphome], False)
         except:
             pass
         try:
