@@ -113,6 +113,44 @@ class GpSegStatusProgram:
             'pidValue' : pidValue
         }
 
+    def __parseKeyColonValueLines(self, str):
+        res = {}
+        for line in str.split("\n"):
+            line = line.strip()
+            if line == "":
+                continue
+            colon = line.find(":")
+            if colon == -1:
+                logger.warn("Error parsing data, no colon on line %s" % line)
+                return None
+            key = line[:colon]
+            value = line[colon+1:]
+            res[key] = value
+        return res
+
+    def __processMirrorStatusOutput(self, str):
+        data = self.__parseKeyColonValueLines(str)
+
+        if data is None:
+            return data
+
+        # convert some to long integers, verify that they are there
+        for expected in ["mode","segmentState","dataState",\
+                            "resyncNumCompleted","resyncTotalToComplete","elapsedTimeSeconds"]:
+            if expected not in data:
+                logger.warn("Missing data key %s from str %s" % (expected, str))
+                return None
+
+        for toConvert in ["resyncNumCompleted","resyncTotalToComplete","elapsedTimeSeconds"]:
+            value = data[toConvert]
+            try:
+                data[toConvert] = long(value)
+            except ValueError:
+                logger.warn("Invalid integer value %s from str %s" % (value, str))
+                return None
+
+        return data
+
     def run(self):
 
         toFetch = self.__options.statusQueryRequests.split(":")
@@ -129,6 +167,11 @@ class GpSegStatusProgram:
                     data = self.getStatusUsingTransition(seg, statusRequest, pidRunningStatus)
                     if data is not None:
                         data = data.rstrip()
+
+                elif statusRequest == gp.SEGMENT_STATUS__GET_MIRROR_STATUS:
+                    data = self.getStatusUsingTransition(seg, statusRequest, pidRunningStatus)
+                    if data is not None:
+                        data = self.__processMirrorStatusOutput(data)
 
                 elif statusRequest == gp.SEGMENT_STATUS__GET_PID:
                     data = self.getPidStatus(seg, pidRunningStatus)

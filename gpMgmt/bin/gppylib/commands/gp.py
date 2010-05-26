@@ -294,9 +294,22 @@ def getSegmentsReprArgWithoutFilespaces(segments):
 #
 
 #
-# corresponds to a postmaster variable, also used in scripts; result is a string object
+# corresponds to a postmaster string value; result is a string object, or None if version could not be fetched
 #
 SEGMENT_STATUS__GET_VERSION = "getVersion"
+
+#
+# corresponds to a postmaster string value; result is a dictionary object, or None if data could not be fetched
+#
+# dictionary will contain:
+#    mode -> string
+#    segmentState -> string
+#    dataState -> string
+#    resyncNumCompleted -> large integer
+#    resyncTotalToComplete -> large integer
+#    elapsedTimeSeconds -> large integer
+#
+SEGMENT_STATUS__GET_MIRROR_STATUS = "getMirrorStatus"
 
 #
 # fetch the active PID of this segment; result is a dict with "pid" and "error" values

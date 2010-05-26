@@ -8,6 +8,7 @@ from gppylib.mainUtils import *
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 import os, sys, getopt, socket, StringIO, signal
+import datetime
 
 from gppylib import gparray, gplog, pgconf, userinput, utils
 from gppylib.commands import base, gp, pg, unix
@@ -62,7 +63,7 @@ class GpSystemStateProgram:
         else:
             return "No Mirror"
 
-    def __displayClusterConfig(self, gpEnv, gpArray):
+    def __showClusterConfig(self, gpEnv, gpArray):
         """
         Returns the exitCode
 
@@ -76,7 +77,6 @@ class GpSystemStateProgram:
             primarySegments = [ seg for seg in gpArray.getSegDbList() if seg.isSegmentPrimary(False) ]
             mirrorSegments = [ seg for seg in gpArray.getSegDbList() if seg.isSegmentMirror(False) ]
             contentIdToMirror = GpArray.getSegmentsByContentId(mirrorSegments)
-
 
             tabLog = TableLogger().setWarnWithArrows(True)
             tabLog.info(["Status", "Data State", "Primary", "Datadir", "Port", "Mirror", "Datadir", "Port"])
@@ -136,7 +136,7 @@ class GpSystemStateProgram:
 
         return 0
 
-    def __displayMirrorList(self,gpEnv, gpArray):
+    def _showMirrorList(self,gpEnv, gpArray):
         """
         Returns the exitCode
         """
@@ -347,7 +347,8 @@ class GpSystemStateProgram:
                               [gp.SEGMENT_STATUS__GET_VERSION,
                                 gp.SEGMENT_STATUS__GET_PID,
                                 gp.SEGMENT_STATUS__HAS_LOCKFILE,
-                                gp.SEGMENT_STATUS__HAS_POSTMASTER_PID_FILE
+                                gp.SEGMENT_STATUS__HAS_POSTMASTER_PID_FILE,
+                                gp.SEGMENT_STATUS__GET_MIRROR_STATUS
                                 ],
                                verbose=logging_is_verbose(),
                                ctxt=base.REMOTE,
@@ -494,6 +495,29 @@ class GpSystemStateProgram:
                         tabLog.warn(["Mirror status", "= Active as Primary"])
                     else:
                         tabLog.info(["Mirror status", "= Passive"])
+
+                # print out mirroring state
+                if seg.isSegmentPrimary(current_role=True):
+                    tabLog.info(["Data status with mirror", \
+                                "= %s" % gparray.getDataModeLabel(seg.getSegmentMode())])
+                    if seg.getSegmentMode() == gparray.MODE_RESYNCHRONIZATION and \
+                        False: # note: when postmaster returns real resync progress then we can uncomment this 
+
+                        mirrorData = segmentData[gp.SEGMENT_STATUS__GET_MIRROR_STATUS]
+
+                        if mirrorData is None:
+                            tabLog.warn(["Resync progress with mirror", "= unable to retrieve progress"])
+
+                        elif mirrorData["resyncTotalToComplete"] == -1 or \
+                            mirrorData["resyncTotalToComplete"] == mirrorData["resyncNumCompleted"]:
+                            tabLog.info(["Mirror resync progress", "= Complete, awaiting metadata change to in-sync"])
+
+                        else:
+                            percentComplete = mirrorData["resyncNumCompleted"] / float(mirrorData["resyncTotalToComplete"])
+                            elapsedTime = mirrorData["elapsedTimeSeconds"]
+                            remainingTime = datetime.timedelta(seconds=long(elapsedTime / percentComplete - elapsedTime))
+                            tabLog.info(["Resync progress with mirror", "= %.2f%%" % (100 * percentComplete)])
+                            tabLog.info(["Estimated time to resync completion", "= %s" % remainingTime])
 
                 # is valid
                 isValid = seg.isSegmentUp() and pidData['error'] is None
@@ -717,9 +741,9 @@ class GpSystemStateProgram:
 
         # do it!
         if self.__options.showMirrorList:
-            exitCode = self.__displayMirrorList(gpEnv, gpArray)
+            exitCode = self._showMirrorList(gpEnv, gpArray)
         elif self.__options.showClusterConfig:
-            exitCode = self.__displayClusterConfig(gpEnv, gpArray)
+            exitCode = self.__showClusterConfig(gpEnv, gpArray)
         elif self.__options.showQuickStatus:
             exitCode = self.__showQuickStatus(gpEnv, gpArray)
         elif self.__options.showStatusStatistics:

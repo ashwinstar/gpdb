@@ -201,6 +201,9 @@ bool gHaveInitializedLocalState = false;
  * Get the label for a primary mirror mode.  Returns a pointer to static memory.
  *
  * Note that the label is externally visible (through a getStatus call to the postmaster, for example)
+ *
+ * note also that some python code (as used by gpstate) may use these label values, so when changing them
+ *  be sure to search the management scripts code.
  */
 const char *
 getMirrorModeLabel(PrimaryMirrorMode mode)
@@ -220,6 +223,9 @@ getMirrorModeLabel(PrimaryMirrorMode mode)
  * Get the label for a data state.  Returns a pointer to static memory.
  *
  * Note that the label is externally visible (through a getStatus call to the postmaster, for example)
+ *
+ * note also that some python code (as used by gpstate) may use these label values, so when changing them
+ *  be sure to search the management scripts code.
  */
 const char *
 getDataStateLabel(DataState_e state)
@@ -236,6 +242,9 @@ getDataStateLabel(DataState_e state)
 
 /**
  * Note that the label is externally visible (through a getStatus call to the postmaster, for example)
+ *
+ * note also that some python code (as used by gpstate) may use these label values, so when changing them
+ *  be sure to search the management scripts code.
  */
 const char *
 getSegmentStateLabel(SegmentState_e state)

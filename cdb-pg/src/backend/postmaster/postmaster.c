@@ -2649,6 +2649,35 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
 		return;
 	}
 
+	if (strcmp("getMirrorStatus", targetModeStr) == 0)
+	{
+	    /* this information is digested by gpstate so beware of changing its format */
+	    char statusBuf[10000];
+
+        PrimaryMirrorMode pm_mode;
+        SegmentState_e s_state;
+        DataState_e d_state;
+
+        getPrimaryMirrorStatusCodes(&pm_mode, &s_state, &d_state);
+
+        /* todo: MILENA: fill these in with correct values, use -1,-1,-1 if resync is not in progress or it's not a primary/mirror */
+        int64 resyncNumCompleted = 5;
+        int64 resyncTotalToComplete = 100;
+        int64 elapsedTimeSeconds = 1000;
+
+        snprintf(statusBuf, sizeof(statusBuf), "Success: mode: %s\n"
+                                  "segmentState: %s\n"
+                                  "dataState: %s\n"
+                                  "resyncNumCompleted: " INT64_FORMAT "\n"
+                                  "resyncTotalToComplete: " INT64_FORMAT "\n"
+                                  "elapsedTimeSeconds: " INT64_FORMAT "\n",
+                 getMirrorModeLabel(pm_mode), getSegmentStateLabel(s_state), getDataStateLabel(d_state),
+                 resyncNumCompleted, resyncTotalToComplete, elapsedTimeSeconds);
+
+		sendPrimaryMirrorTransitionResult(statusBuf);
+		return;
+	}
+
 	if ( strcmp("getVersion", targetModeStr) == 0 )
 	{
 	    char statusBuf[10000];
