@@ -13,9 +13,17 @@ webapi:
 
 FLEXSDK=$(HOME)/flex_sdk_3.4.0.9271_mpl
 
+p4_edit:
+	p4 edit src/webui/flexGUI/bin-release/GPPerfMon_2.0.0.0.swf
+
+p4_submit:
+	p4 submit -d "Update of flexGUI" src/webui/flexGUI/bin-release/GPPerfMon_2.0.0.0.swf
+
 flexGUI:
 	@echo flexGUI
-	if [ -d "$(FLEXSDK)" ]; then $(MAKE) MXMLC=$(FLEXSDK)/bin/mxmlc -C src/webui/flexGUI/src release; fi
+	if [ -d "$(FLEXSDK)" ]; then \
+       $(MAKE) MXMLC=$(FLEXSDK)/bin/mxmlc -C src/webui/flexGUI/src release; \
+    fi
 
 installer: gpsmon gpmmon
 	$(MAKE) -C installer all
