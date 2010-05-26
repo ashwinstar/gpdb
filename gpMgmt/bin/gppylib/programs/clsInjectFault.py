@@ -27,6 +27,7 @@ from gppylib.db import dbconn
 from gppylib.system import configurationInterface, fileSystemInterface, osInterface
 from gppylib import pgconf
 from gppylib.test.testUtils import testOutput
+from gppylib.system.environment import GpMasterEnvironment
 
 logger = gplog.get_default_logger()
 
@@ -110,14 +111,18 @@ class GpInjectFaultProgram:
         #
         # load from master db
         #
-        conf = configurationInterface.getConfigurationProvider().initializeProvider(self.options.masterPort, True)
+        masterPort = self.options.masterPort
+        if masterPort is None:
+            gpEnv = GpMasterEnvironment(self.options.masterDataDirectory, False)
+            masterPort = gpEnv.getMasterPort()
+        conf = configurationInterface.getConfigurationProvider().initializeProvider(masterPort, True)
         segments = conf.loadSystemConfig().getDbList()
 
         #
         # prune gpArray according to filter settings
         #
         segments = [seg for seg in segments if seg.isSegmentQE()]
-        if targetHost is not None:
+        if targetHost is not None and targetHost != "ALL":
             segments = [seg for seg in segments if seg.getSegmentHostName() == targetHost]
 
         if targetDbId is not None:
@@ -164,7 +169,6 @@ class GpInjectFaultProgram:
         # run the command in serial to each target
         for segment in segments :
             logger.info("Injecting fault on %s", segment)
-
             # if there is an error then an exception is raised by command execution
             cmd = gp.SendFilerepTransitionMessage("Fault Injector", inputFile.name, \
                                         segment.getSegmentPort(), base.LOCAL, segment.getSegmentHostName())
@@ -215,6 +219,10 @@ class GpInjectFaultProgram:
     ######
     def run(self):
 
+        if self.options.masterPort is not None and self.options.masterDataDirectory is not None:
+            raise ProgramArgumentValidationException("both master port and master data directory options specified;" \
+                    " at most one should be specified, or specify none to use MASTER_DATA_DIRECTORY environment variable")
+
         isSync = self.getAndValidateIsSyncSetting()
         messageText = self.buildMessage()
         segments = self.loadTargetSegments()
@@ -262,14 +270,16 @@ class GpInjectFaultProgram:
         addTo.add_option("-s", "--seg_dbid", dest="targetDbId", type="string", metavar="<dbid>",
                          help="The segment  dbid on which fault should be set and triggered.")
         addTo.add_option("-H", "--host", dest="targetHost", type="string", metavar="<host>",
-                         help="The hostname on which fault should be set and triggered.")
+                         help="The hostname on which fault should be set and triggered; pass ALL to target all hosts")
 
-        #
-        # todo: get master_port from the MASTER_DATA_DIRECTORY
-        #
-        addTo.add_option("-p", "--master_port", dest="masterPort",  type="int", default=5432,
+        addTo = OptionGroup(parser, 'Master Connection Options')
+        parser.add_option_group(addTo)
+
+        addMasterDirectoryOptionForSingleClusterProgram(addTo)
+        addTo.add_option("-p", "--master_port", dest="masterPort",  type="int", default=None,
                          metavar="<masterPort>",
-                         help="The port number of the master database on localhost, " \
+                         help="DEPRECATED, use MASTER_DATA_DIRECTORY environment variable or -d option.  " \
+                         "The port number of the master database on localhost, " \
                          "used to fetch the segment configuration.")
 
         addTo = OptionGroup(parser, 'Client Polling Options: ')
@@ -308,7 +318,7 @@ class GpInjectFaultProgram:
                          metavar="ddlStatement",
                          help="The DDL statement on which fault should be set and triggered " \
                          "(i.e. create_database, drop_database, create_table, drop_table)")
-        addTo.add_option("-d", "--database_name", dest="databaseName", type="string",
+        addTo.add_option("-D", "--database_name", dest="databaseName", type="string",
                          metavar="databaseName",
                          help="The database name on which fault should be set and triggered.")
         addTo.add_option("-t", "--table_name", dest="tableName", type="string",
