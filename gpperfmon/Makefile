@@ -15,6 +15,7 @@ FLEXSDK=$(HOME)/flex_sdk_3.4.0.9271_mpl
 
 p4_edit:
 	cd src/webui/flexGUI/bin-release
+	ls -l
 	p4 edit GPPerfMon_2.0.0.0.swf
 
 p4_submit:
