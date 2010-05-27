@@ -41,6 +41,7 @@
 #include "nodes/print.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_namespace.h"
+#include "executor/functions.h"
 
 extern char *savedSeqServerHost;
 extern int savedSeqServerPort;
@@ -96,100 +97,8 @@ static MemoryContext _SPI_execmem(void);
 static MemoryContext _SPI_procmem(void);
 static bool _SPI_checktuples(void);
 
-static bool can_execute_this_locally(const char *sql);
-
 bool		gp_use_snapshop_during_callback = true;
 
-bool
-can_execute_this_locally(const char *src)
-{
-	List	   *raw_parsetree_list;
-	ListCell   *list_item;
-	bool		can_run_local = true;
-
-	/*
-	 * Utility mode never uses (or needs) the special callback code
-	 */
-	if (Gp_role == GP_ROLE_UTILITY)
-		return true;
-	/*
-	 * If we are running on the QD, we should be able to execute any function without problem,
-	 * because the QD knows how to dispatch SQL statements if necessary.
-	 */
-	if (Gp_role == GP_ROLE_DISPATCH)
-		return true;
-
-	/*
-	 * Parse the request string into a list of raw parse trees.
-	 */
-	raw_parsetree_list = pg_parse_query(src);
-
-	/*
-	 * If we have only SELECT statements with no FROM clauses, we should
-	 * be able to execute them locally, even on the QE.  Most often, this is something
-	 * like   SELECT $1
-	 * Functions use that type of SELECT to evaluate expressions, so without those,
-	 * no functions would be useful.
-	 *
-	 * We also need to execute certain catalog queries locally.  The Fault-Tolerance system
-	 * does queries of gp_configuration, and some DDL and Utility commands do selects from the
-	 * catalog table, etc.	  So, if the FROM clause consists only of catalog tables, we
-	 * will run the query locally.
-	 *
-	 */
-	foreach(list_item, raw_parsetree_list)
-	{
-		Node	   *parsetree = (Node *) lfirst(list_item);
-
-		if (IsA(parsetree, SelectStmt))
-		{
-			SelectStmt *s = (SelectStmt *) parsetree;
-
-			if (s->intoClause != NULL)
-			{
-				can_run_local = false;
-				break;
-			}
-			else if (s->fromClause != NULL)
-			{
-				ListCell   *f = NULL;
-
-				foreach(f, s->fromClause)
-				{
-					Node	   *fr = (Node *) lfirst(f);
-
-					if (IsA(fr, RangeVar))
-					{
-						RangeVar * r = (RangeVar *)fr;
-						Oid relid = RangeVarGetRelid(r, false);
-						Oid namespaceid = get_rel_namespace(relid);
-						
-						if (namespaceid != PG_CATALOG_NAMESPACE)
-						{
-							can_run_local = false;
-							break;
-						}
-					}
-				} /* foreach */
-			}
-		}
-	}
-
-	elog(DEBUG1, "SPI running SQL, local=%d:  %s", can_run_local, src);
-
-
-	if (can_run_local)
-		return true;
-
-	/*
-	 * Ok, we have an SQL statement, that probably can only be dispatched by the QD
-	 */
-	ereport(ERROR,
-			(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
-			 errmsg("Functions that execute SQL statements from the segDBs are not yet supported")));
-
-	return false;
-}
 
 /* =================== interface functions =================== */
 
@@ -1576,19 +1485,9 @@ _SPI_prepare_plan(const char *src, SPIPlanPtr plan)
 	error_context_stack = &spierrcontext;
 
 	/*
-	 * If we can't execute this prepare locally, simply return --
-	 * can_execute_this_locally() will error out.
+	 * We do not run via callback to qd.
 	 */
-	if (can_execute_this_locally(src))
-	{
-		plan->run_via_callback_to_qd = false;
-	}
-	else
-	{
-		plan->run_via_callback_to_qd = true;
-		
-		return;
-	}
+	plan->run_via_callback_to_qd = false;
 	
 	
 	/*
@@ -1617,6 +1516,18 @@ _SPI_prepare_plan(const char *src, SPIPlanPtr plan)
 
 		query_list = pg_analyze_and_rewrite(parsetree, src, argtypes, nargs);
 
+		ListCell *lc = NULL;
+		foreach (lc, query_list)
+		{
+			Query *query = (Query *) lfirst(lc);
+			
+			if (Gp_role == GP_ROLE_EXECUTE)
+			{
+				/* This method will error out if the query cannot be safely executed on segment */
+				querytree_safe_for_segment(query);
+			}
+		}
+		
 		query_list_list = lappend(query_list_list, query_list);
 
 		plan_list = list_concat(plan_list,

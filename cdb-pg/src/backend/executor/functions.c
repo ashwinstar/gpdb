@@ -33,6 +33,7 @@
 #include "catalog/namespace.h"
 #include "catalog/pg_namespace.h"
 #include "cdb/cdbvars.h"
+#include "optimizer/clauses.h"
 
 /*
  * We have an execution_state record for each query in a function.	Each
@@ -98,7 +99,78 @@ static Datum postquel_execute(execution_state *es,
 				 MemoryContext resultcontext);
 static void sql_exec_error_callback(void *arg);
 static void ShutdownSQLFunction(Datum arg);
+static bool querytree_safe_for_segment_walker(Node *expr, void *context);
 
+/**
+ * Walker for querytree_safe_for_segment. 
+ */
+bool querytree_safe_for_segment_walker(Node *expr, void *context)
+{
+	Assert(context == NULL);
+	
+	if (!expr)
+	{
+		/**
+		 * Do not end recursion just because we have reached one leaf node.
+		 */
+		return false;
+	}
+
+	switch(nodeTag(expr))
+	{
+		case T_Query:
+			{
+				Query *q = (Query *) expr;
+				
+				if (q->commandType != CMD_SELECT 
+						|| q->intoClause != NULL 
+						|| q->resultRelation > 0)
+				{
+					elog(ERROR, "function cannot execute on segment because it issues a non-SELECT statement");
+				}
+				
+				ListCell * f = NULL;
+				foreach(f,q->rtable)
+				{
+					RangeTblEntry *rte = (RangeTblEntry *) lfirst(f);
+
+					if (rte->rtekind == RTE_RELATION)
+					{
+						Assert(rte->relid != InvalidOid);
+						
+						Oid namespaceId = get_rel_namespace(rte->relid);
+
+						Assert(namespaceId != InvalidOid);
+						
+						if (namespaceId != PG_CATALOG_NAMESPACE)
+						{
+							elog(ERROR, "function cannot execute on segment because it accesses relation \"%s.%s\"", 
+									quote_identifier(get_namespace_name(namespaceId)), quote_identifier(get_rel_name(rte->relid)));
+						}
+					}
+				}
+				query_tree_walker(q, querytree_safe_for_segment_walker, context, 0);
+				break;
+			}
+		default:
+			break;
+	}
+	
+	return expression_tree_walker(expr, querytree_safe_for_segment_walker, context);
+}
+
+
+/**
+ * This function determines if the query tree is safe to be planned and executed on a segment. The checks it performs are:
+ * 1. The query cannot access any non-catalog relation.
+ * 2. The query must be select only.
+ * In case of a problem, the method spits out an error.
+ */
+void querytree_safe_for_segment(Query *query)
+{
+	Assert(query);
+	querytree_safe_for_segment_walker((Node *)query, NULL);
+}
 
 static execution_state *
 init_execution_state(List *queryTree_list, SQLFunctionCache *fcache, bool readonly_func)
@@ -275,47 +347,8 @@ init_sql_fcache(FmgrInfo *finfo)
 			Node	   *parsetree = (Node *) lfirst(list_item);
 			if (IsA(parsetree,Query))
 			{
-				Query * q = (Query *)parsetree;
-				if (q->commandType != CMD_SELECT 
-						|| q->intoClause != NULL 
-						|| q->resultRelation > 0)
-				{
-					canRunLocal = false;
-					break;
-				}
-				else if (q->rtable != NULL)
-				{
-					ListCell * f = NULL;
-					foreach(f,q->rtable)
-					{
-						RangeTblEntry *rte = NULL;
-						Oid namespaceId = InvalidOid;
-						
-						Assert(IsA(lfirst(f), RangeTblEntry));
-
-						rte = (RangeTblEntry *) lfirst(f);
-						
-						/** 
-						 * We allow segments to access local catalogs.
-						 */
-						
-						switch(rte->rtekind)
-						{
-							case RTE_RELATION:
-								namespaceId = get_rel_namespace(rte->relid);
-
-								if (namespaceId != PG_CATALOG_NAMESPACE)
-								{
-									canRunLocal = false;
-									break;
-								}
-
-							default:
-								canRunLocal = false;
-								break;
-						} /* switch */
-					}
-				}
+				/* This will error out if there is a problem with the query tree */
+				querytree_safe_for_segment((Query*)parsetree);
 			}
 			else
 			{

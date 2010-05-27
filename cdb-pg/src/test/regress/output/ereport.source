@@ -2695,81 +2695,81 @@ select * from get_ereport order by 1;
  caae: copy:00003467:  (errcode(ERRCODE_IO_ERROR), 
  caae: copy:00003468:  errmsg("%s", cdbcopy_err.data), 
  caae: copy:00003469:  errOmitLocation(true))); 
- caae: copy:00003834:  ereport(ERROR, 
- caae: copy:00003835:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00003836:  errmsg("null OID in COPY data."))); 
- caae: copy:00003864:  ereport(ERROR, 
- caae: copy:00003865:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00003866:  errmsg("invalid OID in COPY data."))); 
- caae: copy:00004645:  ereport(ERROR, 
- caae: copy:00004646:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00004647:  errmsg("data line too long. likely due to invalid csv data"))); 
- caae: copy:00004777:  ereport(ERROR, 
- caae: copy:00004778:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00004779:  errmsg("data line too long. likely due to invalid csv data"))); 
- caae: copy:00004938:  ereport(ERROR, 
- caae: copy:00004939:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00004940:  errmsg("extra data after last expected column"), 
- caae: copy:00004941:  errOmitLocation(true))); 
- caae: copy:00004988:  ereport(ERROR, 
- caae: copy:00004989:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00004990:  errmsg("missing data for column "%s"", 
- caae: copy:00004991:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
- caae: copy:00004992:  errOmitLocation(true))); 
- caae: copy:00004995:  ereport(ERROR, 
- caae: copy:00004996:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00004997:  errmsg("missing data for column "%s", found empty data line", 
- caae: copy:00004998:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
- caae: copy:00004999:  errOmitLocation(true))); 
- caae: copy:00005006:  ereport(ERROR, 
- caae: copy:00005007:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00005008:  errmsg("extra data after last expected column"), 
- caae: copy:00005009:  errOmitLocation(true))); 
- caae: copy:00005307:  ereport(ERROR, 
- caae: copy:00005308:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00005309:  errmsg("extra data after last expected column"), 
- caae: copy:00005310:  errOmitLocation(true))); 
- caae: copy:00005320:  ereport(ERROR, 
- caae: copy:00005321:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00005322:  errmsg("unterminated CSV quoted field"), 
- caae: copy:00005323:  errOmitLocation(true))); 
- caae: copy:00005338:  ereport(ERROR, 
- caae: copy:00005339:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00005340:  errmsg("missing data for column "%s"", 
- caae: copy:00005341:  NameStr(attr[m + 1]->attname)), 
- caae: copy:00005342:  errOmitLocation(true))); 
- caae: copy:00005345:  ereport(ERROR, 
- caae: copy:00005346:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00005347:  errmsg("missing data for column "%s", found empty data line", 
- caae: copy:00005348:  NameStr(attr[m + 1]->attname)), 
- caae: copy:00005349:  errOmitLocation(true))); 
- caae: copy:00005380:  ereport(ERROR, 
- caae: copy:00005381:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
- caae: copy:00005382:  errmsg("extra data after last expected column"), 
- caae: copy:00005383:  errOmitLocation(true))); 
- caae: copy:00005866:  ereport(ERROR, 
- caae: copy:00005867:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- caae: copy:00005868:  errmsg("column "%s" of relation "%s" does not exist", 
- caae: copy:00005869:  name, RelationGetRelationName(rel)), 
- caae: copy:00005870:  errOmitLocation(true))); 
- caae: copy:00005872:  ereport(ERROR, 
- caae: copy:00005873:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
- caae: copy:00005874:  errmsg("column "%s" does not exist", 
- caae: copy:00005875:  name), 
- caae: copy:00005876:  errOmitLocation(true))); 
+ caae: copy:00003838:  ereport(ERROR, 
+ caae: copy:00003839:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00003840:  errmsg("null OID in COPY data."))); 
+ caae: copy:00003868:  ereport(ERROR, 
+ caae: copy:00003869:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00003870:  errmsg("invalid OID in COPY data."))); 
+ caae: copy:00004653:  ereport(ERROR, 
+ caae: copy:00004654:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00004655:  errmsg("data line too long. likely due to invalid csv data"))); 
+ caae: copy:00004785:  ereport(ERROR, 
+ caae: copy:00004786:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00004787:  errmsg("data line too long. likely due to invalid csv data"))); 
+ caae: copy:00004946:  ereport(ERROR, 
+ caae: copy:00004947:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00004948:  errmsg("extra data after last expected column"), 
+ caae: copy:00004949:  errOmitLocation(true))); 
+ caae: copy:00004996:  ereport(ERROR, 
+ caae: copy:00004997:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00004998:  errmsg("missing data for column "%s"", 
+ caae: copy:00004999:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
+ caae: copy:00005000:  errOmitLocation(true))); 
+ caae: copy:00005003:  ereport(ERROR, 
+ caae: copy:00005004:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00005005:  errmsg("missing data for column "%s", found empty data line", 
+ caae: copy:00005006:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
+ caae: copy:00005007:  errOmitLocation(true))); 
+ caae: copy:00005014:  ereport(ERROR, 
+ caae: copy:00005015:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00005016:  errmsg("extra data after last expected column"), 
+ caae: copy:00005017:  errOmitLocation(true))); 
+ caae: copy:00005315:  ereport(ERROR, 
+ caae: copy:00005316:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00005317:  errmsg("extra data after last expected column"), 
+ caae: copy:00005318:  errOmitLocation(true))); 
+ caae: copy:00005328:  ereport(ERROR, 
+ caae: copy:00005329:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00005330:  errmsg("unterminated CSV quoted field"), 
+ caae: copy:00005331:  errOmitLocation(true))); 
+ caae: copy:00005346:  ereport(ERROR, 
+ caae: copy:00005347:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00005348:  errmsg("missing data for column "%s"", 
+ caae: copy:00005349:  NameStr(attr[m + 1]->attname)), 
+ caae: copy:00005350:  errOmitLocation(true))); 
+ caae: copy:00005353:  ereport(ERROR, 
+ caae: copy:00005354:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00005355:  errmsg("missing data for column "%s", found empty data line", 
+ caae: copy:00005356:  NameStr(attr[m + 1]->attname)), 
+ caae: copy:00005357:  errOmitLocation(true))); 
+ caae: copy:00005388:  ereport(ERROR, 
+ caae: copy:00005389:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+ caae: copy:00005390:  errmsg("extra data after last expected column"), 
+ caae: copy:00005391:  errOmitLocation(true))); 
+ caae: copy:00005874:  ereport(ERROR, 
+ caae: copy:00005875:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ caae: copy:00005876:  errmsg("column "%s" of relation "%s" does not exist", 
+ caae: copy:00005877:  name, RelationGetRelationName(rel)), 
+ caae: copy:00005878:  errOmitLocation(true))); 
  caae: copy:00005880:  ereport(ERROR, 
- caae: copy:00005881:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
- caae: copy:00005882:  errmsg("column "%s" specified more than once", 
- caae: copy:00005883:  name))); 
- caae: copy:00005946:  ereport(ERROR, 
- caae: copy:00005947:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
- caae: copy:00005948:  errmsg("COPY metadata not found. This probably means that there is a " 
- caae: copy:00005949:  "mixture of newline types in the data. Use the NEWLINE keyword " 
- caae: copy:00005950:  "in order to resolve this reliably."))); 
- caae: copy:00006598:  ereport(ERROR, 
- caae: copy:00006599:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
- caae: copy:00006600:  errmsg("internal error in CopySetEolType. Trying to set NEWLINE %s", 
- caae: copy:00006601:  cstate->eol_str))); 
+ caae: copy:00005881:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+ caae: copy:00005882:  errmsg("column "%s" does not exist", 
+ caae: copy:00005883:  name), 
+ caae: copy:00005884:  errOmitLocation(true))); 
+ caae: copy:00005888:  ereport(ERROR, 
+ caae: copy:00005889:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
+ caae: copy:00005890:  errmsg("column "%s" specified more than once", 
+ caae: copy:00005891:  name))); 
+ caae: copy:00005954:  ereport(ERROR, 
+ caae: copy:00005955:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+ caae: copy:00005956:  errmsg("COPY metadata not found. This probably means that there is a " 
+ caae: copy:00005957:  "mixture of newline types in the data. Use the NEWLINE keyword " 
+ caae: copy:00005958:  "in order to resolve this reliably."))); 
+ caae: copy:00006606:  ereport(ERROR, 
+ caae: copy:00006607:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+ caae: copy:00006608:  errmsg("internal error in CopySetEolType. Trying to set NEWLINE %s", 
+ caae: copy:00006609:  cstate->eol_str))); 
  caaf: cdbtm:00000531:  ereport(ERROR, (errmsg("Global transaction upgrade from single segment to entire cluster failed for gid = "%s" due to error", 
  caaf: cdbtm:00000532:  currentGxact->gid))); 
  caaf: cdbtm:00001570:  ereport(ERROR, 
@@ -2786,10 +2786,10 @@ select * from get_ereport order by 1;
  caaf: cdbtm:00001733:  (errmsg("the limit of %d distributed transactions has been reached.", 
  caaf: cdbtm:00001734:  max_tm_gxacts), 
  caaf: cdbtm:00001735:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
- caaf: cdbtm:00002271:  ereport(FATAL, 
- caaf: cdbtm:00002272:  (errmsg("the limit of %d distributed transactions has been reached.", 
- caaf: cdbtm:00002273:  max_tm_gxacts), 
- caaf: cdbtm:00002274:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
+ caaf: cdbtm:00002278:  ereport(FATAL, 
+ caaf: cdbtm:00002279:  (errmsg("the limit of %d distributed transactions has been reached.", 
+ caaf: cdbtm:00002280:  max_tm_gxacts), 
+ caaf: cdbtm:00002281:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
  caaf: cdbtm:00002613:  ereport(FATAL, 
  caaf: cdbtm:00002614:  (errmsg("reached limit of %u global transactions per start", LastDistributedTransactionId))); 
  caaf: cdbtm:00002868:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
@@ -5849,64 +5849,64 @@ select * from get_ereport order by 1;
  faai: freelist:00000130:  )); 
  faai: ftsprobe:00000334:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
  faai: ftsprobe:00000335:  errmsg("database 'postgres' does not exist"))); 
- faai: ftsprobe:00001555:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- faai: ftsprobe:00001556:  errmsg("FTS: out of memory"))); 
- faai: ftsprobe:00001577:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- faai: ftsprobe:00001578:  errmsg("FTS: out of memory"))); 
- faai: ftsprobe:00001611:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- faai: ftsprobe:00001612:  errmsg("FTS: out of memory"))); 
- faai: ftsprobe:00001664:  ereport(ERROR, 
- faai: ftsprobe:00001665:  (errcode(ERRCODE_INTERNAL_ERROR), 
- faai: ftsprobe:00001666:  errmsg("FTS: could not insert into configuration history: format command string failure dbid %d", change->dbid))); 
- faai: ftsprobe:00001675:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- faai: ftsprobe:00001676:  errmsg("FTS: out of memory"))); 
- faai: ftsprobe:00001771:  ereport(ERROR, 
- faai: ftsprobe:00001772:  (errcode(ERRCODE_INTERNAL_ERROR), 
- faai: ftsprobe:00001773:  errmsg("FTS: could not modify config: format command string failure dbid %d", changes[i].dbid))); 
- faai: ftsprobe:00001803:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
- faai: ftsprobe:00001804:  errmsg("FTS: out of memory"))); 
- faai: ftsprobe:00002065:  ereport(LOG, 
- faai: ftsprobe:00002066:  (errmsg("Mirror segment on %s:%d is taking over as primary in change tracking mode.", 
- faai: ftsprobe:00002067:  seg_addr, seg_pm_port ), 
- faai: ftsprobe:00002068:  errSendAlert(true))); 
- faai: ftsprobe:00002072:  ereport(LOG, 
- faai: ftsprobe:00002073:  (errmsg("Primary segment on %s:%d is going into change tracking mode.", 
- faai: ftsprobe:00002074:  seg_addr, seg_pm_port ), 
- faai: ftsprobe:00002075:  errSendAlert(true))); 
- faai: ftsprobe:00002138:  ereport(LOG, 
- faai: ftsprobe:00002139:  (errmsg("Changing mirror segment on %s:%d to be the primary in change tracking mode completed successfully.", 
- faai: ftsprobe:00002140:  seg_addr, seg_pm_port ), 
- faai: ftsprobe:00002141:  errSendAlert(true))); 
- faai: ftsprobe:00002144:  ereport(LOG, 
- faai: ftsprobe:00002145:  (errmsg("Changing primary segment on %s:%d to change tracking mode completed successfully.", 
- faai: ftsprobe:00002146:  seg_addr, seg_pm_port ), 
- faai: ftsprobe:00002147:  errSendAlert(true))); 
- faai: ftsprobe:00002174:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),  
- faai: ftsprobe:00002175:  errmsg("FTS: out of memory")));  
- faai: ftsprobe:00002176:   
- faai: ftsprobe:00002177:  PQclear(rs);  
- faai: ftsprobe:00002178:  PQfinish(entryConn);  
- faai: ftsprobe:00002179:  entryConn = NULL;  
- faai: ftsprobe:00002180:   
- faai: ftsprobe:00002181:  elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message);  
- faai: ftsprobe:00002182:  }  
- faai: ftsprobe:00002183:  } 
- faai: ftsprobe:00002184:  
- faai: ftsprobe:00002185: /** 
- faai: ftsprobe:00002186:  * Marks the given db as in-sync in the segment configuration. 
- faai: ftsprobe:00002187:  */ 
- faai: ftsprobe:00002188: static void 
- faai: ftsprobe:00002189: markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *dbInfo) 
- faai: ftsprobe:00002190: { 
- faai: ftsprobe:00002191:  char cmd[2000]; 
- faai: ftsprobe:00002242:  ereport(LOG, 
- faai: ftsprobe:00002243:  (errmsg("Resynchronization of mirror segment on %s:%d has completed.", 
- faai: ftsprobe:00002244:  dbInfo->address, dbInfo->port ), 
- faai: ftsprobe:00002245:  errSendAlert(true))); 
- faai: ftsprobe:00002520:  ereport(LOG, 
- faai: ftsprobe:00002521:  (errmsg("SAN mirror segment on %s:%d is taking over as primary.", 
- faai: ftsprobe:00002522:  host, port ), 
- faai: ftsprobe:00002523:  errSendAlert(true))); 
+ faai: ftsprobe:00001558:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ faai: ftsprobe:00001559:  errmsg("FTS: out of memory"))); 
+ faai: ftsprobe:00001580:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ faai: ftsprobe:00001581:  errmsg("FTS: out of memory"))); 
+ faai: ftsprobe:00001614:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ faai: ftsprobe:00001615:  errmsg("FTS: out of memory"))); 
+ faai: ftsprobe:00001667:  ereport(ERROR, 
+ faai: ftsprobe:00001668:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ faai: ftsprobe:00001669:  errmsg("FTS: could not insert into configuration history: format command string failure dbid %d", change->dbid))); 
+ faai: ftsprobe:00001678:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ faai: ftsprobe:00001679:  errmsg("FTS: out of memory"))); 
+ faai: ftsprobe:00001774:  ereport(ERROR, 
+ faai: ftsprobe:00001775:  (errcode(ERRCODE_INTERNAL_ERROR), 
+ faai: ftsprobe:00001776:  errmsg("FTS: could not modify config: format command string failure dbid %d", changes[i].dbid))); 
+ faai: ftsprobe:00001806:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+ faai: ftsprobe:00001807:  errmsg("FTS: out of memory"))); 
+ faai: ftsprobe:00002068:  ereport(LOG, 
+ faai: ftsprobe:00002069:  (errmsg("Mirror segment on %s:%d is taking over as primary in change tracking mode.", 
+ faai: ftsprobe:00002070:  seg_addr, seg_pm_port ), 
+ faai: ftsprobe:00002071:  errSendAlert(true))); 
+ faai: ftsprobe:00002075:  ereport(LOG, 
+ faai: ftsprobe:00002076:  (errmsg("Primary segment on %s:%d is going into change tracking mode.", 
+ faai: ftsprobe:00002077:  seg_addr, seg_pm_port ), 
+ faai: ftsprobe:00002078:  errSendAlert(true))); 
+ faai: ftsprobe:00002141:  ereport(LOG, 
+ faai: ftsprobe:00002142:  (errmsg("Changing mirror segment on %s:%d to be the primary in change tracking mode completed successfully.", 
+ faai: ftsprobe:00002143:  seg_addr, seg_pm_port ), 
+ faai: ftsprobe:00002144:  errSendAlert(true))); 
+ faai: ftsprobe:00002147:  ereport(LOG, 
+ faai: ftsprobe:00002148:  (errmsg("Changing primary segment on %s:%d to change tracking mode completed successfully.", 
+ faai: ftsprobe:00002149:  seg_addr, seg_pm_port ), 
+ faai: ftsprobe:00002150:  errSendAlert(true))); 
+ faai: ftsprobe:00002177:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),  
+ faai: ftsprobe:00002178:  errmsg("FTS: out of memory")));  
+ faai: ftsprobe:00002179:   
+ faai: ftsprobe:00002180:  PQclear(rs);  
+ faai: ftsprobe:00002181:  PQfinish(entryConn);  
+ faai: ftsprobe:00002182:  entryConn = NULL;  
+ faai: ftsprobe:00002183:   
+ faai: ftsprobe:00002184:  elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message);  
+ faai: ftsprobe:00002185:  }  
+ faai: ftsprobe:00002186:  } 
+ faai: ftsprobe:00002187:  
+ faai: ftsprobe:00002188: /** 
+ faai: ftsprobe:00002189:  * Marks the given db as in-sync in the segment configuration. 
+ faai: ftsprobe:00002190:  */ 
+ faai: ftsprobe:00002191: static void 
+ faai: ftsprobe:00002192: markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *dbInfo) 
+ faai: ftsprobe:00002193: { 
+ faai: ftsprobe:00002194:  char cmd[2000]; 
+ faai: ftsprobe:00002245:  ereport(LOG, 
+ faai: ftsprobe:00002246:  (errmsg("Resynchronization of mirror segment on %s:%d has completed.", 
+ faai: ftsprobe:00002247:  dbInfo->address, dbInfo->port ), 
+ faai: ftsprobe:00002248:  errSendAlert(true))); 
+ faai: ftsprobe:00002523:  ereport(LOG, 
+ faai: ftsprobe:00002524:  (errmsg("SAN mirror segment on %s:%d is taking over as primary.", 
+ faai: ftsprobe:00002525:  host, port ), 
+ faai: ftsprobe:00002526:  errSendAlert(true))); 
  faai: function:00000185:  ereport(ERROR, ( 
  faai: function:00000186:  errcode(ERRCODE_SYNTAX_ERROR), 
  faai: function:00000187:  errmsg("To many parameters - expected %d ", top))); 
@@ -6051,90 +6051,90 @@ select * from get_ereport order by 1;
  faaj: freespace:00000225:  ereport(FATAL, 
  faaj: freespace:00000226:  (errcode(ERRCODE_OUT_OF_MEMORY), 
  faaj: freespace:00000227:  errmsg("insufficient shared memory for free space map"))); 
- faaj: functions:00000125:  ereport(ERROR, 
- faaj: functions:00000126:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- faaj: functions:00000127:  /* translator: %s is a SQL statement name */ 
- faaj: functions:00000128:  errmsg("%s is not allowed in a SQL function", 
- faaj: functions:00000129:  CreateCommandTag(stmt)))); 
- faaj: functions:00000132:  ereport(ERROR, 
- faaj: functions:00000133:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- faaj: functions:00000134:  /* translator: %s is a SQL statement name */ 
- faaj: functions:00000135:  errmsg("%s is not allowed in a non-volatile function", 
- faaj: functions:00000136:  CreateCommandTag(stmt)))); 
- faaj: functions:00000193:  ereport(ERROR, 
- faaj: functions:00000194:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- faaj: functions:00000195:  errmsg("could not determine actual result type for function declared to return type %s", 
- faaj: functions:00000196:  format_type_be(procedureStruct->prorettype)), 
- faaj: functions:00000197:  errOmitLocation(true))); 
- faaj: functions:00000230:  ereport(ERROR, 
- faaj: functions:00000231:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
- faaj: functions:00000232:  errmsg("could not determine actual type of argument declared %s", 
- faaj: functions:00000233:  format_type_be(argOidVect[argnum])), 
- faaj: functions:00000234:  errOmitLocation(true))); 
- faaj: functions:00000764:  ereport(ERROR, 
- faaj: functions:00000765:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- faaj: functions:00000766:  errmsg("set-valued function called in context that cannot accept a set"), 
- faaj: functions:00000767:  errOmitLocation(true))); 
- faaj: functions:00000804:  ereport(ERROR, 
- faaj: functions:00000805:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- faaj: functions:00000806:  errmsg("set-valued function called in context that cannot accept a set"), 
- faaj: functions:00000807:  errOmitLocation(true))); 
- faaj: functions:00000982:  ereport(ERROR, 
- faaj: functions:00000983:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
- faaj: functions:00000984:  errmsg("return type mismatch in function declared to return %s", 
- faaj: functions:00000985:  format_type_be(rettype)), 
- faaj: functions:00000986:  errdetail("Function's final statement must be a SELECT."), 
- faaj: functions:00000987:  errOmitLocation(true))); 
- faaj: functions:00001005:  ereport(ERROR, 
- faaj: functions:00001006:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
- faaj: functions:00001007:  errmsg("return type mismatch in function declared to return %s", 
- faaj: functions:00001008:  format_type_be(rettype)), 
- faaj: functions:00001009:  errdetail("Function's final statement must be a SELECT."), 
- faaj: functions:00001010:  errOmitLocation(true))); 
- faaj: functions:00001040:  ereport(ERROR, 
- faaj: functions:00001041:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
- faaj: functions:00001042:  errmsg("return type mismatch in function declared to return %s", 
- faaj: functions:00001043:  format_type_be(rettype)), 
- faaj: functions:00001044:  errdetail("Final SELECT must return exactly one column."), 
- faaj: functions:00001045:  errOmitLocation(true))); 
- faaj: functions:00001049:  ereport(ERROR, 
- faaj: functions:00001050:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
- faaj: functions:00001051:  errmsg("return type mismatch in function declared to return %s", 
- faaj: functions:00001052:  format_type_be(rettype)), 
- faaj: functions:00001053:  errdetail("Actual return type is %s.", 
- faaj: functions:00001054:  format_type_be(restype)), 
- faaj: functions:00001055:  errOmitLocation(true))); 
- faaj: functions:00001115:  ereport(ERROR, 
- faaj: functions:00001116:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
- faaj: functions:00001117:  errmsg("return type mismatch in function declared to return %s", 
- faaj: functions:00001118:  format_type_be(rettype)), 
- faaj: functions:00001119:  errdetail("Final SELECT returns too many columns."), 
- faaj: functions:00001120:  errOmitLocation(true))); 
- faaj: functions:00001128:  ereport(ERROR, 
- faaj: functions:00001129:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
- faaj: functions:00001130:  errmsg("return type mismatch in function declared to return %s", 
- faaj: functions:00001131:  format_type_be(rettype)), 
- faaj: functions:00001132:  errdetail("Final SELECT returns %s instead of %s at column %d.", 
- faaj: functions:00001133:  format_type_be(tletype), 
- faaj: functions:00001134:  format_type_be(atttype), 
- faaj: functions:00001135:  tuplogcols), 
- faaj: functions:00001136:  errOmitLocation(true))); 
- faaj: functions:00001149:  ereport(ERROR, 
- faaj: functions:00001150:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
- faaj: functions:00001151:  errmsg("return type mismatch in function declared to return %s", 
- faaj: functions:00001152:  format_type_be(rettype)), 
- faaj: functions:00001153:  errdetail("Final SELECT returns too few columns."), 
- faaj: functions:00001154:  errOmitLocation(true))); 
- faaj: functions:00001168:  ereport(ERROR, 
- faaj: functions:00001169:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
- faaj: functions:00001170:  errmsg("cannot determine result data type"), 
- faaj: functions:00001171:  errdetail("A function returning "anyarray" or "anyelement" must have at least one argument of either type."), 
- faaj: functions:00001172:  errOmitLocation(true))); 
- faaj: functions:00001175:  ereport(ERROR, 
- faaj: functions:00001176:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
- faaj: functions:00001177:  errmsg("return type %s is not supported for SQL functions", 
- faaj: functions:00001178:  format_type_be(rettype)), 
- faaj: functions:00001179:  errOmitLocation(true))); 
+ faaj: functions:00000197:  ereport(ERROR, 
+ faaj: functions:00000198:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ faaj: functions:00000199:  /* translator: %s is a SQL statement name */ 
+ faaj: functions:00000200:  errmsg("%s is not allowed in a SQL function", 
+ faaj: functions:00000201:  CreateCommandTag(stmt)))); 
+ faaj: functions:00000204:  ereport(ERROR, 
+ faaj: functions:00000205:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ faaj: functions:00000206:  /* translator: %s is a SQL statement name */ 
+ faaj: functions:00000207:  errmsg("%s is not allowed in a non-volatile function", 
+ faaj: functions:00000208:  CreateCommandTag(stmt)))); 
+ faaj: functions:00000265:  ereport(ERROR, 
+ faaj: functions:00000266:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ faaj: functions:00000267:  errmsg("could not determine actual result type for function declared to return type %s", 
+ faaj: functions:00000268:  format_type_be(procedureStruct->prorettype)), 
+ faaj: functions:00000269:  errOmitLocation(true))); 
+ faaj: functions:00000302:  ereport(ERROR, 
+ faaj: functions:00000303:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+ faaj: functions:00000304:  errmsg("could not determine actual type of argument declared %s", 
+ faaj: functions:00000305:  format_type_be(argOidVect[argnum])), 
+ faaj: functions:00000306:  errOmitLocation(true))); 
+ faaj: functions:00000797:  ereport(ERROR, 
+ faaj: functions:00000798:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ faaj: functions:00000799:  errmsg("set-valued function called in context that cannot accept a set"), 
+ faaj: functions:00000800:  errOmitLocation(true))); 
+ faaj: functions:00000837:  ereport(ERROR, 
+ faaj: functions:00000838:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ faaj: functions:00000839:  errmsg("set-valued function called in context that cannot accept a set"), 
+ faaj: functions:00000840:  errOmitLocation(true))); 
+ faaj: functions:00001015:  ereport(ERROR, 
+ faaj: functions:00001016:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+ faaj: functions:00001017:  errmsg("return type mismatch in function declared to return %s", 
+ faaj: functions:00001018:  format_type_be(rettype)), 
+ faaj: functions:00001019:  errdetail("Function's final statement must be a SELECT."), 
+ faaj: functions:00001020:  errOmitLocation(true))); 
+ faaj: functions:00001038:  ereport(ERROR, 
+ faaj: functions:00001039:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+ faaj: functions:00001040:  errmsg("return type mismatch in function declared to return %s", 
+ faaj: functions:00001041:  format_type_be(rettype)), 
+ faaj: functions:00001042:  errdetail("Function's final statement must be a SELECT."), 
+ faaj: functions:00001043:  errOmitLocation(true))); 
+ faaj: functions:00001073:  ereport(ERROR, 
+ faaj: functions:00001074:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+ faaj: functions:00001075:  errmsg("return type mismatch in function declared to return %s", 
+ faaj: functions:00001076:  format_type_be(rettype)), 
+ faaj: functions:00001077:  errdetail("Final SELECT must return exactly one column."), 
+ faaj: functions:00001078:  errOmitLocation(true))); 
+ faaj: functions:00001082:  ereport(ERROR, 
+ faaj: functions:00001083:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+ faaj: functions:00001084:  errmsg("return type mismatch in function declared to return %s", 
+ faaj: functions:00001085:  format_type_be(rettype)), 
+ faaj: functions:00001086:  errdetail("Actual return type is %s.", 
+ faaj: functions:00001087:  format_type_be(restype)), 
+ faaj: functions:00001088:  errOmitLocation(true))); 
+ faaj: functions:00001148:  ereport(ERROR, 
+ faaj: functions:00001149:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+ faaj: functions:00001150:  errmsg("return type mismatch in function declared to return %s", 
+ faaj: functions:00001151:  format_type_be(rettype)), 
+ faaj: functions:00001152:  errdetail("Final SELECT returns too many columns."), 
+ faaj: functions:00001153:  errOmitLocation(true))); 
+ faaj: functions:00001161:  ereport(ERROR, 
+ faaj: functions:00001162:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+ faaj: functions:00001163:  errmsg("return type mismatch in function declared to return %s", 
+ faaj: functions:00001164:  format_type_be(rettype)), 
+ faaj: functions:00001165:  errdetail("Final SELECT returns %s instead of %s at column %d.", 
+ faaj: functions:00001166:  format_type_be(tletype), 
+ faaj: functions:00001167:  format_type_be(atttype), 
+ faaj: functions:00001168:  tuplogcols), 
+ faaj: functions:00001169:  errOmitLocation(true))); 
+ faaj: functions:00001182:  ereport(ERROR, 
+ faaj: functions:00001183:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+ faaj: functions:00001184:  errmsg("return type mismatch in function declared to return %s", 
+ faaj: functions:00001185:  format_type_be(rettype)), 
+ faaj: functions:00001186:  errdetail("Final SELECT returns too few columns."), 
+ faaj: functions:00001187:  errOmitLocation(true))); 
+ faaj: functions:00001201:  ereport(ERROR, 
+ faaj: functions:00001202:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+ faaj: functions:00001203:  errmsg("cannot determine result data type"), 
+ faaj: functions:00001204:  errdetail("A function returning "anyarray" or "anyelement" must have at least one argument of either type."), 
+ faaj: functions:00001205:  errOmitLocation(true))); 
+ faaj: functions:00001208:  ereport(ERROR, 
+ faaj: functions:00001209:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+ faaj: functions:00001210:  errmsg("return type %s is not supported for SQL functions", 
+ faaj: functions:00001211:  format_type_be(rettype)), 
+ faaj: functions:00001212:  errOmitLocation(true))); 
  faba: formatting:00000503:  ereport(ERROR,  
  faba: formatting:00000504:  (errcode(ERRCODE_INVALID_DATETIME_FORMAT),  
  faba: formatting:00000505:  errmsg("invalid format specification for an interval value"),  
@@ -11744,59 +11744,59 @@ select * from get_ereport order by 1;
  paba: postmaster:00002517:  errSendAlert(true), 
  paba: postmaster:00002518:  errOmitLocation(true), 
  paba: postmaster:00002519:  errmsg("sorry, too many clients already"))); 
- paba: postmaster:00003233:  ereport(WARNING, 
- paba: postmaster:00003234:  (errmsg("pg_hba.conf not reloaded"))); 
- paba: postmaster:00003276:  ereport(LOG, 
- paba: postmaster:00003277:  (errmsg("received smart shutdown request"), 
- paba: postmaster:00003278:  errSendAlert(true), 
- paba: postmaster:00003279:  errOmitLocation(true))); 
- paba: postmaster:00003297:  ereport(LOG, 
- paba: postmaster:00003298:  (errmsg("received fast shutdown request"), 
- paba: postmaster:00003299:  errSendAlert(true), 
- paba: postmaster:00003300:  errOmitLocation(true))); 
- paba: postmaster:00003321:  ereport(LOG, 
- paba: postmaster:00003322:  (errmsg("received immediate shutdown request"), 
- paba: postmaster:00003323:  errSendAlert(true), 
- paba: postmaster:00003324:  errOmitLocation(true))); 
- paba: postmaster:00003514:  ereport(LOG, 
- paba: postmaster:00003515:  (errmsg("database system is ready to accept connections"), 
- paba: postmaster:00003516:  errSendAlert(true), 
- paba: postmaster:00003517:  errOmitLocation(true))); 
- paba: postmaster:00003843:  ereport(LOG, 
- paba: postmaster:00003844:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
- paba: postmaster:00004783:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
- paba: postmaster:00005367:  ereport(WARNING, 
- paba: postmaster:00005368:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
- paba: postmaster:00005369:  gai_strerror(ret)))); 
- paba: postmaster:00005411:  ereport(FATAL, 
- paba: postmaster:00005412:  (errmsg("could not load pg_hba.conf"))); 
- paba: postmaster:00005834:  ereport(ERROR, 
- paba: postmaster:00005835:  (errmsg_internal("could not terminate unstarted process: error code %d", 
- paba: postmaster:00005836:  (int) GetLastError()))); 
- paba: postmaster:00005861:  ereport(ERROR, 
- paba: postmaster:00005862:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
- paba: postmaster:00005863:  (int) GetLastError()))); 
- paba: postmaster:00005878:  ereport(ERROR, 
- paba: postmaster:00005879:  (errmsg_internal("could not terminate unstartable process: error code %d", 
- paba: postmaster:00005880:  (int) GetLastError()))); 
- paba: postmaster:00005887:  ereport(ERROR, 
- paba: postmaster:00005888:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
- paba: postmaster:00005889:  (int) GetLastError()))); 
- paba: postmaster:00005903:  ereport(FATAL, 
- paba: postmaster:00005904:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- paba: postmaster:00005905:  errmsg("out of memory"))); 
- paba: postmaster:00005916:  ereport(FATAL, 
- paba: postmaster:00005917:  (errmsg_internal("could not register process for wait: error code %d", 
+ paba: postmaster:00003262:  ereport(WARNING, 
+ paba: postmaster:00003263:  (errmsg("pg_hba.conf not reloaded"))); 
+ paba: postmaster:00003305:  ereport(LOG, 
+ paba: postmaster:00003306:  (errmsg("received smart shutdown request"), 
+ paba: postmaster:00003307:  errSendAlert(true), 
+ paba: postmaster:00003308:  errOmitLocation(true))); 
+ paba: postmaster:00003326:  ereport(LOG, 
+ paba: postmaster:00003327:  (errmsg("received fast shutdown request"), 
+ paba: postmaster:00003328:  errSendAlert(true), 
+ paba: postmaster:00003329:  errOmitLocation(true))); 
+ paba: postmaster:00003350:  ereport(LOG, 
+ paba: postmaster:00003351:  (errmsg("received immediate shutdown request"), 
+ paba: postmaster:00003352:  errSendAlert(true), 
+ paba: postmaster:00003353:  errOmitLocation(true))); 
+ paba: postmaster:00003543:  ereport(LOG, 
+ paba: postmaster:00003544:  (errmsg("database system is ready to accept connections"), 
+ paba: postmaster:00003545:  errSendAlert(true), 
+ paba: postmaster:00003546:  errOmitLocation(true))); 
+ paba: postmaster:00003872:  ereport(LOG, 
+ paba: postmaster:00003873:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+ paba: postmaster:00004812:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+ paba: postmaster:00005396:  ereport(WARNING, 
+ paba: postmaster:00005397:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
+ paba: postmaster:00005398:  gai_strerror(ret)))); 
+ paba: postmaster:00005440:  ereport(FATAL, 
+ paba: postmaster:00005441:  (errmsg("could not load pg_hba.conf"))); 
+ paba: postmaster:00005863:  ereport(ERROR, 
+ paba: postmaster:00005864:  (errmsg_internal("could not terminate unstarted process: error code %d", 
+ paba: postmaster:00005865:  (int) GetLastError()))); 
+ paba: postmaster:00005890:  ereport(ERROR, 
+ paba: postmaster:00005891:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
+ paba: postmaster:00005892:  (int) GetLastError()))); 
+ paba: postmaster:00005907:  ereport(ERROR, 
+ paba: postmaster:00005908:  (errmsg_internal("could not terminate unstartable process: error code %d", 
+ paba: postmaster:00005909:  (int) GetLastError()))); 
+ paba: postmaster:00005916:  ereport(ERROR, 
+ paba: postmaster:00005917:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
  paba: postmaster:00005918:  (int) GetLastError()))); 
- paba: postmaster:00005989:  ereport(FATAL, 
- paba: postmaster:00005990:  (errcode(ERRCODE_OUT_OF_MEMORY), 
- paba: postmaster:00005991:  errmsg("out of memory"))); 
- paba: postmaster:00006841:  ereport(ERROR, 
- paba: postmaster:00006842:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
- paba: postmaster:00006843:  (int) GetLastError()))); 
- paba: postmaster:00006863:  ereport(ERROR, 
- paba: postmaster:00006864:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
- paba: postmaster:00006865:  src, WSAGetLastError()))); 
+ paba: postmaster:00005932:  ereport(FATAL, 
+ paba: postmaster:00005933:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ paba: postmaster:00005934:  errmsg("out of memory"))); 
+ paba: postmaster:00005945:  ereport(FATAL, 
+ paba: postmaster:00005946:  (errmsg_internal("could not register process for wait: error code %d", 
+ paba: postmaster:00005947:  (int) GetLastError()))); 
+ paba: postmaster:00006018:  ereport(FATAL, 
+ paba: postmaster:00006019:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+ paba: postmaster:00006020:  errmsg("out of memory"))); 
+ paba: postmaster:00006870:  ereport(ERROR, 
+ paba: postmaster:00006871:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
+ paba: postmaster:00006872:  (int) GetLastError()))); 
+ paba: postmaster:00006892:  ereport(ERROR, 
+ paba: postmaster:00006893:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
+ paba: postmaster:00006894:  src, WSAGetLastError()))); 
  pabb: pgxexttable:00000171:  ereport(ERROR, 
  pabb: pgxexttable:00000172:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
  pabb: pgxexttable:00000173:  errmsg("missing pg_exttable entry for relation "%s"", 
@@ -13688,50 +13688,47 @@ select * from get_ereport order by 1;
  saad: spi:00000155:  errcode(ERRCODE_INVALID_TRANSACTION_TERMINATION), 
  saad: spi:00000156:  errmsg("Subtransaction mismatch at txlevel %d", 
  saad: spi:00000157:  GetCurrentTransactionNestLevel()))); 
- saad: spi:00000187:  ereport(ERROR, 
- saad: spi:00000188:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- saad: spi:00000189:  errmsg("Functions that execute SQL statements from the segDBs are not yet supported"))); 
- saad: spi:00000330:  ereport(WARNING, 
- saad: spi:00000331:  (errcode(ERRCODE_WARNING), 
- saad: spi:00000332:  errmsg("transaction left non-empty SPI stack"), 
- saad: spi:00000333:  errhint("Check for missing "SPI_finish" calls."))); 
- saad: spi:00000441:  ereport(WARNING, 
- saad: spi:00000442:  (errcode(ERRCODE_WARNING), 
- saad: spi:00000443:  errmsg("subtransaction left non-empty SPI stack"), 
- saad: spi:00000444:  errhint("Check for missing "SPI_finish" calls."))); 
- saad: spi:00001068:  ereport(ERROR, 
- saad: spi:00001069:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- saad: spi:00001070:  errmsg("cannot run the query %s, since it requires dispatch from segments.", 
- saad: spi:00001071:  spiplan->query))); 
- saad: spi:00001089:  ereport(ERROR, 
- saad: spi:00001090:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
- saad: spi:00001091:  errmsg("cannot open multi-query plan as cursor"))); 
- saad: spi:00001094:  ereport(ERROR, 
- saad: spi:00001095:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
- saad: spi:00001096:  errmsg("cannot open empty query as cursor"))); 
- saad: spi:00001097:  ereport(ERROR, 
- saad: spi:00001098:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
- saad: spi:00001099:  /* translator: %s is name of a SQL command, eg INSERT */ 
- saad: spi:00001100:  errmsg("cannot open %s query as cursor", 
- saad: spi:00001101:  CreateCommandTag((Node*)queryTree)))); 
- saad: spi:00001122:  ereport(ERROR, 
- saad: spi:00001123:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- saad: spi:00001124:  /* translator: %s is a SQL statement name */ 
- saad: spi:00001125:  errmsg("%s is not allowed in a non-volatile function", 
- saad: spi:00001126:  CreateCommandTag((Node*)qry)))); 
- saad: spi:00001666:  ereport(ERROR, 
- saad: spi:00001667:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
- saad: spi:00001668:  errmsg("cannot run the query %s, since it requires dispatch from segments.", 
- saad: spi:00001669:  plan->query))); 
- saad: spi:00001782:  ereport(ERROR, 
- saad: spi:00001783:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
- saad: spi:00001784:  /* translator: %s is a SQL statement name */ 
- saad: spi:00001785:  errmsg("%s is not allowed in a non-volatile function", 
- saad: spi:00001786:  CreateCommandTag((Node*)queryTree)))); 
- saad: spi:00002025:  ereport(WARNING, 
- saad: spi:00002026:  (errcode(ERRCODE_WARNING), 
- saad: spi:00002027:  errmsg("A stable or volatile function is used as if it is immutable"), 
- saad: spi:00002028:  errhint("The function should be declared as stable or volatile in create function statement."))); 
+ saad: spi:00000239:  ereport(WARNING, 
+ saad: spi:00000240:  (errcode(ERRCODE_WARNING), 
+ saad: spi:00000241:  errmsg("transaction left non-empty SPI stack"), 
+ saad: spi:00000242:  errhint("Check for missing "SPI_finish" calls."))); 
+ saad: spi:00000350:  ereport(WARNING, 
+ saad: spi:00000351:  (errcode(ERRCODE_WARNING), 
+ saad: spi:00000352:  errmsg("subtransaction left non-empty SPI stack"), 
+ saad: spi:00000353:  errhint("Check for missing "SPI_finish" calls."))); 
+ saad: spi:00000977:  ereport(ERROR, 
+ saad: spi:00000978:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ saad: spi:00000979:  errmsg("cannot run the query %s, since it requires dispatch from segments.", 
+ saad: spi:00000980:  spiplan->query))); 
+ saad: spi:00000998:  ereport(ERROR, 
+ saad: spi:00000999:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
+ saad: spi:00001000:  errmsg("cannot open multi-query plan as cursor"))); 
+ saad: spi:00001003:  ereport(ERROR, 
+ saad: spi:00001004:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
+ saad: spi:00001005:  errmsg("cannot open empty query as cursor"))); 
+ saad: spi:00001006:  ereport(ERROR, 
+ saad: spi:00001007:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
+ saad: spi:00001008:  /* translator: %s is name of a SQL command, eg INSERT */ 
+ saad: spi:00001009:  errmsg("cannot open %s query as cursor", 
+ saad: spi:00001010:  CreateCommandTag((Node*)queryTree)))); 
+ saad: spi:00001031:  ereport(ERROR, 
+ saad: spi:00001032:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ saad: spi:00001033:  /* translator: %s is a SQL statement name */ 
+ saad: spi:00001034:  errmsg("%s is not allowed in a non-volatile function", 
+ saad: spi:00001035:  CreateCommandTag((Node*)qry)))); 
+ saad: spi:00001577:  ereport(ERROR, 
+ saad: spi:00001578:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+ saad: spi:00001579:  errmsg("cannot run the query %s, since it requires dispatch from segments.", 
+ saad: spi:00001580:  plan->query))); 
+ saad: spi:00001693:  ereport(ERROR, 
+ saad: spi:00001694:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+ saad: spi:00001695:  /* translator: %s is a SQL statement name */ 
+ saad: spi:00001696:  errmsg("%s is not allowed in a non-volatile function", 
+ saad: spi:00001697:  CreateCommandTag((Node*)queryTree)))); 
+ saad: spi:00001936:  ereport(WARNING, 
+ saad: spi:00001937:  (errcode(ERRCODE_WARNING), 
+ saad: spi:00001938:  errmsg("A stable or volatile function is used as if it is immutable"), 
+ saad: spi:00001939:  errhint("The function should be declared as stable or volatile in create function statement."))); 
  saae: scan:00014199: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
  saae: scan:00014200:  
  saae: scan:00014201: static int xcdepth = 0; /* depth of nesting in slash-star comments */ 
@@ -18352,6 +18349,6 @@ select * from get_ereport order by 1;
  xaah: xlogloc:00000076:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
  xaah: xlogloc:00000077:  errmsg("invalid input syntax for type gpxlogloc: "%s"", 
  xaah: xlogloc:00000078:  str))); 
-(18285 rows)
+(18282 rows)
 
 drop external table get_ereport;
