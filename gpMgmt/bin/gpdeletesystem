@@ -204,7 +204,7 @@ def delete_cluster(options):
     logger.info('Getting segment information...')
     dburl = dbconn.DbURL()
     try:
-        array = gparray.GpArray.initFromCatalog(dburl)
+        array = gparray.GpArray.initFromCatalog(dburl, True)
     except Exception, ex:
         raise GpDeleteSystemException('Failed to get database configuration: %s' % ex.__str__())
     # get all segdbs
