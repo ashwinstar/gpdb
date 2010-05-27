@@ -846,7 +846,7 @@ SET_VERSION_SCRIPTS = \
 
 set_scripts_version : 
 	for file in $(SET_VERSION_SCRIPTS); do \
-	    if [ -f $${file} ]; then \
+	    if [ -f $(INSTLOC)/$${file} ]; then \
 	        echo "Updating version: $(INSTLOC)/$${file}" ; \
 	        perl putversion $(INSTLOC)/$${file} ; \
 	    else \
