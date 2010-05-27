@@ -267,6 +267,7 @@ class LocalPysync:
         self.sshargs = []
         self.cache = [None]
         self.exclude = set()
+        self.include = set()
         self.recordProgressCallback = recordProgressCallback
         if self.recordProgressCallback:
             self.options.sendProgress = True
@@ -308,6 +309,15 @@ class LocalPysync:
                     name = os.path.join('.',name)
                 self.exclude.add(name)
             
+            elif a[0]=='-i':
+                a.pop(0)
+                name = a[0]
+                if name[0]=='/':
+                    raise Exception('Please do not use absolute path with -i.')
+                if name[0:2]!='./':
+                    name = os.path.join('.',name)
+                self.include.add(name)
+
             elif a[0] == '--progress-bytes':
                 a.pop(0)
                 try:
@@ -377,7 +387,7 @@ class LocalPysync:
     def usage(self,argv):
         sys.stderr.write("""usage:
     python """+argv[0]+""" [-v] [-?] [-n] 
-                [--ssharg arg] [-x exclude_file] [--insecure] [--delete]
+                [--ssharg arg] [-x exclude_file] [-i include_file] [--insecure] [--delete]
                 [--progress-time seconds] [--progress-bytes { n[.n]{% | G | T} }
                 [--proxy] [--omit-progress-timestamp]
                 sourcedir [user@]host:destdir
@@ -387,6 +397,9 @@ class LocalPysync:
         -n: Do not do any work. Just print how many bytes will need to be
             transferred over the network per file and a total.
         -x name: Do not transfer named file or directory.  Don't be too
+            creative with the name.  For example, "directory/./file" will not
+            work--use "directory/file".  Name is relative to sourcedir.
+        -i name: Only transfer named file or directory. Don't be too
             creative with the name.  For example, "directory/./file" will not
             work--use "directory/file".  Name is relative to sourcedir.
         --insecure: Do not check MD5 digest after transfering data.
@@ -439,10 +452,26 @@ class LocalPysync:
             for i in dirs+files:
                 absname = os.path.join(root, i)
                 relname = '.' + absname[len(self.sourceDir):]
-                if relname in self.exclude:
+                if relname in self.exclude: 
                     if i in dirs:
                         dirs.remove(i)
                     continue
+                if len(self.include) > 0:
+                   """ Check if the file or dir is in the include list """
+                   if relname in self.include:
+                      pass
+                   else:
+                      """ Make sure we include any files or dirs under a dir in the include list."""
+                      foundPrefix = False
+                      for j in self.include:
+                         if relname.startswith(j + '/') == True:
+                            foundPrefix = True
+                            continue
+                      if foundPrefix == False:
+                         if i in dirs:
+                            dirs.remove(i) 
+                         continue
+
                 s = os.lstat(absname)
                 if s.st_ino in inomap:
                     list[relname] = ('L',inomap[s.st_ino])
