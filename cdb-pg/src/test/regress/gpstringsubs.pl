@@ -73,6 +73,11 @@ The tokens are:
 
  filespace segment list for current configuration
 
+=item gp_glob_connect
+
+ a compound psql connect string, equivalent to the "-connect" option
+ for this tool.
+
 =item gphome
 
  location of the greenplum installation
@@ -406,6 +411,7 @@ if (1)
 	my $infoschema = '\\@gpinfoschemaname\\@';
 	my $ugdir = '\\@gpupgradedatadir\\@';
 	my $gphomeexp = '\\@gphome\\@';
+	my $gpglobconn = '\\@gp_glob_connect\\@';
 
 	my $gphome = $ENV{GPHOME};
 
@@ -451,7 +457,7 @@ if (1)
 	chomp $curdir;
 
 #    print "$filnam\n";
-    system "perl -i -ple \' s/$hostexp/$hostname/gm; s,$gphomeexp,$gphome,gm; s/$psexp/$locps/gm; s/$isainfoexp/$locisainfo/gm; s/$perlosexp/$locperlos/gm; s/$numsegexp/$numsegs/gm; s/$unexp/$username/gm; s/$schema/public/gm; s/$infoschema/public/gm; s,$ugdir,$curdir/data/,gm; \' $filnam\n";
+    system "perl -i -ple \' s/$hostexp/$hostname/gm; s,$gphomeexp,$gphome,gm; s/$psexp/$locps/gm; s/$isainfoexp/$locisainfo/gm; s/$perlosexp/$locperlos/gm; s/$numsegexp/$numsegs/gm; s/$unexp/$username/gm; s/$schema/public/gm; s/$infoschema/public/gm; s,$ugdir,$curdir/data/,gm; s/$gpglobconn/$glob_connect/gm;   \' $filnam\n";
 
     # replace all "which" expressions with binary
     if (defined($gpfspace_all) && length($gpfspace_all))

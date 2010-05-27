@@ -169,6 +169,8 @@ BEGIN {
 	my $skipseg;
 	my $mm;
 
+#	print Data::Dumper->Dump(\@ARGV), "\n";
+
     GetOptions(
                'help|?' => \$help, man => \$man, 
                "connect=s" => \$conn,
