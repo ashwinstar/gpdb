@@ -100,7 +100,7 @@
 				<!-- This HBox contains DBStatus icon and Label-->
 				<mx:HBox width="100%" height="35" horizontalAlign="center" id="dbStatusContainer"
 					toolTip="{mdl.db.dbStatusToolTip}" visible="{mdl.db.showDBStatus}"	>
-					<mx:Canvas width="250" height="35" styleName="{mdl.db.dbStatusStyle}">
+					<mx:Canvas width="350" height="35" styleName="{mdl.db.dbStatusStyle}">
 						<mx:HBox width="100%" height="100%" horizontalAlign="center" verticalAlign="middle">
 							<mx:Image source="{mdl.db.dbStatusIcon}" id="dbStatusImage"/>
 							<mx:Label text="{mdl.db.dbStatus}" x="{dbStatusImage.x + 20}" y="{dbStatusImage.y + 2}" styleName="dbStatusLabelStyle"/>	

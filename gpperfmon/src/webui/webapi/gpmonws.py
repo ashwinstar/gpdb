@@ -691,7 +691,7 @@ class database:
             sys.stderr.write("</database>\n\n")
 
         res = None
-	dbstatus = 'NORMAL'
+        dbstatus = 'NORMAL'
         try:
             if i.start == 'NOW':
                 res = db.database_now(remote)
@@ -708,8 +708,8 @@ class database:
                     return mkerr(error.BADREQ, 'Exceeded maximum number of samples at specified interval')
 
                 res = db.database_history(i.start, i.end, interval_code)
-	    	dbstatus = db.database_state()
-
+            
+            dbstatus = db.database_state()
         except db.GPDBError, errorinfo:
             return mkerr(error.DATA_ACCESS, errorinfo)
 

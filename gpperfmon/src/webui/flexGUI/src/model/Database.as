@@ -462,19 +462,19 @@ package model
 		{
 			if(dbState == 'DEGRADED')
 			{
-				dbStatus = "Cluster State: DEGRADED";
+				dbStatus = "System State: Segment Failure(s)";
 				dbStatusIcon = Resources.DBDegradeIcon;
 				showDBStatus = true;
 				dbStatusStyle = "dbDegradeStyle";
-				dbStatusToolTip = "One or more segments in the Greenplum cluster are not available for normal operations.";
+				dbStatusToolTip = "One or more segment failures in the system.";
 			}
 			else if(dbState == 'UNBALANCED')
 			{
-				dbStatus = "Cluster State: UNBALANCED"
+				dbStatus = "System State: Suboptimal Segment Configuration";
 				dbStatusIcon = Resources.DBUnbalancedIcon;
 				showDBStatus = true;
 				dbStatusStyle = "dbUnBalancedStyle";
-				dbStatusToolTip = "One or more segments in the Greenplum cluster are not operating in the mode that they are intended to be used - e.g., a segment intended to be a mirror may be functioning as a primary, or vice-versa.";
+				dbStatusToolTip = "One or more segments is not operating in its preferred role for the system";
 			}
 			else
 			{
