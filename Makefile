@@ -338,12 +338,14 @@ define BUILD_STEPS
 	cp -p $(GPMGMT)/bin/gpload.py $(INSTLOC)/bin/gpload.py
 	$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	$(MAKE) clients INSTLOC=$(INSTLOC) CLIENTINSTLOC=$(CLIENTINSTLOC)
+	$(MAKE) set_scripts_version INSTLOC=$(CLIENTINSTLOC)
 	$(MAKE) connectivity INSTLOC=$(INSTLOC) CONNECTIVITYINSTLOC=$(CONNECTIVITYINSTLOC)
+	$(MAKE) set_scripts_version INSTLOC=$(CONNECTIVITYINSTLOC)
 	$(MAKE) loaders INSTLOC=$(INSTLOC) LOADERSINSTLOC=$(LOADERSINSTLOC)
+	$(MAKE) set_scripts_version INSTLOC=$(LOADERSINSTLOC)
 	touch installcheck-good_SKIP
 endef
 endif
-
 
 #---------------------------------------------------------------------
 # Miscellaneous special purpose targets
@@ -805,6 +807,49 @@ pvk : gccVersionCheck version GPROOTDEP
 	perl putversion $(foreach script,$(PVK_SCRIPTS),$(INSTLOC)/$(script))
 
 #---------------------------------------------------------------------
+# Set Version
+#---------------------------------------------------------------------
+
+SET_VERSION_SCRIPTS = \
+	bin/gpactivatestandby \
+	bin/gpaddmirrors \
+	bin/gpcheckos \
+	bin/gpcheckperf \
+	bin/gpcrondump \
+	bin/gpdbrestore \
+	bin/gpdeletesystem \
+	bin/gpexpand \
+	bin/gpinitstandby \
+	bin/gpinitsystem \
+	bin/gplogfilter \
+	bin/gprebuildsystem \
+	bin/gprecoverseg \
+	bin/gpscp \
+	bin/gpsizecalc \
+	bin/gpskew \
+	bin/gpssh \
+	bin/gpssh-exkeys \
+	bin/gpstart \
+	bin/gpstate \
+	bin/gpstop \
+	bin/gpsys1 \
+	bin/gpmigrator \
+	bin/gpfilespace \
+	bin/gpload.py \
+	bin/lib/gpcheckcat \
+	$(NULL)
+
+set_scripts_version : 
+	@for file in $(SET_VERSION_SCRIPTS); do \
+	    if [ -f $${file} ]; then \
+	        echo "Updating version: $(INSTLOC)/$${file}" ; \
+	        perl putversion $(INSTLOC)/$${file} ; \
+	    else \
+	        echo "Script not found - no need to update version: $(INSTLOC)/$${file}" ; \
+	    fi ; \
+	done
+
+#---------------------------------------------------------------------
 # Internal functions
 #---------------------------------------------------------------------
 
@@ -869,34 +914,7 @@ mgmtcopy :
 	  mkdir -p $(INSTLOC)/demo; \
 	  gtar -C $(GPMGMT)/demo -czf $(INSTLOC)/demo/gpmapreduce.tar.gz gpmapreduce; \
 	fi
-	# Set version
-	perl putversion \
-		$(INSTLOC)/bin/gpactivatestandby \
-		$(INSTLOC)/bin/gpaddmirrors \
-		$(INSTLOC)/bin/gpcheckos \
-		$(INSTLOC)/bin/gpcheckperf \
-		$(INSTLOC)/bin/gpcrondump \
-		$(INSTLOC)/bin/gpdbrestore \
-		$(INSTLOC)/bin/gpdeletesystem \
-		$(INSTLOC)/bin/gpexpand \
-		$(INSTLOC)/bin/gpinitstandby \
-		$(INSTLOC)/bin/gpinitsystem \
-		$(INSTLOC)/bin/gplogfilter \
-		$(INSTLOC)/bin/gprebuildsystem \
-		$(INSTLOC)/bin/gprecoverseg \
-		$(INSTLOC)/bin/gpscp \
-		$(INSTLOC)/bin/gpsizecalc \
-		$(INSTLOC)/bin/gpskew \
-		$(INSTLOC)/bin/gpssh \
-		$(INSTLOC)/bin/gpssh-exkeys \
-		$(INSTLOC)/bin/gpstart \
-		$(INSTLOC)/bin/gpstate \
-		$(INSTLOC)/bin/gpstop \
-		$(INSTLOC)/bin/gpsys1 \
-		$(INSTLOC)/bin/gpmigrator \
-		$(INSTLOC)/bin/gpfilespace \
-		$(INSTLOC)/bin/gpload.py \
-		$(INSTLOC)/bin/lib/gpcheckcat
+	$(MAKE) set_scripts_version INSTLOC=$(INSTLOC)
 	# Remove unwanted files.
 	rm -rf $(INSTLOC)/bin/CVS
 	rm -rf $(INSTLOC)/doc/CVS
