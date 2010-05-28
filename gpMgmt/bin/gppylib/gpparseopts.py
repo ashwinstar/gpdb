@@ -70,19 +70,19 @@ class OptParser(OptionParser):
         
 class OptChecker(Option):
     # Teach optparse to accept types 'datetime', 'duration', 'regex', 'literal'
-    def datetimeCheck(self, option, opt, value):
+    def datetimeCheck(option, opt, value):
         try:
             return str_to_datetime(value)
         except DatetimeValueError, e:
             raise OptionValueError('"%s %s" ... %s' % (opt, value, e.description))
             
-    def durationCheck(self, option, opt, value):
+    def durationCheck(option, opt, value):
         try:
             return str_to_duration(value, signed=False)
         except DatetimeValueError, e:
             raise OptionValueError('"%s %s" ... %s' % (opt, value, e.description))
             
-    def regexCheck(self, option, opt, value):
+    def regexCheck(option, opt, value):
         # value is a string to be compiled as a regular expression pattern
         global _gCase
         flags = re.LOCALE
@@ -93,7 +93,7 @@ class OptChecker(Option):
         except Exception, e:
             raise OptionValueError('"%s %s" ... %s' % (opt, value, e))
  
-    def regexSetCaseSensitivity(self, option, opt, value, parser):
+    def regexSetCaseSensitivity(option, opt, value, parser):
         """
         This is used to set the case sensitivity of optparser regex matching
         that occur after this option is set.
@@ -107,7 +107,7 @@ class OptChecker(Option):
         global _gCase
         _gCase = value
             
-    def literalCheck(self, option, opt, value):
+    def literalCheck(option, opt, value):
         # value is a string to be matched literally; return compiled regex
         return option.regexCheck(opt, re.escape(value))
         
@@ -156,6 +156,7 @@ class OptChecker(Option):
                    "MatchColumns"      : (filterAction, MatchColumns),
                    "briefhelp"         : (brief_help,None),
                    "optionalSecondArg" : (optionalSecondArgAction, None)}
+                   
                    
     _addactionnames = tuple(_addactions.keys())
     ACTIONS = Option.ACTIONS + _addactionnames
