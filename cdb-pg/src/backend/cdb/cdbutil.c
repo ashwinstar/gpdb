@@ -1011,6 +1011,13 @@ master_standby_dbid(void)
 	Relation rel;
 	HeapTuple tup;
 
+	/*
+	 * Can only run on a master node, this restriction is due to the reliance
+	 * on the gp_segment_configuration table.
+	 */
+	if (GpIdentity.segindex != MASTER_CONTENT_ID)
+		elog(ERROR, "master_standby_dbid() executed on execution segment");
+
 	rel = heap_open(GpSegmentConfigRelationId, AccessShareLock);
 
 	ScanKeyInit(&key[0], Anum_gp_segment_config_content,
@@ -1047,6 +1054,14 @@ dbid_get_dbinfo(int16 dbid)
 	Relation rel;
 	ScanKeyData key;
 	CdbComponentDatabaseInfo *i = NULL;
+
+	/*
+	 * Can only run on a master node, this restriction is due to the reliance
+	 * on the gp_segment_configuration table.  This may be able to be relaxed
+	 * by switching to a different method of checking.
+	 */
+	if (GpIdentity.segindex != MASTER_CONTENT_ID)
+		elog(ERROR, "dbid_get_dbinfo() executed on execution segment");
 
 	rel = heap_open(GpSegmentConfigRelationId, AccessShareLock);
 	ScanKeyInit(&key, Anum_gp_segment_config_dbid,
@@ -1174,6 +1189,14 @@ contentid_get_dbid(int16 contentid, char role, bool getPreferredRoleNotCurrentRo
 	Relation rel;
 	HeapTuple tup;
 
+	/*
+	 * Can only run on a master node, this restriction is due to the reliance
+	 * on the gp_segment_configuration table.  This may be able to be relaxed
+	 * by switching to a different method of checking.
+	 */
+	if (GpIdentity.segindex != MASTER_CONTENT_ID)
+		elog(ERROR, "contentid_get_dbid() executed on execution segment");
+
 	rel = heap_open(GpSegmentConfigRelationId, AccessShareLock);
 
 	ScanKeyInit(&key[0], Anum_gp_segment_config_content,
@@ -1218,6 +1241,14 @@ my_mirror_dbid(void)
 	HeapScanDesc	scandesc;
 	Relation rel;
 	HeapTuple tup;
+
+	/*
+	 * Can only run on a master node, this restriction is due to the reliance
+	 * on the gp_segment_configuration table.  This may be able to be relaxed
+	 * by switching to a different method of checking.
+	 */
+	if (GpIdentity.segindex != MASTER_CONTENT_ID)
+		elog(ERROR, "my_mirror_dbid() executed on execution segment");
 
 	rel = heap_open(GpSegmentConfigRelationId, AccessShareLock);
 	ScanKeyInit(&key[0], Anum_gp_segment_config_content,

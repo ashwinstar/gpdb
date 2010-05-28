@@ -132,6 +132,7 @@ get_maxcontentid()
 	return contentid;
 }
 
+
 /*
  * Verify that a filespace map looks like:
  * ARRAY[
@@ -939,8 +940,53 @@ gp_remove_master_standby(PG_FUNCTION_ARGS)
  */
 Datum
 gp_prep_new_segment(PG_FUNCTION_ARGS)
-{
-	elog(ERROR, "not implemented");
+{	
+	int16        pridbid;
+	int16        mirdbid;
+	ArrayType	*fsmap;
+
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "filespace_map cannot be NULL");
+
+	fsmap = PG_GETARG_ARRAYTYPE_P(0);
+
+	mirroring_sanity_check(SUPERUSER | SEGMENT_ONLY | UTILITY_MODE, 
+						   "gp_prep_new_segment");
+
+	/*
+	 * The original plan had been for this function to truncate the persistent
+	 * tables and rebuild them using gp_persistent_build_db(), but after 
+	 * careful review it has been determined that this shouldn't be necessary.
+	 *
+	 * For expansion all of the persistent tables should be correct for the
+	 * cloned segment with the single exception of the gp_persistent_filespace
+	 * table, which needs to have the primary gp_id corrected and the correct
+	 * filespace paths loaded in. 
+	 */
+
+	/* 
+	 * Fixup the filespace locations for this segment.
+	 *
+	 * :HACK:
+	 * Currently there are no functions to set a PRIMARY directory location
+	 * but only a mirror location, however the PersistentFilespace_AddMirrors
+	 * function only knows which is which based on what it is told.  So by
+	 * declaring that the 'primary' is actually the 'mirror' it lets us do
+	 * what we need to have happen.  The downside is that this will set the
+	 * 'mirror_existence_state', but since we are about to desist the mirror
+	 * directory anyways that is only a temporary problem.
+	 * :HACK:
+	 */
+	pridbid = MASTER_DBID; 
+	mirdbid = PersistentFilespace_LookupMirrorDbid(pridbid);
+	persist_all_filespaces(mirdbid, pridbid, fsmap);
+
+	/* 
+	 * Clear out the existing mirror information from gp_persistent_filespace.
+	 */
+	desist_all_filespaces(mirdbid);
+
+	/* Return true on success */
 	PG_RETURN_BOOL(true);
 }
 

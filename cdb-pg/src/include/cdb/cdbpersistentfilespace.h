@@ -158,6 +158,12 @@ extern void PersistentFilespace_Dropped(
 	int64			persistentSerialNum);
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 	
+
+/* 
+ * Identify the mirror dbid referenced in the gp_persistet_filespae_node table 
+ */
+extern int16 PersistentFilespace_LookupMirrorDbid(int16 primaryDbid);
+
 // -----------------------------------------------------------------------------
 // Shmem and Startup/Shutdown
 // -----------------------------------------------------------------------------

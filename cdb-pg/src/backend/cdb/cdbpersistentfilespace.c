@@ -1234,6 +1234,48 @@ PersistentFilespace_ActivateStandby(int16 oldmaster, int16 newmaster)
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 
+/*
+ * PersistentFilespace_LookupMirrorDbid()
+ *
+ * Check the gp_persistent_filespace table to identify what dbid it contains
+ * that does not match the primary dbid.  If there are no filespaces currently
+ * defined this check will return 0 even if there is an active mirror, because
+ * the segment doesn't know any better.
+ */
+int16
+PersistentFilespace_LookupMirrorDbid(int16 primaryDbid)
+{
+	HASH_SEQ_STATUS		status;
+	FilespaceDirEntry   dirEntry;
+	int16				mirrorDbid = 0;
+
+	if (persistentFilespaceSharedHashTable == NULL)
+		elog(PANIC, "Persistent filespace information shared-memory not setup");
+
+	hash_seq_init(&status, persistentFilespaceSharedHashTable);
+	dirEntry = (FilespaceDirEntry) hash_seq_search(&status);
+	if (dirEntry != NULL)
+	{
+		if (dirEntry->dbId1 == primaryDbid)
+		{
+			mirrorDbid = dirEntry->dbId2;
+		}
+		else if (dirEntry->dbId2 == primaryDbid)
+		{
+			mirrorDbid = dirEntry->dbId1;
+		}
+		else
+		{
+			elog(FATAL, "Unable to find primary dbid in filespace lookup");
+		}
+
+		/* Terminate the scan early */
+		hash_seq_term(&status);
+	}
+
+	return mirrorDbid;
+}
+
 // -----------------------------------------------------------------------------
 // Shmem
 // -----------------------------------------------------------------------------
