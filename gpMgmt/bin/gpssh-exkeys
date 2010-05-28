@@ -38,6 +38,10 @@ if sys.version_info < (2, 5, 0):
 '''Error: %s is supported on Python versions 2.5 or greater
 Please upgrade python installed on this machine.''' % progname)
 
+#disable deprecationwarnings
+import warnings
+warnings.simplefilter('ignore', DeprecationWarning)
+
 sys.path.append(sys.path[0] + '/lib')
 try:
     import paramiko
