@@ -365,6 +365,7 @@ char	   *gp_email_to;
 char	   *gp_snmp_community;
 char	   *gp_snmp_monitor_address;
 char	   *gp_snmp_use_inform_or_trap;
+char       *gp_snmp_debug_log;
 #endif
 
 /* The following GUC holds the default version for append-only tables */
@@ -4873,7 +4874,7 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 
-#if USE_EMAIL
+#if USE_EMAILgp_snmp_use_inform_or_trap
 	{
 		{"gp_email_smtp_server", PGC_SUSET, LOGGING,
 			gettext_noop("Sets the SMTP server and port used to send e-mail alerts."),
@@ -4947,7 +4948,16 @@ static struct config_string ConfigureNamesString[] =
 			GUC_SUPERUSER_ONLY| GUC_LIST_INPUT
 		},
 		&gp_snmp_use_inform_or_trap,
-		"inform", NULL, NULL
+		"trap", NULL, NULL
+	},
+	{
+		{"gp_snmp_debug_log", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Logs snmp activity to this file for debugging purposes."),
+			NULL,
+			GUC_SUPERUSER_ONLY| GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_snmp_debug_log,
+		"", NULL, NULL
 	},
 
 #endif

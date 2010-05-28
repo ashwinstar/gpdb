@@ -204,6 +204,7 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 	netsnmp_pdu    *pdu, *response;
 	int				status;
 	char            csysuptime[20];
+	static bool 	snmp_initialized = false;
 
 	/*
 	 * "inform" messages get a positive acknowledgement response from the SNMP manager.
@@ -246,20 +247,38 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 	 * But, should we take that chance?  Or play it safe and limit the message to 484 bytes?
 	 */
 
-	snmp_enable_stderrlog();
-
 	elog(DEBUG2,"send_snmp_inform_or_trap");
 
-	/*
-	 * Initialize the SNMP library.  This also reads the MIB database.
-	 */
-	init_snmp("sendalert");
+	if (!snmp_initialized)
+	{
+		snmp_enable_stderrlog();
+		if (gp_snmp_debug_log != NULL && gp_snmp_debug_log[0] != '\0')
+		{
+			snmp_enable_filelog(gp_snmp_debug_log, 1);
+
+			//debug_register_tokens("ALL");
+			snmp_set_do_debugging(1);
+		}
+
+		/*
+		 * Initialize the SNMP library.  This also reads the MIB database.
+		 */
+		/* Add GPDB-MIB to the list to be loaded */
+		putenv("MIBS=+GPDB-MIB:SNMP-FRAMEWORK-MIB:SNMPv2-CONF:SNMPv2-TC:SNMPv2-TC");
+
+		init_snmp("sendalert");
+
+		snmp_initialized = true;
+	}
 
 	snmp_sess_init( &session );	/* Initialize session to default values */
 	session.version = SNMP_VERSION_2c;
 	session.timeout = SNMP_DEFAULT_TIMEOUT;
 	session.retries = SNMP_DEFAULT_RETRIES;
+	session.remote_port = 162; 											// I think this isn't used by net-snmp any more.
 	session.peername = gp_snmp_monitor_address;   						// we don't support SNMP_DEFAULT_PEERNAME... Should we?
+	/*if (strchr(session.peername,':')==NULL)
+		strcat(session.peername,":162");*/
 	session.community = (u_char *)gp_snmp_community;
     session.community_len = strlen((const char *)session.community);  // SNMP_DEFAULT_COMMUNITY_LEN means "public"
 	session.callback_magic = NULL;
@@ -274,9 +293,8 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 		return -1;
 	}
 
-
     ss = snmp_add(&session,
-                  netsnmp_transport_open_client("sendalert", session.peername),
+                  netsnmp_transport_open_client("snmptrap", session.peername),
                   NULL, NULL);
     if (ss == NULL) {
         /*
@@ -453,8 +471,12 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 		{
 		    char           *err;
 		    snmp_error(ss, NULL, NULL, &err);
-		    elog(LOG, "%s: %s", inform ? "snmpinform" : "snmptrap", err);
+		    elog(LOG, "sendalert %s: %s", inform ? "snmpinform" : "snmptrap", err);
 		    free(err);
+		}
+		else
+		{
+			elog(LOG, "sendalert %s: %s", inform ? "snmpinform" : "snmptrap", "Something went wrong");
 		}
 	    if (!inform)
 	        snmp_free_pdu(pdu);

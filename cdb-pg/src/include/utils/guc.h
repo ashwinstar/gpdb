@@ -247,6 +247,7 @@ extern char  *gp_email_to;
 extern char   *gp_snmp_community;
 extern char   *gp_snmp_monitor_address;
 extern char   *gp_snmp_use_inform_or_trap;
+extern char   *gp_snmp_debug_log;
 #endif
 
 extern void SetConfigOption(const char *name, const char *value,
