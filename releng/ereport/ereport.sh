@@ -11,10 +11,12 @@ cat <<-EOF
 	
 EOF
 
+gpdiff=${BLDWRAP_TOP}/src/cdb-pg/src/test/regress/gpdiff.pl
 ereportdir=${BLDWRAP_TOP}/src/releng/ereport
 
 cd ${BLDWRAP_TOP}/src/releng/ereport
 p4 edit ereport.txt
+cp ereport.txt ereport-prev.txt
 
 cd ${BLDWRAP_TOP}/src/cdb-pg/src
 find . -name '*.c'  | xargs perl ${BLDWRAP_TOP}/src/releng/ereport/get_ereport.pl \
@@ -24,14 +26,14 @@ find . -name '*.c'  | xargs perl ${BLDWRAP_TOP}/src/releng/ereport/get_ereport.p
                                  > ${ereportdir}/ereport.txt
 
 cd ${ereportdir}
-p4 revert -a ereport.txt
 
-p4 opened ereport.txt 2>&1 | grep "not opened" > /dev/null
+${gpdiff} -gpd_init ereport-gpdiff-init.txt ereport-prev.txt ereport.txt > ereport-diff.txt
 if [ $? -ne 0 ]; then
-    p4 diff ereport.txt > ereport-diff.txt
     p4 submit -d "Automated update of ereport.txt" ereport.txt
 else
     echo "No need to submit ereport.txt"
+    p4 revert ereport.txt
+    rm -f ereport-diff.txt
 fi
 
 cat <<-EOF
