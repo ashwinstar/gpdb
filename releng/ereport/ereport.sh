@@ -3,7 +3,6 @@
 ### $Header$
 ## ======================================================================
 
-WORKDIR=/Users/eespino/eng/all/cdb2/main/
 ereportdir=${WORKDIR}/src/releng/ereport
 
 cd ${WORKDIR}/src/releng/ereport
