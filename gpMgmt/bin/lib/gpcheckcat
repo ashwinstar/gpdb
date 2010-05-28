@@ -1522,10 +1522,10 @@ def checkPersistentTables():
         end as persistent_state
     FROM (SELECT * FROM gp_persistent_database_node 
           WHERE persistent_state != 0) p
-      FULL OUTER JOIN (SELECT oid, spcname FROM pg_tablespace 
+      LEFT OUTER JOIN (SELECT oid, spcname FROM pg_tablespace 
                        WHERE oid != 1664) t
         ON (t.oid = p.tablespace_oid)
-    WHERE  t.spcname is null or p.tablespace_oid is null
+    WHERE  t.spcname is null
     """
     queries.append([qname, qry])
 
@@ -1722,7 +1722,7 @@ def checkPersistentTables():
     qry = """
     SELECT coalesce(a.tablespace_oid, b.tablespace_oid) as tablespace_oid,
        coalesce(a.database_oid, b.database_oid) as database_oid,
-       coalesce(a.relfilenode_oid, b.relfilenode_oid) as database_oid,
+       coalesce(a.relfilenode_oid, b.relfilenode_oid) as relfilenode_oid,
        coalesce(a.segment_file_num, b.segment_file_num) as segment_file_num,
        a.relfilenode_oid is null as filesystem,
        b.relfilenode_oid is null as persistent
