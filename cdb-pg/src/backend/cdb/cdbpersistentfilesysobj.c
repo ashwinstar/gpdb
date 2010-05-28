@@ -1278,8 +1278,8 @@ PersistentFileSysObj_ActivateStandby(PersistentFileSysObjName *fsObjName,
 			}
 			else if (DatumGetInt16(values[dbid_2_attnum - 1]) == oldmaster)
 			{
-				olddbidattnum = dbid_1_attnum;
-				newdbidattnum = dbid_2_attnum;
+				olddbidattnum = dbid_2_attnum;
+				newdbidattnum = dbid_1_attnum;
 				locattnum = Anum_gp_persistent_filespace_node_location_2;
 			}
 			else

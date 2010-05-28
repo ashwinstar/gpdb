@@ -1531,6 +1531,9 @@ dropdb(const char *dbname, bool missing_ok)
 			if (state != PersistentFileSysState_Created)
 				continue;
 	
+			elog(LOG, "scheduling database drop of %u/%u",
+				 dbDirNode.tablespace, dbDirNode.database);
+
 			MirroredFileSysObj_ScheduleDropDbDir(
 											&dbDirNode,
 											&persistentTid,
@@ -2312,6 +2315,28 @@ get_database_name(Oid dbid)
 }
 
 /*
+ * Forget about a database
+ */
+void
+xlog_prepare_database_drop(Oid dbid)
+{
+	/* Drop pages for this database that are in the shared buffer cache */
+	DropDatabaseBuffers(dbid);
+
+	/* Also, clean out any entries in the shared free space map */
+	FreeSpaceMapForgetDatabase(dbid);
+
+	/* Also, clean out any fsync requests that might be pending in md.c */
+	ForgetDatabaseFsyncRequests(dbid);
+
+	/* Clean out the xlog relcache too */
+	XLogDropDatabase(dbid);
+
+	elog(LOG, "dropped all buffers, freespace, fsyncs and pending pages "
+		 "for database %u", dbid);
+}
+
+/*
  * DATABASE resource manager's routines
  */
 void
@@ -2362,18 +2387,7 @@ dbase_redo(XLogRecPtr lsn  __attribute__((unused)), XLogRecord *record)
 		char	   *dst_path;
 
 		dst_path = GetDatabasePath(xlrec->db_id, xlrec->tablespace_id);
-
-		/* Drop pages for this database that are in the shared buffer cache */
-		DropDatabaseBuffers(xlrec->db_id);
-
-		/* Also, clean out any entries in the shared free space map */
-		FreeSpaceMapForgetDatabase(xlrec->db_id);
-
-		/* Also, clean out any fsync requests that might be pending in md.c */
-		ForgetDatabaseFsyncRequests(xlrec->db_id);
-
-		/* Clean out the xlog relcache too */
-		XLogDropDatabase(xlrec->db_id);
+		xlog_prepare_database_drop(xlrec->db_id);
 
 		/* And remove the physical files */
 		if (!rmtree(dst_path, true))

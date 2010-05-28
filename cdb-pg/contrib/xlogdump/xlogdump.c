@@ -1360,20 +1360,32 @@ dumpXLogRecord(XLogRecord *record, bool header_only)
 		case RM_SEQ_ID:
 			break;
 		case RM_MMXLOG_ID:
-			switch (info)
 			{
-				case MMXLOG_CREATE_DIR:
-					printf("master mirror: create directory\n");
-					break;
-				case MMXLOG_REMOVE_DIR:
-					printf("master mirror: remove directory\n");
-					break;
-				case MMXLOG_CREATE_FILE:
-					printf("master mirror: create file\n");
-					break;
-				case MMXLOG_REMOVE_FILE:
-					printf("master mirror: remove file\n");
-					break;
+				xl_mm_fs_obj xlrec;
+
+				memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
+
+				switch (info)
+				{
+					case MMXLOG_CREATE_DIR:
+						printf("master mirror: create directory ");
+						break;
+					case MMXLOG_REMOVE_DIR:
+						printf("master mirror: remove directory ");
+						break;
+					case MMXLOG_CREATE_FILE:
+						printf("master mirror: create file ");
+						break;
+					case MMXLOG_REMOVE_FILE:
+						printf("master mirror: remove file ");
+						break;
+				}
+
+				printf("master dbid = %u, standby dbid = %u, master path = %s, standby path = %s\n",
+					   xlrec.u.dbid.master, xlrec.u.dbid.mirror,
+					   xlrec.master_path, xlrec.mirror_path);
+				printf("filespace = %u, tablespace = %u, database = %u, relfilenode = %u, segnum = %u\n",
+					   xlrec.filespace, xlrec.tablespace, xlrec.database, xlrec.relfilenode, xlrec.segnum);
 			}
 			break;
 	}

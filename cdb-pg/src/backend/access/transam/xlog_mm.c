@@ -22,47 +22,66 @@
 #include "cdb/cdbpersistenttablespace.h"
 #include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
+#include "commands/dbcommands.h"
 #include "commands/filespace.h"
 #include "commands/tablespace.h"
+#include "postmaster/postmaster.h"
+#include "storage/freespace.h"
 #include "utils/builtins.h"
+#include "utils/guc.h"
 
-typedef enum mm_fs_obj_type
+typedef struct fspc_map
 {
-	MM_OBJ_FILESPACE,
-	MM_OBJ_TABLESPACE,
-	MM_OBJ_DATABASE,
-	MM_OBJ_RELFILENODE
-} mm_fs_obj_type;
+	Oid filespaceoid;
+	int16 dbid1;
+	int16 dbid2;
+	char path1[MAXPGPATH];
+	char path2[MAXPGPATH];
+} fspc_map;
 
-typedef struct xl_mm_fs_obj
+typedef struct tspc_map
 {
-	mm_fs_obj_type objtype; /* One of the MM_OBJ_* types */
+	Oid tablespaceoid;
+	Oid filespaceoid;
+} tspc_map;
 
-	Oid filespace;
-	Oid tablespace;
-	Oid database;
-	Oid relfilenode;
-	uint32 segnum;
-
-	/* union for alignment */
+/*
+ * Container of filespaces/tablespaces used to accumulate mappings
+ */
+typedef struct fspc_agg_state
+{
 	union
 	{
-		struct
-		{
-			uint16 master;
-			uint16 mirror;
-		} dbid;
-		int64 alignment;
-	} u;
+		int pos;
+		int64 dummy;
+	};
+	fspc_map maps[0]; /* variable length */
+} fspc_agg_state;
 
-	char master_path[MAXPGPATH];
-	char mirror_path[MAXPGPATH];
-} xl_mm_fs_obj;
+typedef struct tspc_agg_state
+{
+	union
+	{
+		int pos;
+		int64 dummy;
+	};
+	tspc_map maps[0]; /* variable length */
+} tspc_agg_state;
 
 static void tblspc_get_filespace_paths(Oid tblspc, int16 master_dbid, 
 									   int16 mirror_dbid,
 									   char **master_path, char **mirror_path);
 static void get_filespace_paths(Oid filespace, char **master_path, char **mirror_path);
+
+
+/*
+ * Remember filespace and tablespace mappings, used so that we know
+ * where to write data to during master mirror synchronisation. Note that
+ * segment level replay is different, as since we're not streaming we can be
+ * sure to get the persistent tables in shape and just used those.
+ */
+static HTAB *filespace_map_ht = NULL;
+static HTAB *tablespace_map_ht = NULL;
 
 /* extract the object path based on whether we're a mirror or master */
 static char *
@@ -70,18 +89,21 @@ obj_get_path(xl_mm_fs_obj *xlrec)
 {
 	char *path = NULL;
 
-	if (xlrec->u.dbid.mirror == GpIdentity.dbid)
-		path = xlrec->mirror_path;
-	else if (xlrec->u.dbid.master == GpIdentity.dbid)
+	if (xlrec->u.dbid.master == GpIdentity.dbid)
 		path = xlrec->master_path;
+	else if (xlrec->u.dbid.mirror == GpIdentity.dbid)
+		path = xlrec->mirror_path;
 	else
-		elog(PANIC, "mmxlog record not for my dbid %u - [%u, %u]",
+	{
+		/* 
+		 * Not as serious as it looks, must be a recover from before we existed
+		 */
+		elog(LOG, "mmxlog record not for my dbid %u - [%u, %u]",
 			 GpIdentity.dbid, xlrec->u.dbid.master, xlrec->u.dbid.mirror);
+	}
 
 	return path;
 }
-
-
 
 /* 
  * Unlink the object referenced by path. Tolerate it not existing but
@@ -96,10 +118,12 @@ unlink_obj(char *path, uint8 info)
 	if (info == MMXLOG_REMOVE_DIR)
 	{
 		/* same behaviour as dropdb(), RemoveFileSpace(), RemoveTableSpace() */
+		elog(LOG, "removing directory, as requested %s", path);
 		rmtree(path, true);
 	}
 	else if (info == MMXLOG_REMOVE_FILE)
 	{
+		elog(LOG, "unlinking file, as requested %s", path);
 		if (unlink(path) < 0)
 		{
 			if (errno != ENOENT) /* allow it to already be removed */
@@ -154,6 +178,9 @@ mmxlog_redo(XLogRecPtr lsn, XLogRecord *record)
 	}
 	else if (info == MMXLOG_REMOVE_DIR)
 	{
+		if (xlrec->objtype == MM_OBJ_DATABASE)
+			xlog_prepare_database_drop(xlrec->database);
+		/* tablespace and database should be fine */
 		unlink_obj(path, info);
 	}
 	else if (info == MMXLOG_CREATE_FILE)
@@ -178,6 +205,23 @@ mmxlog_redo(XLogRecPtr lsn, XLogRecord *record)
 	}
 	else if (info == MMXLOG_REMOVE_FILE)
 	{
+		RelFileNode rnode;
+
+		Insist(xlrec->objtype == MM_OBJ_RELFILENODE);
+
+		rnode.spcNode = xlrec->tablespace;
+		rnode.dbNode = xlrec->database;
+		rnode.relNode = xlrec->relfilenode;
+
+		DropRelFileNodeBuffers(rnode,
+							   false /* not a local buffer if we got here*/,
+							   0); 
+		FreeSpaceMapForgetRel(&rnode);
+
+		XLogDropRelation(rnode);
+
+		elog(LOG, "dropped buffers and freespace for %u/%u/%u",
+			 rnode.spcNode, rnode.dbNode, rnode.relNode);
 		unlink_obj(path, info);
 	}
 	else
@@ -266,16 +310,16 @@ emit_mmxlog_fs_record(mm_fs_obj_type type, Oid filespace,
 	{
 		XLogRecData rdata;
 		xl_mm_fs_obj xlrec;
-		char *master_path, *mirror_path;
-		int16 master_dbid, mirror_dbid;
+		char *master_path;
+		char *mirror_path;
+		int16 master_dbid = GpIdentity.dbid;
+		int16 mirror_dbid = GpStandbyDbid;
 		
 		Insist(Gp_role == GP_ROLE_DISPATCH ||
 			   Gp_role == GP_ROLE_UTILITY);
 
 		master_path = NULL;
 		mirror_path = NULL;
-		master_dbid = GpIdentity.dbid;
-		mirror_dbid = my_mirror_dbid();
 
 		if (type == MM_OBJ_FILESPACE)
 		{
@@ -285,17 +329,11 @@ emit_mmxlog_fs_record(mm_fs_obj_type type, Oid filespace,
 		else
 		{
 			Insist(OidIsValid(tablespace));
+
 			tblspc_get_filespace_paths(tablespace, master_dbid, mirror_dbid,
 									   &master_path, &mirror_path);
 
 			filespace = PersistentTablespace_GetFileSpaceOid(tablespace);
-		}
-
-		Insist(PointerIsValid(master_path));
-		
-		if (mirror_dbid > 0)
-		{
-			Insist(PointerIsValid(mirror_path));
 		}
 
 		/*
@@ -313,24 +351,43 @@ emit_mmxlog_fs_record(mm_fs_obj_type type, Oid filespace,
 		xlrec.u.dbid.master = master_dbid;
 		xlrec.u.dbid.mirror = mirror_dbid;
 
-		Insist(strlen(master_path) <= MAXPGPATH);
-		strncpy(xlrec.master_path, master_path,
-				sizeof(xlrec.master_path));
+		Insist(!master_path ||
+			   strlen(master_path) <= MAXPGPATH);
+
+		xlrec.master_path[0] = '\0';
+		if (master_path)
+			strncpy(xlrec.master_path, master_path,
+					sizeof(xlrec.master_path));
+		else
+		{
+			/* 
+			 * Allow relative paths if we didn't get anything when we looked up
+			 * the filespace. We must allow this for the default filespace.
+			 */
+			xlrec.master_path[0] = '.';
+			xlrec.master_path[1] = '\0';
+		}
 
 		append_file_parts(type, xlrec.master_path, tablespace, database,
 						  relfilenode, segnum);
 
-		if (mirror_dbid)
-		{
-
+		xlrec.mirror_path[0] = '\0';
+		if (mirror_path)
 			strncpy(xlrec.mirror_path, mirror_path,
 					sizeof(xlrec.mirror_path));
-			append_file_parts(type, xlrec.mirror_path, tablespace, database,
-							  relfilenode, segnum);
-		}
 		else
-			xlrec.mirror_path[0] = '\0';
+		{
+			xlrec.mirror_path[0] = '.';
+			xlrec.mirror_path[1] = '\0';
+		}
+
+		append_file_parts(type, xlrec.mirror_path, tablespace, database,
+						  relfilenode, segnum);
 		
+		elog(LOG, "XLOG: type = %i, dbid = (%u, %u), path = (%s, %s)",
+			 type, xlrec.u.dbid.master, xlrec.u.dbid.mirror,
+			 xlrec.master_path, xlrec.mirror_path);
+
 		rdata.data = (char *) &xlrec;
 		rdata.len = sizeof(xlrec);
 		rdata.buffer = InvalidBuffer;
@@ -344,6 +401,8 @@ emit_mmxlog_fs_record(mm_fs_obj_type type, Oid filespace,
 void
 mmxlog_log_remove_filespace(Oid filespace)
 {
+	elog(LOG, "emitting drop filespace record for %u",
+		 filespace);
 	emit_mmxlog_fs_record(MM_OBJ_FILESPACE,
 						  filespace,
 						  InvalidOid /* tablespace */,
@@ -357,6 +416,8 @@ mmxlog_log_remove_filespace(Oid filespace)
 void
 mmxlog_log_remove_tablespace(Oid tablespace)
 {
+	elog(LOG, "emitting drop tablespace record for %u",
+		 tablespace);
 	emit_mmxlog_fs_record(MM_OBJ_TABLESPACE,
 						  InvalidOid /* filespace */,
 						  tablespace,
@@ -370,6 +431,8 @@ mmxlog_log_remove_tablespace(Oid tablespace)
 void
 mmxlog_log_remove_database(Oid tablespace, Oid database)
 {
+	elog(LOG, "emitting drop database record for %u/%u",
+		 tablespace, database);
 	emit_mmxlog_fs_record(MM_OBJ_DATABASE,
 						  InvalidOid /* filespace */,
 						  tablespace,
@@ -384,6 +447,8 @@ void
 mmxlog_log_remove_relfilenode(Oid tablespace, Oid database, Oid relfilenode,
 							  uint32 segnum)
 {
+	elog(LOG, "emitting drop relfilenode record for %u/%u/%u",
+		 tablespace, database, relfilenode);
 	emit_mmxlog_fs_record(MM_OBJ_RELFILENODE,
 						  InvalidOid /* filespace */,
 						  tablespace,
@@ -447,6 +512,267 @@ mmxlog_log_create_relfilenode(Oid tablespace, Oid database,
 }
 
 /*
+ * We need to make sure the memory for these maps doesn't go away.
+ */
+static void *
+map_alloc(Size sz)
+{
+	/* XXX: might have to allocate in a higher memory context */
+	return palloc(sz);
+}
+
+/*
+ * Generic initialisation of hash table.
+ */
+static HTAB *
+init_hash(const char *name, Size keysize, Size entrysize)
+{
+	HASHCTL ctl;
+
+	ctl.keysize = keysize;
+	ctl.entrysize = entrysize;
+	ctl.alloc = map_alloc;
+	return hash_create(name,
+					   gp_max_filespaces,
+					   &ctl,
+					   HASH_ELEM | HASH_ALLOC);
+}
+
+/*
+ * Add a new mapping to the filespace hash table. We do not support the
+ * complementary filespace mapping removal function because we do not want to
+ * get into situations where we've removed a filespace but still data to apply
+ * to some file in the filespace. Unfortunately, WAL needs to just do what it is
+ * told and it could be told to do this if we get the logic wrong on the other
+ * end.
+ */
+static void
+add_filespace_map_entry(fspc_map *m)
+{
+	void *entry;
+	bool found;
+
+	/* 
+	 * The table is lazily initialised.
+	 */
+	if (!filespace_map_ht)
+		filespace_map_ht = init_hash("mmxlog filespace map",
+									 sizeof(Oid), /* keysize */
+									 sizeof(fspc_map));
+
+	entry = hash_search(filespace_map_ht,
+						&(m->filespaceoid),
+						HASH_ENTER,
+						&found);
+	/*
+	 * If this is a new entry, we need to add the data, if we found 
+	 * an entry, we need to update it, so just copy our data 
+	 * right over the top.
+	 */
+	memcpy(entry, m, sizeof(fspc_map));
+}
+
+/*
+ * Same as add_filespace_map_entry(), but for tablespaces.
+ */
+static void
+add_tablespace_map_entry(tspc_map *m)
+{
+	void *entry;
+	bool found;
+
+	/* 
+	 * The table is lazily initialised.
+	 */
+	if (!tablespace_map_ht)
+		tablespace_map_ht = init_hash("mmxlog tablespace map",
+									 sizeof(Oid), /* keysize */
+									 sizeof(tspc_map));
+
+	entry = hash_search(tablespace_map_ht,
+						&(m->tablespaceoid),
+						HASH_ENTER,
+						&found);
+	/*
+	 * See above for why we do this.
+	 */
+	memcpy(entry, m, sizeof(tspc_map));
+}
+
+/*
+ * Given a filespace oid, return that path to the filespace.
+ */
+char *
+mmxlog_filespace_get_path(Oid fspcoid)
+{
+	bool found;
+	fspc_map *m;
+	char *path = NULL;
+
+	Insist(fspcoid != SYSTEMFILESPACE_OID);
+
+	m = hash_search(filespace_map_ht,
+					&fspcoid,
+					HASH_FIND,
+					&found);
+
+	if (!found)
+		elog(ERROR, "cannot find filespace path for filespace OID %u",
+			 fspcoid);
+
+	if (GPStandby())
+		path = m->path2;
+	else
+	{
+		Insist(m->dbid1 == GpIdentity.dbid);
+		path = m->path1;
+	}
+	return path;
+}
+
+/*
+ * The same as mmxlog_filespace_get_path() but for tablespaces.
+ */
+char *
+mmxlog_tablespace_get_path(Oid tspcoid)
+{
+	Oid fspcoid;
+	tspc_map *m;
+	bool found;
+
+	/*
+	 * First, get the filespace that the tablespace resides in.
+	 */
+	m = hash_search(tablespace_map_ht, &tspcoid, HASH_FIND, &found);
+
+	if (!found)
+		elog(ERROR, "cannot find tablespace map for tablespace %u",
+			 tspcoid);
+
+	fspcoid = m->filespaceoid;
+
+	return mmxlog_filespace_get_path(fspcoid);
+}
+
+static void
+agg_fspc(void *s, Oid filespace, int16 dbid1, char *path1,
+		 int16 dbid2, char *path2)
+{
+	fspc_map m;
+	fspc_agg_state *fas = (fspc_agg_state *)s;
+
+	Insist(fas->pos < gp_max_filespaces);
+
+	m = fas->maps[fas->pos++];
+	m.filespaceoid = filespace;
+
+	m.dbid1 = dbid1;
+	strncpy(m.path1, path1, MAXPGPATH);
+
+	m.dbid2 = dbid2;
+	strncpy(m.path2, path2, MAXPGPATH);
+}
+
+static void
+agg_tspc(void *s, Oid filespace, Oid tablespace)
+{
+	tspc_map m;
+	tspc_agg_state *tas = (tspc_agg_state *)s;
+
+	m = tas->maps[tas->pos++];
+	m.filespaceoid = filespace;
+	m.tablespaceoid = tablespace;
+}
+
+void
+mmxlog_append_checkpoint_data(XLogRecData rdata[4])
+{
+	fspc_agg_state *f;
+	tspc_agg_state *t;
+	Size sz_f;
+	Size sz_t;
+
+	rdata[1].next = NULL;
+	rdata[2].next = NULL;
+	rdata[3].next = NULL;
+
+	if (GpIdentity.dbid != MASTER_DBID)
+		return;
+
+	sz_f = sizeof(fspc_agg_state) + (sizeof(fspc_map) * gp_max_filespaces);
+	sz_t = sizeof(tspc_agg_state) + (sizeof(tspc_map) * gp_max_tablespaces);
+	f = palloc0(sz_f);
+	t = palloc0(sz_t);
+
+	agg_filespace_data((void *)f, agg_fspc);
+	agg_tablespace_data((void  *)t, agg_tspc);
+
+	rdata[2].data = (void *)f->maps;
+	rdata[2].buffer = InvalidBuffer;
+	rdata[2].len = sz_f - sizeof(fspc_agg_state);
+	rdata[3].data = (void *)t->maps;
+	rdata[3].buffer = InvalidBuffer;
+	rdata[3].len = sz_t - sizeof(tspc_agg_state);
+}
+
+/* 
+ * If we're on the master standby, we expect to receive filespace and tablespace
+ * meta data from a checkpoint.
+ */
+void
+mmxlog_read_checkpoint_data(XLogRecData rdata[4])
+{
+	fspc_map *fmap = (fspc_map *)rdata[2].data;
+	tspc_map *tmap = (tspc_map *)rdata[3].data;
+	int n;
+	int i;
+
+	if (!GPStandby())
+		return;
+
+	if (!fmap && !tmap)
+		return;
+
+	/*
+	 * Push the data down into the hash tables. We calculate the array length
+	 * from the byte length of the array. We need to do filespaces first as
+	 * they are the root of the space hierarchy.
+	 */
+	n = rdata[2].len / sizeof(fspc_map);
+	for (i = 0; i < n; i++)
+	{
+		add_filespace_map_entry(&(fmap[i]));
+		
+		if (mkdir(fmap[i].path2, 0700) < 0)
+		{
+			/* allowed to already exist */
+			if (errno != EEXIST)
+				elog(PANIC, "could not create directory %s: %m",
+					 fmap[i].path2);
+		}
+	}
+
+	n = rdata[3].len / sizeof(tspc_map);
+	for (i = 0; i < n; i++)
+	{
+		char path[MAXPGPATH];
+		char *tmp;
+
+		add_tablespace_map_entry(&(tmap[i]));
+
+		tmp = mmxlog_filespace_get_path(tmap[i].filespaceoid);
+		snprintf(path, sizeof(path), "%s/%u", tmp, tmap[i].tablespaceoid);
+
+		if (mkdir(path, 0700) < 0)
+		{
+			/* allowed to already exist */
+			if (errno != EEXIST)
+				elog(PANIC, "could not create directory %s: %m", path);
+		}
+	}
+}
+
+/*
  * Given a filespace OID, get the master and mirror filespace paths. We need
  * to do this via the persistent filespace table and not the pg_filespace table
  * because the entry in the latter table is likely already gone.
@@ -471,11 +797,10 @@ tblspc_get_filespace_paths(Oid tblspc, int16 master_dbid, int16 mirror_dbid,
 	if (tblspc == GLOBALTABLESPACE_OID ||
 		tblspc == DEFAULTTABLESPACE_OID)
 	{
-		*master_path = get_filespace_path(SYSTEMFILESPACE_OID, master_dbid);
+		*master_path = NULL;
 
 		if (mirror_dbid)
-			*mirror_path = get_filespace_path(SYSTEMFILESPACE_OID,
-											  mirror_dbid);
+			*mirror_path = NULL;
 
 		/* short circuit */
 		return;

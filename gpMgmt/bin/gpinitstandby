@@ -147,7 +147,7 @@ def parseargs():
     if options.standby_host and options.remove:
         logger.error('Options -s and -r cannot be specified together.')
         parser.exit(2, None)
-    	
+	
     # -L and -s are exclusive
     if options.standby_host and options.no_restart:
         logger.error('Options -s and -L cannot be specified together.')
@@ -239,7 +239,7 @@ def print_summary(options, array, standby_filespace_map):
             yn = ask_yesno(None, 'Do you want to continue with '
                            'standby master initialization?', 'N')
         if not yn:
-            raise GpInitStandbyException('User canceled') 
+            raise GpInitStandbyException('User canceled')
 
 
 #-------------------------------------------------------------------------
@@ -326,9 +326,9 @@ def delete_standby(options):
     try:
         gpsyncmaster_pid = gp.getSyncmasterPID(array.standbyMaster.getSegmentHostName(),
                                                array.standbyMaster.getSegmentDataDirectory())
-        if gpsyncmaster_pid > 0:	
+        if gpsyncmaster_pid > 0:
             # stop it
-            logger.info('Stopping gpsyncmaster on %s' % 
+            logger.info('Stopping gpsyncmaster on %s' %
                         array.standbyMaster.getSegmentHostName())
             gp.SegmentStop.remote('stop gpsyncmaster',
                                   array.standbyMaster.getSegmentHostName(),
@@ -411,7 +411,7 @@ def create_standby(options):
                 conn.close()
 
         # Get the mode the master is in so we can restore it to that mode
-        cmd = unix.FileContainsTerm('check mode', 'gp_role=utility', 
+        cmd = unix.FileContainsTerm('check mode', 'gp_role=utility',
                                     array.master.getSegmentDataDirectory() + '/postmaster.opts')
         cmd.run(validateAfter=False)
         
@@ -437,13 +437,13 @@ def create_standby(options):
         # update the catalog if needed
         if not options.no_update:
             update_pg_hba_conf(options, array)
-            array = add_standby_to_catalog(options, 
+            array = add_standby_to_catalog(options,
                                            standby_filespace_map)
         else:
             logger.info('-n option given, skipping catalog update')
             
-        copy_master_filespaces_to_standby(options, array, 
-                                          master_filespace_map, 
+        copy_master_filespaces_to_standby(options, array,
+                                          master_filespace_map,
                                           standby_filespace_map)
         update_gpdbid_file(options, array)
         cleanup_pg_hba_conf_backup(array)
@@ -472,7 +472,7 @@ def create_standby(options):
         # at this point we are back at the original state so we'll start up
         # the database.
         if g_init_standby_state != INIT_STANDBY_STATE_NOT_STARTED:
-            start_database()            
+            start_database()
         raise GpInitStandbyException(ex)
             
             
@@ -528,7 +528,7 @@ def cleanup_pg_hba_conf_backup(array):
     
     try:
         unix.RemoveFiles.local('cleanup master pg_hba.conf backup', '%s/%s' % (master_data_dir, PG_HBA_BACKUP))
-        unix.RemoveFiles.remote('cleanup standby pg_hba.conf backup', 
+        unix.RemoveFiles.remote('cleanup standby pg_hba.conf backup',
                                 array.standbyMaster.getSegmentHostName(),
                                 '%s/%s' % (standby_data_dir, PG_HBA_BACKUP))
     except:
@@ -560,9 +560,9 @@ def validate_standby_init(options, array, standby_filespace_map):
     # make sure we have top level dirs
     for fs_name, fs_dir in standby_filespace_map:
         base_dir = os.path.dirname(os.path.normpath(fs_dir))
-        if not unix.FileDirExists.remote('check for filespace dir', 
+        if not unix.FileDirExists.remote('check for filespace dir',
                                          options.standby_host,
-                                         base_dir):        
+                                         base_dir):
             logger.error('Parent directory %s does not exist on host %s' %(base_dir, options.standby_host))
             logger.error('This directory must be created before running gpactivatestandby')
             raise GpInitStandbyException('Parent directory %s does not exist' % base_dir)
@@ -617,7 +617,7 @@ def get_filespace_mappings(master_filespace_map):
     ['master_fsnname', 'master_fsnpath'] ]"""
     
     standby_filespace_map = []
-    tmp_validator = lambda str, default, ignore1: str if str and str != '' else default 
+    tmp_validator = lambda str, default, ignore1: str if str and str != '' else default
     
     if len(master_filespace_map) > 1:
         print """The filespace locations on the master must be mapped to
@@ -640,9 +640,21 @@ the same location on both the master and standby master.
     
     return standby_filespace_map
 
+#-------------------------------------------------------------------------
 
+# Standby is a GpDB describing the standby
+def put_standbydbid(master_dir, standby):
+    dbid_file = os.path.join(master_dir, "gp_dbid")
+    unix.Chmod('Make writable', dbid_file, '600').run(validateAfter=True)
+    dbid = standby.getSegmentDbId()
+    string = "standby_dbid = %i\n" % dbid
+    cmd = unix.AppendTextToFile('append to gp_dbid file',
+                                os.path.join(master_dir, "gp_dbid"),
+                                string)
+    cmd.run(validateAfter=True)
+    unix.Chmod('Make read only', dbid_file, '400').run(validateAfter=True)
 
-#-------------------------------------------------------------------------   
+#-------------------------------------------------------------------------
 def add_standby_to_catalog(options, standby_filespace_map):
     """Adds the standby to the catalog."""
     
@@ -656,7 +668,7 @@ def add_standby_to_catalog(options, standby_filespace_map):
     
         logger.info('Adding standby master to catalog...')
     
-        sql = get_add_standby_sql(options.standby_host, options.standby_host, 
+        sql = get_add_standby_sql(options.standby_host, options.standby_host,
                                   standby_filespace_map)
     
         dbconn.execSQL(conn, sql)
@@ -665,6 +677,9 @@ def add_standby_to_catalog(options, standby_filespace_map):
         logger.info('Database catalog updated successfully.')
         array = gparray.GpArray.initFromCatalog(dburl, utility=True)
         stop_master()
+
+        put_standbydbid(array.master.getSegmentDataDirectory(),
+                        array.standbyMaster)
 
         return array
     except Exception, ex:
@@ -689,8 +704,9 @@ def remove_standby_from_catalog(options, array):
         conn.close()
         
         logger.info('Database catalog updated successfully.')
-        
         stop_master()
+
+        gp.remove_standby_dbid(array.master.getSegmentDataDirectory())
     except Exception, ex:
         logger.error('Failed to remove standby from master catalog.')
         stop_master()
@@ -744,7 +760,7 @@ def copy_master_filespaces_to_standby(options, array, master_filespace_map, stan
             pysync_options = pysync_options + ' -v'
             
         cmd = gp.PySync('master data dir sync', fs_dir,
-                     options.standby_host, standby_fs_dir, 
+                     options.standby_host, standby_fs_dir,
                      options=pysync_options)
         pool.addCommand(cmd)
 
@@ -768,7 +784,7 @@ def update_gpdbid_file(options, array):
     standby_dbid = array.standbyMaster.getSegmentDbId()
     standby_datadir = os.path.normpath(array.standbyMaster.getSegmentDataDirectory())
     try:
-        cmd = unix.InlinePerlReplace('update gp_dbid file', 'dbid = 1', 
+        cmd = unix.InlinePerlReplace('update gp_dbid file', 'dbid = 1',
                                      'dbid = %s' % standby_dbid,
                                      standby_datadir + '/gp_dbid',
                                      ctxt=base.REMOTE,
@@ -854,10 +870,10 @@ try:
 
 except KeyboardInterrupt:
     logger.error('User canceled')
-    sys.exit(2) 
+    sys.exit(2)
 except Exception, ex:
     if options.remove:
-        logger.error('Error removing standby master: %s' % str(ex))        
+        logger.error('Error removing standby master: %s' % str(ex))
     else:
         logger.error('Error initializing standby master: %s' % str(ex))
     if options.debug:

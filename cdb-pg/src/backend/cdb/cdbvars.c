@@ -16,6 +16,7 @@
 #include "postgres.h"
 #include "miscadmin.h"
 #include "utils/guc.h"
+#include "catalog/gp_segment_config.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbfts.h"
 #include "cdb/cdbutil.h"
@@ -357,6 +358,8 @@ bool        gp_cost_hashjoin_chainwalk = false;
  * can simply #include cdbvars.h, and use GpIdentity.numsegments
  */
 GpId GpIdentity = {UNINITIALIZED_GP_IDENTITY_VALUE, UNINITIALIZED_GP_IDENTITY_VALUE, UNINITIALIZED_GP_IDENTITY_VALUE};
+
+int GpStandbyDbid = InvalidDbid; /* has to be int because of guc.c stupidity :( */
 
 void verifyGpIdentityIsSet(void)
 {

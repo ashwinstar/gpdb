@@ -669,9 +669,10 @@ parseCmd(const char *cmd)
 	else
 		ereport(FATAL,
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg("QDSYNC: invalid command '%s'", cmd),
-				 errhint("Failover-master needs to be 'activated' before issuing queries")));
-
+				 errmsg("queries cannot be executed against the standby master"),
+				 errhint("Queries should be issued against the activate master. "
+						 "If this host is not available, activate the standby so "
+						 "that it can process queries.")));
 }
 
 /*

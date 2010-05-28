@@ -32,6 +32,7 @@
 #include "access/twophase.h"
 #include "access/xact.h"
 #include "access/xlog_internal.h"
+#include "access/xlogmm.h"
 #include "access/xlogutils.h"
 #include "catalog/catalog.h"
 #include "catalog/catversion.h"
@@ -7620,7 +7621,7 @@ CreateCheckPoint(bool shutdown, bool force)
 	CheckPoint	checkPoint;
 	XLogRecPtr	recptr;
 	XLogCtlInsert *Insert = &XLogCtl->Insert;
-	XLogRecData rdata[2];
+	XLogRecData rdata[4];
 	char* 		dtxCheckPointInfo;
 	int			dtxCheckPointInfoSize;
 	uint32		freespace;
@@ -7830,6 +7831,13 @@ CreateCheckPoint(bool shutdown, bool force)
 	rdata[1].len = dtxCheckPointInfoSize;
 	rdata[1].buffer = InvalidBuffer;
 	rdata[1].next = NULL;
+
+	/*
+	 * Have the master mirror sync code add filespace and tablespace
+	 * meta data to keep the standby consistent. Safe to call on segments
+	 * as this is a NOOP if we're not the master.
+	 */
+	mmxlog_append_checkpoint_data(rdata);
 
 	recptr = XLogInsert(RM_XLOG_ID,
 						shutdown ? XLOG_CHECKPOINT_SHUTDOWN :

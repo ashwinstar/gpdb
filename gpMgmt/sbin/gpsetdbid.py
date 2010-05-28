@@ -4,7 +4,7 @@ Copyright (c) Greenplum Inc 2010. All Rights Reserved.
 
 This is a private script called by the Greenplum Management scripts.
 
-With the script you can create the gp_dbid file within a segments data
+With the script you can create the gp_dbid file within a segment's data
 directory.
 
 This script does NOT modify the configuration information stored within

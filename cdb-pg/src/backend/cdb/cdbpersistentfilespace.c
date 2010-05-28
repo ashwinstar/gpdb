@@ -1330,4 +1330,32 @@ void PersistentFilespace_ShmemInit(void)
 	Assert(persistentFilespaceSharedHashTable != NULL);
 }
 
+/*
+ * Pass shared filespace data we store in our data structure to callers. They
+ * must communicate back locally using a function they supply.
+ *
+ * Yes, I know higher order functions are bad in C but I don't want to have to
+ * export all the persistent table machinary here.
+ *
+ * Note that this can go away when we do away with master mirror sync by WAL.
+ */
+#ifdef MASTER_MIRROR_SYNC /* annotation to show that this is just for mmsync */
+void
+agg_filespace_data(void *s,
+				   void (*fn)(void *s, Oid filespace,
+							  int16 dbid1, char *path1, int16 dbid2, char *path2))
+{
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	HASH_SEQ_STATUS stat;
+	FilespaceDirEntry fde;
 
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	hash_seq_init(&stat, persistentFilespaceSharedHashTable);
+
+	while ((fde = hash_seq_search(&stat)) != NULL)
+		fn(s, fde->key.filespaceOid, fde->dbId1, fde->locationBlankPadded1,
+		   	                         fde->dbId2, fde->locationBlankPadded2);
+
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+}
+#endif

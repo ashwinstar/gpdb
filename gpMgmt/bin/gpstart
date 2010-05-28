@@ -307,10 +307,13 @@ class GpStart:
     ######
     def _startMaster(self):
         logger.info("Starting Master instance in admin mode")
+
         dbid = gp.get_dbid(datadir=self.master_datadir)
+        standby_dbid = gp.get_standby_dbid(datadir=self.master_datadir)
+
         numContentsInCluster = 0
         cmd=gp.MasterStart('master in utility mode',self.master_datadir,
-                           self.port,dbid,
+                           self.port,dbid,standby_dbid,
                            numContentsInCluster,utilityMode=True,
                            timeout=self.timeout)
         cmd.run()
@@ -554,8 +557,14 @@ class GpStart:
         logger.info("Starting Master instance %s directory %s %s" % (self.gparray.master.hostname, self.master_datadir, restrict_txt))
 
         numContentsInCluster = self.gparray.getNumSegmentContents()
+        if self.gparray.standbyMaster:
+            standby_dbid = self.gparray.standbyMaster.getSegmentDbId()
+        else:
+            standby_dbid = 0
+
         gp.MasterStart.local("Starting Master instance",self.master_datadir,self.port,
-                             self.gparray.master.dbid, numContentsInCluster, timeout=self.timeout,
+                             self.gparray.master.dbid, standby_dbid,
+                             numContentsInCluster, timeout=self.timeout,
                              restrictedMode=self.restricted,max_connections=self.max_connections,
                              disableMasterMirror=(not self.start_standby) )
 

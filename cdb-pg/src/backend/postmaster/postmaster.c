@@ -812,7 +812,7 @@ PostmasterMain(int argc, char *argv[])
 	 * tcop/postgres.c (the option sets should not conflict) and with the
 	 * common help() function in main/main.c.
 	 */
-	while ((opt = getopt(argc, argv, "A:b:B:C:c:D:d:EeFf:h:ijk:lN:M:nOo:Pp:r:S:sTt:W:y:z:-:")) != -1)
+	while ((opt = getopt(argc, argv, "A:b:B:C:c:D:d:EeFf:h:ijk:lN:M:nOo:Pp:r:S:sTt:W:y:x:z:-:")) != -1)
 	{
 		switch (opt)
 		{
@@ -1005,6 +1005,9 @@ PostmasterMain(int argc, char *argv[])
 				SetConfigOption("master_mirroring_administrator_disable", "true", PGC_POSTMASTER, PGC_S_ARGV);
 				break;
 
+			case 'x': /* standby master dbid */
+				SetConfigOption("gp_standby_dbid", optarg, PGC_POSTMASTER, PGC_S_ARGV);
+				break;
             case 'z':
                 SetConfigOption("gp_num_contents_in_cluster", optarg, PGC_POSTMASTER, PGC_S_ARGV);
                 break;

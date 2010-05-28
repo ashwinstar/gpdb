@@ -1156,3 +1156,25 @@ void PersistentTablespace_ShmemInit(void)
 	Assert(persistentTablespaceSharedData != NULL);
 	Assert(persistentTablespaceSharedHashTable != NULL);
 }
+
+/*
+ * Pass shared data back to the caller. See add_tablespace_data() for why we do
+ * it like this.
+ */
+#ifdef MASTER_MIRROR_SYNC /* annotation to show that this is just for mmsync */
+void
+agg_tablespace_data(void *s, void (*fn)(void *s, Oid filespace, Oid tablespace))
+{
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	HASH_SEQ_STATUS stat;
+	TablespaceDirEntry tde;
+
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	hash_seq_init(&stat, persistentTablespaceSharedHashTable);
+
+	while ((tde = hash_seq_search(&stat)) != NULL)
+		fn(s, tde->key.tablespaceOid, tde->filespaceOid);
+
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+}
+#endif

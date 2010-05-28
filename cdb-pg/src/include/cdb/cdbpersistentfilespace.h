@@ -9,12 +9,13 @@
 #ifndef CDBPERSISTENTFILEESPACE_H
 #define CDBPERSISTENTFILEESPACE_H
 
-#include "utils/palloc.h"
+#include "access/persistentfilesysobjname.h"
+#include "access/xlogmm.h"
+#include "cdb/cdbsharedoidsearch.h"
+#include "cdb/cdbdoublylinked.h"
 #include "storage/fd.h"
 #include "storage/itemptr.h"
-#include "cdb/cdbsharedoidsearch.h"
-#include "access/persistentfilesysobjname.h"
-#include "cdb/cdbdoublylinked.h"
+#include "utils/palloc.h"
 
 extern bool PersistentFilespace_Check(
 	Oid 			filespace);
@@ -172,12 +173,19 @@ extern Size PersistentFilespace_ShmemSize(void);
 extern void PersistentFilespace_ShmemInit(void);
 
 extern void xlog_persistent_filespace_create(Oid filespaceoid,
-                                 			 int16 pri_dbid, char *pri_loc,
-                                 			 int16 mir_dbid, char *mir_loc);
+								 			 int16 pri_dbid, char *pri_loc,
+								 			 int16 mir_dbid, char *mir_loc);
 
 extern void PersistentFilespace_AddMirror(Oid filespace, char *mirpath,
 							  			  int16 pridbid, int16 mirdbid);
 extern void PersistentFilespace_RemoveSegment(int16 dbid, bool ismirror);
 extern void PersistentFilespace_ActivateStandby(int16 oldmaster,
 												int16 newmaster);
+#ifdef MASTER_MIRROR_SYNC
+extern void
+agg_filespace_data(void *s,
+				   void (*fn)(void *s, Oid filespace,
+							  int16 dbid1, char *path1,
+							  int16 dbid2, char *path2));
+#endif
 #endif   /* CDBPERSISTENTFILEESPACE_H */

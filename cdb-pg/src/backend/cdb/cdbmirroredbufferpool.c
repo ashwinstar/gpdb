@@ -898,8 +898,8 @@ void MirroredBufferPool_Drop(
 	int64 mirrorDataLossTrackingSessionNum;
 
 #ifdef MASTER_MIRROR_SYNC
-    mmxlog_log_remove_relfilenode(relFileNode->spcNode, relFileNode->dbNode, relFilenode->relNode,
-								  segmentFilNum);
+    mmxlog_log_remove_relfilenode(relFileNode->spcNode, relFileNode->dbNode,
+								  relFileNode->relNode, segmentFileNum);
 #endif
 
 	mirrorDataLossTrackingState = 

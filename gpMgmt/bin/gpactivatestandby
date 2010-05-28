@@ -76,7 +76,7 @@ def parseargs():
 
     # Standby activation options section
     optgrp = OptionGroup(parser, 'Standby activation options')
-    optgrp.add_option('-d', '--master-data-directory', dest='master_data_dir', 
+    optgrp.add_option('-d', '--master-data-directory', dest='master_data_dir',
                       type='string', help='standby master data directory')
     optgrp.add_option('-f', '--force', action='store_true',
                       help='force activation if gpsyncmaster process not running')
@@ -348,7 +348,6 @@ def update_config(array, hostname, options):
 
     logger.info('Database catalog updated successful')
 
-
 #-------------------------------------------------------------------------
 def update_gpdbid_file(options, array):
     """Updates to gp_dbid file in the data directory to reflect the standby
@@ -356,12 +355,13 @@ def update_gpdbid_file(options, array):
     
     standby_dbid = array.standbyMaster.getSegmentDbId()
     standby_datadir = os.path.normpath(array.standbyMaster.getSegmentDataDirectory())
-    cmd = unix.InlinePerlReplace('update gp_dbid file', 
+    gp_dbid_file = os.path.join(standby_datadir, 'gp_dbid')
+    gp.remove_standby_dbid(gp_dbid_file)
+    cmd = unix.InlinePerlReplace('update gp_dbid file',
                                  'dbid = %s' % standby_dbid,
                                  'dbid = 1',
-                                 standby_datadir + '/gp_dbid')
+                                 gp_dbid_file)
     cmd.run(validateAfter=True)
-
 
 #-------------------------------------------------------------------------
 def create_new_standby_master(options):
@@ -473,7 +473,7 @@ setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName())
 if options.logfile:
     setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName(),logdir=options.logfile)
 
-try:    
+try:
     hostname = unix.getLocalHostname()
     (warnings_errors, last_entry_time) = check_standby_master_activation(options)
 

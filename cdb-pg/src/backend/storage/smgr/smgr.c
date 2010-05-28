@@ -1118,8 +1118,7 @@ smgrdormtablespacedir(
 	bool						*mirrorDataLossOccurred)
 {
 #ifdef MASTER_MIRROR_SYNC
-	if (!ignoreNonExistence)
-		mmxlog_log_remove_tablespace(tablespaceOid);
+	mmxlog_log_remove_tablespace(tablespaceOid);
 #endif
 
 	/*
@@ -1177,8 +1176,7 @@ smgrdormdbdir(
 	bool						*mirrorDataLossOccurred)
 {
 #ifdef MASTER_MIRROR_SYNC
-	if (!ignoreNonExistence)
-		mmxlog_log_remove_database(dbDirNode->tablespace, dbDirNode->database);
+	mmxlog_log_remove_database(dbDirNode->tablespace, dbDirNode->database);
 #endif
 
 	smgr_internal_rmdbdir(

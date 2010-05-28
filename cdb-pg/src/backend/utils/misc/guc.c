@@ -3194,6 +3194,16 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"gp_standby_dbid", PGC_POSTMASTER, PRESET_OPTIONS,
+			gettext_noop("Sets DBID of standby master."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&GpStandbyDbid,
+		0, INT_MIN, 32767, NULL, NULL
+	},
+
+	{
 		{"gp_max_csv_line_length", PGC_USERSET, EXTERNAL_TABLES,
 			gettext_noop("Maximum allowed length of a csv input data row in bytes"),
 			NULL,

@@ -9,12 +9,13 @@
 #ifndef CDBPERSISTENTTABLESPACE_H
 #define CDBPERSISTENTTABLESPACE_H
 
-#include "utils/palloc.h"
+#include "access/persistentfilesysobjname.h"
+#include "access/xlogmm.h"
+#include "cdb/cdbsharedoidsearch.h"
+#include "cdb/cdbdoublylinked.h"
 #include "storage/fd.h"
 #include "storage/itemptr.h"
-#include "cdb/cdbsharedoidsearch.h"
-#include "access/persistentfilesysobjname.h"
-#include "cdb/cdbdoublylinked.h"
+#include "utils/palloc.h"
 
 extern bool PersistentTablespace_Check(
 	Oid 			tablespace);
@@ -164,4 +165,10 @@ extern void xlog_persistent_tablespace_create(Oid filespaceoid,
 											  Oid tablespaceoid);
 extern Oid PersistentTablespace_GetFileSpaceOid(Oid tablespaceOid);
 
+extern void xlog_persistent_tablespace_create(Oid filespaceoid,
+											  Oid tablespaceoid);
+#ifdef MASTER_MIRROR_SYNC 
+extern void agg_tablespace_data(void *s,
+								void (*fn)(void *s, Oid filespace, Oid tablespace));
+#endif
 #endif   /* CDBPERSISTENTTABLESPACE_H */

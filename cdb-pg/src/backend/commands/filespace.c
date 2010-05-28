@@ -922,6 +922,9 @@ get_filespace_oid(Relation rel, const char *filespacename)
 	return result;
 }
 
+/*
+ * Lookup a filespace path for a given filespace identifier
+ */
 char *
 get_filespace_path(Oid fseoid, int16 dbid)
 {

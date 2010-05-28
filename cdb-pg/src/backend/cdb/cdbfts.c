@@ -334,6 +334,7 @@ QDMirroringUpdate(
 	char errorMessageQuoted[QDMIRRORErrorMessageSize * 2 + 3];
 	char *user;
 	CdbComponentDatabaseInfo *q;
+	MemoryContext mcxt = CurrentMemoryContext;
 
 	volatile PQExpBuffer entryBuffer = NULL;
 	volatile PGconn		*entryConn = NULL;
@@ -343,7 +344,9 @@ QDMirroringUpdate(
 	{
 		StartTransactionCommand();
 
+		MemoryContextSwitchTo(TopMemoryContext);
 		q = getEntrySegDB(&count);
+		MemoryContextSwitchTo(mcxt);
 
 		if (count > 1)
 		{
@@ -554,6 +557,7 @@ QDMirroringUpdate(
 	}
 	PG_END_TRY();
 
+	MemoryContextSwitchTo(mcxt); /* Just incase we hit an error */
 	return;
 }
 

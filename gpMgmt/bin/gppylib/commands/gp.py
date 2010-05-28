@@ -71,7 +71,8 @@ class PySync(Command):
 
 #-----------------------------------------------
 class MasterStart(Command):
-    def __init__(self, name, dataDir, port, dbid, numContentsInCluster,
+    def __init__(self, name, dataDir, port, dbid, standby_dbid,
+                 numContentsInCluster,
                  restrictedMode=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
                  max_connections=1, disableMasterMirror=False,
                  utilityMode=False, ctxt=LOCAL, remoteHost=None):
@@ -88,8 +89,8 @@ class MasterStart(Command):
         else:
             gp_mode_flags=" -E "
 
-        cmdfrags=["$GPHOME/bin/pg_ctl -w -D %s -l %s/pg_log/startup.log -o \" %s %s -i -M master -p %s -b %s -C -1 -z %s --silent-mode=true" % \
-                  (dataDir,dataDir,standby,gp_mode_flags,port,dbid,numContentsInCluster)]
+        cmdfrags=["$GPHOME/bin/pg_ctl -w -D %s -l %s/pg_log/startup.log -o \" %s %s -i -M master -p %s -b %s -x %s -C -1 -z %s --silent-mode=true" % \
+                  (dataDir,dataDir,standby,gp_mode_flags,port,dbid,standby_dbid,numContentsInCluster)]
 
 
         if restrictedMode:
@@ -103,11 +104,11 @@ class MasterStart(Command):
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
     @staticmethod
-    def local(name,dataDir,port,dbid, numContentsInCluster,
+    def local(name, dataDir, port, dbid, standbydbid, numContentsInCluster,
               restrictedMode=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
               max_connections=1, disableMasterMirror=False,
               utilityMode=False):
-        cmd=MasterStart(name,dataDir,port,dbid, numContentsInCluster,
+        cmd=MasterStart(name, dataDir, port, dbid, standbydbid, numContentsInCluster,
                         restrictedMode, timeout,max_connections,
                         disableMasterMirror,utilityMode)
         cmd.run(validateAfter=True)
@@ -1244,13 +1245,30 @@ def createTempDirectoryName(masterDataDirectory, tempDirPrefix):
                                 os.getpid())
 
 def get_dbid(datadir, host=None):
+    return get_some_dbid(datadir, "dbid", host)
+
+def get_standby_dbid(datadir, host=None):
+    dbid = get_some_dbid(datadir, "standby_dbid", host)
+    # dbid may be None
+    if dbid == None:
+        dbid = 0
+    return dbid
+
+def remove_standby_dbid(gp_dbid_file):
+    cmd = InlinePerlReplace('remove standby dbid',
+                                 'standby_dbid = \d+\\n',
+                                 '',
+                                 gp_dbid_file)
+    cmd.run(validateAfter=True)
+
+def get_some_dbid(datadir, varname, host=None):
     import re
     try:
         file = os.path.join(datadir, "gp_dbid")
         data = createFromSingleHostFile(file)
-        RE = re.compile(r"dbid\s*=\s*(\d+)")
+        RE = re.compile(r"%s\s*=\s*(\d+)" % varname)
     except Exception, e:
-        raise Exception("Failed to read dbid from %s. %s" % (file, str(e)))
+        raise Exception("Failed to read %s from %s. %s" % (varname, file, str(e)))
 
     dbid = None
     for l in data:
