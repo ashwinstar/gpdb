@@ -14,7 +14,6 @@ from gppylib.commands.base import *
 from gppylib.commands.gp import *
 from gppylib.gparray import *
 from gppylib.db import dbconn, catalog
-from lib import pysync
 
 class SegcopyError(Exception):  pass
 
@@ -102,6 +101,7 @@ class GpSegCopy:
                 scpCmd.run(validateAfter=True)
                 res=scpCmd.get_results()
             else:
+
                 # Call pysync.LocalPysync directly
                 pysyncOptions = []
                 if self.verbose:
@@ -110,13 +110,16 @@ class GpSegCopy:
                     pysyncOptions += ["--progress-bytes", self.progressBytes]
                 if self.progressTime:
                     pysyncOptions += ["--progress-time", self.progressTime]
-                pysyncCmd = [pysync.__name__] + pysyncOptions + [self.srcDir, "%s:%s" % (self.dstHost, self.dstDir)]
-                sync = pysync.LocalPysync(pysyncCmd, 
-                                          recordProgressCallback=_SyncProgress(self.logger.info, self).mark_sync_progress)
-                ok = (sync.run() == 0)
-                if not ok:
-                    raise SegcopyError, ("Copy data from (%s:%s) to (%s:%s) failed" 
-                                         % (self.srcHost, self.srcDir, self.dstHost, self.dstDir))
+
+                pysyncCmd = PySync('pysync segcopy', self.srcDir, self.dstHost, 
+                                   self.dstDir, ctxt=REMOTE, remoteHost=self.srcHost,
+                                   options=pysyncOptions)
+
+                try:
+                    pysyncCmd.run(validateAfter=True)
+                except Exception, ex:
+                    raise SegcopyError, ("Copy data from (%s:%s) to (%s:%s) failed: %s" 
+                                         % (self.srcHost, self.srcDir, self.dstHost, self.dstDir, str(ex)))
         
         #basic validation
         dstDirSize=DiskUsage.get_size(name,self.dstHost,self.dstDir)
