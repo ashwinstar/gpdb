@@ -3,6 +3,9 @@
 ## $Header$
 ## ======================================================================
 
+gpdiff=${BLDWRAP_TOP}/src/cdb-pg/src/test/regress/gpdiff.pl
+ereportdir=${BLDWRAP_TOP}/src/releng/ereport
+
 cat <<-EOF
 	
 	======================================================================
@@ -11,10 +14,7 @@ cat <<-EOF
 	
 EOF
 
-gpdiff=${BLDWRAP_TOP}/src/cdb-pg/src/test/regress/gpdiff.pl
-ereportdir=${BLDWRAP_TOP}/src/releng/ereport
-
-cd ${BLDWRAP_TOP}/src/releng/ereport
+cd ${ereportdir}
 p4 edit ereport.txt
 cp ereport.txt ereport-prev.txt
 
