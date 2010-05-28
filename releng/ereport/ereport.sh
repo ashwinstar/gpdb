@@ -28,6 +28,7 @@ p4 revert -a ereport.txt
 
 p4 opened ereport.txt 2>&1 | grep "not opened" > /dev/null
 if [ $? -ne 0 ]; then
+    p4 diff ereport.txt > ereport-diff.txt
     p4 submit -d "Automated update of ereport.txt" ereport.txt
 else
     echo "No need to submit ereport.txt"
