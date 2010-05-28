@@ -1654,7 +1654,7 @@ def checkPersistentTables():
         end as persistent_state
     FROM  (
       SELECT p.ctid, p.* FROM gp_persistent_relation_node p
-      WHERE persistent_state != 0 AND p.database_oid in (
+      WHERE persistent_state = 2 AND p.database_oid in (
         SELECT oid FROM pg_database WHERE datname = current_database()
         UNION ALL
         SELECT 0
@@ -1683,7 +1683,7 @@ def checkPersistentTables():
         end as persistent_state
     FROM (
       SELECT * FROM gp_persistent_relation_node
-      WHERE persistent_state != 0 AND database_oid in (
+      WHERE persistent_state = 2 AND database_oid in (
         SELECT oid FROM pg_database WHERE datname = current_database()
         UNION ALL
         SELECT 0
