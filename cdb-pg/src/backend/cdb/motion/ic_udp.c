@@ -185,7 +185,7 @@ static uint64	ic_stats_crc_error=0;
 /* Global hash table for connections. */
 
 struct conn_htab_bin {
-	MotionConn *conn;
+	volatile MotionConn *conn;
 	struct conn_htab_bin *next;
 };
 
@@ -473,7 +473,7 @@ wait_on_receiver(int timeout_us)
  * need to use CONN_HASH_MATCH() at all!
  */
 static bool
-conn_addhash(MotionConn *conn)
+conn_addhash(volatile MotionConn *conn)
 {
 	uint32 hashcode;
 	struct conn_htab_bin *bin, *newbin;
@@ -558,12 +558,12 @@ conn_delhash(MotionConn *conn)
  * on receivers it may not match the actual port (it may have an extra bit
  * set (1<<31)).
  */
-static MotionConn *
+static volatile MotionConn *
 findConnByHeader(struct icpkthdr *hdr)
 {
 	uint32 hashcode;
 	struct conn_htab_bin *bin;
-	struct MotionConn *ret=NULL;
+	volatile MotionConn *ret=NULL;
 
 	hashcode = CONN_HASH_VALUE(hdr) % conn_htab_size;
 
@@ -622,7 +622,7 @@ conn_rehash(void)
 
 		while (bin)
 		{
-			MotionConn *conn=bin->conn;
+			volatile MotionConn *conn=bin->conn;
 
 			new_hashcode = CONN_HASH_VALUE(&conn->conn_info) % new_htab_size;
 
@@ -645,7 +645,7 @@ conn_rehash(void)
 }
 
 static void
-sendAck(MotionConn *conn, bool stop)
+sendAck(volatile MotionConn *conn, bool stop)
 {
 	int n;
 	struct icpkthdr msg;
@@ -654,7 +654,7 @@ sendAck(MotionConn *conn, bool stop)
 		conn->conn_info.flags |= UDPIC_FLAGS_STOP;
 
 	MemSet(&msg, 0, sizeof(msg));
-	memcpy(&msg, &conn->conn_info, sizeof(msg));
+	memcpy(&msg, (char *)&conn->conn_info, sizeof(msg));
 	msg.flags |= UDPIC_FLAGS_ACK;
 
 	msg.len = 0;
@@ -1121,7 +1121,7 @@ SetupUDPInterconnect(EState *estate)
 	ListCell   *cell;
 	Slice	   *mySlice;
 	Slice	   *aSlice;
-	MotionConn *conn=NULL;
+	volatile MotionConn *conn=NULL;
 	int			incoming_count = 0;
 	int			outgoing_count = 0;
 	int			expectedTotalIncoming = 0;
@@ -1224,8 +1224,6 @@ SetupUDPInterconnect(EState *estate)
 
 		for (i=0; i < pEntry->numConns; i++)
 		{
-			MotionConn *conn;
-
 			conn = &pEntry->conns[i];
 			conn->cdbProc = list_nth(aSlice->primaryProcesses, i);
 
@@ -1278,7 +1276,7 @@ SetupUDPInterconnect(EState *estate)
 				/* If we're doing full interconnect setup*/
 				if (!gp_interconnect_elide_setup || gp_interconnect_id <= 1)
 				{
-					estate->interconnect_context->incompleteConns = lappend(estate->interconnect_context->incompleteConns, conn);
+					estate->interconnect_context->incompleteConns = lappend(estate->interconnect_context->incompleteConns, (MotionConn *)conn);
 				}
 
 				if (!conn_addhash(conn))
@@ -1354,7 +1352,7 @@ SetupUDPInterconnect(EState *estate)
 			/* if we're skipping setup, we don't have to bother with the wait-loop */
 			if (gp_interconnect_elide_setup && gp_interconnect_id > 1)
 			{
-				setupOutgoingUDPConnection(estate->interconnect_context, sendingChunkTransportState, conn);
+				setupOutgoingUDPConnection(estate->interconnect_context, sendingChunkTransportState, (MotionConn *)conn);
 				outgoing_count++;
 				continue;
 			}
@@ -1363,7 +1361,7 @@ SetupUDPInterconnect(EState *estate)
 			if (conn->state == mcsSetupOutgoingConnection &&
 				conn->wakeup_ms <= elapsed_ms + 1)
 			{
-				setupOutgoingUDPConnection(estate->interconnect_context, sendingChunkTransportState, conn);
+				setupOutgoingUDPConnection(estate->interconnect_context, sendingChunkTransportState, (MotionConn *)conn);
 				switch (conn->state)
 				{
 					case mcsSetupOutgoingConnection:
@@ -1492,8 +1490,8 @@ SetupUDPInterconnect(EState *estate)
 	}
 
 	/* we've either timed out, or we're done. Time to count inbound. */
-	do {
-
+	do
+	{
 		/* check for cancellation */
 		ML_CHECK_FOR_INTERRUPTS(false);
 
@@ -1501,25 +1499,31 @@ SetupUDPInterconnect(EState *estate)
 		if (incoming_count < expectedTotalIncoming &&
 			list_length(estate->interconnect_context->incompleteConns) != 0)
 		{
+			/* If the rx-thread is waiting we're never going to finish. */
+			if (rx_thread_waiting)
+			{
+				/* deadlock, out of memory! */
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+								errmsg("Interconnect error: UDP-IC out of memory.")));
+			}
+
 			/* We can't use foreach() because we're going to delete elements as we go */
 			cell = list_head(estate->interconnect_context->incompleteConns);
 			while (cell != NULL)
 			{
-				conn = (MotionConn *) lfirst(cell);
+				conn = (volatile MotionConn *)lfirst(cell);
 
 				cell = lnext(cell);
 
+				pthread_mutex_lock(&rx_thread_mutex);
 				if (conn->state != mcsStarted)
 				{
-					pthread_mutex_lock(&rx_thread_mutex);
-
 					main_thread_waiting_node = conn->conn_info.motNodeId;
 					main_thread_waiting = true;
 					main_thread_waiting_route = conn->route;
 					main_thread_waiting_query = gp_interconnect_id;
 
-					if (conn->state == mcsStarted ||
-						wait_on_receiver(MAIN_THREAD_COND_TIMEOUT))
+					if (wait_on_receiver(MAIN_THREAD_COND_TIMEOUT))
 					{
 						/* Got what we wanted. */
 					}
@@ -1532,22 +1536,14 @@ SetupUDPInterconnect(EState *estate)
 					main_thread_waiting_route = ANY_ROUTE;
 					main_thread_waiting_node = -1;
 					main_thread_waiting = false;
-
-					pthread_mutex_unlock(&rx_thread_mutex);
-
-					if (rx_thread_waiting)
-					{
-						/* deadlock, out of memory! */
-						ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-										errmsg("Interconnect error: UDP-IC out of memory.")));
-					}
 				}
+				pthread_mutex_unlock(&rx_thread_mutex);
 
-				/* we check again, since it may have changed. */
+				/* Did we get what we wanted ? */
 				if (conn->state == mcsStarted)
 				{
 					incoming_count++;
-					estate->interconnect_context->incompleteConns = list_delete_ptr(estate->interconnect_context->incompleteConns, conn);
+					estate->interconnect_context->incompleteConns = list_delete_ptr(estate->interconnect_context->incompleteConns, (MotionConn *)conn);
 				}
 			}
 		}
@@ -2263,7 +2259,7 @@ static bool
 handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry)
 {
 	bool ret=false;
-	MotionConn *ackConn;
+	volatile MotionConn *ackConn;
 	int n;
 
 	struct sockaddr_in peer;
@@ -3033,7 +3029,7 @@ ic_rx_thread_func(void *arg)
 			/* we've got something interesting to read */
 			/* handle incoming */
 			/* ready to read on our socket */
-			MotionConn *conn;
+			volatile MotionConn *conn;
 			int read_count;
 
 			struct sockaddr_in peer;
