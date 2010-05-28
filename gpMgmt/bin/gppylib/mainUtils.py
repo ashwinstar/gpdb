@@ -11,6 +11,8 @@ from gppylib.commands import unix
 from gppylib.system import configurationInterface, configurationImplGpdb, fileSystemInterface, \
         fileSystemImplOs, osInterface, osImplNative, faultProberInterface, faultProberImplGpdb
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
+from gppylib.gpcoverage import GpCoverage
+
 
 # Throw this out to main to have the message printed with
 class ProgramArgumentValidationException(Exception):
@@ -34,20 +36,32 @@ def getProgramName():
     global gProgramName
     return gProgramName
 
-#
-# createOptionParserFn : a function that takes no arguments and returns an OptParser
-# createCommandFn : a function that takes two argument (the options and the args (those that are not processed into
-#                   options) and returns an object that has "run" and "cleanup" functions.  Its "run" function must
-#                   run and return an exit code.  "cleanup" will be called to clean up before the program exits;
-#                   this can be used to clean up, for example, to clean up a worker pool
-#
-# mainOptions can include:   forceQuietOutput (map to bool),
-#                            programNameOverride (map to string)
-#                            suppressStartupLogMessage (map to bool)
-#                            useHelperToolLogging (map to bool)
-#
-#
 def simple_main( createOptionParserFn, createCommandFn, mainOptions=None) :
+    """
+     createOptionParserFn : a function that takes no arguments and returns an OptParser
+     createCommandFn : a function that takes two argument (the options and the args (those that are not processed into
+                       options) and returns an object that has "run" and "cleanup" functions.  Its "run" function must
+                   run and return an exit code.  "cleanup" will be called to clean up before the program exits;
+                   this can be used to clean up, for example, to clean up a worker pool
+
+        mainOptions can include:   forceQuietOutput (map to bool),
+                            programNameOverride (map to string)
+                            suppressStartupLogMessage (map to bool)
+                            useHelperToolLogging (map to bool)
+
+    """
+    coverage = GpCoverage()
+    coverage.start()
+    try:
+        simple_main_internal(createOptionParserFn, createCommandFn, mainOptions)
+    finally:
+        coverage.stop()
+        coverage.generate_report()
+
+def simple_main_internal(createOptionParserFn, createCommandFn, mainOptions):
+    """
+    Not to be called externally -- use simple_main instead
+    """
     logger = gplog.get_default_logger()
     configurationInterface.registerConfigurationProvider( configurationImplGpdb.GpConfigurationProviderUsingGpdbCatalog())
     fileSystemInterface.registerFileSystemProvider( fileSystemImplOs.GpFileSystemProviderUsingOs())

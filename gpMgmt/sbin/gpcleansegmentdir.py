@@ -14,8 +14,6 @@ import pickle, base64
 from gppylib import gparray
 from gppylib.gpparseopts import OptChecker,OptParser,OptParser
 from gppylib.operations.buildMirrorSegments import gDatabaseDirectories, gDatabaseFiles
-from gppylib.gpcoverage import GpCoverage
-
 
 logger = get_default_logger()
 
@@ -31,7 +29,7 @@ class GpCleanSegmentDirectoryProgram:
 
     def run(self):
         if self.__options.pickledArguments is None:
-            raise ProgramArgumentValidationException("-a argument is missing")
+            raise ProgramArgumentValidationException("-p argument is missing")
             
         segments = pickle.loads(base64.urlsafe_b64decode(self.__options.pickledArguments))
 
@@ -94,11 +92,4 @@ class GpCleanSegmentDirectoryProgram:
 
 #-------------------------------------------------------------------------
 if __name__ == '__main__':
-    coverage = GpCoverage()
-    coverage.start()
-    
-    try:
-        simple_main( GpCleanSegmentDirectoryProgram.createParser, GpCleanSegmentDirectoryProgram.createProgram)
-    finally:
-        coverage.stop()
-        coverage.generate_report()
+    simple_main( GpCleanSegmentDirectoryProgram.createParser, GpCleanSegmentDirectoryProgram.createProgram)

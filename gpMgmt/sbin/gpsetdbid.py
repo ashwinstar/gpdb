@@ -17,7 +17,6 @@ from optparse            import OptionGroup
 from gppylib.utils       import writeGpDbidFile
 from gppylib.mainUtils   import *
 from gppylib.gpparseopts import OptParser, OptChecker
-from gppylib.gpcoverage  import GpCoverage
 
 __help__ = [""]
 
@@ -82,17 +81,10 @@ class GpSetDBId:
 
 #------------------------------- Mainline --------------------------------
 if __name__ == '__main__':
-    coverage = GpCoverage()
-    coverage.start()
-
-    try:
-        mainOptions = {
-            'suppressStartupLogMessage': True,
-            'useHelperToolLogging': True
-            }
-        simple_main(GpSetDBId.createParser, 
-                    GpSetDBId.createProgram, 
-                    mainOptions)
-    finally:
-        coverage.stop()
-        coverage.generate_report()
+    mainOptions = {
+        'suppressStartupLogMessage': True,
+        'useHelperToolLogging': True
+        }
+    simple_main(GpSetDBId.createParser,
+                GpSetDBId.createProgram,
+                mainOptions)

@@ -10,14 +10,7 @@
 # import mainUtils FIRST to get python version check
 from gppylib.mainUtils import *
 from gppylib.programs.clsSystemState import *
-from gppylib.gpcoverage import GpCoverage
 
 #-------------------------------------------------------------------------
 if __name__ == '__main__':
-    coverage = GpCoverage()
-    coverage.start()
-
     simple_main( GpSystemStateProgram.createParser, GpSystemStateProgram.createProgram)
-
-    coverage.stop()
-    coverage.generate_report()

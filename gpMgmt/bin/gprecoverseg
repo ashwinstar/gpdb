@@ -11,14 +11,7 @@
 # import mainUtils FIRST to get python version check
 from gppylib.mainUtils import *
 from gppylib.programs.clsRecoverSegment import *
-from gppylib.gpcoverage import GpCoverage
 
 #-------------------------------------------------------------------------
 if __name__ == '__main__':
-    coverage = GpCoverage()
-    coverage.start()
-    
     simple_main( GpRecoverSegmentProgram.createParser, GpRecoverSegmentProgram.createProgram)
-
-    coverage.stop()
-    coverage.generate_report()

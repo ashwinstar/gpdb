@@ -17,7 +17,6 @@ from gppylib.gpparseopts import OptParser, OptChecker
 from gppylib import gplog, gparray, pgconf
 from gppylib.commands import base, gp, pg, unix
 from gppylib.db import catalog, dbconn
-from gppylib.gpcoverage import GpCoverage
 
 logger = gplog.get_default_logger()
 
@@ -153,6 +152,11 @@ class GpSegStatusProgram:
 
     def run(self):
 
+        if self.__options.statusQueryRequests is None:
+            raise ProgramArgumentValidationException("-s argument not specified")
+        if self.__options.dirList is None:
+            raise ProgramArgumentValidationException("-D argument not specified")
+
         toFetch = self.__options.statusQueryRequests.split(":")
         segments = map(gparray.GpDB.initFromString, self.__options.dirList)
 
@@ -226,11 +230,4 @@ class GpSegStatusProgram:
 
 #-------------------------------------------------------------------------
 if __name__ == '__main__':
-    coverage = GpCoverage()
-    coverage.start()
-    
-    try:
-        simple_main( GpSegStatusProgram.createParser, GpSegStatusProgram.createProgram)
-    finally:
-        coverage.stop()
-        coverage.generate_report()
+    simple_main( GpSegStatusProgram.createParser, GpSegStatusProgram.createProgram)

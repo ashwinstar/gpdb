@@ -28,7 +28,6 @@ from gppylib.gpparseopts import OptParser, OptChecker
 from gppylib import gplog, gparray, pgconf
 from gppylib.commands import base, gp, pg, unix
 from gppylib.db import catalog, dbconn
-from gppylib.gpcoverage import GpCoverage
 
 logger = gplog.get_default_logger()
 
@@ -190,14 +189,7 @@ class GpSegToPrimaryMirror():
 
 #------------------------------------------------------------------------- 
 if __name__ == '__main__':
-    coverage = GpCoverage()
-    coverage.start()
-
-    try:
-        mainOptions = {}
-        simple_main(GpSegToPrimaryMirror.createParser,
-                    GpSegToPrimaryMirror.createProgram,
-                    mainOptions)
-    finally:
-        coverage.stop()
-        coverage.generate_report()
+    mainOptions = {}
+    simple_main(GpSegToPrimaryMirror.createParser,
+                GpSegToPrimaryMirror.createProgram,
+                mainOptions)
