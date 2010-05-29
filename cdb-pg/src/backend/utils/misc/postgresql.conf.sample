@@ -303,7 +303,7 @@
 # SNMP INFORM/TRAP ALERTS
 #------------------------------------------------------------------------------
 
-# Configure the gp_snmp_peername to be the system your SNMP monitor runs on, or a proxy
+# Configure the gp_snmp_monitor_address to be the system your SNMP monitor runs on, or a proxy
 # that will relay the message to the SNMP monitor.  You can specify transport, DNS name, and port:
 # [<transport-specifier>:]<transport-address>[:port]
 #
@@ -311,10 +311,11 @@
 # For udp or tcp, the port is typically 162. 
 # For a SNMP monitor running locally, you might use 'localhost:162', but more typically
 # the SNMP monitor is running on some other machine.
+# You can send to multiple network monitors by using a comma separated list of addresses.
 #
 # if gp_snmp_peername is empty, snmp alerts are disabled.
 
-#gp_snmp_monitor_address = ''     		# name or IP address (and optionally the port) of the SNMP monitor that will receive the alerts.
+#gp_snmp_monitor_address = ''     		# name or IP address(es) (and optionally the port) of the SNMP monitor(s) that will receive the alerts.
 #gp_snmp_community = 'public'			# Change to whatever community string you use in your monitor
 #gp_snmp_use_inform_or_trap = 'trap'    # Set to 'inform' or 'trap', we will send SNMP v2c inform, or SNMP v2c trap.
 
