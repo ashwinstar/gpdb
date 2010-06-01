@@ -58,7 +58,14 @@ OPTIONS
   Specifies if gpdetective should connect to the database to obtain 
   system information. The default is true (t). If false (f), 
   gpdetective only gathers information it can obtain without making 
-  a connection to the database.
+  a connection to the database. This information includes (from the
+  master host):
+
+  * Log files
+  * The master_data_directory/postgresql.conf file
+  * The ~/gpAdminLogs directory
+  * gpcheckos output
+  * Core files
 
 
 --cores t|f 
