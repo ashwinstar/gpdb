@@ -118,27 +118,21 @@ aabc: appendonlyam:00001277:  varBlockCheckError,
 aabc: appendonlyam:00001278:  VarBlockGetCheckErrorStr()), 
 aabc: appendonlyam:00001279:  errdetail_appendonly_insert_block_header(aoInsertDesc), 
 aabc: appendonlyam:00001280:  errcontext_appendonly_insert_block(aoInsertDesc))); 
-aabc: appendonlyam:00001887:  ereport(WARNING, 
-aabc: appendonlyam:00001888:  (errmsg("Append-only fetch requires scan prior blocks: " 
-aabc: appendonlyam:00001889:  "segmentFileNum %d, rowNum " INT64_FORMAT ", " 
-aabc: appendonlyam:00001890:  "currentBlock.firstRowNum " INT64_FORMAT, 
-aabc: appendonlyam:00001891:  segmentFileNum, rowNum, 
-aabc: appendonlyam:00001892:  aoFetchDesc->currentBlock.firstRowNum))); 
-aabc: appendonlyam:00001936:  ereport(WARNING, 
-aabc: appendonlyam:00001937:  (errmsg("Append-only fetch requires scan prior segment file: " 
-aabc: appendonlyam:00001938:  "segmentFileNum %d, rowNum " INT64_FORMAT 
-aabc: appendonlyam:00001939:  ", currentSegmentFileNum %d", 
-aabc: appendonlyam:00001940:  segmentFileNum, rowNum, aoFetchDesc->currentSegmentFile.num))); 
-aabc: appendonlyam:00002313:  ereport(ERROR, 
-aabc: appendonlyam:00002314:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-aabc: appendonlyam:00002315:  errmsg("Item too long (check #1): length %d, maxBufferLen %d", 
-aabc: appendonlyam:00002316:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
-aabc: appendonlyam:00002317:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
-aabc: appendonlyam:00002355:  ereport(ERROR, 
-aabc: appendonlyam:00002356:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-aabc: appendonlyam:00002357:  errmsg("Item too long (check #2): length %d, maxBufferLen %d", 
-aabc: appendonlyam:00002358:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
-aabc: appendonlyam:00002359:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
+aabc: appendonlyam:00001939:  ereport(WARNING, 
+aabc: appendonlyam:00001940:  (errmsg("Append-only fetch requires scan prior segment file: " 
+aabc: appendonlyam:00001941:  "segmentFileNum %d, rowNum " INT64_FORMAT 
+aabc: appendonlyam:00001942:  ", currentSegmentFileNum %d", 
+aabc: appendonlyam:00001943:  segmentFileNum, rowNum, aoFetchDesc->currentSegmentFile.num))); 
+aabc: appendonlyam:00002316:  ereport(ERROR, 
+aabc: appendonlyam:00002317:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+aabc: appendonlyam:00002318:  errmsg("Item too long (check #1): length %d, maxBufferLen %d", 
+aabc: appendonlyam:00002319:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
+aabc: appendonlyam:00002320:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
+aabc: appendonlyam:00002358:  ereport(ERROR, 
+aabc: appendonlyam:00002359:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+aabc: appendonlyam:00002360:  errmsg("Item too long (check #2): length %d, maxBufferLen %d", 
+aabc: appendonlyam:00002361:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
+aabc: appendonlyam:00002362:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
 aaaaa GP_IGNORE: aace: appendonlyblockdirectory - ./backend/access/appendonly/appendonlyblockdirectory.c
 aace: appendonlyblockdirectory:00000408:  ereport(ERROR, 
 aace: appendonlyblockdirectory:00000409:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
@@ -208,6 +202,11 @@ babb: bitmappages:00000413:  ereport(ERROR,
 babb: bitmappages:00000414:  (errcode(ERRCODE_INTERNAL_ERROR), 
 babb: bitmappages:00000415:  errmsg("failed to add LOV item to \"%s\"", 
 babb: bitmappages:00000416:  RelationGetRelationName(rel)))); 
+aaaaa GP_IGNORE: babc: bitmapsearch - ./backend/access/bitmap/bitmapsearch.c
+babc: bitmapsearch:00000385:  ereport(ERROR, 
+babc: bitmapsearch:00000386:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+babc: bitmapsearch:00000387:  errmsg("bitmap index scan key %d is null", 
+babc: bitmapsearch:00000388:  keyNo))); 
 aaaaa GP_IGNORE: baba: bitmaputil - ./backend/access/bitmap/bitmaputil.c
 baba: bitmaputil:00000098:  ereport(ERROR, 
 baba: bitmaputil:00000099:  (0, 
@@ -3672,61 +3671,61 @@ iaag: icxudp:00001108:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR
 iaag: icxudp:00001109:  errmsg("Interconnect error setting up outgoing " 
 iaag: icxudp:00001110:  "connection."), 
 iaag: icxudp:00001111:  errdetail("%m%s", "sendto"))); 
-iaag: icxudp:00001246:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-iaag: icxudp:00001247:  errmsg("Setup UDP interconnect failed: out of memory"))); 
-iaag: icxudp:00001288:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001289:  errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."), 
-iaag: icxudp:00001290:  errdetail("%m%s", "malloc"))); 
-iaag: icxudp:00001404:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001405:  errmsg("Interconnect error: %m%s", "poll"))); 
-iaag: icxudp:00001430:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001431:  errmsg("Interconnect error: %m%s", "recvfrom"))); 
-iaag: icxudp:00001435:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001436:  errmsg("Interconnect error: %m%s short ack receive!", "recvfrom"))); 
-iaag: icxudp:00001541:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001542:  errmsg("Interconnect error: UDP-IC out of memory."))); 
-iaag: icxudp:00001618:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001619:  errmsg("Interconnect timeout: Unable to " 
-iaag: icxudp:00001620:  "complete setup of all connections " 
-iaag: icxudp:00001621:  "within time limit."), 
-iaag: icxudp:00001622:  errdetail("Completed %d of %d incoming and " 
-iaag: icxudp:00001623:  "%d of %d outgoing connections. " 
-iaag: icxudp:00001624:  "gp_interconnect_setup_timeout = %d " 
-iaag: icxudp:00001625:  "seconds.", 
-iaag: icxudp:00001626:  incoming_count, expectedTotalIncoming, 
-iaag: icxudp:00001627:  outgoing_count, expectedTotalOutgoing, 
-iaag: icxudp:00001628:  interconnect_setup_timeout))); 
-iaag: icxudp:00001993:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001994:  errmsg(CDB_MOTION_LOST_CONTACT_STRING))); 
-iaag: icxudp:00002100:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002101:  errmsg("Interconnect error segment lost contact with master (recv)"))); 
-iaag: icxudp:00002103:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002104:  errmsg("Interconnect error master lost contact with client (recv)"))); 
-iaag: icxudp:00002111:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002112:  errmsg("Interconnect error: UDP-IC out of memory."))); 
-iaag: icxudp:00002290:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002291:  errmsg("Interconnect error waiting for peer ack"), 
-iaag: icxudp:00002292:  errdetail("During recvfrom() call.\n"))); 
-iaag: icxudp:00002297:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002298:  errmsg("Interconnect error waiting for peer ack"), 
-iaag: icxudp:00002299:  errdetail("short read during recvfrom() call. (%d)\n", n))); 
-iaag: icxudp:00002457:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002458:  errmsg("Interconnect error writing an outgoing packet"), 
-iaag: icxudp:00002459:  errdetail("error during sendto() call (error:%d).\n" 
-iaag: icxudp:00002460:  "For Remote Connection: contentId=%d at %s", 
-iaag: icxudp:00002461:  errno, conn->remoteContentId, 
-iaag: icxudp:00002462:  conn->remoteHostAndPort))); 
-iaag: icxudp:00002468:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002469:  errmsg("Interconnect error writing an outgoing packet"), 
-iaag: icxudp:00002470:  errdetail("short transmit during sendto() call.\n" 
-iaag: icxudp:00002471:  "For Remote Connection: contentId=%d at %s", 
-iaag: icxudp:00002472:  conn->remoteContentId, 
-iaag: icxudp:00002473:  conn->remoteHostAndPort))); 
-iaag: icxudp:00002523:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002524:  errmsg("Interconnect error segment lost contact with master (xmit)"))); 
-iaag: icxudp:00002539:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002540:  errmsg("Interconnect error waiting for peer ack"), 
-iaag: icxudp:00002541:  errdetail("During poll() call.\n"))); 
+iaag: icxudp:00001244:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+iaag: icxudp:00001245:  errmsg("Setup UDP interconnect failed: out of memory"))); 
+iaag: icxudp:00001286:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001287:  errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."), 
+iaag: icxudp:00001288:  errdetail("%m%s", "malloc"))); 
+iaag: icxudp:00001402:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001403:  errmsg("Interconnect error: %m%s", "poll"))); 
+iaag: icxudp:00001428:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001429:  errmsg("Interconnect error: %m%s", "recvfrom"))); 
+iaag: icxudp:00001433:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001434:  errmsg("Interconnect error: %m%s short ack receive!", "recvfrom"))); 
+iaag: icxudp:00001506:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001507:  errmsg("Interconnect error: UDP-IC out of memory."))); 
+iaag: icxudp:00001614:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001615:  errmsg("Interconnect timeout: Unable to " 
+iaag: icxudp:00001616:  "complete setup of all connections " 
+iaag: icxudp:00001617:  "within time limit."), 
+iaag: icxudp:00001618:  errdetail("Completed %d of %d incoming and " 
+iaag: icxudp:00001619:  "%d of %d outgoing connections. " 
+iaag: icxudp:00001620:  "gp_interconnect_setup_timeout = %d " 
+iaag: icxudp:00001621:  "seconds.", 
+iaag: icxudp:00001622:  incoming_count, expectedTotalIncoming, 
+iaag: icxudp:00001623:  outgoing_count, expectedTotalOutgoing, 
+iaag: icxudp:00001624:  interconnect_setup_timeout))); 
+iaag: icxudp:00001989:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001990:  errmsg(CDB_MOTION_LOST_CONTACT_STRING))); 
+iaag: icxudp:00002096:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002097:  errmsg("Interconnect error segment lost contact with master (recv)"))); 
+iaag: icxudp:00002099:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002100:  errmsg("Interconnect error master lost contact with client (recv)"))); 
+iaag: icxudp:00002107:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002108:  errmsg("Interconnect error: UDP-IC out of memory."))); 
+iaag: icxudp:00002286:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002287:  errmsg("Interconnect error waiting for peer ack"), 
+iaag: icxudp:00002288:  errdetail("During recvfrom() call.\n"))); 
+iaag: icxudp:00002293:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002294:  errmsg("Interconnect error waiting for peer ack"), 
+iaag: icxudp:00002295:  errdetail("short read during recvfrom() call. (%d)\n", n))); 
+iaag: icxudp:00002453:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002454:  errmsg("Interconnect error writing an outgoing packet"), 
+iaag: icxudp:00002455:  errdetail("error during sendto() call (error:%d).\n" 
+iaag: icxudp:00002456:  "For Remote Connection: contentId=%d at %s", 
+iaag: icxudp:00002457:  errno, conn->remoteContentId, 
+iaag: icxudp:00002458:  conn->remoteHostAndPort))); 
+iaag: icxudp:00002464:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002465:  errmsg("Interconnect error writing an outgoing packet"), 
+iaag: icxudp:00002466:  errdetail("short transmit during sendto() call.\n" 
+iaag: icxudp:00002467:  "For Remote Connection: contentId=%d at %s", 
+iaag: icxudp:00002468:  conn->remoteContentId, 
+iaag: icxudp:00002469:  conn->remoteHostAndPort))); 
+iaag: icxudp:00002519:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002520:  errmsg("Interconnect error segment lost contact with master (xmit)"))); 
+iaag: icxudp:00002535:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002536:  errmsg("Interconnect error waiting for peer ack"), 
+iaag: icxudp:00002537:  errdetail("During poll() call.\n"))); 
 aaaaa GP_IGNORE: taag: tupser - ./backend/cdb/motion/tupser.c
 taag: tupser:00000086:  ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION), 
 taag: tupser:00000087:  errmsg("deserialize data underflow"))); 
@@ -16724,81 +16723,81 @@ gaai: gucxfile:00000552:  GUC_EOL = 99,
 gaai: gucxfile:00000553:  GUC_ERROR = 100 
 gaai: gucxfile:00000554: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00007279:  ereport(ERROR, 
-gaad: guc:00007280:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007281:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007283:  ereport(ERROR, 
-gaad: guc:00007284:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00007285:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00007319:  ereport(ERROR, 
-gaad: guc:00007320:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007321:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007323:  ereport(ERROR, 
-gaad: guc:00007324:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00007325:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00007394:  ereport(ERROR, 
-gaad: guc:00007395:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007396:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007403:  ereport(ERROR, 
-gaad: guc:00007404:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00007405:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00007576:  ereport(ERROR, 
-gaad: guc:00007577:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00007578:  errmsg("SET requires parameter name"))); 
-gaad: guc:00007640:  ereport(ERROR, 
-gaad: guc:00007641:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00007642:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00007961:  ereport(ERROR, 
-gaad: guc:00007962:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007963:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007965:  ereport(ERROR, 
-gaad: guc:00007966:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00007967:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008769:  ereport(FATAL, 
-gaad: guc:00008770:  (errcode_for_file_access(), 
-gaad: guc:00008771:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00008772:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00008879:  ereport(WARNING, 
-gaad: guc:00008880:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00008881:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00009075:  ereport(ERROR, 
-gaad: guc:00009076:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009077:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00009098:  ereport(ERROR, 
-gaad: guc:00009099:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009100:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00009101:  tok))); 
-gaad: guc:00009127:  ereport(ERROR, 
-gaad: guc:00009128:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009129:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00009130:  value))); 
-gaad: guc:00009473:  ereport(ERROR, 
-gaad: guc:00009474:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00009475:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00009549:  ereport(ERROR, 
-gaad: guc:00009550:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009551:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00009570:  ereport(ERROR, 
-gaad: guc:00009571:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009572:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00009583:  ereport(ERROR, 
-gaad: guc:00009584:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009585:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00009600:  ereport(ERROR, 
-gaad: guc:00009601:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009602:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00009603:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00009604:  "\"log_dispatch_stats\", " 
-gaad: guc:00009605:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00009620:  ereport(ERROR, 
-gaad: guc:00009621:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009622:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00009623:  "\"log_statement_stats\", " 
-gaad: guc:00009624:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00009625:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00009640:  ereport(ERROR, 
-gaad: guc:00009641:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009642:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00007289:  ereport(ERROR, 
+gaad: guc:00007290:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007291:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007293:  ereport(ERROR, 
+gaad: guc:00007294:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00007295:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00007329:  ereport(ERROR, 
+gaad: guc:00007330:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007331:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007333:  ereport(ERROR, 
+gaad: guc:00007334:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00007335:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00007404:  ereport(ERROR, 
+gaad: guc:00007405:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007406:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007413:  ereport(ERROR, 
+gaad: guc:00007414:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00007415:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00007586:  ereport(ERROR, 
+gaad: guc:00007587:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00007588:  errmsg("SET requires parameter name"))); 
+gaad: guc:00007650:  ereport(ERROR, 
+gaad: guc:00007651:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00007652:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00007971:  ereport(ERROR, 
+gaad: guc:00007972:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007973:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007975:  ereport(ERROR, 
+gaad: guc:00007976:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00007977:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008779:  ereport(FATAL, 
+gaad: guc:00008780:  (errcode_for_file_access(), 
+gaad: guc:00008781:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00008782:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00008889:  ereport(WARNING, 
+gaad: guc:00008890:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00008891:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00009085:  ereport(ERROR, 
+gaad: guc:00009086:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009087:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00009108:  ereport(ERROR, 
+gaad: guc:00009109:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009110:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00009111:  tok))); 
+gaad: guc:00009137:  ereport(ERROR, 
+gaad: guc:00009138:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009139:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00009140:  value))); 
+gaad: guc:00009483:  ereport(ERROR, 
+gaad: guc:00009484:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00009485:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00009559:  ereport(ERROR, 
+gaad: guc:00009560:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009561:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00009580:  ereport(ERROR, 
+gaad: guc:00009581:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009582:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00009593:  ereport(ERROR, 
+gaad: guc:00009594:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009595:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00009610:  ereport(ERROR, 
+gaad: guc:00009611:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009612:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00009613:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00009614:  "\"log_dispatch_stats\", " 
+gaad: guc:00009615:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00009630:  ereport(ERROR, 
+gaad: guc:00009631:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009632:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00009633:  "\"log_statement_stats\", " 
+gaad: guc:00009634:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00009635:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00009650:  ereport(ERROR, 
+gaad: guc:00009651:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009652:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
 aaaaa GP_IGNORE: uaaj: uriparser - ./backend/utils/misc/uriparser.c
 uaaj: uriparser:00000058:  ereport(ERROR, 
 uaaj: uriparser:00000059:  (errcode(ERRCODE_SYNTAX_ERROR), 
