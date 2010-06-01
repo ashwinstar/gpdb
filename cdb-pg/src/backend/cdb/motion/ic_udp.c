@@ -17,10 +17,6 @@
 #define _WIN32_WINNT 0x0600
 #endif
 
-#ifndef PROVIDE_64BIT_CRC
-#define PROVIDE_64BIT_CRC
-#endif
-
 #include "postgres.h"
 
 #include <pthread.h>
@@ -156,13 +152,15 @@ timeouts[] =
 
 #define MAIN_THREAD_COND_TIMEOUT (250000) /* 1/4 second in usec */
 #define RX_THREAD_COND_TIMEOUT (250000) /* 1/4 second in usec */
+
 static pthread_t ic_rx_thread;
 static pthread_mutex_t	rx_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
-static bool rx_thread_shutdown = false;
-static bool rx_thread_shutdown_complete = false;
+
+static volatile bool rx_thread_shutdown = false;
+static volatile bool rx_thread_shutdown_complete = false;
 
 static pthread_cond_t rx_thread_cond = PTHREAD_COND_INITIALIZER;
-static bool rx_thread_waiting = false;
+static volatile bool rx_thread_waiting = false;
 
 static int	rx_buf_maxcount = 1;
 static int	rx_buf_count = 0;
@@ -216,7 +214,7 @@ static bool SendChunkUDP(MotionLayerState *mlStates, ChunkTransportState *transp
 						 ChunkTransportStateEntry *pEntry, MotionConn * conn, TupleChunkListItem tcItem, int16 motionId);
 
 static TupleChunkListItem receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry *pEntry, 
-										   int16 motNodeID, int16 *srcRoute, MotionConn *conn, bool inTeardown);
+										   int16 motNodeID, int16 *srcRoute, volatile MotionConn *conn, bool inTeardown);
 
 static void doSendStopMessageUDP(ChunkTransportState *transportStates, int16 motNodeID);
 
@@ -436,11 +434,23 @@ wait_on_receiver(int timeout_us)
 	ts.tv_nsec *= 1000; /* convert usec to nsec */
 
    	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+	{
 		elog(DEBUG5, "waiting (timed) on route %d %s", main_thread_waiting_route, 
 			 (main_thread_waiting_route == ANY_ROUTE ? "(any route)" : ""));
+	}
 
-	/* we can't handle interrupts for the time we're waiting,
-	 * which is why we're using timedwaits in the first place */
+	/*
+	 * MPP-9910: pthread_cond_timedwait appears to be broken in OS-X 10.6.x "Snow Leopard"
+	 * We'll burn a lot more CPU this way, but we will not hang.
+	 */
+#ifdef __darwin__
+	ts.tv_sec = 0;
+#endif
+
+	/*
+	 * we can't handle interrupts for the time we're waiting,
+	 * which is why we're using timedwaits in the first place
+	 */
 	HOLD_INTERRUPTS();
 
 	wait = pthread_cond_timedwait(&rx_thread_cond, &rx_thread_mutex, &ts);
@@ -511,7 +521,7 @@ conn_addhash(volatile MotionConn *conn)
  * use CONN_HASH_MATCH() at all!
  */
 static void
-conn_delhash(MotionConn *conn)
+conn_delhash(volatile MotionConn *conn)
 {
 	uint32 hashcode;
 	struct conn_htab_bin *c, *p, *trash;
@@ -563,7 +573,7 @@ findConnByHeader(struct icpkthdr *hdr)
 {
 	uint32 hashcode;
 	struct conn_htab_bin *bin;
-	volatile MotionConn *ret=NULL;
+	volatile MotionConn *ret = NULL;
 
 	hashcode = CONN_HASH_VALUE(hdr) % conn_htab_size;
 
@@ -622,7 +632,7 @@ conn_rehash(void)
 
 		while (bin)
 		{
-			volatile MotionConn *conn=bin->conn;
+			volatile MotionConn *conn = bin->conn;
 
 			new_hashcode = CONN_HASH_VALUE(&conn->conn_info) % new_htab_size;
 
@@ -682,7 +692,7 @@ sendAck(volatile MotionConn *conn, bool stop)
 
 /* should be called with  rx_thread_mutex *locked* */
 static void
-put_rx_buffer(MotionConn *conn)
+put_rx_buffer(volatile MotionConn *conn)
 {
 	struct icpkthdr *buf=NULL;
 
@@ -738,8 +748,8 @@ put_rx_buffer(MotionConn *conn)
 void
 ml_put_rx_buffer(ChunkTransportState *transportStates, int motNodeID, int route)
 {
-	ChunkTransportStateEntry *pEntry = NULL;
-	MotionConn			*conn=NULL;
+	ChunkTransportStateEntry	*pEntry = NULL;
+	volatile MotionConn			*conn=NULL;
 
 	getChunkTransportState(transportStates, motNodeID, &pEntry);
 
@@ -1276,7 +1286,7 @@ SetupUDPInterconnect(EState *estate)
 				/* If we're doing full interconnect setup*/
 				if (!gp_interconnect_elide_setup || gp_interconnect_id <= 1)
 				{
-					estate->interconnect_context->incompleteConns = lappend(estate->interconnect_context->incompleteConns, (MotionConn *)conn);
+					estate->interconnect_context->incompleteConns = lappend(estate->interconnect_context->incompleteConns, (void *)conn);
 				}
 
 				if (!conn_addhash(conn))
@@ -1537,14 +1547,14 @@ SetupUDPInterconnect(EState *estate)
 					main_thread_waiting_node = -1;
 					main_thread_waiting = false;
 				}
-				pthread_mutex_unlock(&rx_thread_mutex);
 
 				/* Did we get what we wanted ? */
 				if (conn->state == mcsStarted)
 				{
 					incoming_count++;
-					estate->interconnect_context->incompleteConns = list_delete_ptr(estate->interconnect_context->incompleteConns, (MotionConn *)conn);
+					estate->interconnect_context->incompleteConns = list_delete_ptr(estate->interconnect_context->incompleteConns, (void *)conn);
 				}
+				pthread_mutex_unlock(&rx_thread_mutex);
 			}
 		}
 
@@ -1651,7 +1661,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 	ChunkTransportStateEntry *pEntry=NULL;
 	int			i;
 	Slice	   *mySlice;
-	MotionConn *conn;
+	volatile MotionConn *conn;
 
 	if (transportStates->sliceTable == NULL)
 	{
@@ -1699,12 +1709,12 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 		cell = list_head(transportStates->incompleteConns);
 		while (cell != NULL)
 		{
-			conn = (MotionConn *) lfirst(cell);
+			conn = (volatile MotionConn *) lfirst(cell);
 
 			cell = lnext(cell);
 
 			transportStates->incompleteConns =
-				list_delete_ptr(transportStates->incompleteConns, conn);
+				list_delete_ptr(transportStates->incompleteConns, (void *)conn);
 		}
 	}
 
@@ -1795,7 +1805,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 
 				if (conn->stillActive)
 				{
-					pendingStop = lappend(pendingStop, conn);
+					pendingStop = lappend(pendingStop, (void *)conn);
 				}
 			}
 			pthread_mutex_unlock(&rx_thread_mutex);
@@ -1806,12 +1816,12 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 		pthread_mutex_lock(&rx_thread_mutex);
 		while ((cell = list_head(pendingStop)) != NULL)
 		{
-			conn = (MotionConn *)lfirst(cell);
+			conn = (volatile MotionConn *)lfirst(cell);
 
 			if (!conn->stillActive)
 			{
 				/* remove from the list */
-				pendingStop = list_delete_ptr(pendingStop, conn);
+				pendingStop = list_delete_ptr(pendingStop, (void *)conn);
 
 				elog(DEBUG3, "TeardownUDP: %d pending stops", list_length(pendingStop));
 				continue;
@@ -1830,7 +1840,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 				main_thread_waiting = false;
 
 				/* success, remove list (as above) */
-				pendingStop = list_delete_ptr(pendingStop, conn);
+				pendingStop = list_delete_ptr(pendingStop, (void *)conn);
 
 				elog(DEBUG3, "TeardownUDP: %d pending stops", list_length(pendingStop));
 
@@ -1995,11 +2005,11 @@ checkForCancelFromInsideReceiveChunks(ChunkTransportState *pTransportStates)
 /* ALWAYS CALLED WITH THREAD MUTEX *LOCKED* BEFORE RETURNING, *MUST* UNLOCK. */
 TupleChunkListItem
 receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry *pEntry, 
-				 int16 motNodeID, int16 *srcRoute, MotionConn *conn, bool inTeardown)
+				 int16 motNodeID, int16 *srcRoute, volatile MotionConn *conn, bool inTeardown)
 {
 	int			retries=0;
 	bool		directed=false;
-	MotionConn	*rxconn = NULL;
+	volatile MotionConn	*rxconn = NULL;
 	TupleChunkListItem	tcItem=NULL;
 
 #ifdef AMS_VERBOSE_LOGGING
@@ -2050,7 +2060,7 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 			Assert(rxconn->pBuff);
 
 			/* successfully read into this connection's buffer. */
-			tcItem = RecvTupleChunk(rxconn, inTeardown);
+			tcItem = RecvTupleChunk((MotionConn *)rxconn, inTeardown);
 
 			if (!directed)
 				*srcRoute = rxconn->route;
@@ -2124,8 +2134,8 @@ RecvTupleChunkFromAnyUDP(MotionLayerState *mlStates,
 						 int16 motNodeID,
 						 int16 *srcRoute)
 {
-	ChunkTransportStateEntry *pEntry = NULL;
-	MotionConn			*conn=NULL;
+	ChunkTransportStateEntry	*pEntry = NULL;
+	volatile MotionConn			*conn=NULL;
 	int					i, index, activeCount=0;
 	TupleChunkListItem	tcItem=NULL;
 
@@ -2155,7 +2165,7 @@ RecvTupleChunkFromAnyUDP(MotionLayerState *mlStates,
 
 		if (conn->pBuff != NULL)
 		{
-			tcItem = RecvTupleChunk(conn, transportStates->teardownActive);
+			tcItem = RecvTupleChunk((MotionConn *)conn, transportStates->teardownActive);
 			*srcRoute = conn->route;
 
 			pthread_mutex_unlock(&rx_thread_mutex);
@@ -2187,8 +2197,8 @@ RecvTupleChunkFromUDP(ChunkTransportState *transportStates,
 					  int16		motNodeID,
 					  int16		srcRoute)
 {
-	ChunkTransportStateEntry *pEntry = NULL;
-	MotionConn			*conn;
+	ChunkTransportStateEntry	*pEntry = NULL;
+	volatile MotionConn			*conn=NULL;
 	int16				route;
 
 	if (!transportStates)
@@ -2229,7 +2239,7 @@ RecvTupleChunkFromUDP(ChunkTransportState *transportStates,
 	{
 		TupleChunkListItem	tcItem=NULL;
 
-		tcItem = RecvTupleChunk(conn, transportStates->teardownActive);
+		tcItem = RecvTupleChunk((MotionConn *)conn, transportStates->teardownActive);
 
 		pthread_mutex_unlock(&rx_thread_mutex);
 		return tcItem;
@@ -2796,8 +2806,8 @@ SendEosUDP(MotionLayerState *mlStates,
 static void
 doSendStopMessageUDP(ChunkTransportState *transportStates, int16 motNodeID)
 {
-	ChunkTransportStateEntry *pEntry = NULL;
-	MotionConn *conn;
+	ChunkTransportStateEntry	*pEntry = NULL;
+	volatile MotionConn			*conn = NULL;
 	int			i;
 
 	getChunkTransportState(transportStates, motNodeID, &pEntry);
@@ -2977,6 +2987,15 @@ ic_rx_thread_func(void *arg)
 				}
 				/* convert usec to nsec */
 				ts.tv_nsec *= 1000;
+
+				/*
+				 * MPP-9910: pthread_cond_timedwait appears to be
+				 * broken in OS-X 10.6.x "Snow Leopard" We'll burn a
+				 * lot more CPU this way, but we will not hang.
+				 */
+#ifdef __darwin__
+				ts.tv_sec = 0;
+#endif
 
 				/*
 				 * Wait on our condition variable.
