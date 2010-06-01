@@ -251,6 +251,9 @@ void MirroredFileSysObj_TransactionCreateFilespaceDir(
 	 * integrate with gprecoverseg support and be able to change the directory 
 	 * of a filespace during recovery as a means of fixing badly specified 
 	 * filespace locations.
+	 *
+	 * If this is removed the corresponding check should also be removed in
+	 * MirroredFileSysObj_ScheduleDropFilespaceDir.
 	 */
 	switch (mirrorDataLossTrackingState)
 	{
@@ -263,10 +266,16 @@ void MirroredFileSysObj_TransactionCreateFilespaceDir(
 		* as a matter of precaution.
 		*/   
 		case MirrorDataLossTrackingState_MirrorCurrentlyUpInResync:
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_COMMAND_ERROR),
+					 errmsg("cannot CREATE FILESPACE in resync mode"),
+					 errhint("run gprecoverseg to re-establish mirror connectivity")));
+			break;
+
 		case MirrorDataLossTrackingState_MirrorDown:
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_COMMAND_ERROR),
-					 errmsg("cannot create filespaces in change tracking mode"),
+					 errmsg("cannot CREATE FILESPACE in change tracking mode"),
 					 errhint("run gprecoverseg to re-establish mirror connectivity")));
 			break;
 		
@@ -361,8 +370,48 @@ void MirroredFileSysObj_CreateFilespaceDir(
 void MirroredFileSysObj_ScheduleDropFilespaceDir(
 	Oid			filespaceOid)
 {
-	ItemPointerData persistentTid;
-	int64 persistentSerialNum;
+	MirrorDataLossTrackingState mirrorDataLossTrackingState;
+	int64						mirrorDataLossTrackingSessionNum;
+	ItemPointerData				persistentTid;
+	int64						persistentSerialNum;
+
+	/*
+	 * MPP-9893 - Dropping the filespace while in resync mode caused the 
+	 * mirrors to be marked as dropped and revert back to change tracking
+	 * mode.  
+	 * 
+	 * Since we disable CREATE FILESPACE when in change-tracking/resync the
+	 * simplest solution was to simply make the disabling symetric and disable
+	 * dropping them in change-tracking/resync as well.
+	 */
+	mirrorDataLossTrackingState = 
+		FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
+			&mirrorDataLossTrackingSessionNum);
+	switch (mirrorDataLossTrackingState)
+	{
+		case MirrorDataLossTrackingState_MirrorNotConfigured:
+		case MirrorDataLossTrackingState_MirrorCurrentlyUpInSync:
+			break;
+
+		case MirrorDataLossTrackingState_MirrorCurrentlyUpInResync:
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_COMMAND_ERROR),
+					 errmsg("cannot DROP FILESPACE in resync mode"),
+					 errhint("run gprecoverseg to re-establish mirror connectivity")));
+			break;
+
+		case MirrorDataLossTrackingState_MirrorDown:
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_COMMAND_ERROR),
+					 errmsg("cannot DROP FILESPACE in change tracking mode"),
+					 errhint("run gprecoverseg to re-establish mirror connectivity")));
+			break;
+		
+		default:
+			elog(ERROR, "unexpected mirror data loss tracking state: %d",
+				 mirrorDataLossTrackingState);
+			break;
+	}
 
 	PersistentFilespace_LookupTidAndSerialNum(
 										filespaceOid,
