@@ -318,6 +318,10 @@ def isValidIdentifier(name):
         print "[Error] The name prefix 'pg_' is reserved for " \
             "system filespaces\n"
         return False
+    if name[0:3] == 'gp_' or name[0:4] == '"gp_':
+        print "[Error] The name prefix 'gp_' is reserved for " \
+            "system filespaces\n"
+        return False
 
     # Check for identifier names
     if quoted:
@@ -1073,7 +1077,7 @@ To add this filespace to the database please run the command:
         
         # We have an extra "," in the above, strip it out and add in
         # the end paren instead
-        q = q[0:-2] + ");"
+        q = q[0:-2] + "\n);"
 
         logger.info(q);
 

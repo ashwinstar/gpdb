@@ -123,11 +123,14 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 	 * for system purposes.
 	 */
 	if (!allowSystemTableMods && IsReservedName(stmt->filespacename))
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),
 				 errmsg("unacceptable filespace name \"%s\"",
 						stmt->filespacename),
-		errdetail("The prefix \"pg_\" is reserved for system filespaces.")));
+				 errdetail("The prefix \"%s\" is reserved for system filespaces.",
+						   GetReservedPrefix(stmt->filespacename))));
+	}
 	namestrcpy(&fsname, stmt->filespacename);
 
 	/*
@@ -809,10 +812,13 @@ RenameFileSpace(const char *oldname, const char *newname)
 
 	/* Validate new name */
 	if (!allowSystemTableMods && IsReservedName(newname))
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),
 				 errmsg("unacceptable filespace name \"%s\"", newname),
-		errdetail("The prefix \"pg_\" is reserved for system filespaces.")));
+				 errdetail("The prefix \"%s\" is reserved for system filespaces.",
+						   GetReservedPrefix(newname))));
+	}
 
 	/* Make sure the new name doesn't exist */
 	ScanKeyInit(&entry[0],

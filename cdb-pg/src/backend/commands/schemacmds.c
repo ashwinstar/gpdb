@@ -83,10 +83,13 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString)
 
 	/* Additional check to protect reserved schema names */
 	if (!allowSystemTableMods && IsReservedName(schemaName))
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),
 				 errmsg("unacceptable schema name \"%s\"", schemaName),
-		   errdetail("The prefix \"pg_\" is reserved for system schemas.")));
+				 errdetail("The prefix \"%s\" is reserved for system schemas.",
+						   GetReservedPrefix(schemaName))));
+	}
 
 	/*
 	 * If the requested authorization is different from the current user,
@@ -319,11 +322,23 @@ RenameSchema(const char *oldname, const char *newname)
 		aclcheck_error(aclresult, ACL_KIND_DATABASE,
 					   get_database_name(MyDatabaseId));
 
+	if (!allowSystemTableMods && IsReservedName(oldname))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("permission denied to ALTER SCHEMA \"%s\"", oldname),
+				 errdetail("Schema %s is reserved for system use.", oldname)));
+	}
+
 	if (!allowSystemTableMods && IsReservedName(newname))
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),
 				 errmsg("unacceptable schema name \"%s\"", newname),
-		   errdetail("The prefix \"pg_\" is reserved for system schemas.")));
+				 errdetail("The prefix \"%s\" is reserved for system schemas.",
+						   GetReservedPrefix(newname))));
+	}
+
 
 	/* rename */
 	namestrcpy(&(((Form_pg_namespace) GETSTRUCT(tup))->nspname), newname);
@@ -384,6 +399,14 @@ AlterSchemaOwner(const char *name, Oid newOwnerId)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_SCHEMA),
 				 errmsg("schema \"%s\" does not exist", name)));
+
+	if (!allowSystemTableMods && IsReservedName(name))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("permission denied to ALTER SCHEMA \"%s\"", name),
+				 errdetail("Schema %s is reserved for system use.", name)));
+	}
 
 	AlterSchemaOwner_internal(tup, rel, newOwnerId);
 

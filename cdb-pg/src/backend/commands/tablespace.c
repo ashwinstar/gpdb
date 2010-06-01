@@ -131,11 +131,14 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	 * namespace for system purposes.
 	 */
 	if (!allowSystemTableMods && IsReservedName(stmt->tablespacename))
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),
 				 errmsg("unacceptable tablespace name \"%s\"",
 						stmt->tablespacename),
-		errdetail("The prefix \"pg_\" is reserved for system tablespaces.")));
+				 errdetail("The prefix \"%s\" is reserved for system tablespaces.",
+						   GetReservedPrefix(stmt->tablespacename))));
+	}
 
 	/*
 	 * Check the specified filespace 
@@ -759,10 +762,13 @@ RenameTableSpace(const char *oldname, const char *newname)
 
 	/* Validate new name */
 	if (!allowSystemTableMods && IsReservedName(newname))
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),
 				 errmsg("unacceptable tablespace name \"%s\"", newname),
-		errdetail("The prefix \"pg_\" is reserved for system tablespaces.")));
+				 errdetail("The prefix \"%s\" is reserved for system tablespaces.",
+						   GetReservedPrefix(newname))));
+	}
 
 	/* Make sure the new name doesn't exist */
 	ScanKeyInit(&entry[0],

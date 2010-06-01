@@ -38,6 +38,7 @@ extern bool IsToastNamespace(Oid namespaceId);
 extern bool IsAoSegmentNamespace(Oid namespaceId);
 
 extern bool IsReservedName(const char *name);
+extern char* GetReservedPrefix(const char *name);
 
 extern bool IsSharedRelation(Oid relationId);
 

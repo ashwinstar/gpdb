@@ -473,6 +473,27 @@ IsReservedName(const char *name)
 			(name[0] == 'g' && name[1] == 'p' && name[2] == '_'));
 }
 
+/*
+ * GetReservedPrefix
+ *		Given a string that is a reserved name return the portion of
+ *      the name that makes it reserved - the reserved prefix.
+ *
+ *      Current return values include "pg_" and "gp_"
+ */
+char *
+GetReservedPrefix(const char *name)
+{
+	char		*prefix = NULL;
+
+	if (IsReservedName(name))
+	{
+		prefix = palloc(4);
+		memcpy(prefix, name, 3);
+		prefix[3] = '\0';
+	}
+
+	return prefix;
+}
 
 /*
  * IsSharedRelation
