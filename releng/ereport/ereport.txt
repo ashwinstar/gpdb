@@ -2957,57 +2957,69 @@ aaaaa GP_IGNORE: cacb: cdbmirroredfilesysobj - ./backend/cdb/cdbmirroredfilesyso
 cacb: cdbmirroredfilesysobj:00000192:  ereport(ERROR, 
 cacb: cdbmirroredfilesysobj:00000193:  (errcode_for_file_access(), 
 cacb: cdbmirroredfilesysobj:00000194:  errmsg("%s: %s", errdir, FileRepStatusToString[status]))); 
-cacb: cdbmirroredfilesysobj:00000267:  ereport(ERROR, 
-cacb: cdbmirroredfilesysobj:00000268:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
-cacb: cdbmirroredfilesysobj:00000269:  errmsg("cannot create filespaces in change tracking mode"), 
-cacb: cdbmirroredfilesysobj:00000270:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
-cacb: cdbmirroredfilesysobj:00000315:  ereport(ERROR, 
-cacb: cdbmirroredfilesysobj:00000316:  (errcode_for_file_access(), 
-cacb: cdbmirroredfilesysobj:00000317:  errmsg("could not create filespace directory %s: %s", 
-cacb: cdbmirroredfilesysobj:00000318:  primaryFilespaceLocation, 
-cacb: cdbmirroredfilesysobj:00000319:  strerror(primaryError)))); 
-cacb: cdbmirroredfilesysobj:00000470:  ereport(ERROR, 
-cacb: cdbmirroredfilesysobj:00000471:  (errcode_for_file_access(), 
-cacb: cdbmirroredfilesysobj:00000472:  errmsg("could not create tablespace directory %u: %s", 
-cacb: cdbmirroredfilesysobj:00000473:  tablespaceDirNode->tablespace, 
-cacb: cdbmirroredfilesysobj:00000474:  strerror(primaryError)))); 
-cacb: cdbmirroredfilesysobj:00000603:  ereport(ERROR, 
-cacb: cdbmirroredfilesysobj:00000604:  (errcode_for_file_access(), 
-cacb: cdbmirroredfilesysobj:00000605:  errmsg("could not create database directory %s: %s", 
-cacb: cdbmirroredfilesysobj:00000606:  GetDatabasePath(dbDirNode->database, dbDirNode->tablespace), 
-cacb: cdbmirroredfilesysobj:00000607:  strerror(primaryError)))); 
-cacb: cdbmirroredfilesysobj:00000778:  ereport(ERROR, 
-cacb: cdbmirroredfilesysobj:00000779:  (errcode_for_file_access(), 
-cacb: cdbmirroredfilesysobj:00000780:  errmsg("could not create database directory %u/%u: %s", 
-cacb: cdbmirroredfilesysobj:00000781:  justInTimeDbDirNode->tablespace, 
-cacb: cdbmirroredfilesysobj:00000782:  justInTimeDbDirNode->database, 
-cacb: cdbmirroredfilesysobj:00000783:  strerror(primaryError)))); 
-cacb: cdbmirroredfilesysobj:00000804:  ereport(ERROR, 
-cacb: cdbmirroredfilesysobj:00000805:  (errcode_for_file_access(), 
-cacb: cdbmirroredfilesysobj:00000806:  errmsg("could not create just-in-time database directory %u/%u: %s", 
-cacb: cdbmirroredfilesysobj:00000807:  justInTimeDbDirNode->tablespace, 
-cacb: cdbmirroredfilesysobj:00000808:  justInTimeDbDirNode->database, 
-cacb: cdbmirroredfilesysobj:00000809:  strerror(primaryError)))); 
-cacb: cdbmirroredfilesysobj:00000917:  ereport(ERROR, 
-cacb: cdbmirroredfilesysobj:00000918:  (errcode_for_file_access(), 
-cacb: cdbmirroredfilesysobj:00000919:  errmsg("could not create relation file '%s', relation name '%s': %s", 
-cacb: cdbmirroredfilesysobj:00000920:  relpath(smgrOpen->smgr_rnode), 
-cacb: cdbmirroredfilesysobj:00000921:  relationName, 
-cacb: cdbmirroredfilesysobj:00000922:  strerror(primaryError)))); 
-cacb: cdbmirroredfilesysobj:00001039:  ereport(ERROR, 
-cacb: cdbmirroredfilesysobj:00001040:  (errcode_for_file_access(), 
-cacb: cdbmirroredfilesysobj:00001041:  errmsg("could not create relation file '%s', relation name '%s': %s", 
-cacb: cdbmirroredfilesysobj:00001042:  relpath(*relFileNode), 
-cacb: cdbmirroredfilesysobj:00001043:  relationName, 
-cacb: cdbmirroredfilesysobj:00001044:  strerror(primaryError)))); 
-cacb: cdbmirroredfilesysobj:00001180:  ereport(WARNING, 
-cacb: cdbmirroredfilesysobj:00001181:  (errcode_for_file_access(), 
-cacb: cdbmirroredfilesysobj:00001182:  errmsg("could not remove relation %u/%u/%u (segment file #%d): %s", 
-cacb: cdbmirroredfilesysobj:00001183:  relFileNode->spcNode, 
-cacb: cdbmirroredfilesysobj:00001184:  relFileNode->dbNode, 
-cacb: cdbmirroredfilesysobj:00001185:  relFileNode->relNode, 
-cacb: cdbmirroredfilesysobj:00001186:  segmentFileNum, 
-cacb: cdbmirroredfilesysobj:00001187:  strerror(primaryError)))); 
+cacb: cdbmirroredfilesysobj:00000269:  ereport(ERROR, 
+cacb: cdbmirroredfilesysobj:00000270:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+cacb: cdbmirroredfilesysobj:00000271:  errmsg("cannot CREATE FILESPACE in resync mode"), 
+cacb: cdbmirroredfilesysobj:00000272:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
+cacb: cdbmirroredfilesysobj:00000276:  ereport(ERROR, 
+cacb: cdbmirroredfilesysobj:00000277:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+cacb: cdbmirroredfilesysobj:00000278:  errmsg("cannot CREATE FILESPACE in change tracking mode"), 
+cacb: cdbmirroredfilesysobj:00000279:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
+cacb: cdbmirroredfilesysobj:00000324:  ereport(ERROR, 
+cacb: cdbmirroredfilesysobj:00000325:  (errcode_for_file_access(), 
+cacb: cdbmirroredfilesysobj:00000326:  errmsg("could not create filespace directory %s: %s", 
+cacb: cdbmirroredfilesysobj:00000327:  primaryFilespaceLocation, 
+cacb: cdbmirroredfilesysobj:00000328:  strerror(primaryError)))); 
+cacb: cdbmirroredfilesysobj:00000397:  ereport(ERROR, 
+cacb: cdbmirroredfilesysobj:00000398:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+cacb: cdbmirroredfilesysobj:00000399:  errmsg("cannot DROP FILESPACE in resync mode"), 
+cacb: cdbmirroredfilesysobj:00000400:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
+cacb: cdbmirroredfilesysobj:00000404:  ereport(ERROR, 
+cacb: cdbmirroredfilesysobj:00000405:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+cacb: cdbmirroredfilesysobj:00000406:  errmsg("cannot DROP FILESPACE in change tracking mode"), 
+cacb: cdbmirroredfilesysobj:00000407:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
+cacb: cdbmirroredfilesysobj:00000519:  ereport(ERROR, 
+cacb: cdbmirroredfilesysobj:00000520:  (errcode_for_file_access(), 
+cacb: cdbmirroredfilesysobj:00000521:  errmsg("could not create tablespace directory %u: %s", 
+cacb: cdbmirroredfilesysobj:00000522:  tablespaceDirNode->tablespace, 
+cacb: cdbmirroredfilesysobj:00000523:  strerror(primaryError)))); 
+cacb: cdbmirroredfilesysobj:00000652:  ereport(ERROR, 
+cacb: cdbmirroredfilesysobj:00000653:  (errcode_for_file_access(), 
+cacb: cdbmirroredfilesysobj:00000654:  errmsg("could not create database directory %s: %s", 
+cacb: cdbmirroredfilesysobj:00000655:  GetDatabasePath(dbDirNode->database, dbDirNode->tablespace), 
+cacb: cdbmirroredfilesysobj:00000656:  strerror(primaryError)))); 
+cacb: cdbmirroredfilesysobj:00000827:  ereport(ERROR, 
+cacb: cdbmirroredfilesysobj:00000828:  (errcode_for_file_access(), 
+cacb: cdbmirroredfilesysobj:00000829:  errmsg("could not create database directory %u/%u: %s", 
+cacb: cdbmirroredfilesysobj:00000830:  justInTimeDbDirNode->tablespace, 
+cacb: cdbmirroredfilesysobj:00000831:  justInTimeDbDirNode->database, 
+cacb: cdbmirroredfilesysobj:00000832:  strerror(primaryError)))); 
+cacb: cdbmirroredfilesysobj:00000853:  ereport(ERROR, 
+cacb: cdbmirroredfilesysobj:00000854:  (errcode_for_file_access(), 
+cacb: cdbmirroredfilesysobj:00000855:  errmsg("could not create just-in-time database directory %u/%u: %s", 
+cacb: cdbmirroredfilesysobj:00000856:  justInTimeDbDirNode->tablespace, 
+cacb: cdbmirroredfilesysobj:00000857:  justInTimeDbDirNode->database, 
+cacb: cdbmirroredfilesysobj:00000858:  strerror(primaryError)))); 
+cacb: cdbmirroredfilesysobj:00000966:  ereport(ERROR, 
+cacb: cdbmirroredfilesysobj:00000967:  (errcode_for_file_access(), 
+cacb: cdbmirroredfilesysobj:00000968:  errmsg("could not create relation file '%s', relation name '%s': %s", 
+cacb: cdbmirroredfilesysobj:00000969:  relpath(smgrOpen->smgr_rnode), 
+cacb: cdbmirroredfilesysobj:00000970:  relationName, 
+cacb: cdbmirroredfilesysobj:00000971:  strerror(primaryError)))); 
+cacb: cdbmirroredfilesysobj:00001088:  ereport(ERROR, 
+cacb: cdbmirroredfilesysobj:00001089:  (errcode_for_file_access(), 
+cacb: cdbmirroredfilesysobj:00001090:  errmsg("could not create relation file '%s', relation name '%s': %s", 
+cacb: cdbmirroredfilesysobj:00001091:  relpath(*relFileNode), 
+cacb: cdbmirroredfilesysobj:00001092:  relationName, 
+cacb: cdbmirroredfilesysobj:00001093:  strerror(primaryError)))); 
+cacb: cdbmirroredfilesysobj:00001229:  ereport(WARNING, 
+cacb: cdbmirroredfilesysobj:00001230:  (errcode_for_file_access(), 
+cacb: cdbmirroredfilesysobj:00001231:  errmsg("could not remove relation %u/%u/%u (segment file #%d): %s", 
+cacb: cdbmirroredfilesysobj:00001232:  relFileNode->spcNode, 
+cacb: cdbmirroredfilesysobj:00001233:  relFileNode->dbNode, 
+cacb: cdbmirroredfilesysobj:00001234:  relFileNode->relNode, 
+cacb: cdbmirroredfilesysobj:00001235:  segmentFileNum, 
+cacb: cdbmirroredfilesysobj:00001236:  strerror(primaryError)))); 
 aaaaa GP_IGNORE: cabj: cdbmirroredflatfile - ./backend/cdb/cdbmirroredflatfile.c
 cabj: cdbmirroredflatfile:00000116:  ereport(ERROR, 
 cabj: cdbmirroredflatfile:00000117:  (errcode_for_file_access(), 
@@ -3170,40 +3182,40 @@ aaaaa GP_IGNORE: caba: cdbrelsize - ./backend/cdb/cdbrelsize.c
 caba: cdbrelsize:00000102:  ereport(WARNING, (errmsg("cdbRelSize error (gathered %d results from cmd '%s')", resultCount, buffer.data), 
 caba: cdbrelsize:00000103:  errdetail("%s", errbuf.data))); 
 aaaaa GP_IGNORE: cada: cdbresynchronizechangetracking - ./backend/cdb/cdbresynchronizechangetracking.c
-cada: cdbresynchronizechangetracking:00001301:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cada: cdbresynchronizechangetracking:00001302:  errmsg("Unable to obtain change tracking information from segment database."), 
-cada: cdbresynchronizechangetracking:00001303:  errdetail("SPI_connect failed in ChangeTracking_GetIncrementalChangeList()"))); 
-cada: cdbresynchronizechangetracking:00001595:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cada: cdbresynchronizechangetracking:00001596:  errmsg("Unable to obtain change tracking information from segment database."), 
-cada: cdbresynchronizechangetracking:00001597:  errdetail("SPI_connect failed in ChangeTracking_GetChanges()"))); 
-cada: cdbresynchronizechangetracking:00001861:  ereport(ERROR, 
-cada: cdbresynchronizechangetracking:00001862:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00001863:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
-cada: cdbresynchronizechangetracking:00001864:  fn1, fn2))); 
-cada: cdbresynchronizechangetracking:00002092:  ereport(WARNING, 
-cada: cdbresynchronizechangetracking:00002093:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00002094:  errmsg("ERROR(filerep): unable to read change tracking meta file \"%s\", " 
-cada: cdbresynchronizechangetracking:00002095:  "change tracking disabled : %m", 
-cada: cdbresynchronizechangetracking:00002096:  path), 
-cada: cdbresynchronizechangetracking:00002097:  errSendAlert(true))); 
-cada: cdbresynchronizechangetracking:00002188:  ereport(WARNING, 
-cada: cdbresynchronizechangetracking:00002189:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00002190:  errmsg("write error for change tracking meta file in " 
-cada: cdbresynchronizechangetracking:00002191:  "ChangeTracking_MarkFullResyncLockAcquired. " 
-cada: cdbresynchronizechangetracking:00002192:  "Change Tracking disabled : %m"), 
-cada: cdbresynchronizechangetracking:00002193:  errSendAlert(true))); 
-cada: cdbresynchronizechangetracking:00002451:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cada: cdbresynchronizechangetracking:00002452:  errmsg("Unable to obtain change tracking information from segment database."), 
-cada: cdbresynchronizechangetracking:00002453:  errdetail("SPI_connect failed in ChangeTracking_GetTotalBlocksToSync()"))); 
-cada: cdbresynchronizechangetracking:00002753:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cada: cdbresynchronizechangetracking:00002754:  errmsg("Unable to obtain change tracking information from segment database."), 
-cada: cdbresynchronizechangetracking:00002755:  errdetail("SPI_connect failed in ChangeTracking_CreateCompactLogFromFull()"))); 
-cada: cdbresynchronizechangetracking:00002880:  ereport(WARNING, 
-cada: cdbresynchronizechangetracking:00002881:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00002882:  errmsg("write error for change tracking %s file, " 
-cada: cdbresynchronizechangetracking:00002883:  "change tracking disabled : %m", 
-cada: cdbresynchronizechangetracking:00002884:  ChangeTracking_FtypeToString(ft)), 
-cada: cdbresynchronizechangetracking:00002885:  errSendAlert(true))); 
+cada: cdbresynchronizechangetracking:00001299:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cada: cdbresynchronizechangetracking:00001300:  errmsg("Unable to obtain change tracking information from segment database."), 
+cada: cdbresynchronizechangetracking:00001301:  errdetail("SPI_connect failed in ChangeTracking_GetIncrementalChangeList()"))); 
+cada: cdbresynchronizechangetracking:00001585:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cada: cdbresynchronizechangetracking:00001586:  errmsg("Unable to obtain change tracking information from segment database."), 
+cada: cdbresynchronizechangetracking:00001587:  errdetail("SPI_connect failed in ChangeTracking_GetChanges()"))); 
+cada: cdbresynchronizechangetracking:00001851:  ereport(ERROR, 
+cada: cdbresynchronizechangetracking:00001852:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00001853:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
+cada: cdbresynchronizechangetracking:00001854:  fn1, fn2))); 
+cada: cdbresynchronizechangetracking:00002082:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00002083:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00002084:  errmsg("ERROR(filerep): unable to read change tracking meta file \"%s\", " 
+cada: cdbresynchronizechangetracking:00002085:  "change tracking disabled : %m", 
+cada: cdbresynchronizechangetracking:00002086:  path), 
+cada: cdbresynchronizechangetracking:00002087:  errSendAlert(true))); 
+cada: cdbresynchronizechangetracking:00002178:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00002179:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00002180:  errmsg("write error for change tracking meta file in " 
+cada: cdbresynchronizechangetracking:00002181:  "ChangeTracking_MarkFullResyncLockAcquired. " 
+cada: cdbresynchronizechangetracking:00002182:  "Change Tracking disabled : %m"), 
+cada: cdbresynchronizechangetracking:00002183:  errSendAlert(true))); 
+cada: cdbresynchronizechangetracking:00002439:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cada: cdbresynchronizechangetracking:00002440:  errmsg("Unable to obtain change tracking information from segment database."), 
+cada: cdbresynchronizechangetracking:00002441:  errdetail("SPI_connect failed in ChangeTracking_GetTotalBlocksToSync()"))); 
+cada: cdbresynchronizechangetracking:00002739:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cada: cdbresynchronizechangetracking:00002740:  errmsg("Unable to obtain change tracking information from segment database."), 
+cada: cdbresynchronizechangetracking:00002741:  errdetail("SPI_connect failed in ChangeTracking_CreateCompactLogFromFull()"))); 
+cada: cdbresynchronizechangetracking:00002866:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00002867:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00002868:  errmsg("write error for change tracking %s file, " 
+cada: cdbresynchronizechangetracking:00002869:  "change tracking disabled : %m", 
+cada: cdbresynchronizechangetracking:00002870:  ChangeTracking_FtypeToString(ft)), 
+cada: cdbresynchronizechangetracking:00002871:  errSendAlert(true))); 
 aaaaa GP_IGNORE: caai: cdbsetop - ./backend/cdb/cdbsetop.c
 caai: cdbsetop:00000152:  ereport(ERROR, ( 
 caai: cdbsetop:00000153:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
