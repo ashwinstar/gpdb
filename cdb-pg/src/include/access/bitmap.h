@@ -481,8 +481,8 @@ typedef struct BMBatchWords
 	uint32	maxNumOfWords;		/* maximum number of words in this list */
 
 	/* Number of uncompressed words that have been read already */
-	uint32	nwordsread;			
-	uint32	nextread;			/* next word to read */
+	uint64	nwordsread;			
+	uint64	nextread;			/* next word to read */
 	uint64	firstTid;			/* the TID we're up to */
 	uint32	startNo;			/* position we're at in cwords */
 	uint32	nwords;				/* the number of bitmap words */

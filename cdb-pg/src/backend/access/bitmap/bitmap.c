@@ -197,7 +197,7 @@ bmgetmulti(PG_FUNCTION_ARGS)
 	scanPos = ((BMScanOpaque)scan->opaque)->bm_currPos;
 	scanPos->bm_result.nextTid = 1;
 
-	if(res)
+	if (res)
 	{
 		BMScanPosition  sp;
 		IndexScanDesc copy = copy_scan_desc(scan);
@@ -703,7 +703,15 @@ pull_stream(StreamNode *self, PagetableEntry *e)
 			}
 		}
 	}
+
+	/*
+	 * Set the next block number. We want to skip those blocks that do not
+	 * contain possible query results, since in AO index cases, this range
+	 * can be very large.
+	 */
 	is->nextblock = e->blockno + 1;
+	if (scanPos->bm_result.nextTid / BM_MAX_TUPLES_PER_PAGE > e->blockno + 1)
+		is->nextblock = scanPos->bm_result.nextTid / BM_MAX_TUPLES_PER_PAGE;
 	if (so->entry == NULL)
 		so->entry = (PagetableEntry *) palloc(sizeof(PagetableEntry));
 	memcpy(so->entry, e, sizeof(PagetableEntry));
@@ -851,6 +859,7 @@ restart:
 	 * XXX: We assume that BM_HRL_WORD_SIZE is not greater than
 	 * TBM_BITS_PER_BITMAPWORD for tidbitmap.
 	 */
+	Assert(BM_HRL_WORD_SIZE <= TBM_BITS_PER_BITMAPWORD);
 	Assert(nhrlwords >= 1); 
 	Assert((result->nextTid - start) % BM_HRL_WORD_SIZE == 0);
 

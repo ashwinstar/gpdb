@@ -19,7 +19,7 @@
 #include "access/heapam.h"
 #include "access/reloptions.h"
 
-static void _bitmap_findnextword(BMBatchWords* words, uint32 nextReadNo);
+static void _bitmap_findnextword(BMBatchWords* words, uint64 nextReadNo);
 static void _bitmap_resetWord(BMBatchWords *words, uint32 prevStartNo);
 static uint8 _bitmap_find_bitset(BM_HRL_WORD word, uint8 lastPos);
 
@@ -373,8 +373,8 @@ _bitmap_intersect(BMBatchWords **batches, uint32 numBatches,
 {
 	bool done = false;
 	uint32	*prevStartNos;
-	uint32	nextReadNo;
-	uint32	batchNo;
+	uint64	nextReadNo;
+	uint64	batchNo;
 
 	Assert(numBatches > 0);
 
@@ -501,6 +501,64 @@ _bitmap_intersect(BMBatchWords **batches, uint32 numBatches,
 #endif /* NOT_USED */
 
 /*
+ * Fast forward to the next read position by skipping the common compressed
+ * zeros that appear in all batches. These skipped zeros are also copied into
+ * the result words.
+ */
+static uint64
+fast_forward(uint32 nbatches, BMBatchWords **batches, BMBatchWords *result)
+{
+	int i;
+	uint64 min_tid = ~0;
+	uint64 fast_forward_words = 0;
+
+	Assert(result != NULL);
+	Assert(nbatches == 0 || batches != NULL);
+
+	for (i = 0; i < nbatches; i++)
+	{
+		BM_HRL_WORD word = batches[i]->cwords[batches[i]->startNo];
+
+		/* if we find a matching tid in one of the batches, nothing to do */
+		if (CUR_WORD_IS_FILL(batches[i]) && GET_FILL_BIT(word) == 1)
+			return batches[0]->nextread;
+		else if (!CUR_WORD_IS_FILL(batches[i]))
+			return batches[0]->nextread;
+		else if (CUR_WORD_IS_FILL(batches[i]) && GET_FILL_BIT(word) == 0)
+		{
+			uint64 batch_tid = batches[i]->firstTid +
+				(FILL_LENGTH(word) * BM_HRL_WORD_SIZE);
+
+			/* adjust down */
+			if (batch_tid < min_tid)
+			{
+				min_tid = batch_tid;
+				fast_forward_words = FILL_LENGTH(word);
+			}
+		}
+	}
+	if (fast_forward_words)
+	{
+		uint32 offset;
+		
+		for (i = 0; i < nbatches; i++)
+			batches[i]->nextread = batches[i]->nwordsread + 
+				fast_forward_words + 1;
+
+		/*
+		 * Copy these fast-forwarded words to
+		 * the result.
+		 */
+		offset = result->nwords/BM_HRL_WORD_SIZE;
+		result->hwords[offset] |= WORDNO_GET_HEADER_BIT(result->nwords);
+		result->cwords[result->nwords] = fast_forward_words;
+		result->nwords++;
+	}
+
+	return batches[0]->nextread;
+}
+
+/*
  * _bitmap_union() -- union 'numBatches' bitmaps
  *
  * All bitmap words are HRL compressed. The result bitmap words are also
@@ -511,8 +569,8 @@ _bitmap_union(BMBatchWords **batches, uint32 numBatches, BMBatchWords *result)
 {
 	bool 		done = false;
 	uint32 	   *prevstarts;
-	uint32		nextReadNo;
-	uint32		batchNo;
+	uint64		nextReadNo;
+	uint64		batchNo;
 
 	Assert ((int)numBatches >= 0);
 
@@ -523,10 +581,10 @@ _bitmap_union(BMBatchWords **batches, uint32 numBatches, BMBatchWords *result)
 	prevstarts = (uint32 *)palloc0(numBatches * sizeof(uint32));
 
 	/* 
-	 * Each batch should have the same next read offset, so take 
-	 * the first one
+	 * Compute the next read offset. We fast forward compressed
+	 * zero words when possible.
 	 */
-	nextReadNo = batches[0]->nextread;
+	nextReadNo = fast_forward(numBatches, batches, result);
 
 	while (!done &&	result->nwords < result->maxNumOfWords)
 	{
@@ -633,7 +691,7 @@ _bitmap_union(BMBatchWords **batches, uint32 numBatches, BMBatchWords *result)
  *        	                'nextReadNo' in an uncompressed format.
  */
 static void
-_bitmap_findnextword(BMBatchWords *words, uint32 nextReadNo)
+_bitmap_findnextword(BMBatchWords *words, uint64 nextReadNo)
 {
 	/* 
      * 'words->nwordsread' defines how many un-compressed words

@@ -1883,14 +1883,17 @@ appendonly_fetch(
 				 */
 				if (rowNum < aoFetchDesc->currentBlock.firstRowNum)
 				{
-#ifdef USE_ASSERT_CHECKING
-					ereport(WARNING,
-							(errmsg("Append-only fetch requires scan prior blocks: "
-									"segmentFileNum %d, rowNum " INT64_FORMAT ", "
-									"currentBlock.firstRowNum " INT64_FORMAT,
-									segmentFileNum, rowNum,
-									aoFetchDesc->currentBlock.firstRowNum)));
-#endif
+					/*
+					 * XXX This could happen when an insert is cancelled. In that case, we
+					 * fetched the next block that has a higher firstRowNum when we
+					 * try to find the first cancelled row. So for the second or any
+					 * cancelled row, we enter here, and re-read the previous block.
+					 * This seems inefficient.
+					 *
+					 * We may be able to fix this by adding an entry to the block
+					 * directory for those cancelled inserts.
+					 */
+
 					/*
 					 * Set scan range to prior blocks.
 					 */

@@ -369,7 +369,7 @@ _bitmap_findbitmaps(IndexScanDesc scan, ScanDirection dir  __attribute__((unused
 	so = (BMScanOpaque) scan->opaque;
 
 	/* allocate space and initialize values for so->bm_currPos */
-	if(so->bm_currPos == NULL)
+	if (so->bm_currPos == NULL)
 		so->bm_currPos = (BMScanPosition) palloc0(sizeof(BMScanPositionData));
 
 	scanPos = so->bm_currPos;
@@ -382,12 +382,10 @@ _bitmap_findbitmaps(IndexScanDesc scan, ScanDirection dir  __attribute__((unused
 	{
 		if (scan->keyData[keyNo].sk_flags & SK_ISNULL)
 		{
-/*			scanPos->posvecs = (BMVector)palloc0(sizeof(BMVectorData));
-			init_scanpos(scan, scanPos->posvecs, lovBlock, lovOffset);
-			scanPos->nvec = 1;
-			*/
-			scanPos->done = true;		
-	
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("bitmap index scan key %d is null",
+							keyNo)));
 			return;
 		}
 	}
@@ -395,21 +393,6 @@ _bitmap_findbitmaps(IndexScanDesc scan, ScanDirection dir  __attribute__((unused
 	metabuf = _bitmap_getbuf(scan->indexRelation, BM_METAPAGE, BM_READ);
 	metapage = _bitmap_get_metapage_data(scan->indexRelation, metabuf);
 
-	/*
-	 * If the values for these keys are all NULL, the bitmap vector
-	 * is the first LOV item in the LOV pages.
-	 */
-	if (0)
-	{
-		lovBlock = BM_LOV_STARTPAGE;
-		lovOffset = 1;
-
-		scanPos->posvecs = (BMVector)palloc0(sizeof(BMVectorData));
-
-		init_scanpos(scan, scanPos->posvecs, lovBlock, lovOffset);
-		scanPos->nvec = 1;
-	}
-	else
 	{
 		Relation		lovHeap, lovIndex;
 		TupleDesc		indexTupDesc;
