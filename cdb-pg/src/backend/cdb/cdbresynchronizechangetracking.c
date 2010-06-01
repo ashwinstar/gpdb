@@ -18,6 +18,7 @@
 #include "commands/sequence.h"
 #include "executor/spi.h"
 #include "postmaster/primary_mirror_mode.h"
+#include "postmaster/ftsprobe.h"
 #include "storage/fd.h"
 #include "storage/lock.h"
 #include "storage/relfilenode.h"
@@ -1290,11 +1291,8 @@ ChangeTracking_GetIncrementalChangeList(void)
 
 		/* must be in a transaction in order to use SPI */
 		StartTransactionCommand();
-		
 		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
-		
-		SetSessionUserId(BOOTSTRAP_SUPERUSERID,true); 
-
+		find_superuser_name(true);
 
 		if (SPI_OK_CONNECT != SPI_connect())
 		{
@@ -1579,16 +1577,8 @@ ChangeTrackingResult* ChangeTracking_GetChanges(ChangeTrackingRequest *request)
 	{
 		/* must be in a transaction in order to use SPI */
 		StartTransactionCommand();
-
 		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
-
-		/* 
-		 * TODO:
-		 * It's possible that the bootstrap superuser has been removed from the
-		 * system. ftsprobe has a routine for determining a valid superuser by
-		 * scanning pg_authid.
-		*/
-		SetSessionUserId(BOOTSTRAP_SUPERUSERID, true);
+		find_superuser_name(true);
 
 		if (SPI_OK_CONNECT != SPI_connect())
 		{
@@ -2441,10 +2431,8 @@ int64 ChangeTracking_GetTotalBlocksToSync(void)
 
 		/* must be in a transaction in order to use SPI */
 		StartTransactionCommand();
-
 		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
-		
-		SetSessionUserId(BOOTSTRAP_SUPERUSERID, true); /* TODO: HACK!!! find a solution */
+		find_superuser_name(true);
 
 		if (SPI_OK_CONNECT != SPI_connect())
 		{
@@ -2743,10 +2731,8 @@ int ChangeTracking_CompactLogFile(CTFType source, CTFType dest)
 
 		/* must be in a transaction in order to use SPI */
 		StartTransactionCommand();
-
 		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
-
-		SetSessionUserId(BOOTSTRAP_SUPERUSERID, true); /* TODO: HACK!!! find a solution */
+		find_superuser_name(true);
 
 		if (SPI_OK_CONNECT != SPI_connect())
 		{
