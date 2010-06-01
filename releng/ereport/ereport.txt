@@ -4617,108 +4617,110 @@ faaj: filespace:00000110:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 faaj: filespace:00000111:  errmsg("permission denied to create filespace \"%s\"", 
 faaj: filespace:00000112:  stmt->filespacename), 
 faaj: filespace:00000113:  errhint("Must be superuser to create a filespace."))); 
-faaj: filespace:00000126:  ereport(ERROR, 
-faaj: filespace:00000127:  (errcode(ERRCODE_RESERVED_NAME), 
-faaj: filespace:00000128:  errmsg("unacceptable filespace name \"%s\"", 
-faaj: filespace:00000129:  stmt->filespacename), 
-faaj: filespace:00000130:  errdetail("The prefix \"pg_\" is reserved for system filespaces."))); 
-faaj: filespace:00000143:  ereport(ERROR, 
-faaj: filespace:00000144:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-faaj: filespace:00000145:  errmsg("filespace \"%s\" already exists", 
-faaj: filespace:00000146:  stmt->filespacename))); 
-faaj: filespace:00000204:  ereport(ERROR, 
-faaj: filespace:00000205:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
-faaj: filespace:00000206:  errmsg("multiple filespace locations specified " 
-faaj: filespace:00000207:  "for dbid %d", dbid))); 
-faaj: filespace:00000232:  ereport(ERROR, 
-faaj: filespace:00000233:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
-faaj: filespace:00000234:  errmsg("missing filespace location for dbid %d", 
-faaj: filespace:00000235:  dbid))); 
-faaj: filespace:00000252:  ereport(ERROR, 
-faaj: filespace:00000253:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
-faaj: filespace:00000254:  errmsg("missing filespace location for dbid %d", 
-faaj: filespace:00000255:  dbid))); 
-faaj: filespace:00000277:  ereport(ERROR, 
-faaj: filespace:00000278:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
-faaj: filespace:00000279:  errmsg("filespace location specified for non-existent " 
-faaj: filespace:00000280:  "dbid %d", segElem->dbid))); 
-faaj: filespace:00000502:  ereport(ERROR, 
-faaj: filespace:00000503:  (errcode(ERRCODE_SYNTAX_ERROR), 
-faaj: filespace:00000504:  errmsg("filespace name may not be qualified"))); 
-faaj: filespace:00000509:  ereport(ERROR, 
-faaj: filespace:00000510:  (errcode(ERRCODE_SYNTAX_ERROR), 
-faaj: filespace:00000511:  errmsg("syntax at or near \"cascade\""))); 
-faaj: filespace:00000529:  ereport(NOTICE, 
-faaj: filespace:00000530:  (errmsg("filespace \"%s\" does not exist, skipping", 
-faaj: filespace:00000531:  fsname))); 
-faaj: filespace:00000536:  ereport(ERROR, 
-faaj: filespace:00000537:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-faaj: filespace:00000538:  errmsg("filespace \"%s\" does not exist", fsname))); 
-faaj: filespace:00000548:  ereport(ERROR, 
-faaj: filespace:00000549:  (errmsg("cannot drop filespace %s because it is required " 
-faaj: filespace:00000550:  "by the database system", fsname))); 
-faaj: filespace:00000681:  ereport(ERROR, 
-faaj: filespace:00000682:  (errcode(ERRCODE_SYNTAX_ERROR), 
-faaj: filespace:00000683:  errmsg("filespace name may not be qualified"))); 
-faaj: filespace:00000695:  ereport(ERROR, 
-faaj: filespace:00000696:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-faaj: filespace:00000697:  errmsg("filespace \"%s\" does not exist", fsname))); 
-faaj: filespace:00000703:  ereport(ERROR, 
-faaj: filespace:00000704:  (errcode(ERRCODE_RESERVED_NAME), 
-faaj: filespace:00000705:  errmsg("permission denied: \"%s\" is a system filespace", 
-faaj: filespace:00000706:  fsname))); 
-faaj: filespace:00000790:  ereport(ERROR, 
-faaj: filespace:00000791:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-faaj: filespace:00000792:  errmsg("filespace \"%s\" does not exist", 
-faaj: filespace:00000793:  oldname))); 
-faaj: filespace:00000800:  ereport(ERROR, 
-faaj: filespace:00000801:  (errcode(ERRCODE_RESERVED_NAME), 
-faaj: filespace:00000802:  errmsg("permission denied: \"%s\" is a system filespace", 
-faaj: filespace:00000803:  oldname))); 
-faaj: filespace:00000812:  ereport(ERROR, 
-faaj: filespace:00000813:  (errcode(ERRCODE_RESERVED_NAME), 
-faaj: filespace:00000814:  errmsg("unacceptable filespace name \"%s\"", newname), 
-faaj: filespace:00000815:  errdetail("The prefix \"pg_\" is reserved for system filespaces."))); 
-faaj: filespace:00000824:  ereport(ERROR, 
-faaj: filespace:00000825:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-faaj: filespace:00000826:  errmsg("filespace \"%s\" already exists", newname))); 
-faaj: filespace:00000996:  ereport(ERROR, 
-faaj: filespace:00000997:  (errcode(ERRCODE_INVALID_NAME), 
-faaj: filespace:00000998:  errmsg("filespace location \"%s\" " 
-faaj: filespace:00000999:  "cannot contain single quotes", path))); 
-faaj: filespace:00001007:  ereport(ERROR, 
-faaj: filespace:00001008:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-faaj: filespace:00001009:  errmsg("filespace location \"%s\" " 
-faaj: filespace:00001010:  "must be an absolute path", path))); 
-faaj: filespace:00001016:  ereport(ERROR, 
-faaj: filespace:00001017:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-faaj: filespace:00001018:  errmsg("filespace location \"%s\" is too long", 
-faaj: filespace:00001019:  path), 
-faaj: filespace:00001020:  errhint("maximum length %d characters", 
-faaj: filespace:00001021:  MAX_FILESPACE_PATH))); 
-faaj: filespace:00001063:  ereport(ERROR, 
-faaj: filespace:00001064:  (errcode_for_file_access(), 
-faaj: filespace:00001065:  errmsg("%s: File exists", path))); 
-faaj: filespace:00001074:  ereport(ERROR, 
-faaj: filespace:00001075:  (errcode_for_file_access(), 
-faaj: filespace:00001076:  errmsg("%s: No such file or directory", 
-faaj: filespace:00001077:  parentdir))); 
-faaj: filespace:00001081:  ereport(ERROR, 
-faaj: filespace:00001082:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-faaj: filespace:00001083:  errmsg("%s: Not a directory", parentdir))); 
-faaj: filespace:00001097:  ereport(ERROR, 
-faaj: filespace:00001098:  (errcode_for_file_access(), 
-faaj: filespace:00001099:  errmsg("%s: Permission denied", path))); 
-faaj: filespace:00001158:  ereport(ERROR, 
-faaj: filespace:00001159:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-faaj: filespace:00001160:  errmsg("duplicate filespace locations: " 
-faaj: filespace:00001161:  "(%d: '%s', %d: '%s')", 
-faaj: filespace:00001162:  fse2->dbid, fse2->location, 
-faaj: filespace:00001163:  fse1->dbid, fse1->location))); 
-faaj: filespace:00001197:  ereport(ERROR, 
-faaj: filespace:00001198:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-faaj: filespace:00001199:  errmsg("filespace \"%s\" is not empty", 
-faaj: filespace:00001200:  get_filespace_name(fsoid)))); 
+faaj: filespace:00000127:  ereport(ERROR, 
+faaj: filespace:00000128:  (errcode(ERRCODE_RESERVED_NAME), 
+faaj: filespace:00000129:  errmsg("unacceptable filespace name \"%s\"", 
+faaj: filespace:00000130:  stmt->filespacename), 
+faaj: filespace:00000131:  errdetail("The prefix \"%s\" is reserved for system filespaces.", 
+faaj: filespace:00000132:  GetReservedPrefix(stmt->filespacename)))); 
+faaj: filespace:00000146:  ereport(ERROR, 
+faaj: filespace:00000147:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+faaj: filespace:00000148:  errmsg("filespace \"%s\" already exists", 
+faaj: filespace:00000149:  stmt->filespacename))); 
+faaj: filespace:00000207:  ereport(ERROR, 
+faaj: filespace:00000208:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+faaj: filespace:00000209:  errmsg("multiple filespace locations specified " 
+faaj: filespace:00000210:  "for dbid %d", dbid))); 
+faaj: filespace:00000235:  ereport(ERROR, 
+faaj: filespace:00000236:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+faaj: filespace:00000237:  errmsg("missing filespace location for dbid %d", 
+faaj: filespace:00000238:  dbid))); 
+faaj: filespace:00000255:  ereport(ERROR, 
+faaj: filespace:00000256:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+faaj: filespace:00000257:  errmsg("missing filespace location for dbid %d", 
+faaj: filespace:00000258:  dbid))); 
+faaj: filespace:00000280:  ereport(ERROR, 
+faaj: filespace:00000281:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+faaj: filespace:00000282:  errmsg("filespace location specified for non-existent " 
+faaj: filespace:00000283:  "dbid %d", segElem->dbid))); 
+faaj: filespace:00000505:  ereport(ERROR, 
+faaj: filespace:00000506:  (errcode(ERRCODE_SYNTAX_ERROR), 
+faaj: filespace:00000507:  errmsg("filespace name may not be qualified"))); 
+faaj: filespace:00000512:  ereport(ERROR, 
+faaj: filespace:00000513:  (errcode(ERRCODE_SYNTAX_ERROR), 
+faaj: filespace:00000514:  errmsg("syntax at or near \"cascade\""))); 
+faaj: filespace:00000532:  ereport(NOTICE, 
+faaj: filespace:00000533:  (errmsg("filespace \"%s\" does not exist, skipping", 
+faaj: filespace:00000534:  fsname))); 
+faaj: filespace:00000539:  ereport(ERROR, 
+faaj: filespace:00000540:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+faaj: filespace:00000541:  errmsg("filespace \"%s\" does not exist", fsname))); 
+faaj: filespace:00000551:  ereport(ERROR, 
+faaj: filespace:00000552:  (errmsg("cannot drop filespace %s because it is required " 
+faaj: filespace:00000553:  "by the database system", fsname))); 
+faaj: filespace:00000684:  ereport(ERROR, 
+faaj: filespace:00000685:  (errcode(ERRCODE_SYNTAX_ERROR), 
+faaj: filespace:00000686:  errmsg("filespace name may not be qualified"))); 
+faaj: filespace:00000698:  ereport(ERROR, 
+faaj: filespace:00000699:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+faaj: filespace:00000700:  errmsg("filespace \"%s\" does not exist", fsname))); 
+faaj: filespace:00000706:  ereport(ERROR, 
+faaj: filespace:00000707:  (errcode(ERRCODE_RESERVED_NAME), 
+faaj: filespace:00000708:  errmsg("permission denied: \"%s\" is a system filespace", 
+faaj: filespace:00000709:  fsname))); 
+faaj: filespace:00000793:  ereport(ERROR, 
+faaj: filespace:00000794:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+faaj: filespace:00000795:  errmsg("filespace \"%s\" does not exist", 
+faaj: filespace:00000796:  oldname))); 
+faaj: filespace:00000803:  ereport(ERROR, 
+faaj: filespace:00000804:  (errcode(ERRCODE_RESERVED_NAME), 
+faaj: filespace:00000805:  errmsg("permission denied: \"%s\" is a system filespace", 
+faaj: filespace:00000806:  oldname))); 
+faaj: filespace:00000816:  ereport(ERROR, 
+faaj: filespace:00000817:  (errcode(ERRCODE_RESERVED_NAME), 
+faaj: filespace:00000818:  errmsg("unacceptable filespace name \"%s\"", newname), 
+faaj: filespace:00000819:  errdetail("The prefix \"%s\" is reserved for system filespaces.", 
+faaj: filespace:00000820:  GetReservedPrefix(newname)))); 
+faaj: filespace:00000830:  ereport(ERROR, 
+faaj: filespace:00000831:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+faaj: filespace:00000832:  errmsg("filespace \"%s\" already exists", newname))); 
+faaj: filespace:00001002:  ereport(ERROR, 
+faaj: filespace:00001003:  (errcode(ERRCODE_INVALID_NAME), 
+faaj: filespace:00001004:  errmsg("filespace location \"%s\" " 
+faaj: filespace:00001005:  "cannot contain single quotes", path))); 
+faaj: filespace:00001013:  ereport(ERROR, 
+faaj: filespace:00001014:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+faaj: filespace:00001015:  errmsg("filespace location \"%s\" " 
+faaj: filespace:00001016:  "must be an absolute path", path))); 
+faaj: filespace:00001022:  ereport(ERROR, 
+faaj: filespace:00001023:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+faaj: filespace:00001024:  errmsg("filespace location \"%s\" is too long", 
+faaj: filespace:00001025:  path), 
+faaj: filespace:00001026:  errhint("maximum length %d characters", 
+faaj: filespace:00001027:  MAX_FILESPACE_PATH))); 
+faaj: filespace:00001069:  ereport(ERROR, 
+faaj: filespace:00001070:  (errcode_for_file_access(), 
+faaj: filespace:00001071:  errmsg("%s: File exists", path))); 
+faaj: filespace:00001080:  ereport(ERROR, 
+faaj: filespace:00001081:  (errcode_for_file_access(), 
+faaj: filespace:00001082:  errmsg("%s: No such file or directory", 
+faaj: filespace:00001083:  parentdir))); 
+faaj: filespace:00001087:  ereport(ERROR, 
+faaj: filespace:00001088:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+faaj: filespace:00001089:  errmsg("%s: Not a directory", parentdir))); 
+faaj: filespace:00001103:  ereport(ERROR, 
+faaj: filespace:00001104:  (errcode_for_file_access(), 
+faaj: filespace:00001105:  errmsg("%s: Permission denied", path))); 
+faaj: filespace:00001164:  ereport(ERROR, 
+faaj: filespace:00001165:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+faaj: filespace:00001166:  errmsg("duplicate filespace locations: " 
+faaj: filespace:00001167:  "(%d: '%s', %d: '%s')", 
+faaj: filespace:00001168:  fse2->dbid, fse2->location, 
+faaj: filespace:00001169:  fse1->dbid, fse1->location))); 
+faaj: filespace:00001203:  ereport(ERROR, 
+faaj: filespace:00001204:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+faaj: filespace:00001205:  errmsg("filespace \"%s\" is not empty", 
+faaj: filespace:00001206:  get_filespace_name(fsoid)))); 
 aaaaa GP_IGNORE: fabb: foreigncmds - ./backend/commands/foreigncmds.c
 fabb: foreigncmds:00000134:  ereport(ERROR, 
 fabb: foreigncmds:00000135:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
@@ -5614,37 +5616,47 @@ qaaf: queue:00001463:  ereport(WARNING,
 qaaf: queue:00001464:  (errmsg("resource scheduling is disabled"), 
 qaaf: queue:00001465:  errhint("To enable set resource_scheduler=on"))); 
 aaaaa GP_IGNORE: saba: schemacmds - ./backend/commands/schemacmds.c
-saba: schemacmds:00000086:  ereport(ERROR, 
-saba: schemacmds:00000087:  (errcode(ERRCODE_RESERVED_NAME), 
-saba: schemacmds:00000088:  errmsg("unacceptable schema name \"%s\"", schemaName), 
-saba: schemacmds:00000089:  errdetail("The prefix \"pg_\" is reserved for system schemas."))); 
-saba: schemacmds:00000117:  * Waits for QEs to finish. Exits via ereport(ERROR,...) if error. 
-saba: schemacmds:00000118:  */ 
-saba: schemacmds:00000119:  CdbDispatchUtilityStatement((Node *)stmt, "CreateSchemaCommand"); 
-saba: schemacmds:00000203:  ereport(ERROR, 
-saba: schemacmds:00000204:  (errcode(ERRCODE_SYNTAX_ERROR), 
-saba: schemacmds:00000205:  errmsg("schema name may not be qualified"))); 
-saba: schemacmds:00000215:  ereport(ERROR, 
-saba: schemacmds:00000216:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
-saba: schemacmds:00000217:  errmsg("schema \"%s\" does not exist", namespaceName), 
-saba: schemacmds:00000218:  errOmitLocation(true))); 
-saba: schemacmds:00000223:  ereport(NOTICE, 
-saba: schemacmds:00000224:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
-saba: schemacmds:00000225:  errmsg("schema \"%s\" does not exist, skipping", 
-saba: schemacmds:00000226:  namespaceName))); 
-saba: schemacmds:00000297:  ereport(ERROR, 
-saba: schemacmds:00000298:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
-saba: schemacmds:00000299:  errmsg("schema \"%s\" does not exist", oldname))); 
-saba: schemacmds:00000306:  ereport(ERROR, 
-saba: schemacmds:00000307:  (errcode(ERRCODE_DUPLICATE_SCHEMA), 
-saba: schemacmds:00000308:  errmsg("schema \"%s\" already exists", newname))); 
-saba: schemacmds:00000323:  ereport(ERROR, 
-saba: schemacmds:00000324:  (errcode(ERRCODE_RESERVED_NAME), 
-saba: schemacmds:00000325:  errmsg("unacceptable schema name \"%s\"", newname), 
-saba: schemacmds:00000326:  errdetail("The prefix \"pg_\" is reserved for system schemas."))); 
-saba: schemacmds:00000384:  ereport(ERROR, 
-saba: schemacmds:00000385:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
-saba: schemacmds:00000386:  errmsg("schema \"%s\" does not exist", name))); 
+saba: schemacmds:00000087:  ereport(ERROR, 
+saba: schemacmds:00000088:  (errcode(ERRCODE_RESERVED_NAME), 
+saba: schemacmds:00000089:  errmsg("unacceptable schema name \"%s\"", schemaName), 
+saba: schemacmds:00000090:  errdetail("The prefix \"%s\" is reserved for system schemas.", 
+saba: schemacmds:00000091:  GetReservedPrefix(schemaName)))); 
+saba: schemacmds:00000120:  * Waits for QEs to finish. Exits via ereport(ERROR,...) if error. 
+saba: schemacmds:00000121:  */ 
+saba: schemacmds:00000122:  CdbDispatchUtilityStatement((Node *)stmt, "CreateSchemaCommand"); 
+saba: schemacmds:00000206:  ereport(ERROR, 
+saba: schemacmds:00000207:  (errcode(ERRCODE_SYNTAX_ERROR), 
+saba: schemacmds:00000208:  errmsg("schema name may not be qualified"))); 
+saba: schemacmds:00000218:  ereport(ERROR, 
+saba: schemacmds:00000219:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+saba: schemacmds:00000220:  errmsg("schema \"%s\" does not exist", namespaceName), 
+saba: schemacmds:00000221:  errOmitLocation(true))); 
+saba: schemacmds:00000226:  ereport(NOTICE, 
+saba: schemacmds:00000227:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+saba: schemacmds:00000228:  errmsg("schema \"%s\" does not exist, skipping", 
+saba: schemacmds:00000229:  namespaceName))); 
+saba: schemacmds:00000300:  ereport(ERROR, 
+saba: schemacmds:00000301:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+saba: schemacmds:00000302:  errmsg("schema \"%s\" does not exist", oldname))); 
+saba: schemacmds:00000309:  ereport(ERROR, 
+saba: schemacmds:00000310:  (errcode(ERRCODE_DUPLICATE_SCHEMA), 
+saba: schemacmds:00000311:  errmsg("schema \"%s\" already exists", newname))); 
+saba: schemacmds:00000327:  ereport(ERROR, 
+saba: schemacmds:00000328:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+saba: schemacmds:00000329:  errmsg("permission denied to ALTER SCHEMA \"%s\"", oldname), 
+saba: schemacmds:00000330:  errdetail("Schema %s is reserved for system use.", oldname))); 
+saba: schemacmds:00000335:  ereport(ERROR, 
+saba: schemacmds:00000336:  (errcode(ERRCODE_RESERVED_NAME), 
+saba: schemacmds:00000337:  errmsg("unacceptable schema name \"%s\"", newname), 
+saba: schemacmds:00000338:  errdetail("The prefix \"%s\" is reserved for system schemas.", 
+saba: schemacmds:00000339:  GetReservedPrefix(newname)))); 
+saba: schemacmds:00000399:  ereport(ERROR, 
+saba: schemacmds:00000400:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+saba: schemacmds:00000401:  errmsg("schema \"%s\" does not exist", name))); 
+saba: schemacmds:00000405:  ereport(ERROR, 
+saba: schemacmds:00000406:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+saba: schemacmds:00000407:  errmsg("permission denied to ALTER SCHEMA \"%s\"", name), 
+saba: schemacmds:00000408:  errdetail("Schema %s is reserved for system use.", name))); 
 aaaaa GP_IGNORE: saai: sequence - ./backend/commands/sequence.c
 saai: sequence:00000812:  ereport(ERROR, 
 saai: sequence:00000813:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
@@ -7506,111 +7518,113 @@ taba: tablespace:00000118:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 taba: tablespace:00000119:  errmsg("permission denied to create tablespace \"%s\"", 
 taba: tablespace:00000120:  stmt->tablespacename), 
 taba: tablespace:00000121:  errhint("Must be superuser to create a tablespace."))); 
-taba: tablespace:00000134:  ereport(ERROR, 
-taba: tablespace:00000135:  (errcode(ERRCODE_RESERVED_NAME), 
-taba: tablespace:00000136:  errmsg("unacceptable tablespace name \"%s\"", 
-taba: tablespace:00000137:  stmt->tablespacename), 
-taba: tablespace:00000138:  errdetail("The prefix \"pg_\" is reserved for system tablespaces."))); 
-taba: tablespace:00000147:  ereport(ERROR, 
-taba: tablespace:00000148:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taba: tablespace:00000149:  errmsg("filespace \"%s\" does not exist", 
-taba: tablespace:00000150:  stmt->filespacename))); 
-taba: tablespace:00000167:  ereport(ERROR, 
-taba: tablespace:00000168:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-taba: tablespace:00000169:  errmsg("permission denied to create tablespace \"%s\"", 
-taba: tablespace:00000170:  stmt->tablespacename), 
-taba: tablespace:00000171:  errhint("filespace %s is reserve for system use", 
-taba: tablespace:00000172:  stmt->filespacename))); 
-taba: tablespace:00000180:  ereport(ERROR, 
-taba: tablespace:00000181:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-taba: tablespace:00000182:  errmsg("tablespace \"%s\" already exists", 
-taba: tablespace:00000183:  stmt->tablespacename))); 
-taba: tablespace:00000292:  ereport(ERROR, 
-taba: tablespace:00000293:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taba: tablespace:00000294:  errmsg("tablespace name may not be qualified"))); 
-taba: tablespace:00000299:  ereport(ERROR, 
-taba: tablespace:00000300:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taba: tablespace:00000301:  errmsg("syntax at or near \"cascade\""))); 
-taba: tablespace:00000322:  ereport(ERROR, 
-taba: tablespace:00000323:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taba: tablespace:00000324:  errmsg("tablespace \"%s\" does not exist", 
-taba: tablespace:00000325:  tablespacename))); 
-taba: tablespace:00000329:  ereport(NOTICE, 
-taba: tablespace:00000330:  (errmsg("tablespace \"%s\" does not exist, skipping", 
-taba: tablespace:00000331:  tablespacename))); 
-taba: tablespace:00000392:  ereport(ERROR, 
-taba: tablespace:00000393:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-taba: tablespace:00000394:  errmsg("tablespace \"%s\" is not empty", tablespacename))); 
-taba: tablespace:00000484:  ereport(WARNING, 
-taba: tablespace:00000485:  (errmsg("directory linked to \"%s\" does not exist", location) 
-taba: tablespace:00000486:  )); 
-taba: tablespace:00000539:  ereport(ERROR, 
-taba: tablespace:00000540:  (errcode_for_file_access(), 
-taba: tablespace:00000541:  errmsg("could not remove directory \"%s\": %m", 
-taba: tablespace:00000542:  subfile))); 
-taba: tablespace:00000559:  ereport(ERROR, 
-taba: tablespace:00000560:  (errcode_for_file_access(), 
-taba: tablespace:00000561:  errmsg("could not remove file \"%s\": %m", 
-taba: tablespace:00000562:  subfile))); 
-taba: tablespace:00000576:  ereport(ERROR, 
-taba: tablespace:00000577:  (errcode_for_file_access(), 
-taba: tablespace:00000578:  errmsg("could not remove directory \"%s\": %m", 
-taba: tablespace:00000579:  location))); 
-taba: tablespace:00000584:  ereport(ERROR, 
-taba: tablespace:00000585:  (errcode_for_file_access(), 
-taba: tablespace:00000586:  errmsg("could not remove symbolic link \"%s\": %m", 
-taba: tablespace:00000587:  location))); 
-taba: tablespace:00000600:  ereport(ERROR, 
-taba: tablespace:00000601:  (errcode_for_file_access(), 
-taba: tablespace:00000602:  errmsg("could not remove subdirectory \"%s\": %m", 
-taba: tablespace:00000603:  tempstr))); 
-taba: tablespace:00000676:  ereport(ERROR, 
-taba: tablespace:00000677:  (errcode_for_file_access(), 
-taba: tablespace:00000678:  errmsg("could not write to file \"%s\": %m", 
-taba: tablespace:00000679:  fullname))); 
-taba: tablespace:00000682:  ereport(ERROR, 
-taba: tablespace:00000683:  (errcode_for_file_access(), 
-taba: tablespace:00000684:  errmsg("could not write to file \"%s\": %m", 
-taba: tablespace:00000685:  fullname))); 
-taba: tablespace:00000745:  ereport(ERROR, 
-taba: tablespace:00000746:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taba: tablespace:00000747:  errmsg("tablespace \"%s\" does not exist", 
-taba: tablespace:00000748:  oldname))); 
-taba: tablespace:00000762:  ereport(ERROR, 
-taba: tablespace:00000763:  (errcode(ERRCODE_RESERVED_NAME), 
-taba: tablespace:00000764:  errmsg("unacceptable tablespace name \"%s\"", newname), 
-taba: tablespace:00000765:  errdetail("The prefix \"pg_\" is reserved for system tablespaces."))); 
-taba: tablespace:00000775:  ereport(ERROR, 
-taba: tablespace:00000776:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-taba: tablespace:00000777:  errmsg("tablespace \"%s\" already exists", 
-taba: tablespace:00000778:  newname))); 
-taba: tablespace:00000823:  ereport(ERROR, 
-taba: tablespace:00000824:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taba: tablespace:00000825:  errmsg("tablespace \"%s\" does not exist", name))); 
-taba: tablespace:00000928:  ereport(ERROR, 
-taba: tablespace:00000929:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taba: tablespace:00000930:  errmsg("tablespace \"%s\" does not exist", 
-taba: tablespace:00000931:  newval))); 
-taba: tablespace:00001079:  ereport(ERROR, 
-taba: tablespace:00001080:  (errcode_for_file_access(), 
-taba: tablespace:00001081:  errmsg("could not create location directory \"%s\": %m", 
-taba: tablespace:00001082:  location))); 
-taba: tablespace:00001091:  ereport(ERROR, 
-taba: tablespace:00001092:  (errcode_for_file_access(), 
-taba: tablespace:00001093:  errmsg("could not set permissions on directory \"%s\": %m", 
-taba: tablespace:00001094:  location))); 
-taba: tablespace:00001102:  ereport(ERROR, 
-taba: tablespace:00001103:  (errcode_for_file_access(), 
-taba: tablespace:00001104:  errmsg("could not create subdirectory \"%s\": %m", 
-taba: tablespace:00001105:  sublocation))); 
-taba: tablespace:00001117:  ereport(ERROR, 
-taba: tablespace:00001118:  (errcode_for_file_access(), 
-taba: tablespace:00001119:  errmsg("could not create symbolic link \"%s\": %m", 
-taba: tablespace:00001120:  linkloc))); 
-taba: tablespace:00001131:  ereport(ERROR, 
-taba: tablespace:00001132:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-taba: tablespace:00001133:  errmsg("tablespace %u is not empty", 
-taba: tablespace:00001134:  xlrec->ts_id))); 
+taba: tablespace:00000135:  ereport(ERROR, 
+taba: tablespace:00000136:  (errcode(ERRCODE_RESERVED_NAME), 
+taba: tablespace:00000137:  errmsg("unacceptable tablespace name \"%s\"", 
+taba: tablespace:00000138:  stmt->tablespacename), 
+taba: tablespace:00000139:  errdetail("The prefix \"%s\" is reserved for system tablespaces.", 
+taba: tablespace:00000140:  GetReservedPrefix(stmt->tablespacename)))); 
+taba: tablespace:00000150:  ereport(ERROR, 
+taba: tablespace:00000151:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taba: tablespace:00000152:  errmsg("filespace \"%s\" does not exist", 
+taba: tablespace:00000153:  stmt->filespacename))); 
+taba: tablespace:00000170:  ereport(ERROR, 
+taba: tablespace:00000171:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+taba: tablespace:00000172:  errmsg("permission denied to create tablespace \"%s\"", 
+taba: tablespace:00000173:  stmt->tablespacename), 
+taba: tablespace:00000174:  errhint("filespace %s is reserve for system use", 
+taba: tablespace:00000175:  stmt->filespacename))); 
+taba: tablespace:00000183:  ereport(ERROR, 
+taba: tablespace:00000184:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+taba: tablespace:00000185:  errmsg("tablespace \"%s\" already exists", 
+taba: tablespace:00000186:  stmt->tablespacename))); 
+taba: tablespace:00000295:  ereport(ERROR, 
+taba: tablespace:00000296:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taba: tablespace:00000297:  errmsg("tablespace name may not be qualified"))); 
+taba: tablespace:00000302:  ereport(ERROR, 
+taba: tablespace:00000303:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taba: tablespace:00000304:  errmsg("syntax at or near \"cascade\""))); 
+taba: tablespace:00000325:  ereport(ERROR, 
+taba: tablespace:00000326:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taba: tablespace:00000327:  errmsg("tablespace \"%s\" does not exist", 
+taba: tablespace:00000328:  tablespacename))); 
+taba: tablespace:00000332:  ereport(NOTICE, 
+taba: tablespace:00000333:  (errmsg("tablespace \"%s\" does not exist, skipping", 
+taba: tablespace:00000334:  tablespacename))); 
+taba: tablespace:00000395:  ereport(ERROR, 
+taba: tablespace:00000396:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+taba: tablespace:00000397:  errmsg("tablespace \"%s\" is not empty", tablespacename))); 
+taba: tablespace:00000487:  ereport(WARNING, 
+taba: tablespace:00000488:  (errmsg("directory linked to \"%s\" does not exist", location) 
+taba: tablespace:00000489:  )); 
+taba: tablespace:00000542:  ereport(ERROR, 
+taba: tablespace:00000543:  (errcode_for_file_access(), 
+taba: tablespace:00000544:  errmsg("could not remove directory \"%s\": %m", 
+taba: tablespace:00000545:  subfile))); 
+taba: tablespace:00000562:  ereport(ERROR, 
+taba: tablespace:00000563:  (errcode_for_file_access(), 
+taba: tablespace:00000564:  errmsg("could not remove file \"%s\": %m", 
+taba: tablespace:00000565:  subfile))); 
+taba: tablespace:00000579:  ereport(ERROR, 
+taba: tablespace:00000580:  (errcode_for_file_access(), 
+taba: tablespace:00000581:  errmsg("could not remove directory \"%s\": %m", 
+taba: tablespace:00000582:  location))); 
+taba: tablespace:00000587:  ereport(ERROR, 
+taba: tablespace:00000588:  (errcode_for_file_access(), 
+taba: tablespace:00000589:  errmsg("could not remove symbolic link \"%s\": %m", 
+taba: tablespace:00000590:  location))); 
+taba: tablespace:00000603:  ereport(ERROR, 
+taba: tablespace:00000604:  (errcode_for_file_access(), 
+taba: tablespace:00000605:  errmsg("could not remove subdirectory \"%s\": %m", 
+taba: tablespace:00000606:  tempstr))); 
+taba: tablespace:00000679:  ereport(ERROR, 
+taba: tablespace:00000680:  (errcode_for_file_access(), 
+taba: tablespace:00000681:  errmsg("could not write to file \"%s\": %m", 
+taba: tablespace:00000682:  fullname))); 
+taba: tablespace:00000685:  ereport(ERROR, 
+taba: tablespace:00000686:  (errcode_for_file_access(), 
+taba: tablespace:00000687:  errmsg("could not write to file \"%s\": %m", 
+taba: tablespace:00000688:  fullname))); 
+taba: tablespace:00000748:  ereport(ERROR, 
+taba: tablespace:00000749:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taba: tablespace:00000750:  errmsg("tablespace \"%s\" does not exist", 
+taba: tablespace:00000751:  oldname))); 
+taba: tablespace:00000766:  ereport(ERROR, 
+taba: tablespace:00000767:  (errcode(ERRCODE_RESERVED_NAME), 
+taba: tablespace:00000768:  errmsg("unacceptable tablespace name \"%s\"", newname), 
+taba: tablespace:00000769:  errdetail("The prefix \"%s\" is reserved for system tablespaces.", 
+taba: tablespace:00000770:  GetReservedPrefix(newname)))); 
+taba: tablespace:00000781:  ereport(ERROR, 
+taba: tablespace:00000782:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+taba: tablespace:00000783:  errmsg("tablespace \"%s\" already exists", 
+taba: tablespace:00000784:  newname))); 
+taba: tablespace:00000829:  ereport(ERROR, 
+taba: tablespace:00000830:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taba: tablespace:00000831:  errmsg("tablespace \"%s\" does not exist", name))); 
+taba: tablespace:00000934:  ereport(ERROR, 
+taba: tablespace:00000935:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taba: tablespace:00000936:  errmsg("tablespace \"%s\" does not exist", 
+taba: tablespace:00000937:  newval))); 
+taba: tablespace:00001085:  ereport(ERROR, 
+taba: tablespace:00001086:  (errcode_for_file_access(), 
+taba: tablespace:00001087:  errmsg("could not create location directory \"%s\": %m", 
+taba: tablespace:00001088:  location))); 
+taba: tablespace:00001097:  ereport(ERROR, 
+taba: tablespace:00001098:  (errcode_for_file_access(), 
+taba: tablespace:00001099:  errmsg("could not set permissions on directory \"%s\": %m", 
+taba: tablespace:00001100:  location))); 
+taba: tablespace:00001108:  ereport(ERROR, 
+taba: tablespace:00001109:  (errcode_for_file_access(), 
+taba: tablespace:00001110:  errmsg("could not create subdirectory \"%s\": %m", 
+taba: tablespace:00001111:  sublocation))); 
+taba: tablespace:00001123:  ereport(ERROR, 
+taba: tablespace:00001124:  (errcode_for_file_access(), 
+taba: tablespace:00001125:  errmsg("could not create symbolic link \"%s\": %m", 
+taba: tablespace:00001126:  linkloc))); 
+taba: tablespace:00001137:  ereport(ERROR, 
+taba: tablespace:00001138:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+taba: tablespace:00001139:  errmsg("tablespace %u is not empty", 
+taba: tablespace:00001140:  xlrec->ts_id))); 
 aaaaa GP_IGNORE: taah: trigger - ./backend/commands/trigger.c
 taah: trigger:00000136:  ereport(NOTICE, 
 taah: trigger:00000137:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
