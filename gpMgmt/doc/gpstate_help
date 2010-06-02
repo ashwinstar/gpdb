@@ -7,14 +7,10 @@ Shows the status of a running Greenplum Database system.
 SYNOPSIS
 *****************************************************
 
-gpstate [-d <master_data_directory>] [-B <parallel_processes>] 
-        [-s | -b | -Q] [-m] [-c] [-p] [-i] [-f] [-q] [-l <log_directory>] [-D] 
+gpstate [-d master_data_directory] [-B parallel_processes] [-s | -b | -Q] 
+	[-m] [-c] [-p] [-i] [-f] [-v | -q] [-l log_directory] [-D] 
 
-gpstate -t
-
-gpstate -?
-
-gpstate -v
+gpstate -? | -h | --help
 
 
 *****************************************************
@@ -97,7 +93,8 @@ List the port numbers used throughout the Greenplum Database system.
 
 -q (no screen output)
 
-Run in quiet mode. Command output is not displayed on the screen, but is still 
+Optional. Run in quiet mode. Except for warning messages, command output 
+is not displayed on the screen. However, this information is still 
 written to the log file.
 
 
@@ -113,18 +110,13 @@ Optional. Displays detailed status information for the Greenplum
 Database system.
 
 
--t (show default utility settings)
+-v (verbose output)
 
-Display the default settings used by the gpstate utility such as 
-the master data directory and port.
-
-
--v (show utility version)
-
-Displays the version of this utility.
+Optional. Displays error messages and outputs detailed status 
+and progress information.
 
 
--? (help)
+-? | -h | --help (help)
 
 Displays the online help.
 
