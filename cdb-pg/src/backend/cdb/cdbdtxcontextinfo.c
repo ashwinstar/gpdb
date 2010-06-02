@@ -475,10 +475,11 @@ DtxContextInfo_Deserialize(
 			 */
 			memcpy(&maxCount, p, sizeof(int32));
 			p += sizeof(int32);		
-			if (maxCount <= 0 ||
-				ds->header.count > maxCount)
+			if (maxCount < 0 || ds->header.count > maxCount)
+			{
 				elog(ERROR, "Invalid distributed snapshot received (maxCount %d, count %d)",
 				     maxCount, ds->header.count);
+			}
 
 			/*
 			 * If we have allocated space for the in-progress distributed
@@ -488,34 +489,47 @@ DtxContextInfo_Deserialize(
 			if (ds->inProgressXidArray != NULL)
 			{
 				if (ds->header.maxCount == 0)
+				{
 					elog(ERROR, "Bad allocation of in-progress array");
+				}
 				
-				if(ds->header.count > ds->header.maxCount)
+				if (ds->header.count > ds->header.maxCount)
+				{
 					elog(ERROR, "Too many distributed transactions for snapshot (maxCount %d, count %d)",
 					     ds->header.maxCount, ds->header.count);
+				}
 			}
 			else
 			{
 				Assert(ds->inProgressXidArray == NULL);
 
-				if (maxCount < ds->header.maxCount)
-					maxCount = ds->header.maxCount;
-				else
-					ds->header.maxCount = maxCount;
+				if (maxCount > 0)
+				{
+					if (maxCount < ds->header.maxCount)
+					{
+						maxCount = ds->header.maxCount;
+					}
+					else
+					{
+						ds->header.maxCount = maxCount;
+					}
 
-				ds->inProgressXidArray = 
-					(DistributedTransactionId*)
-					malloc(maxCount * sizeof(DistributedTransactionId));
-				if (ds->inProgressXidArray == NULL)
-					ereport(ERROR,
-							(errcode(ERRCODE_OUT_OF_MEMORY),
-							 errmsg("out of memory")));
+					ds->inProgressXidArray = (DistributedTransactionId *)malloc(maxCount * sizeof(DistributedTransactionId));
+					if (ds->inProgressXidArray == NULL)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_OUT_OF_MEMORY),
+								 errmsg("out of memory")));
+					}
+				}
 			}
 
 			if (ds->header.count > 0)
 			{
+				Assert(ds->inProgressXidArray != NULL);
+
 				xipsize = sizeof(DistributedTransactionId) * ds->header.count;
-				memcpy(ds->inProgressXidArray,p,xipsize);
+				memcpy(ds->inProgressXidArray, p, xipsize);
 				p += xipsize;
 			}
 		}
