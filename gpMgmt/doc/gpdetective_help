@@ -62,7 +62,7 @@ OPTIONS
   master host):
 
   * Log files
-  * The master_data_directory/postgresql.conf file
+  * The <master_data_directory>/postgresql.conf file
   * The ~/gpAdminLogs directory
   * gpcheckos output
   * Core files
