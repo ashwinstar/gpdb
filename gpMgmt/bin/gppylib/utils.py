@@ -488,7 +488,7 @@ class TableLogger:
                 #
                 # separator
                 #
-                msg = "------------------------------------------------"
+                logger.info("----------------------------------------------------")
             else:
                 outLine = []
                 for i, field in enumerate(line):
@@ -500,10 +500,10 @@ class TableLogger:
                         outLine.append(field.ljust(lineWidth[i] + 3))
                 msg = "".join(outLine)
 
-            if doWarn:
-                logger.warn(msg)
-            else:
-                logger.info("   " + msg) # add 3 so that lines will line up even with the INFO and WARNING stuff on front
+                if doWarn:
+                    logger.warn(msg)
+                else:
+                    logger.info("   " + msg) # add 3 so that lines will line up even with the INFO and WARNING stuff on front
 
         return self
 

@@ -32,6 +32,7 @@ try:
     from gppylib import pgconf
     from gppylib.operations.startSegments import *
     from gppylib.gpcoverage import GpCoverage
+    from gppylib.utils import TableLogger
 except ImportError, e:
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -416,10 +417,10 @@ class GpStart:
             dbIdsToNotStart[segment.getSegmentDbId()] = True
 
         for seg in invalid_segs:
-            logger.warning("Skipping startup of segdb on %s directory %s marked invalid <<<<<" % \
+            logger.warning("Skipping startup of segment marked down in configuration: on %s directory %s <<<<<" % \
                     (seg.getSegmentHostName(), seg.getSegmentDataDirectory()))
         for seg in inactive_mirrors:
-            logger.warning("Skipping startup of segdb on %s directory %s marked INACTIVE <<<<<" % \
+            logger.warning("Skipping startup of marked INACTIVE in configuration: %s directory %s <<<<<" % \
                     (seg.getSegmentHostName(), seg.getSegmentDataDirectory()))
         logger.debug("dbIdsToNotStart has %d entries" % len(dbIdsToNotStart))
 
@@ -533,43 +534,67 @@ class GpStart:
         invalidSegments are those that we didn't even try to start because they are marked as down or should otherwise
            not be started
         """
-        started = len(segmentStartResult.getSuccessfulSegments())
-        failed = len(segmentStartResult.getFailedSegmentObjs())
-        totalTriedToStart = started + failed
+        mirroringFailures = [f for f in segmentStartResult.getFailedSegmentObjs() \
+                        if f.getReasonCode() == gp.SEGSTART_ERROR_MIRRORING_FAILURE]
+        nonMirroringFailures = [f for f in segmentStartResult.getFailedSegmentObjs() \
+                        if f.getReasonCode() != gp.SEGSTART_ERROR_MIRRORING_FAILURE]
 
-        if failed > 0 or logging_is_verbose():
+        started = len(segmentStartResult.getSuccessfulSegments())
+        failedFromMirroring = len(mirroringFailures)
+        failedNotFromMirroring = len(nonMirroringFailures)
+        totalTriedToStart = started + failedFromMirroring + failedNotFromMirroring 
+
+        if failedFromMirroring > 0 or failedNotFromMirroring > 0 or logging_is_verbose():
             logger.info("----------------------------------------------------")
-            if failed > 0:
-                for failure in segmentStartResult.getFailedSegmentObjs():
-                    segment = failure.getSegment()
-                    logger.info("DBID:%d  FAILED  host:'%s' datadir:'%s' with reason:'%s'" % (
-                                segment.getSegmentDbId(), segment.getSegmentHostName(),
-                                segment.getSegmentDataDirectory(), failure.getReason()))
+            for failure in segmentStartResult.getFailedSegmentObjs():
+                segment = failure.getSegment()
+                logger.info("DBID:%d  FAILED  host:'%s' datadir:'%s' with reason:'%s'" % (
+                            segment.getSegmentDbId(), segment.getSegmentHostName(),
+                            segment.getSegmentDataDirectory(), failure.getReason()))
             for segment in segmentStartResult.getSuccessfulSegments():
                 logger.debug("DBID:%d  STARTED" % segment.getSegmentDbId())
             logger.info("----------------------------------------------------\n\n")
 
-        attentionFlag = "<<<<<" if failed > 0 else ""
-        logger.info("----------------------------------------------------")
-        logger.info("Total successful segment starts             = %d" % started)
-        logger.info("Total failed segment starts                 = %d %s" % (failed, attentionFlag))
-        logger.info("----------------------------------------------------")
-        if len(invalidSegments ) > 0:
-            logger.warning("Total instances that are marked down in configuration and were skipped = %d <<<<< " % len(invalidSegments))
+        tableLog = TableLogger().setWarnWithArrows(True)
+
+        tableLog.addSeparator()
+        tableLog.info(["Successful segment starts", "= %d" % started])
+
+        if self.gparray.getFaultStrategy() == FAULT_STRATEGY_FILE_REPLICATION:
+            tableLog.infoOrWarn(failedNotFromMirroring > 0, ["Failed segment starts, not from mirroring", "= %d" % failedNotFromMirroring])
+
+            if failedFromMirroring > 0:
+                tableLog.warn(["Failed segment starts, from mirroring", "= %d" % failedFromMirroring])
         else:
-            logger.info("Total instances that are marked down in configuration and were skipped = 0 ")
+            assert failedFromMirroring == 0
+            tableLog.infoOrWarn(failedNotFromMirroring > 0, ["Failed segment starts", "= %d" % failedNotFromMirroring])
 
-        logger.info("Successfully started %d of %d segment instances %s" % (started,totalTriedToStart, attentionFlag))
+        tableLog.infoOrWarn(len(invalidSegments ) > 0, \
+                        ["Skipped segment starts (segments are marked down in configuration)", "= %d" % len(invalidSegments)])
+        tableLog.addSeparator()
+        tableLog.outputTable()
+
+        attentionFlag = "<<<<<<<<" if started != totalTriedToStart else ""
+        logger.info("")
+        if len(invalidSegments) > 0 :
+            skippedMsg = ", skipped %s other segments" % len(invalidSegments)
+        else:
+            skippedMsg = ""
+        logger.info("Successfully started %d of %d segment instances%s %s" %
+                (started, totalTriedToStart, skippedMsg, attentionFlag))
         logger.info("----------------------------------------------------")
 
-        if failed > 0:
+        if failedNotFromMirroring > 0 or failedFromMirroring > 0:
             logger.warning("Segment instance startup failures reported")
-            logger.warning("Failed start %d of %d segment instances %s" % (failed,totalTriedToStart, attentionFlag))
+            logger.warning("Failed start %d of %d segment instances %s" % \
+                            (failedNotFromMirroring + failedFromMirroring, totalTriedToStart, attentionFlag))
             logger.warning("Review %s" % get_logfile())
             if not willShutdownSegments:
                 logger.warning("For more details on segment startup failure(s)")
-                logger.warning("Run gpstate to review current segment instance status")
+                logger.warning("Run  gpstate -s  to review current segment instance status")
+
             logger.info("----------------------------------------------------")
+
         if len(invalidSegments) > 0:
             logger.warning("****************************************************************************")
             logger.warning("There are %d segment(s) marked down in the database" % len(invalidSegments))
