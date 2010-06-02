@@ -1233,9 +1233,6 @@ PgVersionRecoverMirror(void)
 			MirroredFlatFile_ClosePrimary(&primaryOpen);
 		}
 
-		pfree(subDirectoryPrimary);
-		pfree(subDirectoryMirror);
-
 		if (primaryFilespaceLocation != NULL)
 		{
 			pfree(primaryFilespaceLocation);
@@ -1256,6 +1253,9 @@ PgVersionRecoverMirror(void)
 	} // while (PersistentDatabase_DirIterateNext
 			
 	PersistentDatabase_DirIterateClose();
+	
+	pfree(subDirectoryPrimary);
+	pfree(subDirectoryMirror);
 	
 	return status;
 }
