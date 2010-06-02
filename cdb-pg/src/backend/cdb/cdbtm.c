@@ -1233,16 +1233,16 @@ rollbackDtxTransaction(void)
 }
 
 /*
- * Initialize TM, called by CdbInit for each QD process.
+ * Error handling in initTM() is our caller.
  *
- * First call to this method will trigger tm recovery.
+ * recoverTM() may throw errors.
  */
-void
-initTM(void)
+static void
+initTM_recover_as_needed(void)
 {
-	Assert(shmTmRecoverred!=NULL);
+	Assert(shmTmRecoverred != NULL);
 
-	/* Need to recover ?*/
+	/* Need to recover ? */
 	if (!*shmTmRecoverred)
 	{
 		getTmLock();
@@ -1250,10 +1250,73 @@ initTM(void)
 		/* Still need to recover ?*/
 		if (!*shmTmRecoverred)
 		{
-			recoverTM();
-			*shmTmRecoverred = true;
+				recoverTM();
+				*shmTmRecoverred = true;
 		}
 		releaseTmLock();
+	}
+}
+
+/*
+ * Initialize TM, called by cdb_setup() for each QD process.
+ *
+ * First call to this function will trigger tm recovery.
+ * 
+ * MPP-9894: in 4.0, if we've been started with enough segments to
+ * run, but without having them in the right "roles" (see
+ * gp_segment_configuration), we need to prober to convert them -- our
+ * first attempt to dispatch will fail, we've got to catch that! The
+ * retry should be fine, if not we're in serious "FATAL" trouble.
+ */
+void
+initTM(void)
+{
+	Assert(shmTmRecoverred != NULL);
+
+	/* Need to recover ? */
+	if (!*shmTmRecoverred)
+	{
+		/*
+		 * MPP-9894: during startup, we don't have a top-level
+		 * PG_TRY/PG_CATCH block yet, the dispatcher may throw errors:
+		 * we need to catch them.
+		 */
+		PG_TRY();
+		{
+			initTM_recover_as_needed();
+		}
+		PG_CATCH();
+		{
+			if (!elog_demote(WARNING))
+			{
+				elog(LOG, "Unable to demote error");
+				elog(FATAL, "DTM initialization: failure during startup/recovery, could not retry, check segment status");
+
+				/* not reached */
+				PG_RE_THROW();
+			}
+
+			elog(LOG, "DTM initialization, caught exception: looking for failed segments.");
+			detectFailedConnections();
+
+			PG_TRY();
+			{
+				initTM_recover_as_needed();
+
+				elog(LOG, "DTM initialization, completed.");
+			}
+			PG_CATCH();
+			{
+				elog(LOG, "DTM initialization, failed on retry.");
+
+				elog(FATAL, "DTM initialization: failure during startup/recovery, retry failed, check segment status");
+
+				/* not reached */
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
+		}
+		PG_END_TRY();
 	}
 }
 
@@ -2257,9 +2320,8 @@ createDtxErrorCallback(int code, Datum arg)
  * Create a global transaction context from share memory.
  */
 void
-createDtx(
-	DistributedTransactionId	*distribXid,
-	TransactionId 				*localXid)
+createDtx(DistributedTransactionId		*distribXid,
+		  TransactionId 				*localXid)
 {
 	TMGXACT    	*gxact;
 	
@@ -2334,7 +2396,6 @@ releaseGxact_UnderLocks(void)
 {
 	int			i;
 	int			curr;
-
 
 	if (currentGxact == NULL)
 	{
@@ -2620,8 +2681,6 @@ generateGID(char *gid, DistributedTransactionId *gxid)
 
 }
 
-
-
 /*
  * recoverTM:
  * perform TM recovery, this connects to all QE and resolve all in-doubt txn.
@@ -2642,7 +2701,7 @@ static void
 recoverTM(void)
 {
 	DistributedTransactionId segmentMaxDistributedTransactionId = 0;
-	
+
 	/* intialize fts sync count */
 	verifyFtsSyncCount();
 
