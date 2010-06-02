@@ -378,12 +378,12 @@ class GpStart:
             self._shutdown_segments(segmentStartResult)
             raise GpStartError("Do not have enough valid segments to start the array.")
 
-        hadSegmentFailuresOrInactive = len(segmentStartResult.getFailedSegments()) > 0 or \
+        hadSegmentFailuresOrInactive = len(segmentStartResult.getFailedSegmentObjs()) > 0 or \
                                        len(invalidSegments ) > 0
         self._start_final_master(hadSegmentFailuresOrInactive)
         self.cleanup()
 
-        if len(segmentStartResult.getFailedSegments()) == 0:
+        if len(segmentStartResult.getFailedSegmentObjs()) == 0:
             return True
         else:
             return False
@@ -431,13 +431,54 @@ class GpStart:
 
     ####    
     def _verify_enough_segments(self,startResult,gparray):
-        contentDict = GpArray.getSegmentsByContentId(startResult.getSuccessfulSegments())
+        successfulSegments = startResult.getSuccessfulSegments()
+        mirroringFailures = [f.getSegment() for f in startResult.getFailedSegmentObjs() \
+                    if f.getReasonCode() == gp.SEGSTART_ERROR_MIRRORING_FAILURE]
 
-        for seg in gparray.getSegDbList():
-            if contentDict.get(seg.getSegmentContentId()) is None:
-                logger.error("No segment started for content: %d." % seg.getSegmentContentId())
-                logger.info("dumping success segments: %s" % [s.__str__() for s in startResult.getSuccessfulSegments()])
-                return False
+        allSegmentsByContent = GpArray.getSegmentsByContentId(gparray.getSegDbList())
+        successfulSegmentsByDbId = GpArray.getSegmentsGroupedByValue(successfulSegments, GpDB.getSegmentDbId )
+        mirroringFailuresByDbId = GpArray.getSegmentsGroupedByValue(mirroringFailures, GpDB.getSegmentDbId )
+
+        #
+        # look at each content, see if there is a segment available (or one which can be made
+        #   available by the fault prober by switching to changetracking)
+        #
+        for primary in gparray.getSegDbList():
+
+            if not primary.isSegmentPrimary(current_role=True):
+                continue
+
+            # find the mirror
+            segs = allSegmentsByContent[primary.getSegmentContentId()]
+            mirror = None
+            if len(segs) > 1:
+                mirror = [s for s in segs if s.isSegmentMirror(current_role=True)][0]
+
+            if primary.getSegmentDbId() in successfulSegmentsByDbId:
+                # good, we can continue!
+                continue
+
+            if primary.getSegmentDbId() in mirroringFailuresByDbId \
+                    and not primary.isSegmentModeInChangeLogging():
+                #
+                # we have a mirroring failure so the fault prober can probably convert us to changetracking
+                #
+                #   note that if the primary is already in changetracking then a mirroring failure is
+                #   considered fatal here
+                #
+                continue
+
+            if  mirror is not None \
+                    and mirror.getSegmentDbId() in successfulSegmentsByDbId \
+                    and primary.isSegmentModeSynchronized():
+                #
+                # we could fail over to that mirror, so it's okay to start up like this
+                #
+                continue
+
+            logger.error("No segment started for content: %d." % seg.getSegmentContentId())
+            logger.info("dumping success segments: %s" % [s.__str__() for s in startResult.getSuccessfulSegments()])
+            return False
         return True
 
     ######  
@@ -453,7 +494,7 @@ class GpStart:
         # gather the list of those that we actually tried to start
         toStop = []
         toStop.extend(segmentStartResult.getSuccessfulSegments())
-        toStop.extend([f.getSegment() for f in segmentStartResult.getFailedSegments()])
+        toStop.extend([f.getSegment() for f in segmentStartResult.getFailedSegmentObjs()])
 
         segmentsByHost = GpArray.getSegmentsByHostName(toStop)
 
@@ -493,13 +534,13 @@ class GpStart:
            not be started
         """
         started = len(segmentStartResult.getSuccessfulSegments())
-        failed = len(segmentStartResult.getFailedSegments())
+        failed = len(segmentStartResult.getFailedSegmentObjs())
         totalTriedToStart = started + failed
 
         if failed > 0 or logging_is_verbose():
             logger.info("----------------------------------------------------")
             if failed > 0:
-                for failure in segmentStartResult.getFailedSegments():
+                for failure in segmentStartResult.getFailedSegmentObjs():
                     segment = failure.getSegment()
                     logger.info("DBID:%d  FAILED  host:'%s' datadir:'%s' with reason:'%s'" % (
                                 segment.getSegmentDbId(), segment.getSegmentHostName(),

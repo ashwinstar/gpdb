@@ -129,7 +129,7 @@ class GpSegStart:
                     logger.warning("postmaster.pid file exists, checking if recovery startup required")
                     res = gp.recovery_startup(dir)
                     if res:
-                        self.__markFailed(directoryToSegStartDataMap, results, dir, res, gp.SEGSTART_ERROR_RECOVERY_RESTART_FAILED)
+                        self.__markFailed(directoryToSegStartDataMap, results, dir, res, gp.SEGSTART_ERROR_STOP_RUNNING_SEGMENT_FAILED)
             else:
                 logger.info("Segment data directory does not exist for: '%s'" % dir)
                 self.__markFailed(directoryToSegStartDataMap, results, dir, "segment data directory does not exist",

@@ -47,7 +47,7 @@ class StartSegmentsResult:
     def getSuccessfulSegments(self):
         return self.__successfulSegments[:]
 
-    def getFailedSegments(self):
+    def getFailedSegmentObjs(self):
         """
         Return a list of FailedSegmentResult objects
         """
@@ -125,7 +125,7 @@ class StartSegmentsOperation:
             raise Exception("Invalid startMethod %s" % startMethod)
 
         # done!
-        assert totalToAttempt == len(result.getFailedSegments()) + len(result.getSuccessfulSegments())
+        assert totalToAttempt == len(result.getFailedSegmentObjs()) + len(result.getSuccessfulSegments())
         return result
 
     def transitionSegments(self, gpArray, segments, convertUsingFullResync, mirrorMode):
@@ -140,7 +140,7 @@ class StartSegmentsOperation:
         result = StartSegmentsResult()
         self.__sendPrimaryMirrorTransition(mirrorMode, segments, convertUsingFullResync, gpArray, result)
         
-        assert len(segments) == len(result.getFailedSegments()) + len(result.getSuccessfulSegments())
+        assert len(segments) == len(result.getFailedSegmentObjs()) + len(result.getSuccessfulSegments())
         return result
 
     def __runStartCommand(self, segments, mirroringMode, numContentsInCluster, resultOut, gpArray):
