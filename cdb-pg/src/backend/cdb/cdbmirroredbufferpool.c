@@ -183,8 +183,6 @@ static void MirroredBufferPool_DoOpen(
 
 	char *primaryFilespaceLocation;
 	char *mirrorFilespaceLocation;
-	char dbPath[MAXPGPATH];
-	char path[MAXPGPATH];
 
 	Assert(open != NULL);
 	
@@ -239,6 +237,12 @@ static void MirroredBufferPool_DoOpen(
 
 	if (StorageManagerMirrorMode_DoPrimaryWork(open->mirrorMode))
 	{
+		char *dbPath;
+		char *path;
+
+		dbPath = (char*)palloc(MAXPGPATH + 1);
+		path = (char*)palloc(MAXPGPATH + 1);
+
 		/*
 		 * Do the primary work first so we don't leave files on the mirror or have an
 		 * open to clean up.
@@ -263,6 +267,9 @@ static void MirroredBufferPool_DoOpen(
 		{
 			*primaryError = errno;
 		}
+
+		pfree(dbPath);
+		pfree(path);
 	}
 	
 	if (StorageManagerMirrorMode_SendToMirror(open->mirrorMode) &&
@@ -790,8 +797,6 @@ static void MirroredBufferPool_DoDrop(
 
 	char *primaryFilespaceLocation;
 	char *mirrorFilespaceLocation;
-	char dbPath[MAXPGPATH];	
-	char path[MAXPGPATH];
 	
 	*primaryError = 0;
 	*mirrorDataLossOccurred = false;
@@ -834,6 +839,12 @@ static void MirroredBufferPool_DoDrop(
 
 	if (StorageManagerMirrorMode_DoPrimaryWork(mirrorMode))
 	{
+		char *dbPath; 
+		char *path;
+
+		dbPath = (char*)palloc(MAXPGPATH + 1);
+		path = (char*)palloc(MAXPGPATH + 1);
+
 		FormDatabasePath(
 						 dbPath,
 						 primaryFilespaceLocation,
@@ -851,6 +862,9 @@ static void MirroredBufferPool_DoDrop(
 		{
 			*primaryError = errno;
 		}
+
+		pfree(dbPath);
+		pfree(path);
 	}
 
 	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&

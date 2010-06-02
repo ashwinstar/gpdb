@@ -201,8 +201,6 @@ static void MirroredAppendOnly_DoOpen(
 
 	char *primaryFilespaceLocation;
 	char *mirrorFilespaceLocation;
-	char dbPath[MAXPGPATH];
-	char path[MAXPGPATH];
 
 	Assert(open != NULL);
 	
@@ -252,6 +250,12 @@ static void MirroredAppendOnly_DoOpen(
 
 	if (StorageManagerMirrorMode_DoPrimaryWork(open->mirrorMode))
 	{
+		char *dbPath; 
+		char *path;
+
+		dbPath = (char*)palloc(MAXPGPATH + 1);
+		path = (char*)palloc(MAXPGPATH + 1);
+
 		/*
 		 * Do the primary work first so we don't leave files on the mirror or have an
 		 * open to clean up.
@@ -275,6 +279,9 @@ static void MirroredAppendOnly_DoOpen(
 		{
 			*primaryError = errno;
 		}
+
+		pfree(dbPath);
+		pfree(path);
 	}
 
 	if (StorageManagerMirrorMode_SendToMirror(open->mirrorMode) &&
@@ -1199,8 +1206,6 @@ static void MirroredAppendOnly_DoDrop(
 
 	char *primaryFilespaceLocation;
 	char *mirrorFilespaceLocation;
-	char dbPath[MAXPGPATH];	
-	char path[MAXPGPATH];
 
 #ifdef MASTER_MIRROR_SYNC
 	mmxlog_log_remove_relfilenode(relFileNode->spcNode, relFileNode->dbNode, relFileNode->relNode,
@@ -1252,6 +1257,12 @@ static void MirroredAppendOnly_DoDrop(
 	
 	if (StorageManagerMirrorMode_DoPrimaryWork(mirrorMode))
 	{
+		char *dbPath; 
+		char *path;
+
+		dbPath = (char*)palloc(MAXPGPATH + 1);
+		path = (char*)palloc(MAXPGPATH + 1);
+
 		FormDatabasePath(
 						 dbPath,
 						 primaryFilespaceLocation,
@@ -1269,6 +1280,9 @@ static void MirroredAppendOnly_DoDrop(
 		{
 			*primaryError = errno;
 		}
+
+		pfree(dbPath);
+		pfree(path);
 	}
 	
 	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&

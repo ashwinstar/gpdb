@@ -56,7 +56,6 @@ int MirroredFlatFile_Open(
 
 {
 	int save_errno = 0;
-	char tmp_filename[MAXPGPATH + 1];
 	
 	Assert(open != NULL);
 
@@ -70,10 +69,16 @@ int MirroredFlatFile_Open(
 
 	if (atomic_op)
 	{
+		char *tmp_filename;
+
+		tmp_filename = (char*)palloc(MAXPGPATH + 1);
+
 		open->atomicSimpleFileName = MemoryContextStrdup(TopMemoryContext, simpleFileName);
 		snprintf(tmp_filename, sizeof(tmp_filename), "%s.%i",
 				 simpleFileName, MyProcPid);
 		open->simpleFileName = MemoryContextStrdup(TopMemoryContext, tmp_filename);
+
+		pfree(tmp_filename);
 	}
 	else
 	{
@@ -165,11 +170,11 @@ int MirroredFlatFile_OpenInDbDir(
 {
 	int save_errno = 0;
 	
-	char *primaryFilespaceLocation;
-	char *mirrorFilespaceLocation;
+	char *primaryFilespaceLocation = NULL;
+	char *mirrorFilespaceLocation = NULL;
 	
-	char subDirectoryPrimary[MAXPGPATH+1];
-	char subDirectoryMirror[MAXPGPATH+1];
+	char *subDirectoryPrimary;
+	char *subDirectoryMirror;
 
 	Assert(open != NULL);
 	
@@ -177,6 +182,9 @@ int MirroredFlatFile_OpenInDbDir(
 
 	open->usingDbDirNode = true;
 	open->dbDirNode = *dbDirNode;
+
+	subDirectoryPrimary = (char*)palloc(MAXPGPATH + 1);
+	subDirectoryMirror = (char*)palloc(MAXPGPATH + 1);
 	
 	PersistentTablespace_GetPrimaryAndMirrorFilespaces(
 													   dbDirNode->tablespace,
@@ -257,7 +265,10 @@ int MirroredFlatFile_OpenInDbDir(
 		
 		open->isActive = true;
 	}
-		
+
+	pfree(subDirectoryPrimary);
+	pfree(subDirectoryMirror);
+
 	if (primaryFilespaceLocation != NULL)
 		pfree(primaryFilespaceLocation);
 	
@@ -399,11 +410,14 @@ int MirroredFlatFile_Rename(
 							bool			isMirrorRecovery) 
 					/* if TRUE then request is not performed on primary */
 {
-	char oldPath[MAXPGPATH];
-	char newPath[MAXPGPATH];
+	char *oldPath;
+	char *newPath;
 	bool mirrorRename = TRUE;
 	int	 save_errno = 0;
 	struct stat buf;
+
+	oldPath = (char*)palloc(MAXPGPATH + 1);
+	newPath = (char*)palloc(MAXPGPATH + 1);
 	
 	sprintf(oldPath, "%s/%s", subDirectory, oldSimpleFileName);
 	sprintf(newPath, "%s/%s", subDirectory, newSimpleFileName);
@@ -453,7 +467,10 @@ int MirroredFlatFile_Rename(
 					(errmsg("could not rename file on mirror from \"%s\" to \"%s\" ", 
 							oldPath, newPath)));	
 	}
-	
+
+	pfree(oldPath);
+	pfree(newPath);
+
 	return save_errno;
 }
 
@@ -776,9 +793,11 @@ int MirroredFlatFile_Drop(
 	bool			isMirrorRecovery) 
 		/* if TRUE then request is not performed on primary */
 {
-	char path[MAXPGPATH];
+	char *path;
 	bool mirrorDrop = TRUE;
 	int	 save_errno = 0;
+
+	path = (char*)palloc(MAXPGPATH + 1);
 	
 	sprintf(path, "%s/%s", subDirectory, simpleFileName);
 	
@@ -811,7 +830,9 @@ int MirroredFlatFile_Drop(
 			ereport(LOG,
 					(errmsg("could not drop file on mirror \"%s\"", path)));	
 	}
-		
+
+	pfree(path);
+
 	return save_errno;
 }
 
@@ -1051,11 +1072,11 @@ PgVersionRecoverMirror(void)
 	ItemPointerData persistentTid;
 	int64 persistentSerialNum;
 	
-	char *primaryFilespaceLocation;
-	char *mirrorFilespaceLocation;
+	char *primaryFilespaceLocation = NULL;
+	char *mirrorFilespaceLocation = NULL;
 	
-	char subDirectoryPrimary[MAXPGPATH+1];
-	char subDirectoryMirror[MAXPGPATH+1];
+	char *subDirectoryPrimary;
+	char *subDirectoryMirror;
 	
 	MirroredFlatFileOpen	mirroredOpen;
 	MirroredFlatFileOpen	primaryOpen;
@@ -1065,6 +1086,9 @@ PgVersionRecoverMirror(void)
 	int32					bufferLen = 0;
 	int						retval = 0;
 	int						status = STATUS_OK;
+
+	subDirectoryPrimary = (char*)palloc(MAXPGPATH + 1);
+	subDirectoryMirror = (char*)palloc(MAXPGPATH + 1);
 	
 	PersistentDatabase_DirIterateInit();
 	
@@ -1208,6 +1232,9 @@ PgVersionRecoverMirror(void)
 		if (MirroredFlatFile_IsActive(&primaryOpen)) {
 			MirroredFlatFile_ClosePrimary(&primaryOpen);
 		}
+
+		pfree(subDirectoryPrimary);
+		pfree(subDirectoryMirror);
 
 		if (primaryFilespaceLocation != NULL)
 		{

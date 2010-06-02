@@ -36,6 +36,8 @@ typedef struct MirroredBufferPoolOpen
 	uint32		segmentFileNum;
 	
 	char		mirrorFilespaceLocation[MAXPGPATH+1];
+					// UNDONE: Consider palloc'ing this instead of statically allocating
+					// UNDONE: to use less stack space...
 
 	File		primaryFile;
 
