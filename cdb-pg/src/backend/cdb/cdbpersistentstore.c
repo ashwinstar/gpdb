@@ -426,6 +426,9 @@ PersistentTidIsKnownResult PersistentStore_TidIsKnown(
 	if (storeSharedData->needToScanIntoSharedMemory)
 		return PersistentTidIsKnownResult_ScanNotPerformedYet;
 
+	if (PersistentStore_IsZeroTid(&storeSharedData->maxTid))
+		return PersistentTidIsKnownResult_MaxTidIsZero;
+
 	if (ItemPointerCompare(
 						persistentTid,
 						&storeSharedData->maxTid) <= 0) // Less-than or equal.

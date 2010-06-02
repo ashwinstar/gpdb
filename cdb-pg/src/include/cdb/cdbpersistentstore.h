@@ -215,6 +215,7 @@ typedef enum PersistentTidIsKnownResult
 	PersistentTidIsKnownResult_None = 0,
 	PersistentTidIsKnownResult_BeforePersistenceWork,
 	PersistentTidIsKnownResult_ScanNotPerformedYet,
+	PersistentTidIsKnownResult_MaxTidIsZero,
 	PersistentTidIsKnownResult_Known,
 	PersistentTidIsKnownResult_NotKnown,
 	MaxPersistentTidIsKnownResult		/* must always be last */

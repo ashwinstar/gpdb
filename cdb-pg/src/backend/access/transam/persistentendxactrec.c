@@ -270,13 +270,27 @@ PersistentEndXactRec_VerifyFileSysActionInfos(
 				     "Can't verify persistent TID if we haven't done the persistent scan yet");
 			break;
 
+		case PersistentTidIsKnownResult_MaxTidIsZero:
+			// UNDONE: For now, just debug log this.
+			if (Debug_persistent_print)
+				elog(Debug_persistent_print_level, 
+					 "TID for persistent '%s' tuple TID %s and the last known TID zero (0,0) (index %d, transaction kind '%s')",
+					 PersistentFileSysObjName_TypeAndObjectName(&fileSysActionInfos[i].fsObjName),
+					 ItemPointerToString(&fileSysActionInfos[i].persistentTid),
+					 i,
+					 EndXactRecKind_Name(endXactRecKind));
+			break;
+
 		case PersistentTidIsKnownResult_NotKnown:
-			elog(ERROR, "TID for persistent '%s' tuple TID %s is beyond the last known TID %s (index %d, transaction kind '%s')",
-				 PersistentFileSysObjName_TypeAndObjectName(&fileSysActionInfos[i].fsObjName),
-				 ItemPointerToString(&fileSysActionInfos[i].persistentTid),
-				 ItemPointerToString2(&maxTid),
-				 i,
-				 EndXactRecKind_Name(endXactRecKind));
+			// UNDONE: For now, just debug log this.
+			if (Debug_persistent_print)
+				elog(Debug_persistent_print_level, 
+					 "TID for persistent '%s' tuple TID %s is beyond the last known TID %s (index %d, transaction kind '%s')",
+					 PersistentFileSysObjName_TypeAndObjectName(&fileSysActionInfos[i].fsObjName),
+					 ItemPointerToString(&fileSysActionInfos[i].persistentTid),
+					 ItemPointerToString2(&maxTid),
+					 i,
+					 EndXactRecKind_Name(endXactRecKind));
 			break;
 
 		case PersistentTidIsKnownResult_Known:
