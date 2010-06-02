@@ -477,7 +477,7 @@ class GpStart:
                 #
                 continue
 
-            logger.error("No segment started for content: %d." % seg.getSegmentContentId())
+            logger.error("No segment started for content: %d." % primary.getSegmentContentId())
             logger.info("dumping success segments: %s" % [s.__str__() for s in startResult.getSuccessfulSegments()])
             return False
         return True
