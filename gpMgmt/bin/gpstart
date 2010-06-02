@@ -470,7 +470,7 @@ class GpStart:
                 continue
 
             if  mirror is not None \
-                    and mirror.getSegmentDbId() in successfulSegmentsByDbId \
+                    and (mirror.getSegmentDbId() in successfulSegmentsByDbId or mirror.getSegmentDbId() in mirroringFailuresByDbId) \
                     and primary.isSegmentModeSynchronized():
                 #
                 # we could fail over to that mirror, so it's okay to start up like this

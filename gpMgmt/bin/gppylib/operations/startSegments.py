@@ -213,7 +213,7 @@ class StartSegmentsOperation:
                         started = fields[index].split(':')[1]
                         index += 1
 
-                        reasonCode = gp.SEGSTART_ERROR_UNKNOWN
+                        reasonCode = gp.SEGSTART_ERROR_UNKNOWN_ERROR
                         if fields[index].startswith("REASONCODE:"):
                             reasonCode = int(fields[index].split(":")[1])
                             index += 1
@@ -232,14 +232,12 @@ class StartSegmentsOperation:
                         for segment in cmd.dblist:
                             if segment.getSegmentDataDirectory() == dir:
                                 if success:
-                                    if reasonCode == gp.SEGSTART_ERROR_UNKNOWN:
-                                        reasonCode = gp.SEGSTART_SUCCESS
                                     resultOut.addSuccess(segment)
                                 else:
                                     resultOut.addFailure(segment, reasonStr, reasonCode)
             else:
                 for segment in cmd.dblist:
-                    resultOut.addFailure(segment, cmd.get_results(), gp.SEGSTART_ERROR_UNKNOWN)
+                    resultOut.addFailure(segment, cmd.get_results(), gp.SEGSTART_ERROR_UNKNOWN_ERROR)
 
     def __createPickledTransitionParameters(self, targetMode, segmentsOnHost, convertUsingFullResync, dbIdToPeerMap):
         dbIdToFullResync = {}
