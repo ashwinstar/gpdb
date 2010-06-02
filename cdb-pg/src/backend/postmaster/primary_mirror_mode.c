@@ -73,15 +73,15 @@ static void assertIsTransitioning(void);
 
 /* actual transitions */
 static PrimaryMirrorModeTransitionResult applyStepForTransitionToUninitializedMode(PrimaryMirrorModeTransitionArguments *args,
-                                                            TransitionState *stateInOut);
+                                TransitionState *stateInOut, char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO]);
 static PrimaryMirrorModeTransitionResult applyStepForTransitionToMasterOrMirrorlessMode(PrimaryMirrorModeTransitionArguments *args,
-                                                            TransitionState *stateInOut);
+                                TransitionState *stateInOut, char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO]);
 static PrimaryMirrorModeTransitionResult applyStepForTransitionToQuiescentSegmentMode(PrimaryMirrorModeTransitionArguments *args,
-                                                            TransitionState *stateInOut);
+                                TransitionState *stateInOut, char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO]);
 static PrimaryMirrorModeTransitionResult applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments *args,
-                                                            TransitionState *stateInOut);
+                                TransitionState *stateInOut, char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO]);
 static PrimaryMirrorModeTransitionResult applyStepForTransitionToMirrorSegmentMode(PrimaryMirrorModeTransitionArguments *args,
-                                                            TransitionState *stateInOut);
+                                TransitionState *stateInOut, char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO]);
 
 /**
  * Shared globals for this module live in a single instance of PMModuleState.
@@ -113,6 +113,12 @@ typedef struct PMModuleState
 	 *    isTransitionListenerFinished is also false (backend has not yet received this transitionResult
 	 */
 	volatile PrimaryMirrorModeTransitionResult transitionResult;
+
+	/**
+	 * The extra information about the transition result; used to report more info
+	 *   back to the caller (such as to differentiate a mirroring failure from other failure cases)
+	 */
+	volatile char transitionResultExtraInfo[MAX_TRANSITION_RESULT_EXTRA_INFO];
 
 	/**
 	 * For transitions that require the postmaster to do multiple steps of work, this will hold the current
@@ -194,6 +200,15 @@ PMLocalState pmLocalState;
 bool gHaveInitializedLocalState = false;
 
 /**
+ * Extra result information that can be returned to the calling script so it
+ *       can choose to take a different action besides just standard, generic handling
+ */
+#define RESULT_INFO_MIRRORING_FAILURE "MirroringFailure"
+#define RESULT_INFO_POSTMASTER_DIED "PostmasterDied"
+#define RESULT_INFO_IN_SHUTDOWN "ServerIsInShutdown"
+#define RESULT_INFO_INVALID_STATE_TRANSITION "InvalidStateTransition"
+
+/**
  * LABELS and parsing of values
  */
 
@@ -262,6 +277,9 @@ getSegmentStateLabel(SegmentState_e state)
 
 /**
  * Get the label for a transition result.  Returns a pointer to static memory.
+ *
+ * Note that scripts use these values in strings that may be parsed, so please keep
+ *      them as alphabetic values only
  */
 const char *
 getTransitionResultLabel(PrimaryMirrorModeTransitionResult res)
@@ -801,11 +819,18 @@ primaryMirrorHandlePostmasterReset(void)
     resetModuleStateForInitialTransition();
 }
 
+/**
+ *
+ * @param extraResultInfoOut in the case of error, this may be populated with addition data (the
+ *         RESULT_INFO_* values are the possible ones)
+ */
 PrimaryMirrorModeTransitionResult
-requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args)
+requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
+                                            char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO])
 {
 	volatile bool isTransitioning = false;
 	PrimaryMirrorMode targetMode;
+	extraResultInfoOut[0] = '\0';
 
 	Assert(args != NULL);
 	assertModuleInitialized();
@@ -928,6 +953,7 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args)
 			        pmModuleState->isTransitionRequested = false;
 			        pmModuleState->isTransitionListenerFinished = true;
 			        result = PMTransitionError;
+			        strncpy(extraResultInfoOut, RESULT_INFO_POSTMASTER_DIED, MAX_TRANSITION_RESULT_EXTRA_INFO);
 			        isDone = true;
 			    }
 				else if (!pmModuleState->isTransitionRequested)
@@ -935,6 +961,7 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args)
 					// postmaster completed the work
 					pmModuleState->isTransitionListenerFinished = true;
 					result = pmModuleState->transitionResult;
+					strncpy(extraResultInfoOut, (char*) pmModuleState->transitionResultExtraInfo, MAX_TRANSITION_RESULT_EXTRA_INFO);
 					isDone = true;
 				}
 			}
@@ -1162,9 +1189,12 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 		            getDataStateLabel(requestedTransition.dataState),
 		            getTransitionStateLabel(currentState));
 
+    char extraResultInfo[MAX_TRANSITION_RESULT_EXTRA_INFO];
+    extraResultInfo[0] = '\0';
     if ( isInShutdown )
     {
 	    elog(LOG, "PostmasterPrimaryMirrorTransition error: system is in shutdown");
+	    strncpy(extraResultInfo, RESULT_INFO_IN_SHUTDOWN, MAX_TRANSITION_RESULT_EXTRA_INFO);
         result = PMTransitionError;
     }
     else if ( transitionToFault)
@@ -1195,20 +1225,20 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
             switch (requestedTransition.mode)
             {
                 case PMModeUninitialized:
-                    result = applyStepForTransitionToUninitializedMode(&requestedTransition, &currentState);
+                    result = applyStepForTransitionToUninitializedMode(&requestedTransition, &currentState, extraResultInfo);
                     break;
                 case PMModeMaster:
                 case PMModeMirrorlessSegment:
-                    result = applyStepForTransitionToMasterOrMirrorlessMode(&requestedTransition, &currentState);
+                    result = applyStepForTransitionToMasterOrMirrorlessMode(&requestedTransition, &currentState, extraResultInfo);
                     break;
                 case PMModePrimarySegment:
-                    result = applyStepForTransitionToPrimarySegmentMode(&requestedTransition, &currentState);
+                    result = applyStepForTransitionToPrimarySegmentMode(&requestedTransition, &currentState, extraResultInfo);
                     break;
                 case PMModeQuiescentSegment:
-                    result = applyStepForTransitionToQuiescentSegmentMode(&requestedTransition, &currentState);
+                    result = applyStepForTransitionToQuiescentSegmentMode(&requestedTransition, &currentState, extraResultInfo);
                     break;
                 case PMModeMirrorSegment:
-                    result = applyStepForTransitionToMirrorSegmentMode(&requestedTransition, &currentState);
+                    result = applyStepForTransitionToMirrorSegmentMode(&requestedTransition, &currentState, extraResultInfo);
                     break;
                 default:
                     Assert(!"Unknown targetMode");
@@ -1273,6 +1303,7 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 		acquireModuleSpinLock();
 		{
 			pmModuleState->transitionResult = result;
+			strncpy((char*)pmModuleState->transitionResultExtraInfo, extraResultInfo, MAX_TRANSITION_RESULT_EXTRA_INFO);
 			pmModuleState->isTransitionRequested = false;
 			elog(LOG, "PostmasterPrimaryMirrorTransition (%d): cleared isTransitionRequested (backend finished is %d)",
 			                transitionNumber,
@@ -1366,7 +1397,8 @@ stepWaitForFilerepBackendsShutdown(TransitionState nextState, TransitionState *s
 }
 
 static PrimaryMirrorModeTransitionResult
-stepWaitForFilerepStartup(TransitionState nextState, TransitionState *stateInOut)
+stepWaitForFilerepStartup(TransitionState nextState, TransitionState *stateInOut,
+                char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO])
 {
     SegmentState_e segmentState;
     getPrimaryMirrorStatusCodes(NULL, &segmentState, NULL);
@@ -1377,6 +1409,7 @@ stepWaitForFilerepStartup(TransitionState nextState, TransitionState *stateInOut
         elog(LOG, "PostmasterPrimaryMirrorTransition: filerep startup: transition error");
         if ( updateSegmentState(SegmentStateFault))
             NotifyProcessesOfFilerepStateChange();
+        strncpy(extraResultInfoOut, RESULT_INFO_MIRRORING_FAILURE, MAX_TRANSITION_RESULT_EXTRA_INFO);
         return PMTransitionError;
     }
 
@@ -1404,9 +1437,10 @@ invalidMode(PrimaryMirrorModeTransitionArguments *args)
  * being in an invalid state is a programming error!
  */
 static PrimaryMirrorModeTransitionResult
-invalidState(TransitionState *stateInOut)
+invalidState(TransitionState *stateInOut, char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO])
 {
     elog(ERROR, "Invalid state %d", *stateInOut );
+    strncpy(extraResultInfoOut, RESULT_INFO_INVALID_STATE_TRANSITION, MAX_TRANSITION_RESULT_EXTRA_INFO);
     return PMTransitionError;
 }
 
@@ -1414,7 +1448,8 @@ invalidState(TransitionState *stateInOut)
  * Assuming we are the only transition running, try a transition
  */
 static PrimaryMirrorModeTransitionResult
-applyStepForTransitionToUninitializedMode(PrimaryMirrorModeTransitionArguments *args, TransitionState *stateInOut)
+applyStepForTransitionToUninitializedMode(PrimaryMirrorModeTransitionArguments *args, TransitionState *stateInOut,
+                        char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO])
 {
 	assertIsTransitioning();
 	return invalidMode(args);
@@ -1424,7 +1459,8 @@ applyStepForTransitionToUninitializedMode(PrimaryMirrorModeTransitionArguments *
  * Assuming we are the only transition running, try a transition
  */
 static PrimaryMirrorModeTransitionResult
-applyStepForTransitionToMasterOrMirrorlessMode(PrimaryMirrorModeTransitionArguments *args, TransitionState *stateInOut)
+applyStepForTransitionToMasterOrMirrorlessMode(PrimaryMirrorModeTransitionArguments *args, TransitionState *stateInOut,
+                        char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO])
 {
 	assertIsTransitioning();
 
@@ -1448,7 +1484,7 @@ applyStepForTransitionToMasterOrMirrorlessMode(PrimaryMirrorModeTransitionArgume
             return stepDoDatabaseStartup(TSDone, stateInOut );
 
         default:
-            return invalidState(stateInOut);
+            return invalidState(stateInOut, extraResultInfoOut);
 	}
 }
 
@@ -1456,7 +1492,8 @@ applyStepForTransitionToMasterOrMirrorlessMode(PrimaryMirrorModeTransitionArgume
  * Assuming we are the only transition running, try a transition
  */
 static PrimaryMirrorModeTransitionResult
-applyStepForTransitionToQuiescentSegmentMode(PrimaryMirrorModeTransitionArguments *args, TransitionState *stateInOut)
+applyStepForTransitionToQuiescentSegmentMode(PrimaryMirrorModeTransitionArguments *args, TransitionState *stateInOut,
+                        char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO])
 {
 	assertIsTransitioning();
 
@@ -1494,7 +1531,7 @@ applyStepForTransitionToQuiescentSegmentMode(PrimaryMirrorModeTransitionArgument
             return PMTransitionSuccess;
 
         default:
-            return invalidState(stateInOut);
+            return invalidState(stateInOut, extraResultInfoOut);
     }
 	/* else */
 	return PMTransitionInvalidTargetMode;
@@ -1504,7 +1541,8 @@ applyStepForTransitionToQuiescentSegmentMode(PrimaryMirrorModeTransitionArgument
  * Assuming we are the only transition running, try a transition
  */
 static PrimaryMirrorModeTransitionResult
-applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments *args, TransitionState *stateInOut)
+applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments *args, TransitionState *stateInOut,
+                        char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO])
 {
 	assertIsTransitioning();
 
@@ -1576,7 +1614,7 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
                 return stepDoFilerepStartup(TSAwaitingFilerepStartup, stateInOut );
             }
         case TSAwaitingFilerepStartup:
-            return stepWaitForFilerepStartup(TSDoneFilerepStartup, stateInOut );
+            return stepWaitForFilerepStartup(TSDoneFilerepStartup, stateInOut, extraResultInfoOut );
         case TSDoneFilerepStartup:
             *stateInOut = TSDoDatabaseStartup;
             return PMTransitionSuccess;
@@ -1629,6 +1667,8 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
 
 				if ( isNowInFault )
 				{
+				    /* we are now in mirroring fault so we can't go to resync, report as mirroring failure */
+				    strncpy(extraResultInfoOut, RESULT_INFO_MIRRORING_FAILURE, MAX_TRANSITION_RESULT_EXTRA_INFO);
 					return PMTransitionError;
 				}
 				/** tell filerep processes that they can begin resync now! */
@@ -1639,14 +1679,15 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
             return PMTransitionSuccess;
 
         default:
-            return invalidState(stateInOut);
+            return invalidState(stateInOut, extraResultInfoOut);
     }
 }
 
 /**
  */
 static PrimaryMirrorModeTransitionResult
-applyStepForTransitionToMirrorSegmentMode(PrimaryMirrorModeTransitionArguments *args, TransitionState *stateInOut)
+applyStepForTransitionToMirrorSegmentMode(PrimaryMirrorModeTransitionArguments *args, TransitionState *stateInOut,
+                        char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO])
 {
 	assertIsTransitioning();
 
@@ -1667,13 +1708,13 @@ applyStepForTransitionToMirrorSegmentMode(PrimaryMirrorModeTransitionArguments *
             copyTransitionInputParameters(args, SegmentStateInitialization);
             return stepDoFilerepStartup(TSAwaitingFilerepStartup, stateInOut );
         case TSAwaitingFilerepStartup:
-            return stepWaitForFilerepStartup(TSDoneFilerepStartup, stateInOut );
+            return stepWaitForFilerepStartup(TSDoneFilerepStartup, stateInOut, extraResultInfoOut );
         case TSDoneFilerepStartup:
             *stateInOut = TSDone;
             return PMTransitionSuccess;
 
         default:
-            return invalidState(stateInOut);
+            return invalidState(stateInOut, extraResultInfoOut);
 	}
 }
 

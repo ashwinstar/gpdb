@@ -15,6 +15,8 @@
 #include "c.h"
 #include "postgres.h"
 
+#define MAX_TRANSITION_RESULT_EXTRA_INFO 256
+
 /*
  * Segment states are set only when mirroring is configured (that is, when
  *    the FileRepRole is either FileRepPrimary or FileRepMirrorRole)
@@ -277,7 +279,8 @@ extern const char *getMirrorModeLabel(PrimaryMirrorMode mode);
 extern const char *getSegmentStateLabel(SegmentState_e state);
 
 /* transitioning */
-extern PrimaryMirrorModeTransitionResult requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args );
+extern PrimaryMirrorModeTransitionResult requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
+                        char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO] );
 extern bool isPrimaryMirrorModeTransitionRequested(void);
 extern void doRequestedPrimaryMirrorModeTransitions(bool isInShutdown);
 extern PrimaryMirrorModeTransitionArguments *createNewTransitionArguments(void);

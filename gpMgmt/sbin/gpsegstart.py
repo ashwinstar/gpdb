@@ -23,6 +23,7 @@ from gppylib.gpparseopts import OptParser, OptChecker
 from gppylib import gparray, gplog
 from gppylib.commands import base, gp, pg, unix
 from gppylib.commands.gp import SEGMENT_TIMEOUT_DEFAULT
+from gppylib.commands.gp import *
 from gppylib.db import catalog, dbconn
 from gppylib import pgconf
 from gppylib.gpcoverage import GpCoverage
@@ -47,15 +48,20 @@ Return codes:
 EXECNAME = os.path.split(__file__)[-1]
 
 #-------------------------------------------------------------------------
-class SegStartStatus():
-    def __init__(self,datadir,started,reason):
+class SegStartStatus:
+
+    def __init__(self,datadir,started,reason, reasonCode):
+        """
+        @param reasonCode one of the gp.SEGSTART_* values
+        """
         self.datadir=datadir
         self.started=started
         self.reason=reason
+        self.reasonCode = reasonCode
     
     def __str__(self):
-        return "STATUS--DIR:%s--STARTED:%s--REASON:%s" % (self.datadir,self.started,self.reason)
-
+        return "STATUS--DIR:%s--STARTED:%s--REASONCODE:%s--REASON:%s" % \
+                    (self.datadir,self.started,self.reasonCode,self.reason)
 
 #-------------------------------------------------------------------------    
 class GpSegStart:
@@ -95,13 +101,15 @@ class GpSegStart:
         (self.expected_lc_collate,self.expected_lc_monetary,self.expected_lc_numeric)=collation_strings
         pass
 
-    def __markFailed(self, directoryToSegStartDataMap, results, dir, msg ):
+    def __markFailed(self, directoryToSegStartDataMap, results, dir, msg, reasonCode ):
         """
         Mark a segment as failed during some startup process and remove
           the entry for the segment from directoryToSegStartDataMap
+
+        @param reasonCode one of the gp.SEGSTART_* constant values
         """
 
-        results.append(SegStartStatus(dir,False, msg))
+        results.append(SegStartStatus(dir, False, msg, reasonCode))
         del directoryToSegStartDataMap[dir]
 
 
@@ -121,10 +129,11 @@ class GpSegStart:
                     logger.warning("postmaster.pid file exists, checking if recovery startup required")
                     res = gp.recovery_startup(dir)
                     if res:
-                        self.__markFailed(directoryToSegStartDataMap, results, dir, res)
+                        self.__markFailed(directoryToSegStartDataMap, results, dir, res, gp.SEGSTART_ERROR_RECOVERY_RESTART_FAILED)
             else:
                 logger.info("Segment data directory does not exist for: '%s'" % dir)
-                self.__markFailed(directoryToSegStartDataMap, results, dir, "segment data directory does not exist")
+                self.__markFailed(directoryToSegStartDataMap, results, dir, "segment data directory does not exist",
+                                    gp.SEGSTART_ERROR_DATA_DIRECTORY_DOES_NOT_EXIST)
 
     def __startSegments(self, directoryToSegStartDataMap, results):
         """
@@ -160,8 +169,8 @@ class GpSegStart:
             if res.rc != 0:
                 #TODO: read in last entries in startup.log
                 self.__markFailed(directoryToSegStartDataMap, results, cmd.segment.getSegmentDataDirectory(),
-                                  "PG_CTL failed.\nstdout:%s\nstderr:%s\n" %
-                                      (res.stdout,res.stderr))
+                                  "PG_CTL failed.\nstdout:%s\nstderr:%s\n" % (res.stdout,res.stderr),
+                                   gp.SEGSTART_ERROR_PG_CTL_FAILED)
 
         self.pool.empty_completed_items()
 
@@ -199,7 +208,8 @@ class GpSegStart:
         for cmd in self.pool.getCompletedItems():
             (success,error_str)= cmd.getResults()
             if not success:
-                self.__markFailed(directoryToSegStartDataMap, results, cmd.datadir, error_str)
+                self.__markFailed(directoryToSegStartDataMap, results, cmd.datadir, error_str,
+                            gp.SEGSTART_ERROR_CHECKING_CONNECTION_AND_LOCALE_FAILED)
 
     def __convertSegments(self, directoryToSegStartDataMap, results, transitionData):
 
@@ -222,12 +232,33 @@ class GpSegStart:
             for cmd in cmds:
                 res=cmd.get_results()
                 if res.rc != 0:
+                    stdoutFromFailure = res.stdout.replace("\n", " ").strip()
+                    stderrFromFailure = res.stderr.replace("\n", " ").strip()
+
                     if res.rc == gp.SendFilerepTransitionMessage.TRANSITION_ERRCODE_ERROR_SERVER_DID_NOT_RETURN_DATA:
                         reason = "Segment did not respond to startup request; check segment logfile"
+                        reasonCode = gp.SEGSTART_ERROR_SERVER_DID_NOT_RESPOND 
+
+                    elif stderrFromFailure == "failure: Error: MirroringFailure":
+                        reason = "Failure in segment mirroring; check segment logfile"
+                        reasonCode = gp.SEGSTART_ERROR_MIRRORING_FAILURE
+
+                    elif stderrFromFailure == "failure: Error: PostmasterDied":
+                        reason = "Segment postmaster has exited; check segment logfile"
+                        reasonCode = gp.SEGSTART_ERROR_POSTMASTER_DIED
+
+                    elif stderrFromFailure == "failure: Error: InvalidStateTransition":
+                        reason = "Not a valid operation at this time; check segment logfile"
+                        reasonCode = gp.SEGSTART_ERROR_INVALID_STATE_TRANSITION
+
+                    elif stderrFromFailure == "failure: Error: ServerIsInShutdown":
+                        reason = "System is shutting down"
+                        reasonCode = gp.SEGSTART_ERROR_SERVER_IS_IN_SHUTDOWN
+
                     else:
-                        reason = "Start failed.  stdout:\"%s\"  stderr:\"%s\"" % \
-                                (res.stdout.replace("\n", " "), res.stderr.replace("\n", " "))
-                    self.__markFailed(directoryToSegStartDataMap, results, cmd.dataDir, reason)
+                        reason = "Start failed; check segment logfile.  \"%s%s\"" % (stdoutFromFailure, stderrFromFailure)
+                        reasonCode = gp.SEGSTART_ERROR_OTHER
+                    self.__markFailed(directoryToSegStartDataMap, results, cmd.dataDir, reason, reasonCode)
 
     ######
     def start(self): 
@@ -250,7 +281,7 @@ class GpSegStart:
 
         # any remaining items succeeded!
         for datadir,segmentToStart in directoryToSegStartDataMap.iteritems():
-            results.append(SegStartStatus(datadir,True,"Start Succeeded"))
+            results.append(SegStartStatus(datadir,True,"Start Succeeded", gp.SEGSTART_SUCCESS ))
 
         #Log the results!
         status = '\nCOMMAND RESULTS\n'

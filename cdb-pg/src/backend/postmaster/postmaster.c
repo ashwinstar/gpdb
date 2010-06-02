@@ -2897,7 +2897,8 @@ exit:
 		strcpy(args->peerAddress, peer);
 	}
 
-	result = requestTransitionToPrimaryMirrorMode(args);
+    char extraResultInfo[MAX_TRANSITION_RESULT_EXTRA_INFO];
+	result = requestTransitionToPrimaryMirrorMode(args, extraResultInfo);
 
 	switch(result)
 	{
@@ -2906,8 +2907,14 @@ exit:
 			break;
 		default:
 		{
-			char buf[1000];
-			snprintf(buf, sizeof(buf), "failure: %s", getTransitionResultLabel(result));
+		    /** note that the script count on this format of result, so don't change it without
+		      *  updating them */
+			char buf[1000 + MAX_TRANSITION_RESULT_EXTRA_INFO];
+			snprintf(buf, sizeof(buf), "failure: %s%s%s",
+			    getTransitionResultLabel(result),
+			    extraResultInfo[0] == '\0' ? "" : ": ",
+			    extraResultInfo
+			    );
 			sendPrimaryMirrorTransitionResult(buf);
 		}
 		break;

@@ -453,7 +453,7 @@ class GpStart:
         # gather the list of those that we actually tried to start
         toStop = []
         toStop.extend(segmentStartResult.getSuccessfulSegments())
-        toStop.extend(segmentStartResult.getFailedSegments())
+        toStop.extend([f.getSegment() for f in segmentStartResult.getFailedSegments()])
 
         segmentsByHost = GpArray.getSegmentsByHostName(toStop)
 
@@ -492,22 +492,18 @@ class GpStart:
         invalidSegments are those that we didn't even try to start because they are marked as down or should otherwise
            not be started
         """
-        failedSegments = segmentStartResult.getFailedSegments()
-        failureReasons = segmentStartResult.getFailureReasons()
-
         started = len(segmentStartResult.getSuccessfulSegments())
-        failed = len(failedSegments)
+        failed = len(segmentStartResult.getFailedSegments())
         totalTriedToStart = started + failed
 
         if failed > 0 or logging_is_verbose():
             logger.info("----------------------------------------------------")
             if failed > 0:
-                for i in range(len(segmentStartResult.getFailedSegments())):
-                    segment = failedSegments[i]
-                    reason = failureReasons[i]
+                for failure in segmentStartResult.getFailedSegments():
+                    segment = failure.getSegment()
                     logger.info("DBID:%d  FAILED  host:'%s' datadir:'%s' with reason:'%s'" % (
                                 segment.getSegmentDbId(), segment.getSegmentHostName(),
-                                segment.getSegmentDataDirectory(), reason))
+                                segment.getSegmentDataDirectory(), failure.getReason()))
             for segment in segmentStartResult.getSuccessfulSegments():
                 logger.debug("DBID:%d  STARTED" % segment.getSegmentDbId())
             logger.info("----------------------------------------------------\n\n")

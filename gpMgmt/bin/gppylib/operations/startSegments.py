@@ -19,6 +19,22 @@ MIRROR_MODE_MIRRORLESS = "mirrorless"
 MIRROR_MODE_PRIMARY = "primary"
 MIRROR_MODE_QUIESCENT = "quiescent"
 
+class FailedSegmentResult:
+
+    def __init__(self, segment, reason, reasonCode):
+        self.__segment = segment
+        self.__reason = reason
+        self.__reasonCode = reasonCode
+
+    def getReason(self):
+        return self.__reason
+
+    def getReasonCode(self):
+        return self.__reasonCode
+
+    def getSegment(self):
+        return self.__segment
+
 #
 # Note that a failed segments may still be up -- it could be that the conversion to mirror/primary mode failed
 #
@@ -26,31 +42,23 @@ class StartSegmentsResult:
     def __init__(self):
         self.__successfulSegments = []
         self.__failedSegments = []
-        self.__failureReasons = []
         pass
 
     def getSuccessfulSegments(self):
-        return [x for x in self.__successfulSegments]
+        return self.__successfulSegments[:]
 
     def getFailedSegments(self):
         """
-        These failed segments will be in parallel with the results of getFailureReasons
+        Return a list of FailedSegmentResult objects
         """
-        return [x for x in self.__failedSegments ]
-
-    def getFailureReasons(self):
-        """
-        These failure reasons will be in parallel with the results of getFailedSegments
-        """
-        return [x for x in self.__failureReasons ]
+        return self.__failedSegments[:]
 
     def addSuccess(self, segment):
         self.__successfulSegments.append(segment)
 
-    def addFailure(self, segment, reason):
-        self.__failedSegments.append(segment)
-        self.__failureReasons.append(reason)
-
+    def addFailure(self, segment, reason, reasonCode):
+        self.__failedSegments.append(FailedSegmentResult(segment, reason, reasonCode))
+        
     def clearSuccessfulSegments(self):
         self.__successfulSegments = []
 
@@ -94,7 +102,7 @@ class StartSegmentsOperation:
             hostName = segment.getSegmentHostName()
             logger.warning("Skipping startup of segdb on %s directory %s Ping Failed <<<<<<" % \
                                         (hostName, segment.getSegmentDataDirectory()))
-            result.addFailure(segment, 'Failed to Ping on host: %s' % hostName)
+            result.addFailure(segment, 'Failed to Ping on host: %s' % hostName, gp.SEGSTART_ERROR_PING_FAILED )
             failedPingDbIds[segment.getSegmentDbId()] = True
 
         self.hostcache.log_contents()
@@ -197,11 +205,21 @@ class StartSegmentsOperation:
                 for line in lines:
                     if line.startswith("STATUS"):
                         fields=line.split('--')
-                        dir = fields[1].split(':')[1]
-                        started = fields[2].split(':')[1]
+
+                        index = 1
+                        dir = fields[index].split(':')[1]
+                        index += 1
+
+                        started = fields[index].split(':')[1]
+                        index += 1
+
+                        reasonCode = gp.SEGSTART_ERROR_UNKNOWN
+                        if fields[index].startswith("REASONCODE:"):
+                            reasonCode = int(fields[index].split(":")[1])
+                            index += 1
 
                         # The funny join and splits are because Reason could have colons or -- in the text itself
-                        reasonStr = "--".join(fields[3:])
+                        reasonStr = "--".join(fields[index:])
                         reasonArr = reasonStr.split(':')
                         reasonArr = reasonArr[1:]
                         reasonStr = ":".join(reasonArr)
@@ -214,12 +232,14 @@ class StartSegmentsOperation:
                         for segment in cmd.dblist:
                             if segment.getSegmentDataDirectory() == dir:
                                 if success:
+                                    if reasonCode == gp.SEGSTART_ERROR_UNKNOWN:
+                                        reasonCode = gp.SEGSTART_SUCCESS
                                     resultOut.addSuccess(segment)
                                 else:
-                                    resultOut.addFailure(segment, reasonStr)
+                                    resultOut.addFailure(segment, reasonStr, reasonCode)
             else:
                 for segment in cmd.dblist:
-                    resultOut.addFailure(segment, cmd.get_results())
+                    resultOut.addFailure(segment, cmd.get_results(), gp.SEGSTART_ERROR_UNKNOWN)
 
     def __createPickledTransitionParameters(self, targetMode, segmentsOnHost, convertUsingFullResync, dbIdToPeerMap):
         dbIdToFullResync = {}

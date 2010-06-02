@@ -513,17 +513,17 @@ class GpMirrorListToBuild:
     def __startAll(self, gpEnv, gpArray, segments):
         segmentStartResult = self.__createStartSegmentsOp(gpEnv).startSegments(gpArray, segments, startSegments.START_AS_PRIMARY_OR_MIRROR)
 
-        for i in range(len(segmentStartResult.getFailedSegments())):
-            failedSeg = segmentStartResult.getFailedSegments()[i]
-            failureReason = segmentStartResult.getFailureReasons()[i]
+        for failure in segmentStartResult.getFailedSegments():
+            failedSeg = failure.getSegment()
+            failureReason = failure.getReason()
             logger.warn("Failed to start segment.  The fault prober will shortly mark it as down. Segment: %s: REASON: %s" % (failedSeg, failureReason))
         pass
 
     def __convertAllPrimaries(self, gpEnv, gpArray, segments, convertUsingFullResync):
         segmentStartResult = self.__createStartSegmentsOp(gpEnv).transitionSegments(gpArray, segments, convertUsingFullResync, startSegments.MIRROR_MODE_PRIMARY)
-        for i in range(len(segmentStartResult.getFailedSegments())):
-            failedSeg = segmentStartResult.getFailedSegments()[i]
-            failureReason = segmentStartResult.getFailureReasons()[i]
+        for failure in segmentStartResult.getFailedSegments():
+            failedSeg = failure.getSegment()
+            failureReason = failure.getReason()
             logger.warn("Failed to inform primary segment of updated mirroring state.  Segment: %s: REASON: %s" % (failedSeg, failureReason))
 
 class GpCleanupSegmentDirectoryDirective:
