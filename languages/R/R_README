@@ -1,5 +1,5 @@
 ************************************************************************
-ABOUT R AND PL/R IN GREENPLUM DATABASE 3.3
+ABOUT R AND PL/R IN GREENPLUM DATABASE
 ************************************************************************
 
 R is a programming language and environment for statistical computing and
@@ -85,16 +85,16 @@ INSTALLING AND ENABLING PL/R IN GREENPLUM DATABASE
 1. To use PL/R. you must have R installed on all Greenplum hosts 
    (see instructions above).
 
-2. Obtain the greenplum-db-3.3.x.x-plr-<platform>.zip distribution 
+2. Obtain the greenplum-db-<version>-plr-<platform>.zip distribution 
    package from Greenplum customer support.
 
 3. Unzip the package, for example:
 
-    $ unzip greenplum-db-3.3.1.0-plr-<platform>.zip
+    $ unzip greenplum-db-<version>-plr-<platform>.zip
 
 4. Copy the plr.so file to $GPHOME/lib/postgresql on all hosts:
 
-    $ gpscp -f <all_hosts_file> ./greenplum-db-3.3.1.0-plr/plr.so =:/usr/local/greenplum-db-3.3.1.0/lib/postgresql
+    $ gpscp -f <all_hosts_file> ./greenplum-db-<version>-plr/plr.so =:/usr/local/greenplum-db-<version>/lib/postgresql
 
 5. Make sure $R_HOME is set on all Greenplum hosts:
 

@@ -1,5 +1,5 @@
 ************************************************************************
-ABOUT PL/R AND R IN GREENPLUM DATABASE 3.3
+ABOUT PL/R AND R IN GREENPLUM DATABASE
 ************************************************************************
 
 PL/R is a PostGreSQL language extension that allows you to write PostgreSQL 
@@ -25,16 +25,16 @@ INSTALLING AND ENABLING PL/R IN GREENPLUM DATABASE
 1. To use PL/R. you must have R installed on all Greenplum hosts 
    (see instructions below).
 
-2. Obtain the greenplum-db-3.3.x.x-plr-<platform>.zip distribution 
+2. Obtain the greenplum-db-<version>-plr-<platform>.zip distribution 
    package from Greenplum customer support.
 
 3. Unzip the package, for example:
 
-    $ unzip greenplum-db-3.3.1.0-plr-<platform>.zip
+    $ unzip greenplum-db-<version>-plr-<platform>.zip
 
 4. Copy the plr.so file to $GPHOME/lib/postgresql on all hosts:
 
-    $ gpscp -f <all_hosts_file> ./greenplum-db-3.3.1.0-plr/plr.so =:/usr/local/greenplum-db-3.3.1.0/lib/postgresql
+    $ gpscp -f <all_hosts_file> ./greenplum-db-<version>-plr/plr.so =:/usr/local/greenplum-db-<version>/lib/postgresql
 
 5. Make sure $R_HOME is set on all Greenplum hosts:
 
@@ -71,7 +71,7 @@ INSTALLING R FOR USE WITH GREENPLUM DATABASE
 
 NOTE: You will need root access to install R.
 
-1. Obtain the compiled R-2.6.1-<platform>.zip distribution package 
+1. Obtain the compiled R-<version>-<platform>.zip distribution package 
    from Greenplum customer support.
 
 2. Unzip the package:
