@@ -847,10 +847,7 @@ SET_VERSION_SCRIPTS = \
 set_scripts_version : 
 	@for file in $(SET_VERSION_SCRIPTS); do \
 	    if [ -f $(INSTLOC)/$${file} ]; then \
-	        echo "Updating version: $(INSTLOC)/$${file}" ; \
 	        perl putversion $(INSTLOC)/$${file} ; \
-	    else \
-	        echo "Script not found - no need to update version: $(INSTLOC)/$${file}" ; \
 	    fi ; \
 	done
 
