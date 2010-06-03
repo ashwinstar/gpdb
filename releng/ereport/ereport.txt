@@ -1296,10 +1296,6 @@ xaae: xlog:00009001:  ereport(FATAL,
 xaae: xlog:00009002:  (errcode_for_file_access(), 
 xaae: xlog:00009003:  errmsg("could not read file \"%s\": %m", 
 xaae: xlog:00009004:  histfilepath))); 
-xaae: xlog:00009239:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
-xaae: xlog:00009240:  errFatalReturn(gp_reraise_signal), 
-xaae: xlog:00009241:  errOmitLocation(true), 
-xaae: xlog:00009242:  errmsg("Unexpected internal error"))); 
 xaae: xlog:00009335:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
 xaae: xlog:00009336:  errmsg("database 'postgres' does not exist"))); 
 aaaaa GP_IGNORE: xaah: xlogloc - ./backend/access/transam/xlogloc.c
@@ -2587,9 +2583,9 @@ aaaaa GP_IGNORE: cabh: cdbdtxcontextinfo - ./backend/cdb/cdbdtxcontextinfo.c
 cabh: cdbdtxcontextinfo:00000073:  ereport(ERROR, 
 cabh: cdbdtxcontextinfo:00000074:  (errcode(ERRCODE_OUT_OF_MEMORY), 
 cabh: cdbdtxcontextinfo:00000075:  errmsg("out of memory"))); 
-cabh: cdbdtxcontextinfo:00000510:  ereport(ERROR, 
-cabh: cdbdtxcontextinfo:00000511:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cabh: cdbdtxcontextinfo:00000512:  errmsg("out of memory"))); 
+cabh: cdbdtxcontextinfo:00000520:  ereport(ERROR, 
+cabh: cdbdtxcontextinfo:00000521:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cabh: cdbdtxcontextinfo:00000522:  errmsg("out of memory"))); 
 aaaaa GP_IGNORE: caba: cdbexplain - ./backend/cdb/cdbexplain.c
 caba: cdbexplain:00000484:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
 caba: cdbexplain:00000485:  errmsg_internal("Invalid execution statistics " 
@@ -2620,10 +2616,6 @@ caba: cdbfilerep:00000546:  (errmsg("Not enough shared memory for Mirroring.")))
 caba: cdbfilerep:00000704:  ereport(ERROR, 
 caba: cdbfilerep:00000705:  (errcode(ERRCODE_OUT_OF_MEMORY), 
 caba: cdbfilerep:00000706:  (errmsg("shared memory for Mirroring not initialized.")))); 
-caba: cdbfilerep:00001412:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
-caba: cdbfilerep:00001413:  errFatalReturn(gp_reraise_signal), 
-caba: cdbfilerep:00001414:  errOmitLocation(true), 
-caba: cdbfilerep:00001415:  errmsg("Unexpected internal error"))); 
 aaaaa GP_IGNORE: caca: cdbfilerepconnclient - ./backend/cdb/cdbfilerepconnclient.c
 caca: cdbfilerepconnclient:00000056:  ereport(LOG, 
 caca: cdbfilerepconnclient:00000057:  (errcode_for_socket_access(), 
@@ -2921,38 +2913,38 @@ caba: cdblogsync:00000716:  ereport(ERROR,
 caba: cdblogsync:00000717:  (errcode_for_file_access(), 
 caba: cdblogsync:00000718:  errmsg("QDSYNC: could not fsync file '%s': %m", xlogfilename))); 
 aaaaa GP_IGNORE: cacb: cdbmirroredappendonly - ./backend/cdb/cdbmirroredappendonly.c
-cacb: cdbmirroredappendonly:00000871:  ereport(ERROR, 
-cacb: cdbmirroredappendonly:00000872:  (errcode_for_file_access(), 
-cacb: cdbmirroredappendonly:00000873:  errmsg("could not read from position: " INT64_FORMAT " in file %d/%d/%d.%d : %m", 
-cacb: cdbmirroredappendonly:00000874:  readOffset, 
-cacb: cdbmirroredappendonly:00000875:  mirroredOpen->relFileNode.dbNode, 
-cacb: cdbmirroredappendonly:00000876:  mirroredOpen->relFileNode.spcNode, 
-cacb: cdbmirroredappendonly:00000877:  mirroredOpen->relFileNode.relNode, 
-cacb: cdbmirroredappendonly:00000878:  mirroredOpen->segmentFileNum))); 
-cacb: cdbmirroredappendonly:00001034:  ereport(ERROR, 
-cacb: cdbmirroredappendonly:00001035:  (errcode_for_file_access(), 
-cacb: cdbmirroredappendonly:00001036:  errmsg("could not open relation file '%s', relation name '%s': %s", 
-cacb: cdbmirroredappendonly:00001037:  relpath(*relFileNode), 
-cacb: cdbmirroredappendonly:00001038:  relationName, 
-cacb: cdbmirroredappendonly:00001039:  strerror(primaryError)))); 
-cacb: cdbmirroredappendonly:00001153:  ereport(ERROR, 
-cacb: cdbmirroredappendonly:00001154:  (errcode_for_file_access(), 
-cacb: cdbmirroredappendonly:00001155:  errmsg("could not open relation file '%s', relation name '%s': %s", 
-cacb: cdbmirroredappendonly:00001156:  relpath(*relFileNode), 
-cacb: cdbmirroredappendonly:00001157:  relationName, 
-cacb: cdbmirroredappendonly:00001158:  strerror(primaryError)))); 
+cacb: cdbmirroredappendonly:00000878:  ereport(ERROR, 
+cacb: cdbmirroredappendonly:00000879:  (errcode_for_file_access(), 
+cacb: cdbmirroredappendonly:00000880:  errmsg("could not read from position: " INT64_FORMAT " in file %d/%d/%d.%d : %m", 
+cacb: cdbmirroredappendonly:00000881:  readOffset, 
+cacb: cdbmirroredappendonly:00000882:  mirroredOpen->relFileNode.dbNode, 
+cacb: cdbmirroredappendonly:00000883:  mirroredOpen->relFileNode.spcNode, 
+cacb: cdbmirroredappendonly:00000884:  mirroredOpen->relFileNode.relNode, 
+cacb: cdbmirroredappendonly:00000885:  mirroredOpen->segmentFileNum))); 
+cacb: cdbmirroredappendonly:00001041:  ereport(ERROR, 
+cacb: cdbmirroredappendonly:00001042:  (errcode_for_file_access(), 
+cacb: cdbmirroredappendonly:00001043:  errmsg("could not open relation file '%s', relation name '%s': %s", 
+cacb: cdbmirroredappendonly:00001044:  relpath(*relFileNode), 
+cacb: cdbmirroredappendonly:00001045:  relationName, 
+cacb: cdbmirroredappendonly:00001046:  strerror(primaryError)))); 
+cacb: cdbmirroredappendonly:00001160:  ereport(ERROR, 
+cacb: cdbmirroredappendonly:00001161:  (errcode_for_file_access(), 
+cacb: cdbmirroredappendonly:00001162:  errmsg("could not open relation file '%s', relation name '%s': %s", 
+cacb: cdbmirroredappendonly:00001163:  relpath(*relFileNode), 
+cacb: cdbmirroredappendonly:00001164:  relationName, 
+cacb: cdbmirroredappendonly:00001165:  strerror(primaryError)))); 
 aaaaa GP_IGNORE: cacb: cdbmirroredbufferpool - ./backend/cdb/cdbmirroredbufferpool.c
-cacb: cdbmirroredbufferpool:00000665:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00000666:  (errcode_for_file_access(), 
-cacb: cdbmirroredbufferpool:00000667:  errmsg("could not seek in file to position %d in file \"%s\", segment file %d: %m", 
-cacb: cdbmirroredbufferpool:00000668:  position, 
-cacb: cdbmirroredbufferpool:00000669:  relpath(open->relFileNode), 
-cacb: cdbmirroredbufferpool:00000670:  open->segmentFileNum))); 
-cacb: cdbmirroredbufferpool:00000723:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00000724:  (errcode_for_file_access(), 
-cacb: cdbmirroredbufferpool:00000725:  errmsg("could not seek in file to position %d in file \"%s\", segment file %d: %m", 
-cacb: cdbmirroredbufferpool:00000726:  position, 
-cacb: cdbmirroredbufferpool:00000727:  relpath(open->relFileNode), open->segmentFileNum))); 
+cacb: cdbmirroredbufferpool:00000672:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00000673:  (errcode_for_file_access(), 
+cacb: cdbmirroredbufferpool:00000674:  errmsg("could not seek in file to position %d in file \"%s\", segment file %d: %m", 
+cacb: cdbmirroredbufferpool:00000675:  position, 
+cacb: cdbmirroredbufferpool:00000676:  relpath(open->relFileNode), 
+cacb: cdbmirroredbufferpool:00000677:  open->segmentFileNum))); 
+cacb: cdbmirroredbufferpool:00000730:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00000731:  (errcode_for_file_access(), 
+cacb: cdbmirroredbufferpool:00000732:  errmsg("could not seek in file to position %d in file \"%s\", segment file %d: %m", 
+cacb: cdbmirroredbufferpool:00000733:  position, 
+cacb: cdbmirroredbufferpool:00000734:  relpath(open->relFileNode), open->segmentFileNum))); 
 aaaaa GP_IGNORE: cacb: cdbmirroredfilesysobj - ./backend/cdb/cdbmirroredfilesysobj.c
 cacb: cdbmirroredfilesysobj:00000192:  ereport(ERROR, 
 cacb: cdbmirroredfilesysobj:00000193:  (errcode_for_file_access(), 
@@ -3021,55 +3013,55 @@ cacb: cdbmirroredfilesysobj:00001234:  relFileNode->relNode,
 cacb: cdbmirroredfilesysobj:00001235:  segmentFileNum, 
 cacb: cdbmirroredfilesysobj:00001236:  strerror(primaryError)))); 
 aaaaa GP_IGNORE: cabj: cdbmirroredflatfile - ./backend/cdb/cdbmirroredflatfile.c
-cabj: cdbmirroredflatfile:00000116:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00000117:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00000118:  errmsg("could not open file \"%s\": %m", open->path))); 
-cabj: cdbmirroredflatfile:00000238:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00000239:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00000240:  errmsg("could not open file \"%s\": %m", open->path))); 
-cabj: cdbmirroredflatfile:00000311:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00000312:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00000313:  errmsg("could not fsync file \"%s\": %m", open->path))); 
-cabj: cdbmirroredflatfile:00000437:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00000438:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00000439:  errmsg("could not rename file from \"%s\" to \"%s\": %m", 
-cabj: cdbmirroredflatfile:00000440:  oldPath, newPath))); 
-cabj: cdbmirroredflatfile:00000509:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00000510:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00000511:  errmsg("could not write to file \"%s\": %m", open->path))); 
-cabj: cdbmirroredflatfile:00000581:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00000582:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00000583:  errmsg("could not seek in file to position '%d' in file '%s': %m", 
-cabj: cdbmirroredflatfile:00000584:  position, 
-cabj: cdbmirroredflatfile:00000585:  open->path))); 
-cabj: cdbmirroredflatfile:00000594:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00000595:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00000596:  errmsg("could not write to file \"%s\": %m", open->path))); 
-cabj: cdbmirroredflatfile:00000646:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00000647:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00000648:  errmsg("could not open file \"%s\": %m", open->path))); 
-cabj: cdbmirroredflatfile:00000730:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00000731:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00000732:  errmsg("could not seek in file to position %d in file \"%s\": %m", 
-cabj: cdbmirroredflatfile:00000733:  position, 
-cabj: cdbmirroredflatfile:00000734:  open->path))); 
-cabj: cdbmirroredflatfile:00000799:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00000800:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00000801:  errmsg("could not unlink file \"%s\": %m", path))); 
-cabj: cdbmirroredflatfile:00000908:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00000909:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00000910:  errmsg("could not seek to end of file \"%s\" : %m", 
-cabj: cdbmirroredflatfile:00000911:  primaryOpen.path))); 
-cabj: cdbmirroredflatfile:00000939:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00000940:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cabj: cdbmirroredflatfile:00000941:  (errmsg("Not enough shared memory for Mirroring.")))); 
-cabj: cdbmirroredflatfile:00000954:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00000955:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00000956:  errmsg("could not read from position:%d in file \"%s\" : %m", 
-cabj: cdbmirroredflatfile:00000957:  startOffset, primaryOpen.path))); 
-cabj: cdbmirroredflatfile:00001157:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00001158:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cabj: cdbmirroredflatfile:00001159:  (errmsg("Not enough shared memory for Mirroring.")))); 
+cabj: cdbmirroredflatfile:00000121:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00000122:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00000123:  errmsg("could not open file \"%s\": %m", open->path))); 
+cabj: cdbmirroredflatfile:00000246:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00000247:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00000248:  errmsg("could not open file \"%s\": %m", open->path))); 
+cabj: cdbmirroredflatfile:00000322:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00000323:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00000324:  errmsg("could not fsync file \"%s\": %m", open->path))); 
+cabj: cdbmirroredflatfile:00000451:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00000452:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00000453:  errmsg("could not rename file from \"%s\" to \"%s\": %m", 
+cabj: cdbmirroredflatfile:00000454:  oldPath, newPath))); 
+cabj: cdbmirroredflatfile:00000526:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00000527:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00000528:  errmsg("could not write to file \"%s\": %m", open->path))); 
+cabj: cdbmirroredflatfile:00000598:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00000599:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00000600:  errmsg("could not seek in file to position '%d' in file '%s': %m", 
+cabj: cdbmirroredflatfile:00000601:  position, 
+cabj: cdbmirroredflatfile:00000602:  open->path))); 
+cabj: cdbmirroredflatfile:00000611:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00000612:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00000613:  errmsg("could not write to file \"%s\": %m", open->path))); 
+cabj: cdbmirroredflatfile:00000663:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00000664:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00000665:  errmsg("could not open file \"%s\": %m", open->path))); 
+cabj: cdbmirroredflatfile:00000747:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00000748:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00000749:  errmsg("could not seek in file to position %d in file \"%s\": %m", 
+cabj: cdbmirroredflatfile:00000750:  position, 
+cabj: cdbmirroredflatfile:00000751:  open->path))); 
+cabj: cdbmirroredflatfile:00000818:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00000819:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00000820:  errmsg("could not unlink file \"%s\": %m", path))); 
+cabj: cdbmirroredflatfile:00000929:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00000930:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00000931:  errmsg("could not seek to end of file \"%s\" : %m", 
+cabj: cdbmirroredflatfile:00000932:  primaryOpen.path))); 
+cabj: cdbmirroredflatfile:00000960:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00000961:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cabj: cdbmirroredflatfile:00000962:  (errmsg("Not enough shared memory for Mirroring.")))); 
+cabj: cdbmirroredflatfile:00000975:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00000976:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00000977:  errmsg("could not read from position:%d in file \"%s\" : %m", 
+cabj: cdbmirroredflatfile:00000978:  startOffset, primaryOpen.path))); 
+cabj: cdbmirroredflatfile:00001181:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00001182:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cabj: cdbmirroredflatfile:00001183:  (errmsg("Not enough shared memory for Mirroring.")))); 
 aaaaa GP_IGNORE: caaj: cdbmutate - ./backend/cdb/cdbmutate.c
 caaj: cdbmutate:00000410:  ereport(NOTICE, 
 caaj: cdbmutate:00000411:  (errcode(ERRCODE_SUCCESSFUL_COMPLETION), 
@@ -3319,46 +3311,46 @@ cabc: cdbsubselect:00000224:  ));
 aaaaa GP_IGNORE: caaf: cdbtm - ./backend/cdb/cdbtm.c
 caaf: cdbtm:00000531:  ereport(ERROR, (errmsg("Global transaction upgrade from single segment to entire cluster failed for gid = \"%s\" due to error", 
 caaf: cdbtm:00000532:  currentGxact->gid))); 
-caaf: cdbtm:00001570:  ereport(ERROR, 
-caaf: cdbtm:00001571:  (errcode_for_file_access(), 
-caaf: cdbtm:00001572:  errmsg("could not create save DTM redo file \"%s\"", 
-caaf: cdbtm:00001573:  path))); 
-caaf: cdbtm:00001601:  ereport(ERROR, 
-caaf: cdbtm:00001602:  (errcode_for_file_access(), 
-caaf: cdbtm:00001603:  errmsg("could not write save DTM redo file : %m"))); 
-caaf: cdbtm:00001661:  ereport(ERROR, 
-caaf: cdbtm:00001662:  (errcode_for_file_access(), 
-caaf: cdbtm:00001663:  errmsg("error reading DTM redo file: %m"))); 
-caaf: cdbtm:00001732:  ereport(FATAL, 
-caaf: cdbtm:00001733:  (errmsg("the limit of %d distributed transactions has been reached.", 
-caaf: cdbtm:00001734:  max_tm_gxacts), 
-caaf: cdbtm:00001735:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
-caaf: cdbtm:00002278:  ereport(FATAL, 
-caaf: cdbtm:00002279:  (errmsg("the limit of %d distributed transactions has been reached.", 
-caaf: cdbtm:00002280:  max_tm_gxacts), 
-caaf: cdbtm:00002281:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
-caaf: cdbtm:00002613:  ereport(FATAL, 
-caaf: cdbtm:00002614:  (errmsg("reached limit of %u global transactions per start", LastDistributedTransactionId))); 
-caaf: cdbtm:00002868:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
-caaf: cdbtm:00002869:  errmsg("DTM Log recovery failed. There are still unresolved " 
-caaf: cdbtm:00002870:  "in-doubt transactions on some of the segment databaes " 
-caaf: cdbtm:00002871:  "that were not able to be resolved for an unknown reason. "), 
-caaf: cdbtm:00002872:  errdetail("Here is a list of in-doubt transactions in the system: %s", 
-caaf: cdbtm:00002873:  indoubtBuff.data), 
-caaf: cdbtm:00002874:  errhint("Try restarting the Greenplum Database array. If the problem persists " 
-caaf: cdbtm:00002875:  " an Administrator will need to resolve these transactions " 
-caaf: cdbtm:00002876:  " manually."))); 
-caaf: cdbtm:00002926:  ereport(ERROR, 
-caaf: cdbtm:00002927:  (errmsg("gp_max_distributed_xid error (gathered %d results from cmd '%s')", resultCount, buffer.data), 
-caaf: cdbtm:00002928:  errdetail("%s", errbuf.data))); 
-caaf: cdbtm:00003007:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-caaf: cdbtm:00003008:  errmsg("Unable to collect list of prepared transactions " 
-caaf: cdbtm:00003009:  "from all segment databases."), 
-caaf: cdbtm:00003010:  errdetail("%s", errmsgbuf.data))); 
-caaf: cdbtm:00003044:  ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaf: cdbtm:00003045:  errmsg("DTM could not allocate hash table for InDoubtDtxList."))); 
-caaf: cdbtm:00003723:  ereport(ERROR, (errmsg("Global transaction BEGIN failed for gid = \"%s\" due to error", 
-caaf: cdbtm:00003724:  currentGxact->gid))); 
+caaf: cdbtm:00001633:  ereport(ERROR, 
+caaf: cdbtm:00001634:  (errcode_for_file_access(), 
+caaf: cdbtm:00001635:  errmsg("could not create save DTM redo file \"%s\"", 
+caaf: cdbtm:00001636:  path))); 
+caaf: cdbtm:00001664:  ereport(ERROR, 
+caaf: cdbtm:00001665:  (errcode_for_file_access(), 
+caaf: cdbtm:00001666:  errmsg("could not write save DTM redo file : %m"))); 
+caaf: cdbtm:00001724:  ereport(ERROR, 
+caaf: cdbtm:00001725:  (errcode_for_file_access(), 
+caaf: cdbtm:00001726:  errmsg("error reading DTM redo file: %m"))); 
+caaf: cdbtm:00001795:  ereport(FATAL, 
+caaf: cdbtm:00001796:  (errmsg("the limit of %d distributed transactions has been reached.", 
+caaf: cdbtm:00001797:  max_tm_gxacts), 
+caaf: cdbtm:00001798:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
+caaf: cdbtm:00002340:  ereport(FATAL, 
+caaf: cdbtm:00002341:  (errmsg("the limit of %d distributed transactions has been reached.", 
+caaf: cdbtm:00002342:  max_tm_gxacts), 
+caaf: cdbtm:00002343:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
+caaf: cdbtm:00002674:  ereport(FATAL, 
+caaf: cdbtm:00002675:  (errmsg("reached limit of %u global transactions per start", LastDistributedTransactionId))); 
+caaf: cdbtm:00002927:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+caaf: cdbtm:00002928:  errmsg("DTM Log recovery failed. There are still unresolved " 
+caaf: cdbtm:00002929:  "in-doubt transactions on some of the segment databaes " 
+caaf: cdbtm:00002930:  "that were not able to be resolved for an unknown reason. "), 
+caaf: cdbtm:00002931:  errdetail("Here is a list of in-doubt transactions in the system: %s", 
+caaf: cdbtm:00002932:  indoubtBuff.data), 
+caaf: cdbtm:00002933:  errhint("Try restarting the Greenplum Database array. If the problem persists " 
+caaf: cdbtm:00002934:  " an Administrator will need to resolve these transactions " 
+caaf: cdbtm:00002935:  " manually."))); 
+caaf: cdbtm:00002985:  ereport(ERROR, 
+caaf: cdbtm:00002986:  (errmsg("gp_max_distributed_xid error (gathered %d results from cmd '%s')", resultCount, buffer.data), 
+caaf: cdbtm:00002987:  errdetail("%s", errbuf.data))); 
+caaf: cdbtm:00003066:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+caaf: cdbtm:00003067:  errmsg("Unable to collect list of prepared transactions " 
+caaf: cdbtm:00003068:  "from all segment databases."), 
+caaf: cdbtm:00003069:  errdetail("%s", errmsgbuf.data))); 
+caaf: cdbtm:00003103:  ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaf: cdbtm:00003104:  errmsg("DTM could not allocate hash table for InDoubtDtxList."))); 
+caaf: cdbtm:00003782:  ereport(ERROR, (errmsg("Global transaction BEGIN failed for gid = \"%s\" due to error", 
+caaf: cdbtm:00003783:  currentGxact->gid))); 
 aaaaa GP_IGNORE: caah: cdbutil - ./backend/cdb/cdbutil.c
 caah: cdbutil:00000268:  ereport(ERROR, 
 caah: cdbutil:00000269:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
@@ -3651,93 +3643,93 @@ iaag: icxtcp:00002640:  "For Remote Connection: contentId=%d at %s",
 iaag: icxtcp:00002641:  errno, conn->remoteContentId, 
 iaag: icxtcp:00002642:  conn->remoteHostAndPort))); 
 aaaaa GP_IGNORE: iaag: icxudp - ./backend/cdb/motion/ic_udp.c
-iaag: icxudp:00000306:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00000307:  errmsg("Interconnect Error: Could not set up udp listener socket."), 
-iaag: icxudp:00000308:  errdetail("%m%s", fun))); 
-iaag: icxudp:00000332:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00000333:  errmsg("Interconnect error: could not allocate connection hash, out of memory."), 
-iaag: icxudp:00000334:  errdetail("%m%s", "malloc"))); 
-iaag: icxudp:00000364:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
-iaag: icxudp:00000365:  errmsg("InitMotionLayerIPC: failed to create thread"), 
-iaag: icxudp:00000366:  errdetail("pthread_create() failed with err %d", pthread_err))); 
-iaag: icxudp:00000874:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00000875:  errmsg("Interconnect Error: Could not set udp-tx socket" 
-iaag: icxudp:00000876:  "to non-blocking mode."), 
-iaag: icxudp:00000877:  errdetail("%m%s sockfd=%d", "fcntl", pEntry->txfd))); 
-iaag: icxudp:00000972:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00000973:  errmsg("Interconnect Error: Could not set up listener socket."), 
-iaag: icxudp:00000974:  errdetail("%m%s", fun))); 
-iaag: icxudp:00001014:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001015:  errmsg("Interconnect Error: Could not parse remote listener" 
-iaag: icxudp:00001016:  "address: '%s'", cdbProc->listenerAddr), 
-iaag: icxudp:00001017:  errdetail("inet_pton() unable to parse address: '%s'", 
-iaag: icxudp:00001018:  cdbProc->listenerAddr))); 
-iaag: icxudp:00001022:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001023:  errmsg("Interconnect Error: System error occured during parsing" 
-iaag: icxudp:00001024:  " of remote listener address '%s'", cdbProc->listenerAddr), 
-iaag: icxudp:00001025:  errdetail("%m%s", "inet_pton"))); 
-iaag: icxudp:00001074:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001075:  errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."), 
-iaag: icxudp:00001076:  errdetail("%m%s", "malloc"))); 
-iaag: icxudp:00001108:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001109:  errmsg("Interconnect error setting up outgoing " 
-iaag: icxudp:00001110:  "connection."), 
-iaag: icxudp:00001111:  errdetail("%m%s", "sendto"))); 
-iaag: icxudp:00001244:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-iaag: icxudp:00001245:  errmsg("Setup UDP interconnect failed: out of memory"))); 
-iaag: icxudp:00001286:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001287:  errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."), 
-iaag: icxudp:00001288:  errdetail("%m%s", "malloc"))); 
-iaag: icxudp:00001402:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001403:  errmsg("Interconnect error: %m%s", "poll"))); 
-iaag: icxudp:00001428:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001429:  errmsg("Interconnect error: %m%s", "recvfrom"))); 
-iaag: icxudp:00001433:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001434:  errmsg("Interconnect error: %m%s short ack receive!", "recvfrom"))); 
-iaag: icxudp:00001506:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001507:  errmsg("Interconnect error: UDP-IC out of memory."))); 
-iaag: icxudp:00001614:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001615:  errmsg("Interconnect timeout: Unable to " 
-iaag: icxudp:00001616:  "complete setup of all connections " 
-iaag: icxudp:00001617:  "within time limit."), 
-iaag: icxudp:00001618:  errdetail("Completed %d of %d incoming and " 
-iaag: icxudp:00001619:  "%d of %d outgoing connections. " 
-iaag: icxudp:00001620:  "gp_interconnect_setup_timeout = %d " 
-iaag: icxudp:00001621:  "seconds.", 
-iaag: icxudp:00001622:  incoming_count, expectedTotalIncoming, 
-iaag: icxudp:00001623:  outgoing_count, expectedTotalOutgoing, 
-iaag: icxudp:00001624:  interconnect_setup_timeout))); 
-iaag: icxudp:00001989:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001990:  errmsg(CDB_MOTION_LOST_CONTACT_STRING))); 
-iaag: icxudp:00002096:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002097:  errmsg("Interconnect error segment lost contact with master (recv)"))); 
-iaag: icxudp:00002099:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002100:  errmsg("Interconnect error master lost contact with client (recv)"))); 
-iaag: icxudp:00002107:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002108:  errmsg("Interconnect error: UDP-IC out of memory."))); 
-iaag: icxudp:00002286:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002287:  errmsg("Interconnect error waiting for peer ack"), 
-iaag: icxudp:00002288:  errdetail("During recvfrom() call.\n"))); 
-iaag: icxudp:00002293:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002294:  errmsg("Interconnect error waiting for peer ack"), 
-iaag: icxudp:00002295:  errdetail("short read during recvfrom() call. (%d)\n", n))); 
-iaag: icxudp:00002453:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002454:  errmsg("Interconnect error writing an outgoing packet"), 
-iaag: icxudp:00002455:  errdetail("error during sendto() call (error:%d).\n" 
-iaag: icxudp:00002456:  "For Remote Connection: contentId=%d at %s", 
-iaag: icxudp:00002457:  errno, conn->remoteContentId, 
-iaag: icxudp:00002458:  conn->remoteHostAndPort))); 
-iaag: icxudp:00002464:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002465:  errmsg("Interconnect error writing an outgoing packet"), 
-iaag: icxudp:00002466:  errdetail("short transmit during sendto() call.\n" 
-iaag: icxudp:00002467:  "For Remote Connection: contentId=%d at %s", 
-iaag: icxudp:00002468:  conn->remoteContentId, 
-iaag: icxudp:00002469:  conn->remoteHostAndPort))); 
-iaag: icxudp:00002519:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002520:  errmsg("Interconnect error segment lost contact with master (xmit)"))); 
-iaag: icxudp:00002535:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002536:  errmsg("Interconnect error waiting for peer ack"), 
-iaag: icxudp:00002537:  errdetail("During poll() call.\n"))); 
+iaag: icxudp:00000304:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00000305:  errmsg("Interconnect Error: Could not set up udp listener socket."), 
+iaag: icxudp:00000306:  errdetail("%m%s", fun))); 
+iaag: icxudp:00000330:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00000331:  errmsg("Interconnect error: could not allocate connection hash, out of memory."), 
+iaag: icxudp:00000332:  errdetail("%m%s", "malloc"))); 
+iaag: icxudp:00000362:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
+iaag: icxudp:00000363:  errmsg("InitMotionLayerIPC: failed to create thread"), 
+iaag: icxudp:00000364:  errdetail("pthread_create() failed with err %d", pthread_err))); 
+iaag: icxudp:00000884:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00000885:  errmsg("Interconnect Error: Could not set udp-tx socket" 
+iaag: icxudp:00000886:  "to non-blocking mode."), 
+iaag: icxudp:00000887:  errdetail("%m%s sockfd=%d", "fcntl", pEntry->txfd))); 
+iaag: icxudp:00000982:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00000983:  errmsg("Interconnect Error: Could not set up listener socket."), 
+iaag: icxudp:00000984:  errdetail("%m%s", fun))); 
+iaag: icxudp:00001024:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001025:  errmsg("Interconnect Error: Could not parse remote listener" 
+iaag: icxudp:00001026:  "address: '%s'", cdbProc->listenerAddr), 
+iaag: icxudp:00001027:  errdetail("inet_pton() unable to parse address: '%s'", 
+iaag: icxudp:00001028:  cdbProc->listenerAddr))); 
+iaag: icxudp:00001032:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001033:  errmsg("Interconnect Error: System error occured during parsing" 
+iaag: icxudp:00001034:  " of remote listener address '%s'", cdbProc->listenerAddr), 
+iaag: icxudp:00001035:  errdetail("%m%s", "inet_pton"))); 
+iaag: icxudp:00001084:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001085:  errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."), 
+iaag: icxudp:00001086:  errdetail("%m%s", "malloc"))); 
+iaag: icxudp:00001118:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001119:  errmsg("Interconnect error setting up outgoing " 
+iaag: icxudp:00001120:  "connection."), 
+iaag: icxudp:00001121:  errdetail("%m%s", "sendto"))); 
+iaag: icxudp:00001254:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+iaag: icxudp:00001255:  errmsg("Setup UDP interconnect failed: out of memory"))); 
+iaag: icxudp:00001296:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001297:  errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."), 
+iaag: icxudp:00001298:  errdetail("%m%s", "malloc"))); 
+iaag: icxudp:00001412:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001413:  errmsg("Interconnect error: %m%s", "poll"))); 
+iaag: icxudp:00001438:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001439:  errmsg("Interconnect error: %m%s", "recvfrom"))); 
+iaag: icxudp:00001443:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001444:  errmsg("Interconnect error: %m%s short ack receive!", "recvfrom"))); 
+iaag: icxudp:00001516:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001517:  errmsg("Interconnect error: UDP-IC out of memory."))); 
+iaag: icxudp:00001624:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001625:  errmsg("Interconnect timeout: Unable to " 
+iaag: icxudp:00001626:  "complete setup of all connections " 
+iaag: icxudp:00001627:  "within time limit."), 
+iaag: icxudp:00001628:  errdetail("Completed %d of %d incoming and " 
+iaag: icxudp:00001629:  "%d of %d outgoing connections. " 
+iaag: icxudp:00001630:  "gp_interconnect_setup_timeout = %d " 
+iaag: icxudp:00001631:  "seconds.", 
+iaag: icxudp:00001632:  incoming_count, expectedTotalIncoming, 
+iaag: icxudp:00001633:  outgoing_count, expectedTotalOutgoing, 
+iaag: icxudp:00001634:  interconnect_setup_timeout))); 
+iaag: icxudp:00001999:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002000:  errmsg(CDB_MOTION_LOST_CONTACT_STRING))); 
+iaag: icxudp:00002106:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002107:  errmsg("Interconnect error segment lost contact with master (recv)"))); 
+iaag: icxudp:00002109:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002110:  errmsg("Interconnect error master lost contact with client (recv)"))); 
+iaag: icxudp:00002117:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002118:  errmsg("Interconnect error: UDP-IC out of memory."))); 
+iaag: icxudp:00002296:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002297:  errmsg("Interconnect error waiting for peer ack"), 
+iaag: icxudp:00002298:  errdetail("During recvfrom() call.\n"))); 
+iaag: icxudp:00002303:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002304:  errmsg("Interconnect error waiting for peer ack"), 
+iaag: icxudp:00002305:  errdetail("short read during recvfrom() call. (%d)\n", n))); 
+iaag: icxudp:00002463:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002464:  errmsg("Interconnect error writing an outgoing packet"), 
+iaag: icxudp:00002465:  errdetail("error during sendto() call (error:%d).\n" 
+iaag: icxudp:00002466:  "For Remote Connection: contentId=%d at %s", 
+iaag: icxudp:00002467:  errno, conn->remoteContentId, 
+iaag: icxudp:00002468:  conn->remoteHostAndPort))); 
+iaag: icxudp:00002474:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002475:  errmsg("Interconnect error writing an outgoing packet"), 
+iaag: icxudp:00002476:  errdetail("short transmit during sendto() call.\n" 
+iaag: icxudp:00002477:  "For Remote Connection: contentId=%d at %s", 
+iaag: icxudp:00002478:  conn->remoteContentId, 
+iaag: icxudp:00002479:  conn->remoteHostAndPort))); 
+iaag: icxudp:00002529:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002530:  errmsg("Interconnect error segment lost contact with master (xmit)"))); 
+iaag: icxudp:00002545:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002546:  errmsg("Interconnect error waiting for peer ack"), 
+iaag: icxudp:00002547:  errdetail("During poll() call.\n"))); 
 aaaaa GP_IGNORE: taag: tupser - ./backend/cdb/motion/tupser.c
 taag: tupser:00000086:  ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION), 
 taag: tupser:00000087:  errmsg("deserialize data underflow"))); 
@@ -12091,59 +12083,59 @@ paba: postmaster:00002519:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS),
 paba: postmaster:00002520:  errSendAlert(true), 
 paba: postmaster:00002521:  errOmitLocation(true), 
 paba: postmaster:00002522:  errmsg("sorry, too many clients already"))); 
-paba: postmaster:00003265:  ereport(WARNING, 
-paba: postmaster:00003266:  (errmsg("pg_hba.conf not reloaded"))); 
-paba: postmaster:00003308:  ereport(LOG, 
-paba: postmaster:00003309:  (errmsg("received smart shutdown request"), 
-paba: postmaster:00003310:  errSendAlert(true), 
-paba: postmaster:00003311:  errOmitLocation(true))); 
-paba: postmaster:00003329:  ereport(LOG, 
-paba: postmaster:00003330:  (errmsg("received fast shutdown request"), 
-paba: postmaster:00003331:  errSendAlert(true), 
-paba: postmaster:00003332:  errOmitLocation(true))); 
-paba: postmaster:00003353:  ereport(LOG, 
-paba: postmaster:00003354:  (errmsg("received immediate shutdown request"), 
-paba: postmaster:00003355:  errSendAlert(true), 
-paba: postmaster:00003356:  errOmitLocation(true))); 
-paba: postmaster:00003546:  ereport(LOG, 
-paba: postmaster:00003547:  (errmsg("database system is ready to accept connections"), 
-paba: postmaster:00003548:  errSendAlert(true), 
-paba: postmaster:00003549:  errOmitLocation(true))); 
-paba: postmaster:00003875:  ereport(LOG, 
-paba: postmaster:00003876:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
-paba: postmaster:00004815:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
-paba: postmaster:00005399:  ereport(WARNING, 
-paba: postmaster:00005400:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
-paba: postmaster:00005401:  gai_strerror(ret)))); 
-paba: postmaster:00005443:  ereport(FATAL, 
-paba: postmaster:00005444:  (errmsg("could not load pg_hba.conf"))); 
-paba: postmaster:00005866:  ereport(ERROR, 
-paba: postmaster:00005867:  (errmsg_internal("could not terminate unstarted process: error code %d", 
-paba: postmaster:00005868:  (int) GetLastError()))); 
-paba: postmaster:00005893:  ereport(ERROR, 
-paba: postmaster:00005894:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
-paba: postmaster:00005895:  (int) GetLastError()))); 
-paba: postmaster:00005910:  ereport(ERROR, 
-paba: postmaster:00005911:  (errmsg_internal("could not terminate unstartable process: error code %d", 
-paba: postmaster:00005912:  (int) GetLastError()))); 
-paba: postmaster:00005919:  ereport(ERROR, 
-paba: postmaster:00005920:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
-paba: postmaster:00005921:  (int) GetLastError()))); 
-paba: postmaster:00005935:  ereport(FATAL, 
-paba: postmaster:00005936:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paba: postmaster:00005937:  errmsg("out of memory"))); 
-paba: postmaster:00005948:  ereport(FATAL, 
-paba: postmaster:00005949:  (errmsg_internal("could not register process for wait: error code %d", 
-paba: postmaster:00005950:  (int) GetLastError()))); 
-paba: postmaster:00006021:  ereport(FATAL, 
-paba: postmaster:00006022:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paba: postmaster:00006023:  errmsg("out of memory"))); 
-paba: postmaster:00006873:  ereport(ERROR, 
-paba: postmaster:00006874:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
-paba: postmaster:00006875:  (int) GetLastError()))); 
-paba: postmaster:00006895:  ereport(ERROR, 
-paba: postmaster:00006896:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
-paba: postmaster:00006897:  src, WSAGetLastError()))); 
+paba: postmaster:00003272:  ereport(WARNING, 
+paba: postmaster:00003273:  (errmsg("pg_hba.conf not reloaded"))); 
+paba: postmaster:00003315:  ereport(LOG, 
+paba: postmaster:00003316:  (errmsg("received smart shutdown request"), 
+paba: postmaster:00003317:  errSendAlert(true), 
+paba: postmaster:00003318:  errOmitLocation(true))); 
+paba: postmaster:00003336:  ereport(LOG, 
+paba: postmaster:00003337:  (errmsg("received fast shutdown request"), 
+paba: postmaster:00003338:  errSendAlert(true), 
+paba: postmaster:00003339:  errOmitLocation(true))); 
+paba: postmaster:00003360:  ereport(LOG, 
+paba: postmaster:00003361:  (errmsg("received immediate shutdown request"), 
+paba: postmaster:00003362:  errSendAlert(true), 
+paba: postmaster:00003363:  errOmitLocation(true))); 
+paba: postmaster:00003553:  ereport(LOG, 
+paba: postmaster:00003554:  (errmsg("database system is ready to accept connections"), 
+paba: postmaster:00003555:  errSendAlert(true), 
+paba: postmaster:00003556:  errOmitLocation(true))); 
+paba: postmaster:00003882:  ereport(LOG, 
+paba: postmaster:00003883:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+paba: postmaster:00004822:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+paba: postmaster:00005406:  ereport(WARNING, 
+paba: postmaster:00005407:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
+paba: postmaster:00005408:  gai_strerror(ret)))); 
+paba: postmaster:00005450:  ereport(FATAL, 
+paba: postmaster:00005451:  (errmsg("could not load pg_hba.conf"))); 
+paba: postmaster:00005873:  ereport(ERROR, 
+paba: postmaster:00005874:  (errmsg_internal("could not terminate unstarted process: error code %d", 
+paba: postmaster:00005875:  (int) GetLastError()))); 
+paba: postmaster:00005900:  ereport(ERROR, 
+paba: postmaster:00005901:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
+paba: postmaster:00005902:  (int) GetLastError()))); 
+paba: postmaster:00005917:  ereport(ERROR, 
+paba: postmaster:00005918:  (errmsg_internal("could not terminate unstartable process: error code %d", 
+paba: postmaster:00005919:  (int) GetLastError()))); 
+paba: postmaster:00005926:  ereport(ERROR, 
+paba: postmaster:00005927:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
+paba: postmaster:00005928:  (int) GetLastError()))); 
+paba: postmaster:00005942:  ereport(FATAL, 
+paba: postmaster:00005943:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paba: postmaster:00005944:  errmsg("out of memory"))); 
+paba: postmaster:00005955:  ereport(FATAL, 
+paba: postmaster:00005956:  (errmsg_internal("could not register process for wait: error code %d", 
+paba: postmaster:00005957:  (int) GetLastError()))); 
+paba: postmaster:00006028:  ereport(FATAL, 
+paba: postmaster:00006029:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paba: postmaster:00006030:  errmsg("out of memory"))); 
+paba: postmaster:00006880:  ereport(ERROR, 
+paba: postmaster:00006881:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
+paba: postmaster:00006882:  (int) GetLastError()))); 
+paba: postmaster:00006902:  ereport(ERROR, 
+paba: postmaster:00006903:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
+paba: postmaster:00006904:  src, WSAGetLastError()))); 
 aaaaa GP_IGNORE: saaj: seqserver - ./backend/postmaster/seqserver.c
 saaj: seqserver:00000226:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
 saaj: seqserver:00000227:  errmsg("Error: Could not write() message to seqserver: %s", 
@@ -12235,69 +12227,65 @@ saah: service:00000693:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERRO
 saah: service:00000694:  errmsg("Expecting message length %d and actual read length was %d from '%s'", 
 saah: service:00000695:  responseLen, n, 
 saah: service:00000696:  serviceConfig->title))); 
-saah: service:00000807:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
-saah: service:00000808:  errFatalReturn(gp_reraise_signal), 
-saah: service:00000809:  errOmitLocation(true), 
-saah: service:00000810:  errmsg("Unexpected internal error"))); 
-saah: service:00001015:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-saah: service:00001016:  errmsg("'%s': error during select() call (error:%d).", 
-saah: service:00001017:  serviceConfig->title, errno))); 
-saah: service:00001033:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-saah: service:00001034:  errmsg("'%s': error from client connection: %s)", 
-saah: service:00001035:  serviceConfig->title, 
-saah: service:00001036:  strerror(errno)))); 
-saah: service:00001046:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-saah: service:00001047:  errmsg("'%s': could not set outbound socket to non-blocking mode: %s", 
-saah: service:00001048:  serviceConfig->title, 
-saah: service:00001049:  strerror(errno)))); 
-saah: service:00001162:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-saah: service:00001163:  errmsg("'%s': read error from backend process: %s", 
-saah: service:00001164:  serviceConfig->title, 
-saah: service:00001165:  strerror(saved_err)))); 
-saah: service:00001191:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-saah: service:00001192:  errmsg("'%s': read from backend process timed out after %d.%03d seconds", 
-saah: service:00001193:  serviceConfig->title, 
-saah: service:00001194:  (int)wholeTimeout.tv_sec, 
-saah: service:00001195:  (int)wholeTimeout.tv_usec / 1000))); 
-saah: service:00001204:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-saah: service:00001205:  errmsg("'%s': read error from backend process: %s", 
-saah: service:00001206:  serviceConfig->title, 
-saah: service:00001207:  strerror(saved_err)))); 
-saah: service:00001264:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-saah: service:00001265:  errmsg("'%s': connection to backend process is closed", 
-saah: service:00001266:  serviceConfig->title))); 
-saah: service:00001274:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-saah: service:00001275:  errmsg("'%s': write error to backend process: %s", 
-saah: service:00001276:  serviceConfig->title, 
-saah: service:00001277:  strerror(saved_err)))); 
-saah: service:00001300:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-saah: service:00001301:  errmsg("'%s': write to backend process timed out after %d.%03d seconds)", 
-saah: service:00001302:  serviceConfig->title, 
-saah: service:00001303:  (int)wholeTimeout.tv_sec, 
-saah: service:00001304:  (int)wholeTimeout.tv_usec / 1000))); 
-saah: service:00001313:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-saah: service:00001314:  errmsg("'%s': write error to backend process: %s)", 
-saah: service:00001315:  serviceConfig->title, 
-saah: service:00001316:  strerror(saved_err)))); 
-saah: service:00001367:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-saah: service:00001368:  errmsg("'%s' could not create listener socket: %s", 
-saah: service:00001369:  serviceConfig->title, 
-saah: service:00001370:  strerror(errno)))); 
-saah: service:00001389:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-saah: service:00001390:  errmsg("'%s' could not setup listener socket: %s", 
-saah: service:00001391:  serviceConfig->title, 
-saah: service:00001392:  strerror(errno)), 
-saah: service:00001393:  errdetail("error during bind() call (error:%d).", errno))); 
-saah: service:00001403:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-saah: service:00001404:  errmsg("'%s' could not setup listener socket: %s", 
-saah: service:00001405:  serviceConfig->title, 
-saah: service:00001406:  strerror(errno)), 
-saah: service:00001407:  errdetail("error during listen() call (error:%d).", errno))); 
-saah: service:00001419:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-saah: service:00001420:  errmsg("'%s' could not setup listener socket: %s", 
-saah: service:00001421:  serviceConfig->title, 
-saah: service:00001422:  strerror(errno)), 
-saah: service:00001423:  errdetail("error during getsockname() call (error:%d).", errno))); 
+saah: service:00001014:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+saah: service:00001015:  errmsg("'%s': error during select() call (error:%d).", 
+saah: service:00001016:  serviceConfig->title, errno))); 
+saah: service:00001032:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+saah: service:00001033:  errmsg("'%s': error from client connection: %s)", 
+saah: service:00001034:  serviceConfig->title, 
+saah: service:00001035:  strerror(errno)))); 
+saah: service:00001045:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+saah: service:00001046:  errmsg("'%s': could not set outbound socket to non-blocking mode: %s", 
+saah: service:00001047:  serviceConfig->title, 
+saah: service:00001048:  strerror(errno)))); 
+saah: service:00001161:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+saah: service:00001162:  errmsg("'%s': read error from backend process: %s", 
+saah: service:00001163:  serviceConfig->title, 
+saah: service:00001164:  strerror(saved_err)))); 
+saah: service:00001190:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+saah: service:00001191:  errmsg("'%s': read from backend process timed out after %d.%03d seconds", 
+saah: service:00001192:  serviceConfig->title, 
+saah: service:00001193:  (int)wholeTimeout.tv_sec, 
+saah: service:00001194:  (int)wholeTimeout.tv_usec / 1000))); 
+saah: service:00001203:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+saah: service:00001204:  errmsg("'%s': read error from backend process: %s", 
+saah: service:00001205:  serviceConfig->title, 
+saah: service:00001206:  strerror(saved_err)))); 
+saah: service:00001263:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+saah: service:00001264:  errmsg("'%s': connection to backend process is closed", 
+saah: service:00001265:  serviceConfig->title))); 
+saah: service:00001273:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+saah: service:00001274:  errmsg("'%s': write error to backend process: %s", 
+saah: service:00001275:  serviceConfig->title, 
+saah: service:00001276:  strerror(saved_err)))); 
+saah: service:00001299:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+saah: service:00001300:  errmsg("'%s': write to backend process timed out after %d.%03d seconds)", 
+saah: service:00001301:  serviceConfig->title, 
+saah: service:00001302:  (int)wholeTimeout.tv_sec, 
+saah: service:00001303:  (int)wholeTimeout.tv_usec / 1000))); 
+saah: service:00001312:  ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+saah: service:00001313:  errmsg("'%s': write error to backend process: %s)", 
+saah: service:00001314:  serviceConfig->title, 
+saah: service:00001315:  strerror(saved_err)))); 
+saah: service:00001366:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+saah: service:00001367:  errmsg("'%s' could not create listener socket: %s", 
+saah: service:00001368:  serviceConfig->title, 
+saah: service:00001369:  strerror(errno)))); 
+saah: service:00001388:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+saah: service:00001389:  errmsg("'%s' could not setup listener socket: %s", 
+saah: service:00001390:  serviceConfig->title, 
+saah: service:00001391:  strerror(errno)), 
+saah: service:00001392:  errdetail("error during bind() call (error:%d).", errno))); 
+saah: service:00001402:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+saah: service:00001403:  errmsg("'%s' could not setup listener socket: %s", 
+saah: service:00001404:  serviceConfig->title, 
+saah: service:00001405:  strerror(errno)), 
+saah: service:00001406:  errdetail("error during listen() call (error:%d).", errno))); 
+saah: service:00001418:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+saah: service:00001419:  errmsg("'%s' could not setup listener socket: %s", 
+saah: service:00001420:  serviceConfig->title, 
+saah: service:00001421:  strerror(errno)), 
+saah: service:00001422:  errdetail("error during getsockname() call (error:%d).", errno))); 
 aaaaa GP_IGNORE: saaj: syslogger - ./backend/postmaster/syslogger.c
 saaj: syslogger:00000611:  ereport(FATAL, 
 saaj: syslogger:00000612:  (errcode_for_socket_access(), 
@@ -12995,96 +12983,96 @@ paai: postgres:00002960:  ereport(ERROR,
 paai: postgres:00002961:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
 paai: postgres:00002962:  errmsg("current transaction is aborted, " 
 paai: postgres:00002963:  "commands ignored until end of transaction block"))); 
-paai: postgres:00003358:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
-paai: postgres:00003359:  errFatalReturn(gp_reraise_signal), 
-paai: postgres:00003360:  errOmitLocation(true), 
-paai: postgres:00003361:  errmsg("Unexpected internal error: %s received signal %s", 
-paai: postgres:00003362:  pts, signame) )); 
-paai: postgres:00003374:  ereport(ERROR, 
-paai: postgres:00003375:  (errcode(ERRCODE_FLOATING_POINT_EXCEPTION), 
-paai: postgres:00003376:  errmsg("floating-point exception"), 
-paai: postgres:00003377:  errdetail("An invalid floating-point operation was signaled. " 
-paai: postgres:00003378:  "This probably means an out-of-range result or an " 
-paai: postgres:00003379:  "invalid operation, such as division by zero."))); 
-paai: postgres:00003422:  ereport(FATAL, 
-paai: postgres:00003423:  (errcode(ERRCODE_ADMIN_SHUTDOWN), 
-paai: postgres:00003424:  errmsg("terminating connection due to administrator command"), 
-paai: postgres:00003425:  errSendAlert(false))); 
-paai: postgres:00003436:  ereport(ERROR, 
-paai: postgres:00003437:  (errcode(ERRCODE_GP_OPERATION_CANCELED), 
-paai: postgres:00003438:  errmsg("canceling MPP operation"))); 
-paai: postgres:00003440:  ereport(ERROR, 
-paai: postgres:00003441:  (errcode(ERRCODE_QUERY_CANCELED), 
-paai: postgres:00003442:  errmsg("canceling statement due to statement timeout"))); 
-paai: postgres:00003444:  ereport(ERROR, 
-paai: postgres:00003445:  (errcode(ERRCODE_QUERY_CANCELED), 
-paai: postgres:00003446:  errmsg("canceling statement due to user request"))); 
-paai: postgres:00003519:  ereport(ERROR, 
-paai: postgres:00003520:  (errcode(ERRCODE_STATEMENT_TOO_COMPLEX), 
-paai: postgres:00003521:  errmsg("stack depth limit exceeded"), 
-paai: postgres:00003522:  errhint("Increase the configuration parameter \"max_stack_depth\", " 
-paai: postgres:00003523:  "after ensuring the platform's stack depth limit is adequate."))); 
-paai: postgres:00003925:  ereport(ERROR, 
-paai: postgres:00003926:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00003927:  errmsg("--%s requires a value", 
-paai: postgres:00003928:  optarg))); 
-paai: postgres:00003930:  ereport(ERROR, 
-paai: postgres:00003931:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00003932:  errmsg("-c %s requires a value", 
-paai: postgres:00003933:  optarg))); 
-paai: postgres:00003965:  ereport(FATAL, 
-paai: postgres:00003966:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paai: postgres:00003967:  errmsg("System was started in master-only utility mode - only utility mode connections are allowed"))); 
-paai: postgres:00004085:  ereport(FATAL, 
-paai: postgres:00004086:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00004087:  errmsg("invalid command-line arguments for server process"), 
-paai: postgres:00004088:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00004098:  ereport(FATAL, 
-paai: postgres:00004099:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00004100:  errmsg("%s: invalid command-line arguments", 
-paai: postgres:00004101:  argv[0]), 
-paai: postgres:00004102:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00004108:  ereport(FATAL, 
-paai: postgres:00004109:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paai: postgres:00004110:  errmsg("%s: no database nor user name specified", 
-paai: postgres:00004111:  argv[0]))); 
-paai: postgres:00004943:  ereport(ERROR, 
-paai: postgres:00004944:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00004945:  errmsg("invalid CLOSE message subtype %d", 
-paai: postgres:00004946:  close_type))); 
-paai: postgres:00004980:  ereport(ERROR, 
-paai: postgres:00004981:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00004982:  errmsg("invalid DESCRIBE message subtype %d", 
-paai: postgres:00004983:  describe_type))); 
-paai: postgres:00005037:  ereport(FATAL, 
-paai: postgres:00005038:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00005039:  errmsg("invalid frontend message type %d ('%c')", 
-paai: postgres:00005040:  firstchar,firstchar))); 
-paai: postgres:00005540:  ereport(ERROR, 
-paai: postgres:00005541:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005542:  errmsg("--%s requires a value", 
-paai: postgres:00005543:  optarg))); 
-paai: postgres:00005545:  ereport(ERROR, 
-paai: postgres:00005546:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005547:  errmsg("-c %s requires a value", 
-paai: postgres:00005548:  optarg))); 
-paai: postgres:00005661:  ereport(FATAL, 
-paai: postgres:00005662:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005663:  errmsg("invalid command-line arguments for server process"), 
-paai: postgres:00005664:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00005675:  ereport(FATAL, 
-paai: postgres:00005676:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005677:  errmsg("%s: invalid command-line arguments", 
-paai: postgres:00005678:  argv[0]), 
-paai: postgres:00005679:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00005685:  ereport(FATAL, 
-paai: postgres:00005686:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paai: postgres:00005687:  errmsg("%s: no database nor user name specified", 
-paai: postgres:00005688:  argv[0]))); 
-paai: postgres:00006006:  ereport(FATAL, 
-paai: postgres:00006007:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00006008:  errmsg("invalid frontend message type %d", 
-paai: postgres:00006009:  firstchar))); 
+paai: postgres:00003374:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
+paai: postgres:00003375:  errFatalReturn(gp_reraise_signal), 
+paai: postgres:00003376:  errOmitLocation(true), 
+paai: postgres:00003377:  errmsg("Unexpected internal error: %s received signal %s", 
+paai: postgres:00003378:  processName, signame) )); 
+paai: postgres:00003390:  ereport(ERROR, 
+paai: postgres:00003391:  (errcode(ERRCODE_FLOATING_POINT_EXCEPTION), 
+paai: postgres:00003392:  errmsg("floating-point exception"), 
+paai: postgres:00003393:  errdetail("An invalid floating-point operation was signaled. " 
+paai: postgres:00003394:  "This probably means an out-of-range result or an " 
+paai: postgres:00003395:  "invalid operation, such as division by zero."))); 
+paai: postgres:00003438:  ereport(FATAL, 
+paai: postgres:00003439:  (errcode(ERRCODE_ADMIN_SHUTDOWN), 
+paai: postgres:00003440:  errmsg("terminating connection due to administrator command"), 
+paai: postgres:00003441:  errSendAlert(false))); 
+paai: postgres:00003452:  ereport(ERROR, 
+paai: postgres:00003453:  (errcode(ERRCODE_GP_OPERATION_CANCELED), 
+paai: postgres:00003454:  errmsg("canceling MPP operation"))); 
+paai: postgres:00003456:  ereport(ERROR, 
+paai: postgres:00003457:  (errcode(ERRCODE_QUERY_CANCELED), 
+paai: postgres:00003458:  errmsg("canceling statement due to statement timeout"))); 
+paai: postgres:00003460:  ereport(ERROR, 
+paai: postgres:00003461:  (errcode(ERRCODE_QUERY_CANCELED), 
+paai: postgres:00003462:  errmsg("canceling statement due to user request"))); 
+paai: postgres:00003535:  ereport(ERROR, 
+paai: postgres:00003536:  (errcode(ERRCODE_STATEMENT_TOO_COMPLEX), 
+paai: postgres:00003537:  errmsg("stack depth limit exceeded"), 
+paai: postgres:00003538:  errhint("Increase the configuration parameter \"max_stack_depth\", " 
+paai: postgres:00003539:  "after ensuring the platform's stack depth limit is adequate."))); 
+paai: postgres:00003941:  ereport(ERROR, 
+paai: postgres:00003942:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00003943:  errmsg("--%s requires a value", 
+paai: postgres:00003944:  optarg))); 
+paai: postgres:00003946:  ereport(ERROR, 
+paai: postgres:00003947:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00003948:  errmsg("-c %s requires a value", 
+paai: postgres:00003949:  optarg))); 
+paai: postgres:00003981:  ereport(FATAL, 
+paai: postgres:00003982:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paai: postgres:00003983:  errmsg("System was started in master-only utility mode - only utility mode connections are allowed"))); 
+paai: postgres:00004101:  ereport(FATAL, 
+paai: postgres:00004102:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00004103:  errmsg("invalid command-line arguments for server process"), 
+paai: postgres:00004104:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00004114:  ereport(FATAL, 
+paai: postgres:00004115:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00004116:  errmsg("%s: invalid command-line arguments", 
+paai: postgres:00004117:  argv[0]), 
+paai: postgres:00004118:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00004124:  ereport(FATAL, 
+paai: postgres:00004125:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paai: postgres:00004126:  errmsg("%s: no database nor user name specified", 
+paai: postgres:00004127:  argv[0]))); 
+paai: postgres:00004959:  ereport(ERROR, 
+paai: postgres:00004960:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00004961:  errmsg("invalid CLOSE message subtype %d", 
+paai: postgres:00004962:  close_type))); 
+paai: postgres:00004996:  ereport(ERROR, 
+paai: postgres:00004997:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00004998:  errmsg("invalid DESCRIBE message subtype %d", 
+paai: postgres:00004999:  describe_type))); 
+paai: postgres:00005053:  ereport(FATAL, 
+paai: postgres:00005054:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00005055:  errmsg("invalid frontend message type %d ('%c')", 
+paai: postgres:00005056:  firstchar,firstchar))); 
+paai: postgres:00005556:  ereport(ERROR, 
+paai: postgres:00005557:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005558:  errmsg("--%s requires a value", 
+paai: postgres:00005559:  optarg))); 
+paai: postgres:00005561:  ereport(ERROR, 
+paai: postgres:00005562:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005563:  errmsg("-c %s requires a value", 
+paai: postgres:00005564:  optarg))); 
+paai: postgres:00005677:  ereport(FATAL, 
+paai: postgres:00005678:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005679:  errmsg("invalid command-line arguments for server process"), 
+paai: postgres:00005680:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00005691:  ereport(FATAL, 
+paai: postgres:00005692:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005693:  errmsg("%s: invalid command-line arguments", 
+paai: postgres:00005694:  argv[0]), 
+paai: postgres:00005695:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00005701:  ereport(FATAL, 
+paai: postgres:00005702:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paai: postgres:00005703:  errmsg("%s: no database nor user name specified", 
+paai: postgres:00005704:  argv[0]))); 
+paai: postgres:00006022:  ereport(FATAL, 
+paai: postgres:00006023:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00006024:  errmsg("invalid frontend message type %d", 
+paai: postgres:00006025:  firstchar))); 
 aaaaa GP_IGNORE: paag: pquery - ./backend/tcop/pquery.c
 paag: pquery:00000958:  ereport(ERROR, 
 paag: pquery:00000959:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
