@@ -131,27 +131,54 @@ static void init_mibs(void)
 
 static void usage(void)
 {
-	fprintf(stderr, "Version %s\n", GPSNMP_DAEMON);
-	fprintf(
-			stderr,
-			"usage: gpsnmpd [-s] [-b] [-c FILE ] [-x address ] [-g] [-C \"Connect String\"]\n");
-	fprintf(stderr,
-			"   -s : run as AgentX sub-agent of an existing snmpd process\n");
-	fprintf(stderr, "   -b : run in the background\n");
-	fprintf(stderr, "   -c : configuration file name\n");
-	fprintf(stderr, "   -g : use syslog\n");
-	fprintf(stderr, "   -C : libpq connect strings\n");
-	fprintf(stderr, "   -Q : custom query configuration file\n");
-	fprintf(stderr, "   -x : address:port of a network interface\n");
-	/*	fprintf(stderr, "   -n : database search_path to use for gpsnmpd-specific tables (default: $user, public)\n"); */
-	fprintf(stderr, "   -V : display version strings\n");
-	fprintf(stderr, "   -m MIB[:...]\t\tload given list of MIBs (ALL loads everything)\n");
-	fprintf(stderr, "   -M DIR[:...]\t\tlook in given list of directories for MIBs\n");
+	/*
+	 * The doc people want me to display the usage from a file they write, which is odd
+	 * So, first I'll try to find their file, and if found, I'll display it.
+	 */
+	char* GPHOME = 0;
+	FILE* fp = 0;
+
+	GPHOME = getenv("GPHOME");
+
+	if (GPHOME && GPHOME[0] != '\0')
+	{
+		char path_to_help[1024];
+		snprintf(path_to_help,1024,"%s/docs/cli_help/gpsnmpd_help",GPHOME);
+		fp = fopen(path_to_help, "r");
+	}
+
+	if (fp)
+	{
+		int i;
+		while ((i = getc(fp)) != EOF)
+				putchar(i);
+		fclose(fp);
+		fflush(stdout);
+	}
+	else
+	{
+
+		fprintf(stderr, "Version %s\n\n", GPSNMP_DAEMON);
+		fprintf(stderr,
+				"usage: gpsnmpd [-s] [-b] [-c FILE ] [-x address ] [-g] [-C \"Connect String\"]\n\n");
+		fprintf(stderr, "   -s : run as AgentX sub-agent of an existing snmpd process.  You do no need to use -x with this option.");
+		fprintf(stderr, "   -b : run in the background\n");
+		fprintf(stderr, "   -c : configuration file name (often not needed if running as a subagent)\n");
+		fprintf(stderr, "   -g : use syslog to log errors in gpsnmpd\n");
+		fprintf(stderr, "   -C : libpq connect strings\n");
+		fprintf(stderr, "   -Q : custom query configuration file\n");
+		fprintf(stderr, "   -x : address:port of a network interface\n");
+		/*	fprintf(stderr, "   -n : database search_path to use for gpsnmpd-specific tables (default: $user, public)\n"); */
+		fprintf(stderr, "   -V : display version strings\n");
+		fprintf(stderr, "   -m MIB[:...]\t\tload given list of MIBs (ALL loads everything)\n");
+		fprintf(stderr, "   -M DIR[:...]\t\tlook in given list of directories for MIBs\n");
+	}
 }
 
 static void version(void)
 {
-	usage();
+	fprintf(stderr, "Version %s\n", GPSNMP_DAEMON);
+	fflush(stderr);
 }
 
 
@@ -170,7 +197,7 @@ int main(int argc, char *argv[])
 	char *strv;
 #endif
 
-	char options[128] = "sbc:gm:M:HC:x:V-:Q:";
+	char options[128] = "sbhc:gm:M:HC:x:V-:Q:";
 	/*char	 options[128] = "sbc:gC:x:V-:n:"; */
 	PGresult *qryRes;
 
@@ -195,6 +222,8 @@ int main(int argc, char *argv[])
 
 
 		case 'V':
+			version();
+			exit(0);
 		case '?':
 		case 'h':
 			usage();
@@ -312,6 +341,13 @@ int main(int argc, char *argv[])
 		snmp_enable_syslog();
 	else
 		snmp_enable_stderrlog();
+
+
+	/* Add RDBMS-MIB GPDB-MIB to the list to be loaded */
+	const char * env = getenv("MIBS");
+	if (env==NULL || env[0] == '\0')
+		putenv("MIBS=+RDBMS-MIB:NETWORK-SERVICES-MIB:APPLICATION-MIB:GPDB-MIB:SNMP-FRAMEWORK-MIB:SNMPv2-CONF:SNMPv2-TC:SNMPv2-TC");
+
 
 	if (getuid() != 0)
 		netsnmp_ds_set_boolean(NETSNMP_DS_APPLICATION_ID,
