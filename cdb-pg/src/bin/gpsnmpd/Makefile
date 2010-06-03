@@ -74,7 +74,7 @@ all: submake-libpq submake-libpgport gpsnmpd
 
 DOCS = README.gpsnmpd README.greenplum
 
-DATA = gpsnmpd.conf gpsnmpd.sql GPDB-MIB.txt RDBMS-MIB.txt APPLICATION-MIB.txt
+DATA = gpsnmpd.conf gpsnmpd.sql GPDB-MIB.txt RDBMS-MIB.txt NETWORK-SERVICES-MIB.txt
 
 gpsnmpd: $(OBJS) $(libpq_builddir)/libpq.a
 	$(CC) $(CFLAGS) $(OBJS) $(libpq_pgport) $(LDFLAGS) $(LIBS) -o $@$(X)
@@ -84,7 +84,7 @@ install: all installdirs
 	$(INSTALL_DATA) $(srcdir)/README.gpsnmpd '$(DESTDIR)$(datadir)/README.gpsnmpd'
 	$(INSTALL_DATA) $(srcdir)/README.greenplum '$(DESTDIR)$(datadir)/README.greenplum'
 	$(INSTALL_DATA) $(srcdir)/RDBMS-MIB.txt '$(DESTDIR)$(datadir)/RDBMS-MIB.txt'
-	$(INSTALL_DATA) $(srcdir)/APPLICATION-MIB.txt '$(DESTDIR)$(datadir)/APPLICATION-MIB.txt'
+	$(INSTALL_DATA) $(srcdir)/NETWORK-SERVICES-MIB.txt '$(DESTDIR)$(datadir)/NETWORK-SERVICES-MIB.txt'
 	$(INSTALL_DATA) $(srcdir)/GPDB-MIB.txt '$(DESTDIR)$(datadir)/GPDB-MIB.txt'
 	$(INSTALL_DATA) $(srcdir)/gpsnmpd.sql '$(DESTDIR)$(datadir)/gpsnmpd.sql'
 

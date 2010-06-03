@@ -16,7 +16,7 @@ How it operates:
 
 
 Installing the MIB:
-- Copy the APPLICATION-MIB.txt and RDBMS-MIB.txt and GPDB-MIB.txt files to the /usr/share/snmp/mibs folder on the target machine
+- Copy the NETWORK-SERVICES-MIB.txt and RDBMS-MIB.txt and GPDB-MIB.txt files to the /usr/share/snmp/mibs folder on the target machine
 - Put gpsnmpd and gpsnmpd.conf in a convenient directory 
 - Edit the agentaddress setting in gpsnmpd.conf to set the UDP port that it will listen on.
 
