@@ -2010,6 +2010,24 @@ _outDropPropertyStmt(StringInfo str, DropPropertyStmt *node)
 }
 
 static void
+_outDropOwnedStmt(StringInfo str, DropOwnedStmt *node)
+{
+	WRITE_NODE_TYPE("DROPOWNEDSTMT");
+
+	WRITE_NODE_FIELD(roles);
+	WRITE_ENUM_FIELD(behavior, DropBehavior);
+}
+
+static void
+_outReassignOwnedStmt(StringInfo str, ReassignOwnedStmt *node)
+{
+	WRITE_NODE_TYPE("REASSIGNOWNEDSTMT");
+
+	WRITE_NODE_FIELD(roles);
+	WRITE_STRING_FIELD(newrole);
+}
+
+static void
 _outTruncateStmt(StringInfo str, TruncateStmt *node)
 {
 	WRITE_NODE_TYPE("TRUNCATESTMT");
@@ -3486,6 +3504,39 @@ _outCreateTrigStmt(StringInfo str, CreateTrigStmt *node)
 
 }
 
+static void
+_outCreateFileSpaceStmt(StringInfo str, CreateFileSpaceStmt *node)
+{
+	WRITE_NODE_TYPE("CREATEFILESPACESTMT");
+
+	WRITE_STRING_FIELD(filespacename);
+	WRITE_STRING_FIELD(owner);
+	WRITE_NODE_FIELD(locations);
+	WRITE_OID_FIELD(fsoid);
+}
+
+static void
+_outFileSpaceEntry(StringInfo str, FileSpaceEntry *node)
+{
+	WRITE_NODE_TYPE("FILESPACEENTRY");
+
+	WRITE_INT_FIELD(dbid);
+	WRITE_INT_FIELD(contentid);
+	WRITE_STRING_FIELD(location);
+	WRITE_STRING_FIELD(hostname);
+}
+
+static void
+_outCreateTableSpaceStmt(StringInfo str, CreateTableSpaceStmt *node)
+{
+	WRITE_NODE_TYPE("CREATETABLESPACESTMT");
+
+	WRITE_STRING_FIELD(tablespacename);
+	WRITE_STRING_FIELD(owner);
+	WRITE_STRING_FIELD(filespacename);
+	WRITE_OID_FIELD(tsoid);
+}
+
 
 /*
  * _outNode -
@@ -3953,6 +4004,12 @@ _outNode(StringInfo str, void *obj)
 			case T_DropPropertyStmt:
 				_outDropPropertyStmt(str, obj);
 				break;
+			case T_DropOwnedStmt:
+				_outDropOwnedStmt(str, obj);
+				break;
+			case T_ReassignOwnedStmt:
+				_outReassignOwnedStmt(str, obj);
+				break;
 			case T_TruncateStmt:
 				_outTruncateStmt(str, obj);
 				break;
@@ -4193,6 +4250,18 @@ _outNode(StringInfo str, void *obj)
 
 			case T_CreateTrigStmt:
 				_outCreateTrigStmt(str, obj);
+				break;
+
+			case T_CreateFileSpaceStmt:
+				_outCreateFileSpaceStmt(str, obj);
+				break;
+
+			case T_FileSpaceEntry:
+				_outFileSpaceEntry(str, obj);
+				break;
+
+			case T_CreateTableSpaceStmt:
+				_outCreateTableSpaceStmt(str, obj);
 				break;
 
 			default:
