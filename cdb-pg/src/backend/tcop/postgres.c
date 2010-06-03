@@ -3245,7 +3245,6 @@ static void
 CdbProgramErrorHandler(SIGNAL_ARGS)
 {
     int			save_errno = errno;
-    char       *signame;
     char       *pts = "process";
 
 	if (!pthread_equal(main_tid, pthread_self()))
@@ -3264,6 +3263,32 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
 		pthread_exit(NULL);
 		return;
 	}
+
+
+    if (Gp_role == GP_ROLE_DISPATCH)
+        pts = "Master process";
+    else if (Gp_role == GP_ROLE_EXECUTE)
+        pts = "Segment process";
+    else if (Gp_role == GP_ROLE_DISPATCHAGENT)
+    	pts = "DA process";
+    else
+        pts = "Process";
+
+    errno = save_errno;
+    StandardHandlerForSigillSigsegvSigbus_OnMainThread(pts, PASS_SIGNAL_ARGS);
+}                               /* CdbProgramErrorHandler */
+
+/**
+ * Standard handler that can be called from a specific processes handler for
+ *   SIGILL, SIGSEGV, and SIGBUS
+ *
+ * MUST be called from the main thread, if this process uses threads.
+ */
+void
+StandardHandlerForSigillSigsegvSigbus_OnMainThread(char * processName, SIGNAL_ARGS)
+{
+    int			save_errno = errno;
+    char       *signame;
 
     PG_SETMASK(&BlockSig);
 #ifdef SIGILL
@@ -3298,17 +3323,8 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
             break;
     }
 
-    if (Gp_role == GP_ROLE_DISPATCH)
-        pts = "Master process";
-    else if (Gp_role == GP_ROLE_EXECUTE)
-        pts = "Segment process";
-    else if (Gp_role == GP_ROLE_DISPATCHAGENT)
-    	pts = "DA process";
-    else
-        pts = "Process";
-
     write_stderr("\nUnexpected internal error: %s %d received signal %s\n\n",
-                 pts, MyProcPid, signame);
+                 processName, MyProcPid, signame);
 
 #if 0
 
@@ -3359,7 +3375,7 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
                     errFatalReturn(gp_reraise_signal),
                     errOmitLocation(true),
                     errmsg("Unexpected internal error: %s received signal %s",
-                           pts, signame) ));
+                           processName, signame) ));
 
     /* CDB: Control returns here only if gp_reraise_signal is true. */
     raise(postgres_signal_arg);

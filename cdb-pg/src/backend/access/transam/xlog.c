@@ -9236,11 +9236,7 @@ StartupProcShutdownHandler(SIGNAL_ARGS __attribute__((unused)))
 static void
 HandleCrash(SIGNAL_ARGS)
 {
-    ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
-                    errFatalReturn(gp_reraise_signal),
-                    errOmitLocation(true),
-                    errmsg("Unexpected internal error")));
-
+    StandardHandlerForSigillSigsegvSigbus_OnMainThread("a startup process", PASS_SIGNAL_ARGS);
 }
 
 extern bool FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace);
@@ -9273,8 +9269,12 @@ StartupProcessMain(int passNum)
 	pqsignal(SIGPIPE, SIG_IGN);
 	pqsignal(SIGUSR1, SIG_IGN);
 	pqsignal(SIGUSR2, SIG_IGN);
+
 #ifdef SIGBUS
 	pqsignal(SIGBUS, HandleCrash);
+#endif
+#ifdef SIGILL
+    pqsignal(SIGILL, HandleCrash);
 #endif
 #ifdef SIGSEGV
 	pqsignal(SIGSEGV, HandleCrash);

@@ -1409,10 +1409,7 @@ FileRep_StateHandler(SIGNAL_ARGS)
 static void
 FileRep_HandleCrash(SIGNAL_ARGS)
 {
-    ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
-                    errFatalReturn(gp_reraise_signal),
-                    errOmitLocation(true),
-                    errmsg("Unexpected internal error")));
+    StandardHandlerForSigillSigsegvSigbus_OnMainThread("a file replication process", PASS_SIGNAL_ARGS);
 }
 
 /*

@@ -804,11 +804,7 @@ ServiceDie(SIGNAL_ARGS)
 static void
 HandleCrash(SIGNAL_ARGS)
 {
-    ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
-                    errFatalReturn(gp_reraise_signal),
-                    errOmitLocation(true),
-                    errmsg("Unexpected internal error")));
-
+    StandardHandlerForSigillSigsegvSigbus_OnMainThread("a service process", PASS_SIGNAL_ARGS);
 }
 
 
@@ -874,10 +870,13 @@ ServiceMain(ServiceCtrl *serviceCtrl)
 	pqsignal(SIGCHLD, SIG_DFL);
 
 #ifdef SIGBUS
-	    pqsignal(SIGBUS, HandleCrash);
+    pqsignal(SIGBUS, HandleCrash);
+#endif
+#ifdef SIGILL
+    pqsignal(SIGILL, HandleCrash);
 #endif
 #ifdef SIGSEGV
-		    pqsignal(SIGSEGV, HandleCrash);
+    pqsignal(SIGSEGV, HandleCrash);
 #endif
 
 
