@@ -291,7 +291,7 @@ define BUILD_STEPS
 	@$(MAKE) connectivity INSTLOC=$(INSTLOC) CONNECTIVITYINSTLOC=$(CONNECTIVITYINSTLOC)
 	$(MAKE) set_scripts_version INSTLOC=$(CONNECTIVITYINSTLOC)
 	@$(MAKE) loaders INSTLOC=$(INSTLOC) LOADERSINSTLOC=$(LOADERSINSTLOC)
-	$(MAKE) set_scripts_version INSTLOC=$(LOADERSINSTLOC)
+	@$(MAKE) set_scripts_version INSTLOC=$(LOADERSINSTLOC)
 
 endef
 
@@ -303,9 +303,9 @@ define BUILD_STEPS
 	$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	$(MAKE) loaders INSTLOC=$(INSTLOC) LOADERSINSTLOC=$(LOADERSINSTLOC)
-	$(MAKE) set_scripts_version INSTLOC=$(LOADERSINSTLOC)
+	@$(MAKE) set_scripts_version INSTLOC=$(LOADERSINSTLOC)
 	$(MAKE) connectivity INSTLOC=$(INSTLOC) CONNECTIVITYINSTLOC=$(CONNECTIVITYINSTLOC)
-	$(MAKE) set_scripts_version INSTLOC=$(CONNECTIVITYINSTLOC)
+	@$(MAKE) set_scripts_version INSTLOC=$(CONNECTIVITYINSTLOC)
 
 endef
 endif
@@ -343,11 +343,11 @@ define BUILD_STEPS
 	cp -p $(GPMGMT)/bin/gpload.py $(INSTLOC)/bin/gpload.py
 	$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	$(MAKE) clients INSTLOC=$(INSTLOC) CLIENTINSTLOC=$(CLIENTINSTLOC)
-	$(MAKE) set_scripts_version INSTLOC=$(CLIENTINSTLOC)
+	@$(MAKE) set_scripts_version INSTLOC=$(CLIENTINSTLOC)
 	$(MAKE) connectivity INSTLOC=$(INSTLOC) CONNECTIVITYINSTLOC=$(CONNECTIVITYINSTLOC)
-	$(MAKE) set_scripts_version INSTLOC=$(CONNECTIVITYINSTLOC)
+	@$(MAKE) set_scripts_version INSTLOC=$(CONNECTIVITYINSTLOC)
 	$(MAKE) loaders INSTLOC=$(INSTLOC) LOADERSINSTLOC=$(LOADERSINSTLOC)
-	$(MAKE) set_scripts_version INSTLOC=$(LOADERSINSTLOC)
+	@$(MAKE) set_scripts_version INSTLOC=$(LOADERSINSTLOC)
 	touch installcheck-good_SKIP
 endef
 endif
