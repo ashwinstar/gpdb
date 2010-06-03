@@ -361,7 +361,58 @@ class GpSystemStateProgram:
         hostNameToResults = {}
         for hostName, cmd in hostNameToCmd.iteritems():
             hostNameToResults[hostName] = cmd.decodeResults()
-        return hostNameToResults        
+        return hostNameToResults
+
+    def __calculateSegmentStatus(self, gpArray, segment, segmentData):
+        """
+
+        @param segmentData as produced by __fetchAllSegmentData for this segment, or None if the
+                segment data is unavailable
+
+        @returns a tuple of (string, isWarning)
+        """
+        if segment.isSegmentDown():
+            return ("Down in configuration", True)
+        elif segmentData is None:
+            return ("Unknown -- unable to load segment status", True)
+
+        pidData = segmentData[gp.SEGMENT_STATUS__GET_PID]
+        if pidData['error'] is not None:
+            return ("Error with process: %s" % pidData['error'], True)
+
+        mirrorData = segmentData[gp.SEGMENT_STATUS__GET_MIRROR_STATUS]
+        if mirrorData is None:
+            return ("Unknown -- unable to load segment status", True)
+
+        mode = mirrorData["mode"]
+        postmasterState = mirrorData["postmasterState"]
+        if mode == "QuiescentSegment" or mode == "Uninitialized":
+            return ("Not running", True)
+
+        if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_FILE_REPLICATION:
+            segmentState = mirrorData["segmentState"]
+            dataState = mirrorData["dataState"]
+
+            if mode == "MirrorSegment":
+                if segmentState == "Ready":
+                    return ("Mirror running", False)
+            else:
+                if segmentState == "Ready" and postmasterState == "run":
+                    return ("Database running", False)
+
+            # todo: improve after talking to Milena
+
+            return ("'%s', '%s', '%s', '%s'" % (mode, segmentState, dataState, postmasterState), False)
+        else:
+            #
+            # Not physically replicated
+            #
+            if postmasterState == "run":
+                return ("Database running", False)
+            elif postmasterState.startswith("child_stop"):
+                return ("Database shutting down", False)
+            else:
+                return ("Database starting up", False)
 
     def __showStatus(self, gpEnv, gpArray):
         """
@@ -444,7 +495,7 @@ class GpSystemStateProgram:
                                 [s for s in gpArray.getSegDbList() if s.isSegmentPrimary(current_role=True)])
         contentsWithUpSegments = {}
 
-        indent = "  "
+        indent = "   "
         tabLog = TableLogger().setWarnWithArrows(True)
         for seg in gpArray.getSegDbList():
             (statusFetchWarning, outputFromCmd) = hostNameToResults[seg.getSegmentHostName()]
@@ -455,27 +506,28 @@ class GpSystemStateProgram:
 
             tabLog.addSeparator()
             tabLog.info(["Segment Info"])
-            tabLog.info([indent + "  Hostname", "= %s" % seg.getSegmentHostName()])
-            tabLog.info([indent + "  Address", "= %s" % seg.getSegmentAddress()])
-            tabLog.info([indent + "  Datadir", "= %s" % seg.getSegmentDataDirectory()])
-            tabLog.info([indent + "  Port", "= %s" % seg.getSegmentPort()])
+            tabLog.info([indent + "Hostname", "= %s" % seg.getSegmentHostName()])
+            tabLog.info([indent + "Address", "= %s" % seg.getSegmentAddress()])
+            tabLog.info([indent + "Datadir", "= %s" % seg.getSegmentDataDirectory()])
+            tabLog.info([indent + "Port", "= %s" % seg.getSegmentPort()])
 
             if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_FILE_REPLICATION:
                 tabLog.info(["Mirroring Info"])
-                tabLog.infoOrWarn(currentRole != preferredRole, [indent + "  Current role", "= %s" % currentRole])
-                tabLog.infoOrWarn(currentRole != preferredRole, [indent + "  Preferred role", "= %s" % preferredRole])
+                tabLog.infoOrWarn(currentRole != preferredRole, [indent + "Current role", "= %s" % currentRole])
+                tabLog.infoOrWarn(currentRole != preferredRole, [indent + "Preferred role", "= %s" % preferredRole])
 
                 if seg.isSegmentPrimary(current_role=True):
-                    tabLog.info([indent + "  Mirror status", "= %s" % gparray.getDataModeLabel(seg.getSegmentMode())])
+                    tabLog.info([indent + "Mirror status", "= %s" % gparray.getDataModeLabel(seg.getSegmentMode())])
                 else:
                     primary = primaryByContentId[seg.getSegmentContentId()][0]
                     if primary.getSegmentMode() == gparray.MODE_CHANGELOGGING:
-                        tabLog.warn([indent + "  Mirror status", "= Out of Sync"])
+                        tabLog.warn([indent + "Mirror status", "= Out of Sync"])
                     else:
-                        tabLog.info([indent + "  Mirror status", "= %s" % gparray.getDataModeLabel(seg.getSegmentMode())])
+                        tabLog.info([indent + "Mirror status", "= %s" % gparray.getDataModeLabel(seg.getSegmentMode())])
 
             isValid = "Valid" if seg.isSegmentUp() else "Failed"
             if statusFetchWarning is not None:
+                segmentData = None
                 tabLog.warn(["Error retrieving segment status", "= %s" % statusFetchWarning])
                 if isValid == "Valid":
                     isValid = "Unknown"
@@ -499,18 +551,18 @@ class GpSystemStateProgram:
                             mirrorData = segmentData[gp.SEGMENT_STATUS__GET_MIRROR_STATUS]
 
                             if mirrorData is None:
-                                tabLog.warn([indent + "  Resync progress with mirror", "= unable to retrieve progress"])
+                                tabLog.warn([indent + "Resync progress with mirror", "= unable to retrieve progress"])
 
                             elif mirrorData["resyncTotalToComplete"] == -1 or \
                                 mirrorData["resyncTotalToComplete"] == mirrorData["resyncNumCompleted"]:
-                                tabLog.info([indent + "  Mirror resync progress", "= Complete, awaiting metadata change to in-sync"])
+                                tabLog.info([indent + "Mirror resync progress", "= Complete, awaiting metadata change to in-sync"])
 
                             else:
                                 percentComplete = mirrorData["resyncNumCompleted"] / float(mirrorData["resyncTotalToComplete"])
                                 elapsedTime = mirrorData["elapsedTimeSeconds"]
                                 remainingTime = datetime.timedelta(seconds=long(elapsedTime / percentComplete - elapsedTime))
-                                tabLog.info([indent + "  Resync progress with mirror", "= %.2f%%" % (100 * percentComplete)])
-                                tabLog.info([indent + "  Estimated time to resync completion", "= %s" % remainingTime])
+                                tabLog.info([indent + "Resync progress with mirror", "= %.2f%%" % (100 * percentComplete)])
+                                tabLog.info([indent + "Estimated time to resync completion", "= %s" % remainingTime])
 
                 #
                 # Now PID status
@@ -520,33 +572,37 @@ class GpSystemStateProgram:
                 tabLog.info(["Process Info"])
                 # has postmaster.pid
                 if segmentData[gp.SEGMENT_STATUS__HAS_POSTMASTER_PID_FILE]:
-                    tabLog.info([indent + "  File postmaster.pid", "= Found"])
+                    tabLog.info([indent + "File postmaster.pid", "= Found"])
                 else:
-                    tabLog.warn([indent + "  File postmaster.pid", "= Missing"])
+                    tabLog.warn([indent + "File postmaster.pid", "= Missing"])
 
                 # PID from postmaster.pid
                 tabLog.infoOrWarn(pidData['pid'] == 0, \
-                                [indent + "  PID from postmaster.pid file", "= %s" % pidData["pid"]])
+                                [indent + "PID from postmaster.pid file", "= %s" % pidData["pid"]])
 
                 # has lock fiel
                 if segmentData[gp.SEGMENT_STATUS__HAS_LOCKFILE]:
-                    tabLog.info([indent + "  Lock files in /tmp", "= Found"])
+                    tabLog.info([indent + "Lock files in /tmp", "= Found"])
                 else:
-                    tabLog.warn([indent + "  Lock files in /tmp", "= Missing"])
+                    tabLog.warn([indent + "Lock files in /tmp", "= Missing"])
 
                 # Active PID
                 if pidData['error'] is None:
-                    tabLog.info([indent + "  Active PID", "= %s" % pidData["pid"]])
+                    tabLog.info([indent + "Active PID", "= %s" % pidData["pid"]])
                 else:
-                    tabLog.warn([indent + "  Active PID", "= Missing"])
+                    tabLog.warn([indent + "Active PID", "= Missing"])
 
                 # is valid
                 if pidData['error'] is not None:
                     isValid = "Failed"
 
             tabLog.info(["Status"])
-            tabLog.info([indent + "  Master reports status as", "= %s" % masterReportedStatus])
-            tabLog.infoOrWarn(isValid != "Valid", [indent + "  Segment status", "= %s" % isValid])
+            tabLog.info([indent + "Master reports status as", "= %s" % masterReportedStatus])
+            tabLog.infoOrWarn(isValid != "Valid", [indent + "Instance status", "= %s" % isValid])
+
+            (segmentStatus, segmentStatusIsWarning) = self.__calculateSegmentStatus(gpArray, seg, segmentData)
+            # tabLog.infoOrWarn(segmentStatusIsWarning, [indent + "Segment status", "= %s" % segmentStatus])
+
             if isValid == "Valid":
                 contentsWithUpSegments[seg.getSegmentContentId()] = True
 

@@ -371,6 +371,11 @@ typedef enum
     PM__ENUMERATION_COUNT
 } PMState;
 
+/**
+ * WARNING: some of these labels are used in management scripts -- so don't 
+ *  change them here without checking the management scripts (check for starting with child_stop_
+ *  as well -- management scripts use startWith in some cases)
+ */
 static const char *const gPmStateLabels[] =
 {
 	"init",
@@ -2668,13 +2673,15 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
         int64 resyncTotalToComplete = 100;
         int64 elapsedTimeSeconds = 1000;
 
-        snprintf(statusBuf, sizeof(statusBuf), "Success: mode: %s\n"
-                                  "segmentState: %s\n"
-                                  "dataState: %s\n"
-                                  "resyncNumCompleted: " INT64_FORMAT "\n"
-                                  "resyncTotalToComplete: " INT64_FORMAT "\n"
-                                  "elapsedTimeSeconds: " INT64_FORMAT "\n",
+        snprintf(statusBuf, sizeof(statusBuf), "Success: mode:%s\n"
+                                  "segmentState:%s\n"
+                                  "dataState:%s\n"
+                                  "postmasterState:%s\n"
+                                  "resyncNumCompleted:" INT64_FORMAT "\n"
+                                  "resyncTotalToComplete:" INT64_FORMAT "\n"
+                                  "elapsedTimeSeconds:" INT64_FORMAT "\n",
                  getMirrorModeLabel(pm_mode), getSegmentStateLabel(s_state), getDataStateLabel(d_state),
+                 gPmStateLabels[pmState],
                  resyncNumCompleted, resyncTotalToComplete, elapsedTimeSeconds);
 
 		sendPrimaryMirrorTransitionResult(statusBuf);

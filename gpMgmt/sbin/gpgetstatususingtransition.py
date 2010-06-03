@@ -41,7 +41,8 @@ class GpSegStatusProgram:
         """
         The data as from GpSegStatusProgram.getPidRunningStatus
         """
-        if currentPMPidData is not None and currentPMPidData['pidValue'] == 0:
+        if currentPMPidData is not None and \
+            (currentPMPidData['pidValue'] == 0 or not currentPMPidData['lockFileExists'] or not currentPMPidData['netstatPortActive']):
             logger.warn("Error getting data from segment %s; it is not running" % seg.getSegmentDataDirectory())
             return None
 
@@ -133,8 +134,8 @@ class GpSegStatusProgram:
         if data is None:
             return data
 
-        # convert some to long integers, verify that they are there
-        for expected in ["mode","segmentState","dataState",\
+        # convert some to long integers, verify that all expected ones are there
+        for expected in ["mode","segmentState","dataState", "postmasterState", \
                             "resyncNumCompleted","resyncTotalToComplete","elapsedTimeSeconds"]:
             if expected not in data:
                 logger.warn("Missing data key %s from str %s" % (expected, str))
