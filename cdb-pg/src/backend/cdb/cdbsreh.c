@@ -335,9 +335,7 @@ void InsertIntoErrorTable(CdbSreh *cdbsreh)
 	/* store and freeze the tuple */
 	frozen_heap_insert(cdbsreh->errtbl, tuple);
 	
-	heap_freetuple(tuple);
-	
-	MemoryContextReset(cdbsreh->badrowcontext);
+	heap_freetuple(tuple);	
 }
 
 

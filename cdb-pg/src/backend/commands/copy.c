@@ -165,7 +165,6 @@ else \
 	ErrorData	*edata; \
 	MemoryContext oldcontext;\
 	bool	rawdata_is_a_copy = false; \
-	bool	errmsg_is_a_copy = false; \
 	cur_row_rejected = true; \
 \
 	/* SREH must only handle data errors. all other errors must not be caught */\
@@ -222,20 +221,19 @@ else \
 	cstate->cdbsreh->processed = ++cstate->processed; \
 	cstate->cdbsreh->consec_csv_err = cstate->num_consec_csv_err; \
 \
-	/* set the error message. Use original msg and add column name if availble */ \
+	/* set the error message. Use original msg and add column name if available */ \
 	if (cstate->cur_attname)\
 	{\
 		cstate->cdbsreh->errmsg = (char *) palloc((strlen(edata->message) + \
 												  strlen(cstate->cur_attname) + \
 												  10 + 1) * sizeof(char)); \
-		errmsg_is_a_copy = true; \
 		sprintf(cstate->cdbsreh->errmsg, "%s, column %s", \
 				edata->message, \
 				cstate->cur_attname); \
 	}\
 	else\
 	{\
-		cstate->cdbsreh->errmsg = edata->message; \
+		cstate->cdbsreh->errmsg = pstrdup(edata->message); \
 	}\
 \
 	/* after all the prep work let cdbsreh do the real work */ \
@@ -244,8 +242,11 @@ else \
 	/* cleanup any extra memory copies we made */\
 	if (rawdata_is_a_copy) \
 		pfree(cstate->cdbsreh->rawdata); \
-	if (errmsg_is_a_copy && !IsRejectLimitReached(cstate->cdbsreh)) \
+	if (!IsRejectLimitReached(cstate->cdbsreh)) \
 		pfree(cstate->cdbsreh->errmsg); \
+\
+	MemoryContextReset(cstate->cdbsreh->badrowcontext);\
+\
 }
 
 /*
