@@ -143,3 +143,4 @@ test: gp_numeric_agg
 test: foreign_data
 test: gp_toolkit
 test: filespace
+test: gpcheckmirrorseg

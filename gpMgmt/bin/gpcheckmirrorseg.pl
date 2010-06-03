@@ -30,6 +30,7 @@ Options:
     -ignore          filename pattern to ignore during comparison
 	-mastermirror    compare master and standby only 
 	-skipsegments    skip mirror check for segments which are not in sync
+	-parallel        run checks in parallel
 
 =head1 OPTIONS
 
@@ -69,6 +70,15 @@ contents, which may differ due to logical mirroring.
     
 Boolean flag to control whether to skip mirror check for segments
 which are not in sync (normally true).
+
+=item B<-parallel> 
+    
+Boolean flag to control whether to generate the md5 hashes for each
+segment in parallel, or sequentially (normally false).  If true,
+gpcheckmirrorseg forks a separate process on each segment to generate
+the md5 hashes for the initial raw diff phase.  Note that the actual
+diff of primary/mirror hashes and subsequent "enhanced diff" phases
+are performed sequentially.
 
 
 =back
@@ -161,6 +171,8 @@ my $glob_skipseg;
 
 my $glob_diff;
 
+my $glob_usefork;
+
 BEGIN {
     my $man  = 0;
     my $help = 0;
@@ -168,6 +180,7 @@ BEGIN {
 	my @ignore;
 	my $skipseg;
 	my $mm;
+	my $parallel;
 
 #	print Data::Dumper->Dump(\@ARGV), "\n";
 
@@ -176,7 +189,8 @@ BEGIN {
                "connect=s" => \$conn,
 		       'exclude|ignore:s' => \@ignore,
 		       'mm|mastermirror:s' => \$mm,
-		       'skipsegments:s' => \$skipseg
+		       'skipsegments:s' => \$skipseg,
+		       'parallel:s' => \$parallel
                )
         or pod2usage(2);
 
@@ -215,12 +229,22 @@ BEGIN {
 		$glob_mm = 0;
 	}
 
+	if (defined($parallel))
+	{
+		$glob_usefork = ($parallel =~ m/^\s*(1|t|true|y|yes)/i) ? 1 : 0;
+	}
+	else
+	{
+		$glob_usefork = 0;
+	}
+
 	$glob_diff = "diff";
     # MPP-9810: need gnu diff on solaris
     if ($Config{'osname'} =~ m/solaris|sunos/i)
     {
         $glob_diff = "gdiff";
     }
+
 
 #    print "loading...\n" ;
 }
@@ -349,11 +373,12 @@ sub ignore_list
 
 	my @master;
 
-	# build of list of grep exclusion commands
-	for my $ww (@m1)
-	{
-		push @master, 'grep -v "' . $ww . '"';
-	}
+	my @m3 = map(quotemeta, @m1);
+
+	my $regex = join ("|", @m3);
+
+	# use to build a collection of "grep -v" commands, now use just one...
+	push @master, " perl -nle \'print unless /(" . $regex . ")/  \' ";
 
 	return \@master;
 	
@@ -1863,6 +1888,10 @@ if (1)
 	
 	my $fseloc = tablelizer($tabdef);
 
+    pod2usage(-msg => "\nERROR: Could not open database.  Please check connect string.\n\n",
+			  -exitstatus => 1)
+		unless (defined($fseloc));
+
 	# hash the file system entry location and mod it to an acceptable size
 	my $fselochsh = perlhash($fseloc->[0]->{fselocation}) % 100000000000000;
 
@@ -1907,7 +1936,7 @@ if (1)
 		"and gscp.role =  " .  '$q$p$q$ ' .
 		"and gscm.role =  " .  '$q$m$q$ ' .
 		"and pfs.oid = fep.fsefsoid " .
-		" order by content  \'";
+		" order by gscp.dbid, content  \'";
 
 	print $psql_str, "\n";
 
@@ -1938,11 +1967,16 @@ if (1)
 
 	my $ignore_cmd = join (" | ", @{$ignore_arr});
 
+
+	# build an array of "good" segments/filespaces
+	my @good_segs;
+
 	for my $row (@{$gp_seg_config})
 	{
 		my $prim_dd = $row->{ploc};
 		my $mirr_dd = $row->{mloc};
 		my $fsname  = $row->{fsname}; # MPP-9086: filespace name
+		my $fsoid   = $row->{fsoid}; 
 
 		if ($glob_mm)
 		{
@@ -1958,6 +1992,7 @@ if (1)
 
 		my @foo = File::Spec->splitdir($prim_dd);
 		my $fil = pop @foo;
+		my $fil2 = $fil . "_" . $fsoid;
 
 		print "checking directory: ", $fil, "\nfilespace: $fsname\n";
 
@@ -2011,30 +2046,74 @@ EOF_msgstr
 		my $mirrhost = $row->{mhostname};
 
 		my $primtmp = File::Spec->catfile("/tmp", 
-										  $fselochsh . "_" . $fil . ".prim");
+										  $fselochsh . "_" . $fil2 . ".prim");
 		my $mirrtmp = File::Spec->catfile("/tmp", 
-										  $fselochsh . "_" . $fil . ".mirr");
+										  $fselochsh . "_" . $fil2 . ".mirr");
 
 		my $ppresh = File::Spec->catfile("/tmp", 
-										  $fselochsh . "_" . $fil . 
+										  $fselochsh . "_" . $fil2 . 
 										 "_ppre.pl");
 		my $mpresh = File::Spec->catfile("/tmp", 
-										  $fselochsh . "_" . $fil . 
+										  $fselochsh . "_" . $fil2 . 
 										 "_mpre.pl");
 
 		my $ppresh2 = File::Spec->catfile("/tmp", 
-										  $fselochsh . "_" . $fil . 
+										  $fselochsh . "_" . $fil2 . 
 										 "_ppre2.pl");
 		my $mpresh2 = File::Spec->catfile("/tmp", 
-										  $fselochsh . "_" . $fil . 
+										  $fselochsh . "_" . $fil2 . 
 										 "_mpre2.pl");
 
 		my $primsh = File::Spec->catfile("/tmp", 
-										  $fselochsh . "_" . $fil . 
+										  $fselochsh . "_" . $fil2 . 
 										 "_prim.sh");
 		my $mirrsh = File::Spec->catfile("/tmp", 
-										  $fselochsh . "_" . $fil . 
+										  $fselochsh . "_" . $fil2 . 
 										 "_mirr.sh");
+
+		push @good_segs, {
+			row	   => $row,
+			fil	   => $fil,
+			fsname => $fsname,
+			primfil  => $primfil,
+			mirrfil  => $mirrfil,
+			primhost => $primhost,
+			mirrhost => $mirrhost,
+			primtmp  => $primtmp,
+			mirrtmp  => $mirrtmp,
+			ppresh   => $ppresh,
+			mpresh   => $mpresh,
+			ppresh2  => $ppresh2,
+			mpresh2  => $mpresh2,
+			primsh   => $primsh,
+			mirrsh   => $mirrsh
+		};
+	} # end for my row
+						
+	print "\n\ndispatch phase:\n";
+
+	my $time1 = time();
+
+	for my $ii (0..(scalar(@good_segs)-1))
+	{
+		my $seg = $good_segs[$ii];
+		my $row		 = $seg->{row};
+		my $fil		 = $seg->{fil};
+		my $fsname	 = $seg->{fsname};
+		my $primfil	 = $seg->{primfil};
+		my $mirrfil	 = $seg->{mirrfil};
+		my $primhost = $seg->{primhost};
+		my $mirrhost = $seg->{mirrhost};
+		my $primtmp	 = $seg->{primtmp};
+		my $mirrtmp	 = $seg->{mirrtmp};
+		my $ppresh	 = $seg->{ppresh};
+		my $mpresh	 = $seg->{mpresh};
+		my $ppresh2	 = $seg->{ppresh2};
+		my $mpresh2	 = $seg->{mpresh2};
+		my $primsh	 = $seg->{primsh};
+		my $mirrsh	 = $seg->{mirrsh};
+
+		print "dispatch directory: ", $fil, "\nfilespace: $fsname\n";
 
 		# use openssl to construct an md5 hash for every file
 		# Note: use mypresh*1*, because this script runs on the copy
@@ -2120,18 +2199,31 @@ EOF_msgstr
 		$cmd =~ s/MYPRESCRIPT/$ppresh/g;
 		$cmd =~ s/MYPRE2SCRIPT/$ppresh2/g;
 
-		print $cmd, "\n";
+#		print $cmd, "\n";
 
+		$seg->{primthread} = fork()
+			if ($glob_usefork);
 
-		my $time1 = time();
+		if (exists($seg->{primthread}) &&
+			defined($seg->{primthread}))
+		{
+			if ($seg->{primthread})
+			{
+				# parent
+				sleep 1;
+				goto L_skip1;
+			}
+			else
+			{
+				system ($cmd);
+				exit(0);
+			}
+
+		}
+
 		system ($cmd);
-		my $time2 = time();
 
-		my $wcstr    = "wc -l < $primtmp" . "1"; # MPP-8951
-		my $numfiles = `$wcstr`;
-		chomp $numfiles;
-
-		print "\nprimary: ", $numfiles, " files, ", $time2-$time1," seconds\n\n";
+	  L_skip1:
 
 		$cmd = $cmd_template2;
 		$cmd =~ s/MYHOST/$mirrhost/g;
@@ -2141,17 +2233,91 @@ EOF_msgstr
 		$cmd =~ s/MYPRESCRIPT/$mpresh/g;
 		$cmd =~ s/MYPRE2SCRIPT/$mpresh2/g;
 
-		print $cmd, "\n";
+#		print $cmd, "\n";
 
-		$time1 = time();
+		$seg->{mirrthread} = fork()
+			if ($glob_usefork);
+
+		if (exists($seg->{mirrthread}) &&
+			defined($seg->{mirrthread}))
+		{
+			if ($seg->{mirrthread})
+			{
+				# parent
+				sleep 1;
+				goto L_skip2;
+			}
+			else
+			{
+				system ($cmd);
+				exit(0);
+			}
+
+		}
+
 		system ($cmd);
-		$time2 = time();
+
+	  L_skip2:
+
+	} # end for my $ii
+
+	if ($glob_usefork)
+	{
+		for my $seg (@good_segs)
+		{
+			
+			if (exists($seg->{primthread}) &&
+				defined($seg->{primthread}))
+			{
+				waitpid($seg->{primthread}, 0);
+			}
+			
+			if (exists($seg->{mirrthread}) &&
+				defined($seg->{mirrthread}))
+			{
+				waitpid($seg->{mirrthread}, 0);
+			}
+
+		}
+	}
+	my $time2 = time();
+	print "Waited ", $time2-$time1, " seconds for " .
+		scalar(@good_segs) . " segs/filespaces. \n\n";
+
+	for my $ii (0..(scalar(@good_segs)-1))
+	{
+		my $seg = $good_segs[$ii];
+		my $row		 = $seg->{row};
+		my $fil		 = $seg->{fil};
+		my $fsname	 = $seg->{fsname};
+		my $primfil	 = $seg->{primfil};
+		my $mirrfil	 = $seg->{mirrfil};
+		my $primhost = $seg->{primhost};
+		my $mirrhost = $seg->{mirrhost};
+		my $primtmp	 = $seg->{primtmp};
+		my $mirrtmp	 = $seg->{mirrtmp};
+		my $ppresh	 = $seg->{ppresh};
+		my $mpresh	 = $seg->{mpresh};
+		my $ppresh2	 = $seg->{ppresh2};
+		my $mpresh2	 = $seg->{mpresh2};
+		my $primsh	 = $seg->{primsh};
+		my $mirrsh	 = $seg->{mirrsh};
+
+		my $primthr  = $seg->{primthread};
+		my $mirrthr  = $seg->{primthread};
+
+		print "compare directory: ", $fil, "\nfilespace: $fsname\n";		
+
+		my $wcstr    = "wc -l < $primtmp" . "1"; # MPP-8951
+		my $numfiles = `$wcstr`;
+		chomp $numfiles;
+		print "\nprimary: ", $numfiles, " files \n\n";
 
 		$wcstr    = "wc -l < $mirrtmp" . "1"; # MPP-8951
 		$numfiles = `$wcstr`;
 		chomp $numfiles;
 
-		print "\nmirror: ", $numfiles, " files, ", $time2-$time1," seconds\n\n";
+		print "\nmirror: ", $numfiles, " files \n\n";
 
 		# add "1" suffix on master
 		$primtmp .= '1';
@@ -2242,7 +2408,7 @@ EOF_msgstr
 					   $primsh, $mirrsh);
 		}
 
-	}
+	} # end for my seg
 
 	if (scalar(@{$glob_exit}))
 	{
