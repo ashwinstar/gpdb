@@ -160,7 +160,7 @@ int rdbmsSrvTable_cache_load(netsnmp_container *container)
 	 */
 
 	/* Eventually we'll probably want to make this actually pay attention to 
-	 * APPLICATION-MIB. For now, I'm ignoring it. When we make that change, we'll need to
+	 * NETWORK-SERVICES-MIB. For now, I'm ignoring it. When we make that change, we'll need to
 	 * modify the other files that use applIndex (the one I'm thinking of now is rdbmsRelTable */
 	long applIndex = 1;
 	PGresult *pgsnmpd_tbl_qry;

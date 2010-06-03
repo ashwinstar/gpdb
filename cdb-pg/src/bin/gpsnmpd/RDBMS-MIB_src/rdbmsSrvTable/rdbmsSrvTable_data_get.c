@@ -42,7 +42,7 @@
  */
 
 /*---------------------------------------------------------------------
- * APPLICATION-MIB::applEntry.applIndex
+ * NETWORK-SERVICES_MIB::applEntry.applIndex
  * applIndex is subid 1 of applEntry.
  * Its status is Current, and its access level is NoAccess.
  * OID: .1.3.6.1.2.1.27.1.1.1

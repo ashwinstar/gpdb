@@ -161,7 +161,7 @@ static void usage(void)
 		fprintf(stderr, "Version %s\n\n", GPSNMP_DAEMON);
 		fprintf(stderr,
 				"usage: gpsnmpd [-s] [-b] [-c FILE ] [-x address ] [-g] [-C \"Connect String\"]\n\n");
-		fprintf(stderr, "   -s : run as AgentX sub-agent of an existing snmpd process.  You do no need to use -x with this option.");
+		fprintf(stderr, "   -s : run as AgentX sub-agent of an existing snmpd process.  Recommended.  You do no need to use -x with this option.");
 		fprintf(stderr, "   -b : run in the background\n");
 		fprintf(stderr, "   -c : configuration file name (often not needed if running as a subagent)\n");
 		fprintf(stderr, "   -g : use syslog to log errors in gpsnmpd\n");
@@ -346,7 +346,7 @@ int main(int argc, char *argv[])
 	/* Add RDBMS-MIB GPDB-MIB to the list to be loaded */
 	const char * env = getenv("MIBS");
 	if (env==NULL || env[0] == '\0')
-		putenv("MIBS=+RDBMS-MIB:NETWORK-SERVICES-MIB:APPLICATION-MIB:GPDB-MIB:SNMP-FRAMEWORK-MIB:SNMPv2-CONF:SNMPv2-TC:SNMPv2-TC");
+		putenv("MIBS=+RDBMS-MIB:NETWORK-SERVICES-MIB:GPDB-MIB:SNMP-FRAMEWORK-MIB:SNMPv2-CONF:SNMPv2-TC:SNMPv2-TC");
 
 
 	if (getuid() != 0)
