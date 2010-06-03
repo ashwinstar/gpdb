@@ -90,30 +90,29 @@ class GpStart:
         self._startMaster()
         logger.info("Master Started...")
 
-        if not self.masteronly:
-            self._check_standby_activated()
-            
-            logger.info("Shutting down master")
-            cmd=gp.GpStop("Shutting down master", masterOnly=True, 
-                          fast=True, quiet=logging_is_quiet(),
-                          verbose=logging_is_verbose(),
-                          datadir=self._get_master_datadir())
-            cmd.run()
-            logger.debug("results of forcing master shutdown: %s" % cmd)
-            #TODO: check results of command.
-
-            if self.interactive:
-                self._summarize_actions()
-                check_to_continue()
-
         if self.masteronly:
-            pass                        
-        else:
-            success=self._start()
+            return True
+        self._check_standby_activated()
 
-            if not success:
-                return False
+        logger.info("Shutting down master")
+        cmd=gp.GpStop("Shutting down master", masterOnly=True,
+                      fast=True, quiet=logging_is_quiet(),
+                      verbose=logging_is_verbose(),
+                      datadir=self._get_master_datadir())
+        cmd.run()
+        logger.debug("results of forcing master shutdown: %s" % cmd)
+        #TODO: check results of command.
 
+        (segmentsToStart, invalidSegments, inactiveSegments) = self._prepare_segment_start()
+
+        if self.interactive:
+            self._summarize_actions(segmentsToStart)
+            check_to_continue()
+
+        success=self._start(segmentsToStart, invalidSegments, inactiveSegments)
+
+        if not success:
+            return False
         return True
 
     ######
@@ -261,7 +260,7 @@ class GpStart:
         pass
 
     ######
-    def _summarize_actions(self):
+    def _summarize_actions(self, segmentsToStart):
         logger.info("--------------------------")
         logger.info("Master instance parameters")
         logger.info("--------------------------")
@@ -281,14 +280,19 @@ class GpStart:
         logger.info("Segment instances that will be started")
         logger.info("--------------------------------------")
 
-        format_string=self._get_format_string()
-        logger.info(format_string % ("Host","Datadir","Port","Status"))
-        for db in self.gparray.getSegDbList():
-            hostname = db.getSegmentHostName()
-            datadir = db.getSegmentDataDirectory()
-            port = db.getSegmentPort()
-            status = db.getSegmentStatus()
-            logger.info(format_string % (hostname, datadir, port, status))
+        isFileReplication = self.gparray.getFaultStrategy() == FAULT_STRATEGY_FILE_REPLICATION
+
+        tabLog = TableLogger().setWarnWithArrows(True)
+        header = ["Host","Datadir","Port"]
+        if isFileReplication:
+            header.append("Role")
+        tabLog.info(header)
+        for db in segmentsToStart:
+            line = [db.getSegmentHostName(), db.getSegmentDataDirectory(), str(db.getSegmentPort())]
+            if isFileReplication:
+                line.append("Primary" if db.isSegmentPrimary(True) else "Mirror")
+            tabLog.info(line)
+        tabLog.outputTable()
 
     ######
     def _get_format_string(self):
@@ -337,10 +341,12 @@ class GpStart:
         pass
 
     ######
-    def _start(self):
+    def _start(self, segmentsToStart, invalidSegments, inactiveSegments):
         """ starts the standby master, all of the segments, and the master
             
-            returns whether all segments were started successfully 
+            returns whether all segments that should be started were started successfully
+
+            note that the parameters do not list master/standby, they only list data segments
         """
         workers=min(len(self.gparray.get_hostlist()),self.parallel)
         self.pool = base.WorkerPool(numWorkers=workers)
@@ -349,12 +355,10 @@ class GpStart:
             raise GpStartError("Found a System Expansion Setup in progress. Please run 'gpexpand --rollback'")
 
         self.standby_was_started = self._start_standby()
-        (segmentsToStart, invalidSegments, inactiveSegments) = self._prepare_segment_start()
 
         strategy = self.gparray.getFaultStrategy()
         logger.debug("Strategy in gparray is %s" % strategy)
 
-        # todo: MIRRROING: push _prepare_segment_start behavior into StartSegmentsOperation???
         # The SAN ('s') fault strategy leaves the mirrors shutdown until they're needed.
         # so we don't want to start them -- SAN-start works just like a mirror-less start.
         if strategy == FAULT_STRATEGY_FILE_REPLICATION:
@@ -420,7 +424,7 @@ class GpStart:
             logger.warning("Skipping startup of segment marked down in configuration: on %s directory %s <<<<<" % \
                     (seg.getSegmentHostName(), seg.getSegmentDataDirectory()))
         for seg in inactive_mirrors:
-            logger.warning("Skipping startup of marked INACTIVE in configuration: %s directory %s <<<<<" % \
+            logger.warning("Skipping startup of segment marked INACTIVE in configuration: %s directory %s <<<<<" % \
                     (seg.getSegmentHostName(), seg.getSegmentDataDirectory()))
         logger.debug("dbIdsToNotStart has %d entries" % len(dbIdsToNotStart))
 
