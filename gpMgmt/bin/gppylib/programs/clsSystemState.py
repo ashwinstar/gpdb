@@ -246,7 +246,7 @@ class GpSystemStateProgram:
         tabLog.info(["Greenplum array configuration type", "= %s" % arrayType])
         tabLog.addSeparator()
 
-        tabLog.info(["Total segment instance count from meta data", "= %s" % len(gpArray.getSegDbList())])
+        tabLog.info(["Total segment instance count from metadata", "= %s" % len(gpArray.getSegDbList())])
         tabLog.addSeparator()
 
         # primary and mirror segment info
@@ -327,8 +327,8 @@ class GpSystemStateProgram:
                 numMirrorsActive = len([seg for seg in segs if seg.isSegmentPrimary(current_role=True)])
                 numMirrorsPassive = numSegments - numMirrorsActive
                 tabLog.infoOrWarn(numMirrorsActive > 0,
-                            ["Total number mirror segments active", "= %d" % numMirrorsActive])
-                tabLog.info( ["Total number mirror segments passive", "= %d" % numMirrorsPassive])
+                            ["Total number mirror segments acting as primary segments", "= %d" % numMirrorsActive])
+                tabLog.info( ["Total number mirror segments acting as mirror segments", "= %d" % numMirrorsPassive])
 
             tabLog.addSeparator()
         tabLog.outputTable()
@@ -402,8 +402,9 @@ class GpSystemStateProgram:
         (statusFetchWarning, outputFromMasterCmd) = hostNameToResults[master.getSegmentHostName()]
         masterData = outputFromMasterCmd[master.getSegmentDbId()] if statusFetchWarning is None else None
 
+        logger.info( "----------------------------------------------------" )
         logger.info("-Master Configuration & Status")
-        logger.info( "------------------------------" )
+        logger.info( "----------------------------------------------------" )
         tabLog = TableLogger().setWarnWithArrows(True)
         tabLog.info(["Master host", "= %s" % master.getSegmentHostName()])
         if statusFetchWarning is None:
@@ -436,30 +437,81 @@ class GpSystemStateProgram:
         #
         # Output about segments
         #
-        logger.info("------------------------------------------------")
+        logger.info("----------------------------------------------------")
         logger.info("Segment Instance Status Report")
+
+        primaryByContentId = GpArray.getSegmentsByContentId(\
+                                [s for s in gpArray.getSegDbList() if s.isSegmentPrimary(current_role=True)])
+        contentsWithUpSegments = {}
 
         tabLog = TableLogger().setWarnWithArrows(True)
         for seg in gpArray.getSegDbList():
             (statusFetchWarning, outputFromCmd) = hostNameToResults[seg.getSegmentHostName()]
 
-            type = "Primary" if seg.isSegmentPrimary(current_role=False) else "Mirror"
+            preferredRole = "Primary" if seg.isSegmentPrimary(current_role=False) else "Mirror"
+            currentRole =  "Primary" if seg.isSegmentPrimary(current_role=True) else "Mirror"
             masterReportedStatus = "Valid" if seg.isSegmentUp() else "Failed"
 
             tabLog.addSeparator()
             tabLog.info(["Segment instance hostname", "= %s" % seg.getSegmentHostName()])
             tabLog.info(["Segment instance address", "= %s" % seg.getSegmentAddress()])
             tabLog.info(["Segment instance datadir", "= %s" % seg.getSegmentDataDirectory()])
-            tabLog.info(["Type", "= %s" % type])
+
             tabLog.info(["Master reports status as", "= %s" % masterReportedStatus])
 
+            if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_FILE_REPLICATION:
+                tabLog.infoOrWarn(currentRole != preferredRole, ["Current role", "= %s" % currentRole])
+                tabLog.infoOrWarn(currentRole != preferredRole, ["Preferred role", "= %s" % preferredRole])
+
+                if seg.isSegmentPrimary(current_role=True):
+                    tabLog.info(["Mirror status", "= %s" % gparray.getDataModeLabel(seg.getSegmentMode())])
+                else:
+                    primary = primaryByContentId[seg.getSegmentContentId()][0]
+                    if primary.getSegmentMode() == gparray.MODE_CHANGELOGGING:
+                        tabLog.warn(["Mirror status", "= Out of Sync"])
+                    else:
+                        tabLog.info(["Mirror status", "= %s" % gparray.getDataModeLabel(seg.getSegmentMode())])
+
+            isValid = "Valid" if seg.isSegmentUp() else "Failed"
             if statusFetchWarning is not None:
                 tabLog.warn(["Error retrieving segment status", "= %s" % statusFetchWarning])
+                if isValid == "Valid":
+                    isValid = "Unknown"
             else:
                 segmentData = outputFromCmd[seg.getSegmentDbId()]
 
                 #
                 # Able to fetch from that segment, proceed
+                #
+
+                #
+                # mirror info
+                #
+                if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_FILE_REPLICATION:
+                    # print out mirroring state from the segment itself
+                    if seg.isSegmentPrimary(current_role=True):
+                        if seg.getSegmentMode() == gparray.MODE_RESYNCHRONIZATION and \
+                            False: # note: when postmaster returns real resync progress then we can uncomment this
+                                   # also, at that time, review probablyDown behavior below and enable it after more thought
+
+                            mirrorData = segmentData[gp.SEGMENT_STATUS__GET_MIRROR_STATUS]
+
+                            if mirrorData is None:
+                                tabLog.warn(["Resync progress with mirror", "= unable to retrieve progress"])
+
+                            elif mirrorData["resyncTotalToComplete"] == -1 or \
+                                mirrorData["resyncTotalToComplete"] == mirrorData["resyncNumCompleted"]:
+                                tabLog.info(["Mirror resync progress", "= Complete, awaiting metadata change to in-sync"])
+
+                            else:
+                                percentComplete = mirrorData["resyncNumCompleted"] / float(mirrorData["resyncTotalToComplete"])
+                                elapsedTime = mirrorData["elapsedTimeSeconds"]
+                                remainingTime = datetime.timedelta(seconds=long(elapsedTime / percentComplete - elapsedTime))
+                                tabLog.info(["Resync progress with mirror", "= %.2f%%" % (100 * percentComplete)])
+                                tabLog.info(["Estimated time to resync completion", "= %s" % remainingTime])
+
+                #
+                # Now PID status
                 #
                 pidData = segmentData[gp.SEGMENT_STATUS__GET_PID]
 
@@ -485,55 +537,38 @@ class GpSystemStateProgram:
                 else:
                     tabLog.warn(["Active PID", "= Missing"])
 
-                if seg.isSegmentPrimary(current_role=False):
-                    if seg.isSegmentPrimary(current_role=True):
-                        tabLog.info(["Mirror status", "= Active"])
-                    else:
-                        tabLog.warn(["Mirror status", "= Passive as Mirror"])
-                else:
-                    if seg.isSegmentPrimary(current_role=True):
-                        tabLog.warn(["Mirror status", "= Active as Primary"])
-                    else:
-                        tabLog.info(["Mirror status", "= Passive"])
-
-                # print out mirroring state
-                if seg.isSegmentPrimary(current_role=True):
-                    tabLog.info(["Data status with mirror", \
-                                "= %s" % gparray.getDataModeLabel(seg.getSegmentMode())])
-                    if seg.getSegmentMode() == gparray.MODE_RESYNCHRONIZATION and \
-                        False: # note: when postmaster returns real resync progress then we can uncomment this 
-
-                        mirrorData = segmentData[gp.SEGMENT_STATUS__GET_MIRROR_STATUS]
-
-                        if mirrorData is None:
-                            tabLog.warn(["Resync progress with mirror", "= unable to retrieve progress"])
-
-                        elif mirrorData["resyncTotalToComplete"] == -1 or \
-                            mirrorData["resyncTotalToComplete"] == mirrorData["resyncNumCompleted"]:
-                            tabLog.info(["Mirror resync progress", "= Complete, awaiting metadata change to in-sync"])
-
-                        else:
-                            percentComplete = mirrorData["resyncNumCompleted"] / float(mirrorData["resyncTotalToComplete"])
-                            elapsedTime = mirrorData["elapsedTimeSeconds"]
-                            remainingTime = datetime.timedelta(seconds=long(elapsedTime / percentComplete - elapsedTime))
-                            tabLog.info(["Resync progress with mirror", "= %.2f%%" % (100 * percentComplete)])
-                            tabLog.info(["Estimated time to resync completion", "= %s" % remainingTime])
-
                 # is valid
-                isValid = seg.isSegmentUp() and pidData['error'] is None
-                if isValid:
-                    tabLog.info(["Instance Status", "= Valid"])
-                else:
-                    tabLog.warn(["Instance Status", "= Failed"])
+                if pidData['error'] is not None:
+                    isValid = "Failed"
+
+            tabLog.infoOrWarn(isValid != "Valid", ["Instance Status", "= %s" % isValid])
+            if isValid == "Valid":
+                contentsWithUpSegments[seg.getSegmentContentId()] = True
 
         tabLog.outputTable()
         hasWarnings = hasWarnings or tabLog.hasWarnings()
 
+        #
+        # approximate whether or not the cluster has a problem and need to review
+        #  we could beef this up -- for example, the mirror is only useful
+        #  if we are in resync mode
+        #
+        probablyDown = False
+        for seg in gpArray.getSegDbList():
+            if seg.getSegmentContentId() not in contentsWithUpSegments:
+                probablyDown = True
+
+        if False and probablyDown:  # disabled for now, may enable when adding resync status
+            logger.warn("*****************************************************" )
+            logger.warn("DATABASE IS PROBABLY UNAVAILABLE" )
+            logger.warn("Review Instance Status in log file or screen output for more information" )
+            logger.warn("*****************************************************" )
+
         if hasWarnings:
-            logger.info("*****************************************************" )
+            logger.warn("*****************************************************" )
             logger.warn("Warnings have been generated during status processing" )
-            logger.info("Check log file or review screen output" )
-            logger.info("*****************************************************" )
+            logger.warn("Check log file or review screen output" )
+            logger.warn("*****************************************************" )
 
         return 1 if hasWarnings else 0
 
