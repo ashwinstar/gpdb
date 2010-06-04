@@ -2000,7 +2000,9 @@ FileRep_ConfigureSignals(void)
 #ifdef SIGBUS
 	pqsignal(SIGBUS, FileRep_HandleCrash);
 #endif
-	
+#ifdef SIGILL
+	pqsignal(SIGILL, FileRep_HandleCrash);
+#endif
 #ifdef SIGSEGV
 	pqsignal(SIGSEGV, FileRep_HandleCrash);
 #endif	
