@@ -330,6 +330,8 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 
 	else if (strstr(errorData->error_message, gettext("Master mirroring synchronization lost"))  != NULL ||
 			  strstr(errorData->error_message, gettext("Error from sending to standby master"))  != NULL ||
+			  strstr(errorData->error_message, gettext("is going into change tracking mode"))  != NULL ||
+			  strstr(errorData->error_message, gettext("is taking over as primary in change tracking mode"))  != NULL ||
 			  strstr(errorData->error_message, "GPDB performed segment reconfiguration.") != NULL) // elog, so no gettext
 		severity[0] = '6';  // gpdbSevSystemDegraded
 
