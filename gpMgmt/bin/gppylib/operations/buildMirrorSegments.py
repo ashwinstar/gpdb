@@ -240,6 +240,7 @@ class GpMirrorListToBuild:
         mirrorsToStart = []
         primariesToConvert = []
         convertPrimaryUsingFullResync = []
+        fullResyncMirrorDbIds = {}
         for toRecover in self.__mirrorsToBuild:
             seg = toRecover.getFailoverSegment()
             if seg is None:
@@ -248,6 +249,9 @@ class GpMirrorListToBuild:
             primariesToConvert.append(toRecover.getLiveSegment())
             convertPrimaryUsingFullResync.append(toRecover.isFullSynchronization())
 
+            if toRecover.isFullSynchronization() and seg.getSegmentDbId() > 0:
+                fullResyncMirrorDbIds[seg.getSegmentDbId()] = True
+
         # Disable Ctrl-C, going to save metadata in database and transition segments
         signal.signal(signal.SIGINT,signal.SIG_IGN)
         try:
@@ -255,7 +259,8 @@ class GpMirrorListToBuild:
 
             # should use mainUtils.getProgramName but I can't make it work!
             programName = os.path.split(sys.argv[0])[-1]
-            configInterface.getConfigurationProvider().updateSystemConfig(gpArray, "%s: segment resync" % programName )
+            configInterface.getConfigurationProvider().updateSystemConfig(gpArray, "%s: segment resync" % programName,
+                                                                                fullResyncMirrorDbIds )
 
             self.__startAll(gpEnv, gpArray, mirrorsToStart)
             self.__convertAllPrimaries(gpEnv, gpArray, primariesToConvert, convertPrimaryUsingFullResync)

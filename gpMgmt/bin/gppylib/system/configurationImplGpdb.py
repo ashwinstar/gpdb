@@ -82,12 +82,16 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
                 conn.close()
 
 
-    def updateSystemConfig( self, gpArray, textForConfigTable ) :
+    def updateSystemConfig( self, gpArray, textForConfigTable, dbIdToForceMirrorRemoveAdd={} ) :
         """
         Update the configuration for the given segments in the underlying
         configuration store to match the current values
     
         Also resets any dirty bits on saved/updated objects
+
+        @param textForConfigTable label to be used when adding to segment configuration history
+        @param dbIdToForceMirrorRemoveAdd a map of dbid -> True for mirrors for which we should force
+                                          updating the mirror
         """
 
         # ensure initializeProvider() was called
@@ -136,7 +140,8 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
                     # No need to update
                     #
                     pass
-                elif self.__equalIgnoringModeAndStatusAndReplicationPort(seg, originalSeg):
+                elif not seg.getSegmentDbId() in dbIdToForceMirrorRemoveAdd and \
+                     self.__equalIgnoringModeAndStatusAndReplicationPort(seg, originalSeg):
                     #
                     # Just update mode and status
                     #
@@ -153,13 +158,15 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
                                                textForConfigTable + ": updated segment mode and status")
                 else:
                     #
-                    # filespace and other core has changed
+                    # filespace and other core has changed, or it's a mirror and we are recovering full
+                    #     (in which case we want to call removeMirror and addMirror so we mark
+                    #      the primary as full-resyncing)
                     #
                     if seg.isSegmentMaster(current_role=True) or seg.isSegmentStandby(current_role=True):
                         #
                         # Assertion here -- user should not be allowed to change master/standby info.
                         #
-                        raise Exception("Internal error: Can only change core details of primary segments, not masters" \
+                        raise Exception("Internal error: Can only change core details of segments, not masters" \
                                     " (on segment %s) (seg %s vs original %s)" %
                                     (seg.getSegmentDbId(), repr(seg), repr(originalSeg)))
 
@@ -182,8 +189,8 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
                     self.__updateSegmentModeStatus(conn, seg)
 
                     self.__insertConfigHistory(conn, seg.getSegmentDbId(),
-                                "%s: inserted segment configuration for recovering to new "
-                                "location for original dbid %s" %
+                                "%s: inserted segment configuration for full recovery "
+                                "for original dbid %s" %
                                 (textForConfigTable, origDbId))
 
         if gpArray.getStrategyAsLoadedFromDb() != gpArray.getFaultStrategy():

@@ -691,10 +691,6 @@ FileRepResyncManager_InResyncTransition(bool isLastLocTracked)
 
 	if (isLastLocTracked == FALSE)
 	{
-		/* NOTE remove after it will be implemented to mark from postmaster */
-		if (isFullResync())
-			ChangeTracking_MarkFullResync();
-
 		ChangeTracking_RecordLastChangeTrackedLoc();
 		
 		if (FileRepSubProcess_GetState() == FileRepStateFault)

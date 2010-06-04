@@ -64,7 +64,7 @@ class GpConfigurationProviderForTesting(GpConfigurationProvider) :
         testOutput("Elog on master: " + ("(with alerts)" if sendAlerts else "(without alerts)") + msg)
 
 
-    def updateSystemConfig( self, systemConfiguration, textForConfigTable ) :
+    def updateSystemConfig( self, systemConfiguration, textForConfigTable, dbIdToForceMirrorRemoveAdd={} ) :
         """
         Update the configuration for the given segments in the underlying configuration store
             to match the current values
