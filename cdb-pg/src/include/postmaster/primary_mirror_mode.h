@@ -268,6 +268,9 @@ extern int64 getChangeTrackingSessionId(void);
 extern void primaryMirrorSetBGWriterPID( pid_t pid );
 extern pid_t primaryMirrorGetBGWriterPID(void);
 
+extern void primaryMirrorSetIOSuspended( bool ioSuspended );
+extern bool primaryMirrorIsIOSuspended(void);
+
 /* labeling enums */
 
 extern const char * getTransitionResultLabel(PrimaryMirrorModeTransitionResult res);

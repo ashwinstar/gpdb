@@ -2669,19 +2669,39 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
         getPrimaryMirrorStatusCodes(&pm_mode, &s_state, &d_state);
 
         /* todo: MILENA: fill these in with correct values, use -1,-1,-1 if resync is not in progress or it's not a primary/mirror */
-        int64 resyncNumCompleted = 5;
-        int64 resyncTotalToComplete = 100;
+        int64 resyncNumCompleted = 8;
+        int64 resyncTotalToComplete = 99;
         int64 elapsedTimeSeconds = 1000;
+
+        bool isIOSuspended = primaryMirrorIsIOSuspended();
+        char *databaseStatus;
+
+        /** Note: some of these status field results are used in python to determine whether there is a warning or not */
+        if ( pm_mode == PMModeMirrorSegment)
+            databaseStatus = "Up";
+        else if ( isIOSuspended )
+            databaseStatus = "Suspended";
+        else if ( pmState == PM_RUN)
+            databaseStatus = "Up";
+        else if ( pmState == PM_INIT)
+            databaseStatus = "Uninitialized";  // awaiting decision by fault prober after PM reset, for example
+        else if ( pmState < PM_RUN )
+            databaseStatus = "Starting";
+        else databaseStatus = "Stopping";
 
         snprintf(statusBuf, sizeof(statusBuf), "Success: mode:%s\n"
                                   "segmentState:%s\n"
                                   "dataState:%s\n"
+                                  "databaseStatus:%s\n"
                                   "postmasterState:%s\n"
+                                  "isFullResync:%d\n"
                                   "resyncNumCompleted:" INT64_FORMAT "\n"
                                   "resyncTotalToComplete:" INT64_FORMAT "\n"
                                   "elapsedTimeSeconds:" INT64_FORMAT "\n",
                  getMirrorModeLabel(pm_mode), getSegmentStateLabel(s_state), getDataStateLabel(d_state),
+                 databaseStatus,
                  gPmStateLabels[pmState],
+                 isFullResync() ? 1 : 0,
                  resyncNumCompleted, resyncTotalToComplete, elapsedTimeSeconds);
 
 		sendPrimaryMirrorTransitionResult(statusBuf);

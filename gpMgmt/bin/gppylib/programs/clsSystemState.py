@@ -363,57 +363,6 @@ class GpSystemStateProgram:
             hostNameToResults[hostName] = cmd.decodeResults()
         return hostNameToResults
 
-    def __calculateSegmentStatus(self, gpArray, segment, segmentData):
-        """
-
-        @param segmentData as produced by __fetchAllSegmentData for this segment, or None if the
-                segment data is unavailable
-
-        @returns a tuple of (string, isWarning)
-        """
-        if segment.isSegmentDown():
-            return ("Down in configuration", True)
-        elif segmentData is None:
-            return ("Unknown -- unable to load segment status", True)
-
-        pidData = segmentData[gp.SEGMENT_STATUS__GET_PID]
-        if pidData['error'] is not None:
-            return ("Error with process: %s" % pidData['error'], True)
-
-        mirrorData = segmentData[gp.SEGMENT_STATUS__GET_MIRROR_STATUS]
-        if mirrorData is None:
-            return ("Unknown -- unable to load segment status", True)
-
-        mode = mirrorData["mode"]
-        postmasterState = mirrorData["postmasterState"]
-        if mode == "QuiescentSegment" or mode == "Uninitialized":
-            return ("Not running", True)
-
-        if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_FILE_REPLICATION:
-            segmentState = mirrorData["segmentState"]
-            dataState = mirrorData["dataState"]
-
-            if mode == "MirrorSegment":
-                if segmentState == "Ready":
-                    return ("Mirror running", False)
-            else:
-                if segmentState == "Ready" and postmasterState == "run":
-                    return ("Database running", False)
-
-            # todo: improve after talking to Milena
-
-            return ("'%s', '%s', '%s', '%s'" % (mode, segmentState, dataState, postmasterState), False)
-        else:
-            #
-            # Not physically replicated
-            #
-            if postmasterState == "run":
-                return ("Database running", False)
-            elif postmasterState.startswith("child_stop"):
-                return ("Database shutting down", False)
-            else:
-                return ("Database starting up", False)
-
     def __showStatus(self, gpEnv, gpArray):
         """
         Prints out the current status of the cluster.
@@ -502,7 +451,6 @@ class GpSystemStateProgram:
 
             preferredRole = "Primary" if seg.isSegmentPrimary(current_role=False) else "Mirror"
             currentRole =  "Primary" if seg.isSegmentPrimary(current_role=True) else "Mirror"
-            masterReportedStatus = "Valid" if seg.isSegmentUp() else "Failed"
 
             tabLog.addSeparator()
             tabLog.info(["Segment Info"])
@@ -548,6 +496,8 @@ class GpSystemStateProgram:
                             False: # note: when postmaster returns real resync progress then we can uncomment this
                                    # also, at that time, review probablyDown behavior below and enable it after more thought
 
+                            tabLog.info(["Resynchronization Info"])
+                            
                             mirrorData = segmentData[gp.SEGMENT_STATUS__GET_MIRROR_STATUS]
 
                             if mirrorData is None:
@@ -555,13 +505,21 @@ class GpSystemStateProgram:
 
                             elif mirrorData["resyncTotalToComplete"] == -1 or \
                                 mirrorData["resyncTotalToComplete"] == mirrorData["resyncNumCompleted"]:
+
                                 tabLog.info([indent + "Mirror resync progress", "= Complete, awaiting metadata change to in-sync"])
 
                             else:
+                                resyncFullOrIncremental = "Full" if 1 == mirrorData['isFullResync'] else "Incremental"
+
                                 percentComplete = mirrorData["resyncNumCompleted"] / float(mirrorData["resyncTotalToComplete"])
                                 elapsedTime = mirrorData["elapsedTimeSeconds"]
                                 remainingTime = datetime.timedelta(seconds=long(elapsedTime / percentComplete - elapsedTime))
-                                tabLog.info([indent + "Resync progress with mirror", "= %.2f%%" % (100 * percentComplete)])
+
+                                percentComplete *= 100
+                                tabLog.info([indent + "Resynchronization mode", "= %s" % resyncFullOrIncremental])
+                                tabLog.info([indent + "Blocks synchronized", "= %s" % mirrorData["resyncNumCompleted"]])
+                                tabLog.info([indent + "Total blocks to synchronize", "= %s" % mirrorData["resyncTotalToComplete"]])
+                                tabLog.info([indent + "Resync progress with mirror", "= %.2f%%" % percentComplete])
                                 tabLog.info([indent + "Estimated time to resync completion", "= %s" % remainingTime])
 
                 #
@@ -597,13 +555,31 @@ class GpSystemStateProgram:
                     isValid = "Failed"
 
             tabLog.info(["Status"])
+            masterReportedStatus = "Up" if seg.isSegmentUp() else "Down"
             tabLog.info([indent + "Master reports status as", "= %s" % masterReportedStatus])
-            tabLog.infoOrWarn(isValid != "Valid", [indent + "Instance status", "= %s" % isValid])
 
-            (segmentStatus, segmentStatusIsWarning) = self.__calculateSegmentStatus(gpArray, seg, segmentData)
-            # tabLog.infoOrWarn(segmentStatusIsWarning, [indent + "Segment status", "= %s" % segmentStatus])
+            databaseStatus = None
+            databaseStatusIsWarning = False
 
-            if isValid == "Valid":
+            if seg.isSegmentDown():
+                databaseStatus = "Down in configuration"
+                databaseStatusIsWarning = True
+            elif segmentData is None:
+                databaseStatus = "Unknown -- unable to load segment status"
+                databaseStatusIsWarning = True
+            elif segmentData[gp.SEGMENT_STATUS__GET_PID]['error'] is not None:
+                databaseStatus = "Process error; see PID information"
+                databaseStatusIsWarning = True
+            elif segmentData[gp.SEGMENT_STATUS__GET_MIRROR_STATUS] is None:
+                databaseStatus = "Unknown -- unable to load segment status"
+                databaseStatusIsWarning = True
+            else:
+                databaseStatus = segmentData[gp.SEGMENT_STATUS__GET_MIRROR_STATUS]["databaseStatus"]
+                databaseStatusIsWarning = databaseStatus == "Uninitialized"
+
+            tabLog.infoOrWarn(databaseStatusIsWarning, [indent + "Database status", "= %s" % databaseStatus])
+
+            if not databaseStatusIsWarning:
                 contentsWithUpSegments[seg.getSegmentContentId()] = True
 
         tabLog.outputTable()

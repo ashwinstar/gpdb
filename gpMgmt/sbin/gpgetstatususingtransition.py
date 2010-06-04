@@ -135,13 +135,13 @@ class GpSegStatusProgram:
             return data
 
         # convert some to long integers, verify that all expected ones are there
-        for expected in ["mode","segmentState","dataState", "postmasterState", \
+        for expected in ["mode","segmentState","dataState", "postmasterState", "databaseStatus", "isFullResync", \
                             "resyncNumCompleted","resyncTotalToComplete","elapsedTimeSeconds"]:
             if expected not in data:
                 logger.warn("Missing data key %s from str %s" % (expected, str))
                 return None
 
-        for toConvert in ["resyncNumCompleted","resyncTotalToComplete","elapsedTimeSeconds"]:
+        for toConvert in ["resyncNumCompleted","resyncTotalToComplete","elapsedTimeSeconds", "isFullResync"]:
             value = data[toConvert]
             try:
                 data[toConvert] = long(value)

@@ -167,6 +167,11 @@ typedef struct PMModuleState
 	 *  if true, means we are in fault after postmaster reset and waiting for a transition to be sent
 	 */
     volatile bool isInFaultFromPostmasterReset;
+
+    /**
+     * Maintained by the filerep code -- has I/O been suspended because of a fault or transition?
+     */
+    volatile bool isIOSuspended;
 } PMModuleState;
 
 static volatile PMModuleState *pmModuleState = NULL;
@@ -724,15 +729,20 @@ primaryMirrorModeShmemInit(void)
 	pmModuleState->isDatabaseRunning = false;
 	pmModuleState->isTransitionListenerFinished = true;
 	pmModuleState->transitionState = TSNone;
+	pmModuleState->transitionResult = PMTransitionSuccess;
 
 	pmModuleState->hostAddress[0] = '\0';
 	pmModuleState->hostPort = 0;
 	pmModuleState->peerAddress[0] = '\0';
 	pmModuleState->peerPort = 0;
 
+	pmModuleState->transitionResultExtraInfo[0] = '\0';
+
 	pmModuleState->haveStartedDatabase = false;
+    pmModuleState->bgWriterPID = 0;
 	pmModuleState->transitionNumberCounter = 1;
 	pmModuleState->isInFaultFromPostmasterReset = false;
+    pmModuleState->isIOSuspended = false;
 
 	clearTransitionArgs(&pmModuleState->requestedTransition);
 
@@ -1755,6 +1765,28 @@ void primaryMirrorRecordSegmentStateToPostmasterLocalMemory(void)
             break;
     }
 }
+
+/**
+ * Should only be called by filerep code, sets whether IO is suspended.
+ */
+void primaryMirrorSetIOSuspended( bool ioSuspended )
+{
+    assertModuleInitialized();
+
+    /* updating single small field, no need for fancy locking */
+    pmModuleState->isIOSuspended = ioSuspended;
+}
+
+/**
+ * Should only be called by postmaster; returns whether IO has been suspended.
+ */
+bool primaryMirrorIsIOSuspended(void)
+{
+    assertModuleInitialized();
+
+    return pmModuleState->isIOSuspended;
+}
+
 
 /**
  * set the bgwriter pid.  Should only be called by the postmaster
