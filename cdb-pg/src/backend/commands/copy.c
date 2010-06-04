@@ -3486,8 +3486,13 @@ CopyFromDispatch(CopyState cstate)
 	if(cstate->cdbsreh)
 	{
 		int total_rejected = 0;
-
-		total_rejected = cstate->cdbsreh->rejectcount + total_rejeted_from_qes;
+		int total_rejected_from_qd = cstate->cdbsreh->rejectcount;
+		
+		/* if used errtable, QD bad rows were sent to QEs and counted there. ignore QD count */
+		if (cstate->cdbsreh->errtbl)
+			total_rejected_from_qd = 0;
+		
+		total_rejected = total_rejected_from_qd + total_rejeted_from_qes;
 		cstate->processed -= total_rejected;
 
 		/* emit a NOTICE with number of rejected rows */

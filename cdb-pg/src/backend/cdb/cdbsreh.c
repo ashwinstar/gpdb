@@ -126,16 +126,9 @@ destroyCdbSreh(CdbSreh *cdbsreh)
  */
 void HandleSingleRowError(CdbSreh *cdbsreh)
 {
-	/* 
-	 * increment total number of errors for this segment. 
-	 *
-	 * we increment unless this is the QD and we are using error tables
-	 * since in this case the bad row will be sent to a QE and the QE will
-	 * be the one to increment the number of errors there. we don't want to 
-	 * count the same error twice...
-	 */
-	if (!(cdbsreh->errtbl && (Gp_role == GP_ROLE_DISPATCH)))
-		cdbsreh->rejectcount++;
+	
+	/* increment total number of errors for this segment */ 
+	cdbsreh->rejectcount++;
 	
 	/* 
 	 * if reached the segment reject limit don't do anything.
