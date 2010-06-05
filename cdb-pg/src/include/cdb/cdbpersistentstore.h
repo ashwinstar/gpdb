@@ -21,10 +21,15 @@
 #include "cdb/cdbdirectopen.h"
 #include "utils/guc.h"
 
-#define PersistentStoreSharedData_StaticInit {false,0,0,{{0,0},0},{{0,0},0}}
+#define PersistentStoreSharedDataEyecatcher "PersistentStoreSharedData"
+
+// Length includes 1 extra for NUL.
+#define PersistentStoreSharedDataEyecatcher_Len 26
 
 typedef struct PersistentStoreSharedData
 {
+	char	eyecatcher[PersistentStoreSharedDataEyecatcher_Len];
+
 	bool	needToScanIntoSharedMemory;
 
 	int64					maxInUseSerialNum;
@@ -36,6 +41,12 @@ typedef struct PersistentStoreSharedData
 	ItemPointerData			maxTid;
 
 } PersistentStoreSharedData;
+
+inline static bool PersistentStoreSharedData_EyecatcherIsValid(
+	PersistentStoreSharedData *storeSharedData)
+{
+	return (strcmp(storeSharedData->eyecatcher, PersistentStoreSharedDataEyecatcher) == 0);
+}
 
 typedef Relation (*PersistentStoreOpenRel) (void);
 typedef void (*PersistentStoreCloseRel) (Relation relation);

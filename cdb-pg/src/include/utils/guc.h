@@ -150,6 +150,8 @@ extern bool	Debug_persistent_print;
 extern int	Debug_persistent_print_level;
 extern bool	Debug_persistent_recovery_print;
 extern int	Debug_persistent_recovery_print_level;
+extern bool	Debug_persistent_store_print;
+extern int	Debug_persistent_store_print_level;
 extern bool	Debug_database_command_print;
 extern int	Debug_database_command_print_level;
 extern int	gp_max_databases;

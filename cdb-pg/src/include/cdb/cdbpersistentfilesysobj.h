@@ -21,8 +21,6 @@
 #include "cdb/cdbdoublylinked.h"
 #include "storage/smgr.h"
 
-#define PersistentFileSysObjSharedData_StaticInit {PersistentStoreSharedData_StaticInit}
-
 typedef struct PersistentFileSysObjSharedData
 {
 

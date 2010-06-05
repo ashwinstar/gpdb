@@ -3543,6 +3543,8 @@ void PersistentFileSysObj_MarkWholeMirrorFullCopy(void)
 {
 	PersistentFsObjType		fsObjType;
 
+	PersistentFileSysObj_InitScan();
+
 	for (fsObjType = PersistentFsObjType_First; 
 		 fsObjType <= PersistentFsObjType_Last;
 		 fsObjType++)
@@ -3632,6 +3634,8 @@ void PersistentFileSysObj_MarkWholeMirrorScanIncremental(void)
 	 
 	ItemPointerData persistentTid;
 	int64 persistentSerialNum;
+
+	PersistentFileSysObj_InitScan();
 
 	PersistentFileSysObj_GetDataPtrs(
 								PersistentFsObjType_RelationFile,
@@ -3768,7 +3772,7 @@ void PersistentFileSysObj_MarkSpecialScanIncremental(void)
 	ItemPointerData persistentTid;
 	int64 persistentSerialNum;
 
-	pg_usleep(45 * 1000000L);
+	PersistentFileSysObj_InitScan();
 
 	PersistentFileSysObj_GetDataPtrs(
 								PersistentFsObjType_RelationFile,
@@ -3920,6 +3924,8 @@ void PersistentFileSysObj_MarkAppendOnlyCatchup(void)
 	 
 	ItemPointerData persistentTid;
 	int64 persistentSerialNum;
+
+	PersistentFileSysObj_InitScan();
 
 	PersistentFileSysObj_GetDataPtrs(
 								PersistentFsObjType_RelationFile,
@@ -4239,6 +4245,8 @@ void PersistentFileSysObj_MarkPageIncrementalFromChangeLog(void)
 	IncrementalChangeList *incrementalChangeList;
 	int count = 0;
 	int i;
+
+	PersistentFileSysObj_InitScan();
 	
 	/* 
 	 * Finalize the compacting steps of the changetracking logs. after
@@ -4500,6 +4508,8 @@ bool PersistentFileSysObj_ResynchronizeRefetch(
 	if (persistentSerialNum == 0)
 		elog(ERROR, "Persistent '%s' serial number for update mirror existence state is invalid (0)",
 			 PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile));
+
+	PersistentFileSysObj_InitScan();
 
 	PersistentFileSysObj_GetDataPtrs(
 								PersistentFsObjType_RelationFile,

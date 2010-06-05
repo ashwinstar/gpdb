@@ -152,9 +152,11 @@ static const char *assign_syslog_ident(const char *ident,
 
 static const char *assign_defaultxactisolevel(const char *newval, bool doit,
 						   GucSource source);
-static const char *assign_debug_persistent_relation_print_level(const char *newval,
+static const char *assign_debug_persistent_print_level(const char *newval,
 						bool doit, GucSource source);
 static const char *assign_debug_persistent_recovery_print_level(const char *newval,
+						bool doit, GucSource source);
+static const char *assign_debug_persistent_store_print_level(const char *newval,
 						bool doit, GucSource source);
 static const char *assign_debug_database_command_print_level(const char *newval,
 						bool doit, GucSource source);
@@ -266,6 +268,8 @@ bool		Debug_persistent_print = false;
 int			Debug_persistent_print_level = LOG;
 bool		Debug_persistent_recovery_print = true;
 int			Debug_persistent_recovery_print_level = LOG;
+bool		Debug_persistent_store_print = false;
+int			Debug_persistent_store_print_level = LOG;
 bool		Debug_database_command_print = false;
 int			Debug_database_command_print_level = LOG;
 #define GP_MAX_DATABASES_DEFAULT 16
@@ -381,6 +385,7 @@ static char *gp_workfile_compress_algorithm_str;
 static char *client_min_messages_str;
 static char *Debug_persistent_print_level_str;
 static char *Debug_persistent_recovery_print_level_str;
+static char *Debug_persistent_store_print_level_str;
 static char *Debug_database_command_print_level_str;
 static char *log_min_messages_str;
 static char *log_error_verbosity_str;
@@ -2146,8 +2151,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_persistent_print,
 		false, NULL, NULL
 	},
-
-					
+				
 	{
 		{"debug_persistent_recovery_print", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print persistent recovery debugging information."),
@@ -2156,6 +2160,16 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&Debug_persistent_recovery_print,
 		true, NULL, NULL
+	},
+					
+	{
+		{"debug_persistent_store_print", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print persistent file-system object store debugging information."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_persistent_store_print,
+		false, NULL, NULL
 	},
 		
 	{
@@ -4215,7 +4229,7 @@ static struct config_string ConfigureNamesString[] =
 			GUC_GPDB_ADDOPT
 		},
 		&Debug_persistent_print_level_str,
-		"debug1", assign_debug_persistent_relation_print_level, NULL
+		"debug1", assign_debug_persistent_print_level, NULL
 	},
 
 	{
@@ -4230,6 +4244,18 @@ static struct config_string ConfigureNamesString[] =
 		"debug1", assign_debug_persistent_recovery_print_level, NULL
 	},
 		
+	{
+		{"debug_persistent_store_print_level", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sets the persistent relation store debug message levels that are logged."),
+			gettext_noop("Valid values are DEBUG5, DEBUG4, DEBUG3, DEBUG2, DEBUG1, "
+			"INFO, NOTICE, WARNING, ERROR, LOG, FATAL, and PANIC. Each level "
+						 "includes all the levels that follow it."),
+			GUC_GPDB_ADDOPT
+		},
+		&Debug_persistent_store_print_level_str,
+		"debug1", assign_debug_persistent_store_print_level, NULL
+	},
+	
 	{
 		{"debug_database_command_error_level", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the database command debug message levels that are logged."),
@@ -9220,7 +9246,7 @@ assign_defaultxactisolevel(const char *newval, bool doit, GucSource source)
 }
 
 static const char *
-assign_debug_persistent_relation_print_level(const char *newval,
+assign_debug_persistent_print_level(const char *newval,
 						bool doit, GucSource source)
 {
 	return (assign_msglvl(&Debug_persistent_print_level, newval, doit, source));
@@ -9231,6 +9257,13 @@ assign_debug_persistent_recovery_print_level(const char *newval,
 						bool doit, GucSource source)
 {
 	return (assign_msglvl(&Debug_persistent_recovery_print_level, newval, doit, source));
+}
+
+static const char *
+assign_debug_persistent_store_print_level(const char *newval,
+						bool doit, GucSource source)
+{
+	return (assign_msglvl(&Debug_persistent_store_print_level, newval, doit, source));
 }
 
 static const char *

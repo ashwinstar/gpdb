@@ -27,6 +27,8 @@ void PersistentStore_InitShared(
 {
 	MemSet(storeSharedData, 0, sizeof(PersistentStoreSharedData));
 
+	strcpy(storeSharedData->eyecatcher, PersistentStoreSharedDataEyecatcher);
+
 	storeSharedData->needToScanIntoSharedMemory = true;	
 }
 
@@ -233,8 +235,7 @@ static void PersistentStore_InitScanVerifyFreeEntries(
 	{
 		if (freeOrderNum == 0)
 			break;
-		
-		
+
 		if (freeEntryHashTable == NULL)
 			elog(ERROR, "Looking for free order number " INT64_FORMAT " and the free entry hash table is empty",
 				 freeOrderNum);
@@ -329,7 +330,10 @@ static void PersistentStore_DoInitScan(
 							&persistentTid,
 							&persistentSerialNum))
 	{
-		Assert(ItemPointerCompare(
+		Assert(
+			PersistentStore_IsZeroTid(&storeSharedData->maxTid)
+			||
+			ItemPointerCompare(
 							&storeSharedData->maxTid,
 							&persistentTid) == -1);	// Less-Than.
 							
@@ -586,6 +590,8 @@ PersistentTidIsKnownResult PersistentStore_TidIsKnown(
 {
 	*maxTid = storeSharedData->maxTid;
 
+	Assert(!PersistentStore_IsZeroTid(persistentTid));
+
 	// UNDONE: I think the InRecovery test only applies to physical Master Mirroring on Standby.
 	/* Only test this outside of recovery scenarios */
 	if (Persistent_BeforePersistenceWork())
@@ -655,8 +661,8 @@ static void PersistentStore_DoInsertTuple(
 							blockNumber);
 	}
 
-	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+	if (Debug_persistent_store_print)
+		elog(Debug_persistent_store_print_level, 
 			 "PersistentStore_DoInsertTuple: old maximum known TID %s, new insert TID %s ('%s')",
 			 ItemPointerToString(&storeSharedData->maxTid),
 			 ItemPointerToString2(&persistentTuple->t_self),
@@ -707,6 +713,18 @@ static void PersistentStore_InsertTuple(
 {
 	Relation	persistentRel;
 
+#ifdef USE_ASSERT_CHECKING
+	if (storeSharedData == NULL ||
+		!PersistentStoreSharedData_EyecatcherIsValid(storeSharedData))
+		elog(ERROR, "Persistent store shared-memory not valid");
+#endif
+
+	if (Debug_persistent_store_print)
+		elog(Debug_persistent_store_print_level, 
+			 "PersistentStore_InsertTuple: Going to insert new tuple ('%s', shared data %p)",
+			 storeData->tableName,
+			 storeSharedData);
+
 	persistentRel = (*storeData->openRel)();
 
 	PersistentStore_DoInsertTuple(
@@ -718,6 +736,13 @@ static void PersistentStore_InsertTuple(
 								persistentTid);
 
 	(*storeData->closeRel)(persistentRel);
+	
+	if (Debug_persistent_store_print)
+		elog(Debug_persistent_store_print_level, 
+			 "PersistentStore_InsertTuple: Inserted new tuple at TID %s ('%s')",
+			 ItemPointerToString(persistentTid),
+			 storeData->tableName);
+
 }
 
 void PersistentStore_UpdateTuple(
@@ -739,6 +764,19 @@ void PersistentStore_UpdateTuple(
 	HeapTuple	persistentTuple = NULL;
 	XLogRecPtr 	xlogUpdateEndLoc;
 	
+#ifdef USE_ASSERT_CHECKING
+	if (storeSharedData == NULL ||
+		!PersistentStoreSharedData_EyecatcherIsValid(storeSharedData))
+		elog(ERROR, "Persistent store shared-memory not valid");
+#endif
+	
+	if (Debug_persistent_store_print)
+		elog(Debug_persistent_store_print_level, 
+			 "PersistentStore_ReplaceTuple: Going to update whole tuple at TID %s ('%s', shared data %p)",
+			 ItemPointerToString(persistentTid),
+			 storeData->tableName,
+			 storeSharedData);
+
 	persistentRel = (*storeData->openRel)();
 
 	/*
@@ -756,7 +794,7 @@ void PersistentStore_UpdateTuple(
 		     storeData->tableName);
 
 	persistentTuple->t_self = *persistentTid;
-		
+
 	frozen_heap_inplace_update(persistentRel, persistentTuple);
 
 	/*
@@ -767,6 +805,12 @@ void PersistentStore_UpdateTuple(
 	heap_freetuple(persistentTuple);
 
 	(*storeData->closeRel)(persistentRel);
+	
+	if (Debug_persistent_store_print)
+		elog(Debug_persistent_store_print_level, 
+			 "PersistentStore_UpdateTuple: Updated whole tuple at TID %s ('%s')",
+			 ItemPointerToString(persistentTid),
+			 storeData->tableName);
 
 	if (flushToXLog)
 	{
@@ -800,6 +844,19 @@ void PersistentStore_ReplaceTuple(
 	HeapTuple	replacementTuple = NULL;
 	XLogRecPtr 	xlogUpdateEndLoc;
 	
+#ifdef USE_ASSERT_CHECKING
+	if (storeSharedData == NULL ||
+		!PersistentStoreSharedData_EyecatcherIsValid(storeSharedData))
+		elog(ERROR, "Persistent store shared-memory not valid");
+#endif
+	
+	if (Debug_persistent_store_print)
+		elog(Debug_persistent_store_print_level, 
+			 "PersistentStore_ReplaceTuple: Going to replace set of columns in tuple at TID %s ('%s', shared data %p)",
+			 ItemPointerToString(persistentTid),
+			 storeData->tableName,
+			 storeSharedData);
+
 	persistentRel = (*storeData->openRel)();
 
 	/*
@@ -826,6 +883,12 @@ void PersistentStore_ReplaceTuple(
 	heap_freetuple(replacementTuple);
 
 	(*storeData->closeRel)(persistentRel);
+	
+	if (Debug_persistent_store_print)
+		elog(Debug_persistent_store_print_level, 
+			 "PersistentStore_ReplaceTuple: Replaced set of columns in tuple at TID %s ('%s')",
+			 ItemPointerToString(persistentTid),
+			 storeData->tableName);
 
 	if (flushToXLog)
 	{
@@ -854,6 +917,19 @@ void PersistentStore_ReadTuple(
 	Buffer			buffer;
 
 	bool *nulls;
+	
+#ifdef USE_ASSERT_CHECKING
+	if (storeSharedData == NULL ||
+		!PersistentStoreSharedData_EyecatcherIsValid(storeSharedData))
+		elog(ERROR, "Persistent store shared-memory not valid");
+#endif
+	
+	if (Debug_persistent_store_print)
+		elog(Debug_persistent_store_print_level, 
+			 "PersistentStore_ReadTuple: Going to read tuple at TID %s ('%s', shared data %p)",
+			 ItemPointerToString(readTid),
+			 storeData->tableName,
+			 storeSharedData);
 
 	if (PersistentStore_IsZeroTid(readTid))
 		elog(ERROR, "TID for fetch persistent tuple is invalid (0,0) ('%s')",
@@ -861,21 +937,25 @@ void PersistentStore_ReadTuple(
 
 	// UNDONE: I think the InRecovery test only applies to physical Master Mirroring on Standby.
 	/* Only test this outside of recovery scenarios */
-	if (!InRecovery && 
-		ItemPointerCompare(
+	if (!InRecovery 
+		&& 
+		(PersistentStore_IsZeroTid(&storeSharedData->maxTid)
+		 ||
+		 ItemPointerCompare(
 						readTid,
-						&storeSharedData->maxTid) == 1) // Greater-than.
+						&storeSharedData->maxTid) == 1 // Greater-than.
+		))
 	{
 		elog(ERROR, "TID %s for fetch persistent tuple is greater than the last known TID %s ('%s')",
 			 ItemPointerToString(readTid),
 			 ItemPointerToString2(&storeSharedData->maxTid),
 			 storeData->tableName);
 	}
-						
+	
 	persistentRel = (*storeData->openRel)();
 
 	tuple.t_self = *readTid;
-	
+
 	if (!heap_fetch(persistentRel, SnapshotAny,
 					&tuple, &buffer, false, NULL))
 	{
@@ -899,6 +979,12 @@ void PersistentStore_ReadTuple(
 	heap_deform_tuple(*tupleCopy, persistentRel->rd_att, values, nulls);
 
 	(*storeData->closeRel)(persistentRel);
+	
+	if (Debug_persistent_store_print)
+		elog(Debug_persistent_store_print_level, 
+			 "PersistentStore_ReadTuple: Successfully read tuple at TID %s ('%s')",
+			 ItemPointerToString(readTid),
+			 storeData->tableName);
 
 	pfree(nulls);
 }
@@ -919,8 +1005,8 @@ static bool PersistentStore_GetFreeTuple(
 
 	MemSet(freeTid, 0, sizeof(ItemPointerData));
 
-	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+	if (Debug_persistent_store_print)
+		elog(Debug_persistent_store_print_level, 
 			 "PersistentStore_GetFreeTuple: Enter: maximum free order number " INT64_FORMAT ", free TID %s ('%s')",
 			 storeSharedData->maxFreeOrderNum, 
 			 ItemPointerToString(&storeSharedData->freeTid),
@@ -974,8 +1060,8 @@ static bool PersistentStore_GetFreeTuple(
 
 	heap_freetuple(tupleCopy);
 
-	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+	if (Debug_persistent_store_print)
+		elog(Debug_persistent_store_print_level, 
 			 "PersistentStore_GetFreeTuple: Exit: maximum free order number " INT64_FORMAT ", free TID %s ('%s')",
 			 storeSharedData->maxFreeOrderNum, 
 			 ItemPointerToString(&storeSharedData->freeTid),
@@ -1000,6 +1086,18 @@ void PersistentStore_AddTuple(
 	int64					*persistentSerialNum)
 
 {
+#ifdef USE_ASSERT_CHECKING
+	if (storeSharedData == NULL ||
+		!PersistentStoreSharedData_EyecatcherIsValid(storeSharedData))
+		elog(ERROR, "Persistent store shared-memory not valid");
+#endif
+	
+	if (Debug_persistent_store_print)
+		elog(Debug_persistent_store_print_level, 
+			 "PersistentStore_AddTuple: Going to add tuple ('%s', shared data %p)",
+			 storeData->tableName,
+			 storeSharedData);
+
 	*persistentSerialNum = ++storeSharedData->maxInUseSerialNum;
 	storeData->myHighestSerialNum = storeSharedData->maxInUseSerialNum;
 
@@ -1060,7 +1158,20 @@ void PersistentStore_FreeTuple(
 	ItemPointerData prevFreeTid;
 	XLogRecPtr xlogEndLoc;
 				/* The end location of the UPDATE XLOG record. */
-
+				
+#ifdef USE_ASSERT_CHECKING
+	if (storeSharedData == NULL ||
+		!PersistentStoreSharedData_EyecatcherIsValid(storeSharedData))
+		elog(ERROR, "Persistent store shared-memory not valid");
+#endif
+				
+	if (Debug_persistent_store_print)
+		elog(Debug_persistent_store_print_level, 
+			 "PersistentStore_FreeTuple: Going to free tuple at TID %s ('%s', shared data %p)",
+			 ItemPointerToString(persistentTid),
+			 storeData->tableName,
+			 storeSharedData);
+	
 	Assert(persistentTid->ip_posid != 0);
 
 	persistentRel = (*storeData->openRel)();
@@ -1092,6 +1203,13 @@ void PersistentStore_FreeTuple(
 	heap_freetuple(persistentTuple);
 
 	(*storeData->closeRel)(persistentRel);
+
+	if (Debug_persistent_store_print)
+		elog(Debug_persistent_store_print_level, 
+			 "PersistentStore_FreeTuple: Freed tuple at TID %s.  Maximum free order number " INT64_FORMAT " ('%s')",
+			 ItemPointerToString(&storeSharedData->freeTid),
+			 storeSharedData->maxFreeOrderNum, 
+			 storeData->tableName);
 
 	if (flushToXLog)
 	{
