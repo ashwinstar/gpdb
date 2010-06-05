@@ -12422,9 +12422,9 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	 * node which expresses the query CREATE TABLE tmp_table_name AS
 	 * SELECT * FROM cur_table DISTRIBUTED BY (policy)
 	 * c) Execute the query across all nodes
-	 * d) Update the ownership of the temporary table
-	 * e) Update our parse tree to include the details of the newly created
+	 * d) Update our parse tree to include the details of the newly created
 	 * table
+	 * e) Update the ownership of the temporary table
 	 * f) Swap the relfilenodes of the existing table and the temporary table
 	 * g) Update the policy on the QD to reflect the underlying data
 	 * h) Drop the temporary table -- and with it, the old copy of the data
@@ -12599,16 +12599,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		CommandCounterIncrement(); /* see the effects of the command */
 
 		/*
-		 * Step (d) - Correct ownership on temporary table:
-		 *   necessary so that the toast tables/indices have the correct
-		 *   owner after we swap them.
-		 */
-		ATExecChangeOwner(RangeVarGetRelid(tmprv, false),
-						  rel->rd_rel->relowner, true);
-		CommandCounterIncrement(); /* see the effects of the command */
-
-		/*
-		 * Step (e) - tell the seg nodes about the temporary relation. This
+		 * Step (d) - tell the seg nodes about the temporary relation. This
 		 * involves stomping on the node we've been given
 		 */
 		qe_data = lappend(qe_data, makeInteger(MyBackendId));
@@ -12673,6 +12664,18 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 
 		newOptions = new_rel_opts(rel, lwith);
 	}
+
+	/*
+	 * Step (e) - Correct ownership on temporary table:
+	 *   necessary so that the toast tables/indices have the correct
+	 *   owner after we swap them.
+	 *
+	 * Note: ATExecChangeOwner does NOT dispatch, so this does not
+	 * belong in the dispatch block above (MPP-9663).
+	 */
+	ATExecChangeOwner(RangeVarGetRelid(tmprv, false),
+					  rel->rd_rel->relowner, true);
+	CommandCounterIncrement(); /* see the effects of the command */
 
 	/*
 	 * Step (f) - swap relfilenodes and MORE !!!

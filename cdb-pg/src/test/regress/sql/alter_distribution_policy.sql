@@ -306,6 +306,49 @@ where a.reltoastrelid = b.oid
   and x.oid = a.relowner
   and y.oid = b.relowner
   and z.oid = c.relowner;
+
+-- MPP-9663 - Check that the ownership is consistent on the segments as well
+select a.relname, 
+       x.rolname as relowner, 
+       y.rolname as toastowner,
+	   z.rolname as toastidxowner
+from gp_dist_random('pg_class') a, 
+	 gp_dist_random('pg_class') b, 
+	 gp_dist_random('pg_class') c, 
+     pg_authid x, pg_authid y, pg_authid z
+where a.reltoastrelid=b.oid
+  and b.reltoastidxid=c.oid
+  and a.relname='owner_test'
+  and x.oid = a.relowner
+  and y.oid = b.relowner
+  and z.oid = c.relowner
+  and a.gp_segment_id = 0
+  and b.gp_segment_id = 0
+  and c.gp_segment_id = 0;
+
+-- MPP-9663 - The code path is different when the table has dropped columns
+alter table owner_test add column d text;
+alter table owner_test drop column d;
+alter table owner_test set with (reorganize = true) distributed by (i);
+
+select a.relname, 
+       x.rolname as relowner, 
+       y.rolname as toastowner,
+	   z.rolname as toastidxowner
+from gp_dist_random('pg_class') a, 
+	 gp_dist_random('pg_class') b, 
+	 gp_dist_random('pg_class') c, 
+     pg_authid x, pg_authid y, pg_authid z
+where a.reltoastrelid=b.oid
+  and b.reltoastidxid=c.oid
+  and a.relname='owner_test'
+  and x.oid = a.relowner
+  and y.oid = b.relowner
+  and z.oid = c.relowner
+  and a.gp_segment_id = 0
+  and b.gp_segment_id = 0
+  and c.gp_segment_id = 0;
+
 drop table owner_test;
 drop role atsdb;
 
