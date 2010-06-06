@@ -124,7 +124,7 @@ MakeAOSegmentFileName(
  * The fd module's PathNameOpenFile() is used to open the file, so the
  * the File* routines can be used to read, write, close, etc, the file.
  */
-void
+bool
 OpenAOSegmentFile(
 					Relation rel, 
 					char *filepathname, 
@@ -144,6 +144,9 @@ OpenAOSegmentFile(
 				&persistentTid,
 				&persistentSerialNum))
 	{
+		if (logicalEof == 0)
+			return false;
+
 		elog(ERROR, "Did not find gp_relation_node entry for relation name %s, relation id %u, relfilenode %u, segment file #%d, logical eof " INT64_FORMAT,
 			 rel->rd_rel->relname.data,
 			 rel->rd_id,
@@ -168,6 +171,8 @@ OpenAOSegmentFile(
 			    errmsg("Could not open Append-Only segment file '%s': %s",
 					   filepathname,
 					   strerror(primaryError))));
+
+	return true;
 }
 
 

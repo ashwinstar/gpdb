@@ -992,6 +992,16 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 		/* Get information about all the file segments we need to scan */
 		segfile_array = GetAllFileSegInfo(aorel, aoEntry, SnapshotNow, &total_segfiles);
 
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "vacuum_appendonly_rel: AO ROL relation \"%s.%s\", relation id %u, relfilenode %u has %d physical segment files, %d atributes (columns)",
+				 get_namespace_name(RelationGetNamespace(aorel)),
+				 relname,
+				 aorel->rd_id,
+				 aorel->rd_node.relNode,
+				 total_segfiles,
+				 aorel->rd_rel->relnatts);
+
 		/*
 		 * For each fileseg, get a lock on it and truncate beyond eof. If
 		 * fileseg is currently locked for update by another transaction
@@ -1026,10 +1036,44 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 
 				/* Open and truncate the relation segfile beyond its eof */
 				MakeAOSegmentFileName(aorel, segno, -1, &fileSegNo, filenamepath);
-				OpenAOSegmentFile(aorel, filenamepath, fileSegNo, segeof, &mirroredOpened);
-				TruncateAOSegmentFile(&mirroredOpened, aorel, segeof, elevel);
-				CloseAOSegmentFile(&mirroredOpened);
 				
+				if (Debug_persistent_print)
+					elog(Debug_persistent_print_level, 
+						 "vacuum_appendonly_rel: Opening AO ROW relation \"%s.%s\", relation id %u, relfilenode %u (physical segment file #%d, logical EOF " INT64_FORMAT ")",
+						 get_namespace_name(RelationGetNamespace(aorel)),
+						 relname,
+						 aorel->rd_id,
+						 aorel->rd_node.relNode,
+						 segno,
+						 segeof);
+				
+				if (OpenAOSegmentFile(aorel, filenamepath, fileSegNo, segeof, &mirroredOpened))
+				{
+					TruncateAOSegmentFile(&mirroredOpened, aorel, segeof, elevel);
+					CloseAOSegmentFile(&mirroredOpened);
+					
+					if (Debug_persistent_print)
+						elog(Debug_persistent_print_level, 
+							 "vacuum_appendonly_rel: Successfully truncated AO ROL relation \"%s.%s\", relation id %u, relfilenode %u (physical segment file #%d, logical EOF " INT64_FORMAT ")",
+							 get_namespace_name(RelationGetNamespace(aorel)),
+							 relname,
+							 aorel->rd_id,
+							 aorel->rd_node.relNode,
+							 segno,
+							 segeof);
+				}
+				else
+				{
+					if (Debug_persistent_print)
+						elog(Debug_persistent_print_level, 
+							 "vacuum_appendonly_rel: No gp_relation_node entry for AO ROW relation \"%s.%s\", relation id %u, relfilenode %u (physical segment file #%d, logical EOF " INT64_FORMAT ")",
+							 get_namespace_name(RelationGetNamespace(aorel)),
+							 relname,
+							 aorel->rd_id,
+							 aorel->rd_node.relNode,
+							 segno,
+							 segeof);
+				}
 				pfree(fsinfo);
 				fsinfo = NULL;
 			}
@@ -1076,6 +1120,15 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 	aoEntry = GetAppendOnlyEntry(RelationGetRelid(aorel));
 	
 	allseg = GetAllAOCSFileSegInfo(aorel, aoEntry, SnapshotNow, &totalseg);
+	if (Debug_persistent_print)
+		elog(Debug_persistent_print_level, 
+			 "vacuum_aocs_rel: AO COL relation \"%s.%s\", relation id %u, relfilenode %u has %d logical segments, %d atributes (columns)",
+			 get_namespace_name(RelationGetNamespace(aorel)),
+			 relname,
+			 aorel->rd_id,
+			 aorel->rd_node.relNode,
+			 totalseg,
+			 aorel->rd_rel->relnatts);
 	for(i=0; i<totalseg; ++i)
 	{
 		num_tuples += allseg[i]->tupcount;
@@ -1149,6 +1202,15 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 
 			segno = allseg[i]->segno;
 
+			if (Debug_persistent_print)
+				elog(Debug_persistent_print_level, 
+					 "vacuum_aocs_rel: Working on AO COL relation \"%s.%s\", relation id %u, relfilenode %u logical segment #%d",
+					 get_namespace_name(RelationGetNamespace(aorel)),
+					 relname,
+					 aorel->rd_id,
+					 aorel->rd_node.relNode,
+					 segno);
+
 			/* get the eof and a lock */
 			fsinfo = GetAOCSFileSegInfoForVacuum(aorel, aoEntry, segno);
 
@@ -1173,9 +1235,50 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 
 					/* Open and truncate the relation segfile beyond its eof */
 					MakeAOSegmentFileName(aorel, segno, j, &fileSegNo, filenamepath);
-					OpenAOSegmentFile(aorel, filenamepath, fileSegNo, segeof, &mirroredOpened);
-					TruncateAOSegmentFile(&mirroredOpened, aorel, segeof, elevel);
-					CloseAOSegmentFile(&mirroredOpened);
+
+					if (Debug_persistent_print)
+						elog(Debug_persistent_print_level, 
+							 "vacuum_aocs_rel: Opening AO COL relation \"%s.%s\", relation id %u, relfilenode %u column #%d, logical segment #%d (physical segment file #%d, logical EOF " INT64_FORMAT ")",
+							 get_namespace_name(RelationGetNamespace(aorel)),
+							 relname,
+							 aorel->rd_id,
+							 aorel->rd_node.relNode,
+							 j,
+							 segno,
+							 fileSegNo,
+							 segeof);
+
+					if (OpenAOSegmentFile(aorel, filenamepath, fileSegNo, segeof, &mirroredOpened))
+					{
+						TruncateAOSegmentFile(&mirroredOpened, aorel, segeof, elevel);
+						CloseAOSegmentFile(&mirroredOpened);
+						
+						if (Debug_persistent_print)
+							elog(Debug_persistent_print_level, 
+								 "vacuum_aocs_rel: Successfully truncated AO COL relation \"%s.%s\", relation id %u, relfilenode %u column #%d, logical segment #%d (physical segment file #%d, logical EOF " INT64_FORMAT ")",
+								 get_namespace_name(RelationGetNamespace(aorel)),
+								 relname,
+								 aorel->rd_id,
+								 aorel->rd_node.relNode,
+								 j,
+								 segno,
+								 fileSegNo,
+								 segeof);
+					}
+					else
+					{
+						if (Debug_persistent_print)
+							elog(Debug_persistent_print_level, 
+								 "vacuum_aocs_rel: No gp_relation_node entry for AO COL relation \"%s.%s\", relation id %u, relfilenode %u column #%d, logical segment #%d (physical segment file #%d, logical EOF " INT64_FORMAT ")",
+								 get_namespace_name(RelationGetNamespace(aorel)),
+								 relname,
+								 aorel->rd_id,
+								 aorel->rd_node.relNode,
+								 j,
+								 segno,
+								 fileSegNo,
+								 segeof);
+					}
 				}
 
 				pfree(fsinfo);

@@ -33,7 +33,7 @@ MakeAOSegmentFileName(
 							int32 *fileSegNo,
 							char *filepathname);
 
-extern void
+extern bool
 OpenAOSegmentFile(
 					Relation rel, 
 					char *filepathname, 
