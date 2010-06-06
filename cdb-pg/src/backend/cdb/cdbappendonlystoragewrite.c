@@ -326,6 +326,19 @@ void AppendOnlyStorageWrite_TransactionCreateFile(
 	Assert (segmentFileNum > 0);
 	Assert (logicalEof == 0);
 
+	/*
+	 * We may or may not have a gp_relation_node entry when the EOF is 0.
+	 */
+	if (ReadGpRelationNode(
+				relFileNode->relNode,
+				segmentFileNum,
+				persistentTid,
+				persistentSerialNum))
+	{
+		// UNDONE: Verify the gp_persistent_relation_node Append-Only EOFs are zero.
+		return;
+	}
+	
 	MirroredFileSysObj_TransactionCreateAppendOnlyFile(
 										relFileNode,
 										segmentFileNum,

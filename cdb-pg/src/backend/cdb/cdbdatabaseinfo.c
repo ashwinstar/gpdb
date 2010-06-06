@@ -1287,10 +1287,11 @@ void DatabaseInfo_AlignAppendOnly(
 {
 	int a;
 	int g;
-	bool outOfGpRelationNodes;
 
+	/*
+	 * Process the ao[cs]seg entries against the gp_relation_node entries.
+	 */
 	g = 0;
-	outOfGpRelationNodes = false;
 	for (a = 0; a < dbInfoRel->appendOnlyCatalogSegmentInfoCount; a++)
 	{
 		DbInfoAppendOnlyCatalogSegmentInfo	*appendOnlyCatalogSegmentInfo =
@@ -1300,31 +1301,61 @@ void DatabaseInfo_AlignAppendOnly(
 		{
 			if (g >= dbInfoRel->gpRelationNodesCount)
 			{
-				outOfGpRelationNodes = true;
+				if (appendOnlyCatalogSegmentInfo->logicalEof > 0)
+					elog(ERROR, "Append-Only relation '%s' segment file #%d has data (logical EOF " INT64_FORMAT ") in the aoseg / aocsseg entry but no gp_relation_node entry!",
+						 dbInfoRel->relname,
+						 appendOnlyCatalogSegmentInfo->segmentFileNum,
+						 appendOnlyCatalogSegmentInfo->logicalEof);
+
+				// Otherwise, ignore ao[cs]seg entries with EOF == 0 and no gp_relation_node entry.
 				break;
 			}
 
-			if (dbInfoRel->gpRelationNodes[g].segmentFileNum == appendOnlyCatalogSegmentInfo->segmentFileNum)
+			if (dbInfoRel->gpRelationNodes[g].segmentFileNum < appendOnlyCatalogSegmentInfo->segmentFileNum)
 			{
-				if (appendOnlyCatalogSegmentInfo->logicalEof == 0 &&
-					dbInfoRel->gpRelationNodes[g].segmentFileNum > 0)
-					elog(ERROR, "Append-Only relation id %u, relation name '%s' segment files above #0 shouldn't exist in gp_relation_node relation when empty (segment file #%d)",
-						 dbInfoRel->relationOid,
-						 dbInfoRel->relname,
-						 dbInfoRel->gpRelationNodes[g].segmentFileNum);
-
+				if (dbInfoRel->gpRelationNodes[g].segmentFileNum == 0)
+				{
+					/*
+					 * Segment file #0 with always have a gp_relation_node entry, but often doesn't have an aoseg entry.
+					 */
+					g++;
+					continue;
+				}
+				
+				elog(ERROR, "Append-Only relation '%s' gp_relation_node entry for segment file #%d without an aoseg /aocsseg entry (case #1)",
+					 dbInfoRel->relname,
+					 dbInfoRel->gpRelationNodes[g].segmentFileNum);
+			}
+			else if (dbInfoRel->gpRelationNodes[g].segmentFileNum == appendOnlyCatalogSegmentInfo->segmentFileNum)
+			{
 				dbInfoRel->gpRelationNodes[g].logicalEof = appendOnlyCatalogSegmentInfo->logicalEof;
 				g++;
 				break;
 			}
-			
-			g++;
+			else
+			{
+				Assert (dbInfoRel->gpRelationNodes[g].segmentFileNum > appendOnlyCatalogSegmentInfo->segmentFileNum);
+				elog(ERROR, "Append-Only relation '%s' gp_relation_node entry for segment file #%d without an aoseg /aocsseg entry",
+					 dbInfoRel->relname,
+					 dbInfoRel->gpRelationNodes[g].segmentFileNum);
+			}
+			g++;	// Not reached.  Protect against overly smart compliers looking at exit conditions...
 		}
+	}
 
-		if (outOfGpRelationNodes && appendOnlyCatalogSegmentInfo->logicalEof > 0)
-			elog(ERROR, "Append-Only relation '%s' segment file #%d has data (logical EOF " INT64_FORMAT ") in the aoseg / aocsseg entry but no gp_relation_node entry!",
+	/*
+	 * Drain remaining gp_relation_node entries...
+	 */
+	while (true)
+	{
+		if (g >= dbInfoRel->gpRelationNodesCount)
+			break;
+
+		if (dbInfoRel->gpRelationNodes[g].segmentFileNum > 0)
+			elog(ERROR, "Append-Only relation '%s' gp_relation_node entry for segment file #%d without an aoseg /aocsseg entry (case #2)",
 				 dbInfoRel->relname,
-				 appendOnlyCatalogSegmentInfo->segmentFileNum,
-				 appendOnlyCatalogSegmentInfo->logicalEof);
+				 dbInfoRel->gpRelationNodes[g].segmentFileNum);
+
+		g++;
 	}
 }

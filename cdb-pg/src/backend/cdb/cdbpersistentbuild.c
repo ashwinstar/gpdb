@@ -218,29 +218,70 @@ static void PersistentBuild_PopulateGpRelationNode(
 		else
 		{
 			int a;
-			bool foundSegmentFile0 = false;
+			int p;
 
-			for (a = 0; a < dbInfoRel->appendOnlyCatalogSegmentInfoCount; a++)
+			/*
+			 * Append-Only.
+			 */
+
+			if (dbInfoRel->physicalSegmentFiles[0].segmentFileNum != 0)
+				elog(ERROR, "Physical segment file #0 missing for relation '%s'",
+				     dbInfoRel->relname);
+
+			/*
+			 * Merge physical file existence and ao[cs]seg catalog logical EOFs .
+			 */
+			a = 0;
+			for (p = 0; p < dbInfoRel->physicalSegmentFilesCount; p++)
 			{
-				int32 segmentFileNum;
-				int64 eof;
+				int physicalSegmentFileNum = dbInfoRel->physicalSegmentFiles[p].segmentFileNum;
 
-				segmentFileNum = dbInfoRel->appendOnlyCatalogSegmentInfo[a].segmentFileNum;
-				eof = dbInfoRel->appendOnlyCatalogSegmentInfo[a].logicalEof;
+				bool haveCatalogInfo;
+				int64 logicalEof;
 
-				if (segmentFileNum == 0)
-					foundSegmentFile0 = true;
-				else if (eof == 0)
-					continue;	// Don't create empty segment files above #0.
+				haveCatalogInfo = false;
+				logicalEof = 0;
+				while (a < dbInfoRel->appendOnlyCatalogSegmentInfoCount)
+				{
+					if (dbInfoRel->appendOnlyCatalogSegmentInfo[a].segmentFileNum == physicalSegmentFileNum)
+					{
+						// UNDONE: Verify physical EOF >= logical EOF.
+						haveCatalogInfo = true;
+						logicalEof = dbInfoRel->appendOnlyCatalogSegmentInfo[a].logicalEof;
+						break;
+					}
+					
+					if (dbInfoRel->appendOnlyCatalogSegmentInfo[a].segmentFileNum > physicalSegmentFileNum)
+						break;
+
+					if (dbInfoRel->appendOnlyCatalogSegmentInfo[a].logicalEof > 0)
+						elog(ERROR, "Logical EOF greater than zero (" INT64_FORMAT ") for segment file #%d in relation '%s' but physical file is missing",
+						     dbInfoRel->appendOnlyCatalogSegmentInfo[a].logicalEof,
+						     dbInfoRel->appendOnlyCatalogSegmentInfo[a].segmentFileNum,
+						     dbInfoRel->relname);
+
+					a++;
+						     
+				}
+
+				if (physicalSegmentFileNum > 0 && !haveCatalogInfo)
+				{
+					/*
+					 * Ignore segment file left over from pre-Release 4.0 aborted
+					 * transaction whose initial frozen ao[cs]seg tuple never made it to
+					 * disk.  This will be a file that can result in an upgrade complaint...
+					 */
+					continue;		
+				}
 				
 				PersistentRelation_AddCreated(
 											&relFileNode,
-											segmentFileNum,
+											physicalSegmentFileNum,
 											relStorageMgr,
 											mirrorExistenceState,
 											relDataSynchronizationState,
-											/* mirrorAppendOnlyLossEof */ eof,
-											/* mirrorAppendOnlyNewEof */ eof,
+											/* mirrorAppendOnlyLossEof */ logicalEof,
+											/* mirrorAppendOnlyNewEof */ logicalEof,
 											dbInfoRel->relname,
 											&persistentTid,
 											&persistentSerialNum,
@@ -251,39 +292,9 @@ static void PersistentBuild_PopulateGpRelationNode(
 								dbInfoRel->relationOid, // pg_class OID
 								dbInfoRel->relname,
 								relFileNode.relNode,	// pg_class relfilenode
-								segmentFileNum,
+								physicalSegmentFileNum,
 								&persistentTid,
 								persistentSerialNum);
-				
-			}
-
-			if (!foundSegmentFile0)
-			{
-				/*
-				 * We always need segment file #0.  Add it as empty.
-				 */
-				PersistentRelation_AddCreated(
-											&relFileNode,
-											/* segmentFileNum */ 0,
-											relStorageMgr,
-											mirrorExistenceState,
-											relDataSynchronizationState,
-											/* mirrorAppendOnlyLossEof */ 0,
-											/* mirrorAppendOnlyNewEof */ 0,
-											dbInfoRel->relname,
-											&persistentTid,
-											&persistentSerialNum,
-											/* flushToXLog */ false);
-				
-				InsertGpRelationNodeTuple(
-								gp_relation_node,
-								dbInfoRel->relationOid, // pg_class OID
-								dbInfoRel->relname,
-								relFileNode.relNode,	// pg_class relfilenode
-								/* segmentFileNum */ 0,
-								&persistentTid,
-								persistentSerialNum);
-				
 			}
 		}
 		(*count)++;
