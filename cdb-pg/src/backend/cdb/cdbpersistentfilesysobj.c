@@ -2064,7 +2064,7 @@ static void PersistentFileSysObj_DoMirrorReDrop(
 			
 			MirroredFileSysObj_DropDbDir(
 								dbDirNode, 
-								MirroredObjectExistenceState_MirrorDropPending,
+								/* primaryOnly */ false,
 								/* mirrorOnly */ true,
 								/* ignoreNonExistence */ true,
 								mirrorDataLossOccurred);
@@ -2082,7 +2082,7 @@ static void PersistentFileSysObj_DoMirrorReDrop(
 	case PersistentFsObjType_TablespaceDir:			
 		MirroredFileSysObj_DropTablespaceDir(
 							fsObjName->variant.tablespaceOid,
-							MirroredObjectExistenceState_MirrorDropPending,
+							/* primaryOnly */ false,
 							/* mirrorOnly */ true,
 							/* ignoreNonExistence */ true,
 							mirrorDataLossOccurred);
@@ -2111,7 +2111,7 @@ static void PersistentFileSysObj_DoMirrorReDrop(
 								fsObjName->variant.filespaceOid,
 								primaryFilespaceLocation,
 								mirrorFilespaceLocation,
-								MirroredObjectExistenceState_MirrorDropPending,
+								/* primaryOnly */ false,
 								/* mirrorOnly */ true,
 								/* ignoreNonExistence */ true,
 								mirrorDataLossOccurred);
