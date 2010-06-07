@@ -31,6 +31,7 @@
 #include "optimizer/predtest.h"
 #include "optimizer/restrictinfo.h"
 #include "optimizer/var.h"
+#include "parser/parsetree.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -119,6 +120,38 @@ static List *network_prefix_quals(Node *leftop, Oid expr_op, Oid opclass,
 static Datum string_to_datum(const char *str, Oid datatype);
 static Const *string_to_const(const char *str, Oid datatype);
 
+/*
+ * create_bitmap_scan_path()
+ *   Create either BitmapHeapScan, or BitmapAppendOnlyScan path based
+ *   on the given relation storage option.
+ */
+static Path *
+create_bitmap_scan_path(char relstorage,
+						PlannerInfo *root,
+						RelOptInfo *rel,
+						Path *bitmapqual,
+						RelOptInfo *outer_rel)
+{
+	Path *path = NULL;
+	
+	switch(relstorage)
+	{
+		case RELSTORAGE_HEAP:
+			path = (Path *)create_bitmap_heap_path(root, rel, bitmapqual, outer_rel);
+			break;
+		case RELSTORAGE_AOROWS:
+			path = (Path *)create_bitmap_appendonly_path(root, rel, bitmapqual, outer_rel, true);
+			break;
+		case RELSTORAGE_AOCOLS:
+			path = (Path *)create_bitmap_appendonly_path(root, rel, bitmapqual, outer_rel, false);
+			break;
+		default:
+			elog(ERROR, "unrecognized relstorage type %d for using bitmap scan path",
+				 relstorage);
+	}
+
+	return path;
+}
 
 /*
  * create_index_paths()
@@ -241,21 +274,7 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		Path       *path = NULL;
 
 		bitmapqual = choose_bitmap_and(root, rel, bitindexpaths, NULL);
-		switch(relstorage)
-		{
-			case RELSTORAGE_HEAP:
-				path = (Path*)create_bitmap_heap_path(root, rel, bitmapqual, NULL);
-				break;
-			case RELSTORAGE_AOROWS:
-				path = (Path*)create_bitmap_appendonly_path(root, rel, bitmapqual, NULL, true);
-				break;
-			case RELSTORAGE_AOCOLS:
-				path = (Path*)create_bitmap_appendonly_path(root, rel, bitmapqual, NULL, false);
-				break;
-			default:
-				elog(ERROR, "unrecognized relstorage type %d for using bitmap scan path",
-					 relstorage);
-		}
+		path = create_bitmap_scan_path(relstorage, root, rel, bitmapqual, NULL);
 		*pbitmappathlist = lappend(*pbitmappathlist, path);
 	}
 }
@@ -1608,6 +1627,10 @@ best_inner_indexscan(PlannerInfo *root, RelOptInfo *rel,
 	ListCell   *l;
 	InnerIndexscanInfo *info;
 	MemoryContext oldcontext;
+	RangeTblEntry *rte;
+	char relstorage;
+
+	Assert(rel->rtekind == RTE_RELATION);
 
 	/* Initialize results for failure returns */
 	*cheapest_startup = *cheapest_total = NULL;
@@ -1725,9 +1748,18 @@ best_inner_indexscan(PlannerInfo *root, RelOptInfo *rel,
 	 */
 	bitindexpaths = list_concat(bitindexpaths, list_copy(indexpaths));
 
+	rte = rt_fetch(rel->relid, root->parse->rtable);
+	relstorage = get_rel_relstorage(rte->relid);
+	Assert(relstorage != '\0');
+
     /* Exclude plain index paths if user doesn't want them. */
     if (!enable_indexscan && !root->mpp_trying_fallback_plan)
         indexpaths = NIL;
+
+	/* Exclude plain index paths if the relation is an append-only relation. */
+	if (relstorage == RELSTORAGE_AOROWS ||
+		relstorage == RELSTORAGE_AOCOLS)
+		indexpaths = NIL;
 
 	/*
 	 * If we found anything usable, generate a BitmapHeapPath for the most
@@ -1736,11 +1768,11 @@ best_inner_indexscan(PlannerInfo *root, RelOptInfo *rel,
 	if (bitindexpaths != NIL &&
         (enable_bitmapscan || root->mpp_trying_fallback_plan))
 	{
-		Path	   *bitmapqual;
-		BitmapHeapPath *bpath;
+		Path *bitmapqual;
+		Path *bpath;
 
 		bitmapqual = choose_bitmap_and(root, rel, bitindexpaths, outer_rel);
-		bpath = create_bitmap_heap_path(root, rel, bitmapqual, outer_rel);
+		bpath = create_bitmap_scan_path(relstorage, root, rel, bitmapqual, outer_rel);
 		indexpaths = lappend(indexpaths, bpath);
 	}
 

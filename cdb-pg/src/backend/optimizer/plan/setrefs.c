@@ -509,6 +509,14 @@ set_plan_refs(PlannerGlobal *glob, Plan *plan, const int rtoffset)
 				return  cdb_insert_result_node(glob, plan, rtoffset);
 			
 			splan->scan.scanrelid += rtoffset;
+
+#ifdef USE_ASSERT_CHECKING
+			RangeTblEntry *rte = rt_fetch(splan->scan.scanrelid, glob->finalrtable);
+			char relstorage = get_rel_relstorage(rte->relid);
+			Assert(relstorage != RELSTORAGE_AOROWS &&
+				   relstorage != RELSTORAGE_AOCOLS);
+#endif
+
 			splan->scan.plan.targetlist =
 			fix_scan_list(glob, splan->scan.plan.targetlist, rtoffset);
 			splan->scan.plan.qual =
@@ -541,6 +549,13 @@ set_plan_refs(PlannerGlobal *glob, Plan *plan, const int rtoffset)
 				return  cdb_insert_result_node(glob, plan, rtoffset);
 			
 			splan->scan.scanrelid += rtoffset;
+
+#ifdef USE_ASSERT_CHECKING
+			RangeTblEntry *rte = rt_fetch(splan->scan.scanrelid, glob->finalrtable);
+			char relstorage = get_rel_relstorage(rte->relid);
+			Assert(relstorage != RELSTORAGE_AOROWS &&
+				   relstorage != RELSTORAGE_AOCOLS);
+#endif
 			splan->scan.plan.targetlist =
 			fix_scan_list(glob, splan->scan.plan.targetlist, rtoffset);
 			splan->scan.plan.qual =
@@ -557,6 +572,14 @@ set_plan_refs(PlannerGlobal *glob, Plan *plan, const int rtoffset)
 				return  cdb_insert_result_node(glob, plan, rtoffset);
 			
 			splan->scan.scanrelid += rtoffset;
+
+#ifdef USE_ASSERT_CHECKING
+			RangeTblEntry *rte = rt_fetch(splan->scan.scanrelid, glob->finalrtable);
+			char relstorage = get_rel_relstorage(rte->relid);
+			Assert(relstorage == RELSTORAGE_AOROWS ||
+				   relstorage == RELSTORAGE_AOCOLS);
+#endif
+
 			splan->scan.plan.targetlist =
 			fix_scan_list(glob, splan->scan.plan.targetlist, rtoffset);
 			splan->scan.plan.qual =
@@ -1367,7 +1390,8 @@ set_inner_join_references(PlannerGlobal *glob, Plan *inner_plan,
 			Assert(inner_plan->qual == NIL);
 		}
 	}
-	else if (IsA(inner_plan, BitmapHeapScan))
+	else if (IsA(inner_plan, BitmapHeapScan) ||
+			 IsA(inner_plan, BitmapAppendOnlyScan))
 	{
 		/*
 		 * The inner side is a bitmap scan plan.  Fix the top node, and
@@ -1376,18 +1400,31 @@ set_inner_join_references(PlannerGlobal *glob, Plan *inner_plan,
 		 * Note: create_bitmap_scan_plan removes clauses from bitmapqualorig
 		 * if they are duplicated in qpqual, so must test these independently.
 		 */
-		BitmapHeapScan *innerscan = (BitmapHeapScan *) inner_plan;
-		Index		innerrel = innerscan->scan.scanrelid;
-		List	   *bitmapqualorig = innerscan->bitmapqualorig;
+		Index innerrel;
+		List **bitmapqualorig_p;
+		if (IsA(inner_plan, BitmapHeapScan))
+		{
+			BitmapHeapScan *innerscan = (BitmapHeapScan *) inner_plan;
+			innerrel = innerscan->scan.scanrelid;
+			bitmapqualorig_p = &(innerscan->bitmapqualorig);
+		}
+		else
+		{
+			Assert(IsA(inner_plan, BitmapAppendOnlyScan));
+			
+			BitmapAppendOnlyScan *innerscan = (BitmapAppendOnlyScan *) inner_plan;
+			innerrel = innerscan->scan.scanrelid;
+			bitmapqualorig_p = &(innerscan->bitmapqualorig);
+		}
 		
 		/* only refs to outer vars get changed in the inner qual */
-		if (NumRelids((Node *) bitmapqualorig) > 1)
-			innerscan->bitmapqualorig = fix_join_expr(glob,
-													  bitmapqualorig,
-													  outer_itlist,
-													  NULL,
-													  innerrel,
-													  0);
+		if (NumRelids((Node *) (*bitmapqualorig_p)) > 1)
+			*bitmapqualorig_p = fix_join_expr(glob,
+											  *bitmapqualorig_p,
+											  outer_itlist,
+											  NULL,
+											  innerrel,
+											  0);
 		
 		/*
 		 * We must fix the inner qpqual too, if it has join clauses (this
