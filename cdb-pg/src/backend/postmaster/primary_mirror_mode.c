@@ -551,8 +551,6 @@ isDatabaseRunning(void)
  * @param dataStateOut  may be NULL.  If non-null, *dataStateOut is filled in with the current segment state
  * @param isInFilerepTransitionOut  may be NULL.  If non-null, *isInTransitionOut is filled in with true or false depending on
  *                           if the segment is in filerep transition to primary or mirror mode
- *                           Note that this is true only if we have reached the point in the full transition
- *                           where earlier values have been shutdown
  * @param transitionTargetDataStateOut  may be NULL.  If non-null, *transitionTargetDataStateOut is filled
  *                           in with the target data state, or DataStateNotInitialized if there is
  *                           no transition to primary or mirror mode is in progress.
@@ -578,9 +576,10 @@ getFileRepRoleAndState(
 	acquireModuleSpinLock();
 	{
         /* check to see if postmaster is still processing a transition.  Note that here we don't
-         *  need to check to see if the listener is complete */
+         *  need to check to see if the listener is complete
+         **/
 	    isInFilerepTransition = pmModuleState->isTransitionRequested &&
-	                            pmModuleState->transitionState >= TSDoFilerepStartup;
+	                            pmModuleState->transitionState >= TSDoFilerepBackendsShutdown;
 
 		PrimaryMirrorMode mode = pmModuleState->mode;
 		switch (mode)
