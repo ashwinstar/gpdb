@@ -105,6 +105,7 @@ def setup_tool_logging(appName,hostname,userName,logdir=None,nonuser=False):
     # now reset the default formatter (someone may have called get_default_logger before calling setup_tool_logging)
     #
     logger = get_default_logger()
+    logger.name = loggerName
     _DEFAULT_FORMATTER = None
     f = _get_default_formatter()
     _SOUT_HANDLER.setFormatter(f)
