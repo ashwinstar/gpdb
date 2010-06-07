@@ -31,6 +31,7 @@ Options:
 	-mastermirror    compare master and standby only 
 	-skipsegments    skip mirror check for segments which are not in sync
 	-parallel        run checks in parallel
+	-fixfile         location for fix file
 
 =head1 OPTIONS
 
@@ -80,6 +81,9 @@ the md5 hashes for the initial raw diff phase.  Note that the actual
 diff of primary/mirror hashes and subsequent "enhanced diff" phases
 are performed sequentially.
 
+=item B<-fixfile> 
+    
+Specify a filename for the fixfile (else generic name is generated in /tmp).
 
 =back
 
@@ -173,6 +177,11 @@ my $glob_diff;
 
 my $glob_usefork;
 
+my $glob_nohash;
+
+my $glob_fixfile;
+my $glob_fixlist;
+
 BEGIN {
     my $man  = 0;
     my $help = 0;
@@ -181,6 +190,8 @@ BEGIN {
 	my $skipseg;
 	my $mm;
 	my $parallel;
+	my $nohash;
+	my $fixfile;
 
 #	print Data::Dumper->Dump(\@ARGV), "\n";
 
@@ -190,7 +201,9 @@ BEGIN {
 		       'exclude|ignore:s' => \@ignore,
 		       'mm|mastermirror:s' => \$mm,
 		       'skipsegments:s' => \$skipseg,
-		       'parallel:s' => \$parallel
+		       'parallel:s' => \$parallel,
+		       'nohash:s' => \$nohash,
+		       'fixfile:s' => \$fixfile
                )
         or pod2usage(2);
 
@@ -238,6 +251,15 @@ BEGIN {
 		$glob_usefork = 0;
 	}
 
+	if (defined($nohash))
+	{
+		$glob_nohash = ($nohash =~ m/^\s*(1|t|true|y|yes)/i) ? 1 : 0;
+	}
+	else
+	{
+		$glob_nohash = 0;
+	}
+
 	$glob_diff = "diff";
     # MPP-9810: need gnu diff on solaris
     if ($Config{'osname'} =~ m/solaris|sunos/i)
@@ -245,6 +267,9 @@ BEGIN {
         $glob_diff = "gdiff";
     }
 
+	$glob_fixfile = $fixfile if (defined($fixfile) && 
+								 length($fixfile));
+	$glob_fixlist = [];
 
 #    print "loading...\n" ;
 }
@@ -415,7 +440,25 @@ sub get_mm_presh_txt
 #  my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,
 #      $atime,$mtime,$ctime,$blksize,$blocks) = stat($filnam);
 # my $sz = $size ? 1 : 0; # nonzero size normalized to 1
-# print $filnam, " ", $sz, " 0\n";
+# print $filnam, " ", $sz, " ($filnam) 0\n";
+#}
+EOF_bigstr
+
+	$bigstr =~ s/^\#//gm;
+
+	return $bigstr;
+}
+
+# just do size, not hash
+sub get_nohash_presh_txt
+{
+	my $bigstr = <<'EOF_bigstr';
+##tiny perl script to list filename, filesize, md5 hash
+#for my $filnam (@ARGV) # xargs supplies up to 5000 args
+#{
+#  my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,
+#      $atime,$mtime,$ctime,$blksize,$blocks) = stat($filnam);
+# print $filnam, " ", $size, " ($filnam) 0\n";
 #}
 EOF_bigstr
 
@@ -1725,6 +1768,12 @@ sub diff_thrice
 		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
 		. "| perl -e 'for (<STDIN>) { print \"" . $fil->{file} . 
 		':ao: ", $_ ;}' . "'";
+
+		push @{$glob_fixlist}, "ao: " . $primhost . ":" . 
+			File::Spec->catfile($primfil, $fil->{file}) . " " .
+			$mirrhost . ":" . 
+			File::Spec->catfile($mirrfil, $fil->{file});
+			
 	}
 	for my $fil (@{$heapfiles})
 	{
@@ -1735,6 +1784,11 @@ sub diff_thrice
 		. "| perl -e 'for (<STDIN>) { print \"" . $fil . 
 		':heap: ", $_ ;}' . "'";
 ###			File::Spec->catfile($primfil, $fil->{file});
+
+		push @{$glob_fixlist}, "heap: " . $primhost . ":" .
+			File::Spec->catfile($primfil, $fil) . " " .
+			$mirrhost . ":" . 
+			File::Spec->catfile($mirrfil, $fil);
 	}
 	for my $fil (@{$unknownfiles})
 	{
@@ -1745,6 +1799,11 @@ sub diff_thrice
 		. "| perl -e 'for (<STDIN>) { print \"" . $fil . 
 		':unknown: ", $_ ;}' . "'";
 ###			File::Spec->catfile($primfil, $fil->{file});
+
+		push @{$glob_fixlist}, "unknown: " . $primhost . ":" . 
+			File::Spec->catfile($primfil, $fil) . " " .
+			$mirrhost . ":" . 
+			File::Spec->catfile($mirrfil, $fil);
 	}
 
 #	print Data::Dumper->Dump([$dbs1]);
@@ -1960,7 +2019,8 @@ if (1)
 
 #	print Data::Dumper->Dump([$gp_seg_config]);
 
-	my $presh_txt = $glob_mm ? get_mm_presh_txt() : get_presh_txt();
+	my $presh_txt = $glob_mm ? get_mm_presh_txt() : 
+		($glob_nohash ? get_nohash_presh_txt() : get_presh_txt());
 	my $presh2_txt = get_presh2_txt();
 
 	my $ignore_arr = ignore_list($glob_ignore);
@@ -2344,6 +2404,42 @@ EOF_msgstr
 
 				warn "found extra files in data directory (could be ok for zero length heap files)";
 
+				for my $e2 (@{($bigh->{extrafiles})})
+				{
+					my $extry;
+
+					$extry = "" . $e2;
+
+					# make primary/mirror names explicit (and remove
+					# leading "/" in filename)
+
+					if ($extry =~ m/^m/i)
+					{
+						$extry =~ s|^m\:(/)?||i;
+
+						push @{$glob_fixlist}, "extra_m: " . 
+							$mirrhost . ":" .
+							File::Spec->catfile($mirrfil, 
+												$extry) . " " .
+							$primhost . ":" .
+							File::Spec->catfile($primfil, 
+												$extry);
+					}
+					else
+					{
+						
+						$extry =~ s|^p\:(/)?||i;
+
+						push @{$glob_fixlist}, "extra_p: " . 
+							$primhost . ":" .
+							File::Spec->catfile($primfil, 
+												$extry) . " " .
+							$mirrhost . ":" .
+							File::Spec->catfile($mirrfil, 
+												$extry);
+					}
+				}
+
 			}
 
 			print "\n\nraw diff mismatch for $fil: will diff again using storage-specific techniques\n\n";
@@ -2409,6 +2505,33 @@ EOF_msgstr
 		}
 
 	} # end for my seg
+
+	# MPP-8186: supply fix file location for repair utility
+	{
+		my $ffh;
+
+		my $fixfile = (defined($glob_fixfile) &&
+					   length($glob_fixfile)) ? 
+					   $glob_fixfile :
+					   File::Spec->catfile("/tmp", 
+										   $fselochsh . "_file.fix" );
+
+		unless(open ($ffh, ">", $fixfile))
+		{
+			warn("could not open $fixfile : $!");
+			goto L_nofix;
+		}
+
+		print $ffh join("\n", @{$glob_fixlist}), "\n"
+			if (scalar(@{$glob_fixlist}));
+
+		close $ffh;
+
+		print "\n\nWrote fix list to: $fixfile \n\n";
+
+	  L_nofix:
+
+	}
 
 	if (scalar(@{$glob_exit}))
 	{
