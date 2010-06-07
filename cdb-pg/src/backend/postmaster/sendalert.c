@@ -84,6 +84,7 @@ oid				objid_gpdbAlertSeverity[] = { 1, 3, 6, 1, 4, 1, 31327, 1, 2 };
 oid				objid_gpdbAlertSqlstate[] = { 1, 3, 6, 1, 4, 1, 31327, 1, 3 };
 oid				objid_gpdbAlertDetail[] = { 1, 3, 6, 1, 4, 1, 31327, 1, 4 };
 oid				objid_gpdbAlertSqlStmt[] = { 1, 3, 6, 1, 4, 1, 31327, 1, 5 };
+oid				objid_gpdbAlertSystemName[] = { 1, 3, 6, 1, 4, 1, 31327, 1, 6 };
 #endif
 
 #if USE_EMAIL
@@ -204,6 +205,7 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 	int				status;
 	char            csysuptime[20];
 	static bool 	snmp_initialized = false;
+	static char myhostname[255];	/* gethostname usually is limited to 65 chars out, but make this big to be safe */
 	char	   *rawstring = NULL;
 	List	   *elemlist = NIL;
 	ListCell   *l = NULL;
@@ -272,6 +274,18 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 		init_snmp("sendalert");
 
 		snmp_initialized = true;
+
+		{
+			char portnum[7];
+			myhostname[0] = '\0';
+
+			if (gethostname(myhostname, sizeof(myhostname)) == 0)
+			{
+				strcat(myhostname,":");
+				pg_itoa(PostPortNumber,portnum);
+				strcat(myhostname,portnum);
+			}
+		}
 	}
 
 	/*
@@ -516,6 +530,10 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 		snmp_add_var(pdu, objid_gpdbAlertSqlStmt,
 							sizeof(objid_gpdbAlertSqlStmt) / sizeof(oid),
 							's', sqlstmt); // SnmpAdminString = UTF-8 text
+
+		snmp_add_var(pdu, objid_gpdbAlertSystemName,
+							sizeof(objid_gpdbAlertSystemName) / sizeof(oid),
+							's', myhostname); // SnmpAdminString = UTF-8 text
 
 
 

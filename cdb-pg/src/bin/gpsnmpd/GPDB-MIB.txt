@@ -18,7 +18,7 @@ IMPORTS
 
 
 gpdbMIB MODULE-IDENTITY
-    LAST-UPDATED "201003041500Z"
+    LAST-UPDATED "201006071500Z"
     ORGANIZATION "Greenplum Corporation"
     CONTACT-INFO
             "E-mail: cmcdevitt@greenplum.com
@@ -26,9 +26,12 @@ gpdbMIB MODULE-IDENTITY
     DESCRIPTION
         "MIB to describe a Greenplum Database System"
         
+    REVISION "201006071500Z"
+    DESCRIPTION "Add system name to alert message"
+        
     REVISION "201003041500Z"
     DESCRIPTION "Initial version"
-
+    
     ::= { enterprises 31327 }
 
  gpdbObjects        OBJECT IDENTIFIER ::= { gpdbMIB 1 }
@@ -91,6 +94,15 @@ gpdbMIB MODULE-IDENTITY
 
       ::= { gpdbObjects 5 }
       
+  gpdbAlertSystemName OBJECT-TYPE
+      SYNTAX          SnmpAdminString (SIZE (0..72))
+      MAX-ACCESS      read-only
+      STATUS          current
+      DESCRIPTION
+          "Name if the system that generated this alert."
+
+      ::= { gpdbObjects 6 }
+      
   ----------------------------------------------------------------
 
   gpdbTraps       OBJECT IDENTIFIER ::= { gpdbMIB 5 }
@@ -147,7 +159,8 @@ gpdbMIB MODULE-IDENTITY
     		  gpdbAlertSeverity,
     		  gpdbAlertSqlstate,
     		  gpdbAlertDetail,
-    		  gpdbAlertSqlStmt }
+    		  gpdbAlertSqlStmt,
+    		  gpdbAlertSystemName }
     STATUS  current
     DESCRIPTION
             "A collection of objects providing basic instrumentation
