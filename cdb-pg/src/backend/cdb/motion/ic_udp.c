@@ -418,20 +418,32 @@ testmode_drop(int percent)
 static inline bool
 wait_on_receiver(int timeout_us)
 {
-	struct timeval tv;
 	struct timespec ts;
 	int wait;
 
-	gettimeofday(&tv, NULL);
-	ts.tv_sec = tv.tv_sec;
-	/*  leave in ms for this */
-	ts.tv_nsec = (tv.tv_usec + timeout_us);
-	if (ts.tv_nsec > 1000000)
+	/*
+	 * MPP-9910: pthread_cond_timedwait appears to be broken in OS-X 10.6.x "Snow Leopard"
+	 * Let's use a different timewait function that works better on OSX (and is simpler
+	 * because it uses relative time)
+	 */
+#ifdef __darwin__
+	ts.tv_sec = 0;
+	ts.tv_nsec = 1000*timeout_us;
+#else
 	{
-		ts.tv_sec++;
-		ts.tv_nsec -= 1000000;
+		struct timeval tv;
+		gettimeofday(&tv, NULL);
+		ts.tv_sec = tv.tv_sec;
+		/*  leave in ms for this */
+		ts.tv_nsec = (tv.tv_usec + timeout_us);
+		if (ts.tv_nsec > 1000000)
+		{
+			ts.tv_sec++;
+			ts.tv_nsec -= 1000000;
+		}
+		ts.tv_nsec *= 1000; /* convert usec to nsec */
 	}
-	ts.tv_nsec *= 1000; /* convert usec to nsec */
+#endif
 
    	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 	{
@@ -440,20 +452,16 @@ wait_on_receiver(int timeout_us)
 	}
 
 	/*
-	 * MPP-9910: pthread_cond_timedwait appears to be broken in OS-X 10.6.x "Snow Leopard"
-	 * We'll burn a lot more CPU this way, but we will not hang.
-	 */
-#ifdef __darwin__
-	ts.tv_sec = 0;
-#endif
-
-	/*
 	 * we can't handle interrupts for the time we're waiting,
 	 * which is why we're using timedwaits in the first place
 	 */
 	HOLD_INTERRUPTS();
 
+#ifdef __darwin__
+	wait = pthread_cond_timedwait_relative_np(&rx_thread_cond, &rx_thread_mutex, &ts);
+#else
 	wait = pthread_cond_timedwait(&rx_thread_cond, &rx_thread_mutex, &ts);
+#endif
 
 	RESUME_INTERRUPTS();
 
