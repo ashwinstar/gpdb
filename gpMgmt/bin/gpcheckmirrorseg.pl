@@ -32,6 +32,7 @@ Options:
 	-skipsegments    skip mirror check for segments which are not in sync
 	-parallel        run checks in parallel
 	-fixfile         location for fix file
+	-content         only compare segments with the specified content id
 
 =head1 OPTIONS
 
@@ -84,6 +85,14 @@ are performed sequentially.
 =item B<-fixfile> 
     
 Specify a filename for the fixfile (else generic name is generated in /tmp).
+
+=item B<-content>
+
+If specified, choose a particular segment or set of segments that
+should be compared.  If not specified all segments are compared.  To
+specify multiple segments, use multiple content arguments, eg:
+
+  -content 1 -content 2
 
 =back
 
@@ -182,6 +191,8 @@ my $glob_nohash;
 my $glob_fixfile;
 my $glob_fixlist;
 
+my $glob_content;
+
 BEGIN {
     my $man  = 0;
     my $help = 0;
@@ -192,6 +203,7 @@ BEGIN {
 	my $parallel;
 	my $nohash;
 	my $fixfile;
+	my @content;
 
 #	print Data::Dumper->Dump(\@ARGV), "\n";
 
@@ -203,7 +215,8 @@ BEGIN {
 		       'skipsegments:s' => \$skipseg,
 		       'parallel:s' => \$parallel,
 		       'nohash:s' => \$nohash,
-		       'fixfile:s' => \$fixfile
+		       'fixfile:s' => \$fixfile,
+		       'content:i' => \@content
                )
         or pod2usage(2);
 
@@ -213,6 +226,8 @@ BEGIN {
 
     $glob_connect = $conn;
     $glob_ignore = \@ignore;
+
+	$glob_content = \@content;
 
 	my $gp_filedump = `which gp_filedump`;
 	chomp $gp_filedump;
@@ -1994,8 +2009,14 @@ if (1)
 		# $q$p$q$ is equivalent to 'p'
 		"and gscp.role =  " .  '$q$p$q$ ' .
 		"and gscm.role =  " .  '$q$m$q$ ' .
-		"and pfs.oid = fep.fsefsoid " .
-		" order by gscp.dbid, content  \'";
+		"and pfs.oid = fep.fsefsoid " ;
+
+	# MPP-9883, MPP-9891: run integrity check only for desired segments
+    $psql_str .= " and gscp.content in ( " . 
+		join(", ", @{$glob_content}) . " ) "
+		if (defined($glob_content) && scalar(@{$glob_content}));
+
+    $psql_str .= " order by gscp.dbid, content  \'";
 
 	print $psql_str, "\n";
 
@@ -2527,7 +2548,9 @@ EOF_msgstr
 
 		close $ffh;
 
-		print "\n\nWrote fix list to: $fixfile \n\n";
+		print "\n\nWrote fix list to: $fixfile \n";
+		# number of items
+		print "(" . scalar(@{$glob_fixlist}) . " items)\n\n";
 
 	  L_nofix:
 
