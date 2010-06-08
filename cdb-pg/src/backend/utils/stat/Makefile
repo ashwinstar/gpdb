@@ -11,26 +11,11 @@ override CPPFLAGS := -I$../../gp_libpq_fe  $(CPPFLAGS)
 
 BLD_TOP = ../../../../..
 include $(BLD_TOP)/Makefile.global
-CLAPACKDIR = $(BLD_TOP)/ext/$(BLD_ARCH)/lib
-CLAPACKLIBS = -llapack -lf2c -lblas
+LIBS := $(filter-out -lesmtp -lnetsnmp -lpgport -lz -lcurl -lbz2 -lpam -lssl -lcrypto -lkrb5 -lcom_err -lz -ledit -lm  , $(LIBS))
 
 ifeq ($(PORTNAME), darwin)
 LDOPTS = -Z
 endif
 
 OBJS = bayes.o pinv.o regress.o
-
-all: SUBSYS.o
-
-SUBSYS.o: $(OBJS)
-	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(OBJS) $(CLAPACKLIBS) $(LDOPTS) -L$(CLAPACKDIR)
-
-depend dep:
-	$(CC) -MM $(CFLAGS) *.c >depend
-
-clean: 
-	rm -f SUBSYS.o $(OBJS)
-
-ifeq (depend,$(wildcard depend))
-include depend
-endif
+include $(top_srcdir)/src/backend/common.mk
