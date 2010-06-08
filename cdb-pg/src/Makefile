@@ -24,6 +24,7 @@ all install installdirs uninstall distprep:
 	$(MAKE) -C pl $@
 	$(MAKE) -C makefiles $@
 	$(MAKE) -C test/regress $@
+	$(MAKE) -C tools/fsync $@
 
 install: install-local
 
@@ -55,6 +56,7 @@ clean:
 	$(MAKE) -C test $@
 	$(MAKE) -C tutorial NO_PGXS=1 $@
 	$(MAKE) -C test/thread $@
+	$(MAKE) -C tools/fsync $@
 
 distclean maintainer-clean:
 	$(MAKE) -C port $@
@@ -69,6 +71,7 @@ distclean maintainer-clean:
 	$(MAKE) -C test $@
 	$(MAKE) -C tutorial NO_PGXS=1 $@
 	$(MAKE) -C test/thread $@
+	$(MAKE) -C tools/fsync $@
 	rm -f Makefile.port Makefile.global
 
 
