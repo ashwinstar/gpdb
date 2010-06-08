@@ -177,7 +177,7 @@ static apr_status_t agg_put_qexec(agg_t* agg, const gpmon_qexec_t* qexec,
 	TR2(("list now:\n"));
 
 	for (ep = dp->qenode_list; ep; ep = ep->next) {
-	    TR2(("%d: %d.%d.%s\n", ++cnt, ep->qexec.key.segid, ep->qexec.key.nid, ep->qexec.nodeType));
+	    TR2(("%d: %d.%d.%d\n", ++cnt, ep->qexec.key.segid, ep->qexec.key.nid, ep->qexec.nodeType));
 	}
 	TR2(("  -- \n"));
     }
@@ -299,7 +299,7 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool)
 	    *tail = x;
 	    tail = &x->next;
 
-	    TR2(("\t    %d: (%d, %d) op %s\n", ++cnt,
+	    TR2(("\t    %d: (%d, %d) op %d\n", ++cnt,
 		 x->qexec.key.segid,
 		 x->qexec.key.nid,
 		 x->qexec.nodeType));
