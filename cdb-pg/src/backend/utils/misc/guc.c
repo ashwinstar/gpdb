@@ -4900,7 +4900,7 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 
-#if USE_EMAILgp_snmp_use_inform_or_trap
+#if USE_EMAIL
 	{
 		{"gp_email_smtp_server", PGC_SUSET, LOGGING,
 			gettext_noop("Sets the SMTP server and port used to send e-mail alerts."),
