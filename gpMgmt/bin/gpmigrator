@@ -3395,14 +3395,15 @@ class GPUpgrade:
         # but while we are remirroring the old system we need to
         # run it in the old environment.
         cmd = '%s/sbin/gpupgrademirror.py --verbose' % self.newhome
-        if withContinue:
-            cmd += " --continue-upgrade"
-        elif self.mirrormode == 'redundant':
+        if self.mirrormode == 'redundant':
             cmd += " --mode=S"
         elif self.mirrormode == 'single':
             cmd += " --mode=U"
         else:
             raise UpgradeError("Unknown mirror mode: %s" % self.mirrormode)
+
+        if withContinue:
+            cmd += " --continue-upgrade"
 
         # Construct an execution environment that uses the new GPHOME for
         # executables/libraries/pythonpath but uses the old master directory.
@@ -3834,7 +3835,14 @@ class GPUpgrade:
             # --continue to the gpupgrademirrors script.
             withContinue=False
             if 'START_REMIRROR' not in current_state:
-                self.SetState('START_REMIRROR')
+                self.SetState('START_REMIRROR: %s' % self.mirrormode)
+            elif current_state['START_REMIRROR'] != self.mirrormode:
+                logger.fatal('unable to continue existing upgrade: '
+                             'old mirror-mode "%s" != "%s"' 
+                             % (current_state['START_REMIRROR'],
+                                self.mirrormode))
+                logger.fatal('retry with old mirror mode or revert using -R')
+                raise UpgradeError('Cannot resume upgrade with different mirror-mode')
             else:
                 withContinue=True
 
