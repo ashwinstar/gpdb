@@ -279,7 +279,7 @@ define BUILD_STEPS
 	@cd $(GPPGDIR) && $(MAKE) install
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 	@$(MAKE) groupSession INSTLOC=$(INSTLOC)
-	@$(MAKE) mkgpcc
+	@$(MAKE) mkgpcc INSTCFLAGS=$(INSTCFLAGS)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) mkpgbench INSTLOC=$(INSTLOC)
 	@$(MAKE) mkgpperfmon INSTLOC=$(INSTLOC)
@@ -859,7 +859,7 @@ groupSession:
 	@cd $(GPMGMT)/bin && $(MAKE)
 
 mkgpcc:
-	@cd $(GPCC) && $(MAKE)
+	@cd $(GPCC) && $(MAKE) OPT="$(INSTCFLAGS)"
 
 mkpgbench:
 	@cd cdb-pg/contrib/pgbench && $(MAKE) install
