@@ -9,14 +9,12 @@ top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
 BLD_TOP = ../../../../..
-#include $(BLD_TOP)/Makefile.global
-#CLAPACKDIR = $(BLD_TOP)/ext/$(BLD_ARCH)/lib
 CLAPACKLIBS = -llapack -lf2c -lblas 
-LIBS := $(filter-out -lesmtp -lnetsnmp -lpgport -lz -lcurl -lbz2 -lpam -lssl -lcrypto -lkrb5 -lcom_err -lz -ledit -lm  , $(LIBS))
+LIBS := $(filter-out -lesmtp -lnetsnmp -lpgport -lz -lcurl -lbz2 -lpam -lssl -lcrypto -lkrb5 -lcom_err -lz -ledit -lm -pthread -pthreads  , $(LIBS))
 
 
 ifeq ($(PORTNAME), darwin)
-LDOPTS = $(CLAPACKLIBS) -Z $(LIBS)
+LDOPTS = $(CLAPACKLIBS) -Z $(LIBS) -L/usr/lib
 endif
 
 OBJS = bayes.o pinv.o regress.o
