@@ -596,6 +596,14 @@ set_plan_refs(PlannerGlobal *glob, Plan *plan, const int rtoffset)
 				return  cdb_insert_result_node(glob, plan, rtoffset);
 			
 			splan->scan.scanrelid += rtoffset;
+			
+#ifdef USE_ASSERT_CHECKING
+			/* We only support TidScans on heap tables currently */
+			RangeTblEntry *rte = rt_fetch(splan->scan.scanrelid, glob->finalrtable);
+			char relstorage = get_rel_relstorage(rte->relid);
+			Assert(relstorage == RELSTORAGE_HEAP);
+#endif
+
 			splan->scan.plan.targetlist =
 			fix_scan_list(glob, splan->scan.plan.targetlist, rtoffset);
 			splan->scan.plan.qual =

@@ -359,6 +359,12 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 
 	/* Consider TID scans */
     create_tidscan_paths(root, rel, &tidpathlist);
+    
+    /* AO and CO tables do not currently support TidScans. Disable TidScan path for such tables */
+	if (relstorage == RELSTORAGE_AOROWS ||
+		relstorage == RELSTORAGE_AOCOLS)
+		tidpathlist = NIL;
+    
     if (tidpathlist && enable_tidscan)
         pathlist = list_concat(pathlist, tidpathlist);
 
