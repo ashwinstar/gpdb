@@ -228,7 +228,6 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 	MemoryContext 			analyzeStatementContext = NULL;
 	MemoryContext 			analyzeRelationContext = NULL;
 	bool					bUseOwnXacts = false;
-	List 					*lExplicitAttNames = NIL;
 	ListCell				*le1 = NULL;
 
 	/**
@@ -334,8 +333,6 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 		{
 			lRelOids = list_make1_oid(relationOid);
 		}
-		if (stmt->va_cols)
-			lExplicitAttNames = buildExplicitAttributeNames(relationOid, stmt);
 	}
 	
 	/*
@@ -449,11 +446,19 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 					/* Switch to per relation context */
 					MemoryContextSwitchTo(analyzeRelationContext);
 
-					if (lExplicitAttNames != NIL)
-						lAttNames = lExplicitAttNames;
+					if (stmt->va_cols)
+					{
+						/**
+						 * Column names have been provided. Should have specified relation name as well.
+						 */
+						Assert(stmt->relation && "Column names specified but not relation name");
+						lAttNames = buildExplicitAttributeNames(RelationGetRelid(candidateRelation), stmt);
+					}
 					else
+					{
 						lAttNames = analyzableAttributes(candidateRelation);
-
+					}
+					
 					analyzeRelation(candidateRelation, lAttNames);
 
 					/* Switch back to statement context and reset relation context */

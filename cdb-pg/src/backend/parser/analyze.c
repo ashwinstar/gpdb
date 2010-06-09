@@ -7775,7 +7775,7 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 				/* now just update the relation and index name fields */
 				chidx->relation =
 					makeRangeVar(get_namespace_name(RelationGetNamespace(crel)),
-								 RelationGetRelationName(crel), -1);
+								 pstrdup(RelationGetRelationName(crel)), -1);
 
 				elog(NOTICE, "building index for child partition \"%s\"",
 					 RelationGetRelationName(crel));
