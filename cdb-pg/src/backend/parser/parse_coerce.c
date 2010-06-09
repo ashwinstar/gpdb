@@ -556,7 +556,7 @@ coerce_unknown_var(ParseState *pstate, Var *var,
 										 targetTypeId, targetTypeMod,
 										 ccontext, cformat, -1);
 
-				pfree(subpstate);
+				free_parsestate(&subpstate);
 				/* Substitute coerced expr into subquery's targetlist. */
 				ste->expr = (Expr *)targetexpr;
 				exprtype = exprType(targetexpr);

@@ -16,6 +16,7 @@
 
 #include "nodes/parsenodes.h"
 
+struct HTAB;  /* utils/hsearch.h */
 
 /* commands/indexcmds.c */
 extern void DefineIndex(RangeVar *heapRelation,
@@ -44,7 +45,8 @@ extern void ReindexDatabase(ReindexStmt *stmt);
 extern char *makeObjectName(const char *name1, const char *name2,
 			   const char *label);
 extern char *ChooseRelationName(const char *name1, const char *name2,
-				   const char *label, Oid namespace);
+								const char *label, Oid namespace, 
+								struct HTAB *cache);
 extern Oid	GetDefaultOpClass(Oid type_id, Oid am_id);
 
 /* commands/functioncmds.c */

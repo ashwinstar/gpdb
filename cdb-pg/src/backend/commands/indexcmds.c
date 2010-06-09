@@ -47,6 +47,7 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
+#include "utils/hsearch.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/relcache.h"
@@ -303,7 +304,8 @@ DefineIndex(RangeVar *heapRelation,
 			indexRelationName = ChooseRelationName(RelationGetRelationName(rel),
 												   NULL,
 												   "pkey",
-												   namespaceId);
+												   namespaceId,
+												   NULL);
 		else
 		{
 			IndexElem  *iparam = (IndexElem *) linitial(attributeList);
@@ -311,7 +313,8 @@ DefineIndex(RangeVar *heapRelation,
 			indexRelationName = ChooseRelationName(RelationGetRelationName(rel),
 												   iparam->name,
 												   "key",
-												   namespaceId);
+												   namespaceId,
+												   NULL);
 		}
 		stmt->idxname = indexRelationName;
 	}
@@ -1242,19 +1245,24 @@ makeObjectName(const char *name1, const char *name2, const char *label)
  * Note: it is theoretically possible to get a collision anyway, if someone
  * else chooses the same name concurrently.  This is fairly unlikely to be
  * a problem in practice, especially if one is holding an exclusive lock on
- * the relation identified by name1.  However, if choosing multiple names
- * within a single command, you'd better create the new object and do
- * CommandCounterIncrement before choosing the next one!
+ * the relation identified by name1.  
+ *
+ * If choosing multiple names within a single command, there are two options:
+ *   1) Create the new object and do CommandCounterIncrement
+ *   2) Pass a hash-table to this function to use as a cache of objects 
+ *      created in this statement.
  *
  * Returns a palloc'd string.
  */
 char *
 ChooseRelationName(const char *name1, const char *name2,
-				   const char *label, Oid namespace)
+				   const char *label, Oid namespace,
+				   HTAB *cache)
 {
-	int			pass = 0;
-	char	   *relname = NULL;
-	char		modlabel[NAMEDATALEN];
+	int			 pass	 = 0;
+	char		*relname = NULL;
+	char		 modlabel[NAMEDATALEN];
+	bool		 found	 = false;
 
 	/* try the unmodified label first */
 	StrNCpy(modlabel, label, sizeof(modlabel));
@@ -1263,12 +1271,22 @@ ChooseRelationName(const char *name1, const char *name2,
 	{
 		relname = makeObjectName(name1, name2, modlabel);
 
-		if (!OidIsValid(get_relname_relid(relname, namespace)))
+		if (cache)
+			hash_search(cache, (void *) relname, HASH_FIND, &found);
+
+		if (!found && !OidIsValid(get_relname_relid(relname, namespace)))
 			break;
 
 		/* found a conflict, so try a new name component */
 		pfree(relname);
 		snprintf(modlabel, sizeof(modlabel), "%s%d", label, ++pass);
+	}
+
+	/* If we are caching found values add the value to our hash */
+	if (cache)
+	{
+		hash_search(cache, (void *) relname, HASH_ENTER, &found);
+		Assert(!found);
 	}
 
 	return relname;

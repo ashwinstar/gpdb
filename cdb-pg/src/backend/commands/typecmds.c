@@ -744,6 +744,8 @@ DefineDomain(CreateDomainStmt *stmt)
 											  stmt->typname->typmod,
 											  domainName);
 
+					free_parsestate(&pstate);
+
 					/*
 					 * Expression must be stored as a nodeToString result, but
 					 * we also require a valid textual representation (mainly
@@ -1314,6 +1316,8 @@ AlterDomainDefault(List *names, Node *defaultRaw)
 								  typTup->typbasetype,
 								  typTup->typtypmod,
 								  NameStr(typTup->typname));
+
+		free_parsestate(&pstate);
 
 		/*
 		 * Expression must be stored as a nodeToString result, but we also
@@ -2008,6 +2012,8 @@ domainAddConstraint(Oid domainOid, Oid domainNamespace, Oid baseTypeOid,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 			   errmsg("cannot use window function in check constraint"),
 					   errOmitLocation(true)));
+
+	free_parsestate(&pstate);
 
 	/*
 	 * Convert to string form for storage.

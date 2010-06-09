@@ -2670,6 +2670,9 @@ AddRelationRawConstraints(Relation rel,
 		cookedConstraints = lappend(cookedConstraints, cooked);
 	}
 
+	/* Cleanup the parse state */
+	free_parsestate(&pstate);
+
 	/*
 	 * Update the count of constraints in the relation's pg_class tuple. We do
 	 * this even if there was no change, in order to ensure that an SI update

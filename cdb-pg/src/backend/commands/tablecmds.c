@@ -4540,6 +4540,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 
 						vals = (List *)transformExpressionList(pstate, vals);
 
+						free_parsestate(&pstate);
+
 						foreach(lc2, vals)
 						{
 							Node *n = lfirst(lc2);
@@ -7433,13 +7435,15 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation rel,
 				idxname = ChooseRelationName(RelationGetRelationName(crel),
 											 NULL,
 											 (iname + strlen(pname) + off),
-											 RelationGetNamespace(crel));
+											 RelationGetNamespace(crel),
+											 NULL);
 			}
 			else
 				idxname = ChooseRelationName(RelationGetRelationName(crel),
 											 NULL,
 											 iname,
-											 RelationGetNamespace(crel));
+											 RelationGetNamespace(crel),
+											 NULL);
 			istmt->idxname = idxname;
 			atc->subtype = AT_AddIndex;
 			atc->def = (Node *)istmt;
@@ -8661,6 +8665,8 @@ ATPrepAlterColumnType(List **wqueue,
 				 errmsg("column \"%s\" cannot be cast to type \"%s\"",
 						colName, TypeNameToString(typname)),
 								   errOmitLocation(true)));
+
+	free_parsestate(&pstate);
 
 	/*
 	 * Add a work queue item to make ATRewriteTable update the column
@@ -13391,18 +13397,18 @@ add_part_to_catalog(Oid relid, PartitionBy *pby,
 			heap_close(rel, AccessShareLock);
 		}
 
-		rule->paroid			 = paroid;
-		rule->parchildrelid		 = relid;
-		rule->parparentoid		 = parentoid;
-		rule->parisdefault		 = el->isDefault;
-		rule->parname			 = parname;
-		rule->parruleord		 = parruleord;
-		rule->parrangestartincl	 = rangestartinc;
-		rule->parrangestart		 = rangestart;
-		rule->parrangeendincl	 = rangeendinc;
-		rule->parrangeend		 = rangeend;
-		rule->parrangeevery		 = rangeevery;
-		rule->parlistvalues		 = (List *)listvalues;
+		rule->paroid = paroid;
+		rule->parchildrelid = relid;
+		rule->parparentoid = parentoid;
+		rule->parisdefault = el->isDefault;
+		rule->parname = parname;
+		rule->parruleord = parruleord;
+		rule->parrangestartincl = rangestartinc;
+		rule->parrangestart = rangestart;
+		rule->parrangeendincl = rangeendinc;
+		rule->parrangeend = rangeend;
+		rule->parrangeevery = rangeevery;
+		rule->parlistvalues = (List *)listvalues;
 		rule->partemplatespaceId = InvalidOid; /* only valid for template */
 
 		if (!bTemplate_Only)
@@ -13596,17 +13602,17 @@ ruleMakePartitionRule(HeapTuple tuple, TupleDesc tupdesc, MemoryContext mcxt)
 	rule = makeNode(PartitionRule);
 	MemoryContextSwitchTo(oldcxt);
 
-	rule->parruleid		= HeapTupleGetOid(tuple);
-	rule->paroid		= rule_desc->paroid;
+	rule->parruleid = HeapTupleGetOid(tuple);
+	rule->paroid = rule_desc->paroid;
 	rule->parchildrelid = rule_desc->parchildrelid;
-	rule->parparentoid	= rule_desc->parparentrule;
-	rule->parisdefault	= rule_desc->parisdefault;
+	rule->parparentoid = rule_desc->parparentrule;
+	rule->parisdefault = rule_desc->parisdefault;
 
 	rule->parname = MemoryContextStrdup(mcxt, NameStr(rule_desc->parname));
 
-	rule->parruleord		= rule_desc->parruleord;
+	rule->parruleord = rule_desc->parruleord;
 	rule->parrangestartincl = rule_desc->parrangestartincl;
-	rule->parrangeendincl	= rule_desc->parrangeendincl;
+	rule->parrangeendincl = rule_desc->parrangeendincl;
 
 	/* start range */
 	rule_datum = heap_getattr(tuple,
@@ -14840,7 +14846,8 @@ ChoosePartitionName(const char *tablename, int partDepth,
 	relname = ChooseRelationName(tablename,
 								 depthstr, /* depth */
 								 prtstr, 	/* part spec */
-								 namespaceId);
+								 namespaceId,
+								 NULL);
 	CommandCounterIncrement();
 
 	return relname;
@@ -15822,6 +15829,8 @@ get_part_rule1(Relation rel, AlterPartitionId *pid,
 				pval = (Node *)transformExpressionList(pstate,
 													   (List *)pval);
 
+				free_parsestate(&pstate);
+
 				idval =
 						deparse_expression(pval,
                            deparse_context_for(RelationGetRelationName(rel),
@@ -16444,11 +16453,12 @@ atpxPart_validate_spec(
 		char 					*partDesc)
 {
 	PartitionSpec 		*spec  	= makeNode(PartitionSpec);
-	ParseState 			*pstate = make_parsestate(NULL);
+	ParseState 			*pstate = NULL;
 	List	   			*schema = NIL;
 	List	   			*inheritOids;
 	List	   			*old_constraints;
 	int					 parentOidCount;
+	int                  result;
 	PartitionNode 		*pNode_tmpl = NULL;
 
 	/* get the table column defs */
@@ -16781,7 +16791,11 @@ atpxPart_validate_spec(
 		} /* end while */
 	}
 
-	return validate_partition_spec(pstate, pcxt, ct, pBy, "", -1);
+	pstate = make_parsestate(NULL);
+	result = validate_partition_spec(pstate, pcxt, ct, pBy, "", -1);
+	free_parsestate(&pstate);
+
+	return result;
 } /* end atpxPart_validate_spec */
 
 static Node *
@@ -17828,6 +17842,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 											   errOmitLocation(true)));
 
 			}
+
+			free_parsestate(&pstate);
 		} /* end if parttype_range */
 	} /* end if pelem && pelem->boundspec */
 
@@ -19580,7 +19596,7 @@ atpxModifyRangeOverlap (Relation 		 		 rel,
 	PartitionNode 		*pNode 		 = prule->pNode;
 	bool 				 bCheckStart = true;
 	PartitionBoundSpec 	*pbs   		 = NULL;
-	ParseState 			*pstate    	 = make_parsestate(NULL);
+	ParseState 			*pstate    	 = NULL;
 	bool 				 bOverlap 	 = false;
 	bool 				*isnull;
 	TupleDesc 		 	 tupledesc 	 = RelationGetDescr(rel);
@@ -19656,10 +19672,11 @@ atpxModifyRangeOverlap (Relation 		 		 rel,
 		MemSet(&pid2, 0, sizeof(AlterPartitionId));
 
 		pid2.idtype = AT_AP_IDValue;
-		pRangeValList = (Node *)copyObject(ri->partRangeVal);
-		pRangeValList =
-				(Node *)transformExpressionList(pstate,
-												(List *)pRangeValList);
+		pstate = make_parsestate(NULL);
+		pRangeValList = (Node *) copyObject(ri->partRangeVal);
+		pRangeValList = (Node *)
+			transformExpressionList(pstate, (List *)pRangeValList);
+		free_parsestate(&pstate);
 		pid2.partiddef = pRangeValList;
 		pid2.location  = -1;
 

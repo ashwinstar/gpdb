@@ -299,7 +299,7 @@ parse_analyze(Node *parseTree, const char *sourceText,
 
 	result = do_parse_analyze(parseTree, pstate);
 
-	pfree(pstate);
+	free_parsestate(&pstate);
 
 	return result;
 }
@@ -328,7 +328,7 @@ parse_analyze_varparams(Node *parseTree, const char *sourceText,
 	*paramTypes = pstate->p_paramtypes;
 	*numParams = pstate->p_numparams;
 
-	pfree(pstate);
+	free_parsestate(&pstate);
 
 	/* make sure all is well with parameter types */
 	if (*numParams > 0)
@@ -355,7 +355,7 @@ parse_sub_analyze(Node *parseTree, ParseState *parentParseState)
 
 	result = do_parse_analyze(parseTree, pstate);
 
-	pfree(pstate);
+	free_parsestate(&pstate);
 
 	return result;
 }
@@ -1045,7 +1045,7 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt,
 									extras_before, extras_after);
 
 		release_pstate_resources(sub_pstate);
-		pfree(sub_pstate);
+		free_parsestate(&sub_pstate);
 
 		Assert(IsA(selectQuery, Query));
 		Assert(selectQuery->commandType == CMD_SELECT);
@@ -1770,7 +1770,8 @@ transformColumnDefinition(ParseState *pstate, CreateStmtContext *cxt,
 		sname = ChooseRelationName(cxt->relation->relname,
 								   column->colname,
 								   "seq",
-								   snamespaceid);
+								   snamespaceid,
+								   NULL);
 
 		ereport(NOTICE,
 				(errmsg("%s will create implicit sequence \"%s\" for serial column \"%s.%s\"",
@@ -7478,7 +7479,8 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 			relname = ChooseRelationName(cxt->relation->relname,
 										 depthstr, /* depth */
 										 prtstr, 	/* part spec */
-										 snamespaceid);
+										 snamespaceid,
+										 NULL);
 
 		/* XXX: temporarily add rule creation code for debugging */
 
@@ -7696,9 +7698,11 @@ static Query *
 transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 				   List **extras_before, List **extras_after)
 {
-	Query	   *qry;
-	RangeTblEntry *rte = NULL;
-	ListCell   *l;
+	Query				*qry;
+	RangeTblEntry		*rte = NULL;
+	ListCell			*l;
+	Oid					 idxOid;
+	Oid					 nspOid;
 
 	qry = makeNode(Query);
 	qry->commandType = CMD_UTILITY;
@@ -7712,10 +7716,12 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 	 *
 	 * If this is a CREATE INDEX statement, idxname should already exist.
 	 */
-	if (OidIsValid(RangeVarGetRelid(stmt->relation, true)) && stmt->idxname)
+	idxOid = RangeVarGetRelid(stmt->relation, true);
+	nspOid = RangeVarGetCreationNamespace(stmt->relation);
+	if (OidIsValid(idxOid) && stmt->idxname)
 	{
 		Relation rel;
-
+		
 		PG_TRY();
 		{
 			rel = heap_openrv(stmt->relation, AccessShareLock);
@@ -7749,8 +7755,13 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 
 		if (stmt->do_part && Gp_role != GP_ROLE_EXECUTE)
 		{
-			List *children;
+			List		*children;
+			struct HTAB *nameCache;
 
+			/* Lookup the parser object name cache */
+			nameCache = parser_get_namecache(pstate);
+
+			/* Loop over all partition children */
 			children = find_inheritance_children(RelationGetRelid(rel));
 
 			foreach(l, children)
@@ -7768,7 +7779,8 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 				int4 depth;
 				NameData name;
 				Oid paroid;
-				char idxname[1024];
+				char depthstr[NAMEDATALEN];
+				char prtstr[NAMEDATALEN];
 
 				chidx = (IndexStmt *)copyObject((Node *)stmt);
 
@@ -7834,14 +7846,17 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 				heap_close(crel, NoLock);
 
 				/* now, build the piece to append */
+				snprintf(depthstr, sizeof(depthstr), "%d", depth);
 				if (strlen(parname) == 0)
-					snprintf(idxname, sizeof(idxname), "%s_%d_prt_%d",
-							 stmt->idxname, depth, position);
+					snprintf(prtstr, sizeof(prtstr), "prt_%d", position);
 				else
-					snprintf(idxname, sizeof(idxname), "%s_%d_prt_%s",
-							 stmt->idxname, depth, parname);
+					snprintf(prtstr, sizeof(prtstr), "prt_%s", parname);
 
-				chidx->idxname = pstrdup(idxname);
+				chidx->idxname = ChooseRelationName(stmt->idxname,
+													depthstr, /* depth */
+													prtstr,   /* part spec */
+												    nspOid,
+													nameCache);
 
 				*extras_after = lappend(*extras_after, chidx);
 			}
@@ -8177,7 +8192,7 @@ transformRuleStmt(ParseState *pstate, RuleStmt *stmt,
 			newactions = lappend(newactions, top_subqry);
 
 			release_pstate_resources(sub_pstate);
-			pfree(sub_pstate);
+			free_parsestate(&sub_pstate);
 		}
 
 		stmt->actions = newactions;

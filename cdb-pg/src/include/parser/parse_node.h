@@ -18,6 +18,7 @@
 #include "utils/relcache.h"
 #include "utils/rel.h"
 
+struct HTAB;  /* utils/hsearch.h */
 
 /*
  * CDB: Parse analysis location stack for error reporting
@@ -96,9 +97,12 @@ typedef struct ParseState
 	RangeTblEntry *p_target_rangetblentry;
 	List	   *p_win_clauses;	/* list of window specifications */
 	Node       *having_qual; /* Having clause */
+	struct HTAB *p_namecache;  /* parse state object name cache */
 } ParseState;
 
 extern ParseState *make_parsestate(ParseState *parentParseState);
+extern void free_parsestate(ParseState **pstate);
+extern struct HTAB *parser_get_namecache(ParseState *pstate);
 extern int	parser_errposition(ParseState *pstate, int location);
 
 extern Var *make_var(ParseState *pstate, RangeTblEntry *rte, int attrno,
