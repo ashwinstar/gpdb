@@ -14,7 +14,7 @@ LIBS := $(filter-out -lesmtp -lnetsnmp -lpgport -lz -lcurl -lbz2 -lpam -lssl -lc
 
 
 ifeq ($(PORTNAME), darwin)
-LDOPTS = $(CLAPACKLIBS) -Z $(LIBS) -L/usr/lib
+LDOPTS = $(CLAPACKLIBS) -Z $(LIBS) 
 endif
 
 OBJS = bayes.o pinv.o regress.o
