@@ -1172,6 +1172,7 @@ static Oid buildSampleTable(Oid relationOid,
 	                        spiCallback_getProcessedAsFloat4, sampleTableRelTuples);
 
 	pfree(str.data);
+		
 	elog(elevel, "Created sample table %s.%s with nrows=%.0f", 
 			quote_identifier(sampleSchemaName), 
 			quote_identifier(sampleTableName), 
@@ -1179,8 +1180,12 @@ static Oid buildSampleTable(Oid relationOid,
 
 	rangeVar = makeRangeVar(sampleSchemaName, sampleTableName, -1);
 	sampleTableOid = RangeVarGetRelid(rangeVar, true);
-	
+
 	Assert(sampleTableOid != InvalidOid);
+
+	/* Update temporary table's reltuples, relpages */
+	updateReltuplesRelpagesInCatalog(sampleTableOid, *sampleTableRelTuples, 2);
+
 	pfree((void *) rangeVar);
 	pfree((void *) sampleTableName);
 	pfree((void *) tableName);
