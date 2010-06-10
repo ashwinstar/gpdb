@@ -91,7 +91,7 @@ GPPERFMON=gpperfmon
 
 RELEASE=$(shell $(CURDIR)/releasetag)
 GPDIR=greenplum-db$(RELEASE)
-PLRDIR=greenplum-db$(RELEASE)-plr
+PLRDIR=greenplum-plr$(RELEASE)
 CLIENTDIR=greenplum-clients$(RELEASE)
 CONNECTIVITYDIR=greenplum-connectivity$(RELEASE)
 LOADERSDIR=greenplum-loaders$(RELEASE)
@@ -947,10 +947,9 @@ pkgplr:
 	    rm -f $(INSTLOC)/lib/postgresql/plr.so ; \
 	    echo "" ; \
 	    echo "`date` -- INFO: Creating .zip" ; \
-	    zip -q -r $(PLRDIR).zip $(PLRDIR) ; \
+	    zip -q -r greenplum-plr-$(VERSION)-${MPP_ARCH}.zip $(PLRDIR) ; \
 	    echo "" ; \
 	fi
-
 
 BLD_LDD=ldd
 osx104_x86_LDD=otool -L
