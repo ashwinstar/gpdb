@@ -228,6 +228,10 @@ class GpSegStart:
                 self.pool.addCommand(cmd)
             self.pool.join()
 
+            dataDirToSeg = gparray.GpArray.getSegmentsGroupedByValue(\
+                                directoryToSegStartDataMap.values(), gparray.GpDB.getSegmentDataDirectory)
+
+            toStop = []
             cmds=self.pool.getCompletedItems()
             for cmd in cmds:
                 res=cmd.get_results()
@@ -235,9 +239,16 @@ class GpSegStart:
                     stdoutFromFailure = res.stdout.replace("\n", " ").strip()
                     stderrFromFailure = res.stderr.replace("\n", " ").strip()
 
+                    shouldStop = False
+
                     if res.rc == gp.SendFilerepTransitionMessage.TRANSITION_ERRCODE_ERROR_SERVER_DID_NOT_RETURN_DATA:
                         reason = "Segment did not respond to startup request; check segment logfile"
-                        reasonCode = gp.SEGSTART_ERROR_SERVER_DID_NOT_RESPOND 
+                        reasonCode = gp.SEGSTART_ERROR_SERVER_DID_NOT_RESPOND
+
+                        #
+                        # server crashed when sending response, should ensure it's stopped completely!
+                        #
+                        shouldStop = True
 
                     elif stderrFromFailure == "failure: Error: MirroringFailure":
                         reason = "Failure in segment mirroring; check segment logfile"
@@ -251,14 +262,50 @@ class GpSegStart:
                         reason = "Not a valid operation at this time; check segment logfile"
                         reasonCode = gp.SEGSTART_ERROR_INVALID_STATE_TRANSITION
 
+                        #
+                        # This should never happen, but if it does then we will ensure process is gone
+                        #
+                        shouldStop = True
+
                     elif stderrFromFailure == "failure: Error: ServerIsInShutdown":
                         reason = "System is shutting down"
                         reasonCode = gp.SEGSTART_ERROR_SERVER_IS_IN_SHUTDOWN
 
                     else:
+
+                        if res.rc == gp.SendFilerepTransitionMessage.TRANSITION_ERRCODE_ERROR_SOCKET:
+                            #
+                            # Couldn't connect to server to do transition or got another problem
+                            #     communicating, must make sure it's halted!
+                            #
+                            shouldStop = True
+
                         reason = "Start failed; check segment logfile.  \"%s%s\"" % (stdoutFromFailure, stderrFromFailure)
                         reasonCode = gp.SEGSTART_ERROR_OTHER
+
                     self.__markFailed(directoryToSegStartDataMap, results, cmd.dataDir, reason, reasonCode)
+
+                    if shouldStop:
+                        assert len(dataDirToSeg[cmd.dataDir]) == 1, "Multiple segments with dir %s" % cmd.dataDir
+                        toStop.append(dataDirToSeg[cmd.dataDir][0])
+
+            #
+            # 
+            #
+            for seg in toStop:
+                logger.info("Stopping segment %s, %s because of failure sending transition" % \
+                                (seg.getSegmentDataDirectory(), seg.getSegmentPort()))
+                cmd=gp.SegmentStop('stop segment', seg.getSegmentDataDirectory(), mode="immediate")
+                cmd.run(validateAfter=False)
+                res = cmd.get_results()
+                if res.rc == 0:
+                    logger.info("Stop of segment succeeded")
+                else:
+                    stdoutFromFailure = res.stdout.replace("\n", " ").strip()
+                    stderrFromFailure = res.stderr.replace("\n", " ").strip()
+                    logger.info("Stop of segment failed: rc: %s\nstdout:%s\nstderr:%s" % \
+                                    (res.rc, stdoutFromFailure, stderrFromFailure))
+            
 
     ######
     def start(self): 

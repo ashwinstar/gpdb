@@ -95,7 +95,7 @@ sendFully(int socket, char *data, int dataLength)
 static int
 sendMessage(struct addrinfo *addr, void *data, int dataLength)
 {
-#define MAX_RETRIES (12)
+#define MAX_RETRIES (20)
 #define RETRY_SLEEP_TIME_SECONDS (1)
 
 	int retry;
