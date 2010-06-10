@@ -1309,8 +1309,8 @@ PQbuildGpDtxProtocolCommand(
 	int	total_query_len;
 	char *shared_query, *pos;
 
-	loggingStrLen = strlen(dtxProtocolCommandLoggingStr);
-	gidLen = strlen(gid);
+	loggingStrLen = strlen(dtxProtocolCommandLoggingStr) + 1;
+	gidLen = strlen(gid) + 1;
 
 	total_query_len = 5 /* overhead */ + 4 /* dtxProtocolCommand */ + 
 		   4 /*flags */ + 8 /* lengths */ +
