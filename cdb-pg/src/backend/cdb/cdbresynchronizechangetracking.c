@@ -181,11 +181,12 @@ extern void ChangeTrackingShmemInit(void)
  * It scans the xlog starting from the most recent checkpoint and collects 
  * all the interesting changes for the changelog. add them to the changelog.
  */
-void ChangeTracking_CreateInitialFromPreviousCheckpoint(void)
+void ChangeTracking_CreateInitialFromPreviousCheckpoint(
+	XLogRecPtr	*lastChangeTrackingEndLoc)
 {	
 	if (gp_change_tracking)
 	{
-		int 	count = XLogAddRecordsToChangeTracking();
+		int 	count = XLogAddRecordsToChangeTracking(lastChangeTrackingEndLoc);
 
 		elog(LOG, "scanned through %d initial xlog records since last checkpoint "
 				  "for writing into the resynchronize change log", count);		
@@ -310,9 +311,15 @@ char* ChangeTracking_CopyRdataBuffers(XLogRecData *rdata,
 	bool			gist_split_page = (rmid == RM_GIST_ID && 
 										(info & ~XLR_INFO_MASK) == XLOG_GIST_PAGE_SPLIT);
 	
-	while (ptr->data == NULL)
+	while (ptr->data == NULL && ptr->next != NULL)
 		ptr = ptr->next;
-
+	
+	if (ptr->data == NULL)
+	{
+		*iscopy = false;
+		return NULL;
+	}
+	
 	/* Copy the main (first) rdata data block */
 	Assert(ptr->len <= CHANGETRACKING_XLOGDATASZ);
 	memcpy(changeTrackingXlogDataBuffer, ptr->data, ptr->len);
@@ -2394,6 +2401,13 @@ ChangeTracking_RetrieveIsTransitionToInsync(void)
 	return res;
 }
 
+/**
+ * Get the total amount of space, in bytes, used by the changetracking information.
+ */
+int64 ChangeTracking_GetTotalSpaceUsedOnDisk(void)
+{
+    return db_dir_size(CHANGETRACKINGDIR);
+}
 
 /*
  * Get the total number of (unique) blocks that had changed and

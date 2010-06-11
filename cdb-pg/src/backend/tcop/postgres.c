@@ -3282,6 +3282,11 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
  * Standard handler that can be called from a specific processes handler for
  *   SIGILL, SIGSEGV, and SIGBUS
  *
+ * This standard handler logs the error and, if gp_reraise_signal is set, reraises
+ *   the signal so the operating system can create a core file.
+ *
+ * Control will never return from this signal handler
+ *
  * MUST be called from the main thread, if this process uses threads.
  */
 void

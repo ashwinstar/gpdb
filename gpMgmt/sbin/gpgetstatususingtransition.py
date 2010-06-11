@@ -134,20 +134,30 @@ class GpSegStatusProgram:
         if data is None:
             return data
 
-        # convert some to long integers, verify that all expected ones are there
+        # verify that all expected ones are there
         for expected in ["mode","segmentState","dataState", "postmasterState", "databaseStatus", "isFullResync", \
-                            "resyncNumCompleted","resyncTotalToComplete","elapsedTimeSeconds"]:
+                            "resyncNumCompleted","resyncTotalToComplete","estimatedCompletionTimeSecondsSinceEpoch", \
+                            "changeTrackingBytesUsed"]:
             if expected not in data:
                 logger.warn("Missing data key %s from str %s" % (expected, str))
                 return None
 
-        for toConvert in ["resyncNumCompleted","resyncTotalToComplete","elapsedTimeSeconds", "isFullResync"]:
+        # convert some to long integers
+        for toConvert in ["resyncNumCompleted","resyncTotalToComplete","estimatedCompletionTimeSecondsSinceEpoch", \
+                            "changeTrackingBytesUsed"]:
             value = data[toConvert]
             try:
                 data[toConvert] = long(value)
             except ValueError:
                 logger.warn("Invalid integer value %s from str %s" % (value, str))
                 return None
+
+        # convert some to booleans
+        for toConvert in ["isFullResync"]:
+            if data[toConvert] != "1" and data[toConvert] != "0":
+                logger.warn("Invalid boolean str %s" % (str))
+                return None
+            data[toConvert] = (data[toConvert] == "1")
 
         return data
 

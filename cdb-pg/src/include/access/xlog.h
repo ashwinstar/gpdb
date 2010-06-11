@@ -174,7 +174,8 @@ extern XLogRecPtr XLogInsert_OverrideXid(RmgrId rmid, uint8 info, XLogRecData *r
 extern XLogRecPtr XLogLastInsertEndLoc(void);
 extern XLogRecPtr XLogLastChangeTrackedLoc(void);
 extern void XLogFlush(XLogRecPtr RecPtr);
-extern void XLogFileRepFlushCache(void);
+extern void XLogFileRepFlushCache(
+	XLogRecPtr	*lastChangeTrackingEndLoc);
 
 extern void xlog_redo(XLogRecPtr lsn __attribute__((unused)) , XLogRecord *record);
 extern void xlog_desc(StringInfo buf, uint8 xl_info, char *rec);
@@ -225,7 +226,8 @@ extern int XLogReconcileEofMirror(
 					   XLogRecPtr	*mirrorEof);
 
 extern int XLogRecoverMirrorControlFile(void);
-extern int XLogAddRecordsToChangeTracking(void);
+extern int XLogAddRecordsToChangeTracking(
+	XLogRecPtr	*lastChangeTrackingEndLoc);
 extern void XLogInChangeTrackingTransition(void);
 
 extern void xlog_print_redo_read_buffer_not_found(

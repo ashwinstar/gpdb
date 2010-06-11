@@ -29,6 +29,7 @@ try:
     from gppylib.commands import base
     from gppylib.commands import pg
     from gppylib.gpcoverage import GpCoverage
+    from gppylib.utils import TableLogger
 except ImportError, e:    
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -379,10 +380,14 @@ class GpStop():
         invalid = self.gparray.get_invalid_segdbs()
         inactive = self.gparray.get_inactive_mirrors_segdbs()
         total_segs = len(self.gparray.getSegDbList())
-        logger.info("------------------------------------------------")
-        logger.info("Parallel process exit status")
-        
+
         if failed > 0 or logging_is_verbose():
+            logger.info("------------------------------------------------")
+            if logging_is_verbose():
+                logger.info("Segment Stop Information")
+            else:
+                logger.info("Failed Segment Stop Information ")
+
             logger.info("------------------------------------------------")
             if failed > 0:
                 for failure in failed_seg_status:
@@ -391,27 +396,27 @@ class GpStop():
                     for stat in success_seg_status:
                         logger.debug(stat)              
              
-        flag=""
-        if failed > 0:
-            flag="<<<<<"
-        
-        logger.info("------------------------------------------------")
-        logger.info("Total processes marked as completed         = %d" % stopped)
-        logger.info("Total processes marked as failed            = %d %s" % (failed,flag))
-        logger.info("------------------------------------------------")        
-        if len(invalid) > 0:
-            logger.warning("Total instances marked invalid and bypassed = %d %s" % (len(invalid),flag))
-        else:            
-            logger.info("Total instances marked invalid and bypassed = 0 ")
+        tabLog = TableLogger().setWarnWithArrows(True)
+        tabLog.addSeparator()
+        tabLog.info(["Segments stopped successfully", "= %d" % stopped])
+        tabLog.infoOrWarn(failed > 0, ["Segments with errors during stop", "= %d" % failed])
+        if invalid:
+            tabLog.info([])
+            tabLog.warn(["Segments that are currently marked down in configuration", "= %d" % len(invalid)])
+            tabLog.info(["         (stop was still attempted on these segments)"])
+        tabLog.addSeparator()
+
+        tabLog.outputTable()
+
+        flag = "" if failed == 0 else "<<<<<<<<"
         logger.info("Successfully shutdown %d of %d segment instances %s" % (stopped,total_segs,flag))
          
-        total_failures=failed + len(invalid) - len(inactive)
-        if total_failures > 0:
+        if failed > 0:
             self.hadFailures=True
             logger.warning("------------------------------------------------")
             logger.warning("Segment instance shutdown failures reported")
-            logger.warning("Failed to shutdown %d of %d segment instances <<<<<" % (total_failures,total_segs))
-            logger.warning("A total of %d errors were encountered" % total_failures)
+            logger.warning("Failed to shutdown %d of %d segment instances <<<<<" % (failed,total_segs))
+            logger.warning("A total of %d errors were encountered" % failed)
             logger.warning("Review logfile %s" % get_logfile())
             logger.warning("For more details on segment shutdown failure(s)")
             logger.warning("------------------------------------------------")

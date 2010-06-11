@@ -720,9 +720,7 @@ class GpRecoverSegmentProgram:
                     len(mirrorBuilder.getMirrorsToBuild()), True)
 
             logger.info("Segments have been recovered; data synchronization is in progress.")
-            logger.info("Use gpstate to check the resynchronization progress.")
-
-
+            logger.info("Use  gpstate -s  to check the resynchronization progress.")
 
         return 0 # success -- exit code 0!
 

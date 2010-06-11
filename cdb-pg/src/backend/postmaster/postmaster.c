@@ -659,6 +659,14 @@ bool Gp_entry_postmaster = false;
 static int Save_MppLocalProcessCounter = 0;
 static DistributedTransactionTimeStamp Save_DtxStartTime = 0;
 
+/** resync status info from cdbfilerepresyncmanager.h **/
+extern struct timeval FileRepResync_GetEstimateResyncCompletionTime(void);
+extern int64 FileRepResync_GetBlocksSynchronized(void);
+extern int64 FileRepResync_GetTotalBlocksToSynchronize(void);
+
+/** changetracking size info from cdbresynchronizechangetracking.h */
+extern int64 ChangeTracking_GetTotalSpaceUsedOnDisk(void);
+
 /**
  * Is this a part of a segment database.  Note that this is
  *   not always the same as ! GPPostmaster because
@@ -2024,7 +2032,12 @@ ServerLoop(void)
 			}
 		}
 
-		doRequestedPrimaryMirrorModeTransitions(Shutdown > NoShutdown );
+        if ( ! FatalError )
+        {
+            /* only do primary/mirror transitions if we are NOT during process shutdown because of FatalError...
+             *  we'll wait for shared memory reset to run them! */
+		    doRequestedPrimaryMirrorModeTransitions(Shutdown > NoShutdown );
+        }
 
 		/* If we have lost the log collector, try to start a new one */
 		if (SysLoggerPID == 0 && Redirect_stderr)
@@ -2668,26 +2681,49 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
 
         getPrimaryMirrorStatusCodes(&pm_mode, &s_state, &d_state);
 
-        /* todo: MILENA: fill these in with correct values, use -1,-1,-1 if resync is not in progress or it's not a primary/mirror */
-        int64 resyncNumCompleted = 8;
-        int64 resyncTotalToComplete = 99;
-        int64 elapsedTimeSeconds = 1000;
+        int64 resyncNumCompleted = FileRepResync_GetBlocksSynchronized();
+        int64 resyncTotalToComplete = FileRepResync_GetTotalBlocksToSynchronize();
+        int64 changeTrackingBytesUsed = ChangeTracking_GetTotalSpaceUsedOnDisk();
+
+        /**
+         * Note: call this one AFTER calling the others above -- it will return a sentinel
+         *       if estimates are invalid, and we want to be sure we get the sentinel
+         *       (the system can go from valid to invalid estimates but no vice-versa)
+         */
+        struct timeval estimateResyncCompletionTime = FileRepResync_GetEstimateResyncCompletionTime();
 
         bool isIOSuspended = primaryMirrorIsIOSuspended();
         char *databaseStatus;
 
         /** Note: some of these status field results are used in python to determine whether there is a warning or not */
         if ( pm_mode == PMModeMirrorSegment)
-            databaseStatus = "Up";
-        else if ( isIOSuspended )
-            databaseStatus = "Suspended";
-        else if ( pmState == PM_RUN)
-            databaseStatus = "Up";
-        else if ( pmState == PM_INIT)
-            databaseStatus = "Uninitialized";  // awaiting decision by fault prober after PM reset, for example
-        else if ( pmState < PM_RUN )
-            databaseStatus = "Starting";
-        else databaseStatus = "Stopping";
+        {
+            switch ( s_state )
+            {
+                case SegmentStateFault:
+                    databaseStatus = "Down";
+                    break;
+                case SegmentStateImmediateShutdown:
+                case SegmentStateShutdown:
+                    databaseStatus = "Stopping";
+                    break;
+                default:
+                    databaseStatus = "Up";
+                    break;
+            }
+        }
+        else
+        {
+            if ( isIOSuspended )
+                databaseStatus = "Suspended";
+            else if ( pmState == PM_RUN)
+                databaseStatus = "Up";
+            else if ( pmState == PM_INIT)
+                databaseStatus = "Uninitialized";  // awaiting decision by fault prober after PM reset, for example
+            else if ( pmState < PM_RUN )
+                databaseStatus = "Starting";
+            else databaseStatus = "Stopping";
+        }
 
         snprintf(statusBuf, sizeof(statusBuf), "Success: mode:%s\n"
                                   "segmentState:%s\n"
@@ -2697,12 +2733,16 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
                                   "isFullResync:%d\n"
                                   "resyncNumCompleted:" INT64_FORMAT "\n"
                                   "resyncTotalToComplete:" INT64_FORMAT "\n"
-                                  "elapsedTimeSeconds:" INT64_FORMAT "\n",
+                                  "changeTrackingBytesUsed:" INT64_FORMAT "\n"
+                                  "estimatedCompletionTimeSecondsSinceEpoch:" INT64_FORMAT "\n",
                  getMirrorModeLabel(pm_mode), getSegmentStateLabel(s_state), getDataStateLabel(d_state),
                  databaseStatus,
                  gPmStateLabels[pmState],
                  isFullResync() ? 1 : 0,
-                 resyncNumCompleted, resyncTotalToComplete, elapsedTimeSeconds);
+                 resyncNumCompleted,
+                 resyncTotalToComplete,
+                 changeTrackingBytesUsed,
+                 (int64)estimateResyncCompletionTime.tv_sec);
 
 		sendPrimaryMirrorTransitionResult(statusBuf);
 		return;
@@ -4498,18 +4538,29 @@ signal_to_name(int signal)
 
 /*
  * Log the death of a child process.
+ *
+ * @param pid pass -1 if the pid of the process that died is not known (when filerep main requests a postmaster reset,
+ *            this function is called but the pid is not known)
  */
 static void
 LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 {
+    char pidLabel[100];
+    if (pid == -1)
+    {
+        /* when filerep main requests a postmaster reset, we call LogChildExit but don't have a valid pid */
+        pidLabel[0] = '\0';
+    }
+    else sprintf(pidLabel, " (PID %d)", pid);
+
 	if (WIFEXITED(exitstatus))
 		ereport(lev,
 
 		/*------
 		  translator: %s is a noun phrase describing a child process, such as
 		  "server process" */
-				(errmsg("%s (PID %d) exited with exit code %d",
-						procname, pid, WEXITSTATUS(exitstatus))));
+				(errmsg("%s%s exited with exit code %d",
+						procname, pidLabel, WEXITSTATUS(exitstatus))));
 	else if (WIFSIGNALED(exitstatus))
 #if defined(WIN32)
 		ereport(lev,
@@ -4517,8 +4568,8 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 		/*------
 		  translator: %s is a noun phrase describing a child process, such as
 		  "server process" */
-				(errmsg("%s (PID %d) was terminated by exception 0x%X",
-						procname, pid, WTERMSIG(exitstatus)),
+				(errmsg("%s%s was terminated by exception 0x%X",
+						procname, pidLabel, WTERMSIG(exitstatus)),
 				 errhint("See C include file \"ntstatus.h\" for a description of the hexadecimal value.")));
 #elif defined(HAVE_DECL_SYS_SIGLIST) && HAVE_DECL_SYS_SIGLIST
 	ereport(lev,
@@ -4528,8 +4579,8 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 	  "server process" */
 	// strsignal() is preferred over the deprecated use of sys_siglist, on platforms that support it.
 	// Solaris and Linux do support it, but I think MAC OSX doesn't?
-			(errmsg("%s (PID %d) was terminated by signal %d: %s",
-					procname, pid, WTERMSIG(exitstatus),
+			(errmsg("%s%s was terminated by signal %d: %s",
+					procname, pidLabel, WTERMSIG(exitstatus),
 					WTERMSIG(exitstatus) < NSIG ?
 					sys_siglist[WTERMSIG(exitstatus)] : "(unknown)")));
 #else
@@ -4544,8 +4595,8 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 		/*------
 		  translator: %s is a noun phrase describing a child process, such as
 		  "server process" */
-			    (errmsg("%s (PID %d) was terminated by signal %d: %s",
-						procname, pid, WTERMSIG(exitstatus), signalName)));
+			    (errmsg("%s%s was terminated by signal %d: %s",
+						procname, pidLabel, WTERMSIG(exitstatus), signalName)));
 	}
 #endif
 	else
@@ -4554,8 +4605,8 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 		/*------
 		  translator: %s is a noun phrase describing a child process, such as
 		  "server process" */
-				(errmsg("%s (PID %d) exited with unrecognized status %d",
-						procname, pid, exitstatus)));
+				(errmsg("%s%s exited with unrecognized status %d",
+						procname, pidLabel, exitstatus)));
 }
 
 /**

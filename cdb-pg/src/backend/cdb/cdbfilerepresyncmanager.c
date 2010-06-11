@@ -166,31 +166,34 @@ typedef struct FileRepResyncShmem_s {
 	
 	volatile int	appendOnlyCommitCount;
 	
-	bool		checkpointRequest;
+	bool			checkpointRequest;
 	
-	bool		reCreateRequest;
+	bool			reCreateRequest;
 	
-	bool		readBufferRequest;
-		/* allow flushing buffers from buffer pool to primary and mirror from resync worker process */
+	int64			blocksSynchronized;
+		/* required to report number of blocks resynchronized */
+		
+	int64			totalBlocksToSynchronize;
+		/* required to report total number of blocks to be resynchronized */
 	
-	slock_t		lock;
+	struct timeval	startResyncTime;
+		/* resynchronization start time, required to report estimate time for resync to complete */
 	
-	XLogRecPtr	endFullResyncLSN;
+	slock_t			lock;
 	
-	XLogRecPtr	endIncrResyncLSN;
+	XLogRecPtr		endFullResyncLSN;
 	
-	int			writeCount;
-	/* number of Write operations waiting to be processed */
+	XLogRecPtr		endIncrResyncLSN;
 	
-	//int			resyncWaitingCount; // create + drop + write
-	/* NOTE - probably to be removed */
+	int				writeCount;
+		/* number of relations waiting to be resynchronized */
+		
+	int				resyncInProgressCount; 
+		/* number of relations in resynchronization */
 	
-	int			resyncInProgressCount; // create + drop + write
-	/* NOTE - probably to be removed */
+	int				resyncCompletedCount; 
 	
-	int			resyncCompletedCount; // create + drop + write
-	
-	HTAB		*fileRepResyncHash;
+	HTAB			*fileRepResyncHash;
 	/* List of relations to be resynced */
 	
 } FileRepResyncShmem_s;
@@ -310,18 +313,6 @@ FileRepResync_SetReCreateRequest(void)
 	fileRepResyncShmem->reCreateRequest = TRUE;
 }
 
-void
-FileRepResync_ResetReadBufferRequest(void)
-{
-	fileRepResyncShmem->readBufferRequest = FALSE;
-}
-
-void
-FileRepResync_SetReadBufferRequest(void)
-{
-	fileRepResyncShmem->readBufferRequest = TRUE;
-}
-
 bool 
 FileRepResync_IsTransitionFromResyncToInSync(void)
 {
@@ -338,12 +329,82 @@ FileRepResync_IsReCreate(void)
 			fileRepProcessType == FileRepProcessTypeResyncManager):false);	
 }
 
-bool
-FileRepResync_IsReadBuffer(void)
+int64
+FileRepResync_GetBlocksSynchronized(void)
 {
 	return((fileRepResyncShmem != NULL)?
-		   (fileRepResyncShmem->readBufferRequest == TRUE &&
-			FileRepPrimary_IsResyncWorker()):false);	
+		   (fileRepResyncShmem->blocksSynchronized) : 0);
+}
+
+int64
+FileRepResync_GetTotalBlocksToSynchronize(void)
+{
+	return((fileRepResyncShmem != NULL)?
+		   (fileRepResyncShmem->totalBlocksToSynchronize) : 0);
+}
+
+void
+FileRepResync_SetTotalBlocksToSynchronize(int64 totalBlocksToSynchronize)
+{
+	fileRepResyncShmem->totalBlocksToSynchronize = totalBlocksToSynchronize;
+}
+
+void
+FileRepResync_AddToTotalBlocksToSynchronize(int64 moreBlocksToSynchronize)
+{
+	fileRepResyncShmem->totalBlocksToSynchronize += moreBlocksToSynchronize;
+}
+
+struct timeval
+FileRepResync_GetEstimateResyncCompletionTime(void)
+{
+	char			temp[128];
+	pg_time_t		tt;
+	struct timeval	currentResyncTime;
+	struct timeval	estimateResyncCompletionTime = {0, 0};
+
+    /* pull values out of shared memory into local variables so we have consistent values for calculation here */
+	int64 totalBlocksToSynchronize = fileRepResyncShmem == NULL ? 0L : fileRepResyncShmem->totalBlocksToSynchronize;
+	int64 blocksSynchronized = fileRepResyncShmem == NULL ? 0L : fileRepResyncShmem->blocksSynchronized;
+	
+	if (totalBlocksToSynchronize == 0L || blocksSynchronized == 0L)
+	{
+		return estimateResyncCompletionTime;
+	}
+	struct timeval startResyncTime = fileRepResyncShmem->startResyncTime;
+
+	gettimeofday(&currentResyncTime, NULL);
+	
+	if (totalBlocksToSynchronize > blocksSynchronized)
+	{
+		estimateResyncCompletionTime.tv_sec = 
+			(((currentResyncTime.tv_sec - startResyncTime.tv_sec) *
+			  (totalBlocksToSynchronize - blocksSynchronized)) / 
+			 blocksSynchronized) + currentResyncTime.tv_sec;
+	}
+	else
+	{
+		estimateResyncCompletionTime.tv_sec = 0;
+		estimateResyncCompletionTime.tv_usec = 0;
+	}
+	
+	if (Debug_filerep_print)
+	{
+		tt = (pg_time_t) estimateResyncCompletionTime.tv_sec;
+		pg_strftime(temp, sizeof(temp), "%a %b %d %H:%M:%S.%%06d %Y %Z",
+					pg_localtime(&tt, session_timezone));
+		
+		elog(LOG, 
+			 "resynchronization info: "
+			 "total blocks to synchronize " INT64_FORMAT " " 
+			 "blocks synchronized "  INT64_FORMAT  " "
+			 "estimate resync completion time '%s' ",
+			 totalBlocksToSynchronize,
+			 blocksSynchronized,
+			 temp);
+	}
+	
+	return estimateResyncCompletionTime;
 }
 
 /****************************************************************
@@ -397,8 +458,12 @@ FileRepResync_ShmemInit(void)
 	
 	fileRepResyncShmem->reCreateRequest = FALSE;	
 	
-	fileRepResyncShmem->readBufferRequest = FALSE;
+	fileRepResyncShmem->totalBlocksToSynchronize = 0;
 	
+	fileRepResyncShmem->blocksSynchronized = 0;
+	
+	gettimeofday(&fileRepResyncShmem->startResyncTime, NULL);
+		
 	SpinLockInit(&fileRepResyncShmem->lock);
 	
 	fileRepResyncShmem->endFullResyncLSN.xlogid = 0;
@@ -454,7 +519,11 @@ FileRepResync_ShmemReInit(void)
 	
 	fileRepResyncShmem->reCreateRequest = FALSE;	
 	
-	fileRepResyncShmem->readBufferRequest = FALSE;
+	fileRepResyncShmem->totalBlocksToSynchronize = 0;
+	
+	fileRepResyncShmem->blocksSynchronized = 0;
+	
+	gettimeofday(&fileRepResyncShmem->startResyncTime, NULL);
 	
 	SpinLockInit(&fileRepResyncShmem->lock);
 	
@@ -592,7 +661,7 @@ FileRepPrimary_StartResyncManager(void)
 					FileRepSubProcess_ProcessSignals();
 					pg_usleep(50000L); /* 50 ms */	
 				}		
-				
+								
 				if (FileRepSubProcess_GetState() == FileRepStateShutdown ||
 					FileRepSubProcess_GetState() == FileRepStateShutdownBackends ||
 					FileRepSubProcess_GetState() == FileRepStateImmediateShutdown) {
@@ -612,7 +681,8 @@ FileRepPrimary_StartResyncManager(void)
 				}
 				else
 				{
-					ChangeTracking_CreateInitialFromPreviousCheckpoint();
+					ChangeTracking_CreateInitialFromPreviousCheckpoint(
+												/* lastChangeTrackingEndLoc */ NULL);
 					FileRepSubProcess_SetState(FileRepStateReady);
 				}
 				
@@ -634,8 +704,14 @@ FileRepPrimary_StartResyncManager(void)
 					break;
 				}
 			}
+			
+			/* 
+			 * Database was started.
+			 * The local copies of ThisTimeLineID and RedoRecPtr has to be initialized.
+			 */
+			InitXLOGAccess();
 		}
-
+		
 		Insist(segmentState == SegmentStateInResyncTransition ||
 			   segmentState == SegmentStateReady);
 
@@ -686,6 +762,9 @@ FileRepResyncManager_InResyncTransition(bool isLastLocTracked)
 		elog(ERROR, "FileRep Manager already holding the MirroredLock");
 	
 	LWLockAcquire(MirroredLock, LW_EXCLUSIVE);
+	
+	/* database transitions to suspended state, IO activity on the segment is suspended */
+	primaryMirrorSetIOSuspended(TRUE);
 	
 	elog(LOG, "FileRepResyncManager_InResyncTransition() ChangeTracking_RecordLastChangeTrackedLoc");
 
@@ -790,6 +869,9 @@ FileRepResyncManager_InResyncTransition(bool isLastLocTracked)
 exit:
 	LWLockRelease(MirroredLock);
 	
+	/* database is resumed */
+	primaryMirrorSetIOSuspended(FALSE);
+	
 	return status;
 }
 
@@ -815,6 +897,9 @@ FileRepPrimary_RunResyncManager(void)
 	
 	ResynchronizeScanToken_Init(&token);
 	
+	/* set start resync time required for reporting */
+	gettimeofday(&fileRepResyncShmem->startResyncTime, NULL);
+	
 	while (1) {
 		
 		FileRepSubProcess_ProcessSignals();
@@ -829,7 +914,7 @@ FileRepPrimary_RunResyncManager(void)
 			pg_usleep(50000L);  // 50ms
 			continue;
 		}
-						
+				
 		retval = PersistentFileSysObj_ResynchronizeScan(
 											   &token,
 											   &entry.relFileNode,
@@ -909,6 +994,33 @@ FileRepPrimary_RunResyncManager(void)
 			entry.mirrorDataSynchronizationState == MirroredRelDataSynchronizationState_None)
 		{
 			continue;
+		}
+		
+		if (isFullResync())
+		{
+			if  (entry.mirrorDataSynchronizationState == MirroredRelDataSynchronizationState_BufferPoolPageIncremental ||
+				 entry.mirrorDataSynchronizationState == MirroredRelDataSynchronizationState_AppendOnlyCatchup)
+			{
+				/* TODO has to be changed to ERROR and assert removed */
+				ereport(LOG,
+						(errcode_for_file_access(),
+						 errmsg("unexpected mirror synchronization state during full resynchronization"
+								"relation path to be resynchronized:'%s' "
+								"relStorageMgr:'%s(%d)' mirrorDataSynchronizationState:'%s(%d)' "
+								"AppendOnlyLossEof:" INT64_FORMAT " "
+								"AppendOnlyNewEof:" INT64_FORMAT " "
+								"mirrorBufpoolResyncChangedPageCount:" INT64_FORMAT " ", 
+								entry.fileName, 
+								PersistentFileSysRelStorageMgr_Name(entry.relStorageMgr),
+								entry.relStorageMgr,
+								MirroredRelDataSynchronizationState_Name(entry.mirrorDataSynchronizationState),
+								entry.mirrorDataSynchronizationState,
+								entry.mirrorAppendOnlyLossEof,
+								entry.mirrorAppendOnlyNewEof,
+								entry.mirrorBufpoolResyncChangedPageCount)));
+				Insist(0);
+			}
+			
 		}
 		
 		/*
@@ -999,6 +1111,12 @@ FileRepResyncManager_InSyncTransition(void)
 		fileRepResyncShmem->checkpointRequest = TRUE;		
 		CreateCheckPoint(false, true);
 		fileRepResyncShmem->checkpointRequest = FALSE;
+		
+		/* 
+		 * The second checkpoint is required in order to mirror pg_control
+		 * with last checkpoint position in the xlog file that is mirrored (XLogSwitch).
+		 */
+		CreateCheckPoint(false, true);
 		
 		elog(LOG, "FileRepResyncManager_InSyncTransition() RequestCheckpoint() END");
 		
@@ -1270,10 +1388,13 @@ FileRepResync_CheckProgress(void)
 					break;
 					
 				case FileRepResyncStateCompleted:
-					if (FileRepResync_RemoveEntry(entry->fileName) == TRUE) {
+					if (FileRepResync_RemoveEntry(entry->fileName) == TRUE) 
+					{
 						fileRepResyncShmem->resyncCompletedCount--;	
 						Assert(fileRepResyncShmem->resyncCompletedCount >= 0);
-					} else {
+					} 
+					else 
+					{
 						Assert(0);
 					}
 					
@@ -1288,11 +1409,15 @@ FileRepResync_CheckProgress(void)
 							entry->mirrorAppendOnlyNewEof,
 							TRUE); 
 					
+					fileRepResyncShmem->blocksSynchronized += entry->mirrorBufpoolResyncChangedPageCount;
+					
 					if (Debug_filerep_print)
-						elog(LOG, "FileRepResync_CheckProgress() identifier:'%s' state:'%d' resyncCompletedCount:'%d' ", 
+						elog(LOG, "FileRepResync_CheckProgress() identifier:'%s' state:'%d' resyncCompletedCount:'%d' "
+							 "blocks synchronized: " INT64_FORMAT " ", 
 							 entry->fileName,
 							 entry->fileRepResyncState,
-							 fileRepResyncShmem->resyncCompletedCount);
+							 fileRepResyncShmem->resyncCompletedCount,
+							 fileRepResyncShmem->blocksSynchronized);
 					
 					break;
 					
@@ -1487,6 +1612,11 @@ FileRepResync_UpdateEntry(
 		
 		entryLocal->fileRepResyncState = FileRepResyncStateCompleted;
 		
+		if (entryLocal->mirrorBufpoolResyncChangedPageCount == 0)
+		{
+			entryLocal->mirrorBufpoolResyncChangedPageCount = entry->mirrorBufpoolResyncChangedPageCount;
+		}
+		
 		Assert(fileRepResyncShmem->resyncInProgressCount >= 0);
 
 	} else {
@@ -1495,7 +1625,7 @@ FileRepResync_UpdateEntry(
 	}
 	
 	if (Debug_filerep_print)
-		elog(LOG, "FileRepResync_UpdateEntry() identifier:'%s' state:'%d' resyncCompletedCount:'%d' ", 
+		elog(LOG, "FileRepResync_UpdateEntry() identifier:'%s' state:'%d' resyncCompletedCount:'%d' ",
 			 entry->fileName,
 			 entry->fileRepResyncState,
 			 fileRepResyncShmem->resyncCompletedCount);

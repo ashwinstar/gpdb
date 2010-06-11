@@ -18,7 +18,7 @@
 #include "utils/palloc.h"
 #include "cdb/cdbfilerepprimary.h"
 #include "cdb/cdbmirroredbufferpool.h"
-#include "cdb/cdbfilerepresyncmanager.h"
+#include "cdb/cdbfilerepresyncworker.h"
 #include "storage/fd.h"
 #include "cdb/cdbpersistenttablespace.h"
 #include "storage/smgr.h"
@@ -363,7 +363,7 @@ void MirroredBufferPool_Open(
 							mirrorDataLossTrackingSessionNum,
 							/* create */ false,
 							/* mirrorOnly */ false,
-							/* copyToMirror */ FileRepPrimary_IsResyncWorker() && ! FileRepResync_IsReadBuffer(),
+							/* copyToMirror */ FileRepResyncWorker_IsResyncRequest(),
 							primaryError,
 							mirrorDataLossOccurred);
 
@@ -514,7 +514,7 @@ bool MirroredBufferPool_Flush(
 	}
 	
 	if (StorageManagerMirrorMode_DoPrimaryWork(open->mirrorMode) &&
-		! (FileRepPrimary_IsResyncWorker() && ! FileRepResync_IsReadBuffer()))
+		! FileRepResyncWorker_IsResyncRequest())	
 	{
 		errno = 0;
 
@@ -662,7 +662,7 @@ bool MirroredBufferPool_Write(
 	}
 	
 	if (StorageManagerMirrorMode_DoPrimaryWork(open->mirrorMode) &&
-		! (FileRepPrimary_IsResyncWorker() && ! FileRepResync_IsReadBuffer()))
+		! FileRepResyncWorker_IsResyncRequest())
 	{
 		errno = 0;
 		
@@ -1007,7 +1007,7 @@ bool MirroredBufferPool_Truncate(
 	}
 	
 	if (StorageManagerMirrorMode_DoPrimaryWork(open->mirrorMode) &&
-		! (FileRepPrimary_IsResyncWorker() && ! FileRepResync_IsReadBuffer()))
+		! FileRepResyncWorker_IsResyncRequest())
 	{
 		errno = 0;
 		

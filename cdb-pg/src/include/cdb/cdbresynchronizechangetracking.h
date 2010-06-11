@@ -120,7 +120,8 @@ extern void ChangeTracking_RecordLastChangeTrackedLoc(void);
  * UNDONE: Talk about XLOG stability -- can have XLOG files disappearing or new XLOG writes
  * UNDONE: occurring since they would intermix and we can't handle that..
  */
-extern void ChangeTracking_CreateInitialFromPreviousCheckpoint(void);
+extern void ChangeTracking_CreateInitialFromPreviousCheckpoint(
+	XLogRecPtr	*lastChangeTrackingEndLoc);
 
 /*
  * Make a copy of the rdata data buffers so that we use it 
@@ -185,6 +186,11 @@ extern int ChangeTracking_GetInfoArrayDesiredMaxLength(RmgrId rmid, uint8 info);
  * error.
  */
 extern int64 ChangeTracking_GetTotalBlocksToSync(void);
+
+/**
+ * Get the total amount of space, in bytes, used by the changetracking information.
+ */
+extern int64 ChangeTracking_GetTotalSpaceUsedOnDisk(void);
 
 extern bool ChangeTracking_DoesFileExist(CTFType ftype);
 

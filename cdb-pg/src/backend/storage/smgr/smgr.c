@@ -1852,10 +1852,7 @@ smgrDoDeleteActions(
 	/*
 	 * Make the above State-Changes permanent.
 	 */
-	// UNDONE: Suppress this here until we resolve the lock ordering issues with ChangeTrackingTransitionLock...
-	// UNDONE: It has been moved down below the MIRRORED_UNLOCK.
-	// UNDONE: Restore this for correctness.
-//	PersistentFileSysObj_FlushXLog();
+	PersistentFileSysObj_FlushXLog();
 
 	/*
 	 * Second pass does physical drops and final State-Changes.
@@ -1930,7 +1927,6 @@ smgrDoDeleteActions(
 
 	MIRRORED_UNLOCK;
 
-	// UNDONE: See note in middle.
 	PersistentFileSysObj_FlushXLog();
 
 }

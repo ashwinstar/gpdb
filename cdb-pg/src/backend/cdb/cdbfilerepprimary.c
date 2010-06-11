@@ -203,6 +203,13 @@ FileRepPrimary_IsMirroringRequired(
 					!(isInTransition == TRUE &&
 					  dataStateTransition == DataStateInChangeTracking))
 				{
+					// UNDONE: Debugging
+					elog(LOG, "segmentState %d, fileRepShmemArray[0]->state %d, fileRepProcessType %d, isInTransition %s, dataStateTransition %d",
+						 segmentState,
+						 fileRepShmemArray[0]->state,
+						 fileRepProcessType,
+						 (isInTransition ? "true" : "false"),
+						 dataStateTransition);
 					ereport(ERROR,
 							(errmsg("failure is detected in segment mirroring during shutdown, abort requested (%d)",
 							 getpid())));
@@ -226,6 +233,9 @@ FileRepPrimary_IsMirroringRequired(
 										"failover requested "),
 								FileRep_errcontext()));
 						report = TRUE;
+						
+						/* database transitions to suspended state, IO activity on the segment is suspended */
+						primaryMirrorSetIOSuspended(TRUE);
 					}
 					pg_usleep(500000L); /* 500 ms */
 					continue;
@@ -253,7 +263,10 @@ FileRepPrimary_IsMirroringRequired(
 									"segment mirroring is suspended "),
 							 errSendAlert(true),
 							FileRep_errcontext()));
-					report = FALSE;
+					report = FALSE;	
+					
+					/* database is resumed */
+					primaryMirrorSetIOSuspended(FALSE);
 				}	
 				/* No Operation */
 				break;
@@ -508,17 +521,7 @@ FileRepPrimary_MirrorOpen(FileRepIdentifier_u	fileRepIdentifier,
 			status = STATUS_ERROR;
 		}
 	}
-	
-#ifdef FILEREP_DEBUG
-	if (dataState == DataStateInChangeTracking)
-		ereport(LOG,			
-			(errmsg("LOG(filerep): Change Tracking "), 
-			 FileRep_errdetail(fileRepIdentifier,
-							   fileRepRelationType,
-							   fileRepOperation),
-			 FileRep_errcontext()));	
-#endif	
-			
+				
 	return status;
 }	
 
@@ -547,15 +550,6 @@ FileRepPrimary_MirrorFlush(FileRepIdentifier_u		fileRepIdentifier,
 		}
 	}
 
-#ifdef FILEREP_DEBUG
-	if (dataState == DataStateInChangeTracking)
-		ereport(LOG,			
-				(errmsg("LOG(filerep): Change Tracking "), 
-				 FileRep_errdetail(fileRepIdentifier,
-								   fileRepRelationType,
-								   FileRepOperationFlush),
-				 FileRep_errcontext()));	
-#endif	
 	return status;
 }
 
@@ -583,17 +577,7 @@ FileRepPrimary_MirrorClose(FileRepIdentifier_u		fileRepIdentifier,
 						  descr);
 		}
 	}
-	
-#ifdef FILEREP_DEBUG
-	if (dataState == DataStateInChangeTracking)
-		ereport(LOG,			
-				(errmsg("LOG(filerep): Change Tracking "), 
-				 FileRep_errdetail(fileRepIdentifier,
-								   fileRepRelationType,
-								   FileRepOperationClose),
-				 FileRep_errcontext()));	
-#endif
-	
+		
 	return status;	
 }
 
@@ -622,15 +606,6 @@ FileRepPrimary_MirrorFlushAndClose(FileRepIdentifier_u		fileRepIdentifier,
 		}
 	}
 
-#ifdef FILEREP_DEBUG
-	if (dataState == DataStateInChangeTracking)
-		ereport(LOG,			
-				(errmsg("LOG(filerep): Change Tracking "), 
-				 FileRep_errdetail(fileRepIdentifier,
-								   fileRepRelationType,
-								   FileRepOperationFlushAndClose),
-				 FileRep_errcontext()));	
-#endif	
 	return status;	
 }
 
@@ -666,16 +641,6 @@ FileRepPrimary_MirrorTruncate(
 									  descr);
 		}
 	}
-	
-#ifdef FILEREP_DEBUG	
-	if (dataState == DataStateInChangeTracking)
-		ereport(LOG,			
-				(errmsg("LOG(filerep): Change Tracking "), 
-				 FileRep_errdetail(fileRepIdentifier,
-								   fileRepRelationType,
-								   FileRepOperationTruncate),
-				 FileRep_errcontext()));	
-#endif	
 	
 	return status;	
 }
@@ -735,16 +700,6 @@ int FileRepPrimary_MirrorRename(
 											  descr);
 		}
 	}
-	
-#ifdef FILEREP_DEBUG	
-	if (dataState == DataStateInChangeTracking)
-		ereport(LOG,			
-				(errmsg("LOG(filerep): Change Tracking "), 
-				 FileRep_errdetail(oldFileRepIdentifier,
-								   fileRepRelationType,
-								   FileRepOperationRename),
-				 FileRep_errcontext()));	
-#endif	
 	
 	return status;		
 }	
@@ -917,16 +872,6 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 		} // if
 	}
 	
-#ifdef FILEREP_DEBUG		
-	if (dataState == DataStateInChangeTracking)
-		ereport(LOG,			
-				(errmsg("LOG(filerep): Change Tracking "), 
-				 FileRep_errdetail(fileRepIdentifier,
-								   fileRepRelationType,
-								   FileRepOperationWrite),
-				 FileRep_errcontext()));	
-#endif
-	
 	return status;
 }
 
@@ -961,16 +906,6 @@ FileRepPrimary_MirrorCreate(FileRepIdentifier_u		fileRepIdentifier,
 		}
 	}
 	
-#ifdef FILEREP_DEBUG
-	if (dataState == DataStateInChangeTracking)
-		ereport(LOG,			
-				(errmsg("LOG(filerep): Change Tracking "),
-				 FileRep_errdetail(fileRepIdentifier,
-								   fileRepRelationType,
-								   FileRepOperationCreate),
-				 FileRep_errcontext()));	
-#endif	
-			
 	return mirrorStatus;	
 }
 
@@ -999,16 +934,6 @@ FileRepPrimary_MirrorDrop(FileRepIdentifier_u	fileRepIdentifier,
 		}
 	}
 
-#ifdef FILEREP_DEBUG
-	if (dataState == DataStateInChangeTracking)
-		ereport(LOG,			
-				(errmsg("LOG(filerep): Change Tracking "), 
-				 FileRep_errdetail(fileRepIdentifier,
-								   fileRepRelationType,
-								   FileRepOperationDrop),
-				 FileRep_errcontext()));	
-#endif
-	
 	return status;
 }
 
@@ -1031,16 +956,6 @@ FileRepPrimary_MirrorDropFilesFromDir(FileRepIdentifier_u	fileRepIdentifier,
 														  FileRepOperationDropFilesFromDir,
 														  descr);		
 	}
-	
-#ifdef FILEREP_DEBUG
-	if (dataState == DataStateInChangeTracking)
-		ereport(LOG,			
-				(errmsg("LOG(filerep): Change Tracking "), 
-				 FileRep_errdetail(fileRepIdentifier,
-								   fileRepRelationType,
-								   FileRepOperationDropFilesFromDir),
-				 FileRep_errcontext()));	
-#endif
 	
 	return status;
 }
@@ -1076,16 +991,6 @@ FileRepPrimary_MirrorValidation(FileRepIdentifier_u		fileRepIdentifier,
 		
 		mirrorStatus = FileRepAckPrimary_GetMirrorErrno();
 	}
-	
-#ifdef FILEREP_DEBUG
-	if (dataState == DataStateInChangeTracking)
-		ereport(LOG,			
-				(errmsg("LOG(filerep): Change Tracking "), 
-				 FileRep_errdetail(fileRepIdentifier,
-								   fileRepRelationType,
-								   FileRepOperationValidation),
-				 FileRep_errcontext()));	
-#endif
 	
 	return mirrorStatus;
 }

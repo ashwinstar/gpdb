@@ -120,6 +120,10 @@ static pg_crc32 FileRep_CalculateAdler32(unsigned char *buf, int len);
 
 #define MaxFileRepSubProc 17	
 
+#define EXIT_STATUS_0(st)  ((st) == 0)
+#define EXIT_STATUS_1(st)  (WIFEXITED(st) && WEXITSTATUS(st) == 1)
+#define EXIT_STATUS_2(st)  (WIFEXITED(st) && WEXITSTATUS(st) == 2)
+
 /**
  * the level of logging for filerep process messages (having to do with process create/destroy)
  * It can be used only for testing purpose (set to LOG). Logging in signal handlers is not allowed, can cause deadlock.
@@ -375,13 +379,13 @@ int		file_rep_ack_buffer_size = 512 * 1024;
 
 /*
  * GUC parameter
- *			file_rep_retry = 300;
+ *			file_rep_retry = 1500;
  * 
  * Number of retries to insert message into shared memory. Buffer
  * may be full due to i.e. network down, mirror host down, 
  * slow processing, ...
  */
-int		file_rep_retry = 1500;  // 136 seconds   300 was old value
+int		file_rep_retry = 1500;  // 136 seconds  
 
 /**
  * GUC parameter
@@ -1031,6 +1035,12 @@ FileRep_ReserveShmem(
 			else
 			{
 				FileRep_IpcWait(fileRepIpcArray[fileRepShmem->ipcArrayIndex]->semP);
+				
+				/* that is not nice way of fixing MPP-8875, a temporary solution */ 
+				if (retry > 500)
+				{
+					FileRep_Sleep10ms(retry - 500);
+				}
 			}
 
 			retry++;
@@ -1537,6 +1547,21 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 			case SIGUSR2:	
 				signalName = "SIGUSR2";
 				break;
+			case SIGILL:	
+				signalName = "SIGILL";
+				break;
+			case SIGABRT:	
+				signalName = "SIGABRT";
+				break;
+			case SIGBUS:	
+				signalName = "SIGBUS";
+				break;
+			case SIGSEGV:	
+				signalName = "SIGSEGV";
+				break;
+			case SIGKILL:	
+				signalName = "SIGKILL";
+				break;
 			default:	
 				signalName = "(unknown)";
 				break;
@@ -1672,13 +1697,18 @@ FileRep_ProcessSignals()
 					LogChildExit(LOG, (FileRepProcessTypeToString[i]),
 								 FileRepSubProcList[i].pid,
 								 term_status);
-					
-					if (WTERMSIG(term_status) == SIGSEGV)
+
+					if (! EXIT_STATUS_0(term_status) &&
+					    ! EXIT_STATUS_1(term_status) &&
+					    ! EXIT_STATUS_2(term_status) )
 					{
-						FileRep_SetPostmasterReset();
+					    FileRep_SetPostmasterReset();
 					}
 						
-					if (term_status != 0 &&
+					/*
+					 * filerep processes exit with 2 if immediate shutdown or fault
+					 */
+					if ((EXIT_STATUS_1(term_status) || EXIT_STATUS_2(term_status) ) &&
 						segmentState != SegmentStateShutdown &&
 						segmentState != SegmentStateImmediateShutdown &&
 						segmentState != SegmentStateShutdownFilerepBackends)
@@ -2034,7 +2064,6 @@ FileRep_StartChildProcess(FileRepProcessType_e type)
 	/* in child */
 	if (pid == 0) {    
 
-		
 		/* Release postmaster's working memory context */
 		MemoryContextSwitchTo(TopMemoryContext);
 		MemoryContextDelete(fileRepMemoryContext);
@@ -2066,8 +2095,8 @@ FileRep_StartChildProcess(FileRepProcessType_e type)
 }
 
 /*
- * 100 * 10ms + 100 * 50ms + 100 * 100ms = 16 sec
- * file_rep_retry = 300 (max value)
+ * 100 * 10ms + 100 * 50ms + 1300 * 100ms = 136 sec
+ * file_rep_retry = 1500 (max value)
  */
 void
 FileRep_Sleep10ms(int retry)
@@ -2085,8 +2114,8 @@ FileRep_Sleep10ms(int retry)
 }
 
 /*
- * 50 * 1ms + 50 * 10ms + 100 * 50ms + 100 * 100ms = 15.55 sec
- * file_rep_retry = 300 (max value)
+ * 50 * 1ms + 50 * 10ms + 100 * 50ms + 1300 * 100ms = 135.55 sec
+ * file_rep_retry = 1500 (max value)
  */
 void
 FileRep_Sleep1ms(int retry)
@@ -2845,6 +2874,7 @@ void FileRep_Main(void)
 		goto shutdown;
 	}
 shutdown:
+
 	while (FileRep_ProcessSignals() == false) {
 
 		if ( FileRep_GetState() == FileRepStateShutdownBackends &&

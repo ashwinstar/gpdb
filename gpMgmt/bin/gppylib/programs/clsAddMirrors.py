@@ -530,7 +530,7 @@ class GpAddMirrorsProgram:
             mirrorBuilder.buildMirrors("add", gpEnv, gpArray )
 
             logger.info("Mirrors have been added; data synchronization is in progress.")
-            logger.info("Use gpstate to check the resynchronization progress.")
+            logger.info("Use  gpstate -s  to check the resynchronization progress.")
                 
         return 0 # success -- exit code 0!
 

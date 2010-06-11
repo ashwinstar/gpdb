@@ -28,6 +28,33 @@ static int FileRepPrimary_RunResyncWorker(void);
 static int FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry);
 static int FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request);
 
+static bool readBufferRequest = FALSE;
+static void FileRepResync_ResetReadBufferRequest(void);
+static void FileRepResync_SetReadBufferRequest(void);
+
+static void
+FileRepResync_ResetReadBufferRequest(void)
+{
+	readBufferRequest = FALSE;
+	if (Debug_filerep_print)
+		elog(LOG, "FileRepResync_ResetReadBufferRequest()");
+}
+
+static void
+FileRepResync_SetReadBufferRequest(void)
+{
+	readBufferRequest = TRUE;
+	if (Debug_filerep_print)
+		elog(LOG, "FileRepResync_SetReadBufferRequest()");
+	
+}
+
+bool
+FileRepResyncWorker_IsResyncRequest(void)
+{
+	return (readBufferRequest == FALSE && FileRepPrimary_IsResyncWorker());	
+}
+
 /*
  * FileRepPrimary_StartResyncWorker()
  */
@@ -117,6 +144,11 @@ FileRepPrimary_RunResyncWorker(void)
 			
 			if (status == STATUS_OK)
 			{
+				if (entry->mirrorBufpoolResyncChangedPageCount == 0)
+				{
+					entry->mirrorBufpoolResyncChangedPageCount = (entry->mirrorAppendOnlyNewEof - entry->mirrorAppendOnlyLossEof) / BLCKSZ;
+				}					
+				
 				status = FileRepResync_UpdateEntry(entry);
 			}
 		}
@@ -202,6 +234,16 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 						 numBlocks);					
 #endif					
 					thresholdCount = Min(numBlocks, 1024);
+					
+					/* 
+					 * required in order to report how many blocks were synchronized 
+					 * if gp_persistent_relation_node does not return that information 
+					 */
+					if (entry->mirrorBufpoolResyncChangedPageCount == 0)
+					{
+						entry->mirrorBufpoolResyncChangedPageCount = numBlocks - entry->mirrorBufpoolResyncCkptBlockNum;
+					}
+					
 					for (blkno = entry->mirrorBufpoolResyncCkptBlockNum; blkno < numBlocks; blkno++) 
 					{
 						XLogRecPtr	endResyncLSN = (isFullResync() ? 
@@ -312,6 +354,16 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 			{
 				case MirroredRelDataSynchronizationState_AppendOnlyCatchup:
 				case MirroredRelDataSynchronizationState_FullCopy:
+					
+					/* 
+					 * required in order to report how many blocks were synchronized 
+					 * if gp_persistent_relation_node does not return that information 
+					 */
+					if (entry->mirrorBufpoolResyncChangedPageCount == 0)
+					{
+						entry->mirrorBufpoolResyncChangedPageCount = (endOffset - startOffset) / BLCKSZ;
+					}					
+					
 					/*
 					 * The MirroredAppendOnly_OpenResynchonize routine knows we are a resynch worker and
 					 * will open BOTH, but write only the MIRROR!!!

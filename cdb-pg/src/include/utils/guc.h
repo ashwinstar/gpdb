@@ -146,6 +146,7 @@ extern bool gp_heap_require_relhasoids_match;
 extern bool	Debug_appendonly_rezero_quicklz_compress_scratch;
 extern bool	Debug_appendonly_rezero_quicklz_decompress_scratch;
 extern bool	Debug_appendonly_guard_end_quicklz_scratch;
+extern bool	Debug_xlog_insert_print;
 extern bool	Debug_persistent_print;
 extern int	Debug_persistent_print_level;
 extern bool	Debug_persistent_recovery_print;

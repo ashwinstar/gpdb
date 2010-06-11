@@ -14,9 +14,8 @@
 #include "storage/fd.h"
 #include "storage/dbdirnode.h"
 
-
-
 extern void FileRepPrimary_StartResyncWorker(void);
 
+extern bool FileRepResyncWorker_IsResyncRequest(void);
 
 #endif   /* CDBFILEREPRESYNCWORKER_H */

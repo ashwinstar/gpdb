@@ -24,6 +24,7 @@
 #include "cdb/cdbfilerepmirrorack.h"
 #include "cdb/cdbfilerepresyncmanager.h"
 #include "cdb/cdbfilerepresyncworker.h"
+#include "cdb/cdbvars.h"
 #include "libpq/pqsignal.h"
 #include "postmaster/postmaster.h"
 #include "storage/backendid.h"
@@ -79,6 +80,7 @@ static void FileRepSubProcess_SigHupHandler(SIGNAL_ARGS);
 static void FileRepSubProcess_ImmediateShutdownHandler(SIGNAL_ARGS);
 static void FileRepSubProcess_ShutdownHandler(SIGNAL_ARGS);
 static void FileRepSubProcess_FileRepStateHandler(SIGNAL_ARGS);
+static void FileRepSubProcess_HandleCrash(SIGNAL_ARGS);
 
 static void FileRepSubProcess_ConfigureSignals(void);
 
@@ -621,16 +623,11 @@ FileRepSubProcess_InitializeResyncManagerProcess(void)
 	/* No need to StartupXLOG_Pass2(); since we're not writing any data to disk */
 }
 
-#ifdef DEBUG_FILEREP
 static void
-bug_handler(SIGNAL_ARGS)
+FileRepSubProcess_HandleCrash(SIGNAL_ARGS)
 {
-	pg_usleep(2000000000L);
-    ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
-                    errOmitLocation(true),
-                    errmsg("Unexpected internal error"))); 
+    StandardHandlerForSigillSigsegvSigbus_OnMainThread("a file replication subprocess", PASS_SIGNAL_ARGS);
 }
-#endif
 
 /*
  *
@@ -638,9 +635,6 @@ bug_handler(SIGNAL_ARGS)
 static void
 FileRepSubProcess_ConfigureSignals(void)					 
 {
-	
-	sigjmp_buf		local_sigjmp_buf;
-	
 	/* Accept Signals */
 	/* emergency shutdown */
 	pqsignal(SIGQUIT, FileRepSubProcess_ImmediateShutdownHandler);
@@ -667,14 +661,46 @@ FileRepSubProcess_ConfigureSignals(void)
 	pqsignal(SIGCONT, SIG_DFL);
 	pqsignal(SIGWINCH, SIG_DFL);
 
-#ifdef DEBUG_FILEREP
 #ifdef SIGSEGV
-	pqsignal(SIGSEGV, bug_handler);
+	pqsignal(SIGSEGV, FileRepSubProcess_HandleCrash);
 #endif
+	
+#ifdef SIGILL
+	pqsignal(SIGILL, FileRepSubProcess_HandleCrash);
+#endif	
+	
 #ifdef SIGBUS
-    pqsignal(SIGBUS, bug_handler);
+    pqsignal(SIGBUS, FileRepSubProcess_HandleCrash);
 #endif
-#endif
+	
+}
+
+/*
+ *
+ */
+void
+FileRepSubProcess_Main()
+{
+	const char *statmsg;
+	
+	MemoryContext	fileRepSubProcessMemoryContext;
+	
+	sigjmp_buf		local_sigjmp_buf;
+
+	MyProcPid = getpid();
+	
+	MyStartTime = time(NULL);
+	
+	/*
+	 * Create a PGPROC so we can use LWLocks in FileRep sub-processes.  
+	 * The routine also register clean up at process exit
+	 */
+	InitAuxiliaryProcess();	
+	
+	InitBufferPoolBackend();
+	
+	FileRepSubProcess_ConfigureSignals();
+	
 	/*
 	 * If an exception is encountered, processing resumes here.
 	 *
@@ -699,32 +725,7 @@ FileRepSubProcess_ConfigureSignals(void)
 	/* We can now handle ereport(ERROR) */
 	PG_exception_stack = &local_sigjmp_buf;
 	
-	PG_SETMASK(&UnBlockSig);
-}
-
-/*
- *
- */
-void
-FileRepSubProcess_Main()
-{
-	const char *statmsg;
-	
-	MemoryContext	fileRepSubProcessMemoryContext;
-
-	MyProcPid = getpid();
-	
-	MyStartTime = time(NULL);
-	
-	/*
-	 * Create a PGPROC so we can use LWLocks in FileRep sub-processes.  
-	 * The routine also register clean up at process exit
-	 */
-	InitAuxiliaryProcess();	
-	
-	InitBufferPoolBackend();
-	
-	FileRepSubProcess_ConfigureSignals();
+	PG_SETMASK(&UnBlockSig);	
 	
 	/*
 	 * Identify myself via ps

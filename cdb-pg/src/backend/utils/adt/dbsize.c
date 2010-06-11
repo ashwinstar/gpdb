@@ -113,7 +113,7 @@ get_size_from_segDBs(const char * cmd)
 }
 
 /* Return physical size of directory contents, or 0 if dir doesn't exist */
-static int64
+int64
 db_dir_size(const char *path)
 {
 	int64		dirsize = 0;

@@ -55,6 +55,7 @@
 #include "utils/debugbreak.h"
 /* Debug_filerep_print guc temporaly added for troubleshooting */
 #include "utils/guc.h"
+#include "utils/faultinjector.h"
 
 // Provide some indirection here in case we have problems with lseek and
 // 64 bits on some platforms
@@ -1198,6 +1199,14 @@ FileSync(File file)
 	if (returnCode < 0)
 		return returnCode;
 
+#ifdef FAULT_INJECTOR
+	FaultInjector_InjectFaultIfSet(
+								   FileRepFlush,
+								   DDLNotSpecified,
+								   "",	//databaseName
+								   ""); // tableName
+#endif								
+	
 	return pg_fsync(VfdCache[file].fd);
 }
 

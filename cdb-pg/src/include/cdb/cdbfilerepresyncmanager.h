@@ -91,11 +91,15 @@ extern void FileRepResync_SetReCreateRequest(void);
 
 extern void FileRepResync_ResetReCreateRequest(void);
 
-extern bool FileRepResync_IsReadBuffer(void);
+extern int64 FileRepResync_GetBlocksSynchronized(void);
 
-extern void FileRepResync_ResetReadBufferRequest(void);
+extern int64 FileRepResync_GetTotalBlocksToSynchronize(void);
 
-extern void FileRepResync_SetReadBufferRequest(void);
+extern void FileRepResync_SetTotalBlocksToSynchronize(int64 totalBlocksToSynchronize);
+
+extern void FileRepResync_AddToTotalBlocksToSynchronize(int64 moreBlocksToSynchronize);
+
+extern struct timeval FileRepResync_GetEstimateResyncCompletionTime(void);
 
 extern void FileRepResyncManager_ResyncFlatFiles(void);
 

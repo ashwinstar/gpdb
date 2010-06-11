@@ -152,6 +152,9 @@ typedef struct PMModuleState
 	/* file replication port on self */
 	volatile int peerPort;
 
+	/* is this current resync request a full resync? */
+	volatile bool forceFullResync;
+
     /* OTHER FIELDS */
 	volatile bool haveStartedDatabase;
 
@@ -498,28 +501,24 @@ primaryMirrorGetFilerepArguments(
 bool
 isFullResync(void)
 {
-	volatile PrimaryMirrorModeTransitionArguments *args;
-
+    bool result;
 	assertModuleInitialized();
 
 	acquireModuleSpinLock();
-
-	args = &pmModuleState->requestedTransition;
-
+    {
+        result = pmModuleState->forceFullResync;
+    }
 	releaseModuleSpinLock();
 
-	return(args->forceFullResync);
+	return result;
 }
 
 void
 setFullResync(void)
 {
-	volatile PrimaryMirrorModeTransitionArguments *args;
-
 	acquireModuleSpinLock();
 	{
-		args = &pmModuleState->requestedTransition;
-		args->forceFullResync = TRUE;
+		pmModuleState->forceFullResync = true;
 	}
 	releaseModuleSpinLock();
 }
@@ -538,6 +537,19 @@ isDatabaseRunning(void)
 	releaseModuleSpinLock();
 	
 	return(isDatabaseRunning);
+}
+
+/**
+ * While holding the module spin lock, return whether or not we are in a valid transition.
+ *
+ * This is more than just checking pmModulestate->isTransitionRequested because that requested transition
+ *      may be illegal
+ */
+static bool
+isInValidTransition_UnderLock(void)
+{
+    return pmModuleState->isTransitionRequested &&
+            pmModuleState->transitionState >= TSDoFilerepBackendsShutdown;
 }
 
 /**
@@ -578,8 +590,7 @@ getFileRepRoleAndState(
         /* check to see if postmaster is still processing a transition.  Note that here we don't
          *  need to check to see if the listener is complete
          **/
-	    isInFilerepTransition = pmModuleState->isTransitionRequested &&
-	                            pmModuleState->transitionState >= TSDoFilerepBackendsShutdown;
+	    isInFilerepTransition = isInValidTransition_UnderLock();
 
 		PrimaryMirrorMode mode = pmModuleState->mode;
 		switch (mode)
@@ -650,7 +661,7 @@ isPrimaryMirrorModeAFullPostmaster(bool checkTargetModeAsWell)
 		PrimaryMirrorMode mode = pmModuleState->mode;
 		result = mode == PMModeMaster || mode == PMModePrimarySegment || mode == PMModeMirrorlessSegment;
 
-		if (checkTargetModeAsWell && pmModuleState->isTransitionRequested)
+		if (checkTargetModeAsWell && isInValidTransition_UnderLock())
 		{
 			mode = pmModuleState->requestedTransition.mode;
 			result |= mode == PMModeMaster || mode == PMModePrimarySegment || mode == PMModeMirrorlessSegment;
@@ -688,7 +699,7 @@ doesPrimaryMirrorModeRequireFilerepProcess(bool checkTargetModeAsWell)
 		PrimaryMirrorMode mode = pmModuleState->mode;
 		result = mode == PMModePrimarySegment || mode == PMModeMirrorSegment;
 
-		if (checkTargetModeAsWell && pmModuleState->isTransitionRequested)
+		if (checkTargetModeAsWell && isInValidTransition_UnderLock())
 		{
 			mode = pmModuleState->requestedTransition.mode;
 			result |= mode == PMModePrimarySegment || mode == PMModeMirrorSegment;
@@ -734,6 +745,7 @@ primaryMirrorModeShmemInit(void)
 	pmModuleState->hostPort = 0;
 	pmModuleState->peerAddress[0] = '\0';
 	pmModuleState->peerPort = 0;
+	pmModuleState->forceFullResync = false;
 
 	pmModuleState->transitionResultExtraInfo[0] = '\0';
 
@@ -1145,6 +1157,8 @@ copyTransitionInputParameters(PrimaryMirrorModeTransitionArguments *args, Segmen
 		pmModuleState->segmentState = segmentState;
 
 		pmModuleState->isInFaultFromPostmasterReset = false;
+
+		pmModuleState->forceFullResync = args->forceFullResync;
 
         /* we've reached the point of no-return, so update this */
         pmModuleState->mode = args->mode;		

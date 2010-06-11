@@ -564,11 +564,10 @@ class GpStart:
         tableLog.addSeparator()
         tableLog.info(["Successful segment starts", "= %d" % started])
 
-        if self.gparray.getFaultStrategy() == FAULT_STRATEGY_FILE_REPLICATION:
-            tableLog.infoOrWarn(failedNotFromMirroring > 0, ["Failed segment starts, not from mirroring", "= %d" % failedNotFromMirroring])
-
-            if failedFromMirroring > 0:
-                tableLog.warn(["Failed segment starts, from mirroring", "= %d" % failedFromMirroring])
+        if self.gparray.getFaultStrategy() == FAULT_STRATEGY_FILE_REPLICATION and \
+            failedFromMirroring > 0:
+            tableLog.warn(["Failed segment starts, from mirroring connection between primary and mirror", "= %d" % failedFromMirroring])
+            tableLog.infoOrWarn(failedNotFromMirroring > 0, ["Other failed segment starts", "= %d" % failedNotFromMirroring])
         else:
             assert failedFromMirroring == 0
             tableLog.infoOrWarn(failedNotFromMirroring > 0, ["Failed segment starts", "= %d" % failedNotFromMirroring])

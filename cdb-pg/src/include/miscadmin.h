@@ -365,4 +365,6 @@ extern void process_shared_preload_libraries(void);
 extern void process_local_preload_libraries(void);
 extern void pg_bindtextdomain(const char *domain);
 
+extern int64 db_dir_size(const char *path); /* implemented in dbsize.c */
+
 #endif   /* MISCADMIN_H */

@@ -66,83 +66,83 @@ static bool FaultInjector_RemoveHashEntry(
 
 const char*
 FaultInjectorTypeEnumToString[] = {
-	"", /* not specified */
-	"sleep",
-	"fault",
-	"fatal",
-	"panic",
-	"error",
-	"infinite_loop",
-	"data_corruption",
-	"reset",
-	"status",
-	"not recognized",
+	_(""), /* not specified */
+	_("sleep"),
+	_("fault"),
+	_("fatal"),
+	_("panic"),
+	_("error"),
+	_("infinite_loop"),
+	_("data_corruption"),
+	_("reset"),
+	_("status"),
+	_("not recognized"),
 };
 
 const char*
 FaultInjectorIdentifierEnumToString[] = {
-	"",		
+	_(""),		
 		/* not specified */
-	"all",  
+	_("all"),  
 		/* reset or display all injected faults */
-	"filerep_consumer",
+	_("filerep_consumer"),
 		/* 
 		 * inject fault before data are processed
 		 *		*) file operation is issued to file system (if mirror)
 		 *		*) file operation performed on mirror is acknowledged to backend processes (if primary)
 		 */
-	"filerep_sender",
+	_("filerep_sender"),
 		/* inject fault before data are sent to network */
-	"filerep_receiver",
+	_("filerep_receiver"),
 		/* 
 		 * inject fault after data are received from the network and 
 		 * before data are made available for consuming 
 		 */
-	"filerep_flush",
+	_("filerep_flush"),
 		/* inject fault before fsync is issued to file system */
-	"filerep_resync",
+	_("filerep_resync"),
 		/* inject fault while InResync */
-	"filerep_transition_to_resync",
+	_("filerep_transition_to_resync"),
 		/* inject fault during transition to InResync */
-	"filerep_transition_to_sync",
+	_("filerep_transition_to_sync"),
 		/* inject fault during transition to InSync */
-	"checkpoint",
+	_("checkpoint"),
 		/* inject fault before checkpoint is taken */
-	"transaction_commit",
+	_("transaction_commit"),
 		/* inject fault after it is recorded in XLOG for commit of prepared transaction */
-	"transaction_abort",
+	_("transaction_abort"),
 		/* inject fault after it is recorded in XLOG for abort of prepared transaction */
-	"not recognized",
+	_("not recognized"),
 };
 
 const char*
 FaultInjectorDDLEnumToString[] = {
-	"",		/* not specified */
-	"create_database",
-	"drop_database",
-	"create_table",
-	"alter_table",
-	"drop_table",
-	"create_index",
-	"alter_index",
-	"reindex",
-	"drop_index",
-	"create_filespaces",
-	"drop_filespaces",
-	"create_tablespaces",
-	"drop_tablespaces",
-	"truncate",
-	"vacuum",
-	"not recognized",
+	_(""),		/* not specified */
+	_("create_database"),
+	_("drop_database"),
+	_("create_table"),
+	_("alter_table"),
+	_("drop_table"),
+	_("create_index"),
+	_("alter_index"),
+	_("reindex"),
+	_("drop_index"),
+	_("create_filespaces"),
+	_("drop_filespaces"),
+	_("create_tablespaces"),
+	_("drop_tablespaces"),
+	_("truncate"),
+	_("vacuum"),
+	_("not recognized"),
 };
 
 const char*
 FaultInjectorStateEnumToString[] = {
-	"not initialized",
-	"set",
-	"triggered",
-	"completed",
-	"failed",
+	_("not initialized"),
+	_("set"),
+	_("triggered"),
+	_("completed"),
+	_("failed"),
 };
 
 /*

@@ -1245,11 +1245,18 @@ probePublishUpdate(uint8 *probe_results)
 
 				    Assert(mirror != NULL); /* should never get marked to PROBE_TO_IN_SYNC if we don't have a mirror */
 
-				    markSegmentInSyncInConfiguration(primary);
-				    probe_results[primary->dbid] &= ~PROBE_TO_IN_SYNC;
+				    if ((probe_results[mirror->dbid] & PROBE_TO_IN_SYNC) == PROBE_TO_IN_SYNC)
+				    {
+				        /* if primary and mirror are both in-sync then update configuration:
+				         * because will not necessarily reach in-sync internally at the same point,
+				         * we make sure both are in-sync before updating configuraiton
+				         */
+                        markSegmentInSyncInConfiguration(primary);
+                        probe_results[primary->dbid] &= ~PROBE_TO_IN_SYNC;
 
-				    markSegmentInSyncInConfiguration(mirror);
-				    probe_results[mirror->dbid] &= ~PROBE_TO_IN_SYNC;
+                        markSegmentInSyncInConfiguration(mirror);
+                        probe_results[mirror->dbid] &= ~PROBE_TO_IN_SYNC;
+                    }
 				}
 
 				if ((probe_results[primary->dbid] & PROBE_FAULT) == PROBE_FAULT)
