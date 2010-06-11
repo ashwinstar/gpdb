@@ -1,6 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
+ * Portions Copyright (c) 2005-2010, Greenplum inc
  * Copyright (c) 2000-2008, PostgreSQL Global Development Group
  *
  * $PostgreSQL: pgsql/src/bin/psql/tab-complete.c,v 1.156 2006/10/04 00:30:06 momjian Exp $
@@ -1169,16 +1170,16 @@ psql_completion(char *text, int start, int end)
 			 pg_strcasecmp(prev2_wd, "TABLESPACE") == 0)
 	{
 		static const char *const list_CREATETABLESPACE[] =
-		{"OWNER", "LOCATION", NULL};
+		{"OWNER", "FILESPACE", NULL};
 
 		COMPLETE_WITH_LIST(list_CREATETABLESPACE);
 	}
-	/* Complete CREATE TABLESPACE name OWNER name with "LOCATION" */
+	/* Complete CREATE TABLESPACE name OWNER name with "FILESPACE" */
 	else if (pg_strcasecmp(prev5_wd, "CREATE") == 0 &&
 			 pg_strcasecmp(prev4_wd, "TABLESPACE") == 0 &&
 			 pg_strcasecmp(prev2_wd, "OWNER") == 0)
 	{
-		COMPLETE_WITH_CONST("LOCATION");
+		COMPLETE_WITH_CONST("FILESPACE");
 	}
 
 /* CREATE TRIGGER */
