@@ -129,8 +129,8 @@ struct segmentStatusChange {
 
 typedef enum FilerepModeUpdateLoggingEnum
 {
-    FilerepModeUpdateLoggingEnum_MirrorToChangeTracking,
-    FilerepModeUpdateLoggingEnum_PrimaryToChangeTracking,
+	FilerepModeUpdateLoggingEnum_MirrorToChangeTracking,
+	FilerepModeUpdateLoggingEnum_PrimaryToChangeTracking,
 } FilerepModeUpdateLoggingEnum;
 
 static PGconn *openSelfConn(CdbComponentDatabaseInfo *entryDB);
@@ -438,7 +438,7 @@ void FtsProbeLoop(void)
 										 ALLOCSET_DEFAULT_INITSIZE,
 										 ALLOCSET_DEFAULT_MAXSIZE);
 	
-    readCdbComponentInfoAndUpdateStatus();
+	readCdbComponentInfoAndUpdateStatus();
 
 	for (;;)
 	{
@@ -469,7 +469,7 @@ void FtsProbeLoop(void)
 		else
 			processing_fullscan = false;
 
-        readCdbComponentInfoAndUpdateStatus();
+		readCdbComponentInfoAndUpdateStatus();
 		getGpFailover_strategy(&failover_strategy);
 
 		elog(DEBUG3, "Ftsprober: starting %sscan with %d dbids with %d content-ids",
@@ -558,19 +558,19 @@ find_superuser_name(bool try_bootstrap)
 	ScanKeyInit(&key[0],
 				Anum_pg_authid_rolsuper,
 				BTEqualStrategyNumber, F_BOOLEQ,
-                BoolGetDatum(true));
+				BoolGetDatum(true));
 
 	ScanKeyInit(&key[1],
 				Anum_pg_authid_rolcanlogin,
 				BTEqualStrategyNumber, F_BOOLEQ,
-                BoolGetDatum(true));
+				BoolGetDatum(true));
 
 	if (try_bootstrap)
 	{
 		ScanKeyInit(&key[2],
 					ObjectIdAttributeNumber,
 					BTEqualStrategyNumber, F_OIDEQ,
-            	    ObjectIdGetDatum(BOOTSTRAP_SUPERUSERID));
+					ObjectIdGetDatum(BOOTSTRAP_SUPERUSERID));
 	}
 
 	auth_rel = heap_open(AuthIdRelationId, AccessShareLock);
@@ -659,7 +659,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 		return (PROBE_DONE | PROBE_ALIVE);
 	}
 
-    if (!pg_set_noblock(fd))
+	if (!pg_set_noblock(fd))
 	{
 		/* something happened ? */
 		write_log("Couldn't mark socket non-blocking.");
@@ -667,19 +667,19 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 		return (PROBE_DONE | PROBE_ALIVE);
 	}
 
-    /*
-     * Get ipaddr to connect to.
-     */
-    MemSet(&saddr, 0, sizeof(saddr));
-    saddr.sin_family = AF_INET;
-    if ((n = inet_net_pton(AF_INET, dbInfo->hostip, &saddr.sin_addr, sizeof(saddr.sin_addr))) < 1)
-    {
+	/*
+	 * Get ipaddr to connect to.
+ 	 */
+	MemSet(&saddr, 0, sizeof(saddr));
+	saddr.sin_family = AF_INET;
+	if ((n = inet_net_pton(AF_INET, dbInfo->hostip, &saddr.sin_addr, sizeof(saddr.sin_addr))) < 1)
+	{
 		/* something happened ? */
 		write_log("Couldn't get IP-address of probe target.");
 		close(fd);
 		return (PROBE_DONE | PROBE_ALIVE); /* alive */
-    }
-    saddr.sin_port = htons((unsigned short)dbInfo->port);
+	}
+	saddr.sin_port = htons((unsigned short)dbInfo->port);
 
 	/* Connect to dbInfo->hostip */
 	n = connect(fd, (struct sockaddr *) &saddr, sizeof(saddr));
@@ -913,7 +913,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 					
 					if (d_state == DataStateInSync && dbInfo->mode == 'r')
 					{
-					    ret |= PROBE_TO_IN_SYNC;
+						ret |= PROBE_TO_IN_SYNC;
 					}
 
 					done = true;
@@ -1181,14 +1181,14 @@ getMirrorEntryByContent(CdbComponentDatabases *cdb_component_dbs, int content, i
 static void
 fillTimestampStr(char *str, int maxLength )
 {
-    pg_time_t		curtime;
-    struct pg_tm	*time_tm;
-    struct timeval	tv;
+	pg_time_t		curtime;
+	struct pg_tm	*time_tm;
+	struct timeval	tv;
 
-    gettimeofday(&tv, NULL);
-    curtime = tv.tv_sec;
-    time_tm = pg_gmtime(&curtime);
-    pg_strftime(str, maxLength, "%+", time_tm); /* "%+" is the format used by the Unix date command */
+	gettimeofday(&tv, NULL);
+	curtime = tv.tv_sec;
+	time_tm = pg_gmtime(&curtime);
+	pg_strftime(str, maxLength, "%+", time_tm); /* "%+" is the format used by the Unix date command */
 }
 
 /*
@@ -1243,20 +1243,20 @@ probePublishUpdate(uint8 *probe_results)
 				{
 					mirror = getMirrorEntryByContent(cdb_component_dbs, primary->segindex, primary->dbid);
 
-				    Assert(mirror != NULL); /* should never get marked to PROBE_TO_IN_SYNC if we don't have a mirror */
+					Assert(mirror != NULL); /* should never get marked to PROBE_TO_IN_SYNC if we don't have a mirror */
 
-				    if ((probe_results[mirror->dbid] & PROBE_TO_IN_SYNC) == PROBE_TO_IN_SYNC)
-				    {
-				        /* if primary and mirror are both in-sync then update configuration:
-				         * because will not necessarily reach in-sync internally at the same point,
-				         * we make sure both are in-sync before updating configuraiton
-				         */
-                        markSegmentInSyncInConfiguration(primary);
-                        probe_results[primary->dbid] &= ~PROBE_TO_IN_SYNC;
+					if ((probe_results[mirror->dbid] & PROBE_TO_IN_SYNC) == PROBE_TO_IN_SYNC)
+					{
+						/* if primary and mirror are both in-sync then update configuration:
+						 * because will not necessarily reach in-sync internally at the same point,
+						 * we make sure both are in-sync before updating configuraiton
+						 */
+						markSegmentInSyncInConfiguration(primary);
+						probe_results[primary->dbid] &= ~PROBE_TO_IN_SYNC;
 
-                        markSegmentInSyncInConfiguration(mirror);
-                        probe_results[mirror->dbid] &= ~PROBE_TO_IN_SYNC;
-                    }
+						markSegmentInSyncInConfiguration(mirror);
+						probe_results[mirror->dbid] &= ~PROBE_TO_IN_SYNC;
+					}
 				}
 
 				if ((probe_results[primary->dbid] & PROBE_FAULT) == PROBE_FAULT)
@@ -1443,7 +1443,7 @@ probePublishUpdate(uint8 *probe_results)
 	}
 
 	/* We're going to use these timestamps below. */
-    fillTimestampStr(timestamp_str, sizeof(timestamp_str));
+	fillTimestampStr(timestamp_str, sizeof(timestamp_str));
 
 	if (changes != NULL)
 	{
@@ -2062,29 +2062,29 @@ Filerep_mode_update(int dbid, char *mode, char status, FilerepModeUpdateLoggingE
 
 	Filerep_get_hosts_by_dbid(dbid, &seg_addr, &seg_pm_port, &seg_rep_port, &peer_addr, &peer_rep_port);
 
-    snprintf(tmp_filename, sizeof(tmp_filename), "/tmp/ftsprobe_command_XXXXXX");
-    f = mkstemp(tmp_filename);
-    if (f < 0)
-    {
-        elog(FATAL, "Failed to create command file '%s': %m", tmp_filename);
-    }
+	snprintf(tmp_filename, sizeof(tmp_filename), "/tmp/ftsprobe_command_XXXXXX");
+	f = mkstemp(tmp_filename);
+	if (f < 0)
+	{
+		elog(FATAL, "Failed to create command file '%s': %m", tmp_filename);
+	}
 
-    switch ( logMsgToSend )
-    {
-        case FilerepModeUpdateLoggingEnum_MirrorToChangeTracking:
-            ereport(LOG,
-                (errmsg("Mirror segment on %s:%d is taking over as primary in change tracking mode.",
-                        seg_addr, seg_pm_port ),
-                 errSendAlert(true)));
-            break;
+	switch ( logMsgToSend )
+	{
+		case FilerepModeUpdateLoggingEnum_MirrorToChangeTracking:
+			ereport(LOG,
+				(errmsg("Mirror segment on %s:%d is taking over as primary in change tracking mode.",
+					seg_addr, seg_pm_port ),
+ 				errSendAlert(true)));
+			break;
 
-        case FilerepModeUpdateLoggingEnum_PrimaryToChangeTracking:
-            ereport(LOG,
-                (errmsg("Primary segment on %s:%d is going into change tracking mode.",
-                        seg_addr, seg_pm_port ),
-                 errSendAlert(true)));
-            break;
-    }
+		case FilerepModeUpdateLoggingEnum_PrimaryToChangeTracking:
+			ereport(LOG,
+				(errmsg("Primary segment on %s:%d is going into change tracking mode.",
+					seg_addr, seg_pm_port ),
+ 				errSendAlert(true)));
+			break;
+	}
 
 	if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
 		elog(LOG, "Filerep_Failover: tmp filename is '%s'", tmp_filename);
@@ -2119,45 +2119,45 @@ Filerep_mode_update(int dbid, char *mode, char status, FilerepModeUpdateLoggingE
 		close(f);
 
 		/* issue the command to change modes */
-        {
-            char	cmd[1024];
-            int		cmd_status;
+		{
+			char	cmd[1024];
+			int		cmd_status;
 
 			sprintf(cmd, "gp_primarymirror -h %s -p %d -i %s", seg_addr, seg_pm_port, tmp_filename);
 
-            if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
-                elog(LOG, "gp_primarymirror command is [%s]", cmd);
+			if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+				elog(LOG, "gp_primarymirror command is [%s]", cmd);
 
-            cmd_status = system(cmd);
+			cmd_status = system(cmd);
 
 			unlink(tmp_filename);
 
-            if (cmd_status == -1)
-            {
-                elog(ERROR, "Could not issue command: %m");
-            }
-            else if (cmd_status != 0)
-            {
-                elog(ERROR, "gp_primarymirror failed!");
-            }
-        }
+			if (cmd_status == -1)
+			{
+				elog(ERROR, "Could not issue command: %m");
+			}
+			else if (cmd_status != 0)
+			{
+				elog(ERROR, "gp_primarymirror failed!");
+			}
+		}
 
-        switch ( logMsgToSend )
-        {
-            case FilerepModeUpdateLoggingEnum_MirrorToChangeTracking:
-                ereport(LOG,
-                    (errmsg("Changing mirror segment on %s:%d to be the primary in change tracking mode completed successfully.",
-                            seg_addr, seg_pm_port ),
-                     errSendAlert(true)));
-                break;
-            case FilerepModeUpdateLoggingEnum_PrimaryToChangeTracking:
-                ereport(LOG,
-                    (errmsg("Changing primary segment on %s:%d to change tracking mode completed successfully.",
-                            seg_addr, seg_pm_port ),
-                     errSendAlert(true)));
-                break;
-        }
-        
+		switch ( logMsgToSend )
+		{
+			case FilerepModeUpdateLoggingEnum_MirrorToChangeTracking:
+				ereport(LOG,
+					(errmsg("Changing mirror segment on %s:%d to be the primary in change tracking mode completed successfully.",
+						seg_addr, seg_pm_port ),
+						errSendAlert(true)));
+				break;
+			case FilerepModeUpdateLoggingEnum_PrimaryToChangeTracking:
+				ereport(LOG,
+					(errmsg("Changing primary segment on %s:%d to change tracking mode completed successfully.",
+						seg_addr, seg_pm_port ),
+						errSendAlert(true)));
+				break;
+		}
+
 		return;
 	} while (0);
 
@@ -2198,66 +2198,66 @@ Filerep_mode_update(int dbid, char *mode, char status, FilerepModeUpdateLoggingE
 static void
 markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *dbInfo)
 {
-    char cmd[2000];
-    char timestamp_str[100];
+	char cmd[2000];
+	char timestamp_str[100];
 
-    fillTimestampStr(timestamp_str, sizeof(timestamp_str));
+	fillTimestampStr(timestamp_str, sizeof(timestamp_str));
 
-    CdbComponentDatabaseInfo *entryDB = &cdb_component_dbs->entry_db_info[0];
+	CdbComponentDatabaseInfo *entryDB = &cdb_component_dbs->entry_db_info[0];
 
-    if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
-        elog(LOG, "markSegmentInSyncInConfiguration: Updating segment to in-sync");
+	if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+		elog(LOG, "markSegmentInSyncInConfiguration: Updating segment to in-sync");
 
-    if (entryDB->dbid != GpIdentity.dbid)
-    {
-        if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
-            elog(LOG, "ftsProbe: advancing to second entryDB.");
-        entryDB = entryDB + 1;
-    }
+	if (entryDB->dbid != GpIdentity.dbid)
+	{
+		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+			elog(LOG, "ftsProbe: advancing to second entryDB.");
+		entryDB = entryDB + 1;
+	}
 
-    PGconn *entryConn = openSelfConn(entryDB);
-    Assert(entryConn != NULL);
+	PGconn *entryConn = openSelfConn(entryDB);
+	Assert(entryConn != NULL);
 
-    ftsLock();
+	ftsLock();
 
-    if (ftsProbeInfo->fts_pauseProbes)
-    {
-        /* we've gotten a pause request --> ignore our probe results. */
-    }
-    else
-    {
+	if (ftsProbeInfo->fts_pauseProbes)
+	{
+		/* we've gotten a pause request --> ignore our probe results. */
+	}
+	else
+	{
 		uint8	segStatus=0;
 
-        /* update in-core copy */
+		/* update in-core copy */
 		segStatus = ftsProbeInfo->fts_status[dbInfo->dbid];
 		segStatus |= FTS_STATUS_SYNCHRONIZED;
 		ftsProbeInfo->fts_status[dbInfo->dbid] = segStatus;
 
-        /* update gp_segment_configuration to insync */
-        snprintf(cmd, sizeof(cmd),
+		/* update gp_segment_configuration to insync */
+		snprintf(cmd, sizeof(cmd),
 				 "update %s set mode='s' where dbid=CAST(%d AS SMALLINT)",
 				 GpSegmentConfigRelationName,
 				 dbInfo->dbid);
-        executeEntrySQL(entryConn, cmd);
+		executeEntrySQL(entryConn, cmd);
 
-        /* update configuration history */
-        snprintf(cmd, sizeof(cmd),
+		/* update configuration history */
+		snprintf(cmd, sizeof(cmd),
 				 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: changed segment to insync from resync.')",
 				 timestamp_str, dbInfo->dbid);
-        executeEntrySQL(entryConn, cmd);
+		executeEntrySQL(entryConn, cmd);
 
-        bool isPrimary = segStatus & FTS_STATUS_PRIMARY;
-        if ( ! isPrimary)
-        {
-            ereport(LOG,
-                    (errmsg("Resynchronization of mirror segment on %s:%d has completed.",
-                            dbInfo->address, dbInfo->port ),
-                     errSendAlert(true)));
-        }
-    }
+		bool isPrimary = segStatus & FTS_STATUS_PRIMARY;
+		if ( ! isPrimary)
+		{
+			ereport(LOG,
+					(errmsg("Resynchronization of mirror segment on %s:%d has completed.",
+							dbInfo->address, dbInfo->port ),
+					 errSendAlert(true)));
+		}
+	}
 
-    closeSelfConn(entryConn);
-    ftsUnlock();
+	closeSelfConn(entryConn);
+	ftsUnlock();
 }
 
 static void
@@ -2528,9 +2528,9 @@ startSegment_forDbid(int dbid)
 		system(cmd);
 
 		ereport(LOG,
-                (errmsg("SAN mirror segment on %s:%d is taking over as primary.",
-                        host, port ),
-                 errSendAlert(true)));
+			(errmsg("SAN mirror segment on %s:%d is taking over as primary.",
+				host, port ),
+			 errSendAlert(true)));
 
 		break;
 	}
