@@ -191,6 +191,9 @@ static void PersistentStore_InitScanAddFreeEntry(
 
 	bool found;
 
+	Assert(!PersistentStore_IsZeroTid(persistentTid));
+	Assert(!PersistentStore_IsZeroTid(previousFreeTid));
+
 	if (freeEntryHashTable == NULL)
 		PersistentStore_FreeEntryHashTableInit();
 
@@ -220,8 +223,6 @@ static void PersistentStore_InitScanVerifyFreeEntries(
 	int64 freeOrderNum;
 	ItemPointerData freeTid;
 
-	PersistentFreeEntryKey key;
-
 	PersistentFreeEntry *entry;
 
 	bool found;
@@ -231,72 +232,121 @@ static void PersistentStore_InitScanVerifyFreeEntries(
 	freeOrderNum = storeSharedData->maxFreeOrderNum;
 	freeTid = storeSharedData->freeTid;
 
-	while (true)
+	if (freeOrderNum == 0)
 	{
-		if (freeOrderNum == 0)
-			break;
-
+		if (!PersistentStore_IsZeroTid(&freeTid))
+			elog(ERROR, "Expected free TID to be (0,0) when free order number is 0 in '%s'",
+			storeData->tableName);
+	}
+	else
+	{
+		PersistentFreeEntryKey key;
+		
+		PersistentFreeEntry *removeEntry;
+		
 		if (freeEntryHashTable == NULL)
-			elog(ERROR, "Looking for free order number " INT64_FORMAT " and the free entry hash table is empty",
-				 freeOrderNum);
-
-		MemSet(&key, 0, sizeof(key));
-		key.persistentTid = freeTid;
-		
-		entry = 
-			(PersistentFreeEntry*) 
-							hash_search(freeEntryHashTable,
-										(void *) &key,
-										HASH_ENTER,
-										&found);
-		if (!found)
-			elog(ERROR, 
-				 "PersistentStore_InitScanVerifyFreeEntries ('%s'): Did not find free entry for free TID %s (free order number " INT64_FORMAT ")",
-				 storeData->tableName,
-				 ItemPointerToString(&freeTid),
-				 freeOrderNum);
-
-		if (freeOrderNum != entry->freeOrderNum)
-			elog(ERROR, 
-				 "PersistentStore_InitScanVerifyFreeEntries ('%s'): Free entry for free TID %s has wrong free order number (expected free order number " INT64_FORMAT ", found free order number " INT64_FORMAT ")",
-				 storeData->tableName,
-				 ItemPointerToString(&freeTid),
+			elog(ERROR, "Looking for free order number " INT64_FORMAT " and the free entry hash table is empty for '%s'",
 				 freeOrderNum,
-				 entry->freeOrderNum);
+				 storeData->tableName);
 		
-		if (Debug_persistent_recovery_print)
-			elog(Debug_persistent_recovery_print_level, 
-				 "PersistentStore_InitScanVerifyFreeEntries ('%s'): Free order number " INT64_FORMAT ", free TID %s, previous free TID %s",
-				 storeData->tableName,
-				 freeOrderNum,
-				 ItemPointerToString(&freeTid),
-				 ItemPointerToString2(&entry->previousFreeTid));
+		while (true)
+		{
+			MemSet(&key, 0, sizeof(key));
+			key.persistentTid = freeTid;
+			
+			entry = 
+				(PersistentFreeEntry*) 
+								hash_search(freeEntryHashTable,
+											(void *) &key,
+											HASH_FIND,
+											&found);
+			if (!found)
+				elog(ERROR, 
+					 "Did not find free entry for free TID %s (free order number " INT64_FORMAT ") for '%s'",
+					 ItemPointerToString(&freeTid),
+					 freeOrderNum,
+					 storeData->tableName);
 
-		hash_search(
-				freeEntryHashTable, 
-				(void *) &entry->key, 
-				HASH_REMOVE, 
-				NULL);
+			if (freeOrderNum != entry->freeOrderNum)
+				elog(ERROR, 
+					 "Free entry for free TID %s has wrong free order number (expected free order number " INT64_FORMAT ", found free order number " INT64_FORMAT ") for '%s'",
+					 ItemPointerToString(&freeTid),
+					 freeOrderNum,
+					 entry->freeOrderNum,
+					 storeData->tableName);
+			
+			if (Debug_persistent_recovery_print)
+				elog(Debug_persistent_recovery_print_level, 
+					 "PersistentStore_InitScanVerifyFreeEntries ('%s'): Free order number " INT64_FORMAT ", free TID %s, previous free TID %s",
+					 storeData->tableName,
+					 freeOrderNum,
+					 ItemPointerToString(&freeTid),
+					 ItemPointerToString2(&entry->previousFreeTid));
 
-		freeOrderNum--;
-		freeTid = entry->previousFreeTid;
+			freeTid = entry->previousFreeTid;
+			Assert(!PersistentStore_IsZeroTid(&freeTid));
+			if (freeOrderNum == 1)
+			{
+				/*
+				 * The last free entry uses its own TID in previous_free_tid.
+				 */
+				if (ItemPointerCompare(
+									&entry->key.persistentTid,
+									&freeTid) != 0)
+				{
+					elog(ERROR, "Expected previous_free_tid %s to match the persistent TID %s for the last free entry (free order number 1) for '%s'",
+						 ItemPointerToString(&freeTid),
+						 ItemPointerToString2(&entry->key.persistentTid),
+						 storeData->tableName);
+						 
+				}
+			}
+
+			removeEntry = hash_search(
+								freeEntryHashTable, 
+								(void *) &entry->key, 
+								HASH_REMOVE, 
+								NULL);
+			if (removeEntry == NULL)
+				elog(ERROR, "Persistent Free Entry hashtable corrupted for '%s'",
+				     storeData->tableName);
+			entry = NULL;
+
+			freeOrderNum--;
+
+			if (freeOrderNum == 0)
+				break;
+		
+		}
 	}
 
-	hash_seq_init(
-			&iterateStatus, 
-			freeEntryHashTable);
-	
-	while ((entry = hash_seq_search(&iterateStatus)) != NULL)
+	if (freeEntryHashTable != NULL)
 	{
-		elog(ERROR, "Found at least one unaccounted for free entry in '%s'.  Example: free order number " INT64_FORMAT ", free TID %s, previous free TID %s",
-			storeData->tableName,
-			entry->freeOrderNum,
-			ItemPointerToString(&entry->key.persistentTid),
-			ItemPointerToString2(&entry->previousFreeTid));
-	}
+		hash_seq_init(
+				&iterateStatus, 
+				freeEntryHashTable);
 
-	hash_destroy(freeEntryHashTable);
-	freeEntryHashTable = NULL;
+		/*
+		 * Verify the hash table has no free entries left.
+		 */
+		while ((entry = hash_seq_search(&iterateStatus)) != NULL)
+		{
+			elog(ERROR, "Found at least one unaccounted for free entry for '%s'.  Example: free order number " INT64_FORMAT ", free TID %s, previous free TID %s",
+				storeData->tableName,
+				entry->freeOrderNum,
+				ItemPointerToString(&entry->key.persistentTid),
+				ItemPointerToString2(&entry->previousFreeTid));
+		}
+
+		hash_destroy(freeEntryHashTable);
+		freeEntryHashTable = NULL;
+	}
+	
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level, 
+			 "PersistentStore_InitScanVerifyFreeEntries ('%s'): Successfully verified " INT64_FORMAT " free entries",
+			 storeData->tableName,
+			 storeSharedData->maxFreeOrderNum);
 }
 
 static void PersistentStore_DoInitScan(
