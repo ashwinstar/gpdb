@@ -847,7 +847,7 @@ static void gpmmon_main(void)
 
 static void print_version(void)
 {
-	fprintf(stdout, "%s version %s\n", opt.pname, GPPERFMON_VERSIONX);
+	fprintf(stdout, GPMMON_VERSION_STRING);
 	exit(0);
 }
 

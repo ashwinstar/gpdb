@@ -17,8 +17,6 @@ ifneq ($(CUSTOM_COPT),)
 	COPT=$(CUSTOM_COPT)
 endif
 
-GPPERFMON_VERSION=$$(< $(BLD_TOP)/gpperfmon/VERSION)
-
 GPMMON_OBJS=gpmmon.o gpmondb.o gpmonlib.o gpmon_agg.o
 GPSMON_OBJS=gpsmon.o gpmonlib.o
 SIGTEST_OBJS=sigartest.o
@@ -28,7 +26,7 @@ LIBS=-L$(EXT_DIR)/lib -laprutil-1 -lapr-1 -levent $$($(EXT_DIR)/bin/apu-1-config
 GPSMON_LIBS=
 GPMMON_LIBS=-L$(LIBPQ_DIR) -lpq -lm
 CFLAGS=$(OPT) $$($(EXT_DIR)/bin/apr-1-config --cflags) -Werror -Wall
-CPPFLAGS=$$($(EXT_DIR)/bin/apr-1-config --cppflags) -DGPPERFMON_VERSION="$(GPPERFMON_VERSION)" -D$(BLD_ARCH)
+CPPFLAGS=$$($(EXT_DIR)/bin/apr-1-config --cppflags) -D$(BLD_ARCH)
 
 ifeq "$(findstring osx,$(BLD_ARCH))" "osx"
 	GPSMON_LIBS=-framework CoreServices -framework IOKit

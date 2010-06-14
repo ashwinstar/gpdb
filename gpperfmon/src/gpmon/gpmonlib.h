@@ -11,8 +11,6 @@
 #define BATCH 8
 #define DEFAULT_GPMMON_LOGDIR "gpperfmon/logs"
 
-#define GPPERFMON_VERSIONX APR_STRINGIFY(GPPERFMON_VERSION)
-
 #ifndef WIN32
 typedef int SOCKET;
 #endif

@@ -1351,17 +1351,10 @@ static void usage(const char* msg)
 	fprintf(stderr, "\t-?:\tprint this help screen\n");
 	fprintf(stderr, "\t-v:\tverbose\n");
 	fprintf(stderr, "\t-D:\trun in debug mode; don't run as daemon\n");
-	fprintf(stderr, "\t-V:\tprint version number\n\n");
 	if (msg)
 		fprintf(stderr, "%s\n\n", msg);
 
 	exit(msg ? 1 : 0);
-}
-
-static void print_version(void)
-{
-	fprintf(stdout, "%s version %s\n", opt.pname, GPPERFMON_VERSIONX);
-	exit(0);
 }
 
 static void parse_command_line(int argc, const char* const argv[])
@@ -1378,7 +1371,6 @@ static void parse_command_line(int argc, const char* const argv[])
 	{ NULL, 'D', 0, "debug mode" },
 	{ NULL, 'l', 1, "log directory" },
 	{ NULL, 'm', 1, "max log size" },
-	{ NULL, 'V', 0, "print version number" },
 	{ NULL, 0, 0, NULL } };
 	apr_pool_t* pool;
 
@@ -1420,9 +1412,6 @@ static void parse_command_line(int argc, const char* const argv[])
 			break;
 		case 'm':
 			opt.max_log_size = apr_atoi64(arg);
-			break;
-		case 'V':
-			print_version();
 			break;
 		}
 	}
