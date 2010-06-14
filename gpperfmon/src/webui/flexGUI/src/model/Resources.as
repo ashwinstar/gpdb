@@ -24,7 +24,6 @@ package model
  		[Embed(source='../assets/img/spyglass_cursor.png')]
    		public static var spyglassCursor:Class;
    		[Embed(source='../assets/img/DBUnbalanced_icon.png')]   		public static var DBUnbalancedIcon:Class;   		   		[Embed(source='../assets/img/DBDegrade_Icon.png')]   		public static var DBDegradeIcon:Class;
-   		public static var flexBuildNumber:String = "4.0.0";
    		  				
 		public static var copyright:String = "Copyright (c) 2008 Greenplum, Inc. All Rights Reserved";
 

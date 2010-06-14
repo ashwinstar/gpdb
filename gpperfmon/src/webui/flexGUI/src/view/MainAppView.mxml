@@ -53,7 +53,6 @@
 	{
 		var str:String = "Greenplum Performance Monitor\n\n" + 
 					     Resources.instance.versionString + "\n\n" +
-					     "Monitor UI Build Number - " + Resources.flexBuildNumber + "\n\n" +
 					     Resources.copyright2;
 					  
 		var a:Alert = Alert.show(str, "About", Alert.OK, this, null, Resources.gp_logo_sml);
