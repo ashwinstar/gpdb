@@ -1,4 +1,4 @@
-#ifndef GPMON_H
+f#ifndef GPMON_H
 #define GPMON_H
 
 #ifdef POSTGRES_H
@@ -28,7 +28,7 @@ typedef struct gpmon_seginfo_t gpmon_seginfo_t;
 #define GPMON_DIR   "./gpperfmon/data/"
 #define GPMON_DIR_MAX_PATH 100
 #define GPMON_DB    "gpperfmon"
-#define GPMMON_VERSION_STRING "gpmmon version 4.0.0.0\n"
+#define GPMMON_VERSION_STRING "gpmmon version 4.0.0.1\n"
 
 /*
 this is enough space for 2 names plus a . between the names plus a null char at the end of the string
