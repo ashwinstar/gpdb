@@ -57,6 +57,7 @@ class GpMirrorBuildCalculator:
         self.__primaries = [seg for seg in gpArray.getDbList() if seg.isSegmentPrimary(False)]
         self.__primariesByHost = GpArray.getSegmentsByHostName(self.__primaries)
         self.__nextDbId = max([seg.getSegmentDbId() for seg in gpArray.getDbList()]) + 1
+        self.__minPrimaryPortOverall = min([seg.getSegmentPort() for seg in self.__primaries])
 
         def comparePorts(left, right):
             return cmp(left.getSegmentPort(), right.getSegmentPort())
@@ -78,8 +79,16 @@ class GpMirrorBuildCalculator:
             primarySegmentReplicationPort, filespaceOidToPathMap):
         """
         Add a mirror to the gpArray backing this calculator, also update resultOut and do some other checking
+
+        Unlike __addMirrorForTargetHost, this does not require that the segments be added to
+               a host that already has a primary
         
         """
+        if targetHost not in self.__mirrorsAddedByHost:
+            self.__mirrorsAddedByHost[targetHost] = 0
+            self.__primaryPortBaseByHost[targetHost] = self.__minPrimaryPortOverall
+            self.__primariesUpdatedToHaveMirrorsByHost[targetHost] = 0
+            
         mirrorIndexOnTargetHost = self.__mirrorsAddedByHost[targetHost]
         assert mirrorIndexOnTargetHost is not None
 
@@ -111,7 +120,9 @@ class GpMirrorBuildCalculator:
 
     def __addMirrorForTargetHost(self, resultOut, primary, targetHost ):
         """
-        Add a new mirror for the given primary to the targetHost
+        Add a new mirror for the given primary to the targetHost.
+
+        This code assumes that the mirror is added to a host that already has primaries
 
         Fetches directory path info from the various member variables
         """
