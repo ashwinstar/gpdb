@@ -510,6 +510,9 @@ class TableLogger:
     def addSeparator(self):
         self.__lines.append(None)
 
+    def getNumLines(self):
+        return len(self.__lines)
+
     def getNumWarnings(self):
         return len(self.__warningLines)
 

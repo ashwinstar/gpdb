@@ -24,40 +24,68 @@ from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile, w
 
 logger = gplog.get_default_logger()
 
+class FieldDefinition:
+    """
+    Represent a field of our data.  Note that we could infer columnName from name, but we would like
+              for columnName to be more stable than "name"
+    """
+    def __init__(self, name, columnName, columnType):
+        self.__name = name
+        self.__columnName = columnName
+        self.__columnType = columnType
+
+    def getName(self): return self.__name
+    def getColumnName(self): return self.__columnName
+    def getColumnType(self): return self.__columnType
+
+    #
+    # __str__ needs to return naem -- we use this for output in some cases right now
+    #
+    def __str__(self): return self.__name
+
 CATEGORY__SEGMENT_INFO = "Segment Info"
-VALUE__HOSTNAME = "Hostname"
-VALUE__ADDRESS = "Address"
-VALUE__DATADIR = "Datadir"
-VALUE__PORT = "Port"
+VALUE__HOSTNAME = FieldDefinition("Hostname", "hostname", "text")
+VALUE__ADDRESS = FieldDefinition("Address", "address", "text")
+VALUE__DATADIR = FieldDefinition("Datadir", "datadir", "text")
+VALUE__PORT = FieldDefinition("Port", "port", "int")
 
 CATEGORY__MIRRORING_INFO = "Mirroring Info"
-VALUE__CURRENT_ROLE = "Current role"
-VALUE__PREFERRED_ROLE = "Preferred role"
-VALUE__MIRROR_STATUS = "Mirror status"
+VALUE__CURRENT_ROLE = FieldDefinition("Current role", "role", "text") # can't use current_role as name -- it's a reserved word
+VALUE__PREFERRED_ROLE = FieldDefinition("Preferred role", "preferred_role", "text")
+VALUE__MIRROR_STATUS = FieldDefinition("Mirror status", "mirror_status", "text")
 
 CATEGORY__ERROR_GETTING_SEGMENT_STATUS = "Error Getting Segment Status"
-VALUE__ERROR_GETTING_SEGMENT_STATUS = "Error Getting Segment Status"
+VALUE__ERROR_GETTING_SEGMENT_STATUS = FieldDefinition("Error Getting Segment Status", "error_getting_segment_status", "text")
 
 CATEGORY__CHANGE_TRACKING_INFO = "Change Tracking Info"
-VALUE__CHANGE_TRACKING_DATA_SIZE = "Change tracking data size"
+VALUE__CHANGE_TRACKING_DATA_SIZE = FieldDefinition("Change tracking data size", "change_tracking_data_size", "text")
 
 CATEGORY__RESYNCHRONIZATION_INFO = "Resynchronization Info"
-VALUE__RESYNC_MODE = "Resynchronization mode"
-VALUE__RESYNC_DATA_SYNCHRONIZED = "Data synchronized"
-VALUE__RESYNC_EST_TOTAL_DATA = "Estimated total data to synchronize"
-VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR = "Estimated resync progress with mirror"
-VALUE__RESYNC_EST_COMPLETION_TIME = "Estimated resync completion time"
+VALUE__RESYNC_MODE = FieldDefinition("Resynchronization mode", "resynchronization_mode", "text")
+VALUE__RESYNC_DATA_SYNCHRONIZED = FieldDefinition("Data synchronized", "data_synchronized_str", "text")
+VALUE__RESYNC_EST_TOTAL_DATA = FieldDefinition("Estimated total data to synchronize", "estimated_total_data_to_synchronize_str", "text")
+VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR = FieldDefinition("Estimated resync progress with mirror", "estimated_resync_progress_str", "text")
+VALUE__RESYNC_EST_COMPLETION_TIME = FieldDefinition("Estimated resync completion time", "estimated_resync_completion_time_str", "text")
 
 CATEGORY__PROCESS_INFO = "Process Info"
-VALUE__POSTMASTER_PID_FILE = "File postmaster.pid"
-VALUE__POSTMASTER_PID_VALUE = "PID from postmaster.pid file"
-VALUE__LOCK_FILES= "Lock files in /tmp"
-VALUE__ACTIVE_PID = "Active PID"
+VALUE__POSTMASTER_PID_FILE = FieldDefinition("File postmaster.pid", "postmaster_pid_file_exists", "text") # boolean would be nice
+VALUE__POSTMASTER_PID_VALUE = FieldDefinition("PID from postmaster.pid file", "postmaster_pid", "text") # int would be better, but we print error messages here sometimes
+VALUE__LOCK_FILES= FieldDefinition("Lock files in /tmp", "lock_files_exist", "text") # boolean would be nice
+VALUE__ACTIVE_PID = FieldDefinition("Active PID", "active_pid", "text") # int would be better, but we print error messages here sometimes
 
 CATEGORY__STATUS = "Status"
-VALUE__MASTER_REPORTS_STATUS = "Master reports status as"
-VALUE__MIRROR_SEGMENT_STATUS = "Segment status"
-VALUE__NONMIRROR_DATABASE_STATUS = "Database status"
+VALUE__MASTER_REPORTS_STATUS = FieldDefinition("Master reports status as", "master_reports_status_as", "text")
+VALUE__MIRROR_SEGMENT_STATUS = FieldDefinition("Segment status", "segment_status", "text") # must not be same name as VALUE__SEGMENT_STATUS
+VALUE__NONMIRROR_DATABASE_STATUS = FieldDefinition("Database status", "database_status", "text")
+
+
+ # these are not in a category, used for other logging
+VALUE__SEGMENT_STATUS = FieldDefinition("Instance status", "instance_status", "text")
+VALUE__DBID = FieldDefinition("dbid", "dbid", "int")
+VALUE__CONTENTID = FieldDefinition("contentid", "contentid", "int")
+VALUE__RESYNC_DATA_SYNCHRONIZED_BYTES = FieldDefinition("Data synchronized (bytes)", "data_synchronized", "int8")
+VALUE__RESYNC_EST_TOTAL_DATA_BYTES = FieldDefinition("Estimated total data to synchronize (bytes)", "estimated_total_data_to_synchronize", "int8")
+VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR_NUMERIC = FieldDefinition("Estimated resync progress with mirror (numeric)", "estimated_resync_progress", "float")
 
 class GpStateData:
     """
@@ -100,12 +128,12 @@ class GpStateData:
 
         self.__entriesByCategory[CATEGORY__ERROR_GETTING_SEGMENT_STATUS] = \
                 [VALUE__ERROR_GETTING_SEGMENT_STATUS]
-        
+
         self.__entriesByCategory[CATEGORY__CHANGE_TRACKING_INFO] = \
                 [VALUE__CHANGE_TRACKING_DATA_SIZE]
 
         self.__entriesByCategory[CATEGORY__RESYNCHRONIZATION_INFO] = \
-                [VALUE__RESYNC_MODE, 
+                [VALUE__RESYNC_MODE,
                 VALUE__RESYNC_DATA_SYNCHRONIZED,
                 VALUE__RESYNC_EST_TOTAL_DATA,
                 VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR,
@@ -123,6 +151,12 @@ class GpStateData:
                 VALUE__NONMIRROR_DATABASE_STATUS]
 
         self.__allValues = {}
+        self.__allValues[VALUE__SEGMENT_STATUS] = True # category-less
+        self.__allValues[VALUE__DBID] = True # category-less
+        self.__allValues[VALUE__CONTENTID] = True # category-less
+        self.__allValues[VALUE__RESYNC_DATA_SYNCHRONIZED_BYTES] = True # category-less
+        self.__allValues[VALUE__RESYNC_EST_TOTAL_DATA_BYTES] = True # category-less
+        self.__allValues[VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR_NUMERIC] = True # category-less
         for values in self.__entriesByCategory.values():
             for v in values:
                 self.__allValues[v] = True
@@ -152,42 +186,67 @@ class GpStateData:
                 return True
         return False
 
-    def setDatabaseProbablyDown(self, seg, isThisSegmentProbablyDown):
+    def setSegmentProbablyDown(self, seg, peerPrimary, isThisSegmentProbablyDown):
+        """
+        Mark whether this segment is probably down (based on isThisSegmentProbablyDown)
+
+        @param peerPrimary: if this is a mirror in file replication mode, this will be its primary
+        """
         if isThisSegmentProbablyDown:
             self.__dbIdIsProbablyDown[seg.getSegmentDbId()] = True
         else:
-            self.__contentsWithUpSegments[seg.getSegmentContentId()] = True
+            #
+            # a segment is "good to use" for the cluster only if it's a primary, or a mirror whose
+            #  primary says that they are in sync (primary not in changetracking or resync)
+            #
+            isGoodToUse = seg.isSegmentPrimary(current_role=True) or peerPrimary.isSegmentModeSynchronized()
+            if isGoodToUse:
+                self.__contentsWithUpSegments[seg.getSegmentContentId()] = True
+
+    def isSegmentProbablyDown(self, seg):
+        return seg.getSegmentDbId() in self.__dbIdIsProbablyDown
 
     def addSegmentToTableLogger(self, tabLog, segment):
+        for cat in self.__categories:
+            keys = self.__entriesByCategory[cat]
+            self.addSectionToTableLogger(tabLog, segment, cat, keys)
 
+    def getStrValue(self, segment, key, defaultIfNone=""):
+        data = self.__segmentDbIdToSegmentData[segment.getSegmentDbId()]
+        valuesMap = data["values"]
+        val = valuesMap.get(key)
+        if val is None:
+            val = defaultIfNone
+        else:
+            val = str(val)
+        return val
+
+    def addSectionToTableLogger(self, tabLog, segment, sectionHeader, keys, categoryIndent="", indent="   "):
         data = self.__segmentDbIdToSegmentData[segment.getSegmentDbId()]
         valuesMap = data["values"]
         isWarningMap = data["isWarning"]
 
-        for cat in self.__categories:
-            keys = self.__entriesByCategory[cat]
+        hasValue = False
+        for k in keys:
+            if k in valuesMap:
+                hasValue = True
+                break
+        if not hasValue:
+            #
+            # skip sections for which we have no values!
+            #
+            return
 
-            hasValue = False
-            for k in keys:
-                if k in valuesMap:
-                    hasValue = True
-                    break
-            if not hasValue:
-                #
-                # skip categories for which we have no values!
-                #
-                continue
+        tabLog.info([categoryIndent + sectionHeader])
+        for k in keys:
+            if k in valuesMap:
+                val = valuesMap[k]
+                if val is None:
+                    val = ""
+                else:
+                    val = str(val)
+                tabLog.infoOrWarn(isWarningMap[k], ["%s%s" %(indent, k), "= %s" % val])
 
-            tabLog.info([cat])
-            for k in keys:
-                if k in valuesMap:
-                    val = valuesMap[k]
-                    if val is None:
-                        val = ""
-                    else:
-                        val = str(val)
-                    tabLog.infoOrWarn(isWarningMap[k], ["   " + k, "= %s" % val])
-            
 #-------------------------------------------------------------------------
 class GpSystemStateProgram:
 
@@ -258,7 +317,6 @@ class GpSystemStateProgram:
                     actMirrorStatus = "Available" if actingMirror.isSegmentUp() else "Failed"
                     status = "Mirror Active, Primary %s" % (actMirrorStatus)
 
-                    doWarn = True
                     numMirrorsActingAsPrimaries += 1
                 else:
                     actingPrimary = primary
@@ -326,7 +384,6 @@ class GpSystemStateProgram:
                         numChangeTrackingMirrors += 1
 
                     numMirrorsActingAsPrimaries += 1
-                    doWarn = True
                 elif seg.isSegmentUp():
                     status = "Passive"
                 else:
@@ -384,7 +441,7 @@ class GpSystemStateProgram:
                     standbyData[gp.SEGMENT_STATUS__GET_PID]['pid'] > 0 and \
                     standbyData[gp.SEGMENT_STATUS__GET_PID]['error'] is None:
                 tabLog.info(["Standby master state", "= Standby host passive"])
-                
+
             else:
                 tabLog.warn(["Standby master state", "= Standby host DOWN"])
 
@@ -439,7 +496,7 @@ class GpSystemStateProgram:
                     numPostmasterPidFilesMissing += 1
                     numLockFilesMissing += 1
                     numPostmasterProcessesMissing += 1
-                    numPostmasterPidsMissing += 1                    
+                    numPostmasterPidsMissing += 1
                 else:
                     segmentData = outputFromCmd[seg.getSegmentDbId()]
                     if not segmentData[gp.SEGMENT_STATUS__HAS_LOCKFILE]:
@@ -520,12 +577,214 @@ class GpSystemStateProgram:
             hostNameToCmd[hostName] = cmd
             self.__pool.addCommand(cmd)
             dispatchCount+=1
-        self.__pool.wait_and_printdots(dispatchCount, False) # False -- self.__quiet
+        self.__poolWait(dispatchCount)
 
         hostNameToResults = {}
         for hostName, cmd in hostNameToCmd.iteritems():
             hostNameToResults[hostName] = cmd.decodeResults()
         return hostNameToResults
+
+    def __showSummaryOfSegmentsWhichRequireAttention(self, gpEnv, gpArray):
+        """
+        Prints out the current status of the cluster.
+
+        @param gpEnv the GpMasterEnvironment object
+        @param gpArray the array to display
+
+        returns the exit code
+        """
+        exitCode = 0
+        if gpArray.getFaultStrategy() != gparray.FAULT_STRATEGY_FILE_REPLICATION:
+            logger.info("Physical mirroring is not configured")
+            return 1
+
+        primarySegments = [ seg for seg in gpArray.getSegDbList() if seg.isSegmentPrimary(current_role=True) ]
+        mirrorSegments = [ seg for seg in gpArray.getSegDbList() if seg.isSegmentMirror(current_role=True) ]
+        contentIdToMirror = GpArray.getSegmentsByContentId(mirrorSegments)
+
+        hasWarnings = False
+        hostNameToResults = self.__fetchAllSegmentData(gpArray)
+        data = self.__buildGpStateData(gpArray, hostNameToResults)
+
+        def logSegments(segments, logAsPairs, additionalFieldsToLog=[]):
+            """
+            helper function for logging a list of primaries, with their mirrors
+
+            @param logAsPairs if True, then segments should be primaries only, and we will log corresponding mirror datadir/port
+            @param additionalFieldsToLog should be a list of FieldDefinition objects
+            """
+            tabLog = TableLogger().setWarnWithArrows(True)
+            for segment in segments:
+                if tabLog.getNumLines() == 0:
+                    header = ["Current Primary" if logAsPairs else "Segment", "Port"]
+                    header.extend([f.getName() for f in additionalFieldsToLog])
+                    if logAsPairs:
+                        header.extend(["Mirror", "Port"])
+                    tabLog.info(header)
+
+                line = []
+                line.extend([segment.getSegmentAddress(), str(segment.getSegmentPort())])
+                for key in additionalFieldsToLog:
+                    line.append(data.getStrValue(segment, key))
+                if logAsPairs:
+                    mirror = contentIdToMirror[segment.getSegmentContentId()][0]
+                    line.extend([mirror.getSegmentAddress(), str(mirror.getSegmentPort())])
+                tabLog.info(line)
+            tabLog.outputTable()
+
+
+        logger.info("----------------------------------------------------")
+        logger.info("Segment Mirroring Status Report")
+
+
+        # segment pairs that are in wrong roles
+        primariesInWrongRole = [s for s in gpArray.getSegDbList() if s.isSegmentPrimary(current_role=True) and \
+                                                    not s.isSegmentPrimary(current_role=False)]
+        if primariesInWrongRole:
+            logger.info("----------------------------------------------------")
+            logger.info("Segments with Primary and Mirror Roles Switched")
+            logSegments(primariesInWrongRole, logAsPairs=True)
+            exitCode = 1
+        else:
+            pass # logger.info( "No segment pairs with switched roles")
+
+        # segment pairs that are in changetracking
+        primariesInChangeTracking = [s for s in gpArray.getSegDbList() if s.isSegmentPrimary(current_role=True) and \
+                                                    s.isSegmentModeInChangeLogging()]
+        if primariesInChangeTracking:
+            logger.info("----------------------------------------------------")
+            logger.info("Primaries in Change Tracking")
+            logSegments(primariesInChangeTracking, logAsPairs=True, additionalFieldsToLog=[VALUE__CHANGE_TRACKING_DATA_SIZE])
+            exitCode = 1
+        else:
+            pass # logger.info( "No segment pairs are in change tracking")
+
+        # segments that are in resync
+        primariesInResync = [s for s in gpArray.getSegDbList() if s.isSegmentPrimary(current_role=True) and \
+                                                    s.isSegmentModeInResynchronization()]
+        if primariesInResync:
+            logger.info("----------------------------------------------------")
+            logger.info("Segment Pairs in Resynchronization")
+            logSegments(primariesInResync, logAsPairs=True, additionalFieldsToLog=[VALUE__RESYNC_MODE, \
+                        VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR, VALUE__RESYNC_DATA_SYNCHRONIZED, \
+                        VALUE__RESYNC_EST_TOTAL_DATA, VALUE__RESYNC_EST_COMPLETION_TIME, VALUE__CHANGE_TRACKING_DATA_SIZE])
+            exitCode = 1
+        else:
+            pass # logger.info( "No segment pairs are in resynchronization")
+
+        # segments that are down (excluding those that are part of changetracking)
+        changeTrackingMirrors = [contentIdToMirror[s.getSegmentContentId()][0] for s in primariesInChangeTracking]
+        changeTrackingMirrorsByDbId = GpArray.getSegmentsGroupedByValue(changeTrackingMirrors, gparray.GpDB.getSegmentDbId)
+        segmentsThatAreDown = [s for s in gpArray.getSegDbList() if \
+                            not s.getSegmentDbId() in changeTrackingMirrorsByDbId and \
+                            data.isSegmentProbablyDown(s)]
+        if segmentsThatAreDown:
+            logger.info("----------------------------------------------------")
+            logger.info("Downed Segments (this excludes mirrors whose primaries are in change tracking" )
+            logger.info("                  -- these, if any, are reported separately above")
+            logger.info("                  also, this may include segments where status could not be retrieved)")
+            logSegments(segmentsThatAreDown, False, [VALUE__MASTER_REPORTS_STATUS, VALUE__SEGMENT_STATUS])
+            exitCode = 1
+        else:
+            pass # logger.info( "No segments are down")
+
+        self.__addClusterDownWarning(gpArray, data)
+
+        # final output -- no errors, then log this message
+        if exitCode == 0:
+            logger.info("----------------------------------------------------")
+            logger.info("All segments are running normally")
+
+        return exitCode
+
+    def __addClusterDownWarning(self, gpArray, gpStateData):
+        if gpStateData.isClusterProbablyDown(gpArray):
+            logger.warn("*****************************************************" )
+            logger.warn("DATABASE IS PROBABLY UNAVAILABLE" )
+            logger.warn("Review Instance Status in log file or screen output for more information" )
+            logger.warn("*****************************************************" )
+
+    def __getSegmentStatusColumns(self):
+        return [
+                VALUE__DBID,
+                VALUE__CONTENTID,
+
+                VALUE__HOSTNAME,
+                VALUE__ADDRESS,
+                VALUE__DATADIR,
+                VALUE__PORT,
+
+                VALUE__CURRENT_ROLE,
+                VALUE__PREFERRED_ROLE,
+                VALUE__MIRROR_STATUS,
+
+                VALUE__MASTER_REPORTS_STATUS,
+                VALUE__SEGMENT_STATUS,
+
+                VALUE__ERROR_GETTING_SEGMENT_STATUS,
+
+                VALUE__CHANGE_TRACKING_DATA_SIZE,
+
+                VALUE__RESYNC_MODE,
+                VALUE__RESYNC_DATA_SYNCHRONIZED,
+                VALUE__RESYNC_DATA_SYNCHRONIZED_BYTES,
+                VALUE__RESYNC_EST_TOTAL_DATA,
+                VALUE__RESYNC_EST_TOTAL_DATA_BYTES,
+                VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR,
+                VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR_NUMERIC,
+                VALUE__RESYNC_EST_COMPLETION_TIME,
+
+                VALUE__POSTMASTER_PID_FILE,
+                VALUE__POSTMASTER_PID_VALUE,
+                VALUE__LOCK_FILES,
+                VALUE__ACTIVE_PID
+                ]
+
+    def __segmentStatusPipeSeparatedForTableUse(self, gpEnv, gpArray):
+        """
+        Print out the current status of the cluster (not including master+standby) as a pipe separate list
+
+        @param gpEnv the GpMasterEnvironment object
+        @param gpArray the array to display
+
+        returns the exit code
+        """
+        hostNameToResults = self.__fetchAllSegmentData(gpArray)
+        data = self.__buildGpStateData(gpArray, hostNameToResults)
+
+        fields = self.__getSegmentStatusColumns()
+        rows = [] # [[f.getName() for f in fields]]
+        for seg in gpArray.getSegDbList():
+            row = []
+            for key in fields:
+                row.append(data.getStrValue(seg, key, ""))
+            rows.append(row)
+
+        # output rows and fieldNames!
+        self.__writePipeSeparated(rows, printToLogger=False)
+        return 0
+
+    def __printSampleExternalTableSqlForSegmentStatus(self, gpEnv):
+        scriptName = "%s/gpstate --segmentStatusPipeSeparatedForTableUse -q -d %s" % \
+                        (sys.path[0], gpEnv.getMasterDataDir()) # todo: ideally, would escape here
+        columns = ["%s %s" % (f.getColumnName(), f.getColumnType()) for f in self.__getSegmentStatusColumns()]
+
+        sql = "\nCREATE EXTERNAL WEB TABLE gpstate_segment_status\n" \
+              "(%s)\nEXECUTE '%s' ON MASTER\nFORMAT 'TEXT' (DELIMITER '|' NULL AS '');\n" % \
+               (",".join(columns), scriptName )
+
+        print sql
+
+        return 0
+
+    def __writePipeSeparated(self, rows, printToLogger=True):
+        for row in rows:
+            escapedRow = [s.replace("|", "_") for s in row]  # todo: can we escape it better?
+            str = "|".join(escapedRow)
+            if printToLogger:
+                logger.info(str)
+            else:
+                print str
 
     def __showStatus(self, gpEnv, gpArray):
         """
@@ -556,19 +815,26 @@ class GpSystemStateProgram:
             #  connection?  non-utility-mode connections can take a long time to quit out if there
             #  are segment failures and you need to wait for the prober (and this would print
             #  role as "utility" even though it's really a failed-dispatcher.
-            conn = dbconn.connect(dbUrl, utility=False)
+            #
+            # for now, we use Verbose=True so we don't try any statements on the connection during connect
+            conn = dbconn.connect(dbUrl, utility=False, verbose=True)
+            conn.close()
             qdRole = "dispatch"
         except Exception:
-            qdRole = "utility" # unable to connect in non-utility, but we've been able to connect in utility so...         
+            qdRole = "utility" # unable to connect in non-utility, but we've been able to connect in utility so...
         #
         # print output about master
         #
         (statusFetchWarning, outputFromMasterCmd) = hostNameToResults[master.getSegmentHostName()]
         masterData = outputFromMasterCmd[master.getSegmentDbId()] if statusFetchWarning is None else None
+        data = self.__buildGpStateData(gpArray, hostNameToResults)
 
         logger.info( "----------------------------------------------------" )
         logger.info("-Master Configuration & Status")
         logger.info( "----------------------------------------------------" )
+
+        self.__addClusterDownWarning(gpArray, data)
+
         tabLog = TableLogger().setWarnWithArrows(True)
         tabLog.info(["Master host", "= %s" % master.getSegmentHostName()])
         if statusFetchWarning is None:
@@ -591,9 +857,9 @@ class GpSystemStateProgram:
         else:
             tabLog.warn(["Greenplum current version", "= Error fetching data: %s" % statusFetchWarning])
         tabLog.info(["Postgres version", "= %s" % pgVersion])
-            
+
         tabLog.info(["Greenplum mirroring status", "= %s" % gparray.getFaultStrategyLabel(gpArray.getFaultStrategy())])
-        
+
         self.__appendStandbySummary(hostNameToResults, gpArray.standbyMaster, tabLog)
         tabLog.outputTable()
         hasWarnings = hasWarnings or tabLog.hasWarnings()
@@ -604,7 +870,6 @@ class GpSystemStateProgram:
         logger.info("----------------------------------------------------")
         logger.info("Segment Instance Status Report")
 
-        data = self.__buildGpStateData(gpArray, hostNameToResults)
         tabLog = TableLogger().setWarnWithArrows(True)
         for seg in gpArray.getSegDbList():
             tabLog.addSeparator()
@@ -612,12 +877,8 @@ class GpSystemStateProgram:
         tabLog.outputTable()
         hasWarnings = hasWarnings or tabLog.hasWarnings()
 
-        if False and data.isClusterProbablyDown(gpArray):  # disabled for now, may enable when adding resync status
-            logger.warn("*****************************************************" )
-            logger.warn("DATABASE IS PROBABLY UNAVAILABLE" )
-            logger.warn("Review Instance Status in log file or screen output for more information" )
-            logger.warn("*****************************************************" )
-
+        self.__addClusterDownWarning(gpArray, data)
+        
         if hasWarnings:
             logger.warn("*****************************************************" )
             logger.warn("Warnings have been generated during status processing" )
@@ -634,11 +895,14 @@ class GpSystemStateProgram:
             (statusFetchWarning, outputFromCmd) = hostNameToResults[seg.getSegmentHostName()]
 
             data.beginSegment(seg)
+            data.addValue(VALUE__DBID, seg.getSegmentDbId())
+            data.addValue(VALUE__CONTENTID, seg.getSegmentContentId())
             data.addValue(VALUE__HOSTNAME, seg.getSegmentHostName())
             data.addValue(VALUE__ADDRESS, seg.getSegmentAddress())
             data.addValue(VALUE__DATADIR, seg.getSegmentDataDirectory())
             data.addValue(VALUE__PORT, seg.getSegmentPort())
 
+            peerPrimary = None
             if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_FILE_REPLICATION:
                 data.addValue(VALUE__CURRENT_ROLE, "Primary" if seg.isSegmentPrimary(current_role=True) else "Mirror")
                 data.addValue(VALUE__PREFERRED_ROLE, "Primary" if seg.isSegmentPrimary(current_role=False) else "Mirror")
@@ -646,8 +910,8 @@ class GpSystemStateProgram:
                 if seg.isSegmentPrimary(current_role=True):
                     data.addValue(VALUE__MIRROR_STATUS, gparray.getDataModeLabel(seg.getSegmentMode()))
                 else:
-                    primary = primaryByContentId[seg.getSegmentContentId()][0]
-                    if primary.getSegmentMode() == gparray.MODE_CHANGELOGGING:
+                    peerPrimary = primaryByContentId[seg.getSegmentContentId()][0]
+                    if peerPrimary.isSegmentModeInChangeLogging():
                         data.addValue(VALUE__MIRROR_STATUS, "Out of Sync", isWarning=True)
                     else:
                         data.addValue(VALUE__MIRROR_STATUS, gparray.getDataModeLabel(seg.getSegmentMode()))
@@ -686,12 +950,17 @@ class GpSystemStateProgram:
                             if mirrorData is None:
                                 data.addValue(VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR, "unable to retrieve progress", isWarning=True)
                             else:
-                                dataSynchronizedStr = self.__abbreviateBytes( mirrorData["resyncNumCompleted"] * 32L * 1024 )
+                                dataSynchronizedBytes = mirrorData["resyncNumCompleted"] * 32L * 1024
+                                dataSynchronizedStr = self.__abbreviateBytes( dataSynchronizedBytes )
+                                resyncDataBytes = None
+                                resyncProgressNumeric = None
+                                totalDataToSynchronizeBytes = None
 
                                 if mirrorData["dataState"] == "InSync":
                                     totalDataToSynchronizeStr = "Synchronization complete; awaiting configuration change"
+                                    resyncProgressNumeric = 1
                                     resyncProgressStr = "100%"
-                                    estimatedTimeToCompletionStr = "Synchronization complete; awaiting configuration change"
+                                    estimatedTimeToCompletionStr = ""
                                 elif mirrorData["estimatedCompletionTimeSecondsSinceEpoch"] == 0:
                                     totalDataToSynchronizeStr = "Not Available"
                                     resyncProgressStr = "Not Available"
@@ -701,16 +970,25 @@ class GpSystemStateProgram:
                                     if mirrorData["resyncTotalToComplete"] == 0:
                                         resyncProgressStr = "Not Available"
                                     else:
-                                        percentComplete = 100 * mirrorData["resyncNumCompleted"] / float(mirrorData["resyncTotalToComplete"])
+                                        resyncProgressNumeric = mirrorData["resyncNumCompleted"] / float(mirrorData["resyncTotalToComplete"])
+                                        percentComplete = 100 * resyncProgressNumeric
                                         resyncProgressStr = "%.2f%%" % percentComplete
 
-                                    totalDataToSynchronizeStr = self.__abbreviateBytes( mirrorData["resyncTotalToComplete"] * 32L * 1024 )
+                                    totalDataToSynchronizeBytes = mirrorData["resyncTotalToComplete"] * 32L * 1024
+                                    totalDataToSynchronizeStr = self.__abbreviateBytes( totalDataToSynchronizeBytes )
                                     estimatedTimeToCompletionStr = datetime.datetime.fromtimestamp(mirrorData["estimatedCompletionTimeSecondsSinceEpoch"])
 
                                 data.addValue(VALUE__RESYNC_MODE, "Full" if mirrorData['isFullResync'] else "Incremental")
+
                                 data.addValue(VALUE__RESYNC_DATA_SYNCHRONIZED, dataSynchronizedStr)
+                                data.addValue(VALUE__RESYNC_DATA_SYNCHRONIZED_BYTES, dataSynchronizedBytes)
+
                                 data.addValue(VALUE__RESYNC_EST_TOTAL_DATA, totalDataToSynchronizeStr)
+                                data.addValue(VALUE__RESYNC_EST_TOTAL_DATA_BYTES, totalDataToSynchronizeBytes)
+
                                 data.addValue(VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR, resyncProgressStr)
+                                data.addValue(VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR_NUMERIC, resyncProgressNumeric)
+                                
                                 data.addValue(VALUE__RESYNC_EST_COMPLETION_TIME, estimatedTimeToCompletionStr)
 
 
@@ -746,7 +1024,7 @@ class GpSystemStateProgram:
                 databaseStatus = "Unknown -- unable to load segment status"
                 databaseStatusIsWarning = True
             elif segmentData[gp.SEGMENT_STATUS__GET_PID]['error'] is not None:
-                databaseStatus = "Process error; see Process Info"
+                databaseStatus = "Process error -- database process may be down"
                 databaseStatusIsWarning = True
             elif segmentData[gp.SEGMENT_STATUS__GET_MIRROR_STATUS] is None:
                 databaseStatus = "Unknown -- unable to load segment status"
@@ -759,9 +1037,10 @@ class GpSystemStateProgram:
                 data.addValue(VALUE__MIRROR_SEGMENT_STATUS, databaseStatus, databaseStatusIsWarning)
             else:
                 data.addValue(VALUE__NONMIRROR_DATABASE_STATUS, databaseStatus, databaseStatusIsWarning)
+            data.addValue(VALUE__SEGMENT_STATUS, databaseStatus, databaseStatusIsWarning)
 
-            data.setDatabaseProbablyDown(seg, databaseStatusIsWarning)
-        return data        
+            data.setSegmentProbablyDown(seg, peerPrimary, databaseStatusIsWarning)
+        return data
 
     def __abbreviateBytes(self, numBytes):
         """
@@ -937,6 +1216,9 @@ class GpSystemStateProgram:
 
         # done printing gp_master_mirroring table
 
+    def __poolWait(self, dispatchCount):
+        self.__pool.wait_and_printdots(dispatchCount, self.__options.quiet)
+
     def __showVersionInfo(self, gpEnv, gpArray):
 
         exitCode = 0
@@ -957,7 +1239,7 @@ class GpSystemStateProgram:
             self.__pool.addCommand(cmd)
             dispatchCount+=1
 
-        self.__pool.wait_and_printdots(dispatchCount, False) # False -- self.__quiet
+        self.__poolWait(dispatchCount)
 
         # group output
         dbIdToVersion = {}
@@ -1010,8 +1292,11 @@ class GpSystemStateProgram:
                  (1 if self.__options.showQuickStatus else 0) + \
                  (1 if self.__options.showStatus else 0) + \
                  (1 if self.__options.showStatusStatistics else 0) + \
+                 (1 if self.__options.segmentStatusPipeSeparatedForTableUse else 0) + \
+                 (1 if self.__options.printSampleExternalTableSqlForSegmentStatus else 0) + \
                  (1 if self.__options.showPortInformation else 0) + \
                  (1 if self.__options.showStandbyMasterInformation else 0) + \
+                 (1 if self.__options.showSummaryOfSegmentsWhichRequireAttention else 0) + \
                  (1 if self.__options.showVersionInfo else 0)
         if numSet > 1:
             raise ProgramArgumentValidationException("Too many output options specified")
@@ -1033,18 +1318,23 @@ class GpSystemStateProgram:
             exitCode = self.__showClusterConfig(gpEnv, gpArray)
         elif self.__options.showQuickStatus:
             exitCode = self.__showQuickStatus(gpEnv, gpArray)
-        elif self.__options.showStatusStatistics:
-            exitCode = self.__showStatusStatistics(gpEnv, gpArray)
         elif self.__options.showStatus:
             exitCode = self.__showStatus(gpEnv, gpArray)
         elif self.__options.showVersionInfo:
             exitCode = self.__showVersionInfo(gpEnv, gpArray)
+        elif self.__options.showSummaryOfSegmentsWhichRequireAttention:
+            exitCode = self.__showSummaryOfSegmentsWhichRequireAttention(gpEnv, gpArray)
+        elif self.__options.printSampleExternalTableSqlForSegmentStatus:
+            exitCode = self.__printSampleExternalTableSqlForSegmentStatus(gpEnv)
         elif self.__options.showStandbyMasterInformation:
             exitCode = self.__showStandbyMasterInformation(gpEnv, gpArray)
         elif self.__options.showPortInformation:
             exitCode = self.__showPortInfo(gpEnv, gpArray)
+        elif self.__options.segmentStatusPipeSeparatedForTableUse:
+            exitCode = self.__segmentStatusPipeSeparatedForTableUse(gpEnv, gpArray)
         else:
-            raise ProgramArgumentValidationException( "No output options specified")
+            # self.__options.showStatusStatistics OR default:
+            exitCode = self.__showStatusStatistics(gpEnv, gpArray)
 
         return exitCode
 
@@ -1061,7 +1351,7 @@ class GpSystemStateProgram:
 
         parser = OptParser(option_class=OptChecker,
                     description=' '.join(description.split()),
-                    version='%prog version $Revision: #1 $')
+                    version='%prog version $Revision$')
         parser.setHelp(help)
 
         addStandardLoggingAndHelpOptions(parser, True)
@@ -1104,6 +1394,22 @@ class GpSystemStateProgram:
                          dest="showStatusStatistics",
                          metavar="<showStatusStatistics>",
                          help="Show status statistics")
+        addTo.add_option("-e", None, default=False, action="store_true",
+                         dest="showSummaryOfSegmentsWhichRequireAttention",
+                         metavar="<showSummaryOfSegmentsWhichRequireAttention>",
+                         help="Show summary of segments needing attention")
+
+        #
+        # two experimental options for exposing segment status as a queryable web table
+        #
+        addTo.add_option("--segmentStatusPipeSeparatedForTableUse", None, default=False, action="store_true",
+                         dest="segmentStatusPipeSeparatedForTableUse",
+                         metavar="<segmentStatusPipeSeparatedForTableUse>",
+                         help="Show status as pipe separated output")
+        addTo.add_option("--printSampleExternalTableSql", None, default=False, action="store_true",
+                         dest="printSampleExternalTableSqlForSegmentStatus",
+                         metavar="<printSampleExternalTableSqlForSegmentStatus>",
+                         help="Print sample sql that can be run to create an external table on stop of gpstate --segmentStatusPipeSeparatedForTableUse")
 
         addTo = OptionGroup(parser, "Other Options")
         parser.add_option_group(addTo)
