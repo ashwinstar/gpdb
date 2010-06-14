@@ -1,4 +1,4 @@
-f#ifndef GPMON_H
+#ifndef GPMON_H
 #define GPMON_H
 
 #ifdef POSTGRES_H
