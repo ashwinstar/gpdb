@@ -251,9 +251,30 @@ class SendFilerepTransitionStatusMessage(Command):
         self.cmdStr='$GPHOME/bin/gp_primarymirror -h %s -p %s' % (remoteHost,port)
         self.dataDir = dataDir
 
-        logger.info("Msg %s and cmdStr %s" % (msg, self.cmdStr))
+        logger.debug("Sending msg %s and cmdStr %s" % (msg, self.cmdStr))
 
         Command.__init__(self, name, self.cmdStr, ctxt, remoteHost, stdin=msg)
+
+    def unpackSuccessLine(self):
+        """
+        After run() has been called on this cmd, call this to find the "Success" data in the output
+
+        That line is returned if successful, otherwise None is returned
+        """
+        res = self.get_results()
+        if res.rc != 0:
+            logger.warn("Error getting data stdout:\"%s\"  stderr:\"%s\"" % \
+                        (res.stdout.replace("\n", " "), res.stderr.replace("\n", " ")))
+            return None
+        else:
+            logger.info("Result: stdout:\"%s\"  stderr:\"%s\"" % \
+                        (res.stdout.replace("\n", " "), res.stderr.replace("\n", " ")))
+
+            line = res.stderr
+            if line.startswith("Success:"):
+                line = line[len("Success:"):]
+            return line
+
 
 #-----------------------------------------------
 class SegmentStop(Command):
@@ -803,93 +824,6 @@ class GpCatVersionDirectory(Command):
         cmd=GpCatVersionDirectory(name,directory)
         cmd.run(validateAfter=True)
         return cmd.get_version()
-
-
-#-----------------------------------------------
-class GpSegCheckLocaleAndConnect(Command):
-    def __init__(self,name,datadir,port,expected_lc_collate,expected_lc_monetary,expected_lc_numeric, timeout):
-        self.datadir=datadir
-        self.port=port
-        self.expected_lc_collate=expected_lc_collate
-        self.expected_lc_monetary=expected_lc_monetary
-        self.expected_lc_numeric=expected_lc_numeric
-        self.error_str=""
-        self.success=False
-        self.timeout = timeout
-
-        Command.__init__(self, name, "GpSegCheckLocaleAndConnect")
-        pass
-
-
-    def run(self,validateAfter=False):
-
-        dburl = dbconn.DbURL(port=self.port,dbname='template1')
-
-        logger.debug("%s connecting to %s" % (self.datadir,dburl))
-
-        #
-        # Note that rather than waiting strictly self.timeout number of seconds, we do
-        #  what pg_ctl does: loop self.timeout number of times, sleeping on failure
-        #
-        connectionLoopCount = 0
-        conn = None
-        while conn is None:
-            try:
-                connectionLoopCount += 1
-                conn = dbconn.connect(dburl, utility=True)
-            except Exception, ex:
-                (exType,exValue,exTraceback) = sys.exc_info()
-                conn = None
-                if connectionLoopCount >= self.timeout:
-                    self.error_str += "Unable to connect to database to verify startup: %s" % (exValue)
-                    break
-                logger.debug("While checking for database '%s', connection attempt gave '%s'.  Will retry in one second.",
-                            self.datadir, exValue)
-                time.sleep(1)
-
-        if conn is not None: # if conn is none that's because we could not connect and we updated the error string
-
-            (lc_collate,lc_monetary,lc_numeric)=catalog.getCollationSettings(conn)
-            if lc_collate != self.expected_lc_collate:
-                self.error_str+="Segment's value of lc_collate does not match the master.\n" \
-                                " Master had value: '%s' while this segment has: '%s'\n" %\
-                                (self.expected_lc_collate,lc_collate)
-            if lc_monetary != self.expected_lc_monetary:
-                self.error_str += "Segment's value of lc_monetary does not match the master.\n"\
-                                  " Master had value: '%s' while this segment has: '%s'" %\
-                                (self.expected_lc_monetary,lc_monetary)
-            if lc_numeric != self.expected_lc_numeric:
-                self.error_str += "Segment's value of lc_numeric does not match the master.\n" \
-                                  " Master had value: '%s' while this segment has: '%s'" %\
-                                  (self.expected_lc_numeric,lc_numeric)
-            seg_datadir = catalog.getSessionGUC(conn, 'data_directory')
-            if not os.path.samefile(seg_datadir, self.datadir):
-                self.error_str += "Segment's data directory does not match. " \
-                                  "Expected value %s, " \
-                                  "Actual value %s" % (self.datadir, seg_datadir)
-            conn.close()
-            logger.debug("%s connection closed" % self.datadir)
-
-        if len(self.error_str) == 0:
-            self.success = True
-        else:
-            self.success = False
-
-    def set_results(self,results):
-        raise ExecutionError("TODO:  must implement", self)
-
-    def get_results(self):
-        raise ExecutionError("TODO:  must implement", self)
-
-    def was_successful(self):
-        raise ExecutionError("TODO:  must implement", self)
-
-    def validate(self, expected_rc=0):
-        raise ExecutionError("TODO:  must implement", self)
-
-    def getResults(self):
-        return (self.success,self.error_str)
-
 
 #-----------------------------------------------
 class GpSuspendSegmentsOnHost(Command):

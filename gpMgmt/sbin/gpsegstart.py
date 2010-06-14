@@ -27,6 +27,7 @@ from gppylib.commands.gp import *
 from gppylib.db import catalog, dbconn
 from gppylib import pgconf
 from gppylib.gpcoverage import GpCoverage
+from gppylib.utils import parseKeyColonValueLines
 
 
 description = (""" 
@@ -176,39 +177,67 @@ class GpSegStart:
 
     def __checkLocaleAndConnect(self, directoryToSegStartDataMap, results):
         if self.mirroringMode == 'quiescent' or self.mirroringMode == 'mirror':
+            #
+            # Note that we could do datadir checking for mirror?
+            #
             return
 
-        #
-        # regarding setting the timeout:
-        #     for primary (not mirrorless) segments, we must wait the timeout duration since
-        #             this was not done by pg_ctl.
-        #
-        # otherwise, pg_ctl should have waited for us
-        #
         if self.mirroringMode == 'primary':
-            timeout = self.timeout
             logger.info("Awaiting segment startup and validating segments...")
         else:
-            timeout = 1
             logger.info("Validating segments...")
 
+        #
+        # we CANNOT validate using a psql connection because this may hang (see MPP-9974).
+        #    so we validate these items using a postmaster 'transition' message
+        #
+        dataDirToCmd = {}
         for datadir, seg in directoryToSegStartDataMap.iteritems():
-
-            cmd = gp.GpSegCheckLocaleAndConnect('check on %s' % datadir,
-                                            datadir,
-                                            seg.getSegmentPort(),
-                                            self.expected_lc_collate,
-                                            self.expected_lc_monetary,
-                                            self.expected_lc_numeric,
-                                            timeout)
+            cmd = gp.SendFilerepTransitionStatusMessage("Check Status", "getCollationAndDataDirSettings",
+                                    seg.getSegmentDataDirectory(), seg.getSegmentPort())
+            dataDirToCmd[datadir] = cmd
             self.pool.addCommand(cmd)
 
         self.pool.join()
 
-        for cmd in self.pool.getCompletedItems():
-            (success,error_str)= cmd.getResults()
-            if not success:
-                self.__markFailed(directoryToSegStartDataMap, results, cmd.datadir, error_str,
+        for datadir, cmd in dataDirToCmd.iteritems():
+            cmd.get_results()
+            line = cmd.unpackSuccessLine()
+            if line is None:
+                self.__markFailed(directoryToSegStartDataMap, results, datadir, "Unable to connect to server",
+                            gp.SEGSTART_ERROR_CHECKING_CONNECTION_AND_LOCALE_FAILED)
+                continue
+            dict = parseKeyColonValueLines(line)
+
+            # verify was parsed, and we got all needed data
+            if dict is None or \
+                [s for s in ["datadir", "lc_collate", "lc_monetary", "lc_numeric"] if s not in dict]:
+                self.__markFailed(directoryToSegStartDataMap, results, datadir, "Invalid response from server",
+                            gp.SEGSTART_ERROR_CHECKING_CONNECTION_AND_LOCALE_FAILED)
+                continue
+
+            errorStr = ""
+            if dict["lc_collate"] != self.expected_lc_collate:
+                errorStr += "Segment's value of lc_collate does not match the master.\n" \
+                                " Master had value: '%s' while this segment has: '%s'\n" %\
+                                (self.expected_lc_collate,dict["lc_collate"])
+            if dict["lc_monetary"] != self.expected_lc_monetary:
+                errorStr += "Segment's value of lc_monetary does not match the master.\n"\
+                                  " Master had value: '%s' while this segment has: '%s'\n" %\
+                                (self.expected_lc_monetary,dict["lc_monetary"])
+            if dict["lc_numeric"] != self.expected_lc_numeric:
+                errorStr += "Segment's value of lc_numeric does not match the master.\n" \
+                                  " Master had value: '%s' while this segment has: '%s'\n" %\
+                                  (self.expected_lc_numeric,dict["lc_numeric"])
+
+            if not os.path.samefile(dict["datadir"], datadir):
+                errorStr += "Segment's data directory does not match. " \
+                                  "Expected value %s, Actual value %s\n" % \
+                                  (datadir, self["datadir"])
+                
+
+            if len(errorStr) > 0:
+                self.__markFailed(directoryToSegStartDataMap, results, datadir, errorStr,
                             gp.SEGSTART_ERROR_CHECKING_CONNECTION_AND_LOCALE_FAILED)
 
     def __convertSegments(self, directoryToSegStartDataMap, results, transitionData):

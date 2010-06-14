@@ -17,6 +17,7 @@ from gppylib.gpparseopts import OptParser, OptChecker
 from gppylib import gplog, gparray, pgconf
 from gppylib.commands import base, gp, pg, unix
 from gppylib.db import catalog, dbconn
+from gppylib.utils import parseKeyColonValueLines
 
 logger = gplog.get_default_logger()
 
@@ -50,19 +51,7 @@ class GpSegStatusProgram:
                                                 seg.getSegmentPort())
 
         cmd.run()
-        res = cmd.get_results()
-        if res.rc != 0:
-            logger.warn("Error getting data stdout:\"%s\"  stderr:\"%s\"" % \
-                        (res.stdout.replace("\n", " "), res.stderr.replace("\n", " ")))
-            return None
-        else:
-            logger.info("Result: stdout:\"%s\"  stderr:\"%s\"" % \
-                        (res.stdout.replace("\n", " "), res.stderr.replace("\n", " ")))
-
-            line = res.stderr
-            if line.startswith("Success:"):
-                line = line[len("Success:"):]
-            return line
+        return cmd.unpackSuccessLine()
 
     def getPidStatus(self, seg, pidRunningStatus):
         """
@@ -113,23 +102,8 @@ class GpSegStatusProgram:
             'pidValue' : pidValue
         }
 
-    def __parseKeyColonValueLines(self, str):
-        res = {}
-        for line in str.split("\n"):
-            line = line.strip()
-            if line == "":
-                continue
-            colon = line.find(":")
-            if colon == -1:
-                logger.warn("Error parsing data, no colon on line %s" % line)
-                return None
-            key = line[:colon]
-            value = line[colon+1:]
-            res[key] = value
-        return res
-
     def __processMirrorStatusOutput(self, str):
-        data = self.__parseKeyColonValueLines(str)
+        data = parseKeyColonValueLines(str)
 
         if data is None:
             return data

@@ -69,6 +69,7 @@ char	   *locale_messages;
 char	   *locale_monetary;
 char	   *locale_numeric;
 char	   *locale_time;
+char       *locale_collate;
 
 /* lc_time localization cache */
 char	   *localized_abbrev_days[7];

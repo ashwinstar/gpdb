@@ -359,6 +359,25 @@ def copyFile(srcDir,srcFile, destDir, destFile):
         print ("OS Error occurred")
     return result
 
+def parseKeyColonValueLines(str):
+    """
+    Given a   string contain   key:value  lines, parse the lines and return a map of key->value
+    Returns None if there was a problem parsing
+    """
+    res = {}
+    for line in str.split("\n"):
+        line = line.strip()
+        if line == "":
+            continue
+        colon = line.find(":")
+        if colon == -1:
+            logger.warn("Error parsing data, no colon on line %s" % line)
+            return None
+        key = line[:colon]
+        value = line[colon+1:]
+        res[key] = value
+    return res
+
 
 def sortedDictByKey(di):
     return  [ (k,di[k]) for k in sorted(di.keys())]

@@ -126,9 +126,8 @@ class GpSegToPrimaryMirror():
                 failures=True
 
         #
-        # note: we do not check whether we can connect to the database here (and do the local checking
-        #       like GpSegCheckLocaleAndConnect ) because we don't want to block the transition because
-        #       the fault prober is paused at this point.  If stuff fails just after conversion
+        # note: we do not check whether we can connect to the database here because we don't want to block the
+        #       transition because the fault prober is paused at this point.  If stuff fails just after conversion
         #       then we could block on a connect call, waiting for the prober to unstick the process
         #
         for datadir,port in dirportmap.iteritems():

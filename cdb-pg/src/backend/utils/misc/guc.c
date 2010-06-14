@@ -407,7 +407,6 @@ static char *client_encoding_string;
 static char *IntervalStyle_string;
 static char *datestyle_string;
 static char *default_iso_level_string;
-static char *locale_collate;
 static char *locale_ctype;
 static char *regex_flavor_string;
 static char *server_encoding_string;

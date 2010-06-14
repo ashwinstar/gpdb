@@ -487,6 +487,12 @@ extern int	optind,
 extern int	optreset;			/* might not be declared by system headers */
 #endif
 
+/* some GUC values used in fetching status from status transition */
+extern char	   *locale_monetary;
+extern char	   *locale_numeric;
+extern char    *locale_collate;
+
+
 /*
  * postmaster.c - function prototypes
  */
@@ -2669,6 +2675,23 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
 		sendPrimaryMirrorTransitionResult(statusBuf);
 		return;
 	}
+
+	if (strcmp("getCollationAndDataDirSettings", targetModeStr) == 0)
+	{
+	    char statusBuf[10000 + MAXPGPATH];
+
+		snprintf(statusBuf, sizeof(statusBuf), "Success: lc_collate:%s\n"
+		            "lc_monetary:%s\n"
+		            "lc_numeric:%s\n"
+		            "datadir:%s\n",
+		            locale_collate,
+		            locale_monetary,
+		            locale_numeric,
+		            data_directory );
+
+		sendPrimaryMirrorTransitionResult(statusBuf);
+		return;
+    }
 
 	if (strcmp("getMirrorStatus", targetModeStr) == 0)
 	{
