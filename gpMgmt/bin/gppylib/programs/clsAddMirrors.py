@@ -251,7 +251,7 @@ class GpAddMirrorsProgram:
         # build up the output now
         #
         toBuild = []
-        primaries = [seg for seg in gpArray.getDbList() if seg.isSegmentPrimary(False)]
+        primaries = [seg for seg in gpArray.getDbList() if seg.isSegmentPrimary(current_role=False)]
         segsByContentId = GpArray.getSegmentsByContentId(primaries)
 
         # note: passed port offset in this call should not matter
@@ -284,6 +284,10 @@ class GpAddMirrorsProgram:
 
             calc.addMirror(toBuild, primary, hostName, address, port, dataDir, replicationPort, \
                 primarySegmentReplicationPort, filespaceOidToPathMap )
+
+        if len(toBuild) != len(primaries):
+            raise Exception("Wrong number of mirrors specified (specified %s mirror(s) for %s primarie(s))" % \
+                    (len(toBuild), len(primaries)))
 
         return GpMirrorListToBuild(toBuild, self.__pool, self.__options.quiet, self.__options.parallelDegree)
 
