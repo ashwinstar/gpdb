@@ -109,10 +109,10 @@ PerfmonMain(int argc, char *argv[])
 
 	/* Find gpmmon executable */
 	if ((ret = find_other_exec(my_exec_path, "gpmmon",
-			GPMMON_VERSION_STRING, gpmmon_bin)) < 0)
+			GPMMON_PACKET_VERSION_STRING, gpmmon_bin)) < 0)
 	{
 		elog(FATAL,"Failed to find gpmmon executable: %s (%s)", gpmmon_bin,
-				GPMMON_VERSION_STRING);
+				GPMMON_PACKET_VERSION_STRING);
 		proc_exit(0);
 	}
 

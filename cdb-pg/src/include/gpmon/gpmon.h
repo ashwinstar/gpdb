@@ -28,7 +28,6 @@ typedef struct gpmon_seginfo_t gpmon_seginfo_t;
 #define GPMON_DIR   "./gpperfmon/data/"
 #define GPMON_DIR_MAX_PATH 100
 #define GPMON_DB    "gpperfmon"
-#define GPMMON_VERSION_STRING "gpmmon version 4.0.0.1\n"
 
 /*
 this is enough space for 2 names plus a . between the names plus a null char at the end of the string
@@ -198,7 +197,14 @@ struct gpmon_hello_t {
 
 
 #define GPMON_MAGIC     0x78ab928d
+
+/*
+ *  When updating the format of the packets update these variables
+ *  in order to make sure that the communication between the GPDB
+ *  and perfmon is compatible 
+ */
 #define GPMON_PACKET_VERSION   4
+#define GPMMON_PACKET_VERSION_STRING "gpmmon packet version 4\n"
 
 enum gpmon_pkttype_t {
     GPMON_PKTTYPE_NONE = 0,

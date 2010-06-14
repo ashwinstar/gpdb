@@ -131,7 +131,7 @@ static void usage(const char* msg)
 			opt.pname);
 	fprintf(stderr, "options:\n");
 	fprintf(stderr, "\t-?\t\t: print this help screen\n");
-	fprintf(stderr, "\t-V\t\t: print version information\n\n");
+	fprintf(stderr, "\t-V\t\t: print packet version information\n\n");
 	if (msg)
 		fprintf(stderr, "%s\n\n", msg);
 
@@ -847,7 +847,7 @@ static void gpmmon_main(void)
 
 static void print_version(void)
 {
-	fprintf(stdout, GPMMON_VERSION_STRING);
+	fprintf(stdout, GPMMON_PACKET_VERSION_STRING);
 	exit(0);
 }
 
