@@ -232,9 +232,9 @@ class GpSegStart:
 
             if not os.path.samefile(dict["datadir"], datadir):
                 errorStr += "Segment's data directory does not match. " \
-                                  "Expected value %s, Actual value %s\n" % \
-                                  (datadir, self["datadir"])
-                
+                              "Expected value %s, Actual value %s\n" % \
+                              (datadir, dict["datadir"])
+
 
             if len(errorStr) > 0:
                 self.__markFailed(directoryToSegStartDataMap, results, datadir, errorStr,
