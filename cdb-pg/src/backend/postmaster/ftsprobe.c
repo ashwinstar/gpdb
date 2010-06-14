@@ -144,14 +144,13 @@ static void SAN_Failover(PGconn *entryConn, struct segmentStatusChange *changes,
 static void Filerep_mode_update(int dbid, char *mode, char status, FilerepModeUpdateLoggingEnum logMsgToSend);
 static void Filerep_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str);
 
-static void Filerep_preprocess_probe_results(uint8 *probe_results, int dbid);
+static void Filerep_preprocess_probe_results(uint8 *probe_results, CdbComponentDatabaseInfo *segInfo);
 
 static void Null_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str);
 
 static void getMounts_forDbid(int dbid, List **mountp);
 static char mountMaintenance_forMpid(int mpid);
 static void startSegment_forDbid(int dbid);
-
 
 /*
  * Main entry point for ftsprobe process.
@@ -1243,7 +1242,7 @@ probePublishUpdate(uint8 *probe_results)
 			 */
 			if (failover_strategy == 'f')
 			{
-				Filerep_preprocess_probe_results(probe_results, segInfo->dbid);
+				Filerep_preprocess_probe_results(probe_results, segInfo);
 			}
 
 			/* We're no longer responding to probes ? */
@@ -1823,9 +1822,8 @@ Null_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int change
  * the state changes.
  */
 static void
-Filerep_preprocess_probe_results(uint8 *probe_results, int dbid)
+Filerep_preprocess_probe_results(uint8 *probe_results, CdbComponentDatabaseInfo *segInfo)
 {
-	CdbComponentDatabaseInfo *segInfo = &cdb_component_dbs->segment_db_info[dbid];
 	CdbComponentDatabaseInfo *primary = NULL, *mirror = NULL;
 
 	if (SEGMENT_IS_ACTIVE_PRIMARY(segInfo))
