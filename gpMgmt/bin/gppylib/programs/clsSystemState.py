@@ -29,14 +29,16 @@ class FieldDefinition:
     Represent a field of our data.  Note that we could infer columnName from name, but we would like
               for columnName to be more stable than "name"
     """
-    def __init__(self, name, columnName, columnType):
+    def __init__(self, name, columnName, columnType, shortLabel=None):
         self.__name = name
         self.__columnName = columnName
         self.__columnType = columnType
+        self.__shortLabel = shortLabel if shortLabel is not None else name
 
     def getName(self): return self.__name
     def getColumnName(self): return self.__columnName
     def getColumnType(self): return self.__columnType
+    def getShortLabel(self): return self.__shortLabel
 
     #
     # __str__ needs to return naem -- we use this for output in some cases right now
@@ -55,37 +57,40 @@ VALUE__PREFERRED_ROLE = FieldDefinition("Preferred role", "preferred_role", "tex
 VALUE__MIRROR_STATUS = FieldDefinition("Mirror status", "mirror_status", "text")
 
 CATEGORY__ERROR_GETTING_SEGMENT_STATUS = "Error Getting Segment Status"
-VALUE__ERROR_GETTING_SEGMENT_STATUS = FieldDefinition("Error Getting Segment Status", "error_getting_segment_status", "text")
+VALUE__ERROR_GETTING_SEGMENT_STATUS = FieldDefinition("Error Getting Segment Status", "error_getting_status", "text")
 
 CATEGORY__CHANGE_TRACKING_INFO = "Change Tracking Info"
-VALUE__CHANGE_TRACKING_DATA_SIZE = FieldDefinition("Change tracking data size", "change_tracking_data_size", "text")
+VALUE__CHANGE_TRACKING_DATA_SIZE = FieldDefinition("Change tracking data size", "change_tracking_data_size", "text", "Change tracking size")
 
 CATEGORY__RESYNCHRONIZATION_INFO = "Resynchronization Info"
-VALUE__RESYNC_MODE = FieldDefinition("Resynchronization mode", "resynchronization_mode", "text")
-VALUE__RESYNC_DATA_SYNCHRONIZED = FieldDefinition("Data synchronized", "data_synchronized_str", "text")
-VALUE__RESYNC_EST_TOTAL_DATA = FieldDefinition("Estimated total data to synchronize", "estimated_total_data_to_synchronize_str", "text")
-VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR = FieldDefinition("Estimated resync progress with mirror", "estimated_resync_progress_str", "text")
-VALUE__RESYNC_EST_COMPLETION_TIME = FieldDefinition("Estimated resync completion time", "estimated_resync_completion_time_str", "text")
+VALUE__RESYNC_MODE = FieldDefinition("Resynchronization mode", "resync_mode", "text", "Resync mode")
+VALUE__RESYNC_DATA_SYNCHRONIZED = FieldDefinition("Data synchronized", "data_synced_str", "text", "Data synced")
+VALUE__RESYNC_EST_TOTAL_DATA = FieldDefinition("Estimated total data to synchronize", "est_total_to_sync_str", "text", "Est. total to sync")
+VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR = FieldDefinition("Estimated resync progress with mirror", "est_resync_progress_str", "text", "Est. resync progress")
+VALUE__RESYNC_EST_COMPLETION_TIME = FieldDefinition("Estimated resync end time", "est_resync_end_time_str", "text", "Est. resync end time")
 
 CATEGORY__PROCESS_INFO = "Process Info"
-VALUE__POSTMASTER_PID_FILE = FieldDefinition("File postmaster.pid", "postmaster_pid_file_exists", "text") # boolean would be nice
-VALUE__POSTMASTER_PID_VALUE = FieldDefinition("PID from postmaster.pid file", "postmaster_pid", "text") # int would be better, but we print error messages here sometimes
-VALUE__LOCK_FILES= FieldDefinition("Lock files in /tmp", "lock_files_exist", "text") # boolean would be nice
+VALUE__POSTMASTER_PID_FILE = FieldDefinition("File postmaster.pid", "postmaster_pid_file_exists", "text", "pid file exists") # boolean would be nice
+VALUE__POSTMASTER_PID_VALUE = FieldDefinition("PID from postmaster.pid file", "postmaster_pid", "text", "pid file PID") # int would be better, but we print error messages here sometimes
+VALUE__LOCK_FILES= FieldDefinition("Lock files in /tmp", "lock_files_exist", "text", "local files exist") # boolean would be nice
 VALUE__ACTIVE_PID = FieldDefinition("Active PID", "active_pid", "text") # int would be better, but we print error messages here sometimes
 
 CATEGORY__STATUS = "Status"
-VALUE__MASTER_REPORTS_STATUS = FieldDefinition("Master reports status as", "master_reports_status_as", "text")
+VALUE__MASTER_REPORTS_STATUS = FieldDefinition("Configuration reports status as", "config_status", "text", "Config status")
 VALUE__MIRROR_SEGMENT_STATUS = FieldDefinition("Segment status", "segment_status", "text") # must not be same name as VALUE__SEGMENT_STATUS
 VALUE__NONMIRROR_DATABASE_STATUS = FieldDefinition("Database status", "database_status", "text")
 
 
  # these are not in a category, used for other logging
-VALUE__SEGMENT_STATUS = FieldDefinition("Instance status", "instance_status", "text")
+VALUE__SEGMENT_STATUS = FieldDefinition("Instance status", "instance_status", "text", "Status")
 VALUE__DBID = FieldDefinition("dbid", "dbid", "int")
 VALUE__CONTENTID = FieldDefinition("contentid", "contentid", "int")
 VALUE__RESYNC_DATA_SYNCHRONIZED_BYTES = FieldDefinition("Data synchronized (bytes)", "data_synchronized", "int8")
-VALUE__RESYNC_EST_TOTAL_DATA_BYTES = FieldDefinition("Estimated total data to synchronize (bytes)", "estimated_total_data_to_synchronize", "int8")
-VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR_NUMERIC = FieldDefinition("Estimated resync progress with mirror (numeric)", "estimated_resync_progress", "float")
+VALUE__RESYNC_EST_TOTAL_DATA_BYTES = FieldDefinition("Estimated total data to synchronize (bytes)", "est_data_to_sync", "int8")
+VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR_NUMERIC = FieldDefinition("Estimated resync progress with mirror (numeric)", "est_resync_progress", "float")
+VALUE__RESYNC_EST_COMPLETION_TIME_TIMESTAMP = FieldDefinition("Estimated resync end time (timestamp)", "est_resync_end_time", "timestamp")
+VALUE__HAS_DATABASE_STATUS_WARNING = FieldDefinition("Has database status warning", "has_status_warning", "bool")
+VALUE__VERSION_STRING = FieldDefinition("Version", "version", "text")
 
 class GpStateData:
     """
@@ -157,6 +162,9 @@ class GpStateData:
         self.__allValues[VALUE__RESYNC_DATA_SYNCHRONIZED_BYTES] = True # category-less
         self.__allValues[VALUE__RESYNC_EST_TOTAL_DATA_BYTES] = True # category-less
         self.__allValues[VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR_NUMERIC] = True # category-less
+        self.__allValues[VALUE__RESYNC_EST_COMPLETION_TIME_TIMESTAMP] = True # category-less
+        self.__allValues[VALUE__HAS_DATABASE_STATUS_WARNING] = True # category-less
+        self.__allValues[VALUE__VERSION_STRING] = True # category-less
         for values in self.__entriesByCategory.values():
             for v in values:
                 self.__allValues[v] = True
@@ -617,7 +625,7 @@ class GpSystemStateProgram:
             for segment in segments:
                 if tabLog.getNumLines() == 0:
                     header = ["Current Primary" if logAsPairs else "Segment", "Port"]
-                    header.extend([f.getName() for f in additionalFieldsToLog])
+                    header.extend([f.getShortLabel() for f in additionalFieldsToLog])
                     if logAsPairs:
                         header.extend(["Mirror", "Port"])
                     tabLog.info(header)
@@ -720,24 +728,30 @@ class GpSystemStateProgram:
 
                 VALUE__MASTER_REPORTS_STATUS,
                 VALUE__SEGMENT_STATUS,
+                VALUE__HAS_DATABASE_STATUS_WARNING,
 
                 VALUE__ERROR_GETTING_SEGMENT_STATUS,
 
                 VALUE__CHANGE_TRACKING_DATA_SIZE,
 
                 VALUE__RESYNC_MODE,
-                VALUE__RESYNC_DATA_SYNCHRONIZED,
                 VALUE__RESYNC_DATA_SYNCHRONIZED_BYTES,
-                VALUE__RESYNC_EST_TOTAL_DATA,
                 VALUE__RESYNC_EST_TOTAL_DATA_BYTES,
-                VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR,
                 VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR_NUMERIC,
-                VALUE__RESYNC_EST_COMPLETION_TIME,
+                VALUE__RESYNC_EST_COMPLETION_TIME_TIMESTAMP,
 
                 VALUE__POSTMASTER_PID_FILE,
                 VALUE__POSTMASTER_PID_VALUE,
                 VALUE__LOCK_FILES,
-                VALUE__ACTIVE_PID
+                VALUE__ACTIVE_PID,
+
+                # put string values on the end
+                VALUE__RESYNC_DATA_SYNCHRONIZED,
+                VALUE__RESYNC_EST_TOTAL_DATA,
+                VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR,
+                VALUE__RESYNC_EST_COMPLETION_TIME,
+
+                VALUE__VERSION_STRING
                 ]
 
     def __segmentStatusPipeSeparatedForTableUse(self, gpEnv, gpArray):
@@ -955,16 +969,17 @@ class GpSystemStateProgram:
                                 resyncDataBytes = None
                                 resyncProgressNumeric = None
                                 totalDataToSynchronizeBytes = None
+                                estimatedEndTimeTimestamp = None
 
                                 if mirrorData["dataState"] == "InSync":
-                                    totalDataToSynchronizeStr = "Synchronization complete; awaiting configuration change"
+                                    totalDataToSynchronizeStr = "Sync complete; awaiting config change"
                                     resyncProgressNumeric = 1
                                     resyncProgressStr = "100%"
-                                    estimatedTimeToCompletionStr = ""
+                                    estimatedEndTimeStr = ""
                                 elif mirrorData["estimatedCompletionTimeSecondsSinceEpoch"] == 0:
                                     totalDataToSynchronizeStr = "Not Available"
                                     resyncProgressStr = "Not Available"
-                                    estimatedTimeToCompletionStr = "Not Available"
+                                    estimatedEndTimeStr = "Not Available"
                                 else:
 
                                     if mirrorData["resyncTotalToComplete"] == 0:
@@ -976,7 +991,10 @@ class GpSystemStateProgram:
 
                                     totalDataToSynchronizeBytes = mirrorData["resyncTotalToComplete"] * 32L * 1024
                                     totalDataToSynchronizeStr = self.__abbreviateBytes( totalDataToSynchronizeBytes )
-                                    estimatedTimeToCompletionStr = datetime.datetime.fromtimestamp(mirrorData["estimatedCompletionTimeSecondsSinceEpoch"])
+
+                                    endTime = datetime.datetime.fromtimestamp(mirrorData["estimatedCompletionTimeSecondsSinceEpoch"])
+                                    estimatedEndTimeStr = str(endTime)
+                                    estimatedEndTimeTimestamp = endTime.isoformat()
 
                                 data.addValue(VALUE__RESYNC_MODE, "Full" if mirrorData['isFullResync'] else "Incremental")
 
@@ -989,8 +1007,8 @@ class GpSystemStateProgram:
                                 data.addValue(VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR, resyncProgressStr)
                                 data.addValue(VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR_NUMERIC, resyncProgressNumeric)
                                 
-                                data.addValue(VALUE__RESYNC_EST_COMPLETION_TIME, estimatedTimeToCompletionStr)
-
+                                data.addValue(VALUE__RESYNC_EST_COMPLETION_TIME, estimatedEndTimeStr)
+                                data.addValue(VALUE__RESYNC_EST_COMPLETION_TIME_TIMESTAMP, estimatedEndTimeTimestamp)
 
                 #
                 # Now PID status
@@ -1012,6 +1030,7 @@ class GpSystemStateProgram:
                 else:
                     data.addValue(VALUE__ACTIVE_PID, "Missing", False)
 
+                data.addValue(VALUE__VERSION_STRING, segmentData[gp.SEGMENT_STATUS__GET_VERSION])
             data.addValue(VALUE__MASTER_REPORTS_STATUS, "Up" if seg.isSegmentUp() else "Down", seg.isSegmentDown())
 
             databaseStatus = None
@@ -1038,6 +1057,7 @@ class GpSystemStateProgram:
             else:
                 data.addValue(VALUE__NONMIRROR_DATABASE_STATUS, databaseStatus, databaseStatusIsWarning)
             data.addValue(VALUE__SEGMENT_STATUS, databaseStatus, databaseStatusIsWarning)
+            data.addValue(VALUE__HAS_DATABASE_STATUS_WARNING, "t" if databaseStatusIsWarning else "f", databaseStatusIsWarning)
 
             data.setSegmentProbablyDown(seg, peerPrimary, databaseStatusIsWarning)
         return data
