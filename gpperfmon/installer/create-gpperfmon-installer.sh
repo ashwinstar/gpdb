@@ -9,7 +9,7 @@ TARFILE_SIZE=`ls -al ${TARFILE} | awk '{print $5}'`
 BOM="installer-bom.txt"
 
 #Version string
-GPPERFMON_VERSION=`cat ../VERSION`
+GPPERFMON_VERSION=$( perl -pe 's, ,-,g' ../../VERSION )
 
 if [ x"${GPPERFMON_VERSION}" = "x" ] ; then
     echo "Error: GPPerfMon Version file not found"
