@@ -1463,7 +1463,48 @@ START_QD_PRODUCTION () {
 				fi
 				export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}-1
 				$GPSTART -a -d $MASTER_DATA_DIRECTORY $GPSTART_OPTS
-				ERROR_CHK $? "start new Greenplum instance" 2
+
+                if [ $? -eq 0 ];then
+                    LOG_MSG "[INFO]:-Successfully started new Greenplum instance"
+                else
+
+                    # this text is duplicated below
+                    LOG_MSG "[WARN]:" 1
+                    LOG_MSG "[WARN]:-Failed to start Greenplum instance; review gpstart output to" 1
+                    LOG_MSG "[WARN]:- determine why gpstart failed and reinitialize cluster after resolving" 1
+                    LOG_MSG "[WARN]:- issues.  Not all initialization tasks have completed so the cluster" 1
+                    LOG_MSG "[WARN]:- should not be used." 1
+
+                    LOG_MSG "[WARN]:-gpinitsystem will now try to stop the cluster" 1
+                    LOG_MSG "[WARN]:" 1
+                    if [ -f $GPSTOP ]; then
+                        if [ $DEBUG_LEVEL -eq 1 ]; then
+                            GPSTOP_OPTS=' -v '
+                        else
+                            GPSTOP_OPTS=''
+                        fi
+                        export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}-1
+                        $GPSTOP -a -i -d $MASTER_DATA_DIRECTORY $GPSTOP_OPTS
+
+                        RETVAL=$?
+                        case $RETVAL in
+                            0 ) LOG_MSG "[INFO]:-Successfully shutdown the Greenplum instance" 1;;
+                            1 ) LOG_MSG "[WARN]:-Non fatal error from Greenplum instance shutdown" 1;;
+                            2 ) ERROR_EXIT "[WARN]:-Failed to stop new Greenplum instance" 2
+                        esac
+                    else
+                        LOG_MSG "[WARN]:-$GPSTOP not located" 1
+                    fi
+
+                    # this text is duplicated above
+                    LOG_MSG "[WARN]:" 1
+                    LOG_MSG "[WARN]:-Failed to start Greenplum instance; review gpstart output to" 1
+                    LOG_MSG "[WARN]:- determine why gpstart failed and reinitialize cluster after resolving" 1
+                    LOG_MSG "[WARN]:- issues.  Not all initialization tasks have completed so the cluster" 1
+                    LOG_MSG "[WARN]:- should not be used." 1
+                    LOG_MSG "[WARN]:" 1
+                    ERROR_EXIT "[FATAL]: starting new instance failed;" 2
+                fi
 		else
 				ERROR_EXIT "[FATAL]:-$GPSTART not located" 2
 		fi
