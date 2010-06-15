@@ -857,7 +857,25 @@ datumstream_find_block(DatumStream *datumStream,
 		datumStreamFetchDesc->currentBlock.isLargeContent = isLarge;
 		
 		if (rowNum < datumStreamFetchDesc->currentBlock.firstRowNum)
+		{
+			/*
+			 * Since we have read a new block, the temporary
+			 * range for the read needs to be adjusted
+			 * accordingly. Otherwise, the underlying bufferedRead
+			 * may stop reading more data because of the
+			 * previously-set smaller temporary range.
+			 */
+			int64 beginFileOffset = datumStreamFetchDesc->currentBlock.fileOffset;
+			int64 afterFileOffset = datumStreamFetchDesc->currentBlock.fileOffset +
+				datumStreamFetchDesc->currentBlock.overallBlockLen;
+			
+			AppendOnlyStorageRead_SetTemporaryRange(
+				datumStream->ao_read,
+				beginFileOffset,
+				afterFileOffset);
+
 			return false;
+		}
 
 		if (isOldBlockFormat)
 		{

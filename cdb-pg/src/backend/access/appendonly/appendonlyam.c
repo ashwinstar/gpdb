@@ -1724,7 +1724,25 @@ scanToFetchTuple(
 		 * Examine new current block header information.
 		 */
 		if (rowNum < aoFetchDesc->currentBlock.firstRowNum)
+		{
+			/*
+			 * Since we have read a new block, the temporary
+			 * range for the read needs to be adjusted
+			 * accordingly. Otherwise, the underlying bufferedRead
+			 * may stop reading more data because of the
+			 * previously-set smaller temporary range.
+			 */
+			int64 beginFileOffset = aoFetchDesc->currentBlock.fileOffset;
+			int64 afterFileOffset = aoFetchDesc->currentBlock.fileOffset +
+				aoFetchDesc->currentBlock.overallBlockLen;
+			
+			AppendOnlyStorageRead_SetTemporaryRange(
+				&aoFetchDesc->storageRead,
+				beginFileOffset,
+				afterFileOffset);
+
 			return false;	// Row fell in gap between blocks.
+		}
 
 		if (rowNum <= aoFetchDesc->currentBlock.lastRowNum)
 			return fetchFromCurrentBlock(aoFetchDesc, rowNum, slot);
