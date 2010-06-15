@@ -1725,13 +1725,13 @@ reg_reply(DNSServiceRegistrationReplyErrorType errorCode, void *context)
  *
  * Since this requires disconnecting from stdin/stdout/stderr (in case they're
  * linked to the terminal), we re-point stdin to /dev/null and stdout/stderr
- * to "postmaster.log" in the data directory, where we're already chdir'd.
+ * to "pg_log/startup.log" from the data directory, where we're already chdir'd.
  */
 static void
 pmdaemonize(void)
 {
 #ifndef WIN32
-	const char *pmlogname = "postmaster.log";
+	const char *pmlogname = "pg_log/startup.log";
 	int			dvnull;
 	int			pmlog;
 	pid_t		pid;
