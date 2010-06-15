@@ -8,6 +8,7 @@ Please upgrade python installed on this machine.''' % gProgramName)
 
 from gppylib import gplog
 from gppylib.commands import unix
+from gppylib.commands.base import ExecutionError
 from gppylib.system import configurationInterface, configurationImplGpdb, fileSystemInterface, \
         fileSystemImplOs, osInterface, osImplNative, faultProberInterface, faultProberImplGpdb
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
@@ -104,6 +105,9 @@ def simple_main_internal(createOptionParserFn, createCommandFn, mainOptions):
             if options.ensure_value("quiet", False):
                 gplog.quiet_stdout_logging()
 
+        if options.ensure_value("masterDataDirectory", None) is not None:
+            options.master_data_directory = os.path.abspath(options.masterDataDirectory)
+
         if not suppressStartupLogMessage:
             logger.info("Starting %s with args: %s" % (gProgramName, ' '.join(sys.argv[1:])))
 
@@ -122,6 +126,12 @@ def simple_main_internal(createOptionParserFn, createCommandFn, mainOptions):
     except UserAbortedException, e:
         logger.info("User abort requested, Exiting...")
         sys.exit(4)
+    except ExecutionError, e:
+        logger.fatal("Error occurred: %s\n Command was: '%s'\n"
+                     "rc=%d, stdout='%s', stderr='%s'" %\
+                     (e.summary,e.cmd.cmdStr, e.cmd.results.rc, e.cmd.results.stdout,
+                     e.cmd.results.stderr ))
+        sys.exit(2)
     except Exception, e:
         if options is None:
             logger.exception("%s failed.  exiting...", gProgramName)
