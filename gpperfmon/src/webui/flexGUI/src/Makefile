@@ -9,7 +9,7 @@ SHELL=/bin/bash
 
 RELEASE_DIR=../bin-release
 DEBUG_DIR=../bin-debug
-GPMON_SWF=GPPerfMon_2.0.0.0.swf
+GPMON_SWF=GPPerfMon.swf
 GPMON_MXML=GPPerfMon.mxml
 DEBUG_OPTS=-debug
 RELEASE_OPTS=

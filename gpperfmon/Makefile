@@ -1,3 +1,5 @@
+GPMON_SWF=GPPerfMon.swf
+
 .PHONY: installer
 
 all: gpsmon gpmmon flexGUI installer
@@ -15,11 +17,11 @@ FLEXSDK=$(HOME)/flex_sdk_3.4.0.9271_mpl
 
 p4_edit:
 	cd src/webui/flexGUI/bin-release; \
-	p4 edit GPPerfMon_2.0.0.0.swf
+	p4 edit $(GPMON_SWF)
 
 p4_submit:
 	cd src/webui/flexGUI/bin-release; \
-	p4 submit -d "Update of flexGUI" GPPerfMon_2.0.0.0.swf
+	p4 submit -d "Update of flexGUI" $(GPMON_SWF)
 
 flexGUI:
 	@echo flexGUI
