@@ -23,6 +23,30 @@ suse11_x86_64_PACKAGE_ARCH=SuSE10-x86-64
 suse11.1_x86_64_PACKAGE_ARCH=SuSE10-x86_64
 PACKAGE_ARCH=$($(BLD_ARCH)_PACKAGE_ARCH)
 
+#---------------------------------------------------------------------
+# Set Version
+#---------------------------------------------------------------------
+
+SET_VERSION_SCRIPTS = \
+	gpperfmon/installer/.tmp/bin/gpperfmon.py \
+	gpperfmon/installer/.tmp/www/gpmonws.py \
+	$(NULL)
+
+set_gpmon_scripts_version :
+	@for file in $(SET_VERSION_SCRIPTS); do \
+	    pushd ../.. ; \
+	    if [ -f $${file} ]; then \
+	        chmod a+w $${file} ; \
+	        perl $(BLD_TOP)/putversion $${file} ; \
+	        chmod a-w $${file} ; \
+	    fi ; \
+	    popd ; \
+	done
+
+#---------------------------------------------------------------------
+#
+#---------------------------------------------------------------------
+
 all:
 	@if [ "$(PACKAGE_ARCH)" = "" ]; then \
 		echo Unknown platform; \
@@ -73,8 +97,9 @@ all:
 		ln -s libcrypto.so.0.9.8 libcrypto.so; \
 		cd ../..; \
 	fi ;
+	$(MAKE) set_gpmon_scripts_version
 	./generate-gpperfmon-path.sh > .tmp/gpperfmon_path.sh
-	cd .tmp && tar cvf ../greenplum-perfmon-web.tar *
+	cd .tmp && tar cf ../greenplum-perfmon-web.tar *
 	gzip greenplum-perfmon-web.tar
 	./create-gpperfmon-installer.sh
 	mv greenplum-perfmon-web.bin greenplum-perfmon-web-$(GPPERFMON_VERSION)-$(PACKAGE_ARCH).bin

@@ -30,7 +30,7 @@ except ImportError, e:
 
 
 script_name = os.path.split(__file__)[-1]
-script_version = '2.0.0.3'
+script_version = '$Revision$'
 
 # consts
 STOPPED = 0

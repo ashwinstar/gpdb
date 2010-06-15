@@ -23,7 +23,7 @@ MAX_QUERIES_PER_SEARCH = 250
 remote = False
 allow_trust_logon = False
 displayed_server_name = ''
-gpperfmon_version = '4.0.0.1'
+gpperfmon_version = '$Revision$'
 
 instance_name = os.path.basename(os.path.abspath(os.path.join(os.getcwd(), '..')))
 
