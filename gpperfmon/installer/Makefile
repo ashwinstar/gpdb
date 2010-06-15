@@ -8,7 +8,7 @@ GPMONWS_DIR=../src/webui/webapi
 GPMONUI_DIR=../src/webui/flexGUI
 GPMONDOCS_DIR=../docs/release
 LIGHTY_DIR=$(BLD_TOP)/ext/$(BLD_ARCH)/lighttpd-1.4.19/
-GPPERFMON_VERSION=$$(< $(BLD_TOP)/gpperfmon/VERSION)
+GPPERFMON_VERSION=$(shell perl -pe 's, ,-,g' ../../VERSION)
 
 osx104_x86_PACKAGE_ARCH=OSX-i386
 osx105_x86_PACKAGE_ARCH=OSX-i386
