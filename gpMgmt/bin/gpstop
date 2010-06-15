@@ -2,15 +2,13 @@
 #
 # Copyright (c) Greenplum Inc 2008. All Rights Reserved. 
 #
+#
+# THIS IMPORT MUST COME FIRST
+#
+# import mainUtils FIRST to get python version check
+from gppylib.mainUtils import *
+
 import os, sys
-
-progname = os.path.split(sys.argv[0])[-1]
-
-if sys.version_info < (2, 5, 0):
-    sys.exit(
-'''Error: %s is supported on Python versions 2.5 or greater
-Please upgrade python installed on this machine.''' % progname)
-
 
 import time
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
@@ -33,25 +31,11 @@ try:
 except ImportError, e:    
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
-
-
-description = (""" 
-Stops a GPDB Array.
-""")
-
-_help = ["""
-"""
-]
-
-EXECNAME = os.path.split(__file__)[-1]
-
 DEFAULT_NUM_WORKERS=64
+logger = get_default_logger()
 
 #---------------------------------------------------------------
-class GpStopError(Exception): pass
-
-#---------------------------------------------------------------
-class SegStopStatus():
+class SegStopStatus:
     """Tracks result of trying to stop an individual segment database"""
     def __init__(self,db,stopped=False,reason=None,failedCmd=None):
         self.db=db
@@ -67,7 +51,7 @@ class SegStopStatus():
             return "DBID:%d  FAILED  host:'%s' datadir:'%s' with reason:'%s'" % (self.db.dbid,self.db.hostname,self.db.datadir,self.reason)
         
 #---------------------------------------------------------------
-class GpStop():
+class GpStop:
     
     ######
     def __init__(self,mode,master_datadir=None,
@@ -84,12 +68,26 @@ class GpStop():
         self.interactive=interactive
         self.stopstandby=stopstandby
         self.restart=restart
+        self.hadFailures = False
+
+        # some variables that will be assigned during run() 
+        self.gphome = None
+        self.port = None
+        self.dburl = None
+        self.conn = None
+        self.gparray = None
+        self.hostcache = None
+        self.gpversion = None
+        
         logger.debug("Setting level of parallelism to: %d" % self.parallel)
         pass       
         
         
     #####
-    def stop(self):
+    def run(self):
+        """
+        Run and return the exitCode for the program
+        """
         self._prepare()
         
         if self.masteronly:
@@ -100,7 +98,9 @@ class GpStop():
             else:
                 if self.interactive:
                     self._summarize_actions()
-                    check_to_continue()
+                    if not userinput.ask_yesno(None, "\nContinue with Greenplum instance shutdown", 'N'):
+                        raise UserAbortedException()
+
                 self._stop_master()                                
                 self._stop_standby()            
                 self._stop_segments()                                
@@ -111,8 +111,8 @@ class GpStop():
                     gp.NewGpStart.local('restarting system',verbose=logging_is_verbose(),nostandby=not self.stopstandby, masterDirectory=self.master_datadir)                    
          
                 if self.hadFailures:
-                    return False                    
-        return True
+                    return 1
+        return 0
     
     
     ######
@@ -168,7 +168,7 @@ class GpStop():
                 logger.info("Commencing forced shutdown")
             pass
         else:
-            raise GpStopError('postmaster.pid file does not exist.  is Greenplum instance already stopped?')
+            raise ExceptionNoStackTraceNeeded('postmaster.pid file does not exist.  is Greenplum instance already stopped?')
     
     
     ######
@@ -197,10 +197,6 @@ class GpStop():
         
         logger.debug("Successfully shutdown the Master instance in admin mode")
     
-    
-
-    
-    
     ######
     def _stop_master_checks(self):
         total_connections=len(catalog.getUserPIDs(self.conn))
@@ -210,7 +206,7 @@ class GpStop():
             logger.warning("There are other connections to this instance, shutdown mode smart aborted")
             logger.warning("Either remove connections, or use 'gpstop -M fast' or 'gpstop -M immediate'")
             logger.warning("See gpstop -? for all options")
-            raise GpStopError("Active connections. Aborting shutdown...")
+            raise ExceptionNoStackTraceNeeded("Active connections. Aborting shutdown...")
         
         logger.info("Commencing Master instance shutdown with mode='%s'" % self.mode)
         logger.info("Master host=%s" % self.gparray.master.hostname)
@@ -439,190 +435,106 @@ class GpStop():
         logger.info("--------------------------------------------")
         logger.info("Master instance parameters")
         logger.info("--------------------------------------------")
-        logger.info("Master Greenplum instance process active PID = %s" % self.pid)
-        logger.info("Database                                     = %s" % self.dburl.pgdb )
-        logger.info("Master Port                                  = %s" % self.port )
-        logger.info("Master directory                             = %s" % self.master_datadir )
-        logger.info("Shutdown mode                                = %s" % self.mode)
-        
-        if self.gparray.standbyMaster and self.stopstandby:
-            logger.info("Shutdown Master standby host                 = On")
-        else:
-            logger.info("Shutdown Master standby host                 = Off")
-            
-        
+
+        tabLog = TableLogger().setWarnWithArrows(True)
+        tabLog.info(["Master Greenplum instance process active PID", "= %s" % self.pid])
+        tabLog.info(["Database", "= %s" % self.dburl.pgdb ])
+        tabLog.info(["Master port", "= %s" % self.port ])
+        tabLog.info(["Master directory", "= %s" % self.master_datadir ])
+        tabLog.info(["Shutdown mode", "= %s" % self.mode])
+
+        standbyMsg = "On" if self.gparray.standbyMaster and self.stopstandby else "Off"
+        tabLog.info(["Shutdown Master standby host", "= %s" % standbyMsg])
+
+        tabLog.outputTable()
+
         logger.info("--------------------------------------------")
         logger.info("Segment instances that will be shutdown:")
         logger.info("--------------------------------------------")
-        
-        format_string=self._get_format_string()
-        logger.info(format_string % ("Host","Datadir","Port","Status"))
-        for db in self.gparray.getSegDbList():
-            hostname = db.getSegmentHostName()
-            datadir = db.getSegmentDataDirectory()
-            port = db.getSegmentPort()
-            status = db.getSegmentStatus()
-            logger.info(format_string % (hostname, datadir, port, status))
-    
-    
-    ######
-    def _get_format_string(self):
-        host_len=0
-        dir_len=0
-        port_len=0
-        for db in self.gparray.getSegDbList():
-            if len(db.hostname) > host_len:
-                host_len=len(db.hostname)
-            if len(db.datadir) > dir_len:
-                dir_len=len(db.datadir)
-            if len(str(db.port)) > port_len:
-                port_len=len(str(db.port))
-        
-        return "%-" + str(host_len) + "s  %-" + str(dir_len) + "s  %-" + str(port_len) + "s  %s"
 
-  
-  
+        tabLog = TableLogger().setWarnWithArrows(True)
+        tabLog.info(["Host","Datadir","Port","Status"])
+        for db in self.gparray.getSegDbList():
+            tabLog.info([db.getSegmentHostName(), db.getSegmentDataDirectory(),
+                            str(db.getSegmentPort()), db.getSegmentStatus()])
+        tabLog.outputTable()
+
 #----------------------- Command line option parser ----------------------
+    @staticmethod
+    def createParser():
+        parser = OptParser(option_class=OptChecker,
+                    description="Stops a GPDB Array.",
+                    version='%prog version $Revision$')
+        parser.setHelp("")
 
-def parseargs():
-    parser = OptParser(option_class=OptChecker,
-                description=' '.join(description.split()),
-                version='%prog version $Revision$')
-    parser.setHelp(_help)
-    parser.set_usage('%prog [--version] [--help] [options] ')
-    parser.remove_option('-h')
-    
-    parser.add_option('-h', '-?', '--help', action='help',
-                        help='show this help message and exit')
-    parser.add_option('-v','--verbose', action='store_true',
-                        help='debug output.')
-    parser.add_option('--usage', action="briefhelp")
-    
-    optgrp2 = OptionGroup(parser, 'Logging options: ')
-    parser.add_option_group(optgrp2)
-    optgrp2.add_option('-a', dest="interactive" , action='store_false',default=True,
-                        help="quiet mode, do not log progress to screen"\
-                             "[default:- verbose output to screen]")    
-                      
-    optgrp2.add_option('-q', '--quiet', action='store_true',
-                        help='suppress status messages')    
-    optgrp2.add_option('-l', '--logfile_directory', type='string', default=None,
-                       help="The directory to write the log file. Defaults to ~/gpAdminLogs.")
-    
-    optgrp4 = OptionGroup(parser, 'Connection options: ')
-    parser.add_option_group(optgrp4)
-    optgrp4.add_option('-d', '--master_data_directory', type='string', default=None,
-                       help="Optional. The master host data directory. If not specified, the value set"\
-                            "for $MASTER_DATA_DIRECTORY will be used.")
-    
-    
-    optgrp3 = OptionGroup(parser, 'Instance shutdown options: ')
-    parser.add_option_group(optgrp3)
-    optgrp3.add_option('-f', '--fast', action='store_true', default=False,
-                        help="<deprecated> Fast shutdown, active transactions interrupted and rolled back")
-    optgrp3.add_option('-i', '--immediate', action='store_true',default=False,
-                        help="<deprecated> Immediate shutdown, active transaction aborted.")
-    optgrp3.add_option('-s', '--smart', action='store_true',
-                        help="<deprecated> Smart shutdown, wait for active transaction to complete. [default]")
-    optgrp3.add_option('-z', '--force', action='store_true',default=False,
-                        help="<deprecated> Force shutdown of segment instances marked as invalid. Kill postmaster PID, "\
-                             "delete /tmp lock files and remove segment instance postmaster.pid file.")
-    optgrp3.add_option('-M', '--mode', type='choice', choices=['fast', 'immediate', 'smart'],
-                       metavar='fast|immediate|smart', action='store', default='smart',
-                       help='set the method of shutdown')
-    
-    optgrp3.add_option('-r', '--restart', action='store_true',
-                        help='Restart Greenplum Database instance after successful gpstop.')
-    optgrp3.add_option('-m', '--master_only', action='store_true',
-                        help='stop master instance started in maintenance mode')
-    optgrp3.add_option('-y', dest="stop_standby", action='store_false',default=True,
-                        help='stop master instance started in maintenance mode')
-    optgrp3.add_option('-u', dest="request_sighup", action='store_true',
-                        help="upload new master postgresql.conf settings, does not stop Greenplum array,"\
-                             "issues a signal to the master segment potmaster process to reload")
-    
-    
-    optgrp3.add_option('-B', '--parallel', type="int", default=64, metavar="<parallel_processes>",
-                        help='number of segment hosts to run in parallel. Default is %d' % DEFAULT_NUM_WORKERS)    
-        
-    parser.set_defaults(verbose=False, filters=[], slice=(None, None))
-    
-    
-    # Parse the command line arguments
-    (options, args) = parser.parse_args()
-    
-    
-    
-    if options.mode != 'smart':
-        if options.fast or options.immediate:
-            raise GpStopError("Can not mix --mode options with older deprecated '-f,-i,-s'")
-    
-    if options.fast:
-        options.mode="fast"
-    if options.immediate:
-        options.mode="immediate"
-    if options.smart:
-        options.mode="smart"
-    
-    #deprecating force option.  it no longer kills -9 things.
-    # just make it stop fast instead.
-    if options.force:
-        options.mode="fast"
-    
-    
-    
-    proccount=os.environ.get('GP_MGMT_PROCESS_COUNT')    
-    if options.parallel == 64 and proccount is not None:
-        options.parallel = int(proccount)
+        addStandardLoggingAndHelpOptions(parser, includeNonInteractiveOption=True, includeUsageOption=True)
 
-    #-n sanity check
-    if options.parallel > 128 or options.parallel < 1:
-        parser.print_help()
-        parser.exit()
-    
-    if len(args) > 0:
-        logger.error("Argument %s is invalid.  Is an option missing a parameter?" % args[-1])
-        parser.print_help()
-        parser.exit()
+        addTo = OptionGroup(parser, 'Connection options')
+        parser.add_option_group(addTo)
+        addMasterDirectoryOptionForSingleClusterProgram(addTo)
 
-    return options, args
+        addTo = OptionGroup(parser, 'Instance shutdown options: ')
+        parser.add_option_group(addTo)
+        addTo.add_option('-f', '--fast', action='store_true', default=False,
+                            help="<deprecated> Fast shutdown, active transactions interrupted and rolled back")
+        addTo.add_option('-i', '--immediate', action='store_true',default=False,
+                            help="<deprecated> Immediate shutdown, active transaction aborted.")
+        addTo.add_option('-s', '--smart', action='store_true',
+                            help="<deprecated> Smart shutdown, wait for active transaction to complete. [default]")
+        addTo.add_option('-z', '--force', action='store_true',default=False,
+                            help="<deprecated> Force shutdown of segment instances marked as invalid. Kill postmaster PID, "\
+                                 "delete /tmp lock files and remove segment instance postmaster.pid file.")
+        addTo.add_option('-M', '--mode', type='choice', choices=['fast', 'immediate', 'smart'],
+                           metavar='fast|immediate|smart', action='store', default='smart',
+                           help='set the method of shutdown')
 
+        addTo.add_option('-r', '--restart', action='store_true',
+                            help='Restart Greenplum Database instance after successful gpstop.')
+        addTo.add_option('-m', '--master_only', action='store_true',
+                            help='stop master instance started in maintenance mode')
+        addTo.add_option('-y', dest="stop_standby", action='store_false',default=True,
+                            help='stop master instance started in maintenance mode')
+        addTo.add_option('-u', dest="request_sighup", action='store_true',
+                            help="upload new master postgresql.conf settings, does not stop Greenplum array,"\
+                                 "issues a signal to the master segment potmaster process to reload")
 
+        addTo.add_option('-B', '--parallel', type="int", default=DEFAULT_NUM_WORKERS, metavar="<parallel_processes>",
+                            help='number of segment hosts to run in parallel. Default is %d' % DEFAULT_NUM_WORKERS)
 
-#------------------------------- Mainline --------------------------------
-def check_to_continue():    
-    msg = "\nContinue with Greenplum instance shutdown"                
-    ans = userinput.ask_yesno(None,msg,'N')    
-            
-    if not ans:
-        logger.info("User abort requested, Exiting...")
-        sys.exit(4)
-    pass
-    
-def main():
-    coverage = GpCoverage()
-    coverage.start()
-    
-    options_parsed=False
-        
-    gpstop = None
-    try:            
-        options, args = parseargs()
-        options_parsed=True
-        
-        setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName(),options.logfile_directory)
-        
-        if options.verbose:
-            enable_verbose_logging()        
-        if options.quiet:
-            quiet_stdout_logging()
-        if options.master_data_directory:
-            options.master_data_directory=os.path.abspath(options.master_data_directory)
-            
-        logger.info("Starting gpstop with args: '%s'" % ' '.join(sys.argv[1:]))
-        
-        gpstop = GpStop(options.mode,
-                        master_datadir=options.master_data_directory,
+        parser.set_defaults(verbose=False, filters=[], slice=(None, None))
+        return parser
+
+    @staticmethod
+    def createProgram(options, args):
+        if options.mode != 'smart':
+            if options.fast or options.immediate:
+                raise ProgramArgumentValidationException("Can not mix --mode options with older deprecated '-f,-i,-s'")
+
+        if options.fast:
+            options.mode="fast"
+        if options.immediate:
+            options.mode="immediate"
+        if options.smart:
+            options.mode="smart"
+
+        #deprecating force option.  it no longer kills -9 things.
+        # just make it stop fast instead.
+        if options.force:
+            options.mode="fast"
+
+        proccount=os.environ.get('GP_MGMT_PROCESS_COUNT')
+        if options.parallel == 64 and proccount is not None:
+            options.parallel = int(proccount)
+
+        #-n sanity check
+        if options.parallel > 128 or options.parallel < 1:
+            raise ProgramArgumentValidationException("Invalid value for parallel degree: %s" % options.parallel )
+
+        if args:
+            raise ProgramArgumentValidationException("Argument %s is invalid.  Is an option missing a parameter?" % args[-1])
+
+        return GpStop(options.mode,
+                        master_datadir=options.masterDataDirectory,
                         parallel=options.parallel,
                         quiet=options.quiet,
                         masteronly=options.master_only,
@@ -630,39 +542,6 @@ def main():
                         interactive=options.interactive,
                         stopstandby=options.stop_standby,
                         restart=options.restart)
-        
-        if gpstop.stop():
-            sys.exit(0)
-        else:
-            sys.exit(1)
- 
-    except base.ExecutionError, e:
-        logger.fatal("Error occurred: %s\n Command was: '%s'\n"
-                     "rc=%d, stdout='%s', stderr='%s'" %\
-                     (e.summary,e.cmd.cmdStr, e.cmd.results.rc, e.cmd.results.stdout,
-                     e.cmd.results.stderr ))
-        sys.exit(4)
-    except Exception, e:        
-        if not options_parsed:
-            logger.exception("gpstop failed.  exiting..." )
-        else:
-            if options.verbose:
-                logger.exception("gpstop failed.  exiting..." )
-            else:
-                logger.fatal("gpstop failed. (Reason='%s') exiting..." % e)
-                
-        if gpstop:
-            gpstop.cleanup()
-        sys.exit(3)
-    except KeyboardInterrupt:
-        if gpstop:
-            gpstop.cleanup()        
-        sys.exit('\nUser Interrupted')
-    finally:
-        coverage.stop()
-        coverage.generate_report()
 
-
-logger = get_default_logger()    
 if __name__ == '__main__':
-    main()  
+    simple_main( GpStop.createParser, GpStop.createProgram)

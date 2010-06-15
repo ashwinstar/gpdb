@@ -35,19 +35,8 @@ try:
 except ImportError, e:
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
-
-
-description = (""" 
-Starts a GPDB Array.
-""")
-
-_help = [""" """]
-
 DEFAULT_NUM_WORKERS=64
 logger = get_default_logger()
-
-#---------------------------------------------------------------
-class GpStartError(Exception): pass
 
 #---------------------------------------------------------------
 class GpStart:
@@ -70,6 +59,9 @@ class GpStart:
         self.interactive=interactive
         self.timeout=timeout
 
+        #
+        # Some variables that are set during execution
+        #
         self.gpversion=None
         self.gparray=None
         self.port=None
@@ -78,8 +70,9 @@ class GpStart:
         self.lc_collate=None
         self.lc_monetary=None
         self.lc_numeric=None
+        self.max_connections = None
+
         logger.debug("Setting level of parallelism to: %d" % self.parallel)
-        pass
 
     ######
     def run(self):
@@ -105,7 +98,8 @@ class GpStart:
 
         if self.interactive:
             self._summarize_actions(segmentsToStart)
-            check_to_continue()
+            if not userinput.ask_yesno(None, "\nContinue with Greenplum instance startup", 'N'):
+                raise UserAbortedException()
 
         success=self._start(segmentsToStart, invalidSegments, inactiveSegments)
 
@@ -170,7 +164,7 @@ class GpStart:
         if bin_catversion != dir_catversion:
             logger.info("MASTER_DIRECTORY Catalog Version: '%s'" % dir_catversion)
             logger.info("Catalog Version of master directory incompatible with binaries")
-            raise GpStartError("Catalog Versions are incompatible")
+            raise ExceptionNoStackTraceNeeded("Catalog Versions are incompatible")
             
 
     ######
@@ -203,7 +197,7 @@ class GpStart:
                                   verbose=logging_is_verbose(),
                                   datadir=self._get_master_datadir())
                     cmd.run(validateAfter=True)
-                    raise GpStartError("Standby activated")
+                    raise ExceptionNoStackTraceNeeded("Standby activated")
 
     ######
     def _recovery_startup(self):
@@ -216,12 +210,11 @@ class GpStart:
                                                         lockfile, self.port)
         if tmpfile_exists and netstat_port_active:
             logger.info("Have lock file %s and a process running on port %s" % (lockfile,self.port))
-            raise GpStartError("Master instance process running")
+            raise ExceptionNoStackTraceNeeded("Master instance process running")
         elif tmpfile_exists and not netstat_port_active:
             logger.info("Have lock file %s but no process running on port %s" % (lockfile,self.port))
         elif not tmpfile_exists and netstat_port_active:
             logger.info("No lock file %s but a process running on port %s" % (lockfile,self.port))
-            pass
         elif not tmpfile_exists and not netstat_port_active:
             logger.info("No socket connection or lock file in /tmp found for port=%s" % self.port)
 
@@ -334,7 +327,6 @@ class GpStart:
         (self.lc_collate,self.lc_monetary,self.lc_numeric)=catalog.getCollationSettings(self.conn)
 
         self.conn.close()
-        pass
 
     ######
     def _start(self, segmentsToStart, invalidSegments, inactiveSegments):
@@ -348,7 +340,7 @@ class GpStart:
         self.pool = base.WorkerPool(numWorkers=workers)
 
         if os.path.exists(self.master_datadir + "/gpexpand.status") and not self.restricted:
-            raise GpStartError("Found a System Expansion Setup in progress. Please run 'gpexpand --rollback'")
+            raise ExceptionNoStackTraceNeeded("Found a System Expansion Setup in progress. Please run 'gpexpand --rollback'")
 
         self.standby_was_started = self._start_standby()
 
@@ -377,7 +369,7 @@ class GpStart:
             # go through and remove any segments that we did start so that we keep everything
             # shutdown cleanly
             self._shutdown_segments(segmentStartResult)
-            raise GpStartError("Do not have enough valid segments to start the array.")
+            raise ExceptionNoStackTraceNeeded("Do not have enough valid segments to start the array.")
 
         hadSegmentFailuresOrInactive = len(segmentStartResult.getFailedSegmentObjs()) > 0 or \
                                        len(invalidSegments ) > 0
@@ -521,7 +513,6 @@ class GpStart:
 
             if dispatch_count > 0:
                 self.pool.wait_and_printdots(dispatch_count,self.quiet)
-
         pass
 
     ######
@@ -639,7 +630,6 @@ class GpStart:
                     and other goodies.
                 '''
                 logger.debug("Encountered problem while connecting to master: %s" % str(e))
-                pass
 
             standby_failure=not self.standby_was_started and self.attempt_standby_start
 
@@ -680,9 +670,9 @@ class GpStart:
     @staticmethod
     def createParser():
         parser = OptParser(option_class=OptChecker,
-                    description=' '.join(description.split()),
+                    description="Starts a GPDB Array.",
                     version='%prog version $Revision$')
-        parser.setHelp(_help)
+        parser.setHelp("")
 
         addStandardLoggingAndHelpOptions(parser, includeNonInteractiveOption=True)
 
@@ -696,7 +686,7 @@ class GpStart:
                             help='start master instance only in maintenance mode')
         addTo.add_option('-y', '--no_standby', dest="start_standby", action='store_false',default=True,
                             help='do not start master standby server')
-        addTo.add_option('-B', '--parallel', type="int", default=64, metavar="<parallel_processes>",
+        addTo.add_option('-B', '--parallel', type="int", default=DEFAULT_NUM_WORKERS, metavar="<parallel_processes>",
                             help='number of segment hosts to run in parallel. Default is %d' % DEFAULT_NUM_WORKERS)
         addTo.add_option('-R', '--restricted', action='store_true',
                             help='start in restricted mode. Only users with superuser privilege are allowed to connect.')
@@ -728,12 +718,6 @@ class GpStart:
                           masteronly=options.master_only,
                           interactive=options.interactive,
                           timeout=options.timeout)
-
-#------------------------------- Mainline --------------------------------
-def check_to_continue():
-    if not userinput.ask_yesno(None, "\nContinue with Greenplum instance startup", 'N'):
-        raise UserAbortedException()
-    pass
 
 if __name__ == '__main__':
     simple_main( GpStart.createParser, GpStart.createProgram)

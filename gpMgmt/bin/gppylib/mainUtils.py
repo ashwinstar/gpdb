@@ -147,13 +147,15 @@ def simple_main_internal(createOptionParserFn, createCommandFn, mainOptions):
         if commandObject:
             commandObject.cleanup()
 
-def addStandardLoggingAndHelpOptions(parser, includeNonInteractiveOption):
+def addStandardLoggingAndHelpOptions(parser, includeNonInteractiveOption, includeUsageOption=False):
     parser.set_usage('%prog [--help] [options] ')
     parser.remove_option('-h')
 
     addTo = parser
     addTo.add_option('-h', '-?', '--help', action='help',
                       help='show this help message and exit')
+    if includeUsageOption:
+        parser.add_option('--usage', action="briefhelp")
 
     addTo = OptionGroup(parser, "Logging Options")
     parser.add_option_group(addTo)
