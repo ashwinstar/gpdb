@@ -2742,7 +2742,7 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
             else if ( pmState == PM_RUN)
                 databaseStatus = "Up";
             else if ( pmState == PM_INIT)
-                databaseStatus = "Uninitialized";  // awaiting decision by fault prober after PM reset, for example
+                databaseStatus = "Stopped";  // awaiting decision by fault prober after PM reset, for example
             else if ( pmState < PM_RUN )
                 databaseStatus = "Starting";
             else databaseStatus = "Stopping";

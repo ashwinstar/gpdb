@@ -172,6 +172,12 @@ typedef struct PMModuleState
     volatile bool isInFaultFromPostmasterReset;
 
     /**
+     * if true, someone has set a dataState that we should potentially remember for the next
+     *   postmaster reset
+     */
+    volatile bool shouldTryUpdatePmLocalDataStateFromModuleState;
+
+    /**
      * Maintained by the filerep code -- has I/O been suspended because of a fault or transition?
      */
     volatile bool isIOSuspended;
@@ -190,6 +196,9 @@ typedef struct PMLocalState
      *   for later postmaster reset.
      *
      * Only has meaning if haveSetMostRecentTransition is true
+     *
+     * Note also that the dataState value in this transition MAY CHANGE because of an internal transition
+     *    to resync!
      */
     PrimaryMirrorModeTransitionArguments mostRecentTransition;
 
@@ -753,6 +762,7 @@ primaryMirrorModeShmemInit(void)
     pmModuleState->bgWriterPID = 0;
 	pmModuleState->transitionNumberCounter = 1;
 	pmModuleState->isInFaultFromPostmasterReset = false;
+	pmModuleState->shouldTryUpdatePmLocalDataStateFromModuleState = false;
     pmModuleState->isIOSuspended = false;
 
 	clearTransitionArgs(&pmModuleState->requestedTransition);
@@ -1055,6 +1065,10 @@ updateDataState(DataState_e dataState)
 	acquireModuleSpinLock();
 	{
 	    isUpdated = updateDataStateUnderSpinLock(dataState);
+	    if ( isUpdated )
+	    {
+	        pmModuleState->shouldTryUpdatePmLocalDataStateFromModuleState = true;
+	    }
 	}
 	releaseModuleSpinLock();
 
@@ -1157,6 +1171,7 @@ copyTransitionInputParameters(PrimaryMirrorModeTransitionArguments *args, Segmen
 		pmModuleState->segmentState = segmentState;
 
 		pmModuleState->isInFaultFromPostmasterReset = false;
+		pmModuleState->shouldTryUpdatePmLocalDataStateFromModuleState = false;
 
 		pmModuleState->forceFullResync = args->forceFullResync;
 
@@ -1188,6 +1203,19 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 
 	acquireModuleSpinLock();
 	{
+	    /**
+	     * first, do any in-sync changes that were requested
+	     */
+	    if ( pmModuleState->shouldTryUpdatePmLocalDataStateFromModuleState)
+	    {
+	        if ( pmModuleState->dataState == DataStateInSync)
+            {
+	            pmLocalState.mostRecentTransition.dataState = DataStateInSync;
+            }
+	        pmModuleState->shouldTryUpdatePmLocalDataStateFromModuleState = false;
+	    }
+
+        /* grab out values under spin lock */
 		isRequested = pmModuleState->isTransitionRequested;
 		isPrevRequestComplete = pmModuleState->isTransitionListenerFinished;
 		requestedTransition = pmModuleState->requestedTransition;
