@@ -372,7 +372,7 @@ cleanup_exit:
 	yy_delete_buffer(lex_buffer);
 	FreeFile(fp);
 	
-	Assert(OK || (PGC_POSTMASTER == context && IsUnderPostmaster));
+	Assert(OK || (context == PGC_POSTMASTER && IsUnderPostmaster) || context == PGC_SIGHUP);
 
 	return OK;
 }
