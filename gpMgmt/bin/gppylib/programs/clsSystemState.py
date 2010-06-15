@@ -65,7 +65,7 @@ VALUE__CHANGE_TRACKING_DATA_SIZE = FieldDefinition("Change tracking data size", 
 CATEGORY__RESYNCHRONIZATION_INFO = "Resynchronization Info"
 VALUE__RESYNC_MODE = FieldDefinition("Resynchronization mode", "resync_mode", "text", "Resync mode")
 VALUE__RESYNC_DATA_SYNCHRONIZED = FieldDefinition("Data synchronized", "data_synced_str", "text", "Data synced")
-VALUE__RESYNC_EST_TOTAL_DATA = FieldDefinition("Estimated total data to synchronize", "est_total_to_sync_str", "text", "Est. total to sync")
+VALUE__RESYNC_EST_TOTAL_DATA = FieldDefinition("Estimated total data to synchronize", "est_total_bytes_to_sync_str", "text", "Est. total to sync")
 VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR = FieldDefinition("Estimated resync progress with mirror", "est_resync_progress_str", "text", "Est. resync progress")
 VALUE__RESYNC_EST_COMPLETION_TIME = FieldDefinition("Estimated resync end time", "est_resync_end_time_str", "text", "Est. resync end time")
 
