@@ -4655,40 +4655,52 @@ static int StateMachineCheck_WaitBackends(void)
 
         moveToNextState = true;
     }
-    else if (CountChildren() == 0 &&
-        (BgWriterPID == 0 || !FatalError) && /* todo: CHAD_PM why wait for BgWriterPID here?  Can't we just allow
-                                                      normal state advancement to hit there? */
-#if 0  /* gpdb does not have wal writer */
-        WalWriterPID == 0 &&
-#endif
-        AutoVacPID == 0 &&
-        IsFilerepBackendsDoneShutdown())
+    else
     {
-        /* note: on fatal error, children are killed all at once by HandleChildCrash, so asserts are not valid */
-        if ( ! FatalError )
-        {
-            Assert(StartupPID == 0);
-        }
+        // note: if wal writer is added, check this here: WalWriterPID == 0 &&
+        int childCount = CountChildren();
+        bool isFilerepBackendsDoneShutdown = IsFilerepBackendsDoneShutdown();
+        bool autovacShutdown = AutoVacPID == 0;
 
-        /*
-         * PM_CHILD_STOP_WAIT_BACKENDS state ends when we have no regular backends
-         * (including autovac workers) and no walwriter or autovac launcher.
-         * If we are doing crash recovery then we expect the bgwriter to exit
-         * too, otherwise not.	The archiver, stats, and syslogger processes
-         * are disregarded since they are not connected to shared memory; we
-         * also disregard dead_end children here.
-         */
-        if (FatalError)
+        if (childCount == 0 &&
+            (BgWriterPID == 0 || !FatalError) && /* todo: CHAD_PM why wait for BgWriterPID here?  Can't we just allow
+                                                          normal state advancement to hit there? */
+            autovacShutdown &&
+            isFilerepBackendsDoneShutdown)
         {
-            moveToNextState = true;
+            /* note: on fatal error, children are killed all at once by HandleChildCrash, so asserts are not valid */
+            if ( ! FatalError )
+            {
+                Assert(StartupPID == 0);
+            }
+
+            /*
+             * PM_CHILD_STOP_WAIT_BACKENDS state ends when we have no regular backends
+             * (including autovac workers) and no walwriter or autovac launcher.
+             * If we are doing crash recovery then we expect the bgwriter to exit
+             * too, otherwise not.	The archiver, stats, and syslogger processes
+             * are disregarded since they are not connected to shared memory; we
+             * also disregard dead_end children here.
+             */
+            if (FatalError)
+            {
+                moveToNextState = true;
+            }
+            else
+            {
+                /*
+                 * This state change causes ServerLoop to stop creating new ones.
+                 */
+                Assert(Shutdown > NoShutdown);
+                moveToNextState = true;
+            }
         }
         else
         {
-            /*
-             * This state change causes ServerLoop to stop creating new ones.
-             */
-            Assert(Shutdown > NoShutdown);
-            moveToNextState = true;
+            elog(LOG, "Postmaster State Machine: waiting on backends, children %d, filerep backends %s, av %s",
+                    childCount,
+                    isFilerepBackendsDoneShutdown ? "stopped" : "running",
+                    autovacShutdown ? "stopped" : "running" );
         }
     }
 
