@@ -92,7 +92,7 @@ VALUE__HAS_DATABASE_STATUS_WARNING = FieldDefinition("Has database status warnin
 VALUE__VERSION_STRING = FieldDefinition("Version", "version", "text")
 
 VALUE__POSTMASTER_PID_FILE_EXISTS = FieldDefinition("File postmaster.pid (boolean)", "postmaster_pid_file_exists", "bool")
-VALUE__POSTMASTER_PID_VALUE_INT = FieldDefinition("PID from postmaster.pid file (int)", "postmaster_pid", "text", "pid file PID")
+VALUE__POSTMASTER_PID_VALUE_INT = FieldDefinition("PID from postmaster.pid file (int)", "postmaster_pid", "int", "pid file PID")
 VALUE__LOCK_FILES_EXIST = FieldDefinition("Lock files in /tmp (boolean)", "lock_files_exist", "bool", "local files exist")
 VALUE__ACTIVE_PID_INT = FieldDefinition("Active PID (int)", "active_pid", "int")
 
