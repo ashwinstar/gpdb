@@ -82,7 +82,7 @@ class GpStart:
         logger.info("Master Started...")
 
         if self.masteronly:
-            return True
+            return 0
         self._check_standby_activated()
 
         logger.info("Shutting down master")
