@@ -177,6 +177,13 @@ next_batch_words(IndexScanDesc scan)
 	scanPos = ((BMScanOpaque) scan->opaque)->bm_currPos;
 	bmScanPos = scanPos->posvecs;
 
+	/*
+	 * Since we read a new batch of words, we need to reset 
+	 * lastScanWordNo in result words. Otherwise, we may miss
+	 * some words in this new batch.
+	 */
+	scanPos->bm_result.lastScanWordNo = 0;
+
 	batches = (BMBatchWords **)
 		palloc0(scanPos->nvec * sizeof(BMBatchWords *));
 
