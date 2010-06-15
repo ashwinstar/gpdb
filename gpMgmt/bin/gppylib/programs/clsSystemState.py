@@ -76,21 +76,28 @@ VALUE__LOCK_FILES= FieldDefinition("Lock files in /tmp", "lock_files_exist", "te
 VALUE__ACTIVE_PID = FieldDefinition("Active PID", "active_pid", "text") # int would be better, but we print error messages here sometimes
 
 CATEGORY__STATUS = "Status"
-VALUE__MASTER_REPORTS_STATUS = FieldDefinition("Configuration reports status as", "config_status", "text", "Config status")
+VALUE__MASTER_REPORTS_STATUS = FieldDefinition("Configuration reports status as", "status_in_config", "text", "Config status")
 VALUE__MIRROR_SEGMENT_STATUS = FieldDefinition("Segment status", "segment_status", "text") # must not be same name as VALUE__SEGMENT_STATUS
 VALUE__NONMIRROR_DATABASE_STATUS = FieldDefinition("Database status", "database_status", "text")
 
-
- # these are not in a category, used for other logging
+# these are not in a category, used for other logging
 VALUE__SEGMENT_STATUS = FieldDefinition("Instance status", "instance_status", "text", "Status")
 VALUE__DBID = FieldDefinition("dbid", "dbid", "int")
 VALUE__CONTENTID = FieldDefinition("contentid", "contentid", "int")
-VALUE__RESYNC_DATA_SYNCHRONIZED_BYTES = FieldDefinition("Data synchronized (bytes)", "data_synchronized", "int8")
-VALUE__RESYNC_EST_TOTAL_DATA_BYTES = FieldDefinition("Estimated total data to synchronize (bytes)", "est_data_to_sync", "int8")
-VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR_NUMERIC = FieldDefinition("Estimated resync progress with mirror (numeric)", "est_resync_progress", "float")
+VALUE__RESYNC_DATA_SYNCHRONIZED_BYTES = FieldDefinition("Data synchronized (bytes)", "bytes_synced", "int8")
+VALUE__RESYNC_EST_TOTAL_DATA_BYTES = FieldDefinition("Estimated total data to synchronize (bytes)", "est_total_bytes_to_sync", "int8")
+VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR_NUMERIC = FieldDefinition("Estimated resync progress with mirror (numeric)", "est_resync_progress_pct", "float")
 VALUE__RESYNC_EST_COMPLETION_TIME_TIMESTAMP = FieldDefinition("Estimated resync end time (timestamp)", "est_resync_end_time", "timestamp")
 VALUE__HAS_DATABASE_STATUS_WARNING = FieldDefinition("Has database status warning", "has_status_warning", "bool")
 VALUE__VERSION_STRING = FieldDefinition("Version", "version", "text")
+
+VALUE__POSTMASTER_PID_FILE_EXISTS = FieldDefinition("File postmaster.pid (boolean)", "postmaster_pid_file_exists", "bool")
+VALUE__POSTMASTER_PID_VALUE_INT = FieldDefinition("PID from postmaster.pid file (int)", "postmaster_pid", "text", "pid file PID")
+VALUE__LOCK_FILES_EXIST = FieldDefinition("Lock files in /tmp (boolean)", "lock_files_exist", "bool", "local files exist")
+VALUE__ACTIVE_PID_INT = FieldDefinition("Active PID (int)", "active_pid", "int")
+
+VALUE__CHANGE_TRACKING_DATA_SIZE_BYTES = FieldDefinition("Change tracking data size (bytes)", "change_tracking_bytes", "int8")
+
 
 class GpStateData:
     """
@@ -156,15 +163,16 @@ class GpStateData:
                 VALUE__NONMIRROR_DATABASE_STATUS]
 
         self.__allValues = {}
-        self.__allValues[VALUE__SEGMENT_STATUS] = True # category-less
-        self.__allValues[VALUE__DBID] = True # category-less
-        self.__allValues[VALUE__CONTENTID] = True # category-less
-        self.__allValues[VALUE__RESYNC_DATA_SYNCHRONIZED_BYTES] = True # category-less
-        self.__allValues[VALUE__RESYNC_EST_TOTAL_DATA_BYTES] = True # category-less
-        self.__allValues[VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR_NUMERIC] = True # category-less
-        self.__allValues[VALUE__RESYNC_EST_COMPLETION_TIME_TIMESTAMP] = True # category-less
-        self.__allValues[VALUE__HAS_DATABASE_STATUS_WARNING] = True # category-less
-        self.__allValues[VALUE__VERSION_STRING] = True # category-less
+        for k in [VALUE__SEGMENT_STATUS, VALUE__DBID, VALUE__CONTENTID,
+                    VALUE__RESYNC_DATA_SYNCHRONIZED_BYTES, VALUE__RESYNC_EST_TOTAL_DATA_BYTES,
+                    VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR_NUMERIC, VALUE__RESYNC_EST_COMPLETION_TIME_TIMESTAMP,
+                    VALUE__HAS_DATABASE_STATUS_WARNING, VALUE__VERSION_STRING,
+                    VALUE__POSTMASTER_PID_FILE_EXISTS, VALUE__LOCK_FILES_EXIST,
+                    VALUE__ACTIVE_PID_INT, VALUE__POSTMASTER_PID_VALUE_INT,
+                    VALUE__CHANGE_TRACKING_DATA_SIZE_BYTES
+                    ]:
+            self.__allValues[k] = True
+
         for values in self.__entriesByCategory.values():
             for v in values:
                 self.__allValues[v] = True
@@ -732,7 +740,7 @@ class GpSystemStateProgram:
 
                 VALUE__ERROR_GETTING_SEGMENT_STATUS,
 
-                VALUE__CHANGE_TRACKING_DATA_SIZE,
+                VALUE__CHANGE_TRACKING_DATA_SIZE_BYTES,
 
                 VALUE__RESYNC_MODE,
                 VALUE__RESYNC_DATA_SYNCHRONIZED_BYTES,
@@ -740,17 +748,12 @@ class GpSystemStateProgram:
                 VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR_NUMERIC,
                 VALUE__RESYNC_EST_COMPLETION_TIME_TIMESTAMP,
 
-                VALUE__POSTMASTER_PID_FILE,
-                VALUE__POSTMASTER_PID_VALUE,
-                VALUE__LOCK_FILES,
-                VALUE__ACTIVE_PID,
+                VALUE__POSTMASTER_PID_FILE_EXISTS,
+                VALUE__POSTMASTER_PID_VALUE_INT,
+                VALUE__LOCK_FILES_EXIST,
+                VALUE__ACTIVE_PID_INT,
 
-                # put string values on the end
-                VALUE__RESYNC_DATA_SYNCHRONIZED,
                 VALUE__RESYNC_EST_TOTAL_DATA,
-                VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR,
-                VALUE__RESYNC_EST_COMPLETION_TIME,
-
                 VALUE__VERSION_STRING
                 ]
 
@@ -783,9 +786,9 @@ class GpSystemStateProgram:
                         (sys.path[0], gpEnv.getMasterDataDir()) # todo: ideally, would escape here
         columns = ["%s %s" % (f.getColumnName(), f.getColumnType()) for f in self.__getSegmentStatusColumns()]
 
-        sql = "\nCREATE EXTERNAL WEB TABLE gpstate_segment_status\n" \
+        sql = "\nDROP EXTERNAL TABLE IF EXISTS gpstate_segment_status;\n\n\nCREATE EXTERNAL WEB TABLE gpstate_segment_status\n" \
               "(%s)\nEXECUTE '%s' ON MASTER\nFORMAT 'TEXT' (DELIMITER '|' NULL AS '');\n" % \
-               (",".join(columns), scriptName )
+               (", ".join(columns), scriptName )
 
         print sql
 
@@ -954,9 +957,11 @@ class GpSystemStateProgram:
                             if mirrorData is None or mirrorData["changeTrackingBytesUsed"] < 0:
                                 # server returns <0 if there was an error calculating size
                                 data.addValue(VALUE__CHANGE_TRACKING_DATA_SIZE, "unable to retrieve data size", isWarning=True)
+                                data.addValue(VALUE__CHANGE_TRACKING_DATA_SIZE_BYTES, "", isWarning=True)
                             else:
-                                data.addValue(VALUE__CHANGE_TRACKING_DATA_SIZE, \
+                                data.addValue(VALUE__CHANGE_TRACKING_DATA_SIZE,
                                         self.__abbreviateBytes(mirrorData["changeTrackingBytesUsed"]))
+                                data.addValue(VALUE__CHANGE_TRACKING_DATA_SIZE, mirrorData["changeTrackingBytesUsed"])
 
                         if seg.getSegmentMode() == gparray.MODE_RESYNCHRONIZATION:
                             mirrorData = segmentData[gp.SEGMENT_STATUS__GET_MIRROR_STATUS]
@@ -1017,18 +1022,24 @@ class GpSystemStateProgram:
 
                 found = segmentData[gp.SEGMENT_STATUS__HAS_POSTMASTER_PID_FILE]
                 data.addValue(VALUE__POSTMASTER_PID_FILE, "Found" if found else "Missing", isWarning=not found)
+                data.addValue(VALUE__POSTMASTER_PID_FILE_EXISTS, "t" if found else "f", isWarning=not found)
 
                 # PID from postmaster.pid
+                pidValueForSql = "" if pidData["pid"] == 0 else str(pidData["pid"])
                 data.addValue(VALUE__POSTMASTER_PID_VALUE, pidData["pid"], pidData['pid'] == 0)
+                data.addValue(VALUE__POSTMASTER_PID_VALUE_INT, pidValueForSql, pidData['pid'] == 0)
 
                 # has lock file
                 found = segmentData[gp.SEGMENT_STATUS__HAS_LOCKFILE]
                 data.addValue(VALUE__LOCK_FILES, "Found" if found else "Missing", isWarning=not found)
+                data.addValue(VALUE__LOCK_FILES_EXIST, "t" if found else "f", isWarning=not found)
 
                 if pidData['error'] is None:
                     data.addValue(VALUE__ACTIVE_PID, pidData["pid"])
+                    data.addValue(VALUE__ACTIVE_PID_INT, pidValueForSql)
                 else:
-                    data.addValue(VALUE__ACTIVE_PID, "Missing", False)
+                    data.addValue(VALUE__ACTIVE_PID, "Missing", True)
+                    data.addValue(VALUE__ACTIVE_PID_INT, "", True)
 
                 data.addValue(VALUE__VERSION_STRING, segmentData[gp.SEGMENT_STATUS__GET_VERSION])
             data.addValue(VALUE__MASTER_REPORTS_STATUS, "Up" if seg.isSegmentUp() else "Down", seg.isSegmentDown())
