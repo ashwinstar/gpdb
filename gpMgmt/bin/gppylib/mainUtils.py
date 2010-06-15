@@ -49,6 +49,7 @@ def simple_main( createOptionParserFn, createCommandFn, mainOptions=None) :
                             programNameOverride (map to string)
                             suppressStartupLogMessage (map to bool)
                             useHelperToolLogging (map to bool)
+                            setNonuserOnToolLogger (map to bool, defaults to false)
 
     """
     coverage = GpCoverage()
@@ -81,6 +82,7 @@ def simple_main_internal(createOptionParserFn, createCommandFn, mainOptions):
     suppressStartupLogMessage = mainOptions is not None and mainOptions.get("suppressStartupLogMessage")
 
     useHelperToolLogging = mainOptions is not None and mainOptions.get("useHelperToolLogging")
+    nonuser = True if mainOptions is not None and mainOptions.get("setNonuserOnToolLogger") else False
 
     # NOTE: if this logic is changed then also change test_main in testUtils.py
     try:
@@ -95,7 +97,7 @@ def simple_main_internal(createOptionParserFn, createCommandFn, mainOptions):
             gplog.setup_helper_tool_logging(execname, hostname, username)
         else:
             gplog.setup_tool_logging(execname, hostname, username,
-                                        logdir=options.ensure_value("logfileDirectory", None), nonuser=False )
+                                        logdir=options.ensure_value("logfileDirectory", None), nonuser=nonuser )
 
         if forceQuiet:
             gplog.quiet_stdout_logging()

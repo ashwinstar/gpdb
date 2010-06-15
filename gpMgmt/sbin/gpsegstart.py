@@ -5,15 +5,12 @@
 #
 # Internal Use Function.
 #
+#
+# THIS IMPORT MUST COME FIRST
+#
+# import mainUtils FIRST to get python version check
+from gppylib.mainUtils import *
 import os, sys
-
-progname = os.path.split(sys.argv[0])[-1]
-
-if sys.version_info < (2, 5, 0):
-    sys.exit(
-'''Error: %s is supported on Python versions 2.5 or greater
-Please upgrade python installed on this machine.''' % progname)
-
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
@@ -46,7 +43,7 @@ Return codes:
 
 """]
 
-EXECNAME = os.path.split(__file__)[-1]
+logger = gplog.get_default_logger()
 
 #-------------------------------------------------------------------------
 class SegStartStatus:
@@ -337,7 +334,7 @@ class GpSegStart:
             
 
     ######
-    def start(self): 
+    def run(self):
         results=[]
         failures=False
         directoryToSegStartDataMap = {}
@@ -365,99 +362,48 @@ class GpSegStart:
             status += str(result) + "\n"
         logger.info(status)
 
-        # return whether there was at least one failure
-        return len(directoryToSegStartDataMap) != numToStart
+        # return exit code depending on if there were failures
+        return 1 if len(directoryToSegStartDataMap) != numToStart else 0
     
     def cleanup(self):
         if self.pool:
             self.pool.haltWork()
     
-#-------------------------------------------------------------------------
-def parseargs():
-    parser = OptParser(option_class=OptChecker,
-                description=' '.join(description.split()),
-                version='%prog version $Revision: #12 $')
-    parser.setHelp(_help)
-    parser.set_usage('%prog [--help] [options] ')
-    parser.remove_option('-h')
-    
-    parser.add_option('-h', '-?', '--help', action='help',help='show this help message and exit')
-    parser.add_option('-v','--verbose', action='store_true',help='debug output.')
-    parser.add_option('-q', '--quiet', action='store_true',help='suppress status messages')
-    parser.add_option("-C", "--collation", type="string", 
-                        help="values for lc_collate, lc_monetary, lc_numeric separated by :")
-    parser.add_option("-D","--dblist",dest="dblist", action="append", type="string")
-    parser.add_option("-M","--mirroringmode",dest="mirroringMode", type="string")
-    parser.add_option("-p","--pickledTransitionData",dest="pickledTransitionData", type="string")
-    parser.add_option("-V", "--gp-version", dest="gpversion",metavar="GP_VERSION",
-                        help="expected software version")      
-    parser.add_option("-n", "--numsegments", dest="numsegments", 
-                      help="number of distinct content ids in cluster")
-    parser.add_option("-t", "--timeout", dest="timeout", type="int", default=SEGMENT_TIMEOUT_DEFAULT,
-                      help="seconds to wait")
+    #-------------------------------------------------------------------------
+    @staticmethod
+    def createParser():
+        parser = OptParser(option_class=OptChecker,
+                    description=' '.join(description.split()),
+                    version='%prog version $Revision: #12 $')
+        parser.setHelp(_help)
 
-    parser.set_defaults(verbose=False, filters=[], slice=(None, None))
-    
-    # Parse the command line arguments
-    (options, args) = parser.parse_args()
-        
-    return options, args
+        addStandardLoggingAndHelpOptions(parser, includeNonInteractiveOption=False)
 
+        parser.add_option("-C", "--collation", type="string",
+                            help="values for lc_collate, lc_monetary, lc_numeric separated by :")
+        parser.add_option("-D","--dblist",dest="dblist", action="append", type="string")
+        parser.add_option("-M","--mirroringmode",dest="mirroringMode", type="string")
+        parser.add_option("-p","--pickledTransitionData",dest="pickledTransitionData", type="string")
+        parser.add_option("-V", "--gp-version", dest="gpversion",metavar="GP_VERSION",
+                            help="expected software version")
+        parser.add_option("-n", "--numsegments", dest="numsegments",
+                          help="number of distinct content ids in cluster")
+        parser.add_option("-t", "--timeout", dest="timeout", type="int", default=SEGMENT_TIMEOUT_DEFAULT,
+                          help="seconds to wait")
 
+        return parser
 
-#-------------------------------------------------------------------------
-    
-def main():
-    coverage = GpCoverage()
-    coverage.start()
-    
-    gpsegstart=None
-    
-    try:
-        gplog.setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName(),nonuser=True)
-        
-        options, args = parseargs()
-        
-        if options.verbose:
-            gplog.enable_verbose_logging()        
-        if options.quiet:
-            gplog.quiet_stdout_logging()
-
-        logger.info("Starting gpsegstart with args: %s" % ' '.join(sys.argv[1:]))
-        
-        logger.info("options.gpversion: %s" % options.gpversion )
-        
-        gpsegstart = GpSegStart(options.dblist, 
-                                options.gpversion,
-                                options.collation,
-                                options.mirroringMode,
-                                options.numsegments,
-                                options.timeout,
-                                options.pickledTransitionData)
-        
-        failures = gpsegstart.start()
-        
-        
-        if failures:
-            sys.exit(1)
-        else:    
-            sys.exit(0)
-
-    except Exception, e:
-        logger.exception("gpsegstart.py failed. (Reason=%s) exiting..." % e)
-        sys.exit(2)
-    except KeyboardInterrupt:
-        sys.exit('\nUser Interrupted')
-    finally:
-        if gpsegstart:
-            gpsegstart.cleanup()
-            
-        coverage.stop()
-        coverage.generate_report()
+    @staticmethod
+    def createProgram(options, args):
+        return GpSegStart(options.dblist,
+                                    options.gpversion,
+                                    options.collation,
+                                    options.mirroringMode,
+                                    options.numsegments,
+                                    options.timeout,
+                                    options.pickledTransitionData)
 
 #------------------------------------------------------------------------- 
-logger = gplog.get_default_logger()    
 if __name__ == '__main__':
-    main()
-
- 
+    mainOptions = { 'setNonuserOnToolLogger':True}
+    simple_main( GpSegStart.createParser, GpSegStart.createProgram, mainOptions)

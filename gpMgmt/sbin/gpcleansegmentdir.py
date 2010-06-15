@@ -92,4 +92,5 @@ class GpCleanSegmentDirectoryProgram:
 
 #-------------------------------------------------------------------------
 if __name__ == '__main__':
-    simple_main( GpCleanSegmentDirectoryProgram.createParser, GpCleanSegmentDirectoryProgram.createProgram)
+    mainOptions = { 'setNonuserOnToolLogger': True}
+    simple_main( GpCleanSegmentDirectoryProgram.createParser, GpCleanSegmentDirectoryProgram.createProgram, mainOptions)

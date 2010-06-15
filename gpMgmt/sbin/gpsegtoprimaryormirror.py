@@ -12,14 +12,6 @@
 from gppylib.mainUtils import *
 
 import os, sys
-
-progname = os.path.split(sys.argv[0])[-1]
-
-if sys.version_info < (2, 5, 0):
-    sys.exit(
-'''Error: %s is supported on Python versions 2.5 or greater
-Please upgrade python installed on this machine.''' % progname)
-
 import pickle, base64
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
@@ -158,7 +150,7 @@ class GpSegToPrimaryMirror():
         parser = OptParser(option_class=OptChecker,
                     description=' '.join(description.split()),
                     version='%prog version $Revision: #1 $')
-        parser.setHelp("")
+        parser.setHelp([])
 
         addStandardLoggingAndHelpOptions(parser, includeNonInteractiveOption=False)
 
@@ -188,7 +180,5 @@ class GpSegToPrimaryMirror():
 
 #------------------------------------------------------------------------- 
 if __name__ == '__main__':
-    mainOptions = {}
-    simple_main(GpSegToPrimaryMirror.createParser,
-                GpSegToPrimaryMirror.createProgram,
-                mainOptions)
+    mainOptions = { 'setNonuserOnToolLogger': True }
+    simple_main(GpSegToPrimaryMirror.createParser, GpSegToPrimaryMirror.createProgram, mainOptions)

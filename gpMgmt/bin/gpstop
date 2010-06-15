@@ -465,7 +465,7 @@ class GpStop:
         parser = OptParser(option_class=OptChecker,
                     description="Stops a GPDB Array.",
                     version='%prog version $Revision$')
-        parser.setHelp("")
+        parser.setHelp([])
 
         addStandardLoggingAndHelpOptions(parser, includeNonInteractiveOption=True, includeUsageOption=True)
 

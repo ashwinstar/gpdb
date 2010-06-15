@@ -6,15 +6,13 @@
 # Internal Use Function.
 #
 #
+#
+# THIS IMPORT MUST COME FIRST
+#
+# import mainUtils FIRST to get python version check
+from gppylib.mainUtils import *
+
 import os, sys, time
-
-progname = os.path.split(sys.argv[0])[-1]
-
-if sys.version_info < (2, 5, 0):
-    sys.exit(
-'''Error: %s is supported on Python versions 2.5 or greater
-Please upgrade python installed on this machine.''' % progname)
-
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
@@ -29,21 +27,16 @@ from gppylib.db import dbconn
 from gppylib import pgconf
 from gppylib.gpcoverage import GpCoverage
 
-
-description = (""" 
+description = ("""
 This utility is NOT SUPPORTED and is for internal-use only.
 
 stops a set of one or more segment databases.
 """)
 
-_help = ["""
-TODO: add txt for gpstop!
-"""]
-
-EXECNAME = os.path.split(__file__)[-1]
+logger = gplog.get_default_logger()
 
 #-------------------------------------------------------------------------
-class SegStopStatus():
+class SegStopStatus:
     def __init__(self,datadir,stopped,reason):
         self.datadir=datadir
         self.stopped=stopped
@@ -53,7 +46,7 @@ class SegStopStatus():
         return "STATUS--DIR:%s--STARTED:%s--REASON:%s" % (self.datadir,self.stopped,self.reason)
     
 #-------------------------------------------------------------------------    
-class GpSegStop():
+class GpSegStop:
     ######
     def __init__(self,dblist,mode,gpversion):
         self.dblist=dblist
@@ -69,13 +62,12 @@ class GpSegStop():
         pass
     
     ######
-    def stop(self):
+    def run(self):
         results=[]
         failures=[]
         
         logger.info("Issuing shutdown commands to local segments...")
 
-        
         for db in self.dblist:
             fields=db.split(':')
             datadir=fields[0]
@@ -118,82 +110,33 @@ class GpSegStop():
         
         logger.info(status)
         
-        return failures
-    
+        return 1 if failures else 0
     
     ######
     def cleanup(self):
         pass
         
-#-------------------------------------------------------------------------
-def parseargs():
-    parser = OptParser(option_class=OptChecker,
-                description=' '.join(description.split()),
-                version='%prog version $Revision: #12 $')
-    parser.setHelp(_help)
-    parser.set_usage('%prog [--help] [options] ')
-    parser.remove_option('-h')
-    
-    parser.add_option('-h', '-?', '--help', action='help',help='show this help message and exit')
-    parser.add_option('-v','--verbose', action='store_true',help='debug output.')
-    parser.add_option('-q', '--quiet', action='store_true',help='suppress status messages')
-    parser.add_option("-D","--db",dest="dblist", action="append", type="string")
-    parser.add_option("-V", "--gp-version", dest="gpversion",metavar="GP_VERSION",
-                      help="expected software version")
-    parser.add_option("-m", "--mode", dest="mode",metavar="<MODE>",
-                      help="how to shutdown. modes are smart,fast, or immediate")
-    
-    parser.set_defaults(verbose=False, filters=[], slice=(None, None))
-    
-    # Parse the command line arguments
-    (options, args) = parser.parse_args()
-        
-    return options, args
+    @staticmethod
+    def createParser():
+        parser = OptParser(option_class=OptChecker,
+                    description=' '.join(description.split()),
+                    version='%prog version $Revision: #12 $')
+        parser.setHelp([])
 
+        addStandardLoggingAndHelpOptions(parser, includeNonInteractiveOption=False)
 
+        parser.add_option("-D","--db",dest="dblist", action="append", type="string")
+        parser.add_option("-V", "--gp-version", dest="gpversion",metavar="GP_VERSION",
+                          help="expected software version")
+        parser.add_option("-m", "--mode", dest="mode",metavar="<MODE>",
+                          help="how to shutdown. modes are smart,fast, or immediate")
+        return parser
+
+    @staticmethod
+    def createProgram(options, args):
+        return GpSegStop(options.dblist,options.mode,options.gpversion)
 
 #-------------------------------------------------------------------------
-    
-def main():
-    coverage = GpCoverage()
-    coverage.start()
-        
-    gpsegstop=None
-    
-    try:
-        gplog.setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName(),nonuser=True)
-                            
-        options, args = parseargs()
-        
-        if options.verbose:
-            gplog.enable_verbose_logging()        
-        if options.quiet:
-            gplog.quiet_stdout_logging()
-
-        logger.info("Starting gpsegstop with args: %s" % ' '.join(sys.argv[1:]))
-        
-        gpsegstop = GpSegStop(options.dblist,options.mode,options.gpversion)        
-        failures = gpsegstop.stop()
-        
-        
-        if failures:
-            sys.exit(1)
-        else:    
-            sys.exit(0)
-
-    except Exception, e:
-        logger.exception("gpsegstop.py failed. (Reason=%s) exiting..." % e)
-        sys.exit(3)
-    except KeyboardInterrupt:
-        sys.exit('\nUser Interrupted')
-    finally:
-        if gpsegstop:
-            gpsegstop.cleanup()
-            
-        coverage.stop()
-        coverage.generate_report()
-
-#------------------------------------------------------------------------- 
-logger = gplog.get_default_logger()    
 if __name__ == '__main__':
-    main()     
+    mainOptions = { 'setNonuserOnToolLogger':True}
+    simple_main( GpSegStop.createParser, GpSegStop.createProgram, mainOptions)

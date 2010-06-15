@@ -189,7 +189,7 @@ class GpSegStatusProgram:
                            description="Gets status from segments on a single host "
                                             "using a transition message.  Internal-use only.",
                            version='%prog version $Revision: #1 $')
-        parser.setHelp([""])
+        parser.setHelp([])
 
         addStandardLoggingAndHelpOptions(parser, True)
 
@@ -215,4 +215,5 @@ class GpSegStatusProgram:
 
 #-------------------------------------------------------------------------
 if __name__ == '__main__':
-    simple_main( GpSegStatusProgram.createParser, GpSegStatusProgram.createProgram)
+    mainOptions = { 'setNonuserOnToolLogger':True}
+    simple_main( GpSegStatusProgram.createParser, GpSegStatusProgram.createProgram, mainOptions)

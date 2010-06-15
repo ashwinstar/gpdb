@@ -672,7 +672,7 @@ class GpStart:
         parser = OptParser(option_class=OptChecker,
                     description="Starts a GPDB Array.",
                     version='%prog version $Revision$')
-        parser.setHelp("")
+        parser.setHelp([])
 
         addStandardLoggingAndHelpOptions(parser, includeNonInteractiveOption=True)
 
