@@ -75,7 +75,6 @@ FileRepPrimary_StartResyncWorker(void)
 		
 		while (FileRepSubProcess_GetState() != FileRepStateShutdown &&
 			   FileRepSubProcess_GetState() != FileRepStateShutdownBackends &&
-			   FileRepSubProcess_GetState() != FileRepStateImmediateShutdown &&
 			   ! (FileRepSubProcess_GetState() == FileRepStateReady && 
 			    dataState == DataStateInResync)) {
 			
@@ -84,8 +83,7 @@ FileRepPrimary_StartResyncWorker(void)
 		}
 		
 		if (FileRepSubProcess_GetState() == FileRepStateShutdown ||
-			FileRepSubProcess_GetState() == FileRepStateShutdownBackends ||
-			FileRepSubProcess_GetState() == FileRepStateImmediateShutdown) {
+			FileRepSubProcess_GetState() == FileRepStateShutdownBackends) {
 			
 			break;
 		}

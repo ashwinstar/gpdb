@@ -3106,9 +3106,21 @@ IsTransactionStmtList(List *nodes)
  * backend here. If these other processes need to do their own handling
  * they should override the signal handler for SIGQUIT (and in that handler
  * call this one ?).
+ *
+ *
+ * @param SIGNAL_ARGS -- so the signature matches a signal handler.  Nore that
  */
 void
 quickdie(SIGNAL_ARGS)
+{
+	quickdie_impl();
+}
+
+/**
+ * implementation of quick-die that does take SIGNAL_ARGS parameter
+ */
+void
+quickdie_impl()
 {
 	PG_SETMASK(&BlockSig);
 

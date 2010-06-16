@@ -148,8 +148,7 @@ FileRepAckPrimary_StartReceiver(void)
 			pg_usleep(50000L); /* 50 ms */	
 		}
 		
-		if (FileRepSubProcess_GetState() == FileRepStateShutdown ||
-			FileRepSubProcess_GetState() == FileRepStateImmediateShutdown) {
+		if (FileRepSubProcess_GetState() == FileRepStateShutdown) {
 			
 			break;
 		}
@@ -831,15 +830,13 @@ FileRepAckPrimary_StartConsumer(void)
 		while (FileRepSubProcess_GetState() == FileRepStateFault ||
 			   
 			   (fileRepShmemArray[0]->state == FileRepStateNotInitialized &&
-			    FileRepSubProcess_GetState() != FileRepStateShutdown &&
-			    FileRepSubProcess_GetState() != FileRepStateImmediateShutdown)) {
+			    FileRepSubProcess_GetState() != FileRepStateShutdown)) {
 			
 			FileRepSubProcess_ProcessSignals();
 			pg_usleep(50000L); /* 50 ms */	
 		}
 		
-		if (FileRepSubProcess_GetState() == FileRepStateShutdown ||
-			FileRepSubProcess_GetState() == FileRepStateImmediateShutdown) {
+		if (FileRepSubProcess_GetState() == FileRepStateShutdown) {
 			
 			break;
 		}		

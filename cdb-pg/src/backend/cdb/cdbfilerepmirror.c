@@ -154,8 +154,7 @@ FileRepMirror_StartReceiver(void)
 			pg_usleep(50000L); /* 50 ms */	
 		}
 		
-		if (FileRepSubProcess_GetState() == FileRepStateShutdown ||
-			FileRepSubProcess_GetState() == FileRepStateImmediateShutdown) {
+		if (FileRepSubProcess_GetState() == FileRepStateShutdown) {
 			
 			break;
 		}
@@ -528,8 +527,7 @@ FileRepMirror_StartConsumer(void)
 			pg_usleep(50000L); /* 50 ms */	
 		}
 		
-		if (FileRepSubProcess_GetState() == FileRepStateShutdown ||
-			FileRepSubProcess_GetState() == FileRepStateImmediateShutdown) {
+		if (FileRepSubProcess_GetState() == FileRepStateShutdown) {
 			
 			break;
 		}		

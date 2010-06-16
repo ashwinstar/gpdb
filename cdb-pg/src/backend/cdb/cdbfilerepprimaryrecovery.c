@@ -89,16 +89,14 @@ FileRepPrimary_StartRecoveryInSync(void)
 			   
 			   (fileRepShmemArray[0]->state == FileRepStateNotInitialized &&
 				FileRepSubProcess_GetState() != FileRepStateShutdownBackends &&
-			    FileRepSubProcess_GetState() != FileRepStateShutdown &&
-			    FileRepSubProcess_GetState() != FileRepStateImmediateShutdown)) {
+			    FileRepSubProcess_GetState() != FileRepStateShutdown)) {
 			
 			FileRepSubProcess_ProcessSignals();
 			pg_usleep(50000L); /* 50 ms */	
 		}
 		
 		if (FileRepSubProcess_GetState() == FileRepStateShutdown ||
-			FileRepSubProcess_GetState() == FileRepStateShutdownBackends ||
-			FileRepSubProcess_GetState() == FileRepStateImmediateShutdown) {
+			FileRepSubProcess_GetState() == FileRepStateShutdownBackends) {
 			
 			break;
 		}
@@ -248,8 +246,7 @@ FileRepPrimary_StartRecoveryInChangeTracking(void)
 		}
 		
 		if (FileRepSubProcess_GetState() == FileRepStateShutdown ||
-			FileRepSubProcess_GetState() == FileRepStateShutdownBackends ||
-			FileRepSubProcess_GetState() == FileRepStateImmediateShutdown) {
+			FileRepSubProcess_GetState() == FileRepStateShutdownBackends) {
 			
 			break;
 		}
@@ -341,16 +338,14 @@ FileRepPrimary_RunHeartBeat(void)
 			   
 			   (fileRepShmemArray[0]->state == FileRepStateNotInitialized &&
 				FileRepSubProcess_GetState() != FileRepStateShutdownBackends &&
-			    FileRepSubProcess_GetState() != FileRepStateShutdown &&
-			    FileRepSubProcess_GetState() != FileRepStateImmediateShutdown)) {
+			    FileRepSubProcess_GetState() != FileRepStateShutdown)) {
 			
 			FileRepSubProcess_ProcessSignals();
 			pg_usleep(50000L); /* 50 ms */	
 		}
 		
 		if (FileRepSubProcess_GetState() == FileRepStateShutdown ||
-			FileRepSubProcess_GetState() == FileRepStateShutdownBackends ||
-			FileRepSubProcess_GetState() == FileRepStateImmediateShutdown) {
+			FileRepSubProcess_GetState() == FileRepStateShutdownBackends) {
 			
 			break;
 		}

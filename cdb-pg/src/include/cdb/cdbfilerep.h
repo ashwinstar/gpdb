@@ -314,10 +314,6 @@ typedef enum FileRepState_e {
 
 	FileRepStateShutdown,
 	/* Process is going to exit (graceful termination). */
-	
-	FileRepStateImmediateShutdown,
-	/* Process is going to exit (emergency termination). */
-
 
 	FileRepState__EnumerationCount
 } FileRepState_e;	

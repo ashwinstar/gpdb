@@ -630,16 +630,14 @@ FileRepPrimary_StartResyncManager(void)
 			   
 			   (fileRepShmemArray[0]->state == FileRepStateNotInitialized &&
 				FileRepSubProcess_GetState() != FileRepStateShutdownBackends &&
-			    FileRepSubProcess_GetState() != FileRepStateShutdown &&
-			    FileRepSubProcess_GetState() != FileRepStateImmediateShutdown)) {
+			    FileRepSubProcess_GetState() != FileRepStateShutdown)) {
 			
 			FileRepSubProcess_ProcessSignals();
 			pg_usleep(50000L); /* 50 ms */	
 		}
 		
 		if (FileRepSubProcess_GetState() == FileRepStateShutdown ||
-			FileRepSubProcess_GetState() == FileRepStateShutdownBackends ||
-			FileRepSubProcess_GetState() == FileRepStateImmediateShutdown) {
+			FileRepSubProcess_GetState() == FileRepStateShutdownBackends) {
 			
 			break;
 		}
@@ -655,7 +653,6 @@ FileRepPrimary_StartResyncManager(void)
 				
 				while (FileRepSubProcess_GetState() != FileRepStateShutdown &&
 					   FileRepSubProcess_GetState() != FileRepStateShutdownBackends &&
-					   FileRepSubProcess_GetState() != FileRepStateImmediateShutdown &&
 					   isDatabaseRunning() == FALSE) {
 					
 					FileRepSubProcess_ProcessSignals();
@@ -663,8 +660,7 @@ FileRepPrimary_StartResyncManager(void)
 				}		
 								
 				if (FileRepSubProcess_GetState() == FileRepStateShutdown ||
-					FileRepSubProcess_GetState() == FileRepStateShutdownBackends ||
-					FileRepSubProcess_GetState() == FileRepStateImmediateShutdown) {
+					FileRepSubProcess_GetState() == FileRepStateShutdownBackends) {
 					
 					break;
 				}				
@@ -689,7 +685,6 @@ FileRepPrimary_StartResyncManager(void)
 				/* Wait that XLOG replay is done */
 				while (FileRepSubProcess_GetState() != FileRepStateShutdown &&
 					   FileRepSubProcess_GetState() != FileRepStateShutdownBackends &&
-					   FileRepSubProcess_GetState() != FileRepStateImmediateShutdown &&
 					   ! (segmentState == SegmentStateInResyncTransition && 
 						  dataState == DataStateInResync)) {
 					
@@ -698,8 +693,7 @@ FileRepPrimary_StartResyncManager(void)
 				}		
 
 				if (FileRepSubProcess_GetState() == FileRepStateShutdown ||
-					FileRepSubProcess_GetState() == FileRepStateShutdownBackends ||
-					FileRepSubProcess_GetState() == FileRepStateImmediateShutdown) {
+					FileRepSubProcess_GetState() == FileRepStateShutdownBackends) {
 					
 					break;
 				}

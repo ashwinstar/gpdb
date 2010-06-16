@@ -1232,8 +1232,7 @@ FileRepPrimary_StartSender(void)
 			pg_usleep(50000L); /* 50 ms */	
 		}
 		
-		if (FileRepSubProcess_GetState() == FileRepStateShutdown ||
-			FileRepSubProcess_GetState() == FileRepStateImmediateShutdown) {
+		if (FileRepSubProcess_GetState() == FileRepStateShutdown) {
 		
 			break;
 		}

@@ -86,6 +86,9 @@ static volatile sig_atomic_t shutdownRequested = false;
 static volatile sig_atomic_t immediateShutdownRequested = false;
 	/* graceful shutdown performed by SIGQUIT signal from postmaster */
 
+/** true if, upon exit, we should error with 'immediateShutdown' exit code */
+static volatile sig_atomic_t exitWithImmediateShutdown = false;
+
 static volatile sig_atomic_t childTermination = false;
 	/* child termination of the main file rep process */
 
@@ -240,7 +243,6 @@ FileRepStateToString[] = {
 	_("In Fault"),
 	_("In Shutdown of Backends"),
 	_("In Shutdown"),
-	_("In Immediate Shutdown"),
 };
 						  
 const char*
@@ -1419,7 +1421,7 @@ FileRep_StateHandler(SIGNAL_ARGS)
 static void
 FileRep_HandleCrash(SIGNAL_ARGS)
 {
-    StandardHandlerForSigillSigsegvSigbus_OnMainThread("a file replication process", PASS_SIGNAL_ARGS);
+	StandardHandlerForSigillSigsegvSigbus_OnMainThread("a file replication process", PASS_SIGNAL_ARGS);
 }
 
 /*
@@ -1647,7 +1649,7 @@ FileRep_ProcessSignals()
 		immediateShutdownRequested = false;
 		FileRep_SignalChildren(SIGQUIT, false);
 		processExit = true;
-		FileRep_SetState(FileRepStateImmediateShutdown);
+		exitWithImmediateShutdown = true;
 		FileRep_IpcSignalAll();
 	}
 	
@@ -1660,7 +1662,7 @@ FileRep_ProcessSignals()
 	    elog(FILEREP_PROCESS_LOG_LEVEL, "Filerep: postmaster is gone, entering immediate shutdown");
 		FileRep_SignalChildren(SIGQUIT, false);
 		processExit = true;
-		FileRep_SetState(FileRepStateImmediateShutdown);
+		exitWithImmediateShutdown = true;
 		FileRep_IpcSignalAll();
 	}
 	
@@ -1887,7 +1889,6 @@ FileRep_SetState(FileRepState_e fileRepStateLocal)
 			switch (fileRepStateLocal) {
 				case FileRepStateInitialization:
 				case FileRepStateFault:
-				case FileRepStateImmediateShutdown:
 				case FileRepStateShutdown:
 				case FileRepStateShutdownBackends:
 					fileRepState = fileRepStateLocal;
@@ -1906,7 +1907,6 @@ FileRep_SetState(FileRepState_e fileRepStateLocal)
 			
 			switch (fileRepStateLocal) {
 				case FileRepStateFault:
-				case FileRepStateImmediateShutdown:
 				case FileRepStateShutdown:
 				case FileRepStateShutdownBackends:
 					fileRepState = fileRepStateLocal;
@@ -1925,7 +1925,6 @@ FileRep_SetState(FileRepState_e fileRepStateLocal)
         case FileRepStateShutdownBackends:
 
 			switch (fileRepStateLocal) {
-				case FileRepStateImmediateShutdown:
 				case FileRepStateShutdown:
 				case FileRepStateShutdownBackends:
 					fileRepState = fileRepStateLocal;
@@ -1946,7 +1945,6 @@ FileRep_SetState(FileRepState_e fileRepStateLocal)
 		case FileRepStateShutdown:
 			
 			switch (fileRepStateLocal) {
-				case FileRepStateImmediateShutdown:
 				case FileRepStateShutdown:
 					fileRepState = fileRepStateLocal;
 					break;
@@ -1961,9 +1959,6 @@ FileRep_SetState(FileRepState_e fileRepStateLocal)
                     break;
 			}
 			
-			break;
-		case FileRepStateImmediateShutdown:
-
 			break;
 
         default:
@@ -1989,7 +1984,6 @@ FileRep_SetState(FileRepState_e fileRepStateLocal)
 		case FileRepStateInitialization:
         case FileRepStateShutdownBackends:
 		case FileRepStateShutdown:
-		case FileRepStateImmediateShutdown:
 		case FileRepStateNotInitialized:
 			/* No operation */
 			break;
@@ -2894,20 +2888,21 @@ shutdown:
 	}
 	
     /* wait for all children to terminate */
-    while ( FileRep_IsAnyChildAlive())
-    {
-        FileRep_ProcessSignals();
-        if ( ! FileRep_IsAnyChildAlive())
-            break;
-			pg_usleep(1000000L); // 1sec
-    }
+	while ( FileRep_IsAnyChildAlive())
+	{
+		FileRep_ProcessSignals();
+		if ( ! FileRep_IsAnyChildAlive())
+			break;
+		pg_usleep(1000000L); // 1sec
+	}
 
-	if (FileRep_GetState() == FileRepStateShutdown) {
+	if (exitWithImmediateShutdown)
+	{
+		proc_exit(2);
+	}
+	else 
+	{
 		proc_exit(0);
-	} else {
-		/* ImmediateShutdown */			
-		Assert(FileRep_GetState() == FileRepStateImmediateShutdown);
-		proc_exit(2);	
 	}
 } // FileRep_Main()
 

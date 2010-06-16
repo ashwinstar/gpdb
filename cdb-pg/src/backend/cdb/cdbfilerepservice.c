@@ -32,13 +32,11 @@
 #include "storage/pmsignal.h"
 #include "storage/proc.h"
 #include "storage/sinval.h"
+#include "tcop/tcopprot.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
 #include "utils/syscache.h"
-
-extern void die(SIGNAL_ARGS); /* is in tcopprot.h */
-extern void quickdie(SIGNAL_ARGS); /* is in tcopprot.h */
 
 /*
  * Initialize external variables.
@@ -56,9 +54,6 @@ static volatile sig_atomic_t reloadConfigFile = false;
 
 static volatile sig_atomic_t shutdownRequested = false;
 /* graceful shutdown informed by SIGUSR2 signal from postmaster */
-
-static volatile sig_atomic_t immediateShutdownRequested = false;
-/* immediate shutdown informed by SIGQUIT signal from postmaster */
 
 /* state change informed by SIGUSR1 signal from postmaster...when state change request comes in
  *  this counter is incremented.
@@ -104,7 +99,6 @@ FileRepSubProcess_SigHupHandler(SIGNAL_ARGS)
 static void 
 FileRepSubProcess_ImmediateShutdownHandler(SIGNAL_ARGS)
 {
-	immediateShutdownRequested = true;
 	elog(DEBUG1, "FileRepSubProcess_ImmediateShutdownHandler()");
     quickdie(PASS_SIGNAL_ARGS);
 }
@@ -166,7 +160,7 @@ bool
 FileRepSubProcess_ProcessSignals()
 {
 	bool processExit = false;
-	
+
 	if (reloadConfigFile) {
 		reloadConfigFile = false;
 		ProcessConfigFile(PGC_SIGHUP);
@@ -190,11 +184,6 @@ FileRepSubProcess_ProcessSignals()
 		}
 	}
 	
-	if (immediateShutdownRequested) {
-		processExit = true;
-		FileRepSubProcess_SetState(FileRepStateImmediateShutdown);
-	}
-	
 	/*
 	 * Immediate shutdown if postmaster is not alive to avoid
 	 * manual cleanup.
@@ -203,20 +192,9 @@ FileRepSubProcess_ProcessSignals()
 	if (! PostmasterIsAlive(true)) {
 #endif
 	if (!PostmasterIsAlive(false)) {
-		processExit = true;
-		FileRepSubProcess_SetState(FileRepStateImmediateShutdown);
+		quickdie_impl();
 	}
 	
-	/*
-	 * Immediate shutdown if postmaster is not alive to avoid
-	 * manual cleanup.
-	 */
-	/*
-	if (! FileRepMainIsAlive(true)) {
-		processExit = true;
-		FileRepSubProcess_SetState(FileRepStateImmediateShutdown);
-	}
-	*/
 	for ( ;; )
 	{
 	    /* check to see if change required */
@@ -273,11 +251,6 @@ FileRepSubProcess_ProcessSignals()
                 FileRepSubProcess_SetState(FileRepStateShutdown);
                 break;
 
-            case SegmentStateImmediateShutdown:
-                processExit = true;
-                FileRepSubProcess_SetState(FileRepStateImmediateShutdown);
-                break;
-
             default:
                 Assert(0);
                 break;
@@ -294,7 +267,7 @@ FileRepSubProcess_IsStateTransitionRequested(void)
 	if (fileRepProcessType == FileRepProcessTypeMain)
 	{
 		getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
-		if (segmentState == FileRepStateImmediateShutdown)
+		if (segmentState == SegmentStateImmediateShutdown)
 			return TRUE;
 		else
 			return FALSE;
@@ -302,13 +275,11 @@ FileRepSubProcess_IsStateTransitionRequested(void)
 	
 	if (fileRepProcessType != FileRepProcessTypeNotInitialized)
 	{
-	
 		FileRepSubProcess_ProcessSignals();
 		
 		switch (FileRepSubProcess_GetState())
 		{
 			case FileRepStateFault:
-			case FileRepStateImmediateShutdown:
 			case FileRepStateShutdown:
 				ereport(LOG,
 						(errmsg("LOG(filerep): filerep state transition requested "),
@@ -417,7 +388,6 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
 
             switch (fileRepStateLocal) {
                 case FileRepStateFault:
-                case FileRepStateImmediateShutdown:
                 case FileRepStateShutdown:
                     fileRepState = fileRepStateLocal;
                     break;
@@ -443,7 +413,6 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
 
             switch (fileRepStateLocal) {
                 case FileRepStateFault:
-                case FileRepStateImmediateShutdown:
                 case FileRepStateShutdown:
                     fileRepState = fileRepStateLocal;
                     break;
@@ -469,7 +438,6 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
         case FileRepStateShutdown:
 
             switch (fileRepStateLocal) {
-                case FileRepStateImmediateShutdown:
                 case FileRepStateShutdown:
                     fileRepState = fileRepStateLocal;
                     break;
@@ -488,9 +456,6 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
                     Assert(0);
                     break;
             }
-
-            break;
-        case FileRepStateImmediateShutdown:
 
             break;
         default:
@@ -522,7 +487,6 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
 		
 		case FileRepStateInitialization:
 		case FileRepStateShutdown:
-		case FileRepStateImmediateShutdown:
 		case FileRepStateNotInitialized:
 			/* No operation */
 			break;
@@ -535,8 +499,7 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
 	}
 
 	/* report the change */
-	if (fileRepState != FileRepStateShutdown &&
-		fileRepState != FileRepStateImmediateShutdown)
+	if (fileRepState != FileRepStateShutdown)
 	{
 		elog(LOG, "FileRepSubProcess_SetState() state:'%s' MyProcPid:'%d'", 
 			FileRepStateToString[FileRepSubProcess_GetState()],
@@ -821,13 +784,6 @@ FileRepSubProcess_Main()
 
 	switch (FileRepSubProcess_GetState()) {
 		case FileRepStateShutdown:
-			proc_exit(0);
-			break;
-			
-		case FileRepStateImmediateShutdown:
-			proc_exit(2);
-			break;
-			
 		case FileRepStateReady:
 			proc_exit(0);
 			break;
