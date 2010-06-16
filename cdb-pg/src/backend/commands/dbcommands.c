@@ -1021,6 +1021,7 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 		info = DatabaseInfo_Collect(
 							src_dboid, 
 							src_deftablespace,
+							/* collectGpRelationNodeInfo */ true,
 							/* collectAppendOnlyCatalogSegmentInfo */ true);
 		
 		if (Debug_database_command_print)
@@ -1430,6 +1431,7 @@ dropdb(const char *dbname, bool missing_ok)
 		info = DatabaseInfo_Collect(
 								db_id, 
 								defaultTablespace,
+								/* collectGpRelationNodeInfo */ true,
 								/* collectAppendOnlyCatalogSegmentInfo */ false);
 
 //		if (Debug_database_command_print)

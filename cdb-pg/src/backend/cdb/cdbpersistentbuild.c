@@ -191,7 +191,11 @@ static void PersistentBuild_PopulateGpRelationNode(
 		 */
 		if (relStorageMgr == PersistentFileSysRelStorageMgr_BufferPool)
 		{
-			
+			/*
+			 * Heap tables only ever add a single segment_file_num=0 entry to
+			 * gp_persistent_relation regardless of how many segment files there
+			 * really are.
+			 */
 			PersistentRelation_AddCreated(
 										&relFileNode,
 										/* segmentFileNum */ 0,
@@ -223,10 +227,12 @@ static void PersistentBuild_PopulateGpRelationNode(
 			/*
 			 * Append-Only.
 			 */
-
-			if (dbInfoRel->physicalSegmentFiles[0].segmentFileNum != 0)
+			if (dbInfoRel->physicalSegmentFilesCount == 0 ||
+				dbInfoRel->physicalSegmentFiles[0].segmentFileNum != 0)
+			{
 				elog(ERROR, "Physical segment file #0 missing for relation '%s'",
 				     dbInfoRel->relname);
+			}
 
 			/*
 			 * Merge physical file existence and ao[cs]seg catalog logical EOFs .
@@ -236,43 +242,83 @@ static void PersistentBuild_PopulateGpRelationNode(
 			{
 				int physicalSegmentFileNum = dbInfoRel->physicalSegmentFiles[p].segmentFileNum;
 
-				bool haveCatalogInfo;
-				int64 logicalEof;
+				bool	haveCatalogInfo;
+				int64	logicalEof;
 
+				/* 
+				 * There is mostly a 1:1 matching of physical files and logical
+				 * files and we just have to match them up correctly.  However
+				 * there are several cases where this can diverge that we have
+				 * to be able to handle.
+				 *
+				 * 1) Segment file 0 always exists as a physical file, but is
+				 * only cataloged when it actually contains data - this only
+				 * occurs for ao when data is inserted in utility mode.
+				 *
+				 * 2) Files created in aborted transactions where an initial
+				 * frozen tuple never made it to disk may have a physical file
+				 * with no logical file.  
+				 *     XXX - These are leaked files that should probably be 
+				 *     cleaned up at some point.
+				 *
+				 * 3) It is possible to have files that logically exist with a
+				 * logical EOF of 0 but not exist in the filesystem.  
+				 *     XXX - how does this happen, is it really safe?
+				 */
+
+				logicalEof		= 0;
 				haveCatalogInfo = false;
-				logicalEof = 0;
+
+				/* If we exhaust the loop then we are in case 2 */
 				while (a < dbInfoRel->appendOnlyCatalogSegmentInfoCount)
 				{
-					if (dbInfoRel->appendOnlyCatalogSegmentInfo[a].segmentFileNum == physicalSegmentFileNum)
+					DbInfoAppendOnlyCatalogSegmentInfo *logicalSegInfo = \
+						&dbInfoRel->appendOnlyCatalogSegmentInfo[a];
+
+					/* Normal Case: both exist */
+					if (logicalSegInfo->segmentFileNum == physicalSegmentFileNum)
 					{
-						// UNDONE: Verify physical EOF >= logical EOF.
+						logicalEof		= logicalSegInfo->logicalEof;
 						haveCatalogInfo = true;
-						logicalEof = dbInfoRel->appendOnlyCatalogSegmentInfo[a].logicalEof;
-						break;
+						a++;
+						break;  /* found */
 					}
 					
-					if (dbInfoRel->appendOnlyCatalogSegmentInfo[a].segmentFileNum > physicalSegmentFileNum)
-						break;
+					/* case 0 or case 2 */
+					else if (logicalSegInfo->segmentFileNum > physicalSegmentFileNum)
+					{
+						logicalEof		= 0;
+						haveCatalogInfo = false;
+						break;  /* not found */
+					}
 
-					if (dbInfoRel->appendOnlyCatalogSegmentInfo[a].logicalEof > 0)
-						elog(ERROR, "Logical EOF greater than zero (" INT64_FORMAT ") for segment file #%d in relation '%s' but physical file is missing",
-						     dbInfoRel->appendOnlyCatalogSegmentInfo[a].logicalEof,
-						     dbInfoRel->appendOnlyCatalogSegmentInfo[a].segmentFileNum,
-						     dbInfoRel->relname);
+					/* case 3 - skip over logical segments w/o physical files */
+					else if (logicalSegInfo->logicalEof == 0)
+					{
+						a++;
+						continue;  /* keep looking */
+					}
 
-					a++;
-						     
+					/* otherwise it is an error */
+					else
+					{
+						elog(ERROR, "logical EOF greater than zero (" INT64_FORMAT ") for segment file #%d in relation '%s' but physical file is missing",
+							 logicalSegInfo->logicalEof,
+							 logicalSegInfo->segmentFileNum,
+							 dbInfoRel->relname);
+					}
+
+					/* unreachable */
+					Assert(false);
 				}
 
+				/* 
+				 * case 2) Ignore segment file left over from pre-Release 4.0 aborted
+				 * transaction whose initial frozen ao[cs]seg tuple never made it to
+				 * disk.  This will be a file that can result in an upgrade complaint...
+				 */
 				if (physicalSegmentFileNum > 0 && !haveCatalogInfo)
-				{
-					/*
-					 * Ignore segment file left over from pre-Release 4.0 aborted
-					 * transaction whose initial frozen ao[cs]seg tuple never made it to
-					 * disk.  This will be a file that can result in an upgrade complaint...
-					 */
-					continue;		
-				}
+					continue;
 				
 				PersistentRelation_AddCreated(
 											&relFileNode,
@@ -399,6 +445,7 @@ gp_persistent_build_db(PG_FUNCTION_ARGS)
 	info = DatabaseInfo_Collect(
 						MyDatabaseId,
 						defaultTablespace,
+						/* collectGpRelationNodeInfo */ false,
 						/* collectAppendOnlyCatalogSegmentInfo */ true);
 
 	for (t = 0; t < info->tablespacesCount; t++)
