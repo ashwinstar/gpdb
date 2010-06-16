@@ -1,13 +1,45 @@
 #!/usr/bin/env python
 
-import os, sys
+'''
+USAGE:   gpperfmon_install [--enable --password GPMON_PASSWORD --port GPDB_PORT]
+
+         where this script will install the gpperfmon database and schema
+
+         --enable option will also do the following tasks as a convenience:
+              1) create a gpmon super user
+              2) add a line to pg_hba.conf to allow access from master host for user gpmon
+              3) add a line to pg pass file
+              4) set gucs to enable gpperfmon
+
+         when using --enable, --password and --port must also be specified
+
+        --password will set the password for gpmon superuser
+        --port is the port used by gpperfmon to connect to GPDB
+'''
+
+import os, sys, time
 from subprocess import Popen
 
+try:
+    from optparse import Option, OptionParser 
+    from gppylib.gpparseopts import OptParser, OptChecker
+    from gppylib.userinput import ask_input
+except ImportError, e:    
+    sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
+
 def run_command(cmdstr):
+    print cmdstr
     p = Popen(cmdstr, shell=True)
     sts = os.waitpid(p.pid, 0)[1]
     if sts:
         raise Exception("error on cmd " + cmdstr)
+
+def validate_password(input, ignore):
+    if len(input) < 1:
+        return None
+    else:
+        return input
+
 
 ###### main()
 if __name__ == '__main__':
@@ -16,25 +48,107 @@ if __name__ == '__main__':
     if not gphome:
         raise Exception("GPHOME not set")
 
+    parser = OptParser(option_class=OptChecker)
+    parser.remove_option('-h')
+    parser.add_option('-h', '-?', '--help', action='store_true')
+    parser.add_option('-e', '--enable', action='store_true')
+    parser.add_option('-p', '--password', type='string')
+    parser.add_option('-P', '--port', type='string')
+    (options, args) = parser.parse_args()
+
+    if options.help:
+        print __doc__
+        sys.exit(1)
+
+    if options.enable and (not options.password or not options.port):
+        print "when enabling gpperfmon both --password and --port must be specified" 
+        sys.exit(1)
+
+    if not options.enable and (options.password or options.port):
+        print "--password and --oirt are only used when enabling gpperfmon"
+        sys.exit(1)
+
+    commands = list()
+
     # 3.X gpperfmon schema
     cmd1 = "psql -f %s/lib/gpperfmon/gpperfmon3.sql template1" % gphome
+    commands.append(cmd1)
     
     # 4.x gpperfmon schema additions
     cmd2 = "psql -f %s/lib/gpperfmon/gpperfmon4.sql gpperfmon" % gphome
+    commands.append(cmd2)
     
     # gpperfmon schema completion tasks
     cmd3 = "psql -f %s/lib/gpperfmon/gpperfmonC.sql template1" % gphome
+    commands.append(cmd3)
     
-command = None
-try:
-    for c in (cmd1, cmd2, cmd3):
-        command = c
-        run_command(command)
-except:
-    print "\n==============================================="
-    print "error on command: %s" % command
-    print "check to make sure the DB is running and accessible"
-    print "gpperfmon schema not successfully installed"
-    sys.exit(1)
+    if options.enable:
 
-print "--gpperfmon schema successfully installed--"
+        master_data_dir = os.getenv('MASTER_DATA_DIRECTORY')
+        pg_hba = "%s/pg_hba.conf" % master_data_dir
+        home_dir = os.getenv('HOME')
+        pg_pass = "%s/.pgpass" % home_dir
+        old_pg_pass = "%s/.pgpass.%d" % (home_dir, time.time())
+
+        if not os.path.isfile( pg_hba ):
+            print "can not find pg_hba.conf at %s" % pg_hba
+            sys.exit(1)
+        
+        if not os.path.isdir(home_dir):
+            print "can not find $HOME"
+            sys.exit(1)
+
+        cmd = """psql template1 -c "DROP ROLE IF EXISTS gpmon" """
+        commands.append(cmd)
+
+        cmd = """psql template1 -c "CREATE ROLE gpmon WITH SUPERUSER CREATEDB LOGIN ENCRYPTED PASSWORD '%s'" """ % options.password
+        commands.append(cmd)
+
+        cmd = """echo "local    all         gpmon         md5" >> %s""" % pg_hba
+        commands.append(cmd)
+
+        ################################################
+        # these commands add a new line to the top of .pgpass and save a copy of old .pgpass
+        cmd = """touch %s""" % (pg_pass)
+        commands.append(cmd)
+
+        cmd = """mv -f %s %s""" % (pg_pass, old_pg_pass)
+        commands.append(cmd)
+
+        cmd = """echo "*:%s:gpperfmon:gpmon:%s" >> %s""" % (options.port, options.password, pg_pass)
+        commands.append(cmd)
+
+        cmd = """cat %s >> %s""" % (old_pg_pass, pg_pass)
+        commands.append(cmd)
+
+        cmd = """chmod 0600 %s""" % pg_pass
+        commands.append(cmd)
+        ################################################
+
+        cmd = "gpconfig -c gp_enable_gpperfmon -v on"
+        commands.append(cmd)
+
+        cmd = "gpconfig -c gpperfmon_port -v 8888"
+        commands.append(cmd)
+
+        cmd = "gpconfig -c gp_external_enable_exec -v on"
+        commands.append(cmd)
+
+    command = None
+    try:
+        for c in (commands):
+            command = c
+            run_command(command)
+    except:
+        print "\n==============================================="
+        print "error on command: %s" % command
+        print "gpperfmon not successfully installed"
+        sys.exit(1)
+
+    if options.enable:
+        print "\n\n\n-- gpperfmon will be enabled after a full restart of GPDB ---"
+    else:
+        print "\n\n\n-- gpperfmon schema successfully installed ---"
+
+
+

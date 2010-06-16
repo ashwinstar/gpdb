@@ -380,16 +380,20 @@ static void* event_main(apr_thread_t* thread_, void* arg_)
 		}
 		if (ax.reload == 1)
 		{
+            TR0(("sighup received, reloading conf files\n"));
+
 			ax.reload = 0;
 			/* Check if perfmon is enabled.  If not, exit */
 			if (!gpdb_gpperfmon_enabled())
 			{
-				TR0(("Monitoring has been disabled, exiting..."));
+				TR0(("Monitoring has been disabled, exiting...\n"));
 				ax.exit = 1;
 				continue;
 			}
 			else
 				read_conf_file(opt.conf_file);
+
+            TR0(("finished reloading conf files\n"));
 		}
 	}
 	return 0;

@@ -31,6 +31,30 @@ static const char* gpdb_exec(PGconn** pconn, PGresult** pres, const char* query)
 	return 0;
 }
 
+int gpdb_exec_search_for_at_least_one_row(const char* QUERY)
+{
+	PGconn* conn = 0;
+	PGresult* result = 0;
+	int rowcount;
+	const char* errmsg = gpdb_exec(&conn, &result, QUERY);
+	int res = 0;
+	if (errmsg)
+	{
+		gpmon_warning(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
+	}
+	else
+	{
+		rowcount = PQntuples(result);
+		if (rowcount > 0)
+			res = 1;
+	}
+
+	PQclear(result);
+	PQfinish(conn);
+
+	return res;
+}
+
 int gpdb_validate_gpperfmon(void)
 {
 	/* Check db */
@@ -67,62 +91,14 @@ int gpdb_gpperfmon_db_exists(void)
 
 int gpdb_gpperfmon_enabled(void)
 {
-	int enabled = 0;
-
-	PGconn* conn = 0;
-	PGresult* result = 0;
-	ExecStatusType status;
-
-	int rowcount;
-
-	const char *connstr = "dbname='template1' user='" GPMON_DBUSER
-			"' connect_timeout='30'";
-
-	const char* query =
-			"SELECT 1 FROM pg_settings WHERE name = 'gp_enable_gpperfmon' and setting='on'";
-
-	conn = PQconnectdb(connstr);
-	if (PQstatus(conn) == CONNECTION_OK)
-	{
-		result = PQexec(conn, query);
-		status = PQresultStatus(result);
-		if (status == PGRES_COMMAND_OK && status == PGRES_TUPLES_OK)
-		{
-			rowcount = PQntuples(result);
-			if (rowcount > 0)
-				enabled = 1;
-		}
-	}
-
-	PQclear(result);
-	PQfinish(conn);
-
-	return enabled;
+	const char* QUERY = "SELECT 1 FROM pg_settings WHERE name = 'gp_enable_gpperfmon' and setting='on'";
+	return gpdb_exec_search_for_at_least_one_row(QUERY);
 }
 
 int gpdb_validate_ext_table_access(void)
 {
-	PGconn* conn = 0;
-	PGresult* result = 0;
 	const char* QUERY = "select * from master_data_dir";
-	int rowcount;
-	const char* errmsg = gpdb_exec(&conn, &result, QUERY);
-	int res = 0;
-	if (errmsg)
-	{
-		gpmon_warning(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
-	}
-	else
-	{
-		rowcount = PQntuples(result);
-		if (rowcount > 0)
-			res = 1;
-	}
-
-	PQclear(result);
-	PQfinish(conn);
-
-	return res;
+	return gpdb_exec_search_for_at_least_one_row(QUERY);
 }
 
 int gpdb_get_gpmon_port(void)
