@@ -161,6 +161,7 @@ extern int	gp_max_filespaces;
 extern bool gp_initdb_mirrored;
 extern bool gp_before_persistence_work;
 extern bool gp_change_tracking;
+extern bool	gp_persistent_skip_free_list;
 extern bool Debug_print_xlog_relation_change_info;
 extern bool Debug_print_xlog_relation_change_info_skip_issues_only;
 extern bool Debug_print_xlog_relation_change_info_backtrace_skip_issues;

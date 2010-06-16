@@ -282,6 +282,7 @@ int			gp_max_filespaces = GP_MAX_FILESPACES_DEFAULT;
 bool 		gp_initdb_mirrored = false;
 bool 		gp_before_persistence_work = false;
 bool		gp_change_tracking = true;
+bool		gp_persistent_skip_free_list = false;
 bool 		Debug_print_xlog_relation_change_info = false;
 bool 		Debug_print_xlog_relation_change_info_skip_issues_only = false;
 bool 		Debug_print_xlog_relation_change_info_backtrace_skip_issues = false;
@@ -2464,6 +2465,17 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 
+		
+	{
+		{"gp_persistent_skip_free_list", PGC_SUSET, UNGROUPED,
+			gettext_noop("Avoids using the persistent free list and always allocates a new tuple."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE 
+		},
+		&gp_persistent_skip_free_list,
+		false, NULL, NULL
+	},
+		
 	{
 		{"Debug_filerep_crc_on", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Turn on filerep crc"),

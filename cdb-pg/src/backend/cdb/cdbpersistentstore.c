@@ -236,7 +236,7 @@ static void PersistentStore_InitScanVerifyFreeEntries(
 	{
 		if (!PersistentStore_IsZeroTid(&freeTid))
 			elog(ERROR, "Expected free TID to be (0,0) when free order number is 0 in '%s'",
-			storeData->tableName);
+				 storeData->tableName);
 	}
 	else
 	{
@@ -414,10 +414,13 @@ static void PersistentStore_DoInitScan(
 				storeSharedData->freeTid = persistentTid;
 			}
 
-			PersistentStore_InitScanAddFreeEntry(
-											&persistentTid,
-											&previousFreeTid,
-											/* freeOrderNum */ persistentSerialNum);
+			if (!gp_persistent_skip_free_list)
+			{
+				PersistentStore_InitScanAddFreeEntry(
+												&persistentTid,
+												&previousFreeTid,
+												/* freeOrderNum */ persistentSerialNum);
+			}
 		}
 		else if (storeSharedData->maxInUseSerialNum < persistentSerialNum)
 		{
@@ -458,9 +461,19 @@ static void PersistentStore_DoInitScan(
 			 ItemPointerToString(&storeSharedData->freeTid),
 			 ItemPointerToString2(&storeSharedData->maxTid));
 
-	PersistentStore_InitScanVerifyFreeEntries(
-										storeData,
-										storeSharedData);
+	if (!gp_persistent_skip_free_list)
+	{
+		PersistentStore_InitScanVerifyFreeEntries(
+											storeData,
+											storeSharedData);
+	}
+	else
+	{
+		if (Debug_persistent_recovery_print)
+			elog(Debug_persistent_recovery_print_level, 
+				 "PersistentStore_DoInitScan ('%s'): Skipping verification because gp_persistent_skip_free_list GUC is ON",
+				 storeData->tableName);
+	}
 }
 
 void PersistentStore_InitScanUnderLock(
@@ -1065,6 +1078,15 @@ static bool PersistentStore_GetFreeTuple(
 	if (storeSharedData->maxFreeOrderNum == 0)
 	{
 		return false;	// No free tuples.
+	}
+
+	if (gp_persistent_skip_free_list)
+	{
+		if (Debug_persistent_store_print)
+			elog(Debug_persistent_store_print_level, 
+				 "PersistentStore_GetFreeTuple: Skipping because gp_persistent_skip_free_list GUC is ON ('%s')",
+				 storeData->tableName);
+		return false;	// Pretend no free tuples.
 	}
 
 	Assert(storeSharedData->freeTid.ip_posid != 0);
