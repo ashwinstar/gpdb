@@ -19,13 +19,13 @@ RUNNING THE GREENPLUM DATABASE INSTALLER
 
 2. Execute the installer using bash:
 
-   /bin/bash greenplum-db-4.0.0.1-<PLATFORM>.bin 
+   /bin/bash greenplum-db-4.0.0.x-<PLATFORM>.bin 
 
 3. When prompted, type 'yes' to accept the license agreement.
 
 4. When prompted, provide an installation path. For example:
 
-   /usr/local/greenplum-db-4.0.0.1
+   /usr/local/greenplum-db-4.0.0.x
 
 
 ***********************************************************
@@ -97,21 +97,13 @@ In /etc/security/limits.conf:
 SOLARIS 10
 ----------------
 
-In /etc/system:
+In /etc/project, change the line:
 
-set rlim_fd_max=262144
-set rlim_fd_cur=65536
-set shmsys:shminfo_shmmax=0x2000000
-set semsys:seminfo_semmni=1024
+default:3::::
 
-In /etc/rc2.d add the following lines to a script file named 
-S<##>gpdb_ndd where <##> is any two numbers:
+to:
 
-/usr/sbin/ndd -set /dev/tcp tcp_conn_req_max_q 4096
-/usr/sbin/ndd -set /dev/tcp tcp_conn_req_max_q0 4096
-/usr/sbin/ndd -set /dev/tcp tcp_largest_anon_port 65535
-/usr/sbin/ndd -set /dev/tcp tcp_smallest_anon_port 4096
-/usr/sbin/ndd -set /dev/tcp tcp_time_wait_interval 1000
+default:3::::project.max-sem-ids=(priv,1024,deny);process.max-file-descriptor=(priv,252144,deny)
 
 
 ***********************************************************
@@ -128,7 +120,7 @@ refer to the Greenplum Database Single Node Edition
 Quick Start Guide (GPDB-SingleNodeEdition-QuickStart.pdf). 
 
 
-1. Allocate a 'gpadmin' user to own and run your installation.
+1. Allocate a 'gpadmin' OS user to own and run your installation.
    This user must exist on all Greenplum hosts.
 
 2. Source the greenplum_path.sh file in your 'gpadmin' user 
@@ -172,41 +164,57 @@ ABOUT YOUR INSTALLATION
 The Greenplum Database installer installs the following files and 
 directories:
 
-* greenplum_path.sh  Greenplum Database environment variables.
+* greenplum_path.sh - Greenplum Database environment variables.
+
+* GPDB-LICENSE.txt - Greenplum license agreement.
 
 * bin - Greenplum Database server programs, client programs, and 
         management tools.
 
-* demo  Greenplum Database demonstration programs. 
+* demo - Greenplum Database demonstration programs. 
 
-* docs  Greenplum Database documentation.
+* docs - Greenplum Database documentation.
 
 * ext - Bundled programs (such as Python) used by some 
         Greenplum Database utilies.
 
-* include  Greenplum Database and PostgreSQL header files.
+* include - Greenplum Database and PostgreSQL header files.
+
+* lib - Greenplum Database and PostgreSQL library files.
+
+* sbin - Supporting/Internal scripts and programs.
 
 * share - PostgreSQL sample files and templates.
 
-* lib - Greenplum Database and PostgreSQL library files.
 
 
 ************************************************
 GREENPLUM DATABASE DOCUMENTATION
 ************************************************
 
-Greenplum Database documentation is available in the $GPHOME/docs 
+The following documentation is available in the $GPHOME/docs 
 directory of your Greenplum installation and is also available 
 for download on http://gpn.greenplum.com.
+
+(All Greenplum Database Installations)
 
 * GPInstallGuide.pdf - Greenplum Database Installation Guide
 
 * GPAdminGuide.pdf - Greenplum Database Administrator Guide
 
+* GPPerfmonUserGuide.pdf - Greenplum Performance Monitor User Guide
+
+(Greenplum Database Single Node Edition Only)
+
 * GPDB-SingleNodeEdition-QuickStart.pdf - Greenplum Database Single Node Edition (SNE) Quick Start Guide
 
-* GPDB_<version>_README - Release notes for this version of Greenplum Database.
-                          Available on Greenplum Network (http://gpn.greenplum.com)
+Release notes for this version of Greenplum Database are
+available on http://gpn.greenplum.com.
+
+* GPDB-<version>-README.pdf
+
+
+
 
 
 
