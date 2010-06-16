@@ -22,6 +22,11 @@ package model
 		{			
 			var newVal:DatabaseSample = new DatabaseSample;
 			
+			if (db.hasOwnProperty("@dbstatus"))
+			{
+				databaseStatus(db.@dbstatus);	
+			}
+					
 			if (newVal.sample_time == null)
 			{
 				newVal.sample_time = MiscUtils.parseDate(db.sample_time);
@@ -292,7 +297,10 @@ package model
 			var maxLength:int = 0;
 			var numColumns:int = 0;
 			
-			databaseStatus(databaseData.@dbstatus);			
+			if (databaseData.hasOwnProperty("@dbstatus"))
+			{
+				databaseStatus(databaseData.@dbstatus);			
+			}
 
 			// Ensure the the array is empty
 			if (detail == '1min')

@@ -111,4 +111,18 @@ Panel {
 
 .footerText {
 	fontSize: 9;
-}.dbStatusLabelStyle {	fontSize: 10;	color: #FFFFFF;	font-family: verdana;	font-weight: bold;}.dbDegradeStyle {	background-color: #de2701;}.dbUnBalancedStyle {	background-color: #ea7b29;}
+}
+
+.dbStatusLabelStyle {
+	fontSize: 10;
+	color: #FFFFFF;
+	fontWeight: bold;
+}
+
+.dbDegradeStyle {
+	background-color: #de2701;
+}
+
+.dbUnBalancedStyle {
+	background-color: #ea7b29;
+}
