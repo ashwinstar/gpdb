@@ -870,7 +870,7 @@ mkgpperfmon:
 	cp -p gpperfmon/installer/greenplum-perfmon-*.zip $(INSTLOC)/..
 	cp -p gpperfmon/src/gpmon/gpmmon gpperfmon/src/gpmon/gpsmon $(INSTLOC)/bin
 	cp -p gpperfmon/src/gpmon/gpmon_catqrynow.py $(INSTLOC)/sbin
-	cp -p gpperfmon/src/gpmon/gpperfmon_install.py $(INSTLOC)/sbin
+	cp -p gpperfmon/src/gpmon/gpperfmon_install $(INSTLOC)/bin
 	mkdir -p $(INSTLOC)/lib/gpperfmon
 	cp -p gpperfmon/src/gpmon/gpperfmon3.sql $(INSTLOC)/lib/gpperfmon
 	cp -p gpperfmon/src/gpmon/gpperfmon4.sql $(INSTLOC)/lib/gpperfmon

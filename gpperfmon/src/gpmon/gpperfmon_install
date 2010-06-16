@@ -24,8 +24,12 @@ try:
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.userinput import ask_input
+    from gppylib.gplog import get_default_logger, setup_tool_logging
+    from gppylib.commands.unix import getLocalHostname, getUserName
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
+
+EXECNAME = os.path.split(__file__)[-1]
 
 def run_command(cmdstr):
     print cmdstr
@@ -44,9 +48,13 @@ def validate_password(input, ignore):
 ###### main()
 if __name__ == '__main__':
 
+    logger = get_default_logger()
+    setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
+
     gphome = os.environ.get('GPHOME')
     if not gphome:
-        raise Exception("GPHOME not set")
+        logger.error("GPHOME not set")
+        sys.exit(1)
 
     parser = OptParser(option_class=OptChecker)
     parser.remove_option('-h')
@@ -61,11 +69,11 @@ if __name__ == '__main__':
         sys.exit(1)
 
     if options.enable and (not options.password or not options.port):
-        print "when enabling gpperfmon both --password and --port must be specified" 
+        logger.error("when enabling gpperfmon both --password and --port must be specified")
         sys.exit(1)
 
     if not options.enable and (options.password or options.port):
-        print "--password and --oirt are only used when enabling gpperfmon"
+        logger.error ("--password and --oirt are only used when enabling gpperfmon")
         sys.exit(1)
 
     commands = list()
@@ -91,11 +99,11 @@ if __name__ == '__main__':
         old_pg_pass = "%s/.pgpass.%d" % (home_dir, time.time())
 
         if not os.path.isfile( pg_hba ):
-            print "can not find pg_hba.conf at %s" % pg_hba
+            logger.error("can not find pg_hba.conf at %s" % pg_hba)
             sys.exit(1)
         
         if not os.path.isdir(home_dir):
-            print "can not find $HOME"
+            logger.error("can not find $HOME")
             sys.exit(1)
 
         cmd = """psql template1 -c "DROP ROLE IF EXISTS gpmon" """
@@ -104,7 +112,7 @@ if __name__ == '__main__':
         cmd = """psql template1 -c "CREATE ROLE gpmon WITH SUPERUSER CREATEDB LOGIN ENCRYPTED PASSWORD '%s'" """ % options.password
         commands.append(cmd)
 
-        cmd = """echo "local    all         gpmon         md5" >> %s""" % pg_hba
+        cmd = """echo "local    gpperfmon         gpmon         md5" >> %s""" % pg_hba
         commands.append(cmd)
 
         ################################################
@@ -140,15 +148,14 @@ if __name__ == '__main__':
             command = c
             run_command(command)
     except:
-        print "\n==============================================="
-        print "error on command: %s" % command
-        print "gpperfmon not successfully installed"
+        logger.error("error on command: %s" % command)
+        logger.error("gpperfmon not successfully installed")
         sys.exit(1)
 
     if options.enable:
-        print "\n\n\n-- gpperfmon will be enabled after a full restart of GPDB ---"
+        logger.info("\n\n\n-- gpperfmon will be enabled after a full restart of GPDB ---")
     else:
-        print "\n\n\n-- gpperfmon schema successfully installed ---"
+        logger.info("\n\n\n-- gpperfmon schema successfully installed ---")
 
 
 
