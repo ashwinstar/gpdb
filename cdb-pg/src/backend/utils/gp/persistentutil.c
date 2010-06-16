@@ -17,9 +17,11 @@
 
 #include "access/heapam.h"
 #include "catalog/catalog.h"
+#include "catalog/gp_persistent.h"
 #include "catalog/pg_tablespace.h"
 #include "cdb/cdbglobalsequence.h"
 #include "cdb/cdbpersistenttablespace.h"
+#include "cdb/cdbpersistentfilesysobj.h"
 #include "executor/executor.h"
 #include "utils/builtins.h"
 
@@ -70,7 +72,73 @@ gp_add_persistent_database_node_entry(PG_FUNCTION_ARGS)
 Datum
 gp_add_persistent_relation_node_entry(PG_FUNCTION_ARGS)
 {
-	NYI;
+	Datum				values[Natts_gp_persistent_relation_node];
+	ItemPointerData		persistentTid;
+	int64				persistentSerialNum;
+	int					i;
+	
+	/* Must be super user */
+	if (!superuser())
+		elog(ERROR, "permission denied");
+
+	/* Check input arguments */
+
+	/*
+	 * First parameter is the tid, remaining parameters should match the column
+	 * types in gp_persistent_relation_node.
+	 */
+	if (PG_NARGS() != Natts_gp_persistent_relation_node + 1)
+	{
+		Oid		 procOid  = fcinfo->flinfo->fn_oid;
+		char	*procName = format_procedure(procOid);
+
+		elog(ERROR, "function '%s' received unexpected number of arguments",
+			 procName);
+	}
+
+	/* 
+	 * For the moment we don't support inserting at particular tids, 
+	 * initial argument MUST be null.
+	 */
+	if (!PG_ARGISNULL(0))
+		elog(ERROR, "direct tid assignment to %s is not yet supported",
+			 "gp_persistent_relation_node");
+	
+	/* 
+	 * validate that datatypes match expected, e.g. no one went and changed
+	 * the catalog without updating this function.
+	 */
+
+	/* Build up the tuple we want to add */
+	memset(&persistentTid, 0, sizeof(persistentTid));
+	for (i = 0; i < Natts_gp_persistent_relation_node; i++)
+	{
+		if (PG_ARGISNULL(i+1))
+			elog(ERROR, "null arguments not supported");
+		values[i] = PG_GETARG_DATUM(i+1);
+	}
+	
+	/*
+	 * TODO: Validate the tuple
+	 *   - Specified database exists
+	 *   - Specified tablespace exists
+	 *   - Specified relfile is in the filesystem
+	 *   - etc.
+	 */
+
+	/* Add it to the table */
+	PersistentFileSysObj_AddTuple(PersistentFsObjType_RelationFile,
+								  values,
+								  true, /* flushToXlog */
+								  &persistentTid,
+								  &persistentSerialNum);
+
+	/* explain how we re-wrote that tuple */
+	elog(NOTICE,
+		 "inserted 1 row (TID %s, persistent_serial_num " INT64_FORMAT ")",
+		 ItemPointerToString(&persistentTid),
+		 persistentSerialNum);
+
 	PG_RETURN_BOOL(true);
 }
 
@@ -179,28 +247,128 @@ gp_update_relation_node_entry(PG_FUNCTION_ARGS)
 Datum
 gp_delete_persistent_filespace_node_entry(PG_FUNCTION_ARGS)
 {
-	NYI;
+	PersistentFsObjType                  fileSysObjType;
+	PersistentFileSysObjData			*fileSysObjData;
+	PersistentFileSysObjSharedData		*fileSysObjSharedData;
+	ItemPointer							 tid;
+
+	/* Must be super user */
+	if (!superuser())
+		elog(ERROR, "permission denied");
+
+	/* Check input arguments */
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "null input parameter");
+
+	tid = (ItemPointer) PG_GETARG_POINTER(0);
+
+	/* delete the tuple from the persistent table */
+	fileSysObjType = PersistentFsObjType_FilespaceDir;
+	PersistentFileSysObj_GetDataPtrs(fileSysObjType, 
+									 &fileSysObjData, 
+									 &fileSysObjSharedData);
+	PersistentFileSysObj_FreeTuple(fileSysObjData,
+								   fileSysObjSharedData,
+								   fileSysObjType,
+								   tid,
+								   true  /* flushToXLog */);
+
 	PG_RETURN_BOOL(true);
 }
 
 Datum
 gp_delete_persistent_tablespace_node_entry(PG_FUNCTION_ARGS)
 {
-	NYI;
+	PersistentFsObjType                  fileSysObjType;
+	PersistentFileSysObjData			*fileSysObjData;
+	PersistentFileSysObjSharedData		*fileSysObjSharedData;
+	ItemPointer							 tid;
+
+	/* Must be super user */
+	if (!superuser())
+		elog(ERROR, "permission denied");
+
+	/* Check input arguments */
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "null input parameter");
+
+	tid = (ItemPointer) PG_GETARG_POINTER(0);
+
+	/* delete the tuple from the persistent table */
+	fileSysObjType = PersistentFsObjType_TablespaceDir;
+	PersistentFileSysObj_GetDataPtrs(fileSysObjType, 
+									 &fileSysObjData, 
+									 &fileSysObjSharedData);
+	PersistentFileSysObj_FreeTuple(fileSysObjData,
+								   fileSysObjSharedData,
+								   fileSysObjType,
+								   tid,
+								   true  /* flushToXLog */);
+
 	PG_RETURN_BOOL(true);
 }
 
 Datum
 gp_delete_persistent_database_node_entry(PG_FUNCTION_ARGS)
 {
-	NYI;
+	PersistentFsObjType                  fileSysObjType;
+	PersistentFileSysObjData			*fileSysObjData;
+	PersistentFileSysObjSharedData		*fileSysObjSharedData;
+	ItemPointer							 tid;
+
+	/* Must be super user */
+	if (!superuser())
+		elog(ERROR, "permission denied");
+
+	/* Check input arguments */
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "null input parameter");
+
+	tid = (ItemPointer) PG_GETARG_POINTER(0);
+
+	/* delete the tuple from the persistent table */
+	fileSysObjType = PersistentFsObjType_DatabaseDir;
+	PersistentFileSysObj_GetDataPtrs(fileSysObjType, 
+									 &fileSysObjData, 
+									 &fileSysObjSharedData);
+	PersistentFileSysObj_FreeTuple(fileSysObjData,
+								   fileSysObjSharedData,
+								   fileSysObjType,
+								   tid,
+								   true  /* flushToXLog */);
+
 	PG_RETURN_BOOL(true);
 }
 
 Datum
 gp_delete_persistent_relation_node_entry(PG_FUNCTION_ARGS)
 {
-	NYI;
+	PersistentFsObjType                  fileSysObjType;
+	PersistentFileSysObjData			*fileSysObjData;
+	PersistentFileSysObjSharedData		*fileSysObjSharedData;
+	ItemPointer							 tid;
+
+	/* Must be super user */
+	if (!superuser())
+		elog(ERROR, "permission denied");
+
+	/* Check input arguments */
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "null input parameter");
+
+	tid = (ItemPointer) PG_GETARG_POINTER(0);
+
+	/* delete the tuple from the persistent table */
+	fileSysObjType = PersistentFsObjType_RelationFile;
+	PersistentFileSysObj_GetDataPtrs(fileSysObjType, 
+									 &fileSysObjData, 
+									 &fileSysObjSharedData);
+	PersistentFileSysObj_FreeTuple(fileSysObjData,
+								   fileSysObjSharedData,
+								   fileSysObjType,
+								   tid,
+								   true  /* flushToXLog */);
+
 	PG_RETURN_BOOL(true);
 }
 
