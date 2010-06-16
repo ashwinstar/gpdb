@@ -25,11 +25,11 @@ package model
    		public static var spyglassCursor:Class;
    		[Embed(source='../assets/img/DBUnbalanced_icon.png')]   		public static var DBUnbalancedIcon:Class;   		   		[Embed(source='../assets/img/DBDegrade_Icon.png')]   		public static var DBDegradeIcon:Class;
    		  				
-		public static var copyright:String = "Copyright (c) 2008 Greenplum, Inc. All Rights Reserved";
+		public static var copyright:String = "Copyright (c) 2008-2010 Greenplum, Inc. All Rights Reserved";
 
-		public static var copyrightShort:String = "(c) 2008 Greenplum, Inc.";
+		public static var copyrightShort:String = "(c) 2008-2010 Greenplum, Inc.";
 		
-		public static var copyright2:String = "Copyright (c) 2008 Greenplum, Inc.\nAll Rights Reserved";
+		public static var copyright2:String = "Copyright (c) 2008-2010 Greenplum, Inc.\nAll Rights Reserved";
 		
 		private var __version:String;// = "Version 2.0.0.0b";
 		
