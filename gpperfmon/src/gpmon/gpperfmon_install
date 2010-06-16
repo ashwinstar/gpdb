@@ -18,7 +18,7 @@ USAGE:   gpperfmon_install [--enable --password GPMON_PASSWORD --port GPDB_PORT]
         --verbose will show output from sub-commands
 '''
 
-import os, sys, time
+import os, sys, time, re
 from subprocess import Popen
 
 try:
@@ -32,9 +32,18 @@ except ImportError, e:
 
 EXECNAME = os.path.split(__file__)[-1]
 
-def run_command(cmdstr):
-    if not options.verbose:
+class Command:
+    def __init__(self, cmdstr, showOutput=False):
+        self.cmd = cmdstr
+        self.verbose = showOutput
+
+def run_command(cmd, verbose=False):
+
+    cmdstr = cmd.cmd
+
+    if not options.verbose and not cmd.verbose:
         cmdstr = "%s >& /dev/null" % cmdstr
+
     logger.info(cmdstr)
     p = Popen(cmdstr, shell=True)
     sts = os.waitpid(p.pid, 0)[1]
@@ -83,16 +92,16 @@ if __name__ == '__main__':
     commands = list()
 
     # 3.X gpperfmon schema
-    cmd1 = "psql -f %s/lib/gpperfmon/gpperfmon3.sql template1" % gphome
-    commands.append(cmd1)
+    cmd = Command("psql -f %s/lib/gpperfmon/gpperfmon3.sql template1" % gphome)
+    commands.append(cmd)
     
     # 4.x gpperfmon schema additions
-    cmd2 = "psql -f %s/lib/gpperfmon/gpperfmon4.sql gpperfmon" % gphome
-    commands.append(cmd2)
+    cmd = Command("psql -f %s/lib/gpperfmon/gpperfmon4.sql gpperfmon" % gphome)
+    commands.append(cmd)
     
     # gpperfmon schema completion tasks
-    cmd3 = "psql -f %s/lib/gpperfmon/gpperfmonC.sql template1" % gphome
-    commands.append(cmd3)
+    cmd = Command("psql -f %s/lib/gpperfmon/gpperfmonC.sql template1" % gphome)
+    commands.append(cmd)
     
     if options.enable:
 
@@ -110,40 +119,40 @@ if __name__ == '__main__':
             logger.error("can not find $HOME")
             sys.exit(1)
 
-        cmd = """psql template1 -c "DROP ROLE IF EXISTS gpmon" """
+        cmd = Command("""psql template1 -c "DROP ROLE IF EXISTS gpmon" """)
         commands.append(cmd)
 
-        cmd = """psql template1 -c "CREATE ROLE gpmon WITH SUPERUSER CREATEDB LOGIN ENCRYPTED PASSWORD '%s'" """ % options.password
+        cmd = Command("""psql template1 -c "CREATE ROLE gpmon WITH SUPERUSER CREATEDB LOGIN ENCRYPTED PASSWORD '%s'" """ % options.password)
         commands.append(cmd)
 
-        cmd = """echo "local    gpperfmon         gpmon         md5" >> %s""" % pg_hba
+        cmd = Command("""echo "local    gpperfmon         gpmon         md5" >> %s""" % pg_hba, showOutput=True)
         commands.append(cmd)
 
         ################################################
         # these commands add a new line to the top of .pgpass and save a copy of old .pgpass
-        cmd = """touch %s""" % (pg_pass)
+        cmd = Command("""touch %s""" % (pg_pass))
         commands.append(cmd)
 
-        cmd = """mv -f %s %s""" % (pg_pass, old_pg_pass)
+        cmd = Command("""mv -f %s %s""" % (pg_pass, old_pg_pass))
         commands.append(cmd)
 
-        cmd = """echo "*:%s:gpperfmon:gpmon:%s" >> %s""" % (options.port, options.password, pg_pass)
+        cmd = Command("""echo "*:%s:gpperfmon:gpmon:%s" >> %s""" % (options.port, options.password, pg_pass), showOutput=True)
         commands.append(cmd)
 
-        cmd = """cat %s >> %s""" % (old_pg_pass, pg_pass)
+        cmd = Command("""cat %s >> %s""" % (old_pg_pass, pg_pass), showOutput=True)
         commands.append(cmd)
 
-        cmd = """chmod 0600 %s""" % pg_pass
+        cmd = Command("""chmod 0600 %s""" % pg_pass)
         commands.append(cmd)
         ################################################
 
-        cmd = "gpconfig -c gp_enable_gpperfmon -v on --masteronly"
+        cmd = Command("gpconfig -c gp_enable_gpperfmon -v on --masteronly")
         commands.append(cmd)
 
-        cmd = "gpconfig -c gpperfmon_port -v 8888 --masteronly"
+        cmd = Command("gpconfig -c gpperfmon_port -v 8888 --masteronly")
         commands.append(cmd)
 
-        cmd = "gpconfig -c gp_external_enable_exec -v on"
+        cmd = Command("gpconfig -c gp_external_enable_exec -v on")
         commands.append(cmd)
 
     command = None
