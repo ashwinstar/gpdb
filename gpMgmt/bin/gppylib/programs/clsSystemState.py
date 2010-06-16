@@ -222,10 +222,14 @@ class GpStateData:
     def isSegmentProbablyDown(self, seg):
         return seg.getSegmentDbId() in self.__dbIdIsProbablyDown
 
-    def addSegmentToTableLogger(self, tabLog, segment):
+    def addSegmentToTableLogger(self, tabLog, segment, suppressCategories={}):
+        """
+        @param suppressCategories map from [categoryName-> true value] for category names that should be suppressed
+        """
         for cat in self.__categories:
-            keys = self.__entriesByCategory[cat]
-            self.addSectionToTableLogger(tabLog, segment, cat, keys)
+            if not suppressCategories.get(cat):
+                keys = self.__entriesByCategory[cat]
+                self.addSectionToTableLogger(tabLog, segment, cat, keys)
 
     def getStrValue(self, segment, key, defaultIfNone=""):
         data = self.__segmentDbIdToSegmentData[segment.getSegmentDbId()]
@@ -888,9 +892,15 @@ class GpSystemStateProgram:
         logger.info("Segment Instance Status Report")
 
         tabLog = TableLogger().setWarnWithArrows(True)
+        categoriesToIgnoreOnMirror = {CATEGORY__CHANGE_TRACKING_INFO:True, CATEGORY__RESYNCHRONIZATION_INFO:True}
+        categoriesToIgnoreWithoutMirroring = {CATEGORY__CHANGE_TRACKING_INFO:True, CATEGORY__MIRRORING_INFO:True,
+                CATEGORY__RESYNCHRONIZATION_INFO:True}
         for seg in gpArray.getSegDbList():
             tabLog.addSeparator()
-            data.addSegmentToTableLogger(tabLog, seg)
+            if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_FILE_REPLICATION:
+                toSuppress = categoriesToIgnoreOnMirror if seg.isSegmentMirror(current_role=True) else {}
+            else: toSuppress = categoriesToIgnoreWithoutMirroring
+            data.addSegmentToTableLogger(tabLog, seg, toSuppress)
         tabLog.outputTable()
         hasWarnings = hasWarnings or tabLog.hasWarnings()
 
@@ -903,6 +913,89 @@ class GpSystemStateProgram:
             logger.warn("*****************************************************" )
 
         return 1 if hasWarnings else 0
+
+    def __addResyncProgressFields(self, data, primary, primarySegmentData, isMirror):
+        """
+        Add progress fields to the current segment in data, using the primary information provided.
+
+        @param isMirror True if the current segment is a mirror, False otherwise.  Not all fields from the primary
+                                    data should be inserted (for example, change tracking size is not
+                                    considered to apply to the pair but only to the primary so it will not be
+                                    inserted for the mirror)
+        """
+
+        mirrorData = primarySegmentData[gp.SEGMENT_STATUS__GET_MIRROR_STATUS]
+
+        #
+        # populate change tracking fields
+        #
+        if not isMirror: # we don't populate CHANGE_TRACKING values for hte mirror
+
+            if primary.getSegmentMode() == gparray.MODE_RESYNCHRONIZATION or \
+                primary.getSegmentMode() == gparray.MODE_CHANGELOGGING:
+
+                mirrorData = primarySegmentData[gp.SEGMENT_STATUS__GET_MIRROR_STATUS]
+                if mirrorData is None or mirrorData["changeTrackingBytesUsed"] < 0:
+                    # server returns <0 if there was an error calculating size
+                    data.addValue(VALUE__CHANGE_TRACKING_DATA_SIZE, "unable to retrieve data size", isWarning=True)
+                    data.addValue(VALUE__CHANGE_TRACKING_DATA_SIZE_BYTES, "", isWarning=True)
+                else:
+                    data.addValue(VALUE__CHANGE_TRACKING_DATA_SIZE,
+                            self.__abbreviateBytes(mirrorData["changeTrackingBytesUsed"]))
+                    data.addValue(VALUE__CHANGE_TRACKING_DATA_SIZE_BYTES, mirrorData["changeTrackingBytesUsed"])
+
+        #
+        # populate resync modes on primary and mirror
+        #
+        if primary.getSegmentMode() == gparray.MODE_RESYNCHRONIZATION:
+            if mirrorData is None:
+                data.addValue(VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR, "unable to retrieve progress", isWarning=True)
+            else:
+                dataSynchronizedBytes = mirrorData["resyncNumCompleted"] * 32L * 1024
+                dataSynchronizedStr = self.__abbreviateBytes( dataSynchronizedBytes )
+                resyncDataBytes = None
+                resyncProgressNumeric = None
+                totalDataToSynchronizeBytes = None
+                estimatedEndTimeTimestamp = None
+
+                if mirrorData["dataState"] == "InSync":
+                    totalDataToSynchronizeStr = "Sync complete; awaiting config change"
+                    resyncProgressNumeric = 1
+                    resyncProgressStr = "100%"
+                    estimatedEndTimeStr = ""
+                elif mirrorData["estimatedCompletionTimeSecondsSinceEpoch"] == 0:
+                    totalDataToSynchronizeStr = "Not Available"
+                    resyncProgressStr = "Not Available"
+                    estimatedEndTimeStr = "Not Available"
+                else:
+
+                    if mirrorData["resyncTotalToComplete"] == 0:
+                        resyncProgressStr = "Not Available"
+                    else:
+                        resyncProgressNumeric = mirrorData["resyncNumCompleted"] / float(mirrorData["resyncTotalToComplete"])
+                        percentComplete = 100 * resyncProgressNumeric
+                        resyncProgressStr = "%.2f%%" % percentComplete
+
+                    totalDataToSynchronizeBytes = mirrorData["resyncTotalToComplete"] * 32L * 1024
+                    totalDataToSynchronizeStr = self.__abbreviateBytes( totalDataToSynchronizeBytes )
+
+                    endTime = datetime.datetime.fromtimestamp(mirrorData["estimatedCompletionTimeSecondsSinceEpoch"])
+                    estimatedEndTimeStr = str(endTime)
+                    estimatedEndTimeTimestamp = endTime.isoformat()
+
+                data.addValue(VALUE__RESYNC_MODE, "Full" if mirrorData['isFullResync'] else "Incremental")
+
+                data.addValue(VALUE__RESYNC_DATA_SYNCHRONIZED, dataSynchronizedStr)
+                data.addValue(VALUE__RESYNC_DATA_SYNCHRONIZED_BYTES, dataSynchronizedBytes)
+
+                data.addValue(VALUE__RESYNC_EST_TOTAL_DATA, totalDataToSynchronizeStr)
+                data.addValue(VALUE__RESYNC_EST_TOTAL_DATA_BYTES, totalDataToSynchronizeBytes)
+
+                data.addValue(VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR, resyncProgressStr)
+                data.addValue(VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR_NUMERIC, resyncProgressNumeric)
+
+                data.addValue(VALUE__RESYNC_EST_COMPLETION_TIME, estimatedEndTimeStr)
+                data.addValue(VALUE__RESYNC_EST_COMPLETION_TIME_TIMESTAMP, estimatedEndTimeTimestamp)
 
     def __buildGpStateData(self, gpArray, hostNameToResults):
         data = GpStateData()
@@ -920,9 +1013,9 @@ class GpSystemStateProgram:
             data.addValue(VALUE__PORT, seg.getSegmentPort())
 
             peerPrimary = None
+            data.addValue(VALUE__CURRENT_ROLE, "Primary" if seg.isSegmentPrimary(current_role=True) else "Mirror")
+            data.addValue(VALUE__PREFERRED_ROLE, "Primary" if seg.isSegmentPrimary(current_role=False) else "Mirror")
             if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_FILE_REPLICATION:
-                data.addValue(VALUE__CURRENT_ROLE, "Primary" if seg.isSegmentPrimary(current_role=True) else "Mirror")
-                data.addValue(VALUE__PREFERRED_ROLE, "Primary" if seg.isSegmentPrimary(current_role=False) else "Mirror")
 
                 if seg.isSegmentPrimary(current_role=True):
                     data.addValue(VALUE__MIRROR_STATUS, gparray.getDataModeLabel(seg.getSegmentMode()))
@@ -932,6 +1025,8 @@ class GpSystemStateProgram:
                         data.addValue(VALUE__MIRROR_STATUS, "Out of Sync", isWarning=True)
                     else:
                         data.addValue(VALUE__MIRROR_STATUS, gparray.getDataModeLabel(seg.getSegmentMode()))
+            else:
+                data.addValue(VALUE__MIRROR_STATUS, "Physical replication not configured")
 
             if statusFetchWarning is not None:
                 segmentData = None
@@ -949,71 +1044,9 @@ class GpSystemStateProgram:
                 if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_FILE_REPLICATION:
                     # print out mirroring state from the segment itself
                     if seg.isSegmentPrimary(current_role=True):
-
-                        if seg.getSegmentMode() == gparray.MODE_RESYNCHRONIZATION or \
-                            seg.getSegmentMode() == gparray.MODE_CHANGELOGGING:
-
-                            mirrorData = segmentData[gp.SEGMENT_STATUS__GET_MIRROR_STATUS]
-                            if mirrorData is None or mirrorData["changeTrackingBytesUsed"] < 0:
-                                # server returns <0 if there was an error calculating size
-                                data.addValue(VALUE__CHANGE_TRACKING_DATA_SIZE, "unable to retrieve data size", isWarning=True)
-                                data.addValue(VALUE__CHANGE_TRACKING_DATA_SIZE_BYTES, "", isWarning=True)
-                            else:
-                                data.addValue(VALUE__CHANGE_TRACKING_DATA_SIZE,
-                                        self.__abbreviateBytes(mirrorData["changeTrackingBytesUsed"]))
-                                data.addValue(VALUE__CHANGE_TRACKING_DATA_SIZE, mirrorData["changeTrackingBytesUsed"])
-
-                        if seg.getSegmentMode() == gparray.MODE_RESYNCHRONIZATION:
-                            mirrorData = segmentData[gp.SEGMENT_STATUS__GET_MIRROR_STATUS]
-
-                            if mirrorData is None:
-                                data.addValue(VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR, "unable to retrieve progress", isWarning=True)
-                            else:
-                                dataSynchronizedBytes = mirrorData["resyncNumCompleted"] * 32L * 1024
-                                dataSynchronizedStr = self.__abbreviateBytes( dataSynchronizedBytes )
-                                resyncDataBytes = None
-                                resyncProgressNumeric = None
-                                totalDataToSynchronizeBytes = None
-                                estimatedEndTimeTimestamp = None
-
-                                if mirrorData["dataState"] == "InSync":
-                                    totalDataToSynchronizeStr = "Sync complete; awaiting config change"
-                                    resyncProgressNumeric = 1
-                                    resyncProgressStr = "100%"
-                                    estimatedEndTimeStr = ""
-                                elif mirrorData["estimatedCompletionTimeSecondsSinceEpoch"] == 0:
-                                    totalDataToSynchronizeStr = "Not Available"
-                                    resyncProgressStr = "Not Available"
-                                    estimatedEndTimeStr = "Not Available"
-                                else:
-
-                                    if mirrorData["resyncTotalToComplete"] == 0:
-                                        resyncProgressStr = "Not Available"
-                                    else:
-                                        resyncProgressNumeric = mirrorData["resyncNumCompleted"] / float(mirrorData["resyncTotalToComplete"])
-                                        percentComplete = 100 * resyncProgressNumeric
-                                        resyncProgressStr = "%.2f%%" % percentComplete
-
-                                    totalDataToSynchronizeBytes = mirrorData["resyncTotalToComplete"] * 32L * 1024
-                                    totalDataToSynchronizeStr = self.__abbreviateBytes( totalDataToSynchronizeBytes )
-
-                                    endTime = datetime.datetime.fromtimestamp(mirrorData["estimatedCompletionTimeSecondsSinceEpoch"])
-                                    estimatedEndTimeStr = str(endTime)
-                                    estimatedEndTimeTimestamp = endTime.isoformat()
-
-                                data.addValue(VALUE__RESYNC_MODE, "Full" if mirrorData['isFullResync'] else "Incremental")
-
-                                data.addValue(VALUE__RESYNC_DATA_SYNCHRONIZED, dataSynchronizedStr)
-                                data.addValue(VALUE__RESYNC_DATA_SYNCHRONIZED_BYTES, dataSynchronizedBytes)
-
-                                data.addValue(VALUE__RESYNC_EST_TOTAL_DATA, totalDataToSynchronizeStr)
-                                data.addValue(VALUE__RESYNC_EST_TOTAL_DATA_BYTES, totalDataToSynchronizeBytes)
-
-                                data.addValue(VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR, resyncProgressStr)
-                                data.addValue(VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR_NUMERIC, resyncProgressNumeric)
-                                
-                                data.addValue(VALUE__RESYNC_EST_COMPLETION_TIME, estimatedEndTimeStr)
-                                data.addValue(VALUE__RESYNC_EST_COMPLETION_TIME_TIMESTAMP, estimatedEndTimeTimestamp)
+                        self.__addResyncProgressFields(data, seg, segmentData, False)
+                    else:
+                        self.__addResyncProgressFields(data, peerPrimary, outputFromCmd[peerPrimary.getSegmentDbId()], True)
 
                 #
                 # Now PID status
