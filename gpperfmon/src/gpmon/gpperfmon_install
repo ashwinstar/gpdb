@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 '''
-USAGE:   gpperfmon_install [--enable --password GPMON_PASSWORD --port GPDB_PORT]
+USAGE:   gpperfmon_install [--enable --password GPMON_PASSWORD --port GPDB_PORT] [--verbose]
 
          where this script will install the gpperfmon database and schema
 
@@ -15,6 +15,7 @@ USAGE:   gpperfmon_install [--enable --password GPMON_PASSWORD --port GPDB_PORT]
 
         --password will set the password for gpmon superuser
         --port is the port used by gpperfmon to connect to GPDB
+        --verbose will show output from sub-commands
 '''
 
 import os, sys, time
@@ -32,7 +33,9 @@ except ImportError, e:
 EXECNAME = os.path.split(__file__)[-1]
 
 def run_command(cmdstr):
-    print cmdstr
+    if not options.verbose:
+        cmdstr = "%s >& /dev/null" % cmdstr
+    logger.info(cmdstr)
     p = Popen(cmdstr, shell=True)
     sts = os.waitpid(p.pid, 0)[1]
     if sts:
@@ -60,6 +63,7 @@ if __name__ == '__main__':
     parser.remove_option('-h')
     parser.add_option('-h', '-?', '--help', action='store_true')
     parser.add_option('-e', '--enable', action='store_true')
+    parser.add_option('-v', '--verbose', action='store_true')
     parser.add_option('-p', '--password', type='string')
     parser.add_option('-P', '--port', type='string')
     (options, args) = parser.parse_args()
@@ -133,10 +137,10 @@ if __name__ == '__main__':
         commands.append(cmd)
         ################################################
 
-        cmd = "gpconfig -c gp_enable_gpperfmon -v on"
+        cmd = "gpconfig -c gp_enable_gpperfmon -v on --masteronly"
         commands.append(cmd)
 
-        cmd = "gpconfig -c gpperfmon_port -v 8888"
+        cmd = "gpconfig -c gpperfmon_port -v 8888 --masteronly"
         commands.append(cmd)
 
         cmd = "gpconfig -c gp_external_enable_exec -v on"
@@ -153,9 +157,9 @@ if __name__ == '__main__':
         sys.exit(1)
 
     if options.enable:
-        logger.info("\n\n\n-- gpperfmon will be enabled after a full restart of GPDB ---")
+        logger.info("gpperfmon will be enabled after a full restart of GPDB")
     else:
-        logger.info("\n\n\n-- gpperfmon schema successfully installed ---")
+        logger.info("gpperfmon schema successfully installed")
 
 
 
