@@ -29,7 +29,7 @@ create table system_history (
 ) 
 with (fillfactor=100)
 distributed by (ctime)
-partition by range (ctime)(start (date '2009-09-01') end (date '2011-09-01') EVERY (interval '1 month'));
+partition by range (ctime)(start (date '2010-01-01') end (date '2010-02-01') EVERY (interval '1 month'));
 
 create external web table system_now (
        like system_history
@@ -73,7 +73,7 @@ create table queries_history (
 )
 with (fillfactor=100)
 distributed by (ctime)
-partition by range (ctime)(start (date '2009-09-01') end (date '2011-09-01') EVERY (interval '1 month'));
+partition by range (ctime)(start (date '2010-01-01') end (date '2010-02-01') EVERY (interval '1 month'));
 
 
 
@@ -210,7 +210,7 @@ create table iterators_history (
 )
 with (fillfactor=100)
 distributed by (ctime)
-partition by range (ctime)(start (date '2009-09-01') end (date '2011-09-01') EVERY (interval '1 month'));
+partition by range (ctime)(start (date '2010-01-01') end (date '2010-02-01') EVERY (interval '1 month'));
 
 
 
@@ -241,7 +241,7 @@ create table database_history (
 ) 
 with (fillfactor=100)
 distributed by (ctime)
-partition by range (ctime)(start (date '2009-09-01') end (date '2011-09-01') EVERY (interval '1 month'));
+partition by range (ctime)(start (date '2010-01-01') end (date '2010-02-01') EVERY (interval '1 month'));
 
 create external web table database_now (
        like database_history

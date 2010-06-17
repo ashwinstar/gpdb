@@ -6,6 +6,7 @@
 #include "libpq-fe.h"
 #include "apr_strings.h"
 #include "apr_file_io.h"
+#include "time.h"
 
 static const char* gpdb_exec(PGconn** pconn, PGresult** pres, const char* query)
 {
@@ -234,6 +235,89 @@ void gpdb_get_master_data_dir(char** hostname, char** mstrdir, apr_pool_t* pool)
 	*mstrdir = dir;
 }
 
+static apr_status_t check_partition(const char* tbl, apr_pool_t* pool)
+{
+	PGconn* conn = 0;
+	PGresult* result = 0;
+	const char* errmsg;
+	const int QRYBUFSIZ = 1024;
+	struct tm tm;
+	time_t now;
+	char qry[QRYBUFSIZ];
+	const char* QRYFMT = "alter table %s_history add partition start ('%d-%02d-01 00:00:00'::timestamp without time zone) inclusive end ('%d-%02d-01 00:00:00'::timestamp without time zone) exclusive;";
+
+	unsigned short year[3];
+	unsigned char month[3];
+
+	TR0(("check partitions on %s_history\n", tbl));
+
+   	now = time(NULL);
+	if (!gmtime_r(&now, &tm))
+	{
+		gpmon_warning(FLINE, "error in check_partition getting current time\n");
+		return APR_EGENERAL;
+	}
+
+	year[0] = 1900 + tm.tm_year;
+	month[0] = tm.tm_mon+1;
+
+	if (year[0] < 1 || month[0] < 1 || year[0] > 2030 || month[0] > 12)
+	{
+		gpmon_warning(FLINE, "invalid current month/year in check_partition %u/%u\n", month, year);
+		return APR_EGENERAL;
+	}
+
+	if (month[0] < 11)
+	{
+		month[1] = month[0] + 1;
+		month[2] = month[0] + 2;
+
+		year[1] = year[0];
+		year[2] = year[0];
+	}
+	else if (month[0] == 11)
+	{
+		month[1] = 12;
+		month[2] = 1;
+
+		year[1] = year[0];
+		year[2] = year[0] + 1;
+	}
+	else 
+	{
+		month[1] = 1;
+		month[2] = 2;
+
+		year[1] = year[0] + 1;
+		year[2] = year[0] + 1;
+	}
+
+	snprintf(qry, QRYBUFSIZ, QRYFMT, tbl, year[0], month[0], year[1], month[1]);
+	TR0(("%s\n", qry));
+	errmsg = gpdb_exec(&conn, &result, qry);
+	if (errmsg)
+	{
+		TR1(("partion add response from server: %s\n", errmsg));
+	}
+	PQclear(result);
+	PQfinish(conn);
+	conn = 0;
+	result = 0;
+
+	snprintf(qry, QRYBUFSIZ, QRYFMT, tbl, year[1], month[1], year[2], month[2]);
+	TR0(("%s\n", qry));
+	errmsg = gpdb_exec(&conn, &result, qry);
+	if (errmsg)
+	{
+		TR1(("partion add response from server: %s\n", errmsg));
+	}
+	PQclear(result);
+	PQfinish(conn);
+
+	TR0(("check partitions on %s_history done\n", tbl));
+	return APR_SUCCESS;
+}
+
 static apr_status_t harvest(const char* tbl, apr_pool_t* pool)
 {
 	PGconn* conn = 0;
@@ -409,4 +493,9 @@ apr_status_t gpdb_harvest(void)
 	return call_for_each_table(harvest, NULL);
 }
 
+/* insert _tail data into history table */
+apr_status_t gpdb_check_partitions(void)
+{
+	return call_for_each_table(check_partition, NULL);
+}
 

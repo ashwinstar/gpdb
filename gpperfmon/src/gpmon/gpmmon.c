@@ -564,6 +564,9 @@ static void* harvest_main(apr_thread_t* thread_, void* arg_)
 	unsigned int loop;
 	apr_status_t status;
 	unsigned int consecutive_failures = 0;
+	unsigned int partition_check_interval = 3600 * 6; // check for new partitions every 6 hours
+
+	gpdb_check_partitions();
 
 	for (loop = 1; !ax.exit; loop++)
 	{
@@ -634,6 +637,10 @@ static void* harvest_main(apr_thread_t* thread_, void* arg_)
 				consecutive_failures = 0;
 				ax._tail_buffer_bytes = 0;
 			}
+		}
+		if (0 == (loop % partition_check_interval))
+		{
+			gpdb_check_partitions();
 		}
 	}
 

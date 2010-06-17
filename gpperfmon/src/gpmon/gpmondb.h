@@ -48,6 +48,11 @@ APR_DECLARE(void) gpdb_get_hostlist(int* hostcnt, char*** hostvec, char*** datad
 APR_DECLARE(void) gpdb_get_master_data_dir(char** hostname, char** mstrdir, apr_pool_t* pool);
 
 /**
+ * check if new historical partitions are required and create them
+ */
+APR_DECLARE(apr_status_t) gpdb_check_partitions(void);
+
+/**
  * insert _tail data into history table
  */
 APR_DECLARE(apr_status_t) gpdb_harvest(void);
@@ -71,6 +76,7 @@ APR_DECLARE (apr_status_t) gpdb_copy_stage_to_harvest_files(apr_pool_t* pool);
  * restart with empty tail files
  */
 APR_DECLARE (apr_status_t) gpdb_truncate_tail_files(apr_pool_t* pool);
+
 
 
 #endif /* GPMONDB_H */

@@ -14,7 +14,7 @@
 --   hostname                   hostname of system this metric belongs to
 --   dynamic_memory_used        bytes of dynamic memory used by the segment
 --   dynamic_memory_available   bytes of dynamic memory available for use by the segment
-create table segment_history (ctime timestamp(0) not null, dbid int not null, hostname varchar(64) not null, dynamic_memory_used bigint not null, dynamic_memory_available bigint not null) with (fillfactor=100) distributed by (ctime) partition by range (ctime)(start (date '2009-09-01') end (date '2011-09-01') EVERY (interval '1 month'));
+create table segment_history (ctime timestamp(0) not null, dbid int not null, hostname varchar(64) not null, dynamic_memory_used bigint not null, dynamic_memory_available bigint not null) with (fillfactor=100) distributed by (ctime) partition by range (ctime)(start (date '2010-01-01') end (date '2010-02-01') EVERY (interval '1 month'));
 
 -- TABLE: segment_now
 --   (like segment_history)
