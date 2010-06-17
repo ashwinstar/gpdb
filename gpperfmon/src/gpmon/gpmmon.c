@@ -47,6 +47,7 @@ struct
 	int q;
 	int m;
 	int d;
+	int qamode;
 	int harvest_interval;
 	apr_uint64_t tail_buffer_max;
 } opt = { 0 };
@@ -938,6 +939,11 @@ static int read_conf_file(char *conffile)
 			{
 				opt.v = atoi(pVal);
 			}
+			else if (apr_strnatcasecmp(pName, "qamode") == 0)
+			{
+				/* this will allow QA to make config settings that are normally illegal */
+				opt.qamode = atoi(pVal);
+			}
 			else if (apr_strnatcasecmp(pName, "log_location") == 0)
 			{
 				/* can't use APR here as the pool is just temporary */
@@ -981,29 +987,29 @@ static int read_conf_file(char *conffile)
 	/* check for valid entries */
 	if (!section_found)
 		fprintf(stderr, "Performance Monitor - Failed to find [gpmmon] section in the "
-				"configuration file.  Using default values");
+				"configuration file.  Using default values\n");
 
 	if (opt.q != 10 && opt.q != 15 && opt.q != 20 && opt.q != 30 && opt.q != 60)
 	{
 		fprintf(stderr, "Performance Monitor - quantum value must be be either 10, 15, 20, 30 or 60.  Using "
-				"default value of 15");
+				"default value of 15\n");
 		opt.q = 15;
 	}
 
 	if (opt.m < 0)
 		opt.m = 0;
 
-	if (opt.d < opt.m && opt.m >= 10)
+	if (opt.d < opt.m)
 	{
 		opt.d = opt.m;
 		fprintf(stderr, "Performance Monitor - min_detail_query_time cannot be less than min_query_time.  "
-				"Setting min_detail_query_time equal to min_query_time");
+				"Setting min_detail_query_time equal to min_query_time\n");
 	}
 
-	if (opt.d < 10)
+	if (opt.d < 10 && !opt.qamode)
 	{
 		fprintf(stderr, "Performance Monitor - invalid value for min_detailed_query_time.  "
-				"Using default value 60");
+				"Using default value 60\n");
 		opt.d = 60;
 	}
 
@@ -1015,10 +1021,10 @@ static int read_conf_file(char *conffile)
 		opt.log_dir = strdup(log_dir);
 	}
 
-	if (opt.harvest_interval < 30)
+	if (opt.harvest_interval < 30 && !opt.qamode)
 	{
 		fprintf(stderr, "Performance Monitor - harvest_interval must be greater than 30.  Using "
-				"default value 120");
+				"default value 120\n");
 		opt.harvest_interval = 120;
 	}
 
