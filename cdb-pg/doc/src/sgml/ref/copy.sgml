@@ -46,7 +46,6 @@ PostgreSQL documentation
 
 COPY table [(column [, ...])] FROM {'file' | STDIN}
      [ [WITH] 
-       [BINARY]
        [OIDS]
        [HEADER]
        [DELIMITER [ AS ] 'delimiter']
@@ -61,7 +60,6 @@ COPY table [(column [, ...])] FROM {'file' | STDIN}
 
 COPY {table [(column [, ...])] | (query)} TO {'file' | STDOUT}
       [ [WITH] 
-        [BINARY]
         [OIDS]
         [HEADER]
         [DELIMITER [ AS ] 'delimiter']
@@ -1613,5 +1611,6 @@ COPY [ BINARY ] <replaceable class="parameter">tablename</replaceable> [ WITH OI
  </refsect1>
 
 </refentry>
+
 
 
