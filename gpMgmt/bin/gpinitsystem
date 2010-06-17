@@ -1423,7 +1423,7 @@ STOP_QD_PRODUCTION () {
 				0 ) LOG_MSG "[INFO]:-Successfully shutdown the new Greenplum instance" ;;
 				1 ) LOG_MSG "[WARN]:-Non fatal error from Greenplum instance shutdown, check log files, will continue"
 				    EXIT_STATUS=1 ;;
-				2 ) ERROR_EXIT "[FATAL]:-Failed to stop new Greenplum instance, check log file" 2
+				* ) ERROR_EXIT "[FATAL]:-Failed to stop new Greenplum instance, check log file" 2
 				esac
 		else
 				ERROR_EXIT "[FATAL]:-$GPSTOP not located" 2
@@ -1443,7 +1443,7 @@ CREATE_STANDBY_QD () {
 		case $RETCODE in
 			0) LOG_MSG "[INFO]:-Successfully completed standby master initialization" 1 ;;
 			1) LOG_MSG "[WARN]:-Non-fatal issue with standby master initialization, check gpstate -f output" 1 ;;
-			2) ERROR_EXIT "[FATAL]:-Initialization of standby master failed"
+			*) ERROR_EXIT "[FATAL]:-Initialization of standby master failed"
 		esac
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${STANDBY_HOSTNAME} \"$RM -Rf ${QD_DIR}\""
 		BACKOUT_COMMAND "$ECHO \"Removing standby directory ${QD_DIR} on $STANDBY_HOSTNAME\""
@@ -1490,7 +1490,7 @@ START_QD_PRODUCTION () {
                         case $RETVAL in
                             0 ) LOG_MSG "[INFO]:-Successfully shutdown the Greenplum instance" 1;;
                             1 ) LOG_MSG "[WARN]:-Non fatal error from Greenplum instance shutdown" 1;;
-                            2 ) ERROR_EXIT "[WARN]:-Failed to stop new Greenplum instance" 2
+                            * ) ERROR_EXIT "[WARN]:-Failed to stop new Greenplum instance" 2
                         esac
                     else
                         LOG_MSG "[WARN]:-$GPSTOP not located" 1

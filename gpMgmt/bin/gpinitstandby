@@ -878,4 +878,5 @@ except Exception, ex:
         logger.error('Error initializing standby master: %s' % str(ex))
     if options.debug:
         logger.exception(ex)
-	sys.exit(2)
+    sys.exit(2)
+
