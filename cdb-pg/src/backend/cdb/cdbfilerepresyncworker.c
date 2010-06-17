@@ -36,17 +36,12 @@ static void
 FileRepResync_ResetReadBufferRequest(void)
 {
 	readBufferRequest = FALSE;
-	if (Debug_filerep_print)
-		elog(LOG, "FileRepResync_ResetReadBufferRequest()");
 }
 
 static void
 FileRepResync_SetReadBufferRequest(void)
 {
 	readBufferRequest = TRUE;
-	if (Debug_filerep_print)
-		elog(LOG, "FileRepResync_SetReadBufferRequest()");
-	
 }
 
 bool

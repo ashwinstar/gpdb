@@ -1326,8 +1326,10 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	 */
 
 	PersistentFileSysObj_PreparedEndXactAction(
-							&persistentPrepareObjects,
-							isCommit);
+											xid,
+											gid,
+											&persistentPrepareObjects,
+											isCommit);
 
 	/* And now do the callbacks */
 	if (isCommit)

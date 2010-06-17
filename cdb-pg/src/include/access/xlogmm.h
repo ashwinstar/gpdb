@@ -55,7 +55,7 @@ typedef struct xl_mm_fs_obj
 } xl_mm_fs_obj;
 
 extern void mmxlog_redo(XLogRecPtr lsn, XLogRecord *record);
-extern void mmxlog_desc(StringInfo buf, uint8 xl_info, char *rec);
+extern void mmxlog_desc(StringInfo buf, XLogRecord *record);
 
 /* 
  * Functions to generate WAL records to remove file system objects on the

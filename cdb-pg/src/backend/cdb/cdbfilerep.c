@@ -381,13 +381,13 @@ int		file_rep_ack_buffer_size = 512 * 1024;
 
 /*
  * GUC parameter
- *			file_rep_retry = 1500;
+ *			file_rep_retry = 2000;
  * 
  * Number of retries to insert message into shared memory. Buffer
  * may be full due to i.e. network down, mirror host down, 
  * slow processing, ...
  */
-int		file_rep_retry = 1500;  // 136 seconds  
+int		file_rep_retry = 2000;  // 186 seconds  
 
 /**
  * GUC parameter
@@ -508,11 +508,11 @@ void
 FileRep_IpcSignal(PGSemaphoreData sem, int refCount)
 {
 	int ii;
-
+	
 	for (ii=0; ii < refCount; ii++)
 	{
 		PGSemaphoreUnlock(&sem);
-	}	
+	}
 }
 
 void
@@ -1699,6 +1699,37 @@ FileRep_ProcessSignals()
 					LogChildExit(LOG, (FileRepProcessTypeToString[i]),
 								 FileRepSubProcList[i].pid,
 								 term_status);
+					
+					if (EXIT_STATUS_0(term_status))
+					{
+						switch (i)
+						{
+							case FileRepProcessTypeResyncManager:
+							case FileRepProcessTypeResyncWorker1:
+							case FileRepProcessTypeResyncWorker2:
+							case FileRepProcessTypeResyncWorker3:
+							case FileRepProcessTypeResyncWorker4:
+								
+								getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
+								if (dataState != DataStateInSync)
+								{
+									FileRep_SetSegmentState(SegmentStateFault);
+								}
+								break;
+							case FileRepProcessTypePrimaryRecovery:
+								
+								getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
+								if ((dataState == DataStateInSync ||
+									 dataState == DataStateInChangeTracking) && 
+									segmentState == SegmentStateInitialization)
+								{
+									FileRep_SetSegmentState(SegmentStateFault);
+								}								
+								break;
+							default:
+								break;
+						}
+					}
 
 					if (! EXIT_STATUS_0(term_status) &&
 					    ! EXIT_STATUS_1(term_status) &&
@@ -2089,8 +2120,8 @@ FileRep_StartChildProcess(FileRepProcessType_e type)
 }
 
 /*
- * 100 * 10ms + 100 * 50ms + 1300 * 100ms = 136 sec
- * file_rep_retry = 1500 (max value)
+ * 100 * 10ms + 100 * 50ms + 1800 * 100ms = 186 sec
+ * file_rep_retry = 2000 (default value)
  */
 void
 FileRep_Sleep10ms(int retry)
@@ -2108,8 +2139,8 @@ FileRep_Sleep10ms(int retry)
 }
 
 /*
- * 50 * 1ms + 50 * 10ms + 100 * 50ms + 1300 * 100ms = 135.55 sec
- * file_rep_retry = 1500 (max value)
+ * 50 * 1ms + 50 * 10ms + 100 * 50ms + 1800 * 100ms = 185.55 sec
+ * file_rep_retry = 2000 (default value)
  */
 void
 FileRep_Sleep1ms(int retry)
@@ -2724,6 +2755,17 @@ void FileRep_Main(void)
 	
 	FileRep_SetState(FileRepStateInitialization);
 	
+	if (Debug_filerep_print)
+	{
+		/*
+		 * Increase response time since additional tracing significantly slow down the system
+		 *
+		 * 100 * 10ms + 100 * 50ms + 1800 * 100ms + 4000 * 100ms = 186 sec + 400 sec = almost 10 minutes
+		 * file_rep_retry = 6000 (max value)
+		 */
+		file_rep_retry = 6000;
+	}
+		
 	FileRepIpc_ShmemReInit();
 	FileRep_ShmemReInit();
 	FileRepAck_ShmemReInit();

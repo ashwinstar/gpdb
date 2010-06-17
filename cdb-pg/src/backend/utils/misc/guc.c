@@ -3914,7 +3914,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_NO_SHOW_ALL
 		},
 		&file_rep_retry,
-		1500, 1, 6000, NULL, NULL
+		2000, 1, 6000, NULL, NULL
 	},
 
 	{

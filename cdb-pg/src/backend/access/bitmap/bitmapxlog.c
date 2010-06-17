@@ -696,9 +696,10 @@ out_target(StringInfo buf, RelFileNode *node)
 }
 
 void
-bitmap_desc(StringInfo buf, uint8 xl_info, char *rec)
+bitmap_desc(StringInfo buf, XLogRecord *record)
 {
-	uint8		info = xl_info & ~XLR_INFO_MASK;
+	uint8		info = record->xl_info & ~XLR_INFO_MASK;
+	char		*rec = XLogRecGetData(record);
 
 	switch (info)
 	{

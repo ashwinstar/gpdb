@@ -44,6 +44,7 @@
 #include "storage/ipc.h"
 #include "storage/smgr.h"
 #include "utils/builtins.h"
+#include "utils/faultinjector.h"
 #include "utils/guc.h"
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
@@ -1795,7 +1796,7 @@ smgrDoDeleteActions(
 					 ItemPointerToString(&current->persistentTid),
 					 current->persistentSerialNum);
 		}
-
+		
 		switch (action)
 		{
 		case PersistentEndXactFileSysAction_Create:
@@ -1883,13 +1884,37 @@ smgrDoDeleteActions(
 			if (!forCommit)
 			{
 				abortingCreate = true;
+#ifdef FAULT_INJECTOR	
+				FaultInjector_InjectFaultIfSet(
+											   TransactionAbortPass1FromCreatePendingToAbortingCreate, 
+											   DDLNotSpecified,
+											   "",	// databaseName
+											   ""); // tableName
+#endif					
 			}
+			else
+			{
+#ifdef FAULT_INJECTOR	
+					FaultInjector_InjectFaultIfSet(
+												   TransactionCommitPass1FromCreatePendingToCreated, 
+												   DDLNotSpecified,
+												   "",	// databaseName
+												   ""); // tableName
+#endif	
+			}					
 			break;
 
 		case PersistentEndXactFileSysAction_Drop:
 			if (forCommit)
 			{
 				dropPending = true;
+#ifdef FAULT_INJECTOR	
+				FaultInjector_InjectFaultIfSet(
+											   TransactionCommitPass1FromDropInMemoryToDropPending, 
+											   DDLNotSpecified,
+											   "",	// databaseName
+											   ""); // tableName
+#endif									
 			}
 			break;
 
@@ -1898,6 +1923,16 @@ smgrDoDeleteActions(
 			 * Always whether transaction commits or aborts.
 			 */
 			abortingCreate = true;
+				
+#ifdef FAULT_INJECTOR	
+				FaultInjector_InjectFaultIfSet(
+											   forCommit ?
+											   TransactionCommitPass1FromAbortingCreateNeededToAbortingCreate:
+											   TransactionAbortPass1FromAbortingCreateNeededToAbortingCreate, 
+											   DDLNotSpecified,
+											   "",	// databaseName
+											   ""); // tableName
+#endif																		
 			break;
 				
 		default:
@@ -1915,6 +1950,65 @@ smgrDoDeleteActions(
 							current->persistentSerialNum,
 							/* ignoreNonExistence */ abortingCreate);
 		}
+		
+#ifdef FAULT_INJECTOR			
+		if (abortingCreate && !forCommit)
+		{
+			FaultInjector_InjectFaultIfSet(
+										   TransactionAbortPass2FromCreatePendingToAbortingCreate,
+										   DDLNotSpecified,
+										   "",	// databaseName
+										   ""); // tableName															
+		}
+		
+		if (dropPending && forCommit)
+		{
+			FaultInjector_InjectFaultIfSet(
+										   TransactionCommitPass2FromDropInMemoryToDropPending,
+										   DDLNotSpecified,
+										   "",	// databaseName
+										   ""); // tableName																		
+		}
+		
+		switch (action)
+		{
+			case PersistentEndXactFileSysAction_Create:
+				if (!forCommit)
+				{
+					FaultInjector_InjectFaultIfSet(
+												   TransactionAbortPass2FromCreatePendingToAbortingCreate,
+												   DDLNotSpecified,
+												   "",	// databaseName
+												   ""); // tableName																			
+				}
+				break;
+				
+			case PersistentEndXactFileSysAction_Drop:
+				if (forCommit)
+				{
+					FaultInjector_InjectFaultIfSet(
+												   TransactionCommitPass2FromDropInMemoryToDropPending,
+												   DDLNotSpecified,
+												   "",	// databaseName
+												   ""); // tableName																		
+				}
+				break;
+				
+			case PersistentEndXactFileSysAction_AbortingCreateNeeded:
+				FaultInjector_InjectFaultIfSet(
+											   forCommit ?
+											   TransactionCommitPass2FromAbortingCreateNeededToAbortingCreate :
+											   TransactionAbortPass2FromAbortingCreateNeededToAbortingCreate,
+											   DDLNotSpecified,
+											   "",	// databaseName
+											   ""); // tableName																		
+				break;
+				
+			default:
+				break;
+		}		
+		
+#endif		
 
 		/* must explicitly free the list entry */
 		PendingDelete_Free(&current);
@@ -1938,7 +2032,9 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 
 	HASH_SEQ_STATUS iterateStatus;
 	AppendOnlyMirrorResyncEofs *entry;
-
+	
+	AppendOnlyMirrorResyncEofs *entryExample = NULL;
+	
 	if (AppendOnlyMirrorResyncEofsTable == NULL)
 		return;
 
@@ -1953,6 +2049,11 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 	
 	while ((entry = hash_seq_search(&iterateStatus)) != NULL)
 	{
+		if (appendOnlyMirrorResyncEofsCount == 0)
+		{
+			entryExample = entry;
+		}
+
 		if (forCommit)
 		{
 			PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
@@ -1992,45 +2093,49 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 		MIRRORED_LOCK_DECLARE;
 
 		int oldSystemAppendOnlyCommitWorkCount;
+		int newSystemAppendOnlyCommitWorkCount;
+
+		Assert(entryExample != NULL);
 
 		MIRRORED_LOCK;	// NOTE: When we use the MirroredLock for the whole routine, this can go.
 		
 		oldSystemAppendOnlyCommitWorkCount = FileRepPrimary_GetAppendOnlyCommitWorkCount();	// Snapshot.
 
-		if (forCommit)
-		{
-			int newSystemAppendOnlyCommitWorkCount;
+		newSystemAppendOnlyCommitWorkCount = 
+						oldSystemAppendOnlyCommitWorkCount - 
+						appendOnlyMirrorResyncEofsCount;
 
-			newSystemAppendOnlyCommitWorkCount = 
-							oldSystemAppendOnlyCommitWorkCount - 
-							appendOnlyMirrorResyncEofsCount;
+		if (newSystemAppendOnlyCommitWorkCount < 0)
+			elog(ERROR, 
+				 "Append-Only Mirror Resync EOFs intent count would go negative "
+				 "(system count %d, entry count %d).  "
+				 "Example relation %u/%u/%u, segment file #%d (persistent serial num " INT64_FORMAT ", TID %s)",
+				 oldSystemAppendOnlyCommitWorkCount,
+				 appendOnlyMirrorResyncEofsCount,
+				 entryExample->key.relFileNode.spcNode,
+				 entryExample->key.relFileNode.dbNode,
+				 entryExample->key.relFileNode.relNode,
+				 entryExample->key.segmentFileNum,
+				 entryExample->persistentSerialNum,
+				 ItemPointerToString(&entryExample->persistentTid));
+		
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "Storage Manager: Append-Only Mirror Resync EOFs intent count finishing %s work with system count %d remaining "
+				 "(old system count %d, entry count %d).  "
+				 "Example relation %u/%u/%u, segment file #%d (persistent serial num " INT64_FORMAT ", TID %s)",
+				 (forCommit ? "commit" : "abort"),
+				 newSystemAppendOnlyCommitWorkCount,
+				 oldSystemAppendOnlyCommitWorkCount,
+				 appendOnlyMirrorResyncEofsCount,
+				 entryExample->key.relFileNode.spcNode,
+				 entryExample->key.relFileNode.dbNode,
+				 entryExample->key.relFileNode.relNode,
+				 entryExample->key.segmentFileNum,
+				 entryExample->persistentSerialNum,
+				 ItemPointerToString(&entryExample->persistentTid));
 
-			if (newSystemAppendOnlyCommitWorkCount < 0)
-				elog(ERROR, 
-					 "Append-Only Mirror Resync EOFs intent count would go negative "
-					 "(system count %d, entry count %d)",
-					 oldSystemAppendOnlyCommitWorkCount,
-					 appendOnlyMirrorResyncEofsCount);
-			
-			if (Debug_persistent_print)
-				elog(Debug_persistent_print_level, 
-					 "Storage Manager: Append-Only Mirror Resync EOFs intent count finishing commit work with system count %d remaining "
-					 "(old system count %d, entry count %d)",
-					 newSystemAppendOnlyCommitWorkCount,
-					 oldSystemAppendOnlyCommitWorkCount,
-					 appendOnlyMirrorResyncEofsCount);
-
-			FileRepPrimary_FinishedAppendOnlyCommitWork(appendOnlyMirrorResyncEofsCount);
-		}
-		else
-		{
-			if (Debug_persistent_print)
-				elog(Debug_persistent_print_level, 
-					 "Storage Manager: Append-Only Mirror Resync EOFs intent count finishing abort work with system count %d remaining "
-					 " (entry count %d)",
-					 oldSystemAppendOnlyCommitWorkCount,
-					 appendOnlyMirrorResyncEofsCount);
-		}
+		FileRepPrimary_FinishedAppendOnlyCommitWork(appendOnlyMirrorResyncEofsCount);
 			
 		MIRRORED_UNLOCK;
 	}
@@ -2814,9 +2919,10 @@ smgr_redo(XLogRecPtr lsn, XLogRecord *record)
 }
 
 void
-smgr_desc(StringInfo buf, uint8 xl_info, char *rec)
+smgr_desc(StringInfo buf, XLogRecord *record)
 {
-	uint8		info = xl_info & ~XLR_INFO_MASK;
+	uint8		info = record->xl_info & ~XLR_INFO_MASK;
+	char		*rec = XLogRecGetData(record);
 
 	if (info == XLOG_SMGR_CREATE)
 	{

@@ -244,7 +244,7 @@ extern bool xact_redo_get_info(
 		PersistentEndXactRecObjects *persistentObjects,
 		TransactionId				**subXids,
 		int 						*subXidCount);
-extern void xact_desc(StringInfo buf, uint8 xl_info, char *rec);
+extern void xact_desc(StringInfo buf, XLogRecord *record);
 extern const char *IsoLevelAsUpperString(int IsoLevel);
 
 extern void ShowSubtransactionsForSharedSnapshot(uint32 subcnt, const TransactionId *subxids);

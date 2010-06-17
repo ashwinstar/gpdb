@@ -128,7 +128,7 @@ FileRepSubProcess_ShutdownHandler(SIGNAL_ARGS)
 				 * suspended during transition to Change Tracking and so FileRep backend shutdown may 
 				 * never be completed.
 				 */
-				quickdie(PASS_SIGNAL_ARGS);
+				proc_exit(0);
 				return;
 			}
 			
@@ -172,7 +172,7 @@ FileRepSubProcess_ProcessSignals()
 
 		shutdownRequested = false;
 
-		if ( segmentState == FileRepStateShutdownBackends )
+		if ( segmentState == SegmentStateShutdownFilerepBackends )
 		{
             processExit = FileRepIsBackendSubProcess(fileRepProcessType);
             FileRepSubProcess_SetState(FileRepStateShutdownBackends);

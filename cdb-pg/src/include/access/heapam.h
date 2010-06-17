@@ -271,12 +271,12 @@ extern void heap_markposx(HeapScanDesc scan, HeapTuple tuple);
 extern void heap_restrpos(HeapScanDesc scan);
 
 extern void heap_redo(XLogRecPtr lsn, XLogRecord *rptr);
-extern void heap_desc(StringInfo buf, uint8 xl_info, char *rec);
+extern void heap_desc(StringInfo buf, XLogRecord *record);
 extern bool heap_getrelfilenode(
 	XLogRecord 		*record,
 	RelFileNode		*relFileNode);
 extern void heap2_redo(XLogRecPtr lsn, XLogRecord *rptr);
-extern void heap2_desc(StringInfo buf, uint8 xl_info, char *rec);
+extern void heap2_desc(StringInfo buf, XLogRecord *record);
 
 extern XLogRecPtr log_heap_move(Relation reln, Buffer oldbuf,
 			  ItemPointerData from,

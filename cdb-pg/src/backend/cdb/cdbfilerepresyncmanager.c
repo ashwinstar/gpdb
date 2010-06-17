@@ -938,8 +938,6 @@ FileRepPrimary_RunResyncManager(void)
 				}				
 			}
 			
-			Assert(FileRepResync_CheckProgress() == 0);
-			
 			if (mirroredLock == TRUE)
 			{
 				LWLockRelease(MirroredLock);

@@ -108,10 +108,24 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault during transition to InSync */
 	_("checkpoint"),
 		/* inject fault before checkpoint is taken */
-	_("transaction_commit"),
-		/* inject fault after it is recorded in XLOG for commit of prepared transaction */
-	_("transaction_abort"),
-		/* inject fault after it is recorded in XLOG for abort of prepared transaction */
+	_("transaction_commit_pass1_from_create_pending_to_created"),
+		/* inject fault after persistent state change is permanently stored during first pass */
+	_("transaction_commit_pass1_from_drop_inmemory_to_drop_pending"),
+		/* inject fault after persistent state change is permanently stored during first pass */
+	_("transaction_commit_pass1_from_aborting_create_needed_to_aborting_create"),
+		/* inject fault after persistent state change is permanently stored during first pass */
+	_("transaction_abort_pass1_from_create_pending_to_aborting_create"),
+		/* inject fault after persistent state change is permanently stored during first pass */
+	_("transaction_abort_pass1_from_aborting_create_needed_to_aborting_create"),
+		/* inject fault after persistent state change is permanently stored during first pass */
+	_("transaction_commit_pass2_from_drop_inmemory_to_drop_pending"),
+		/* inject fault after physical drop and before final persistent state change is permanently stored during second pass */
+	_("transaction_commit_pass2_from_aborting_create_needed_to_aborting_create"),
+		/* inject fault after physical drop and before final persistent state change is permanently stored during second pass */
+	_("transaction_abort_pass2_from_create_pending_to_aborting_create"),
+		/* inject fault after physical drop and before final persistent state change is permanently stored during second pass */
+	_("transaction_abort_pass2_from_aborting_create_needed_to_aborting_create"),
+		/* inject fault after physical drop and before final persistent state change is permanently stored during second pass */
 	_("not recognized"),
 };
 
@@ -548,6 +562,15 @@ FaultInjector_NewHashEntry(
 		case FileRepTransitionToInResync:
 		case FileRepTransitionToInSync:
 		case Checkpoint:
+		case TransactionCommitPass1FromCreatePendingToCreated:
+		case TransactionCommitPass1FromDropInMemoryToDropPending:
+		case TransactionCommitPass1FromAbortingCreateNeededToAbortingCreate:
+		case TransactionAbortPass1FromCreatePendingToAbortingCreate:
+		case TransactionAbortPass1FromAbortingCreateNeededToAbortingCreate:
+		case TransactionCommitPass2FromDropInMemoryToDropPending:
+		case TransactionCommitPass2FromAbortingCreateNeededToAbortingCreate:
+		case TransactionAbortPass2FromCreatePendingToAbortingCreate:
+		case TransactionAbortPass2FromAbortingCreateNeededToAbortingCreate:
 			
 			if (fileRepRole == FileRepMirrorRole)
 			{
@@ -563,23 +586,7 @@ FaultInjector_NewHashEntry(
 				goto exit;
 			}			
 			break;
-			
-		case TransactionCommitPrepared:
-		case TransactionAbortPrepared:
-			
-			LockRelease();
-			status = STATUS_ERROR;
-			ereport(LOG,
-					(errmsg("ERROR(fault injector): could not insert fault injection entry into table, not supported"
-							"identifier:'%s' ",
-							FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier])));
-			snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
-					 "could not insert fault injection, not supported");
-			
-			goto exit;			
-			
-			break;
-			
+						
 		default:
 			break;
 	}

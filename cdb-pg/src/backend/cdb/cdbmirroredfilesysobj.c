@@ -139,13 +139,13 @@ static void MirroredFileSysObj_FinishMirroredCreate(
 	 */
 	// UNDONE: Don't fsync this change to the XLOG for now.  Determine
 	// UNDONE: what needs to be fsync'd.
-	PersistentFileSysObj_ChangeMirrorExistenceState(
-											fsObjName->type,
-											persistentTid,
-											persistentSerialNum,
-											MirroredObjectExistenceState_MirrorDownDuringCreate,
-											MirroredRelDataSynchronizationState_FullCopy,
-											/* flushToXLog */ false);
+	PersistentFileSysObj_ChangeMirrorState(
+										fsObjName->type,
+										persistentTid,
+										persistentSerialNum,
+										MirroredObjectExistenceState_MirrorDownDuringCreate,
+										MirroredRelDataSynchronizationState_FullCopy,
+										/* flushToXLog */ false);
 }
 
 void 

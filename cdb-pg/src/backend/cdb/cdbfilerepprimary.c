@@ -18,7 +18,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#include "cdb/cdbvars.h"
+#include "miscadmin.h"
 
 #include "access/xlog_internal.h"
 #include "cdb/cdbfilerepservice.h"
@@ -26,6 +26,7 @@
 #include "cdb/cdbfilerepprimaryack.h"
 #include "cdb/cdbfilerepconnclient.h"
 #include "cdb/cdbfilerepresyncmanager.h"
+#include "cdb/cdbvars.h"
 #include "storage/lwlock.h"
 #include "storage/pmsignal.h"
 #include "postmaster/primary_mirror_mode.h"
@@ -305,6 +306,13 @@ FileRepPrimary_ConstructAndInsertMessage(
 	int							status = STATUS_OK;
 	uint32						spareField;
 	
+	/* 
+	 * Prevent cancel/die interrupt while doing this multi-step in order to  
+	 * insert message and update message state atomically with respect to 
+	 * cancel/die interrupts. See MPP-10040.
+	 */
+	HOLD_INTERRUPTS();
+
 	if (FileRep_IsOperationSynchronous(fileRepOperation) == TRUE) { 
 		
 		status = FileRepAckPrimary_NewHashEntry(
@@ -314,6 +322,9 @@ FileRepPrimary_ConstructAndInsertMessage(
 	}
 	
 	if (status != STATUS_OK && dataState != DataStateInChangeTracking) {
+		
+		RESUME_INTERRUPTS();
+		
 		ereport(LOG,			
 				(errmsg("ERROR(filerep): could not insert message in ACK table"),
 				 FileRep_errdetail(fileRepIdentifier,
@@ -345,6 +356,8 @@ FileRepPrimary_ConstructAndInsertMessage(
 											  fileRepOperation);
 	
 	if (msgPositionInsert == NULL && dataState != DataStateInChangeTracking) {
+		
+		RESUME_INTERRUPTS();
 		
 		status = STATUS_ERROR;
 		ereport(LOG,			
@@ -462,6 +475,8 @@ FileRepPrimary_ConstructAndInsertMessage(
 	FileRep_IpcSignal(fileRepIpcArray[fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex]->semC, 
 					  fileRepIpcArray[fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex]->refCountSemC);
 	LWLockRelease(FileRepShmemLock);
+	
+	RESUME_INTERRUPTS();
 	
 	return status;
 }	
@@ -732,7 +747,14 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 		if (! (dataState == DataStateInResync &&
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
 			   segmentState != SegmentStateInSyncTransition))
-		{			
+		{		
+			
+		/* 
+		 * Prevent cancel/die interrupt while doing this multi-step in order to  
+		 * insert message and update message state atomically with respect to 
+		 * cancel/die interrupts. See MPP-10040.
+		 */
+		HOLD_INTERRUPTS();
 			
 		while (dataLength > 0) {
 			
@@ -752,6 +774,8 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 													 FileRepOperationWrite);
 			
 			if (msgPositionInsert == NULL && dataState != DataStateInChangeTracking) {
+				
+				RESUME_INTERRUPTS();
 				
 				status = STATUS_ERROR;
 				ereport(LOG,
@@ -868,7 +892,9 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 			}
 			dataLength -= dataLengthLocal;
 					
-		} // while()			
+		} // while()		
+			
+		RESUME_INTERRUPTS();
 		} // if
 	}
 	

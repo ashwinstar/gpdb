@@ -42,9 +42,23 @@ typedef enum FaultInjectorIdentifier_e {
 	
 	Checkpoint,
 	
-	TransactionCommitPrepared,
+	TransactionCommitPass1FromCreatePendingToCreated,
 	
-	TransactionAbortPrepared,
+	TransactionCommitPass1FromDropInMemoryToDropPending,
+	
+	TransactionCommitPass1FromAbortingCreateNeededToAbortingCreate,
+	
+	TransactionAbortPass1FromCreatePendingToAbortingCreate,
+	
+	TransactionAbortPass1FromAbortingCreateNeededToAbortingCreate,
+	
+	TransactionCommitPass2FromDropInMemoryToDropPending,
+	
+	TransactionCommitPass2FromAbortingCreateNeededToAbortingCreate,
+	
+	TransactionAbortPass2FromCreatePendingToAbortingCreate,
+	
+	TransactionAbortPass2FromAbortingCreateNeededToAbortingCreate,
 	
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,

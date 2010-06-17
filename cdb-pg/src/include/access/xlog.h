@@ -178,7 +178,7 @@ extern void XLogFileRepFlushCache(
 	XLogRecPtr	*lastChangeTrackingEndLoc);
 
 extern void xlog_redo(XLogRecPtr lsn __attribute__((unused)) , XLogRecord *record);
-extern void xlog_desc(StringInfo buf, uint8 xl_info, char *rec);
+extern void xlog_desc(StringInfo buf, XLogRecord *record);
 
 extern void UpdateControlFile(void);
 extern Size XLOGShmemSize(void);

@@ -97,7 +97,7 @@ extern void DefineSequence(CreateSeqStmt *stmt);
 extern void AlterSequence(AlterSeqStmt *stmt);
 
 extern void seq_redo(XLogRecPtr lsn, XLogRecord *rptr);
-extern void seq_desc(StringInfo buf, uint8 xl_info, char *rec);
+extern void seq_desc(StringInfo buf, XLogRecord *record);
 
 /* Set the upper and lower bounds of a sequence */
 #ifndef INT64_IS_BUSTED

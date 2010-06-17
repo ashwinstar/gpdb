@@ -637,14 +637,17 @@ static int XLogReconcileEofInternal(
 							 XLogRecPtr	startLocation,
 							 XLogRecPtr	endLocation);
 
-static char *XLogContiguousRDataCopy(XLogRecData *rdata)
+static char *XLogContiguousCopy(
+	XLogRecord 		*record,
+	
+	XLogRecData 	*rdata)
 {
 	XLogRecData *rdt;
 	int32 len;
 	char *buffer;
 
 	rdt = rdata;
-	len = 0;
+	len = sizeof(XLogRecord);
 	while (rdt != NULL)
 	{
 		if (rdt->data != NULL)
@@ -654,13 +657,11 @@ static char *XLogContiguousRDataCopy(XLogRecData *rdata)
 		rdt = rdt->next;
 	}
 
-	if (len == 0)
-		return NULL;
-
 	buffer = (char*)palloc(len);
 
+	memcpy(buffer, record, sizeof(XLogRecord));
 	rdt = rdata;
-	len = 0;
+	len = sizeof(XLogRecord);
 	while (rdt != NULL)
 	{
 		if (rdt->data != NULL)
@@ -1153,20 +1154,18 @@ begin:;
 	if (Debug_xlog_insert_print)
 	{
 		StringInfoData buf;
-		char *contiguousRDataCopy;
+		char *contiguousCopy;
 
 		initStringInfo(&buf);
 		appendStringInfo(&buf, "XLOG INSERT @ %s: ",
 						 XLogLocationToString(&RecPtr));
 		XLog_OutRec(&buf, record);
 
-		contiguousRDataCopy = XLogContiguousRDataCopy(rdata);
-		if (contiguousRDataCopy != NULL)
-		{
-			appendStringInfo(&buf, " - ");
-			RmgrTable[record->xl_rmid].rm_desc(&buf, record->xl_info, contiguousRDataCopy);
-			pfree(contiguousRDataCopy);
-		}
+		contiguousCopy = XLogContiguousCopy(record, rdata);
+		appendStringInfo(&buf, " - ");
+		RmgrTable[record->xl_rmid].rm_desc(&buf, (XLogRecord*)contiguousCopy);
+		pfree(contiguousCopy);
+
 		elog(LOG, "%s", buf.data);
 		pfree(buf.data);
 	}
@@ -6009,8 +6008,7 @@ StartupXLOG_RedoPass1Context(void *arg)
 	XLog_OutRec(&buf, record);
 	appendStringInfo(&buf, " - ");
 	RmgrTable[record->xl_rmid].rm_desc(&buf,
-									   record->xl_info,
-									   XLogRecGetData(record));
+									   record);
 
 	errcontext("%s", buf.data);
 
@@ -6034,8 +6032,7 @@ StartupXLOG_RedoPass3Context(void *arg)
 	XLog_OutRec(&buf, record);
 	appendStringInfo(&buf, " - ");
 	RmgrTable[record->xl_rmid].rm_desc(&buf,
-									   record->xl_info,
-									   XLogRecGetData(record));
+									   record);
 
 	errcontext("%s", buf.data);
 
@@ -7283,8 +7280,7 @@ XLogStandbyRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoin
 			XLog_OutRec(&buf, record);
 			appendStringInfo(&buf, " - ");
 			RmgrTable[record->xl_rmid].rm_desc(&buf,
-											   record->xl_info,
-											   XLogRecGetData(record));
+											   record);
 			elog(LOG, "%s", buf.data);
 			pfree(buf.data);
 		}
@@ -8242,9 +8238,10 @@ xlog_redo(XLogRecPtr lsn __attribute__((unused)) , XLogRecord *record)
 }
 
 void
-xlog_desc(StringInfo buf, uint8 xl_info, char *rec)
+xlog_desc(StringInfo buf, XLogRecord *record)
 {
-	uint8		info = xl_info & ~XLR_INFO_MASK;
+	uint8		info = record->xl_info & ~XLR_INFO_MASK;
+	char		*rec = XLogRecGetData(record);
 
 	if (info == XLOG_CHECKPOINT_SHUTDOWN ||
 		info == XLOG_CHECKPOINT_ONLINE)
@@ -9049,8 +9046,7 @@ rm_redo_error_callback(void *arg)
 
 	initStringInfo(&buf);
 	RmgrTable[record->xl_rmid].rm_desc(&buf,
-									   record->xl_info,
-									   XLogRecGetData(record));
+									   record);
 
 	/* don't bother emitting empty description */
 	if (buf.len > 0)

@@ -20,6 +20,7 @@
 #include <unistd.h>
 #include <getopt_long.h>
 
+#include "access/bitmap.h"
 #include "access/clog.h"
 #include "access/htup.h"
 #include "access/gist_private.h"
@@ -1350,6 +1351,136 @@ dumpXLogRecord(XLogRecord *record, bool header_only)
 				default:
 					printf("a btree xlog type (%d) that isn't yet implemented in xlogdump", info);
 					break;
+			}
+			break;
+		case RM_BITMAP_ID:
+			switch (info)
+			{
+				case XLOG_BITMAP_INSERT_NEWLOV:
+				{
+					xl_bm_newpage	xlrec;
+					
+					memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
+					getSpaceName(xlrec.bm_node.spcNode);
+					getDbName(xlrec.bm_node.dbNode);
+					getRelName(xlrec.bm_node.relNode);
+
+					printf("bitmap_insert_newlov: index %s/%s/%s block %u\n",
+							spaceName, dbName, relName,
+							xlrec.bm_new_blkno);
+
+					break;
+				}
+				case XLOG_BITMAP_INSERT_LOVITEM:
+				{
+					xl_bm_lovitem	xlrec;
+					
+					memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
+					getSpaceName(xlrec.bm_node.spcNode);
+					getDbName(xlrec.bm_node.dbNode);
+					getRelName(xlrec.bm_node.relNode);
+
+					printf("bitmap_insert_lovitem: index %s/%s/%s block %u\n",
+							spaceName, dbName, relName,
+							xlrec.bm_lov_blkno);
+					
+					if (xlrec.bm_is_new_lov_blkno)
+						printf("bitmap_insert_lovitem: index %s/%s/%s block %u\n",
+								spaceName, dbName, relName,
+								BM_METAPAGE);
+					break;
+				}
+				case XLOG_BITMAP_INSERT_META:
+				{
+					xl_bm_metapage	xlrec;
+					
+					memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
+					getSpaceName(xlrec.bm_node.spcNode);
+					getDbName(xlrec.bm_node.dbNode);
+					getRelName(xlrec.bm_node.relNode);
+
+					printf("bitmap_insert_meta: index %s/%s/%s block %u\n",
+							spaceName, dbName, relName,
+							BM_METAPAGE);
+
+					break;
+				}
+				case XLOG_BITMAP_INSERT_BITMAP_LASTWORDS:
+				{
+					xl_bm_bitmap_lastwords xlrec;
+					
+					memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
+					getSpaceName(xlrec.bm_node.spcNode);
+					getDbName(xlrec.bm_node.dbNode);
+					getRelName(xlrec.bm_node.relNode);
+
+					printf("bitmap_insert_lastwords: index %s/%s/%s block %u\n",
+							spaceName, dbName, relName,
+							xlrec.bm_lov_blkno);
+
+					break;
+				}
+				case XLOG_BITMAP_INSERT_WORDS:
+				{
+					xl_bm_bitmapwords	xlrec;
+					
+					memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
+					getSpaceName(xlrec.bm_node.spcNode);
+					getDbName(xlrec.bm_node.dbNode);
+					getRelName(xlrec.bm_node.relNode);
+
+					printf("bitmap_insert_words: index %s/%s/%s block %u\n",
+							spaceName, dbName, relName,
+							xlrec.bm_lov_blkno);
+					
+					if (!xlrec.bm_is_last)
+						printf("bitmap_insert_words: index %s/%s/%s block %u\n",
+								spaceName, dbName, relName,
+								xlrec.bm_next_blkno);
+
+					break;
+				}
+				case XLOG_BITMAP_UPDATEWORD:
+				{
+					xl_bm_updateword	xlrec;
+					
+					memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
+					getSpaceName(xlrec.bm_node.spcNode);
+					getDbName(xlrec.bm_node.dbNode);
+					getRelName(xlrec.bm_node.relNode);
+
+					printf("bitmap_update_word: index %s/%s/%s block %u\n",
+							spaceName, dbName, relName,
+							xlrec.bm_blkno);
+				
+					break;
+				}
+				case XLOG_BITMAP_UPDATEWORDS:
+				{
+					xl_bm_updatewords	xlrec;
+				
+					memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
+					getSpaceName(xlrec.bm_node.spcNode);
+					getDbName(xlrec.bm_node.dbNode);
+					getRelName(xlrec.bm_node.relNode);
+
+					printf("bitmap_update_words: index %s/%s/%s block %u\n",
+							spaceName, dbName, relName,
+							xlrec.bm_first_blkno);
+
+					
+					if (xlrec.bm_two_pages)
+						printf("bitmap_update_words: index %s/%s/%s block %u\n",
+								spaceName, dbName, relName,
+								xlrec.bm_second_blkno);
+
+					if (xlrec.bm_new_lastpage)
+						printf("bitmap_update_words: index %s/%s/%s block %u\n",
+								spaceName, dbName, relName,
+								xlrec.bm_lov_blkno);
+
+					break;
+				}
 			}
 			break;
 		case RM_HASH_ID:

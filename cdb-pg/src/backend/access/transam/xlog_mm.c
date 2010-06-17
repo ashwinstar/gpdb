@@ -232,9 +232,10 @@ mmxlog_redo(XLogRecPtr lsn, XLogRecord *record)
  * For log output
  */
 void
-mmxlog_desc(StringInfo buf, uint8 xl_info, char *rec)
+mmxlog_desc(StringInfo buf, XLogRecord *record)
 {
-	uint8		info = xl_info & ~XLR_INFO_MASK;
+	uint8		info = record->xl_info & ~XLR_INFO_MASK;
+	char		*rec = XLogRecGetData(record);
 	xl_mm_fs_obj *xlrec = (xl_mm_fs_obj *) rec;
 	char *path = obj_get_path(xlrec); 
 

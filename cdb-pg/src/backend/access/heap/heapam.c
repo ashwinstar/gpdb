@@ -4688,16 +4688,17 @@ out_target(StringInfo buf, xl_heaptid *target)
 }
 
 void
-heap_desc(StringInfo buf, uint8 xl_info, char *rec)
+heap_desc(StringInfo buf, XLogRecord *record)
 {
-	uint8		info = xl_info & ~XLR_INFO_MASK;
+	uint8		info = record->xl_info & ~XLR_INFO_MASK;
+	char		*rec = XLogRecGetData(record);
 
 	info &= XLOG_HEAP_OPMASK;
 	if (info == XLOG_HEAP_INSERT)
 	{
 		xl_heap_insert *xlrec = (xl_heap_insert *) rec;
 
-		if (xl_info & XLOG_HEAP_INIT_PAGE)
+		if (record->xl_info & XLOG_HEAP_INIT_PAGE)
 			appendStringInfo(buf, "insert(init): ");
 		else
 			appendStringInfo(buf, "insert: ");
@@ -4714,7 +4715,7 @@ heap_desc(StringInfo buf, uint8 xl_info, char *rec)
 	{
 		xl_heap_update *xlrec = (xl_heap_update *) rec;
 
-		if (xl_info & XLOG_HEAP_INIT_PAGE)
+		if (record->xl_info & XLOG_HEAP_INIT_PAGE)
 			appendStringInfo(buf, "update(init): ");
 		else
 			appendStringInfo(buf, "update: ");
@@ -4727,7 +4728,7 @@ heap_desc(StringInfo buf, uint8 xl_info, char *rec)
 	{
 		xl_heap_update *xlrec = (xl_heap_update *) rec;
 
-		if (xl_info & XLOG_HEAP_INIT_PAGE)
+		if (record->xl_info & XLOG_HEAP_INIT_PAGE)
 			appendStringInfo(buf, "move(init): ");
 		else
 			appendStringInfo(buf, "move: ");
@@ -4841,9 +4842,10 @@ bool heap_getrelfilenode(
 }
 
 void
-heap2_desc(StringInfo buf, uint8 xl_info, char *rec)
+heap2_desc(StringInfo buf, XLogRecord *record)
 {
-	uint8		info = xl_info & ~XLR_INFO_MASK;
+	uint8		info = record->xl_info & ~XLR_INFO_MASK;
+	char		*rec = XLogRecGetData(record);
 
 	info &= XLOG_HEAP_OPMASK;
 	if (info == XLOG_HEAP2_FREEZE)

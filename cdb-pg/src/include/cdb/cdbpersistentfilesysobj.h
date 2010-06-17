@@ -216,11 +216,15 @@ extern void PersistentFileSysObj_EndXactDrop(
 	bool						ignoreNonExistence);
 
 extern void PersistentFileSysObj_PreparedEndXactAction(
+	TransactionId 					preparedXid,
+
+	const char 						*gid,
+
 	PersistentEndXactRecObjects 	*persistentObjects,
 	
 	bool							isCommit);
 
-extern void PersistentFileSysObj_ChangeMirrorExistenceState(
+extern void PersistentFileSysObj_ChangeMirrorState(
 	PersistentFsObjType 			fsObjType,
 
 	ItemPointer 					persistentTid,
@@ -285,6 +289,8 @@ extern void PersistentFileSysObj_MirrorReCreate(void);
 extern void PersistentFileSysObj_MarkMirrorReCreated(void);
 
 extern void PersistentFileSysObj_MirrorReDrop(void);
+
+extern void PersistentFileSysObj_MirrorAdd(void);
 
 typedef struct ResynchronizeScanToken
 {
