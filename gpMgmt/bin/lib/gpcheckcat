@@ -227,10 +227,14 @@ class execThread(Thread):
         self.db = db
         self.qry = qry
         self.curs = None
+        self.error = None
         Thread.__init__(self)
 
     def run(self):
-        self.curs = self.db.query(self.qry)
+        try:
+            self.curs = self.db.query(self.qry)
+        except BaseException, e:
+            self.error = e
     
 
 #############
@@ -266,7 +270,15 @@ def connect2run(qry, col):
     for th in threads:
         logger.debug('waiting on thread %s' % th.getName())
         th.join()
-        batch.append([th.cfg, th.curs])
+        if th.error:
+            setError(ERROR_NOREPAIR)
+            logger.error("%s:%d:%s : %s" % 
+                         (th.cfg['hostname'],
+                          th.cfg['port'],
+                          th.cfg['datadir'],
+                          str(th.error)))
+        else:
+            batch.append([th.cfg, th.curs])
 
     err = []
     for [cfg, curs] in batch:
