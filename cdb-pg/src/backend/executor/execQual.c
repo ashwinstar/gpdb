@@ -5029,6 +5029,7 @@ void GetNeededColumnsForScan(Node *expr, bool *mask, int n)
                                 CaseExpr *c = (CaseExpr *) expr;
                                 GetNeededColumnsForScan((Node *) c->arg, mask, n);
                                 GetNeededColumnsForScan((Node *) c->args, mask, n);
+                                GetNeededColumnsForScan((Node *) c->defresult, mask, n);
                         }
                         break;
                 case T_CaseWhen:
