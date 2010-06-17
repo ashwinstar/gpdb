@@ -270,6 +270,10 @@ def connect2run(qry, col):
     for th in threads:
         logger.debug('waiting on thread %s' % th.getName())
         th.join()
+
+        # XXX - this is not a good way to report the error due to the way that
+        # this function is usually called - the error gets reported before the
+        # test message and the test reports as "passing".
         if th.error:
             setError(ERROR_NOREPAIR)
             logger.error("%s:%d:%s : %s" % 
@@ -1744,6 +1748,11 @@ def checkPersistentTables():
     """
     queries.append([qname, qry])
 
+    # Look for extra/missing files in the filesystem
+    #
+    # Note: heap tables only ever store segment_file_num 0 in the persistent
+    # tables, while ao/co tables will store every segment_file_num that they
+    # use.  This results in the segment_file_num/relstorage where clause.
     qname = "gp_persistent_relation_node   <=> filesystem"
     qry = """
     SELECT coalesce(a.tablespace_oid, b.tablespace_oid) as tablespace_oid,
@@ -1751,18 +1760,42 @@ def checkPersistentTables():
        coalesce(a.relfilenode_oid, b.relfilenode_oid) as relfilenode_oid,
        coalesce(a.segment_file_num, b.segment_file_num) as segment_file_num,
        a.relfilenode_oid is null as filesystem,
-       b.relfilenode_oid is null as persistent
+       b.relfilenode_oid is null as persistent,
+       b.relkind, b.relstorage
     FROM   gp_persistent_relation_node a
-    FULL OUTER JOIN 
-           gp_persistent_relation_node_check() b
-      ON (a.tablespace_oid   = b.tablespace_oid    and
-          a.database_oid     = b.database_oid      and
-          a.relfilenode_oid  = b.relfilenode_oid   and
-          a.segment_file_num = b.segment_file_num)
-    WHERE a.relfilenode_oid is null 
-       OR (a.persistent_state = 2 and b.relfilenode_oid is null);
+    FULL OUTER JOIN (
+      SELECT p.*, c.relkind, c.relstorage
+      FROM   gp_persistent_relation_node_check() p
+        LEFT OUTER JOIN pg_class c 
+          ON (p.relfilenode_oid = c.relfilenode)
+      WHERE (p.segment_file_num = 0 or c.relstorage != 'h')
+    ) b ON (a.tablespace_oid   = b.tablespace_oid    and
+            a.database_oid     = b.database_oid      and
+            a.relfilenode_oid  = b.relfilenode_oid   and
+            a.segment_file_num = b.segment_file_num)
+    WHERE (a.relfilenode_oid is null OR 
+	   (a.persistent_state = 2 and b.relfilenode_oid is null))  and
+      coalesce(a.database_oid, b.database_oid) in (
+        SELECT oid FROM pg_database WHERE datname = current_database()
+        UNION ALL
+        SELECT 0
+      );
     """
     queries.append([qname, qry])
+
+    # Look for databases in the filesystem that have been dropped but still
+    # have dangling files.
+    qname = "pg_database                   <=> filesystem"
+    qry = """
+    SELECT tablespace_oid, database_oid, count(*)
+    FROM   gp_persistent_relation_node_check() p 
+      LEFT OUTER JOIN pg_database d 
+      ON (p.database_oid = d.oid) 
+    WHERE  d.oid is null and database_oid != 0
+    GROUP BY tablespace_oid, database_oid;
+    """
+    queries.append([qname, qry])
+
 
     # Phew, that was a lot of queries, eh?
     # now execute them on every segment.
