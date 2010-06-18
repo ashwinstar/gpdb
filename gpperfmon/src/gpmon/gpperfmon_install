@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 '''
-USAGE:   gpperfmon_install [--enable --password GPMON_PASSWORD --port GPDB_PORT] [--verbose]
+USAGE:   gpperfmon_install [--enable --password GPMON_PASSWORD --port GPDB_PORT] [--pgpass PATH_TO_FILE] [--verbose]
 
          where this script will install the gpperfmon database and schema
 
@@ -15,6 +15,7 @@ USAGE:   gpperfmon_install [--enable --password GPMON_PASSWORD --port GPDB_PORT]
 
         --password will set the password for gpmon superuser
         --port is the port used by gpperfmon to connect to GPDB
+        --pgpass is an option to allow overriding default path of $HOME/.pgpass
         --verbose will show output from sub-commands
 '''
 
@@ -75,6 +76,7 @@ if __name__ == '__main__':
     parser.add_option('-v', '--verbose', action='store_true')
     parser.add_option('-p', '--password', type='string')
     parser.add_option('-P', '--port', type='string')
+    parser.add_option('--pgpass', type='string')
     (options, args) = parser.parse_args()
 
     if options.help:
@@ -108,8 +110,13 @@ if __name__ == '__main__':
         master_data_dir = os.getenv('MASTER_DATA_DIRECTORY')
         pg_hba = "%s/pg_hba.conf" % master_data_dir
         home_dir = os.getenv('HOME')
-        pg_pass = "%s/.pgpass" % home_dir
-        old_pg_pass = "%s/.pgpass.%d" % (home_dir, time.time())
+
+        if options.pgpass:
+            pg_pass = options.pgpass
+        else:
+            pg_pass = "%s/.pgpass" % home_dir
+
+        old_pg_pass = "%s.%d" % (pg_pass, time.time())
 
         if not os.path.isfile( pg_hba ):
             logger.error("can not find pg_hba.conf at %s" % pg_hba)
