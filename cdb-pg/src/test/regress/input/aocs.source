@@ -321,3 +321,26 @@ DROP TABLE tenk_aocs4;
 DROP TABLE tenk_aocs5;
 
 set client_min_messages='WARNING';
+
+
+-- Test case for MPP-10086, make sure that we handle "else" clauses properly.
+
+DROP TABLE IF EXISTS aocs_new;
+
+CREATE TABLE aocs_new (
+    a integer NOT NULL,
+    b character(3),
+    c character(4),
+    d character varying(250),
+    e character varying(100) NOT NULL,
+    f character(1)
+)
+WITH (appendonly=true, orientation=column) distributed randomly;
+
+COPY aocs_new (a,b,c,d,e,f) FROM stdin;
+27	13	1350	something to be replaced	DOB	M
+84	69	6900	something to keep	DOT	M
+\.
+
+select (case when b='13' then 'replacement' else d end) as d from aocs_new order by 1;
+select distinct (case when b='13' then 'replacement' else d end) as d from aocs_new where f='M' order by 1;

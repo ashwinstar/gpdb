@@ -4939,231 +4939,54 @@ ExecProject(ProjectionInfo *projInfo, ExprDoneCond *isDone)
 	return slot;
 }
 
-void GetNeededColumnsForScan(Node *expr, bool *mask, int n)
+typedef struct neededColumnContext
 {
-        if(!expr)
-                return;
+	bool *mask;
+	int n;
+} neededColumnContext;
 
-        switch(nodeTag(expr))
-        {
-                case T_Var:
-                        {
-							Var *var = (Var *) expr;
-							if(var->varattno > 0) 
-							{
-								Assert(var->varattno <= n);
-								mask[var->varattno-1] = true;
-							}
-							/*
-							 * If all attributes are included,
-							 * set all entries in mask to true.
-							 */
-							else if(var->varattno == 0)
-							{
-								int i;
-								for (i=0; i<n; i++)
-									mask[i] = true;
-							}
-                        }
-                        break;
-                case T_ArrayRef:
-                        {
-                                ArrayRef *aref = (ArrayRef *) expr;
-                                GetNeededColumnsForScan((Node *) aref->refupperindexpr, mask, n);
-                                GetNeededColumnsForScan((Node *) aref->reflowerindexpr, mask, n);
-                                GetNeededColumnsForScan((Node *) aref->refexpr, mask, n);
-                                GetNeededColumnsForScan((Node *) aref->refassgnexpr, mask, n);
-                        }
-                        break;
-                case T_FuncExpr:
-                        {
-                                FuncExpr *f = (FuncExpr *) expr;
-                                GetNeededColumnsForScan((Node *) f->args, mask, n);
-                        }
-                        break;
-                case T_OpExpr:
-                        {
-                                OpExpr *o = (OpExpr *) expr;
-                                GetNeededColumnsForScan((Node *) o->args, mask, n);
-                        }
-                        break;
-                case T_DistinctExpr:
-                        {
-                                DistinctExpr *d = (DistinctExpr *) expr;
-                                GetNeededColumnsForScan((Node *) d->args, mask, n);
-                        }
-                        break;
-                case T_BoolExpr:
-                        {
-                                BoolExpr *b = (BoolExpr *) expr;
-                                GetNeededColumnsForScan((Node *) b->args, mask, n);
-                        }
-                        break;
-                case T_FieldSelect:
-                        {
-                                FieldSelect *f = (FieldSelect *) expr;
-                                GetNeededColumnsForScan((Node *) f->arg, mask, n);
-                        }
-                        break;
-                case T_FieldStore:
-                        {
-                                FieldStore *f = (FieldStore *) expr;
-                                GetNeededColumnsForScan((Node *) f->arg, mask, n);
-                                GetNeededColumnsForScan((Node *) f->newvals, mask, n);
-                        }
-                        break;
-                case T_RelabelType:
-                        {
-                                RelabelType *r = (RelabelType *) expr;
-                                GetNeededColumnsForScan((Node *) r->arg, mask, n);
-                        }
-                        break;
-                case T_ConvertRowtypeExpr:
-                        {
-                                ConvertRowtypeExpr *c = (ConvertRowtypeExpr *) expr;
-                                GetNeededColumnsForScan((Node *) c->arg, mask, n);
-                        }
-                        break;
-                case T_CaseExpr:
-                        {
-                                CaseExpr *c = (CaseExpr *) expr;
-                                GetNeededColumnsForScan((Node *) c->arg, mask, n);
-                                GetNeededColumnsForScan((Node *) c->args, mask, n);
-                                GetNeededColumnsForScan((Node *) c->defresult, mask, n);
-                        }
-                        break;
-                case T_CaseWhen:
-                        {
-                                CaseWhen *c = (CaseWhen *) expr;
-                                GetNeededColumnsForScan((Node *) c->expr, mask, n);
-                                GetNeededColumnsForScan((Node *) c->result, mask, n);
-                        }
-                        break;
-                case T_ArrayExpr:
-                        {
-                                ArrayExpr *a = (ArrayExpr *) expr;
-                                GetNeededColumnsForScan((Node *) a->elements, mask, n);
-                        }
-                        break;
-                case T_RowExpr:
-                        {
-                                RowExpr *r = (RowExpr *) expr;
-                                GetNeededColumnsForScan((Node *) r->args, mask, n);
-                        }
-                        break;
-                case T_RowCompareExpr:
-                        {
-                                RowCompareExpr *r = (RowCompareExpr *) expr;
-                                GetNeededColumnsForScan((Node *) r->largs, mask, n);
-                                GetNeededColumnsForScan((Node *) r->rargs, mask, n);
-                        }
-                        break;
-                case T_CoalesceExpr:
-                        {
-                                CoalesceExpr *c = (CoalesceExpr *) expr;
-                                GetNeededColumnsForScan((Node *) c->args, mask, n);
-                        }
-                        break;
-                case T_NullIfExpr:
-                        {
-                                NullIfExpr *e = (NullIfExpr *) expr;
-                                GetNeededColumnsForScan((Node *) e->args, mask, n);
-                        }
-                        break;
-                case T_NullTest:
-                        {
-                                NullTest *e = (NullTest *) expr;
-                                GetNeededColumnsForScan((Node *) e->arg, mask, n);
-                        }
-                        break;
-                case T_BooleanTest:
-                        {
-                                BooleanTest *b = (BooleanTest *) expr;
-                                GetNeededColumnsForScan((Node *) b->arg, mask, n);
-                        }
-                        break;
-                case T_CoerceToDomain:
-                        {
-                                CoerceToDomain *c = (CoerceToDomain *) expr;
-                                GetNeededColumnsForScan((Node *) c->arg, mask, n);
-                        }
-                        break;
-                case T_TargetEntry:
-                        {
-                                TargetEntry *t = (TargetEntry *) expr;
-                                GetNeededColumnsForScan((Node *) t->expr, mask, n);
-                        }
-                        break;
-                case T_List:
-                        {
-                                List *l = (List *) expr;
-                                ListCell *lc;
+static bool
+neededColumnContextWalker(Node *node, neededColumnContext *c)
+{
+	if (node == NULL)
+		return false;
 
-                                foreach(lc, l)
-                                {
-                                        GetNeededColumnsForScan(lfirst(lc), mask, n);
-                                }
-                        }
-                        break;
-                case T_ScalarArrayOpExpr:
-                        {
-                                ScalarArrayOpExpr *s = (ScalarArrayOpExpr *) expr;
-                                GetNeededColumnsForScan((Node *) s->args, mask, n);
-                        }
-                        break;
+	if (IsA(node, Var))
+	{
+		Var *var = (Var *)node;
 
-                /* The followings are no-op */
-                case T_Const:
-                case T_Param:
-                case T_CoerceToDomainValue:
-                case T_CaseTestExpr:
-                        break;
+		if (var->varattno > 0) 
+		{
+			Assert(var->varattno <= c->n);
+			c->mask[var->varattno - 1] = true;
+		}
+		/*
+		 * If all attributes are included,
+		 * set all entries in mask to true.
+		 */
+		else if (var->varattno == 0)
+		{
+			int i;
 
-                /* The following are invalid */
-                case T_GroupingFunc:
-                case T_Grouping:
-                case T_GroupId:
-                case T_WindowRef:
-                case T_SubPlan:
-                case T_MinMaxExpr:
-                case T_Aggref:
-                default:
-                        Assert(!"Grouping/Window/Subplan cannot appear in scan");
-                        elog(ERROR, "Invalid node type: %d", (int) nodeTag(expr));
-        }
+			for (i=0; i < c->n; i++)
+				c->mask[i] = true;
+		}
+
+		return false;
+	}
+	return expression_tree_walker(node, neededColumnContextWalker, (void * )c);
 }
 
-                        
+/*
+ * n specifies the number of allowed entries in mask: we use
+ * it for bounds-checking in the walker above.
+ */
+void GetNeededColumnsForScan(Node *expr, bool *mask, int n)
+{
+	neededColumnContext c;
 
-                        
-                        
+	c.mask = mask;
+	c.n = n;
 
-
-
-                        
-
-                        
-
-                        
-
-                                
-
-                        
-
-
-
-
-                                
-
-
-                        
-                        
-
-
-
-                        
-                
-                       
-                                
-                        
-        
+	neededColumnContextWalker(expr, &c);
+}
