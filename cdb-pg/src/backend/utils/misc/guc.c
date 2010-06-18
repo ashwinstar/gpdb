@@ -281,6 +281,7 @@ int			gp_max_tablespaces = GP_MAX_TABLESPACES_DEFAULT;
 int			gp_max_filespaces = GP_MAX_FILESPACES_DEFAULT;
 bool 		gp_initdb_mirrored = false;
 bool 		gp_before_persistence_work = false;
+bool 		gp_before_filespace_setup = false;
 bool		gp_change_tracking = true;
 bool		gp_persistent_skip_free_list = false;
 bool 		Debug_print_xlog_relation_change_info = false;
@@ -2210,6 +2211,16 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_before_persistence_work,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_before_filespace_setup", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("Indicates that the gp_persistent_filespace_node table is not setup and should not be used for lookups."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_before_filespace_setup,
 		false, NULL, NULL
 	},
 	

@@ -52,6 +52,7 @@
 #include "storage/pmsignal.h"
 #include "utils/builtins.h"
 #include "utils/flatfiles.h"
+#include "utils/guc.h"
 #include "utils/relcache.h"
 #include "utils/resowner.h"
 
@@ -249,6 +250,22 @@ write_database_file(Relation drel, bool startup)
 		sputs_quote(&buffer, datname);
 		appendStringInfo(&buffer, " %u %u %u\n",
 						 datoid, dattablespace, datfrozenxid);
+
+		/*
+		 * MPP-10111 - During database expansion we need to be able to bring a
+		 * database up in order to correct the filespace locations in the
+		 * catalog.  At this point we will not be able to resolve database paths
+		 * for databases not stored in "pg_default" or "pg_global".
+		 *
+		 * This is solved by passing a special guc to the startup during this
+		 * phase of expand to bypass logic involving non-system tablespaces.
+		 * Since we are bypassing the clearing of the relation cache on these
+		 * databases we need to ensure that we don't try to use them at all
+		 * elsewhere.  This is done with a similar check in
+		 * PersistentTablespace_GetPrimaryAndMirrorFilespaces().
+		 */
+		if (gp_before_filespace_setup && !IsBuiltinTablespace(dattablespace))
+			continue;
 
 		/*
 		 * Also clear relcache init file for each DB if starting up.

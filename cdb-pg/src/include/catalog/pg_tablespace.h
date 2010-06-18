@@ -74,4 +74,8 @@ DATA(insert OID = 1664 ( pg_global	PGUID _null_ _null_ _null_ _null_ 3052 ));
 #define DEFAULTTABLESPACE_OID 1663
 #define GLOBALTABLESPACE_OID 1664
 
+#define IsBuiltinTablespace(tablespaceId) \
+	(tablespaceId == DEFAULTTABLESPACE_OID || \
+	 tablespaceId == GLOBALTABLESPACE_OID)
+
 #endif   /* PG_TABLESPACE_H */

@@ -436,14 +436,24 @@ void PersistentTablespace_GetPrimaryAndMirrorFilespaces(
 	*primaryFilespaceLocation = NULL;
 	*mirrorFilespaceLocation = NULL;
 
-	if (tablespaceOid == GLOBALTABLESPACE_OID ||
-		tablespaceOid == DEFAULTTABLESPACE_OID)
+	if (IsBuiltinTablespace(tablespaceOid))
 	{
 		/*
 		 * Optimize out the common cases.
 		 */
 		 return;
 	}
+
+
+	/*
+	 * MPP-10111 - There is a point during gpexpand where we need to bring
+	 * the database up to fix the filespace locations for a segment.  At
+	 * this point in time the old filespace locations are wrong and we should
+	 * not trust anything currently stored there.  If the guc is set we
+	 * prevent the lookup of a any non builtin filespaces.
+	 */
+	if (gp_before_filespace_setup)
+		elog(ERROR, "can not lookup tablespace location: gp_before_filespace_setup=true");
 
 	PersistentTablespace_InitScan();
 
