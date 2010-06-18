@@ -256,6 +256,15 @@ def stop_database(options):
         logger.error('Failed to stop the database.')
         raise GpInitStandbyException(ex)
 
+def getDbUrlForInitStandby():
+    """
+    Return the dbconn.DbURL instance that should be used for connecting
+    """
+
+    #
+    # use template1 to avoid using PGDATABASE value (which definitely won't work during initsystem)
+    #
+    return dbconn.DbURL(dbname="template1")
 
 #-------------------------------------------------------------------------
 def start_database():
@@ -294,7 +303,7 @@ def start_master():
 def delete_standby(options):
     """Removes the standby master."""
     try:
-        dburl = dbconn.DbURL()
+        dburl = getDbUrlForInitStandby()
         array = gparray.GpArray.initFromCatalog(dburl, utility=True)
     except:
         logger.error('Failed to retrieve configuration information from the master.')
@@ -391,7 +400,7 @@ def create_standby(options):
     
     try:
         try:
-            dburl = dbconn.DbURL()
+            dburl = getDbUrlForInitStandby()
             array = gparray.GpArray.initFromCatalog(dburl, utility=True)
             
             # get list of master filespaces for later
@@ -663,7 +672,7 @@ def add_standby_to_catalog(options, standby_filespace_map):
     try:
         g_init_standby_state=INIT_STANDBY_STATE_UPDATE_CATALOG
         start_master()
-        dburl = dbconn.DbURL()
+        dburl = getDbUrlForInitStandby()
         conn = dbconn.connect(dburl, utility=True)
     
         logger.info('Adding standby master to catalog...')
@@ -693,7 +702,7 @@ def remove_standby_from_catalog(options, array):
     # update catalog
     try:
         start_master()
-        dburl = dbconn.DbURL()
+        dburl = getDbUrlForInitStandby()
         conn = dbconn.connect(dburl, utility=True)
 
         logger.info('Removing standby master from catalog...')
@@ -804,7 +813,7 @@ def undo_catalog_update(options, array):
     # See if we can connect to master
     conn = None
     try:
-        dburl = dbconn.DbURL()
+        dburl = getDbUrlForInitStandby()
         conn = dbconn.connect(dburl, utility=True)
         stop_master()
     except:
