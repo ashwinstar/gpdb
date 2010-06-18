@@ -1046,7 +1046,11 @@ class GpSystemStateProgram:
                     if seg.isSegmentPrimary(current_role=True):
                         self.__addResyncProgressFields(data, seg, segmentData, False)
                     else:
-                        self.__addResyncProgressFields(data, peerPrimary, outputFromCmd[peerPrimary.getSegmentDbId()], True)
+                        (primaryStatusFetchWarning, primaryOutputFromCmd) = hostNameToResults[peerPrimary.getSegmentHostName()]
+                        if primaryStatusFetchWarning is not None:
+                            data.addValue(VALUE__ERROR_GETTING_SEGMENT_STATUS, "Primary resync status error:" + str(primaryStatusFetchWarning))
+                        else:
+                            self.__addResyncProgressFields(data, peerPrimary, primaryOutputFromCmd[peerPrimary.getSegmentDbId()], True)
 
                 #
                 # Now PID status
