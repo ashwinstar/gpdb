@@ -46,7 +46,7 @@ def run_command(cmd, verbose=False):
         cmdstr = "%s >& /dev/null" % cmdstr
 
     logger.info(cmdstr)
-    p = Popen(cmdstr, shell=True)
+    p = Popen(cmdstr, shell=True, executable="/bin/bash")
     sts = os.waitpid(p.pid, 0)[1]
     if sts:
         raise Exception("error on cmd " + cmdstr)
@@ -67,6 +67,10 @@ if __name__ == '__main__':
     gphome = os.environ.get('GPHOME')
     if not gphome:
         logger.error("GPHOME not set")
+        sys.exit(1)
+
+    if not os.path.isfile('/bin/bash'):
+        logger.error("can not find /bin/bash")
         sys.exit(1)
 
     parser = OptParser(option_class=OptChecker)
@@ -168,7 +172,7 @@ if __name__ == '__main__':
             command = c
             run_command(command)
     except:
-        logger.error("error on command: %s" % command)
+        logger.error("error on command: %s" % command.cmd)
         logger.error("gpperfmon not successfully installed")
         sys.exit(1)
 
