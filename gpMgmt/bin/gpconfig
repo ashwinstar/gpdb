@@ -22,6 +22,7 @@ except ImportError, e:
 EXECNAME = os.path.split(__file__)[-1]
 
 prohibitedGucs = set(["port", "listen_addresses"])
+longShow = set(["port"])
 
 def parseargs():
 
@@ -46,11 +47,18 @@ def parseargs():
         parser.exit()
 
     if options.list:
-        doList()
+        doList(options.skipvalidation)
         parser.exit()
 
     if options.show:
-        doShow(options.show)
+
+        if options.skipvalidation:
+            logger.error('--skipvalidation can not be combined with --show')
+        elif options.show in longShow:
+            doShow(options.show, longform=True)
+        else:
+            doShow(options.show, longform=False)
+
         parser.exit()
 
     if options.change and options.remove:
@@ -141,7 +149,7 @@ def verbosePrint(options, normalized_hostname, hostname, directory):
         msg = "normalized_host=%s host=%s dir=%s" % (normalized_hostname, hostname, directory)
         logger.info(msg)
 
-def doList():
+def doList(skipvalidation):
     try:
         dburl = dbconn.DbURL()
         conn = dbconn.connect(dburl, True)
@@ -149,7 +157,7 @@ def doList():
 
         for row in rows:
             guc = Guc(row)
-            if guc.name not in prohibitedGucs:
+            if skipvalidation or (guc.name not in prohibitedGucs):
                 guc.Print()
     
         conn.close()
@@ -157,7 +165,7 @@ def doList():
     except DatabaseError, ex:
         logger.error('Failed to connect to database, this script can only be run when the database is up.')
 
-def doShow(gucname):
+def doShow(gucname, longform):
     try:
         dburl = dbconn.DbURL()
         conn = dbconn.connect(dburl, False)
@@ -168,36 +176,44 @@ def doShow(gucname):
         value = None
         valid = True
     
-        for row in rows:
-            guc = JetPackGuc(row)
+        if longform:
 
-            if guc.context == -1:
-                mastervalue = guc.value
-
-            elif not value:
-                value = guc.value
-
-            elif value == guc.value:
-                pass
-        
-            else:
-                valid = False
-                break
-
-        if valid:
-            print "Values on all segments are consistent"
-            print "GUC          : %s" % gucname
-            print "Master  value: %s" % mastervalue
-            print "Segment value: %s" % value
-        
-        else:
-            print "WARNING: GUCS ARE OUT OF SYNC: "
-
-            rows = dbconn.execSQL(conn, query)
+            print "GUC                 : %s" % gucname
             for row in rows:
                 guc = JetPackGuc(row)
-                guc.Print()
+                print "Context: %5s Value: %s" % (guc.context, guc.value)
 
+        else:
+            for row in rows:
+                guc = JetPackGuc(row)
+    
+                if guc.context == -1:
+                    mastervalue = guc.value
+    
+                elif not value:
+                    value = guc.value
+    
+                elif value == guc.value:
+                    pass
+            
+                else:
+                    valid = False
+                    break
+    
+            if valid:
+                print "Values on all segments are consistent"
+                print "GUC          : %s" % gucname
+                print "Master  value: %s" % mastervalue
+                print "Segment value: %s" % value
+            
+            else:
+                print "WARNING: GUCS ARE OUT OF SYNC: "
+    
+                rows = dbconn.execSQL(conn, query)
+                for row in rows:
+                    guc = JetPackGuc(row)
+                    guc.Print()
+    
         conn.close()
 
     except DatabaseError, ex:
@@ -278,21 +294,21 @@ if len(failedPings):
 try:
     # do the segments
     if not options.masteronly:
-	    for h in hostCache.get_hosts():
-	        directory_string = None
-	
-	        for seg in h.dbs:
-	
-	            if directory_string:
-	                directory_string = directory_string + "\n" + seg.datadir
-	            else:
-	                directory_string = seg.datadir
-	        
-	            verbosePrint(options, h.hostname, seg.hostname, seg.datadir)
-	    
-	        cmd = GpAddConfigScript(h.hostname, directory_string, options.entry, options.value, options.remove, ctxt=REMOTE, remoteHost=h.hostname)
-	        pool.addCommand(cmd)
-	
+        for h in hostCache.get_hosts():
+            directory_string = None
+    
+            for seg in h.dbs:
+    
+                if directory_string:
+                    directory_string = directory_string + "\n" + seg.datadir
+                else:
+                    directory_string = seg.datadir
+            
+                verbosePrint(options, h.hostname, seg.hostname, seg.datadir)
+        
+            cmd = GpAddConfigScript(h.hostname, directory_string, options.entry, options.value, options.remove, ctxt=REMOTE, remoteHost=h.hostname)
+            pool.addCommand(cmd)
+    
     # do the master
     verbosePrint(options, gparray.master.hostname, gparray.master.hostname, gparray.master.datadir)
     cmd = GpAddConfigScript("master", gparray.master.datadir, options.entry, options.mastervalue, options.remove, ctxt=REMOTE, remoteHost=gparray.master.hostname)
