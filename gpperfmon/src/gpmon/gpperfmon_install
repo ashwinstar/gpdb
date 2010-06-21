@@ -115,6 +115,14 @@ if __name__ == '__main__':
         pg_hba = "%s/pg_hba.conf" % master_data_dir
         home_dir = os.getenv('HOME')
 
+        if not master_data_dir:
+            logger.error("$MASTER_DATA_DIR must be set")
+            sys.exit(1)
+
+        if not home_dir:
+            logger.error("$HOME must be set")
+            sys.exit(1)
+
         if options.pgpass:
             pg_pass = options.pgpass
         else:
