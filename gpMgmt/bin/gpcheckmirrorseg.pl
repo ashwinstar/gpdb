@@ -388,6 +388,7 @@ sub ignore_list
 		pgstat
 		pgsql_tmp
 		pg_changetracking
+		pg_utilitymodedtmredo
 		gp_dbid
 		core
 		);
