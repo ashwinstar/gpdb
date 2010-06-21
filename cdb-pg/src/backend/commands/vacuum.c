@@ -766,6 +766,20 @@ get_rel_oids(List *relids, const RangeVar *vacrel, const char *stmttype,
 
 		while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 		{
+			Form_pg_class classForm = (Form_pg_class) GETSTRUCT(tuple);
+
+			/*
+			 * Don't include non-vacuum-able relations:
+			 *   - External tables
+			 *   - Foreign tables
+			 *   - etc.
+			 */
+			if (classForm->relkind == RELKIND_RELATION && (
+					classForm->relstorage == RELSTORAGE_EXTERNAL ||
+					classForm->relstorage == RELSTORAGE_FOREIGN  ||
+					classForm->relstorage == RELSTORAGE_VIRTUAL))
+				continue;
+
 			/* Make a relation list entry for this guy */
 			oldcontext = MemoryContextSwitchTo(vac_context);
 			oid_list = lappend_oid(oid_list, HeapTupleGetOid(tuple));
@@ -1074,6 +1088,13 @@ vac_update_datfrozenxid(void)
 			classForm->relkind != RELKIND_TOASTVALUE &&
 			classForm->relkind != RELKIND_AOSEGMENTS &&
 			classForm->relkind != RELKIND_AOBLOCKDIR)
+			continue;
+
+		/* MPP-10108 - exclude relations with external storage */
+		if (classForm->relkind == RELKIND_RELATION && (
+				classForm->relstorage == RELSTORAGE_EXTERNAL ||
+				classForm->relstorage == RELSTORAGE_FOREIGN  ||
+				classForm->relstorage == RELSTORAGE_VIRTUAL))
 			continue;
 
 		Assert(TransactionIdIsNormal(classForm->relfrozenxid));
