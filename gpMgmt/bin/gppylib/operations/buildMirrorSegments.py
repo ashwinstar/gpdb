@@ -263,6 +263,14 @@ class GpMirrorListToBuild:
                                                                                 fullResyncMirrorDbIds )
 
             self.__startAll(gpEnv, gpArray, mirrorsToStart)
+
+            #
+            # unpause the fault prober after having started the mirrors up
+            #
+            # converting the primaries may take a really time to complete because of initializing resynchronization
+            #
+            faultProber.unpauseFaultProber()
+
             self.__convertAllPrimaries(gpEnv, gpArray, primariesToConvert, convertPrimaryUsingFullResync)
         finally:
             if faultProber.isFaultProberPaused():
