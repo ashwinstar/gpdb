@@ -1549,14 +1549,14 @@ ChangeTrackingResult* ChangeTracking_GetChanges(ChangeTrackingRequest *request)
 		Oid 	space = request->entries[i].relFileNode.spcNode;
 		Oid 	db = request->entries[i].relFileNode.dbNode;
 		Oid 	rel = request->entries[i].relFileNode.relNode;
-		
+				
 		if(i != 0)
 			appendStringInfo(&sqlstmt, "OR ");
 		
 		appendStringInfo(&sqlstmt, "(space = %u AND "
 								   "db = %u AND "
 								   "rel = %u AND "
-								   "xlogloc < '(%X/%X)' AND "
+								   "xlogloc <= '(%X/%X)' AND "
 								   "xlogloc >= '(%X/%X)') ",
 								   space, db, rel, lsn_end.xlogid, lsn_end.xrecoff, 
 								   lsn_start.xlogid, lsn_start.xrecoff);

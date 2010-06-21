@@ -502,10 +502,14 @@ FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request)
 	int				count = 0;
 	int				thresholdCount = 0;
 	bool			mirrorDataLossOccurred = FALSE;
+	int				NumberOfRelations = request->count;
 	
 	FileRepResyncHashEntry_s	entry;
 	ChangeTrackingResult		*result = NULL;	
 
+	if (Debug_filerep_print)
+		elog(LOG, "FileRepPrimary_ResyncBufferPoolIncrementalWrite() NumberOfRelations:'%d' ", 
+			 NumberOfRelations);
 	
 	while (1)
 	{
@@ -517,9 +521,10 @@ FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request)
 					
 			for (ii = 0; ii < result->count; ii++)
 			{
-
+				
 				if (smgr_relation == NULL)
 				{
+					NumberOfRelations--;
 	#ifdef FILEREP_DEBUG
 					elog(LOG, "FileRepPrimary_ResyncBufferPoolIncrementalWrite() file:'%u/%u/%u' ",
 						 result->entries[ii].relFileNode.spcNode,
@@ -690,7 +695,7 @@ FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request)
 		
 		FileRepResync_ResetReadBufferRequest();
 			
-		if (result->ask_for_more == true)
+		if (result != NULL && result->ask_for_more == true)
 		{
 			Assert(request->count == 1);
 			request->entries[0].lsn_start = result->next_start_lsn;
@@ -704,6 +709,8 @@ FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request)
 		
 	ChangeTracking_FreeRequest(request);
 	ChangeTracking_FreeResult(result);
+	
+	Insist(NumberOfRelations == 0);
 	
 	if (mirrorDataLossOccurred)
 		status = STATUS_ERROR;

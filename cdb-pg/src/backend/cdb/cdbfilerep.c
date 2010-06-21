@@ -2180,7 +2180,8 @@ FileRep_CalculateAdler32(unsigned char *buf, int len)
 	uint32 s2 = (adler >> 16) & 0xffff;
 	int n;
 	
-	for (n = 0; n < len; n++) {
+	for (n = 0; n < len; n++) 
+	{
 		s1 = (s1 + buf[n]) % ADLER_BASE;
 		s2 = (s2 + s1)     % ADLER_BASE;
 	}
@@ -2188,7 +2189,37 @@ FileRep_CalculateAdler32(unsigned char *buf, int len)
 }
 
 /*
+ * To not affect performance the simplest checksum algoritm will be used by default. 
  *
+ * The simplest checksum algorithm is the so-called longitudinal parity check, which breaks the data into "words" 
+ * with a fixed number n of bits, and then computes the exclusive or of all those words. The result is appended to 
+ * the message as an extra word. To check the integrity of a message, the receiver computes the exclusive or 
+ * of all its words, including the checksum; if the result is not a word with n zeros, the receiver knows that 
+ * a transmission error occurred.
+ *
+ * With this checksum, any transmission error that flips a single bit of the message, or an odd number of bits, 
+ * will be detected as an incorrect checksum. However, an error that affects two bits will not be detected if 
+ * those bits lie at the same position in two distinct words. If the affected bits are independently chosen at random, 
+ * the probability of a two-bit error being undetected is 1/n.
+ */
+static pg_crc32 
+FileRep_CalculateParity(unsigned char *buf, int len)
+{
+	uint32 parity = 0;
+	int n;
+	
+	for (n = 0; n < len; n++) 
+	{
+		parity ^= buf[n];
+	}	
+
+	return parity;
+}
+
+/*
+ * To not affect performance simple checksum algoritm is used by default. 
+ * 
+ * CRC Adler32 can be used by setting GUC 'filerep_crc_on = true'
  */
 void
 FileRep_CalculateCrc(
@@ -2202,6 +2233,11 @@ FileRep_CalculateCrc(
 	{
 		/* Compute Adler 32 */
 		_crc = FileRep_CalculateAdler32((unsigned char *) data, length);
+	}
+	else
+	{
+		/* compute parity byte */
+		_crc = FileRep_CalculateParity((unsigned char *) data, length);
 	}
 
 	*crc = _crc;

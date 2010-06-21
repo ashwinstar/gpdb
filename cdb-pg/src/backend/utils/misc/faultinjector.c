@@ -74,6 +74,8 @@ FaultInjectorTypeEnumToString[] = {
 	_("error"),
 	_("infinite_loop"),
 	_("data_corruption"),
+	_("suspend"),
+	_("resume"),
 	_("reset"),
 	_("status"),
 	_("not recognized"),
@@ -110,7 +112,7 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault before checkpoint is taken */
 	_("transaction_commit_pass1_from_create_pending_to_created"),
 		/* inject fault after persistent state change is permanently stored during first pass */
-	_("transaction_commit_pass1_from_drop_inmemory_to_drop_pending"),
+	_("transaction_commit_pass1_from_drop_in_memory_to_drop_pending"),
 		/* inject fault after persistent state change is permanently stored during first pass */
 	_("transaction_commit_pass1_from_aborting_create_needed_to_aborting_create"),
 		/* inject fault after persistent state change is permanently stored during first pass */
@@ -118,13 +120,31 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault after persistent state change is permanently stored during first pass */
 	_("transaction_abort_pass1_from_aborting_create_needed_to_aborting_create"),
 		/* inject fault after persistent state change is permanently stored during first pass */
-	_("transaction_commit_pass2_from_drop_inmemory_to_drop_pending"),
+	_("transaction_commit_pass2_from_drop_in_memory_to_drop_pending"),
 		/* inject fault after physical drop and before final persistent state change is permanently stored during second pass */
 	_("transaction_commit_pass2_from_aborting_create_needed_to_aborting_create"),
 		/* inject fault after physical drop and before final persistent state change is permanently stored during second pass */
 	_("transaction_abort_pass2_from_create_pending_to_aborting_create"),
 		/* inject fault after physical drop and before final persistent state change is permanently stored during second pass */
 	_("transaction_abort_pass2_from_aborting_create_needed_to_aborting_create"),
+		/* inject fault after physical drop and before final persistent state change is permanently stored during second pass */
+	_("finish_prepared_transaction_commit_pass1_from_create_pending_to_created"),
+		/* inject fault after persistent state change is permanently stored during first pass */
+	_("finish_prepared_transaction_commit_pass1_from_drop_in_memory_to_drop_pending"),
+		/* inject fault after persistent state change is permanently stored during first pass */
+	_("finish_prepared_transaction_commit_pass1_from_aborting_create_needed_to_aborting_create"),
+		/* inject fault after persistent state change is permanently stored during first pass */
+	_("finish_prepared_transaction_abort_pass1_from_create_pending_to_aborting_create"),
+		/* inject fault after persistent state change is permanently stored during first pass */
+	_("finish_prepared_transaction_abort_pass1_from_aborting_create_needed_to_aborting_create"),
+		/* inject fault after persistent state change is permanently stored during first pass */
+	_("finish_prepared_transaction_commit_pass2_from_drop_in_memory_to_drop_pending"),
+		/* inject fault after physical drop and before final persistent state change is permanently stored during second pass */
+	_("finish_prepared_transaction_commit_pass2_from_aborting_create_needed_to_aborting_create"),
+		/* inject fault after physical drop and before final persistent state change is permanently stored during second pass */
+	_("finish_prepared_transaction_abort_pass2_from_create_pending_to_aborting_create"),
+		/* inject fault after physical drop and before final persistent state change is permanently stored during second pass */
+	_("finish_prepared_transaction_abort_pass2_from_aborting_create_needed_to_aborting_create"),
 		/* inject fault after physical drop and before final persistent state change is permanently stored during second pass */
 	_("not recognized"),
 };
@@ -368,16 +388,18 @@ FaultInjector_InjectFaultIfSet(
 			break;
 		case FaultInjectorTypeSleep:
 			ereport(LOG, 
-					(errmsg("Fault is injected identifier:'%s'  ",
-							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier])));	
+					(errmsg("fault is injected identifier:'%s' type:'%s' ",
+							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
+							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));	
 			
 			pg_usleep(entryLocal->sleepTime * 1000000L);
 			break;
 		case FaultInjectorTypeFault:
 			FileRepSubProcess_SetState(FileRepStateFault);
 			ereport(LOG, 
-					(errmsg("Fault is injected identifier:'%s'  ",
-							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier])));	
+					(errmsg("fault is injected identifier:'%s' type:'%s' ",
+							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
+							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));	
 			
 			break;
 		case FaultInjectorTypeFatal:
@@ -386,8 +408,9 @@ FaultInjector_InjectFaultIfSet(
 			FaultInjector_UpdateHashEntry(entryLocal);	
 			
 			ereport(FATAL, 
-					(errmsg("Fault is injected identifier:'%s'  ",
-							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier])));	
+					(errmsg("fault is injected identifier:'%s' type:'%s' ",
+							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
+							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));	
 
 			break;
 		case FaultInjectorTypePanic:
@@ -396,8 +419,9 @@ FaultInjector_InjectFaultIfSet(
 			FaultInjector_UpdateHashEntry(entryLocal);	
 			
 			ereport(PANIC, 
-					(errmsg("Fault is injected identifier:'%s'  ",
-							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier])));	
+					(errmsg("fault is injected identifier:'%s' type:'%s' ",
+							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
+							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));	
 
 			break;
 		case FaultInjectorTypeError:
@@ -406,19 +430,42 @@ FaultInjector_InjectFaultIfSet(
 			FaultInjector_UpdateHashEntry(entryLocal);	
 			
 			ereport(ERROR, 
-					(errmsg("Fault is injected identifier:'%s'  ",
-							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier])));	
+					(errmsg("fault is injected identifier:'%s' type:'%s' ",
+							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
+							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));	
 			break;
 		case FaultInjectorTypeInfiniteLoop:
 			ereport(LOG, 
-					(errmsg("Fault is injected identifier:'%s'  ",
-							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier])));	
+					(errmsg("fault is injected identifier:'%s' type:'%s' ",
+							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
+							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));	
 			for (ii=0; ii < 36; ii++)
 				pg_usleep(100000000L); // sleep for 1 hour (100 sec * 36 = 1 hour)
 			break;
 		case FaultInjectorTypeDataCorruption:
 			/* TO DO */
 			break;
+		case FaultInjectorTypeSuspend:
+		{
+			FaultInjectorEntry_s	*entry;
+			
+			ereport(LOG, 
+					(errmsg("fault is injected identifier:'%s' type:'%s' ",
+							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
+							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));	
+			
+			while ((entry = FaultInjector_LookupHashEntry(entryLocal->faultInjectorIdentifier)) != NULL &&
+				   entry->faultInjectorType != FaultInjectorTypeResume)
+			{
+				pg_usleep(1000000L);  // 1 sec
+			}
+
+			ereport(LOG, 
+					(errmsg("fault is injected identifier:'%s' type:'%s'  ",
+							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
+							FaultInjectorTypeEnumToString[entry->faultInjectorType])));				
+			break;
+		}
 		case FaultInjectorTypeReset:
 		case FaultInjectorTypeStatus:
 
@@ -571,6 +618,15 @@ FaultInjector_NewHashEntry(
 		case TransactionCommitPass2FromAbortingCreateNeededToAbortingCreate:
 		case TransactionAbortPass2FromCreatePendingToAbortingCreate:
 		case TransactionAbortPass2FromAbortingCreateNeededToAbortingCreate:
+		case FinishPreparedTransactionCommitPass1FromCreatePendingToCreated:
+		case FinishPreparedTransactionCommitPass1FromDropInMemoryToDropPending:
+		case FinishPreparedTransactionCommitPass1FromAbortingCreateNeededToAbortingCreate:
+		case FinishPreparedTransactionAbortPass1FromCreatePendingToAbortingCreate:
+		case FinishPreparedTransactionAbortPass1FromAbortingCreateNeededToAbortingCreate:
+		case FinishPreparedTransactionCommitPass2FromDropInMemoryToDropPending:
+		case FinishPreparedTransactionCommitPass2FromAbortingCreateNeededToAbortingCreate:
+		case FinishPreparedTransactionAbortPass2FromCreatePendingToAbortingCreate:
+		case FinishPreparedTransactionAbortPass2FromAbortingCreateNeededToAbortingCreate:
 			
 			if (fileRepRole == FileRepMirrorRole)
 			{
@@ -671,8 +727,15 @@ FaultInjector_UpdateHashEntry(
 		goto exit;
 	}
 	
-	entryLocal->faultInjectorState = entry->faultInjectorState;
-	entryLocal->occurrence = entry->occurrence;
+	if (entry->faultInjectorType == FaultInjectorTypeResume)
+	{
+		entryLocal->faultInjectorType = FaultInjectorTypeResume;
+	}
+	else
+	{	
+		entryLocal->faultInjectorState = entry->faultInjectorState;
+		entryLocal->occurrence = entry->occurrence;
+	}
 	
 	LockRelease();
 	
@@ -818,6 +881,10 @@ FaultInjector_SetFaultInjection(
 			}
 			break;
 		}
+		case FaultInjectorTypeResume:
+			FaultInjector_UpdateHashEntry(entry);	
+			
+			break;
 		default: 
 			
 			status = FaultInjector_NewHashEntry(entry);

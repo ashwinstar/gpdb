@@ -280,7 +280,7 @@ FileRepPrimary_RunChangeTrackingCompacting(void)
 {
 	int		retry = 0;
 	
-	elog(LOG, "FileRepPrimary_StartRecoveryInChangeTracking()");
+	elog(LOG, "FileRepPrimary_RunChangeTrackingCompacting()");
 	
 	while (1) {
 		

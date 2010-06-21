@@ -296,6 +296,7 @@ class GpInjectFaultProgram:
                          help="fault type: sleep (insert sleep), fault (report fault to postmaster and fts prober), " \
 			      "fatal (inject FATAL error), panic (inject PANIC error), error (inject ERROR), " \
 			      "infinite_loop, data_curruption (corrupt data in memory and persistent media), " \
+			      "suspend (suspend execution), resume (resume execution that was suspended), " \
 			      "reset (remove fault injection), status (report fault injection status) ")
         addTo.add_option("-z", "--sleep_time_s", dest="sleepTimeSeconds", type="int", default="10" ,
                             metavar="<sleepTime>",
@@ -313,6 +314,24 @@ class GpInjectFaultProgram:
 			      "filerep_transition_to_resync (inject fault during transition to InResync), " \
 			      "filerep_transition_to_sync (inject fault during transition to InSync), " \
 			      "checkpoint (inject fault before checkpoint is taken), " \
+			      "transaction_commit_pass1_from_create_pending_to_created, " \
+			      "transaction_commit_pass1_from_drop_in_memory_to_drop_pending, " \
+			      "transaction_commit_pass1_from_aborting_create_needed_to_aborting_create, " \
+			      "transaction_abort_pass1_from_create_pending_to_aborting_create, " \
+			      "transaction_abort_pass1_from_aborting_create_needed_to_aborting_create, " \
+			      "transaction_commit_pass2_from_drop_in_memory_to_drop_pending, " \
+			      "transaction_commit_pass2_from_aborting_create_needed_to_aborting_create, " \
+			      "transaction_abort_pass2_from_create_pending_to_aborting_create, " \
+			      "transaction_abort_pass2_from_aborting_create_needed_to_aborting_create, " \
+			      "finish_prepared_transaction_commit_pass1_from_create_pending_to_created, " \
+			      "finish_prepared_transaction_commit_pass1_from_drop_in_memory_to_drop_pending, " \
+			      "finish_prepared_transaction_commit_pass1_from_aborting_create_needed_to_aborting_create, " \
+			      "finish_prepared_transaction_abort_pass1_from_create_pending_to_aborting_create, " \
+			      "finish_prepared_transaction_abort_pass1_from_aborting_create_needed_to_aborting_create, " \
+			      "finish_prepared_transaction_commit_pass2_from_drop_in_memory_to_drop_pending, " \
+			      "finish_prepared_transaction_commit_pass2_from_aborting_create_needed_to_aborting_create, " \
+			      "finish_prepared_transaction_abort_pass2_from_create_pending_to_aborting_create, " \
+			      "finish_prepared_transaction_abort_pass2_from_aborting_create_needed_to_aborting_create, " \
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
                          metavar="ddlStatement",

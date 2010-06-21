@@ -60,6 +60,24 @@ typedef enum FaultInjectorIdentifier_e {
 	
 	TransactionAbortPass2FromAbortingCreateNeededToAbortingCreate,
 	
+	FinishPreparedTransactionCommitPass1FromCreatePendingToCreated,
+	
+	FinishPreparedTransactionCommitPass1FromDropInMemoryToDropPending,
+	
+	FinishPreparedTransactionCommitPass1FromAbortingCreateNeededToAbortingCreate,
+	
+	FinishPreparedTransactionAbortPass1FromCreatePendingToAbortingCreate,
+	
+	FinishPreparedTransactionAbortPass1FromAbortingCreateNeededToAbortingCreate,
+	
+	FinishPreparedTransactionCommitPass2FromDropInMemoryToDropPending,
+	
+	FinishPreparedTransactionCommitPass2FromAbortingCreateNeededToAbortingCreate,
+	
+	FinishPreparedTransactionAbortPass2FromCreatePendingToAbortingCreate,
+	
+	FinishPreparedTransactionAbortPass2FromAbortingCreateNeededToAbortingCreate,	
+	
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,
 	
@@ -84,6 +102,10 @@ typedef enum FaultInjectorType_e {
 	FaultInjectorTypeInfiniteLoop,
 	
 	FaultInjectorTypeDataCorruption,
+	
+	FaultInjectorTypeSuspend,
+	
+	FaultInjectorTypeResume,
 	
 	FaultInjectorTypeReset,
 	

@@ -39,6 +39,7 @@
 #include "access/transam.h"
 #include "utils/guc.h"
 #include "utils/builtins.h"
+#include "utils/faultinjector.h"
 
 typedef struct PersistentFileSysObjPrivateSharedMemory
 {
@@ -2617,18 +2618,43 @@ void PersistentFileSysObj_PreparedEndXactAction(
 			if (!isCommit)
 			{
 				abortingCreate = true;
-			}
+			}				
+#ifdef FAULT_INJECTOR	
+				FaultInjector_InjectFaultIfSet(
+											   isCommit ?
+											   FinishPreparedTransactionCommitPass1FromCreatePendingToCreated :
+											   FinishPreparedTransactionAbortPass1FromCreatePendingToAbortingCreate, 
+											   DDLNotSpecified,
+											   "",	// databaseName
+											   ""); // tableName
+#endif									
 			break;
 		
 		case PersistentEndXactFileSysAction_Drop:
 			if (isCommit)
 			{
 				dropPending = true;
+#ifdef FAULT_INJECTOR	
+				FaultInjector_InjectFaultIfSet(
+											   FinishPreparedTransactionCommitPass1FromDropInMemoryToDropPending, 
+											   DDLNotSpecified,
+											   "",	// databaseName
+											   ""); // tableName
+#endif													
 			}
 			break;
 		
 		case PersistentEndXactFileSysAction_AbortingCreateNeeded:
 			abortingCreate = true;
+#ifdef FAULT_INJECTOR	
+				FaultInjector_InjectFaultIfSet(
+											   isCommit ?
+											   FinishPreparedTransactionCommitPass1FromAbortingCreateNeededToAbortingCreate:
+											   FinishPreparedTransactionAbortPass1FromAbortingCreateNeededToAbortingCreate, 
+											   DDLNotSpecified,
+											   "",	// databaseName
+											   ""); // tableName
+#endif																						
 			break;
 			
 		default:
@@ -2648,8 +2674,67 @@ void PersistentFileSysObj_PreparedEndXactAction(
 									fileSysActionInfo->persistentSerialNum,
 									/* ignoreNonExistence */ abortingCreate);
 		}
+		
+#ifdef FAULT_INJECTOR			
+		if (abortingCreate && !isCommit)
+		{
+			FaultInjector_InjectFaultIfSet(
+										   FinishPreparedTransactionAbortPass2FromCreatePendingToAbortingCreate,
+										   DDLNotSpecified,
+										   "",	// databaseName
+										   ""); // tableName															
+		}
+		
+		if (dropPending && isCommit)
+		{
+			FaultInjector_InjectFaultIfSet(
+										   FinishPreparedTransactionCommitPass2FromDropInMemoryToDropPending,
+										   DDLNotSpecified,
+										   "",	// databaseName
+										   ""); // tableName																		
+		}
+		
+		switch (action)
+		{
+			case PersistentEndXactFileSysAction_Create:
+				if (!isCommit)
+				{
+					FaultInjector_InjectFaultIfSet(
+												   FinishPreparedTransactionAbortPass2FromCreatePendingToAbortingCreate,
+												   DDLNotSpecified,
+												   "",	// databaseName
+												   ""); // tableName																			
+				}
+				break;
+				
+			case PersistentEndXactFileSysAction_Drop:
+				if (isCommit)
+				{
+					FaultInjector_InjectFaultIfSet(
+												   FinishPreparedTransactionCommitPass2FromDropInMemoryToDropPending,
+												   DDLNotSpecified,
+												   "",	// databaseName
+												   ""); // tableName																		
+				}
+				break;
+				
+			case PersistentEndXactFileSysAction_AbortingCreateNeeded:
+				FaultInjector_InjectFaultIfSet(
+											   isCommit ?
+											   FinishPreparedTransactionCommitPass2FromAbortingCreateNeededToAbortingCreate :
+											   FinishPreparedTransactionAbortPass2FromAbortingCreateNeededToAbortingCreate,
+											   DDLNotSpecified,
+											   "",	// databaseName
+											   ""); // tableName																		
+				break;
+				
+			default:
+				break;
+		}		
+		
+#endif					
 	}
-
+		
 	if (isCommit)
 	{
 		/*

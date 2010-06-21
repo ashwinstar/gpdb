@@ -1884,24 +1884,16 @@ smgrDoDeleteActions(
 			if (!forCommit)
 			{
 				abortingCreate = true;
+			}
 #ifdef FAULT_INJECTOR	
 				FaultInjector_InjectFaultIfSet(
+											   forCommit ?
+											   TransactionCommitPass1FromCreatePendingToCreated :
 											   TransactionAbortPass1FromCreatePendingToAbortingCreate, 
 											   DDLNotSpecified,
 											   "",	// databaseName
 											   ""); // tableName
 #endif					
-			}
-			else
-			{
-#ifdef FAULT_INJECTOR	
-					FaultInjector_InjectFaultIfSet(
-												   TransactionCommitPass1FromCreatePendingToCreated, 
-												   DDLNotSpecified,
-												   "",	// databaseName
-												   ""); // tableName
-#endif	
-			}					
 			break;
 
 		case PersistentEndXactFileSysAction_Drop:

@@ -2488,18 +2488,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 		
 	{
-		{"Debug_filerep_crc_on", PGC_SUSET, DEVELOPER_OPTIONS,
-			gettext_noop("Turn on filerep crc"),
+		{"filerep_crc_on", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("enable adler 32 crc in filerep"),
 			NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_filerep_crc_on,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 
 	{
-		{"Debug_filerep_print", PGC_SUSET, DEVELOPER_OPTIONS,
-			gettext_noop("Turn on filerep logs"),
+		{"debug_filerep_print", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("enable filerep logs"),
 			NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
@@ -3889,8 +3889,8 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"file_rep_message_body_length", PGC_POSTMASTER, DEVELOPER_OPTIONS,
-			gettext_noop("Size (in bytes) for FileRep message body."),
+		{"filerep_message_body_length", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("size (in bytes) for filerep message body."),
 			NULL,
 			GUC_NO_SHOW_ALL
 		},
@@ -3899,8 +3899,8 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"file_rep_buffer_size", PGC_POSTMASTER, DEVELOPER_OPTIONS,
-			gettext_noop("Size (in bytes) for FileRep shared memory."),
+		{"filerep_buffer_size", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("size (in bytes) for filerep shared memory"),
 			NULL,
 			GUC_NO_SHOW_ALL
 		},
@@ -3909,8 +3909,8 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"file_rep_ack_buffer_size", PGC_POSTMASTER, DEVELOPER_OPTIONS,
-			gettext_noop("Size (in bytes) for FileRepAck shared memory."),
+		{"filerep_ack_buffer_size", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("size (in bytes) for filerep ack shared memory"),
 			NULL,
 			GUC_NO_SHOW_ALL
 		},
@@ -3919,8 +3919,8 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"file_rep_retry", PGC_POSTMASTER, DEVELOPER_OPTIONS,
-			gettext_noop("Number of retries to insert message in shared memory before fault is reported."),
+		{"filerep_retry", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("number of retries to insert message in filerep shared memory before fault is reported"),
 			NULL,
 			GUC_NO_SHOW_ALL
 		},
@@ -3929,8 +3929,8 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"file_rep_min_data_before_flush", PGC_POSTMASTER, DEVELOPER_OPTIONS,
-			gettext_noop("Size (in bytes) that a FileRep buffer must reach before the client flushes the data."),
+		{"filerep_min_data_before_flush", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("size (in bytes) that a filerep buffer must reach before the client flushes the data"),
 			NULL,
 			GUC_NO_SHOW_ALL
 		},

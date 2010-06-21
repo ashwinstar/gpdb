@@ -5084,6 +5084,7 @@ void
 XLogInChangeTrackingTransition(void)
 {
 	XLogRecPtr	lastChangeTrackingEndLoc;
+	XLogRecPtr      recPtrInit = {0, 0};
 
 	if (Debug_persistent_print)
 		elog(Debug_persistent_print_level, 
@@ -5104,8 +5105,23 @@ XLogInChangeTrackingTransition(void)
 			 "XLogInChangeTrackingTransition: Calling ChangeTracking_CreateInitialFromPreviousCheckpoint with lastChangeTrackingEndLoc %s",
 			 XLogLocationToString(&lastChangeTrackingEndLoc));
 		
-	ChangeTracking_CreateInitialFromPreviousCheckpoint(&lastChangeTrackingEndLoc);
-		
+	/*
+	 * During gpstart the following order is followed for recovery:
+	 *                      a) xlog records from last checkpoint are replayed into change tracking log file
+	 *                      b) xlog is replayed by 3 pass mechanism
+	 * In that case XLogCtl->lastChangeTrackingEndLoc will be still set to {0,0} and
+	 * in order to insert all xlog records from last checkpoint into change tracking log file
+	 * ChangeTracking_CreateInitialFromPreviousCheckpoint(NULL); has to be called.
+	 */
+	if (XLByteEQ(lastChangeTrackingEndLoc, recPtrInit))
+	{
+		ChangeTracking_CreateInitialFromPreviousCheckpoint(NULL);
+	}
+	else
+	{
+		ChangeTracking_CreateInitialFromPreviousCheckpoint(&lastChangeTrackingEndLoc);
+	}
+	
 	LWLockRelease(ChangeTrackingTransitionLock);
 
 	if (Debug_persistent_print)

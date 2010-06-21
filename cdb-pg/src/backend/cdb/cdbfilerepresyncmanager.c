@@ -1570,7 +1570,7 @@ FileRepPrimary_GetResyncEntry(ChangeTrackingRequest **request)
 				hash_seq_term(&hash_status);
 				entry = NULL;
 			}
-						
+			Insist(requestLocal->count == NumberOfRelations);
 			*request = requestLocal;
 						
 		} // if (NumberOfRelations > 0)
