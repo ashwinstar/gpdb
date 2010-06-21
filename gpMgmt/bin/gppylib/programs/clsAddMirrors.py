@@ -544,8 +544,12 @@ class GpAddMirrorsProgram:
             gpArray.setFaultStrategy(gparray.FAULT_STRATEGY_FILE_REPLICATION)
             mirrorBuilder.buildMirrors("add", gpEnv, gpArray )
 
-            logger.info("Mirrors have been added; data synchronization is in progress.")
+            logger.info("******************************************************************")
+            logger.info("Mirror segments have been added; data synchronization is in progress.")
+            logger.info("Data synchronization will continue in the background.")
+            logger.info("")
             logger.info("Use  gpstate -s  to check the resynchronization progress.")
+            logger.info("******************************************************************")
                 
         return 0 # success -- exit code 0!
 
