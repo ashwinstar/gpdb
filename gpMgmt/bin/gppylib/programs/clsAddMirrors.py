@@ -536,8 +536,8 @@ class GpAddMirrorsProgram:
             self.__outputToFile(mirrorBuilder, self.__options.outputSampleConfigFile, gpArray)
             logger.info('Configuration file output to %s successfully.' % self.__options.outputSampleConfigFile)
         else:
+            self.__displayAddMirrors(gpEnv, mirrorBuilder, gpArray )
             if self.__options.interactive:
-                self.__displayAddMirrors(gpEnv, mirrorBuilder, gpArray )
                 if not userinput.ask_yesno(None, "\nContinue with add mirrors procedure", 'N'):
                     raise UserAbortedException()
 

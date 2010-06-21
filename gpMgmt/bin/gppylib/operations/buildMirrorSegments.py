@@ -255,13 +255,16 @@ class GpMirrorListToBuild:
         # Disable Ctrl-C, going to save metadata in database and transition segments
         signal.signal(signal.SIGINT,signal.SIG_IGN)
         try:
+            logger.info("Pausing prober")
             faultProber.pauseFaultProber()
 
             # should use mainUtils.getProgramName but I can't make it work!
+            logger.info("Updating configuration")
             programName = os.path.split(sys.argv[0])[-1]
             configInterface.getConfigurationProvider().updateSystemConfig(gpArray, "%s: segment resync" % programName,
                                                                                 fullResyncMirrorDbIds )
 
+            logger.info("Starting mirrors")
             self.__startAll(gpEnv, gpArray, mirrorsToStart)
 
             #
@@ -269,11 +272,16 @@ class GpMirrorListToBuild:
             #
             # converting the primaries may take a really time to complete because of initializing resynchronization
             #
+            logger.info("Unpausing prober")
             faultProber.unpauseFaultProber()
 
+            logger.info("Updating primaries")
             self.__convertAllPrimaries(gpEnv, gpArray, primariesToConvert, convertPrimaryUsingFullResync)
+
+            logger.info("Done updating primaries")
         finally:
             if faultProber.isFaultProberPaused():
+                logger.info("Unpausing prober")
                 faultProber.unpauseFaultProber()
                 
             # Reenable Ctrl-C

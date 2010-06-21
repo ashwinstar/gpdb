@@ -706,9 +706,10 @@ class GpRecoverSegmentProgram:
         else:
             mirrorBuilder.checkForPortAndDirectoryConflicts(gpArray)
 
+            self.displayRecovery(mirrorBuilder, gpArray)
+            self.__displayRecoveryWarnings(mirrorBuilder)
+
             if self.__options.interactive:
-                self.displayRecovery(mirrorBuilder, gpArray)
-                self.__displayRecoveryWarnings(mirrorBuilder)
                 if not userinput.ask_yesno(None, "\nContinue with segment recovery procedure", 'N'):
                     raise UserAbortedException()
             else:
@@ -719,8 +720,12 @@ class GpRecoverSegmentProgram:
             confProvider.sendPgElogFromMaster("Recovery of %d segment(s) has been started." % \
                     len(mirrorBuilder.getMirrorsToBuild()), True)
 
-            logger.info("Segments have been recovered; data synchronization is in progress.")
+            logger.info("******************************************************************")
+            logger.info("Updating segments for resynchronization is done.")
+            logger.info("For segments updated successfully, resynchronization will continue in the background")
+            logger.info("")
             logger.info("Use  gpstate -s  to check the resynchronization progress.")
+            logger.info("******************************************************************")
 
         return 0 # success -- exit code 0!
 
