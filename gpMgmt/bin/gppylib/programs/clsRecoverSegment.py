@@ -721,8 +721,8 @@ class GpRecoverSegmentProgram:
                     len(mirrorBuilder.getMirrorsToBuild()), True)
 
             logger.info("******************************************************************")
-            logger.info("Updating segments for resynchronization is done.")
-            logger.info("For segments updated successfully, resynchronization will continue in the background")
+            logger.info("Updating segments for resynchronization is completed.")
+            logger.info("For segments updated successfully, resynchronization will continue in the background.")
             logger.info("")
             logger.info("Use  gpstate -s  to check the resynchronization progress.")
             logger.info("******************************************************************")
