@@ -165,7 +165,7 @@ if __name__ == '__main__':
         commands.append(cmd)
         ################################################
 
-        cmd = Command("gpconfig -c gp_enable_gpperfmon -v on --masteronly")
+        cmd = Command("gpconfig -c gp_enable_gpperfmon -v on")
         commands.append(cmd)
 
         cmd = Command("gpconfig -c gpperfmon_port -v 8888 --masteronly")
