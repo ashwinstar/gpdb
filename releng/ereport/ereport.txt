@@ -2747,35 +2747,34 @@ caag: cdbfts:00000529:  (errcode(ERRCODE_INTERNAL_ERROR),
 caag: cdbfts:00000530:  errmsg("QDMirroringUpdate: could not execute command '%s'", cmd))); 
 caag: cdbfts:00000660:  ereport(WARNING, 
 caag: cdbfts:00000661:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-caag: cdbfts:00000662:  errSuppressOutputToLog(), // Don't clutter up the system log with these warnings! 
-caag: cdbfts:00000663:  errmsg("Master mirroring is not synchronized as of %s (%s). " 
-caag: cdbfts:00000664:  "The GPDB system is currently not highly-available", 
-caag: cdbfts:00000665:  logTimeStr, 
-caag: cdbfts:00000666:  QDMirroringDisabledReasonToString(disabledReason)))); 
-caag: cdbfts:00000699:  ereport(NOTICE, 
-caag: cdbfts:00000700:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-caag: cdbfts:00000701:  errmsg("Master mirroring not synchronized because the standby master was not started by the administrator"))); 
-caag: cdbfts:00000703:  ereport(WARNING, 
-caag: cdbfts:00000704:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-caag: cdbfts:00000705:  errSendAlert(true), 
-caag: cdbfts:00000706:  errmsg("Master mirroring synchronization lost"), 
-caag: cdbfts:00000707:  errdetail("%s", detail))); 
-caag: cdbfts:00000814:  ereport(ERROR, 
-caag: cdbfts:00000815:  (errcode(ERRCODE_INTERNAL_ERROR), 
-caag: cdbfts:00000816:  errmsg("Unexpected master mirror state '%s'", 
-caag: cdbfts:00000817:  QDMirroringStateToString(state)))); 
-caag: cdbfts:00000823:  ereport(NOTICE, 
-caag: cdbfts:00000824:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-caag: cdbfts:00000825:  errmsg("%s", message), 
-caag: cdbfts:00000826:  errdetail("%s", detail))); 
-caag: cdbfts:00001026:  ereport(ERROR, (errmsg_internal("MPP detected %d segment failures, system is reconnected", numOfFailed), 
-caag: cdbfts:00001027:  errSendAlert(true))); 
-caag: cdbfts:00001088:  ereport(LOG, (errmsg_internal("FTS: found bad segment with dbid %d", segInfo->dbid), 
-caag: cdbfts:00001089:  errSendAlert(true))); 
-caag: cdbfts:00001283:  ereport(ERROR, (errmsg_internal("Unexpected master mirroring state '%s'", 
-caag: cdbfts:00001284:  QDMirroringStateToString(state)))); 
-caag: cdbfts:00001379:  ereport(ERROR, (errmsg_internal("Unexpected master mirror state '%s'", 
-caag: cdbfts:00001380:  QDMirroringStateToString(state)))); 
+caag: cdbfts:00000662:  errmsg("Master mirroring is not synchronized as of %s (%s). " 
+caag: cdbfts:00000663:  "The GPDB system is currently not highly-available", 
+caag: cdbfts:00000664:  logTimeStr, 
+caag: cdbfts:00000665:  QDMirroringDisabledReasonToString(disabledReason)))); 
+caag: cdbfts:00000698:  ereport(NOTICE, 
+caag: cdbfts:00000699:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+caag: cdbfts:00000700:  errmsg("Master mirroring not synchronized because the standby master was not started by the administrator"))); 
+caag: cdbfts:00000702:  ereport(WARNING, 
+caag: cdbfts:00000703:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+caag: cdbfts:00000704:  errSendAlert(true), 
+caag: cdbfts:00000705:  errmsg("Master mirroring synchronization lost"), 
+caag: cdbfts:00000706:  errdetail("%s\nThe Greenplum Database is no longer highly available.", detail))); 
+caag: cdbfts:00000813:  ereport(ERROR, 
+caag: cdbfts:00000814:  (errcode(ERRCODE_INTERNAL_ERROR), 
+caag: cdbfts:00000815:  errmsg("Unexpected master mirror state '%s'", 
+caag: cdbfts:00000816:  QDMirroringStateToString(state)))); 
+caag: cdbfts:00000822:  ereport(NOTICE, 
+caag: cdbfts:00000823:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+caag: cdbfts:00000824:  errmsg("%s", message), 
+caag: cdbfts:00000825:  errdetail("%s", detail))); 
+caag: cdbfts:00001025:  ereport(ERROR, (errmsg_internal("MPP detected %d segment failures, system is reconnected", numOfFailed), 
+caag: cdbfts:00001026:  errSendAlert(true))); 
+caag: cdbfts:00001087:  ereport(LOG, (errmsg_internal("FTS: found bad segment with dbid %d", segInfo->dbid), 
+caag: cdbfts:00001088:  errSendAlert(true))); 
+caag: cdbfts:00001282:  ereport(ERROR, (errmsg_internal("Unexpected master mirroring state '%s'", 
+caag: cdbfts:00001283:  QDMirroringStateToString(state)))); 
+caag: cdbfts:00001378:  ereport(ERROR, (errmsg_internal("Unexpected master mirror state '%s'", 
+caag: cdbfts:00001379:  QDMirroringStateToString(state)))); 
 aaaaa GP_IGNORE: caah: cdbgang - ./backend/cdb/cdbgang.c
 caah: cdbgang:00000303:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
 caah: cdbgang:00000304:  errmsg("CreateGang: failed to create thread %d of %d", i + 1, threadCount), 
@@ -2826,7 +2825,8 @@ caah: cdblink:00000348:  (int)timeout->tv_usec / 1000)));
 caah: cdblink:00000399:  ereport(ERROR, 
 caah: cdblink:00000400:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
 caah: cdblink:00000401:  errSendAlert(true), 
-caah: cdblink:00000402:  errmsg("Error from sending to standby master: %s",msg))); 
+caah: cdblink:00000402:  errmsg("error received sending data to standby master: %s", msg), 
+caah: cdblink:00000403:  errdetail("The Greenplum Database is no longer highly available"))); 
 aaaaa GP_IGNORE: caai: cdbllize - ./backend/cdb/cdbllize.c
 caai: cdbllize:00000233:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED), 
 caai: cdbllize:00000234:  errmsg("The RETURNING clause of the %s " 
@@ -2931,17 +2931,17 @@ cacb: cdbmirroredappendonly:00001163:  relpath(*relFileNode),
 cacb: cdbmirroredappendonly:00001164:  relationName, 
 cacb: cdbmirroredappendonly:00001165:  strerror(primaryError)))); 
 aaaaa GP_IGNORE: cacb: cdbmirroredbufferpool - ./backend/cdb/cdbmirroredbufferpool.c
-cacb: cdbmirroredbufferpool:00000672:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00000673:  (errcode_for_file_access(), 
-cacb: cdbmirroredbufferpool:00000674:  errmsg("could not seek in file to position %d in file \"%s\", segment file %d: %m", 
-cacb: cdbmirroredbufferpool:00000675:  position, 
-cacb: cdbmirroredbufferpool:00000676:  relpath(open->relFileNode), 
-cacb: cdbmirroredbufferpool:00000677:  open->segmentFileNum))); 
-cacb: cdbmirroredbufferpool:00000730:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00000731:  (errcode_for_file_access(), 
-cacb: cdbmirroredbufferpool:00000732:  errmsg("could not seek in file to position %d in file \"%s\", segment file %d: %m", 
-cacb: cdbmirroredbufferpool:00000733:  position, 
-cacb: cdbmirroredbufferpool:00000734:  relpath(open->relFileNode), open->segmentFileNum))); 
+cacb: cdbmirroredbufferpool:00000674:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00000675:  (errcode_for_file_access(), 
+cacb: cdbmirroredbufferpool:00000676:  errmsg("could not seek in file to position %d in file \"%s\", segment file %d: %m", 
+cacb: cdbmirroredbufferpool:00000677:  position, 
+cacb: cdbmirroredbufferpool:00000678:  relpath(open->relFileNode), 
+cacb: cdbmirroredbufferpool:00000679:  open->segmentFileNum))); 
+cacb: cdbmirroredbufferpool:00000732:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00000733:  (errcode_for_file_access(), 
+cacb: cdbmirroredbufferpool:00000734:  errmsg("could not seek in file to position %d in file \"%s\", segment file %d: %m", 
+cacb: cdbmirroredbufferpool:00000735:  position, 
+cacb: cdbmirroredbufferpool:00000736:  relpath(open->relFileNode), open->segmentFileNum))); 
 aaaaa GP_IGNORE: cacb: cdbmirroredfilesysobj - ./backend/cdb/cdbmirroredfilesysobj.c
 cacb: cdbmirroredfilesysobj:00000192:  ereport(ERROR, 
 cacb: cdbmirroredfilesysobj:00000193:  (errcode_for_file_access(), 
@@ -3112,12 +3112,12 @@ caah: cdbpath:00001331:  "UNION ALL of joined tables "
 caah: cdbpath:00001332:  "with subquery.") 
 caah: cdbpath:00001333:  )); 
 aaaaa GP_IGNORE: cacc: cdbpersistentfilespace - ./backend/cdb/cdbpersistentfilespace.c
-cacc: cdbpersistentfilespace:00000567:  ereport(FATAL, 
-cacc: cdbpersistentfilespace:00000568:  (errcode(ERRCODE_INTERNAL_ERROR), 
-cacc: cdbpersistentfilespace:00000569:  errmsg("Unable to determine dbid for filespace lookup"))); 
-cacc: cdbpersistentfilespace:00001360:  ereport(FATAL, 
-cacc: cdbpersistentfilespace:00001361:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cacc: cdbpersistentfilespace:00001362:  errmsg("Not enough shared memory for persistent filespace hash table"))); 
+cacc: cdbpersistentfilespace:00000579:  ereport(FATAL, 
+cacc: cdbpersistentfilespace:00000580:  (errcode(ERRCODE_INTERNAL_ERROR), 
+cacc: cdbpersistentfilespace:00000581:  errmsg("Unable to determine dbid for filespace lookup"))); 
+cacc: cdbpersistentfilespace:00001372:  ereport(FATAL, 
+cacc: cdbpersistentfilespace:00001373:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cacc: cdbpersistentfilespace:00001374:  errmsg("Not enough shared memory for persistent filespace hash table"))); 
 aaaaa GP_IGNORE: cacd: cdbpersistentfilesysobj - ./backend/cdb/cdbpersistentfilesysobj.c
 cacd: cdbpersistentfilesysobj:00000770:  ereport(ERROR, 
 cacd: cdbpersistentfilesysobj:00000771:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
@@ -3164,9 +3164,9 @@ cacb: cdbpersistentrecovery:00002009:  ereport(ERROR,
 cacb: cdbpersistentrecovery:00002010:  (errcode_for_file_access(), 
 cacb: cdbpersistentrecovery:00002011:  errmsg("error reading redo relation file: %m"))); 
 aaaaa GP_IGNORE: cacd: cdbpersistenttablespace - ./backend/cdb/cdbpersistenttablespace.c
-cacd: cdbpersistenttablespace:00001155:  ereport(FATAL, 
-cacd: cdbpersistenttablespace:00001156:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cacd: cdbpersistenttablespace:00001157:  errmsg("Not enough shared memory for persistent tablespace hash table"))); 
+cacd: cdbpersistenttablespace:00001156:  ereport(FATAL, 
+cacd: cdbpersistenttablespace:00001157:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cacd: cdbpersistenttablespace:00001158:  errmsg("Not enough shared memory for persistent tablespace hash table"))); 
 aaaaa GP_IGNORE: caba: cdbrelsize - ./backend/cdb/cdbrelsize.c
 caba: cdbrelsize:00000102:  ereport(WARNING, (errmsg("cdbRelSize error (gathered %d results from cmd '%s')", resultCount, buffer.data), 
 caba: cdbrelsize:00000103:  errdetail("%s", errbuf.data))); 
@@ -8221,42 +8221,42 @@ vaag: vacuum:00000366:  (errcode(ERRCODE_WARNING),
 vaag: vacuum:00000367:  errmsg("'VACUUM FULL' is not safe for large tables and has " 
 vaag: vacuum:00000368:  "been known to yield unpredictable runtimes."), 
 vaag: vacuum:00000369:  errhint("Use 'VACUUM' instead."))); 
-vaag: vacuum:00000837:  ereport(WARNING, 
-vaag: vacuum:00000838:  (errmsg("oldest xmin is far in the past"), 
-vaag: vacuum:00000839:  errhint("Close open transactions soon to avoid wraparound problems."))); 
-vaag: vacuum:00001201:  ereport(WARNING, 
-vaag: vacuum:00001202:  (errmsg("some databases have not been vacuumed in over 2 billion transactions"), 
-vaag: vacuum:00001203:  errdetail("You may have already suffered transaction-wraparound data loss."))); 
-vaag: vacuum:00001551:  ereport(WARNING, 
-vaag: vacuum:00001552:  (errmsg("relation \"%s\" page %u is uninitialized --- fixing", 
-vaag: vacuum:00001553:  relname, blkno))); 
-vaag: vacuum:00001657:  ereport(NOTICE, 
-vaag: vacuum:00001658:  (errmsg("relation \"%s\" TID %u/%u: InsertTransactionInProgress %u --- can't shrink relation", 
-vaag: vacuum:00001659:  relname, blkno, offnum, HeapTupleHeaderGetXmin(tuple.t_data)))); 
-vaag: vacuum:00001670:  ereport(NOTICE, 
-vaag: vacuum:00001671:  (errmsg("relation \"%s\" TID %u/%u: DeleteTransactionInProgress %u --- can't shrink relation", 
-vaag: vacuum:00001672:  relname, blkno, offnum, HeapTupleHeaderGetXmax(tuple.t_data)))); 
-vaag: vacuum:00003318:  ereport(WARNING, 
-vaag: vacuum:00003319:  (errmsg("index \"%s\" contains %.0f row versions, but table contains %.0f row versions", 
-vaag: vacuum:00003320:  RelationGetRelationName(indrel), 
-vaag: vacuum:00003321:  stats->num_index_tuples, num_tuples), 
-vaag: vacuum:00003322:  errhint("Rebuild the index with REINDEX."))); 
-vaag: vacuum:00003390:  ereport(WARNING, 
-vaag: vacuum:00003391:  (errmsg("index \"%s\" contains %.0f row versions, but table contains %.0f row versions", 
-vaag: vacuum:00003392:  RelationGetRelationName(indrel), 
-vaag: vacuum:00003393:  stats->num_index_tuples, num_tuples + keep_tuples), 
-vaag: vacuum:00003394:  errhint("Rebuild the index with REINDEX."))); 
-vaag: vacuum:00003950:  ereport(WARNING, 
-vaag: vacuum:00003951:  (errmsg("skipping \"%s\" --- only table or database owner can vacuum it", 
-vaag: vacuum:00003952:  RelationGetRelationName(onerel)))); 
-vaag: vacuum:00003963:  ereport(WARNING, 
-vaag: vacuum:00003964:  (errmsg("skipping \"%s\" --- cannot vacuum indexes, views, external tables, or special system tables", 
-vaag: vacuum:00003965:  RelationGetRelationName(onerel)))); 
-vaag: vacuum:00004110:  ereport(ERROR, 
-vaag: vacuum:00004111:  (errmsg("can not vacuum the relation '%s' with bitmap indexes. " 
-vaag: vacuum:00004112:  "Please either increase your maintenance_work_mem or " 
-vaag: vacuum:00004113:  "drop the bitmap index and try again.", 
-vaag: vacuum:00004114:  RelationGetRelationName(onerel)))); 
+vaag: vacuum:00000851:  ereport(WARNING, 
+vaag: vacuum:00000852:  (errmsg("oldest xmin is far in the past"), 
+vaag: vacuum:00000853:  errhint("Close open transactions soon to avoid wraparound problems."))); 
+vaag: vacuum:00001222:  ereport(WARNING, 
+vaag: vacuum:00001223:  (errmsg("some databases have not been vacuumed in over 2 billion transactions"), 
+vaag: vacuum:00001224:  errdetail("You may have already suffered transaction-wraparound data loss."))); 
+vaag: vacuum:00001572:  ereport(WARNING, 
+vaag: vacuum:00001573:  (errmsg("relation \"%s\" page %u is uninitialized --- fixing", 
+vaag: vacuum:00001574:  relname, blkno))); 
+vaag: vacuum:00001678:  ereport(NOTICE, 
+vaag: vacuum:00001679:  (errmsg("relation \"%s\" TID %u/%u: InsertTransactionInProgress %u --- can't shrink relation", 
+vaag: vacuum:00001680:  relname, blkno, offnum, HeapTupleHeaderGetXmin(tuple.t_data)))); 
+vaag: vacuum:00001691:  ereport(NOTICE, 
+vaag: vacuum:00001692:  (errmsg("relation \"%s\" TID %u/%u: DeleteTransactionInProgress %u --- can't shrink relation", 
+vaag: vacuum:00001693:  relname, blkno, offnum, HeapTupleHeaderGetXmax(tuple.t_data)))); 
+vaag: vacuum:00003339:  ereport(WARNING, 
+vaag: vacuum:00003340:  (errmsg("index \"%s\" contains %.0f row versions, but table contains %.0f row versions", 
+vaag: vacuum:00003341:  RelationGetRelationName(indrel), 
+vaag: vacuum:00003342:  stats->num_index_tuples, num_tuples), 
+vaag: vacuum:00003343:  errhint("Rebuild the index with REINDEX."))); 
+vaag: vacuum:00003411:  ereport(WARNING, 
+vaag: vacuum:00003412:  (errmsg("index \"%s\" contains %.0f row versions, but table contains %.0f row versions", 
+vaag: vacuum:00003413:  RelationGetRelationName(indrel), 
+vaag: vacuum:00003414:  stats->num_index_tuples, num_tuples + keep_tuples), 
+vaag: vacuum:00003415:  errhint("Rebuild the index with REINDEX."))); 
+vaag: vacuum:00003971:  ereport(WARNING, 
+vaag: vacuum:00003972:  (errmsg("skipping \"%s\" --- only table or database owner can vacuum it", 
+vaag: vacuum:00003973:  RelationGetRelationName(onerel)))); 
+vaag: vacuum:00003984:  ereport(WARNING, 
+vaag: vacuum:00003985:  (errmsg("skipping \"%s\" --- cannot vacuum indexes, views, external tables, or special system tables", 
+vaag: vacuum:00003986:  RelationGetRelationName(onerel)))); 
+vaag: vacuum:00004131:  ereport(ERROR, 
+vaag: vacuum:00004132:  (errmsg("can not vacuum the relation '%s' with bitmap indexes. " 
+vaag: vacuum:00004133:  "Please either increase your maintenance_work_mem or " 
+vaag: vacuum:00004134:  "drop the bitmap index and try again.", 
+vaag: vacuum:00004135:  RelationGetRelationName(onerel)))); 
 aaaaa GP_IGNORE: vaba: vacuumlazy - ./backend/commands/vacuumlazy.c
 vaba: vacuumlazy:00000366:  ereport(WARNING, 
 vaba: vacuumlazy:00000367:  (errmsg("relation \"%s\" page %u is uninitialized --- fixing", 
@@ -12512,14 +12512,14 @@ baag: bufmgr:00000486:  (errcode(ERRCODE_DATA_CORRUPTED),
 baag: bufmgr:00000487:  errmsg("invalid page header in block %u of relation \"\"", 
 baag: bufmgr:00000488:  blockNum/*, relpath(reln->smgr_rnode)*/), 
 baag: bufmgr:00000489:  errSendAlert(true))); 
-baag: bufmgr:00002912:  ereport(WARNING, 
-baag: bufmgr:00002913:  (errcode(ERRCODE_IO_ERROR), 
-baag: bufmgr:00002914:  errmsg("could not write block %u of %u/%u/%u", 
-baag: bufmgr:00002915:  buf->tag.blockNum, 
-baag: bufmgr:00002916:  buf->tag.rnode.spcNode, 
-baag: bufmgr:00002917:  buf->tag.rnode.dbNode, 
-baag: bufmgr:00002918:  buf->tag.rnode.relNode), 
-baag: bufmgr:00002919:  errdetail("Multiple failures --- write error might be permanent."))); 
+baag: bufmgr:00002915:  ereport(WARNING, 
+baag: bufmgr:00002916:  (errcode(ERRCODE_IO_ERROR), 
+baag: bufmgr:00002917:  errmsg("could not write block %u of %u/%u/%u", 
+baag: bufmgr:00002918:  buf->tag.blockNum, 
+baag: bufmgr:00002919:  buf->tag.rnode.spcNode, 
+baag: bufmgr:00002920:  buf->tag.rnode.dbNode, 
+baag: bufmgr:00002921:  buf->tag.rnode.relNode), 
+baag: bufmgr:00002922:  errdetail("Multiple failures --- write error might be permanent."))); 
 aaaaa GP_IGNORE: faai: freelist - ./backend/storage/buffer/freelist.c
 faai: freelist:00000124:  ereport(ERROR, (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
 faai: freelist:00000125:  errmsg("Unable to allocate database I/O buffer; " 
@@ -12751,14 +12751,14 @@ maac: md:00001090:  errmsg("could not open relation %u/%u/%u: %m",
 maac: md:00001091:  reln->smgr_rnode.spcNode, 
 maac: md:00001092:  reln->smgr_rnode.dbNode, 
 maac: md:00001093:  reln->smgr_rnode.relNode))); 
-maac: md:00001948:  ereport(ERROR, 
-maac: md:00001949:  (errcode_for_file_access(), 
-maac: md:00001950:  errmsg("could not open segment %u of relation %u/%u/%u (target block %u): %m", 
-maac: md:00001951:  nextsegno, 
-maac: md:00001952:  reln->smgr_rnode.spcNode, 
-maac: md:00001953:  reln->smgr_rnode.dbNode, 
-maac: md:00001954:  reln->smgr_rnode.relNode, 
-maac: md:00001955:  blkno))); 
+maac: md:00001952:  ereport(ERROR, 
+maac: md:00001953:  (errcode_for_file_access(), 
+maac: md:00001954:  errmsg("could not open segment %u of relation %u/%u/%u (target block %u): %m", 
+maac: md:00001955:  nextsegno, 
+maac: md:00001956:  reln->smgr_rnode.spcNode, 
+maac: md:00001957:  reln->smgr_rnode.dbNode, 
+maac: md:00001958:  reln->smgr_rnode.relNode, 
+maac: md:00001959:  blkno))); 
 aaaaa GP_IGNORE: saae: smgr - ./backend/storage/smgr/smgr.c
 saae: smgr:00000389:  ereport(ERROR, 
 saae: smgr:00000390:  (errcode_for_file_access(), 
