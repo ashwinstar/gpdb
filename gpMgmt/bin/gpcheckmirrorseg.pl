@@ -113,23 +113,25 @@ file contents.  The primary and mirror output is compared to look for
 file size differences, hash differences, and whether identical sets of
 files are listed.  If the first, or "raw" diff is unsuccessful, the
 script proceeds with an "enhanced" diff.  The relfilenodes which
-differed are reclassified by type as append-only, heap, or other
-(unknown).  Although FileRep is a block-for-block copy, file contents
-may differ slightly due to the effects of aborted transactions or
-recovery.  For AO tables, the relfilenode on the primary may contain
-uncommitted data, so the enhanced diff will only compare ao files up
-to the committed EOF.  For heap tables, the MVCC "hint bits" for rows
-on the mirror may differ from the primary after recovery, so the
-enhanced comparison masks these bits for heap relfilenodes.  After it
-preprocesses the relfilenodes, the enhanced diff constructs md5 hashes
-of their contents and compares the results for each primary/mirror
-pair.  Finally, if the enhanced diff is still unsuccessful, even with
-the known exceptions for heap and ao relfilenodes, the script proceeds
-to the final phase: a block-by-block diff.  For this phase, the script
-utilizes the ao and heap preprocessing from the "enhanced" diff, but
-it generates an Adler32 hash for each block.  The final diff compares
-the hashes for each block, highlighting the exact location where each
-file differs.
+differed are reclassified by type as append-only, heap, btree, or
+other (unknown).  Although FileRep is a block-for-block copy, file
+contents may differ slightly due to the effects of aborted
+transactions or recovery.  For AO tables, the relfilenode on the
+primary may contain uncommitted data, so the enhanced diff will only
+compare ao files up to the committed EOF.  For heap tables, the MVCC
+"hint bits" for rows on the mirror may differ from the primary after
+recovery, so the enhanced comparison masks these bits for heap
+relfilenodes.  Btree indexes have a similar discrepancy due to the
+presence of LP_DELETE hints in the line pointers for deleted tuples.
+After it preprocesses the relfilenodes, the enhanced diff constructs
+md5 hashes of their contents and compares the results for each
+primary/mirror pair.  Finally, if the enhanced diff is still
+unsuccessful, even with the known exceptions for heap and ao
+relfilenodes, the script proceeds to the final phase: a block-by-block
+diff.  For this phase, the script utilizes the ao and heap
+preprocessing from the "enhanced" diff, but it generates an Adler32
+hash for each block.  The final diff compares the hashes for each
+block, highlighting the exact location where each file differs.
 
 =head2 Master Mirror Comparison
 
@@ -488,62 +490,66 @@ sub get_presh2_txt
 ##nontiny perl script to preprocess ao or heap files
 ##by truncating to length (ao) or filtering hint bits (heap)
 ##
-## args: -adler|noadler -heap|(-ao <filesize> ) filename
+## args: -adler|noadler -btree|-heap|(-ao <filesize> ) filename
 ##
 ## if adler is specified, prints blockno and adler32 for each block,
-## else if noadler, just preprocesses each block according to ao/heap rules
+## else if noadler, just preprocesses each block according to ao/heap/btree rules
 ## and prints it out.
 #
+##use strict;
+##use warnings;
+##use Data::Dumper;
 #use POSIX; # for floor
 #my $glob_adler = 0;
 #my $zero_adler = 2147483649; # for case of blank block
 #
 #sub doprint
 #{
-#    my ($blockno, $buf, $isLastblock) = @_;
+#	my ($blockno, $buf, $isLastblock) = @_;
 #	
-#    if ($glob_adler)
-#    {
+#	if ($glob_adler)
+#	{
 #		my $adlerval = adler32(1, [$buf]);
 #		# NOTE: can ignore the last block if it is empty
 #		print "GP_IGNORE: " if ($isLastblock && ($adlerval == $zero_adler));
 #		print $blockno, ":", $adlerval, "\n";
-#    }
-#    else
-#    {
+#	}
+#	else
+#	{
 #		print $buf;
-#    }
-#    
+#	}
+#	
 #}
 #
 ## adapted from Digest::Adler32
 ## see RFC 1950 section 9
 #sub adler32 
 #{
-#    my ($ad32, $bufs) = @_;
+#	my ($ad32, $bufs) = @_;
 #	
-#    my $s1 = $ad32 & 0x0000FFFF;
-#    my $s2 = ($ad32 >> 16) & 0x0000FFFF;
+#	my $s1 = $ad32 & 0x0000FFFF;
+#	my $s2 = ($ad32 >> 16) & 0x0000FFFF;
 #
-#    for my $buf (@{$bufs}) 
-#    {
+#	for my $buf (@{$bufs}) 
+#	{
 #		for my $c (unpack("C*", $buf)) 
 #		{
 #			$s1 = ($s1 + $c ) % 65521;
 #			$s2 = ($s2 + $s1) % 65521;
 #		}
-#    }
-#    $ad32 = ($s2 << 16) + $s1;
-#    return $ad32;
+#	}
+#	$ad32 = ($s2 << 16) + $s1;
+#	return $ad32;
 #}
 #
 #if (1)
 #{
 #	my $flag1 = shift @ARGV;
 #	my $flag2 = shift @ARGV;
-#	my ($sz, $orig_sz, $cur_siz);
+#	my ($sz, $orig_sz, $cur_sz);
 #	my $blockno = 0;
-#	
+#	my $isBtree = 0;
+#
 #	if ($flag1 =~ m/noadler/i)
 #	{
 #		$glob_adler = 0;
@@ -559,8 +565,14 @@ sub get_presh2_txt
 #		$orig_sz = $sz;
 #		$cur_sz = 0;
 #	}
+#	else
+#	{
+#		$isBtree = ($flag2 =~ m/btree/i);
+#	}
+#
 #	my $filnam = shift @ARGV;
-#	
+#
+#	# AO case - truncate file to size
 #	if (defined($sz))
 #	{
 #		my $fh;
@@ -584,14 +596,14 @@ sub get_presh2_txt
 #		{
 #			my $buf;
 #			my $readlen = read($fh, $buf, $bufl);
-#	        doprint($blockno, $buf);
+#			doprint($blockno, $buf);
 #			
 #			$cur_sz += $readlen;
 #			
 #			if ($readlen && ($readlen < $bufl))
 #			{
 #				warn "file $filnam shorter than $orig_sz bytes";
-#			    die "read only $cur_sz bytes (last block $readlen bytes vs $bufl)" ;
+#				die "read only $cur_sz bytes (last block $readlen bytes vs $bufl)" ;
 #			}
 #			
 #			if ($bufsiz > $sz)
@@ -606,12 +618,12 @@ sub get_presh2_txt
 #			}
 #			$blockno++;
 #		}
-# 	    close $fh;
-#	} # else heap
+#		close $fh;
+#	} # else heap or btree index
 #	else
 #	{
 #		my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$statsize,
-#      $atime,$mtime,$ctime,$statblksize,$statblocks) = stat($filnam);
+#			$atime,$mtime,$ctime,$statblksize,$statblocks) = stat($filnam);
 #
 #		my $fh;
 #		
@@ -622,7 +634,7 @@ sub get_presh2_txt
 #		my $realsiz = 0;
 #		my $lastblock = POSIX::floor($statsize/$bufsiz);
 #		
-#		while (1)
+#		while (1) # read whole file
 #		{
 #			$realsiz = read($fh, $buf, $bufsiz);
 #			
@@ -632,8 +644,8 @@ sub get_presh2_txt
 #				last;
 #			}
 #			
-#			# bits            64 16         
-#			# bytes            8 2
+#			# bits			  64 16			
+#			# bytes			   8 2
 #			my @foo = unpack("L2 S S S S S S ", $buf);
 #			
 #			shift @foo; # discard XLogRecPtr
@@ -650,6 +662,59 @@ sub get_presh2_txt
 #			
 #			# print "page size: ", $pd_pagesize_version & 0xFF00, "\n";
 #			# print "page version: ", $pd_pagesize_version & 0x00FF, "\n";
+#			# print "pd special: $pd_special\n";
+#
+#			my $do_items; # controls unpack/masking of tuple items
+#			$do_items = 1; # normally true, unless a btree META block
+#
+#			# btree blocks have BTPageOpaqueData struct (in pd_special region)
+#			if ($isBtree
+#				&& ($pd_special &&
+#					($bufsiz > $pd_special)))
+#			{
+#				my $speclen = ($bufsiz - $pd_special)/2;
+#				my @btpo = unpack("x$pd_special s$speclen", $buf);
+#
+##				print "btpo: ", Data::Dumper->Dump(\@btpo);
+#
+#				my $BTP_LEAF = 1;	 # leaf page, i.e. not internal page 
+#				my $BTP_ROOT = 2;	 # root page (has no parent) 
+#				my $BTP_DELETED	= 4; # page has been deleted from tree 
+#				my $BTP_META = 8;	 # meta-page 
+#				my $BTP_HALF_DEAD = 16;	    # empty, but still in tree 
+#				my $BTP_SPLIT_END = 32;	    # rightmost page of split group 
+#				my $BTP_HAS_GARBAGE = 64;	# page has LP_DELETEd tuples 
+#
+#				if (scalar(@btpo) > 7)
+#				{
+#					# check BTPageOpaqueData btpo_flags;
+#
+#					if ($btpo[6])
+#					{
+#						# XXX XXX XXX
+#						# NOTE: don't unpack items for META block -- they
+#						# are *not* index tuples!!
+#						# XXX XXX XXX
+#
+#						$do_items = 0
+#							if ($btpo[6] & $BTP_META);
+#
+#						# clear garbage flag
+#						if ($btpo[6] & $BTP_HAS_GARBAGE)
+#						{
+#							$btpo[6] -= $BTP_HAS_GARBAGE;
+#
+#							my $fixbuf = pack("s$speclen", @btpo);
+#							substr($buf, $pd_special, length($fixbuf)) 
+#								= $fixbuf;
+#						}
+#					
+#					}
+#				}
+#			} # end if special
+#
+#			goto L_endloop
+#				unless ($do_items);
 #			
 #			my $szofpagehdrdata = 8 + (6 * 2);
 #			
@@ -660,15 +725,21 @@ sub get_presh2_txt
 #			my $twomax = 2 * $maxoffsetnum ;
 #			
 #			my @baz = unpack("L2 S S S S S S S$twomax", $buf);			
+#
+#			my @pagehdr; # need to rebuild btree btpopaque
 #			
 #			for my $jj (1..8)
 #			{
-#				shift @baz
-#					;
+#				my $skippi = shift @baz;
+#
+#				push @pagehdr, $skippi;
 #			}
 #			
 #			my $ii = 0;
 #			
+#			# for all ItemIdData ("line pointers")
+#			#   btree case: fix LP_DELETE
+#			#   heap case:  find tuples and fix hint bits
 #			while ($ii < scalar(@baz))
 #			{
 #				my $s1 = $baz[$ii];
@@ -682,21 +753,40 @@ sub get_presh2_txt
 #				my $lp_flags = 0;
 #				
 #				my $lp_len = $s2 >> 1;
+#
+#				if ($isBtree)
+#				{
+#					# fixup s2 (part of lp_flags) -- mask out
+#					# LP_DELETE hint bit
+#					$baz[$ii-1] = 0xFFFFFE & $s2;
+#				}
+#				else # heap tuple hint bit cleanup
+#				{
+#					my @ggg = unpack("x$lp_off S11 c c  ", $buf);
 #				
-#				my @ggg = unpack("x$lp_off S11 c c  ", $buf);
+#					# clear infomask flags
+#					$ggg[9] = 0;
+#					$ggg[10] = 0;
 #				
-#				# clear infomask flags
-#				$ggg[9] = 0;
-#				$ggg[10] = 0;
+#					my $fixbuf = pack("S11 c c  ", @ggg);
+#					substr($buf, $lp_off, length($fixbuf)) = $fixbuf;
+#				}
 #				
-#				my $fixbuf = pack("S11 c c  ", @ggg);
-#				substr($buf, $lp_off, length($fixbuf)) = $fixbuf;
-#				
-#			} # end while
-#			
+#			} # end while ii < scalar(@baz)
+#
+#			if ($isBtree)
+#			{
+#				# use revised lp_flags in page hdr
+#				push @pagehdr, @baz;
+#				my $fixhdr = pack("L2 S S S S S S S$twomax", @pagehdr);
+#				substr($buf, 0, length($fixhdr)) = $fixhdr;
+#			}
+#
+#		  L_endloop:			
 #	        doprint($blockno, $buf, ($blockno == $lastblock)) if ($realsiz);
 #			$blockno++;
-#		}
+#
+#		} # end while read whole file
 #		
 #		close $fh;
 #	}
@@ -1254,11 +1344,11 @@ sub get_relfilenode_func
 			}
 
 			unless (exists($rnod->{relkind})
-					&& ($rnod->{relkind} =~ m/^(r|o|t)$/))
+					&& ($rnod->{relkind} =~ m/^(r|o|t|i)$/))
 			{
 				$bstat = 0;
 				print Data::Dumper->Dump([$vv2]),"\n";
-				warn "$relname for $dbname not of kind relation (r), toast (t) or aoseg (o)";
+				warn "$relname for $dbname not of kind relation (r), toast (t), aoseg (o), or index (i)";
 				next;
 			}
 
@@ -1514,7 +1604,7 @@ sub diff_again
 		$primsh, $mirrsh) = @_;
 
 	my $bstat = 1;
-	my (@aofiles, @heapfiles, @unknownfiles);
+	my (@aofiles, @heapfiles, @indexfiles, @unknownfiles);
 
 	for my $dbs ($dbs1, $dbs2)
 	{
@@ -1556,7 +1646,14 @@ sub diff_again
 						{
 							if ($rnod->{relstorage} eq "h")
 							{
-								push @heapfiles, $filnam;
+								if ($rnod->{relkind} eq "i")
+								{
+									push @indexfiles, $filnam;
+								}
+								else
+								{
+									push @heapfiles, $filnam;
+								}
 							}
 							elsif ($rnod->{relstorage} =~m/a|c/)
 							{
@@ -1614,6 +1711,16 @@ sub diff_again
 		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
 		. "| perl -e 'for (<STDIN>) { print \"" . $fil . 
 		':heap: ", $_ ;}' . "'";
+###			File::Spec->catfile($primfil, $fil->{file});
+	}
+	for my $fil (@indexfiles)
+	{
+		push @allfiles1, 
+		$fil . "  ( perl MYPRESH21 -noadler -btree  MYDIR/" . $fil
+		. " | openssl dgst -md5 -hex ) 2>&1  "
+		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
+		. "| perl -e 'for (<STDIN>) { print \"" . $fil . 
+		':btree: ", $_ ;}' . "'";
 ###			File::Spec->catfile($primfil, $fil->{file});
 	}
 	for my $fil (@unknownfiles)
@@ -1726,6 +1833,7 @@ sub diff_again
 
 		$fdiff =~ s/\:ao\:\s+.*/:ao:/gm;
 		$fdiff =~ s/\:heap\:\s+.*/:heap:/gm;
+		$fdiff =~ s/\:btree\:\s+.*/:btree:/gm;
 		$fdiff =~ s/\:unknown\:\s+.*/:unknown:/gm;
 		$fdiff =~ s/^\>\s+//gm;
 		$fdiff =~ s/^\<\s+//gm;
@@ -1736,7 +1844,7 @@ sub diff_again
 		for my $ff (@foo)
 		{
 			next
-				unless ($ff =~ m/\:ao\:|\:heap\:|\:unknown\:/);
+				unless ($ff =~ m/\:ao\:|\:heap\:|\:btree\:|\:unknown\:/);
 			$thrice{$ff} = 1;
 		}
 		print "block by block: ", join("\n", sort(keys(%thrice))), "\n";
@@ -1747,7 +1855,9 @@ sub diff_again
 					$primtmp, $mirrtmp, 
 					$ppresh2, $mpresh2,
 					$primsh, $mirrsh,
-					\@aofiles, \@heapfiles, \@unknownfiles
+					\@aofiles, \@heapfiles, 
+					\@indexfiles,
+					\@unknownfiles
 			);
 
 	}
@@ -1766,7 +1876,9 @@ sub diff_thrice
 		$primfil, $mirrfil, $primhost, $mirrhost, 
 		$primtmp, $mirrtmp,
 		$ppresh2, $mpresh2,
-		$primsh, $mirrsh, $aofiles, $heapfiles, $unknownfiles) = @_;
+		$primsh, $mirrsh, $aofiles, $heapfiles, 
+		$indexfiles,
+		$unknownfiles) = @_;
 
 	my $bstat = 1;
 
@@ -1801,6 +1913,21 @@ sub diff_thrice
 ###			File::Spec->catfile($primfil, $fil->{file});
 
 		push @{$glob_fixlist}, "heap: " . $primhost . ":" .
+			File::Spec->catfile($primfil, $fil) . " " .
+			$mirrhost . ":" . 
+			File::Spec->catfile($mirrfil, $fil);
+	}
+	for my $fil (@{$indexfiles})
+	{
+		push @allfiles1, 
+		$fil . "  ( perl MYPRESH21 -adler -btree  MYDIR/" . $fil
+		. " ) 2>&1  "
+		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
+		. "| perl -e 'for (<STDIN>) { print \"" . $fil . 
+		':btree: ", $_ ;}' . "'";
+###			File::Spec->catfile($primfil, $fil->{file});
+
+		push @{$glob_fixlist}, "btree: " . $primhost . ":" .
 			File::Spec->catfile($primfil, $fil) . " " .
 			$mirrhost . ":" . 
 			File::Spec->catfile($mirrfil, $fil);

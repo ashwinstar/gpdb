@@ -1531,7 +1531,16 @@ FormatItemBlock(Page page)
 			itemOffset = (unsigned int) ItemIdGetOffset(itemId);
 
 			if (itemFlags)
-				strcpy(textFlags, (LP_USED & itemFlags) ? "USED" : "DELETE");
+			{
+/*				strcpy(textFlags, (LP_USED & itemFlags) ? "USED" : "DELETE"); 
+ */
+				if (ItemIdIsDead(itemId))
+					strcpy(textFlags, "DEAD"); 
+				else if (ItemIdDeleted(itemId))
+					strcpy(textFlags, "DELETED"); 
+				else
+					strcpy(textFlags, "USED"); 
+			}
 			else
 				sprintf(textFlags, "0x%02x", itemFlags);
 
