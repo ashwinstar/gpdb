@@ -659,7 +659,6 @@ bool QDMirroringWriteCheck(void)
 
 		ereport(WARNING,
 				(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-				 errSuppressOutputToLog(),	// Don't clutter up the system log with these warnings!
 				 errmsg("Master mirroring is not synchronized as of %s (%s).  "
 				        "The GPDB system is currently not highly-available",
 				        logTimeStr,
@@ -704,7 +703,7 @@ disableQDMirroring(char *detail, char *errorMessage, QDMIRRORDisabledReason disa
 							(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							 errSendAlert(true),
 							 errmsg("Master mirroring synchronization lost"),
-							 errdetail("%s", detail)));
+							 errdetail("%s\nThe Greenplum Database is no longer highly available.", detail)));
 
 				gettimeofday(&lastLogTimeVal, NULL);
 

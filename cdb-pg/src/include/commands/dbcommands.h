@@ -64,6 +64,6 @@ extern char *get_database_name(Oid dbid);
 
 extern void dbase_redo(XLogRecPtr lsn  __attribute__((unused)), XLogRecord *rptr);
 extern void dbase_desc(StringInfo buf, XLogRecord *record);
-extern void xlog_prepare_database_drop(Oid dbid);
+extern void xlog_prepare_database_drop(Oid tblspc, Oid dbid);
 
 #endif   /* DBCOMMANDS_H */

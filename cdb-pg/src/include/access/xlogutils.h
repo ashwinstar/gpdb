@@ -21,7 +21,7 @@ extern void XLogCloseRelationCache(void);
 
 extern Relation XLogOpenRelation(RelFileNode rnode);
 extern void XLogDropRelation(RelFileNode rnode);
-extern void XLogDropDatabase(Oid dbid);
+extern void XLogDropDatabase(Oid tblspc, Oid dbid);
 extern void XLogTruncateRelation(RelFileNode rnode, BlockNumber nblocks);
 
 extern Buffer XLogReadBuffer(Relation reln, BlockNumber blkno, bool init);

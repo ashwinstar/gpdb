@@ -163,7 +163,7 @@ forget_invalid_pages(RelFileNode node, BlockNumber minblkno)
 
 /* Forget any invalid pages in a whole database */
 static void
-forget_invalid_pages_db(Oid dbid)
+forget_invalid_pages_db(Oid tblspc, Oid dbid)
 {
 	HASH_SEQ_STATUS status;
 	xl_invalid_page *hentry;
@@ -175,7 +175,8 @@ forget_invalid_pages_db(Oid dbid)
 
 	while ((hentry = (xl_invalid_page *) hash_seq_search(&status)) != NULL)
 	{
-		if (hentry->key.node.dbNode == dbid)
+		if ((!OidIsValid(tblspc) || hentry->key.node.spcNode == tblspc) &&
+			hentry->key.node.dbNode == dbid)
 		{
 			elog(DEBUG2, "page %u of relation %u/%u/%u has been dropped",
 				 hentry->key.blkno, hentry->key.node.spcNode,
@@ -571,7 +572,7 @@ XLogDropRelation(RelFileNode rnode)
  * As above, but for DROP DATABASE instead of dropping a single rel
  */
 void
-XLogDropDatabase(Oid dbid)
+XLogDropDatabase(Oid tblspc, Oid dbid)
 {
 	HASH_SEQ_STATUS status;
 	XLogRelCacheEntry *hentry;
@@ -582,11 +583,14 @@ XLogDropDatabase(Oid dbid)
 	{
 		XLogRelDesc *rdesc = hentry->rdesc;
 
-		if (hentry->rnode.dbNode == dbid)
-			RelationCloseSmgr(&(rdesc->reldata));
+		if (!OidIsValid(tblspc) || hentry->rnode.spcNode == tblspc)
+		{
+			if (hentry->rnode.dbNode == dbid)
+				RelationCloseSmgr(&(rdesc->reldata));
+		}
 	}
-
-	forget_invalid_pages_db(dbid);
+ 
+	forget_invalid_pages_db(tblspc, dbid);
 }
 
 /*

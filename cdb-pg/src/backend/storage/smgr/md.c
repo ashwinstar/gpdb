@@ -1715,10 +1715,14 @@ RememberFsyncRequest(RelFileNode rnode, BlockNumber segno)
 		hash_seq_init(&hstat, pendingOpsTable);
 		while ((entry = (PendingOperationEntry *) hash_seq_search(&hstat)) != NULL)
 		{
-			if (entry->tag.rnode.dbNode == rnode.dbNode)
+			if (!OidIsValid(rnode.spcNode) ||
+				entry->tag.rnode.spcNode == rnode.spcNode)
 			{
-				/* Okay, cancel this entry */
-				entry->canceled = true;
+				if (entry->tag.rnode.dbNode == rnode.dbNode)
+				{
+					/* Okay, cancel this entry */
+					entry->canceled = true;
+				}
 			}
 		}
 	}
@@ -1796,12 +1800,12 @@ ForgetRelationFsyncRequests(RelFileNode rnode)
  * ForgetDatabaseFsyncRequests -- ensure any fsyncs for a DB are forgotten
  */
 void
-ForgetDatabaseFsyncRequests(Oid dbid)
+ForgetDatabaseFsyncRequests(Oid tblspc, Oid dbid)
 {
 	RelFileNode rnode;
 
 	rnode.dbNode = dbid;
-	rnode.spcNode = 0;
+	rnode.spcNode = tblspc;
 	rnode.relNode = 0;
 
 	if (pendingOpsTable)

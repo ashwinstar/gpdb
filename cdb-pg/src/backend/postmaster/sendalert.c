@@ -808,7 +808,7 @@ int send_alert(const GpErrorData * errorData)
 			strstr(errorData->error_message, gettext("received immediate shutdown request")) != NULL ||
 			strstr(errorData->error_message, gettext("database system is shut down"))  != NULL ||
 			strstr(errorData->error_message, gettext("Master mirroring synchronization lost"))  != NULL ||
-			strstr(errorData->error_message, gettext("Error from sending to standby master"))  != NULL ||
+			strstr(errorData->error_message, gettext("error received sending data to standby master"))  != NULL ||
 			strstr(errorData->error_message, "GPDB performed segment reconfiguration.") != NULL) // elog, so no gettext
 		smtp_set_header(message, "X-Priority", "1"); // 1 == highest priority
 

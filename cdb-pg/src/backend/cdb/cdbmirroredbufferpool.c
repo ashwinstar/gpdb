@@ -15,16 +15,18 @@
 
 #include <signal.h>
 
-#include "utils/palloc.h"
+#include "access/xlogmm.h"
 #include "cdb/cdbfilerepprimary.h"
 #include "cdb/cdbmirroredbufferpool.h"
+#include "cdb/cdbfilerepresyncmanager.h"
 #include "cdb/cdbfilerepresyncworker.h"
-#include "storage/fd.h"
-#include "cdb/cdbpersistenttablespace.h"
-#include "storage/smgr.h"
 #include "cdb/cdbfilerepprimary.h"
-#include "utils/guc.h"
+#include "cdb/cdbpersistenttablespace.h"
 #include "storage/bufmgr.h"
+#include "storage/fd.h"
+#include "storage/smgr.h"
+#include "utils/guc.h"
+#include "utils/palloc.h"
 
 static void MirroredBufferPool_SetUpMirrorAccess(
 	RelFileNode					*relFileNode,

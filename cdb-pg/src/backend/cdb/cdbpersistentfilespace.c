@@ -17,6 +17,7 @@
 #include "access/heapam.h"
 #include "access/persistentfilesysobjname.h"
 #include "access/transam.h"
+#include "access/xlogmm.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_authid.h"
@@ -509,6 +510,17 @@ void PersistentFilespace_GetPrimaryAndMirrorUnderLock(
 	*primaryFilespaceLocation = NULL;
 	*mirrorFilespaceLocation = NULL;
 	
+	/*
+	 * Can't rely on persistent tables or memory structures on the standby so
+	 * get it from the cache maintained by the master mirror sync code
+	 */
+	if (GPStandby())
+	{
+		*primaryFilespaceLocation =
+			pstrdup(mmxlog_filespace_get_path(filespaceOid));
+		return;
+	}
+
 	filespaceDirEntry = 
 				PersistentFilespace_FindDirUnderLock(
 												filespaceOid);

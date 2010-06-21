@@ -1403,7 +1403,7 @@ dropdb(const char *dbname, bool missing_ok)
 	/*
 	 * Also, clean out any entries in the shared free space map.
 	 */
-	FreeSpaceMapForgetDatabase(db_id);
+	FreeSpaceMapForgetDatabase(InvalidOid, db_id);
 
 	/*
 	 * Force a checkpoint to make sure the bgwriter to push all pages to disk.
@@ -2320,22 +2320,22 @@ get_database_name(Oid dbid)
  * Forget about a database
  */
 void
-xlog_prepare_database_drop(Oid dbid)
+xlog_prepare_database_drop(Oid tblspc, Oid dbid)
 {
 	/* Drop pages for this database that are in the shared buffer cache */
-	DropDatabaseBuffers(dbid);
+	DropDatabaseBuffers(tblspc, dbid);
 
 	/* Also, clean out any entries in the shared free space map */
-	FreeSpaceMapForgetDatabase(dbid);
+	FreeSpaceMapForgetDatabase(tblspc, dbid);
 
 	/* Also, clean out any fsync requests that might be pending in md.c */
-	ForgetDatabaseFsyncRequests(dbid);
+	ForgetDatabaseFsyncRequests(tblspc, dbid);
 
 	/* Clean out the xlog relcache too */
-	XLogDropDatabase(dbid);
+	XLogDropDatabase(tblspc, dbid);
 
 	elog(LOG, "dropped all buffers, freespace, fsyncs and pending pages "
-		 "for database %u", dbid);
+		 "for database %u/%u", tblspc, dbid);
 }
 
 /*
@@ -2389,7 +2389,7 @@ dbase_redo(XLogRecPtr lsn  __attribute__((unused)), XLogRecord *record)
 		char	   *dst_path;
 
 		dst_path = GetDatabasePath(xlrec->db_id, xlrec->tablespace_id);
-		xlog_prepare_database_drop(xlrec->db_id);
+		xlog_prepare_database_drop(InvalidOid, xlrec->db_id);
 
 		/* And remove the physical files */
 		if (!rmtree(dst_path, true))

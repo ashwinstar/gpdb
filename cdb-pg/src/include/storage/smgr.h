@@ -494,7 +494,7 @@ extern bool mdsync(void);
 
 extern void RememberFsyncRequest(RelFileNode rnode, BlockNumber segno);
 extern void ForgetRelationFsyncRequests(RelFileNode rnode);
-extern void ForgetDatabaseFsyncRequests(Oid dbid);
+extern void ForgetDatabaseFsyncRequests(Oid tblspc, Oid dbid);
 
 /* smgrtype.c */
 extern Datum smgrout(PG_FUNCTION_ARGS);

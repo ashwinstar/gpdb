@@ -169,7 +169,7 @@ extern void RelationTruncate(Relation rel, BlockNumber nblocks, bool markPersist
 extern void FlushRelationBuffers(Relation rel);
 extern void DropRelFileNodeBuffers(RelFileNode rnode, bool istemp,
 					   BlockNumber firstDelBlock);
-extern void DropDatabaseBuffers(Oid dbid);
+extern void DropDatabaseBuffers(Oid tbpoid, Oid dbid);
 
 #ifdef NOT_USED
 extern void PrintPinnedBufs(void);

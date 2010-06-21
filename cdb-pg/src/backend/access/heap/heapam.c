@@ -4229,9 +4229,22 @@ heap_xlog_delete(XLogRecPtr lsn, XLogRecord *record)
 	page = (Page) BufferGetPage(buffer);
 
 	REDO_PRINT_LSN_APPLICATION(reln, ItemPointerGetBlockNumber(&(xlrec->target.tid)), page, lsn);
+
+	if (Debug_print_qd_mirroring)
+		elog(LOG, "heap_xlog_delete: page lsn = (%X,%X)",
+			 PageGetLSN(page).xlogid, PageGetLSN(page).xrecoff);
+
 	if (XLByteLE(lsn, PageGetLSN(page)))		/* changes are applied */
 	{
 		UnlockReleaseBuffer(buffer);
+		if (Debug_print_qd_mirroring)
+		{
+			elog(LOG, "delete already appplied: lsn (%X,%X), page (%X,%X)",
+				 lsn.xlogid,
+				 lsn.xrecoff,
+				 PageGetLSN(page).xlogid,
+				 PageGetLSN(page).xrecoff);
+		}
 		return;
 	}
 
@@ -4255,7 +4268,9 @@ heap_xlog_delete(XLogRecPtr lsn, XLogRecord *record)
 	htup->t_ctid = xlrec->target.tid;
 	PageSetLSN(page, lsn);
 	PageSetTLI(page, ThisTimeLineID);
+
 	MarkBufferDirty(buffer);
+
 	UnlockReleaseBuffer(buffer);
 }
 
@@ -4299,11 +4314,22 @@ heap_xlog_insert(XLogRecPtr lsn, XLogRecord *record)
 		REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, ItemPointerGetBlockNumber(&(xlrec->target.tid)), buffer, lsn);
 		if (!BufferIsValid(buffer))
 			return;
+
 		page = (Page) BufferGetPage(buffer);
 
-		REDO_PRINT_LSN_APPLICATION(reln, ItemPointerGetBlockNumber(&(xlrec->target.tid)), page, lsn);
+		REDO_PRINT_LSN_APPLICATION(reln,
+					ItemPointerGetBlockNumber(&(xlrec->target.tid)), page, lsn);
+
 		if (XLByteLE(lsn, PageGetLSN(page)))	/* changes are applied */
 		{
+			if (Debug_print_qd_mirroring)
+			{
+				elog(LOG, "insert already appplied: lsn (%X,%X), page (%X,%X)",
+					 lsn.xlogid,
+					 lsn.xrecoff,
+					 PageGetLSN(page).xlogid,
+					 PageGetLSN(page).xrecoff);
+			}
 			UnlockReleaseBuffer(buffer);
 			return;
 		}
@@ -4311,8 +4337,8 @@ heap_xlog_insert(XLogRecPtr lsn, XLogRecord *record)
 
 	offnum = ItemPointerGetOffsetNumber(&(xlrec->target.tid));
 	if (PageGetMaxOffsetNumber(page) + 1 < offnum)
-		elog(PANIC, "heap_insert_redo: invalid max offset number");
-
+		elog(PANIC, "heap_insert_redo: invalid max offset number: "
+			 "%u, expected %u", offnum, (OffsetNumber)PageGetMaxOffsetNumber(page) + 1);
 	newlen = record->xl_len - SizeOfHeapInsert - SizeOfHeapHeader;
 	Assert(newlen <= MaxHeapTupleSize);
 	memcpy((char *) &xlhdr,
@@ -4336,6 +4362,7 @@ heap_xlog_insert(XLogRecPtr lsn, XLogRecord *record)
 						 LP_USED | OverwritePageMode);
 	if (offnum == InvalidOffsetNumber)
 		elog(PANIC, "heap_insert_redo: failed to add tuple");
+
 	PageSetLSN(page, lsn);
 	PageSetTLI(page, ThisTimeLineID);
 	MarkBufferDirty(buffer);

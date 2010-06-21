@@ -399,7 +399,8 @@ write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout, bool *shut
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 					 errSendAlert(true),
-					 errmsg("Error from sending to standby master: %s",msg)));
+					 errmsg("error received sending data to standby master: %s", msg),
+					 errdetail("The Greenplum Database is no longer highly available")));
 		}
 		else
 		{

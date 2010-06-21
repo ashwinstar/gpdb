@@ -159,7 +159,7 @@ extern void RecordIndexFreeSpace(RelFileNode *rel,
 
 extern void FreeSpaceMapTruncateRel(RelFileNode *rel, BlockNumber nblocks);
 extern void FreeSpaceMapForgetRel(RelFileNode *rel);
-extern void FreeSpaceMapForgetDatabase(Oid dbid);
+extern void FreeSpaceMapForgetDatabase(Oid tblspc, Oid dbid);
 
 extern void PrintFreeSpaceMapStatistics(int elevel);
 

@@ -783,6 +783,7 @@ dumpXLogRecord(XLogRecord *record, bool header_only)
 	for (i = 0; i < XLR_MAX_BKP_BLOCKS; i++)
 	{
 		BkpBlock  bkb;
+		Page pg;
 
 		if (!(record->xl_info & (XLR_SET_BKP_BLOCK(i))))
 			continue;
@@ -790,9 +791,13 @@ dumpXLogRecord(XLogRecord *record, bool header_only)
 		getSpaceName(bkb.node.spcNode);
 		getDbName(bkb.node.dbNode);
 		getRelName(bkb.node.relNode);
-		printf("bkpblock %d: ts %s db %s rel %s block %u hole %u len %u\n", 
+		pg = (Page)(blk + sizeof(BkpBlock));
+		printf("bkpblock %d: ts %s db %s rel %s block %u hole %u len %u "
+			   "lsn (%X,%X)\n", 
 				i+1, spaceName, dbName, relName,
-			   	bkb.block, bkb.hole_offset, bkb.hole_length);
+			   	bkb.block, bkb.hole_offset, bkb.hole_length,
+				PageGetLSN(pg).xlogid, PageGetLSN(pg).xrecoff);
+
 		blk += sizeof(BkpBlock) + (BLCKSZ - bkb.hole_length);
 	}
 

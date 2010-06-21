@@ -2228,7 +2228,7 @@ DropRelFileNodeBuffers(RelFileNode rnode, bool isLocalBuf,
  * --------------------------------------------------------------------
  */
 void
-DropDatabaseBuffers(Oid dbid)
+DropDatabaseBuffers(Oid tblspc, Oid dbid)
 {
 	int			i;
 	volatile BufferDesc *bufHdr;
@@ -2242,8 +2242,11 @@ DropDatabaseBuffers(Oid dbid)
 	{
 		bufHdr = &BufferDescriptors[i];
 		LockBufHdr(bufHdr);
-		if (bufHdr->tag.rnode.dbNode == dbid)
-			InvalidateBuffer(bufHdr, true, true);	/* releases spinlock */
+		if (!OidIsValid(tblspc) || bufHdr->tag.rnode.spcNode == tblspc)
+		{
+			if (bufHdr->tag.rnode.dbNode == dbid)
+				InvalidateBuffer(bufHdr, true, true);	/* releases spinlock */
+		}
 		else
 			UnlockBufHdr(bufHdr);
 	}

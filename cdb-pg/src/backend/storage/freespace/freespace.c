@@ -572,11 +572,11 @@ FreeSpaceMapForgetRel(RelFileNode *rel)
 /*
  * FreeSpaceMapForgetDatabase - forget all relations of a database.
  *
- * This is called during DROP DATABASE.  As above, might as well reclaim
- * map space sooner instead of later.
+ * This is called during DROP DATABASE and DROP TABLESPACE.  As above,
+ * might as well reclaim map space sooner instead of later.
  */
 void
-FreeSpaceMapForgetDatabase(Oid dbid)
+FreeSpaceMapForgetDatabase(Oid tblspc, Oid dbid)
 {
 	FSMRelation *fsmrel,
 			   *nextrel;
@@ -585,8 +585,12 @@ FreeSpaceMapForgetDatabase(Oid dbid)
 	for (fsmrel = FreeSpaceMap->usageList; fsmrel; fsmrel = nextrel)
 	{
 		nextrel = fsmrel->nextUsage;	/* in case we delete it */
-		if (fsmrel->key.dbNode == dbid)
-			delete_fsm_rel(fsmrel);
+		if (!OidIsValid(tblspc) ||
+			fsmrel->key.spcNode == tblspc)
+		{
+			if (fsmrel->key.dbNode == dbid)
+				delete_fsm_rel(fsmrel);
+		}
 	}
 	LWLockRelease(FreeSpaceLock);
 }

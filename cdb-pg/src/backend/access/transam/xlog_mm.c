@@ -72,7 +72,8 @@ static void tblspc_get_filespace_paths(Oid tblspc, int16 master_dbid,
 									   int16 mirror_dbid,
 									   char **master_path, char **mirror_path);
 static void get_filespace_paths(Oid filespace, char **master_path, char **mirror_path);
-
+static void add_filespace_map_entry(fspc_map *m);
+static void add_tablespace_map_entry(tspc_map *m);
 
 /*
  * Remember filespace and tablespace mappings, used so that we know
@@ -123,7 +124,9 @@ unlink_obj(char *path, uint8 info)
 	}
 	else if (info == MMXLOG_REMOVE_FILE)
 	{
-		elog(LOG, "unlinking file, as requested %s", path);
+		if (Debug_print_qd_mirroring)
+			elog(LOG, "unlinking file, as requested %s", path);
+
 		if (unlink(path) < 0)
 		{
 			if (errno != ENOENT) /* allow it to already be removed */
@@ -155,15 +158,27 @@ mmxlog_redo(XLogRecPtr lsn, XLogRecord *record)
 		 * tablespace.
 		 */
 		if (xlrec->objtype == MM_OBJ_FILESPACE)
-			xlog_persistent_filespace_create(xlrec->filespace,
-											 xlrec->u.dbid.master,
-											 xlrec->master_path,
-											 xlrec->u.dbid.mirror,
-											 xlrec->mirror_path);
+		{
+			fspc_map m;
 
+			m.filespaceoid = xlrec->filespace;
+
+			m.dbid1 = xlrec->u.dbid.master;
+    		strncpy(m.path1, xlrec->master_path, MAXPGPATH);
+			
+			m.dbid2 = xlrec->u.dbid.mirror;
+			strncpy(m.path2, xlrec->mirror_path, MAXPGPATH);
+			add_filespace_map_entry(&m);
+		}
 		else if (xlrec->objtype == MM_OBJ_TABLESPACE)
-			xlog_persistent_tablespace_create(xlrec->filespace,
-											  xlrec->tablespace);
+		{
+			tspc_map m;
+
+			m.filespaceoid = xlrec->filespace;
+			m.tablespaceoid = xlrec->tablespace;
+
+			add_tablespace_map_entry(&m);
+		}
 
 		if (mkdir(path, 0700) < 0)
 		{
@@ -179,7 +194,8 @@ mmxlog_redo(XLogRecPtr lsn, XLogRecord *record)
 	else if (info == MMXLOG_REMOVE_DIR)
 	{
 		if (xlrec->objtype == MM_OBJ_DATABASE)
-			xlog_prepare_database_drop(xlrec->database);
+			xlog_prepare_database_drop(xlrec->tablespace, xlrec->database);
+
 		/* tablespace and database should be fine */
 		unlink_obj(path, info);
 	}
@@ -220,8 +236,9 @@ mmxlog_redo(XLogRecPtr lsn, XLogRecord *record)
 
 		XLogDropRelation(rnode);
 
-		elog(LOG, "dropped buffers and freespace for %u/%u/%u",
-			 rnode.spcNode, rnode.dbNode, rnode.relNode);
+		if (Debug_print_qd_mirroring)
+			elog(LOG, "dropped buffers and freespace for %u/%u/%u",
+				 rnode.spcNode, rnode.dbNode, rnode.relNode);
 		unlink_obj(path, info);
 	}
 	else
@@ -385,9 +402,10 @@ emit_mmxlog_fs_record(mm_fs_obj_type type, Oid filespace,
 		append_file_parts(type, xlrec.mirror_path, tablespace, database,
 						  relfilenode, segnum);
 		
-		elog(LOG, "XLOG: type = %i, dbid = (%u, %u), path = (%s, %s)",
-			 type, xlrec.u.dbid.master, xlrec.u.dbid.mirror,
-			 xlrec.master_path, xlrec.mirror_path);
+		if (Debug_print_qd_mirroring)
+			elog(LOG, "XLOG: type = %i, flags = %i, dbid = (%u, %u), path = (%s, %s)",
+				 type, flags, xlrec.u.dbid.master, xlrec.u.dbid.mirror,
+				 xlrec.master_path, xlrec.mirror_path);
 
 		rdata.data = (char *) &xlrec;
 		rdata.len = sizeof(xlrec);
@@ -402,8 +420,9 @@ emit_mmxlog_fs_record(mm_fs_obj_type type, Oid filespace,
 void
 mmxlog_log_remove_filespace(Oid filespace)
 {
-	elog(LOG, "emitting drop filespace record for %u",
-		 filespace);
+	if (Debug_print_qd_mirroring)
+		elog(LOG, "emitting drop filespace record for %u",
+			 filespace);
 	emit_mmxlog_fs_record(MM_OBJ_FILESPACE,
 						  filespace,
 						  InvalidOid /* tablespace */,
@@ -417,8 +436,9 @@ mmxlog_log_remove_filespace(Oid filespace)
 void
 mmxlog_log_remove_tablespace(Oid tablespace)
 {
-	elog(LOG, "emitting drop tablespace record for %u",
-		 tablespace);
+	if (Debug_print_qd_mirroring)
+		elog(LOG, "emitting drop tablespace record for %u",
+			 tablespace);
 	emit_mmxlog_fs_record(MM_OBJ_TABLESPACE,
 						  InvalidOid /* filespace */,
 						  tablespace,
@@ -432,8 +452,9 @@ mmxlog_log_remove_tablespace(Oid tablespace)
 void
 mmxlog_log_remove_database(Oid tablespace, Oid database)
 {
-	elog(LOG, "emitting drop database record for %u/%u",
-		 tablespace, database);
+	if (Debug_print_qd_mirroring)
+		elog(LOG, "emitting drop database record for %u/%u",
+			 tablespace, database);
 	emit_mmxlog_fs_record(MM_OBJ_DATABASE,
 						  InvalidOid /* filespace */,
 						  tablespace,
@@ -448,8 +469,9 @@ void
 mmxlog_log_remove_relfilenode(Oid tablespace, Oid database, Oid relfilenode,
 							  uint32 segnum)
 {
-	elog(LOG, "emitting drop relfilenode record for %u/%u/%u",
-		 tablespace, database, relfilenode);
+	if (Debug_print_qd_mirroring)
+		elog(LOG, "emitting drop relfilenode record for %u/%u/%u",
+			 tablespace, database, relfilenode);
 	emit_mmxlog_fs_record(MM_OBJ_RELFILENODE,
 						  InvalidOid /* filespace */,
 						  tablespace,
