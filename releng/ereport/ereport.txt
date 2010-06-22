@@ -5499,111 +5499,112 @@ qaaf: queue:00000812:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 qaaf: queue:00000813:  errmsg("min_cost threshold cannot be negative"))); 
 qaaf: queue:00000821:  ereport(ERROR, 
 qaaf: queue:00000822:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000823:  errmsg("at least one threshold must be specified"), 
+qaaf: queue:00000823:  errmsg("at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be specified"), 
 qaaf: queue:00000824:  errOmitLocation(true))); 
 qaaf: queue:00000829:  ereport(ERROR, 
 qaaf: queue:00000830:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000831:  errmsg("at least one valid threshold must be specified"), 
-qaaf: queue:00000832:  errOmitLocation(true))); 
-qaaf: queue:00000839:  ereport(ERROR, 
-qaaf: queue:00000840:  (errcode(ERRCODE_RESERVED_NAME), 
-qaaf: queue:00000841:  errmsg("resource queue name \"%s\" is reserved", 
-qaaf: queue:00000842:  stmt->queue), 
-qaaf: queue:00000843:  errOmitLocation(true))); 
-qaaf: queue:00000863:  ereport(ERROR, 
-qaaf: queue:00000864:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-qaaf: queue:00000865:  errmsg("resource queue \"%s\" already exists", 
-qaaf: queue:00000866:  stmt->queue))); 
-qaaf: queue:00000913:  ereport(ERROR, 
-qaaf: queue:00000914:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
-qaaf: queue:00000915:  errmsg("insufficient resource queues available"), 
-qaaf: queue:00000916:  errhint("Increase max_resource_queues"))); 
-qaaf: queue:00000920:  ereport(WARNING, 
-qaaf: queue:00000921:  (errmsg("resource scheduling is disabled"), 
-qaaf: queue:00000922:  errhint("To enable set resource_scheduler=on"))); 
-qaaf: queue:00000988:  ereport(ERROR, 
-qaaf: queue:00000989:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-qaaf: queue:00000990:  errmsg("must be superuser to alter resource queues"))); 
-qaaf: queue:00001011:  ereport(ERROR, 
-qaaf: queue:00001012:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001013:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00001027:  ereport(ERROR, 
-qaaf: queue:00001028:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001029:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00001043:  ereport(ERROR, 
-qaaf: queue:00001044:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001045:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00001059:  ereport(ERROR, 
-qaaf: queue:00001060:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001061:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00001077:  ereport(ERROR, 
-qaaf: queue:00001078:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001079:  errmsg("option \"%s\" is not a valid resource type", 
-qaaf: queue:00001080:  defel->defname))); 
-qaaf: queue:00001090:  ereport(ERROR, 
-qaaf: queue:00001091:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001092:  errmsg("option \"%s\" is not a valid resource type", 
-qaaf: queue:00001093:  defel->defname))); 
-qaaf: queue:00001135:  ereport(ERROR, 
-qaaf: queue:00001136:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001137:  errmsg("active threshold cannot be less than %d or equal to 0", 
-qaaf: queue:00001138:  INVALID_RES_LIMIT_THRESHOLD), 
-qaaf: queue:00001139:  errOmitLocation(true))); 
-qaaf: queue:00001146:  ereport(ERROR, 
-qaaf: queue:00001147:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001148:  errmsg("cost threshold must be equal to %d or greater than 0", 
-qaaf: queue:00001149:  INVALID_RES_LIMIT_THRESHOLD), 
-qaaf: queue:00001150:  errOmitLocation(true))); 
-qaaf: queue:00001163:  ereport(ERROR, 
-qaaf: queue:00001164:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001165:  errmsg("min_cost threshold cannot be negative"), 
-qaaf: queue:00001166:  errOmitLocation(true))); 
-qaaf: queue:00001183:  ereport(ERROR, 
-qaaf: queue:00001184:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001185:  errmsg("at least one threshold, overcommit or ignore limit must be specified"), 
-qaaf: queue:00001186:  errOmitLocation(true))); 
-qaaf: queue:00001208:  ereport(ERROR, 
-qaaf: queue:00001209:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-qaaf: queue:00001210:  errmsg("resource queue \"%s\" does not exist", 
-qaaf: queue:00001211:  stmt->queue), 
-qaaf: queue:00001212:  errOmitLocation(true))); 
-qaaf: queue:00001281:  ereport(ERROR, 
-qaaf: queue:00001282:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001283:  errmsg("at least one threshold must be different from %d", 
-qaaf: queue:00001284:  INVALID_RES_LIMIT_THRESHOLD))); 
-qaaf: queue:00001318:  ereport(ERROR, 
-qaaf: queue:00001319:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
-qaaf: queue:00001320:  errmsg("thresholds cannot be less than current values"))); 
-qaaf: queue:00001322:  ereport(ERROR, 
-qaaf: queue:00001323:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
-qaaf: queue:00001324:  errmsg("disabling overcommit cannot leave queue in possibly overcommitted state"))); 
-qaaf: queue:00001326:  ereport(ERROR, 
-qaaf: queue:00001327:  (errcode(ERRCODE_INTERNAL_ERROR), 
-qaaf: queue:00001328:  errmsg("queue hash table corrupted"))); 
-qaaf: queue:00001335:  ereport(WARNING, 
-qaaf: queue:00001336:  (errmsg("resource scheduling is disabled"), 
-qaaf: queue:00001337:  errhint("To enable set resource_scheduler=on"))); 
-qaaf: queue:00001372:  ereport(ERROR, 
-qaaf: queue:00001373:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-qaaf: queue:00001374:  errmsg("must be superuser to drop resource queues"))); 
-qaaf: queue:00001395:  ereport(ERROR, 
-qaaf: queue:00001396:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-qaaf: queue:00001397:  errmsg("resource queue \"%s\" does not exist", 
-qaaf: queue:00001398:  stmt->queue))); 
-qaaf: queue:00001423:  ereport(ERROR, 
-qaaf: queue:00001424:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
-qaaf: queue:00001425:  errmsg("resource queue \"%s\" is used by at least one role", 
-qaaf: queue:00001426:  stmt->queue))); 
-qaaf: queue:00001434:  ereport(ERROR, 
-qaaf: queue:00001435:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-qaaf: queue:00001436:  errmsg("cannot drop default resource queue \"%s\"", 
-qaaf: queue:00001437:  stmt->queue))); 
-qaaf: queue:00001457:  ereport(ERROR, 
-qaaf: queue:00001458:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
-qaaf: queue:00001459:  errmsg("resource queue cannot be dropped as is in use"))); 
-qaaf: queue:00001463:  ereport(WARNING, 
-qaaf: queue:00001464:  (errmsg("resource scheduling is disabled"), 
-qaaf: queue:00001465:  errhint("To enable set resource_scheduler=on"))); 
+qaaf: queue:00000831:  errmsg("the value for at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be different from no limit (%d)", 
+qaaf: queue:00000832:  INVALID_RES_LIMIT_THRESHOLD), 
+qaaf: queue:00000833:  errOmitLocation(true))); 
+qaaf: queue:00000840:  ereport(ERROR, 
+qaaf: queue:00000841:  (errcode(ERRCODE_RESERVED_NAME), 
+qaaf: queue:00000842:  errmsg("resource queue name \"%s\" is reserved", 
+qaaf: queue:00000843:  stmt->queue), 
+qaaf: queue:00000844:  errOmitLocation(true))); 
+qaaf: queue:00000864:  ereport(ERROR, 
+qaaf: queue:00000865:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+qaaf: queue:00000866:  errmsg("resource queue \"%s\" already exists", 
+qaaf: queue:00000867:  stmt->queue))); 
+qaaf: queue:00000914:  ereport(ERROR, 
+qaaf: queue:00000915:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
+qaaf: queue:00000916:  errmsg("insufficient resource queues available"), 
+qaaf: queue:00000917:  errhint("Increase max_resource_queues"))); 
+qaaf: queue:00000921:  ereport(WARNING, 
+qaaf: queue:00000922:  (errmsg("resource scheduling is disabled"), 
+qaaf: queue:00000923:  errhint("To enable set resource_scheduler=on"))); 
+qaaf: queue:00000989:  ereport(ERROR, 
+qaaf: queue:00000990:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+qaaf: queue:00000991:  errmsg("must be superuser to alter resource queues"))); 
+qaaf: queue:00001012:  ereport(ERROR, 
+qaaf: queue:00001013:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001014:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00001028:  ereport(ERROR, 
+qaaf: queue:00001029:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001030:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00001044:  ereport(ERROR, 
+qaaf: queue:00001045:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001046:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00001060:  ereport(ERROR, 
+qaaf: queue:00001061:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001062:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00001078:  ereport(ERROR, 
+qaaf: queue:00001079:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001080:  errmsg("option \"%s\" is not a valid resource type", 
+qaaf: queue:00001081:  defel->defname))); 
+qaaf: queue:00001091:  ereport(ERROR, 
+qaaf: queue:00001092:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001093:  errmsg("option \"%s\" is not a valid resource type", 
+qaaf: queue:00001094:  defel->defname))); 
+qaaf: queue:00001136:  ereport(ERROR, 
+qaaf: queue:00001137:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001138:  errmsg("active threshold cannot be less than %d or equal to 0", 
+qaaf: queue:00001139:  INVALID_RES_LIMIT_THRESHOLD), 
+qaaf: queue:00001140:  errOmitLocation(true))); 
+qaaf: queue:00001147:  ereport(ERROR, 
+qaaf: queue:00001148:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001149:  errmsg("cost threshold must be equal to %d or greater than 0", 
+qaaf: queue:00001150:  INVALID_RES_LIMIT_THRESHOLD), 
+qaaf: queue:00001151:  errOmitLocation(true))); 
+qaaf: queue:00001164:  ereport(ERROR, 
+qaaf: queue:00001165:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001166:  errmsg("min_cost threshold cannot be negative"), 
+qaaf: queue:00001167:  errOmitLocation(true))); 
+qaaf: queue:00001184:  ereport(ERROR, 
+qaaf: queue:00001185:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001186:  errmsg("at least one threshold, overcommit or ignore limit must be specified"), 
+qaaf: queue:00001187:  errOmitLocation(true))); 
+qaaf: queue:00001209:  ereport(ERROR, 
+qaaf: queue:00001210:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+qaaf: queue:00001211:  errmsg("resource queue \"%s\" does not exist", 
+qaaf: queue:00001212:  stmt->queue), 
+qaaf: queue:00001213:  errOmitLocation(true))); 
+qaaf: queue:00001282:  ereport(ERROR, 
+qaaf: queue:00001283:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001284:  errmsg("the value for at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be different from no limit (%d)", 
+qaaf: queue:00001285:  INVALID_RES_LIMIT_THRESHOLD))); 
+qaaf: queue:00001319:  ereport(ERROR, 
+qaaf: queue:00001320:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
+qaaf: queue:00001321:  errmsg("thresholds cannot be less than current values"))); 
+qaaf: queue:00001323:  ereport(ERROR, 
+qaaf: queue:00001324:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
+qaaf: queue:00001325:  errmsg("disabling overcommit cannot leave queue in possibly overcommitted state"))); 
+qaaf: queue:00001327:  ereport(ERROR, 
+qaaf: queue:00001328:  (errcode(ERRCODE_INTERNAL_ERROR), 
+qaaf: queue:00001329:  errmsg("queue hash table corrupted"))); 
+qaaf: queue:00001336:  ereport(WARNING, 
+qaaf: queue:00001337:  (errmsg("resource scheduling is disabled"), 
+qaaf: queue:00001338:  errhint("To enable set resource_scheduler=on"))); 
+qaaf: queue:00001373:  ereport(ERROR, 
+qaaf: queue:00001374:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+qaaf: queue:00001375:  errmsg("must be superuser to drop resource queues"))); 
+qaaf: queue:00001396:  ereport(ERROR, 
+qaaf: queue:00001397:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+qaaf: queue:00001398:  errmsg("resource queue \"%s\" does not exist", 
+qaaf: queue:00001399:  stmt->queue))); 
+qaaf: queue:00001424:  ereport(ERROR, 
+qaaf: queue:00001425:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
+qaaf: queue:00001426:  errmsg("resource queue \"%s\" is used by at least one role", 
+qaaf: queue:00001427:  stmt->queue))); 
+qaaf: queue:00001435:  ereport(ERROR, 
+qaaf: queue:00001436:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+qaaf: queue:00001437:  errmsg("cannot drop default resource queue \"%s\"", 
+qaaf: queue:00001438:  stmt->queue))); 
+qaaf: queue:00001458:  ereport(ERROR, 
+qaaf: queue:00001459:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
+qaaf: queue:00001460:  errmsg("resource queue cannot be dropped as is in use"))); 
+qaaf: queue:00001464:  ereport(WARNING, 
+qaaf: queue:00001465:  (errmsg("resource scheduling is disabled"), 
+qaaf: queue:00001466:  errhint("To enable set resource_scheduler=on"))); 
 aaaaa GP_IGNORE: saba: schemacmds - ./backend/commands/schemacmds.c
 saba: schemacmds:00000087:  ereport(ERROR, 
 saba: schemacmds:00000088:  (errcode(ERRCODE_RESERVED_NAME), 
