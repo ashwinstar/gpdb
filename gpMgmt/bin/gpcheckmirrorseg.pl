@@ -1197,6 +1197,15 @@ sub get_relfilenode_func
 		my $db			= pop @foo; # normally a dbid, but could be "global";
 		my $relfilenode = $fil;
 
+		# for a filespace, $tspace is the oid of the tablespace, but
+		# otherwise it should be "base" or "global"
+		my $tspace = "no_tablespace";
+
+		$tspace = pop @foo
+			if (scalar(@foo));
+
+		$tspace = "global" if ($db =~ m/^global$/i);
+
 		$relfilenode =~ s/\.\d+$//gm; # remove the trailing ".number"...
 
 		# must be a number for dbid -- will error out later
@@ -1206,7 +1215,8 @@ sub get_relfilenode_func
 
 		unless (exists($dbs{$db}->{relfilenodeh}->{$relfilenode}))
 		{
-			$dbs{$db}->{relfilenodeh}->{$relfilenode} = { files => [] } ;
+			$dbs{$db}->{relfilenodeh}->{$relfilenode} = 
+			{ files => [], tspace => {} } ;
 
 			# Build a list of relfilenodes to lookup in catalog.
 			# Note: filter out non-numeric names like "pg_auth"
@@ -1222,6 +1232,8 @@ sub get_relfilenode_func
 		}
 		
 		push @{$dbs{$db}->{relfilenodeh}->{$relfilenode}->{files}}, $fil;
+
+		$dbs{$db}->{relfilenodeh}->{$relfilenode}->{tspace}->{$tspace} = 1;
 	}
 
     my $psql_str = "psql ";
@@ -1296,6 +1308,12 @@ sub get_relfilenode_func
 				$rnod->{relstorage}	   = $rr2->{relstorage};
 				$rnod->{relkind}	   = $rr2->{relkind};
 				$rnod->{reltablespace} = $rr2->{reltablespace};
+
+				# Note: reltablespace is 0 for pg_default (vs 1663),
+				# so get tablespace_oid too
+
+				$rnod->{tablespace_oid} = $rr2->{tablespace_oid};
+				$rnod->{database_oid} = $rr2->{database_oid};
 			}
 		}
 
@@ -1393,6 +1411,63 @@ sub get_relfilenode_func
 					}
 
 				}
+			}
+
+			# MPP-10123: validate tablespace in filesystem and catalog
+			if (scalar(keys(%{$rnod->{tspace}})) > 1)
+			{
+				warn "relfilenode $kk2 appears in multiple tablespaces!!";
+				print Data::Dumper->Dump([$vv2]), "\n";
+				$unknown{$kk} = []
+					unless (exists($unknown{$kk}));
+				push @{$unknown{$kk}}, $kk2;
+
+			}
+			elsif ($rnod->{tablespace_oid})
+			{
+				my $nomatch = 0;
+				
+				print Data::Dumper->Dump([$rnod]);
+
+				my @tskk = sort(keys(%{$rnod->{tspace}}));
+
+				my $tspace1 = $tskk[0]; # should only be one
+
+				unless (defined($tspace1))
+				{
+					warn "no tablespace for $kk\n";
+					$tspace1 = "no tablespace";
+					$nomatch = 1;
+				}
+
+				# from pg_tablespace.h: 
+				my $DEFAULTTABLESPACE_OID = 1663;
+				my $GLOBALTABLESPACE_OID = 1664;
+
+				if ($tspace1 =~ m/base/)
+				{
+					$nomatch = 
+						($DEFAULTTABLESPACE_OID != $rnod->{tablespace_oid});
+				}
+				elsif ($tspace1 =~ m/global/)
+				{
+					$nomatch = 
+						($GLOBALTABLESPACE_OID != $rnod->{tablespace_oid});
+				}
+				elsif ($tspace1 =~ m/\d+/)
+				{
+					$nomatch = ($tspace1 != $rnod->{tablespace_oid});
+				}
+				# else ignore no tablespace case for now
+				if ($nomatch)
+				{
+					warn "relfilenode $kk2 found in wrong tablespace!!";
+					warn "$tspace1 vs $rnod->{tablespace_oid}";
+					$unknown{$kk} = []
+						unless (exists($unknown{$kk}));
+					push @{$unknown{$kk}}, $kk2;
+				}
+				
 			}
 
 		} # end for all relfilenodes
