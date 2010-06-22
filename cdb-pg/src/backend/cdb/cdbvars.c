@@ -4,7 +4,7 @@
  *	  Provides storage areas and processing routines for Greenplum Database variables
  *	  managed by GUC.
  *
- * Copyright (c) 2003-2008, Greenplum inc
+ * Copyright (c) 2003-2010, Greenplum inc
  *
  *
  * NOTES
@@ -282,6 +282,9 @@ bool		gp_foreign_data_access = FALSE;
 bool		gp_setwith_alter_storage = FALSE;
 
 bool		gp_enable_tablespace_auto_mkdir = FALSE;
+
+/* MPP-9772, MPP-9773: remove support for CREATE INDEX CONCURRENTLY */
+bool		gp_create_index_concurrently = FALSE;
 
 /* Enable check for compatibility of encoding and locale in createdb */
 bool gp_encoding_check_locale_compatibility = true;

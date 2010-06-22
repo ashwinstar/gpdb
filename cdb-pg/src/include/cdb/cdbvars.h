@@ -3,7 +3,7 @@
  * cdbvars.h
  *	  definitions for Greenplum-specific global variables
  *
- * Copyright (c) 2003-2008, Greenplum inc
+ * Copyright (c) 2003-2010, Greenplum inc
  *
  * NOTES
  *	  See src/backend/utils/misc/guc.c for variable external specification.
@@ -884,6 +884,8 @@ extern bool	gp_setwith_alter_storage;
 
 extern bool	gp_enable_tablespace_auto_mkdir;
 
+/* MPP-9772, MPP-9773: remove support for CREATE INDEX CONCURRENTLY */
+extern bool	gp_create_index_concurrently;
 
 /* Priority for the segworkers relative to the postmaster's priority */
 extern int gp_segworker_relative_priority;
