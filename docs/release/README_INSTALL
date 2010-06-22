@@ -74,15 +74,22 @@ LINUX
 
 In /etc/sysctl.conf:
 
+kernel.sem = 250 64000 100 512
 kernel.shmmax = 500000000
 kernel.shmmni = 4096
 kernel.shmall = 4000000000
 kernel.sem = 250 64000 100 512
-net.ipv4.tcp_tw_recycle=1 
-net.ipv4.tcp_max_syn_backlog=4096 
+kernel.sysrq = 1
+kernel.core_uses_pid = 1
+kernel.msgmnb = 65536
+kernel.msgmax = 65536
+net.ipv4.tcp_syncookies = 1
+net.ipv4.ip_forward = 0
+net.ipv4.conf.default.accept_source_route = 0
+net.ipv4.tcp_tw_recycle=1
+net.ipv4.tcp_max_syn_backlog=4096
+net.ipv4.conf.all.arp_filter = 1
 net.core.netdev_max_backlog=10000
-net.ipv4.conf.default.arp_filter=1
-net.ipv4.conf.all.arp_filter=1
 vm.overcommit_memory=2
 
 In /etc/security/limits.conf:
@@ -92,18 +99,43 @@ In /etc/security/limits.conf:
 * soft nproc 131072
 * hard nproc 131072
 
+File system recommendations:
+
+XFS is the preferred file system for data storage. 
+Greenplum recommends the following xfs mount options:
+
+noatime,nodiratim,logbufs=8
+
+Also, each disk device file should have a read-ahead value of 16384.
 
 ----------------
 SOLARIS 10
 ----------------
 
-In /etc/project, change the line:
+In /etc/system:
+
+set rlim_fd_cur=65536
+set zfs:zfs_arc_max=0x600000000
+set pcplusmp:apic_panic_on_nmi=1
+set nopanicdebug=1
+
+In /etc/project:
+
+Solaris maintains tuning properties in /etc/project starting 
+with Solaris 10 11/08. As a result, some things formerly set 
+in /etc/system are now set in /etc/project. 
+
+Change this line:
 
 default:3::::
 
-to:
+To:
 
-default:3::::project.max-sem-ids=(priv,1024,deny);process.max-file-descriptor=(priv,252144,deny)
+default:3:default project:::project.max-sem-ids=(priv,1024,deny); process.max-filedescriptor=(priv,252144,deny)
+
+In /etc/user_attr:
+
+gpadmin::::defaultpriv=basic,dtrace_user,dtrace_proc
 
 
 ***********************************************************
@@ -174,6 +206,8 @@ directories:
 * demo - Greenplum Database demonstration programs. 
 
 * docs - Greenplum Database documentation.
+
+* etc — Sample configuration file for OpenSSL.
 
 * ext - Bundled programs (such as Python) used by some 
         Greenplum Database utilies.

@@ -343,8 +343,10 @@ CHECK_POINT_SEGMENTS
 
 
 ENCODING
- Required. The character set encoding to use. Greenplum Database 
- supports the same character sets as PostgreSQL.
+ Required. The character set encoding to use. This character set 
+ must be compatible with the --locale settings used, especially 
+ --lc-collate and --lc-ctype. Greenplum Database supports the same 
+ character sets as PostgreSQL.
 
 
 DATABASE_NAME
