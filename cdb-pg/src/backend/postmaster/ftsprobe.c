@@ -1211,6 +1211,31 @@ probePublishUpdate(uint8 *probe_results)
 
 	char timestamp_str[100];
 
+	if (failover_strategy == 'f')
+	{
+		/* if in filerep mode, convert FAULT messages (a failure in MIRRORING) to changes in ALIVE status */
+		/* this preprocessing may also mark segment pairs in-sync in configuration */
+		for (i=0; i < cdb_component_dbs->total_segment_dbs; i++)
+		{
+			CdbComponentDatabaseInfo *segInfo = &cdb_component_dbs->segment_db_info[i];
+
+			/*
+			 * Handle Filerep state changes (states other than "alive") --
+			 * this has some side-effects on the probe-results.
+			 *
+			 * For instance:
+			 * Handle PROBE_FAULT here. if we have a segment alive,
+			 * but it is reporting a fault, then we need to update
+			 * some state.
+			 *
+			 * "fault" is a Filerep concept.
+			 *
+			 * See FtsTestOneSegment(), PROBE_FAULT implies PROBE_ALIVE.
+			 */
+			Filerep_preprocess_probe_results(probe_results, segInfo);
+		}
+	}
+
 	/* collect status changes */
 	for (i=0; i < cdb_component_dbs->total_segment_dbs; i++)
 	{
@@ -1226,24 +1251,6 @@ probePublishUpdate(uint8 *probe_results)
 			int primaryChange;
 			int mirrorChange;
 			uint8 segStatus;
-
-			/*
-			 * Handle Filerep state changes (states other than "alive") --
-			 * this has some side-effects on the probe-results.
-			 *
-			 * For instance:
-			 * Handle PROBE_FAULT here. if we have a segment alive,
-			 * but it is reporting a fault, then we need to update
-			 * some state.
-			 *
-			 * "fault" is a Filerep concept.
-			 *
-			 * See FtsTestOneSegment(), PROBE_FAULT implies PROBE_ALIVE.
-			 */
-			if (failover_strategy == 'f')
-			{
-				Filerep_preprocess_probe_results(probe_results, segInfo);
-			}
 
 			/* We're no longer responding to probes ? */
 			if ((probe_results[segInfo->dbid] & PROBE_ALIVE) == 0)
@@ -1305,6 +1312,7 @@ probePublishUpdate(uint8 *probe_results)
 							}
 						}
 					}
+
 					if (updateMirror)
 					{
 						/* update the mirror too */
@@ -1824,48 +1832,43 @@ Null_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int change
 static void
 Filerep_preprocess_probe_results(uint8 *probe_results, CdbComponentDatabaseInfo *segInfo)
 {
+#define PROBE_IS_DEAD(dbInfo) (((probe_results[(dbInfo)->dbid]) & PROBE_ALIVE) == 0)
+#define PROBE_IS_FAULT(dbInfo) (((probe_results[(dbInfo)->dbid]) & PROBE_FAULT) == PROBE_FAULT)
+#define PROBE_IS_TO_IN_SYNC(dbInfo) (((probe_results[(dbInfo)->dbid]) & PROBE_TO_IN_SYNC) == PROBE_TO_IN_SYNC)
+
 	CdbComponentDatabaseInfo *primary = NULL, *mirror = NULL;
 
 	if (SEGMENT_IS_ACTIVE_PRIMARY(segInfo))
 	{
 		primary = segInfo;
 		mirror = getMirrorEntryByContent(cdb_component_dbs, primary->segindex, primary->dbid);
+		Assert(mirror != NULL); /* mirrors should always be there in filerep mode */
 	}
 	else
 	{
-		mirror = segInfo;
-		primary = getMirrorEntryByContent(cdb_component_dbs, mirror->segindex, mirror->dbid);
-
-		if (primary == NULL)
-		{
-			elog(LOG, "Couldn't find primary-role for content %d", mirror->segindex);
-			return;
-		}
+		/* all segment pairs will be preprocessed before we use any results, so it's okay
+		 *   to just preprocess when the primary is the segInfo.  Early returning here
+		 *   doesn't help correctness, but avoids bad log messages because the second
+		 *   trip through this function for a pair would print different output than
+		 *   the first */
+		return;
 	}
 
 	/*
 	 * We've completed resync ? NOTE: we've only completed resync if *both* report completion.
 	 */
-	if ((probe_results[primary->dbid] & PROBE_TO_IN_SYNC) == PROBE_TO_IN_SYNC)
+	if (PROBE_IS_TO_IN_SYNC(primary) &&
+	    PROBE_IS_TO_IN_SYNC(mirror))
 	{
-		if (mirror == NULL)
-		{
-			/* should never get marked to PROBE_TO_IN_SYNC if we don't have a mirror */
-			elog(ERROR, "Segment marked 'done with resync' without a mirror! %d", primary->dbid);
-		}
+		/* if primary and mirror are both in-sync then update configuration:
+		 * because will not necessarily reach in-sync internally at the same point,
+		 * we make sure both are in-sync before updating configuraiton
+		 */
+		markSegmentInSyncInConfiguration(primary);
+		probe_results[primary->dbid] &= ~PROBE_TO_IN_SYNC;
 
-		if ((probe_results[mirror->dbid] & PROBE_TO_IN_SYNC) == PROBE_TO_IN_SYNC)
-		{
-			/* if primary and mirror are both in-sync then update configuration:
-			 * because will not necessarily reach in-sync internally at the same point,
-			 * we make sure both are in-sync before updating configuraiton
-			 */
-			markSegmentInSyncInConfiguration(primary);
-			probe_results[primary->dbid] &= ~PROBE_TO_IN_SYNC;
-
-			markSegmentInSyncInConfiguration(mirror);
-			probe_results[mirror->dbid] &= ~PROBE_TO_IN_SYNC;
-		}
+		markSegmentInSyncInConfiguration(mirror);
+		probe_results[mirror->dbid] &= ~PROBE_TO_IN_SYNC;
 	}
 
 	/*
@@ -1875,72 +1878,113 @@ Filerep_preprocess_probe_results(uint8 *probe_results, CdbComponentDatabaseInfo 
 	 *    2) primary in fault, mirror dead
 	 *    3) primary in fault, mirror in fault
 	 *             primary-changelogging, mirror considered dead.
-	 *    4) primary and mirror busy resynching.
+	 *    4) primary in fault, primary and mirror busy resynching.
 	 *             primary-changelogging, mirror considered dead.
 	 *    5) primary OK, mirror in fault.
 	 *             primary-changelogging, mirror considered dead.
+	 *    6) primary dead, mirror dead.
+	 *             do nothing more
+	 *    7) primary dead, mirror alive (can be in fault) and in-sync
+	 *             mirror-changelogging, primary dead
+	 *    8) primary dead, mirror alive (can be in fault) but out-of-sync
+	 *             consider all dead
 	 *
 	 * We're going to depend on the code further down to make the actual changes,
 	 * here we just mark which segments to consider "down."
 	 */
-	if ((probe_results[primary->dbid] & PROBE_FAULT) == PROBE_FAULT)
+	if (PROBE_IS_FAULT(primary))
 	{
-		if (mirror == NULL)
+		/* PRIMARY FAULT -- cases 1-4 */
+		if (PROBE_IS_FAULT(mirror))
 		{
-			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported fault could find no mirror", primary->dbid, probe_results[primary->dbid]);
-			goto done;
-		}
-
-		if (((probe_results[mirror->dbid] & PROBE_FAULT) == PROBE_FAULT) ||
-			((probe_results[mirror->dbid] & PROBE_ALIVE) == 0))
-		{
-			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported fault mirror %d/0x%x considered dead.",
+			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported fault, mirror %d/0x%x considered dead.",
 				 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
-			/* consider mirror dead (2)(3) */
+
+			/* consider mirror dead (3) */
 			probe_results[mirror->dbid] &= ~PROBE_ALIVE;
+
+		}
+		else if (PROBE_IS_DEAD(mirror))
+		{
+			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported fault, mirror %d/0x%x is dead.",
+				 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
+
+			/* consider mirror dead (2) */
+		}
+		else if (FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status)) /* mirror up, check in-sync */
+		{
+			/* The mirror was intact ? */
+			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported fault, mirror %d/0x%x looks good.",
+				 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
+
+			/* mirror is OK (1) */
+			probe_results[primary->dbid] &= ~PROBE_ALIVE;
 		}
 		else
 		{
-			/* If the mirror is "u" is it also "s" ? */
-			if (FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status))
-			{
-				/* The mirror was intact ? */
-				elog(LOG, "probePublishUpdate: dbid %d/0x%x reported fault mirror %d/0x%x looks good.",
-					 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
-				/* mirror is OK (1) */
-				probe_results[primary->dbid] &= ~PROBE_ALIVE;
-			}
-			else
-			{
-				elog(LOG, "probePublishUpdate: dbid %d/0x%x reported fault mirror %d/0x%x was resyncing, now considered dead.",
-					 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
-				/*
-				 * mirror must have been re-syncing,
-				 * so the primary is just reporting a
-				 * problem from the mirror.
-				 */
-				/* consider mirror dead (3)(4) */
-				probe_results[mirror->dbid] &= ~PROBE_ALIVE;
-			}
+			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported fault, mirror %d/0x%x was resyncing, now considered dead.",
+				 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
+			/*
+			 * mirror must have been re-syncing,
+			 * so the primary is just reporting a
+			 * problem from the mirror.
+			 */
+			/* consider mirror dead (3)(4) */
+			probe_results[mirror->dbid] &= ~PROBE_ALIVE;
 		}
-		probe_results[mirror->dbid] &= ~PROBE_FAULT;
 	}
-	else if (mirror != NULL)
+	else if (PROBE_IS_DEAD(primary))
 	{
- 		/* Primary is OK. What about the mirror ? */
-		if ((probe_results[mirror->dbid] & PROBE_FAULT) == PROBE_FAULT)
+		/* PRIMARY DEAD -- cases 6-8 */
+		if (PROBE_IS_DEAD(mirror))
 		{
-			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported OK mirror %d/0x%x considered dead.",
+			/* mirror reported dead (6) */
+			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported dead, mirror %d/0x%x reported dead.",
+				 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
+		}
+		else if (FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status)) /* mirror not dead, check in-sync */
+		{
+			/* The mirror was intact and synchronized -- consider it alive (7) */
+
+			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported dead, mirror %d/0x%x considered alive.",
+				 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
+		}
+		else
+		{
+			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported dead, mirror %d/0x%x was resyncing, now considered dead.",
+				 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
+
+			/* mirror was alive but not in-sync, must consider it dead (8) */
+			probe_results[mirror->dbid] &= ~PROBE_ALIVE;
+		}
+	}
+	else
+	{
+ 		/* Primary is OK. What about the mirror ? (case 5) */
+		if (PROBE_IS_FAULT(mirror))
+		{
+			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported OK mirror, %d/0x%x considered dead.",
 				 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
 			/* consider mirror dead (5) */
 			probe_results[mirror->dbid] &= ~PROBE_ALIVE;
-			probe_results[mirror->dbid] &= ~PROBE_FAULT;
+		}
+		else if (PROBE_IS_DEAD(mirror))
+		{
+			if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+				elog(LOG, "probePublishUpdate: dbid %d/0x%x reported OK, mirror %d/0x%x already dead.",
+				 	primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
+		}
+		else
+		{
+			if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+				elog(LOG, "probePublishUpdate: dbid %d/0x%x reported OK, mirror %d/0x%x alive.",
+				 	primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
 		}
 	}
 
-done:
+	/* clear PROBE_FAULT because it's not needed after this processing */
 	probe_results[primary->dbid] &= ~PROBE_FAULT;
-	return;
+	probe_results[mirror->dbid] &= ~PROBE_FAULT;
 }
 
 /*
