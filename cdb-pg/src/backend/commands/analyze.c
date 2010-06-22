@@ -1183,7 +1183,10 @@ static Oid buildSampleTable(Oid relationOid,
 
 	Assert(sampleTableOid != InvalidOid);
 
-	/* Update temporary table's reltuples, relpages */
+	/* 
+	 * Update the sample table's reltuples, relpages. Without these, the queries to the sample table would call cdbRelsize which can be an expensive call. 
+	 * We know the number of tuples in the sample table, but don't have the information about the number of pages. We set it to 2 arbitrarily.
+	 */
 	updateReltuplesRelpagesInCatalog(sampleTableOid, *sampleTableRelTuples, 2);
 
 	pfree((void *) rangeVar);
@@ -2420,7 +2423,7 @@ static void gp_statistics_estimate_reltuples_relpages_heap(Relation rel, float4 
 		 */
 		*reltuples = 0.0;
 		*relpages = 0.0;
-		return;
+		return; 
 	}
 		
 	for (j=0 ; j<nblockstotal; j++)
@@ -2429,7 +2432,7 @@ static void gp_statistics_estimate_reltuples_relpages_heap(Relation rel, float4 
 		 * Threshold is dynamically adjusted based on how many blocks we need to examine and how many blocks
 		 * are left.
 		 */
-		double threshold = (nblockstarget - nblocksseen)/(nblockstotal - j);
+		double threshold = ((double) nblockstarget - nblocksseen)/((double) nblockstotal - j);
 		
 		/**
 		 * Random dice thrown to determine if current block is chosen.
