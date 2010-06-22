@@ -28,9 +28,11 @@ Used by at least gpexpand, gprecoverseg, and gpaddmirrors
 DEFAULT_BATCH_SIZE=8
 EXECNAME = os.path.split(__file__)[-1]
 
+DESTINATION_FILE_SPACES_DIRECTORY = "fs_directory"
+
 class ConfExpSegCmd(Command):
     def __init__(self, name, cmdstr, datadir, port, dbid, newseg, tarfile, useLighterDirectoryValidation, isPrimary,
-                    filespaceDirs, verbose, validationOnly):
+                    filespaceOids, filespaceDirs, verbose, validationOnly):
         """
         @param useLighterDirectoryValidation if True then we don't require an empty directory; we just require that
                                              database stuff is not there.
@@ -42,6 +44,7 @@ class ConfExpSegCmd(Command):
         self.tarfile = tarfile
         self.verbose = verbose
         self.useLighterDirectoryValidation = useLighterDirectoryValidation
+        self.filespaceOids = filespaceOids
         self.filespaceDirs = filespaceDirs
         self.isPrimary = isPrimary
 
@@ -99,6 +102,27 @@ class ConfExpSegCmd(Command):
             os.chmod(path,0700)
         else:
             os.mkdir(path,0700)
+            
+    def fixupFilespaces(self):
+        """
+        This method will take file spaces stored in the system data directory and put them in their proper locations.
+        """
+        if self.filespaceOids == None:
+           return
+        try:
+           logger.info("copy filespaces to their locations")
+           # only on primary do we create it -- otherwise, mirroring code creates it on replay
+           filespaceDataDir = self.datadir + "/" + DESTINATION_FILE_SPACES_DIRECTORY
+           i = 0
+           for i in range(len(self.filespaceOids)):
+               sourceDir = filespaceDataDir + "/" + str(self.filespaceOids[i])
+               targetDir = self.filespaceDirs[i]
+               cpCmd = unix.LocalDirCopy("copy filespace from %s to %s" % (sourceDir, targetDir), sourceDir, targetDir)
+               cpCmd.run(validateAfter=True)
+        except Exception, e:
+           self.set_results(CommandResult(1,'',e,True,False))
+           raise
+
 
     def run(self):
         try:
@@ -140,6 +164,10 @@ class ConfExpSegCmd(Command):
                     logger.error(extractTarCmd.get_results())
                     raise
         
+                if self.isPrimary:
+                   # only on primary do we create it -- otherwise, mirroring code creates it on replay
+                   self.fixupFilespaces()                    
+                      
                 logger.info("create gp_dbid file for segment")
                 writeGpDbidFile( self.datadir, self.dbid )
 
@@ -192,6 +220,19 @@ class ConfExpSegCmd(Command):
         """Plain vanilla validation which expects a 0 return code."""        
         if self.results.rc != 0:
             raise ExecutionError("non-zero rc: %d" % self.results.rc, self)  
+
+def getOidDirLists(oidDirs):
+    """ break up list in <oid>:<dir> format into list of oid list of dir """
+    oidList = []
+    dirList = []
+    i = 0
+    while i < len(oidDirs):
+        oidList.append(oidDirs[i])
+        i = i + 1
+        dirList.append(oidDirs[i])
+        i = i + 1
+    return oidList, dirList
+        
 
 def parseargs():
     parser = OptParser(option_class=OptChecker,
@@ -267,11 +308,23 @@ try:
         isPrimary = seg[2] == "true"
         directoryValidationLevel = seg[3] == "true"
         dbid = int(seg[4])
-        filespaceDirs = seg[5:]
+        (filespaceOids, filespaceDirs) = getOidDirLists(seg[5:])
+        filespaceOids, filespaceDirs = getOidDirLists(seg[5:])
 
-        cmd = ConfExpSegCmd('Configure segment directory', ' '.join(sys.argv), dataDir, port, dbid,
-                            options.newsegments, options.tarfile, directoryValidationLevel,
-                            isPrimary, filespaceDirs, options.verbose, options.validationOnly)
+        cmd = ConfExpSegCmd( name = 'Configure segment directory'
+                           , cmdstr = ' '.join(sys.argv)
+                           , datadir = dataDir
+                           , port = port
+                           , dbid = dbid
+                           , newseg = options.newsegments
+                           , tarfile = options.tarfile
+                           , useLighterDirectoryValidation = directoryValidationLevel
+                           , isPrimary = isPrimary
+                           , filespaceOids = filespaceOids
+                           , filespaceDirs = filespaceDirs
+                           , verbose = options.verbose
+                           , validationOnly = options.validationOnly
+                           )
         pool.addCommand(cmd)
 
     pool.join()

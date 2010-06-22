@@ -15,6 +15,8 @@ from gppylib.commands.gp import *
 from gppylib.gparray import *
 from gppylib.db import dbconn, catalog
 
+DESTINATION_FILE_SPACES_DIRECTORY = "fs_directory"
+
 class SegcopyError(Exception):  pass
 
 
@@ -35,7 +37,7 @@ class _SyncProgress:
 
 class GpSegCopy:
     
-    def __init__(self,logger,srcHost,srcDir,dstHost,dstDir,clean,schema_only,method, progressBytes=None, progressTime=None, verbose=False):
+    def __init__(self,logger,srcHost,srcDir,dstHost,dstDir,clean,schema_only,method, progressBytes=None, progressTime=None, verbose=False, filespaces=None):
         self.logger=logger
         self.srcHost=srcHost
         self.srcDir=srcDir
@@ -48,7 +50,8 @@ class GpSegCopy:
         self.progressBytes = progressBytes
         self.progressTime = progressTime
         self.verbose = verbose
-        
+        self.filespaces = filespaces   # filespaces without system filespace
+
     
     def pre_check(self):
         '''Perform up front checks on hosts,directories and other things that might trip us up.
@@ -62,7 +65,9 @@ class GpSegCopy:
         '''
         Ping.local("srcPing",self.srcHost)
         Ping.local("dstPing",self.dstHost)
-                      
+
+        """ KAS - Need to fix this for file spaces """
+                                 
         srcDirSize=DiskUsage.get_size("srcDir",self.srcHost,self.srcDir)   
         
         if self.clean:
@@ -79,7 +84,14 @@ class GpSegCopy:
     def copy(self):
         name="segcopy"
         srcDirSize=DiskUsage.get_size(name,self.srcHost,self.srcDir)
-        
+
+        name = "segcopy filespace"
+        if self.filespaces != None:
+           for oid in self.filespaces:
+               dir = self.filespaces[oid]
+               size = DiskUsage.get_size(name, self.srcHost, dir)
+               srcDirSize = srcDirSize + size
+                
         self.logger.info("Starting copy from %s:%s to %s:%s" %\
                          (self.srcHost,self.srcDir,self.dstHost,self.dstDir))
         
@@ -94,7 +106,23 @@ class GpSegCopy:
             cpCmd=LocalDirCopy(name,'%s' % self.srcDir,self.dstDir)
             cpCmd.run(validateAfter=True)
             res=cpCmd.get_results()
+            
+            if self.filespaces != None:
+               """ Make directory to hold file spaces """
+               fullPathFsDir = self.dstDir + "/" +  DESTINATION_FILE_SPACES_DIRECTORY
+               MakeDirectory.local("gpexpand make directory to hold file spaces", fullPathFsDir)
+               for oid in self.filespaces:
+                   MakeDirectory.local("gpexpand make directory to hold file space oid: " + str(oid), fullPathFsDir)
+                   dir = self.filespaces[oid]
+                   destDir = fullPathFsDir + "/" + str(oid)
+                   MakeDirectory.local("gpexpand make directory to hold file space: " + destDir, destDir)
+                   name = "GpSegCopy %s to %s" % (dir, destDir)
+                   cpCmd = LocalDirCopy(name, dir, destDir)
+                   cpCmd.run(validateAfter=True)
+                   res=cpCmd.get_results()
+                
         else:
+            """ KAS - need to fix this for filespaces """
             if self.method == 'copy':
                 #TODO:  may want to change this to either always use pysync or to use a 'tar | ssh tar'
                 scpCmd=RemoteCopy(name,self.srcDir,self.dstHost,self.dstDir,ctxt=REMOTE,remoteHost=self.srcHost)
@@ -174,9 +202,9 @@ class GpSegCopy:
             catalog_names = [
                            'pg_catalog.gp_configuration', 
                            'pg_catalog.gp_segment_configuration',
-                           'pg_catalog.gp_distribution_policy',
-                           'pg_catalog.pg_partition',
-                           'pg_catalog.pg_partition_rule',
+                           ###'pg_catalog.gp_distribution_policy', \
+                           ###'pg_catalog.pg_partition',            = These tree tables exist in every database, including
+                           ###'pg_catalog.pg_partition_rule',      /  database in non-system file spaces, so clean them in gpexpand.
                            'pg_catalog.gp_master_mirroring',
                            'pg_catalog.pg_filespace_entry',
                            ]

@@ -326,12 +326,14 @@ Tablespace: "pg_global"
                 cursor.execute(sql)
                 
                 # Add the filespace information for this segment.
-                system_filespace = 3052
-                sql = """
-                   INSERT into pg_catalog.pg_filespace_entry(
-                       fsefsoid, fsedbid, fselocation)
-                   VALUES (%d, %d, \'%s\')
-                """ % (system_filespace, seg.dbid, seg.datadir)
+                segFilespaces = seg.getSegmentFilespaces()
+                for fsOid in segFilespaces:
+                    fsDatadir = segFilespaces[fsOid]
+                    sql = """
+                       INSERT into pg_catalog.pg_filespace_entry(
+                           fsefsoid, fsedbid, fselocation)
+                       VALUES (%d, %d, \'%s\')
+                    """ % (int(fsOid), seg.dbid, fsDatadir)
                 cursor.execute(sql)
 
             conn.commit()

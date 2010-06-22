@@ -725,6 +725,17 @@ class ConfigureNewSegment(Command):
                                       True values indicate that the directory has been cleaned by gpcleansegmentdir.py
                                       and we should have lighter restrictions on how to check it for emptiness
                                       Passing None is the same as passing an array of all False values
+                                      
+        @return A dictionary with the following format:
+        
+                Name  =   <host name> [, <host name> ]   <--- if multiple host names, then comma separated values as well.
+                Value =   <system data directory>
+                        : <port>
+                        : if primary then 'true' else 'false'
+                        : if target is reused location then 'true' else 'false'
+                        : <segment dbid>
+                      [ : <filespace oid> : <file space directory> ]...
+
         """
         result = {}
         for segIndex, seg in enumerate(segments):
@@ -739,7 +750,7 @@ class ConfigureNewSegment(Command):
             filespaces = []
             for fsOid, path in seg.getSegmentFilespaces().iteritems():
                 if fsOid not in [gparray.SYSTEM_FILESPACE]:
-                    filespaces.append(path)
+                    filespaces.append(str(fsOid) + ":" + path)
 
             result[hostname] += '%s:%d:%s:%s:%d%s' % (seg.getSegmentDataDirectory(), seg.getSegmentPort(),
                         "true" if seg.isSegmentPrimary(current_role=True) else "false",

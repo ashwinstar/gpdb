@@ -70,7 +70,38 @@ VALID_FAULT_STRATEGY = FAULT_STRATEGY_LABELS.keys()
 def getFaultStrategyLabel(strategy):
     return FAULT_STRATEGY_LABELS[strategy]
 
+# ============================================================================
+def getDataDirPrefix(datadir):
+    retValue = ""
+    retValue = datadir[:datadir.rfind('/')]
+    return retValue
 
+# ============================================================================
+def getFileSpaceDirsWithNewSuffix(fileSpaceDictionary, suffix, excludeSystemFilespace = False):
+    """ 
+    This method will take the a dictionary of file spaces and return the same dictionary with the new sufix.
+    """
+    retValue = {}
+    
+    for entry in fileSpaceDictionary:
+        if entry == SYSTEM_FILESPACE:
+           continue
+        newDir = getDataDirPrefix(fileSpaceDictionary[entry])
+        newDir = newDir + "/" + suffix
+        retValue[entry] = newDir
+    return retValue    
+   
+# ============================================================================    
+def replaceFileSpaceContentID(fileSpaceDictionary, oldContent, newContent):
+    retValue = {}
+    for entry in fileSpaceDictionary:
+        tempDir  = fileSpaceDictionary[entry]
+        tempDir  = tempDir[:tempDir.rfind(str(oldContent))]
+        tempDir += ('%d' % newContent)
+        retValue[entry] = tempDir
+    return retValue
+
+ 
 # ============================================================================
 # ============================================================================
 class GpDB:
@@ -349,15 +380,13 @@ class GpDB:
         Returns the actual `hostname` for the host
 
         Note: use getSegmentAddress for the network address to use
-        Note: is Nullable (so can return None)
         """
         return self.hostname
 
     def getSegmentAddress(self):
         """
-        Returns the network address to use to contact the segment.
+        Returns the network address to use to contact the segment (i.e. the NIC address).
 
-        Note: is Nullable (so can return None)
         """
         return self.address
 
@@ -531,7 +560,24 @@ class Segment:
         return hosts
 
 
+# --------------------------------------------------------------------
+# --------------------------------------------------------------------
+class SegmentRow():
+    
+    def __init__(self, content, isprimary, dbid, isprimary_again, always_true, host, port, fulldir, prPort, fileSpaceDictionary = None):
+        self.content         = content
+        self.isprimary       = isprimary
+        self.dbid            = dbid
+        self.isprimary_again = isprimary_again
+        self.always_true     = always_true
+        self.host            = host
+        self.port            = port
+        self.fulldir         = fulldir
+        self.prPort          = prPort
+        self.fileSpaceDictionary   = fileSpaceDictionary
 
+# --------------------------------------------------------------------
+# --------------------------------------------------------------------
 def createSegmentRows( hostlist
                      , primary_list
                      , primary_portbase
@@ -553,7 +599,148 @@ def createSegmentRows( hostlist
         prPort = primary_replication_portbase
         for pdir in primary_list:
             fulldir = "%s/%s%d" % (pdir,dir_prefix,content)
-            rows.append( (content,isprimary,dbid,isprimary,'t',host,port,fulldir,prPort) )
+            rows.append( SegmentRow( content = content
+                                   , isprimary = isprimary
+                                   , dbid = dbid
+                                   , isprimary_again = isprimary
+                                   , always_true = 't'
+                                   , host = host
+                                   , port = port
+                                   , fulldir = fulldir
+                                   , prPort = prPort
+                                   ) )
+            port += 1
+            if prPort != None:
+               prPort += 1
+            content += 1
+            dbid += 1
+    
+    #mirrors
+    if mirror_type is None or mirror_type == 'none':
+        return rows
+    elif mirror_type.lower().strip() == 'spread':
+        #TODO: must be sure to put mirrors on a different subnet than primary.
+        #      this is a general problem for GPDB these days. perhaps we should
+        #      add something to gpdetective to be able to detect this and fix it.
+        #      best to have the interface mapping stuff 1st.
+        content=0
+        isprimary='f'
+        num_hosts = len(hostlist)
+        num_dirs=len(primary_list)
+        if num_hosts <= num_dirs:
+            raise Exception("Not enough hosts for spread mirroring.  You must have more hosts than primary segments per host")
+        
+        mirror_port = {}
+        mirror_replication_port = {}
+
+        mirror_host_offset=1
+        last_mirror_offset=1
+        for host in hostlist:
+            mirror_host_offset = last_mirror_offset + 1
+            last_mirror_offset += 1
+            for mdir in mirror_list:
+                fulldir = "%s/%s%d" % (mdir,dir_prefix,content)
+                mirror_host = hostlist[mirror_host_offset % num_hosts]
+                if mirror_host == host:
+                    mirror_host_offset += 1
+                    mirror_host = hostlist[mirror_host_offset % num_hosts]
+                    
+                if not mirror_port.has_key(mirror_host):
+                    mirror_port[mirror_host] = mirror_portbase
+                if not mirror_replication_port.has_key(mirror_replication_portbase):
+                    mirror_replication_port[mirror_host] = mirror_replication_portbase
+
+                rows.append( SegmentRow( content = content
+                                       , isprimary = isprimary
+                                       , dbid = dbid
+                                       , isprimary_again = isprimary
+                                       , always_true = 't'
+                                       , host = mirror_host
+                                       , port = mirror_port[mirror_host]
+                                       , fulldir = fulldir
+                                       , prPort = mirror_replication_port[mirror_host]
+                                       ) )
+                mirror_port[mirror_host] += 1
+                mirror_replication_port[mirror_host] += 1
+                content += 1
+                dbid += 1
+                mirror_host_offset += 1
+                
+        
+    elif mirror_type.lower().strip() == 'grouped':
+        content = 0
+        num_hosts = len(hostlist)
+        
+        if num_hosts < 2:
+            raise Exception("Not enough hosts for grouped mirroring.  You must have at least 2")
+        
+        #we'll pick our mirror host to be 1 host "ahead" of the primary.
+        mirror_host_offset = 1
+        
+        isprimary='f'
+        for host in hostlist:            
+            mirror_host = hostlist[mirror_host_offset % num_hosts]
+            mirror_host_offset += 1
+            port = mirror_portbase
+            mrPort = mirror_replication_portbase
+            
+            for mdir in mirror_list:
+                fulldir = "%s/%s%d" % (mdir,dir_prefix,content)
+                rows.append( SegmentRow( content = content
+                                       , isprimary = isprimary
+                                       , dbid = dbid
+                                       , isprimary_again = isprimary
+                                       , always_true = 't'
+                                       , host = mirror_host
+                                       , port = port
+                                       , fulldir = fulldir
+                                       , prPort = mrPort
+                                       ) )
+                port += 1
+                mrPort +=1
+                content += 1
+                dbid += 1
+        
+    else:
+        raise Exception("Invalid mirror type specified: %s" % mirror_type)
+    
+    return rows
+
+
+#========================================================================
+def createSegmentRowsFromSegmentList( newHostlist
+                                    , primary_segment_list
+                                    , primary_portbase
+                                    , mirror_type
+                                    , mirror_segment_list
+                                    , mirror_portbase
+                                    , dir_prefix
+                                    , primary_replication_portbase
+                                    , mirror_replication_portbase
+                                    ):
+    rows=[]
+    
+    dbid = 0
+    content = 0
+
+    for host in newHostlist:
+        isprimary='t'
+        port=primary_portbase
+        prPort = primary_replication_portbase
+        for pSeg in primary_segment_list:
+            newFulldir = "%s/%s%d" % (getDataDirPrefix(pSeg.getSegmentDataDirectory()), dir_prefix, content)
+            newFileSpaceDictionary = getFileSpaceDirsWithNewSuffix(pSeg.getSegmentFilespaces(), dir_prefix + str(content), excludeSystemFilespace = True)
+            rows.append( SegmentRow( content = content
+                                   , isprimary = isprimary
+                                   , dbid = dbid
+                                   , isprimary_again = isprimary
+                                   , always_true = 't'
+                                   , host = host
+                                   , port = port
+                                   , fulldir = newFulldir
+                                   , prPort = prPort
+                                   , fileSpaceDictionary = newFileSpaceDictionary
+                                   ) )
             port += 1
             if prPort != None:
                prPort += 1
@@ -595,7 +782,16 @@ def createSegmentRows( hostlist
                 if not mirror_replication_port.has_key(mirror_replication_portbase):
                     mirror_replication_port[mirror_host] = mirror_replication_portbase
                     
-                rows.append( (content,isprimary,dbid,isprimary,'t',mirror_host,mirror_port[mirror_host],fulldir, mirror_replication_port[mirror_host]) )
+                rows.append( SegmentRow( content = content
+                                       , isprimary = isprimary
+                                       , dbid = dbid
+                                       , isprimary_again = isprimary
+                                       , always_true = 't'
+                                       , host = mirror_host
+                                       , port = mirror_port[mirror_host]
+                                       , fulldir = fulldir
+                                       , prPort = mirror_replication_port[mirror_host]
+                                       ) )
                 mirror_port[mirror_host] += 1
                 mirror_replication_port[mirror_host] += 1
                 content += 1
@@ -622,7 +818,16 @@ def createSegmentRows( hostlist
             
             for mdir in mirror_list:
                 fulldir = "%s/%s%d" % (mdir,dir_prefix,content)
-                rows.append( (content,isprimary,dbid,isprimary,'t',mirror_host,port,fulldir,mrPort) )
+                rows.append( SegmentRow( content = content
+                                       , isprimary = isprimary
+                                       , dbid = dbid
+                                       , isprimary_again = isprimary
+                                       , always_true = 't'
+                                       , host = mirror_host
+                                       , port = port
+                                       , fulldir = fulldir
+                                       , prPort = mrPort
+                                       ) )
                 port += 1
                 mrPort +=1
                 content += 1
@@ -632,6 +837,7 @@ def createSegmentRows( hostlist
         raise Exception("Invalid mirror type specified: %s" % mirror_type)
     
     return rows
+
 
 def parseTrueFalse(value):
     if value.lower() == 'f':
@@ -1020,6 +1226,28 @@ class GpArray:
         else:
             return [fs for fs in self.__filespaceArr if not fs.isSystemFilespace()]
 
+    # --------------------------------------------------------------
+    def getFileSpaceName(self, filespaceOid):
+        retValue = None
+        
+        if self.__filespaceArr != None:
+           for entry in self.__filespaceArr:
+               if entry.getOid() == filespaceOid:
+                  retValue = entry.getName()
+                  break
+        return retValue
+
+    # --------------------------------------------------------------
+    def getFileSpaceOid(self, filespaceName):
+        retValue = None
+        
+        if self.__filespaceArr != None:
+           for entry in self.__filespaceArr:
+               if entry.getName() == filespaceName:
+                  retValue = entry.getOid()
+                  break
+        return retValue
+
     # --------------------------------------------------------------------
     def getDbList(self, includeExpansionSegs=False):
         """
@@ -1307,6 +1535,24 @@ class GpArray:
         return len(self.segments[0].mirrorDBs) != 0
 
     # --------------------------------------------------------------------
+    def get_list_of_primary_segments_on_host(self, hostname):
+        retValue = []
+        
+        for db in self.getDbList():
+            if db.isSegmentPrimary(False) == True and db.getSegmentHostName() == hostname:
+               retValue.append(db)
+        return retValue
+
+    # --------------------------------------------------------------------
+    def get_list_of_mirror_segments_on_host(self, hostname):
+        retValue = []
+        
+        for db in self.getDbList():
+            if db.isSegmentMirror(False) == True and db.getSegmentHostName() == hostname:
+               retValue.append(db)
+        return retValue
+               
+    # --------------------------------------------------------------------
     def get_primary_root_datadirs(self):
         """
         Returns a list of primary data directories minus the <prefix><contentid>
@@ -1360,7 +1606,7 @@ class GpArray:
 
     # --------------------------------------------------------------------    
     def addExpansionSeg(self, content, preferred_role, dbid, role, 
-                        hostname, port, datadir, replication_port):
+                        hostname, port, datadir, replication_port, fileSpaces = None):
         """ 
         Adds a segment to the gparray as an expansion segment.
 
@@ -1382,6 +1628,9 @@ class GpArray:
                      port = port, 
                      datadir = datadir, 
                      replicationPort = replication_port)  # todo: add to parameters
+        if fileSpaces != None:
+           for fsOid in fileSpaces:
+               segdb.addSegmentFilespace(oid = fsOid, path = fileSpaces[fsOid])
         
         seglen = len(self.segments)
         expseglen = len(self.expansionSegments)
@@ -1514,9 +1763,13 @@ class GpArray:
 
         if len(new_hosts) == 0:        
             raise Exception('No new hosts to add')
+
+        """ Get the first segment's host name, and use this host's configuration as a prototype """
+        seg0_hostname = self.segments[0].primaryDB.getSegmentHostName()
         
-        primary_dirs = self.get_primary_root_datadirs()
-        mirror_dirs = self.get_mirror_root_datadirs()
+        primary_list = self.get_list_of_primary_segments_on_host(seg0_hostname)
+        mirror_list = self.get_list_of_mirror_segments_on_host(seg0_hostname)
+        
         interface_list = self.get_interface_numbers()
         base_primary_port = self.get_min_primary_port()
         base_mirror_port = 0
@@ -1528,17 +1781,17 @@ class GpArray:
             base_mirror_replication_port = self.get_min_mirror_replication_port()
         
         prefix = self.get_datadir_prefix()
-        
-        rows = createSegmentRows( hostlist = new_hosts
-                                , primary_list = primary_dirs
-                                , primary_portbase = base_primary_port
-                                , mirror_type = mirror_type
-                                , mirror_list = mirror_dirs
-                                , mirror_portbase = base_mirror_port
-                                , dir_prefix = prefix
-                                , primary_replication_portbase = base_primary_replication_port
-                                , mirror_replication_portbase = base_mirror_replication_port
-                                )
+
+        rows = createSegmentRowsFromSegmentList( newHostlist = new_hosts
+                                               , primary_segment_list = primary_list
+                                               , primary_portbase = base_primary_port
+                                               , mirror_type = mirror_type
+                                               , mirror_segment_list = mirror_list
+                                               , mirror_portbase = base_mirror_port
+                                               , dir_prefix = prefix
+                                               , primary_replication_portbase = base_primary_replication_port
+                                               , mirror_replication_portbase = base_mirror_replication_port
+                                               )
         
         self._fixup_and_add_expansion_segments(rows, interface_list)
         
@@ -1593,7 +1846,6 @@ class GpArray:
         
         self._fixup_and_add_expansion_segments(rows, interface_list)
         
-
     # --------------------------------------------------------------------    
     def _fixup_and_add_expansion_segments(self, rows, interface_list):
         """Fixes up expansion segments added to be after the original segdbs 
@@ -1604,14 +1856,14 @@ class GpArray:
 
         mirror_dict = {}
         # must be sorted by isprimary, then hostname
-        rows.sort(lambda a,b: (cmp(b[1], a[1]) or cmp(a[5],b[5])))
-        current_host = rows[0][5]
+        rows.sort(lambda a,b: (cmp(b.isprimary, a.isprimary) or cmp(a.host,b.host)))
+        current_host = rows[0].host
         current_interface = 0
         curr_dbid = self.get_max_dbid(True) + 1
         curr_content = self.get_max_contentid(True) + 1
         # Fix up the rows with correct dbids, contentids, datadirs and interfaces
         for row in rows:
-            hostname = row[5]
+            hostname = row.host
             
             # If we have interface hostnames in the original segments, 
             # adjust the new segment hostname
@@ -1628,21 +1880,28 @@ class GpArray:
      
             # Add the new segment to the expansion segments array
             # Remove the content id off of the datadir
-            new_datadir = row[7][:row[7].rfind(str(row[0]))]
-            if row[1] == 't':
+            new_datadir = row.fulldir[:row.fulldir.rfind(str(row.content))]
+            if row.isprimary == 't':
                 new_datadir += ('%d' % curr_content)
+                new_filespaces = replaceFileSpaceContentID( fileSpaceDictionary = row.fileSpaceDictionary
+                                                          , oldContent = row.content
+                                                          , newContent = curr_content
+                                                          )
                 self.addExpansionSeg(curr_content, ROLE_PRIMARY, curr_dbid, 
-                                        ROLE_PRIMARY, hostname, int(row[6]), new_datadir, row[8])
+                                        ROLE_PRIMARY, hostname, int(row.port), new_datadir, row.prPort, fileSpaces = new_filespaces)
                 # The content id was adjusted, so we need to save it for the mirror
-                mirror_dict[row[0]] = curr_content
+                mirror_dict[row.content] = curr_content
                 curr_content += 1
             else:
-                new_content = mirror_dict[row[0]]
+                new_content = mirror_dict[row.content]
                 new_datadir += ('%d' % new_content)
+                new_filespaces = replaceFileSpaceContentID( fileSpaceDictionary = row.fileSpaceDictionary
+                                                          , oldContent = row.content
+                                                          , newContent = curr_content
+                                                          )                
                 self.addExpansionSeg(new_content, ROLE_MIRROR, curr_dbid, 
-                                     ROLE_MIRROR, hostname, int(row[6]), new_datadir, row[8])
-            curr_dbid += 1           
-
+                                     ROLE_MIRROR, hostname, int(row.port), new_datadir, row.prPort, fileSpaces = new_filespaces)
+            curr_dbid += 1
 
     def guessIsMultiHome(self):
         """
