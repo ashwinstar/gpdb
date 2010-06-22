@@ -107,6 +107,55 @@ get_maxdbid()
 	return dbid;
 }
 
+/**
+ * Get an available dbid value. We AccessExclusiveLock
+ * gp_segment_configuration to prevent races but no one should be calling
+ * this code concurrently if we've done our job right.
+ */
+static int16
+get_availableDbId()
+{
+    /** set up hash of used dbids.  We use int32 here because int16 doesn't have a convenient hash
+      *   and we can use casting below to check for overflow of int16 */
+    HASHCTL		hash_ctl;
+
+    memset(&hash_ctl, 0, sizeof(hash_ctl));
+    hash_ctl.keysize = sizeof(int32);
+    hash_ctl.entrysize = sizeof(int32);
+    hash_ctl.hash = int32_hash;
+    HTAB *htab = hash_create("Temporary table of dbids",
+                       1024,
+                       &hash_ctl,
+                       HASH_ELEM | HASH_FUNCTION);
+
+    /** scan GpSegmentConfigRelationId **/
+    Relation rel = heap_open(GpSegmentConfigRelationId, AccessExclusiveLock);
+    HeapTuple tuple;
+    HeapScanDesc scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
+    while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
+    {
+        int32 dbid = (int32) ((Form_gp_segment_config)GETSTRUCT(tuple))->dbid;
+        (void) hash_search(htab, (void *) &dbid, HASH_ENTER, NULL);
+    }
+
+    heap_endscan(scandesc);
+    heap_close(rel, NoLock);
+
+    /** search for available dbid **/
+    for ( int32 dbid = 1;; dbid++)
+    {
+        if ( dbid != (int16) dbid)
+            elog(ERROR, "Unable to find available dbid");
+
+        if (hash_search(htab, (void *) &dbid, HASH_FIND, NULL) == NULL)
+        {
+            hash_destroy(htab);
+            return dbid;
+        }
+    }
+}
+
+
 /*
  * Get the highest contentid defined in the system. As above, we
  * AccessExclusiveLock gp_segment_configuration to prevent races but no 
@@ -648,7 +697,7 @@ gp_add_segment(PG_FUNCTION_ARGS)
 	MemSet(&new, 0, sizeof(seginfo));
 
 	new.db.segindex = get_maxcontentid() + 1;
-	new.db.dbid = get_maxdbid() + 1;
+	new.db.dbid = get_availableDbId();
 	new.db.hostname = hostname;
 	new.db.address = address;
 	new.db.port = port;
@@ -773,7 +822,7 @@ gp_add_segment_mirror(PG_FUNCTION_ARGS)
     int preferredPrimaryDbId = contentid_get_dbid(contentid, SEGMENT_ROLE_PRIMARY, true /* preferred role */);
 
 	new.db.segindex = contentid;
-	new.db.dbid = get_maxdbid() + 1;
+	new.db.dbid = get_availableDbId();
 	new.db.hostname = hostname;
 	new.db.address = address;
 	new.db.port = port;
