@@ -115,44 +115,46 @@ get_maxdbid()
 static int16
 get_availableDbId()
 {
-    /** set up hash of used dbids.  We use int32 here because int16 doesn't have a convenient hash
-      *   and we can use casting below to check for overflow of int16 */
-    HASHCTL		hash_ctl;
+	/*
+	 * Set up hash of used dbids.  We use int32 here because int16 doesn't have a convenient hash
+	 *   and we can use casting below to check for overflow of int16
+	 */
+	HASHCTL		hash_ctl;
 
-    memset(&hash_ctl, 0, sizeof(hash_ctl));
-    hash_ctl.keysize = sizeof(int32);
-    hash_ctl.entrysize = sizeof(int32);
-    hash_ctl.hash = int32_hash;
-    HTAB *htab = hash_create("Temporary table of dbids",
-                       1024,
-                       &hash_ctl,
-                       HASH_ELEM | HASH_FUNCTION);
+	memset(&hash_ctl, 0, sizeof(hash_ctl));
+	hash_ctl.keysize = sizeof(int32);
+	hash_ctl.entrysize = sizeof(int32);
+	hash_ctl.hash = int32_hash;
+	HTAB *htab = hash_create("Temporary table of dbids",
+					   1024,
+					   &hash_ctl,
+					   HASH_ELEM | HASH_FUNCTION);
 
-    /** scan GpSegmentConfigRelationId **/
-    Relation rel = heap_open(GpSegmentConfigRelationId, AccessExclusiveLock);
-    HeapTuple tuple;
-    HeapScanDesc scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
-    while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
-    {
-        int32 dbid = (int32) ((Form_gp_segment_config)GETSTRUCT(tuple))->dbid;
-        (void) hash_search(htab, (void *) &dbid, HASH_ENTER, NULL);
-    }
+	/* scan GpSegmentConfigRelationId */
+	Relation rel = heap_open(GpSegmentConfigRelationId, AccessExclusiveLock);
+	HeapTuple tuple;
+	HeapScanDesc scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
+	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
+	{
+		int32 dbid = (int32) ((Form_gp_segment_config)GETSTRUCT(tuple))->dbid;
+		(void) hash_search(htab, (void *) &dbid, HASH_ENTER, NULL);
+	}
 
-    heap_endscan(scandesc);
-    heap_close(rel, NoLock);
+	heap_endscan(scandesc);
+	heap_close(rel, NoLock);
 
-    /** search for available dbid **/
-    for ( int32 dbid = 1;; dbid++)
-    {
-        if ( dbid != (int16) dbid)
-            elog(ERROR, "Unable to find available dbid");
+	/* search for available dbid */
+	for ( int32 dbid = 1;; dbid++)
+	{
+		if ( dbid != (int16) dbid)
+			elog(ERROR, "unable to find available dbid");
 
-        if (hash_search(htab, (void *) &dbid, HASH_FIND, NULL) == NULL)
-        {
-            hash_destroy(htab);
-            return dbid;
-        }
-    }
+		if (hash_search(htab, (void *) &dbid, HASH_FIND, NULL) == NULL)
+		{
+			hash_destroy(htab);
+			return dbid;
+		}
+	}
 }
 
 
