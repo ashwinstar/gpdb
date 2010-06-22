@@ -940,6 +940,7 @@ pkgplr:
 	    echo "`date` -- INFO: Found plr.so, creating PL/R package" ; \
 	    mkdir $(PLRDIR) ; \
 	    cp -p $(INSTLOC)/lib/postgresql/plr.so $(PLRDIR)/ ; \
+	    if [ `uname -s` = 'SunOS' ]; then cp /releng/lib/libiconv.so.2 /releng/lib/amd64/libgcc_s.so.1 $(PLRDIR)/ ; fi ; \
 	    cp -p $(BLD_TOP)/languages/PLR/PLR_README $(PLRDIR)/ ; \
 	    echo "" ; \
 	    echo "`date` -- INFO: Cleaning up $(INSTLOC) of plr components" ; \
