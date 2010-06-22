@@ -116,7 +116,7 @@ static void gpmon_record(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt,
 	if (!fp)
 		return;
 
-	fprintf(fp, "%d %s\n", len + 1, type);
+	fprintf(fp, "%d %s\n", len, type);
 	fwrite(content, 1, len, fp);
 	fprintf(fp, "\n%d", GPMON_QLOG_STATUS_SUBMIT);
 
