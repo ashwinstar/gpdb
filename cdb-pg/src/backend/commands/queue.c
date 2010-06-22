@@ -820,7 +820,7 @@ CreateQueue(CreateQueueStmt *stmt)
 	if ( !dactivelimit && !dcostlimit)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("at least one threshold must be specified"),
+				 errmsg("at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be specified"),
 						   errOmitLocation(true)));
 
 	/* Check all thresholds are not invalid. */
@@ -828,7 +828,8 @@ CreateQueue(CreateQueueStmt *stmt)
 		costlimit   == INVALID_RES_LIMIT_THRESHOLD)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("at least one valid threshold must be specified"),
+				 errmsg("the value for at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be different from no limit (%d)",
+						 INVALID_RES_LIMIT_THRESHOLD),
 						   errOmitLocation(true)));
 
 	/*
@@ -1280,7 +1281,7 @@ AlterQueue(AlterQueueStmt *stmt)
 		thresholds[RES_COST_LIMIT] == INVALID_RES_LIMIT_THRESHOLD)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("at least one threshold must be different from %d",
+				 errmsg("the value for at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be different from no limit (%d)",
 						INVALID_RES_LIMIT_THRESHOLD)));
 
 	/*

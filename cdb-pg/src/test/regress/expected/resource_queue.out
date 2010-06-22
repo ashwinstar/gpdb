@@ -35,7 +35,7 @@ SELECT * FROM pg_resqueue WHERE rsqname='regressq';
 
 -- negative
 CREATE RESOURCE QUEUE regressq2;
-ERROR:  at least one threshold must be specified
+ERROR:  at least one threshold ("ACTIVE_STATEMENTS", "MAX_COST") must be specified
 CREATE RESOURCE QUEUE regressq2 ACTIVE THRESHOLD 2;
 ALTER RESOURCE QUEUE regressq2 ACTIVE THRESHOLD -10;
 ERROR:  active threshold cannot be less than -1 or equal to 0
