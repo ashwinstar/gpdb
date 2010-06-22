@@ -2386,10 +2386,9 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"gp_enable_gpperfmon", PGC_USERSET, LOGGING_WHAT,
-			gettext_noop("Enable gpperfmon logging."),
+		{"gp_enable_gpperfmon", PGC_POSTMASTER, UNGROUPED,
+			gettext_noop("Enable gpperfmon monitoring."),
 			NULL,
-			GUC_GPDB_ADDOPT
 		},
 		&gp_enable_gpperfmon,
 		false, gpvars_assign_gp_enable_gpperfmon, NULL
@@ -3783,7 +3782,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"gpperfmon_port", PGC_POSTMASTER, LOGGING,
+		{"gpperfmon_port", PGC_POSTMASTER, UNGROUPED,
 			gettext_noop("Sets the port number of gpperfmon."),
 			NULL,
 		},
