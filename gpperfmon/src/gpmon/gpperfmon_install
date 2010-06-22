@@ -171,7 +171,7 @@ if __name__ == '__main__':
         cmd = Command("gpconfig -c gpperfmon_port -v 8888 --masteronly")
         commands.append(cmd)
 
-        cmd = Command("gpconfig -c gp_external_enable_exec -v on")
+        cmd = Command("gpconfig -c gp_external_enable_exec -v on --masteronly")
         commands.append(cmd)
 
     command = None
