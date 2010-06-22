@@ -1162,11 +1162,9 @@ AS
 			pgl.pid as resqprocid,
 			pgl.granted as resqgranted
 		FROM
-			pg_catalog.pg_roles pgr,
 			pg_catalog.pg_resqueue pgrq,
 			pg_catalog.pg_locks pgl
 		WHERE
-			pgr.rolresqueue = pgl.objid AND
 			pgl.objid = pgrq.oid
 	) as resq
 	ON resqprocid = procpid
