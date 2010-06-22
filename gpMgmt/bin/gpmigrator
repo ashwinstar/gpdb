@@ -1814,7 +1814,7 @@ class GPUpgrade:
                     logger.fatal("  missing option:  "
                                  "--mirror_replication_port_base=<port>")
                 if not self.mirrormode:
-                    logger.fatal("  missing option:  --miror-mode")
+                    logger.fatal("  missing option:  --mirror-mode")
                 raise UpgradeError("Missing required upgrade options")
             
             if self.mirrormode not in ('redundant', 'single'):
