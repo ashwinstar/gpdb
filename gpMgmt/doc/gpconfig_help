@@ -9,10 +9,10 @@ SYNOPSIS
 
 gpconfig -c <param_name> -v <value> [-m <master_value> | --masteronly]
        | -r <param_name> [--masteronly]
-       | -s <param_name>
+       | -l 
    [--skipvalidation] [--verbose] [--debug]
 
-gpconfig -l [--verbose] [--debug]
+gpconfig -s <param_name> [--verbose] [--debug]
 
 gpconfig --help
 
@@ -123,11 +123,12 @@ to take effect.
 
 --skipvalidation
 
-Overrides the system validation checks of gpconfig and allows 
-you to operate on any server configuration parameter, including 
-hidden parameters and parameters not supported by gpconfig. This 
-option should only be used when directed by Greenplum 
-Customer Support. 
+Overrides the system validation checks of gpconfig and allows you 
+to operate on any server configuration parameter, including hidden 
+parameters and restricted parameters that cannot be changed by 
+gpconfig. When used with the -l option (list), it shows the list 
+of restricted parameters. This option should only be used to set 
+parameters when directed by Greenplum Customer Support.
 
 
 --verbose 
@@ -182,3 +183,4 @@ SEE ALSO
 *****************************************************
 
 gpstop
+
