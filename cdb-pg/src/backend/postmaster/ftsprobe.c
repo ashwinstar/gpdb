@@ -142,7 +142,7 @@ static void getGpFailover_strategy(char *strategy);
 static void SAN_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str);
 
 static void Filerep_mode_update(int dbid, char *mode, char status, FilerepModeUpdateLoggingEnum logMsgToSend);
-static void Filerep_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str);
+static void Filerep_Failover(struct segmentStatusChange *changes, int changeCount);
 
 static void Filerep_preprocess_probe_results(uint8 *probe_results, CdbComponentDatabaseInfo *segInfo);
 
@@ -1412,27 +1412,43 @@ probePublishUpdate(uint8 *probe_results)
 		{
 			/* no fault strategy ? */
 			Null_Failover(entryConn, changes, changeEntries, timestamp_str);
-		}
-		else if (failover_strategy == 'f')
-		{
-			/* FILEREP response */
-			Filerep_Failover(entryConn, changes, changeEntries, timestamp_str);
 
-			addChangeHistory(entryConn, changes, changeEntries, timestamp_str);
-			probeUpdateConfig(entryConn, changes, changeEntries, timestamp_str);
+			/* we don't record history, or update configs */
+			closeSelfConn(entryConn);
 		}
-		else if (failover_strategy == 's')
+		else
 		{
-			/* SAN response */
-			SAN_Failover(entryConn, changes, changeEntries, timestamp_str);
+			if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+				elog(LOG, "probePublishUpdate: updated config, now modifying segments");
 
-			addChangeHistory(entryConn, changes, changeEntries, timestamp_str);
-			probeUpdateConfig(entryConn, changes, changeEntries, timestamp_str);
+			if (failover_strategy == 'f')
+			{
+				addChangeHistory(entryConn, changes, changeEntries, timestamp_str);
+				probeUpdateConfig(entryConn, changes, changeEntries, timestamp_str);
+
+				/* commit our config/history changes */
+				closeSelfConn(entryConn);
+
+				/* FILEREP response */
+				Filerep_Failover(changes, changeEntries);
+			}
+			else if (failover_strategy == 's')
+			{
+				/* SAN response */
+				SAN_Failover(entryConn, changes, changeEntries, timestamp_str);
+
+				addChangeHistory(entryConn, changes, changeEntries, timestamp_str);
+				probeUpdateConfig(entryConn, changes, changeEntries, timestamp_str);
+
+				/* commit our config/history changes */
+				closeSelfConn(entryConn);
+			}
+
+			if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+				elog(LOG, "probePublishUpdate: finished segment modifications");
 		}
 
 		ftsUnlock();
-
-		closeSelfConn(entryConn);
 
 		pfree(changes);
 	}
@@ -2010,7 +2026,7 @@ cwhipkey-mbp.local : peer's address (mirror's address if I'm primary, or vice ve
  * gp_primarymirror -h <hostname> -p <postmaster_port> 
  */
 static void
-Filerep_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str)
+Filerep_Failover(struct segmentStatusChange *changes, int changeCount)
 {
 	int i;
 
