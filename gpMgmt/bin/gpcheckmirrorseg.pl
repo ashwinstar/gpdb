@@ -1975,9 +1975,9 @@ sub diff_thrice
 		. "| perl -e 'for (<STDIN>) { print \"" . $fil->{file} . 
 		':ao: ", $_ ;}' . "'";
 
-		push @{$glob_fixlist}, "ao: " . $primhost . ":" . 
+		push @{$glob_fixlist}, "ao: " . $row->{paddress} . ":" . 
 			File::Spec->catfile($primfil, $fil->{file}) . " " .
-			$mirrhost . ":" . 
+			$row->{maddress} . ":" . 
 			File::Spec->catfile($mirrfil, $fil->{file});
 			
 	}
@@ -1991,9 +1991,9 @@ sub diff_thrice
 		':heap: ", $_ ;}' . "'";
 ###			File::Spec->catfile($primfil, $fil->{file});
 
-		push @{$glob_fixlist}, "heap: " . $primhost . ":" .
+		push @{$glob_fixlist}, "heap: " . $row->{paddress} . ":" .
 			File::Spec->catfile($primfil, $fil) . " " .
-			$mirrhost . ":" . 
+			$row->{maddress} . ":" . 
 			File::Spec->catfile($mirrfil, $fil);
 	}
 	for my $fil (@{$indexfiles})
@@ -2006,9 +2006,9 @@ sub diff_thrice
 		':btree: ", $_ ;}' . "'";
 ###			File::Spec->catfile($primfil, $fil->{file});
 
-		push @{$glob_fixlist}, "btree: " . $primhost . ":" .
+		push @{$glob_fixlist}, "btree: " . $row->{paddress} . ":" .
 			File::Spec->catfile($primfil, $fil) . " " .
-			$mirrhost . ":" . 
+			$row->{maddress} . ":" . 
 			File::Spec->catfile($mirrfil, $fil);
 	}
 	for my $fil (@{$unknownfiles})
@@ -2021,9 +2021,9 @@ sub diff_thrice
 		':unknown: ", $_ ;}' . "'";
 ###			File::Spec->catfile($primfil, $fil->{file});
 
-		push @{$glob_fixlist}, "unknown: " . $primhost . ":" . 
+		push @{$glob_fixlist}, "unknown: " . $row->{paddress} . ":" . 
 			File::Spec->catfile($primfil, $fil) . " " .
-			$mirrhost . ":" . 
+			$row->{maddress} . ":" . 
 			File::Spec->catfile($mirrfil, $fil);
 	}
 
@@ -2645,10 +2645,10 @@ EOF_msgstr
 						$extry =~ s|^m\:(/)?||i;
 
 						push @{$glob_fixlist}, "extra_m: " . 
-							$mirrhost . ":" .
+							$row->{maddress} . ":" .
 							File::Spec->catfile($mirrfil, 
 												$extry) . " " .
-							$primhost . ":" .
+							$row->{paddress} . ":" .
 							File::Spec->catfile($primfil, 
 												$extry);
 					}
@@ -2658,10 +2658,10 @@ EOF_msgstr
 						$extry =~ s|^p\:(/)?||i;
 
 						push @{$glob_fixlist}, "extra_p: " . 
-							$primhost . ":" .
+							$row->{paddress} . ":" .
 							File::Spec->catfile($primfil, 
 												$extry) . " " .
-							$mirrhost . ":" .
+							$row->{maddress} . ":" .
 							File::Spec->catfile($mirrfil, 
 												$extry);
 					}
