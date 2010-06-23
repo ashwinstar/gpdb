@@ -4561,17 +4561,18 @@ static void PersistentFileSysObj_MarkPageIncremental(
 
 void PersistentFileSysObj_MarkPageIncrementalFromChangeLog(void)
 {
-	IncrementalChangeList *incrementalChangeList;
-	int count = 0;
-	int i;
+	IncrementalChangeList*	incrementalChangeList;
+	int 					count = 0;
+	int 					i;
 
 	PersistentFileSysObj_InitScan();
 	
 	/* 
 	 * Finalize the compacting steps of the changetracking logs. after
-	 * this call we'll have the smallest possible log file to work with 
+	 * this call we'll have the smallest possible log file to work with.
+	 * we pass in a NULL lsn to signify we want all CT records. 
 	 */
-	ChangeTracking_FinishCompactingLogs();
+	ChangeTracking_DoFullCompactingRound(NULL);
 	
 	/* get a list of relations that had 1 or more blocks changed */
 	incrementalChangeList = ChangeTracking_GetIncrementalChangeList();

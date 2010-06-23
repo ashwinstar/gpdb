@@ -76,6 +76,7 @@ FaultInjectorTypeEnumToString[] = {
 	_("data_corruption"),
 	_("suspend"),
 	_("resume"),
+	_("skip"),
 	_("reset"),
 	_("status"),
 	_("not recognized"),
@@ -316,7 +317,7 @@ FaultInjector_ShmemInit(void)
 	return;						  
 }
 
-void
+bool
 FaultInjector_InjectFaultIfSet(
 							   FaultInjectorIdentifier_e identifier,
 							   DDLStatement_e			 ddlStatement,
@@ -332,7 +333,7 @@ FaultInjector_InjectFaultIfSet(
 	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
 	
 	if (fileRepRole != FileRepPrimaryRole && fileRepRole != FileRepMirrorRole)
-		return;
+		return FALSE;
 		
 	LockAcquire();
 	
@@ -344,29 +345,36 @@ FaultInjector_InjectFaultIfSet(
 	
 	if (entryLocal == NULL) 
 		/* fault injection is not set */
-		return;
+		return FALSE;
 	
 	if (entryLocal->ddlStatement != ddlStatement) 
 		/* fault injection is not set for the specified DDL */
-		return;
+		return FALSE;
 	
 	snprintf(databaseNameLocal, sizeof(databaseNameLocal), "%s", databaseName);
 	
 	if (strcmp(entryLocal->databaseName, databaseNameLocal) != 0) 
 		/* fault injection is not set for the specified database name */
-		return;
+		return FALSE;
 	
 	snprintf(tableNameLocal, sizeof(tableNameLocal), "%s", tableName);
 
 	if (strcmp(entryLocal->tableName, tableNameLocal) != 0) 
 		/* fault injection is not set for the specified table name */
-		return;
+		return FALSE;
 	
 	if (entryLocal->faultInjectorState == FaultInjectorStateTriggered ||
 		entryLocal->faultInjectorState == FaultInjectorStateCompleted ||
 		entryLocal->faultInjectorState == FaultInjectorStateFailed) {
 		/* fault injection was already executed */
-		return;
+		return FALSE;
+	}
+	
+	/* skip checkpoint forever, required for crash recovery testing */
+	if (entryLocal->faultInjectorType == FaultInjectorTypeSkip &&
+		entryLocal->faultInjectorIdentifier == Checkpoint)
+	{
+		return (entryLocal->faultInjectorType == FaultInjectorTypeSkip ? TRUE : FALSE);
 	}
 	
 	/* Update the injection fault entry in hash table */
@@ -466,6 +474,8 @@ FaultInjector_InjectFaultIfSet(
 							FaultInjectorTypeEnumToString[entry->faultInjectorType])));				
 			break;
 		}
+		case FaultInjectorTypeSkip:
+			break;
 		case FaultInjectorTypeReset:
 		case FaultInjectorTypeStatus:
 
@@ -480,7 +490,7 @@ FaultInjector_InjectFaultIfSet(
 
 	FaultInjector_UpdateHashEntry(entryLocal);	
 	
-	return;
+	return (entryLocal->faultInjectorType == FaultInjectorTypeSkip ? TRUE : FALSE);
 }
 
 /*
@@ -598,6 +608,22 @@ FaultInjector_NewHashEntry(
 		snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
 				 "could not insert fault injection, max slots:'%d' reached",
 				 FAULTINJECTOR_MAX_SLOTS);
+		
+		goto exit;
+	}
+	
+	if (entry->faultInjectorType == FaultInjectorTypeSkip && 
+		entry->faultInjectorIdentifier != Checkpoint)
+	{
+		LockRelease();
+		status = STATUS_ERROR;
+		ereport(LOG,
+				(errmsg("ERROR(fault injector): could not insert fault injection entry into table, fault type not supported"
+						"identifier:'%s' type:'%s' ",
+						FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier],
+						FaultInjectorTypeEnumToString[entry->faultInjectorType])));
+		snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
+				 "could not insert fault injection, fault type not supported");
 		
 		goto exit;
 	}

@@ -107,6 +107,8 @@ typedef enum FaultInjectorType_e {
 	
 	FaultInjectorTypeResume,
 	
+	FaultInjectorTypeSkip,
+	
 	FaultInjectorTypeReset,
 	
 	FaultInjectorTypeStatus,
@@ -209,7 +211,7 @@ extern Size FaultInjector_ShmemSize(void);
 
 extern void FaultInjector_ShmemInit(void);
 
-extern void FaultInjector_InjectFaultIfSet(
+extern bool FaultInjector_InjectFaultIfSet(
 							   FaultInjectorIdentifier_e identifier,
 							   DDLStatement_e			 ddlStatement,
 							   char*					 databaseName,

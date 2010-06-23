@@ -1172,7 +1172,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 }
 
 
-static void ChangeTracking_FsyncDataIntoLog(CTFType ftype)
+void ChangeTracking_FsyncDataIntoLog(CTFType ftype)
 {
 	File file;
 	ChangeTrackingBufStatusData *bufstat;
@@ -2593,9 +2593,9 @@ static void ChangeTracking_CreateTransientLogIfNeeded(void)
  */
 void ChangeTracking_CompactLogsIfPossible(void)
 {
-	bool	compact_transient = false; /* should compact transient log file? */
-	bool	compact_compact = false;   /* should compact compact log file? */
-		
+	bool		compact_transient = false; /* should compact transient log file? */
+	bool		compact_compact = false;   /* should compact compact log file? */
+	
 	/* -- transient log -- */
 	
 	LWLockAcquire(ChangeTrackingCompactLock, LW_EXCLUSIVE);
@@ -2614,7 +2614,7 @@ void ChangeTracking_CompactLogsIfPossible(void)
 		elog(LOG, "ChangeTracking: Compacting the transient log file");
 		
 		ChangeTracking_ResetBufStatus(CTCompactWriteBufStatus);
-		ChangeTracking_CompactLogFile(CTF_LOG_TRANSIENT, CTF_LOG_COMPACT);
+		ChangeTracking_CompactLogFile(CTF_LOG_TRANSIENT, CTF_LOG_COMPACT, NULL);
 		ChangeTracking_DropLogFile(CTF_LOG_TRANSIENT);
 	}
 		
@@ -2637,7 +2637,7 @@ void ChangeTracking_CompactLogsIfPossible(void)
 		
 		ChangeTracking_ResetBufStatus(CTCompactWriteBufStatus);
 		ChangeTracking_RenameLogFile(CTF_LOG_COMPACT, CTF_LOG_TRANSIENT);
-		ChangeTracking_CompactLogFile(CTF_LOG_TRANSIENT, CTF_LOG_COMPACT);
+		ChangeTracking_CompactLogFile(CTF_LOG_TRANSIENT, CTF_LOG_COMPACT, NULL);
 		changeTrackingCompState->ctcompact_bufs_added = 0; /* reset for next round */
 	}
 	
@@ -2647,12 +2647,19 @@ void ChangeTracking_CompactLogsIfPossible(void)
 
 /*
  * This routine must be called before resync is started
- * and after the last call to ChangeTracking_CompactLogsIfPossible().
+ * and after the last call to ChangeTracking_CompactLogsIfPossible(),
+ * or during recovery start.
+ * 
  * It will take care of compacting all the left over pieces.
  * (for example, an outstanding transient file, or some file that
  * didn't make it past the 1GB threshold).
  * 
- * This is done in the following order:
+ * if the passed in 'uptolsn' is something other than {0,0}, then we
+ * tell the compacting routines to ignore any changetracking records
+ * with lsn > uptolsn when doing the compacting logic (therefore these
+ * records will be gone forever).
+ * 
+ * The logic of this routine is done in the following order:
  * 
  * (1) if transient file exists, compact it into compact file. remove 
  * transient file.
@@ -2671,12 +2678,17 @@ void ChangeTracking_CompactLogsIfPossible(void)
  * mode is complete, so we don't expect change tracking module to do any
  * more writes.
  */
-void ChangeTracking_FinishCompactingLogs(void)
+void ChangeTracking_DoFullCompactingRound(XLogRecPtr* upto_lsn)
 {
+	
 	Assert(!changeTrackingCompState->in_progress);
 	
-	elog(LOG, "ChangeTracking: running the last stage of compacting the logs");
+	elog(LOG, "ChangeTracking: running a full round of compacting the logs");
 	
+	if (upto_lsn != NULL)
+		elog(LOG, "ChangeTracking: discarding records with LSN higher than %s", 
+				  XLogLocationToString(upto_lsn));
+			
 	/* compacting state is no longer needed. reset it to be safe */
 	ChangeTracking_ResetCompactingStatus(changeTrackingCompState);
 	
@@ -2685,7 +2697,7 @@ void ChangeTracking_FinishCompactingLogs(void)
 	{
 		/* do the actual compacting. Remove transient log file when done */
 		ChangeTracking_ResetBufStatus(CTCompactWriteBufStatus);
-		ChangeTracking_CompactLogFile(CTF_LOG_TRANSIENT, CTF_LOG_COMPACT);
+		ChangeTracking_CompactLogFile(CTF_LOG_TRANSIENT, CTF_LOG_COMPACT, upto_lsn);
 		ChangeTracking_DropLogFile(CTF_LOG_TRANSIENT);
 	}
 
@@ -2698,21 +2710,28 @@ void ChangeTracking_FinishCompactingLogs(void)
 		ChangeTracking_ResetBufStatus(CTMainWriteBufStatus);
 
 		ChangeTracking_ResetBufStatus(CTCompactWriteBufStatus);
-		ChangeTracking_CompactLogFile(CTF_LOG_TRANSIENT, CTF_LOG_COMPACT);
+		ChangeTracking_CompactLogFile(CTF_LOG_TRANSIENT, CTF_LOG_COMPACT, upto_lsn);
 		ChangeTracking_DropLogFile(CTF_LOG_TRANSIENT);
 	}
 	
 	/* step (3) */
 	ChangeTracking_ResetBufStatus(CTCompactWriteBufStatus);
 	ChangeTracking_RenameLogFile(CTF_LOG_COMPACT, CTF_LOG_TRANSIENT);
-	ChangeTracking_CompactLogFile(CTF_LOG_TRANSIENT, CTF_LOG_COMPACT);
+	ChangeTracking_CompactLogFile(CTF_LOG_TRANSIENT, CTF_LOG_COMPACT, upto_lsn);
 	ChangeTracking_DropLogFile(CTF_LOG_TRANSIENT);
 	changeTrackingCompState->ctcompact_bufs_added = 0;
 
-	elog(LOG, "ChangeTracking: compact log is ready to be used for resync");
+	elog(LOG, "ChangeTracking: full compacting round is finished.");
 }
 
-int ChangeTracking_CompactLogFile(CTFType source, CTFType dest)
+/*
+ * ChangeTracking_CompactLogFile
+ * 
+ * compact the source CT log file into the dest CT log file.
+ * if 'uptolsn' is not NULL, then discard any record with 
+ * lsn > uptolsn when compacting.
+ */
+int ChangeTracking_CompactLogFile(CTFType source, CTFType dest, XLogRecPtr*	uptolsn)
 {	
 	StringInfoData 	sqlstmt;
 	int 			ret;
@@ -2729,17 +2748,19 @@ int ChangeTracking_CompactLogFile(CTFType source, CTFType dest)
 	/* find out if full log file exists, if not return error */
 	if(!ChangeTracking_DoesFileExist(source))
 		return -1;
-
-	//elog(LOG, "ChangeTracking started creating a compact version of the log file");
 	
 	/* assemble our query string */
 	initStringInfo(&sqlstmt);
 	
 	appendStringInfo(&sqlstmt, "SELECT space, db, rel, blocknum, max(xlogloc), persistent_tid, persistent_sn "
-							   "FROM gp_changetracking_log(%d) "
-							   "GROUP BY space, db, rel, blocknum, persistent_tid, persistent_sn ", 
-							   source);
-
+							   "FROM gp_changetracking_log(%d) ", source);
+	
+	/* filter xlogloc higher than uptolsn if requested to do so */
+	if(uptolsn != NULL)
+		appendStringInfo(&sqlstmt, "WHERE xlogloc <= '(%X/%X)' ", uptolsn->xlogid, uptolsn->xrecoff);
+	
+	appendStringInfo(&sqlstmt,  "GROUP BY space, db, rel, blocknum, persistent_tid, persistent_sn");
+	
 	PG_TRY();
 	{
 

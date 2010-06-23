@@ -85,7 +85,7 @@ typedef enum CTFType
  */
 extern File ChangeTracking_OpenFile(CTFType ftype);
 extern void ChangeTracking_CloseFile(File file);
-
+extern void ChangeTracking_FsyncDataIntoLog(CTFType ftype);
 
 /*
  * This module is for initializing, recovering, writing, reading, checkpointing, and dropping the
@@ -145,10 +145,10 @@ extern void ChangeTracking_AddRecordFromXlog(RmgrId rmid,
 // Various log compacting related routines
 // -----------------------------------------------------------------------------
 
-extern int ChangeTracking_CompactLogFile(CTFType source, CTFType dest);
+extern int ChangeTracking_CompactLogFile(CTFType source, CTFType dest, XLogRecPtr*	uptolsn);
 extern bool ChangeTracking_doesFileNeedCompacting(CTFType ftype);
 extern void ChangeTracking_CompactLogsIfPossible(void);
-extern void ChangeTracking_FinishCompactingLogs(void);
+extern void ChangeTracking_DoFullCompactingRound(XLogRecPtr* upto_lsn);
 
 /*
  * The information needed for a change tracking record to be

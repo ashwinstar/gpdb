@@ -103,6 +103,7 @@ static PendingDelete *pendingDeletes = NULL; /* head of linked list */
 static int pendingDeletesCount = 0;
 static bool pendingDeletesSorted = false;
 static bool pendingDeletesPerformed = true;
+static int pendingAppendOnlyMirrorResyncIntentCount = 0;
 
 typedef PendingDelete *PendingDeletePtr;
 
@@ -1733,6 +1734,10 @@ PostPrepare_smgr(void)
 	 */
 	AppendOnlyMirrorResyncEofs_HashTableRemove("PostPrepare_smgr");
 
+	// UNDONE: We are passing the responsibility on to PersistentFileSysObj_PreparedEndXactAction...
+	pendingAppendOnlyMirrorResyncIntentCount = 0;
+	
+
 }
 
 
@@ -2020,12 +2025,12 @@ smgrDoDeleteActions(
 static void
 smgrDoAppendOnlyResyncEofs(bool forCommit)
 {
-	int appendOnlyMirrorResyncEofsCount = 0;
-
 	HASH_SEQ_STATUS iterateStatus;
 	AppendOnlyMirrorResyncEofs *entry;
 	
 	AppendOnlyMirrorResyncEofs *entryExample = NULL;
+
+	int appendOnlyMirrorResyncEofsCount;
 	
 	if (AppendOnlyMirrorResyncEofsTable == NULL)
 		return;
@@ -2038,10 +2043,11 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 	hash_seq_init(
 			&iterateStatus, 
 			AppendOnlyMirrorResyncEofsTable);
-	
+
+	appendOnlyMirrorResyncEofsCount = 0;
 	while ((entry = hash_seq_search(&iterateStatus)) != NULL)
 	{
-		if (appendOnlyMirrorResyncEofsCount == 0)
+		if (entryExample == NULL)
 		{
 			entryExample = entry;
 		}
@@ -2073,21 +2079,29 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 				 entry->persistentSerialNum,
 				 entry->mirrorLossEof,
 				 entry->mirrorNewEof);
-
+		
 		appendOnlyMirrorResyncEofsCount++;
 	}
 
 	/*
-	 * Only for COMMIT do we collect Append-Only mirror resync EOFs for the commit record and issue intents.
+	 * If we collected Append-Only mirror resync EOFs and bumped the intent count, we
+	 * need to decrement the counts as part of our end transaction work here.
 	 */
-	if (appendOnlyMirrorResyncEofsCount > 0)
+	if (pendingAppendOnlyMirrorResyncIntentCount > 0)
 	{
 		MIRRORED_LOCK_DECLARE;
 
 		int oldSystemAppendOnlyCommitWorkCount;
 		int newSystemAppendOnlyCommitWorkCount;
 
-		Assert(entryExample != NULL);
+		if (appendOnlyMirrorResyncEofsCount != pendingAppendOnlyMirrorResyncIntentCount)
+			elog(ERROR, "Pending Append-Only Mirror Resync EOFs intent count mismatch (pending %d, table count %d)",
+				 pendingAppendOnlyMirrorResyncIntentCount,
+				 appendOnlyMirrorResyncEofsCount);
+
+		if (entryExample == NULL)
+			elog(ERROR, "Not expecting an empty Append-Only Mirror Resync hash table when the local intent count is non-zero (%d)",
+				 pendingAppendOnlyMirrorResyncIntentCount);
 
 		MIRRORED_LOCK;	// NOTE: When we use the MirroredLock for the whole routine, this can go.
 		
@@ -2095,7 +2109,7 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 
 		newSystemAppendOnlyCommitWorkCount = 
 						oldSystemAppendOnlyCommitWorkCount - 
-						appendOnlyMirrorResyncEofsCount;
+						pendingAppendOnlyMirrorResyncIntentCount;
 
 		if (newSystemAppendOnlyCommitWorkCount < 0)
 			elog(ERROR, 
@@ -2103,7 +2117,7 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 				 "(system count %d, entry count %d).  "
 				 "Example relation %u/%u/%u, segment file #%d (persistent serial num " INT64_FORMAT ", TID %s)",
 				 oldSystemAppendOnlyCommitWorkCount,
-				 appendOnlyMirrorResyncEofsCount,
+				 pendingAppendOnlyMirrorResyncIntentCount,
 				 entryExample->key.relFileNode.spcNode,
 				 entryExample->key.relFileNode.dbNode,
 				 entryExample->key.relFileNode.relNode,
@@ -2119,7 +2133,7 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 				 (forCommit ? "commit" : "abort"),
 				 newSystemAppendOnlyCommitWorkCount,
 				 oldSystemAppendOnlyCommitWorkCount,
-				 appendOnlyMirrorResyncEofsCount,
+				 pendingAppendOnlyMirrorResyncIntentCount,
 				 entryExample->key.relFileNode.spcNode,
 				 entryExample->key.relFileNode.dbNode,
 				 entryExample->key.relFileNode.relNode,
@@ -2127,7 +2141,8 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 				 entryExample->persistentSerialNum,
 				 ItemPointerToString(&entryExample->persistentTid));
 
-		FileRepPrimary_FinishedAppendOnlyCommitWork(appendOnlyMirrorResyncEofsCount);
+		FileRepPrimary_FinishedAppendOnlyCommitWork(pendingAppendOnlyMirrorResyncIntentCount);
+		pendingAppendOnlyMirrorResyncIntentCount = 0;
 			
 		MIRRORED_UNLOCK;
 	}
@@ -2598,11 +2613,9 @@ smgrGetAppendOnlyMirrorResyncEofs(
 			rptr++;
 			returned = true;
 
-			/*
-			 * UNDONE: Don't know if this is really the best place for this.
-			 */
 			MIRRORED_LOCK;
 			FileRepPrimary_IntentAppendOnlyCommitWork();
+			pendingAppendOnlyMirrorResyncIntentCount++;
 			MIRRORED_UNLOCK;
 		}
 
@@ -2795,6 +2808,8 @@ AtEOXact_smgr(bool forCommit)
 		 */
 		smgrDoAppendOnlyResyncEofs(forCommit);
 		
+		pendingAppendOnlyMirrorResyncIntentCount = 0;
+
 		/*
 		 * Free the Append-Only mirror resync EOFs hash table.
 		 */

@@ -297,6 +297,7 @@ class GpInjectFaultProgram:
 			      "fatal (inject FATAL error), panic (inject PANIC error), error (inject ERROR), " \
 			      "infinite_loop, data_curruption (corrupt data in memory and persistent media), " \
 			      "suspend (suspend execution), resume (resume execution that was suspended), " \
+			      "skip (inject skip i.e. skip checkpoint), " \
 			      "reset (remove fault injection), status (report fault injection status) ")
         addTo.add_option("-z", "--sleep_time_s", dest="sleepTimeSeconds", type="int", default="10" ,
                             metavar="<sleepTime>",

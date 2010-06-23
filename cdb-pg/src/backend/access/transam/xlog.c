@@ -7669,11 +7669,12 @@ CreateCheckPoint(bool shutdown, bool force)
 	int			nsegsrecycled = 0;
 
 #ifdef FAULT_INJECTOR	
-	FaultInjector_InjectFaultIfSet(
+	if (FaultInjector_InjectFaultIfSet(
 								   Checkpoint, 
 								   DDLNotSpecified,
-								   "",	// databaseName
-								   ""); // tableName
+								   "" /* databaseName */,
+								   "" /* tableName */) == TRUE)
+		return;  // skip checkpoint
 #endif	
 	
 	/*
@@ -9993,8 +9994,33 @@ int XLogAddRecordsToChangeTracking(
 		}
 	}
 	
-	CloseReadRecord();
 
+	/*
+	 * We now need to make sure that (in the case of crash recovery) there are no
+	 * records in the CT logs that have (lsn > highest lsn in xlog). In order to
+	 * do so we need to find out the last xlog lsn
+	 */
+	if (lastChangeTrackingEndLoc != NULL)
+	{
+		/* read xlog till the end to get last lsn on disk (EndRecPtr) */
+		while(record != NULL)
+			record = ReadRecord(NULL, LOG);
+
+		/* ChangeTracking_DoFullCompactingRound(endlsn) will discard CT recs with lsn < endlsn */
+		if(XLByteLT(EndRecPtr, *lastChangeTrackingEndLoc))
+		{
+			elog(LOG, "changetracking: found last changetracking LSN (%s) higher than xlog LSN (%s). "
+					  "Cleaning up invalid records", 
+					  XLogLocationToString(lastChangeTrackingEndLoc),
+					  XLogLocationToString(&EndRecPtr));
+
+			ChangeTracking_FsyncDataIntoLog(CTF_LOG_FULL);
+			ChangeTracking_DoFullCompactingRound(&EndRecPtr);
+		}
+	}
+	
+	CloseReadRecord();
+	
 	return count;	
 }
 
