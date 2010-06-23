@@ -1706,9 +1706,12 @@ sub diff_again
 					
 					# MPP-9415: and use the tablespace oid in the name
 					# if not in pg_system filespace
-					push @filpref, $rnod->{reltablespace}
+					#
+					# MPP-10123: use gprn.tablespace_oid vs
+					# pg_class.reltablespace, which is 0 for pg_default
+					push @filpref, $rnod->{tablespace_oid}
 						if (($row->{fsoid} != 3052)
-							&& exists($rnod->{reltablespace}));
+							&& exists($rnod->{tablespace_oid}));
 
 					push @filpref, $kk; # dbid
 
