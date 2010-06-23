@@ -354,7 +354,10 @@ SendTupleChunkToAMS(MotionLayerState *mlStates,
 	MotionConn *conn;
 	TupleChunkListItem currItem;
 
-	Insist(transportStates && transportStates->activated);
+	if (!transportStates)
+		elog(FATAL, "SendTupleChunkToAMS: no transport-states.");
+	if (!transportStates->activated)
+		elog(FATAL, "SendTupleChunkToAMS: transport states inactive");
 
 	/* check em' */
 	ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
@@ -528,7 +531,10 @@ DeregisterReadInterest(ChunkTransportState *transportStates,
 	ChunkTransportStateEntry *pEntry = NULL;
 	MotionConn *conn;
 
-	Insist(transportStates);
+	if (!transportStates)
+	{
+		elog(FATAL, "DeregisterReadInterest: no transport states");
+	}
 
 	if (!transportStates->activated)
 		return;
@@ -602,8 +608,17 @@ SetupSequenceServer(const char *host, int port)
 {
 	if (host != NULL)
 	{
-		Assert(savedSeqServerHost == NULL);
-		
+		/*
+		 * See MPP-10162: certain PL/PGSQL functions may call us multiple
+		 * times without an intervening Teardown.
+		 */
+		if (savedSeqServerHost != NULL)
+		{
+			free(savedSeqServerHost);
+			savedSeqServerHost = NULL;
+			savedSeqServerPort = 0;
+		}
+
 		/*
 		 * Don't use MemoryContexts -- they make error handling
 		 * difficult here.
@@ -701,11 +716,23 @@ SetupInterconnect(EState *estate)
 		SetupTCPInterconnect(estate);
 	else
 	{
-		Insist(Gp_interconnect_type == INTERCONNECT_TYPE_NIL);
-		Insist(!estate->interconnect_context && estate->es_sliceTable);
+		if (Gp_interconnect_type != INTERCONNECT_TYPE_NIL)
+		{
+			elog(FATAL, "SetupUDPInterconnect: unknown interconnect-type");
+		}
+
+		if (estate->interconnect_context)
+		{
+			elog(FATAL, "SetupInterconnect: already initialized.");
+		}
+
+		if (!estate->es_sliceTable)
+		{
+			elog(FATAL, "SetupInterconnect: no slice table ?");
+		}
 
 		estate->interconnect_context = palloc0(sizeof(ChunkTransportState));
-	
+
 		/* initialize state variables */
 		Assert(estate->interconnect_context->size == 0);
 		estate->interconnect_context->size = CTS_INITIAL_SIZE;
@@ -734,7 +761,10 @@ forceEosToPeers(MotionLayerState       *mlStates,
 			    ChunkTransportState    *transportStates,
 			    int                     motNodeID)
 {
-	Insist(transportStates);
+	if (!transportStates)
+	{
+		elog(FATAL, "no transport-states.");
+	}
 	
 	transportStates->teardownActive = true;
 
