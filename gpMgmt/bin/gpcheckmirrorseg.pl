@@ -1302,21 +1302,47 @@ sub get_relfilenode_func
 			{
 				my $rnod = $dbs{$dbkey}->{relfilenodeh}->{$rr2->{relfilenode}};
 
-				$rnod->{relname}	   = $rr2->{relname};
-				$rnod->{relid}		   = $rr2->{relid};
-				$rnod->{relisshared}   = $rr2->{relisshared};
-				$rnod->{relstorage}	   = $rr2->{relstorage};
-				$rnod->{relkind}	   = $rr2->{relkind};
-				$rnod->{reltablespace} = $rr2->{reltablespace};
+				unless (exists($rnod->{tspace_match}))
+				{
+					$rnod->{relname}	   = $rr2->{relname};
+					$rnod->{relid}		   = $rr2->{relid};
+					$rnod->{relisshared}   = $rr2->{relisshared};
+					$rnod->{relstorage}	   = $rr2->{relstorage};
+					$rnod->{relkind}	   = $rr2->{relkind};
+					$rnod->{reltablespace} = $rr2->{reltablespace};
 
-				# Note: reltablespace is 0 for pg_default (vs 1663),
-				# so get tablespace_oid too
+					# Note: reltablespace is 0 for pg_default (vs 1663),
+					# so get tablespace_oid too
+					
+					$rnod->{tablespace_oid} = $rr2->{tablespace_oid};
+					$rnod->{database_oid} = $rr2->{database_oid};
 
-				$rnod->{tablespace_oid} = $rr2->{tablespace_oid};
-				$rnod->{database_oid} = $rr2->{database_oid};
-			}
-		}
+					if (exists($rnod->{tspace}))
+					{
+						my $tspoid = $rnod->{tablespace_oid};
 
+						if (exists($rnod->{tspace}->{$tspoid}))
+						{
+							$rnod->{tspace_match} = 1;
+						}
+						else
+						{
+							if (exists($rnod->{tspace}->{base})
+								&& (1663 == $tspoid))
+							{
+								$rnod->{tspace_match} = 1;
+							}
+							elsif (exists($rnod->{tspace}->{global})
+								   && (1664 == $tspoid))
+							{
+								$rnod->{tspace_match} = 1;
+							}
+						}
+					} # end if exists rnod->tspace
+
+				} # end unless exists tspace_match
+			} # end if exists dbs dbkey
+		} # end for my rr2
 	}
 
 	# sanity check
