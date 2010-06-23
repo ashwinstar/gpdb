@@ -2211,6 +2211,20 @@ class GPUpgrade:
             finally:
                 del env['PGUSER']
 
+            # MPP-10107 - The server is still running with PGUSER set in its
+            # environment, which is wrong since that user doesn't exist.
+            # Ideally that shouldn't matter, but unfortunately it does.  We
+            # deal with this by restarting the server.  
+            # 
+            # Note: the step above is still required because otherwise we
+            # can't even run this gpstop due to pg_hba.conf lock.
+            #
+            # A better solution would be to have gpstart make a constrained
+            # environment when it starts and stops the server, but that is
+            # more than a one-line change, and this solves this case with
+            # minimal impact to anything else.
+            self.RunCmd('gpstop -ral %s' % self.logdir, env=env)
+
         # We would love to actually delete the user, but it's not actually
         # safe to do so here because we unlock the source database before we
         # are done with the upgrade.
