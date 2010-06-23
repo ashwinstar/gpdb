@@ -30,6 +30,7 @@
 #define READ_ONLY 0x8
 #define SEGMENT_ONLY 0x10
 #define STANDBY_ONLY 0x20
+#define SINGLE_USER_MODE 0x40
 
 /* Encapsulation of information about a given segment. */
 typedef struct seginfo
@@ -229,6 +230,9 @@ mirroring_sanity_check(int flags, const char *func)
 {
 	if ((flags & MASTER_ONLY) == MASTER_ONLY)
 	{
+		if (GpIdentity.dbid == UNINITIALIZED_GP_IDENTITY_VALUE)
+			elog(ERROR, "%s requires valid GpIdentity dbid", func);
+
 		if (GpIdentity.dbid != MASTER_DBID)
 			elog(ERROR, "%s must be run on the master", func);
 	}
@@ -237,6 +241,12 @@ mirroring_sanity_check(int flags, const char *func)
 	{
 		if (Gp_role != GP_ROLE_UTILITY)
 			elog(ERROR, "%s must be run in utility mode", func);
+	}
+
+	if ((flags & SINGLE_USER_MODE) == SINGLE_USER_MODE)
+	{
+		if (IsUnderPostmaster)
+			elog(ERROR, "%s must be run in single-user mode", func);
 	}
 
 	if ((flags & SUPERUSER) == SUPERUSER)
@@ -254,12 +264,18 @@ mirroring_sanity_check(int flags, const char *func)
 
 	if ((flags & SEGMENT_ONLY) == SEGMENT_ONLY)
 	{
+		if (GpIdentity.dbid == UNINITIALIZED_GP_IDENTITY_VALUE)
+			elog(ERROR, "%s requires valid GpIdentity dbid", func);
+
 		if (GpIdentity.segindex == MASTER_CONTENT_ID)
 			elog(ERROR, "%s cannot be run on the master", func);
 	}
 
 	if ((flags && STANDBY_ONLY) == STANDBY_ONLY)
 	{
+		if (GpIdentity.dbid == UNINITIALIZED_GP_IDENTITY_VALUE)
+			elog(ERROR, "%s requires valid GpIdentity dbid", func);
+
 		if (!(GpIdentity.segindex == MASTER_CONTENT_ID ||
 			  GpIdentity.dbid == MASTER_DBID))
 			elog(ERROR, "%s can only be run on the standby master", func);
@@ -978,8 +994,8 @@ gp_remove_master_standby(PG_FUNCTION_ARGS)
 }
 
 /*
- * Run only on a segment, we use this to clean out the catalog in preparation
- * for building a full segment. Used by gpexpand.
+ * Run only on a segment, we use this to update the filespace locations for the
+ * PRIMARY as part of building a full segment. Used by gpexpand.
  *
  * gp_prep_new_segment(filespace_map)
  *
@@ -992,7 +1008,7 @@ gp_remove_master_standby(PG_FUNCTION_ARGS)
 Datum
 gp_prep_new_segment(PG_FUNCTION_ARGS)
 {	
-	int16        pridbid;
+	int16		 pridbid;
 	int16        mirdbid;
 	ArrayType	*fsmap;
 
@@ -1001,19 +1017,25 @@ gp_prep_new_segment(PG_FUNCTION_ARGS)
 
 	fsmap = PG_GETARG_ARRAYTYPE_P(0);
 
-	mirroring_sanity_check(SUPERUSER | SEGMENT_ONLY | UTILITY_MODE, 
-						   "gp_prep_new_segment");
-
-	/*
-	 * The original plan had been for this function to truncate the persistent
-	 * tables and rebuild them using gp_persistent_build_db(), but after 
-	 * careful review it has been determined that this shouldn't be necessary.
-	 *
-	 * For expansion all of the persistent tables should be correct for the
-	 * cloned segment with the single exception of the gp_persistent_filespace
-	 * table, which needs to have the primary gp_id corrected and the correct
-	 * filespace paths loaded in. 
+	/* 
+	 * The restriction on single-user mode (as opposed to utility mode) is
+	 * because the database cannot be fully started under the postmaster
+	 * when a database has been created in a filespace other than "pg_system"
+	 * due to the need to invalidate the databases cache on startup.  Since
+	 * this is the function to fix the filespace locations it MUST be run
+	 * in a mode that can startup in this circumstance.
 	 */
+	mirroring_sanity_check(SUPERUSER | SEGMENT_ONLY | SINGLE_USER_MODE, 
+						   "gp_prep_new_segment");
+	
+	/* 
+	 * If the guc isn't set then this function is being called incorrectly -
+	 * the guc is required to start the database when there is a database
+	 * defined in a filespace other than pg_system.
+	 */
+	if (!gp_before_filespace_setup)
+		elog(ERROR, "gp_prep_new_segment requires the database to be started "
+			 "with gp_before_filespace_setup=true");
 
 	/* 
 	 * Fixup the filespace locations for this segment.
@@ -1028,8 +1050,8 @@ gp_prep_new_segment(PG_FUNCTION_ARGS)
 	 * directory anyways that is only a temporary problem.
 	 * :HACK:
 	 */
-	pridbid = MASTER_DBID; 
-	mirdbid = PersistentFilespace_LookupMirrorDbid(pridbid);
+	pridbid = GpIdentity.dbid;
+	mirdbid = PersistentFilespace_LookupMirrorDbid(MASTER_DBID);
 	persist_all_filespaces(mirdbid, pridbid, fsmap);
 
 	/* 

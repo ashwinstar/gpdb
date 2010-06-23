@@ -1261,9 +1261,10 @@ PersistentFilespace_LookupMirrorDbid(int16 primaryDbid)
 	FilespaceDirEntry   dirEntry;
 	int16				mirrorDbid = 0;
 
-	if (persistentFilespaceSharedHashTable == NULL)
-		elog(PANIC, "Persistent filespace information shared-memory not setup");
+	/* Initialize the hash table if needed */
+	PersistentFileSysObj_InitScan();
 
+	/* Start scan */
 	hash_seq_init(&status, persistentFilespaceSharedHashTable);
 	dirEntry = (FilespaceDirEntry) hash_seq_search(&status);
 	if (dirEntry != NULL)
@@ -1278,7 +1279,9 @@ PersistentFilespace_LookupMirrorDbid(int16 primaryDbid)
 		}
 		else
 		{
-			elog(FATAL, "Unable to find primary dbid in filespace lookup");
+			elog(FATAL, 
+				 "dbid %d not found in gp_persistent_filespace_node",
+				 (int) primaryDbid);
 		}
 
 		/* Terminate the scan early */

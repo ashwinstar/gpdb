@@ -3794,7 +3794,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 	 * postmaster/postmaster.c (the option sets should not conflict)
 	 * and with the common help() function in main/main.c.
 	 */
-	while ((flag = getopt(argc, argv, "A:B:c:D:d:EeFf:h:ijk:lN:nOo:Pp:r:S:sTt:v:W:y:-:")) != -1)
+	while ((flag = getopt(argc, argv, "A:B:b:C:c:D:d:EeFf:h:ijk:lN:nOo:Pp:r:S:sTt:v:W:x:y:z:-:")) != -1)
 	{
 		switch (flag)
 		{
@@ -3805,6 +3805,14 @@ PostgresMain(int argc, char *argv[], const char *username)
 			case 'B':
 				SetConfigOption("shared_buffers", optarg, ctx, gucsource);
 				break;
+
+            case 'b':
+                SetConfigOption("gp_dbid", optarg, ctx, gucsource);
+                break;
+
+            case 'C':
+                SetConfigOption("gp_contentid", optarg, ctx, gucsource);
+                break;
 
 			case 'D':
 				if (secure)
@@ -3979,6 +3987,14 @@ PostgresMain(int argc, char *argv[], const char *username)
 						free(value);
 					break;
 				}
+
+			case 'x': /* standby master dbid */
+				SetConfigOption("gp_standby_dbid", optarg, ctx, gucsource);
+				break;
+            case 'z':
+                SetConfigOption("gp_num_contents_in_cluster", 
+								optarg, ctx, gucsource);
+                break;
 
 			default:
 				errs++;
