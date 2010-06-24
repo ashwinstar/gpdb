@@ -100,8 +100,8 @@ def replaceFileSpaceContentID(fileSpaceDictionary, oldContent, newContent):
         tempDir += ('%d' % newContent)
         retValue[entry] = tempDir
     return retValue
-
  
+
 # ============================================================================
 # ============================================================================
 class GpDB:
@@ -559,7 +559,6 @@ class Segment:
             hosts.append(m.hostname)
         return hosts
 
-
 # --------------------------------------------------------------------
 # --------------------------------------------------------------------
 class SegmentRow():
@@ -576,8 +575,7 @@ class SegmentRow():
         self.prPort          = prPort
         self.fileSpaceDictionary   = fileSpaceDictionary
 
-# --------------------------------------------------------------------
-# --------------------------------------------------------------------
+
 def createSegmentRows( hostlist
                      , primary_list
                      , primary_portbase
@@ -587,6 +585,8 @@ def createSegmentRows( hostlist
                      , dir_prefix
                      , primary_replication_portbase
                      , mirror_replication_portbase
+                     , primary_fs_list = None
+                     , mirror_fs_list = None
                      ):
     rows=[]
     
@@ -597,8 +597,15 @@ def createSegmentRows( hostlist
         isprimary='t'
         port=primary_portbase
         prPort = primary_replication_portbase
+        index = 0
         for pdir in primary_list:
             fulldir = "%s/%s%d" % (pdir,dir_prefix,content)
+            fsDict = {}
+            if primary_fs_list != None and len(primary_fs_list) > index:
+               fsDict = primary_fs_list[index]
+            fullFsDict = {}
+            for oid in fsDict:
+                fullFsDict[oid] = "%s/%s%d" % (fsDict[oid], dir_prefix, content)
             rows.append( SegmentRow( content = content
                                    , isprimary = isprimary
                                    , dbid = dbid
@@ -608,12 +615,14 @@ def createSegmentRows( hostlist
                                    , port = port
                                    , fulldir = fulldir
                                    , prPort = prPort
+                                   , fileSpaceDictionary = fullFsDict
                                    ) )
             port += 1
             if prPort != None:
                prPort += 1
             content += 1
             dbid += 1
+            index = index + 1
     
     #mirrors
     if mirror_type is None or mirror_type == 'none':
@@ -638,8 +647,13 @@ def createSegmentRows( hostlist
         for host in hostlist:
             mirror_host_offset = last_mirror_offset + 1
             last_mirror_offset += 1
+            index = 0
             for mdir in mirror_list:
                 fulldir = "%s/%s%d" % (mdir,dir_prefix,content)
+                fsDict = mirror_fs_list[index]
+                fullFsDict = {}
+                for oid in fsDict:
+                    fullFsDict[oid] = "%s/%s%d" % (pdir, dir_prefix, content)
                 mirror_host = hostlist[mirror_host_offset % num_hosts]
                 if mirror_host == host:
                     mirror_host_offset += 1
@@ -649,7 +663,7 @@ def createSegmentRows( hostlist
                     mirror_port[mirror_host] = mirror_portbase
                 if not mirror_replication_port.has_key(mirror_replication_portbase):
                     mirror_replication_port[mirror_host] = mirror_replication_portbase
-
+                    
                 rows.append( SegmentRow( content = content
                                        , isprimary = isprimary
                                        , dbid = dbid
@@ -659,12 +673,15 @@ def createSegmentRows( hostlist
                                        , port = mirror_port[mirror_host]
                                        , fulldir = fulldir
                                        , prPort = mirror_replication_port[mirror_host]
+                                       , fileSpaceDictionary = fullFsDict
                                        ) )
+
                 mirror_port[mirror_host] += 1
                 mirror_replication_port[mirror_host] += 1
                 content += 1
                 dbid += 1
                 mirror_host_offset += 1
+                index = index + 1
                 
         
     elif mirror_type.lower().strip() == 'grouped':
@@ -705,7 +722,6 @@ def createSegmentRows( hostlist
         raise Exception("Invalid mirror type specified: %s" % mirror_type)
     
     return rows
-
 
 #========================================================================
 def createSegmentRowsFromSegmentList( newHostlist
@@ -792,6 +808,7 @@ def createSegmentRowsFromSegmentList( newHostlist
                                        , fulldir = fulldir
                                        , prPort = mirror_replication_port[mirror_host]
                                        ) )
+
                 mirror_port[mirror_host] += 1
                 mirror_replication_port[mirror_host] += 1
                 content += 1
@@ -838,7 +855,7 @@ def createSegmentRowsFromSegmentList( newHostlist
     
     return rows
 
-
+#========================================================================
 def parseTrueFalse(value):
     if value.lower() == 'f':
         return False
@@ -874,6 +891,8 @@ class GpFilespaceObj:
 
     def isSystemFilespace(self):
         return self.__oid == SYSTEM_FILESPACE
+
+
 
 # ============================================================================
 class GpArray:
@@ -1628,6 +1647,7 @@ class GpArray:
                      port = port, 
                      datadir = datadir, 
                      replicationPort = replication_port)  # todo: add to parameters
+        
         if fileSpaces != None:
            for fsOid in fileSpaces:
                segdb.addSegmentFilespace(oid = fsOid, path = fileSpaces[fsOid])
@@ -1763,13 +1783,12 @@ class GpArray:
 
         if len(new_hosts) == 0:        
             raise Exception('No new hosts to add')
-
+        
         """ Get the first segment's host name, and use this host's configuration as a prototype """
         seg0_hostname = self.segments[0].primaryDB.getSegmentHostName()
         
         primary_list = self.get_list_of_primary_segments_on_host(seg0_hostname)
         mirror_list = self.get_list_of_mirror_segments_on_host(seg0_hostname)
-        
         interface_list = self.get_interface_numbers()
         base_primary_port = self.get_min_primary_port()
         base_mirror_port = 0
@@ -1781,7 +1800,7 @@ class GpArray:
             base_mirror_replication_port = self.get_min_mirror_replication_port()
         
         prefix = self.get_datadir_prefix()
-
+        
         rows = createSegmentRowsFromSegmentList( newHostlist = new_hosts
                                                , primary_segment_list = primary_list
                                                , primary_portbase = base_primary_port
@@ -1796,7 +1815,7 @@ class GpArray:
         self._fixup_and_add_expansion_segments(rows, interface_list)
         
     # --------------------------------------------------------------------    
-    def addExpansionDatadirs(self, datadirs, mirrordirs, mirror_type):
+    def addExpansionDatadirs(self, datadirs, mirrordirs, mirror_type, fs_dirs = None, fs_mirror_dirs = None):
         """ Adds new segments based on new data directories to both original
         hosts and hosts that were added by addExpansionHosts.
         """
@@ -1816,7 +1835,7 @@ class GpArray:
           
         hosts = []
         # Get all the hosts to add the data dirs to
-        for seg in self.getSegDbList(True):
+        for seg in self.getSegDbList(includeExpansionSegs = True):
             host = seg.getSegmentHostName()
             
             # If we have interface numbers, strip them so we only add data
@@ -1842,10 +1861,13 @@ class GpArray:
                                 , dir_prefix = prefix
                                 , primary_replication_portbase = tempPrimaryRP
                                 , mirror_replication_portbase = tempMirrorRP
+                                , primary_fs_list = fs_dirs
+                                , mirror_fs_list = fs_mirror_dirs
                                 )
         
         self._fixup_and_add_expansion_segments(rows, interface_list)
         
+
     # --------------------------------------------------------------------    
     def _fixup_and_add_expansion_segments(self, rows, interface_list):
         """Fixes up expansion segments added to be after the original segdbs 
@@ -1901,7 +1923,8 @@ class GpArray:
                                                           )                
                 self.addExpansionSeg(new_content, ROLE_MIRROR, curr_dbid, 
                                      ROLE_MIRROR, hostname, int(row.port), new_datadir, row.prPort, fileSpaces = new_filespaces)
-            curr_dbid += 1
+            curr_dbid += 1           
+
 
     def guessIsMultiHome(self):
         """
