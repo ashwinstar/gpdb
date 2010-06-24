@@ -4476,7 +4476,7 @@ attr_insert_map(Relation base, Relation part)
 	
 	int j = 1;
 	int m = part->rd_att->natts;
-	FormData_pg_attribute *pattr;
+	FormData_pg_attribute *pattr = NULL;
 	
 	if ( m > n )
 		elog(ERROR, 
