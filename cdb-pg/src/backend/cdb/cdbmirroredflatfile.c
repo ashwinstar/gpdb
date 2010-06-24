@@ -55,7 +55,8 @@ int MirroredFlatFile_Open(
 /* NOTE do we need to consider supressError on mirror */
 
 {
-	int save_errno = 0;
+	int		save_errno = 0;
+	bool	requestNotMirrored = TRUE;
 	
 	Assert(open != NULL);
 
@@ -95,14 +96,15 @@ int MirroredFlatFile_Open(
 	sprintf(open->path, "%s/%s", subDirectory, open->simpleFileName);
 	
 	if (FileRepPrimary_MirrorOpen(
-				  FileRep_GetFlatFileIdentifier(
-								subDirectory, 
-								open->simpleFileName),
-				  FileRepRelationTypeFlatFile,
-				  FILEREP_OFFSET_UNDEFINED,
-				  fileFlags,
-				  fileMode,
-				  suppressError) != 0) 
+								  FileRep_GetFlatFileIdentifier(
+																subDirectory, 
+																open->simpleFileName),
+								  FileRepRelationTypeFlatFile,
+								  FILEREP_OFFSET_UNDEFINED,
+								  fileFlags,
+								  fileMode,
+								  suppressError,
+								  &requestNotMirrored) != 0) 
 		ereport(LOG,
 				(errmsg("could not sent open file to mirror \"%s\" open file flags:'%x' ", 
 						open->path, 
@@ -168,7 +170,9 @@ int MirroredFlatFile_OpenInDbDir(
 	bool			suppressError)
 
 {
-	int save_errno = 0;
+	int		save_errno = 0;
+	bool	requestNotMirrored = TRUE;
+
 	
 	char *primaryFilespaceLocation = NULL;
 	char *mirrorFilespaceLocation = NULL;
@@ -228,7 +232,8 @@ int MirroredFlatFile_OpenInDbDir(
 					  FILEREP_OFFSET_UNDEFINED,
 					  fileFlags,
 					  fileMode,
-					  suppressError) != 0) 
+					  suppressError,
+					  &requestNotMirrored) != 0) 
 		ereport(LOG,
 				(errmsg("could not sent open file to mirror '%s/%s' open file flags:'%x' ", 
 						open->subDirectory, 
@@ -299,15 +304,18 @@ int MirroredFlatFile_Flush(
 {
 	bool	mirrorFlush = TRUE;
 	int		save_errno = 0;
+	bool	requestNotMirrored = TRUE;
+
 	
 	Assert(open != NULL);
 	Assert(open->isActive);
 	
 	if (FileRepPrimary_MirrorFlush(
-			   FileRep_GetFlatFileIdentifier(
-							 open->subDirectory, 
-							 open->simpleFileName),
-			   FileRepRelationTypeFlatFile) != 0) {
+								   FileRep_GetFlatFileIdentifier(
+																 open->subDirectory, 
+																 open->simpleFileName),
+								   FileRepRelationTypeFlatFile,
+								   &requestNotMirrored) != 0) {
 		
 		mirrorFlush = FALSE;
 		ereport(LOG,
@@ -328,10 +336,11 @@ int MirroredFlatFile_Flush(
 
 	if (mirrorFlush) {
 		if (FileRepPrimary_IsOperationCompleted(
-					   FileRep_GetFlatFileIdentifier(
-								 open->subDirectory, 
-								 open->simpleFileName),									
-					   FileRepRelationTypeFlatFile) == FALSE)	
+												FileRep_GetFlatFileIdentifier(
+																			  open->subDirectory, 
+																			  open->simpleFileName),									
+												FileRepRelationTypeFlatFile,
+												&requestNotMirrored) == FALSE)	
 			ereport(LOG,
 				    (errmsg("could not fsync file on mirror '%s/%s' ", 
 							open->subDirectory,
@@ -350,15 +359,18 @@ void MirroredFlatFile_Close(
 				/* The open struct. */				
 
 {
+	bool	requestNotMirrored = TRUE;
+
 	Assert(open != NULL);
 	Assert(open->isActive);
 
 	
 	if (FileRepPrimary_MirrorClose(
-				   FileRep_GetFlatFileIdentifier(
-							 open->subDirectory, 
-							 open->simpleFileName),
-				   FileRepRelationTypeFlatFile) != 0) 
+								   FileRep_GetFlatFileIdentifier(
+																 open->subDirectory, 
+																 open->simpleFileName),
+								   FileRepRelationTypeFlatFile,
+								   &requestNotMirrored) != 0) 
 		ereport(LOG,
 				(errmsg("could not sent close file to mirror \"%s\"", open->path)));
 	
@@ -415,6 +427,7 @@ int MirroredFlatFile_Rename(
 	bool mirrorRename = TRUE;
 	int	 save_errno = 0;
 	struct stat buf;
+	bool	requestNotMirrored = TRUE;
 
 	oldPath = (char*)palloc(MAXPGPATH + 1);
 	newPath = (char*)palloc(MAXPGPATH + 1);
@@ -432,11 +445,11 @@ int MirroredFlatFile_Rename(
 
 	if (FileRepPrimary_MirrorRename(
 								   FileRep_GetFlatFileIdentifier(
-												subDirectory, 
-												oldSimpleFileName),
+																 subDirectory, 
+																 oldSimpleFileName),
 									FileRep_GetFlatFileIdentifier(
-											  subDirectory, 
-											  newSimpleFileName),
+																  subDirectory, 
+																  newSimpleFileName),
 									FileRepRelationTypeFlatFile) != 0) {
 		
 		mirrorRename = FALSE;
@@ -460,9 +473,11 @@ int MirroredFlatFile_Rename(
 	if (mirrorRename)
 	{
 		if (FileRepPrimary_IsOperationCompleted(
-							FileRep_GetFlatFileIdentifier(subDirectory, 
-														  oldSimpleFileName),	
-							FileRepRelationTypeFlatFile) == FALSE)	
+												FileRep_GetFlatFileIdentifier(
+																			  subDirectory, 
+																			  oldSimpleFileName),	
+												FileRepRelationTypeFlatFile,
+												&requestNotMirrored) == FALSE)	
 			ereport(LOG,
 					(errmsg("could not rename file on mirror from \"%s\" to \"%s\" ", 
 							oldPath, newPath)));	
@@ -495,20 +510,22 @@ int MirroredFlatFile_Append(
 	bool		suppressError)
 
 {
-	int save_errno = 0;
+	int		save_errno = 0;
+	bool	requestNotMirrored = TRUE;
 	
 	Assert(open != NULL);
 	Assert(open->isActive);
 	
 	if (FileRepPrimary_MirrorWrite(
-				   FileRep_GetFlatFileIdentifier(
-								 open->subDirectory, 
-								 open->simpleFileName),
-				   FileRepRelationTypeFlatFile,
-				   FILEREP_OFFSET_UNDEFINED,
-				   buffer, 
-				   bufferLen, 
-				   FileRep_GetXLogRecPtrUndefined())	!= 0) 					  
+								   FileRep_GetFlatFileIdentifier(
+																 open->subDirectory, 
+																 open->simpleFileName),
+								   FileRepRelationTypeFlatFile,
+								   FILEREP_OFFSET_UNDEFINED,
+								   buffer, 
+								   bufferLen, 
+								   FileRep_GetXLogRecPtrUndefined(),
+								   &requestNotMirrored)	!= 0) 					  
 		ereport(LOG,
 				(errmsg("could not sent write to mirror '%s/%s' ", 
 						open->subDirectory,
@@ -564,6 +581,8 @@ int MirroredFlatFile_Write(
 	int64	seekResult;
 	char*	buf = NULL;
 	int		save_errno = 0;
+	bool	requestNotMirrored = TRUE;
+
 	
 	Assert(open != NULL);
 	Assert(open->isActive);
@@ -577,14 +596,15 @@ int MirroredFlatFile_Write(
 	memcpy(buf, buffer, bufferLen);
 	
 	if (FileRepPrimary_MirrorWrite(
-				   FileRep_GetFlatFileIdentifier(
-								 open->subDirectory, 
-								 open->simpleFileName),
-				   FileRepRelationTypeFlatFile,
-				   position,
-				   buf, 
-				   bufferLen, 
-				   FileRep_GetXLogRecPtrUndefined())	!= 0) 					  
+								   FileRep_GetFlatFileIdentifier(
+																 open->subDirectory, 
+																 open->simpleFileName),
+								   FileRepRelationTypeFlatFile,
+								   position,
+								   buf, 
+								   bufferLen, 
+								   FileRep_GetXLogRecPtrUndefined(),
+								   &requestNotMirrored)	!= 0) 					  
 		ereport(LOG,
 				(errmsg("could not sent seek and write to mirror '%s/%s' ", 
 						open->subDirectory,
@@ -793,19 +813,22 @@ int MirroredFlatFile_Drop(
 	bool			isMirrorRecovery) 
 		/* if TRUE then request is not performed on primary */
 {
-	char *path;
-	bool mirrorDrop = TRUE;
-	int	 save_errno = 0;
+	char	*path;
+	bool	mirrorDrop = TRUE;
+	int		save_errno = 0;
+	bool	requestNotMirrored = TRUE;
+
 
 	path = (char*)palloc(MAXPGPATH + 1);
 	
 	sprintf(path, "%s/%s", subDirectory, simpleFileName);
 	
 	if (FileRepPrimary_MirrorDrop(
-				   FileRep_GetFlatFileIdentifier(
-							 subDirectory, 
-							 simpleFileName),
-				   FileRepRelationTypeFlatFile) != 0) {
+								  FileRep_GetFlatFileIdentifier(
+																subDirectory, 
+																simpleFileName),
+								  FileRepRelationTypeFlatFile,
+								  &requestNotMirrored) != 0) {
 		
 		mirrorDrop = FALSE;
 		ereport(LOG,
@@ -823,10 +846,11 @@ int MirroredFlatFile_Drop(
 	
 	if (mirrorDrop) {
 		if (FileRepPrimary_IsOperationCompleted(
-					   FileRep_GetFlatFileIdentifier(
-								 subDirectory, 
-								 simpleFileName),									
-					   FileRepRelationTypeFlatFile) == FALSE)	
+												FileRep_GetFlatFileIdentifier(
+																			  subDirectory, 
+																			  simpleFileName),									
+												FileRepRelationTypeFlatFile,
+												&requestNotMirrored) == FALSE)	
 			ereport(LOG,
 					(errmsg("could not drop file on mirror \"%s\"", path)));	
 	}
@@ -852,6 +876,7 @@ int MirroredFlatFile_ReconcileXLogEof(
 							  XLogRecPtr	*mirrorXLogEof)
 {
 	bool	mirrorReconcile = TRUE;
+	bool	requestNotMirrored = TRUE;
 	int		status = STATUS_OK;
 	
 	if (FileRepPrimary_ReconcileXLogEof(
@@ -869,10 +894,11 @@ int MirroredFlatFile_ReconcileXLogEof(
 		
 	if (mirrorReconcile) {
 		if (FileRepPrimary_IsOperationCompleted(
-								FileRep_GetFlatFileIdentifier(
-													  subDirectory, 
-													  simpleFileName),									
-								FileRepRelationTypeFlatFile) == FALSE) {	
+												FileRep_GetFlatFileIdentifier(
+																			  subDirectory, 
+																			  simpleFileName),									
+												FileRepRelationTypeFlatFile,
+												&requestNotMirrored) == FALSE) {	
 			ereport(LOG,
 					(errmsg("could not reconcile Xlog EOF on mirror")));	
 			status = STATUS_ERROR;

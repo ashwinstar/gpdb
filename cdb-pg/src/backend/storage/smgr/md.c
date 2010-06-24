@@ -254,7 +254,8 @@ mdcreatefilespacedir(
 		FileRepPrimary_IsOperationCompleted(
 											FileRep_GetDirFilespaceIdentifier(
 																			  mirrorFilespaceLocation),
-											FileRepRelationTypeDir);
+											FileRepRelationTypeDir,
+											mirrorDataLossOccurred);
 		
 		mirrorStatus = FileRepPrimary_GetMirrorStatus();
 
@@ -327,13 +328,14 @@ mdcreatetablespacedir(
 	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&
 		!*mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_IsOperationCompleted(
-												FileRep_GetDirTablespaceIdentifier(
-																				   mirrorFilespaceLocation,
-																				   tablespaceOid),
-												FileRepRelationTypeDir) == FALSE)	
+		FileRepPrimary_IsOperationCompleted(
+											FileRep_GetDirTablespaceIdentifier(
+																			   mirrorFilespaceLocation,
+																			   tablespaceOid),
+											FileRepRelationTypeDir,
+											mirrorDataLossOccurred);
+		if (*mirrorDataLossOccurred)
 		{
-			*mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not create dbdir on mirror ")));	
 		}
@@ -405,13 +407,14 @@ mdcreatedbdir(
 	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&
 		!*mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_IsOperationCompleted(
-					FileRep_GetDirDatabaseIdentifier(
-													 mirrorFilespaceLocation,
-													 *dbDirNode),
-					   FileRepRelationTypeDir) == FALSE)	
+		FileRepPrimary_IsOperationCompleted(
+											FileRep_GetDirDatabaseIdentifier(
+																			 mirrorFilespaceLocation,
+																			 *dbDirNode),
+											FileRepRelationTypeDir,
+											mirrorDataLossOccurred);
+		if (*mirrorDataLossOccurred)
 		{
-			*mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not create dbdir on mirror ")));	
 		}
@@ -726,12 +729,14 @@ mdrmfilespacedir(
 	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&
 		!*mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_MirrorDrop(
-					FileRep_GetDirFilespaceIdentifier(
-													  mirrorFilespaceLocation),
-					FileRepRelationTypeDir) != 0) 
+		FileRepPrimary_MirrorDrop(
+								  FileRep_GetDirFilespaceIdentifier(
+																	mirrorFilespaceLocation),
+								  FileRepRelationTypeDir,
+								  mirrorDataLossOccurred); 
+			
+		if (*mirrorDataLossOccurred)
 		{
-			*mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not sent drop filespace dir to mirror")));
 		}
@@ -749,12 +754,14 @@ mdrmfilespacedir(
 	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&
 		!*mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_IsOperationCompleted(
-						FileRep_GetDirFilespaceIdentifier(
-														  mirrorFilespaceLocation),
-						FileRepRelationTypeDir) == FALSE)
+		FileRepPrimary_IsOperationCompleted(
+											FileRep_GetDirFilespaceIdentifier(
+																			  mirrorFilespaceLocation),
+											FileRepRelationTypeDir,
+											mirrorDataLossOccurred);
+		
+		if (*mirrorDataLossOccurred)
 		{
-			*mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not drop filespace dir on mirror ")));
 		}
@@ -803,13 +810,15 @@ mdrmtablespacedir(
 	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&
 		!*mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_MirrorDrop(
-				  FileRep_GetDirTablespaceIdentifier(
-													 mirrorFilespaceLocation,
-													 tablespaceOid),
-				  FileRepRelationTypeDir) != 0) 
+		FileRepPrimary_MirrorDrop(
+								  FileRep_GetDirTablespaceIdentifier(
+																	 mirrorFilespaceLocation,
+																	 tablespaceOid),
+								  FileRepRelationTypeDir,
+								  mirrorDataLossOccurred);
+			
+		if (*mirrorDataLossOccurred)
 		{
-			*mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not sent drop tablespace dir to mirror")));
 		}
@@ -835,13 +844,15 @@ mdrmtablespacedir(
 	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&
 		!*mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_IsOperationCompleted(
-						FileRep_GetDirTablespaceIdentifier(
-														   mirrorFilespaceLocation,
-														   tablespaceOid),
-						FileRepRelationTypeDir) == FALSE)
+		FileRepPrimary_IsOperationCompleted(
+											FileRep_GetDirTablespaceIdentifier(
+																			   mirrorFilespaceLocation,
+																			   tablespaceOid),
+											FileRepRelationTypeDir,
+											mirrorDataLossOccurred);
+		
+		if (*mirrorDataLossOccurred)
 		{
-			*mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not drop tablespace dir on mirror ")));	
 		}
@@ -896,13 +907,15 @@ mdrmdbdir(
 	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&
 		!*mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_MirrorDrop(
-					FileRep_GetDirDatabaseIdentifier(
-													 mirrorFilespaceLocation,
-													 *dbDirNode),
-					FileRepRelationTypeDir) != 0) 
+		FileRepPrimary_MirrorDrop(
+								  FileRep_GetDirDatabaseIdentifier(
+																   mirrorFilespaceLocation,
+																   *dbDirNode),
+								  FileRepRelationTypeDir,
+								  mirrorDataLossOccurred);
+			
+		if (*mirrorDataLossOccurred)
 		{
-			*mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not sent drop dbdir to mirror")));
 		}
@@ -929,13 +942,15 @@ mdrmdbdir(
 	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&
 		!*mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_IsOperationCompleted(
-					FileRep_GetDirDatabaseIdentifier(
-													 mirrorFilespaceLocation,
-													 *dbDirNode),
-					FileRepRelationTypeDir) == FALSE)	
+		FileRepPrimary_IsOperationCompleted(
+											FileRep_GetDirDatabaseIdentifier(
+																			 mirrorFilespaceLocation,
+																			 *dbDirNode),
+											FileRepRelationTypeDir,
+											mirrorDataLossOccurred);	
+			
+		if (*mirrorDataLossOccurred)
 		{
-			*mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not drop dbdir on mirror ")));
 		}

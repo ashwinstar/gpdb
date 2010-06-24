@@ -278,7 +278,7 @@ static void MirroredBufferPool_DoOpen(
 		*primaryError == 0 &&
 		!open->mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_MirrorOpen(
+		FileRepPrimary_MirrorOpen(
 					  FileRep_GetRelationIdentifier(
 										open->mirrorFilespaceLocation,
 										open->relFileNode, 
@@ -287,9 +287,11 @@ static void MirroredBufferPool_DoOpen(
 					  FILEREP_OFFSET_UNDEFINED,
 					  fileFlags,
 					  fileMode,
-					  TRUE /* supressError */) != 0) 
+					  TRUE /* supressError */,
+					  &open->mirrorDataLossOccurred);
+		
+		if (open->mirrorDataLossOccurred)
 		{
-			open->mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not sent file open request to mirror "), 
 							FileRep_ReportRelationPath(
@@ -498,14 +500,16 @@ bool MirroredBufferPool_Flush(
 	if (StorageManagerMirrorMode_SendToMirror(open->mirrorMode) &&
 		!open->mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_MirrorFlush(
+		FileRepPrimary_MirrorFlush(
 						FileRep_GetRelationIdentifier(
 													  open->mirrorFilespaceLocation,
 													  open->relFileNode, 
 													  open->segmentFileNum),
-						FileRepRelationTypeBufferPool) != 0) 
+						FileRepRelationTypeBufferPool,
+						&open->mirrorDataLossOccurred);
+		
+		if (open->mirrorDataLossOccurred)
 		{
-			open->mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not sent file fsync request to mirror "), 
 							FileRep_ReportRelationPath(
@@ -527,14 +531,16 @@ bool MirroredBufferPool_Flush(
 	if (StorageManagerMirrorMode_SendToMirror(open->mirrorMode) &&
 		!open->mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_IsOperationCompleted(
+		FileRepPrimary_IsOperationCompleted(
 						FileRep_GetRelationIdentifier(
 													  open->mirrorFilespaceLocation,
 													  open->relFileNode, 
 													  open->segmentFileNum),									
-						FileRepRelationTypeBufferPool) == FALSE)	
+						FileRepRelationTypeBufferPool,
+						&open->mirrorDataLossOccurred);
+		
+		if (open->mirrorDataLossOccurred)
 		{
-			open->mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not fsync file on mirror "), 
 							FileRep_ReportRelationPath(
@@ -566,14 +572,15 @@ void MirroredBufferPool_Close(
 	if (StorageManagerMirrorMode_SendToMirror(open->mirrorMode) &&
 		!open->mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_MirrorClose(
+		FileRepPrimary_MirrorClose(
 					FileRep_GetRelationIdentifier(
 												  open->mirrorFilespaceLocation,
 												  open->relFileNode, 
 												  open->segmentFileNum),
-					FileRepRelationTypeBufferPool) != 0) 
+					FileRepRelationTypeBufferPool,
+					&open->mirrorDataLossOccurred);	   
+		if (open->mirrorDataLossOccurred)
 		{
-			open->mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not sent file close request to mirror"), 
 							FileRep_ReportRelationPath(
@@ -641,7 +648,7 @@ bool MirroredBufferPool_Write(
 	if (StorageManagerMirrorMode_SendToMirror(open->mirrorMode) &&
 		!open->mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_MirrorWrite(
+		FileRepPrimary_MirrorWrite(
 						   FileRep_GetRelationIdentifier(
 														 open->mirrorFilespaceLocation,
 														 open->relFileNode, 
@@ -650,9 +657,10 @@ bool MirroredBufferPool_Write(
 						   position,
 						   buf, 
 						   bufferLen, 
-						   FileRep_GetXLogRecPtrUndefined())	!= 0) 		
+						   FileRep_GetXLogRecPtrUndefined(),
+						   &open->mirrorDataLossOccurred);
+		if (open->mirrorDataLossOccurred)
 		{
-			open->mirrorDataLossOccurred = true;
 			ereport(LOG,
 					 (errmsg("ERROR(filerep): could not sent write request to mirror position:'%d' ", 
 							 position), 
@@ -822,14 +830,15 @@ static void MirroredBufferPool_DoDrop(
 	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&
 		!*mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_MirrorDrop(
+		FileRepPrimary_MirrorDrop(
 					FileRep_GetRelationIdentifier(
 												  mirrorFilespaceLocation,
 												  *relFileNode, 
 												  segmentFileNum),				  
-					FileRepRelationTypeBufferPool) != 0) 
+					FileRepRelationTypeBufferPool,
+					mirrorDataLossOccurred);
+		if (*mirrorDataLossOccurred)
 		{
-			*mirrorDataLossOccurred = true;
 			ereport(LOG,
 					 (errmsg("ERROR(filerep): could not sent file drop request to mirror "), 
 							 FileRep_ReportRelationPath(
@@ -872,14 +881,15 @@ static void MirroredBufferPool_DoDrop(
 	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&
 		!*mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_IsOperationCompleted(
-					FileRep_GetRelationIdentifier(
-									mirrorFilespaceLocation,
-									*relFileNode, 
-									segmentFileNum),									
-					FileRepRelationTypeBufferPool) == FALSE)	
+		FileRepPrimary_IsOperationCompleted(
+											FileRep_GetRelationIdentifier(
+																		  mirrorFilespaceLocation,
+																		  *relFileNode, 
+																		  segmentFileNum),									
+											FileRepRelationTypeBufferPool,
+											mirrorDataLossOccurred);	
+		if (*mirrorDataLossOccurred)
 		{
-			*mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not drop file on mirror "), 
 							FileRep_ReportRelationPath(
@@ -990,15 +1000,17 @@ bool MirroredBufferPool_Truncate(
 	if (StorageManagerMirrorMode_SendToMirror(open->mirrorMode) &&
 		!open->mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_MirrorTruncate(
-					FileRep_GetRelationIdentifier(
-												  open->mirrorFilespaceLocation,				  
-												  open->relFileNode, 
-												  open->segmentFileNum),
-					FileRepRelationTypeBufferPool,
-					position) != 0) 
+		FileRepPrimary_MirrorTruncate(
+									  FileRep_GetRelationIdentifier(
+																	open->mirrorFilespaceLocation,				  
+																	open->relFileNode, 
+																	open->segmentFileNum),
+									  FileRepRelationTypeBufferPool,
+									  position,
+									  &open->mirrorDataLossOccurred);
+			
+		if (open->mirrorDataLossOccurred)
 		{
-			open->mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not sent file truncate request to mirror "), 
 							FileRep_ReportRelationPath(

@@ -369,14 +369,14 @@ FaultInjector_InjectFaultIfSet(
 		/* fault injection was already executed */
 		return FALSE;
 	}
-	
+
 	/* skip checkpoint forever, required for crash recovery testing */
 	if (entryLocal->faultInjectorType == FaultInjectorTypeSkip &&
 		entryLocal->faultInjectorIdentifier == Checkpoint)
 	{
 		return (entryLocal->faultInjectorType == FaultInjectorTypeSkip ? TRUE : FALSE);
 	}
-	
+
 	/* Update the injection fault entry in hash table */
 	
 	if (entryLocal->occurrence > 1) {

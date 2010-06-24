@@ -288,18 +288,20 @@ static void MirroredAppendOnly_DoOpen(
 		*primaryError == 0 &&
 		!open->mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_MirrorOpen(
-					  FileRep_GetRelationIdentifier(
-													open->mirrorFilespaceLocation,
-													open->relFileNode, 
-													open->segmentFileNum),
-					  FileRepRelationTypeAppendOnly,
-					  logicalEof,
-					  fileFlags,
-					  fileMode,
-					  TRUE /* supressError */) != 0) 
+		FileRepPrimary_MirrorOpen(
+								  FileRep_GetRelationIdentifier(
+																open->mirrorFilespaceLocation,
+																open->relFileNode, 
+																open->segmentFileNum),
+								  FileRepRelationTypeAppendOnly,
+								  logicalEof,
+								  fileFlags,
+								  fileMode,
+								  TRUE /* supressError */,
+								  &open->mirrorDataLossOccurred);
+		
+		if (open->mirrorDataLossOccurred)
 		{
-			open->mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not sent file open request to mirror "),
 							FileRep_ReportRelationPath(
@@ -627,14 +629,16 @@ void MirroredAppendOnly_FlushAndClose(
 	if (StorageManagerMirrorMode_SendToMirror(open->mirrorMode) &&
 		!open->mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_MirrorFlushAndClose(
-					   FileRep_GetRelationIdentifier(
-													 open->mirrorFilespaceLocation,
-													 open->relFileNode, 
-													 open->segmentFileNum),
-					   FileRepRelationTypeAppendOnly) != 0)
+		FileRepPrimary_MirrorFlushAndClose(
+										   FileRep_GetRelationIdentifier(
+																		 open->mirrorFilespaceLocation,
+																		 open->relFileNode, 
+																		 open->segmentFileNum),
+										   FileRepRelationTypeAppendOnly,
+										   &open->mirrorDataLossOccurred);
+			
+		if (open->mirrorDataLossOccurred)
 		{
-			open->mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not sent file fsync and close request to mirror "), 
 							FileRep_ReportRelationPath(
@@ -660,14 +664,16 @@ void MirroredAppendOnly_FlushAndClose(
 	if (StorageManagerMirrorMode_SendToMirror(open->mirrorMode) &&
 		!open->mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_IsOperationCompleted(
-				   FileRep_GetRelationIdentifier(
-												 open->mirrorFilespaceLocation,
-												 open->relFileNode, 
-												 open->segmentFileNum),									
-				   FileRepRelationTypeAppendOnly) == FALSE)	
+		FileRepPrimary_IsOperationCompleted(
+											FileRep_GetRelationIdentifier(
+																		  open->mirrorFilespaceLocation,
+																		  open->relFileNode, 
+																		  open->segmentFileNum),									
+											FileRepRelationTypeAppendOnly,
+											&open->mirrorDataLossOccurred);
+			
+		if (open->mirrorDataLossOccurred == true)
 		{
-			open->mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not fsync file on mirror "), 
 							FileRep_ReportRelationPath(
@@ -724,14 +730,16 @@ void MirroredAppendOnly_Flush(
 	if (StorageManagerMirrorMode_SendToMirror(open->mirrorMode) &&
 		!open->mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_MirrorFlush(
-									   FileRep_GetRelationIdentifier(
-																	 open->mirrorFilespaceLocation,
-																	 open->relFileNode, 
-																	 open->segmentFileNum),
-									   FileRepRelationTypeAppendOnly) != 0) 
+		FileRepPrimary_MirrorFlush(
+								   FileRep_GetRelationIdentifier(
+																 open->mirrorFilespaceLocation,
+																 open->relFileNode, 
+																 open->segmentFileNum),
+									FileRepRelationTypeAppendOnly,
+									&open->mirrorDataLossOccurred); 
+			
+		if (open->mirrorDataLossOccurred)
 		{
-			open->mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not sent file fsync and close request to mirror "), 
 							FileRep_ReportRelationPath(
@@ -755,14 +763,16 @@ void MirroredAppendOnly_Flush(
 	if (StorageManagerMirrorMode_SendToMirror(open->mirrorMode) &&
 		!open->mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_IsOperationCompleted(
-												FileRep_GetRelationIdentifier(
-																			  open->mirrorFilespaceLocation,
-																			  open->relFileNode, 
-																			  open->segmentFileNum),									
-												FileRepRelationTypeAppendOnly) == FALSE)	
+		FileRepPrimary_IsOperationCompleted(
+											FileRep_GetRelationIdentifier(
+																		  open->mirrorFilespaceLocation,
+																		  open->relFileNode, 
+																		  open->segmentFileNum),									
+											FileRepRelationTypeAppendOnly,
+											&open->mirrorDataLossOccurred);
+		
+		if (open->mirrorDataLossOccurred == true)
 		{
-			open->mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not fsync file on mirror "), 
 							FileRep_ReportRelationPath(
@@ -812,14 +822,16 @@ void MirroredAppendOnly_Close(
 	if (StorageManagerMirrorMode_SendToMirror(open->mirrorMode) &&
 		!open->mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_MirrorClose(
-							  FileRep_GetRelationIdentifier(
-															open->mirrorFilespaceLocation,
-															open->relFileNode, 
-															open->segmentFileNum),
-							   FileRepRelationTypeAppendOnly) != 0) 
+		FileRepPrimary_MirrorClose(
+								   FileRep_GetRelationIdentifier(
+																 open->mirrorFilespaceLocation,
+																 open->relFileNode, 
+																 open->segmentFileNum),
+								   FileRepRelationTypeAppendOnly,
+								   &open->mirrorDataLossOccurred); 
+			
+		if (open->mirrorDataLossOccurred)
 		{
-			open->mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not sent file close request to mirror "), 
 							FileRep_ReportRelationPath(
@@ -1238,14 +1250,16 @@ static void MirroredAppendOnly_DoDrop(
 	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&
 		!*mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_MirrorDrop(
-									  FileRep_GetRelationIdentifier(
-																	mirrorFilespaceLocation,
-																	*relFileNode, 
-																	segmentFileNum),				  
-									  FileRepRelationTypeAppendOnly) != 0) 
+		FileRepPrimary_MirrorDrop(
+								  FileRep_GetRelationIdentifier(
+																mirrorFilespaceLocation,
+																*relFileNode, 
+																segmentFileNum),				  
+								  FileRepRelationTypeAppendOnly,
+								  mirrorDataLossOccurred);
+			
+		if (*mirrorDataLossOccurred)
 		{
-			*mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not sent file drop request to mirror "), 
 					 FileRep_ReportRelationPath(
@@ -1288,14 +1302,16 @@ static void MirroredAppendOnly_DoDrop(
 	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&
 		!*mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_IsOperationCompleted(
-												FileRep_GetRelationIdentifier(
-																			  mirrorFilespaceLocation,
-																			  *relFileNode, 
-																			  segmentFileNum),									
-												FileRepRelationTypeAppendOnly) == FALSE)	
+		FileRepPrimary_IsOperationCompleted(
+											FileRep_GetRelationIdentifier(
+																		  mirrorFilespaceLocation,
+																		  *relFileNode, 
+																		  segmentFileNum),									
+											FileRepRelationTypeAppendOnly,
+											mirrorDataLossOccurred);	
+			
+		if (*mirrorDataLossOccurred == true)
 		{
-			*mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not drop file on mirror "), 
 					 FileRep_ReportRelationPath(
@@ -1428,18 +1444,20 @@ void MirroredAppendOnly_Append(
 	if (StorageManagerMirrorMode_SendToMirror(open->mirrorMode) &&
 		!open->mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_MirrorWrite(
-					   FileRep_GetRelationIdentifier(
-													 open->mirrorFilespaceLocation,
-													 open->relFileNode, 
-													 open->segmentFileNum),
-					   FileRepRelationTypeAppendOnly,
-					   FILEREP_OFFSET_UNDEFINED,
-					   buffer, 
-					   bufferLen, 
-					   FileRep_GetXLogRecPtrUndefined())	!= 0) 	
+		FileRepPrimary_MirrorWrite(
+								   FileRep_GetRelationIdentifier(
+																 open->mirrorFilespaceLocation,
+																 open->relFileNode, 
+																 open->segmentFileNum),
+								   FileRepRelationTypeAppendOnly,
+								   FILEREP_OFFSET_UNDEFINED,
+								   buffer, 
+								   bufferLen, 
+								   FileRep_GetXLogRecPtrUndefined(),
+								   &open->mirrorDataLossOccurred); 	
+			
+		if (open->mirrorDataLossOccurred)
 		{
-			open->mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not sent write request to mirror "), 
 							FileRep_ReportRelationPath(
@@ -1506,15 +1524,17 @@ void MirroredAppendOnly_Truncate(
 	if (StorageManagerMirrorMode_SendToMirror(open->mirrorMode) &&
 		!open->mirrorDataLossOccurred)
 	{
-		if (FileRepPrimary_MirrorTruncate(
-										  FileRep_GetRelationIdentifier(
-																		open->mirrorFilespaceLocation,
-																		open->relFileNode, 
-																		open->segmentFileNum),
-										  FileRepRelationTypeAppendOnly,
-										  position) != 0) 
+		FileRepPrimary_MirrorTruncate(
+									  FileRep_GetRelationIdentifier(
+																	open->mirrorFilespaceLocation,
+																	open->relFileNode, 
+																	open->segmentFileNum),
+									  FileRepRelationTypeAppendOnly,
+									  position,
+									  &open->mirrorDataLossOccurred);
+		
+		if (open->mirrorDataLossOccurred)		
 		{
-			open->mirrorDataLossOccurred = true;
 			ereport(LOG,
 					(errmsg("ERROR(filerep): could not sent file truncate request to mirror "), 
 							FileRep_ReportRelationPath(
