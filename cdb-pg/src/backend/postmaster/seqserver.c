@@ -94,29 +94,22 @@ static struct timeval tval;
 static bool am_seqserver = false;
 uint8 *inputBuff;
 
-
 /*=========================================================================
  * VISIBLE FUNCTIONS
  */
-
 int SeqServerShmemSize(void)
 {
-	
 	/* just our one int4 */
 	return sizeof(SeqServerControlBlock);
 }
 
-
 void SeqServerShmemInit(void)
 {
 	bool		found;
-	
-	
+
 	/* Create or attach to the SharedSnapshot shared structure */
 	seqServerCtl = (SeqServerControlBlock *) ShmemInitStruct("Sequence Server", SeqServerShmemSize(), &found);
-	
 }
-
 
 /*
  * Main entry point for seqserver controller process.
@@ -126,10 +119,8 @@ void SeqServerShmemInit(void)
 int
 seqserver_start(void)
 {
-
 	pid_t		SeqServerPID;
 
-	
 #ifdef EXEC_BACKEND
 	switch ((SeqServerPID = seqserver_forkexec()))
 #else
@@ -154,12 +145,9 @@ seqserver_start(void)
 			return (int) SeqServerPID;
 	}
 
-	
 	/* shouldn't get here */
 	return 0;
 }
-
-
 
 /*
  * Used by clients to sequence server to send a Sequence Request
@@ -197,12 +185,14 @@ sendSequenceRequest(int     sockfd,
 	 * send the sequence request to the sequence server
 	 */
     memset(&request, 0, sizeof(request));	
+	request.startCookie = SEQ_SERVER_REQUEST_START;
 	request.dbid = htonl(dbid);
 	request.tablespaceid = htonl(tablespaceid);
 	request.seq_oid = htonl(seq_oid);
 	request.isTemp = htonl(isTemp);
     request.session_id = htonl(session_id);
-	
+	request.endCookie = SEQ_SERVER_REQUEST_END;
+
 	/*
 	 * write the request
 	 */	
@@ -225,9 +215,9 @@ sendSequenceRequest(int     sockfd,
 			{
 				ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
 								errmsg("Error: Could not write()  message to seqserver: %s",
-								strerror(errno)),
+									   strerror(errno)),
 								errdetail("error during write() call (error:%d) to seqserver on sockfd: %d ",
-											errno, sockfd)));
+										  errno, sockfd)));
 			}
 
 			if (saved_err == EWOULDBLOCK)
@@ -253,7 +243,7 @@ sendSequenceRequest(int     sockfd,
 
 						ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
 										errmsg("Error: Could not write()  message to seqserver: %s",
-										strerror(errno)),
+											   strerror(errno)),
 										errdetail("error during write() call (error:%d) to seqserver on sockfd: %d ",
 												  errno, sockfd)));
 						return;
@@ -274,7 +264,6 @@ sendSequenceRequest(int     sockfd,
 	 */	
 	while (bytesRead < resplen)
 	{
-		
 		CHECK_FOR_INTERRUPTS();
 			
 		n = read(sockfd, ((char *)&response)+bytesRead, resplen - bytesRead);
@@ -291,7 +280,7 @@ sendSequenceRequest(int     sockfd,
 			if (saved_err != EINTR && saved_err != EWOULDBLOCK)
 			{
 				elog( ERROR, "Error: Could not read() message from seqserver."
-							  "(error:%d). Closing connection.", saved_err);
+					  "(error:%d). Closing connection.", saved_err);
 			}
 
 			if (saved_err == EWOULDBLOCK)
@@ -464,7 +453,7 @@ SeqServerMain(int argc, char *argv[])
 
 	PG_SETMASK(&UnBlockSig);
 
-	/* set up a listener port and put it in shmem*/
+	/* set up a listener port and put it in shmem */
 	seqServerCtl->seqServerPort = listenerSetup();
 	
 	/*
@@ -539,7 +528,6 @@ SeqServerMain(int argc, char *argv[])
 	
 	SeqServerLoop();
 
-	
 	ResourceOwnerRelease(CurrentResourceOwner,
 						 RESOURCE_RELEASE_BEFORE_LOCKS,
 						 false, true);							
@@ -552,10 +540,10 @@ static void
 SeqServerLoop(void)
 {
 	int			n,
-				highsock = 0,
-				newsockfd;
+		highsock = 0,
+		newsockfd;
 	mpp_fd_set	rset,
-				rrset;
+		rrset;
 	
 	struct sockaddr_in addr;
 	socklen_t	addrlen;
@@ -629,17 +617,16 @@ SeqServerLoop(void)
 				 * more useful info as to why this happened.
 				 */
 				elog(DEBUG3, "seqserver: Could not set outbound socket to non-blocking mode"
-					 			"error during fcntl() call (error:%d) for sockfd: %d",
-							   errno, newsockfd);
+					 "error during fcntl() call (error:%d) for sockfd: %d",
+					 errno, newsockfd);
 			}
 			
 			if (newsockfd > highsock)
 				highsock = newsockfd + 1;
-			
+
 			MPP_FD_SET(newsockfd, &rset);
-			
-			connectedSockets = lappend_int(connectedSockets, newsockfd);
-						
+
+			connectedSockets = lappend_int(connectedSockets, newsockfd);						
 		}
 		
 		
@@ -648,13 +635,13 @@ SeqServerLoop(void)
 		while (cell != NULL)
 		{
 			int	fd = lfirst_int(cell);
-			
+
 			/* get the next cell ready before we delete */			
 			cell = lnext(cell);
 			
 			if (MPP_FD_ISSET(fd, &rrset))
 			{				
-				if( !processSequenceRequest(fd))
+				if (!processSequenceRequest(fd))
 				{
 					/* close it down */	
 					MPP_FD_CLR( fd, &rset);
@@ -668,7 +655,6 @@ SeqServerLoop(void)
 
 	return;
 }
-
 
 /*
  * Used by sequenceServer to process incoming Sequence Requests
@@ -689,8 +675,9 @@ processSequenceRequest(int sockfd )
 	int bytesWritten = 0;
 	int reqlen = sizeof(NextValRequest);
     int outputBuffLength = sizeof(NextValResponse);
-	
-	
+
+	bool checkCookie = true;
+
 	/* Read in the incoming request message */
 	while (bytesRead < reqlen)
 	{
@@ -728,6 +715,7 @@ processSequenceRequest(int sockfd )
 					
 					MPP_FD_ZERO(&rset);
 					MPP_FD_SET(sockfd, &rset);
+
 					n = select(sockfd + 1, (fd_set *)&rset, NULL, NULL, &timeout);
 					if (n == 0 || (n < 0 && errno == EINTR))
 						continue;
@@ -748,13 +736,49 @@ processSequenceRequest(int sockfd )
 		}
 
 		bytesRead += n;
+
+		/*
+		 * MPP-10189: validate input, if it looks like we got
+		 * something invalid, either slam the connection shut, or
+		 * should we look for a valid embedded message ?
+		 */
+		if (checkCookie && bytesRead > sizeof(uint32_t))
+		{
+			uint32_t c;
+
+			memcpy(&c, inputBuff, sizeof(uint32_t));
+			if (c != SEQ_SERVER_REQUEST_START)
+			{
+				elog(LOG, "bogus start cookie.");
+				return false; /* this will close the connection */
+#if 0
+				/* ignore bogus start ? */
+				bytesRead -= sizeof(uint32_t);
+				memmove(inputBuffer, inputBuffer + sizeof(uint32), bytesRead);
+#endif
+			}
+			checkCookie = false;
+		}
 	}
-	
-	
+
+	/*
+	 * MPP-10189: Verify end-cookie
+	 */
+	{
+		uint32_t c;
+
+		memcpy(&c, inputBuff + bytesRead - sizeof(uint32_t), sizeof(uint32_t));
+		if (c != SEQ_SERVER_REQUEST_END)
+		{
+			elog(LOG, "bogus end cookie.");
+			return false; /* this will close the connection */
+		}
+	}
+
 	/*
 	 * process what we've read
 	 */
-    memcpy(&nextValRequest, inputBuff, sizeof(nextValRequest));
+	memcpy(&nextValRequest, inputBuff, sizeof(nextValRequest));
 	nextValRequest.dbid    	    = ntohl(nextValRequest.dbid);
 	nextValRequest.tablespaceid = ntohl(nextValRequest.tablespaceid);
 	nextValRequest.seq_oid      = ntohl(nextValRequest.seq_oid);
@@ -766,22 +790,36 @@ processSequenceRequest(int sockfd )
 				  (long int)nextValRequest.dbid,
 				  (long int)nextValRequest.tablespaceid,
 				  (long int)nextValRequest.seq_oid,
-				  nextValRequest.isTemp?"true":"false",
+				  nextValRequest.isTemp ? "true" : "false",
 				  (long)nextValRequest.session_id);
-	
-	
+
 	/*
-	 * Process request
+	 * Process request.
+	 *
+	 * MPP-10189: May throw an error, we need to catch it -- just slam
+	 * our connection shut (caller will do that if we return false).
 	 */
-	cdb_sequence_nextval_server(nextValRequest.tablespaceid,
-    	                        nextValRequest.dbid,
-        	                    nextValRequest.seq_oid,
-            	                nextValRequest.isTemp,
-                	            &plast,
-                    	        &pcached,
-                        	    &pincrement);
-	
-	
+	PG_TRY();
+	{
+		cdb_sequence_nextval_server(nextValRequest.tablespaceid,
+									nextValRequest.dbid,
+									nextValRequest.seq_oid,
+									nextValRequest.isTemp,
+									&plast,
+									&pcached,
+									&pincrement);
+	}
+	PG_CATCH();
+	{
+		if (!elog_demote(LOG))
+		{
+    		elog(LOG, "unable to demote error");
+			PG_RE_THROW();
+		}
+		return false;
+	}
+	PG_END_TRY();
+
 	/*
 	 * Send the response
 	 */
@@ -794,18 +832,17 @@ processSequenceRequest(int sockfd )
 	 */
 	while (bytesWritten < outputBuffLength )
 	{
-		
 		CHECK_FOR_INTERRUPTS();
-					
+
 		n = write(sockfd, ((uint8 *)&response)+bytesWritten, outputBuffLength - bytesWritten);
 		saved_err = errno;
-	
+
 		if (n == 0)
 		{
 			elog(DEBUG3, "client socket is closed");
 			return false;
 		}
-		
+
 		if (n < 0)
 		{
 			if (saved_err != EINTR && saved_err != EWOULDBLOCK)
@@ -817,7 +854,8 @@ processSequenceRequest(int sockfd )
 
 			if (saved_err == EWOULDBLOCK)
 			{
-				/* we shouldn't really get here since we are dealing with
+				/*
+				 * we shouldn't really get here since we are dealing with
 				 * small messages, but once we've read a bit of data we
 				 * need to finish out reading till we get the message (or error)
 				 */
