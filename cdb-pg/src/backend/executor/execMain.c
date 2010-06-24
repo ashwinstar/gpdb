@@ -144,8 +144,25 @@ static void intorel_startup(DestReceiver *self, int operation, TupleDesc typeinf
 static void intorel_receive(TupleTableSlot *slot, DestReceiver *self);
 static void intorel_shutdown(DestReceiver *self);
 static void intorel_destroy(DestReceiver *self);
+static AttrNumber *attr_insert_map(Relation base, Relation part);
+static TupleTableSlot * CompressedHeapTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo);
+static void ClearPartitionState(EState *estate);
 
 /* end of local decls */
+
+/*
+ * For a partitioned insert target only:  
+ * This type represents an entry in the per-part hash table stored at
+ * estate->es_partition_state->result_partition_hash.   The table maps 
+ * part OID -> ResultRelInfo and avoids repeated calculation of the
+ * result information.
+ */
+typedef struct ResultPartHashEntry 
+{
+	Oid targetid; /* OID of part relation */
+	int offset; /* Index ResultRelInfo in es_result_partitions */
+} ResultPartHashEntry;
+
 
 typedef struct CopyDirectDispatchToSliceContext
 {
@@ -2109,6 +2126,12 @@ ExecEndPlan(PlanState *planstate, EState *estate)
 
 		heap_close(erm->relation, NoLock);
 	}
+	
+	/*
+	 * Release partition-related resources (esp. TupleDesc ref counts).
+	 */
+	if ( estate->es_partition_state )
+		ClearPartitionState(estate);
 }
 
 /*
@@ -2533,7 +2556,9 @@ ExecInsert(TupleTableSlot *slot,
     void *tofree = NULL;
 	ResultRelInfo *resultRelInfo;
 	Relation	resultRelationDesc;
+	Relation	baseRelationDesc;
 	Oid			newId;
+	TupleTableSlot *partslot = NULL;
 	Oid         sourceTableOid;
 
 	AOTupleId	aoTupleId = AOTUPLEID_INIT;
@@ -2561,6 +2586,11 @@ ExecInsert(TupleTableSlot *slot,
 		resultRelInfo = estate->es_result_relation_info;
 
 	resultRelationDesc = resultRelInfo->ri_RelationDesc;
+	baseRelationDesc = estate->es_result_relations[0].ri_RelationDesc;
+	
+	/* The base and result should be the same if and only if non-partitioned */
+	Assert((resultRelationDesc == baseRelationDesc) 
+		   == (estate->es_result_partitions == NULL) );
 	
 	rel_is_heap = RelationIsHeap(resultRelationDesc);
 	rel_is_aocols = RelationIsAoCols(resultRelationDesc);
@@ -2620,6 +2650,7 @@ ExecInsert(TupleTableSlot *slot,
 		Assert(RelationIsHeap(resultRelationDesc) || 
 			   RelationIsExternal(resultRelationDesc));
 		tuple = (HeapTuple) ExecFetchSlotHeapTuple(slot);
+		partslot = CompressedHeapTupleSlot(slot, resultRelInfo);
 	}
 
 
@@ -2664,7 +2695,7 @@ ExecInsert(TupleTableSlot *slot,
 	 * Check the constraints of the tuple
 	 */
 	if (resultRelationDesc->rd_att->constr)
-		ExecConstraints(resultRelInfo, slot, estate);
+		ExecConstraints(resultRelInfo, partslot ? partslot : slot, estate);
 
 	/*
 	 * insert the tuple
@@ -2725,7 +2756,8 @@ ExecInsert(TupleTableSlot *slot,
 		}
 		else
 		{
-			newId = heap_insert(resultRelationDesc, tuple,
+			newId = heap_insert(resultRelationDesc,
+								ExecFetchSlotHeapTuple(partslot),
 								estate->es_snapshot->curcid,
 								true, true, GetCurrentTransactionId());
 		}
@@ -2750,13 +2782,23 @@ ExecInsert(TupleTableSlot *slot,
 	}
 	else
 	{
-		setLastTid(&(((HeapTuple)tuple)->t_self));
+		/* Use parttuple for index update in case this is an indexed heap table. */
+		TupleTableSlot *xslot = slot;
+		void *xtuple = tuple;
+	
+		if ( partslot )
+		{
+			xslot = partslot;
+			xtuple = ExecFetchSlotHeapTuple(partslot);
+		}
+
+		setLastTid(&(((HeapTuple) xtuple)->t_self));
 
 		/*
 		 * insert index entries for tuple
 		 */
 		if (resultRelInfo->ri_NumIndices > 0)
-			ExecInsertIndexTuples(slot, &(((HeapTuple)tuple)->t_self), estate, false);
+			ExecInsertIndexTuples(partslot? partslot: slot, &(((HeapTuple) xtuple)->t_self), estate, false);
 
 	}
 
@@ -4234,16 +4276,26 @@ intorel_destroy(DestReceiver *self)
 	pfree(self);
 }
 
+/*
+ * Calculate the part to use for the given key, then find or calculate
+ * and cache required information about that part in the hash table
+ * anchored in estate.
+ * 
+ * Return a pointer to the information, an entry in the table
+ * estate->es_result_relations.  Note that the first entry in this
+ * table is for the partitioned table itself and that the entire table
+ * may be reallocated, changing the addresses of its entries.  
+ *
+ * Thus, it is important to avoid holding long-lived pointers to 
+ * table entries (such as the pointer returned from this function).
+ */
 static ResultRelInfo *
 get_part(EState *estate, Datum *values, bool *isnull, TupleDesc tupdesc)
 {
 	ResultRelInfo *resultRelInfo;
 	Oid targetid;
 	bool found;
-	struct {
-		Oid targetid;
-		int offset;
-	} *entry;
+	ResultPartHashEntry *entry;
 
 	/* add a short term memory context if one wasn't assigned already */
 	if (!estate->es_partition_state->part_cxt)
@@ -4297,6 +4349,7 @@ get_part(EState *estate, Datum *values, bool *isnull, TupleDesc tupdesc)
 			estate->es_partition_state->result_partition_array_size;
 		RangeTblEntry *rte = makeNode(RangeTblEntry);
 		List *rangeTable;
+		int natts;
 
 		if (estate->es_num_result_relations + 1 >= result_array_size)
 		{
@@ -4312,6 +4365,7 @@ get_part(EState *estate, Datum *values, bool *isnull, TupleDesc tupdesc)
 		}
 
 		resultRelInfo = estate->es_result_relations;
+		natts = resultRelInfo->ri_RelationDesc->rd_att->natts; /* in base relation */
 		resultRelInfo += estate->es_num_result_relations;
 		entry->offset = estate->es_num_result_relations;
 
@@ -4324,6 +4378,13 @@ get_part(EState *estate, Datum *values, bool *isnull, TupleDesc tupdesc)
 						  CMD_INSERT,
 						  estate->es_instrument,
 						  (Gp_role != GP_ROLE_EXECUTE || Gp_is_writer));
+		
+		resultRelInfo->ri_partInsertMap =
+			attr_insert_map(estate->es_result_relations->ri_RelationDesc, 
+							resultRelInfo->ri_RelationDesc);
+		if (resultRelInfo->ri_partInsertMap)
+			resultRelInfo->ri_partSlot = 
+				MakeSingleTupleTableSlot(resultRelInfo->ri_RelationDesc->rd_att);
 	}
 	return resultRelInfo;
 }
@@ -4365,3 +4426,235 @@ slot_get_partition(TupleTableSlot *slot, EState *estate)
 
 	return resultRelInfo;
 }
+
+/*
+ * Make a vector mapping input attribute numbers to attribute
+ * numbers in a "relatively compressed" relation.
+ *
+ * base	The partitioned table to insert into
+ * part	The part table that the insert targets
+ *
+ * The explicit result is a vector one longer than the number
+ * of attributes (existing or not) in the base relation.
+ *
+ * Note that result element 0 is wasted and is always zero, so
+ * the vector is indexed by attribute number (origin 1).
+ *
+ * The i-th element of the result is the attribute number in 
+ * the compressed part relation that corresponds to the i-th 
+ * attribute of the base relation, or it is zero to indicate 
+ * that the i-th attribute of the base relation doesn't exist 
+ * (has been dropped).
+ *
+ * This is a handy map for renumbering attributes for use with
+ * part relations that may have had "holes" compressed out.
+ * 
+ * Be sure to call this in the memory context in which the result
+ * vector ought to be stored.
+ *
+ * Though some error checking is done, it is not comprehensive.
+ * If internal assumptions about possible tuple formats are
+ * correct, errors should not occur.  Still, the downside is
+ * incorrect data, so it seems worthwhile to use errors (not
+ * assertions) for the case.
+ *
+ * Assumptions include same number of non-dropped attributes
+ * in all parts of a partitioned table, corresponding attributes
+ * (whether dropped or not) in the same order, attribute numbers
+ * agree with position in tuple, etc.  Unchecked assumptions
+ * include, e.g., certain cases of alignment agreement.
+ */
+
+static AttrNumber*
+attr_insert_map(Relation base, Relation part)
+{	
+	AttrNumber *v = NULL;
+	
+	int i = 1;
+	int n = base->rd_att->natts;
+	FormData_pg_attribute *battr;
+	
+	int j = 1;
+	int m = part->rd_att->natts;
+	FormData_pg_attribute *pattr;
+	
+	if ( m > n )
+		elog(ERROR, 
+			 "physical attribute count in part relation exceeds that of parent");
+	else if ( m == n )
+	{
+		/* Since the physical tuple length is the same, the current exchange regime
+		 * guarantees that the tuples are identical.  But do a cursory check. */
+		for ( i = 0; i < n; i++ )
+		{
+			battr = (base->rd_att->attrs)[i];
+			pattr = (part->rd_att->attrs)[i];
+			
+			if ( battr->attnum != pattr->attnum
+				|| battr->attisdropped != pattr->attisdropped )
+				elog(ERROR, 
+					 "corresponding attributes of part and parent relations"
+					 " have different attribute numbers");
+
+			if (battr->attalign != pattr->attalign )
+				elog(ERROR, 
+					 "corresponding attributes of part and parent relations"
+					 " have different alignment");
+			
+			if (!battr->attisdropped && battr->atttypid != pattr->atttypid)
+				elog(ERROR, 
+					 "corresponding attributes of part and parent relations"
+					 " have different datatypes");
+		}
+		return NULL; /* No map needed. */
+	}
+	
+	/* Construct a map. */
+	v = palloc0(sizeof(AttrNumber)*(n+1));
+	
+	for ( i = 1, j = 1; i <= n; i++ )
+	{
+		/* Skip dropped attributes in base */
+		battr = (base->rd_att->attrs)[i-1];
+		Assert(battr->attnum == i);
+		if ( battr->attisdropped )
+			continue;
+				
+		/* Skip dropped attributes in part. */
+		for (; j <= m; j++ )
+		{
+			pattr = (part->rd_att->attrs)[j-1];
+			Assert(pattr->attnum == j);
+			if ( !pattr->attisdropped )
+				break;
+		}
+		if ( j > m )
+			elog(ERROR, "part relation has fewer columns than parent");
+			
+		/* We have a pairing, but check plausibility. */
+			if ( battr->atttypid != pattr->atttypid )
+				elog(ERROR, 
+					 "corresponding attributes of part and parent relations"
+					 " have different datatypes");
+		
+		if ( battr->attnum != i || pattr->attnum != j )
+			elog(ERROR,  
+				 "corresponding attributes of part and parent relations"
+				 " have different attribute numbers");
+		
+		v[i] = j++;
+	} /* next i */
+	
+	/* Make sure we used up all the attributes in part. */
+	for (; j <= m; j++ )
+	{
+		pattr = part->rd_att->attrs[j];
+		if ( pattr->attisdropped )
+			continue;
+		
+		elog(ERROR, 
+			 "physical attribute count in parent relation exceeds that of part");
+	}
+		
+	return v;
+}
+
+
+/*
+ * Use the supplied ResultRelInfo to create an appropriately compressed 
+ * version of the tuple in the supplied slot, if necessary.
+ *
+ * slot -- slot containing the input (uncompressed) tuple
+ * resultRelInfo -- info pertaining to the target part of an insert 
+ *
+ * If no compression is required, the result is the argument slot, else
+ * it is the slot from the argument result info updated to hold the 
+ * compressed tuple.
+ */
+static TupleTableSlot *
+CompressedHeapTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo)
+{
+	int i, j;
+	int natts;
+	Datum *values;
+	bool *isnull;
+	AttrNumber *map; 
+	TupleTableSlot *partslot;
+	Datum *partvalues;
+	bool *partisnull;
+	
+	Assert(TupHasHeapTuple(slot));
+	
+	map = resultRelInfo->ri_partInsertMap;
+	
+	/* No map means no compression needed. */
+	if ( map == NULL )
+		return slot;
+	
+	/* Expand the given tuple into attribute arrays. */
+	natts = slot->tts_tupleDescriptor->natts;
+	slot_getallattrs(slot);
+	values = slot_get_values(slot);
+	isnull = slot_get_isnull(slot);
+	
+	/* Get the compressed slot ready. */
+	partslot = ExecStoreAllNullTuple(resultRelInfo->ri_partSlot);
+	partvalues = slot_get_values(partslot);
+	partisnull = slot_get_isnull(partslot);
+	
+	/* Compress the expanded tuple.  Non-zero  map entries are attribute
+	 * numbers in the compressed tuple, however, not every attribute
+	 * number of the compressed tuple need be present.  In particular, 
+	 * attribute numbers corresponding to dropped attributes will be 
+	 * missing.
+	 */
+	for ( i = 1; i <= natts; i++ )
+	{
+		j = map[i];
+		if ( j == 0 )
+			continue;
+				
+		partvalues[j-1] = values[i-1];
+		partisnull[j-1] = isnull[i-1];
+	}
+		
+	partslot = ExecStoreVirtualTuple(partslot);
+	
+	return partslot;
+}
+
+/*
+ * Clear any partition state held in the argument EState node.  This is
+ * called during ExecEndPlan and is not, itself, recursive.
+ *
+ * At present, the only required cleanup is to decrement reference counts
+ * in any tuple descriptors held in slots in the partition state.
+ */
+static void
+ClearPartitionState(EState *estate)
+{
+	PartitionState *pstate = estate->es_partition_state;
+	HASH_SEQ_STATUS hash_seq_status;
+	ResultPartHashEntry *entry;
+	
+	if ( pstate == NULL || pstate->result_partition_hash == NULL )
+		return;
+	
+	/* Examine each hash table entry. */
+	hash_freeze(pstate->result_partition_hash); 
+	hash_seq_init(&hash_seq_status, pstate->result_partition_hash);
+	while ( (entry = hash_seq_search(&hash_seq_status)) )
+	{
+		ResultPartHashEntry *part = (ResultPartHashEntry*)entry;
+		ResultRelInfo *info = &estate->es_result_relations[part->offset];
+		if ( info->ri_partSlot )
+		{
+			Assert( info->ri_partInsertMap ); /* paired with slot */
+			if ( info->ri_partSlot->tts_tupleDescriptor )
+				ReleaseTupleDesc(info->ri_partSlot->tts_tupleDescriptor);
+			ExecClearTuple(info->ri_partSlot);
+		}
+	}
+	/* No need for hash_seq_term() since we iterated to end. */
+}
+

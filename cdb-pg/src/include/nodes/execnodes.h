@@ -223,50 +223,59 @@ typedef struct JunkFilter
 
 
 /* ----------------
- *          ResultRelInfo information
+ * ResultRelInfo information
  *
- *                Whenever we update an existing relation, we have to
- *                update indices on the relation, and perhaps also fire triggers.
- *                The ResultRelInfo class is used to hold all the information needed
- *                about a result relation, including indices.. -cim 10/15/89
+ * Whenever we update an existing relation, we have to
+ * update indices on the relation, and perhaps also fire triggers.
+ * The ResultRelInfo class is used to hold all the information needed
+ * about a result relation, including indices.. -cim 10/15/89
  *
- *                RangeTableIndex                        result relation's range table index
- *                RelationDesc                        relation descriptor for result relation
- *                NumIndices                                # of indices existing on result relation
- *                IndexRelationDescs                array of relation descriptors for indices
- *                IndexRelationInfo                array of key/attr info for indices
- *                TrigDesc                                triggers to be fired, if any
- *                TrigFunctions                        cached lookup info for trigger functions
- *                TrigInstrument                        optional runtime measurements for triggers
- *                ConstraintExprs                        array of constraint-checking expr states
- *                junkFilter                                for removing junk attributes from tuples
- *                projectReturning                for computing a RETURNING list
- *                aoInsertDesc                        context for appendonly relation buffered INSERT.
- *                ao_segno                                the AO segfile we inserted into.
+ *  RangeTableIndex		result relation's range table index
+ *  RelationDesc		relation descriptor for result relation
+ *  NumIndices			# of indices existing on result relation
+ *  IndexRelationDescs	array of relation descriptors for indices
+ *  IndexRelationInfo	array of key/attr info for indices
+ *  TrigDesc			triggers to be fired, if any
+ *  TrigFunctions		cached lookup info for trigger functions
+ *  TrigInstrument		optional runtime measurements for triggers
+ *  ConstraintExprs		array of constraint-checking expr states
+ *  junkFilter			for removing junk attributes from tuples
+ *  projectReturning	for computing a RETURNING list
+ *  tupdesc_match		???
+ *  mt_bind				???
+ *  aoInsertDesc		context for appendonly relation buffered INSERT.
+ *  ao_segno			the AO segfile we inserted into.
+ *  extinsertDesc		???
+ *  aosegno				???
+ *  aoprocessed			???
+ *  partInsertMap		map input attrno to target attrno
+ *  partSlot			TupleTableSlot for the target part relation
  * ----------------
  */
 typedef struct ResultRelInfo
 {
-        NodeTag                 type;
-        Index                   ri_RangeTableIndex;
-        Relation                ri_RelationDesc;
-        int                     ri_NumIndices;
-        RelationPtr             ri_IndexRelationDescs;
-        struct IndexInfo        **ri_IndexRelationInfo;
-        TriggerDesc             *ri_TrigDesc;
-        FmgrInfo                *ri_TrigFunctions;
-        struct Instrumentation  *ri_TrigInstrument;
-        List                    **ri_ConstraintExprs;
-        JunkFilter              *ri_junkFilter;
-        ProjectionInfo          *ri_projectReturning;
-        int                     tupdesc_match;
-        MemTupleBinding         *mt_bind;
+	NodeTag                 type;
+	Index                   ri_RangeTableIndex;
+	Relation                ri_RelationDesc;
+	int                     ri_NumIndices;
+	RelationPtr             ri_IndexRelationDescs;
+	struct IndexInfo        **ri_IndexRelationInfo;
+	TriggerDesc             *ri_TrigDesc;
+	FmgrInfo                *ri_TrigFunctions;
+	struct Instrumentation  *ri_TrigInstrument;
+	List                    **ri_ConstraintExprs;
+	JunkFilter              *ri_junkFilter;
+	ProjectionInfo          *ri_projectReturning;
+	int                     tupdesc_match;
+	MemTupleBinding         *mt_bind;
 
-        struct AppendOnlyInsertDescData *ri_aoInsertDesc;
-        struct AOCSInsertDescData       *ri_aocsInsertDesc;
-        struct ExternalInsertDescData	*ri_extInsertDesc;   
-        int                     ri_aosegno;
-        uint64                  ri_aoprocessed; /* tuples processed for AO */
+	struct AppendOnlyInsertDescData *ri_aoInsertDesc;
+	struct AOCSInsertDescData       *ri_aocsInsertDesc;
+	struct ExternalInsertDescData	*ri_extInsertDesc;   
+	int                     ri_aosegno;
+	uint64                  ri_aoprocessed; /* tuples processed for AO */
+	AttrNumber				*ri_partInsertMap;
+	TupleTableSlot			*ri_partSlot;
 } ResultRelInfo;
 
 /* ----------------
