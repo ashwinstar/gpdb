@@ -657,12 +657,13 @@ bool QDMirroringWriteCheck(void)
 		QDMirroringFormatTime(logTimeStr, sizeof(logTimeStr),
 					          &lastLogTimeVal);
 
-		ereport(WARNING,
+		ereport(LOG,
 				(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 				 errmsg("Master mirroring is not synchronized as of %s (%s).  "
 				        "The GPDB system is currently not highly-available",
 				        logTimeStr,
-				        QDMirroringDisabledReasonToString(disabledReason))));
+				        QDMirroringDisabledReasonToString(disabledReason)),
+				 errSendAlert(true)));
 
 		QDMirroringNotSynchronizedWarningGiven = true;
 	}
