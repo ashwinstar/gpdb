@@ -2513,14 +2513,14 @@ retry1:
 		case CAC_STARTUP:
 			ereport(FATAL,
 					(errcode(ERRCODE_CANNOT_CONNECT_NOW),
-					 errSendAlert(true),
+					 errSendAlert(false),
 					 errOmitLocation(true),
 					 errmsg("the database system is starting up")));
 			break;
 		case CAC_SHUTDOWN:
 			ereport(FATAL,
 					(errcode(ERRCODE_CANNOT_CONNECT_NOW),
-					 errSendAlert(true),
+					 errSendAlert(false),
 					 errOmitLocation(true),
 					 errmsg("the database system is shutting down")));
 			break;
