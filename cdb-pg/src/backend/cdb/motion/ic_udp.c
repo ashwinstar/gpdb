@@ -428,15 +428,16 @@ wait_on_receiver(int timeout_us)
 	 */
 #ifdef __darwin__
 	ts.tv_sec = 0;
-	ts.tv_nsec = 1000*timeout_us;
+	ts.tv_nsec = 1000 * timeout_us;
 #else
 	{
 		struct timeval tv;
+
 		gettimeofday(&tv, NULL);
 		ts.tv_sec = tv.tv_sec;
 		/*  leave in ms for this */
 		ts.tv_nsec = (tv.tv_usec + timeout_us);
-		if (ts.tv_nsec > 1000000)
+		if (ts.tv_nsec >= 1000000)
 		{
 			ts.tv_sec++;
 			ts.tv_nsec -= 1000000;
@@ -2988,7 +2989,7 @@ ic_rx_thread_func(void *arg)
 				ts.tv_sec = tv.tv_sec;
 				/*  leave in ms for this */
 				ts.tv_nsec = (tv.tv_usec + RX_THREAD_COND_TIMEOUT);
-				if (ts.tv_nsec > 1000000)
+				if (ts.tv_nsec >= 1000000)
 				{
 					ts.tv_sec++;
 					ts.tv_nsec -= 1000000;
