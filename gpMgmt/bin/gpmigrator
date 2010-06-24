@@ -1879,7 +1879,10 @@ class GPUpgrade:
         # Check for unsupported index types.
         found = False
         logger.info("Validating indexes")
-        for (_, db) in self.dbs.iteritems():
+        oids = sorted(self.dbs.keys())
+        for dboid in oids:
+            db = self.dbs[dboid]
+
             if db == "template0": 
                 continue
             indexes = self.Select('''
@@ -2248,8 +2251,11 @@ class GPUpgrade:
 
         exec_cmd = libdir + '/gpcheckcat -p %d -U %s -B %i ' % \
             (self.masterport, user, PARALLELISM)
-
-        for (_, db) in self.dbs.iteritems():
+        
+        oids = sorted(self.dbs.keys())
+        for dboid in oids:
+            db = self.dbs[dboid]
+                
             if db == 'template0':
                 continue
 
@@ -3003,7 +3009,14 @@ class GPUpgrade:
                 fp.close()
         
         def transform(path, dbs, tfile):
-            for dboid, db in dbs.iteritems():
+
+            # MPP-10166 - because some of our transformations involve creates
+            # of views with unstable oids we must make sure that we process 
+            # the databases in exactly the same order on every segment, so
+            # sorting the oids is essential.
+            oids = sorted(dbs.keys())
+            for dboid in oids:
+                db = dbs[dboid]
 
                 # The shared table upgrade is only run for template0
                 if (os.path.basename(tfile) == 'loadcat34_sh.source' and 
@@ -3191,7 +3204,11 @@ class GPUpgrade:
             #    - must populate template1 first
             logger.info('Pass %d' % phase)
             phase += 1
-            for dboid, dbname in dbs.iteritems():
+
+            oids = sorted(dbs.keys())
+            for dboid in oids:
+                dbname = dbs[dboid]
+
                 if dbname != 'template1':
                     continue
                 if self.cmd == 'MASTER':
@@ -3203,7 +3220,9 @@ class GPUpgrade:
 
             # Then process all databases besides template1, this may ultimately
             # need a separate file from this portion of template1.
-            for dboid, dbname in dbs.iteritems():
+            for dboid in oids:
+                dbname = dbs[dboid]
+
                 if dbname == 'template1':
                     continue
 
@@ -3215,7 +3234,9 @@ class GPUpgrade:
                 logger.info('... ' + dbname)      
 
             # Handle perfmon upgrade
-            for dboid, dbname in dbs.iteritems():
+            for dboid in oids:
+                dbname = dbs[dboid]
+
                 if dbname != 'gpperfmon':
                     continue
                 logger.info('Pass %d' % phase)
@@ -3226,7 +3247,9 @@ class GPUpgrade:
 
             # ao file too -- must be last because we
             # use this file to VACUUM FREEZE template databases
-            for dboid, dbname in dbs.iteritems():
+            for dboid in oids:
+                dbname = dbs[dboid]
+
                 # no need to rewrite AO in template0
                 if dbname == 'template0':
                     continue
@@ -3469,7 +3492,10 @@ class GPUpgrade:
 
         # Set our role to the admin role then execute the sql script
             sql = "SET SESSION AUTHORIZATION %s;\n%s" % (rolname, sql)
-            for _, db in self.dbs.iteritems():
+            oids = sorted(self.dbs.keys())
+            for dboid in oids:
+                db = self.dbs[dboid]
+                
                 if db == 'template0':
                     continue
                 self.Update(sql, db=db)
@@ -3974,7 +4000,10 @@ It should now be possible to take a zfs snapshot before finalizing the upgrade.
                 logger.warn('Objects owned by gpmigrator reassigned to dba')
                 admin = self.Select('''select rolname from pg_authid 
                                     where oid = 10''')[0];
-                for (_, db) in self.dbs.iteritems():
+                oids = sorted(self.dbs.keys())
+                for dboid in oids:
+                    db = self.dbs[dboid]
+
                     if db == 'template0':
                         continue
                     self.Update('REASSIGN OWNED BY gpmigrator TO ' + admin, db)
