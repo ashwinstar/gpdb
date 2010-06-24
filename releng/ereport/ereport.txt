@@ -1203,101 +1203,101 @@ xaae: xlog:00007099:  callerStr, XLogLocationToString(&checkPoint.redo))));
 xaae: xlog:00007644:  ereport(LOG, 
 xaae: xlog:00007645:  (errmsg("database system is shut down"), 
 xaae: xlog:00007646:  errSendAlert(true),errOmitLocation(true))); 
-xaae: xlog:00008457:  ereport(ERROR, 
-xaae: xlog:00008458:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00008459:  (errmsg("must be superuser to run a backup")))); 
-xaae: xlog:00008462:  ereport(ERROR, 
-xaae: xlog:00008463:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008464:  (errmsg("WAL archiving is not active"), 
-xaae: xlog:00008465:  (errhint("archive_command must be defined before " 
-xaae: xlog:00008466:  "online backups can be made safely."))))); 
-xaae: xlog:00008492:  ereport(ERROR, 
-xaae: xlog:00008493:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008494:  errmsg("a backup is already in progress"), 
-xaae: xlog:00008495:  errhint("Run pg_stop_backup() and try again."))); 
-xaae: xlog:00008540:  ereport(ERROR, 
-xaae: xlog:00008541:  (errcode_for_file_access(), 
-xaae: xlog:00008542:  errmsg("could not stat file \"%s\": %m", 
-xaae: xlog:00008543:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008546:  ereport(ERROR, 
-xaae: xlog:00008547:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008548:  errmsg("a backup is already in progress"), 
-xaae: xlog:00008549:  errhint("If you're sure there is no backup in progress, remove file \"%s\" and try again.", 
-xaae: xlog:00008550:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008557:  ereport(ERROR, 
-xaae: xlog:00008558:  (errcode_for_file_access(), 
-xaae: xlog:00008559:  errmsg("could not create file \"%s\": %m", 
-xaae: xlog:00008560:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008568:  ereport(ERROR, 
-xaae: xlog:00008569:  (errcode_for_file_access(), 
-xaae: xlog:00008570:  errmsg("could not write file \"%s\": %m", 
-xaae: xlog:00008571:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008623:  ereport(ERROR, 
-xaae: xlog:00008624:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00008625:  (errmsg("must be superuser to run a backup")))); 
-xaae: xlog:00008657:  ereport(ERROR, 
-xaae: xlog:00008658:  (errcode_for_file_access(), 
-xaae: xlog:00008659:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00008660:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008661:  ereport(ERROR, 
-xaae: xlog:00008662:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008663:  errmsg("a backup is not in progress"))); 
-xaae: xlog:00008673:  ereport(ERROR, 
-xaae: xlog:00008674:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008675:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00008685:  ereport(ERROR, 
-xaae: xlog:00008686:  (errcode_for_file_access(), 
-xaae: xlog:00008687:  errmsg("could not create file \"%s\": %m", 
-xaae: xlog:00008688:  histfilepath))); 
-xaae: xlog:00008698:  ereport(ERROR, 
-xaae: xlog:00008699:  (errcode_for_file_access(), 
-xaae: xlog:00008700:  errmsg("could not write file \"%s\": %m", 
-xaae: xlog:00008701:  histfilepath))); 
-xaae: xlog:00008707:  ereport(ERROR, 
-xaae: xlog:00008708:  (errcode_for_file_access(), 
-xaae: xlog:00008709:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00008710:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008712:  ereport(ERROR, 
-xaae: xlog:00008713:  (errcode_for_file_access(), 
-xaae: xlog:00008714:  errmsg("could not remove file \"%s\": %m", 
-xaae: xlog:00008715:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008745:  ereport(ERROR, 
-xaae: xlog:00008746:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00008747:  (errmsg("must be superuser to switch transaction log files")))); 
-xaae: xlog:00008853:  ereport(ERROR, 
-xaae: xlog:00008854:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-xaae: xlog:00008855:  errmsg("could not parse transaction log location \"%s\"", 
-xaae: xlog:00008856:  locationstr))); 
-xaae: xlog:00008922:  ereport(ERROR, 
-xaae: xlog:00008923:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-xaae: xlog:00008924:  errmsg("could not parse transaction log location \"%s\"", 
-xaae: xlog:00008925:  locationstr))); 
-xaae: xlog:00008982:  ereport(FATAL, 
-xaae: xlog:00008983:  (errcode_for_file_access(), 
-xaae: xlog:00008984:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00008985:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008997:  ereport(FATAL, 
-xaae: xlog:00008998:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008999:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009003:  ereport(FATAL, 
-xaae: xlog:00009004:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009005:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009007:  ereport(FATAL, 
-xaae: xlog:00009008:  (errcode_for_file_access(), 
-xaae: xlog:00009009:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009010:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009034:  ereport(FATAL, 
-xaae: xlog:00009035:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009036:  errmsg("invalid data in file \"%s\"", histfilename))); 
-xaae: xlog:00009040:  ereport(FATAL, 
-xaae: xlog:00009041:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009042:  errmsg("invalid data in file \"%s\"", histfilename))); 
-xaae: xlog:00009045:  ereport(FATAL, 
-xaae: xlog:00009046:  (errcode_for_file_access(), 
-xaae: xlog:00009047:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009048:  histfilepath))); 
-xaae: xlog:00009384:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
-xaae: xlog:00009385:  errmsg("database 'postgres' does not exist"))); 
+xaae: xlog:00008458:  ereport(ERROR, 
+xaae: xlog:00008459:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00008460:  (errmsg("must be superuser to run a backup")))); 
+xaae: xlog:00008463:  ereport(ERROR, 
+xaae: xlog:00008464:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008465:  (errmsg("WAL archiving is not active"), 
+xaae: xlog:00008466:  (errhint("archive_command must be defined before " 
+xaae: xlog:00008467:  "online backups can be made safely."))))); 
+xaae: xlog:00008493:  ereport(ERROR, 
+xaae: xlog:00008494:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008495:  errmsg("a backup is already in progress"), 
+xaae: xlog:00008496:  errhint("Run pg_stop_backup() and try again."))); 
+xaae: xlog:00008541:  ereport(ERROR, 
+xaae: xlog:00008542:  (errcode_for_file_access(), 
+xaae: xlog:00008543:  errmsg("could not stat file \"%s\": %m", 
+xaae: xlog:00008544:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008547:  ereport(ERROR, 
+xaae: xlog:00008548:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008549:  errmsg("a backup is already in progress"), 
+xaae: xlog:00008550:  errhint("If you're sure there is no backup in progress, remove file \"%s\" and try again.", 
+xaae: xlog:00008551:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008558:  ereport(ERROR, 
+xaae: xlog:00008559:  (errcode_for_file_access(), 
+xaae: xlog:00008560:  errmsg("could not create file \"%s\": %m", 
+xaae: xlog:00008561:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008569:  ereport(ERROR, 
+xaae: xlog:00008570:  (errcode_for_file_access(), 
+xaae: xlog:00008571:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00008572:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008624:  ereport(ERROR, 
+xaae: xlog:00008625:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00008626:  (errmsg("must be superuser to run a backup")))); 
+xaae: xlog:00008658:  ereport(ERROR, 
+xaae: xlog:00008659:  (errcode_for_file_access(), 
+xaae: xlog:00008660:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00008661:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008662:  ereport(ERROR, 
+xaae: xlog:00008663:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008664:  errmsg("a backup is not in progress"))); 
+xaae: xlog:00008674:  ereport(ERROR, 
+xaae: xlog:00008675:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008676:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00008686:  ereport(ERROR, 
+xaae: xlog:00008687:  (errcode_for_file_access(), 
+xaae: xlog:00008688:  errmsg("could not create file \"%s\": %m", 
+xaae: xlog:00008689:  histfilepath))); 
+xaae: xlog:00008699:  ereport(ERROR, 
+xaae: xlog:00008700:  (errcode_for_file_access(), 
+xaae: xlog:00008701:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00008702:  histfilepath))); 
+xaae: xlog:00008708:  ereport(ERROR, 
+xaae: xlog:00008709:  (errcode_for_file_access(), 
+xaae: xlog:00008710:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00008711:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008713:  ereport(ERROR, 
+xaae: xlog:00008714:  (errcode_for_file_access(), 
+xaae: xlog:00008715:  errmsg("could not remove file \"%s\": %m", 
+xaae: xlog:00008716:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008746:  ereport(ERROR, 
+xaae: xlog:00008747:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00008748:  (errmsg("must be superuser to switch transaction log files")))); 
+xaae: xlog:00008854:  ereport(ERROR, 
+xaae: xlog:00008855:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+xaae: xlog:00008856:  errmsg("could not parse transaction log location \"%s\"", 
+xaae: xlog:00008857:  locationstr))); 
+xaae: xlog:00008923:  ereport(ERROR, 
+xaae: xlog:00008924:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+xaae: xlog:00008925:  errmsg("could not parse transaction log location \"%s\"", 
+xaae: xlog:00008926:  locationstr))); 
+xaae: xlog:00008983:  ereport(FATAL, 
+xaae: xlog:00008984:  (errcode_for_file_access(), 
+xaae: xlog:00008985:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00008986:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008998:  ereport(FATAL, 
+xaae: xlog:00008999:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009000:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009004:  ereport(FATAL, 
+xaae: xlog:00009005:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009006:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009008:  ereport(FATAL, 
+xaae: xlog:00009009:  (errcode_for_file_access(), 
+xaae: xlog:00009010:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009011:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009035:  ereport(FATAL, 
+xaae: xlog:00009036:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009037:  errmsg("invalid data in file \"%s\"", histfilename))); 
+xaae: xlog:00009041:  ereport(FATAL, 
+xaae: xlog:00009042:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009043:  errmsg("invalid data in file \"%s\"", histfilename))); 
+xaae: xlog:00009046:  ereport(FATAL, 
+xaae: xlog:00009047:  (errcode_for_file_access(), 
+xaae: xlog:00009048:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009049:  histfilepath))); 
+xaae: xlog:00009385:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
+xaae: xlog:00009386:  errmsg("database 'postgres' does not exist"))); 
 aaaaa GP_IGNORE: xaah: xlogloc - ./backend/access/transam/xlogloc.c
 xaah: xlogloc:00000060:  ereport(ERROR, 
 xaah: xlogloc:00000061:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
@@ -3115,9 +3115,9 @@ aaaaa GP_IGNORE: cacc: cdbpersistentfilespace - ./backend/cdb/cdbpersistentfiles
 cacc: cdbpersistentfilespace:00000579:  ereport(FATAL, 
 cacc: cdbpersistentfilespace:00000580:  (errcode(ERRCODE_INTERNAL_ERROR), 
 cacc: cdbpersistentfilespace:00000581:  errmsg("Unable to determine dbid for filespace lookup"))); 
-cacc: cdbpersistentfilespace:00001372:  ereport(FATAL, 
-cacc: cdbpersistentfilespace:00001373:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cacc: cdbpersistentfilespace:00001374:  errmsg("Not enough shared memory for persistent filespace hash table"))); 
+cacc: cdbpersistentfilespace:00001375:  ereport(FATAL, 
+cacc: cdbpersistentfilespace:00001376:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cacc: cdbpersistentfilespace:00001377:  errmsg("Not enough shared memory for persistent filespace hash table"))); 
 aaaaa GP_IGNORE: cacd: cdbpersistentfilesysobj - ./backend/cdb/cdbpersistentfilesysobj.c
 cacd: cdbpersistentfilesysobj:00000770:  ereport(ERROR, 
 cacd: cdbpersistentfilesysobj:00000771:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
@@ -3196,15 +3196,15 @@ cada: cdbresynchronizechangetracking:00002190:  errSendAlert(true)));
 cada: cdbresynchronizechangetracking:00002453:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
 cada: cdbresynchronizechangetracking:00002454:  errmsg("Unable to obtain change tracking information from segment database."), 
 cada: cdbresynchronizechangetracking:00002455:  errdetail("SPI_connect failed in ChangeTracking_GetTotalBlocksToSync()"))); 
-cada: cdbresynchronizechangetracking:00002753:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cada: cdbresynchronizechangetracking:00002754:  errmsg("Unable to obtain change tracking information from segment database."), 
-cada: cdbresynchronizechangetracking:00002755:  errdetail("SPI_connect failed in ChangeTracking_CreateCompactLogFromFull()"))); 
-cada: cdbresynchronizechangetracking:00002880:  ereport(WARNING, 
-cada: cdbresynchronizechangetracking:00002881:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00002882:  errmsg("write error for change tracking %s file, " 
-cada: cdbresynchronizechangetracking:00002883:  "change tracking disabled : %m", 
-cada: cdbresynchronizechangetracking:00002884:  ChangeTracking_FtypeToString(ft)), 
-cada: cdbresynchronizechangetracking:00002885:  errSendAlert(true))); 
+cada: cdbresynchronizechangetracking:00002774:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cada: cdbresynchronizechangetracking:00002775:  errmsg("Unable to obtain change tracking information from segment database."), 
+cada: cdbresynchronizechangetracking:00002776:  errdetail("SPI_connect failed in ChangeTracking_CreateCompactLogFromFull()"))); 
+cada: cdbresynchronizechangetracking:00002901:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00002902:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00002903:  errmsg("write error for change tracking %s file, " 
+cada: cdbresynchronizechangetracking:00002904:  "change tracking disabled : %m", 
+cada: cdbresynchronizechangetracking:00002905:  ChangeTracking_FtypeToString(ft)), 
+cada: cdbresynchronizechangetracking:00002906:  errSendAlert(true))); 
 aaaaa GP_IGNORE: caai: cdbsetop - ./backend/cdb/cdbsetop.c
 caai: cdbsetop:00000152:  ereport(ERROR, ( 
 caai: cdbsetop:00000153:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
@@ -3447,32 +3447,32 @@ iaaj: icxcommon:00000235:  TUPLE_CHUNK_HEADER_SIZE, bytesProcessed, conn->msgSiz
 iaaj: icxcommon:00000250:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
 iaaj: icxcommon:00000251:  errmsg("Interconnect error parsing message"), 
 iaaj: icxcommon:00000252:  errdetail("tcSize %d >= conn->msgSize %d", tcSize, conn->msgSize))); 
-iaaj: icxcommon:00000664:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-iaaj: icxcommon:00000665:  errmsg("Interconnect Error: Could not parse remote seqserver" 
-iaaj: icxcommon:00000666:  "address: '%s'", seqServerHost), 
-iaaj: icxcommon:00000667:  errdetail("inet_pton() unable to parse address: '%s'", 
-iaaj: icxcommon:00000668:  seqServerHost))); 
-iaaj: icxcommon:00000672:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-iaaj: icxcommon:00000673:  errmsg("Interconnect Error: System error occured during parsing" 
-iaaj: icxcommon:00000674:  " of remote seqserver address: '%s'", seqServerHost), 
-iaaj: icxcommon:00000675:  errdetail("inet_pton() (errno: %d) unable to parse address: '%s'", 
-iaaj: icxcommon:00000676:  errno, seqServerHost))); 
-iaaj: icxcommon:00000683:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaaj: icxcommon:00000684:  errmsg("Interconnect Error: Could not connect to seqserver."), 
-iaaj: icxcommon:00000685:  errdetail("%m%s", "connect"))); 
-iaaj: icxcommon:00000689:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaaj: icxcommon:00000690:  errmsg("Interconnect Error: Could not set seqserver socket" 
-iaaj: icxcommon:00000691:  "to non-blocking mode."), 
-iaaj: icxcommon:00000692:  errdetail("%m%s sockfd=%d", "fcntl", savedSeqServerFd))); 
-iaaj: icxcommon:00000831:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaaj: icxcommon:00000832:  errmsg("Interconnect Error: A HTAB entry for motion node %d already exists.", motNodeID), 
-iaaj: icxcommon:00000833:  errdetail("conns %p numConns %d first sock %d highreadsock %d", pEntry->conns, pEntry->numConns, pEntry->conns[0].sockfd, pEntry->highReadSock))); 
-iaaj: icxcommon:00000890:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaaj: icxcommon:00000891:  errmsg("Interconnect Error: Unexpected Motion Node Id: %d. During remove. (size %d)", 
-iaaj: icxcommon:00000892:  motNodeID, transportStates->size))); 
-iaaj: icxcommon:00000896:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaaj: icxcommon:00000897:  errmsg("Interconnect Error: Unexpected Motion Node Id: %d. During remove. State not valid", 
-iaaj: icxcommon:00000898:  motNodeID))); 
+iaaj: icxcommon:00000679:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+iaaj: icxcommon:00000680:  errmsg("Interconnect Error: Could not parse remote seqserver" 
+iaaj: icxcommon:00000681:  "address: '%s'", seqServerHost), 
+iaaj: icxcommon:00000682:  errdetail("inet_pton() unable to parse address: '%s'", 
+iaaj: icxcommon:00000683:  seqServerHost))); 
+iaaj: icxcommon:00000687:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+iaaj: icxcommon:00000688:  errmsg("Interconnect Error: System error occured during parsing" 
+iaaj: icxcommon:00000689:  " of remote seqserver address: '%s'", seqServerHost), 
+iaaj: icxcommon:00000690:  errdetail("inet_pton() (errno: %d) unable to parse address: '%s'", 
+iaaj: icxcommon:00000691:  errno, seqServerHost))); 
+iaaj: icxcommon:00000698:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaaj: icxcommon:00000699:  errmsg("Interconnect Error: Could not connect to seqserver."), 
+iaaj: icxcommon:00000700:  errdetail("%m%s", "connect"))); 
+iaaj: icxcommon:00000704:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaaj: icxcommon:00000705:  errmsg("Interconnect Error: Could not set seqserver socket" 
+iaaj: icxcommon:00000706:  "to non-blocking mode."), 
+iaaj: icxcommon:00000707:  errdetail("%m%s sockfd=%d", "fcntl", savedSeqServerFd))); 
+iaaj: icxcommon:00000861:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaaj: icxcommon:00000862:  errmsg("Interconnect Error: A HTAB entry for motion node %d already exists.", motNodeID), 
+iaaj: icxcommon:00000863:  errdetail("conns %p numConns %d first sock %d highreadsock %d", pEntry->conns, pEntry->numConns, pEntry->conns[0].sockfd, pEntry->highReadSock))); 
+iaaj: icxcommon:00000920:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaaj: icxcommon:00000921:  errmsg("Interconnect Error: Unexpected Motion Node Id: %d. During remove. (size %d)", 
+iaaj: icxcommon:00000922:  motNodeID, transportStates->size))); 
+iaaj: icxcommon:00000926:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaaj: icxcommon:00000927:  errmsg("Interconnect Error: Unexpected Motion Node Id: %d. During remove. State not valid", 
+iaaj: icxcommon:00000928:  motNodeID))); 
 aaaaa GP_IGNORE: iaag: icxtcp - ./backend/cdb/motion/ic_tcp.c
 iaag: icxtcp:00000247:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
 iaag: icxtcp:00000248:  errmsg("Interconnect Error: Could not set up tcp listener socket."), 
@@ -11880,64 +11880,64 @@ daaj: ddaserver:00000974:  ));
 aaaaa GP_IGNORE: faai: ftsprobe - ./backend/postmaster/ftsprobe.c
 faai: ftsprobe:00000335:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
 faai: ftsprobe:00000336:  errmsg("database 'postgres' does not exist"))); 
-faai: ftsprobe:00001498:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-faai: ftsprobe:00001499:  errmsg("FTS: out of memory"))); 
-faai: ftsprobe:00001520:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-faai: ftsprobe:00001521:  errmsg("FTS: out of memory"))); 
-faai: ftsprobe:00001554:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-faai: ftsprobe:00001555:  errmsg("FTS: out of memory"))); 
-faai: ftsprobe:00001607:  ereport(ERROR, 
-faai: ftsprobe:00001608:  (errcode(ERRCODE_INTERNAL_ERROR), 
-faai: ftsprobe:00001609:  errmsg("FTS: could not insert into configuration history: format command string failure dbid %d", change->dbid))); 
-faai: ftsprobe:00001618:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-faai: ftsprobe:00001619:  errmsg("FTS: out of memory"))); 
-faai: ftsprobe:00001714:  ereport(ERROR, 
-faai: ftsprobe:00001715:  (errcode(ERRCODE_INTERNAL_ERROR), 
-faai: ftsprobe:00001716:  errmsg("FTS: could not modify config: format command string failure dbid %d", changes[i].dbid))); 
-faai: ftsprobe:00001746:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-faai: ftsprobe:00001747:  errmsg("FTS: out of memory"))); 
-faai: ftsprobe:00002177:  ereport(LOG, 
-faai: ftsprobe:00002178:  (errmsg("Mirror segment on %s:%d is taking over as primary in change tracking mode.", 
-faai: ftsprobe:00002179:  seg_addr, seg_pm_port ), 
-faai: ftsprobe:00002180:  errSendAlert(true))); 
-faai: ftsprobe:00002184:  ereport(LOG, 
-faai: ftsprobe:00002185:  (errmsg("Primary segment on %s:%d is going into change tracking mode.", 
-faai: ftsprobe:00002186:  seg_addr, seg_pm_port ), 
-faai: ftsprobe:00002187:  errSendAlert(true))); 
-faai: ftsprobe:00002250:  ereport(LOG, 
-faai: ftsprobe:00002251:  (errmsg("Changing mirror segment on %s:%d to be the primary in change tracking mode completed successfully.", 
-faai: ftsprobe:00002252:  seg_addr, seg_pm_port ), 
-faai: ftsprobe:00002253:  errSendAlert(true))); 
-faai: ftsprobe:00002256:  ereport(LOG, 
-faai: ftsprobe:00002257:  (errmsg("Changing primary segment on %s:%d to change tracking mode completed successfully.", 
-faai: ftsprobe:00002258:  seg_addr, seg_pm_port ), 
-faai: ftsprobe:00002259:  errSendAlert(true))); 
-faai: ftsprobe:00002286:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), \ 
-faai: ftsprobe:00002287:  errmsg("FTS: out of memory"))); \ 
-faai: ftsprobe:00002288:  \ 
-faai: ftsprobe:00002289:  PQclear(rs); \ 
-faai: ftsprobe:00002290:  PQfinish(entryConn); \ 
-faai: ftsprobe:00002291:  entryConn = NULL; \ 
-faai: ftsprobe:00002292:  \ 
-faai: ftsprobe:00002293:  elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message); \ 
-faai: ftsprobe:00002294:  } \ 
-faai: ftsprobe:00002295:  } 
-faai: ftsprobe:00002296:  
-faai: ftsprobe:00002297: /** 
-faai: ftsprobe:00002298:  * Marks the given db as in-sync in the segment configuration. 
-faai: ftsprobe:00002299:  */ 
-faai: ftsprobe:00002300: static void 
-faai: ftsprobe:00002301: markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *dbInfo) 
-faai: ftsprobe:00002302: { 
-faai: ftsprobe:00002303:  char cmd[2000]; 
-faai: ftsprobe:00002354:  ereport(LOG, 
-faai: ftsprobe:00002355:  (errmsg("Resynchronization of mirror segment on %s:%d has completed.", 
-faai: ftsprobe:00002356:  dbInfo->address, dbInfo->port ), 
-faai: ftsprobe:00002357:  errSendAlert(true))); 
-faai: ftsprobe:00002632:  ereport(LOG, 
-faai: ftsprobe:00002633:  (errmsg("SAN mirror segment on %s:%d is taking over as primary.", 
-faai: ftsprobe:00002634:  host, port ), 
-faai: ftsprobe:00002635:  errSendAlert(true))); 
+faai: ftsprobe:00001514:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+faai: ftsprobe:00001515:  errmsg("FTS: out of memory"))); 
+faai: ftsprobe:00001536:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+faai: ftsprobe:00001537:  errmsg("FTS: out of memory"))); 
+faai: ftsprobe:00001570:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+faai: ftsprobe:00001571:  errmsg("FTS: out of memory"))); 
+faai: ftsprobe:00001623:  ereport(ERROR, 
+faai: ftsprobe:00001624:  (errcode(ERRCODE_INTERNAL_ERROR), 
+faai: ftsprobe:00001625:  errmsg("FTS: could not insert into configuration history: format command string failure dbid %d", change->dbid))); 
+faai: ftsprobe:00001634:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+faai: ftsprobe:00001635:  errmsg("FTS: out of memory"))); 
+faai: ftsprobe:00001730:  ereport(ERROR, 
+faai: ftsprobe:00001731:  (errcode(ERRCODE_INTERNAL_ERROR), 
+faai: ftsprobe:00001732:  errmsg("FTS: could not modify config: format command string failure dbid %d", changes[i].dbid))); 
+faai: ftsprobe:00001762:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+faai: ftsprobe:00001763:  errmsg("FTS: out of memory"))); 
+faai: ftsprobe:00002193:  ereport(LOG, 
+faai: ftsprobe:00002194:  (errmsg("Mirror segment on %s:%d is taking over as primary in change tracking mode.", 
+faai: ftsprobe:00002195:  seg_addr, seg_pm_port ), 
+faai: ftsprobe:00002196:  errSendAlert(true))); 
+faai: ftsprobe:00002200:  ereport(LOG, 
+faai: ftsprobe:00002201:  (errmsg("Primary segment on %s:%d is going into change tracking mode.", 
+faai: ftsprobe:00002202:  seg_addr, seg_pm_port ), 
+faai: ftsprobe:00002203:  errSendAlert(true))); 
+faai: ftsprobe:00002266:  ereport(LOG, 
+faai: ftsprobe:00002267:  (errmsg("Changing mirror segment on %s:%d to be the primary in change tracking mode completed successfully.", 
+faai: ftsprobe:00002268:  seg_addr, seg_pm_port ), 
+faai: ftsprobe:00002269:  errSendAlert(true))); 
+faai: ftsprobe:00002272:  ereport(LOG, 
+faai: ftsprobe:00002273:  (errmsg("Changing primary segment on %s:%d to change tracking mode completed successfully.", 
+faai: ftsprobe:00002274:  seg_addr, seg_pm_port ), 
+faai: ftsprobe:00002275:  errSendAlert(true))); 
+faai: ftsprobe:00002302:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), \ 
+faai: ftsprobe:00002303:  errmsg("FTS: out of memory"))); \ 
+faai: ftsprobe:00002304:  \ 
+faai: ftsprobe:00002305:  PQclear(rs); \ 
+faai: ftsprobe:00002306:  PQfinish(entryConn); \ 
+faai: ftsprobe:00002307:  entryConn = NULL; \ 
+faai: ftsprobe:00002308:  \ 
+faai: ftsprobe:00002309:  elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message); \ 
+faai: ftsprobe:00002310:  } \ 
+faai: ftsprobe:00002311:  } 
+faai: ftsprobe:00002312:  
+faai: ftsprobe:00002313: /** 
+faai: ftsprobe:00002314:  * Marks the given db as in-sync in the segment configuration. 
+faai: ftsprobe:00002315:  */ 
+faai: ftsprobe:00002316: static void 
+faai: ftsprobe:00002317: markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *dbInfo) 
+faai: ftsprobe:00002318: { 
+faai: ftsprobe:00002319:  char cmd[2000]; 
+faai: ftsprobe:00002370:  ereport(LOG, 
+faai: ftsprobe:00002371:  (errmsg("Resynchronization of mirror segment on %s:%d has completed.", 
+faai: ftsprobe:00002372:  dbInfo->address, dbInfo->port ), 
+faai: ftsprobe:00002373:  errSendAlert(true))); 
+faai: ftsprobe:00002648:  ereport(LOG, 
+faai: ftsprobe:00002649:  (errmsg("SAN mirror segment on %s:%d is taking over as primary.", 
+faai: ftsprobe:00002650:  host, port ), 
+faai: ftsprobe:00002651:  errSendAlert(true))); 
 aaaaa GP_IGNORE: paag: pgarch - ./backend/postmaster/pgarch.c
 paag: pgarch:00000391:  ereport(WARNING, 
 paag: pgarch:00000392:  (errmsg("transaction log file \"%s\" could not be archived: too many failures", 
@@ -12061,12 +12061,12 @@ paba: postmaster:00002497:  errOmitLocation(true),
 paba: postmaster:00002498:  errmsg("GPAgent deprecated."))); 
 paba: postmaster:00002514:  ereport(FATAL, 
 paba: postmaster:00002515:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002516:  errSendAlert(true), 
+paba: postmaster:00002516:  errSendAlert(false), 
 paba: postmaster:00002517:  errOmitLocation(true), 
 paba: postmaster:00002518:  errmsg("the database system is starting up"))); 
 paba: postmaster:00002521:  ereport(FATAL, 
 paba: postmaster:00002522:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002523:  errSendAlert(true), 
+paba: postmaster:00002523:  errSendAlert(false), 
 paba: postmaster:00002524:  errOmitLocation(true), 
 paba: postmaster:00002525:  errmsg("the database system is shutting down"))); 
 paba: postmaster:00002528:  ereport(FATAL, 
@@ -12764,85 +12764,85 @@ maac: md:00001957:  reln->smgr_rnode.dbNode,
 maac: md:00001958:  reln->smgr_rnode.relNode, 
 maac: md:00001959:  blkno))); 
 aaaaa GP_IGNORE: saae: smgr - ./backend/storage/smgr/smgr.c
-saae: smgr:00000389:  ereport(ERROR, 
-saae: smgr:00000390:  (errcode_for_file_access(), 
-saae: smgr:00000391:  errmsg("could not close relation %u/%u/%u: %m", 
-saae: smgr:00000392:  reln->smgr_rnode.spcNode, 
-saae: smgr:00000393:  reln->smgr_rnode.dbNode, 
-saae: smgr:00000394:  reln->smgr_rnode.relNode))); 
-saae: smgr:00000961:  ereport(WARNING, 
-saae: smgr:00000962:  (errcode_for_file_access(), 
-saae: smgr:00000963:  errmsg("could not remove relation %u/%u/%u: %m", 
-saae: smgr:00000964:  rnode.spcNode, 
-saae: smgr:00000965:  rnode.dbNode, 
-saae: smgr:00000966:  rnode.relNode))); 
-saae: smgr:00000968:  ereport(WARNING, 
-saae: smgr:00000969:  (errcode_for_file_access(), 
-saae: smgr:00000970:  errmsg("could not remove relation %u/%u/%u '%s': %m", 
-saae: smgr:00000971:  rnode.spcNode, 
-saae: smgr:00000972:  rnode.dbNode, 
-saae: smgr:00000973:  rnode.relNode, 
-saae: smgr:00000974:  relationName))); 
-saae: smgr:00001043:  ereport(WARNING, 
-saae: smgr:00001044:  (errcode_for_file_access(), 
-saae: smgr:00001045:  errmsg("could not remove filespace directory %u: %m", 
-saae: smgr:00001046:  filespaceOid))); 
-saae: smgr:00001132:  ereport(WARNING, 
-saae: smgr:00001133:  (errcode_for_file_access(), 
-saae: smgr:00001134:  errmsg("could not remove tablespace directory %u: %m", 
-saae: smgr:00001135:  tablespaceOid))); 
-saae: smgr:00001160:  ereport(WARNING, 
-saae: smgr:00001161:  (errcode_for_file_access(), 
-saae: smgr:00001162:  errmsg("could not remove database directory %u/%u: %m", 
-saae: smgr:00001163:  dbDirNode->tablespace, 
-saae: smgr:00001164:  dbDirNode->database))); 
-saae: smgr:00001236:  ereport(ERROR, 
-saae: smgr:00001237:  (errcode_for_file_access(), 
-saae: smgr:00001238:  errmsg("could not extend relation %u/%u/%u: %m", 
-saae: smgr:00001239:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001240:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001241:  reln->smgr_rnode.relNode), 
-saae: smgr:00001242:  errhint("Check free disk space."))); 
-saae: smgr:00001257:  ereport(ERROR, 
-saae: smgr:00001258:  (errcode_for_file_access(), 
-saae: smgr:00001259:  errmsg("could not read block %u of relation %u/%u/%u: %m", 
-saae: smgr:00001260:  blocknum, 
-saae: smgr:00001261:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001262:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001263:  reln->smgr_rnode.relNode))); 
-saae: smgr:00001281:  ereport(ERROR, 
-saae: smgr:00001282:  (errcode_for_file_access(), 
-saae: smgr:00001283:  errmsg("could not write block %u of relation %u/%u/%u: %m", 
-saae: smgr:00001284:  blocknum, 
-saae: smgr:00001285:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001286:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001287:  reln->smgr_rnode.relNode))); 
-saae: smgr:00001311:  ereport(ERROR, 
-saae: smgr:00001312:  (errcode_for_file_access(), 
-saae: smgr:00001313:  errmsg("could not count blocks of relation %u/%u/%u: %m", 
-saae: smgr:00001314:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001315:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001316:  reln->smgr_rnode.relNode))); 
-saae: smgr:00001349:  ereport(ERROR, 
-saae: smgr:00001350:  (errcode_for_file_access(), 
-saae: smgr:00001351:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
-saae: smgr:00001352:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001353:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001354:  reln->smgr_rnode.relNode, 
-saae: smgr:00001355:  nblocks))); 
-saae: smgr:00001441:  ereport(ERROR, 
-saae: smgr:00001442:  (errcode_for_file_access(), 
-saae: smgr:00001443:  errmsg("could not sync relation %u/%u/%u: %m", 
-saae: smgr:00001444:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001445:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001446:  reln->smgr_rnode.relNode))); 
-saae: smgr:00002898:  ereport(WARNING, 
-saae: smgr:00002899:  (errcode_for_file_access(), 
-saae: smgr:00002900:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
-saae: smgr:00002901:  reln->smgr_rnode.spcNode, 
-saae: smgr:00002902:  reln->smgr_rnode.dbNode, 
-saae: smgr:00002903:  reln->smgr_rnode.relNode, 
-saae: smgr:00002904:  xlrec->blkno))); 
+saae: smgr:00000390:  ereport(ERROR, 
+saae: smgr:00000391:  (errcode_for_file_access(), 
+saae: smgr:00000392:  errmsg("could not close relation %u/%u/%u: %m", 
+saae: smgr:00000393:  reln->smgr_rnode.spcNode, 
+saae: smgr:00000394:  reln->smgr_rnode.dbNode, 
+saae: smgr:00000395:  reln->smgr_rnode.relNode))); 
+saae: smgr:00000962:  ereport(WARNING, 
+saae: smgr:00000963:  (errcode_for_file_access(), 
+saae: smgr:00000964:  errmsg("could not remove relation %u/%u/%u: %m", 
+saae: smgr:00000965:  rnode.spcNode, 
+saae: smgr:00000966:  rnode.dbNode, 
+saae: smgr:00000967:  rnode.relNode))); 
+saae: smgr:00000969:  ereport(WARNING, 
+saae: smgr:00000970:  (errcode_for_file_access(), 
+saae: smgr:00000971:  errmsg("could not remove relation %u/%u/%u '%s': %m", 
+saae: smgr:00000972:  rnode.spcNode, 
+saae: smgr:00000973:  rnode.dbNode, 
+saae: smgr:00000974:  rnode.relNode, 
+saae: smgr:00000975:  relationName))); 
+saae: smgr:00001044:  ereport(WARNING, 
+saae: smgr:00001045:  (errcode_for_file_access(), 
+saae: smgr:00001046:  errmsg("could not remove filespace directory %u: %m", 
+saae: smgr:00001047:  filespaceOid))); 
+saae: smgr:00001133:  ereport(WARNING, 
+saae: smgr:00001134:  (errcode_for_file_access(), 
+saae: smgr:00001135:  errmsg("could not remove tablespace directory %u: %m", 
+saae: smgr:00001136:  tablespaceOid))); 
+saae: smgr:00001161:  ereport(WARNING, 
+saae: smgr:00001162:  (errcode_for_file_access(), 
+saae: smgr:00001163:  errmsg("could not remove database directory %u/%u: %m", 
+saae: smgr:00001164:  dbDirNode->tablespace, 
+saae: smgr:00001165:  dbDirNode->database))); 
+saae: smgr:00001237:  ereport(ERROR, 
+saae: smgr:00001238:  (errcode_for_file_access(), 
+saae: smgr:00001239:  errmsg("could not extend relation %u/%u/%u: %m", 
+saae: smgr:00001240:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001241:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001242:  reln->smgr_rnode.relNode), 
+saae: smgr:00001243:  errhint("Check free disk space."))); 
+saae: smgr:00001258:  ereport(ERROR, 
+saae: smgr:00001259:  (errcode_for_file_access(), 
+saae: smgr:00001260:  errmsg("could not read block %u of relation %u/%u/%u: %m", 
+saae: smgr:00001261:  blocknum, 
+saae: smgr:00001262:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001263:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001264:  reln->smgr_rnode.relNode))); 
+saae: smgr:00001282:  ereport(ERROR, 
+saae: smgr:00001283:  (errcode_for_file_access(), 
+saae: smgr:00001284:  errmsg("could not write block %u of relation %u/%u/%u: %m", 
+saae: smgr:00001285:  blocknum, 
+saae: smgr:00001286:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001287:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001288:  reln->smgr_rnode.relNode))); 
+saae: smgr:00001312:  ereport(ERROR, 
+saae: smgr:00001313:  (errcode_for_file_access(), 
+saae: smgr:00001314:  errmsg("could not count blocks of relation %u/%u/%u: %m", 
+saae: smgr:00001315:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001316:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001317:  reln->smgr_rnode.relNode))); 
+saae: smgr:00001350:  ereport(ERROR, 
+saae: smgr:00001351:  (errcode_for_file_access(), 
+saae: smgr:00001352:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
+saae: smgr:00001353:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001354:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001355:  reln->smgr_rnode.relNode, 
+saae: smgr:00001356:  nblocks))); 
+saae: smgr:00001442:  ereport(ERROR, 
+saae: smgr:00001443:  (errcode_for_file_access(), 
+saae: smgr:00001444:  errmsg("could not sync relation %u/%u/%u: %m", 
+saae: smgr:00001445:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001446:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001447:  reln->smgr_rnode.relNode))); 
+saae: smgr:00002913:  ereport(WARNING, 
+saae: smgr:00002914:  (errcode_for_file_access(), 
+saae: smgr:00002915:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
+saae: smgr:00002916:  reln->smgr_rnode.spcNode, 
+saae: smgr:00002917:  reln->smgr_rnode.dbNode, 
+saae: smgr:00002918:  reln->smgr_rnode.relNode, 
+saae: smgr:00002919:  xlrec->blkno))); 
 aaaaa GP_IGNORE: faai: fastpath - ./backend/tcop/fastpath.c
 faai: fastpath:00000106:  ereport(FATAL, 
 faai: fastpath:00000107:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
@@ -13013,67 +13013,67 @@ paai: postgres:00003553:  (errcode(ERRCODE_STATEMENT_TOO_COMPLEX),
 paai: postgres:00003554:  errmsg("stack depth limit exceeded"), 
 paai: postgres:00003555:  errhint("Increase the configuration parameter \"max_stack_depth\", " 
 paai: postgres:00003556:  "after ensuring the platform's stack depth limit is adequate."))); 
-paai: postgres:00003958:  ereport(ERROR, 
-paai: postgres:00003959:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00003960:  errmsg("--%s requires a value", 
-paai: postgres:00003961:  optarg))); 
-paai: postgres:00003963:  ereport(ERROR, 
-paai: postgres:00003964:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00003965:  errmsg("-c %s requires a value", 
-paai: postgres:00003966:  optarg))); 
-paai: postgres:00003998:  ereport(FATAL, 
-paai: postgres:00003999:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paai: postgres:00004000:  errmsg("System was started in master-only utility mode - only utility mode connections are allowed"))); 
-paai: postgres:00004118:  ereport(FATAL, 
-paai: postgres:00004119:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00004120:  errmsg("invalid command-line arguments for server process"), 
-paai: postgres:00004121:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00004131:  ereport(FATAL, 
-paai: postgres:00004132:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00004133:  errmsg("%s: invalid command-line arguments", 
-paai: postgres:00004134:  argv[0]), 
-paai: postgres:00004135:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00004141:  ereport(FATAL, 
-paai: postgres:00004142:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paai: postgres:00004143:  errmsg("%s: no database nor user name specified", 
-paai: postgres:00004144:  argv[0]))); 
-paai: postgres:00004976:  ereport(ERROR, 
-paai: postgres:00004977:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00004978:  errmsg("invalid CLOSE message subtype %d", 
-paai: postgres:00004979:  close_type))); 
-paai: postgres:00005013:  ereport(ERROR, 
-paai: postgres:00005014:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00005015:  errmsg("invalid DESCRIBE message subtype %d", 
-paai: postgres:00005016:  describe_type))); 
-paai: postgres:00005070:  ereport(FATAL, 
-paai: postgres:00005071:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00005072:  errmsg("invalid frontend message type %d ('%c')", 
-paai: postgres:00005073:  firstchar,firstchar))); 
-paai: postgres:00005573:  ereport(ERROR, 
-paai: postgres:00005574:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005575:  errmsg("--%s requires a value", 
-paai: postgres:00005576:  optarg))); 
-paai: postgres:00005578:  ereport(ERROR, 
-paai: postgres:00005579:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005580:  errmsg("-c %s requires a value", 
-paai: postgres:00005581:  optarg))); 
-paai: postgres:00005694:  ereport(FATAL, 
-paai: postgres:00005695:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005696:  errmsg("invalid command-line arguments for server process"), 
-paai: postgres:00005697:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00005708:  ereport(FATAL, 
-paai: postgres:00005709:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005710:  errmsg("%s: invalid command-line arguments", 
-paai: postgres:00005711:  argv[0]), 
-paai: postgres:00005712:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00005718:  ereport(FATAL, 
-paai: postgres:00005719:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paai: postgres:00005720:  errmsg("%s: no database nor user name specified", 
-paai: postgres:00005721:  argv[0]))); 
-paai: postgres:00006039:  ereport(FATAL, 
-paai: postgres:00006040:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00006041:  errmsg("invalid frontend message type %d", 
-paai: postgres:00006042:  firstchar))); 
+paai: postgres:00003966:  ereport(ERROR, 
+paai: postgres:00003967:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00003968:  errmsg("--%s requires a value", 
+paai: postgres:00003969:  optarg))); 
+paai: postgres:00003971:  ereport(ERROR, 
+paai: postgres:00003972:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00003973:  errmsg("-c %s requires a value", 
+paai: postgres:00003974:  optarg))); 
+paai: postgres:00004014:  ereport(FATAL, 
+paai: postgres:00004015:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paai: postgres:00004016:  errmsg("System was started in master-only utility mode - only utility mode connections are allowed"))); 
+paai: postgres:00004134:  ereport(FATAL, 
+paai: postgres:00004135:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00004136:  errmsg("invalid command-line arguments for server process"), 
+paai: postgres:00004137:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00004147:  ereport(FATAL, 
+paai: postgres:00004148:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00004149:  errmsg("%s: invalid command-line arguments", 
+paai: postgres:00004150:  argv[0]), 
+paai: postgres:00004151:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00004157:  ereport(FATAL, 
+paai: postgres:00004158:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paai: postgres:00004159:  errmsg("%s: no database nor user name specified", 
+paai: postgres:00004160:  argv[0]))); 
+paai: postgres:00004992:  ereport(ERROR, 
+paai: postgres:00004993:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00004994:  errmsg("invalid CLOSE message subtype %d", 
+paai: postgres:00004995:  close_type))); 
+paai: postgres:00005029:  ereport(ERROR, 
+paai: postgres:00005030:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00005031:  errmsg("invalid DESCRIBE message subtype %d", 
+paai: postgres:00005032:  describe_type))); 
+paai: postgres:00005086:  ereport(FATAL, 
+paai: postgres:00005087:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00005088:  errmsg("invalid frontend message type %d ('%c')", 
+paai: postgres:00005089:  firstchar,firstchar))); 
+paai: postgres:00005589:  ereport(ERROR, 
+paai: postgres:00005590:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005591:  errmsg("--%s requires a value", 
+paai: postgres:00005592:  optarg))); 
+paai: postgres:00005594:  ereport(ERROR, 
+paai: postgres:00005595:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005596:  errmsg("-c %s requires a value", 
+paai: postgres:00005597:  optarg))); 
+paai: postgres:00005710:  ereport(FATAL, 
+paai: postgres:00005711:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005712:  errmsg("invalid command-line arguments for server process"), 
+paai: postgres:00005713:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00005724:  ereport(FATAL, 
+paai: postgres:00005725:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005726:  errmsg("%s: invalid command-line arguments", 
+paai: postgres:00005727:  argv[0]), 
+paai: postgres:00005728:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00005734:  ereport(FATAL, 
+paai: postgres:00005735:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paai: postgres:00005736:  errmsg("%s: no database nor user name specified", 
+paai: postgres:00005737:  argv[0]))); 
+paai: postgres:00006055:  ereport(FATAL, 
+paai: postgres:00006056:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00006057:  errmsg("invalid frontend message type %d", 
+paai: postgres:00006058:  firstchar))); 
 aaaaa GP_IGNORE: paag: pquery - ./backend/tcop/pquery.c
 paag: pquery:00000958:  ereport(ERROR, 
 paag: pquery:00000959:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
@@ -16711,20 +16711,20 @@ waaf: wchar:00001642:  buf,
 waaf: wchar:00001643:  pg_enc2name_tbl[src_encoding].name, 
 waaf: wchar:00001644:  pg_enc2name_tbl[dest_encoding].name))); 
 aaaaa GP_IGNORE: fabd: faultinjector - ./backend/utils/misc/faultinjector.c
-fabd: faultinjector:00000285:  ereport(ERROR, 
-fabd: faultinjector:00000286:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-fabd: faultinjector:00000287:  (errmsg("Not enough shared memory for Mirroring.")))); 
-fabd: faultinjector:00000311:  ereport(ERROR, 
-fabd: faultinjector:00000312:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-fabd: faultinjector:00000313:  (errmsg("Not enough shared memory for Fault Injector.")))); 
-fabd: faultinjector:00000410:  ereport(FATAL, 
-fabd: faultinjector:00000411:  (errmsg("fault is injected identifier:'%s' type:'%s' ", 
-fabd: faultinjector:00000412:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
-fabd: faultinjector:00000413:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
-fabd: faultinjector:00000432:  ereport(ERROR, 
-fabd: faultinjector:00000433:  (errmsg("fault is injected identifier:'%s' type:'%s' ", 
-fabd: faultinjector:00000434:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
-fabd: faultinjector:00000435:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
+fabd: faultinjector:00000286:  ereport(ERROR, 
+fabd: faultinjector:00000287:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+fabd: faultinjector:00000288:  (errmsg("Not enough shared memory for Mirroring.")))); 
+fabd: faultinjector:00000312:  ereport(ERROR, 
+fabd: faultinjector:00000313:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+fabd: faultinjector:00000314:  (errmsg("Not enough shared memory for Fault Injector.")))); 
+fabd: faultinjector:00000418:  ereport(FATAL, 
+fabd: faultinjector:00000419:  (errmsg("fault is injected identifier:'%s' type:'%s' ", 
+fabd: faultinjector:00000420:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
+fabd: faultinjector:00000421:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
+fabd: faultinjector:00000440:  ereport(ERROR, 
+fabd: faultinjector:00000441:  (errmsg("fault is injected identifier:'%s' type:'%s' ", 
+fabd: faultinjector:00000442:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
+fabd: faultinjector:00000443:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
 aaaaa GP_IGNORE: gaai: gucxfile - ./backend/utils/misc/guc-file.c
 gaai: gucxfile:00000542: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
 gaai: gucxfile:00000543:  
@@ -16740,81 +16740,81 @@ gaai: gucxfile:00000552:  GUC_EOL = 99,
 gaai: gucxfile:00000553:  GUC_ERROR = 100 
 gaai: gucxfile:00000554: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00007359:  ereport(ERROR, 
-gaad: guc:00007360:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007361:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007363:  ereport(ERROR, 
-gaad: guc:00007364:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00007365:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00007399:  ereport(ERROR, 
-gaad: guc:00007400:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007401:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007403:  ereport(ERROR, 
-gaad: guc:00007404:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00007405:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00007474:  ereport(ERROR, 
-gaad: guc:00007475:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007476:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007483:  ereport(ERROR, 
-gaad: guc:00007484:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00007485:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00007656:  ereport(ERROR, 
-gaad: guc:00007657:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00007658:  errmsg("SET requires parameter name"))); 
-gaad: guc:00007720:  ereport(ERROR, 
-gaad: guc:00007721:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00007722:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00008041:  ereport(ERROR, 
-gaad: guc:00008042:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008043:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008045:  ereport(ERROR, 
-gaad: guc:00008046:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008047:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008849:  ereport(FATAL, 
-gaad: guc:00008850:  (errcode_for_file_access(), 
-gaad: guc:00008851:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00008852:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00008959:  ereport(WARNING, 
-gaad: guc:00008960:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00008961:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00009155:  ereport(ERROR, 
-gaad: guc:00009156:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009157:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00009178:  ereport(ERROR, 
-gaad: guc:00009179:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009180:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00009181:  tok))); 
-gaad: guc:00009207:  ereport(ERROR, 
-gaad: guc:00009208:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009209:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00009210:  value))); 
-gaad: guc:00009560:  ereport(ERROR, 
-gaad: guc:00009561:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00009562:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00009636:  ereport(ERROR, 
-gaad: guc:00009637:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009638:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00009657:  ereport(ERROR, 
-gaad: guc:00009658:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009659:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00009670:  ereport(ERROR, 
-gaad: guc:00009671:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009672:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00009687:  ereport(ERROR, 
-gaad: guc:00009688:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009689:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00009690:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00009691:  "\"log_dispatch_stats\", " 
-gaad: guc:00009692:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00009707:  ereport(ERROR, 
-gaad: guc:00009708:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009709:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00009710:  "\"log_statement_stats\", " 
-gaad: guc:00009711:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00009712:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00009727:  ereport(ERROR, 
-gaad: guc:00009728:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009729:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00007358:  ereport(ERROR, 
+gaad: guc:00007359:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007360:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007362:  ereport(ERROR, 
+gaad: guc:00007363:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00007364:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00007398:  ereport(ERROR, 
+gaad: guc:00007399:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007400:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007402:  ereport(ERROR, 
+gaad: guc:00007403:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00007404:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00007473:  ereport(ERROR, 
+gaad: guc:00007474:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007475:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007482:  ereport(ERROR, 
+gaad: guc:00007483:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00007484:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00007655:  ereport(ERROR, 
+gaad: guc:00007656:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00007657:  errmsg("SET requires parameter name"))); 
+gaad: guc:00007719:  ereport(ERROR, 
+gaad: guc:00007720:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00007721:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00008040:  ereport(ERROR, 
+gaad: guc:00008041:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008042:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008044:  ereport(ERROR, 
+gaad: guc:00008045:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008046:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008848:  ereport(FATAL, 
+gaad: guc:00008849:  (errcode_for_file_access(), 
+gaad: guc:00008850:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00008851:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00008958:  ereport(WARNING, 
+gaad: guc:00008959:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00008960:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00009154:  ereport(ERROR, 
+gaad: guc:00009155:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009156:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00009177:  ereport(ERROR, 
+gaad: guc:00009178:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009179:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00009180:  tok))); 
+gaad: guc:00009206:  ereport(ERROR, 
+gaad: guc:00009207:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009208:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00009209:  value))); 
+gaad: guc:00009559:  ereport(ERROR, 
+gaad: guc:00009560:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00009561:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00009635:  ereport(ERROR, 
+gaad: guc:00009636:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009637:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00009656:  ereport(ERROR, 
+gaad: guc:00009657:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009658:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00009669:  ereport(ERROR, 
+gaad: guc:00009670:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009671:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00009686:  ereport(ERROR, 
+gaad: guc:00009687:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009688:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00009689:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00009690:  "\"log_dispatch_stats\", " 
+gaad: guc:00009691:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00009706:  ereport(ERROR, 
+gaad: guc:00009707:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009708:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00009709:  "\"log_statement_stats\", " 
+gaad: guc:00009710:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00009711:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00009726:  ereport(ERROR, 
+gaad: guc:00009727:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009728:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
 aaaaa GP_IGNORE: uaaj: uriparser - ./backend/utils/misc/uriparser.c
 uaaj: uriparser:00000058:  ereport(ERROR, 
 uaaj: uriparser:00000059:  (errcode(ERRCODE_SYNTAX_ERROR), 
