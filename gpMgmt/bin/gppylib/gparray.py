@@ -650,10 +650,12 @@ def createSegmentRows( hostlist
             index = 0
             for mdir in mirror_list:
                 fulldir = "%s/%s%d" % (mdir,dir_prefix,content)
-                fsDict = mirror_fs_list[index]
+                fsDict = {}
+                if mirror_fs_list != None and len(mirror_fs_list) > index:
+                   fsDict = mirror_fs_list[index]
                 fullFsDict = {}
                 for oid in fsDict:
-                    fullFsDict[oid] = "%s/%s%d" % (pdir, dir_prefix, content)
+                    fullFsDict[oid] = "%s/%s%d" % (fsDict[oid], dir_prefix, content)
                 mirror_host = hostlist[mirror_host_offset % num_hosts]
                 if mirror_host == host:
                     mirror_host_offset += 1
@@ -703,6 +705,12 @@ def createSegmentRows( hostlist
             
             for mdir in mirror_list:
                 fulldir = "%s/%s%d" % (mdir,dir_prefix,content)
+                fsDict = {}
+                if mirror_fs_list != None and len(mirror_fs_list) > index:
+                   fsDict = mirror_fs_list[index]
+                fullFsDict = {}
+                for oid in fsDict:
+                    fullFsDict[oid] = "%s/%s%d" % (fsDict[oid], dir_prefix, content)
                 rows.append( SegmentRow( content = content
                                        , isprimary = isprimary
                                        , dbid = dbid
@@ -773,7 +781,7 @@ def createSegmentRowsFromSegmentList( newHostlist
         #      best to have the interface mapping stuff 1st.
         content=0
         isprimary='f'
-        num_hosts = len(hostlist)
+        num_hosts = len(newHostlist)
         num_dirs=len(primary_list)
         if num_hosts <= num_dirs:
             raise Exception("Not enough hosts for spread mirroring.  You must have more hosts than primary segments per host")
@@ -783,15 +791,16 @@ def createSegmentRowsFromSegmentList( newHostlist
 
         mirror_host_offset=1
         last_mirror_offset=1
-        for host in hostlist:
+        for host in newHostlist:
             mirror_host_offset = last_mirror_offset + 1
             last_mirror_offset += 1
-            for mdir in mirror_list:
-                fulldir = "%s/%s%d" % (mdir,dir_prefix,content)
-                mirror_host = hostlist[mirror_host_offset % num_hosts]
+            for mSeg in mirror_segment_list:
+                newFulldir = "%s/%s%d" % (getDataDirPrefix(mSeg.getSegmentDataDirectory()), dir_prefix, content)
+                newFileSpaceDictionary = getFileSpaceDirsWithNewSuffix(mSeg.getSegmentFilespaces(), dir_prefix + str(content), excludeSystemFilespace = True)
+                mirror_host = newHostlist[mirror_host_offset % num_hosts]
                 if mirror_host == host:
                     mirror_host_offset += 1
-                    mirror_host = hostlist[mirror_host_offset % num_hosts]
+                    mirror_host = newHostlist[mirror_host_offset % num_hosts]
                     
                 if not mirror_port.has_key(mirror_host):
                     mirror_port[mirror_host] = mirror_portbase
@@ -805,8 +814,9 @@ def createSegmentRowsFromSegmentList( newHostlist
                                        , always_true = 't'
                                        , host = mirror_host
                                        , port = mirror_port[mirror_host]
-                                       , fulldir = fulldir
+                                       , fulldir = newFulldir
                                        , prPort = mirror_replication_port[mirror_host]
+                                       , fileSpaceDictionary = newFileSpaceDictionary
                                        ) )
 
                 mirror_port[mirror_host] += 1
@@ -818,7 +828,7 @@ def createSegmentRowsFromSegmentList( newHostlist
         
     elif mirror_type.lower().strip() == 'grouped':
         content = 0
-        num_hosts = len(hostlist)
+        num_hosts = len(newHostlist)
         
         if num_hosts < 2:
             raise Exception("Not enough hosts for grouped mirroring.  You must have at least 2")
@@ -827,14 +837,15 @@ def createSegmentRowsFromSegmentList( newHostlist
         mirror_host_offset = 1
         
         isprimary='f'
-        for host in hostlist:            
-            mirror_host = hostlist[mirror_host_offset % num_hosts]
+        for host in newHostlist:            
+            mirror_host = newHostlist[mirror_host_offset % num_hosts]
             mirror_host_offset += 1
             port = mirror_portbase
             mrPort = mirror_replication_portbase
             
-            for mdir in mirror_list:
-                fulldir = "%s/%s%d" % (mdir,dir_prefix,content)
+            for mSeg in mirror_segment_list:
+                newFulldir = "%s/%s%d" % (getDataDirPrefix(mSeg.getSegmentDataDirectory()), dir_prefix, content)
+                newFileSpaceDictionary = getFileSpaceDirsWithNewSuffix(mSeg.getSegmentFilespaces(), dir_prefix + str(content), excludeSystemFilespace = True)                
                 rows.append( SegmentRow( content = content
                                        , isprimary = isprimary
                                        , dbid = dbid
@@ -842,8 +853,9 @@ def createSegmentRowsFromSegmentList( newHostlist
                                        , always_true = 't'
                                        , host = mirror_host
                                        , port = port
-                                       , fulldir = fulldir
+                                       , fulldir = newFulldir
                                        , prPort = mrPort
+                                       , fileSpaceDictionary = newFileSpaceDictionary
                                        ) )
                 port += 1
                 mrPort +=1

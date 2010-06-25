@@ -1346,7 +1346,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
                    firstLine = firstLine + fs.getName()
                    firstFs = False
                 else:
-                   firstLine = fileLine + ":" + fs.getName()
+                   firstLine = firstLine + ":" + fs.getName()
             outfileFD.write(firstLine + '\n')
             
             for db in gparray.getExpansionSegDbList():
@@ -2526,16 +2526,17 @@ before continuing by re-running this utility and providing the input file. """
                 new_mirrordirs.append(new_mirrordir.strip())
                 
             fsDict = {}
+            new_fsDirs = []
             for fsObj in gpFSobjList:
                # Prompt the use for a location for each filespace
-               fsLoc = ask_input( bg_info = None
-                                , msg = 'Enter new file space location for file space name: %s' % fsObj.getName()
-                                , help = ''
-                                , default = ''
-                                , validator_opts = None
+               fsLoc = ask_input( None
+                                , 'Enter new file space location for file space name: %s' % fsObj.getName()
+                                , ''
+                                , ''
+                                , None
                                 )
                fsDict[fsObj.getOid()] = fsLoc.strip()
-            new_mirrorFsDirs.append(fsDict) 
+               new_mirrorFsDirs.append(fsDict) 
                 
             if len(new_mirrordirs) != num_new_datadirs:
                 raise ExpansionError('The number of new mirror data directories entered does not match the number of segments added')
