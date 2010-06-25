@@ -957,7 +957,8 @@ pc.relfilenode,
 pc.relisshared,
 pc.relstorage,
 pc.reltablespace,
-pc.relkind
+pc.relkind,
+pc.relam
 from gp_persistent_relation_node as prn,
 pg_class as pc,
 pg_tablespace as pt,
@@ -1315,7 +1316,10 @@ sub get_relfilenode_func
 					# so get tablespace_oid too
 					
 					$rnod->{tablespace_oid} = $rr2->{tablespace_oid};
-					$rnod->{database_oid} = $rr2->{database_oid};
+					$rnod->{database_oid}	= $rr2->{database_oid};
+
+					# and index access method
+					$rnod->{relam}		    = $rr2->{relam};
 
 					if (exists($rnod->{tspace}))
 					{
@@ -1706,7 +1710,13 @@ sub diff_again
 		$primsh, $mirrsh) = @_;
 
 	my $bstat = 1;
-	my (@aofiles, @heapfiles, @indexfiles, @unknownfiles);
+	my (@aofiles, @heapfiles, @btreefiles, @unknownfiles, @otheridx);
+
+	# MPP-10021: differentiate index types by access method.  Build a
+	# copy of pg_am
+	my %pg_am = ( 403 => "btree", 405 => "hash", 783 => "gist",
+				  2742 => "gin", 3013 => "bitmap" 
+		);
 
 	for my $dbs ($dbs1, $dbs2)
 	{
@@ -1753,7 +1763,24 @@ sub diff_again
 							{
 								if ($rnod->{relkind} eq "i")
 								{
-									push @indexfiles, $filnam;
+									# MPP-10021: differentiate index
+									# types by access method.  Treat
+									# btree special
+									if (403 == $rnod->{relam})
+									{
+										push @btreefiles, $filnam;
+									}
+									else
+									{
+										my $idx_type = "unknown_index";
+
+										$idx_type = $pg_am{$rnod->{relam}}
+										if (exists($pg_am{$rnod->{relam}}));
+
+										push @otheridx, 
+										$idx_type . ":" . $filnam;
+									}
+
 								}
 								else
 								{
@@ -1818,7 +1845,7 @@ sub diff_again
 		':heap: ", $_ ;}' . "'";
 ###			File::Spec->catfile($primfil, $fil->{file});
 	}
-	for my $fil (@indexfiles)
+	for my $fil (@btreefiles)
 	{
 		push @allfiles1, 
 		$fil . "  ( perl MYPRESH21 -noadler -btree  MYDIR/" . $fil
@@ -1836,6 +1863,21 @@ sub diff_again
 		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
 		. "| perl -e 'for (<STDIN>) { print \"" . $fil . 
 		':unknown: ", $_ ;}' . "'";
+###			File::Spec->catfile($primfil, $fil->{file});
+	}
+	for my $fil2 (@otheridx)
+	{
+		my @ttt = split(/:/, $fil2, 2);
+
+		my $idx_type = shift @ttt;
+		my $fil = shift @ttt;
+
+		push @allfiles1, 
+		$fil . "  ( cat MYDIR/" . $fil
+		. " | openssl dgst -md5 -hex ) 2>&1  "
+		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
+		. "| perl -e 'for (<STDIN>) { print \"" . $fil . 
+		':' . $idx_type . ': ", $_ ;}' . "'";
 ###			File::Spec->catfile($primfil, $fil->{file});
 	}
 
@@ -1961,8 +2003,9 @@ sub diff_again
 					$ppresh2, $mpresh2,
 					$primsh, $mirrsh,
 					\@aofiles, \@heapfiles, 
-					\@indexfiles,
-					\@unknownfiles
+					\@btreefiles,
+					\@unknownfiles,
+					\@otheridx
 			);
 
 	}
@@ -1982,8 +2025,9 @@ sub diff_thrice
 		$primtmp, $mirrtmp,
 		$ppresh2, $mpresh2,
 		$primsh, $mirrsh, $aofiles, $heapfiles, 
-		$indexfiles,
-		$unknownfiles) = @_;
+		$btreefiles,
+		$unknownfiles,
+		$otheridx) = @_;
 
 	my $bstat = 1;
 
@@ -2022,7 +2066,7 @@ sub diff_thrice
 			$row->{maddress} . ":" . 
 			File::Spec->catfile($mirrfil, $fil);
 	}
-	for my $fil (@{$indexfiles})
+	for my $fil (@{$btreefiles})
 	{
 		push @allfiles1, 
 		$fil . "  ( perl MYPRESH21 -adler -btree  MYDIR/" . $fil
@@ -2048,6 +2092,26 @@ sub diff_thrice
 ###			File::Spec->catfile($primfil, $fil->{file});
 
 		push @{$glob_fixlist}, "unknown: " . $row->{paddress} . ":" . 
+			File::Spec->catfile($primfil, $fil) . " " .
+			$row->{maddress} . ":" . 
+			File::Spec->catfile($mirrfil, $fil);
+	}
+	for my $fil2 (@{$otheridx})
+	{
+		my @ttt = split(/:/, $fil2, 2);
+
+		my $idx_type = shift @ttt;
+		my $fil = shift @ttt;
+
+		push @allfiles1, 
+		$fil . "  ( cat MYDIR/" . $fil
+		. " | openssl dgst -md5 -hex ) 2>&1  "
+		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
+		. "| perl -e 'for (<STDIN>) { print \"" . $fil . 
+		':' . $idx_type . ': ", $_ ;}' . "'";
+###			File::Spec->catfile($primfil, $fil->{file});
+
+		push @{$glob_fixlist}, "$idx_type: " . $row->{paddress} . ":" . 
 			File::Spec->catfile($primfil, $fil) . " " .
 			$row->{maddress} . ":" . 
 			File::Spec->catfile($mirrfil, $fil);
