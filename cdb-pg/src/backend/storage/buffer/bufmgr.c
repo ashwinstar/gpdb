@@ -2246,6 +2246,8 @@ DropDatabaseBuffers(Oid tblspc, Oid dbid)
 		{
 			if (bufHdr->tag.rnode.dbNode == dbid)
 				InvalidateBuffer(bufHdr, true, true);	/* releases spinlock */
+			else
+				UnlockBufHdr(bufHdr);
 		}
 		else
 			UnlockBufHdr(bufHdr);
