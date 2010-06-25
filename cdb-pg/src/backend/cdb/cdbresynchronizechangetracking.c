@@ -974,6 +974,15 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 													   &xlrec->bm_persistentTid,
 													   xlrec->bm_persistentSerialNum);
 
+					ChangeTracking_AddRelationChangeInfo(
+													   relationChangeInfoArray,
+													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
+													   &(xlrec->bm_node),
+													   xlrec->bm_blkno,
+													   &xlrec->bm_persistentTid,
+													   xlrec->bm_persistentSerialNum);
+					
 					if (!xlrec->bm_is_last)
 						ChangeTracking_AddRelationChangeInfo(
 														   relationChangeInfoArray,
