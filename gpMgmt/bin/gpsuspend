@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) Greenplum Inc 2009. All Rights Reserved. 
+# Copyright (c) Greenplum Inc 2009-2010. All Rights Reserved. 
 '''
 USAGE: gpsuspend [--pause] [--resume]       # either pause or resume must be specified
                  [--pausefile FILE]         # when resuming specify the pause file created when pausing the system
@@ -23,13 +23,13 @@ try:
     from gppylib.userinput import ask_string
     from gppylib.gphostcache import GpHostCache
     from pygresql.pg import DB, DatabaseError     #  Need this for admin sql, such as create/drop db
-    from gppylib.gpcoverage import GpCoverage
 
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
 EXECNAME = os.path.split(__file__)[-1]
 RESUME_MSG = None
+RERUN_RESUME_MSG = None
 FTS_ON_SQL = "set gp_fts_probe_pause=off"
 FTS_OFF_SQL = "set gp_fts_probe_pause=on"
 
@@ -78,24 +78,13 @@ def parseargs():
         print "batchsize must be between 1 and 250"
         parser.exit()
 
-    # other validations
-    USER=os.getenv('USER')
-    if USER is None or USER is ' ':
-        sys.exit('Please set USER environment variable')
-
     # master db setup
     if options.pause:
         try:
-            options.master_data_directory = get_masterdatadir()
             options.gphome = get_gphome()
         except GpError, msg:
             logger.error(msg)
             parser.exit()
-
-        if not os.path.exists(options.master_data_directory):
-            logger.error('Master data directory does not exist.')
-            parser.exit()
-
 
     # generate a pause file name
     if options.pause:
@@ -104,6 +93,9 @@ def parseargs():
 
     global RESUME_MSG
     RESUME_MSG = "To run resume run: " + EXECNAME + " --resume --pausefile " + options.pausefile
+
+    global RERUN_RESUME_MSG
+    RERUN_RESUME_MSG = "To retry running resume: " + EXECNAME + " --resume --pausefile " + options.pausefile
 
     return options
 
@@ -195,7 +187,7 @@ def resume_greenplum(gparray, cache):
 
     except:
         logger.fatal('resume failed to resume master postgres instance.')
-        logger.info(rerunmsg)
+        logger.info(RERUN_RESUME_MSG)
         sys.exit(1)
 
 
@@ -257,9 +249,6 @@ def changeFtsMode(On):
 
 #------------------------------- Mainline --------------------------------
 
-coverage = GpCoverage()
-coverage.start()
-
 logger = gppylib.gplog.get_default_logger()
 gppylib.gplog.setup_tool_logging(EXECNAME, getLocalHostname(), getUserName())
 
@@ -307,8 +296,5 @@ if options.pause:
 
 elif options.resume:
     resume_greenplum(gparray=gparray, cache=hostCache)
-
-coverage.stop()
-coverage.generate_report()
 
 logger.info("--done--")
