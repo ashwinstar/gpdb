@@ -5744,12 +5744,14 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 			 * When rewriting an appendonly table we choose to always insert
 			 * into the segfile reserved for special purposes (segno #0).
 			 */
-			int 			segno = RESERVED_SEGNO;
+			int 					segno = RESERVED_SEGNO;
 			AppendOnlyInsertDesc 	aoInsertDesc = NULL;
-
+			MemTupleBinding*		mt_bind;
 
 			if(newrel)
 				aoInsertDesc = appendonly_insert_init(newrel, segno);
+
+			mt_bind = (newrel ? aoInsertDesc->mt_bind : create_memtuple_binding(newTupDesc));
 
 			aoscan = appendonly_beginscan(oldrel, SnapshotNow, 0, NULL);
 
@@ -5773,7 +5775,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 						values[i] = slot_getattr(oldslot, i+1, &isnull[i]);
 
 					if (oldTupDesc->tdhasoid)
-						tupOid = MemTupleGetOid(mtuple, aoInsertDesc->mt_bind);
+						tupOid = MemTupleGetOid(mtuple, mt_bind);
 
 					/* Set dropped attributes to null in new tuple */
 					foreach(lc, dropped_attrs)
@@ -5797,14 +5799,14 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 					 * Form the new tuple. Note that we don't explicitly pfree it,
 					 * since the per-tuple memory context will be reset shortly.
 					 */
-					mtuple = memtuple_form_to(aoInsertDesc->mt_bind,
+					mtuple = memtuple_form_to(mt_bind,
 											  values, isnull,
 											  NULL, NULL, false);
 
 
 					/* Preserve OID, if any */
 					if (newTupDesc->tdhasoid)
-						MemTupleSetOid(mtuple, aoInsertDesc->mt_bind, tupOid);
+						MemTupleSetOid(mtuple, mt_bind, tupOid);
 				}
 
 				/* Now check any constraints on the possibly-changed tuple */
@@ -5813,9 +5815,9 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 
 				foreach(l, notnull_attrs)
 				{
-					int			attn = lfirst_int(l);
-
-					if (memtuple_attisnull(mtuple, oldslot->tts_mt_bind, attn + 1))
+					int					attn = lfirst_int(l);
+					
+					if (memtuple_attisnull(mtuple, mt_bind, attn + 1))
 						ereport(ERROR,
 								(errcode(ERRCODE_NOT_NULL_VIOLATION),
 								 errmsg("column \"%s\" contains null values",
