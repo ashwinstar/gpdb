@@ -1295,6 +1295,25 @@ class GpArray:
             dbs.extend(self.getSegDbList())
         return dbs
 
+    # --------------------------------------------------------------------
+    def getHostList(self, includeExpansionSegs = False):
+        """
+        Return a list of all Hosts that make up the array
+        """
+        hostList = []
+        hostList.append(self.master.getSegmentHostName())
+        if self.standbyMaster:
+            hostList.append(self.standbyMaster.getSegmentHostName())
+            
+        dbList = self.getDbList(includeExpansionSegs = includeExpansionSegs)
+        for db in dbList:
+            if db.getSegmentHostName() in hostList:
+               continue
+            else:
+               hostList.append(getSegmentHostName())
+        return hostList
+           
+
     def getDbIdToPeerMap(self):
         """
         Returns a map that maps a dbid to the peer segment for that dbid
@@ -1754,7 +1773,7 @@ class GpArray:
             port = db.getSegmentPort()
             if datadirs.has_key(hostname):
                 if datadir in datadirs[hostname]:
-                    raise Exception('Data directory %s used multiple time on host %s' % (datadir, hostname))
+                    raise Exception('Data directory %s used multiple times on host %s' % (datadir, hostname))
                 else:
                     datadirs[hostname].append(datadir)
             else:
@@ -1769,6 +1788,20 @@ class GpArray:
                 used_ports[hostname] = []
                 used_ports[hostname].append(db.port)
     
+        # Check for redefinition of filespace dirs
+        dbList = self.getDbList(includeExpansionSegs = True)
+        hostDict = GpArray.getSegmentsByHostName(dbList)
+        for host in hostDict:
+            segList = hostDict[host]
+            dirList = []
+            for seg in segList:
+                dirDict = seg.getSegmentFilespaces()
+                for oid in dirDict:
+                    if dirDict[oid] in dirList:
+                       raise Exception('Data directory %s used multiple times on host %s' % (datadir, hostname))
+                    else:
+                       dirList.append(dirDict[oid])
+
 
     # --------------------------------------------------------------------    
     def addExpansionHosts(self, hosts, mirror_type):

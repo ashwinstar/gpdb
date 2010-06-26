@@ -717,7 +717,7 @@ class ConfigureNewSegment(Command):
 
     #-----------------------------------------------
     @staticmethod
-    def buildSegmentInfoForNewSegment(segments, isTargetReusedLocationArr=None):
+    def buildSegmentInfoForNewSegment(segments, isTargetReusedLocationArr = None, primaryMirror = 'both'):
         """
         Build the new segment info that can be used to get the confinfo argument to pass to ConfigureNewSegment
 
@@ -739,6 +739,10 @@ class ConfigureNewSegment(Command):
         """
         result = {}
         for segIndex, seg in enumerate(segments):
+            if primaryMirror == 'primary' and seg.isSegmentPrimary() == False:
+               continue
+            elif primaryMirror == 'mirror' and seg.isSegmentPrimary() == True:
+               continue
             hostname = seg.getSegmentHostName()
             if result.has_key(hostname):
                 result[hostname] += ','

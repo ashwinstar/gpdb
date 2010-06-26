@@ -333,10 +333,12 @@ Tablespace: "pg_global"
                        INSERT into pg_catalog.pg_filespace_entry(
                            fsefsoid, fsedbid, fselocation)
                        VALUES (%d, %d, \'%s\')
-                    """ % (int(fsOid), seg.dbid, fsDatadir)
-                cursor.execute(sql)
+                    """ % (int(fsOid), int(seg.dbid), fsDatadir)
+                    cursor.execute(sql)
 
             conn.commit()
+        except Exception, e:
+            raise CatalogError(e)
         finally:
             if cursor: cursor.close()        
 #TODO:
