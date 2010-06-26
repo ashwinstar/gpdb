@@ -17,7 +17,7 @@ try:
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gparray import GpArray
     from gppylib.commands.base import WorkerPool, REMOTE
-    from gppylib.commands.gp import GpSuspendSegmentsOnHost, GpError, get_masterdatadir, get_gphome, pausePg, resumePg
+    from gppylib.commands.gp import GpSuspendSegmentsOnHost, GpError, get_gphome, pausePg, resumePg
     from gppylib.commands.unix import getLocalHostname, getUserName, SYSTEM
     from gppylib.db import dbconn
     from gppylib.userinput import ask_string
@@ -78,13 +78,20 @@ def parseargs():
         print "batchsize must be between 1 and 250"
         parser.exit()
 
-    # master db setup
-    if options.pause:
-        try:
-            options.gphome = get_gphome()
-        except GpError, msg:
-            logger.error(msg)
-            parser.exit()
+    try:
+        options.gphome = get_gphome()
+    except GpError, msg:
+        logger.error(msg)
+        parser.exit()
+
+    if not options.gphome:
+        logger.error("GPHOME must be set")
+        parser.exit()
+
+    if not os.path.exists(options.gphome):
+        err = "GPHOME directory does not exist: %s" % options.gphome
+        logger.error(err)
+        parser.exit()
 
     # generate a pause file name
     if options.pause:
