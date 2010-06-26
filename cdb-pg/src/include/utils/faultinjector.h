@@ -40,7 +40,11 @@ typedef enum FaultInjectorIdentifier_e {
 	
 	FileRepTransitionToInSync,
 	
+	FileRepTransitionToInSyncBeforeCheckpoint,
+	
 	Checkpoint,
+	
+	TransactionAbortAfterDistributedPrepared,
 	
 	TransactionCommitPass1FromCreatePendingToCreated,
 	
@@ -60,23 +64,31 @@ typedef enum FaultInjectorIdentifier_e {
 	
 	TransactionAbortPass2FromAbortingCreateNeededToAbortingCreate,
 	
+	
 	FinishPreparedTransactionCommitPass1FromCreatePendingToCreated,
 	
+	FinishPreparedTransactionCommitPass2FromCreatePendingToCreated,
+		/* commit: create pending => created */
+			
+	FinishPreparedTransactionAbortPass1FromCreatePendingToAbortingCreate,
+
+	FinishPreparedTransactionAbortPass2FromCreatePendingToAbortingCreate,
+		/* abort: create pending => aborting create */
+
 	FinishPreparedTransactionCommitPass1FromDropInMemoryToDropPending,
 	
-	FinishPreparedTransactionCommitPass1FromAbortingCreateNeededToAbortingCreate,
-	
-	FinishPreparedTransactionAbortPass1FromCreatePendingToAbortingCreate,
-	
-	FinishPreparedTransactionAbortPass1FromAbortingCreateNeededToAbortingCreate,
-	
 	FinishPreparedTransactionCommitPass2FromDropInMemoryToDropPending,
+		/* commit: drop in memory => drop pending */
+
+	FinishPreparedTransactionCommitPass1AbortingCreateNeeded,
 	
-	FinishPreparedTransactionCommitPass2FromAbortingCreateNeededToAbortingCreate,
+	FinishPreparedTransactionCommitPass2AbortingCreateNeeded,
+		/* commit: create pending => created */
 	
-	FinishPreparedTransactionAbortPass2FromCreatePendingToAbortingCreate,
+	FinishPreparedTransactionAbortPass1AbortingCreateNeeded,
 	
-	FinishPreparedTransactionAbortPass2FromAbortingCreateNeededToAbortingCreate,	
+	FinishPreparedTransactionAbortPass2AbortingCreateNeeded,	
+		/* abort: create pending => aborting create */
 	
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,
@@ -128,7 +140,6 @@ typedef enum DDLStatement_e {
 	DropDatabase,
 	
 	CreateTable,
-	AlterTable,
 	DropTable,
 	
 	CreateIndex,

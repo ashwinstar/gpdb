@@ -45,6 +45,7 @@
 #include "storage/smgr.h"
 #include "storage/freespace.h"
 #include "utils/combocid.h"
+#include "utils/faultinjector.h"
 #include "utils/flatfiles.h"
 #include "utils/guc.h"
 #include "utils/inval.h"
@@ -2576,6 +2577,17 @@ CommitTransaction(void)
 	 * Prepare all QE.
 	 */
 	prepareDtxTransaction();
+
+#ifdef FAULT_INJECTOR
+	if (isPreparedDtxTransaction())
+	{
+		FaultInjector_InjectFaultIfSet(
+									   TransactionAbortAfterDistributedPrepared, 
+									   DDLNotSpecified,
+									   "",	// databaseName
+									   ""); // tableName
+	}
+#endif	
 
 	if (Debug_abort_after_distributed_prepared &&
 		isPreparedDtxTransaction())

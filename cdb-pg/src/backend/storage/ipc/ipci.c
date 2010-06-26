@@ -179,12 +179,14 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 			size = add_size(size, FileRep_ShmemSize());
 			size = add_size(size, FileRepAck_ShmemSize());
 			size = add_size(size, FileRepAckPrimary_ShmemSize());
-#ifdef FAULT_INJECTOR
-			size = add_size(size, FaultInjector_ShmemSize());
-#endif			
 			size = add_size(size, FileRepResync_ShmemSize()); 
 			size = add_size(size, FileRepIpc_ShmemSize());
 		}
+		
+#ifdef FAULT_INJECTOR
+		size = add_size(size, FaultInjector_ShmemSize());
+#endif			
+		
 #ifdef EXEC_BACKEND
 		size = add_size(size, ShmemBackendArraySize());
 #endif
@@ -351,13 +353,13 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		FileRep_ShmemInit();
 		FileRepAck_ShmemInit();
 		FileRepAckPrimary_ShmemInit();
-#ifdef FAULT_INJECTOR
-		FaultInjector_ShmemInit();
-#endif
 		FileRepResync_ShmemInit();
 		FileRepIpc_ShmemInit();
 	}
-
+	
+#ifdef FAULT_INJECTOR
+	FaultInjector_ShmemInit();
+#endif
 	/*
 	 * Set up other modules that need some shared memory space
 	 */

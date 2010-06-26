@@ -2464,7 +2464,7 @@ void PersistentFileSysObj_PreparedEndXactAction(
 			 (isCommit ? "true" : "false"),
 			 persistentObjects->typed.fileSysActionInfosCount,
 			 persistentObjects->typed.appendOnlyMirrorResyncEofsCount);
-
+	
 	deleteUnnessary = (bool*)palloc0(persistentObjects->typed.fileSysActionInfosCount * sizeof(bool));
 
 	/*
@@ -2620,13 +2620,14 @@ void PersistentFileSysObj_PreparedEndXactAction(
 				abortingCreate = true;
 			}				
 #ifdef FAULT_INJECTOR	
-				FaultInjector_InjectFaultIfSet(
+				if (FaultInjector_InjectFaultIfSet(
 											   isCommit ?
 											   FinishPreparedTransactionCommitPass1FromCreatePendingToCreated :
 											   FinishPreparedTransactionAbortPass1FromCreatePendingToAbortingCreate, 
 											   DDLNotSpecified,
-											   "",	// databaseName
-											   ""); // tableName
+												   "" /* databaseName */,
+												   "" /* tableName */) == TRUE)
+					goto injectfaultexit;  // skip pass2
 #endif									
 			break;
 		
@@ -2635,11 +2636,12 @@ void PersistentFileSysObj_PreparedEndXactAction(
 			{
 				dropPending = true;
 #ifdef FAULT_INJECTOR	
-				FaultInjector_InjectFaultIfSet(
+				if (FaultInjector_InjectFaultIfSet(
 											   FinishPreparedTransactionCommitPass1FromDropInMemoryToDropPending, 
 											   DDLNotSpecified,
-											   "",	// databaseName
-											   ""); // tableName
+											   "" /* databaseName */,
+											   "" /* tableName */) == TRUE)
+				goto injectfaultexit;  // skip pass2
 #endif													
 			}
 			break;
@@ -2647,13 +2649,14 @@ void PersistentFileSysObj_PreparedEndXactAction(
 		case PersistentEndXactFileSysAction_AbortingCreateNeeded:
 			abortingCreate = true;
 #ifdef FAULT_INJECTOR	
-				FaultInjector_InjectFaultIfSet(
+				if (FaultInjector_InjectFaultIfSet(
 											   isCommit ?
-											   FinishPreparedTransactionCommitPass1FromAbortingCreateNeededToAbortingCreate:
-											   FinishPreparedTransactionAbortPass1FromAbortingCreateNeededToAbortingCreate, 
+											   FinishPreparedTransactionCommitPass1AbortingCreateNeeded:
+											   FinishPreparedTransactionAbortPass1AbortingCreateNeeded, 
 											   DDLNotSpecified,
-											   "",	// databaseName
-											   ""); // tableName
+											   "" /* databaseName */,
+											   "" /* tableName */) == TRUE)
+				goto injectfaultexit;  // skip pass2
 #endif																						
 			break;
 			
@@ -2675,57 +2678,42 @@ void PersistentFileSysObj_PreparedEndXactAction(
 									/* ignoreNonExistence */ abortingCreate);
 		}
 		
-#ifdef FAULT_INJECTOR			
-		if (abortingCreate && !isCommit)
-		{
-			FaultInjector_InjectFaultIfSet(
-										   FinishPreparedTransactionAbortPass2FromCreatePendingToAbortingCreate,
-										   DDLNotSpecified,
-										   "",	// databaseName
-										   ""); // tableName															
-		}
-		
-		if (dropPending && isCommit)
-		{
-			FaultInjector_InjectFaultIfSet(
-										   FinishPreparedTransactionCommitPass2FromDropInMemoryToDropPending,
-										   DDLNotSpecified,
-										   "",	// databaseName
-										   ""); // tableName																		
-		}
-		
+#ifdef FAULT_INJECTOR					
 		switch (action)
 		{
 			case PersistentEndXactFileSysAction_Create:
-				if (!isCommit)
-				{
-					FaultInjector_InjectFaultIfSet(
+				if (FaultInjector_InjectFaultIfSet(
+												   isCommit ?
+												   FinishPreparedTransactionCommitPass2FromCreatePendingToCreated :
 												   FinishPreparedTransactionAbortPass2FromCreatePendingToAbortingCreate,
 												   DDLNotSpecified,
-												   "",	// databaseName
-												   ""); // tableName																			
-				}
+												   "" /* databaseName */,
+												   "" /* tableName */) == TRUE)
+					goto injectfaultexit;  // skip physical drop in pass2
+
 				break;
 				
 			case PersistentEndXactFileSysAction_Drop:
 				if (isCommit)
 				{
-					FaultInjector_InjectFaultIfSet(
+					if (FaultInjector_InjectFaultIfSet(
 												   FinishPreparedTransactionCommitPass2FromDropInMemoryToDropPending,
 												   DDLNotSpecified,
-												   "",	// databaseName
-												   ""); // tableName																		
+												   "" /* databaseName */,
+												   "" /* tableName */) == TRUE)
+					goto injectfaultexit;  // skip physical drop in pass2
 				}
 				break;
 				
 			case PersistentEndXactFileSysAction_AbortingCreateNeeded:
-				FaultInjector_InjectFaultIfSet(
+				if (FaultInjector_InjectFaultIfSet(
 											   isCommit ?
-											   FinishPreparedTransactionCommitPass2FromAbortingCreateNeededToAbortingCreate :
-											   FinishPreparedTransactionAbortPass2FromAbortingCreateNeededToAbortingCreate,
+											   FinishPreparedTransactionCommitPass2AbortingCreateNeeded :
+											   FinishPreparedTransactionAbortPass2AbortingCreateNeeded,
 											   DDLNotSpecified,
-											   "",	// databaseName
-											   ""); // tableName																		
+											   "" /* databaseName */,
+											   "" /* tableName */) == TRUE)
+				goto injectfaultexit;  // skip physical drop in pass2
 				break;
 				
 			default:
@@ -2806,7 +2794,8 @@ void PersistentFileSysObj_PreparedEndXactAction(
 
 		FileRepPrimary_FinishedAppendOnlyCommitWork(persistentObjects->typed.appendOnlyMirrorResyncEofsCount);
 	}
-
+injectfaultexit:
+	
 	MIRRORED_UNLOCK;
 
 	END_CRIT_SECTION();

@@ -291,8 +291,8 @@ FileRepMirror_RunReceiver(void)
 				if (msgPositionInsert == NULL)
 				{
 					status = STATUS_ERROR;
-					ereport(LOG,
-							(errmsg("ERROR(filerep): could not queue message to be processed"), 
+					ereport(WARNING,
+							(errmsg("mirror failure, could not queue received message to be processed, failover requested"), 
 							 FileRep_errdetail_Shmem(),
 							 FileRep_errcontext()));										
 			
@@ -684,8 +684,10 @@ FileRepMirror_RunConsumer(void)
 		if (*fileRepMessageHeaderCrc != messageHeaderCrcLocal) {
 			
 			status = STATUS_ERROR;
-			ereport(LOG,
-				(errmsg("ERROR(filerep): could not match Message Header CRC primary crc:'%u' mirror crc:'%u' ", 
+			ereport(WARNING,
+				(errmsg("mirror failure, "
+						"could not match message header checksum between primary:'%u' and mirror:'%u', "
+						"failover requested", 
 						*fileRepMessageHeaderCrc, 
 						messageHeaderCrcLocal),
 				 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
@@ -712,8 +714,10 @@ FileRepMirror_RunConsumer(void)
 					&messageBodyLocal);	
 			
 			if (messageBodyLocal != fileRepMessageHeader->fileRepMessageBodyCrc) {
-				ereport(LOG,
-					(errmsg("ERROR(filerep): could not match Message Body CRC primary crc:'%u' mirror crc:'%u' dataLength:'%u' ", 
+				ereport(WARNING,
+					(errmsg("mirror failure, "
+							"could not match message body checksum between primary:'%u' and mirror:'%u' data length:'%u', "
+							"failover requested", 
 							fileRepMessageHeader->fileRepMessageBodyCrc, 
 							messageBodyLocal,
 							fileRepMessageHeader->fileRepOperationDescription.write.dataLength),
@@ -753,19 +757,7 @@ FileRepMirror_RunConsumer(void)
 				 FileRep_errdetail_Shmem(),
 				 FileRep_errcontext()));		
 	
-		/* NOTE - it will be removed */
-		if (fileRepMessageHeader->messageCount <= spare) {
-			elog(LOG, "ERROR(filerep): FileRepMirror_RunConsumer() spare:%d spareLocal:%d consume:%p insert:%p wraparound:%p pid:%d", 
-				 fileRepMessageHeader->messageCount,
-				 spare,
-				 fileRepShmem->positionConsume,
-				 fileRepShmem->positionInsert,
-				 fileRepShmem->positionWraparound,
-				 getpid()); 
-
-		} else {
-			spare = fileRepMessageHeader->messageCount;
-		}
+		spare = fileRepMessageHeader->messageCount;
 		
 		/* fileName is relative path to $PGDATA directory */
 		fileName = FileRep_GetFileName(
@@ -794,9 +786,10 @@ FileRepMirror_RunConsumer(void)
 												  SEEK_SET);
 							if (seekResult != fileRepMessageHeader->fileRepOperationDescription.open.logicalEof) {
 								status = STATUS_ERROR;
-								ereport(LOG,
+								ereport(WARNING,
 										(errcode_for_file_access(),
-										 errmsg("ERROR(filerep): could not seek in file to position:" INT64_FORMAT " : %m", 
+										 errmsg("could not seek to file position:" INT64_FORMAT " : %m, "
+												"failover requested",
 												fileRepMessageHeader->fileRepOperationDescription.open.logicalEof),
 										 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 														   fileRepMessageHeader->fileRepRelationType,
@@ -843,10 +836,11 @@ FileRepMirror_RunConsumer(void)
 
 							status = STATUS_ERROR;
 							
-							ereport(LOG,
+							ereport(WARNING,
 									(errcode_for_file_access(),
-									 errmsg("ERROR(filerep): could not open file position:" INT64_FORMAT " file flags:'%x' "
-											"file mode:'%o' : %m", 
+									 errmsg("could not open file position:" INT64_FORMAT " file flags:'%x' "
+											"file mode:'%o' : %m, "
+											"failover requested", 
 											fileRepMessageHeader->fileRepOperationDescription.open.logicalEof,
 											fileRepMessageHeader->fileRepOperationDescription.open.fileFlags,
 											fileRepMessageHeader->fileRepOperationDescription.open.fileMode),
@@ -881,9 +875,10 @@ FileRepMirror_RunConsumer(void)
 										  SEEK_SET);
 					if (seekResult != fileRepMessageHeader->fileRepOperationDescription.open.logicalEof) {
 						status = STATUS_ERROR;
-						ereport(LOG,
+						ereport(WARNING,
 								(errcode_for_file_access(),
-								 errmsg("ERROR(filerep): could not seek in file to position:" INT64_FORMAT " : %m", 
+								 errmsg("could not seek to file position:" INT64_FORMAT " : %m, "
+										"failover requested", 
 										fileRepMessageHeader->fileRepOperationDescription.open.logicalEof),
 								 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 												   fileRepMessageHeader->fileRepRelationType,
@@ -905,9 +900,10 @@ FileRepMirror_RunConsumer(void)
 							fileRepMessageHeader->fileRepOperationDescription.open.suppressError == TRUE && 
 							errno == ENOENT) 
 						{
-							ereport(LOG,
-									(errcode_for_file_access(),
-									 errmsg("LOG(filerep): could not open file \"%s\" suppressError==TRUE : %m", fileName)));
+							if (Debug_filerep_print)
+								ereport(LOG,
+										(errcode_for_file_access(),
+										 errmsg("LOG(filerep): could not open file \"%s\" suppressError==TRUE : %m", fileName)));
 							
 							errno = 0;
 							fd = PathNameOpenFile(
@@ -919,10 +915,10 @@ FileRepMirror_RunConsumer(void)
 						if (fd < 0 && 
 							fileRepMessageHeader->fileRepOperationDescription.open.suppressError == TRUE && 
 							errno == ENOENT) {
-							
-							ereport(LOG,
-									(errcode_for_file_access(),
-									 errmsg("LOG(filerep): could not open file \"%s\" suppressError==TRUE : %m", fileName)));
+							if (Debug_filerep_print)
+								ereport(LOG,
+										(errcode_for_file_access(),
+										 errmsg("LOG(filerep): could not open file \"%s\" suppressError==TRUE : %m", fileName)));
 							fd = 0;
 							break;							
 						}	
@@ -930,10 +926,11 @@ FileRepMirror_RunConsumer(void)
 						if (fd < 0) {
 							status = STATUS_ERROR;
 							
-							ereport(LOG,
+							ereport(WARNING,
 									(errcode_for_file_access(),
-									 errmsg("ERROR(filerep): could not open file position:" INT64_FORMAT " "
-											"file flags:'%x' file mode:'%o' : %m", 
+									 errmsg("could not open file position:" INT64_FORMAT " "
+											"file flags:'%x' file mode:'%o' : %m, "
+											"failover requested", 
 											fileRepMessageHeader->fileRepOperationDescription.open.logicalEof,
 											fileRepMessageHeader->fileRepOperationDescription.open.fileFlags,
 											fileRepMessageHeader->fileRepOperationDescription.open.fileMode),
@@ -991,10 +988,11 @@ FileRepMirror_RunConsumer(void)
 						if (fd < 0) {
 							status = STATUS_ERROR;
 
-							ereport(LOG,
+							ereport(WARNING,
 									(errcode_for_file_access(),
-									 errmsg("ERROR(filerep): could not open file position:" INT64_FORMAT " "
-											"file flags:'%x' file mode:'%o' : %m", 
+									 errmsg("could not open file position:" INT64_FORMAT " "
+											"file flags:'%x' file mode:'%o' : %m, "
+											"failover requested", 
 											fileRepMessageHeader->fileRepOperationDescription.open.logicalEof,
 											fileRepMessageHeader->fileRepOperationDescription.open.fileFlags,
 											fileRepMessageHeader->fileRepOperationDescription.open.fileMode),
@@ -1035,8 +1033,8 @@ FileRepMirror_RunConsumer(void)
 				if (fd < 0) {	
 					if (fileRepMessageHeader->fileRepRelationType == FileRepRelationTypeAppendOnly) {
 
-						ereport(LOG,
-								(errmsg("ERROR(filerep): could not find file descriptor"), 
+						ereport(WARNING,
+								(errmsg("could not find file descriptor, failover requested"), 
 								 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 												   fileRepMessageHeader->fileRepRelationType,
 												   fileRepMessageHeader->fileRepOperation),
@@ -1045,8 +1043,6 @@ FileRepMirror_RunConsumer(void)
 						status = STATUS_ERROR;
 						break;
 					}
-					
-					/*Assert(fileRepMessageHeader->fileRepRelationType == FileRepRelationTypeBufferPool);*/
 					
 					errno = 0;
 					fd = PathNameOpenFile(
@@ -1074,9 +1070,12 @@ FileRepMirror_RunConsumer(void)
 					
 					if (fd < 0) {
 						status = STATUS_ERROR;
-						ereport(LOG,
+						ereport(WARNING,
 								(errcode_for_file_access(),
-								 errmsg("ERROR(filerep): could not open file : %m"), 
+								 errmsg("could not open file file flags:'%x' file mode:'%o': %m, "
+										"failover requested",
+								 O_CREAT | O_RDWR | PG_BINARY,
+								 fileMode), 
 								 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 												   fileRepMessageHeader->fileRepRelationType,
 												   fileRepMessageHeader->fileRepOperation),
@@ -1117,9 +1116,11 @@ FileRepMirror_RunConsumer(void)
 					
 					if (status != STATUS_OK)
 					{
-						ereport(LOG,
+						ereport(WARNING,
 								(errcode_for_file_access(),
-								 errmsg("ERROR(filerep): could not fill zero into segment file for write : %m"), 
+								 errmsg("mirror failure, "
+										"could not fill zero blocks into segment file : %m, "
+										"failover requested"), 
 								 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 												   fileRepMessageHeader->fileRepRelationType,
 												   fileRepMessageHeader->fileRepOperation),
@@ -1135,9 +1136,10 @@ FileRepMirror_RunConsumer(void)
 										  SEEK_SET);
 					if (seekResult != fileRepMessageHeader->fileRepOperationDescription.write.offset) {
 						status = STATUS_ERROR;						
-						ereport(LOG,
+						ereport(WARNING,
 								(errcode_for_file_access(),
-								 errmsg("ERROR(filerep): could not seek in file to position:'%d' : %m", 
+								 errmsg("mirror failure, could not seek to file position:'%d' : %m, "
+										"failover requested", 
 										fileRepMessageHeader->fileRepOperationDescription.write.offset),
 								 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 												   fileRepMessageHeader->fileRepRelationType,
@@ -1823,8 +1825,8 @@ FileRepMirror_RunConsumer(void)
 							  fileRepMessageHeader->fileRepAckState) != STATUS_OK) {
 			
 				status = STATUS_ERROR;
-				ereport(LOG,
-						(errmsg("ERROR(filerep): could not queue ACK to be sent to primary "),
+				ereport(WARNING,
+						(errmsg("mirror failure, could not queue ACK message to be sent to primary, failover requested"),
 						 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 										   fileRepMessageHeader->fileRepRelationType,
 										   fileRepMessageHeader->fileRepOperation),

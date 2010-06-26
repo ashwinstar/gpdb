@@ -109,8 +109,12 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault during transition to InResync */
 	_("filerep_transition_to_sync"),
 		/* inject fault during transition to InSync */
+	_("filerep_transition_to_sync_before_checkpoint"),
+		/* inject fault during transition to InSync before checkpoint is taken */
 	_("checkpoint"),
 		/* inject fault before checkpoint is taken */
+	_("transaction_abort_after_distributed_prepared"),
+		/* inject fault after transaction is prepared */
 	_("transaction_commit_pass1_from_create_pending_to_created"),
 		/* inject fault after persistent state change is permanently stored during first pass */
 	_("transaction_commit_pass1_from_drop_in_memory_to_drop_pending"),
@@ -131,21 +135,23 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault after physical drop and before final persistent state change is permanently stored during second pass */
 	_("finish_prepared_transaction_commit_pass1_from_create_pending_to_created"),
 		/* inject fault after persistent state change is permanently stored during first pass */
-	_("finish_prepared_transaction_commit_pass1_from_drop_in_memory_to_drop_pending"),
-		/* inject fault after persistent state change is permanently stored during first pass */
-	_("finish_prepared_transaction_commit_pass1_from_aborting_create_needed_to_aborting_create"),
-		/* inject fault after persistent state change is permanently stored during first pass */
+	_("finish_prepared_transaction_commit_pass2_from_create_pending_to_created"),
+		/* inject fault after physical drop and before final persistent state change is permanently stored during second pass */
 	_("finish_prepared_transaction_abort_pass1_from_create_pending_to_aborting_create"),
 		/* inject fault after persistent state change is permanently stored during first pass */
-	_("finish_prepared_transaction_abort_pass1_from_aborting_create_needed_to_aborting_create"),
+	_("finish_prepared_transaction_abort_pass2_from_create_pending_to_aborting_create"),
+		/* inject fault after physical drop and before final persistent state change is permanently stored during second pass */
+	_("finish_prepared_transaction_commit_pass1_from_drop_in_memory_to_drop_pending"),
 		/* inject fault after persistent state change is permanently stored during first pass */
 	_("finish_prepared_transaction_commit_pass2_from_drop_in_memory_to_drop_pending"),
 		/* inject fault after physical drop and before final persistent state change is permanently stored during second pass */
-	_("finish_prepared_transaction_commit_pass2_from_aborting_create_needed_to_aborting_create"),
+	_("finish_prepared_transaction_commit_pass1_aborting_create_needed"),
+		/* inject fault after persistent state change is permanently stored during first pass */
+	_("finish_prepared_transaction_commit_pass2_aborting_create_needed"),
 		/* inject fault after physical drop and before final persistent state change is permanently stored during second pass */
-	_("finish_prepared_transaction_abort_pass2_from_create_pending_to_aborting_create"),
-		/* inject fault after physical drop and before final persistent state change is permanently stored during second pass */
-	_("finish_prepared_transaction_abort_pass2_from_aborting_create_needed_to_aborting_create"),
+	_("finish_prepared_transaction_abort_pass1_aborting_create_needed"),
+		/* inject fault after persistent state change is permanently stored during first pass */
+	_("finish_prepared_transaction_abort_pass2_aborting_create_needed"),
 		/* inject fault after physical drop and before final persistent state change is permanently stored during second pass */
 	_("not recognized"),
 };
@@ -156,7 +162,6 @@ FaultInjectorDDLEnumToString[] = {
 	_("create_database"),
 	_("drop_database"),
 	_("create_table"),
-	_("alter_table"),
 	_("drop_table"),
 	_("create_index"),
 	_("alter_index"),
@@ -278,14 +283,14 @@ FaultInjector_ShmemInit(void)
 	HASHCTL	hash_ctl;
 	bool	foundPtr;
 	
-	faultInjectorShmem = (FaultInjectorShmem_s *) ShmemInitStruct("Fault Injector",
+	faultInjectorShmem = (FaultInjectorShmem_s *) ShmemInitStruct("fault injector",
 																  sizeof(FaultInjectorShmem_s),
 																  &foundPtr);
 	
 	if (faultInjectorShmem == NULL) {
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 (errmsg("Not enough shared memory for Mirroring."))));
+				 (errmsg("not enough shared memory for fault injector"))));
 	}	
 	
 	if (! foundPtr) 
@@ -302,7 +307,7 @@ FaultInjector_ShmemInit(void)
 	hash_ctl.entrysize = sizeof(FaultInjectorEntry_s);
 	hash_ctl.hash = int32_hash;
 	
-	faultInjectorShmem->hash = ShmemInitHash("Fault Injector Hash",
+	faultInjectorShmem->hash = ShmemInitHash("fault injector hash",
 								   FAULTINJECTOR_MAX_SLOTS,
 								   FAULTINJECTOR_MAX_SLOTS,
 								   &hash_ctl,
@@ -311,7 +316,7 @@ FaultInjector_ShmemInit(void)
 	if (faultInjectorShmem->hash == NULL) {
 		ereport(ERROR, 
 				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 (errmsg("Not enough shared memory for Fault Injector."))));
+				 (errmsg("not enough shared memory for fault injector"))));
 	}
 	
 	return;						  
@@ -331,10 +336,7 @@ FaultInjector_InjectFaultIfSet(
 	int						ii = 0;
 	
 	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
-	
-	if (fileRepRole != FileRepPrimaryRole && fileRepRole != FileRepMirrorRole)
-		return FALSE;
-		
+			
 	LockAcquire();
 	
 	entryLocal = FaultInjector_LookupHashEntry(identifier);
@@ -370,19 +372,16 @@ FaultInjector_InjectFaultIfSet(
 		return FALSE;
 	}
 
-	/* skip checkpoint forever, required for crash recovery testing */
-	if (entryLocal->faultInjectorType == FaultInjectorTypeSkip &&
-		entryLocal->faultInjectorIdentifier == Checkpoint)
-	{
-		return (entryLocal->faultInjectorType == FaultInjectorTypeSkip ? TRUE : FALSE);
-	}
-
 	/* Update the injection fault entry in hash table */
-	
-	if (entryLocal->occurrence > 1) {
-		entryLocal->occurrence--;
-	} else {
-		entryLocal->faultInjectorState = FaultInjectorStateTriggered;
+	if (entryLocal->occurrence != FILEREP_UNDEFINED)
+	{
+		if (entryLocal->occurrence > 1) 
+		{
+			entryLocal->occurrence--;
+			return FALSE;
+		} 
+		else 
+			entryLocal->faultInjectorState = FaultInjectorStateTriggered;
 	}
 	
 	FaultInjector_UpdateHashEntry(entryLocal);	
@@ -396,7 +395,7 @@ FaultInjector_InjectFaultIfSet(
 			break;
 		case FaultInjectorTypeSleep:
 			ereport(LOG, 
-					(errmsg("fault is injected identifier:'%s' type:'%s' ",
+					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
 							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
 							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));	
 			
@@ -405,7 +404,7 @@ FaultInjector_InjectFaultIfSet(
 		case FaultInjectorTypeFault:
 			FileRepSubProcess_SetState(FileRepStateFault);
 			ereport(LOG, 
-					(errmsg("fault is injected identifier:'%s' type:'%s' ",
+					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
 							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
 							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));	
 			
@@ -416,7 +415,7 @@ FaultInjector_InjectFaultIfSet(
 			FaultInjector_UpdateHashEntry(entryLocal);	
 			
 			ereport(FATAL, 
-					(errmsg("fault is injected identifier:'%s' type:'%s' ",
+					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
 							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
 							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));	
 
@@ -427,7 +426,7 @@ FaultInjector_InjectFaultIfSet(
 			FaultInjector_UpdateHashEntry(entryLocal);	
 			
 			ereport(PANIC, 
-					(errmsg("fault is injected identifier:'%s' type:'%s' ",
+					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
 							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
 							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));	
 
@@ -438,13 +437,13 @@ FaultInjector_InjectFaultIfSet(
 			FaultInjector_UpdateHashEntry(entryLocal);	
 			
 			ereport(ERROR, 
-					(errmsg("fault is injected identifier:'%s' type:'%s' ",
+					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
 							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
 							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));	
 			break;
 		case FaultInjectorTypeInfiniteLoop:
 			ereport(LOG, 
-					(errmsg("fault is injected identifier:'%s' type:'%s' ",
+					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
 							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
 							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));	
 			for (ii=0; ii < 36; ii++)
@@ -458,7 +457,7 @@ FaultInjector_InjectFaultIfSet(
 			FaultInjectorEntry_s	*entry;
 			
 			ereport(LOG, 
-					(errmsg("fault is injected identifier:'%s' type:'%s' ",
+					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
 							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
 							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));	
 			
@@ -469,13 +468,18 @@ FaultInjector_InjectFaultIfSet(
 			}
 
 			ereport(LOG, 
-					(errmsg("fault is injected identifier:'%s' type:'%s'  ",
+					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
 							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
 							FaultInjectorTypeEnumToString[entry->faultInjectorType])));				
 			break;
 		}
 		case FaultInjectorTypeSkip:
+			ereport(LOG, 
+					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
+							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
+							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));							
 			break;
+			
 		case FaultInjectorTypeReset:
 		case FaultInjectorTypeStatus:
 
@@ -486,7 +490,10 @@ FaultInjector_InjectFaultIfSet(
 			break;
 	}
 		
-	entryLocal->faultInjectorState = FaultInjectorStateCompleted;
+	if (entryLocal->occurrence != FILEREP_UNDEFINED)
+	{
+		entryLocal->faultInjectorState = FaultInjectorStateCompleted;
+	}
 
 	FaultInjector_UpdateHashEntry(entryLocal);	
 	
@@ -601,10 +608,11 @@ FaultInjector_NewHashEntry(
 	if ((faultInjectorShmem->faultInjectorSlots + 1) >= FAULTINJECTOR_MAX_SLOTS) {
 		LockRelease();
 		status = STATUS_ERROR;
-		ereport(LOG,
-				(errmsg("ERROR(fault injector): could not insert fault injection entry into table, no slots"
-						"identifier:'%s' ",
-						FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier])));
+		ereport(WARNING,
+				(errmsg("could not insert fault injection, no slots available"
+						"fault name:'%s' fault type:'%s' ",
+						FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier],
+						FaultInjectorTypeEnumToString[entry->faultInjectorType])));
 		snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
 				 "could not insert fault injection, max slots:'%d' reached",
 				 FAULTINJECTOR_MAX_SLOTS);
@@ -612,28 +620,53 @@ FaultInjector_NewHashEntry(
 		goto exit;
 	}
 	
-	if (entry->faultInjectorType == FaultInjectorTypeSkip && 
-		entry->faultInjectorIdentifier != Checkpoint)
+	if (entry->faultInjectorType == FaultInjectorTypeSkip)
 	{
-		LockRelease();
-		status = STATUS_ERROR;
-		ereport(LOG,
-				(errmsg("ERROR(fault injector): could not insert fault injection entry into table, fault type not supported"
-						"identifier:'%s' type:'%s' ",
-						FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier],
-						FaultInjectorTypeEnumToString[entry->faultInjectorType])));
-		snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
-				 "could not insert fault injection, fault type not supported");
-		
-		goto exit;
+		switch (entry->faultInjectorIdentifier)
+		{
+			case Checkpoint:
+			case FinishPreparedTransactionCommitPass1FromCreatePendingToCreated:
+			case FinishPreparedTransactionCommitPass2FromCreatePendingToCreated:
+				
+			case FinishPreparedTransactionCommitPass1FromDropInMemoryToDropPending:
+			case FinishPreparedTransactionCommitPass2FromDropInMemoryToDropPending:
+				
+			case FinishPreparedTransactionCommitPass1AbortingCreateNeeded:
+			case FinishPreparedTransactionCommitPass2AbortingCreateNeeded:
+
+			case FinishPreparedTransactionAbortPass1FromCreatePendingToAbortingCreate:
+			case FinishPreparedTransactionAbortPass2FromCreatePendingToAbortingCreate:
+				
+			case FinishPreparedTransactionAbortPass1AbortingCreateNeeded:
+			case FinishPreparedTransactionAbortPass2AbortingCreateNeeded:
+			
+				break;
+			default:
+				
+				LockRelease();
+				status = STATUS_ERROR;
+				ereport(WARNING,
+						(errmsg("could not insert fault injection, fault type not supported"
+								"fault name:'%s' fault type:'%s' ",
+								FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier],
+								FaultInjectorTypeEnumToString[entry->faultInjectorType])));
+				snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
+						 "could not insert fault injection, fault type not supported");
+				
+				goto exit;
+		}
 	}
 	
+	/* check role */
+	
 	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
+	
 	switch (entry->faultInjectorIdentifier)
 	{
 		case FileRepResync:
 		case FileRepTransitionToInResync:
 		case FileRepTransitionToInSync:
+		case FileRepTransitionToInSyncBeforeCheckpoint:
 		case Checkpoint:
 		case TransactionCommitPass1FromCreatePendingToCreated:
 		case TransactionCommitPass1FromDropInMemoryToDropPending:
@@ -644,45 +677,92 @@ FaultInjector_NewHashEntry(
 		case TransactionCommitPass2FromAbortingCreateNeededToAbortingCreate:
 		case TransactionAbortPass2FromCreatePendingToAbortingCreate:
 		case TransactionAbortPass2FromAbortingCreateNeededToAbortingCreate:
-		case FinishPreparedTransactionCommitPass1FromCreatePendingToCreated:
-		case FinishPreparedTransactionCommitPass1FromDropInMemoryToDropPending:
-		case FinishPreparedTransactionCommitPass1FromAbortingCreateNeededToAbortingCreate:
-		case FinishPreparedTransactionAbortPass1FromCreatePendingToAbortingCreate:
-		case FinishPreparedTransactionAbortPass1FromAbortingCreateNeededToAbortingCreate:
-		case FinishPreparedTransactionCommitPass2FromDropInMemoryToDropPending:
-		case FinishPreparedTransactionCommitPass2FromAbortingCreateNeededToAbortingCreate:
-		case FinishPreparedTransactionAbortPass2FromCreatePendingToAbortingCreate:
-		case FinishPreparedTransactionAbortPass2FromAbortingCreateNeededToAbortingCreate:
 			
-			if (fileRepRole == FileRepMirrorRole)
+		case FinishPreparedTransactionCommitPass1FromCreatePendingToCreated:
+		case FinishPreparedTransactionCommitPass2FromCreatePendingToCreated:
+			
+		case FinishPreparedTransactionCommitPass1FromDropInMemoryToDropPending:
+		case FinishPreparedTransactionCommitPass2FromDropInMemoryToDropPending:
+			
+		case FinishPreparedTransactionCommitPass1AbortingCreateNeeded:
+		case FinishPreparedTransactionCommitPass2AbortingCreateNeeded:
+			
+		case FinishPreparedTransactionAbortPass1FromCreatePendingToAbortingCreate:
+		case FinishPreparedTransactionAbortPass2FromCreatePendingToAbortingCreate:
+			
+		case FinishPreparedTransactionAbortPass1AbortingCreateNeeded:
+		case FinishPreparedTransactionAbortPass2AbortingCreateNeeded:
+			
+			if (fileRepRole != FileRepPrimaryRole)
 			{
 				LockRelease();
 				status = STATUS_ERROR;
-				ereport(LOG,
-						(errmsg("ERROR(fault injector): could not insert fault injection entry into table, segment not in Primary role"
-								"identifier:'%s' ",
-								FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier])));
+				ereport(WARNING,
+						(errmsg("could not insert fault injection entry into table, segment not in primary role"
+								"fault name:'%s' fault type:'%s' ",
+								FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier],
+								FaultInjectorTypeEnumToString[entry->faultInjectorType])));
 				snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
-						 "could not insert fault injection, segment not in Primary role");
+						 "could not insert fault injection, segment not in primary role");
 				
 				goto exit;
 			}			
 			break;
-						
+			
+		case FileRepConsumer:
+		case FileRepSender:
+		case FileRepReceiver:
+		case FileRepFlush:
+			
+			if (fileRepRole != FileRepPrimaryRole && fileRepRole != FileRepMirrorRole)
+			{
+				LockRelease();
+				status = STATUS_ERROR;
+				ereport(WARNING,
+						(errmsg("could not insert fault injection entry into table, "
+								"segment not in primary or mirror role, "
+								"fault name:'%s' fault type:'%s' ",
+								FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier],
+								FaultInjectorTypeEnumToString[entry->faultInjectorType])));
+				snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
+						 "could not insert fault injection, segment not in primary or mirror role");
+				
+				goto exit;
+			}			
+			break;
+			
+		case TransactionAbortAfterDistributedPrepared:
+			
+			if (fileRepRole != FileRepNoRoleConfigured)
+			{
+				LockRelease();
+				status = STATUS_ERROR;
+				ereport(WARNING,
+						(errmsg("could not insert fault injection entry into table, "
+								"segment not in master role, "
+								"fault name:'%s' fault type:'%s' ",
+								FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier],
+								FaultInjectorTypeEnumToString[entry->faultInjectorType])));
+				snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
+						 "could not insert fault injection, segment not in master role");
+				
+				goto exit;
+			}			
+			break;
+			
 		default:
 			break;
 	}
-	
-
 	entryLocal = FaultInjector_InsertHashEntry(entry->faultInjectorIdentifier, &exists);
 		
 	if (entryLocal == NULL) {
 		LockRelease();
 		status = STATUS_ERROR;
-		ereport(LOG,
-				(errmsg("ERROR(fault injector): could not insert fault injection entry into table, no memory"
-						"identifier:'%s' ",
-						FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier])));
+		ereport(WARNING,
+				(errmsg("could not insert fault injection entry into table, no memory, "
+						"fault name:'%s' fault type:'%s' ",
+						FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier],
+						FaultInjectorTypeEnumToString[entry->faultInjectorType])));
 		snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
 				 "could not insert fault injection, no memory");
 		
@@ -692,10 +772,12 @@ FaultInjector_NewHashEntry(
 	if (exists) {
 		LockRelease();
 		status = STATUS_ERROR;
-		ereport(LOG,
-				(errmsg("ERROR(fault injector): could not insert fault injection entry into table, entry already exists "
-						"identifier:'%s' ",
-						FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier])));
+		ereport(WARNING,
+				(errmsg("could not insert fault injection entry into table, "
+						"entry already exists, "
+						"fault name:'%s' fault type:'%s' ",
+						FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier],
+						FaultInjectorTypeEnumToString[entry->faultInjectorType])));
 		snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
 				 "could not insert fault injection, entry already exists");
 		
@@ -706,7 +788,15 @@ FaultInjector_NewHashEntry(
 	
 	entryLocal->sleepTime = entry->sleepTime;
 	entryLocal->ddlStatement = entry->ddlStatement;
-	entryLocal->occurrence = entry->occurrence;
+	
+	if (entry->occurrence != 0)
+	{
+		entryLocal->occurrence = entry->occurrence;
+	}
+	else 
+	{
+		entryLocal->occurrence = FILEREP_UNDEFINED;
+	}
 	strcpy(entryLocal->databaseName, entry->databaseName);
 	strcpy(entryLocal->tableName, entry->tableName);
 		
@@ -746,10 +836,12 @@ FaultInjector_UpdateHashEntry(
 	if (!exists) {
 		LockRelease();
 		status = STATUS_ERROR;
-		ereport(LOG,
-				(errmsg("ERROR(fault injector): could not update fault injection hash entry with fault injection status, no entry found "
-						"identifier:'%s' ",
-						FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier])));
+		ereport(WARNING,
+				(errmsg("could not update fault injection hash entry with fault injection status, "
+						"no entry found, "
+						"fault name:'%s' fault type:'%s' ",
+						FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier],
+						FaultInjectorTypeEnumToString[entry->faultInjectorType])));
 		goto exit;
 	}
 	
@@ -789,19 +881,6 @@ FaultInjector_SetFaultInjection(
 	
 	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
 
-	if (fileRepRole != FileRepPrimaryRole && fileRepRole != FileRepMirrorRole)
-	{
-		status = STATUS_ERROR;
-		ereport(LOG,
-				(errmsg("ERROR(fault injector): could not insert fault injection entry into table, segment not in Primary or Mirror role"
-						"identifier:'%s' ",
-						FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier])));
-		snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
-				 "could not insert fault injection, segment not in Primary or Mirror role");
-		
-		return status;
-	}
-	
 	switch (entry->faultInjectorType) {
 		case FaultInjectorTypeReset:
 		{
@@ -858,9 +937,9 @@ FaultInjector_SetFaultInjection(
 			
 			while ((entryLocal = (FaultInjectorEntry_s *) hash_seq_search(&hash_status)) != NULL) {
 				ereport(LOG,
-					(errmsg("LOG(fault injector): "
+					(errmsg("fault injector status: "
 							"fault name:'%s' "
-							"type:'%s' "
+							"fault type:'%s' "
 							"ddl statement:'%s' "
 							"database name:'%s' "
 							"table name:'%s' "
@@ -881,7 +960,7 @@ FaultInjector_SetFaultInjection(
 						snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
 								 "%s \n"
 								 "fault name:'%s' "
-								 "type:'%s' "
+								 "fault type:'%s' "
 								 "ddl statement:'%s' "
 								 "database name:'%s' "
 								 "table name:'%s' "
@@ -975,9 +1054,10 @@ exit:
 	LockRelease();						
 	
 	if ((isCompleted == TRUE) && (retval == FALSE)) {
-		ereport(LOG,
-				(errmsg("ERROR(fault injector): could not complete fault injection identifier:'%s' ",
-						FaultInjectorIdentifierEnumToString[identifier])));
+		ereport(WARNING,
+				(errmsg("could not complete fault injection, fault name:'%s' fault type:'%s' ",
+						FaultInjectorIdentifierEnumToString[identifier],
+						FaultInjectorTypeEnumToString[entry->faultInjectorType])));
 	}
 	return isCompleted;
 }

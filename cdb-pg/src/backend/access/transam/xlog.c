@@ -7669,12 +7669,16 @@ CreateCheckPoint(bool shutdown, bool force)
 	int			nsegsrecycled = 0;
 
 #ifdef FAULT_INJECTOR	
-	if (FaultInjector_InjectFaultIfSet(
-								   Checkpoint, 
-								   DDLNotSpecified,
-								   "" /* databaseName */,
-								   "" /* tableName */) == TRUE)
-		return;  // skip checkpoint
+	/* During resync checkpoint has to complete otherwise segment cannot transition into Sync state */
+	if (! FileRepResync_IsTransitionFromResyncToInSync())
+	{
+		if (FaultInjector_InjectFaultIfSet(
+										   Checkpoint, 
+										   DDLNotSpecified,
+										   "" /* databaseName */,
+										   "" /* tableName */) == TRUE)
+			return;  // skip checkpoint
+	}
 #endif	
 	
 	/*
@@ -7691,8 +7695,16 @@ CreateCheckPoint(bool shutdown, bool force)
 		
 		/* database transitions to suspended state, IO activity on the segment is suspended */
 		primaryMirrorSetIOSuspended(TRUE);
+		
+#ifdef FAULT_INJECTOR	
+		FaultInjector_InjectFaultIfSet(
+									   FileRepTransitionToInSyncBeforeCheckpoint, 
+									   DDLNotSpecified,
+									   "",	// databaseName
+									   ""); // tableName
+#endif	
 	}
-	
+		
 	/*
 	 * Use a critical section to force system panic if we have trouble.
 	 */

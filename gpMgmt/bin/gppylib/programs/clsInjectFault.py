@@ -121,11 +121,13 @@ class GpInjectFaultProgram:
         #
         # prune gpArray according to filter settings
         #
+	# have to be able to inject fault also on master
         segments = [seg for seg in segments if seg.isSegmentQE()]
         if targetHost is not None and targetHost != "ALL":
             segments = [seg for seg in segments if seg.getSegmentHostName() == targetHost]
 
         if targetDbId is not None:
+	    segments = conf.loadSystemConfig().getDbList()
             dbId = int(targetDbId)
             segments = [seg for seg in segments if seg.getSegmentDbId() == dbId]
 
@@ -314,7 +316,9 @@ class GpInjectFaultProgram:
 			      "filerep_resync (inject fault while in resync), " \
 			      "filerep_transition_to_resync (inject fault during transition to InResync), " \
 			      "filerep_transition_to_sync (inject fault during transition to InSync), " \
+			      "filerep_transition_to_sync_before_checkpoint (inject fault during transition to InSync before checkpoint is created), " \
 			      "checkpoint (inject fault before checkpoint is taken), " \
+			      "transaction_abort_after_distributed_prepared (abort prepared transaction), " \
 			      "transaction_commit_pass1_from_create_pending_to_created, " \
 			      "transaction_commit_pass1_from_drop_in_memory_to_drop_pending, " \
 			      "transaction_commit_pass1_from_aborting_create_needed_to_aborting_create, " \
@@ -325,14 +329,15 @@ class GpInjectFaultProgram:
 			      "transaction_abort_pass2_from_create_pending_to_aborting_create, " \
 			      "transaction_abort_pass2_from_aborting_create_needed_to_aborting_create, " \
 			      "finish_prepared_transaction_commit_pass1_from_create_pending_to_created, " \
-			      "finish_prepared_transaction_commit_pass1_from_drop_in_memory_to_drop_pending, " \
-			      "finish_prepared_transaction_commit_pass1_from_aborting_create_needed_to_aborting_create, " \
+			      "finish_prepared_transaction_commit_pass2_from_create_pending_to_created, " \
 			      "finish_prepared_transaction_abort_pass1_from_create_pending_to_aborting_create, " \
-			      "finish_prepared_transaction_abort_pass1_from_aborting_create_needed_to_aborting_create, " \
-			      "finish_prepared_transaction_commit_pass2_from_drop_in_memory_to_drop_pending, " \
-			      "finish_prepared_transaction_commit_pass2_from_aborting_create_needed_to_aborting_create, " \
 			      "finish_prepared_transaction_abort_pass2_from_create_pending_to_aborting_create, " \
-			      "finish_prepared_transaction_abort_pass2_from_aborting_create_needed_to_aborting_create, " \
+			      "finish_prepared_transaction_commit_pass1_from_drop_in_memory_to_drop_pending, " \
+			      "finish_prepared_transaction_commit_pass2_from_drop_in_memory_to_drop_pending, " \
+			      "finish_prepared_transaction_commit_pass1_aborting_create_needed, " \
+			      "finish_prepared_transaction_commit_pass2_aborting_create_needed, " \
+			      "finish_prepared_transaction_abort_pass1_aborting_create_needed, " \
+			      "finish_prepared_transaction_abort_pass2_aborting_create_needed, " \
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
                          metavar="ddlStatement",
@@ -346,8 +351,9 @@ class GpInjectFaultProgram:
                          help="The table name on which fault should be set and triggered.")
         addTo.add_option("-o", "--occurrence", dest="numOccurrences", type="int", default=1,
                          metavar="numOccurrences",
-                         help="The number of occurrence of the DDL statement with the database name" \
-                         " and the table name before fault is triggered.  Defaults to %default. Max is 1000. ")
+                         help="The number of occurrence of the DDL statement with the database name " \
+                         "and the table name before fault is triggered.  Defaults to %default. Max is 1000. " \
+			 "Fault is triggered always if set to '0'. ")
 
         parser.set_defaults()
         return parser
