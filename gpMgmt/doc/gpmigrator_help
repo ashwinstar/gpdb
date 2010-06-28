@@ -9,7 +9,7 @@ SYNOPSIS
 gpmigrator <old_GPHOME_path> <new_GPHOME_path> 
            --replication_port_base <port> 
            --mirror_replication_port_base <port>  
-           --mirror-mode {redundant | single}
+           --mirror_mode {redundant | single}
            --gpperfmonhome <path>
            [--nosnapshot] [-d <master_data_directory>] 
            [-l <logfile_directory>] [-q] [--debug] [-R]
@@ -145,7 +145,7 @@ OPTIONS
  port assignments on a segment host.
 
 
---mirror-mode {redundant | single}
+--mirror_mode {redundant | single}
 
  Required if upgrading a system with mirrors.
  Specifies how to upgrade mirror segments to the new 4.0 format. 
