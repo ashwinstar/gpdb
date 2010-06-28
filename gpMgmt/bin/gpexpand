@@ -737,9 +737,8 @@ class SegmentTemplate:
         """Configures new segments.  This includes modifying the postgresql.conf file
         and setting up the gp_id table"""
 
-        self.logger.info('Configuring new segments')
-        new_segment_info = ConfigureNewSegment.buildSegmentInfoForNewSegment(self.gparray.getExpansionSegDbList())
-
+        self.logger.info('Configuring new segments (primary)')
+        new_segment_info = ConfigureNewSegment.buildSegmentInfoForNewSegment(self.gparray.getExpansionSegDbList(), primaryMirror = 'primary')
         for host in iter(new_segment_info):
             segCfgCmd = ConfigureNewSegment('gpexpand configure new segments', new_segment_info[host],
                                            tarFile=self.schema_tar_file, newSegments=True,
@@ -750,6 +749,18 @@ class SegmentTemplate:
         self.pool.join()
         self.pool.check_results()
         
+        self.logger.info('Configuring new segments (mirror)')
+        new_segment_info = ConfigureNewSegment.buildSegmentInfoForNewSegment(self.gparray.getExpansionSegDbList(), primaryMirror = 'mirror')
+        for host in iter(new_segment_info):
+            segCfgCmd = ConfigureNewSegment('gpexpand configure new segments', new_segment_info[host],
+                                           tarFile=self.schema_tar_file, newSegments=True,
+                                           verbose=gplog.logging_is_verbose(), batchSize=options.batch_size,
+                                           ctxt=REMOTE, remoteHost=host, validationOnly = True)
+            self.pool.addCommand(segCfgCmd)
+
+        self.pool.join()
+        self.pool.check_results()
+                
         
     def _configure_new_segment_filespaces(self):
         """
@@ -762,6 +773,8 @@ class SegmentTemplate:
         
         """ Connect to the back end of each new segment directly, and call the filespace setup function. """
         for seg in newSegments:
+            if seg.isSegmentMirror() == True:
+               continue
             name = "gpexpand prep new segment filespaces. host = %s, sysdatadir = %s" % (seg.getSegmentHostName(), seg.getSegmentDataDirectory())
             segFilespaces = seg.getSegmentFilespaces()
             filespaceNames = []
@@ -804,6 +817,8 @@ class SegmentTemplate:
         each segment now since filespaces may contain the databases. 
         """
         for seg in newSegments:
+            if seg.isSegmentMirror() == True:
+               continue
             """ Start all the new segments in utilty mode. """             
             segStartCmd = SegmentStart( name = "Starting new segment dbid %s on host %s." % (str(seg.getSegmentDbId()), seg.getSegmentHostName())
                                       , gpdb = seg
@@ -827,12 +842,14 @@ class SegmentTemplate:
           Connect to each database in the new segments, and clean up the catalog tables.
         """
         for seg in newSegments:
+            if seg.isSegmentMirror() == True:
+               continue
             for database in databases:
-               if database in ['template0']:
+               if database[0] == 'template0':
                   continue
                dburl = dbconn.DbURL( hostname = seg.getSegmentHostName()
                                    , port = seg.getSegmentPort()
-                                   , dbname = database
+                                   , dbname = database[0]
                                    )
                name = "gpexpand execute segment cleanup commands. seg dbid = %s, command = %s" % (seg.getSegmentDbId(), str(statements))
                execSQLCmd = ExecuteSQLStatementsCommand( name = name
@@ -841,13 +858,16 @@ class SegmentTemplate:
                                                        )
                self.pool.addCommand(execSQLCmd)
             self.pool.join()
-            ### need to implement self.pool.check_results(). Call getCompletedItems to clear the queue for now.
+            ### need to fix self.pool.check_results(). Call getCompletedItems to clear the queue for now.
+            self.pool.check_results()
             self.pool.getCompletedItems()
         
         """
         Stop all the new segments.
         """
         for seg in newSegments:
+            if seg.isSegmentMirror() == True:
+               continue
             segStopCmd = SegmentStop( name = "Stopping new segment dbid %s on host %s." % (str(seg.getSegmentDbId), seg.getSegmentHostName())
                                     , dataDir = seg.getSegmentDataDirectory()
                                     , mode = 'smart'
@@ -952,13 +972,12 @@ class SegmentTemplate:
         if removeDataDirs:
             for seg in gparray.getExpansionSegDbList():
                 hostname = seg.getSegmentHostName()
-                datadir = seg.getSegmentDataDirectory()
-                
-                rmCmd = RemoveFiles('gpexpand remove new segment data directory: %s:%s' % (hostname, datadir),
-                                    datadir, ctxt=REMOTE, remoteHost=hostname)
-
-                pool.addCommand(rmCmd)
-
+                filespaces = seg.getSegmentFilespaces()
+                for oid in filespaces:
+                    datadir = filespaces[oid]
+                    rmCmd = RemoveFiles('gpexpand remove new segment data directory: %s:%s' % (hostname, datadir),
+                                        datadir, ctxt=REMOTE, remoteHost=hostname)
+                    pool.addCommand(rmCmd)
         pool.join()
         pool.check_results()
 
@@ -1299,7 +1318,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         """Writes a gpexpand input file based on expansion segments
         added to gparray by the gpexpand interview"""
         outputfile = 'gpexpand_inputfile_' + strftime("%Y%m%d_%H%M%S")
-        ### outputfile = "/Users/ksell/temp/junkMPP6969/gpexpand_inputfile_1"
+        ###outputfile = "/Users/ksell/temp/junkMPP6969/gpexpand_inputfile_1"
         outfile = open(outputfile, 'w')
 
         logger.info("Generating input file...")
@@ -1363,10 +1382,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         
         return outputfile
     
-   #------------------------------------------------------------------------
-    def fixupNewSegmentFilespaces(self, ):
-        """ Comment """
-
+    
     def addNewSegments(self, inputFileEntryList):
         for seg in inputFileEntryList:
             self.gparray.addExpansionSeg( content = int(seg.contentId)
@@ -1397,7 +1413,6 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         if options.filename:
             inputFilename = options.filename
         fsInputFilename = inputFilename + FILE_SPACES_INPUT_FILENAME_SUFFIX
-
         fsOidList = []
         fsDictionary = {}
         f = None
@@ -1407,6 +1422,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
            exists = existsCmd.filedir_exists()
            if exists == True:
               f = open(fsInputFilename, 'r')
+              
            lineNumber = 1
            for l in f:
                if l.strip().startswith('#') or l.strip() == '':
@@ -1551,6 +1567,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         KAS Not to self. I think the following was supposed to update the gp_id table in the old segments,
         but ConfigureNewSegment doesn't do that any more, I think?
         """
+        """
         for host in iter(orig_segment_info):
             segCfgCmd = ConfigureNewSegment('gpexpand configure new segments', orig_segment_info[host],
                                            verbose=gplog.logging_is_verbose(), batchSize=options.batch_size,
@@ -1563,7 +1580,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             self.pool.check_results()
         except ExecutionError, msg:
             raise ExpansionError('Failed to configure original segments: %s', msg)
-
+        """
         if self.segTemplate:
             self.segTemplate.cleanup()
 
@@ -1638,6 +1655,13 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         startCmd.run(validateAfter=True)
 
         self.logger.info('Updating gp_segment_configuration')
+        self.logger.debug("Adding the following filespace entries")
+        for seg in self.gparray.getExpansionSegDbList():
+            segFilespaces = seg.getSegmentFilespaces()
+            for fsOid in segFilespaces:
+                fsDatadir = segFilespaces[fsOid]
+                self.logger.debug("  dbid = %s, oid = %s, datadir = %s" % (str(seg.dbid), str(fsOid), str(fsDatadir)))
+
         self.conn = dbconn.connect(self.dburl, utility=True, encoding='UTF8')
         catalog.GpConfigurationTable.addRows(self.conn, self.gparray.getExpansionSegDbList())
         self.logger.info('Updating gp_id on master')
@@ -1677,6 +1701,10 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         dbconn.execSQL(restore_conn, 'UPDATE gp_id SET numsegments=%s' % originalPrimaryCount)
         restore_conn.commit()
         restore_conn.close()
+
+    def sync_new_mirrors(self):
+        """ This method will execute gprecoverseg so that all new segments sync with their mirrors."""
+        
 
     def start_prepare(self):
         """Inserts into gpexpand.status that expansion preparation has started."""
@@ -2268,17 +2296,35 @@ class ExecuteSQLStatementsCommand(SQLCommand):
         self.url = url
         self.sqlCommandList = sqlCommandList
         self.conn = None
+        self.error = None
         
         SQLCommand.__init__(self, name)
         pass
     
     def run(self, validateAfter = False):
+        statement = None
+        self.results = CommandResult(rc = 0
+                                    , stdout = ""
+                                    , stderr = ""
+                                    , completed = True
+                                    , halt = False
+                                    )
+
         try:
-            self.conn = dbconn.connect(self.url, encoding='UTF8')
+            self.conn = dbconn.connect(self.url, utility=True, encoding='UTF8')
             for statement in self.sqlCommandList:
-                dbconn.execSql(self.conn, statement)
+                dbconn.execSQL(self.conn, statement)
         except Exception, e:
             logger.error("Exception in ExecuteSQLStatements. URL = %s" % str(self.url))
+            logger.error("  Statement = %s" % str(statement))
+            logger.error("  Exception = %s" % str(e))
+            self.error = str(e)
+            self.results = CommandResult( rc = 1
+                                        , stdout = ""
+                                        , stderr = str(e)
+                                        , completed = False
+                                        , halt = True
+                                        )
         finally:
             if self.conn != None:
                self.conn.close()
@@ -2287,10 +2333,13 @@ class ExecuteSQLStatementsCommand(SQLCommand):
         raise ExecutionError("TODO:  must implement")
 
     def get_results(self):
-        raise ExecutionError("TODO:  must implement")
+        return self.results
 
     def was_successful(self):
-        raise ExecutionError("TODO:  must implement")
+        if self.error != None:
+          return False
+        else:
+          return True
 
     def validate(self):
         raise ExecutionError("TODO:  must implement")
@@ -2685,6 +2734,7 @@ try:
         gp_expand.add_segments()
         gp_expand.update_original_segments()
         gp_expand.update_master()
+        gp_expand.sync_new_mirrors()
         gp_expand.setup_schema()
         gp_expand.prepare_schema()
         logger.info('Starting Greenplum Database')
