@@ -22,6 +22,7 @@
 #include "cdb/cdbfilerepresyncworker.h"
 #include "cdb/cdbfilerepprimary.h"
 #include "cdb/cdbpersistenttablespace.h"
+#include "cdb/cdbpersistentstore.h"
 #include "storage/bufmgr.h"
 #include "storage/fd.h"
 #include "storage/smgr.h"
@@ -103,6 +104,11 @@ static void MirroredBufferPool_SetUpMirrorAccess(
 	}
 
 	if (Debug_persistent_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+
+		SUPPRESS_ERRCONTEXT_PUSH();
+
 		elog(Debug_persistent_print_level, 
 			 "MirroredBufferPool_SetUpMirrorAccess %u/%u/%u, segment file #%d, relation name '%s': primaryOnly %s, mirrorOnly %s, mirror mode %s, mirror data loss occurred %s",
 			 relFileNode->spcNode,
@@ -114,6 +120,9 @@ static void MirroredBufferPool_SetUpMirrorAccess(
 			 (mirrorOnly ? "true" : "false"),
 			 StorageManagerMirrorMode_Name(*mirrorMode),
 			 (*mirrorDataLossOccurred ? "true" : "false"));
+
+		SUPPRESS_ERRCONTEXT_POP();
+	}
 
 }
 
@@ -202,6 +211,11 @@ static void MirroredBufferPool_DoOpen(
 	if (Debug_persistent_print
 		&&
 		(create || mirrorOnly || copyToMirror))
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+
+		SUPPRESS_ERRCONTEXT_PUSH();
+
 		elog(Debug_persistent_print_level, 
 			 "MirroredBufferPool_DoOpen: Special open %u/%u/%u --> create %s, mirrorOnly %s, copyToMirror %s",
 			 relFileNode->spcNode,
@@ -210,6 +224,9 @@ static void MirroredBufferPool_DoOpen(
 			 (create ? "true" : "false"),
 			 (mirrorOnly ? "true" : "false"),
 			 (copyToMirror ? "true" : "false"));
+
+		SUPPRESS_ERRCONTEXT_POP();
+	}
 	
 	MemSet(open, 0, sizeof(MirroredBufferPoolOpen));
 	open->primaryFile = -1;

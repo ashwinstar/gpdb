@@ -26,6 +26,7 @@
 #include "storage/lwlock.h"
 #include "utils/guc.h"
 #include "cdb/cdbpersistentfilesysobj.h"
+#include "cdb/cdbpersistentstore.h"
 
 static void MirroredAppendOnly_SetUpMirrorAccess(
 	RelFileNode					*relFileNode,
@@ -107,6 +108,11 @@ static void MirroredAppendOnly_SetUpMirrorAccess(
 	}
 	
 	if (Debug_persistent_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+
+		SUPPRESS_ERRCONTEXT_PUSH();
+
 		elog(Debug_persistent_print_level, 
 			 "MirroredAppendOnly_SetUpMirrorAccess %u/%u/%u, segment file #%d, relation name '%s': create %s, drop %s, primaryOnly %s, mirrorOnly %s, copyToMirror %s, mirror mode %s, mirror data loss occurred %s",
 			 relFileNode->spcNode,
@@ -121,6 +127,9 @@ static void MirroredAppendOnly_SetUpMirrorAccess(
 			 (copyToMirror ? "true" : "false"),
 			 StorageManagerMirrorMode_Name(*mirrorMode),
 			 (*mirrorDataLossOccurred ? "true" : "false"));
+
+		SUPPRESS_ERRCONTEXT_POP();
+	}
 }
 
 static void MirroredAppendOnly_CheckMirrorOperationSession(
@@ -147,12 +156,20 @@ static void MirroredAppendOnly_CheckMirrorOperationSession(
 		*mirrorDataLossOccurred = true;
 
 		if (Debug_persistent_print)
+		{
+			SUPPRESS_ERRCONTEXT_DECLARE;
+
+			SUPPRESS_ERRCONTEXT_PUSH();
+
 			elog(Debug_persistent_print_level, 
 				 "MirroredAppendOnly_CheckMirrorOperationSession %u/%u/%u, segment file #%d --> mirror data loss occurred",
 				 relFileNode->spcNode,
 				 relFileNode->dbNode,
 				 relFileNode->relNode,
 				 segmentFileNum);
+
+			SUPPRESS_ERRCONTEXT_POP();
+		}
 	}
 }
 
@@ -953,6 +970,11 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 			 * No data loss.  Report new EOFs now.
 			 */
 			if (Debug_persistent_print)
+			{
+				SUPPRESS_ERRCONTEXT_DECLARE;
+
+				SUPPRESS_ERRCONTEXT_POP();
+
 				elog(Debug_persistent_print_level, 
 					 "MirroredAppendOnly_AddMirrorResyncEofs %u/%u/%u, segment file #%d, relation name '%s': no mirror data loss occurred --> report new EOF (EOF " INT64_FORMAT ")",
 					 relFileNode->spcNode,
@@ -961,6 +983,9 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 					 segmentFileNum,
 					 (relationName == NULL ? "<null>" : relationName),
 					 mirrorNewEof);
+
+				SUPPRESS_ERRCONTEXT_PUSH();
+			}
 
 			smgrappendonlymirrorresynceofs(
 									relFileNode,
@@ -984,6 +1009,11 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 			 * We are not in synchronized state -- report data loss.
 			 */
 			if (Debug_persistent_print)
+			{
+				SUPPRESS_ERRCONTEXT_DECLARE;
+
+				SUPPRESS_ERRCONTEXT_PUSH();
+
 				elog(Debug_persistent_print_level, 
 					 "MirroredAppendOnly_AddMirrorResyncEofs %u/%u/%u, segment file #%d, relation name '%s': not in synchronized state --> report loss (mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
 					 relFileNode->spcNode,
@@ -993,6 +1023,9 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 					 (relationName == NULL ? "<null>" : relationName),
 					 *mirrorLossEof,
 					 mirrorNewEof);
+
+				SUPPRESS_ERRCONTEXT_POP();
+			}
 
 			smgrappendonlymirrorresynceofs(
 									relFileNode,
@@ -1011,6 +1044,11 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 		 * to catch-up the mirror.
 		 */
 		if (Debug_persistent_print)
+		{
+			SUPPRESS_ERRCONTEXT_DECLARE;
+
+			SUPPRESS_ERRCONTEXT_PUSH();
+
 			elog(Debug_persistent_print_level, 
 				 "MirroredAppendOnly_AddMirrorResyncEofs %u/%u/%u, segment file #%d, relation name '%s': we are in synchronized state, so it is our responsibility to catch-up mirror (mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
 				 relFileNode->spcNode,
@@ -1020,6 +1058,9 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 				 (relationName == NULL ? "<null>" : relationName),
 				 *mirrorLossEof,
 				 mirrorNewEof);
+
+			SUPPRESS_ERRCONTEXT_POP();
+		}
 
 		MirroredAppendOnly_DoOpen(
 						&mirroredOpen, 
@@ -1080,6 +1121,11 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 		if (mirrorDataLossOccurred)
 		{
 			if (Debug_persistent_print)
+			{
+				SUPPRESS_ERRCONTEXT_DECLARE;
+
+				SUPPRESS_ERRCONTEXT_PUSH();
+
 				elog(Debug_persistent_print_level, 
 					 "MirroredAppendOnly_AddMirrorResyncEofs %u/%u/%u, segment file #%d, relation name '%s': mirror data loss occurred --> catch-up mirror failed (mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
 					 relFileNode->spcNode,
@@ -1089,10 +1135,18 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 					 (relationName == NULL ? "<null>" : relationName),
 					 *mirrorLossEof,
 					 mirrorNewEof);
+
+				SUPPRESS_ERRCONTEXT_POP();
+			}
 		}
 		else
 		{
 			if (Debug_persistent_print)
+			{
+				SUPPRESS_ERRCONTEXT_DECLARE;
+
+				SUPPRESS_ERRCONTEXT_PUSH();
+
 				elog(Debug_persistent_print_level, 
 					 "MirroredAppendOnly_AddMirrorResyncEofs %u/%u/%u, segment file #%d, relation name '%s': no mirror data loss occurred --> mirror catch-up copied and flushed (mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
 					 relFileNode->spcNode,
@@ -1102,6 +1156,9 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 					 (relationName == NULL ? "<null>" : relationName),
 					 *mirrorLossEof,
 					 mirrorNewEof);
+
+				SUPPRESS_ERRCONTEXT_POP();
+			}
 			
 			*mirrorLossEof = mirrorNewEof;
 		}

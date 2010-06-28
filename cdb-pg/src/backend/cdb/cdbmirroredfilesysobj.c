@@ -55,9 +55,17 @@ static void MirroredFileSysObj_BeginMirroredCreate(
 		*mirrorMode = StorageManagerMirrorMode_Both;
 		
 		if (Debug_persistent_print)
+		{
+			SUPPRESS_ERRCONTEXT_DECLARE;
+
+			SUPPRESS_ERRCONTEXT_PUSH();
+
 			elog(Debug_persistent_print_level, 
 				 "MirroredFileSysObj_BeginMirroredCreate (%s): -- initdb mirrored",
 				 PersistentFileSysObjName_TypeAndObjectName(fsObjName));
+
+			SUPPRESS_ERRCONTEXT_POP();
+		}
 
 		return;
 	}
@@ -94,12 +102,20 @@ static void MirroredFileSysObj_BeginMirroredCreate(
 	}
 
 	if (Debug_persistent_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+
+		SUPPRESS_ERRCONTEXT_PUSH();
+
 		elog(Debug_persistent_print_level, 
 			 "MirroredFileSysObj_BeginMirroredCreate (%s): mirror existence state '%s', relation data synchronization state '%s', mirror mode %s",
 			 PersistentFileSysObjName_TypeAndObjectName(fsObjName),
 			 MirroredObjectExistenceState_Name(*mirrorExistenceState),
 			 MirroredRelDataSynchronizationState_Name(*relDataSynchronizationState),
 			 StorageManagerMirrorMode_Name(*mirrorMode));
+
+		SUPPRESS_ERRCONTEXT_POP();
+	}
 }
 
 static void MirroredFileSysObj_FinishMirroredCreate(
@@ -114,6 +130,11 @@ static void MirroredFileSysObj_FinishMirroredCreate(
 	bool 							mirrorDataLossOccurred)
 {
 	if (Debug_persistent_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+
+		SUPPRESS_ERRCONTEXT_PUSH();
+
 		elog(Debug_persistent_print_level, 
 			 "MirroredFileSysObj_FinishMirroredCreate (%s): mirror existence state '%s', mirror data loss occurred %s, "
 		     "serial number " INT64_FORMAT " at TID %s",
@@ -122,6 +143,9 @@ static void MirroredFileSysObj_FinishMirroredCreate(
 			 (mirrorDataLossOccurred ? "true" : "false"),
 			 persistentSerialNum,
 			 ItemPointerToString(persistentTid));
+
+		SUPPRESS_ERRCONTEXT_POP();
+	}
 
 	if (mirrorExistenceState == MirroredObjectExistenceState_NotMirrored ||
 		mirrorExistenceState == MirroredObjectExistenceState_MirrorDownBeforeCreate)
@@ -981,6 +1005,11 @@ void MirroredFileSysObj_TransactionCreateBufferPoolFile(
 	LWLockRelease(MirroredLock);
 
 	if (Debug_persistent_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+
+		SUPPRESS_ERRCONTEXT_PUSH();
+
 		elog(Debug_persistent_print_level, 
 			 "MirroredFileSysObj_TransactionCreateBufferPoolFile: %u/%u/%u, relation name '%s', mirror existence state '%s', mirror data loss occurred %s"
 		     ", persistent serial number " INT64_FORMAT " at TID %s",
@@ -992,6 +1021,9 @@ void MirroredFileSysObj_TransactionCreateBufferPoolFile(
 			 (mirrorDataLossOccurred ? "true" : "false"),
 			 *persistentSerialNum,
 			 ItemPointerToString(persistentTid));
+
+		SUPPRESS_ERRCONTEXT_POP();
+	}
 }
 
 void MirroredFileSysObj_TransactionCreateAppendOnlyFile(
@@ -1103,6 +1135,11 @@ void MirroredFileSysObj_TransactionCreateAppendOnlyFile(
 	LWLockRelease(MirroredLock);
 	
 	if (Debug_persistent_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+
+		SUPPRESS_ERRCONTEXT_PUSH();
+
 		elog(Debug_persistent_print_level, 
 			 "MirroredFileSysObj_TransactionCreateAppendOnlyFile: %u/%u/%u, relation name '%s', mirror existence state '%s', mirror data loss occurred %s"
 			 ", persistent serial number " INT64_FORMAT " at TID %s",
@@ -1114,6 +1151,9 @@ void MirroredFileSysObj_TransactionCreateAppendOnlyFile(
 			 (mirrorDataLossOccurred ? "true" : "false"),
 			 *persistentSerialNum,
 			 ItemPointerToString(persistentTid));
+
+		SUPPRESS_ERRCONTEXT_POP();
+	}
 }
 
 void MirroredFileSysObj_ScheduleDropBufferPoolFile(
@@ -1130,12 +1170,20 @@ void MirroredFileSysObj_ScheduleDropBufferPoolFile(
 	Assert(persistentTid != NULL);
 
 	if (Debug_persistent_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+
+		SUPPRESS_ERRCONTEXT_PUSH();
+
 		elog(Debug_persistent_print_level, 
 			 "MirroredFileSysObj_ScheduleDropBufferPoolFile: %u/%u/%u, relation name '%s'",
 			 smgrOpen->smgr_rnode.spcNode,
 			 smgrOpen->smgr_rnode.dbNode,
 			 smgrOpen->smgr_rnode.relNode,
 			 relationName);
+
+		SUPPRESS_ERRCONTEXT_POP();
+	}
 
 	smgrscheduleunlink(
 					&smgrOpen->smgr_rnode,
@@ -1164,12 +1212,20 @@ void MirroredFileSysObj_ScheduleDropAppendOnlyFile(
 	Assert(persistentTid != NULL);
 
 	if (Debug_persistent_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+
+		SUPPRESS_ERRCONTEXT_PUSH();
+
 		elog(Debug_persistent_print_level, 
 			 "MirroredFileSysObj_ScheduleDropAppendOnlyFile: %u/%u/%u, relation name '%s'",
 			 relFileNode->spcNode,
 			 relFileNode->dbNode,
 			 relFileNode->relNode,
 			 relationName);
+
+		SUPPRESS_ERRCONTEXT_POP();
+	}
 
 	smgrscheduleunlink(
 					relFileNode,

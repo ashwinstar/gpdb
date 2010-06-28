@@ -21,6 +21,26 @@
 #include "cdb/cdbdirectopen.h"
 #include "utils/guc.h"
 
+/*
+ * Can be used to suppress errcontext when doing low-level tracing where we
+ * don't want "dynamic" errcontext like that used by the executor which executes a
+ * lot of code to determine the errcontext string to recurse and cause stack overflow.
+ */
+#define SUPPRESS_ERRCONTEXT_DECLARE \
+	ErrorContextCallback *suppressErrContext = NULL;
+
+#define SUPPRESS_ERRCONTEXT_PUSH() \
+{ \
+	suppressErrContext = error_context_stack; \
+	error_context_stack = NULL; \
+}
+
+#define SUPPRESS_ERRCONTEXT_POP() \
+{ \
+	error_context_stack = suppressErrContext; \
+}
+
+
 #define PersistentStoreSharedDataEyecatcher "PersistentStoreSharedData"
 
 // Length includes 1 extra for NUL.
