@@ -48,6 +48,10 @@
 #include "access/heapam.h"
 #include "cdb/cdbpersistentrelation.h"
 #include "cdb/cdbfilerepprimary.h"
+
+#include "access/aosegfiles.h"
+#include "access/aocssegfiles.h"
+#include "cdb/cdbappendonlyam.h"
 			
 /* Note: these two macros only work on shared buffers, not local ones! */
 #define BufHdrGetBlock(bufHdr)	((Block) (BufferBlocks + ((Size) (bufHdr)->buf_id) * BLCKSZ))
@@ -2092,10 +2096,27 @@ FlushBuffer(volatile BufferDesc *buf, SMgrRelation reln)
 BlockNumber
 RelationGetNumberOfBlocks(Relation relation)
 {
-	/* Open it at the smgr level if not already done */
+	/*
+	 * Based on different storage types of the relation, calculate
+	 * the number of blocks accordingly.
+	 */
+	if (RelationIsAoRows(relation))
+	{
+		FileSegTotals *fstotal = GetSegFilesTotals(relation);
+		return ((BlockNumber)RelationGuessNumberOfBlocks(fstotal->totalbytes));
+	}
+	
+	if (RelationIsAoCols(relation))
+	{
+		int64 totalBytes = GetAOCSTotalBytes(relation);
+		return ((BlockNumber)RelationGuessNumberOfBlocks(totalBytes));
+  	}
+	
+	/* For non-AO tables, open it at the smgr level if not already done */
 	RelationOpenSmgr(relation);
-
+	
 	return smgrnblocks(relation->rd_smgr);
+			
 }
 
 /*
