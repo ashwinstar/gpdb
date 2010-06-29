@@ -1223,7 +1223,14 @@ SetupTCPInterconnect(EState *estate)
 	/* we can have at most one of these. */
 	ChunkTransportStateEntry *sendingChunkTransportState = NULL;
 
-	Insist(!estate->interconnect_context && estate->es_sliceTable);
+	if (estate->interconnect_context)
+	{
+		elog(FATAL, "SetupTCPInterconnect: already initialized.");
+	}
+	else if (!estate->es_sliceTable)
+	{
+		elog(FATAL, "SetupTCPInterconnect: no slice table ?");
+	}
 
 	estate->interconnect_context = palloc0(sizeof(ChunkTransportState));
 	
@@ -1325,7 +1332,11 @@ SetupTCPInterconnect(EState *estate)
         /* Expecting any new inbound connections? */
         if (incoming_count < expectedTotalIncoming)
         {
-            Insist(TCP_listenerFd >= 0);
+			if (TCP_listenerFd < 0)
+			{
+				elog(FATAL, "SetupTCPInterconnect: bad listener");
+			}
+
             MPP_FD_SET(TCP_listenerFd, &rset);
             highsock = TCP_listenerFd;
         }
@@ -1334,7 +1345,12 @@ SetupTCPInterconnect(EState *estate)
         foreach(cell, estate->interconnect_context->incompleteConns)
         {
 			conn = (MotionConn *)lfirst(cell);
-            Insist(conn->state == mcsRecvRegMsg && conn->sockfd >= 0);
+
+            if (conn->state != mcsRecvRegMsg || conn->sockfd < 0)
+			{
+				elog(FATAL, "SetupTCPInterconnect: incomplete connection bad state or bad fd");
+			}
+
             MPP_FD_SET(conn->sockfd, &rset);
             highsock = Max(highsock, conn->sockfd);
         }
@@ -1398,13 +1414,20 @@ SetupTCPInterconnect(EState *estate)
                     outgoing_fail_count++;
                     break;
                 case mcsConnecting:
-                    Insist(conn->sockfd >= 0);
+					if (conn->sockfd < 0)
+					{
+						elog(FATAL, "SetupTCPInterconnect: bad fd, mcsConnecting");
+					}
+
                     MPP_FD_SET(conn->sockfd, &wset);
                     MPP_FD_SET(conn->sockfd, &eset);
                     highsock = Max(highsock, conn->sockfd);
                     break;
                 case mcsSendRegMsg:
-                    Insist(conn->sockfd >= 0);
+					if (conn->sockfd < 0)
+					{
+						elog(FATAL, "SetupTCPInterconnect: bad fd, mcsSendRegMsg");
+					}
                     MPP_FD_SET(conn->sockfd, &wset);
                     highsock = Max(highsock, conn->sockfd);
                     break;
@@ -1412,7 +1435,7 @@ SetupTCPInterconnect(EState *estate)
                     outgoing_count++;
                     break;
                 default:
-                    Insist(0);
+					elog(FATAL, "SetupTCPInterconnect: bad connection state");
             }
 
             if (conn->wakeup_ms > 0)
@@ -1462,7 +1485,10 @@ SetupTCPInterconnect(EState *estate)
 							));
 
             /* Shouldn't be in this loop unless we have some work to do. */
-            Insist(outgoing_fail_count > 0);
+			if (outgoing_fail_count <= 0)
+			{
+				elog(FATAL, "SetupInterconnect: invalid outgoing count");
+			}
 
             /* Wait until earliest wakeup time or overall timeout. */
             if (timeout_ms > 0)
@@ -1652,7 +1678,7 @@ SetupTCPInterconnect(EState *estate)
                                 outgoing_count++;
                                 break;
                             default:
-                                Insist(0);
+								elog(FATAL, "SetupInterconnect: bad outgoing state");
                         }
                     }
                     break;
@@ -1675,7 +1701,8 @@ SetupTCPInterconnect(EState *estate)
 		}                       /* loop to check outgoing connections */
 
         /* By now we have dealt with all the events reported by select(). */
-        Insist(n == 0);
+		if (n != 0)
+			elog(FATAL, "SetupInterconnect: extra select events.");
 	}                           /* select() loop */
 
 	/*
@@ -1755,7 +1782,10 @@ TeardownTCPInterconnect(ChunkTransportState *transportStates,
 	Slice	   *mySlice;
 	MotionConn *conn;
 
-	Insist(transportStates->sliceTable != NULL);
+	if (transportStates->sliceTable == NULL)
+	{
+		elog(FATAL, "TeardownUDPInterconnect: missing slice table.");
+	}
 
 	/* if we're already trying to clean up after an error -- don't
 	 * allow signals to interrupt us */
@@ -2465,7 +2495,8 @@ RecvTupleChunkFromAnyTCP(MotionLayerState *mlStates,
 	}
 
 	/* we should never ever get here... */
-	Insist(0);
+	elog(FATAL, "RecvTupleChunkFromAnyTCP: didn't receive, and didn't get cancelled");
+	return NULL; /* keep the compiler happy */
 }
 
 /* See ml_ipc.h */
@@ -2479,7 +2510,14 @@ SendEosTCP(MotionLayerState *mlStates,
 	MotionConn *conn;
 	int			i;
 
-	Insist(transportStates && (transportStates->activated || transportStates->teardownActive));
+	if (!transportStates)
+	{
+		elog(FATAL, "SendEosTCP: missing interconnect context.");
+	}
+	else if (!transportStates->activated && !transportStates->teardownActive)
+	{
+		elog(FATAL, "SendEosTCP: context and teardown inactive.");
+	}
 
 	/* check em' */
 	ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
