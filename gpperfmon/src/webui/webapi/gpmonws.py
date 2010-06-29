@@ -24,6 +24,9 @@ remote = False
 allow_trust_logon = False
 displayed_server_name = ''
 gpperfmon_version = '$Revision$'
+db_access_last_time = 0
+dbstatus = 'NORMAL' 
+DB_STATE_CHECK_INTERVAL = 30
 
 instance_name = os.path.basename(os.path.abspath(os.path.join(os.getcwd(), '..')))
 
@@ -672,6 +675,10 @@ class iterator:
 
 class database:
     def GET(self):
+        global db_access_last_time
+        global dbstatus
+        global DB_STATE_CHECK_INTERVAL
+        
         web.header('Content-Type', 'text/xml')
         web.header('Cache-Control', 'no-store')
         if DEBUG:
@@ -691,7 +698,6 @@ class database:
             sys.stderr.write("</database>\n\n")
 
         res = None
-        dbstatus = 'NORMAL'
         try:
             if i.start == 'NOW':
                 res = db.database_now(remote)
@@ -709,7 +715,9 @@ class database:
 
                 res = db.database_history(i.start, i.end, interval_code)
             
-            dbstatus = db.database_state()
+            if (time.time() - db_access_last_time) > DB_STATE_CHECK_INTERVAL : 
+                dbstatus = db.database_state()
+                db_access_last_time = time.time()
         except db.GPDBError, errorinfo:
             return mkerr(error.DATA_ACCESS, errorinfo)
 
