@@ -1770,12 +1770,17 @@ TeardownTCPInterconnect(ChunkTransportState *transportStates,
         int     elevel = 0;
 
         if (forceEOS || !transportStates->activated)
-             elevel = LOG;
+		{
+			if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+				elevel = LOG;
+			else
+				elevel = DEBUG1;
+		}
         else if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-             elevel = DEBUG4;
+			elevel = DEBUG4;
 
         if (elevel)
-            ereport(LOG, (errmsg("Interconnect seg%d slice%d cleanup state: "
+            ereport(elevel, (errmsg("Interconnect seg%d slice%d cleanup state: "
                                  "%s; setup was %s",
                                  Gp_segment, mySlice->sliceIndex,
                                  forceEOS ? "force" : "normal",
