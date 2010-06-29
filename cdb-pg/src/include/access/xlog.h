@@ -13,11 +13,13 @@
 
 #include "access/rmgr.h"
 #include "access/xlogdefs.h"
+#include "catalog/gp_segment_config.h"
+#include "catalog/pg_control.h"
 #include "lib/stringinfo.h"
 #include "storage/buf.h"
 #include "utils/pg_crc.h"
-#include "catalog/pg_control.h"
 #include "utils/relcache.h"
+#include "utils/segadmin.h"
 
 /*
  * REDO Tracking DEFINEs.
@@ -164,6 +166,14 @@ extern char *XLOG_sync_method;
 extern const char XLOG_sync_method_default[];
 
 #define XLogArchivingActive()	(XLogArchiveCommand[0] != '\0')
+
+/* 
+ * Whether we need always log or if there might be an opportunity for a short
+ * cut.
+ */
+#define MustXLog() (!InRecovery && \
+					(XLogArchivingActive() || \
+					 MyDbid() == MASTER_DBID))
 
 #ifdef WAL_DEBUG
 extern bool XLOG_DEBUG;

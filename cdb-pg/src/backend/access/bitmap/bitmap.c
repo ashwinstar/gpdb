@@ -100,8 +100,8 @@ bmbuild(PG_FUNCTION_ARGS)
 	}
 
 	/* initialize the bitmap index. */
-	_bitmap_init(index, comptypeOid, heapOid, indexOid, heapRelfilenode, indexRelfilenode,
-				 XLogArchivingActive() && !index->rd_istemp);
+	_bitmap_init(index, comptypeOid, heapOid, indexOid, heapRelfilenode,
+				 indexRelfilenode, MustXLog() && !index->rd_istemp);
 
 	/* initialize the build state. */
 	_bitmap_init_buildstate(index, &bmstate);
@@ -116,7 +116,7 @@ bmbuild(PG_FUNCTION_ARGS)
 	 * fsync the relevant files to disk, unless we're building
 	 * a temporary index
 	 */
-    if (!(XLogArchivingActive() && !index->rd_istemp))
+    if (!(MustXLog() && !index->rd_istemp))
     {
 		FlushRelationBuffers(bmstate.bm_lov_heap);
         smgrimmedsync(bmstate.bm_lov_heap->rd_smgr);

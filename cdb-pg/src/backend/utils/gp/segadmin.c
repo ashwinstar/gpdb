@@ -23,6 +23,7 @@
 #include "commands/filespace.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
+#include "utils/segadmin.h"
 
 #define MASTER_ONLY 0x1
 #define UTILITY_MODE 0x2
@@ -1319,4 +1320,10 @@ gp_remove_segment_persistent_entries(PG_FUNCTION_ARGS)
 	remove_segment_persistent_entries(dbid, &seg);
 
 	PG_RETURN_BOOL(true);
+}
+
+int16
+MyDbid(void)
+{
+	return (int16)(GpIdentity.dbid);
 }

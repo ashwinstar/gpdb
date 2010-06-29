@@ -4108,7 +4108,8 @@ OpenIntoRel(QueryDesc *queryDesc)
 	 * transaction commit.	Else the commit might be lost, even though all the
 	 * data is safely fsync'd ...
 	 */
-	estate->es_into_relation_use_wal = (relstorage_is_ao(relstorage) ? false : XLogArchivingActive());
+	estate->es_into_relation_use_wal =
+		(relstorage_is_ao(relstorage) ? false : MustXLog());
 	estate->es_into_relation_descriptor = intoRelationDesc;
 	
 	/*

@@ -10656,7 +10656,7 @@ copy_buffer_pool_data(Relation rel, SMgrRelation dst, ItemPointer persistentTid,
 	 * We need to log the copied data in WAL iff WAL archiving is enabled AND
 	 * it's not a temp rel.
 	 */
-	use_wal = XLogArchivingActive() && !rel->rd_istemp;
+	use_wal = MustXLog() && !rel->rd_istemp;
 
 	nblocks = RelationGetNumberOfBlocks(rel);
 	/* RelationGetNumberOfBlocks will certainly have opened rd_smgr */
