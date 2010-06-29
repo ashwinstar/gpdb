@@ -591,10 +591,30 @@ file_set_dirs(char *file)
 			if (seps_seen == 1)
 			{
 				/* must be data directory */
-				data_dir = malloc((pos + 1) * sizeof(char));
-				strncpy(data_dir, file, pos);
-				relid = atol(&file[pos + 1]);
 
+				/* could this be a global directory? */
+#define GSTR "global/"
+#define GSTRLEN strlen(GSTR)
+				if (pos + 1 >= GSTRLEN)
+				{
+					if (strncmp(&(file[pos + 1 - GSTRLEN]), GSTR, GSTRLEN) == 0)
+					{
+						/* 
+						 * It is the global directory, so backup and make the
+						 * data directory template0.
+						 */
+						data_dir = malloc((pos + 1 - GSTRLEN + 6 + 1) *
+										  sizeof(char));
+						strncpy(data_dir, file, pos + 1 - GSTRLEN);
+						strcat(data_dir, "base/1");
+					}
+				}
+				else
+				{
+					data_dir = malloc((pos + 1) * sizeof(char));
+					strncpy(data_dir, file, pos);
+				}
+				relid = atol(&file[pos + 1]);
 			}
 			else if (seps_seen == 3)
 			{
