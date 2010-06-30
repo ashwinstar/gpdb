@@ -59,7 +59,7 @@ typedef struct
 } RelToCluster;
 
 
-static void cluster_rel(RelToCluster *rv, bool recheck, ClusterStmt *stmt, bool printError);
+static bool cluster_rel(RelToCluster *rv, bool recheck, ClusterStmt *stmt, bool printError);
 static void rebuild_relation(Relation OldHeap, Oid indexOid, ClusterStmt *stmt);
 static void copy_heap_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex);
 static List *get_tables_to_cluster(MemoryContext cluster_context);
@@ -233,9 +233,9 @@ cluster(ClusterStmt *stmt)
 			if (Gp_role == GP_ROLE_DISPATCH)
 				stmt->new_ind_oids = NIL; /* reset OID map for each iteration */
 
-			cluster_rel(rvtc, true, stmt, false);
+			bool dispatch = cluster_rel(rvtc, true, stmt, false);
 
-			if (Gp_role == GP_ROLE_DISPATCH)
+			if (Gp_role == GP_ROLE_DISPATCH && dispatch)
 			{
 
 				stmt->relation = makeNode(RangeVar);
@@ -276,7 +276,7 @@ cluster(ClusterStmt *stmt)
  * this function errors out when the relation is an AO table. Otherwise,
  * this functions prints out a warning message when the relation is an AO table.
  */
-static void
+static bool
 cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt, bool printError)
 {
 	Relation	OldHeap;
@@ -294,8 +294,9 @@ cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt, bool printError
 
 	/* If the table has gone away, we can skip processing it */
 	if (!OldHeap)
-		return;
-
+	{
+		return false;
+	}
 	/*
 	 * We don't support cluster on an AO table. We print out
 	 * a warning/error to the user, and simply return.
@@ -309,8 +310,11 @@ cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt, bool printError
 		
 		ereport(elevel,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("clustering an AO table '%s' is not supported",
+				 errmsg("cannot cluster append-only table \"%s\": not supported",
 						RelationGetRelationName(OldHeap))));
+		
+		relation_close(OldHeap, AccessExclusiveLock);
+		return false;
 	}
 	
 	/*
@@ -330,7 +334,7 @@ cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt, bool printError
 		if (!pg_class_ownercheck(rvtc->tableOid, GetUserId()))
 		{
 			relation_close(OldHeap, AccessExclusiveLock);
-			return;
+			return false;
 		}
 
 		/*
@@ -345,7 +349,7 @@ cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt, bool printError
 		if (isOtherTempNamespace(RelationGetNamespace(OldHeap)))
 		{
 			relation_close(OldHeap, AccessExclusiveLock);
-			return;
+			return false;		
 		}
 
 		/*
@@ -356,7 +360,7 @@ cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt, bool printError
 								  0, 0, 0))
 		{
 			relation_close(OldHeap, AccessExclusiveLock);
-			return;
+			return false;
 		}
 
 		/*
@@ -368,14 +372,14 @@ cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt, bool printError
 		if (!HeapTupleIsValid(tuple))	/* probably can't happen */
 		{
 			relation_close(OldHeap, AccessExclusiveLock);
-			return;
+			return false;
 		}
 		indexForm = (Form_pg_index) GETSTRUCT(tuple);
 		if (!indexForm->indisclustered)
 		{
 			ReleaseSysCache(tuple);
 			relation_close(OldHeap, AccessExclusiveLock);
-			return;
+			return false;
 		}
 		ReleaseSysCache(tuple);
 	}
@@ -387,6 +391,7 @@ cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt, bool printError
 	rebuild_relation(OldHeap, rvtc->indexOid, stmt);
 
 	/* NB: rebuild_relation does heap_close() on OldHeap */
+	return true;
 }
 
 /*
