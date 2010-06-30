@@ -334,8 +334,8 @@ class SyncProgress(threading.Thread):
             processingInterval = currentReportTime - self.collectionStartTime
             byteRate = bytesMoved / processingInterval if processingInterval else 0.0
         else:
-            bytesMoved = progressCounters.bytesProcessed - lastReportProgressCounters.bytesProcessed
-            processingInterval = progressCounters.updateTime - lastReportProgressCounters.updateTime
+            bytesMoved = progressCounters.bytesProcessed - lastReportProgressCounters.bytesProcessed if lastReportProgressCounters else 0
+            processingInterval = progressCounters.updateTime - lastReportProgressCounters.updateTime if lastReportProgressCounters else 0.0
             byteRate = bytesMoved / processingInterval if processingInterval else 0.0
         
         message = ("%sProcessed %sB of %sB (%d%%); %sB processed at %sBps; %d of %d files processed" 
