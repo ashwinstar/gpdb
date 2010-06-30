@@ -2661,12 +2661,15 @@ reindex_relation(Oid relid, bool toast_too, bool aoseg_too, bool aoblkdir_too,
 	List	   *indexIds,
 			   *doneIndexes;
 	ListCell   *indexId;
+	bool relIsAO = false;
 
 	/*
 	 * Open and lock the relation.	ShareLock is sufficient since we only need
 	 * to prevent schema and data changes in it.
 	 */
 	rel = heap_open(relid, ShareLock);
+
+	relIsAO = (RelationIsAoRows(rel) || RelationIsAoCols(rel));
 
 	toast_relid = rel->rd_rel->reltoastrelid;
 
@@ -2786,11 +2789,9 @@ reindex_relation(Oid relid, bool toast_too, bool aoseg_too, bool aoblkdir_too,
 	if (toast_too && OidIsValid(toast_relid))
 		result |= reindex_relation(toast_relid, false, false, false, oidmap, build_map);
 
-	if ((aoseg_too || aoblkdir_too) &&
-		(RelationIsAoRows(rel) || RelationIsAoCols(rel)))
-	{
+	/* Obtain the aoseg_relid and aoblkdir_relid if the relation is an AO table. */
+	if ((aoseg_too || aoblkdir_too) && relIsAO)
 		GetAppendOnlyEntryAuxOids(relid, &aoseg_relid, NULL, &aoblkdir_relid, NULL);
-	}
 
 	/*
 	 * If an AO rel has a secondary segment list rel, reindex that too while we
