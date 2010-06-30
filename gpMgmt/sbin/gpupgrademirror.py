@@ -2676,7 +2676,8 @@ class Phase1(threading.Thread):
                    cmdComplete = runAndCheckCommandComplete(rmCmd)
                 rmCmd.validate()
         except Exception, e:
-            self.logger.error("An exception occured in copyPrimaryToMirror: " + str(e))     
+            self.logger.error("An exception occured in copyPrimaryToMirror: " + str(e))
+            raise Exception("Unable to continue upgrade.")
     #------------------------------------------------------------------------------ 
     def newMirrorFileFixup(self, seg):
         self.logger.debug('in newMirrorFileFixup for %s:%s' % (self.nodeName, seg.mirror_data_directory))
