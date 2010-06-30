@@ -73,9 +73,24 @@ CREATE [READABLE] EXTERNAL WEB TABLE table_name
 
 CREATE WRITABLE EXTERNAL TABLE table_name
     ( column_name data_type [, ...] | LIKE other_table )
-      LOCATION 
-       ('gpfdist://outputhost[:port]/filename' [, ...])
-    | EXECUTE 'command' [ON ALL]
+      LOCATION ('gpfdist://outputhost[:port]/filename' [, ...])
+      FORMAT 'TEXT' 
+               [( [DELIMITER [AS] 'delimiter']
+               [NULL [AS] 'null string']
+               [ESCAPE [AS] 'escape' | 'OFF'] )]
+          | 'CSV'
+               [([QUOTE [AS] 'quote'] 
+               [DELIMITER [AS] 'delimiter']
+               [NULL [AS] 'null string']
+               [FORCE QUOTE column [, ...]] ]
+               [ESCAPE [AS] 'escape'] )]
+    [ ENCODING 'write_encoding' ]
+    [ DISTRIBUTED BY (column, [ ... ] ) | DISTRIBUTED RANDOMLY ]
+
+
+CREATE WRITABLE EXTERNAL WEB TABLE table_name
+    ( column_name data_type [, ...] | LIKE other_table )
+    EXECUTE 'command' [ON ALL]
     FORMAT 'TEXT' 
                [( [DELIMITER [AS] 'delimiter']
                [NULL [AS] 'null string']
