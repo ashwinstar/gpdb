@@ -7,19 +7,18 @@ marked as down (if mirroring is enabled).
 SYNOPSIS
 ******************************************************
 
-gprecoverseg [-d <master_data_directory>] 
-            [ -p <new_recover_host> 
-             | -s <pri_datadir>,<mir_datadir> 
+gprecoverseg [ -p <new_recover_host> 
+             | -s <filespace_config_file> 
              | -i <recover_config_file> ] 
-            [-B <parallel_processes>] [-F] [-a] [-q] 
-            [-l <logfile_directory>]
+[-d <master_data_directory>] [-B <parallel_processes>] [-F] 
+[-a] [-q] [-l <logfile_directory>]
 
-gprecoverseg [-p <new_recover_host>] -o <recover_config_output>
+gprecoverseg -o <output_recover_config_file> 
+           | -S <output_filespace_config_file> [-p <new_recover_host>]
 
 gprecoverseg -? 
 
 gprecoverseg --version
-
 
 ******************************************************
 DESCRIPTION
@@ -37,6 +36,9 @@ By default, a failed segment is recovered in place, meaning that
 the system brings the segment back online on the same host and 
 data directory location on which it was originally configured. 
 
+By default, a failed segment is recovered in place, meaning that 
+the system brings the segment back online on the same host and 
+data directory location on which it was originally configured. 
 In some cases, this may not be possible (for example, if a host 
 was physically damaged and cannot be recovered). In this situation, 
 gprecoverseg allows you to recover failed segments to a completely 
@@ -44,10 +46,13 @@ new host (using -p), on an alternative data directory location
 on your remaining live segment hosts (using -s), or by supplying 
 a recovery configuration file (using -i) in the format of:
 
-<failed_host_name>:<port>:<datadir> [<recovery_host_address>:<port>:<replication_port>:<fselocation>]
+filespaceOrder=[<filespace_name>[:<filespace_name>:...]
+<failed_host_name>:<port>:<fselocation>[:<fselocation>:...] [<recovery_host_address>:<port>:<replication_port>:<fselocation>[:<fselocation>:...]]
 
-For example (if recovering to a different host than the failed host):
+For example (if recovering to a different host than the failed 
+host, and you do not have additional filespaces configured):
 
+filespaceOrder=pg_system
 sdw5:50002:/gpdata/gpseg2 sdw9-2:50002:53002:/gpdata/gpseg2
 
 The gp_segment_configuration and pg_filespace_entry system catalog 
@@ -118,7 +123,13 @@ OPTIONS
  Specifies the name of a configuration file that has information 
  about which failed segments to recover, and where to recover them. 
  Each line in the file is in the following format:
-  <failed_host_name>:<port>:<datadir> [<recovery_host_address>:<port>:<replication_port>:<fselocation>]
+   filespaceOrder=[<filespace_name>[:<filespace_name>:...]
+   <failed_host_name>:<port>:<fselocation>[:<fselocation>:...] [<recovery_host_address>:<port>:<replication_port>:<fselocation>[:<fselocation>:...]] 
+ Note that you only need to specify filespaceOrder if your system 
+ has multiple filespaces configured. If your system does not 
+ have additional filespaces configured, this file will only 
+ have one location per segment (for the default data directory 
+ filespace, pg_system).  
  You can use the -o option to output a sample recovery 
  configuration file to use as a starting point.
 
@@ -154,14 +165,30 @@ OPTIONS
  screen, but is still written to the log file.
 
 
--s <pri_datadir>,<mir_datadir>
+-s <filespace_config_file>
 
- Specifies a spare data directory location on the currently 
- configured segment hosts where you can recover failed segment 
- instances. This file system location must exist on all segment 
- hosts in the array and have sufficient disk space to accommodate 
- recovered segments.
+ Specifies the name of a configuration file that contains 
+ file system locations on the currently configured segment 
+ hosts where you can recover failed segment instances. 
+ The filespace configuration file is in the format of:
+   filespaceOrder=filespace1_name:filespace2_name: ...
+   dbid:/path/for/filespace1:/path/for/filespace2: ...
+   dbid:/path/for/filespace1:/path/for/filespace2: ...
+   ...
+ If your system does not have additional filespaces configured, 
+ this file will only have one location per segment (for the 
+ default data directory filespace, pg_system). These file system 
+ locations must exist on all segment hosts in the array and have 
+ sufficient disk space to accommodate recovered segments.
 
+
+-S <output_filespace_config_file>
+
+ Specifies a file name and location to output a sample filespace 
+ configuration file. The output file lists the filespace locations 
+ for the currently invalid segments in the format that is required 
+ by the -s option. This file can be edited to supply alternate 
+ filespace locations if needed.
 
 -v (verbose)
 
