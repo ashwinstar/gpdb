@@ -289,17 +289,15 @@ Tablespace: "pg_global"
         try:
             cursor=conn.cursor()
             cursor.execute("DELETE FROM gp_segment_configuration")
-            cursor.execute("DELETE FROM pg_filespace_entry")
             conn.commit()
         finally:
             if cursor: cursor.close()
 
-# XXX: THIS IS OBVIOUSLY BROKEN IN 3.4!
-#      BUT, is now fixed for FileRep branch (not fixed for File Spaces or SAN).                                                                     
+# XXX: THIS IS OBVIOUSLY BROKEN IN 4.0 for SAN.                                                                     
     @staticmethod
-    def addRows(conn,segments):
+    def addRows(conn, segments):
         try:
-            cursor=conn.cursor()
+            cursor = conn.cursor()
 
             for seg in segments:
                 if seg.replicationPort != None:
@@ -324,23 +322,15 @@ Tablespace: "pg_global"
                        , seg.hostname , replicationPort
                        )
                 cursor.execute(sql)
-                
-                # Add the filespace information for this segment.
-                segFilespaces = seg.getSegmentFilespaces()
-                for fsOid in segFilespaces:
-                    fsDatadir = segFilespaces[fsOid]
-                    sql = """
-                       INSERT into pg_catalog.pg_filespace_entry(
-                           fsefsoid, fsedbid, fselocation)
-                       VALUES (%d, %d, \'%s\')
-                    """ % (int(fsOid), int(seg.dbid), fsDatadir)
-                    cursor.execute(sql)
 
             conn.commit()
         except Exception, e:
             raise CatalogError(e)
         finally:
-            if cursor: cursor.close()        
+            if cursor: cursor.close()
+               
+            
+#------------------------------------------------------------------------------            
 #TODO:
 class GpMasterMirroring(CatalogTable):  pass
 class GpDistributionPolicy(CatalogTable): pass

@@ -1701,6 +1701,26 @@ class GpArray:
         else:             
             seg.addMirror(segdb)
 
+    # -------------------------------------------------------------------- 
+    def reOrderExpansionSegs(self):
+        """
+        The expansion segments content ID may have changed during the expansion. 
+        This method will re-order the the segments into their proper positions.
+        Since there can be no gaps in the content id (see validateExpansionSegs),
+        the seg.expansionSegments list is the same length.
+        """
+        seglen = len(self.segments)
+        expseglen = len(self.expansionSegments)
+        
+        newExpansionSegments = []
+        newExpansionSegments.extend([None] * expseglen)
+        for seg in self.expansionSegments:
+            contentId = seg.primaryDB.getSegmentContentId()
+            index = contentId - seglen
+            newExpansionSegments[index] = seg
+        seg.expansionSegments = newExpansionSegments
+
+
     # --------------------------------------------------------------------
     def validateExpansionSegs(self):
         """ Checks the segments added for various inconsistencies and errors.

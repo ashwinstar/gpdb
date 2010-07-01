@@ -415,8 +415,8 @@ class GpExpandStatus():
                                 'BUILD_SEGMENTS_DONE': 6,
                                 'UPDATE_OLD_SEGMENTS_STARTED': 7,
                                 'UPDATE_OLD_SEGMENTS_DONE': 8,
-                                'UPDATE_MASTER_STARTED': 9,
-                                'UPDATE_MASTER_DONE': 10,
+                                'UPDATE_CATALOG_STARTED': 9,
+                                'UPDATE_CATALOG_DONE': 10,
                                 'SETUP_EXPANSION_SCHEMA_STARTED': 11,
                                 'SETUP_EXPANSION_SCHEMA_DONE': 12,
                                 'PREPARE_EXPANSION_SCHEMA_STARTED': 13,
@@ -456,7 +456,7 @@ class GpExpandStatus():
                     self._input_filename = status_info
                 elif status == 'UPDATE_OLD_SEGMENTS_STARTED':
                     self._original_primary_count = int(status_info)
-                elif status == 'UPDATE_MASTER_STARTED':
+                elif status == 'UPDATE_CATALOG_STARTED':
                     self._gp_segment_configuration_backup = status_info
 
                 self._status.append(status)
@@ -643,8 +643,6 @@ class SegmentTemplate:
         self.statusLogger.set_status('BUILD_SEGMENTS_STARTED', os.path.abspath(self.schema_tar_file))
         self._distribute_template()
         self._configure_new_segments()
-        if len(self.gparray.getFilespaces(includeSystemFilespace = False)) > 0:
-           self._configure_new_segment_filespaces()
         self.statusLogger.set_status('BUILD_SEGMENTS_DONE')
 
 
@@ -761,125 +759,7 @@ class SegmentTemplate:
         self.pool.join()
         self.pool.check_results()
                 
-        
-    def _configure_new_segment_filespaces(self):
-        """
-        This method is called after all new segments have been configured.
-        """
-        
-        self.logger.info('Configuring new segment filespaces')
-        newSegments = self.gparray.getExpansionSegDbList()
-        fsObjList = gparray.getFilespaces(includeSystemFilespace = False)
-        
-        """ Connect to the back end of each new segment directly, and call the filespace setup function. """
-        for seg in newSegments:
-            if seg.isSegmentMirror() == True:
-               continue
-            name = "gpexpand prep new segment filespaces. host = %s, sysdatadir = %s" % (seg.getSegmentHostName(), seg.getSegmentDataDirectory())
-            segFilespaces = seg.getSegmentFilespaces()
-            filespaceNames = []
-            filespaceLocations = []
-            for entry in fsObjList:
-                name = entry.getName()
-                oid = entry.getOid()
-                location = segFilespaces[oid]
-                filespaceNames.append(name)
-                filespaceLocations.append(location)
-            prepCmd = PrepFileSpaces( name = name
-                                    , filespaceNames = filespaceNames
-                                    , filespaceLocations = filespaceLocations
-                                    , sysDataDirectory = seg.getSegmentDataDirectory()
-                                    , dbid = seg.getSegmentDbId()
-                                    , contentId = seg.getSegmentContentId()
-                                    , ctxt = REMOTE
-                                    , remoteHost = seg.getSegmentHostName()
-                                    )
-            self.pool.addCommand(prepCmd)
-        self.pool.join()
-        self.pool.check_results()
-        
-        """ Get a list of databases. """
-        self.logger.info('Starting master in utility mode')
-
-        startCmd = GpStart('gpexpand update master start database master only', masterOnly=True)
-        startCmd.run(validateAfter=True)
-        
-        conn = dbconn.connect(self.dburl, utility=True, encoding='UTF8')
-        databases = catalog.getDatabaseList(conn)
-        conn.close()
-
-        self.logger.info('Stopping master in utility mode')
-        GpStop.local('gpexpand update master stop database', masterOnly=True, fast=True)
-        
-        """ 
-        Connect to each database in each segment and do some cleanup of tables that have stuff in them as a result of copying the segment from the master.
-        Note, this functionaliy used to be in segcopy and was therefore done just onece to the original copy of the master. We need to do it separately for
-        each segment now since filespaces may contain the databases. 
-        """
-        for seg in newSegments:
-            if seg.isSegmentMirror() == True:
-               continue
-            """ Start all the new segments in utilty mode. """             
-            segStartCmd = SegmentStart( name = "Starting new segment dbid %s on host %s." % (str(seg.getSegmentDbId()), seg.getSegmentHostName())
-                                      , gpdb = seg
-                                      , numContentsInCluster = 0  # Starting seg on it's own.
-                                      , mirroringMode = MIRROR_MODE_MIRRORLESS
-                                      , utilityMode = True
-                                      , ctxt = REMOTE
-                                      , remoteHost = seg.getSegmentHostName()
-                                      , noWait = False
-                                      , timeout = SEGMENT_TIMEOUT_DEFAULT)
-            self.pool.addCommand(segStartCmd)
-        self.pool.join()
-        self.pool.check_results()
-        
-        statements = [ 'delete from pg_catalog.gp_distribution_policy'
-                     , 'delete from pg_catalog.pg_partition'
-                     , 'delete from pg_catalog.pg_partition_rule'
-                     ]
-       
-        """ 
-          Connect to each database in the new segments, and clean up the catalog tables.
-        """
-        for seg in newSegments:
-            if seg.isSegmentMirror() == True:
-               continue
-            for database in databases:
-               if database[0] == 'template0':
-                  continue
-               dburl = dbconn.DbURL( hostname = seg.getSegmentHostName()
-                                   , port = seg.getSegmentPort()
-                                   , dbname = database[0]
-                                   )
-               name = "gpexpand execute segment cleanup commands. seg dbid = %s, command = %s" % (seg.getSegmentDbId(), str(statements))
-               execSQLCmd = ExecuteSQLStatementsCommand( name = name
-                                                       , url = dburl
-                                                       , sqlCommandList = statements
-                                                       )
-               self.pool.addCommand(execSQLCmd)
-            self.pool.join()
-            ### need to fix self.pool.check_results(). Call getCompletedItems to clear the queue for now.
-            self.pool.check_results()
-            self.pool.getCompletedItems()
-        
-        """
-        Stop all the new segments.
-        """
-        for seg in newSegments:
-            if seg.isSegmentMirror() == True:
-               continue
-            segStopCmd = SegmentStop( name = "Stopping new segment dbid %s on host %s." % (str(seg.getSegmentDbId), seg.getSegmentHostName())
-                                    , dataDir = seg.getSegmentDataDirectory()
-                                    , mode = 'smart'
-                                    , nowait = False
-                                    , ctxt = REMOTE
-                                    , remoteHost = seg.getSegmentHostName()
-                                    )
-            self.pool.addCommand(segStopCmd)
-        self.pool.join()
-        self.pool.check_results()
-        
-
+ 
     def _fixup_template(self):
         """Copies postgresql.conf and pg_hba.conf files from a valid segment on the system.
         Then modifies the template copy of pg_hba.conf"""
@@ -1282,7 +1162,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
                 self.logger.info('Rolling back update of original segments')
                 self.restore_original_segments()
 
-            elif status[0] == 'UPDATE_MASTER_STARTED':
+            elif status[0] == 'UPDATE_CATALOG_STARTED':
                 self.logger.info('Rolling back master update')
                 self.restore_master()
                 self.gparray = GpArray.initFromCatalog(dburl, utility=True)
@@ -1318,7 +1198,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         """Writes a gpexpand input file based on expansion segments
         added to gparray by the gpexpand interview"""
         outputfile = 'gpexpand_inputfile_' + strftime("%Y%m%d_%H%M%S")
-        ###outputfile = "/Users/ksell/temp/junkMPP6969/gpexpand_inputfile_1"
+        ###outputfile = "/Users/ksell/temp/junkMPP6969/gpexpand_inputfile_1" # KAS testing
         outfile = open(outputfile, 'w')
 
         logger.info("Generating input file...")
@@ -1420,25 +1300,37 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
            existsCmd = FileDirExists(name = "gpexpand see if .fs file exists", directory = fsInputFilename)
            existsCmd.run(validateAfter = True)
            exists = existsCmd.filedir_exists()
+           if exists == False and len(self.gparray.getFilespaces(includeSystemFilespace = False)) != 0:
+              raise ExpansionError("Expecting filespaces input file: " + fsInputFilename)
            if exists == True:
-              f = open(fsInputFilename, 'r')
-              
-           lineNumber = 1
-           for l in f:
-               if l.strip().startswith('#') or l.strip() == '':
-                  continue
-               if lineNumber == 1:
-                  fsNameString = l.strip().split("=")
-                  fsNameList = fsNameString[1].strip().split(":")
-                  for name in fsNameList:
-                      oid = self.gparray.getFileSpaceOid(name)
-                      fsOidList.append(oid)
-               else:
-                  fsLine = l.strip().split(":")
-                  fsDictionary[fsLine[0]] = fsLine[1:]
-               lineNumber = lineNumber + 1
-        except IOError:
-            raise ExpansionError('Problem with filespace input file: %s' % fsInputFilename)       
+              f = open(fsInputFilename, 'r')              
+              lineNumber = 1
+              for l in f:
+                  if l.strip().startswith('#') or l.strip() == '':
+                     continue
+                  if lineNumber == 1:
+                     fsNameString = l.strip().split("=")
+                     fsNameList = fsNameString[1].strip().split(":")
+                     for name in fsNameList:
+                         oid = self.gparray.getFileSpaceOid(name)
+                         if oid == None:
+                            raise ExpansionError("Unknown filespace name: " + str(name))
+                         fsOidList.append(oid)
+                     # Make sure all the filepace names are specified.
+                     if len(fsNameList) != len(self.gparray.getFilespaces(includeSystemFilespace = False)):
+                        missingFsNames = []
+                        filespaces = self.gparray.getFilespaces()
+                        for fs in filespaces:
+                            if fs.getName() not in fsNameList:
+                               missingFsNames.append(fs.getName)
+                        raise ExpansionError("Missing filespaces: " + str(missingFsNames))
+                     
+                  else:
+                     fsLine = l.strip().split(":")
+                     fsDictionary[fsLine[0]] = fsLine[1:]
+                  lineNumber = lineNumber + 1
+        except IOError, ioe:
+           raise ExpansionError('Problem with filespace input file: %s. Eexception:' % (fsInputFilename, str(ioe)))
         finally:
            if f != None:
               f.close()
@@ -1461,7 +1353,10 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
                        raise ExpansionError('Invalid input file on line %d: %s' % (line, e))
                     # content, role, dbid, preferred_role, hostname, port, datadir
                     filespaces = {}
-                    fileSpacesPathList = fsDictionary[dbid]
+                    if len(fsDictionary) > 0:
+                       fileSpacesPathList = fsDictionary[dbid]
+                    else:
+                       fileSpacesPathList = []
                     index = 0
                     for oid in fsOidList:
                         filespaces[oid] = fileSpacesPathList[index]
@@ -1641,48 +1536,203 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         except ExecutionError:
             raise ExpansionError('Failed to restore original segments')
 
-    def update_master(self):
-        """ Updates the gp_segment_configuration catalog table on the master
-        to include the expansion segments"""
+    def update_catalog(self):
+        """ 
+        Starts the database and calls gp_add_segment() and gp_add_segment_mirror() to setup 
+        the catalog tables and get the actual dbid and content id for the new segments. 
+        """
         gparray.dumpToFile(options.master_data_directory + '/gpexpand.gp_segment_configuration')
-        self.statusLogger.set_status('UPDATE_MASTER_STARTED',
+        self.statusLogger.set_status('UPDATE_CATALOG_STARTED',
                                      options.master_data_directory + '/gpexpand.gp_segment_configuration')
 
-        # Update gp_segment_configuration and pg_filespace_entry on the master
-        self.logger.info('Starting master in utility mode')
+        self.logger.info('Starting Greenplum Database in restricted mode')
 
-        startCmd = GpStart('gpexpand update master start database master only', masterOnly=True)
+        startCmd = GpStart('gpexpand update master start database restricted mode', restricted = True, verbose = True)
         startCmd.run(validateAfter=True)
 
-        self.logger.info('Updating gp_segment_configuration')
-        self.logger.debug("Adding the following filespace entries")
-        for seg in self.gparray.getExpansionSegDbList():
-            segFilespaces = seg.getSegmentFilespaces()
-            for fsOid in segFilespaces:
-                fsDatadir = segFilespaces[fsOid]
-                self.logger.debug("  dbid = %s, oid = %s, datadir = %s" % (str(seg.dbid), str(fsOid), str(fsDatadir)))
-
         self.conn = dbconn.connect(self.dburl, utility=True, encoding='UTF8')
-        catalog.GpConfigurationTable.addRows(self.conn, self.gparray.getExpansionSegDbList())
-        self.logger.info('Updating gp_id on master')
-        query = 'UPDATE pg_catalog.gp_id SET numsegments=%d' % (self.newPrimaryCount)
-        dbconn.execSQL(self.conn, query)
+
+        # For each new primary segment, call the gp_prep_new_segment with its filespaces
+        gpFSobjList = gparray.getFilespaces(includeSystemFilespace = True)
+        for seg in self.gparray.getExpansionSegDbList():
+            if seg.isSegmentMirror() == True:
+                continue
+            segFilespaces = seg.getSegmentFilespaces()
+            filespaceNames = []
+            filespaceLocations = []
+            for entry in gpFSobjList:
+                name = entry.getName()
+                oid = entry.getOid()
+                location = segFilespaces[oid]
+                filespaceNames.append(name)
+                filespaceLocations.append(location)
+            filespaces = []
+            for i in range(len(filespaceNames)):
+                entry = [filespaceNames[i] , filespaceLocations[i]]
+                filespaces.append(entry)
+            sqlStr = """select * from gp_add_segment('%s', '%s', '%s', array %s)""" % \
+                    (seg.getSegmentHostName(), seg.getSegmentAddress(), seg.getSegmentPort(), str(filespaces))
+            curs = dbconn.execSQL(self.conn, sqlStr)
+            row = curs.fetchone()
+            newDbid = int(row[0])
+            seg.setSegmentDbId(newDbid)
+            
+            # Get the new segment's content id
+            sqlStr = "select content from pg_catalog.gp_segment_configuration where dbid = %s" % str(seg.getSegmentDbId())
+            curs = dbconn.execSQL(self.conn, sqlStr)
+            row = curs.fetchone()
+            newContentID = int(row[0])
+            seg.setSegmentContentId(newContentID)
+        
+        # The content IDs may have changed, so we must make sure the array is in proper order.
+        self.gparray.reOrderExpansionSegs()
 
         self.conn.commit()
         self.conn.close()
 
+        self.logger.info('Stopping database')
+        stopCmd = GpStop('gpexpand update master stop database', verbose = True, ctxt = LOCAL)
+        # We do not check the results of GpStop becuase we will get errors for all the new segments.
+        stopCmd.run(validateAfter = False)
+
+        ###raise Exception("KAS a test of fail and rollback")  ### KAS testing
+
+        self.statusLogger.set_status('UPDATE_CATALOG_DONE')
+
+        ###self.logger.info('Starting Greenplum Database in restricted mode')
+        ###startCmd = GpStart('gpexpand update master start database restricted', restricted=True, verbose=True)
+        ###startCmd.run(validateAfter=True)
+
+        # Need to restore the connection used by the expansion
+        #self.conn = dbconn.connect(self.dburl, encoding='UTF8')
+
+    #--------------------------------------------------------------------------
+        
+    def configure_new_segment_filespaces(self):
+        """
+        This method is called after all new segments have been configured.
+        """
+        
+        self.logger.info('Configuring new segment filespaces')
+        newSegments = self.gparray.getExpansionSegDbList()
+        fsObjList = gparray.getFilespaces(includeSystemFilespace = False)
+        
+        """ Connect to the back end of each new segment directly, and call the filespace setup function. """
+        for seg in newSegments:
+            if seg.isSegmentMirror() == True:
+               continue
+            name = "gpexpand prep new segment filespaces. host = %s, sysdatadir = %s" % (seg.getSegmentHostName(), seg.getSegmentDataDirectory())
+            segFilespaces = seg.getSegmentFilespaces()
+            filespaceNames = []
+            filespaceLocations = []
+            for entry in fsObjList:
+                name = entry.getName()
+                oid = entry.getOid()
+                location = segFilespaces[oid]
+                filespaceNames.append(name)
+                filespaceLocations.append(location)
+            prepCmd = PrepFileSpaces( name = name
+                                    , filespaceNames = filespaceNames
+                                    , filespaceLocations = filespaceLocations
+                                    , sysDataDirectory = seg.getSegmentDataDirectory()
+                                    , dbid = seg.getSegmentDbId()
+                                    , contentId = seg.getSegmentContentId()
+                                    , ctxt = REMOTE
+                                    , remoteHost = seg.getSegmentHostName()
+                                    )
+            self.pool.addCommand(prepCmd)
+        self.pool.join()
+        self.pool.check_results()
+        
+        """ Get a list of databases. """
+        self.logger.info('Starting master in utility mode')
+
+        startCmd = GpStart('gpexpand update master start database master only', masterOnly=True)
+        startCmd.run(validateAfter=True)
+        
+        conn = dbconn.connect(self.dburl, utility=True, encoding='UTF8')
+        databases = catalog.getDatabaseList(conn)
+        conn.close()
+
         self.logger.info('Stopping master in utility mode')
         GpStop.local('gpexpand update master stop database', masterOnly=True, fast=True)
-
-        self.statusLogger.set_status('UPDATE_MASTER_DONE')
-
+        
+        """ 
+        Connect to each database in each segment and do some cleanup of tables that have stuff in them as a result of copying the segment from the master.
+        Note, this functionaliy used to be in segcopy and was therefore done just onece to the original copy of the master. We need to do it separately for
+        each segment now since filespaces may contain the databases. 
+        """
+        for seg in newSegments:
+            if seg.isSegmentMirror() == True:
+               continue
+            """ Start all the new segments in utilty mode. """             
+            segStartCmd = SegmentStart( name = "Starting new segment dbid %s on host %s." % (str(seg.getSegmentDbId()), seg.getSegmentHostName())
+                                      , gpdb = seg
+                                      , numContentsInCluster = 0  # Starting seg on it's own.
+                                      , mirroringMode = MIRROR_MODE_MIRRORLESS
+                                      , utilityMode = True
+                                      , ctxt = REMOTE
+                                      , remoteHost = seg.getSegmentHostName()
+                                      , noWait = False
+                                      , timeout = SEGMENT_TIMEOUT_DEFAULT)
+            self.pool.addCommand(segStartCmd)
+        self.pool.join()
+        self.pool.check_results()
+        
+        statements = [ 'delete from pg_catalog.gp_distribution_policy'
+                     , 'delete from pg_catalog.pg_partition'
+                     , 'delete from pg_catalog.pg_partition_rule'
+                     ]
+       
+        """ 
+          Connect to each database in the new segments, and clean up the catalog tables.
+        """
+        for seg in newSegments:
+            if seg.isSegmentMirror() == True:
+               continue
+            for database in databases:
+               if database[0] == 'template0':
+                  continue
+               dburl = dbconn.DbURL( hostname = seg.getSegmentHostName()
+                                   , port = seg.getSegmentPort()
+                                   , dbname = database[0]
+                                   )
+               name = "gpexpand execute segment cleanup commands. seg dbid = %s, command = %s" % (seg.getSegmentDbId(), str(statements))
+               execSQLCmd = ExecuteSQLStatementsCommand( name = name
+                                                       , url = dburl
+                                                       , sqlCommandList = statements
+                                                       )
+               self.pool.addCommand(execSQLCmd)
+            self.pool.join()
+            ### need to fix self.pool.check_results(). Call getCompletedItems to clear the queue for now.
+            self.pool.check_results()
+            self.pool.getCompletedItems()
+        
+        """
+        Stop all the new segments.
+        """
+        for seg in newSegments:
+            if seg.isSegmentMirror() == True:
+               continue
+            segStopCmd = SegmentStop( name = "Stopping new segment dbid %s on host %s." % (str(seg.getSegmentDbId), seg.getSegmentHostName())
+                                    , dataDir = seg.getSegmentDataDirectory()
+                                    , mode = 'smart'
+                                    , nowait = False
+                                    , ctxt = REMOTE
+                                    , remoteHost = seg.getSegmentHostName()
+                                    )
+            self.pool.addCommand(segStopCmd)
+        self.pool.join()
+        self.pool.check_results()
+        
         self.logger.info('Starting Greenplum Database in restricted mode')
         startCmd = GpStart('gpexpand update master start database restricted', restricted=True, verbose=True)
         startCmd.run(validateAfter=True)
 
         # Need to restore the connection used by the expansion
         self.conn = dbconn.connect(self.dburl, encoding='UTF8')
-
+        
+    #--------------------------------------------------------------------------
     def restore_master(self):
         """Restores the gp_segment_configuration catalog table for rollback"""
         originalPrimaryCount = self.statusLogger.get_original_primary_count()
@@ -1694,13 +1744,37 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         # Create a new gpArray from the backup file
         array = GpArray.initFromFile(backupFile)
 
-        # Update the catalog with the contents of the backup
-        restore_conn = dbconn.connect(self.dburl, utility=True, encoding='UTF8')
-        catalog.GpConfigurationTable.deleteAllRows(restore_conn)
-        catalog.GpConfigurationTable.addRows(restore_conn, array.getDbList())
-        dbconn.execSQL(restore_conn, 'UPDATE gp_id SET numsegments=%s' % originalPrimaryCount)
-        restore_conn.commit()
-        restore_conn.close()
+        originalDbIds = ""
+        first = True
+        for seg in array.getDbList():
+            if first == False:
+               originalDbIds += ", "
+            first = False
+            originalDbIds += str(seg.getSegmentDbId())
+        
+        if len(originalDbIds) > 0:
+           # Update the catalog with the contents of the backup
+           restore_conn = None
+           try:
+               restore_conn = dbconn.connect(self.dburl, utility=True, encoding='UTF8')
+               sqlStr = "select dbid from pg_catalog.gp_segment_configuration where dbid not in (%s)" % str(originalDbIds)
+               curs = dbconn.execSQL(restore_conn, sqlStr)
+               deleteDbIdList = []
+               rows = curs.fetchall()
+               for row in rows:
+                   deleteDbIdList.append(row[0])
+               
+               for dbid in deleteDbIdList:
+                  sqlStr = "select * from gp_remove_segment(%s)" % str(dbid)
+                  dbconn.execSQL(restore_conn, sqlStr)        
+            
+               restore_conn.commit()
+           except Exception, e:
+               raise Exception("Unable to restore master. Exception: " + str(e))
+           finally:
+               if restore_conn != None:
+                  restore_conn.close()
+
 
     def sync_new_mirrors(self):
         """ This method will execute gprecoverseg so that all new segments sync with their mirrors."""
@@ -2733,7 +2807,8 @@ try:
         gp_expand.start_prepare()
         gp_expand.add_segments()
         gp_expand.update_original_segments()
-        gp_expand.update_master()
+        gp_expand.update_catalog()
+        gp_expand.configure_new_segment_filespaces()
         gp_expand.sync_new_mirrors()
         gp_expand.setup_schema()
         gp_expand.prepare_schema()
