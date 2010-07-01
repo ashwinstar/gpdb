@@ -1198,7 +1198,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         """Writes a gpexpand input file based on expansion segments
         added to gparray by the gpexpand interview"""
         outputfile = 'gpexpand_inputfile_' + strftime("%Y%m%d_%H%M%S")
-        ###outputfile = "/Users/ksell/temp/junkMPP6969/gpexpand_inputfile_1" # KAS testing
+        outputfile = "/Users/ksell/temp/junkMPP6969/gpexpand_inputfile_1"
         outfile = open(outputfile, 'w')
 
         logger.info("Generating input file...")
@@ -1536,6 +1536,25 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         except ExecutionError:
             raise ExpansionError('Failed to restore original segments')
 
+
+    def _construct_filespace_parameter(self, seg, gpFSobjList):
+        """ return a string containing a filespace parameter appropriate for use in sql functions. """
+        filespaces = []
+        segFilespaces = seg.getSegmentFilespaces()
+        filespaceNames = []
+        filespaceLocations = []
+        for entry in gpFSobjList:
+            name = entry.getName()
+            oid = entry.getOid()
+            location = segFilespaces[oid]
+            filespaceNames.append(name)
+            filespaceLocations.append(location)
+        for i in range(len(filespaceNames)):
+            entry = [filespaceNames[i] , filespaceLocations[i]]
+            filespaces.append(entry)
+        return str(filespaces)
+
+
     def update_catalog(self):
         """ 
         Starts the database and calls gp_add_segment() and gp_add_segment_mirror() to setup 
@@ -1552,38 +1571,44 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
 
         self.conn = dbconn.connect(self.dburl, utility=True, encoding='UTF8')
 
-        # For each new primary segment, call the gp_prep_new_segment with its filespaces
+        gpFSobjList = gparray.getFilespaces(includeSystemFilespace = True)
+
+        # For each new primary segment, call the gp_add_segment with its filespaces
         gpFSobjList = gparray.getFilespaces(includeSystemFilespace = True)
         for seg in self.gparray.getExpansionSegDbList():
             if seg.isSegmentMirror() == True:
                 continue
-            segFilespaces = seg.getSegmentFilespaces()
-            filespaceNames = []
-            filespaceLocations = []
-            for entry in gpFSobjList:
-                name = entry.getName()
-                oid = entry.getOid()
-                location = segFilespaces[oid]
-                filespaceNames.append(name)
-                filespaceLocations.append(location)
-            filespaces = []
-            for i in range(len(filespaceNames)):
-                entry = [filespaceNames[i] , filespaceLocations[i]]
-                filespaces.append(entry)
+            filespaces = self._construct_filespace_parameter(seg = seg, gpFSobjList = gpFSobjList)
             sqlStr = """select * from gp_add_segment('%s', '%s', '%s', array %s)""" % \
-                    (seg.getSegmentHostName(), seg.getSegmentAddress(), seg.getSegmentPort(), str(filespaces))
+                    (seg.getSegmentHostName(), seg.getSegmentAddress(), seg.getSegmentPort(), filespaces)
             curs = dbconn.execSQL(self.conn, sqlStr)
             row = curs.fetchone()
             newDbid = int(row[0])
             seg.setSegmentDbId(newDbid)
             
-            # Get the new segment's content id
+            # Get the new segment's content id.
             sqlStr = "select content from pg_catalog.gp_segment_configuration where dbid = %s" % str(seg.getSegmentDbId())
             curs = dbconn.execSQL(self.conn, sqlStr)
             row = curs.fetchone()
             newContentID = int(row[0])
-            seg.setSegmentContentId(newContentID)
+            
+            # Set the new content id for the primary as well as any mirror.
+            segmentPair = gparray.getExpansionSegmentContainingDb(seg)
+            for db in segmentPair.get_dbs():
+                db.setSegmentContentId(newContentID)
         
+        # For each new mirror segment, call the gp_add_segment with its filespaces
+        for seg in self.gparray.getExpansionSegDbList():
+            if seg.isSegmentPrimary() == True:
+                continue
+            filespaces = _construct_filespace_parameter(seg = seg, gpFSobjList = gpFSobjList)
+            sqlStr = """select * from gp_add_segment_mirror('%s', '%s', '%s', array %s)""" % \
+                    (seg.getSegmentHostContentId(), seg.getSegmentAddress(), seg.getSegmentPort(), filespaces)
+            curs = dbconn.execSQL(self.conn, sqlStr)
+            row = curs.fetchone()
+            newDbid = int(row[0])
+            seg.setSegmentDbId(newDbid)
+            
         # The content IDs may have changed, so we must make sure the array is in proper order.
         self.gparray.reOrderExpansionSegs()
 
@@ -1757,13 +1782,13 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
            restore_conn = None
            try:
                restore_conn = dbconn.connect(self.dburl, utility=True, encoding='UTF8')
-               sqlStr = "select dbid from pg_catalog.gp_segment_configuration where dbid not in (%s)" % str(originalDbIds)
+               sqlStr = "select dbid, role from pg_catalog.gp_segment_configuration where dbid not in (%s) order by desc role" % str(originalDbIds)
                curs = dbconn.execSQL(restore_conn, sqlStr)
                deleteDbIdList = []
                rows = curs.fetchall()
                for row in rows:
                    deleteDbIdList.append(row[0])
-               
+            
                for dbid in deleteDbIdList:
                   sqlStr = "select * from gp_remove_segment(%s)" % str(dbid)
                   dbconn.execSQL(restore_conn, sqlStr)        

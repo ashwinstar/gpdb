@@ -1366,6 +1366,13 @@ class GpArray:
                     return seg
         return None
 
+    # --------------------------------------------------------------------    
+    def getExpansionSegmentContainingDb(self, db):
+        for seg in self.expansionSegments:
+            for segDb in seg.get_dbs():
+                if db.getSegmentDbId() == segDb.getSegmentDbId():
+                    return seg
+        return None
     # --------------------------------------------------------------------
     def get_invalid_segdbs(self):
         dbs=[]
