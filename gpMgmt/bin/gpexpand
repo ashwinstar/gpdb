@@ -417,11 +417,13 @@ class GpExpandStatus():
                                 'UPDATE_OLD_SEGMENTS_DONE': 8,
                                 'UPDATE_CATALOG_STARTED': 9,
                                 'UPDATE_CATALOG_DONE': 10,
-                                'SETUP_EXPANSION_SCHEMA_STARTED': 11,
-                                'SETUP_EXPANSION_SCHEMA_DONE': 12,
-                                'PREPARE_EXPANSION_SCHEMA_STARTED': 13,
-                                'PREPARE_EXPANSION_SCHEMA_DONE': 14,
-                                'EXPANSION_PREPARE_DONE': 15
+                                'SYNC_MIRRORS_STARTED': 11,
+                                'SYNC_MIRRORS_DONE': 12,
+                                'SETUP_EXPANSION_SCHEMA_STARTED': 13,
+                                'SETUP_EXPANSION_SCHEMA_DONE': 14,
+                                'PREPARE_EXPANSION_SCHEMA_STARTED': 15,
+                                'PREPARE_EXPANSION_SCHEMA_DONE': 16,
+                                'EXPANSION_PREPARE_DONE': 17
                                 }
         self._status = []
         self._status_info = []
@@ -1757,6 +1759,12 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         # Need to restore the connection used by the expansion
         self.conn = dbconn.connect(self.dburl, encoding='UTF8')
         
+    
+    #--------------------------------------------------------------------------
+    def build_mirrors(self): 
+        """ This method will start gprecoverseg to force synchronization between the new primary and new mirror segments. """
+            
+            
     #--------------------------------------------------------------------------
     def restore_master(self):
         """Restores the gp_segment_configuration catalog table for rollback"""
@@ -1782,7 +1790,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
            restore_conn = None
            try:
                restore_conn = dbconn.connect(self.dburl, utility=True, encoding='UTF8')
-               sqlStr = "select dbid, role from pg_catalog.gp_segment_configuration where dbid not in (%s) order by desc role" % str(originalDbIds)
+               sqlStr = "select dbid, role from pg_catalog.gp_segment_configuration where dbid not in (%s) order by role DESC" % str(originalDbIds)
                curs = dbconn.execSQL(restore_conn, sqlStr)
                deleteDbIdList = []
                rows = curs.fetchall()
@@ -1790,7 +1798,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
                    deleteDbIdList.append(row[0])
             
                for dbid in deleteDbIdList:
-                  sqlStr = "select * from gp_remove_segment(%s)" % str(dbid)
+                  sqlStr = "select * from gp_remove_segment(%s::smallint)" % str(dbid)
                   dbconn.execSQL(restore_conn, sqlStr)        
             
                restore_conn.commit()
@@ -1803,7 +1811,11 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
 
     def sync_new_mirrors(self):
         """ This method will execute gprecoverseg so that all new segments sync with their mirrors."""
-        
+        self.statusLogger.set_status('SYNC_MIRRORS_STARTED')
+        if gparray.get_mirroring_enabled() == True:
+           cmd = GpRecoverSeg(name = "gpexpand syncing mirrors", options = "-F")
+           cmd.run(validateAfter = True)
+        self.statusLogger.set_status('SYNC_MIRRORS_DONE')
 
     def start_prepare(self):
         """Inserts into gpexpand.status that expansion preparation has started."""
@@ -2383,6 +2395,20 @@ class PrepFileSpaces(Command):
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
         """ echo "select * from version();select * from version()" | bin/postgres --single -O -c gp_session_role=utility -E -D /Users/ksell/temp/junkMain06072010/database/dbfast1/gp0 template1 """
+
+#-----------------------------------------------
+class GpRecoverSeg(Command):
+   """
+   This command will execute the gprecoverseg utility
+   """
+   def __init__(self, name, options = "", ctxt = LOCAL, remoteHost = None):   
+       self.name = name
+       self.options = options
+       self.ctxt = ctxt
+       self.remoteHost = remoteHost
+       
+       cmdStr = "$GPHOME/bin/gprecoverseg %s" % (options)
+       Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
 
 #-----------------------------------------------
