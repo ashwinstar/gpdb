@@ -188,42 +188,6 @@ class GpSegCopy:
                        datadir = self.dstDir,
                        replicationPort = None,
                        )
-
-            SegmentStart.local('segcopy schema only segment start', seg, 
-                               numContentsInCluster = 0,
-                               mirroringMode = 'mirrorless',
-                               utilityMode=True)
-
-            dburl = dbconn.DbURL(hostname=self.dstHost,port=templatePort)
-            logger.info("connecting to database: %s" % dburl)
-            conn = dbconn.connect(dburl, utility=True)
-            
-            db_list = catalog.getDatabaseList(conn)
-            catalog_names = [
-                           'pg_catalog.gp_configuration', 
-                           'pg_catalog.gp_segment_configuration',
-                           ###'pg_catalog.gp_distribution_policy', \
-                           ###'pg_catalog.pg_partition',            = These tree tables exist in every database, including
-                           ###'pg_catalog.pg_partition_rule',      /  database in non-system file spaces, so clean them in gpexpand.
-                           'pg_catalog.gp_master_mirroring',
-                           'pg_catalog.pg_filespace_entry',
-                           ]
-            
-            conn.close()
-            for db in db_list:
-                if db[0] in ['template0']:
-                    continue
-                # Can't truncate system catalog table
-                dburl.pgdb = db[0]
-                conn = dbconn.connect(dburl, utility=True)
-                q = 'DELETE FROM %s'
-                for table in catalog_names:
-                    logger.debug("Cleaning up %s.%s" % (db[0],table))
-                    dbconn.execSQL(conn, q % table)
-                conn.commit()
-                conn.close()
-            
-            SegmentStop.local(name, self.dstDir)
             
             logger.info("Schema only copy cleanup complete")
    

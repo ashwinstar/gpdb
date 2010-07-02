@@ -1200,7 +1200,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         """Writes a gpexpand input file based on expansion segments
         added to gparray by the gpexpand interview"""
         outputfile = 'gpexpand_inputfile_' + strftime("%Y%m%d_%H%M%S")
-        outputfile = "/Users/ksell/temp/junkMPP6969/gpexpand_inputfile_1"
+        ###outputfile = "/Users/ksell/temp/junkMPP6969/gpexpand_inputfile_1"  ### KAS testing
         outfile = open(outputfile, 'w')
 
         logger.info("Generating input file...")
@@ -1706,9 +1706,14 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         self.pool.join()
         self.pool.check_results()
         
-        statements = [ 'delete from pg_catalog.gp_distribution_policy'
-                     , 'delete from pg_catalog.pg_partition'
-                     , 'delete from pg_catalog.pg_partition_rule'
+        
+        statements = [ 'delete from pg_catalog.gp_configuration', 
+                       'delete from pg_catalog.gp_segment_configuration',
+                       'delete from pg_catalog.gp_distribution_policy', \
+                       'delete from pg_catalog.pg_partition',           
+                       'delete from pg_catalog.pg_partition_rule', 
+                       'delete from pg_catalog.gp_master_mirroring',
+                       'delete from pg_catalog.pg_filespace_entry',
                      ]
        
         """ 
