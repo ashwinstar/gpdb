@@ -1605,18 +1605,40 @@ addChangeHistory(PGconn *entryConn, struct segmentStatusChange *changes, int cha
 		valid   = (change->newStatus & FTS_STATUS_ALIVE) ? true : false;
 		primary = (change->newStatus & FTS_STATUS_PRIMARY) ? true : false;
 
-		/*
-		 * MPP-8764/MPP-8765: if we wound up with an invalid primary,
-		 * we are "down" but we aren't going to record it.
-		 */
-		if (!valid && primary)
-			continue;
+		/* see probeUpdateConfig() we're trying to describe the changes that it is going to make in human-readable terms */
+		if (failover_strategy == 'f')
+		{
+			if (!valid && primary)
+			{
+				count = snprintf(cmd, sizeof(cmd),
+								 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: content %d double failure, last known primary marked for changetracking)",
+								 time_str, change->dbid, change->segindex);
+			}
+			else
+			{
+				count = snprintf(cmd, sizeof(cmd),
+								 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: content %d fault marking status %s%s role %c')",
+								 time_str, change->dbid, change->segindex,
+								 valid ? "UP" : "DOWN",
+								 (valid && primary) ? " mode: changetracking" : "",
+								 primary ? 'p' : 'm');
+			}
+		}
+		else /* SAN */
+		{
+			/*
+			 * MPP-8764/MPP-8765: if we wound up with an invalid primary,
+			 * we are "down" but we aren't going to record it.
+			 */
+			if (!valid && primary)
+				continue;
 
-		count = snprintf(cmd, sizeof(cmd),
-						 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: content %d fault marking as %s role %c')",
-						 time_str, change->dbid, change->segindex,
-						 valid ? "UP" : "DOWN",
-						 primary ? 'p' : 'm');
+			count = snprintf(cmd, sizeof(cmd),
+							 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: content %d fault marking as %s role %c')",
+							 time_str, change->dbid, change->segindex,
+							 valid ? "UP" : "DOWN",
+							 primary ? 'p' : 'm');
+		}
 
 		if (count >= sizeof(cmd))
 		{
