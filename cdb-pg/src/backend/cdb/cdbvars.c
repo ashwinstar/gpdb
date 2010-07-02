@@ -290,7 +290,7 @@ bool		gp_create_index_concurrently = FALSE;
 bool gp_encoding_check_locale_compatibility = true;
 
 /* Priority for the segworkers relative to the postmaster's priority */
-int gp_segworker_relative_priority = 0;
+int gp_segworker_relative_priority = PRIO_MAX;
 
 /* Disable setting of tuple hints while reading */
 bool		gp_disable_tuple_hints = false;
