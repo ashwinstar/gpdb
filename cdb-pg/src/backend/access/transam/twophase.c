@@ -1013,6 +1013,19 @@ EndPrepare(GlobalTransaction gxact)
 
 	/* If we crash now, we have prepared: WAL replay will fix things */
 
+	if (Debug_persistent_recovery_print)
+		elog(Debug_persistent_recovery_print_level, 
+			 "EndPrepare: proc.xid %u, prepare_lsn %s, gid %s",
+			 xid,
+			 XLogLocationToString(&gxact->prepare_lsn),
+			 gxact->gid);
+
+	if (Debug_abort_after_segment_prepared)
+	{
+
+		elog(PANIC,"Raise an error as directed by Debug_abort_after_segment_prepared");
+	}
+
 	/* write correct CRC and close file */
 	MirroredFlatFile_Write(
 					&mirroredOpen,

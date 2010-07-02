@@ -289,6 +289,20 @@ extern void StartTransaction(void);
 extern void CommitTransaction(void);
 extern void AbortTransaction(void);
 
+char *XactInfoKind_Name(
+	const XactInfoKind		kind)
+{
+	switch (kind)
+	{
+	case XACT_INFOKIND_NONE: 		return "None";
+	case XACT_INFOKIND_COMMIT: 		return "Commit";
+	case XACT_INFOKIND_ABORT: 		return "Abort";
+	case XACT_INFOKIND_PREPARE: 	return "Prepare";
+	default:
+		return "Unknown";
+	}
+}
+
 /* ----------------------------------------------------------------
  *	transaction state accessors
  * ----------------------------------------------------------------
@@ -6094,6 +6108,7 @@ xact_redo_get_info(
 								subXids,
 								subXidCount);
 		*infoKind = XACT_INFOKIND_COMMIT;
+		*xid = record->xl_xid;
 	}
 	else if (info == XLOG_XACT_ABORT)
 	{
@@ -6105,6 +6120,7 @@ xact_redo_get_info(
 								subXids,
 								subXidCount);
 		*infoKind = XACT_INFOKIND_ABORT;
+		*xid = record->xl_xid;
 	}
 	else if (info == XLOG_XACT_PREPARE)
 	{
@@ -6114,6 +6130,7 @@ xact_redo_get_info(
 		subXidCount = 0;
 
 		*infoKind = XACT_INFOKIND_PREPARE;
+		*xid = record->xl_xid;
 	}
 	else if (info == XLOG_XACT_COMMIT_PREPARED)
 	{
@@ -6125,6 +6142,7 @@ xact_redo_get_info(
 								subXids,
 								subXidCount);
 		*infoKind = XACT_INFOKIND_COMMIT;
+		*xid = xlrec->xid;
 	}
 	else if (info == XLOG_XACT_ABORT_PREPARED)
 	{
@@ -6136,6 +6154,7 @@ xact_redo_get_info(
 								subXids,
 								subXidCount);
 		*infoKind = XACT_INFOKIND_ABORT;
+		*xid = xlrec->xid;
 	}
 	else if (info == XLOG_XACT_DISTRIBUTED_COMMIT)
 	{
@@ -6147,11 +6166,14 @@ xact_redo_get_info(
 								subXids,
 								subXidCount);
 		*infoKind = XACT_INFOKIND_COMMIT;
+		*xid = record->xl_xid;
 	}
 	else
+	{
+		*infoKind = XACT_INFOKIND_NONE;
+		*xid = InvalidTransactionId;
 		return false;
-
-	*xid = record->xl_xid;
+	}
 
 	return true;
 }

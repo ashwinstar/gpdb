@@ -883,14 +883,14 @@ dumpXLogRecord(XLogRecord *record, bool header_only)
 				xl_xact_commit_prepared	xlrec;
 
 				memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
-				printf("commit-prepared: %u\n", record->xl_xid);
+				printf("commit-prepared: %u\n", xlrec.xid);
 			}
 			else if (info == XLOG_XACT_ABORT_PREPARED)
 			{
 				xl_xact_abort_prepared	xlrec;
 
 				memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
-				printf("abort-prepared: %u\n", record->xl_xid);
+				printf("abort-prepared: %u\n", xlrec.xid);
 			}
 			else if (info == XLOG_XACT_DISTRIBUTED_COMMIT)
 			{

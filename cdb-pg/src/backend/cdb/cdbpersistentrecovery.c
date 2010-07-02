@@ -39,24 +39,6 @@
 #include "cdb/cdbmirroredfilesysobj.h"
 #include "cdb/cdbresynchronizechangetracking.h"
 
-static char *XactInfoKind_Name(XactInfoKind kind)
-{
-	switch (kind)
-	{
-	case XACT_INFOKIND_NONE:
-		return "None";
-	case XACT_INFOKIND_COMMIT:
-		return "Commit";
-	case XACT_INFOKIND_ABORT:
-		return "Abort";
-	case XACT_INFOKIND_PREPARE:
-		return "Prepare";
-
-	default:
-		return "Unknown";
-	}
-}
-
 static bool
 PersistentRecovery_RedoRelationExists(
 	ItemPointer		persistentTid,
@@ -308,32 +290,16 @@ static FsObjEntry PersistentRecovery_FindFsObjEntry(
 static void PersistentRecovery_AddEndXactFsObj(
 	TransactionId 						xid,
 
-	bool 								isCommit,
+	XactInfoKind						infoKind,
 
 	PersistentEndXactFileSysActionInfo	*fileSysActionInfo,
 
 	PersistentFileSysState				state)
 {
-	XactInfoKind		infoKind;
-	XactEntry 			xactEntry;
-
 	FsObjEntry 	fsObjEntry;
 	FsObjEntryData prevFsObjEntry;
 
 	bool found;
-
-	infoKind = 
-		(isCommit ? XACT_INFOKIND_COMMIT : XACT_INFOKIND_ABORT);
-
-	/*
-	 * Find or Create Transaction Entry.
-	 */
-	xactEntry = 
-		PersistentRecovery_FindOrCreateXactEntry(xid, &found);
-	if (!found)
-		xactEntry->infoKind = infoKind;
-	else
-		Assert(xactEntry->infoKind == infoKind);
 
 	/*
 	 * Create Persistent Change entry keyed on TID.
@@ -373,8 +339,9 @@ static void PersistentRecovery_AddEndXactFsObj(
 	{
 		if (Debug_persistent_recovery_print)
 			elog(Debug_persistent_recovery_print_level, 
-			     "%s REDO: Overwritting %s with %s",
-				 (isCommit ? "Commit" : "Abort"),
+			     "%s Record (transaction %u): Overwritting %s with %s",
+				 XactInfoKind_Name(infoKind),
+				 xid,
 				 FsObjEntryToString(&prevFsObjEntry),
 				 FsObjEntryToString2(fsObjEntry));
 	}
@@ -382,8 +349,9 @@ static void PersistentRecovery_AddEndXactFsObj(
 	{
 		if (Debug_persistent_recovery_print)
 			elog(Debug_persistent_recovery_print_level, 
-			     "%s REDO: Adding %s",
-				 (isCommit ? "Commit" : "Abort"),
+			     "%s Record (transaction %u): Adding %s",
+				 XactInfoKind_Name(infoKind),
+				 xid,
 				 FsObjEntryToString(fsObjEntry));
 	}
 }
@@ -620,6 +588,10 @@ PersistentRecovery_HandlePass2XLogRec(
 	else if (rmid == RM_XACT_ID)
 	{
 		TransactionId xid;
+
+		XactEntry xactEntry;
+		bool found;
+		
 		PersistentEndXactRecObjects persistentObjects;
 		TransactionId *subXids;
 		int subXidCount;
@@ -639,6 +611,21 @@ PersistentRecovery_HandlePass2XLogRec(
 							&subXidCount))
 			return;
 
+		if (Debug_persistent_recovery_print)
+			elog(Debug_persistent_recovery_print_level, 
+				 "%s Record (transaction %u)",
+				 XactInfoKind_Name(infoKind),
+				 xid);
+		
+		/*
+		 * We keep track of comitted, aborted, and prepared transactions so 'Create Pending' 
+		 * objects can be attached to these transaction entries and not get automatically
+		 * aborted by Crash Recovery.
+		 */
+		xactEntry = 
+			PersistentRecovery_FindOrCreateXactEntry(xid, &found);
+		xactEntry->infoKind = infoKind;
+		
 		if (infoKind == XACT_INFOKIND_COMMIT)
 		{
 			for (i = 0; i < persistentObjects.typed.fileSysActionInfosCount; i++)
@@ -670,7 +657,7 @@ PersistentRecovery_HandlePass2XLogRec(
 			
 				PersistentRecovery_AddEndXactFsObj(
 												xid,
-												/* isCommit */ true,
+												XACT_INFOKIND_COMMIT,
 												fileSysActionInfo,
 												newState);
 			}
@@ -693,7 +680,7 @@ PersistentRecovery_HandlePass2XLogRec(
 							&persistentObjects.typed.fileSysActionInfos[i];
 
 				PersistentEndXactFileSysAction action;
-				
+
 				action = fileSysActionInfo->action;
 
 				switch (action)
@@ -714,7 +701,7 @@ PersistentRecovery_HandlePass2XLogRec(
 			
 				PersistentRecovery_AddEndXactFsObj(
 												xid,
-												/* isCommit */ false,
+												XACT_INFOKIND_ABORT,
 												fileSysActionInfo,
 												newState);
 			}
@@ -723,10 +710,10 @@ PersistentRecovery_HandlePass2XLogRec(
 		{
 			Assert(infoKind == XACT_INFOKIND_PREPARE);
 
-			if (Debug_persistent_recovery_print)
-				elog(Debug_persistent_recovery_print_level, 
-				     "Prepare REDO: Transaction %u",
-					 xid);
+			/*
+			 * Since we don't know if this transaction will commit or abort, we
+			 * only keep the transaction entry.
+			 */
 		}
 	}
 
@@ -1350,6 +1337,10 @@ PersistentRecovery_CrashAbort(void)
 
 		if (xactEntry->infoKind != XACT_INFOKIND_NONE)
 		{
+			Assert(xactEntry->infoKind == XACT_INFOKIND_PREPARE ||
+				   xactEntry->infoKind == XACT_INFOKIND_COMMIT ||
+				   xactEntry->infoKind == XACT_INFOKIND_ABORT);
+
 			/*
 			 * If it is Prepared, we don't know yet what to do with the transaction.
 			 *
@@ -1372,8 +1363,9 @@ PersistentRecovery_CrashAbort(void)
 		 */
 		if (Debug_persistent_recovery_print)
 			elog(Debug_persistent_recovery_print_level, 
-				 "PersistentRecovery_CrashAbort: Checking transaction %u",
-				 xactEntry->xid);
+				 "PersistentRecovery_CrashAbort: Checking transaction %u (state '%s')",
+				 xactEntry->xid,
+				 XactInfoKind_Name(xactEntry->infoKind));
 
 		needsAbort = false;
 
@@ -1496,14 +1488,10 @@ PersistentRecovery_CrashAbort(void)
 			{
 				if (Debug_persistent_recovery_print)
 					elog(Debug_persistent_recovery_print_level, 
-					     "MarkAbortingCreate REDO: %s", FsObjEntryToString(fsObjEntry));
+					     "PersistentRecovery_CrashAbort: Set state of %s to 'Aborting Create'", 
+					     FsObjEntryToString(fsObjEntry));
 
-				PersistentFileSysObj_MarkAbortingCreate(
-								&fsObjEntry->fsObjName,
-								&fsObjEntry->key.persistentTid,
-								fsObjEntry->persistentSerialNum,
-								/* retryPossible */ false);
-
+				fsObjEntry->updateNeeded = true;
 				fsObjEntry->state = PersistentFileSysState_AbortingCreate;
 				
 			}
