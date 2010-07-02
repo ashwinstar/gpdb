@@ -992,6 +992,7 @@ copy (
 SELECT nspname, usename, nspacl %s
 FROM   pg_catalog.pg_namespace x
        LEFT OUTER JOIN pg_catalog.pg_user u on (nspowner = usesysid)
+WHERE nspname !~ '^pg_temp_'
 ORDER BY nspname
 ) to stdout delimiter ','
 ''' % (oids),
