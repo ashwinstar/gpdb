@@ -2115,8 +2115,17 @@ static void analyzeComputeAttributeStatistics(Oid relationOid,
 			 * Some values repeated - the number of repeating values is used
 			 * to determine the total number of distinct values in the original relation.
 			 */
-			float4 nRepeatingAbsolute = analyzeComputeNRepeating(sampleTableOid, attributeName);		
-			Assert(nRepeatingAbsolute <= nDistinctAbsolute);
+			float4 nRepeatingAbsolute = analyzeComputeNRepeating(sampleTableOid, attributeName);
+
+			/**
+			 * MPP-10301. Note that some time has passed since nDistinct was computed. If the table being analyzed
+			 * is a catalog table, it could have changed in this period. 
+			 */
+			if (nRepeatingAbsolute > nDistinctAbsolute)
+			{
+				nRepeatingAbsolute = nDistinctAbsolute;
+			}
+
 			if (ceil(nRepeatingAbsolute) == ceil(nDistinctAbsolute))
 			{
 				/* All distinct values are in the sample. Assumption is that there exist no distinct values outside this world. */					
