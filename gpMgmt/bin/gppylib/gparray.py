@@ -574,6 +574,19 @@ class SegmentRow():
         self.fulldir         = fulldir
         self.prPort          = prPort
         self.fileSpaceDictionary   = fileSpaceDictionary
+    
+    def __str__(self):
+        retVal = "" + \
+        "content = "          + str(self.content)   + "\n" 
+        "isprimary ="         + str(self.isprimary)       + "\n" 
+        "dbid = "             + str(self.dbid)            + "\n" 
+        "isprimary_again = "  + str(self.isprimary_again)  + "\n" 
+        "always_true = "      + str(self.always_true)      + "\n" 
+        "host = "             + str(self.host)             + "\n" 
+        "port = "             + str(self.port)            + "\n" 
+        "fulldir = "          + str(self.fulldir)         + "\n" 
+        "prPort = "           + str(self.prPort)          + "\n" 
+        "fileSpaceDictionary = " + str(self.fileSpaceDictionary)  + "\n"  + "\n"  
 
 
 def createSegmentRows( hostlist
@@ -702,7 +715,7 @@ def createSegmentRows( hostlist
             mirror_host_offset += 1
             port = mirror_portbase
             mrPort = mirror_replication_portbase
-            
+            index = 0
             for mdir in mirror_list:
                 fulldir = "%s/%s%d" % (mdir,dir_prefix,content)
                 fsDict = {}
@@ -720,11 +733,13 @@ def createSegmentRows( hostlist
                                        , port = port
                                        , fulldir = fulldir
                                        , prPort = mrPort
+                                       , fileSpaceDictionary = fullFsDict
                                        ) )
                 port += 1
                 mrPort +=1
                 content += 1
                 dbid += 1
+                index = index + 1
         
     else:
         raise Exception("Invalid mirror type specified: %s" % mirror_type)

@@ -1200,7 +1200,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         """Writes a gpexpand input file based on expansion segments
         added to gparray by the gpexpand interview"""
         outputfile = 'gpexpand_inputfile_' + strftime("%Y%m%d_%H%M%S")
-        ###outputfile = "/Users/ksell/temp/junkMPP6969/gpexpand_inputfile_1"  ### KAS testing
+        ###outputfile = "/Users/ksell/temp/junkMPP6969/gpexpand_inputfile_1"
         outfile = open(outputfile, 'w')
 
         logger.info("Generating input file...")
@@ -2684,7 +2684,7 @@ before continuing by re-running this utility and providing the input file. """
             fsDict = {}
             new_fsDirs = []
             for fsObj in gpFSobjList:
-               # Prompt the use for a location for each filespace
+               # Prompt the user for a location for each filespace
                fsLoc = ask_input( None
                                 , 'Enter new file space location for file space name: %s' % fsObj.getName()
                                 , ''
@@ -2693,7 +2693,7 @@ before continuing by re-running this utility and providing the input file. """
                                 , None
                                 )
                fsDict[fsObj.getOid()] = fsLoc.strip()
-               new_fsDirs.append(fsDict)
+            new_fsDirs.append(fsDict)
 
         if len(new_datadirs) != num_new_datadirs:
             raise ExpansionError('The number of data directories entered does not match the number of primary segments added')
@@ -2704,18 +2704,18 @@ before continuing by re-running this utility and providing the input file. """
                                           '/data/gpdb_m%d' % i, datadir_validator, None)
                 new_mirrordirs.append(new_mirrordir.strip())
                 
-            fsDict = {}
-            new_fsDirs = []
-            for fsObj in gpFSobjList:
-               # Prompt the use for a location for each filespace
-               fsLoc = ask_input( None
+                fsDict = {}
+                for fsObj in gpFSobjList:
+                   # Prompt the user for a location for each filespace
+                   fsLoc = ask_input( None
                                 , 'Enter new file space location for file space name: %s' % fsObj.getName()
                                 , ''
                                 , ''
+                                , datadir_validator
                                 , None
                                 )
-               fsDict[fsObj.getOid()] = fsLoc.strip()
-               new_mirrorFsDirs.append(fsDict) 
+                   fsDict[fsObj.getOid()] = fsLoc.strip()
+                new_mirrorFsDirs.append(fsDict) 
                 
             if len(new_mirrordirs) != num_new_datadirs:
                 raise ExpansionError('The number of new mirror data directories entered does not match the number of segments added')
