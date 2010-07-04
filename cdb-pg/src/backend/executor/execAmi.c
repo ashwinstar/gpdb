@@ -44,7 +44,7 @@
 #include "executor/nodeUnique.h"
 #include "executor/nodeValuesscan.h"
 #include "executor/nodeBitmapAppendOnlyscan.h"
-
+#include "executor/nodeWindow.h"
 
 /*
  * ExecReScan
@@ -218,6 +218,10 @@ ExecReScan(PlanState *node, ExprContext *exprCtxt)
 			ExecReScanMotion((MotionState *) node, exprCtxt);
 			break;
 
+		case T_WindowState:
+			ExecReScanWindow((WindowState *) node, exprCtxt);
+			break;
+			
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			break;

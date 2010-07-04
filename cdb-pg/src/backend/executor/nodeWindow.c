@@ -731,9 +731,6 @@ freeFrameBuffers(WindowState *wstate)
 			level_state->frame_buffer = NULL;
 		}
 
-		freeFrameBufferEntry(level_state->curr_entry_buf);
-		freeFrameBufferEntry(level_state->trail_entry_buf);
-		freeFrameBufferEntry(level_state->lead_entry_buf);
 	}
 }
 
@@ -5709,8 +5706,24 @@ ExecCountSlotsWindow(Window *node)
 void
 ExecEndWindow(WindowState *node)
 {
+	int level = 0;
+	
 	if (node->input_buffer)
 		freeInputBuffer(node);
+
+	for (level = 0; level < node->numlevels; level++)
+	{
+		WindowStatePerLevel level_state = &node->level_state[level];
+		
+		freeFrameBufferEntry(level_state->curr_entry_buf);
+		level_state->curr_entry_buf = NULL;
+
+		freeFrameBufferEntry(level_state->trail_entry_buf);
+		level_state->trail_entry_buf = NULL;
+		
+		freeFrameBufferEntry(level_state->lead_entry_buf);
+		level_state->lead_entry_buf = NULL;
+	}
 
 	freeFrameBuffers(node);
 
@@ -5739,13 +5752,26 @@ ExecEndWindow(WindowState *node)
 	EndPlanStateGpmonPkt(&node->ps);
 }
 
+/**
+ * ExecReScanWindow
+ * 
+ * Higher-up node is telling window node to perform re-scanning.
+ * Note that exprCtxt may be NULL.
+ */
 void
 ExecReScanWindow(WindowState *node, ExprContext *exprCtxt)
 {
-	ereport(ERROR,
-			(errcode(ERRCODE_INTERNAL_ERROR),
-			 errmsg("Illegal rescan of window node: invalid plan."),
-					   errOmitLocation(true)));
+	Assert(node);
+	
+	if (node->input_buffer)
+	{
+		freeInputBuffer(node);
+		freeFrameBuffers(node);
+	}
+	
+	Assert(outerPlanState(node));
+	
+	ExecReScan(outerPlanState(node), exprCtxt);
 }
 
 /*
