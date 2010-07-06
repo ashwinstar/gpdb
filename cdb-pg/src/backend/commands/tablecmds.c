@@ -20897,6 +20897,63 @@ split_rows(Relation intoa, Relation intob, Relation temprel)
 }
 
 /* ALTER TABLE ... SPLIT PARTITION */
+
+/* 
+   atpxSplitDropRule: walk the partition rules, eliminating rules that
+   match parruleid and paroid.  If topRule is supplied, walk his
+   subtree as well (it may differ from pnode if the PgPartRule was
+   copied).
+*/
+static void
+atpxSplitDropRule(PartitionNode *pNode, PartitionRule *topRule,
+				  Oid parruleid, Oid paroid)
+{
+	ListCell *lc;
+	ListCell *lcprev = NULL, *lcdel = NULL;
+
+	if (!pNode)
+		return;
+
+	foreach(lc, pNode->rules)
+	{
+		PartitionRule *rule = lfirst(lc);
+
+		if (rule->children)
+			atpxSplitDropRule(rule->children, NULL, 
+							  parruleid, paroid);
+
+		if ((parruleid == rule->parruleid) &&
+			(paroid == rule->paroid))
+		{
+			lcdel = lc; /* should only be one match */
+			break;
+		}
+		lcprev = lc;
+	}
+	if (lcdel)
+		pNode->rules = list_delete_cell(pNode->rules, lcdel, lcprev);
+
+	/* and the default partition */
+	if (pNode->default_part)
+	{
+		PartitionRule *rule = pNode->default_part;
+
+		if (rule->children)
+				atpxSplitDropRule(rule->children, NULL,
+								  parruleid, paroid);
+
+		if ((parruleid == rule->parruleid) &&
+			(paroid == rule->paroid))
+			pNode->default_part = NULL;
+	}
+
+	/* check optional topRule */
+	if (topRule && topRule->children)
+		atpxSplitDropRule(topRule->children, NULL,
+						  parruleid, paroid);
+
+} /* end atpxSplitDropRule */
+
 static void
 ATPExecPartSplit(Relation rel,
                  AlterPartitionCmd *pc)
@@ -21274,40 +21331,34 @@ ATPExecPartSplit(Relation rel,
 		{
 			AlterPartitionId *tmppid = copyObject(pid);
 
+			/* MPP-10223: pid contains a "stale" pNode with a
+			 * partition rule for the partition we just dropped.
+			 * Delve deep into pNode to eliminate the topRule.
+			 */
 			if (1)
 			{
-				AlterPartitionId *newpid = tmppid;
-				PgPartRule *tmprule = NULL;
+				AlterPartitionId		*newpid	 = tmppid;
+				PgPartRule				*tmprule = NULL;
 
 				while (tmppid->idtype == AT_AP_IDRule)
 				{
 					List *l = (List *)tmppid->partiddef;
 
-					/* wipe out the topRule so that it gets recalculated */
+					/* wipe out the topRule because the partition was
+					 * dropped, or PartAdd will find it and complain!!
+					 * Note that because the pid was copied,
+					 * tmprule->topRule has a separate copy of the
+					 * prule subtree, so we need to fix this one, too.
+					 */
 					tmprule = (PgPartRule *)linitial(l);
 
+					atpxSplitDropRule(tmprule->pNode, 
+									  tmprule->topRule,
+									  prule->topRule->parruleid, 
+									  prule->topRule->paroid);
 					tmppid = lsecond(l);
 				}
-
-				if (tmprule)
-				{
-					if (prule->topRule->parisdefault)
-						tmprule->pNode->default_part = NULL;
-					else
-					{
-						ListCell *lc;
-						List *newrules = NIL;
-
-						foreach(lc, tmprule->pNode->rules)
-						{
-							PartitionRule *r = lfirst(lc);
-
-							if (r->parchildrelid != temprelid)
-								newrules = lappend(newrules, r);
-						}
-						tmprule->pNode->rules = newrules;
-					}
-				}
+				
 				tmppid = newpid;
 			}
 
