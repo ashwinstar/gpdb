@@ -47,6 +47,7 @@
 #include "utils/syscache.h"
 #include "cdb/cdbvars.h"
 
+#include "cdb/cdbtm.h"
 
 /*
  * The namespace search path is a possibly-empty list of namespace OIDs.
@@ -2059,6 +2060,17 @@ RemoveTempRelations(Oid tempNamespaceId)
 static void
 RemoveTempRelationsCallback(int code, Datum arg)
 {
+	if (DistributedTransactionContext == DTX_CONTEXT_QE_PREPARED)
+	{
+		/*
+		 * MPP-10213: if we're prepared, it is the responsibility of
+		 * someone completing our transaction to clean up the
+		 * temp-relations. We are no longer inside the transaction, so
+		 * the schema entries aren't even visible to us!
+		 */
+		return;
+	}
+
 	if (OidIsValid(myTempNamespace))
 	{
 		/* Need to ensure we have a usable transaction. */
