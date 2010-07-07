@@ -3051,6 +3051,7 @@ class GPUpgrade:
             # run postgres in single user mode, feed in scripts
             cmd = ' '.join(['postgres', '--single', '-O',
                             '-c', 'gp_session_role=utility',
+                            '-c', 'gp_before_persistence_work=true',
                             '-c', 'exit_on_error=true',
                             '-E', '-D', path, dbname])
             logger.debug('running ' + cmd)

@@ -1596,7 +1596,7 @@ bootstrap_template1(char *short_version)
 	unsetenv("PGCLIENTENCODING");
 
 	snprintf(cmd, sizeof(cmd),
-			 "\"%s\" --boot -x1 %s %s",
+			 "\"%s\" --boot -x1 %s -c gp_before_persistence_work=on %s",
 			 backend_exec, boot_options, talkargs);
 
 	PG_CMD_OPEN;
@@ -2149,7 +2149,7 @@ setup_gp_persistent_tables(void)
 	fflush(stdout);
 
 	snprintf(cmd, sizeof(cmd),
-			 "\"%s\" %s template1 >%s",
+			 "\"%s\" %s -c gp_before_persistence_work=on template1 >%s",
 			 backend_exec, backend_options,
 			 DEVNULL);
 

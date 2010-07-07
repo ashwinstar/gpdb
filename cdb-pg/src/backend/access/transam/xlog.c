@@ -6318,6 +6318,8 @@ StartupXLOG(void)
 	else if (StandbyTakeover || InArchiveRecovery)
 	{
 		/* force recovery due to presence of recovery.conf */
+		ereport(LOG,
+				(errmsg("Forcing Crash Recovery for Master Standby takeover")));
 		InRecovery = true;
 	}
 
@@ -6330,6 +6332,12 @@ StartupXLOG(void)
 	 */
 	if (DistributedLog_UpgradeCheck(InRecovery))
 		InRecovery = true;
+
+	if (InRecovery && !IsUnderPostmaster)
+	{
+		ereport(FATAL,
+				(errmsg("Database must be shutdown cleanly when using single backed start")));
+	}
 
 	/* REDO */
 	if (InRecovery)
@@ -6666,11 +6674,65 @@ StartupXLOG(void)
 	XLogCtl->ckptXidEpoch = ControlFile->checkPointCopy.nextXidEpoch;
 	XLogCtl->ckptXid = ControlFile->checkPointCopy.nextXid;
 
-	if (!XLogCtl->multiplePassesNeeded)
+	if (!IsUnderPostmaster)
+	{
+		Assert(!InRecovery);
+		
+		if (Debug_persistent_recovery_print)
+			elog(Debug_persistent_recovery_print_level, 
+				 "Finishing single backend start");
+
+		if (!gp_before_persistence_work)
+		{		
+			/*
+			 * Create a resource owner to keep track of our resources (currently only
+			 * buffer pins).
+			 */
+			CurrentResourceOwner = ResourceOwnerCreate(NULL, "StartupXLOG");
+			
+			/*
+			 * We don't have any hope of running a real relcache, but we can use the
+			 * same fake-relcache facility that WAL replay uses.
+			 */
+			XLogInitRelationCache();
+			
+			PersistentFileSysObj_InitScan();
+			
+			/*
+			 * Close down recovery environment
+			 */
+			XLogCloseRelationCache();
+		}
+		
+		StartupXLOG_InProduction();
+	}
+	else if (!XLogCtl->multiplePassesNeeded)
 	{
 		if (Debug_persistent_recovery_print)
 			elog(Debug_persistent_recovery_print_level, 
 				 "Multiple Startup Passes not needed");
+
+		if (!gp_before_persistence_work)
+		{
+			/*
+			 * Create a resource owner to keep track of our resources (currently only
+			 * buffer pins).
+			 */
+			CurrentResourceOwner = ResourceOwnerCreate(NULL, "StartupXLOG");
+			
+			/*
+			 * We don't have any hope of running a real relcache, but we can use the
+			 * same fake-relcache facility that WAL replay uses.
+			 */
+			XLogInitRelationCache();
+			
+			PersistentFileSysObj_InitScan();
+
+			/*
+			 * Close down recovery environment
+			 */
+			XLogCloseRelationCache();
+		}
 		
 		StartupXLOG_InProduction();
 	}
