@@ -3759,3 +3759,151 @@ start (date '2013-01-01') end (date '2014-01-01') WITH (appendonly=true);
 select pg_get_partition_def('mpp5992'::regclass,true, true);
 
 drop table mpp5992;
+
+-- MPP-10223: split subpartitions
+CREATE TABLE MPP10223pk
+(
+rnc VARCHAR(100),
+wbts VARCHAR(100),
+axc VARCHAR(100),
+vptt VARCHAR(100),
+vcct VARCHAR(100),
+agg_level CHAR(5),
+period_start_time TIMESTAMP WITH TIME ZONE,
+load_time TIMESTAMP WITH TIME ZONE DEFAULT now(),
+interval INTEGER,
+totcellsegress double precision,
+totcellsingress double precision,
+ 
+  CONSTRAINT "axc_vcct1_atmvcct_pk_test2" 
+PRIMARY KEY (rnc,wbts,axc,vptt,vcct,agg_level,period_start_time)
+)
+ 
+DISTRIBUTED BY (rnc,wbts,axc,vptt,vcct)
+ 
+PARTITION BY LIST (AGG_LEVEL)
+  SUBPARTITION BY RANGE (PERIOD_START_TIME)
+(
+  PARTITION min15part  VALUES ('15min')
+    (
+       SUBPARTITION P_FUTURE  START (date '2001-01-01') INCLUSIVE,
+       SUBPARTITION P_ENDPART START (date '2999-12-30') INCLUSIVE
+                              END (date '2999-12-31') EXCLUSIVE
+    ),
+  PARTITION hourpart   VALUES ('hour')
+    (
+               SUBPARTITION P20100622 START (date '2010-06-22') INCLUSIVE,
+               SUBPARTITION P20100623 START (date '2010-06-23') INCLUSIVE,
+               SUBPARTITION P20100624 START (date '2010-06-24') INCLUSIVE,
+               SUBPARTITION P20100625 START (date '2010-06-25') INCLUSIVE,
+               SUBPARTITION P20100626 START (date '2010-06-26') INCLUSIVE,
+               SUBPARTITION P_FUTURE  START (date '2001-01-01') INCLUSIVE,
+               SUBPARTITION P_ENDPART START (date '2999-12-30') INCLUSIVE
+                                      END (date '2999-12-31') EXCLUSIVE
+    ),
+  PARTITION daypart    VALUES ('day')
+    (
+               SUBPARTITION P20100622 START (date '2010-06-22') INCLUSIVE,
+               SUBPARTITION P20100623 START (date '2010-06-23') INCLUSIVE,
+               SUBPARTITION P20100624 START (date '2010-06-24') INCLUSIVE,
+               SUBPARTITION P20100625 START (date '2010-06-25') INCLUSIVE,
+               SUBPARTITION P20100626 START (date '2010-06-26') INCLUSIVE,
+               SUBPARTITION P_FUTURE  START (date '2001-01-01') INCLUSIVE,
+               SUBPARTITION P_ENDPART START (date '2999-12-30') INCLUSIVE
+                                      END (date '2999-12-31') EXCLUSIVE
+    )
+);
+
+-- doesn't work because only default partitions can re-use name
+ALTER TABLE MPP10223pk
+ ALTER PARTITION min15part 
+SPLIT PARTITION  P_FUTURE AT ('2010-06-25') 
+INTO (PARTITION P20010101, PARTITION P_FUTURE);
+
+-- doesn't work because of primary key problem
+ALTER TABLE MPP10223pk
+ ALTER PARTITION min15part 
+SPLIT PARTITION  P_FUTURE AT ('2010-06-25') 
+INTO (PARTITION P20010101, PARTITION P_FUTURE2);
+
+
+drop table mpp10223pk;
+
+-- rebuild the table without a primary key
+CREATE TABLE MPP10223
+(
+rnc VARCHAR(100),
+wbts VARCHAR(100),
+axc VARCHAR(100),
+vptt VARCHAR(100),
+vcct VARCHAR(100),
+agg_level CHAR(5),
+period_start_time TIMESTAMP WITH TIME ZONE,
+load_time TIMESTAMP WITH TIME ZONE DEFAULT now(),
+interval INTEGER,
+totcellsegress double precision,
+totcellsingress double precision
+)
+ 
+DISTRIBUTED BY (rnc,wbts,axc,vptt,vcct)
+ 
+PARTITION BY LIST (AGG_LEVEL)
+  SUBPARTITION BY RANGE (PERIOD_START_TIME)
+(
+  PARTITION min15part  VALUES ('15min')
+    (
+       SUBPARTITION P_FUTURE  START (date '2001-01-01') INCLUSIVE,
+       SUBPARTITION P_ENDPART START (date '2999-12-30') INCLUSIVE
+                              END (date '2999-12-31') EXCLUSIVE
+    ),
+  PARTITION hourpart   VALUES ('hour')
+    (
+               SUBPARTITION P20100622 START (date '2010-06-22') INCLUSIVE,
+               SUBPARTITION P20100623 START (date '2010-06-23') INCLUSIVE,
+               SUBPARTITION P20100624 START (date '2010-06-24') INCLUSIVE,
+               SUBPARTITION P20100625 START (date '2010-06-25') INCLUSIVE,
+               SUBPARTITION P20100626 START (date '2010-06-26') INCLUSIVE,
+               SUBPARTITION P_FUTURE  START (date '2001-01-01') INCLUSIVE,
+               SUBPARTITION P_ENDPART START (date '2999-12-30') INCLUSIVE
+                                      END (date '2999-12-31') EXCLUSIVE
+    ),
+  PARTITION daypart    VALUES ('day')
+    (
+               SUBPARTITION P20100622 START (date '2010-06-22') INCLUSIVE,
+               SUBPARTITION P20100623 START (date '2010-06-23') INCLUSIVE,
+               SUBPARTITION P20100624 START (date '2010-06-24') INCLUSIVE,
+               SUBPARTITION P20100625 START (date '2010-06-25') INCLUSIVE,
+               SUBPARTITION P20100626 START (date '2010-06-26') INCLUSIVE,
+               SUBPARTITION P_FUTURE  START (date '2001-01-01') INCLUSIVE,
+               SUBPARTITION P_ENDPART START (date '2999-12-30') INCLUSIVE
+                                      END (date '2999-12-31') EXCLUSIVE
+    )
+);
+
+-- this works
+ALTER TABLE MPP10223
+ ALTER PARTITION min15part 
+SPLIT PARTITION  P_FUTURE AT ('2010-06-25') 
+INTO (PARTITION P20010101, PARTITION P_FUTURE2);
+
+drop table mpp10223;
+
+-- simpler version
+create table mpp10223b (a int, b int , d int)
+partition by range (b)
+subpartition by range (d)
+(partition p1 start (1) end (10)
+(subpartition sp2 start (20) end (30)));
+
+-- complain (because re-used sp2 for non-DEFAULT partition)
+alter table mpp10223b alter partition p1 
+split partition for (rank(1) ) at (25)
+into (partition sp2, partition sp3);
+
+-- works
+alter table mpp10223b alter partition p1 
+split partition for (rank(1) ) at (25)
+into (partition sp3, partition sp4);
+
+drop table mpp10223b;
+
