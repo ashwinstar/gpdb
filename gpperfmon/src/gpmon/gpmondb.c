@@ -235,16 +235,38 @@ void gpdb_get_master_data_dir(char** hostname, char** mstrdir, apr_pool_t* pool)
 	*mstrdir = dir;
 }
 
-static apr_status_t check_partition(const char* tbl, apr_pool_t* pool)
+static void check_and_add_partition(const char* tbl, int begin_year, int begin_month, int end_year, int end_month)
 {
 	PGconn* conn = 0;
 	PGresult* result = 0;
 	const char* errmsg;
 	const int QRYBUFSIZ = 1024;
+
+	char qry[QRYBUFSIZ];
+	const char* CHK_QRYFMT = "select dt from (select substring(partitionrangestart from 2 for 7) as dt from pg_partitions where tablename = '%s_history' ) as TBL where TBL.dt = '%d-%02d';";
+	const char* ADD_QRYFMT = "alter table %s_history add partition start ('%d-%02d-01 00:00:00'::timestamp without time zone) inclusive end ('%d-%02d-01 00:00:00'::timestamp without time zone) exclusive;";
+
+	snprintf(qry, QRYBUFSIZ, CHK_QRYFMT, tbl, begin_year, begin_month);
+	if (!gpdb_exec_search_for_at_least_one_row(qry))
+	{
+		// this partition does not exist, create it
+
+		snprintf(qry, QRYBUFSIZ, ADD_QRYFMT, tbl, begin_year, begin_month, end_year, end_month);
+		errmsg = gpdb_exec(&conn, &result, qry);
+		if (errmsg)
+		{
+			gpmon_warning(FLINE, "partion add response from server: %s\n", errmsg);
+		}
+
+		PQclear(result);
+		PQfinish(conn);
+	}
+}
+
+static apr_status_t check_partition(const char* tbl, apr_pool_t* pool)
+{
 	struct tm tm;
 	time_t now;
-	char qry[QRYBUFSIZ];
-	const char* QRYFMT = "alter table %s_history add partition start ('%d-%02d-01 00:00:00'::timestamp without time zone) inclusive end ('%d-%02d-01 00:00:00'::timestamp without time zone) exclusive;";
 
 	unsigned short year[3];
 	unsigned char month[3];
@@ -292,27 +314,8 @@ static apr_status_t check_partition(const char* tbl, apr_pool_t* pool)
 		year[2] = year[0] + 1;
 	}
 
-	snprintf(qry, QRYBUFSIZ, QRYFMT, tbl, year[0], month[0], year[1], month[1]);
-	TR0(("%s\n", qry));
-	errmsg = gpdb_exec(&conn, &result, qry);
-	if (errmsg)
-	{
-		TR1(("partion add response from server: %s\n", errmsg));
-	}
-	PQclear(result);
-	PQfinish(conn);
-	conn = 0;
-	result = 0;
-
-	snprintf(qry, QRYBUFSIZ, QRYFMT, tbl, year[1], month[1], year[2], month[2]);
-	TR0(("%s\n", qry));
-	errmsg = gpdb_exec(&conn, &result, qry);
-	if (errmsg)
-	{
-		TR1(("partion add response from server: %s\n", errmsg));
-	}
-	PQclear(result);
-	PQfinish(conn);
+	check_and_add_partition(tbl, year[0], month[0], year[1], month[1]);
+	check_and_add_partition(tbl, year[1], month[1], year[2], month[2]);
 
 	TR0(("check partitions on %s_history done\n", tbl));
 	return APR_SUCCESS;
