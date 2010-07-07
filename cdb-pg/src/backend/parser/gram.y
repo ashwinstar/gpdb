@@ -277,7 +277,7 @@ static TypeName *TableFuncTypeName(List *columns);
 				aggr_args aggr_args_list old_aggr_definition old_aggr_list
 				oper_argtypes RuleActionList RuleActionMulti
 				cdb_string_list
-				opt_column_list columnList opt_name_list
+				opt_column_list columnList opt_name_list exttab_auth_list keyvalue_list
 				opt_inherited_column_list
 				sort_clause opt_sort_clause sortby_list index_params
 				name_list from_clause from_list opt_array_bounds
@@ -342,7 +342,7 @@ static TypeName *TableFuncTypeName(List *columns);
 %type <node>	TableElement ExtTableElement ConstraintElem TableFuncElement
 %type <node>	columnDef ExtcolumnDef
 %type <node>	cdb_string
-%type <defelt>	def_elem old_aggr_elem
+%type <defelt>	def_elem old_aggr_elem keyvalue_pair
 %type <node>	def_arg columnElem where_clause
 				a_expr b_expr c_expr simple_func func_expr AexprConst indirection_el
 				columnref in_expr having_clause func_table array_expr
@@ -470,7 +470,7 @@ static TypeName *TableFuncTypeName(List *columns);
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
 	CLUSTER COALESCE COLLATE COLUMN COMMENT COMMIT
 	COMMITTED CONCURRENTLY CONNECTION CONSTRAINT CONSTRAINTS CONTENT_P CONTINUE_P CONVERSION_P CONVERT COPY COST
-	CREATE CREATEDB
+	CREATE CREATEDB CREATEEXTTABLE
 	CREATEROLE CREATEUSER CROSS CSV CUBE CURRENT CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE CURRENT_SCHEMA
 	CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
 
@@ -506,7 +506,7 @@ static TypeName *TableFuncTypeName(List *columns);
 	MAPPING MASTER MATCH MAXVALUE MERGE MINUTE_P MINVALUE MIRROR MISSING MODE MODIFY 
 	MONTH_P MOVE
 
-	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEWLINE NEXT NO NOCREATEDB
+	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEWLINE NEXT NO NOCREATEDB NOCREATEEXTTABLE
 	NOCREATEROLE NOCREATEUSER NOINHERIT NOLOGIN_P NONE NOOVERCOMMIT NOSUPERUSER
 	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLS_P NULLIF NUMERIC
 
@@ -629,6 +629,7 @@ static TypeName *TableFuncTypeName(List *columns);
 			%nonassoc COPY
 			%nonassoc COST
 			%nonassoc CREATEDB
+			%nonassoc CREATEEXTTABLE
 			%nonassoc CREATEROLE
 			%nonassoc CREATEUSER
 			%nonassoc CSV
@@ -730,6 +731,7 @@ static TypeName *TableFuncTypeName(List *columns);
 			%nonassoc NEXT
 			%nonassoc NO
 			%nonassoc NOCREATEDB
+			%nonassoc NOCREATEEXTTABLE
 			%nonassoc NOCREATEROLE
 			%nonassoc NOCREATEUSER
 			%nonassoc NOINHERIT
@@ -1327,6 +1329,31 @@ OptRoleElem:
 				{
 					$$ = makeDefElem("addroleto", (Node *)$3);
 				}
+			| CREATEEXTTABLE exttab_auth_list
+				{
+					$$ = makeDefElem("exttabauth", (Node *)$2);
+				}
+			| NOCREATEEXTTABLE exttab_auth_list
+				{
+					$$ = makeDefElem("exttabnoauth", (Node *)$2);
+				}			
+		;
+
+exttab_auth_list:
+		'(' keyvalue_list ')'	{ $$ = $2; }
+		| /*EMPTY*/				{ $$ = NIL; }
+		;
+
+keyvalue_list:
+		keyvalue_pair						{ $$ = list_make1($1); }
+		| keyvalue_list ',' keyvalue_pair	{ $$ = lappend($1, $3); }
+		;
+
+keyvalue_pair:
+		ColLabel '=' Sconst
+		{
+			$$ = makeDefElem($1, (Node *)makeString($3));
+		}
 		;
 
 
@@ -11967,6 +11994,7 @@ unreserved_keyword:
 			| COPY
 			| COST
 			| CREATEDB
+			| CREATEEXTTABLE
 			| CREATEROLE
 			| CREATEUSER
 			| CSV
@@ -12067,6 +12095,7 @@ unreserved_keyword:
 			| NEXT
 			| NO
 			| NOCREATEDB
+			| NOCREATEEXTTABLE
 			| NOCREATEROLE
 			| NOCREATEUSER
 			| NOINHERIT
@@ -12249,6 +12278,7 @@ PartitionIdentKeyword: ABORT_P
 			| COPY
 			| COST
 			| CREATEDB
+			| CREATEEXTTABLE
 			| CREATEROLE
 			| CREATEUSER
 			| CSV

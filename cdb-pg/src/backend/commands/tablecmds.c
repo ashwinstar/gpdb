@@ -975,7 +975,9 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	 *
 	 * - Always allow if superuser.
 	 * - Never allow EXECUTE or 'file' exttables if not superuser.
-	 * - Allow http or gpfdist tables if gp_external_grant_privileges is on.
+	 * - Allow http or gpfdist tables if pg_auth has the right permissions
+	 *   for this role and for this type of table, or if gp_external_grant_privileges 
+	 *   is on (gp_external_grant_privileges should be deprecated at some point).
 	 */
 	if(!superuser() && Gp_role == GP_ROLE_DISPATCH)
 	{		
@@ -1004,11 +1006,70 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 			}
 			else if(!gp_external_grant_privileges)
 			{
-				Assert(uri->protocol == URI_GPFDIST || uri->protocol == URI_HTTP);
-				ereport(ERROR,
-						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-						errmsg("must be superuser to create an external table"),
-								   errOmitLocation(true)));
+				/*
+				 * Check if this role has the proper 'gpfdist' or 'http'
+				 * permissions in pg_auth for creating this table.
+				 */
+
+				bool		 isnull;				
+				Oid			 userid = GetUserId();
+				Relation	 pg_authid_rel = heap_open(AuthIdRelationId, RowExclusiveLock);
+				TupleDesc	 pg_authid_dsc = RelationGetDescr(pg_authid_rel);
+				HeapTuple	 tuple = 		 SearchSysCache(AUTHOID,
+											 ObjectIdGetDatum(userid),
+											 0, 0, 0);
+								
+				if (!HeapTupleIsValid(tuple))
+					ereport(ERROR,
+							(errcode(ERRCODE_UNDEFINED_OBJECT),
+							 errmsg("role \"%s\" does not exist (in DefineExternalRelation)", 
+									 GetUserNameFromId(userid))));
+
+				if (uri->protocol == URI_GPFDIST && iswritable)
+				{
+					Datum 	d_wextgpfd = heap_getattr(tuple, Anum_pg_authid_rolcreatewextgpfd, pg_authid_dsc, &isnull);
+					bool	createwextgpfd = (isnull ? false : DatumGetBool(d_wextgpfd));
+					
+					if (!createwextgpfd)
+						ereport(ERROR,
+								(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+								errmsg("permission denied: no privilege to create a writable gpfdist external table"),
+										errOmitLocation(true)));
+				}
+				else if (uri->protocol == URI_GPFDIST && !iswritable)
+				{
+					Datum 	d_rextgpfd = heap_getattr(tuple, Anum_pg_authid_rolcreaterextgpfd, pg_authid_dsc, &isnull);
+					bool	createrextgpfd = (isnull ? false : DatumGetBool(d_rextgpfd));
+
+					if (!createrextgpfd)
+						ereport(ERROR,
+								(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+								errmsg("permission denied: no privilege to create a readable gpfdist external table"),
+										errOmitLocation(true)));
+
+				}
+				else if (uri->protocol == URI_HTTP && !iswritable)
+				{
+					Datum 	d_exthttp = heap_getattr(tuple, Anum_pg_authid_rolcreaterexthttp, pg_authid_dsc, &isnull);
+					bool	createrexthttp = (isnull ? false : DatumGetBool(d_exthttp));
+
+					if (!createrexthttp)
+						ereport(ERROR,
+								(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+								errmsg("permission denied: no privilege to create an http external table"),
+										errOmitLocation(true)));
+				}
+				else
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							errmsg("internal error in DefineExternalRelation. "
+								   "protocol is %d, writable is %d", 
+								   uri->protocol, iswritable)));
+				}
+				
+				ReleaseSysCache(tuple);
+				heap_close(pg_authid_rel, RowExclusiveLock);
 			}
 			pfree(uri);
 			pfree(uri_str);

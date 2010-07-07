@@ -668,33 +668,75 @@ dumpRoles(PGconn *conn)
 				i_rolpassword,
 				i_rolvaliduntil,
 				i_rolcomment,
-				i_rolqueuename = -1;  /* keep compiler quiet */
+				i_rolqueuename = -1,  /* keep compiler quiet */
+				i_rolcreaterextgpfd = -1,
+				i_rolcreaterexthttp = -1,
+				i_rolcreatewextgpfd = -1;
 	int			i;
-
+	bool		exttab_auth = (server_version >= 80214);
+	
 	/* note: rolconfig is dumped later */
-	if (resource_queues)
+	
+	if (exttab_auth)
 	{
-		printfPQExpBuffer(buf,
-						  "SELECT rolname, rolsuper, rolinherit, "
-						  "rolcreaterole, rolcreatedb, rolcatupdate, "
-						  "rolcanlogin, rolconnlimit, rolpassword, "
-						  "rolvaliduntil, "
-						  "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment, "
-						  "(SELECT rsqname FROM pg_resqueue WHERE "
-						  "pg_resqueue.oid = rolresqueue) AS rolqueuename "
-						  "FROM pg_authid "
-						  "ORDER BY 1");
+		/* also extract the external table privilege fields */
+		
+		if (resource_queues)
+		{
+			printfPQExpBuffer(buf,
+							  "SELECT rolname, rolsuper, rolinherit, "
+							  "rolcreaterole, rolcreatedb, rolcatupdate, "
+							  "rolcanlogin, rolconnlimit, rolpassword, "
+							  "rolvaliduntil, "
+							  "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment, "
+							  "(SELECT rsqname FROM pg_resqueue WHERE "
+							  "pg_resqueue.oid = rolresqueue) AS rolqueuename, "
+							  "rolcreaterextgpfd, rolcreaterexthttp, rolcreatewextgpfd "
+							  "FROM pg_authid "
+							  "ORDER BY 1");
+		}
+		else
+		{
+			printfPQExpBuffer(buf,
+							  "SELECT rolname, rolsuper, rolinherit, "
+							  "rolcreaterole, rolcreatedb, rolcatupdate, "
+							  "rolcanlogin, rolconnlimit, rolpassword, "
+							  "rolvaliduntil, "
+							  "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment, "
+							  "rolcreaterextgpfd, rolcreaterexthttp, rolcreatewextgpfd "
+							  "FROM pg_authid "
+							  "ORDER BY 1");
+		}
+
 	}
 	else
 	{
-		printfPQExpBuffer(buf,
-						  "SELECT rolname, rolsuper, rolinherit, "
-						  "rolcreaterole, rolcreatedb, rolcatupdate, "
-						  "rolcanlogin, rolconnlimit, rolpassword, "
-						  "rolvaliduntil, "
-						  "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment "
-						  "FROM pg_authid "
-						  "ORDER BY 1");
+		if (resource_queues)
+		{
+			/* don't extract the external table privilege fields */
+			
+			printfPQExpBuffer(buf,
+							  "SELECT rolname, rolsuper, rolinherit, "
+							  "rolcreaterole, rolcreatedb, rolcatupdate, "
+							  "rolcanlogin, rolconnlimit, rolpassword, "
+							  "rolvaliduntil, "
+							  "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment, "
+							  "(SELECT rsqname FROM pg_resqueue WHERE "
+							  "pg_resqueue.oid = rolresqueue) AS rolqueuename "
+							  "FROM pg_authid "
+							  "ORDER BY 1");
+		}
+		else
+		{
+			printfPQExpBuffer(buf,
+							  "SELECT rolname, rolsuper, rolinherit, "
+							  "rolcreaterole, rolcreatedb, rolcatupdate, "
+							  "rolcanlogin, rolconnlimit, rolpassword, "
+							  "rolvaliduntil, "
+							  "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment "
+							  "FROM pg_authid "
+							  "ORDER BY 1");
+		}
 	}
 
 	res = executeQuery(conn, buf->data);
@@ -714,6 +756,13 @@ dumpRoles(PGconn *conn)
 	if (resource_queues)
 		i_rolqueuename = PQfnumber(res, "rolqueuename");
 
+	if (exttab_auth)
+	{
+		i_rolcreaterextgpfd = PQfnumber(res, "rolcreaterextgpfd");
+		i_rolcreaterexthttp = PQfnumber(res, "rolcreaterexthttp");
+		i_rolcreatewextgpfd = PQfnumber(res, "rolcreatewextgpfd");
+	}
+	
 	if (PQntuples(res) > 0)
 		printf("--\n-- Roles\n--\n\n");
 
@@ -783,6 +832,21 @@ dumpRoles(PGconn *conn)
 								  PQgetvalue(res, i, i_rolqueuename));
 		}
 
+		if (exttab_auth)
+		{
+			if (!PQgetisnull(res, i, i_rolcreaterextgpfd) && 
+				strcmp(PQgetvalue(res, i, i_rolcreaterextgpfd), "t") == 0)
+				appendPQExpBuffer(buf, " CREATEEXTTABLE (protocol='gpfdist', type='readable')");
+
+			if (!PQgetisnull(res, i, i_rolcreatewextgpfd) && 
+				strcmp(PQgetvalue(res, i, i_rolcreatewextgpfd), "t") == 0)
+				appendPQExpBuffer(buf, " CREATEEXTTABLE (protocol='gpfdist', type='writable')");
+
+			if (!PQgetisnull(res, i, i_rolcreaterexthttp) && 
+				strcmp(PQgetvalue(res, i, i_rolcreaterexthttp), "t") == 0)
+				appendPQExpBuffer(buf, " CREATEEXTTABLE (protocol='http')");
+		}
+		
 		appendPQExpBuffer(buf, ";\n");
 
 		if (!PQgetisnull(res, i, i_rolcomment))

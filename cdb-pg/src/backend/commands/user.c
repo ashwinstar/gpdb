@@ -41,6 +41,23 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
 
+
+typedef struct genericPair
+{
+	char* key1;
+	char* val1;
+	char* key2;
+	char* val2;
+	
+} genericPair;
+
+typedef struct extAuthPair
+{
+	char* protocol;
+	char* type;
+
+} extAuthPair;
+
 extern bool Password_encryption;
 
 static List *roleNamesToIds(List *memberNames);
@@ -50,7 +67,11 @@ static void AddRoleMems(const char *rolename, Oid roleid,
 static void DelRoleMems(const char *rolename, Oid roleid,
 			List *memberNames, List *memberIds,
 			bool admin_opt);
-
+static void TransformExttabAuthClause(DefElem *defel, 
+			extAuthPair *extauth);
+static void SetCreateExtTableForRole(List* allow, 
+			List* disallow, bool* createrextgpfd,
+			bool* createrexthttp, bool* createwextgpfd);
 
 /* Check if current user has createrole privileges */
 static bool
@@ -97,10 +118,15 @@ CreateRole(CreateRoleStmt *stmt)
 	bool		createrole = false;		/* Can this user create roles? */
 	bool		createdb = false;		/* Can the user create databases? */
 	bool		canlogin = false;		/* Can this user login? */
+	bool		createrextgpfd = false; /* Can create readable gpfdist exttab? */
+	bool		createrexthttp = false; /* Can create readable http exttab? */
+	bool		createwextgpfd = false; /* Can create writable gpfdist exttab? */
 	int			connlimit = -1; /* maximum connections allowed */
 	List	   *addroleto = NIL;	/* roles to make this a member of */
 	List	   *rolemembers = NIL;		/* roles to be members of this role */
 	List	   *adminmembers = NIL;		/* roles to be admins of this role */
+	List	   *exttabcreate = NIL;		/* external table create privileges being added  */
+	List	   *exttabnocreate = NIL;	/* external table create privileges being removed */
 	char	   *validUntil = NULL;		/* time the login is valid until */
 	char	   *resqueue = NULL;		/* resource queue for this role */
 	DefElem    *dpassword = NULL;
@@ -115,7 +141,7 @@ CreateRole(CreateRoleStmt *stmt)
 	DefElem    *drolemembers = NULL;
 	DefElem    *dadminmembers = NULL;
 	DefElem    *dvalidUntil = NULL;
-
+	
 	/* The defaults can vary depending on the original statement type */
 	switch (stmt->stmt_type)
 	{
@@ -242,6 +268,24 @@ CreateRole(CreateRoleStmt *stmt)
 						 errmsg("conflicting or redundant options")));
 			dresqueue = defel;
 		}
+		else if (strcmp(defel->defname, "exttabauth") == 0)
+		{
+			extAuthPair *extauth = (extAuthPair *) palloc0 (2 * sizeof(char *));
+			
+			TransformExttabAuthClause(defel, extauth);
+			
+			/* now actually append our transformed key value pairs to the list */
+			exttabcreate = lappend(exttabcreate, extauth);			
+		}			  
+		else if (strcmp(defel->defname, "exttabnoauth") == 0)
+		{
+			extAuthPair *extauth = (extAuthPair *) palloc0 (2 * sizeof(char *));
+			
+			TransformExttabAuthClause(defel, extauth);
+			
+			/* now actually append our transformed key value pairs to the list */
+			exttabnocreate = lappend(exttabnocreate, extauth);
+		}
 		else
 			elog(ERROR, "option \"%s\" not recognized",
 				 defel->defname);
@@ -347,6 +391,16 @@ CreateRole(CreateRoleStmt *stmt)
 	new_record[Anum_pg_authid_rolcanlogin - 1] = BoolGetDatum(canlogin);
 	new_record[Anum_pg_authid_rolconnlimit - 1] = Int32GetDatum(connlimit);
 
+	/* Set the CREATE EXTERNAL TABLE permissions for this role */
+	if (exttabcreate || exttabnocreate)
+		SetCreateExtTableForRole(exttabcreate, exttabnocreate, &createrextgpfd,
+								 &createrexthttp, &createwextgpfd);
+
+	new_record[Anum_pg_authid_rolcreaterextgpfd - 1] = BoolGetDatum(createrextgpfd);
+	new_record[Anum_pg_authid_rolcreaterexthttp - 1] = BoolGetDatum(createrexthttp);
+	new_record[Anum_pg_authid_rolcreatewextgpfd - 1] = BoolGetDatum(createwextgpfd);
+
+	
 	if (password)
 	{
 		if (!encrypt_password || isMD5(password))
@@ -518,6 +572,8 @@ AlterRole(AlterRoleStmt *stmt)
 	int			 connlimit	   = -1;	/* maximum connections allowed */
 	char		*resqueue	   = NULL;	/* resource queue for this role */
 	List		*rolemembers   = NIL;	/* roles to be added/removed */
+	List	    *exttabcreate  = NIL;	/* external table create privileges being added  */
+	List	    *exttabnocreate = NIL;	/* external table create privileges being removed */
 	char		*validUntil	   = NULL;	/* time the login is valid until */
 	DefElem		*dpassword	   = NULL;
 	DefElem		*dresqueue	   = NULL;
@@ -534,6 +590,10 @@ AlterRole(AlterRoleStmt *stmt)
 	int			 numopts	   = 0;
 	char		*alter_subtype = "";	/* metadata tracking: kind of
 										   redundant to say "role" */
+	bool		 createrextgpfd;
+	bool 		 createrexthttp;
+	bool		 createwextgpfd;
+
 
 	numopts = list_length(stmt->options);
 
@@ -663,6 +723,28 @@ AlterRole(AlterRoleStmt *stmt)
 			dresqueue = defel;
 			if (1 == numopts) alter_subtype = "RESOURCE QUEUE";
 		}
+		else if (strcmp(defel->defname, "exttabauth") == 0)
+		{
+			extAuthPair *extauth = (extAuthPair *) palloc0 (2 * sizeof(char *));
+			
+			TransformExttabAuthClause(defel, extauth);
+			
+			/* now actually append our transformed key value pairs to the list */
+			exttabcreate = lappend(exttabcreate, extauth);	
+			
+			if (1 == numopts) alter_subtype = "CREATEEXTTABLE";
+		}			  
+		else if (strcmp(defel->defname, "exttabnoauth") == 0)
+		{
+			extAuthPair *extauth = (extAuthPair *) palloc0 (2 * sizeof(char *));
+			
+			TransformExttabAuthClause(defel, extauth);
+			
+			/* now actually append our transformed key value pairs to the list */
+			exttabnocreate = lappend(exttabnocreate, extauth);
+			
+			if (1 == numopts) alter_subtype = "NO CREATEEXTTABLE";
+		}
 		else
 			elog(ERROR, "option \"%s\" not recognized",
 				 defel->defname);
@@ -711,6 +793,7 @@ AlterRole(AlterRoleStmt *stmt)
 	 */
 
 	bWas_super = ((Form_pg_authid) GETSTRUCT(tuple))->rolsuper;
+
 	if (((Form_pg_authid) GETSTRUCT(tuple))->rolsuper || issuper >= 0)
 	{
 		if (!superuser())
@@ -720,15 +803,19 @@ AlterRole(AlterRoleStmt *stmt)
 	}
 	else if (!have_createrole_privilege())
 	{
-		if (!(inherit < 0 &&
-			  createrole < 0 &&
-			  createdb < 0 &&
-			  canlogin < 0 &&
-			  !dconnlimit &&
-			  !rolemembers &&
-			  !validUntil &&
-			  dpassword &&
-			  roleid == GetUserId()))
+		bool is_createrol_required = !(inherit < 0 &&
+									   createrole < 0 &&
+									   createdb < 0 &&
+									   canlogin < 0 &&
+									   !dconnlimit &&
+									   !rolemembers &&
+									   !validUntil &&
+									   dpassword &&
+									   !exttabcreate &&
+									   !exttabnocreate &&
+									   roleid == GetUserId());
+		
+		if (is_createrol_required)
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("permission denied"),
@@ -824,6 +911,36 @@ AlterRole(AlterRoleStmt *stmt)
 								ObjectIdGetDatum(InvalidOid),
 								Int32GetDatum(-1));
 		new_record_repl[Anum_pg_authid_rolvaliduntil - 1] = true;
+	}
+
+	/* Set the CREATE EXTERNAL TABLE permissions for this role, if specified in ALTER */	
+	if (exttabcreate || exttabnocreate)
+	{
+		bool	isnull;
+		Datum 	dcreaterextgpfd;
+		Datum 	dcreaterexthttp;
+		Datum 	dcreatewextgpfd;
+
+		/* 
+		 * get bool values from catalog. we don't ever expect a NULL value, but just
+		 * in case it is there (perhaps after an upgrade) we treat it as 'false'.
+		 */
+		dcreaterextgpfd = heap_getattr(tuple, Anum_pg_authid_rolcreaterextgpfd, pg_authid_dsc, &isnull);
+		createrextgpfd = (isnull ? false : DatumGetBool(dcreaterextgpfd));
+		dcreaterexthttp = heap_getattr(tuple, Anum_pg_authid_rolcreaterexthttp, pg_authid_dsc, &isnull);
+		createrexthttp = (isnull ? false : DatumGetBool(dcreaterexthttp));
+		dcreatewextgpfd = heap_getattr(tuple, Anum_pg_authid_rolcreatewextgpfd, pg_authid_dsc, &isnull);
+		createwextgpfd = (isnull ? false : DatumGetBool(dcreatewextgpfd));
+		
+		SetCreateExtTableForRole(exttabcreate, exttabnocreate, &createrextgpfd,
+								 &createrexthttp, &createwextgpfd);
+
+		new_record[Anum_pg_authid_rolcreaterextgpfd - 1] = BoolGetDatum(createrextgpfd);
+		new_record_repl[Anum_pg_authid_rolcreaterextgpfd - 1] = true;
+		new_record[Anum_pg_authid_rolcreaterexthttp - 1] = BoolGetDatum(createrexthttp);
+		new_record_repl[Anum_pg_authid_rolcreaterexthttp - 1] = true;
+		new_record[Anum_pg_authid_rolcreatewextgpfd - 1] = BoolGetDatum(createwextgpfd);
+		new_record_repl[Anum_pg_authid_rolcreatewextgpfd - 1] = true;
 	}
 
 	/* resource queue */
@@ -1732,6 +1849,287 @@ AddRoleMems(const char *rolename, Oid roleid,
 	 * prevent any risk of deadlock failure while updating flat file)
 	 */
 	heap_close(pg_authmem_rel, NoLock);
+
+}
+
+/*
+ * CheckKeywordIsValid
+ * 
+ * check that string in 'keyword' is included in set of strings in 'arr'
+ */
+static void CheckKeywordIsValid(char *keyword, const char **arr, const int arrsize)
+{
+	int 	i = 0;
+	bool	ok = false;
+	
+	for(i = 0 ; i < arrsize ; i++)
+	{
+		if(strcasecmp(keyword, arr[i]) == 0)
+			ok = true;
+	}
+	
+	if(!ok)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("invalid [NO]CREATEEXTTABLE option \"%s\"", keyword)));				
+
+}
+
+/*
+ * CheckValueBelongsToKey
+ * 
+ * check that value (e.g 'gpfdist') belogs to the key it was defined for (e.g 'protocol').
+ * error out otherwise (for example, [protocol='writable'] includes valid keywords, but makes
+ * no sense.
+ */
+static void CheckValueBelongsToKey(char *key, char *val, const char **keys, const char **vals)
+{
+	if(strcasecmp(key, keys[0]) == 0)
+	{
+		if(strcasecmp(val, vals[0]) != 0 && 
+		   strcasecmp(val, vals[1]) != 0)
+			
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("invalid %s value \"%s\"", key, val)));	
+	}
+	else /* keys[1] */
+	{
+		if(strcasecmp(val, "gpfdist") != 0 && 
+		   strcasecmp(val, "http") != 0)
+
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("invalid %s value \"%s\"", key, val)));	
+	}
+	
+}
+
+/*
+ * TransformExttabAuthClause
+ * 
+ * Given a set of key value pairs, take them apart, fill in any default
+ * values, and validate that pairs are legal and make sense.
+ * 
+ * defaults are: 
+ *   - 'readable' when no type defined, 
+ *   - 'gpfdist' when no protocol defined,
+ *   - 'readable' + ' gpfdist' if both type and protocol aren't defined.
+ * 
+ */
+static void TransformExttabAuthClause(DefElem *defel, extAuthPair *extauth)
+{
+	ListCell   	*lc;
+	List	   	*l = (List *) defel->arg;
+	DefElem 	*d1 = NULL, 
+				*d2 = NULL;
+	genericPair *genpair = (genericPair *) palloc0 (4 * sizeof(char *));
+	
+	const int	numkeys = 2;
+	const int	numvals = 4;
+	const char *keys[] = { "type", "protocol"};	 /* order matters for validation. don't change! */
+	const char *vals[] = { /* types     */ "readable", "writable", 
+						   /* protocols */ "gpfdist" , "http"};
+
+	if(list_length(l) > 2)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("invalid [NO]CREATEEXTTABLE specification. too many values")));				
+
+		
+	if(list_length(l) == 2)
+	{
+		/* both a protocol and type specification */
+		
+		lc = list_head(l); 
+		d1 = (DefElem *) lfirst(lc);
+		genpair->key1 = pstrdup(d1->defname);
+		genpair->val1 = pstrdup(strVal(d1->arg));
+		
+		lc = lnext(lc);
+		d2 = (DefElem *) lfirst(lc);
+		genpair->key2 = pstrdup(d2->defname);
+		genpair->val2 = pstrdup(strVal(d2->arg));
+	}
+	else if(list_length(l) == 1)
+	{
+		/* either a protocol or type specification */
+		
+		lc = list_head(l); 
+		d1 = (DefElem *) lfirst(lc);
+		genpair->key1 = pstrdup(d1->defname);
+		genpair->val1 = pstrdup(strVal(d1->arg));
+		
+		if(strcasecmp(genpair->key1, "type") == 0)
+		{
+			/* default value for missing protocol */
+			genpair->key2 = pstrdup("protocol");
+			genpair->val2 = pstrdup("gpfdist");
+		}
+		else
+		{
+			/* default value for missing type */
+			genpair->key2 = pstrdup("type");
+			genpair->val2 = pstrdup("readable");
+		}
+	}
+	else
+	{
+		/* none specified. use global default */
+		
+		genpair->key1 = pstrdup("protocol");
+		genpair->val1 = pstrdup("gpfdist");
+		genpair->key2 = pstrdup("type");
+		genpair->val2 = pstrdup("readable");
+	}
+	
+	/* check all keys and values are legal */
+	CheckKeywordIsValid(genpair->key1, keys, numkeys);
+	CheckKeywordIsValid(genpair->key2, keys, numkeys);
+	CheckKeywordIsValid(genpair->val1, vals, numvals);
+	CheckKeywordIsValid(genpair->val2, vals, numvals);
+		
+	/* check all values are of the proper key */
+	CheckValueBelongsToKey(genpair->key1, genpair->val1, keys, vals);
+	CheckValueBelongsToKey(genpair->key2, genpair->val2, keys, vals);
+
+	if(strcasecmp(genpair->key1, genpair->key2) == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("redundant option for \"%s\"", genpair->key1)));
+	
+	/* now set values in extauth, which is the result returned */
+	if(strcasecmp(genpair->key1, "protocol") == 0)
+	{
+		extauth->protocol = pstrdup(genpair->val1);
+		extauth->type = pstrdup(genpair->val2);
+	}
+	else
+	{
+		extauth->protocol = pstrdup(genpair->val2);
+		extauth->type = pstrdup(genpair->val1);
+	}
+	
+	pfree(genpair->key1);
+	pfree(genpair->key2);
+	pfree(genpair->val1);
+	pfree(genpair->val2);
+	pfree(genpair);
+}
+
+/*
+ * SetCreateExtTableForRole
+ * 
+ * Given the allow list (permissions to add) and disallow (permissions
+ * to take away) consolidate this information into the 3 catalog
+ * boolean columns that will need to get updated. While at it we check
+ * that all the options are valid and don't conflict with each other.
+ * 
+ */
+static void SetCreateExtTableForRole(List* allow, 
+									 List* disallow,
+									 bool* createrextgpfd,
+									 bool* createrexthttp, 
+									 bool* createwextgpfd)
+{
+	ListCell*	lc;
+	bool		createrextgpfd_specified = false;
+	bool		createwextgpfd_specified = false;
+	bool		createrexthttp_specified = false;
+	
+	if(list_length(allow) > 0)
+	{
+		/* examine key value pairs */
+		foreach(lc, allow)
+		{
+			extAuthPair* extauth = (extAuthPair*) lfirst(lc);
+				
+			if(strcasecmp(extauth->protocol, "gpfdist") == 0)
+			{
+				if(strcasecmp(extauth->type, "readable") == 0)
+				{
+					*createrextgpfd = true;
+					createrextgpfd_specified = true; 
+				}
+				else
+				{
+					*createwextgpfd = true;
+					createwextgpfd_specified = true;
+				}
+			}
+			else /* http */
+			{
+				if(strcasecmp(extauth->type, "readable") == 0)
+				{
+					*createrexthttp = true;
+					createrexthttp_specified = true;
+				}
+				else
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("invalid CREATEEXTTABLE specification. writable http external tables do not exist")));
+				}
+			}			
+		}
+	}	
+	
+	/*
+	 * go over the disallow list.
+	 * if we're in CREATE ROLE, check that we don't negate something from the 
+	 * allow list. error out with conflicting options if we do. 
+	 * if we're in ALTER ROLE, just set the flags accordingly.
+	 */
+	if(list_length(disallow) > 0)
+	{
+		bool conflict = false;
+		
+		/* examine key value pairs */
+		foreach(lc, disallow)
+		{
+			extAuthPair* extauth = (extAuthPair*) lfirst(lc);
+				
+			if(strcasecmp(extauth->protocol, "gpfdist") == 0)
+			{
+				if(strcasecmp(extauth->type, "readable") == 0)
+				{
+					if(createrextgpfd_specified)
+						conflict = true;
+						
+					*createrextgpfd = false;
+				}
+				else
+				{
+					if(createwextgpfd_specified)
+						conflict = true;
+
+					*createwextgpfd = false;
+				}
+			}
+			else /* http */
+			{
+				if(strcasecmp(extauth->type, "readable") == 0)
+				{
+					if(createrexthttp_specified)
+						conflict = true;
+
+					*createrexthttp = false;
+				}
+				else
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("invalid NOCREATEEXTTABLE specification. writable http external tables do not exist")));
+				}
+			}			
+		}
+		
+		if(conflict)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("conflicting specifications in CREATEEXTTABLE and NOCREATEEXTTABLE")));
+			
+	}	
 
 }
 
