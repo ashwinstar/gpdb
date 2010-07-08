@@ -1168,136 +1168,138 @@ xaae: xlog:00006191:  ereport(FATAL,
 xaae: xlog:00006192:  (errmsg("requested timeline %u is not a child of database system timeline %u", 
 xaae: xlog:00006193:  recoveryTargetTLI, 
 xaae: xlog:00006194:  ControlFile->checkPointCopy.ThisTimeLineID))); 
-xaae: xlog:00006384:  ereport(FATAL, 
-xaae: xlog:00006385:  (errcode_for_file_access(), 
-xaae: xlog:00006386:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
-xaae: xlog:00006387:  BACKUP_LABEL_FILE, BACKUP_LABEL_OLD))); 
-xaae: xlog:00006504:  ereport(FATAL, 
-xaae: xlog:00006505:  (errmsg("requested recovery stop point is before end time of backup dump"))); 
-xaae: xlog:00006507:  ereport(FATAL, 
-xaae: xlog:00006508:  (errmsg("WAL ends before end time of backup dump"))); 
-xaae: xlog:00006713:  ereport(ERROR, 
-xaae: xlog:00006714:  (errcode_for_file_access(), 
-xaae: xlog:00006715:  errmsg("could not create redo relation file \"%s\"", 
-xaae: xlog:00006716:  path))); 
-xaae: xlog:00006734:  ereport(ERROR, 
-xaae: xlog:00006735:  (errcode_for_file_access(), 
-xaae: xlog:00006736:  errmsg("could not open redo relation file \"%s\"", 
-xaae: xlog:00006737:  path))); 
-xaae: xlog:00006751:  ereport(ERROR, 
-xaae: xlog:00006752:  (errcode_for_file_access(), 
-xaae: xlog:00006753:  errmsg("could not unlink redo relation file \"%s\": %m", path))); 
-xaae: xlog:00006782:  ereport(FATAL, 
-xaae: xlog:00006783:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
-xaae: xlog:00006882:  ereport(FATAL, 
-xaae: xlog:00006883:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
-xaae: xlog:00007022:  ereport(FATAL, 
-xaae: xlog:00007023:  (errmsg("%s: control file contains invalid data", callerStr))); 
-xaae: xlog:00007069:  ereport(ERROR, 
-xaae: xlog:00007070:  (errmsg("%s: could not locate a valid checkpoint record", callerStr))); 
-xaae: xlog:00007087:  ereport(ERROR, 
-xaae: xlog:00007088:  (errmsg("%s: invalid redo in checkpoint record", callerStr))); 
-xaae: xlog:00007097:  ereport(ERROR, 
-xaae: xlog:00007098:  (errmsg("%s: first redo record before checkpoint not found at %s", 
-xaae: xlog:00007099:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
-xaae: xlog:00007644:  ereport(LOG, 
-xaae: xlog:00007645:  (errmsg("database system is shut down"), 
-xaae: xlog:00007646:  errSendAlert(true),errOmitLocation(true))); 
-xaae: xlog:00008470:  ereport(ERROR, 
-xaae: xlog:00008471:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00008472:  (errmsg("must be superuser to run a backup")))); 
-xaae: xlog:00008475:  ereport(ERROR, 
-xaae: xlog:00008476:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008477:  (errmsg("WAL archiving is not active"), 
-xaae: xlog:00008478:  (errhint("archive_command must be defined before " 
-xaae: xlog:00008479:  "online backups can be made safely."))))); 
-xaae: xlog:00008505:  ereport(ERROR, 
-xaae: xlog:00008506:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008507:  errmsg("a backup is already in progress"), 
-xaae: xlog:00008508:  errhint("Run pg_stop_backup() and try again."))); 
-xaae: xlog:00008553:  ereport(ERROR, 
-xaae: xlog:00008554:  (errcode_for_file_access(), 
-xaae: xlog:00008555:  errmsg("could not stat file \"%s\": %m", 
-xaae: xlog:00008556:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008559:  ereport(ERROR, 
-xaae: xlog:00008560:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008561:  errmsg("a backup is already in progress"), 
-xaae: xlog:00008562:  errhint("If you're sure there is no backup in progress, remove file \"%s\" and try again.", 
-xaae: xlog:00008563:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008570:  ereport(ERROR, 
-xaae: xlog:00008571:  (errcode_for_file_access(), 
-xaae: xlog:00008572:  errmsg("could not create file \"%s\": %m", 
-xaae: xlog:00008573:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008581:  ereport(ERROR, 
-xaae: xlog:00008582:  (errcode_for_file_access(), 
-xaae: xlog:00008583:  errmsg("could not write file \"%s\": %m", 
-xaae: xlog:00008584:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008636:  ereport(ERROR, 
-xaae: xlog:00008637:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00008638:  (errmsg("must be superuser to run a backup")))); 
-xaae: xlog:00008670:  ereport(ERROR, 
-xaae: xlog:00008671:  (errcode_for_file_access(), 
-xaae: xlog:00008672:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00008673:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008674:  ereport(ERROR, 
-xaae: xlog:00008675:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008676:  errmsg("a backup is not in progress"))); 
-xaae: xlog:00008686:  ereport(ERROR, 
-xaae: xlog:00008687:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008688:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00006338:  ereport(FATAL, 
+xaae: xlog:00006339:  (errmsg("Database must be shutdown cleanly when using single backed start"))); 
+xaae: xlog:00006392:  ereport(FATAL, 
+xaae: xlog:00006393:  (errcode_for_file_access(), 
+xaae: xlog:00006394:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
+xaae: xlog:00006395:  BACKUP_LABEL_FILE, BACKUP_LABEL_OLD))); 
+xaae: xlog:00006512:  ereport(FATAL, 
+xaae: xlog:00006513:  (errmsg("requested recovery stop point is before end time of backup dump"))); 
+xaae: xlog:00006515:  ereport(FATAL, 
+xaae: xlog:00006516:  (errmsg("WAL ends before end time of backup dump"))); 
+xaae: xlog:00006775:  ereport(ERROR, 
+xaae: xlog:00006776:  (errcode_for_file_access(), 
+xaae: xlog:00006777:  errmsg("could not create redo relation file \"%s\"", 
+xaae: xlog:00006778:  path))); 
+xaae: xlog:00006796:  ereport(ERROR, 
+xaae: xlog:00006797:  (errcode_for_file_access(), 
+xaae: xlog:00006798:  errmsg("could not open redo relation file \"%s\"", 
+xaae: xlog:00006799:  path))); 
+xaae: xlog:00006813:  ereport(ERROR, 
+xaae: xlog:00006814:  (errcode_for_file_access(), 
+xaae: xlog:00006815:  errmsg("could not unlink redo relation file \"%s\": %m", path))); 
+xaae: xlog:00006844:  ereport(FATAL, 
+xaae: xlog:00006845:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
+xaae: xlog:00006944:  ereport(FATAL, 
+xaae: xlog:00006945:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
+xaae: xlog:00007084:  ereport(FATAL, 
+xaae: xlog:00007085:  (errmsg("%s: control file contains invalid data", callerStr))); 
+xaae: xlog:00007131:  ereport(ERROR, 
+xaae: xlog:00007132:  (errmsg("%s: could not locate a valid checkpoint record", callerStr))); 
+xaae: xlog:00007149:  ereport(ERROR, 
+xaae: xlog:00007150:  (errmsg("%s: invalid redo in checkpoint record", callerStr))); 
+xaae: xlog:00007159:  ereport(ERROR, 
+xaae: xlog:00007160:  (errmsg("%s: first redo record before checkpoint not found at %s", 
+xaae: xlog:00007161:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
+xaae: xlog:00007706:  ereport(LOG, 
+xaae: xlog:00007707:  (errmsg("database system is shut down"), 
+xaae: xlog:00007708:  errSendAlert(true),errOmitLocation(true))); 
+xaae: xlog:00008532:  ereport(ERROR, 
+xaae: xlog:00008533:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00008534:  (errmsg("must be superuser to run a backup")))); 
+xaae: xlog:00008537:  ereport(ERROR, 
+xaae: xlog:00008538:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008539:  (errmsg("WAL archiving is not active"), 
+xaae: xlog:00008540:  (errhint("archive_command must be defined before " 
+xaae: xlog:00008541:  "online backups can be made safely."))))); 
+xaae: xlog:00008567:  ereport(ERROR, 
+xaae: xlog:00008568:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008569:  errmsg("a backup is already in progress"), 
+xaae: xlog:00008570:  errhint("Run pg_stop_backup() and try again."))); 
+xaae: xlog:00008615:  ereport(ERROR, 
+xaae: xlog:00008616:  (errcode_for_file_access(), 
+xaae: xlog:00008617:  errmsg("could not stat file \"%s\": %m", 
+xaae: xlog:00008618:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008621:  ereport(ERROR, 
+xaae: xlog:00008622:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008623:  errmsg("a backup is already in progress"), 
+xaae: xlog:00008624:  errhint("If you're sure there is no backup in progress, remove file \"%s\" and try again.", 
+xaae: xlog:00008625:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008632:  ereport(ERROR, 
+xaae: xlog:00008633:  (errcode_for_file_access(), 
+xaae: xlog:00008634:  errmsg("could not create file \"%s\": %m", 
+xaae: xlog:00008635:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008643:  ereport(ERROR, 
+xaae: xlog:00008644:  (errcode_for_file_access(), 
+xaae: xlog:00008645:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00008646:  BACKUP_LABEL_FILE))); 
 xaae: xlog:00008698:  ereport(ERROR, 
-xaae: xlog:00008699:  (errcode_for_file_access(), 
-xaae: xlog:00008700:  errmsg("could not create file \"%s\": %m", 
-xaae: xlog:00008701:  histfilepath))); 
-xaae: xlog:00008711:  ereport(ERROR, 
-xaae: xlog:00008712:  (errcode_for_file_access(), 
-xaae: xlog:00008713:  errmsg("could not write file \"%s\": %m", 
-xaae: xlog:00008714:  histfilepath))); 
-xaae: xlog:00008720:  ereport(ERROR, 
-xaae: xlog:00008721:  (errcode_for_file_access(), 
-xaae: xlog:00008722:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00008723:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008725:  ereport(ERROR, 
-xaae: xlog:00008726:  (errcode_for_file_access(), 
-xaae: xlog:00008727:  errmsg("could not remove file \"%s\": %m", 
-xaae: xlog:00008728:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008758:  ereport(ERROR, 
-xaae: xlog:00008759:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00008760:  (errmsg("must be superuser to switch transaction log files")))); 
-xaae: xlog:00008866:  ereport(ERROR, 
-xaae: xlog:00008867:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-xaae: xlog:00008868:  errmsg("could not parse transaction log location \"%s\"", 
-xaae: xlog:00008869:  locationstr))); 
-xaae: xlog:00008935:  ereport(ERROR, 
-xaae: xlog:00008936:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-xaae: xlog:00008937:  errmsg("could not parse transaction log location \"%s\"", 
-xaae: xlog:00008938:  locationstr))); 
-xaae: xlog:00008995:  ereport(FATAL, 
-xaae: xlog:00008996:  (errcode_for_file_access(), 
-xaae: xlog:00008997:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00008998:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009010:  ereport(FATAL, 
-xaae: xlog:00009011:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009012:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009016:  ereport(FATAL, 
-xaae: xlog:00009017:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009018:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009020:  ereport(FATAL, 
-xaae: xlog:00009021:  (errcode_for_file_access(), 
-xaae: xlog:00009022:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009023:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009047:  ereport(FATAL, 
-xaae: xlog:00009048:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009049:  errmsg("invalid data in file \"%s\"", histfilename))); 
-xaae: xlog:00009053:  ereport(FATAL, 
-xaae: xlog:00009054:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009055:  errmsg("invalid data in file \"%s\"", histfilename))); 
-xaae: xlog:00009058:  ereport(FATAL, 
-xaae: xlog:00009059:  (errcode_for_file_access(), 
-xaae: xlog:00009060:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009061:  histfilepath))); 
-xaae: xlog:00009397:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
-xaae: xlog:00009398:  errmsg("database 'postgres' does not exist"))); 
+xaae: xlog:00008699:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00008700:  (errmsg("must be superuser to run a backup")))); 
+xaae: xlog:00008732:  ereport(ERROR, 
+xaae: xlog:00008733:  (errcode_for_file_access(), 
+xaae: xlog:00008734:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00008735:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008736:  ereport(ERROR, 
+xaae: xlog:00008737:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008738:  errmsg("a backup is not in progress"))); 
+xaae: xlog:00008748:  ereport(ERROR, 
+xaae: xlog:00008749:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008750:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00008760:  ereport(ERROR, 
+xaae: xlog:00008761:  (errcode_for_file_access(), 
+xaae: xlog:00008762:  errmsg("could not create file \"%s\": %m", 
+xaae: xlog:00008763:  histfilepath))); 
+xaae: xlog:00008773:  ereport(ERROR, 
+xaae: xlog:00008774:  (errcode_for_file_access(), 
+xaae: xlog:00008775:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00008776:  histfilepath))); 
+xaae: xlog:00008782:  ereport(ERROR, 
+xaae: xlog:00008783:  (errcode_for_file_access(), 
+xaae: xlog:00008784:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00008785:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008787:  ereport(ERROR, 
+xaae: xlog:00008788:  (errcode_for_file_access(), 
+xaae: xlog:00008789:  errmsg("could not remove file \"%s\": %m", 
+xaae: xlog:00008790:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008820:  ereport(ERROR, 
+xaae: xlog:00008821:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00008822:  (errmsg("must be superuser to switch transaction log files")))); 
+xaae: xlog:00008928:  ereport(ERROR, 
+xaae: xlog:00008929:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+xaae: xlog:00008930:  errmsg("could not parse transaction log location \"%s\"", 
+xaae: xlog:00008931:  locationstr))); 
+xaae: xlog:00008997:  ereport(ERROR, 
+xaae: xlog:00008998:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+xaae: xlog:00008999:  errmsg("could not parse transaction log location \"%s\"", 
+xaae: xlog:00009000:  locationstr))); 
+xaae: xlog:00009057:  ereport(FATAL, 
+xaae: xlog:00009058:  (errcode_for_file_access(), 
+xaae: xlog:00009059:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009060:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009072:  ereport(FATAL, 
+xaae: xlog:00009073:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009074:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009078:  ereport(FATAL, 
+xaae: xlog:00009079:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009080:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009082:  ereport(FATAL, 
+xaae: xlog:00009083:  (errcode_for_file_access(), 
+xaae: xlog:00009084:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009085:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009109:  ereport(FATAL, 
+xaae: xlog:00009110:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009111:  errmsg("invalid data in file \"%s\"", histfilename))); 
+xaae: xlog:00009115:  ereport(FATAL, 
+xaae: xlog:00009116:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009117:  errmsg("invalid data in file \"%s\"", histfilename))); 
+xaae: xlog:00009120:  ereport(FATAL, 
+xaae: xlog:00009121:  (errcode_for_file_access(), 
+xaae: xlog:00009122:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009123:  histfilepath))); 
+xaae: xlog:00009459:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
+xaae: xlog:00009460:  errmsg("database 'postgres' does not exist"))); 
 aaaaa GP_IGNORE: xaah: xlogloc - ./backend/access/transam/xlogloc.c
 xaah: xlogloc:00000060:  ereport(ERROR, 
 xaah: xlogloc:00000061:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
