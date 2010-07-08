@@ -8550,96 +8550,100 @@ eabc: exechhashagg:00001568:  errmsg("HashAgg: work_mem is too smalle to hold *o
 eabc: exechhashagg:00001699:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
 eabc: exechhashagg:00001700:  errmsg("HashAgg: no enough memory for hashagg."))); 
 aaaaa GP_IGNORE: eaai: execmain - ./backend/executor/execMain.c
-eaai: execmain:00000623:  ereport(ERROR, 
-eaai: execmain:00000624:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-eaai: execmain:00000625:  errmsg("Unsupported Greeplum parallel execution strategy"))); 
-eaai: execmain:00000804:  ereport(ERROR, 
-eaai: execmain:00000805:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-eaai: execmain:00000806:  errmsg("Undefined Greenplum parallel execution strategy"))); 
-eaai: execmain:00001188:  ereport(ERROR, 
-eaai: execmain:00001189:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
-eaai: execmain:00001190:  errmsg("transaction is read-only"))); 
-eaai: execmain:00001786:  ereport(ERROR, 
-eaai: execmain:00001787:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-eaai: execmain:00001788:  errmsg("cannot change sequence \"%s\"", 
-eaai: execmain:00001789:  RelationGetRelationName(resultRelationDesc)))); 
-eaai: execmain:00001792:  ereport(ERROR, 
-eaai: execmain:00001793:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-eaai: execmain:00001794:  errmsg("cannot change TOAST relation \"%s\"", 
-eaai: execmain:00001795:  RelationGetRelationName(resultRelationDesc)))); 
-eaai: execmain:00001798:  ereport(ERROR, 
-eaai: execmain:00001799:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-eaai: execmain:00001800:  errmsg("cannot change AO segment listing relation \"%s\"", 
-eaai: execmain:00001801:  RelationGetRelationName(resultRelationDesc)))); 
-eaai: execmain:00001804:  ereport(ERROR, 
-eaai: execmain:00001805:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-eaai: execmain:00001806:  errmsg("cannot change AO block directory relation \"%s\"", 
-eaai: execmain:00001807:  RelationGetRelationName(resultRelationDesc)))); 
-eaai: execmain:00001810:  ereport(ERROR, 
-eaai: execmain:00001811:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-eaai: execmain:00001812:  errmsg("cannot change view \"%s\"", 
-eaai: execmain:00001813:  RelationGetRelationName(resultRelationDesc)))); 
-eaai: execmain:00002172:  ereport(ERROR, 
-eaai: execmain:00002173:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execmain:00002174:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execmain:00002175:  errdetail("Query has too many columns."))); 
-eaai: execmain:00002182:  ereport(ERROR, 
-eaai: execmain:00002183:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execmain:00002184:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execmain:00002185:  errdetail("Table has type %s at ordinal position %d, but query expects %s.", 
-eaai: execmain:00002186:  format_type_be(attr->atttypid), 
-eaai: execmain:00002187:  attno, 
-eaai: execmain:00002188:  format_type_be(exprType((Node *) tle->expr))))); 
-eaai: execmain:00002199:  ereport(ERROR, 
-eaai: execmain:00002200:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execmain:00002201:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execmain:00002202:  errdetail("Query provides a value for a dropped column at ordinal position %d.", 
-eaai: execmain:00002203:  attno))); 
-eaai: execmain:00002207:  ereport(ERROR, 
-eaai: execmain:00002208:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execmain:00002209:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execmain:00002210:  errdetail("Query has too few columns."))); 
-eaai: execmain:00002405:  ereport(ERROR, 
-eaai: execmain:00002406:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-eaai: execmain:00002407:  errmsg("could not serialize access due to concurrent update"))); 
-eaai: execmain:00002884:  ereport(ERROR, 
-eaai: execmain:00002885:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-eaai: execmain:00002886:  errmsg("could not serialize access due to concurrent update"))); 
-eaai: execmain:00003024:  ereport(ERROR, 
-eaai: execmain:00003025:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
-eaai: execmain:00003026:  errmsg("no partition for partitioning key"))); 
-eaai: execmain:00003030:  ereport(ERROR, 
-eaai: execmain:00003031:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-eaai: execmain:00003032:  errmsg("moving tuple from partition \"%s\" to " 
-eaai: execmain:00003033:  "partition \"%s\" not supported", 
-eaai: execmain:00003034:  get_rel_name(RelationGetRelid(resultRelationDesc)), 
-eaai: execmain:00003035:  get_rel_name(targetid)), 
-eaai: execmain:00003036:  errOmitLocation(true))); 
-eaai: execmain:00003109:  ereport(ERROR, 
-eaai: execmain:00003110:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-eaai: execmain:00003111:  errmsg("could not serialize access due to concurrent update"))); 
-eaai: execmain:00003253:  ereport(ERROR, 
-eaai: execmain:00003254:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
-eaai: execmain:00003255:  errmsg("null value in column \"%s\" violates not-null constraint", 
-eaai: execmain:00003256:  NameStr(rel->rd_att->attrs[attrChk - 1]->attname)), 
-eaai: execmain:00003257:  errOmitLocation(true))); 
-eaai: execmain:00003266:  ereport(ERROR, 
-eaai: execmain:00003267:  (errcode(ERRCODE_CHECK_VIOLATION), 
-eaai: execmain:00003268:  errmsg("new row for relation \"%s\" violates check constraint \"%s\"", 
-eaai: execmain:00003269:  RelationGetRelationName(rel), failed), 
-eaai: execmain:00003270:  errOmitLocation(true))); 
-eaai: execmain:00003984:  ereport(ERROR, 
-eaai: execmain:00003985:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-eaai: execmain:00003986:  errmsg("ON COMMIT can only be used on temporary tables"), 
-eaai: execmain:00003987:  errOmitLocation(true))); 
-eaai: execmain:00004013:  ereport(ERROR, 
-eaai: execmain:00004014:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-eaai: execmain:00004015:  errmsg("tablespace \"%s\" does not exist", 
-eaai: execmain:00004016:  intoClause->tableSpaceName))); 
-eaai: execmain:00004310:  ereport(ERROR, 
-eaai: execmain:00004311:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
-eaai: execmain:00004312:  errmsg("no partition for partitioning key"), 
-eaai: execmain:00004313:  errOmitLocation(true))); 
+eaai: execmain:00000365:  ereport(ERROR, 
+eaai: execmain:00000366:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+eaai: execmain:00000367:  errmsg("tablespace \"%s\" does not exist", 
+eaai: execmain:00000368:  intoClause->tableSpaceName))); 
+eaai: execmain:00000644:  ereport(ERROR, 
+eaai: execmain:00000645:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+eaai: execmain:00000646:  errmsg("Unsupported Greeplum parallel execution strategy"))); 
+eaai: execmain:00000825:  ereport(ERROR, 
+eaai: execmain:00000826:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+eaai: execmain:00000827:  errmsg("Undefined Greenplum parallel execution strategy"))); 
+eaai: execmain:00001209:  ereport(ERROR, 
+eaai: execmain:00001210:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
+eaai: execmain:00001211:  errmsg("transaction is read-only"))); 
+eaai: execmain:00001807:  ereport(ERROR, 
+eaai: execmain:00001808:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+eaai: execmain:00001809:  errmsg("cannot change sequence \"%s\"", 
+eaai: execmain:00001810:  RelationGetRelationName(resultRelationDesc)))); 
+eaai: execmain:00001813:  ereport(ERROR, 
+eaai: execmain:00001814:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+eaai: execmain:00001815:  errmsg("cannot change TOAST relation \"%s\"", 
+eaai: execmain:00001816:  RelationGetRelationName(resultRelationDesc)))); 
+eaai: execmain:00001819:  ereport(ERROR, 
+eaai: execmain:00001820:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+eaai: execmain:00001821:  errmsg("cannot change AO segment listing relation \"%s\"", 
+eaai: execmain:00001822:  RelationGetRelationName(resultRelationDesc)))); 
+eaai: execmain:00001825:  ereport(ERROR, 
+eaai: execmain:00001826:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+eaai: execmain:00001827:  errmsg("cannot change AO block directory relation \"%s\"", 
+eaai: execmain:00001828:  RelationGetRelationName(resultRelationDesc)))); 
+eaai: execmain:00001831:  ereport(ERROR, 
+eaai: execmain:00001832:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+eaai: execmain:00001833:  errmsg("cannot change view \"%s\"", 
+eaai: execmain:00001834:  RelationGetRelationName(resultRelationDesc)))); 
+eaai: execmain:00002193:  ereport(ERROR, 
+eaai: execmain:00002194:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execmain:00002195:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execmain:00002196:  errdetail("Query has too many columns."))); 
+eaai: execmain:00002203:  ereport(ERROR, 
+eaai: execmain:00002204:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execmain:00002205:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execmain:00002206:  errdetail("Table has type %s at ordinal position %d, but query expects %s.", 
+eaai: execmain:00002207:  format_type_be(attr->atttypid), 
+eaai: execmain:00002208:  attno, 
+eaai: execmain:00002209:  format_type_be(exprType((Node *) tle->expr))))); 
+eaai: execmain:00002220:  ereport(ERROR, 
+eaai: execmain:00002221:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execmain:00002222:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execmain:00002223:  errdetail("Query provides a value for a dropped column at ordinal position %d.", 
+eaai: execmain:00002224:  attno))); 
+eaai: execmain:00002228:  ereport(ERROR, 
+eaai: execmain:00002229:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execmain:00002230:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execmain:00002231:  errdetail("Query has too few columns."))); 
+eaai: execmain:00002426:  ereport(ERROR, 
+eaai: execmain:00002427:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+eaai: execmain:00002428:  errmsg("could not serialize access due to concurrent update"))); 
+eaai: execmain:00002905:  ereport(ERROR, 
+eaai: execmain:00002906:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+eaai: execmain:00002907:  errmsg("could not serialize access due to concurrent update"))); 
+eaai: execmain:00003045:  ereport(ERROR, 
+eaai: execmain:00003046:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
+eaai: execmain:00003047:  errmsg("no partition for partitioning key"))); 
+eaai: execmain:00003051:  ereport(ERROR, 
+eaai: execmain:00003052:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+eaai: execmain:00003053:  errmsg("moving tuple from partition \"%s\" to " 
+eaai: execmain:00003054:  "partition \"%s\" not supported", 
+eaai: execmain:00003055:  get_rel_name(RelationGetRelid(resultRelationDesc)), 
+eaai: execmain:00003056:  get_rel_name(targetid)), 
+eaai: execmain:00003057:  errOmitLocation(true))); 
+eaai: execmain:00003130:  ereport(ERROR, 
+eaai: execmain:00003131:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+eaai: execmain:00003132:  errmsg("could not serialize access due to concurrent update"))); 
+eaai: execmain:00003274:  ereport(ERROR, 
+eaai: execmain:00003275:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
+eaai: execmain:00003276:  errmsg("null value in column \"%s\" violates not-null constraint", 
+eaai: execmain:00003277:  NameStr(rel->rd_att->attrs[attrChk - 1]->attname)), 
+eaai: execmain:00003278:  errOmitLocation(true))); 
+eaai: execmain:00003287:  ereport(ERROR, 
+eaai: execmain:00003288:  (errcode(ERRCODE_CHECK_VIOLATION), 
+eaai: execmain:00003289:  errmsg("new row for relation \"%s\" violates check constraint \"%s\"", 
+eaai: execmain:00003290:  RelationGetRelationName(rel), failed), 
+eaai: execmain:00003291:  errOmitLocation(true))); 
+eaai: execmain:00004005:  ereport(ERROR, 
+eaai: execmain:00004006:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+eaai: execmain:00004007:  errmsg("ON COMMIT can only be used on temporary tables"), 
+eaai: execmain:00004008:  errOmitLocation(true))); 
+eaai: execmain:00004034:  ereport(ERROR, 
+eaai: execmain:00004035:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+eaai: execmain:00004036:  errmsg("tablespace \"%s\" does not exist", 
+eaai: execmain:00004037:  intoClause->tableSpaceName))); 
+eaai: execmain:00004337:  ereport(ERROR, 
+eaai: execmain:00004338:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
+eaai: execmain:00004339:  errmsg("no partition for partitioning key"), 
+eaai: execmain:00004340:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: eaai: execqual - ./backend/executor/execQual.c
 eaai: execqual:00000279:  ereport(ERROR, 
 eaai: execqual:00000280:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
