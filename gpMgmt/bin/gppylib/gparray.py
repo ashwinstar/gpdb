@@ -577,15 +577,15 @@ class SegmentRow():
     
     def __str__(self):
         retVal = "" + \
-        "content = "          + str(self.content)   + "\n" 
-        "isprimary ="         + str(self.isprimary)       + "\n" 
-        "dbid = "             + str(self.dbid)            + "\n" 
-        "isprimary_again = "  + str(self.isprimary_again)  + "\n" 
-        "always_true = "      + str(self.always_true)      + "\n" 
-        "host = "             + str(self.host)             + "\n" 
-        "port = "             + str(self.port)            + "\n" 
-        "fulldir = "          + str(self.fulldir)         + "\n" 
-        "prPort = "           + str(self.prPort)          + "\n" 
+        "content = "          + str(self.content)   + "\n" + \
+        "isprimary ="         + str(self.isprimary)       + "\n" + \
+        "dbid = "             + str(self.dbid)            + "\n" + \
+        "isprimary_again = "  + str(self.isprimary_again)  + "\n" + \
+        "always_true = "      + str(self.always_true)      + "\n" + \
+        "host = "             + str(self.host)             + "\n" + \
+        "port = "             + str(self.port)            + "\n" + \
+        "fulldir = "          + str(self.fulldir)         + "\n" + \
+        "prPort = "           + str(self.prPort)          + "\n" + \
         "fileSpaceDictionary = " + str(self.fileSpaceDictionary)  + "\n"  + "\n"  
 
 
@@ -1999,14 +1999,14 @@ class GpArray:
                 self.addExpansionSeg(curr_content, ROLE_PRIMARY, curr_dbid, 
                                         ROLE_PRIMARY, hostname, int(row.port), new_datadir, row.prPort, fileSpaces = new_filespaces)
                 # The content id was adjusted, so we need to save it for the mirror
-                mirror_dict[row.content] = curr_content
+                mirror_dict[int(row.content)] = int(curr_content)
                 curr_content += 1
             else:
-                new_content = mirror_dict[row.content]
-                new_datadir += ('%d' % new_content)
+                new_content = mirror_dict[int(row.content)]
+                new_datadir += ('%d' % int(new_content))
                 new_filespaces = replaceFileSpaceContentID( fileSpaceDictionary = row.fileSpaceDictionary
                                                           , oldContent = row.content
-                                                          , newContent = curr_content
+                                                          , newContent = new_content
                                                           )                
                 self.addExpansionSeg(new_content, ROLE_MIRROR, curr_dbid, 
                                      ROLE_MIRROR, hostname, int(row.port), new_datadir, row.prPort, fileSpaces = new_filespaces)

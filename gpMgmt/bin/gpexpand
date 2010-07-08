@@ -1324,7 +1324,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
                         filespaces = self.gparray.getFilespaces()
                         for fs in filespaces:
                             if fs.getName() not in fsNameList:
-                               missingFsNames.append(fs.getName)
+                               missingFsNames.append(fs.getName())
                         raise ExpansionError("Missing filespaces: " + str(missingFsNames))
                      
                   else:
@@ -1581,12 +1581,25 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             if seg.isSegmentMirror() == True:
                 continue
             filespaces = self._construct_filespace_parameter(seg = seg, gpFSobjList = gpFSobjList)
-            sqlStr = """select * from gp_add_segment('%s', '%s', '%s', array %s)""" % \
-                    (seg.getSegmentHostName(), seg.getSegmentAddress(), seg.getSegmentPort(), filespaces)
+            if gparray.get_mirroring_enabled() == True:
+                repPort = str(seg.getSegmentReplicationPort())
+            else:
+                repPort = "null"
+            ###sqlStr = """select * from gp_add_segment('%s', '%s', %s, %s, array %s)""" % \
+            ###        (seg.getSegmentHostName(), seg.getSegmentAddress(), str(seg.getSegmentPort()), str(repPort), filespaces)
+                    
+            sqlStr = """select * from gp_add_segment('%s', '%s', %s, array %s)""" % \
+                    (seg.getSegmentHostName(), seg.getSegmentAddress(), str(seg.getSegmentPort()), filespaces)
+                    
             curs = dbconn.execSQL(self.conn, sqlStr)
             row = curs.fetchone()
             newDbid = int(row[0])
             seg.setSegmentDbId(newDbid)
+            
+            if gparray.get_mirroring_enabled() == True:
+               # Set primary in change tracking
+               sqlStr = """update pg_catalog.gp_segment_configuration set mode = 'c' where dbid = %s""" % str(newDbid)
+               dbconn.execSQL(self.conn, sqlStr)
             
             # Get the new segment's content id.
             sqlStr = "select content from pg_catalog.gp_segment_configuration where dbid = %s" % str(seg.getSegmentDbId())
@@ -1603,13 +1616,23 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         for seg in self.gparray.getExpansionSegDbList():
             if seg.isSegmentPrimary() == True:
                 continue
-            filespaces = _construct_filespace_parameter(seg = seg, gpFSobjList = gpFSobjList)
-            sqlStr = """select * from gp_add_segment_mirror('%s', '%s', '%s', array %s)""" % \
-                    (seg.getSegmentHostContentId(), seg.getSegmentAddress(), seg.getSegmentPort(), filespaces)
+            filespaces = self._construct_filespace_parameter(seg = seg, gpFSobjList = gpFSobjList)
+            sqlStr = """select * from gp_add_segment_mirror(%s::smallint, '%s', '%s', %s, %s, array %s)""" % \
+                    ( str(seg.getSegmentContentId()) 
+                    , str(seg.getSegmentHostName()) 
+                    , str(seg.getSegmentAddress()) 
+                    , str(seg.getSegmentPort()) 
+                    , str(seg.getSegmentReplicationPort())
+                    , str(filespaces)
+                    )
             curs = dbconn.execSQL(self.conn, sqlStr)
             row = curs.fetchone()
             newDbid = int(row[0])
             seg.setSegmentDbId(newDbid)
+            
+            # Set the mirror state as down
+            sqlStr = """update pg_catalog.gp_segment_configuration set status = 'd' where dbid = %s""" % str(newDbid)
+            dbconn.execSQL(self.conn, sqlStr)
             
         # The content IDs may have changed, so we must make sure the array is in proper order.
         self.gparray.reOrderExpansionSegs()
@@ -2396,10 +2419,10 @@ class PrepFileSpaces(Command):
             entry = [filespaceNames[i] , filespaceLocations[i]]
             self.filespaces.append(entry)
         cmdStr  = """echo "select * from gp_prep_new_segment( array %s )" """ % (str(self.filespaces))
-        cmdStr += """ | $GPHOME/bin/postgres --single -z 1 -O -c gp_session_role=utility -c gp_debug_linger=0 -c gp_before_filespace_setup=true -E -D %s -b %s -C %s template1""" % (self.sysDataDirectory, str(self.dbid), str(self.contentId))
+        ###cmdStr += """ | $GPHOME/bin/postgres --single -z 1 -O -c gp_session_role=utility -c gp_debug_linger=0 -c gp_before_filespace_setup=true -c gp_before_persistence_work=true -E -D %s -b %s -C %s template1""" % (self.sysDataDirectory, str(self.dbid), str(self.contentId))
+        cmdStr += """ | $GPHOME/bin/postgres --single -z 1 -O -c gp_session_role=utility -c gp_debug_linger=0 -c gp_before_filespace_setup=true  -E -D %s -b %s -C %s template1""" % (self.sysDataDirectory, str(self.dbid), str(self.contentId))
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
-        """ echo "select * from version();select * from version()" | bin/postgres --single -O -c gp_session_role=utility -E -D /Users/ksell/temp/junkMain06072010/database/dbfast1/gp0 template1 """
 
 #-----------------------------------------------
 class GpRecoverSeg(Command):
