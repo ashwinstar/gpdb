@@ -1581,10 +1581,10 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             if seg.isSegmentMirror() == True:
                 continue
             filespaces = self._construct_filespace_parameter(seg = seg, gpFSobjList = gpFSobjList)
-            if gparray.get_mirroring_enabled() == True:
-                repPort = str(seg.getSegmentReplicationPort())
-            else:
-                repPort = "null"
+            ###if gparray.get_mirroring_enabled() == True:
+            ###    repPort = str(seg.getSegmentReplicationPort())
+            ###else:
+            ###    repPort = "null"
             ###sqlStr = """select * from gp_add_segment('%s', '%s', %s, %s, array %s)""" % \
             ###        (seg.getSegmentHostName(), seg.getSegmentAddress(), str(seg.getSegmentPort()), str(repPort), filespaces)
                     
@@ -1599,6 +1599,10 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             if gparray.get_mirroring_enabled() == True:
                # Set primary in change tracking
                sqlStr = """update pg_catalog.gp_segment_configuration set mode = 'c' where dbid = %s""" % str(newDbid)
+               dbconn.execSQL(self.conn, sqlStr)
+               
+               # Set the primary's replication port
+               sqlStr = """update pg_catalog.gp_segment_configuration set replication_port = %s where dbid = %s""" % str(seg.getSegmentReplicationPort())
                dbconn.execSQL(self.conn, sqlStr)
             
             # Get the new segment's content id.
@@ -2693,7 +2697,7 @@ before continuing by re-running this utility and providing the input file. """
 
     if num_new_datadirs > 0:
         new_datadirs = []
-        mew_fsDirs = []
+        new_fsDirs = []
         new_mirrordirs = []
         new_mirrorFsDirs = []
 
@@ -2705,7 +2709,6 @@ before continuing by re-running this utility and providing the input file. """
             new_datadirs.append(new_datadir.strip())
             
             fsDict = {}
-            new_fsDirs = []
             for fsObj in gpFSobjList:
                # Prompt the user for a location for each filespace
                fsLoc = ask_input( None
