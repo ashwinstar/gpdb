@@ -672,7 +672,7 @@ remove_segment_config(int16 dbid)
  * Tell the master about a new segment.
  *
  * gp_add_segment(hostname, address, port,
- *				  replication_port, filespace_map)
+ *				  filespace_map)
  *
  * Args:
  *   hostname - host name string
