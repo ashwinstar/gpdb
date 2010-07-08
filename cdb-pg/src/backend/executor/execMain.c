@@ -350,31 +350,52 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		/* Determin OIDs for into relation, if any */
 		if (queryDesc->plannedstmt->intoClause != NULL)
 		{
+			IntoClause *intoClause = queryDesc->plannedstmt->intoClause;
 			Relation	pg_class_desc;
 			Relation	pg_type_desc;
             Oid         reltablespace;
 
 			cdb_sync_oid_to_segments();
 
-			reltablespace = GetDefaultTablespace();
+			/* MPP-10329 - must always dispatch the tablespace */
+			if (intoClause->tableSpaceName)
+			{
+				reltablespace = get_tablespace_oid(intoClause->tableSpaceName);
+				if (!OidIsValid(reltablespace))
+					ereport(ERROR,
+							(errcode(ERRCODE_UNDEFINED_OBJECT),
+							 errmsg("tablespace \"%s\" does not exist",
+									intoClause->tableSpaceName)));
+			}
+			else
+			{
+				reltablespace = GetDefaultTablespace();
+				
+				/* Need the real tablespace id for dispatch */
+				if (!OidIsValid(reltablespace)) 
+					reltablespace = MyDatabaseTableSpace;
+
+				intoClause->tableSpaceName = get_tablespace_name(reltablespace);
+			}
+
 
 			pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
 			pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
 
-			queryDesc->plannedstmt->intoClause->oidInfo.relOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			intoClause->oidInfo.relOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
 			elog(DEBUG3, "ExecutorStart assigned new intoOidInfo.relOid = %d",
-				 queryDesc->plannedstmt->intoClause->oidInfo.relOid);
+				 intoClause->oidInfo.relOid);
 
-			queryDesc->plannedstmt->intoClause->oidInfo.comptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
-			queryDesc->plannedstmt->intoClause->oidInfo.toastOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
-			queryDesc->plannedstmt->intoClause->oidInfo.toastIndexOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
-			queryDesc->plannedstmt->intoClause->oidInfo.toastComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
-			queryDesc->plannedstmt->intoClause->oidInfo.aosegOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
-			queryDesc->plannedstmt->intoClause->oidInfo.aosegIndexOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
-			queryDesc->plannedstmt->intoClause->oidInfo.aosegComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
-			queryDesc->plannedstmt->intoClause->oidInfo.aoblkdirOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
-			queryDesc->plannedstmt->intoClause->oidInfo.aoblkdirIndexOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
-			queryDesc->plannedstmt->intoClause->oidInfo.aoblkdirComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
+			intoClause->oidInfo.comptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
+			intoClause->oidInfo.toastOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			intoClause->oidInfo.toastIndexOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			intoClause->oidInfo.toastComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
+			intoClause->oidInfo.aosegOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			intoClause->oidInfo.aosegIndexOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			intoClause->oidInfo.aosegComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
+			intoClause->oidInfo.aoblkdirOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			intoClause->oidInfo.aoblkdirIndexOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			intoClause->oidInfo.aoblkdirComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
 			
 			heap_close(pg_class_desc, RowExclusiveLock);
 			heap_close(pg_type_desc, RowExclusiveLock);
@@ -4018,11 +4039,17 @@ OpenIntoRel(QueryDesc *queryDesc)
 	else
 	{
 		tablespaceId = GetDefaultTablespace();
-		/* note InvalidOid is OK in this case */
+
+		/* Need the real tablespace id for dispatch */
+		if (!OidIsValid(tablespaceId)) 
+			tablespaceId = MyDatabaseTableSpace;
+
+		/* MPP-10329 - must dispatch tablespace */
+		intoClause->tableSpaceName = get_tablespace_name(tablespaceId);
 	}
 	
 	/* Check permissions except when using the database's default space */
-	if (OidIsValid(tablespaceId))
+	if (tablespaceId != MyDatabaseTableSpace)
 	{
 		AclResult	aclresult;
 		
