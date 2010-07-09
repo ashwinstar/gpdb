@@ -20,6 +20,13 @@
 extern bool PersistentFilespace_Check(
 	Oid 			filespace);
 
+extern void PersistentFilespace_ConvertBlankPaddedLocation(
+	char 		**filespaceLocation,
+
+	char 		*locationBlankPadded,
+
+	bool		isPrimary);
+
 extern void PersistentFilespace_LookupTidAndSerialNum(
 	Oid 		filespaceOid,
 				/* The filespace OID for the lookup. */

@@ -99,13 +99,6 @@ static void PersistentFilespace_InitScan(void)
 	PersistentFileSysObj_InitScan();
 }
 
-static void PersistentFilespace_ConvertBlankPaddedLocation(
-	char 		**filespaceLocation,
-
-	char 		*locationBlankPadded,
-
-	bool		isPrimary);
-
 /*
  * Return the hash entry for a filespace.
  */
@@ -449,7 +442,7 @@ static void PersistentFilespace_BlankPadCopyLocation(
 	locationBlankPadded[FilespaceLocationBlankPaddedWithNullTermLen - 1] = '\0';
 }
 
-static void PersistentFilespace_ConvertBlankPaddedLocation(
+void PersistentFilespace_ConvertBlankPaddedLocation(
 	char 		**filespaceLocation,
 
 	char 		*locationBlankPadded,

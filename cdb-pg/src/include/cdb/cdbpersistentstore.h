@@ -74,8 +74,13 @@ typedef bool (*PersistentStoreScanTupleCallback) (
 								ItemPointer 			persistentTid,
 								int64					persistentSerialNum,
 								Datum					*values);
+typedef void (*PersistentStorePrintTupleCallback) (
+								int						elevel,
+								char					*prefix,
+								ItemPointer 			persistentTid,
+								Datum					*values);
 
-#define PersistentStoreData_StaticInit {0,0,NULL,NULL,NULL,0,0,0,0}
+#define PersistentStoreData_StaticInit {0,0,NULL,NULL,NULL,NULL,0,0,0,0}
 
 typedef struct PersistentStoreData
 {
@@ -88,6 +93,8 @@ typedef struct PersistentStoreData
 	PersistentStoreCloseRel		closeRel;
 
 	PersistentStoreScanTupleCallback	scanTupleCallback;
+
+	PersistentStorePrintTupleCallback	printTupleCallback;
 
 	int64			myHighestSerialNum;
 
@@ -192,6 +199,8 @@ extern void PersistentStore_Init(
 	PersistentStoreCloseRel		closeRel,
 
 	PersistentStoreScanTupleCallback	scanTupleCallback,
+
+	PersistentStorePrintTupleCallback	printTupleCallback,
 
 	int 						numAttributes,
 

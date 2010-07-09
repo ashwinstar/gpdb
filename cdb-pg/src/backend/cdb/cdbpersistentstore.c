@@ -45,6 +45,8 @@ void PersistentStore_Init(
 
 	PersistentStoreScanTupleCallback	scanTupleCallback,
 
+	PersistentStorePrintTupleCallback	printTupleCallback,
+
 	int 						numAttributes,
 
 	int 						attNumPersistentSerialNum,
@@ -58,6 +60,7 @@ void PersistentStore_Init(
 	storeData->openRel = openRel;
 	storeData->closeRel = closeRel;
 	storeData->scanTupleCallback = scanTupleCallback;
+	storeData->printTupleCallback = printTupleCallback;
 	storeData->numAttributes = numAttributes;
 	storeData->attNumPersistentSerialNum = attNumPersistentSerialNum;
 	storeData->attNumPreviousFreeTid = attNumPreviousFreeTid;
@@ -396,12 +399,11 @@ static void PersistentStore_DoInitScan(
 									&previousFreeTid);
 		
 		if (Debug_persistent_recovery_print)
-			elog(Debug_persistent_recovery_print_level, 
-				 "PersistentStore_DoInitScan ('%s'): TID %s, serial number " INT64_FORMAT ", previous free TID %s",
-				 storeData->tableName,
-				 ItemPointerToString(&persistentTid),
-				 persistentSerialNum, 
-				 ItemPointerToString2(&previousFreeTid));
+			(*storeData->printTupleCallback)(
+										Debug_persistent_recovery_print_level,
+										"SCAN",
+										&persistentTid,
+										values);
 		
 		if (!PersistentStore_IsZeroTid(&previousFreeTid))
 		{
