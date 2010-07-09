@@ -1198,7 +1198,6 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         """Writes a gpexpand input file based on expansion segments
         added to gparray by the gpexpand interview"""
         outputfile = 'gpexpand_inputfile_' + strftime("%Y%m%d_%H%M%S")
-        outputfile = "/Users/ksell/temp/junkMPP6969/gpexpand_inputfile_1"
         outfile = open(outputfile, 'w')
 
         logger.info("Generating input file...")
