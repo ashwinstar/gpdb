@@ -1336,8 +1336,6 @@ void gx_main(int port, apr_int64_t signature)
 					"event_dispatch failed");
 		}
 
-		TR0(("gx.tick %d\n", gx.tick));
-
 		/* get pid metrics */
 		for (hi = apr_hash_first(0, gx.qexectab); hi; hi = apr_hash_next(hi))
 		{
