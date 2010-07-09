@@ -21,6 +21,7 @@
 #include "apr_thread_proc.h"
 #include "event.h"
 #include "sigar.h"
+#include <time.h>
 
 #define FMT64 APR_INT64_T_FMT
 
