@@ -1788,6 +1788,7 @@ make_plan_for_one_dqa(PlannerInfo *root, MppGroupContext *ctx, int dqa_index,
 	bool groupkeys_collocate = cdbpathlocus_collocates(ctx->input_locus, root->group_pathkeys);
 	bool need_inter_agg = false;
 	bool dqaduphazard = false;
+	bool stream_bottom_agg = gp_hashagg_streambottom; /* Take hint */
 	
 	/* Planning will perturb root->parse, so we copy it's content aside
 	 * so we can restore it later.  We flat copy instead of resetting
@@ -1899,10 +1900,19 @@ make_plan_for_one_dqa(PlannerInfo *root, MppGroupContext *ctx, int dqa_index,
 					(dqaArg->num_rows > LONG_MAX) ? LONG_MAX :
 					(long)dqaArg->num_rows;
 
+	/* 
+	 * If the data is distributed on the distinct qualified aggregate's key 
+	 * and there is no grouping key, then we prefer to not stream the bottom agg 
+	 */
+	if (dqaArg->distinctkey_collocate && ctx->numGroupCols == 0)
+	{
+		stream_bottom_agg = false;
+	}
+	
 	result_plan = (Plan *) make_agg(root,
 								prelim_tlist,
 								NIL, /* no havingQual */
-								aggstrategy, gp_hashagg_streambottom,
+								aggstrategy, stream_bottom_agg,
 								ctx->numGroupCols + 1,
 								inputGroupColIdx,
 								numGroups,
@@ -1913,9 +1923,11 @@ make_plan_for_one_dqa(PlannerInfo *root, MppGroupContext *ctx, int dqa_index,
 								ctx->agg_counts->numAggs - ctx->agg_counts->numDistinctAggs + 1,
 								ctx->agg_counts->transitionSpace, /* worst case */
 								result_plan);
-	dqaduphazard = (aggstrategy == AGG_HASHED && gp_hashagg_streambottom);
-	/* May lose useful locus and sort. Unlikely, but could do better. */
-	mark_plan_strewn(result_plan);
+	
+	dqaduphazard = (aggstrategy == AGG_HASHED && stream_bottom_agg);
+
+	result_plan->flow = pull_up_Flow(result_plan, result_plan->lefttree, (aggstrategy == AGG_SORTED));
+	
 	current_pathkeys = NIL;
 	
 	/*
@@ -1946,10 +1958,23 @@ make_plan_for_one_dqa(PlannerInfo *root, MppGroupContext *ctx, int dqa_index,
 		break;
 			
 	case MPP_GRP_TYPE_PLAIN_DQA_2STAGE:
-		result_plan = (Plan*)make_motion_gather_to_QE(result_plan, false);
-		result_plan->total_cost += 
-			incremental_motion_cost(result_plan->plan_rows,
-									result_plan->plan_rows * root->cdbpath_segments);
+		/* Assert that this is only called for a plain DQA like select count(distinct x) from foo */
+				
+		Assert(ctx->numGroupCols == 0); /* No group-by */
+		Assert(n == 1);
+		
+		/* If already collocated on DQA arg, don't redistribute */
+		if (!dqaArg->distinctkey_collocate)
+		{
+			TargetEntry *tle = get_tle_by_resno(ctx->sub_tlist,  dqaArg->base_index);
+			Assert(tle);
+			groupExprs = lappend(NIL, copyObject(tle->expr));
+
+			result_plan = (Plan*)make_motion_hash(root, result_plan, groupExprs);
+			result_plan->total_cost += 
+					incremental_motion_cost(result_plan->plan_rows,
+							result_plan->plan_rows);
+		}
 		break;
 	
 	case MPP_GRP_TYPE_NONE:
@@ -2068,6 +2093,21 @@ make_plan_for_one_dqa(PlannerInfo *root, MppGroupContext *ctx, int dqa_index,
 		aggstrategy = AGG_PLAIN;
 		groups_sorted = false;
 		break;
+	}
+
+	/**
+	 * In the case where there is no grouping key, we need to gather up all the rows in a single segment to compute the final aggregate.
+	 */
+	if ( ctx->type == MPP_GRP_TYPE_PLAIN_DQA_2STAGE)
+	{
+		/* Assert that this is only called for a plain DQA like select count(distinct x) from foo */
+		Assert(ctx->numGroupCols == 0); /* No grouping columns */
+		Assert(n == 1);
+
+		result_plan = (Plan*)make_motion_gather_to_QE(result_plan, false);
+		result_plan->total_cost += 
+				incremental_motion_cost(result_plan->plan_rows,
+						result_plan->plan_rows * root->cdbpath_segments);
 	}
 	
 	result_plan = add_second_stage_agg(root,
