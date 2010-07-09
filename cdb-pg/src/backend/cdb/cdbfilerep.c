@@ -2437,11 +2437,17 @@ FileRep_GetUnknownIdentifier(
 {
 	
 	FileRepIdentifier_u identifier;
-	
-	strncpy(identifier.fileRepUnknownIdentifier.unknownId, 
-			unknownId, 
-			FILEREP_UNKNOWN_IDENTIFIER_LEN);
-	
+
+	Assert(strlen(unknownId) + 1 <= sizeof(identifier.fileRepUnknownIdentifier.unknownId));
+
+	/*
+	 * +1 for the data copied to ensure we copy trailing 0 for when the length is equal to
+	 *     FILEREP_UNKNOWN_IDENTIFIER_LEN
+	 */
+	strncpy(identifier.fileRepUnknownIdentifier.unknownId,
+			unknownId,
+			FILEREP_UNKNOWN_IDENTIFIER_LEN + 1);
+
 	return identifier;
 }
 
