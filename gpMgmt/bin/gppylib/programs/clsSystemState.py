@@ -69,16 +69,11 @@ VALUE__RESYNC_EST_TOTAL_DATA = FieldDefinition("Estimated total data to synchron
 VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR = FieldDefinition("Estimated resync progress with mirror", "est_resync_progress_str", "text", "Est. resync progress")
 VALUE__RESYNC_EST_COMPLETION_TIME = FieldDefinition("Estimated resync end time", "est_resync_end_time_str", "text", "Est. resync end time")
 
-CATEGORY__PROCESS_INFO = "Process Info"
-VALUE__POSTMASTER_PID_FILE = FieldDefinition("File postmaster.pid", "postmaster_pid_file_exists", "text", "pid file exists") # boolean would be nice
-VALUE__POSTMASTER_PID_VALUE = FieldDefinition("PID from postmaster.pid file", "postmaster_pid", "text", "pid file PID") # int would be better, but we print error messages here sometimes
-VALUE__LOCK_FILES= FieldDefinition("Lock files in /tmp", "lock_files_exist", "text", "local files exist") # boolean would be nice
-VALUE__ACTIVE_PID = FieldDefinition("Active PID", "active_pid", "text") # int would be better, but we print error messages here sometimes
-
 CATEGORY__STATUS = "Status"
 VALUE__MASTER_REPORTS_STATUS = FieldDefinition("Configuration reports status as", "status_in_config", "text", "Config status")
 VALUE__MIRROR_SEGMENT_STATUS = FieldDefinition("Segment status", "segment_status", "text") # must not be same name as VALUE__SEGMENT_STATUS
 VALUE__NONMIRROR_DATABASE_STATUS = FieldDefinition("Database status", "database_status", "text")
+VALUE__ACTIVE_PID = FieldDefinition("Active PID", "active_pid", "text") # int would be better, but we print error messages here sometimes
 
 # these are not in a category, used for other logging
 VALUE__SEGMENT_STATUS = FieldDefinition("Instance status", "instance_status", "text", "Status")
@@ -98,6 +93,9 @@ VALUE__ACTIVE_PID_INT = FieldDefinition("Active PID (int)", "active_pid", "int")
 
 VALUE__CHANGE_TRACKING_DATA_SIZE_BYTES = FieldDefinition("Change tracking data size (bytes)", "change_tracking_bytes", "int8")
 
+VALUE__POSTMASTER_PID_FILE = FieldDefinition("File postmaster.pid", "postmaster_pid_file_exists", "text", "pid file exists") # boolean would be nice
+VALUE__POSTMASTER_PID_VALUE = FieldDefinition("PID from postmaster.pid file", "postmaster_pid", "text", "pid file PID") # int would be better, but we print error messages here sometimes
+VALUE__LOCK_FILES= FieldDefinition("Lock files in /tmp", "lock_files_exist", "text", "local files exist") # boolean would be nice
 
 class GpStateData:
     """
@@ -123,7 +121,6 @@ class GpStateData:
                     CATEGORY__ERROR_GETTING_SEGMENT_STATUS,
                     CATEGORY__CHANGE_TRACKING_INFO,
                     CATEGORY__RESYNCHRONIZATION_INFO,
-                    CATEGORY__PROCESS_INFO,
                     CATEGORY__STATUS]
         self.__entriesByCategory = {}
 
@@ -151,14 +148,9 @@ class GpStateData:
                 VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR,
                 VALUE__RESYNC_EST_COMPLETION_TIME]
 
-        self.__entriesByCategory[CATEGORY__PROCESS_INFO] = \
-                [VALUE__POSTMASTER_PID_FILE,
-                 VALUE__POSTMASTER_PID_VALUE,
-                 VALUE__LOCK_FILES,
-                 VALUE__ACTIVE_PID]
-
         self.__entriesByCategory[CATEGORY__STATUS] = \
-                [VALUE__MASTER_REPORTS_STATUS,
+                [VALUE__ACTIVE_PID,
+                VALUE__MASTER_REPORTS_STATUS,
                 VALUE__MIRROR_SEGMENT_STATUS,
                 VALUE__NONMIRROR_DATABASE_STATUS]
 
@@ -169,7 +161,8 @@ class GpStateData:
                     VALUE__HAS_DATABASE_STATUS_WARNING, VALUE__VERSION_STRING,
                     VALUE__POSTMASTER_PID_FILE_EXISTS, VALUE__LOCK_FILES_EXIST,
                     VALUE__ACTIVE_PID_INT, VALUE__POSTMASTER_PID_VALUE_INT,
-                    VALUE__CHANGE_TRACKING_DATA_SIZE_BYTES
+                    VALUE__CHANGE_TRACKING_DATA_SIZE_BYTES,
+					VALUE__POSTMASTER_PID_FILE, VALUE__POSTMASTER_PID_VALUE, VALUE__LOCK_FILES,
                     ]:
             self.__allValues[k] = True
 
@@ -293,16 +286,10 @@ class GpSystemStateProgram:
     def __getMirrorType(self, gpArray):
 
         if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_FILE_REPLICATION:
-            if gpArray.guessIsMultiHome():
-                if gpArray.guessIsSpreadMirror():
-                    return "Spread [Multi-home]"
-                else:
-                    return "Group [Multi-home]"
-            else:
-                if gpArray.guessIsSpreadMirror():
-                    return "Spread [Single-home]"
-                else:
-                    return "Group [Single-home]"
+			if gpArray.guessIsSpreadMirror():
+				return "Spread"
+			else:
+				return "Group"
         else:
             return "No Mirror"
 
@@ -482,10 +469,6 @@ class GpSystemStateProgram:
         tabLog.info(["Master instance", "= Active"])
 
         self.__appendStandbySummary(hostNameToResults, gpArray.standbyMaster, tabLog)
-
-        arrayType = "Multi-Home" if  gpArray.guessIsMultiHome() else "Standard"
-        tabLog.info(["Greenplum array configuration type", "= %s" % arrayType])
-        tabLog.addSeparator()
 
         tabLog.info(["Total segment instance count from metadata", "= %s" % len(gpArray.getSegDbList())])
         tabLog.addSeparator()
@@ -823,7 +806,6 @@ class GpSystemStateProgram:
         # fetch data about master
         #
         master = gpArray.master
-        arrayConfigType = "Multi-Home" if gpArray.guessIsMultiHome() else "Standard"
 
         dbUrl = dbconn.DbURL(port=gpEnv.getMasterPort(), dbname='template1' )
         conn = dbconn.connect(dbUrl, utility=True)
@@ -867,7 +849,6 @@ class GpSystemStateProgram:
         tabLog.info(["Master port", "= %d" % master.getSegmentPort()])
 
         tabLog.info(["Master current role", "= %s" % qdRole])
-        tabLog.info(["Greenplum array configuration type", "= %s" % arrayConfigType])
         tabLog.info(["Greenplum initsystem version", "= %s" % initDbVersion])
 
         if statusFetchWarning is None:
@@ -878,8 +859,6 @@ class GpSystemStateProgram:
         else:
             tabLog.warn(["Greenplum current version", "= Error fetching data: %s" % statusFetchWarning])
         tabLog.info(["Postgres version", "= %s" % pgVersion])
-
-        tabLog.info(["Greenplum mirroring status", "= %s" % gparray.getFaultStrategyLabel(gpArray.getFaultStrategy())])
 
         self.__appendStandbySummary(hostNameToResults, gpArray.standbyMaster, tabLog)
         tabLog.outputTable()
