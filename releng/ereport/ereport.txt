@@ -2924,15 +2924,15 @@ caai: cdbgroup:00001214:  errmsg("unexpected call for two-stage aggregation")));
 caai: cdbgroup:00001379:  ereport(ERROR, 
 caai: cdbgroup:00001380:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
 caai: cdbgroup:00001381:  errmsg("unexpected use of 2-stage aggregation"))); 
-caai: cdbgroup:00001959:  ereport(ERROR, 
-caai: cdbgroup:00001960:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caai: cdbgroup:00001961:  errmsg("unexpected use of DQA pruned 2-phase aggregation"))); 
-caai: cdbgroup:00004109:  ereport(ERROR, 
-caai: cdbgroup:00004110:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caai: cdbgroup:00004111:  errmsg("unexpected call for two-stage aggregation"))); 
-caai: cdbgroup:00004192:  ereport(ERROR, 
-caai: cdbgroup:00004193:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caai: cdbgroup:00004194:  errmsg("unexpected call for two-stage aggregation"))); 
+caai: cdbgroup:00001984:  ereport(ERROR, 
+caai: cdbgroup:00001985:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caai: cdbgroup:00001986:  errmsg("unexpected use of DQA pruned 2-phase aggregation"))); 
+caai: cdbgroup:00004149:  ereport(ERROR, 
+caai: cdbgroup:00004150:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caai: cdbgroup:00004151:  errmsg("unexpected call for two-stage aggregation"))); 
+caai: cdbgroup:00004232:  ereport(ERROR, 
+caai: cdbgroup:00004233:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caai: cdbgroup:00004234:  errmsg("unexpected call for two-stage aggregation"))); 
 aaaaa GP_IGNORE: caah: cdbhash - ./backend/cdb/cdbhash.c
 caah: cdbhash:00000588:  ereport(ERROR, 
 caah: cdbhash:00000589:  (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
@@ -3237,50 +3237,50 @@ caah: cdbpath:00001331:  "UNION ALL of joined tables "
 caah: cdbpath:00001332:  "with subquery.") 
 caah: cdbpath:00001333:  )); 
 aaaaa GP_IGNORE: cacc: cdbpersistentfilespace - ./backend/cdb/cdbpersistentfilespace.c
-cacc: cdbpersistentfilespace:00000579:  ereport(FATAL, 
-cacc: cdbpersistentfilespace:00000580:  (errcode(ERRCODE_INTERNAL_ERROR), 
-cacc: cdbpersistentfilespace:00000581:  errmsg("Unable to determine dbid for filespace lookup"))); 
-cacc: cdbpersistentfilespace:00001375:  ereport(FATAL, 
-cacc: cdbpersistentfilespace:00001376:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cacc: cdbpersistentfilespace:00001377:  errmsg("Not enough shared memory for persistent filespace hash table"))); 
+cacc: cdbpersistentfilespace:00000572:  ereport(FATAL, 
+cacc: cdbpersistentfilespace:00000573:  (errcode(ERRCODE_INTERNAL_ERROR), 
+cacc: cdbpersistentfilespace:00000574:  errmsg("Unable to determine dbid for filespace lookup"))); 
+cacc: cdbpersistentfilespace:00001368:  ereport(FATAL, 
+cacc: cdbpersistentfilespace:00001369:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cacc: cdbpersistentfilespace:00001370:  errmsg("Not enough shared memory for persistent filespace hash table"))); 
 aaaaa GP_IGNORE: cacd: cdbpersistentfilesysobj - ./backend/cdb/cdbpersistentfilesysobj.c
-cacd: cdbpersistentfilesysobj:00000770:  ereport(ERROR, 
-cacd: cdbpersistentfilesysobj:00000771:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-cacd: cdbpersistentfilesysobj:00000772:  errmsg("Did not expect to find a 'Free' entry"), 
-cacd: cdbpersistentfilesysobj:00000773:  errcontext_persistent_relation_state_change( 
-cacd: cdbpersistentfilesysobj:00000774:  fsObjName, 
-cacd: cdbpersistentfilesysobj:00000775:  persistentTid, 
-cacd: cdbpersistentfilesysobj:00000776:  serialNum, 
-cacd: cdbpersistentfilesysobj:00000777:  expectedState1, 
-cacd: cdbpersistentfilesysobj:00000778:  expectedState2, 
-cacd: cdbpersistentfilesysobj:00000779:  expectedState3, 
-cacd: cdbpersistentfilesysobj:00000780:  nextState))); 
-cacd: cdbpersistentfilesysobj:00000793:  ereport(ERROR, 
-cacd: cdbpersistentfilesysobj:00000794:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-cacd: cdbpersistentfilesysobj:00000795:  errmsg("Found different serial number " INT64_FORMAT " than expected (persistent file-system object found is '%s', state '%s')", 
-cacd: cdbpersistentfilesysobj:00000796:  actualSerialNum, 
-cacd: cdbpersistentfilesysobj:00000797:  PersistentFileSysObjName_TypeAndObjectName(&actualFsObjName), 
-cacd: cdbpersistentfilesysobj:00000798:  PersistentFileSysObjState_Name(actualState)), 
-cacd: cdbpersistentfilesysobj:00000799:  errcontext_persistent_relation_state_change( 
-cacd: cdbpersistentfilesysobj:00000800:  fsObjName, 
-cacd: cdbpersistentfilesysobj:00000801:  persistentTid, 
-cacd: cdbpersistentfilesysobj:00000802:  serialNum, 
-cacd: cdbpersistentfilesysobj:00000803:  expectedState1, 
-cacd: cdbpersistentfilesysobj:00000804:  expectedState2, 
-cacd: cdbpersistentfilesysobj:00000805:  expectedState3, 
-cacd: cdbpersistentfilesysobj:00000806:  nextState))); 
-cacd: cdbpersistentfilesysobj:00000818:  ereport(ERROR, 
-cacd: cdbpersistentfilesysobj:00000819:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-cacd: cdbpersistentfilesysobj:00000820:  errmsg("Found persistent file-system object in unexpected state '%s'", 
-cacd: cdbpersistentfilesysobj:00000821:  PersistentFileSysObjState_Name(actualState)), 
-cacd: cdbpersistentfilesysobj:00000822:  errcontext_persistent_relation_state_change( 
-cacd: cdbpersistentfilesysobj:00000823:  fsObjName, 
-cacd: cdbpersistentfilesysobj:00000824:  persistentTid, 
-cacd: cdbpersistentfilesysobj:00000825:  serialNum, 
-cacd: cdbpersistentfilesysobj:00000826:  expectedState1, 
-cacd: cdbpersistentfilesysobj:00000827:  expectedState2, 
-cacd: cdbpersistentfilesysobj:00000828:  expectedState3, 
-cacd: cdbpersistentfilesysobj:00000829:  nextState))); 
+cacd: cdbpersistentfilesysobj:00001101:  ereport(ERROR, 
+cacd: cdbpersistentfilesysobj:00001102:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+cacd: cdbpersistentfilesysobj:00001103:  errmsg("Did not expect to find a 'Free' entry"), 
+cacd: cdbpersistentfilesysobj:00001104:  errcontext_persistent_relation_state_change( 
+cacd: cdbpersistentfilesysobj:00001105:  fsObjName, 
+cacd: cdbpersistentfilesysobj:00001106:  persistentTid, 
+cacd: cdbpersistentfilesysobj:00001107:  serialNum, 
+cacd: cdbpersistentfilesysobj:00001108:  expectedState1, 
+cacd: cdbpersistentfilesysobj:00001109:  expectedState2, 
+cacd: cdbpersistentfilesysobj:00001110:  expectedState3, 
+cacd: cdbpersistentfilesysobj:00001111:  nextState))); 
+cacd: cdbpersistentfilesysobj:00001124:  ereport(ERROR, 
+cacd: cdbpersistentfilesysobj:00001125:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+cacd: cdbpersistentfilesysobj:00001126:  errmsg("Found different serial number " INT64_FORMAT " than expected (persistent file-system object found is '%s', state '%s')", 
+cacd: cdbpersistentfilesysobj:00001127:  actualSerialNum, 
+cacd: cdbpersistentfilesysobj:00001128:  PersistentFileSysObjName_TypeAndObjectName(&actualFsObjName), 
+cacd: cdbpersistentfilesysobj:00001129:  PersistentFileSysObjState_Name(actualState)), 
+cacd: cdbpersistentfilesysobj:00001130:  errcontext_persistent_relation_state_change( 
+cacd: cdbpersistentfilesysobj:00001131:  fsObjName, 
+cacd: cdbpersistentfilesysobj:00001132:  persistentTid, 
+cacd: cdbpersistentfilesysobj:00001133:  serialNum, 
+cacd: cdbpersistentfilesysobj:00001134:  expectedState1, 
+cacd: cdbpersistentfilesysobj:00001135:  expectedState2, 
+cacd: cdbpersistentfilesysobj:00001136:  expectedState3, 
+cacd: cdbpersistentfilesysobj:00001137:  nextState))); 
+cacd: cdbpersistentfilesysobj:00001149:  ereport(ERROR, 
+cacd: cdbpersistentfilesysobj:00001150:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+cacd: cdbpersistentfilesysobj:00001151:  errmsg("Found persistent file-system object in unexpected state '%s'", 
+cacd: cdbpersistentfilesysobj:00001152:  PersistentFileSysObjState_Name(actualState)), 
+cacd: cdbpersistentfilesysobj:00001153:  errcontext_persistent_relation_state_change( 
+cacd: cdbpersistentfilesysobj:00001154:  fsObjName, 
+cacd: cdbpersistentfilesysobj:00001155:  persistentTid, 
+cacd: cdbpersistentfilesysobj:00001156:  serialNum, 
+cacd: cdbpersistentfilesysobj:00001157:  expectedState1, 
+cacd: cdbpersistentfilesysobj:00001158:  expectedState2, 
+cacd: cdbpersistentfilesysobj:00001159:  expectedState3, 
+cacd: cdbpersistentfilesysobj:00001160:  nextState))); 
 aaaaa GP_IGNORE: cacb: cdbpersistentrecovery - ./backend/cdb/cdbpersistentrecovery.c
 cacb: cdbpersistentrecovery:00001848:  ereport(ERROR, 
 cacb: cdbpersistentrecovery:00001849:  (errcode_for_file_access(), 
@@ -9364,18 +9364,17 @@ pabc: plangroupext:00000279:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YE
 pabc: plangroupext:00000280:  errmsg("GROUPING SETS / ROLLUP / CUBE columns ambiguous.") 
 pabc: plangroupext:00000281:  )); 
 aaaaa GP_IGNORE: paah: planner - ./backend/optimizer/plan/planner.c
-paah: planner:00001005:  ereport(ERROR, ( 
-paah: planner:00001006:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00001007:  errmsg("incompatible loci in target inheritance set") )); 
-paah: planner:00001078:  ereport(ERROR, ( 
-paah: planner:00001079:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00001080:  errmsg("unexpected locus assigned to target inheritance set") )); 
-paah: planner:00001197:  ereport(ERROR, 
-paah: planner:00001198:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paah: planner:00001199:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
-paah: planner:00001912:  ereport(ERROR, ( 
-paah: planner:00001913:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00001914:  errmsg("unexpected input locus to distinct") )); 
+paah: planner:00001007:  ereport(ERROR, ( 
+paah: planner:00001008:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001009:  errmsg("incompatible loci in target inheritance set") )); 
+paah: planner:00001080:  ereport(ERROR, ( 
+paah: planner:00001081:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001082:  errmsg("unexpected locus assigned to target inheritance set") )); 
+paah: planner:00001199:  ereport(ERROR, 
+paah: planner:00001200:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paah: planner:00001201:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
+paah: planner:00001932:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001933:  errmsg("unexpected input locus to distinct"))); 
 aaaaa GP_IGNORE: paba: planwindow - ./backend/optimizer/plan/planwindow.c
 paba: planwindow:00000390:  ereport(ERROR, 
 paba: planwindow:00000391:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
