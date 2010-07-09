@@ -104,6 +104,8 @@ static void sort_canonical_gs_list(List *gs, int *p_nsets, Bitmapset ***p_sets);
 static Node* normalize_query_jointree(Node *expr);
 static Node *normalize_query_jointree_mutator(Node *expr, void *context);
 
+static Plan *pushdown_preliminary_limit(Plan *plan, Node *limitCount, int64 count_est, Node *limitOffset, int64 offset_est);
+
 bool is_dummy_plan(Plan *plan);
 
 
@@ -1893,11 +1895,29 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 					result_plan->flow = pull_up_Flow(result_plan,
 													 result_plan->lefttree,
 													 true);
-					
+
 					result_plan->plan_rows = numDistinct;
+
+					/*
+					 * Our sort node (under the unique node),
+					 * unfortunately can't guarantee uniqueness -- so
+					 * we aren't allowed to push the limit into the
+					 * sort; but we can avoid moving the entire sorted
+					 * result-set by plunking a limit on the top of
+					 * the unique-node.
+					 */
+					if (parse->limitCount)
+					{
+						/*
+						 * Our extra limit operation is basically a
+						 * third-phase on multi-phase limit (see
+						 * 2-phase limit below)
+						 */
+						result_plan = pushdown_preliminary_limit(result_plan, parse->limitCount, count_est, parse->limitOffset, offset_est);
+					}
 				}
 			}
-			
+
 			if ( needMotion )
 			{
 				result_plan = (Plan*)make_motion_hash(root, result_plan, distinctExprs);
@@ -1909,9 +1929,8 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			; /* Already collocated. */
 		else
 		{
-			ereport(ERROR, (
-				errcode(ERRCODE_CDB_INTERNAL_ERROR),
-				errmsg("unexpected input locus to distinct") ));
+			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+							errmsg("unexpected input locus to distinct")));
 		}
 	 }
 
@@ -1959,45 +1978,17 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	 */
 	if (parse->limitCount || parse->limitOffset)
 	{
-		if ( Gp_role == GP_ROLE_DISPATCH && result_plan->flow->flotype == FLOW_PARTITIONED )
+		if (Gp_role == GP_ROLE_DISPATCH && result_plan->flow->flotype == FLOW_PARTITIONED)
 		{
-			/* Note max result size.  May be unspecified. */
-			Node *precount = copyObject(parse->limitCount);
-			int64 precount_est = count_est;
-			
-			/* add offset to each QEs requested contribution. 
-			 * ( MPP-1370: Do it even if no ORDER BY was specified) 
-			 */	
-			if (precount && parse->limitOffset )
-			{
-				precount = (Node*)make_op(NULL,
-										  list_make1(makeString(pstrdup("+"))),
-										  copyObject(parse->limitOffset),
-										  precount,
-                                          -1);
-				precount_est += offset_est;
-			}
-			
-			if ( precount != NULL )
-			{
-				/* Add a prelimary LIMIT on the partitioned results. This
-				 * may reduce the amount of work done on the QEs.  */
-				result_plan = (Plan *) make_limit(result_plan,
-												  NULL,
-												  precount,
-												  0,
-												  precount_est);
-                result_plan->flow = pull_up_Flow(result_plan,
-                                                 result_plan->lefttree,
-                                                 true);
-			}
+			/* pushdown the first phase of multi-phase limit (which takes offset into account) */
+			result_plan = pushdown_preliminary_limit(result_plan, parse->limitCount, count_est, parse->limitOffset, offset_est);
 			
 			/* Focus on QE [merge to preserve order], prior to final LIMIT. */
 			result_plan = (Plan*)make_motion_gather_to_QE(result_plan, current_pathkeys != NIL);
 			result_plan->total_cost += motion_cost_per_row * result_plan->plan_rows;
 		}
 			
-		if ( current_pathkeys == NIL )
+		if (current_pathkeys == NIL)
 		{
 			/* This used to be a WARNING.  If reinstated, it should be a NOTICE
 			 * and steps taken to avoid issuing it at inopportune times, e.g.,
@@ -2005,7 +1996,8 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			 */
 			ereport(DEBUG1, (errmsg("LIMIT/OFFSET applied to unordered result.") ));
 		}
-			
+
+		/* For multi-phase limit, this is the final limit */			
 		result_plan = (Plan *) make_limit(result_plan,
 										  parse->limitOffset,
 										  parse->limitCount,
@@ -3254,4 +3246,52 @@ static void sort_canonical_gs_list(List *gs, int *p_nsets, Bitmapset ***p_sets)
 	
 	*p_nsets = nsets;
 	*p_sets = sets;
+}
+
+/*
+ * In any plan where we are doing multi-phase limit, the first phase needs
+ * to take the offset into account.
+ */
+static Plan *
+pushdown_preliminary_limit(Plan *plan, Node *limitCount, int64 count_est, Node *limitOffset, int64 offset_est)
+{
+	Node *precount = copyObject(limitCount);
+	int64 precount_est = count_est;
+	Plan *result_plan = plan;
+
+	/*
+	 * If we've specified an offset *and* a limit, we need to collect
+	 * from tuples from 0 -> count + offset
+	 *
+	 * add offset to each QEs requested contribution. 
+	 * ( MPP-1370: Do it even if no ORDER BY was specified) 
+	 */	
+	if (precount && limitOffset)
+	{
+		precount = (Node*)make_op(NULL,
+								  list_make1(makeString(pstrdup("+"))),
+								  copyObject(limitOffset),
+								  precount,
+								  -1);
+		precount_est += offset_est;
+	}
+			
+	if (precount != NULL)
+	{
+		/*
+		 * Add a prelimary LIMIT on the partitioned results. This may
+		 * reduce the amount of work done on the QEs.
+		 */
+		result_plan = (Plan *) make_limit(result_plan,
+										  NULL,
+										  precount,
+										  0,
+										  precount_est);
+
+		result_plan->flow = pull_up_Flow(result_plan,
+										 result_plan->lefttree,
+										 true);
+	}
+
+	return result_plan;
 }
