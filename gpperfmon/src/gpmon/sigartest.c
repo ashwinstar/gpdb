@@ -47,6 +47,7 @@ int main(int argc, char** argv)
     int clear = 1;
     int first = 1;
     int local_fs_count = 0;
+    int local_fs_counter = 0;
 
     if (argc > 2 && strcmp(argv[1], "-c") == 0)
         clear = 1;
@@ -77,7 +78,7 @@ int main(int argc, char** argv)
     {
         if (sigar_fslist.data[i].type == SIGAR_FSTYPE_LOCAL_DISK)
         {
-            fs_list[i] = strdup(sigar_fslist.data[i].dev_name);
+            fs_list[local_fs_counter++] = strdup(sigar_fslist.data[i].dev_name);
         }
     }
     sigar_file_system_list_destroy(sigar, &sigar_fslist);
