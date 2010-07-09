@@ -40,8 +40,8 @@ struct
 	char* gpdb_port;
 	char* conf_file;
 	char* log_dir;
+	char* smon_log_dir;
 	apr_uint64_t max_log_size;
-	/* TODO: add log file rotation values */
 	int max_fd; /* this is the max fd value we ever seen */
 	int v;
 	int q;
@@ -65,6 +65,7 @@ struct host_t
 	char* realhostname; /* static */
 	char* ipstr; /* static */
 	char* data_dir;
+    unsigned char is_master; /* 1 if host is the same host where the master runs */
 };
 
 /* gpmmon host */
@@ -92,6 +93,9 @@ static struct
 
 void interuptable_sleep(unsigned int seconds);
 
+// lock when accessing the debug log file 
+apr_thread_mutex_t *logfile_mutex = NULL; 
+
 
 /* Default option values */
 int verbose = 0; /* == opt.v */
@@ -117,6 +121,23 @@ static void gethostlist(host_t** tab, int* tabsz);
 static void getconfig(void);
 static apr_status_t sendpkt(int sock, const gpmon_packet_t* pkt);
 static apr_status_t recvpkt(int sock, gpmon_packet_t* pkt);
+
+
+#define MMON_LOG_FILENAME_SIZE (MAXPATHLEN+1)
+char mmon_log_filename[MMON_LOG_FILENAME_SIZE];
+void update_mmonlog_filename()
+{
+    time_t stamp = time(NULL);
+    struct tm* tm = gmtime(&stamp);
+    snprintf(mmon_log_filename, MMON_LOG_FILENAME_SIZE, "%s/gpmmon.%d.%02d.%02d_%02d%02d%02d.log", 
+		opt.log_dir,
+        tm->tm_year + 1900, 
+        tm->tm_mon + 1, 
+        tm->tm_mday,
+        tm->tm_hour,
+        tm->tm_min,
+        tm->tm_sec);
+}
 
 
 /** Gets quantum */
@@ -501,16 +522,42 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 			for (i = 0; i < count_broken;)
 			{
 				FILE* fp[BATCH];
+
+				// use these strings to formulate log location for smon without allocating any dynamic memory
+				const char* empty_string = "";
+				const char* gpperfmon_string = "/gpperfmon";
+				const char* ptr_smon_log_location;
+				const char* ptr_smon_log_location_suffix;
+
 				const int line_size = 1024;
 				char line[line_size];
 				memset(fp, 0, sizeof(fp));
 				for (j = 0; j < 8 && i < count_broken; j++, i++)
 				{
 					host_t* h = &tab[broken[i]];
+
+					// smon will log to gpperfmon directory on master, specified location on smon, or one of the gpperfmon subdir of one of the data directories as default
+					if (h->is_master)
+					{
+						ptr_smon_log_location = opt.log_dir;	
+						ptr_smon_log_location_suffix = empty_string;	
+					}
+					else if (opt.smon_log_dir)
+					{
+						ptr_smon_log_location = opt.smon_log_dir;
+						ptr_smon_log_location_suffix = empty_string;	
+					}
+					else
+					{
+						ptr_smon_log_location = h->data_dir;
+						ptr_smon_log_location_suffix = gpperfmon_string;
+					}
+
 					snprintf(line, line_size, "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
-							" %s %s/bin/gpsmon -m %" FMT64 " -l %s %s %d ",
-							h->hostname, ax.gphome, opt.max_log_size, h->data_dir,
+							" %s %s/bin/gpsmon -m %" FMT64 " -l %s%s %s %d ",
+							h->hostname, ax.gphome, opt.max_log_size, ptr_smon_log_location, ptr_smon_log_location_suffix,
 							opt.v ? "-v" : "", ax.port);
+
 					TR0(("Connection to %s lost.  Restarting gpsmon.\n", h->hostname));
 					TR1(("%s\n", line));
 					fp[j] = popen(line, "w");
@@ -711,6 +758,12 @@ static void gpmmon_main(void)
 		gpmon_fatalx(FLINE, e, "Resource Error: Failed to create tailfile_mutex");
 	}
 
+	if (0 != (e = apr_thread_mutex_create(&logfile_mutex, APR_THREAD_MUTEX_UNNESTED, ax.pool)))
+	{
+        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		gpmon_fatalx(FLINE, e, "Resource Error: Failed to create logfile_mutex");
+	}
+
 	if (0 != (e = apr_threadattr_create(&ta, ax.pool)))
 	{
         interuptable_sleep(30); // sleep to prevent loop of forking process and failing
@@ -840,16 +893,14 @@ static void gpmmon_main(void)
 		if (ticks_since_last_log_check > log_check_interval)
 		{
 			apr_finfo_t finfo;
-			char log_file[MAXPATHLEN + 1] =
-			{ 0 };
-			snprintf(log_file, MAXPATHLEN + 1, "%s/%s", opt.log_dir,
-					"gpmmon.log");
-			if (0 == apr_stat(&finfo, log_file, APR_FINFO_SIZE, ax.pool))
+			if (0 == apr_stat(&finfo, mmon_log_filename, APR_FINFO_SIZE, ax.pool))
 			{
 				if (opt.max_log_size != 0 && finfo.size > opt.max_log_size)
 				{
-					freopen(log_file, "w+", stdout);
-					freopen(log_file, "w+", stderr);
+					update_mmonlog_filename();
+					apr_thread_mutex_lock(logfile_mutex);
+					freopen(mmon_log_filename, "w", stdout);
+					apr_thread_mutex_unlock(logfile_mutex);
 				}
 			}
 			ticks_since_last_log_check = 0;
@@ -952,6 +1003,14 @@ static int read_conf_file(char *conffile)
 
 				opt.log_dir = strdup(pVal);
 			}
+			else if (apr_strnatcasecmp(pName, "smon_log_location") == 0)
+			{
+				if (opt.smon_log_dir)
+					free(opt.smon_log_dir);
+
+				opt.smon_log_dir = strdup(pVal);
+			}
+
 			else if (apr_strnatcasecmp(pName, "tail_buffer_max") == 0)
 			{
 				opt.tail_buffer_max = apr_atoi64(pVal);
@@ -960,22 +1019,6 @@ static int read_conf_file(char *conffile)
 			{
 				opt.max_log_size = apr_atoi64(pVal);
 			}
-			/* TODO: Log rotation settings
-			 else if (apr_strnatcasecmp(pName, "log_rotation_age") == 0)
-			 {
-
-			 }
-			 else if (apr_strnatcasecmp(pName, "log_rotation_size") == 0)
-			 {
-
-			 }
-			 else if (apr_strnatcasecmp(pName, "log_truncate_on_rotation") == 0)
-			 {
-			 if (apr_strnatcasecmp(pVal, "on") == 0)
-			 {
-
-			 }
-			 */
 			else
 			{
 				fprintf(stderr, "Unknown option %s\n", pName == NULL ? "(NULL)"
@@ -1202,12 +1245,11 @@ int main(int argc, const char* const argv[])
             gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "cannot create directory %s", opt.log_dir);
         }
 
-		char log_file[MAXPATHLEN + 1];
-		snprintf(log_file, MAXPATHLEN, "%s/%s", opt.log_dir, "gpmmon.log");
-		if (!freopen(log_file, "w", stdout)){
-            fprintf(stderr, "\nPerformance Monitor -- failed to open perfmon log file %s\n", log_file);
+		update_mmonlog_filename();
+		if (!freopen(mmon_log_filename, "w", stdout)){
+            fprintf(stderr, "\nPerformance Monitor -- failed to open perfmon log file %s\n", mmon_log_filename);
             interuptable_sleep(30); // sleep to prevent loop of forking process and failing
-		    gpmon_fatal(FLINE, "\nfailed (1) to open perfmon log file %s\n", log_file);
+		    gpmon_fatal(FLINE, "\nfailed (1) to open perfmon log file %s\n", mmon_log_filename);
         }
 	}
 
@@ -1256,6 +1298,7 @@ static void gethostlist(host_t** rettab, int* rettabsz)
 	apr_pool_t* pool;
 	apr_hash_t* htab;
 	int e, i;
+	bool first_time = true;
 	
 	char line[GPMMON_GETHOSTLIST_LINE_BUFSIZE];
 	apr_array_header_t* hostarray;
@@ -1283,8 +1326,17 @@ static void gethostlist(host_t** rettab, int* rettabsz)
 		host_t *host = apr_array_push(hostarray);
 		CHECKMEM(host);
 		memset(host, 0, sizeof(*host));
+
+		if (first_time)
+		{
+			// the master is first in the list since the query is sorted by dbid asc 
+			host->is_master = 1;
+			first_time = false;
+		}
 		host->hostname = hosts[i];
 		host->data_dir = data_dirs[i];
+
+		TR2(("segment identified: hostname %s datadir %s master %d\n", host->hostname, host->data_dir, host->is_master));
 	}
 
 	if (apr_is_empty_array(hostarray))
@@ -1350,6 +1402,10 @@ static void gethostlist(host_t** rettab, int* rettabsz)
 				/* for now, just use the last entry that got there */
 				rec->hostname = host[i].hostname;
 				rec->data_dir = host[i].data_dir;
+				if (host[i].is_master)
+				{
+					rec->is_master = 1;
+				}
 				apr_thread_mutex_create(&rec->mutex, APR_THREAD_MUTEX_UNNESTED, ax.pool);
 			}
 			else

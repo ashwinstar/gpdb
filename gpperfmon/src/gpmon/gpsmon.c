@@ -24,6 +24,9 @@
 
 #define FMT64 APR_INT64_T_FMT
 
+// no locking of log file in smon because it is single threaded
+apr_thread_mutex_t *logfile_mutex = NULL;
+
 static struct
 {
 	const char* pname;
@@ -111,6 +114,23 @@ struct disk_device_t
 	apr_int64_t write_bytes;
 };
 
+
+#define LOG_FILENAME_SIZE 64
+char log_filename[LOG_FILENAME_SIZE];
+void update_log_filename()
+{
+    time_t stamp = time(NULL);
+	struct tm* tm = gmtime(&stamp);
+	snprintf(log_filename, LOG_FILENAME_SIZE, "gpsmon.%d.%02d.%02d_%02d%02d%02d.log", 
+		tm->tm_year + 1900, 
+		tm->tm_mon + 1,
+		tm->tm_mday,
+		tm->tm_hour,
+		tm->tm_min,
+		tm->tm_sec);
+}
+	
+
 static void gx_accept(SOCKET sock, short event, void* arg);
 static void gx_recvfrom(SOCKET sock, short event, void* arg);
 static gpmon_packet_t* gx_pktdup(apr_pool_t* pool, const gpmon_packet_t* pkt)
@@ -142,7 +162,7 @@ static void send_fully(SOCKET sock, const void* p_, int len)
 			case EAGAIN:
 				continue;
 			}
-			gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "send failed");
+			gpsmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "send failed");
 		}
 		p += n;
 	}
@@ -730,7 +750,7 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 		apr_pool_t* newpool;
 		if (0 != (e = apr_pool_create(&newpool, gx.pool)))
 		{
-			gpmon_fatalx(FLINE, e, "apr_pool_create failed");
+			gpsmon_fatalx(FLINE, e, "apr_pool_create failed");
 		}
 		/* qexec hash table */
 		gx.qexectab = apr_hash_make(newpool);
@@ -922,7 +942,7 @@ static void gx_recvqlog(gpmon_packet_t* pkt)
 	gpmon_packet_t* rec;
 
 	if (pkt->pkttype != GPMON_PKTTYPE_QLOG)
-		gpmon_fatal(FLINE, "assert failed; expected pkttype qlog");
+		gpsmon_fatal(FLINE, "assert failed; expected pkttype qlog");
 
 	p = &pkt->u.qlog;
 	TR2(
@@ -945,7 +965,7 @@ static void gx_recvsegment(gpmon_packet_t* pkt)
 	gpmon_packet_t* rec;
 
 	if (pkt->pkttype != GPMON_PKTTYPE_SEGINFO)
-		gpmon_fatal(FLINE, "assert failed; expected pkttype segment");
+		gpsmon_fatal(FLINE, "assert failed; expected pkttype segment");
 
 	p = &pkt->u.seginfo;
 
@@ -969,7 +989,7 @@ static void gx_recvqexec(gpmon_packet_t* pkt)
 	gpmon_packet_t* rec;
 
 	if (pkt->pkttype != GPMON_PKTTYPE_QEXEC)
-		gpmon_fatal(FLINE, "assert failed; expected pkttype qexec");
+		gpsmon_fatal(FLINE, "assert failed; expected pkttype qexec");
 
 	p = &pkt->u.qexec;
 
@@ -1059,7 +1079,7 @@ static void setup_tcp(void)
 	sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (sock < 0)
 	{
-		gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
+		gpsmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
 				"unable to create tcp socket");
 	}
 
@@ -1076,13 +1096,13 @@ static void setup_tcp(void)
 	a.sin_family = AF_INET;
 	if (bind(sock, (void*) &a, sizeof(a)))
 	{
-		gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
+		gpsmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
 				"unable to bind udp socket");
 	}
 
 	if (-1 == listen(sock, 5))
 	{
-		gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "listen failed");
+		gpsmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "listen failed");
 	}
 
 	/* save it */
@@ -1095,7 +1115,7 @@ static void setup_tcp(void)
 	/* start watching this event */
 	if (event_add(&gx.listen_event, 0))
 	{
-		gpmon_fatal(FLINE, "event_add failed");
+		gpsmon_fatal(FLINE, "event_add failed");
 	}
 
 }
@@ -1109,7 +1129,7 @@ static void setup_udp()
 	sock = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sock < 0)
 	{
-		gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
+		gpsmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
 				"cannot create udp socket");
 	}
 
@@ -1120,7 +1140,7 @@ static void setup_udp()
 	a.sin_family = AF_INET;
 	if (bind(sock, (void*) &a, sizeof(a)))
 	{
-		gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
+		gpsmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
 				"unable to bind udp socket");
 	}
 
@@ -1133,7 +1153,7 @@ static void setup_udp()
 	/* start watching this event */
 	if (event_add(&gx.udp_event, 0))
 	{
-		gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "event_add failed");
+		gpsmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "event_add failed");
 	}
 }
 
@@ -1146,7 +1166,7 @@ static void setup_gx(int port, apr_int64_t signature)
 	/* set up pool */
 	if (0 != (e = apr_pool_create(&gx.pool, 0)))
 	{
-		gpmon_fatalx(FLINE, e, "apr_pool_create failed");
+		gpsmon_fatalx(FLINE, e, "apr_pool_create failed");
 	}
 
 	/* set up hostname */
@@ -1162,12 +1182,12 @@ static void setup_gx(int port, apr_int64_t signature)
 	gx.signature = signature;
 	if (!event_init())
 	{
-		gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "event_init failed");
+		gpsmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "event_init failed");
 	}
 
 	if (0 != (e = apr_pool_create(&subpool, gx.pool)))
 	{
-		gpmon_fatalx(FLINE, e, "apr_pool_create failed");
+		gpsmon_fatalx(FLINE, e, "apr_pool_create failed");
 	}
 
 	/* qexec hash table */
@@ -1204,7 +1224,7 @@ static void setup_sigar(void)
 	/* initialize sigar */
 	if (0 != (e = sigar_open(&gx.sigar)))
 	{
-		gpmon_fatalx(FLINE, e, "sigar_open failed");
+		gpsmon_fatalx(FLINE, e, "sigar_open failed");
 	}
 
 	TR2(("sigar initialized\n"));
@@ -1270,6 +1290,8 @@ void gx_main(int port, apr_int64_t signature)
 	/* set up our log files */
 	if (opt.log_dir)
 	{
+		mkdir(opt.log_dir, S_IRWXU | S_IRWXG);
+
 		if (0 != chdir(opt.log_dir))
 		{
 			/* Invalid dir for log file, try home dir */
@@ -1282,9 +1304,8 @@ void gx_main(int port, apr_int64_t signature)
 		}
 	}
 
-	freopen("gpsmon.log", "a", stderr);
-	freopen("gpsmon.log", "a", stdout);
-	setlinebuf(stderr);
+	update_log_filename();
+	freopen(log_filename, "w", stdout);
 	setlinebuf(stdout);
 
 	setup_gx(port, signature);
@@ -1310,9 +1331,11 @@ void gx_main(int port, apr_int64_t signature)
 		}
 		if (-1 == event_dispatch())
 		{
-			gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
+			gpsmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
 					"event_dispatch failed");
 		}
+
+		TR0(("gx.tick %d\n", gx.tick));
 
 		/* get pid metrics */
 		for (hi = apr_hash_first(0, gx.qexectab); hi; hi = apr_hash_next(hi))
@@ -1327,16 +1350,15 @@ void gx_main(int port, apr_int64_t signature)
 		}
 
 		/* check log size */
-		if (gx.tick % 30 == 0)
+		if (gx.tick % 60 == 0)
 		{
 			apr_finfo_t finfo;
-			if (0 == apr_stat(&finfo, "gpsmon.log", APR_FINFO_SIZE, gx.pool))
+			if (0 == apr_stat(&finfo, log_filename, APR_FINFO_SIZE, gx.pool))
 			{
 				if (opt.max_log_size != 0 && finfo.size > opt.max_log_size)
 				{
-					freopen("gpsmon.log", "w+", stdout);
-					freopen("gpsmon.log", "w+", stderr);
-					setlinebuf(stderr);
+					update_log_filename();
+					freopen(log_filename, "w", stdout);
 					setlinebuf(stdout);
 				}
 			}
@@ -1346,13 +1368,13 @@ void gx_main(int port, apr_int64_t signature)
 
 static void usage(const char* msg)
 {
-	fprintf(stderr, "\nusage: %s [options] port\n\n", opt.pname);
-	fprintf(stderr, "options:\n");
-	fprintf(stderr, "\t-?:\tprint this help screen\n");
-	fprintf(stderr, "\t-v:\tverbose\n");
-	fprintf(stderr, "\t-D:\trun in debug mode; don't run as daemon\n");
+	fprintf(stdout, "\nusage: %s [options] port\n\n", opt.pname);
+	fprintf(stdout, "options:\n");
+	fprintf(stdout, "\t-?:\tprint this help screen\n");
+	fprintf(stdout, "\t-v:\tverbose\n");
+	fprintf(stdout, "\t-D:\trun in debug mode; don't run as daemon\n");
 	if (msg)
-		fprintf(stderr, "%s\n\n", msg);
+		fprintf(stdout, "%s\n\n", msg);
 
 	exit(msg ? 1 : 0);
 }
@@ -1376,7 +1398,7 @@ static void parse_command_line(int argc, const char* const argv[])
 
 	if (0 != (e = apr_pool_create(&pool, 0)))
 	{
-		gpmon_fatalx(FLINE, e, "apr_pool_create failed");
+		gpsmon_fatalx(FLINE, e, "apr_pool_create failed");
 	}
 
 	bin_start = argv[0] + strlen(argv[0]) - 1;
@@ -1391,7 +1413,7 @@ static void parse_command_line(int argc, const char* const argv[])
 
 	if (0 != (e = apr_getopt_init(&os, pool, argc, argv)))
 	{
-		gpmon_fatalx(FLINE, e, "apr_getopt_init failed");
+		gpsmon_fatalx(FLINE, e, "apr_getopt_init failed");
 	}
 
 	while (0 == (e = apr_getopt_long(os, option, &ch, &arg)))
@@ -1436,7 +1458,7 @@ int main(int argc, const char* const argv[])
 
 	if (0 != (e = apr_initialize()))
 	{
-		gpmon_fatalx(FLINE, e, "apr_initialize failed");
+		gpsmon_fatalx(FLINE, e, "apr_initialize failed");
 	}
 
 	parse_command_line(argc, argv);
@@ -1447,7 +1469,7 @@ int main(int argc, const char* const argv[])
 
 	if (1 != fscanf(stdin, "%" FMT64, &signature))
 	{
-		gpmon_fatal(FLINE, "cannot read signature");
+		gpsmon_fatal(FLINE, "cannot read signature");
 	}
 
 	TR2(("\tsignature = %" FMT64 "\n", signature));
@@ -1455,12 +1477,12 @@ int main(int argc, const char* const argv[])
 	if (!opt.D)
 	{
 		if (0 != (e = apr_proc_detach(1)))
-			gpmon_fatalx(FLINE, e, "apr_proc_detach failed");
+			gpsmon_fatalx(FLINE, e, "apr_proc_detach failed");
 	}
 
 #if defined (sun)
 	if (NULL == (kc = kstat_open()))
-	gpmon_fatal(FLINE, "failed to open kstat");
+	gpsmon_fatal(FLINE, "failed to open kstat");
 #endif /* sun */
 
 	gx_main(port, signature);

@@ -50,6 +50,10 @@ extern int gpmon_fatalx(const char* fline, int e, const char* fmt, ...);
 extern int gpmon_warning(const char* fline, const char* fmt, ...);
 extern int gpmon_warningx(const char* fline, int e, const char* fmt, ...);
 
+// fatal messages for smon -- go to stdout only
+extern int gpsmon_fatal(const char* fline, const char* fmt, ...);
+extern int gpsmon_fatalx(const char* fline, int e, const char* fmt, ...);
+
 /* convert packets to host order */
 extern apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt);
 

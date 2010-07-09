@@ -25,6 +25,11 @@
 #define GPMON_NTOHL(x) x = ntohl(x)
 #define GPMON_NTOHLL(x) x = local_ntohll(x)
 
+extern apr_thread_mutex_t *logfile_mutex;
+
+#define LOCK_STDOUT if (logfile_mutex) { apr_thread_mutex_lock(logfile_mutex); }
+#define UNLOCK_STDOUT if (logfile_mutex) { apr_thread_mutex_unlock(logfile_mutex); }
+
 apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt)
 {
 	static apr_int64_t last_err_sec = 0;
@@ -179,9 +184,15 @@ int gpmon_print(const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
+
+	LOCK_STDOUT
+
     fprintf(stdout, "%s|:-LOG: ", datetime());
     vfprintf(stdout, fmt, ap);
     fflush(stdout);
+
+	UNLOCK_STDOUT
+
     return 0;
 }
 
@@ -191,9 +202,11 @@ int gpmon_fatal(const char* fline, const char* fmt, ...)
 	va_list ap;
 	va_start(ap, fmt);
 
+	LOCK_STDOUT
 	fprintf(stdout, "%s|:-FATAL: [INTERNAL ERROR %s] ", datetime(), fline);
 	vfprintf(stdout, fmt, ap);
 	fprintf(stdout, "\n          ... exiting\n");
+	UNLOCK_STDOUT
 
 	fprintf(stderr, "%s|:-FATAL: [INTERNAL ERROR %s] ", datetime(), fline);
 	vfprintf(stderr, fmt, ap);
@@ -203,12 +216,25 @@ int gpmon_fatal(const char* fline, const char* fmt, ...)
 	return 0;
 }
 
+int gpsmon_fatal(const char* fline, const char* fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	fprintf(stdout, "%s|:-FATAL: [INTERNAL ERROR %s] ", datetime(), fline);
+	vfprintf(stdout, fmt, ap);
+	fprintf(stdout, "\n          ... exiting\n");
+	exit(1);
+	return 0;
+}
+
+
 
 int gpmon_fatalx(const char* fline, int e, const char* fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);
 
+	LOCK_STDOUT
 	fprintf(stdout, "%s|:-FATAL: [INTERNAL ERROR %s] ", datetime(), fline);
 	vfprintf(stdout, fmt, ap);
 	if (e) 
@@ -217,6 +243,7 @@ int gpmon_fatalx(const char* fline, int e, const char* fmt, ...)
 		fprintf(stdout, "\n\terror %d (%s)", e, apr_strerror(e, msg, sizeof(msg)));
 	}
 	fprintf(stdout, "\n\t... exiting\n");
+	UNLOCK_STDOUT
 
 	fprintf(stderr, "%s|:-FATAL: [INTERNAL ERROR %s] ", datetime(), fline);
 	vfprintf(stderr, fmt, ap);
@@ -232,14 +259,36 @@ int gpmon_fatalx(const char* fline, int e, const char* fmt, ...)
 }
 
 
+int gpsmon_fatalx(const char* fline, int e, const char* fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	fprintf(stdout, "%s|:-FATAL: [INTERNAL ERROR %s] ", datetime(), fline);
+	vfprintf(stdout, fmt, ap);
+	if (e) 
+	{
+		char msg[512];
+		fprintf(stdout, "\n\terror %d (%s)", e, apr_strerror(e, msg, sizeof(msg)));
+	}
+	fprintf(stdout, "\n\t... exiting\n");
+	exit(1);
+	return 0;
+}
+
+
+
 
 int gpmon_warning(const char* fline, const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
+
+	LOCK_STDOUT
     fprintf(stdout, "%s|:-WARNING: [%s] ", datetime(), fline);
     vfprintf(stdout, fmt, ap);
     fprintf(stdout, "\n");
+	UNLOCK_STDOUT
+
     return 0;
 }
 
@@ -247,6 +296,8 @@ int gpmon_warningx(const char* fline, int e, const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
+
+	LOCK_STDOUT
     fprintf(stdout, "%s|:-WARNING: [%s] ", datetime(), fline);
     vfprintf(stdout, fmt, ap);
     if (e) {
@@ -254,6 +305,8 @@ int gpmon_warningx(const char* fline, int e, const char* fmt, ...)
 	fprintf(stdout, "\n\terror %d (%s)", e, apr_strerror(e, msg, sizeof(msg)));
     }
     fprintf(stdout, "\n");
+	UNLOCK_STDOUT
+
     return 0;
 }
 
