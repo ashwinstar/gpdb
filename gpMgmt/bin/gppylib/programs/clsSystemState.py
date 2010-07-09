@@ -73,7 +73,7 @@ CATEGORY__STATUS = "Status"
 VALUE__MASTER_REPORTS_STATUS = FieldDefinition("Configuration reports status as", "status_in_config", "text", "Config status")
 VALUE__MIRROR_SEGMENT_STATUS = FieldDefinition("Segment status", "segment_status", "text") # must not be same name as VALUE__SEGMENT_STATUS
 VALUE__NONMIRROR_DATABASE_STATUS = FieldDefinition("Database status", "database_status", "text")
-VALUE__ACTIVE_PID = FieldDefinition("Active PID", "active_pid", "text") # int would be better, but we print error messages here sometimes
+VALUE__ACTIVE_PID = FieldDefinition("PID", "active_pid", "text") # int would be better, but we print error messages here sometimes
 
 # these are not in a category, used for other logging
 VALUE__SEGMENT_STATUS = FieldDefinition("Instance status", "instance_status", "text", "Status")
@@ -1054,7 +1054,7 @@ class GpSystemStateProgram:
                     data.addValue(VALUE__ACTIVE_PID, pidData["pid"])
                     data.addValue(VALUE__ACTIVE_PID_INT, pidValueForSql)
                 else:
-                    data.addValue(VALUE__ACTIVE_PID, "Missing", True)
+                    data.addValue(VALUE__ACTIVE_PID, "Not found", True)
                     data.addValue(VALUE__ACTIVE_PID_INT, "", True)
 
                 data.addValue(VALUE__VERSION_STRING, segmentData[gp.SEGMENT_STATUS__GET_VERSION])
