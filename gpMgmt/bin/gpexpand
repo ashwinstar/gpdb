@@ -417,13 +417,11 @@ class GpExpandStatus():
                                 'UPDATE_OLD_SEGMENTS_DONE': 8,
                                 'UPDATE_CATALOG_STARTED': 9,
                                 'UPDATE_CATALOG_DONE': 10,
-                                'SYNC_MIRRORS_STARTED': 11,
-                                'SYNC_MIRRORS_DONE': 12,
-                                'SETUP_EXPANSION_SCHEMA_STARTED': 13,
-                                'SETUP_EXPANSION_SCHEMA_DONE': 14,
-                                'PREPARE_EXPANSION_SCHEMA_STARTED': 15,
-                                'PREPARE_EXPANSION_SCHEMA_DONE': 16,
-                                'EXPANSION_PREPARE_DONE': 17
+                                'SETUP_EXPANSION_SCHEMA_STARTED': 11,
+                                'SETUP_EXPANSION_SCHEMA_DONE': 12,
+                                'PREPARE_EXPANSION_SCHEMA_STARTED': 13,
+                                'PREPARE_EXPANSION_SCHEMA_DONE': 14,
+                                'EXPANSION_PREPARE_DONE': 15
                                 }
         self._status = []
         self._status_info = []
@@ -1200,7 +1198,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         """Writes a gpexpand input file based on expansion segments
         added to gparray by the gpexpand interview"""
         outputfile = 'gpexpand_inputfile_' + strftime("%Y%m%d_%H%M%S")
-        ###outputfile = "/Users/ksell/temp/junkMPP6969/gpexpand_inputfile_1"
+        outputfile = "/Users/ksell/temp/junkMPP6969/gpexpand_inputfile_1"
         outfile = open(outputfile, 'w')
 
         logger.info("Generating input file...")
@@ -1575,6 +1573,12 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
 
         gpFSobjList = gparray.getFilespaces(includeSystemFilespace = True)
 
+        # The next steps will generate a new dbid for each new segment.
+        # We will set all new segment dbid's to -1 for now to make sure we don't run into
+        # any conflicts while we are processing the new dbids.
+        for seg in self.gparray.getExpansionSegDbList():
+            seg.setSegmentDbId(-1)
+
         # For each new primary segment, call the gp_add_segment with its filespaces
         gpFSobjList = gparray.getFilespaces(includeSystemFilespace = True)
         for seg in self.gparray.getExpansionSegDbList():
@@ -1602,7 +1606,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
                dbconn.execSQL(self.conn, sqlStr)
                
                # Set the primary's replication port
-               sqlStr = """update pg_catalog.gp_segment_configuration set replication_port = %s where dbid = %s""" % str(seg.getSegmentReplicationPort())
+               sqlStr = """update pg_catalog.gp_segment_configuration set replication_port = %s where dbid = %s""" % (str(seg.getSegmentReplicationPort()), str(newDbid))
                dbconn.execSQL(self.conn, sqlStr)
             
             # Get the new segment's content id.
@@ -1616,7 +1620,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             for db in segmentPair.get_dbs():
                 db.setSegmentContentId(newContentID)
         
-        # For each new mirror segment, call the gp_add_segment with its filespaces
+        # For each new mirror segment, call the gp_add_segment_mirror with its filespaces
         for seg in self.gparray.getExpansionSegDbList():
             if seg.isSegmentPrimary() == True:
                 continue
@@ -1791,11 +1795,6 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         # Need to restore the connection used by the expansion
         self.conn = dbconn.connect(self.dburl, encoding='UTF8')
         
-    
-    #--------------------------------------------------------------------------
-    def build_mirrors(self): 
-        """ This method will start gprecoverseg to force synchronization between the new primary and new mirror segments. """
-            
             
     #--------------------------------------------------------------------------
     def restore_master(self):
@@ -1843,11 +1842,10 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
 
     def sync_new_mirrors(self):
         """ This method will execute gprecoverseg so that all new segments sync with their mirrors."""
-        self.statusLogger.set_status('SYNC_MIRRORS_STARTED')
         if gparray.get_mirroring_enabled() == True:
-           cmd = GpRecoverSeg(name = "gpexpand syncing mirrors", options = "-F")
+           self.logger.info('Starting new mirror segment synchronization')
+           cmd = GpRecoverSeg(name = "gpexpand syncing mirrors", options = "-a -F")
            cmd.run(validateAfter = True)
-        self.statusLogger.set_status('SYNC_MIRRORS_DONE')
 
     def start_prepare(self):
         """Inserts into gpexpand.status that expansion preparation has started."""
@@ -2891,11 +2889,11 @@ try:
         gp_expand.update_original_segments()
         gp_expand.update_catalog()
         gp_expand.configure_new_segment_filespaces()
-        gp_expand.sync_new_mirrors()
         gp_expand.setup_schema()
         gp_expand.prepare_schema()
         logger.info('Starting Greenplum Database')
         GpStart.local('gpexpand expansion prepare final start')
+        gp_expand.sync_new_mirrors()
         logger.info('************************************************')
         logger.info('Initialization of the system expansion complete.')
         logger.info('To begin table expansion onto the new segments')
