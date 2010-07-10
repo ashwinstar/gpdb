@@ -1663,7 +1663,9 @@ PersistentRecovery_DropType(
 							/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
 							&fsObjEntry->key.persistentTid,
 							fsObjEntry->persistentSerialNum,
-							/* ignoreNonExistence */ true);
+							/* ignoreNonExistence */ true,
+							Debug_persistent_recovery_print,
+							Debug_persistent_recovery_print_level);
 		}
 	}
 

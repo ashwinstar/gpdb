@@ -2123,11 +2123,15 @@ void PersistentFileSysObj_DropObject(
 	char						*relationName,
 					/* For tracing only.  Can be NULL in some execution paths. */
 
-	ItemPointer				persistentTid,
+	ItemPointer					persistentTid,
 
-	int64					persistentSerialNum,
+	int64						persistentSerialNum,
 
-	bool 					ignoreNonExistence)
+	bool 						ignoreNonExistence,
+
+	bool						debugPrint,
+
+	int							debugPrintLevel)
 {
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
 
@@ -2222,6 +2226,14 @@ void PersistentFileSysObj_DropObject(
 	 */
 	suppressMirror = (mirrorExistenceState == MirroredObjectExistenceState_MirrorDownBeforeCreate);
 
+	if (debugPrint)
+		elog(debugPrintLevel, 
+			 "PersistentFileSysObj_DropObject: before drop of %s, persistent serial number " INT64_FORMAT ", TID %s, suppressMirror %s",
+			 PersistentFileSysObjName_TypeAndObjectName(fsObjName),
+			 persistentSerialNum,
+			 ItemPointerToString(persistentTid),
+			 (suppressMirror ? "true" : "false"));
+
 	switch (fsObjType)
 	{
 	case PersistentFsObjType_RelationFile:
@@ -2244,6 +2256,16 @@ void PersistentFileSysObj_DropObject(
 								ignoreNonExistence,
 								&mirrorDataLossOccurred);
 
+			
+			if (debugPrint)
+				elog(debugPrintLevel, 
+					 "PersistentFileSysObj_DropObject: after drop of %s, persistent serial number " INT64_FORMAT ", TID %s, suppressMirror %s and mirrorDataLossOccurred %s",
+					 PersistentFileSysObjName_TypeAndObjectName(fsObjName),
+					 persistentSerialNum,
+					 ItemPointerToString(persistentTid),
+					 (suppressMirror ? "true" : "false"),
+					 (mirrorDataLossOccurred ? "true" : "false"));
+			
 			if (suppressMirror || !mirrorDataLossOccurred)
 				PersistentRelation_Dropped(
 									relFileNode,
@@ -2264,6 +2286,15 @@ void PersistentFileSysObj_DropObject(
 								ignoreNonExistence,
 								&mirrorDataLossOccurred);
 			
+			if (debugPrint)
+				elog(debugPrintLevel, 
+					 "PersistentFileSysObj_DropObject: after drop of %s, persistent serial number " INT64_FORMAT ", TID %s, suppressMirror %s and mirrorDataLossOccurred %s",
+					 PersistentFileSysObjName_TypeAndObjectName(fsObjName),
+					 persistentSerialNum,
+					 ItemPointerToString(persistentTid),
+					 (suppressMirror ? "true" : "false"),
+					 (mirrorDataLossOccurred ? "true" : "false"));
+			
 			if (suppressMirror || !mirrorDataLossOccurred)
 				PersistentDatabase_Dropped(
 									dbDirNode,
@@ -2279,7 +2310,16 @@ void PersistentFileSysObj_DropObject(
 							/* mirrorOnly */ false,
 							ignoreNonExistence,
 							&mirrorDataLossOccurred);
-
+		
+		if (debugPrint)
+			elog(debugPrintLevel, 
+				 "PersistentFileSysObj_DropObject: after drop of %s, persistent serial number " INT64_FORMAT ", TID %s, suppressMirror %s and mirrorDataLossOccurred %s",
+				 PersistentFileSysObjName_TypeAndObjectName(fsObjName),
+				 persistentSerialNum,
+				 ItemPointerToString(persistentTid),
+				 (suppressMirror ? "true" : "false"),
+				 (mirrorDataLossOccurred ? "true" : "false"));
+		
 		if (suppressMirror || !mirrorDataLossOccurred)
 			PersistentTablespace_Dropped(
 								fsObjName->variant.tablespaceOid,
@@ -2305,7 +2345,16 @@ void PersistentFileSysObj_DropObject(
 								/* mirrorOnly */ false,
 								ignoreNonExistence,
 								&mirrorDataLossOccurred);
-
+			
+			if (debugPrint)
+				elog(debugPrintLevel, 
+					 "PersistentFileSysObj_DropObject: after drop of %s, persistent serial number " INT64_FORMAT ", TID %s, suppressMirror %s and mirrorDataLossOccurred %s",
+					 PersistentFileSysObjName_TypeAndObjectName(fsObjName),
+					 persistentSerialNum,
+					 ItemPointerToString(persistentTid),
+					 (suppressMirror ? "true" : "false"),
+					 (mirrorDataLossOccurred ? "true" : "false"));
+			
 			if (suppressMirror || !mirrorDataLossOccurred)
 				PersistentFilespace_Dropped(
 									fsObjName->variant.filespaceOid,
@@ -2337,6 +2386,16 @@ void PersistentFileSysObj_DropObject(
 											MirroredObjectExistenceState_OnlyMirrorDropRemains,
 											MirroredRelDataSynchronizationState_None,
 											/* flushToXLog */ true);
+		
+		if (debugPrint)
+			elog(debugPrintLevel, 
+				 "PersistentFileSysObj_DropObject: leaving %s in '%s' persistent state and setting mirror existence state to '%s', persistent serial number " INT64_FORMAT ", TID %s",
+				 PersistentFileSysObjName_TypeAndObjectName(fsObjName),
+				 PersistentFileSysObjState_Name(PersistentFileSysState_DropPending),
+				 MirroredObjectExistenceState_Name(MirroredObjectExistenceState_OnlyMirrorDropRemains),
+				 persistentSerialNum,
+				 ItemPointerToString(persistentTid));
+		
 	}
 	
 	/* Pop the error context stack */
@@ -2522,7 +2581,9 @@ void PersistentFileSysObj_EndXactDrop(
 							relationName,
 							persistentTid,
 							persistentSerialNum,
-							ignoreNonExistence);
+							ignoreNonExistence,
+							Debug_persistent_print,
+							Debug_persistent_print_level);
 
 	if (fsObjName->type == PersistentFsObjType_RelationFile)
 	{
@@ -2802,7 +2863,7 @@ void PersistentFileSysObj_PreparedEndXactAction(
 {
 	MIRRORED_LOCK_DECLARE;
 
-	bool *deleteUnnessary;
+	bool *deleteUnnecessary;
 
 	int i;
 
@@ -2815,7 +2876,7 @@ void PersistentFileSysObj_PreparedEndXactAction(
 			 persistentObjects->typed.fileSysActionInfosCount,
 			 persistentObjects->typed.appendOnlyMirrorResyncEofsCount);
 	
-	deleteUnnessary = (bool*)palloc0(persistentObjects->typed.fileSysActionInfosCount * sizeof(bool));
+	deleteUnnecessary = (bool*)palloc0(persistentObjects->typed.fileSysActionInfosCount * sizeof(bool));
 
 	/*
 	 * We need to do the transition to 'Aborting Create' or 'Drop Pending' and perform
@@ -2880,7 +2941,7 @@ void PersistentFileSysObj_PreparedEndXactAction(
 						 fileSysActionInfo->persistentSerialNum,
 						 ItemPointerToString(&fileSysActionInfo->persistentTid));
 
-				deleteUnnessary[i] =
+				deleteUnnecessary[i] =
 					PersistentFileSysObj_MarkAbortingCreate(
 											&fileSysActionInfo->fsObjName,
 											&fileSysActionInfo->persistentTid,
@@ -2905,7 +2966,7 @@ void PersistentFileSysObj_PreparedEndXactAction(
 						 fileSysActionInfo->persistentSerialNum,
 						 ItemPointerToString(&fileSysActionInfo->persistentTid));
 				
-				deleteUnnessary[i] =
+				deleteUnnecessary[i] =
 					PersistentFileSysObj_MarkDropPending(
 										&fileSysActionInfo->fsObjName,
 										&fileSysActionInfo->persistentTid,
@@ -2925,7 +2986,7 @@ void PersistentFileSysObj_PreparedEndXactAction(
 					 fileSysActionInfo->persistentSerialNum,
 					 ItemPointerToString(&fileSysActionInfo->persistentTid));
 			
-			deleteUnnessary[i] =
+			deleteUnnecessary[i] =
 				PersistentFileSysObj_MarkAbortingCreate(
 									&fileSysActionInfo->fsObjName,
 									&fileSysActionInfo->persistentTid,
@@ -2958,6 +3019,20 @@ void PersistentFileSysObj_PreparedEndXactAction(
 		bool abortingCreate;
 
 		action = fileSysActionInfo->action;
+
+		if (Debug_persistent_print)
+			elog(Debug_persistent_print_level, 
+				 "PersistentFileSysObj_PreparedEndXactAction (distributed transaction id %s, local prepared xid %u): [%d] %s, persistent serial num " INT64_FORMAT ", TID %s, "
+				 "looking at persistent end transaction action '%s' where isCommit %s and deleteUnnecessary %s",
+				 gid,
+				 preparedXid,
+				 i,
+				 PersistentFileSysObjName_TypeAndObjectName(&fileSysActionInfo->fsObjName),
+				 fileSysActionInfo->persistentSerialNum,
+				 ItemPointerToString(&fileSysActionInfo->persistentTid),
+				 PersistentEndXactFileSysAction_Name(action),
+				 (isCommit ? "true" : "false"),
+				 (deleteUnnecessary[i] ? "true" : "false"));
 
 		dropPending = false;		// Assume.
 		abortingCreate = false;		// Assume.
@@ -3017,8 +3092,22 @@ void PersistentFileSysObj_PreparedEndXactAction(
 
 		if ((abortingCreate || dropPending)
 			&&
-			!deleteUnnessary[i])
+			!deleteUnnecessary[i])
 		{
+			
+			if (Debug_persistent_print)
+				elog(Debug_persistent_print_level, 
+					 "PersistentFileSysObj_PreparedEndXactAction (distributed transaction id %s, local prepared xid %u): [%d] %s, persistent serial num " INT64_FORMAT ", TID %s, "
+					 "going to drop object where abortingCreate %s or dropPending %s",
+					 gid,
+					 preparedXid,
+					 i,
+					 PersistentFileSysObjName_TypeAndObjectName(&fileSysActionInfo->fsObjName),
+					 fileSysActionInfo->persistentSerialNum,
+					 ItemPointerToString(&fileSysActionInfo->persistentTid),
+					 (abortingCreate ? "true" : "false"),
+					 (dropPending ? "true" : "false"));
+			
 			PersistentFileSysObj_EndXactDrop(
 									&fileSysActionInfo->fsObjName,
 									fileSysActionInfo->relStorageMgr,
@@ -3152,7 +3241,7 @@ injectfaultexit:
 
 	PersistentFileSysObj_FlushXLog();
 
-	pfree(deleteUnnessary);
+	pfree(deleteUnnecessary);
 }
 
 

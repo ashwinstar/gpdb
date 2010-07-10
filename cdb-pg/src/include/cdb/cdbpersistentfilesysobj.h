@@ -199,7 +199,11 @@ extern void PersistentFileSysObj_DropObject(
 
 	int64						persistentSerialNum,
 
-	bool 						ignoreNonExistence);
+	bool 						ignoreNonExistence,
+
+	bool						debugPrint,
+
+	int							debugPrintLevel);
 
 extern void PersistentFileSysObj_EndXactDrop(
 	PersistentFileSysObjName	*fsObjName,
