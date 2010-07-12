@@ -36,6 +36,9 @@ script_version = '$Revision$'
 STOPPED = 0
 RUNNING = 1
 
+RESTART_SUCCESS = 1
+RESTART_FAILED = 0
+
 LIGHTY_BIN = os.path.join(GPPERFMONHOME, 'bin', 'lighttpd')
 OPENSSL_BIN = os.path.join(GPPERFMONHOME, 'bin', 'openssl')
 OPENSSL_CNF = os.path.join(GPPERFMONHOME, 'etc', 'openssl.cnf')
@@ -256,9 +259,20 @@ def lighty_stop(instance):
 
 #################
 def lighty_restart(instance):
+
     if lighty_status(instance) == RUNNING:
-        lighty_stop(instance)
-    lighty_start(instance)
+
+        status = lighty_stop(instance)
+
+        if status != STOPPED:
+            print 'Failed to stop gpperfmon instance %s during restart' % instance
+            return RESTART_FAILED
+
+    status = lighty_start(instance)
+    if status != RUNNING:
+        return RESTART_FAILED
+
+    return RESTART_SUCCESS
 
 
 #################
@@ -404,10 +418,12 @@ that SSL be enabled."""
         print '\'gpperfmon --start "' + instance_info['name'] + '"\'.'
     else:
         print '\nRestarting web UI instance %s...' % instance_info['name']
-        lighty_restart(instance_info['name'])
-        print 'Done.'
-        
-    print 'The web UI for this instance is available at %s' % webui_url
+        status = lighty_restart(instance_info['name'])
+        if status == RESTART_SUCCESS:
+            print 'Done.'
+            print 'The web UI for this instance is available at %s' % webui_url
+        else:
+            print '\nThere was an error restarting web UI instance %s...' % instance_info['name']
       
     
 #################
@@ -695,20 +711,30 @@ try:
         for instance in instances:
             print 'Starting instance %s...' % instance,
             sys.stdout.flush()
-            lighty_start(instance)
-            print 'Done.'
+            result = lighty_start(instance)
+            if result == RUNNING:
+                print 'Done.'
+            else:
+                print 'failed to start gpperfmon instance %s' % instance
     elif options.stop:
         for instance in instances:
             print 'Stopping instance %s...' % instance,
             sys.stdout.flush()
-            lighty_stop(instance)
-            print 'Done.'
+            result = lighty_stop(instance)
+            if result == STOPPED:
+                print 'Done.'
+            else:
+                print 'failed to stop gpperfmon instance %s' % instance
     elif options.restart:
         for instance in instances:
             print 'Restarting instance %s...' % instance,
             sys.stdout.flush()
-            lighty_restart(instance)
-            print 'Done.'
+            status = lighty_restart(instance)
+            if status == RESTART_SUCCESS:
+                print 'Done.'
+            else:
+                print 'There was an error restarting instance %s.' % instance
+
     elif options.status:
         for instance in instances:
             status = lighty_status(instance)
