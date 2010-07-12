@@ -2576,10 +2576,45 @@ create_mergejoin_path(PlannerInfo *root,
 	 * their inputs, so they can be selected as the input of a mergejoin, and
 	 * they don't support mark/restore at present.
 	 */
-	if (innersortkeys == NIL &&
-		!ExecSupportsMarkRestore(inner_path->pathtype))
-		inner_path = (Path *)
-			create_material_path(root, inner_path->parent, inner_path);
+	if (!ExecSupportsMarkRestore(inner_path->pathtype))
+	{
+		/*
+		 * The inner side does not support mark/restore capability.
+		 * Check whether a sort node will be inserted later, and if that is not the case,
+		 * add a materialize node.
+		 * */
+		bool need_sort = false;
+		if (innersortkeys != NIL)
+		{
+			/* Check whether all sort keys are constants. If that is the case,
+			 * no sort node is needed.
+			 * The check is essentially the same as the one performed later in the
+			 * make_sort_from_pathkeys() function (optimizer/plan/createplan.c),
+			 * which decides whether a sort node is to be added.
+			*/
+			ListCell   *sortkeycell;
+
+			foreach(sortkeycell, innersortkeys)
+			{
+				List	   *keysublist = (List *) lfirst(sortkeycell);
+
+			    if (!CdbPathkeyEqualsConstant(keysublist))
+			    {
+			    	/* sort key is not a constant - sort will be added later */
+			    	need_sort = true;
+			    	break;
+			    }
+			}
+		}
+		// else: innersortkeys == NIL -> no sort node will be added
+		
+		if (!need_sort)
+		{
+			/* no sort node will be added - add a materialize node */
+			inner_path = (Path *)
+							create_material_path(root, inner_path->parent, inner_path);
+		}
+	}
 
 	pathnode->jpath.path.pathtype = T_MergeJoin;
 	pathnode->jpath.path.parent = joinrel;
