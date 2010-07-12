@@ -797,7 +797,7 @@ def createSegmentRowsFromSegmentList( newHostlist
         content=0
         isprimary='f'
         num_hosts = len(newHostlist)
-        num_dirs=len(primary_list)
+        num_dirs=len(primary_segment_list)
         if num_hosts <= num_dirs:
             raise Exception("Not enough hosts for spread mirroring.  You must have more hosts than primary segments per host")
         
