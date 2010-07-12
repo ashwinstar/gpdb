@@ -3619,6 +3619,26 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"gp_gang_creation_retry_count", PGC_USERSET, GP_ARRAY_TUNING,
+		 gettext_noop("After a gang-creation fails, retry the number of times if failure is retryable."),
+		 gettext_noop("A value of zero disables retries."),
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_gang_creation_retry_count,
+		5, 0, 128, NULL, NULL
+	},
+
+	{
+		{"gp_gang_creation_retry_timer", PGC_USERSET, GP_ARRAY_TUNING,
+		 gettext_noop("Wait this many milliseconds between gang-creation-retries."),
+		 NULL,
+		 GUC_UNIT_MS | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_gang_creation_retry_timer,
+		2000, 100, 120000, NULL, NULL
+	},
+
+	{
 		{"gp_session_id", PGC_BACKEND, CLIENT_CONN_OTHER,
 			gettext_noop("Global ID used to uniquely identify a particular session in an Greenplum Database array"),
 			NULL,

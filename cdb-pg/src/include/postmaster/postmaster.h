@@ -33,6 +33,9 @@ extern char *bonjour_name;
 extern HANDLE PostmasterHandle;
 #endif
 
+#define POSTMASTER_IN_STARTUP_MSG "the database system is starting up"
+#define POSTMASTER_IN_RECOVERY_MSG "the database system is in recovery mode"
+
 extern const char *progname;
 
 extern int	PostmasterMain(int argc, char *argv[]);

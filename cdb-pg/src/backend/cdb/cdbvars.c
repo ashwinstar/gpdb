@@ -121,6 +121,13 @@ int			gp_fts_probe_interval=60;
 int			gp_fts_probe_threadcount=5;
 
 /*
+ * When we have certain types of failures during gang creation which indicate
+ * that a segment is in recovery mode we may be able to retry.
+ */
+int		gp_gang_creation_retry_count = 5; /* disable by default */
+int		gp_gang_creation_retry_timer = 2000; /* 2000ms */
+
+/*
  * gp_enable_slow_writer_testmode
  *
  * In order facilitate testing of reader-gang/writer-gang synchronization,

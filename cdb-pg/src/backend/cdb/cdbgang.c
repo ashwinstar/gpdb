@@ -121,6 +121,35 @@ largestGangsize(void)
 	return largest_gangsize;
 }
 
+static bool
+segment_failure_due_to_recovery(SegmentDatabaseDescriptor *segdbDesc)
+{
+	if (segdbDesc == NULL)
+		return false;
+
+	if (segdbDesc->error_message.data == NULL)
+		return false;
+
+	/*
+	 * it would be nice if we could check errcode for ERRCODE_CANNOT_CONNECT_NOW, instead
+	 * we wind up looking for at the strings.
+	 */
+	if (strstr(segdbDesc->error_message.data, "FATAL:"))
+	{
+		if (strstr(segdbDesc->error_message.data, _(POSTMASTER_IN_STARTUP_MSG)))
+		{
+			return true;
+		}
+		if (strstr(segdbDesc->error_message.data, _(POSTMASTER_IN_RECOVERY_MSG)))
+		{
+			return true;
+		}
+		/* We could do retries for "sorry, too many clients already" here too */
+	}
+
+	return false;
+}
+
 /*
  * Every gang created must have a unique identifier, so the QD and Dispatch Agents can agree
  * about what they are talking about.
@@ -143,18 +172,29 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 {
 	Gang	   *newGangDefinition;
 	MemoryContext oldContext;
-	int			successful_connections = 0;
+	int			successful_connections;
 
 	SegmentDatabaseDescriptor *segdbDesc;
 	CdbComponentDatabaseInfo *q;
-	DoConnectParms *doConnectParmsAr = NULL;
-	int			threadCount = 0;
+	DoConnectParms *doConnectParmsAr;
+	int			threadCount;
 	int			max_threads;
 	int			segdbs_in_thread_pool;
 	int			segdb_count;
 	int			i;
-	Portal		portal = NULL;
-	bool		connectAsSuperUser = false;
+	Portal		portal;
+	bool		connectAsSuperUser;
+
+	int			create_gang_retry_counter = 0;
+
+	/* If we're in a retry, we may need to reset our initial state, a bit */
+create_gang_retry:
+	portal = NULL;
+	newGangDefinition = NULL;
+	doConnectParmsAr = NULL;
+	successful_connections = 0;
+	threadCount = 0;
+	connectAsSuperUser = false;
 
 	Assert(size == 1 || size == getgpsegmentCount());
 
@@ -359,8 +399,8 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 		q = segdbDesc->segment_database_info;
 
 		/*
-		 * check connection established or not,
-		 * * if not, we may have to re-build this gang.
+		 * check connection established or not, if not, we may have to
+		 * re-build this gang.
 		 */
 		if (!segdbDesc->conn)
 		{
@@ -376,12 +416,13 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 			 */
 			ereport(LOG, (errcode(segdbDesc->errcode),
 						  errmsg("Warning: %s", segdbDesc->error_message.data)));
-			ereport(WARNING, (errcode(ERRCODE_WARNING_GP_INTERCONNECTION),
-							  errmsg("%s", segdbDesc->error_message.data)));
+
 			if (segdbDesc->errcode == 0 && segdbDesc->error_message.len == 0)
 				elog(ERROR, "Connection is null, but no error code or error message, for segDB %d", i);
-			Assert(segdbDesc->errcode != 0 &&
-				   segdbDesc->error_message.len > 0);
+
+			Assert(segdbDesc->errcode != 0);
+			Assert(segdbDesc->error_message.len > 0);
+
 			segdbDesc->errcode = 0;
 			resetPQExpBuffer(&segdbDesc->error_message);
 
@@ -410,15 +451,72 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 			 */
 			successful_connections++;
 		}
-
 	}
 
-	if (size != successful_connections ||
-		size != newGangDefinition->size)
+	if (size != successful_connections || size != newGangDefinition->size)
 	{
-		elog(LOG, "createGang: %d processes requested; %d segments online; "
-			 "%d successful connections", size, newGangDefinition->size,
-			 successful_connections);
+		int in_recovery_mode_count=0;
+
+		/*
+		 * Before we do anything rash, let's take a closer look at the
+		 * connection which failed.
+		 *
+		 * We're going to see if *all* of the connect-failures we've got look
+		 * like a simple-retry will help.
+		 */
+		for (i = 0; i < segdb_count; i++)
+		{
+			segdbDesc = &newGangDefinition->db_descriptors[i];
+
+			if (segdbDesc->conn != NULL)
+				continue;
+
+			/* this connect failed -- but why ? */
+			if (segment_failure_due_to_recovery(segdbDesc))
+			{
+				in_recovery_mode_count++;
+			}
+		}
+
+		elog(LOG, "createGang: %d processes requested; %d segments online; %d successful connections %d in recovery",
+			 size, newGangDefinition->size, successful_connections, in_recovery_mode_count);
+
+		if (successful_connections + in_recovery_mode_count == size)
+		{
+			elog(LOG, "createGang: gang creation failed, but retryable.");
+
+			if (gp_gang_creation_retry_count)
+			{
+				/*
+				 * On the first retry, we want to verify that we are
+				 * using the most current version of the
+				 * configuration.
+				 */
+				if (create_gang_retry_counter == 0)
+				{
+					Assert(newGangDefinition->db_descriptors);
+					Assert(newGangDefinition->db_descriptors[0].segment_database_info);
+
+					FtsTestConnection(newGangDefinition->db_descriptors[0].segment_database_info, true);
+				}
+
+				if (create_gang_retry_counter++ < gp_gang_creation_retry_count)
+				{
+					disconnectAndDestroyGang(newGangDefinition); /* frees up resources */
+					newGangDefinition = NULL;
+
+					MemoryContextSwitchTo(oldContext);
+
+					CHECK_FOR_INTERRUPTS();
+
+					pg_usleep(gp_gang_creation_retry_timer * 1000);
+
+					CHECK_FOR_INTERRUPTS();
+
+					goto create_gang_retry;
+				}
+			}
+		}
 	}
 
 	/*
@@ -1463,7 +1561,7 @@ allocateWriterGang(GangType type)
 	Gang	   *writer_gang = NULL;
 	MemoryContext oldContext;
 
-	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT);
+	Assert(Gp_role == GP_ROLE_DISPATCH);
 	Assert(type == GANGTYPE_PRIMARY_WRITER);
 
 	if (type == GANGTYPE_PRIMARY_WRITER)
@@ -1671,7 +1769,7 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 	int			i;
 	List	   *list = NIL;
 
-	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT);
+	Assert(Gp_role == GP_ROLE_DISPATCH);
 	Assert(gang != NULL);
 
 	if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
@@ -1691,13 +1789,14 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 			bool includeThisProcess = true;
 
 			segdbDesc = &gang->db_descriptors[i];
-			if ( directDispatch != NULL && directDispatch->isDirectDispatch)
+			if (directDispatch != NULL && directDispatch->isDirectDispatch)
 			{
 				ListCell *cell;
+
 				includeThisProcess = false;
 				foreach(cell, directDispatch->contentIds)
 				{
-					if ( lfirst_int(cell) == segdbDesc->segindex)
+					if (lfirst_int(cell) == segdbDesc->segindex)
 					{
 						includeThisProcess = true;
 						break;
@@ -1726,7 +1825,7 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 				}
 			}
 
-			if ( ! includeThisProcess)
+			if (!includeThisProcess)
 			{
 				list = lappend(list, NULL);
 				listsize++;
@@ -1894,51 +1993,47 @@ cleanupGang(Gang *gp)
 		 * Note, we cancel all "still running" queries
 		 */
 		/* PQstatus() is smart enough to handle NULL */
-
-		if (!gp_use_dispatch_agent || Gp_role == GP_ROLE_DISPATCHAGENT)
+		if (PQstatus(segdbDesc->conn) == CONNECTION_OK)
 		{
-			if (PQstatus(segdbDesc->conn) == CONNECTION_OK)
+			PGresult   *pRes;
+			int			retry = 0;
+
+			ExecStatusType stat;
+
+			while (NULL != (pRes = PQgetResult(segdbDesc->conn)))
 			{
-				PGresult   *pRes;
-				int			retry = 0;
+				stat = PQresultStatus(pRes);
 
-				ExecStatusType stat;
+				elog(LOG, "(%s) Leftover result at freeGang time: %s %s",
+					 segdbDesc->whoami,
+					 PQresStatus(stat),
+					 PQerrorMessage(segdbDesc->conn));
 
-				while (NULL != (pRes = PQgetResult(segdbDesc->conn)))
+				PQclear(pRes);
+				if (stat == PGRES_FATAL_ERROR)
+					break;
+				if (stat == PGRES_BAD_RESPONSE)
+					break;
+				retry++;
+				if (retry > 20)
 				{
-					stat = PQresultStatus(pRes);
-
-					elog(LOG, "(%s) Leftover result at freeGang time: %s %s",
-						 segdbDesc->whoami,
-						 PQresStatus(stat),
-						 PQerrorMessage(segdbDesc->conn));
-
-					PQclear(pRes);
-					if (stat == PGRES_FATAL_ERROR)
-						break;
-					if (stat == PGRES_BAD_RESPONSE)
-						break;
-					retry++;
-					if (retry > 20)
-					{
-						elog(LOG, "cleanupGang called when a gang member is still busy, waiting didn't help, trying to destroy the gang");
-						disconnectAndDestroyGang(gp);
-						gp = NULL;
-						elog(FATAL, "cleanupGang called when a gang member is still busy.  Fatal error.");
-						return false;
-					}
+					elog(LOG, "cleanupGang called when a gang member is still busy, waiting didn't help, trying to destroy the gang");
+					disconnectAndDestroyGang(gp);
+					gp = NULL;
+					elog(FATAL, "cleanupGang called when a gang member is still busy.  Fatal error.");
+					return false;
 				}
 			}
-			else
-			{
-				/*
-				 * something happened to this gang, disconnect instead of
-				 * sending it back onto our lists!
-				 */
-				elog(LOG, "cleanupGang: lost connection with gang member. Disconnecting");
-				disconnectAndDestroyGang(gp);
-				return false;
-			}
+		}
+		else
+		{
+			/*
+			 * something happened to this gang, disconnect instead of
+			 * sending it back onto our lists!
+			 */
+			elog(LOG, "cleanupGang: lost connection with gang member. Disconnecting");
+			disconnectAndDestroyGang(gp);
+			return false;
 		}
 
 		/* QE is no longer associated with a slice. */

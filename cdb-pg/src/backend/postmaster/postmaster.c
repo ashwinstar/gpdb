@@ -2515,7 +2515,7 @@ retry1:
 					(errcode(ERRCODE_CANNOT_CONNECT_NOW),
 					 errSendAlert(false),
 					 errOmitLocation(true),
-					 errmsg("the database system is starting up")));
+					 errmsg(POSTMASTER_IN_STARTUP_MSG)));
 			break;
 		case CAC_SHUTDOWN:
 			ereport(FATAL,
@@ -2529,7 +2529,7 @@ retry1:
 					(errcode(ERRCODE_CANNOT_CONNECT_NOW),
 					 errSendAlert(true),
 					 errOmitLocation(true),
-					 errmsg("the database system is in recovery mode")));
+					 errmsg(POSTMASTER_IN_RECOVERY_MSG)));
 			break;
         case CAC_MIRROR_OR_QUIESCENT:
 			ereport(FATAL,

@@ -14,17 +14,8 @@
 #include "executor/execdesc.h"
 #include <pthread.h>
 
-
 struct Port;                    /* #include "libpq/libpq-be.h" */
 struct QueryDesc;               /* #include "executor/execdesc.h" */
-
-
-typedef struct DispatchAgentSet
-{
-	int		size;
-	int		DAset_id;
-	struct	SegmentDatabaseDescriptor *db_descriptors;
-} DispatchAgentSet;
 
 /*
  * A gang represents a single worker on each connected segDB
@@ -48,9 +39,6 @@ typedef struct Gang
 
 	/* the named portal that owns this gang, NULL if none */
 	char		*portal_name;
-
-	/* link to agent-set, NULL if gang is directly connected */
-	struct DispatchAgentSet *dispatchagents;
 
 	/* Array of QEs/segDBs that make up this gang */
 	struct SegmentDatabaseDescriptor *db_descriptors;	
@@ -85,8 +73,6 @@ extern Gang *allocateWriterGang(GangType type);
 
 struct DirectDispatchInfo;
 extern List *getCdbProcessList(Gang *gang, int sliceIndex, struct DirectDispatchInfo *directDispatch);
-
-extern bool dispatchagentsOk(DispatchAgentSet * das);
 
 extern bool gangOK(Gang * gp);
 
@@ -141,11 +127,7 @@ cleanupPortalGangs(Portal portal);
 extern void
 disconnectAndDestroyGangById(int gang_id);
 
-extern void disconnectAndDestroyDispatchAgents(struct DispatchAgentSet * das);
-
-extern int numDispatchAgents(void);
 extern int largestGangsize(void);
-extern struct DispatchAgentSet * getUnamedPortalDispatchAgents(void);
 
 extern int gp_pthread_create(pthread_t *thread, void *(*start_routine)(void *), void *arg, const char *caller);
 /*
