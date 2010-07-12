@@ -3235,11 +3235,11 @@ void PersistentFileSysObj_PreparedEndXactAction(
 	}
 injectfaultexit:
 	
+	PersistentFileSysObj_FlushXLog();
+
 	MIRRORED_UNLOCK;
 
 	END_CRIT_SECTION();
-
-	PersistentFileSysObj_FlushXLog();
 
 	pfree(deleteUnnecessary);
 }

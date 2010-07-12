@@ -2016,9 +2016,9 @@ smgrDoDeleteActions(
 	Assert(*listCount == 0);
 	Assert(*list == NULL);
 
-	MIRRORED_UNLOCK;
-
 	PersistentFileSysObj_FlushXLog();
+
+	MIRRORED_UNLOCK;
 
 }
 
