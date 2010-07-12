@@ -2901,16 +2901,14 @@ caag: cdbfts:00001284:  QDMirroringStateToString(state))));
 caag: cdbfts:00001379:  ereport(ERROR, (errmsg_internal("Unexpected master mirror state '%s'", 
 caag: cdbfts:00001380:  QDMirroringStateToString(state)))); 
 aaaaa GP_IGNORE: caah: cdbgang - ./backend/cdb/cdbgang.c
-caah: cdbgang:00000303:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
-caah: cdbgang:00000304:  errmsg("CreateGang: failed to create thread %d of %d", i + 1, threadCount), 
-caah: cdbgang:00000305:  errdetail("pthread_create() failed with err %d gp_connections_per_thread %d", pthread_err, gp_connections_per_thread), 
-caah: cdbgang:00000306:  errhint("gp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", gp_connections_per_thread))); 
-caah: cdbgang:00000379:  ereport(WARNING, (errcode(ERRCODE_WARNING_GP_INTERCONNECTION), 
-caah: cdbgang:00000380:  errmsg("%s", segdbDesc->error_message.data))); 
-caah: cdbgang:00000447:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-caah: cdbgang:00000448:  errmsg("All segment databases are unavailable"))); 
-caah: cdbgang:00001427:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
-caah: cdbgang:00001428:  errmsg_internal("problem in allocateGang"))); 
+caah: cdbgang:00000343:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
+caah: cdbgang:00000344:  errmsg("CreateGang: failed to create thread %d of %d", i + 1, threadCount), 
+caah: cdbgang:00000345:  errdetail("pthread_create() failed with err %d gp_connections_per_thread %d", pthread_err, gp_connections_per_thread), 
+caah: cdbgang:00000346:  errhint("gp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", gp_connections_per_thread))); 
+caah: cdbgang:00000545:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+caah: cdbgang:00000546:  errmsg("All segment databases are unavailable"))); 
+caah: cdbgang:00001525:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+caah: cdbgang:00001526:  errmsg_internal("problem in allocateGang"))); 
 aaaaa GP_IGNORE: caai: cdbgroup - ./backend/cdb/cdbgroup.c
 caai: cdbgroup:00000800:  ereport(ERROR, 
 caai: cdbgroup:00000801:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
@@ -3282,12 +3280,12 @@ cacd: cdbpersistentfilesysobj:00001158:  expectedState2,
 cacd: cdbpersistentfilesysobj:00001159:  expectedState3, 
 cacd: cdbpersistentfilesysobj:00001160:  nextState))); 
 aaaaa GP_IGNORE: cacb: cdbpersistentrecovery - ./backend/cdb/cdbpersistentrecovery.c
-cacb: cdbpersistentrecovery:00001848:  ereport(ERROR, 
-cacb: cdbpersistentrecovery:00001849:  (errcode_for_file_access(), 
-cacb: cdbpersistentrecovery:00001850:  errmsg("could not write redo relation file : %m"))); 
-cacb: cdbpersistentrecovery:00001997:  ereport(ERROR, 
-cacb: cdbpersistentrecovery:00001998:  (errcode_for_file_access(), 
-cacb: cdbpersistentrecovery:00001999:  errmsg("error reading redo relation file: %m"))); 
+cacb: cdbpersistentrecovery:00001850:  ereport(ERROR, 
+cacb: cdbpersistentrecovery:00001851:  (errcode_for_file_access(), 
+cacb: cdbpersistentrecovery:00001852:  errmsg("could not write redo relation file : %m"))); 
+cacb: cdbpersistentrecovery:00001999:  ereport(ERROR, 
+cacb: cdbpersistentrecovery:00002000:  (errcode_for_file_access(), 
+cacb: cdbpersistentrecovery:00002001:  errmsg("error reading redo relation file: %m"))); 
 aaaaa GP_IGNORE: cacd: cdbpersistenttablespace - ./backend/cdb/cdbpersistenttablespace.c
 cacd: cdbpersistenttablespace:00001156:  ereport(FATAL, 
 cacd: cdbpersistenttablespace:00001157:  (errcode(ERRCODE_OUT_OF_MEMORY), 
@@ -3497,12 +3495,12 @@ caah: cdbutil:00000362:  (errcode(ERRCODE_DATA_EXCEPTION),
 caah: cdbutil:00000363:  errmsg("Content values not valid in %s table. They must be in the range 0 to %d inclusive", 
 caah: cdbutil:00000364:  GpSegmentConfigRelationName, getgpsegmentCount() - 1))); 
 aaaaa GP_IGNORE: caah: cdbvars - ./backend/cdb/cdbvars.c
-caah: cdbvars:00000959:  ereport(ERROR, 
-caah: cdbvars:00000960:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-caah: cdbvars:00000961:  errmsg("must be superuser to set gp_enable_gpperfmon"))); 
-caah: cdbvars:00000979:  ereport(ERROR, 
-caah: cdbvars:00000980:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-caah: cdbvars:00000981:  errmsg("must be superuser to set gp_gpperfmon_send_interval"))); 
+caah: cdbvars:00000966:  ereport(ERROR, 
+caah: cdbvars:00000967:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+caah: cdbvars:00000968:  errmsg("must be superuser to set gp_enable_gpperfmon"))); 
+caah: cdbvars:00000986:  ereport(ERROR, 
+caah: cdbvars:00000987:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+caah: cdbvars:00000988:  errmsg("must be superuser to set gp_gpperfmon_send_interval"))); 
 aaaaa GP_IGNORE: cabb: cdbworkfile - ./backend/cdb/cdbworkfile.c
 cabb: cdbworkfile:00000113:  ereport(ERROR, (errmsg("Workfile I/O error: %m."), 
 cabb: cdbworkfile:00000114:  errdetail("Failed to seek to offset " UINT64_FORMAT 
@@ -12228,7 +12226,7 @@ paba: postmaster:00002514:  ereport(FATAL,
 paba: postmaster:00002515:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
 paba: postmaster:00002516:  errSendAlert(false), 
 paba: postmaster:00002517:  errOmitLocation(true), 
-paba: postmaster:00002518:  errmsg("the database system is starting up"))); 
+paba: postmaster:00002518:  errmsg(POSTMASTER_IN_STARTUP_MSG))); 
 paba: postmaster:00002521:  ereport(FATAL, 
 paba: postmaster:00002522:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
 paba: postmaster:00002523:  errSendAlert(false), 
@@ -12238,7 +12236,7 @@ paba: postmaster:00002528:  ereport(FATAL,
 paba: postmaster:00002529:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
 paba: postmaster:00002530:  errSendAlert(true), 
 paba: postmaster:00002531:  errOmitLocation(true), 
-paba: postmaster:00002532:  errmsg("the database system is in recovery mode"))); 
+paba: postmaster:00002532:  errmsg(POSTMASTER_IN_RECOVERY_MSG))); 
 paba: postmaster:00002535:  ereport(FATAL, 
 paba: postmaster:00002536:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
 paba: postmaster:00002537:  errSendAlert(true), 
@@ -16953,81 +16951,81 @@ gaai: gucxfile:00000552:  GUC_EOL = 99,
 gaai: gucxfile:00000553:  GUC_ERROR = 100 
 gaai: gucxfile:00000554: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00007369:  ereport(ERROR, 
-gaad: guc:00007370:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007371:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007373:  ereport(ERROR, 
-gaad: guc:00007374:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00007375:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00007409:  ereport(ERROR, 
-gaad: guc:00007410:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007411:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007413:  ereport(ERROR, 
-gaad: guc:00007414:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00007415:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00007484:  ereport(ERROR, 
-gaad: guc:00007485:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007486:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007493:  ereport(ERROR, 
-gaad: guc:00007494:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00007495:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00007666:  ereport(ERROR, 
-gaad: guc:00007667:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00007668:  errmsg("SET requires parameter name"))); 
-gaad: guc:00007730:  ereport(ERROR, 
-gaad: guc:00007731:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00007732:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00008051:  ereport(ERROR, 
-gaad: guc:00008052:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008053:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008055:  ereport(ERROR, 
-gaad: guc:00008056:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008057:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008859:  ereport(FATAL, 
-gaad: guc:00008860:  (errcode_for_file_access(), 
-gaad: guc:00008861:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00008862:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00008969:  ereport(WARNING, 
-gaad: guc:00008970:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00008971:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00009165:  ereport(ERROR, 
-gaad: guc:00009166:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009167:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00009188:  ereport(ERROR, 
-gaad: guc:00009189:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009190:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00009191:  tok))); 
-gaad: guc:00009217:  ereport(ERROR, 
-gaad: guc:00009218:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009219:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00009220:  value))); 
-gaad: guc:00009570:  ereport(ERROR, 
-gaad: guc:00009571:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00009572:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00009646:  ereport(ERROR, 
-gaad: guc:00009647:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009648:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00009667:  ereport(ERROR, 
-gaad: guc:00009668:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009669:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00009680:  ereport(ERROR, 
-gaad: guc:00009681:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009682:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00009697:  ereport(ERROR, 
-gaad: guc:00009698:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009699:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00009700:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00009701:  "\"log_dispatch_stats\", " 
-gaad: guc:00009702:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00007389:  ereport(ERROR, 
+gaad: guc:00007390:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007391:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007393:  ereport(ERROR, 
+gaad: guc:00007394:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00007395:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00007429:  ereport(ERROR, 
+gaad: guc:00007430:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007431:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007433:  ereport(ERROR, 
+gaad: guc:00007434:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00007435:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00007504:  ereport(ERROR, 
+gaad: guc:00007505:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007506:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007513:  ereport(ERROR, 
+gaad: guc:00007514:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00007515:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00007686:  ereport(ERROR, 
+gaad: guc:00007687:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00007688:  errmsg("SET requires parameter name"))); 
+gaad: guc:00007750:  ereport(ERROR, 
+gaad: guc:00007751:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00007752:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00008071:  ereport(ERROR, 
+gaad: guc:00008072:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008073:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008075:  ereport(ERROR, 
+gaad: guc:00008076:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008077:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008879:  ereport(FATAL, 
+gaad: guc:00008880:  (errcode_for_file_access(), 
+gaad: guc:00008881:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00008882:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00008989:  ereport(WARNING, 
+gaad: guc:00008990:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00008991:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00009185:  ereport(ERROR, 
+gaad: guc:00009186:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009187:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00009208:  ereport(ERROR, 
+gaad: guc:00009209:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009210:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00009211:  tok))); 
+gaad: guc:00009237:  ereport(ERROR, 
+gaad: guc:00009238:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009239:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00009240:  value))); 
+gaad: guc:00009590:  ereport(ERROR, 
+gaad: guc:00009591:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00009592:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00009666:  ereport(ERROR, 
+gaad: guc:00009667:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009668:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00009687:  ereport(ERROR, 
+gaad: guc:00009688:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009689:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00009700:  ereport(ERROR, 
+gaad: guc:00009701:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009702:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
 gaad: guc:00009717:  ereport(ERROR, 
 gaad: guc:00009718:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009719:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00009720:  "\"log_statement_stats\", " 
-gaad: guc:00009721:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00009719:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00009720:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00009721:  "\"log_dispatch_stats\", " 
 gaad: guc:00009722:  "or \"log_executor_stats\" is true"))); 
 gaad: guc:00009737:  ereport(ERROR, 
 gaad: guc:00009738:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009739:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00009739:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00009740:  "\"log_statement_stats\", " 
+gaad: guc:00009741:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00009742:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00009757:  ereport(ERROR, 
+gaad: guc:00009758:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009759:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
 aaaaa GP_IGNORE: uaaj: uriparser - ./backend/utils/misc/uriparser.c
 uaaj: uriparser:00000058:  ereport(ERROR, 
 uaaj: uriparser:00000059:  (errcode(ERRCODE_SYNTAX_ERROR), 
