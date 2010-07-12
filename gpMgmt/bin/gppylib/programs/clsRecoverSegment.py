@@ -712,8 +712,6 @@ class GpRecoverSegmentProgram:
             if self.__options.interactive:
                 if not userinput.ask_yesno(None, "\nContinue with segment recovery procedure", 'N'):
                     raise UserAbortedException()
-            else:
-                self.__displayRecoveryWarnings(mirrorBuilder)
 
             mirrorBuilder.buildMirrors("recover", gpEnv, gpArray )
 

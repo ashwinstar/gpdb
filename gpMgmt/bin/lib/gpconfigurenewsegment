@@ -30,6 +30,15 @@ EXECNAME = os.path.split(__file__)[-1]
 
 DESTINATION_FILE_SPACES_DIRECTORY = "fs_directory"
 
+class ValidationException(Exception):
+
+    def __init__(self, msg):
+        self.__msg = msg
+        Exception.__init__(self, msg)
+
+    def getMessage(self):
+        return self.__msg
+
 class ConfExpSegCmd(Command):
     def __init__(self, name, cmdstr, datadir, port, dbid, newseg, tarfile, useLighterDirectoryValidation, isPrimary,
                     filespaceOids, filespaceDirs, verbose, validationOnly, writeGpDbidFileOnly):
@@ -65,9 +74,12 @@ class ConfExpSegCmd(Command):
             return "%s cmdStr='%s'" % (self.name,self.cmdStr)
 
     def validatePath(self, path, isSystemFilespaceDir):
+        """
+        Raises ValidationException when a validation problem is detected
+        """
 
         if not os.path.exists(os.path.dirname(path)):
-            raise Exception("Parent directory for %s directory %s does not exist" %
+            raise ValidationException("Parent directory for %s directory '%s' does not exist" %
                     ( "system data" if isSystemFilespaceDir else "filespace", path) )
 
         if not os.path.exists(path):
@@ -83,21 +95,21 @@ class ConfExpSegCmd(Command):
                 for toCheck in gDatabaseDirectories:
                     if toCheck != "pg_log": # it's okay to have pg_log -- to save old logs around to look at
                         if os.path.exists(os.path.join(path, toCheck)):
-                            raise Exception('Segment directory %s contains directory %s but should not!' %
+                            raise ValidationException("Segment directory '%s' contains directory %s but should not!" %
                                         (path, toCheck))
                 for toCheck in gDatabaseFiles:
                     if os.path.exists(os.path.join(path, toCheck)):
-                        raise Exception('Segment directory %s contains file %s but should not!' %
+                        raise ValidationException("Segment directory '%s' contains file %s but should not!" %
                                     (path, toCheck))
             else:
 
                 for name in os.listdir( path ):
                     if name[0] in "0123456789": # the database files here will have  
-                        raise Exception("Filespace directory contains invalid file(s): %s" % path)
+                        raise ValidationException("Filespace directory contains invalid file(s): '%s'" % path)
         else:
             # it better be empty
             if len(os.listdir(path)) != 0:
-                raise Exception('Segment directory %s exists but is not empty!' % path)
+                raise ValidationException("Segment directory '%s' exists but is not empty!" % path)
 
     def makeOrUpdatePathAsNeeded(self, path):
         if os.path.exists(path):
@@ -140,6 +152,10 @@ class ConfExpSegCmd(Command):
                         self.validatePath(self.datadir, True)
                         for path in self.filespaceDirs:
                             self.validatePath(path, False)
+                    except ValidationException, e:
+                        msg = "for segment with port %s: %s" %  (self.port, e.getMessage())
+                        self.set_results(CommandResult(1, '', msg, True, False))
+                        raise
                     except Exception, e:
                         self.set_results(CommandResult(1,'',e,True,False))
                         raise
@@ -340,14 +356,25 @@ try:
 
     pool.join()
 
-    try:
-        pool.check_results()
-    except Exception,e:
-        if options.verbose:
-            logger.exception(e)
-        logger.error(e)
-        print >> sys.stderr, e
-        sys.exit(1)
+    if options.validationOnly:
+        errors = []
+        for item in pool.getCompletedItems():
+            if item.get_results().rc != 0:
+                errors.append(str(item.get_results().stderr).replace("\n", " "))
+
+        if errors:
+            print >> sys.stderr, "\n".join(errors)
+            sys.exit(1)
+        else: sys.exit(0)
+    else:
+        try:
+            pool.check_results()
+        except Exception,e:
+            if options.verbose:
+                logger.exception(e)
+            logger.error(e)
+            print >> sys.stderr, e
+            sys.exit(1)
 
     sys.exit(0)
 

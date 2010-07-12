@@ -467,7 +467,24 @@ class GpMirrorListToBuild:
         cmds = []
         for hostName in destSegmentByHost.keys():
             cmds.append(createConfigureNewSegmentCommand(hostName, 'validate blank segments', True))
-        self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "validating basic segment directory")
+        for cmd in cmds:
+            self.__pool.addCommand(cmd)
+        self.__pool.wait_and_printdots(len(cmds), self.__quiet)
+        validationErrors = []
+        for item in self.__pool.getCompletedItems():
+            results = item.get_results()
+            if not results.wasSuccessful():
+                if results.rc == 1:
+                    # stdoutFromFailure = results.stdout.replace("\n", " ").strip()
+                    lines = results.stderr.split("\n")
+                    for line in lines:
+                        if len(line.strip()) > 0:
+                            validationErrors.append("Validation failure on host %s %s" % (item.remoteHost, line))
+                else:
+                    validationErrors.append(str(item))
+        self.__pool.empty_completed_items()
+        if validationErrors:
+            raise ExceptionNoStackTraceNeeded("\n" + ("\n".join(validationErrors)))
 
         #
         # copy tar from master to target hosts
