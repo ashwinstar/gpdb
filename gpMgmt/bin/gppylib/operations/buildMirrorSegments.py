@@ -217,8 +217,6 @@ class GpMirrorListToBuild:
             if toRecover.getFailoverSegment() is None:
                 # we are recovering the lost segment in place
                 seg = toRecover.getFailedSegment()
-                seg.setSegmentStatus(gparray.STATUS_UP)
-                seg.setSegmentMode(gparray.MODE_RESYNCHRONIZATION)
             else:
                 seg = toRecover.getFailedSegment()
                 # no need to update the failed segment's information -- it is
@@ -228,10 +226,7 @@ class GpMirrorListToBuild:
                         raise Exception("failed segment should not be in the new configuration if failing over to new segment")
 
                 seg = toRecover.getFailoverSegment()
-                seg.setSegmentStatus(gparray.STATUS_UP)
-                seg.setSegmentMode(gparray.MODE_RESYNCHRONIZATION)
-
-            seg = toRecover.getLiveSegment()
+            seg.setSegmentStatus(gparray.STATUS_DOWN) # down initially, we haven't started it yet
             seg.setSegmentMode(gparray.MODE_RESYNCHRONIZATION)
 
         faultProber = faultProberInterface.getFaultProber()
@@ -252,29 +247,57 @@ class GpMirrorListToBuild:
             if toRecover.isFullSynchronization() and seg.getSegmentDbId() > 0:
                 fullResyncMirrorDbIds[seg.getSegmentDbId()] = True
 
+        # should use mainUtils.getProgramName but I can't make it work!
+        programName = os.path.split(sys.argv[0])[-1]
+
         # Disable Ctrl-C, going to save metadata in database and transition segments
         signal.signal(signal.SIGINT,signal.SIG_IGN)
         try:
-            logger.info("Pausing prober")
-            faultProber.pauseFaultProber()
 
-            # should use mainUtils.getProgramName but I can't make it work!
-            logger.info("Updating configuration")
-            programName = os.path.split(sys.argv[0])[-1]
-            configInterface.getConfigurationProvider().updateSystemConfig(gpArray, "%s: segment resync" % programName,
-                                                                                fullResyncMirrorDbIds )
+            logger.info("Updating configuration with new mirrors")
+            configInterface.getConfigurationProvider().updateSystemConfig(gpArray,
+                    "%s: segment config for resync" % programName,
+                    fullResyncMirrorDbIds, useUtilityMode=False )
+
+            logger.info("Updating mirrors")
+            self.__updateGpIdFile(gpEnv, gpArray, mirrorsToStart)
 
             logger.info("Starting mirrors")
             self.__startAll(gpEnv, gpArray, mirrorsToStart)
 
             #
-            # unpause the fault prober after having started the mirrors up
+            # Up to this point, the prober will not pay attention to the mirrors being affected
+            #    because they are marked down in configuraiton.  So even if the fault prober
+            #    is restarted before this point, it still won't affect the segments we are touching
             #
-            # converting the primaries may take a really time to complete because of initializing resynchronization
+            # But now, we are going to mark the mirror up and prepare for changing the primary
+            #     to resync; so, pause and unpause the prober around updating the configuration
             #
+            # Note that we are also assuming here that the primary is NOT in fault; in current cases,
+            #     this can't happen because the primary has to be either in changetracking or mirrorless
+            #     for its mirror to be built so it's not a problem.  The primary won't be able to
+            #     go into fault until after we unpause the prober and 'convert' the primaries to
+            #     talk to the mirrors
+            #
+            logger.info("Pausing prober")
+            faultProber.pauseFaultProber()
+            
+            logger.info("Updating configuration to mark mirrors up")
+            for seg in mirrorsToStart:
+                seg.setSegmentStatus(gparray.STATUS_UP)
+            for seg in primariesToConvert:
+                seg.setSegmentMode(gparray.MODE_RESYNCHRONIZATION)
+            configInterface.getConfigurationProvider().updateSystemConfig(gpArray,
+                    "%s: segment resync marking mirrors up and primaries resync" % programName,
+                    {}, useUtilityMode=True )
+
             logger.info("Unpausing prober")
             faultProber.unpauseFaultProber()
 
+            #
+            # note: converting the primaries may take a really long time to complete because of initializing
+            #       resynchronization
+            #
             logger.info("Updating primaries")
             self.__convertAllPrimaries(gpEnv, gpArray, primariesToConvert, convertPrimaryUsingFullResync)
 
@@ -530,6 +553,27 @@ class GpMirrorListToBuild:
                 gpEnv.getLocaleArray(), gpEnv.getGpVersion(),
                 gpEnv.getGpHome(), gpEnv.getMasterDataDir()
                 )
+
+    def __updateGpIdFile(self, gpEnv, gpArray, segments):
+        segmentByHost = GpArray.getSegmentsByHostName(segments)
+        newSegmentInfo = gp.ConfigureNewSegment.buildSegmentInfoForNewSegment(segments)
+
+        cmds = []
+        for hostName in segmentByHost.keys():
+            segmentInfo = newSegmentInfo[hostName]
+            checkNotNone("segmentInfo for %s" % hostName, segmentInfo)
+            cmd = gp.ConfigureNewSegment("update gpid file",
+                                            segmentInfo,
+                                            newSegments=False,
+                                            verbose=gplog.logging_is_verbose(),
+                                            batchSize=self.__parallelDegree,
+                                            ctxt=gp.REMOTE,
+                                            remoteHost=hostName,
+                                            validationOnly=False,
+                                            writeGpIdFileOnly=True)
+
+            cmds.append(cmd)
+        self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "writing updated gpid files")
 
     def __startAll(self, gpEnv, gpArray, segments):
         segmentStartResult = self.__createStartSegmentsOp(gpEnv).startSegments(gpArray, segments, startSegments.START_AS_PRIMARY_OR_MIRROR)

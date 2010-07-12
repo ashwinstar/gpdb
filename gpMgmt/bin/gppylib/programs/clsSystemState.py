@@ -1355,8 +1355,8 @@ class GpSystemStateProgram:
 
         # load config
         gpEnv = GpMasterEnvironment(self.__options.masterDataDirectory, True)
-        confProvider = configInterface.getConfigurationProvider().initializeProvider(gpEnv.getMasterPort(), True)
-        gpArray = confProvider.loadSystemConfig()
+        confProvider = configInterface.getConfigurationProvider().initializeProvider(gpEnv.getMasterPort())
+        gpArray = confProvider.loadSystemConfig(useUtilityMode=True)
 
         # do it!
         if self.__options.showMirrorList:

@@ -115,19 +115,19 @@ class GpInjectFaultProgram:
         if masterPort is None:
             gpEnv = GpMasterEnvironment(self.options.masterDataDirectory, False)
             masterPort = gpEnv.getMasterPort()
-        conf = configurationInterface.getConfigurationProvider().initializeProvider(masterPort, True)
-        segments = conf.loadSystemConfig().getDbList()
-
+        conf = configurationInterface.getConfigurationProvider().initializeProvider(masterPort)
+        gpArray = conf.loadSystemConfig(useUtilityMode=True)
+        segments = gpArray.getDbList()
+        
         #
         # prune gpArray according to filter settings
         #
-	# have to be able to inject fault also on master
         segments = [seg for seg in segments if seg.isSegmentQE()]
         if targetHost is not None and targetHost != "ALL":
             segments = [seg for seg in segments if seg.getSegmentHostName() == targetHost]
 
         if targetDbId is not None:
-	    segments = conf.loadSystemConfig().getDbList()
+            segments = gpArray.getDbList()
             dbId = int(targetDbId)
             segments = [seg for seg in segments if seg.getSegmentDbId() == dbId]
 

@@ -518,8 +518,8 @@ class GpAddMirrorsProgram:
         gpEnv = GpMasterEnvironment(self.__options.masterDataDirectory, True)
 
         faultProberInterface.getFaultProber().initializeProber(gpEnv.getMasterPort())
-        confProvider = configInterface.getConfigurationProvider().initializeProvider(gpEnv.getMasterPort(), False)
-        gpArray = confProvider.loadSystemConfig()
+        confProvider = configInterface.getConfigurationProvider().initializeProvider(gpEnv.getMasterPort())
+        gpArray = confProvider.loadSystemConfig(useUtilityMode=False)
 
         # check that we actually have mirrors
         if gpArray.getFaultStrategy() != gparray.FAULT_STRATEGY_NONE:

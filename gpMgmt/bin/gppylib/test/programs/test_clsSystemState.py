@@ -27,7 +27,7 @@ def testGuessSpreadAndMultiHome(args):
     configStr = args[0]
 
     driver.setSegments(configStr, gparray.FAULT_STRATEGY_FILE_REPLICATION)
-    gpArray = configInterface.getConfigurationProvider().initializeProvider(5432, False).loadSystemConfig()
+    gpArray = configInterface.getConfigurationProvider().initializeProvider(5432).loadSystemConfig(useUtilityMode=False)
 
     testOutput("")
     testOutput("Mirroring: %s" % ("Spread" if gpArray.guessIsSpreadMirror() else "Group"))

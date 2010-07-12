@@ -25,8 +25,8 @@ logger = get_default_logger()
 #
 def testPortAssigner(args):
     driver.initTwoSegmentOneFailedMirrorConfiguration()
-    confProvider = configInterface.getConfigurationProvider().initializeProvider(5432, False)
-    gpArray = confProvider.loadSystemConfig()
+    confProvider = configInterface.getConfigurationProvider().initializeProvider(5432)
+    gpArray = confProvider.loadSystemConfig(useUtilityMode=False)
 
     masterSeg = [seg for seg in gpArray.getDbList() if not seg.isSegmentQE()][0]
     masterSeg.setSegmentPort(35001) # to make sure master is avoided when assigning ports
@@ -86,8 +86,8 @@ simple_test("testPortAssigner_0", testPortAssigner, [
 #
 def testRecoverFromConfigFileChecksWhetherRecoveryIsPossible(args):
     driver.initTwoSegmentOneFailedMirrorConfiguration()
-    confProvider = configInterface.getConfigurationProvider().initializeProvider(5432, False)
-    gpArray = confProvider.loadSystemConfig()
+    confProvider = configInterface.getConfigurationProvider().initializeProvider(5432)
+    gpArray = confProvider.loadSystemConfig(useUtilityMode=False)
 
     seg = recoverFrom = None
     if args[0] == 0:
@@ -122,8 +122,8 @@ def testRecoveryWarningsWhenRecoveringToSameHost(args):
     Test the function that checks for recovering so that a mirror and primary are on the same machine
     """
     driver.initTwoSegmentOneFailedMirrorConfiguration()
-    confProvider = configInterface.getConfigurationProvider().initializeProvider(5432, False)
-    gpArray = confProvider.loadSystemConfig()
+    confProvider = configInterface.getConfigurationProvider().initializeProvider(5432)
+    gpArray = confProvider.loadSystemConfig(useUtilityMode=False)
 
     toBuild = []
     if args[0] == 0:

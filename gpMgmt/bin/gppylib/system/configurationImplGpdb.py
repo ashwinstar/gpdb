@@ -30,10 +30,9 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
 
     def __init__(self):
         self.__masterDbUrl = None
-        self.__useUtilityMode = False
         pass
 
-    def initializeProvider( self, masterPort, useUtilityMode ) :
+    def initializeProvider( self, masterPort ) :
         """
         Initialize the provider to get information from the given master db, if
         it chooses to get its data from the database
@@ -42,15 +41,13 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
         """
 
         checkNotNone("masterPort", masterPort)
-        checkNotNone("useUtilityMode", useUtilityMode)
 
         dbUrl = dbconn.DbURL(port=masterPort, dbname='template1')
 
         self.__masterDbUrl = dbUrl
-        self.__useUtilityMode = useUtilityMode
         return self
 
-    def loadSystemConfig( self ) :
+    def loadSystemConfig( self, useUtilityMode ) :
         """
         Load all segment information from the configuration source.
 
@@ -62,7 +59,7 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
 
         logger.info("Obtaining Segment details from master...")
 
-        return GpArray.initFromCatalog(self.__masterDbUrl, self.__useUtilityMode)
+        return GpArray.initFromCatalog(self.__masterDbUrl, useUtilityMode)
 
     def sendPgElogFromMaster( self, msg, sendAlerts):
         """
@@ -73,7 +70,7 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
 
         conn = None
         try:
-            conn = dbconn.connect(self.__masterDbUrl, self.__useUtilityMode)
+            conn = dbconn.connect(self.__masterDbUrl, utility=True)
             dbconn.execSQL(conn, "SELECT GP_ELOG(" +
                         self.__toSqlCharValue(msg) + "," +
                         ("true" if sendAlerts else "false") + ")")
@@ -82,7 +79,7 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
                 conn.close()
 
 
-    def updateSystemConfig( self, gpArray, textForConfigTable, dbIdToForceMirrorRemoveAdd={} ) :
+    def updateSystemConfig( self, gpArray, textForConfigTable, dbIdToForceMirrorRemoveAdd, useUtilityMode ) :
         """
         Update the configuration for the given segments in the underlying
         configuration store to match the current values
@@ -97,7 +94,7 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
         # ensure initializeProvider() was called
         checkNotNone("masterDbUrl", self.__masterDbUrl) 
 
-        conn = dbconn.connect(self.__masterDbUrl, self.__useUtilityMode)
+        conn = dbconn.connect(self.__masterDbUrl, useUtilityMode)
         dbconn.execSQL(conn, "BEGIN")
 
         dbIdToOriginal = {}
@@ -177,6 +174,9 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
                         raise Exception("Internal error: Can only change core details of mirrors, not primaries" \
                                         " (on segment %s) (seg %s vs original %s)" %
                                         (seg.getSegmentDbId(), repr(seg), repr(originalSeg)))
+
+                    if useUtilityMode:
+                        raise Exception("Cannot change core details of mirrors in utility mode")
 
                     origDbId = seg.getSegmentDbId()
 

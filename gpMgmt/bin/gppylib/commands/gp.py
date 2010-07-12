@@ -700,7 +700,7 @@ class ConfigureNewSegment(Command):
     """
 
     def __init__(self, name, confinfo, newSegments=False, tarFile=None,
-                 batchSize=None, verbose=False,ctxt=LOCAL, remoteHost=None, validationOnly=False):
+                 batchSize=None, verbose=False,ctxt=LOCAL, remoteHost=None, validationOnly=False, writeGpIdFileOnly=False):
         cmdStr = '$GPHOME/bin/lib/gpconfigurenewsegment -c \"%s\"' % (confinfo)
         if newSegments:
             cmdStr += ' -n'
@@ -712,6 +712,8 @@ class ConfigureNewSegment(Command):
             cmdStr += ' -B %s' % batchSize
         if validationOnly:
             cmdStr += " --validation-only"
+        if writeGpIdFileOnly:
+            cmdStr += " --write-gpid-file-only"
 
         Command.__init__(self, name, cmdStr, ctxt, remoteHost)
 

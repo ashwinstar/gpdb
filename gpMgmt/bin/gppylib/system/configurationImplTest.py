@@ -31,7 +31,7 @@ class GpConfigurationProviderForTesting(GpConfigurationProvider) :
         self.__faultStrategy = FAULT_STRATEGY_NONE 
         pass
 
-    def initializeProvider( self, masterPort, useUtilityMode ) :
+    def initializeProvider( self, masterPort ) :
         """
          Initialize the provider to get information from the given master db, if it chooses to
            get its data from the database
@@ -41,10 +41,9 @@ class GpConfigurationProviderForTesting(GpConfigurationProvider) :
 
         # verify here to match what the true one will require
         checkNotNone("masterPort", masterPort)
-        checkNotNone("useUtilityMode", useUtilityMode)
         return self
 
-    def loadSystemConfig( self ) :
+    def loadSystemConfig( self, useUtilityMode ) :
         """
         Load all segment information from the configuration source.
 
@@ -64,7 +63,7 @@ class GpConfigurationProviderForTesting(GpConfigurationProvider) :
         testOutput("Elog on master: " + ("(with alerts)" if sendAlerts else "(without alerts)") + msg)
 
 
-    def updateSystemConfig( self, systemConfiguration, textForConfigTable, dbIdToForceMirrorRemoveAdd={} ) :
+    def updateSystemConfig( self, systemConfiguration, textForConfigTable, dbIdToForceMirrorRemoveAdd, useUtilityMode) :
         """
         Update the configuration for the given segments in the underlying configuration store
             to match the current values

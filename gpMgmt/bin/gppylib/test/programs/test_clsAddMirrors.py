@@ -28,8 +28,8 @@ logger = get_default_logger()
 #
 def testSpreadMirror(args):
     driver.initThreeHostMultiHomeNoMirrors()
-    confProvider = configInterface.getConfigurationProvider().initializeProvider(5432, False)
-    gpArray = confProvider.loadSystemConfig()
+    confProvider = configInterface.getConfigurationProvider().initializeProvider(5432)
+    gpArray = confProvider.loadSystemConfig(useUtilityMode=False)
 
     calc = GpMirrorBuildCalculator(gpArray, 1000, [ "/data/m1", "/data/m2"], [{},{}])
     calc.getSpreadMirrors()
@@ -64,8 +64,8 @@ dbid  | content  | role  | preferred_role  | mode  | status  | hostname     | ad
 #
 def testGroupMirror(args):
     driver.initThreeHostMultiHomeNoMirrors()
-    confProvider = configInterface.getConfigurationProvider().initializeProvider(5432, False)
-    gpArray = confProvider.loadSystemConfig()
+    confProvider = configInterface.getConfigurationProvider().initializeProvider(5432)
+    gpArray = confProvider.loadSystemConfig(useUtilityMode=False)
 
     calc = GpMirrorBuildCalculator(gpArray, 1000, [ "/data/m1", "/data/m2"], [{},{}])
     calc.getGroupMirrors()
@@ -100,7 +100,7 @@ dbid  | content  | role  | preferred_role  | mode  | status  | hostname     | ad
 #
 def testCopyAndComparison(args):
     driver.initThreeHostMultiHomeNoMirrors()
-    gpArray = configInterface.getConfigurationProvider().initializeProvider(5432, False).loadSystemConfig()
+    gpArray = configInterface.getConfigurationProvider().initializeProvider(5432).loadSystemConfig(useUtilityMode=False)
 
     testOutput("")
     for seg in gpArray.getSegDbList():
