@@ -547,18 +547,19 @@ class GPDetective:
             cmd.insert(1, host)
         
         # A stupid hack to ignore unmatched globs in 'ls'
-        if (cmd[0] == 'ls'):
-            x = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-        else:            
+        if (cmd[0] == 'ls' or (cmd[0] == 'ssh' and cmd[2] == 'ls')):
+            x = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        else:
             x = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=self.errlog)
         return str(x.communicate()[0].strip())
 
     #------------------------------------------------------------
-    def log(self, test):
+    def log(self, test, level=1):
         '''
         Logs the start of a test
         '''
-        print '  + ' + test
+        
+        print '  ' * level + '+ ' + test
         if (self.errlog):
             self.errlog.write('\nTEST: ' + test + '\n')
             self.errlog.flush()
@@ -750,32 +751,35 @@ class GPDetective:
     def grabMasterLog(self,masterlog,dst_file,time_opt):
         myfile = open(dst_file, 'w')        
         cmd = '%s/gplogfilter --quiet %s %s' % (sys.path[0],time_opt,masterlog)
-        p=subprocess.Popen(cmd, stdout=myfile,shell=True)
-        p.wait()
+        p=subprocess.Popen(cmd, stdout=myfile, stderr=subprocess.PIPE, shell=True)
+        (_, err) = p.communicate();
         myfile.close() 
         if p.returncode == 0:
             return True
         else:
+            err = err.strip()
+            self.log('could not find the log on master in dir: %s' % (masterlog), level=2)
+            self.log(cmd, level=2)
+            self.log('command returned: (%d) %s' % (p.returncode, err), level=2)
             return False
 
     
-   #------------------------------------------------------------                                                                                                    
+   #------------------------------------------------------------
     def grabLog(self, hostname, loglocation, dst_file, time_opt):
         myfile = open(dst_file, 'w')
         try:
-            cmdstr = "gplogfilter --quiet %s %s 2>&1" % (time_opt,loglocation)
+            cmdstr = "gplogfilter --quiet %s %s" % (time_opt,loglocation)
             cmd="ssh %s \"%s %s\" " % (hostname,SRC_GPPATH,cmdstr)
-            p = subprocess.Popen(cmd, stdout=myfile,shell=True)
-            p.wait()
+            p = subprocess.Popen(cmd, stdout=myfile, stderr=subprocess.PIPE, shell=True)
+            (_, err) = p.communicate()
+            myfile.close()
             if p.returncode == 0:
                 found = True
             else:
-                self.log('could not find the log on host: %s in dir: %s' % (hostname,loglocation))
-                myfile.close()
-                f = open(dst_file,'r')
-                str=f.readlines()
-                self.log('command returned: %s' % str)
-                f.close()
+                err = err.strip()
+                self.log('could not find the log on host: %s in dir: %s' % (hostname,loglocation), level=2)
+                self.log(cmd, level=2)
+                self.log('command returned: (%d) %s' % (p.returncode, err), level=2)
                 found = False
         except OSError, e:
             self.log('' + str(e))

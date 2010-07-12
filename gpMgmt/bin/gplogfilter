@@ -486,7 +486,8 @@ try:
         for file in inputFilesToClose:
             file.close()
 except IOError, msg:
-    print >>sys.stderr, '%s: %s' % (os.path.basename(sys.argv[0]), msg)
+    execname = os.path.basename(sys.argv[0])
+    print >>sys.stderr, '%s: (IOError) "%s"' % (execname, msg)
     sys.exit(2)
 finally:
     coverage.stop()
