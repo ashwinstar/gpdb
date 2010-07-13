@@ -233,6 +233,15 @@ show_pgxs(bool all)
 static void
 show_configure(bool all)
 {
+    /*
+     * we don't show our configure line -- it refers to many paths that are from the build machines, and doesn't make
+	 * _that_ much sense for the customers  to view as they take the builds that we produce
+	 */
+    if ( all )
+        return;
+    fprintf( stderr, _("CONFIGURE value not available\n"));
+    exit(1);
+
 #ifdef VAL_CONFIGURE
 	if (all)
 		printf("CONFIGURE = ");
@@ -266,9 +275,16 @@ static void
 show_cppflags(bool all)
 {
 #ifdef VAL_CPPFLAGS
+    char includePath[MAXPGPATH];
+    get_include_path(mypath, includePath);
+    cleanup_path(includePath);
+
 	if (all)
 		printf("CPPFLAGS = ");
-	printf("%s\n", VAL_CPPFLAGS);
+
+    if (strlen(VAL_CPPFLAGS) > 0)
+	    printf("%s -I%s\n", VAL_CPPFLAGS, includePath);
+    else printf("-I%s\n", includePath);
 #else
 	if (!all)
 	{
@@ -282,9 +298,13 @@ static void
 show_cflags(bool all)
 {
 #ifdef VAL_CFLAGS
+    char includePath[MAXPGPATH];
+	get_include_path(mypath, includePath);
+	cleanup_path(includePath);
+
 	if (all)
 		printf("CFLAGS = ");
-	printf("%s\n", VAL_CFLAGS);
+	printf("%s -I%s\n", VAL_CFLAGS, includePath);
 #else
 	if (!all)
 	{
@@ -314,9 +334,16 @@ static void
 show_ldflags(bool all)
 {
 #ifdef VAL_LDFLAGS
+	char libraryPath[MAXPGPATH];
+	get_lib_path(mypath, libraryPath);
+	cleanup_path(libraryPath);
+
 	if (all)
 		printf("LDFLAGS = ");
-	printf("%s\n", VAL_LDFLAGS);
+
+    if (strlen(VAL_LDFLAGS) > 0)
+	    printf("%s -L%s\n", VAL_LDFLAGS, libraryPath);
+    else printf("-L%s\n", libraryPath);
 #else
 	if (!all)
 	{
@@ -346,9 +373,13 @@ static void
 show_libs(bool all)
 {
 #ifdef VAL_LIBS
+    char libraryPath[MAXPGPATH];
+	get_lib_path(mypath, libraryPath);
+	cleanup_path(libraryPath);
+
 	if (all)
 		printf("LIBS = ");
-	printf("%s\n", VAL_LIBS);
+	printf("%s -L%s\n", VAL_LIBS, libraryPath);
 #else
 	if (!all)
 	{
@@ -392,7 +423,7 @@ static const InfoItem info_items[] = {
 	{"--sharedir", show_sharedir},
 	{"--sysconfdir", show_sysconfdir},
 	{"--pgxs", show_pgxs},
-	{"--configure", show_configure},
+    {"--configure", show_configure},
 	{"--cc", show_cc},
 	{"--cppflags", show_cppflags},
 	{"--cflags", show_cflags},
@@ -407,7 +438,7 @@ static const InfoItem info_items[] = {
 
 static void
 help(void)
-{
+{ 
 	printf(_("\n%s provides information about the installed version of PostgreSQL.\n\n"), progname);
 	printf(_("Usage:\n"));
 	printf(_("  %s [OPTION]...\n\n"), progname);

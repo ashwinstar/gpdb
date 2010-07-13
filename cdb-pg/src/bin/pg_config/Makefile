@@ -23,18 +23,20 @@ LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl
 
 
 # don't include subdirectory-path-dependent -I and -L switches
-STD_CPPFLAGS := $(filter-out -I$(top_srcdir)/src/include -I$(top_builddir)/src/include,$(CPPFLAGS))
-STD_LDFLAGS := $(filter-out -L$(top_builddir)/src/port,$(LDFLAGS))
+STD_CPPFLAGS := $(filter-out -I%,$(CPPFLAGS))
+STD_CFLAGS := $(filter-out -I%,$(CFLAGS))
+STD_LDFLAGS := $(filter-out -L%,$(LDFLAGS))
+STD_LIBS := $(filter-out -L%,$(LIBS))
 
 override CPPFLAGS += -DFRONTEND
 override CPPFLAGS += -DVAL_CONFIGURE="\"$(configure_args)\""
 override CPPFLAGS += -DVAL_CC="\"$(CC)\""
 override CPPFLAGS += -DVAL_CPPFLAGS="\"$(STD_CPPFLAGS)\""
-override CPPFLAGS += -DVAL_CFLAGS="\"$(CFLAGS)\""
+override CPPFLAGS += -DVAL_CFLAGS="\"$(STD_CFLAGS)\""
 override CPPFLAGS += -DVAL_CFLAGS_SL="\"$(CFLAGS_SL)\""
 override CPPFLAGS += -DVAL_LDFLAGS="\"$(STD_LDFLAGS)\""
 override CPPFLAGS += -DVAL_LDFLAGS_SL="\"$(LDFLAGS_SL)\""
-override CPPFLAGS += -DVAL_LIBS="\"$(LIBS)\""
+override CPPFLAGS += -DVAL_LIBS="\"$(STD_LIBS)\""
 
 all: submake-libpgport pg_config
 
