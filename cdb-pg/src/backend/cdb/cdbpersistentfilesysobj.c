@@ -1477,6 +1477,14 @@ PersistentFileSysObj_RemoveSegment(PersistentFileSysObjName *fsObjName,
 
 	HeapTuple tupleCopy;
 
+	PersistentFileSysObjName		actualFsObjName;
+	PersistentFileSysState			state;
+	
+	MirroredObjectExistenceState	mirrorExistenceState;
+	
+	TransactionId					parentXid;
+	int64							serialNum;
+
 	fsObjType = fsObjName->type;
 
 	PersistentFileSysObj_GetDataPtrs(
@@ -1497,6 +1505,15 @@ PersistentFileSysObj_RemoveSegment(PersistentFileSysObjName *fsObjName,
 
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_POP;
 
+	GpPersistent_GetCommonValues(
+							fsObjType,
+							values,
+							&actualFsObjName,
+							&state,
+							&mirrorExistenceState,
+							&parentXid,
+							&serialNum);
+
 	{
 		Datum *newValues;
 		bool *replaces;
@@ -1506,12 +1523,43 @@ PersistentFileSysObj_RemoveSegment(PersistentFileSysObjName *fsObjName,
 		replaces = (bool*)palloc0(fileSysObjData->storeData.numAttributes *
 								  sizeof(bool));
 
-		replaces[fileSysObjData->attNumParentXid - 1] = true;
-		newValues[fileSysObjData->attNumParentXid - 1] =
-			Int32GetDatum(InvalidTransactionId);
-
 		if (ismirror)
 		{
+			if ((state == PersistentFileSysState_DropPending ||
+				 state == PersistentFileSysState_AbortingCreate)
+				 &&
+				 mirrorExistenceState == MirroredObjectExistenceState_OnlyMirrorDropRemains)
+			{
+				PersistentFileSysState oldState;
+
+				heap_freetuple(tupleCopy);
+
+				/*
+				 * The primary enters this state when it has successfully dropped the primary object but
+				 * was unable to drop the mirror object because the mirror was down.
+				 *
+				 * Since we are letting go of the mirror, we can safely delete this persistent object.
+				 */
+				if (Debug_persistent_print)
+					elog(Debug_persistent_print_level, 
+						 "PersistentFileSysObj_RemoveSegment: Removing '%s' as result of removing mirror, persistent state '%s', mirror existence state '%s', serial number " INT64_FORMAT " at TID %s",
+						 PersistentFileSysObjName_ObjectName(fsObjName),
+						 PersistentFileSysObjState_Name(state),
+						 MirroredObjectExistenceState_Name(mirrorExistenceState),
+						 persistentSerialNum,
+						 ItemPointerToString(persistentTid));
+				
+				PersistentFileSysObj_StateChange(
+											fsObjName,
+											persistentTid,
+											persistentSerialNum,
+											PersistentFileSysState_Free,
+											/* retryPossible */ false,
+											/* flushToXLog */ false,
+											&oldState);
+				return;
+			}
+
 			replaces[fileSysObjData->attNumMirrorExistenceState - 1] = true;
 			newValues[fileSysObjData->attNumMirrorExistenceState - 1] =
 				Int32GetDatum(MirroredObjectExistenceState_NotMirrored);
