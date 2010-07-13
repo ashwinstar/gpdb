@@ -194,8 +194,11 @@ static void PersistentStore_InitScanAddFreeEntry(
 
 	bool found;
 
-	Assert(!PersistentStore_IsZeroTid(persistentTid));
-	Assert(!PersistentStore_IsZeroTid(previousFreeTid));
+	if (PersistentStore_IsZeroTid(persistentTid))
+		elog(ERROR, "Expected persistent TID to not be (0,0)");
+
+	if (PersistentStore_IsZeroTid(previousFreeTid))
+		elog(ERROR, "Expected previous free TID to not be (0,0)");
 
 	if (freeEntryHashTable == NULL)
 		PersistentStore_FreeEntryHashTableInit();
@@ -227,8 +230,6 @@ static void PersistentStore_InitScanVerifyFreeEntries(
 	ItemPointerData freeTid;
 
 	PersistentFreeEntry *entry;
-
-	bool found;
 
 	HASH_SEQ_STATUS iterateStatus;
 
@@ -262,13 +263,21 @@ static void PersistentStore_InitScanVerifyFreeEntries(
 								hash_search(freeEntryHashTable,
 											(void *) &key,
 											HASH_FIND,
-											&found);
-			if (!found)
+											NULL);
+			if (entry == NULL)
 				elog(ERROR, 
 					 "Did not find free entry for free TID %s (free order number " INT64_FORMAT ") for '%s'",
 					 ItemPointerToString(&freeTid),
 					 freeOrderNum,
 					 storeData->tableName);
+
+			if (PersistentStore_IsZeroTid(&entry->previousFreeTid))
+				elog(ERROR, 
+					 "Previous free TID not expected to be (0,0) -- persistent Free Entry hashtable corrupted for '%s' "
+					 "(expected free order number " INT64_FORMAT ", entry free order number " INT64_FORMAT ")",
+				     storeData->tableName,
+				     freeOrderNum,
+				     entry->freeOrderNum);
 
 			if (freeOrderNum != entry->freeOrderNum)
 				elog(ERROR, 
@@ -287,7 +296,7 @@ static void PersistentStore_InitScanVerifyFreeEntries(
 					 ItemPointerToString2(&entry->previousFreeTid));
 
 			freeTid = entry->previousFreeTid;
-			Assert(!PersistentStore_IsZeroTid(&freeTid));
+			Insist(!PersistentStore_IsZeroTid(&freeTid));	// Note the error check above.
 			if (freeOrderNum == 1)
 			{
 				/*
@@ -383,6 +392,9 @@ static void PersistentStore_DoInitScan(
 							&persistentTid,
 							&persistentSerialNum))
 	{
+		/*
+		 * We are scanning from low to high TID.
+		 */
 		Assert(
 			PersistentStore_IsZeroTid(&storeSharedData->maxTid)
 			||
