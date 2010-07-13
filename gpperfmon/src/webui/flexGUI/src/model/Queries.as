@@ -127,7 +127,12 @@ package model
 					query.time_queued = (query.sample_time.time -
 										 query.tsubmit.time) / 1000.0;	
 					query.time_run = 0;					
-				}									//time_queued is the wait time, it shouldn't be lessthan zero.				if(query.time_queued < 0)				{					query.time_queued = 0;				}
+				}
+				//time_queued is the wait time, it shouldn't be lessthan zero.
+				if(query.time_queued < 0)
+				{
+					query.time_queued = 0;
+				}
 				if (query.time_run > 0)
 				{
 					query.cpu_velocity = Math.round((query.cpu_elapsed*1000.0) / query.time_run)/1000.0;
