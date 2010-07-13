@@ -2220,7 +2220,7 @@ Filerep_mode_update(int dbid, char *mode, char status, FilerepModeUpdateLoggingE
 
 		case FilerepModeUpdateLoggingEnum_PrimaryToChangeTracking:
 			ereport(LOG,
-				(errmsg("Primary segment on %s:%d is going into change tracking mode.",
+				(errmsg("Primary segment on %s:%d is transitioning into change tracking mode (peer marked down).",
 					seg_addr, seg_pm_port ),
  				errSendAlert(true)));
 			break;
@@ -2286,13 +2286,13 @@ Filerep_mode_update(int dbid, char *mode, char status, FilerepModeUpdateLoggingE
 		{
 			case FilerepModeUpdateLoggingEnum_MirrorToChangeTracking:
 				ereport(LOG,
-					(errmsg("Changing mirror segment on %s:%d to be the primary in change tracking mode completed successfully.",
+					(errmsg("Mirror segment on %s:%d promoted to primary in change tracking mode.",
 						seg_addr, seg_pm_port ),
 						errSendAlert(true)));
 				break;
 			case FilerepModeUpdateLoggingEnum_PrimaryToChangeTracking:
 				ereport(LOG,
-					(errmsg("Changing primary segment on %s:%d to change tracking mode completed successfully.",
+					(errmsg("Primary segment on %s:%d transitioned to change tracking mode successfully.",
 						seg_addr, seg_pm_port ),
 						errSendAlert(true)));
 				break;
