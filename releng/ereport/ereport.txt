@@ -12064,15 +12064,15 @@ faai: ftsprobe:00002216:  (errmsg("Mirror segment on %s:%d is taking over as pri
 faai: ftsprobe:00002217:  seg_addr, seg_pm_port ), 
 faai: ftsprobe:00002218:  errSendAlert(true))); 
 faai: ftsprobe:00002222:  ereport(LOG, 
-faai: ftsprobe:00002223:  (errmsg("Primary segment on %s:%d is going into change tracking mode.", 
+faai: ftsprobe:00002223:  (errmsg("Primary segment on %s:%d is transitioning into change tracking mode (peer marked down).", 
 faai: ftsprobe:00002224:  seg_addr, seg_pm_port ), 
 faai: ftsprobe:00002225:  errSendAlert(true))); 
 faai: ftsprobe:00002288:  ereport(LOG, 
-faai: ftsprobe:00002289:  (errmsg("Changing mirror segment on %s:%d to be the primary in change tracking mode completed successfully.", 
+faai: ftsprobe:00002289:  (errmsg("Mirror segment on %s:%d promoted to primary in change tracking mode.", 
 faai: ftsprobe:00002290:  seg_addr, seg_pm_port ), 
 faai: ftsprobe:00002291:  errSendAlert(true))); 
 faai: ftsprobe:00002294:  ereport(LOG, 
-faai: ftsprobe:00002295:  (errmsg("Changing primary segment on %s:%d to change tracking mode completed successfully.", 
+faai: ftsprobe:00002295:  (errmsg("Primary segment on %s:%d transitioned to change tracking mode successfully.", 
 faai: ftsprobe:00002296:  seg_addr, seg_pm_port ), 
 faai: ftsprobe:00002297:  errSendAlert(true))); 
 faai: ftsprobe:00002324:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), \ 
