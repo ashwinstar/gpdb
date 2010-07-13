@@ -4747,9 +4747,8 @@ heap_desc(StringInfo buf, XLogRecord *record)
 		else
 			appendStringInfo(buf, "update: ");
 		out_target(buf, &(xlrec->target));
-		appendStringInfo(buf, "; new %u/%u",
-						 ItemPointerGetBlockNumber(&(xlrec->newtid)),
-						 ItemPointerGetOffsetNumber(&(xlrec->newtid)));
+		appendStringInfo(buf, "; new %s",
+						 ItemPointerToString(&(xlrec->newtid)));
 	}
 	else if (info == XLOG_HEAP_MOVE)
 	{
@@ -4760,9 +4759,8 @@ heap_desc(StringInfo buf, XLogRecord *record)
 		else
 			appendStringInfo(buf, "move: ");
 		out_target(buf, &(xlrec->target));
-		appendStringInfo(buf, "; new %u/%u",
-						 ItemPointerGetBlockNumber(&(xlrec->newtid)),
-						 ItemPointerGetOffsetNumber(&(xlrec->newtid)));
+		appendStringInfo(buf, "; new %s",
+						 ItemPointerToString(&(xlrec->newtid)));
 	}
 	else if (info == XLOG_HEAP_CLEAN)
 	{

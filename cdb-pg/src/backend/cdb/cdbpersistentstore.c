@@ -803,10 +803,18 @@ static void PersistentStore_InsertTuple(
 	(*storeData->closeRel)(persistentRel);
 	
 	if (Debug_persistent_store_print)
+	{
 		elog(Debug_persistent_store_print_level, 
 			 "PersistentStore_InsertTuple: Inserted new tuple at TID %s ('%s')",
 			 ItemPointerToString(persistentTid),
 			 storeData->tableName);
+		
+		(*storeData->printTupleCallback)(
+									Debug_persistent_store_print_level,
+									"STORE INSERT TUPLE",
+									persistentTid,
+									values);
+	}
 
 }
 
@@ -872,10 +880,18 @@ void PersistentStore_UpdateTuple(
 	(*storeData->closeRel)(persistentRel);
 	
 	if (Debug_persistent_store_print)
+	{
 		elog(Debug_persistent_store_print_level, 
 			 "PersistentStore_UpdateTuple: Updated whole tuple at TID %s ('%s')",
 			 ItemPointerToString(persistentTid),
 			 storeData->tableName);
+
+		(*storeData->printTupleCallback)(
+									Debug_persistent_store_print_level,
+									"STORE UPDATED TUPLE",
+									persistentTid,
+									values);
+	}
 
 	if (flushToXLog)
 	{
@@ -946,15 +962,54 @@ void PersistentStore_ReplaceTuple(
 	xlogUpdateEndLoc = XLogLastInsertEndLoc();
 
 	heap_freetuple(replacementTuple);
+	pfree(nulls);
 
-	(*storeData->closeRel)(persistentRel);
-	
 	if (Debug_persistent_store_print)
+	{
+		Datum 			*readValues;
+		bool			*readNulls;
+		HeapTupleData 	readTuple;
+		Buffer			buffer;
+		HeapTuple		readTupleCopy;
+		
 		elog(Debug_persistent_store_print_level, 
 			 "PersistentStore_ReplaceTuple: Replaced set of columns in tuple at TID %s ('%s')",
 			 ItemPointerToString(persistentTid),
 			 storeData->tableName);
+		
+		readValues = (Datum*)palloc(storeData->numAttributes * sizeof(Datum));
+		readNulls = (bool*)palloc(storeData->numAttributes * sizeof(bool));
 
+		readTuple.t_self = *persistentTid;
+		
+		if (!heap_fetch(persistentRel, SnapshotAny,
+						&readTuple, &buffer, false, NULL))
+		{
+			elog(ERROR, "Failed to fetch persistent tuple at %s ('%s')",
+				 ItemPointerToString(&readTuple.t_self),
+				 storeData->tableName);
+		}
+		
+		
+		readTupleCopy = heaptuple_copy_to(&readTuple, NULL, NULL);
+		
+		ReleaseBuffer(buffer);
+		
+		heap_deform_tuple(readTupleCopy, persistentRel->rd_att, readValues, readNulls);
+		
+		(*storeData->printTupleCallback)(
+									Debug_persistent_store_print_level,
+									"STORE REPLACED TUPLE",
+									persistentTid,
+									readValues);
+
+		heap_freetuple(readTupleCopy);
+		pfree(readValues);
+		pfree(readNulls);
+	}
+
+	(*storeData->closeRel)(persistentRel);
+	
 	if (flushToXLog)
 	{
 		XLogFlush(xlogUpdateEndLoc);
@@ -1046,10 +1101,18 @@ void PersistentStore_ReadTuple(
 	(*storeData->closeRel)(persistentRel);
 	
 	if (Debug_persistent_store_print)
+	{
 		elog(Debug_persistent_store_print_level, 
 			 "PersistentStore_ReadTuple: Successfully read tuple at TID %s ('%s')",
 			 ItemPointerToString(readTid),
 			 storeData->tableName);
+
+		(*storeData->printTupleCallback)(
+									Debug_persistent_store_print_level,
+									"STORE READ TUPLE",
+									readTid,
+									values);
+	}
 
 	pfree(nulls);
 }

@@ -706,9 +706,8 @@ out_relfilenode(StringInfo buf, RelFileNode *relFileNode)
 static void
 out_tid(StringInfo buf, ItemPointer tid)
 {
-	appendStringInfo(buf, "; tid %u/%u",
-					 ItemPointerGetBlockNumber(tid),
-					 ItemPointerGetOffsetNumber(tid));
+	appendStringInfo(buf, "; tid %s",
+					 ItemPointerToString(tid));
 }
 
 static void
