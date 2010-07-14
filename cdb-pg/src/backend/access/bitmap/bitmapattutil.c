@@ -119,6 +119,14 @@ _bitmap_create_lov_heapandindex(Relation rel,
 		btree_metapage = BufferGetPage(btree_metabuf);
 		_bt_initmetapage(btree_metapage, P_NONE, 0);
 
+		/* XLOG the metapage */
+		if (MustXLog() && !lovIndex->rd_istemp)
+		{
+			_bt_lognewpage(lovIndex,
+						   btree_metapage,
+						   BufferGetBlockNumber(btree_metabuf));
+		}
+		
 		/* This cache value is not valid anymore. */
 		if (lovIndex->rd_amcache)
 		{

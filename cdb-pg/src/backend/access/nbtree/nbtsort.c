@@ -287,34 +287,9 @@ _bt_blwritepage(BTWriteState *wstate, Page page, BlockNumber blkno)
 	/* XLOG stuff */
 	if (wstate->btws_use_wal)
 	{
-		/* We use the heap NEWPAGE record type for this */
-		xl_heap_newpage xlrec;
-		XLogRecPtr	recptr;
-		XLogRecData rdata[2];
-
-		/* NO ELOG(ERROR) from here till newpage op is logged */
-		START_CRIT_SECTION();
-
-		xl_heapnode_set(&xlrec.heapnode, wstate->index);
-		xlrec.blkno = blkno;
-
-		rdata[0].data = (char *) &xlrec;
-		rdata[0].len = SizeOfHeapNewpage;
-		rdata[0].buffer = InvalidBuffer;
-		rdata[0].next = &(rdata[1]);
-
-		rdata[1].data = (char *) page;
-		rdata[1].len = BLCKSZ;
-		rdata[1].buffer = InvalidBuffer;
-		rdata[1].next = NULL;
-
-		recptr = XLogInsert(RM_HEAP_ID, XLOG_HEAP_NEWPAGE, rdata);
-
-		PageSetLSN(page, recptr);
-		PageSetTLI(page, ThisTimeLineID);
-
-		END_CRIT_SECTION();
+		_bt_lognewpage(wstate->index, page, blkno);
 	}
+
 	else
 	{
 		/* Leave the page LSN zero if not WAL-logged, but set TLI anyway */
