@@ -1651,13 +1651,22 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
                 SegmentState_e segState;
                 if (args->dataState == DataStateInResync )
                 {
-                    if ( pmModuleState->dataState == DataStateNotInitialized )
+                    if ( pmModuleState->dataState == DataStateNotInitialized &&
+                         pmModuleState->mode != PMModeMirrorlessSegment )
                     {
+                        Assert(pmModuleState->mode == PMModeQuiescentSegment ||
+                               pmModuleState->mode == PMModeUninitialized);
+
                         /* starting up in resync -- just go to initialization */
+                        /* we may have data state not initialized when going from mirrorless mode (during addmirrors) */
                         segState = SegmentStateInitialization;
                     }
                     else
                     {
+                        Assert(pmModuleState->mode == PMModePrimarySegment ||
+                               pmModuleState->mode == PMModeMirrorlessSegment ||
+                               pmModuleState->mode == PMModeMirrorSegment);
+
                         segState = SegmentStateInResyncTransition;
                     }
                 }
