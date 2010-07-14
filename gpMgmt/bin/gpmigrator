@@ -3449,6 +3449,11 @@ class GPUpgrade:
         env['MASTER_DATA_DIRECTORY'] = self.masterdir
         cmd += ' --gphome="%s"' % self.oldhome
 
+        # Add fault injection enviornment variable if set for testing
+        if os.environ.get('GP_COMMAND_FAULT_POINT') is not None:
+            env['GP_COMMAND_FAULT_POINT'] = \
+                os.environ.get('GP_COMMAND_FAULT_POINT')
+
         logger.info("Synchronizing mirrors:")
         logger.info('... This may take a while')
 
@@ -3472,6 +3477,12 @@ class GPUpgrade:
         # We upgrade from a locked system, make sure to set PGUSER
         env = self.newenv.copy()
         env['PGUSER'] = MIGRATIONUSER
+
+        # Add fault injection enviornment variable if set for testing
+        if os.environ.get('GP_COMMAND_FAULT_POINT') is not None:
+            env['GP_COMMAND_FAULT_POINT'] = \
+                os.environ.get('GP_COMMAND_FAULT_POINT')
+
         r = self.RunCmd(cmd, env=env)
         logger.debug(r)
 
