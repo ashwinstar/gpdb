@@ -1031,7 +1031,7 @@ FileClose(File file)
 		/* reset flag so that die() interrupt won't cause problems */
 		vfdP->fdstate &= ~FD_TEMPORARY;
 		if (unlink(vfdP->fileName))
-			elog(LOG, "failed to unlink \"%s\": %m",
+			elog(DEBUG1, "failed to unlink \"%s\": %m",
 				 vfdP->fileName);
 	}
 
