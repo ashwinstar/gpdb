@@ -197,6 +197,12 @@ class SendFilerepTransitionMessage(Command):
     TRANSITION_ERRCODE_ERROR_READING_INPUT                 = 14
     TRANSITION_ERRCODE_ERROR_SOCKET                        = 15
 
+    #
+    # note: this should be cleaned up -- there are two hosts involved,
+    #   the host on which to run gp_primarymirror, AND the host to pass to gp_primarymirror -h
+    #
+    # Right now, it uses the same for both which is pretty wrong for anything but a local context.
+    #
     def __init__(self, name, inputFile, port=None,ctxt=LOCAL, remoteHost=None, dataDir=None):
         if not remoteHost:
             remoteHost = "127.0.0.1"
@@ -207,12 +213,6 @@ class SendFilerepTransitionMessage(Command):
     @staticmethod
     def local(name,inputFile,port=None,remoteHost=None):
         cmd=SendFilerepTransitionMessage(name, inputFile, port, LOCAL, remoteHost)
-        cmd.run(validateAfter=True)
-        return cmd
-
-    @staticmethod
-    def remote(name,remoteHost,inputFile,port=None):
-        cmd=SendFilerepTransitionMessage(name, inputFile, port, REMOTE, remoteHost)
         cmd.run(validateAfter=True)
         return cmd
 
