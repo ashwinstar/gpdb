@@ -13,6 +13,8 @@ import socket
 import subprocess
 import shutil
 import ConfigParser
+import re
+import psi.process
 from gppylib.db import dbconn
 
 GPPERFMONHOME=os.getenv('GPPERFMONHOME')
@@ -30,7 +32,7 @@ except ImportError, e:
 
 
 script_name = os.path.split(__file__)[-1]
-script_version = '$Revision$'
+script_version = 'main build dev'
 
 # consts
 STOPPED = 0
@@ -228,14 +230,13 @@ def lighty_stop(instance):
     if lighty_status(instance) == 1:
         try:
             FILE = open(instance_info['lighttpd_pid_file'], 'r')
-            pid = FILE.readline()
+            pid = int(FILE.readline())
             FILE.close()
-            FILE = os.popen('ps -p %s 2>/dev/null' % pid)
-            FILE.readline()
-            line = FILE.readline()
-            FILE.close()
-            if line.find('lighttpd') != -1:
-                os.kill(int(pid), signal.SIGTERM)
+
+            pids = psi.process.ProcessTable()
+            if pid in pids:
+                if re.search('light', pids[pid].command):
+                    os.kill(pid, signal.SIGTERM)
             
             # lighty shuts down quickly, but give it a little bit of time.
             time.sleep(1)
@@ -277,22 +278,30 @@ def lighty_restart(instance):
 
 #################
 def lighty_status(instance):
-    status = STOPPED
+
+    foundLighthttp = False
+    foundGpmonws = False
+
     instance_info = get_instance_info(instance)
     try:
         FILE = open(instance_info['lighttpd_pid_file'], 'r')
-        pid = FILE.readline()
+        pid = int(FILE.readline())
         FILE.close()
-        FILE = os.popen('ps -p %s 2>/dev/null' % pid)
-        FILE.readline()
-        line = FILE.readline()
-        FILE.close()
-        if line.find('lighttpd') != -1:
-            status = RUNNING
+
+        for p in psi.process.ProcessTable().values():
+            if p.pid == pid:
+                if re.search('light', p.command):
+                    foundLighthttp = True
+            if p.ppid == pid:
+                if re.search('gpmonws', p.command):
+                    foundGpmonws = True
     except:
         pass
 
-    return status
+    if foundLighthttp and foundGpmonws:
+        return RUNNING
+    else: 
+        return STOPPED
 
 #################
 def webui_setup():
@@ -715,7 +724,7 @@ try:
             if result == RUNNING:
                 print 'Done.'
             else:
-                print 'failed to start gpperfmon instance %s' % instance
+                print 'Failed to start gpperfmon instance %s' % instance
     elif options.stop:
         for instance in instances:
             print 'Stopping instance %s...' % instance,
@@ -724,7 +733,7 @@ try:
             if result == STOPPED:
                 print 'Done.'
             else:
-                print 'failed to stop gpperfmon instance %s' % instance
+                print 'Failed to stop gpperfmon instance %s' % instance
     elif options.restart:
         for instance in instances:
             print 'Restarting instance %s...' % instance,
