@@ -173,11 +173,18 @@ class GpRecoverSegmentProgram:
                             segment.getSegmentDataDirectory() == failedDataDirectory:
 
                     if failedSegment is not None:
-                        raise Exception("Segment found twice in configuration: %s" % row.getLine())
+                        #
+                        # this could be an assertion -- configuration should not allow multiple entries!
+                        #
+                        raise Exception(("A segment to recover was found twice in configuration.  " \
+                            "This segment is described by address:port:directory '%s:%s:%s' on the input line: %s") %
+                            (failedAddress, failedPort, failedDataDirectory, row.getLine()))
                     failedSegment = segment
 
             if failedSegment is None:
-                raise Exception("Segment not found: %s" % row.getLine())
+                raise Exception("A segment to recover was not found in configuration.  " \
+                            "This segment is described by address:port:directory '%s:%s:%s' on the input line: %s" %
+                            (failedAddress, failedPort, failedDataDirectory, row.getLine()))
 
             failoverSegment = None
             if "newAddress" in fixedValues:
