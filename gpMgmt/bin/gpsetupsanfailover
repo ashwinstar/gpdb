@@ -4,9 +4,9 @@
 
 Helps an administrator configure Greenplum Database with shared-storage ("san") failover
 
-gpsanitize -- helper for generated SAN-failover configuration information.
+gpsetupsanfailover -- helper for generated SAN-failover configuration information.
 
-Usage: gpsanitize [--version] [-?] [-D] [-d master_data_dir] [-l log_dir] [-p port_offset] [-t <n|e>]
+Usage: gpsetupsanfailover [--version] [-?] [-D] [-d master_data_dir] [-l log_dir] [-p port_offset] [-t <n|e>]
            
           --version : print version information
           -?        : print this help screen
@@ -301,7 +301,7 @@ try:
 
     if gparray.get_mirroring_enabled():
         logger.error('System already has mirrors. SAN-mirroring cannot coexist with mirrors.')
-        raise Exception("Cannot locate EMC PowerPath powermt utility for storage-group lookup")
+        raise Exception("System already has mirrors.")
 
     qes = None
     new_addr = []
@@ -474,6 +474,57 @@ try:
                 RemoveFiles.remote('remove tmpfile', v['failoverhost'], tmpfile)
             except:
                 pass
+
+        #
+        # MPP-10374:
+        # If we are on a SAN, we need to verify that the failover hosts in san_config
+        # have the WWN "device" of interest available to them.
+        #
+        # This is basically a repeat of the device loop above, but doing the opposite direction
+        # lookup: we know we have a failoverhost/failovermp pair that looks valid, but does
+        # the *device* map properly from primaryhost -> failoverhost.
+        #
+        # We skip this for NFS -- essentially making an assumption: a flat network.
+        if opt['-t'] == 'e':
+            missing_wwn = False
+            for k, v in devmap.iteritems():
+                san_key = (v['host'], v['mountpoint'])
+
+                if not san_config.has_key(san_key):
+                    raise Exception('Resolving final config: cannot find configuration for %s:%s' % (v['host'], v['mountpoint']))
+
+                san_val = san_config[san_key]
+
+                primaryhost = san_val['primaryhost']            
+                failoverhost = san_val['failoverhost']
+                failoverwwn = v['WWN']
+
+                found = False
+                
+                # This parsing should be done in the command class, but it requires too much external info
+                cmd = Inq.remote('inq', failoverhost)
+                out = cmd.get_results().stdout.split('\n')
+ 
+                # We're parsing the output of the "inq" utility here.
+                # lines of interest look like:
+                # "/dev/emcpowerbp  APM00091400579   B  172.16.10.6     0x006f   600601607e62220093afcb43752ddf11"
+                # Where the last entry on that line is the WWN.
+                for l in out:
+                    x = l.strip().split()
+
+                    if len(x) == 6 and x[0].startswith('/') and x[5] == failoverwwn:
+                        found = True
+                        break
+
+                if not found:
+                    missing_wwn = True
+                    logger.info('Could not find WWN %s on failover host %s (primary host %s)' % (failoverwwn, failoverhost, primaryhost))
+
+            if missing_wwn:
+                logger.error('Could not find some WWN entries on failover hosts: invalid mapping.')
+                raise Exception("Cannot resolve shared-storage location for failover on EMC-SAN")
+
+        # At this point, all of the configuration information has been verified.
 
         # Now we have all of the information we need for gp_san_configuration, build a final dictionary
         # to store our work. As we go, we're going to add the failover-data-directory to devmap.
