@@ -13,14 +13,14 @@ import web
 from greenplum import db
 from greenplum import error
 from greenplum import interval
-
-DEBUG = False
+from greenplum import gplog
 
 web.config.session_parameters.timeout = 1800
 MAX_AGGREGATED_SAMPLES = 2000
 MAX_NONAGGREGATED_SAMPLES = 16
 MAX_QUERIES_PER_SEARCH = 250
 remote = False
+verbose = False
 allow_trust_logon = False
 displayed_server_name = ''
 gpperfmon_version = '$Revision$'
@@ -28,6 +28,9 @@ db_access_last_time = 0
 dbstatus = 'NORMAL' 
 DB_STATE_CHECK_INTERVAL = 30
 
+log = gplog.GpWebLogger(os.getcwd() + "/../logs/gpmonws.log")
+db.set_logger(log)
+db.create_db_conn()
 instance_name = os.path.basename(os.path.abspath(os.path.join(os.getcwd(), '..')))
 
 urls = ('/', 'index',
@@ -74,16 +77,14 @@ app.internalerror = internal_error
 
 def authrole(username, password):
     (valid, issuper, message) = db.get_role(username, password, allow_trust_logon)
-    if DEBUG:
-        sys.stderr.write("\nAUTH:\n\tvalid:  %s\n\tsuperuser: %s\n" % (valid, issuper))
     if valid:
         session.user = username
         session.role['superuser'] = issuper
         session.role['user'] = True
         session.loggedin = True
+        log.msg("Authenticated user(%s) ok superuser(%s) allow_trust_logon(%s)" % (username, issuper, allow_trust_logon))
     else:
-        if DEBUG:
-            sys.stderr.write("Authentication failed: %s\n\n" % username)
+        log.msg("Authentication failed user(%s) allow_trust_logon(%s): %s" % (username, allow_trust_logon, message))
     return message
 
 def chkrole(role):
@@ -100,8 +101,6 @@ class index:
         web.header('Content-Type', 'text/html')
         web.header('Cache-Control', 'no-store')
         host_and_port = web.ctx.host.split(':',1)
-        if DEBUG:
-            sys.stderr.write("host=%s, port=%s, server_name=%s gpPerfMonVersion=%s\n" % (host_and_port[0], host_and_port[1], displayed_server_name, gpperfmon_version))
         return render.index(web.ctx.protocol, host_and_port[0], host_and_port[1], displayed_server_name, gpperfmon_version)
 
 class api:
@@ -174,11 +173,6 @@ class logon:
         else:
             role = 'user'
 
-        if DEBUG:
-            sys.stderr.write("\nLOGON:\n")
-            sys.stderr.write("session: %s\n" % session.getid())
-            sys.stderr.write("user: %s\n" % session.user)
-            sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         return render.logon(username, 'SUCCESS', role, session.getid())
 
 class logoff:
@@ -187,17 +181,11 @@ class logoff:
         web.header('Cache-Control', 'no-store')
         logoffdata = render.logoff(session.user, 'SUCCESS')
         session.kill()
-        if DEBUG:
-            sys.stderr.write("\nLOGOFF:\n")
-            sys.stderr.write("session: %s\n" % session.getid())
-            sys.stderr.write("user: %s\n" % session.user)
-            sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
-
         return logoffdata
 
 class config:
     def __init__(self):
-        global remote, displayed_server_name, allow_trust_logon
+        global remote, displayed_server_name, allow_trust_logon, verbose
         
         # Holds the complete configuration
         self.gpperfmon_config = {}
@@ -208,6 +196,7 @@ class config:
             cfg = ConfigParser.SafeConfigParser()
             cfg.readfp(open(filename))
         except:
+            log.msg("FATAL: Unable to load configuration file: %s\n" % filename)
             sys.exit("FATAL: Unable to load configuration file: %s\n" % filename)
 
         for section in cfg.sections():
@@ -216,16 +205,19 @@ class config:
                 section_elements[item[0].replace(" ","_")] = item[1]
             self.gpperfmon_config[section.replace(" ","_")] = section_elements
 
-        if DEBUG:
-            sys.stderr.write("Configuration file: %s\n\n" % self.gpperfmon_config)
 
         # look for specific values
         try:
             remote = cfg.getboolean("WEB APP", "remote")
         except:
             remote = False
-        if DEBUG:
-            sys.stderr.write("WEB APP/remote = %s\n" % remote)
+
+        try:
+            verbose = cfg.getboolean("WEB APP", "verbose")
+            if verbose:
+                log.setVerbose()
+        except:
+            verbose = False
 
         quantum = 15
         if remote:
@@ -238,36 +230,33 @@ class config:
                 gpmmon_cfg.readfp(open(filename))
                 quantum = gpmmon_cfg.getint('GPMMON', 'quantum')
             except:
-                sys.exit("FATAL: Unable to load configuration file: %s\n" % filename)
+                log.msg("FATAL: Unable to load configuration file: %s" % filename)
                        
         self.gpperfmon_config['GPMMON'] = {'quantum': quantum}
-
 
         # look for specific values
         try:
             displayed_server_name = cfg.get("WEB APP", "server_name")
         except:
             displayed_server_name = gethostname()
-        if DEBUG:
-            sys.stderr.write("WEB APP/server_name = %s\n" % displayed_server_name)
 
         # look for specific values
         try:
             allow_trust_logon = cfg.getboolean("WEB APP", "allow_trust_logon")
         except:
             allow_trust_logon = False
-        if DEBUG:
-            sys.stderr.write("WEB APP/allow_trust_logon = %s\n" % allow_trust_logon)
+
+        log.debug("Configuration file: %s" % self.gpperfmon_config)
+        log.debug("remote = %s" % remote)
+        log.debug("verbose = %s" % verbose)
+        log.debug("server_name = %s" % displayed_server_name)
+        log.debug("allow_trust_logon = %s" % allow_trust_logon)
+        log.debug("quantum = %s" % quantum)
 
 
     def GET(self):
         web.header('Content-Type', 'text/xml')
         web.header('Cache-Control', 'no-store')
-        if DEBUG:
-            sys.stderr.write("\nCONFIG:\n")
-            sys.stderr.write("session: %s\n" % session.getid())
-            sys.stderr.write("user: %s\n" % session.user)
-            sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         if not session.loggedin:
             return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
 
@@ -280,11 +269,6 @@ class hosts:
     def GET(self):
         web.header('Content-Type', 'text/xml')
         web.header('Cache-Control', 'no-store')
-        if DEBUG:
-            sys.stderr.write("\nHOSTS:\n")
-            sys.stderr.write("session: %s\n" % session.getid())
-            sys.stderr.write("user: %s\n" % session.user)
-            sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
 
         if not session.loggedin:
             return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
@@ -304,20 +288,10 @@ class system:
     def GET(self):
         web.header('Content-Type', 'text/xml')
         web.header('Cache-Control', 'no-store')
-        if DEBUG:
-            sys.stderr.write("\nSYSTEM:\n")
-            sys.stderr.write("session: %s\n" % session.getid())
-            sys.stderr.write("user: %s\n" % session.user)
-            sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         if not session.loggedin:
             return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
 
         i = web.input(start='NOW', end='NOW', interval='1min', aggregated='yes')
-
-        if DEBUG:
-            sys.stderr.write("\n\n\n<system metrics>\n")
-            sys.stderr.write("\tstart = %s\n\tend = %s\n\tinterval = %s\n\taggregated = %s\n" % (i.start, i.end, i.interval, i.aggregated))
-            sys.stderr.write("</system metrics>\n\n\n")
 
         res = None
 
@@ -368,11 +342,6 @@ class queries:
     def GET(self):
         web.header('Content-Type', 'text/xml')
         web.header('Cache-Control', 'no-store')
-        if DEBUG:
-            sys.stderr.write("\nQUERIES:\n")
-            sys.stderr.write("session: %s\n" % session.getid())
-            sys.stderr.write("user: %s\n" % session.user)
-            sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         if not session.loggedin:
             return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
 
@@ -421,13 +390,6 @@ class queries:
                 if not status in self.valid_status:
                     return mkerr(error.BADREQ, 'Invalid status value')
 
-        if DEBUG:
-            sys.stderr.write("\n<queries metrics>\n")
-            sys.stderr.write("\tusername = %s\n" % (i.username))
-            sys.stderr.write("\tstart = %s\n\tend = %s\n\tstatus = %s\n" % (i.start, i.end, i.status))
-            sys.stderr.write("\tdatabase = %s\n\ttextlength = %s\n\tmintime = %s\n" % (i.db, i.textlength, i.mintime))
-            sys.stderr.write("</queries metrics>\n\n\n")
-
         res = None
 
         try:
@@ -461,11 +423,6 @@ class querydetails:
     def GET(self):
         web.header('Content-Type', 'text/xml')
         web.header('Cache-Control', 'no-store')
-        if DEBUG:
-            sys.stderr.write("\nQUERYDETAILS:\n")
-            sys.stderr.write("session: %s\n" % session.getid())
-            sys.stderr.write("user: %s\n" % session.user)
-            sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         if not session.loggedin:
             return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
 
@@ -509,12 +466,6 @@ class querydetails:
         if not i.realtime in ['yes', 'no']:
             return mkerr(error.BADREQ, 'Invalid realtime parameter')
 
-        if DEBUG:
-            sys.stderr.write("\n\n\n<query details>\n")
-            sys.stderr.write("\ttmid = %s\n\tssid = %s\n\tccnt = %s\n" % (id_split[0], id_split[1], id_split[2]))
-            sys.stderr.write("\trealtime = %s\n\tstart = %s\n\tend = %s\n" % (i.realtime, i.start, i.end))
-            sys.stderr.write("</query details>\n\n\n")
-
         # Ensure that only superusers can find other's queries
         username = ''
         if not session.role['superuser']:
@@ -538,11 +489,6 @@ class queryplan:
     def GET(self):
         web.header('Content-Type', 'text/xml')
         web.header('Cache-Control', 'no-store')
-        if DEBUG:
-            sys.stderr.write("\nQUERYPLAN:\n")
-            sys.stderr.write("session: %s\n" % session.getid())
-            sys.stderr.write("user: %s\n" % session.user)
-            sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         if not session.loggedin:
             return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
 
@@ -586,13 +532,6 @@ class queryplan:
         if not i.realtime in ['yes', 'no']:
             return mkerr(error.BADREQ, 'Invalid realtime parameter')
 
-        if DEBUG:
-            sys.stderr.write("\n\n\n<query plan>\n")
-            sys.stderr.write("\ttmid = %s\n\tssid = %s\n\tccnt = %s\n" % (id_split[0], id_split[1], id_split[2]))
-            sys.stderr.write("\trealtime = %s\n\tstart = %s\n\tend = %s\n" % (i.realtime, i.start, i.end))
-            
-            sys.stderr.write("</query plan>\n\n\n")
-
         # Ensure that only superusers can find other's queries
         username = ''
         if not session.role['superuser']:
@@ -608,13 +547,6 @@ class queryplan:
 
         (ckeys, tab, tree, root) = res
 
-        if DEBUG:
-            sys.stderr.write('RESULTS:\n=======\n\n')
-            sys.stderr.write('tree: %s\n' % tree)
-            sys.stderr.write('\ntable:\n')
-            for row in tab:
-                sys.stderr.write('\t%s => %s\n\n' % (tab[row]['pnid'], tab[row]['nid']))
-
         return render.queryplan(i.id, ckeys, tab, tree, root)
 
 
@@ -622,21 +554,11 @@ class iterator:
     def GET(self):
         web.header('Content-Type', 'text/xml')
         web.header('Cache-Control', 'no-store')
-        if DEBUG:
-            sys.stderr.write("\nITERATOR:\n")
-            sys.stderr.write("session: %s\n" % session.getid())
-            sys.stderr.write("user: %s\n" % session.user)
-            sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
 
         if not session.loggedin:
             return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
 
         i = web.input(tmid='', ssid='', ccnt='', nid='')
-
-        if DEBUG:
-            sys.stderr.write("\n\n\n<iterator>\n")
-            sys.stderr.write("\ttmid = %s\n\tssid = %s\n\tccnt = %s\n\tnid = %s\n" % (i.tmid, i.ssid, i.ccnt, i.nid))
-            sys.stderr.write("</iterator>\n\n\n")
 
         if i.tmid == '':
             return mkerr(error.BADREQ, 'missing parameter: "tmid"')
@@ -661,14 +583,6 @@ class iterator:
         except db.GPDBError, errorinfo:
             return mkerr(error.DATA_ACCESS, errorinfo)
 
-        if DEBUG:
-            sys.stderr.write('RESULTS:\n=======\n\n')
-            sys.stderr.write('iterator:\n')
-            for id in skeys:
-                sys.stderr.write('\tsegment id: %s\n' %  id)
-                for c in ckeys:
-                    sys.stderr.write('\t\t%s: %s\n' % (c, tab[id][c]))
-
         return render.iterator(i.tmid, i.ssid, i.ccnt, i.nid, skeys, ckeys, tab)
 
 
@@ -681,22 +595,12 @@ class database:
         
         web.header('Content-Type', 'text/xml')
         web.header('Cache-Control', 'no-store')
-        if DEBUG:
-            sys.stderr.write("\nDATABASE:\n")
-            sys.stderr.write("session: %s\n" % session.getid())
-            sys.stderr.write("user: %s\n" % session.user)
-            sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
 
         if not session.loggedin:
             return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
 
         i = web.input(start='NOW', end='NOW', interval='1min')
         
-        if DEBUG:
-            sys.stderr.write("\n\n<database>\n")
-            sys.stderr.write("\tstart = %s\n\tend = %s\n\tinterval = %s\n" % (i.start, i.end, i.interval))
-            sys.stderr.write("</database>\n\n")
-
         res = None
         try:
             if i.start == 'NOW':
