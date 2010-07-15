@@ -65,7 +65,6 @@ LOG_STATEMENT_TXT="#log_statement ="
 LISTEN_ADR_TXT="listen_addresses"
 CHKPOINT_SEG_TXT="checkpoint_segments"
 INIT_STANDBY_PROG=$GPINITSTANDBY
-START_SYNC="-1"
 QE_MIRROR_ARRAY=""
 GP_PASSWD=mpparray
 TMP_PG_HBA=/tmp/pg_hba_conf_master.$$
@@ -1043,11 +1042,6 @@ DISPLAY_CONFIG () {
 			LOG_MSG "[INFO]:-Master only build          = Off" 1
 			if [ x"" != x"$STANDBY_HOSTNAME" ];then
 				LOG_MSG "[INFO]:-Standby Master             = $STANDBY_HOSTNAME" 1
-				if [ x"" != x"$START_SYNC" ];then
-					LOG_MSG "[INFO]:-Standby start sync         = On" 1
-				else
-					LOG_MSG "[INFO]:-Standby start sync         = Off" 1
-				fi
 			else
 				LOG_MSG "[INFO]:-Standby Master             = Not Configured" 1
 			fi
@@ -1736,7 +1730,6 @@ while getopts ":v'?'aiqe:c:l:-:p:m:h:on:s:rb:!DB:SI:O:" opt
 				    USAGE ;;
 				a ) unset INTERACTIVE ;;
 				q ) unset VERBOSE ;;
-				i ) START_SYNC="" ;;
 				c ) CLUSTER_CONFIG=$OPTARG ;;
 				l ) LOG_DIR=$OPTARG ;;
 				e ) GP_PASSWD=$OPTARG ;;
