@@ -319,7 +319,7 @@ initGpmonPktForExternalScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *e
 									  estate->es_range_table);
 		char schema_rel_name[SCAN_REL_NAME_BUF_SIZE] = {0};
 		
-		Assert(GPMON_EXTSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
+		Assert(GPMON_EXTSCAN_TOTAL <= (int)GPMON_QEXEC_M_COUNT);
 		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_ExternalScan,
 							 (int64)planNode->plan_rows,
 							 GetScanRelNameGpmon(rte->relid, schema_rel_name));

@@ -6465,7 +6465,7 @@ initGpmonPktForWindow(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
 	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, Window));
 
 	{
-		Assert(GPMON_WINDOW_TOTAL <= GPMON_QEXEC_M_COUNT);
+		Assert(GPMON_WINDOW_TOTAL <= (int)GPMON_QEXEC_M_COUNT);
 		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_Window,
 							 (int64)planNode->plan_rows, NULL);
 	}

@@ -857,7 +857,7 @@ initGpmonPktForShareInputScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState 
 	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, ShareInputScan));
 
 	{
-		Assert(GPMON_SHAREINPUT_TOTAL <= GPMON_QEXEC_M_COUNT);
+		Assert(GPMON_SHAREINPUT_TOTAL <= (int)GPMON_QEXEC_M_COUNT);
 		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_SharedScan,
 							 (int64)planNode->plan_rows, 
 							 NULL);

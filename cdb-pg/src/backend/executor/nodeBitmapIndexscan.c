@@ -345,7 +345,7 @@ initGpmonPktForBitmapIndexScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState
 	{
 		char *relname = get_rel_name(((BitmapIndexScan *)planNode)->indexid);
 		
-		Assert(GPMON_BITMAPINDEXSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
+		Assert(GPMON_BITMAPINDEXSCAN_TOTAL <= (int)GPMON_QEXEC_M_COUNT);
 		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_BitmapIndexScan,
 							 (int64)planNode->plan_rows, 
 							 relname);

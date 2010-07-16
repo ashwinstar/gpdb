@@ -1127,7 +1127,7 @@ initGpmonPktForHashJoin(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estat
 		}
 
 		Assert(type != PMNT_Invalid);
-		Assert(GPMON_HASHJOIN_TOTAL <= GPMON_QEXEC_M_COUNT);
+		Assert(GPMON_HASHJOIN_TOTAL <= (int)GPMON_QEXEC_M_COUNT);
 		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, type, 
 							 (int64)planNode->plan_rows,
 							 NULL);

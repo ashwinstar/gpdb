@@ -496,7 +496,7 @@ initGpmonPktForFunctionScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *e
 					get_func_name(((FuncExpr *)rte->funcexpr)->funcid)
 				 	: rte->eref->aliasname;
 
-		Assert(GPMON_FUNCSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
+		Assert(GPMON_FUNCSCAN_TOTAL <= (int)GPMON_QEXEC_M_COUNT);
 		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_FunctionScan,
 							 (int64)planNode->plan_rows,
 							 funcname);

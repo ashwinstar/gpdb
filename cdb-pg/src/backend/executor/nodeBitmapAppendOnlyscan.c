@@ -643,7 +643,7 @@ initGpmonPktForBitmapAppendOnlyScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, E
 									  estate->es_range_table);
 		char schema_rel_name[SCAN_REL_NAME_BUF_SIZE] = {0};
 		
-		Assert(GPMON_BITMAPAPPENDONLYSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
+		Assert(GPMON_BITMAPAPPENDONLYSCAN_TOTAL <= (int)GPMON_QEXEC_M_COUNT);
 		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_BitmapAppendOnlyScan,
 							 (int64)planNode->plan_rows,
 							 GetScanRelNameGpmon(rte->relid, schema_rel_name));
