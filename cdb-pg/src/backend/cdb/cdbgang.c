@@ -124,23 +124,39 @@ largestGangsize(void)
 static bool
 segment_failure_due_to_recovery(SegmentDatabaseDescriptor *segdbDesc)
 {
+	char *fatal=NULL, *message, *ptr;
+	int fatal_len=0;
+
 	if (segdbDesc == NULL)
 		return false;
 
 	if (segdbDesc->error_message.data == NULL)
 		return false;
 
+	fatal = _("FATAL");
+	if (fatal == NULL)
+		return false;
+
+	fatal_len = strlen(fatal);
+
+	message = segdbDesc->error_message.data;
+
 	/*
 	 * it would be nice if we could check errcode for ERRCODE_CANNOT_CONNECT_NOW, instead
 	 * we wind up looking for at the strings.
+	 *
+	 * And because if LC_MESSAGES gets set to something which changes
+	 * the strings a lot we have to take extreme care with looking at
+	 * the string.
 	 */
-	if (strstr(segdbDesc->error_message.data, "FATAL:"))
+	ptr = strstr(message, fatal);
+	if ((ptr != NULL) && ptr[fatal_len] == ':')
 	{
-		if (strstr(segdbDesc->error_message.data, _(POSTMASTER_IN_STARTUP_MSG)))
+		if (strstr(message, _(POSTMASTER_IN_STARTUP_MSG)))
 		{
 			return true;
 		}
-		if (strstr(segdbDesc->error_message.data, _(POSTMASTER_IN_RECOVERY_MSG)))
+		if (strstr(message, _(POSTMASTER_IN_RECOVERY_MSG)))
 		{
 			return true;
 		}
