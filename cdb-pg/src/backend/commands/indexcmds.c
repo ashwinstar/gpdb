@@ -1464,13 +1464,14 @@ ReindexIndex(ReindexStmt *stmt)
 				{
 					mapoid = lsecond_oid(map);
 
-					if (list_length(map) > 2)
-					{
-						Assert(list_length(map) == 4);
-
-						extra_oids = lappend_oid(extra_oids, lthird_oid(map));
-						extra_oids = lappend_oid(extra_oids, lfourth_oid(map));
-					}
+					/*
+					 * The map should contain more than 2 OIDs (the OID of the
+					 * index and its new relfilenode), to support the bitmap
+					 * index, see reindex_index() for more info. Construct
+					 * the extra_oids list by skipping the first two OIDs.
+					 */
+					Assert(list_length(map) > 2);
+					extra_oids = list_copy_tail(map, 2);
 
 					break;
 				}
@@ -1484,12 +1485,8 @@ ReindexIndex(ReindexStmt *stmt)
 	{
 		List *map = list_make2_oid(indOid, newOid);
 
-		if (extra_oids != NULL)
-		{
-			Assert(list_length(extra_oids) == 2);
-			map = lappend_oid(map, linitial_oid(extra_oids));
-			map = lappend_oid(map, lsecond_oid(extra_oids));
-		}
+		Assert(extra_oids != NULL);
+		map = list_concat(map, extra_oids);
 
 		stmt->new_ind_oids = lappend(stmt->new_ind_oids, map);
 	}

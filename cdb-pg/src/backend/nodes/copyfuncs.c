@@ -2544,6 +2544,7 @@ _copyCreateStmt(CreateStmt *from)
 		newnode->policy = NULL;
 	COPY_SCALAR_FIELD(is_part_child);
 	COPY_SCALAR_FIELD(ownerid);
+	COPY_SCALAR_FIELD(buildAoBlkdir);
 
 	return newnode;
 }

@@ -2409,6 +2409,80 @@ IndexGetRelation(Oid indexId)
 }
 
 /*
+ * createIndexInfoOpaque: create the opaque value in indexInfo
+ * based on the given list of OIDs passed from reindex_index().
+ *
+ * The extra_oids contains 2 OID values. They are used by
+ * the bitmap indexes to create their internal heap and btree.
+ * See reindex_index() for more info.
+ */
+static void
+createIndexInfoOpaque(List *extra_oids,
+					  bool isBitmapIndex,
+					  IndexInfo *indexInfo)
+{
+	Assert(extra_oids != NULL &&
+		   list_length(extra_oids) == 2);
+	Assert(indexInfo != NULL);
+	Assert(indexInfo->opaque == NULL);
+
+	indexInfo->opaque = (void*)palloc0(sizeof(IndexInfoOpaque));
+	
+	ListCell *lc = list_head(extra_oids);
+
+	((IndexInfoOpaque *)indexInfo->opaque)->heapRelfilenode =
+		lfirst_oid(lc);
+	lc = lnext(lc);
+	((IndexInfoOpaque *)indexInfo->opaque)->indexRelfilenode =
+		lfirst_oid(lc);
+	lc = lnext(lc);
+
+#ifdef USE_ASSERT_CHECKING
+	if (isBitmapIndex)
+	{
+		Assert(OidIsValid(((IndexInfoOpaque *)indexInfo->opaque)->heapRelfilenode));
+		Assert(OidIsValid(((IndexInfoOpaque *)indexInfo->opaque)->indexRelfilenode));
+	}
+	
+	else
+	{
+		Assert(!OidIsValid(((IndexInfoOpaque *)indexInfo->opaque)->heapRelfilenode));
+		Assert(!OidIsValid(((IndexInfoOpaque *)indexInfo->opaque)->indexRelfilenode));
+	}
+#endif
+}
+
+/*
+ * generateExtraOids: generate the given number of extra Oids.
+ *
+ * If genNewOid is true, all generated OIDs will be valid. Otherwise,
+ * all OIDs will be InvalidOid.
+ */
+static List *
+generateExtraOids(int num_extra_oids,
+				  Oid reltablespace,
+				  bool relisshared,
+				  bool genNewOid)
+{
+	List *extra_oids = NIL;
+	
+	Assert(num_extra_oids > 0);
+	
+	for (int no = 0; no < num_extra_oids; no++)
+	{
+		Oid newOid = InvalidOid;
+		if (genNewOid)
+			newOid = GetNewRelFileNode(reltablespace,
+									   relisshared,
+									   NULL);
+		
+		extra_oids = lappend_oid(extra_oids, newOid);
+	}
+
+	return extra_oids;
+}
+
+/*
  * reindex_index - This routine is used to recreate a single index.
  *
  * GPDB: we return the new relfilenode for transmission to QEs. If
@@ -2418,6 +2492,10 @@ IndexGetRelation(Oid indexId)
  * heap and index. We pass those in as extra_oids. If there are no
  * such oids, this function generates them and pass them out to
  * the caller.
+ *
+ * The extra_oids list always contain 2 values. If the index is
+ * a bitmap index, those two values are valid OIDs. Otherwise,
+ * they are InvalidOids.
  */
 Oid
 reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
@@ -2520,40 +2598,29 @@ reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
 			{
 				setNewRelfilenodeToOid(iRel, newrelfilenode);
 				retrelfilenode = newrelfilenode;
-
-				/* Store extra_oids into indexInfo->opaque */
-				if (*extra_oids != NULL &&
-					list_length(*extra_oids) > 0)
-				{
-					Assert(list_length(*extra_oids) == 2);
-					indexInfo->opaque = (void*)palloc0(sizeof(IndexInfoOpaque));
-					((IndexInfoOpaque *)indexInfo->opaque)->heapRelfilenode =
-						linitial_oid(*extra_oids);
-					((IndexInfoOpaque *)indexInfo->opaque)->indexRelfilenode =
-						lsecond_oid(*extra_oids);
-				}
 			}
 			else
 			{
 				retrelfilenode = setNewRelfilenode(iRel);
 
+				Assert(*extra_oids == NULL);
+
 				/*
 				 * If this is a bitmap index, we generate two more relfilenodes
 				 * for its internal heap and index.
 				 */
-				if (RelationIsBitmapIndex(iRel))
-				{
-					Assert(*extra_oids == NULL);
-					*extra_oids = lappend_oid(*extra_oids,
-											  GetNewRelFileNode(iRel->rd_rel->reltablespace,
-																iRel->rd_rel->relisshared,
-																NULL));
-					*extra_oids = lappend_oid(*extra_oids,
-											  GetNewRelFileNode(iRel->rd_rel->reltablespace,
-																iRel->rd_rel->relisshared,
-																NULL));
-				}
+				*extra_oids = generateExtraOids(2,
+												iRel->rd_rel->reltablespace,
+												iRel->rd_rel->relisshared,
+												RelationIsBitmapIndex(iRel));
+
 			}
+			
+
+			/* Store extra_oids into indexInfo->opaque */
+			createIndexInfoOpaque(*extra_oids,
+								  RelationIsBitmapIndex(iRel),
+								  indexInfo);
 		}
 
 		/* Initialize the index and rebuild */
@@ -2730,14 +2797,15 @@ reindex_relation(Oid relid, bool toast_too, bool aoseg_too, bool aoblkdir_too,
 				if (ind == indexOid)
 				{
 					mapoid = lsecond_oid(map);
-
-					if (list_length(map) > 2)
-					{
-						Assert(list_length(map) == 4);
-
-						extra_oids = lappend_oid(extra_oids, lthird_oid(map));
-						extra_oids = lappend_oid(extra_oids, lfourth_oid(map));
-					}
+					
+					/*
+					 * The map should contain more than 2 OIDs (the OID of the
+					 * index and its new relfilenode), to support the bitmap
+					 * index, see reindex_index() for more info. Construct
+					 * the extra_oids list by skipping the first two OIDs.
+					 */
+					Assert(list_length(map) > 2);
+					extra_oids = list_copy_tail(map, 2);
 
 					break;
 				}
@@ -2758,12 +2826,8 @@ reindex_relation(Oid relid, bool toast_too, bool aoseg_too, bool aoblkdir_too,
 		{
 			List *map = list_make2_oid(indexOid, newrelfilenode);
 
-			if (extra_oids != NULL)
-			{
-				Assert(list_length(extra_oids) == 2);
-				map = lappend_oid(map, linitial_oid(extra_oids));
-				map = lappend_oid(map, lsecond_oid(extra_oids));
-			}
+			Assert(extra_oids != NULL);
+			map = list_concat(map, extra_oids);
 
 			*oidmap = lappend(*oidmap, map);
 		}

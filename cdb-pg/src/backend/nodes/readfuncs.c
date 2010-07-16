@@ -1983,6 +1983,8 @@ _readCreateStmt(void)
 	READ_CHAR_FIELD(relStorage);
 	READ_BOOL_FIELD(is_part_child);
 	READ_OID_FIELD(ownerid);
+	READ_BOOL_FIELD(buildAoBlkdir);
+
 	local_node->policy = NULL;
 	Assert(local_node->oidInfo.relOid == InvalidOid);
 

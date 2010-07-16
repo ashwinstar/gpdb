@@ -12082,6 +12082,18 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
 		}
 	}
 
+	/*
+	 * For AO tables with indexes, always use Create Table + Insert Into.
+	 * During Create Table phase, we determine whether to create the block
+	 * directory depending on whether the AO table has indexes. It is
+	 * important to create the block directory to support the reindex
+	 * later. See MPP-9545 for more info.
+	 */
+	if ((RelationIsAoRows(rel) ||
+		 RelationIsAoCols(rel)) &&
+		rel->rd_rel->relhasindex)
+		need_rebuild = true;
+
 	if (need_rebuild)
 	{
 		CreateStmt *cs = makeNode(CreateStmt);
@@ -12096,6 +12108,12 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
 		cs->relation = tmpname;
 		cs->ownerid = rel->rd_rel->relowner;
 		cs->tablespacename = get_tablespace_name(rel->rd_rel->reltablespace);
+		cs->buildAoBlkdir = false;
+
+		if ((RelationIsAoRows(rel) ||
+			 RelationIsAoCols(rel)) &&
+			rel->rd_rel->relhasindex)
+			cs->buildAoBlkdir = true;
 
 		for (attno = 0; attno < tupdesc->natts; attno++)
 		{

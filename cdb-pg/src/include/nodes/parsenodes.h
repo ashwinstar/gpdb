@@ -1349,6 +1349,7 @@ typedef struct CreateStmt
 	Node       *postCreate;      /* CDB: parse and process after the CREATE */
 	bool		is_part_child;	/* CDB: partition child table? */
 	Oid			ownerid;		/* OID of the role to own this. if InvalidOid, GetUserId() */
+	bool		buildAoBlkdir; /* whether to build the block directory for an AO table */
 } CreateStmt;
 
 /* ----------------------
