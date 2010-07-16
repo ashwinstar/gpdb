@@ -452,6 +452,8 @@ class GpExpandStatus():
                     self._temp_dir = status_info
                 elif status == 'BUILD_SEGMENTS_STARTED':
                     self._tar_filename = status_info
+                elif status == 'BUILD_SEGMENTS_DONE':
+                    self._number_new_segments = status_info
                 elif status == 'EXPANSION_PREPARE_STARTED':
                     self._input_filename = status_info
                 elif status == 'UPDATE_OLD_SEGMENTS_STARTED':
@@ -557,6 +559,10 @@ class GpExpandStatus():
         """Gets tar file that was used during template creation"""
         return self._tar_filename
 
+    def get_number_new_segments(self):
+        """ Gets the number of new segments added """
+        return self._number_new_segments
+
     def get_original_primary_count(self):
         """Returns the original number of primary segments"""
         return self._original_primary_count
@@ -643,7 +649,8 @@ class SegmentTemplate:
         self.statusLogger.set_status('BUILD_SEGMENTS_STARTED', os.path.abspath(self.schema_tar_file))
         self._distribute_template()
         self._configure_new_segments()
-        self.statusLogger.set_status('BUILD_SEGMENTS_DONE')
+        numNewSegments = len(self.gparray.getExpansionSegDbList())
+        self.statusLogger.set_status('BUILD_SEGMENTS_DONE', numNewSegments)
 
 
     def _create_template(self):
@@ -1806,6 +1813,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
 
         # Create a new gpArray from the backup file
         array = GpArray.initFromFile(backupFile)
+        arrayLen = len(array.getSegDbList())
 
         originalDbIds = ""
         first = True
@@ -1820,16 +1828,39 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
            restore_conn = None
            try:
                restore_conn = dbconn.connect(self.dburl, utility=True, encoding='UTF8')
-               sqlStr = "select dbid, role from pg_catalog.gp_segment_configuration where dbid not in (%s) order by role DESC" % str(originalDbIds)
+
+               # Get a list of all the expand primary segments
+               sqlStr = "select dbid from pg_catalog.gp_segment_configuration where dbid not in (%s) and role = 'p'" % str(originalDbIds)
                curs = dbconn.execSQL(restore_conn, sqlStr)
                deleteDbIdList = []
                rows = curs.fetchall()
                for row in rows:
-                   deleteDbIdList.append(row[0])
+                   deleteDbIdList.append(row[0]) 
+
+               # Get a list of all the expand mirror segments
+               sqlStr = "select content from pg_catalog.gp_segment_configuration where dbid not in (%s) and role = 'm'" % str(originalDbIds)
+               curs = dbconn.execSQL(restore_conn, sqlStr)
+               deleteContentList = []
+               rows = curs.fetchall()
+               for row in rows:
+                   deleteContentList.append(row[0])
+
+               # The following is a sanity check to make sure we don't do something bad here.
+               totalToDelete = len(deleteDbIdList) + len(deleteContentList)
+               if int(totalToDelete) != int(self.statusLogger.get_number_new_segments()):
+                  self.logger.error("There was a discrepancy between the number of expand segments to rollback (%s), and the expected number of segment to rollback (%s)" \
+                                    % (str(totalToDelete), str(self.statusLogger.get_number_new_segments())))
+                  self.logger.error("  Expanded primary segment dbids = %s", str(deleteDbIdList))
+                  self.logger.error("  Expansion mirror content ids   = %s", str(deleteContentList))
+                  raise Exception("Unable to complete rollback")
             
+               for content in deleteContentList:
+                  sqlStr = "select * from gp_remove_segment_mirror(%s::smallint)" % str(content)
+                  dbconn.execSQL(restore_conn, sqlStr)
+
                for dbid in deleteDbIdList:
                   sqlStr = "select * from gp_remove_segment(%s::smallint)" % str(dbid)
-                  dbconn.execSQL(restore_conn, sqlStr)        
+                  dbconn.execSQL(restore_conn, sqlStr)      
             
                restore_conn.commit()
            except Exception, e:
@@ -1837,7 +1868,6 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
            finally:
                if restore_conn != None:
                   restore_conn.close()
-
 
     def sync_new_mirrors(self):
         """ This method will execute gprecoverseg so that all new segments sync with their mirrors."""
