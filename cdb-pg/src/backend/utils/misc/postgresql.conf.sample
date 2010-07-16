@@ -291,12 +291,20 @@
 #gp_email_smtp_password = ''				# Password/Passphrase used to authenticate with SMTP server, if needed
 
 # Here you need to specify e-mail addresses.  The email_from address doesn't actually need 
-# to be a valid e-mail address.  The email_to is a list of recipients who will get the alerts.
+# to be a valid e-mail address, but it is much better if it is, because delivery failure notifications
+# go to that address.  The email_to is a list of recipients who will get the alerts.
+#
 # The e-mail addresses need to be in the form of userid@domain.com, not just userid.
 # If email_to list is empty, it disables e-mail alerts.
+#
+# e-mail addresses can be just the actual e-mail address, userid@domain.com, or can be a
+# human readable name with attached e-mail address in the form 'Joe Smith <userid@domain.com>".
+# If using the latter format, the e-mail address must be between '<' and '>'.  The first part of
+# the string can be any text, and if used for the gp_email_from address, can help differentiate the e-mails
+# from different servers (for example:  'my test GPDB system <userid@domain.com>").
 
 #gp_email_from = ''						# Who do we say the e-mails are from?  and who is the return-path?
-#gp_email_to = ''						# Comma separated list of recipients that will get e-mail alerts.
+#gp_email_to = ''						# Semicolon separated list of recipients that will get e-mail alerts.
 										# empty means disable e-mail alerts.
 
 #------------------------------------------------------------------------------

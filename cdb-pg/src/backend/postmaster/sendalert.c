@@ -46,6 +46,7 @@
 #include "utils/guc.h"
 #include "utils/elog.h"
 #include "utils/builtins.h"
+
 extern int	PostPortNumber;
 extern void pg_itoa(int16 i, char *a);
 
@@ -99,6 +100,8 @@ static int authinteract(auth_client_request_t request, char **result,
 static int tlsinteract(char *buf, int buflen, int rwflag  __attribute__((unused)), void *arg  __attribute__((unused)));
 static int handle_invalid_peer_certificate(long vfy_result);
 static void event_cb(smtp_session_t session, int event_no, void *arg, ...);
+static bool SplitMailString(char *rawstring, char delimiter, List **namelist);
+static void monitor_cb (const char *buf, int buflen, int writing, void *arg);
 #endif
 
 #if USE_SNMP
@@ -389,7 +392,7 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 	rawstring = pstrdup(gp_snmp_monitor_address);
 
 	/* Parse string into list of identifiers */
-	if (!SplitIdentifierString(rawstring, ',', &elemlist))
+	if (!SplitMailString(rawstring, ',', &elemlist))
 	{
 		/* syntax error in list */
 		ereport(LOG,
@@ -591,7 +594,7 @@ int send_alert(const GpErrorData * errorData)
 	auth_context_t authctx;
 	const smtp_status_t *status;
 
-	enum notify_flags notify = Notify_FAILURE;
+	enum notify_flags notify = Notify_FAILURE | Notify_DELAY;
 	char	   *rawstring = NULL;
 	List	   *elemlist = NIL;
 	ListCell   *l = NULL;
@@ -641,16 +644,6 @@ int send_alert(const GpErrorData * errorData)
 		 * investigate further.
 		 */
 		bool same_message_repeated = true;
-
-#if 0
-		/*
-		 * User message from gp_elog()?  Don't Suppress it.
-		 * Assume the user knows what they are doing.
-		 * Can we do that?  The user might have screwed up things too.
-		 */
-		if (strcmp(errorData->sql_state,"XX001") == 0)
-			same_message_repeated = false;
-#endif
 
 		/*
 		 * If the message is from a different segDB, consider it a different message.
@@ -723,6 +716,15 @@ int send_alert(const GpErrorData * errorData)
 		return -1;
 	}
 
+	if (strchr(gp_email_to, ';') == NULL && strchr(gp_email_to, ',') != NULL)
+	{
+		// email addrs should be separated by ';', but because we used to require ',',
+		// let's accept that if it looks OK.
+		while (strchr(gp_email_to,',') != NULL)
+			*strchr(gp_email_to,',') = ';';
+	}
+
+
 
 	// Ok, send the alert here.
 
@@ -739,9 +741,14 @@ int send_alert(const GpErrorData * errorData)
 		return -1;
 	}
 
+	if (log_min_messages <= DEBUG1)
+		smtp_set_monitorcb (session, monitor_cb, NULL, 1);
+
 	message = smtp_add_message(session);
 	if (message == NULL)
 		elog(LOG,"smtp_add_message() failed");
+
+	//smtp_message_reset_status(message);
 
 #if USE_SSL
 	if (!smtp_starttls_enable(session, Starttls_ENABLED))
@@ -769,13 +776,27 @@ int send_alert(const GpErrorData * errorData)
 	authctx = auth_create_context();
 	if (authctx == NULL)
 		elog(LOG,"auth_create_context() failed %d",smtp_errno());
-	auth_set_mechanism_flags(authctx, AUTH_PLUGIN_PLAIN|AUTH_PLUGIN_ANONYMOUS, 0);
+
+	if (!auth_set_mechanism_flags(authctx, AUTH_PLUGIN_PLAIN | AUTH_PLUGIN_ANONYMOUS, 0))
+	{
+		elog(LOG,"Can't auth_set_mechanism_flags");
+	}
+
 	auth_set_interact_cb(authctx, authinteract, NULL);
 
-	/* TODO: I don't know how "external" is supposed to work, or what ID I'm supposed to set here */
-	auth_set_external_id(authctx, gp_email_smtp_userid);
+	/*
+	 * From what I can tell, we aren't supposed to call auth_set_external_id() directly.
+	 * Instead, it gets called automatically based on the information in the client certificate,
+	 * which is usually the e-mail address.
+	 * Perhaps this might be needed for special circumstances?
+	 */
+	//if (gp_email_smtp_userid != NULL && gp_email_smtp_userid[0] != '\0')
+	//	auth_set_external_id(authctx, gp_email_smtp_userid);
 
-	smtp_auth_set_context(session, authctx);
+	if (!smtp_auth_set_context(session, authctx))
+	{
+		elog(LOG,"Can't smtp_auth_set_context");
+	}
 
 	/*
 	 * Use our callback for X.509 certificate passwords.  If STARTTLS is
@@ -786,8 +807,20 @@ int send_alert(const GpErrorData * errorData)
 	/*
 	 * Set the reverse path for the mail envelope.  (NULL is ok)
 	 */
-	if (!smtp_set_reverse_path(message, gp_email_from))
-		elog(LOG,"smtp_set_reverse_path failed %d",smtp_errno());
+	if (strchr(gp_email_from,'<') != NULL)
+	{
+		/*
+		 * Pull out just the e-mail address
+		 */
+		char * from = pstrdup(strchr(gp_email_from,'<')+1);
+		if (strchr(from,'>') != NULL)
+			*strchr(from,'>') = '\0';
+		if (!smtp_set_reverse_path(message, from))
+					elog(LOG,"smtp_set_reverse_path failed %d",smtp_errno());
+	}
+	else
+		if (!smtp_set_reverse_path(message, gp_email_from))
+			elog(LOG,"smtp_set_reverse_path failed %d",smtp_errno());
 
 	smtp_set_header(message, "Subject", subject);
 	smtp_set_header_option(message, "Subject", Hdr_OVERRIDE, 1);
@@ -816,15 +849,13 @@ int send_alert(const GpErrorData * errorData)
 			  strstr(errorData->error_message, gettext("database system is ready to accept connections"))  != NULL)
 		smtp_set_header(message, "X-Priority", "5"); // 5  == low priority
 
-
-
 	smtp_set_messagecb(message, messagebody_cb, (void *) errorData);
 
 	/* Need a modifiable copy of To list */
 	rawstring = pstrdup(gp_email_to);
 
 	/* Parse string into list of identifiers */
-	if (!SplitIdentifierString(rawstring, ',', &elemlist))
+	if (!SplitMailString(rawstring, ';', &elemlist))
 	{
 		/* syntax error in list */
 		ereport(LOG,
@@ -832,29 +863,70 @@ int send_alert(const GpErrorData * errorData)
 				 errmsg("invalid list syntax for \"gp_email_to\"")));
 	}
 
+#if 0
+	/*
+	 * We want to set a "To:" header.
+	 *
+	 * Some versions of libesmtp have a bug that only allows this to work for a single
+	 * e-mail recipient.  Because of that, I've changed the code to set the "To:" header
+	 * in the message body callback, but I'm not sure that is as good as doing this, since I
+	 * might not have it formatted the best way.
+	 *
+	 */
+	foreach(l, elemlist)
+	{
+		char	   *cur_gp_email_addr = (char *) lfirst(l);
+
+		char	*free_form_text = NULL;
+		char	*email_addr = cur_gp_email_addr;
+
+		/*
+		 * RFC 2822 doesn't require recipient headers but a To: header would
+		 * be nice to have if not present.
+		 *
+		 * First string is free-form text which is the real name of the person (not really used)
+		 * The second string is the e-mail address.
+		 */
+		if (strchr(cur_gp_email_addr,'<') != NULL)
+		{
+			free_form_text = pstrdup(cur_gp_email_addr);
+			*strchr(free_form_text,'<') = '\0';
+			email_addr = pstrdup(strchr(cur_gp_email_addr,'<')+1);
+			if (strchr(email_addr,'>') != NULL)
+				*strchr(email_addr,'>') = '\0';
+		}
+
+		if (!smtp_set_header(message, "To", free_form_text, email_addr));
+		{
+			char buf[128];
+
+			elog(LOG, "smtp_set_header failed:  %d  %s  for e-mail %s", smtp_errno(), smtp_strerror(smtp_errno(),
+							buf, sizeof buf), cur_gp_email_addr);
+		}
+	}
+#endif
+
 	foreach(l, elemlist)
 	{
 		char	   *cur_gp_email_addr = (char *) lfirst(l);
 
 		if (cur_gp_email_addr != NULL && strlen(cur_gp_email_addr) > 0)
 		{
-			/*
-			 * RFC 2822 doesn't require recipient headers but a To: header would
-			 * be nice to have if not present.
-			 *
-			 * First string is free-form text which is the real name of the person (not really used)
-			 * The second string is the e-mail address.
-			 */
-			if (!smtp_set_header(message, "To", cur_gp_email_addr, cur_gp_email_addr))
-			{
-				char buf[128];
-
-				elog(LOG, "smtp_set_header failed:  %d  %s  for e-mail %s", smtp_errno(), smtp_strerror(smtp_errno(),
-								buf, sizeof buf), cur_gp_email_addr);
-			}
+			char * to = cur_gp_email_addr;
 
 			/* Recipient must be in RFC2821 format */
-			recipient = smtp_add_recipient(message, cur_gp_email_addr);
+
+			if (strchr(cur_gp_email_addr,'<') != NULL)
+			{
+				/*
+				 * Pull out just the e-mail address
+				 */
+				to = pstrdup(strchr(cur_gp_email_addr,'<')+1);
+				if (strchr(to,'>') != NULL)
+					*strchr(to,'>') = '\0';
+			}
+
+			recipient = smtp_add_recipient(message, to);
 
 			if (recipient == NULL)
 				elog(LOG, "stmp_add_recipient failed for e-mail:  %s", cur_gp_email_addr);
@@ -913,7 +985,7 @@ int send_alert(const GpErrorData * errorData)
 		 * >= 300 are errors
 		 */
 		status = smtp_message_transfer_status(message);
-		elog(status->code < 300 ? DEBUG1 : LOG, "overall transfer status: %d %s", status->code,
+		elog(status->code == 250 ? DEBUG1 : LOG, "overall transfer status: %d %s", status->code,
 				(status->text != NULL) ? status->text : "");
 
 		/*
@@ -1108,6 +1180,7 @@ static void add_to_message(char * message, const char * newstr_in)
 	strcat(message, newstr);
 
 }
+
 static const char *
 messagebody_cb(void **buf, int *len, void *arg)
 {
@@ -1144,7 +1217,15 @@ messagebody_cb(void **buf, int *len, void *arg)
 		pg_itoa(errorData->fix_fields.error_fileline,lineno);
 
 		/* Perhaps better to use text/html ? */
-		strcpy(message,
+
+		strcpy(message, "From: ");
+		strcat(message, gp_email_from);
+		strcat(message,"\r\n");
+		strcat(message, "To: ");
+		strcat(message,gp_email_to);
+		strcat(message,"\r\n");
+
+		strcat(message,
 			//"Return-Path: <cmcdevitt@greenplum.com>\r\n"
 			//"Subject: LibESMTP test mail\r\n"
 			"MIME-Version: 1.0\r\n"
@@ -1274,6 +1355,7 @@ messagebody_cb(void **buf, int *len, void *arg)
 			add_to_message(message, errorData->debug_query_string);
 			strcat(message, "\r\n");
 		}
+
 	}
 
 	if (alreadyreturned < strlen(message))
@@ -1328,6 +1410,8 @@ static int authinteract(auth_client_request_t request, char **result,
 		int fields, void *arg)
 {
 	int i;
+	
+	elog(DEBUG2, "authinteract called");
 
 	/* SASL auth requests */
 	for (i = 0; i < fields; i++)
@@ -1364,7 +1448,7 @@ static int authinteract(auth_client_request_t request, char **result,
 static int tlsinteract(char *buf, int buflen, int rwflag  __attribute__((unused)), void *arg  __attribute__((unused)))
 {
 
-	elog(LOG, "tlsinteract asking for tls password");
+	elog(DEBUG1, "tlsinteract asking for tls password");
 
 	strcpy(buf, gp_email_smtp_password);  // This isn't right... We need the X.509 certificate's password, I think
 	return strlen(buf);
@@ -1589,15 +1673,90 @@ static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
 		break;
 
 	case SMTP_EV_EXTNA_8BITMIME:
-		elog(LOG, "SMTP_EV_EXTNA_8BITMIME");
+		elog(DEBUG1, "SMTP_EV_EXTNA_8BITMIME");
+		break;
+
+	case SMTP_EV_EXTNA_DSN:
+		elog(DEBUG1, "SMTP_EV_EXTNA_DSN");
 		break;
 
 	default:
+		elog(LOG, "SMTP_EV_%d",event_no);
 		break;
 
 	}
 
 	va_end(alist);
 }
+
+static bool
+SplitMailString(char *rawstring, char delimiter,
+					  List **namelist)
+{
+	char	   *nextp = rawstring;
+	bool		done = false;
+
+	*namelist = NIL;
+
+	while (isspace((unsigned char) *nextp))
+		nextp++;				/* skip leading whitespace */
+
+	if (*nextp == '\0')
+		return true;			/* allow empty string */
+
+	/* At the top of the loop, we are at start of a new address. */
+	do
+	{
+		char	   *curname;
+		char	   *endp;
+
+		curname = nextp;
+		while (*nextp && *nextp != delimiter)
+			nextp++;
+		endp = nextp;
+		if (curname == nextp)
+			return false;	/* empty unquoted name not allowed */
+
+
+
+		while (isspace((unsigned char) *nextp))
+			nextp++;			/* skip trailing whitespace */
+
+		if (*nextp == delimiter)
+		{
+			nextp++;
+			while (isspace((unsigned char) *nextp))
+				nextp++;		/* skip leading whitespace for next */
+			/* we expect another name, so done remains false */
+		}
+		else if (*nextp == '\0')
+			done = true;
+		else
+			return false;		/* invalid syntax */
+
+		/* Now safe to overwrite separator with a null */
+		*endp = '\0';
+
+		/*
+		 * Finished isolating current name --- add it to list
+		 */
+		*namelist = lappend(*namelist, curname);
+
+		/* Loop back if we didn't reach end of string */
+	} while (!done);
+
+	return true;
+}
+
+/*
+ * This routine is strictly for debugging... It dumps out our interaction with the SMTP server.
+ */
+static void
+monitor_cb (const char *buf, int buflen, int writing, void *arg)
+{
+  elog(DEBUG1, "SMTP %s: %.*s",(writing == SMTP_CB_HEADERS) ? "H" : writing ? "C" : "S", buflen, buf);
+}
+
+
 #endif
 
