@@ -676,7 +676,7 @@ def createSegmentRows( hostlist
                     
                 if not mirror_port.has_key(mirror_host):
                     mirror_port[mirror_host] = mirror_portbase
-                if not mirror_replication_port.has_key(mirror_replication_portbase):
+                if not mirror_replication_port.has_key(mirror_host):
                     mirror_replication_port[mirror_host] = mirror_replication_portbase
                     
                 rows.append( SegmentRow( content = content
@@ -819,7 +819,7 @@ def createSegmentRowsFromSegmentList( newHostlist
                     
                 if not mirror_port.has_key(mirror_host):
                     mirror_port[mirror_host] = mirror_portbase
-                if not mirror_replication_port.has_key(mirror_replication_portbase):
+                if not mirror_replication_port.has_key(mirror_host):
                     mirror_replication_port[mirror_host] = mirror_replication_portbase
                     
                 rows.append( SegmentRow( content = content
