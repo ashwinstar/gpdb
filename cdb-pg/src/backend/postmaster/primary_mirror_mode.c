@@ -12,6 +12,7 @@
 #include "storage/spin.h"
 #include "miscadmin.h"
 #include "access/xlog.h"
+#include "utils/guc.h"
 #include <string.h>
 
 /**
@@ -230,6 +231,22 @@ bool gHaveInitializedLocalState = false;
 #define RESULT_INFO_POSTMASTER_DIED "PostmasterDied"
 #define RESULT_INFO_IN_SHUTDOWN "ServerIsInShutdown"
 #define RESULT_INFO_INVALID_STATE_TRANSITION "InvalidStateTransition"
+
+/**
+ * Return the log level to be used for the PrimaryMirror log messages
+ *
+ * @param isLowPriority is this a low-priority message? If so, the log level will be higher.  This can be set to true,
+ *               for example, for messages that are printed out during polling events when a state has NOT changed. 
+ */
+static int
+getPrimaryMirrorModeDebugLogLevel(bool isLowPriority)
+{
+    if ( isLowPriority)
+        return DEBUG3;
+    else if ( Debug_filerep_print )
+        return LOG;
+    else return DEBUG1;
+}
 
 /**
  * LABELS and parsing of values
@@ -848,7 +865,7 @@ primaryMirrorHandlePostmasterReset(void)
         transitionToFault = false;
     }
 
-    elog(LOG, "PrimaryMirrorMode: Processing postmaster reset%s",
+    elog(getPrimaryMirrorModeDebugLogLevel(false), "PrimaryMirrorMode: Processing postmaster reset%s",
                 transitionToFault ? " to fault state" : " to non-fault state");
 
     pmModuleState->requestedTransition = pmLocalState.mostRecentTransition;
@@ -886,7 +903,7 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 	assertModuleInitialized();
 	targetMode = args->mode;
 
-	elog(LOG, "PrimaryMirrorTransitionRequest: to primary/mirror mode %s, "
+	elog(getPrimaryMirrorModeDebugLogLevel(false), "PrimaryMirrorTransitionRequest: to primary/mirror mode %s, "
 	                "data state %s, host %s, port %d, peer %s, peerPort %d%s%s",
 		 getMirrorModeLabel(targetMode), getDataStateLabel(args->dataState),
 		 args->hostAddress, args->hostPort,
@@ -914,7 +931,8 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 			if (pmModuleState->isTransitionRequested ||
 				!pmModuleState->isTransitionListenerFinished)
 			{
-				elog(LOG, "PrimaryMirrorTransitionRequest (%d) Result: Cannot transition: modulestate is: %s %s",
+				elog(getPrimaryMirrorModeDebugLogLevel(false),
+				    "PrimaryMirrorTransitionRequest (%d) Result: Cannot transition: modulestate is: %s %s",
 				     args->transitionNumber,
 					 (pmModuleState->isTransitionRequested ? "requested transition and" : ""),
 					 (pmModuleState->isTransitionListenerFinished ?
@@ -936,7 +954,8 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 		{
 			releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 
-			elog(LOG, "PrimaryMirrorTransitionRequest (%d) Result: Transition to primary/mirror mode %s, "
+			elog(getPrimaryMirrorModeDebugLogLevel(false),
+			        "PrimaryMirrorTransitionRequest (%d) Result: Transition to primary/mirror mode %s, "
 			                "data state %s resulted in %s pending request(%s%s)",
 				 args->transitionNumber,
 				 getMirrorModeLabel(targetMode), getDataStateLabel(args->dataState),
@@ -962,11 +981,12 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 
 			releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 
-			elog(LOG, "PrimaryMirrorTransitionRequest (%d) Result: Transition to primary/mirror mode %s, "
-			                        "data state %s is as no-op",
-				                    args->transitionNumber,
-				                    getMirrorModeLabel(targetMode), 
-				                    getDataStateLabel(args->dataState));
+			elog(getPrimaryMirrorModeDebugLogLevel(false),
+			        "PrimaryMirrorTransitionRequest (%d) Result: Transition to primary/mirror mode %s, "
+                    "data state %s is as no-op",
+                    args->transitionNumber,
+                    getMirrorModeLabel(targetMode),
+                    getDataStateLabel(args->dataState));
 			return PMTransitionSuccess;
 		}
 
@@ -1023,7 +1043,7 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 			{
 			    /* this won't get transitionToFault, because that 'succeeds', but that's okay because
 			     *    that happens on a panic from in-sync anyway */
-			    int logLevel = result == PMTransitionError ? WARNING : LOG;
+			    int logLevel = result == PMTransitionError ? WARNING : getPrimaryMirrorModeDebugLogLevel(false);
 				elog(logLevel, "PrimaryMirrorTransitionRequest (%d) Result: Transition to primary/mirror mode %s, "
 				    "data state %s%s resulted in %s",
 				        args->transitionNumber,
@@ -1036,8 +1056,9 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 	}
 	PG_CATCH();
 	{
-		elog(LOG, "PrimaryMirrorTransitionRequest: Caught exception in requestTransitionToPrimaryMirrorMode(), "
-		                "isTransitioning %d", isTransitioning);
+		elog(getPrimaryMirrorModeDebugLogLevel(false),
+		        "PrimaryMirrorTransitionRequest: Caught exception in requestTransitionToPrimaryMirrorMode(), "
+                "isTransitioning %d", isTransitioning);
 
 		if (isTransitioning)
 		{
@@ -1250,13 +1271,15 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 	{
 	    if ( ! isPrevRequestComplete )
 	    {
-	        elog(LOG, "PostmasterPrimaryMirrorTransition (%d): Nothing to do but listener is not done",
-                        transitionNumber );
+	        elog(getPrimaryMirrorModeDebugLogLevel(false),
+	                "PostmasterPrimaryMirrorTransition (%d): Nothing to do but listener is not done",
+                    transitionNumber );
 	    }
 		return;
 	}
 
-	elog(DEBUG1, "PostmasterPrimaryMirrorTransition (%d): Attempting requested transition mode to %s, "
+	elog(getPrimaryMirrorModeDebugLogLevel(false),
+	                "PostmasterPrimaryMirrorTransition (%d): Attempting requested transition mode to %s, "
 	                "data state to %s, state is currently %s",
 	                transitionNumber,
 		            getMirrorModeLabel(requestedTransition.mode),
@@ -1267,7 +1290,8 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
     extraResultInfo[0] = '\0';
     if ( isInShutdown )
     {
-	    elog(LOG, "PostmasterPrimaryMirrorTransition error: system is in shutdown");
+	    elog(getPrimaryMirrorModeDebugLogLevel(false),
+	            "PostmasterPrimaryMirrorTransition error: system is in shutdown");
 	    strncpy(extraResultInfo, RESULT_INFO_IN_SHUTDOWN, MAX_TRANSITION_RESULT_EXTRA_INFO);
         result = PMTransitionError;
     }
@@ -1328,8 +1352,9 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
                 }
                 releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 
-                elog(LOG, "PostmasterPrimaryMirrorTransition (%d), after completed step, transition state is %s",
-                    transitionNumber, getTransitionStateLabel(currentState));
+                elog(getPrimaryMirrorModeDebugLogLevel(false),
+                        "PostmasterPrimaryMirrorTransition (%d), after completed step, transition state is %s",
+                        transitionNumber, getTransitionStateLabel(currentState));
             }
 
             Assert(result != PMTransitionOtherTransitionInProgress);
@@ -1349,9 +1374,10 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 
             if ( currentState == TSDone)
             {
-                elog(LOG, "PostmasterPrimaryMirrorTransition (%d): transition to %s done",
-                    transitionNumber,
-                    getDataStateLabel(requestedTransition.dataState));
+                elog(getPrimaryMirrorModeDebugLogLevel(false),
+                        "PostmasterPrimaryMirrorTransition (%d): transition to %s done",
+                        transitionNumber,
+                        getDataStateLabel(requestedTransition.dataState));
                 result = PMTransitionSuccess;
                 break;
             }
@@ -1366,13 +1392,14 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 	if (result == PMTransitionOkayButStillInProgress)
 	{
 		Assert(pmModuleState->transitionState != TSNone);
-    	elog(DEBUG1, "PostmasterPrimaryMirrorTransition (%d): in-progress, current state %s",
-	    	 transitionNumber,
-	    	 getTransitionStateLabel(currentState));
+    	elog(getPrimaryMirrorModeDebugLogLevel(true),
+    	        "PostmasterPrimaryMirrorTransition (%d): in-progress, current state %s",
+	    	    transitionNumber,
+	    	    getTransitionStateLabel(currentState));
 	}
 	else
 	{
-        int logLevel = result == PMTransitionError ? WARNING : LOG;
+        int logLevel = result == PMTransitionError ? WARNING : getPrimaryMirrorModeDebugLogLevel(false);
 	    elog(logLevel, "PostmasterPrimaryMirrorTransition (%d) Finished with %s",
 	        transitionNumber, getTransitionResultLabel(result));
 		acquireModuleSpinLockAndMaybeStartCriticalSection(true);
@@ -1380,9 +1407,10 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 			pmModuleState->transitionResult = result;
 			strncpy((char*)pmModuleState->transitionResultExtraInfo, extraResultInfo, MAX_TRANSITION_RESULT_EXTRA_INFO);
 			pmModuleState->isTransitionRequested = false;
-			elog(LOG, "PostmasterPrimaryMirrorTransition (%d): completed (waiting backend finished? %s)",
-			                transitionNumber,
-			                pmModuleState->isTransitionListenerFinished ? "yes" : "no");
+			elog(getPrimaryMirrorModeDebugLogLevel(false),
+			        "PostmasterPrimaryMirrorTransition (%d): completed (waiting backend finished? %s)",
+                    transitionNumber,
+                    pmModuleState->isTransitionListenerFinished ? "yes" : "no");
 			pmModuleState->transitionState = TSNone;
 		}
 		releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
@@ -1446,7 +1474,8 @@ stepWaitForFilerepShutdown(TransitionState nextState, TransitionState *stateInOu
     /* waiting for filerep to complete shutdown */
     if (IsFilerepProcessRunning())
     {
-        elog(DEBUG1, "PostmasterPrimaryMirrorTransition: filerep still running, will wait longer");
+        elog(getPrimaryMirrorModeDebugLogLevel(true),
+                "PostmasterPrimaryMirrorTransition: filerep still running, will wait longer");
     }
     else
     {
@@ -1466,7 +1495,8 @@ stepWaitForFilerepBackendsShutdown(TransitionState nextState, TransitionState *s
     }
     else
     {
-        elog(DEBUG1, "PostmasterPrimaryMirrorTransition: will wait longer for backends to shutdown");
+        elog(getPrimaryMirrorModeDebugLogLevel(true),
+                "PostmasterPrimaryMirrorTransition: will wait longer for backends to shutdown");
     }
     return PMTransitionSuccess;
 }
@@ -1481,7 +1511,8 @@ stepWaitForFilerepStartup(TransitionState nextState, TransitionState *stateInOut
     if (!IsFilerepProcessRunning() ||
         segmentState == SegmentStateFault)
     {
-        elog(LOG, "PostmasterPrimaryMirrorTransition: filerep startup: transition error");
+        elog(getPrimaryMirrorModeDebugLogLevel(false),
+                "PostmasterPrimaryMirrorTransition: filerep startup: transition error");
         if ( updateSegmentState(SegmentStateFault))
             NotifyProcessesOfFilerepStateChange();
         strncpy(extraResultInfoOut, RESULT_INFO_MIRRORING_FAILURE, MAX_TRANSITION_RESULT_EXTRA_INFO);
@@ -1491,12 +1522,14 @@ stepWaitForFilerepStartup(TransitionState nextState, TransitionState *stateInOut
     if (segmentState == SegmentStateReady ||
         segmentState == SegmentStateChangeTrackingDisabled )
     {
-        elog(LOG, "PostmasterPrimaryMirrorTransition: filerep startup: completed");
+        elog(getPrimaryMirrorModeDebugLogLevel(false),
+                "PostmasterPrimaryMirrorTransition: filerep startup: completed");
         *stateInOut = nextState;
     }
     else
     {
-        elog(DEBUG1, "PostmasterPrimaryMirrorTransition: filerep startup: still starting up");
+        elog(getPrimaryMirrorModeDebugLogLevel(true),
+                "PostmasterPrimaryMirrorTransition: filerep startup: still starting up");
     }
     return PMTransitionSuccess;
 }
@@ -1504,7 +1537,8 @@ stepWaitForFilerepStartup(TransitionState nextState, TransitionState *stateInOut
 static PrimaryMirrorModeTransitionResult
 invalidMode(PrimaryMirrorModeTransitionArguments *args)
 {
-    elog(LOG, "PostmasterPrimaryMirrorTransition: invalid target mode");
+    elog(getPrimaryMirrorModeDebugLogLevel(false),
+                "PostmasterPrimaryMirrorTransition: invalid target mode");
     return PMTransitionInvalidTargetMode;
 }
 
@@ -1707,7 +1741,8 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
             if ( ! pmModuleState->haveStartedDatabase )
             {
                 Assert(!pmModuleState->haveStartedDatabase);
-                elog(LOG, "PostmasterPrimaryMirrorTransition: starting database processes");
+                elog(getPrimaryMirrorModeDebugLogLevel(false),
+                        "PostmasterPrimaryMirrorTransition: starting database processes");
                 pmModuleState->haveStartedDatabase = true;
                 StartMasterOrPrimaryPostmasterProcesses();
             }

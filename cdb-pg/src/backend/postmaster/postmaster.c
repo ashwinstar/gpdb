@@ -1529,14 +1529,20 @@ IsDatabaseInRunMode(void)
 void
 SignalShutdownFilerepProcess(void)
 {
-	elog(LOG, "Shutting down filerep process");
+    if ( Debug_print_server_processes || Debug_filerep_print)
+    {
+    	elog(LOG, "Shutting down filerep process");
+    }
 	signal_filerep_to_shutdown(SegmentStateShutdown);
 }
 
 void
 SignalShutdownFilerepBackendProcesses(void)
 {
-	elog(LOG, "Shutting down filerep backend processes");
+    if ( Debug_print_server_processes || Debug_filerep_print)
+    {
+	    elog(LOG, "Shutting down filerep backend processes");
+    }
 	signal_filerep_to_shutdown(SegmentStateShutdownFilerepBackends);
 }
 
@@ -1561,7 +1567,10 @@ NotifyProcessesOfFilerepStateChange(void)
 void
 StartFilerepProcesses()
 {
-	elog(LOG, "Postmaster: Starting file replication processes");
+    if ( Debug_print_server_processes)
+    {
+	    elog(LOG, "Postmaster: Starting file replication processes");
+    }
 
 	Assert(FilerepPID == 0);
 	FilerepPID = StartFilerepProcess();
@@ -4697,10 +4706,13 @@ static int StateMachineCheck_WaitBackends(void)
         }
         else
         {
-            elog(LOG, "Postmaster State Machine: waiting on backends, children %d, filerep backends %s, av %s",
+            if ( Debug_print_server_processes )
+            {
+                elog(LOG, "Postmaster State Machine: waiting on backends, children %d, filerep backends %s, av %s",
                     childCount,
                     isFilerepBackendsDoneShutdown ? "stopped" : "running",
                     autovacShutdown ? "stopped" : "running" );
+            }
         }
     }
 
@@ -5008,16 +5020,19 @@ static void
 PostmasterStateMachine(void)
 {
     int passThroughStateMachine;
-    int logLevel = LOG;
     const int minStateForLogging = PM_CHILD_STOP_BEGIN;
+
+#define DO_STATE_MACHINE_LOGGING (pmState >= minStateForLogging && Debug_print_server_processes)
 
     for ( passThroughStateMachine = 0;; passThroughStateMachine ++)
     {
         int nextPmState = pmState;
         Assert(passThroughStateMachine < 100);
 
-        if ( pmState >= minStateForLogging )
-            elog(logLevel, "Postmaster State Machine: checking state %s", gPmStateLabels[pmState]);
+        if ( DO_STATE_MACHINE_LOGGING )
+        {
+            elog(LOG, "Postmaster State Machine: checking state %s", gPmStateLabels[pmState]);
+        }
 
         /* first, look at the current pmState and see if that state has been completed */
         switch ( pmState )
@@ -5088,18 +5103,19 @@ PostmasterStateMachine(void)
         {
             pmState = nextPmState;
 
-            if ( pmState >= minStateForLogging )
-                elog(logLevel, "Postmaster State Machine: entering state %s", gPmStateLabels[pmState]);
+            if ( DO_STATE_MACHINE_LOGGING )
+                elog(LOG, "Postmaster State Machine: entering state %s", gPmStateLabels[pmState]);
         }
         else if ( pmStateMachineMustRunActions)
         {
-            if ( pmState >= minStateForLogging )
-                elog(logLevel, "Postmaster State Machine: rerunning actions for %s", gPmStateLabels[pmState]);
+            if ( DO_STATE_MACHINE_LOGGING )
+                elog(LOG, "Postmaster State Machine: rerunning actions for %s", gPmStateLabels[pmState]);
         }
         else
         {
-            if ( pmState >= minStateForLogging )
-                elog(logLevel, "Postmaster State Machine: no change from %s", gPmStateLabels[pmState]);
+            if ( DO_STATE_MACHINE_LOGGING )
+                elog(LOG, "Postmaster State Machine: no change from %s", gPmStateLabels[pmState]);
+                
             /* current state was not completed ... quit and wait to be called again */
             break;
         }
