@@ -15,9 +15,8 @@
 #include <string.h>
 
 /**
- * todo MIRRORING: error when doRequestedPrimaryMirrorModeTransitions should cause a panic?  Or at least should wake
- *                 up requestXXX.  Do we need any critical sections or anything here?  Review setup of
- *                 signal handlers here -- if we are inside a transition will we quit out properly on shutdown?
+ * todo MIRRORING Review setup of signal handlers here --
+ *                if we are inside a transition will we quit out properly on shutdown?
  */
 
 /**
@@ -211,6 +210,13 @@ typedef struct PMLocalState
      * Was the most recent (non-fault) segment state "change tracking disabled"?
      */
     bool mostRecentSegmentStateWasChangeTrackingDisabled;
+
+    /**
+     * only valid when between calls to
+     *   acquireModuleSpinLockAndMaybeStartCriticalSection and releaseModuleSpinLockAndEndCriticalSection
+     * tells the value that was passed to acquireModuleSpinLockAndMaybeStartCriticalSection
+     */
+    bool criticalSectionStarted;
 } PMLocalState;
 
 PMLocalState pmLocalState;
@@ -368,11 +374,18 @@ decipherPrimaryMirrorModeArgument(const char *arg)
 }
 
 /**
- * acquire the module spin lock that is used to protect the contents of pmModuleState
+ * acquire the module spin lock that is used to protect the contents of pmModuleState,
+ *   and perhaps start a critical section (START_CRIT_SECTION), according to the parameter startCriticalSection
  */
 static void
-acquireModuleSpinLock(void)
+acquireModuleSpinLockAndMaybeStartCriticalSection(bool startCriticalSection)
 {
+    Assert(!pmLocalState.criticalSectionStarted);
+    if ( startCriticalSection)
+    {
+        pmLocalState.criticalSectionStarted = true;
+	    START_CRIT_SECTION();
+    }
 	SpinLockAcquire(&pmModuleState->lock);
 }
 
@@ -380,9 +393,14 @@ acquireModuleSpinLock(void)
  * release the module spin lock that is used to protect the contents of pmModuleState
  */
 static void
-releaseModuleSpinLock(void)
+releaseModuleSpinLockAndEndCriticalSectionAsNeeded(void)
 {
 	SpinLockRelease(&pmModuleState->lock);
+	if ( pmLocalState.criticalSectionStarted )
+	{
+	    pmLocalState.criticalSectionStarted = false;
+	    END_CRIT_SECTION();
+    }
 }
 
 static void
@@ -423,7 +441,7 @@ copyHostData(char **addressOut, int *portOut, char *address, int port)
 void
 getPrimaryMirrorStatusCodes(PrimaryMirrorMode *pm_mode, SegmentState_e *s_state, DataState_e *d_state)
 {
-	acquireModuleSpinLock();
+	acquireModuleSpinLockAndMaybeStartCriticalSection(false);
 	{
         if (pm_mode)
             *pm_mode = pmModuleState->mode;
@@ -434,7 +452,7 @@ getPrimaryMirrorStatusCodes(PrimaryMirrorMode *pm_mode, SegmentState_e *s_state,
         if (d_state)
             *d_state = pmModuleState->dataState;
 	}
-	releaseModuleSpinLock();
+	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 }
 
 void
@@ -471,7 +489,7 @@ primaryMirrorGetFilerepArguments(
 
 	assertModuleInitialized();
 
-    acquireModuleSpinLock();
+    acquireModuleSpinLockAndMaybeStartCriticalSection(false);
     {
         args = &pmModuleState->requestedTransition;
         mode = args->mode;
@@ -504,7 +522,7 @@ primaryMirrorGetFilerepArguments(
             *fullSyncOut = false;
         }
     }
-    releaseModuleSpinLock();
+    releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 }
 
 bool
@@ -513,11 +531,11 @@ isFullResync(void)
     bool result;
 	assertModuleInitialized();
 
-	acquireModuleSpinLock();
+	acquireModuleSpinLockAndMaybeStartCriticalSection(false);
     {
         result = pmModuleState->forceFullResync;
     }
-	releaseModuleSpinLock();
+	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 
 	return result;
 }
@@ -525,11 +543,11 @@ isFullResync(void)
 void
 setFullResync(void)
 {
-	acquireModuleSpinLock();
+	acquireModuleSpinLockAndMaybeStartCriticalSection(true);
 	{
 		pmModuleState->forceFullResync = true;
 	}
-	releaseModuleSpinLock();
+	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 }
 	
 bool
@@ -539,11 +557,11 @@ isDatabaseRunning(void)
 	
 	assertModuleInitialized();
 	
-	acquireModuleSpinLock();
-	
-	isDatabaseRunning = pmModuleState->isDatabaseRunning;
-	
-	releaseModuleSpinLock();
+	acquireModuleSpinLockAndMaybeStartCriticalSection(false);
+	{
+	    isDatabaseRunning = pmModuleState->isDatabaseRunning;
+	}
+	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 	
 	return(isDatabaseRunning);
 }
@@ -594,7 +612,7 @@ getFileRepRoleAndState(
     bool isInFilerepTransition;
     DataState_e transitionTargetDataState;
 
-	acquireModuleSpinLock();
+	acquireModuleSpinLockAndMaybeStartCriticalSection(false);
 	{
         /* check to see if postmaster is still processing a transition.  Note that here we don't
          *  need to check to see if the listener is complete
@@ -628,7 +646,7 @@ getFileRepRoleAndState(
 				break;
 		}
 	}
-	releaseModuleSpinLock();
+	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 
 	/* now fill in output! */
 	if ( fileRepRoleOut )
@@ -665,7 +683,7 @@ isPrimaryMirrorModeAFullPostmaster(bool checkTargetModeAsWell)
 	assertModuleInitialized();
 
 	/* the locking here may not be technically necessary */
-	acquireModuleSpinLock();
+	acquireModuleSpinLockAndMaybeStartCriticalSection(false);
 	{
 		PrimaryMirrorMode mode = pmModuleState->mode;
 		result = mode == PMModeMaster || mode == PMModePrimarySegment || mode == PMModeMirrorlessSegment;
@@ -676,7 +694,7 @@ isPrimaryMirrorModeAFullPostmaster(bool checkTargetModeAsWell)
 			result |= mode == PMModeMaster || mode == PMModePrimarySegment || mode == PMModeMirrorlessSegment;
 		}
 	}
-	releaseModuleSpinLock();
+	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 	return result;
 }
 
@@ -687,11 +705,11 @@ isInFaultFromPostmasterReset()
 
     assertModuleInitialized();
 	/* the locking here may not be technically necessary */
-	acquireModuleSpinLock();
+	acquireModuleSpinLockAndMaybeStartCriticalSection(false);
 	{
 		result = pmModuleState->isInFaultFromPostmasterReset;
 	}
-	releaseModuleSpinLock();
+	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 	return result;
 }
 
@@ -703,7 +721,7 @@ doesPrimaryMirrorModeRequireFilerepProcess(bool checkTargetModeAsWell)
 	assertModuleInitialized();
 
 	/* the locking here may not be technically necessary */
-	acquireModuleSpinLock();
+	acquireModuleSpinLockAndMaybeStartCriticalSection(false);
 	{
 		PrimaryMirrorMode mode = pmModuleState->mode;
 		result = mode == PMModePrimarySegment || mode == PMModeMirrorSegment;
@@ -714,7 +732,7 @@ doesPrimaryMirrorModeRequireFilerepProcess(bool checkTargetModeAsWell)
 			result |= mode == PMModePrimarySegment || mode == PMModeMirrorSegment;
 		}
 	}
-	releaseModuleSpinLock();
+	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 	return result;
 }
 
@@ -734,6 +752,7 @@ primaryMirrorModeShmemInit(void)
         /* only initialize local state once */
         pmLocalState.haveSetMostRecentTransition = false;
         pmLocalState.mostRecentSegmentStateWasChangeTrackingDisabled = false;
+        pmLocalState.criticalSectionStarted = false;
 
         gHaveInitializedLocalState = true;
     }
@@ -879,7 +898,7 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 	/* first, request the transition */
 	PG_TRY();
 	{
-		acquireModuleSpinLock();
+		acquireModuleSpinLockAndMaybeStartCriticalSection(true);
 		{
 		    args->transitionNumber = pmModuleState->transitionNumberCounter++;
 
@@ -915,7 +934,7 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 
 		if (!isTransitioning)
 		{
-			releaseModuleSpinLock();
+			releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 
 			elog(LOG, "PrimaryMirrorTransitionRequest (%d) Result: Transition to primary/mirror mode %s, "
 			                "data state %s resulted in %s pending request(%s%s)",
@@ -941,7 +960,7 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 			pmModuleState->isTransitionListenerFinished = true;
 			pmModuleState->isTransitionRequested = false;
 
-			releaseModuleSpinLock();
+			releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 
 			elog(LOG, "PrimaryMirrorTransitionRequest (%d) Result: Transition to primary/mirror mode %s, "
 			                        "data state %s is as no-op",
@@ -951,7 +970,7 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 			return PMTransitionSuccess;
 		}
 
-		releaseModuleSpinLock(); /* set the postmaster loose */
+		releaseModuleSpinLockAndEndCriticalSectionAsNeeded(); /* set the postmaster loose */
 
 		/* tell postmaster to wake up */
 		SendPostmasterSignal(PMSIGNAL_PRIMARY_MIRROR_TRANSITION_RECEIVED);
@@ -978,7 +997,7 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 			    counter = 0;
 			}
 
-			acquireModuleSpinLock();
+			acquireModuleSpinLockAndMaybeStartCriticalSection(true);
 			{
 			    if ( postmasterIsDead)
 			    {
@@ -998,7 +1017,7 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 					isDone = true;
 				}
 			}
-			releaseModuleSpinLock();
+			releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 
 			if (isDone)
 			{
@@ -1022,11 +1041,11 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 
 		if (isTransitioning)
 		{
-			acquireModuleSpinLock();
+			acquireModuleSpinLockAndMaybeStartCriticalSection(true);
 			{
 				pmModuleState->isTransitionListenerFinished = true;
 			}
-			releaseModuleSpinLock();
+			releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 		}
 		PG_RE_THROW();
 	}
@@ -1062,7 +1081,7 @@ updateDataState(DataState_e dataState)
 {
 	bool isUpdated = FALSE;
 
-	acquireModuleSpinLock();
+	acquireModuleSpinLockAndMaybeStartCriticalSection(true);
 	{
 	    isUpdated = updateDataStateUnderSpinLock(dataState);
 	    if ( isUpdated )
@@ -1070,7 +1089,7 @@ updateDataState(DataState_e dataState)
 	        pmModuleState->shouldTryUpdatePmLocalDataStateFromModuleState = true;
 	    }
 	}
-	releaseModuleSpinLock();
+	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 
 	return isUpdated;
 }
@@ -1080,7 +1099,7 @@ updateSegmentState(SegmentState_e segmentState)
 {
 	bool isUpdated = FALSE;
 
-	acquireModuleSpinLock();
+	acquireModuleSpinLockAndMaybeStartCriticalSection(true);
 	{
 	    SegmentState_e curState = pmModuleState->segmentState;
 	    if ( curState == SegmentStateImmediateShutdown )
@@ -1118,7 +1137,7 @@ updateSegmentState(SegmentState_e segmentState)
             pmModuleState->segmentState = segmentState;
 		}
 	}
-	releaseModuleSpinLock();
+	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 	
 	return isUpdated;
 }
@@ -1156,7 +1175,7 @@ static void copyTransitionParametersToLocalMemoryIfNeeded(PrimaryMirrorModeTrans
 static void
 copyTransitionInputParameters(PrimaryMirrorModeTransitionArguments *args, SegmentState_e segmentState)
 {
-	acquireModuleSpinLock();
+	acquireModuleSpinLockAndMaybeStartCriticalSection(true);
 	{
 		Assert(sizeof(args->hostAddress) == sizeof(pmModuleState->hostAddress));
 		Assert(sizeof(args->peerAddress) == sizeof(pmModuleState->peerAddress));
@@ -1178,7 +1197,7 @@ copyTransitionInputParameters(PrimaryMirrorModeTransitionArguments *args, Segmen
         /* we've reached the point of no-return, so update this */
         pmModuleState->mode = args->mode;		
 	}
-	releaseModuleSpinLock();
+	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 }
 
 
@@ -1201,7 +1220,7 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 	Assert(!IsUnderPostmaster);
 	assertModuleInitialized();
 
-	acquireModuleSpinLock();
+	acquireModuleSpinLockAndMaybeStartCriticalSection(true);
 	{
 	    /**
 	     * first, do any in-sync changes that were requested
@@ -1225,7 +1244,7 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 		transitionNumber = pmModuleState->requestedTransition.transitionNumber;
 		transitionToFault = pmModuleState->requestedTransition.transitionToFault;
 	}
-	releaseModuleSpinLock();
+	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 
 	if (!isRequested /* && isPrevRequestComplete */)
 	{
@@ -1303,11 +1322,11 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 
             if ( initialState != currentState)
             {
-                acquireModuleSpinLock();
+                acquireModuleSpinLockAndMaybeStartCriticalSection(true);
                 {
                     pmModuleState->transitionState = currentState;
                 }
-                releaseModuleSpinLock();
+                releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 
                 elog(LOG, "PostmasterPrimaryMirrorTransition (%d), after completed step, transition state is %s",
                     transitionNumber, getTransitionStateLabel(currentState));
@@ -1356,7 +1375,7 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
         int logLevel = result == PMTransitionError ? WARNING : LOG;
 	    elog(logLevel, "PostmasterPrimaryMirrorTransition (%d) Finished with %s",
 	        transitionNumber, getTransitionResultLabel(result));
-		acquireModuleSpinLock();
+		acquireModuleSpinLockAndMaybeStartCriticalSection(true);
 		{
 			pmModuleState->transitionResult = result;
 			strncpy((char*)pmModuleState->transitionResultExtraInfo, extraResultInfo, MAX_TRANSITION_RESULT_EXTRA_INFO);
@@ -1366,7 +1385,7 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 			                pmModuleState->isTransitionListenerFinished ? "yes" : "no");
 			pmModuleState->transitionState = TSNone;
 		}
-		releaseModuleSpinLock();
+		releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 	}
 
 }
@@ -1716,7 +1735,7 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
 				 * update segment states
 				 */
 				bool isNowInFault = false;
-				acquireModuleSpinLock();
+				acquireModuleSpinLockAndMaybeStartCriticalSection(true);
 				{
 					if ( pmModuleState->segmentState == SegmentStateFault )
 					{
@@ -1728,7 +1747,7 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
 						pmModuleState->segmentState = SegmentStateInResyncTransition;
 					}
 				}
-				releaseModuleSpinLock();
+				releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 
 				if ( isNowInFault )
 				{
