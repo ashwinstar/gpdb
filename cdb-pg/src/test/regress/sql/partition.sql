@@ -318,9 +318,9 @@ insert into ggg values ('x', 'g');
 
 select * from ggg order by 1, 2;
 
--- not ready
-select * from ggg_1_prt_aa 1, 2;
-select * from ggg_1_prt_bb 1, 2;
+-- ok
+select * from ggg_1_prt_aa order by 1, 2;
+select * from ggg_1_prt_bb order by 1, 2;
 
 drop table ggg cascade;
 
@@ -609,9 +609,9 @@ insert into ggg values (2,'c','c');
 
 select * from ggg order by 1, 2, 3;
 
-select * from ggg_1_prt_a order by 1, 2, 3;
-select * from ggg_1_prt_b order by 1, 2, 3;
-select * from ggg_1_prt_c order by 1, 2, 3;
+--select * from ggg_1_prt_a order by 1, 2, 3;
+--select * from ggg_1_prt_b order by 1, 2, 3;
+--select * from ggg_1_prt_c order by 1, 2, 3;
 
 drop table ggg cascade;
 
@@ -635,9 +635,9 @@ insert into ggg values (2,'c','c');
 
 select * from ggg order by 1, 2, 3;
 
-select * from ggg_1_prt_a order by 1, 2, 3;
-select * from ggg_1_prt_b order by 1, 2, 3;
-select * from ggg_1_prt_c order by 1, 2, 3;
+--select * from ggg_1_prt_a order by 1, 2, 3;
+--select * from ggg_1_prt_b order by 1, 2, 3;
+--select * from ggg_1_prt_c order by 1, 2, 3;
 
 drop table ggg cascade;
 
@@ -660,9 +660,9 @@ insert into ggg values (2,'c',44,date '2001-01-15');
 
 select * from ggg order by 1, 2, 3, 4;
 
-select * from ggg_1_prt_1 order by 1, 2, 3, 4;
-select * from ggg_1_prt_2 order by 1, 2, 3, 4;
-select * from ggg_1_prt_3 order by 1, 2, 3, 4;
+--select * from ggg_1_prt_1 order by 1, 2, 3, 4;
+--select * from ggg_1_prt_2 order by 1, 2, 3, 4;
+--select * from ggg_1_prt_3 order by 1, 2, 3, 4;
 
 drop table ggg cascade;
 
@@ -3886,6 +3886,8 @@ ALTER TABLE MPP10223
 SPLIT PARTITION  P_FUTURE AT ('2010-06-25') 
 INTO (PARTITION P20010101, PARTITION P_FUTURE2);
 
+select pg_get_partition_def('mpp10223'::regclass,true);
+
 drop table mpp10223;
 
 -- simpler version
@@ -3895,15 +3897,12 @@ subpartition by range (d)
 (partition p1 start (1) end (10)
 (subpartition sp2 start (20) end (30)));
 
--- complain (because re-used sp2 for non-DEFAULT partition)
+-- MPP-10421: allow re-use sp2 for non-DEFAULT partition
 alter table mpp10223b alter partition p1 
 split partition for (rank(1) ) at (25)
 into (partition sp2, partition sp3);
 
--- works
-alter table mpp10223b alter partition p1 
-split partition for (rank(1) ) at (25)
-into (partition sp3, partition sp4);
+select pg_get_partition_def('mpp10223b'::regclass,true);
 
 drop table mpp10223b;
 

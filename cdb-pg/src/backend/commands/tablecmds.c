@@ -4863,8 +4863,9 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 					/*
 					 * Only permitted if we're splitting a default and
 					 * this is the default rule
+					 * MPP-10421: lift this restriction
 					 */
-					if (prule2)
+					if (0 && prule2)
 					{
 						if (!(prule2->topRule->parchildrelid ==
 							  prule1->topRule->parchildrelid &&
@@ -4879,7 +4880,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 					prule3 = get_part_rule(rel, (AlterPartitionId *)cmd2->arg1,
 										   false, false, CurrentMemoryContext,
 										   NULL, false);
-					if (prule3)
+					if (0 && prule3)
 					{
 						if (!(prule3->topRule->parchildrelid ==
 						  	  prule1->topRule->parchildrelid &&
@@ -4895,7 +4896,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 					if (prule2 && prule3)
 					{
 						ereport(ERROR,
-								(errcode(ERRCODE_SYNTAX_ERROR),
+								(errcode(ERRCODE_DUPLICATE_OBJECT),
 								 errmsg("both INTO partitions "
 										"already exist"),
 								 errOmitLocation(true)));
@@ -21078,6 +21079,7 @@ ATPExecPartSplit(Relation rel,
 		List *existstorage_opts;
 		StdRdOptions *existopts;
 		ListCell *lc;
+		char *defparname = NULL; /* name of default partition (if specified) */
 
 		/* Get target meta data */
 		prule = get_part_rule(rel, pid, true, true,
@@ -21092,8 +21094,16 @@ ATPExecPartSplit(Relation rel,
 		 * 4) Create two new partitions in the place of the old one
 		 */
 
-		/* look up into info, if the user supplied it */
-		if (pc2)
+		/* look up INTO clause info, if the user supplied it */
+		if (!pc2) /* no INTO */
+		{
+			if (prule->topRule->parisdefault)
+			{
+				defparname = pstrdup(prule->topRule->parname);
+				into_exists = 2;
+			}
+		}
+		else /* has INTO clause */
 		{
 			bool isdef = false;
 			bool exists = false;
@@ -21102,7 +21112,7 @@ ATPExecPartSplit(Relation rel,
 			/*
 			 * If we're working on a subpartition, the INTO partition is
 			 * actually a child partition of the parent identified by
-			 * prule. So, we cannot just use get_part_rule() to determin
+			 * prule. So, we cannot just use get_part_rule() to determine
 			 * if one of them is a default.
 			 */
 
@@ -21115,6 +21125,8 @@ ATPExecPartSplit(Relation rel,
 					isdef = true;
 					exists = true;
 					parname = prule->pNode->default_part->parname;
+					if (!defparname && isdef) 
+						defparname = pstrdup(parname);
 				}
 				else
 				{
@@ -21148,10 +21160,12 @@ ATPExecPartSplit(Relation rel,
 						isdef = true;
 						exists = true;
 						parname = prule->pNode->default_part->parname;
+						if (!defparname && isdef) 
+							defparname = pstrdup(parname);
 					}
 				}
 			}
-			else
+			else /* not a AT_AP_IDRule */
 			{
 				PgPartRule *tmprule;
 				tmprule = get_part_rule(rel, (AlterPartitionId *)pc2->partid,
@@ -21162,6 +21176,8 @@ ATPExecPartSplit(Relation rel,
 					isdef = tmprule->topRule->parisdefault;
 					exists = true;
 					parname = tmprule->topRule->parname;
+					if (!defparname && isdef) 
+						defparname = pstrdup(parname);
 				}
 			}
 
@@ -21196,6 +21212,8 @@ ATPExecPartSplit(Relation rel,
 					isdef = true;
 					exists = true;
 					parname = prule->pNode->default_part->parname;
+					if (!defparname && isdef) 
+						defparname = pstrdup(parname);
 				}
 				else
 				{
@@ -21221,6 +21239,18 @@ ATPExecPartSplit(Relation rel,
 							parname = r->parname;
 						}
 					}
+
+					if (prule->pNode->default_part &&
+						strcmp(prule->pNode->default_part->parname,
+							   strVal((Value *)id->partiddef)) == 0)
+					{
+						isdef = true;
+						exists = true;
+						parname = prule->pNode->default_part->parname;
+						if (!defparname && isdef) 
+							defparname = pstrdup(parname);
+					}
+
 				}
 			}
 			else
@@ -21234,12 +21264,20 @@ ATPExecPartSplit(Relation rel,
 					isdef = tmprule->topRule->parisdefault;
 					exists = true;
 					parname = tmprule->topRule->parname;
+					if (!defparname && isdef) 
+						defparname = pstrdup(parname);
 				}
 			}
 
 			if (exists)
 			{
-				Insist(into_exists == 0);
+				if (into_exists != 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_DUPLICATE_OBJECT),
+							 errmsg("both INTO partitions "
+									"already exist"),
+							 errOmitLocation(true)));
+
 				into_exists = 2;
 				intopid1 = (AlterPartitionId *)pc2->partid;
 				intopid2 = (AlterPartitionId *)pc2->arg1;
@@ -21253,8 +21291,6 @@ ATPExecPartSplit(Relation rel,
 				}
 			}
 		}
-		else if (prule->topRule->parisdefault)
-			into_exists = 2;
 
 		existrel = heap_open(prule->topRule->parchildrelid, NoLock);
 		existopts = relopts_for_ctas(existrel);
@@ -21697,16 +21733,21 @@ ATPExecPartSplit(Relation rel,
 			mypid->idtype = AT_AP_IDName;
 
 			pelem->location  = -1;
-			pelem->isDefault = (into_exists && into_exists == i) ? true : false;
+			/* MPP-10421: determine if new partition, re-use of old
+			 * partition, and/or is default partition 
+			 */
+			pelem->isDefault = (defparname && 
+								parname &&
+								(0 == strcmp(parname, defparname)));
 
-			/* tell add we're doing a split */
+			/* tell ADD PARTITION we're doing a SPLIT */
 			mypc2->partid = (Node *)makeInteger(1);
 
 			mypc2->arg1 = (Node *)pelem;
 			mypc2->arg2 = (Node *)list_make1(mycs);
 			mypc2->location = -1;
 
-			mypc->arg1 = (Node *)makeInteger(into_exists && into_exists == i);
+			mypc->arg1 = (Node *)makeInteger(pelem->isDefault ? 1 : 0);
 			mypc->arg2 = (Node *)mypc2;
 			mypc->location = -1;
 
