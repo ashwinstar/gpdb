@@ -230,7 +230,7 @@ class config:
                 gpmmon_cfg.readfp(open(filename))
                 quantum = gpmmon_cfg.getint('GPMMON', 'quantum')
             except:
-                log.msg("FATAL: Unable to load configuration file: %s" % filename)
+                log.msg("Using default quantum of 15 seconds. Unable to load configuration file: %s" % filename)
                        
         self.gpperfmon_config['GPMMON'] = {'quantum': quantum}
 

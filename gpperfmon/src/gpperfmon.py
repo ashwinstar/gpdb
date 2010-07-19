@@ -295,6 +295,8 @@ def lighty_status(instance):
             if p.ppid == pid:
                 if re.search('gpmonws', p.command):
                     foundGpmonws = True
+                if re.search('python', p.command):
+                    foundGpmonws = True
     except:
         pass
 
