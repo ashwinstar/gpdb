@@ -52,9 +52,6 @@ elsif ($ARGV[0] ne "RELEASE")
 
 # ... and do it
 
-system("devenv /upgrade pgsql.sln");
-$ENV{'CYGWIN'} = 'nodosfilewarning';
-
 if ($buildwhat)
 {
     system("vcbuild $buildwhat.vcproj $bconf");

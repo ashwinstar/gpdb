@@ -451,6 +451,9 @@ sub mkvcbuild
     $pgregress->AddReference($libpgport);
 
     $solution->Save();
+
+    # Upgrade the files to work with Visual Studio newer than 2005
+    system("devenv /upgrade pgsql.sln");
 }
 
 #####################
