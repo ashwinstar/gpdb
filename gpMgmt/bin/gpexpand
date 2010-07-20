@@ -1671,16 +1671,19 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         #self.conn = dbconn.connect(self.dburl, encoding='UTF8')
 
     #--------------------------------------------------------------------------
-        
     def configure_new_segment_filespaces(self):
         """
         This method is called after all new segments have been configured.
         """
-        
+
         self.logger.info('Configuring new segment filespaces')
         newSegments = self.gparray.getExpansionSegDbList()
         fsObjList = gparray.getFilespaces(includeSystemFilespace = False)
-        
+
+        if len(fsObjList) == 0:
+            # No filespaces to configure
+            return
+
         """ Connect to the back end of each new segment directly, and call the filespace setup function. """
         for seg in newSegments:
             if seg.isSegmentMirror() == True:
@@ -1707,6 +1710,15 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             self.pool.addCommand(prepCmd)
         self.pool.join()
         self.pool.check_results()
+
+    #--------------------------------------------------------------------------
+    def cleanup_new_segments(self):
+        """
+        This method is called after all new segments have been configured.
+        """
+        
+        self.logger.info('Cleaning up databases in new segments.')
+        newSegments = self.gparray.getExpansionSegDbList()
         
         """ Get a list of databases. """
         self.logger.info('Starting master in utility mode')
@@ -1746,11 +1758,12 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         
         statements = [ 'delete from pg_catalog.gp_configuration', 
                        'delete from pg_catalog.gp_segment_configuration',
-                       'delete from pg_catalog.gp_distribution_policy', \
+                       'delete from pg_catalog.gp_distribution_policy',
                        'delete from pg_catalog.pg_partition',           
                        'delete from pg_catalog.pg_partition_rule', 
                        'delete from pg_catalog.gp_master_mirroring',
                        'delete from pg_catalog.pg_filespace_entry',
+                       "delete from pg_catalog.pg_resqueue where rsqname != 'pg_default'"
                      ]
        
         """ 
@@ -2498,6 +2511,7 @@ class ExecuteSQLStatementsCommand(SQLCommand):
             self.conn = dbconn.connect(self.url, utility=True, encoding='UTF8')
             for statement in self.sqlCommandList:
                 dbconn.execSQL(self.conn, statement)
+            self.conn.commit()
         except Exception, e:
             logger.error("Exception in ExecuteSQLStatements. URL = %s" % str(self.url))
             logger.error("  Statement = %s" % str(statement))
@@ -2918,6 +2932,7 @@ try:
         gp_expand.update_original_segments()
         gp_expand.update_catalog()
         gp_expand.configure_new_segment_filespaces()
+        gp_expand.cleanup_new_segments()
         gp_expand.setup_schema()
         gp_expand.prepare_schema()
         logger.info('Starting Greenplum Database')
