@@ -8,6 +8,7 @@ package org.postgresql.pljava.jdbc;
 
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 
 import org.postgresql.pljava.internal.Portal;
@@ -67,6 +68,12 @@ public class SPIResultSet extends ResultSetBase
 			m_nextRow    = null;
 			super.close();
 		}
+	}
+
+	public int getHoldability()
+	throws SQLException
+	{
+		return ResultSet.HOLD_CURSORS_OVER_COMMIT;
 	}
 
 	public boolean isLast() throws SQLException

@@ -8,6 +8,7 @@ package org.postgresql.pljava.jdbc;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.sql.NClob;
 
 import org.postgresql.pljava.internal.Tuple;
 import org.postgresql.pljava.internal.TupleDesc;
@@ -53,6 +54,19 @@ public class TriggerResultSet extends SingleRowResultSet
 	}
 
 	/**
+	 * Retrieves whether this ResultSet object has been closed. A ResultSet is
+	 * closed if the method close has been called on it, or if it is
+	 * automatically closed.
+	 *
+	 * Note: Since close() doesn't really close the set the set is always open.
+	 */
+	public boolean isClosed()
+	throws SQLException
+	{
+		return false;
+	}
+
+	/**
 	 * Returns the concurrency for this ResultSet.
 	 * @see java.sql.ResultSet#getConcurrency
 	 */
@@ -85,7 +99,6 @@ public class TriggerResultSet extends SingleRowResultSet
 		m_tupleChanges.add(new Integer(columnIndex));
 		m_tupleChanges.add(x);
 	}
-
 	
 	/**
 	 * Return a 2 element array describing the changes that has been made to

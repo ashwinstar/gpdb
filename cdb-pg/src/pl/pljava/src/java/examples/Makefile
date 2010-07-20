@@ -17,7 +17,7 @@ all: $(JARFILE)
 $(JARFILE): .timestamp \
 			$(SRCDIR)/deployment/examples.manifest \
 			$(SRCDIR)/deployment/examples.ddr \
-			$(SRCDIR)/org/postgresql/pljava/example/example.properties
+			$(SRCDIR)/org/postgresql/example/example.properties
 	$(JAR) cmf $(SRCDIR)/deployment/examples.manifest $@ . \
 	-C $(SRCDIR) deployment/examples.ddr \
-	-C $(SRCDIR) org/postgresql/pljava/example/example.properties
+	-C $(SRCDIR) org/postgresql/example/example.properties

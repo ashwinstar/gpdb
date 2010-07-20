@@ -128,6 +128,12 @@ public class SQLInputFromChunk implements SQLInput
 		throw new UnsupportedOperationException("readClob");
 	}
 
+	public java.sql.NClob readNClob()
+	throws SQLException
+	{
+		throw new UnsupportedOperationException("readNClob");
+	}
+
 	public Date readDate() throws SQLException
 	{
 		return new Date(this.readLong());
@@ -211,6 +217,12 @@ public class SQLInputFromChunk implements SQLInput
 		}
 	}
 
+	public String readNString() 
+    throws SQLException
+	{
+		throw new UnsupportedOperationException("NString not yet supported");
+	}
+
 	public Time readTime() throws SQLException
 	{
 		return new Time(this.readLong());
@@ -231,6 +243,18 @@ public class SQLInputFromChunk implements SQLInput
 		{
 			throw new SQLException(e.getMessage());
 		}
+	}
+
+	public java.sql.RowId readRowId()
+	throws SQLException
+	{
+		throw new UnsupportedOperationException("RowId not yet supported");
+	}
+
+	public java.sql.SQLXML readSQLXML()
+	throws SQLException
+	{
+		throw new UnsupportedOperationException("SQLXML not yet supported");
 	}
 
 	public boolean wasNull() throws SQLException

@@ -1,5 +1,7 @@
 /*
  * Copyright (c) 2004, 2005, 2006 TADA AB - Taby Sweden
+ * Portions Copyright (c) 2010 - Greenplum Inc
+ *
  * Distributed under the terms shown in the file COPYRIGHT
  * found in the root folder of this project or at
  * http://eng.tada.se/osprojects/COPYRIGHT.html
@@ -18,6 +20,8 @@ import java.sql.Statement;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.ListIterator;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.logging.Level;
@@ -26,42 +30,90 @@ import java.util.logging.Logger;
 import org.postgresql.pljava.internal.Backend;
 import org.postgresql.pljava.internal.Oid;
 import org.postgresql.pljava.jdbc.SQLUtils;
+import org.postgresql.pljava.sqlj.JarLoader;
 
 /**
- * @author Thomas Hallgren
+ *
+ * The Loader class is used by PL/Java to load java bytecode into the VM.
+ *
+ * In the postgres distribution this bytecode is always loaded from the 
+ * sqlj.jar_repository table.
+ *
+ * In Greenplum that is difficult because it would require uniform access 
+ * to the sqlj.jar_repository table from every segment, which is currently
+ * not well supported by our architecture. 
+ *
+ * Instead we mostly use our own loader JarLoader() which reads a jarfile 
+ * from the filesystem.  Note that the security manager allows READING from
+ * "$GPHOME/lib/postgresql/java/*.class" files, even in trusted mode, since
+ * this is shared between all databases any user can theoretically see every
+ * installed jar.  
+ * 
+ * Note: This creates a couple differences from the postgres implementation that
+ * currently pull us further from the sql standard embedded java implementation.
+ * Specifically:
+ *   - We do not support per-database/per-schema CLASSPATH
+ *   - CLASSPATH is instead set by a user GUC.
  */
 public class Loader extends ClassLoader
 {
-	private final static Logger s_logger = Logger.getLogger(Loader.class.getName());
+	private static final String PUBLIC_SCHEMA	= "public";
 
-	static class EntryEnumeration implements Enumeration
+	private static final Map	s_schemaLoaders = new HashMap();
+	private static final Map	s_typeMap		= new HashMap();
+
+	private final static Logger s_logger		= Logger.getLogger(Loader.class.getName());
+
+	/* Greeplum Additions */
+	private final LinkedList	    m_jarloaders;
+	private final String[]          m_classpath;
+	// private final Map			m_filespace;  // Not yet supported
+	private static String           m_current_classpath;
+
+	/**
+	 * Create a new Loader.
+	 * @param entries
+	 * @param parent
+	 */
+	Loader(String classpath)
+	throws SQLException
 	{
-		private final int[] m_entryIds;
-		private int m_top = 0;
+		super(Loader.class.getClassLoader());
 
-		EntryEnumeration(int[] entryIds)
-		{
-			m_entryIds = entryIds;
-		}
+		m_jarloaders = new LinkedList();
 
-		public boolean hasMoreElements()
+		if (classpath == null || classpath.length() == 0)
+			m_classpath = new String[0];
+		else
+			m_classpath = classpath.split(":");
+
+		/* Find the directory that contains our jar files */
+		String jarpath = Backend.getLibraryPath() + "/java";
+
+		/* Create a new JarLoader for every element in the classpath */
+		for (int i = 0; i < m_classpath.length; i++)
 		{
-			return (m_top < m_entryIds.length);
-		}
-		
-		public Object nextElement()
-		throws NoSuchElementException
-		{
-			if (m_top >= m_entryIds.length)
-				throw new NoSuchElementException();
-			return entryURL(m_entryIds[m_top++]);
+			try 
+			{
+				URL url = new URL("file:///" + jarpath + "/" + m_classpath[i]);
+				JarLoader loader = new JarLoader(url);
+				m_jarloaders.add(loader);
+			}
+			catch (MalformedURLException e)
+		    {
+				// XXX - Ignore malformed URLs?
+				throw new SQLException("Malformed URL Exception: " +
+									   e.getMessage());
+			}
+			catch (IOException e)
+			{
+				// XXX - Ignore jar doesn't exist?
+				throw new SQLException("IOException reading jar: " +
+									   e.getMessage());
+			}
 		}
 	}
-	private static final String PUBLIC_SCHEMA = "public";
 
-	private static final Map s_schemaLoaders = new HashMap();
-
-	private static final Map s_typeMap = new HashMap();
 
 	/**
 	 * Removes all cached schema loaders, functions, and type maps. This
@@ -85,22 +137,11 @@ public class Loader extends ClassLoader
 	public static ClassLoader getCurrentLoader()
 	throws SQLException
 	{
-		String schema;
-		Statement stmt = SQLUtils.getDefaultConnection().createStatement();
-		ResultSet rs = null;
-		try
-		{
-			rs = stmt.executeQuery("SELECT current_schema()");
-			if(!rs.next())
-				throw new SQLException("Unable to determine current schema");
-			schema = rs.getString(1);
-		}
-		finally
-		{
-			SQLUtils.close(rs);
-			SQLUtils.close(stmt);
-		}
-		return getSchemaLoader(schema);
+		/* 
+		 * Because Greenplum doesn't support per-schema classpaths we just map
+		 * everything to the public schema.
+		 */
+		return getSchemaLoader(PUBLIC_SCHEMA);
 	}
 
 	/**
@@ -113,87 +154,25 @@ public class Loader extends ClassLoader
 	public static ClassLoader getSchemaLoader(String schemaName)
 	throws SQLException
 	{
-		if(schemaName == null || schemaName.length() == 0)
-			schemaName = PUBLIC_SCHEMA;
-		else
-			schemaName = schemaName.toLowerCase();
-
-		ClassLoader loader = (ClassLoader)s_schemaLoaders.get(schemaName);
-		if(loader != null)
-			return loader;
-
-		Map classImages = new HashMap();
-		Connection conn = SQLUtils.getDefaultConnection();
-		PreparedStatement outer = null;
-		PreparedStatement inner = null;
-		try
+		/* 
+		 * Rather than having a different loader per schemaName, instead
+		 * we simply create a different loader per CLASSPATH.
+		 */
+		String classpath = Backend.getConfigOption("pljava.classpath");
+		if (classpath == null)
+			classpath = "";
+		if (!classpath.equals(m_current_classpath))
 		{
-			// Read the entries so that the one with highest prio is read last.
-			//
-			outer = conn.prepareStatement(
-				"SELECT r.jarId" +
-				" FROM sqlj.jar_repository r INNER JOIN sqlj.classpath_entry c ON r.jarId = c.jarId" +
-				" WHERE c.schemaName = ? ORDER BY c.ordinal DESC");
-
-			inner = conn.prepareStatement(
-				"SELECT entryId, entryName FROM sqlj.jar_entry WHERE jarId = ?");
-
-			outer.setString(1, schemaName);
-			ResultSet rs = outer.executeQuery();
-			try
-			{
-				while(rs.next())
-				{
-					inner.setInt(1, rs.getInt(1));
-					ResultSet rs2 = inner.executeQuery();
-					try
-					{
-						while(rs2.next())
-						{
-							int entryId = rs2.getInt(1);
-							String entryName = rs2.getString(2);
-							int[] oldEntry = (int[])classImages.get(entryName);
-							if(oldEntry == null)
-								classImages.put(entryName, new int[] { entryId });
-							else
-							{
-								int last = oldEntry.length;
-								int[] newEntry = new int[last + 1];
-								newEntry[0] = entryId;
-								System.arraycopy(oldEntry, 0, newEntry, 1, last);
-								classImages.put(entryName, newEntry);
-							}
-						}
-					}
-					finally
-					{
-						SQLUtils.close(rs2);
-					}
-				}
-			}
-			finally
-			{
-				SQLUtils.close(rs);
-			}
-		}
-		finally
-		{
-			SQLUtils.close(outer);
-			SQLUtils.close(inner);
+			clearSchemaLoaders();
+			m_current_classpath = classpath;
 		}
 
-		ClassLoader parent = ClassLoader.getSystemClassLoader();
-		if(classImages.size() == 0)
-			//
-			// No classpath defined for the schema. Default to
-			// classpath of public schema or to the system classloader if the
-			// request already is for the public schema.
-			//
-			loader = schemaName.equals(PUBLIC_SCHEMA) ? parent : getSchemaLoader(PUBLIC_SCHEMA);
-		else
-			loader = new Loader(classImages, parent);
-
-		s_schemaLoaders.put(schemaName, loader);
+		ClassLoader loader = (ClassLoader) s_schemaLoaders.get(classpath);
+		if (loader == null)
+		{
+			loader = (ClassLoader) new Loader(classpath);
+			s_schemaLoaders.put(classpath, loader);
+		}
 		return loader;
 	}
 
@@ -206,8 +185,13 @@ public class Loader extends ClassLoader
 	 * @param schema The schema
 	 * @return The Map, possibly empty but never <code>null</code>.
 	 */
-	public static Map getTypeMap(final String schema) throws SQLException
+	public static Map getTypeMap(final String schema) 
+	throws SQLException
 	{
+		/* XXX - needs implementation to support TypeMaps */
+		return Collections.EMPTY_MAP;
+
+		/*
 		Map typesForSchema = (Map)s_typeMap.get(schema);
 		if(typesForSchema != null)
 			return typesForSchema;
@@ -256,95 +240,40 @@ public class Loader extends ClassLoader
 			SQLUtils.close(rs);
 			SQLUtils.close(stmt);
 		}
-	}
-
-	private static URL entryURL(int entryId)
-	{
-		try
-		{
-			return new URL(
-					"dbf",
-					"localhost",
-					-1,
-					"/" + entryId,
-					EntryStreamHandler.getInstance());
-		}
-		catch(MalformedURLException e)
-		{
-			throw new RuntimeException(e);
-		}
-	}
-
-	private final Map m_entries;
-
-	/**
-	 * Create a new Loader.
-	 * @param entries
-	 * @param parent
-	 */
-	Loader(Map entries, ClassLoader parent)
-	{
-		super(parent);
-		m_entries = entries;
+		*/
 	}
 
 	protected Class findClass(final String name)
 	throws ClassNotFoundException
 	{
-		String path = name.replace('.', '/').concat(".class");
-		int[] entryId = (int[])m_entries.get(path);
-		if(entryId != null)
+		// Scan through all jar files in the classpath
+		for (ListIterator iter = m_jarloaders.listIterator(); iter.hasNext(); )
 		{
-			PreparedStatement stmt = null;
-			ResultSet rs = null;
-			try
+			JarLoader loader = (JarLoader) iter.next();
+			try 
 			{
-				// This code rely heavily on the fact that the connection
-				// is a singleton and that the prepared statement will live
-				// for the duration of the loader.
-				//
-				stmt = SQLUtils.getDefaultConnection().prepareStatement(
-					"SELECT entryImage FROM sqlj.jar_entry WHERE entryId = ?");
-
-				stmt.setInt(1, entryId[0]);
-				rs = stmt.executeQuery();
-				if(rs.next())
-				{
-					byte[] img = rs.getBytes(1);
-					rs.close();
-					rs = null;
-					return this.defineClass(name, img, 0, img.length);
-				}
+				Class r = loader.loadClass(name);
+				if (r != null)
+					return r;
 			}
-			catch(SQLException e)
+   			catch (ClassNotFoundException e)
 			{
-				Logger.getAnonymousLogger().log(Level.INFO, "Failed to load class", e);
-				throw new ClassNotFoundException(name + " due to: " + e.getMessage());
-			}
-			finally
-			{
-				SQLUtils.close(rs);
-				SQLUtils.close(stmt);
+				// Ignore exception, look in other loaders (JAR files)
 			}
 		}
-	throw new ClassNotFoundException(name);
+		throw new ClassNotFoundException(name);
 	}
 
 	protected URL findResource(String name)
 	{
-		int[] entryIds = (int[])m_entries.get(name);
-		if(entryIds == null)
-			return null;
-		
-		return entryURL(entryIds[0]);
-	}
-
-	protected Enumeration findResources(String name)
-    throws IOException
-	{
-		int[] entryIds = (int[])m_entries.get(name);
-		if(entryIds == null)
-			entryIds = new int[0];
-		return new EntryEnumeration(entryIds);
+		// Scan through all jar files in the classpath
+		for (ListIterator iter = m_jarloaders.listIterator(); iter.hasNext();)
+		{
+			JarLoader loader = (JarLoader) iter.next();
+			URL url = loader.findResource(name);
+			if (url != null)
+				return url;
+		}
+		return null;
 	}
 }

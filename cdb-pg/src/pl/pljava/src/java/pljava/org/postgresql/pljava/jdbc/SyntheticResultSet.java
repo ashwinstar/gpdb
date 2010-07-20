@@ -7,6 +7,7 @@
 package org.postgresql.pljava.jdbc;
 
 import java.sql.SQLException;
+import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -60,6 +61,12 @@ public class SyntheticResultSet extends ResultSetBase
 	{
     	m_tuples.clear();
 		super.close();
+	}
+
+	public int getHoldability()
+	throws SQLException
+	{
+		return ResultSet.HOLD_CURSORS_OVER_COMMIT;
 	}
 
 	public int findColumn(String columnName)

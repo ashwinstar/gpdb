@@ -22,7 +22,8 @@ import java.sql.SQLException;
  */
 public class ClobValue extends Reader implements Clob
 {
-	public static int getReaderLength(Reader value) throws SQLException
+	public static int getReaderLength(Reader value) 
+	throws SQLException
 	{
 		try
 		{
@@ -46,6 +47,17 @@ public class ClobValue extends Reader implements Clob
 	private final Reader m_reader;
 
 	private long m_readerPos;
+	private boolean m_free;
+
+	public ClobValue(Reader reader)
+	throws SQLException
+	{
+		m_reader = reader;
+		m_nChars = getReaderLength(reader);
+		m_readerPos = 0L;
+		m_markPos = 0L;
+		m_free = false;
+	}
 
 	public ClobValue(Reader reader, long nChars)
 	{
@@ -53,6 +65,7 @@ public class ClobValue extends Reader implements Clob
 		m_nChars = nChars;
 		m_readerPos = 0L;
 		m_markPos = 0L;
+		m_free = false;
 	}
 
 	public ClobValue(String value)
@@ -67,14 +80,35 @@ public class ClobValue extends Reader implements Clob
 		m_markPos = 0;
 	}
 
-	public InputStream getAsciiStream()
+	public void free()
+	throws SQLException
 	{
+		if (!m_free)
+		{
+			try 
+			{
+				m_reader.close();
+			}
+			catch(IOException e)
+			{
+				throw new SQLException("Error closing Clob reader: " + e.getMessage());
+			}
+		}
+		m_free = true;
+	}
+
+	public InputStream getAsciiStream()
+	throws SQLException
+	{
+		if (m_free)
+			throw new SQLException("Illegal access to freed ClobValue");
+
 		return new BufferedInputStream(new InputStream()
 		{
 			public int read() throws IOException
 			{
 				int nextChar = ClobValue.this.read();
-				if(nextChar > 127)
+				if (nextChar > 127)
 					throw new CharConversionException(
 						"Non ascii character in Clob data");
 				return nextChar;
@@ -83,12 +117,32 @@ public class ClobValue extends Reader implements Clob
 	}
 
 	public Reader getCharacterStream()
+    throws SQLException
 	{
+		if (m_free)
+			throw new SQLException("Illegal access to freed ClobValue");
+
 		return this;
 	}
 
-	public String getSubString(long pos, int length) throws SQLException
+	public Reader getCharacterStream(long pos, long length)
+	throws SQLException
 	{
+		if (m_free)
+			throw new SQLException("Illegal access to freed ClobValue");
+
+		if (length > Integer.MAX_VALUE)
+			throw new SQLException("Stream content too large");
+
+		return new StringReader(this.getSubString(pos, (int) length));
+	}
+
+	public String getSubString(long pos, int length) 
+	throws SQLException
+	{
+		if (m_free)
+			throw new SQLException("Illegal access to freed ClobValue");
+
 		if(pos < 0L || length < 0)
 			throw new IllegalArgumentException();
 		if(length == 0)
@@ -119,11 +173,16 @@ public class ClobValue extends Reader implements Clob
 	}
 
 	public long length()
+	throws SQLException
 	{
+		if (m_free)
+			throw new SQLException("Illegal access to freed ClobValue");
+
 		return m_nChars;
 	}
 
-	public synchronized void mark(int readLimit) throws IOException
+	public synchronized void mark(int readLimit) 
+	throws IOException
 	{
 		m_reader.mark(readLimit);
 		m_markPos = m_readerPos;

@@ -30,6 +30,10 @@ ifeq ($(with_r), yes)
 DIRS += plr
 endif
 
+ifeq ($(with_java), yes)
+DIRS += pljava
+endif
+
 all install installdirs uninstall distprep:
 	@for dir in $(DIRS); do $(MAKE) -C $$dir $@ || exit 1; done
 

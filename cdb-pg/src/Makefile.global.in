@@ -156,6 +156,7 @@ with_perl	= @with_perl@
 with_python	= @with_python@
 with_tcl	= @with_tcl@
 with_r		= @with_r@
+with_java   = @with_java@
 with_openssl	= @with_openssl@
 with_system_tzdata = @with_system_tzdata@
 with_zlib	= @with_zlib@
@@ -265,6 +266,24 @@ perl_archlibexp		= @perl_archlibexp@
 perl_privlibexp		= @perl_privlibexp@
 perl_useshrplib		= @perl_useshrplib@
 perl_embed_ldflags	= @perl_embed_ldflags@
+
+# Java
+ifneq (@JAVA@,)
+    # quoted to protect pathname with spaces
+	JAVA        = "@JAVA@"
+	JAVAC       = "@JAVAC@"
+	JAVAH       = "@JAVAH@"
+	JAR         = "@JAR@"
+	JAVADOC     = "@JAVADOC@"
+	JAVA_HOME   = @JAVA_HOME@
+	JAVAC_FLAGS = @JAVAC_FLAGS@
+else
+	JAVA        = $(missing) java
+	JAVAC       = $(missing) javac
+	JAVAH       = $(missing) javah
+	JAR         = $(missing) jar
+	JAVADOC     = $(missing) javadoc
+endif
 
 # Miscellaneous
 

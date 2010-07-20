@@ -24,6 +24,15 @@ public abstract class SingleRowResultSet extends ObjectResultSet
 		return CONCUR_UPDATABLE;
 	}
 
+	/**
+	 * Retrieves the holdability of this ResultSet object.	 
+	 */
+	public int getHoldability()
+	throws SQLException
+	{
+		return HOLD_CURSORS_OVER_COMMIT;
+	}
+
 	public int findColumn(String columnName)
 	throws SQLException
 	{
@@ -86,7 +95,8 @@ public abstract class SingleRowResultSet extends ObjectResultSet
 	 * Cursor positioning is not implemented.
 	 * @throws SQLException indicating that this feature is not supported.
 	 */
-	public boolean first() throws SQLException
+	public boolean first() 
+	throws SQLException
 	{
 		throw new UnsupportedFeatureException("Cursor positioning");
 	}

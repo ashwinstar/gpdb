@@ -4,24 +4,19 @@
 #
 # @author Thomas Hallgren
 #-------------------------------------------------------------------------
+subdir       = src/pl/pljava/src/java/
+top_builddir = $(MODULEROOT)/../../../../..
+include $(top_builddir)/src/Makefile.global
+
 SRCDIR		:= $(MODULEROOT)/$(NAME)
 SRCS		:= $(shell find $(SRCDIR) -name CVS -prune -o -type f -name \*.java -print)
 CLASSES		:= $(shell find . -type f -name \*.class)
-JAR			:= jar
-JAVADOC		:= javadoc
-
-ifdef USE_GCJ
-	GCJ	:= gcj
-	JAVAC	:= $(GCJ) -C
-else
-	JAVAC	:= javac -source 1.4 -target 1.4
-endif
 
 JARFILE	:= $(TARGETDIR)/$(NAME).jar
 
 .timestamp: $(SRCS)
-	@echo $(JAVAC) -d . $(JAVAFLAGS) '<java sources>'
-	@$(JAVAC) -d . $(JAVAFLAGS) $(SRCS)
+	@echo $(JAVAC) $(JAVAC_FLAGS) -d . $(JAVAFLAGS) '<java sources>'
+	@$(JAVAC) $(JAVAC_FLAGS) -d . $(JAVAFLAGS) $(SRCS)
 	@touch $@
 
 .PHONY: javadoc

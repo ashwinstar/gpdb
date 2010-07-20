@@ -7,6 +7,7 @@ import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.RowIdLifetime;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
@@ -14,6 +15,7 @@ import java.util.HashMap;
 
 import org.postgresql.pljava.internal.AclId;
 import org.postgresql.pljava.internal.Backend;
+import org.postgresql.pljava.internal.ExecutionPlan;
 import org.postgresql.pljava.internal.Oid;
 
 public class SPIDatabaseMetaData implements DatabaseMetaData
@@ -51,14 +53,18 @@ public class SPIDatabaseMetaData implements DatabaseMetaData
 	{
 		if(NAMEDATALEN == 0)
 		{
-			String sql = "SELECT t.typlen FROM pg_catalog.pg_type t, pg_catalog.pg_namespace n" +
+			String sql = "SELECT t.typlen " +
+				         " FROM pg_catalog.pg_type t, pg_catalog.pg_namespace n" +
 						 " WHERE t.typnamespace=n.oid" +
 						 "   AND t.typname='name'" +
 						 "   AND n.nspname='pg_catalog'";
 
 			ResultSet rs = m_connection.createStatement().executeQuery(sql);
-			if(!rs.next()){ throw new SQLException(
-				"Unable to find name datatype in the system catalogs."); }
+			if(!rs.next())
+			{
+				throw new SQLException(
+                     "Unable to find name datatype in the system catalogs."); 
+			}
 			NAMEDATALEN = rs.getInt("typlen");
 			rs.close();
 		}
@@ -86,7 +92,7 @@ public class SPIDatabaseMetaData implements DatabaseMetaData
 	}
 
 	/*
-	 * What is the URL for this database? @return the url or null if it cannott
+	 * What is the URL for this database? @return the url or null if it cannot
 	 * be generated @exception SQLException if a database access error occurs
 	 */
 	public String getURL() throws SQLException
@@ -1733,36 +1739,104 @@ public class SPIDatabaseMetaData implements DatabaseMetaData
 	private static final String s_defaultTableTypes[] = { "TABLE", "VIEW",
 		"INDEX", "SEQUENCE", "TEMPORARY TABLE" };
 
-	/*
-	 * Get the schema names available in this database. The results are ordered
-	 * by schema name. <P>The schema column is: <OL> <LI><B>TABLE_SCHEM</B>
-	 * String => schema name </OL> @return ResultSet each row has a single
-	 * String column that is a schema name
+	/**
+	 * Retrieves the schema names available in this database. The results are
+	 * ordered by TABLE_CATALOG and TABLE_SCHEM.
+	 *
+	 * The schema columns are:
+	 *   1. TABLE_SCHEM String => schema name
+     *   2. TABLE_CATALOG String => catalog name (may be null) 
+	 *
+	 * @return a ResultSet object in which each row is a schema description 
+	 * @throw SQLException - if a database access error occurs
 	 */
-	public java.sql.ResultSet getSchemas() throws SQLException
+	public java.sql.ResultSet getSchemas() 
+	throws SQLException
 	{
-		String sql = "SELECT nspname AS TABLE_SCHEM FROM pg_catalog.pg_namespace WHERE nspname <> 'pg_toast' AND nspname NOT LIKE 'pg!_temp!_%' ESCAPE '!' ORDER BY TABLE_SCHEM";
+		String sql = 
+			"SELECT nspname AS TABLE_SCHEM, null AS TABLE_CATALOG " +
+			"FROM pg_catalog.pg_namespace " +
+			"WHERE nspname !~ '^(pg_toast|pg_temp)' " +
+			"ORDER BY TABLE_SCHEM";
 		return createMetaDataStatement().executeQuery(sql);
 	}
 
-	/*
-	 * Get the catalog names available in this database. The results are ordered
-	 * by catalog name. <P>The catalog column is: <OL> <LI><B>TABLE_CAT</B>
-	 * String => catalog name </OL> @return ResultSet each row has a single
-	 * String column that is a catalog name
+
+	/**
+	 * Retrieves the schema names available in this database. The results are
+	 * ordered by TABLE_CATALOG and TABLE_SCHEM.
+	 *
+	 * The schema columns are:
+	 *
+     * 1. TABLE_SCHEM String => schema name
+     * 2. TABLE_CATALOG String => catalog name (may be null) 
+	 *
+	 * @param catalog - a catalog name; must match the catalog name as it is
+	 *        stored in the database;"" retrieves those without a catalog; null
+	 *        means catalog name should not be used to narrow down the search.
+	 * @param schemaPattern - a schema name; must match the schema name as it is
+	 *        stored in the database; null means schema name should not be used
+	 *        to narrow down the search.
+	 * @return a ResultSet object in which each row is a schema description 
+	 * @throw SQLException - if a database access error occurs
+	 * @since 1.6
 	 */
-	public java.sql.ResultSet getCatalogs() throws SQLException
+	public ResultSet getSchemas(String catalog, String schemaPattern)
+	throws SQLException
 	{
-		String sql = "SELECT datname AS TABLE_CAT FROM pg_catalog.pg_database ORDER BY TABLE_CAT";
+		// Needs Testing
+		String sql = 
+			"SELECT nspname AS TABLE_SCHEM, null AS TABLE_CATALOG " +
+			"FROM pg_catalog.pg_namespace " +
+			"WHERE nspname !~ '^(pg_toast|pg_temp)' ";
+
+		// vulnerable to injection
+		if (schemaPattern != null)
+		{
+			sql += "AND nspname LIKE '" + schemaPattern + "' ";
+			sql += "ESCAPE '" + this.getSearchStringEscape() + "' ";
+		}
+		sql += "ORDER BY TABLE_SCHEM";
+
 		return createMetaDataStatement().executeQuery(sql);
 	}
 
-	/*
-	 * Get the table types available in this database. The results are ordered
-	 * by table type. <P>The table type is: <OL> <LI><B>TABLE_TYPE</B> String =>
-	 * table type. Typical types are "TABLE", "VIEW", "SYSTEM TABLE", "GLOBAL
-	 * TEMPORARY", "LOCAL TEMPORARY", "ALIAS", "SYNONYM". </OL> @return
-	 * ResultSet each row has a single String column that is a table type
+	/**
+	 * Retrieves the catalog names available in this database. The results are
+	 * ordered by catalog name
+	 *
+	 * The catalog column is:
+	 *
+     * 1. TABLE_CAT String => catalog name
+
+	 * @return a ResultSet object in which each row is a catalog name
+	 * @throw SQLException - if a database access error occurs
+	 * @since 1.6
+	 */
+	public java.sql.ResultSet getCatalogs() 
+	throws SQLException
+	{
+		String sql = "SELECT datname AS TABLE_CAT " +
+			         "FROM pg_catalog.pg_database " +
+			         "ORDER BY TABLE_CAT";
+		return createMetaDataStatement().executeQuery(sql);
+	}
+
+	/**
+	 * Retrieves the table types available in this database. The results are
+	 * ordered by table type.
+	 *
+	 * The table type is:
+	 *
+	 * 1. TABLE_TYPE String => table type. 
+	 * 
+	 * Typical types are "TABLE", "VIEW", "SYSTEM TABLE", "GLOBAL TEMPORARY", 
+	 * "LOCAL TEMPORARY", "ALIAS", "SYNONYM". 
+	 *
+	 * @return a ResultSet object in which each row has a single String column
+	 *         that is a table type
+	 * @throw SQLException - if a database access error occurs
+	 * @since 1.6
 	 */
 	public java.sql.ResultSet getTableTypes() throws SQLException
 	{
@@ -2267,25 +2341,50 @@ public class SPIDatabaseMetaData implements DatabaseMetaData
 		return privileges;
 	}
 
-	/*
-	 * Get a description of a table's optimal set of columns that uniquely
-	 * identifies a row. They are ordered by SCOPE. <P>Each column description
-	 * has the following columns: <OL> <LI><B>SCOPE</B> short => actual scope
-	 * of result <UL> <LI> bestRowTemporary - very temporary, while using row
-	 * <LI> bestRowTransaction - valid for remainder of current transaction <LI>
-	 * bestRowSession - valid for remainder of current session </UL> <LI><B>COLUMN_NAME</B>
-	 * String => column name <LI><B>DATA_TYPE</B> short => SQL data type from
-	 * java.sql.Types <LI><B>TYPE_NAME</B> String => Data source dependent
-	 * type name <LI><B>COLUMN_SIZE</B> int => precision <LI><B>BUFFER_LENGTH</B>
-	 * int => not used <LI><B>DECIMAL_DIGITS</B> short => scale <LI><B>PSEUDO_COLUMN</B>
-	 * short => is this a pseudo column like an Oracle ROWID <UL> <LI>
-	 * bestRowUnknown - may or may not be pseudo column <LI> bestRowNotPseudo -
-	 * is NOT a pseudo column <LI> bestRowPseudo - is a pseudo column </UL>
-	 * </OL> @param catalog a catalog name; "" retrieves those without a catalog
-	 * @param schema a schema name; "" retrieves those without a schema @param
-	 * table a table name @param scope the scope of interest; use same values as
-	 * SCOPE @param nullable include columns that are nullable? @return
-	 * ResultSet each row is a column description
+	/**
+	 * Retrieves a description of a table's optimal set of columns that uniquely
+	 * identifies a row. They are ordered by SCOPE.
+	 *
+	 * Each column description has the following columns:
+     *   1. SCOPE          short => actual scope of result
+     *        - bestRowTemporary   : very temporary, while using row
+     *        - bestRowTransaction : valid for remainder of current transaction
+     *        - bestRowSession     : valid for remainder of current session 
+     *   2. COLUMN_NAME   String => column name
+     *   3. DATA_TYPE        int => SQL data type from java.sql.Types
+     *   4. TYPE_NAME     String => Data source dependent type name, for a UDT the 
+	 *          type name is fully qualified
+	 *   5. COLUMN_SIZE      int => precision
+	 *   6. BUFFER_LENGTH    int => not used
+	 *   7. DECIMAL_DIGITS short => scale - Null is returned for data types 
+	 *      where DECIMAL_DIGITS is not applicable.
+	 *   8. PSEUDO_COLUMN short => is this a pseudo column like an Oracle ROWID
+     *        - bestRowUnknown   : may or may not be pseudo column
+     *        - bestRowNotPseudo : is NOT a pseudo column
+     *        - bestRowPseudo    : is a pseudo column 
+	 *
+	 * The COLUMN_SIZE column represents the specified column size for the given
+	 * column. For numeric data, this is the maximum precision. For character
+	 * data, this is the length in characters. For datetime datatypes, this is
+	 * the length in characters of the String representation (assuming the
+	 * maximum allowed precision of the fractional seconds component). For
+	 * binary data, this is the length in bytes. For the ROWID datatype, this is
+	 * the length in bytes. Null is returned for data types where the column
+	 * size is not applicable.
+	 *
+	 * @param catalog - a catalog name; must match the catalog name as it is
+	 *        stored in the database; "" retrieves those without a catalog; null
+	 *        means that the catalog name should not be used to narrow the
+	 *        search
+	 * @param schema - a schema name; must match the schema name as it is stored
+	 *        in the database; "" retrieves those without a schema; null means
+	 *        that the schema name should not be used to narrow the search
+	 * @param table - a table name; must match the table name as it is stored in
+	 *        the database
+	 * @param scope - the scope of interest; use same values as SCOPE
+	 * @param nullable - include columns that are nullable. 
+	 * @return ResultSet - each row is a column description 
+	 * @throw SQLException - if a database access error occurs
 	 */
 	// Implementation note: This is required for Borland's JBuilder to work
 	public java.sql.ResultSet getBestRowIdentifier(String catalog,
@@ -3082,7 +3181,8 @@ public class SPIDatabaseMetaData implements DatabaseMetaData
 
 	private Statement createMetaDataStatement() throws SQLException
 	{
-		return m_connection.createStatement(java.sql.ResultSet.TYPE_FORWARD_ONLY,
+		return m_connection.createStatement(
+            java.sql.ResultSet.TYPE_FORWARD_ONLY,
 			java.sql.ResultSet.CONCUR_READ_ONLY);
 	}
 
@@ -3440,6 +3540,217 @@ public class SPIDatabaseMetaData implements DatabaseMetaData
 	}
 
 	/**
+	 * Indicates whether or not this data source supports the SQL ROWID type,
+	 * and if so the lifetime for which a RowId object remains valid.
+	 *
+	 * The returned int values have the following relationship:
+	 *
+	 *    ROWID_UNSUPPORTED < ROWID_VALID_OTHER < ROWID_VALID_TRANSACTION
+	 *        < ROWID_VALID_SESSION < ROWID_VALID_FOREVER
+	 *
+	 * so conditional logic such as:
+	 *
+     *   if (metadata.getRowIdLifetime() > DatabaseMetaData.ROWID_VALID_TRANSACTION)
+     *
+	 * can be used. Valid Forever means valid across all Sessions, and valid for
+	 * a Session means valid across all its contained Transactions.
+	 *
+	 * @return the status indicating the lifetime of a RowId 
+	 * @throws SQLException - if a database access error occurs
+	 * @since 1.6
+	 */
+	public RowIdLifetime getRowIdLifetime()
+	throws SQLException
+	{
+		return RowIdLifetime.ROWID_UNSUPPORTED;
+	}
+
+	/**
+	 * Retrieves whether this database supports invoking user-defined or vendor
+	 * functions using the stored procedure escape syntax.
+	 *
+	 * @return true is so; false otherwise
+	 * @throw SQLException - if database access error occurs
+	 * @since 1.6
+	 */
+	public boolean supportsStoredFunctionsUsingCallSyntax()
+	throws SQLException
+	{
+		return false;
+	}
+
+	/**
+	 * Retrieves whether a SQLException while autoCommit is true inidcates that
+	 * all open ResultSets are closed, even ones that are holdable. When a
+	 * SQLException occurs while autocommit is true, it is vendor specific
+	 * whether the JDBC driver responds with a commit operation, a rollback
+	 * operation, or by doing neither a commit nor a rollback. A potential
+	 * result of this difference is in whether or not holdable ResultSets are
+	 * closed.
+	 *
+	 * @return true if so; false otherwise 
+	 * @throw SQLException - if a database access error occurs
+	 * @since 1.6
+	*/
+	public boolean autoCommitFailureClosesAllResultSets()
+    throws SQLException
+	{
+		return false;
+	}
+
+
+	/**
+	 * Retrieves a list of the client info properties that the driver
+	 * supports. The result set contains the following columns
+	 *
+     *   1. NAME          String => The name of the client info property
+     *   2. MAX_LEN          int => The maximum length of the value
+     *   3. DEFAULT_VALUE String => The default value of the property
+     *   4. DESCRIPTION   String => A description of the property
+	 *      This will typically contain information as to where this property 
+	 *      is stored in the database. 
+	 *
+	 * The ResultSet is sorted by the NAME column
+	 *
+	 * @return A ResultSet object; each row is a supported client info property
+	 * @throw SQLException - if a database access error occurs
+	 * @since 1.6
+	 */
+	public ResultSet getClientInfoProperties()
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException(
+              "DatabaseMetaData.getClientInfoProperties");
+	}
+
+	/**
+	 * Retrieves a description of the system and user functions available in the
+	 * given catalog.
+	 *
+	 * Only system and user function descriptions matching the schema and
+	 * function name criteria are returned. They are ordered by FUNCTION_CAT,
+	 * FUNCTION_SCHEM, FUNCTION_NAME and SPECIFIC_ NAME.
+	 *
+	 * Each function description has the the following columns:
+	 *
+	 *   1. FUNCTION_CAT   String => function catalog (may be null)
+     *   2. FUNCTION_SCHEM String => function schema (may be null)
+     *   3. FUNCTION_NAME  String => function name.
+     *   4. REMARKS        String => explanatory comment on the function
+     *   5. FUNCTION_TYPE   short => kind of function:
+	 *        - functionResultUnknown : Return type unknown
+     *        - functionNoTable       : Does not return a table
+     *        - functionReturnsTable  : Returns a table
+	 *   6. SPECIFIC_NAME  String => the name which uniquely identifies this
+	 *      function within its schema. This is a user specified, or DBMS
+	 *      generated, name that may be different from the FUNCTION_NAME for
+	 *      example with overload functions.
+	 *
+	 * A user may not have permission to execute any of the functions that are
+	 * returned by getFunctions
+	 *
+	 * @return ResultSet    - each row is a function description 
+	 * @throw  SQLException - if a database access error occurs
+	 * @since  1.6
+	 */
+	public ResultSet getFunctions(String catalog, 
+								  String schemaPattern, 
+								  String functionNamePattern)
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException("DatabaseMetaData.getFunctions");
+	}
+
+	/**
+	 * Retrieves a description of the given catalog's system or user function
+	 * parameters and return type.
+	 *
+	 * Only descriptions matching the schema, function and parameter name
+	 * criteria are returned. They are ordered by FUNCTION_CAT, FUNCTION_SCHEM,
+	 * FUNCTION_NAME and SPECIFIC_ NAME. Within this, the return value, if any,
+	 * is first. Next are the parameter descriptions in call order. The column
+	 * descriptions follow in column number order.
+	 *
+	 * Each row in the ResultSet is a parameter description, column description
+	 * or return type description with the following fields:
+	 *
+     *   1. FUNCTION_CAT   String => function catalog (may be null)
+     *   2. FUNCTION_SCHEM String => function schema (may be null)
+     *   3. FUNCTION_NAME  String => function name used to invoke the function
+     *   4. COLUMN_NAME    String => column/parameter name
+     *   5. COLUMN_TYPE     Short => kind of column/parameter:
+     *        - functionColumnUnknown : nobody knows
+     *        - functionColumnIn      : IN parameter
+     *        - functionColumnInOut   : INOUT parameter
+     *        - functionColumnOut     : OUT parameter
+     *        - functionColumnReturn  : function return value
+     *        - functionColumnResult  : Indicates that the parameter or column 
+	 *                                  is a column in the ResultSet 
+	 *   6. DATA_TYPE    int => SQL type from java.sql.Types
+	 *   7. TYPE_NAME String => SQL type name (UDT fully qualified)
+	 *   8. PRECISION    int => precision
+     *   9. LENGTH       int => length in bytes of data 
+     *  10. SCALE      short => scale (NULL when NA)
+	 *  11. RADIX      short => radix
+     *  12. NULLABLE short => can it contain NULL.
+     *        - functionNoNulls - does not allow NULL values
+     *        - functionNullable - allows NULL values
+     *        - functionNullableUnknown - nullability unknown 
+     *  13. REMARKS String => comment describing column/parameter
+     *  14. CHAR_OCTET_LENGTH int => the maximum length of binary and character
+	 *      based parameters or columns. For any other datatype the returned 
+	 *      value is a NULL
+     *  15. ORDINAL_POSITION int => the ordinal position, starting from 1, for
+     *      the input and output parameters. A value of 0 is returned if this
+     *      row describes the function's return value. For result set columns,
+     *      it is the ordinal position of the column in the result set starting
+     *      from 1.
+     *  16. IS_NULLABLE String => ISO rules are used to determine the 
+	 *      nullability for a parameter or column.
+     *        - YES  : if the parameter or column can include NULLs
+     *        - NO   : if the parameter or column cannot include NULLs
+     *        - ""   : if the nullability for the parameter or column is unknown
+     *  17. SPECIFIC_NAME String => the name which uniquely identifies this 
+	 *      function within its schema. This is a user specified, or DBMS 
+	 *      generated, name that may be different then the FUNCTION_NAME for 
+	 *      example with overload functions.
+	 *
+	 * The PRECISION column represents the specified column size for the given
+	 * parameter or column. For numeric data, this is the maximum precision. For
+	 * character data, this is the length in characters. For datetime datatypes,
+	 * this is the length in characters of the String representation (assuming
+	 * the maximum allowed precision of the fractional seconds component). For
+	 * binary data, this is the length in bytes. For the ROWID datatype, this is
+	 * the length in bytes. Null is returned for data types where the column
+	 * size is not applicable.
+	 *
+	 * @param catalog - a catalog name; must match the catalog name as it is
+	 *         stored in the database; "" retrieves those without a catalog;
+	 *         null means that the catalog name should not be used to narrow the
+	 *         search
+	 * @param schemaPattern - a schema name pattern; must match the schema name
+	 *         as it is stored in the database; "" retrieves those without a
+	 *         schema; null means that the schema name should not be used to
+	 *         narrow the search
+	 * @param functionNamePattern - a procedure name pattern; must match the
+	 *         function name as it is stored in the database
+     * @param columnNamePattern - a parameter name pattern; must match the
+     *         parameter or column name as it is stored in the database
+	 * @return ResultSet - each row describes a user function parameter, column
+	 *         or return type
+	 * @throw  SQLException - if a database access error occurs
+	 * @since  1.6
+	*/
+	public ResultSet getFunctionColumns(String catalog,
+										String schemaPattern,
+										String functionNamePattern,
+										String columnNamePattern)
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException("DatabaseMetaData.getFunctionColumns");
+	}
+
+	/**
 	 * This method creates a ResultSet which is not associated with any
 	 * statement.
 	 */
@@ -3447,5 +3758,45 @@ public class SPIDatabaseMetaData implements DatabaseMetaData
 	throws SQLException
 	{
 		return new SyntheticResultSet(f, tuples);
+	}
+
+
+	/**
+	 * Returns true if this either implements the interface argument or is
+	 * directly or indirectly a wrapper for an object that does. Returns false
+	 * otherwise. If this implements the interface then return true, else if
+	 * this is a wrapper then return the result of recursively calling
+	 * isWrapperFor on the wrapped object. If this does not implement the
+	 * interface and is not a wrapper, return false. This method should be
+	 * implemented as a low-cost operation compared to unwrap so that callers
+	 * can use this method to avoid expensive unwrap calls that may fail. If
+	 * this method returns true then calling unwrap with the same argument
+	 * should succeed.
+	 *
+	 * @since 1.6
+	 */
+	public boolean isWrapperFor(Class iface)
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException("isWrapperFor");
+	}
+
+	/**
+	 * Returns an object that implements the given interface to allow access to
+	 * non-standard methods, or standard methods not exposed by the proxy. If
+	 * the receiver implements the interface then the result is the receiver or
+	 * a proxy for the receiver. If the receiver is a wrapper and the wrapped
+	 * object implements the interface then the result is the wrapped object or
+	 * a proxy for the wrapped object. Otherwise return the the result of
+	 * calling unwrap recursively on the wrapped object or a proxy for that
+	 * result. If the receiver is not a wrapper and does not implement the
+	 * interface, then an SQLException is thrown.
+	 *
+	 * @since 1.6
+	 */
+	public Object unwrap(Class iface)
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException("unwrap");
 	}
 }

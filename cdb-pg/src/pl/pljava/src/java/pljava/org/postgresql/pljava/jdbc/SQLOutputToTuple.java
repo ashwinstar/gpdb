@@ -129,6 +129,12 @@ public class SQLOutputToTuple implements SQLOutput
 		this.writeValue(value);
 	}
 
+	public void writeNClob(java.sql.NClob value) 
+	throws SQLException
+	{
+		throw new UnsupportedOperationException("NClob not yet supported");
+	}
+
 	public void writeDate(Date value) throws SQLException
 	{
 		this.writeValue(value);
@@ -174,6 +180,12 @@ public class SQLOutputToTuple implements SQLOutput
 		this.writeValue(value);
 	}
 
+	public void writeNString(String value)
+	throws SQLException
+	{
+		throw new UnsupportedOperationException("NString not yet supported");
+	}
+
 	public void writeStruct(Struct value) throws SQLException
 	{
 		this.writeValue(value);
@@ -192,6 +204,16 @@ public class SQLOutputToTuple implements SQLOutput
 	public void writeURL(URL value) throws SQLException
 	{
 		this.writeValue(value.toString());
+	}
+
+	public void writeRowId(java.sql.RowId value) throws SQLException
+	{
+		throw new UnsupportedOperationException("RowId not yet supported");
+	}
+
+	public void writeSQLXML(java.sql.SQLXML value) throws SQLException
+	{
+		throw new UnsupportedOperationException("SQLXML not yet supported");
 	}
 
 	private void writeValue(Object value) throws SQLException

@@ -10,18 +10,23 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.sql.Array;
 import java.sql.Blob;
 import java.sql.CallableStatement;
 import java.sql.Clob;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.Date;
+import java.sql.NClob;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.SQLWarning;
 import java.sql.Savepoint;
 import java.sql.Statement;
+import java.sql.Struct;
+import java.sql.SQLClientInfoException;
+import java.sql.SQLException;
+import java.sql.SQLWarning;
+import java.sql.SQLXML;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.sql.Types;
@@ -29,10 +34,13 @@ import java.util.BitSet;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
+import org.postgresql.pljava.jdbc.BlobValue;
+import org.postgresql.pljava.jdbc.ClobValue;
 import org.postgresql.pljava.internal.Oid;
 import org.postgresql.pljava.internal.PgSavepoint;
 
@@ -157,6 +165,15 @@ public class SPIConnection implements Connection
 	}
 
 	/**
+	 * Will always return true
+	 */
+	public boolean isValid(int timeout)
+    throws SQLException
+	{
+		return true;
+	}
+
+	/**
 	 * Returns <code>false</code>. The SPIConnection is not real-only.
 	 */
 	public boolean isReadOnly()
@@ -226,6 +243,31 @@ public class SPIConnection implements Connection
 		throw new UnsupportedFeatureException("Connection.setCatalog");
 	}
 
+	public String getClientInfo(String name)
+    throws SQLException
+	{
+		throw new UnsupportedFeatureException("ClientInfo is not yet supported");
+	}
+
+	public Properties getClientInfo()
+    throws SQLException
+	{
+		throw new UnsupportedFeatureException("ClientInfo is not yet supported");
+	}
+
+	public void setClientInfo(Properties properties)
+	throws SQLClientInfoException
+	{
+		throw new SQLClientInfoException();
+	}
+
+	public void setClientInfo(String name, String value)
+	throws SQLClientInfoException
+	{
+		throw new SQLClientInfoException();
+	}
+
+
 	/**
 	 * DatabaseMetaData is not yet supported.
 	 * @throws SQLException indicating that this feature is not supported.
@@ -291,7 +333,7 @@ public class SPIConnection implements Connection
 		int resultSetConcurrency)
 		throws SQLException
 	{
-		if(resultSetType != ResultSet.TYPE_FORWARD_ONLY)
+		if (resultSetType != ResultSet.TYPE_FORWARD_ONLY)
 			throw new UnsupportedOperationException("TYPE_FORWARD_ONLY supported ResultSet type");
 
 		if(resultSetConcurrency != ResultSet.CONCUR_READ_ONLY)
@@ -319,6 +361,80 @@ public class SPIConnection implements Connection
 					"CLOSE_CURSORS_AT_COMMIT is the only supported ResultSet holdability");
 		return this.createStatement(resultSetType, resultSetConcurrency);
 	}
+
+	/**
+	 * Factory method for creating Array objects.
+	 *
+	 * @throws SQLException indicating that this feature is not supported.
+	 */
+	public Array createArrayOf(String typeName, Object[] elements)
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException("Array objects not yet implemented");
+	}
+
+	/**
+	 * Constructs an object that implements the Blob interface. 
+	 *
+	 * The object returned initially contains no data. The setAsciiStream,
+	 * setCharacterStream and setString methods of the Blob interface may be
+	 * used to add data to the Blob.
+	 */
+	public Blob createBlob()
+	throws SQLException
+	{
+		return new BlobValue(new byte[0]);
+	}
+
+	/**
+	 * Constructs an object that implements the Clob interface. 
+	 *
+	 * The object returned initially contains no data. The setAsciiStream,
+	 * setCharacterStream and setString methods of the Clob interface may be
+	 * used to add data to the Clob.
+	 */
+	public Clob createClob()
+	throws SQLException
+	{
+		return new ClobValue("");
+	}
+
+	/**
+	 * Constructs an object that implements the NClob interface. 
+	 *
+	 * The object returned initially contains no data. The setAsciiStream,
+	 * setCharacterStream and setString methods of the NClob interface may be
+	 * used to add data to the NClob.
+	 */
+	public NClob createNClob()
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException("NClob objects not yet implemented");
+	}
+
+	/**
+	 * Constructs an object that implemnts the SQLXML interface.  
+	 *
+	 * The object returned initially contains no data. The createXmlStreamWriter
+	 * object and setString method of the SQLXML interface may be used to add
+	 * data to the SQLXML object.
+	 */
+	public SQLXML createSQLXML()
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException("SQLXML objects not yet implemented");
+	}
+
+	/**
+	 * Factory method for creating Struct objects.
+	 *
+	 * @throws SQLException indicating that this feature is not supported.
+	 */
+	public Struct createStruct(String typeName, Object[] attributes)
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException("Struct objects not yet implemented");
+	}	
 
 	/**
 	 * Returns <code>null</code>. Type map is not yet imlemented.
@@ -817,6 +933,45 @@ public class SPIConnection implements Connection
 		throw new SQLException("Cannot derive a value of class " +
 			cls.getName() + " from an object of class " + value.getClass().getName());
 	}
+
+
+	/**
+	 * Returns true if this either implements the interface argument or is
+	 * directly or indirectly a wrapper for an object that does. Returns false
+	 * otherwise. If this implements the interface then return true, else if
+	 * this is a wrapper then return the result of recursively calling
+	 * isWrapperFor on the wrapped object. If this does not implement the
+	 * interface and is not a wrapper, return false. This method should be
+	 * implemented as a low-cost operation compared to unwrap so that callers
+	 * can use this method to avoid expensive unwrap calls that may fail. If
+	 * this method returns true then calling unwrap with the same argument
+	 * should succeed.
+	 *
+	 * @notes: Subclasses should override this to support jdbc 4.0 support.
+	 */
+	public boolean isWrapperFor(Class iface)
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException("isWrapperFor");
+	}
+
+	/**
+	 * Returns an object that implements the given interface to allow access to
+	 * non-standard methods, or standard methods not exposed by the proxy. If
+	 * the receiver implements the interface then the result is the receiver or
+	 * a proxy for the receiver. If the receiver is a wrapper and the wrapped
+	 * object implements the interface then the result is the wrapped object or
+	 * a proxy for the wrapped object. Otherwise return the the result of
+	 * calling unwrap recursively on the wrapped object or a proxy for that
+	 * result. If the receiver is not a wrapper and does not implement the
+	 * interface, then an SQLException is thrown.
+	 */
+	public Object unwrap(Class iface)
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException("unwrap");
+	}
+
 
     /*
      * This table holds the org.postgresql names for the types supported.

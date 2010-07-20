@@ -580,10 +580,19 @@ AC_MSG_RESULT([$with_python])
 AC_SUBST(with_python)
 
 #
+# Optionally build Java modules (PL/Java)
+#
+AC_MSG_CHECKING([whether to build Java modules])
+PGAC_ARG_BOOL(with, java, no, [  --with-java             build Java modules (PL/Java)])
+AC_MSG_RESULT([$with_java])
+AC_SUBST(with_java)
+
+
+#
 # Optionally build R modules (PL/R)
 #
 AC_MSG_CHECKING([whether to build R modules])
-PGAC_ARG_BOOL(with, r, no, [  --with-r             build Perl modules (PL/R)])
+PGAC_ARG_BOOL(with, r, no, [  --with-r             build R modules (PL/R)])
 AC_MSG_RESULT([$with_r])
 AC_SUBST(with_r)
 
@@ -782,6 +791,11 @@ fi
 if test "$with_python" = yes; then
   PGAC_PATH_PYTHON
   PGAC_CHECK_PYTHON_EMBED_SETUP
+fi
+
+if test "$with_java" = yes; then
+  PGAC_PATH_JAVA
+  PGAC_CHECK_JAVA_EMBED_SETUP
 fi
 
 ZIC=

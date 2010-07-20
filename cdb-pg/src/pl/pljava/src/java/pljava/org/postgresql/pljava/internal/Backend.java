@@ -55,6 +55,17 @@ public class Backend
 	}
 
 	/**
+	 * returns the library path '$libdir'
+	 */
+	public static String getLibraryPath()
+	{
+		synchronized(THREADLOCK)
+		{
+			return _getLibraryPath();
+		}
+	}
+
+	/**
 	 * Returns the size of the statement cache.
 	 * @return the size of the statement cache.
 	 */
@@ -163,12 +174,16 @@ public class Backend
 					// Must be able to read timezone info etc. in the java
 					// installation directory.
 					//
+					String jarpath =  Backend.getLibraryPath() + "/java";
 					File javaHome = new File(System.getProperty("java.home"));
+					File GPJavaLib = new File(jarpath);
 					File accessedFile = new File(perm.getName());
 					File fileDir = accessedFile.getParentFile();
 					while(fileDir != null)
 					{
 						if(fileDir.equals(javaHome))
+							return;
+						if(fileDir.equals(GPJavaLib))
 							return;
 						fileDir = fileDir.getParentFile();
 					}
@@ -251,6 +266,7 @@ public class Backend
 	public native static boolean isReleaseLingeringSavepoints();
 
 	private native static String _getConfigOption(String key);
+	private native static String _getLibraryPath();
 
 	private native static int  _getStatementCacheSize();
 	private native static void _log(int logLevel, String str);

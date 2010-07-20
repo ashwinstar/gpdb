@@ -103,6 +103,12 @@ public class SQLInputFromTuple extends JavaWrapper implements SQLInput
 		return (str == null) ? null :  new ClobValue(str);
 	}
 
+	public java.sql.NClob readNClob()
+	throws SQLException
+	{
+		throw new UnsupportedOperationException("readNClob");
+	}
+
 	public Date readDate() throws SQLException
 	{
 		return (Date)this.readValue(Date.class);
@@ -163,6 +169,12 @@ public class SQLInputFromTuple extends JavaWrapper implements SQLInput
 		return (String)this.readValue(String.class);
 	}
 
+	public String readNString() 
+    throws SQLException
+	{
+		throw new UnsupportedOperationException("NString not yet supported");
+	}
+
 	public Time readTime() throws SQLException
 	{
 		return (Time)this.readValue(Time.class);
@@ -176,6 +188,18 @@ public class SQLInputFromTuple extends JavaWrapper implements SQLInput
 	public URL readURL() throws SQLException
 	{
 		return (URL)this.readValue(URL.class);
+	}
+
+	public java.sql.RowId readRowId()
+	throws SQLException
+	{
+		throw new UnsupportedOperationException("RowId not yet supported");
+	}
+
+	public java.sql.SQLXML readSQLXML()
+	throws SQLException
+	{
+		throw new UnsupportedOperationException("SQLXML not yet supported");
 	}
 
 	public boolean wasNull() throws SQLException

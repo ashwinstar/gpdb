@@ -151,13 +151,45 @@ public class SPIPreparedStatement extends SPIStatement implements PreparedStatem
 		this.setObject(columnIndex, value, Types.TIMESTAMP);
 	}
 
-	public void setAsciiStream(int columnIndex, InputStream value, int length) throws SQLException
+	public void setAsciiStream(int columnIndex, InputStream x)
+	throws SQLException
 	{
 		try
 		{
-			this.setObject(columnIndex,
-				new ClobValue(new InputStreamReader(value, "US-ASCII"), length),
-				Types.CLOB);
+			Reader inputReader = new InputStreamReader(x, "US-ASCII");
+			Clob   clob        = new ClobValue(inputReader);
+			this.setObject(columnIndex, clob, Types.CLOB);
+		}
+		catch(UnsupportedEncodingException e)
+		{
+			throw new SQLException("US-ASCII encoding is not supported by this JVM");
+		}
+
+	}
+
+	public void setAsciiStream(int columnIndex, InputStream x, int length) 
+	throws SQLException
+	{
+		try
+		{
+			Reader inputReader = new InputStreamReader(x, "US-ASCII");
+			Clob   clob        = new ClobValue(inputReader, length);
+			this.setObject(columnIndex, clob, Types.CLOB);
+		}
+		catch(UnsupportedEncodingException e)
+		{
+			throw new SQLException("US-ASCII encoding is not supported by this JVM");
+		}
+	}
+
+	public void setAsciiStream(int columnIndex, InputStream x, long length) 
+	throws SQLException
+	{
+		try
+		{
+			Reader inputReader = new InputStreamReader(x, "US-ASCII");
+			Clob   clob        = new ClobValue(inputReader, length);
+			this.setObject(columnIndex, clob, Types.CLOB);
 		}
 		catch(UnsupportedEncodingException e)
 		{
@@ -168,12 +200,26 @@ public class SPIPreparedStatement extends SPIStatement implements PreparedStatem
 	/**
 	 * @deprecated
 	 */
-	public void setUnicodeStream(int columnIndex, InputStream value, int arg2) throws SQLException
+	public void setUnicodeStream(int columnIndex, InputStream value, int arg2) 
+    throws SQLException
 	{
 		throw new UnsupportedFeatureException("PreparedStatement.setUnicodeStream");
 	}
 
-	public void setBinaryStream(int columnIndex, InputStream value, int length) throws SQLException
+	public void setBinaryStream(int columnIndex, InputStream value) 
+    throws SQLException
+	{
+		this.setObject(columnIndex, new BlobValue(value), Types.BLOB);
+	}
+
+	public void setBinaryStream(int columnIndex, InputStream value, int length) 
+    throws SQLException
+	{
+		this.setObject(columnIndex, new BlobValue(value, length), Types.BLOB);
+	}
+
+	public void setBinaryStream(int columnIndex, InputStream value, long length) 
+    throws SQLException
 	{
 		this.setObject(columnIndex, new BlobValue(value, length), Types.BLOB);
 	}
@@ -292,6 +338,18 @@ public class SPIPreparedStatement extends SPIStatement implements PreparedStatem
 		throw new UnsupportedFeatureException("Can't add batch statements to a prepared statement");
 	}
 
+	public void setCharacterStream(int columnIndex, Reader value)
+	throws SQLException
+	{
+		this.setObject(columnIndex, new ClobValue(value), Types.CLOB);
+	}
+
+	public void setCharacterStream(int columnIndex, Reader value, long length)
+	throws SQLException
+	{
+		this.setObject(columnIndex, new ClobValue(value, length), Types.CLOB);
+	}
+
 	public void setCharacterStream(int columnIndex, Reader value, int length)
 	throws SQLException
 	{
@@ -308,15 +366,88 @@ public class SPIPreparedStatement extends SPIStatement implements PreparedStatem
 		this.setObject(columnIndex, value, Types.BLOB);
 	}
 
+	public void setBlob(int columnIndex, InputStream value) 
+	throws SQLException
+	{
+		this.setObject(columnIndex, new BlobValue(value), Types.BLOB);
+	}
+
+	public void setBlob(int columnIndex, InputStream value, long length)
+	throws SQLException
+	{
+		this.setObject(columnIndex, new BlobValue(value, length), Types.BLOB);
+	}
+
 	public void setClob(int columnIndex, Clob value) throws SQLException
 	{
 		this.setObject(columnIndex, value, Types.CLOB);
+	}
+
+	public void setClob(int columnIndex, Reader value) 
+	throws SQLException
+	{
+		this.setObject(columnIndex, new ClobValue(value), Types.CLOB);
+	}
+
+	public void setClob(int columnIndex, Reader value, long length)
+	throws SQLException
+	{
+		this.setObject(columnIndex, new ClobValue(value, length), Types.CLOB);
 	}
 
 	public void setArray(int columnIndex, Array value) throws SQLException
 	{
 		this.setObject(columnIndex, value, Types.ARRAY);
 	}
+
+	public void setNCharacterStream(int columnIndex, Reader value)
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException("NClob data is not yet implemented");
+	}
+
+	public void setNCharacterStream(int columnIndex, Reader value, long length)
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException("NClob data is not yet implemented");
+	}
+
+	public void setNClob(int columnIndex, java.sql.NClob value) 
+    throws SQLException
+	{
+		throw new UnsupportedFeatureException("NClob data is not yet implemented");
+	}
+
+	public void setNClob(int columnIndex, Reader value) 
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException("NClob data is not yet implemented");
+	}
+
+	public void setNClob(int columnIndex, Reader value, long length)
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException("NClob data is not yet implemented");
+	}
+
+	public void setNString(int columnIndex, String value)
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException("NString data is not yet implemented");
+	}	
+
+	public void setRowId(int columnIndex, java.sql.RowId value)
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException("RowId data is not yet implemented");
+	}	
+
+	public void setSQLXML(int columnIndex, java.sql.SQLXML value)
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException("SQLXML data is not yet implemented");
+	}	
+
 
 	/**
 	 * ResultSetMetaData is not yet supported.

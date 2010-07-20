@@ -108,6 +108,11 @@ static void initPLJavaClasses(void)
 		Java_org_postgresql_pljava_internal_Backend__1getConfigOption
 		},
 		{
+		"_getLibraryPath",
+		"()Ljava/lang/String;",
+		Java_org_postgresql_pljava_internal_Backend__1getLibraryPath
+		},
+		{
 		"_getStatementCacheSize",
 		"()I",
 		Java_org_postgresql_pljava_internal_Backend__1getStatementCacheSize
@@ -292,8 +297,35 @@ static char* getClassPath(const char* prefix)
 	HashMap unique = HashMap_create(13, CurrentMemoryContext);
 	StringInfoData buf;
 	initStringInfo(&buf);
+
+
+	/* Put the pljava installed in the PKGLIBDIR first in the path */
+	appendPathParts("$libdir/pljava.jar", &buf, unique, prefix);
+
+#if 0
+	/*
+	 * Currently pljava.classpath is user setable, which makes this a 
+	 * security problem.  If CLASSPATH needs to be setable beyond simply 
+	 * locating the pljava.jar file then this requires modification.
+	 *
+	 * The Greenplum version of pljava currently uses the classpath guc
+	 * differently anyhow due to differences in storing the jar files
+	 * in the filesystem rather than in the database.
+	 */
 	appendPathParts(classpath, &buf, unique, prefix);
+
+	/*
+	 * For this to be useful it needs to be propagated from the 
+	 * master to all the segments, otherwise it wouldn't be the
+	 * same everyplace and that would be a problem.  
+	 *
+	 * Using a jvm_classpath GUC makes more architectural sense,
+	 * for it to be secure it would need to be super-user only,
+	 * possibly conf file only.
+	 */
 	appendPathParts(getenv("CLASSPATH"), &buf, unique, prefix);
+#endif
+
 	PgObject_free((PgObject)unique);
 	path = buf.data;
 	if(strlen(path) == 0)
@@ -788,6 +820,30 @@ JNICALL Java_org_postgresql_pljava_internal_Backend__1getConfigOption(JNIEnv* en
 		}
 		PG_END_TRY();
 	}
+	END_NATIVE
+	return result;
+}
+
+/*
+ * Class:     org_postgresql_pljava_internal_Backend
+ * Method:    _getLibraryPath
+ * Signature: ()Ljava/lang/String;
+ */
+JNIEXPORT jstring JNICALL
+JNICALL Java_org_postgresql_pljava_internal_Backend__1getLibraryPath(JNIEnv* env, jclass cls)
+{
+	jstring result = 0;
+	
+	BEGIN_NATIVE
+	PG_TRY();
+    {
+		result = String_createJavaStringFromNTS(PKGLIBDIR);
+	}
+	PG_CATCH();
+	{
+		Exception_throw_ERROR("GetLibraryPath");
+	}
+	PG_END_TRY();
 	END_NATIVE
 	return result;
 }

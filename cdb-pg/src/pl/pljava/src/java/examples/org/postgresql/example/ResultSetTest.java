@@ -4,7 +4,7 @@
  * found in the root folder of this project or at
  * http://eng.tada.se/osprojects/COPYRIGHT.html
  */
-package org.postgresql.pljava.example;
+package org.postgresql.example;
 
 import java.sql.Connection;
 import java.sql.DriverManager;

@@ -90,4 +90,43 @@ public class SPIParameterMetaData implements ParameterMetaData
 			throw new SQLException("Parameter index out of range");
 		return parameterModeIn;
 	}
+
+	/**
+	 * Returns true if this either implements the interface argument or is
+	 * directly or indirectly a wrapper for an object that does. Returns false
+	 * otherwise. If this implements the interface then return true, else if
+	 * this is a wrapper then return the result of recursively calling
+	 * isWrapperFor on the wrapped object. If this does not implement the
+	 * interface and is not a wrapper, return false. This method should be
+	 * implemented as a low-cost operation compared to unwrap so that callers
+	 * can use this method to avoid expensive unwrap calls that may fail. If
+	 * this method returns true then calling unwrap with the same argument
+	 * should succeed.
+	 *
+	 * @since 1.6
+	 */
+	public boolean isWrapperFor(Class iface)
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException("isWrapperFor");
+	}
+
+	/**
+	 * Returns an object that implements the given interface to allow access to
+	 * non-standard methods, or standard methods not exposed by the proxy. If
+	 * the receiver implements the interface then the result is the receiver or
+	 * a proxy for the receiver. If the receiver is a wrapper and the wrapped
+	 * object implements the interface then the result is the wrapped object or
+	 * a proxy for the wrapped object. Otherwise return the the result of
+	 * calling unwrap recursively on the wrapped object or a proxy for that
+	 * result. If the receiver is not a wrapper and does not implement the
+	 * interface, then an SQLException is thrown.
+	 *
+	 * @since 1.6
+	 */
+	public Object unwrap(Class iface)
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException("unwrap");
+	}
 }

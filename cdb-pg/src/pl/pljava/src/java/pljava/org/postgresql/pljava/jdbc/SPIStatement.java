@@ -23,7 +23,7 @@ import org.postgresql.pljava.internal.SPIException;
  * @author Thomas Hallgren
  */
 public class SPIStatement implements Statement
-	{
+{
 	private final SPIConnection m_connection;
 	
 	// Default settings.
@@ -65,22 +65,76 @@ public class SPIStatement implements Statement
 	throws SQLException
 	{
 	}
-
+		
 	public void close()
 	throws SQLException
 	{
 		if(m_resultSet != null)
+		{
 			//
 			// The close will call back to the resultSetClosed method
 			// and set the m_resultSet to null.
 			//
 			m_resultSet.close();
-
+		}
 		m_updateCount = -1;
 		m_cursorName = null;
 		m_batch = null;
         m_closed = true;
 	}
+	
+	/**
+	 * Retrieves whether this Statement object has been closed. A Statement is
+	 * closed if the method close has been called on it, or if it is
+	 * automatically closed.
+	 *
+	 * @return true if this Statement object is closed; false if it is still open 
+	 * @throw SQLException - if a database access error occurs
+	 * @since 1.6
+	 */
+	public boolean isClosed()
+	throws SQLException
+	{
+		return m_closed;
+	}
+
+	/**
+	 * Requests that a Statement be pooled or not pooled. The value specified is
+	 * a hint to the statement pool implementation indicating whether the
+	 * applicaiton wants the statement to be pooled. It is up to the statement
+	 * pool manager as to whether the hint is used.
+	 *
+	 * The poolable value of a statement is applicable to both internal
+	 * statement caches implemented by the driver and external statement caches
+	 * implemented by application servers and other applications.
+	 *
+	 * By default, a Statement is not poolable when created, and a
+	 * PreparedStatement and CallableStatement are poolable when created.
+	 *
+	 * @param poolable - requests that the statement be pooled if true and that
+	 * the statement not be pooled if false
+	 * @throw SQLException - if this method is called on a closed Statement
+	 * @since 1.6
+	 */
+	public void setPoolable(boolean poolable)
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException("Statement.setPoolable");
+	}
+
+	/**
+	 * Returns a value indicating whether the Statement is poolable or not.
+	 * 
+	 * @return true if the Statement is poolable; false otherwise
+	 * @throw SQLException - if this method is called on a closed Statement
+	 * @since 1.6
+	 */
+	public boolean isPoolable()
+    throws SQLException
+	{
+		return false;
+	}
+
 
 	public boolean execute(String statement)
 	throws SQLException
@@ -389,5 +443,44 @@ public class SPIStatement implements Statement
 	{
 		if(rs == m_resultSet)
 			m_resultSet = null;
+	}
+
+	/**
+	 * Returns true if this either implements the interface argument or is
+	 * directly or indirectly a wrapper for an object that does. Returns false
+	 * otherwise. If this implements the interface then return true, else if
+	 * this is a wrapper then return the result of recursively calling
+	 * isWrapperFor on the wrapped object. If this does not implement the
+	 * interface and is not a wrapper, return false. This method should be
+	 * implemented as a low-cost operation compared to unwrap so that callers
+	 * can use this method to avoid expensive unwrap calls that may fail. If
+	 * this method returns true then calling unwrap with the same argument
+	 * should succeed.
+	 *
+	 * @since 1.6
+	 */
+	public boolean isWrapperFor(Class iface)
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException("isWrapperFor");
+	}
+
+	/**
+	 * Returns an object that implements the given interface to allow access to
+	 * non-standard methods, or standard methods not exposed by the proxy. If
+	 * the receiver implements the interface then the result is the receiver or
+	 * a proxy for the receiver. If the receiver is a wrapper and the wrapped
+	 * object implements the interface then the result is the wrapped object or
+	 * a proxy for the wrapped object. Otherwise return the the result of
+	 * calling unwrap recursively on the wrapped object or a proxy for that
+	 * result. If the receiver is not a wrapper and does not implement the
+	 * interface, then an SQLException is thrown.
+	 *
+	 * @since 1.6
+	 */
+	public Object unwrap(Class iface)
+	throws SQLException
+	{
+		throw new UnsupportedFeatureException("unwrap");
 	}
 }

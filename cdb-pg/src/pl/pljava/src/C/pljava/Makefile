@@ -6,8 +6,12 @@
 #
 # @author Thomas Hallgren
 #-------------------------------------------------------------------------
-MODULE_big	:= pljava
-SRCDIR	:= $(MODULEROOT)/$(MODULE_big)
+subdir       = src/pl/pljava/src/C/pljava
+top_builddir = $(MODULEROOT)/../../../../..
+include $(top_builddir)/src/Makefile.global
+
+NAME	:= pljava
+SRCDIR	:= $(MODULEROOT)/pljava
 INCLDIR	:= -I$(MODULEROOT)/include -I$(JNIDIR)
 
 mkobjs	= $(subst $(SRCDIR)/,,$(1:%.c=%.o))
@@ -21,10 +25,6 @@ DLLTOOL_DEFFLAGS := --add-stdcall-alias
 $(OBJS): %.o : $(SRCDIR)/%.c
 	@-mkdir -p $(@D)
 	$(CC) -c $(CFLAGS) $(CPPFLAGS) $< -o $@
-
-# Must include PGXS at this point since it defines PORTNAME and VERSION
-#
-include $(PGXS)
 
 SS_VERSION := $(subst ., ,$(subst devel,.99,$(subst beta,.99,$(subst RC,.99,$(VERSION)))))
 PGSQL_MAJOR_VER	= $(word 1,$(SS_VERSION))
@@ -41,10 +41,10 @@ ifeq ($(PORTNAME), win32)
 	DLL_BUILD := 1
 else
 ifeq ($(PORTNAME), darwin)
-	#
-	# override with JAVAVM_FWX_ROOT=/... on command line
-	# if something else is needed
-	#
+    #
+    # override with JAVAVM_FWX_ROOT=/... on command line
+    # if something else is needed
+    #
 	JAVAVM_FWX_ROOT := /System/Library/Frameworks
 	PLJAVA_CPPFLAGS += -I$(JAVAVM_FWX_ROOT)/JavaVM.framework/Headers/
 else
@@ -120,82 +120,22 @@ else
 	endif
 endif
 
-ifeq ($(JRE_INCL), win32)
-#
-# Mingw is a bit special in that we use a "normal" windows
-# port of the Java Runtime Environment (unless we use gcj
-# of course). The headers etc. for the JRE is windows style
-# and contains __int64. GNU compiler doesn't know __int64,
-# instead it uses long long.
-#
-ifndef USE_GCJ
-
-PLJAVA_CPPFLAGS += -D__int64='long long'
-
-# Don't use higher standard then c89 since this rules out older compilers. We
-# must use 'long long' however, since JNI defines it.
-#
-PLJAVA_CFLAGS += -Wno-long-long
-
-endif
-endif
 
 override CPPFLAGS += $(PLJAVA_CPPFLAGS)
 override CFLAGS += $(PLJAVA_CFLAGS)
 
-# shlib naming convention for plugins (no 'lib')
-#
-plugin = $(NAME)$(DLSUFFIX)
-soname = $(plugin)
-shlib  = $(plugin)
+# import info for compiling shared libraries
+include $(top_srcdir)/src/Makefile.shlib
 
-ifndef USE_GCJ
-checkjavahome:
-	$(JAVA_HOME_TEST_RESULT)
-endif
+all: build_all
 
-ifneq ($(PORTNAME), win32)
-ifneq ($(PORTNAME), aix)
+install: build_install
 
-# Normal case
-#
-$(plugin): $(OBJS)
-	$(LINK.shared) $(LDFLAGS_SL) $(OBJS) $(SHLIB_LINK) -o $(plugin)
+uninstall: build_uninstall
 
-else # PORTNAME == aix
+build_all: all-lib
 
-# AIX case
-#
-$(plugin): lib$(NAME).a
-	$(MKLDEXPORT) lib$(NAME).a > $(NAME)$(EXPSUFF)
-	$(COMPILER) $(LDFLAGS_NO_L) $(LDFLAGS_SL) -o $(plugin) $< -Wl,-bE:$(NAME)$(EXPSUFF) $(SHLIB_LINK)
+build_install: build_all install-lib
 
-endif # PORTNAME == aix
-
-else # PORTNAME == win32
-
-# win32 case
-#
-$(plugin): $(OBJS)
-ifndef USE_GCJ
-	$(DLLTOOL) --input-def $(SRCDIR)/jvm.def --kill-at --dllname jvm.dll --output-lib libjvm.dll.a
-endif
-	$(DLLTOOL) --export-all $(DLLTOOL_DEFFLAGS) --output-def $(NAME).def $(OBJS)
-	$(DLLWRAP) $(LDFLAGS_SL) -o $(plugin) --dllname $(plugin) $(DLLWRAP_FLAGS) --def $(NAME).def $(OBJS) $(SHLIB_LINK)
-	$(DLLTOOL) --dllname $(plugin) $(DLLTOOL_LIBFLAGS) --def $(NAME).def
-
-endif # PORTNAME == win32
-
-build_all: $(plugin)
-
-build_install: build_all installdirs
-	$(INSTALL_SHLIB) $(plugin) $(DESTDIR)$(pkglibdir)/$(plugin)
-ifndef USE_GCJ
-	$(INSTALL_DATA) ../$(pljava-jar) $(DESTDIR)$(pkglibdir)
-endif
-
-build_uninstall:
-	rm -f $(DESTDIR)$(pkglibdir)/$(plugin)
-ifndef USE_GCJ
-	rm -f $(DESTDIR)$(pkglibdir)/$(pljava-jar)
-endif
+build_uninstall: uninstall-lib
+#	rm -f $(DESTDIR)$(pkglibdir)/$(plugin)

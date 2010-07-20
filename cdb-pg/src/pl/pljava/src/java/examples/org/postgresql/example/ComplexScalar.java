@@ -4,7 +4,7 @@
  * found in the root directory of this distribution or at
  * http://eng.tada.se/osprojects/COPYRIGHT.html
  */
-package org.postgresql.pljava.example;
+package org.postgresql.example;
 
 import java.io.IOException;
 import java.io.StreamTokenizer;

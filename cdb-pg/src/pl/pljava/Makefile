@@ -26,27 +26,26 @@
 # volumes very well on some systems. The /mnt/hgfs that enables host shares
 # in a vmware client is one example of this.
 #
-export PROJDIR := $(shell $(SHELL) -c pwd)
+subdir = src/pl/pljava
+top_builddir = ../../..
+include $(top_builddir)/src/Makefile.global
 
-PG_CONFIG = pg_config
-export PGXS := $(shell $(PG_CONFIG) --pgxs)
-export PGSQLSRC := $(dir $(PGXS))..
-export top_builddir := $(PGSQLSRC)/..
-
+export PROJDIR          := $(abs_top_srcdir)/$(subdir)
 export TARGETDIR		:= $(PROJDIR)/build
+export SQLDIR           := $(PROJDIR)/src/sql
 export OBJDIR			:= $(TARGETDIR)/objs
 export JNIDIR			:= $(TARGETDIR)/jni
 export CLASSDIR			:= $(TARGETDIR)/classes
 export PLJAVA_MAJOR_VER	:= 1
 export PLJAVA_MINOR_VER	:= 4
-export PLJAVA_PATCH_VER	:= 0
+export PLJAVA_PATCH_VER	:= 1
 export PLJAVA_VERSION	:= $(PLJAVA_MAJOR_VER).$(PLJAVA_MINOR_VER).$(PLJAVA_PATCH_VER)
 export TAR				:= /bin/tar
 
 OS := $(shell uname -s)
 MACHINE := $(shell uname -m)
 
-.PHONY: all clean docs javadoc source_tarball maven_bundle install uninstall depend release \
+.PHONY: all clean docs javadoc install uninstall depend release \
 	c_all c_install c_uninstall c_depend \
 	pljava_all pljava_javadoc \
 	deploy_all deploy_javadoc \
@@ -55,9 +54,20 @@ MACHINE := $(shell uname -m)
 
 all: pljava_all deploy_all c_all examples_all
 
-install: c_install
+install: all c_install
+	$(mkinstalldirs) '$(datadir)/pljava'
+	$(mkinstalldirs) '$(pkglibdir)/java'
+	$(INSTALL_DATA) '$(TARGETDIR)/pljava.jar' '$(pkglibdir)/.'
+	$(INSTALL_DATA) '$(SQLDIR)/install.sql' '$(datadir)/pljava/.'
+	$(INSTALL_DATA) '$(SQLDIR)/uninstall.sql' '$(datadir)/pljava/.'
+	$(INSTALL_DATA) '$(SQLDIR)/examples.sql' '$(datadir)/pljava/.'
+	$(INSTALL_DATA) '$(TARGETDIR)/examples.jar' '$(datadir)/pljava/.'
+	$(INSTALL_DATA) '$(TARGETDIR)/examples.jar' '$(pkglibdir)/java/.'
+	$(INSTALL_DATA) COPYRIGHT '$(datadir)/pljava/.'
 
 uninstall: c_uninstall
+	rm -f $(pkglibdir)/pljava.jar
+	rm -f -r $(datadir)/pljava
 
 depend: c_depend
 
@@ -75,8 +85,14 @@ clean:
 	@-rm -rf $(TARGETDIR)
 
 pljava_all pljava_javadoc: pljava_%:
+	@echo JAVA_HOME='$(JAVA_HOME)'
+	@echo JAVAC_FLAGS='$(JAVAC_FLAGS)'
+	@echo JAVAC=$(JAVAC)
+	@echo JAVAH=$(JAVAH)
+	@echo JAR=$(JAR)
+	@echo JAVADOC=$(JAVADOC)
 	@-mkdir -p $(CLASSDIR)/pljava
-	@$(MAKE) -r -C $(CLASSDIR)/pljava -f $(PROJDIR)/src/java/pljava/Makefile \
+	$(MAKE) -r -C $(CLASSDIR)/pljava -f $(PROJDIR)/src/java/pljava/Makefile \
 	MODULEROOT=$(PROJDIR)/src/java $*
 
 deploy_all deploy_javadoc: deploy_%:
@@ -99,16 +115,7 @@ c_all c_install c_uninstall c_depend: c_%:
 	@$(MAKE) -r -C $(OBJDIR) -f $(PROJDIR)/src/C/pljava/Makefile \
 	MODULEROOT=$(PROJDIR)/src/C build_$*
 
-source_tarball:
-	@-mkdir -p $(TARGETDIR)/distrib
-	@$(MAKE) -r -C $(TARGETDIR) -f $(PROJDIR)/packaging/Makefile $@
-
 release: all docs javadoc
 	@-mkdir -p $(TARGETDIR)/distrib
 	@$(MAKE) -r -C $(TARGETDIR) -f $(PROJDIR)/packaging/Makefile $@
 
-maven_bundle: pljava_all
-	@-mkdir -p $(TARGETDIR)/distrib
-	@$(MAKE) -r -C $(TARGETDIR) -f $(PROJDIR)/packaging/Makefile $@
-
-	

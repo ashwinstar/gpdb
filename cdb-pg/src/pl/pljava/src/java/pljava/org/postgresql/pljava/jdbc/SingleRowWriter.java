@@ -100,6 +100,21 @@ public class SingleRowWriter extends SingleRowResultSet
 		m_tuple = null;	// Feel free to garbage collect...
 	}
 
+
+	/**
+	 * Retrieves whether this ResultSet object has been closed. A ResultSet is
+	 * closed if the method close has been called on it, or if it is
+	 * automatically closed.
+	 *
+	 * Note: Since close() doesn't really close the set the set is always open.
+	 */
+	public boolean isClosed()
+	throws SQLException
+	{
+		return false;
+	}
+
+
 	public void copyRowFrom(ResultSet rs)
 	throws SQLException
 	{

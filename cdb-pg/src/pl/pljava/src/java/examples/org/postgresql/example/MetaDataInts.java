@@ -4,9 +4,10 @@
  * found in the root folder of this project or at
  * http://eng.tada.se/osprojects/COPYRIGHT.html
  */
-package org.postgresql.pljava.example;
+package org.postgresql.example;
 
 import java.sql.*;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.ArrayList;
@@ -18,13 +19,13 @@ import org.postgresql.pljava.ResultSetProvider;
 /**
  * @author Filip Hrbek
  */
-public class MetaDataBooleans implements ResultSetProvider
+public class MetaDataInts implements ResultSetProvider
 {
 	String[] methodNames;
 
-	Boolean[] methodResults;
+	Integer[] methodResults;
 
-	public MetaDataBooleans() throws SQLException
+	public MetaDataInts() throws SQLException
 	{
 		Logger log = Logger.getAnonymousLogger();
 
@@ -44,7 +45,7 @@ public class MetaDataBooleans implements ResultSetProvider
 		Class prototype[];
 		Class returntype;
 		Object[] args = new Object[0];
-		Boolean result = null;
+		Integer result = null;
 		ArrayList mn = new ArrayList();
 		ArrayList mr = new ArrayList();
 
@@ -55,29 +56,30 @@ public class MetaDataBooleans implements ResultSetProvider
 				continue;
 
 			returntype = m[i].getReturnType();
-			if(!returntype.equals(boolean.class))
+			if(!returntype.equals(int.class))
 				continue;
 
 			try
 			{
-				result = (Boolean)m[i].invoke(md, args);
+				result = (Integer)m[i].invoke(md, args);
+			}
+			catch(InvocationTargetException e)
+			{
+				log.info("Method: " + m[i].getName() + " => " + e.getTargetException().getMessage());
+				result = new Integer(-1);
 			}
 			catch(Exception e)
 			{
 				log.info("Method: " + m[i].getName() + " => " + e.getMessage());
+				result = new Integer(-1);
 			}
-                      catch(AbstractMethodError e)
-                      {
-                              // probably a JDBC 4 method that isn't supported yet
-                              log.info("Method: " + m[i].getName() + " => " + e.getMessage());
-                      }
 
 			mn.add(m[i].getName());
 			mr.add(result);
 		}
 
-		methodNames = (String[])mn.toArray(new String[0]);
-		methodResults = (Boolean[])mr.toArray(new Boolean[0]);
+		methodNames = (String[])mn.toArray(new String[mn.size()]);
+		methodResults = (Integer[])mr.toArray(new Integer[mr.size()]);
 	}
 
 	public boolean assignRowValues(ResultSet receiver, int currentRow)
@@ -86,7 +88,7 @@ public class MetaDataBooleans implements ResultSetProvider
 		if(currentRow < methodNames.length)
 		{
 			receiver.updateString(1, methodNames[currentRow]);
-			receiver.updateBoolean(2, methodResults[currentRow].booleanValue());
+			receiver.updateInt(2, methodResults[currentRow].intValue());
 			return true;
 		}
 		return false;
@@ -96,12 +98,12 @@ public class MetaDataBooleans implements ResultSetProvider
 	{
 	}
 
-	public static ResultSetProvider getDatabaseMetaDataBooleans()
+	public static ResultSetProvider getDatabaseMetaDataInts()
 	throws SQLException
 	{
 		try
 		{
-			return new MetaDataBooleans();
+			return new MetaDataInts();
 		}
 		catch(SQLException e)
 		{
