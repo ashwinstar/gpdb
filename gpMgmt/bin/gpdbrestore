@@ -874,7 +874,7 @@ PROCESS_CREATEDB () {
 	DB_THERE=`$EXPORT_LIB_PATH;$PSQL -A -t -p $MASTER_PORT "$DEFAULTDB" -c"select count(*) from pg_database where datname='${RESTORE_DBNAME}';"`
 	if [ $DB_THERE -eq 1 ];then
 		LOG_MSG "[INFO]:-Dropping database $RESTORE_DBNAME" 1 
-		$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$DEFAULTDB" -c"drop database \"${RESTORE_DBNAME}\";"
+		$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DEFAULTDB" -c"drop database \"${RESTORE_DBNAME}\";"
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ];then
 			ERROR_EXIT "[FATAL]:-Failed to drop database ${RESTORE_DBNAME}" 2
