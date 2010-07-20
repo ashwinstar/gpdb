@@ -13,7 +13,6 @@ include $(MODULEROOT)/Makefile.global
 
 SRCDIR_USC	:= $(subst .,^,$(SRCDIR))
 mkclsrc		= $(subst ^,.,$(subst .,/,$(1:%=$(SRCDIR_USC)/%^java)))
-JAVAH		:= javah
 
 INTPKG		:= org.postgresql.pljava.internal
 JDBCPKG		:= org.postgresql.pljava.jdbc
@@ -81,8 +80,8 @@ all: $(JARFILE) $(JNIDIR)/.timestamp
 
 $(JNIDIR)/.timestamp: $(JNISRCS)
 	@-mkdir -p $(@D)
-	@echo javah -classpath . -d $(@D) '<jni classes>'
-	@javah -classpath . -d $(@D) $(JNI_CLASSES) java.sql.Types
+	@echo $(JAVAH) -classpath . -d $(@D) '<jni classes>'
+	@$(JAVAH) -classpath . -d $(@D) $(JNI_CLASSES) java.sql.Types
 	@touch $@
 
 endif
