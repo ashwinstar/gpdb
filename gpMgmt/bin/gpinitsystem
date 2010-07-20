@@ -1239,6 +1239,11 @@ UPDATE_GPCONFIG () {
 		else 
 			U_REPLICATION_PORT=$9
 		fi
+
+        if [ $MIRRORING -ne 1 ]; then
+            U_REPLICATION_PORT=null
+        fi
+
 		U_DB=$DEFAULTDB
 		CHK_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$U_DB" -A -t -c "SELECT count(*) FROM $GP_CONFIG_TBL WHERE content=${U_CONTENT} AND preferred_role='${U_ROLE}';" 2>/dev/null` >> $LOG_FILE 2>&1
 		ERROR_CHK $? "obtain psql count Master $GP_CONFIG_TBL" 2
