@@ -668,8 +668,8 @@ CopyGetData(CopyState cstate, void *databuf, int datasize)
 	}
 
 	/* put a '\0' after last byte read */
-	if(bytesread >= 0)
-		((char *)databuf)[bytesread] = '\0';
+	//if(bytesread >= 0)
+	//	((char *)databuf)[bytesread] = '\0';
 	
 	return bytesread;
 }
