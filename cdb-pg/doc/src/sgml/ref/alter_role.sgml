@@ -20,25 +20,25 @@ PostgreSQL documentation
 
  <refsynopsisdiv>
 <synopsis>
-ALTER ROLE <replaceable class="PARAMETER">name</replaceable> [ [ WITH ] <replaceable class="PARAMETER">option</replaceable> [ ... ] ]
-
-where <replaceable class="PARAMETER">option</replaceable> can be:
-    
+ALTER ROLE name RENAME TO newname
+ALTER ROLE name SET config_parameter {TO | =} {value | DEFAULT}
+ALTER ROLE name RESET config_parameter
+ALTER ROLE name RESOURCE QUEUE {queue_name | NONE}
+ALTER ROLE name [ [WITH] option [ ... ] ]
+where option can be:
       SUPERUSER | NOSUPERUSER
     | CREATEDB | NOCREATEDB
     | CREATEROLE | NOCREATEROLE
-    | CREATEUSER | NOCREATEUSER
+    | CREATEEXTABLE | NOCREATEEXTABLE 
+      [ ( attribute='value'[, ...] ) ]
+           where attributes and values are:
+           type='readable'|'writable'
+           protocol='gpfdist'|'http'
     | INHERIT | NOINHERIT
     | LOGIN | NOLOGIN
-    | CONNECTION LIMIT <replaceable class="PARAMETER">connlimit</replaceable>
-    | [ ENCRYPTED | UNENCRYPTED ] PASSWORD '<replaceable class="PARAMETER">password</replaceable>'
-    | VALID UNTIL '<replaceable class="PARAMETER">timestamp</replaceable>' 
-    | RESOURCE QUEUE <replaceable class="PARAMETER">queuename</replaceable>
-
-ALTER ROLE <replaceable class="PARAMETER">name</replaceable> RENAME TO <replaceable>newname</replaceable>
-
-ALTER ROLE <replaceable class="PARAMETER">name</replaceable> SET <replaceable>configuration_parameter</replaceable> { TO | = } { <replaceable>value</replaceable> | DEFAULT }
-ALTER ROLE <replaceable class="PARAMETER">name</replaceable> RESET <replaceable>configuration_parameter</replaceable>
+    | CONNECTION LIMIT connlimit
+    | [ENCRYPTED | UNENCRYPTED] PASSWORD 'password'
+    | VALID UNTIL 'timestamp'
 </synopsis>
  </refsynopsisdiv>
 

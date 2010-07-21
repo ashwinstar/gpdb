@@ -20,26 +20,25 @@ PostgreSQL documentation
 
  <refsynopsisdiv>
 <synopsis>
-CREATE ROLE <replaceable class="PARAMETER">name</replaceable> [ [ WITH ] <replaceable class="PARAMETER">option</replaceable> [ ... ] ]
-
-where <replaceable class="PARAMETER">option</replaceable> can be:
-    
+CREATE ROLE name [[WITH] option [ ... ]]
+where option can be:
       SUPERUSER | NOSUPERUSER
     | CREATEDB | NOCREATEDB
     | CREATEROLE | NOCREATEROLE
-    | CREATEUSER | NOCREATEUSER
+    | CREATEEXTABLE | NOCREATEEXTABLE 
+      [ ( attribute='value'[, ...] ) ]
+           where attributes and values are:
+           type='readable'|'writable'
+           protocol='gpfdist'|'http'
     | INHERIT | NOINHERIT
     | LOGIN | NOLOGIN
-    | CONNECTION LIMIT <replaceable class="PARAMETER">connlimit</replaceable>
-    | [ ENCRYPTED | UNENCRYPTED ] PASSWORD '<replaceable class="PARAMETER">password</replaceable>'
-    | VALID UNTIL '<replaceable class="PARAMETER">timestamp</replaceable>' 
-    | IN ROLE <replaceable class="PARAMETER">rolename</replaceable> [, ...]
-    | IN GROUP <replaceable class="PARAMETER">rolename</replaceable> [, ...]
-    | ROLE <replaceable class="PARAMETER">rolename</replaceable> [, ...]
-    | ADMIN <replaceable class="PARAMETER">rolename</replaceable> [, ...]
-    | USER <replaceable class="PARAMETER">rolename</replaceable> [, ...]
-    | SYSID <replaceable class="PARAMETER">uid</replaceable> 
-    | RESOURCE QUEUE <replaceable class="PARAMETER">queuename</replaceable>
+    | CONNECTION LIMIT connlimit
+    | [ ENCRYPTED | UNENCRYPTED ] PASSWORD 'password'
+    | VALID UNTIL 'timestamp' 
+    | IN ROLE rolename [, ...]
+    | ROLE rolename [, ...]
+    | ADMIN rolename [, ...]
+    | RESOURCE QUEUE queue_name
 </synopsis>
  </refsynopsisdiv>
 
