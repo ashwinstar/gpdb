@@ -36,6 +36,9 @@ INSTALLING AND ENABLING PL/R IN GREENPLUM DATABASE
 
     $ gpscp -f <all_hosts_file> ./greenplum-db-<version>-plr/plr.so =:/usr/local/greenplum-db-<version>/lib/postgresql
 
+  (Solaris Only) Also copy the libgcc_s.so.1 and libiconv.so.2 files 
+                 to $GPHOME/lib on all hosts. 
+
 5. Make sure $R_HOME is set on all Greenplum hosts:
 
     $ gpssh -f <all_hosts_file> -e "echo $R_HOME"
@@ -123,7 +126,7 @@ NOTE: You will need root access to install R.
    On Solaris, this involves running crle and adding the path for 
    $R_HOME/lib to the list of linked files. For example:
     
-   # crle -64 -c /var/ld/64/ld.config -l /lib/64:/usr/lib/64:/usr/sfw/lib/64:/usr/lib64/R-2.6.1/lib/R/lib
+   # crle -64 -c /var/ld/64/ld.config -l /lib/64:/usr/lib/64:/usr/sfw/lib/64:/usr/lib/64/R-2.6.1/lib/R/lib
 
    This must be done on all hosts in your Greenplum Database array.
 
