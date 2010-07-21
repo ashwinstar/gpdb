@@ -1835,8 +1835,13 @@ PersistentRecovery_SerializeRedoRelationFile(
 		if (fsObjEntry == NULL)
 			break;
 
-		if (fsObjEntry->state == PersistentFileSysState_Free)
+		if (fsObjEntry->state == PersistentFileSysState_Free ||
+			fsObjEntry->state == PersistentFileSysState_AbortingCreate ||
+			fsObjEntry->state == PersistentFileSysState_DropPending)
 			continue;
+
+		Assert(fsObjEntry->state == PersistentFileSysState_CreatePending ||
+			   fsObjEntry->state == PersistentFileSysState_Created);
 
 		MemSet(&redoRelationEntryData.key, 0, sizeof(RedoRelationEntryDataKey));	// Zero out any padding.
 		redoRelationEntryData.key.persistentTid = fsObjEntry->key.persistentTid;
