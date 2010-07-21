@@ -1,0 +1,120 @@
+#!/usr/bin/env python
+'''
+USAGE:   gpclusterinstall -f|--file HOSTFILE -u|--user USER
+         where HOSTFILE lists all the hosts to install the software on
+         where USER will be the user to install the software as
+'''
+
+import os, sys, re
+import subprocess
+
+try:
+    from optparse import Option, OptionParser 
+    from gppylib.gpparseopts import OptParser, OptChecker
+    from gppylib.gplog import get_default_logger, setup_tool_logging
+    from gppylib.commands.unix import getLocalHostname, getUserName
+except ImportError, e:    
+    sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
+
+EXECNAME = os.path.split(__file__)[-1]
+
+logger = get_default_logger()
+setup_tool_logging(EXECNAME,getLocalHostname(),getUserName()) 
+hostlist = list()
+uniquehostlist = list()
+options = None
+
+# True is an error
+def run_command(cmdstr):
+
+    logger.info(cmdstr)
+    p = subprocess.Popen(cmdstr, shell=True, executable="/bin/bash")
+    sts = os.waitpid(p.pid, 0)[1]
+    if sts:
+        logger.error("error on cmd " + cmdstr)
+        return True
+
+    return False
+
+
+
+# True is an error
+def parseargs():
+
+    global options
+
+    parser = OptParser(option_class=OptChecker)
+    parser.remove_option('-h')
+    parser.add_option('-h', '-?', '--help', action='store_true')
+    parser.add_option('-f', '--file', type='string')
+    parser.add_option('-u', '--user', type='string', default='gpadmin')
+    (options, args) = parser.parse_args()
+
+    if options.help:
+        print __doc__
+        return True
+
+    gphome = os.environ.get('GPHOME')
+    if not gphome:
+        logger.error("GPHOME not set")
+        return True
+
+    if not options.file:
+        logger.error("--file must be specified")
+        return True
+
+    if not os.path.exists(options.file):
+        logger.error("file %s does not exist" % options.file)
+        return True
+
+    return False
+
+# True is an error
+def readHostList():
+
+    try:
+        for line in open(options.file, "r"):
+            hostlist.append(line.rstrip())
+    except Exception, e:
+        logger.error("Error while reading file: %s" % options.file)
+        logger.error(e.__str__())
+        return True
+
+    if not len(hostlist):
+        logger.error("No hosts read from hostfile: %s" % options.file)
+        return True
+
+    return False
+
+# True is an error
+def dedupeHosts():
+
+    output = subprocess.Popen(["gpssh", "-f", options.file, "hostname"], stdout=subprocess.PIPE).communicate()[0]
+    lines = output.split("\n")
+    for line in lines:
+        fields = line.split("]")
+        if len(fields) != 2:
+            continue
+        address = fields[0].split("[")[1].strip()
+        hostname = fields[1].strip()
+        uniquehostlist.append(address)
+        
+
+# True is an error
+#def createUserOnCluster():
+
+
+if (parseargs()):
+    sys.exit(1)
+
+if (readHostList()):
+    sys.exit(1)
+
+# run exkeys as root to make sure we can login everywhere
+if (run_command("gpssh-exkeys -f %s" % options.file)):
+    sys.exit(1)
+
+if (dedupeHosts()):
+    sys.exit(1)
+
+print uniquehostlist
