@@ -993,8 +993,7 @@ FileRepPrimary_RunResyncManager(void)
 			if  (entry.mirrorDataSynchronizationState == MirroredRelDataSynchronizationState_BufferPoolPageIncremental ||
 				 entry.mirrorDataSynchronizationState == MirroredRelDataSynchronizationState_AppendOnlyCatchup)
 			{
-				/* TODO has to be changed to ERROR and assert removed */
-				ereport(LOG,
+				ereport(ERROR,
 						(errcode_for_file_access(),
 						 errmsg("unexpected mirror synchronization state during full resynchronization"
 								"relation path to be resynchronized:'%s' "
@@ -1010,9 +1009,7 @@ FileRepPrimary_RunResyncManager(void)
 								entry.mirrorAppendOnlyLossEof,
 								entry.mirrorAppendOnlyNewEof,
 								entry.mirrorBufpoolResyncChangedPageCount)));
-				Insist(0);
 			}
-			
 		}
 		
 		/*

@@ -32,7 +32,7 @@
 #define FILEREP_MAX_IPC_ARRAY	5
 #define FILEREP_MAX_SEMAPHORES	2 * FILEREP_MAX_IPC_ARRAY
 
-#define FILEREP_MAX_PROC 64
+#define FILEREP_MAX_PROC 4
 #define FILEREP_MAX_RESYNC_FILES 128  //8k
 
 #define FILEREP_OFFSET_UNDEFINED -1  
@@ -40,6 +40,8 @@
 #define FILEREP_UNDEFINED 0xFFFFFFFF
 
 #define FILEREP_UNKNOWN_IDENTIFIER_LEN	16
+
+#define FILEREP_MAX_LOG_DESCRIPTION_LEN 32
 	
 /* GUC parameters */
 extern int file_rep_message_body_length; 	
@@ -48,6 +50,7 @@ extern int file_rep_ack_buffer_size;
 extern int file_rep_retry;
 extern int file_rep_min_data_before_flush;
 extern int file_rep_mirror_consumer_process_count;
+extern int gp_mirror_inactivity_timeout;
 
 extern FileRepRole_e		fileRepRole;
 extern SegmentState_e		segmentState;
@@ -682,7 +685,7 @@ typedef struct FileRepOperationDescriptionValidation_s {
  */
 typedef struct FileRepOperationDescriptionCreate_s {
 	
-	int		reportStatus;
+	int		ignoreAlreadyExists;
 	
 	int		mirrorStatus;
 	
@@ -814,7 +817,7 @@ typedef enum FileRepProcessType_e {
 
 
 /*********************************************************
- * FILE REP IN-MEMORY LOG
+ * FILE REP IN MEMORY LOG
  *********************************************************/
 /*
  * Wraparound log for troubleshooting is maintained by each file rep process
@@ -882,6 +885,31 @@ typedef struct FileRepLogEntry_s {
 	
 } FileRepLogEntry_s;
 
+/****************************************************************
+ * FILEREP IN SHARED MEMORY CONFIGURATION LOG
+ ****************************************************************/
+/*
+ * Wraparound configuration log for troubleshooting is maintained by each segment.
+ */
+#ifdef FILEREP
+typedef struct FileRepConfigLogEntry_s {
+	
+	FileRepRole_e			fileRepRole;
+	
+	DataState_e				dataState;
+	
+	SegmentState_e			segmentState;
+	
+	int						procPid;
+	
+	FileRepProcessType_e	fileRepProcessType;	
+	
+	char					description[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+	
+	struct timeval			logTime;
+
+} FileRepConfigLogEntry_s;
+#endif
 /*
  * Postmaster forks FileRep process. Input parameters 
  * are stored in shared memory. Postmaster-backend process

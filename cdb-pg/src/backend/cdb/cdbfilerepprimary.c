@@ -106,6 +106,14 @@ FileRepPrimary_GetMirrorDataLossTrackingSessionNum(int64 *sessionNum)
 	return MirrorDataLossTrackingState_MirrorNotConfigured;
 }
 
+bool
+FileRepPrimary_IsMirrorDataLossOccurred(void)
+{
+    getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
+	
+	return ((dataState == DataStateInChangeTracking) ? TRUE : FALSE);
+}
+
 void 
 FileRepPrimary_IntentAppendOnlyCommitWork(void)
 {
@@ -230,7 +238,7 @@ FileRepPrimary_IsMirroringRequired(
 					
 					if (! report) {
 						ereport(LOG,
-								(errmsg("WARNING(filerep): failure is detected in segment mirroring, "
+								(errmsg("failure is detected in segment mirroring, "
 										"failover requested "),
 								FileRep_errcontext()));
 						report = TRUE;
@@ -260,7 +268,7 @@ FileRepPrimary_IsMirroringRequired(
 
 				if (report) {
 					ereport(LOG,
-							(errmsg("LOG(filerep): failover is performed to the primary segment, "
+							(errmsg("failover is performed to the primary segment, "
 									"segment mirroring is suspended "),
 							 errSendAlert(true),
 							FileRep_errcontext()));
@@ -325,8 +333,11 @@ FileRepPrimary_ConstructAndInsertMessage(
 		
 		RESUME_INTERRUPTS();
 		
-		ereport(LOG,			
-				(errmsg("ERROR(filerep): could not insert message in ACK table"),
+		ereport(WARNING,	
+				(errmsg("mirror failure, "
+						"could not insert message in ACK table"
+						"failover requested"),  	
+				 errhint("run gprecoverseg to re-establish mirror connectivity"),
 				 FileRep_errdetail(fileRepIdentifier,
 								   fileRepRelationType,
 								   fileRepOperation),
@@ -360,8 +371,11 @@ FileRepPrimary_ConstructAndInsertMessage(
 		RESUME_INTERRUPTS();
 		
 		status = STATUS_ERROR;
-		ereport(LOG,			
-				(errmsg("ERROR(filerep): could not queue message to be mirrored"), 
+		ereport(WARNING,	
+				(errmsg("mirror failure, "
+						"could not queue message to be mirrored, "
+						"failover requested"),  	
+				 errhint("run gprecoverseg to re-establish mirror connectivity"),
 				 FileRep_errdetail(fileRepIdentifier,
 								   fileRepRelationType,
 								   fileRepOperation),
@@ -490,8 +504,7 @@ FileRepPrimary_MirrorOpen(FileRepIdentifier_u	fileRepIdentifier,
 						  int64					logicalEof,
 						  int					fileFlags,
 						  int					fileMode,
-						  bool					suppressError,
-						  bool					*requestNotMirrored)
+						  bool					suppressError)
 {
 	int					status = STATUS_OK;
 	FileRepOperation_e	fileRepOperation = FileRepOperationOpen; 
@@ -503,8 +516,6 @@ FileRepPrimary_MirrorOpen(FileRepIdentifier_u	fileRepIdentifier,
 	descr.open.fileMode = fileMode;
 	descr.open.logicalEof = logicalEof;
 	descr.open.suppressError = suppressError;
-	
-	*requestNotMirrored = TRUE;
 	
 	if ((fileFlags & O_CREAT) == O_CREAT)
 	{
@@ -522,13 +533,11 @@ FileRepPrimary_MirrorOpen(FileRepIdentifier_u	fileRepIdentifier,
 							  fileRepRelationType,
 							  fileRepOperation, 
 							  descr);
-			if (status == STATUS_OK)
+			if (fileRepOperation == FileRepOperationCreateAndOpen && 
+				status == STATUS_OK)
 			{
-				if (fileRepOperation == FileRepOperationCreateAndOpen)
-					mirrorCreateAndOpen = TRUE;
-				else
-					*requestNotMirrored = FALSE;
-			}
+				mirrorCreateAndOpen = TRUE;
+			}	
 		}
 	}
 	
@@ -536,11 +545,10 @@ FileRepPrimary_MirrorOpen(FileRepIdentifier_u	fileRepIdentifier,
 	{
 		if (FileRepPrimary_IsOperationCompleted(
 												fileRepIdentifier,									
-												fileRepRelationType,
-												requestNotMirrored) ==  FALSE)
+												fileRepRelationType) ==  FALSE)
+		{
 			status = STATUS_ERROR;
-		else 
-			*requestNotMirrored = FALSE;
+		}
 	}
 				
 	return status;
@@ -551,14 +559,11 @@ FileRepPrimary_MirrorOpen(FileRepIdentifier_u	fileRepIdentifier,
  */
 int 
 FileRepPrimary_MirrorFlush(FileRepIdentifier_u		fileRepIdentifier,
-						   FileRepRelationType_e	fileRepRelationType,
-						   bool						*requestNotMirrored)
+						   FileRepRelationType_e	fileRepRelationType)
 {
 	int status = STATUS_OK;
 	
 	FileRepOperationDescription_u descr;
-	
-	*requestNotMirrored = TRUE;
 	
 	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationFlush)) 
 	{
@@ -571,11 +576,6 @@ FileRepPrimary_MirrorFlush(FileRepIdentifier_u		fileRepIdentifier,
 							  fileRepRelationType,
 							  FileRepOperationFlush, 
 							  descr);
-			
-			if (status == STATUS_OK)
-			{
-				*requestNotMirrored = FALSE;
-			}
 		}
 	}
 
@@ -587,14 +587,11 @@ FileRepPrimary_MirrorFlush(FileRepIdentifier_u		fileRepIdentifier,
  */
 int 
 FileRepPrimary_MirrorClose(FileRepIdentifier_u		fileRepIdentifier,
-						   FileRepRelationType_e	fileRepRelationType,
-						   bool						*requestNotMirrored)
+						   FileRepRelationType_e	fileRepRelationType)
 {
 	int status = STATUS_OK;
 	
 	FileRepOperationDescription_u descr;
-	
-	*requestNotMirrored = TRUE;
 			
 	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationClose)) 
 	{
@@ -607,11 +604,6 @@ FileRepPrimary_MirrorClose(FileRepIdentifier_u		fileRepIdentifier,
 						  fileRepRelationType,
 						  FileRepOperationClose, 
 						  descr);
-			
-			if (status == STATUS_OK)
-			{
-				*requestNotMirrored = FALSE;
-			}			
 		}
 	}
 		
@@ -623,14 +615,11 @@ FileRepPrimary_MirrorClose(FileRepIdentifier_u		fileRepIdentifier,
  */
 int 
 FileRepPrimary_MirrorFlushAndClose(FileRepIdentifier_u		fileRepIdentifier,
-								   FileRepRelationType_e	fileRepRelationType,
-								   bool						*requestNotMirrored)
+								   FileRepRelationType_e	fileRepRelationType)
 {
 	int status = STATUS_OK;
 	
 	FileRepOperationDescription_u descr;
-	
-	*requestNotMirrored = TRUE;
 
 	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationFlushAndClose)) 
 	{
@@ -643,11 +632,6 @@ FileRepPrimary_MirrorFlushAndClose(FileRepIdentifier_u		fileRepIdentifier,
 							  fileRepRelationType,
 							  FileRepOperationFlushAndClose, 
 							  descr);
-			
-			if (status == STATUS_OK)
-			{
-				*requestNotMirrored = FALSE;
-			}			
 		}
 	}
 
@@ -659,18 +643,19 @@ FileRepPrimary_MirrorFlushAndClose(FileRepIdentifier_u		fileRepIdentifier,
  */
 int 
 FileRepPrimary_MirrorTruncate(
-				FileRepIdentifier_u		fileRepIdentifier,
-				FileRepRelationType_e	fileRepRelationType,
-				int64					position,
-				bool					*requestNotMirrored) 
+				FileRepIdentifier_u	fileRepIdentifier,
+				  /* */
+								  
+				FileRepRelationType_e fileRepRelationType,
+				  /* */
+								  
+				int64 position) 
 {
 	int status = STATUS_OK;
 	
 	FileRepOperationDescription_u descr;
 	
 	descr.truncate.position = position;
-	
-	*requestNotMirrored = TRUE;	
 	
 	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationTruncate)) 
 	{
@@ -683,10 +668,6 @@ FileRepPrimary_MirrorTruncate(
 									  fileRepRelationType,
 									  FileRepOperationTruncate, 
 									  descr);
-			if (status == STATUS_OK)
-			{
-				*requestNotMirrored = FALSE;
-			}			
 		}
 	}
 	
@@ -762,8 +743,7 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 						   int32					offset,
 						   char						*data, 
 						   uint32					dataLength,
-						   XLogRecPtr				lsn,
-						   bool						*requestNotMirrored)
+						   XLogRecPtr				lsn)
 {	
 	FileRepShmemMessageDescr_s	*fileRepShmemMessageDescr;
 	FileRepMessageHeader_s		*fileRepMessageHeader;
@@ -775,8 +755,6 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 	uint32						dataLengthLocal;
 	int							status = STATUS_OK;
 	uint32						spareField;
-	
-	*requestNotMirrored = TRUE;	
 
 	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationWrite)) 
 	{
@@ -931,11 +909,7 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 		} // while()		
 			
 		RESUME_INTERRUPTS();
-		if (status == STATUS_OK)
-		{
-			*requestNotMirrored = FALSE;
-		}			
-		} // if		
+		} // if
 	}
 	
 	return status;
@@ -947,13 +921,13 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 int 
 FileRepPrimary_MirrorCreate(FileRepIdentifier_u		fileRepIdentifier,
 							FileRepRelationType_e	fileRepRelationType,
-							bool					reportStatus)
+							bool					ignoreAlreadyExists)
 {
-	int	mirrorStatus = FileRepStatusSuccess;
+	int	status = STATUS_OK;
 	
 	FileRepOperationDescription_u descr;
 	
-	descr.create.reportStatus = reportStatus;
+	descr.create.ignoreAlreadyExists = ignoreAlreadyExists;
 
 	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationCreate)) 
 	{
@@ -961,18 +935,15 @@ FileRepPrimary_MirrorCreate(FileRepIdentifier_u		fileRepIdentifier,
 			   fileRepRelationType == FileRepRelationTypeFlatFile &&
 			   segmentState != SegmentStateInSyncTransition))
 		{			
-			if (FileRepPrimary_ConstructAndInsertMessage(
-							  fileRepIdentifier,
-							  fileRepRelationType,
-							  FileRepOperationCreate,
-							  descr) != STATUS_OK)
-			{
-				mirrorStatus = FileRepStatusMirrorLossOccurred;
-			}
+			status = FileRepPrimary_ConstructAndInsertMessage(
+															  fileRepIdentifier,
+															  fileRepRelationType,
+															  FileRepOperationCreate,
+															  descr);
 		}
 	}
 	
-	return mirrorStatus;	
+	return status;	
 }
 
 /*
@@ -980,14 +951,11 @@ FileRepPrimary_MirrorCreate(FileRepIdentifier_u		fileRepIdentifier,
  */
 int 
 FileRepPrimary_MirrorDrop(FileRepIdentifier_u	fileRepIdentifier,
-						  FileRepRelationType_e	fileRepRelationType,
-						  bool					*requestNotMirrored)
+						  FileRepRelationType_e	fileRepRelationType)
 {
 	int status = STATUS_OK;
 	
 	FileRepOperationDescription_u descr;
-	
-	*requestNotMirrored = TRUE;
 			
 	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationDrop)) 
 	{
@@ -1000,11 +968,6 @@ FileRepPrimary_MirrorDrop(FileRepIdentifier_u	fileRepIdentifier,
 							  fileRepRelationType,
 							  FileRepOperationDrop,
 							  descr);
-			
-			if (status == STATUS_OK)
-			{
-				*requestNotMirrored = FALSE;
-			}			
 		}
 	}
 
@@ -1222,12 +1185,9 @@ FileRepPrimary_MirrorHeartBeat(FileRepConsumerProcIndex_e index)
 bool 
 FileRepPrimary_IsOperationCompleted(
 			   FileRepIdentifier_u	 fileRepIdentifier,
-			   FileRepRelationType_e fileRepRelationType,
-			   bool					 *requestNotMirrored)
+			   FileRepRelationType_e fileRepRelationType)
 {
 	bool retval = TRUE;
-	
-	*requestNotMirrored = TRUE;
 	
 	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationNotSpecified)) 
 	{
@@ -1253,11 +1213,6 @@ FileRepPrimary_IsOperationCompleted(
 				
 				FileRepPrimary_IsMirroringRequired(fileRepRelationType,
 												   FileRepOperationNotSpecified);
-			}
-			
-			if (retval == TRUE)
-			{
-				*requestNotMirrored = FALSE;
 			}
 		}
 	}
@@ -1300,7 +1255,8 @@ FileRepPrimary_StartSender(void)
 {
 	int status = STATUS_OK;
 	
-	elog(LOG, "FileRepPrimary_StartSender() ");
+	if (Debug_filerep_print)
+		elog(LOG, "FileRepPrimary_StartSender() ");
 	
 	while (1) {
 		
@@ -1367,7 +1323,8 @@ FileRepPrimary_RunSender(void)
 	FileRepShmem_s				*fileRepShmem = fileRepShmemArray[fileRepProcIndex];
 	FileRepConsumerProcIndex_e	messageType = FileRepMessageTypeUndefined;
 	
-	elog(LOG, "FileRepPrimary_RunSender() ");
+	if (Debug_filerep_print)
+		elog(LOG, "FileRepPrimary_RunSender() ");
 	
 	while (1) {
 		
@@ -1453,28 +1410,7 @@ FileRepPrimary_RunSender(void)
 		
 		fileRepMessageHeader = (FileRepMessageHeader_s*) (fileRepShmem->positionConsume + 
 														  sizeof(FileRepShmemMessageDescr_s));
-
-		/* next two IF will be removed */
-		if (fileRepMessageHeader->messageCount <= spare) {
-			elog(LOG, "ERROR(filerep): FileRepPrimary_RunSender() proc:%d spare:%d spareLocal:%d consume:%p insert:%p wraparound:%p", 
-				 getpid(),
-				 fileRepMessageHeader->messageCount,
-				 spare,
-				 fileRepShmem->positionConsume,
-				 fileRepShmem->positionInsert,
-				 fileRepShmem->positionWraparound);
-		} 
 		
-		if (fileRepMessageHeader->messageCount > spare + 5) {
-			elog(LOG, "ERROR(filerep): FileRepPrimary_RunSender() proc:%d spare:%d spareLocal:%d consume:%p insert:%p wraparound:%p", 
-				 getpid(),
-				 fileRepMessageHeader->messageCount,
-				 spare,
-				 fileRepShmem->positionConsume,
-				 fileRepShmem->positionInsert,
-				 fileRepShmem->positionWraparound); 
-		} 
-
 		FileRep_InsertLogEntry(
 							   "P_RunSender",
 							   fileRepMessageHeader->fileRepIdentifier,
@@ -1537,9 +1473,8 @@ FileRepPrimary_RunSender(void)
 				break;
 				
 			default:
-				elog(LOG, "ERROR(filerep): P_RunSender unknown relation type:'%d' ",
+				elog(ERROR, "unknown relation type:'%d' ",
 					 fileRepMessageHeader->fileRepRelationType);
-				Assert(0);
 				break;
 		}
 		
@@ -1549,11 +1484,14 @@ FileRepPrimary_RunSender(void)
 					fileRepMessage,
 					fileRepShmemMessageDescr->messageLength)) {
 			
-			ereport(LOG, 
+			ereport(WARNING, 
 					(errcode_for_socket_access(),
-					 errmsg("ERROR(filerep): could not sent message to mirror msg header count:'%d' local count:'%d' : %m",
+					 errmsg("mirror failure, "
+							"could not sent message to mirror msg header count:'%d' local count:'%d' : %m, "
+							"failover requested",
 							fileRepMessageHeader->messageCount,
 							spare),
+					 errhint("run gprecoverseg to re-establish mirror connectivity"),
 					 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 									   fileRepMessageHeader->fileRepRelationType,
 									   fileRepMessageHeader->fileRepOperation),

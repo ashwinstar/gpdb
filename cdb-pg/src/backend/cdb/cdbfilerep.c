@@ -381,12 +381,15 @@ int		file_rep_ack_buffer_size = 512 * 1024;
 
 /*
  * GUC parameter
- *			file_rep_retry = 2000;
+ *
+ * If a mirror does not respond in gp_mirror_inactivity_timeout time (in seconds), 
+ * it is deemed inactive or down.
  * 
  * Number of retries to insert message into shared memory. Buffer
  * may be full due to i.e. network down, mirror host down, 
  * slow processing, ...
  */
+int		gp_mirror_inactivity_timeout = 180;
 int		file_rep_retry = 2000;  // 186 seconds  
 
 /**
@@ -1361,6 +1364,97 @@ FileRep_ReportLog(void)
 	}
 	
 }
+
+/****************************************************************
+ * FILEREP IN SHARED MEMORY CONFIGURATION LOG
+ ****************************************************************/
+/*
+ * Wraparound configuration log for troubleshooting is maintained by each segment.
+ */
+
+#ifdef CONFIGLOG
+typedef struct FileRepConfigLogShmem_s {
+	slock_t					lock;
+	
+	FileRepConfigLogEntry_s	configLog;	
+	/* number of fault injection set */
+	
+	int						logIndex;
+	
+	bool					failoverRequestReported;
+} FileRepConfigLogShmem_s;
+
+static	FileRepConfigLogShmem_s *fileRepConfigLogShmem = NULL;
+
+static void
+LockAcquire(void) 
+{	
+	SpinLockAcquire(&fileRepConfigLogShmem->lock);
+}
+
+static void
+LockRelease(void) 
+{	
+	SpinLockRelease(&fileRepConfigLogShmem->lock);
+}
+
+/*
+ * static FileRepLogEntry *fileRepLog[file_rep_num_log_entries];
+ * static logIndex
+ */
+void
+FileRep_InsertConfigLogEntry(char *description)
+{
+	int		index = 0;
+	
+	SpinLockAcquire(&fileRepConfigLogShmem->lock);
+	
+	index = fileRepConfigLogShmem->logIndex;
+	
+	fileRepConfigLogShmem->configLog[index].fileRepRole = fileRepRole;
+	
+	fileRepConfigLogShmem->configLog[index].dataState = dataState;
+	
+	fileRepConfigLogShmem->configLog[index].segmentState = segmentState;
+	
+	fileRepConfigLogShmem->configLog[index].procPid = getpid();
+	
+	fileRepConfigLogShmem->configLog[index].fileRepProcessType = fileRepProcessType;
+	
+	gettimeofday(&fileRepConfigLogShmem->configLog[index].logTime, NULL);
+	
+	strncpy(fileRepConfigLogShmem->configLog[index].description,
+			description,
+			FILEREP_MAX_LOG_DESCRIPTION_LEN);
+
+	fileRepConfigLogShmem->logIndex++;
+	
+	SpinLockRelease(&fileRepConfigLogShmem->lock);
+}
+
+
+void
+FileRep_ReportConfigLog(void)
+{
+	int	ii;
+	int numEntries;
+	int index = fileRepConfigLogShmem->logIndex;
+	
+	numEntries = Min(fileRepInsertedConfigLogEntries, filerep_num_config_log_entries);
+	
+	for (ii = index; ii < numEntries; ii++) 
+	{
+		FileRep_ReportConfigLogEntry(ii);
+	}
+	
+	for (ii = 0; ii < index; ii++) {
+		FileRep_ReportConfigLogEntry(ii);
+	}
+	
+}
+
+
+#endif
 
 /****************************************************************
  *  FILEREP PROCESS
@@ -2797,17 +2891,16 @@ void FileRep_Main(void)
 	
 	FileRep_SetState(FileRepStateInitialization);
 	
+	file_rep_retry = gp_mirror_inactivity_timeout * 10 + 200;
+	
 	if (Debug_filerep_print)
 	{
 		/*
-		 * Increase response time since additional tracing significantly slow down the system
-		 *
-		 * 100 * 10ms + 100 * 50ms + 1800 * 100ms + 4000 * 100ms = 186 sec + 400 sec = almost 10 minutes
-		 * file_rep_retry = 6000 (max value)
+		 * Double response time since additional tracing significantly slow down the system
 		 */
-		file_rep_retry = 6000;
+		file_rep_retry *= 2;
 	}
-		
+	
 	FileRepIpc_ShmemReInit();
 	FileRep_ShmemReInit();
 	FileRepAck_ShmemReInit();

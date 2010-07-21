@@ -3983,13 +3983,12 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"filerep_retry", PGC_POSTMASTER, DEVELOPER_OPTIONS,
-			gettext_noop("number of retries to insert message in filerep shared memory before fault is reported"),
+		{"gp_mirror_inactivity_timeout", PGC_POSTMASTER, GP_ARRAY_TUNING,
+			gettext_noop("If a mirror does not respond in this time (in seconds), it is deemed inactive or down."),
 			NULL,
-			GUC_NO_SHOW_ALL
 		},
-		&file_rep_retry,
-		2000, 1, 6000, NULL, NULL
+		&gp_mirror_inactivity_timeout,
+		180, 60, 1200, NULL, NULL
 	},
 
 	{

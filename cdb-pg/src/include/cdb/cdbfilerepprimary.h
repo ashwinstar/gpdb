@@ -28,6 +28,8 @@ extern bool FileRepPrimary_IsResyncManagerOrWorker(void);
 extern MirrorDataLossTrackingState 
 FileRepPrimary_GetMirrorDataLossTrackingSessionNum(int64 *sessionNum);
 
+extern bool FileRepPrimary_IsMirrorDataLossOccurred(void);
+
 extern void FileRepPrimary_IntentAppendOnlyCommitWork(void);
 
 extern void FileRepPrimary_FinishedAppendOnlyCommitWork(int count);
@@ -59,9 +61,7 @@ extern int FileRepPrimary_MirrorOpen(
 
 	int					fileMode,
 
-	bool				suppressError,
-									 
-	bool				*requestMirrored);
+	bool				suppressError);
 
 /*
  * Flush
@@ -73,13 +73,12 @@ extern int FileRepPrimary_MirrorOpen(
  *		The routine returns status (error code or ok) 
  */
 extern int FileRepPrimary_MirrorFlush(
-	FileRepIdentifier_u		fileRepIdentifier,
+	FileRepIdentifier_u	fileRepIdentifier,
 		/* */
 									  
-	FileRepRelationType_e	fileRepRelationType,
+	FileRepRelationType_e fileRepRelationType);
 		/* */
-	
-	bool					*requestMirrored);
+
 /*
  * Close
  *		Construct Message Header for close operation
@@ -93,10 +92,8 @@ extern int FileRepPrimary_MirrorClose(
 	  FileRepIdentifier_u	fileRepIdentifier,
 		/* */
 	  
-	  FileRepRelationType_e fileRepRelationType,
+	  FileRepRelationType_e fileRepRelationType);
 		/* */
-									  
-	  bool					*requestMirrored);
 /*
  * Flush And Close
  *		Construct Message Header for flush and close operation
@@ -110,9 +107,9 @@ extern int FileRepPrimary_MirrorFlushAndClose(
 					  FileRepIdentifier_u	fileRepIdentifier,
 						/* */
 					  
-					  FileRepRelationType_e fileRepRelationType,
+					  FileRepRelationType_e fileRepRelationType);
 						/* */
-					  bool					*requestMirrored);
+
 /*
  * Truncate
  *		Construct Message Header for flush and close operation
@@ -129,9 +126,9 @@ extern int FileRepPrimary_MirrorTruncate(
 			  FileRepRelationType_e fileRepRelationType,
 				/* */
 
-			  int64					position,
+			  int64 position);
 				/* */
-			  bool					*requestMirrored);
+
 /*
  * Reconcile
  *
@@ -180,10 +177,8 @@ extern int FileRepPrimary_MirrorWrite(
     uint32					dataLength,
 		/* */
 									  
-    XLogRecPtr				lsn,
+    XLogRecPtr				lsn);
 		/* */
-									  
-	bool					*requestMirrored);
 
 // -----------------------------------------------------------------------------
 // Construct Messages for Create and drop of file and dir
@@ -222,10 +217,8 @@ extern int FileRepPrimary_MirrorDrop(
 	FileRepIdentifier_u	fileRepIdentifier,
 		/* file or dir to be removed */
 									 
-	FileRepRelationType_e fileRepRelationType,						 
+	FileRepRelationType_e fileRepRelationType);								 
 		/* FileRepRelationTypeFile or FileRepRelationTypeDir */
-									 
-	bool					*requestMirrored);
 
 extern int FileRepPrimary_MirrorDropFilesFromDir(
 	FileRepIdentifier_u	fileRepIdentifier,
@@ -243,10 +236,8 @@ extern bool FileRepPrimary_IsOperationCompleted(
 	FileRepIdentifier_u	fileRepIdentifier,
 		/* identifier of the operation */
 				 
-	FileRepRelationType_e fileRepRelationType,							 
+	FileRepRelationType_e fileRepRelationType);								 
 		/* type on which operation was performed */
-												
-	bool				  *requestMirrored);
 
 extern XLogRecPtr FileRepPrimary_GetMirrorXLogEof(void);
 

@@ -117,7 +117,8 @@ FileRepAckPrimary_StartReceiver(void)
 	
 	int retval;
 	
-	elog(LOG, "FileRepAckPrimary_StartReceiver() ");
+	if (Debug_filerep_print)
+		elog(LOG, "FileRepAckPrimary_StartReceiver() ");
 		
 	ereport(LOG,
 			(errmsg("LOG(filerep): P_StartReceiver primary host address:'%s' and port:'%d' "
@@ -213,7 +214,8 @@ FileRepAckPrimary_RunReceiver(void)
 	FileRepShmemMessageDescr_s  *fileRepShmemMessageDescr;
 	uint32					spareField;
 	
-	elog(LOG, "FileRepAckPrimary_RunReceiver()");
+	if (Debug_filerep_print)
+		elog(LOG, "FileRepAckPrimary_RunReceiver()");
 	
 	while (1) {
 		
@@ -819,7 +821,8 @@ FileRepAckPrimary_StartConsumer(void)
 {
 	int status = STATUS_OK;
 	
-	elog(LOG, "FileRepAckPrimary_StartConsumer()");
+	if (Debug_filerep_print)
+		elog(LOG, "FileRepAckPrimary_StartConsumer()");
 		
 	while (1) {
 		
@@ -874,8 +877,9 @@ FileRepAckPrimary_RunConsumer(void)
 	pg_crc32					messageHeaderCrcLocal;
 	int							status = STATUS_OK;
 	bool						movePositionConsume = FALSE;
-				
-	elog(LOG, "FileRepAckPrimary_RunConsumer() ");
+		
+	if (Debug_filerep_print)
+		elog(LOG, "FileRepAckPrimary_RunConsumer() ");
 	
 	while (1) {	
 		
