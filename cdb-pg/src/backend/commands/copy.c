@@ -563,6 +563,10 @@ CopyToDispatchFlush(CopyState cstate)
  *
  * CopyGetEof checks if EOF was detected by previous Get operation.
  *
+ * Note: this function puts a '\0' after the last byte that was read.
+ * therefore, make sure that the buffer you pass in is at least 1 byte
+ * larger than the datasize requested.
+ * 
  * Note: when copying from the frontend, we expect a proper EOF mark per
  * protocol; if the frontend simply drops the connection, we raise error.
  * It seems unwise to allow the COPY IN to complete normally in that case.
@@ -663,6 +667,10 @@ CopyGetData(CopyState cstate, void *databuf, int datasize)
 
 	}
 
+	/* put a '\0' after last byte read */
+	if(bytesread >= 0)
+		((char *)databuf)[bytesread] = '\0';
+	
 	return bytesread;
 }
 

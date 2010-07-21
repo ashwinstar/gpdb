@@ -1353,9 +1353,14 @@ external_getdata(URL_FILE *extfile, CopyState pstate, int maxread)
  		- failing to do so will result in skipping the last line.
  	*/
 
+	
 	bytesread = url_fread((void *) pstate->raw_buf, 1, maxread, extfile, pstate);
-
- 	if (url_feof(extfile, bytesread))
+	
+	/* put a '\0' after last byte read */
+	if(bytesread >= 0)
+		pstate->raw_buf[bytesread] = '\0';
+ 	
+	if (url_feof(extfile, bytesread))
  	{
   		pstate->fe_eof = true;
  	}
