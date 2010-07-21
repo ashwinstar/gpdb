@@ -73,6 +73,7 @@ typedef enum
 	StartupProcess,
 	StartupPass2Process,
 	StartupPass3Process,
+	StartupPass4Process,
 	BgWriterProcess,
 	WalWriterProcess,
 	FilerepProcess

@@ -104,7 +104,7 @@ void PersistentEndXactRec_Print(
 {
 	int i;
 
-	elog(Debug_persistent_print_level, 
+	elog(Persistent_DebugPrintLevel(), 
 		 "%s: file-system action count %d, Append-Only mirror resync EOFs count %d",
 		 procName,
 		 objects->typed.fileSysActionInfosCount,
@@ -115,7 +115,7 @@ void PersistentEndXactRec_Print(
 		PersistentEndXactFileSysActionInfo	*fileSysActionInfos =
 										&objects->typed.fileSysActionInfos[i];
 
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "%s: [%d] action '%s' %s, relation storage manager '%s', persistent serial num " INT64_FORMAT ", TID %s",
 			 procName,
 			 i,
@@ -132,7 +132,7 @@ void PersistentEndXactRec_Print(
 		PersistentEndXactAppendOnlyMirrorResyncEofs *eofs = 
 					&objects->typed.appendOnlyMirrorResyncEofs[i];
 
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "%s: [%d] Append-Only Mirror Resync EOFs %u/%u/%u, segment file #%d -- persistent serial num " INT64_FORMAT ", TID %s, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
 			 procName,
 			 i,
@@ -266,14 +266,14 @@ PersistentEndXactRec_VerifyFileSysActionInfos(
 		case PersistentTidIsKnownResult_ScanNotPerformedYet:
 			// UNDONE: For now, just debug log this.
 			if (Debug_persistent_print)
-				elog(Debug_persistent_print_level, 
+				elog(Persistent_DebugPrintLevel(), 
 				     "Can't verify persistent TID if we haven't done the persistent scan yet");
 			break;
 
 		case PersistentTidIsKnownResult_MaxTidIsZero:
 			// UNDONE: For now, just debug log this.
 			if (Debug_persistent_print)
-				elog(Debug_persistent_print_level, 
+				elog(Persistent_DebugPrintLevel(), 
 					 "TID for persistent '%s' tuple TID %s and the last known TID zero (0,0) (index %d, transaction kind '%s')",
 					 PersistentFileSysObjName_TypeAndObjectName(&fileSysActionInfos[i].fsObjName),
 					 ItemPointerToString(&fileSysActionInfos[i].persistentTid),
@@ -284,7 +284,7 @@ PersistentEndXactRec_VerifyFileSysActionInfos(
 		case PersistentTidIsKnownResult_NotKnown:
 			// UNDONE: For now, just debug log this.
 			if (Debug_persistent_print)
-				elog(Debug_persistent_print_level, 
+				elog(Persistent_DebugPrintLevel(), 
 					 "TID for persistent '%s' tuple TID %s is beyond the last known TID %s (index %d, transaction kind '%s')",
 					 PersistentFileSysObjName_TypeAndObjectName(&fileSysActionInfos[i].fsObjName),
 					 ItemPointerToString(&fileSysActionInfos[i].persistentTid),

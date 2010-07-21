@@ -25,6 +25,7 @@
 
 #include "cdb/cdbmirroredfilesysobj.h"
 #include "cdb/cdbfilerepprimary.h"
+#include "cdb/cdbpersistentrecovery.h"
 #include "utils/guc.h"
 
 
@@ -71,7 +72,7 @@ log_invalid_page(RelFileNode node, BlockNumber blkno, bool present)
 		elog(DEBUG1, "page %u of relation %u/%u/%u is uninitialized",
 			 blkno, node.spcNode, node.dbNode, node.relNode);
 		if (Debug_persistent_recovery_print)
-			elog(Debug_persistent_recovery_print_level, 
+			elog(PersistentRecovery_DebugPrintLevel(), 
 				 "log_invalid_page: page %u of relation %u/%u/%u is uninitialized",
 				 blkno,
 				 node.spcNode,
@@ -83,7 +84,7 @@ log_invalid_page(RelFileNode node, BlockNumber blkno, bool present)
 		elog(DEBUG1, "page %u of relation %u/%u/%u does not exist",
 			 blkno, node.spcNode, node.dbNode, node.relNode);
 		if (Debug_persistent_recovery_print)
-			elog(Debug_persistent_recovery_print_level, 
+			elog(PersistentRecovery_DebugPrintLevel(), 
 				 "log_invalid_page: page %u of relation %u/%u/%u does not exist",
 				 blkno,
 				 node.spcNode,
@@ -146,7 +147,7 @@ forget_invalid_pages(RelFileNode node, BlockNumber minblkno)
 				 hentry->key.blkno, hentry->key.node.spcNode,
 				 hentry->key.node.dbNode, hentry->key.node.relNode);
 			if (Debug_persistent_recovery_print)
-				elog(Debug_persistent_recovery_print_level, 
+				elog(PersistentRecovery_DebugPrintLevel(), 
 					 "forget_invalid_pages: page %u of relation %u/%u/%u has been dropped",
 					 hentry->key.blkno,
 					 hentry->key.node.spcNode,
@@ -182,7 +183,7 @@ forget_invalid_pages_db(Oid tblspc, Oid dbid)
 				 hentry->key.blkno, hentry->key.node.spcNode,
 				 hentry->key.node.dbNode, hentry->key.node.relNode);
 			if (Debug_persistent_recovery_print)
-				elog(Debug_persistent_recovery_print_level, 
+				elog(PersistentRecovery_DebugPrintLevel(), 
 					 "forget_invalid_pages_db: %u of relation %u/%u/%u has been dropped",
 					 hentry->key.blkno,
 					 hentry->key.node.spcNode,

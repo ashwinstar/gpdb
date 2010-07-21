@@ -77,6 +77,7 @@
 #include "cdb/cdbvars.h"
 
 #include "cdb/cdbmirroredfilesysobj.h"
+#include "cdb/cdbpersistentfilesysobj.h"
 
 static void MetaTrackAddUpdInternal(Oid			classid, 
 									Oid			objoid, 
@@ -361,7 +362,7 @@ heap_create(const char *relname,
 		rel->rd_segfile0_relationnodeinfo.isPresent = true;
 
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 			     "heap_create: '%s', Append-Only '%s', persistent TID %s and serial number " INT64_FORMAT " for CREATE",
 				 relpath(rel->rd_node),
 				 (isAppendOnly ? "true" : "false"),
@@ -1115,7 +1116,7 @@ InsertGpRelationNodeTuple(
 	memset(nulls, false, sizeof(nulls));
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "InsertGpRelationNodeTuple: Inserting into relation id %u '%s', relfilenode %u, segment file #%d, serial number " INT64_FORMAT ", TID %s",
 			 relationId,
 			 relname,
@@ -1157,9 +1158,9 @@ UpdateGpRelationNodeTuple(
 	bool		repl_repl[Natts_gp_relation_node];
 	HeapTuple	newtuple;
 
-	if (Debug_persistent_recovery_print)
-		elog(Debug_persistent_recovery_print_level, 
-			 "UpdateSegFile0GpRelationNodeTuple: Updating relfilenode %u, segment file #%d, serial number " INT64_FORMAT " at TID %s",
+	if (Debug_persistent_print)
+		elog(Persistent_DebugPrintLevel(), 
+			 "UpdateGpRelationNodeTuple: Updating relfilenode %u, segment file #%d, serial number " INT64_FORMAT " at TID %s",
 			 relfilenode,
 			 segmentFileNum,
 			 persistentSerialNum,
@@ -2000,7 +2001,7 @@ remove_gp_relation_node_and_schedule_drop(
 	PersistentFileSysRelStorageMgr relStorageMgr;
 	
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "remove_gp_relation_node_and_schedule_drop: dropping relation '%s', relation id %u '%s', relfilenode %u",
 			 rel->rd_rel->relname.data,
 			 rel->rd_id,
@@ -2032,7 +2033,7 @@ remove_gp_relation_node_and_schedule_drop(
 								/* segmentFileNum */ 0);
 		
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "remove_gp_relation_node_and_schedule_drop: For Buffer Pool managed relation '%s' persistent TID %s and serial number " INT64_FORMAT " for DROP",
 				 relpath(rel->rd_node),
 				 ItemPointerToString(&rel->rd_segfile0_relationnodeinfo.persistentTid),
@@ -2066,7 +2067,7 @@ remove_gp_relation_node_and_schedule_drop(
 								&persistentSerialNum)))
 		{
 			if (Debug_persistent_print)
-				elog(Debug_persistent_print_level, 
+				elog(Persistent_DebugPrintLevel(), 
 					 "remove_gp_relation_node_and_schedule_drop: For Append-Only relation %u relfilenode %u scanned segment file #%d, serial number " INT64_FORMAT " at TID %s for DROP",
 					 rel->rd_id,
 					 rel->rd_rel->relfilenode,
@@ -3303,7 +3304,7 @@ setNewRelfilenodeCommon(Relation relation, Oid newrelfilenode)
 	relation->rd_segfile0_relationnodeinfo.isPresent = true;
 	
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "setNewRelfilenodeCommon: NEW '%s', Append-Only '%s', persistent TID %s and serial number " INT64_FORMAT,
 			 relpath(newrnode),
 			 (isAppendOnly ? "true" : "false"),

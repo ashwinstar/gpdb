@@ -230,7 +230,7 @@ static bool PersistentFilespace_ScanTupleCallback(
 	if (state == PersistentFileSysState_Free)
 	{
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "PersistentFilespace_ScanTupleCallback: TID %s, serial number " INT64_FORMAT " is free",
 				 ItemPointerToString2(persistentTid),
 				 persistentSerialNum);
@@ -252,7 +252,7 @@ static bool PersistentFilespace_ScanTupleCallback(
 	filespaceDirEntry->persistentTid = *persistentTid;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "PersistentFilespace_ScanTupleCallback: filespace %u, dbId1 %d, dbId2 %d, state '%s', mirror existence state '%s', TID %s, serial number " INT64_FORMAT,
 			 filespaceOid,
 			 dbId1,
@@ -667,7 +667,7 @@ void PersistentFilespace_MarkCreatePending(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Skipping persistent filespace %u because we are before persistence work",
 				 filespaceOid);
 
@@ -711,7 +711,7 @@ void PersistentFilespace_MarkCreatePending(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent filespace directory: Add '%s' in state 'Created', mirror existence state '%s', serial number " INT64_FORMAT " at TID %s",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 MirroredObjectExistenceState_Name(mirrorExistenceState),
@@ -784,7 +784,7 @@ void PersistentFilespace_Created(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Skipping persistent filespace %u because we are before "
 				 "persistence work",
 				 filespaceOid);
@@ -828,7 +828,7 @@ void PersistentFilespace_Created(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent filespace directory: '%s' changed state from 'Create Pending' to 'Created', serial number " INT64_FORMAT " at TID %s",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
@@ -869,7 +869,7 @@ bool PersistentFilespace_MarkDropPending(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Skipping persistent filespace %u because we are before persistence work",
 				 filespaceOid);
 
@@ -910,7 +910,7 @@ bool PersistentFilespace_MarkDropPending(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent filespace directory: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (deleteUnnecessary %s)",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
@@ -949,7 +949,7 @@ bool PersistentFilespace_MarkAbortingCreate(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Skipping persistent filespace %u because we are before persistence work",
 				 filespaceOid);
 
@@ -989,7 +989,7 @@ bool PersistentFilespace_MarkAbortingCreate(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent filespace directory: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (deleteUnnecessary %s)",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
@@ -1024,7 +1024,7 @@ void PersistentFilespace_Dropped(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Skipping persistent filespace %u because we are before persistence work",
 				 filespaceOid);
 
@@ -1066,7 +1066,7 @@ void PersistentFilespace_Dropped(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent filespace directory: '%s' changed state from '%s' to (Free), serial number " INT64_FORMAT " at TID %s",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 PersistentFileSysObjState_Name(oldState),

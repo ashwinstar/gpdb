@@ -60,7 +60,7 @@ static void MirroredFileSysObj_BeginMirroredCreate(
 
 			SUPPRESS_ERRCONTEXT_PUSH();
 
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "MirroredFileSysObj_BeginMirroredCreate (%s): -- initdb mirrored",
 				 PersistentFileSysObjName_TypeAndObjectName(fsObjName));
 
@@ -107,7 +107,7 @@ static void MirroredFileSysObj_BeginMirroredCreate(
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "MirroredFileSysObj_BeginMirroredCreate (%s): mirror existence state '%s', relation data synchronization state '%s', mirror mode %s",
 			 PersistentFileSysObjName_TypeAndObjectName(fsObjName),
 			 MirroredObjectExistenceState_Name(*mirrorExistenceState),
@@ -135,7 +135,7 @@ static void MirroredFileSysObj_FinishMirroredCreate(
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "MirroredFileSysObj_FinishMirroredCreate (%s): mirror existence state '%s', mirror data loss occurred %s, "
 		     "serial number " INT64_FORMAT " at TID %s",
 			 PersistentFileSysObjName_TypeAndObjectName(fsObjName),
@@ -1010,7 +1010,7 @@ void MirroredFileSysObj_TransactionCreateBufferPoolFile(
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "MirroredFileSysObj_TransactionCreateBufferPoolFile: %u/%u/%u, relation name '%s', mirror existence state '%s', mirror data loss occurred %s"
 		     ", persistent serial number " INT64_FORMAT " at TID %s",
 			 smgrOpen->smgr_rnode.spcNode,
@@ -1140,7 +1140,7 @@ void MirroredFileSysObj_TransactionCreateAppendOnlyFile(
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "MirroredFileSysObj_TransactionCreateAppendOnlyFile: %u/%u/%u, relation name '%s', mirror existence state '%s', mirror data loss occurred %s"
 			 ", persistent serial number " INT64_FORMAT " at TID %s",
 			 relFileNode->spcNode,
@@ -1175,7 +1175,7 @@ void MirroredFileSysObj_ScheduleDropBufferPoolFile(
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "MirroredFileSysObj_ScheduleDropBufferPoolFile: %u/%u/%u, relation name '%s'",
 			 smgrOpen->smgr_rnode.spcNode,
 			 smgrOpen->smgr_rnode.dbNode,
@@ -1217,7 +1217,7 @@ void MirroredFileSysObj_ScheduleDropAppendOnlyFile(
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "MirroredFileSysObj_ScheduleDropAppendOnlyFile: %u/%u/%u, relation name '%s'",
 			 relFileNode->spcNode,
 			 relFileNode->dbNode,

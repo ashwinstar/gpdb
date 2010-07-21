@@ -261,6 +261,7 @@ static PrimaryMirrorMode gInitialMode = PMModeMirrorlessSegment;
 static pid_t StartupPID = 0,
 			StartupPass2PID = 0,
 			StartupPass3PID = 0,
+			StartupPass4PID = 0,
 			BgWriterPID = 0,
 			AutoVacPID = 0,
 			PgArchPID = 0,
@@ -338,6 +339,7 @@ typedef enum
 	PM_STARTUP,					/* waiting for startup subprocess */
 	PM_STARTUP_PASS2, 			/* waiting for startup pass 2 subprocess */
 	PM_STARTUP_PASS3,			/* waiting for startup pass 3 subprocess */
+	PM_STARTUP_PASS4,			/* waiting for startup pass 4 subprocess */
 	PM_RECOVERY,				/* in archive recovery mode */
 	PM_RECOVERY_CONSISTENT,		/* consistent recovery mode */
 	PM_RUN,						/* normal "database is alive" state */
@@ -382,6 +384,7 @@ static const char *const gPmStateLabels[] =
     "startup",
     "startup_pass2",
     "startup_pass3",
+	"startup_pass4",
     "recovery",
     "recovery_consistent",
     "run",
@@ -647,6 +650,7 @@ static void ShmemBackendArrayRemove(Backend *bn);
 #define StartupDataBase()		StartChildProcess(StartupProcess)
 #define StartupPass2DataBase()	StartChildProcess(StartupPass2Process)
 #define StartupPass3DataBase()	StartChildProcess(StartupPass3Process)
+#define StartupPass4DataBase()	StartChildProcess(StartupPass4Process)
 #define StartBackgroundWriter() StartChildProcess(BgWriterProcess)
 #define StartFilerepProcess() StartChildProcess(FilerepProcess)
 
@@ -2071,7 +2075,7 @@ ServerLoop(void)
 			 * fails, we'll just try again later.
 			 */
 			if (BgWriterPID == 0 &&
-			    StartupPID == 0 && StartupPass2PID == 0 && StartupPass3PID == 0 && pmState > PM_STARTUP_PASS3 &&
+			    StartupPID == 0 && StartupPass2PID == 0 && StartupPass3PID == 0 && StartupPass4PID == 0 && pmState > PM_STARTUP_PASS4 &&
 			    !FatalError && !SyncMaster &&
 			    pmState < PM_CHILD_STOP_BEGIN)
 			{
@@ -2118,7 +2122,7 @@ ServerLoop(void)
 			 * frequently in autovac_start.
 			 */
 			if ((AutoVacuumingActive() || force_autovac) && AutoVacPID == 0 &&
-				StartupPID == 0 && StartupPass2PID == 0 && StartupPass3PID == 0 && pmState > PM_STARTUP_PASS3 && 
+				StartupPID == 0 && StartupPass2PID == 0 && StartupPass3PID && StartupPass4PID == 0 && pmState > PM_STARTUP_PASS4 && 
 				!FatalError && Shutdown == NoShutdown)
 			{
 				AutoVacPID = autovac_start();
@@ -2131,7 +2135,7 @@ ServerLoop(void)
 
 			/* If we have lost the stats collector, try to start a new one */
 			if (PgStatPID == 0 &&
-				StartupPID == 0 && StartupPass2PID == 0 && StartupPass3PID == 0 && pmState > PM_STARTUP_PASS3 && 
+				StartupPID == 0 && StartupPass2PID == 0 && StartupPass3PID && StartupPass4PID == 0 && pmState > PM_STARTUP_PASS4 && 
 				!FatalError && Shutdown == NoShutdown && !SyncMaster)
 			{
 				PgStatPID = pgstat_start();
@@ -2150,7 +2154,8 @@ ServerLoop(void)
 					StartupPID == 0 &&
 					StartupPass2PID == 0 &&
 					StartupPass3PID == 0 &&
-					pmState > PM_STARTUP_PASS3 &&
+					StartupPass4PID == 0 &&
+					pmState > PM_STARTUP_PASS4 &&
 					!FatalError &&
 					Shutdown == NoShutdown &&
 					ServiceStartable(subProc))
@@ -3153,6 +3158,7 @@ canAcceptConnections(void)
 			(pmState == PM_STARTUP ||
 			 pmState == PM_STARTUP_PASS2 ||
 			 pmState == PM_STARTUP_PASS3 ||
+			 pmState == PM_STARTUP_PASS4 ||
 			 pmState == PM_RECOVERY ||
 			 pmState == PM_RECOVERY_CONSISTENT))
 			return CAC_STARTUP; /* normal startup */
@@ -3351,6 +3357,7 @@ SIGHUP_handler(SIGNAL_ARGS)
 		signal_child_if_up(StartupPID, SIGHUP);
         signal_child_if_up(StartupPass2PID, SIGHUP);
         signal_child_if_up(StartupPass3PID, SIGHUP);
+        signal_child_if_up(StartupPass4PID, SIGHUP);
 		signal_child_if_up(BgWriterPID, SIGHUP);
 		signal_child_if_up(FilerepPID, SIGHUP);
 		signal_child_if_up(AutoVacPID, SIGHUP);
@@ -3469,6 +3476,7 @@ pmdie(SIGNAL_ARGS)
 			signal_child_if_up(StartupPID, SIGQUIT);
             signal_child_if_up(StartupPass2PID, SIGQUIT);
             signal_child_if_up(StartupPass3PID, SIGQUIT);
+            signal_child_if_up(StartupPass4PID, SIGQUIT);
  			StopServices(0, SIGQUIT);
 			signal_child_if_up(BgWriterPID, SIGQUIT);            
             signal_child_if_up(AutoVacPID, SIGQUIT);
@@ -3548,6 +3556,7 @@ do_immediate_shutdown_reaper(void)
         zeroIfPidEqual(pid, &StartupPID);
         zeroIfPidEqual(pid, &StartupPass2PID);
         zeroIfPidEqual(pid, &StartupPass3PID);
+        zeroIfPidEqual(pid, &StartupPass4PID);
 
         /* services */
 		for (s = 0; s < MaxPMSubType; s++)
@@ -3748,21 +3757,42 @@ static void do_reaper()
 				continue;
 			}
 
-			if (XLogStartupMultiplePassesNeeded())
+			/*
+			 * When we are not doing single backend startup, we do
+			 * multiple startup passes.
+			 *
+			 * If Crash Recovery is needed we do Pass 2 and 3.
+			 *
+			 * Pass 4 is a verification pass done in for a clean shutdown as
+			 * well as after Crash Recovery.
+			 */
+			if (XLogStartupMultipleRecoveryPassesNeeded())
 			{
 			    Assert(StartupPass2PID == 0);
 				StartupPass2PID = StartupPass2DataBase();
 				Assert(StartupPass2PID != 0);
 
 				pmState = PM_STARTUP_PASS2;
-				continue;
 			}
+			else if (XLogStartupIntegrityCheckNeeded())
+			{
+				/*
+				 * Clean shutdown case and wants (and can do) integrity checks.
+				 */
+			    Assert(StartupPass4PID == 0);
+				StartupPass4PID = StartupPass4DataBase();
+				Assert(StartupPass4PID != 0);
 
-			/*
-			 * Startup succeeded, commence normal operations
-			 */
-			if (CommenceNormalOperations())
-				didServiceProcessWork = true;
+				pmState = PM_STARTUP_PASS4;
+			}
+			else
+			{
+				/*
+				 * Startup succeeded, commence normal operations
+				 */
+				if (CommenceNormalOperations())
+					didServiceProcessWork = true;
+			}
 
 			continue;
 		}
@@ -3866,6 +3896,75 @@ static void do_reaper()
 				RecoveryError = true;
 				HandleChildCrash(pid, exitstatus,
 								 _("startup pass 3 process"));
+				continue;
+			}
+
+			if (XLogStartupIntegrityCheckNeeded())
+			{
+				/*
+				 * Wants (and can do) integrity checks.
+				 */
+			    Assert(StartupPass4PID == 0);
+				StartupPass4PID = StartupPass4DataBase();
+				Assert(StartupPass4PID != 0);
+
+				pmState = PM_STARTUP_PASS4;
+			}
+			else
+			{
+				/*
+				 * Startup succeeded, commence normal operations
+				 */
+				if (CommenceNormalOperations())
+					didServiceProcessWork = true;
+			}
+			continue;
+		}
+			
+		/*
+		 * Check if this child was a startup pass 4 process.
+		 */
+		if (pid == StartupPass4PID)
+		{
+			StartupPass4PID = 0;
+		
+			Assert(isPrimaryMirrorModeAFullPostmaster(true));
+		
+			/*
+			 * Unexpected exit of startup process (including FATAL exit)
+			 * during PM_STARTUP is treated as catastrophic. There are no
+			 * other processes running yet, so we can just exit.
+			 */
+			if (pmState == PM_STARTUP_PASS4 && !EXIT_STATUS_0(exitstatus))
+			{
+				LogChildExit(LOG, _("startup pass 4 process"),
+							 pid, exitstatus);
+				ereport(LOG,
+						(errmsg("aborting startup due to startup process failure")));
+				ExitPostmaster(1);
+			}
+		
+			/*
+			 * Startup process exited in response to a shutdown request (or it
+			 * completed normally regardless of the shutdown request).
+			 */
+			if (Shutdown > NoShutdown &&
+				(EXIT_STATUS_0(exitstatus) || EXIT_STATUS_1(exitstatus)))
+			{
+				/* PostmasterStateMachine logic does the rest */
+				continue;
+			}
+		
+			/*
+			 * Any unexpected exit (including FATAL exit) of the startup
+			 * process is treated as a crash, except that we don't want to
+			 * reinitialize.
+			 */
+			if (!EXIT_STATUS_0(exitstatus))
+			{
+				RecoveryError = true;
+				HandleChildCrash(pid, exitstatus,
+								 _("startup pass 4 process"));
 				continue;
 			}
 
@@ -4258,6 +4357,8 @@ GetServerProcessTitle(int pid)
         return "startup pass 2 process";
     else if (pid == StartupPass3PID)
         return "startup pass 3 process";
+    else if (pid == StartupPass4PID)
+        return "startup pass 4 process";
 	else if (pid == PostmasterPid)
 		return "postmaster process";
     else if (pid == FilerepPID )
@@ -5043,6 +5144,7 @@ PostmasterStateMachine(void)
             case PM_STARTUP:
             case PM_STARTUP_PASS2:
 			case PM_STARTUP_PASS3:
+			case PM_STARTUP_PASS4:
             case PM_RECOVERY:
             case PM_RECOVERY_CONSISTENT:
             case PM_RUN:
@@ -5130,6 +5232,7 @@ PostmasterStateMachine(void)
             case PM_STARTUP:
             case PM_STARTUP_PASS2:
 			case PM_STARTUP_PASS3:
+			case PM_STARTUP_PASS4:
             case PM_RECOVERY:
             case PM_RECOVERY_CONSISTENT:
             case PM_RUN:
@@ -6689,6 +6792,7 @@ StartChildProcess(AuxProcType type)
         case StartupProcess:
         case StartupPass2Process:
 		case StartupPass3Process:
+		case StartupPass4Process:
         case WalWriterProcess:
             Assert(isPrimaryMirrorModeAFullPostmaster(true));
             break;
@@ -6744,6 +6848,10 @@ StartChildProcess(AuxProcType type)
 			case StartupPass3Process:
 				ereport(LOG,
 						(errmsg("could not fork startup pass 3 process: %m")));
+				break;
+			case StartupPass4Process:
+				ereport(LOG,
+						(errmsg("could not fork startup pass 4 process: %m")));
 				break;
 			case BgWriterProcess:
 				ereport(LOG,

@@ -124,7 +124,7 @@ static bool PersistentDatabase_ScanTupleCallback(
 	if (state == PersistentFileSysState_Free)
 	{
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "PersistentDatabase_ScanTupleCallback: TID %s, serial number " INT64_FORMAT " is free",
 				 ItemPointerToString2(persistentTid),
 				 persistentSerialNum);
@@ -153,7 +153,7 @@ static bool PersistentDatabase_ScanTupleCallback(
 	databaseDirEntry->iteratorRefCount = 0;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "PersistentDatabase_ScanTupleCallback: database %u, tablespace %u, state %s, TID %s, serial number " INT64_FORMAT,
 			 dbDirNode.database,
 			 dbDirNode.tablespace,
@@ -301,6 +301,21 @@ void PersistentDatabase_DirIterateClose(void)
 }
 
 
+bool PersistentDatabase_DbDirExistsUnderLock(
+	DbDirNode				*dbDirNode)
+{
+	DatabaseDirEntry databaseDirEntry;
+	
+	databaseDirEntry =
+			(DatabaseDirEntry)
+				    SharedOidSearch_Find(
+				    		&persistentDatabaseSharedData->databaseDirSearchTable,
+				    		dbDirNode->database,
+				    		dbDirNode->tablespace);
+	
+	return (databaseDirEntry != NULL);
+}
+
 
 // -----------------------------------------------------------------------------
 // Helpers 
@@ -406,7 +421,7 @@ void PersistentDatabase_MarkCreatePending(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Skipping persistent database '%s' because we are before persistence work",
 				 GetDatabasePath(
 					  dbDirNode->database, 
@@ -548,7 +563,7 @@ void PersistentDatabase_AddCreated(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent database directory: Add '%s' in state 'Created', mirror existence state '%s', serial number " INT64_FORMAT " at TID %s",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 MirroredObjectExistenceState_Name(mirrorExistenceState),
@@ -634,7 +649,7 @@ void PersistentDatabase_Created(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Skipping persistent database '%s' because we are before persistence work",
 				 GetDatabasePath(
 					  dbDirNode->database, 
@@ -674,7 +689,7 @@ void PersistentDatabase_Created(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent database directory: '%s' changed state from 'Create Pending' to 'Created', serial number " INT64_FORMAT " at TID %s",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
@@ -796,7 +811,7 @@ PersistentDatabase_AddMirrorAll(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "skipping persistent database mirror addition");
 
 		return;
@@ -869,7 +884,7 @@ bool PersistentDatabase_MarkDropPending(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Skipping persistent database '%s' because we are before persistence work",
 				 GetDatabasePath(
 					  dbDirNode->database, 
@@ -911,7 +926,7 @@ bool PersistentDatabase_MarkDropPending(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent database directory: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (deleteUnnecessary %s)",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
@@ -949,7 +964,7 @@ bool PersistentDatabase_MarkAbortingCreate(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Skipping persistent database '%s' because we are before persistence work",
 				 GetDatabasePath(
 					  dbDirNode->database, 
@@ -991,7 +1006,7 @@ bool PersistentDatabase_MarkAbortingCreate(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent database directory: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (deleteUnnecessary %s)",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
@@ -1026,7 +1041,7 @@ void PersistentDatabase_Dropped(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Skipping persistent database '%s' because we are before persistence work",
 				 GetDatabasePath(
 					  dbDirNode->database, 
@@ -1072,7 +1087,7 @@ void PersistentDatabase_Dropped(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent database directory: '%s' changed state from '%s' to (Free), serial number " INT64_FORMAT " at TID %s",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 PersistentFileSysObjState_Name(oldState),
@@ -1091,7 +1106,7 @@ PersistentDatabase_DirIsCreated(DbDirNode *dbDirNode)
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Skipping persistent database '%s' because we are before "
 				 "persistence work",
 				 GetDatabasePath(
@@ -1151,7 +1166,7 @@ void PersistentDatabase_MarkJustInTimeCreatePending(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Skipping persistent database '%s' because we are before persistence work",
 				 GetDatabasePath(
 					  dbDirNode->database, 
@@ -1218,7 +1233,7 @@ void PersistentDatabase_MarkJustInTimeCreatePending(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent database directory: Add '%s' in state 'Just-In-Time Create Pending', mirror existence state '%s', serial number " INT64_FORMAT " at TID %s",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 MirroredObjectExistenceState_Name(mirrorExistenceState),
@@ -1248,7 +1263,7 @@ void PersistentDatabase_JustInTimeCreated(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Skipping persistent database '%s' because we are before persistence work",
 				 GetDatabasePath(
 					  dbDirNode->database, 
@@ -1288,7 +1303,7 @@ void PersistentDatabase_JustInTimeCreated(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent database directory: '%s' changed state from 'Just-In-Time Create Pending' to 'Created', serial number " INT64_FORMAT " at TID %s",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
@@ -1317,7 +1332,7 @@ void PersistentDatabase_AbandonJustInTimeCreatePending(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Skipping persistent database '%s' because we are before persistence work",
 				 GetDatabasePath(
 					  dbDirNode->database, 
@@ -1362,7 +1377,7 @@ void PersistentDatabase_AbandonJustInTimeCreatePending(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent database directory: Abandon '%s' in state 'Just-In-Time Create Pending', serial number " INT64_FORMAT " at TID %s",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,

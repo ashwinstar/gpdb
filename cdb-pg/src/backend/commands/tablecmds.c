@@ -109,6 +109,7 @@
 
 #include "cdb/cdbmirroredfilesysobj.h"
 #include "cdb/cdbmirroredappendonly.h"
+#include "cdb/cdbpersistentfilesysobj.h"
 
 typedef enum
 {
@@ -10131,8 +10132,8 @@ copy_append_only_data(
 										&mirrorLossEof,		// Input and Output
 										eof);
 
-		if (Debug_persistent_recovery_print)
-			elog(Debug_persistent_recovery_print_level, 
+		if (Debug_persistent_print)
+			elog(Persistent_DebugPrintLevel(), 
 				 "copy_append_only_data: %u/%u/%u, segment file #%d, serial number " INT64_FORMAT ", TID %s, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
 				 newRelFileNode->spcNode,
 				 newRelFileNode->dbNode,
@@ -10145,7 +10146,7 @@ copy_append_only_data(
 	}
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "ALTER TABLE SET TABLESPACE: Copied Append-Only segment file #%d EOF " INT64_FORMAT,
 			 segmentFileNum,
 			 eof);
@@ -10183,7 +10184,7 @@ ATExecSetTableSpace_AppendOnly(
 	oldTablespace = rel->rd_rel->reltablespace ? rel->rd_rel->reltablespace : MyDatabaseTableSpace;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "ALTER TABLE SET TABLESPACE: Append-Only "
 			 "relation id %u, old path '%s', old relfilenode %u, old reltablespace %u, "
 			 "new path '%s', new relfilenode %u, new reltablespace %u",
@@ -10233,7 +10234,7 @@ ATExecSetTableSpace_AppendOnly(
 											&newPersistentSerialNum);
 
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "ALTER TABLE SET TABLESPACE: Create for Append-Only '%s', segment file #%d "
 				 "persistent TID %s and serial number " INT64_FORMAT,
 				 relpath(*newRelFileNode),
@@ -10265,7 +10266,7 @@ ATExecSetTableSpace_AppendOnly(
 											oldPersistentSerialNum);
 
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "ALTER TABLE SET TABLESPACE: Drop for Append-Only '%s', segment file #%d "
 				 "persistent TID %s and serial number " INT64_FORMAT,
 				 relpath(rel->rd_node),
@@ -10388,7 +10389,7 @@ ATExecSetTableSpace_BufferPool(
 	oldTablespace = rel->rd_rel->reltablespace ? rel->rd_rel->reltablespace : MyDatabaseTableSpace;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "ALTER TABLE SET TABLESPACE: Buffer Pool managed "
 			 "relation id %u, old path '%s', old relfilenode %u, old reltablespace %u, "
 			 "new path '%s', new relfilenode %u, new reltablespace %u",
@@ -10421,7 +10422,7 @@ ATExecSetTableSpace_BufferPool(
 											&newPersistentSerialNum);
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "ALTER TABLE SET TABLESPACE: Create for Buffer Pool managed '%s' "
 			 "persistent TID %s and serial number " INT64_FORMAT,
 			 relpath(*newRelFileNode),
@@ -10436,7 +10437,7 @@ ATExecSetTableSpace_BufferPool(
 					newPersistentSerialNum);
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "ALTER TABLE SET TABLESPACE: Scheduling drop for '%s' "
 			 "persistent TID %s and serial number " INT64_FORMAT,
 			 relpath(*newRelFileNode),
@@ -10544,7 +10545,7 @@ ATExecSetTableSpace_Relation(Oid tableOid, Oid newTableSpace, Oid newrelfilenode
 	rd_rel->relfilenode = newrelfilenode;
 	
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "ALTER TABLE SET TABLESPACE: Update pg_class for relation id %u --> relfilenode to %u, reltablespace to %u",
 			 tableOid,
 			 rd_rel->relfilenode,

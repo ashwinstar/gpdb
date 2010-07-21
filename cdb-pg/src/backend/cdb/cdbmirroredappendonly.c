@@ -113,7 +113,7 @@ static void MirroredAppendOnly_SetUpMirrorAccess(
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "MirroredAppendOnly_SetUpMirrorAccess %u/%u/%u, segment file #%d, relation name '%s': create %s, drop %s, primaryOnly %s, mirrorOnly %s, copyToMirror %s, mirror mode %s, mirror data loss occurred %s",
 			 relFileNode->spcNode,
 			 relFileNode->dbNode,
@@ -161,7 +161,7 @@ static void MirroredAppendOnly_CheckMirrorOperationSession(
 
 			SUPPRESS_ERRCONTEXT_PUSH();
 
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "MirroredAppendOnly_CheckMirrorOperationSession %u/%u/%u, segment file #%d --> mirror data loss occurred",
 				 relFileNode->spcNode,
 				 relFileNode->dbNode,
@@ -975,7 +975,7 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 
 				SUPPRESS_ERRCONTEXT_POP();
 
-				elog(Debug_persistent_print_level, 
+				elog(Persistent_DebugPrintLevel(), 
 					 "MirroredAppendOnly_AddMirrorResyncEofs %u/%u/%u, segment file #%d, relation name '%s': no mirror data loss occurred --> report new EOF (EOF " INT64_FORMAT ")",
 					 relFileNode->spcNode,
 					 relFileNode->dbNode,
@@ -1014,7 +1014,7 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 
 				SUPPRESS_ERRCONTEXT_PUSH();
 
-				elog(Debug_persistent_print_level, 
+				elog(Persistent_DebugPrintLevel(), 
 					 "MirroredAppendOnly_AddMirrorResyncEofs %u/%u/%u, segment file #%d, relation name '%s': not in synchronized state --> report loss (mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
 					 relFileNode->spcNode,
 					 relFileNode->dbNode,
@@ -1049,7 +1049,7 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 
 			SUPPRESS_ERRCONTEXT_PUSH();
 
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "MirroredAppendOnly_AddMirrorResyncEofs %u/%u/%u, segment file #%d, relation name '%s': we are in synchronized state, so it is our responsibility to catch-up mirror (mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
 				 relFileNode->spcNode,
 				 relFileNode->dbNode,
@@ -1126,7 +1126,7 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 
 				SUPPRESS_ERRCONTEXT_PUSH();
 
-				elog(Debug_persistent_print_level, 
+				elog(Persistent_DebugPrintLevel(), 
 					 "MirroredAppendOnly_AddMirrorResyncEofs %u/%u/%u, segment file #%d, relation name '%s': mirror data loss occurred --> catch-up mirror failed (mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
 					 relFileNode->spcNode,
 					 relFileNode->dbNode,
@@ -1147,7 +1147,7 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 
 				SUPPRESS_ERRCONTEXT_PUSH();
 
-				elog(Debug_persistent_print_level, 
+				elog(Persistent_DebugPrintLevel(), 
 					 "MirroredAppendOnly_AddMirrorResyncEofs %u/%u/%u, segment file #%d, relation name '%s': no mirror data loss occurred --> mirror catch-up copied and flushed (mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
 					 relFileNode->spcNode,
 					 relFileNode->dbNode,

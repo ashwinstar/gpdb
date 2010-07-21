@@ -45,7 +45,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdboidsync.h"
-
+#include "cdb/cdbpersistentfilesysobj.h"
 
 /*
  * This struct is used to pass around the information on tables to be
@@ -991,7 +991,7 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 			 relform2->relstorage == RELSTORAGE_AOCOLS);
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "swap_relation_files (#1): ENTER relation '%s', relation id %u, relfilenode %u, reltablespace %u, relstorage '%c'",
 			 relform1->relname.data,
 			 r1,
@@ -999,7 +999,7 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 			 relform1->reltablespace,
 			 relform1->relstorage);
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "swap_relation_files (#2): ENTER relation '%s', relation id %u, relfilenode %u, reltablespace %u, relstorage '%c'",
 			 relform2->relname.data,
 			 r2,
@@ -1066,7 +1066,7 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 	relform2->relstorage = swapchar;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "swap_relation_files (#1): UPDATE relation '%s', relation id %u, relfilenode %u, reltablespace %u, relstorage '%c'",
 			 relform1->relname.data,
 			 r1,
@@ -1074,7 +1074,7 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 			 relform1->reltablespace,
 			 relform1->relstorage);
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "swap_relation_files (#2): UPDATE relation '%s', relation id %u, relfilenode %u, reltablespace %u, relstorage '%c'",
 			 relform2->relname.data,
 			 r2,

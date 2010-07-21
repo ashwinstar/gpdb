@@ -25,6 +25,7 @@
 #include "utils/syscache.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
+#include "cdb/cdbpersistentfilesysobj.h"
 
 /*
  * Adds an entry into the pg_appendonly catalog table. The entry
@@ -822,7 +823,7 @@ TransferAppendonlyEntry(Oid sourceRelId, Oid targetRelId)
 	}
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "TransferAppendonlyEntry: source relation id %u, target relation id %u, aosegrelid %u, aoblkdirrelid %u",
 			 sourceRelId,
 			 targetRelId,
@@ -941,7 +942,7 @@ SwapAppendonlyEntries(Oid entryRelId1, Oid entryRelId2)
 	}
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "SwapAppendonlyEntries: relation id #1 %u, aosegrelid1 %u, aoblkdirrelid1 %u, "
 			 "relation id #2 %u, aosegrelid2 %u, aoblkdirrelid2 %u",
 			 entryRelId1,

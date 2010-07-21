@@ -28,6 +28,7 @@
 #include "storage/smgr.h"
 #include "utils/guc.h"
 #include "utils/palloc.h"
+#include "cdb/cdbpersistentfilesysobj.h"
 
 static void MirroredBufferPool_SetUpMirrorAccess(
 	RelFileNode					*relFileNode,
@@ -109,7 +110,7 @@ static void MirroredBufferPool_SetUpMirrorAccess(
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "MirroredBufferPool_SetUpMirrorAccess %u/%u/%u, segment file #%d, relation name '%s': primaryOnly %s, mirrorOnly %s, mirror mode %s, mirror data loss occurred %s",
 			 relFileNode->spcNode,
 			 relFileNode->dbNode,
@@ -216,7 +217,7 @@ static void MirroredBufferPool_DoOpen(
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "MirroredBufferPool_DoOpen: Special open %u/%u/%u --> create %s, mirrorOnly %s, copyToMirror %s",
 			 relFileNode->spcNode,
 			 relFileNode->dbNode,

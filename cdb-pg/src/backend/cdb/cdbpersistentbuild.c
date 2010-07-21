@@ -393,7 +393,7 @@ gp_persistent_build_db(PG_FUNCTION_ARGS)
 	}
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "gp_persistent_build_db: Using mirror existence state '%s', "
 			 "data synchronization state '%s'",
 			 MirroredObjectExistenceState_Name(mirrorExistenceState),

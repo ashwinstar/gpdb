@@ -886,7 +886,7 @@ StartPrepare(GlobalTransaction gxact)
 		
 		if (Debug_persistent_print)
 		{
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "StartPrepare: persistentPrepareSerializeLen %d",
 				 persistentPrepareSerializeLen);
 			PersistentEndXactRec_Print("StartPrepare", &persistentPrepareObjects);
@@ -1013,8 +1013,8 @@ EndPrepare(GlobalTransaction gxact)
 
 	/* If we crash now, we have prepared: WAL replay will fix things */
 
-	if (Debug_persistent_recovery_print)
-		elog(Debug_persistent_recovery_print_level, 
+	if (Debug_persistent_print)
+		elog(Persistent_DebugPrintLevel(), 
 			 "EndPrepare: proc.xid %u, prepare_lsn %s, gid %s",
 			 xid,
 			 XLogLocationToString(&gxact->prepare_lsn),
@@ -1292,7 +1292,7 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 
 	if (Debug_persistent_print)
 	{
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "FinishPreparedTransaction: deserializedLen %d, persistentPrepareObjectCount %d",
 			 deserializeLen,
 			 hdr->persistentPrepareObjectCount);
@@ -1769,7 +1769,7 @@ RecoverPreparedTransactions(void)
 
 			if (Debug_persistent_print)
 			{
-				elog(Debug_persistent_print_level, 
+				elog(Persistent_DebugPrintLevel(), 
 					 "RecoverPreparedTransactions: deserializeLen %d, persistentPrepareObjectCount %d",
 					 PersistentEndXactRec_DeserializeLen(
 												(uint8*)bufptr,
@@ -1912,7 +1912,7 @@ RecordTransactionCommitPrepared(TransactionId xid,
 		
 		if (Debug_persistent_print)
 		{
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "RecordTransactionCommitPrepared: persistentCommitSerializeLen %d, objectCount %d",
 				 persistentCommitSerializeLen,
 				 objectCount);
@@ -2051,7 +2051,7 @@ RecordTransactionAbortPrepared(TransactionId xid,
 		
 		if (Debug_persistent_print)
 		{
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "RecordTransactionAbortPrepared: persistentAbortSerializeLen %d",
 				 persistentAbortSerializeLen);
 			PersistentEndXactRec_Print("RecordTransactionAbortPrepared", persistentPrepareObjects);

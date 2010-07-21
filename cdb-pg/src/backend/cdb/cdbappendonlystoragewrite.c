@@ -23,6 +23,8 @@
 #include "cdb/cdbappendonlystoragewrite.h"
 #include "cdb/cdbmirroredfilesysobj.h"
 #include "catalog/heap.h"
+#include "cdb/cdbpersistentfilesysobj.h"
+
 
 // -----------------------------------------------------------------------------
 // Initialization 
@@ -695,8 +697,8 @@ void AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
 										&mirrorLossEof,		// Input and Output
 										*newLogicalEof);
 
-		if (Debug_persistent_recovery_print)
-			elog(Debug_persistent_recovery_print_level, 
+		if (Debug_persistent_print)
+			elog(Persistent_DebugPrintLevel(), 
 				 "AppendOnlyStorageWrite_TransactionFlushAndCloseFile: %u/%u/%u, segment file #%d, serial number " INT64_FORMAT ", TID %s, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
 				 relFileNode.spcNode,
 				 relFileNode.dbNode,

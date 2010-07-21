@@ -272,6 +272,8 @@ bool		Debug_persistent_recovery_print = true;
 int			Debug_persistent_recovery_print_level = LOG;
 bool		Debug_persistent_store_print = false;
 int			Debug_persistent_store_print_level = LOG;
+bool		Debug_persistent_bootstrap_print = false;
+
 bool		Debug_database_command_print = false;
 int			Debug_database_command_print_level = LOG;
 #define GP_MAX_DATABASES_DEFAULT 16
@@ -283,6 +285,7 @@ int			gp_max_filespaces = GP_MAX_FILESPACES_DEFAULT;
 bool 		gp_initdb_mirrored = false;
 bool 		gp_before_persistence_work = false;
 bool 		gp_before_filespace_setup = false;
+bool		gp_startup_integrity_checks = true;
 bool		gp_change_tracking = true;
 bool		gp_persistent_skip_free_list = false;
 bool 		Debug_print_xlog_relation_change_info = false;
@@ -2205,6 +2208,16 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_persistent_store_print,
 		false, NULL, NULL
 	},
+					
+	{
+		{"debug_persistent_bootstrap_print", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print persistent store debugging information during bootstrap."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_persistent_bootstrap_print,
+		false, NULL, NULL
+	},
 		
 	{
 		{"debug_database_command_print", PGC_SUSET, DEVELOPER_OPTIONS,
@@ -2244,6 +2257,16 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&gp_before_filespace_setup,
 		false, NULL, NULL
+	},
+		
+	{
+		{"gp_startup_integrity_checks", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Perform integrity checks after performing startup but before allowing connections in."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_startup_integrity_checks,
+		true, NULL, NULL
 	},
 	
 	{

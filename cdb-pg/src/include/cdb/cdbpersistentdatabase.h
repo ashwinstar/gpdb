@@ -61,6 +61,9 @@ extern bool PersistentDatabase_DirIterateNext(
 
 extern void PersistentDatabase_DirIterateClose(void);
 
+extern bool PersistentDatabase_DbDirExistsUnderLock(
+	DbDirNode				*dbDirNode);
+
 /*
  * Indicate we intend to create a relation file as part of the current transaction.
  *

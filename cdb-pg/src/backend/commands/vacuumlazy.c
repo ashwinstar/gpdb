@@ -68,6 +68,7 @@
 #include "storage/smgr.h"
 
 #include "cdb/cdbvars.h"
+#include "cdb/cdbpersistentfilesysobj.h"
 
 
 /*
@@ -993,7 +994,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 		segfile_array = GetAllFileSegInfo(aorel, aoEntry, SnapshotNow, &total_segfiles);
 
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "vacuum_appendonly_rel: AO ROL relation \"%s.%s\", relation id %u, relfilenode %u has %d physical segment files, %d atributes (columns)",
 				 get_namespace_name(RelationGetNamespace(aorel)),
 				 relname,
@@ -1038,7 +1039,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 				MakeAOSegmentFileName(aorel, segno, -1, &fileSegNo, filenamepath);
 				
 				if (Debug_persistent_print)
-					elog(Debug_persistent_print_level, 
+					elog(Persistent_DebugPrintLevel(), 
 						 "vacuum_appendonly_rel: Opening AO ROW relation \"%s.%s\", relation id %u, relfilenode %u (physical segment file #%d, logical EOF " INT64_FORMAT ")",
 						 get_namespace_name(RelationGetNamespace(aorel)),
 						 relname,
@@ -1053,7 +1054,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 					CloseAOSegmentFile(&mirroredOpened);
 					
 					if (Debug_persistent_print)
-						elog(Debug_persistent_print_level, 
+						elog(Persistent_DebugPrintLevel(), 
 							 "vacuum_appendonly_rel: Successfully truncated AO ROL relation \"%s.%s\", relation id %u, relfilenode %u (physical segment file #%d, logical EOF " INT64_FORMAT ")",
 							 get_namespace_name(RelationGetNamespace(aorel)),
 							 relname,
@@ -1065,7 +1066,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 				else
 				{
 					if (Debug_persistent_print)
-						elog(Debug_persistent_print_level, 
+						elog(Persistent_DebugPrintLevel(), 
 							 "vacuum_appendonly_rel: No gp_relation_node entry for AO ROW relation \"%s.%s\", relation id %u, relfilenode %u (physical segment file #%d, logical EOF " INT64_FORMAT ")",
 							 get_namespace_name(RelationGetNamespace(aorel)),
 							 relname,
@@ -1121,7 +1122,7 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 	
 	allseg = GetAllAOCSFileSegInfo(aorel, aoEntry, SnapshotNow, &totalseg);
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "vacuum_aocs_rel: AO COL relation \"%s.%s\", relation id %u, relfilenode %u has %d logical segments, %d atributes (columns)",
 			 get_namespace_name(RelationGetNamespace(aorel)),
 			 relname,
@@ -1203,7 +1204,7 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 			segno = allseg[i]->segno;
 
 			if (Debug_persistent_print)
-				elog(Debug_persistent_print_level, 
+				elog(Persistent_DebugPrintLevel(), 
 					 "vacuum_aocs_rel: Working on AO COL relation \"%s.%s\", relation id %u, relfilenode %u logical segment #%d",
 					 get_namespace_name(RelationGetNamespace(aorel)),
 					 relname,
@@ -1237,7 +1238,7 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 					MakeAOSegmentFileName(aorel, segno, j, &fileSegNo, filenamepath);
 
 					if (Debug_persistent_print)
-						elog(Debug_persistent_print_level, 
+						elog(Persistent_DebugPrintLevel(), 
 							 "vacuum_aocs_rel: Opening AO COL relation \"%s.%s\", relation id %u, relfilenode %u column #%d, logical segment #%d (physical segment file #%d, logical EOF " INT64_FORMAT ")",
 							 get_namespace_name(RelationGetNamespace(aorel)),
 							 relname,
@@ -1254,7 +1255,7 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 						CloseAOSegmentFile(&mirroredOpened);
 						
 						if (Debug_persistent_print)
-							elog(Debug_persistent_print_level, 
+							elog(Persistent_DebugPrintLevel(), 
 								 "vacuum_aocs_rel: Successfully truncated AO COL relation \"%s.%s\", relation id %u, relfilenode %u column #%d, logical segment #%d (physical segment file #%d, logical EOF " INT64_FORMAT ")",
 								 get_namespace_name(RelationGetNamespace(aorel)),
 								 relname,
@@ -1268,7 +1269,7 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 					else
 					{
 						if (Debug_persistent_print)
-							elog(Debug_persistent_print_level, 
+							elog(Persistent_DebugPrintLevel(), 
 								 "vacuum_aocs_rel: No gp_relation_node entry for AO COL relation \"%s.%s\", relation id %u, relfilenode %u column #%d, logical segment #%d (physical segment file #%d, logical EOF " INT64_FORMAT ")",
 								 get_namespace_name(RelationGetNamespace(aorel)),
 								 relname,

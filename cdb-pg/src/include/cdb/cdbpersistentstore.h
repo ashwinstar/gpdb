@@ -54,6 +54,8 @@ typedef struct PersistentStoreSharedData
 
 	int64					maxInUseSerialNum;
 
+	int64					inUseCount;
+
 	int64 					maxFreeOrderNum;
 
 	ItemPointerData			freeTid;
@@ -80,7 +82,7 @@ typedef void (*PersistentStorePrintTupleCallback) (
 								ItemPointer 			persistentTid,
 								Datum					*values);
 
-#define PersistentStoreData_StaticInit {0,0,NULL,NULL,NULL,NULL,0,0,0,0}
+#define PersistentStoreData_StaticInit {NULL,0,NULL,NULL,NULL,NULL,0,0,0,0}
 
 typedef struct PersistentStoreData
 {
@@ -182,6 +184,14 @@ inline static bool Persistent_BeforePersistenceWork(void)
 		return true;
 
 	return false;
+}
+
+inline static int PersistentStore_DebugPrintLevel(void)
+{
+	if (Debug_persistent_bootstrap_print && IsBootstrapProcessingMode())
+		return WARNING;
+	else
+		return Debug_persistent_store_print_level;
 }
 
 extern void PersistentStore_InitShared(

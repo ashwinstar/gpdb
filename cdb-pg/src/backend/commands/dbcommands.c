@@ -387,8 +387,8 @@ static void copy_append_only_segment_file(
 
 	Assert(eof > 0);
 
-	if (Debug_persistent_recovery_print)
-		elog(Debug_persistent_recovery_print_level, 
+	if (Debug_persistent_print)
+		elog(Persistent_DebugPrintLevel(), 
 			 "copy_append_only_segment_file: Enter %u/%u/%u, segment file #%d, serial number " INT64_FORMAT ", TID %s, EOF " INT64_FORMAT,
 			 dstRelFileNode->spcNode,
 			 dstRelFileNode->dbNode,
@@ -527,8 +527,8 @@ static void copy_append_only_segment_file(
 										&mirrorLossEof,		// Input and Output
 										eof);
 
-		if (Debug_persistent_recovery_print)
-			elog(Debug_persistent_recovery_print_level, 
+		if (Debug_persistent_print)
+			elog(Persistent_DebugPrintLevel(), 
 				 "copy_append_only_segment_file: Exit %u/%u/%u, segment file #%d, serial number " INT64_FORMAT ", TID %s, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
 				 dstRelFileNode->spcNode,
 				 dstRelFileNode->dbNode,

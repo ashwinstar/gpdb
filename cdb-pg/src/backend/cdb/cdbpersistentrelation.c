@@ -267,7 +267,7 @@ void PersistentRelation_AddCreatePending(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 			     "Skipping persistent relation '%s' because we are before persistence work",
 				 relpath(*relFileNode));
 
@@ -318,7 +318,7 @@ void PersistentRelation_AddCreatePending(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent relation: Add '%s', relation name '%s' in state 'Create Pending', relation storage manager '%s', mirror existence state '%s', relation data resynchronization state '%s', serial number " INT64_FORMAT " at TID %s",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 relationName,
@@ -415,7 +415,7 @@ void PersistentRelation_AddCreated(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent relation: Add '%s', relation name '%s', in state 'Created', relation storage manager '%s', mirror existence state '%s', relation data resynchronization state '%s', serial number " INT64_FORMAT " at TID %s",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 relationName,
@@ -458,7 +458,7 @@ void PersistentRelation_Created(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 			     "Skipping persistent relation '%s' because we are before persistence work",
 				 relpath(*relFileNode));
 
@@ -495,7 +495,7 @@ void PersistentRelation_Created(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent relation: '%s' changed state from 'Create Pending' to 'Created', serial number " INT64_FORMAT " at TID %s",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
@@ -697,7 +697,7 @@ bool PersistentRelation_MarkDropPending(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 			     "Skipping persistent relation '%s' because we are before persistence work",
 				 relpath(*relFileNode));
 
@@ -735,7 +735,7 @@ bool PersistentRelation_MarkDropPending(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent relation: '%s' changed state from '%s' to 'Drop Pending', serial number " INT64_FORMAT " TID %s (deleteUnnecessary %s)",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 PersistentFileSysObjState_Name(oldState),
@@ -778,7 +778,7 @@ bool PersistentRelation_MarkAbortingCreate(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Skipping persistent relation '%s' because we are before persistence work",
 				 relpath(*relFileNode));
 
@@ -816,7 +816,7 @@ bool PersistentRelation_MarkAbortingCreate(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent relation: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (deleteUnnecessary %s)",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
@@ -854,7 +854,7 @@ void PersistentRelation_Dropped(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 			     "Skipping persistent relation '%s' because we are before persistence work",
 				 relpath(*relFileNode));
 
@@ -891,7 +891,7 @@ void PersistentRelation_Dropped(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent relation: '%s' changed state from '%s' to (Free), serial number " INT64_FORMAT " at TID %s",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 PersistentFileSysObjState_Name(oldState),
@@ -918,7 +918,7 @@ void PersistentRelation_MarkBufPoolRelationForScanIncrementalResync(
 	if (GpPersistent_SkipXLogInfo(relFileNode->relNode))
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Skipping persistent relation '%s' because it is special",
 				 relpath(*relFileNode));
 	
@@ -928,7 +928,7 @@ void PersistentRelation_MarkBufPoolRelationForScanIncrementalResync(
 	if (IsBootstrapProcessingMode())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 			     "Skipping persistent relation '%s' because we are in bootstrap mode",
 				 relpath(*relFileNode));
 
@@ -938,7 +938,7 @@ void PersistentRelation_MarkBufPoolRelationForScanIncrementalResync(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Skipping persistent relation '%s' because we are before persistence work",
 				 relpath(*relFileNode));
 
@@ -968,7 +968,7 @@ void PersistentRelation_MarkBufPoolRelationForScanIncrementalResync(
 										/* flushToXlog */ true);
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent relation: '%s' marked physically truncated, serial number " INT64_FORMAT " at TID %s",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,

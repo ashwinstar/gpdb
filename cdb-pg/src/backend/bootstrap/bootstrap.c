@@ -348,6 +348,9 @@ AuxiliaryProcessMain(int argc, char *argv[])
 			case StartupPass3Process:
 				statmsg = "startup pass 3 process";
 				break;
+			case StartupPass4Process:
+				statmsg = "startup pass 4 process";
+				break;
 			case BgWriterProcess:
 				statmsg = "writer process";
 				break;
@@ -448,6 +451,11 @@ AuxiliaryProcessMain(int argc, char *argv[])
 		case StartupPass3Process:
 			/* don't set signals, startup process has its own agenda */
 			StartupProcessMain(3);
+			proc_exit(1);		/* should never return */
+
+		case StartupPass4Process:
+			/* don't set signals, startup process has its own agenda */
+			StartupProcessMain(4);
 			proc_exit(1);		/* should never return */
 
 		case BgWriterProcess:

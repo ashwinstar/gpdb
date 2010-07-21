@@ -257,7 +257,7 @@ static bool PersistentTablespace_ScanTupleCallback(
 	if (state == PersistentFileSysState_Free)
 	{
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "PersistentTablespace_ScanTupleCallback: TID %s, serial number " INT64_FORMAT " is free",
 				 ItemPointerToString2(persistentTid),
 				 persistentSerialNum);
@@ -272,7 +272,7 @@ static bool PersistentTablespace_ScanTupleCallback(
 	tablespaceDirEntry->persistentTid = *persistentTid;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "PersistentTablespace_ScanTupleCallback: tablespace %u, filespace %u, state %s, TID %s, serial number " INT64_FORMAT,
 			 tablespaceOid,
 			 filespaceOid,
@@ -573,7 +573,7 @@ void PersistentTablespace_MarkCreatePending(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Skipping persistent tablespace %u because we are before persistence work",
 				 tablespaceOid);
 
@@ -608,7 +608,7 @@ void PersistentTablespace_MarkCreatePending(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent tablespace directory: Add '%s' in state 'Created', mirror existence state '%s', serial number " INT64_FORMAT " at TID %s",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 MirroredObjectExistenceState_Name(mirrorExistenceState),
@@ -665,7 +665,7 @@ void PersistentTablespace_Created(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Skipping persistent tablespace %u because we are before persistence work",
 				 tablespaceOid);
 
@@ -704,7 +704,7 @@ void PersistentTablespace_Created(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent tablespace directory: '%s' changed state from 'Create Pending' to 'Created', serial number " INT64_FORMAT " at TID %s",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
@@ -867,7 +867,7 @@ bool PersistentTablespace_MarkDropPending(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Skipping persistent tablespace %u because we are before persistence work",
 				 tablespaceOid);
 
@@ -908,7 +908,7 @@ bool PersistentTablespace_MarkDropPending(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent tablespace directory: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (deleteUnnecessary %s)",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
@@ -946,7 +946,7 @@ bool PersistentTablespace_MarkAbortingCreate(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Skipping persistent tablespace %u because we are before persistence work",
 				 tablespaceOid);
 
@@ -986,7 +986,7 @@ bool PersistentTablespace_MarkAbortingCreate(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent tablespace directory: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (deleteUnnecessary %s)",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
@@ -1021,7 +1021,7 @@ void PersistentTablespace_Dropped(
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Skipping persistent tablespace %u because we are before persistence work",
 				 tablespaceOid);
 
@@ -1063,7 +1063,7 @@ void PersistentTablespace_Dropped(
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 		     "Persistent tablespace directory: '%s' changed state from '%s' to (Free), serial number " INT64_FORMAT " at TID %s",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 PersistentFileSysObjState_Name(oldState),

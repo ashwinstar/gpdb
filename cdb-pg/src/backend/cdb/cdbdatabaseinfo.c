@@ -30,6 +30,7 @@
 #include "access/aocssegfiles.h"
 #include "access/appendonlytid.h"
 #include "utils/guc.h"
+#include "cdb/cdbpersistentfilesysobj.h"
 
 
 /*-------------------------------------------------------------------------
@@ -494,7 +495,7 @@ static void DatabaseInfo_AddAppendOnlyCatalogSegmentInfo(
 	appendOnlyCatalogSegmentInfo->logicalEof = logicalEof;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "DatabaseInfo_AddAppendOnlyCatalogSegmentInfo: relation id %u, relation name %s, relfilenode %u, segment file #%d, EOF " INT64_FORMAT,
 			 dbInfoRel->relationOid,
 			 dbInfoRel->relname,
@@ -623,7 +624,7 @@ static bool DatabaseInfo_AddGpRelationNode(
 	dbInfoGpRelationNode->logicalEof = 0;	// This will obtained from the other sources later (e.g. aoseg / aocsseg).
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "DatabaseInfo_AddGpRelationNode: gp_relation_node TID %s, relfilenode %u, segment file #%d, persistent serial number " INT64_FORMAT ", persistent TID %s",
 			 ItemPointerToString(gpRelationNodeTid),
 			 relfilenode,
@@ -1003,7 +1004,7 @@ DatabaseInfo_HandleAppendOnly(
 											pgAppendOnlyHashTable,
 											dbInfoRel->relationOid);
 			if (Debug_persistent_print)
-				elog(Debug_persistent_print_level, 
+				elog(Persistent_DebugPrintLevel(), 
 					 "DatabaseInfo_AddPgClassStoredRelation: Append-Only entry for relation id %u, relation name %s, "
 				     "blocksize %d, safefswritesize %d, compresslevel %d, major version %d, minor version %d, "
 				     " checksum %s, compresstype %s, columnstore %s, segrelid %u, segidxid %u, blkdirrelid %u, blkdiridxid %u",
@@ -1144,7 +1145,7 @@ DatabaseInfo_CollectPgAppendOnly(
 		Assert(aoEntry != NULL);
 
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "DatabaseInfo_Collect: Append-Only entry for relation id %u, "
 				 "blocksize %d, safefswritesize %d, compresslevel %d, major version %d, minor version %d, "
 				 " checksum %s, compresstype %s, columnstore %s, segrelid %u, segidxid %u, blkdirrelid %u, blkdiridxid %u",

@@ -21,6 +21,8 @@
 #include "storage/smgr.h"
 #include "storage/ipc.h"
 #include "cdb/cdbglobalsequence.h"
+#include "cdb/cdbpersistentfilesysobj.h"
+#include "cdb/cdbpersistentrecovery.h"
 
 void PersistentStore_InitShared(
 	PersistentStoreSharedData 	*storeSharedData)
@@ -288,7 +290,7 @@ static void PersistentStore_InitScanVerifyFreeEntries(
 					 storeData->tableName);
 			
 			if (Debug_persistent_recovery_print)
-				elog(Debug_persistent_recovery_print_level, 
+				elog(PersistentRecovery_DebugPrintLevel(), 
 					 "PersistentStore_InitScanVerifyFreeEntries ('%s'): Free order number " INT64_FORMAT ", free TID %s, previous free TID %s",
 					 storeData->tableName,
 					 freeOrderNum,
@@ -355,7 +357,7 @@ static void PersistentStore_InitScanVerifyFreeEntries(
 	}
 	
 	if (Debug_persistent_recovery_print)
-		elog(Debug_persistent_recovery_print_level, 
+		elog(PersistentRecovery_DebugPrintLevel(), 
 			 "PersistentStore_InitScanVerifyFreeEntries ('%s'): Successfully verified " INT64_FORMAT " free entries",
 			 storeData->tableName,
 			 storeSharedData->maxFreeOrderNum);
@@ -412,7 +414,7 @@ static void PersistentStore_DoInitScan(
 		
 		if (Debug_persistent_recovery_print)
 			(*storeData->printTupleCallback)(
-										Debug_persistent_recovery_print_level,
+										PersistentRecovery_DebugPrintLevel(),
 										"SCAN",
 										&persistentTid,
 										values);
@@ -436,10 +438,15 @@ static void PersistentStore_DoInitScan(
 												/* freeOrderNum */ persistentSerialNum);
 			}
 		}
-		else if (storeSharedData->maxInUseSerialNum < persistentSerialNum)
+		else 
 		{
-			storeSharedData->maxInUseSerialNum = persistentSerialNum;
-			storeData->myHighestSerialNum = storeSharedData->maxInUseSerialNum;
+			storeSharedData->inUseCount++;
+
+			if (storeSharedData->maxInUseSerialNum < persistentSerialNum)
+			{
+				storeSharedData->maxInUseSerialNum = persistentSerialNum;
+				storeData->myHighestSerialNum = storeSharedData->maxInUseSerialNum;
+			}
 		}
 
 		if (storeData->scanTupleCallback != NULL)
@@ -467,7 +474,7 @@ static void PersistentStore_DoInitScan(
 	storeSharedData->maxInUseSerialNum = globalSequenceNum;
 	
 	if (Debug_persistent_recovery_print)
-		elog(Debug_persistent_recovery_print_level, 
+		elog(PersistentRecovery_DebugPrintLevel(), 
 			 "PersistentStore_DoInitScan ('%s'): maximum in-use serial number " INT64_FORMAT ", maximum free order number " INT64_FORMAT ", free TID %s, maximum known TID %s",
 			 storeData->tableName,
 			 storeSharedData->maxInUseSerialNum, 
@@ -484,7 +491,7 @@ static void PersistentStore_DoInitScan(
 	else
 	{
 		if (Debug_persistent_recovery_print)
-			elog(Debug_persistent_recovery_print_level, 
+			elog(PersistentRecovery_DebugPrintLevel(), 
 				 "PersistentStore_DoInitScan ('%s'): Skipping verification because gp_persistent_skip_free_list GUC is ON",
 				 storeData->tableName);
 	}
@@ -739,7 +746,7 @@ static void PersistentStore_DoInsertTuple(
 	}
 
 	if (Debug_persistent_store_print)
-		elog(Debug_persistent_store_print_level, 
+		elog(PersistentStore_DebugPrintLevel(), 
 			 "PersistentStore_DoInsertTuple: old maximum known TID %s, new insert TID %s ('%s')",
 			 ItemPointerToString(&storeSharedData->maxTid),
 			 ItemPointerToString2(&persistentTuple->t_self),
@@ -797,7 +804,7 @@ static void PersistentStore_InsertTuple(
 #endif
 
 	if (Debug_persistent_store_print)
-		elog(Debug_persistent_store_print_level, 
+		elog(PersistentStore_DebugPrintLevel(), 
 			 "PersistentStore_InsertTuple: Going to insert new tuple ('%s', shared data %p)",
 			 storeData->tableName,
 			 storeSharedData);
@@ -816,13 +823,13 @@ static void PersistentStore_InsertTuple(
 	
 	if (Debug_persistent_store_print)
 	{
-		elog(Debug_persistent_store_print_level, 
+		elog(PersistentStore_DebugPrintLevel(), 
 			 "PersistentStore_InsertTuple: Inserted new tuple at TID %s ('%s')",
 			 ItemPointerToString(persistentTid),
 			 storeData->tableName);
 		
 		(*storeData->printTupleCallback)(
-									Debug_persistent_store_print_level,
+									PersistentStore_DebugPrintLevel(),
 									"STORE INSERT TUPLE",
 									persistentTid,
 									values);
@@ -856,7 +863,7 @@ void PersistentStore_UpdateTuple(
 #endif
 	
 	if (Debug_persistent_store_print)
-		elog(Debug_persistent_store_print_level, 
+		elog(PersistentStore_DebugPrintLevel(), 
 			 "PersistentStore_ReplaceTuple: Going to update whole tuple at TID %s ('%s', shared data %p)",
 			 ItemPointerToString(persistentTid),
 			 storeData->tableName,
@@ -893,13 +900,13 @@ void PersistentStore_UpdateTuple(
 	
 	if (Debug_persistent_store_print)
 	{
-		elog(Debug_persistent_store_print_level, 
+		elog(PersistentStore_DebugPrintLevel(), 
 			 "PersistentStore_UpdateTuple: Updated whole tuple at TID %s ('%s')",
 			 ItemPointerToString(persistentTid),
 			 storeData->tableName);
 
 		(*storeData->printTupleCallback)(
-									Debug_persistent_store_print_level,
+									PersistentStore_DebugPrintLevel(),
 									"STORE UPDATED TUPLE",
 									persistentTid,
 									values);
@@ -944,7 +951,7 @@ void PersistentStore_ReplaceTuple(
 #endif
 	
 	if (Debug_persistent_store_print)
-		elog(Debug_persistent_store_print_level, 
+		elog(PersistentStore_DebugPrintLevel(), 
 			 "PersistentStore_ReplaceTuple: Going to replace set of columns in tuple at TID %s ('%s', shared data %p)",
 			 ItemPointerToString(persistentTid),
 			 storeData->tableName,
@@ -984,7 +991,7 @@ void PersistentStore_ReplaceTuple(
 		Buffer			buffer;
 		HeapTuple		readTupleCopy;
 		
-		elog(Debug_persistent_store_print_level, 
+		elog(PersistentStore_DebugPrintLevel(), 
 			 "PersistentStore_ReplaceTuple: Replaced set of columns in tuple at TID %s ('%s')",
 			 ItemPointerToString(persistentTid),
 			 storeData->tableName);
@@ -1010,7 +1017,7 @@ void PersistentStore_ReplaceTuple(
 		heap_deform_tuple(readTupleCopy, persistentRel->rd_att, readValues, readNulls);
 		
 		(*storeData->printTupleCallback)(
-									Debug_persistent_store_print_level,
+									PersistentStore_DebugPrintLevel(),
 									"STORE REPLACED TUPLE",
 									persistentTid,
 									readValues);
@@ -1057,7 +1064,7 @@ void PersistentStore_ReadTuple(
 #endif
 	
 	if (Debug_persistent_store_print)
-		elog(Debug_persistent_store_print_level, 
+		elog(PersistentStore_DebugPrintLevel(), 
 			 "PersistentStore_ReadTuple: Going to read tuple at TID %s ('%s', shared data %p)",
 			 ItemPointerToString(readTid),
 			 storeData->tableName,
@@ -1114,13 +1121,13 @@ void PersistentStore_ReadTuple(
 	
 	if (Debug_persistent_store_print)
 	{
-		elog(Debug_persistent_store_print_level, 
+		elog(PersistentStore_DebugPrintLevel(), 
 			 "PersistentStore_ReadTuple: Successfully read tuple at TID %s ('%s')",
 			 ItemPointerToString(readTid),
 			 storeData->tableName);
 
 		(*storeData->printTupleCallback)(
-									Debug_persistent_store_print_level,
+									PersistentStore_DebugPrintLevel(),
 									"STORE READ TUPLE",
 									readTid,
 									values);
@@ -1146,7 +1153,7 @@ static bool PersistentStore_GetFreeTuple(
 	MemSet(freeTid, 0, sizeof(ItemPointerData));
 
 	if (Debug_persistent_store_print)
-		elog(Debug_persistent_store_print_level, 
+		elog(PersistentStore_DebugPrintLevel(), 
 			 "PersistentStore_GetFreeTuple: Enter: maximum free order number " INT64_FORMAT ", free TID %s ('%s')",
 			 storeSharedData->maxFreeOrderNum, 
 			 ItemPointerToString(&storeSharedData->freeTid),
@@ -1160,7 +1167,7 @@ static bool PersistentStore_GetFreeTuple(
 	if (gp_persistent_skip_free_list)
 	{
 		if (Debug_persistent_store_print)
-			elog(Debug_persistent_store_print_level, 
+			elog(PersistentStore_DebugPrintLevel(), 
 				 "PersistentStore_GetFreeTuple: Skipping because gp_persistent_skip_free_list GUC is ON ('%s')",
 				 storeData->tableName);
 		return false;	// Pretend no free tuples.
@@ -1210,7 +1217,7 @@ static bool PersistentStore_GetFreeTuple(
 	heap_freetuple(tupleCopy);
 
 	if (Debug_persistent_store_print)
-		elog(Debug_persistent_store_print_level, 
+		elog(PersistentStore_DebugPrintLevel(), 
 			 "PersistentStore_GetFreeTuple: Exit: maximum free order number " INT64_FORMAT ", free TID %s ('%s')",
 			 storeSharedData->maxFreeOrderNum, 
 			 ItemPointerToString(&storeSharedData->freeTid),
@@ -1242,7 +1249,7 @@ void PersistentStore_AddTuple(
 #endif
 	
 	if (Debug_persistent_store_print)
-		elog(Debug_persistent_store_print_level, 
+		elog(PersistentStore_DebugPrintLevel(), 
 			 "PersistentStore_AddTuple: Going to add tuple ('%s', shared data %p)",
 			 storeData->tableName,
 			 storeSharedData);
@@ -1286,6 +1293,14 @@ void PersistentStore_AddTuple(
 		Assert(persistentTid->ip_posid != 0);
 	}
 
+	storeSharedData->inUseCount++;
+
+	if (Debug_persistent_store_print)
+		elog(PersistentStore_DebugPrintLevel(), 
+			 "PersistentStore_AddTuple: Added tuple ('%s', in use count " INT64_FORMAT ", shared data %p)",
+			 storeData->tableName,
+			 storeSharedData->inUseCount,
+			 storeSharedData);
 }
 
 void PersistentStore_FreeTuple(
@@ -1315,7 +1330,7 @@ void PersistentStore_FreeTuple(
 #endif
 				
 	if (Debug_persistent_store_print)
-		elog(Debug_persistent_store_print_level, 
+		elog(PersistentStore_DebugPrintLevel(), 
 			 "PersistentStore_FreeTuple: Going to free tuple at TID %s ('%s', shared data %p)",
 			 ItemPointerToString(persistentTid),
 			 storeData->tableName,
@@ -1353,11 +1368,14 @@ void PersistentStore_FreeTuple(
 
 	(*storeData->closeRel)(persistentRel);
 
+	storeSharedData->inUseCount--;
+
 	if (Debug_persistent_store_print)
-		elog(Debug_persistent_store_print_level, 
-			 "PersistentStore_FreeTuple: Freed tuple at TID %s.  Maximum free order number " INT64_FORMAT " ('%s')",
+		elog(PersistentStore_DebugPrintLevel(), 
+			 "PersistentStore_FreeTuple: Freed tuple at TID %s.  Maximum free order number " INT64_FORMAT ", in use count " INT64_FORMAT " ('%s')",
 			 ItemPointerToString(&storeSharedData->freeTid),
 			 storeSharedData->maxFreeOrderNum, 
+			 storeSharedData->inUseCount,
 			 storeData->tableName);
 
 	if (flushToXLog)

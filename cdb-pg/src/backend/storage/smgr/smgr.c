@@ -1477,7 +1477,7 @@ AppendOnlyMirrorResyncEofs_HashTableInit(void)
 	AppendOnlyMirrorResyncEofsTable = hash_create("AO Mirror Resync EOFs", 10, &info, hash_flags);
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "Storage Manager: Append-Only mirror resync eofs hash-table created");
 }
 
@@ -1492,7 +1492,7 @@ AppendOnlyMirrorResyncEofs_HashTableRemove(
 	AppendOnlyMirrorResyncEofsTable = NULL;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "Storage Manager (%s): Append-Only mirror resync eofs hash-table removed",
 			 procName);
 }
@@ -1595,7 +1595,7 @@ AppendOnlyMirrorResyncEofs_Merge(
 	}
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "Storage Manager: %s Append-Only mirror resync eofs entry: %u/%u/%u, segment file #%d, relation name '%s' (transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", input mirror loss EOF " INT64_FORMAT ", saved mirror loss EOF " INT64_FORMAT ", input mirror new EOF " INT64_FORMAT ", saved mirror new EOF " INT64_FORMAT ")",
 			 (found ? "Merge" : "New"),
 			 entry->key.relFileNode.spcNode,
@@ -1621,7 +1621,7 @@ AppendOnlyMirrorResyncEofs_Remove(
 	Assert(AppendOnlyMirrorResyncEofsTable != NULL);
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "Storage Manager (%s): Remove Append-Only mirror resync eofs entry: %u/%u/%u, segment file #%d, relation name '%s' (transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", saved mirror loss EOF " INT64_FORMAT ", saved mirror new EOF " INT64_FORMAT ")",
 			 procName,
 			 entry->key.relFileNode.spcNode,
@@ -1782,7 +1782,7 @@ smgrDoDeleteActions(
 		if (Debug_persistent_print)
 		{
 			if (current->relationName == NULL)
-				elog(Debug_persistent_print_level, 
+				elog(Persistent_DebugPrintLevel(), 
 					 "Storage Manager: Do 1st delete state-change action for list entry #%d: '%s' (persistent end transaction action '%s', transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ")",
 					 entryIndex,
 					 PersistentFileSysObjName_TypeAndObjectName(&current->fsObjName),
@@ -1791,7 +1791,7 @@ smgrDoDeleteActions(
 					 ItemPointerToString(&current->persistentTid),
 					 current->persistentSerialNum);
 			else
-				elog(Debug_persistent_print_level, 
+				elog(Persistent_DebugPrintLevel(), 
 					 "Storage Manager: Do 1st delete state-change action for list entry #%d: '%s', relation name '%s' (persistent end transaction action '%s', transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ")",
 					 entryIndex,
 					 PersistentFileSysObjName_TypeAndObjectName(&current->fsObjName),
@@ -2036,7 +2036,7 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 		return;
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "Storage Manager: Enter Append-Only mirror resync eofs list entries (Append-Only commit work count %d)",
 			 FileRepPrimary_GetAppendOnlyCommitWorkCount());
 
@@ -2066,7 +2066,7 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 		}
 
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Storage Manager: Append-Only mirror resync eofs list entry #%d: %u/%u/%u, segment file #%d, relation name '%s' (forCommit %s, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
 				 appendOnlyMirrorResyncEofsCount,
 				 entry->key.relFileNode.spcNode,
@@ -2126,7 +2126,7 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 				 ItemPointerToString(&entryExample->persistentTid));
 		
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Storage Manager: Append-Only Mirror Resync EOFs intent count finishing %s work with system count %d remaining "
 				 "(old system count %d, entry count %d).  "
 				 "Example relation %u/%u/%u, segment file #%d (persistent serial num " INT64_FORMAT ", TID %s)",
@@ -2270,7 +2270,7 @@ smgrSortDeletesList(
 			collapseCount++;
 
 			if (Debug_persistent_print)
-				elog(Debug_persistent_print_level, 
+				elog(Persistent_DebugPrintLevel(), 
 					 "Storage Manager: CREATE (transaction level %d) - DROP (transaction level %d) collapse for %s, filter transaction level %d, TID %s, serial " INT64_FORMAT,
 					 current->nestLevel,
 					 prev->nestLevel,
@@ -2485,7 +2485,7 @@ smgrGetPendingDeletes(
 	}
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "Storage Manager: Get list entries (transaction kind '%s', current transaction nest level %d)",
 			 EndXactRecKind_Name(endXactRecKind),
 			 nestLevel);
@@ -2517,7 +2517,7 @@ smgrGetPendingDeletes(
 		if (Debug_persistent_print)
 		{
 			if (pending->relationName == NULL)
-				elog(Debug_persistent_print_level, 
+				elog(Persistent_DebugPrintLevel(), 
 					 "Storage Manager: Get list entry #%d: '%s' (transaction kind '%s', returned %s, transaction nest level %d, relation storage manager '%s', persistent TID %s, persistent serial number " INT64_FORMAT ")",
 					 entryIndex,
 					 PersistentFileSysObjName_TypeAndObjectName(&pending->fsObjName),
@@ -2528,7 +2528,7 @@ smgrGetPendingDeletes(
 					 ItemPointerToString(&pending->persistentTid),
 					 pending->persistentSerialNum);
 			else
-				elog(Debug_persistent_print_level, 
+				elog(Persistent_DebugPrintLevel(), 
 					 "Storage Manager: Get list entry #%d: '%s', relation name '%s' (transaction kind '%s', returned %s, transaction nest level %d, relation storage manager '%s', persistent TID %s, persistent serial number " INT64_FORMAT ")",
 					 entryIndex,
 					 PersistentFileSysObjName_TypeAndObjectName(&pending->fsObjName),
@@ -2579,7 +2579,7 @@ smgrGetAppendOnlyMirrorResyncEofs(
 	}
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "Storage Manager: Get Append-Only mirror resync eofs list entries (current transaction nest level %d, Append-Only commit work system count %d)",
 			 nestLevel,
 			 FileRepPrimary_GetAppendOnlyCommitWorkCount());
@@ -2622,7 +2622,7 @@ smgrGetAppendOnlyMirrorResyncEofs(
 		if (Debug_persistent_print)
 		{
 			if (entry->relationName == NULL)
-				elog(Debug_persistent_print_level, 
+				elog(Persistent_DebugPrintLevel(), 
 					 "Storage Manager: Get Append-Only mirror resync eofs list entry #%d: %u/%u/%u, segment file #%d (returned %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
 					 entryIndex,
 					 entry->key.relFileNode.spcNode,
@@ -2636,7 +2636,7 @@ smgrGetAppendOnlyMirrorResyncEofs(
 					 entry->mirrorLossEof,
 					 entry->mirrorNewEof);
 			else
-				elog(Debug_persistent_print_level, 
+				elog(Persistent_DebugPrintLevel(), 
 					 "Storage Manager: Get Append-Only mirror resync eofs list entry #%d: %u/%u/%u, segment file #%d, relation name '%s' (returned %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
 					 entryIndex,
 					 entry->key.relFileNode.spcNode,

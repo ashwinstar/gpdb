@@ -452,9 +452,11 @@ typedef struct XLogCtlData
 	/*
 	 * Save the redo range used in Pass 1 recovery so it can be used in subsequent passes.
 	 */
-	bool		multiplePassesNeeded;
+	bool		multipleRecoveryPassesNeeded;
 	XLogRecPtr	pass1StartLoc;
 	XLogRecPtr	pass1LastLoc;
+
+	bool		integrityCheckNeeded;
 	
 } XLogCtlData;
 
@@ -5073,7 +5075,7 @@ XLogFileRepFlushCache(
 	*lastChangeTrackingEndLoc = XLogCtl->lastChangeTrackingEndLoc;
 		
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "XLogFileRepFlushCache: Going flush through location %s...",
 			 XLogLocationToString(lastChangeTrackingEndLoc));
 		
@@ -5087,13 +5089,13 @@ XLogInChangeTrackingTransition(void)
 	XLogRecPtr      recPtrInit = {0, 0};
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "XLogInChangeTrackingTransition: Acquiring ChangeTrackingTransitionLock...");
 
 	LWLockAcquire(ChangeTrackingTransitionLock, LW_EXCLUSIVE);
 	
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "XLogInChangeTrackingTransition: SegmentStateInChangeTrackingTransition...");
 
 	FileRep_SetSegmentState(SegmentStateInChangeTrackingTransition);
@@ -5101,7 +5103,7 @@ XLogInChangeTrackingTransition(void)
 	XLogFileRepFlushCache(&lastChangeTrackingEndLoc);
 		
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "XLogInChangeTrackingTransition: Calling ChangeTracking_CreateInitialFromPreviousCheckpoint with lastChangeTrackingEndLoc %s",
 			 XLogLocationToString(&lastChangeTrackingEndLoc));
 		
@@ -5125,7 +5127,7 @@ XLogInChangeTrackingTransition(void)
 	LWLockRelease(ChangeTrackingTransitionLock);
 
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "XLogInChangeTrackingTransition: Released ChangeTrackingTransitionLock");
 
 }
@@ -6111,6 +6113,7 @@ StartupXLOG(void)
 	uint32		freespace;
 	char* 		dtxCheckPointInfo;
 	int			dtmCheckPointInfoSize;
+	bool		multipleRecoveryPassesNeeded = false;
 
 	/*
 	 * Read control file and check XLOG status looks valid.
@@ -6339,6 +6342,12 @@ StartupXLOG(void)
 				(errmsg("Database must be shutdown cleanly when using single backed start")));
 	}
 
+	if (InRecovery && gp_before_persistence_work)
+	{
+		ereport(FATAL,
+				(errmsg("Database must be shutdown cleanly when using gp_before_persistece_work = on")));
+	}
+
 	/* REDO */
 	if (InRecovery)
 	{
@@ -6432,8 +6441,8 @@ StartupXLOG(void)
 							ReadRecPtr.xlogid, ReadRecPtr.xrecoff)));
 
 			XLogCtl->pass1StartLoc = ReadRecPtr;
-			XLogCtl->multiplePassesNeeded = true;
-			
+			multipleRecoveryPassesNeeded = true;
+
 			CurrentResourceOwner = ResourceOwnerCreate(NULL, "xlog");
 			/*
 			 * main redo apply loop
@@ -6674,84 +6683,79 @@ StartupXLOG(void)
 	XLogCtl->ckptXidEpoch = ControlFile->checkPointCopy.nextXidEpoch;
 	XLogCtl->ckptXid = ControlFile->checkPointCopy.nextXid;
 
+	if (!gp_before_persistence_work)
+	{		
+		/*
+		 * Create a resource owner to keep track of our resources (currently only
+		 * buffer pins).
+		 */
+		CurrentResourceOwner = ResourceOwnerCreate(NULL, "StartupXLOG");
+		
+		/*
+		 * We don't have any hope of running a real relcache, but we can use the
+		 * same fake-relcache facility that WAL replay uses.
+		 */
+		XLogInitRelationCache();
+		
+		PersistentFileSysObj_InitScan();
+		
+		/*
+		 * Close down recovery environment
+		 */
+		XLogCloseRelationCache();
+	}
+
 	if (!IsUnderPostmaster)
 	{
-		Assert(!InRecovery);
-		
-		if (Debug_persistent_recovery_print)
-			elog(Debug_persistent_recovery_print_level, 
-				 "Finishing single backend start");
+		Assert(!multipleRecoveryPassesNeeded);
 
-		if (!gp_before_persistence_work)
-		{		
-			/*
-			 * Create a resource owner to keep track of our resources (currently only
-			 * buffer pins).
-			 */
-			CurrentResourceOwner = ResourceOwnerCreate(NULL, "StartupXLOG");
-			
-			/*
-			 * We don't have any hope of running a real relcache, but we can use the
-			 * same fake-relcache facility that WAL replay uses.
-			 */
-			XLogInitRelationCache();
-			
-			PersistentFileSysObj_InitScan();
-			
-			/*
-			 * Close down recovery environment
-			 */
-			XLogCloseRelationCache();
-		}
-		
 		StartupXLOG_InProduction();
+		
+		ereport(LOG,
+				(errmsg("Finished single backend startup")));
 	}
-	else if (!XLogCtl->multiplePassesNeeded)
+	else 
 	{
-		if (Debug_persistent_recovery_print)
-			elog(Debug_persistent_recovery_print_level, 
-				 "Multiple Startup Passes not needed");
+		XLogCtl->multipleRecoveryPassesNeeded = multipleRecoveryPassesNeeded;
 
-		if (!gp_before_persistence_work)
+		if (!gp_startup_integrity_checks)
 		{
-			/*
-			 * Create a resource owner to keep track of our resources (currently only
-			 * buffer pins).
-			 */
-			CurrentResourceOwner = ResourceOwnerCreate(NULL, "StartupXLOG");
-			
-			/*
-			 * We don't have any hope of running a real relcache, but we can use the
-			 * same fake-relcache facility that WAL replay uses.
-			 */
-			XLogInitRelationCache();
-			
-			PersistentFileSysObj_InitScan();
-
-			/*
-			 * Close down recovery environment
-			 */
-			XLogCloseRelationCache();
+			ereport(LOG,
+					(errmsg("Integrity checks will be skipped because gp_startup_integrity_checks = off")));
 		}
-		
-		StartupXLOG_InProduction();
-	}
-	else
-	{
-		if (Debug_persistent_recovery_print)
-			elog(Debug_persistent_recovery_print_level,
-				 "End of Startup Pass 1.  Multiple pass start transaction log location is %s, end location %s",
-				 XLogLocationToString(&XLogCtl->pass1StartLoc),
-				 XLogLocationToString2(&XLogCtl->pass1LastLoc));
+		else
+		{
+			XLogCtl->integrityCheckNeeded = true;
+		}
+
+		if (!XLogCtl->multipleRecoveryPassesNeeded)
+		{
+			StartupXLOG_InProduction();
+
+			ereport(LOG,
+					(errmsg("Finished normal startup for clean shutdown case")));
+
+		}
+		else
+		{
+			ereport(LOG,
+					(errmsg("Finished startup pass 1.  Proceeding to startup crash recovery passes 2 and 3.")));
+		}
 	}
 
 	ShutdownReadFile();
 }
 
-bool XLogStartupMultiplePassesNeeded(void)
+bool XLogStartupMultipleRecoveryPassesNeeded(void)
 {
 	Assert(XLogCtl != NULL);
-	return XLogCtl->multiplePassesNeeded;
+	return XLogCtl->multipleRecoveryPassesNeeded;
+}
+
+bool XLogStartupIntegrityCheckNeeded(void)
+{
+	Assert(XLogCtl != NULL);
+	return XLogCtl->integrityCheckNeeded;
 }
 
 static void
@@ -6826,7 +6830,7 @@ StartupXLOG_Pass2(void)
 	int redoRelationFile;
 	
 	if (Debug_persistent_recovery_print)
-		elog(Debug_persistent_recovery_print_level, 
+		elog(PersistentRecovery_DebugPrintLevel(), 
 		     "Entering StartupXLOG_Pass2");
 
 //	pg_usleep(45 * 1000000L);
@@ -6850,7 +6854,7 @@ StartupXLOG_Pass2(void)
 	expectedTLIs = readTimeLineHistory(recoveryTargetTLI);
 	
 	if (Debug_persistent_recovery_print)
-		elog(Debug_persistent_recovery_print_level,
+		elog(PersistentRecovery_DebugPrintLevel(),
 		     "ControlFile with recoveryTargetTLI %u, transaction log to start location is %s",
 			 recoveryTargetTLI, 
 			 XLogLocationToString(&XLogCtl->pass1StartLoc));
@@ -6873,8 +6877,6 @@ StartupXLOG_Pass2(void)
 	}
 	ShutdownReadFile();
 
-	PersistentFileSysObj_InitScan();
-
 	PersistentRecovery_Scan();
 	
 	PersistentRecovery_CrashAbort();
@@ -6884,6 +6886,10 @@ StartupXLOG_Pass2(void)
 	PersistentRecovery_Drop();
 
 	PersistentRecovery_UpdateAppendOnlyMirrorResyncEofs();
+
+#ifdef USE_ASSERT_CHECKING
+//	PersistentRecovery_VerifyTablesAgainstMemory();
+#endif
 
 	Checkpoint_RecoveryPass(XLogCtl->pass1LastLoc);
 
@@ -6896,8 +6902,11 @@ StartupXLOG_Pass2(void)
 
 	close(redoRelationFile);
 
+	ereport(LOG,
+			(errmsg("Finished startup crash recovery pass 2")));
+
 	if (Debug_persistent_recovery_print)
-		elog(Debug_persistent_recovery_print_level, 
+		elog(PersistentRecovery_DebugPrintLevel(), 
 		     "Exiting StartupXLOG_Pass2");
 }
 
@@ -6914,7 +6923,7 @@ StartupXLOG_Pass3(void)
 	int 		rmid;
 	
 	if (Debug_persistent_recovery_print)
-		elog(Debug_persistent_recovery_print_level, 
+		elog(PersistentRecovery_DebugPrintLevel(), 
 		     "Entering StartupXLOG_Pass3");
 
 	redoRelationFile = OpenRedoRelationFile();
@@ -6926,7 +6935,7 @@ StartupXLOG_Pass3(void)
 	UnlinkRedoRelationFile();
 
 	if (Debug_persistent_recovery_print)
-		elog(Debug_persistent_recovery_print_level, 
+		elog(PersistentRecovery_DebugPrintLevel(), 
 			 "StartupXLOG_Pass3: Begin re-scanning XLOG");
 
 	InRecovery = true;
@@ -6950,7 +6959,7 @@ StartupXLOG_Pass3(void)
 	expectedTLIs = readTimeLineHistory(recoveryTargetTLI);
 	
 	if (Debug_persistent_recovery_print)
-		elog(Debug_persistent_recovery_print_level,
+		elog(PersistentRecovery_DebugPrintLevel(),
 			 "ControlFile with recoveryTargetTLI %u, transaction log to start location is %s",
 			 recoveryTargetTLI, 
 			 XLogLocationToString(&XLogCtl->pass1StartLoc));
@@ -7025,17 +7034,41 @@ StartupXLOG_Pass3(void)
 	UtilityModeCloseDtmRedoFile();
 
 	if (Debug_persistent_recovery_print)
-		elog(Debug_persistent_recovery_print_level, 
+		elog(PersistentRecovery_DebugPrintLevel(), 
 			 "StartupXLOG_Pass3: End re-scanning XLOG");
 
 	InRecovery = false;
 
 	StartupXLOG_InProduction();
 
+	ereport(LOG,
+			(errmsg("Finished startup crash recovery pass 3")));
+
 	if (Debug_persistent_recovery_print)
-		elog(Debug_persistent_recovery_print_level, 
+		elog(PersistentRecovery_DebugPrintLevel(), 
 			 "Exiting StartupXLOG_Pass3");
 }
+
+/*
+ * This must be called ONCE during postmaster or standalone-backend startup
+ */
+void
+StartupXLOG_Pass4(void)
+{
+	if (Debug_persistent_recovery_print)
+		elog(PersistentRecovery_DebugPrintLevel(), 
+		     "Entering StartupXLOG_Pass4");
+
+	PersistentFileSysObj_StartupIntegrityCheck();
+
+	ereport(LOG,
+			(errmsg("Finished startup integrity checking")));
+
+	if (Debug_persistent_recovery_print)
+		elog(PersistentRecovery_DebugPrintLevel(), 
+			 "Exiting StartupXLOG_Pass4");
+}
+
 /*
  * Determine the recovery redo start location from the pg_control file.
  *
@@ -8054,7 +8087,7 @@ CreateCheckPoint(bool shutdown, bool force)
 						nsegsadded, nsegsremoved, nsegsrecycled)));
 
 	if (Debug_persistent_recovery_print)
-		elog(Debug_persistent_recovery_print_level, 
+		elog(PersistentRecovery_DebugPrintLevel(), 
 			 "CreateCheckPoint: shutdown %s, force %s, checkpoint location %s, redo location %s",
 			 (shutdown ? "true" : "false"),
 			 (force ? "true" : "false"),
@@ -9241,7 +9274,7 @@ void xlog_print_redo_read_buffer_not_found(
 	const char 		*funcName)
 {
 	if (funcName != NULL)
-		elog(Debug_persistent_recovery_print_level, 
+		elog(PersistentRecovery_DebugPrintLevel(), 
 			 "%s redo for %u/%u/%u did not find buffer for block %d (LSN %s)",
 			 funcName,
 			 reln->rd_node.spcNode,
@@ -9250,7 +9283,7 @@ void xlog_print_redo_read_buffer_not_found(
 			 blkno,
 			 XLogLocationToString(&lsn));
 	else
-		elog(Debug_persistent_recovery_print_level, 
+		elog(PersistentRecovery_DebugPrintLevel(), 
 			 "Redo for %u/%u/%u did not find buffer for block %d (LSN %s)",
 			 reln->rd_node.spcNode,
 			 reln->rd_node.dbNode,
@@ -9273,7 +9306,7 @@ void xlog_print_redo_lsn_application(
 	willApplyChange = XLByteLT(pageCurrentLsn, lsn);
 	
 	if (funcName != NULL)
-		elog(Debug_persistent_recovery_print_level, 
+		elog(PersistentRecovery_DebugPrintLevel(), 
 			 "%s redo application for %u/%u/%u, block %d, willApplyChange = %s, current LSN %s, change LSN %s",
 			 funcName,
 			 reln->rd_node.spcNode,
@@ -9284,7 +9317,7 @@ void xlog_print_redo_lsn_application(
 			 XLogLocationToString(&pageCurrentLsn),
 			 XLogLocationToString2(&lsn));
 	else
-		elog(Debug_persistent_recovery_print_level, 
+		elog(PersistentRecovery_DebugPrintLevel(), 
 			 "Redo application for %u/%u/%u, block %d, willApplyChange = %s, current LSN %s, change LSN %s",
 			 reln->rd_node.spcNode,
 			 reln->rd_node.dbNode,
@@ -9425,6 +9458,7 @@ StartupProcessMain(int passNum)
 		break;
 
 	case 2:
+	case 4:
 		/*
 		 * NOTE: The following initialization logic was borrrowed from ftsprobe.
 		 */
@@ -9434,7 +9468,15 @@ StartupProcessMain(int passNum)
 		 * Create a resource owner to keep track of our resources (currently only
 		 * buffer pins).
 		 */
-		CurrentResourceOwner = ResourceOwnerCreate(NULL, "Startup Pass 2");
+		if (passNum == 2)
+		{
+			CurrentResourceOwner = ResourceOwnerCreate(NULL, "Startup Pass 2");
+		}
+		else
+		{
+			Assert(passNum == 4);
+			CurrentResourceOwner = ResourceOwnerCreate(NULL, "Startup Pass 4");
+		}
 		
 		/*
 		 * NOTE: AuxiliaryProcessMain has already called:
@@ -9502,7 +9544,15 @@ StartupProcessMain(int passNum)
 		 */
 		RelationCacheInitializePhase2();	
 		
-		StartupXLOG_Pass2();
+		if (passNum == 2)
+		{
+			StartupXLOG_Pass2();
+		}
+		else
+		{
+			Assert(passNum == 4);
+			StartupXLOG_Pass4();
+		}
 		
 //		ResourceOwnerRelease(CurrentResourceOwner,
 //							 RESOURCE_RELEASE_BEFORE_LOCKS,
@@ -9511,7 +9561,7 @@ StartupProcessMain(int passNum)
 
 	case 3:
 		/*
-		 * NOTE: The following initialization logic was borrrowed from ftsprobe.
+		 * Pass 3 does REDO work for all non-meta-data (i.e. not the gp_persistent_* tables).
 		 */
 		SetProcessingMode(InitProcessing);
 
@@ -9974,7 +10024,7 @@ int XLogAddRecordsToChangeTracking(
 	CloseReadRecord();
 				
 	if (Debug_persistent_print)
-		elog(Debug_persistent_print_level, 
+		elog(Persistent_DebugPrintLevel(), 
 			 "XLogAddRecordsToChangeTracking: Start location %s",
 			 XLogLocationToString(&startLoc));
 			
@@ -9991,7 +10041,7 @@ int XLogAddRecordsToChangeTracking(
 		CloseReadRecord();
 
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "XLogAddRecordsToChangeTracking: Returning 0 records through end location %s",
 				 XLogLocationToString(lastChangeTrackingEndLoc));
 				
@@ -10005,7 +10055,7 @@ int XLogAddRecordsToChangeTracking(
 	while (true)
 	{		
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "XLogAddRecordsToChangeTracking: Going to add change tracking record for XLOG (end) location %s",
 				 XLogLocationToString(&EndRecPtr));
 
@@ -10022,7 +10072,7 @@ int XLogAddRecordsToChangeTracking(
 			if (XLByteEQ(EndRecPtr, *lastChangeTrackingEndLoc))
 			{
 				if (Debug_persistent_print)
-					elog(Debug_persistent_print_level, 
+					elog(Persistent_DebugPrintLevel(), 
 						 "XLogAddRecordsToChangeTracking: Returning %d records from start location %s through end location %s",
 						 count,
 						 XLogLocationToString(&startLoc),
@@ -10037,7 +10087,7 @@ int XLogAddRecordsToChangeTracking(
 			if (!XLByteLE(EndRecPtr, *lastChangeTrackingEndLoc))
 			{
 				if (Debug_persistent_print)
-					elog(Debug_persistent_print_level, 
+					elog(Persistent_DebugPrintLevel(), 
 						 "XLogAddRecordsToChangeTracking: Read beyond expected last change tracking XLOG record.  "
 						 "Returning %d records. "
 						 "Last change tracking XLOG record (end) position is %s; scanned XLOG record (end) position is %s (start location is %s)",
@@ -10058,7 +10108,7 @@ int XLogAddRecordsToChangeTracking(
 			if (record == NULL)
 			{
 				if (Debug_persistent_print)
-					elog(Debug_persistent_print_level, 
+					elog(Persistent_DebugPrintLevel(), 
 						 "XLogAddRecordsToChangeTracking: Returning %d records through end of log location %s",
 						 count,
 						 XLogLocationToString(&lastEndLoc));

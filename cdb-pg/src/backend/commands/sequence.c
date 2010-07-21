@@ -271,7 +271,7 @@ static void Sequence_AddPersistentInfoCache(
 			lastPersistentInfoCacheEntry);
 		
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Removed cached persistent information for sequence %u/%u/%u -- serial number " INT64_FORMAT ", TID %s",
 				 lastPersistentInfoCacheEntry->key.relFileNode.spcNode,
 				 lastPersistentInfoCacheEntry->key.relFileNode.dbNode,
@@ -306,7 +306,7 @@ Sequence_FetchGpRelationNodeForXLog(Relation rel)
 								&rel->rd_segfile0_relationnodeinfo.persistentSerialNum))
 	{
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Found cached persistent information for sequence %u/%u/%u -- serial number " INT64_FORMAT ", TID %s",
 				 rel->rd_node.spcNode,
 				 rel->rd_node.dbNode,
@@ -334,7 +334,7 @@ Sequence_FetchGpRelationNodeForXLog(Relation rel)
 								rel->rd_segfile0_relationnodeinfo.persistentSerialNum);
 
 		if (Debug_persistent_print)
-			elog(Debug_persistent_print_level, 
+			elog(Persistent_DebugPrintLevel(), 
 				 "Add cached persistent information for sequence %u/%u/%u -- serial number " INT64_FORMAT ", TID %s",
 				 rel->rd_node.spcNode,
 				 rel->rd_node.dbNode,

@@ -44,6 +44,14 @@ typedef struct PersistentFileSysObjData
 
 } PersistentFileSysObjData;
 
+inline static int Persistent_DebugPrintLevel(void)
+{
+	if (Debug_persistent_bootstrap_print && IsBootstrapProcessingMode())
+		return WARNING;
+	else
+		return Debug_persistent_print_level;
+}
+
 extern void PersistentFileSysObj_InitShared(
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData);
 
@@ -397,6 +405,8 @@ extern bool PersistentFileSysObj_ScanForRelation(
 
 	int64				*persistentSerialNum);
 				/* Resulting serial number for the relation.  Distinquishes the uses of the tuple. */
+
+extern void PersistentFileSysObj_StartupIntegrityCheck(void);
 
 extern Size PersistentFileSysObj_ShmemSize(void);
 

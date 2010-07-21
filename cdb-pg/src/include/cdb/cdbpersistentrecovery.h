@@ -11,6 +11,16 @@
 
 #include "access/xlogdefs.h"
 #include "access/xlog.h"
+#include "cdb/cdbpersistentstore.h"
+
+inline static int PersistentRecovery_DebugPrintLevel(void)
+{
+	if (Debug_persistent_bootstrap_print && IsBootstrapProcessingMode())
+		return WARNING;
+	else
+		return Debug_persistent_recovery_print_level;
+}
+
 
 extern bool
 PersistentRecovery_ShouldHandlePass1XLogRec(
