@@ -61,10 +61,14 @@ else
 	ifeq ($(host_cpu), i486)
 		JRE_CPU := i386
 	else
+	ifeq ($(host_cpu), sparc)
+		JRE_CPU := sparcv9
+	else
 	ifeq ($(host_cpu), x86_64)
 		JRE_CPU := amd64
 	else
 		JRE_CPU := $(host_cpu)
+	endif
 	endif
 	endif
 	endif
