@@ -5934,110 +5934,110 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 		}
 		else if(relstorage == RELSTORAGE_AOCOLS && Gp_role != GP_ROLE_DISPATCH)
 		{
-            int segno = RESERVED_SEGNO;
-            AOCSInsertDesc idesc = NULL;
-            AOCSScanDesc sdesc = NULL;
-            int nvp = oldrel->rd_att->natts;
-            bool *proj = palloc0(sizeof(bool) * nvp);
+			int segno = RESERVED_SEGNO;
+			AOCSInsertDesc idesc = NULL;
+			AOCSScanDesc sdesc = NULL;
+			int nvp = oldrel->rd_att->natts;
+			bool *proj = palloc0(sizeof(bool) * nvp);
 
-            if (oldTupDesc)
-            {
-                Assert(oldTupDesc->natts <= nvp);
-                memset(proj, true, oldTupDesc->natts); 
-            }
-            else
-                memset(proj, true, nvp);
+			if (oldTupDesc)
+			{
+				Assert(oldTupDesc->natts <= nvp);
+				memset(proj, true, oldTupDesc->natts);
+			}
+			else
+				memset(proj, true, nvp);
 
-            if(newrel)
-                idesc = aocs_insert_init(newrel, segno);
+			if(newrel)
+				idesc = aocs_insert_init(newrel, segno);
 
-            sdesc = aocs_beginscan(oldrel, SnapshotNow, tab->oldDesc, proj);
+			sdesc = aocs_beginscan(oldrel, SnapshotNow, tab->oldDesc, proj);
 
-            aocs_getnext(sdesc, ForwardScanDirection, oldslot);
+			aocs_getnext(sdesc, ForwardScanDirection, oldslot);
 
-            while(!TupIsNull(oldslot))
-            {
-                oldCxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-                econtext->ecxt_scantuple = oldslot;
+			while(!TupIsNull(oldslot))
+			{
+				oldCxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+				econtext->ecxt_scantuple = oldslot;
 
-                if(newrel)
-                {
-                    Datum *slotvalues = slot_get_values(oldslot);
-                    bool  *slotnulls = slot_get_isnull(oldslot);
-                    Datum *newslotvalues = slot_get_values(newslot);
-                    bool *newslotnulls = slot_get_isnull(newslot);
+				if(newrel)
+				{
+					Datum *slotvalues = slot_get_values(oldslot);
+					bool  *slotnulls = slot_get_isnull(oldslot);
+					Datum *newslotvalues = slot_get_values(newslot);
+					bool *newslotnulls = slot_get_isnull(newslot);
 
-                    int nv = Min(oldslot->tts_tupleDescriptor->natts, newslot->tts_tupleDescriptor->natts);
+					int nv = Min(oldslot->tts_tupleDescriptor->natts, newslot->tts_tupleDescriptor->natts);
 
-                    /* aocs does not do oid yet */
-                    Assert(!oldTupDesc->tdhasoid);
-                    Assert(!newTupDesc->tdhasoid);
+					/* aocs does not do oid yet */
+					Assert(!oldTupDesc->tdhasoid);
+					Assert(!newTupDesc->tdhasoid);
 
-                    /* Dropped att should be set correctly by aocs_getnext */
-                    /* transfer values from old to new slot */
+					/* Dropped att should be set correctly by aocs_getnext */
+					/* transfer values from old to new slot */
 
-                    memcpy(newslotvalues, slotvalues, sizeof(Datum) * nv);
-                    memcpy(newslotnulls, slotnulls, sizeof(bool) * nv);
-                    TupSetVirtualTupleNValid(newslot, nv);
+					memcpy(newslotvalues, slotvalues, sizeof(Datum) * nv);
+					memcpy(newslotnulls, slotnulls, sizeof(bool) * nv);
+					TupSetVirtualTupleNValid(newslot, nv);
 
-                    /* Process supplied expressions */
-                    foreach(l, tab->newvals)
-                    {
-                        NewColumnValue *ex = lfirst(l);
+					/* Process supplied expressions */
+					foreach(l, tab->newvals)
+					{
+						NewColumnValue *ex = lfirst(l);
 
-                        newslotvalues[ex->attnum-1] =
-                            ExecEvalExpr(ex->exprstate,
-                                         econtext,
-                                         &newslotnulls[ex->attnum-1],
-                                         NULL
-                                );
+						newslotvalues[ex->attnum-1] =
+							ExecEvalExpr(ex->exprstate,
+										 econtext,
+										 &newslotnulls[ex->attnum-1],
+										 NULL
+								);
 
-                        if (ex->attnum > nv)
-                            TupSetVirtualTupleNValid(newslot, ex->attnum);
-                    }
+						if (ex->attnum > nv)
+							TupSetVirtualTupleNValid(newslot, ex->attnum);
+					}
 
-                    /* Use the modified tuple to check constraints below */
-                    econtext->ecxt_scantuple = newslot;
-                }
+					/* Use the modified tuple to check constraints below */
+					econtext->ecxt_scantuple = newslot;
+				}
 
-                /* Check constraints */
-                foreach (l, tab->constraints)
-                {
-                    NewConstraint *con = lfirst(l);
-                    switch(con->contype)
-                    {
-                        case CONSTR_CHECK:
-                            if(!ExecQual(con->qualstate, econtext, true))
-                                ereport(ERROR,
-                                        (errcode(ERRCODE_CHECK_VIOLATION),
-                                         errmsg("check constraint \"%s\" is violated",
-                                                con->name
-                                             ),
-                                         errOmitLocation(true)));
-                            break;
-                        case CONSTR_FOREIGN:
-                            /* Nothing to do */
-                            break;
-                        default:
-                            elog(ERROR, "Unrecognized constraint type: %d",
-                                 (int) con->contype);
-                    }
-                }
+				/* Check constraints */
+				foreach (l, tab->constraints)
+				{
+					NewConstraint *con = lfirst(l);
+					switch(con->contype)
+					{
+						case CONSTR_CHECK:
+							if(!ExecQual(con->qualstate, econtext, true))
+								ereport(ERROR,
+										(errcode(ERRCODE_CHECK_VIOLATION),
+										 errmsg("check constraint \"%s\" is violated",
+												con->name
+											 ),
+										 errOmitLocation(true)));
+							break;
+						case CONSTR_FOREIGN:
+							/* Nothing to do */
+							break;
+						default:
+							elog(ERROR, "Unrecognized constraint type: %d",
+								 (int) con->contype);
+					}
+				}
 
-                if(newrel)
-                {
-                    MemoryContextSwitchTo(oldCxt);
-                    aocs_insert(idesc, newslot);
-                }
+				if(newrel)
+				{
+					MemoryContextSwitchTo(oldCxt);
+					aocs_insert(idesc, newslot);
+				}
 
-                ResetExprContext(econtext);
-                CHECK_FOR_INTERRUPTS();
+				ResetExprContext(econtext);
+				CHECK_FOR_INTERRUPTS();
 
-                MemoryContextSwitchTo(oldCxt);
-                aocs_getnext(sdesc, ForwardScanDirection, oldslot);
-            }
+				MemoryContextSwitchTo(oldCxt);
+				aocs_getnext(sdesc, ForwardScanDirection, oldslot);
+			}
 
-            aocs_endscan(sdesc);
+			aocs_endscan(sdesc);
 
 			if(newrel)
 				aocs_insert_finish(idesc);

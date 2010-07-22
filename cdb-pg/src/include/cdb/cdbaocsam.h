@@ -66,11 +66,11 @@ typedef struct AOCSScanDescData
 {
 	/* scan parameters */
 	Relation	aos_rel;			/* target relation descriptor */
-	TupleDesc   relationTupleDesc;  /* tuple descriptor of table to scan.
-	                                 *  Code should use this rather than aos_rel->rd_att,
-	                                 *  as THEY MAY BE DIFFERENT.
-	                                 *  See code in aocsam.c's aocs_beginscan for more info
-	                                 */
+	TupleDesc   relationTupleDesc;	/* tuple descriptor of table to scan.
+									 *  Code should use this rather than aos_rel->rd_att,
+									 *  as THEY MAY BE DIFFERENT.
+									 *  See code in aocsam.c's aocs_beginscan for more info
+ 									 */
 	                                 
 	Index       aos_scanrelid;                  /* index */
 
