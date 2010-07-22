@@ -563,10 +563,6 @@ CopyToDispatchFlush(CopyState cstate)
  *
  * CopyGetEof checks if EOF was detected by previous Get operation.
  *
- * Note: this function puts a '\0' after the last byte that was read.
- * therefore, make sure that the buffer you pass in is at least 1 byte
- * larger than the datasize requested.
- * 
  * Note: when copying from the frontend, we expect a proper EOF mark per
  * protocol; if the frontend simply drops the connection, we raise error.
  * It seems unwise to allow the COPY IN to complete normally in that case.
@@ -667,9 +663,6 @@ CopyGetData(CopyState cstate, void *databuf, int datasize)
 
 	}
 
-	/* put a '\0' after last byte read */
-	//if(bytesread >= 0)
-	//	((char *)databuf)[bytesread] = '\0';
 	
 	return bytesread;
 }
@@ -6235,13 +6228,14 @@ scanTextLine(CopyState cstate, const char *s, char eol, size_t len)
 char *
 scanCSVLine(CopyState cstate, const char *s, char eol, char escapec, char quotec, size_t len)
 {
-	const char *start;
-
+	const char *start = s;
+	const char *end = start + len;
+	
 	if (cstate->encoding_embeds_ascii && !cstate->line_buf_converted)
 	{
 		int			mblen = pg_encoding_mblen(cstate->client_encoding, s);
 
-		for (start = s; *s != eol && s < start + len; s += mblen)
+		for ( ; *s != eol && s < end ; s += mblen)
 		{
 			if (cstate->in_quote && *s == escapec)
 				cstate->last_was_esc = !cstate->last_was_esc;
@@ -6255,8 +6249,8 @@ scanCSVLine(CopyState cstate, const char *s, char eol, char escapec, char quotec
 	}
 	else
 		/* safe to scroll byte by byte */
-	{
-		for (start = s; *s != eol && s < start + len; s++)
+	{	
+		for ( ; *s != eol && s < end ; s++)
 		{
 			if (cstate->in_quote && *s == escapec)
 				cstate->last_was_esc = !cstate->last_was_esc;
@@ -6265,9 +6259,11 @@ scanCSVLine(CopyState cstate, const char *s, char eol, char escapec, char quotec
 			if (*s != escapec)
 				cstate->last_was_esc = false;
 		}
-
 	}
 
+	if (s == end)
+		return NULL;
+	
 	if (*s == eol)
 		cstate->last_was_esc = false;
 
