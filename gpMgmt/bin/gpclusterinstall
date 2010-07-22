@@ -2,7 +2,7 @@
 '''
 USAGE:   gpclusterinstall -f|--file HOSTFILE -u|--user USER 
          where HOSTFILE lists all the hosts to install the software on
-         where USER will be the user to install the software as
+         where USER will be the user to install the software as. default is gpadmin
 '''
 
 import os, sys, re
@@ -23,19 +23,30 @@ EXECNAME = os.path.split(__file__)[-1]
 
 logger = get_default_logger()
 setup_tool_logging(EXECNAME,getLocalHostname(),getUserName()) 
-hosts = dict() # hostname to Host object
-uniquehosts = set()
+hosts = dict() # address to HostMapping object
+uniquehosts = dict() # hostname to UniqueHost object
 options = None
 passwordMap = None
 nullFile = logging.FileHandler('/dev/null')
 logging.getLogger('paramiko.transport').addHandler(nullFile)
 pool = None
 
-class Host:
+class HostMapping:
     def __init__(self, address):
         self.address = address
         self.hostname = None
-        
+
+    def debugStr(self):
+        return "address %s hostname %s" % (self.address, self.hostname)
+
+class UniqueHost:
+    def __init__(self, address, hostname):
+        self.address = address
+        self.hostname = hostname
+        self.userExists = False
+    
+    def debugStr(self):
+        return "address %s hostname %s userExists %s" % (self.address, self.hostname, self.userExists)
     
 # True is an error
 def run_command(cmdstr):
@@ -88,7 +99,7 @@ def readHostList():
     try:
         for line in open(options.file, "r"):
             hostname = line.rstrip()
-            hosts[hostname] = Host(hostname)
+            hosts[hostname] = HostMapping(hostname)
     except Exception, e:
         logger.error("Error while reading file: %s" % options.file)
         logger.error(e.__str__())
@@ -103,6 +114,8 @@ def readHostList():
 # True is an error
 def discoverPasswordMap():
 
+    global passwordMap
+
     try:    
         passwordMap = NakedExecutionPasswordMap(hosts.keys())
         passwordMap.discover()
@@ -110,7 +123,10 @@ def discoverPasswordMap():
         logger.error(e.__str__())
         return True
 
-    return False
+    if passwordMap.complete:
+        return False
+    else:
+        return True
 
 # True is an error
 def dedupeHosts():
@@ -122,12 +138,81 @@ def dedupeHosts():
         pool.join()
         items = pool.getCompletedItems()
         for i in items:
-            print i
+            address = i.remoteHost
+            if i.results.rc or i.results.halt or not i.results.completed:
+                logger.error("error obtaining information from host %s" % address)
+                return True
+            hostname = i.results.stdout[0].strip()
+            hosts[address].hostname = hostname
     except Exception, e:
-        print "error %s" %e.__str__()
-        return False
+        logger.error("%s" % e.__str__())
+        return True
+
+    global uniquehosts
+    for k in hosts.keys():
+        hostname = hosts[k].hostname
+        address = hosts[k].address
+        if hostname in uniquehosts:
+            continue
+        uniquehosts[hostname] = UniqueHost(address, hostname)
+
+    return False
+
+def checkUsernames():
+
+    try:
+        for k in uniquehosts.keys():
+            uh = uniquehosts[k]
+            cmd = Command(uh.address, "id %s" % options.user, NAKED, uh.address, passwordMap=passwordMap)
+            pool.addCommand(cmd)
+        pool.join()
+        items = pool.getCompletedItems()
+        for i in items:
+            if not i.results.rc:
+                address = i.remoteHost
+                hostname = hosts[address].hostname
+                uniquehosts[hostname].userExists = True
+    except Exception, e:
+        logger.error("%s" % e.__str__())
+        return True
+
+    return False
+
+def addUserIfRequired():
+
+    failedToAddUser = set() # set of address's where useradd failed
+
+    try:
+        for k in uniquehosts.keys():
+            uh = uniquehosts[k]
+            if uh.userExists:
+                continue
+
+            cmd = Command(uh.address, "useradd -m %s" % options.user, NAKED, uh.address, passwordMap=passwordMap)
+            pool.addCommand(cmd)
+        pool.join()
+        items = pool.getCompletedItems()
+        for i in items:
+            address = i.remoteHost
+            if not i.results.rc:
+                hostname = hosts[address].hostname
+                uniquehosts[hostname].userExists = True
+            else:
+                failedToAddUser.add(address)
+                
+    except Exception, e:
+        logger.error("%s" % e.__str__())
+        return True
+
+    if len(failedToAddUser):
+        for h in failedToAddUser:
+            logger.error("could not create user %s on host %s" % (options.user, h))
+        return True
+
+    return False
 
 def earlyExit():
+    logger.fatal("early exit from gpclusterinstall")
     if pool:
         pool.join()
         pool.haltWork()
@@ -135,21 +220,28 @@ def earlyExit():
 
     sys.exit(1)
 
-# True is an error
-#def createUserOnCluster():
-
-
 if (parseargs()):
     earlyExit()
 
 if (readHostList()):
     earlyExit()
 
+logger.info("check access to cluster")
 if (discoverPasswordMap()):
     earlyExit()
 
 pool = WorkerPool()
 
+logger.info("dedupe hostnames")
 if (dedupeHosts()):
     earlyExit()
 
+logger.info("check user %s exists" % options.user)
+if (checkUsernames()):
+    earlyExit()
+
+logger.info("add user %s to cluster" % options.user)
+if (addUserIfRequired()):
+    earlyExit()
+
+earlyExit()
