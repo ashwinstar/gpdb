@@ -2014,13 +2014,16 @@ remove_gp_relation_node_and_schedule_drop(
 
 	if (relStorageMgr == PersistentFileSysRelStorageMgr_BufferPool)
 	{
-		RelationOpenSmgr(rel);
-		Assert(rel->rd_smgr != NULL);
-
 		if (!rel->rd_segfile0_relationnodeinfo.isPresent)
 			RelationFetchSegFile0GpRelationNode(rel);
 		Assert(rel->rd_segfile0_relationnodeinfo.isPresent);
-		
+
+        /** open smgr after setting up SegFile: RelationFetchSegFile0GpRelationNode may
+          *  process a relcache invalidation message so we prefer to open the smgr after that
+          *  work is done */
+        RelationOpenSmgr(rel);
+        Assert(rel->rd_smgr != NULL);
+
 		MirroredFileSysObj_ScheduleDropBufferPoolFile(
 										rel->rd_smgr,
 										rel->rd_isLocalBuf,
