@@ -159,7 +159,7 @@ filtered_base_yylex(void)
 		case WITH:
 
 			/*
-			 * WITH CASCADED, LOCAL, or CHECK must be reduced to one token
+			 * WITH TIME, CASCADED, LOCAL, or CHECK must be reduced to one token
 			 *
 			 * XXX an alternative way is to recognize just WITH_TIME and put
 			 * the ugliness into the datetime datatype productions instead of
@@ -173,11 +173,9 @@ filtered_base_yylex(void)
 			next_token = base_yylex();
 			switch (next_token)
 			{
-#ifdef WITH_TIME
 				case TIME:
 					cur_token = WITH_TIME;
 					break;
-#endif
 				case CASCADED:
 					cur_token = WITH_CASCADED;
 					break;
