@@ -50,6 +50,21 @@
 #include "utils/tqual.h"
 #include "cdb/cdbdtxcontextinfo.h"
 
+#include "miscadmin.h"
+#include "storage/proc.h"
+#include "access/twophase.h"  /* max_prepared_xacts */
+
+#include "storage/buffile.h"
+
+/*
+ * We now maintain two hashtables.
+ * 
+ * 1) local hash for lookup of combocid with the key (cmin, cmax) by the writer
+ * 2) shared-hash for lookup of cmin/cmax with the key (parent-xid, combocid, writer-pid) by the readers.
+ */
+
+/* HASH TABLE 1 */
+
 /* Hash table to lookup combo cids by cmin and cmax */
 static HTAB *comboHash = NULL;
 
@@ -64,7 +79,6 @@ typedef ComboCidEntryData *ComboCidEntry;
 /* Initial size of the hash table */
 #define CCID_HASH_SIZE			100
 
-
 /*
  * An array of cmin,cmax pairs, indexed by combo command id.
  * To convert a combo cid to cmin and cmax, you do a simple array lookup.
@@ -76,12 +90,38 @@ volatile int sizeComboCids = 0;			/* allocated size of array */
 /* Initial size of the array */
 #define CCID_ARRAY_SIZE			100
 
+/*
+ * HASH TABLE 2:
+ * 
+ * Used by reader gangs to lookup using combocid/xmin to find cmin/cmax.
+ */
+static HTAB *readerComboHash = NULL;
+
+/*
+ * Key structure:
+ */
+typedef struct
+{
+	int			session;
+	int			writer_pid;
+	TransactionId	xmin;
+	CommandId	combocid;
+} readerComboCidKeyData;
+
+typedef struct
+{
+	readerComboCidKeyData key;
+	CommandId cmin, cmax;
+} readerComboCidEntryData;
 
 /* prototypes for internal functions */
-static CommandId GetComboCommandId(CommandId cmin, CommandId cmax);
-static CommandId GetRealCmin(CommandId combocid);
-static CommandId GetRealCmax(CommandId combocid);
+static CommandId GetComboCommandId(TransactionId xmin, CommandId cmin, CommandId cmax);
+static CommandId GetRealCmin(TransactionId xmin, CommandId combocid);
+static CommandId GetRealCmax(TransactionId xmin, CommandId combocid);
 
+static BufFile *combocid_map=NULL;
+static void dumpSharedComboCommandId(TransactionId xmin, CommandId cmin, CommandId cmax, CommandId combocid);
+static void loadSharedComboCommandId(TransactionId xmin, CommandId combocid, CommandId *cmin, CommandId *cmax);
 
 /**** External API ****/
 
@@ -100,7 +140,7 @@ HeapTupleHeaderGetCmin(HeapTupleHeader tup)
 	Assert(!(tup->t_infomask & HEAP_MOVED));
 
 	if (tup->t_infomask & HEAP_COMBOCID)
-		return GetRealCmin(cid);
+		return GetRealCmin(HeapTupleHeaderGetXmin(tup), cid);
 	else
 		return cid;
 }
@@ -119,7 +159,7 @@ HeapTupleHeaderGetCmax(HeapTupleHeader tup)
 	Assert(QEDtxContextInfo.cursorContext || TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetXmax(tup)));
 
 	if (tup->t_infomask & HEAP_COMBOCID)
-		return GetRealCmax(cid);
+		return GetRealCmax(HeapTupleHeaderGetXmin(tup), cid);
 	else
 		return cid;
 }
@@ -153,7 +193,7 @@ HeapTupleHeaderAdjustCmax(HeapTupleHeader tup,
 	{
 		CommandId cmin = HeapTupleHeaderGetRawCommandId(tup);
 
-		*cmax = GetComboCommandId(cmin, *cmax);
+		*cmax = GetComboCommandId(HeapTupleHeaderGetXmin(tup), cmin, *cmax);
 		*iscombo = true;
 	}
 	else
@@ -175,6 +215,8 @@ AtEOXact_ComboCid(void)
 	 */
 	comboHash = NULL;
 
+	readerComboHash = NULL;
+
 	comboCids = NULL;
 	usedComboCids = 0;
 	sizeComboCids = 0;
@@ -189,7 +231,7 @@ AtEOXact_ComboCid(void)
  * We try to reuse old combo command ids when possible.
  */
 static CommandId
-GetComboCommandId(CommandId cmin, CommandId cmax)
+GetComboCommandId(TransactionId xmin, CommandId cmin, CommandId cmax)
 {
 	CommandId combocid;
 	ComboCidKeyData key;
@@ -203,6 +245,8 @@ GetComboCommandId(CommandId cmin, CommandId cmax)
 		else
 			elog(ERROR, "Reader qExec tried to allocate a Combo Command Id");
 	}
+
+	/* We're either GP_ROLE_DISPATCH, GP_ROLE_UTILITY, or a QE-writer */
 	
 	/*
 	 * Create the hash table and array the first time we need to use
@@ -233,8 +277,10 @@ GetComboCommandId(CommandId cmin, CommandId cmax)
 	/* Lookup or create a hash entry with the desired cmin/cmax */
 
 	/* We assume there is no struct padding in ComboCidKeyData! */
+	memset(&key, 0, sizeof(key));
 	key.cmin = cmin;
 	key.cmax = cmax;
+	key.xmin = xmin;
 	entry = (ComboCidEntry) hash_search(comboHash,
 										(void *) &key,
 										HASH_ENTER,
@@ -260,57 +306,100 @@ GetComboCommandId(CommandId cmin, CommandId cmax)
 		sizeComboCids = newsize;
 	}
 
+	/* We are about to create a new combocid */
+
 	combocid = usedComboCids;
 
 	comboCids[combocid].cmin = cmin;
 	comboCids[combocid].cmax = cmax;
+	comboCids[combocid].xmin = xmin;
 	usedComboCids++;
 
 	entry->combocid = combocid;
 
+	/* If we're in utility mode, we don't have to worry about sharing. */
+	if (Gp_role == GP_ROLE_UTILITY)
+	{
+		return combocid;
+	}
+
+	/* We are either a QE-writer, or the dispatcher. */
+	dumpSharedComboCommandId(xmin, cmin, cmax, combocid);
+
 	return combocid;
 }
 
-static void
-combocid_limit_debug(const char *str)
+enum minmax
 {
-	elog(LOG, "combocid %s limit as %s", str, Gp_is_writer ? "writer" : "reader");
+	CMIN,
+	CMAX
+};
 
-	/* if we're the reader, what's the problem ? */
-	if (!Gp_is_writer)
+static CommandId
+getSharedComboCidEntry(TransactionId xmin, CommandId combocid, enum minmax min_or_max)
+{
+	bool found;
+	readerComboCidKeyData reader_key;
+	readerComboCidEntryData *reader_entry;
+
+	CommandId cmin, cmax;
+
+	if (lockHolderProcPtr == NULL)
 	{
-		volatile SharedSnapshotSlot *ss=SharedLocalSnapshotSlot;
-
-		if (ss == NULL)
-			elog(LOG, "Reader: snapshot slot is null.");
-		else
-		{
-			elog(LOG, "SharedSnapshotSlot: writer pid %d slotid %d xid %d cid %d QDxid %d QDcid %d %s "
-				 "segmate-sync %d subcnt %d combocnt %d",
-				 (int)ss->pid, ss->slotid, ss->xid, ss->cid, ss->QDxid, ss->QDcid, ss->ready ? "ready" : "NOT ready", 
-				 ss->segmateSync, ss->subcnt, ss->combocidcnt);
-			elog(LOG, "QEDtxContextInfo: cid %d segmate-sync %d", QEDtxContextInfo.curcid, QEDtxContextInfo.segmateSync);
-		}
+		/* get lockholder! */
+		elog(ERROR, "getSharedComboCidEntry: NO LOCK HOLDER POINTER.");
 	}
+
+	/*
+	 * Create the reader hash table and array the first time we need
+	 * to use combo cids in the transaction.
+	 */
+	if (readerComboHash == NULL)
+	{
+		HASHCTL hash_ctl;
+
+		memset(&hash_ctl, 0, sizeof(hash_ctl));
+		hash_ctl.keysize = sizeof(readerComboCidKeyData);
+		hash_ctl.entrysize = sizeof(readerComboCidEntryData);
+		hash_ctl.hash = tag_hash;
+		hash_ctl.hcxt = TopTransactionContext;
+
+		readerComboHash = hash_create("Combo CIDs", CCID_HASH_SIZE, &hash_ctl,
+									  HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+	}
+
+	memset(&reader_key, 0, sizeof(reader_key));
+	reader_key.writer_pid = lockHolderProcPtr->pid;
+	reader_key.xmin = xmin;
+	reader_key.session = gp_session_id;
+	reader_key.combocid = combocid;
+
+	reader_entry = (readerComboCidEntryData *)hash_search(readerComboHash, &reader_key, HASH_FIND, &found);
+	
+
+	if (reader_entry != NULL)
+	{
+		cmin = reader_entry->cmin;
+		cmax = reader_entry->cmax;
+	}
+	else
+	{
+		loadSharedComboCommandId(xmin, combocid, &cmin, &cmax);
+	}
+		
+	return (min_or_max == CMIN ? cmin : cmax);
 }
 
 static CommandId
-GetRealCmin(CommandId combocid)
+GetRealCmin(TransactionId xmin, CommandId combocid)
 {
 	if (combocid >= usedComboCids)
 	{
-		if (QEDtxContextInfo.cursorContext)
-		{
-			elog(ERROR, "Cursor-Reader gang not able to provide correct visibility %u/%u, writer modified table while cursor was scanning.",
-				 combocid, usedComboCids);
-			/* not reached */
-		}
+		if (Gp_is_writer)
+			elog(ERROR, "Writer gang unable to resolve visibility %u/%u", combocid, usedComboCids);
 
-		if (Debug_print_combocid_detail)
-			combocid_limit_debug("cmin");
-
-		elog(ERROR, "Too many updates/deletes within transaction (cmin). Reader gang not able to provide correct visibility %u/%u",
-			  combocid, usedComboCids);
+		/* We're a reader */
+		return getSharedComboCidEntry(xmin, combocid, CMIN);
 	}
 	
 	Assert(combocid < usedComboCids);
@@ -318,24 +407,161 @@ GetRealCmin(CommandId combocid)
 }
 
 static CommandId
-GetRealCmax(CommandId combocid)
+GetRealCmax(TransactionId xmin, CommandId combocid)
 {
 	if (combocid >= usedComboCids)
 	{
-		if (QEDtxContextInfo.cursorContext)
-		{
-			elog(ERROR, "Cursor-Reader gang not able to provide correct visibility %u/%u, writer modified table while cursor was scanning.",
-				 combocid, usedComboCids);
-			/* not reached */
-		}
+		if (Gp_is_writer)
+			elog(ERROR, "Writer gang unable to resolve visibility %u/%u", combocid, usedComboCids);
 
-		if (Debug_print_combocid_detail)
-			combocid_limit_debug("cmax");
-
-		elog(ERROR, "Too many updates/deletes within transaction (cmax). Reader gang not able to provide correct visibility %u/%u",
-			 combocid, usedComboCids);
+		/* We're a reader */
+		return getSharedComboCidEntry(xmin, combocid, CMAX);
 	}
 
 	Assert(combocid < usedComboCids);
 	return comboCids[combocid].cmax;
 }
+
+void
+dumpSharedComboCommandId(TransactionId xmin, CommandId cmin, CommandId cmax, CommandId combocid)
+{
+	ComboCidEntryData entry;
+
+	Assert(Gp_role != GP_ROLE_EXECUTE || Gp_is_writer);
+
+	if (combocid_map == NULL)
+	{
+		MemoryContext oldCtx;
+
+		MyProc->combocid_map_count = 0;
+
+		snprintf(MyProc->combocid_map_name, MAXPGPATH, "sess%u_w%u_combocid_map", gp_session_id, MyProc->pid);
+
+		/* open our file, as appropriate: this will throw an error if the create-fails. */
+		oldCtx = MemoryContextSwitchTo(TopMemoryContext);
+		combocid_map = BufFileCreateTemp_ReaderWriter(MyProc->combocid_map_name, true);
+		MemoryContextSwitchTo(oldCtx);
+	}
+	Assert(combocid_map != NULL);
+
+	/* Seek to the end: BufFileSeek() doesn't support SEEK_END! */
+
+	/* build our entry */
+	memset(&entry, 0, sizeof(entry));
+	entry.key.cmin = cmin;
+	entry.key.cmax = cmax;
+	entry.key.xmin = xmin;
+	entry.combocid = combocid;
+
+	/* write our entry */
+    if (BufFileWrite(combocid_map, &entry, sizeof(entry)) != sizeof(entry))
+	{
+		elog(ERROR, "Combocid map I/O error!");
+	}
+
+	MyProc->combocid_map_count += 1;
+
+	/* flush our output */
+	BufFileFlush(combocid_map);
+}
+
+void
+loadSharedComboCommandId(TransactionId xmin, CommandId combocid, CommandId *cmin, CommandId *cmax)
+{
+	bool found=false;
+	ComboCidEntryData entry;
+	int i;
+
+	Assert(Gp_role == GP_ROLE_EXECUTE);
+	Assert(!Gp_is_writer);
+	Assert(cmin != NULL);
+	Assert(cmax != NULL);
+
+	if (lockHolderProcPtr == NULL)
+	{
+		/* get lockholder! */
+		elog(ERROR, "loadSharedComboCommandId: NO LOCK HOLDER POINTER.");
+	}
+
+	if (combocid_map == NULL)
+	{
+		MemoryContext oldCtx;
+
+		/* open our file, as appropriate: this will throw an error if the create-fails. */
+		oldCtx = MemoryContextSwitchTo(TopMemoryContext);
+		combocid_map = BufFileCreateTemp_ReaderWriter(lockHolderProcPtr->combocid_map_name, false);
+		MemoryContextSwitchTo(oldCtx);
+	}
+	Assert(combocid_map != NULL);
+
+	/* Seek to the beginning to start our search ? */
+	if (BufFileSeek(combocid_map, 0, 0, SEEK_SET) != 0)
+	{
+		elog(ERROR, "loadSharedComboCommandId: seek to beginning failed.");
+	}
+
+	/*
+	 * Read this entry in ... 
+	 *
+	 * We're going to read in the entire table, caching all occurrences of
+	 * our xmin.
+	 */
+	for (i=0; i < lockHolderProcPtr->combocid_map_count; i++)
+	{
+		if (BufFileRead(combocid_map, &entry, sizeof(ComboCidEntryData)) != sizeof(ComboCidEntryData))
+		{
+			elog(ERROR, "loadSharedComboCommandId: read failed I/O error.");
+		}
+
+		if (entry.key.xmin == xmin)
+		{
+			bool cached=false;
+			readerComboCidKeyData reader_key;
+			readerComboCidEntryData *reader_entry;
+
+			memset(&reader_key, 0, sizeof(reader_key));
+			reader_key.writer_pid = lockHolderProcPtr->pid;
+			reader_key.xmin = entry.key.xmin;
+			reader_key.session = gp_session_id;
+			reader_key.combocid = entry.combocid;
+
+			reader_entry = (readerComboCidEntryData *)hash_search(readerComboHash, &reader_key, HASH_ENTER, &cached);
+
+			if (!cached)
+			{
+				reader_entry->cmin = entry.key.cmin;
+				reader_entry->cmax = entry.key.cmax;
+			}
+
+			/*
+			 * This was our entry -- we're going to continue our scan,
+			 * to pull in any additional entries for our xmin
+			 */
+			if (entry.combocid == combocid)
+			{
+				*cmin = entry.key.cmin;
+				*cmax = entry.key.cmax;
+				found = true;
+			}
+		}
+	}
+
+	if (!found)
+	{
+		elog(ERROR, "loadSharedComboCommandId: no combocid entry found for %u/%u", xmin, combocid);
+	}
+}
+
+#if 0
+void
+sharedCombocid_ProcClean(void)
+{
+	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
+	{
+		return;
+	}
+
+	/* We're either GP_ROLE_DISPATCH, GP_ROLE_UTILITY, or  QE-writer */
+}
+
+#endif

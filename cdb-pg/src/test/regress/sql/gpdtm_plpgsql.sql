@@ -246,3 +246,39 @@ INSERT INTO dtm_plpg_foo VALUES (0, 5);
 FETCH ALL FROM c1;
 COMMIT;
 
+-- Add some additional testing for combocid-issues
+DROP TABLE dtm_plpg_foo;
+BEGIN;
+CREATE TABLE dtm_plpg_foo (C_CUSTKEY INTEGER, C_NAME VARCHAR(25), C_ADDRESS VARCHAR(40))
+partition by range (c_custkey) (partition p1 start(0) end(100000) every(1000));
+
+INSERT INTO dtm_plpg_foo SELECT * FROM dtm_plpg_foo LIMIT 10000;
+COMMIT;
+
+BEGIN;
+DROP TABLE dtm_plpg_foo;
+CREATE TABLE dtm_plpg_foo (C_CUSTKEY INTEGER, C_NAME VARCHAR(25), C_ADDRESS VARCHAR(40))
+partition by range (c_custkey) (partition p1 start(0) end(100000) every(1000));
+SELECT count(*) from dtm_plpg_foo;
+INSERT INTO dtm_plpg_foo SELECT * FROM dtm_plpg_foo LIMIT 10000;
+COMMIT;
+
+BEGIN;
+DROP TABLE dtm_plpg_foo;
+CREATE TABLE dtm_plpg_foo (C_CUSTKEY INTEGER, C_NAME VARCHAR(25), C_ADDRESS VARCHAR(40))
+partition by range (c_custkey) (partition p1 start(0) end(100000) every(1000));
+DECLARE c0 CURSOR FOR SELECT * FROM dtm_plpg_foo;
+INSERT INTO dtm_plpg_foo SELECT * FROM dtm_plpg_foo LIMIT 10000;
+FETCH c0;
+CLOSE c0;
+COMMIT;
+
+BEGIN;
+DROP TABLE dtm_plpg_foo;
+CREATE TABLE dtm_plpg_foo (C_CUSTKEY INTEGER, C_NAME VARCHAR(25), C_ADDRESS VARCHAR(40))
+partition by range (c_custkey) (partition p1 start(0) end(100000) every(1000));
+DECLARE c0 CURSOR WITH HOLD FOR SELECT * FROM dtm_plpg_foo;
+INSERT INTO dtm_plpg_foo SELECT * FROM dtm_plpg_foo LIMIT 10000;
+FETCH c0;
+CLOSE c0;
+COMMIT;

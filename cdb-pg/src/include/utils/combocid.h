@@ -32,18 +32,17 @@
  * this information that can support the arbitrary size of the combocids 
  * datastructure.
  */
-#define MaxComboCids 128
+#define MaxComboCids 256
 
 /* Key and entry structures for the hash table */
 typedef struct
 {
-	CommandId cmin;
-	CommandId cmax;
+	CommandId		cmin;
+	CommandId		cmax;
+	TransactionId	xmin;
 } ComboCidKeyData;
 
-
 typedef ComboCidKeyData *ComboCidKey;
-
 
 extern volatile ComboCidKey comboCids;
 extern volatile int usedComboCids;

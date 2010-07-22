@@ -122,6 +122,12 @@ struct PGPROC
 	 * be waiting on.
 	 */
 	uint32		waitPortalId;	/* portal id we are waiting on */
+
+	/*
+	 * Information for our combocid-map (populated in writer/dispatcher backends only)
+	 */
+	uint32		combocid_map_count; /* how many entries in the map ? */
+	char		combocid_map_name[MAXPGPATH]; /* name of the map */
 };
 
 /* NOTE: "typedef struct PGPROC PGPROC" appears in storage/lock.h. */
