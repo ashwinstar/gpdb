@@ -342,7 +342,7 @@ getSharedComboCidEntry(TransactionId xmin, CommandId combocid, enum minmax min_o
 	readerComboCidKeyData reader_key;
 	readerComboCidEntryData *reader_entry;
 
-	CommandId cmin, cmax;
+	CommandId cmin=0, cmax=0;
 
 	if (lockHolderProcPtr == NULL)
 	{
@@ -375,7 +375,6 @@ getSharedComboCidEntry(TransactionId xmin, CommandId combocid, enum minmax min_o
 	reader_key.combocid = combocid;
 
 	reader_entry = (readerComboCidEntryData *)hash_search(readerComboHash, &reader_key, HASH_FIND, &found);
-	
 
 	if (reader_entry != NULL)
 	{
