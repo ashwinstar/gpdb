@@ -30,9 +30,9 @@ static void OpenAOCSScanRelation(AOCSScanState *node)
         
 	node->scandesc = aocs_beginscan(
 			node->ss.ss_currentRelation, 
-			node->ss.ps.state->es_snapshot, 
-			0, NULL, node->proj
-                        );
+			node->ss.ps.state->es_snapshot,
+			NULL /* relationTupleDesc */,
+			node->proj);
 
 	node->ss.scan_state = SCAN_SCAN;
 }
@@ -240,7 +240,7 @@ ExecAOCSReScan(AOCSScanState *node, ExprContext *exprCtxt)
 	if((node->ss.scan_state & SCAN_SCAN) == 0)
 		OpenAOCSScanRelation(node);
 
-	aocs_rescan(node->scandesc, NULL); 
+	aocs_rescan(node->scandesc); 
 
 	Gpmon_M_Incr(GpmonPktFromAOCSScanState(node), GPMON_AOCSSCAN_RESCAN);
 	CheckSendPlanStateGpmonPkt(&node->ss.ps);

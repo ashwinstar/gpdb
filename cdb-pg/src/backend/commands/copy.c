@@ -2165,8 +2165,7 @@ CopyTo(CopyState cstate)
                 for(i=0; i<nvp; ++i)
                     proj[i] = true;
 
-                scan = aocs_beginscan(rel, ActiveSnapshot, 0, NULL, proj);
-
+                scan = aocs_beginscan(rel, ActiveSnapshot, NULL /* relationTupleDesc */, proj);
                 for(;;)
                 {
                     CHECK_FOR_INTERRUPTS();

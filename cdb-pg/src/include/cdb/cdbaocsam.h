@@ -66,9 +66,13 @@ typedef struct AOCSScanDescData
 {
 	/* scan parameters */
 	Relation	aos_rel;			/* target relation descriptor */
+	TupleDesc   relationTupleDesc;  /* tuple descriptor of table to scan.
+	                                 *  Code should use this rather than aos_rel->rd_att,
+	                                 *  as THEY MAY BE DIFFERENT.
+	                                 *  See code in aocsam.c's aocs_beginscan for more info
+	                                 */
+	                                 
 	Index       aos_scanrelid;                  /* index */
-	int		    aos_nkeys;			/* number of scan keys */
-	ScanKey		aos_key;			/* array of scan key descriptors */
 
     int         total_seg;
     int         cur_seg;
@@ -137,8 +141,8 @@ typedef AOCSFetchDescData *AOCSFetchDesc;
  * ----------------
  */
 
-extern AOCSScanDesc aocs_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey key, bool *proj);
-extern void aocs_rescan(AOCSScanDesc scan, ScanKey key);
+extern AOCSScanDesc aocs_beginscan(Relation relation, Snapshot snapshot, TupleDesc relationTupleDesc, bool *proj);
+extern void aocs_rescan(AOCSScanDesc scan);
 extern void aocs_endscan(AOCSScanDesc scan);
 extern void aocs_getnext(AOCSScanDesc scan, ScanDirection direction, TupleTableSlot *slot);
 extern AOCSInsertDesc aocs_insert_init(Relation rel, int segno);

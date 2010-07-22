@@ -107,16 +107,15 @@ static void open_all_datumstream_segfiles(Relation rel,
     pfree(basepath);
 }
 
-static void open_ds(Relation rel, CompressorType compType, int32 compLv, int32 blocksz, 
-        DatumStream **ds, int nvp, bool *proj, AORelationVersion version)
+static void open_ds(Relation rel, CompressorType compType, int32 compLv, int32 blocksz,
+        DatumStream **ds, TupleDesc relationTupleDesc, bool *proj, AORelationVersion version)
 {
-    int i;
-    TupleDesc tupdesc = RelationGetDescr(rel);
+    int nvp = relationTupleDesc->natts;
 
     /* open datum streams.  It will open segment file underneath */
-    for(i=0; i<nvp; ++i)
+    for(int i=0; i<nvp; ++i)
     {
-        Form_pg_attribute attr = tupdesc->attrs[i];
+        Form_pg_attribute attr = relationTupleDesc->attrs[i];
 
          if(proj)
         {
@@ -143,25 +142,22 @@ static void close_ds(DatumStream **ds, int nvp)
     }
 }
 
-static void aocs_initscan(AOCSScanDesc scan, ScanKey key)
+static void aocs_initscan(AOCSScanDesc scan)
 {
-    if(key)
-        memcpy(scan->aos_key, key, scan->aos_nkeys * sizeof(ScanKeyData));
-
     scan->cur_seg = -1;
 
     ItemPointerSet(&scan->cdb_fake_ctid, 0, 0);
     scan->cur_seg_row = 0;
 
     open_ds(scan->aos_rel, scan->compType, scan->compLevel, scan->blocksz,
-            scan->ds, scan->aos_rel->rd_att->natts, scan->proj, scan->aoEntry->version);
+            scan->ds, scan->relationTupleDesc, scan->proj, scan->aoEntry->version);
 
     pgstat_count_heap_scan(scan->aos_rel);
 }
 
 static int open_next_scan_seg(AOCSScanDesc scan)
 {
-    int nvp = scan->aos_rel->rd_att->natts;
+    int nvp = scan->relationTupleDesc->natts;
 
     while(++scan->cur_seg < scan->total_seg)
     {
@@ -242,13 +238,12 @@ static int open_next_scan_seg(AOCSScanDesc scan)
 
 static void close_cur_scan_seg(AOCSScanDesc scan)
 {
-    int nvp = scan->aos_rel->rd_att->natts;
-    int i;
+    int nvp = scan->relationTupleDesc->natts;
 
 	if (scan->cur_seg < 0)
 		return;
 
-    for(i=0; i<nvp; ++i)
+    for(int i=0; i<nvp; ++i)
     {
         if(scan->ds[i])
         {
@@ -263,11 +258,27 @@ static void close_cur_scan_seg(AOCSScanDesc scan)
 	}
 }
 
-AOCSScanDesc aocs_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey key, bool *proj)
+/**
+ * begin the scan over the given relation.
+ *
+ * @param relationTupleDesc if NULL, then this function will simply use relation->rd_att.  This is the typical use-case.
+ *               Passing in a separate tuple descriptor is only needed for cases for the caller has changed
+ *               relation->rd_att without updating the underlying relation files yet (that is, the caller is doing
+ *               an alter and relation->rd_att will be the relation's new form but relationTupleDesc is the old form)
+ */
+AOCSScanDesc
+aocs_beginscan(Relation relation, Snapshot snapshot, TupleDesc relationTupleDesc, bool *proj)
 {
     AOCSScanDesc scan;
     AppendOnlyEntry *aoentry;
-    int nvp = relation->rd_att->natts;
+
+    if (!relationTupleDesc)
+    {
+        relationTupleDesc = relation->rd_att;
+    }
+
+
+    int nvp = relationTupleDesc->natts;
 
     RelationIncrementReferenceCount(relation);
     scan = (AOCSScanDesc) palloc0(sizeof(AOCSScanDescData));
@@ -283,18 +294,14 @@ AOCSScanDesc aocs_beginscan(Relation relation, Snapshot snapshot, int nkeys, Sca
 
     scan->seginfo = GetAllAOCSFileSegInfo(relation, aoentry, snapshot, &scan->total_seg);
 
-    scan->aos_nkeys = nkeys;
-    if(nkeys > 0)
-        scan->aos_key = palloc(sizeof(ScanKeyData) * nkeys);
-    else
-        scan->aos_key = NULL;
+    scan->relationTupleDesc = relationTupleDesc;
 
     Assert(proj);
     scan->proj = proj;
 
     scan->ds = (DatumStream **) palloc0(sizeof(DatumStream *) * nvp);
 
-    aocs_initscan(scan, key);
+    aocs_initscan(scan);
 
 	scan->buildBlockDirectory = false;
 	scan->blockDirectory = NULL;
@@ -302,11 +309,11 @@ AOCSScanDesc aocs_beginscan(Relation relation, Snapshot snapshot, int nkeys, Sca
     return scan;
 }
 
-void aocs_rescan(AOCSScanDesc scan, ScanKey key)
+void aocs_rescan(AOCSScanDesc scan)
 {
     close_cur_scan_seg(scan);
-    close_ds(scan->ds, scan->aos_rel->rd_att->natts);
-    aocs_initscan(scan, key);
+    close_ds(scan->ds, scan->relationTupleDesc->natts);
+    aocs_initscan(scan);
 }
 
 void aocs_endscan(AOCSScanDesc scan)
@@ -315,11 +322,8 @@ void aocs_endscan(AOCSScanDesc scan)
 
     RelationDecrementReferenceCount(scan->aos_rel);
 
-    if(scan->aos_key)
-        pfree(scan->aos_key);
-
 	close_cur_scan_seg(scan);
-    close_ds(scan->ds, scan->aos_rel->rd_att->natts);
+    close_ds(scan->ds, scan->relationTupleDesc->natts);
 
     pfree(scan->ds);
 
@@ -352,7 +356,7 @@ void aocs_getnext(AOCSScanDesc scan, ScanDirection direction, TupleTableSlot *sl
     Assert(ScanDirectionIsForward(direction));
 
     ncol = slot->tts_tupleDescriptor->natts;
-    Assert(ncol <= scan->aos_rel->rd_att->natts);
+    Assert(ncol <= scan->relationTupleDesc->natts);
 
     while(1)
     {
@@ -462,13 +466,12 @@ static void OpenAOCSDatumStreams(AOCSInsertDesc desc)
 
     AOCSFileSegInfo *seginfo;
 
-    int i;
     TupleDesc tupdesc = RelationGetDescr(desc->aoi_rel);
     int nvp = tupdesc->natts;
 
     desc->ds = (DatumStream **) palloc0(sizeof(DatumStream *) * nvp);
     open_ds(desc->aoi_rel, desc->compType, desc->compLevel, desc->blocksz, 
-            desc->ds, nvp, NULL, desc->aoEntry->version);
+            desc->ds, tupdesc, NULL, desc->aoEntry->version);
 
     /* Now open seg info file and get eof mark. */
     seginfo = GetAOCSFileSegInfoForWrite(desc->aoi_rel, desc->aoEntry, desc->cur_segno);
@@ -476,7 +479,7 @@ static void OpenAOCSDatumStreams(AOCSInsertDesc desc)
 	desc->fsInfo = seginfo;
 	desc->rowCount = seginfo->tupcount;
 
-    for(i=0; i<nvp; ++i)
+    for(int i=0; i<nvp; ++i)
     {
         AOCSVPInfoEntry *e = getAOCSVPEntry(seginfo, i);
 

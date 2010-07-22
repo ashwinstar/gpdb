@@ -1962,7 +1962,7 @@ IndexBuildAppendOnlyColScan(Relation parentRelation,
 			proj[attno] = true;
 	}
 	
-	aocsscan = aocs_beginscan(parentRelation, snapshot, 0, NULL, proj);
+	aocsscan = aocs_beginscan(parentRelation, snapshot, NULL /* relationTupleDesc */, proj);
 
 	if (!OidIsValid(blkdirrelid) || !OidIsValid(blkdiridxid))
 	{
