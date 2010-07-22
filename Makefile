@@ -347,7 +347,7 @@ define BUILD_STEPS
 	$(MAKE) connectivity INSTLOC=$(INSTLOC) CONNECTIVITYINSTLOC=$(CONNECTIVITYINSTLOC)
 	@$(MAKE) set_scripts_version INSTLOC=$(CONNECTIVITYINSTLOC)
 ifneq "$(findstring win,$(BLD_ARCH))" "win"
-	cd $(GPMGMT) && $(MAKE) pygresql INSTLOC=$(INSTLOC)
+	cd $(GPMGMT)/bin && $(MAKE) pygresql INSTLOC=$(INSTLOC)
 endif
 	$(MAKE) loaders INSTLOC=$(INSTLOC) LOADERSINSTLOC=$(LOADERSINSTLOC)
 	@$(MAKE) set_scripts_version INSTLOC=$(LOADERSINSTLOC)
