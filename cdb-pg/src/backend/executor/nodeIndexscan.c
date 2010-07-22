@@ -61,7 +61,7 @@ initScanDesc(IndexScanState *indexstate)
 }
 	
 /*
- * Free the heap scan descriptor.
+ * Free the index scan descriptor.
  */
 static inline void
 freeScanDesc(IndexScanState *indexstate)
@@ -124,7 +124,9 @@ IndexNext(IndexScanState *node)
 	{
 		if (estate->es_evTupleNull[scanrelid - 1])
 		{
-			freeScanDesc(node);
+			if (node->iss_ScanDesc != NULL &&
+				node->iss_ScanDesc->earlyFreeSafe)
+				freeScanDesc(node);
 			
 			return ExecClearTuple(slot);
 		}
@@ -138,7 +140,9 @@ IndexNext(IndexScanState *node)
 
 		if (!ExecQual(node->indexqualorig, econtext, false))
 		{
-			freeScanDesc(node);
+			if (node->iss_ScanDesc != NULL &&
+				node->iss_ScanDesc->earlyFreeSafe)
+				freeScanDesc(node);
 			
 			ExecClearTuple(slot);		/* would not be returned by scan */
 		}
@@ -171,7 +175,9 @@ IndexNext(IndexScanState *node)
 		return slot;
 	}
 
-	freeScanDesc(node);
+	if (node->iss_ScanDesc != NULL &&
+		node->iss_ScanDesc->earlyFreeSafe)
+		freeScanDesc(node);
 	
 	/*
 	 * if we get here it means the index scan failed so we are at the end of

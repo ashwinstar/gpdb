@@ -238,6 +238,8 @@ index_beginscan(Relation heapRelation,
 	scan->heapRelation = heapRelation;
 	scan->xs_snapshot = snapshot;
 
+	scan->earlyFreeSafe = true;
+
 	return scan;
 }
 
@@ -263,6 +265,8 @@ index_beginscan_multi(Relation indexRelation,
 	 */
 	scan->is_multiscan = true;
 	scan->xs_snapshot = snapshot;
+
+	scan->earlyFreeSafe = true;
 
 	return scan;
 }
@@ -374,6 +378,12 @@ index_markpos(IndexScanDesc scan)
 	GET_SCAN_PROCEDURE(ammarkpos);
 
 	FunctionCall1(procedure, PointerGetDatum(scan));
+
+	/*
+	 * Since a position is marked, it is not safe to free the
+	 * scan descriptor before the end of the scan.
+	 */
+	scan->earlyFreeSafe = false;
 }
 
 /* ----------------
