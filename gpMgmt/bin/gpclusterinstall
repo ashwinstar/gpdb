@@ -1,18 +1,21 @@
 #!/usr/bin/env python
 '''
-USAGE:   gpclusterinstall -f|--file HOSTFILE -u|--user USER
+USAGE:   gpclusterinstall -f|--file HOSTFILE -u|--user USER 
          where HOSTFILE lists all the hosts to install the software on
          where USER will be the user to install the software as
 '''
 
 import os, sys, re
-import subprocess
+import subprocess, warnings, logging
+warnings.simplefilter('ignore', DeprecationWarning)
 
 try:
+    import paramiko, getpass
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gplog import get_default_logger, setup_tool_logging
     from gppylib.commands.unix import getLocalHostname, getUserName
+    from gppylib.commands.base import WorkerPool, Command, NakedExecutionPasswordMap, NAKED
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -20,10 +23,20 @@ EXECNAME = os.path.split(__file__)[-1]
 
 logger = get_default_logger()
 setup_tool_logging(EXECNAME,getLocalHostname(),getUserName()) 
-hostlist = list()
-uniquehostlist = list()
+hosts = dict() # hostname to Host object
+uniquehosts = set()
 options = None
+passwordMap = None
+nullFile = logging.FileHandler('/dev/null')
+logging.getLogger('paramiko.transport').addHandler(nullFile)
+pool = None
 
+class Host:
+    def __init__(self, address):
+        self.address = address
+        self.hostname = None
+        
+    
 # True is an error
 def run_command(cmdstr):
 
@@ -74,47 +87,69 @@ def readHostList():
 
     try:
         for line in open(options.file, "r"):
-            hostlist.append(line.rstrip())
+            hostname = line.rstrip()
+            hosts[hostname] = Host(hostname)
     except Exception, e:
         logger.error("Error while reading file: %s" % options.file)
         logger.error(e.__str__())
         return True
 
-    if not len(hostlist):
+    if not len(hosts.keys()):
         logger.error("No hosts read from hostfile: %s" % options.file)
         return True
 
     return False
 
 # True is an error
-def dedupeHosts():
+def discoverPasswordMap():
 
-    output = subprocess.Popen(["gpssh", "-f", options.file, "hostname"], stdout=subprocess.PIPE).communicate()[0]
-    lines = output.split("\n")
-    for line in lines:
-        fields = line.split("]")
-        if len(fields) != 2:
-            continue
-        address = fields[0].split("[")[1].strip()
-        hostname = fields[1].strip()
-        uniquehostlist.append(address)
-        
+    try:    
+        passwordMap = NakedExecutionPasswordMap(hosts.keys())
+        passwordMap.discover()
+    except Exception, e:
+        logger.error(e.__str__())
+        return True
+
+    return False
+
+# True is an error
+def dedupeHosts():
+    try:
+        for host in hosts.keys():
+            cmd = Command(host, "hostname", NAKED, host, passwordMap=passwordMap)
+            pool.addCommand(cmd)
+
+        pool.join()
+        items = pool.getCompletedItems()
+        for i in items:
+            print i
+    except Exception, e:
+        print "error %s" %e.__str__()
+        return False
+
+def earlyExit():
+    if pool:
+        pool.join()
+        pool.haltWork()
+        pool.joinWorkers()
+
+    sys.exit(1)
 
 # True is an error
 #def createUserOnCluster():
 
 
 if (parseargs()):
-    sys.exit(1)
+    earlyExit()
 
 if (readHostList()):
-    sys.exit(1)
+    earlyExit()
 
-# run exkeys as root to make sure we can login everywhere
-if (run_command("gpssh-exkeys -f %s" % options.file)):
-    sys.exit(1)
+if (discoverPasswordMap()):
+    earlyExit()
+
+pool = WorkerPool()
 
 if (dedupeHosts()):
-    sys.exit(1)
+    earlyExit()
 
-print uniquehostlist
