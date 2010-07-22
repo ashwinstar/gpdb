@@ -33,7 +33,6 @@ try:
     from gppylib.gplog import *
     from gppylib.db import dbconn
     from gppylib.db import catalog
-    from gppylib.segcopy import GpSegCopy, SegcopyError
     from gppylib.userinput import *
     from pygresql.pgdb import DatabaseError
     from pygresql import pg

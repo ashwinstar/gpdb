@@ -15,7 +15,6 @@ try:
     from gppylib import gparray
     from gppylib.db import dbconn
     from gppylib.db import catalog
-    from gppylib.segcopy import GpSegCopy, SegcopyError
     from gppylib.userinput import *
 except ImportError, e:
     sys.exit('ERROR: Cannot import modules.  Please check that you '

@@ -22,7 +22,6 @@ try:
     from gppylib.gplog import *
     from gppylib.db import dbconn
     from gppylib.db import catalog
-    from gppylib.segcopy import GpSegCopy, SegcopyError
     from gppylib.userinput import *
     from gppylib.operations.startSegments import *
     from pygresql.pgdb import DatabaseError
@@ -1698,7 +1697,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         
         """ 
         Connect to each database in each segment and do some cleanup of tables that have stuff in them as a result of copying the segment from the master.
-        Note, this functionaliy used to be in segcopy and was therefore done just onece to the original copy of the master. We need to do it separately for
+        Note, this functionaliy used to be in segcopy and was therefore done just once to the original copy of the master. We need to do it separately for
         each segment now since filespaces may contain the databases. 
         """
         for seg in newSegments:
