@@ -120,18 +120,21 @@ OPTIONS
 
 -i <recover_config_file>
 
- Specifies the name of a configuration file that has information 
- about which failed segments to recover, and where to recover them. 
- Each line in the file is in the following format:
-   filespaceOrder=[<filespace_name>[:<filespace_name>:...]
-   <failed_host_name>:<port>:<fselocation>[:<fselocation>:...] [<recovery_host_address>:<port>:<replication_port>:<fselocation>[:<fselocation>:...]] 
- Note that you only need to specify filespaceOrder if your system 
- has multiple filespaces configured. If your system does not 
- have additional filespaces configured, this file will only 
- have one location per segment (for the default data directory 
- filespace, pg_system).  
- You can use the -o option to output a sample recovery 
- configuration file to use as a starting point.
+ Specifies the name of a configuration file that has information about 
+ which failed segments to recover, and where to recover them. Each line 
+ in the file is in the following format. Note that you only need to 
+ specify filespaceOrder if your system has multiple filespaces 
+ configured. If your system does not have additional filespaces 
+ configured, this file will only have one location per segment (for 
+ the default data directory filespace, pg_system). pg_system is not 
+ listed in the filespaceOrder line. It is always the first location 
+ passed after port/replication_port.
+
+     filespaceOrder=[<filespace_name>[:<filespace_name>:...]
+     <failed_host_name:port:fselocation>       [<recovery_host_address>:<port>:<replication_port>:<fselocation>[:<fselocation>:...]]
+
+ You can use the -o option to output a sample recovery configuration file 
+ to use as a starting point.
 
 
 -l <logfile_directory>
@@ -171,10 +174,12 @@ OPTIONS
  file system locations on the currently configured segment 
  hosts where you can recover failed segment instances. 
  The filespace configuration file is in the format of:
-   filespaceOrder=filespace1_name:filespace2_name: ...
-   dbid:/path/for/filespace1:/path/for/filespace2: ...
-   dbid:/path/for/filespace1:/path/for/filespace2: ...
-   ...
+
+    pg_system=<directory_location> 
+    filespace_name_1=filespace1_<directory_location>
+    filespace_name_2=filespace2_<directory_location>
+    ...
+
  If your system does not have additional filespaces configured, 
  this file will only have one location per segment (for the 
  default data directory filespace, pg_system). These file system 
