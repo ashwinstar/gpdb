@@ -21,11 +21,14 @@ from gppylib.utils import checkNotNone, checkIsInt
 from gppylib    import gplog
 from gppylib.db import dbconn
 from gppylib.gpversion import GpVersion
+from gppylib.commands.unix import *
 
 
 logger = gplog.get_default_logger()
 
 SYSTEM_FILESPACE = 3052        # oid of the system filespace
+
+DESTINATION_FILE_SPACES_DIRECTORY = "fs_directory"
 
 ROLE_PRIMARY = 'p'
 ROLE_MIRROR  = 'm'
@@ -70,37 +73,6 @@ VALID_FAULT_STRATEGY = FAULT_STRATEGY_LABELS.keys()
 def getFaultStrategyLabel(strategy):
     return FAULT_STRATEGY_LABELS[strategy]
 
-# ============================================================================
-def getDataDirPrefix(datadir):
-    retValue = ""
-    retValue = datadir[:datadir.rfind('/')]
-    return retValue
-
-# ============================================================================
-def getFileSpaceDirsWithNewSuffix(fileSpaceDictionary, suffix, excludeSystemFilespace = False):
-    """ 
-    This method will take the a dictionary of file spaces and return the same dictionary with the new sufix.
-    """
-    retValue = {}
-    
-    for entry in fileSpaceDictionary:
-        if entry == SYSTEM_FILESPACE:
-           continue
-        newDir = getDataDirPrefix(fileSpaceDictionary[entry])
-        newDir = newDir + "/" + suffix
-        retValue[entry] = newDir
-    return retValue    
-   
-# ============================================================================    
-def replaceFileSpaceContentID(fileSpaceDictionary, oldContent, newContent):
-    retValue = {}
-    for entry in fileSpaceDictionary:
-        tempDir  = fileSpaceDictionary[entry]
-        tempDir  = tempDir[:tempDir.rfind(str(oldContent))]
-        tempDir += ('%d' % newContent)
-        retValue[entry] = tempDir
-    return retValue
- 
 
 # ============================================================================
 # ============================================================================
@@ -277,6 +249,39 @@ class GpDB:
         # Return the completed segment
         return gpdb
 
+    # --------------------------------------------------------------------
+    @staticmethod
+    def getDataDirPrefix(datadir):
+        retValue = ""
+        retValue = datadir[:datadir.rfind('/')]
+        return retValue
+
+    # --------------------------------------------------------------------
+    @staticmethod
+    def getFileSpaceDirsWithNewSuffix(fileSpaceDictionary, suffix, includeSystemFilespace = True):
+        """
+        This method will take the a dictionary of file spaces and return the same dictionary with the new sufix.
+        """
+        retValue = {}
+
+        for entry in fileSpaceDictionary:
+            if entry == SYSTEM_FILESPACE and includeSystemFilespace == False:
+               continue
+            newDir = GpDB.getDataDirPrefix(fileSpaceDictionary[entry])
+            newDir = newDir + "/" + suffix
+            retValue[entry] = newDir
+        return retValue
+
+    # --------------------------------------------------------------------
+    @staticmethod
+    def replaceFileSpaceContentID(fileSpaceDictionary, oldContent, newContent):
+        retValue = {}
+        for entry in fileSpaceDictionary:
+            tempDir  = fileSpaceDictionary[entry]
+            tempDir  = tempDir[:tempDir.rfind(str(oldContent))]
+            tempDir += ('%d' % newContent)
+            retValue[entry] = tempDir
+        return retValue
 
     # --------------------------------------------------------------------
     def copy(self):
@@ -287,6 +292,59 @@ class GpDB:
         res = copy.copy(self)
         res.__filespaces = copy.copy(self.__filespaces)
         return res
+
+    # --------------------------------------------------------------------
+    def createTemplate(self, dstDir):
+        """
+        Create a tempate given the information in this GpDB.
+        """
+        
+        # Make sure we have enough room in the dstDir to fit the segment and its filespaces.
+        requiredSize = DiskUsage.get_size( name = "srcDir"
+                                         , remote_host = "127.0.0.1"
+                                         , directory = dstDir
+                                         )
+        name = "segcopy filespace get_size"
+        for oid in self.__filespaces:
+            if oid == SYSTEM_FILESPACE:
+               continue
+            dir = self.__filespaces[oid]
+            size = DiskUsage.get_size(name, "127.0.0.1", dir)
+            requiredSize = requiredSize + size 
+
+        dstBytesAvail = DiskFree.get_size_local(name = "Check for available free space for segment template", directory = dstDir)
+        if dstBytesAvail <= requiredSize:
+            raise Exception("Not enough space on directory: '%s'.  Currently %d bytes free but need %d bytes." % (dstDir, int(dstBytesAvail), int(reqiredSize)))
+
+        logger.info("Starting copy of segment dbid %d to locaiton %s" % (int(self.getSegmentDbId()), dstDir))
+
+        cpCmd = LocalDirCopy("Copy system data directory", self.getSegmentDataDirectory(), dstDir)
+        cpCmd.run(validateAfter = True)
+        res = cpCmd.get_results()
+            
+        if len(self.__filespaces) > 1:
+           """ Make directory to hold file spaces """
+           fullPathFsDir = dstDir + "/" +  DESTINATION_FILE_SPACES_DIRECTORY
+           cmd = FileDirExists( name = "check for existance of template filespace directory"
+                              , directory = fullPathFsDir
+                              )
+           cmd.run(validateAfter = True)
+           MakeDirectory.local("gpexpand make directory to hold file spaces", fullPathFsDir)
+           for oid in self.__filespaces:
+               MakeDirectory.local("gpexpand make directory to hold file space oid: " + str(oid), fullPathFsDir)
+               dir = self.__filespaces[oid]
+               destDir = fullPathFsDir + "/" + str(oid)
+               MakeDirectory.local("gpexpand make directory to hold file space: " + destDir, destDir)
+               name = "GpSegCopy %s to %s" % (dir, destDir)
+               cpCmd = LocalDirCopy(name, dir, destDir)
+               cpCmd.run(validateAfter = True)
+               res = cpCmd.get_results()
+        
+           # Remove the gp_dbid file from the data dir
+           RemoveFiles.local('Remove gp_dbid file', os.path.normpath(dstDir + '/gp_dbid'))
+           logger.info("Cleaning up catalog for schema only copy on destination")
+           # We need 700 permissions or postgres won't start
+           Chmod.local('set template permissions', dstDir, '0700')
 
 
     # --------------------------------------------------------------------
@@ -563,12 +621,10 @@ class Segment:
 # --------------------------------------------------------------------
 class SegmentRow():
     
-    def __init__(self, content, isprimary, dbid, isprimary_again, always_true, host, port, fulldir, prPort, fileSpaceDictionary = None):
+    def __init__(self, content, isprimary, dbid, host, port, fulldir, prPort, fileSpaceDictionary = None):
         self.content         = content
         self.isprimary       = isprimary
         self.dbid            = dbid
-        self.isprimary_again = isprimary_again
-        self.always_true     = always_true
         self.host            = host
         self.port            = port
         self.fulldir         = fulldir
@@ -580,8 +636,6 @@ class SegmentRow():
         "content = "          + str(self.content)   + "\n" + \
         "isprimary ="         + str(self.isprimary)       + "\n" + \
         "dbid = "             + str(self.dbid)            + "\n" + \
-        "isprimary_again = "  + str(self.isprimary_again)  + "\n" + \
-        "always_true = "      + str(self.always_true)      + "\n" + \
         "host = "             + str(self.host)             + "\n" + \
         "port = "             + str(self.port)            + "\n" + \
         "fulldir = "          + str(self.fulldir)         + "\n" + \
@@ -601,9 +655,14 @@ def createSegmentRows( hostlist
                      , primary_fs_list = None
                      , mirror_fs_list = None
                      ):
-    rows=[]
-    
-    dbid = 0
+    """
+    This method will return a list of SegmentRow objects that represent new segments on each host.
+    The "hostlist" parameter contains both existing hosts as well as any new hosts that are
+    a result of expansion.
+    """
+
+    rows    =[]    
+    dbid    = 0
     content = 0
 
     for host in hostlist:
@@ -622,8 +681,6 @@ def createSegmentRows( hostlist
             rows.append( SegmentRow( content = content
                                    , isprimary = isprimary
                                    , dbid = dbid
-                                   , isprimary_again = isprimary
-                                   , always_true = 't'
                                    , host = host
                                    , port = port
                                    , fulldir = fulldir
@@ -682,8 +739,6 @@ def createSegmentRows( hostlist
                 rows.append( SegmentRow( content = content
                                        , isprimary = isprimary
                                        , dbid = dbid
-                                       , isprimary_again = isprimary
-                                       , always_true = 't'
                                        , host = mirror_host
                                        , port = mirror_port[mirror_host]
                                        , fulldir = fulldir
@@ -727,8 +782,6 @@ def createSegmentRows( hostlist
                 rows.append( SegmentRow( content = content
                                        , isprimary = isprimary
                                        , dbid = dbid
-                                       , isprimary_again = isprimary
-                                       , always_true = 't'
                                        , host = mirror_host
                                        , port = port
                                        , fulldir = fulldir
@@ -757,9 +810,12 @@ def createSegmentRowsFromSegmentList( newHostlist
                                     , primary_replication_portbase
                                     , mirror_replication_portbase
                                     ):
-    rows=[]
-    
-    dbid = 0
+    """
+    This method will return a list of SegmentRow objects that represent an expansion of existing
+    segments on new hosts. 
+    """
+    rows    = []
+    dbid    = 0
     content = 0
 
     for host in newHostlist:
@@ -767,13 +823,11 @@ def createSegmentRowsFromSegmentList( newHostlist
         port=primary_portbase
         prPort = primary_replication_portbase
         for pSeg in primary_segment_list:
-            newFulldir = "%s/%s%d" % (getDataDirPrefix(pSeg.getSegmentDataDirectory()), dir_prefix, content)
-            newFileSpaceDictionary = getFileSpaceDirsWithNewSuffix(pSeg.getSegmentFilespaces(), dir_prefix + str(content), excludeSystemFilespace = True)
+            newFulldir = "%s/%s%d" % (GpDB.getDataDirPrefix(pSeg.getSegmentDataDirectory()), dir_prefix, content)
+            newFileSpaceDictionary = GpDB.getFileSpaceDirsWithNewSuffix(pSeg.getSegmentFilespaces(), dir_prefix + str(content), includeSystemFilespace = False)
             rows.append( SegmentRow( content = content
                                    , isprimary = isprimary
                                    , dbid = dbid
-                                   , isprimary_again = isprimary
-                                   , always_true = 't'
                                    , host = host
                                    , port = port
                                    , fulldir = newFulldir
@@ -810,8 +864,8 @@ def createSegmentRowsFromSegmentList( newHostlist
             mirror_host_offset = last_mirror_offset + 1
             last_mirror_offset += 1
             for mSeg in mirror_segment_list:
-                newFulldir = "%s/%s%d" % (getDataDirPrefix(mSeg.getSegmentDataDirectory()), dir_prefix, content)
-                newFileSpaceDictionary = getFileSpaceDirsWithNewSuffix(mSeg.getSegmentFilespaces(), dir_prefix + str(content), excludeSystemFilespace = True)
+                newFulldir = "%s/%s%d" % (GpDB.getDataDirPrefix(mSeg.getSegmentDataDirectory()), dir_prefix, content)
+                newFileSpaceDictionary = GpDB.getFileSpaceDirsWithNewSuffix(mSeg.getSegmentFilespaces(), dir_prefix + str(content), includeSystemFilespace = False)
                 mirror_host = newHostlist[mirror_host_offset % num_hosts]
                 if mirror_host == host:
                     mirror_host_offset += 1
@@ -825,8 +879,6 @@ def createSegmentRowsFromSegmentList( newHostlist
                 rows.append( SegmentRow( content = content
                                        , isprimary = isprimary
                                        , dbid = dbid
-                                       , isprimary_again = isprimary
-                                       , always_true = 't'
                                        , host = mirror_host
                                        , port = mirror_port[mirror_host]
                                        , fulldir = newFulldir
@@ -859,13 +911,11 @@ def createSegmentRowsFromSegmentList( newHostlist
             mrPort = mirror_replication_portbase
             
             for mSeg in mirror_segment_list:
-                newFulldir = "%s/%s%d" % (getDataDirPrefix(mSeg.getSegmentDataDirectory()), dir_prefix, content)
-                newFileSpaceDictionary = getFileSpaceDirsWithNewSuffix(mSeg.getSegmentFilespaces(), dir_prefix + str(content), excludeSystemFilespace = True)                
+                newFulldir = "%s/%s%d" % (GpDB.getDataDirPrefix(mSeg.getSegmentDataDirectory()), dir_prefix, content)
+                newFileSpaceDictionary = GpDB.getFileSpaceDirsWithNewSuffix(mSeg.getSegmentFilespaces(), dir_prefix + str(content), includeSystemFilespace = False)                
                 rows.append( SegmentRow( content = content
                                        , isprimary = isprimary
                                        , dbid = dbid
-                                       , isprimary_again = isprimary
-                                       , always_true = 't'
                                        , host = mirror_host
                                        , port = port
                                        , fulldir = newFulldir
@@ -1550,7 +1600,7 @@ class GpArray:
         for seg in self.segments:
             for db in seg.mirrorDBs:
                 if db.replicationPort < min_mirror_replication_port:
-                    min_mirror_replication_port = db.replicatonPort
+                    min_mirror_replication_port = db.replicationPort
 
         return min_mirror_replication_port
 
@@ -1785,6 +1835,7 @@ class GpArray:
         # check that the dbids are what they should be
         dbids.sort()
 
+        # KAS Is the following really true? dbids don't need to be continuous
         if dbids[0] != self.get_max_dbid() + 1:
             raise Exception('Expansion segments have incorrect dbids')
         for i in range(0, len(dbids) - 1):
@@ -1809,10 +1860,12 @@ class GpArray:
         # Check for redefinition data dirs and ports
         datadirs = {}
         used_ports = {}
+        used_replication_ports = {}
         for db in self.getDbList(True):
             datadir = db.getSegmentDataDirectory()
             hostname = db.getSegmentHostName()
             port = db.getSegmentPort()
+            replication_port = db.getSegmentReplicationPort()
             if datadirs.has_key(hostname):
                 if datadir in datadirs[hostname]:
                     raise Exception('Data directory %s used multiple times on host %s' % (datadir, hostname))
@@ -1821,6 +1874,8 @@ class GpArray:
             else:
                 datadirs[hostname] = []
                 datadirs[hostname].append(datadir)
+
+            # Check ports
             if used_ports.has_key(hostname):
                 if db.port in used_ports[hostname]:
                     raise Exception('Port %d is used multiple times on host %s' % (port, hostname))
@@ -1830,6 +1885,17 @@ class GpArray:
                 used_ports[hostname] = []
                 used_ports[hostname].append(db.port)
     
+            # Check replication ports
+            if replication_port != None:
+               if used_replication_ports.has_key(hostname):
+                   if replication_port in used_replication_ports[hostname]:
+                       raise Exception('Replication Port %d is used multiple times on host %s' % (replication_port, hostname))
+                   else:
+                       used_replication_ports[hostname].append(replication_port)
+               else:
+                   used_replication_ports[hostname] = []
+                   used_replication_ports[hostname].append(replication_port)
+
         # Check for redefinition of filespace dirs
         dbList = self.getDbList(includeExpansionSegs = True)
         hostDict = GpArray.getSegmentsByHostName(dbList)
@@ -1843,7 +1909,6 @@ class GpArray:
                        raise Exception('Data directory %s used multiple times on host %s' % (datadir, hostname))
                     else:
                        dirList.append(dirDict[oid])
-
 
     # --------------------------------------------------------------------    
     def addExpansionHosts(self, hosts, mirror_type):
@@ -1992,7 +2057,7 @@ class GpArray:
             new_datadir = row.fulldir[:row.fulldir.rfind(str(row.content))]
             if row.isprimary == 't':
                 new_datadir += ('%d' % curr_content)
-                new_filespaces = replaceFileSpaceContentID( fileSpaceDictionary = row.fileSpaceDictionary
+                new_filespaces = GpDB.replaceFileSpaceContentID( fileSpaceDictionary = row.fileSpaceDictionary
                                                           , oldContent = row.content
                                                           , newContent = curr_content
                                                           )
@@ -2004,7 +2069,7 @@ class GpArray:
             else:
                 new_content = mirror_dict[int(row.content)]
                 new_datadir += ('%d' % int(new_content))
-                new_filespaces = replaceFileSpaceContentID( fileSpaceDictionary = row.fileSpaceDictionary
+                new_filespaces = GpDB.replaceFileSpaceContentID( fileSpaceDictionary = row.fileSpaceDictionary
                                                           , oldContent = row.content
                                                           , newContent = new_content
                                                           )                

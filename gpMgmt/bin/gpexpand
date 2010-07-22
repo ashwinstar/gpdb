@@ -682,28 +682,9 @@ class SegmentTemplate:
             raise SegmentTemplateError('Failed to stop the array.  pg_controldata return state of %s' % state)
 
         try:
-            masterFilespaces = self.gparray.master.getSegmentFilespaces()
-            
-            """ Create a copy of the dictionary without the system filespace """
-            masterFilespacesWithoutSystemFilespace = {}
-            for oid in masterFilespaces:
-                if oid == SYSTEM_FILESPACE:
-                    continue
-                masterFilespacesWithoutSystemFilespace[oid] = masterFilespaces[oid]
-            
-            gp_segcopy = GpSegCopy( logger = self.logger
-                                  , srcHost = '127.0.0.1'
-                                  , srcDir = self.masterDataDirectory
-                                  , dstHost = '127.0.0.1'
-                                  , dstDir = self.tempDir
-                                  , clean = True
-                                  , schema_only = True
-                                  , method = 'copy'
-                                  , verbose = options.verbose
-                                  , filespaces = masterFilespacesWithoutSystemFilespace
-                                  )
-            gp_segcopy.copy()
-        except SegcopyError, msg:
+            masterSeg = self.gparray.master
+            masterSeg.createTemplate(dstDir = self.tempDir)
+        except Exception, msg:
             raise SegmentTemplateError(msg)
 
 
@@ -884,7 +865,7 @@ class SegmentTemplate:
 #------------------------------------------------------------------------------------------------------
 class NewSegmentInput:
     
-    def __init__(self, hostname = None, port = None, datadir = None, dbid = None, contentId = None, role = None, replicationPort = None, fileSpaces = None):
+    def __init__(self, hostname, port, datadir, dbid, contentId, role, replicationPort = None, fileSpaces = None):
         self.hostname = hostname
         self.port = port
         self.datadir = datadir
@@ -1383,7 +1364,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
                 raise ExpansionError('Invalid input file on line %d: %s' % (line, e))
             finally:
                 f.close()
-                return retValue
+            return retValue
         except IOError:
             raise ExpansionError('Input file %s not found' % options.filename)
 
@@ -1464,24 +1445,6 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
 
         orig_segment_info = ConfigureNewSegment.buildSegmentInfoForNewSegment(self.gparray.getSegDbList())
 
-        """
-        KAS Not to self. I think the following was supposed to update the gp_id table in the old segments,
-        but ConfigureNewSegment doesn't do that any more, I think?
-        """
-        """
-        for host in iter(orig_segment_info):
-            segCfgCmd = ConfigureNewSegment('gpexpand configure new segments', orig_segment_info[host],
-                                           verbose=gplog.logging_is_verbose(), batchSize=options.batch_size,
-                                           ctxt=REMOTE, remoteHost=host)
-            self.pool.addCommand(segCfgCmd)
-
-        self.pool.join()
-
-        try:
-            self.pool.check_results()
-        except ExecutionError, msg:
-            raise ExpansionError('Failed to configure original segments: %s', msg)
-        """
         if self.segTemplate:
             self.segTemplate.cleanup()
 
@@ -2806,10 +2769,16 @@ before continuing by re-running this utility and providing the input file. """
     outfile = gp_expand.generate_inputfile()
     outFilespaceFileName = gp_expand.generate_filespaces_inputfile(outFileNamePrefix = outfile)
 
-    print """\nInput configuration file was written to '%s'.
-Please review the file and make sure that it is correct then re-run
+    outFileStr = ""
+    if outfile != None:
+       outFileStr = """\nInput configuration files were written to '%s' and '%s'.""" % (outfile, outFilespaceFileName)
+    else:
+       outFileStr = """\nInput configuration file was written to '%s'.""" % (outfile)
+
+    print outFileStr
+    print """Please review the file and make sure that it is correct then re-run
 with: gpexpand -i %s %s
-                """ % (outfile,outfile, '-D %s' % options.database if options.database else '')
+                """ % (outfile, '-D %s' % options.database if options.database else '')
 
 
 def sig_handler(sig, arg):

@@ -335,7 +335,6 @@ try:
         isPrimary = seg[2] == "true"
         directoryValidationLevel = seg[3] == "true"
         dbid = int(seg[4])
-        (filespaceOids, filespaceDirs) = getOidDirLists(seg[5:])
         filespaceOids, filespaceDirs = getOidDirLists(seg[5:])
 
         cmd = ConfExpSegCmd( name = 'Configure segment directory'

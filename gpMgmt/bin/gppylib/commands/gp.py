@@ -730,7 +730,7 @@ class ConfigureNewSegment(Command):
                                       
         @return A dictionary with the following format:
         
-                Name  =   <host name> [, <host name> ]   <--- if multiple host names, then comma separated values as well.
+                Name  =   <host name>
                 Value =   <system data directory>
                         : <port>
                         : if primary then 'true' else 'false'
