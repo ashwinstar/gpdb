@@ -6,7 +6,7 @@ USAGE:   gpclusterinstall -f|--file HOSTFILE -u|--user USER
 '''
 
 import os, sys, re
-import subprocess, warnings, logging
+import subprocess, warnings, logging, tarfile
 warnings.simplefilter('ignore', DeprecationWarning)
 
 try:
@@ -30,6 +30,18 @@ passwordMap = None
 nullFile = logging.FileHandler('/dev/null')
 logging.getLogger('paramiko.transport').addHandler(nullFile)
 pool = None
+gphome = None
+installation_info = None
+
+class InstallationInfo:
+    def __init__(self, link_path, binary_path, binary_dir_location, binary_dir_name):
+        self.install_link_path = link_path                      # /data/greenplum-db  
+        self.install_binary_path = binary_path                  # /data/release-4.0
+        self.install_binary_dir_location = binary_dir_location  # /data
+        self.install_binary_dir_name = binary_dir_name          # release-4.0
+
+    def debugStr(self):
+        return "link_path %s\nbinary_path %s\nbinary_dir_location %s\nbinary_dir_name %s" % (self.install_link_path, self.install_binary_path, self.install_binary_dir_location, self.install_binary_dir_name)
 
 class HostMapping:
     def __init__(self, address):
@@ -78,6 +90,7 @@ def parseargs():
         print __doc__
         return True
 
+    global gphome
     gphome = os.environ.get('GPHOME')
     if not gphome:
         logger.error("GPHOME not set")
@@ -114,6 +127,8 @@ def readHostList():
 # True is an error
 def discoverPasswordMap():
 
+    logger.info("check cluster password access")
+
     global passwordMap
 
     try:    
@@ -130,6 +145,9 @@ def discoverPasswordMap():
 
 # True is an error
 def dedupeHosts():
+
+    logger.info("de-duplicate hostnames")
+
     try:
         for host in hosts.keys():
             cmd = Command(host, "hostname", NAKED, host, passwordMap=passwordMap)
@@ -158,7 +176,10 @@ def dedupeHosts():
 
     return False
 
+# True is an error
 def checkUsernames():
+
+    logger.info("check for user %s on cluster" % options.user)
 
     try:
         for k in uniquehosts.keys():
@@ -178,10 +199,15 @@ def checkUsernames():
 
     return False
 
+# True is an error
 def addUserIfRequired():
 
-    failedToAddUser = set() # set of address's where useradd failed
+    logger.info("add user %s on master" % options.user)
+    raise Exception("ADD USER ON LOCAL HOST")
 
+    logger.info("add user %s on cluster" % options.user)
+
+    failedToAddUser = set() # set of address's where useradd failed
     try:
         for k in uniquehosts.keys():
             uh = uniquehosts[k]
@@ -211,6 +237,56 @@ def addUserIfRequired():
 
     return False
 
+# True is an error
+def tarInstall():
+
+    location = os.path.split(os.path.expanduser(gphome))[0]
+    if os.path.islink(location):
+        link_path = location
+        binary_path = os.path.realpath(location)
+    else:
+        binary_path = location
+
+    components = os.path.split(binary_path)
+    binary_dir_location = components[0]
+    binary_dir_name = components[1]
+
+    global installation_info
+    installation_info = InstallationInfo(link_path, binary_path, binary_dir_location, binary_dir_name)
+
+    logger.info("create tar of install")
+    try:
+        cmd = Command("tar", "tar -C %s -c -f %s.tar %s" % (binary_dir_location, binary_path, binary_dir_name))
+        pool.addCommand(cmd)
+        pool.join()
+        items = pool.getCompletedItems()
+        for i in items:
+            if i.results.rc:
+                logger.error("Failed to run command: %s" % cmd.cmdStr)
+                logger.error(i.results.stderr)
+                return True 
+    except Exception, e:
+        logger.error("%s" % e.__str__())
+        return True
+
+    logger.info("compress install")
+    try:
+        cmd = Command("gzip", "gzip %s.tar" % binary_path)
+        pool.addCommand(cmd)
+        pool.join()
+        items = pool.getCompletedItems()
+        for i in items:
+            if i.results.rc:
+                logger.error("Failed to run command: %s" % cmd.cmdStr)
+                logger.error(i.results.stderr)
+                return True 
+    except Exception, e:
+        logger.error("%s" % e.__str__())
+        return True
+
+    return False
+
+
 def earlyExit():
     logger.fatal("early exit from gpclusterinstall")
     if pool:
@@ -223,25 +299,28 @@ def earlyExit():
 if (parseargs()):
     earlyExit()
 
+pool = WorkerPool()
+
+if (tarInstall()):
+    earlyExit()
+
+earlyExit()
+
 if (readHostList()):
     earlyExit()
 
-logger.info("check access to cluster")
 if (discoverPasswordMap()):
     earlyExit()
 
-pool = WorkerPool()
-
-logger.info("dedupe hostnames")
 if (dedupeHosts()):
     earlyExit()
 
-logger.info("check user %s exists" % options.user)
 if (checkUsernames()):
     earlyExit()
 
-logger.info("add user %s to cluster" % options.user)
 if (addUserIfRequired()):
     earlyExit()
+
+
 
 earlyExit()
