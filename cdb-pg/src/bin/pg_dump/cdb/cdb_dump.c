@@ -151,6 +151,13 @@ int main( int argc, char** argv)
 	if ( !GetDumpSegmentDatabaseArray(master_db_conn, remote_version, &segDBAr, inputOpts.actors, inputOpts.pszRawDumpSet, dataOnly, schemaOnly) )
 		goto cleanup;
 
+	/*
+	 * Process the schema and table include/exclude lists and determine the OIDs of the
+	 * tables to be dumped.
+	 */
+	progname = pszProgName;
+	convert_patterns_to_oids();
+
 	/* make changes and verifications (if any) needed to be made before shipping options to the agents */
 	if ( !transformPassThroughParms(&inputOpts))
 		goto cleanup;
@@ -374,8 +381,6 @@ static bool transformPassThroughParms(InputOptions* pInputOpts)
 
 	if(g_gp_supportsPartitioning)
 	{
-		/* Expand table selection patterns into OID lists */
-		convert_patterns_to_oids();
 
 //		if(!isChildSelected('t', table_include_oids) ||
 //		   !isChildSelected('T', table_exclude_oids))
@@ -521,12 +526,6 @@ bool startTransactionAndLock(PGconn* pMasterConn)
 	PQclear(pRes);
     pRes = NULL;
 	resetPQExpBuffer(pQry);
-
-	/*
-	 * Process the schema and table include/exclude lists and determine the OIDs of the
-	 * tables to be dumped.
-	 */
-	progname = pszProgName;
 
 	/*
 	 * Now grab a lock on pg_class on the master to avoid colliding with concurrent 
