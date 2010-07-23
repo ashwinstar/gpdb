@@ -1926,7 +1926,7 @@ class gpload:
         a = distkey.intersection(update_columns)
         if len(a):
             self.log(self.ERROR, 'A gpload control file processing error occurred. update_columns cannot reference column(s) ' +
-                        'in distribution key (%s)' % ', '.join(str(distkey)))
+                        'in distribution key (%s)' % ', '.join(list(distkey)))
 
         # remember, match_columns might be a superset of the key
         matchColumnList = self.getconfig('gpload:output:match_columns'
@@ -1940,7 +1940,7 @@ class gpload:
             self.log(self.ERROR, 
                     'match_columns (' + ', '.join(match_columns) + ') ' +
                     'must contain all attributes in distribution key '+
-                    '(' + ', '.join(str(distkey)) + ')')
+                    '(' + ', '.join(list(distkey)) + ')')
 
     def do_method_update(self):
         """Load the data in and update an existing table based upon it"""
@@ -1963,7 +1963,7 @@ class gpload:
 
         sql += "(%s)" % ','.join(cols)
         # make sure we set the correct distribution policy
-        distcols = set(self.getconfig('gpload:output:match_columns', list))
+        distcols = self.getconfig('gpload:output:match_columns', list)
         sql += " distributed by (%s)" % ', '.join(distcols)
 
         self.log(self.LOG, sql)
