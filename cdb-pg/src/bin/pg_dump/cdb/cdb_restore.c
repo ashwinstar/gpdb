@@ -210,7 +210,8 @@ static void usage(void)
 	//printf(("  -F, --format=c|t         specify backup file format\n"));
 	printf(("  -i, --ignore-version     proceed even when server version mismatches\n"));
 	//printf(("  -l, --list               print summarized TOC of the archive\n"));
-	printf(("  -v, --verbose            verbose mode\n"));
+	printf(("  -v, --verbose            verbose mode. adds verbose information to the\n"
+	        "                           per segment status files\n"));
 	printf(("  --help                   show this help, then exit\n"));
 	printf(("  --version                output version information, then exit\n"));
 

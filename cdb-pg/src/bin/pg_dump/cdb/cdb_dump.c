@@ -1165,7 +1165,8 @@ void help(const char *pszProgName)
 	//printf(("  -F, --format=c|t|p       output file format (custom, tar, plain text)\n"));
 	printf(("  -i, --ignore-version     proceed even when server version mismatches\n"
 			 "                           gp_dump version\n"));
-	printf(("  -v, --verbose            verbose mode\n"));
+	printf(("  -v, --verbose            verbose mode. adds verbose information to the\n"
+	        "                           per segment status files\n"));
 	//printf(("  -Z, --compress=0-9       compression level for compressed formats\n"));
 	printf(("  --help                   show this help, then exit\n"));
 	printf(("  --version                output version information, then exit\n"));
