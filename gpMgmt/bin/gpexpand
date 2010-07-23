@@ -42,6 +42,7 @@ GPDB_UTILITY=3
 SYSTEM_FILESPACE = 3052        # oid of the system filespace
 
 FILE_SPACES_INPUT_FILENAME_SUFFIX = ".fs"
+SEGMENT_CONFIGURATION_BACKUP_FILE = "gpexpand.gp_segment_configuration"
 FILE_SPACES_INPUT_FILE_LINE_1_PREFIX = "filespaceOrder"
 
 description = ("""
@@ -546,6 +547,12 @@ class GpExpandStatus():
                                self._master_mirror.getSegmentHostName(),
                                self._status_filename)
 
+    def remove_segment_configuration_backup_file(self):
+        """ Remove the segment configuration backup file """
+        self.logger.debug("Removing segment configuration backup file")
+        if self._gp_segment_configuration_backup != None and os.path.exists(self._gp_segment_configuration_backup) == True:
+           os.unlink(self._gp_segment_configuration_backup)
+
     def get_temp_dir(self):
         """Gets temp dir that was used during template creation"""
         return self._temp_dir
@@ -570,6 +577,10 @@ class GpExpandStatus():
         """Gets the filename of the gp_segment_configuration backup file
         created during expansion setup"""
         return self._gp_segment_configuration_backup
+
+    def set_gp_segment_configuration_backup(self, filename):
+        """Sets the filename of the gp_segment_configuration backup file"""
+        self._gp_segment_configuration_backup = filename
 
     def is_standby(self):
         """Returns True if running on standby"""
@@ -1174,8 +1185,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             GpStop('gpexpand rollback stop database', fast=True)
 
         self.statusLogger.remove_status_file()
-        if os.path.exists(options.master_data_directory + '/gpexpand.gp_segment_configuration'):
-            os.unlink(options.master_data_directory + '/gpexpand.gp_segment_configuration')
+        self.statusLogger.remove_segment_configuration_backup_file()
 
     def get_state(self):
         """Returns expansion state from status logger"""
@@ -1528,9 +1538,9 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         Starts the database and calls gp_add_segment() and gp_add_segment_mirror() to setup 
         the catalog tables and get the actual dbid and content id for the new segments. 
         """
-        gparray.dumpToFile(options.master_data_directory + '/gpexpand.gp_segment_configuration')
-        self.statusLogger.set_status('UPDATE_CATALOG_STARTED',
-                                     options.master_data_directory + '/gpexpand.gp_segment_configuration')
+        self.statusLogger.set_gp_segment_configuration_backup(options.master_data_directory + '/' + SEGMENT_CONFIGURATION_BACKUP_FILE)
+        gparray.dumpToFile(self.statusLogger.get_gp_segment_configuration_backup())
+        self.statusLogger.set_status('UPDATE_CATALOG_STARTED', self.statusLogger.get_gp_segment_configuration_backup())
 
         self.logger.info('Starting Greenplum Database in restricted mode')
 
@@ -1858,8 +1868,9 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             self.statusLogger.set_status('EXPANSION_PREPARE_STARTED', os.path.abspath(options.filename))
 
     def finalize_prepare(self):
-        """Removes the gpexpand status file"""
+        """Removes the gpexpand status file and segment configuration backup file"""
         self.statusLogger.remove_status_file()
+        self.statusLogger.remove_segment_configuration_backup_file()
 
     def setup_schema(self):
         """Used to setup the gpexpand schema"""
