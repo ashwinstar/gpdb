@@ -346,9 +346,9 @@ define BUILD_STEPS
 	@$(MAKE) set_scripts_version INSTLOC=$(CLIENTINSTLOC)
 	$(MAKE) connectivity INSTLOC=$(INSTLOC) CONNECTIVITYINSTLOC=$(CONNECTIVITYINSTLOC)
 	@$(MAKE) set_scripts_version INSTLOC=$(CONNECTIVITYINSTLOC)
-ifneq "$(findstring win,$(BLD_ARCH))" "win"
-	cd $(GPMGMT)/bin && $(MAKE) pygresql INSTLOC=$(INSTLOC)
-endif
+	if [ "$(findstring win,$(BLD_ARCH))" != "win" ]; then \
+	  cd $(GPMGMT)/bin && $(MAKE) pygresql INSTLOC=$(INSTLOC) ; \
+	fi
 	$(MAKE) loaders INSTLOC=$(INSTLOC) LOADERSINSTLOC=$(LOADERSINSTLOC)
 	@$(MAKE) set_scripts_version INSTLOC=$(LOADERSINSTLOC)
 	touch installcheck-good_SKIP
@@ -1091,10 +1091,10 @@ distclean :
 	@if [ -d client/odbc/src ]; then cd client/odbc/src; $(MAKE) clean; fi
 	@rm -f VERSION
 	@rm -f env.sh
-	
+
 distprep : $(ISCONFIG)
 	@cd $(GPPGDIR) && $(MAKE) distprep
-	
+
 #---------------------------------------------------------------------
 # Regression tests
 #---------------------------------------------------------------------
@@ -1124,7 +1124,7 @@ gccVersionCheck :
 	@echo "Checking GCC version" ; \
 	$(BLD_CC) --version > /dev/null 2>&1 ; \
 	if [ $$? -ne 0 ] ; then \
- 	    echo "Error running $(BLD_CC) --version" ; \
+	    echo "Error running $(BLD_CC) --version" ; \
 	    $(BLD_CC) --version ; \
 	    exit 1 ; \
 	fi
