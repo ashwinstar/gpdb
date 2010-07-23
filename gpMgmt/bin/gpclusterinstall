@@ -221,7 +221,7 @@ def addUserIfRequired():
         items = pool.getCompletedItems()
         for i in items:
             if i.results.rc:
-                logger.error("failed to add user %s to master host" % options.user)
+                logger.error("failed to add user %s to master host: %s" % (options.user, i.results.stderr))
                 return True
     except Exception, e:
         logger.error("%s" % e.__str__())
@@ -247,6 +247,7 @@ def addUserIfRequired():
                 hostname = hosts[address].hostname
                 uniquehosts[hostname].userExists = True
             else:
+                logger.error("%s: %s" % (address, i.results.stderr))
                 failedToAddUser.add(address)
                 
     except Exception, e:
@@ -304,7 +305,26 @@ def tarInstall():
         return True
 
     ###################################################################################
-    #raise Exception("POPULATE md5 INFO")
+    logger.info("md5 the install")
+    try:
+        cmd = Command("md5", "md5sum %s.tar" % binary_path)
+        pool.addCommand(cmd)
+        pool.join()
+        items = pool.getCompletedItems()
+        for i in items:
+            if i.results.rc:
+                logger.error("Failed to run command: %s" % cmd.cmdStr)
+                logger.error(i.results.stderr)
+                return True 
+            else:
+                fields = i.results.stdout.split()
+                if len(fields) != 2:
+                    raise Exception("Unexpected output from md5sum: %s" % i.results.stdout)
+                installation_info.install_md5 = fields[0].strip()
+                break
+    except Exception, e:
+        logger.error("%s" % e.__str__())
+        return True
 
     ###################################################################################
     logger.info("compress install")
@@ -340,6 +360,7 @@ def copyOverSoftware():
         items = pool.getCompletedItems()
         for i in items:
             if i.results.rc:
+                logger.error("%s: %s" % (i.remoteHost, i.results.stderr))
                 failures.add(i.remoteHost)
                 
     except Exception, e:
@@ -367,7 +388,7 @@ def copyOverSoftware():
         items = pool.getCompletedItems()
         for i in items:
             if i.results.rc:
-                print i
+                logger.error("%s: %s" % (i.remoteHost, i.results.stderr))
                 failures.add(i.remoteHost)
                 
     except Exception, e:
@@ -387,13 +408,14 @@ def copyOverSoftware():
     try:
         for k in uniquehosts.keys():
             uh = uniquehosts[k]
-            cmd = Command(uh.address, "gzip -d %s" % installation_info.install_binary_path, NAKED, uh.address, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
+            cmd = Command(uh.address, "gzip -f -d %s.tar.gz" % installation_info.install_binary_path, NAKED, uh.address, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
             pool.addCommand(cmd)
         pool.join()
         items = pool.getCompletedItems()
         for i in items:
             address = i.remoteHost
             if i.results.rc:
+                logger.error("%s: %s" % (address, i.results.stderr))
                 failures.add(address)
                 
     except Exception, e:
