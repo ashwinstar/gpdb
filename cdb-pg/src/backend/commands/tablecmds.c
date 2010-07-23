@@ -434,7 +434,7 @@ static List *atpxRenameList(Relation rel, PartitionNode *pNode,
 							int *skipped);
 static RangeVar *make_temp_table_name(Relation rel, BackendId id);
 static bool prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro,
-								List *opts, List **hidden_types);
+								List *opts, List **hidden_types, bool isTmpTableAo);
 static void ATPartitionCheck(Relation rel, AlterTableType typ, bool recursing);
 static Oid get_settable_tablespace_oid(char *tablespacename);
 
@@ -11553,7 +11553,8 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 	s->fromClause = list_make1(from_tbl);
 	wo = stdoptions_to_list(rel, opts);
 
-	pre_built = prebuild_temp_table(rel, tmprel, dist_clause, wo, hidden_types);
+	pre_built = prebuild_temp_table(rel, tmprel, dist_clause,
+									wo, hidden_types, opts->appendonly);
 	if (pre_built)
 	{
 		InsertStmt *i = makeNode(InsertStmt);
@@ -12039,10 +12040,13 @@ make_typname(Form_pg_attribute att, bool *built)
  * If we need to do it, but fail, issue an error. (See make_type.)
  *
  * Specifically for build_ctas_with_dist.
+ *
+ * Note that the caller should guarantee that isTmpTableAo has
+ * a value that matches 'opts'.
  */
 static bool
 prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
-					List **hidden_types)
+					List **hidden_types, bool isTmpTableAo)
 {
 	bool need_rebuild = false;
 	int attno = 0;
@@ -12059,14 +12063,14 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
 	}
 
 	/*
-	 * For AO tables with indexes, always use Create Table + Insert Into.
-	 * During Create Table phase, we determine whether to create the block
-	 * directory depending on whether the AO table has indexes. It is
+	 * If the new table is an AO table with indexes, always use
+	 * Create Table + Insert Into. During Create Table phase,
+	 * we determine whether to create the block directory
+	 * depending on whether the original table has indexes. It is
 	 * important to create the block directory to support the reindex
 	 * later. See MPP-9545 for more info.
 	 */
-	if ((RelationIsAoRows(rel) ||
-		 RelationIsAoCols(rel)) &&
+	if (isTmpTableAo &&
 		rel->rd_rel->relhasindex)
 		need_rebuild = true;
 
@@ -12086,8 +12090,7 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
 		cs->tablespacename = get_tablespace_name(rel->rd_rel->reltablespace);
 		cs->buildAoBlkdir = false;
 
-		if ((RelationIsAoRows(rel) ||
-			 RelationIsAoCols(rel)) &&
+		if (isTmpTableAo &&
 			rel->rd_rel->relhasindex)
 			cs->buildAoBlkdir = true;
 
@@ -12383,26 +12386,6 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
             }
 
 			lwith = nlist;
-
-			/* AO doesn't support indexes */
-			if (is_ao)
-			{
-				List *inds = RelationGetIndexList(rel);
-
-				if (inds)
-					ereport(ERROR,
-							(errcode(ERRCODE_GP_FEATURE_NOT_YET),
-							 errmsg("cannot convert relation \"%s\" to "
-									"append only storage as it has indexes",
-									RelationGetRelationName(rel)),
-							 errhint("Indexes are not supported on "
-									 "append only tables. "
-									 "To convert the table to "
-									 "append only storage, drop the "
-									 "index(es) on the table and "
-									 "try again."),
-											   errOmitLocation(true)));
-			}
 
 			/*
 			 * If there are other storage options, but REORGANIZE is not
