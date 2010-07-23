@@ -1600,7 +1600,7 @@ class gpload:
         count = 0
         self.into_columns = []
         self.into_columns_dict = dict()
-        resultList = self.db.query(queryString).dictresult()
+        resultList = self.db.query(queryString.encode('utf-8')).dictresult()
         while count < len(resultList):
             row = resultList[count]
             count += 1
@@ -1609,7 +1609,7 @@ class gpload:
                ct = 'bigint'
             elif ct == 'serial':
                ct = 'int4'
-            name = unicode(row['column_name'])
+            name = unicode(row['column_name'], 'utf-8')
             name = quote_ident(name)
             if unicode(row['has_sequence']) != unicode('f'):
                 has_seq = True
@@ -1755,8 +1755,8 @@ class gpload:
     def count_errors(self):
         if self.error_table and not self.options.D:
             # make sure we only get errors for our own instance
-            results = self.db.query('select count(*) from ' + self.error_table +
-                                " WHERE relname = 'ext_%s'" % self.name).getresult()
+            queryStr = 'select count(*) from ' + self.error_table + " WHERE relname = 'ext_%s'" % self.name
+            results = self.db.query(queryStr.encode('utf-8')).getresult()
             return (results[0])[0]
         return notice_processor(self)
 
