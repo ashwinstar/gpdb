@@ -125,13 +125,13 @@ OPTIONS
  Specifies the name of a configuration file that has information 
  about which failed segments to recover, and where to recover them. 
  Each line in the file is in the following format. Note that you 
- only need to specify filespaceOrder if your system has multiple 
- filespaces configured. If your system does not have additional 
+ only need to specify a name for filespaceOrder if your system has 
+ multiple filespaces configured. If your system does not have additional 
  filespaces configured besides the default pg_system filespace, 
- this file will only have one location per segment (for the 
- default data directory filespace, pg_system). pg_system does 
- not need to be listed in the filespaceOrder line. It will 
- always be the first <fselocation> listed after <replication_port>.
+ this file will only have one location per segment (for the default 
+ filespace, pg_system). pg_system does not need to be listed in the 
+ filespaceOrder line. It will always be the first <fselocation> listed 
+ after <replication_port>.
 
   filespaceOrder=[<filespace1_name>[,<filespace2_name>,...]
   <failed_host_name>:<port>:<fselocation> [<recovery_host_address>:<port>:<replication_port>:<fselocation>[:<fselocation>:...]]
@@ -182,7 +182,7 @@ OPTIONS
    <filespace2_name>=<filespace2_fselocation>
    ...
  If your system does not have additional filespaces configured, 
- this file will only have one location per segment (for the 
+ this file will only have one location (for the 
  default data directory filespace, pg_system). These file 
  system locations must exist on all segment hosts in the 
  array and have sufficient disk space to accommodate 
