@@ -62,7 +62,7 @@ detailed configuration file using the -i option. This is useful if
 you want your mirror segments on a completely different set of hosts 
 than your primary segments. The format of the mirror configuration file is:
 
-filespaceOrder=[<filespace1_fsname>[,<filespace2_fsname>,...]
+filespaceOrder=[<filespace1_fsname>[:<filespace2_fsname>:...]
 mirror<content>=<content>:<address>:<port>:<mir_replication_port>:<pri_replication_port>:<fselocation>[:<fselocation>:...]
 
 For example (if you do not have additional filespaces configured 
