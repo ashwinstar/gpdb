@@ -15,7 +15,7 @@ try:
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gplog import get_default_logger, setup_tool_logging
     from gppylib.commands.unix import getLocalHostname, getUserName
-    from gppylib.commands.base import WorkerPool, Command, NakedExecutionPasswordMap, NAKED
+    from gppylib.commands.base import WorkerPool, Command, NakedExecutionPasswordMap, NakedExecutionInfo, NAKED
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -39,6 +39,7 @@ class InstallationInfo:
         self.install_binary_path = binary_path                  # /data/release-4.0
         self.install_binary_dir_location = binary_dir_location  # /data
         self.install_binary_dir_name = binary_dir_name          # release-4.0
+        self.install_md5 = None
 
     def debugStr(self):
         return "link_path %s\nbinary_path %s\nbinary_dir_location %s\nbinary_dir_name %s" % (self.install_link_path, self.install_binary_path, self.install_binary_dir_location, self.install_binary_dir_name)
@@ -150,7 +151,7 @@ def dedupeHosts():
 
     try:
         for host in hosts.keys():
-            cmd = Command(host, "hostname", NAKED, host, passwordMap=passwordMap)
+            cmd = Command(host, "hostname", NAKED, host, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
             pool.addCommand(cmd)
 
         pool.join()
@@ -184,7 +185,7 @@ def checkUsernames():
     try:
         for k in uniquehosts.keys():
             uh = uniquehosts[k]
-            cmd = Command(uh.address, "id %s" % options.user, NAKED, uh.address, passwordMap=passwordMap)
+            cmd = Command(uh.address, "id %s" % options.user, NAKED, uh.address, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
             pool.addCommand(cmd)
         pool.join()
         items = pool.getCompletedItems()
@@ -202,9 +203,31 @@ def checkUsernames():
 # True is an error
 def addUserIfRequired():
 
+    ###################################################################################
     logger.info("add user %s on master" % options.user)
-    raise Exception("ADD USER ON LOCAL HOST")
+    try:
+        cmd = Command("useradd", "useradd -m %s" % options.user)
+        pool.addCommand(cmd)
+        pool.join()
+        items = pool.getCompletedItems() # get the completed items but ignore them
+    except Exception, e:
+        logger.error("%s" % e.__str__())
+        return True
 
+    try:
+        cmd = Command("checkId", "id %s" % options.user)
+        pool.addCommand(cmd)
+        pool.join()
+        items = pool.getCompletedItems()
+        for i in items:
+            if i.results.rc:
+                logger.error("failed to add user %s to master host" % options.user)
+                return True
+    except Exception, e:
+        logger.error("%s" % e.__str__())
+        return True
+     
+    ###################################################################################
     logger.info("add user %s on cluster" % options.user)
 
     failedToAddUser = set() # set of address's where useradd failed
@@ -214,7 +237,7 @@ def addUserIfRequired():
             if uh.userExists:
                 continue
 
-            cmd = Command(uh.address, "useradd -m %s" % options.user, NAKED, uh.address, passwordMap=passwordMap)
+            cmd = Command(uh.address, "useradd -m %s" % options.user, NAKED, uh.address, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
             pool.addCommand(cmd)
         pool.join()
         items = pool.getCompletedItems()
@@ -254,7 +277,18 @@ def tarInstall():
     global installation_info
     installation_info = InstallationInfo(link_path, binary_path, binary_dir_location, binary_dir_name)
 
+    ###################################################################################
     logger.info("create tar of install")
+
+    try:
+        cmd = Command("rmtar", "rm -f %s.tar; rm -f %s.tar.gz" % (binary_path, binary_path))
+        pool.addCommand(cmd)
+        pool.join()
+        items = pool.getCompletedItems()
+    except Exception, e:
+        logger.error("%s" % e.__str__())
+        return True
+
     try:
         cmd = Command("tar", "tar -C %s -c -f %s.tar %s" % (binary_dir_location, binary_path, binary_dir_name))
         pool.addCommand(cmd)
@@ -269,6 +303,10 @@ def tarInstall():
         logger.error("%s" % e.__str__())
         return True
 
+    ###################################################################################
+    #raise Exception("POPULATE md5 INFO")
+
+    ###################################################################################
     logger.info("compress install")
     try:
         cmd = Command("gzip", "gzip %s.tar" % binary_path)
@@ -286,6 +324,102 @@ def tarInstall():
 
     return False
 
+# True is an error
+def copyOverSoftware():
+
+    failures = set()
+
+    ###################################################################################
+    logger.info("remote mkdir for software installation location")
+    try:
+        for k in uniquehosts.keys():
+            uh = uniquehosts[k]
+            cmd = Command(uh.address, "mkdir -p %s" % installation_info.install_binary_dir_location, NAKED, uh.address, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
+            pool.addCommand(cmd)
+        pool.join()
+        items = pool.getCompletedItems()
+        for i in items:
+            if i.results.rc:
+                failures.add(i.remoteHost)
+                
+    except Exception, e:
+        logger.error("%s" % e.__str__())
+        return True
+
+    if len(failures):
+        for h in failures:
+            logger.error("could not create directory %s on host %s" % (installation_info.install_binary_dir_location, h))
+        return True
+
+
+    ###################################################################################
+    logger.info("scp software to remote location")
+    failures.clear()
+
+    filename = installation_info.install_binary_path + ".tar.gz"
+    nakedExecutionInfo = NakedExecutionInfo(passwordMap, NakedExecutionInfo.SFTP_PUT, filename, filename)
+    try:
+        for k in uniquehosts.keys():
+            uh = uniquehosts[k]
+            cmd = Command(uh.address, None, NAKED, uh.address, nakedExecutionInfo=nakedExecutionInfo)
+            pool.addCommand(cmd)
+        pool.join()
+        items = pool.getCompletedItems()
+        for i in items:
+            if i.results.rc:
+                print i
+                failures.add(i.remoteHost)
+                
+    except Exception, e:
+        logger.error("%s" % e.__str__())
+        return True
+
+    if len(failures):
+        for h in failures:
+            logger.error("failed to copy file %s to host %s" % (filename, h))
+        return True
+
+
+    ###################################################################################
+    logger.info("unzip software on remote location")
+    failures.clear()
+
+    try:
+        for k in uniquehosts.keys():
+            uh = uniquehosts[k]
+            cmd = Command(uh.address, "gzip -d %s" % installation_info.install_binary_path, NAKED, uh.address, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
+            pool.addCommand(cmd)
+        pool.join()
+        items = pool.getCompletedItems()
+        for i in items:
+            address = i.remoteHost
+            if i.results.rc:
+                failures.add(address)
+                
+    except Exception, e:
+        logger.error("%s" % e.__str__())
+        return True
+
+    if len(failures):
+        for h in failures:
+            logger.error("unzip of %s failed on host %s" % (installation_info.install_binary_path, h))
+        return True
+
+
+    ###################################################################################
+    logger.info("md5 check on remote location")
+    return True
+
+    ###################################################################################
+    logger.info("untar software on remote location")
+    return True
+
+    ###################################################################################
+    logger.info("create symlinks on remote location")
+    return True
+
+    return False
+
 
 def earlyExit():
     logger.fatal("early exit from gpclusterinstall")
@@ -297,14 +431,12 @@ def earlyExit():
     sys.exit(1)
 
 if (parseargs()):
-    earlyExit()
+    sys.exit(0)
 
 pool = WorkerPool()
 
 if (tarInstall()):
     earlyExit()
-
-earlyExit()
 
 if (readHostList()):
     earlyExit()
@@ -321,6 +453,7 @@ if (checkUsernames()):
 if (addUserIfRequired()):
     earlyExit()
 
-
+if (copyOverSoftware()):
+    earlyExit()
 
 earlyExit()
