@@ -421,14 +421,19 @@ faag: fileam:00002063:  ereport(ERROR,
 faag: fileam:00002064:  (errcode_for_file_access(), 
 faag: fileam:00002065:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
 aaaaa GP_IGNORE: uaad: url - ./backend/access/external/url.c
-uaad: url:00000627:  ereport(ERROR, 
-uaad: url:00000628:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-uaad: url:00000629:  errmsg("cannot start external table command: %m"), 
-uaad: url:00000630:  errdetail("Command: %s", url), 
-uaad: url:00000631:  errOmitLocation(true))); 
-uaad: url:00000992:  ereport(ERROR, 
-uaad: url:00000993:  (errcode(ERRCODE_INTERNAL_ERROR), 
-uaad: url:00000994:  errmsg_internal("external table type not implemented: %d", type))); 
+uaad: url:00000264:  ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE), 
+uaad: url:00000265:  errmsg("connection with gpfdist failed for %s. " 
+uaad: url:00000266:  "effective url: %s. %s", file->url, effective_url, 
+uaad: url:00000267:  (oserrno != 0 ? connmsg : "")), 
+uaad: url:00000268:  errOmitLocation(true))); 
+uaad: url:00000629:  ereport(ERROR, 
+uaad: url:00000630:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+uaad: url:00000631:  errmsg("cannot start external table command: %m"), 
+uaad: url:00000632:  errdetail("Command: %s", url), 
+uaad: url:00000633:  errOmitLocation(true))); 
+uaad: url:00000994:  ereport(ERROR, 
+uaad: url:00000995:  (errcode(ERRCODE_INTERNAL_ERROR), 
+uaad: url:00000996:  errmsg_internal("external table type not implemented: %d", type))); 
 aaaaa GP_IGNORE: gabc: ginarrayproc - ./backend/access/gin/ginarrayproc.c
 gabc: ginarrayproc:00000028:  ereport(ERROR, \ 
 gabc: ginarrayproc:00000029:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), \ 
@@ -4515,180 +4520,182 @@ caae: copy:00001206:  errmsg("relative path not allowed for COPY to file")));
 caae: copy:00001213:  ereport(ERROR, 
 caae: copy:00001214:  (errcode_for_file_access(), 
 caae: copy:00001215:  errmsg("could not open file \"%s\" for writing: %m", 
-caae: copy:00001216:  cstate->filename))); 
-caae: copy:00001225:  ereport(ERROR, 
-caae: copy:00001226:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-caae: copy:00001227:  errmsg("\"%s\" is a directory", cstate->filename))); 
-caae: copy:00001257:  ereport(ERROR, 
-caae: copy:00001258:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
-caae: copy:00001259:  errmsg("transaction is read-only"))); 
-caae: copy:00001263:  ereport(ERROR, 
-caae: copy:00001264:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-caae: copy:00001265:  errmsg("table \"%s\" does not have OIDs", 
-caae: copy:00001266:  RelationGetRelationName(cstate->rel)))); 
-caae: copy:00001283:  ereport(ERROR, 
-caae: copy:00001284:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-caae: copy:00001285:  errmsg("COPY (SELECT) WITH OIDS is not supported"), 
-caae: copy:00001286:  errOmitLocation(true))); 
-caae: copy:00001289:  ereport(ERROR, 
-caae: copy:00001290:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-caae: copy:00001291:  errmsg("COPY (SELECT INTO) is not supported"), 
-caae: copy:00001292:  errOmitLocation(true))); 
-caae: copy:00001376:  ereport(ERROR, 
-caae: copy:00001377:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-caae: copy:00001378:  errmsg("FORCE QUOTE column \"%s\" not referenced by COPY", 
-caae: copy:00001379:  NameStr(tupDesc->attrs[attnum - 1]->attname)))); 
-caae: copy:00001398:  ereport(ERROR, 
-caae: copy:00001399:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-caae: copy:00001400:  errmsg("FORCE NOT NULL column \"%s\" not referenced by COPY", 
-caae: copy:00001401:  NameStr(tupDesc->attrs[attnum - 1]->attname)))); 
-caae: copy:00001458:  ereport(ERROR, 
-caae: copy:00001459:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-caae: copy:00001460:  errmsg("cannot copy to view \"%s\"", 
-caae: copy:00001461:  RelationGetRelationName(cstate->rel)))); 
-caae: copy:00001463:  ereport(ERROR, 
-caae: copy:00001464:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-caae: copy:00001465:  errmsg("cannot copy to sequence \"%s\"", 
-caae: copy:00001466:  RelationGetRelationName(cstate->rel)))); 
-caae: copy:00001468:  ereport(ERROR, 
-caae: copy:00001469:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-caae: copy:00001470:  errmsg("cannot copy to non-table relation \"%s\"", 
-caae: copy:00001471:  RelationGetRelationName(cstate->rel)))); 
-caae: copy:00001475:  ereport(ERROR, 
-caae: copy:00001476:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-caae: copy:00001477:  errmsg("COPY single row error handling only available for distributed user tables"))); 
-caae: copy:00001493:  ereport(ERROR, 
-caae: copy:00001494:  (errcode_for_file_access(), 
-caae: copy:00001495:  errmsg("could not open file \"%s\" for reading: %m", 
-caae: copy:00001496:  cstate->filename))); 
-caae: copy:00001505:  ereport(ERROR, 
-caae: copy:00001506:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-caae: copy:00001507:  errmsg("\"%s\" is a directory", cstate->filename))); 
-caae: copy:00001583:  ereport(ERROR, 
-caae: copy:00001584:  (errcode_for_file_access(), 
-caae: copy:00001585:  errmsg("could not write to file \"%s\": %m", 
-caae: copy:00001586:  cstate->filename))); 
-caae: copy:00001661:  ereport(ERROR, 
-caae: copy:00001662:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-caae: copy:00001663:  errmsg("cannot copy from view \"%s\"", 
-caae: copy:00001664:  RelationGetRelationName(cstate->rel)), 
-caae: copy:00001665:  errhint("Try the COPY (SELECT ...) TO variant."), 
-caae: copy:00001666:  errOmitLocation(true))); 
-caae: copy:00001668:  ereport(ERROR, 
-caae: copy:00001669:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-caae: copy:00001670:  errmsg("cannot copy from sequence \"%s\"", 
-caae: copy:00001671:  RelationGetRelationName(cstate->rel)), 
-caae: copy:00001672:  errOmitLocation(true))); 
-caae: copy:00001674:  ereport(ERROR, 
-caae: copy:00001675:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-caae: copy:00001676:  errmsg("cannot copy from non-table relation \"%s\"", 
-caae: copy:00001677:  RelationGetRelationName(cstate->rel)), 
-caae: copy:00001678:  errOmitLocation(true))); 
-caae: copy:00001682:  ereport(ERROR, 
-caae: copy:00001683:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-caae: copy:00001684:  errmsg("cannot copy from external relation \"%s\"", 
-caae: copy:00001685:  RelationGetRelationName(cstate->rel)), 
-caae: copy:00001686:  errhint("Try the COPY (SELECT ...) TO variant."), 
-caae: copy:00001687:  errOmitLocation(true))); 
-caae: copy:00001727:  ereport(ERROR, 
-caae: copy:00001728:  (errcode_for_file_access(), 
-caae: copy:00001729:  errmsg("could not write to file \"%s\": %m", 
-caae: copy:00001730:  cstate->filename))); 
-caae: copy:00001961:  ereport(ERROR, 
-caae: copy:00001962:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00001963:  errmsg("%s", cdbcopy_err.data))); 
-caae: copy:00001965:  ereport(ERROR, 
-caae: copy:00001966:  (errcode(ERRCODE_IO_ERROR), 
-caae: copy:00001967:  errmsg("%s", cdbcopy_err.data))); 
-caae: copy:00003076:  ereport(ERROR, 
-caae: copy:00003077:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003078:  errmsg("null OID in COPY data."))); 
-caae: copy:00003110:  ereport(ERROR, 
-caae: copy:00003111:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003112:  errmsg("invalid OID in COPY data."))); 
-caae: copy:00003462:  ereport(ERROR, 
-caae: copy:00003463:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003464:  errmsg("%s", cdbcopy_err.data), 
-caae: copy:00003465:  errOmitLocation(true))); 
-caae: copy:00003467:  ereport(ERROR, 
-caae: copy:00003468:  (errcode(ERRCODE_IO_ERROR), 
-caae: copy:00003469:  errmsg("%s", cdbcopy_err.data), 
-caae: copy:00003470:  errOmitLocation(true))); 
-caae: copy:00003844:  ereport(ERROR, 
-caae: copy:00003845:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003846:  errmsg("null OID in COPY data."))); 
-caae: copy:00003874:  ereport(ERROR, 
-caae: copy:00003875:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003876:  errmsg("invalid OID in COPY data."))); 
-caae: copy:00004659:  ereport(ERROR, 
-caae: copy:00004660:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00004661:  errmsg("data line too long. likely due to invalid csv data"))); 
-caae: copy:00004791:  ereport(ERROR, 
-caae: copy:00004792:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00004793:  errmsg("data line too long. likely due to invalid csv data"))); 
-caae: copy:00004952:  ereport(ERROR, 
-caae: copy:00004953:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00004954:  errmsg("extra data after last expected column"), 
-caae: copy:00004955:  errOmitLocation(true))); 
-caae: copy:00005002:  ereport(ERROR, 
-caae: copy:00005003:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005004:  errmsg("missing data for column \"%s\"", 
-caae: copy:00005005:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
-caae: copy:00005006:  errOmitLocation(true))); 
-caae: copy:00005009:  ereport(ERROR, 
-caae: copy:00005010:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005011:  errmsg("missing data for column \"%s\", found empty data line", 
-caae: copy:00005012:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
-caae: copy:00005013:  errOmitLocation(true))); 
-caae: copy:00005020:  ereport(ERROR, 
-caae: copy:00005021:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005022:  errmsg("extra data after last expected column"), 
-caae: copy:00005023:  errOmitLocation(true))); 
-caae: copy:00005321:  ereport(ERROR, 
-caae: copy:00005322:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005323:  errmsg("extra data after last expected column"), 
-caae: copy:00005324:  errOmitLocation(true))); 
-caae: copy:00005334:  ereport(ERROR, 
-caae: copy:00005335:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005336:  errmsg("unterminated CSV quoted field"), 
-caae: copy:00005337:  errOmitLocation(true))); 
-caae: copy:00005352:  ereport(ERROR, 
-caae: copy:00005353:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005354:  errmsg("missing data for column \"%s\"", 
-caae: copy:00005355:  NameStr(attr[m + 1]->attname)), 
-caae: copy:00005356:  errOmitLocation(true))); 
-caae: copy:00005359:  ereport(ERROR, 
-caae: copy:00005360:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005361:  errmsg("missing data for column \"%s\", found empty data line", 
-caae: copy:00005362:  NameStr(attr[m + 1]->attname)), 
-caae: copy:00005363:  errOmitLocation(true))); 
-caae: copy:00005394:  ereport(ERROR, 
-caae: copy:00005395:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005396:  errmsg("extra data after last expected column"), 
-caae: copy:00005397:  errOmitLocation(true))); 
-caae: copy:00005880:  ereport(ERROR, 
-caae: copy:00005881:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-caae: copy:00005882:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
-caae: copy:00005883:  name, RelationGetRelationName(rel)), 
-caae: copy:00005884:  errOmitLocation(true))); 
-caae: copy:00005886:  ereport(ERROR, 
-caae: copy:00005887:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-caae: copy:00005888:  errmsg("column \"%s\" does not exist", 
-caae: copy:00005889:  name), 
-caae: copy:00005890:  errOmitLocation(true))); 
-caae: copy:00005894:  ereport(ERROR, 
-caae: copy:00005895:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
-caae: copy:00005896:  errmsg("column \"%s\" specified more than once", 
-caae: copy:00005897:  name))); 
-caae: copy:00005960:  ereport(ERROR, 
-caae: copy:00005961:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-caae: copy:00005962:  errmsg("COPY metadata not found. This probably means that there is a " 
-caae: copy:00005963:  "mixture of newline types in the data. Use the NEWLINE keyword " 
-caae: copy:00005964:  "in order to resolve this reliably."))); 
-caae: copy:00006615:  ereport(ERROR, 
-caae: copy:00006616:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caae: copy:00006617:  errmsg("internal error in CopySetEolType. Trying to set NEWLINE %s", 
-caae: copy:00006618:  cstate->eol_str))); 
+caae: copy:00001216:  cstate->filename), 
+caae: copy:00001217:  errOmitLocation(true))); 
+caae: copy:00001226:  ereport(ERROR, 
+caae: copy:00001227:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+caae: copy:00001228:  errmsg("\"%s\" is a directory", cstate->filename))); 
+caae: copy:00001258:  ereport(ERROR, 
+caae: copy:00001259:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
+caae: copy:00001260:  errmsg("transaction is read-only"))); 
+caae: copy:00001264:  ereport(ERROR, 
+caae: copy:00001265:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+caae: copy:00001266:  errmsg("table \"%s\" does not have OIDs", 
+caae: copy:00001267:  RelationGetRelationName(cstate->rel)))); 
+caae: copy:00001284:  ereport(ERROR, 
+caae: copy:00001285:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+caae: copy:00001286:  errmsg("COPY (SELECT) WITH OIDS is not supported"), 
+caae: copy:00001287:  errOmitLocation(true))); 
+caae: copy:00001290:  ereport(ERROR, 
+caae: copy:00001291:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+caae: copy:00001292:  errmsg("COPY (SELECT INTO) is not supported"), 
+caae: copy:00001293:  errOmitLocation(true))); 
+caae: copy:00001377:  ereport(ERROR, 
+caae: copy:00001378:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+caae: copy:00001379:  errmsg("FORCE QUOTE column \"%s\" not referenced by COPY", 
+caae: copy:00001380:  NameStr(tupDesc->attrs[attnum - 1]->attname)))); 
+caae: copy:00001399:  ereport(ERROR, 
+caae: copy:00001400:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+caae: copy:00001401:  errmsg("FORCE NOT NULL column \"%s\" not referenced by COPY", 
+caae: copy:00001402:  NameStr(tupDesc->attrs[attnum - 1]->attname)))); 
+caae: copy:00001459:  ereport(ERROR, 
+caae: copy:00001460:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+caae: copy:00001461:  errmsg("cannot copy to view \"%s\"", 
+caae: copy:00001462:  RelationGetRelationName(cstate->rel)))); 
+caae: copy:00001464:  ereport(ERROR, 
+caae: copy:00001465:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+caae: copy:00001466:  errmsg("cannot copy to sequence \"%s\"", 
+caae: copy:00001467:  RelationGetRelationName(cstate->rel)))); 
+caae: copy:00001469:  ereport(ERROR, 
+caae: copy:00001470:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+caae: copy:00001471:  errmsg("cannot copy to non-table relation \"%s\"", 
+caae: copy:00001472:  RelationGetRelationName(cstate->rel)))); 
+caae: copy:00001476:  ereport(ERROR, 
+caae: copy:00001477:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+caae: copy:00001478:  errmsg("COPY single row error handling only available for distributed user tables"))); 
+caae: copy:00001494:  ereport(ERROR, 
+caae: copy:00001495:  (errcode_for_file_access(), 
+caae: copy:00001496:  errmsg("could not open file \"%s\" for reading: %m", 
+caae: copy:00001497:  cstate->filename), 
+caae: copy:00001498:  errOmitLocation(true))); 
+caae: copy:00001507:  ereport(ERROR, 
+caae: copy:00001508:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+caae: copy:00001509:  errmsg("\"%s\" is a directory", cstate->filename))); 
+caae: copy:00001585:  ereport(ERROR, 
+caae: copy:00001586:  (errcode_for_file_access(), 
+caae: copy:00001587:  errmsg("could not write to file \"%s\": %m", 
+caae: copy:00001588:  cstate->filename))); 
+caae: copy:00001663:  ereport(ERROR, 
+caae: copy:00001664:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+caae: copy:00001665:  errmsg("cannot copy from view \"%s\"", 
+caae: copy:00001666:  RelationGetRelationName(cstate->rel)), 
+caae: copy:00001667:  errhint("Try the COPY (SELECT ...) TO variant."), 
+caae: copy:00001668:  errOmitLocation(true))); 
+caae: copy:00001670:  ereport(ERROR, 
+caae: copy:00001671:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+caae: copy:00001672:  errmsg("cannot copy from sequence \"%s\"", 
+caae: copy:00001673:  RelationGetRelationName(cstate->rel)), 
+caae: copy:00001674:  errOmitLocation(true))); 
+caae: copy:00001676:  ereport(ERROR, 
+caae: copy:00001677:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+caae: copy:00001678:  errmsg("cannot copy from non-table relation \"%s\"", 
+caae: copy:00001679:  RelationGetRelationName(cstate->rel)), 
+caae: copy:00001680:  errOmitLocation(true))); 
+caae: copy:00001684:  ereport(ERROR, 
+caae: copy:00001685:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+caae: copy:00001686:  errmsg("cannot copy from external relation \"%s\"", 
+caae: copy:00001687:  RelationGetRelationName(cstate->rel)), 
+caae: copy:00001688:  errhint("Try the COPY (SELECT ...) TO variant."), 
+caae: copy:00001689:  errOmitLocation(true))); 
+caae: copy:00001729:  ereport(ERROR, 
+caae: copy:00001730:  (errcode_for_file_access(), 
+caae: copy:00001731:  errmsg("could not write to file \"%s\": %m", 
+caae: copy:00001732:  cstate->filename))); 
+caae: copy:00001963:  ereport(ERROR, 
+caae: copy:00001964:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00001965:  errmsg("%s", cdbcopy_err.data))); 
+caae: copy:00001967:  ereport(ERROR, 
+caae: copy:00001968:  (errcode(ERRCODE_IO_ERROR), 
+caae: copy:00001969:  errmsg("%s", cdbcopy_err.data))); 
+caae: copy:00003078:  ereport(ERROR, 
+caae: copy:00003079:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003080:  errmsg("null OID in COPY data."))); 
+caae: copy:00003112:  ereport(ERROR, 
+caae: copy:00003113:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003114:  errmsg("invalid OID in COPY data."))); 
+caae: copy:00003464:  ereport(ERROR, 
+caae: copy:00003465:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003466:  errmsg("%s", cdbcopy_err.data), 
+caae: copy:00003467:  errOmitLocation(true))); 
+caae: copy:00003469:  ereport(ERROR, 
+caae: copy:00003470:  (errcode(ERRCODE_IO_ERROR), 
+caae: copy:00003471:  errmsg("%s", cdbcopy_err.data), 
+caae: copy:00003472:  errOmitLocation(true))); 
+caae: copy:00003846:  ereport(ERROR, 
+caae: copy:00003847:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003848:  errmsg("null OID in COPY data."))); 
+caae: copy:00003876:  ereport(ERROR, 
+caae: copy:00003877:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003878:  errmsg("invalid OID in COPY data."))); 
+caae: copy:00004661:  ereport(ERROR, 
+caae: copy:00004662:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00004663:  errmsg("data line too long. likely due to invalid csv data"))); 
+caae: copy:00004793:  ereport(ERROR, 
+caae: copy:00004794:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00004795:  errmsg("data line too long. likely due to invalid csv data"))); 
+caae: copy:00004954:  ereport(ERROR, 
+caae: copy:00004955:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00004956:  errmsg("extra data after last expected column"), 
+caae: copy:00004957:  errOmitLocation(true))); 
+caae: copy:00005004:  ereport(ERROR, 
+caae: copy:00005005:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005006:  errmsg("missing data for column \"%s\"", 
+caae: copy:00005007:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
+caae: copy:00005008:  errOmitLocation(true))); 
+caae: copy:00005011:  ereport(ERROR, 
+caae: copy:00005012:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005013:  errmsg("missing data for column \"%s\", found empty data line", 
+caae: copy:00005014:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
+caae: copy:00005015:  errOmitLocation(true))); 
+caae: copy:00005022:  ereport(ERROR, 
+caae: copy:00005023:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005024:  errmsg("extra data after last expected column"), 
+caae: copy:00005025:  errOmitLocation(true))); 
+caae: copy:00005323:  ereport(ERROR, 
+caae: copy:00005324:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005325:  errmsg("extra data after last expected column"), 
+caae: copy:00005326:  errOmitLocation(true))); 
+caae: copy:00005336:  ereport(ERROR, 
+caae: copy:00005337:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005338:  errmsg("unterminated CSV quoted field"), 
+caae: copy:00005339:  errOmitLocation(true))); 
+caae: copy:00005354:  ereport(ERROR, 
+caae: copy:00005355:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005356:  errmsg("missing data for column \"%s\"", 
+caae: copy:00005357:  NameStr(attr[m + 1]->attname)), 
+caae: copy:00005358:  errOmitLocation(true))); 
+caae: copy:00005361:  ereport(ERROR, 
+caae: copy:00005362:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005363:  errmsg("missing data for column \"%s\", found empty data line", 
+caae: copy:00005364:  NameStr(attr[m + 1]->attname)), 
+caae: copy:00005365:  errOmitLocation(true))); 
+caae: copy:00005396:  ereport(ERROR, 
+caae: copy:00005397:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005398:  errmsg("extra data after last expected column"), 
+caae: copy:00005399:  errOmitLocation(true))); 
+caae: copy:00005882:  ereport(ERROR, 
+caae: copy:00005883:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+caae: copy:00005884:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
+caae: copy:00005885:  name, RelationGetRelationName(rel)), 
+caae: copy:00005886:  errOmitLocation(true))); 
+caae: copy:00005888:  ereport(ERROR, 
+caae: copy:00005889:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+caae: copy:00005890:  errmsg("column \"%s\" does not exist", 
+caae: copy:00005891:  name), 
+caae: copy:00005892:  errOmitLocation(true))); 
+caae: copy:00005896:  ereport(ERROR, 
+caae: copy:00005897:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
+caae: copy:00005898:  errmsg("column \"%s\" specified more than once", 
+caae: copy:00005899:  name))); 
+caae: copy:00005962:  ereport(ERROR, 
+caae: copy:00005963:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+caae: copy:00005964:  errmsg("COPY metadata not found. This probably means that there is a " 
+caae: copy:00005965:  "mixture of newline types in the data. Use the NEWLINE keyword " 
+caae: copy:00005966:  "in order to resolve this reliably."))); 
+caae: copy:00006617:  ereport(ERROR, 
+caae: copy:00006618:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caae: copy:00006619:  errmsg("internal error in CopySetEolType. Trying to set NEWLINE %s", 
+caae: copy:00006620:  cstate->eol_str))); 
 aaaaa GP_IGNORE: daba: dbcommands - ./backend/commands/dbcommands.c
 daba: dbcommands:00000260:  ereport(ERROR, 
 daba: dbcommands:00000261:  (errcode_for_file_access(), 
