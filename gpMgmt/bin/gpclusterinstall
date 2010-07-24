@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 '''
-USAGE:   gpclusterinstall -f|--file HOSTFILE -u|--user USER 
+USAGE:   gpclusterinstall -f|--file HOSTFILE -u|--user USER  -p|--password PASSWORD
          where HOSTFILE lists all the hosts to install the software on
          where USER will be the user to install the software as. default is gpadmin
+         were PASSWORD will be set for the USER default is changeme
 '''
 
 import os, sys, re
@@ -10,7 +11,7 @@ import subprocess, warnings, logging, tarfile
 warnings.simplefilter('ignore', DeprecationWarning)
 
 try:
-    import paramiko, getpass
+    import paramiko, getpass, crypt
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gplog import get_default_logger, setup_tool_logging
@@ -85,6 +86,7 @@ def parseargs():
     parser.add_option('-h', '-?', '--help', action='store_true')
     parser.add_option('-f', '--file', type='string')
     parser.add_option('-u', '--user', type='string', default='gpadmin')
+    parser.add_option('-p', '--password', type='string', default='changeme')
     (options, args) = parser.parse_args()
 
     if options.help:
@@ -103,6 +105,10 @@ def parseargs():
 
     if not os.path.exists(options.file):
         logger.error("file %s does not exist" % options.file)
+        return True
+
+    if options.user == "root":
+        logger.error("can not install the software as user root")
         return True
 
     return False
@@ -309,6 +315,15 @@ def  simpleRemoteCommand(cmdStr, checkError=True):
         return True
 
     return False
+
+
+# True is an error
+def changeUserPassword():
+
+    cmdStr = 'usermod -p "%s" %s' % (crypt.crypt(options.password, options.password), options.user)
+    if (simpleRemoteCommand(cmdStr, True)):
+        return True
+   
 
 # True is an error
 def tarInstall():
@@ -525,6 +540,9 @@ if (checkUsernames()):
     earlyExit()
 
 if (addUserIfRequired()):
+    earlyExit()
+
+if (changeUserPassword()):
     earlyExit()
 
 if (copyOverSoftware()):
