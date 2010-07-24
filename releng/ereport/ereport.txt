@@ -17555,9 +17555,11 @@ baah: backend:00000567:  errcode(ERRCODE_INTERNAL_ERROR),
 baah: backend:00000568:  errmsg("Unable to initialize java session"))); 
 baah: backend:00000691:  ereport(ERROR, (errmsg("Failed to create Java VM"))); 
 aaaaa GP_IGNORE: eaaj: exception - ./pl/pljava/src/C/pljava/Exception.c
-eaaj: exception:00000064:  ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR), errmsg("Exception while generating exception: %s", buf.data))); 
-eaaj: exception:00000106:  ereport(WARNING, (errcode(errCode), errmsg("Exception while generating exception: %s", buf))); 
-eaaj: exception:00000134:  ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR), errmsg("Exception while generating exception: %s", buf))); 
+eaaj: exception:00000064:  ereport(WARNING, 
+eaaj: exception:00000065:  (errcode(ERRCODE_INTERNAL_ERROR), 
+eaaj: exception:00000066:  errmsg("Exception while generating exception: %s", buf.data))); 
+eaaj: exception:00000108:  ereport(WARNING, (errcode(errCode), errmsg("Exception while generating exception: %s", buf))); 
+eaaj: exception:00000136:  ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR), errmsg("Exception while generating exception: %s", buf))); 
 aaaaa GP_IGNORE: faai: function - ./pl/pljava/src/C/pljava/Function.c
 faai: function:00000185:  ereport(ERROR, ( 
 faai: function:00000186:  errcode(ERRCODE_SYNTAX_ERROR), 
