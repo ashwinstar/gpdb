@@ -261,9 +261,11 @@ check_response(URL_FILE *file, int *rc, const char **response_string)
 							 (int) oserrno, strerror((int)oserrno));
 			}
 			
-			elog(ERROR, "connection with gpfdist failed for %s. "
-						"effective url: %s. %s", file->url, effective_url,
-						(oserrno != 0 ? connmsg : ""));
+			ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE),
+							errmsg("connection with gpfdist failed for %s. "
+									"effective url: %s. %s", file->url, effective_url,
+									(oserrno != 0 ? connmsg : "")),
+						    errOmitLocation(true)));
 		}
 		else
 		{
