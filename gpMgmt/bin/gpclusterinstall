@@ -6,18 +6,21 @@ USAGE:   gpclusterinstall -f|--file HOSTFILE -u|--user USER  -p|--password PASSW
          were PASSWORD will be set for the USER default is changeme
 
          where COMMAND_OPTIONS list a subset of commands to be run from the list below.  The default is all commands.
-            t -- TAR and ZIP INSTALL LOCALLY
             u -- add user 
             p -- change password
-            s -- copy over software to machines in cluster
+            c -- chown software on master host
+            s -- tar, zip and copy over software to machines in cluster
+            E -- exchange keys for root
+            e -- exchange keys for user
 '''
 
 import os, sys, re
 import subprocess, warnings, logging, tarfile
 warnings.simplefilter('ignore', DeprecationWarning)
+sys.path.append(sys.path[0] + '/lib')
 
 try:
-    import paramiko, getpass, crypt
+    import paramiko, getpass, crypt, pexpect
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gplog import get_default_logger, setup_tool_logging
@@ -40,7 +43,7 @@ pool = None
 gphome = None
 installation_info = None
 commands = set() # selected commands
-validCommands = set(['t', 'u', 'p', 's']) # valid command types
+validCommands = set(['u', 'p', 'c', 's', 'e', 'E']) # valid command types
 
 class InstallationInfo:
     def __init__(self, link_name, binary_path, binary_dir_location, binary_dir_name):
@@ -126,7 +129,22 @@ def parseargs():
             commands.add(options.commands[i])
     if len(commands) == 0:
         commands = validCommands
-    
+
+    location = os.path.abspath(gphome)
+    if os.path.islink(location):
+        link_name = os.path.split(location)[1]
+        binary_path = os.path.realpath(location)
+        (binary_dir_location, binary_dir_name) = os.path.split(binary_path)
+    else:
+        link_name = None
+        binary_path = location
+
+    (binary_dir_location, binary_dir_name) = os.path.split(binary_path)
+ 
+    global installation_info
+    installation_info = InstallationInfo(link_name, binary_path, binary_dir_location, binary_dir_name)
+    logger.info("Installation Info:\n" + installation_info.debugStr())
+ 
     return False
 
 # True is an error
@@ -286,6 +304,7 @@ def addUserIfRequired():
 
 # True is an error
 def  simpleLocalCommand(cmdStr, checkError=True):
+    logger.info(cmdStr)
     try:
         cmd = Command("simpleLocalCommand", cmdStr)
         pool.addCommand(cmd)
@@ -334,11 +353,26 @@ def  simpleRemoteCommand(cmdStr, checkError=True):
 
 
 # True is an error
+def chownMasterSoftware():
+
+    ###################################################################################
+    if installation_info.install_link_name:
+
+        cmdStr = "chown -R %s:%s %s/%s" % (options.user, options.user, installation_info.install_binary_dir_location, installation_info.install_link_name)
+        if (simpleLocalCommand(cmdStr, True)):
+            return True
+
+    ###################################################################################
+    cmdStr = "chown -R %s:%s %s" % (options.user, options.user, installation_info.install_binary_path)
+    if (simpleLocalCommand(cmdStr, True)):
+        return True
+ 
+
+# True is an error
 def changeUserPassword():
 
     cmdStr = 'usermod -p "%s" %s' % (crypt.crypt(options.password, options.password), options.user)
 
-    logger.info("change user %s password on master" % options.user)
     if (simpleLocalCommand(cmdStr, False)):
         return True
 
@@ -346,40 +380,21 @@ def changeUserPassword():
     if (simpleRemoteCommand(cmdStr, True)):
         return True
    
-
 # True is an error
-def tarInstall():
+def copyOverSoftware():
 
-    location = os.path.split(os.path.expanduser(gphome))[0]
-    if os.path.islink(location):
-        link_name = os.path.split(location)[1]
-        binary_path = os.path.realpath(location)
-    else:
-        link_name = None
-        binary_path = location
-
-    components = os.path.split(binary_path)
-    binary_dir_location = components[0]
-    binary_dir_name = components[1]
-
-    global installation_info
-    installation_info = InstallationInfo(link_name, binary_path, binary_dir_location, binary_dir_name)
-    
     ###################################################################################
-    logger.info("create tar of install")
-
-    cmdStr = "rm -f %s.tar; rm -f %s.tar.gz" % (binary_path, binary_path)
+    cmdStr = "rm -f %s.tar; rm -f %s.tar.gz" % (installation_info.install_binary_path, installation_info.install_binary_path)
     if (simpleLocalCommand(cmdStr, False)):
         return True
 
-    cmdStr = "tar -C %s -c -f %s.tar %s" % (binary_dir_location, binary_path, binary_dir_name)
+    cmdStr = "tar -C %s -c -f %s.tar %s" % (installation_info.install_binary_dir_location, installation_info.install_binary_path, installation_info.install_binary_dir_name)
     if (simpleLocalCommand(cmdStr, False)):
         return True
 
     ###################################################################################
-    logger.info("md5 the install")
     try:
-        cmd = Command("md5", "md5sum %s.tar" % binary_path)
+        cmd = Command("md5", "md5sum %s.tar" % installation_info.install_binary_path)
         pool.addCommand(cmd)
         pool.join()
         items = pool.getCompletedItems()
@@ -399,16 +414,11 @@ def tarInstall():
         return True
 
     ###################################################################################
-    logger.info("compress install")
 
-    cmdStr = "gzip %s.tar" % binary_path
+    cmdStr = "gzip %s.tar" % installation_info.install_binary_path
     if (simpleLocalCommand(cmdStr, False)):
         return True
 
-    return False
-
-# True is an error
-def copyOverSoftware():
 
     ###################################################################################
     logger.info("remote mkdir for software installation location")
@@ -516,6 +526,11 @@ def copyOverSoftware():
         if (simpleRemoteCommand(cmdStr, True)):
             return True
 
+        logger.info("chown link on remote location")
+        cmdStr = "chown -R %s:%s %s/%s" % (options.user, options.user, installation_info.install_binary_dir_location, installation_info.install_link_name)
+        if (simpleRemoteCommand(cmdStr, True)):
+            return True
+
     ###################################################################################
     logger.info("chown install on remote location")
     cmdStr = "chown -R %s:%s %s" % (options.user, options.user, installation_info.install_binary_path)
@@ -523,12 +538,121 @@ def copyOverSoftware():
         return True
 
     ###################################################################################
-    logger.info("chown link on remote location")
-    cmdStr = "chown -R %s:%s %s/%s" % (options.user, options.user, installation_info.install_binary_dir_location, installation_info.install_link_name)
-    if (simpleRemoteCommand(cmdStr, True)):
+    return False
+
+
+# True is an error
+def interactiveCommand(cmdStr):
+
+    try:
+        p = subprocess.Popen(cmdStr, shell=True, executable="/bin/bash")
+        sts = os.waitpid(p.pid, 0)[1]
+        if sts:
+            logger.error("error on cmd: %s" % cmdStr)
+    except Exception, e:
+        logger.error("Exception running cmd: %s" % cmdStr)
+        logger.error(e.__str__())
+        return True
+        
+    return False
+ 
+# True is an error
+def exchangeKeysUser():
+
+    ###################################################################################
+    logger.info("exchange ssh keys for user %s" % options.user)
+
+    done = False
+    badPassword = False
+    child = None
+    cmdStr = None
+
+    try:
+        cmdStr = 'su %s -c "gpssh-exkeys -f %s"' % (options.user, options.file)
+        child = pexpect.spawn(cmdStr)
+
+        index = 0
+        while 1:
+            index = child.expect(["password", "bad", pexpect.EOF, pexpect.TIMEOUT])
+            if index == 0:
+                child.sendline(options.password)
+                continue
+            if index == 1:
+                badPassword = True
+                break
+            if index == 2:
+                done = True
+                break
+            if index == 3:
+                logger.error("Timeout running command: %s" % cmdStr)
+                return True
+                break
+
+    except Exception, e:
+        logger.error("Exception running cmd: %s" % cmdStr)
+        logger.error(e.__str__())
         return True
 
-    return False
+    if done:
+        child.close()
+        if child.exitstatus:
+            logger.error("Cmd '%s' failed with error code %s" % (cmdStr, child.exitstatus))
+            return True
+        else:
+            return False
+
+    # using the supplied password did not work... lets try again in interactive mode
+    return interfactiveCommand(cmdStr)
+   
+# True is an error
+def exchangeKeysRoot():
+    ###################################################################################
+    logger.info("exchange ssh keys for user root")
+
+    rootPasswords = list(passwordMap.unique_passwords)
+
+    child = None
+    cmdStr = None
+    passwordIndex = 0
+
+    try:
+        cmdStr = 'gpssh-exkeys -f %s' % options.file
+        child = pexpect.spawn(cmdStr)
+
+        index = 0
+        while 1:
+            index = child.expect(["password", "bad", pexpect.EOF, pexpect.TIMEOUT])
+            if index == 0:
+                passwordIndex = 0
+                child.sendline(rootPasswords[passwordIndex])
+                continue
+            if index == 1:
+                passwordIndex += 1
+                if passwordIndex >= len(rootPasswords):
+                    raise Exception("could not determine root password on all machines")
+                child.sendline(rootPasswords[passwordIndex])
+                continue
+            if index == 2:
+                break
+            if index == 3:
+                logger.error("Timeout running command: %s" % cmdStr)
+                return True
+                break
+
+    except Exception, e:
+        logger.error("Error running cmd: %s" % cmdStr)
+        logger.error(e.__str__())
+        return True
+
+    child.close()
+    if child.exitstatus:
+        logger.error("Cmd '%s' failed with error code %s" % (cmdStr, child.exitstatus))
+        return True
+    else:
+        return False
+
+    # using the supplied password did not work... lets try again in interactive mode
+    return interfactiveCommand(cmdStr)
 
 
 def earlyExit(error = False):
@@ -549,12 +673,6 @@ if (parseargs()):
 
 pool = WorkerPool()
 
-if 't' in commands:
-    if (tarInstall()):
-        earlyExit(True)
-    if len(commands) == 1:
-        earlyExit(False)
-
 if (readHostList()):
     earlyExit(True)
 
@@ -571,6 +689,10 @@ if 'u' in commands:
     if (addUserIfRequired()):
         earlyExit(True)
 
+if 'c' in commands:
+    if (chownMasterSoftware()):
+        earlyExit(True)
+
 if 'p' in commands:
     if (changeUserPassword()):
         earlyExit(True)
@@ -579,6 +701,12 @@ if 's' in commands:
     if (copyOverSoftware()):
         earlyExit(True)
 
-# install keys as user
+if 'E' in commands:
+    if (exchangeKeysRoot()):
+        earlyExit(True)
+
+if 'e' in commands:
+    if (exchangeKeysUser()):
+        earlyExit(True)
 
 earlyExit(False)
