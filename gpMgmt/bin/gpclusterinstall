@@ -1,9 +1,15 @@
 #!/usr/bin/env python
 '''
-USAGE:   gpclusterinstall -f|--file HOSTFILE -u|--user USER  -p|--password PASSWORD
+USAGE:   gpclusterinstall -f|--file HOSTFILE -u|--user USER  -p|--password PASSWORD -c|--commands [COMMAND_OPTIONS]
          where HOSTFILE lists all the hosts to install the software on
          where USER will be the user to install the software as. default is gpadmin
          were PASSWORD will be set for the USER default is changeme
+
+         where COMMAND_OPTIONS list a subset of commands to be run from the list below.  The default is all commands.
+            t -- TAR and ZIP INSTALL LOCALLY
+            u -- add user 
+            p -- change password
+            s -- copy over software to machines in cluster
 '''
 
 import os, sys, re
@@ -33,6 +39,8 @@ logging.getLogger('paramiko.transport').addHandler(nullFile)
 pool = None
 gphome = None
 installation_info = None
+commands = set() # selected commands
+validCommands = set(['t', 'u', 'p', 's']) # valid command types
 
 class InstallationInfo:
     def __init__(self, link_name, binary_path, binary_dir_location, binary_dir_name):
@@ -87,6 +95,7 @@ def parseargs():
     parser.add_option('-f', '--file', type='string')
     parser.add_option('-u', '--user', type='string', default='gpadmin')
     parser.add_option('-p', '--password', type='string', default='changeme')
+    parser.add_option('-c', '--commands', type='string', default='a')
     (options, args) = parser.parse_args()
 
     if options.help:
@@ -111,6 +120,13 @@ def parseargs():
         logger.error("can not install the software as user root")
         return True
 
+    global commands
+    for i in range(len(options.commands)):
+        if options.commands[i] in validCommands and options.commands[i] not in commands:
+            commands.add(options.commands[i])
+    if len(commands) == 0:
+        commands = validCommands
+    
     return False
 
 # True is an error
@@ -300,11 +316,11 @@ def  simpleRemoteCommand(cmdStr, checkError=True):
         pool.join()
         items = pool.getCompletedItems()
         if checkError:
-	        for i in items:
-	            if i.results.rc:
-	                logger.error("%s: %s" % (i.remoteHost, i.results.stderr))
-	                failures.add(i.remoteHost)
-	                
+            for i in items:
+                if i.results.rc:
+                    logger.error("%s: %s" % (i.remoteHost, i.results.stderr))
+                    failures.add(i.remoteHost)
+                    
     except Exception, e:
         logger.error("%s" % e.__str__())
         return True
@@ -321,6 +337,12 @@ def  simpleRemoteCommand(cmdStr, checkError=True):
 def changeUserPassword():
 
     cmdStr = 'usermod -p "%s" %s' % (crypt.crypt(options.password, options.password), options.user)
+
+    logger.info("change user %s password on master" % options.user)
+    if (simpleLocalCommand(cmdStr, False)):
+        return True
+
+    logger.info("change user %s password on cluster" % options.user)
     if (simpleRemoteCommand(cmdStr, True)):
         return True
    
@@ -333,6 +355,7 @@ def tarInstall():
         link_name = os.path.split(location)[1]
         binary_path = os.path.realpath(location)
     else:
+        link_name = None
         binary_path = location
 
     components = os.path.split(binary_path)
@@ -342,8 +365,6 @@ def tarInstall():
     global installation_info
     installation_info = InstallationInfo(link_name, binary_path, binary_dir_location, binary_dir_name)
     
-    logger.info(installation_info.debugStr())
-
     ###################################################################################
     logger.info("create tar of install")
 
@@ -489,11 +510,11 @@ def copyOverSoftware():
         return True
 
     ###################################################################################
-    logger.info("create symlinks on remote location")
-    cmdStr = "cd %s; ln -fs %s %s" % (installation_info.install_binary_dir_location, installation_info.install_binary_dir_name, installation_info.install_link_name)
-    if (simpleRemoteCommand(cmdStr, True)):
-        return True
-
+    if installation_info.install_link_name:
+        logger.info("create symlinks on remote location")
+        cmdStr = "cd %s; ln -fs %s %s" % (installation_info.install_binary_dir_location, installation_info.install_binary_dir_name, installation_info.install_link_name)
+        if (simpleRemoteCommand(cmdStr, True)):
+            return True
 
     ###################################################################################
     logger.info("chown install on remote location")
@@ -510,46 +531,54 @@ def copyOverSoftware():
     return False
 
 
-def earlyExit():
-    logger.fatal("early exit from gpclusterinstall")
+def earlyExit(error = False):
+    if error:
+        logger.fatal("early exit from gpclusterinstall")
     if pool:
         pool.join()
         pool.haltWork()
         pool.joinWorkers()
 
-    sys.exit(1)
+    if error:
+        sys.exit(1)
+    else:
+        sys.exit(0)
 
 if (parseargs()):
     sys.exit(0)
 
 pool = WorkerPool()
 
-if (tarInstall()):
-    earlyExit()
+if 't' in commands:
+    if (tarInstall()):
+        earlyExit(True)
+    if len(commands) == 1:
+        earlyExit(False)
 
 if (readHostList()):
-    earlyExit()
+    earlyExit(True)
 
 if (discoverPasswordMap()):
-    earlyExit()
+    earlyExit(True)
 
 if (dedupeHosts()):
-    earlyExit()
+    earlyExit(True)
 
-if (checkUsernames()):
-    earlyExit()
+if 'u' in commands:
+    if (checkUsernames()):
+        earlyExit(True)
 
-if (addUserIfRequired()):
-    earlyExit()
+    if (addUserIfRequired()):
+        earlyExit(True)
 
-if (changeUserPassword()):
-    earlyExit()
+if 'p' in commands:
+    if (changeUserPassword()):
+        earlyExit(True)
 
-if (copyOverSoftware()):
-    earlyExit()
+if 's' in commands:
+    if (copyOverSoftware()):
+        earlyExit(True)
 
 # install keys as user
 
-# change password for user
-
-earlyExit()
+earlyExit(False)
