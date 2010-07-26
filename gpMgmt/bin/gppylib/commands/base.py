@@ -30,6 +30,11 @@ from gppylib import gplog
 from gppylib import gpsubprocess
 from pygresql.pg import DB
 
+# paramiko prints deprecation warnings which are ugly to the end-user
+import warnings
+warnings.simplefilter('ignore', DeprecationWarning)
+import paramiko, getpass
+
 
 logger=gplog.get_default_logger()
 
@@ -287,17 +292,18 @@ class ExecutionError(Exception):
 LOCAL=1
 REMOTE=2
 RMI=3
+NAKED=4
 
 gExecutionContextFactory = None
 
 #
-# @param factory needs to have a createExecutionContext(self, execution_context_id, remoteHost, stdin) function
+# @param factory needs to have a createExecutionContext(self, execution_context_id, remoteHost, stdin, nakedExecutionInfo) function
 #
 def setExecutionContextFactory(factory):
     global gExecutionContextFactory
     gExecutionContextFactory = factory
 
-def createExecutionContext(execution_context_id,remoteHost,stdin):
+def createExecutionContext(execution_context_id,remoteHost,stdin, nakedExecutionInfo=None):
     if gExecutionContextFactory is not None:
         return gExecutionContextFactory.createExecutionContext(execution_context_id, remoteHost, stdin)
     elif execution_context_id == LOCAL:
@@ -308,6 +314,12 @@ def createExecutionContext(execution_context_id,remoteHost,stdin):
         return RemoteExecutionContext(remoteHost,stdin)
     elif execution_context_id == RMI:
         return RMIExecutionContext()
+    elif execution_context_id == NAKED:
+        if remoteHost is None:
+            raise Exception("Programmer Error.  Specified NAKED execution context but didn't provide a remoteHost")
+        if nakedExecutionInfo is None:
+            raise Exception("Programmer Error.  Specified NAKED execution context but didn't provide a NakedExecutionInfo")
+        return NakedExecutionContext(remoteHost, stdin, nakedExecutionInfo)
 
         
 class ExecutionContext():
@@ -365,7 +377,176 @@ class LocalExecutionContext(ExecutionContext):
         if self.proc:
             self.proc.cancel()
     
+##########################################################################
+# Naked Execution is used to run commands where ssh keys are not exchanged
+class NakedExecutionInfo:
+
+    SFTP_NONE = 0
+    SFTP_PUT  = 1
+    SFTP_GET  = 2
+
+    def __init__(self, passwordMap, sftp_operation = SFTP_NONE, sftp_remote = None, sftp_local = None):
+        self.passwordMap = passwordMap
+        self.sftp_operation = sftp_operation
+        self.sftp_remote = sftp_remote
+        self.sftp_local = sftp_local
+
+
+class NakedExecutionPasswordMap:
+    def __init__(self, hostlist):
+        self.hostlist = hostlist
+        self.mapping = dict()
+        self.unique_passwords = set()
+        self.complete = False
+
+    # this method throws exceptions on error to create a valid list
+    def discover(self):
+
+        for host in self.hostlist:
+            client = paramiko.SSHClient()
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+            # TRY NO PASSWORD
+            try:
+                client.connect(host)
+                self.mapping[host] = None
+                client.close()
+                continue # next host
+            except paramiko.AuthenticationException:
+                client.close()
+            except Exception, e:
+                raise Exception("Error trying to connect to " + host + " " + e.__str__())
+
+            # TRY EXISTING PASSWORDS
+            foundit = False
+            for passwd in self.unique_passwords:
+                try:
+                    client.connect(host, password=passwd)
+                    foundit = True
+                    self.mapping[host] = passwd
+                    client.close()
+                    break
+                except paramiko.AuthenticationException:
+                    client.close()
+                except Exception, e:
+                    raise Exception("Error trying to connect to " + host + " " + e.__str__())
+            if foundit:
+                continue
+
+            # ASK USER
+            foundit = False
+            for attempt in range(5):
+                try:
+                    passwd = getpass.getpass('  *** Enter password for %s: ' % (host), sys.stderr)
+                    client.connect(host, password=passwd)
+                    foundit = True
+                    self.mapping[host] = passwd
+                    if passwd not in self.unique_passwords:
+                        self.unique_passwords.add(passwd)
+                    client.close()
+                    break
+                except paramiko.AuthenticationException:
+                    client.close()
+                except Exception, e:
+                    raise Exception("Error trying to connect to " + host + " " + e.__str__())
+
+            if not foundit:
+                raise Exception("Did not get a valid password for host " + host)
+
+        if len(self.mapping.keys()) == len(self.hostlist) and len(self.hostlist) > 0:
+            self.complete = True
+
+
+
+class NakedExecutionContext(LocalExecutionContext):
+
+    def __init__(self,targetHost,stdin, nakedCommandInfo):
+
+        LocalExecutionContext.__init__(self, stdin)
+        self.targetHost=targetHost
+        self.passwordMap = nakedCommandInfo.passwordMap
+        self.sftp_operation = nakedCommandInfo.sftp_operation
+        self.sftp_remote = nakedCommandInfo.sftp_remote
+        self.sftp_local = nakedCommandInfo.sftp_local
+        self.client = None
+
+    def execute(self,cmd):
+
+        self.client = paramiko.SSHClient()
+        self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        try:
+            self.client.connect(self.targetHost, password=self.passwordMap.mapping[self.targetHost])
+        except paramiko.AuthenticationException:
+            self.client.close()
+            cmd.set_results(CommandResult(1,"","password validation on %s failed" % self.targetHost,False, False))
+            return
+        except Exception, e:
+            cmd.set_results(CommandResult(1,"","conection to host " + self.targetHost + " failed: " + e.__str__(),False, False))
+            return
+
+        if self.sftp_operation == NakedExecutionInfo.SFTP_NONE:
+            self.execute_ssh(cmd)
+        elif self.sftp_operation == NakedExecutionInfo.SFTP_PUT:
+            self.execute_sftp_put(cmd)
+        elif self.sftp_operation == NakedExecutionInfo.SFTP_GET:
+            self.execute_sftp_get(cmd)
+        else:
+            raise Exception("bad NakedExecutionInfo.sftp_operation")
+
+    def execute_ssh(self,cmd):
+
+        try:
+            stdin, stdout, stderr = self.client.exec_command(cmd.cmdStr)
+            rc  = stdout.channel.recv_exit_status() 
+            self.completed=True
+            cmd.set_results(CommandResult(rc,stdout.readlines(),stderr.readlines(),self.completed, self.halt))
+            stdin.close()
+            stdout.close()
+            stderr.close()
+        except Exception, e:
+            cmd.set_results(CommandResult(1,"",e.__str__(),False, False))
+        finally:
+            self.client.close()
+
+    def execute_sftp_put(self, cmd):
+
+        ftp = None
+        try:
+            ftp = self.client.open_sftp()
+            ftp.put(self.sftp_local, self.sftp_remote)
+            self.completed=True
+            cmd.set_results(CommandResult(0,"","",self.completed, self.halt))
+        except Exception, e:
+            cmd.set_results(CommandResult(1,"",e.__str__(),False, False))
+        finally:
+            ftp.close()
+            self.client.close()
+
+    def execute_sftp_get(self, cmd):
+
+        ftp = None
+        try:
+            ftp = self.client.open_sftp()
+            ftp.get(self.sftp_remote, self.sftp_local)
+            self.completed=True
+            cmd.set_results(CommandResult(0,"","",self.completed, self.halt))
+        except Exception, e:
+            cmd.set_results(CommandResult(1,"",e.__str__(),False, False))
+        finally:
+            ftp.close()
+            self.client.close()
+
+    def interrupt(self):
+        self.halt=True
+        self.client.close()
+        cmd.set_results(CommandResult(1,"","command on host " + self.targetHost + " interrupted ", False, False))
     
+    def cancel(self):
+        self.client.close()
+        cmd.set_results(CommandResult(1,"","command on host " + self.targetHost + " canceled ", False, False))
+
+
     
 class RemoteExecutionContext(LocalExecutionContext):
     
@@ -409,10 +590,10 @@ class Command:
     exec_context=None
     
     
-    def __init__(self,name,cmdStr,ctxt=LOCAL,remoteHost=None,stdin=None):
+    def __init__(self,name,cmdStr,ctxt=LOCAL,remoteHost=None,stdin=None,nakedExecutionInfo=None):
         self.name=name
         self.cmdStr=cmdStr        
-        self.exec_context=createExecutionContext(ctxt,remoteHost,stdin=stdin)
+        self.exec_context=createExecutionContext(ctxt,remoteHost,stdin=stdin,nakedExecutionInfo=nakedExecutionInfo)
         self.remoteHost=remoteHost
         
     def __str__(self):
