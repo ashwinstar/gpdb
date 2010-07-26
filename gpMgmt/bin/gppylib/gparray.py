@@ -1761,7 +1761,7 @@ class GpArray:
         expseg_index = content - seglen
         logger.debug('New segment index is %d' % expseg_index)
         if expseglen < expseg_index + 1:
-            logger.debug('Extending expansion array by %d' % (expseglen - expseg_index + 1))
+            logger.debug('Extending expansion array by %d' % (expseg_index - expseglen + 1))
             self.expansionSegments.extend([None] * (expseglen - expseg_index + 1))
             self.expansionSegments[expseg_index] = Segment()
 
