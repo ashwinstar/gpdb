@@ -19,7 +19,7 @@ Execution Options:
   -o | --output DIRECTORY    output directory for config file
 '''
 # ============================================================================
-__version__ = '$Revision: #1 $'
+__version__ = '$Revision$'
 
 # ============================================================================
 import sys, os

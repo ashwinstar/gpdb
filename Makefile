@@ -827,18 +827,23 @@ pvk : gccVersionCheck version GPROOTDEP
 SET_VERSION_SCRIPTS = \
 	bin/gpactivatestandby \
 	bin/gpaddmirrors \
+	bin/gpbitmapreindex \
 	bin/gpcheckos \
 	bin/gpcheckperf \
 	bin/gpcrondump \
 	bin/gpdbrestore \
 	bin/gpdeletesystem \
 	bin/gpexpand \
+	bin/gpfilespace \
 	bin/gpinitstandby \
 	bin/gpinitsystem \
+	bin/gpload.py \
 	bin/gplogfilter \
+	bin/gpmigrator \
 	bin/gprebuildsystem \
 	bin/gprecoverseg \
 	bin/gpscp \
+	bin/gpsetupsanfailover \
 	bin/gpsizecalc \
 	bin/gpskew \
 	bin/gpssh \
@@ -847,10 +852,12 @@ SET_VERSION_SCRIPTS = \
 	bin/gpstate \
 	bin/gpstop \
 	bin/gpsys1 \
-	bin/gpmigrator \
-	bin/gpfilespace \
-	bin/gpload.py \
 	bin/lib/gpcheckcat \
+	lib/python/gppylib/programs/clsAddMirrors.py \
+	lib/python/gppylib/programs/clsHostCacheLookup.py \
+	lib/python/gppylib/programs/clsInjectFault.py \
+	lib/python/gppylib/programs/clsRecoverSegment.py \
+	lib/python/gppylib/programs/clsSystemState.py \
 	$(NULL)
 
 set_scripts_version : 

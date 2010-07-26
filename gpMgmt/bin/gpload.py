@@ -1023,7 +1023,7 @@ class gpload:
                         argv = argv[1:]
                         seenq = True
                     elif argv[0]=='--version':
-                        sys.stderr.write("gpload version main build 16190\n")
+                        sys.stderr.write("gpload version $Revision$\n")
                         sys.exit(0)
                     elif argv[0]=='-v':
                         self.options.qv = self.LOG

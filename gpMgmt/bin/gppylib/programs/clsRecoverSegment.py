@@ -747,7 +747,7 @@ class GpRecoverSegmentProgram:
 
         parser = OptParser(option_class=OptChecker,
                     description=' '.join(description.split()),
-                    version='%prog version $Revision: #1 $')
+                    version='%prog version $Revision$')
         parser.setHelp(help)
 
         addStandardLoggingAndHelpOptions(parser, True)
