@@ -1761,9 +1761,10 @@ class GpArray:
         expseg_index = content - seglen
         logger.debug('New segment index is %d' % expseg_index)
         if expseglen < expseg_index + 1:
-            logger.debug('Extending expansion array by %d' % (expseg_index - expseglen + 1))
-            self.expansionSegments.extend([None] * (expseglen - expseg_index + 1))
-            self.expansionSegments[expseg_index] = Segment()
+            extendByNum = expseg_index - expseglen + 1
+            logger.debug('Extending expansion array by %d' % (extendByNum))
+            self.expansionSegments.extend([None] * (extendByNum))
+        self.expansionSegments[expseg_index] = Segment()
 
         seg = self.expansionSegments[expseg_index]
         if preferred_role == ROLE_PRIMARY:
