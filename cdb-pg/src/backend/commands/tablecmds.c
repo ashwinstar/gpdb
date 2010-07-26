@@ -179,6 +179,7 @@ typedef struct AlteredTableInfo
 	List	   *constraints;	/* List of NewConstraint */
 	List	   *newvals;		/* List of NewColumnValue */
 	bool		new_notnull;	/* T if we added new NOT NULL constraints */
+	bool		new_dropoids;	/* T if we dropped the OID column */
 	Oid			newTableSpace;	/* new tablespace; 0 means no change */
 	Oid			exchange_relid;	/* for EXCHANGE, the exchanged in rel */
 	/* Objects to rebuild after completing ALTER TYPE operations */
@@ -287,7 +288,8 @@ static void ATRewriteCatalogs(List **wqueue,
 							  int oidInfoCount, TableOidInfo * oidInfo, List **poidmap);
 static void ATAddToastIfNeeded(List **wqueue, 
 							   int oidInfoCount,TableOidInfo * oidInfo, List **poidmap);
-static void ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd);
+static void ATExecCmd(List **wqueue,
+					  AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd);
 static void ATRewriteTables(List **wqueue, 
 							int oidInfoCount, TableOidInfo * oidInfo, List **poidmap);
 static void ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap);
@@ -314,7 +316,7 @@ static void ATExecSetStatistics(Relation rel, const char *colName,
 					Node *newValue);
 static void ATExecSetStorage(Relation rel, const char *colName,
 				 Node *newValue);
-static void ATExecDropColumn(Relation rel, const char *colName,
+static void ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 				 DropBehavior behavior,
 				 bool recurse, bool recursing);
 static void ATExecAddIndex(AlteredTableInfo *tab, Relation rel,
@@ -380,7 +382,8 @@ static void ATPExecPartAdd(AlteredTableInfo *tab,
 						   Relation rel,
                            AlterPartitionCmd *pc,
 						   AlterTableType att);				/* Add */
-static void ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
+static void ATPExecPartAlter(List **wqueue, AlteredTableInfo *tab, 
+							 Relation rel,
                              AlterPartitionCmd *pc);		/* Alter */
 static void ATPExecPartCoalesce(Relation rel,
                                 AlterPartitionCmd *pc);		/* Coalesce */
@@ -5039,7 +5042,7 @@ ATRewriteCatalogs(List **wqueue,
 			{
 				AlterTableCmd *atc = lfirst(lcmd);
 
-				ATExecCmd(tab, rel, atc);
+				ATExecCmd(wqueue, tab, rel, atc);
 
 				/*
 				 * SET DISTRIBUTED BY() calls RelationForgetRelation(),
@@ -5176,7 +5179,7 @@ ATAddToastIfNeeded(List **wqueue,
  * ATExecCmd: dispatch a subcommand to appropriate execution routine
  */
 static void
-ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
+ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 {
 	switch (cmd->subtype)
 	{
@@ -5199,10 +5202,10 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 			ATExecSetStorage(rel, cmd->name, cmd->def);
 			break;
 		case AT_DropColumn:		/* DROP COLUMN */
-			ATExecDropColumn(rel, cmd->name, cmd->behavior, false, false);
+			ATExecDropColumn(wqueue, rel, cmd->name, cmd->behavior, false, false);
 			break;
 		case AT_DropColumnRecurse:		/* DROP COLUMN with recursion */
-			ATExecDropColumn(rel, cmd->name, cmd->behavior, true, false);
+			ATExecDropColumn(wqueue, rel, cmd->name, cmd->behavior, true, false);
 			break;
 		case AT_AddIndex:		/* ADD INDEX */
 			ATExecAddIndex(tab, rel, (IndexStmt *) cmd->def, false,
@@ -5287,7 +5290,7 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 						   cmd->subtype);
             break;
 		case AT_PartAlter:				/* Alter */
-            ATPExecPartAlter(tab, rel, (AlterPartitionCmd *) cmd->def);
+            ATPExecPartAlter(wqueue, tab, rel, (AlterPartitionCmd *) cmd->def);
             break;
 		case AT_PartCoalesce:			/* Coalesce */
             ATPExecPartCoalesce(rel, (AlterPartitionCmd *) cmd->def);
@@ -5404,9 +5407,9 @@ ATRewriteTables(List **wqueue,
 
 		/*
 		 * We only need to rewrite the table if at least one column needs to be
-		 * recomputed.
+		 * recomputed, or we are removing the OID column.
 		 */
-		if (tab->newvals != NIL)
+		if (tab->newvals != NIL || tab->new_dropoids)
 		{
 			/* Build a temporary relation and copy data */
 			char		NewHeapName[NAMEDATALEN];
@@ -5636,7 +5639,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 			needscan = true;
 	}
 
-	if (needscan)
+	if (newrel || needscan)
 	{
 		ExprContext *econtext;
 		Datum	   *values;
@@ -7150,12 +7153,10 @@ ATExecSetStorage(Relation rel, const char *colName, Node *newValue)
  * because we have to decide at runtime whether to recurse or not depending
  * on whether attinhcount goes to zero or not.	(We can't check this in a
  * static pre-pass because it won't handle multiple inheritance situations
- * correctly.)	Since DROP COLUMN doesn't need to create any work queue
- * entries for Phase 3, it's okay to recurse internally in this routine
- * without considering the work queue.
+ * correctly.)
  */
 static void
-ATExecDropColumn(Relation rel, const char *colName,
+ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 				 DropBehavior behavior,
 				 bool recurse, bool recursing)
 {
@@ -7283,7 +7284,7 @@ ATExecDropColumn(Relation rel, const char *colName,
 					pn)
 				{
 					/* Time to delete this child column, too */
-					ATExecDropColumn(childrel, colName, behavior, true, true);
+					ATExecDropColumn(wqueue, childrel, colName, behavior, true, true);
 				}
 				else
 				{
@@ -7335,12 +7336,14 @@ ATExecDropColumn(Relation rel, const char *colName,
 	performDeletion(&object, behavior);
 
 	/*
-	 * If we dropped the OID column, must adjust pg_class.relhasoids
+	 * If we dropped the OID column, must adjust pg_class.relhasoids and
+	 * tell Phase 3 to physically get rid of the column.
 	 */
 	if (attnum == ObjectIdAttributeNumber)
 	{
 		Relation	class_rel;
 		Form_pg_class tuple_class;
+		AlteredTableInfo *tab;
 
 		class_rel = heap_open(RelationRelationId, RowExclusiveLock);
 
@@ -7359,6 +7362,12 @@ ATExecDropColumn(Relation rel, const char *colName,
 		CatalogUpdateIndexes(class_rel, tuple);
 
 		heap_close(class_rel, RowExclusiveLock);
+		
+		/* Find or create work queue entry for this table */
+		tab = ATGetQueueEntry(wqueue, rel);
+		
+		/* Tell Phase 3 to physically remove the OID column */
+		tab->new_dropoids = true;
 	}
 
 	/* MPP-6929: metadata tracking */
@@ -18249,7 +18258,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 /* ALTER TABLE ... ALTER PARTITION */
 static void
-ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
+ATPExecPartAlter(List **wqueue, AlteredTableInfo *tab, Relation rel,
                  AlterPartitionCmd *pc)
 {
 	AlterPartitionId 	*pid		   = (AlterPartitionId *)pc->partid;
@@ -18407,7 +18416,7 @@ ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
 		bPartitionCmd = false;
 	}
 	/* execute the command */
-	ATExecCmd(tab, rel2, atc);
+	ATExecCmd(wqueue, tab, rel2, atc);
 
 	if (!bPartitionCmd)
 	{
