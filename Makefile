@@ -151,7 +151,13 @@ else
 CFLAGS_OPT=-O0
 endif
 
-DEBUGFLAGS="$(strip $(CFLAGS_INLINE) $(CFLAGS_OPT) -g3 $(TRACE_GCC_FLAG))"
+ifeq (on, ${GPDBGCOV})
+DEBUG_CFLAGS_OPT=
+else
+DEBUG_CFLAGS_OPT=-g3
+endif
+
+DEBUGFLAGS="$(strip $(CFLAGS_INLINE) $(CFLAGS_OPT) $(DEBUG_CFLAGS_OPT) $(TRACE_GCC_FLAG))"
 
 #---------------------------------------------------------------------
 # configure
