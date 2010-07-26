@@ -479,7 +479,7 @@ char * GetScanRelNameGpmon(Oid relid, char schema_rel_name[SCAN_REL_NAME_BUF_SIZ
 	{
 		char *relname = get_rel_name(relid);
 		char *schemaname = get_namespace_name(get_rel_namespace(relid));
-		snprintf(schema_rel_name, SCAN_REL_NAME_BUF_SIZE - 1, "%s.%s", schemaname, relname);
+		snprintf(schema_rel_name, SCAN_REL_NAME_BUF_SIZE, "%s.%s", schemaname, relname);
 		if (relname)
 			pfree(relname);
 		if (schemaname)
