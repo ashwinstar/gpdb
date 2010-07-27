@@ -39,7 +39,7 @@ all : devel
 .PHONY : test2 test3
 
 # Internal functions which are invoked by other rules within this makefile
-.PHONY : groupSession mkgpcc mkgpperfmon copydocs mgmtcopy pkgplr pkgpljava copylibs
+.PHONY : groupSession mkgpcc mkgpperfmon copydocs mgmtcopy pkgplr copylibs
 .PHONY : greenplum_path RECONFIG HOMEDEP GPROOTDEP GPROOTDEP GPROOTFAIL
 .PHONY : version gccVersionCheck pygres authlibs clients loaders connectivity
 
@@ -92,7 +92,6 @@ GPPERFMON=gpperfmon
 RELEASE=$(shell $(CURDIR)/releasetag)
 GPDIR=greenplum-db$(RELEASE)
 PLRDIR=greenplum-plr$(RELEASE)
-PLJAVADIR=greenplum-pljava$(RELEASE)
 CLIENTDIR=greenplum-clients$(RELEASE)
 CONNECTIVITYDIR=greenplum-connectivity$(RELEASE)
 LOADERSDIR=greenplum-loaders$(RELEASE)
@@ -293,7 +292,6 @@ define BUILD_STEPS
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
-	@$(MAKE) pkgpljava INSTLOC=$(INSTLOC)
 	@$(MAKE) clients INSTLOC=$(INSTLOC) CLIENTINSTLOC=$(CLIENTINSTLOC)
 	$(MAKE) set_scripts_version INSTLOC=$(CLIENTINSTLOC)
 	@$(MAKE) connectivity INSTLOC=$(INSTLOC) CONNECTIVITYINSTLOC=$(CONNECTIVITYINSTLOC)
@@ -967,33 +965,6 @@ pkgplr:
 	    echo "" ; \
 	    echo "`date` -- INFO: Creating .zip" ; \
 	    zip -q -r greenplum-plr-$(VERSION)-${MPP_ARCH}.zip $(PLRDIR) ; \
-	    echo "" ; \
-	fi
-
-pkgpljava:
-	@if [ ! -z "$(PLJAVADIR)" ]; then \
-	    echo "`date` -- INFO: Found a previous PL/Java package, removing it"; \
-	    rm -rf $(PLJAVADIR); \
-	fi
-	@if [ -f $(INSTLOC)/lib/postgresql/pljava.so ] && \
-        [ -f $(INSTLOC)/lib/postgresql/pljava.jar ] && \
-        [ -d $(INSTLOC)/share/postgresql/pljava ] ; then \
-	    echo "" ; \
-	    echo "`date` -- INFO: Found pljava.so, creating PL/Java package" ; \
-	    mkdir $(PLJAVADIR) ; \
-	    cp -p $(INSTLOC)/lib/postgresql/pljava.so \
-              $(INSTLOC)/lib/postgresql/pljava.jar \
-              $(INSTLOC)/share/postgresql/pljava/* $(PLJAVADIR)/ ; \
-	    if [ `uname -s` = 'SunOS' ]; then cp /releng/lib/libiconv.so.2 /releng/lib/amd64/libgcc_s.so.1 $(PLJAVADIR)/ ; fi ; \
-	    echo "" ; \
-	    echo "`date` -- INFO: Cleaning up $(INSTLOC) of pljava components" ; \
-	    rm -rf $(INSTLOC)/lib/postgresql/pljava.so \
-	           $(INSTLOC)/lib/postgresql/pljava.jar \
-	           $(INSTLOC)/lib/postgresql/java  \
-	           $(INSTLOC)/share/postgresql/pljava ; \
-	    echo "" ; \
-	    echo "`date` -- INFO: Creating .zip" ; \
-	    zip -q -r greenplum-pljava-$(VERSION)-${MPP_ARCH}.zip $(PLJAVADIR) ; \
 	    echo "" ; \
 	fi
 
