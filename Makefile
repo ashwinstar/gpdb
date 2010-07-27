@@ -997,19 +997,6 @@ pkgpljava:
 	    echo "" ; \
 	fi
 
-
-
-  /home/build/pulse2-agent/work/GPDB-4_0-opt/rhel5_x86_64/src/greenplum-db-devel/share/postgresql/pljava:                                             
-  used 88 available 48289536                                                                                                                          
-  drwxrwxr-x 2 build build  4096 Jul 26 18:12 .                                                                                                       
-  drwxrwxr-x 7 build build  4096 Jul 26 18:12 ..                                                                                                      
-  -rw-r--r-- 1 build build  1685 Jul 26 18:12 COPYRIGHT                                                                                               
-  -rw-r--r-- 1 build build 41706 Jul 26 18:12 examples.jar                                                                                            
-  -rw-r--r-- 1 build build 21543 Jul 26 18:12 examples.sql                                                                                            
-  -rw-r--r-- 1 build build   286 Jul 26 18:12 install.sql                                                                                             
-  -rw-r--r-- 1 build build    87 Jul 26 18:12 uninstall.sql                                                                                           
-
-
 BLD_LDD=ldd
 osx104_x86_LDD=otool -L
 ifneq "$($(BLD_ARCH)_LDD)" ""
