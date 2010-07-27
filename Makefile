@@ -39,7 +39,7 @@ all : devel
 .PHONY : test2 test3
 
 # Internal functions which are invoked by other rules within this makefile
-.PHONY : groupSession mkgpcc mkgpperfmon copydocs mgmtcopy pkgplr copylibs
+.PHONY : groupSession mkgpcc mkgpperfmon copydocs mgmtcopy pkgplr pkgpljava copylibs
 .PHONY : greenplum_path RECONFIG HOMEDEP GPROOTDEP GPROOTDEP GPROOTFAIL
 .PHONY : version gccVersionCheck pygres authlibs clients loaders connectivity
 
@@ -92,6 +92,7 @@ GPPERFMON=gpperfmon
 RELEASE=$(shell $(CURDIR)/releasetag)
 GPDIR=greenplum-db$(RELEASE)
 PLRDIR=greenplum-plr$(RELEASE)
+PLJAVADIR=greenplum-pljava$(RELEASE)
 CLIENTDIR=greenplum-clients$(RELEASE)
 CONNECTIVITYDIR=greenplum-connectivity$(RELEASE)
 LOADERSDIR=greenplum-loaders$(RELEASE)
@@ -292,6 +293,7 @@ define BUILD_STEPS
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
+	@$(MAKE) pkgpljava INSTLOC=$(INSTLOC)
 	@$(MAKE) clients INSTLOC=$(INSTLOC) CLIENTINSTLOC=$(CLIENTINSTLOC)
 	$(MAKE) set_scripts_version INSTLOC=$(CLIENTINSTLOC)
 	@$(MAKE) connectivity INSTLOC=$(INSTLOC) CONNECTIVITYINSTLOC=$(CONNECTIVITYINSTLOC)
@@ -967,6 +969,46 @@ pkgplr:
 	    zip -q -r greenplum-plr-$(VERSION)-${MPP_ARCH}.zip $(PLRDIR) ; \
 	    echo "" ; \
 	fi
+
+pkgpljava:
+	@if [ ! -z "$(PLJAVADIR)" ]; then \
+	    echo "`date` -- INFO: Found a previous PL/Java package, removing it"; \
+	    rm -rf $(PLJAVADIR); \
+	fi
+	@if [ -f $(INSTLOC)/lib/postgresql/pljava.so ] && \
+        [ -f $(INSTLOC)/lib/postgresql/pljava.jar ] && \
+        [ -d $(INSTLOC)/share/postgresql/pljava ] ; then \
+	    echo "" ; \
+	    echo "`date` -- INFO: Found pljava.so, creating PL/Java package" ; \
+	    mkdir $(PLRDIR) ; \
+	    cp -p $(INSTLOC)/lib/postgresql/pljava.so \
+              $(INSTLOC)/lib/postgresql/pljava.jar \
+              $(INSTLOC)/share/postgresql/pljava/* $(PLJAVADIR)/ ; \
+	    if [ `uname -s` = 'SunOS' ]; then cp /releng/lib/libiconv.so.2 /releng/lib/amd64/libgcc_s.so.1 $(PLRDIR)/ ; fi ; \
+	    echo "" ; \
+	    echo "`date` -- INFO: Cleaning up $(INSTLOC) of pljava components" ; \
+	    rm -rf $(INSTLOC)/share/postgresql/pljava ; \
+	    rm -rf $(INSTLOC)/lib/postgresql/pljava.so \
+               $(INSTLOC)/lib/postgresql/java ; \
+               $(INSTLOC)/lib/postgresql/pljava.jar ; \
+	    echo "" ; \
+	    echo "`date` -- INFO: Creating .zip" ; \
+	    zip -q -r greenplum-pljava-$(VERSION)-${MPP_ARCH}.zip $(PLRDIR) ; \
+	    echo "" ; \
+	fi
+
+
+
+  /home/build/pulse2-agent/work/GPDB-4_0-opt/rhel5_x86_64/src/greenplum-db-devel/share/postgresql/pljava:                                             
+  used 88 available 48289536                                                                                                                          
+  drwxrwxr-x 2 build build  4096 Jul 26 18:12 .                                                                                                       
+  drwxrwxr-x 7 build build  4096 Jul 26 18:12 ..                                                                                                      
+  -rw-r--r-- 1 build build  1685 Jul 26 18:12 COPYRIGHT                                                                                               
+  -rw-r--r-- 1 build build 41706 Jul 26 18:12 examples.jar                                                                                            
+  -rw-r--r-- 1 build build 21543 Jul 26 18:12 examples.sql                                                                                            
+  -rw-r--r-- 1 build build   286 Jul 26 18:12 install.sql                                                                                             
+  -rw-r--r-- 1 build build    87 Jul 26 18:12 uninstall.sql                                                                                           
+
 
 BLD_LDD=ldd
 osx104_x86_LDD=otool -L
