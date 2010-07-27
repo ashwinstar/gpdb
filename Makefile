@@ -980,11 +980,11 @@ pkgpljava:
         [ -d $(INSTLOC)/share/postgresql/pljava ] ; then \
 	    echo "" ; \
 	    echo "`date` -- INFO: Found pljava.so, creating PL/Java package" ; \
-	    mkdir $(PLRDIR) ; \
+	    mkdir $(PLJAVADIR) ; \
 	    cp -p $(INSTLOC)/lib/postgresql/pljava.so \
               $(INSTLOC)/lib/postgresql/pljava.jar \
               $(INSTLOC)/share/postgresql/pljava/* $(PLJAVADIR)/ ; \
-	    if [ `uname -s` = 'SunOS' ]; then cp /releng/lib/libiconv.so.2 /releng/lib/amd64/libgcc_s.so.1 $(PLRDIR)/ ; fi ; \
+	    if [ `uname -s` = 'SunOS' ]; then cp /releng/lib/libiconv.so.2 /releng/lib/amd64/libgcc_s.so.1 $(PLJAVADIR)/ ; fi ; \
 	    echo "" ; \
 	    echo "`date` -- INFO: Cleaning up $(INSTLOC) of pljava components" ; \
 	    rm -rf $(INSTLOC)/share/postgresql/pljava ; \
@@ -993,7 +993,7 @@ pkgpljava:
                $(INSTLOC)/lib/postgresql/pljava.jar ; \
 	    echo "" ; \
 	    echo "`date` -- INFO: Creating .zip" ; \
-	    zip -q -r greenplum-pljava-$(VERSION)-${MPP_ARCH}.zip $(PLRDIR) ; \
+	    zip -q -r greenplum-pljava-$(VERSION)-${MPP_ARCH}.zip $(PLJAVADIR) ; \
 	    echo "" ; \
 	fi
 
