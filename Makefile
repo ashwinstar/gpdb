@@ -987,10 +987,10 @@ pkgpljava:
 	    if [ `uname -s` = 'SunOS' ]; then cp /releng/lib/libiconv.so.2 /releng/lib/amd64/libgcc_s.so.1 $(PLJAVADIR)/ ; fi ; \
 	    echo "" ; \
 	    echo "`date` -- INFO: Cleaning up $(INSTLOC) of pljava components" ; \
-	    rm -rf $(INSTLOC)/share/postgresql/pljava ; \
 	    rm -rf $(INSTLOC)/lib/postgresql/pljava.so \
-               $(INSTLOC)/lib/postgresql/java ; \
-               $(INSTLOC)/lib/postgresql/pljava.jar ; \
+	           $(INSTLOC)/lib/postgresql/pljava.jar \
+	           $(INSTLOC)/lib/postgresql/java  \
+	           $(INSTLOC)/share/postgresql/pljava ; \
 	    echo "" ; \
 	    echo "`date` -- INFO: Creating .zip" ; \
 	    zip -q -r greenplum-pljava-$(VERSION)-${MPP_ARCH}.zip $(PLJAVADIR) ; \
