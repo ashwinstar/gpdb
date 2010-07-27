@@ -1764,7 +1764,8 @@ class GpArray:
             extendByNum = expseg_index - expseglen + 1
             logger.debug('Extending expansion array by %d' % (extendByNum))
             self.expansionSegments.extend([None] * (extendByNum))
-        self.expansionSegments[expseg_index] = Segment()
+        if self.expansionSegments[expseg_index] == None:
+           self.expansionSegments[expseg_index] = Segment()
 
         seg = self.expansionSegments[expseg_index]
         if preferred_role == ROLE_PRIMARY:
