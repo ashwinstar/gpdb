@@ -904,6 +904,8 @@ copydocs :
 	        echo "Copying postgresql contrib documentation" ; \
 		cp -r $(INSTLOC)/doc/postgresql/contrib/* $(INSTLOC)/docs/contrib ; \
 	    fi \
+	    echo "Copying $(BLD_TOP)/languages/PLJAVA/PLJAVA_README" ; \
+	    cp -p $(BLD_TOP)/languages/PLJAVA/PLJAVA_README $(INSTLOC)/share/postgresql/pljava ; \
 	fi
 	if [ -f BUILD_EDITION -a "`cat BUILD_EDITION`" = "Single-Node Edition" ]; then \
 	    cp $(GPDOCDIR)/pdf/SNE/GP*.pdf $(INSTLOC)/docs/; \
