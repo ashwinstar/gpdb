@@ -35,13 +35,16 @@ def create_db_conn():
       log.debug('connect to database user=%s password=%s host=%s port=%s database=%s' % (pguser,pgpass,pghost,pgport,pgdatabase))
       conn = pg8000.Connection(user=pguser, password=pgpass, host=pghost, port=pgport, database=pgdatabase)
   except pg8000.errors.InterfaceError:
-      log.debug('InterfaceError connecting to database')
+      log.msg('user %s: InterfaceError connecting to database' % pguser)
       conn = None
   except pg8000.errors.InternalError:
-      log.debug('InternalError connecting to database')
+      log.msg('user %s: InternalError connecting to database' % pguser)
+      conn = None
+  except pg8000.errors.NotSupportedError:
+      log.msg('user %s: NotSupportedError connecting to database.  Try using trust or md5.' % pguser)
       conn = None
   except:
-      log.debug('Error connecting to database')
+      log.debug('user %s: Error connecting to database' % pguser)
       conn = None
 
 def raise_db_error(text):
