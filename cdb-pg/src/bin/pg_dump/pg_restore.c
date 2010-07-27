@@ -391,7 +391,7 @@ usage(const char *progname)
 			 "                           output from this file\n"));
 	printf(_("  -n, --schema=NAME        restore only objects in this schema\n"));
 	printf(_("  -O, --no-owner           skip restoration of object ownership\n"));
-	printf(_("  -P, --function=NAME(args)\n"
+	printf(_("  -P, --function='NAME(args)'\n"
 			 "                           restore named function. name must be exactly\n"
 			 "                           as appears in the TOC, and inside single quotes\n"));
 	printf(_("  -s, --schema-only        restore only the schema, no data\n"));
