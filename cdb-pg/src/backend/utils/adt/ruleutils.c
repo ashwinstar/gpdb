@@ -656,7 +656,11 @@ pg_get_indexdef_worker(Oid indexrelid, int colno, bool showTblSpc,
 							ObjectIdGetDatum(indexrelid),
 							0, 0, 0);
 	if (!HeapTupleIsValid(ht_idx))
-		elog(ERROR, "cache lookup failed for index %u", indexrelid);
+	{
+		/* Was: elog(ERROR, "cache lookup failed for index %u", indexrelid); */
+		/* See: MPP-10387. */
+		return pstrdup("Not an index");
+	}
 	idxrec = (Form_pg_index) GETSTRUCT(ht_idx);
 
 	indrelid = idxrec->indrelid;
