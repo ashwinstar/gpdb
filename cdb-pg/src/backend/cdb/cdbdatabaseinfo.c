@@ -1016,7 +1016,7 @@ DatabaseInfo_HandleAppendOnly(
 					 aoEntry->majorversion,
 					 aoEntry->minorversion,
 					 (aoEntry->checksum ? "true" : "false"),
-					 aoEntry->compresstype,
+					 (aoEntry->compresstype ? aoEntry->compresstype : "NULL"),
 					 (aoEntry->columnstore ? "true" : "false"),
 					 aoEntry->segrelid,
 					 aoEntry->segidxid,
