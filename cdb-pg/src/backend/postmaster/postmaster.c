@@ -152,6 +152,8 @@
 #include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"
 
+#include "cdb/cdbfilerep.h"
+
 #ifdef EXEC_BACKEND
 #include "storage/spin.h"
 void SeqServerMain(int argc, char *argv[]);
@@ -1939,10 +1941,10 @@ ServerLoop(void)
          *
          * I think there may still be a race in which we are signaled between the completion of unblock and the sleep.
          */
-        if ( Shutdown == ImmediateShutdown ||
-             filerep_has_signaled_state_change ||
-             filerep_has_signaled_postmaster_reset_required ||
-             need_call_reaper )
+        if (Shutdown == ImmediateShutdown ||
+			filerep_has_signaled_state_change ||
+			filerep_has_signaled_postmaster_reset_required ||
+			need_call_reaper)
         {
             /* must set timeout each time; some OSes change it! */
             timeout.tv_sec = 0;
@@ -1986,18 +1988,30 @@ ServerLoop(void)
             selres = 0;
         }
 
+		/* Sanity check our global filespace data-directory on all segments */
+		if (GPIsSegmentDatabase())
+		{
+			struct stat st;
+
+			Assert(DataDir);
+			if (stat(DataDir, &st) != 0)
+			{
+				FileRep_SetState(FileRepStateFault);
+			}
+		}
+
 		/*
 		 * Block all signals until we wait again.  (This makes it safe for our
 		 * signal handlers to do nontrivial work.)
 		 */
 		PG_SETMASK(&BlockSig);
 
-		if ( Shutdown == ImmediateShutdown )
+		if (Shutdown == ImmediateShutdown)
         {
 		    ImmediateShutdownLoop();
         }
 
-        if ( filerep_has_signaled_postmaster_reset_required )
+        if (filerep_has_signaled_postmaster_reset_required)
         {
             filerep_has_signaled_postmaster_reset_required = false;
             HandleChildCrash(-1, -1, "a filerep subprocess");
@@ -2014,7 +2028,7 @@ ServerLoop(void)
 			do_reaper();
 		}
 
-		if ( filerep_has_signaled_state_change)
+		if (filerep_has_signaled_state_change)
 		{
 			NotifyProcessesOfFilerepStateChange();
 		}
@@ -2051,7 +2065,7 @@ ServerLoop(void)
 			}
 		}
 
-        if ( ! FatalError )
+        if (!FatalError)
         {
             /* only do primary/mirror transitions if we are NOT during process shutdown because of FatalError...
              *  we'll wait for shared memory reset to run them! */
