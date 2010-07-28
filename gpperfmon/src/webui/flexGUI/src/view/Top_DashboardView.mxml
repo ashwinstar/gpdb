@@ -394,8 +394,17 @@
 				<mx:itemRenderer>
 					<mx:Component>
 						<mx:VBox width="100%" height="100%" horizontalAlign="center">
-							<mx:Image source="{outerDocument.magGlass}" scaleContent="false" 
-									  click="outerDocument.clickQuery(data)"/>				
+							<!--
+							Comment#1
+							Vasu (Divami) [28 July, 2010] - Databinding doesn't happen when the dot operator or square brackets 
+							are used inside MXML value declarations involving '{}'. So, in order to avoid compiler warning, the
+							declaration is done after component initialization. Databinding still doesn't happen, but compiler
+							warning is avoided.
+							
+							I am presuming that the actual intent here was not to databind but just an assignment of value.
+							-->
+							<mx:Image initialize="im1.source=outerDocument.magGlass" scaleContent="false" 
+									  click="outerDocument.clickQuery(data)" id="im1"/>				
 						</mx:VBox>
 					</mx:Component>
 				</mx:itemRenderer>
@@ -422,8 +431,9 @@
 				<mx:itemRenderer>
 					<mx:Component>
 						<mx:VBox width="100%" height="100%" horizontalAlign="center">
-							<mx:Image source="{outerDocument.magGlass}" scaleContent="false" 
-									  click="outerDocument.clickQuery(data)"/>				
+							<!--Same as Comment#1-->
+							<mx:Image initialize="im2.source=outerDocument.magGlass" scaleContent="false" 
+									  click="outerDocument.clickQuery(data)" id="im2"/>				
 						</mx:VBox>
 					</mx:Component>
 				</mx:itemRenderer>
@@ -450,8 +460,9 @@
 				<mx:itemRenderer>
 					<mx:Component>
 						<mx:VBox width="100%" height="100%" horizontalAlign="center">
-							<mx:Image source="{outerDocument.magGlass}" scaleContent="false" 
-									  click="outerDocument.clickQuery(data)"/>				
+							<!--Same as Comment#1-->
+							<mx:Image initialize="im3.source=outerDocument.magGlass" scaleContent="false" 
+									  click="outerDocument.clickQuery(data)" id="im3"/>				
 						</mx:VBox>
 					</mx:Component>
 				</mx:itemRenderer>
@@ -478,8 +489,9 @@
 				<mx:itemRenderer>
 					<mx:Component>
 						<mx:VBox width="100%" height="100%" horizontalAlign="center">
-							<mx:Image source="{outerDocument.magGlass}" scaleContent="false" 
-									  click="outerDocument.clickQuery(data)"/>				
+							<!--Same as Comment#1-->
+							<mx:Image initialize="im4.source=outerDocument.magGlass" scaleContent="false" 
+									  click="outerDocument.clickQuery(data)" id="im4"/>				
 						</mx:VBox>
 					</mx:Component>
 				</mx:itemRenderer>
@@ -506,8 +518,8 @@
 				<mx:itemRenderer>
 					<mx:Component>
 						<mx:VBox width="100%" height="100%" horizontalAlign="center">
-							<mx:Image source="{outerDocument.magGlass}" scaleContent="false" 
-									  click="outerDocument.clickQuery(data)"/>				
+							<mx:Image initialize="im5.source=outerDocument.magGlass" scaleContent="false" 
+									  click="outerDocument.clickQuery(data)" id="im5"/>				
 						</mx:VBox>
 					</mx:Component>
 				</mx:itemRenderer>

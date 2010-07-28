@@ -142,28 +142,31 @@
 
 	private function buildExtraAttributes(attributes:XMLList):void
 	{
+		var name:String;
+		var valueArray:Array;
+		
 		extraAttributes = '';
 		for (var i:int = 0; i < attributes.length(); i++)
 		{
-			var name:String = attributes[i].name();
+			name = attributes[i].name();
 			
 			if (name == 't0' || name == 't1' || name == 't2' || name == 't3')
 			{
-				var valueArray:Array = attributes[i].split('|');
+				valueArray = attributes[i].split('|');
 				extraAttributes += '<b>'+valueArray[0]+'</b>: ';
 				extraAttributes += valueArray[1] + '\n';				
 			}
 		}
 		for (var j:int = 0; j < attributes.length(); j++)
 		{
-			var name:String = attributes[j].name();
+			name = attributes[j].name();
 			
 			if (name == 'm0' || name == 'm1' || name == 'm2' || name == 'm3' ||
 			    name == 'm4' || name == 'm5' || name == 'm6' || name == 'm7' ||
 			    name == 'm8' || name == 'm9' || name == 'm10' || name == 'm11' ||
 			    name == 'm12' || name == 'm13' || name == 'm14' || name == 'm15')
 			{
-				var valueArray:Array = attributes[j].split('|');				
+				valueArray = attributes[j].split('|');				
 				extraAttributes += '<b>'+valueArray[0]+'</b>: ';
 				extraAttributes += valueArray[2] + ' ' + valueArray[1];
 				extraAttributes += ' (avg) [estimated ' + valueArray[3] + ']\n';

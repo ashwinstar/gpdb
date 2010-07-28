@@ -343,6 +343,9 @@ package model
 				// object to store database metrics for a single slice in time
 				var obj:DatabaseSample = new DatabaseSample();
 				var thisDate:Date = null;
+				var nextDate:Number;
+				var missingData:Object;
+				
 				// iterate through each element in a host node
 				for (var i:int=0; i<numColumns; i++)
 				{
@@ -363,9 +366,9 @@ package model
 						if (latestDate)
 						{
 							// Insert a gap object if there's a gap in the data
-							var nextDate:Number = latestDate.time + MiscUtils.MINUTE;
+							nextDate = latestDate.time + MiscUtils.MINUTE;
 							if (nextDate < thisDate.time) {
-								var missingData:Object = new Object;
+								missingData = new Object;
 								missingData.sample_time = new Date(nextDate);
 								oneMinAggData.addItem(missingData);
 							}
@@ -378,9 +381,9 @@ package model
 						if (latestDate)
 						{
 							// Insert a gap object if there's a gap in the data
-							var nextDate:Number = latestDate.time + (MiscUtils.MINUTE*5);
+							nextDate = latestDate.time + (MiscUtils.MINUTE*5);
 							if (nextDate < thisDate.time) {
-								var missingData:Object = new Object;
+								missingData = new Object;
 								missingData.sample_time = new Date(nextDate);
 								fiveMinAggData.addItem(missingData);
 							}
@@ -393,9 +396,9 @@ package model
 						if (latestDate)
 						{
 							// Insert a gap object if there's a gap in the data
-							var nextDate:Number = latestDate.time + MiscUtils.HOUR;
+							nextDate = latestDate.time + MiscUtils.HOUR;
 							if (nextDate < thisDate.time) {
-								var missingData:Object = new Object;
+								missingData = new Object;
 								missingData.sample_time = new Date(nextDate);
 								oneHrAggData.addItem(missingData);
 							}
@@ -408,9 +411,9 @@ package model
 						if (latestDate)
 						{
 							// Insert a gap object if there's a gap in the data
-							var nextDate:Number = latestDate.time + MiscUtils.DAY;
+							nextDate = latestDate.time + MiscUtils.DAY;
 							if (nextDate < thisDate.time) {
-								var missingData:Object = new Object;
+								missingData = new Object;
 								missingData.sample_time = new Date(nextDate);
 								oneDayAggData.addItem(missingData);
 							}

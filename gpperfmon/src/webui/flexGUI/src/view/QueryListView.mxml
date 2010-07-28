@@ -164,9 +164,18 @@
 			
 				
 			<mx:VDividedBox height="100%" width="100%">
-			
+
+				<!--
+				Comment#1
+				Vasu (Divami) [28 July, 2010] - Databinding doesn't happen when the dot operator or square brackets 
+				are used inside MXML value declarations involving '{}'. So, in order to avoid compiler warning, the
+				declaration is done after component initialization. Databinding still doesn't happen, but compiler
+				warning is avoided.
+				
+				I am presuming that the actual intent here was not to databind but just an assignment of value.
+				-->			
 				<mx:DataGrid id="dgQueries" width="100%" height="60%" fontSize="9" 
-					dataProvider="{mdl.queries.queryArrayLookup[mdl.nav.queryTabPage]}"
+					initialize="dgQueries.dataProvider=mdl.queries.queryArrayLookup[mdl.nav.queryTabPage]"
 					doubleClickEnabled="true" doubleClick="gotoQueryDetailPage()"
 					change="querySelectionChange(event)" updateComplete="queryDataChange(event)"
 					rollOverColor="0xDFFCB2" selectionColor="0xBFDC92">
@@ -205,8 +214,9 @@
 							<mx:itemRenderer>
 								<mx:Component>
 									<mx:VBox width="100%" height="100%" horizontalAlign="center">
-										<mx:Image source="{outerDocument.magGlass}" scaleContent="false" 
-												  click="outerDocument.gotoQueryDetailPage()"/>				
+										<!--Same as Comment#1-->
+										<mx:Image initialize="im1.source=outerDocument.magGlass" scaleContent="false" 
+												  click="outerDocument.gotoQueryDetailPage()" id="im1"/>				
 									</mx:VBox>
 								</mx:Component>
 							</mx:itemRenderer>

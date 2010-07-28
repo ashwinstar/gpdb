@@ -73,13 +73,13 @@
 				searchSummary += "none";
 
 			// Issue the search
-			var querySearchCommand:QuerySearchCommand = new QuerySearchCommand();
+			var qrySrchCmd:QuerySearchCommand = new QuerySearchCommand();
 			
-			querySearchCommand.setParameters(null, startTime.getSelectedDateTime,
+			qrySrchCmd.setParameters(null, startTime.getSelectedDateTime,
 			                                 endTime.getSelectedDateTime,
 			                                 status, mintime, 
 			                                 username.text, database.text);
-			querySearchCommand.execute();                             
+			qrySrchCmd.execute();                             
 		}
 		
 		// Set the result summary string

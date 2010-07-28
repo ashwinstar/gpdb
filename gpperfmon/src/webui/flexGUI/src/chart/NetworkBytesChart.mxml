@@ -13,8 +13,16 @@
         ]]>
     </mx:Script>
 
+<!--
+Comment#1
+Vasu (Divami) [28 July, 2010] - Databinding doesn't happen when square brackets are used inside MXML value declarations involving '{}'
+So, in order to avoid compiler warning, the declaration is done after component initialization. Databinding still doesn't happen,
+but compiler warning is avoided.
+
+I am presuming that the actual intent here was not to databind but just an assignment of value.
+--> 
   <mx:LineChart showDataTips="true" id="myChart" width="100%" height="100%"
-  				dataProvider="{mdl.system.activeAggLookup[mdl.nav.durationSelected]}"
+  				initialize="myChart.dataProvider=mdl.system.activeAggLookup[mdl.nav.durationSelected]"
   			    updateComplete="{dataSelector.invalidateDisplayList()}">
   		<mx:series>
   			<mx:LineSeries yField="net_rb_rate" sortOnXField="false"

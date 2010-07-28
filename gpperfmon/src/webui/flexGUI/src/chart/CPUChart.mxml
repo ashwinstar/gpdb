@@ -44,9 +44,19 @@
   <mx:SolidColor id="user_clr" color="0x4ABF84" alpha="1.0"/>
   <mx:SolidColor id="sys_clr" color="0x374CE3" alpha="1.0"/>
   <mx:SolidColor id="idle_clr" color="0xD8D8D8" alpha="1.0"/>
-   
+
+  <!--
+	Comment#1
+	Vasu (Divami) [28 July, 2010] - Databinding doesn't happen when square brackets are used inside MXML value declarations involving '{}'
+	So, in order to avoid compiler warning, the declaration is done after component initialization. Databinding still doesn't happen,
+	but compiler warning is avoided.
+
+	I am presuming that the actual intent here was not to databind but just an assignment of value.
+  -->   
   <mx:ColumnChart showDataTips="true" id="myChart" width="100%" height="100%"
-  				dataProvider="{mdl.system.activeAggLookup[mdl.nav.durationSelected]}" 
+  				initialize="myChart.dataProvider=mdl.system.activeAggLookup[mdl.nav.durationSelected];
+  				haxis.dataInterval=mdl.system.dataIntervalNumber[mdl.nav.durationSelected];
+  				haxis.dataUnits=mdl.system.dataIntervalUnit[mdl.nav.durationSelected]"
   				type="100%" updateComplete="{dataSelector.invalidateDisplayList()}"
   				dataTipFunction="formatDataTip">
   		<mx:series>	 
@@ -84,9 +94,7 @@
         <mx:horizontalAxis>
             <mx:DateTimeAxis id="haxis" displayLocalTime="true" 
             	minimum="{mdl.session.timeArray.getItemAt(mdl.nav.durationSelected) as Date}"
-            	maximum="{mdl.session.timeArray.getItemAt(Session.LATEST_TICK) as Date}"
-            	dataInterval="{mdl.system.dataIntervalNumber[mdl.nav.durationSelected]}" 
-            	dataUnits="{mdl.system.dataIntervalUnit[mdl.nav.durationSelected]}"/>
+            	maximum="{mdl.session.timeArray.getItemAt(Session.LATEST_TICK) as Date}"/>
         </mx:horizontalAxis>
         <mx:verticalAxis>
             <mx:LinearAxis id="vaxis" baseAtZero="true" maximum="100"/>
