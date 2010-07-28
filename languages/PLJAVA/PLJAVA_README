@@ -2,11 +2,71 @@
 ABOUT PL/JAVA IN GREENPLUM DATABASE
 ************************************************************************
 
-PL/JAVA is a PostGreSQL language extension that allows you to write custom 
-database functions in the JAVA programming language.
+PL/Java is a PostgreSQL language extension that allows you to write custom 
+database functions in the Java programming language.
 
 In order to use PL/JAVA in Greenplum Database, you must install JDK 1.6
 on every host in your Greenplum Database array.
+
+************************************************************************
+PL/JAVA DOCUMENTATION
+************************************************************************
+
+PL/Java documentation is provided in the PostgreSQL PL/Java User Guide:
+
+http://cvs.pgfoundry.org/cgi-bin/cvsweb.cgi/pljava/org.postgresql.pljava/docs/userguide.html?rev=1.15
+
+Note that there a few key differences between the implementation of PL/Java
+in standard PostgreSQL and Greenplum Database, which are noted here.
+
+******************
+FUNCTIONS
+******************
+
+The following functions are NOT supported in the Greenplum implementation. 
+This is due to differences in the way that the classpath is handled in a 
+distributed Greenplum environment. Greenplum uses the pljava.classpath
+server configuration parameter in place of the set_classpath function.
+The PostgreSQL usage of the pljava.classpath parameter is not supported
+as documented in the PL/Java User Guide.
+
+
+sqlj.install_jar 
+sqlj.replace_jar 
+sqlj.remove_jar 
+sqlj.get_classpath 
+sqlj.set_classpath 
+
+******************
+SERVER CONFIGURATION PARAMETERS
+******************
+
+The following new server configuration parameters are introduced
+for PL/Java. Note that the pljava.classpath parameter is defined
+differently in Greenplum than in the standard PostgreSQL PL/Java
+implementation:
+
+* pljava.classpath
+  A colon (:) separated list of the jar files containing your custom
+  Java classes. The jar files listed here must also be installed 
+  on all Greenplum hosts in the following location: 
+  $GPHOME/lib/postgresql/java/
+ 
+* pljava.statement_cache_size
+  Sets the size in KB of the Most Recently Used (MRU)
+  cache for prepared statements. 
+
+* pljava.release_lingering_savepoints
+  If true, lingering savepoints will be released on function exit. 
+  If false, they will be rolled back.
+ 
+* pljava.vmoptions
+  Defines the startup options for the Java VM.
+ 
+* pljava.debug 
+  Setting debug to true will cause the postgres process to go
+  into a sleep(1) loop on its first call to java. This is
+  only useful for debugging the PL/Java internal C code.
 
 
 
@@ -14,37 +74,71 @@ on every host in your Greenplum Database array.
 INSTALLING AND ENABLING PL/JAVA IN GREENPLUM DATABASE
 ***************************************************
 
-1. To use PL/JAVA you must have a JDK 1.6 installation on all
-   Greenplum hosts (master and segments). Make sure the JAVA_HOME 
-   environment variable is set in the environment of the 'gpadmin'
-   user on all Greenplum hosts.        
+******************
+PREREQUISITES - INSTALL JDK 1.6
+******************
 
-2. Make sure the $JAVA_HOME environment variable is set in the 
-   environment of the 'gpadmin' user on all Greenplum hosts:
+To use PL/Java you must have a JDK 1.6 installation on all
+Greenplum hosts (master and segments). 
 
-    $ gpssh -f <all_hosts_file> -e "echo $JAVA_HOME"
+Make sure the JAVA_HOME environment variable is set in the 
+environment of the 'gpadmin' user on all Greenplum hosts.        
 
-3. 
+The Java runtime libraries must be findable by your runtime linker. 
+On Linux, this involves adding a configuration file for jdk-1.6.0 in 
+/etc/ld.so.conf.d and then running ldconfig. For example (as root):
 
-4. Enable PL/JAVA in your database(s). Enabling PL/JAVA in the template1 
-   database will also enable PL/JAVA in any new databases you create.
+  # echo "$JAVA_HOME/jre/lib/amd64/server" > /etc/ld.so.conf.d/libjdk-1.6.0_21.conf
+  # /sbin/ldconfig
+
+On Solaris, this involves running crle and adding the path for 
+the java runtime libraries to the list of linked files. For example:
+    
+  # crle -64 -c /var/ld/64/ld.config -l /lib/64:/usr/lib/64:/usr/sfw/lib/64:/opt/jdk1.6.0_21/jre/lib/amd64/server
+
+This must be done on all hosts in your Greenplum Database array.
+
+******************
+ENABLE PL/JAVA IN GREENPLUM
+******************
+
+1. Copy any custom Java archives (jar files) to $GPHOME/lib/postgresql/java/
+   on all Greenplum hosts. For example (using gpscp):
+   
+    $ gpscp -f gphosts_file myclasses.jar =:/usr/local/greenplum-db/lib/postgresql/java/
+ 
+
+2. Set the PL/Java server configuration parameters on the
+   master and all segments. Note that the pljava.classpath parameter 
+   must list all of your Java archive files separated by a colon (:).
+
+    $ gpconfig -c custom_variable_classes -v pljava 
+    $ gpconfig -c pljava.classpath -v 'examples.jar:myclasses.jar'
+
+
+3. Run the install.sql file. This will add an entry in the 
+   pg_pltemplate system catalog table for pljava.
+
+    $ psql -f $GPHOME/share/postgresql/pljava/install.sql
+
+4. Restart Greenplum Database to enable the configuration changes:
+
+    $ gpstop -r  
+
+5. Create the PL/Java language in your database(s). Creating the 
+   PL/Java language in the template1 database will also enable 
+   PL/Java in any new databases you create.
 
     $ psql template1 -c "CREATE LANGUAGE pljava;"
    
     $ psql <database_name> -c "CREATE LANGUAGE pljava;" 
 
-NOTE: If the CREATE LANGUAGE command does not succeed because a
-      library (.so file) could not be found, you may need to update
-      your $LD_LIBRARY_PATH environment variable on all Greenplum
-      hosts so that the JDK libraries are searched first. For example, 
-      add the following line to the 'gpadmin' .bashrc on all hosts
-      after your setting for JAVA_HOME:
-      
-       export LD_LIBRARY_PATH=$JAVA_HOME/lib:$LD_LIBRARY_PATH
-
-      Then restart your Greenplum Database system:
-
-       gpstop -r
+6. (optional) Greenplum provides an examples.sql file 
+   containing sample PL/Java functions that you can use 
+   for testing. Run the commands in this file to create 
+   the test functions (which use the Java classes in examples.jar). 
+ 
+    $ psql -f $GPHOME/share/postgresql/pljava/examples.sql
  
    
 
