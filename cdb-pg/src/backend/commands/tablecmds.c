@@ -4864,38 +4864,9 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 										   false, false, CurrentMemoryContext,
 										   NULL, false);
 
-					/*
-					 * Only permitted if we're splitting a default and
-					 * this is the default rule
-					 * MPP-10421: lift this restriction
-					 */
-					if (0 && prule2)
-					{
-						if (!(prule2->topRule->parchildrelid ==
-							  prule1->topRule->parchildrelid &&
-						  	  prule1->topRule->parisdefault))
-							ereport(ERROR,
-								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-								 errmsg("partition \"%s\" already exists",
-							   get_rel_name(prule2->topRule->parchildrelid)),
-							   errOmitLocation(true)));
-					}
-
 					prule3 = get_part_rule(rel, (AlterPartitionId *)cmd2->arg1,
 										   false, false, CurrentMemoryContext,
 										   NULL, false);
-					if (0 && prule3)
-					{
-						if (!(prule3->topRule->parchildrelid ==
-						  	  prule1->topRule->parchildrelid &&
-						  	  prule1->topRule->parisdefault))
-							ereport(ERROR,
-								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-								 errmsg("partition \"%s\" already exists",
-							   get_rel_name(prule3->topRule->parchildrelid)),
-							   errOmitLocation(true)));
-					}
-
 					/* both can't exist */
 					if (prule2 && prule3)
 					{
