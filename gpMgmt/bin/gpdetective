@@ -22,6 +22,12 @@ Usage: gpdetective <option> [dbname]
              n[one] = no segments and mirrors
              <list> = [n | n-m[,n | n-m]...] where n and m are integers. (e.g. 0,1-4,8,11)
 
+    --pg_changetracking_logs=a[ll],n[none,<list> 
+         : Defines the list of segment pg_changetracking log file dbid's to retrieve 
+             a[ll]  = all segments and mirrors
+             n[one] = no segments and mirrors (the default)
+             <list> = [n | n-m[,n | n-m]...] where n and m are integers. (e.g. 0,1-4,8,11)
+
     --core=t[rue]|f[alse]
          : Determines whether or not core files are retrieved (default is true).
  
@@ -126,14 +132,14 @@ class GPDetective:
     error  = None
     start_date      = None
     end_date        = None
-    log_list        = None
+    log_list                   = []    # [] implies all segments (the default)
+    pg_changetracking_log_list = None  # None implies no segments (the default)
     pg_dump_options = None
     rungpstate    = True
     runpg_dumpall = True
     rungpcheckos  = True
     rungpcheckcat = True
     runcore       = True
-    runsegmentlog = True
     runconnected  = True
 
     # Configuration information
@@ -179,6 +185,7 @@ class GPDetective:
                                             , 'tempdir='
                                             , 'diagnostics='
                                             , 'logs='
+                                            , 'pg_changetracking_logs='
                                             , 'pg_dumpall='
                                             , 'cores='
                                             ])
@@ -201,6 +208,8 @@ class GPDetective:
                     self.handleDiagnosticParameterList(val)
                 elif switch == '--logs':
                     self.log_list = self.handleSegmentParameterList(val)
+                elif switch == '--pg_changetracking_logs':
+                    self.pg_changetracking_log_list = self.handleSegmentParameterList(val)
                 elif switch == '--pg_dumpall':
                     self.runpg_dumpall = truth(switch, val)
                 elif switch == '--cores':
@@ -324,13 +333,18 @@ class GPDetective:
            n[one]
            [n | n-m[,n | n-m]...] where n and m are integers.
 
-        Return a list of integers that correspond to the list of entries in segs.
-        (e.g. segs = "1, 2, 5-10, 14". Return [1,2,5,6,7,8,9,10,14], and set
-        runsegmentlog  to True or False.
+          return 
+            []     implies all segments
+            None   implies no segments
+            A list of integers that correspond to the list of entries in segs.
+            (e.g. segs = "1, 2, 5-10, 14". Return [1,2,5,6,7,8,9,10,14])
+            If segs contains no segment numbers, then None
         '''
-        returnList   = []
+        
+        returnValueList  = None
         segsNoSpaces = ""
         inRange = False
+        done = False
 
         if segs == None:
            usage('Error: Missing segs options.')
@@ -339,28 +353,27 @@ class GPDetective:
         segList = segsNoSpaces.split(',')
         if len(segList) == 1:
            if segList[0] == 'a' or segList[0] == 'all':
-              # One option 'all' implies all segments and mirrors (the defalut)
-              self.runsegmentlog = True
-              return
+              returnValueList = []
+              done = True
            elif segList[0] == 'n' or segList[0] == 'none':
-              # One option 'none' implies turn off everyting.
-              self.runsegmentlog  = False
-              return
+              returnValueList = None
+              done = True
 
-        try:
-           for element in segList:
-              if element.isdigit() == True:
-                 returnList.append(int(element))
-              else:
-                  subRange = element.split('-')
-                  for i in range(int(subRange[0]) , int(subRange[1]) + 1): 
-                     returnList.append(i)
-           returnList.sort()
-        except Exception, e:
-           print 'Error in segment dbid list' 
-           raise e
+        if done == False:
+           returnValueList = []
+           try:
+              for element in segList:
+                 if element.isdigit() == True:
+                    returnValueList.append(int(element))
+                 else:
+                     subRange = element.split('-')
+                     for i in range(int(subRange[0]) , int(subRange[1]) + 1): 
+                        returnValueList.append(i)
+           except Exception, e:
+              print 'Error in segment dbid list: ' + str(e)
+              raise e
 
-        return returnList
+        return returnValueList
 
     #------------------------------------------------------------
     def checkPath(self):
@@ -547,19 +560,18 @@ class GPDetective:
             cmd.insert(1, host)
         
         # A stupid hack to ignore unmatched globs in 'ls'
-        if (cmd[0] == 'ls' or (cmd[0] == 'ssh' and cmd[2] == 'ls')):
-            x = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        else:
+        if (cmd[0] == 'ls'):
+            x = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+        else:            
             x = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=self.errlog)
         return str(x.communicate()[0].strip())
 
     #------------------------------------------------------------
-    def log(self, test, level=1):
+    def log(self, test):
         '''
         Logs the start of a test
         '''
-        
-        print '  ' * level + '+ ' + test
+        print '  + ' + test
         if (self.errlog):
             self.errlog.write('\nTEST: ' + test + '\n')
             self.errlog.flush()
@@ -751,35 +763,32 @@ class GPDetective:
     def grabMasterLog(self,masterlog,dst_file,time_opt):
         myfile = open(dst_file, 'w')        
         cmd = '%s/gplogfilter --quiet %s %s' % (sys.path[0],time_opt,masterlog)
-        p=subprocess.Popen(cmd, stdout=myfile, stderr=subprocess.PIPE, shell=True)
-        (_, err) = p.communicate();
+        p=subprocess.Popen(cmd, stdout=myfile,shell=True)
+        p.wait()
         myfile.close() 
         if p.returncode == 0:
             return True
         else:
-            err = err.strip()
-            self.log('could not find the log on master in dir: %s' % (masterlog), level=2)
-            self.log(cmd, level=2)
-            self.log('command returned: (%d) %s' % (p.returncode, err), level=2)
             return False
 
     
-   #------------------------------------------------------------
+   #------------------------------------------------------------                                                                                                    
     def grabLog(self, hostname, loglocation, dst_file, time_opt):
         myfile = open(dst_file, 'w')
         try:
-            cmdstr = "gplogfilter --quiet %s %s" % (time_opt,loglocation)
+            cmdstr = "gplogfilter --quiet %s %s 2>&1" % (time_opt,loglocation)
             cmd="ssh %s \"%s %s\" " % (hostname,SRC_GPPATH,cmdstr)
-            p = subprocess.Popen(cmd, stdout=myfile, stderr=subprocess.PIPE, shell=True)
-            (_, err) = p.communicate()
-            myfile.close()
+            p = subprocess.Popen(cmd, stdout=myfile,shell=True)
+            p.wait()
             if p.returncode == 0:
                 found = True
             else:
-                err = err.strip()
-                self.log('could not find the log on host: %s in dir: %s' % (hostname,loglocation), level=2)
-                self.log(cmd, level=2)
-                self.log('command returned: (%d) %s' % (p.returncode, err), level=2)
+                self.log('could not find the log on host: %s in dir: %s' % (hostname,loglocation))
+                myfile.close()
+                f = open(dst_file,'r')
+                str=f.readlines()
+                self.log('command returned: %s' % str)
+                f.close()
                 found = False
         except OSError, e:
             self.log('' + str(e))
@@ -810,7 +819,8 @@ class GPDetective:
         dst_file = 'master/%s_rotated.log' % hostname
         if not self.grabMasterLog(logfile,dst_file,time_opt):
            os.remove(dst_file)
-        
+
+        self.log('    get master logs')        
         self.runCmd(['scp', '%s/postgresql.conf' % self.masterdir,
                      'master/postgresql.conf'])
         self.runCmd(['scp', '%s/global/pg_database' % self.masterdir,
@@ -833,6 +843,7 @@ class GPDetective:
                               ):
                os.remove(backupmaster_out_name)
 
+           self.log('    get backup master logs')
            self.runCmd(['scp', '-q',
                         '%s/postgresql.conf' % str(self.backupmasterhostname + ':' + self.backupmasterhostdir),
                         'backupmaster/postgresql_%s.conf' % m.group(2)])
@@ -841,9 +852,10 @@ class GPDetective:
         # Grab segment logs and postgresql.conf
         #                    host  : fullpath / filename
         host_rx = re.compile('(.*)\:(.*)/([^/]*)')
-        if self.runsegmentlog == True and self.runconnected == True:
+        if self.log_list != None and self.runconnected == True:
+           self.log('    get primary segment logs')
            for seg in self.segments:
-               if self.log_list != None and int(seg[0]) not in self.log_list:
+               if self.log_list != [] and int(seg[0]) not in self.log_list:
                   continue
                m = host_rx.search(seg[1])
                hostname = m.group(1)            
@@ -858,9 +870,10 @@ class GPDetective:
         # Grab backup (mirror) segment logs and postgresql.conf
         #                    host  : fullpath / filename
         host_rx = re.compile('(.*)\:(.*)/([^/]*)')
-        if self.runsegmentlog == True and self.runconnected == True:
+        if self.log_list != None and self.runconnected == True and len(self.mirrors) > 0:
+           self.log('    get mirror segment logs')
            for mir in self.mirrors:
-               if self.log_list != None and int(mir[0]) not in self.log_list:
+               if self.log_list != [] and int(mir[0]) not in self.log_list:
                      continue
                m = host_rx.search(mir[1])
                hostname = m.group(1)
@@ -874,8 +887,38 @@ class GPDetective:
 
         #3 grab gpAdminLogs
         adminLogsDir=os.path.expanduser("~") + "/gpAdminLogs/"
+        self.log('    get gpAdminLogs')
         self.runCmd(['cp', '-R', adminLogsDir , 'master/gpAdminLogs'])
         
+        
+        # Grab segment pg_changetracking logs
+        #                    host  : fullpath / filename
+        host_rx = re.compile('(.*)\:(.*)/([^/]*)')
+        if self.pg_changetracking_log_list != None and self.runconnected == True:
+           self.log('    get primary segment pg_changetracking logs')
+           for seg in self.segments:
+               if self.pg_changetracking_log_list != [] and int(seg[0]) not in self.pg_changetracking_log_list:
+                  continue
+               m = host_rx.search(seg[1])
+               hostname = m.group(1)
+               tempStr = self.runCmd(['scp', '-qr',
+                            '%s/pg_changetracking' % seg[1],
+                            '%s/pg_changetracking_%s' % m.group(1,3)])
+        
+            
+        # Grab backup (mirror) pg_changetracking logs
+        #                    host  : fullpath / filename
+        host_rx = re.compile('(.*)\:(.*)/([^/]*)')
+        if self.pg_changetracking_log_list != None and self.runconnected == True and len(self.mirrors) > 0:
+           self.log('    get mirror segment pg_changetracking logs')
+           for mir in self.mirrors:
+               if self.pg_changetracking_log_list != [] and int(mir[0]) not in self.pg_changetracking_log_list:
+                  continue
+               m = host_rx.search(mir[1])
+               hostname = m.group(1)
+               tempStr = self.runCmd(['scp', '-qr',
+                            '%s/pg_changetracking' % mir[1],
+                            '%s/pg_changetracking_%s_mirror' % m.group(1,3)])
     
     #------------------------------------------------------------
     def systemInfo(self):
