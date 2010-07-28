@@ -36,10 +36,6 @@
 #include "pljava/Session.h"
 #include "pljava/SPI.h"
 #include "pljava/type/String.h"
-/* Example format: "/usr/local/pgsql/lib" */
-#ifndef PKGLIBDIR
-#error "PKGLIBDIR needs to be defined to compile this file."
-#endif
 
 /* Include the 'magic block' that PostgreSQL 8.2 and up will use to ensure
  * that a module is not loaded into an incompatible server.
@@ -253,7 +249,7 @@ static void appendPathParts(const char* path, StringInfoData* bld, HashMap uniqu
 			{
 				len -= 7;
 				path += 7;
-				appendStringInfo(&buf, "%s", PKGLIBDIR);
+				appendStringInfo(&buf, "%s", pkglib_path);
 			}
 			else
 				ereport(ERROR, (
@@ -299,7 +295,7 @@ static char* getClassPath(const char* prefix)
 	initStringInfo(&buf);
 
 
-	/* Put the pljava installed in the PKGLIBDIR first in the path */
+	/* Put the pljava installed in the $libdir first in the path */
 	appendPathParts("$libdir/pljava.jar", &buf, unique, prefix);
 
 #if 0
@@ -837,7 +833,7 @@ JNICALL Java_org_postgresql_pljava_internal_Backend__1getLibraryPath(JNIEnv* env
 	BEGIN_NATIVE
 	PG_TRY();
     {
-		result = String_createJavaStringFromNTS(PKGLIBDIR);
+		result = String_createJavaStringFromNTS(pkglib_path);
 	}
 	PG_CATCH();
 	{
