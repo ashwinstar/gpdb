@@ -443,8 +443,8 @@ static void parse_command_line(int argc, const char* const argv[],
 			usage_error("Error: please specify 0 or 1 for -g switch (note: this is internal)", 0);
 	}
 
-	if (! (2 <= opt.t && opt.t <= 30))
-		usage_error("Error:-t tmout must be between 2 and 30", 0);
+	if (! ((2 <= opt.t && opt.t <= 30) || opt.t == 0))
+		usage_error("Error:-t tmout must be between 2 and 30, or 0 for no timeout", 0);
 
     if (! ((32*1024) <= opt.m && opt.m <= (1024*1024)))
     	usage_error("Error: -m max row length must be between 32KB and 1MB", 0);
@@ -999,8 +999,9 @@ static int session_attach(request_t* r)
 			fstream_options.forwrite = 1;  /* PUT request */
 				
 		/* try opening the fstream */
-		fstream = fstream_open(r->path, &fstream_options, &response_code,
-							   &response_string);
+		gprint("new session trying to open the data stream\n");
+		fstream = fstream_open(r->path, &fstream_options, &response_code, &response_string);
+		
 		if (!fstream)
 		{
 			gwarning(FLINE, "reject request from %s, path %s\n", r->peer,
@@ -1010,6 +1011,9 @@ static int session_attach(request_t* r)
 			apr_pool_destroy(pool);
 			return -1;
 		}
+
+		gprint("new session successfully opened the data stream\n");
+		
 		gcb.total_sessions++;
 		gcb.total_bytes += fstream_get_compressed_size(fstream);
 
@@ -1061,6 +1065,8 @@ static int session_attach(request_t* r)
 	/* session already ended. send an empty response, and close. */
 	if (0 == session->fstream)
 	{
+		gprint("session already ended. return empty response (OK)\n");
+
 		http_empty(r);
 		request_end(r, 0, 0);
 		return -1;
@@ -1325,7 +1331,7 @@ static void do_read_request(int fd, short event, void* arg)
 	/* print the complete request to the log if in verbose mode */
 	if (opt.V)
 	{
-		gprint("got a request:");
+		gprint("[%d] got a request:", r->sock);
 		for (i = 0; i < r->in.req->argc; i++)
 			TR((" %s", r->in.req->argv[i]));
 		TR(("\n"));
@@ -1516,10 +1522,16 @@ static int setup_read(request_t* r)
 	event_del(&r->ev);
 	event_set(&r->ev, r->sock, EV_READ, do_read_request, r);
 
-	r->tm.tv_sec = opt.t;
-	r->tm.tv_usec = 0;
-
-	return (event_add(&r->ev, &r->tm));
+	if(opt.t == 0)
+	{
+		return (event_add(&r->ev, NULL)); /* no timeout */
+	}
+	else
+	{
+		r->tm.tv_sec = opt.t;
+		r->tm.tv_usec = 0;
+		return (event_add(&r->ev, &r->tm));
+	}
 }
 
 
