@@ -1692,7 +1692,8 @@ class gpload:
             """ implies the DELIMITER option has no value in the yaml file, so use default """
             pass
         elif len(delimiterValue) != 1:
-            self.log(self.ERROR, "A gpload control file processing error occurred. A delimiter must have a length of one. Special characters must be quoted.")
+            self.log(self.WARN, "A gpload control file processing warning occurred. A delimiter must have a length of one. Special characters must be quoted. gpload will assume this is a sql escape character sequence.")
+            sql += "delimiter %s" % self.getconfig('gpload:input:delimiter', unicode)
         else:
             sql += "delimiter%s" % \
                 quote(self.getconfig('gpload:input:delimiter', unicode))
@@ -1796,8 +1797,10 @@ class gpload:
                 self.rowsInserted = self.db.query(sql.encode('utf-8'))
 
             except Exception, e:
-                self.log(self.ERROR, u'%s ' % str(e)  + 
-                                 u'encountered while running %s' % (sql))
+                # We need to be a bit careful about the error since it may contain non-unicode characters
+                strE = unicode(str(e), errors = 'ignore')
+                strF = unicode(str(sql), errors = 'ignore')
+                self.log(self.ERROR, strE + ' encountered while running ' + strF)
 
         #progress.condition.acquire()
         #progress.number = 1
