@@ -159,6 +159,13 @@ extern char postgres_exec_path[];
 
 extern PGDLLIMPORT int gpperfmon_port; 
 
+/* for pljava */
+extern PGDLLIMPORT char* pljava_vmoptions;
+extern PGDLLIMPORT char* pljava_classpath;
+extern PGDLLIMPORT int   pljava_statement_cache_size;
+extern PGDLLIMPORT bool  pljava_debug;
+extern PGDLLIMPORT bool  pljava_release_lingering_savepoints;
+
 /*
  * done in storage/backendid.h for now.
  *
@@ -167,6 +174,7 @@ extern PGDLLIMPORT int gpperfmon_port;
 extern PGDLLIMPORT Oid MyDatabaseId;
 
 extern PGDLLIMPORT Oid MyDatabaseTableSpace;
+
 
 /*
  * Date/Time Configuration

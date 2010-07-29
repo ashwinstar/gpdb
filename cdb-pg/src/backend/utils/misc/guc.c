@@ -2560,6 +2560,26 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 
+	/* for pljava */
+	{
+		{"pljava_release_lingering_savepoints", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("If true, lingering savepoints will be releaseed on function exit; if false, they will be rolled back"),
+			NULL,
+		 GUC_GPDB_ADDOPT | GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY
+		},
+		&pljava_release_lingering_savepoints,
+		false, NULL, NULL
+	},
+	{
+		{"pljava_debug", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Stop the backend to attach a debugger"),
+			NULL,
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY
+		},
+		&pljava_debug,
+		false, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL
@@ -4033,6 +4053,17 @@ static struct config_int ConfigureNamesInt[] =
 		0, PRIO_MAX, NULL, NULL
 	},
 
+	/* for pljava */
+	{
+		{"pljava_statement_cache_size", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("Size of the prepared statement MRU cache"),
+			NULL,
+		 GUC_GPDB_ADDOPT | GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY
+		},
+		&pljava_statement_cache_size,
+		0, 0, 512, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL
@@ -5083,6 +5114,26 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 #endif
+
+	/* for pljava */
+	{
+		{"pljava_vmoptions", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("Options sent to the JVM when it is created"),
+			NULL,
+		 GUC_GPDB_ADDOPT | GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY
+		},
+		&pljava_vmoptions,
+		"", NULL, NULL
+	},
+	{
+		{"pljava_classpath", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("classpath used by the the JVM"),
+			NULL,
+		 GUC_GPDB_ADDOPT
+		},
+		&pljava_classpath,
+		"", NULL, NULL
+	},
 
     /* End-of-list marker */
 	{

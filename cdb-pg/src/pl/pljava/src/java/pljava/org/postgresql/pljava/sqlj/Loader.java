@@ -158,7 +158,7 @@ public class Loader extends ClassLoader
 		 * Rather than having a different loader per schemaName, instead
 		 * we simply create a different loader per CLASSPATH.
 		 */
-		String classpath = Backend.getConfigOption("pljava.classpath");
+		String classpath = Backend.getConfigOption("pljava_classpath");
 		if (classpath == null)
 			classpath = "";
 		if (!classpath.equals(m_current_classpath))

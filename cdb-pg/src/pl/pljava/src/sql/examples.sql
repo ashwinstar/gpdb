@@ -1,7 +1,7 @@
 DROP SCHEMA javatest CASCADE;
 CREATE SCHEMA javatest;
 set search_path=javatest,public;
-set pljava.classpath='examples.jar';
+set pljava_classpath='examples.jar';
 set log_min_messages=info;  -- XXX
 
 CREATE TABLE javatest.test AS SELECT 1 as i distributed by (i);
@@ -531,7 +531,7 @@ CREATE FUNCTION javatest.executeSelectToRecords(varchar)
   AS 'org.postgresql.example.SetOfRecordTest.executeSelect'
   LANGUAGE java;
 
--- XXX - SIGBUS (existing problem with pljava)
+-- XXX - SIGBUS (existing problem with pljava 1.4)
 /*
   SELECT javatest.executeSelectToRecords('select * from javatest.test');
   SELECT javatest.executeSelectToRecords('select * from javatest.test') 

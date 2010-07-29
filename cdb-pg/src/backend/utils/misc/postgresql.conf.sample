@@ -271,6 +271,15 @@
 					# setting
 
 #------------------------------------------------------------------------------
+# PL/JAVA
+#------------------------------------------------------------------------------
+#pljava_classpath = ''                      # ':' separated list of installed jar files
+#pljava_vmoptions = ''                      # Options sent to the JVM on startup
+#pljava_statement_cache_size = 0            # Size of the prepared statement MRU cache
+#pljava_release_lingering_savepoints = off  # on/off to release/abort lingering savepoints
+
+
+#------------------------------------------------------------------------------
 # PERFORMANCE MONITOR
 #------------------------------------------------------------------------------
 

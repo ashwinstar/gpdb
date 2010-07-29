@@ -57,11 +57,6 @@ jlong mainThreadId;
 static JavaVM* s_javaVM = 0;
 static jclass  s_Backend_class;
 static jmethodID s_setTrusted;
-static char* vmoptions;
-static char* classpath;
-static int   statementCacheSize;
-static bool  pljavaDebug;
-static bool  pljavaReleaseLingeringSavepoints;
 static bool  s_currentTrust;
 static int   s_javaLogLevel;
 
@@ -308,7 +303,7 @@ static char* getClassPath(const char* prefix)
 	 * differently anyhow due to differences in storing the jar files
 	 * in the filesystem rather than in the database.
 	 */
-	appendPathParts(classpath, &buf, unique, prefix);
+	appendPathParts(pljava_classpath, &buf, unique, prefix);
 
 	/*
 	 * For this to be useful it needs to be propagated from the 
@@ -476,7 +471,7 @@ static void JVMOptList_add(JVMOptList* jol, const char* optString, void* extraIn
  */
 static void addUserJVMOptions(JVMOptList* optList)
 {
-	const char* cp = vmoptions;
+	const char* cp = pljava_vmoptions;
 	
 	if(cp != NULL)
 	{
@@ -589,56 +584,14 @@ static void initializeJavaVM(void)
 
 		checkIntTimeType();
 		HashMap_initialize();
-	
-		DefineCustomStringVariable(
-			"pljava.vmoptions",
-			"Options sent to the JVM when it is created",
-			NULL,
-			&vmoptions,
-			PGC_USERSET,
-			NULL, NULL);
-	
-		DefineCustomStringVariable(
-			"pljava.classpath",
-			"Classpath used by the JVM",
-			NULL,
-			&classpath,
-			PGC_USERSET,
-			NULL, NULL);
-	
-		DefineCustomBoolVariable(
-			"pljava.debug",
-			"Stop the backend to attach a debugger",
-			NULL,
-			&pljavaDebug,
-			PGC_USERSET,
-			NULL, NULL);
-	
-		DefineCustomIntVariable(
-			"pljava.statement_cache_size",
-			"Size of the prepared statement MRU cache",
-			NULL,
-			&statementCacheSize,
-			0, 512,
-			PGC_USERSET,
-			NULL, NULL);
-	
-		DefineCustomBoolVariable(
-			"pljava.release_lingering_savepoints",
-			"If true, lingering savepoints will be released on function exit. If false, the will be rolled back",
-			NULL,
-			&pljavaReleaseLingeringSavepoints,
-			PGC_USERSET,
-			NULL, NULL);
-	
-		EmitWarningsOnPlaceholders("pljava");
-			s_firstTimeInit = false;
+
+		s_firstTimeInit = false;
 	}
 
 #ifdef PLJAVA_DEBUG
 	/* Hard setting for debug. Don't forget to recompile...
 	 */
-	pljavaDebug = 1;
+	pljava_debug = 1;
 #endif
 
 	addUserJVMOptions(&optList);
@@ -659,10 +612,10 @@ static void initializeJavaVM(void)
 #ifndef GCJ
 	JVMOptList_add(&optList, "-Xrs", 0, true);
 #endif
-	if(pljavaDebug)
+	if(pljava_debug)
 	{
-		elog(INFO, "Backend pid = %d. Attach the debugger and set pljavaDebug to false to continue", getpid());
-		while(pljavaDebug)
+		elog(INFO, "Backend pid = %d. Attach the debugger and set pljava_debug to false to continue", getpid());
+		while(pljava_debug)
 			pg_usleep(1000000L);
 	}
 
@@ -739,7 +692,7 @@ static Datum internalCallHandler(bool trusted, PG_FUNCTION_ARGS)
 
 			/* JVM initialization failed for some reason. Destroy
 			 * the VM if it exists. Perhaps the user will try
-			 * fixing the pljava.classpath and make a new attempt.
+			 * fixing the pljava_classpath and make a new attempt.
 			 */
 			_destroyJavaVM(0, 0);			
 
@@ -853,7 +806,7 @@ JNICALL Java_org_postgresql_pljava_internal_Backend__1getLibraryPath(JNIEnv* env
 JNIEXPORT jint JNICALL
 Java_org_postgresql_pljava_internal_Backend__1getStatementCacheSize(JNIEnv* env, jclass cls)
 {
-	return statementCacheSize;
+	return pljava_statement_cache_size;
 }
 
 /*
@@ -901,7 +854,7 @@ Java_org_postgresql_pljava_internal_Backend_isCallingJava(JNIEnv* env, jclass cl
 JNIEXPORT jboolean JNICALL
 Java_org_postgresql_pljava_internal_Backend_isReleaseLingeringSavepoints(JNIEnv* env, jclass cls)
 {
-	return pljavaReleaseLingeringSavepoints ? JNI_TRUE : JNI_FALSE;
+	return pljava_release_lingering_savepoints ? JNI_TRUE : JNI_FALSE;
 }
 
 /*
