@@ -79,8 +79,6 @@ try:
     
     fromString = "(^\s*" + options.entry + "\s*=.*$)"
     toString="#$1"
-    if options.value:
-        newentry = options.entry + "=" + options.value
     name = "mycmd"
     
     # update all the files
@@ -93,7 +91,7 @@ try:
         if options.removeonly:
             continue
     
-        cmd = AppendTextToFile(name, f, newentry)
+        cmd = GpAppendGucToFile(name, f, options.entry, options.value)
         cmd.run(validateAfter=True)
 finally:
     coverage.stop()

@@ -858,11 +858,25 @@ class GpAddConfigScript(Command):
     def __init__(self, name, directorystring, entry, value=None, removeonly=False, ctxt=LOCAL, remoteHost=None):
         cmdStr="echo '%s' | $GPHOME/sbin/gpaddconfig.py --entry %s" % (directorystring, entry)
         if value:
+            # value will be encoded and unencoded in the script to protect against shell interpretation
+            value = base64.urlsafe_b64encode(pickle.dumps(value))
             cmdStr = cmdStr + " --value '" + value + "'"
         if removeonly:
             cmdStr = cmdStr + " --removeonly "
 
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
+#-----------------------------------------------        
+class GpAppendGucToFile(Command):
+
+    # guc value will come in pickled and base64 encoded
+
+    def __init__(self,name,file,guc,value,ctxt=LOCAL,remoteHost=None):    
+        unpickledText = pickle.loads(base64.urlsafe_b64decode(value))
+        finalText = unpickledText.replace('"', '\\\"')
+        cmdStr = 'echo "%s=%s" >> %s' %  (guc, finalText, file)
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
 
 #-----------------------------------------------        
 class GpLogFilter(Command):
