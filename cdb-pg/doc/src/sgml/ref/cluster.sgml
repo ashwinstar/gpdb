@@ -11,7 +11,7 @@ PostgreSQL documentation
 
  <refnamediv>
   <refname>CLUSTER</refname>
-  <refpurpose>cluster a table according to an index</refpurpose>
+  <refpurpose>cluster a heap storage table according to an index</refpurpose>
  </refnamediv>
 
  <indexterm zone="sql-cluster">
