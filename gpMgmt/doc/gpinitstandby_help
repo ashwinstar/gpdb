@@ -7,12 +7,12 @@ Adds and/or initializes a standby master host for a Greenplum Database system.
 SYNOPSIS
 *****************************************************
 
-gpinitstandby -s <standby_hostname> [-r] [-M smart | fast] [-n] 
-[-a] [-q] [-l <logfile_directory>] [-L] [-B <parallel_processes>] [-D] 
+gpinitstandby { -s <standby_hostname> | -r } 
+              [-M smart | -M fast] [-n] [-a] [-q] [-D] [-L]
+              [-l <logfile_directory>] [-B <parallel_processes>] 
 
-gpinitstandby -? 
-
-gpinitstandby -v
+ 
+gpinitstandby -? | -v
 
 
 *****************************************************
@@ -146,10 +146,9 @@ start the synchronization process:
 gpinitstandby -s host09
 
 
-Remove the existing backup master and add a backup master on a 
-different host:
+Remove the existing backup master from your Greenplum system configuration:
 
-gpinitstandby -s host09 -r
+gpinitstandby -r
 
 
 Start an existing backup master host and synchronize the data 
