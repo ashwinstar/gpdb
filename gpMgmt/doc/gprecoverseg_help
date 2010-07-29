@@ -46,7 +46,7 @@ new host (using -p), on an alternative data directory location
 on your remaining live segment hosts (using -s), or by supplying 
 a recovery configuration file (using -i) in the format of:
 
-filespaceOrder=[<filespace1_name>[,<filespace2_name>,...]
+filespaceOrder=[<filespace1_name>[:<filespace2_name>:...]
 
 <failed_host_name>:<port>:<fselocation>[:<fselocation>:...] \
 [<recovery_host_address>:<port>:<replication_port>:<fselocation>[:<fselocation>:...]]
@@ -133,7 +133,7 @@ OPTIONS
  filespaceOrder line. It will always be the first <fselocation> listed 
  after <replication_port>.
 
-  filespaceOrder=[<filespace1_name>[,<filespace2_name>,...]
+  filespaceOrder=[<filespace1_name>[:<filespace2_name>:...]
   <failed_host_name>:<port>:<fselocation> [<recovery_host_address>:<port>:<replication_port>:<fselocation>[:<fselocation>:...]]
 
  You can use the -o option to output a sample recovery 
@@ -192,10 +192,10 @@ OPTIONS
 -S <output_filespace_config_file>
 
  Specifies a file name and location to output a sample filespace 
- configuration file. The output file lists the filespace locations 
- for the currently invalid segments in the format that is required 
- by the -s option. This file can be edited to supply alternate 
- filespace locations if needed.
+ configuration file in the format that is required by the -s option. 
+ This file should be edited to supply the correct alternate 
+ filespace locations.
+
 
 -v (verbose)
 
