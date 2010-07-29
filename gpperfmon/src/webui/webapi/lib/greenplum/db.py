@@ -723,7 +723,7 @@ def queryplan_sql(table, tmid, ssid, ccnt, start='', end=''):
                    sum(case when nstatus = 'Initialize' and pnid > 0 and segid >= 0 then 1 when nstatus = 'Initialize' and pnid = -1 then 1 else 0 end) as init,
                    sum(case when nstatus = 'Executing' and pnid > 0 and segid >= 0 then 1 when nstatus = 'Executing' and pnid = -1 then 1 else 0 end) as exec,
                    sum(case when nstatus = 'Finished' and pnid > 0 and segid >= 0 then 1 when nstatus = 'Finished' and pnid = -1 then 1 else 0 end) as done
-        from iterators_now
+        from %s
        where tmid = '%s'
          and ssid = '%s'
          and ccnt = '%s'
@@ -735,7 +735,7 @@ def queryplan_sql(table, tmid, ssid, ccnt, start='', end=''):
                AND a.tmid = b.tmid
                AND a.ctime = b.ctime
                AND a.tstart = b.tstart
-    """ % (tmid, ssid, ccnt)
+    """ % (table, tmid, ssid, ccnt)
 
     # where clause for main query
     query += """
@@ -745,7 +745,7 @@ def queryplan_sql(table, tmid, ssid, ccnt, start='', end=''):
     """ % (tmid, ssid, ccnt)
 
     if start != '' and end != '':
-        query += " and ctime>='%s' and ctime<='%s'" % (start, end)
+        query += " and a.ctime>='%s' and a.ctime<='%s'" % (start, end)
     query += "\ngroup by a.tmid, a.ssid, a.ccnt, a.nid, a.nstatus"
 
     return query
