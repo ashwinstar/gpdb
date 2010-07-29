@@ -11,7 +11,7 @@ SYNOPSIS
 gpinitsystem -c <gp_init_config_file> [-h <host_file>] [-o]
             [-r | -B <parallel_processes>] 
             [-p <postgresql_conf_param_file>]
-            {[-s <standby_master_host>] [-i]} 
+            [-s <standby_master_host>]
             [--max_connections <number>] [--shared_buffers <size>]
             [--locale <locale>] [--lc-collate <locale>] 
             [--lc-ctype <locale>] [--lc-messages <locale>] 
@@ -95,13 +95,6 @@ OPTIONS
  host names of all the segment hosts in the array. If not specified 
  on the command line, you can specify the host file using the 
  MACHINE_LIST_FILE parameter in the gp_init_config file.
-
-
--i (do not start synchronization)
-
- If a standby master host is configured, this will not start the 
- synchronization process between the primary and backup master hosts. 
- The default is to start the synchronization process.
 
 
 --locale | -n <locale>
