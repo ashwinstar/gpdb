@@ -959,19 +959,25 @@ int send_alert(const GpErrorData * errorData)
 		/*
 		 * If we get here, we can't talk to the SMTP server at all
 		 */
+		int smtperr = smtp_errno();
 		char buf[128];
+		memset(buf, 0, sizeof(buf));	/* in case smtp_strerror fails */
+		smtp_strerror(smtperr, buf, sizeof buf);
 
-		elog(LOG, "SMTP server problem %d  %s", smtp_errno(), smtp_strerror(smtp_errno(),
-				buf, sizeof buf));
+		elog(LOG, "SMTP server problem %d  %s", smtperr, buf);
 	}
 	else
 	{
-		char buf[128];
-
 		/* I would expect this to be always zero here, but just in case it's not */
 		if (smtp_errno() != 0)
-				elog(LOG, "SMTP  server problem (errno %d) %s", smtp_errno(), smtp_strerror(smtp_errno(),
-								buf, sizeof buf));
+		{
+			int smtperr = smtp_errno();
+			char buf[128];
+			memset(buf, 0, sizeof(buf));	/* in case smtp_strerror fails */
+			smtp_strerror(smtperr, buf, sizeof buf);
+
+			elog(LOG, "SMTP server problem %d  %s", smtperr, buf);
+		}
 		/*
 		 * Report on the success or otherwise of the mail transfer.
 		 * This really only tells the "overall" status, so if an individual e-mail fails,
@@ -999,8 +1005,10 @@ int send_alert(const GpErrorData * errorData)
 
 	/* Free resources consumed by the program.
 	 */
-	smtp_destroy_session(session);
-	auth_destroy_context(authctx);
+	if (session != NULL)
+		smtp_destroy_session(session);
+	if (authctx != NULL)
+		auth_destroy_context(authctx);
 
 	/* To save on overhead, don't call this more than necessary */
 	/* auth_client_exit(); */
