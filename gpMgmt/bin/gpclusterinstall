@@ -533,9 +533,12 @@ def copyOverSoftware():
         return True
 
     ###################################################################################
-    failures.clear()
-
     cmdStr = "cd %s; tar -x -f %s.tar" % (installation_info.install_binary_dir_location, installation_info.install_binary_dir_name)
+    if (simpleRemoteCommand(cmdStr, True)):
+        return True
+
+    ###################################################################################
+    cmdStr = "rm -f %s.tar" % (installation_info.install_binary_path)
     if (simpleRemoteCommand(cmdStr, True)):
         return True
 
@@ -552,6 +555,11 @@ def copyOverSoftware():
     ###################################################################################
     cmdStr = "chown -R %s:%s %s" % (options.user, options.user, installation_info.install_binary_path)
     if (simpleRemoteCommand(cmdStr, True)):
+        return True
+
+    ###################################################################################
+    cmdStr = "rm -f %s.tar.gz" % (installation_info.install_binary_path)
+    if (simpleLocalCommand(cmdStr, True)):
         return True
 
     ###################################################################################
