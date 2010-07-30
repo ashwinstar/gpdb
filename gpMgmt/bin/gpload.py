@@ -975,6 +975,7 @@ class gpload:
         self.exitValue = 0
         self.options = options()
         self.options.h = None
+        self.options.gpfdist_timeout = None
         self.options.p = None
         self.options.U = None
         self.options.W = False
@@ -1011,6 +1012,9 @@ class gpload:
                 try:
                     if argv[0]=='-h':
                         self.options.h = argv[1]
+                        argv = argv[2:]
+                    if argv[0]=='--gpfdist_timeout':
+                        self.options.gpfdist_timeout = argv[1]
                         argv = argv[2:]
                     elif argv[0]=='-p':
                         self.options.p = int(argv[1])
@@ -1359,12 +1363,18 @@ class gpload:
                 self.log(self.ERROR, "no more ports available for gpfdist")
 
             file = self.getconfig(name+':file',list)
+
+            if self.options.gpfdist_timeout != None:
+               gpfdistTimeout = self.options.gpfdist_timeout
+            else:
+               gpfdistTimeout = 30
+
             for i in file:
                 if type(i)!= unicode and type(i) != str:
                     self.log(self.ERROR,
                              "A gpload control file processing error occurred. " + name + ":file must be a YAML sequence of strings")
             popenList = ['gpfdist','-p',str(startPort),'-P',str(endPort),
-                         '-f','"' + ' '.join(file) + '"', '-t', '30']
+                         '-f','"' + ' '.join(file) + '"', '-t', str(gpfdistTimeout)]
             if self.options.qv == self.LOG:
                 popenList.append('-v')
             elif self.options.qv > self.LOG:
