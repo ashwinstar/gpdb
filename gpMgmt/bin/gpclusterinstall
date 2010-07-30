@@ -627,7 +627,7 @@ def exchangeKeysUser():
             return False
 
     # using the supplied password did not work... lets try again in interactive mode
-    return interfactiveCommand(cmdStr)
+    return interactiveCommand(cmdStr)
    
 # True is an error
 def exchangeKeysRoot():
@@ -677,7 +677,7 @@ def exchangeKeysRoot():
         return False
 
     # using the supplied password did not work... lets try again in interactive mode
-    return interfactiveCommand(cmdStr)
+    return interactiveCommand(cmdStr)
 
 
 def earlyExit(error = False):
