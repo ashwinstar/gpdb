@@ -444,7 +444,7 @@ static void parse_command_line(int argc, const char* const argv[],
 	}
 
 	if (! ((2 <= opt.t && opt.t <= 30) || opt.t == 0))
-		usage_error("Error:-t tmout must be between 2 and 30, or 0 for no timeout", 0);
+		usage_error("Error:-t timeout must be between 2 and 30, or 0 for no timeout", 0);
 
     if (! ((32*1024) <= opt.m && opt.m <= (1024*1024)))
     	usage_error("Error: -m max row length must be between 32KB and 1MB", 0);
