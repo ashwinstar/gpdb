@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 '''
-USAGE:   gpclusterinstall -f|--file HOSTFILE -u|--user USER  -p|--password PASSWORD -c|--commands [COMMAND_OPTIONS]
+USAGE:   gpseginstall -f|--file HOSTFILE -u|--user USER  -p|--password PASSWORD -c|--commands [COMMAND_OPTIONS]
          where HOSTFILE lists all the hosts to install the software on
          where USER will be the user to install the software as. default is gpadmin
          were PASSWORD will be set for the USER default is changeme
@@ -24,7 +24,7 @@ try:
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gplog import get_default_logger, setup_tool_logging
-    from gppylib.commands.unix import getLocalHostname, getUserName
+    from gppylib.commands.unix import getLocalHostname, getUserName, SYSTEM
     from gppylib.commands.base import WorkerPool, Command, NakedExecutionPasswordMap, NakedExecutionInfo, NAKED
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -101,14 +101,18 @@ def parseargs():
     parser.add_option('-c', '--commands', type='string', default='a')
     (options, args) = parser.parse_args()
 
-    if options.help:
-        print __doc__
-        return True
-
     global gphome
     gphome = os.environ.get('GPHOME')
     if not gphome:
         logger.error("GPHOME not set")
+        return True
+
+    if SYSTEM.getName() != "linux":
+        logger.error("This utility is only supported on the linux operating system")
+        return True
+
+    if options.help:
+        print __doc__
         return True
 
     if not options.file:
@@ -682,7 +686,7 @@ def exchangeKeysRoot():
 
 def earlyExit(error = False):
     if error:
-        logger.fatal("early exit from gpclusterinstall")
+        logger.fatal("early exit from gpseginstall")
     if pool:
         pool.join()
         pool.haltWork()
