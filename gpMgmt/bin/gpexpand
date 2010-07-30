@@ -39,8 +39,6 @@ GPDB_STOPPED=1
 GPDB_STARTED=2
 GPDB_UTILITY=3
 
-SYSTEM_FILESPACE = 3052        # oid of the system filespace
-
 FILE_SPACES_INPUT_FILENAME_SUFFIX = ".fs"
 SEGMENT_CONFIGURATION_BACKUP_FILE = "gpexpand.gp_segment_configuration"
 FILE_SPACES_INPUT_FILE_LINE_1_PREFIX = "filespaceOrder"
@@ -1563,13 +1561,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             if seg.isSegmentMirror() == True:
                 continue
             filespaces = self._construct_filespace_parameter(seg = seg, gpFSobjList = gpFSobjList)
-            ###if gparray.get_mirroring_enabled() == True:
-            ###    repPort = str(seg.getSegmentReplicationPort())
-            ###else:
-            ###    repPort = "null"
-            ###sqlStr = """select * from gp_add_segment('%s', '%s', %s, %s, array %s)""" % \
-            ###        (seg.getSegmentHostName(), seg.getSegmentAddress(), str(seg.getSegmentPort()), str(repPort), filespaces)
-                    
+
             sqlStr = """select * from gp_add_segment('%s', '%s', %s, array %s)""" % \
                     (seg.getSegmentHostName(), seg.getSegmentAddress(), str(seg.getSegmentPort()), filespaces)
                     
@@ -1631,16 +1623,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         # We do not check the results of GpStop becuase we will get errors for all the new segments.
         stopCmd.run(validateAfter = False)
 
-        ###raise Exception("KAS a test of fail and rollback")  ### KAS testing
-
         self.statusLogger.set_status('UPDATE_CATALOG_DONE')
-
-        ###self.logger.info('Starting Greenplum Database in restricted mode')
-        ###startCmd = GpStart('gpexpand update master start database restricted', restricted=True, verbose=True)
-        ###startCmd.run(validateAfter=True)
-
-        # Need to restore the connection used by the expansion
-        #self.conn = dbconn.connect(self.dburl, encoding='UTF8')
 
     #--------------------------------------------------------------------------
     def configure_new_segment_filespaces(self):

@@ -723,10 +723,14 @@ class ConfigureNewSegment(Command):
         """
         Build the new segment info that can be used to get the confinfo argument to pass to ConfigureNewSegment
 
+        @param segments list of segments
+
         @param isTargetReusedLocationArr if not None, then is an array of boolean values in parallel with segments
                                       True values indicate that the directory has been cleaned by gpcleansegmentdir.py
                                       and we should have lighter restrictions on how to check it for emptiness
                                       Passing None is the same as passing an array of all False values
+
+        @param primaryMirror Process 'primary' or 'mirror' or 'both' 
                                       
         @return A dictionary with the following format:
         

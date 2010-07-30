@@ -24,9 +24,9 @@ from gppylib.gpversion import GpVersion
 from gppylib.commands.unix import *
 
 
-logger = gplog.get_default_logger()
-
 SYSTEM_FILESPACE = 3052        # oid of the system filespace
+
+logger = gplog.get_default_logger()
 
 DESTINATION_FILE_SPACES_DIRECTORY = "fs_directory"
 
