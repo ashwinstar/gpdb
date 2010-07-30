@@ -238,10 +238,21 @@ def dedupeHosts():
     for k in hosts.keys():
         hostname = hosts[k].hostname
         address = hosts[k].address
+
         if hostname in uniqueseghosts:
+            # Here we do a heuristic:
+            # there are several interfaces to each host
+            # and we don't want to pick a slow interface
+            # it is very likely that a hostname with a '-' will represent a fast link
+            # so try to pick an address that contains a '-'
+            # for example choose sdw1-1 over vert1
+            if (not re.search("-", uniqueseghosts[hostname].address)) and (re.search("-", address)):
+                uniqueseghosts[hostname].address = address
             continue
+
         if masterHostName == hostname:
             continue
+
         uniqueseghosts[hostname] = UniqueHost(address, hostname)
 
     return False
