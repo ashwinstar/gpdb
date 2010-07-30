@@ -34,7 +34,7 @@ EXECNAME = os.path.split(__file__)[-1]
 logger = get_default_logger()
 setup_tool_logging(EXECNAME,getLocalHostname(),getUserName()) 
 hosts = dict() # address to HostMapping object
-uniquehosts = dict() # hostname to UniqueHost object
+uniqueseghosts = dict() # hostname to UniqueHost object
 options = None
 passwordMap = None
 nullFile = logging.FileHandler('/dev/null')
@@ -189,6 +189,29 @@ def dedupeHosts():
 
     logger.info("de-duplicate hostnames")
 
+    masterHostName = None
+
+    try:
+        cmd = Command("master", "hostname")
+        pool.addCommand(cmd)
+        pool.join()
+        items = pool.getCompletedItems()
+        for i in items:
+            if i.results.rc or i.results.halt or not i.results.completed:
+                logger.error("error trying to obtain hostname on master %s" % i.results.stderr)
+                return True
+            masterHostName = i.results.stdout.strip()
+            break
+    except Exception, e:
+        logger.error("exception trying to obtain hostname on master: %s" % e.__str__())
+        return True
+
+    if not masterHostName:
+        logger.error("Could not find master hostname")
+        return True
+
+    logger.info("master hostname: %s" % masterHostName)
+
     try:
         for host in hosts.keys():
             cmd = Command(host, "hostname", NAKED, host, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
@@ -207,13 +230,15 @@ def dedupeHosts():
         logger.error("%s" % e.__str__())
         return True
 
-    global uniquehosts
+    global uniqueseghosts
     for k in hosts.keys():
         hostname = hosts[k].hostname
         address = hosts[k].address
-        if hostname in uniquehosts:
+        if hostname in uniqueseghosts:
             continue
-        uniquehosts[hostname] = UniqueHost(address, hostname)
+        if masterHostName == hostname:
+            continue
+        uniqueseghosts[hostname] = UniqueHost(address, hostname)
 
     return False
 
@@ -223,8 +248,8 @@ def checkUsernames():
     logger.info("check for user %s on cluster" % options.user)
 
     try:
-        for k in uniquehosts.keys():
-            uh = uniquehosts[k]
+        for k in uniqueseghosts.keys():
+            uh = uniqueseghosts[k]
             cmd = Command(uh.address, "id %s" % options.user, NAKED, uh.address, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
             pool.addCommand(cmd)
         pool.join()
@@ -233,7 +258,7 @@ def checkUsernames():
             if not i.results.rc:
                 address = i.remoteHost
                 hostname = hosts[address].hostname
-                uniquehosts[hostname].userExists = True
+                uniqueseghosts[hostname].userExists = True
     except Exception, e:
         logger.error("%s" % e.__str__())
         return True
@@ -272,8 +297,8 @@ def addUserIfRequired():
 
     failedToAddUser = set() # set of address's where useradd failed
     try:
-        for k in uniquehosts.keys():
-            uh = uniquehosts[k]
+        for k in uniqueseghosts.keys():
+            uh = uniqueseghosts[k]
             if uh.userExists:
                 continue
 
@@ -285,7 +310,7 @@ def addUserIfRequired():
             address = i.remoteHost
             if not i.results.rc:
                 hostname = hosts[address].hostname
-                uniquehosts[hostname].userExists = True
+                uniqueseghosts[hostname].userExists = True
             else:
                 logger.error("%s: %s" % (address, i.results.stderr))
                 failedToAddUser.add(address)
@@ -326,10 +351,11 @@ def  simpleLocalCommand(cmdStr, checkError=True):
 def  simpleRemoteCommand(cmdStr, checkError=True):
 
     failures = set()
+    logger.info("remote command: %s" % cmdStr)
 
     try:
-        for k in uniquehosts.keys():
-            uh = uniquehosts[k]
+        for k in uniqueseghosts.keys():
+            uh = uniqueseghosts[k]
             cmd = Command(uh.address, cmdStr, NAKED, uh.address, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
             pool.addCommand(cmd)
         pool.join()
@@ -376,7 +402,6 @@ def changeUserPassword():
     if (simpleLocalCommand(cmdStr, False)):
         return True
 
-    logger.info("change user %s password on cluster" % options.user)
     if (simpleRemoteCommand(cmdStr, True)):
         return True
    
@@ -421,14 +446,11 @@ def copyOverSoftware():
 
 
     ###################################################################################
-    logger.info("remote mkdir for software installation location")
     cmdStr = "mkdir -p %s" % installation_info.install_binary_dir_location
     if (simpleRemoteCommand(cmdStr, True)):
         return True
 
     ###################################################################################
-    logger.info("cleanup old software on remote location")
-
     # a couple paranoid checks
     if installation_info.install_binary_path == "/" or  \
        installation_info.install_binary_path == "/usr" or \
@@ -448,8 +470,8 @@ def copyOverSoftware():
     filename = installation_info.install_binary_path + ".tar.gz"
     nakedExecutionInfo = NakedExecutionInfo(passwordMap, NakedExecutionInfo.SFTP_PUT, filename, filename)
     try:
-        for k in uniquehosts.keys():
-            uh = uniquehosts[k]
+        for k in uniqueseghosts.keys():
+            uh = uniqueseghosts[k]
             cmd = Command(uh.address, None, NAKED, uh.address, nakedExecutionInfo=nakedExecutionInfo)
             pool.addCommand(cmd)
         pool.join()
@@ -470,7 +492,6 @@ def copyOverSoftware():
 
 
     ###################################################################################
-    logger.info("unzip software on remote location")
     cmdStr = "gzip -f -d %s.tar.gz" % installation_info.install_binary_path
     if (simpleRemoteCommand(cmdStr, True)):
         return True
@@ -480,8 +501,8 @@ def copyOverSoftware():
     failures.clear()
 
     try:
-        for k in uniquehosts.keys():
-            uh = uniquehosts[k]
+        for k in uniqueseghosts.keys():
+            uh = uniqueseghosts[k]
             cmd = Command(uh.address, "md5sum %s.tar" % installation_info.install_binary_path, NAKED, uh.address, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
             pool.addCommand(cmd)
         pool.join()
@@ -512,7 +533,6 @@ def copyOverSoftware():
         return True
 
     ###################################################################################
-    logger.info("untar software on remote location")
     failures.clear()
 
     cmdStr = "cd %s; tar -x -f %s.tar" % (installation_info.install_binary_dir_location, installation_info.install_binary_dir_name)
@@ -521,18 +541,15 @@ def copyOverSoftware():
 
     ###################################################################################
     if installation_info.install_link_name:
-        logger.info("create symlinks on remote location")
         cmdStr = "cd %s; ln -fs %s %s" % (installation_info.install_binary_dir_location, installation_info.install_binary_dir_name, installation_info.install_link_name)
         if (simpleRemoteCommand(cmdStr, True)):
             return True
 
-        logger.info("chown link on remote location")
         cmdStr = "chown -R %s:%s %s/%s" % (options.user, options.user, installation_info.install_binary_dir_location, installation_info.install_link_name)
         if (simpleRemoteCommand(cmdStr, True)):
             return True
 
     ###################################################################################
-    logger.info("chown install on remote location")
     cmdStr = "chown -R %s:%s %s" % (options.user, options.user, installation_info.install_binary_path)
     if (simpleRemoteCommand(cmdStr, True)):
         return True
