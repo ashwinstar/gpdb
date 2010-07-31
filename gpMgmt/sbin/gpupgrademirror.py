@@ -3177,6 +3177,7 @@ p1MirrorInfo = None
 MirrorNodeList = []
 MirrorInfoList = []
 phase2MirrorList = []
+minionList = []
 
 coverage = GpCoverage()
 coverage.start()
@@ -3539,7 +3540,6 @@ try:
        """
        logger.debug("Start setup for minion gpupgrademirror processes")
        nodesPerMinion = 8
-       minionList = []
        index = 0
        while index < len(allNodes):
           numNodes = 0
@@ -3777,6 +3777,17 @@ except Exception, e:
 
 finally:
     try:
+        if len(minionList) > 0:
+           logger.info("==========================================================================")
+           logger.info("The gpupgrademirror log information can be found in " + str(get_logfile()))
+           logger.info("Under certain failure situations, not all log information can be collected.")
+           logger.info("There may be additional log information under the gpAdminLogs directory on the following hosts:")
+           logger.info("")
+           for minion in minionList:
+               logger.info("  " + minion.remoteHost)
+           logger.info("")
+           logger.info("==========================================================================")
+
         if remove_pid:
             remove_pid_file(options.info_data_directory)
         try:
