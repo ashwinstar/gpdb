@@ -570,9 +570,14 @@ def copyOverSoftware():
 
 def checkAndFixUserLimits():
 
-    cmdStr = ". %s/greenplum_path.sh; %s/sbin/gpfixuserlimts -f /etc/security/limits.conf -u %s" % (gphome, gphome, options.user)
+    cmd = "%s/sbin/gpfixuserlimts -f /etc/security/limits.conf -u %s" % (gphome, options.user)
+    if (simpleLocalCommand(cmd, True)):
+        return True
+
+    cmdStr = ". %s/greenplum_path.sh; %s" % (gphome, cmd)
     if (simpleRemoteCommand(cmdStr, True)):
         return True
+
 
 # True is an error
 def interactiveCommand(cmdStr):
