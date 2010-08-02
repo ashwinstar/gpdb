@@ -1321,7 +1321,12 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
                      
                   else:
                      fsLine = l.strip().split(":")
-                     fsDictionary[fsLine[0]] = fsLine[1:]
+                     try:
+                        fsDbid = int(fsLine[0])
+                        fsDictionary[fsLine[0]] = fsLine[1:]
+                     except Exception, e:
+                        raise ExpansionError("Problem with inputfile %s, line number %s, exceptin %s." % \
+                                             (fsInputFilename, str(lineNumber), str(e)))
                   lineNumber = lineNumber + 1
         except IOError, ioe:
            raise ExpansionError('Problem with filespace input file: %s. Eexception:' % (fsInputFilename, str(ioe)))
@@ -1355,6 +1360,23 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
                     for oid in fsOidList:
                         filespaces[oid] = fileSpacesPathList[index]
                         index = index + 1 
+
+                    # Check that input values look reasonable.
+                    if hostname == None or len(hostname) == 0:
+                       raise ExpansionError("Invalid host name on line " + str(line))
+                    if port == None or str(port).isdigit() == False or int(port) < 0: 
+                       raise ExpansionError("Invalid port number on line " + str(line))
+                    if datadir == None or len(datadir) == 0:
+                       raise ExpansionError("Invalid data directory on line " + str(line))
+                    if dbid == None or str(dbid).isdigit() == False or int(dbid) < 0:
+                       raise ExpansionError("Invalid dbid on line " + str(line))
+                    if contentId == None or str(contentId).isdigit() == False or int(contentId) < 0:
+                       raise ExpansionError("Invalid contentId on line " + str(line))
+                    if role == None or len(role) > 1 or (role != 'p' and role != 'm'):
+                       raise ExpansionError("Invalid role on line " + str(line))
+                    if replicationPort != None and int(replicationPort) < 0:
+                       raise ExpansionError("Invalid replicationPort on line " + str(line))
+
                     retValue.append(NewSegmentInput( hostname = hostname
                                                    , port = port
                                                    , datadir = datadir
