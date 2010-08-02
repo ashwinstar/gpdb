@@ -12,6 +12,7 @@ USAGE:   gpseginstall -f|--file HOSTFILE -u|--user USER  -p|--password PASSWORD 
             s -- tar, zip and copy over software to machines in cluster
             E -- exchange keys for root
             e -- exchange keys for user
+            l -- check and fix user limits for new user -- requires software to be installed on cluster with command 's' or equivalent
 '''
 
 import os, sys, re
@@ -43,7 +44,7 @@ pool = None
 gphome = None
 installation_info = None
 commands = set() # selected commands
-validCommands = set(['u', 'p', 'c', 's', 'e', 'E']) # valid command types
+validCommands = set(['u', 'p', 'c', 's', 'e', 'E', 'l']) # valid command types
 
 class InstallationInfo:
     def __init__(self, link_name, binary_path, binary_dir_location, binary_dir_name):
@@ -567,6 +568,11 @@ def copyOverSoftware():
     ###################################################################################
     return False
 
+def checkAndFixUserLimits():
+
+    cmdStr = ". %s/greenplum_path.sh; %s/sbin/gpfixuserlimts -f /etc/security/limits.conf -u %s" % (gphome, gphome, options.user)
+    if (simpleRemoteCommand(cmdStr, True)):
+        return True
 
 # True is an error
 def interactiveCommand(cmdStr):
@@ -734,6 +740,10 @@ if 'E' in commands:
 
 if 'e' in commands:
     if (exchangeKeysUser()):
+        earlyExit(True)
+
+if 'l' in commands:
+    if (checkAndFixUserLimits()):
         earlyExit(True)
 
 earlyExit(False)
