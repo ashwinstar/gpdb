@@ -283,6 +283,7 @@ class GPUpgrade:
         self.revert     = False
         self.checkschema = True
         self.warnings   = False
+        self.gpperfmon  = None
         self.oldversion = None
         self.newversion = None
         self.workdir    = None     # directory: masterdir/gpmigrator
@@ -331,21 +332,25 @@ class GPUpgrade:
             # The configuration file
             conf = os.path.join(self.masterdir, 'postgresql.conf')
 
-            # All the parameters we are interested in are integer values
+            # Simple function to look for settings in the conf file
             def getconf(x):
-                conf_re  = re.compile('^\s*%s\s*=\s*(\d+)' % x)
+                conf_re  = re.compile('^\s*%s\s*=\s*(\w+)' % x)
                 conf_str = self.RunCmd('grep %s %s' % (x, conf))
                 value = None
                 for line in conf_str.split('\n'):
                     match = conf_re.search(line)
                     if match:
-                        value = int(match.group(1))
+                        value = match.group(1)
                 return value
 
             # Find the port for this segment:
             self.masterport = getconf('port')
             if self.masterport == None:
                 raise UpgradeError('Could not determine master port from ' + conf)
+            self.masterport = int(self.masterport)
+
+            # Determine if perfmon is enabled
+            self.gpperfmon = getconf('gp_enable_gpperfmon')
 
             self.sock_dir = getconf('unix_socket_directory')
             if not self.sock_dir:
@@ -2810,11 +2815,14 @@ class GPUpgrade:
 
             # Once that is done make a REAL copy (not hardlink) of the
             # actual catalog tables
-            self.CallSlaves('BUILDSKEL', self.highestoid)
+            self.CallSlaves('BUILDSKEL', self.highestoid, self.gpperfmon)
             datadirs = [ self.masterdir ]
         else:
             datadirs = self.datadirs
             self.highestoid = int(self.option)
+            self.gpperfmon = str(self.option2)
+            if self.gpperfmon == 'None':
+                self.gpperfmon = None
 
 
         def do_copy(src, dst, f):
@@ -2949,6 +2957,56 @@ class GPUpgrade:
                                   self.upgrade)
             overwrite(os.path.join(src, 'pg_ident.conf'),
                       os.path.join(dst, 'pg_ident.conf'))
+
+
+            # Perform updates to the postgresql.conf file
+            newconf = os.path.join(dst, 'postgresql.conf')
+            oldconf = os.path.join(dst, 'postgresql.conf.bak')
+            if os.path.exists(oldconf):
+                os.remove(oldconf)
+            shutil.move(newconf, oldconf)
+            f = open(oldconf, 'r')
+            t = open(newconf, 'w')
+            foundPerfmon = False
+            conf_re = re.compile(r"^\s*(\w+)\s*=\s*([^#]*)(.*)$")
+            for line in f:
+                m = conf_re.match(line)
+                if m:
+                    setting = m.group(1)
+                    value   = m.group(2)
+                    rest    = m.group(3)
+                    
+                    logger.info("<%s> <%s> <%s>" % (setting, value, rest))
+                    
+                    # Comment out defunct gucs
+                    if setting in ('gp_fault_action'):
+                        t.write('#%s = %s   # defunct setting\n' % (setting, value))
+                        continue
+
+                    # Bump the value of max_resource_queues by one
+                    if setting in ('max_resource_queues'):
+                        value = str(int(value)+1)
+                        t.write('%s = %s %s\n' % (setting, value, rest))
+                        continue
+
+                    # Make perfmon setting consistent for all segments
+                    if setting in ('gp_enable_gpperfmon'):
+                        if self.gpperfmon == None:
+                            t.write('#%s = %s %s\n' % (setting, value, rest))
+                        else:
+                            t.write('%s = %s %s\n' % (setting, self.gpperfmon, rest))
+                        foundPerfmon = True
+                        continue
+
+                t.write(line)
+
+            # If gp_enable_gpperfmon was not mentioned anywhere in the file
+            # and the setting exists on the master then add the line.
+            if (foundPerfmon == False and self.gpperfmon != None):
+                t.write('gp_enable_gpperfmon = %s\n' % self.gpperfmon)
+
+            f.close()
+            t.close()
 
             # set highest oid
             # XXX: should check that this oid is higher!
@@ -3234,18 +3292,6 @@ class GPUpgrade:
                 transform_db(dir, dbname, dboid, file)
                 logger.info('... ' + dbname)      
 
-            # Handle perfmon upgrade
-            for dboid in oids:
-                dbname = dbs[dboid]
-
-                if dbname != 'gpperfmon':
-                    continue
-                logger.info('Pass %d' % phase)
-                phase += 1
-                file = "%s/lib/gpperfmon/gpperfmon4.sql" % h
-                transform_db(dir, dbname, dboid, file)
-                logger.info('... ' + dbname)
-
             # ao file too -- must be last because we
             # use this file to VACUUM FREEZE template databases
             for dboid in oids:
@@ -3260,22 +3306,6 @@ class GPUpgrade:
                 f = self.RunCmd('cat ' + aofile)
                 logger.debug("ao upgrade %s" % f)
                 transform_db(dir, dbname, dboid, aofile)
-                        
-            # Rewrite postgresql.conf:
-            #  - bump the max_resource_queues by +1
-            #
-            conf=os.path.join(dir, 'postgresql.conf')
-            self.RunCmd('mv %s %s.bak' % (conf, conf))
-            input=open(conf+'.bak', 'r')
-            output=open(conf, 'w')
-            for line in input:
-                m = conf_re.match(line)
-                if m:
-                    line = m.expand(r'\g<1>%s\g<3>\n' % 
-                                    str(int(m.group(2))+1))
-                output.write(line)
-            input.close()
-            output.close()
 
 
     #------------------------------------------------------------
@@ -3487,22 +3517,23 @@ class GPUpgrade:
         logger.debug(r)
 
     #------------------------------------------------------------
-    def InstallToolkit(self):
+    def PerformPostUpgrade(self):
         '''
-        Populates the gp_toolkit schema
+        Handles various post upgrade tasks including:
+          - Populates the gp_toolkit schema
+          - Performs updates for the gpperfmon database
         '''
-        logger.info("Installing gp_toolkit")
-
         try:
 
             # Get the admin role
+            logger.info("Installing gp_toolkit")
             rolname = self.Select("select rolname from pg_authid where oid=10")[0]
 
             # Read the toolkit sql file into memory
             fname = '%s/share/postgresql/gp_toolkit.sql' % self.newhome
             sql = open(fname, 'r').read()
 
-        # Set our role to the admin role then execute the sql script
+            # Set our role to the admin role then execute the sql script
             sql = "SET SESSION AUTHORIZATION %s;\n%s" % (rolname, sql)
             oids = sorted(self.dbs.keys())
             for dboid in oids:
@@ -3512,12 +3543,21 @@ class GPUpgrade:
                     continue
                 self.Update(sql, db=db)
 
+            # Handle perfmon upgrade
+            for dboid in oids:
+                db = self.dbs[dboid]
+                if db != 'gpperfmon':
+                    continue
+                logger.info("Updating gpperfmon")
+                fname = os.path.join(self.newhome, "lib/gpperfmon/gpperfmon4.sql")
+                sql = open(fname, 'r').read()
+                sql = "SET SESSION AUTHORIZATION %s;\n%s" % (rolname, sql)
+                self.Update(sql, db=db)
+
         except BaseException, e:
             sys.stderr.write(traceback.format_exc())
             sys.stderr.write(str(e))
             raise e
-
-    
 
     #------------------------------------------------------------
     def StampDBId(self):
@@ -3992,9 +4032,9 @@ It should now be possible to take a zfs snapshot before finalizing the upgrade.
             # Install the gp_toolkit schema
             # + Requires a fully running 4.0 system including dispatch
             #   and thus must occur after remirroring.  
-            if 'GPTOOLKIT' not in current_state:
-                self.InstallToolkit()
-                self.SetState('GPTOOLKIT')
+            if 'POSTUPGRADE' not in current_state:
+                self.PerformPostUpgrade()
+                self.SetState('POSTUPGRADE')
 
             # VACUUM FREEZE template1, since we haven't already
             self.Update('VACUUM FREEZE;', db='template1')
