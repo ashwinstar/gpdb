@@ -1,18 +1,20 @@
 #!/usr/bin/env python
 '''
-USAGE:   gpseginstall -f|--file HOSTFILE -u|--user USER  -p|--password PASSWORD -c|--commands [COMMAND_OPTIONS]
+USAGE:   gpseginstall -f|--file HOSTFILE [-u|--user USER]  [-p|--password PASSWORD] [-c|--commands COMMAND_OPTIONS]
          where HOSTFILE lists all the hosts to install the software on
-         where USER will be the user to install the software as. default is gpadmin
-         were PASSWORD will be set for the USER default is changeme
+         where USER will be the user to install the software as. default is gpadmin. (root only option)
+         where PASSWORD will be set for the USER default is changeme (root only option)
+         where --root specifies the install is being done as root and all root commands are possible
+
 
          where COMMAND_OPTIONS list a subset of commands to be run from the list below.  The default is all commands.
-            u -- add user 
-            p -- change password
-            c -- chown software on master host
+            u -- add user  (root only)
+            p -- change passworda (root only)
+            c -- chown software on master host (root only)
             s -- tar, zip and copy over software to machines in cluster
-            E -- exchange keys for root
+            E -- exchange keys for root (root only)
             e -- exchange keys for user
-            l -- check and fix user limits for new user -- requires software to be installed on cluster with command 's' or equivalent
+            l -- check and fix user limits for new user -- requires software to be installed on cluster with command 's' or equivalent (root only)
 '''
 
 import os, sys, re
@@ -44,7 +46,10 @@ pool = None
 gphome = None
 installation_info = None
 commands = set() # selected commands
-validCommands = set(['u', 'p', 'c', 's', 'e', 'E', 'l']) # valid command types
+rootCommands = set(['u', 'p', 'c', 's', 'e', 'E', 'l']) # valid command types for root
+nonRootCommands = set(['s', 'e'])                       # valid command types for non-root user
+defaultNonRootCommands = set(['s'])                     # commands to run by default for non-root user
+currentUser = None
 
 class InstallationInfo:
     def __init__(self, link_name, binary_path, binary_dir_location, binary_dir_name):
@@ -86,7 +91,7 @@ def parseargs():
     parser.add_option('-f', '--file', type='string')
     parser.add_option('-u', '--user', type='string', default='gpadmin')
     parser.add_option('-p', '--password', type='string', default='changeme')
-    parser.add_option('-c', '--commands', type='string', default='a')
+    parser.add_option('-c', '--commands', type='string')
     (options, args) = parser.parse_args()
 
     global gphome
@@ -112,15 +117,35 @@ def parseargs():
         return True
 
     if options.user == "root":
-        logger.error("can not install the software as user root")
+        logger.error("can not install the software into the account of user root")
         return True
 
+    global currentUser
+    currentUser = getpass.getuser()
+
+    if currentUser == "root":
+        validCommands = rootCommands
+    else:
+        validCommands = nonRootCommands
+
+        if options.user != currentUser:
+            logger.error("--user option '%s' does not equal non-root user running this utility '%s'" % (options.user, currentUser))
+            return True
+
     global commands
-    for i in range(len(options.commands)):
-        if options.commands[i] in validCommands and options.commands[i] not in commands:
-            commands.add(options.commands[i])
-    if len(commands) == 0:
-        commands = validCommands
+    if options.commands and len(options.commands):
+        for i in range(len(options.commands)):
+            if options.commands[i] in validCommands:
+                if options.commands[i] not in commands:
+                    commands.add(options.commands[i])
+            else:
+                logger.error("'%s' is not a valid command for user(%s)" % (options.commands[i], currentUser))
+                return True
+    else:
+        if currentUser == "root":
+            commands = rootCommands
+        else:
+            commands = defaultNonRootCommands
 
     location = os.path.abspath(gphome)
     if os.path.islink(location):
@@ -596,6 +621,20 @@ def interactiveCommand(cmdStr):
  
 # True is an error
 def exchangeKeysUser():
+
+    if currentUser == "root":
+        return exchangeKeysAsRootForUser()
+    else:
+        return exchangeKeysAsSelf()
+
+# True is an error
+def exchangeKeysAsSelf():
+
+    cmdStr = 'gpssh-exkeys -f %s' % options.file
+    return interactiveCommand(cmdStr)
+
+# True is an error
+def exchangeKeysAsRootForUser():
 
     ###################################################################################
     logger.info("exchange ssh keys for user %s" % options.user)
