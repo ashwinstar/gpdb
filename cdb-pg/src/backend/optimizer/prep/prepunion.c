@@ -989,15 +989,16 @@ make_inh_translation_lists(Relation oldrelation, Relation newrelation,
 	TupleDesc	new_tupdesc = RelationGetDescr(newrelation);
 	int			oldnatts = old_tupdesc->natts;
 	int			newnatts = new_tupdesc->natts;
-	int			old_attno;
-
+	int			old_attno = 0;
+	int			att_offset = 0;
+	
 	for (old_attno = 0; old_attno < oldnatts; old_attno++)
 	{
-		Form_pg_attribute att;
-		char	   *attname;
-		Oid			atttypid;
-		int32		atttypmod;
-		int			new_attno;
+		Form_pg_attribute att = NULL;
+		char	   *attname = NULL;
+		Oid			atttypid = InvalidOid;
+		int32		atttypmod = 0;
+		int			new_attno = 0;
 
 		att = old_tupdesc->attrs[old_attno];
 		if (att->attisdropped)
@@ -1030,9 +1031,14 @@ make_inh_translation_lists(Relation oldrelation, Relation newrelation,
 		 * Otherwise we have to search for the matching column by name.
 		 * There's no guarantee it'll have the same column position, because
 		 * of cases like ALTER TABLE ADD COLUMN and multiple inheritance.
+		 * We first check old_attno since it is quite likely that they will match
+		 * and then examine other attributes cyclically.
 		 */
-		for (new_attno = 0; new_attno < newnatts; new_attno++)
+		for (att_offset = 0; att_offset < newnatts; att_offset++)
 		{
+			new_attno = (old_attno + att_offset) % newnatts;
+			Assert(0 <= new_attno && new_attno <= newnatts - 1);
+
 			att = new_tupdesc->attrs[new_attno];
 			if (att->attisdropped || att->attinhcount == 0)
 				continue;

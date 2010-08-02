@@ -460,7 +460,7 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 		relpages--;
 	}
 	/* estimate number of tuples from previous tuple density (as of last analyze) */
-	if (relpages > 0 && reltuples > 0.0)
+	if (relpages > 0)
 		density = reltuples / (double) relpages;
 	else
 	{
