@@ -71,9 +71,10 @@ class Item:
         self.field1 = field1
         self.field2 = field2
         self.minval = int(minval)
+        self.satisfied = False
     
     def debugStr(self):
-        return "%s %s %s" % (self.field1, self.field2, self.minval)
+        return "%s %s %s satisfied=%s" % (self.field1, self.field2, self.minval, self.satisfied)
 
 items = {}
 items[1] = Item(1, 'soft', 'nofile', 65536)
@@ -122,28 +123,25 @@ try:
         # we have a match
         try:
             fields[3] = int(fields[3])
-
-            if wildcard: 
-
-                if  items[index].minval <= fields[3]:
-                    # WILDCARD RULE IS GOOD
-                    # REMOVE THIS ITEM FROM CHECKLIST
-                    del items[index]
-
-            else: # matches our user
-
-                if  items[index].minval <= fields[3]:
-                    # USER RULE IS GOOD
-                    # REMOVE THIS ITEM FROM CHECKLIST
-                    del items[index]
-
-                else:
-                    # USER RULE THAT IS NOT GOOD
-                    # REMOVE THIS LINE FROM FILE
-                    linenumbersToRemove.add(linenumber)
         except:
-            #could not parse line leave it as is
-            continue
+            fields[3] = 0
+
+        if wildcard: 
+
+            if  items[index].minval <= fields[3]:
+                # WILDCARD RULE IS GOOD
+                items[index].satisfied = True
+
+        else: # matches our user
+
+            if  items[index].minval <= fields[3]:
+                # USER RULE IS GOOD
+                items[index].satisfied = True
+
+            else:
+                # USER RULE THAT IS NOT GOOD
+                # REMOVE THIS LINE FROM FILE
+                linenumbersToRemove.add(linenumber)
     fd.close()
 except Exception,e:
     sys.stderr.write("Error parsing file %s\n" % e.__str__())
@@ -166,6 +164,8 @@ try:
 
     # new lines
     for k in items.keys():
+        if items[k].satisfied:
+            continue
         output.write("%s %s %s %s\n" % (options.user, items[k].field1, items[k].field2, items[k].minval))
 
     output.close()
