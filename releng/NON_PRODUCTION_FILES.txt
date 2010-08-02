@@ -7,7 +7,6 @@ bin/explain.pl
 bin/generate_load_tpch.pl
 bin/gp
 bin/gpaddmirrors.py
-bin/gpcheckmirrorseg.pl
 bin/gpdbupgrade
 bin/gpdiff.pl
 bin/gpexclude.pl
@@ -32,5 +31,4 @@ bin/run_operator_tests.pl
 bin/test_fsync
 docs/cli_help/gpsuspend_help
 lib/python/gppylib/programs/clsInjectFault.py
-sbin/gprepairmirrorseg.py
 sbin/gpsuspend.py
