@@ -2,7 +2,7 @@
 #
 # $Header$
 #
-# copyright (c) 2008
+# copyright (c) 2008-2010 GreenPlum.  All rights reserved.  
 # Author: Jeffrey I Cohen
 #
 #
@@ -137,7 +137,7 @@ init, cleanup
 
 Jeffrey I Cohen
 
-Copyright (c) 2008 GreenPlum.  All rights reserved.  
+Copyright (c) 2008-2010 GreenPlum.  All rights reserved.  
 
 Address bug reports and comments to: jcohen@greenplum.com
 
@@ -528,29 +528,23 @@ sub do_ps_pids
 
     if ($Config{'osname'} =~ m/solaris|sunos/i)
     {
-        my $cmd = 'ps -elf -o pid,args | grep -v grep | grep gptorment ';
-
+		# MPP-10643: fix truncated command args on solaris
+        my $cmd = '/usr/ucb/ps -auxww | grep -v grep | grep gptorment | grep ' . $uid;
+   
         my $psout = `$cmd`;
 
         my @lines = split(/\n/, $psout);
 
         for my $lin (@lines)
         {
-			$lin =~ s/^\s+//; # ENGINF-184: weird solaris format bug?
-
-            my @foo = split(/\s+/, $lin, 2);
+            my @foo = split(/\s+/, $lin, 3);
         
             next 
-                unless (2 == scalar(@foo));
+                unless (3 == scalar(@foo));
+
+            shift @foo;
 
             my $pid = shift @foo;
-
-            # on solaris, ps args are truncated, so use pargs to get args
-            my $pidpargs = `pargs $pid`;
-
-            next
-                unless (defined($pidpargs)
-                        && ($pidpargs =~ m/$uid/m));
         
             push @{$pidlist}, $pid;
 
