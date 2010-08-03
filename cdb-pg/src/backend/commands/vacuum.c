@@ -349,7 +349,6 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 	 * as soon as possible after finishing the vacuum.	This is mainly so that
 	 * we can let go the AccessExclusiveLock that we may be holding.)
 	 */
-
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		PreventTransactionChain((void *) vacstmt, stmttype);
@@ -364,9 +363,9 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 		if (Gp_role == GP_ROLE_DISPATCH)
 			ereport(NOTICE,
 					(errcode(ERRCODE_WARNING),
-							errmsg("'VACUUM FULL' is not safe for large tables and has "
-									"been known to yield unpredictable runtimes."),
-									errhint("Use 'VACUUM' instead.")));
+					 errmsg("'VACUUM FULL' is not safe for large tables and has "
+							"been known to yield unpredictable runtimes."),
+					 errhint("Use 'VACUUM' instead.")));
 	}
 
 	/*
@@ -383,10 +382,10 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 	 * if we suffer an error; there's no need for special abort cleanup logic.
 	 */
 	vac_context = AllocSetContextCreate(PortalContext,
-			"Vacuum",
-			ALLOCSET_DEFAULT_MINSIZE,
-			ALLOCSET_DEFAULT_INITSIZE,
-			ALLOCSET_DEFAULT_MAXSIZE);
+										"Vacuum",
+										ALLOCSET_DEFAULT_MINSIZE,
+										ALLOCSET_DEFAULT_INITSIZE,
+										ALLOCSET_DEFAULT_MAXSIZE);
 
 	/* Remember whether we are processing everything in the DB */
 	all_rels = (relids == NIL && vacstmt->relation == NULL);
@@ -405,7 +404,8 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 	 * another one before exiting to match the commit waiting for us back in
 	 * PostgresMain().
 	 */
-	CommitTransactionCommand();
+	if (Gp_role != GP_ROLE_EXECUTE)
+		CommitTransactionCommand();
 
 	PG_TRY();
 	{
@@ -458,7 +458,9 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 
 			if (onerel == NULL)
 			{
-				CommitTransactionCommand();
+				if (Gp_role != GP_ROLE_EXECUTE)
+					CommitTransactionCommand();
+
 				continue;
 			}
 
@@ -499,7 +501,7 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 			{
 				char	*relname		= get_rel_name(relid);
 				char	*namespace_name = 
-						get_namespace_name(get_rel_namespace(relid));
+					get_namespace_name(get_rel_namespace(relid));
 
 				if (relname == NULL)
 				{
@@ -602,18 +604,18 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 				{
 					if (vacstmt->full && 
 						(0 == vacstmt->freeze_min_age))
-							vsubtype = "FULL FREEZE";
+						vsubtype = "FULL FREEZE";
 					else if (vacstmt->full)
-							vsubtype = "FULL";
+						vsubtype = "FULL";
 					else if (0 == vacstmt->freeze_min_age)
-							vsubtype = "FREEZE";
+						vsubtype = "FREEZE";
 				}
 				MetaTrackUpdObject(RelationRelationId,
 								   relid,
 								   GetUserId(),
 								   "VACUUM", 
 								   vsubtype
-						);
+					);
 			}
 
 
@@ -625,7 +627,8 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 				vacstmt->relation = NULL;
 			}
 
-			CommitTransactionCommand();
+			if (Gp_role != GP_ROLE_EXECUTE)
+				CommitTransactionCommand();
 
 			/*
 			 * Now release the session-level lock on the master table.
@@ -696,7 +699,6 @@ vacuumStatement(VacuumStmt *vacstmt, List *relids)
 	Assert(CurrentMemoryContext != vac_context);
 	MemoryContextDelete(vac_context);
 	vac_context = NULL;
-
 }
 
 /*
