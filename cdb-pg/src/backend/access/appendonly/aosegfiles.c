@@ -447,6 +447,25 @@ FileSegInfo **GetAllFileSegInfo(Relation parentrel,
 	return result;
 }
 
+/*
+ * The comparison routine that sorts an array of FileSegInfos
+ * in the ascending order of the segment number.
+ */
+static int
+aoFileSegInfoCmp(const void *left, const void *right)
+{
+	FileSegInfo *leftSegInfo = *((FileSegInfo **)left);
+	FileSegInfo *rightSegInfo = *((FileSegInfo **)right);
+	
+	if (leftSegInfo->segno < rightSegInfo->segno)
+		return -1;
+	
+	if (leftSegInfo->segno > rightSegInfo->segno)
+		return 1;
+	
+	return 0;
+}
+
 FileSegInfo **GetAllFileSegInfo_pg_aoseg_rel(
 								char *relationName,
 								AppendOnlyEntry *aoEntry,
@@ -540,6 +559,15 @@ FileSegInfo **GetAllFileSegInfo_pg_aoseg_rel(
 	}
 
 	heap_endscan(aoscan);
+
+	/*
+	 * Sort allseginfo by the order of segment file number.
+	 *
+	 * Currently this is only needed when building a bitmap index to guarantee the tids
+	 * are in the ascending order. But since this array is pretty small, we just sort
+	 * the array for all cases.
+	 */
+	qsort((char *)allseginfo, *totalsegs, sizeof(FileSegInfo *), aoFileSegInfoCmp);
 
 	return allseginfo;
 }
