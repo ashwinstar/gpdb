@@ -4,8 +4,6 @@ USAGE:   gpseginstall -f|--file HOSTFILE [-u|--user USER]  [-p|--password PASSWO
          where HOSTFILE lists all the hosts to install the software on
          where USER will be the user to install the software as. default is gpadmin. (root only option)
          where PASSWORD will be set for the USER default is changeme (root only option)
-         where --root specifies the install is being done as root and all root commands are possible
-
 
          where COMMAND_OPTIONS list a subset of commands to be run from the list below.  The default is all commands.
             u -- add user  (root only)
@@ -129,9 +127,6 @@ def parseargs():
 
     if currentUser == "root":
         validCommands = rootCommands
-
-        if not isLinux:
-            logger.error("this utility is only supported for root user mode on the Linux operating system")
     else:
         validCommands = nonRootCommands
 
