@@ -181,7 +181,8 @@ MirroredFileSysObj_ValidateFilespaceDir(char *mirrorFilespaceLocation)
 
 	status = FileRepPrimary_MirrorValidation(
 		FileRep_GetDirFilespaceIdentifier(mirrorFilespaceLocation),
-		FileRepRelationTypeDir
+		FileRepRelationTypeDir,
+		FileRepValidationFilespace
 		);
 		
 	/* 

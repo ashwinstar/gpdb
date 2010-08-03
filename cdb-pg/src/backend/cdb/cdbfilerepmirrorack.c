@@ -208,7 +208,7 @@ FileRepAckMirror_StartSender(void)
 {
 	int status = STATUS_OK;
 	
-	int retryLocal = 0; 
+	int retry = 0; 
 
 	elog(LOG, "FileRepMirror_StartSender() ");
 	
@@ -234,7 +234,7 @@ FileRepAckMirror_StartSender(void)
 		}
 
 		ereport(LOG,
-				(errmsg("LOG(filerep): M_StartSender primary host address:'%s' and port:'%d' "
+				(errmsg("M_StartSender primary host address:'%s' and port:'%d' "
 						"mirror host address:'%s' and port:'%d' ",
 						fileRepPrimaryHostAddress,
 						fileRepPrimaryPort,
@@ -246,16 +246,17 @@ FileRepAckMirror_StartSender(void)
 
 		status = FileRepConnClient_EstablishConnection(
 									   fileRepPrimaryHostAddress,
-									   fileRepPrimaryPort);		
+									   fileRepPrimaryPort,
+									   FALSE /* reportError */);		
 
-		while (status != STATUS_OK && retryLocal < 10)  {
-			pg_usleep(100000L); /* 100 ms */
-		 			
+		while (status != STATUS_OK && retry < file_rep_retry)  {
+			FileRep_Sleep10ms(retry++);
+			
 			status = FileRepConnClient_EstablishConnection(
 							fileRepPrimaryHostAddress,
-							fileRepPrimaryPort);
+							fileRepPrimaryPort,
+							(retry == file_rep_retry) ? TRUE : FALSE);
 
-			retryLocal++;
 			if (FileRepSubProcess_IsStateTransitionRequested())
 			{
 				break;

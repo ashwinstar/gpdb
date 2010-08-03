@@ -76,7 +76,8 @@ typedef enum
 	StartupPass4Process,
 	BgWriterProcess,
 	WalWriterProcess,
-	FilerepProcess
+	FilerepProcess,
+	FilerepResetPeerProcess
 } AuxProcType;
 
 #endif   /* BOOTSTRAP_H */

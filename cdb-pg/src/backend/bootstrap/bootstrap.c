@@ -52,6 +52,7 @@
 extern int	optind;
 extern char *optarg;
 
+extern void FileRepResetPeer_Main(void);
 
 #define ALLOC(t, c)		((t *) calloc((unsigned)(c), sizeof(t)))
 
@@ -356,7 +357,10 @@ AuxiliaryProcessMain(int argc, char *argv[])
 				break;
 			case FilerepProcess:
 				statmsg = "filerep process";
-				break;				
+				break;
+			case FilerepResetPeerProcess:
+				statmsg = "filerep reset peer process";
+				break;
 			default:
 				statmsg = "??? process";
 				break;
@@ -402,7 +406,7 @@ AuxiliaryProcessMain(int argc, char *argv[])
 	 * to be initialized.
 	 * It is temporary fix to handle that here as an exception.
 	 */
-	if (IsUnderPostmaster && auxType != FilerepProcess)
+	if (IsUnderPostmaster && (auxType != FilerepProcess && auxType != FilerepResetPeerProcess))
 	{
 		/*
 		 * Create a PGPROC so we can use LWLocks.  In the EXEC_BACKEND case,
@@ -466,6 +470,10 @@ AuxiliaryProcessMain(int argc, char *argv[])
 
 		case FilerepProcess:
 			FileRep_Main();
+			proc_exit(1); /* should never return */
+
+		case FilerepResetPeerProcess:
+			FileRepResetPeer_Main();
 			proc_exit(1); /* should never return */
 
 		default:

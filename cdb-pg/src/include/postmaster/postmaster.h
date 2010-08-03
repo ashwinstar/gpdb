@@ -68,6 +68,7 @@ extern bool IsFilerepBackendsDoneShutdown(void);
 extern void NotifyProcessesOfFilerepStateChange(void);
 extern void StartFilerepProcesses(void);
 extern bool IsFilerepProcessRunning(void);
+extern void SetFilerepPeerResetResult(bool success);
 extern bool IsDatabaseInRunMode(void);
 
 

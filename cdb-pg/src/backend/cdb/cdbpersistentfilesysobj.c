@@ -1819,6 +1819,149 @@ PersistentFileSysObj_AddMirror(PersistentFileSysObjName *fsObjName,
 	pfree(values);
 }
 
+static void 
+PersistentFileSysObj_DoMirrorValidation(
+										PersistentFileSysObjName 	*fsObjName,
+										  
+										PersistentFileSysRelStorageMgr relStorageMgr,
+										  
+										ItemPointer					persistentTid,
+										  
+										int64						persistentSerialNum)
+{
+	
+	if (PersistentStore_IsZeroTid(persistentTid))
+		elog(ERROR, "TID for persistent '%s' tuple for mirror validate is invalid (0,0)",
+			 PersistentFileSysObjName_TypeName(fsObjName->type));
+	
+	if (persistentSerialNum == 0)
+		elog(ERROR, "Persistent '%s' serial number for mirror validate is invalid (0)",
+			 PersistentFileSysObjName_TypeName(fsObjName->type));
+	
+	switch (fsObjName->type)
+	{
+		case PersistentFsObjType_RelationFile:
+		{
+			char *primaryFilespaceLocation = NULL;
+			char *mirrorFilespaceLocation = NULL;
+			FileRepRelationType_e fileRepRelationType = FileRepRelationTypeNotSpecified;
+
+			RelFileNode *relFileNode = PersistentFileSysObjName_GetRelFileNodePtr(fsObjName);
+			int32 segmentFileNum = PersistentFileSysObjName_GetSegmentFileNum(fsObjName);
+			
+			Assert(relStorageMgr != PersistentFileSysRelStorageMgr_None);
+			
+			if (relStorageMgr == PersistentFileSysRelStorageMgr_BufferPool)
+			{
+				Assert(segmentFileNum == 0);
+				
+				fileRepRelationType = FileRepRelationTypeBufferPool;				
+			}
+			else
+			{
+				Assert(relStorageMgr == PersistentFileSysRelStorageMgr_AppendOnly);
+				
+				fileRepRelationType = FileRepRelationTypeAppendOnly;
+			}
+			
+			PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+															   relFileNode->spcNode,
+															   &primaryFilespaceLocation,
+															   &mirrorFilespaceLocation);			
+			
+			FileRepPrimary_MirrorValidation(
+											FileRep_GetRelationIdentifier(
+																		  mirrorFilespaceLocation,
+																		  *relFileNode, 
+																		  segmentFileNum),
+											fileRepRelationType,
+											FileRepValidationExistence);	
+			
+			if (primaryFilespaceLocation != NULL)
+				pfree(primaryFilespaceLocation);
+			if (mirrorFilespaceLocation != NULL)
+				pfree(mirrorFilespaceLocation);									
+		}
+			break;
+			
+		case PersistentFsObjType_DatabaseDir:
+		{
+			char *primaryFilespaceLocation = NULL;
+			char *mirrorFilespaceLocation = NULL;
+			DbDirNode *dbDirNode = &fsObjName->variant.dbDirNode;
+						
+			PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+															   dbDirNode->tablespace,
+															   &primaryFilespaceLocation,
+															   &mirrorFilespaceLocation);			
+			
+			FileRepPrimary_MirrorValidation(
+											FileRep_GetDirDatabaseIdentifier(
+																			 mirrorFilespaceLocation,
+																			 *dbDirNode),
+											FileRepRelationTypeDir,
+											FileRepValidationExistence);			
+			
+			if (primaryFilespaceLocation != NULL)
+				pfree(primaryFilespaceLocation);
+			if (mirrorFilespaceLocation != NULL)
+				pfree(mirrorFilespaceLocation);						
+		}
+			break;
+			
+		case PersistentFsObjType_TablespaceDir:			
+		{	
+			char *primaryFilespaceLocation = NULL;
+			char *mirrorFilespaceLocation = NULL;
+			
+			PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+															   fsObjName->variant.tablespaceOid,
+															   &primaryFilespaceLocation,
+															   &mirrorFilespaceLocation);			
+			
+			FileRepPrimary_MirrorValidation(
+											FileRep_GetDirTablespaceIdentifier(
+																			   mirrorFilespaceLocation,
+																			   fsObjName->variant.tablespaceOid),
+											FileRepRelationTypeDir,
+											FileRepValidationExistence);
+			
+			if (primaryFilespaceLocation != NULL)
+				pfree(primaryFilespaceLocation);
+			if (mirrorFilespaceLocation != NULL)
+				pfree(mirrorFilespaceLocation);			
+		}
+			break;
+			
+		case PersistentFsObjType_FilespaceDir:	
+		{
+			char *primaryFilespaceLocation = NULL;
+			char *mirrorFilespaceLocation = NULL;
+			
+			PersistentFilespace_GetPrimaryAndMirror(
+													fsObjName->variant.filespaceOid,
+													&primaryFilespaceLocation,
+													&mirrorFilespaceLocation);
+			
+			FileRepPrimary_MirrorValidation(
+											FileRep_GetDirFilespaceIdentifier(
+																			  mirrorFilespaceLocation),
+											FileRepRelationTypeDir,
+											FileRepValidationExistence);
+						
+			if (primaryFilespaceLocation != NULL)
+				pfree(primaryFilespaceLocation);
+			if (mirrorFilespaceLocation != NULL)
+				pfree(mirrorFilespaceLocation);
+		}
+			break;
+			
+		default:
+			elog(ERROR, "Unexpected persistent file-system object type: %d",
+				 fsObjName->type);
+	}
+}
+
 static void PersistentFileSysObj_DoMirrorReCreate(
 	PersistentFileSysObjName 	*fsObjName,
 
@@ -4129,6 +4272,27 @@ static void PersistentFileSysObj_ScanStateAction(
 						 MirroredObjectExistenceState_Name(mirrorExistenceState),
 						 serialNum,
 						 ItemPointerToString(&persistentTid));
+				
+				if (mirrorExistenceState == MirroredObjectExistenceState_MirrorCreated)
+				{
+					PersistentFileSysRelStorageMgr	relStorageMgr = PersistentFileSysRelStorageMgr_None;
+					
+					if (fsObjType == PersistentFsObjType_RelationFile)
+						relStorageMgr = 
+									(PersistentFileSysRelStorageMgr)
+									DatumGetInt16(
+												  values[Anum_gp_persistent_relation_node_relation_storage_manager - 1]);	
+					
+					FileRepResync_SetReCreateRequest();
+
+					PersistentFileSysObj_DoMirrorValidation(
+															&fsObjName,
+															relStorageMgr,
+															&persistentTid,
+															persistentSerialNum);
+					
+					FileRepResync_ResetReCreateRequest();					
+				}
 			}
 			break;
 			

@@ -106,11 +106,17 @@ FaultInjectorIdentifierEnumToString[] = {
 	_("filerep_resync"),
 		/* inject fault while InResync */
 	_("filerep_transition_to_resync"),
-		/* inject fault during transition to InResync */
+		/* inject fault during transition to InResync before objects are re-created on mirror */
+	_("filerep_transition_to_resync_mark_recreate"),
+		/* inject fault during transition to InResync before objects are marked re-created */
+	_("filerep_transition_to_resync_mark_completed"),
+		/* inject fault during transition to InResync before transition is marked completed */
 	_("filerep_transition_to_sync"),
 		/* inject fault during transition to InSync */
 	_("filerep_transition_to_sync_before_checkpoint"),
 		/* inject fault during transition to InSync before checkpoint is taken */
+	_("filerep_transition_to_sync_mark_completed"),
+		/* inject fault during transition to InSync before transition is marked completed */
 	_("checkpoint"),
 		/* inject fault before checkpoint is taken */
 	_("transaction_abort_after_distributed_prepared"),
@@ -664,8 +670,11 @@ FaultInjector_NewHashEntry(
 	switch (entry->faultInjectorIdentifier)
 	{
 		case FileRepResync:
-		case FileRepTransitionToInResync:
+		case FileRepTransitionToInResyncMirrorReCreate:
+		case FileRepTransitionToInResyncMarkReCreated:
+		case FileRepTransitionToInResyncMarkCompleted:
 		case FileRepTransitionToInSync:
+		case FileRepTransitionToInSyncMarkCompleted:
 		case FileRepTransitionToInSyncBeforeCheckpoint:
 		case Checkpoint:
 		case TransactionCommitPass1FromCreatePendingToCreated:

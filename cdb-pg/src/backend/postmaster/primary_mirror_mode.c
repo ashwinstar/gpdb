@@ -16,6 +16,14 @@
 #include <string.h>
 
 /**
+ * If set to true then a postmaster reset while in-sync or resync will cause the mirror or primary to try to contact its
+ *   peer to execute a coordinated reset.  If the coordinated reset fails, then reset will transition
+ *   to a fault state, which will subsequently cause the fault prober to move the segment pair into a
+ *   change-tracking/down pair.
+ */
+#define USE_PEER_RESET_DURING_POSTMASTER_RESET (true)
+
+/**
  * todo MIRRORING Review setup of signal handlers here --
  *                if we are inside a transition will we quit out properly on shutdown?
  */
@@ -27,9 +35,10 @@
  *
  * Note: if the order or # of values is changed then update the labels below.
  *
- * this implements a state machine.  Each transition manages its own transition order through this machine
+ * this implements a state machine.  Each transition (like to-primary-segment, or to-mirror-segment)
+ *             manages its own transition order through this machine.
  *
- * Note that some places (notably, getFileRepRoleAndState) rely on the order of these
+ * Note that some places (notably, getFileRepRoleAndState) rely on the numerical order of these
  *   for implementation.  Be careful of that when changing this.
  */
 typedef enum
@@ -206,6 +215,12 @@ typedef struct PMLocalState
      * See mostRecentTransition
      */
     bool haveSetMostRecentTransition;
+
+    /**
+     * Used if the reset of the filerep peer cannot be done to indicate that the postmaster reset should
+     *   transition to fault rather than trying a peer postmaster reset
+     */
+    bool doNextResetToFault;
 
     /**
      * Was the most recent (non-fault) segment state "change tracking disabled"?
@@ -835,6 +850,50 @@ setInitialRequestedPrimaryMirrorMode(PrimaryMirrorMode targetMode)
 }
 
 /**
+ * Mark that the next postmaster reset (as processed by primaryMirrorHandlePostmasterReset) should
+ *   transition to fault
+ */
+void
+primaryMirrorDoNextResetToFault(void)
+{
+	pmLocalState.doNextResetToFault = true;
+}
+
+/**
+ * Called on postmaster reset, after all children have been shut down but before starting the children back up.
+ *   Returns true if the postmaster should try to reset the peer before doing a reset.
+ */
+bool
+primaryMirrorPostmasterResetShouldRestartPeer(void)
+{
+	if ( !USE_PEER_RESET_DURING_POSTMASTER_RESET )
+	{
+		return false;
+	}
+
+	if ( !pmLocalState.haveSetMostRecentTransition )
+	{
+		return false;
+	}
+
+	PrimaryMirrorMode mode = pmLocalState.mostRecentTransition.mode;
+
+    if ( mode == PMModeMirrorSegment )
+    {
+    	/* if we're a mirror and panicked, should try to reset the primary */
+        return true;
+    }
+    else if ( mode == PMModePrimarySegment &&
+              pmLocalState.mostRecentTransition.dataState != DataStateInChangeTracking )
+	{
+		/* if we're a primary AND we were in resync/sync then try to restart in that mode */
+		return true;
+	}
+
+    return false;
+}
+
+/**
  * Handle a postmaster reset.  This is called AFTER shared memory has been reset.
  *
  * This function will use the locally stored data from the most recently requested transition
@@ -848,22 +907,32 @@ primaryMirrorHandlePostmasterReset(void)
 	Assert(pmModuleState->mode == PMModeUninitialized);
     Assert(pmLocalState.haveSetMostRecentTransition );
 
-    if ( pmLocalState.mostRecentTransition.mode == PMModeMirrorSegment)
+	if ( !USE_PEER_RESET_DURING_POSTMASTER_RESET )
+	{
+		/** if we have not enabled USE_PEER_RESET_DURING_POSTMASTER_RESET, then treat it as ALWAYS
+		  * doing a reset to the fault state */
+		pmLocalState.doNextResetToFault = true;
+	}
+
+   	if ( pmLocalState.mostRecentTransition.mode == PMModeMirrorSegment)
     {
-        transitionToFault = true;
+        transitionToFault = pmLocalState.doNextResetToFault;
     }
     else if ( pmLocalState.mostRecentTransition.mode == PMModePrimarySegment)
     {
         if ( pmLocalState.mostRecentTransition.dataState != DataStateInChangeTracking )
         {
-            /* transition to fault to let fault prober decide what to do */
-            transitionToFault = true;
+            /* transition to fault if needed, to let fault prober decide what to do */
+            /* otherwise, the peer has been reset successfully and we can do a simple reset instead */
+            transitionToFault = pmLocalState.doNextResetToFault;
         }
     }
     else
     {
         transitionToFault = false;
     }
+    
+    pmLocalState.doNextResetToFault = false;
 
     elog(getPrimaryMirrorModeDebugLogLevel(false), "PrimaryMirrorMode: Processing postmaster reset%s",
                 transitionToFault ? " to fault state" : " to non-fault state");
@@ -1901,6 +1970,19 @@ void primaryMirrorSetBGWriterPID( pid_t pid )
 
     /* updating single int field, no need for fancy locking */
     pmModuleState->bgWriterPID = pid;
+}
+
+/**
+ * Get the arguments that were most recently copied to local memory.  This is ONLY valid
+ *  in the postmaster and in children that are forked most recently after the transition.
+ */
+PrimaryMirrorModeTransitionArguments primaryMirrorGetArgumentsFromLocalMemory(void)
+{
+	if (!pmLocalState.haveSetMostRecentTransition)
+	{
+		elog(ERROR, "Request for filerep arguments from local memory made when they do not exist.");
+	}
+	return pmLocalState.mostRecentTransition;
 }
 
 /**

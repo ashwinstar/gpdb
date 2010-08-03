@@ -203,7 +203,12 @@ typedef struct
 	char hostAddress[PM_MAX_HOST_NAME_LENGTH+1];
 	int hostPort;
 	char peerAddress[PM_MAX_HOST_NAME_LENGTH+1];
+
+	/** The peer's replication port.  Filerep will connect to this port */
 	int peerPort;
+
+	/** The peer's postmaster port.  Filerep will connect to this port */
+	int peerPostmasterPort;
 
     /* a unique identifer for logging, will be filled in by the call to requestTransition... */
 	int transitionNumber;
@@ -297,6 +302,9 @@ extern void primaryMirrorGetFilerepArguments(
 				int *mirrorPortOut,
 				bool *fullSyncOut);
 extern void primaryMirrorHandlePostmasterReset(void);
+extern void primaryMirrorDoNextResetToFault(void);
+extern bool primaryMirrorPostmasterResetShouldRestartPeer(void);
 extern void primaryMirrorRecordSegmentStateToPostmasterLocalMemory(void);
+extern PrimaryMirrorModeTransitionArguments primaryMirrorGetArgumentsFromLocalMemory(void);
 
 #endif   /* _PRIMARY_MIRROR_MODE_H */

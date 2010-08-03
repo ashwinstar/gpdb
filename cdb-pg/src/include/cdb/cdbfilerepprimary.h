@@ -230,7 +230,9 @@ extern int FileRepPrimary_MirrorDropFilesFromDir(
 extern int FileRepPrimary_MirrorValidation(
 		FileRepIdentifier_u		fileRepIdentifier,
 				   
-		FileRepRelationType_e	fileRepRelationType);
+		FileRepRelationType_e	fileRepRelationType,
+
+		FileRepValidationType_e fileRepValidationType);
 
 extern bool FileRepPrimary_IsOperationCompleted(
 	FileRepIdentifier_u	fileRepIdentifier,

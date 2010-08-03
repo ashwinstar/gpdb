@@ -2120,7 +2120,8 @@ Filerep_Failover(struct segmentStatusChange *changes, int changeCount)
 }
 
 static void
-Filerep_get_hosts_by_dbid(int dbid, char **hostname_p, int *host_port_p, int *host_filerep_port_p, char **peer_name_p, int *peer_port_p)
+Filerep_get_hosts_by_dbid(int dbid, char **hostname_p, int *host_port_p, int *host_filerep_port_p, char **peer_name_p,
+			int *peer_pm_port_p, int *peer_filerep_port_p)
 {
 	bool found;
 	int i;
@@ -2131,7 +2132,8 @@ Filerep_get_hosts_by_dbid(int dbid, char **hostname_p, int *host_port_p, int *ho
 	Assert(host_port_p != NULL);
 	Assert(host_filerep_port_p != NULL);
 	Assert(peer_name_p != NULL);
-	Assert(peer_port_p != NULL);
+	Assert(peer_pm_port_p != NULL);
+	Assert(peer_filerep_port_p != NULL);
 
 	found = false;
 
@@ -2170,7 +2172,8 @@ Filerep_get_hosts_by_dbid(int dbid, char **hostname_p, int *host_port_p, int *ho
 		if (segInfo->segindex == content_id && segInfo->dbid != dbid)
 		{
 			*peer_name_p = segInfo->address;
-			*peer_port_p = segInfo->filerep_port;
+			*peer_pm_port_p = segInfo->port;
+			*peer_filerep_port_p = segInfo->filerep_port;
 			found = true;
 			break;
 		}
@@ -2180,7 +2183,8 @@ Filerep_get_hosts_by_dbid(int dbid, char **hostname_p, int *host_port_p, int *ho
 	{
 		elog(LOG, "Could not find mirror-peer for dbid %d", dbid);
 		*peer_name_p = NULL;
-		*peer_port_p = -1;
+		*peer_pm_port_p = -1;
+		*peer_filerep_port_p = -1;
 	}
 }
 
@@ -2195,12 +2199,12 @@ Filerep_mode_update(int dbid, char *mode, char status, FilerepModeUpdateLoggingE
 	char port_buf[10];
 	char *seg_addr = NULL;
 	char *peer_addr = NULL;
-	int seg_pm_port = -1, seg_rep_port = -1, peer_rep_port = -1;
+	int seg_pm_port = -1, seg_rep_port = -1, peer_rep_port = -1, peer_pm_port;
 
 	Assert(dbid >= 0);
 	Assert(mode != NULL);
 
-	Filerep_get_hosts_by_dbid(dbid, &seg_addr, &seg_pm_port, &seg_rep_port, &peer_addr, &peer_rep_port);
+	Filerep_get_hosts_by_dbid(dbid, &seg_addr, &seg_pm_port, &seg_rep_port, &peer_addr, &peer_pm_port, &peer_rep_port);
 
 	snprintf(tmp_filename, sizeof(tmp_filename), "/tmp/ftsprobe_command_XXXXXX");
 	f = mkstemp(tmp_filename);
@@ -2253,6 +2257,10 @@ Filerep_mode_update(int dbid, char *mode, char status, FilerepModeUpdateLoggingE
 		FILEREP_WRITE(res, f, "\n");
 
 		snprintf(port_buf, sizeof(port_buf), "%d", peer_rep_port);
+		FILEREP_WRITE(res, f, port_buf);
+		FILEREP_WRITE(res, f, "\n");
+
+		snprintf(port_buf, sizeof(port_buf), "%d", peer_pm_port);
 		FILEREP_WRITE(res, f, port_buf);
 		FILEREP_WRITE(res, f, "\n");
 

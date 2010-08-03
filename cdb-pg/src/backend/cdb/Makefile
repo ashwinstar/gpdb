@@ -32,6 +32,7 @@ OBJS = cdbanalyze.o \
 	   cdbfilerepprimaryack.o cdbfilerepmirrorack.o \
 	   cdbfilerepconnclient.o cdbfilerepconnserver.o \
 	   cdbfilerepresyncmanager.o cdbfilerepresyncworker.o \
+	   cdbfilerepresetpeerprocess.o \
 	   cdbfts.o \
 	   cdbglobalsequence.o \
 	   cdbgang.o cdbgroup.o \

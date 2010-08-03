@@ -1759,16 +1759,35 @@ FileRepMirror_RunConsumer(void)
 				
 				elog(DEBUG1, "FileRepOperationValidation() filename:%s", fileName);	
 
-				switch (fileRepMessageHeader->fileRepRelationType) 
-				{
-					case FileRepRelationTypeDir:
+				switch (fileRepMessageHeader->fileRepOperationDescription.validation.fileRepValidationType)
+				{	
+					case FileRepValidationFilespace:
+						
+						Assert(fileRepMessageHeader->fileRepRelationType == FileRepRelationTypeDir);
+						
 						fileRepMessageHeader->fileRepOperationDescription.validation.mirrorStatus = FileRepMirror_Validation(fileName);
 						break;
+					
+					case FileRepValidationExistence:
+					{	
+						struct stat	 st;
 						
+						if (stat(fileName, &st) >= 0)
+						{
+							fileRepMessageHeader->fileRepOperationDescription.validation.mirrorStatus = FileRepStatusSuccess;
+						}
+						else
+						{
+							fileRepMessageHeader->fileRepOperationDescription.validation.mirrorStatus = FileRepStatusNoSuchFileOrDirectory;
+						}
+						
+						break;
+					}	
 					default:
 						Assert(0);
+						break;
 				}
-						
+										
 				break;
 				
 			case FileRepOperationRename:

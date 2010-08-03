@@ -143,8 +143,6 @@ class GpSegStart:
 
         # this is the mirroring mode for the pre-conversion part of running
         mirroringModeForStart = self.mirroringMode
-        if self.mirroringMode == 'primary' or self.mirroringMode == 'mirror':
-            mirroringModeForStart = 'quiescent'
 
         if mirroringModeForStart == 'quiescent':
             nowait = True
@@ -173,13 +171,8 @@ class GpSegStart:
         self.pool.empty_completed_items()
 
     def __checkLocaleAndConnect(self, directoryToSegStartDataMap, results):
-        if self.mirroringMode == 'quiescent' or self.mirroringMode == 'mirror':
-            #
-            # Note that we could do datadir checking for mirror?
-            #
-            return
 
-        if self.mirroringMode == 'primary':
+        if self.mirroringMode == 'quiescent':
             logger.info("Awaiting segment startup and validating segments...")
         else:
             logger.info("Validating segments...")
@@ -190,10 +183,11 @@ class GpSegStart:
         #
         dataDirToCmd = {}
         for datadir, seg in directoryToSegStartDataMap.iteritems():
-            cmd = gp.SendFilerepTransitionStatusMessage("Check Status", "getCollationAndDataDirSettings",
-                                    seg.getSegmentDataDirectory(), seg.getSegmentPort())
-            dataDirToCmd[datadir] = cmd
-            self.pool.addCommand(cmd)
+            if seg.isSegmentPrimary(True):
+                cmd = gp.SendFilerepTransitionStatusMessage("Check Status", "getCollationAndDataDirSettings",
+                                        seg.getSegmentDataDirectory(), seg.getSegmentPort())
+                dataDirToCmd[datadir] = cmd
+                self.pool.addCommand(cmd)
 
         self.pool.join()
 
@@ -239,7 +233,7 @@ class GpSegStart:
 
     def __convertSegments(self, directoryToSegStartDataMap, results, transitionData):
 
-        if self.mirroringMode == 'primary' or self.mirroringMode == 'mirror':
+        if self.mirroringMode == 'quiescent':
 
             logger.info("Changing segments...")
             for dir, seg in directoryToSegStartDataMap.iteritems():
@@ -376,6 +370,12 @@ class GpSegStart:
                     description=' '.join(description.split()),
                     version='%prog version $Revision: #12 $')
         parser.setHelp(_help)
+
+    #
+    # Note that this mirroringmode parameter should only be either mirrorless or quiescent.
+    #   If quiescent then it is implied that there is pickled transition data that will be
+    #   provided (using -p) to immediately convert to a primary or a mirror.
+    #
 
         addStandardLoggingAndHelpOptions(parser, includeNonInteractiveOption=False)
 

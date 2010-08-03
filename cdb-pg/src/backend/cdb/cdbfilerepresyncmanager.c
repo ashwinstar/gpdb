@@ -204,7 +204,7 @@ static void FileRepResync_ShmemReInit(void);
 
 static void FileRepResync_Cleanup(void);
 
-static int FileRepResyncManager_InResyncTransition(bool isLastLocTracked);
+static int FileRepResyncManager_InResyncTransition(void);
 static int FileRepResyncManager_InSyncTransition(void);
 static int FileRepPrimary_RunResyncManager(void);
 
@@ -592,6 +592,8 @@ FileRepResync_Cleanup(void)
 									   AccessExclusiveLock);		
 	}
 	
+	LockReleaseAll(DEFAULT_LOCKMETHOD, false);
+
 	FileRepResync_LockRelease();
 	
 	return;						  
@@ -709,7 +711,10 @@ FileRepPrimary_StartResyncManager(void)
 		Insist(segmentState == SegmentStateInResyncTransition ||
 			   segmentState == SegmentStateReady);
 
-		status = FileRepResyncManager_InResyncTransition(isLastLocTracked);
+		if (isLastLocTracked == FALSE)
+		{
+			status = FileRepResyncManager_InResyncTransition();
+		}
 				
 		if (status != STATUS_OK ||
 			! (FileRepSubProcess_GetState() == FileRepStateReady &&
@@ -746,7 +751,7 @@ FileRepPrimary_StartResyncManager(void)
  * FileRepResyncManager_InResyncTransition()
  */
 static int
-FileRepResyncManager_InResyncTransition(bool isLastLocTracked)
+FileRepResyncManager_InResyncTransition(void)
 {
 	int status = STATUS_OK;
 	
@@ -762,14 +767,11 @@ FileRepResyncManager_InResyncTransition(bool isLastLocTracked)
 	
 	elog(LOG, "FileRepResyncManager_InResyncTransition() ChangeTracking_RecordLastChangeTrackedLoc");
 
-	if (isLastLocTracked == FALSE)
+	ChangeTracking_RecordLastChangeTrackedLoc();
+	
+	if (FileRepSubProcess_GetState() == FileRepStateFault)
 	{
-		ChangeTracking_RecordLastChangeTrackedLoc();
-		
-		if (FileRepSubProcess_GetState() == FileRepStateFault)
-		{
-			goto exit;
-		}
+		goto exit;
 	}
 	
 	FileRepSubProcess_ProcessSignals();
@@ -825,7 +827,7 @@ FileRepResyncManager_InResyncTransition(bool isLastLocTracked)
 	
 #ifdef FAULT_INJECTOR	
 	FaultInjector_InjectFaultIfSet(
-								   FileRepTransitionToInResync, 
+								   FileRepTransitionToInResyncMirrorReCreate, 
 								   DDLNotSpecified,
 								   "",	// databaseName
 								   ""); // tableName
@@ -841,24 +843,45 @@ FileRepResyncManager_InResyncTransition(bool isLastLocTracked)
 	{
 		goto exit;
 	}	
-	
-	if (isLastLocTracked == FALSE)
-	{
-		ChangeTracking_MarkTransitionToResyncCompleted();
-
-		FileRepSubProcess_ProcessSignals();
-		if (! ((segmentState == SegmentStateInResyncTransition ||
-				segmentState == SegmentStateReady) &&
-			   dataState == DataStateInResync))
-		{
-			goto exit;
-		}	
-	}	
-	
+		
 	FileRepSubProcess_SetState(FileRepStateReady);	
+	
+#ifdef FAULT_INJECTOR	
+	FaultInjector_InjectFaultIfSet(
+								   FileRepTransitionToInResyncMarkReCreated, 
+								   DDLNotSpecified,
+								   "",	// databaseName
+								   ""); // tableName
+#endif
 	
 	PersistentFileSysObj_MarkMirrorReCreated();
 	elog(LOG, "FileRepResyncManager_InResyncTransition() PersistentFileSysObj_MarkMirrorReCreated DONE");
+	
+	FileRepSubProcess_ProcessSignals();
+	if (! (segmentState == SegmentStateReady &&
+		   dataState == DataStateInResync))
+	{
+		goto exit;
+	}		
+	
+#ifdef FAULT_INJECTOR	
+	FaultInjector_InjectFaultIfSet(
+								   FileRepTransitionToInResyncMarkCompleted, 
+								   DDLNotSpecified,
+								   "",	// databaseName
+								   ""); // tableName
+#endif		
+	
+	ChangeTracking_MarkTransitionToResyncCompleted();
+	
+	elog(LOG, "FileRepResyncManager_InResyncTransition() ChangeTracking_MarkTransitionToResyncCompleted DONE");	
+	
+	FileRepSubProcess_ProcessSignals();
+	if (! (segmentState == SegmentStateReady &&
+		   dataState == DataStateInResync))
+	{
+		goto exit;
+	}		
 	
 exit:
 	LWLockRelease(MirroredLock);
@@ -990,8 +1013,7 @@ FileRepPrimary_RunResyncManager(void)
 		
 		if (isFullResync())
 		{
-			if  (entry.mirrorDataSynchronizationState == MirroredRelDataSynchronizationState_BufferPoolPageIncremental ||
-				 entry.mirrorDataSynchronizationState == MirroredRelDataSynchronizationState_AppendOnlyCatchup)
+			if  (entry.mirrorDataSynchronizationState == MirroredRelDataSynchronizationState_BufferPoolPageIncremental)
 			{
 				ereport(ERROR,
 						(errcode_for_file_access(),
@@ -1118,6 +1140,16 @@ FileRepResyncManager_InSyncTransition(void)
 		FileRepPrimary_MirrorInSyncTransition();
 		
 		ChangeTracking_MarkTransitionToInsyncCompleted();
+		
+		elog(LOG, "FileRepResyncManager_InSyncTransition() ChangeTracking_MarkTransitionToInsyncCompleted DONE");	
+
+#ifdef FAULT_INJECTOR	
+		FaultInjector_InjectFaultIfSet(
+									   FileRepTransitionToInSyncMarkCompleted, 
+									   DDLNotSpecified,
+									   "",	// databaseName
+									   ""); // tableName
+#endif	
 		
 		break;
 	}

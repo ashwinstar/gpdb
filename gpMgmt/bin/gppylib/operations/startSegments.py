@@ -110,19 +110,27 @@ class StartSegmentsOperation:
         segments = [seg for seg in segments if failedPingDbIds.get(seg.getSegmentDbId()) is None]
 
         # now do the start!
-        if startMethod == START_AS_PRIMARY_OR_MIRROR:
-
-            mirrorDbs = [seg for seg in segments if seg.isSegmentMirror(True)]
-            primaryDbs = [seg for seg in segments if seg.isSegmentPrimary(True)]
-
-            self.__runStartCommand(mirrorDbs, MIRROR_MODE_MIRROR, numContentsInCluster, result, gpArray)
-            self.__runStartCommand(primaryDbs, MIRROR_MODE_PRIMARY, numContentsInCluster, result, gpArray)
-
-        elif startMethod == START_AS_MIRRORLESS:
-            # bring them up in mirrorless mode
-            self.__runStartCommand(segments, MIRROR_MODE_MIRRORLESS, numContentsInCluster, result, gpArray)
+        if False: # this is disabled -- enabling this will start mirrors and primaries at the same time, but
+			      #  this won't work because, depending on the # of workers in the pools (on master and segments)
+			      #  and on the # of hosts/segments, a segment's startup may pause waiting for its peer,
+			      #  which never completes because the python code hasn't gotten around to starting it (no worker
+			      #  available for the peer)
+            assert startMethod == START_AS_PRIMARY_OR_MIRROR or startMethod == START_AS_MIRRORLESS
+            self.__runStartCommand(segments, startMethod, numContentsInCluster, result, gpArray)
         else:
-            raise Exception("Invalid startMethod %s" % startMethod)
+            if startMethod == START_AS_PRIMARY_OR_MIRROR:
+
+                mirrorDbs = [seg for seg in segments if seg.isSegmentMirror(True)]
+                primaryDbs = [seg for seg in segments if seg.isSegmentPrimary(True)]
+
+                self.__runStartCommand(mirrorDbs, startMethod, numContentsInCluster, result, gpArray)
+                self.__runStartCommand(primaryDbs, startMethod, numContentsInCluster, result, gpArray)
+
+            elif startMethod == START_AS_MIRRORLESS:
+                # bring them up in mirrorless mode
+                self.__runStartCommand(segments, startMethod, numContentsInCluster, result, gpArray)
+            else:
+                raise Exception("Invalid startMethod %s" % startMethod)
 
         # done!
         assert totalToAttempt == len(result.getFailedSegmentObjs()) + len(result.getSuccessfulSegments())
@@ -143,7 +151,7 @@ class StartSegmentsOperation:
         assert len(segments) == len(result.getFailedSegmentObjs()) + len(result.getSuccessfulSegments())
         return result
 
-    def __runStartCommand(self, segments, mirroringMode, numContentsInCluster, resultOut, gpArray):
+    def __runStartCommand(self, segments, startMethod, numContentsInCluster, resultOut, gpArray):
         """
         Putt results into the resultOut object
         """
@@ -151,26 +159,28 @@ class StartSegmentsOperation:
         if len(segments) == 0:
             return
 
-        if mirroringMode == 'primary':
-            logger.info("Commencing parallel primary segment instance startup, please wait...")
-        elif mirroringMode == 'mirror':
-            logger.info("Commencing parallel mirror segment instance startup, please wait...")
+        if startMethod == START_AS_PRIMARY_OR_MIRROR:
+            logger.info("Commencing parallel primary and mirror segment instance startup, please wait...")
         else:
             logger.info("Commencing parallel segment instance startup, please wait...")
         dispatchCount=0
 
         dbIdToPeerMap = gpArray.getDbIdToPeerMap()
 
+        mirroringModePreTransition = MIRROR_MODE_MIRRORLESS if startMethod == START_AS_MIRRORLESS else MIRROR_MODE_QUIESCENT
+
         # launch the start
         for hostName, segments in GpArray.getSegmentsByHostName(segments).iteritems():
             logger.debug("Dispatching command to start segments on host: %s, " \
                             "with %s contents in cluster" % (hostName, numContentsInCluster))
 
-
             pickledTransitionData = None
-            if mirroringMode == 'primary' or mirroringMode == 'mirror':
-                pickledTransitionData = self.__createPickledTransitionParameters(mirroringMode,
-                                                                                 segments, None, dbIdToPeerMap)
+            if startMethod == START_AS_PRIMARY_OR_MIRROR:
+                mirroringModePerSegment = []
+                for seg in segments:
+                    modeThisSegment = MIRROR_MODE_PRIMARY if seg.isSegmentPrimary(True) else MIRROR_MODE_MIRROR
+                    mirroringModePerSegment.append(modeThisSegment)
+                pickledTransitionData = self.__createPickledTransitionParameters(segments, mirroringModePerSegment, None, dbIdToPeerMap)
 
             #
             # This will call sbin/gpsegstart.py
@@ -178,7 +188,7 @@ class StartSegmentsOperation:
             cmd = gp.GpSegStartCmd("remote segment starts on host '%s'" % hostName,
                                    self.__gpHome, segments, self.__localeData,
                                    self.__gpVersion,
-                                   mirroringMode,
+                                   mirroringModePreTransition,
                                    numContentsInCluster,
                                    self.__timeout,
                                    verbose=logging_is_verbose(),
@@ -239,7 +249,7 @@ class StartSegmentsOperation:
                 for segment in cmd.dblist:
                     resultOut.addFailure(segment, cmd.get_results(), gp.SEGSTART_ERROR_UNKNOWN_ERROR)
 
-    def __createPickledTransitionParameters(self, targetMode, segmentsOnHost, convertUsingFullResync, dbIdToPeerMap):
+    def __createPickledTransitionParameters(self, segmentsOnHost, targetModePerSegment, convertUsingFullResync, dbIdToPeerMap):
         dbIdToFullResync = {}
         if convertUsingFullResync is not None:
             for i in range(len(segmentsOnHost)):
@@ -247,9 +257,8 @@ class StartSegmentsOperation:
                     dbIdToFullResync[segmentsOnHost[i].getSegmentDbId()] = True
 
         hostData = {}
-        hostData["targetMode"] = targetMode
         hostData["dbsByPort"] = {}
-        for db in segmentsOnHost:
+        for i, db in enumerate(segmentsOnHost):
             peer = dbIdToPeerMap[db.getSegmentDbId()]
             dbData = {}
             dbData["dbid"] = db.getSegmentDbId()
@@ -258,8 +267,11 @@ class StartSegmentsOperation:
             dbData["hostPort"] = db.getSegmentReplicationPort()
             dbData["peerName"] = peer.getSegmentAddress()
             dbData["peerPort"] = peer.getSegmentReplicationPort()
-            hostData["dbsByPort"][db.getSegmentPort()] = dbData
+            dbData["peerPMPort"] = peer.getSegmentPort()
             dbData["fullResyncFlag"] = db.getSegmentDbId() in dbIdToFullResync
+            dbData["targetMode"] = targetModePerSegment[i]
+
+            hostData["dbsByPort"][db.getSegmentPort()] = dbData
 
         return base64.urlsafe_b64encode(pickle.dumps(hostData))
 
@@ -287,7 +299,8 @@ class StartSegmentsOperation:
 
             logger.debug("Dispatching command to convert segments on host: %s " % (hostName))
 
-            pickledParams = self.__createPickledTransitionParameters(targetMode, segments,
+            targetModePerSegment = [targetMode for seg in segments]
+            pickledParams = self.__createPickledTransitionParameters(segments, targetModePerSegment,
                                         convertUsingFullResync, dbIdToPeerMap)
 
             address = segments[0].getSegmentAddress()

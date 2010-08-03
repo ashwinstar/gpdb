@@ -677,6 +677,25 @@ FileRepSubProcess_Main()
 		/* Report the error to the server log */
 		EmitErrorReport();
 		
+		LWLockReleaseAll();
+
+		if (fileRepProcessType == FileRepProcessTypeResyncManager)
+		{
+			LockReleaseAll(DEFAULT_LOCKMETHOD, false);
+		}
+
+		
+		if (FileRepIsBackendSubProcess(fileRepProcessType))
+		{
+			AbortBufferIO();
+			UnlockBuffers();
+			
+			/* buffer pins are released here: */
+			ResourceOwnerRelease(CurrentResourceOwner,
+								 RESOURCE_RELEASE_BEFORE_LOCKS,
+								 false, true);
+		}
+		
 		/*
 		 * We can now go away.	Note that because we'll call InitProcess, a
 		 * callback will be registered to do ProcKill, which will clean up

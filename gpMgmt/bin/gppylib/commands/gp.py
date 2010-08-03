@@ -187,7 +187,7 @@ class SegmentStart(Command):
 #-----------------------------------------------
 class SendFilerepTransitionMessage(Command):
 
-    # see gpmirrortransition.c
+    # see gpmirrortransition.c and primary_mirror_transition_client.h
     TRANSITION_ERRCODE_SUCCESS                             = 0
     TRANSITION_ERRCODE_ERROR_UNSPECIFIED                   = 1
     TRANSITION_ERRCODE_ERROR_SERVER_DID_NOT_RETURN_DATA    = 10
@@ -219,7 +219,7 @@ class SendFilerepTransitionMessage(Command):
     @staticmethod
     def buildTransitionMessageCommand(transitionData, dir, port):
         dbData = transitionData["dbsByPort"][int(port)]
-        targetMode = transitionData["targetMode"]
+        targetMode = dbData["targetMode"]
 
         argsArr = []
         argsArr.append(targetMode)
@@ -235,6 +235,7 @@ class SendFilerepTransitionMessage(Command):
             argsArr.append( "%d" % dbData["hostPort"])
             argsArr.append( dbData["peerName"])
             argsArr.append( "%d" % dbData["peerPort"])
+            argsArr.append( "%d" % dbData["peerPMPort"])
 
         #
         # write arguments to input file.  We will leave this file around.  It can be useful for debugging

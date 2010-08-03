@@ -15,10 +15,8 @@
  */
 extern int FileRepConnClient_EstablishConnection(								
 			char	*hostAddress,
-				/* */
-												 
-			int		port);
-				/*	*/
+			int		port,
+			bool	reportError);
 
 /*
  * Issued by Sender thread of FileRep process.

@@ -55,11 +55,12 @@ FileRepConnServer_StartListener(
 					FILEREP_MAX_LISTEN);
 
 	if (status != STATUS_OK) {
-		ereport(LOG, 
+		ereport(WARNING, 
 				(errcode_for_socket_access(),
-				 errmsg("ERROR(filerep): could not start listener, host:'%s' port:'%d': %m",
+				 errmsg("could not start listener, host:'%s' port:'%d': %m",
 						hostAddress,
 						portLocal),
+				 errSendAlert(true),
 				 FileRep_errcontext()));
 	}
 	
@@ -78,15 +79,15 @@ FileRepConnServer_CreateConnection()
 	if (port == NULL) {
 		ereport(ERROR, 
 				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 (errmsg("ERROR(filerep): not enough memory to create connection"))));		
+				 (errmsg("not enough memory to create connection"))));		
 		return status;
 	}
 	
 	status = StreamConnection(listenSocket[0], port);
 	if (status != STATUS_OK) {
-		ereport(LOG, 
+		ereport(WARNING, 
 				(errcode_for_socket_access(),
-				 errmsg("ERROR(filerep): could not accept connection: %m"),
+				 errmsg("could not accept connection: %m"),
 				 FileRep_errcontext()));
 		
 		if (port->sock >= 0) {
@@ -132,9 +133,9 @@ FileRepConnServer_Select(void)
 	}
 	
 	if (retval == -1) {
-		ereport(LOG, 
+		ereport(WARNING, 
 				(errcode_for_socket_access(),
-				 errmsg("ERROR(filerep): receive failure on connection: %m"),
+				 errmsg("receive failure on connection: %m"),
 				 FileRep_errcontext()));
 	}
 		
@@ -190,9 +191,9 @@ FileRepConnServer_ReceiveStartupPacket(void)
 		length > MAX_STARTUP_PACKET_LENGTH) {
 		
 		status = STATUS_ERROR;
-		ereport(LOG,
+		ereport(WARNING,
 				(errcode(ERRCODE_PROTOCOL_VIOLATION), 
-				 errmsg("ERROR(filerep): invalid length of startup packet"),
+				 errmsg("invalid length of startup packet"),
 				FileRep_errcontext()));
 		goto exit;
 	}
@@ -201,7 +202,7 @@ FileRepConnServer_ReceiveStartupPacket(void)
 	if (buf == NULL) {
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("ERROR(filerep): not enough memory to allocate buffer for startup packet"),
+				 errmsg("not enough memory to allocate buffer for startup packet"),
 				FileRep_errcontext()));		
 	}
 	memset(buf, 0, length + 1);
@@ -209,9 +210,9 @@ FileRepConnServer_ReceiveStartupPacket(void)
 	if (pq_getbytes(buf, length) == EOF) {
 		
 		status = STATUS_ERROR;
-		ereport(LOG,
+		ereport(WARNING,
 				(errcode_for_socket_access(),
-				 errmsg("ERROR(filerep): receive EOF on connection: %m"),
+				 errmsg("receive EOF on connection: %m"),
 				FileRep_errcontext()));
 		goto exit;
 	}
@@ -237,9 +238,9 @@ FileRepConnServer_ReceiveStartupPacket(void)
 		
 		pq_flush();
 	} else {	
-		ereport(LOG,
+		ereport(WARNING,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("ERROR(filerep): not supported version"),
+				 errmsg("not supported version"),
 				FileRep_errcontext()));		
 	}
 
@@ -301,9 +302,9 @@ FileRepConnServer_ReceiveMessageType(
 			 break;
 			 
 		 case EOF:
-			 ereport(LOG,
+			 ereport(WARNING,
 					 (errcode_for_socket_access(),
-					  errmsg("ERROR(filerep): receive EOF on connection: %m")));
+					  errmsg("receive EOF on connection: %m")));
 			 status = STATUS_ERROR;
 			break;
 		 case 'X': // Close Message (sent by PQfinish())
@@ -311,15 +312,15 @@ FileRepConnServer_ReceiveMessageType(
 			  * Client closed connection.  
 			  * Client does not wait for response.
 			  */
-			 ereport(LOG,
+			 ereport(WARNING,
 					 (errcode_for_socket_access(), 
-					  errmsg("WARNING(filerep): receive close on connection: %m")));
+					  errmsg("receive close on connection: %m")));
 			 status = STATUS_ERROR;
 			 break;
 		 default:
-			ereport(LOG,
+			ereport(WARNING,
 					(errcode_for_socket_access(), 
-					 errmsg("ERROR(filerep): receive unexpected message type on connection: %m")));
+					 errmsg("receive unexpected message type on connection: %m")));
 			 status = STATUS_ERROR;
 			 break;
 	}
@@ -337,9 +338,9 @@ FileRepConnServer_ReceiveMessageLength(uint32 *len)
 	int32 length;
 	
 	if (pq_getbytes((char*) &length, 4) == EOF) {
-		ereport(LOG,
+		ereport(WARNING,
 				(errcode_for_socket_access(),
-				 errmsg("ERROR(filerep): receive EOF on connection: %m")));
+				 errmsg("receive EOF on connection: %m")));
 		
 		return STATUS_ERROR;
 	}
@@ -347,8 +348,8 @@ FileRepConnServer_ReceiveMessageLength(uint32 *len)
 	length = ntohl(length);
 	
 	if (length < 4) {
-		ereport(LOG,
-				 (errmsg("ERROR(filerep): receive unexpected message length on connection")));
+		ereport(WARNING,
+				 (errmsg("receive unexpected message length on connection")));
 		return STATUS_ERROR;
 	}
 	
@@ -370,9 +371,9 @@ FileRepConnServer_ReceiveMessageLength(uint32 *len)
  {
  
 	 if (pq_getbytes(data, length) == EOF) {
-		 ereport(LOG,
+		 ereport(WARNING,
 				 (errcode_for_socket_access(),
-				  errmsg("ERROR(filerep): receive EOF on connection: %m")));
+				  errmsg("receive EOF on connection: %m")));
 
 		 return STATUS_ERROR;
 	 }

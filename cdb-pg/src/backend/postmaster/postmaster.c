@@ -269,7 +269,8 @@ static pid_t StartupPID = 0,
 			PgArchPID = 0,
 			PgStatPID = 0,
 			SysLoggerPID = 0,
-			FilerepPID = 0;
+			FilerepPID = 0,
+			FilerepPeerResetPID = 0;
 
 static volatile sig_atomic_t filerep_has_signaled_state_change = false;
 static volatile sig_atomic_t filerep_has_signaled_postmaster_reset_required = false;
@@ -287,6 +288,7 @@ static int	Shutdown = NoShutdown;
  * (or going into quiescent mode if it's a primary/mirror that has reset) */
 static bool FatalError = false;
 static bool RecoveryError = false;		/* T if WAL recovery failed */
+static int pmResetCounter = 0;
 
 static bool gHaveCalledOnetimeInitFunctions = false;
 
@@ -372,11 +374,16 @@ typedef enum
 	/* all important children have exited */
 	PM_CHILD_STOP_WAIT_NO_CHILDREN,
 
+	/* this is NOT a stopping state; this state is used after everything has been stopped for postmaster reset
+	 *   during mirroring -- if we should reset the peer as well and start the system back up, we enter this
+	 *   state */
+	PM_POSTMASTER_RESET_FILEREP_PEER,
+
     PM__ENUMERATION_COUNT
 } PMState;
 
 /**
- * WARNING: some of these labels are used in management scripts -- so don't 
+ * WARNING: some of these labels are used in management scripts -- so don't
  *  change them here without checking the management scripts (check for starting with child_stop_
  *  as well -- management scripts use startWith in some cases)
  */
@@ -398,10 +405,19 @@ static const char *const gPmStateLabels[] =
     "child_stop_bgwriter_checkpoint",
     "child_stop_post_bgwriter",
     "child_stop_dead_end_children",
-    "child_stop_no_children"
+    "child_stop_no_children",
+
+    "reset_filerep_peer"
 };
 
+typedef enum
+{
+	PEER_RESET_NONE,
+	PEER_RESET_FAILED,
+	PEER_RESET_SUCCEEDED,
+} PeerResetResult;
 
+static PeerResetResult peerResetResult = PEER_RESET_NONE;
 
 static PMState pmState = PM_INIT;
 
@@ -655,6 +671,7 @@ static void ShmemBackendArrayRemove(Backend *bn);
 #define StartupPass4DataBase()	StartChildProcess(StartupPass4Process)
 #define StartBackgroundWriter() StartChildProcess(BgWriterProcess)
 #define StartFilerepProcess() StartChildProcess(FilerepProcess)
+#define StartFilerepPeerResetProcess() StartChildProcess(FilerepResetPeerProcess)
 
 static bool SyncMaster = false;
 static bool IsSegmentDatabase = false;
@@ -721,7 +738,7 @@ static void SetBGWriterPID(pid_t pid)
  *
  * Note that this checks whether we are in fault from postmaster reset, so should not be used for
  *      assertions in do_reaper -- because it may have faulted from the time we started the process
- *      to the time the reaper is called 
+ *      to the time the reaper is called
  */
 static bool
 isFullPostmasterAndDatabaseIsAllowed(void)
@@ -770,7 +787,7 @@ signal_filerep_to_shutdown(SegmentState_e shutdownState)
             /* clear the flag that filerep will be setting */
 	        filerep_has_signaled_backends_shutdown = false;
         }
-        
+
 		updateSegmentState(shutdownState);
         NotifyProcessesOfFilerepStateChange(); /* so that interested backends learn of it as well */
 
@@ -934,7 +951,7 @@ PostmasterMain(int argc, char *argv[])
 				/* Don't reinit shared mem after abnormal exit */
 				Reinit = false;
 				break;
-			
+
 			case 'O':
 				SetConfigOption("allow_system_table_mods", "true", PGC_POSTMASTER, PGC_S_ARGV);
 				break;
@@ -1052,7 +1069,7 @@ PostmasterMain(int argc, char *argv[])
 	                                 /* mirrorless could be promoted to have mirrors using gpaddmirrors */
 	                                 gInitialMode == PMModeMirrorlessSegment ||
 									 /* master standby? */
-									 GPStandby() == true; 
+									 GPStandby() == true;
 
 	/*
 	 * Postmaster accepts no non-option switch arguments.
@@ -1859,6 +1876,61 @@ ServiceStartable(PMSubProc *subProc)
 }
 
 /**
+ * Reset pmState to PM_INIT and begin initialization sequence.
+ */
+static void
+RestartAfterPostmasterReset(void)
+{
+	/*
+	 * Save the MPP session number from shared-memory before we reset
+	 * everything.  There is some risk here accessing the shared-memory,
+	 * but we don't want to reuse session-ids on the master.
+	 */
+	if (ProcGetMppLocalProcessCounter(&Save_MppLocalProcessCounter))
+		ereport(LOG,
+				(errmsg("gp_session_id high-water mark is %d",
+						Save_MppLocalProcessCounter)));
+
+	/*
+	 * And, save the DTM start time, too.
+	 */
+	Save_DtxStartTime = getDtxStartTime();
+
+	/*
+	 * it doesn't seem that any shmem handlers use the "code" parameter.
+	 * This call used to occur twice in postmaster.c, once passing 0 and once passing 1.
+	 * I couldn't tell a difference between the two so I arbitrarily chose 0
+	 */
+	shmem_exit(0);
+
+	pmState = PM_INIT;
+	FatalError = false;
+	reset_shared(PostPortNumber, true);
+	/* done..serverLoop will process startup request */
+}
+
+static void
+BeginResetOfPostmasterAfterChildrenAreShutDown(void)
+{
+	pmResetCounter++;
+	if ( primaryMirrorPostmasterResetShouldRestartPeer())
+	{
+		pmState = PM_POSTMASTER_RESET_FILEREP_PEER;
+		peerResetResult = PEER_RESET_NONE;
+		elog(LOG, "all server processes terminated; requested filerep peer reset");
+		FilerepPeerResetPID = StartFilerepPeerResetProcess();
+		elog(LOG, "peer reset process pid is %d", FilerepPeerResetPID);
+	}
+	else
+	{
+		ereport(LOG,
+			(errmsg("all server processes terminated; reinitializing")));
+		RestartAfterPostmasterReset();
+	}
+}
+
+
+/**
  * loop waiting for immediate shutdown to complete
  */
 static void
@@ -1927,12 +1999,22 @@ ServerLoop(void)
 		PG_SETMASK(&UnBlockSig);
 
 		/*
-		 * we allow new connections (which are rejected because the database is shutting down, but
-		 *   that gives a nicer message than potentially hanging the client's connection)
+		 * we allow new connections in many cases (which could later be rejected because the database is shutting down,
+		 *   but that gives a nicer message than potentially hanging the client's connection)
 		 */
-        bool acceptNewConnections = pmState < PM_CHILD_STOP_WAIT_DEAD_END_CHILDREN &&
-                                    Shutdown != ImmediateShutdown;
+        bool acceptNewConnections;
 
+        if ( Shutdown == NoShutdown && FatalError)
+        {
+        	/** during postmaster reset, accept new connections to allow us to coordinate the reset */
+        	acceptNewConnections = pmState < PM_CHILD_STOP_WAIT_DEAD_END_CHILDREN ||
+        							pmState == PM_POSTMASTER_RESET_FILEREP_PEER;
+		}
+		else
+		{
+         	acceptNewConnections = pmState < PM_CHILD_STOP_WAIT_DEAD_END_CHILDREN &&
+                                    Shutdown != ImmediateShutdown;
+		}
 
         /* If something that needs handling is received while we were doing other things with signals
          * blocked then we need to skip select as quickly as possible and process it.
@@ -2014,7 +2096,7 @@ ServerLoop(void)
         if (filerep_has_signaled_postmaster_reset_required)
         {
             filerep_has_signaled_postmaster_reset_required = false;
-            HandleChildCrash(-1, -1, "a filerep subprocess");
+            HandleChildCrash(-1, -1, "");
         }
 
 		/*
@@ -2136,7 +2218,7 @@ ServerLoop(void)
 			 * frequently in autovac_start.
 			 */
 			if ((AutoVacuumingActive() || force_autovac) && AutoVacPID == 0 &&
-				StartupPID == 0 && StartupPass2PID == 0 && StartupPass3PID && StartupPass4PID == 0 && pmState > PM_STARTUP_PASS4 && 
+				StartupPID == 0 && StartupPass2PID == 0 && StartupPass3PID && StartupPass4PID == 0 && pmState > PM_STARTUP_PASS4 &&
 				!FatalError && Shutdown == NoShutdown)
 			{
 				AutoVacPID = autovac_start();
@@ -2149,7 +2231,7 @@ ServerLoop(void)
 
 			/* If we have lost the stats collector, try to start a new one */
 			if (PgStatPID == 0 &&
-				StartupPID == 0 && StartupPass2PID == 0 && StartupPass3PID && StartupPass4PID == 0 && pmState > PM_STARTUP_PASS4 && 
+				StartupPID == 0 && StartupPass2PID == 0 && StartupPass3PID && StartupPass4PID == 0 && pmState > PM_STARTUP_PASS4 &&
 				!FatalError && Shutdown == NoShutdown && !SyncMaster)
 			{
 				PgStatPID = pgstat_start();
@@ -2649,6 +2731,321 @@ static void sendPrimaryMirrorTransitionResult( const char *msg)
 	pq_flush();
 }
 
+#define PROTOCOL_VIOLATION ("protocol_violation")
+
+static void
+processTransitionRequest_beginPostmasterReset(void)
+{
+	PrimaryMirrorModeTransitionArguments args = primaryMirrorGetArgumentsFromLocalMemory();
+
+	if (args.mode != PMModePrimarySegment && args.mode != PMModeMirrorSegment)
+	{
+		elog(ERROR, "Can only cause postmaster reset on a primary or mirror segment");
+	}
+
+ 	/* note: this uses the FatalError and pmResetCounter values inherited at the time of forking
+ 	 * the process to satisfy the request.
+ 	 *
+ 	 * This _should_ be okay because FatalError and pmResetCounter will at least be in sync -- that is,
+ 	 *      we won't inherit a state with FatalError not set but pmResetCounter already incremented --
+ 	 *      and so it's safe to tell the caller to wait for pmResetCounter + 1.
+ 	 */
+ 	int counterToReturn;
+	if (FatalError)
+	{
+		/** a reset is already in progress or completed, just return the reset counter */
+		if ( pmState == PM_POSTMASTER_RESET_FILEREP_PEER)
+			counterToReturn = pmResetCounter;
+		else counterToReturn = pmResetCounter + 1;
+	}
+	else
+	{
+		elog(LOG, "postmaster reset request received from primary/mirror peer");
+		SendPostmasterSignal(PMSIGNAL_FILEREP_POSTMASTER_RESET_REQUIRED);
+		counterToReturn = pmResetCounter + 1;
+	}
+
+	/* return the result, which will be:
+	 *        Success:    on the first line (to satisfy client protocol)
+	 *        <empty second line>
+	 *        reset counter (left-padded with zeros): to tell the peer to wait for the reset counter to reach this level before continuing)
+	 */
+	char statusBuf[10000];
+	snprintf(statusBuf, sizeof(statusBuf), "Success:\n\n%09d", counterToReturn);
+	sendPrimaryMirrorTransitionResult(statusBuf);
+}
+
+static void
+processTransitionRequest_getPostmasterResetStatus(void)
+{
+	char statusBuf[10000];
+	PrimaryMirrorModeTransitionArguments args = primaryMirrorGetArgumentsFromLocalMemory();
+	PrimaryMirrorMode mode = args.mode;
+
+	if ( mode != PMModePrimarySegment && mode != PMModeMirrorSegment)
+	{
+		elog(ERROR, "Can only get postmaster reset status on a primary or mirror segment");
+	}
+
+ 	/* note: this uses the FatalError, pmState, and pmResetCounter values inherited at the time of forking
+ 	 * the process to satisfy the transition request.  This is enough for our purposes. */
+	if (FatalError && pmState == PM_POSTMASTER_RESET_FILEREP_PEER)
+	{
+		snprintf(statusBuf, sizeof(statusBuf), "Success:\nisInResetPivotPoint\n%09d", pmResetCounter);
+	}
+	else if (mode == PMModePrimarySegment && pmState == PM_RUN)
+	{
+		snprintf(statusBuf, sizeof(statusBuf), "Success:\nresetStatusServerIsRunning\n%09d", pmResetCounter);
+	}
+	else if (mode == PMModeMirrorSegment /* todo: mirrorIsRunning */ )
+	{
+		snprintf(statusBuf, sizeof(statusBuf), "Success:\nresetStatusServerIsRunning\n%09d", pmResetCounter);
+	}
+	else
+	{
+		snprintf(statusBuf, sizeof(statusBuf), "Success:\nresetStatusServerIsStartingOrStopping\n%09d", pmResetCounter);
+	}
+
+	sendPrimaryMirrorTransitionResult(statusBuf);
+}
+
+static void
+processTransitionRequest_getMirrorStatus(void)
+{
+	/* this information is digested by gpstate so beware of changing its format */
+	char statusBuf[10000];
+
+	PrimaryMirrorMode pm_mode;
+	SegmentState_e s_state;
+	DataState_e d_state;
+
+	getPrimaryMirrorStatusCodes(&pm_mode, &s_state, &d_state);
+
+	int64 resyncNumCompleted = FileRepResync_GetBlocksSynchronized();
+	int64 resyncTotalToComplete = FileRepResync_GetTotalBlocksToSynchronize();
+	int64 changeTrackingBytesUsed = ChangeTracking_GetTotalSpaceUsedOnDisk();
+
+	/**
+	 * Note: call this one AFTER calling the others above -- it will return a sentinel
+	 *       if estimates are invalid, and we want to be sure we get the sentinel
+	 *       (the system can go from valid to invalid estimates but no vice-versa)
+	 */
+	struct timeval estimateResyncCompletionTime = FileRepResync_GetEstimateResyncCompletionTime();
+
+	bool isIOSuspended = primaryMirrorIsIOSuspended();
+	char *databaseStatus;
+
+	/** Note: some of these status field results are used in python to determine whether there is a warning or not */
+	if ( pm_mode == PMModeMirrorSegment)
+	{
+		switch ( s_state )
+		{
+			case SegmentStateFault:
+				databaseStatus = "Down";
+				break;
+			case SegmentStateImmediateShutdown:
+			case SegmentStateShutdown:
+				databaseStatus = "Stopping";
+				break;
+			default:
+				databaseStatus = "Up";
+				break;
+		}
+	}
+	else
+	{
+		if ( isIOSuspended )
+			databaseStatus = "Suspended";
+		else if ( pmState == PM_RUN)
+			databaseStatus = "Up";
+		else if ( pmState == PM_INIT)
+			databaseStatus = "Stopped";  // awaiting decision by fault prober after PM reset, for example
+		else if ( pmState < PM_RUN )
+			databaseStatus = "Starting";
+		else databaseStatus = "Stopping";
+	}
+
+	snprintf(statusBuf, sizeof(statusBuf), "Success: mode:%s\n"
+							  "segmentState:%s\n"
+							  "dataState:%s\n"
+							  "databaseStatus:%s\n"
+							  "postmasterState:%s\n"
+							  "isFullResync:%d\n"
+							  "resyncNumCompleted:" INT64_FORMAT "\n"
+							  "resyncTotalToComplete:" INT64_FORMAT "\n"
+							  "changeTrackingBytesUsed:" INT64_FORMAT "\n"
+							  "estimatedCompletionTimeSecondsSinceEpoch:" INT64_FORMAT "\n",
+			 getMirrorModeLabel(pm_mode), getSegmentStateLabel(s_state), getDataStateLabel(d_state),
+			 databaseStatus,
+			 gPmStateLabels[pmState],
+			 isFullResync() ? 1 : 0,
+			 resyncNumCompleted,
+			 resyncTotalToComplete,
+			 changeTrackingBytesUsed,
+			 (int64)estimateResyncCompletionTime.tv_sec);
+
+	sendPrimaryMirrorTransitionResult(statusBuf);
+}
+
+static void
+processTransitionRequest_getStatus(void)
+{
+	char statusBuf[10000];
+	getPrimaryMirrorModeStatus(statusBuf, sizeof(statusBuf));
+	sendPrimaryMirrorTransitionResult(statusBuf);
+}
+
+static void
+processTransitionRequest_getCollationAndDataDir(void)
+{
+	char statusBuf[10000 + MAXPGPATH];
+
+	snprintf(statusBuf, sizeof(statusBuf), "Success: lc_collate:%s\n"
+				"lc_monetary:%s\n"
+				"lc_numeric:%s\n"
+				"datadir:%s\n",
+				locale_collate,
+				locale_monetary,
+				locale_numeric,
+				data_directory );
+
+	sendPrimaryMirrorTransitionResult(statusBuf);
+}
+
+static void
+processTransitionRequest_getVersion(void)
+{
+	char statusBuf[10000];
+	snprintf(statusBuf, sizeof(statusBuf), "Success:%s", TextDatumGetCString(pgsql_version(NULL /* fcinfo */)));
+	sendPrimaryMirrorTransitionResult(statusBuf);
+}
+
+static void processTransitionRequest_getFaultInjectStatus(void * buf, int *offsetPtr, int length)
+{
+#ifdef FAULT_INJECTOR
+	init_ps_display("filerep fault inject status process", "", "", "");
+
+	char *faultName = readNextStringFromString(buf, offsetPtr, length);
+	bool isDone = false;
+
+	if ( ! faultName)
+	{
+		sendPrimaryMirrorTransitionResult(PROTOCOL_VIOLATION);
+		ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+							errmsg("invalid fault injection status packet (missing some data values)")));
+		return;
+	}
+
+	if (FaultInjector_IsFaultInjected(FaultInjectorIdentifierStringToEnum(faultName))) {
+		isDone = true;
+	}
+
+	sendPrimaryMirrorTransitionResult(isDone ? "Success: done" : "Success: waitMore");
+#else
+	sendPrimaryMirrorTransitionResult("Failure: Fault Injector not available");
+#endif
+}
+
+static void
+processTransitionRequest_faultInject(void * inputBuf, int *offsetPtr, int length)
+{
+#ifdef FAULT_INJECTOR
+	bool wasRead;
+	char *faultName = readNextStringFromString(inputBuf, offsetPtr, length);
+	char *type = readNextStringFromString(inputBuf, offsetPtr, length);
+	char *ddlStatement = readNextStringFromString(inputBuf, offsetPtr, length);
+	char *databaseName = readNextStringFromString(inputBuf, offsetPtr, length);
+	char *tableName = readNextStringFromString(inputBuf, offsetPtr, length);
+	int numOccurrences = readIntFromString(inputBuf, offsetPtr, length, &wasRead);
+	int sleepTimeSeconds = readIntFromString(inputBuf, offsetPtr, length, &wasRead);
+	FaultInjectorEntry_s	faultInjectorEntry;
+	char buf[1000];
+
+	init_ps_display("filerep fault inject process", "", "", "");
+
+	if ( ! wasRead)
+	{
+		sendPrimaryMirrorTransitionResult(PROTOCOL_VIOLATION);
+		ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+							errmsg("invalid fault injection packet (missing some data values)")));
+		snprintf(buf, sizeof(buf), "Failure: invalid fault injection packet (missing some data values)");
+		goto exit;
+	}
+
+	elog(DEBUG1, "FAULT INJECTED: Name %s Type %s, DDL %s, DB %s, Table %s, NumOccurrences %d  SleepTime %d",
+		 faultName, type, ddlStatement, databaseName, tableName, numOccurrences, sleepTimeSeconds );
+
+	faultInjectorEntry.faultInjectorIdentifier = FaultInjectorIdentifierStringToEnum(faultName);
+	if (faultInjectorEntry.faultInjectorIdentifier == FaultInjectorIdNotSpecified ||
+		faultInjectorEntry.faultInjectorIdentifier == FaultInjectorIdMax) {
+		ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+							errmsg("could not recognize fault name")));
+
+		snprintf(buf, sizeof(buf), "Failure: could not recognize fault name");
+		goto exit;
+	}
+
+	faultInjectorEntry.faultInjectorType = FaultInjectorTypeStringToEnum(type);
+	if (faultInjectorEntry.faultInjectorType == FaultInjectorTypeNotSpecified ||
+		faultInjectorEntry.faultInjectorType == FaultInjectorTypeMax) {
+		ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+							errmsg("could not recognize fault type")));
+
+		snprintf(buf, sizeof(buf), "Failure: could not recognize fault type");
+		goto exit;
+	}
+
+	faultInjectorEntry.sleepTime = sleepTimeSeconds;
+	if (sleepTimeSeconds < 0 || sleepTimeSeconds > 7200) {
+		ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+							errmsg("invalid sleep time, allowed range [0, 7200 sec]")));
+
+		snprintf(buf, sizeof(buf), "Failure: invalid sleep time, allowed range [0, 7200 sec]");
+		goto exit;
+	}
+
+	faultInjectorEntry.ddlStatement = FaultInjectorDDLStringToEnum(ddlStatement);
+	if (faultInjectorEntry.ddlStatement == DDLMax) {
+		ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+							errmsg("could not recognize DDL statement")));
+
+		snprintf(buf, sizeof(buf), "Failure: could not recognize DDL statement");
+		goto exit;
+	}
+
+	snprintf(faultInjectorEntry.databaseName, sizeof(faultInjectorEntry.databaseName), "%s", databaseName);
+
+	snprintf(faultInjectorEntry.tableName, sizeof(faultInjectorEntry.tableName), "%s", tableName);
+
+	faultInjectorEntry.occurrence = numOccurrences;
+	if (numOccurrences > 1000) {
+		ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+							errmsg("invalid occurrence number, allowed range [1, 1000]")));
+
+		snprintf(buf, sizeof(buf), "Failure: invalid occurrence number, allowed range [1, 1000]");
+		goto exit;
+	}
+
+
+	if (FaultInjector_SetFaultInjection(&faultInjectorEntry) == STATUS_OK) {
+		if (faultInjectorEntry.faultInjectorType == FaultInjectorTypeStatus) {
+			snprintf(buf, sizeof(buf), "%s", faultInjectorEntry.bufOutput);
+		} else {
+			snprintf(buf, sizeof(buf), "Success:");
+		}
+	} else {
+		snprintf(buf, sizeof(buf), "Failure: %s", faultInjectorEntry.bufOutput);
+	}
+
+exit:
+	sendPrimaryMirrorTransitionResult(buf);
+
+#else
+	sendPrimaryMirrorTransitionResult("Failure: Fault Injector not available");
+#endif
+
+}
+
 /**
  * Called during startup packet processing.
  *
@@ -2658,8 +3055,6 @@ static void sendPrimaryMirrorTransitionResult( const char *msg)
 static void
 processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
 {
-#define PROTOCOL_VIOLATION ("protocol_violation")
-
 	PrimaryMirrorTransitionPacket *transition = (PrimaryMirrorTransitionPacket *) pkt;
 	PrimaryMirrorModeTransitionResult result;
 	void * buf;
@@ -2688,254 +3083,69 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
 	((char*)buf)[length] = '\0';
 	offset = 0;
 
-	/* read off the transition requested */
+	/* read off the transition requested, see if it is a special named one to handle */
+	bool handledRequest = true;
 	targetModeStr = readNextStringFromString(buf, &offset, length);
 	if (targetModeStr == NULL)
 	{
 		sendPrimaryMirrorTransitionResult(PROTOCOL_VIOLATION);
 		ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
 							errmsg("invalid primary mirror transition packet (unable to read target mode value)")));
-		return;
 	}
-
-	if (strcmp("getStatus", targetModeStr) == 0)
+	else if (strcmp("beginPostmasterReset", targetModeStr) == 0)
 	{
-		char statusBuf[10000];
-		getPrimaryMirrorModeStatus(statusBuf, sizeof(statusBuf));
-		sendPrimaryMirrorTransitionResult(statusBuf);
-		return;
+		processTransitionRequest_beginPostmasterReset();
 	}
-
-	if (strcmp("getCollationAndDataDirSettings", targetModeStr) == 0)
+	else if (strcmp("getPostmasterResetStatus", targetModeStr) == 0)
 	{
-	    char statusBuf[10000 + MAXPGPATH];
-
-		snprintf(statusBuf, sizeof(statusBuf), "Success: lc_collate:%s\n"
-		            "lc_monetary:%s\n"
-		            "lc_numeric:%s\n"
-		            "datadir:%s\n",
-		            locale_collate,
-		            locale_monetary,
-		            locale_numeric,
-		            data_directory );
-
-		sendPrimaryMirrorTransitionResult(statusBuf);
-		return;
+		processTransitionRequest_getPostmasterResetStatus();
+	}
+	else if (strcmp("getStatus", targetModeStr) == 0)
+	{
+		processTransitionRequest_getStatus();
+	}
+	else if (strcmp("getCollationAndDataDirSettings", targetModeStr) == 0)
+	{
+		processTransitionRequest_getCollationAndDataDir();
     }
-
-	if (strcmp("getMirrorStatus", targetModeStr) == 0)
+	else if (strcmp("getMirrorStatus", targetModeStr) == 0)
 	{
-	    /* this information is digested by gpstate so beware of changing its format */
-	    char statusBuf[10000];
+		processTransitionRequest_getMirrorStatus();
+	}
+	else if (strcmp("getVersion", targetModeStr) == 0 )
+	{
+		processTransitionRequest_getVersion();
+	}
+	else if (strcmp("getFaultInjectStatus", targetModeStr ) == 0)
+	{
+		processTransitionRequest_getFaultInjectStatus(buf, &offset, length);
+	}
+	else if (strcmp("faultInject", targetModeStr) == 0)
+	{
+		processTransitionRequest_faultInject(buf, &offset, length);
+	}
+	else
+	{
+		handledRequest = false;
+	}
 
-        PrimaryMirrorMode pm_mode;
-        SegmentState_e s_state;
-        DataState_e d_state;
-
-        getPrimaryMirrorStatusCodes(&pm_mode, &s_state, &d_state);
-
-        int64 resyncNumCompleted = FileRepResync_GetBlocksSynchronized();
-        int64 resyncTotalToComplete = FileRepResync_GetTotalBlocksToSynchronize();
-        int64 changeTrackingBytesUsed = ChangeTracking_GetTotalSpaceUsedOnDisk();
-
-        /**
-         * Note: call this one AFTER calling the others above -- it will return a sentinel
-         *       if estimates are invalid, and we want to be sure we get the sentinel
-         *       (the system can go from valid to invalid estimates but no vice-versa)
-         */
-        struct timeval estimateResyncCompletionTime = FileRepResync_GetEstimateResyncCompletionTime();
-
-        bool isIOSuspended = primaryMirrorIsIOSuspended();
-        char *databaseStatus;
-
-        /** Note: some of these status field results are used in python to determine whether there is a warning or not */
-        if ( pm_mode == PMModeMirrorSegment)
-        {
-            switch ( s_state )
-            {
-                case SegmentStateFault:
-                    databaseStatus = "Down";
-                    break;
-                case SegmentStateImmediateShutdown:
-                case SegmentStateShutdown:
-                    databaseStatus = "Stopping";
-                    break;
-                default:
-                    databaseStatus = "Up";
-                    break;
-            }
-        }
-        else
-        {
-            if ( isIOSuspended )
-                databaseStatus = "Suspended";
-            else if ( pmState == PM_RUN)
-                databaseStatus = "Up";
-            else if ( pmState == PM_INIT)
-                databaseStatus = "Stopped";  // awaiting decision by fault prober after PM reset, for example
-            else if ( pmState < PM_RUN )
-                databaseStatus = "Starting";
-            else databaseStatus = "Stopping";
-        }
-
-        snprintf(statusBuf, sizeof(statusBuf), "Success: mode:%s\n"
-                                  "segmentState:%s\n"
-                                  "dataState:%s\n"
-                                  "databaseStatus:%s\n"
-                                  "postmasterState:%s\n"
-                                  "isFullResync:%d\n"
-                                  "resyncNumCompleted:" INT64_FORMAT "\n"
-                                  "resyncTotalToComplete:" INT64_FORMAT "\n"
-                                  "changeTrackingBytesUsed:" INT64_FORMAT "\n"
-                                  "estimatedCompletionTimeSecondsSinceEpoch:" INT64_FORMAT "\n",
-                 getMirrorModeLabel(pm_mode), getSegmentStateLabel(s_state), getDataStateLabel(d_state),
-                 databaseStatus,
-                 gPmStateLabels[pmState],
-                 isFullResync() ? 1 : 0,
-                 resyncNumCompleted,
-                 resyncTotalToComplete,
-                 changeTrackingBytesUsed,
-                 (int64)estimateResyncCompletionTime.tv_sec);
-
-		sendPrimaryMirrorTransitionResult(statusBuf);
+	if (handledRequest)
+	{
+		/* return if the request wasn't handled by one of the non-else branches above */
 		return;
 	}
 
-	if ( strcmp("getVersion", targetModeStr) == 0 )
+
+	/** otherwise: we are asked to do a filerep transition **/
+	if (FatalError)
 	{
-	    char statusBuf[10000];
-	    snprintf(statusBuf, sizeof(statusBuf), "Success:%s", TextDatumGetCString(pgsql_version(NULL /* fcinfo */)));
-	    sendPrimaryMirrorTransitionResult(statusBuf);
-	    return;
-	}
-
-	if ( strcmp("getFaultInjectStatus", targetModeStr ) == 0)
-	{
-#ifdef FAULT_INJECTOR
-	    init_ps_display("filerep fault inject status process", "", "", "");
-
-        char *faultName = readNextStringFromString(buf, &offset, length);
-	    bool isDone = false;
-		
-        if ( ! faultName)
-        {
-            sendPrimaryMirrorTransitionResult(PROTOCOL_VIOLATION);
-			ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-								errmsg("invalid fault injection status packet (missing some data values)")));
-			return;
-        }
-		
-		if (FaultInjector_IsFaultInjected(FaultInjectorIdentifierStringToEnum(faultName))) {
-			isDone = true;
-		}
-		
-        sendPrimaryMirrorTransitionResult(isDone ? "Success: done" : "Success: waitMore");
-#else
-		sendPrimaryMirrorTransitionResult("Failure: Fault Injector not available");
-#endif
-        return;
-	}
-	
-	if ( strcmp("faultInject", targetModeStr) == 0)
-	{
-#ifdef FAULT_INJECTOR
-	    char *faultName = readNextStringFromString(buf, &offset, length);
-	    char *type = readNextStringFromString(buf, &offset, length);
-	    char *ddlStatement = readNextStringFromString(buf, &offset, length);
-	    char *databaseName = readNextStringFromString(buf, &offset, length);
-	    char *tableName = readNextStringFromString(buf, &offset, length);
-        int numOccurrences = readIntFromString(buf, &offset, length, &wasRead);
-	    int sleepTimeSeconds = readIntFromString(buf, &offset, length, &wasRead);
-		FaultInjectorEntry_s	faultInjectorEntry;
-		char buf[1000];
-
-        init_ps_display("filerep fault inject process", "", "", "");
-
-        if ( ! wasRead)
-        {
-            sendPrimaryMirrorTransitionResult(PROTOCOL_VIOLATION);
-			ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-								errmsg("invalid fault injection packet (missing some data values)")));
-			snprintf(buf, sizeof(buf), "Failure: invalid fault injection packet (missing some data values)");
-			goto exit;
-        }
-
-        elog(DEBUG1, "FAULT INJECTED: Name %s Type %s, DDL %s, DB %s, Table %s, NumOccurrences %d  SleepTime %d",
-			 faultName, type, ddlStatement, databaseName, tableName, numOccurrences, sleepTimeSeconds );
-
-		faultInjectorEntry.faultInjectorIdentifier = FaultInjectorIdentifierStringToEnum(faultName);
-		if (faultInjectorEntry.faultInjectorIdentifier == FaultInjectorIdNotSpecified ||
-			faultInjectorEntry.faultInjectorIdentifier == FaultInjectorIdMax) {
-			ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-								errmsg("could not recognize fault name")));
-
-			snprintf(buf, sizeof(buf), "Failure: could not recognize fault name");
-			goto exit;
-		}
-
-		faultInjectorEntry.faultInjectorType = FaultInjectorTypeStringToEnum(type);
-		if (faultInjectorEntry.faultInjectorType == FaultInjectorTypeNotSpecified ||
-			faultInjectorEntry.faultInjectorType == FaultInjectorTypeMax) {
-			ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-								errmsg("could not recognize fault type")));
-
-			snprintf(buf, sizeof(buf), "Failure: could not recognize fault type");
-			goto exit;
-		}
-
-		faultInjectorEntry.sleepTime = sleepTimeSeconds;
-		if (sleepTimeSeconds < 0 || sleepTimeSeconds > 7200) {
-			ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-								errmsg("invalid sleep time, allowed range [0, 7200 sec]")));
-
-			snprintf(buf, sizeof(buf), "Failure: invalid sleep time, allowed range [0, 7200 sec]");
-			goto exit;
-		}
-
-		faultInjectorEntry.ddlStatement = FaultInjectorDDLStringToEnum(ddlStatement);
-		if (faultInjectorEntry.ddlStatement == DDLMax) {
-			ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-								errmsg("could not recognize DDL statement")));
-
-			snprintf(buf, sizeof(buf), "Failure: could not recognize DDL statement");
-			goto exit;
-		}
-
-		snprintf(faultInjectorEntry.databaseName, sizeof(faultInjectorEntry.databaseName), "%s", databaseName);
-
-		snprintf(faultInjectorEntry.tableName, sizeof(faultInjectorEntry.tableName), "%s", tableName);
-
-		faultInjectorEntry.occurrence = numOccurrences;
-		if (numOccurrences > 1000) {
-			ereport(COMMERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-								errmsg("invalid occurrence number, allowed range [1, 1000]")));
-
-			snprintf(buf, sizeof(buf), "Failure: invalid occurrence number, allowed range [1, 1000]");
-			goto exit;
-		}
-
-
-		if (FaultInjector_SetFaultInjection(&faultInjectorEntry) == STATUS_OK) {
-			if (faultInjectorEntry.faultInjectorType == FaultInjectorTypeStatus) {
-				snprintf(buf, sizeof(buf), "%s", faultInjectorEntry.bufOutput);
-			} else {
-				snprintf(buf, sizeof(buf), "Success:");
-			}
-		} else {
-			snprintf(buf, sizeof(buf), "Failure: %s", faultInjectorEntry.bufOutput);
-		}
-
-exit:
-		sendPrimaryMirrorTransitionResult(buf);
-
-#else
-		sendPrimaryMirrorTransitionResult("Failure: Fault Injector not available");
-#endif
-	    return;
+		/* while doing a postmaster reset, can't do a filerep transition */
+		sendPrimaryMirrorTransitionResult("failure: postmaster reset is pending");
+		return;
 	}
 
 	init_ps_display("filerep transition process", "", "", "");
-	
+
 	args->mode = decipherPrimaryMirrorModeArgument(targetModeStr);
 
 	if (args->mode == PMModeUninitialized)
@@ -2990,6 +3200,7 @@ exit:
 		args->hostPort = readIntFromString(buf, &offset, length, &wasRead);
 		peer = readNextStringFromString(buf, &offset, length);
 		args->peerPort = readIntFromString(buf, &offset, length, &wasRead);
+		args->peerPostmasterPort = readIntFromString(buf, &offset, length, &wasRead);
 
 		if (!wasRead)
 		{
@@ -3442,8 +3653,9 @@ pmdie(SIGNAL_ARGS)
 			need_call_reaper = true;
 			if ( pmState < PM_CHILD_STOP_BEGIN)
 			    pmState = PM_CHILD_STOP_BEGIN;
+			signal_child_if_up(FilerepPeerResetPID, SIGQUIT);
 			break;
-			
+
 		case SIGINT:
 
 			/*
@@ -3469,6 +3681,7 @@ pmdie(SIGNAL_ARGS)
                  *   ensure that the correct signal level is applied */
                 pmStateMachineMustRunActions = true;
             }
+            signal_child_if_up(FilerepPeerResetPID, SIGQUIT);
             break;
 
 		case SIGQUIT:
@@ -3492,10 +3705,11 @@ pmdie(SIGNAL_ARGS)
             signal_child_if_up(StartupPass3PID, SIGQUIT);
             signal_child_if_up(StartupPass4PID, SIGQUIT);
  			StopServices(0, SIGQUIT);
-			signal_child_if_up(BgWriterPID, SIGQUIT);            
+			signal_child_if_up(BgWriterPID, SIGQUIT);
             signal_child_if_up(AutoVacPID, SIGQUIT);
             signal_child_if_up(PgArchPID, SIGQUIT);
             signal_child_if_up(PgStatPID, SIGQUIT);
+            signal_child_if_up(FilerepPeerResetPID, SIGQUIT);
 
             /* if you add more processes here then also update do_immediate_shutdown_reaper */
 
@@ -3582,6 +3796,7 @@ do_immediate_shutdown_reaper(void)
         zeroIfPidEqual(pid, &AutoVacPID);
         zeroIfPidEqual(pid, &PgArchPID);
         zeroIfPidEqual(pid, &PgStatPID);
+        zeroIfPidEqual(pid, &FilerepPeerResetPID);
     }
 }
 
@@ -3672,7 +3887,7 @@ static bool CommenceNormalOperations(void)
 			}
 		}
 	}
-	
+
 	/* at this point we are really open for business */
 	ereport(LOG,
 		 (errmsg("database system is ready to accept connections"),
@@ -3934,16 +4149,16 @@ static void do_reaper()
 			}
 			continue;
 		}
-			
+
 		/*
 		 * Check if this child was a startup pass 4 process.
 		 */
 		if (pid == StartupPass4PID)
 		{
 			StartupPass4PID = 0;
-		
+
 			Assert(isPrimaryMirrorModeAFullPostmaster(true));
-		
+
 			/*
 			 * Unexpected exit of startup process (including FATAL exit)
 			 * during PM_STARTUP is treated as catastrophic. There are no
@@ -3957,7 +4172,7 @@ static void do_reaper()
 						(errmsg("aborting startup due to startup process failure")));
 				ExitPostmaster(1);
 			}
-		
+
 			/*
 			 * Startup process exited in response to a shutdown request (or it
 			 * completed normally regardless of the shutdown request).
@@ -3968,7 +4183,7 @@ static void do_reaper()
 				/* PostmasterStateMachine logic does the rest */
 				continue;
 			}
-		
+
 			/*
 			 * Any unexpected exit (including FATAL exit) of the startup
 			 * process is treated as a crash, except that we don't want to
@@ -4020,7 +4235,10 @@ static void do_reaper()
 
 				if (ServiceStartable(subProc))
 				{
-					if (StartupPID == 0 && StartupPass2PID == 0 && StartupPass3PID == 0 &&
+					if (StartupPID == 0 &&
+						StartupPass2PID == 0 &&
+						StartupPass3PID == 0 &&
+						StartupPass4PID == 0 && 
 						!FatalError && Shutdown == NoShutdown)
 					{
 						/*
@@ -4067,13 +4285,13 @@ static void do_reaper()
 		if (pid == BgWriterPID)
 		{
 		    SetBGWriterPID(0);
-			
+
 			if (EXIT_STATUS_0(exitstatus) &&
 			    (pmState == PM_CHILD_STOP_WAIT_BGWRITER_CHECKPOINT
 			    || (FatalError && pmState >= PM_CHILD_STOP_BEGIN)))
 			{
 			    Assert(Shutdown > NoShutdown);
-			    
+
                 /* clean exit: PostmasterStateMachine logic does the rest */
                 continue;
 			}
@@ -4116,6 +4334,29 @@ static void do_reaper()
 			}
 
             /* PostmasterStateMachine logic does the rest */
+			continue;
+		}
+
+		if (pid == FilerepPeerResetPID)
+		{
+			FilerepPeerResetPID = 0;
+			LogChildExit(LOG, _("filerep peer reset process"), pid, exitstatus);
+
+			if (Shutdown == NoShutdown)
+			{
+				if (EXIT_STATUS_0(exitstatus))
+				{
+					elog(LOG, "filerep peer reset during postmaster reset has completed successfully");
+					peerResetResult = PEER_RESET_SUCCEEDED;
+				}
+				else
+				{
+					elog(WARNING, "filerep peer reset during postmaster reset has failed");
+					peerResetResult = PEER_RESET_FAILED;
+				}
+			}
+
+			/* PostmasterStateMachine logic does the rest */
 			continue;
 		}
 
@@ -4223,12 +4464,14 @@ static void do_reaper()
 		 * redo database startup.  (We can ignore the archiver and stats processes
 		 * here since they are not connected to shmem.)
 		 */
-		if (DLGetHead(BackendList) || 
+		if (DLGetHead(BackendList) ||
 		    StartupPID != 0 ||
-		    StartupPass2PID  != 0 ||
-		    StartupPass3PID  != 0 ||
+		    StartupPass2PID != 0 ||
+		    StartupPass3PID != 0 ||
+		    StartupPass4PID != 0 ||
 		    BgWriterPID != 0 ||
 		    FilerepPID  != 0 ||
+		    FilerepPeerResetPID != 0 ||
 			AutoVacPID != 0 ||
 			ServiceProcessesExist(0))
         {
@@ -4261,35 +4504,12 @@ static void do_reaper()
             ExitPostmaster(1);
         }
 
-		ereport(LOG,
-				(errmsg("all server processes terminated; reinitializing")));
+		if ( pmState != PM_POSTMASTER_RESET_FILEREP_PEER )
+		{
+        	BeginResetOfPostmasterAfterChildrenAreShutDown();
+		}
 
-
-
-		/*
-		 * Save the MPP session number from shared-memory before we reset
-		 * everything.  There is some risk here accessing the shared-memory,
-		 * but we don't want to reuse session-ids on the master.
-		 */
-
-		if (ProcGetMppLocalProcessCounter(&Save_MppLocalProcessCounter))
-			ereport(LOG,
-					(errmsg("gp_session_id high-water mark is %d",
-					        Save_MppLocalProcessCounter)));
-
-		/*
-		 * And, save the DTM start time, too.
-		 */
-		Save_DtxStartTime = getDtxStartTime();
-
-		shmem_exit(0);
-		pmState = PM_INIT;
-		FatalError = false;
-		reset_shared(PostPortNumber, true);
-
-        /* continue to reaper_done, then to ServerLoop which will process startup transition */
-
-		goto reaper_done;
+        /** fall-through, state machine will handle PM_INIT or PM_POSTMASTER_RESET_FILEREP_PEER  */
 	}
 
 	/*
@@ -4377,6 +4597,8 @@ GetServerProcessTitle(int pid)
 		return "postmaster process";
     else if (pid == FilerepPID )
         return "filerep process";
+	else if (pid == FilerepPeerResetPID)
+		return "filerep peer reset process";
 
 	return NULL;
 }
@@ -4441,8 +4663,9 @@ CleanupBackend(int pid,
  * The objectives here are to clean up our local state about the child
  * process, and to signal all other remaining children to quickdie.
  *
- * @param pid the pid of the crashed child, or -1 if we don't know the pid (because, for example, it is a
- *             filerep-managed process that crashed)
+ * @param pid the pid of the crashed child, or -1 if don't know the pid and don't want to log the failed child (this
+ *            can happen when the filerep controller process signals us to reset, or when a primary/mirror peer
+ *            signals us to reset)
  */
 static void
 HandleChildCrash(int pid, int exitstatus, const char *procname)
@@ -4457,7 +4680,10 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 	 */
 	if (!FatalError)
 	{
-		LogChildExit(LOG, procname, pid, exitstatus);
+		if (pid != -1)
+		{
+			LogChildExit(LOG, procname, pid, exitstatus);
+		}
 		ereport(LOG,
 				(errmsg("terminating any other active server processes")));
 	}
@@ -4542,6 +4768,18 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
 								 (int) StartupPass3PID)));
 		signal_child(StartupPass3PID, (SendStop ? SIGSTOP : SIGQUIT));
+	}
+	
+	/* Take care of the startup process too */
+	if (pid == StartupPass4PID)
+		StartupPass4PID = 0;
+	else if (StartupPass4PID != 0 && !FatalError)
+	{
+		ereport(DEBUG2,
+				(errmsg_internal("sending %s to process %d",
+								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
+								 (int) StartupPass4PID)));
+		signal_child(StartupPass4PID, (SendStop ? SIGSTOP : SIGQUIT));
 	}
 
     /* Take care of the bgwriter too */
@@ -4649,10 +4887,21 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 		allow_immediate_pgstat_restart();
 	}
 
+	if (pid == FilerepPeerResetPID)
+		FilerepPeerResetPID = 0;
+	else if (FilerepPeerResetPID != 0 && !FatalError)
+	{
+		ereport((Debug_print_server_processes ? LOG : DEBUG2),
+				(errmsg_internal("sending %s to process %d",
+								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
+								 (int) FilerepPeerResetPID)));
+		signal_child(FilerepPeerResetPID, (SendStop ? SIGSTOP : SIGQUIT));
+	}
+
 	/* We do NOT restart the syslogger */
 
 	FatalError = true;
-	
+
 	/* We now transit into a state of waiting for children to die */
 	if (pmState <= PM_RUN )
     {
@@ -4687,20 +4936,12 @@ signal_to_name(int signal)
 
 /*
  * Log the death of a child process.
- *
- * @param pid pass -1 if the pid of the process that died is not known (when filerep main requests a postmaster reset,
- *            this function is called but the pid is not known)
  */
 static void
 LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 {
     char pidLabel[100];
-    if (pid == -1)
-    {
-        /* when filerep main requests a postmaster reset, we call LogChildExit but don't have a valid pid */
-        pidLabel[0] = '\0';
-    }
-    else sprintf(pidLabel, " (PID %d)", pid);
+    sprintf(pidLabel, " (PID %d)", pid);
 
 	if (WIFEXITED(exitstatus))
 		ereport(lev,
@@ -4765,7 +5006,7 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 /**
  *  Check to see if PM_CHILD_STOP_WAIT_BACKENDS state is done
  */
-static int StateMachineCheck_WaitBackends(void)
+static PMState StateMachineCheck_WaitBackends(void)
 {
     bool moveToNextState = false;
 
@@ -4837,9 +5078,33 @@ static int StateMachineCheck_WaitBackends(void)
 }
 
 /**
+ * Check to see if PM_POSTMASTER_RESET_FILEREP_PEER state is done,
+ *
+ *  possibly
+ */
+static PMState StateMachineCheck_WaitFilerepPeerReset(void)
+{
+	Assert(pmState == PM_POSTMASTER_RESET_FILEREP_PEER );
+	switch (peerResetResult)
+	{
+		case PEER_RESET_NONE:
+			/* no change */
+			break;
+		case PEER_RESET_FAILED:
+			primaryMirrorDoNextResetToFault();
+			RestartAfterPostmasterReset();
+			break;
+		case PEER_RESET_SUCCEEDED:
+			RestartAfterPostmasterReset();
+			break;
+	}
+	return pmState;
+}
+
+/**
  * Check to see if PM_CHILD_STOP_WAIT_DEAD_END_CHILDREN state is done
  */
-static int StateMachineCheck_WaitDeadEndChildren(void)
+static PMState StateMachineCheck_WaitDeadEndChildren(void)
 {
     bool moveToNextState = false;
     Assert(pmState == PM_CHILD_STOP_WAIT_DEAD_END_CHILDREN );
@@ -4879,18 +5144,18 @@ static int StateMachineCheck_WaitDeadEndChildren(void)
 /**
  * Check to see if PM_CHILD_STOP_WAIT_STARTUP_PROCESSES state is done
  */
-static int StateMachineCheck_WaitStartupProcesses(void)
+static PMState StateMachineCheck_WaitStartupProcesses(void)
 {
     Assert(pmState == PM_CHILD_STOP_WAIT_STARTUP_PROCESSES);
 
-    bool moveToNextState = StartupPID == 0 && StartupPass2PID == 0 && StartupPass3PID == 0;
+    bool moveToNextState = StartupPID == 0 && StartupPass2PID == 0 && StartupPass3PID == 0 && StartupPass4PID == 0;
     return moveToNextState ? (pmState+1) : pmState;
 }
 
 /**
  * Check to see if PM_CHILD_STOP_WAIT_PREBGWRITER state is done
  */
-static int StateMachineCheck_WaitPreBgWriter(void)
+static PMState StateMachineCheck_WaitPreBgWriter(void)
 {
     Assert(pmState == PM_CHILD_STOP_WAIT_PREBGWRITER );
 
@@ -4902,10 +5167,10 @@ static int StateMachineCheck_WaitPreBgWriter(void)
 /**
  * Check to see if PM_CHILD_STOP_WAIT_POSTBGWRITER state is done
  */
-static int StateMachineCheck_WaitPostBgWriter(void)
+static PMState StateMachineCheck_WaitPostBgWriter(void)
 {
     Assert(pmState == PM_CHILD_STOP_WAIT_POSTBGWRITER);
-    
+
     /* waiting for post-bgwriter services to exit */
     bool moveToNextState = true;
 
@@ -4919,7 +5184,8 @@ static int StateMachineCheck_WaitPostBgWriter(void)
         moveToNextState = false;
     else if ( FilerepPID  != 0 ||
         PgArchPID  != 0 ||
-        PgStatPID  != 0 )
+        PgStatPID  != 0 ||
+        FilerepPeerResetPID != 0)
     {
         moveToNextState = false;
     }
@@ -4929,10 +5195,10 @@ static int StateMachineCheck_WaitPostBgWriter(void)
 /**
  * Check to see if PM_CHILD_STOP_WAIT_BGWRITER_CHECKPOINT state is done
  */
-static int StateMachineCheck_WaitBgWriterCheckpointComplete(void)
+static PMState StateMachineCheck_WaitBgWriterCheckpointComplete(void)
 {
     Assert(pmState == PM_CHILD_STOP_WAIT_BGWRITER_CHECKPOINT);
-    
+
     /* waiting for bgwriter to FINISH ckpt and exit */
     bool moveToNextState = BgWriterPID == 0;
 
@@ -4953,6 +5219,7 @@ static void StateMachineTransition_ShutdownStartupProcesses(void)
         signal_child_if_up(StartupPID, SIGTERM);
         signal_child_if_up(StartupPass2PID, SIGTERM);
         signal_child_if_up(StartupPass3PID, SIGTERM);
+        signal_child_if_up(StartupPass4PID, SIGTERM);
     }
     else
     {
@@ -4976,7 +5243,7 @@ static void StateMachineTransition_ShutdownBackends(void)
         /* only autovacuum workers are told to shut down immediately */
         SignalAutovacWorkers(SIGTERM);
     }
-    
+
     /* and the autovac launcher too */
     signal_child_if_up(AutoVacPID, SIGTERM);
 
@@ -5028,6 +5295,10 @@ static void StateMachineTransition_ShutdownPostBgWriter(void)
     signal_filerep_to_shutdown(SegmentStateShutdown);
     signal_child_if_up(PgArchPID, SIGQUIT);
     signal_child_if_up(PgStatPID, SIGQUIT);
+
+    /* this process is probably not running,
+     * but the shutdown sequence may have been started in the middle of our reset */
+    signal_child_if_up(FilerepPeerResetPID, SIGQUIT);
 }
 
 /**
@@ -5092,29 +5363,7 @@ static void StateMachineTransition_NoChildren(void)
     }
     else if (FatalError)
     {
-        ereport(LOG,
-                (errmsg("all server processes terminated; reinitializing")));
-
-        /*
-         * Save the MPP session number from shared-memory before we reset
-         * everything.  There is some risk here accessing the shared-memory,
-         * but we don't want to reuse session-ids on the master.
-         */
-        if (ProcGetMppLocalProcessCounter(&Save_MppLocalProcessCounter))
-            ereport(LOG,
-                    (errmsg("gp_session_id high-water mark is %d",
-                            Save_MppLocalProcessCounter)));
-
-        /*
-         * And, save the DTM start time, too.
-         */
-        Save_DtxStartTime = getDtxStartTime();
-
-        shmem_exit(1);
-        pmState = PM_INIT;
-        FatalError = false;
-        reset_shared(PostPortNumber, true);
-        /* done..serverLoop will process startup request */
+    	BeginResetOfPostmasterAfterChildrenAreShutDown();
     }
     else
     {
@@ -5130,8 +5379,14 @@ static void StateMachineTransition_NoChildren(void)
  * Right now, this state machine is concerned with the orderly shutdown sequence.
  * We should be able to make it cover startup and PM_RUN as well (where we restart crashed processes)
  *
+ * Note also that because of the fact that it only handles orderly shutdown directly, pmState is
+ *   sometimes changed by a transition or wait function (as when resetting the filerep peer during postmaster
+ *   reset).  This could probably be structured better so it all worked better
+ *
+ *
  * This is common code for pmdie() and reaper(), which receive the signals
  * that might mean we need to change state.
+ *
  */
 static void
 PostmasterStateMachine(void)
@@ -5210,6 +5465,10 @@ PostmasterStateMachine(void)
 
             case PM_CHILD_STOP_WAIT_NO_CHILDREN:
                 Assert(!"Unreachable state");
+                break;
+
+          	case PM_POSTMASTER_RESET_FILEREP_PEER:
+          		nextPmState = StateMachineCheck_WaitFilerepPeerReset();
                 break;
 
             default:
@@ -5292,9 +5551,16 @@ PostmasterStateMachine(void)
                 break;
 
             case PM_CHILD_STOP_WAIT_NO_CHILDREN:
-                /* all children are done, now we can exit or restart after crash */
+                /* all children are done, now we can exit or restart after crash, perhaps set up a transition to
+                 *  StateMachineTransition_ResetFilerepPeer
+                 */
                 StateMachineTransition_NoChildren();
                 break;
+
+          	case PM_POSTMASTER_RESET_FILEREP_PEER:
+          		Assert(!"Invalid pmState PM_POSTMASTER_RESET_FILEREP_PEER : "
+          				"is not reached through a nextPmState assignment");
+          		break;
 
             default:
                 Assert(!"Invalid pmState");
@@ -6654,6 +6920,10 @@ sigusr1_handler(SIGNAL_ARGS)
 	if (CheckPostmasterSignal(PMSIGNAL_FILEREP_POSTMASTER_RESET_REQUIRED))
 	{
 	    /* set a flag that will be handled in the main loop */
+	    /*
+	     * note that this signal can come from both filerep's main process as well as from handling of
+	     *   reset as requested by the primary/mirror peer
+	     */
 	    filerep_has_signaled_postmaster_reset_required = true;
     }
 
@@ -6811,6 +7081,7 @@ StartChildProcess(AuxProcType type)
             Assert(isPrimaryMirrorModeAFullPostmaster(true));
             break;
         case FilerepProcess:
+        case FilerepResetPeerProcess:
             Assert(doesPrimaryMirrorModeRequireFilerepProcess(true));
             break;
         case CheckerProcess:

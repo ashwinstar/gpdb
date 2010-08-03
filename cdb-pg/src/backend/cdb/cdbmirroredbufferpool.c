@@ -154,6 +154,47 @@ static void MirroredBufferPool_RecheckMirrorAccess(
 							open->mirrorOnly,
 							&open->mirrorMode,
 							&open->mirrorDataLossOccurred);
+	/*
+	 * mirror filespace location has to be populated for 
+	 *			a) adding mirror with filespaces
+	 *			b) resynchronization with filespaces and full copy to new location
+	 */
+	if (open->relFileNode.spcNode != GLOBALTABLESPACE_OID &&
+		open->relFileNode.spcNode != DEFAULTTABLESPACE_OID &&
+		strcmp(open->mirrorFilespaceLocation, "") == 0)
+	{
+		if (mirrorDataLossTrackingState == MirrorDataLossTrackingState_MirrorCurrentlyUpInSync &&
+			mirrorDataLossTrackingState == MirrorDataLossTrackingState_MirrorCurrentlyUpInResync)
+		{
+			char *primaryFilespaceLocation;
+			char *mirrorFilespaceLocation;
+			
+			PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+															   open->relFileNode.spcNode,
+															   &primaryFilespaceLocation,
+															   &mirrorFilespaceLocation);
+			
+			if (mirrorFilespaceLocation != NULL)
+			{
+				sprintf(open->mirrorFilespaceLocation, "%s", mirrorFilespaceLocation);		
+			
+				if (Debug_persistent_print || Debug_filerep_print)
+					elog(LOG, 
+						 "recheck mirror access, "
+						 "mirror filespace location:'%s' relation file node:'%u/%u/%u'  ", 
+						 open->mirrorFilespaceLocation,
+						 open->relFileNode.spcNode,
+						 open->relFileNode.dbNode,
+						 open->relFileNode.relNode);
+			}
+					 
+			if (primaryFilespaceLocation != NULL)
+				pfree(primaryFilespaceLocation);
+			
+			if (mirrorFilespaceLocation != NULL)
+				pfree(mirrorFilespaceLocation);			
+		}
+	}
 }
 
 /*
@@ -193,8 +234,8 @@ static void MirroredBufferPool_DoOpen(
 						 *               + S_IWUSR 00200 user has write permission
 						 */
 
-	char *primaryFilespaceLocation;
-	char *mirrorFilespaceLocation;
+	char *primaryFilespaceLocation = NULL;
+	char *mirrorFilespaceLocation = NULL;
 
 	Assert(open != NULL);
 	
@@ -218,13 +259,17 @@ static void MirroredBufferPool_DoOpen(
 		SUPPRESS_ERRCONTEXT_PUSH();
 
 		elog(Persistent_DebugPrintLevel(), 
-			 "MirroredBufferPool_DoOpen: Special open %u/%u/%u --> create %s, mirrorOnly %s, copyToMirror %s",
+			 "MirroredBufferPool_DoOpen: Special open %u/%u/%u --> create %s, mirrorOnly %s, copyToMirror %s, "
+			 "primary filespace location %s "
+			 "mirror filespace location %s ",
 			 relFileNode->spcNode,
 			 relFileNode->dbNode,
 			 relFileNode->relNode,
 			 (create ? "true" : "false"),
 			 (mirrorOnly ? "true" : "false"),
-			 (copyToMirror ? "true" : "false"));
+			 (copyToMirror ? "true" : "false"),
+			 (primaryFilespaceLocation == NULL) ? "<null>" : primaryFilespaceLocation,
+			 (mirrorFilespaceLocation == NULL) ? "<null>" : mirrorFilespaceLocation);
 
 		SUPPRESS_ERRCONTEXT_POP();
 	}

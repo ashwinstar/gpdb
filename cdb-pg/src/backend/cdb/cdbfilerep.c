@@ -261,7 +261,7 @@ FileRepOperationToString[] = {
 	_("In Sync Transition"),
 	_("Heart Beat"),
 	_("Create and Open"),
-	_("Validation FileSpace Dir"),
+	_("Validation FileSpace Dir or Existence"),
 	_("Drop files from Dir"),
 	_("Not Specified"),
 };
@@ -2867,6 +2867,8 @@ void FileRep_Main(void)
 		/* Report the error to the server log */
 		EmitErrorReport();
 		
+		LWLockReleaseAll();
+
 		/*
 		 * We can now go away.	Note that because we'll call InitProcess, a
 		 * callback will be registered to do ProcKill, which will clean up
@@ -2886,7 +2888,7 @@ void FileRep_Main(void)
 										  ALLOCSET_DEFAULT_MINSIZE,
 										  ALLOCSET_DEFAULT_INITSIZE,
 										  ALLOCSET_DEFAULT_MAXSIZE);
-	
+
 	MemoryContextSwitchTo(fileRepMemoryContext);
 	
 	FileRep_SetState(FileRepStateInitialization);

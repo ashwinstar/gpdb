@@ -29,7 +29,8 @@ static PGconn	*conn = NULL;
 int 
 FileRepConnClient_EstablishConnection(
 	char	*hostAddress,
-	int		port)
+	int		port,
+	bool	reportError)
 {
 	int			status = STATUS_OK;
 	PQExpBuffer	buffer = NULL;
@@ -53,20 +54,19 @@ FileRepConnClient_EstablishConnection(
 	conn = PQconnectdb(buffer->data);
 
 	if (PQstatus(conn) != CONNECTION_OK) {		
-		ereport(LOG, 
-				(errcode_for_socket_access(),
-				 errmsg("ERROR(filerep): could not establish connection with server, host:'%s' port:'%d' err:'%s' : %m",
-						hostAddress,
-						port,
-						PQerrorMessage(conn)),
-				 errSendAlert(true),
-				 FileRep_errcontext()));
+		if (reportError || Debug_filerep_print)
+			ereport(WARNING, 
+					(errcode_for_socket_access(),
+					 errmsg("could not establish connection with server, host:'%s' port:'%d' err:'%s' : %m",
+							hostAddress,
+							port,
+							PQerrorMessage(conn)),
+					 errSendAlert(true),
+					 FileRep_errcontext()));
 		
 		status = STATUS_ERROR;
 		
 		if (conn) {
-			if (Debug_filerep_print)
-				elog(LOG, "LOG(filerep): close connection");
 			PQfinish(conn);
 			conn = NULL;
 		}
@@ -88,8 +88,6 @@ void
 FileRepConnClient_CloseConnection(void)
 {
 	if (conn) {
-		if (Debug_filerep_print)
-			elog(LOG, "LOG(filerep): close connection");
 		PQfinish(conn);
 		conn = NULL;
 	}

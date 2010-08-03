@@ -414,6 +414,7 @@ FileRepPrimary_ConstructAndInsertMessage(
 		case FileRepOperationHeartBeat:
 		case FileRepOperationCreateAndOpen:
 		case FileRepOperationCreate:
+		case FileRepOperationValidation:
 			
 			fileRepMessageHeader->fileRepOperationDescription = fileRepOperationDescription;
 			break;
@@ -1002,12 +1003,15 @@ FileRepPrimary_MirrorDropFilesFromDir(FileRepIdentifier_u	fileRepIdentifier,
  */
 int 
 FileRepPrimary_MirrorValidation(FileRepIdentifier_u		fileRepIdentifier,
-								FileRepRelationType_e	fileRepRelationType)
+								FileRepRelationType_e	fileRepRelationType,
+								FileRepValidationType_e	fileRepValidationType)
 {
 	int		status = STATUS_OK;
 	int		mirrorStatus = FileRepStatusSuccess;
 	
 	FileRepOperationDescription_u descr;
+	
+	descr.validation.fileRepValidationType = fileRepValidationType;
 	
 	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationValidation)) 
 	{
@@ -1027,6 +1031,28 @@ FileRepPrimary_MirrorValidation(FileRepIdentifier_u		fileRepIdentifier,
 											   fileRepRelationType);
 		
 		mirrorStatus = FileRepAckPrimary_GetMirrorErrno();
+		
+		/*
+		 * During resynchronization with incremental copy if directories and relations
+		 * marked with MirroredObjectExistenceState_MirrorCreated do not exist on mirror then Fault 
+		 * is reported and resynchronization with full copy requested.
+		 */
+		if (fileRepValidationType == FileRepValidationExistence &&
+			mirrorStatus == FileRepStatusNoSuchFileOrDirectory)
+		{
+			ereport(WARNING,	
+					(errmsg("mirror failure, "
+							"could not resynchonize mirror due to missing directories or relations on mirror, "
+							"failover requested"),  	
+					 errhint("run gprecoverseg -F (full copy) to re-establish mirror connectivity"),
+					 errSendAlert(true),
+					 FileRep_errdetail(fileRepIdentifier,
+									   fileRepRelationType,
+									   FileRepOperationValidation),
+					 FileRep_errcontext()));	
+			
+			FileRep_SetSegmentState(SegmentStateFault);
+		}
 	}
 	
 	return mirrorStatus;
@@ -1254,9 +1280,20 @@ void
 FileRepPrimary_StartSender(void)
 {
 	int status = STATUS_OK;
+	int retry = 0;
 	
 	if (Debug_filerep_print)
 		elog(LOG, "FileRepPrimary_StartSender() ");
+	
+	ereport(LOG,
+			(errmsg("P_StartSender primary host address:'%s' and port:'%d' "
+					"mirror host address:'%s' and port:'%d', fullResync %s ",
+					fileRepPrimaryHostAddress,
+					fileRepPrimaryPort,
+					fileRepMirrorHostAddress,
+					fileRepMirrorPort,
+					fileRepFullResync ? "true" : "false"),
+			 FileRep_errcontext()));		
 	
 	while (1) {
 		
@@ -1277,23 +1314,29 @@ FileRepPrimary_StartSender(void)
 		
 		Assert(FileRepSubProcess_GetState() == FileRepStateInitialization);
 		
-		ereport(LOG,
-				(errmsg("LOG(filerep): P_StartSender primary host address:'%s' and port:'%d' "
-						"mirror host address:'%s' and port:'%d', fullResync %s ",
-						fileRepPrimaryHostAddress,
-						fileRepPrimaryPort,
-						fileRepMirrorHostAddress,
-						fileRepMirrorPort,
-						fileRepFullResync ? "true" : "false"),
-				FileRep_errcontext()));	
-
 		Insist(fileRepRole == FileRepPrimaryRole);
 		Insist(dataState == DataStateInSync ||
 			   dataState == DataStateInResync);
 		
 		status = FileRepConnClient_EstablishConnection(
-								fileRepMirrorHostAddress,
-								fileRepMirrorPort);
+													   fileRepMirrorHostAddress,
+													   fileRepMirrorPort,
+													   FALSE /* reportError */);
+		
+		while (status != STATUS_OK && retry < file_rep_retry)  {
+			FileRep_Sleep10ms(retry++);
+			
+			status = FileRepConnClient_EstablishConnection(
+														   fileRepMirrorHostAddress,
+														   fileRepMirrorPort,
+														   (retry == file_rep_retry) ? TRUE : FALSE);
+			
+			if (FileRepSubProcess_IsStateTransitionRequested())
+			{
+				break;
+			}			
+		}
+		
 		if (status != STATUS_OK) {
 			continue;
 		}

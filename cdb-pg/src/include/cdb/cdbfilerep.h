@@ -566,6 +566,23 @@ typedef enum FileRepDirType_e {
 } FileRepDirType_e;
 
 /*
+ * Validation type to be performed on mirror
+ */
+typedef enum FileRepValidationType_e {
+	FileRepValidationNotInitialized=0,
+	
+	FileRepValidationFilespace,
+		/* Validate if filespace directory can be created. */
+	
+	FileRepValidationExistence,
+		/* 
+		 * Validate if directory or file exists on mirror. 
+		 * Check is done during resynchronization with full copy.
+		 */
+		
+} FileRepValidationType_e;
+
+/*
  * This structure identifies uniquely directory
  * to be created/dropped on mirror.
  */
@@ -675,6 +692,8 @@ typedef struct FileRepOperationDescriptionHeartBeat_s {
  *	 
  */
 typedef struct FileRepOperationDescriptionValidation_s {
+	
+	FileRepValidationType_e	fileRepValidationType;
 	
 	int		mirrorStatus;
 	
