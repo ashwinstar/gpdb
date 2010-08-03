@@ -300,13 +300,19 @@ def checkUsernames():
 
     return False
 
+def getAddUserCommand():
+    if isLinux:
+        return "useradd -m %s" % options.user
+    else:
+        return "useradd -d /export/home/%s -m -s /bin/bash %s" % (options.user, options.user)
+
 # True is an error
 def addUserIfRequired():
 
     ###################################################################################
     logger.info("add user %s on master" % options.user)
     try:
-        cmd = Command("useradd", "useradd -m %s" % options.user)
+        cmd = Command("useradd", getAddUserCommand())
         pool.addCommand(cmd)
         pool.join()
         items = pool.getCompletedItems() # get the completed items but ignore them
@@ -337,7 +343,7 @@ def addUserIfRequired():
             if uh.userExists:
                 continue
 
-            cmd = Command(uh.address, "useradd -m %s" % options.user, NAKED, uh.address, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
+            cmd = Command(uh.address, getAddUserCommand(), NAKED, uh.address, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
             pool.addCommand(cmd)
         pool.join()
         items = pool.getCompletedItems()
