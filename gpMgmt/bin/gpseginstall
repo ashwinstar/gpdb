@@ -299,7 +299,7 @@ def getAddUserCommand():
     if isLinux:
         return "useradd -m %s" % options.user
     else:
-        return "useradd -d /export/home/%s -m -s /bin/bash %s" % (options.user, options.user)
+        return "groupadd %s; useradd -d /export/home/%s -m -g %s -s /bin/bash %s" % (options.user, options.user, options.user, options.user)
 
 # True is an error
 def addUserIfRequired():
