@@ -1611,7 +1611,7 @@ addChangeHistory(PGconn *entryConn, struct segmentStatusChange *changes, int cha
 			if (!valid && primary)
 			{
 				count = snprintf(cmd, sizeof(cmd),
-								 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: content %d double failure, last known primary marked for changetracking)",
+								 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: content %d double failure, last known primary marked for changetracking')",
 								 time_str, change->dbid, change->segindex);
 			}
 			else
