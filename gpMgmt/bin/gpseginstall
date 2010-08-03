@@ -7,9 +7,9 @@ USAGE:   gpseginstall -f|--file HOSTFILE [-u|--user USER]  [-p|--password PASSWO
 
          where COMMAND_OPTIONS list a subset of commands to be run from the list below.  The default is all commands.
             u -- add user  (root only)
-            p -- change passworda (root only)
             c -- chown software on master host (root only)
             s -- tar, zip and copy over software to machines in cluster
+            p -- change passworda (root only)
             E -- exchange keys for root (root only)
             e -- exchange keys for user
             l -- check and fix user limits for new user -- requires software to be installed on cluster with command 's' or equivalent (root only)
@@ -21,7 +21,7 @@ warnings.simplefilter('ignore', DeprecationWarning)
 sys.path.append(sys.path[0] + '/lib')
 
 try:
-    import paramiko, getpass, crypt, pexpect
+    import paramiko, getpass, pexpect
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gplog import get_default_logger, setup_tool_logging
@@ -433,10 +433,12 @@ def chownMasterSoftware():
 # True is an error
 def changeUserPassword():
 
-    cmdStr = 'usermod -p "%s" %s' % (crypt.crypt(options.password, options.password), options.user)
+    cmd = "%s/sbin/gpchangeuserpassword --user %s --password %s" % (gphome, options.user, options.password)
 
-    if (simpleLocalCommand(cmdStr, False)):
+    if (simpleLocalCommand(cmd, False)):
         return True
+
+    cmdStr = ". %s/greenplum_path.sh; %s" % (gphome, cmd)
 
     if (simpleRemoteCommand(cmdStr, True)):
         return True
@@ -624,6 +626,9 @@ def copyOverSoftware():
 
 def checkAndFixUserLimits():
 
+    if not isLinux:
+        return False
+
     cmd = "%s/sbin/gpfixuserlimts -f /etc/security/limits.conf -u %s" % (gphome, options.user)
     if (simpleLocalCommand(cmd, True)):
         return True
@@ -631,6 +636,8 @@ def checkAndFixUserLimits():
     cmdStr = ". %s/greenplum_path.sh; %s" % (gphome, cmd)
     if (simpleRemoteCommand(cmdStr, True)):
         return True
+
+    return False
 
 
 # True is an error
@@ -799,12 +806,12 @@ if 'c' in commands:
     if (chownMasterSoftware()):
         earlyExit(True)
 
-if 'p' in commands:
-    if (changeUserPassword()):
-        earlyExit(True)
-
 if 's' in commands:
     if (copyOverSoftware()):
+        earlyExit(True)
+
+if 'p' in commands:
+    if (changeUserPassword()):
         earlyExit(True)
 
 if 'E' in commands:
