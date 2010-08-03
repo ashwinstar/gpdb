@@ -50,6 +50,7 @@ rootCommands = set(['u', 'p', 'c', 's', 'e', 'E', 'l']) # valid command types fo
 nonRootCommands = set(['s', 'e'])                       # valid command types for non-root user
 defaultNonRootCommands = set(['s'])                     # commands to run by default for non-root user
 currentUser = None
+isLinux = False
 
 class InstallationInfo:
     def __init__(self, link_name, binary_path, binary_dir_location, binary_dir_name):
@@ -83,7 +84,7 @@ class UniqueHost:
 # True is an error
 def parseargs():
 
-    global options
+    global options, isLinux
 
     parser = OptParser(option_class=OptChecker)
     parser.remove_option('-h')
@@ -100,9 +101,12 @@ def parseargs():
         logger.error("GPHOME not set")
         return True
 
-    if SYSTEM.getName() != "linux":
-        logger.error("This utility is only supported on the linux operating system")
+    if SYSTEM.getName() != "linux" and SYSTEM.getName() != "sunos":
+        logger.error("This utility is only supported on the linux and solaris operating system")
         return True
+
+    if SYSTEM.getName() == "linux":
+        isLinux = True
 
     if options.help:
         print __doc__
@@ -125,6 +129,9 @@ def parseargs():
 
     if currentUser == "root":
         validCommands = rootCommands
+
+        if not isLinux:
+            logger.error("this utility is only supported for root user mode on the Linux operating system")
     else:
         validCommands = nonRootCommands
 
@@ -432,22 +439,25 @@ def changeUserPassword():
 
     if (simpleRemoteCommand(cmdStr, True)):
         return True
-   
+
+def md5Command():
+    if isLinux:
+        return "md5sum"
+    else:
+        return "digest -a md5"
+
+def md5OutputWords():
+    if isLinux:
+        return 2
+    else:
+        return 1
+
+
 # True is an error
-def copyOverSoftware():
+def setMd5Locally():
 
-    ###################################################################################
-    cmdStr = "rm -f %s.tar; rm -f %s.tar.gz" % (installation_info.install_binary_path, installation_info.install_binary_path)
-    if (simpleLocalCommand(cmdStr, False)):
-        return True
-
-    cmdStr = "tar -C %s -c -f %s.tar %s" % (installation_info.install_binary_dir_location, installation_info.install_binary_path, installation_info.install_binary_dir_name)
-    if (simpleLocalCommand(cmdStr, False)):
-        return True
-
-    ###################################################################################
     try:
-        cmd = Command("md5", "md5sum %s.tar" % installation_info.install_binary_path)
+        cmd = Command("md5", "%s %s.tar" % (md5Command(), installation_info.install_binary_path))
         pool.addCommand(cmd)
         pool.join()
         items = pool.getCompletedItems()
@@ -458,7 +468,7 @@ def copyOverSoftware():
                 return True 
             else:
                 fields = i.results.stdout.split()
-                if len(fields) != 2:
+                if len(fields) != md5OutputWords():
                     raise Exception("Unexpected output from md5sum: %s" % i.results.stdout)
                 installation_info.install_md5 = fields[0].strip()
                 break
@@ -466,12 +476,29 @@ def copyOverSoftware():
         logger.error("%s" % e.__str__())
         return True
 
+    return False
+
+# True is an error
+def copyOverSoftware():
+
+    ###################################################################################
+    cmdStr = "rm -f %s.tar; rm -f %s.tar.gz" % (installation_info.install_binary_path, installation_info.install_binary_path)
+    if (simpleLocalCommand(cmdStr, False)):
+        return True
+
+    cmdStr = "cd %s; tar cf %s.tar %s" % (installation_info.install_binary_dir_location, installation_info.install_binary_dir_name, installation_info.install_binary_dir_name)
+    if (simpleLocalCommand(cmdStr, False)):
+        return True
+
+    ###################################################################################
+    if setMd5Locally():
+        return True
+
     ###################################################################################
 
     cmdStr = "gzip %s.tar" % installation_info.install_binary_path
     if (simpleLocalCommand(cmdStr, False)):
         return True
-
 
     ###################################################################################
     cmdStr = "mkdir -p %s" % installation_info.install_binary_dir_location
@@ -531,7 +558,8 @@ def copyOverSoftware():
     try:
         for k in uniqueseghosts.keys():
             uh = uniqueseghosts[k]
-            cmd = Command(uh.address, "md5sum %s.tar" % installation_info.install_binary_path, NAKED, uh.address, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
+            cmdStr = "%s %s.tar" % (md5Command(), installation_info.install_binary_path)
+            cmd = Command(uh.address, cmdStr, NAKED, uh.address, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
             pool.addCommand(cmd)
         pool.join()
         items = pool.getCompletedItems()
@@ -542,7 +570,7 @@ def copyOverSoftware():
                 failures.add(address)
             else:
                 fields = i.results.stdout[0].split()
-                if len(fields) == 2:
+                if len(fields) == md5OutputWords():
                     md5 = fields[0].strip()
                     if md5 != installation_info.install_md5:
                         logger.error("on host %s md5sum %s != expected %s" % (address, md5, installation_info.install_md5))
@@ -561,7 +589,7 @@ def copyOverSoftware():
         return True
 
     ###################################################################################
-    cmdStr = "cd %s; tar -x -f %s.tar" % (installation_info.install_binary_dir_location, installation_info.install_binary_dir_name)
+    cmdStr = "cd %s; tar xf %s.tar" % (installation_info.install_binary_dir_location, installation_info.install_binary_dir_name)
     if (simpleRemoteCommand(cmdStr, True)):
         return True
 
