@@ -889,6 +889,7 @@ class NewSegmentInput:
 class gpexpand:
 
     def __init__(self,logger,gparray,dburl,parallel=1):
+        self.pastThePointOfNoReturn = False
         self.logger = logger
         self.dburl = dburl
         self.numworkers=parallel
@@ -1876,6 +1877,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         """Removes the gpexpand status file and segment configuration backup file"""
         self.statusLogger.remove_status_file()
         self.statusLogger.remove_segment_configuration_backup_file()
+        self.pastThePointOfNoReturn = True;
 
     def setup_schema(self):
         """Used to setup the gpexpand schema"""
@@ -2947,12 +2949,15 @@ except Exception,e:
         logger.exception("gpexpand failed. exiting...")
     else:
         logger.error("gpexpand failed: %s \n\nExiting..." % e )
+    if gp_expand.pastThePointOfNoReturn == True:
+       logger.error('gpexpand is past the point of rollback. Any remaining issues must be addressed outside of gpexpand.')
     if gp_expand is not None:
         if gpexpand_db_status is None and gp_expand.get_state() is None:
             logger.info('Bringing Greenplum Database back online...')
             gpexpand.get_gpdb_in_state(GPDB_STARTED)
         else:
-            logger.error('Please run \'gpexpand -r%s\' to rollback to the original state.' % ('' if not options.database else ' -D %s' % options.database))
+            if gp_expand.pastThePointOfNoReturn == False:
+               logger.error('Please run \'gpexpand -r%s\' to rollback to the original state.' % ('' if not options.database else ' -D %s' % options.database))
         gp_expand.shutdown()
     sys.exit(3)
 except KeyboardInterrupt:
