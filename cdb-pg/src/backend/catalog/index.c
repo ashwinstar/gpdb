@@ -982,25 +982,27 @@ index_drop(Oid indexId)
 
 	userIndexRelation = index_open(indexId, AccessExclusiveLock);
 
+
+	if (!userIndexRelation->rd_segfile0_relationnodeinfo.isPresent)
+		RelationFetchSegFile0GpRelationNode(userIndexRelation);
+
 	/*
 	 * Schedule physical removal of the files
 	 */
 	RelationOpenSmgr(userIndexRelation);
 	Assert(userIndexRelation->rd_smgr != NULL);
 
-	if (!userIndexRelation->rd_segfile0_relationnodeinfo.isPresent)
-		RelationFetchSegFile0GpRelationNode(userIndexRelation);
-
-	DeleteGpRelationNodeTuple(
-					userIndexRelation,
-					/* segmentFileNum */ 0);
-	
 	MirroredFileSysObj_ScheduleDropBufferPoolFile(
 									userIndexRelation->rd_smgr,
 									userIndexRelation->rd_isLocalBuf,
 									userIndexRelation->rd_rel->relname.data,
 									&userIndexRelation->rd_segfile0_relationnodeinfo.persistentTid,
 									userIndexRelation->rd_segfile0_relationnodeinfo.persistentSerialNum);
+
+	DeleteGpRelationNodeTuple(
+					userIndexRelation,
+					/* segmentFileNum */ 0);
+	
 
 	/*
 	 * Close and flush the index's relcache entry, to ensure relcache doesn't
