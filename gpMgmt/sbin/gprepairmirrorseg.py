@@ -63,46 +63,62 @@ TEN_GIG = 1024 * TEN_MEG
 
 PID_FILE = "gprepairmirrorseg.pid"
 
+# Keep the value of the name/value dictionary entry the same length for printing.
+categoryAction = {}
+categoryAction['ao']      = 'COPY     '
+categoryAction['heap:']    = 'COPY     '
+categoryAction['btree:']   = 'COPY     '
+categoryAction['extra_p:'] = 'COPY     '
+categoryAction['extra_m:'] = 'DELETE   '
+categoryAction['unknown:'] = 'NO ACTION'
+
 
 #-------------------------------------------------------------------------------
 def prettyPrintFiles(resycFiles):
   
   fileIndex = 0
   fileListLength = len(resyncFile.fileList)
+  ACTION      = "ACTION"
   SOURCE_HOST = "SOURCE HOST  "
   SOURCE_FILE = "SOURCE FILE  "
   TARGET_HOST = "TARGET HOST  "
   TARGET_FILE = "TARGET FILE  "
+  maxac = len(ACTION)
   maxsh = len(SOURCE_HOST)
   maxsf = len(SOURCE_FILE)
   maxth = len(TARGET_HOST)
   maxtf = len(TARGET_FILE)
   
   for fileIndex in range(fileListLength):
-      if len(maxsh) < len(resycFiles.getSourceHost(fileIndex)):
+      if maxsh < len(resycFiles.getSourceHost(fileIndex)):
          maxsh = len(resycFiles.getSourceHost(fileIndex))
-      if len(maxsf) < len(resycFiles.getSourceFile(fileIndex)):
+      if maxsf < len(resycFiles.getSourceFile(fileIndex)):
          maxsf = len(resycFiles.getSourceFile(fileIndex))
-      if len(maxth) < len(resycFiles.getTargetHost(fileIndex)):
+      if maxth < len(resycFiles.getTargetHost(fileIndex)):
          maxth = len(resycFiles.getTargetHost(fileIndex))
-      if len(maxtf) < len(resycFiles.getTargetFile(fileIndex)):
+      if maxtf < len(resycFiles.getTargetFile(fileIndex)):
          maxtf = len(resycFiles.getTargetFile(fileIndex))  
   
-  
-  line = SOURCE_HOST + " " * (maxsh - len(SOURCE_HOST))
+  line = ACTION + " " 
+  line = line + SOURCE_HOST + " " * (maxsh - len(SOURCE_HOST))
   line = line + SOURCE_FILE + " " * (maxsf - len(SOURCE_FILE))
   line = line + TARGET_HOST + " " * (maxth - len(TARGET_HOST))
   line = line + TARGET_FILE + " " * (maxtf - len(TARGET_FILE))
 
   logger.info("")
   logger.info(line)
-  line = "-" * maxsh
+  line = "-" * maxac
+  line = line + "-" * maxsh
   line = line + "-" * maxsf
   line = line + "-" * maxth
   line = line + "-" * maxtf
   logger.info(line)
   for fileIndex in range(fileListLength):
-      line = resycFiles.getSourceHost(fileIndex) 
+      #print ""
+      #print "resycFiles.getCategory(fileIndex) =" + str(resycFiles.getCategory(fileIndex))
+      #print ""
+      line = categoryAction[resycFiles.getCategory(fileIndex)] + " "
+      line = line + resycFiles.getSourceHost(fileIndex) 
       line = line + " " * (maxsh - len(resycFiles.getSourceHost(fileIndex)))
       line = line + resycFiles.getSourceFile(fileIndex) 
       line = line + " " * (maxsf - len(resycFiles.getSourceFile(fileIndex)))
@@ -110,7 +126,7 @@ def prettyPrintFiles(resycFiles):
       line = line + " " * (maxth - len(resycFiles.getTargetHost(fileIndex)))
       line = resycFiles.getTargetFile(fileIndex) 
       line = line + " " * (maxtf - len(resycFiles.getTargetFile(fileIndex)))           
-  logger.inf("")
+  logger.info("")
 
 
 #-------------------------------------------------------------------------------
@@ -180,6 +196,8 @@ def parseargs():
         logger.error('Unknown argument %s' % args[0])
         parser.exit()
 
+    options.master_data_directory = get_masterdatadir()
+
     return options, args
 
 #-------------------------------------------------------------------------------
@@ -242,71 +260,21 @@ class ValidationError(Exception): pass
 
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
-class GPHostCache:
-    """ This class represents the information stored in the .gphostcache file """
-    
-    def __init__(self):
-        self.hostcache = {}
-        self.readfile()
-        
-    #-------------------------------------------------------------------------------
-    def __str__(self):   
-       tempStr = "self.hostcache = " + str(self.hostcache) + '\n'
-       return tempStr
-        
-    #-------------------------------------------------------------------------------
-    def readfile(self):
-        self.FILENAME  = ".gphostcache"
-        self.CACHEFILE = GPADMINLOGS_DIRECTORY + "/" + self.FILENAME
-
-        try:
-            file = None
-            file = open(self.CACHEFILE, 'r')
-                
-            for line in file:
-                (interface,hostname) = line.split(':')
-                self.hostcache[interface.strip()] = hostname.strip()
-            file.close()             
-        except IOError, ioe:
-            logger.error("Can not read host cache file %s. Exception: %s" % (self.CACHEFILE, str(ioe)))
-            raise Exception("Unable to read host cache file: %s" % self.CACHEFILE)                  
-        finally:
-            if file != None:
-               file.close()        
-    
-    #-------------------------------------------------------------------------------
-    def getInterfaces(self, hostName):
-        retList = []
-        
-        for interface in self.hostcache:
-            if self.hostcache[interface] == hostName:
-               retList.append(interface)
-        return retList
-    
-    #-------------------------------------------------------------------------------
-    def getHost(self, interface):
-        return self.hostcache[interface]
-    
-    #-------------------------------------------------------------------------------
-    def getHostList(self):
-        retList = []
-        
-        for (interface, host) in self.hostcache:
-            if host in retList:
-                continue
-            else:
-                retList.append(host)
-
-
-#-------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
 class GPResyncFile:
     """ 
       This class represents the information stored in the resync file.
       The expected file format is: 
       
-        <good-segment-host>:<good-segment-file> <bad segment host>:<bad segment file>
-       
+        <category> <good-segment-host>:<good-segment-file> <bad segment host>:<bad segment file>
+
+      where <category> is one of:
+
+        ao       - An ao table
+        heap     - A heap table
+        btree    - A btree
+        unknown  - An unknown file type
+        extra_p  - An extra file on the primary, which is the same as the <good-segment>
+        extra_m  - An extra file on the mirror, which is the same as the <bad-segment>
     """
     
 
@@ -328,14 +296,14 @@ class GPResyncFile:
 
             for line in file:
                 line = line.strip()
-                (goodseg, badseg) = line.split()
+                (category, goodseg, badseg) = line.split()
                 (goodseghost, goodsegfile) = goodseg.split(":")
                 (badseghost, badsegfile) = badseg.split(":")
-                fileList.add([goodseghost, goodsegfile, badseghost, badsegfile])
+                self.fileList.append([category, goodseghost, goodsegfile, badseghost, badsegfile])
             file.close()
         except IOError, ioe:
-            logger.error("Can not readfile %s. Exception: %s" % (self.CACHEFILE, str(ioe)))
-            raise Exception("Unable to read file: %s" % self.CACHEFILE)
+            logger.error("Can not read file %s. Exception: %s" % (self.filename, str(ioe)))
+            raise Exception("Unable to read file: %s" % self.filename)
         finally:
             if file != None:
                file.close()
@@ -345,21 +313,26 @@ class GPResyncFile:
         logger.debug("Entering getEntry, index = %s" % str(index))
         return self.fileList[index]
 
+
     #-------------------------------------------------------------------------------
-    def getSourceHost(self, index):
+    def getCategory(self, index):
         return self.fileList[index][0]
 
     #-------------------------------------------------------------------------------
-    def getSourceFile(self, index):
+    def getSourceHost(self, index):
         return self.fileList[index][1]
+
+    #-------------------------------------------------------------------------------
+    def getSourceFile(self, index):
+        return self.fileList[index][2]
     
     #-------------------------------------------------------------------------------
     def getTargetHost(self, index):
-        return self.fileList[index][2]    
+        return self.fileList[index][3]    
 
     #-------------------------------------------------------------------------------
     def getTargetFile(self, index):
-        return self.fileList[index][3]
+        return self.fileList[index][4]
 
 
 #------------------------------------------------------------------------
@@ -465,16 +438,20 @@ try:
 
   options, args = parseargs()
 
+  if options.file == None or len(options.file) == 0:
+     logger.error('The --file command line argument is required')
+     raise Exception("Unable to continue")
+
   if options.verbose:
      enable_verbose_logging()
 
-  if is_gprepairmirrorseg_running(options.info_data_directory):
+  if is_gprepairmirrorseg_running(options.master_data_directory):
      logger.error('gprepairmirrorseg is already running.  Only one instance')
      logger.error('of gprepairmirrorseg is allowed at a time.')
      remove_pid = False
      sys.exit(1)
   else:
-     create_pid_file(options.info_data_directory)
+     create_pid_file(options.master_data_directory)
 
   resyncFile = GPResyncFile(options.file)  
 
@@ -517,7 +494,7 @@ except Exception, e:
 finally:
     try:
         if remove_pid:
-            remove_pid_file(options.info_data_directory)
+            remove_pid_file(options.master_data_directory)
     except Exception:
         pass
     logger.info("gprepairmirrorseg exit")
