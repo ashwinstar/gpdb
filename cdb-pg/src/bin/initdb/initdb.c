@@ -3123,9 +3123,9 @@ main(int argc, char *argv[])
 		if (ret == -1)
 			fprintf(stderr,
 					_("The program \"postgres\" is needed by %s "
-					  "but was not found in the\n"
-					  "same directory as \"%s\".\n"
-					  "Check your installation.\n"),
+					  "but was either not found in the "
+					  "same directory as \"%s\" or failed unexpectedly.\n"
+					  "Check your installation; \"postgres -V\" may have more information.\n"),
 					progname, full_path);
 		else
 			fprintf(stderr,
