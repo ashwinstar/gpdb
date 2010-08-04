@@ -335,6 +335,7 @@ persist_all_filespaces(int16 pridbid, int16 mirdbid, ArrayType *fsmap)
 		char *fsname = DatumGetCString(DirectFunctionCall1(textout, d[i]));
 		char *path;
 		Oid fsoid;
+		bool set_mirror_existence;
 
 		/* we do not persist system filespaces */
 		if (strcmp(fsname, SYSTEMFILESPACE_NAME) == 0)
@@ -347,7 +348,10 @@ persist_all_filespaces(int16 pridbid, int16 mirdbid, ArrayType *fsmap)
 		Insist(i + 1 < n);
 		path = DatumGetCString(DirectFunctionCall1(textout, d[i + 1]));
 
-		PersistentFilespace_AddMirror(fsoid, path, pridbid, mirdbid);
+		/* only set the mirror existence on segments */
+		set_mirror_existence = (pridbid != MASTER_DBID);
+		PersistentFilespace_AddMirror(fsoid, path, pridbid, mirdbid,
+									  set_mirror_existence);
 	}
 	heap_close(rel, NoLock);
 }
@@ -418,7 +422,11 @@ update_tablespaces(int16 pridbid, seginfo *i, bool add)
 	 * Teach the persistent tablespace table about us.
 	 */
 	if (add)
-		PersistentTablespace_AddMirrorAll(pridbid, i->db.dbid);
+	{
+		/* nothing to do for tablespaces on master */
+		if (pridbid != MASTER_DBID)
+			PersistentTablespace_AddMirrorAll(pridbid, i->db.dbid);
+	}
 	else
 		PersistentTablespace_RemoveSegment(i->db.dbid,
 										   i->db.role == SEGMENT_ROLE_MIRROR);
@@ -439,7 +447,11 @@ update_databases(int16 pridbid, seginfo *i, bool add)
 	 * Teach the persistent database table about us.
 	 */
 	if (add)
-		PersistentDatabase_AddMirrorAll(pridbid, i->db.dbid);
+	{
+		/* nothing to do for tablespaces on master */
+		if (pridbid != MASTER_DBID)
+			PersistentDatabase_AddMirrorAll(pridbid, i->db.dbid);
+	}
 	else
 		PersistentDatabase_RemoveSegment(i->db.dbid,
 										 i->db.role == SEGMENT_ROLE_MIRROR);
@@ -460,7 +472,11 @@ update_relations(int16 pridbid, seginfo *i, bool add)
 	 * Teach the persistent relation table about us.
 	 */
 	if (add)
-		PersistentRelation_AddMirrorAll(pridbid, i->db.dbid);
+	{
+		/* nothing to do for tablespaces on master */
+		if (pridbid != MASTER_DBID)
+			PersistentRelation_AddMirrorAll(pridbid, i->db.dbid);
+	}
 	else
 		PersistentRelation_RemoveSegment(i->db.dbid,
 										 i->db.role == SEGMENT_ROLE_MIRROR);

@@ -843,6 +843,7 @@ PersistentDatabase_AddMirrorAll(
 									   pridbid,
            	        	               mirdbid,
 									   NULL,
+									   true,
                    	        	       /* flushToXlog */ false);
 	}
 

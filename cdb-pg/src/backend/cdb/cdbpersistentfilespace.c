@@ -1082,7 +1082,8 @@ void PersistentFilespace_Dropped(
 void
 PersistentFilespace_AddMirror(Oid filespace,
 							  char *mirpath,
-							  int16 pridbid, int16 mirdbid)
+							  int16 pridbid, int16 mirdbid,
+							  bool set_mirror_existence)
 {
 	PersistentFileSysObjName fsObjName;
 	char *newpath;
@@ -1131,6 +1132,7 @@ PersistentFilespace_AddMirror(Oid filespace,
 								   pridbid,
 								   mirdbid,
 								   (void *)newpath,
+								   set_mirror_existence,
 								   /* flushToXlog */ false);
 		
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;

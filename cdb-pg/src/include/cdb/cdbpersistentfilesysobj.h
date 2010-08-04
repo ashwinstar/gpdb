@@ -418,6 +418,7 @@ extern void PersistentFileSysObj_AddMirror(PersistentFileSysObjName *fsObjName,
 										   int16 pridbid,
 										   int16 mirdbid,
 										   void *arg,
+										   bool set_mirror_existence,
 										   bool flushToXLog);
 
 extern void PersistentFileSysObj_RemoveSegment(

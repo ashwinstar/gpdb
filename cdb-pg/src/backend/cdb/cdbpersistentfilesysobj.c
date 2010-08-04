@@ -1732,6 +1732,7 @@ PersistentFileSysObj_AddMirror(PersistentFileSysObjName *fsObjName,
 							   int16 pridbid,
 							   int16 mirdbid,
 							   void *arg,
+							   bool set_mirror_existence,
 							   bool	flushToXLog)
 {
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
@@ -1767,15 +1768,20 @@ PersistentFileSysObj_AddMirror(PersistentFileSysObjName *fsObjName,
 	{
 		Datum *newValues;
 		bool *replaces;
+		bool needs_update = false;
 
 		newValues = (Datum*)palloc0(fileSysObjData->storeData.numAttributes *
 									sizeof(Datum));
 		replaces = (bool*)palloc0(fileSysObjData->storeData.numAttributes *
 								  sizeof(bool));
 
-		replaces[fileSysObjData->attNumMirrorExistenceState - 1] = true;
-		newValues[fileSysObjData->attNumMirrorExistenceState - 1] =
-			Int32GetDatum(MirroredObjectExistenceState_MirrorDownBeforeCreate);
+		if (set_mirror_existence)
+		{
+			replaces[fileSysObjData->attNumMirrorExistenceState - 1] = true;
+			newValues[fileSysObjData->attNumMirrorExistenceState - 1] =
+				Int32GetDatum(MirroredObjectExistenceState_MirrorDownBeforeCreate);
+			needs_update = true;
+		}
 
 		if (fsObjType == PersistentFsObjType_FilespaceDir)
 		{
@@ -1803,15 +1809,17 @@ PersistentFileSysObj_AddMirror(PersistentFileSysObjName *fsObjName,
 			replaces[locattnum - 1] = true;
 			newValues[locattnum - 1] = CStringGetTextDatum((char *)arg);
 
+			needs_update = true;
 		}
 
-		PersistentFileSysObj_ReplaceTuple(
-									fsObjType,
-									persistentTid,
-									tupleCopy,
-									newValues,
-									replaces,
-									flushToXLog);
+		/* only replace the tuple if we've changed it */
+		if (needs_update)
+			PersistentFileSysObj_ReplaceTuple(fsObjType,
+											  persistentTid,
+											  tupleCopy,
+											  newValues,
+											  replaces,
+											  flushToXLog);
 
 		pfree(newValues);
 		pfree(replaces);

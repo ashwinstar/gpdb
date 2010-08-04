@@ -549,6 +549,7 @@ PersistentRelation_AddMirrorAll(int16 pridbid, int16 mirdbid)
 									   pridbid,
            	        	               mirdbid,
 									   NULL,
+									   true,
                    	        	       /* flushToXlog */ false);
 	}
 
