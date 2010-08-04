@@ -119,19 +119,18 @@ unlink_obj(char *path, uint8 info)
 	if (info == MMXLOG_REMOVE_DIR)
 	{
 		/* same behaviour as dropdb(), RemoveFileSpace(), RemoveTableSpace() */
-		elog(LOG, "removing directory, as requested %s", path);
+		elog(DEBUG1, "removing directory, as requested %s", path);
 		rmtree(path, true);
 	}
 	else if (info == MMXLOG_REMOVE_FILE)
 	{
 		if (Debug_print_qd_mirroring)
-			elog(LOG, "unlinking file, as requested %s", path);
+			elog(DEBUG1, "unlinking file, as requested %s", path);
 
 		if (unlink(path) < 0)
 		{
 			if (errno != ENOENT) /* allow it to already be removed */
-				elog(PANIC, "could not unlink %s: %m",
-					 path);
+				elog(WARNING, "could not unlink %s: %m", path);
 		}
 	}
 	else
@@ -148,6 +147,7 @@ mmxlog_redo(XLogRecPtr lsn, XLogRecord *record)
 
 	if (info == MMXLOG_CREATE_DIR)
 	{
+		bool dir_created = true;
 
 		elog(DEBUG1, "got create directory request: %s / %s",
 			 xlrec->master_path,
@@ -184,11 +184,14 @@ mmxlog_redo(XLogRecPtr lsn, XLogRecord *record)
 		{
 			/* allowed to already exist */
 			if (errno != EEXIST)
-				elog(PANIC, "could not create directory %s: %m", path);
+			{
+				dir_created = false;
+				elog(WARNING, "could not create directory %s: %m", path);
+			}
 		}
 
 		/* need to add PG_VERSION for newly created databases */
-		if (xlrec->objtype == MM_OBJ_DATABASE)
+		if (xlrec->objtype == MM_OBJ_DATABASE && dir_created == true)
 			set_short_version(path, NULL, false);
 	}
 	else if (info == MMXLOG_REMOVE_DIR)
@@ -207,7 +210,7 @@ mmxlog_redo(XLogRecPtr lsn, XLogRecord *record)
 		{
 			/* tolerate existence */
 			if (errno != EEXIST)
-				elog(PANIC, "could open open file %s: %m", path);
+				elog(WARNING, "could open open file %s: %m", path);
 		}
 
 		/*
@@ -237,7 +240,7 @@ mmxlog_redo(XLogRecPtr lsn, XLogRecord *record)
 		XLogDropRelation(rnode);
 
 		if (Debug_print_qd_mirroring)
-			elog(LOG, "dropped buffers and freespace for %u/%u/%u",
+			elog(DEBUG1, "dropped buffers and freespace for %u/%u/%u",
 				 rnode.spcNode, rnode.dbNode, rnode.relNode);
 		unlink_obj(path, info);
 	}
@@ -403,7 +406,7 @@ emit_mmxlog_fs_record(mm_fs_obj_type type, Oid filespace,
 						  relfilenode, segnum);
 		
 		if (Debug_print_qd_mirroring)
-			elog(LOG, "XLOG: type = %i, flags = %i, dbid = (%u, %u), path = (%s, %s)",
+			elog(DEBUG1, "XLOG: type = %i, flags = %i, dbid = (%u, %u), path = (%s, %s)",
 				 type, flags, xlrec.u.dbid.master, xlrec.u.dbid.mirror,
 				 xlrec.master_path, xlrec.mirror_path);
 
@@ -421,7 +424,7 @@ void
 mmxlog_log_remove_filespace(Oid filespace)
 {
 	if (Debug_print_qd_mirroring)
-		elog(LOG, "emitting drop filespace record for %u",
+		elog(DEBUG1, "emitting drop filespace record for %u",
 			 filespace);
 	emit_mmxlog_fs_record(MM_OBJ_FILESPACE,
 						  filespace,
@@ -437,7 +440,7 @@ void
 mmxlog_log_remove_tablespace(Oid tablespace)
 {
 	if (Debug_print_qd_mirroring)
-		elog(LOG, "emitting drop tablespace record for %u",
+		elog(DEBUG1, "emitting drop tablespace record for %u",
 			 tablespace);
 	emit_mmxlog_fs_record(MM_OBJ_TABLESPACE,
 						  InvalidOid /* filespace */,
@@ -453,7 +456,7 @@ void
 mmxlog_log_remove_database(Oid tablespace, Oid database)
 {
 	if (Debug_print_qd_mirroring)
-		elog(LOG, "emitting drop database record for %u/%u",
+		elog(DEBUG1, "emitting drop database record for %u/%u",
 			 tablespace, database);
 	emit_mmxlog_fs_record(MM_OBJ_DATABASE,
 						  InvalidOid /* filespace */,
@@ -470,7 +473,7 @@ mmxlog_log_remove_relfilenode(Oid tablespace, Oid database, Oid relfilenode,
 							  uint32 segnum)
 {
 	if (Debug_print_qd_mirroring)
-		elog(LOG, "emitting drop relfilenode record for %u/%u/%u",
+		elog(DEBUG1, "emitting drop relfilenode record for %u/%u/%u",
 			 tablespace, database, relfilenode);
 	emit_mmxlog_fs_record(MM_OBJ_RELFILENODE,
 						  InvalidOid /* filespace */,
@@ -650,6 +653,9 @@ mmxlog_filespace_get_path(Oid fspcoid)
 		Insist(m->dbid1 == GpIdentity.dbid);
 		path = m->path1;
 	}
+
+	elog(DEBUG1, "MMXLOG: looking for fspc with oid %u, returning %s",
+		 fspcoid, path);
 	return path;
 }
 
@@ -662,6 +668,8 @@ mmxlog_tablespace_get_path(Oid tspcoid)
 	Oid fspcoid;
 	tspc_map *m;
 	bool found;
+
+	elog(DEBUG1, "MMXLOG: looking for tspcoid %u", tspcoid);
 
 	/*
 	 * First, get the filespace that the tablespace resides in.
@@ -707,6 +715,12 @@ agg_tspc(void *s, Oid filespace, Oid tablespace)
 	m.tablespaceoid = tablespace;
 }
 
+/*
+ * Add filespace and tablespace OID => path maps to the checkpoint payload. This
+ * is used by the standby to construct a valid picture of the filespace and
+ * tablespace configuration without having to touch the persistent tables --
+ * which it cannot do since they're not guaranteed to be in a consistent state.
+ */
 void
 mmxlog_append_checkpoint_data(XLogRecData rdata[4])
 {
@@ -715,9 +729,16 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[4])
 	Size sz_f;
 	Size sz_t;
 
+	/* 
+	 * We must make sure no one traverses the rdata chain into uninitialised
+	 * data if we exit early, below.
+	 */
 	rdata[1].next = NULL;
 	rdata[2].next = NULL;
 	rdata[3].next = NULL;
+
+	if (gp_before_filespace_setup)
+		return;
 
 	if (GpIdentity.dbid != MASTER_DBID)
 		return;
@@ -736,6 +757,9 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[4])
 	rdata[3].data = (void *)t->maps;
 	rdata[3].buffer = InvalidBuffer;
 	rdata[3].len = sz_t - sizeof(tspc_agg_state);
+
+	rdata[1].next = &(rdata[2]);
+	rdata[2].next = &(rdata[3]);
 }
 
 /* 
@@ -743,45 +767,54 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[4])
  * meta data from a checkpoint.
  */
 void
-mmxlog_read_checkpoint_data(XLogRecData rdata[4])
+mmxlog_read_checkpoint_data(char *cpdata)
 {
-	fspc_map *fmap = (fspc_map *)rdata[2].data;
-	tspc_map *tmap = (tspc_map *)rdata[3].data;
+	fspc_map *fmap = NULL;
+	tspc_map *tmap = NULL;
 	int n;
 	int i;
 
-	if (!GPStandby())
+	if (!cpdata)
 		return;
 
-	if (!fmap && !tmap)
+	if (!GPStandby())
 		return;
+ 	fmap = (fspc_map *)cpdata;
+	tmap = (tspc_map *)(cpdata + (sizeof(fspc_map) * gp_max_filespaces));
 
 	/*
 	 * Push the data down into the hash tables. We calculate the array length
 	 * from the byte length of the array. We need to do filespaces first as
 	 * they are the root of the space hierarchy.
 	 */
-	n = rdata[2].len / sizeof(fspc_map);
+	n = gp_max_filespaces;
+
 	for (i = 0; i < n; i++)
 	{
-		add_filespace_map_entry(&(fmap[i]));
+		fspc_map *m = &(fmap[i]);
+
+		if (!m)
+			break;
+
+		add_filespace_map_entry(m);
 		
 		if (mkdir(fmap[i].path2, 0700) < 0)
 		{
 			/* allowed to already exist */
 			if (errno != EEXIST)
-				elog(PANIC, "could not create directory %s: %m",
+				elog(WARNING, "could not create directory %s: %m",
 					 fmap[i].path2);
 		}
 	}
 
-	n = rdata[3].len / sizeof(tspc_map);
+	n = gp_max_tablespaces;
 	for (i = 0; i < n; i++)
 	{
 		char path[MAXPGPATH];
 		char *tmp;
+		tspc_map *m = &(tmap[i]);
 
-		add_tablespace_map_entry(&(tmap[i]));
+		add_tablespace_map_entry(m);
 
 		tmp = mmxlog_filespace_get_path(tmap[i].filespaceoid);
 		snprintf(path, sizeof(path), "%s/%u", tmp, tmap[i].tablespaceoid);
@@ -790,7 +823,7 @@ mmxlog_read_checkpoint_data(XLogRecData rdata[4])
 		{
 			/* allowed to already exist */
 			if (errno != EEXIST)
-				elog(PANIC, "could not create directory %s: %m", path);
+				elog(WARNING, "could not create directory %s: %m", path);
 		}
 	}
 }

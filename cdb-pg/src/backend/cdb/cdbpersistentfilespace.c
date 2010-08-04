@@ -503,6 +503,7 @@ void PersistentFilespace_GetPrimaryAndMirrorUnderLock(
 	*primaryFilespaceLocation = NULL;
 	*mirrorFilespaceLocation = NULL;
 	
+#ifdef MASTER_MIRROR_SYNC
 	/*
 	 * Can't rely on persistent tables or memory structures on the standby so
 	 * get it from the cache maintained by the master mirror sync code
@@ -513,6 +514,7 @@ void PersistentFilespace_GetPrimaryAndMirrorUnderLock(
 			pstrdup(mmxlog_filespace_get_path(filespaceOid));
 		return;
 	}
+#endif
 
 	filespaceDirEntry = 
 				PersistentFilespace_FindDirUnderLock(

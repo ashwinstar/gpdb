@@ -445,6 +445,18 @@ void PersistentTablespace_GetPrimaryAndMirrorFilespaces(
 		 return;
 	}
 
+#ifdef MASTER_MIRROR_SYNC
+	/*
+	 * Can't rely on persistent tables or memory structures on the standby so
+	 * get it from the cache maintained by the master mirror sync code
+	 */
+	if (GPStandby())
+	{
+		*primaryFilespaceLocation =
+			pstrdup(mmxlog_tablespace_get_path(tablespaceOid));
+		return;
+	}
+#endif
 
 	/*
 	 * MPP-10111 - There is a point during gpexpand where we need to bring

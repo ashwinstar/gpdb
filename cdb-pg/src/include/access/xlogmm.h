@@ -77,7 +77,7 @@ extern void mmxlog_log_create_database(Oid tablespace, Oid database);
 extern void mmxlog_log_create_relfilenode(Oid tablespace, Oid database,
 										  Oid relfilenode, uint32 segnum);
 extern void mmxlog_append_checkpoint_data(XLogRecData rdata[4]);
-extern void mmxlog_read_checkpoint_data(XLogRecData rdata[4]);
+extern void mmxlog_read_checkpoint_data(char *cpdata);
 extern char *mmxlog_tablespace_get_path(Oid tspcoid);
 extern char *mmxlog_filespace_get_path(Oid fspcoid);
 #endif /* MMXLOG_H */

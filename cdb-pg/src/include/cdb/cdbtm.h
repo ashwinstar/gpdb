@@ -319,8 +319,7 @@ extern void insertingDistributedCommitted(void);
 extern void insertedDistributedCommitted(void);
 extern void forcedDistributedCommitted(XLogRecPtr *recptr);
 
-extern bool validateRedoDtxCheckPointSize(char *dtxCheckpointBuffer, int dtxCheckpointBufferSize);
-extern void redoDtxCheckPoint(char *dtxCheckpointBuffer, int dtxCheckpointBufferSize);
+extern void redoDtxCheckPoint(char *dtxCheckpointBuffer);
 extern void redoDistributedCommitRecord(TMGXACT_LOG *gxact_log);
 extern void redoDistributedForgetCommitRecord(TMGXACT_LOG *gxact_log);
 extern void descDistributedCommitRecord(StringInfo buf, TMGXACT_LOG *gxact_log);

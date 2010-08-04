@@ -1556,30 +1556,10 @@ isTMInRecovery(void)
 }
 
 /*
- * Validate redo transaction commit log record size.
- */
-bool
-validateRedoDtxCheckPointSize(char *dtxCheckpointBuffer, int dtxCheckpointBufferSize)
-{
-	TMGXACT_CHECKPOINT * gxact_checkpoint;
-	int committedCount;
-
-	elog(DTM_DEBUG5, "redoDtxCheckPoint has size %d", dtxCheckpointBufferSize);
-	gxact_checkpoint = (TMGXACT_CHECKPOINT *)dtxCheckpointBuffer;
-	
-	committedCount = gxact_checkpoint->committedCount;
-	elog(DTM_DEBUG5, "redoDtxCheckPoint has committedCount = %d",
-		 committedCount);
-
-	return ((size_t)dtxCheckpointBufferSize == TMGXACT_CHECKPOINT_BYTES(committedCount));
-}
-
-
-/*
  * Redo transaction commit log record.
  */
 void
-redoDtxCheckPoint(char *dtxCheckpointBuffer, int dtxCheckpointBufferSize)
+redoDtxCheckPoint(char *dtxCheckpointBuffer)
 {
 	TMGXACT_CHECKPOINT * gxact_checkpoint;
 	int committedCount;
@@ -1597,8 +1577,8 @@ redoDtxCheckPoint(char *dtxCheckpointBuffer, int dtxCheckpointBufferSize)
 	
 	committedCount = gxact_checkpoint->committedCount;
 	segmentCount = gxact_checkpoint->segmentCount;
-	elog(DTM_DEBUG5, "redoDtxCheckPoint has size %d, committedCount = %d, segmentCount = %d",
-		 dtxCheckpointBufferSize, committedCount, segmentCount);
+	elog(DTM_DEBUG5, "redoDtxCheckPoint has committedCount = %d, "
+		 "segmentCount = %d", committedCount, segmentCount);
 	
 	for (i = 0; i < committedCount; i++)
 	{

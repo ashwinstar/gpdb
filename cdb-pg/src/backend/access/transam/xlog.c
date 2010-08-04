@@ -6111,8 +6111,6 @@ StartupXLOG(void)
 	uint32		endLogSeg;
 	XLogRecord *record;
 	uint32		freespace;
-	char* 		dtxCheckPointInfo;
-	int			dtmCheckPointInfoSize;
 	bool		multipleRecoveryPassesNeeded = false;
 
 	/*
@@ -6260,11 +6258,16 @@ StartupXLOG(void)
 	memcpy(&checkPoint, XLogRecGetData(record), sizeof(CheckPoint));
 	wasShutdown = (record->xl_info == XLOG_CHECKPOINT_SHUTDOWN);
 
-	dtmCheckPointInfoSize = record->xl_len - sizeof(CheckPoint);
-	if (dtmCheckPointInfoSize > 0)
+	if (record->xl_len > sizeof(CheckPoint))
 	{
-		dtxCheckPointInfo = XLogRecGetData(record) + sizeof(CheckPoint);
-		redoDtxCheckPoint(dtxCheckPointInfo, dtmCheckPointInfoSize);
+		TMGXACT_CHECKPOINT *gs = 
+			(TMGXACT_CHECKPOINT *)XLogRecGetData(record) + sizeof(CheckPoint);
+		size_t gactsz = TMGXACT_CHECKPOINT_BYTES(gs->committedCount);
+
+		redoDtxCheckPoint((char *)gs);
+
+		mmxlog_read_checkpoint_data(XLogRecGetData(record) + sizeof(CheckPoint)
+									+ gactsz);
 	}
 
 	ereport(LOG,
@@ -7479,7 +7482,6 @@ ReadCheckpointRecord(XLogRecPtr RecPtr, int whichChkpt)
 	bool sizeOk;
 	uint32 delta_xl_tot_len;		/* delta of total len of entire record */
 	uint32 delta_xl_len;			/* delta of total len of rmgr data */
-	char * dtxCheckPointInfo;
 
 	if (!XRecOffIsValid(RecPtr.xrecoff))
 	{
@@ -7585,8 +7587,7 @@ ReadCheckpointRecord(XLogRecPtr RecPtr, int whichChkpt)
 
 		if (delta_xl_len == delta_xl_tot_len)
 		{
-			dtxCheckPointInfo = XLogRecGetData(record) + sizeof(CheckPoint);
-			sizeOk = validateRedoDtxCheckPointSize(dtxCheckPointInfo, delta_xl_len);
+			sizeOk = true;
 		}
 	}
 
