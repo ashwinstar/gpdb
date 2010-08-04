@@ -1938,7 +1938,7 @@ PersistentFileSysObj_DoMirrorValidation(
 			char *primaryFilespaceLocation = NULL;
 			char *mirrorFilespaceLocation = NULL;
 			
-			PersistentFilespace_GetPrimaryAndMirror(
+			PersistentFilespace_GetPrimaryAndMirrorUnderLock(
 													fsObjName->variant.filespaceOid,
 													&primaryFilespaceLocation,
 													&mirrorFilespaceLocation);
