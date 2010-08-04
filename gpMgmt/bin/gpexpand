@@ -1350,7 +1350,8 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
                     elif len(l.strip().split(':')) == 7:
                        hostname,port,datadir,dbid,contentId,role,replicationPort = l.strip().split(':')
                     else:
-                       raise ExpansionError('Invalid input file on line %d: %s' % (line, e))
+                       raise ExpansionError('Incorrect line format. Either 6 or 7 entries expected. %d entries detected.' % \
+                                           (int(len(l.strip().split(':')))))
                     # content, role, dbid, preferred_role, hostname, port, datadir
                     filespaces = {}
                     if len(fsDictionary) > 0:
@@ -1391,7 +1392,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             except ValueError:
                 raise ExpansionError('Missing or invalid value on line %d.' % line)
             except Exception, e:
-                raise ExpansionError('Invalid input file on line %d: %s' % (line, e))
+                raise ExpansionError('Invalid input file on line %d: %s' % (line, str(e)))
             finally:
                 f.close()
             return retValue
