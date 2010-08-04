@@ -13,6 +13,7 @@ USAGE:   gpseginstall -f|--file HOSTFILE [-u|--user USER]  [-p|--password PASSWO
             E -- exchange keys for root (root only)
             e -- exchange keys for user
             l -- check and fix user limits for new user -- requires software to be installed on cluster with command 's' or equivalent (root only)
+            v -- verify software on remote machines
 '''
 
 import os, sys, re
@@ -44,9 +45,9 @@ pool = None
 gphome = None
 installation_info = None
 commands = set() # selected commands
-rootCommands = set(['u', 'p', 'c', 's', 'e', 'E', 'l']) # valid command types for root
-nonRootCommands = set(['s', 'e'])                       # valid command types for non-root user
-defaultNonRootCommands = set(['s'])                     # commands to run by default for non-root user
+rootCommands = set(['u', 'p', 'c', 's', 'e', 'E', 'l', 'v']) # valid command types for root
+nonRootCommands = set(['s', 'e', 'v'])                       # valid command types for non-root user
+defaultNonRootCommands = set(['s', 'v'])                     # commands to run by default for non-root user
 currentUser = None
 isLinux = False
 
@@ -57,6 +58,7 @@ class InstallationInfo:
         self.install_binary_dir_location = binary_dir_location  # /data
         self.install_binary_dir_name = binary_dir_name          # release-4.0
         self.install_md5 = None
+        self.install_version_string = None
 
     def debugStr(self):
         return "link_name %s\nbinary_path %s\nbinary_dir_location %s\nbinary_dir_name %s" % (self.install_link_name, self.install_binary_path, self.install_binary_dir_location, self.install_binary_dir_name)
@@ -153,7 +155,6 @@ def parseargs():
     if os.path.islink(location):
         link_name = os.path.split(location)[1]
         binary_path = os.path.realpath(location)
-        (binary_dir_location, binary_dir_name) = os.path.split(binary_path)
     else:
         link_name = None
         binary_path = location
@@ -362,6 +363,28 @@ def addUserIfRequired():
 
     return False
 
+# True is an error
+def  getLocalSoftwareVersion():
+
+    global installation_info
+    cmdStr = "%s/bin/gpssh --version" % gphome
+    try:
+        cmd = Command("version", cmdStr)
+        pool.addCommand(cmd)
+        pool.join()
+        items = pool.getCompletedItems()
+        for i in items:
+            if i.results.rc:
+                logger.error("Failed to run command: %s" % cmd.cmdStr)
+                logger.error(i.results.stderr)
+                return True
+
+            installation_info.install_version_string = i.results.stdout.strip()
+    except Exception, e:
+        logger.error("%s" % e.__str__())
+        return True
+
+    return False
 
 # True is an error
 def  simpleLocalCommand(cmdStr, checkError=True):
@@ -603,7 +626,7 @@ def copyOverSoftware():
 
     ###################################################################################
     if installation_info.install_link_name:
-        cmdStr = "cd %s; ln -fs %s %s" % (installation_info.install_binary_dir_location, installation_info.install_binary_dir_name, installation_info.install_link_name)
+        cmdStr = "cd %s; rm -f %s; ln -fs %s %s" % (installation_info.install_binary_dir_location, installation_info.install_link_name, installation_info.install_binary_dir_name, installation_info.install_link_name)
         if (simpleRemoteCommand(cmdStr, True)):
             return True
 
@@ -624,6 +647,54 @@ def copyOverSoftware():
     ###################################################################################
     return False
 
+
+# True is an error
+def verifyVersionAtPath(usepath):
+
+    cmdStr = ". %s/greenplum_path.sh; %s/bin/gpssh --version" % (usepath, usepath)
+    logger.info("remote command: %s" % cmdStr)
+
+    try:
+        for k in uniqueseghosts.keys():
+            uh = uniqueseghosts[k]
+            cmd = Command(uh.address, cmdStr, NAKED, uh.address, nakedExecutionInfo=NakedExecutionInfo(passwordMap))
+            pool.addCommand(cmd)
+        pool.join()
+        items = pool.getCompletedItems()
+        for i in items:
+            if i.results.rc:
+                logger.error("error on host with command: %s" % (i.remoteHost, cmdStr))
+                return True
+            if not i.results.stdout:
+                logger.error("could not find version string from host %s with command: %s" % (i.remoteHost, cmdStr))
+                return True
+            version_string = i.results.stdout[0].strip()
+            if version_string != installation_info.install_version_string:
+                logger.error("version string on host %s: '%s' does not match expected: '%s'" % (i.remoteHost, version_string, installation_info.install_version_string))
+                return True
+
+    except Exception, e:
+        logger.error("%s" % e.__str__())
+        return True
+
+    return False
+
+
+# True is an error
+def verifySoftware():
+
+    if (getLocalSoftwareVersion()):
+        return True
+
+    logger.info("version string on master: %s" % installation_info.install_version_string)
+
+    if verifyVersionAtPath(gphome):
+        return True
+
+    if verifyVersionAtPath(installation_info.install_binary_path):
+        return True
+
+# True is an error
 def checkAndFixUserLimits():
 
     if not isLinux:
@@ -824,6 +895,10 @@ if 'e' in commands:
 
 if 'l' in commands:
     if (checkAndFixUserLimits()):
+        earlyExit(True)
+
+if 'v' in commands:
+    if (verifySoftware()):
         earlyExit(True)
 
 earlyExit(False)
