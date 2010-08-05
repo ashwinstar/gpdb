@@ -5115,7 +5115,9 @@ dumpProcLang(Archive *fout, ProcLangInfo *plang)
 				 plang->dobj.name,
 				 lanschema, NULL, plang->lanowner,
 				 false, "PROCEDURAL LANGUAGE",
-				 defqry->data, delqry->data, NULL,
+				 defqry->data, 
+				 (g_fout->remoteVersion >= 80209 ? "" : delqry->data), //don't drop plpgsql if can't be dropped
+				 NULL,
 				 plang->dobj.dependencies, plang->dobj.nDeps,
 				 NULL, NULL);
 
