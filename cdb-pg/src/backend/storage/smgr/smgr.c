@@ -716,6 +716,9 @@ smgrcreatedbdirjustintime(
 									justInTimeDbDirNode,
 									persistentTid,
 									*persistentSerialNum);
+
+	/* be sure to set PG_VERSION file for just in time dirs too */
+	set_short_version(NULL, justInTimeDbDirNode, true);
 }
 
 
