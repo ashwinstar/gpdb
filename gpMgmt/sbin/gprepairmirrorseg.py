@@ -477,7 +477,7 @@ try:
          cmd.run(validateAfter = True)
          logger.info(str(cmd))
       if action == NO_ACTION:
-         logger.warn("No action will be taken for %s:%s and %s:%s" % (sourceHost, sourceFile, remoteHost, remoteFile))
+         logger.warn("No action will be taken for %s:%s and %s:%s" % (sourceHost, sourceFile, targetHost, targetFile))
 
   sys.exit(0)
 
