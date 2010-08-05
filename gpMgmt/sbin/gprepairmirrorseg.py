@@ -36,7 +36,6 @@ try:
     from gppylib.userinput import *
     from pygresql.pgdb import DatabaseError
     from pygresql import pg
-    from gppylib.gpcoverage import GpCoverage
 except ImportError, e:
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -50,6 +49,8 @@ FULL_EXECNAME = os.path.abspath( __file__ )
 HOME_DIRECTORY = os.path.expanduser("~")
 
 GPADMINLOGS_DIRECTORY = HOME_DIRECTORY + "/gpAdminLogs"
+
+PID_FILE = GPADMINLOGS_DIRECTORY + '/gprepairmirrorseg.pid'
 
 DESCRIPTION = ("""Repair utility to re-sync primary and mirror files.""")
 
@@ -65,67 +66,48 @@ PID_FILE = "gprepairmirrorseg.pid"
 
 # Keep the value of the name/value dictionary entry the same length for printing.
 categoryAction = {}
-categoryAction['ao']      = 'COPY     '
-categoryAction['heap:']    = 'COPY     '
-categoryAction['btree:']   = 'COPY     '
-categoryAction['extra_p:'] = 'COPY     '
-categoryAction['extra_m:'] = 'DELETE   '
-categoryAction['unknown:'] = 'NO ACTION'
+
+COPY       = 'COPY     '
+DELETE     = 'DELETE   '
+NO_ACTION  = 'NO ACTION'
+
+categoryAction['ao:']       = COPY
+categoryAction['heap:']    = COPY
+categoryAction['btree:']   = COPY
+categoryAction['extra_p:'] = COPY
+categoryAction['extra_m:'] = DELETE
+categoryAction['unknown:'] = NO_ACTION
 
 
 #-------------------------------------------------------------------------------
-def prettyPrintFiles(resycFiles):
+def prettyPrintFiles(resyncFile):
   
   fileIndex = 0
   fileListLength = len(resyncFile.fileList)
-  ACTION      = "ACTION"
-  SOURCE_HOST = "SOURCE HOST  "
-  SOURCE_FILE = "SOURCE FILE  "
-  TARGET_HOST = "TARGET HOST  "
-  TARGET_FILE = "TARGET FILE  "
-  maxac = len(ACTION)
-  maxsh = len(SOURCE_HOST)
-  maxsf = len(SOURCE_FILE)
-  maxth = len(TARGET_HOST)
-  maxtf = len(TARGET_FILE)
   
   for fileIndex in range(fileListLength):
-      if maxsh < len(resycFiles.getSourceHost(fileIndex)):
-         maxsh = len(resycFiles.getSourceHost(fileIndex))
-      if maxsf < len(resycFiles.getSourceFile(fileIndex)):
-         maxsf = len(resycFiles.getSourceFile(fileIndex))
-      if maxth < len(resycFiles.getTargetHost(fileIndex)):
-         maxth = len(resycFiles.getTargetHost(fileIndex))
-      if maxtf < len(resycFiles.getTargetFile(fileIndex)):
-         maxtf = len(resycFiles.getTargetFile(fileIndex))  
+      category = resyncFile.getCategory(fileIndex)
+      action   = categoryAction[category]
+      logger.info("")
+      logger.info("  Resync file number %d" % (fileIndex + 1))
+      if action == COPY:
+         logger.info("    Copy source to target" )
+         logger.info("    " + "Source Host = " + resyncFile.getSourceHost(fileIndex))
+         logger.info("    " + "Source File = " + resyncFile.getSourceFile(fileIndex))
+         logger.info("    " + "Target Host = " + resyncFile.getTargetHost(fileIndex))
+         logger.info("    " + "Target File = " + resyncFile.getTargetFile(fileIndex))
+         logger.info("")
+      if action == DELETE:
+         logger.info("    Delete file")
+         logger.info("    " + "Host = " + resyncFile.getSourceHost(fileIndex))
+         logger.info("    " + "File = " + resyncFile.getSourceFile(fileIndex))
+      if action == NO_ACTION:
+         logger.info("    Unknown file type. No action will be taken.")
+         logger.info("    " + "Source Host = " + resyncFile.getSourceHost(fileIndex))
+         logger.info("    " + "Source File = " + resyncFile.getSourceFile(fileIndex))
+         logger.info("    " + "Target Host = " + resyncFile.getTargetHost(fileIndex))
+         logger.info("    " + "Target File = " + resyncFile.getTargetFile(fileIndex))
   
-  line = ACTION + " " 
-  line = line + SOURCE_HOST + " " * (maxsh - len(SOURCE_HOST))
-  line = line + SOURCE_FILE + " " * (maxsf - len(SOURCE_FILE))
-  line = line + TARGET_HOST + " " * (maxth - len(TARGET_HOST))
-  line = line + TARGET_FILE + " " * (maxtf - len(TARGET_FILE))
-
-  logger.info("")
-  logger.info(line)
-  line = "-" * maxac
-  line = line + "-" * maxsh
-  line = line + "-" * maxsf
-  line = line + "-" * maxth
-  line = line + "-" * maxtf
-  logger.info(line)
-  for fileIndex in range(fileListLength):
-      #print ""
-      #print "resycFiles.getCategory(fileIndex) =" + str(resycFiles.getCategory(fileIndex))
-      #print ""
-      line = categoryAction[resycFiles.getCategory(fileIndex)] + " "
-      line = line + resycFiles.getSourceHost(fileIndex) 
-      line = line + " " * (maxsh - len(resycFiles.getSourceHost(fileIndex)))
-      line = line + resycFiles.getSourceFile(fileIndex) 
-      line = line + " " * (maxsf - len(resycFiles.getSourceFile(fileIndex)))
-      line = resycFiles.getTargetHost(fileIndex) 
-      line = line + " " * (maxth - len(resycFiles.getTargetHost(fileIndex)))
-      line = resycFiles.getTargetFile(fileIndex) 
-      line = line + " " * (maxtf - len(resycFiles.getTargetFile(fileIndex)))           
   logger.info("")
 
 
@@ -196,8 +178,6 @@ def parseargs():
         logger.error('Unknown argument %s' % args[0])
         parser.exit()
 
-    options.master_data_directory = get_masterdatadir()
-
     return options, args
 
 #-------------------------------------------------------------------------------
@@ -211,10 +191,10 @@ def sig_handler(sig, arg):
 
 
 #-------------------------------------------------------------------------------
-def create_pid_file(info_data_directory):
+def create_pid_file():
     """Creates gprepairmirrorseg pid file"""
     try:
-        fp = open(info_data_directory + '/' + PID_FILE, 'w')
+        fp = open(PID_FILE, 'w')
         fp.write(str(os.getpid()))
     except IOError:
         raise
@@ -223,20 +203,20 @@ def create_pid_file(info_data_directory):
 
 
 #-------------------------------------------------------------------------------
-def remove_pid_file(info_data_directory):
+def remove_pid_file():
     """Removes upgrademirror pid file"""
     try:
-        os.unlink(info_data_directory + '/' + PID_FILE)
+        os.unlink(PID_FILE)
     except:
         pass
 
 
 #-------------------------------------------------------------------------------
-def is_gprepairmirrorseg_running(info_data_directory):
+def is_gprepairmirrorseg_running():
     """Checks if there is another instance of gprepairmirrorseg running"""
     is_running = False
     try:
-        fp = open(info_data_directory + '/' + PID_FILE, 'r')
+        fp = open(PID_FILE, 'r')
         pid = int(fp.readline().strip())
         fp.close()
         is_running = check_pid(pid)
@@ -275,6 +255,7 @@ class GPResyncFile:
         unknown  - An unknown file type
         extra_p  - An extra file on the primary, which is the same as the <good-segment>
         extra_m  - An extra file on the mirror, which is the same as the <bad-segment>
+       
     """
     
 
@@ -288,7 +269,7 @@ class GPResyncFile:
        tempStr = "self.filename = " + str(self.filename) + '\n'
        return tempStr
 
-    #-------------------------------------------------------------------------------
+    #-------------------------------------------------------------------------------                                                     
     def readfile(self):
         try:
             file = None
@@ -300,7 +281,6 @@ class GPResyncFile:
                 (goodseghost, goodsegfile) = goodseg.split(":")
                 (badseghost, badsegfile) = badseg.split(":")
                 self.fileList.append([category, goodseghost, goodsegfile, badseghost, badsegfile])
-            file.close()
         except IOError, ioe:
             logger.error("Can not read file %s. Exception: %s" % (self.filename, str(ioe)))
             raise Exception("Unable to read file: %s" % self.filename)
@@ -313,26 +293,25 @@ class GPResyncFile:
         logger.debug("Entering getEntry, index = %s" % str(index))
         return self.fileList[index]
 
-
-    #-------------------------------------------------------------------------------
+    #-------------------------------------------------------------------------------                                                     
     def getCategory(self, index):
         return self.fileList[index][0]
 
     #-------------------------------------------------------------------------------
     def getSourceHost(self, index):
-        return self.fileList[index][1]
+        return str(self.fileList[index][1])
 
     #-------------------------------------------------------------------------------
     def getSourceFile(self, index):
-        return self.fileList[index][2]
+        return str(self.fileList[index][2])
     
     #-------------------------------------------------------------------------------
     def getTargetHost(self, index):
-        return self.fileList[index][3]    
+        return str(self.fileList[index][3])    
 
     #-------------------------------------------------------------------------------
     def getTargetFile(self, index):
-        return self.fileList[index][4]
+        return str(self.fileList[index][4])
 
 
 #------------------------------------------------------------------------
@@ -421,8 +400,7 @@ class PySyncPlus(PySync):
    This the the main body of code for gprepairmirrorseg.
 """
 
-coverage = GpCoverage()
-coverage.start()
+
 
 try:
   # setup signal handlers so we can clean up correctly
@@ -437,7 +415,7 @@ try:
                     )
 
   options, args = parseargs()
-
+  
   if options.file == None or len(options.file) == 0:
      logger.error('The --file command line argument is required')
      raise Exception("Unable to continue")
@@ -445,30 +423,62 @@ try:
   if options.verbose:
      enable_verbose_logging()
 
-  if is_gprepairmirrorseg_running(options.master_data_directory):
+  if is_gprepairmirrorseg_running():
      logger.error('gprepairmirrorseg is already running.  Only one instance')
      logger.error('of gprepairmirrorseg is allowed at a time.')
      remove_pid = False
      sys.exit(1)
   else:
-     create_pid_file(options.master_data_directory)
+     create_pid_file()
 
-  resyncFile = GPResyncFile(options.file)  
+  resyncFiles = GPResyncFile(options.file)  
+  logger.info("gprepairmirrorseg will attempt to repair the following files:")
+  prettyPrintFiles(resyncFiles)
 
-  prettyPrintFiles(resyncFile)
-
-  logger.info("gprepairmirror seg will attempt to re-sync the following files:")
-  
-  fileIndex = 0
-  fileListLength = len(resyncFile.fileList)
-  
-  logger.info("")
-  logger.info("source host        source file       target host     target file")
-  logger.info("-----------        -----------       -----------     -----------")
-  for fileIndex in range(fileListLength):
-      logger.info()
-                         
+  msg = "Do you wish to continue with re-sync of these files"
+  ans = ask_yesno(None,msg,'N')
+  if not ans:
+     logger.info("User abort requested, Exiting...")
+     sys.exit(4)
      
+  msg = "Are you sure you wish to continue"
+  ans = ask_yesno(None,msg,'N')
+  if not ans:
+     logger.info("User abort requested, Exiting...")
+     sys.exit(4)
+
+  syncListLength = len(resyncFiles.fileList)
+  
+  for index in range(syncListLength):
+      category = resyncFiles.getCategory(index)
+      action   = categoryAction[category]
+      sourceHost = resyncFiles.getSourceHost(index)
+      sourceFile = resyncFiles.getSourceFile(index)
+      sourceDir, sf = os.path.split(sourceFile)
+      targetHost = resyncFiles.getTargetHost(index)
+      targetFile = resyncFiles.getTargetFile(index)
+      targetDir, tf = os.path.split(targetFile)
+      
+      syncOptions = " -i " + sf
+      
+      if action == COPY:
+         cmd = PySyncPlus( name = "gprepairsegment sync %s:%s to %s:%s" % (sourceHost, sourceFile, targetHost, targetFile)
+                         , srcDir = sourceDir
+                         , dstHost = targetHost
+                         , dstDir = targetDir
+                         , ctxt = REMOTE
+                         , remoteHost = sourceHost
+                         , options = syncOptions
+                         )
+         cmd.run(validateAfter = True)
+         logger.info(str(cmd))
+      if action == DELETE:
+         cmd = RemoveFiles(name = "gprepairmirrorseg remove extra file", directory = sourceFile, ctxt = LOCAL, remoteHost = sourceHost)
+         cmd.run(validateAfter = True)
+         logger.info(str(cmd))
+      if action == NO_ACTION:
+         logger.warn("No action will be taken for %s:%s and %s:%s" % (sourceHost, sourceFile, remoteHost, remoteFile))
+
   sys.exit(0)
 
 except Exception,e:
@@ -494,11 +504,10 @@ except Exception, e:
 finally:
     try:
         if remove_pid:
-            remove_pid_file(options.master_data_directory)
+            remove_pid_file()
     except Exception:
         pass
     logger.info("gprepairmirrorseg exit")
 
-    coverage.stop()
-    coverage.generate_report()
+
     
