@@ -494,7 +494,7 @@ fi
 			APPEND=1
 		fi
 		if [ `$TRUSTED_SHELL $ED_HOST "$GREP -c \"${SEARCH_TXT}\" $FILENAME"` -eq 0 ] || [ $APPEND -eq 1 ]; then
-			$TRUSTED_SHELL $ED_HOST "$ECHO $SUB_TXT >> $FILENAME"
+			$TRUSTED_SHELL $ED_HOST "$ECHO \"$SUB_TXT\" >> $FILENAME"
 			RETVAL=$?
 			if [ $RETVAL -ne 0 ]; then
 				LOG_MSG "[WARN]:-Failed to append line $SUB_TXT to $FILENAME on $ED_HOST"
