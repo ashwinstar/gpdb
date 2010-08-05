@@ -73,8 +73,8 @@ extern volatile bool ProcDiePending;
 
 /* these are marked volatile because they are examined by signal handlers: */
 extern volatile bool ImmediateInterruptOK;
-extern PGDLLIMPORT volatile uint32 InterruptHoldoffCount;
-extern PGDLLIMPORT volatile uint32 CritSectionCount;
+extern PGDLLIMPORT volatile int32 InterruptHoldoffCount;
+extern PGDLLIMPORT volatile int32 CritSectionCount;
 
 /* in tcop/postgres.c */
 extern void ProcessInterrupts(void);
@@ -102,19 +102,31 @@ do { \
 #endif   /* WIN32 */
 
 
-#define HOLD_INTERRUPTS()  (InterruptHoldoffCount++)
+#define HOLD_INTERRUPTS() \
+do { \
+	if (InterruptHoldoffCount < 0) \
+		elog(PANIC, "Hold interrupt holdoff count is bad (%d)", InterruptHoldoffCount); \
+	InterruptHoldoffCount++; \
+} while(0)
 
 #define RESUME_INTERRUPTS() \
 do { \
-	Assert(InterruptHoldoffCount > 0); \
+	if (InterruptHoldoffCount <= 0) \
+		elog(PANIC, "Resume interrupt holdoff count is bad (%d)", InterruptHoldoffCount); \
 	InterruptHoldoffCount--; \
 } while(0)
 
-#define START_CRIT_SECTION()  (CritSectionCount++)
+#define START_CRIT_SECTION() \
+do { \
+	if (CritSectionCount < 0) \
+		elog(PANIC, "Start critical section count is bad (%d)", CritSectionCount); \
+	CritSectionCount++; \
+} while(0)
 
 #define END_CRIT_SECTION() \
 do { \
-	Assert(CritSectionCount > 0); \
+	if (CritSectionCount <= 0) \
+		elog(PANIC, "End critical section count is bad (%d)", CritSectionCount); \
 	CritSectionCount--; \
 } while(0)
 

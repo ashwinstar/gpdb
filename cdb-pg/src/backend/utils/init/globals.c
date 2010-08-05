@@ -31,8 +31,10 @@ volatile bool QueryCancelPending = false;
 volatile bool QueryCancelCleanup = false;
 volatile bool ProcDiePending = false;
 volatile bool ImmediateInterruptOK = false;
-volatile uint32 InterruptHoldoffCount = 0;
-volatile uint32 CritSectionCount = 0;
+
+// Make these signed integers (instead of uint32) to detect garbage negative values.
+volatile int32 InterruptHoldoffCount = 0;
+volatile int32 CritSectionCount = 0;
 
 int			MyProcPid;
 pg_time_t	MyStartTime;
