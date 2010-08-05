@@ -4083,24 +4083,21 @@ CopyFrom(CopyState cstate)
 					{
 						/* Place tuple in tuple slot */
 						ExecStoreGenericTuple(tuple, slot, false);
-
-						/*
-						 * Check the constraints of the tuple
-						 */
-						if (resultRelInfo->ri_RelationDesc->rd_att->constr)
-								ExecConstraints(resultRelInfo, slot, estate);
 					}
 
 					else
 					{
-						/* XXX TODO:
-						 * AOCS does not do constraint checking yet.
-						 */
 						ExecClearTuple(slot);
 						slot->PRIVATE_tts_values = values;
 						slot->PRIVATE_tts_isnull = nulls;
 						ExecStoreVirtualTuple(slot);
 					}
+
+					/*
+					 * Check the constraints of the tuple
+					 */
+					if (resultRelInfo->ri_RelationDesc->rd_att->constr)
+							ExecConstraints(resultRelInfo, slot, estate);
 
 					/*
 					 * OK, store the tuple and create index entries for it
