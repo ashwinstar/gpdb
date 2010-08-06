@@ -6,26 +6,26 @@ aaaaa GP_IGNORE: aabc: aocssegfiles - ./backend/access/aocs/aocssegfiles.c
 aabc: aocssegfiles:00000191:  ereport(ERROR, 
 aabc: aocssegfiles:00000192:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
 aabc: aocssegfiles:00000193:  errmsg("could not serialize access due to concurrent update"))); 
-aabc: aocssegfiles:00000480:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aabc: aocssegfiles:00000481:  errmsg("AOCS table \"%s\" file segment \"%d\" does not exist", 
-aabc: aocssegfiles:00000482:  RelationGetRelationName(prel), idesc->cur_segno) 
-aabc: aocssegfiles:00000483:  )); 
-aabc: aocssegfiles:00000556:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aabc: aocssegfiles:00000557:  errmsg("AOCS table \"%s\" file segment \"%d\" does not exist", 
-aabc: aocssegfiles:00000558:  RelationGetRelationName(prel), segno) 
-aabc: aocssegfiles:00000559:  )); 
-aabc: aocssegfiles:00000599:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aabc: aocssegfiles:00000600:  errmsg("invalid entry for decoding aocsvpinfo") 
-aabc: aocssegfiles:00000601:  )); 
-aabc: aocssegfiles:00000604:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aabc: aocssegfiles:00000605:  errmsg("invalid entry for decoding aocsvpinfo") 
-aabc: aocssegfiles:00000606:  )); 
-aabc: aocssegfiles:00000652:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aabc: aocssegfiles:00000653:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aabc: aocssegfiles:00000654:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
-aabc: aocssegfiles:00000818:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aabc: aocssegfiles:00000819:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aabc: aocssegfiles:00000820:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
+aabc: aocssegfiles:00000508:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aabc: aocssegfiles:00000509:  errmsg("AOCS table \"%s\" file segment \"%d\" does not exist", 
+aabc: aocssegfiles:00000510:  RelationGetRelationName(prel), idesc->cur_segno) 
+aabc: aocssegfiles:00000511:  )); 
+aabc: aocssegfiles:00000584:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aabc: aocssegfiles:00000585:  errmsg("AOCS table \"%s\" file segment \"%d\" does not exist", 
+aabc: aocssegfiles:00000586:  RelationGetRelationName(prel), segno) 
+aabc: aocssegfiles:00000587:  )); 
+aabc: aocssegfiles:00000627:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aabc: aocssegfiles:00000628:  errmsg("invalid entry for decoding aocsvpinfo") 
+aabc: aocssegfiles:00000629:  )); 
+aabc: aocssegfiles:00000632:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aabc: aocssegfiles:00000633:  errmsg("invalid entry for decoding aocsvpinfo") 
+aabc: aocssegfiles:00000634:  )); 
+aabc: aocssegfiles:00000680:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aabc: aocssegfiles:00000681:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aabc: aocssegfiles:00000682:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
+aabc: aocssegfiles:00000846:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aabc: aocssegfiles:00000847:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aabc: aocssegfiles:00000848:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
 aaaaa GP_IGNORE: aaae: aomd - ./backend/access/appendonly/aomd.c
 aaae: aomd:00000169:  ereport(ERROR, 
 aaae: aomd:00000170:  (errcode_for_file_access(), 
@@ -49,45 +49,45 @@ aaba: aosegfiles:00000407:  ereport(ERROR,
 aaba: aosegfiles:00000408:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
 aaba: aosegfiles:00000409:  errmsg("Invalid eof " INT64_FORMAT " for relation %s", 
 aaba: aosegfiles:00000410:  fsinfo->eof, NameStr(parentrel->rd_rel->relname)))); 
-aaba: aosegfiles:00000606:  ereport(ERROR, 
-aaba: aosegfiles:00000607:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaba: aosegfiles:00000608:  errmsg("append-only table \"%s\" file segment \"%d\" entry " 
-aaba: aosegfiles:00000609:  "does not exist", RelationGetRelationName(parentrel), 
-aaba: aosegfiles:00000610:  segno))); 
-aaba: aosegfiles:00000619:  ereport(ERROR, 
-aaba: aosegfiles:00000620:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaba: aosegfiles:00000621:  errmsg("got invalid pg_aoseg filetupcount value: NULL"))); 
-aaba: aosegfiles:00000635:  ereport(ERROR, 
-aaba: aosegfiles:00000636:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaba: aosegfiles:00000637:  errmsg("got invalid pg_aoseg varblockcount value: NULL"))); 
-aaba: aosegfiles:00000825:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaba: aosegfiles:00000826:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aaba: aosegfiles:00000827:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
-aaba: aosegfiles:00000961:  ereport(ERROR, 
-aaba: aosegfiles:00000962:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00000963:  errmsg("'%s' is not an append-only relation", 
-aaba: aosegfiles:00000964:  RelationGetRelationName(parentrel)))); 
-aaba: aosegfiles:00001077:  ereport(ERROR, 
-aaba: aosegfiles:00001078:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00001079:  errmsg("'%s' is not an append-only relation", 
-aaba: aosegfiles:00001080:  RelationGetRelationName(parentrel)))); 
-aaba: aosegfiles:00001118:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaba: aosegfiles:00001119:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aaba: aosegfiles:00001120:  errdetail("SPI_connect failed in get_ao_distribution"))); 
-aaba: aosegfiles:00001267:  ereport(ERROR, 
-aaba: aosegfiles:00001268:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00001269:  errmsg("'%s' is not an append-only relation", 
-aaba: aosegfiles:00001270:  RelationGetRelationName(parentrel)))); 
-aaba: aosegfiles:00001296:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaba: aosegfiles:00001297:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aaba: aosegfiles:00001298:  errdetail("SPI_connect failed in get_ao_distribution"))); 
-aaba: aosegfiles:00001477:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaba: aosegfiles:00001478:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aaba: aosegfiles:00001479:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
-aaba: aosegfiles:00001573:  ereport(ERROR, 
-aaba: aosegfiles:00001574:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00001575:  errmsg("'%s' is not an append-only relation", 
-aaba: aosegfiles:00001576:  RelationGetRelationName(parentrel)))); 
+aaba: aosegfiles:00000634:  ereport(ERROR, 
+aaba: aosegfiles:00000635:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaba: aosegfiles:00000636:  errmsg("append-only table \"%s\" file segment \"%d\" entry " 
+aaba: aosegfiles:00000637:  "does not exist", RelationGetRelationName(parentrel), 
+aaba: aosegfiles:00000638:  segno))); 
+aaba: aosegfiles:00000647:  ereport(ERROR, 
+aaba: aosegfiles:00000648:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaba: aosegfiles:00000649:  errmsg("got invalid pg_aoseg filetupcount value: NULL"))); 
+aaba: aosegfiles:00000663:  ereport(ERROR, 
+aaba: aosegfiles:00000664:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaba: aosegfiles:00000665:  errmsg("got invalid pg_aoseg varblockcount value: NULL"))); 
+aaba: aosegfiles:00000853:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaba: aosegfiles:00000854:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aaba: aosegfiles:00000855:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
+aaba: aosegfiles:00000989:  ereport(ERROR, 
+aaba: aosegfiles:00000990:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00000991:  errmsg("'%s' is not an append-only relation", 
+aaba: aosegfiles:00000992:  RelationGetRelationName(parentrel)))); 
+aaba: aosegfiles:00001105:  ereport(ERROR, 
+aaba: aosegfiles:00001106:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00001107:  errmsg("'%s' is not an append-only relation", 
+aaba: aosegfiles:00001108:  RelationGetRelationName(parentrel)))); 
+aaba: aosegfiles:00001146:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaba: aosegfiles:00001147:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aaba: aosegfiles:00001148:  errdetail("SPI_connect failed in get_ao_distribution"))); 
+aaba: aosegfiles:00001295:  ereport(ERROR, 
+aaba: aosegfiles:00001296:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00001297:  errmsg("'%s' is not an append-only relation", 
+aaba: aosegfiles:00001298:  RelationGetRelationName(parentrel)))); 
+aaba: aosegfiles:00001324:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaba: aosegfiles:00001325:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aaba: aosegfiles:00001326:  errdetail("SPI_connect failed in get_ao_distribution"))); 
+aaba: aosegfiles:00001505:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaba: aosegfiles:00001506:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aaba: aosegfiles:00001507:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
+aaba: aosegfiles:00001601:  ereport(ERROR, 
+aaba: aosegfiles:00001602:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00001603:  errmsg("'%s' is not an append-only relation", 
+aaba: aosegfiles:00001604:  RelationGetRelationName(parentrel)))); 
 aaaaa GP_IGNORE: aabc: appendonlyam - ./backend/access/appendonly/appendonlyam.c
 aabc: appendonlyam:00000610:  ereport(ERROR, 
 aabc: appendonlyam:00000611:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
@@ -554,36 +554,26 @@ haag: heapam:00001013:  RelationGetRelationName(r))));
 haag: heapam:00001217:  ereport(ERROR, 
 haag: heapam:00001218:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
 haag: heapam:00001219:  errmsg("illegal value in tdatacnt"))); 
-haag: heapam:00001751:  ereport(ERROR, 
-haag: heapam:00001752:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-haag: heapam:00001753:  errmsg("row is too big: size %lu, maximum size %lu", 
-haag: heapam:00001754:  (unsigned long) len, 
-haag: heapam:00001755:  (unsigned long) MaxHeapTupleSize))); 
-haag: heapam:00001872:  ereport(ERROR, 
-haag: heapam:00001873:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-haag: heapam:00001874:  errmsg("row is too big: size %lu, maximum size %lu", 
-haag: heapam:00001875:  (unsigned long) len, 
-haag: heapam:00001876:  (unsigned long) MaxHeapTupleSize))); 
-haag: heapam:00002302:  ereport(ERROR, 
-haag: heapam:00002303:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haag: heapam:00002304:  errmsg("Append-only tables are not updatable. Operation not permitted."), 
-haag: heapam:00002305:  errOmitLocation(true))); 
-haag: heapam:00002627:  ereport(ERROR, 
-haag: heapam:00002628:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haag: heapam:00002629:  errmsg("Append-only tables are not updatable. Operation not permitted."), 
-haag: heapam:00002630:  errOmitLocation(true))); 
-haag: heapam:00003198:  ereport(ERROR, 
-haag: heapam:00003199:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-haag: heapam:00003200:  errmsg("could not obtain lock on row in relation \"%s\"", 
-haag: heapam:00003201:  RelationGetRelationName(relation)))); 
-haag: heapam:00003234:  ereport(ERROR, 
-haag: heapam:00003235:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-haag: heapam:00003236:  errmsg("could not obtain lock on row in relation \"%s\"", 
-haag: heapam:00003237:  RelationGetRelationName(relation)))); 
-haag: heapam:00003274:  ereport(ERROR, 
-haag: heapam:00003275:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-haag: heapam:00003276:  errmsg("could not obtain lock on row in relation \"%s\"", 
-haag: heapam:00003277:  RelationGetRelationName(relation)))); 
+haag: heapam:00001874:  ereport(ERROR, 
+haag: heapam:00001875:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haag: heapam:00001876:  errmsg("Append-only tables are not updatable. Operation not permitted."), 
+haag: heapam:00001877:  errOmitLocation(true))); 
+haag: heapam:00002199:  ereport(ERROR, 
+haag: heapam:00002200:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haag: heapam:00002201:  errmsg("Append-only tables are not updatable. Operation not permitted."), 
+haag: heapam:00002202:  errOmitLocation(true))); 
+haag: heapam:00002770:  ereport(ERROR, 
+haag: heapam:00002771:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00002772:  errmsg("could not obtain lock on row in relation \"%s\"", 
+haag: heapam:00002773:  RelationGetRelationName(relation)))); 
+haag: heapam:00002806:  ereport(ERROR, 
+haag: heapam:00002807:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00002808:  errmsg("could not obtain lock on row in relation \"%s\"", 
+haag: heapam:00002809:  RelationGetRelationName(relation)))); 
+haag: heapam:00002846:  ereport(ERROR, 
+haag: heapam:00002847:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00002848:  errmsg("could not obtain lock on row in relation \"%s\"", 
+haag: heapam:00002849:  RelationGetRelationName(relation)))); 
 aaaaa GP_IGNORE: haad: hio - ./backend/access/heap/hio.c
 haad: hio:00000122:  ereport(ERROR, 
 haad: hio:00000123:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
@@ -1155,158 +1145,158 @@ xaae: xlog:00005779:  ereport(FATAL,
 xaae: xlog:00005780:  (errcode_for_file_access(), 
 xaae: xlog:00005781:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
 xaae: xlog:00005782:  RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE))); 
-xaae: xlog:00006130:  ereport(FATAL, 
-xaae: xlog:00006131:  (errmsg("control file contains invalid data"))); 
-xaae: xlog:00006142:  ereport(LOG, 
-xaae: xlog:00006143:  (errmsg("database system was interrupted while in recovery at %s", 
-xaae: xlog:00006144:  str_time(ControlFile->time)), 
-xaae: xlog:00006145:  errhint("This probably means that some data is corrupted and" 
-xaae: xlog:00006146:  " you will have to use the last backup for recovery."), 
-xaae: xlog:00006147:  errSendAlert(true))); 
-xaae: xlog:00006149:  ereport(LOG, 
-xaae: xlog:00006150:  (errmsg("database system was interrupted while in recovery at log time %s", 
-xaae: xlog:00006151:  str_time(ControlFile->checkPointCopy.time)), 
-xaae: xlog:00006152:  errhint("If this has occurred more than once some data may be corrupted" 
-xaae: xlog:00006153:  " and you may need to choose an earlier recovery target."), 
-xaae: xlog:00006154:  errSendAlert(true))); 
-xaae: xlog:00006194:  ereport(FATAL, 
-xaae: xlog:00006195:  (errmsg("requested timeline %u is not a child of database system timeline %u", 
-xaae: xlog:00006196:  recoveryTargetTLI, 
-xaae: xlog:00006197:  ControlFile->checkPointCopy.ThisTimeLineID))); 
-xaae: xlog:00006341:  ereport(FATAL, 
-xaae: xlog:00006342:  (errmsg("Database must be shutdown cleanly when using single backed start"))); 
-xaae: xlog:00006347:  ereport(FATAL, 
-xaae: xlog:00006348:  (errmsg("Database must be shutdown cleanly when using gp_before_persistece_work = on"))); 
-xaae: xlog:00006401:  ereport(FATAL, 
-xaae: xlog:00006402:  (errcode_for_file_access(), 
-xaae: xlog:00006403:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
-xaae: xlog:00006404:  BACKUP_LABEL_FILE, BACKUP_LABEL_OLD))); 
-xaae: xlog:00006521:  ereport(FATAL, 
-xaae: xlog:00006522:  (errmsg("requested recovery stop point is before end time of backup dump"))); 
+xaae: xlog:00006128:  ereport(FATAL, 
+xaae: xlog:00006129:  (errmsg("control file contains invalid data"))); 
+xaae: xlog:00006140:  ereport(LOG, 
+xaae: xlog:00006141:  (errmsg("database system was interrupted while in recovery at %s", 
+xaae: xlog:00006142:  str_time(ControlFile->time)), 
+xaae: xlog:00006143:  errhint("This probably means that some data is corrupted and" 
+xaae: xlog:00006144:  " you will have to use the last backup for recovery."), 
+xaae: xlog:00006145:  errSendAlert(true))); 
+xaae: xlog:00006147:  ereport(LOG, 
+xaae: xlog:00006148:  (errmsg("database system was interrupted while in recovery at log time %s", 
+xaae: xlog:00006149:  str_time(ControlFile->checkPointCopy.time)), 
+xaae: xlog:00006150:  errhint("If this has occurred more than once some data may be corrupted" 
+xaae: xlog:00006151:  " and you may need to choose an earlier recovery target."), 
+xaae: xlog:00006152:  errSendAlert(true))); 
+xaae: xlog:00006192:  ereport(FATAL, 
+xaae: xlog:00006193:  (errmsg("requested timeline %u is not a child of database system timeline %u", 
+xaae: xlog:00006194:  recoveryTargetTLI, 
+xaae: xlog:00006195:  ControlFile->checkPointCopy.ThisTimeLineID))); 
+xaae: xlog:00006344:  ereport(FATAL, 
+xaae: xlog:00006345:  (errmsg("Database must be shutdown cleanly when using single backed start"))); 
+xaae: xlog:00006350:  ereport(FATAL, 
+xaae: xlog:00006351:  (errmsg("Database must be shutdown cleanly when using gp_before_persistece_work = on"))); 
+xaae: xlog:00006404:  ereport(FATAL, 
+xaae: xlog:00006405:  (errcode_for_file_access(), 
+xaae: xlog:00006406:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
+xaae: xlog:00006407:  BACKUP_LABEL_FILE, BACKUP_LABEL_OLD))); 
 xaae: xlog:00006524:  ereport(FATAL, 
-xaae: xlog:00006525:  (errmsg("WAL ends before end time of backup dump"))); 
-xaae: xlog:00006779:  ereport(ERROR, 
-xaae: xlog:00006780:  (errcode_for_file_access(), 
-xaae: xlog:00006781:  errmsg("could not create redo relation file \"%s\"", 
-xaae: xlog:00006782:  path))); 
-xaae: xlog:00006800:  ereport(ERROR, 
-xaae: xlog:00006801:  (errcode_for_file_access(), 
-xaae: xlog:00006802:  errmsg("could not open redo relation file \"%s\"", 
-xaae: xlog:00006803:  path))); 
-xaae: xlog:00006817:  ereport(ERROR, 
-xaae: xlog:00006818:  (errcode_for_file_access(), 
-xaae: xlog:00006819:  errmsg("could not unlink redo relation file \"%s\": %m", path))); 
-xaae: xlog:00006848:  ereport(FATAL, 
-xaae: xlog:00006849:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
-xaae: xlog:00006953:  ereport(FATAL, 
-xaae: xlog:00006954:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
-xaae: xlog:00007117:  ereport(FATAL, 
-xaae: xlog:00007118:  (errmsg("%s: control file contains invalid data", callerStr))); 
-xaae: xlog:00007164:  ereport(ERROR, 
-xaae: xlog:00007165:  (errmsg("%s: could not locate a valid checkpoint record", callerStr))); 
-xaae: xlog:00007182:  ereport(ERROR, 
-xaae: xlog:00007183:  (errmsg("%s: invalid redo in checkpoint record", callerStr))); 
-xaae: xlog:00007192:  ereport(ERROR, 
-xaae: xlog:00007193:  (errmsg("%s: first redo record before checkpoint not found at %s", 
-xaae: xlog:00007194:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
-xaae: xlog:00007739:  ereport(LOG, 
-xaae: xlog:00007740:  (errmsg("database system is shut down"), 
-xaae: xlog:00007741:  errSendAlert(true),errOmitLocation(true))); 
-xaae: xlog:00008565:  ereport(ERROR, 
-xaae: xlog:00008566:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00008567:  (errmsg("must be superuser to run a backup")))); 
-xaae: xlog:00008570:  ereport(ERROR, 
-xaae: xlog:00008571:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008572:  (errmsg("WAL archiving is not active"), 
-xaae: xlog:00008573:  (errhint("archive_command must be defined before " 
-xaae: xlog:00008574:  "online backups can be made safely."))))); 
-xaae: xlog:00008600:  ereport(ERROR, 
-xaae: xlog:00008601:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008602:  errmsg("a backup is already in progress"), 
-xaae: xlog:00008603:  errhint("Run pg_stop_backup() and try again."))); 
-xaae: xlog:00008648:  ereport(ERROR, 
-xaae: xlog:00008649:  (errcode_for_file_access(), 
-xaae: xlog:00008650:  errmsg("could not stat file \"%s\": %m", 
-xaae: xlog:00008651:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008654:  ereport(ERROR, 
-xaae: xlog:00008655:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008656:  errmsg("a backup is already in progress"), 
-xaae: xlog:00008657:  errhint("If you're sure there is no backup in progress, remove file \"%s\" and try again.", 
-xaae: xlog:00008658:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008665:  ereport(ERROR, 
-xaae: xlog:00008666:  (errcode_for_file_access(), 
-xaae: xlog:00008667:  errmsg("could not create file \"%s\": %m", 
-xaae: xlog:00008668:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008676:  ereport(ERROR, 
-xaae: xlog:00008677:  (errcode_for_file_access(), 
-xaae: xlog:00008678:  errmsg("could not write file \"%s\": %m", 
-xaae: xlog:00008679:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008731:  ereport(ERROR, 
-xaae: xlog:00008732:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00008733:  (errmsg("must be superuser to run a backup")))); 
-xaae: xlog:00008765:  ereport(ERROR, 
-xaae: xlog:00008766:  (errcode_for_file_access(), 
-xaae: xlog:00008767:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00008768:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008769:  ereport(ERROR, 
-xaae: xlog:00008770:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008771:  errmsg("a backup is not in progress"))); 
-xaae: xlog:00008781:  ereport(ERROR, 
-xaae: xlog:00008782:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008783:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00008793:  ereport(ERROR, 
-xaae: xlog:00008794:  (errcode_for_file_access(), 
-xaae: xlog:00008795:  errmsg("could not create file \"%s\": %m", 
-xaae: xlog:00008796:  histfilepath))); 
-xaae: xlog:00008806:  ereport(ERROR, 
-xaae: xlog:00008807:  (errcode_for_file_access(), 
-xaae: xlog:00008808:  errmsg("could not write file \"%s\": %m", 
-xaae: xlog:00008809:  histfilepath))); 
-xaae: xlog:00008815:  ereport(ERROR, 
-xaae: xlog:00008816:  (errcode_for_file_access(), 
-xaae: xlog:00008817:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00008818:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008820:  ereport(ERROR, 
-xaae: xlog:00008821:  (errcode_for_file_access(), 
-xaae: xlog:00008822:  errmsg("could not remove file \"%s\": %m", 
-xaae: xlog:00008823:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008853:  ereport(ERROR, 
-xaae: xlog:00008854:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00008855:  (errmsg("must be superuser to switch transaction log files")))); 
-xaae: xlog:00008961:  ereport(ERROR, 
-xaae: xlog:00008962:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-xaae: xlog:00008963:  errmsg("could not parse transaction log location \"%s\"", 
-xaae: xlog:00008964:  locationstr))); 
-xaae: xlog:00009030:  ereport(ERROR, 
-xaae: xlog:00009031:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-xaae: xlog:00009032:  errmsg("could not parse transaction log location \"%s\"", 
-xaae: xlog:00009033:  locationstr))); 
-xaae: xlog:00009090:  ereport(FATAL, 
-xaae: xlog:00009091:  (errcode_for_file_access(), 
-xaae: xlog:00009092:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009093:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009105:  ereport(FATAL, 
-xaae: xlog:00009106:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009107:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009111:  ereport(FATAL, 
-xaae: xlog:00009112:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009113:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009115:  ereport(FATAL, 
-xaae: xlog:00009116:  (errcode_for_file_access(), 
-xaae: xlog:00009117:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009118:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009142:  ereport(FATAL, 
-xaae: xlog:00009143:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009144:  errmsg("invalid data in file \"%s\"", histfilename))); 
-xaae: xlog:00009148:  ereport(FATAL, 
-xaae: xlog:00009149:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009150:  errmsg("invalid data in file \"%s\"", histfilename))); 
-xaae: xlog:00009153:  ereport(FATAL, 
-xaae: xlog:00009154:  (errcode_for_file_access(), 
-xaae: xlog:00009155:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009156:  histfilepath))); 
-xaae: xlog:00009501:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
-xaae: xlog:00009502:  errmsg("database 'postgres' does not exist"))); 
+xaae: xlog:00006525:  (errmsg("requested recovery stop point is before end time of backup dump"))); 
+xaae: xlog:00006527:  ereport(FATAL, 
+xaae: xlog:00006528:  (errmsg("WAL ends before end time of backup dump"))); 
+xaae: xlog:00006782:  ereport(ERROR, 
+xaae: xlog:00006783:  (errcode_for_file_access(), 
+xaae: xlog:00006784:  errmsg("could not create redo relation file \"%s\"", 
+xaae: xlog:00006785:  path))); 
+xaae: xlog:00006803:  ereport(ERROR, 
+xaae: xlog:00006804:  (errcode_for_file_access(), 
+xaae: xlog:00006805:  errmsg("could not open redo relation file \"%s\"", 
+xaae: xlog:00006806:  path))); 
+xaae: xlog:00006820:  ereport(ERROR, 
+xaae: xlog:00006821:  (errcode_for_file_access(), 
+xaae: xlog:00006822:  errmsg("could not unlink redo relation file \"%s\": %m", path))); 
+xaae: xlog:00006851:  ereport(FATAL, 
+xaae: xlog:00006852:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
+xaae: xlog:00006956:  ereport(FATAL, 
+xaae: xlog:00006957:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
+xaae: xlog:00007120:  ereport(FATAL, 
+xaae: xlog:00007121:  (errmsg("%s: control file contains invalid data", callerStr))); 
+xaae: xlog:00007167:  ereport(ERROR, 
+xaae: xlog:00007168:  (errmsg("%s: could not locate a valid checkpoint record", callerStr))); 
+xaae: xlog:00007185:  ereport(ERROR, 
+xaae: xlog:00007186:  (errmsg("%s: invalid redo in checkpoint record", callerStr))); 
+xaae: xlog:00007195:  ereport(ERROR, 
+xaae: xlog:00007196:  (errmsg("%s: first redo record before checkpoint not found at %s", 
+xaae: xlog:00007197:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
+xaae: xlog:00007740:  ereport(LOG, 
+xaae: xlog:00007741:  (errmsg("database system is shut down"), 
+xaae: xlog:00007742:  errSendAlert(true),errOmitLocation(true))); 
+xaae: xlog:00008566:  ereport(ERROR, 
+xaae: xlog:00008567:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00008568:  (errmsg("must be superuser to run a backup")))); 
+xaae: xlog:00008571:  ereport(ERROR, 
+xaae: xlog:00008572:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008573:  (errmsg("WAL archiving is not active"), 
+xaae: xlog:00008574:  (errhint("archive_command must be defined before " 
+xaae: xlog:00008575:  "online backups can be made safely."))))); 
+xaae: xlog:00008601:  ereport(ERROR, 
+xaae: xlog:00008602:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008603:  errmsg("a backup is already in progress"), 
+xaae: xlog:00008604:  errhint("Run pg_stop_backup() and try again."))); 
+xaae: xlog:00008649:  ereport(ERROR, 
+xaae: xlog:00008650:  (errcode_for_file_access(), 
+xaae: xlog:00008651:  errmsg("could not stat file \"%s\": %m", 
+xaae: xlog:00008652:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008655:  ereport(ERROR, 
+xaae: xlog:00008656:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008657:  errmsg("a backup is already in progress"), 
+xaae: xlog:00008658:  errhint("If you're sure there is no backup in progress, remove file \"%s\" and try again.", 
+xaae: xlog:00008659:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008666:  ereport(ERROR, 
+xaae: xlog:00008667:  (errcode_for_file_access(), 
+xaae: xlog:00008668:  errmsg("could not create file \"%s\": %m", 
+xaae: xlog:00008669:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008677:  ereport(ERROR, 
+xaae: xlog:00008678:  (errcode_for_file_access(), 
+xaae: xlog:00008679:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00008680:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008732:  ereport(ERROR, 
+xaae: xlog:00008733:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00008734:  (errmsg("must be superuser to run a backup")))); 
+xaae: xlog:00008766:  ereport(ERROR, 
+xaae: xlog:00008767:  (errcode_for_file_access(), 
+xaae: xlog:00008768:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00008769:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008770:  ereport(ERROR, 
+xaae: xlog:00008771:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008772:  errmsg("a backup is not in progress"))); 
+xaae: xlog:00008782:  ereport(ERROR, 
+xaae: xlog:00008783:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008784:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00008794:  ereport(ERROR, 
+xaae: xlog:00008795:  (errcode_for_file_access(), 
+xaae: xlog:00008796:  errmsg("could not create file \"%s\": %m", 
+xaae: xlog:00008797:  histfilepath))); 
+xaae: xlog:00008807:  ereport(ERROR, 
+xaae: xlog:00008808:  (errcode_for_file_access(), 
+xaae: xlog:00008809:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00008810:  histfilepath))); 
+xaae: xlog:00008816:  ereport(ERROR, 
+xaae: xlog:00008817:  (errcode_for_file_access(), 
+xaae: xlog:00008818:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00008819:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008821:  ereport(ERROR, 
+xaae: xlog:00008822:  (errcode_for_file_access(), 
+xaae: xlog:00008823:  errmsg("could not remove file \"%s\": %m", 
+xaae: xlog:00008824:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008854:  ereport(ERROR, 
+xaae: xlog:00008855:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00008856:  (errmsg("must be superuser to switch transaction log files")))); 
+xaae: xlog:00008962:  ereport(ERROR, 
+xaae: xlog:00008963:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+xaae: xlog:00008964:  errmsg("could not parse transaction log location \"%s\"", 
+xaae: xlog:00008965:  locationstr))); 
+xaae: xlog:00009031:  ereport(ERROR, 
+xaae: xlog:00009032:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+xaae: xlog:00009033:  errmsg("could not parse transaction log location \"%s\"", 
+xaae: xlog:00009034:  locationstr))); 
+xaae: xlog:00009091:  ereport(FATAL, 
+xaae: xlog:00009092:  (errcode_for_file_access(), 
+xaae: xlog:00009093:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009094:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009106:  ereport(FATAL, 
+xaae: xlog:00009107:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009108:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009112:  ereport(FATAL, 
+xaae: xlog:00009113:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009114:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009116:  ereport(FATAL, 
+xaae: xlog:00009117:  (errcode_for_file_access(), 
+xaae: xlog:00009118:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009119:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009143:  ereport(FATAL, 
+xaae: xlog:00009144:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009145:  errmsg("invalid data in file \"%s\"", histfilename))); 
+xaae: xlog:00009149:  ereport(FATAL, 
+xaae: xlog:00009150:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009151:  errmsg("invalid data in file \"%s\"", histfilename))); 
+xaae: xlog:00009154:  ereport(FATAL, 
+xaae: xlog:00009155:  (errcode_for_file_access(), 
+xaae: xlog:00009156:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009157:  histfilepath))); 
+xaae: xlog:00009502:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
+xaae: xlog:00009503:  errmsg("database 'postgres' does not exist"))); 
 aaaaa GP_IGNORE: xaah: xlogloc - ./backend/access/transam/xlogloc.c
 xaah: xlogloc:00000060:  ereport(ERROR, 
 xaah: xlogloc:00000061:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
@@ -1634,21 +1624,21 @@ iaaf: index:00000585:  ereport(ERROR,
 iaaf: index:00000586:  (errcode(ERRCODE_DUPLICATE_TABLE), 
 iaaf: index:00000587:  errmsg("relation \"%s\" already exists", 
 iaaf: index:00000588:  indexRelationName))); 
-iaaf: index:00001819:  ereport(ERROR, 
-iaaf: index:00001820:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
-iaaf: index:00001821:  errmsg("Cannot create index concurrently. Create an index non-concurrently " 
-iaaf: index:00001822:  "before creating an index concurrently in an appendonly table."))); 
-iaaf: index:00001972:  ereport(ERROR, 
-iaaf: index:00001973:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
-iaaf: index:00001974:  errmsg("Cannot create index concurrently. Create an index non-concurrently " 
-iaaf: index:00001975:  "before creating an index concurrently in an appendonly table."))); 
-iaaf: index:00002536:  ereport(ERROR, 
-iaaf: index:00002537:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-iaaf: index:00002538:  errmsg("cannot reindex temporary tables of other sessions"))); 
-iaaf: index:00002564:  ereport(ERROR, 
-iaaf: index:00002565:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-iaaf: index:00002566:  errmsg("shared index \"%s\" can only be reindexed in stand-alone mode", 
-iaaf: index:00002567:  RelationGetRelationName(iRel)))); 
+iaaf: index:00001821:  ereport(ERROR, 
+iaaf: index:00001822:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+iaaf: index:00001823:  errmsg("Cannot create index concurrently. Create an index non-concurrently " 
+iaaf: index:00001824:  "before creating an index concurrently in an appendonly table."))); 
+iaaf: index:00001974:  ereport(ERROR, 
+iaaf: index:00001975:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+iaaf: index:00001976:  errmsg("Cannot create index concurrently. Create an index non-concurrently " 
+iaaf: index:00001977:  "before creating an index concurrently in an appendonly table."))); 
+iaaf: index:00002538:  ereport(ERROR, 
+iaaf: index:00002539:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+iaaf: index:00002540:  errmsg("cannot reindex temporary tables of other sessions"))); 
+iaaf: index:00002566:  ereport(ERROR, 
+iaaf: index:00002567:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+iaaf: index:00002568:  errmsg("shared index \"%s\" can only be reindexed in stand-alone mode", 
+iaaf: index:00002569:  RelationGetRelationName(iRel)))); 
 aaaaa GP_IGNORE: naaj: namespace - ./backend/catalog/namespace.c
 naaj: namespace:00000199:  ereport(ERROR, 
 naaj: namespace:00000200:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
@@ -3476,12 +3466,12 @@ caah: cdbpath:00001331:  "UNION ALL of joined tables "
 caah: cdbpath:00001332:  "with subquery.") 
 caah: cdbpath:00001333:  )); 
 aaaaa GP_IGNORE: cacc: cdbpersistentfilespace - ./backend/cdb/cdbpersistentfilespace.c
-cacc: cdbpersistentfilespace:00000572:  ereport(FATAL, 
-cacc: cdbpersistentfilespace:00000573:  (errcode(ERRCODE_INTERNAL_ERROR), 
-cacc: cdbpersistentfilespace:00000574:  errmsg("Unable to determine dbid for filespace lookup"))); 
-cacc: cdbpersistentfilespace:00001368:  ereport(FATAL, 
-cacc: cdbpersistentfilespace:00001369:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cacc: cdbpersistentfilespace:00001370:  errmsg("Not enough shared memory for persistent filespace hash table"))); 
+cacc: cdbpersistentfilespace:00000574:  ereport(FATAL, 
+cacc: cdbpersistentfilespace:00000575:  (errcode(ERRCODE_INTERNAL_ERROR), 
+cacc: cdbpersistentfilespace:00000576:  errmsg("Unable to determine dbid for filespace lookup"))); 
+cacc: cdbpersistentfilespace:00001372:  ereport(FATAL, 
+cacc: cdbpersistentfilespace:00001373:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cacc: cdbpersistentfilespace:00001374:  errmsg("Not enough shared memory for persistent filespace hash table"))); 
 aaaaa GP_IGNORE: cacd: cdbpersistentfilesysobj - ./backend/cdb/cdbpersistentfilesysobj.c
 cacd: cdbpersistentfilesysobj:00001102:  ereport(ERROR, 
 cacd: cdbpersistentfilesysobj:00001103:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
@@ -3528,9 +3518,9 @@ cacb: cdbpersistentrecovery:00002004:  ereport(ERROR,
 cacb: cdbpersistentrecovery:00002005:  (errcode_for_file_access(), 
 cacb: cdbpersistentrecovery:00002006:  errmsg("error reading redo relation file: %m"))); 
 aaaaa GP_IGNORE: cacd: cdbpersistenttablespace - ./backend/cdb/cdbpersistenttablespace.c
-cacd: cdbpersistenttablespace:00001156:  ereport(FATAL, 
-cacd: cdbpersistenttablespace:00001157:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cacd: cdbpersistenttablespace:00001158:  errmsg("Not enough shared memory for persistent tablespace hash table"))); 
+cacd: cdbpersistenttablespace:00001169:  ereport(FATAL, 
+cacd: cdbpersistenttablespace:00001170:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cacd: cdbpersistenttablespace:00001171:  errmsg("Not enough shared memory for persistent tablespace hash table"))); 
 aaaaa GP_IGNORE: caba: cdbrelsize - ./backend/cdb/cdbrelsize.c
 caba: cdbrelsize:00000102:  ereport(WARNING, (errmsg("cdbRelSize error (gathered %d results from cmd '%s')", resultCount, buffer.data), 
 caba: cdbrelsize:00000103:  errdetail("%s", errbuf.data))); 
@@ -3672,46 +3662,46 @@ cabc: cdbsubselect:00000224:  ));
 aaaaa GP_IGNORE: caaf: cdbtm - ./backend/cdb/cdbtm.c
 caaf: cdbtm:00000531:  ereport(ERROR, (errmsg("Global transaction upgrade from single segment to entire cluster failed for gid = \"%s\" due to error", 
 caaf: cdbtm:00000532:  currentGxact->gid))); 
-caaf: cdbtm:00001633:  ereport(ERROR, 
-caaf: cdbtm:00001634:  (errcode_for_file_access(), 
-caaf: cdbtm:00001635:  errmsg("could not create save DTM redo file \"%s\"", 
-caaf: cdbtm:00001636:  path))); 
-caaf: cdbtm:00001664:  ereport(ERROR, 
-caaf: cdbtm:00001665:  (errcode_for_file_access(), 
-caaf: cdbtm:00001666:  errmsg("could not write save DTM redo file : %m"))); 
-caaf: cdbtm:00001724:  ereport(ERROR, 
-caaf: cdbtm:00001725:  (errcode_for_file_access(), 
-caaf: cdbtm:00001726:  errmsg("error reading DTM redo file: %m"))); 
-caaf: cdbtm:00001795:  ereport(FATAL, 
-caaf: cdbtm:00001796:  (errmsg("the limit of %d distributed transactions has been reached.", 
-caaf: cdbtm:00001797:  max_tm_gxacts), 
-caaf: cdbtm:00001798:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
-caaf: cdbtm:00002340:  ereport(FATAL, 
-caaf: cdbtm:00002341:  (errmsg("the limit of %d distributed transactions has been reached.", 
-caaf: cdbtm:00002342:  max_tm_gxacts), 
-caaf: cdbtm:00002343:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
-caaf: cdbtm:00002674:  ereport(FATAL, 
-caaf: cdbtm:00002675:  (errmsg("reached limit of %u global transactions per start", LastDistributedTransactionId))); 
-caaf: cdbtm:00002927:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
-caaf: cdbtm:00002928:  errmsg("DTM Log recovery failed. There are still unresolved " 
-caaf: cdbtm:00002929:  "in-doubt transactions on some of the segment databaes " 
-caaf: cdbtm:00002930:  "that were not able to be resolved for an unknown reason. "), 
-caaf: cdbtm:00002931:  errdetail("Here is a list of in-doubt transactions in the system: %s", 
-caaf: cdbtm:00002932:  indoubtBuff.data), 
-caaf: cdbtm:00002933:  errhint("Try restarting the Greenplum Database array. If the problem persists " 
-caaf: cdbtm:00002934:  " an Administrator will need to resolve these transactions " 
-caaf: cdbtm:00002935:  " manually."))); 
-caaf: cdbtm:00002985:  ereport(ERROR, 
-caaf: cdbtm:00002986:  (errmsg("gp_max_distributed_xid error (gathered %d results from cmd '%s')", resultCount, buffer.data), 
-caaf: cdbtm:00002987:  errdetail("%s", errbuf.data))); 
-caaf: cdbtm:00003066:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-caaf: cdbtm:00003067:  errmsg("Unable to collect list of prepared transactions " 
-caaf: cdbtm:00003068:  "from all segment databases."), 
-caaf: cdbtm:00003069:  errdetail("%s", errmsgbuf.data))); 
-caaf: cdbtm:00003103:  ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaf: cdbtm:00003104:  errmsg("DTM could not allocate hash table for InDoubtDtxList."))); 
-caaf: cdbtm:00003782:  ereport(ERROR, (errmsg("Global transaction BEGIN failed for gid = \"%s\" due to error", 
-caaf: cdbtm:00003783:  currentGxact->gid))); 
+caaf: cdbtm:00001613:  ereport(ERROR, 
+caaf: cdbtm:00001614:  (errcode_for_file_access(), 
+caaf: cdbtm:00001615:  errmsg("could not create save DTM redo file \"%s\"", 
+caaf: cdbtm:00001616:  path))); 
+caaf: cdbtm:00001644:  ereport(ERROR, 
+caaf: cdbtm:00001645:  (errcode_for_file_access(), 
+caaf: cdbtm:00001646:  errmsg("could not write save DTM redo file : %m"))); 
+caaf: cdbtm:00001704:  ereport(ERROR, 
+caaf: cdbtm:00001705:  (errcode_for_file_access(), 
+caaf: cdbtm:00001706:  errmsg("error reading DTM redo file: %m"))); 
+caaf: cdbtm:00001775:  ereport(FATAL, 
+caaf: cdbtm:00001776:  (errmsg("the limit of %d distributed transactions has been reached.", 
+caaf: cdbtm:00001777:  max_tm_gxacts), 
+caaf: cdbtm:00001778:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
+caaf: cdbtm:00002320:  ereport(FATAL, 
+caaf: cdbtm:00002321:  (errmsg("the limit of %d distributed transactions has been reached.", 
+caaf: cdbtm:00002322:  max_tm_gxacts), 
+caaf: cdbtm:00002323:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
+caaf: cdbtm:00002654:  ereport(FATAL, 
+caaf: cdbtm:00002655:  (errmsg("reached limit of %u global transactions per start", LastDistributedTransactionId))); 
+caaf: cdbtm:00002907:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+caaf: cdbtm:00002908:  errmsg("DTM Log recovery failed. There are still unresolved " 
+caaf: cdbtm:00002909:  "in-doubt transactions on some of the segment databaes " 
+caaf: cdbtm:00002910:  "that were not able to be resolved for an unknown reason. "), 
+caaf: cdbtm:00002911:  errdetail("Here is a list of in-doubt transactions in the system: %s", 
+caaf: cdbtm:00002912:  indoubtBuff.data), 
+caaf: cdbtm:00002913:  errhint("Try restarting the Greenplum Database array. If the problem persists " 
+caaf: cdbtm:00002914:  " an Administrator will need to resolve these transactions " 
+caaf: cdbtm:00002915:  " manually."))); 
+caaf: cdbtm:00002965:  ereport(ERROR, 
+caaf: cdbtm:00002966:  (errmsg("gp_max_distributed_xid error (gathered %d results from cmd '%s')", resultCount, buffer.data), 
+caaf: cdbtm:00002967:  errdetail("%s", errbuf.data))); 
+caaf: cdbtm:00003046:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+caaf: cdbtm:00003047:  errmsg("Unable to collect list of prepared transactions " 
+caaf: cdbtm:00003048:  "from all segment databases."), 
+caaf: cdbtm:00003049:  errdetail("%s", errmsgbuf.data))); 
+caaf: cdbtm:00003083:  ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaf: cdbtm:00003084:  errmsg("DTM could not allocate hash table for InDoubtDtxList."))); 
+caaf: cdbtm:00003762:  ereport(ERROR, (errmsg("Global transaction BEGIN failed for gid = \"%s\" due to error", 
+caaf: cdbtm:00003763:  currentGxact->gid))); 
 aaaaa GP_IGNORE: caah: cdbutil - ./backend/cdb/cdbutil.c
 caah: cdbutil:00000268:  ereport(ERROR, 
 caah: cdbutil:00000269:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
@@ -4629,127 +4619,127 @@ caae: copy:00001585:  ereport(ERROR,
 caae: copy:00001586:  (errcode_for_file_access(), 
 caae: copy:00001587:  errmsg("could not write to file \"%s\": %m", 
 caae: copy:00001588:  cstate->filename))); 
-caae: copy:00001663:  ereport(ERROR, 
-caae: copy:00001664:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-caae: copy:00001665:  errmsg("cannot copy from view \"%s\"", 
-caae: copy:00001666:  RelationGetRelationName(cstate->rel)), 
-caae: copy:00001667:  errhint("Try the COPY (SELECT ...) TO variant."), 
-caae: copy:00001668:  errOmitLocation(true))); 
-caae: copy:00001670:  ereport(ERROR, 
-caae: copy:00001671:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-caae: copy:00001672:  errmsg("cannot copy from sequence \"%s\"", 
-caae: copy:00001673:  RelationGetRelationName(cstate->rel)), 
-caae: copy:00001674:  errOmitLocation(true))); 
-caae: copy:00001676:  ereport(ERROR, 
-caae: copy:00001677:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-caae: copy:00001678:  errmsg("cannot copy from non-table relation \"%s\"", 
-caae: copy:00001679:  RelationGetRelationName(cstate->rel)), 
-caae: copy:00001680:  errOmitLocation(true))); 
-caae: copy:00001684:  ereport(ERROR, 
-caae: copy:00001685:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-caae: copy:00001686:  errmsg("cannot copy from external relation \"%s\"", 
-caae: copy:00001687:  RelationGetRelationName(cstate->rel)), 
-caae: copy:00001688:  errhint("Try the COPY (SELECT ...) TO variant."), 
-caae: copy:00001689:  errOmitLocation(true))); 
-caae: copy:00001729:  ereport(ERROR, 
-caae: copy:00001730:  (errcode_for_file_access(), 
-caae: copy:00001731:  errmsg("could not write to file \"%s\": %m", 
-caae: copy:00001732:  cstate->filename))); 
-caae: copy:00001963:  ereport(ERROR, 
-caae: copy:00001964:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00001965:  errmsg("%s", cdbcopy_err.data))); 
-caae: copy:00001967:  ereport(ERROR, 
-caae: copy:00001968:  (errcode(ERRCODE_IO_ERROR), 
-caae: copy:00001969:  errmsg("%s", cdbcopy_err.data))); 
-caae: copy:00003078:  ereport(ERROR, 
-caae: copy:00003079:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003080:  errmsg("null OID in COPY data."))); 
-caae: copy:00003112:  ereport(ERROR, 
-caae: copy:00003113:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003114:  errmsg("invalid OID in COPY data."))); 
-caae: copy:00003464:  ereport(ERROR, 
-caae: copy:00003465:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003466:  errmsg("%s", cdbcopy_err.data), 
-caae: copy:00003467:  errOmitLocation(true))); 
-caae: copy:00003469:  ereport(ERROR, 
-caae: copy:00003470:  (errcode(ERRCODE_IO_ERROR), 
-caae: copy:00003471:  errmsg("%s", cdbcopy_err.data), 
-caae: copy:00003472:  errOmitLocation(true))); 
-caae: copy:00003846:  ereport(ERROR, 
-caae: copy:00003847:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003848:  errmsg("null OID in COPY data."))); 
-caae: copy:00003876:  ereport(ERROR, 
-caae: copy:00003877:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003878:  errmsg("invalid OID in COPY data."))); 
-caae: copy:00004661:  ereport(ERROR, 
-caae: copy:00004662:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00004663:  errmsg("data line too long. likely due to invalid csv data"))); 
-caae: copy:00004793:  ereport(ERROR, 
-caae: copy:00004794:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00004795:  errmsg("data line too long. likely due to invalid csv data"))); 
-caae: copy:00004954:  ereport(ERROR, 
-caae: copy:00004955:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00004956:  errmsg("extra data after last expected column"), 
-caae: copy:00004957:  errOmitLocation(true))); 
+caae: copy:00001661:  ereport(ERROR, 
+caae: copy:00001662:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+caae: copy:00001663:  errmsg("cannot copy from view \"%s\"", 
+caae: copy:00001664:  RelationGetRelationName(cstate->rel)), 
+caae: copy:00001665:  errhint("Try the COPY (SELECT ...) TO variant."), 
+caae: copy:00001666:  errOmitLocation(true))); 
+caae: copy:00001668:  ereport(ERROR, 
+caae: copy:00001669:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+caae: copy:00001670:  errmsg("cannot copy from sequence \"%s\"", 
+caae: copy:00001671:  RelationGetRelationName(cstate->rel)), 
+caae: copy:00001672:  errOmitLocation(true))); 
+caae: copy:00001674:  ereport(ERROR, 
+caae: copy:00001675:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+caae: copy:00001676:  errmsg("cannot copy from non-table relation \"%s\"", 
+caae: copy:00001677:  RelationGetRelationName(cstate->rel)), 
+caae: copy:00001678:  errOmitLocation(true))); 
+caae: copy:00001682:  ereport(ERROR, 
+caae: copy:00001683:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+caae: copy:00001684:  errmsg("cannot copy from external relation \"%s\"", 
+caae: copy:00001685:  RelationGetRelationName(cstate->rel)), 
+caae: copy:00001686:  errhint("Try the COPY (SELECT ...) TO variant."), 
+caae: copy:00001687:  errOmitLocation(true))); 
+caae: copy:00001727:  ereport(ERROR, 
+caae: copy:00001728:  (errcode_for_file_access(), 
+caae: copy:00001729:  errmsg("could not write to file \"%s\": %m", 
+caae: copy:00001730:  cstate->filename))); 
+caae: copy:00001961:  ereport(ERROR, 
+caae: copy:00001962:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00001963:  errmsg("%s", cdbcopy_err.data))); 
+caae: copy:00001965:  ereport(ERROR, 
+caae: copy:00001966:  (errcode(ERRCODE_IO_ERROR), 
+caae: copy:00001967:  errmsg("%s", cdbcopy_err.data))); 
+caae: copy:00003076:  ereport(ERROR, 
+caae: copy:00003077:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003078:  errmsg("null OID in COPY data."))); 
+caae: copy:00003110:  ereport(ERROR, 
+caae: copy:00003111:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003112:  errmsg("invalid OID in COPY data."))); 
+caae: copy:00003462:  ereport(ERROR, 
+caae: copy:00003463:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003464:  errmsg("%s", cdbcopy_err.data), 
+caae: copy:00003465:  errOmitLocation(true))); 
+caae: copy:00003467:  ereport(ERROR, 
+caae: copy:00003468:  (errcode(ERRCODE_IO_ERROR), 
+caae: copy:00003469:  errmsg("%s", cdbcopy_err.data), 
+caae: copy:00003470:  errOmitLocation(true))); 
+caae: copy:00003844:  ereport(ERROR, 
+caae: copy:00003845:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003846:  errmsg("null OID in COPY data."))); 
+caae: copy:00003874:  ereport(ERROR, 
+caae: copy:00003875:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003876:  errmsg("invalid OID in COPY data."))); 
+caae: copy:00004643:  ereport(ERROR, 
+caae: copy:00004644:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00004645:  errmsg("data line too long. likely due to invalid csv data"))); 
+caae: copy:00004775:  ereport(ERROR, 
+caae: copy:00004776:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00004777:  errmsg("data line too long. likely due to invalid csv data"))); 
+caae: copy:00004936:  ereport(ERROR, 
+caae: copy:00004937:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00004938:  errmsg("extra data after last expected column"), 
+caae: copy:00004939:  errOmitLocation(true))); 
+caae: copy:00004986:  ereport(ERROR, 
+caae: copy:00004987:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00004988:  errmsg("missing data for column \"%s\"", 
+caae: copy:00004989:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
+caae: copy:00004990:  errOmitLocation(true))); 
+caae: copy:00004993:  ereport(ERROR, 
+caae: copy:00004994:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00004995:  errmsg("missing data for column \"%s\", found empty data line", 
+caae: copy:00004996:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
+caae: copy:00004997:  errOmitLocation(true))); 
 caae: copy:00005004:  ereport(ERROR, 
 caae: copy:00005005:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005006:  errmsg("missing data for column \"%s\"", 
-caae: copy:00005007:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
-caae: copy:00005008:  errOmitLocation(true))); 
-caae: copy:00005011:  ereport(ERROR, 
-caae: copy:00005012:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005013:  errmsg("missing data for column \"%s\", found empty data line", 
-caae: copy:00005014:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
-caae: copy:00005015:  errOmitLocation(true))); 
-caae: copy:00005022:  ereport(ERROR, 
-caae: copy:00005023:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005024:  errmsg("extra data after last expected column"), 
-caae: copy:00005025:  errOmitLocation(true))); 
-caae: copy:00005323:  ereport(ERROR, 
-caae: copy:00005324:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005325:  errmsg("extra data after last expected column"), 
-caae: copy:00005326:  errOmitLocation(true))); 
+caae: copy:00005006:  errmsg("extra data after last expected column"), 
+caae: copy:00005007:  errOmitLocation(true))); 
+caae: copy:00005305:  ereport(ERROR, 
+caae: copy:00005306:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005307:  errmsg("extra data after last expected column"), 
+caae: copy:00005308:  errOmitLocation(true))); 
+caae: copy:00005318:  ereport(ERROR, 
+caae: copy:00005319:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005320:  errmsg("unterminated CSV quoted field"), 
+caae: copy:00005321:  errOmitLocation(true))); 
 caae: copy:00005336:  ereport(ERROR, 
 caae: copy:00005337:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005338:  errmsg("unterminated CSV quoted field"), 
-caae: copy:00005339:  errOmitLocation(true))); 
-caae: copy:00005354:  ereport(ERROR, 
-caae: copy:00005355:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005356:  errmsg("missing data for column \"%s\"", 
-caae: copy:00005357:  NameStr(attr[m + 1]->attname)), 
-caae: copy:00005358:  errOmitLocation(true))); 
-caae: copy:00005361:  ereport(ERROR, 
-caae: copy:00005362:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005363:  errmsg("missing data for column \"%s\", found empty data line", 
-caae: copy:00005364:  NameStr(attr[m + 1]->attname)), 
-caae: copy:00005365:  errOmitLocation(true))); 
-caae: copy:00005396:  ereport(ERROR, 
-caae: copy:00005397:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005398:  errmsg("extra data after last expected column"), 
-caae: copy:00005399:  errOmitLocation(true))); 
-caae: copy:00005882:  ereport(ERROR, 
-caae: copy:00005883:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-caae: copy:00005884:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
-caae: copy:00005885:  name, RelationGetRelationName(rel)), 
-caae: copy:00005886:  errOmitLocation(true))); 
-caae: copy:00005888:  ereport(ERROR, 
-caae: copy:00005889:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-caae: copy:00005890:  errmsg("column \"%s\" does not exist", 
-caae: copy:00005891:  name), 
-caae: copy:00005892:  errOmitLocation(true))); 
-caae: copy:00005896:  ereport(ERROR, 
-caae: copy:00005897:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
-caae: copy:00005898:  errmsg("column \"%s\" specified more than once", 
-caae: copy:00005899:  name))); 
-caae: copy:00005962:  ereport(ERROR, 
-caae: copy:00005963:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-caae: copy:00005964:  errmsg("COPY metadata not found. This probably means that there is a " 
-caae: copy:00005965:  "mixture of newline types in the data. Use the NEWLINE keyword " 
-caae: copy:00005966:  "in order to resolve this reliably."))); 
-caae: copy:00006617:  ereport(ERROR, 
-caae: copy:00006618:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caae: copy:00006619:  errmsg("internal error in CopySetEolType. Trying to set NEWLINE %s", 
-caae: copy:00006620:  cstate->eol_str))); 
+caae: copy:00005338:  errmsg("missing data for column \"%s\"", 
+caae: copy:00005339:  NameStr(attr[m + 1]->attname)), 
+caae: copy:00005340:  errOmitLocation(true))); 
+caae: copy:00005343:  ereport(ERROR, 
+caae: copy:00005344:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005345:  errmsg("missing data for column \"%s\", found empty data line", 
+caae: copy:00005346:  NameStr(attr[m + 1]->attname)), 
+caae: copy:00005347:  errOmitLocation(true))); 
+caae: copy:00005378:  ereport(ERROR, 
+caae: copy:00005379:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005380:  errmsg("extra data after last expected column"), 
+caae: copy:00005381:  errOmitLocation(true))); 
+caae: copy:00005864:  ereport(ERROR, 
+caae: copy:00005865:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+caae: copy:00005866:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
+caae: copy:00005867:  name, RelationGetRelationName(rel)), 
+caae: copy:00005868:  errOmitLocation(true))); 
+caae: copy:00005870:  ereport(ERROR, 
+caae: copy:00005871:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+caae: copy:00005872:  errmsg("column \"%s\" does not exist", 
+caae: copy:00005873:  name), 
+caae: copy:00005874:  errOmitLocation(true))); 
+caae: copy:00005878:  ereport(ERROR, 
+caae: copy:00005879:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
+caae: copy:00005880:  errmsg("column \"%s\" specified more than once", 
+caae: copy:00005881:  name))); 
+caae: copy:00005944:  ereport(ERROR, 
+caae: copy:00005945:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+caae: copy:00005946:  errmsg("COPY metadata not found. This probably means that there is a " 
+caae: copy:00005947:  "mixture of newline types in the data. Use the NEWLINE keyword " 
+caae: copy:00005948:  "in order to resolve this reliably."))); 
+caae: copy:00006599:  ereport(ERROR, 
+caae: copy:00006600:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caae: copy:00006601:  errmsg("internal error in CopySetEolType. Trying to set NEWLINE %s", 
+caae: copy:00006602:  cstate->eol_str))); 
 aaaaa GP_IGNORE: daba: dbcommands - ./backend/commands/dbcommands.c
 daba: dbcommands:00000260:  ereport(ERROR, 
 daba: dbcommands:00000261:  (errcode_for_file_access(), 
@@ -8807,67 +8797,67 @@ eaai: execmain:00001831:  ereport(ERROR,
 eaai: execmain:00001832:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
 eaai: execmain:00001833:  errmsg("cannot change view \"%s\"", 
 eaai: execmain:00001834:  RelationGetRelationName(resultRelationDesc)))); 
-eaai: execmain:00002193:  ereport(ERROR, 
-eaai: execmain:00002194:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execmain:00002195:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execmain:00002196:  errdetail("Query has too many columns."))); 
-eaai: execmain:00002203:  ereport(ERROR, 
-eaai: execmain:00002204:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execmain:00002205:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execmain:00002206:  errdetail("Table has type %s at ordinal position %d, but query expects %s.", 
-eaai: execmain:00002207:  format_type_be(attr->atttypid), 
-eaai: execmain:00002208:  attno, 
-eaai: execmain:00002209:  format_type_be(exprType((Node *) tle->expr))))); 
-eaai: execmain:00002220:  ereport(ERROR, 
-eaai: execmain:00002221:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execmain:00002222:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execmain:00002223:  errdetail("Query provides a value for a dropped column at ordinal position %d.", 
-eaai: execmain:00002224:  attno))); 
-eaai: execmain:00002228:  ereport(ERROR, 
-eaai: execmain:00002229:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execmain:00002230:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execmain:00002231:  errdetail("Query has too few columns."))); 
-eaai: execmain:00002426:  ereport(ERROR, 
-eaai: execmain:00002427:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-eaai: execmain:00002428:  errmsg("could not serialize access due to concurrent update"))); 
-eaai: execmain:00002905:  ereport(ERROR, 
-eaai: execmain:00002906:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-eaai: execmain:00002907:  errmsg("could not serialize access due to concurrent update"))); 
-eaai: execmain:00003045:  ereport(ERROR, 
-eaai: execmain:00003046:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
-eaai: execmain:00003047:  errmsg("no partition for partitioning key"))); 
-eaai: execmain:00003051:  ereport(ERROR, 
-eaai: execmain:00003052:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-eaai: execmain:00003053:  errmsg("moving tuple from partition \"%s\" to " 
-eaai: execmain:00003054:  "partition \"%s\" not supported", 
-eaai: execmain:00003055:  get_rel_name(RelationGetRelid(resultRelationDesc)), 
-eaai: execmain:00003056:  get_rel_name(targetid)), 
-eaai: execmain:00003057:  errOmitLocation(true))); 
-eaai: execmain:00003130:  ereport(ERROR, 
-eaai: execmain:00003131:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-eaai: execmain:00003132:  errmsg("could not serialize access due to concurrent update"))); 
-eaai: execmain:00003274:  ereport(ERROR, 
-eaai: execmain:00003275:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
-eaai: execmain:00003276:  errmsg("null value in column \"%s\" violates not-null constraint", 
-eaai: execmain:00003277:  NameStr(rel->rd_att->attrs[attrChk - 1]->attname)), 
-eaai: execmain:00003278:  errOmitLocation(true))); 
-eaai: execmain:00003287:  ereport(ERROR, 
-eaai: execmain:00003288:  (errcode(ERRCODE_CHECK_VIOLATION), 
-eaai: execmain:00003289:  errmsg("new row for relation \"%s\" violates check constraint \"%s\"", 
-eaai: execmain:00003290:  RelationGetRelationName(rel), failed), 
-eaai: execmain:00003291:  errOmitLocation(true))); 
-eaai: execmain:00004005:  ereport(ERROR, 
-eaai: execmain:00004006:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-eaai: execmain:00004007:  errmsg("ON COMMIT can only be used on temporary tables"), 
-eaai: execmain:00004008:  errOmitLocation(true))); 
-eaai: execmain:00004034:  ereport(ERROR, 
-eaai: execmain:00004035:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-eaai: execmain:00004036:  errmsg("tablespace \"%s\" does not exist", 
-eaai: execmain:00004037:  intoClause->tableSpaceName))); 
-eaai: execmain:00004337:  ereport(ERROR, 
-eaai: execmain:00004338:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
-eaai: execmain:00004339:  errmsg("no partition for partitioning key"), 
-eaai: execmain:00004340:  errOmitLocation(true))); 
+eaai: execmain:00002191:  ereport(ERROR, 
+eaai: execmain:00002192:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execmain:00002193:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execmain:00002194:  errdetail("Query has too many columns."))); 
+eaai: execmain:00002201:  ereport(ERROR, 
+eaai: execmain:00002202:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execmain:00002203:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execmain:00002204:  errdetail("Table has type %s at ordinal position %d, but query expects %s.", 
+eaai: execmain:00002205:  format_type_be(attr->atttypid), 
+eaai: execmain:00002206:  attno, 
+eaai: execmain:00002207:  format_type_be(exprType((Node *) tle->expr))))); 
+eaai: execmain:00002218:  ereport(ERROR, 
+eaai: execmain:00002219:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execmain:00002220:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execmain:00002221:  errdetail("Query provides a value for a dropped column at ordinal position %d.", 
+eaai: execmain:00002222:  attno))); 
+eaai: execmain:00002226:  ereport(ERROR, 
+eaai: execmain:00002227:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execmain:00002228:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execmain:00002229:  errdetail("Query has too few columns."))); 
+eaai: execmain:00002424:  ereport(ERROR, 
+eaai: execmain:00002425:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+eaai: execmain:00002426:  errmsg("could not serialize access due to concurrent update"))); 
+eaai: execmain:00002883:  ereport(ERROR, 
+eaai: execmain:00002884:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+eaai: execmain:00002885:  errmsg("could not serialize access due to concurrent update"))); 
+eaai: execmain:00003023:  ereport(ERROR, 
+eaai: execmain:00003024:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
+eaai: execmain:00003025:  errmsg("no partition for partitioning key"))); 
+eaai: execmain:00003029:  ereport(ERROR, 
+eaai: execmain:00003030:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+eaai: execmain:00003031:  errmsg("moving tuple from partition \"%s\" to " 
+eaai: execmain:00003032:  "partition \"%s\" not supported", 
+eaai: execmain:00003033:  get_rel_name(RelationGetRelid(resultRelationDesc)), 
+eaai: execmain:00003034:  get_rel_name(targetid)), 
+eaai: execmain:00003035:  errOmitLocation(true))); 
+eaai: execmain:00003108:  ereport(ERROR, 
+eaai: execmain:00003109:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+eaai: execmain:00003110:  errmsg("could not serialize access due to concurrent update"))); 
+eaai: execmain:00003252:  ereport(ERROR, 
+eaai: execmain:00003253:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
+eaai: execmain:00003254:  errmsg("null value in column \"%s\" violates not-null constraint", 
+eaai: execmain:00003255:  NameStr(rel->rd_att->attrs[attrChk - 1]->attname)), 
+eaai: execmain:00003256:  errOmitLocation(true))); 
+eaai: execmain:00003265:  ereport(ERROR, 
+eaai: execmain:00003266:  (errcode(ERRCODE_CHECK_VIOLATION), 
+eaai: execmain:00003267:  errmsg("new row for relation \"%s\" violates check constraint \"%s\"", 
+eaai: execmain:00003268:  RelationGetRelationName(rel), failed), 
+eaai: execmain:00003269:  errOmitLocation(true))); 
+eaai: execmain:00003983:  ereport(ERROR, 
+eaai: execmain:00003984:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+eaai: execmain:00003985:  errmsg("ON COMMIT can only be used on temporary tables"), 
+eaai: execmain:00003986:  errOmitLocation(true))); 
+eaai: execmain:00004012:  ereport(ERROR, 
+eaai: execmain:00004013:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+eaai: execmain:00004014:  errmsg("tablespace \"%s\" does not exist", 
+eaai: execmain:00004015:  intoClause->tableSpaceName))); 
+eaai: execmain:00004315:  ereport(ERROR, 
+eaai: execmain:00004316:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
+eaai: execmain:00004317:  errmsg("no partition for partitioning key"), 
+eaai: execmain:00004318:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: eaai: execqual - ./backend/executor/execQual.c
 eaai: execqual:00000279:  ereport(ERROR, 
 eaai: execqual:00000280:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
@@ -13163,79 +13153,79 @@ saae: smgr:00000392:  errmsg("could not close relation %u/%u/%u: %m",
 saae: smgr:00000393:  reln->smgr_rnode.spcNode, 
 saae: smgr:00000394:  reln->smgr_rnode.dbNode, 
 saae: smgr:00000395:  reln->smgr_rnode.relNode))); 
-saae: smgr:00000962:  ereport(WARNING, 
-saae: smgr:00000963:  (errcode_for_file_access(), 
-saae: smgr:00000964:  errmsg("could not remove relation %u/%u/%u: %m", 
-saae: smgr:00000965:  rnode.spcNode, 
-saae: smgr:00000966:  rnode.dbNode, 
-saae: smgr:00000967:  rnode.relNode))); 
-saae: smgr:00000969:  ereport(WARNING, 
-saae: smgr:00000970:  (errcode_for_file_access(), 
-saae: smgr:00000971:  errmsg("could not remove relation %u/%u/%u '%s': %m", 
-saae: smgr:00000972:  rnode.spcNode, 
-saae: smgr:00000973:  rnode.dbNode, 
-saae: smgr:00000974:  rnode.relNode, 
-saae: smgr:00000975:  relationName))); 
-saae: smgr:00001044:  ereport(WARNING, 
-saae: smgr:00001045:  (errcode_for_file_access(), 
-saae: smgr:00001046:  errmsg("could not remove filespace directory %u: %m", 
-saae: smgr:00001047:  filespaceOid))); 
-saae: smgr:00001133:  ereport(WARNING, 
-saae: smgr:00001134:  (errcode_for_file_access(), 
-saae: smgr:00001135:  errmsg("could not remove tablespace directory %u: %m", 
-saae: smgr:00001136:  tablespaceOid))); 
-saae: smgr:00001161:  ereport(WARNING, 
-saae: smgr:00001162:  (errcode_for_file_access(), 
-saae: smgr:00001163:  errmsg("could not remove database directory %u/%u: %m", 
-saae: smgr:00001164:  dbDirNode->tablespace, 
-saae: smgr:00001165:  dbDirNode->database))); 
-saae: smgr:00001237:  ereport(ERROR, 
-saae: smgr:00001238:  (errcode_for_file_access(), 
-saae: smgr:00001239:  errmsg("could not extend relation %u/%u/%u: %m", 
-saae: smgr:00001240:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001241:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001242:  reln->smgr_rnode.relNode), 
-saae: smgr:00001243:  errhint("Check free disk space."))); 
-saae: smgr:00001258:  ereport(ERROR, 
-saae: smgr:00001259:  (errcode_for_file_access(), 
-saae: smgr:00001260:  errmsg("could not read block %u of relation %u/%u/%u: %m", 
-saae: smgr:00001261:  blocknum, 
-saae: smgr:00001262:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001263:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001264:  reln->smgr_rnode.relNode))); 
-saae: smgr:00001282:  ereport(ERROR, 
-saae: smgr:00001283:  (errcode_for_file_access(), 
-saae: smgr:00001284:  errmsg("could not write block %u of relation %u/%u/%u: %m", 
-saae: smgr:00001285:  blocknum, 
-saae: smgr:00001286:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001287:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001288:  reln->smgr_rnode.relNode))); 
-saae: smgr:00001312:  ereport(ERROR, 
-saae: smgr:00001313:  (errcode_for_file_access(), 
-saae: smgr:00001314:  errmsg("could not count blocks of relation %u/%u/%u: %m", 
-saae: smgr:00001315:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001316:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001317:  reln->smgr_rnode.relNode))); 
-saae: smgr:00001350:  ereport(ERROR, 
-saae: smgr:00001351:  (errcode_for_file_access(), 
-saae: smgr:00001352:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
-saae: smgr:00001353:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001354:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001355:  reln->smgr_rnode.relNode, 
-saae: smgr:00001356:  nblocks))); 
-saae: smgr:00001442:  ereport(ERROR, 
-saae: smgr:00001443:  (errcode_for_file_access(), 
-saae: smgr:00001444:  errmsg("could not sync relation %u/%u/%u: %m", 
-saae: smgr:00001445:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001446:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001447:  reln->smgr_rnode.relNode))); 
-saae: smgr:00002913:  ereport(WARNING, 
-saae: smgr:00002914:  (errcode_for_file_access(), 
-saae: smgr:00002915:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
-saae: smgr:00002916:  reln->smgr_rnode.spcNode, 
-saae: smgr:00002917:  reln->smgr_rnode.dbNode, 
-saae: smgr:00002918:  reln->smgr_rnode.relNode, 
-saae: smgr:00002919:  xlrec->blkno))); 
+saae: smgr:00000965:  ereport(WARNING, 
+saae: smgr:00000966:  (errcode_for_file_access(), 
+saae: smgr:00000967:  errmsg("could not remove relation %u/%u/%u: %m", 
+saae: smgr:00000968:  rnode.spcNode, 
+saae: smgr:00000969:  rnode.dbNode, 
+saae: smgr:00000970:  rnode.relNode))); 
+saae: smgr:00000972:  ereport(WARNING, 
+saae: smgr:00000973:  (errcode_for_file_access(), 
+saae: smgr:00000974:  errmsg("could not remove relation %u/%u/%u '%s': %m", 
+saae: smgr:00000975:  rnode.spcNode, 
+saae: smgr:00000976:  rnode.dbNode, 
+saae: smgr:00000977:  rnode.relNode, 
+saae: smgr:00000978:  relationName))); 
+saae: smgr:00001047:  ereport(WARNING, 
+saae: smgr:00001048:  (errcode_for_file_access(), 
+saae: smgr:00001049:  errmsg("could not remove filespace directory %u: %m", 
+saae: smgr:00001050:  filespaceOid))); 
+saae: smgr:00001136:  ereport(WARNING, 
+saae: smgr:00001137:  (errcode_for_file_access(), 
+saae: smgr:00001138:  errmsg("could not remove tablespace directory %u: %m", 
+saae: smgr:00001139:  tablespaceOid))); 
+saae: smgr:00001164:  ereport(WARNING, 
+saae: smgr:00001165:  (errcode_for_file_access(), 
+saae: smgr:00001166:  errmsg("could not remove database directory %u/%u: %m", 
+saae: smgr:00001167:  dbDirNode->tablespace, 
+saae: smgr:00001168:  dbDirNode->database))); 
+saae: smgr:00001240:  ereport(ERROR, 
+saae: smgr:00001241:  (errcode_for_file_access(), 
+saae: smgr:00001242:  errmsg("could not extend relation %u/%u/%u: %m", 
+saae: smgr:00001243:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001244:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001245:  reln->smgr_rnode.relNode), 
+saae: smgr:00001246:  errhint("Check free disk space."))); 
+saae: smgr:00001261:  ereport(ERROR, 
+saae: smgr:00001262:  (errcode_for_file_access(), 
+saae: smgr:00001263:  errmsg("could not read block %u of relation %u/%u/%u: %m", 
+saae: smgr:00001264:  blocknum, 
+saae: smgr:00001265:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001266:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001267:  reln->smgr_rnode.relNode))); 
+saae: smgr:00001285:  ereport(ERROR, 
+saae: smgr:00001286:  (errcode_for_file_access(), 
+saae: smgr:00001287:  errmsg("could not write block %u of relation %u/%u/%u: %m", 
+saae: smgr:00001288:  blocknum, 
+saae: smgr:00001289:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001290:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001291:  reln->smgr_rnode.relNode))); 
+saae: smgr:00001315:  ereport(ERROR, 
+saae: smgr:00001316:  (errcode_for_file_access(), 
+saae: smgr:00001317:  errmsg("could not count blocks of relation %u/%u/%u: %m", 
+saae: smgr:00001318:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001319:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001320:  reln->smgr_rnode.relNode))); 
+saae: smgr:00001353:  ereport(ERROR, 
+saae: smgr:00001354:  (errcode_for_file_access(), 
+saae: smgr:00001355:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
+saae: smgr:00001356:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001357:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001358:  reln->smgr_rnode.relNode, 
+saae: smgr:00001359:  nblocks))); 
+saae: smgr:00001445:  ereport(ERROR, 
+saae: smgr:00001446:  (errcode_for_file_access(), 
+saae: smgr:00001447:  errmsg("could not sync relation %u/%u/%u: %m", 
+saae: smgr:00001448:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001449:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001450:  reln->smgr_rnode.relNode))); 
+saae: smgr:00002916:  ereport(WARNING, 
+saae: smgr:00002917:  (errcode_for_file_access(), 
+saae: smgr:00002918:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
+saae: smgr:00002919:  reln->smgr_rnode.spcNode, 
+saae: smgr:00002920:  reln->smgr_rnode.dbNode, 
+saae: smgr:00002921:  reln->smgr_rnode.relNode, 
+saae: smgr:00002922:  xlrec->blkno))); 
 aaaaa GP_IGNORE: faai: fastpath - ./backend/tcop/fastpath.c
 faai: fastpath:00000106:  ereport(FATAL, 
 faai: fastpath:00000107:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
