@@ -279,8 +279,6 @@ static void send_machine_metrics(SOCKET sock)
 #endif /* sun */
 	int cpu_total_diff;
 
-	//float cpu_norm = 0.0f;
-
 	/* NIC metrics */
 	apr_int64_t rx_packets = 0;
 	apr_int64_t tx_packets = 0;
@@ -292,8 +290,6 @@ static void send_machine_metrics(SOCKET sock)
 	apr_int64_t writes = 0;
 	apr_int64_t read_bytes = 0;
 	apr_int64_t write_bytes = 0;
-
-
 
 	memset(&mem, 0, sizeof(mem));
 	sigar_mem_get(gx.sigar, &mem);
@@ -682,20 +678,26 @@ static void send_machine_metrics(SOCKET sock)
 	cpu_total_diff = cpu.total - pcpu.total;
 	if (cpu_total_diff)
 	{
-        float cpu_user = ((float) (cpu.user - pcpu.user) * 100 / cpu_total_diff) + ((float)((cpu.nice - pcpu.nice) * 100 / cpu_total_diff));
-        float cpu_sys = ((float) (cpu.sys - pcpu.sys) * 100 / cpu_total_diff) + ((float)((cpu.wait - pcpu.wait) * 100 / cpu_total_diff));
-        float cpu_idle = ((float) (cpu.idle - pcpu.idle) * 100 / cpu_total_diff);
+		float cpu_user = ((float) (cpu.user - pcpu.user) * 100 / cpu_total_diff) + ((float)((cpu.nice - pcpu.nice) * 100 / cpu_total_diff));
+		float cpu_sys = ((float) (cpu.sys - pcpu.sys) * 100 / cpu_total_diff) + ((float)((cpu.wait - pcpu.wait) * 100 / cpu_total_diff));
+		float cpu_idle = ((float) (cpu.idle - pcpu.idle) * 100 / cpu_total_diff);
 
-		//cpu_norm = round(  (cpu_user + cpu_sys + cpu_idle) / 100.0f  );
-        //  catch the cpu_norm == 0 case
-        //if (cpu_norm < .9)
-        //{
-        //    cpu_norm = 1.0f;
-        //}
-        //TR2(("cpu_norm = %f", cpu_norm));
-        //cpu_user /= cpu_norm;
-        //cpu_sys /= cpu_norm;
-        //cpu_idle /= cpu_norm;
+#if defined (sun)
+		// lib sigar on sun returns total cpu% of 100% times number of cores
+		// normalize to make total 100%
+		float cpu_norm = round(  (cpu_user + cpu_sys + cpu_idle) / 100.0f  );
+		TR2(("cpu_norm = %f", cpu_norm));
+
+		// paranoid check for divide by zero
+		if (cpu_norm < .95)
+		{
+			cpu_norm = 1.0;
+		}
+
+		cpu_user /= cpu_norm;
+		cpu_sys /= cpu_norm;
+		cpu_idle /= cpu_norm;
+#endif
 
 		pkt.u.metrics.cpu.user_pct = cpu_user;
 		pkt.u.metrics.cpu.sys_pct = cpu_sys;
