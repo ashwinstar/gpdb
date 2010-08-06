@@ -535,9 +535,6 @@ typedef struct EState
     /* CDB: EXPLAIN ANALYZE statistics */
     struct CdbExplain_ShowStatCtx  *showstatctx;
         
-	/* CDB: INSERT state */
-	struct HeapInsertDesc *es_HeapInsertDesc;
-
 	/* CDB: partitioning state info */
 	PartitionState *es_partition_state;
 	

@@ -2123,8 +2123,6 @@ ExecEndPlan(PlanState *planstate, EState *estate)
 	for (i = 0; i < estate->es_num_result_relations; i++)
 	{
 		/* end (flush) the INSERT operation in the access layer */
-		if (estate->es_HeapInsertDesc)
-			heap_endinsert(estate->es_HeapInsertDesc);
 		if (resultRelInfo->ri_aoInsertDesc)
 			appendonly_insert_finish(resultRelInfo->ri_aoInsertDesc);
         if (resultRelInfo->ri_aocsInsertDesc)
@@ -2594,12 +2592,6 @@ ExecInsert(TupleTableSlot *slot,
 	 */
 	if (estate->es_result_partitions)
 	{
-		/*
-		 * XXX: heap_enableHeapInsertDesc is not currently enabled. If it ever
-		 * is, the handling of the insert descriptor must be improved: namely,
-		 * we need one per resultRelInfo.
-		 */
-		Assert(!heap_enableHeapInsertDesc);
 		resultRelInfo = slot_get_partition(slot, estate);
 		estate->es_result_relation_info = resultRelInfo;
 	}
@@ -2764,24 +2756,10 @@ ExecInsert(TupleTableSlot *slot,
 	{
 		Insist(rel_is_heap);
 		
-		if (heap_enableHeapInsertDesc)
-		{
-			if (estate->es_HeapInsertDesc == NULL)
-			{
-				estate->es_HeapInsertDesc =
-					heap_begininsert(resultRelationDesc,
-									 estate->es_snapshot->curcid,
-									 true, true);
-			}
-			newId = heap_insertnext(estate->es_HeapInsertDesc, tuple);
-		}
-		else
-		{
-			newId = heap_insert(resultRelationDesc,
-								ExecFetchSlotHeapTuple(partslot),
-								estate->es_snapshot->curcid,
-								true, true, GetCurrentTransactionId());
-		}
+		newId = heap_insert(resultRelationDesc,
+							ExecFetchSlotHeapTuple(partslot),
+							estate->es_snapshot->curcid,
+							true, true, GetCurrentTransactionId());
 	}
 
 	IncrAppended();

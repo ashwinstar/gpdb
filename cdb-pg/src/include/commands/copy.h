@@ -235,7 +235,6 @@ typedef struct CopyStateData
 	struct CdbSreh		*cdbsreh; /* single row error handler */
 	int			num_consec_csv_err; /* # of consecutive csv invalid format errs */
 
-	struct HeapInsertDesc *heapInsertDesc;
 	PartitionNode *partitions; /* partitioning meta data from dispatcher */
 	List		  *ao_segnos;  /* AO table meta data from dispatcher */
 	/* end Greenplum Database specific variables */

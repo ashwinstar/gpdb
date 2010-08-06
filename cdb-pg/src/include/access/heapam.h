@@ -168,24 +168,9 @@ typedef enum
 	LockTupleIfNotLocked/* if can't get lock right away, give up. no error */
 } LockTupleWaitType;
 
-/* CKTAN */
-typedef struct HeapInsertDesc HeapInsertDesc;
-struct HeapInsertDesc
-{
-    TransactionId hi_xid;
-    Relation 	  hi_rel;
-    CommandId 	  hi_cid;
-    bool          hi_use_wal;
-    bool 	  hi_use_fsm;
-    BlockNumber   hi_targblock;
-    Buffer        hi_cbuf;	/* current buffer in page mode */
-};
-
 inline static void xl_heaptid_set(
 	struct xl_heaptid	*heaptid,
-
 	Relation rel,
-
 	ItemPointer tid)
 {
 	heaptid->node = rel->rd_node;
@@ -214,12 +199,6 @@ extern Relation heap_open(Oid relationId, LOCKMODE lockmode);
 extern Relation heap_openrv(const RangeVar *relation, LOCKMODE lockmode);
 
 #define heap_close(r,l)  relation_close(r,l)
-
-extern bool heap_enableHeapInsertDesc;
-extern HeapInsertDesc* heap_begininsert(Relation relation, CommandId cid,
-					bool use_wal, bool use_fsm);
-extern Oid heap_insertnext(HeapInsertDesc *ins, HeapTuple tup);
-extern void heap_endinsert(HeapInsertDesc *ins);
 
 extern HeapScanDesc heap_beginscan(Relation relation, Snapshot snapshot,
 			   int nkeys, ScanKey key);

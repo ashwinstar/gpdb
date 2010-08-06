@@ -1597,8 +1597,6 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 	 * of transaction to ensure that updates will be committed before lock is
 	 * released.
 	 */
-	if (cstate->heapInsertDesc)
-		heap_endinsert(cstate->heapInsertDesc);
 	if (cstate->rel)
 		heap_close(cstate->rel, (is_from ? NoLock : AccessShareLock));
 	if (cstate->queryDesc)
@@ -4127,20 +4125,7 @@ CopyFrom(CopyState cstate)
 					}
 					else
 					{
-						if (heap_enableHeapInsertDesc)
-						{
-							if (cstate->heapInsertDesc == NULL)
-							{
-								cstate->heapInsertDesc = heap_begininsert(cstate->rel,
-										GetCurrentCommandId(), true, true);
-							}
-							heap_insertnext(cstate->heapInsertDesc, tuple);
-						}
-						else
-						{
-							simple_heap_insert(resultRelInfo->ri_RelationDesc,
-									tuple);
-						}
+						simple_heap_insert(resultRelInfo->ri_RelationDesc, tuple);
 
 						if (resultRelInfo->ri_NumIndices > 0)
 							ExecInsertIndexTuples(slot, &(((HeapTuple)tuple)->t_self), estate, false);
