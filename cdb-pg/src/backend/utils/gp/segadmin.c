@@ -418,15 +418,14 @@ update_tablespaces(int16 pridbid, seginfo *i, bool add)
 		return;
 	}
 
+	if (pridbid == MASTER_DBID || pridbid != GpIdentity.dbid)
+		return;
+
 	/*
 	 * Teach the persistent tablespace table about us.
 	 */
 	if (add)
-	{
-		/* nothing to do for tablespaces on master */
-		if (pridbid != MASTER_DBID)
-			PersistentTablespace_AddMirrorAll(pridbid, i->db.dbid);
-	}
+		PersistentTablespace_AddMirrorAll(pridbid, i->db.dbid);
 	else
 		PersistentTablespace_RemoveSegment(i->db.dbid,
 										   i->db.role == SEGMENT_ROLE_MIRROR);
@@ -447,11 +446,7 @@ update_databases(int16 pridbid, seginfo *i, bool add)
 	 * Teach the persistent database table about us.
 	 */
 	if (add)
-	{
-		/* nothing to do for tablespaces on master */
-		if (pridbid != MASTER_DBID)
-			PersistentDatabase_AddMirrorAll(pridbid, i->db.dbid);
-	}
+		PersistentDatabase_AddMirrorAll(pridbid, i->db.dbid);
 	else
 		PersistentDatabase_RemoveSegment(i->db.dbid,
 										 i->db.role == SEGMENT_ROLE_MIRROR);
@@ -468,18 +463,53 @@ update_relations(int16 pridbid, seginfo *i, bool add)
 		return;
 	}
 
+	if (pridbid == MASTER_DBID || pridbid != GpIdentity.dbid)
+		return;
+
 	/*
 	 * Teach the persistent relation table about us.
 	 */
 	if (add)
-	{
-		/* nothing to do for tablespaces on master */
-		if (pridbid != MASTER_DBID)
-			PersistentRelation_AddMirrorAll(pridbid, i->db.dbid);
-	}
+		PersistentRelation_AddMirrorAll(pridbid, i->db.dbid);
 	else
 		PersistentRelation_RemoveSegment(i->db.dbid,
 										 i->db.role == SEGMENT_ROLE_MIRROR);
+}
+
+static void
+dispatch_add_to_segment(int16 pridbid, int16 segdbid, ArrayType *fsmap)
+{
+	/* 
+	 * We want to dispatch the statement:
+	 *
+	 *   SELECT gp_add_segment_persistent_entries(targetdbid, mirdbid,
+	 *   										  fsmap);
+	 *
+	 * targetdbid is the dbid of the primary for the mirror in question.
+	 * mirdbid is its mirror.
+	 *
+	 * Unfortunately, we do not have targetted dispatch at this point
+	 * in the code so we must dispatch to all segments.
+	 */
+	StringInfoData *q = makeStringInfo();
+	FmgrInfo flinfo;
+	char *a;
+
+	/* 
+	 * array_out caches data in flinfo, as we cannot just
+	 * do a DirectFunctionCall1().
+	 */
+	fmgr_info(ARRAY_OUT_OID, &flinfo);
+	a = OutputFunctionCall(&flinfo, PointerGetDatum(fsmap));
+
+	appendStringInfo(q,
+					 "SELECT gp_add_segment_persistent_entries(%i::int2, "
+					 "%i::int2, '%s');",
+					 pridbid,
+					 segdbid,
+					 a);
+
+	CdbDoCommand(q->data, true, false);
 }
 
 /*
@@ -515,39 +545,7 @@ add_segment_persistent_entries(int16 pridbid, seginfo *i, ArrayType *fsmap)
 	 * segment's primary.
 	 */
 	if (Gp_role == GP_ROLE_DISPATCH && i->db.role == SEGMENT_ROLE_MIRROR)
-	{
-		/* 
-		 * We want to dispatch the statement:
-		 *
-		 *   SELECT gp_add_segment_persistent_entries(targetdbid, mirdbid,
-		 *   										  fsmap);
-		 *
-		 * targetdbid is the dbid of the primary for the mirror in question.
-		 * mirdbid is its mirror.
-		 *
-		 * Unfortunately, we do not have targetted dispatch at this point
-		 * in the code so we must dispatch to all segments.
-		 */
-		StringInfoData *q = makeStringInfo();
-		FmgrInfo flinfo;
-		char *a;
-
-		/* 
-		 * array_out caches data in flinfo, as we cannot just
-		 * do a DirectFunctionCall1().
-		 */
-		fmgr_info(ARRAY_OUT_OID, &flinfo);
-		a = OutputFunctionCall(&flinfo, PointerGetDatum(fsmap));
-
-		appendStringInfo(q,
-						 "SELECT gp_add_segment_persistent_entries(%i::int2, "
-						 "%i::int2, '%s');",
-						 pridbid,
-						 i->db.dbid,
-						 a);
-
-		CdbDoCommand(q->data, true, false);
-	}
+		dispatch_add_to_segment(pridbid, i->db.dbid, fsmap);
 }
 
 /*
