@@ -25,6 +25,7 @@ typedef enum FaultInjectorIdentifier_e {
 		 *		*) remove all faults injected from the segment
 		 *		*) display status for all faults injected 
 		 */
+	Postmaster,
 	
 	FileRepConsumer,
 	

@@ -88,6 +88,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* not specified */
 	_("all"),  
 		/* reset or display all injected faults */
+	_("postmaster"),
+		/* inject fault when new connection is accepted in postmaster */
 	_("filerep_consumer"),
 		/* 
 		 * inject fault before data are processed
@@ -722,6 +724,7 @@ FaultInjector_NewHashEntry(
 		case FileRepSender:
 		case FileRepReceiver:
 		case FileRepFlush:
+		case Postmaster:
 			
 			if (fileRepRole != FileRepPrimaryRole && fileRepRole != FileRepMirrorRole)
 			{

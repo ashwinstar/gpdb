@@ -2062,6 +2062,13 @@ ServerLoop(void)
                     return STATUS_ERROR;
                 }
             }
+#ifdef FAULT_INJECTOR
+			FaultInjector_InjectFaultIfSet(
+										   Postmaster,
+										   DDLNotSpecified,
+										   "",	//databaseName
+										   ""); // tableName
+#endif											
         }
         else
         {
