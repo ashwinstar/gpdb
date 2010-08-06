@@ -279,7 +279,7 @@ static void send_machine_metrics(SOCKET sock)
 #endif /* sun */
 	int cpu_total_diff;
 
-	float cpu_norm = 0.0f;
+	//float cpu_norm = 0.0f;
 
 	/* NIC metrics */
 	apr_int64_t rx_packets = 0;
@@ -307,8 +307,8 @@ static void send_machine_metrics(SOCKET sock)
 
 	memset(&cpu, 0, sizeof(cpu));
 	sigar_cpu_get(gx.sigar, &cpu);
-	TR2(("cpu user: %" FMT64 " sys: %" FMT64 " idle: %" FMT64 " wait: %" FMT64
-		 " total: %" FMT64 "\n", cpu.user, cpu.sys, cpu.idle, cpu.wait, cpu.total));
+	TR2(("cpu user: %" FMT64 " sys: %" FMT64 " idle: %" FMT64 " wait: %" FMT64 " nice: %" FMT64 " total: %" FMT64 "\n", 
+        cpu.user, cpu.sys, cpu.idle, cpu.wait, cpu.nice, cpu.total));
 
 	memset(&loadavg, 0, sizeof(loadavg));
 	sigar_loadavg_get(gx.sigar, &loadavg);
@@ -682,17 +682,24 @@ static void send_machine_metrics(SOCKET sock)
 	cpu_total_diff = cpu.total - pcpu.total;
 	if (cpu_total_diff)
 	{
-		cpu_norm = round((((float) (cpu.user - pcpu.user) * 100
-				/ cpu_total_diff) + ((float) (cpu.sys - pcpu.sys) * 100
-				/ cpu_total_diff) + ((float) (cpu.idle - pcpu.idle) * 100
-				/ cpu_total_diff)) / 100.0f);
+        float cpu_user = ((float) (cpu.user - pcpu.user) * 100 / cpu_total_diff) + ((float)((cpu.nice - pcpu.nice) * 100 / cpu_total_diff));
+        float cpu_sys = ((float) (cpu.sys - pcpu.sys) * 100 / cpu_total_diff) + ((float)((cpu.wait - pcpu.wait) * 100 / cpu_total_diff));
+        float cpu_idle = ((float) (cpu.idle - pcpu.idle) * 100 / cpu_total_diff);
 
-		pkt.u.metrics.cpu.user_pct = ((float) (cpu.user - pcpu.user) * 100
-				/ cpu_total_diff) / cpu_norm;
-		pkt.u.metrics.cpu.sys_pct = ((float) (cpu.sys - pcpu.sys) * 100
-				/ cpu_total_diff) / cpu_norm;
-		pkt.u.metrics.cpu.idle_pct = ((float) (cpu.idle - pcpu.idle) * 100
-				/ cpu_total_diff) / cpu_norm;
+		//cpu_norm = round(  (cpu_user + cpu_sys + cpu_idle) / 100.0f  );
+        //  catch the cpu_norm == 0 case
+        //if (cpu_norm < .9)
+        //{
+        //    cpu_norm = 1.0f;
+        //}
+        //TR2(("cpu_norm = %f", cpu_norm));
+        //cpu_user /= cpu_norm;
+        //cpu_sys /= cpu_norm;
+        //cpu_idle /= cpu_norm;
+
+		pkt.u.metrics.cpu.user_pct = cpu_user;
+		pkt.u.metrics.cpu.sys_pct = cpu_sys;
+		pkt.u.metrics.cpu.idle_pct = cpu_idle;
 	}
 	else
 	{
