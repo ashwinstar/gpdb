@@ -124,13 +124,15 @@ largestGangsize(void)
 static bool
 segment_failure_due_to_recovery(SegmentDatabaseDescriptor *segdbDesc)
 {
-	char *fatal=NULL, *message, *ptr;
+	char *fatal=NULL, *message=NULL, *ptr=NULL;
 	int fatal_len=0;
 
 	if (segdbDesc == NULL)
 		return false;
 
-	if (segdbDesc->error_message.data == NULL)
+	message = segdbDesc->error_message.data;
+
+	if (message == NULL)
 		return false;
 
 	fatal = _("FATAL");
@@ -138,8 +140,6 @@ segment_failure_due_to_recovery(SegmentDatabaseDescriptor *segdbDesc)
 		return false;
 
 	fatal_len = strlen(fatal);
-
-	message = segdbDesc->error_message.data;
 
 	/*
 	 * it would be nice if we could check errcode for ERRCODE_CANNOT_CONNECT_NOW, instead
@@ -162,6 +162,13 @@ segment_failure_due_to_recovery(SegmentDatabaseDescriptor *segdbDesc)
 		}
 		/* We could do retries for "sorry, too many clients already" here too */
 	}
+
+#if 0
+	if (ptr != NULL)
+		elog(LOG, "segment failure *not* in startup or recovery '%s' %d ptr '%c'", message, fatal_len, *ptr);
+	else
+		elog(LOG, "segment failure *not* in startup or recovery '%s' %d", message, fatal_len);
+#endif
 
 	return false;
 }
@@ -202,6 +209,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	bool		connectAsSuperUser;
 
 	int			create_gang_retry_counter = 0;
+	int			in_recovery_mode_count;
 
 	/* If we're in a retry, we may need to reset our initial state, a bit */
 create_gang_retry:
@@ -211,6 +219,7 @@ create_gang_retry:
 	successful_connections = 0;
 	threadCount = 0;
 	connectAsSuperUser = false;
+	in_recovery_mode_count = 0;
 
 	Assert(size == 1 || size == getgpsegmentCount());
 
@@ -439,6 +448,12 @@ create_gang_retry:
 			Assert(segdbDesc->errcode != 0);
 			Assert(segdbDesc->error_message.len > 0);
 
+			/* this connect failed -- but why ? */
+			if (segment_failure_due_to_recovery(segdbDesc))
+			{
+				in_recovery_mode_count++;
+			}
+
 			segdbDesc->errcode = 0;
 			resetPQExpBuffer(&segdbDesc->error_message);
 
@@ -471,8 +486,6 @@ create_gang_retry:
 
 	if (size != successful_connections || size != newGangDefinition->size)
 	{
-		int in_recovery_mode_count=0;
-
 		/*
 		 * Before we do anything rash, let's take a closer look at the
 		 * connection which failed.
@@ -480,20 +493,6 @@ create_gang_retry:
 		 * We're going to see if *all* of the connect-failures we've got look
 		 * like a simple-retry will help.
 		 */
-		for (i = 0; i < segdb_count; i++)
-		{
-			segdbDesc = &newGangDefinition->db_descriptors[i];
-
-			if (segdbDesc->conn != NULL)
-				continue;
-
-			/* this connect failed -- but why ? */
-			if (segment_failure_due_to_recovery(segdbDesc))
-			{
-				in_recovery_mode_count++;
-			}
-		}
-
 		elog(LOG, "createGang: %d processes requested; %d segments online; %d successful connections %d in recovery",
 			 size, newGangDefinition->size, successful_connections, in_recovery_mode_count);
 
