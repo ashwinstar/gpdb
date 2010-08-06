@@ -442,6 +442,9 @@ update_databases(int16 pridbid, seginfo *i, bool add)
 		return;
 	}
 
+	if (pridbid == MASTER_DBID || pridbid != GpIdentity.dbid)
+		return;
+
 	/*
 	 * Teach the persistent database table about us.
 	 */
@@ -462,9 +465,6 @@ update_relations(int16 pridbid, seginfo *i, bool add)
 		Insist(i->db.role == SEGMENT_ROLE_PRIMARY);
 		return;
 	}
-
-	if (pridbid == MASTER_DBID || pridbid != GpIdentity.dbid)
-		return;
 
 	/*
 	 * Teach the persistent relation table about us.
