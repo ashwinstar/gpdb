@@ -2227,12 +2227,19 @@ FileRepMirror_DropFilesFromDir(FileName fileName)
 			
 			sprintf(path, "%s/%s", fileName, de->d_name);
 			
+			errno = 0;
 			if (unlink(path))
 			{
+				if (errno == EPERM)
+				{
+					stat(path, &st);
+					if (S_ISDIR(st.st_mode))
+						continue;
+				}	
+					
 				ereport(LOG,
 						(errcode_for_file_access(),
-						 errmsg("LOG(filerep): %s : Unlink failed : %m", path)));
-				goto exit;
+						 errmsg("LOG(filerep): %s : unlink failed : %m", path)));
 			}
 		}
 	}
