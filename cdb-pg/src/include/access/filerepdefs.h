@@ -21,4 +21,22 @@ typedef enum MirrorDataLossTrackingState {
 	
 } MirrorDataLossTrackingState;
 
+
+typedef struct MirroredBufferPoolBulkLoadInfo
+{
+	MirrorDataLossTrackingState	mirrorDataLossTrackingState;
+	
+	int64 						mirrorDataLossTrackingSessionNum;
+	
+	RelFileNode 				relFileNode;
+
+	ItemPointerData				persistentTid;
+
+	int64						persistentSerialNum;
+
+} MirroredBufferPoolBulkLoadInfo;
+
+extern char * 
+MirrorDataLossTrackingState_Name(MirrorDataLossTrackingState state);
+
 #endif   /* FILEREPDEFS_H */

@@ -204,6 +204,8 @@ extern void smgrcreatepending(
 
 	bool							isLocalBuf,
 
+	bool							bufferPoolBulkLoad,
+
 	bool							flushToXLog);
 extern void smgrcreate(
 	SMgrRelation 				reln,

@@ -242,7 +242,8 @@ heap_create(const char *relname,
 			char relkind,
 			char relstorage,
 			bool shared_relation,
-			bool allow_system_table_mods)
+			bool allow_system_table_mods,
+			bool bufferPoolBulkLoad)
 {
 	bool		create_storage;
 	Relation	rel;
@@ -344,6 +345,7 @@ heap_create(const char *relname,
 												rel->rd_isLocalBuf,
 												rel->rd_rel->relname.data,
 												/* doJustInTimeDirCreate */ true,
+												bufferPoolBulkLoad,
 												&rel->rd_segfile0_relationnodeinfo.persistentTid,
 												&rel->rd_segfile0_relationnodeinfo.persistentSerialNum);
 		}
@@ -1230,12 +1232,15 @@ heap_create_with_catalog(const char *relname,
 						 char relstorage,
 						 bool shared_relation,
 						 bool oidislocal,
+						 bool bufferPoolBulkLoad,
 						 int oidinhcount,
 						 OnCommitAction oncommit,
                          const struct GpPolicy *policy,
                          Datum reloptions,
 						 bool allow_system_table_mods,
-						 Oid *comptypeOid)
+						 Oid *comptypeOid,
+						 ItemPointer persistentTid,
+						 int64 *persistentSerialNum)
 {
 	Relation	pg_class_desc;
 	Relation	gp_relation_node_desc;
@@ -1339,9 +1344,16 @@ heap_create_with_catalog(const char *relname,
 							   relkind,
 							   relstorage,
 							   shared_relation,
-							   allow_system_table_mods);
+							   allow_system_table_mods,
+							   bufferPoolBulkLoad);
 
 	Assert(relid == RelationGetRelid(new_rel_desc));
+
+	if (persistentTid != NULL)
+	{
+		*persistentTid = new_rel_desc->rd_segfile0_relationnodeinfo.persistentTid;
+		*persistentSerialNum = new_rel_desc->rd_segfile0_relationnodeinfo.persistentSerialNum;
+	}
 
 	/*
 	 * since defining a relation also defines a complex type, we add a new
@@ -3289,6 +3301,7 @@ setNewRelfilenodeCommon(Relation relation, Oid newrelfilenode)
 											relation->rd_isLocalBuf,
 											relation->rd_rel->relname.data,
 											/* doJustInTimeDirCreate */ true,
+											/* bufferPoolBulkLoad */ false,
 											&relation->rd_segfile0_relationnodeinfo.persistentTid,
 											&relation->rd_segfile0_relationnodeinfo.persistentSerialNum);
 		smgrclose(srel);

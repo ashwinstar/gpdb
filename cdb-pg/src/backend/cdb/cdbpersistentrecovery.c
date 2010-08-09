@@ -1377,7 +1377,8 @@ PersistentRecovery_CrashAbort(void)
 		createPendingCount = 0;
 		while (fsObjEntry != NULL)
 		{
-			if (fsObjEntry->state == PersistentFileSysState_CreatePending)
+			if (fsObjEntry->state == PersistentFileSysState_BulkLoadCreatePending ||
+				fsObjEntry->state == PersistentFileSysState_CreatePending)
 			{
 				needsAbort = true;
 				
@@ -1431,7 +1432,8 @@ PersistentRecovery_CrashAbort(void)
 		e = 0;
 		while (fsObjEntry != NULL)
 		{
-			if (fsObjEntry->state == PersistentFileSysState_CreatePending)
+			if (fsObjEntry->state == PersistentFileSysState_BulkLoadCreatePending ||
+				fsObjEntry->state == PersistentFileSysState_CreatePending)
 			{
 				Assert(e < createPendingCount);
 
@@ -1484,7 +1486,8 @@ PersistentRecovery_CrashAbort(void)
 
 		while (fsObjEntry != NULL)
 		{
-			if (fsObjEntry->state == PersistentFileSysState_CreatePending)
+			if (fsObjEntry->state == PersistentFileSysState_BulkLoadCreatePending ||
+				fsObjEntry->state == PersistentFileSysState_CreatePending)
 			{
 				if (Debug_persistent_recovery_print)
 					elog(PersistentRecovery_DebugPrintLevel(), 
@@ -1840,7 +1843,8 @@ PersistentRecovery_SerializeRedoRelationFile(
 			fsObjEntry->state == PersistentFileSysState_DropPending)
 			continue;
 
-		Assert(fsObjEntry->state == PersistentFileSysState_CreatePending ||
+		Assert(fsObjEntry->state == PersistentFileSysState_BulkLoadCreatePending ||
+			   fsObjEntry->state == PersistentFileSysState_CreatePending ||
 			   fsObjEntry->state == PersistentFileSysState_Created);
 
 		MemSet(&redoRelationEntryData.key, 0, sizeof(RedoRelationEntryDataKey));	// Zero out any padding.

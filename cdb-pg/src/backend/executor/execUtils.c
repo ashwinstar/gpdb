@@ -238,7 +238,10 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 	estate->es_trig_tuple_slot = NULL;
 
 	estate->es_into_relation_descriptor = NULL;
-	estate->es_into_relation_use_wal = false;
+	estate->es_into_relation_is_bulkload = false;
+
+	MemSet(&estate->es_into_relation_last_heap_tid, 0, sizeof(ItemPointerData));
+	MemSet(&estate->es_into_relation_bulkloadinfo, 0, sizeof (MirroredBufferPoolBulkLoadInfo));
 
 	estate->es_param_list_info = NULL;
 	estate->es_param_exec_vals = NULL;

@@ -168,12 +168,18 @@ extern const char XLOG_sync_method_default[];
 #define XLogArchivingActive()	(XLogArchiveCommand[0] != '\0')
 
 /* 
- * Whether we need always log or if there might be an opportunity for a short
- * cut.
+ * Whether we need to always generate transaction log (XLOG), or if we can
+ * bypass it and get better performance.
+ *
+ * For GPDB, we do not support XLogArchivingActive(), so we don't use it as a condition.
  */
-#define MustXLog() (!InRecovery && \
-					(XLogArchivingActive() || \
-					 MyDbid() == MASTER_DBID))
+extern bool XLog_CanBypassWal(void);
+
+/*
+ * For FileRep code that doesn't have the Bypass WAL logic yet.
+ */
+extern bool XLog_UnconvertedCanBypassWal(void);
+
 
 #ifdef WAL_DEBUG
 extern bool XLOG_DEBUG;

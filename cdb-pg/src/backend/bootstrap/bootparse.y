@@ -222,7 +222,8 @@ Boot_CreateStmt:
 												   RELKIND_RELATION,
 												   RELSTORAGE_HEAP,
 												   $3,
-												   true);
+												   true,
+												   /* bufferPoolBulkLoad */ false);
 						elog(DEBUG4, "bootstrap relation created");
 					}
 					else
@@ -346,12 +347,15 @@ Boot_CreateStmt:
 													  RELSTORAGE_HEAP,
 													  $3,
 													  true,
+													  /* bufferPoolBulkLoad */ false,
 													  0,
 													  ONCOMMIT_NOOP,
 													  NULL,			/*CDB*/
 													  (Datum) 0,
 													  true,
-													  &typid);
+													  &typid,
+						 					  		  /* persistentTid */ NULL,
+						 					  		  /* persistentSerialNum */ NULL);
 						elog(DEBUG4, "relation created with oid %u", id);
 					}
 					do_end();

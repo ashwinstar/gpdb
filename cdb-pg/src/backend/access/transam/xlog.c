@@ -639,6 +639,36 @@ static int XLogReconcileEofInternal(
 							 XLogRecPtr	startLocation,
 							 XLogRecPtr	endLocation);
 
+/* 
+ * Whether we need to always generate transaction log (XLOG), or if we can
+ * bypass it and get better performance.
+ *
+ * For GPDB, we do not support XLogArchivingActive(), so we don't use it as a condition.
+ */
+bool XLog_CanBypassWal(void) 
+{
+	if (Debug_bulk_load_bypass_wal)
+	{
+		/*
+		 * We need the XLOG to be transmitted to the standby master since it is not using
+		 * FileRep technology yet.
+		 */
+		return (MyDbid() != MASTER_DBID);
+	}
+	else
+	{
+		return false;
+	}
+}
+
+/*
+ * For FileRep code that doesn't have the Bypass WAL logic yet.
+ */
+bool XLog_UnconvertedCanBypassWal(void) 
+{
+	return false;
+}
+
 static char *XLogContiguousCopy(
 	XLogRecord 		*record,
 	

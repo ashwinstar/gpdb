@@ -108,6 +108,7 @@
 #include "cdb/cdbsreh.h"
 
 #include "cdb/cdbmirroredfilesysobj.h"
+#include "cdb/cdbmirroredbufferpool.h"
 #include "cdb/cdbmirroredappendonly.h"
 #include "cdb/cdbpersistentfilesysobj.h"
 
@@ -408,7 +409,17 @@ static List *
 atpxTruncateList(Relation rel, PartitionNode *pNode);
 static void ATPExecPartTruncate(Relation rel,
                                 AlterPartitionCmd *pc);		/* Truncate */
-static void copy_buffer_pool_data(Relation rel, SMgrRelation dst, ItemPointer persistentTid, int64 persistentSerialNum);
+static void
+copy_buffer_pool_data(
+	Relation 	rel,
+
+	SMgrRelation dst,
+
+	ItemPointer persistentTid,
+
+	int64 		persistentSerialNum,
+
+	bool		useWal);
 static void update_ri_trigger_args(Oid relid,
 					   const char *oldname,
 					   const char *newname,
@@ -799,12 +810,15 @@ DefineRelation_int(CreateStmt *stmt,
 										  relstorage,
 										  shared_relation,
 										  localHasOids,
+										  /* bufferPoolBulkLoad */ false,
 										  parentOidCount,
 										  stmt->oncommit,
                                           stmt->policy,  /*CDB*/
                                           reloptions,
 										  allowSystemTableMods,
-										  &stmt->oidInfo.comptypeOid);
+										  &stmt->oidInfo.comptypeOid,
+										  /* persistentTid */ NULL,
+										  /* persistentSerialNum */ NULL);
 
 	StoreCatalogInheritance(relationId, inheritOids);
 
@@ -10339,21 +10353,30 @@ ATExecSetTableSpace_BufferPool(
 	ItemPointerData newPersistentTid;
 	int64 newPersistentSerialNum;
 	SMgrRelation dstrel;
+	bool useWal;
 
 	oldTablespace = rel->rd_rel->reltablespace ? rel->rd_rel->reltablespace : MyDatabaseTableSpace;
+
+	/*
+	 * We need to log the copied data in WAL enabled AND
+	 * it's not a temp rel.
+	 */
+	useWal = !XLog_CanBypassWal() && !rel->rd_istemp;
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
 			 "ALTER TABLE SET TABLESPACE: Buffer Pool managed "
 			 "relation id %u, old path '%s', old relfilenode %u, old reltablespace %u, "
-			 "new path '%s', new relfilenode %u, new reltablespace %u",
+			 "new path '%s', new relfilenode %u, new reltablespace %u, "
+			 "bulk load %s",
 			 rel->rd_id,
 			 relpath(rel->rd_node),
 			 rel->rd_rel->relfilenode,
 			 oldTablespace,
 			 relpath(*newRelFileNode),
 			 newRelFileNode->relNode,
-			 newRelFileNode->spcNode);
+			 newRelFileNode->spcNode,
+			 (!useWal ? "true" : "false"));
 	
 	/* Fetch relation's gp_relation_node row */
 	nodeTuple = ScanGpRelationNodeTuple(
@@ -10372,6 +10395,7 @@ ATExecSetTableSpace_BufferPool(
 											rel->rd_isLocalBuf,
 											rel->rd_rel->relname.data,
 											/* doJustInTimeDirCreate */ true,
+											/* bufferPoolBulkLoad */ !useWal,
 											&newPersistentTid,
 											&newPersistentSerialNum);
 
@@ -10388,7 +10412,8 @@ ATExecSetTableSpace_BufferPool(
 					rel, 
 					dstrel,
 					&newPersistentTid,
-					newPersistentSerialNum);
+					newPersistentSerialNum,
+					useWal);
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
@@ -10652,14 +10677,24 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, TableOidInfo *oidInfo)
  * Copy data, block by block
  */
 static void
-copy_buffer_pool_data(Relation rel, SMgrRelation dst, ItemPointer persistentTid, int64 persistentSerialNum)
+copy_buffer_pool_data(
+	Relation 	rel,
+
+	SMgrRelation dst,
+
+	ItemPointer persistentTid,
+
+	int64 		persistentSerialNum,
+
+	bool		useWal)
 {
 	SMgrRelation src;
-	bool		use_wal;
 	BlockNumber nblocks;
 	BlockNumber blkno;
 	char		buf[BLCKSZ];
 	Page		page = (Page) buf;
+
+	MirroredBufferPoolBulkLoadInfo bulkLoadInfo;
 
 	/*
 	 * Since we copy the file directly without looking at the shared buffers,
@@ -10669,22 +10704,30 @@ copy_buffer_pool_data(Relation rel, SMgrRelation dst, ItemPointer persistentTid,
 	 */
 	FlushRelationBuffers(rel);
 
-	/*
-	 * We need to log the copied data in WAL iff WAL archiving is enabled AND
-	 * it's not a temp rel.
-	 */
-	use_wal = MustXLog() && !rel->rd_istemp;
-
 	nblocks = RelationGetNumberOfBlocks(rel);
+
 	/* RelationGetNumberOfBlocks will certainly have opened rd_smgr */
 	src = rel->rd_smgr;
 
+	if (!useWal)
+	{
+		MirroredBufferPool_BeginBulkLoad(
+								&rel->rd_node,
+								persistentTid,
+								persistentSerialNum,
+								&bulkLoadInfo);
+	}
+	else
+	{
+		MemSet(&bulkLoadInfo, 0, sizeof(MirroredBufferPoolBulkLoadInfo));
+	}
+	
 	for (blkno = 0; blkno < nblocks; blkno++)
 	{
 		smgrread(src, blkno, buf);
 
 		/* XLOG stuff */
-		if (use_wal)
+		if (useWal)
 		{
 			xl_heap_newpage xlrec;
 			XLogRecPtr	recptr;
@@ -10754,6 +10797,49 @@ copy_buffer_pool_data(Relation rel, SMgrRelation dst, ItemPointer persistentTid,
 	
 	LWLockRelease(MirroredLock);
 	// -------- MirroredLock ----------
+
+	if (!useWal)
+	{
+		bool mirrorDataLossOccurred;
+	
+		/*
+		 * We may have to catch-up the mirror since bulk loading of data is
+		 * ignored by resynchronize.
+		 */
+		while (true)
+		{
+			bool bulkLoadFinished;
+	
+			bulkLoadFinished = 
+				MirroredBufferPool_EvaluateBulkLoadFinish(
+												&bulkLoadInfo);
+	
+			if (bulkLoadFinished)
+			{
+				/*
+				 * The flush was successful to the mirror (or the mirror is
+				 * not configured).
+				 *
+				 * We have done a state-change from 'Bulk Load Create Pending'
+				 * to 'Create Pending'.
+				 */
+				break;
+			}
+	
+			/*
+			 * Copy primary data to mirror and flush.
+			 */
+			MirroredBufferPool_CopyToMirror(
+									&rel->rd_node,
+									rel->rd_rel->relname.data,
+									persistentTid,
+									persistentSerialNum,
+									bulkLoadInfo.mirrorDataLossTrackingState,
+									bulkLoadInfo.mirrorDataLossTrackingSessionNum,
+									nblocks,
+									&mirrorDataLossOccurred);
+		}
+	}
 }
 
 /*

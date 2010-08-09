@@ -56,15 +56,27 @@ typedef struct MirroredBufferPoolOpen
 	bool						mirrorDataLossOccurred;
 } MirroredBufferPoolOpen;
 
-
 // -----------------------------------------------------------------------------
 // Open, Flush, Close 
 // -----------------------------------------------------------------------------
 
+extern void MirroredBufferPool_BeginBulkLoad(
+	RelFileNode 					*relFileNode,
+				/* The tablespace, database, and relation OIDs for the relation. */
+
+	ItemPointer						persistentTid,
+
+	int64							persistentSerialNum,
+
+	MirroredBufferPoolBulkLoadInfo *bulkLoadInfo);
+
+extern bool MirroredBufferPool_EvaluateBulkLoadFinish(
+	MirroredBufferPoolBulkLoadInfo *bulkLoadInfo);
+
 /*
  * Open a relation for mirrored write.
  */
-void MirroredBufferPool_Open(
+extern void MirroredBufferPool_Open(
 	MirroredBufferPoolOpen *open,
 				/* The resulting open struct. */
 
@@ -81,7 +93,7 @@ void MirroredBufferPool_Open(
 	
 	bool			*mirrorDataLossOccurred);
 
-void MirroredBufferPool_Create(
+extern void MirroredBufferPool_Create(
 	MirroredBufferPoolOpen		*open,
 				/* The resulting open struct. */
 
@@ -102,7 +114,7 @@ void MirroredBufferPool_Create(
 
 	bool						*mirrorDataLossOccurred);
 
-void MirroredBufferPool_MirrorReCreate(
+extern void MirroredBufferPool_MirrorReCreate(
 	RelFileNode 				*relFileNode,
 				/* The tablespace, database, and relation OIDs for the open. */
 
@@ -199,5 +211,22 @@ extern bool MirroredBufferPool_Truncate(
 				/* The open struct. */
 
 	int64		position);
+
+extern void MirroredBufferPool_CopyToMirror(
+		RelFileNode 					*relFileNode,
+	
+		char							*relationName,
+	
+		ItemPointer 					persistentTid,
+	
+		int64							persistentSerialNum,
+	
+		MirrorDataLossTrackingState 	mirrorDataLossTrackingState,
+	
+		int64							mirrorDataLossTrackingSessionNum,
+	
+		int32							numOfBlocks,
+		
+		bool							*mirrorDataLossOccurred);
 
 #endif   /* CDBMIRROREDBUFFERPOOL_H */

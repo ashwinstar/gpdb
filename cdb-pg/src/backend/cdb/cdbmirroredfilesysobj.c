@@ -907,6 +907,8 @@ void MirroredFileSysObj_TransactionCreateBufferPoolFile(
 
 	bool					doJustInTimeDirCreate,
 
+	bool					bufferPoolBulkLoad,
+
 	ItemPointer 			persistentTid,
 
 	int64					*persistentSerialNum)
@@ -970,7 +972,8 @@ void MirroredFileSysObj_TransactionCreateBufferPoolFile(
 				relationName,
 				persistentTid, 
 				persistentSerialNum, 
-				isLocalBuf, 
+				isLocalBuf,
+				bufferPoolBulkLoad,
 				/* flushToXLog */ true);
 
 	/*
@@ -1012,12 +1015,13 @@ void MirroredFileSysObj_TransactionCreateBufferPoolFile(
 		SUPPRESS_ERRCONTEXT_PUSH();
 
 		elog(Persistent_DebugPrintLevel(), 
-			 "MirroredFileSysObj_TransactionCreateBufferPoolFile: %u/%u/%u, relation name '%s', mirror existence state '%s', mirror data loss occurred %s"
+			 "MirroredFileSysObj_TransactionCreateBufferPoolFile: %u/%u/%u, relation name '%s', bulk load %s, mirror existence state '%s', mirror data loss occurred %s"
 		     ", persistent serial number " INT64_FORMAT " at TID %s",
 			 smgrOpen->smgr_rnode.spcNode,
 			 smgrOpen->smgr_rnode.dbNode,
 			 smgrOpen->smgr_rnode.relNode,
 			 (relationName == NULL ? "<null>" : relationName),
+			 (bufferPoolBulkLoad ? "true" : "false"),
 			 MirroredObjectExistenceState_Name(mirrorExistenceState),
 			 (mirrorDataLossOccurred ? "true" : "false"),
 			 *persistentSerialNum,
@@ -1101,7 +1105,8 @@ void MirroredFileSysObj_TransactionCreateAppendOnlyFile(
 				relationName,
 				persistentTid, 
 				persistentSerialNum, 
-				/* isLocalBuf */ false, 
+				/* isLocalBuf */ false,
+				/* bufferPoolBulkLoad */ false,
 				/* flushToXLog */ true);
 
 	/*

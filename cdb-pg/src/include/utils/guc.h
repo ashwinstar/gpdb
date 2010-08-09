@@ -154,6 +154,7 @@ extern bool	Debug_persistent_recovery_print;
 extern int	Debug_persistent_recovery_print_level;
 extern bool	Debug_persistent_store_print;
 extern bool Debug_persistent_bootstrap_print;
+extern bool Debug_bulk_load_bypass_wal;
 extern int	Debug_persistent_store_print_level;
 extern bool	Debug_database_command_print;
 extern int	Debug_database_command_print_level;

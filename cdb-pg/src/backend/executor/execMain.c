@@ -88,6 +88,8 @@
 #include "cdb/cdbtm.h"
 #include "cdb/cdbgang.h"
 #include "cdb/cdboidsync.h"
+#include "cdb/cdbmirroredbufferpool.h"
+#include "cdb/cdbpersistentstore.h"
 
 extern bool cdbpathlocus_querysegmentcatalogs;
 
@@ -3709,7 +3711,9 @@ EvalPlanQualStart(evalPlanQual *epq, EState *estate, evalPlanQual *priorepq)
 	epqstate->es_result_relation_info = estate->es_result_relation_info;
 	epqstate->es_junkFilter = estate->es_junkFilter;
 	epqstate->es_into_relation_descriptor = estate->es_into_relation_descriptor;
-	epqstate->es_into_relation_use_wal = estate->es_into_relation_use_wal;
+	epqstate->es_into_relation_is_bulkload = estate->es_into_relation_is_bulkload;
+	epqstate->es_into_relation_last_heap_tid = estate->es_into_relation_last_heap_tid;
+	epqstate->es_into_relation_bulkloadinfo = estate->es_into_relation_bulkloadinfo;
 	epqstate->es_param_list_info = estate->es_param_list_info;
 	if (estate->es_plannedstmt->planTree->nParamExec > 0)
 		epqstate->es_param_exec_vals = (ParamExecData *)
@@ -3972,6 +3976,10 @@ OpenIntoRel(QueryDesc *queryDesc)
     Oid         intoComptypeOid;
     GpPolicy   *targetPolicy;
 	int			safefswritesize = gp_safefswritesize;
+	bool		bufferPoolBulkLoad;
+
+	ItemPointerData persistentTid;
+	int64			persistentSerialNum;
 	
 	targetPolicy = queryDesc->plannedstmt->intoPolicy;
 	intoClause = queryDesc->plannedstmt->intoClause;
@@ -4052,6 +4060,22 @@ OpenIntoRel(QueryDesc *queryDesc)
 	
 	/* have to copy the actual tupdesc to get rid of any constraints */
 	tupdesc = CreateTupleDescCopy(queryDesc->tupDesc);
+
+	/*
+	 * We can skip WAL-logging the insertions for FileRep on segments, but not on
+	 * master since we are using the old WAL based physical replication.
+	 *
+	 * GPDP does not support PITR.
+	 *
+	 * Note that for a non-temp INTO table, this is safe only because we know
+	 * that the catalog changes above will have been WAL-logged, and so
+	 * RecordTransactionCommit will think it needs to WAL-log the eventual
+	 * transaction commit.	Else the commit might be lost, even though all the
+	 * data is safely fsync'd ...
+	 */
+	bufferPoolBulkLoad = 
+		(relstorage_is_buffer_pool(relstorage) ?
+									XLog_CanBypassWal() : false);
 	
 	/* Now we can actually create the new relation */
 	intoRelationId = heap_create_with_catalog(intoName,
@@ -4064,12 +4088,15 @@ OpenIntoRel(QueryDesc *queryDesc)
 											  relstorage,
 											  false,
 											  true,
+											  bufferPoolBulkLoad,
 											  0,
 											  intoClause->onCommit,
 											  targetPolicy,  	/* MPP */
 											  reloptions,
 											  allowSystemTableMods,
-											  &intoComptypeOid 	/* MPP */);
+											  &intoComptypeOid, 	/* MPP */
+						 					  &persistentTid,
+						 					  &persistentSerialNum);
 	
 	FreeTupleDesc(tupdesc);
 	
@@ -4104,18 +4131,24 @@ OpenIntoRel(QueryDesc *queryDesc)
 	/* use_wal off requires rd_targblock be initially invalid */
 	Assert(intoRelationDesc->rd_targblock == InvalidBlockNumber);
 	
-	/*
-	 * We can skip WAL-logging the insertions, unless PITR is in use.
-	 *
-	 * Note that for a non-temp INTO table, this is safe only because we know
-	 * that the catalog changes above will have been WAL-logged, and so
-	 * RecordTransactionCommit will think it needs to WAL-log the eventual
-	 * transaction commit.	Else the commit might be lost, even though all the
-	 * data is safely fsync'd ...
-	 */
-	estate->es_into_relation_use_wal =
-		(relstorage_is_ao(relstorage) ? false : MustXLog());
+	estate->es_into_relation_is_bulkload = bufferPoolBulkLoad;
+				
 	estate->es_into_relation_descriptor = intoRelationDesc;
+
+	if (estate->es_into_relation_is_bulkload)
+	{
+		RelFileNode relFileNode;
+
+		relFileNode.spcNode = tablespaceId;
+		relFileNode.dbNode = MyDatabaseId;
+		relFileNode.relNode = intoRelationId;
+
+		MirroredBufferPool_BeginBulkLoad(
+								&relFileNode,
+								&persistentTid,
+								persistentSerialNum,
+								&estate->es_into_relation_bulkloadinfo);
+	}
 	
 	/*
 	 * Now replace the query's DestReceiver with one for SELECT INTO
@@ -4144,18 +4177,68 @@ CloseIntoRel(QueryDesc *queryDesc)
 		/* APPEND_ONLY is closed in the intorel_shutdown */
 		if (!(RelationIsAoRows(rel) || RelationIsAoCols(rel)))
 		{
+			int32 numOfBlocks;
+
 			/*
 			 * If we skipped using WAL, and it's not a temp relation, we must
 			 * force the relation down to disk before it's safe to commit the
 			 * transaction.  This requires forcing out any dirty buffers and
 			 * then doing a forced fsync.
 			 */
-			if (!estate->es_into_relation_use_wal &&
+			if (estate->es_into_relation_is_bulkload &&
 				!rel->rd_istemp)
 			{
 				FlushRelationBuffers(rel);
 				/* FlushRelationBuffers will have opened rd_smgr */
 				smgrimmedsync(rel->rd_smgr);
+			}
+
+			if (PersistentStore_IsZeroTid(&estate->es_into_relation_last_heap_tid))
+				numOfBlocks = 0;
+			else
+				numOfBlocks = ItemPointerGetBlockNumber(&estate->es_into_relation_last_heap_tid) + 1;
+
+			if (estate->es_into_relation_is_bulkload)
+			{
+				bool mirrorDataLossOccurred;
+
+				/*
+				 * We may have to catch-up the mirror since bulk loading of data is
+				 * ignored by resynchronize.
+				 */
+				while (true)
+				{
+					bool bulkLoadFinished;
+
+					bulkLoadFinished = 
+						MirroredBufferPool_EvaluateBulkLoadFinish(
+									&estate->es_into_relation_bulkloadinfo);
+
+					if (bulkLoadFinished)
+					{
+						/*
+						 * The flush was successful to the mirror (or the mirror is
+						 * not configured).
+						 *
+						 * We have done a state-change from 'Bulk Load Create Pending'
+						 * to 'Create Pending'.
+						 */
+						break;
+					}
+
+					/*
+					 * Copy primary data to mirror and flush.
+					 */
+					MirroredBufferPool_CopyToMirror(
+							&estate->es_into_relation_bulkloadinfo.relFileNode,
+							estate->es_into_relation_descriptor->rd_rel->relname.data,
+							&estate->es_into_relation_bulkloadinfo.persistentTid,
+							estate->es_into_relation_bulkloadinfo.persistentSerialNum,
+							estate->es_into_relation_bulkloadinfo.mirrorDataLossTrackingState,
+							estate->es_into_relation_bulkloadinfo.mirrorDataLossTrackingSessionNum,
+							numOfBlocks,
+							&mirrorDataLossOccurred);
+				}
 			}
 		}
 
@@ -4243,9 +4326,11 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 		heap_insert(into_rel,
 					tuple,
 					estate->es_snapshot->curcid,
-					estate->es_into_relation_use_wal,
+					!estate->es_into_relation_is_bulkload,
 					false, /* never any point in using FSM */
 					GetCurrentTransactionId());
+
+		estate->es_into_relation_last_heap_tid = tuple->t_self;
 
 		heap_freetuple(tuple);
 	}

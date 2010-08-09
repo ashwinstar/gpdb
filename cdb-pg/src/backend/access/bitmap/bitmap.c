@@ -64,6 +64,7 @@ bmbuild(PG_FUNCTION_ARGS)
 	Oid heapOid = InvalidOid;
 	Oid indexRelfilenode = InvalidOid;
 	Oid heapRelfilenode = InvalidOid;
+	bool useWal;
 
 	if (indexInfo->ii_Concurrent)
 		elog(ERROR, "CONCURRENTLY is not supported when creating bitmap indexes");
@@ -99,9 +100,11 @@ bmbuild(PG_FUNCTION_ARGS)
 		indexRelfilenode = opaque->indexRelfilenode;
 	}
 
+	useWal = (!XLog_UnconvertedCanBypassWal() && !index->rd_istemp);
+
 	/* initialize the bitmap index. */
 	_bitmap_init(index, comptypeOid, heapOid, indexOid, heapRelfilenode,
-				 indexRelfilenode, MustXLog() && !index->rd_istemp);
+				 indexRelfilenode, useWal);
 
 	/* initialize the build state. */
 	_bitmap_init_buildstate(index, &bmstate);
@@ -116,7 +119,7 @@ bmbuild(PG_FUNCTION_ARGS)
 	 * fsync the relevant files to disk, unless we're building
 	 * a temporary index
 	 */
-    if (!(MustXLog() && !index->rd_istemp))
+    if (!useWal)
     {
 		FlushRelationBuffers(bmstate.bm_lov_heap);
         smgrimmedsync(bmstate.bm_lov_heap->rd_smgr);

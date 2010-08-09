@@ -33,6 +33,7 @@
 #include "utils/hsearch.h"
 #include "utils/rel.h"
 #include "utils/tuplesort.h"
+#include "access/filerepdefs.h"
 
 #include "gpmon/gpmon.h"                /* gpmon_packet_t */
 
@@ -471,8 +472,13 @@ typedef struct EState
         
 	TupleTableSlot *es_trig_tuple_slot; /* for trigger output tuples */
 
-	Relation        es_into_relation_descriptor;        /* for SELECT INTO */
-	bool                es_into_relation_use_wal;
+	/* Stuff used for SELECT INTO: */
+	Relation	es_into_relation_descriptor;
+	bool		es_into_relation_is_bulkload;
+
+	ItemPointerData es_into_relation_last_heap_tid;
+
+	MirroredBufferPoolBulkLoadInfo es_into_relation_bulkloadinfo;
 
 	/* Parameter info: */
 	ParamListInfo es_param_list_info;        /* values of external params */

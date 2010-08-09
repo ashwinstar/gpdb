@@ -842,6 +842,385 @@ int64 MirroredBufferPool_SeekEnd(
 	return FileSeek(open->primaryFile, 0L, SEEK_END);
 }
 
+void MirroredBufferPool_BeginBulkLoad(
+	RelFileNode 					*relFileNode,
+				/* The tablespace, database, and relation OIDs for the relation. */
+
+	ItemPointer						persistentTid,
+
+	int64							persistentSerialNum,
+
+	MirroredBufferPoolBulkLoadInfo *bulkLoadInfo)
+{
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
+	MemSet(bulkLoadInfo, 0, sizeof(MirroredBufferPoolBulkLoadInfo));
+
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+
+	/*
+	 * Make this call while under the MirroredLock (unless we are a resync worker).
+	 */
+	bulkLoadInfo->mirrorDataLossTrackingState = 
+				FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
+												&bulkLoadInfo->mirrorDataLossTrackingSessionNum);
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+
+	bulkLoadInfo->relFileNode = *relFileNode;
+	bulkLoadInfo->persistentTid = *persistentTid;
+	bulkLoadInfo->persistentSerialNum = persistentSerialNum;
+
+	if (Debug_persistent_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+
+		SUPPRESS_ERRCONTEXT_PUSH();
+
+		elog(Persistent_DebugPrintLevel(),
+			 "MirroredBufferPool_BeginBulkLoad %u/%u/%u: mirror data loss tracking (state '%s', session num " INT64_FORMAT "), persistent serial num " INT64_FORMAT ", TID %s",
+			 relFileNode->spcNode,
+			 relFileNode->dbNode,
+			 relFileNode->relNode,
+			 MirrorDataLossTrackingState_Name(bulkLoadInfo->mirrorDataLossTrackingState),
+			 bulkLoadInfo->mirrorDataLossTrackingSessionNum,
+			 persistentSerialNum,
+			 ItemPointerToString(persistentTid));
+
+		SUPPRESS_ERRCONTEXT_POP();
+	}
+}
+
+bool MirroredBufferPool_EvaluateBulkLoadFinish(
+	MirroredBufferPoolBulkLoadInfo *bulkLoadInfo)
+{
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
+	MirrorDataLossTrackingState mirrorDataLossTrackingState;
+	int64 mirrorDataLossTrackingSessionNum;
+
+	bool bulkLoadFinished;
+
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+
+	/*
+	 * Make this call while under the MirroredLock (unless we are a resync worker).
+	 */
+	mirrorDataLossTrackingState = 
+				FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
+												&mirrorDataLossTrackingSessionNum);
+
+	if (mirrorDataLossTrackingSessionNum == bulkLoadInfo->mirrorDataLossTrackingSessionNum)
+	{
+		bulkLoadFinished = true;
+
+		if (Debug_persistent_print)
+		{
+			SUPPRESS_ERRCONTEXT_DECLARE;
+		
+			SUPPRESS_ERRCONTEXT_PUSH();
+		
+			elog(Persistent_DebugPrintLevel(),
+				 "MirroredBufferPool_EvaluateBulkLoadFinish %u/%u/%u: no change.  Mirror data loss tracking (state '%s', session num " INT64_FORMAT "), persistent serial num " INT64_FORMAT ", TID %s",
+				 bulkLoadInfo->relFileNode.spcNode,
+				 bulkLoadInfo->relFileNode.dbNode,
+				 bulkLoadInfo->relFileNode.relNode,
+				 MirrorDataLossTrackingState_Name(bulkLoadInfo->mirrorDataLossTrackingState),
+				 bulkLoadInfo->mirrorDataLossTrackingSessionNum,
+				 bulkLoadInfo->persistentSerialNum,
+				 ItemPointerToString(&bulkLoadInfo->persistentTid));
+		
+			SUPPRESS_ERRCONTEXT_POP();
+		}
+	}
+	else
+	{
+		if (Debug_persistent_print)
+		{
+			SUPPRESS_ERRCONTEXT_DECLARE;
+		
+			SUPPRESS_ERRCONTEXT_PUSH();
+		
+			elog(Persistent_DebugPrintLevel(),
+				 "MirroredBufferPool_EvaluateBulkLoadFinish %u/%u/%u: change.  Original mirror data loss tracking (state '%s', session num " INT64_FORMAT "), new mirror data loss tracking (state %d, session num " INT64_FORMAT "), persistent serial num " INT64_FORMAT ", TID %s",
+				 bulkLoadInfo->relFileNode.spcNode,
+				 bulkLoadInfo->relFileNode.dbNode,
+				 bulkLoadInfo->relFileNode.relNode,
+				 MirrorDataLossTrackingState_Name(bulkLoadInfo->mirrorDataLossTrackingState),
+				 bulkLoadInfo->mirrorDataLossTrackingSessionNum,
+				 mirrorDataLossTrackingState,
+				 mirrorDataLossTrackingSessionNum,
+				 bulkLoadInfo->persistentSerialNum,
+				 ItemPointerToString(&bulkLoadInfo->persistentTid));
+		
+			SUPPRESS_ERRCONTEXT_POP();
+		}
+
+		switch (mirrorDataLossTrackingState)
+		{
+		case MirrorDataLossTrackingState_MirrorNotConfigured:
+			bulkLoadFinished = true;
+			break;
+			
+		case MirrorDataLossTrackingState_MirrorCurrentlyUpInSync:
+		case MirrorDataLossTrackingState_MirrorCurrentlyUpInResync:
+			bulkLoadFinished = false;	// We lost data along the way.
+			break;
+			
+		case MirrorDataLossTrackingState_MirrorDown:
+			bulkLoadFinished = true;	// Give the problem to resync.
+			break;
+			
+		default:
+			elog(ERROR, "Unexpected mirror data loss tracking state: %d",
+				 mirrorDataLossTrackingState);
+			bulkLoadFinished = false; 	// A happy optimizer is the sound of one hand clapping.
+		}
+	}
+
+	if (bulkLoadFinished)
+	{
+		PersistentRelation_FinishBufferPoolBulkLoad(
+											&bulkLoadInfo->relFileNode,
+											&bulkLoadInfo->persistentTid,
+											bulkLoadInfo->persistentSerialNum);
+	}
+	else
+	{
+		/*
+		 * Save new information so caller can copy to mirror and reevaluate again.
+		 */
+		bulkLoadInfo->mirrorDataLossTrackingState = mirrorDataLossTrackingState;
+		bulkLoadInfo->mirrorDataLossTrackingSessionNum = mirrorDataLossTrackingSessionNum;
+	}
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+
+	return bulkLoadFinished;
+}
+
+static void MirroredBufferPool_DoCopyDataToMirror(
+	MirroredBufferPoolOpen 		*mirroredOpen,
+
+	int32						numOfBlocksToCopy,
+	
+	bool						*mirrorDataLossOccurred)
+{
+	char	*buffer;
+	int64	endOffset;
+	int64	readOffset;
+	int32	bufferLen;
+	int 	retval;
+
+	*mirrorDataLossOccurred = false;
+
+	readOffset = 0;
+	endOffset = numOfBlocksToCopy * BLCKSZ;
+
+	bufferLen = (Size) Min(2*BLCKSZ, endOffset - readOffset);
+	buffer = (char*) palloc(bufferLen);
+
+	while (readOffset < endOffset)
+	{
+		retval = MirroredBufferPool_Read(
+									mirroredOpen,
+									readOffset,
+									buffer,
+									bufferLen);
+		
+		if (retval != bufferLen) 
+		{
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not read from position: " INT64_FORMAT " in file %d/%d/%d.%d : %m",
+							readOffset, 
+							mirroredOpen->relFileNode.dbNode,
+							mirroredOpen->relFileNode.spcNode,
+							mirroredOpen->relFileNode.relNode,
+							mirroredOpen->segmentFileNum)));
+			
+		}						
+		
+		if (!MirroredBufferPool_Write(
+							  mirroredOpen,
+							  readOffset,
+							  buffer,
+							  bufferLen))
+		{
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not write mirror position: " INT64_FORMAT " in file %d/%d/%d.%d : %m",
+							readOffset, 
+							mirroredOpen->relFileNode.dbNode,
+							mirroredOpen->relFileNode.spcNode,
+							mirroredOpen->relFileNode.relNode,
+							mirroredOpen->segmentFileNum)));
+			
+		}						
+
+		if (mirroredOpen->mirrorDataLossOccurred)
+		{
+			*mirrorDataLossOccurred = true;
+			break;
+		}
+		
+		readOffset += bufferLen;
+		
+		bufferLen = (Size) Min(2*BLCKSZ, endOffset - readOffset);						
+	}
+
+	pfree(buffer);
+}
+
+void MirroredBufferPool_CopyToMirror(
+	RelFileNode						*relFileNode,
+
+	char							*relationName,
+
+	ItemPointer						persistentTid,
+
+	int64							persistentSerialNum,
+
+	MirrorDataLossTrackingState 	mirrorDataLossTrackingState,
+
+	int64 							mirrorDataLossTrackingSessionNum,
+
+	int32							numOfBlocks,
+	
+	bool							*mirrorDataLossOccurred)
+{
+	MirroredBufferPoolOpen 		mirroredOpen;
+	
+	MirrorDataLossTrackingState 	currentMirrorDataLossTrackingState;
+	int64 							currentMirrorDataLossTrackingSessionNum;
+
+	int32	numOfSegments;
+	int32	numOfRemainingBlocks;
+	int		segmentFileNum;
+	int32	numOfBlocksToCopy;
+
+	int 	primaryError;
+
+	Assert(numOfBlocks > 0);
+
+	numOfSegments = ((numOfBlocks - 1) / RELSEG_SIZE) + 1;
+
+	Assert(numOfSegments > 0);
+
+	numOfRemainingBlocks = numOfBlocks;
+
+	if (Debug_persistent_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+	
+		SUPPRESS_ERRCONTEXT_PUSH();
+	
+		elog(Persistent_DebugPrintLevel(),
+			 "MirroredBufferPool_CopyToMirror %u/%u/%u: copy %d blocks (%d segments).  Mirror data loss tracking (state '%s', session num " INT64_FORMAT "), persistent serial num " INT64_FORMAT ", TID %s",
+			 relFileNode->spcNode,
+			 relFileNode->dbNode,
+			 relFileNode->relNode,
+			 numOfBlocks,
+			 numOfSegments,
+			 MirrorDataLossTrackingState_Name(mirrorDataLossTrackingState),
+			 mirrorDataLossTrackingSessionNum,
+			 persistentSerialNum,
+			 ItemPointerToString(persistentTid));
+	
+		SUPPRESS_ERRCONTEXT_POP();
+	}
+
+	for (segmentFileNum = 0; segmentFileNum < numOfSegments; segmentFileNum++)
+	{
+		Assert(numOfRemainingBlocks > 0);
+
+		LWLockAcquire(MirroredLock, LW_SHARED);
+		
+		currentMirrorDataLossTrackingState = 
+					FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
+													&currentMirrorDataLossTrackingSessionNum);
+		if (currentMirrorDataLossTrackingSessionNum != mirrorDataLossTrackingSessionNum)
+		{
+			*mirrorDataLossOccurred = true;
+			LWLockRelease(MirroredLock);
+
+			return;
+		}
+		Assert(currentMirrorDataLossTrackingState == mirrorDataLossTrackingState);
+		
+		MirroredBufferPool_DoOpen(
+						&mirroredOpen, 
+						relFileNode,
+						segmentFileNum,
+						relationName,
+						mirrorDataLossTrackingState,
+						mirrorDataLossTrackingSessionNum,
+						/* create */ false,
+						/* mirrorOnly */ false,
+						/* copyToMirror */ true,
+						&primaryError,
+						mirrorDataLossOccurred);
+		
+		if (primaryError != 0)
+		{
+			ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not open relation file '%s', relation name '%s': %s",
+						relpath(*relFileNode),
+						relationName,
+						strerror(primaryError))));
+		}
+		
+		LWLockRelease(MirroredLock);
+		
+		if (*mirrorDataLossOccurred)
+		{
+			return;
+		}
+
+		if (numOfRemainingBlocks > RELSEG_SIZE)
+			numOfBlocksToCopy = RELSEG_SIZE;
+		else
+			numOfBlocksToCopy = numOfRemainingBlocks;
+
+		MirroredBufferPool_DoCopyDataToMirror(
+									&mirroredOpen,
+									numOfBlocksToCopy,
+									mirrorDataLossOccurred);
+		
+		if (*mirrorDataLossOccurred)
+		{
+			MirroredBufferPool_Close(&mirroredOpen);
+			return;
+		}
+
+		if (!MirroredBufferPool_Flush(&mirroredOpen))
+		{
+			ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not flush relation file '%s', relation name '%s': %s",
+						relpath(*relFileNode),
+						relationName,
+						strerror(primaryError))));
+		}
+
+		if (mirroredOpen.mirrorDataLossOccurred)
+		{
+			*mirrorDataLossOccurred = true;
+			MirroredBufferPool_Close(&mirroredOpen);
+			return;
+		}
+
+		MirroredBufferPool_Close(&mirroredOpen);
+
+		numOfRemainingBlocks -= numOfBlocksToCopy;
+	}
+}
+
 /*
  * Mirrored drop.
  */

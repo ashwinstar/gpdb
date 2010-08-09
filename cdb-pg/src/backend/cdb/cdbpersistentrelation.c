@@ -233,6 +233,8 @@ void PersistentRelation_AddCreatePending(
 
 	PersistentFileSysRelStorageMgr relStorageMgr,
 
+	bool				bufferPoolBulkLoad,
+
 	MirroredObjectExistenceState mirrorExistenceState,
 
 	MirroredRelDataSynchronizationState relDataSynchronizationState,
@@ -293,7 +295,9 @@ void PersistentRelation_AddCreatePending(
 										relFileNode->relNode,
 										segmentFileNum,
 										relStorageMgr,
-										PersistentFileSysState_CreatePending,
+										(bufferPoolBulkLoad ?
+												PersistentFileSysState_BulkLoadCreatePending :
+												PersistentFileSysState_CreatePending),
 										/* createMirrorDataLossTrackingSessionNum */ 0,
 										mirrorExistenceState,
 										relDataSynchronizationState,
@@ -429,6 +433,74 @@ void PersistentRelation_AddCreated(
 // -----------------------------------------------------------------------------
 // Transaction End  
 // -----------------------------------------------------------------------------
+
+/*
+ * Indicate the transaction commited and the relation is officially created.
+ */
+void PersistentRelation_FinishBufferPoolBulkLoad(
+	RelFileNode 		*relFileNode,
+				/* The tablespace, database, and relation OIDs for the created relation. */
+
+	ItemPointer			persistentTid,
+				/* TID of the gp_persistent_rel_files tuple for the relation. */
+
+	int64				persistentSerialNum)
+				/* Serial number for the relation.  Distinquishes the uses of the tuple. */
+
+{
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
+	PersistentFileSysObjName fsObjName;
+
+	if(RelFileNode_IsEmpty(relFileNode))
+		elog(ERROR, "Invalid RelFileNode (0,0,0)");
+
+	if (Persistent_BeforePersistenceWork())
+	{	
+		if (Debug_persistent_print)
+			elog(Persistent_DebugPrintLevel(), 
+			     "Skipping persistent relation '%s' because we are before persistence work",
+				 relpath(*relFileNode));
+
+		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
+	}
+
+	PersistentRelation_InitScan();
+
+	PersistentFileSysObjName_SetRelationFile(
+										&fsObjName, 
+										relFileNode,
+										/* segmentFileNum */ 0);
+
+	// Do this check after skipping out if in bootstrap mode.
+	if (PersistentStore_IsZeroTid(persistentTid))
+		elog(ERROR, "TID for persistent '%s' tuple for 'Created' is invalid (0,0)",
+			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName));
+
+	if (persistentSerialNum == 0)
+		elog(ERROR, "Persistent '%s' serial number for 'Created' is invalid (0)",
+			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName));
+
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+
+	PersistentFileSysObj_StateChange(
+								&fsObjName,
+								persistentTid,
+								persistentSerialNum,
+								PersistentFileSysState_CreatePending,
+								/* retryPossible */ false,
+								/* flushToXlog */ false,
+								NULL);
+
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+
+	if (Debug_persistent_print)
+		elog(Persistent_DebugPrintLevel(), 
+		     "Persistent relation: '%s' changed state from 'Bulk Load Create Pending' to 'Create Pending', serial number " INT64_FORMAT " at TID %s",
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
+			 persistentSerialNum,
+			 ItemPointerToString(persistentTid));
+}
 
 /*
  * Indicate the transaction commited and the relation is officially created.

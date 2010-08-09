@@ -1203,6 +1203,9 @@ bool PersistentFileSysObj_StateChange(
 
 	bool badMirrorExistenceStateTransition;
 
+	MirroredRelDataSynchronizationState newDataSynchronizationState = (MirroredRelDataSynchronizationState)-1;
+	bool resetParentXid;
+
 	if (PersistentStore_IsZeroTid(persistentTid))
 		elog(ERROR, "TID for persistent '%s' state-change tuple is invalid (0,0)",
 			 PersistentFileSysObjName_TypeName(fsObjName->type));
@@ -1235,19 +1238,29 @@ bool PersistentFileSysObj_StateChange(
 
 	switch (nextState)
 	{
+	case PersistentFileSysState_CreatePending:
+		Assert (fsObjType == PersistentFsObjType_RelationFile);
+
+		expectedState1 = PersistentFileSysState_BulkLoadCreatePending;
+		break;
+		
 	case PersistentFileSysState_Created:
 		expectedState1 = PersistentFileSysState_CreatePending;
+
 		if (fsObjType == PersistentFsObjType_DatabaseDir)
 			expectedState2 = PersistentFileSysState_JustInTimeCreatePending;
 		break;
 
 	case PersistentFileSysState_DropPending:
-		expectedState1 = PersistentFileSysState_CreatePending;
-		expectedState2 = PersistentFileSysState_Created;
+		expectedState1 = PersistentFileSysState_Created;
 		break;
-
+		
 	case PersistentFileSysState_AbortingCreate:
 		expectedState1 = PersistentFileSysState_CreatePending;
+		if (fsObjType == PersistentFsObjType_RelationFile)
+		{
+			expectedState2 = PersistentFileSysState_BulkLoadCreatePending;
+		}
 		break;
 		
 	case PersistentFileSysState_Free:
@@ -1299,8 +1312,71 @@ bool PersistentFileSysObj_StateChange(
 
 	newMirrorExistenceState = currentMirrorExistenceState;	// Assume no change.
 	badMirrorExistenceStateTransition = false;
+	resetParentXid = false;	// Assume.
+
 	switch (nextState)
 	{
+	case PersistentFileSysState_CreatePending:
+		Assert (fsObjType == PersistentFsObjType_RelationFile);
+			
+		if (currentMirrorExistenceState == MirroredObjectExistenceState_NotMirrored ||
+			currentMirrorExistenceState == MirroredObjectExistenceState_MirrorCreatePending ||
+			currentMirrorExistenceState == MirroredObjectExistenceState_MirrorDownBeforeCreate ||
+			currentMirrorExistenceState == MirroredObjectExistenceState_MirrorDownDuringCreate)
+		{
+			// Leave current mirror existence state alone.
+		}
+		else
+		{
+			badMirrorExistenceStateTransition = true;
+		}
+
+		/*
+		 * Since bulk copy is copying data itself, we need to adjust the
+		 * MirroredRelDataSynchronizationState based on the FileRep state...
+		 */
+		if (currentMirrorExistenceState == MirroredObjectExistenceState_MirrorCreatePending)
+		{
+			MirrorDataLossTrackingState 	currentMirrorDataLossTrackingState;
+			int64							currentMirrorDataLossTrackingSessionNum;
+			
+			/*
+			 * We are under the MirroredLock.
+			 */
+			currentMirrorDataLossTrackingState = 
+						FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
+														&currentMirrorDataLossTrackingSessionNum);
+			switch (currentMirrorDataLossTrackingState)
+			{
+			case MirrorDataLossTrackingState_MirrorNotConfigured:
+				/*
+				 * Rare case when you remove mirrors during bulk load.
+				 */
+				newDataSynchronizationState = MirroredRelDataSynchronizationState_None;
+				break;
+				
+			case MirrorDataLossTrackingState_MirrorCurrentlyUpInSync:
+			case MirrorDataLossTrackingState_MirrorCurrentlyUpInResync:
+				newDataSynchronizationState = MirroredRelDataSynchronizationState_DataSynchronized;
+				break;
+		
+			case MirrorDataLossTrackingState_MirrorDown:
+				/*
+				 * In Change Tracking mode -- need 'Full Copy'.
+				 */
+				newDataSynchronizationState = MirroredRelDataSynchronizationState_FullCopy;
+				break;
+			
+			default:
+				elog(ERROR, "unexpected mirror data loss tracking state: %d",
+					 currentMirrorDataLossTrackingState);
+				break;
+			}
+		}
+
+		// Keep parent XID since we are still in '*Create Pending' state.
+		break;
+
 	case PersistentFileSysState_Created:
 		if (currentMirrorExistenceState == MirroredObjectExistenceState_MirrorCreatePending)
 		{
@@ -1316,6 +1392,8 @@ bool PersistentFileSysObj_StateChange(
 		{
 			badMirrorExistenceStateTransition = true;
 		}
+
+		resetParentXid = true;
 		break;
 	
 	case PersistentFileSysState_DropPending:
@@ -1333,6 +1411,13 @@ bool PersistentFileSysObj_StateChange(
 		{
 			badMirrorExistenceStateTransition = true;
 		}
+
+		if (fsObjType == PersistentFsObjType_RelationFile)
+		{
+			newDataSynchronizationState = MirroredRelDataSynchronizationState_None;
+		}
+
+		resetParentXid = true;
 		break;
 	
 	case PersistentFileSysState_AbortingCreate:
@@ -1350,6 +1435,13 @@ bool PersistentFileSysObj_StateChange(
 		{
 			badMirrorExistenceStateTransition = true;
 		}
+
+		if (fsObjType == PersistentFsObjType_RelationFile)
+		{
+			newDataSynchronizationState = MirroredRelDataSynchronizationState_None;
+		}
+
+		resetParentXid = true;
 		break;
 		
 	case PersistentFileSysState_Free:
@@ -1401,18 +1493,20 @@ bool PersistentFileSysObj_StateChange(
 			newValues[fileSysObjData->attNumMirrorExistenceState - 1] = Int16GetDatum(newMirrorExistenceState);
 		}
 
-		if (fsObjType == PersistentFsObjType_RelationFile
-			&&
-			(nextState == PersistentFileSysState_DropPending ||
-			 nextState == PersistentFileSysState_AbortingCreate))
+		if (newDataSynchronizationState != (MirroredRelDataSynchronizationState)-1)
 		{
+			Assert (fsObjType == PersistentFsObjType_RelationFile);
+
 			replaces[Anum_gp_persistent_relation_node_mirror_data_synchronization_state - 1] = true;
 			newValues[Anum_gp_persistent_relation_node_mirror_data_synchronization_state - 1] = 
-														 Int16GetDatum(MirroredRelDataSynchronizationState_None);
+														 Int16GetDatum(newDataSynchronizationState);
 		}
 
-		replaces[fileSysObjData->attNumParentXid - 1] = true;
-		newValues[fileSysObjData->attNumParentXid - 1] = Int32GetDatum(InvalidTransactionId);
+		if (resetParentXid)
+		{
+			replaces[fileSysObjData->attNumParentXid - 1] = true;
+			newValues[fileSysObjData->attNumParentXid - 1] = Int32GetDatum(InvalidTransactionId);
+		}
 
 		PersistentFileSysObj_ReplaceTuple(
 									fsObjType,
@@ -4089,6 +4183,7 @@ static void PersistentFileSysObj_ScanStateAction(
 				case PersistentFileSysState_Free:
 					continue;
 
+				case PersistentFileSysState_BulkLoadCreatePending:
 				case PersistentFileSysState_CreatePending:
 				case PersistentFileSysState_Created:
 					// True in a way.  This will cause ReCreate.
@@ -4217,7 +4312,8 @@ static void PersistentFileSysObj_ScanStateAction(
 			break;
 			
 		case StateAction_MirrorReCreate:
-			if ((state == PersistentFileSysState_CreatePending ||
+			if ((state == PersistentFileSysState_BulkLoadCreatePending ||
+				 state == PersistentFileSysState_CreatePending ||
 				 state == PersistentFileSysState_Created ||
 				 state == PersistentFileSysState_JustInTimeCreatePending) 
 				&&
@@ -4305,7 +4401,8 @@ static void PersistentFileSysObj_ScanStateAction(
 			break;
 			
 		case StateAction_MarkMirrorReCreated:
-			if ((state == PersistentFileSysState_CreatePending ||
+			if ((state == PersistentFileSysState_BulkLoadCreatePending ||
+				 state == PersistentFileSysState_CreatePending ||
 				 state == PersistentFileSysState_Created ||
 				 state == PersistentFileSysState_JustInTimeCreatePending) 
 				&&
@@ -4325,6 +4422,7 @@ static void PersistentFileSysObj_ScanStateAction(
 				
 				switch (state)
 				{
+				case PersistentFileSysState_BulkLoadCreatePending:
 				case PersistentFileSysState_CreatePending:
 				case PersistentFileSysState_JustInTimeCreatePending:
 					newMirrorExistenceState = MirroredObjectExistenceState_MirrorCreatePending;
@@ -4654,7 +4752,9 @@ void PersistentFileSysObj_MarkWholeMirrorScanIncremental(void)
 											&relFileNode,
 											segmentFileNum);
 
-		if (relationStorageManager == PersistentFileSysRelStorageMgr_BufferPool 
+		if (persistentState != PersistentFileSysState_BulkLoadCreatePending
+			&&
+			relationStorageManager == PersistentFileSysRelStorageMgr_BufferPool 
 			&&
 			MirroredObjectExistenceState_IsResynchCreated(mirrorExistenceState))
 		{
@@ -5367,19 +5467,24 @@ bool PersistentFileSysObj_ResynchronizeScan(
 										&parentXid,
 										&serialNum,
 										&previousFreeTid);
+
+		if (state == PersistentFileSysState_Free)
+			continue;
 		
 		PersistentFileSysObjName_SetRelationFile(
 											&fsObjName,
 											relFileNode,
 											*segmentFileNum);
 		
-		if (MirroredObjectExistenceState_IsResynchCreated(mirrorExistenceState))
+		if (state != PersistentFileSysState_BulkLoadCreatePending &&
+			MirroredObjectExistenceState_IsResynchCreated(mirrorExistenceState))
 		{
 
 			if (Debug_persistent_print)
 				elog(Persistent_DebugPrintLevel(), 
-					 "PersistentFileSysObj_ResynchronizeScan: Return '%s' needing resynchronization, persistent state '%s', mirror existence state '%s', serial number " INT64_FORMAT " at TID %s",
+					 "PersistentFileSysObj_ResynchronizeScan: Return '%s' needing data resynchronization ('%s'), persistent state '%s', mirror existence state '%s', serial number " INT64_FORMAT " at TID %s",
 					 PersistentFileSysObjName_ObjectName(&fsObjName),
+					 MirroredRelDataSynchronizationState_Name(*mirrorDataSynchronizationState),
 					 PersistentFileSysObjState_Name(state),
 					 MirroredObjectExistenceState_Name(mirrorExistenceState),
 					 serialNum,
@@ -5391,8 +5496,9 @@ bool PersistentFileSysObj_ResynchronizeScan(
 		{
 			if (Debug_persistent_print)
 				elog(Persistent_DebugPrintLevel(), 
-					 "PersistentFileSysObj_ResynchronizeScan: Skip '%s' -- doesn't need resynchronization, persistent state '%s', mirror existence state '%s', serial number " INT64_FORMAT " at TID %s",
+					 "PersistentFileSysObj_ResynchronizeScan: Skip '%s' -- doesn't need data resynchronization ('%s'), persistent state '%s', mirror existence state '%s', serial number " INT64_FORMAT " at TID %s",
 					 PersistentFileSysObjName_ObjectName(&fsObjName),
+					 MirroredRelDataSynchronizationState_Name(*mirrorDataSynchronizationState),
 					 PersistentFileSysObjState_Name(state),
 					 MirroredObjectExistenceState_Name(mirrorExistenceState),
 					 serialNum,
@@ -5816,7 +5922,8 @@ bool PersistentFileSysObj_ScanForRelation(
 										&serialNum,
 										&previousFreeTid);
 
-		if (persistentState != PersistentFileSysState_CreatePending &&
+		if (persistentState != PersistentFileSysState_BulkLoadCreatePending &&
+			persistentState != PersistentFileSysState_CreatePending &&
 			persistentState != PersistentFileSysState_Created)
 			continue;
 

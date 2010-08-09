@@ -161,6 +161,8 @@ extern void MirroredFileSysObj_TransactionCreateBufferPoolFile(
 
 	bool					doJustInTimeDirCreate,
 
+	bool					bufferPoolBulkLoad,
+
 	ItemPointer 			persistentTid,
 
 	int64					*persistentSerialNum);

@@ -68,6 +68,7 @@
 #include "cdb/cdbpersistentrelation.h"
 #include "cdb/cdbmirroredfilesysobj.h"
 #include "cdb/cdbmirroredappendonly.h"
+#include "cdb/cdbmirroredbufferpool.h"
 #include "cdb/cdbmirroredflatfile.h"
 #include "cdb/cdbdatabaseinfo.h"
 #include "cdb/cdbdirectopen.h"
@@ -225,98 +226,94 @@ static void update_gp_relation_node(
 	ReleaseBuffer(buffer);
 }
 
-static void copy_buffer_pool_segment_file(
+static void copy_buffer_pool_files(
 	RelFileNode 	*srcRelFileNode,
 	RelFileNode		*dstRelFileNode,
-	int32			segmentFileNum,
-	int64			eof,
+	char			*relationName,
 	ItemPointer		persistentTid,
 	int64			persistentSerialNum,
-	char			*buffer)
+	char			*buffer,
+	bool			useWal)
 {
-	char srcFileName[MAXPGPATH];
-	char extension[12];
-
-	File		srcFile;
+	SMgrRelation	srcrel;
+	int32			nblocks;
 
 	SMgrRelation	dstrel;
 
 	int32		blkno;
 
-	int 		nbytes;
+	MirroredBufferPoolBulkLoadInfo bulkLoadInfo;
 
-	CopyRelPath(srcFileName, MAXPGPATH, *srcRelFileNode);
-	if (segmentFileNum > 0)
-	{
-		sprintf(extension, ".%u", segmentFileNum);
-		strcat(srcFileName, extension);
-	}
+	srcrel = smgropen(*srcRelFileNode);
 
-	/*
-	 * Open the files
-	 */
-	srcFile = PathNameOpenFile(srcFileName, O_RDONLY | PG_BINARY, 0);
-	if (srcFile < 0)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not open file \"%s\": %m", srcFileName)));
+	nblocks = smgrnblocks(srcrel);
 
 	dstrel = smgropen(*dstRelFileNode);
+
+	if (!useWal)
+	{
+		MirroredBufferPool_BeginBulkLoad(
+								dstRelFileNode,
+								persistentTid,
+								persistentSerialNum,
+								&bulkLoadInfo);
+	}
+	else
+	{
+		MemSet(&bulkLoadInfo, 0, sizeof(MirroredBufferPoolBulkLoadInfo));
+	}
 	
 	/*
 	 * Do the data copying.
 	 */
-	blkno = segmentFileNum * RELSEG_SIZE;
-	for (;;)
+	for (blkno = 0; blkno < nblocks; blkno++)
 	{
 		xl_heap_newpage xlrec;
 		XLogRecPtr	recptr;
 		XLogRecData rdata[2];
 		
-		CHECK_FOR_INTERRUPTS();
-		
-		nbytes = FileRead(srcFile, buffer, BLCKSZ);
-		if (nbytes < 0)
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not read file \"%s\": %m", srcFileName)));
-		if (nbytes == 0)
-			break;
+		smgrread(srcrel, blkno, buffer);
 
-		/*
-		 * We XLOG buffer pool relations for 2 reasons:
-		 *
-		 *   1) To support master mirroring which replays the XLOG to the
-		 *       standby master.
-		 *   2) Better CREATE DATABASE performance.  If we fsync each file
-		 *       as we copy, it slows things down.
-		 */
-	
-		/* NO ELOG(ERROR) from here till newpage op is logged */
-		START_CRIT_SECTION();
-	
-		/* XXX consolidate with heap_logpage() */
-		xlrec.heapnode.node = dstrel->smgr_rnode;
-		xlrec.heapnode.persistentTid = *persistentTid;
-		xlrec.heapnode.persistentSerialNum = persistentSerialNum;
-		xlrec.blkno = blkno;
-	
-		rdata[0].data = (char *) &xlrec;
-		rdata[0].len = SizeOfHeapNewpage;
-		rdata[0].buffer = InvalidBuffer;
-		rdata[0].next = &(rdata[1]);
-	
-		rdata[1].data = (char *) buffer;
-		rdata[1].len = BLCKSZ;
-		rdata[1].buffer = InvalidBuffer;
-		rdata[1].next = NULL;
-	
-		recptr = XLogInsert(RM_HEAP_ID, XLOG_HEAP_NEWPAGE, rdata);
-	
-		PageSetLSN(buffer, recptr);
-		PageSetTLI(buffer, ThisTimeLineID);
-	
-		END_CRIT_SECTION();
+		CHECK_FOR_INTERRUPTS();
+
+		if (useWal)
+		{
+			/*
+			 * We XLOG buffer pool relations for 2 reasons:
+			 *
+			 *   1) To support master mirroring which replays the XLOG to the
+			 *       standby master.
+			 *   2) Better CREATE DATABASE performance.  If we fsync each file
+			 *       as we copy, it slows things down.
+			 */
+		
+			/* NO ELOG(ERROR) from here till newpage op is logged */
+			START_CRIT_SECTION();
+		
+			/* XXX consolidate with heap_logpage() */
+			xlrec.heapnode.node = dstrel->smgr_rnode;
+			xlrec.heapnode.persistentTid = *persistentTid;
+			xlrec.heapnode.persistentSerialNum = persistentSerialNum;
+			xlrec.blkno = blkno;
+		
+			rdata[0].data = (char *) &xlrec;
+			rdata[0].len = SizeOfHeapNewpage;
+			rdata[0].buffer = InvalidBuffer;
+			rdata[0].next = &(rdata[1]);
+		
+			rdata[1].data = (char *) buffer;
+			rdata[1].len = BLCKSZ;
+			rdata[1].buffer = InvalidBuffer;
+			rdata[1].next = NULL;
+		
+			recptr = XLogInsert(RM_HEAP_ID, XLOG_HEAP_NEWPAGE, rdata);
+		
+			PageSetLSN(buffer, recptr);
+			PageSetTLI(buffer, ThisTimeLineID);
+		
+			END_CRIT_SECTION();
+
+		}
 
 		// -------- MirroredLock ----------
 		LWLockAcquire(MirroredLock, LW_SHARED);
@@ -325,16 +322,10 @@ static void copy_buffer_pool_segment_file(
 
 		LWLockRelease(MirroredLock);
 		// -------- MirroredLock ----------
-
-		blkno++;
 	}
 
 	/*
-	 * If the rel isn't temp, we must fsync it down to disk before it's safe
-	 * to commit the transaction.  (For a temp rel we don't care since the rel
-	 * will be uninteresting after a crash anyway.)
-	 *
-	 * It's obvious that we must do this when not WAL-logging the copy. It's
+	 * It's obvious that we must fsync this when not WAL-logging the copy. It's
 	 * less obvious that we have to do it even if we did WAL-log the copied
 	 * pages. The reason is that since we're copying outside shared buffers, a
 	 * CHECKPOINT occurring during the copy has no way to flush the previously
@@ -354,7 +345,50 @@ static void copy_buffer_pool_segment_file(
 
 	smgrclose(dstrel);
 
-	FileClose(srcFile);
+	smgrclose(srcrel);
+
+	if (!useWal)
+	{
+		bool mirrorDataLossOccurred;
+	
+		/*
+		 * We may have to catch-up the mirror since bulk loading of data is
+		 * ignored by resynchronize.
+		 */
+		while (true)
+		{
+			bool bulkLoadFinished;
+	
+			bulkLoadFinished = 
+				MirroredBufferPool_EvaluateBulkLoadFinish(
+												&bulkLoadInfo);
+	
+			if (bulkLoadFinished)
+			{
+				/*
+				 * The flush was successful to the mirror (or the mirror is
+				 * not configured).
+				 *
+				 * We have done a state-change from 'Bulk Load Create Pending'
+				 * to 'Create Pending'.
+				 */
+				break;
+			}
+	
+			/*
+			 * Copy primary data to mirror and flush.
+			 */
+			MirroredBufferPool_CopyToMirror(
+									dstRelFileNode,
+									relationName,
+									persistentTid,
+									persistentSerialNum,
+									bulkLoadInfo.mirrorDataLossTrackingState,
+									bulkLoadInfo.mirrorDataLossTrackingSessionNum,
+									nblocks,
+									&mirrorDataLossOccurred);
+		}
+	}
 }
 
 static void copy_append_only_segment_file(
@@ -1114,8 +1148,10 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 
 			if (relStorageMgr == PersistentFileSysRelStorageMgr_BufferPool)
 			{
-				int p;
-
+				bool useWal;
+				
+				useWal = !XLog_CanBypassWal();
+				
 				/*
 				 * Generate new page XLOG records with the one persistent TID and
 				 * serial number for the Buffer Pool managed relation.
@@ -1125,6 +1161,7 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 													/* isLocalBuf */ false,
 													dbInfoRel->relname,
 													/* doJustInTimeDirCreate */ false,
+													/* bufferPoolBulkLoad */ !useWal,
 													&dbInfoRel->gpRelationNodes[0].persistentTid,		// OUTPUT
 													&dbInfoRel->gpRelationNodes[0].persistentSerialNum);	// OUTPUT
 
@@ -1134,20 +1171,14 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 					gpRelationNodePersistentSerialNum = dbInfoRel->gpRelationNodes[0].persistentSerialNum;
 				}
 
-				for (p = 0; p < dbInfoRel->physicalSegmentFilesCount; p++)
-				{
-					DbInfoSegmentFile *dbInfoSegmentFile = &dbInfoRel->physicalSegmentFiles[p];
-
-					copy_buffer_pool_segment_file(
-									&srcRelFileNode,
-									&dstRelFileNode,
-									dbInfoSegmentFile->segmentFileNum,
-									dbInfoSegmentFile->eof,
-									&dbInfoRel->gpRelationNodes[0].persistentTid,
-									dbInfoRel->gpRelationNodes[0].persistentSerialNum,
-									buffer);
-											
-				}
+				copy_buffer_pool_files(
+								&srcRelFileNode,
+								&dstRelFileNode,
+								dbInfoRel->relname,
+								&dbInfoRel->gpRelationNodes[0].persistentTid,
+								dbInfoRel->gpRelationNodes[0].persistentSerialNum,
+								buffer,
+								useWal);
 			}
 			else
 			{

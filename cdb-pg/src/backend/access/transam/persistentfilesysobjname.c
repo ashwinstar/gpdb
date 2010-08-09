@@ -222,6 +222,8 @@ char *PersistentFileSysObjState_Name(
 
 	case PersistentFileSysState_JustInTimeCreatePending: return "Just-In-Time Create Pending";
 
+	case PersistentFileSysState_BulkLoadCreatePending: 	return "Bulk Load Create Pending";
+
 	default:
 		return "Unknown";
 	}

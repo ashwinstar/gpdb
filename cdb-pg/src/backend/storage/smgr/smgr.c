@@ -91,6 +91,7 @@ typedef struct PendingDelete
 	char		*relationName;
 	
 	bool		isLocalBuf;	    /* CDB: true => uses local buffer mgr */
+	bool		bufferPoolBulkLoad;
 	bool		dropForCommit;		/* T=delete at commit; F=delete at abort */
 	bool		sameTransCreateDrop; /* Collapsed create-delete? */
 	ItemPointerData persistentTid;
@@ -741,6 +742,8 @@ void smgrcreatepending(
 
 	bool							isLocalBuf,
 
+	bool							bufferPoolBulkLoad,
+
 	bool							flushToXLog)
 {
 	PersistentFileSysObjName fsObjName;		
@@ -756,6 +759,7 @@ void smgrcreatepending(
 								relFileNode,
 								segmentFileNum,
 								relStorageMgr,
+								bufferPoolBulkLoad,
 								mirrorExistenceState,
 								relDataSynchronizationState,
 								relationName,
@@ -772,6 +776,7 @@ void smgrcreatepending(
 	pending->relStorageMgr = relStorageMgr;
 	pending->relationName = MemoryContextStrdup(TopMemoryContext, relationName);
 	pending->isLocalBuf = isLocalBuf;	/*CDB*/
+	pending->bufferPoolBulkLoad = bufferPoolBulkLoad;
 }
 
 /*

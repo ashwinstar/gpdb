@@ -273,6 +273,7 @@ int			Debug_persistent_recovery_print_level = LOG;
 bool		Debug_persistent_store_print = false;
 int			Debug_persistent_store_print_level = LOG;
 bool		Debug_persistent_bootstrap_print = false;
+bool		Debug_bulk_load_bypass_wal = true;
 
 bool		Debug_database_command_print = false;
 int			Debug_database_command_print_level = LOG;
@@ -2218,6 +2219,16 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_persistent_bootstrap_print,
 		false, NULL, NULL
 	},
+					
+	{
+		{"Debug_bulk_load_bypass_wal", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Use new bulk load bypass WAL logic."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_bulk_load_bypass_wal,
+		true, NULL, NULL
+	},
 		
 	{
 		{"debug_database_command_print", PGC_SUSET, DEVELOPER_OPTIONS,
@@ -2298,7 +2309,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_print_xlog_relation_change_info_backtrace_skip_issues,
 		false, NULL, NULL
 	},
-					
+			
 	{
 		{"test_appendonly_override", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("For testing purposes, change the default of the appendonly create table option."),

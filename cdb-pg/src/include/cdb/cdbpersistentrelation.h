@@ -52,6 +52,8 @@ extern void PersistentRelation_AddCreatePending(
 
 	PersistentFileSysRelStorageMgr relStorageMgr,
 
+	bool				bufferPoolBulkLoad,
+
 	MirroredObjectExistenceState mirrorExistenceState,
 
 	MirroredRelDataSynchronizationState relDataSynchronizationState,
@@ -98,6 +100,16 @@ extern void PersistentRelation_AddCreated(
 // -----------------------------------------------------------------------------
 // Transaction End	
 // -----------------------------------------------------------------------------
+
+void PersistentRelation_FinishBufferPoolBulkLoad(
+	RelFileNode 		*relFileNode,
+				/* The tablespace, database, and relation OIDs for the created relation. */
+
+	ItemPointer 		persistentTid,
+				/* TID of the gp_persistent_rel_files tuple for the relation. */
+
+	int64				persistentSerialNum);
+				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
 /*
  * Indicate the transaction commited and the relation is officially created.

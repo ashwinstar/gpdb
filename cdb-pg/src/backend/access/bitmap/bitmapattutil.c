@@ -120,7 +120,7 @@ _bitmap_create_lov_heapandindex(Relation rel,
 		_bt_initmetapage(btree_metapage, P_NONE, 0);
 
 		/* XLOG the metapage */
-		if (MustXLog() && !lovIndex->rd_istemp)
+		if (!XLog_UnconvertedCanBypassWal() && !lovIndex->rd_istemp)
 		{
 			_bt_lognewpage(lovIndex,
 						   btree_metapage,
@@ -155,10 +155,12 @@ _bitmap_create_lov_heapandindex(Relation rel,
 								 rel->rd_rel->reltablespace,
 								 *lovHeapOid, rel->rd_rel->relowner,
 								 tupDesc, RELKIND_RELATION, RELSTORAGE_HEAP,
-								 rel->rd_rel->relisshared, false, 0,
+								 rel->rd_rel->relisshared, false, /* bufferPoolBulkLoad */ false, 0,
 								 ONCOMMIT_NOOP, NULL /* GP Policy */,
 								 (Datum)0, true,
-								 &lovComptypeOid);
+								 &lovComptypeOid,
+						 		 /* persistentTid */ NULL,
+						 		 /* persistentSerialNum */ NULL);
 	Assert(heapid == *lovHeapOid);
 
 	/*

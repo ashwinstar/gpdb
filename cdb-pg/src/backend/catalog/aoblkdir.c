@@ -175,12 +175,15 @@ create_aoblkdir_table(Relation rel, Oid aoblkdirOid,
 											  RELSTORAGE_HEAP,
 											  shared_relation,
 											  true,
+											  /* bufferPoolBulkLoad */ false,
 											  0,
 											  ONCOMMIT_NOOP,
 											  NULL, /* GP Policy */
 											  (Datum) 0,
 											  true,
-											  comptypeOid);
+											  comptypeOid,
+						 					  /* persistentTid */ NULL,
+						 					  /* persistentSerialNum */ NULL);
 	
 	/* Make this table visible, else index creation will fail */
 	CommandCounterIncrement();

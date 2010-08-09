@@ -196,18 +196,23 @@ DATA(insert OID = 3250    ( nb_classification PGNSP 3251 PGUID 0 3250 0 0 0 0 0 
 #define		  RELSTORAGE_EXTERNAL 'x'
 #define		  RELSTORAGE_FOREIGN 'f'
 
+static inline bool relstorage_is_buffer_pool(char c)
+{
+	return (c == RELSTORAGE_HEAP);
+}
+
 static inline bool relstorage_is_ao(char c)
 {
-	return c == RELSTORAGE_AOROWS || c == RELSTORAGE_AOCOLS;
+	return (c == RELSTORAGE_AOROWS || c == RELSTORAGE_AOCOLS);
 }
 
 static inline bool relstorage_is_external(char c)
 {
-	return c == RELSTORAGE_EXTERNAL;
+	return (c == RELSTORAGE_EXTERNAL);
 }
 
 static inline bool relstorage_is_foreign(char c)
 {
-	return c == RELSTORAGE_FOREIGN;
+	return (c == RELSTORAGE_FOREIGN);
 }
 #endif   /* PG_CLASS_H */
