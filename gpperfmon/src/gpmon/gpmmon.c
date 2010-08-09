@@ -776,13 +776,13 @@ static void gpmmon_main(void)
 		gpmon_fatalx(FLINE, e, "apr_threadattr_detach_set failed");
 	}
 
-	/* generate signature */
-	if (0 != (e = apr_generate_random_bytes((void*) &ax.signature,
-			sizeof(ax.signature))))
-	{
-        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
-		gpmon_fatalx(FLINE, e, "apr_generate_random_bytes failed");
-	}
+	// generate signature 
+	// this used to use apr_generate_random_bytes but that hangs on entropy in the system being available
+	// this is not used for security or protecting against attacks, so a simpler random number will do
+	srand(time(NULL));
+	ax.signature = rand();
+	ax.signature <<= 32;
+	ax.signature += rand();
 	if (ax.signature < 0)
 		ax.signature = ~ax.signature;
 
