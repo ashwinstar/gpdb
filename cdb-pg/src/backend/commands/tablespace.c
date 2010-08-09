@@ -171,7 +171,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to create tablespace \"%s\"",
 						stmt->tablespacename),
-				 errhint("filespace %s is reserve for system use",
+				 errhint("filespace %s is reserved for system use",
 						 stmt->filespacename)));
 
 	/*
