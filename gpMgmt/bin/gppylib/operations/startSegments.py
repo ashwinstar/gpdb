@@ -110,14 +110,17 @@ class StartSegmentsOperation:
         segments = [seg for seg in segments if failedPingDbIds.get(seg.getSegmentDbId()) is None]
 
         # now do the start!
-        if False: # this is disabled -- enabling this will start mirrors and primaries at the same time, but
-			      #  this won't work because, depending on the # of workers in the pools (on master and segments)
-			      #  and on the # of hosts/segments, a segment's startup may pause waiting for its peer,
-			      #  which never completes because the python code hasn't gotten around to starting it (no worker
-			      #  available for the peer)
+        numNodes = len(gpArray.getHostList())
+        numWorkers = self.__workerPool.getNumWorkers()
+        if numWorkers >= numNodes:
+            # We are in a situation where we can start the entire cluster at once.
             assert startMethod == START_AS_PRIMARY_OR_MIRROR or startMethod == START_AS_MIRRORLESS
             self.__runStartCommand(segments, startMethod, numContentsInCluster, result, gpArray)
         else:
+            # We don't have enough workers to guarantee that a given primary and mirror are started at the same time.
+            # Note, we could try to be really clever here and attempt to only start a set of segments on numWorkers
+            # nodes that contain both a primary and mirror for a given pair, but that could be quite complex.
+            # It would also be difficult to QA. The method here is simpler but possibly slower.
             if startMethod == START_AS_PRIMARY_OR_MIRROR:
 
                 mirrorDbs = [seg for seg in segments if seg.isSegmentMirror(True)]

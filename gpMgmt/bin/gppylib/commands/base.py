@@ -65,10 +65,13 @@ class WorkerPool:
             w = Worker("worker%d" % i,self)
             self.workers.append(w)
             w.start()
+        self.numWorkers = numWorkers
         
      
-    
     ###
+    def getNumWorkers(self):
+       return self.numWorkers
+
     def getNextWorkItem(self,timeout=None):
         return self.work_queue.get(block=True,timeout=timeout)
     
