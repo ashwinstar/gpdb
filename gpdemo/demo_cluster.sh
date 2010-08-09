@@ -199,62 +199,90 @@ echo $LOCALHOST > hostfile
 # Name of the system configuration file.
 #*****************************************************************************************
 CLUSTER_CONFIG=clusterConfigFile
-rm -f $CLUSTER_CONFIG
+CLUSTER_CONFIG_POSTGRES_ADDONS=clusterConfigPostgresAddonsFile
+
+rm -f ${CLUSTER_CONFIG}
+rm -f ${CLUSTER_CONFIG_POSTGRES_ADDONS}
 
 SEG_PREFIX=demoDataDir
 
 #*****************************************************************************************
 # Create the system configuration file
 #*****************************************************************************************
-echo "# Set this to anything you like" >> $CLUSTER_CONFIG
-echo "CLUSTER_NAME=\"Demo $HOSTNAME Cluster\"" >> $CLUSTER_CONFIG
-echo "" >> $CLUSTER_CONFIG
-echo "# This file must exist in the same directory that you execute gpinitsystem in" >> $CLUSTER_CONFIG
-echo "MACHINE_LIST_FILE=hostfile" >> $CLUSTER_CONFIG
-echo "" >> $CLUSTER_CONFIG
-echo "# This names the data directories for the Segment Instances and the Entry Postmaster" >> $CLUSTER_CONFIG
-echo "SEG_PREFIX=$SEG_PREFIX" >> $CLUSTER_CONFIG
-echo "" >> $CLUSTER_CONFIG
-echo "# This is the port at which to contact the resulting Greenplum database, e.g." >> $CLUSTER_CONFIG
-echo "#   psql -p \$PORT_BASE -d template1" >> $CLUSTER_CONFIG
-echo "PORT_BASE=${DEMO_PORT_BASE}" >> $CLUSTER_CONFIG
-echo "" >> $CLUSTER_CONFIG
-echo "# Prefix for script created database" >> $CLUSTER_CONFIG
-echo "DATABASE_PREFIX=demoDatabase" >> $CLUSTER_CONFIG
-echo "" >> $CLUSTER_CONFIG
-echo "# Array of data locations for each hosts Segment Instances, the number of directories in this array will" >> $CLUSTER_CONFIG
-echo "# set the number of segment instances per host" >> $CLUSTER_CONFIG
-echo "declare -a DATA_DIRECTORY=(${DIRVEC[@]})" >> $CLUSTER_CONFIG
-echo "" >> $CLUSTER_CONFIG
-echo "# Name of host on which to setup the QD" >> $CLUSTER_CONFIG
-echo "MASTER_HOSTNAME=$LOCALHOST" >> $CLUSTER_CONFIG
-echo "" >> $CLUSTER_CONFIG
-echo "# Name of directory on that host in which to setup the QD" >> $CLUSTER_CONFIG
-echo "MASTER_DIRECTORY=$QDDIR" >> $CLUSTER_CONFIG
-echo "MASTER_DATA_DIRECTORY=$QDDIR/${SEG_PREFIX}0" >> $CLUSTER_CONFIG
-echo "" >> $CLUSTER_CONFIG
-echo "MASTER_PORT=${MASTER_DEMO_PORT}" >> $CLUSTER_CONFIG
-echo "" >> $CLUSTER_CONFIG
-echo "# Hosts to allow to connect to the QD (and Segment Instances)" >> $CLUSTER_CONFIG
-echo "# By default, allow everyone to connect (0.0.0.0/0)" >> $CLUSTER_CONFIG
-echo "IP_ALLOW=0.0.0.0/0" >> $CLUSTER_CONFIG
-echo "" >> $CLUSTER_CONFIG
-echo "# Shell to use to execute commands on all hosts" >> $CLUSTER_CONFIG
-echo "TRUSTED_SHELL=\"`pwd`/lalshell\"" >> $CLUSTER_CONFIG
-echo "" >> $CLUSTER_CONFIG
-echo "CHECK_POINT_SEGMENTS=8" >> $CLUSTER_CONFIG
-echo "" >> $CLUSTER_CONFIG
-echo "ENCODING=UNICODE" >> $CLUSTER_CONFIG
-echo "" >> $CLUSTER_CONFIG
-echo "# Path for Greenplum mgmt utils and Greenplum binaries" >> $CLUSTER_CONFIG
-echo "PATH=$GPHOME/bin:$PATH" >> $CLUSTER_CONFIG
-echo "LD_LIBRARY_PATH=$GPHOME/lib:$LD_LIBRARY_PATH" >> $CLUSTER_CONFIG
-echo "export PATH" >> $CLUSTER_CONFIG
-echo "export LD_LIBRARY_PATH" >> $CLUSTER_CONFIG
-echo "export MASTER_DATA_DIRECTORY" >> $CLUSTER_CONFIG
-echo "export TRUSTED_SHELL" >> $CLUSTER_CONFIG
+cat >> $CLUSTER_CONFIG <<-EOF
+	# Set this to anything you like
+	CLUSTER_NAME=\"Demo $HOSTNAME Cluster\"
+	
+	# This file must exist in the same directory that you execute gpinitsystem in
+	MACHINE_LIST_FILE=hostfile
+	
+	# This names the data directories for the Segment Instances and the Entry Postmaster
+	SEG_PREFIX=$SEG_PREFIX
+	
+	# This is the port at which to contact the resulting Greenplum database, e.g.
+	#   psql -p \$PORT_BASE -d template1
+	PORT_BASE=${DEMO_PORT_BASE}
+	
+	# Prefix for script created database
+	DATABASE_PREFIX=demoDatabase
+	
+	# Array of data locations for each hosts Segment Instances, the number of directories in this array will
+	# set the number of segment instances per host
+	declare -a DATA_DIRECTORY=(${DIRVEC[@]})
+	
+	# Name of host on which to setup the QD
+	MASTER_HOSTNAME=$LOCALHOST
+	
+	# Name of directory on that host in which to setup the QD
+	MASTER_DIRECTORY=$QDDIR
+	MASTER_DATA_DIRECTORY=$QDDIR/${SEG_PREFIX}0
+	
+	MASTER_PORT=${MASTER_DEMO_PORT}
+	
+	# Hosts to allow to connect to the QD (and Segment Instances)
+	# By default, allow everyone to connect (0.0.0.0/0)
+	IP_ALLOW=0.0.0.0/0
+	
+	# Shell to use to execute commands on all hosts
+	TRUSTED_SHELL=\"`pwd`/lalshell\"
+	
+	CHECK_POINT_SEGMENTS=8
+	
+	ENCODING=UNICODE
+	
+	# Path for Greenplum mgmt utils and Greenplum binaries
+	PATH=$GPHOME/bin:$PATH
+	LD_LIBRARY_PATH=$GPHOME/lib:$LD_LIBRARY_PATH
+	export PATH
+	export LD_LIBRARY_PATH
+	export MASTER_DATA_DIRECTORY
+	export TRUSTED_SHELL
+EOF
+
+if [ "${BUILD_TYPE}" = "gcov" ] ; then
+	cat > ${CLUSTER_CONFIG_POSTGRES_ADDONS} <<-EOF
+		## ======================================================================
+		## GCov specific GUCs
+		## ======================================================================
+
+		stats_start_collector=on
+		stats_block_level=on
+		stats_row_level=on
+		stats_queue_level=on
+		log_parser_stats=on
+		log_planner_stats=on
+		log_executor_stats=on
+		log_destination='stderr'
+	
+	EOF
+fi
 
 #*****************************************************************************************
 # Create cluster
 #*****************************************************************************************
-$GPPATH/gpinitsystem -q -a -c $CLUSTER_CONFIG "$@"
+
+if [ "${BUILD_TYPE}" = "gcov" ] && [ -f "${CLUSTER_CONFIG_POSTGRES_ADDONS}" ]; then
+    $GPPATH/gpinitsystem -q -a -c $CLUSTER_CONFIG -p ${CLUSTER_CONFIG_POSTGRES_ADDONS} "$@"
+else
+    $GPPATH/gpinitsystem -q -a -c $CLUSTER_CONFIG "$@"
+fi
