@@ -259,23 +259,23 @@ cat >> $CLUSTER_CONFIG <<-EOF
 	export TRUSTED_SHELL
 EOF
 
-if [ "${BUILD_TYPE}" = "gcov" ] ; then
-	cat > ${CLUSTER_CONFIG_POSTGRES_ADDONS} <<-EOF
-		## ======================================================================
-		## GCov specific GUCs
-		## ======================================================================
-
-		stats_start_collector=on
-		stats_block_level=on
-		stats_row_level=on
-		stats_queue_level=on
-		log_parser_stats=on
-		log_planner_stats=on
-		log_executor_stats=on
-		log_destination='stderr'
-	
-	EOF
-fi
+## if [ "${BUILD_TYPE}" = "gcov" ] ; then
+## 	cat > ${CLUSTER_CONFIG_POSTGRES_ADDONS} <<-EOF
+## 		## ======================================================================
+## 		## GCov specific GUCs
+## 		## ======================================================================
+## 
+## 		stats_start_collector=on
+## 		stats_block_level=on
+## 		stats_row_level=on
+## 		stats_queue_level=on
+## 		log_parser_stats=on
+## 		log_planner_stats=on
+## 		log_executor_stats=on
+## 		log_destination='stderr'
+## 	
+## 	EOF
+## fi
 
 #*****************************************************************************************
 # Create cluster
