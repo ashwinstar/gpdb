@@ -211,7 +211,7 @@ SEG_PREFIX=demoDataDir
 #*****************************************************************************************
 cat >> $CLUSTER_CONFIG <<-EOF
 	# Set this to anything you like
-	CLUSTER_NAME=\"Demo $HOSTNAME Cluster\"
+	CLUSTER_NAME="Demo $HOSTNAME Cluster"
 	
 	# This file must exist in the same directory that you execute gpinitsystem in
 	MACHINE_LIST_FILE=hostfile
@@ -244,7 +244,7 @@ cat >> $CLUSTER_CONFIG <<-EOF
 	IP_ALLOW=0.0.0.0/0
 	
 	# Shell to use to execute commands on all hosts
-	TRUSTED_SHELL=\"`pwd`/lalshell\"
+	TRUSTED_SHELL="`pwd`/lalshell"
 	
 	CHECK_POINT_SEGMENTS=8
 	
