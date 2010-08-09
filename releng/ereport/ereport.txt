@@ -7900,7 +7900,7 @@ taba: tablespace:00000170:  ereport(ERROR,
 taba: tablespace:00000171:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
 taba: tablespace:00000172:  errmsg("permission denied to create tablespace \"%s\"", 
 taba: tablespace:00000173:  stmt->tablespacename), 
-taba: tablespace:00000174:  errhint("filespace %s is reserve for system use", 
+taba: tablespace:00000174:  errhint("filespace %s is reserved for system use", 
 taba: tablespace:00000175:  stmt->filespacename))); 
 taba: tablespace:00000183:  ereport(ERROR, 
 taba: tablespace:00000184:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
