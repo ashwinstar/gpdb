@@ -335,7 +335,10 @@ class GPUpgrade:
             # Simple function to look for settings in the conf file
             def getconf(x):
                 conf_re  = re.compile('^\s*%s\s*=\s*(\w+)' % x)
-                conf_str = self.RunCmd('grep %s %s' % (x, conf))
+                try:
+                    conf_str = self.RunCmd('grep %s %s' % (x, conf))
+                except CmdError:
+                    conf_str = ""     # grep returns errorcode on no match
                 value = None
                 for line in conf_str.split('\n'):
                     match = conf_re.search(line)
@@ -2587,7 +2590,10 @@ class GPUpgrade:
             conf = os.path.join(dir, 'postgresql.conf')
             def getconf(x):
                 conf_re  = re.compile('^\s*%s\s*=\s*(\d+)' % x)
-                conf_str = self.RunCmd('grep %s %s' % (x, conf))
+                try:
+                    conf_str = self.RunCmd('grep %s %s' % (x, conf))
+                except CmdError:
+                    conf_str = ""     # grep returns errorcode on no match
                 value = None
                 for line in conf_str.split('\n'):
                     match = conf_re.search(line)
@@ -2735,7 +2741,10 @@ class GPUpgrade:
             conf = os.path.join(dir, 'postgresql.conf')
             def getconf(x):
                 conf_re  = re.compile('^\s*%s\s*=\s*(\d+)' % x)
-                conf_str = self.RunCmd('grep %s %s' % (x, conf))
+                try:
+                    conf_str = self.RunCmd('grep %s %s' % (x, conf))
+                except CmdError:
+                    conf_str = ""     # grep returns errorcode on no match
                 value = None
                 for line in conf_str.split('\n'):
                     match = conf_re.search(line)
@@ -2975,8 +2984,6 @@ class GPUpgrade:
                     setting = m.group(1)
                     value   = m.group(2)
                     rest    = m.group(3)
-                    
-                    logger.info("<%s> <%s> <%s>" % (setting, value, rest))
                     
                     # Comment out defunct gucs
                     if setting in ('gp_fault_action'):
