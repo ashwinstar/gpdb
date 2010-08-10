@@ -283,6 +283,24 @@ mirroring_sanity_check(int flags, const char *func)
 	}
 }
 
+static bool
+must_update_persistent(int16 pridbid, seginfo *i)
+{
+	/* if we're adding a new primary (for expansion), bail out */
+	if (i->db.role == SEGMENT_ROLE_PRIMARY)
+		return false;
+
+	/* if we're adding a mirror for host that is not this machine, return */
+	if (i->db.role == SEGMENT_ROLE_MIRROR && pridbid != GpIdentity.dbid)
+		return false;
+
+	/* nothing more to do if we're on the master */
+	if (pridbid == MASTER_DBID)
+		return false;
+
+	return true;
+}
+
 /*
  * Add knowledge of filespaces for a new segment to the standard system
  * catalog.
@@ -390,12 +408,7 @@ update_filespaces(int16 pridbid, seginfo *i, bool add, ArrayType *fsmap)
 		heap_close(rel, NoLock);
 	}
 
-	/* if we're adding a new primary (for expansion), bail out */
-	if (i->db.role == SEGMENT_ROLE_PRIMARY)
-		return;
-
-	/* if we're adding a mirror for host that is not this machine, return */
-	if (i->db.role == SEGMENT_ROLE_MIRROR && pridbid != GpIdentity.dbid)
+	if (!must_update_persistent(pridbid, i))
 		return;
 
 	/*
@@ -418,7 +431,7 @@ update_tablespaces(int16 pridbid, seginfo *i, bool add)
 		return;
 	}
 
-	if (pridbid == MASTER_DBID || pridbid != GpIdentity.dbid)
+	if (!must_update_persistent(pridbid, i))
 		return;
 
 	/*
@@ -435,14 +448,7 @@ update_tablespaces(int16 pridbid, seginfo *i, bool add)
 static void
 update_databases(int16 pridbid, seginfo *i, bool add)
 {
-	/* if we're adding a new primary (for expansion), bail out */
-	if (pridbid == i->db.dbid)
-	{
-		Insist(i->db.role == SEGMENT_ROLE_PRIMARY);
-		return;
-	}
-
-	if (pridbid == MASTER_DBID || pridbid != GpIdentity.dbid)
+	if (!must_update_persistent(pridbid, i))
 		return;
 
 	/*
@@ -459,12 +465,8 @@ update_databases(int16 pridbid, seginfo *i, bool add)
 static void
 update_relations(int16 pridbid, seginfo *i, bool add)
 {
-	/* if we're adding a new primary (for expansion), bail out */
-	if (pridbid == i->db.dbid)
-	{
-		Insist(i->db.role == SEGMENT_ROLE_PRIMARY);
+	if (!must_update_persistent(pridbid, i))
 		return;
-	}
 
 	/*
 	 * Teach the persistent relation table about us.
