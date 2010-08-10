@@ -73,12 +73,13 @@ class GpSegStart:
         self.timeout = timeout
         self.pickledTransitionData = pickledTransitionData
 
-        # There is an issue with python 2.6.2 on linux that can cause start to 
-        # hang if it is multithreaded.
-        if unix.curr_platform == unix.LINUX:
-            self.pool = base.WorkerPool(numWorkers=1)
-        else:
-            self.pool = base.WorkerPool(numWorkers=len(dblist))
+        #
+        # There was an issue with Linux that required the numWorkers to be 1,
+        # but that problem doesn't seem to exist any more. In order to
+        # assure proper startup of primary and mirror, we must start all
+        # segments on a node at the same time.
+        #
+        self.pool = base.WorkerPool(numWorkers=len(dblist))
         self.expected_lc_collate=None
         self.expected_lc_monetary=None
         self.expected_lc_numeric=None
