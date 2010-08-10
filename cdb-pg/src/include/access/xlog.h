@@ -152,6 +152,13 @@ typedef struct XLogRecData
 
 extern TimeLineID ThisTimeLineID;		/* current TLI */
 extern bool InRecovery;
+
+/* 
+ * In some cases, InRecovery might be true but we can still emit
+ * XLOG records.
+ */
+extern bool CanEmitXLogRecords;
+
 extern XLogRecPtr MyLastRecPtr;
 extern bool MyXactMadeXLogEntry;
 extern bool MyXactMadeTempRelUpdate;

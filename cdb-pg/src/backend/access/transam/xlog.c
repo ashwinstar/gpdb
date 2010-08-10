@@ -216,6 +216,9 @@ TimeLineID	ThisTimeLineID = 0;
 /* Are we doing recovery from XLOG? */
 bool		InRecovery = false;
 
+/* Can we emit xlog records? */
+bool		CanEmitXLogRecords = true;
+
 /* Are we recovering using offline XLOG archives? */
 static bool InArchiveRecovery = false;
 
@@ -6372,19 +6375,21 @@ StartupXLOG(void)
 	if (InRecovery && !IsUnderPostmaster)
 	{
 		ereport(FATAL,
-				(errmsg("Database must be shutdown cleanly when using single backed start")));
+				(errmsg("Database must be shutdown cleanly when using single backend start")));
 	}
 
 	if (InRecovery && gp_before_persistence_work)
 	{
 		ereport(FATAL,
-				(errmsg("Database must be shutdown cleanly when using gp_before_persistece_work = on")));
+				(errmsg("Database must be shutdown cleanly when using gp_before_persistence_work = on")));
 	}
 
 	/* REDO */
 	if (InRecovery)
 	{
 		int			rmid;
+
+		CanEmitXLogRecords = false; /* we cannot emit records while in recovery */
 
 		/*
 		 * Update pg_control to show that we are recovering and to show the
@@ -6529,6 +6534,7 @@ StartupXLOG(void)
 			ereport(LOG,
 					(errmsg("redo is not required")));
 		}
+		CanEmitXLogRecords = true;
 	}
 
 	/*

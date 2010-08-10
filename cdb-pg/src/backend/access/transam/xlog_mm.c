@@ -14,6 +14,7 @@
 
 #include "postgres.h"
 
+#include "access/xlog.h"
 #include "access/xlogmm.h"
 #include "catalog/gp_segment_config.h"
 #include "catalog/pg_filespace.h"
@@ -322,7 +323,7 @@ emit_mmxlog_fs_record(mm_fs_obj_type type, Oid filespace,
 					  Oid tablespace, Oid database, Oid relfilenode,
 					  uint32 segnum, uint8 flags)
 {
-	if (InRecovery)
+	if (!CanEmitXLogRecords)
 		/* no business here */
 		return;
 
