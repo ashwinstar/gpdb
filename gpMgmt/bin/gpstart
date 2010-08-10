@@ -83,6 +83,17 @@ class GpStart:
 
         if self.masteronly:
             return 0
+
+        # Do we have an even-number of recovered segments ?
+        if len(self.gparray.recoveredSegmentDbids) > 0 and len(self.gparray.recoveredSegmentDbids) % 2 == 0:
+            logger.info("Master start noticed recovered segments, updating configuration to rebalance.")
+
+            self.gparray.updateRoleForRecoveredSegs(self.dburl)
+
+            logger.info("Re-obtaining updated segment details from master...")
+
+            self.gparray = GpArray.initFromCatalog(self.dburl, utility=True)
+
         self._check_standby_activated()
 
         logger.info("Shutting down master")

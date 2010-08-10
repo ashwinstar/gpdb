@@ -1003,6 +1003,9 @@ class GpArray:
         self.segments = []
         self.expansionSegments=[]
         self.numPrimarySegments = 0
+
+        self.recoveredSegmentDbids = []
+
         self.__version = None
         self.__segmentsAsLoadedFromDb = segmentsAsLoadedFromDb
         self.__strategyLoadedFromDb = strategyLoadedFromDb
@@ -1151,6 +1154,7 @@ class GpArray:
         conn.close()
 
         # Todo: add checks that all segments should have the same filespaces?
+        recoveredSegmentDbids = []
         segments = []
         seg = None
         for row in config_rows:
@@ -1158,6 +1162,11 @@ class GpArray:
             # Extract fields from the row
             (dbid, content, role, preferred_role, mode, status, hostname, 
              address, port, replicationPort, fsoid, fslocation) = row
+
+            # If we have segments which have recovered, record them.
+            if preferred_role != role and content >= 0:
+                if mode == MODE_SYNCHRONIZED and status == STATUS_UP:
+                    recoveredSegmentDbids.append(dbid)
             
             # The query returns all the filespaces for a segment on separate
             # rows.  If this row is the same dbid as the previous row simply
@@ -1180,6 +1189,7 @@ class GpArray:
 
         array = GpArray(segments, origSegments, strategy)
         array.__version = version
+        array.recoveredSegmentDbids = recoveredSegmentDbids
         array.setFaultStrategy(strategy)
         array.setSanConfig(san_rows, san_segs_rows)
         array.setFilespaces(filespaceArr)
@@ -1725,6 +1735,37 @@ class GpArray:
         start_dir_content = self.master.datadir.rfind('-')
         prefix = self.master.datadir[start_last_dir:start_dir_content]
         return prefix
+
+    # --------------------------------------------------------------------    
+    # If we've got recovered segments, and we have a matched-pair, we
+    # can update the catalog to "rebalance" back to our original primary.
+    def updateRoleForRecoveredSegs(self, dbURL):
+        """
+        Marks the segment role to match the configured preferred_role.
+        """
+
+        # walk our list of segments, checking to make sure that
+        # both members of the peer-group are in our recovered-list,
+        # save their content-id.
+        recovered_contents = []
+        for seg in self.segments:
+            if seg.primaryDB:
+                if seg.primaryDB.dbid in self.recoveredSegmentDbids:
+                    if len(seg.mirrorDBs) > 0 and seg.mirrorDBs[0].dbid in self.recoveredSegmentDbids:
+                        recovered_contents.append(seg.primaryDB.content)
+
+        conn = dbconn.connect(dbURL, True)
+        for content_id in recovered_contents:
+            sql = "UPDATE gp_segment_configuration SET role=preferred_role where content = %d" % content_id
+            dbconn.executeUpdateOrInsert(conn, sql, 2)
+
+            #logger.info('updated for content %d' % content_id)
+            #logger.info('sql: %s' % sql)
+
+            # We could attempt to update the segments-array.
+            # But the caller will re-read the configuration from the catalog.
+        dbconn.execSQL(conn, "COMMIT")
+        conn.close()
 
     # --------------------------------------------------------------------    
     def addExpansionSeg(self, content, preferred_role, dbid, role, 
