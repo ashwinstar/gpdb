@@ -1375,7 +1375,7 @@ class GpArray:
             if db.getSegmentHostName() in hostList:
                continue
             else:
-               hostList.append(getSegmentHostName())
+               hostList.append(db.getSegmentHostName())
         return hostList
            
 
