@@ -271,7 +271,12 @@ getDistributedTransactionIdentifier(char *id)
 	{
 		if (currentGxact != NULL)
 		{
-			Assert(strlen(currentGxact->gid) < TMGIDSIZE);
+			/*
+			 * The length check here requires the identifer have a trailing NUL character.
+			 */
+			if (strlen(currentGxact->gid) >= TMGIDSIZE)
+				elog(PANIC, "Distribute transaction identifier too long (%d)",
+					 (int)strlen(currentGxact->gid));
 			memcpy(id, currentGxact->gid, TMGIDSIZE);
 			return true;
 		}
@@ -280,7 +285,9 @@ getDistributedTransactionIdentifier(char *id)
 	{
 		if (QEDtxContextInfo.distributedXid != InvalidDistributedTransactionId)
 		{
-			Assert(strlen(QEDtxContextInfo.distributedId) < TMGIDSIZE);
+			if (strlen(QEDtxContextInfo.distributedId) >= TMGIDSIZE)
+				elog(PANIC, "Distribute transaction identifier too long (%d)",
+					 (int)strlen(QEDtxContextInfo.distributedId));
 			memcpy(id, QEDtxContextInfo.distributedId, TMGIDSIZE);
 			return true;
 		}
@@ -309,7 +316,9 @@ getDtxLogInfo(TMGXACT_LOG *gxact_log)
 		elog(FATAL, "getDtxLogInfo found current distributed transaction is NULL");
 	}
 
-	Assert(strlen(currentGxact->gid) < TMGIDSIZE);
+	if (strlen(currentGxact->gid) >= TMGIDSIZE)
+		elog(PANIC, "Distribute transaction identifier too long (%d)",
+			 (int)strlen(currentGxact->gid));
 	memcpy(gxact_log->gid, currentGxact->gid, TMGIDSIZE);
 	gxact_log->gxid = currentGxact->gxid;
 }
@@ -631,7 +640,9 @@ doInsertForgetCommitted(void)
 	
 	setCurrentGxactState( DTX_STATE_INSERTING_FORGET_COMMITTED );
 
-	Assert(strlen(currentGxact->gid) < TMGIDSIZE);
+	if (strlen(currentGxact->gid) >= TMGIDSIZE)
+		elog(PANIC, "Distribute transaction identifier too long (%d)",
+			 (int)strlen(currentGxact->gid));
 	memcpy(&gxact_log.gid, currentGxact->gid, TMGIDSIZE);
 	gxact_log.gxid = currentGxact->gxid;
 	
@@ -662,7 +673,9 @@ doNotifyingCommitPrepared(void)
 	setCurrentGxactState( DTX_STATE_NOTIFYING_COMMIT_PREPARED );
 	releaseTmLock();
 
-	Assert(strlen(currentGxact->gid) < TMGIDSIZE);
+	if (strlen(currentGxact->gid) >= TMGIDSIZE)
+		elog(PANIC, "Distribute transaction identifier too long (%d)",
+			 (int)strlen(currentGxact->gid));
 
 	succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_COMMIT_PREPARED, /* flags */ 0,  
 											 currentGxact->gid, currentGxact->gxid,
@@ -1429,8 +1442,12 @@ restoreGxact(TMGXACT_LOG * gxact_log, DtxState state)
 	
 	/*
 	 * Copy the log fields.
+	 *
+	 * The length check here requires the identifer have a trailing NUL character.
 	 */
-	Assert(strlen(gxact_log->gid) < TMGIDSIZE);
+	if (strlen(gxact_log->gid) >= TMGIDSIZE)
+		elog(PANIC, "Distribute transaction identifier too long (%d)",
+			 (int)strlen(gxact_log->gid));
 	memcpy(currentGxact->gid, gxact_log->gid, TMGIDSIZE);
 	currentGxact->gxid = gxact_log->gxid;
 
@@ -2074,7 +2091,9 @@ getAllDistributedXactStatus(TMGALLXACTSTATUS **allDistributedXactStatus)
 				TMGXACT *gxact = shmGxactArray[i];
 
 				all->statusArray[i].gxid = gxact->gxid;
-				Assert(strlen(gxact->gid) < TMGIDSIZE);
+				if (strlen(gxact->gid) >= TMGIDSIZE)
+					elog(PANIC, "Distribute transaction identifier too long (%d)",
+						 (int)strlen(gxact->gid));
 				memcpy(all->statusArray[i].gid, gxact->gid, TMGIDSIZE);
 				all->statusArray[i].state = gxact->state;
 				all->statusArray[i].sessionId = gxact->sessionId;
@@ -2610,7 +2629,9 @@ getDtxCheckPointInfoAndLock(char **result, int *result_size)
 			break;
 		}
 		
-		Assert(strlen(gxact->gid) < TMGIDSIZE);
+		if (strlen(gxact->gid) >= TMGIDSIZE)
+			elog(PANIC, "Distribute transaction identifier too long (%d)",
+				 (int)strlen(gxact->gid));
 		memcpy(gxact_log->gid, gxact->gid, TMGIDSIZE);
 		gxact_log->gxid = gxact->gxid;
 
@@ -2657,8 +2678,9 @@ generateGID(char *gid, DistributedTransactionId *gxid)
 	
 	*gxid = (*shmGIDSeq)++;
 	sprintf(gid, "%u-%.10u", *shmDistribTimeStamp, (*gxid));
-	Assert(strlen(gid) < TMGIDSIZE);
-
+	if (strlen(gid) >= TMGIDSIZE)
+		elog(PANIC, "Distribute transaction identifier too long (%d)",
+			 (int)strlen(gid));
 }
 
 /*

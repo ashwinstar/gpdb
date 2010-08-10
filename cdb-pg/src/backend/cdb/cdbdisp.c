@@ -892,7 +892,9 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 				pParms->dtxProtocolParms.dtxProtocolCommand = pDtxProtocolParms->dtxProtocolCommand;
 				pParms->dtxProtocolParms.flags = pDtxProtocolParms->flags;
 				pParms->dtxProtocolParms.dtxProtocolCommandLoggingStr = pDtxProtocolParms->dtxProtocolCommandLoggingStr;
-				Assert(strlen(pDtxProtocolParms->gid) < TMGIDSIZE);
+				if (strlen(pDtxProtocolParms->gid) >= TMGIDSIZE)
+					elog(PANIC, "Distribute transaction identifier too long (%d)",
+						 (int)strlen(pDtxProtocolParms->gid));
 				memcpy(pParms->dtxProtocolParms.gid, pDtxProtocolParms->gid, TMGIDSIZE);
 				pParms->dtxProtocolParms.gxid = pDtxProtocolParms->gxid;
 				pParms->dtxProtocolParms.primary_gang_id = pDtxProtocolParms->primary_gang_id;
@@ -1272,7 +1274,9 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	dtxProtocolParms.dtxProtocolCommand = dtxProtocolCommand;
 	dtxProtocolParms.flags = flags;
 	dtxProtocolParms.dtxProtocolCommandLoggingStr = dtxProtocolCommandLoggingStr;
-	Assert(strlen(gid) < TMGIDSIZE);
+	if (strlen(gid) >= TMGIDSIZE)
+		elog(PANIC, "Distribute transaction identifier too long (%d)",
+			 (int)strlen(gid));
 	memcpy(dtxProtocolParms.gid, gid, TMGIDSIZE);
 	dtxProtocolParms.gxid = gxid;
 	dtxProtocolParms.argument = argument;

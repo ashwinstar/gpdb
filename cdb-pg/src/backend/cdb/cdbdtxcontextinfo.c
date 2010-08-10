@@ -243,7 +243,9 @@ DtxContextInfo_Serialize(char *buffer, DtxContextInfo *dtxContextInfo)
 	{
 		memcpy(p, &dtxContextInfo->distributedTimeStamp, sizeof(DistributedTransactionTimeStamp)); 
 		p += sizeof(DistributedTransactionTimeStamp);
-		Assert(strlen(dtxContextInfo->distributedId) < TMGIDSIZE);
+		if (strlen(dtxContextInfo->distributedId) >= TMGIDSIZE)
+			elog(PANIC, "Distribute transaction identifier too long (%d)",
+				 (int)strlen(dtxContextInfo->distributedId));
 		memcpy(p, dtxContextInfo->distributedId, TMGIDSIZE);
 		p += TMGIDSIZE;		
 		memcpy(p, &dtxContextInfo->curcid, sizeof(CommandId));
@@ -426,7 +428,9 @@ DtxContextInfo_Deserialize(
 			memcpy(&dtxContextInfo->distributedTimeStamp, p, sizeof(DistributedTransactionTimeStamp)); 	
 			p += sizeof(DistributedTransactionTimeStamp);	
 			memcpy(dtxContextInfo->distributedId, p, TMGIDSIZE);
-			Assert(strlen(dtxContextInfo->distributedId) < TMGIDSIZE);
+			if (strlen(dtxContextInfo->distributedId) >= TMGIDSIZE)
+				elog(PANIC, "Distribute transaction identifier too long (%d)",
+					 (int)strlen(dtxContextInfo->distributedId));
 			p += TMGIDSIZE;		
 			memcpy(&dtxContextInfo->curcid, p, sizeof(CommandId));
 			p += sizeof(CommandId);
