@@ -963,12 +963,23 @@ class GPDetective:
               self.writeCmd('gpcheckcat_' + db + '.log', checkcat)
               checkcat.pop()
 
+        conOpts = ""
+        if self.opt['-h']:
+           conOpts = conOpts + ' -h ' + str(self.opt['-h'])
+        if self.opt['-p']:
+           conOpts = conOpts + ' -p ' + str(self.opt['-p'])
+        if self.opt['-U']:
+           conOpts = conOpts + ' -U ' + str(self.opt['-U'])
+
         if self.runpg_dumpall == True and self.pg_dump_options == None:
+            self.log('pg_dumpall')
             self.writeCmd('pg_dumpall.log', 
-                         ['pg_dumpall', '--schema-only', '--gp-syntax']);
+                          'pg_dumpall' + ' --schema-only' + ' --gp-syntax' + conOpts
+                         );
         if self.pg_dump_options != None:
+            self.log('pd_dump')
             self.writeCmd( 'pg_dump.log'
-                         , 'pg_dump' + ' --schema-only' + ' --gp-syntax ' + self.pg_dump_options
+                         , 'pg_dump' + ' --schema-only' + ' --gp-syntax ' + self.pg_dump_options + conOpts
                          );
 
         self.writeSelect('catalog_q1.log', 
