@@ -1808,8 +1808,10 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         arrayLen = len(array.getSegDbList())
 
         originalDbIds = ""
+        originalDbIdsList = []
         first = True
         for seg in array.getDbList():
+            originalDbIdsList.append(int(seg.getSegmentDbId()))
             if first == False:
                originalDbIds += ", "
             first = False
@@ -1827,7 +1829,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
                deleteDbIdList = []
                rows = curs.fetchall()
                for row in rows:
-                   deleteDbIdList.append(row[0]) 
+                   deleteDbIdList.append(int(row[0])) 
 
                # Get a list of all the expand mirror segments
                sqlStr = "select content from pg_catalog.gp_segment_configuration where dbid not in (%s) and role = 'm'" % str(originalDbIds)
@@ -1835,17 +1837,25 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
                deleteContentList = []
                rows = curs.fetchall()
                for row in rows:
-                   deleteContentList.append(row[0])
+                   deleteContentList.append(int(row[0]))
 
+               #
                # The following is a sanity check to make sure we don't do something bad here.
+               #
+               if len(originalDbIdsList) < 2:
+                  self.logger.error("The original DB DIS list is to small to be correct: %s " % str(len(originalDbIdsList)))
+                  raise Exception("Unable to complete rollback")
+
                totalToDelete = len(deleteDbIdList) + len(deleteContentList)
-               if int(totalToDelete) != int(self.statusLogger.get_number_new_segments()):
+               if int(totalToDelete) > int(self.statusLogger.get_number_new_segments()):
                   self.logger.error("There was a discrepancy between the number of expand segments to rollback (%s), and the expected number of segment to rollback (%s)" \
                                     % (str(totalToDelete), str(self.statusLogger.get_number_new_segments())))
                   self.logger.error("  Expanded primary segment dbids = %s", str(deleteDbIdList))
                   self.logger.error("  Expansion mirror content ids   = %s", str(deleteContentList))
                   raise Exception("Unable to complete rollback")
             
+
+
                for content in deleteContentList:
                   sqlStr = "select * from gp_remove_segment_mirror(%s::smallint)" % str(content)
                   dbconn.execSQL(restore_conn, sqlStr)
@@ -2950,7 +2960,7 @@ except Exception,e:
         logger.exception("gpexpand failed. exiting...")
     else:
         logger.error("gpexpand failed: %s \n\nExiting..." % e )
-    if gp_expand.pastThePointOfNoReturn == True:
+    if gp_expand is not None and gp_expand.pastThePointOfNoReturn == True:
        logger.error('gpexpand is past the point of rollback. Any remaining issues must be addressed outside of gpexpand.')
     if gp_expand is not None:
         if gpexpand_db_status is None and gp_expand.get_state() is None:
