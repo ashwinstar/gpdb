@@ -1,4 +1,4 @@
-import os, sys, datetime
+import os, sys, datetime, locale
 import gplog
 
 sys.path.append(os.path.join(sys.path[0], 'lib'))
