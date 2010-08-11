@@ -498,7 +498,7 @@ AppendOnlyStorageFormat_MakeLargeContentHeader(
 }
 
 
-#define MAX_AOHEADER_CHECK_ERROR_STR 200
+#define MAX_AOHEADER_CHECK_ERROR_STR 300
 static char AoHeaderCheckErrorStr[MAX_AOHEADER_CHECK_ERROR_STR] = "\0";
 
 /*
@@ -517,6 +517,7 @@ AppendOnlyStorageFormat_GetHeaderInfo(
 	int32			*actualHeaderLen)
 {
 	AOHeader 	*header;
+	int snprintfResult;
 
 	Assert(headerPtr != NULL);
 	Assert(headerKind != NULL);
@@ -525,17 +526,31 @@ AppendOnlyStorageFormat_GetHeaderInfo(
 
 	if (header->header_bytes_0_3 == 0)
 	{
-		sprintf(AoHeaderCheckErrorStr,
+		snprintfResult =
+			snprintf(
+				AoHeaderCheckErrorStr,
+				MAX_AOHEADER_CHECK_ERROR_STR,
 				"Append-only storage header is invalid -- first 32 bits are all zeroes (header_bytes_0_3 0x%08x, header_bytes_4_7 0x%08x)",
 			    header->header_bytes_0_3, header->header_bytes_4_7);
+		
+		Assert(snprintfResult >= 0);
+		Assert(snprintfResult < MAX_AOHEADER_CHECK_ERROR_STR);
+		
 		return AOHeaderCheckFirst32BitsAllZeroes;
 	}
 
 	if (AOHeaderGet_reserved0(header) != 0)
 	{
-		sprintf(AoHeaderCheckErrorStr,
+		snprintfResult =
+			snprintf(
+				AoHeaderCheckErrorStr,
+				MAX_AOHEADER_CHECK_ERROR_STR,
 				"Append-only storage header is invalid -- reserved bit 0 of the header is not zero (header_bytes_0_3 0x%08x, header_bytes_4_7 0x%08x)",
 			    header->header_bytes_0_3, header->header_bytes_4_7);
+		
+		Assert(snprintfResult >= 0);
+		Assert(snprintfResult < MAX_AOHEADER_CHECK_ERROR_STR);
+		
 		return AOHeaderCheckReservedBit0Not0;
 	}
 
@@ -543,18 +558,32 @@ AppendOnlyStorageFormat_GetHeaderInfo(
 
 	if (*headerKind == AoHeaderKind_None)
 	{
-		sprintf(AoHeaderCheckErrorStr,
+		snprintfResult =
+			snprintf(
+				AoHeaderCheckErrorStr,
+				MAX_AOHEADER_CHECK_ERROR_STR,
 				"Append-only storage header is invalid -- invalid value 0 (none) for header kind (header_bytes_0_3 0x%08x, header_bytes_4_7 0x%08x)",
 			    header->header_bytes_0_3, header->header_bytes_4_7);
+		
+		Assert(snprintfResult >= 0);
+		Assert(snprintfResult < MAX_AOHEADER_CHECK_ERROR_STR);
+		
 		return AOHeaderCheckInvalidHeaderKindNone;
 	}
 
 	if (*headerKind >= MaxAoHeaderKind)
 	{
-		sprintf(AoHeaderCheckErrorStr,
+		snprintfResult =
+			snprintf(
+				AoHeaderCheckErrorStr,
+				MAX_AOHEADER_CHECK_ERROR_STR,
 				"Append-only storage header is invalid -- invalid header kind value %d (header_bytes_0_3 0x%08x, header_bytes_4_7 0x%08x)",
 				(int)*headerKind,
 			    header->header_bytes_0_3, header->header_bytes_4_7);
+		
+		Assert(snprintfResult >= 0);
+		Assert(snprintfResult < MAX_AOHEADER_CHECK_ERROR_STR);
+		
 		return AOHeaderCheckInvalidHeaderKind;
 	}
 

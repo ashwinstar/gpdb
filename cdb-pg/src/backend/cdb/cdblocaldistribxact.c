@@ -674,13 +674,15 @@ LocalDistribXact_ChangeState(
 	LWLockRelease(ProcArrayLock);
 }
 
-static char LocalDistribDisplayBuffer[100];
+#define MAX_LOCAL_DISTRIB_DISPLAY_BUFFER 100
+static char LocalDistribDisplayBuffer[MAX_LOCAL_DISTRIB_DISPLAY_BUFFER];
 
 char* 
 LocalDistribXact_DisplayString(
 	LocalDistribXactRef		*localDistribXactRef)
 {
 	LocalDistribXact 	ele;
+	int 				snprintfResult;
 
 	if (LocalDistribXactRef_IsNil(localDistribXactRef))
 		return "distributed transaction is nil";
@@ -688,11 +690,17 @@ LocalDistribXact_DisplayString(
 	ele = SharedListBase_ToElement(
 						&LocalDistribXactShared->sortedLocalBase,
 						localDistribXactRef->index);
-	sprintf(LocalDistribDisplayBuffer,
+	snprintfResult =
+		snprintf(
+			LocalDistribDisplayBuffer,
+			MAX_LOCAL_DISTRIB_DISPLAY_BUFFER,
 		    "distributed transaction {timestamp %u, xid %u} for local xid %u",
 		    ele->distribTimeStamp,
 		    ele->distribXid,
 		    ele->localXid);
+
+	Assert(snprintfResult >= 0);
+	Assert(snprintfResult < MAX_LOCAL_DISTRIB_DISPLAY_BUFFER);
 
 	return LocalDistribDisplayBuffer;
 }

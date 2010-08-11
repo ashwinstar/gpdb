@@ -237,7 +237,8 @@ write_position_to_end(XLogRecPtr *endLocation, struct timeval *timeout, bool *sh
 	return true;
 }
 
-static char StandbyErrorString[200] = "";
+#define MAX_STANDBY_ERROR_STRING 200
+static char StandbyErrorString[MAX_STANDBY_ERROR_STRING] = "";
 
 char *
 GetStandbyErrorString(void)
@@ -419,8 +420,13 @@ write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout, bool *shut
     	}
 
 		message = elog_message();
- 		if (message != NULL && strlen(message) + 1 < sizeof(StandbyErrorString))
-			strcpy(StandbyErrorString, message);
+ 		if (message != NULL)
+		{
+			/*
+			 * strncpy doesn't behave well, so let's use snprintf instead.
+			 */
+			snprintf(StandbyErrorString, MAX_STANDBY_ERROR_STRING, "%s", message);
+		}
 		else
 			strcpy(StandbyErrorString, "");
 		

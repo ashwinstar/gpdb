@@ -149,10 +149,15 @@ typedef struct FsObjEntryData
 typedef FsObjEntryData *FsObjEntry;
 
 static char *
-FsObjEntryToBuffer(char *buffer, FsObjEntry fsObjEntry)
+FsObjEntryToBuffer(char *buffer, int maxBufferLen, FsObjEntry fsObjEntry)
 {
+	int snprintfResult;
+
 	if (fsObjEntry->state != PersistentFileSysState_Free)	
-		sprintf(buffer,
+		snprintfResult = 
+			snprintf(
+				buffer,
+				maxBufferLen,
 			    "%s: state '%s', transaction %u, relation storage manager '%s', persistent serial number " INT64_FORMAT ", TID %s, fsObjEntry address %p",
 				PersistentFileSysObjName_TypeAndObjectName(&fsObjEntry->fsObjName),
 				PersistentFileSysObjState_Name(fsObjEntry->state),
@@ -162,28 +167,35 @@ FsObjEntryToBuffer(char *buffer, FsObjEntry fsObjEntry)
 				ItemPointerToString(&fsObjEntry->key.persistentTid),
 				fsObjEntry);
 	else
-		sprintf(buffer,
+		snprintfResult = 
+			snprintf(
+				buffer,
+				maxBufferLen,
 			    "Free entry as free number " INT64_FORMAT ", TID %s, fsObjEntry address %p",
 				fsObjEntry->persistentSerialNum,
 				ItemPointerToString(&fsObjEntry->key.persistentTid),
 				fsObjEntry);
 
+	Assert(snprintfResult >= 0);
+	Assert(snprintfResult < maxBufferLen);
+
 	return buffer;
 }
 
-static char fsObjEntryBuffer[200];
-static char fsObjEntryBuffer2[200];
+#define MAX_FS_OBJ_ENTRY_BUFFER 400
+static char fsObjEntryBuffer[MAX_FS_OBJ_ENTRY_BUFFER];
+static char fsObjEntryBuffer2[MAX_FS_OBJ_ENTRY_BUFFER];
 
 static char *
 FsObjEntryToString(FsObjEntry fsObjEntry)
 {
-	return FsObjEntryToBuffer(fsObjEntryBuffer, fsObjEntry);
+	return FsObjEntryToBuffer(fsObjEntryBuffer, MAX_FS_OBJ_ENTRY_BUFFER, fsObjEntry);
 }
 
 static char *
 FsObjEntryToString2(FsObjEntry fsObjEntry)
 {
-	return FsObjEntryToBuffer(fsObjEntryBuffer2, fsObjEntry);
+	return FsObjEntryToBuffer(fsObjEntryBuffer2, MAX_FS_OBJ_ENTRY_BUFFER, fsObjEntry);
 }
 
 static HTAB **fsObjHashTable = NULL;
@@ -381,9 +393,14 @@ typedef struct AoMirrorResyncEofsEntryData
 typedef AoMirrorResyncEofsEntryData *AoMirrorResyncEofsEntry;
 
 static char *
-AoMirrorResyncEofsEntryToBuffer(char *buffer, AoMirrorResyncEofsEntry eofsEntry)
+AoMirrorResyncEofsEntryToBuffer(char *buffer, int maxBufferLen, AoMirrorResyncEofsEntry eofsEntry)
 {
-	sprintf(buffer,
+	int snprintfResult;
+
+	snprintfResult =
+		snprintf(
+			buffer,
+			maxBufferLen,
 		    "Append-Only relation %u/%u/%u, segment file #%d, transaction %u, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ", persistent serial number " INT64_FORMAT ", TID %s, eofsEntry address %p",
 			eofsEntry->relFileNode.spcNode,
 			eofsEntry->relFileNode.dbNode,
@@ -396,22 +413,26 @@ AoMirrorResyncEofsEntryToBuffer(char *buffer, AoMirrorResyncEofsEntry eofsEntry)
 			ItemPointerToString(&eofsEntry->key.persistentTid),
 			eofsEntry);
 
+	Assert(snprintfResult >= 0);
+	Assert(snprintfResult < maxBufferLen);
+
 	return buffer;
 }
 
-static char aoMirrorResyncEofsEntryBuffer[200];
-static char aoMirrorResyncEofsEntryBuffer2[200];
+#define MAX_AO_MIRROR_RESYNC_EOFS_ENTRY_BUFFER 300
+static char aoMirrorResyncEofsEntryBuffer[MAX_AO_MIRROR_RESYNC_EOFS_ENTRY_BUFFER];
+static char aoMirrorResyncEofsEntryBuffer2[MAX_AO_MIRROR_RESYNC_EOFS_ENTRY_BUFFER];
 
 static char *
 AoMirrorResyncEofsEntryToString(AoMirrorResyncEofsEntry eofsEntry)
 {
-	return AoMirrorResyncEofsEntryToBuffer(aoMirrorResyncEofsEntryBuffer, eofsEntry);
+	return AoMirrorResyncEofsEntryToBuffer(aoMirrorResyncEofsEntryBuffer, MAX_AO_MIRROR_RESYNC_EOFS_ENTRY_BUFFER, eofsEntry);
 }
 
 static char *
 AoMirrorResyncEofsEntryToString2(AoMirrorResyncEofsEntry eofsEntry)
 {
-	return AoMirrorResyncEofsEntryToBuffer(aoMirrorResyncEofsEntryBuffer2, eofsEntry);
+	return AoMirrorResyncEofsEntryToBuffer(aoMirrorResyncEofsEntryBuffer2, MAX_AO_MIRROR_RESYNC_EOFS_ENTRY_BUFFER, eofsEntry);
 }
 
 static HTAB *recoveryAppendOnlyMirrorResyncEofsTable = NULL;
