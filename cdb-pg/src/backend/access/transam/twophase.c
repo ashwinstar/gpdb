@@ -906,6 +906,8 @@ StartPrepare(GlobalTransaction gxact)
 void
 EndPrepare(GlobalTransaction gxact)
 {
+	MIRRORED_LOCK_DECLARE;
+
 	TransactionId xid = gxact->proc.xid;
 	TwoPhaseFileHeader *hdr;
 	char		simpleFileName[MAXPGPATH];
@@ -942,6 +944,29 @@ EndPrepare(GlobalTransaction gxact)
 	 * critical section, though, it doesn't matter since any failure causes
 	 * PANIC anyway.
 	 */
+
+	/*
+	 * We have to lock out checkpoint start here, too; otherwise a checkpoint
+	 * starting immediately after the WAL record is inserted could complete
+	 * without fsync'ing our state file.  (This is essentially the same kind
+	 * of race condition as the COMMIT-to-clog-write case that
+	 * RecordTransactionCommit uses CheckpointStartLock for; see notes there.)
+	 *
+	 * We save the PREPARE record's location in the gxact for later use by
+	 * CheckPointTwoPhase.
+	 *
+	 * NOTE: Critical seciton and CheckpointStartLock were moved up.
+	 */
+	START_CRIT_SECTION();
+
+	LWLockAcquire(CheckpointStartLock, LW_SHARED);
+
+	/*
+	 * The MirroredLock will cover BOTH mirrored writes to the pg_twophase directory
+	 * and the Prepared XLOG record.
+	 */
+	MIRRORED_LOCK;
+		
 	TwoPhaseSimpleFileName(simpleFileName, xid);
 
 	MirroredFlatFile_Open(
@@ -993,20 +1018,7 @@ EndPrepare(GlobalTransaction gxact)
 	 * the write --- then, WAL replay should repair the inconsistency.	The
 	 * odds of a PANIC actually occurring should be very tiny given that we
 	 * were able to write the bogus CRC above.
-	 *
-	 * We have to lock out checkpoint start here, too; otherwise a checkpoint
-	 * starting immediately after the WAL record is inserted could complete
-	 * without fsync'ing our state file.  (This is essentially the same kind
-	 * of race condition as the COMMIT-to-clog-write case that
-	 * RecordTransactionCommit uses CheckpointStartLock for; see notes there.)
-	 *
-	 * We save the PREPARE record's location in the gxact for later use by
-	 * CheckPointTwoPhase.
 	 */
-	START_CRIT_SECTION();
-
-	LWLockAcquire(CheckpointStartLock, LW_SHARED);
-
 	gxact->prepare_lsn = XLogInsert(RM_XACT_ID, XLOG_XACT_PREPARE,
 									records.head);
 	XLogFlush(gxact->prepare_lsn);
@@ -1060,6 +1072,8 @@ EndPrepare(GlobalTransaction gxact)
 	 * Now we can release the checkpoint start lock: a checkpoint starting
 	 * after this will certainly see the gxact as a candidate for fsyncing.
 	 */
+	MIRRORED_UNLOCK;
+		
 	LWLockRelease(CheckpointStartLock);
 
 	END_CRIT_SECTION();
@@ -1228,6 +1242,8 @@ ReadTwoPhaseFile(TransactionId xid)
 bool
 FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFound)
 {
+	MIRRORED_LOCK_DECLARE;
+
 	GlobalTransaction gxact;
 	TransactionId xid;
 	char	   *buf;
@@ -1301,6 +1317,26 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 
 	bufptr += MAXALIGN(deserializeLen);
 
+	// NOTE: This use to be inside RecordTransactionCommitPrepared  and
+	// NOTE: RecordTransactionAbortPrepared.  Moved out here so the mirrored
+	// NOTE: can cover both the XLOG record and the mirrored pg_twophase file
+	// NOTE: work.
+	START_CRIT_SECTION();
+
+	if (isCommit)
+	{
+		// NOTE: This use to be inside RecordTransactionCommitPrepared.
+		
+		/* See notes in RecordTransactionCommit */
+		LWLockAcquire(CheckpointStartLock, LW_SHARED);
+	}
+
+	/*
+	 * Use the MirroredLock to cover both the XLOG of the {COMMIT|ABORT} PREPARED
+	 * record and the removal the of the two phase file from the pg_twophase directory.
+	 */
+	MIRRORED_LOCK;
+
 	/*
 	 * The order of operations here is critical: make the XLOG entry for
 	 * commit or abort, then mark the transaction committed or aborted in
@@ -1356,6 +1392,18 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	RemoveTwoPhaseFile(xid, true);
 
 	RemoveGXact(gxact);
+
+	MIRRORED_UNLOCK;
+
+	if (isCommit)
+	{
+		// NOTE: This use to be inside RecordTransactionCommitPrepared.
+		
+		/* Checkpoint is allowed again */
+		LWLockRelease(CheckpointStartLock);
+	}
+
+	END_CRIT_SECTION();
 
 	pfree(buf);
 
@@ -1493,6 +1541,8 @@ RecreateTwoPhaseFile(TransactionId xid, void *content, int len)
 void
 CheckPointTwoPhase(XLogRecPtr redo_horizon)
 {
+	MIRRORED_LOCK_DECLARE;
+
 	TransactionId *xids;
 	int			nxids;
 	char		simpleFileName[MAXPGPATH];
@@ -1526,6 +1576,8 @@ CheckPointTwoPhase(XLogRecPtr redo_horizon)
 	}
 
 	LWLockRelease(TwoPhaseStateLock);
+
+	MIRRORED_LOCK;
 
 	for (i = 0; i < nxids; i++)
 	{
@@ -1570,6 +1622,8 @@ CheckPointTwoPhase(XLogRecPtr redo_horizon)
 
 		MirroredFlatFile_Close(&mirroredOpen);
 	}
+
+	MIRRORED_UNLOCK;
 
 	pfree(xids);
 }
@@ -1874,12 +1928,6 @@ RecordTransactionCommitPrepared(TransactionId xid,
 										persistentPrepareObjects,
 										EndXactRecKind_Commit);
 
-
-	START_CRIT_SECTION();
-
-	/* See notes in RecordTransactionCommit */
-	LWLockAcquire(CheckpointStartLock, LW_SHARED);
-
 	/* Emit the XLOG commit record */
 	xlrec.xid = xid;
 	xlrec.crec.xtime = time(NULL);
@@ -1970,11 +2018,6 @@ RecordTransactionCommitPrepared(TransactionId xid,
 	/* to avoid race conditions, the parent must commit first */
 	TransactionIdCommitTree(nchildren, children);
 
-	/* Checkpoint is allowed again */
-	LWLockRelease(CheckpointStartLock);
-
-	END_CRIT_SECTION();
-
 	if (persistentCommitBuffer != NULL)
 		pfree(persistentCommitBuffer);
 }
@@ -2016,8 +2059,6 @@ RecordTransactionAbortPrepared(TransactionId xid,
 					PersistentEndXactRec_ObjectCount(
 										persistentPrepareObjects,
 										EndXactRecKind_Abort);
-
-	START_CRIT_SECTION();
 
 	/* Emit the XLOG abort record */
 	xlrec.xid = xid;
@@ -2087,8 +2128,6 @@ RecordTransactionAbortPrepared(TransactionId xid,
 	 */
 	TransactionIdAbort(xid);
 	TransactionIdAbortTree(nchildren, children);
-
-	END_CRIT_SECTION();
 
 	if (persistentAbortBuffer != NULL)
 		pfree(persistentAbortBuffer);
