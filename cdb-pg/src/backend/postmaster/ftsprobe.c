@@ -1911,6 +1911,8 @@ Filerep_preprocess_probe_results(uint8 *probe_results, CdbComponentDatabaseInfo 
 
 	/*
 	 * There are a few possibilities here:
+	 *    0) primary in fault, mirror already marked down, primary
+	 * expected to be in changetracking -- re-issue changetracking transition.
 	 *    1) primary in fault, mirror OK:
 	 *             mirror is promoted.
 	 *    2) primary in fault, mirror dead
@@ -1932,6 +1934,15 @@ Filerep_preprocess_probe_results(uint8 *probe_results, CdbComponentDatabaseInfo 
 	 */
 	if (PROBE_IS_FAULT(primary))
 	{
+		/* PRIMARY FAULT -- case 0 */
+		if (segInfo->mode == 'c')
+		{
+			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported fault. Already in changetracking. Retrying transition.",
+				 primary->dbid, probe_results[primary->dbid]);
+
+			Filerep_mode_update(primary->dbid, "primary", 'c', FilerepModeUpdateLoggingEnum_PrimaryToChangeTracking);
+		}
+
 		/* PRIMARY FAULT -- cases 1-4 */
 		if (PROBE_IS_FAULT(mirror))
 		{
@@ -1940,7 +1951,6 @@ Filerep_preprocess_probe_results(uint8 *probe_results, CdbComponentDatabaseInfo 
 
 			/* consider mirror dead (3) */
 			probe_results[mirror->dbid] &= ~PROBE_ALIVE;
-
 		}
 		else if (PROBE_IS_DEAD(mirror))
 		{
