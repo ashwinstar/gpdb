@@ -1752,15 +1752,20 @@ class GpArray:
             if seg.primaryDB:
                 if seg.primaryDB.dbid in self.recoveredSegmentDbids:
                     if len(seg.mirrorDBs) > 0 and seg.mirrorDBs[0].dbid in self.recoveredSegmentDbids:
-                        recovered_contents.append(seg.primaryDB.content)
+                        recovered_contents.append((seg.primaryDB.content, seg.primaryDB.dbid, seg.mirrorDBs[0].dbid))
 
         conn = dbconn.connect(dbURL, True)
-        for content_id in recovered_contents:
+        for (content_id, primary_dbid, mirror_dbid) in recovered_contents:
             sql = "UPDATE gp_segment_configuration SET role=preferred_role where content = %d" % content_id
             dbconn.executeUpdateOrInsert(conn, sql, 2)
 
-            #logger.info('updated for content %d' % content_id)
-            #logger.info('sql: %s' % sql)
+            # NOTE: primary-dbid (right now) is the mirror.
+            sql = "INSERT INTO gp_configuration_history VALUES (now(), %d, 'Reassigned role for content %d to MIRROR')" % (primary_dbid, content_id)
+            dbconn.executeUpdateOrInsert(conn, sql, 1)
+
+            # NOTE: mirror-dbid (right now) is the primary.
+            sql = "INSERT INTO gp_configuration_history VALUES (now(), %d, 'Reassigned role for content %d to PRIMARY')" % (mirror_dbid, content_id)
+            dbconn.executeUpdateOrInsert(conn, sql, 1)
 
             # We could attempt to update the segments-array.
             # But the caller will re-read the configuration from the catalog.
