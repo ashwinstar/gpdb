@@ -1162,8 +1162,68 @@ void MirroredFileSysObj_TransactionCreateAppendOnlyFile(
 	}
 }
 
+void MirroredFileSysObj_ScheduleDropBufferPoolRel(
+	Relation 				relation)
+{
+	if (!relation->rd_segfile0_relationnodeinfo.isPresent)
+		RelationFetchSegFile0GpRelationNode(relation);
+	Assert(relation->rd_segfile0_relationnodeinfo.isPresent);
+	
+	/* IMPORANT:
+	 * ----> Relcache invalidation can close an open smgr <------
+	 *
+	 * So, DO NOT add other calls (such as RelationFetchSegFile0GpRelationNode above or 
+	 * even elog which may invoke heap_open to gather its errcontext between here 
+	 * and the smgrclose below.
+	 *
+	 * The DANGER is heap_open may process a relcache invalidation and close our
+	 * relation's smgr open...
+	 */
+	RelationOpenSmgr(relation);
+	Assert(relation->rd_smgr != NULL);
+	smgrscheduleunlink(
+					&relation->rd_node,
+					/* segmentFileNum */ 0,
+					PersistentFileSysRelStorageMgr_BufferPool,
+					relation->rd_isLocalBuf,
+					relation->rd_rel->relname.data,
+					&relation->rd_segfile0_relationnodeinfo.persistentTid,
+					relation->rd_segfile0_relationnodeinfo.persistentSerialNum);
+
+	/* Now close the file and throw away the hashtable entry */
+	smgrclose(relation->rd_smgr);
+	Assert(relation->rd_smgr == NULL);	// Since RelationOpenSmgr linked the two together.
+
+	/* IMPORANT:
+	 * ----> Relcache invalidation can close an open smgr <------
+	 *
+	 * See above.
+	 */
+
+
+	/*
+	 * Only do this elog tracing outside the smgr usage above.
+	 */
+	if (Debug_persistent_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+
+		SUPPRESS_ERRCONTEXT_PUSH();
+
+		elog(Persistent_DebugPrintLevel(), 
+			 "MirroredFileSysObj_ScheduleDropBufferPoolRel: %u/%u/%u, relation name '%s'",
+			 relation->rd_node.spcNode,
+			 relation->rd_node.dbNode,
+			 relation->rd_node.relNode,
+			 relation->rd_rel->relname.data);
+
+		SUPPRESS_ERRCONTEXT_POP();
+	}
+
+}
+
 void MirroredFileSysObj_ScheduleDropBufferPoolFile(
-	SMgrRelation 				smgrOpen,
+	RelFileNode 				*relFileNode,
 
 	bool 						isLocalBuf,
 
@@ -1175,6 +1235,15 @@ void MirroredFileSysObj_ScheduleDropBufferPoolFile(
 {
 	Assert(persistentTid != NULL);
 
+	smgrscheduleunlink(
+					relFileNode,
+					/* segmentFileNum */ 0,
+					PersistentFileSysRelStorageMgr_BufferPool,
+					isLocalBuf,
+					relationName,
+					persistentTid, 
+					persistentSerialNum);
+
 	if (Debug_persistent_print)
 	{
 		SUPPRESS_ERRCONTEXT_DECLARE;
@@ -1183,25 +1252,14 @@ void MirroredFileSysObj_ScheduleDropBufferPoolFile(
 
 		elog(Persistent_DebugPrintLevel(), 
 			 "MirroredFileSysObj_ScheduleDropBufferPoolFile: %u/%u/%u, relation name '%s'",
-			 smgrOpen->smgr_rnode.spcNode,
-			 smgrOpen->smgr_rnode.dbNode,
-			 smgrOpen->smgr_rnode.relNode,
+			 relFileNode->spcNode,
+			 relFileNode->dbNode,
+			 relFileNode->relNode,
 			 relationName);
 
 		SUPPRESS_ERRCONTEXT_POP();
 	}
 
-	smgrscheduleunlink(
-					&smgrOpen->smgr_rnode,
-					/* segmentFileNum */ 0,
-					PersistentFileSysRelStorageMgr_BufferPool,
-					isLocalBuf,
-					relationName,
-					persistentTid, 
-					persistentSerialNum);
-
-	/* Now close the file and throw away the hashtable entry */
-	smgrclose(smgrOpen);
 }
 
 void MirroredFileSysObj_ScheduleDropAppendOnlyFile(

@@ -1519,7 +1519,7 @@ dropdb(const char *dbname, bool missing_ok)
 				dbInfoGpRelationNode = &dbInfoRel->gpRelationNodes[0];
 
 				MirroredFileSysObj_ScheduleDropBufferPoolFile(
-												smgropen(relFileNode),
+												&relFileNode,
 												/* isLocalBuf */ false,
 												dbInfoRel->relname,
 												&dbInfoGpRelationNode->persistentTid,

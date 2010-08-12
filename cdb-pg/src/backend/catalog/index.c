@@ -990,15 +990,7 @@ index_drop(Oid indexId)
 	/*
 	 * Schedule physical removal of the files
 	 */
-	RelationOpenSmgr(userIndexRelation);
-	Assert(userIndexRelation->rd_smgr != NULL);
-
-	MirroredFileSysObj_ScheduleDropBufferPoolFile(
-									userIndexRelation->rd_smgr,
-									userIndexRelation->rd_isLocalBuf,
-									userIndexRelation->rd_rel->relname.data,
-									&userIndexRelation->rd_segfile0_relationnodeinfo.persistentTid,
-									userIndexRelation->rd_segfile0_relationnodeinfo.persistentSerialNum);
+	MirroredFileSysObj_ScheduleDropBufferPoolRel(userIndexRelation);
 
 	DeleteGpRelationNodeTuple(
 					userIndexRelation,

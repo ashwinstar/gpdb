@@ -854,9 +854,22 @@ smgrscheduleunlink(
 
 	int64 			persistentSerialNum)
 {
+	SUPPRESS_ERRCONTEXT_DECLARE;
+	
 	PersistentFileSysObjName fsObjName;		
 	
 	PendingDelete *pending;
+
+
+	/* IMPORANT:
+	 * ----> Relcache invalidation can close an open smgr <------
+	 *
+	 * This routine can be called in the context of a relation and rd_smgr being used,
+	 * so do not issue elog here without suppressing errcontext.  Otherwise, the heap_open
+	 * inside errcontext processing may cause the smgr open to be closed...
+	 */
+
+	SUPPRESS_ERRCONTEXT_PUSH();
 
 	PersistentFileSysObjName_SetRelationFile(
 										&fsObjName,
@@ -884,6 +897,14 @@ smgrscheduleunlink(
 											segmentFileNum,
 											GetCurrentTransactionNestLevel());
 	}
+
+	SUPPRESS_ERRCONTEXT_POP();
+
+	/* IMPORANT:
+	 * ----> Relcache invalidation can close an open smgr <------
+	 *
+	 * See above.
+	 */
 }
 
 /*

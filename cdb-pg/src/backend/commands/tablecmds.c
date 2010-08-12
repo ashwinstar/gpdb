@@ -10425,18 +10425,7 @@ ATExecSetTableSpace_BufferPool(
 
 
 	/* schedule unlinking old physical file */
-	RelationOpenSmgr(rel);
-	Assert(rel->rd_smgr != NULL);
-
-	if (!rel->rd_segfile0_relationnodeinfo.isPresent)
-		RelationFetchSegFile0GpRelationNode(rel);
-
-	MirroredFileSysObj_ScheduleDropBufferPoolFile(
-									rel->rd_smgr,
-									rel->rd_isLocalBuf,
-									rel->rd_rel->relname.data,
-									&rel->rd_segfile0_relationnodeinfo.persistentTid,
-									rel->rd_segfile0_relationnodeinfo.persistentSerialNum);
+	MirroredFileSysObj_ScheduleDropBufferPoolRel(rel);
 
 	/*
 	 * Now drop smgr references.  The source was already dropped by

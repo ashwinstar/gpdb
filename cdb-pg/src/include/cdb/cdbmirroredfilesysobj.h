@@ -179,8 +179,10 @@ extern void MirroredFileSysObj_TransactionCreateAppendOnlyFile(
 	ItemPointer 			persistentTid,
 
 	int64					*persistentSerialNum);
+extern void MirroredFileSysObj_ScheduleDropBufferPoolRel(
+	Relation 				relation);
 extern void MirroredFileSysObj_ScheduleDropBufferPoolFile(
-	SMgrRelation 				smgrOpen,
+	RelFileNode 				*relFileNode,
 
 	bool 						isLocalBuf,
 
