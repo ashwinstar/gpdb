@@ -5981,7 +5981,8 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 
 			/* always quote to make WITH (tablename=...) work correctly */
 			appendStringInfo(&sid1, "tablename=\'%s\'", 
-							 get_rel_name(rule->parchildrelid));
+							 quote_identifier(
+									 get_rel_name(rule->parchildrelid)));
 
 			/* MPP-7191, MPP-7193: fully-qualify storage type if not
 			 * specified (and not a template)
@@ -6042,8 +6043,12 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 			 * tablename is ignored during SET SUBPARTITION TEMPLATE
 			 * because the template rules do not have corresponding
 			 * relations
+			 *
+			 * MPP-10480: use tablename
 			 */
-			appendStringInfo(&buf, "tablename=\'foo\'");
+			appendStringInfo(&buf, "tablename=\'%s\'",
+							 quote_identifier(
+									 get_rel_name(part->parrelid)));
 		}
 
 		opts = rule->parreloptions;
@@ -6061,6 +6066,9 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 				if (e->arg)
 					appendStringInfo(&buf, "=%s", strVal(e->arg));
 			}
+		}
+		if (strlen(buf.data))
+		{
 			reloptions = buf.data;
 		}
 		if (OidIsValid(rule->partemplatespaceId))

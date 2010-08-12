@@ -3906,3 +3906,13 @@ select pg_get_partition_def('mpp10223b'::regclass,true);
 
 drop table mpp10223b;
 
+-- MPP-10480: dump templates (but don't use "foo")
+create table MPP10480 (a int, b int, d int)
+partition by range (b)
+subpartition by range(d)
+subpartition template (start (1) end (10) every (1))
+(start (20) end (30) every (1));
+
+select pg_get_partition_template_def('MPP10480'::regclass, true, true);
+
+drop table MPP10480;
