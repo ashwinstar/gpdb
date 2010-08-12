@@ -103,7 +103,7 @@ static int 			elevel = -1;
 static void analyzeRelation(Relation relation, List *lAttributeNames);
 static void analyzeComputeAttributeStatistics(Oid relationOid, 
 		const char *attributeName,
-		Oid relTuples, 
+		float4 relTuples, 
 		Oid sampleTableOid, 
 		float4 sampleTableRelTuples, 
 		AttributeStatistics *stats);
@@ -819,6 +819,9 @@ static void analyzeRelation(Relation relation, List *lAttributeNames)
 	{
 		elog(elevel, "ANALYZE building sample table of size %.0f on table %s because it has too many rows.", minSampleTableSize, RelationGetRelationName(relation));
 		sampleTableOid = buildSampleTable(relationOid, lAttributeNames, estimatedRelTuples, minSampleTableSize, &sampleTableRelTuples);
+		
+		/* We must have a non-empty sample table */
+		Assert(sampleTableRelTuples > 0.0);	
 	}
 	
 	/**
@@ -984,6 +987,8 @@ static void spiExecuteWithCallback(
 		}
 		connected = true;
 
+		elog(elevel, "Executing SQL: %s", src);
+		
 		/* Do the query. */
 		ret = SPI_execute(src, read_only, tcount);
 		Assert(ret > 0);
@@ -1164,7 +1169,7 @@ static Oid buildSampleTable(Oid relationOid,
 		}
 	}
 	
-	appendStringInfo(&str, "from only %s.%s as Ta where random() < %f limit %lu) distributed randomly", 
+	appendStringInfo(&str, "from only %s.%s as Ta where random() < %.38f limit %lu) distributed randomly", 
 			quote_identifier(schemaName), 
 			quote_identifier(tableName), randomThreshold, (unsigned long) requestedSampleSize);
 
@@ -1183,6 +1188,18 @@ static Oid buildSampleTable(Oid relationOid,
 
 	Assert(sampleTableOid != InvalidOid);
 
+	/**
+	 * MPP-10723: Very rarely, we may be unlucky and generate an empty sample table. We error out in this case rather than
+	 * generate bad statistics.
+	 */
+	
+	if (*sampleTableRelTuples < 1.0)
+	{
+		elog(ERROR, "ANALYZE unable to generate accurate statistics on table %s.%s. Try lowering gp_analyze_relative_error", 
+				quote_identifier(schemaName), 
+				quote_identifier(tableName));
+	}
+	
 	/* 
 	 * Update the sample table's reltuples, relpages. Without these, the queries to the sample table would call cdbRelsize which can be an expensive call. 
 	 * We know the number of tuples in the sample table, but don't have the information about the number of pages. We set it to 2 arbitrarily.
@@ -2003,7 +2020,7 @@ static void analyzeComputeHistogram(Oid relationOid,
  */
 static void analyzeComputeAttributeStatistics(Oid relationOid, 
 		const char *attributeName,
-		Oid relTuples, 
+		float4 relTuples, 
 		Oid sampleTableOid, 
 		float4 sampleTableRelTuples, 
 		AttributeStatistics *stats)
@@ -2014,6 +2031,7 @@ static void analyzeComputeAttributeStatistics(Oid relationOid,
 	bool computeHist = true;
 	
 	Assert(stats != NULL);
+	Assert(sampleTableRelTuples > 0.0);
 	
 	/* Default values */
 	stats->ndistinct = -1.0;
@@ -2040,9 +2058,9 @@ static void analyzeComputeAttributeStatistics(Oid relationOid,
 			computeMCV = false;
 			computeHist = false;
 		}
-		stats->nullFraction = nullCount / sampleTableRelTuples;
+		stats->nullFraction = Min(nullCount / sampleTableRelTuples, 1.0);
 	}
-	elog(elevel, "nullfrac = %f", stats->nullFraction);		
+	elog(elevel, "nullfrac = %.38f", stats->nullFraction);		
 	
 	if (computeWidth && !isFixedWidth(relationOid, attributeName, &stats->avgWidth))
 	{
