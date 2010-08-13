@@ -3778,6 +3778,17 @@ except Exception, e:
 finally:
     try:
         if len(minionList) > 0:
+           finalStr = "==========================================================================\n" \
+                      "The gpupgrademirror log information can be found in " + str(get_logfile()) + "\n" \
+                      "Under certain failure situations, not all log information can be collected.\n" \
+                      "There may be additional log information under the gpAdminLogs directory on the following hosts:\n" \
+                      ""
+           for minion in minionList:
+             finalStr = finalStr + "  " + minion.remoteHost + "\n" 
+           finalStr = finalStr + "\n" \
+           "==========================================================================\n"
+
+
            logger.info("==========================================================================")
            logger.info("The gpupgrademirror log information can be found in " + str(get_logfile()))
            logger.info("Under certain failure situations, not all log information can be collected.")
