@@ -294,6 +294,7 @@ bool 		Debug_print_xlog_relation_change_info_skip_issues_only = false;
 bool 		Debug_print_xlog_relation_change_info_backtrace_skip_issues = false;
 bool		Debug_filerep_crc_on = true;
 bool		Debug_filerep_print = false;
+bool		filerep_inject_listener_fault = false;
 
 #define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
 bool		Debug_dtm_action_primary = DEBUG_DTM_ACTION_PRIMARY_DEFAULT;
@@ -2561,6 +2562,17 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_filerep_print,
 		false, NULL, NULL
 	},
+
+	{
+		{"filerep_inject_listener_fault", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("inject fault before filerep listener is started"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&filerep_inject_listener_fault,
+		false, NULL, NULL
+	},
+
 	{
 		{"gp_encoding_check_locale_compatibility", PGC_POSTMASTER, CLIENT_CONN_LOCALE,
 					gettext_noop("Enable check for compatibility of encoding and locale in createdb"),

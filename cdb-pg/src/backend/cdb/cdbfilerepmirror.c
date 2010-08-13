@@ -135,6 +135,19 @@ FileRepMirror_StartReceiver(void)
 	
 	Insist(fileRepRole == FileRepMirrorRole);
 	
+	if (filerep_inject_listener_fault)
+	{
+		status = STATUS_ERROR;
+		ereport(WARNING,
+				(errmsg("mirror failure, "
+						"injected fault by guc filerep_inject_listener_fault, "
+						"failover requested"), 
+				 FileRep_errcontext()));												
+
+		FileRepSubProcess_SetState(FileRepStateFault);
+		return;
+	}
+	
 	status = FileRepConnServer_StartListener(
 								 fileRepMirrorHostAddress,
 								 fileRepMirrorPort);
