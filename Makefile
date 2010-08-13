@@ -740,7 +740,7 @@ endif
 ifneq "$(LOADERS_FILESET_LIB_PWARE)" ""
 	# include libraries from pware needed by the pware Python-2.6.1 build
 	mkdir -p $(LOADERSINSTLOC_LIB_PWARE)
-	($(TAR) cf - -C /opt/pware/lib $(LOADERS_FILESET_LIB_PWARE)) | ($(TAR) xvpf - -C $(LOADERSINSTLOC_LIB_PWARE))$(check_pipe_for_errors)
+	($(TAR) cf - -C $(BLD_ARCH)_PYTHON/lib $(LOADERS_FILESET_LIB_PWARE)) | ($(TAR) xvpf - -C $(LOADERSINSTLOC_LIB_PWARE))$(check_pipe_for_errors)
 endif
 #ifneq "$(findstring $(BLD_ARCH),aix5_ppc_32 aix5_ppc_64)" ""
 #	(cd /opt/freeware/lib/ && $(TAR) cf - libbz2.a libz.a) | (cd $(LOADERSINSTLOC_LIB)/ && $(TAR) xvpf -)$(check_pipe_for_errors)

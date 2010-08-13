@@ -88,7 +88,7 @@ export BLD_LD_LIBRARY_PATH_FIXED=true
 
 # specify python version to use for build-time and run-time
 aix5_ppc_32_PYTHON=/opt/pware
-aix5_ppc_64_PYTHON=/opt/pware
+aix5_ppc_64_PYTHON=/opt/pware64
 osx104_x86_PYTHON=/opt/python-2.5.1
 osx105_x86_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 rhel4_x86_32_PYTHON=/opt/python-2.5.1
@@ -107,7 +107,7 @@ BLD_PYTHON=$($(BLD_ARCH)_PYTHON)
 # perfmon version of python since at some point
 # it may diverge from the GPDB version
 aix5_ppc_32_PYTHON_PERFMON=/opt/pware
-aix5_ppc_64_PYTHON_PERFMON=/opt/pware
+aix5_ppc_64_PYTHON_PERFMON=/opt/pware64
 osx104_x86_PYTHON_PERFMON=/opt/python-2.5.1
 osx105_x86_PYTHON_PERFMON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 rhel4_x86_32_PYTHON_PERFMON=/opt/python-2.5.1
