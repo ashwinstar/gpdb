@@ -16,6 +16,7 @@ Options:
     -v: verbose
     -V: very verbose
     -l logfile: log output to logfile
+    --gpfdist_timeout timeout: gpfdist timeout value
     --version: print version number and exit
     -?: help
 '''
