@@ -30,6 +30,8 @@
 #include "storage/freespace.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
+#include "cdb/cdbpersistentstore.h"
+#include "cdb/cdbpersistentfilesysobj.h"
 
 typedef struct fspc_map
 {
@@ -318,14 +320,16 @@ append_file_parts(mm_fs_obj_type type,
  * Guts of logging for creation or destruction of filesystem objects on
  * the master.
  */
-static void
+static bool
 emit_mmxlog_fs_record(mm_fs_obj_type type, Oid filespace,
 					  Oid tablespace, Oid database, Oid relfilenode,
-					  uint32 segnum, uint8 flags)
+					  uint32 segnum, uint8 flags, XLogRecPtr *location)
 {
+	MemSet(location, 0, sizeof(XLogRecPtr));
+
 	if (!CanEmitXLogRecords)
 		/* no business here */
-		return;
+		return false;
 
 	/* only interesting on the master */
 	if (GpIdentity.dbid == MASTER_DBID)
@@ -416,14 +420,20 @@ emit_mmxlog_fs_record(mm_fs_obj_type type, Oid filespace,
 		rdata.buffer = InvalidBuffer;
 		rdata.next = NULL;
 		
-		(void)XLogInsert(RM_MMXLOG_ID, flags | XLOG_NO_TRAN, &rdata);
+		*location = XLogInsert(RM_MMXLOG_ID, flags | XLOG_NO_TRAN, &rdata);
+
+		return true;
 	}
+	else
+		return false;
 }
 
 /* External interface to filespace removal logging */
 void
 mmxlog_log_remove_filespace(Oid filespace)
 {
+	XLogRecPtr location;
+
 	if (Debug_print_qd_mirroring)
 		elog(DEBUG1, "emitting drop filespace record for %u",
 			 filespace);
@@ -433,39 +443,81 @@ mmxlog_log_remove_filespace(Oid filespace)
 						  InvalidOid /* database */,
 						  InvalidOid /* relfilenode */,
 						  0 /* segnum */,
-						  MMXLOG_REMOVE_DIR);
+						  MMXLOG_REMOVE_DIR,
+						  &location);
 }
 
 /* External interface to tablespace removal logging */
 void
 mmxlog_log_remove_tablespace(Oid tablespace)
 {
+	bool emitted;
+	XLogRecPtr location;
+
 	if (Debug_print_qd_mirroring)
 		elog(DEBUG1, "emitting drop tablespace record for %u",
 			 tablespace);
-	emit_mmxlog_fs_record(MM_OBJ_TABLESPACE,
+	emitted =
+		emit_mmxlog_fs_record(
+						  MM_OBJ_TABLESPACE,
 						  InvalidOid /* filespace */,
 						  tablespace,
 						  InvalidOid /* database */,
 						  InvalidOid /* relfilenode */,
 						  0 /* segnum */,
-						  MMXLOG_REMOVE_DIR);
+						  MMXLOG_REMOVE_DIR,
+						  &location);
+	if (Debug_persistent_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+
+		SUPPRESS_ERRCONTEXT_PUSH();
+
+		elog(Persistent_DebugPrintLevel(), 
+			 "mmxlog_log_remove_tablespace: delete tablespace %u (emitted %s, location %s)",
+			 tablespace,
+			 (emitted ? "true" : "false"),
+			 XLogLocationToString(&location));
+
+		SUPPRESS_ERRCONTEXT_POP();
+	}
 }
 
 /* External interface to database removal logging */
 void
 mmxlog_log_remove_database(Oid tablespace, Oid database)
 {
+	bool emitted;
+	XLogRecPtr location;
+
 	if (Debug_print_qd_mirroring)
 		elog(DEBUG1, "emitting drop database record for %u/%u",
 			 tablespace, database);
-	emit_mmxlog_fs_record(MM_OBJ_DATABASE,
+	emitted =
+		emit_mmxlog_fs_record(
+						  MM_OBJ_DATABASE,
 						  InvalidOid /* filespace */,
 						  tablespace,
 						  database,
 						  InvalidOid /* relfilenode */,
 						  0 /* segnum */,
-						  MMXLOG_REMOVE_DIR);
+						  MMXLOG_REMOVE_DIR,
+						  &location);
+	if (Debug_persistent_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+
+		SUPPRESS_ERRCONTEXT_PUSH();
+
+		elog(Persistent_DebugPrintLevel(), 
+			 "mmxlog_log_remove_database: delete database directory %u/%u (emitted %s, location %s)",
+			 tablespace,
+			 database,
+			 (emitted ? "true" : "false"),
+			 XLogLocationToString(&location));
+
+		SUPPRESS_ERRCONTEXT_POP();
+	}
 }
 
 /* External interface to relfilenode removal logging */
@@ -473,55 +525,122 @@ void
 mmxlog_log_remove_relfilenode(Oid tablespace, Oid database, Oid relfilenode,
 							  uint32 segnum)
 {
+	bool emitted;
+	XLogRecPtr location;
+
 	if (Debug_print_qd_mirroring)
 		elog(DEBUG1, "emitting drop relfilenode record for %u/%u/%u",
 			 tablespace, database, relfilenode);
-	emit_mmxlog_fs_record(MM_OBJ_RELFILENODE,
+	emitted =
+		emit_mmxlog_fs_record(
+						  MM_OBJ_RELFILENODE,
 						  InvalidOid /* filespace */,
 						  tablespace,
 						  database,
 						  relfilenode,
 						  segnum,
-						  MMXLOG_REMOVE_FILE);
+						  MMXLOG_REMOVE_FILE,
+						  &location);
+	if (Debug_persistent_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+
+		SUPPRESS_ERRCONTEXT_PUSH();
+
+		elog(Persistent_DebugPrintLevel(), 
+			 "mmxlog_log_remove_relfilenode: delete relation %u/%u/%u, segment file #%d (emitted %s, location %s)",
+			 tablespace,
+			 database,
+			 relfilenode,
+			 segnum,
+			 (emitted ? "true" : "false"),
+			 XLogLocationToString(&location));
+
+		SUPPRESS_ERRCONTEXT_POP();
+	}
 }
 
 /* External interface to filespace creation logging */
 void
 mmxlog_log_create_filespace(Oid filespace)
 {
+	XLogRecPtr location;
+
 	emit_mmxlog_fs_record(MM_OBJ_FILESPACE,
 						  filespace,
 						  InvalidOid /* tablespace */,
 						  InvalidOid /* database */,
 						  InvalidOid /* relfilenode */,
 						  0 /* segnum */,
-						  MMXLOG_CREATE_DIR);
+						  MMXLOG_CREATE_DIR,
+						  &location);
 }
 
 /* External interface to tablespace creation logging */
 void
 mmxlog_log_create_tablespace(Oid tablespace)
 {
-	emit_mmxlog_fs_record(MM_OBJ_TABLESPACE,
+	bool emitted;
+	XLogRecPtr location;
+
+	emitted =
+		emit_mmxlog_fs_record(
+						  MM_OBJ_TABLESPACE,
 						  InvalidOid /* filespace */,
 						  tablespace,
 						  InvalidOid /* database */,
 						  InvalidOid /* relfilenode */,
 						  0 /* segnum */,
-						  MMXLOG_CREATE_DIR);
+						  MMXLOG_CREATE_DIR,
+						  &location);
+	if (Debug_persistent_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+
+		SUPPRESS_ERRCONTEXT_PUSH();
+
+		elog(Persistent_DebugPrintLevel(), 
+			 "mmxlog_log_create_tablespace: create tablespace %u (emitted %s, location %s)",
+			 tablespace,
+			 (emitted ? "true" : "false"),
+			 XLogLocationToString(&location));
+
+		SUPPRESS_ERRCONTEXT_POP();
+	}
 }
 
 /* External interface to database creation logging */
 void
 mmxlog_log_create_database(Oid tablespace, Oid database)
 {
-	emit_mmxlog_fs_record(MM_OBJ_DATABASE,
+	bool emitted;
+	XLogRecPtr location;
+
+	emitted =
+		emit_mmxlog_fs_record(
+						  MM_OBJ_DATABASE,
 						  InvalidOid /* filespace */,
 						  tablespace,
 						  database,
 						  InvalidOid /* relfilenode */,
 						  0 /* segnum */,
-						  MMXLOG_CREATE_DIR);
+						  MMXLOG_CREATE_DIR,
+						  &location);
+	if (Debug_persistent_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+
+		SUPPRESS_ERRCONTEXT_PUSH();
+
+		elog(Persistent_DebugPrintLevel(), 
+			 "mmxlog_log_create_database: create database directory %u/%u (emitted %s, location %s)",
+			 tablespace,
+			 database,
+			 (emitted ? "true" : "false"),
+			 XLogLocationToString(&location));
+
+		SUPPRESS_ERRCONTEXT_POP();
+	}
 }
 
 /* External interface to relfilenode creation logging */
@@ -529,13 +648,36 @@ void
 mmxlog_log_create_relfilenode(Oid tablespace, Oid database,
 							  Oid relfilenode, uint32 segnum)
 {
-	emit_mmxlog_fs_record(MM_OBJ_RELFILENODE,
+	bool emitted;
+	XLogRecPtr location;
+
+	emitted =
+		emit_mmxlog_fs_record(
+						  MM_OBJ_RELFILENODE,
 						  InvalidOid /* filespace */,
 						  tablespace,
 						  database,
 						  relfilenode,
 						  segnum,
-						  MMXLOG_CREATE_FILE);
+						  MMXLOG_CREATE_FILE,
+						  &location);
+	if (Debug_persistent_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+
+		SUPPRESS_ERRCONTEXT_PUSH();
+
+		elog(Persistent_DebugPrintLevel(), 
+			 "mmxlog_log_create_relfilenode: create relation %u/%u/%u, segment file #%d (emitted %s, location %s)",
+			 tablespace,
+			 database,
+			 relfilenode,
+			 segnum,
+			 (emitted ? "true" : "false"),
+			 XLogLocationToString(&location));
+
+		SUPPRESS_ERRCONTEXT_POP();
+	}
 }
 
 /*
