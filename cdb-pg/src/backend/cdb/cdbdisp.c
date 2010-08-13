@@ -1219,6 +1219,7 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 		CdbCheckDispatchResult((struct CdbDispatcherState *)&ds, false);
 
 		cdbdisp_destroyDispatchResults(ds.primaryResults);
+		cdbdisp_destroyDispatchThreads(ds.dispatchThreads);
 
 		PG_RE_THROW();
 		/* not reached */
@@ -2953,10 +2954,10 @@ CdbDoCommand(const char *strCommand,
 
 void
 CdbDoCommandOnAllGangs(const char *strCommand,
-				  bool cancelOnError,
-				  bool needTwoPhase)
+					   bool cancelOnError,
+					   bool needTwoPhase)
 {
-	CdbDispatcherState ds = {NULL, NULL};
+	volatile CdbDispatcherState ds = {NULL, NULL};
 	const bool withSnapshot = true;
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "CdbDoCommandOnAllGangs for command = '%s', needTwoPhase = %s",
@@ -2964,13 +2965,28 @@ CdbDoCommandOnAllGangs(const char *strCommand,
 
 	dtmPreCommand("CdbDoCommandOnAllGangs", strCommand, NULL, needTwoPhase, withSnapshot, false /* inCursor */ );
 
-	cdbdisp_dispatchCommandToAllGangs(strCommand, NULL, 0, NULL, 0, cancelOnError, needTwoPhase, &ds);
+	PG_TRY();
+	{
+		cdbdisp_dispatchCommandToAllGangs(strCommand, NULL, 0, NULL, 0, cancelOnError, needTwoPhase, (struct CdbDispatcherState *)&ds);
 
-	/*
-	 * Wait for all QEs to finish. If not all of our QEs were successful,
-	 * report the error and throw up.
-	 */
-	cdbdisp_finishCommand(&ds, NULL, NULL);
+		/*
+		 * Wait for all QEs to finish. If not all of our QEs were successful,
+		 * report the error and throw up.
+		 */
+		cdbdisp_finishCommand((struct CdbDispatcherState *)&ds, NULL, NULL);
+	}
+	PG_CATCH();
+	{
+		/* Something happend, clean up after ourselves */
+		CdbCheckDispatchResult((struct CdbDispatcherState *)&ds, true);
+
+		cdbdisp_destroyDispatchResults(ds.primaryResults);
+		cdbdisp_destroyDispatchThreads(ds.dispatchThreads);
+
+		PG_RE_THROW();
+		/* not reached */
+	}
+	PG_END_TRY();
 }	
 
 /*--------------------------------------------------------------------*/
@@ -4023,6 +4039,7 @@ CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase, char 
 		CdbCheckDispatchResult((struct CdbDispatcherState *)&ds, true);
 
 		cdbdisp_destroyDispatchResults(ds.primaryResults);
+		cdbdisp_destroyDispatchThreads(ds.dispatchThreads);
 
 		PG_RE_THROW();
 		/* not reached */
