@@ -542,7 +542,7 @@ class RelFileNodes():
         except IOErrormm, e:
            logger.error('Unable to read relfile node file: ' + str(e))
            logger.error('gpupgradmirror exiting')
-           exit(1)
+           exit("The gpupgrademirror log information can be found in " + str(get_logfile()) + "\n")
 
    #-------------------------------------------------------------------------------
     def create_rel_file_node_file(self):
@@ -2919,7 +2919,7 @@ class Phase1(threading.Thread):
             self.logger.error('ERROR in processing mirror: %s Exception: %s' % (self.nodeName, str(e)))
             self.logger.error('gpupgradmirror exiting')
             traceback.print_exc()
-            sys.exit(2)
+            sys.exit("The gpupgrademirror log information can be found in " + str(get_logfile()) + "\n")
 
     #-------------------------------------------------------------------------------
     def shutdown(self):
@@ -3141,7 +3141,7 @@ class Phase2(threading.Thread):
             self.logger.error('ERROR in processing mirror: %s Exception: %s' % (self.nodeName, str(e)))
             self.logger.error('gpupgradmirror exiting')
             traceback.print_exc()
-            sys.exit(2)
+            sys.exit("The gpupgrademirror log information can be found in " + str(get_logfile()) + "\n")
 
     #-------------------------------------------------------------------------------
     def shutdown(self):
@@ -3217,7 +3217,7 @@ try:
      logger.error('gpupgrademirror is already running.  Only one instance')
      logger.error('of gpupgrademirror is allowed at a time.')
      remove_pid = False
-     sys.exit(1)
+     sys.exit("The gpupgrademirror log information can be found in " + str(get_logfile()) + "\n")
   else:
      create_pid_file(options.info_data_directory)
      
@@ -3617,7 +3617,7 @@ try:
            minion.copyLogFile(parentLogFile = logFile)
        
        if minionError == True:
-          raise Exception("The was a problem with on of the gpupgrademirror sub processes.")  
+          raise Exception("There was a problem with one of the gpupgrademirror sub processes.")  
        else:
           overallStatus.set_status('PHASE1_DONE')
           rmCmd = RemoveFiles( name = 'gpupgrademirror remove info directory: %s' % (options.info_data_directory)
@@ -3758,7 +3758,7 @@ try:
 except Exception,e:
     logger.error("gpupgrademirror failed: %s \n\nExiting..." % e )
     traceback.print_exc()
-    sys.exit(3)
+    sys.exit("The gpupgrademirror log information can be found in " + str(get_logfile()) + "\n")
 
 except KeyboardInterrupt:
     # Disable SIGINT while we shutdown.
@@ -3767,37 +3767,28 @@ except KeyboardInterrupt:
     # Re-enabled SIGINT
     signal.signal(signal.SIGINT,signal.default_int_handler)
 
-    sys.exit('\nUser Interrupted')
+    sys.exit('\nUser Interrupted' + "The gpupgrademirror log information can be found in " + str(get_logfile()) + "\n")
 
 except Exception, e:
   print "FATAL Exception: " + str(e)
   traceback.print_exc()
-  sys.exit(1)
+  sys.exit("The gpupgrademirror log information can be found in " + str(get_logfile()) + "\n")
 
 
 finally:
     try:
+        logger.info("==========================================================================")
+        logger.info("The gpupgrademirror log information can be found in " + str(get_logfile()))
         if len(minionList) > 0:
-           finalStr = "==========================================================================\n" \
-                      "The gpupgrademirror log information can be found in " + str(get_logfile()) + "\n" \
-                      "Under certain failure situations, not all log information can be collected.\n" \
-                      "There may be additional log information under the gpAdminLogs directory on the following hosts:\n" \
-                      ""
            for minion in minionList:
              finalStr = finalStr + "  " + minion.remoteHost + "\n" 
-           finalStr = finalStr + "\n" \
-           "==========================================================================\n"
-
-
-           logger.info("==========================================================================")
-           logger.info("The gpupgrademirror log information can be found in " + str(get_logfile()))
            logger.info("Under certain failure situations, not all log information can be collected.")
            logger.info("There may be additional log information under the gpAdminLogs directory on the following hosts:")
            logger.info("")
            for minion in minionList:
                logger.info("  " + minion.remoteHost)
            logger.info("")
-           logger.info("==========================================================================")
+        logger.info("==========================================================================")
 
         if remove_pid:
             remove_pid_file(options.info_data_directory)
