@@ -93,6 +93,9 @@ class StartSegmentsOperation:
         totalToAttempt = len(segments)
         result = StartSegmentsResult()
         numContentsInCluster = gpArray.getNumSegmentContents()
+        segmentsDbids = []
+        for seg in segments:
+            segmentsDbids.append(seg.getSegmentDbId())
 
         # check on pingability
         self.hostcache = gphostcache.GpHostCache(gpArray, self.__workerPool)
@@ -102,7 +105,8 @@ class StartSegmentsOperation:
             hostName = segment.getSegmentHostName()
             logger.warning("Skipping startup of segdb on %s directory %s Ping Failed <<<<<<" % \
                                         (hostName, segment.getSegmentDataDirectory()))
-            result.addFailure(segment, 'Failed to Ping on host: %s' % hostName, gp.SEGSTART_ERROR_PING_FAILED )
+            if segment.getSegmentDbId() in segmentsDbids:
+               result.addFailure(segment, 'Failed to Ping on host: %s' % hostName, gp.SEGSTART_ERROR_PING_FAILED )
             failedPingDbIds[segment.getSegmentDbId()] = True
 
         self.hostcache.log_contents()
