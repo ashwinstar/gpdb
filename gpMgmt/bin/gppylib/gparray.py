@@ -314,7 +314,7 @@ class GpDB:
 
         dstBytesAvail = DiskFree.get_size_local(name = "Check for available free space for segment template", directory = dstDir)
         if dstBytesAvail <= requiredSize:
-            raise Exception("Not enough space on directory: '%s'.  Currently %d bytes free but need %d bytes." % (dstDir, int(dstBytesAvail), int(reqiredSize)))
+            raise Exception("Not enough space on directory: '%s'.  Currently %d bytes free but need %d bytes." % (dstDir, int(dstBytesAvail), int(requiredSize)))
 
         logger.info("Starting copy of segment dbid %d to locaiton %s" % (int(self.getSegmentDbId()), dstDir))
 
