@@ -2651,7 +2651,7 @@ append_string_to_pipe_chunk(PipeProtoChunk *buffer, const char* input)
  * Otherwise, write to stderr.
  */
 static inline void
-append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray,
+append_stacktrace(PipeProtoChunk *buffer, StringInfo append, void *const *stackarray,
                   int stacksize, bool amsyslogger)
 {
 #ifndef WIN32
@@ -2771,10 +2771,17 @@ append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray,
 
         else
         {
-            if (amsyslogger)
-                write_syslogger_file_binary(symbol, symbol_len);
-            else
-                write(fileno(stderr), symbol, symbol_len);
+        	if (append)
+        	{
+        		appendStringInfo(append, "%s", symbol);
+        	}
+        	else
+        	{
+				if (amsyslogger)
+					write_syslogger_file_binary(symbol, symbol_len);
+				else
+					write(fileno(stderr), symbol, symbol_len);
+        	}
         }
     }
 #endif
@@ -2927,11 +2934,11 @@ write_syslogger_in_csv(ErrorData *edata, bool amsyslogger)
         edata->stacktracesize > 0 &&
         edata->stacktracearray != NULL)
     {
-        append_stacktrace(NULL, edata->stacktracearray, edata->stacktracesize, amsyslogger);
+        append_stacktrace(NULL /*PipeProtoChunk*/, NULL /*StringInfo*/, edata->stacktracearray, edata->stacktracesize, amsyslogger);
     }
     else
     {
-        append_stacktrace(NULL, NULL, 0, amsyslogger);
+        append_stacktrace(NULL /*PipeProtoChunk*/, NULL /*StringInfo*/, NULL, 0, amsyslogger);
     }
 
     /* EOL */
@@ -3084,11 +3091,11 @@ write_message_to_server_log(int elevel,
         stacktracesize > 0 &&
         stacktracearray != NULL)
     {
-        append_stacktrace(&buffer, stacktracearray, stacktracesize, false);
+        append_stacktrace(&buffer, NULL /*StringInfo*/, stacktracearray, stacktracesize, false);
     }
     else
     {
-        append_stacktrace(&buffer, NULL, 0, false);
+        append_stacktrace(&buffer, NULL /*StringInfo*/, NULL, 0, false);
     }
 
     /* Send the last chunk */
@@ -4128,7 +4135,24 @@ debug_backtrace(void)
 
 	stacktracesize = backtrace(stacktracearray, 30);
 
-	append_stacktrace(NULL, stacktracearray, stacktracesize, false);
+	append_stacktrace(NULL /*PipeProtoChunk*/, NULL /*StringInfo*/, stacktracearray, stacktracesize, false);
 #endif
 
+}
+
+char *get_backtrace(int maxStackDepth)
+{
+#ifndef WIN32
+	void *stackTraceBuffer[maxStackDepth];
+	int funcCount = backtrace(stackTraceBuffer, maxStackDepth);
+
+	StringInfo append = makeStringInfo();	/* palloc'd */
+
+	append_stacktrace(NULL /*PipeProtoChunk*/, append, stackTraceBuffer, funcCount, false);
+
+	return append->data;
+
+#else
+	return NULL;
+#endif
 }

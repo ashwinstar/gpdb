@@ -54,6 +54,7 @@
 #include "storage/spin.h"
 #include "utils/resscheduler.h"
 #include "utils/faultinjector.h"
+#include "utils/simex.h"
 
 #include "cdb/cdbfts.h"
 #include "cdb/cdbtm.h"
@@ -189,6 +190,15 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		
 #ifdef EXEC_BACKEND
 		size = add_size(size, ShmemBackendArraySize());
+#endif
+
+#ifdef USE_FAULT_INJECTION
+		if (gp_simex_init)
+		{
+			// initialize SimEx
+			simex_init();
+			size = add_size(size, SyncBitVector_ShmemSize(simex_get_subclass_count()));
+		}
 #endif
 
 		elog(LOG, "Size not including the buffer pool %lu",
@@ -359,7 +369,15 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	
 #ifdef FAULT_INJECTOR
 	FaultInjector_ShmemInit();
+
+	if (gp_simex_init)
+	{
+		// initialize shmem segment for SimEx
+		simex_set_sync_bitvector_container(
+			SyncBitVector_ShmemInit("SimEx bit vector container", simex_get_subclass_count()));
+	}
 #endif
+
 	/*
 	 * Set up other modules that need some shared memory space
 	 */

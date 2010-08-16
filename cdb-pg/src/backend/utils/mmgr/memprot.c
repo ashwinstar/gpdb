@@ -33,6 +33,7 @@
 #include "cdb/cdbvars.h"
 #include "utils/debugbreak.h"
 #include "utils/faultinjection.h" 
+#include "utils/simex.h"
 
 #ifndef HAVE_UNION_SEMUN
 union semun
@@ -344,6 +345,18 @@ static void *gp_malloc_internal(int64 sz1, int64 sz2, bool ismalloc)
 	else
 		ret = calloc(sz1, sz2);
 
+#ifdef USE_FAULT_INJECTION
+	if (gp_simex_init && gp_simex_run && gp_simex_class == SimExESClass_OOM && ret)
+	{
+		SimExESSubClass subclass = SimEx_CheckInject();
+		if (subclass == SimExESSubClass_OOM_ReturnNull)
+		{
+			free(ret);
+			ret = NULL;
+		}
+	}
+#endif
+
 	if(!ret)
 	{
 		/* Try my best to be honest with allocation */
@@ -436,6 +449,18 @@ void *gp_realloc(void *ptr, int64 sz, int64 newsz)
 		}
 
 		ret = realloc(ptr, newsz);
+
+#ifdef USE_FAULT_INJECTION
+		if (gp_simex_init && gp_simex_run && gp_simex_class == SimExESClass_OOM && ret)
+		{
+			SimExESSubClass subclass = SimEx_CheckInject();
+			if (subclass == SimExESSubClass_OOM_ReturnNull)
+			{
+				free(ret);
+				ret = NULL;
+			}
+		}
+#endif
 
 		if(!ret)
 		{

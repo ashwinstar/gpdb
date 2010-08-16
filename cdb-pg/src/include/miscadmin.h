@@ -83,6 +83,29 @@ extern bool gp_enable_resqueue_priority;
 
 #ifndef WIN32
 
+#ifdef USE_FAULT_INJECTION
+#define CHECK_FOR_INTERRUPTS() \
+do { \
+	if (gp_simex_init && gp_simex_run && gp_simex_class == SimExESClass_Cancel && !InterruptPending) \
+	{\
+		SimExESSubClass subclass = SimEx_CheckInject(); \
+		if (subclass == SimExESSubClass_Cancel_QueryCancel) \
+		{\
+			InterruptPending = true; \
+			QueryCancelPending = true; \
+		}\
+		else if (subclass == SimExESSubClass_Cancel_ProcDie) \
+		{\
+			InterruptPending = true; \
+			ProcDiePending = true; \
+		}\
+	}\
+	if (InterruptPending) \
+		ProcessInterrupts(); \
+	if (gp_enable_resqueue_priority)	\
+		BackoffBackendTick(); \
+} while(0)
+#else
 #define CHECK_FOR_INTERRUPTS() \
 do { \
 	if (InterruptPending) \
@@ -90,6 +113,8 @@ do { \
 	if (gp_enable_resqueue_priority)	\
 		BackoffBackendTick(); \
 } while(0)
+#endif   /* USE_FAULT_INJECTION */
+
 #else							/* WIN32 */
 
 #define CHECK_FOR_INTERRUPTS() \

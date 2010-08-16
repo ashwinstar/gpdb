@@ -453,6 +453,12 @@ bool gp_debug_resqueue_priority = false;
 /* Perfmon segment GUCs */
 int gp_perfmon_segment_interval;
 
+/* Simulator of Exceptions (SimEx) GUCs */
+bool gp_simex_init;
+bool gp_simex_run;
+int gp_simex_class;
+int gp_simex_rand;
+
 /*
  * Displayable names for context types (enum GucContext)
  *
@@ -2603,6 +2609,27 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 
+	/* for SimEx */
+	{
+		{"gp_simex_init", PGC_POSTMASTER, GP_ERROR_HANDLING,
+			gettext_noop("Initialize exception simulation - used to set up simulation at startup"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_simex_init,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_simex_run", PGC_USERSET, GP_ERROR_HANDLING,
+			gettext_noop("Run exception simulation - used to control starting/stopping simulation at runtime"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_simex_run,
+		false, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL
@@ -4085,6 +4112,27 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&pljava_statement_cache_size,
 		0, 0, 512, NULL, NULL
+	},
+
+	/* for SimEx */
+	{
+		{"gp_simex_class", PGC_POSTMASTER, GP_ERROR_HANDLING,
+		 gettext_noop("Simulated Exceptional Situation class."),
+		 gettext_noop("Sets the ES class to be simulated. Default value is 0 (Out-Of-Memory)."),
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_simex_class,
+		0, 0, INT_MAX, NULL, NULL
+	},
+
+	{
+		{"gp_simex_rand", PGC_USERSET, GP_ERROR_HANDLING,
+		 gettext_noop("Propability of injecting an Exceptional Situation in SimEx."),
+		 gettext_noop("Controls randomized ES simulation."),
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_simex_rand,
+		100, 0, 100, NULL, NULL
 	},
 
 	/* End-of-list marker */

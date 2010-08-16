@@ -52,6 +52,7 @@ extern "C" {
 
 #include "utils/elog.h"
 #include "utils/palloc.h"
+#include "utils/simex.h"
 
 /* ----------------------------------------------------------------
  *				Section 1:	variable-length datatypes (TOAST support)

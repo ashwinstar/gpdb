@@ -3459,7 +3459,10 @@ ProcessInterrupts(void)
 	}
 	if (QueryCancelPending)
 	{
-		elog(LOG,"Process interrupt for 'query cancel pending'.");
+		if (!gp_simex_init && !gp_simex_run && SimExESClass_Cancel != gp_simex_run)
+		{
+			elog(LOG,"Process interrupt for 'query cancel pending'.");
+		}
 		
 		QueryCancelPending = false;
 		ImmediateInterruptOK = false;	/* not idle anymore */

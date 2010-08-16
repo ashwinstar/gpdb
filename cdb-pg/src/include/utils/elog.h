@@ -487,4 +487,6 @@ extern void write_message_to_server_log(int elevel,
 
 extern void debug_backtrace(void);
 
+extern char *get_backtrace(int maxStackDepth);
+
 #endif   /* ELOG_H */
