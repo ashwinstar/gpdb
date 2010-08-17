@@ -219,7 +219,11 @@ static void get_pid_metrics(apr_int32_t pid)
 	newrec.p_metrics.cpu_pct = (float) (cpu.percent * 100);
 	newrec.p_metrics.mem.size = mem.size;
 	newrec.p_metrics.mem.resident = mem.resident;
+#ifdef __linux__
 	newrec.p_metrics.mem.share = mem.share;
+#else
+	newrec.p_metrics.mem.share = 0;
+#endif
 	newrec.cpu_elapsed = cpu.total;
 
 	if (rec)
