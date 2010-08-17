@@ -124,7 +124,7 @@ CHK_DUMP_DIR () {
 	CHK_DIR ${DIR}/$DUMP_SUB_DIR $DIR_HOST
 	if [ $EXISTS -ne 0 ];then
 		LOG_MSG "[INFO][$INST_COUNT]:-Directory ${DIR}/$DUMP_SUB_DIR not found on $DIR_HOST, will try to create"
-		$TRUSTED_SHELL $DIR_HOST "$MKDIR ${DIR}/$DUMP_SUB_DIR"
+		$TRUSTED_SHELL $DIR_HOST "$MKDIR -p ${DIR}/$DUMP_SUB_DIR"
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ];then
 			LOG_MSG "[FATAL][$INST_COUNT]:-Failed to $MKDIR ${DIR}/$DUMP_SUB_DIR on $DIR_HOST"
