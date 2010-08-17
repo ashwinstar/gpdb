@@ -31,6 +31,7 @@
 #include "access/twophase.h"
 #include "access/distributedlog.h"
 #include "postmaster/postmaster.h"
+#include "cdb/cdbpersistentrecovery.h"
 
 #include "cdb/cdbllize.h"
 
@@ -1596,6 +1597,12 @@ redoDtxCheckPoint(char *dtxCheckpointBuffer)
 	segmentCount = gxact_checkpoint->segmentCount;
 	elog(DTM_DEBUG5, "redoDtxCheckPoint has committedCount = %d, "
 		 "segmentCount = %d", committedCount, segmentCount);
+	if (Debug_persistent_recovery_print)
+	{
+		elog(PersistentRecovery_DebugPrintLevel(), 
+			 "redoDtxCheckPoint: committedCount = %d",
+			 committedCount);
+	}
 	
 	for (i = 0; i < committedCount; i++)
 	{
@@ -1765,6 +1772,13 @@ redoDistributedCommitRecord(TMGXACT_LOG * gxact_log)
 {
 
 	int			i;
+
+	/*
+	 * The length check here requires the identifer have a trailing NUL character.
+	 */
+	if (strlen(gxact_log->gid) >= TMGIDSIZE)
+		elog(PANIC, "Distribute transaction identifier too long (%d)",
+			 (int)strlen(gxact_log->gid));
 
 	if (Gp_role == GP_ROLE_UTILITY)
 	{
@@ -2566,6 +2580,17 @@ getDtxCheckPointInfoAndLock(char **result, int *result_size)
 
 		getTmLock();	/* Return withh lock held. */
 		elog(DTM_DEBUG5, "DTM not started so no DTM checkpoint information.");
+		if (Debug_persistent_recovery_print)
+		{
+			SUPPRESS_ERRCONTEXT_DECLARE;
+		
+			SUPPRESS_ERRCONTEXT_PUSH();
+		
+			elog(PersistentRecovery_DebugPrintLevel(), 
+				 "getDtxCheckPointInfoAndLock: DTM not started so no DTM checkpoint information");
+		
+			SUPPRESS_ERRCONTEXT_POP();
+		}
 		return;
 	}
 
@@ -2637,6 +2662,20 @@ getDtxCheckPointInfoAndLock(char **result, int *result_size)
 
 		elog(DTM_DEBUG5, "Add DTM checkpoint entry gid = %s.",
 			 gxact->gid);
+		if (Debug_persistent_recovery_print)
+		{
+			SUPPRESS_ERRCONTEXT_DECLARE;
+		
+			SUPPRESS_ERRCONTEXT_PUSH();
+		
+			elog(PersistentRecovery_DebugPrintLevel(), 
+				 "getDtxCheckPointInfoAndLock[%d]: distributed transaction identifier %s (distributed xid %u)",
+				 actual,
+				 gxact_log->gid,
+				 gxact_log->gxid);
+		
+			SUPPRESS_ERRCONTEXT_POP();
+		}
 		
 		actual++;
 	}

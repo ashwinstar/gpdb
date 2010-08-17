@@ -196,6 +196,8 @@ extern XLogRecPtr XLogInsert(RmgrId rmid, uint8 info, XLogRecData *rdata);
 extern XLogRecPtr XLogInsert_OverrideXid(RmgrId rmid, uint8 info, XLogRecData *rdata, TransactionId overrideXid);
 extern XLogRecPtr XLogLastInsertEndLoc(void);
 extern XLogRecPtr XLogLastChangeTrackedLoc(void);
+extern uint32 XLogLastInsertTotalLen(void);
+extern uint32 XLogLastInsertDataLen(void);
 extern void XLogFlush(XLogRecPtr RecPtr);
 extern void XLogFileRepFlushCache(
 	XLogRecPtr	*lastChangeTrackingEndLoc);

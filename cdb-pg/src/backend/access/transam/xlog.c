@@ -297,6 +297,10 @@ static XLogRecPtr ProcLastRecPtr = {0, 0};
 
 XLogRecPtr	ProcLastRecEnd = {0, 0};
 
+static uint32 ProcLastRecTotalLen = 0;
+
+static uint32 ProcLastRecDataLen = 0;
+
 /*
  * RedoRecPtr is this backend's local copy of the REDO record pointer
  * (which is almost but not quite the same as a pointer to the most recent
@@ -1183,6 +1187,9 @@ begin:;
 	Insert->PrevRecord = RecPtr;
 	MyXactMadeXLogEntry = true;
 
+	ProcLastRecTotalLen = record->xl_tot_len;
+	ProcLastRecDataLen = write_len;
+
 	Insert->currpos += SizeOfXLogRecord;
 	freespace -= SizeOfXLogRecord;
 	
@@ -1192,8 +1199,10 @@ begin:;
 		char *contiguousCopy;
 
 		initStringInfo(&buf);
-		appendStringInfo(&buf, "XLOG INSERT @ %s: ",
-						 XLogLocationToString(&RecPtr));
+		appendStringInfo(&buf, "XLOG INSERT @ %s, total length %u, data length %u: ",
+						 XLogLocationToString(&RecPtr),
+						 ProcLastRecTotalLen,
+						 ProcLastRecDataLen);
 		XLog_OutRec(&buf, record);
 
 		contiguousCopy = XLogContiguousCopy(record, rdata);
@@ -1443,6 +1452,17 @@ XLogLastChangeTrackedLoc(void)
 	return XLogCtl->lastChangeTrackingEndLoc;
 }
 
+uint32
+XLogLastInsertTotalLen(void)
+{
+	return ProcLastRecTotalLen;
+}
+
+uint32
+XLogLastInsertDataLen(void)
+{
+	return ProcLastRecDataLen;
+}
 
 /*
  * Determine whether the buffer referenced by an XLogRecData item has to
@@ -6297,10 +6317,27 @@ StartupXLOG(void)
 			(TMGXACT_CHECKPOINT *)XLogRecGetData(record) + sizeof(CheckPoint);
 		size_t gactsz = TMGXACT_CHECKPOINT_BYTES(gs->committedCount);
 
+		if (Debug_persistent_recovery_print)
+		{
+			elog(PersistentRecovery_DebugPrintLevel(), 
+				 "StartupXLOG: Checkpoint record data length = %u, DTX committed count %d, DTX data length %u, Master Mirroring information length %u",
+				 record->xl_len,
+				 gs->committedCount,
+				 (uint32)gactsz,
+				 (uint32)(record->xl_len - sizeof(Checkpoint) - gactsz));
+		}
 		redoDtxCheckPoint((char *)gs);
 
 		mmxlog_read_checkpoint_data(XLogRecGetData(record) + sizeof(CheckPoint)
 									+ gactsz);
+	}
+	else
+	{
+		if (Debug_persistent_recovery_print)
+		{
+			elog(PersistentRecovery_DebugPrintLevel(), 
+				 "StartupXLOG: Regular checkpoint with no DTX or Master Mirroring information");
+		}
 	}
 
 	ereport(LOG,
@@ -8028,10 +8065,34 @@ CreateCheckPoint(bool shutdown, bool force)
 	 */
 	mmxlog_append_checkpoint_data(rdata);
 
+	if (Debug_persistent_recovery_print)
+	{
+		elog(PersistentRecovery_DebugPrintLevel(), 
+			 "CreateCheckPoint: Regular checkpoint length = %u"
+			 ", DTX checkpoint length %u (rdata[1].next is NULL %s)"
+			 ", Master mirroring filespace length = %u (rdata[2].next is NULL %s)"
+			 ", Master mirroring tablespace length = %u",
+			 rdata[0].len,
+			 rdata[1].len,
+			 (rdata[1].next == NULL ? "true" : "false"),
+			 rdata[2].len,
+			 (rdata[2].next == NULL ? "true" : "false"),
+			 rdata[3].len);
+	}
+
 	recptr = XLogInsert(RM_XLOG_ID,
 						shutdown ? XLOG_CHECKPOINT_SHUTDOWN :
 						XLOG_CHECKPOINT_ONLINE,
 						rdata);
+
+	if (Debug_persistent_recovery_print)
+	{
+		elog(PersistentRecovery_DebugPrintLevel(), 
+			 "CreateCheckPoint: Checkpoint location = %s, total length %u, data length %d",
+			 XLogLocationToString(&recptr),
+			 XLogLastInsertTotalLen(),
+			 XLogLastInsertDataLen());
+	}
 
 	freeDtxCheckPointInfoAndUnlock(dtxCheckPointInfo, dtxCheckPointInfoSize, &recptr);
 	
