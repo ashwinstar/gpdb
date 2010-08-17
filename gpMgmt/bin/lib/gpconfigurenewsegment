@@ -69,9 +69,9 @@ class ConfExpSegCmd(Command):
 
     def __str__(self):
         if self.results:
-            return "%s cmdStr='%s'  had result: %s" % (self.name,self.cmdStr,self.results)
+            return "%s cmdStr='%s'  had result: %s" % (self.name, self.cmdStr, self.results)
         else:
-            return "%s cmdStr='%s'" % (self.name,self.cmdStr)
+            return "%s cmdStr='%s'" % (self.name, self.cmdStr)
 
     def validatePath(self, path, isSystemFilespaceDir):
         """
@@ -113,38 +113,36 @@ class ConfExpSegCmd(Command):
 
     def makeOrUpdatePathAsNeeded(self, path):
         if os.path.exists(path):
-            os.chmod(path,0700)
+            os.chmod(path, 0700)
         else:
-            os.mkdir(path,0700)
+            os.mkdir(path, 0700)
             
     def fixupFilespaces(self):
         """
         This method will take file spaces stored in the system data directory and put them in their proper locations.
         """
         if self.filespaceOids == None:
-           return
+            return
         try:
-           logger.info("copy filespaces to their locations")
+            logger.info("copy filespaces to their locations")
            # only on primary do we create it -- otherwise, mirroring code creates it on replay
-           filespaceDataDir = self.datadir + "/" + DESTINATION_FILE_SPACES_DIRECTORY
-           i = 0
-           for i in range(len(self.filespaceOids)):
-               sourceDir = filespaceDataDir + "/" + str(self.filespaceOids[i])
-               targetDir = self.filespaceDirs[i]
-               cpCmd = unix.LocalDirCopy("copy filespace from %s to %s" % (sourceDir, targetDir), sourceDir, targetDir)
-               cpCmd.run(validateAfter=True)
-           unix.RemoveFiles.local("remove filespace template after copy to proper location", filespaceDataDir)
+            filespaceDataDir = self.datadir + "/" + DESTINATION_FILE_SPACES_DIRECTORY
+            i = 0
+            for i in range(len(self.filespaceOids)):
+                sourceDir = filespaceDataDir + "/" + str(self.filespaceOids[i])
+                targetDir = self.filespaceDirs[i]
+                cpCmd = unix.LocalDirCopy("copy filespace from %s to %s" % (sourceDir, targetDir), sourceDir, targetDir)
+                cpCmd.run(validateAfter=True)
+            unix.RemoveFiles.local("remove filespace template after copy to proper location", filespaceDataDir)
         except Exception, e:
-           self.set_results(CommandResult(1,'',e,True,False))
-           raise
-
+            self.set_results(CommandResult(1, '', e, True, False))
+            raise
 
     def run(self):
         try:
-
             if self.writeGpDbidFileOnly:
                 logger.info("create gp_dbid file for segment")
-                writeGpDbidFile( self.datadir, self.dbid )
+                writeGpDbidFile(self.datadir, self.dbid)
             else:
                 if self.newseg:
                     # make directories, extract template update postgresql.conf
@@ -158,11 +156,11 @@ class ConfExpSegCmd(Command):
                         self.set_results(CommandResult(1, '', msg, True, False))
                         raise
                     except Exception, e:
-                        self.set_results(CommandResult(1,'',e,True,False))
+                        self.set_results(CommandResult(1, '', e, True, False))
                         raise
 
                     if self.validationOnly:
-                        self.set_results(CommandResult(0,'','',True,False))
+                        self.set_results(CommandResult(0, '', '', True, False))
                         return
 
                     logger.info("Create or update data directories for new segment")
@@ -176,7 +174,6 @@ class ConfExpSegCmd(Command):
                         self.set_results(CommandResult(1,'',e,True,False))
                         raise
 
-
                     logger.info("extract tar file to new segment")
                     extractTarCmd = unix.ExtractTar('extract tar file to new segment', self.tarfile, self.datadir )
                     try:
@@ -188,11 +185,11 @@ class ConfExpSegCmd(Command):
                         raise
 
                     if self.isPrimary:
-                       # only on primary do we create it -- otherwise, mirroring code creates it on replay
-                       self.fixupFilespaces()
+                        # only on primary do we create it -- otherwise, mirroring code creates it on replay
+                        self.fixupFilespaces()
 
                     logger.info("create gp_dbid file for segment")
-                    writeGpDbidFile( self.datadir, self.dbid )
+                    writeGpDbidFile(self.datadir, self.dbid)
 
                     logger.info("Updating %s/postgresql.conf" % self.datadir)
                     modifyPostgresqlConfCmd = ModifyPostgresqlConfSetting('Updating %s/postgresql.conf' % self.datadir,
@@ -214,14 +211,15 @@ class ConfExpSegCmd(Command):
                         pass
                     
         except Exception, e:
+            self.set_results(CommandResult(1, '', e, True, False))
             if self.verbose:
                 logger.exception(e)
             return
         else:
-            self.set_results(CommandResult(0,'','',True,False))
+            self.set_results(CommandResult(0, '', '', True, False))
 
-    def set_results(self,results):
-        self.results=results
+    def set_results(self, results):
+        self.results = results
         
     def get_results(self):
         return self.results
@@ -264,7 +262,7 @@ def parseargs():
     parser.set_usage('%prog is a utility script used by gpexpand, gprecoverseg, and gpaddmirrors and is not intended to be run separately.')
     parser.remove_option('-h')
     
-    parser.add_option('-v','--verbose', action='store_true',help='debug output.')
+    parser.add_option('-v','--verbose', action='store_true', help='debug output.')
     parser.add_option('-c', '--confinfo', type='string')                        
     parser.add_option('-t', '--tarfile', type='string')
     parser.add_option('-n', '--newsegments', action='store_true')
@@ -272,7 +270,7 @@ def parseargs():
     parser.add_option("-V", "--validation-only", dest="validationOnly", action='store_true', default=False)
     parser.add_option("-W", "--write-gpid-file-only", dest="writeGpidFileOnly", action='store_true', default=False)
 
-    parser.set_defaults(verbose=False,filters=[], slice=(None, None))
+    parser.set_defaults(verbose=False, filters=[], slice=(None, None))
     
     # Parse the command line arguments
     (options, args) = parser.parse_args()
@@ -319,7 +317,7 @@ def parseargs():
 
 
 try:
-    logger=gplog.setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName())
+    logger = gplog.setup_tool_logging(EXECNAME, unix.getLocalHostname(), unix.getUserName())
 
     (options, args, seg_info) = parseargs()
     if options.verbose:
@@ -369,7 +367,7 @@ try:
     else:
         try:
             pool.check_results()
-        except Exception,e:
+        except Exception, e:
             if options.verbose:
                 logger.exception(e)
             logger.error(e)
