@@ -1190,113 +1190,113 @@ xaae: xlog:00006887:  ereport(FATAL,
 xaae: xlog:00006888:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
 xaae: xlog:00006992:  ereport(FATAL, 
 xaae: xlog:00006993:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
-xaae: xlog:00007156:  ereport(FATAL, 
-xaae: xlog:00007157:  (errmsg("%s: control file contains invalid data", callerStr))); 
-xaae: xlog:00007203:  ereport(ERROR, 
-xaae: xlog:00007204:  (errmsg("%s: could not locate a valid checkpoint record", callerStr))); 
-xaae: xlog:00007221:  ereport(ERROR, 
-xaae: xlog:00007222:  (errmsg("%s: invalid redo in checkpoint record", callerStr))); 
-xaae: xlog:00007231:  ereport(ERROR, 
-xaae: xlog:00007232:  (errmsg("%s: first redo record before checkpoint not found at %s", 
-xaae: xlog:00007233:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
-xaae: xlog:00007776:  ereport(LOG, 
-xaae: xlog:00007777:  (errmsg("database system is shut down"), 
-xaae: xlog:00007778:  errSendAlert(true),errOmitLocation(true))); 
-xaae: xlog:00008602:  ereport(ERROR, 
-xaae: xlog:00008603:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00008604:  (errmsg("must be superuser to run a backup")))); 
-xaae: xlog:00008607:  ereport(ERROR, 
-xaae: xlog:00008608:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008609:  (errmsg("WAL archiving is not active"), 
-xaae: xlog:00008610:  (errhint("archive_command must be defined before " 
-xaae: xlog:00008611:  "online backups can be made safely."))))); 
-xaae: xlog:00008637:  ereport(ERROR, 
-xaae: xlog:00008638:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008639:  errmsg("a backup is already in progress"), 
-xaae: xlog:00008640:  errhint("Run pg_stop_backup() and try again."))); 
-xaae: xlog:00008685:  ereport(ERROR, 
-xaae: xlog:00008686:  (errcode_for_file_access(), 
-xaae: xlog:00008687:  errmsg("could not stat file \"%s\": %m", 
-xaae: xlog:00008688:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008691:  ereport(ERROR, 
-xaae: xlog:00008692:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008693:  errmsg("a backup is already in progress"), 
-xaae: xlog:00008694:  errhint("If you're sure there is no backup in progress, remove file \"%s\" and try again.", 
-xaae: xlog:00008695:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008702:  ereport(ERROR, 
-xaae: xlog:00008703:  (errcode_for_file_access(), 
-xaae: xlog:00008704:  errmsg("could not create file \"%s\": %m", 
-xaae: xlog:00008705:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008713:  ereport(ERROR, 
-xaae: xlog:00008714:  (errcode_for_file_access(), 
-xaae: xlog:00008715:  errmsg("could not write file \"%s\": %m", 
-xaae: xlog:00008716:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008768:  ereport(ERROR, 
-xaae: xlog:00008769:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00008770:  (errmsg("must be superuser to run a backup")))); 
-xaae: xlog:00008802:  ereport(ERROR, 
-xaae: xlog:00008803:  (errcode_for_file_access(), 
-xaae: xlog:00008804:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00008805:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00007160:  ereport(FATAL, 
+xaae: xlog:00007161:  (errmsg("%s: control file contains invalid data", callerStr))); 
+xaae: xlog:00007207:  ereport(ERROR, 
+xaae: xlog:00007208:  (errmsg("%s: could not locate a valid checkpoint record", callerStr))); 
+xaae: xlog:00007225:  ereport(ERROR, 
+xaae: xlog:00007226:  (errmsg("%s: invalid redo in checkpoint record", callerStr))); 
+xaae: xlog:00007235:  ereport(ERROR, 
+xaae: xlog:00007236:  (errmsg("%s: first redo record before checkpoint not found at %s", 
+xaae: xlog:00007237:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
+xaae: xlog:00007780:  ereport(LOG, 
+xaae: xlog:00007781:  (errmsg("database system is shut down"), 
+xaae: xlog:00007782:  errSendAlert(true),errOmitLocation(true))); 
+xaae: xlog:00008606:  ereport(ERROR, 
+xaae: xlog:00008607:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00008608:  (errmsg("must be superuser to run a backup")))); 
+xaae: xlog:00008611:  ereport(ERROR, 
+xaae: xlog:00008612:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008613:  (errmsg("WAL archiving is not active"), 
+xaae: xlog:00008614:  (errhint("archive_command must be defined before " 
+xaae: xlog:00008615:  "online backups can be made safely."))))); 
+xaae: xlog:00008641:  ereport(ERROR, 
+xaae: xlog:00008642:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008643:  errmsg("a backup is already in progress"), 
+xaae: xlog:00008644:  errhint("Run pg_stop_backup() and try again."))); 
+xaae: xlog:00008689:  ereport(ERROR, 
+xaae: xlog:00008690:  (errcode_for_file_access(), 
+xaae: xlog:00008691:  errmsg("could not stat file \"%s\": %m", 
+xaae: xlog:00008692:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008695:  ereport(ERROR, 
+xaae: xlog:00008696:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008697:  errmsg("a backup is already in progress"), 
+xaae: xlog:00008698:  errhint("If you're sure there is no backup in progress, remove file \"%s\" and try again.", 
+xaae: xlog:00008699:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008706:  ereport(ERROR, 
+xaae: xlog:00008707:  (errcode_for_file_access(), 
+xaae: xlog:00008708:  errmsg("could not create file \"%s\": %m", 
+xaae: xlog:00008709:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008717:  ereport(ERROR, 
+xaae: xlog:00008718:  (errcode_for_file_access(), 
+xaae: xlog:00008719:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00008720:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008772:  ereport(ERROR, 
+xaae: xlog:00008773:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00008774:  (errmsg("must be superuser to run a backup")))); 
 xaae: xlog:00008806:  ereport(ERROR, 
-xaae: xlog:00008807:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008808:  errmsg("a backup is not in progress"))); 
-xaae: xlog:00008818:  ereport(ERROR, 
-xaae: xlog:00008819:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008820:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00008830:  ereport(ERROR, 
-xaae: xlog:00008831:  (errcode_for_file_access(), 
-xaae: xlog:00008832:  errmsg("could not create file \"%s\": %m", 
-xaae: xlog:00008833:  histfilepath))); 
-xaae: xlog:00008843:  ereport(ERROR, 
-xaae: xlog:00008844:  (errcode_for_file_access(), 
-xaae: xlog:00008845:  errmsg("could not write file \"%s\": %m", 
-xaae: xlog:00008846:  histfilepath))); 
-xaae: xlog:00008852:  ereport(ERROR, 
-xaae: xlog:00008853:  (errcode_for_file_access(), 
-xaae: xlog:00008854:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00008855:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008857:  ereport(ERROR, 
-xaae: xlog:00008858:  (errcode_for_file_access(), 
-xaae: xlog:00008859:  errmsg("could not remove file \"%s\": %m", 
-xaae: xlog:00008860:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008890:  ereport(ERROR, 
-xaae: xlog:00008891:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00008892:  (errmsg("must be superuser to switch transaction log files")))); 
-xaae: xlog:00008998:  ereport(ERROR, 
-xaae: xlog:00008999:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-xaae: xlog:00009000:  errmsg("could not parse transaction log location \"%s\"", 
-xaae: xlog:00009001:  locationstr))); 
-xaae: xlog:00009067:  ereport(ERROR, 
-xaae: xlog:00009068:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-xaae: xlog:00009069:  errmsg("could not parse transaction log location \"%s\"", 
-xaae: xlog:00009070:  locationstr))); 
-xaae: xlog:00009127:  ereport(FATAL, 
-xaae: xlog:00009128:  (errcode_for_file_access(), 
-xaae: xlog:00009129:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009130:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009142:  ereport(FATAL, 
-xaae: xlog:00009143:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009144:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009148:  ereport(FATAL, 
-xaae: xlog:00009149:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009150:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00008807:  (errcode_for_file_access(), 
+xaae: xlog:00008808:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00008809:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008810:  ereport(ERROR, 
+xaae: xlog:00008811:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008812:  errmsg("a backup is not in progress"))); 
+xaae: xlog:00008822:  ereport(ERROR, 
+xaae: xlog:00008823:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008824:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00008834:  ereport(ERROR, 
+xaae: xlog:00008835:  (errcode_for_file_access(), 
+xaae: xlog:00008836:  errmsg("could not create file \"%s\": %m", 
+xaae: xlog:00008837:  histfilepath))); 
+xaae: xlog:00008847:  ereport(ERROR, 
+xaae: xlog:00008848:  (errcode_for_file_access(), 
+xaae: xlog:00008849:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00008850:  histfilepath))); 
+xaae: xlog:00008856:  ereport(ERROR, 
+xaae: xlog:00008857:  (errcode_for_file_access(), 
+xaae: xlog:00008858:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00008859:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008861:  ereport(ERROR, 
+xaae: xlog:00008862:  (errcode_for_file_access(), 
+xaae: xlog:00008863:  errmsg("could not remove file \"%s\": %m", 
+xaae: xlog:00008864:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008894:  ereport(ERROR, 
+xaae: xlog:00008895:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00008896:  (errmsg("must be superuser to switch transaction log files")))); 
+xaae: xlog:00009002:  ereport(ERROR, 
+xaae: xlog:00009003:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+xaae: xlog:00009004:  errmsg("could not parse transaction log location \"%s\"", 
+xaae: xlog:00009005:  locationstr))); 
+xaae: xlog:00009071:  ereport(ERROR, 
+xaae: xlog:00009072:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+xaae: xlog:00009073:  errmsg("could not parse transaction log location \"%s\"", 
+xaae: xlog:00009074:  locationstr))); 
+xaae: xlog:00009131:  ereport(FATAL, 
+xaae: xlog:00009132:  (errcode_for_file_access(), 
+xaae: xlog:00009133:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009134:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009146:  ereport(FATAL, 
+xaae: xlog:00009147:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009148:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
 xaae: xlog:00009152:  ereport(FATAL, 
-xaae: xlog:00009153:  (errcode_for_file_access(), 
-xaae: xlog:00009154:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009155:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009179:  ereport(FATAL, 
-xaae: xlog:00009180:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009181:  errmsg("invalid data in file \"%s\"", histfilename))); 
-xaae: xlog:00009185:  ereport(FATAL, 
-xaae: xlog:00009186:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009187:  errmsg("invalid data in file \"%s\"", histfilename))); 
-xaae: xlog:00009190:  ereport(FATAL, 
-xaae: xlog:00009191:  (errcode_for_file_access(), 
-xaae: xlog:00009192:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009193:  histfilepath))); 
-xaae: xlog:00009538:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
-xaae: xlog:00009539:  errmsg("database 'postgres' does not exist"))); 
+xaae: xlog:00009153:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009154:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009156:  ereport(FATAL, 
+xaae: xlog:00009157:  (errcode_for_file_access(), 
+xaae: xlog:00009158:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009159:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009183:  ereport(FATAL, 
+xaae: xlog:00009184:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009185:  errmsg("invalid data in file \"%s\"", histfilename))); 
+xaae: xlog:00009189:  ereport(FATAL, 
+xaae: xlog:00009190:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009191:  errmsg("invalid data in file \"%s\"", histfilename))); 
+xaae: xlog:00009194:  ereport(FATAL, 
+xaae: xlog:00009195:  (errcode_for_file_access(), 
+xaae: xlog:00009196:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009197:  histfilepath))); 
+xaae: xlog:00009542:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
+xaae: xlog:00009543:  errmsg("database 'postgres' does not exist"))); 
 aaaaa GP_IGNORE: xaah: xlogloc - ./backend/access/transam/xlogloc.c
 xaah: xlogloc:00000060:  ereport(ERROR, 
 xaah: xlogloc:00000061:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
@@ -2531,49 +2531,49 @@ caah: cdbdisp:00000741:  errdetail("pthread_create() failed with err %d", pthrea
 caah: cdbdisp:00000742:  errhint("gp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", gp_connections_per_thread))); 
 caah: cdbdisp:00001142:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
 caah: cdbdisp:00001143:  errmsg("cdbdisp_returnResults failed: out of memory"))); 
-caah: cdbdisp:00001486:  ereport(ERROR, (errcode(errorcode), 
-caah: cdbdisp:00001487:  errOmitLocation(true), 
-caah: cdbdisp:00001488:  errmsg("%s", buf.data))); 
-caah: cdbdisp:00003452:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
-caah: cdbdisp:00003453:  errmsg_internal("Unable to dispatch plan."))); 
-caah: cdbdisp:00003506:  * the caller's error catcher via ereport(ERROR,...). Otherwise this 
-caah: cdbdisp:00003507:  * function returns normally and errors are not reported until later. 
-caah: cdbdisp:00003508:  * 
-caah: cdbdisp:00003509:  * If cancelOnError is false, the plan is to be dispatched as fully as 
-caah: cdbdisp:00003510:  * possible and the QEs allowed to proceed regardless of cancellation 
-caah: cdbdisp:00003511:  * requests, errors or connection failures from other QEs, etc. 
-caah: cdbdisp:00003512:  * 
-caah: cdbdisp:00003513:  * The CdbDispatchResults objects allocated for the plan are returned 
-caah: cdbdisp:00003514:  * in *pPrimaryResults. The caller, after calling 
-caah: cdbdisp:00003515:  * CdbCheckDispatchResult(), can examine the CdbDispatchResults 
-caah: cdbdisp:00003516:  * objects, can keep them as long as needed, and ultimately must free 
-caah: cdbdisp:00003517:  * them with cdbdisp_destroyDispatchResults() prior to deallocation of 
-caah: cdbdisp:00003518:  * the caller's memory context. Callers should use PG_TRY/PG_CATCH to 
-caah: cdbdisp:00003519:  * ensure proper cleanup. 
-caah: cdbdisp:00003520:  * 
-caah: cdbdisp:00003521:  * To wait for completion, check for errors, and clean up, it is 
-caah: cdbdisp:00003522:  * suggested that the caller use cdbdisp_finishCommand(). 
-caah: cdbdisp:00003523:  * 
-caah: cdbdisp:00003524:  * Note that the slice tree dispatched is the one specified in the EState 
-caah: cdbdisp:00003525:  * of the argument QueryDesc as es_cur__slice. 
-caah: cdbdisp:00003526:  * 
-caah: cdbdisp:00003527:  * Note that the QueryDesc params must include PARAM_EXEC_REMOTE parameters 
-caah: cdbdisp:00003528:  * containing the values of any initplans required by the slice to be run. 
-caah: cdbdisp:00003529:  * (This is handled by calls to addRemoteExecParamsToParamList() from the 
-caah: cdbdisp:00003530:  * functions preprocess_initplans() and ExecutorRun().) 
-caah: cdbdisp:00003531:  * 
-caah: cdbdisp:00003532:  * Each QE receives its assignment as a message of type 'M' in PostgresMain(). 
-caah: cdbdisp:00003533:  * The message is deserialized and processed by exec_mpp_query() in postgres.c. 
-caah: cdbdisp:00003534:  */ 
-caah: cdbdisp:00003535: void 
-caah: cdbdisp:00003536: cdbdisp_dispatchPlan(struct QueryDesc *queryDesc, 
-caah: cdbdisp:00003537:  bool planRequiresTxn, 
-caah: cdbdisp:00003538:  bool cancelOnError, 
-caah: cdbdisp:00003539:  struct CdbDispatcherState *ds) 
-caah: cdbdisp:00003540: { 
-caah: cdbdisp:00003541:  char *splan, 
-caah: cdbdisp:00003542:  *ssliceinfo, 
-caah: cdbdisp:00003543:  *sparams; 
+caah: cdbdisp:00001487:  ereport(ERROR, (errcode(errorcode), 
+caah: cdbdisp:00001488:  errOmitLocation(true), 
+caah: cdbdisp:00001489:  errmsg("%s", buf.data))); 
+caah: cdbdisp:00003468:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+caah: cdbdisp:00003469:  errmsg_internal("Unable to dispatch plan."))); 
+caah: cdbdisp:00003522:  * the caller's error catcher via ereport(ERROR,...). Otherwise this 
+caah: cdbdisp:00003523:  * function returns normally and errors are not reported until later. 
+caah: cdbdisp:00003524:  * 
+caah: cdbdisp:00003525:  * If cancelOnError is false, the plan is to be dispatched as fully as 
+caah: cdbdisp:00003526:  * possible and the QEs allowed to proceed regardless of cancellation 
+caah: cdbdisp:00003527:  * requests, errors or connection failures from other QEs, etc. 
+caah: cdbdisp:00003528:  * 
+caah: cdbdisp:00003529:  * The CdbDispatchResults objects allocated for the plan are returned 
+caah: cdbdisp:00003530:  * in *pPrimaryResults. The caller, after calling 
+caah: cdbdisp:00003531:  * CdbCheckDispatchResult(), can examine the CdbDispatchResults 
+caah: cdbdisp:00003532:  * objects, can keep them as long as needed, and ultimately must free 
+caah: cdbdisp:00003533:  * them with cdbdisp_destroyDispatchResults() prior to deallocation of 
+caah: cdbdisp:00003534:  * the caller's memory context. Callers should use PG_TRY/PG_CATCH to 
+caah: cdbdisp:00003535:  * ensure proper cleanup. 
+caah: cdbdisp:00003536:  * 
+caah: cdbdisp:00003537:  * To wait for completion, check for errors, and clean up, it is 
+caah: cdbdisp:00003538:  * suggested that the caller use cdbdisp_finishCommand(). 
+caah: cdbdisp:00003539:  * 
+caah: cdbdisp:00003540:  * Note that the slice tree dispatched is the one specified in the EState 
+caah: cdbdisp:00003541:  * of the argument QueryDesc as es_cur__slice. 
+caah: cdbdisp:00003542:  * 
+caah: cdbdisp:00003543:  * Note that the QueryDesc params must include PARAM_EXEC_REMOTE parameters 
+caah: cdbdisp:00003544:  * containing the values of any initplans required by the slice to be run. 
+caah: cdbdisp:00003545:  * (This is handled by calls to addRemoteExecParamsToParamList() from the 
+caah: cdbdisp:00003546:  * functions preprocess_initplans() and ExecutorRun().) 
+caah: cdbdisp:00003547:  * 
+caah: cdbdisp:00003548:  * Each QE receives its assignment as a message of type 'M' in PostgresMain(). 
+caah: cdbdisp:00003549:  * The message is deserialized and processed by exec_mpp_query() in postgres.c. 
+caah: cdbdisp:00003550:  */ 
+caah: cdbdisp:00003551: void 
+caah: cdbdisp:00003552: cdbdisp_dispatchPlan(struct QueryDesc *queryDesc, 
+caah: cdbdisp:00003553:  bool planRequiresTxn, 
+caah: cdbdisp:00003554:  bool cancelOnError, 
+caah: cdbdisp:00003555:  struct CdbDispatcherState *ds) 
+caah: cdbdisp:00003556: { 
+caah: cdbdisp:00003557:  char *splan, 
+caah: cdbdisp:00003558:  *ssliceinfo, 
+caah: cdbdisp:00003559:  *sparams; 
 aaaaa GP_IGNORE: cacc: cdbdistributedsnapshot - ./backend/cdb/cdbdistributedsnapshot.c
 cacc: cdbdistributedsnapshot:00000298:  ereport(ERROR, 
 cacc: cdbdistributedsnapshot:00000299:  (errcode(ERRCODE_OUT_OF_MEMORY), 
@@ -13414,81 +13414,81 @@ paai: postgres:00003455:  ereport(FATAL,
 paai: postgres:00003456:  (errcode(ERRCODE_ADMIN_SHUTDOWN), 
 paai: postgres:00003457:  errmsg("terminating connection due to administrator command"), 
 paai: postgres:00003458:  errSendAlert(false))); 
-paai: postgres:00003469:  ereport(ERROR, 
-paai: postgres:00003470:  (errcode(ERRCODE_GP_OPERATION_CANCELED), 
-paai: postgres:00003471:  errmsg("canceling MPP operation"))); 
-paai: postgres:00003473:  ereport(ERROR, 
-paai: postgres:00003474:  (errcode(ERRCODE_QUERY_CANCELED), 
-paai: postgres:00003475:  errmsg("canceling statement due to statement timeout"))); 
-paai: postgres:00003477:  ereport(ERROR, 
-paai: postgres:00003478:  (errcode(ERRCODE_QUERY_CANCELED), 
-paai: postgres:00003479:  errmsg("canceling statement due to user request"))); 
-paai: postgres:00003552:  ereport(ERROR, 
-paai: postgres:00003553:  (errcode(ERRCODE_STATEMENT_TOO_COMPLEX), 
-paai: postgres:00003554:  errmsg("stack depth limit exceeded"), 
-paai: postgres:00003555:  errhint("Increase the configuration parameter \"max_stack_depth\", " 
-paai: postgres:00003556:  "after ensuring the platform's stack depth limit is adequate."))); 
-paai: postgres:00003966:  ereport(ERROR, 
-paai: postgres:00003967:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00003968:  errmsg("--%s requires a value", 
-paai: postgres:00003969:  optarg))); 
-paai: postgres:00003971:  ereport(ERROR, 
-paai: postgres:00003972:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00003973:  errmsg("-c %s requires a value", 
-paai: postgres:00003974:  optarg))); 
-paai: postgres:00004014:  ereport(FATAL, 
-paai: postgres:00004015:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paai: postgres:00004016:  errmsg("System was started in master-only utility mode - only utility mode connections are allowed"))); 
-paai: postgres:00004134:  ereport(FATAL, 
-paai: postgres:00004135:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00004136:  errmsg("invalid command-line arguments for server process"), 
-paai: postgres:00004137:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00004147:  ereport(FATAL, 
-paai: postgres:00004148:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00004149:  errmsg("%s: invalid command-line arguments", 
-paai: postgres:00004150:  argv[0]), 
-paai: postgres:00004151:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00004157:  ereport(FATAL, 
-paai: postgres:00004158:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paai: postgres:00004159:  errmsg("%s: no database nor user name specified", 
-paai: postgres:00004160:  argv[0]))); 
-paai: postgres:00004992:  ereport(ERROR, 
-paai: postgres:00004993:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00004994:  errmsg("invalid CLOSE message subtype %d", 
-paai: postgres:00004995:  close_type))); 
-paai: postgres:00005029:  ereport(ERROR, 
-paai: postgres:00005030:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00005031:  errmsg("invalid DESCRIBE message subtype %d", 
-paai: postgres:00005032:  describe_type))); 
-paai: postgres:00005086:  ereport(FATAL, 
-paai: postgres:00005087:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00005088:  errmsg("invalid frontend message type %d ('%c')", 
-paai: postgres:00005089:  firstchar,firstchar))); 
-paai: postgres:00005589:  ereport(ERROR, 
-paai: postgres:00005590:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005591:  errmsg("--%s requires a value", 
-paai: postgres:00005592:  optarg))); 
-paai: postgres:00005594:  ereport(ERROR, 
-paai: postgres:00005595:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005596:  errmsg("-c %s requires a value", 
-paai: postgres:00005597:  optarg))); 
-paai: postgres:00005710:  ereport(FATAL, 
-paai: postgres:00005711:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005712:  errmsg("invalid command-line arguments for server process"), 
-paai: postgres:00005713:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00005724:  ereport(FATAL, 
-paai: postgres:00005725:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005726:  errmsg("%s: invalid command-line arguments", 
-paai: postgres:00005727:  argv[0]), 
-paai: postgres:00005728:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00005734:  ereport(FATAL, 
-paai: postgres:00005735:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paai: postgres:00005736:  errmsg("%s: no database nor user name specified", 
-paai: postgres:00005737:  argv[0]))); 
-paai: postgres:00006055:  ereport(FATAL, 
-paai: postgres:00006056:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00006057:  errmsg("invalid frontend message type %d", 
-paai: postgres:00006058:  firstchar))); 
+paai: postgres:00003472:  ereport(ERROR, 
+paai: postgres:00003473:  (errcode(ERRCODE_GP_OPERATION_CANCELED), 
+paai: postgres:00003474:  errmsg("canceling MPP operation"))); 
+paai: postgres:00003476:  ereport(ERROR, 
+paai: postgres:00003477:  (errcode(ERRCODE_QUERY_CANCELED), 
+paai: postgres:00003478:  errmsg("canceling statement due to statement timeout"))); 
+paai: postgres:00003480:  ereport(ERROR, 
+paai: postgres:00003481:  (errcode(ERRCODE_QUERY_CANCELED), 
+paai: postgres:00003482:  errmsg("canceling statement due to user request"))); 
+paai: postgres:00003555:  ereport(ERROR, 
+paai: postgres:00003556:  (errcode(ERRCODE_STATEMENT_TOO_COMPLEX), 
+paai: postgres:00003557:  errmsg("stack depth limit exceeded"), 
+paai: postgres:00003558:  errhint("Increase the configuration parameter \"max_stack_depth\", " 
+paai: postgres:00003559:  "after ensuring the platform's stack depth limit is adequate."))); 
+paai: postgres:00003969:  ereport(ERROR, 
+paai: postgres:00003970:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00003971:  errmsg("--%s requires a value", 
+paai: postgres:00003972:  optarg))); 
+paai: postgres:00003974:  ereport(ERROR, 
+paai: postgres:00003975:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00003976:  errmsg("-c %s requires a value", 
+paai: postgres:00003977:  optarg))); 
+paai: postgres:00004017:  ereport(FATAL, 
+paai: postgres:00004018:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paai: postgres:00004019:  errmsg("System was started in master-only utility mode - only utility mode connections are allowed"))); 
+paai: postgres:00004137:  ereport(FATAL, 
+paai: postgres:00004138:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00004139:  errmsg("invalid command-line arguments for server process"), 
+paai: postgres:00004140:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00004150:  ereport(FATAL, 
+paai: postgres:00004151:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00004152:  errmsg("%s: invalid command-line arguments", 
+paai: postgres:00004153:  argv[0]), 
+paai: postgres:00004154:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00004160:  ereport(FATAL, 
+paai: postgres:00004161:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paai: postgres:00004162:  errmsg("%s: no database nor user name specified", 
+paai: postgres:00004163:  argv[0]))); 
+paai: postgres:00004995:  ereport(ERROR, 
+paai: postgres:00004996:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00004997:  errmsg("invalid CLOSE message subtype %d", 
+paai: postgres:00004998:  close_type))); 
+paai: postgres:00005032:  ereport(ERROR, 
+paai: postgres:00005033:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00005034:  errmsg("invalid DESCRIBE message subtype %d", 
+paai: postgres:00005035:  describe_type))); 
+paai: postgres:00005089:  ereport(FATAL, 
+paai: postgres:00005090:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00005091:  errmsg("invalid frontend message type %d ('%c')", 
+paai: postgres:00005092:  firstchar,firstchar))); 
+paai: postgres:00005592:  ereport(ERROR, 
+paai: postgres:00005593:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005594:  errmsg("--%s requires a value", 
+paai: postgres:00005595:  optarg))); 
+paai: postgres:00005597:  ereport(ERROR, 
+paai: postgres:00005598:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005599:  errmsg("-c %s requires a value", 
+paai: postgres:00005600:  optarg))); 
+paai: postgres:00005713:  ereport(FATAL, 
+paai: postgres:00005714:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005715:  errmsg("invalid command-line arguments for server process"), 
+paai: postgres:00005716:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00005727:  ereport(FATAL, 
+paai: postgres:00005728:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005729:  errmsg("%s: invalid command-line arguments", 
+paai: postgres:00005730:  argv[0]), 
+paai: postgres:00005731:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00005737:  ereport(FATAL, 
+paai: postgres:00005738:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paai: postgres:00005739:  errmsg("%s: no database nor user name specified", 
+paai: postgres:00005740:  argv[0]))); 
+paai: postgres:00006058:  ereport(FATAL, 
+paai: postgres:00006059:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00006060:  errmsg("invalid frontend message type %d", 
+paai: postgres:00006061:  firstchar))); 
 aaaaa GP_IGNORE: paag: pquery - ./backend/tcop/pquery.c
 paag: pquery:00000958:  ereport(ERROR, 
 paag: pquery:00000959:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
@@ -16713,22 +16713,22 @@ eaae: elog:00001797:  ereport(FATAL,
 eaae: elog:00001798:  (errcode_for_file_access(), 
 eaae: elog:00001799:  errmsg("could not reopen file \"%s\" as stdout: %m", 
 eaae: elog:00001800:  OutputFileName))); 
-eaae: elog:00003962:  ereport(ERROR, 
-eaae: elog:00003963:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-eaae: elog:00003964:  errmsg("gp_elog(): called with %hd arguments", 
-eaae: elog:00003965:  PG_NARGS()))); 
-eaae: elog:00003967:  ereport(ERROR, 
-eaae: elog:00003968:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-eaae: elog:00003969:  errmsg("gp_elog(): called with null arguments"))); 
-eaae: elog:00003972:  ereport(ERROR, 
-eaae: elog:00003973:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-eaae: elog:00003974:  errmsg("gp_elog(): called with null arguments"))); 
-eaae: elog:00003978:  ereport(ERROR, 
-eaae: elog:00003979:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-eaae: elog:00003980:  errmsg("permission denied"), 
-eaae: elog:00003981:  errhint("gp_elog(): requires superuser privileges."))); 
-eaae: elog:00004090:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-eaae: elog:00004091:  errmsg("Failed to get backtrace symbol: out of memory"))); 
+eaae: elog:00003969:  ereport(ERROR, 
+eaae: elog:00003970:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+eaae: elog:00003971:  errmsg("gp_elog(): called with %hd arguments", 
+eaae: elog:00003972:  PG_NARGS()))); 
+eaae: elog:00003974:  ereport(ERROR, 
+eaae: elog:00003975:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+eaae: elog:00003976:  errmsg("gp_elog(): called with null arguments"))); 
+eaae: elog:00003979:  ereport(ERROR, 
+eaae: elog:00003980:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+eaae: elog:00003981:  errmsg("gp_elog(): called with null arguments"))); 
+eaae: elog:00003985:  ereport(ERROR, 
+eaae: elog:00003986:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+eaae: elog:00003987:  errmsg("permission denied"), 
+eaae: elog:00003988:  errhint("gp_elog(): requires superuser privileges."))); 
+eaae: elog:00004097:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+eaae: elog:00004098:  errmsg("Failed to get backtrace symbol: out of memory"))); 
 aaaaa GP_IGNORE: daba: deprecated - ./backend/utils/fmgr/deprecated.c
 daba: deprecated:00000029:  ereport(ERROR, 
 daba: deprecated:00000030:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
@@ -17203,81 +17203,85 @@ gaai: gucxfile:00000552:  GUC_EOL = 99,
 gaai: gucxfile:00000553:  GUC_ERROR = 100 
 gaai: gucxfile:00000554: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00007486:  ereport(ERROR, 
-gaad: guc:00007487:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007488:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007490:  ereport(ERROR, 
-gaad: guc:00007491:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00007492:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00007526:  ereport(ERROR, 
-gaad: guc:00007527:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007528:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007530:  ereport(ERROR, 
-gaad: guc:00007531:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00007532:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00007601:  ereport(ERROR, 
-gaad: guc:00007602:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007603:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007610:  ereport(ERROR, 
-gaad: guc:00007611:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00007612:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00007783:  ereport(ERROR, 
-gaad: guc:00007784:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00007785:  errmsg("SET requires parameter name"))); 
-gaad: guc:00007847:  ereport(ERROR, 
-gaad: guc:00007848:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00007849:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00008168:  ereport(ERROR, 
-gaad: guc:00008169:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008170:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008172:  ereport(ERROR, 
-gaad: guc:00008173:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008174:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008976:  ereport(FATAL, 
-gaad: guc:00008977:  (errcode_for_file_access(), 
-gaad: guc:00008978:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00008979:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00009086:  ereport(WARNING, 
-gaad: guc:00009087:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00009088:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00009282:  ereport(ERROR, 
-gaad: guc:00009283:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009284:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00009305:  ereport(ERROR, 
-gaad: guc:00009306:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009307:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00009308:  tok))); 
-gaad: guc:00009334:  ereport(ERROR, 
-gaad: guc:00009335:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009336:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00009337:  value))); 
-gaad: guc:00009687:  ereport(ERROR, 
-gaad: guc:00009688:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00009689:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00009763:  ereport(ERROR, 
-gaad: guc:00009764:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009765:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00009784:  ereport(ERROR, 
-gaad: guc:00009785:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009786:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00009797:  ereport(ERROR, 
-gaad: guc:00009798:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009799:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00009814:  ereport(ERROR, 
-gaad: guc:00009815:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009816:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00009817:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00009818:  "\"log_dispatch_stats\", " 
-gaad: guc:00009819:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00009834:  ereport(ERROR, 
-gaad: guc:00009835:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009836:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00009837:  "\"log_statement_stats\", " 
-gaad: guc:00009838:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00009839:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00009854:  ereport(ERROR, 
-gaad: guc:00009855:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009856:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00007534:  ereport(ERROR, 
+gaad: guc:00007535:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007536:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007538:  ereport(ERROR, 
+gaad: guc:00007539:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00007540:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00007574:  ereport(ERROR, 
+gaad: guc:00007575:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007576:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007578:  ereport(ERROR, 
+gaad: guc:00007579:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00007580:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00007649:  ereport(ERROR, 
+gaad: guc:00007650:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007651:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007658:  ereport(ERROR, 
+gaad: guc:00007659:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00007660:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00007831:  ereport(ERROR, 
+gaad: guc:00007832:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00007833:  errmsg("SET requires parameter name"))); 
+gaad: guc:00007895:  ereport(ERROR, 
+gaad: guc:00007896:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00007897:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00008216:  ereport(ERROR, 
+gaad: guc:00008217:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008218:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008220:  ereport(ERROR, 
+gaad: guc:00008221:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008222:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00009024:  ereport(FATAL, 
+gaad: guc:00009025:  (errcode_for_file_access(), 
+gaad: guc:00009026:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00009027:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00009134:  ereport(WARNING, 
+gaad: guc:00009135:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00009136:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00009330:  ereport(ERROR, 
+gaad: guc:00009331:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009332:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00009353:  ereport(ERROR, 
+gaad: guc:00009354:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009355:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00009356:  tok))); 
+gaad: guc:00009382:  ereport(ERROR, 
+gaad: guc:00009383:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009384:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00009385:  value))); 
+gaad: guc:00009735:  ereport(ERROR, 
+gaad: guc:00009736:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00009737:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00009811:  ereport(ERROR, 
+gaad: guc:00009812:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009813:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00009832:  ereport(ERROR, 
+gaad: guc:00009833:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009834:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00009845:  ereport(ERROR, 
+gaad: guc:00009846:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009847:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00009862:  ereport(ERROR, 
+gaad: guc:00009863:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009864:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00009865:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00009866:  "\"log_dispatch_stats\", " 
+gaad: guc:00009867:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00009882:  ereport(ERROR, 
+gaad: guc:00009883:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009884:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00009885:  "\"log_statement_stats\", " 
+gaad: guc:00009886:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00009887:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00009902:  ereport(ERROR, 
+gaad: guc:00009903:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009904:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
+sabd: syncbitvector:00000067:  ereport(ERROR, 
+sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+sabd: syncbitvector:00000069:  (errmsg("Not enough shared memory for SyncBitVector.")))); 
 aaaaa GP_IGNORE: uaaj: uriparser - ./backend/utils/misc/uriparser.c
 uaaj: uriparser:00000058:  ereport(ERROR, 
 uaaj: uriparser:00000059:  (errcode(ERRCODE_SYNTAX_ERROR), 
@@ -17307,22 +17311,22 @@ maae: mcxt:00000734:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
 maae: mcxt:00000735:  errmsg("Failed to create memory context: out of memory") 
 maae: mcxt:00000736:  )); 
 aaaaa GP_IGNORE: maah: memprot - ./backend/utils/mmgr/memprot.c
-maah: memprot:00000249:  ereport(ERROR, (errcode(ERRCODE_GP_MEMPROT_KILL), 
-maah: memprot:00000250:  errmsg("Out of memory"), 
-maah: memprot:00000251:  errdetail("VM Protect failed to allocate %d bytes, %d MB available", 
-maah: memprot:00000252:  sz, availmb 
-maah: memprot:00000253:  ) 
-maah: memprot:00000254:  )); 
-maah: memprot:00000266:  ereport(ERROR, (errcode(ERRCODE_GP_MEMPROT_KILL), 
-maah: memprot:00000267:  errmsg("Out of memory"), 
-maah: memprot:00000268:  errdetail("VM protect failed to allocate %d bytes from system, VM Protect %d MB available", 
-maah: memprot:00000269:  sz, availmb 
-maah: memprot:00000270:  ) 
-maah: memprot:00000271:  )); 
-maah: memprot:00000283:  ereport(ERROR, (errcode(ERRCODE_GP_MEMPROT_KILL), 
-maah: memprot:00000284:  errmsg("Failed to allocate memory under virtual memory protection"), 
-maah: memprot:00000285:  errdetail("Error %d, errno %d, %s", ec, en, strerror(en)) 
-maah: memprot:00000286:  )); 
+maah: memprot:00000250:  ereport(ERROR, (errcode(ERRCODE_GP_MEMPROT_KILL), 
+maah: memprot:00000251:  errmsg("Out of memory"), 
+maah: memprot:00000252:  errdetail("VM Protect failed to allocate %d bytes, %d MB available", 
+maah: memprot:00000253:  sz, availmb 
+maah: memprot:00000254:  ) 
+maah: memprot:00000255:  )); 
+maah: memprot:00000267:  ereport(ERROR, (errcode(ERRCODE_GP_MEMPROT_KILL), 
+maah: memprot:00000268:  errmsg("Out of memory"), 
+maah: memprot:00000269:  errdetail("VM protect failed to allocate %d bytes from system, VM Protect %d MB available", 
+maah: memprot:00000270:  sz, availmb 
+maah: memprot:00000271:  ) 
+maah: memprot:00000272:  )); 
+maah: memprot:00000284:  ereport(ERROR, (errcode(ERRCODE_GP_MEMPROT_KILL), 
+maah: memprot:00000285:  errmsg("Failed to allocate memory under virtual memory protection"), 
+maah: memprot:00000286:  errdetail("Error %d, errno %d, %s", ec, en, strerror(en)) 
+maah: memprot:00000287:  )); 
 aaaaa GP_IGNORE: paaj: portalmem - ./backend/utils/mmgr/portalmem.c
 paaj: portalmem:00000217:  ereport(ERROR, 
 paaj: portalmem:00000218:  (errcode(ERRCODE_DUPLICATE_CURSOR), 
@@ -17500,20 +17504,20 @@ taaf: tqual:00000353:  errmsg("sorry, too many clients already."),
 taaf: tqual:00000354:  errdetail("There are no more available slots in the sharedSnapshotArray."), 
 taaf: tqual:00000355:  errhint("Another piece of code should have detected that we have too many clients." 
 taaf: tqual:00000356:  " this probably means that someone isn't releasing their slot properly."))); 
-taaf: tqual:00000521:  ereport(ERROR, 
-taaf: tqual:00000522:  (errmsg("%s could not set the Shared Local Snapshot!", 
-taaf: tqual:00000523:  creatorDescription), 
-taaf: tqual:00000524:  errdetail("Tried to set the shared local snapshot slot with id: %d " 
-taaf: tqual:00000525:  "and failed. Shared Local Snapshots dump: %s", id, 
-taaf: tqual:00000526:  SharedSnapshotDump()))); 
-taaf: tqual:00000543:  ereport(ERROR, 
-taaf: tqual:00000544:  (errmsg("%s could not find Shared Local Snapshot!", 
-taaf: tqual:00000545:  lookerDescription), 
-taaf: tqual:00000546:  errdetail("Tried to find a shared snapshot slot with id: %d " 
-taaf: tqual:00000547:  "and found none. Shared Local Snapshots dump: %s", id, 
-taaf: tqual:00000548:  SharedSnapshotDump()), 
-taaf: tqual:00000549:  errhint("Either this %s was created before the %s or the %s died.", 
-taaf: tqual:00000550:  lookerDescription, creatorDescription, creatorDescription))); 
+taaf: tqual:00000523:  ereport(ERROR, 
+taaf: tqual:00000524:  (errmsg("%s could not set the Shared Local Snapshot!", 
+taaf: tqual:00000525:  creatorDescription), 
+taaf: tqual:00000526:  errdetail("Tried to set the shared local snapshot slot with id: %d " 
+taaf: tqual:00000527:  "and failed. Shared Local Snapshots dump: %s", id, 
+taaf: tqual:00000528:  SharedSnapshotDump()))); 
+taaf: tqual:00000545:  ereport(ERROR, 
+taaf: tqual:00000546:  (errmsg("%s could not find Shared Local Snapshot!", 
+taaf: tqual:00000547:  lookerDescription), 
+taaf: tqual:00000548:  errdetail("Tried to find a shared snapshot slot with id: %d " 
+taaf: tqual:00000549:  "and found none. Shared Local Snapshots dump: %s", id, 
+taaf: tqual:00000550:  SharedSnapshotDump()), 
+taaf: tqual:00000551:  errhint("Either this %s was created before the %s or the %s died.", 
+taaf: tqual:00000552:  lookerDescription, creatorDescription, creatorDescription))); 
 aaaaa GP_IGNORE: gaai: gpviewcp - ./bin/gpupgrade/gpviewcp.c
 gaai: gpviewcp:00000070:  ereport(ERROR, 
 gaai: gpviewcp:00000071:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
