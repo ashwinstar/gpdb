@@ -217,7 +217,7 @@ datumIdx *getDatumIdx(uint64 offset, datumIdx *idx)
 static inline
 int32 compare_and_swap(uint32 *dest, uint32 old, uint32 new)
 {
-	int32 res = 0;
+	volatile int32 res = 0;
 
 #if defined(__i386)
 	__asm__ __volatile__
