@@ -562,19 +562,18 @@ int MirroredFlatFile_Write(
 
 {
 	int64	seekResult;
-	char*	buf = NULL;
 	int		save_errno = 0;
 	
 	Assert(open != NULL);
 	Assert(open->isActive);
 	
-	buf = (char*) palloc(bufferLen);
+	XLogInitMirroredAlignedBuffer(bufferLen);
 	
 	/* 
 	 * memcpy() is required since buffer is still changing, however filerep
 	 * requires identical data are written to primary and its mirror 
 	 */	
-	memcpy(buf, buffer, bufferLen);
+	memcpy(writeBufAligned, buffer, bufferLen);
 	
 	if (FileRepPrimary_MirrorWrite(
 				   FileRep_GetFlatFileIdentifier(
@@ -582,7 +581,7 @@ int MirroredFlatFile_Write(
 								 open->simpleFileName),
 				   FileRepRelationTypeFlatFile,
 				   position,
-				   buf, 
+				   writeBufAligned, 
 				   bufferLen, 
 				   FileRep_GetXLogRecPtrUndefined())	!= 0) 					  
 		ereport(LOG,
@@ -602,7 +601,7 @@ int MirroredFlatFile_Write(
 							open->path)));
 		}
 
-		if ((int) FileWrite(open->primaryFile, buf, bufferLen) != bufferLen)
+		if ((int) FileWrite(open->primaryFile, writeBufAligned, bufferLen) != bufferLen)
 		{
 			/* if write didn't set errno, assume problem is no disk space */
 			if (errno == 0)
@@ -614,12 +613,7 @@ int MirroredFlatFile_Write(
 		}
 		save_errno = errno;
 	}
-	
-	if (buf) {
-		pfree(buf);
-		buf = NULL;
-	}
-	
+		
 	return save_errno;
 }
 

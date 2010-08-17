@@ -27,8 +27,12 @@
 #include "storage/fd.h"
 #include "storage/smgr.h"
 #include "utils/guc.h"
+#include "utils/memutils.h"
 #include "utils/palloc.h"
 #include "cdb/cdbpersistentfilesysobj.h"
+
+static int32 writeBufLen = 0;
+static char	*writeBuf = NULL;
 
 static void MirroredBufferPool_SetUpMirrorAccess(
 	RelFileNode					*relFileNode,
@@ -684,7 +688,6 @@ bool MirroredBufferPool_Write(
 
 {
 	int64	seekResult;
-	char*	buf = NULL;
 	int	primaryError;
 
 	Assert(open != NULL);
@@ -693,7 +696,26 @@ bool MirroredBufferPool_Write(
 
 	primaryError = 0;
 	
-	buf = (char*) palloc(bufferLen);
+	if (bufferLen > writeBufLen)
+	{
+		if (writeBuf != NULL)
+		{
+			pfree(writeBuf);
+			writeBuf = NULL;
+			writeBufLen = 0;
+		}
+	}
+	
+	if (writeBuf == NULL)
+	{
+		writeBufLen = bufferLen;
+		
+		writeBuf = MemoryContextAlloc(TopMemoryContext, writeBufLen);
+		if (writeBuf == NULL)
+			ereport(ERROR, 
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 (errmsg("could not allocate memory for mirrored alligned buffer"))));
+	}	
 	
 	/*
 	 * For Buffer Pool managed, we are normally not session oriented like Append-Only.
@@ -706,7 +728,7 @@ bool MirroredBufferPool_Write(
 	 * memcpy() is required since buffer is still changing, however filerep
 	 * requires identical data to be written to primary and its mirror 
 	 */
-	memcpy(buf, buffer, bufferLen);
+	memcpy(writeBuf, buffer, bufferLen);
 	
 	if (StorageManagerMirrorMode_SendToMirror(open->mirrorMode) &&
 		!open->mirrorDataLossOccurred)
@@ -718,7 +740,7 @@ bool MirroredBufferPool_Write(
 														 open->segmentFileNum),
 						   FileRepRelationTypeBufferPool,
 						   position,
-						   buf, 
+						   writeBuf, 
 						   bufferLen, 
 						   FileRep_GetXLogRecPtrUndefined())	!= 0) 	
 		{
@@ -752,7 +774,7 @@ bool MirroredBufferPool_Write(
 		}
 
 		errno = 0;
-		if ((int) FileWrite(open->primaryFile, buf, bufferLen) != bufferLen)
+		if ((int) FileWrite(open->primaryFile, writeBuf, bufferLen) != bufferLen)
 		{
 			/* if write didn't set errno, assume problem is no disk space */
 			if (errno == 0)
@@ -761,11 +783,6 @@ bool MirroredBufferPool_Write(
 		}
 	}
 	
-	if (buf) {
-		pfree(buf);
-		buf = NULL;
-	}
-
 	errno = primaryError;
 	return (primaryError == 0);
 

@@ -64,6 +64,7 @@
 #include "utils/resscheduler.h"
 #include "pg_trace.h"
 #include "utils/catcache.h"
+#include "utils/memutils.h"
 #include "utils/syscache.h"
 #include "storage/backendid.h"
 #include "storage/sinval.h"
@@ -558,6 +559,12 @@ static XLogRecord *nextRecord = NULL;
 static TimeLineID lastPageTLI = 0;
 
 static bool InRedo = false;
+
+/* Aligning xlog mirrored buffer */
+static int32 writeBufLen = 0;
+static char	*writeBuf = NULL;
+
+char	*writeBufAligned = NULL;
 
 /*
  * Flag set by interrupt handlers for later service in the redo loop.
@@ -10250,4 +10257,36 @@ int XLogAddRecordsToChangeTracking(
 	return count;	
 }
 
-
+/*
+ * The following two gucs
+ *					a) fsync=on
+ *					b) wal_sync_method=open_sync
+ * open XLOG files with O_DIRECT flag. 
+ * O_DIRECT flag requires XLOG buffer to be 512 byte aligned.
+ */
+void 
+XLogInitMirroredAlignedBuffer(int32 bufferLen)
+{		
+	if (bufferLen > writeBufLen)
+	{
+		if (writeBuf != NULL)
+		{
+			pfree(writeBuf);
+			writeBuf = NULL;
+			writeBufAligned = NULL;
+			writeBufLen = 0;
+		}
+	}
+	
+	if (writeBuf == NULL)
+	{
+		writeBufLen = bufferLen;
+		
+		writeBuf = MemoryContextAlloc(TopMemoryContext, writeBufLen + ALIGNOF_XLOG_BUFFER);
+		if (writeBuf == NULL)
+			ereport(ERROR, 
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 (errmsg("could not allocate memory for mirrored aligned buffer"))));
+		writeBufAligned = (char *) TYPEALIGN(ALIGNOF_XLOG_BUFFER, writeBuf);
+	}	
+}
