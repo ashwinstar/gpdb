@@ -17,14 +17,15 @@ ifneq ($(CUSTOM_COPT),)
 	COPT=$(CUSTOM_COPT)
 endif
 
-GPMMON_OBJS=gpmmon.o gpmondb.o gpmonlib.o gpmon_agg.o
+GPMMON_OBJS=gpmmon.o gpmondb.o gpmonlib.o gpmon_agg.o gpmon_snmp.o
 GPSMON_OBJS=gpsmon.o gpmonlib.o
 SIGTEST_OBJS=sigartest.o
+SNMPTEST_OBJS=snmptest.o
 
 INCS=-I$(EXT_DIR)/include -I$(EXT_DIR)/include/apr-1 -I$(BLD_TOP)/cdb-pg/src/include -I$(LIBPQ_DIR)
 LIBS=-L$(EXT_DIR)/lib -laprutil-1 -lapr-1 -levent $$($(EXT_DIR)/bin/apu-1-config --libs) $$($(EXT_DIR)/bin/apr-1-config --libs) 
 GPSMON_LIBS=
-GPMMON_LIBS=-L$(LIBPQ_DIR) -lpq -lm
+GPMMON_LIBS=-L$(LIBPQ_DIR) -lpq -lm -lsnmp
 CFLAGS=$(OPT) $$($(EXT_DIR)/bin/apr-1-config --cflags) -Werror -Wall
 CPPFLAGS=$$($(EXT_DIR)/bin/apr-1-config --cppflags) -D$(BLD_ARCH)
 
@@ -39,6 +40,7 @@ endif
 
 GPSMON_LIBS+= -lm -lsigar
 SIGTEST_LIBS+= -lsigar
+SNMPTEST_LIBS+= -lsnmp
 
 all: gpsmon gpmmon
 
@@ -50,6 +52,9 @@ gpmmon: $(GPMMON_OBJS)
 
 sigartest: $(SIGTEST_OBJS)
 	$(CC) -o sigartest $(COPT) $(SIGTEST_OBJS) $(LIBS) $(GPSMON_LIBS)
+
+snmptest: $(SNMPTEST_OBJS)
+	$(CC) -o snmptest $(COPT) $(SNMPTEST_OBJS) $(LIBS) $(SNMPTEST_LIBS)
 
 %.o: %.c
 	$(CC) $(INCS) $(CPPFLAGS) $(CFLAGS) $(COPT) -o $@ -c $<

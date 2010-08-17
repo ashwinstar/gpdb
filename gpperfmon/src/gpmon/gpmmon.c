@@ -49,24 +49,9 @@ struct
 	int d;
 	int qamode;
 	int harvest_interval;
+	int snmp_interval;
 	apr_uint64_t tail_buffer_max;
 } opt = { 0 };
-
-/* gpsmon host */
-typedef struct host_t host_t;
-struct host_t
-{
-	apr_thread_mutex_t *mutex;
-	int sock; /* socket connected to gpsmon on this host */
-	int eflag; /* flag: socket has error */
-	struct event* event; /* points to _event if set */
-	struct event _event; /* static */
-	char* hostname; /* static */
-	char* realhostname; /* static */
-	char* ipstr; /* static */
-	char* data_dir;
-    unsigned char is_master; /* 1 if host is the same host where the master runs */
-};
 
 /* gpmmon host */
 static struct
@@ -104,11 +89,11 @@ int quantum = 15; /* == opt.q */
 int min_query_time = 60; /* == opt.m */
 int min_detailed_query_time = 60; /* == opt.d */
 
-
 /* thread handles */
 static apr_thread_t* conm_th = NULL;
 static apr_thread_t* event_th = NULL;
 static apr_thread_t* harvest_th = NULL;
+static apr_thread_t* snmp_th = NULL;
 
 /* signal masks */
 sigset_t unblocksig;
@@ -180,6 +165,8 @@ static void cleanup()
 		apr_thread_join(&tstatus, conm_th);
 	if (harvest_th)
 		apr_thread_join(&tstatus, harvest_th);
+	if (snmp_th)
+		apr_thread_join(&tstatus, snmp_th);
 
 	for (i = 0; i < ax.hosttabsz; i++)
 	{
@@ -606,6 +593,36 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 	return 0;
 }
 
+/* seperate thread for snmp */
+static void* snmp_main(apr_thread_t* thread_, void* arg_)
+{
+	unsigned int loop;
+	int ticks_since_last_snmp_report = 0;
+	char configfile[PATH_MAX];
+	char outdir[PATH_MAX];
+
+	snprintf(configfile, PATH_MAX, "%s/gpperfmon/conf/snmp.conf", ax.master_data_directory);
+	snprintf(outdir, PATH_MAX, "%s/gpperfmon/data/snmp", ax.master_data_directory);
+
+	gpmmon_init_snmp(configfile, outdir);
+
+	snmp_report(ax.hosttab, ax.hosttabsz);
+
+	for (loop = 1; !ax.exit; loop++)
+	{
+		apr_sleep(apr_time_from_sec(1));
+		ticks_since_last_snmp_report++;
+
+		if (ticks_since_last_snmp_report >= opt.snmp_interval)
+		{
+			snmp_report(ax.hosttab, ax.hosttabsz);
+			ticks_since_last_snmp_report = 0;
+		}
+	}
+
+	return APR_SUCCESS;
+}
+
 /* seperate thread for harvest */
 static void* harvest_main(apr_thread_t* thread_, void* arg_)
 {
@@ -693,6 +710,20 @@ static void* harvest_main(apr_thread_t* thread_, void* arg_)
 	}
 
 	return APR_SUCCESS;
+}
+
+int is_gpdb_appliance()
+{
+	FILE* fd = fopen(PATH_TO_APPLIANCE_VERSION_FILE, "r");
+	if (fd)
+	{
+		fclose(fd);
+		return 1;
+	}
+	else
+	{
+		return 0;
+	}
 }
 
 time_t compute_next_dump_to_file()
@@ -815,6 +846,23 @@ static void gpmmon_main(void)
 	{
         interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "apr_thread_create failed");
+	}
+
+	/* spawn snmp thread if enabled */
+	if (opt.snmp_interval)
+	{
+		if (is_gpdb_appliance())
+		{
+			if (0 != (e = apr_thread_create(&snmp_th, ta, snmp_main, 0, ax.pool)))
+			{
+	        	interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+				gpmon_fatalx(FLINE, e, "apr_thread_create failed");
+			}
+		}
+		else
+		{
+			gpmon_warningx(FLINE, e, "snmp_inteval but this host is not detected as part of Greenplum Appliance.  snmp monitoring is only enabled on the Greenplum Appliance.");
+		}
 	}
 
 	/* main loop */
@@ -1019,6 +1067,10 @@ static int read_conf_file(char *conffile)
 			{
 				opt.max_log_size = apr_atoi64(pVal);
 			}
+			else if (apr_strnatcasecmp(pName, "snmp_interval") == 0)
+			{
+				opt.snmp_interval = atoi(pVal);
+			}
 			else
 			{
 				fprintf(stderr, "Unknown option %s\n", pName == NULL ? "(NULL)"
@@ -1069,6 +1121,13 @@ static int read_conf_file(char *conffile)
 		fprintf(stderr, "Performance Monitor - harvest_interval must be greater than 30.  Using "
 				"default value 120\n");
 		opt.harvest_interval = 120;
+	}
+
+	if (opt.snmp_interval && opt.snmp_interval < 10)
+	{
+		fprintf(stderr, "Performance Monitor - snmp_interval must be either 0 or greater than 10.  Using "
+				"default value 10\n");
+		opt.snmp_interval = 10;
 	}
 
 	if (opt.tail_buffer_max == 0)

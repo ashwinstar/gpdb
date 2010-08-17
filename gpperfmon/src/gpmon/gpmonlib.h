@@ -6,6 +6,7 @@
 
 #include "apr_general.h"
 #include "apr_time.h"
+#include "event.h"
 #include "gpmon/gpmon.h"
 
 #define BATCH 8
@@ -73,9 +74,30 @@ extern char* gpmon_datetime_rounded(apr_time_t t, char str[GPMON_DATE_BUF_SIZE])
 extern apr_int32_t get_query_status(apr_int32_t tmid, apr_int32_t ssid,
 									apr_int32_t ccnt);
 
+#define PATH_TO_APPLIANCE_VERSION_FILE "/etc/gpdb-appliance-version"
+
+
+/* segment host */ 
+typedef struct host_t host_t; 
+struct host_t
+{
+    apr_thread_mutex_t *mutex; 
+    int sock; /* socket connected to gpsmon on this host */ 
+    int eflag; /* flag: socket has error */
+    struct event* event; /* points to _event if set */
+    struct event _event; /* static */
+    char* hostname; /* static */
+    char* realhostname; /* static */
+    char* ipstr; /* static */
+    char* data_dir;
+    unsigned char is_master; /* 1 if host is the same host where the master runs */ 
+};
+
+
 extern const char* gpdb_getnodename(PerfmonNodeType type);
 extern const char* gpdb_getnodestatus(PerfmonNodeStatus status);
 extern apr_status_t gpdb_getnode_metricinfo(PerfmonNodeType type, apr_byte_t metricnum, const char** name, const char** unit);
 extern apr_status_t gpdb_debug_string_lookup_table();
-
+extern void snmp_report(host_t* tab, int tabsz);
+extern void gpmmon_init_snmp(const char* configfile, const char* outdir);
 #endif /* GPMONLIB_H */
