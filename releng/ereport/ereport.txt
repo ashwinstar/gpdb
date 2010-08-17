@@ -875,428 +875,431 @@ xaae: xact:00005532:  ereport(ERROR,
 xaae: xact:00005533:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
 xaae: xact:00005534:  errmsg("cannot have more than 2^32-1 subtransactions in a transaction"))); 
 aaaaa GP_IGNORE: xaae: xlog - ./backend/access/transam/xlog.c
-xaae: xlog:00000797:  ereport(ERROR, 
-xaae: xlog:00000798:  (errmsg("Reader qExec had local changes to commit! (rmid = %u)", 
-xaae: xlog:00000799:  rmid), 
-xaae: xlog:00000800:  errdetail("A Reader qExec tried to commit local changes. " 
-xaae: xlog:00000801:  "Only the single Writer qExec can do so. "), 
-xaae: xlog:00000802:  errhint("This is most likely the result of a feature being turned " 
-xaae: xlog:00000803:  "on that violates the single WRITER principle"))); 
-xaae: xlog:00001816:  ereport(ERROR, 
-xaae: xlog:00001817:  (errcode_for_file_access(), 
-xaae: xlog:00001818:  errmsg("could not open transaction log file for catch-up purposes -- it has been reclaimed (\"%s\")", 
-xaae: xlog:00001819:  path))); 
-xaae: xlog:00001821:  ereport(ERROR, 
-xaae: xlog:00001822:  (errcode_for_file_access(), 
-xaae: xlog:00001823:  errmsg("could not open transaction log file for catch-up purposes (\"%s\"): %m", 
-xaae: xlog:00001824:  path))); 
-xaae: xlog:00001834:  ereport(ERROR, 
-xaae: xlog:00001835:  (errcode_for_file_access(), 
-xaae: xlog:00001836:  errmsg("could not seek to end of file \"%s\" (log file %u, segment %u): %m", 
-xaae: xlog:00001837:  path, logId, seg))); 
-xaae: xlog:00001844:  ereport(ERROR, 
-xaae: xlog:00001845:  (errcode_for_file_access(), 
-xaae: xlog:00001846:  errmsg("could not seek to offset %u file \"%s\" (log file %u, segment %u): %m", 
-xaae: xlog:00001847:  offset, path, logId, seg))); 
-xaae: xlog:00001865:  ereport(ERROR, 
-xaae: xlog:00001866:  (errcode_for_file_access(), 
-xaae: xlog:00001867:  errmsg("could not read at offset %u file \"%s\" (log file %u, segment %u): %m", 
-xaae: xlog:00001868:  offset, path, logId, seg))); 
-xaae: xlog:00002732:  ereport(ERROR, 
-xaae: xlog:00002733:  (errcode_for_file_access(), 
-xaae: xlog:00002734:  errmsg("could not open file \"%s\" (log file %u, segment %u): %m", 
-xaae: xlog:00002735:  path, log, seg))); 
-xaae: xlog:00002800:  ereport(ERROR, 
-xaae: xlog:00002801:  (errcode_for_file_access(), 
-xaae: xlog:00002802:  errmsg("could not write to file \"%s\": %m", tmppath))); 
-xaae: xlog:00002879:  ereport(ERROR, 
-xaae: xlog:00002880:  (errcode_for_file_access(), 
-xaae: xlog:00002881:  errmsg("could not open file \"%s\": %m", path))); 
-xaae: xlog:00002897:  ereport(ERROR, 
-xaae: xlog:00002898:  (errcode_for_file_access(), 
-xaae: xlog:00002899:  errmsg("could not create file \"%s\": %m", tmppath))); 
-xaae: xlog:00002910:  ereport(ERROR, 
-xaae: xlog:00002911:  (errcode_for_file_access(), 
-xaae: xlog:00002912:  errmsg("could not read file \"%s\": %m", path))); 
-xaae: xlog:00002914:  ereport(ERROR, 
-xaae: xlog:00002915:  (errmsg("not enough data in file \"%s\"", path))); 
-xaae: xlog:00002929:  ereport(ERROR, 
-xaae: xlog:00002930:  (errcode_for_file_access(), 
-xaae: xlog:00002931:  errmsg("could not write to file \"%s\": %m", tmppath))); 
-xaae: xlog:00002936:  ereport(ERROR, 
-xaae: xlog:00002937:  (errcode_for_file_access(), 
-xaae: xlog:00002938:  errmsg("could not fsync file \"%s\": %m", tmppath))); 
+xaae: xlog:00000808:  ereport(ERROR, 
+xaae: xlog:00000809:  (errmsg("Reader qExec had local changes to commit! (rmid = %u)", 
+xaae: xlog:00000810:  rmid), 
+xaae: xlog:00000811:  errdetail("A Reader qExec tried to commit local changes. " 
+xaae: xlog:00000812:  "Only the single Writer qExec can do so. "), 
+xaae: xlog:00000813:  errhint("This is most likely the result of a feature being turned " 
+xaae: xlog:00000814:  "on that violates the single WRITER principle"))); 
+xaae: xlog:00001843:  ereport(ERROR, 
+xaae: xlog:00001844:  (errcode_for_file_access(), 
+xaae: xlog:00001845:  errmsg("could not open transaction log file for catch-up purposes -- it has been reclaimed (\"%s\")", 
+xaae: xlog:00001846:  path))); 
+xaae: xlog:00001848:  ereport(ERROR, 
+xaae: xlog:00001849:  (errcode_for_file_access(), 
+xaae: xlog:00001850:  errmsg("could not open transaction log file for catch-up purposes (\"%s\"): %m", 
+xaae: xlog:00001851:  path))); 
+xaae: xlog:00001861:  ereport(ERROR, 
+xaae: xlog:00001862:  (errcode_for_file_access(), 
+xaae: xlog:00001863:  errmsg("could not seek to end of file \"%s\" (log file %u, segment %u): %m", 
+xaae: xlog:00001864:  path, logId, seg))); 
+xaae: xlog:00001871:  ereport(ERROR, 
+xaae: xlog:00001872:  (errcode_for_file_access(), 
+xaae: xlog:00001873:  errmsg("could not seek to offset %u file \"%s\" (log file %u, segment %u): %m", 
+xaae: xlog:00001874:  offset, path, logId, seg))); 
+xaae: xlog:00001892:  ereport(ERROR, 
+xaae: xlog:00001893:  (errcode_for_file_access(), 
+xaae: xlog:00001894:  errmsg("could not read at offset %u file \"%s\" (log file %u, segment %u): %m", 
+xaae: xlog:00001895:  offset, path, logId, seg))); 
+xaae: xlog:00002759:  ereport(ERROR, 
+xaae: xlog:00002760:  (errcode_for_file_access(), 
+xaae: xlog:00002761:  errmsg("could not open file \"%s\" (log file %u, segment %u): %m", 
+xaae: xlog:00002762:  path, log, seg))); 
+xaae: xlog:00002827:  ereport(ERROR, 
+xaae: xlog:00002828:  (errcode_for_file_access(), 
+xaae: xlog:00002829:  errmsg("could not write to file \"%s\": %m", tmppath))); 
+xaae: xlog:00002906:  ereport(ERROR, 
+xaae: xlog:00002907:  (errcode_for_file_access(), 
+xaae: xlog:00002908:  errmsg("could not open file \"%s\": %m", path))); 
+xaae: xlog:00002924:  ereport(ERROR, 
+xaae: xlog:00002925:  (errcode_for_file_access(), 
+xaae: xlog:00002926:  errmsg("could not create file \"%s\": %m", tmppath))); 
+xaae: xlog:00002937:  ereport(ERROR, 
+xaae: xlog:00002938:  (errcode_for_file_access(), 
+xaae: xlog:00002939:  errmsg("could not read file \"%s\": %m", path))); 
 xaae: xlog:00002941:  ereport(ERROR, 
-xaae: xlog:00002942:  (errcode_for_file_access(), 
-xaae: xlog:00002943:  errmsg("could not close file \"%s\": %m", tmppath))); 
-xaae: xlog:00003059:  ereport(ERROR, 
-xaae: xlog:00003060:  (errcode_for_file_access(), 
-xaae: xlog:00003061:  errmsg("could not link file \"%s\" to \"%s\" (initialization of log file %u, segment %u): %m", 
-xaae: xlog:00003062:  tmppath, path, *log, *seg))); 
-xaae: xlog:00003102:  ereport(ERROR, 
-xaae: xlog:00003103:  (errcode_for_file_access(), 
-xaae: xlog:00003104:  errmsg("could not rename file \"%s\" to \"%s\" (initialization of log file %u, segment %u): %m", 
-xaae: xlog:00003105:  tmppath, path, *log, *seg))); 
-xaae: xlog:00003319:  ereport(FATAL, 
-xaae: xlog:00003320:  (errcode_for_file_access(), 
-xaae: xlog:00003321:  errmsg("could not stat file \"%s\": %m", 
-xaae: xlog:00003322:  xlogpath))); 
-xaae: xlog:00003327:  ereport(FATAL, 
-xaae: xlog:00003328:  (errcode_for_file_access(), 
-xaae: xlog:00003329:  errmsg("could not remove file \"%s\": %m", 
-xaae: xlog:00003330:  xlogpath))); 
-xaae: xlog:00003403:  ereport(FATAL, 
-xaae: xlog:00003404:  (errmsg("archive file \"%s\" has wrong size: %lu instead of %lu", 
-xaae: xlog:00003405:  xlogfname, 
-xaae: xlog:00003406:  (unsigned long) stat_buf.st_size, 
-xaae: xlog:00003407:  (unsigned long) expectedSize))); 
-xaae: xlog:00003421:  ereport(FATAL, 
-xaae: xlog:00003422:  (errcode_for_file_access(), 
-xaae: xlog:00003423:  errmsg("could not stat file \"%s\": %m", 
-xaae: xlog:00003424:  xlogpath))); 
-xaae: xlog:00003526:  ereport(ERROR, 
-xaae: xlog:00003527:  (errcode_for_file_access(), 
-xaae: xlog:00003528:  errmsg("could not open transaction log directory \"%s\": %m", 
-xaae: xlog:00003529:  XLOGDIR))); 
-xaae: xlog:00003617:  ereport(ERROR, 
-xaae: xlog:00003618:  (errcode_for_file_access(), 
-xaae: xlog:00003619:  errmsg("QDSYNC: could not open standby transaction log directory \"%s\": %m", 
-xaae: xlog:00003620:  XLOGDIR))); 
-xaae: xlog:00003645:  ereport(WARNING, 
-xaae: xlog:00003646:  (errcode_for_file_access(), 
-xaae: xlog:00003647:  errmsg("QDSYNC: could not unlink standby transaction log file \"%s\": %m", 
-xaae: xlog:00003648:  xlde->d_name))); 
-xaae: xlog:00003678:  ereport(ERROR, 
-xaae: xlog:00003679:  (errcode_for_file_access(), 
-xaae: xlog:00003680:  errmsg("could not open transaction log directory \"%s\": %m", 
-xaae: xlog:00003681:  XLOGDIR))); 
-xaae: xlog:00003713:  ereport(ERROR, 
-xaae: xlog:00003714:  (errcode_for_file_access(), 
-xaae: xlog:00003715:  errmsg("could not open transaction log directory \"%s\": %m", 
-xaae: xlog:00003716:  XLOGDIR))); 
-xaae: xlog:00004435:  ereport(FATAL, 
-xaae: xlog:00004436:  (errcode_for_file_access(), 
-xaae: xlog:00004437:  errmsg("could not open file \"%s\": %m", path))); 
-xaae: xlog:00004465:  ereport(FATAL, 
-xaae: xlog:00004466:  (errmsg("syntax error in history file: %s", fline), 
-xaae: xlog:00004467:  errhint("Expected a numeric timeline ID."))); 
-xaae: xlog:00004471:  ereport(FATAL, 
-xaae: xlog:00004472:  (errmsg("invalid data in history file: %s", fline), 
-xaae: xlog:00004473:  errhint("Timeline IDs must be in increasing sequence."))); 
-xaae: xlog:00004485:  ereport(FATAL, 
-xaae: xlog:00004486:  (errmsg("invalid data in history file \"%s\"", path), 
-xaae: xlog:00004487:  errhint("Timeline IDs must be less than child timeline's ID."))); 
-xaae: xlog:00004525:  ereport(FATAL, 
-xaae: xlog:00004526:  (errcode_for_file_access(), 
-xaae: xlog:00004527:  errmsg("could not open file \"%s\": %m", path))); 
-xaae: xlog:00004604:  ereport(ERROR, 
-xaae: xlog:00004605:  (errcode_for_file_access(), 
-xaae: xlog:00004606:  errmsg("could not create file \"%s\": %m", tmppath))); 
-xaae: xlog:00004623:  ereport(ERROR, 
-xaae: xlog:00004624:  (errcode_for_file_access(), 
-xaae: xlog:00004625:  errmsg("could not open file \"%s\": %m", path))); 
-xaae: xlog:00004635:  ereport(ERROR, 
-xaae: xlog:00004636:  (errcode_for_file_access(), 
-xaae: xlog:00004637:  errmsg("could not read file \"%s\": %m", path))); 
-xaae: xlog:00004656:  ereport(ERROR, 
-xaae: xlog:00004657:  (errcode_for_file_access(), 
-xaae: xlog:00004658:  errmsg("could not write to file \"%s\": %m", tmppath))); 
-xaae: xlog:00004694:  ereport(ERROR, 
-xaae: xlog:00004695:  (errcode_for_file_access(), 
-xaae: xlog:00004696:  errmsg("could not write to file \"%s\": %m", tmppath))); 
-xaae: xlog:00004700:  ereport(ERROR, 
-xaae: xlog:00004701:  (errcode_for_file_access(), 
-xaae: xlog:00004702:  errmsg("could not fsync file \"%s\": %m", tmppath))); 
-xaae: xlog:00004705:  ereport(ERROR, 
-xaae: xlog:00004706:  (errcode_for_file_access(), 
-xaae: xlog:00004707:  errmsg("could not close file \"%s\": %m", tmppath))); 
-xaae: xlog:00004722:  ereport(ERROR, 
-xaae: xlog:00004723:  (errcode_for_file_access(), 
-xaae: xlog:00004724:  errmsg("could not link file \"%s\" to \"%s\": %m", 
-xaae: xlog:00004725:  tmppath, path))); 
-xaae: xlog:00004729:  ereport(ERROR, 
-xaae: xlog:00004730:  (errcode_for_file_access(), 
-xaae: xlog:00004731:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
-xaae: xlog:00004732:  tmppath, path))); 
-xaae: xlog:00004933:  ereport(FATAL, 
-xaae: xlog:00004934:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00004935:  errdetail("The database cluster was initialized with PG_CONTROL_VERSION %d," 
-xaae: xlog:00004936:  " but the server was compiled with PG_CONTROL_VERSION %d.", 
-xaae: xlog:00004937:  ControlFile->pg_control_version, PG_CONTROL_VERSION), 
-xaae: xlog:00004938:  errhint("It looks like you need to initdb."))); 
-xaae: xlog:00004947:  ereport(FATAL, 
-xaae: xlog:00004948:  (errmsg("incorrect checksum in control file"))); 
-xaae: xlog:00004962:  ereport(FATAL, 
-xaae: xlog:00004963:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00004964:  errdetail("The database cluster was initialized with CATALOG_VERSION_NO %d," 
-xaae: xlog:00004965:  " but the server was compiled with CATALOG_VERSION_NO %d.", 
-xaae: xlog:00004966:  ControlFile->catalog_version_no, CATALOG_VERSION_NO), 
-xaae: xlog:00004967:  errhint("It looks like you need to initdb."))); 
-xaae: xlog:00004969:  ereport(FATAL, 
-xaae: xlog:00004970:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00004971:  errdetail("The database cluster was initialized with MAXALIGN %d," 
-xaae: xlog:00004972:  " but the server was compiled with MAXALIGN %d.", 
-xaae: xlog:00004973:  ControlFile->maxAlign, MAXIMUM_ALIGNOF), 
-xaae: xlog:00004974:  errhint("It looks like you need to initdb."))); 
-xaae: xlog:00004976:  ereport(FATAL, 
-xaae: xlog:00004977:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00004978:  errdetail("The database cluster appears to use a different floating-point number format than the server executable."), 
-xaae: xlog:00004979:  errhint("It looks like you need to initdb."))); 
-xaae: xlog:00004981:  ereport(FATAL, 
-xaae: xlog:00004982:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00004983:  errdetail("The database cluster was initialized with BLCKSZ %d," 
-xaae: xlog:00004984:  " but the server was compiled with BLCKSZ %d.", 
-xaae: xlog:00004985:  ControlFile->blcksz, BLCKSZ), 
-xaae: xlog:00004986:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00004988:  ereport(FATAL, 
-xaae: xlog:00004989:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00004990:  errdetail("The database cluster was initialized with RELSEG_SIZE %d," 
-xaae: xlog:00004991:  " but the server was compiled with RELSEG_SIZE %d.", 
-xaae: xlog:00004992:  ControlFile->relseg_size, RELSEG_SIZE), 
-xaae: xlog:00004993:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00004995:  ereport(FATAL, 
-xaae: xlog:00004996:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00004997:  errdetail("The database cluster was initialized with XLOG_BLCKSZ %d," 
-xaae: xlog:00004998:  " but the server was compiled with XLOG_BLCKSZ %d.", 
-xaae: xlog:00004999:  ControlFile->xlog_blcksz, XLOG_BLCKSZ), 
-xaae: xlog:00005000:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005002:  ereport(FATAL, 
-xaae: xlog:00005003:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005004:  errdetail("The database cluster was initialized with XLOG_SEG_SIZE %d," 
-xaae: xlog:00005005:  " but the server was compiled with XLOG_SEG_SIZE %d.", 
-xaae: xlog:00005006:  ControlFile->xlog_seg_size, XLOG_SEG_SIZE), 
-xaae: xlog:00005007:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005009:  ereport(FATAL, 
-xaae: xlog:00005010:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005011:  errdetail("The database cluster was initialized with NAMEDATALEN %d," 
-xaae: xlog:00005012:  " but the server was compiled with NAMEDATALEN %d.", 
-xaae: xlog:00005013:  ControlFile->nameDataLen, NAMEDATALEN), 
-xaae: xlog:00005014:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005016:  ereport(FATAL, 
-xaae: xlog:00005017:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005018:  errdetail("The database cluster was initialized with INDEX_MAX_KEYS %d," 
-xaae: xlog:00005019:  " but the server was compiled with INDEX_MAX_KEYS %d.", 
-xaae: xlog:00005020:  ControlFile->indexMaxKeys, INDEX_MAX_KEYS), 
-xaae: xlog:00005021:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005025:  ereport(FATAL, 
-xaae: xlog:00005026:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005027:  errdetail("The database cluster was initialized without HAVE_INT64_TIMESTAMP" 
-xaae: xlog:00005028:  " but the server was compiled with HAVE_INT64_TIMESTAMP."), 
-xaae: xlog:00005029:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005032:  ereport(FATAL, 
-xaae: xlog:00005033:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005034:  errdetail("The database cluster was initialized with HAVE_INT64_TIMESTAMP" 
-xaae: xlog:00005035:  " but the server was compiled without HAVE_INT64_TIMESTAMP."), 
-xaae: xlog:00005036:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005040:  ereport(FATAL, 
-xaae: xlog:00005041:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005042:  errdetail("The database cluster was initialized with LOCALE_NAME_BUFLEN %d," 
-xaae: xlog:00005043:  " but the server was compiled with LOCALE_NAME_BUFLEN %d.", 
-xaae: xlog:00005044:  ControlFile->localeBuflen, LOCALE_NAME_BUFLEN), 
-xaae: xlog:00005045:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005047:  ereport(FATAL, 
-xaae: xlog:00005048:  (errmsg("database files are incompatible with operating system"), 
-xaae: xlog:00005049:  errdetail("The database cluster was initialized with LC_COLLATE \"%s\"," 
-xaae: xlog:00005050:  " which is not recognized by setlocale().", 
-xaae: xlog:00005051:  ControlFile->lc_collate), 
-xaae: xlog:00005052:  errhint("It looks like you need to initdb or install locale support."))); 
-xaae: xlog:00005054:  ereport(FATAL, 
-xaae: xlog:00005055:  (errmsg("database files are incompatible with operating system"), 
-xaae: xlog:00005056:  errdetail("The database cluster was initialized with LC_CTYPE \"%s\"," 
-xaae: xlog:00005057:  " which is not recognized by setlocale().", 
-xaae: xlog:00005058:  ControlFile->lc_ctype), 
-xaae: xlog:00005059:  errhint("It looks like you need to initdb or install locale support."))); 
-xaae: xlog:00005488:  ereport(FATAL, 
-xaae: xlog:00005489:  (errcode_for_file_access(), 
-xaae: xlog:00005490:  errmsg("could not open recovery command file \"%s\": %m", 
-xaae: xlog:00005491:  RECOVERY_COMMAND_FILE))); 
-xaae: xlog:00005509:  ereport(FATAL, 
-xaae: xlog:00005510:  (errcode_for_file_access(), 
-xaae: xlog:00005511:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
-xaae: xlog:00005512:  RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE))); 
-xaae: xlog:00005540:  ereport(FATAL, 
-xaae: xlog:00005541:  (errcode_for_file_access(), 
-xaae: xlog:00005542:  errmsg("could not open recovery command file \"%s\": %m", 
-xaae: xlog:00005543:  RECOVERY_COMMAND_FILE))); 
-xaae: xlog:00005605:  ereport(FATAL, 
-xaae: xlog:00005606:  (errmsg("recovery_target_timeline is not a valid number: \"%s\"", 
-xaae: xlog:00005607:  tok2))); 
-xaae: xlog:00005621:  ereport(FATAL, 
-xaae: xlog:00005622:  (errmsg("recovery_target_xid is not a valid number: \"%s\"", 
-xaae: xlog:00005623:  tok2))); 
-xaae: xlog:00005670:  ereport(FATAL, 
-xaae: xlog:00005671:  (errmsg("unrecognized recovery parameter \"%s\"", 
-xaae: xlog:00005672:  tok1))); 
-xaae: xlog:00005678:  ereport(FATAL, 
-xaae: xlog:00005679:  (errmsg("syntax error in recovery command file: %s", 
-xaae: xlog:00005680:  cmdline), 
-xaae: xlog:00005681:  errhint("Lines should have the format parameter = 'value'."))); 
-xaae: xlog:00005685:  ereport(FATAL, 
-xaae: xlog:00005686:  (errmsg("recovery command file \"%s\" did not specify restore_command", 
-xaae: xlog:00005687:  RECOVERY_COMMAND_FILE))); 
-xaae: xlog:00005704:  ereport(FATAL, 
-xaae: xlog:00005705:  (errmsg("recovery_target_timeline %u does not exist", 
-xaae: xlog:00005706:  rtli))); 
-xaae: xlog:00005771:  ereport(FATAL, 
-xaae: xlog:00005772:  (errcode_for_file_access(), 
-xaae: xlog:00005773:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
-xaae: xlog:00005774:  recoveryPath, xlogpath))); 
-xaae: xlog:00005812:  ereport(FATAL, 
-xaae: xlog:00005813:  (errcode_for_file_access(), 
-xaae: xlog:00005814:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
-xaae: xlog:00005815:  RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE))); 
-xaae: xlog:00006161:  ereport(FATAL, 
-xaae: xlog:00006162:  (errmsg("control file contains invalid data"))); 
-xaae: xlog:00006173:  ereport(LOG, 
-xaae: xlog:00006174:  (errmsg("database system was interrupted while in recovery at %s", 
-xaae: xlog:00006175:  str_time(ControlFile->time)), 
-xaae: xlog:00006176:  errhint("This probably means that some data is corrupted and" 
-xaae: xlog:00006177:  " you will have to use the last backup for recovery."), 
-xaae: xlog:00006178:  errSendAlert(true))); 
-xaae: xlog:00006180:  ereport(LOG, 
-xaae: xlog:00006181:  (errmsg("database system was interrupted while in recovery at log time %s", 
-xaae: xlog:00006182:  str_time(ControlFile->checkPointCopy.time)), 
-xaae: xlog:00006183:  errhint("If this has occurred more than once some data may be corrupted" 
-xaae: xlog:00006184:  " and you may need to choose an earlier recovery target."), 
-xaae: xlog:00006185:  errSendAlert(true))); 
-xaae: xlog:00006225:  ereport(FATAL, 
-xaae: xlog:00006226:  (errmsg("requested timeline %u is not a child of database system timeline %u", 
-xaae: xlog:00006227:  recoveryTargetTLI, 
-xaae: xlog:00006228:  ControlFile->checkPointCopy.ThisTimeLineID))); 
-xaae: xlog:00006377:  ereport(FATAL, 
-xaae: xlog:00006378:  (errmsg("Database must be shutdown cleanly when using single backend start"))); 
-xaae: xlog:00006383:  ereport(FATAL, 
-xaae: xlog:00006384:  (errmsg("Database must be shutdown cleanly when using gp_before_persistence_work = on"))); 
-xaae: xlog:00006439:  ereport(FATAL, 
-xaae: xlog:00006440:  (errcode_for_file_access(), 
-xaae: xlog:00006441:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
-xaae: xlog:00006442:  BACKUP_LABEL_FILE, BACKUP_LABEL_OLD))); 
-xaae: xlog:00006560:  ereport(FATAL, 
-xaae: xlog:00006561:  (errmsg("requested recovery stop point is before end time of backup dump"))); 
-xaae: xlog:00006563:  ereport(FATAL, 
-xaae: xlog:00006564:  (errmsg("WAL ends before end time of backup dump"))); 
-xaae: xlog:00006818:  ereport(ERROR, 
-xaae: xlog:00006819:  (errcode_for_file_access(), 
-xaae: xlog:00006820:  errmsg("could not create redo relation file \"%s\"", 
-xaae: xlog:00006821:  path))); 
-xaae: xlog:00006839:  ereport(ERROR, 
-xaae: xlog:00006840:  (errcode_for_file_access(), 
-xaae: xlog:00006841:  errmsg("could not open redo relation file \"%s\"", 
-xaae: xlog:00006842:  path))); 
-xaae: xlog:00006856:  ereport(ERROR, 
-xaae: xlog:00006857:  (errcode_for_file_access(), 
-xaae: xlog:00006858:  errmsg("could not unlink redo relation file \"%s\": %m", path))); 
-xaae: xlog:00006887:  ereport(FATAL, 
-xaae: xlog:00006888:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
-xaae: xlog:00006992:  ereport(FATAL, 
-xaae: xlog:00006993:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
-xaae: xlog:00007160:  ereport(FATAL, 
-xaae: xlog:00007161:  (errmsg("%s: control file contains invalid data", callerStr))); 
-xaae: xlog:00007207:  ereport(ERROR, 
-xaae: xlog:00007208:  (errmsg("%s: could not locate a valid checkpoint record", callerStr))); 
-xaae: xlog:00007225:  ereport(ERROR, 
-xaae: xlog:00007226:  (errmsg("%s: invalid redo in checkpoint record", callerStr))); 
-xaae: xlog:00007235:  ereport(ERROR, 
-xaae: xlog:00007236:  (errmsg("%s: first redo record before checkpoint not found at %s", 
-xaae: xlog:00007237:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
-xaae: xlog:00007780:  ereport(LOG, 
-xaae: xlog:00007781:  (errmsg("database system is shut down"), 
-xaae: xlog:00007782:  errSendAlert(true),errOmitLocation(true))); 
-xaae: xlog:00008606:  ereport(ERROR, 
-xaae: xlog:00008607:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00008608:  (errmsg("must be superuser to run a backup")))); 
-xaae: xlog:00008611:  ereport(ERROR, 
-xaae: xlog:00008612:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008613:  (errmsg("WAL archiving is not active"), 
-xaae: xlog:00008614:  (errhint("archive_command must be defined before " 
-xaae: xlog:00008615:  "online backups can be made safely."))))); 
-xaae: xlog:00008641:  ereport(ERROR, 
-xaae: xlog:00008642:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008643:  errmsg("a backup is already in progress"), 
-xaae: xlog:00008644:  errhint("Run pg_stop_backup() and try again."))); 
-xaae: xlog:00008689:  ereport(ERROR, 
-xaae: xlog:00008690:  (errcode_for_file_access(), 
-xaae: xlog:00008691:  errmsg("could not stat file \"%s\": %m", 
-xaae: xlog:00008692:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008695:  ereport(ERROR, 
-xaae: xlog:00008696:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008697:  errmsg("a backup is already in progress"), 
-xaae: xlog:00008698:  errhint("If you're sure there is no backup in progress, remove file \"%s\" and try again.", 
-xaae: xlog:00008699:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008706:  ereport(ERROR, 
-xaae: xlog:00008707:  (errcode_for_file_access(), 
-xaae: xlog:00008708:  errmsg("could not create file \"%s\": %m", 
-xaae: xlog:00008709:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008717:  ereport(ERROR, 
-xaae: xlog:00008718:  (errcode_for_file_access(), 
-xaae: xlog:00008719:  errmsg("could not write file \"%s\": %m", 
-xaae: xlog:00008720:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008772:  ereport(ERROR, 
-xaae: xlog:00008773:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00008774:  (errmsg("must be superuser to run a backup")))); 
-xaae: xlog:00008806:  ereport(ERROR, 
-xaae: xlog:00008807:  (errcode_for_file_access(), 
-xaae: xlog:00008808:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00008809:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008810:  ereport(ERROR, 
-xaae: xlog:00008811:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008812:  errmsg("a backup is not in progress"))); 
-xaae: xlog:00008822:  ereport(ERROR, 
-xaae: xlog:00008823:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008824:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00008834:  ereport(ERROR, 
-xaae: xlog:00008835:  (errcode_for_file_access(), 
-xaae: xlog:00008836:  errmsg("could not create file \"%s\": %m", 
-xaae: xlog:00008837:  histfilepath))); 
-xaae: xlog:00008847:  ereport(ERROR, 
-xaae: xlog:00008848:  (errcode_for_file_access(), 
-xaae: xlog:00008849:  errmsg("could not write file \"%s\": %m", 
-xaae: xlog:00008850:  histfilepath))); 
-xaae: xlog:00008856:  ereport(ERROR, 
-xaae: xlog:00008857:  (errcode_for_file_access(), 
-xaae: xlog:00008858:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00008859:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008861:  ereport(ERROR, 
-xaae: xlog:00008862:  (errcode_for_file_access(), 
-xaae: xlog:00008863:  errmsg("could not remove file \"%s\": %m", 
-xaae: xlog:00008864:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008894:  ereport(ERROR, 
-xaae: xlog:00008895:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00008896:  (errmsg("must be superuser to switch transaction log files")))); 
-xaae: xlog:00009002:  ereport(ERROR, 
-xaae: xlog:00009003:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-xaae: xlog:00009004:  errmsg("could not parse transaction log location \"%s\"", 
-xaae: xlog:00009005:  locationstr))); 
-xaae: xlog:00009071:  ereport(ERROR, 
-xaae: xlog:00009072:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-xaae: xlog:00009073:  errmsg("could not parse transaction log location \"%s\"", 
-xaae: xlog:00009074:  locationstr))); 
-xaae: xlog:00009131:  ereport(FATAL, 
-xaae: xlog:00009132:  (errcode_for_file_access(), 
-xaae: xlog:00009133:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009134:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009146:  ereport(FATAL, 
-xaae: xlog:00009147:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009148:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009152:  ereport(FATAL, 
-xaae: xlog:00009153:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009154:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009156:  ereport(FATAL, 
-xaae: xlog:00009157:  (errcode_for_file_access(), 
-xaae: xlog:00009158:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009159:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009183:  ereport(FATAL, 
-xaae: xlog:00009184:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009185:  errmsg("invalid data in file \"%s\"", histfilename))); 
-xaae: xlog:00009189:  ereport(FATAL, 
-xaae: xlog:00009190:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009191:  errmsg("invalid data in file \"%s\"", histfilename))); 
-xaae: xlog:00009194:  ereport(FATAL, 
-xaae: xlog:00009195:  (errcode_for_file_access(), 
-xaae: xlog:00009196:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009197:  histfilepath))); 
-xaae: xlog:00009542:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
-xaae: xlog:00009543:  errmsg("database 'postgres' does not exist"))); 
+xaae: xlog:00002942:  (errmsg("not enough data in file \"%s\"", path))); 
+xaae: xlog:00002956:  ereport(ERROR, 
+xaae: xlog:00002957:  (errcode_for_file_access(), 
+xaae: xlog:00002958:  errmsg("could not write to file \"%s\": %m", tmppath))); 
+xaae: xlog:00002963:  ereport(ERROR, 
+xaae: xlog:00002964:  (errcode_for_file_access(), 
+xaae: xlog:00002965:  errmsg("could not fsync file \"%s\": %m", tmppath))); 
+xaae: xlog:00002968:  ereport(ERROR, 
+xaae: xlog:00002969:  (errcode_for_file_access(), 
+xaae: xlog:00002970:  errmsg("could not close file \"%s\": %m", tmppath))); 
+xaae: xlog:00003086:  ereport(ERROR, 
+xaae: xlog:00003087:  (errcode_for_file_access(), 
+xaae: xlog:00003088:  errmsg("could not link file \"%s\" to \"%s\" (initialization of log file %u, segment %u): %m", 
+xaae: xlog:00003089:  tmppath, path, *log, *seg))); 
+xaae: xlog:00003129:  ereport(ERROR, 
+xaae: xlog:00003130:  (errcode_for_file_access(), 
+xaae: xlog:00003131:  errmsg("could not rename file \"%s\" to \"%s\" (initialization of log file %u, segment %u): %m", 
+xaae: xlog:00003132:  tmppath, path, *log, *seg))); 
+xaae: xlog:00003346:  ereport(FATAL, 
+xaae: xlog:00003347:  (errcode_for_file_access(), 
+xaae: xlog:00003348:  errmsg("could not stat file \"%s\": %m", 
+xaae: xlog:00003349:  xlogpath))); 
+xaae: xlog:00003354:  ereport(FATAL, 
+xaae: xlog:00003355:  (errcode_for_file_access(), 
+xaae: xlog:00003356:  errmsg("could not remove file \"%s\": %m", 
+xaae: xlog:00003357:  xlogpath))); 
+xaae: xlog:00003430:  ereport(FATAL, 
+xaae: xlog:00003431:  (errmsg("archive file \"%s\" has wrong size: %lu instead of %lu", 
+xaae: xlog:00003432:  xlogfname, 
+xaae: xlog:00003433:  (unsigned long) stat_buf.st_size, 
+xaae: xlog:00003434:  (unsigned long) expectedSize))); 
+xaae: xlog:00003448:  ereport(FATAL, 
+xaae: xlog:00003449:  (errcode_for_file_access(), 
+xaae: xlog:00003450:  errmsg("could not stat file \"%s\": %m", 
+xaae: xlog:00003451:  xlogpath))); 
+xaae: xlog:00003553:  ereport(ERROR, 
+xaae: xlog:00003554:  (errcode_for_file_access(), 
+xaae: xlog:00003555:  errmsg("could not open transaction log directory \"%s\": %m", 
+xaae: xlog:00003556:  XLOGDIR))); 
+xaae: xlog:00003644:  ereport(ERROR, 
+xaae: xlog:00003645:  (errcode_for_file_access(), 
+xaae: xlog:00003646:  errmsg("QDSYNC: could not open standby transaction log directory \"%s\": %m", 
+xaae: xlog:00003647:  XLOGDIR))); 
+xaae: xlog:00003672:  ereport(WARNING, 
+xaae: xlog:00003673:  (errcode_for_file_access(), 
+xaae: xlog:00003674:  errmsg("QDSYNC: could not unlink standby transaction log file \"%s\": %m", 
+xaae: xlog:00003675:  xlde->d_name))); 
+xaae: xlog:00003705:  ereport(ERROR, 
+xaae: xlog:00003706:  (errcode_for_file_access(), 
+xaae: xlog:00003707:  errmsg("could not open transaction log directory \"%s\": %m", 
+xaae: xlog:00003708:  XLOGDIR))); 
+xaae: xlog:00003740:  ereport(ERROR, 
+xaae: xlog:00003741:  (errcode_for_file_access(), 
+xaae: xlog:00003742:  errmsg("could not open transaction log directory \"%s\": %m", 
+xaae: xlog:00003743:  XLOGDIR))); 
+xaae: xlog:00004462:  ereport(FATAL, 
+xaae: xlog:00004463:  (errcode_for_file_access(), 
+xaae: xlog:00004464:  errmsg("could not open file \"%s\": %m", path))); 
+xaae: xlog:00004492:  ereport(FATAL, 
+xaae: xlog:00004493:  (errmsg("syntax error in history file: %s", fline), 
+xaae: xlog:00004494:  errhint("Expected a numeric timeline ID."))); 
+xaae: xlog:00004498:  ereport(FATAL, 
+xaae: xlog:00004499:  (errmsg("invalid data in history file: %s", fline), 
+xaae: xlog:00004500:  errhint("Timeline IDs must be in increasing sequence."))); 
+xaae: xlog:00004512:  ereport(FATAL, 
+xaae: xlog:00004513:  (errmsg("invalid data in history file \"%s\"", path), 
+xaae: xlog:00004514:  errhint("Timeline IDs must be less than child timeline's ID."))); 
+xaae: xlog:00004552:  ereport(FATAL, 
+xaae: xlog:00004553:  (errcode_for_file_access(), 
+xaae: xlog:00004554:  errmsg("could not open file \"%s\": %m", path))); 
+xaae: xlog:00004631:  ereport(ERROR, 
+xaae: xlog:00004632:  (errcode_for_file_access(), 
+xaae: xlog:00004633:  errmsg("could not create file \"%s\": %m", tmppath))); 
+xaae: xlog:00004650:  ereport(ERROR, 
+xaae: xlog:00004651:  (errcode_for_file_access(), 
+xaae: xlog:00004652:  errmsg("could not open file \"%s\": %m", path))); 
+xaae: xlog:00004662:  ereport(ERROR, 
+xaae: xlog:00004663:  (errcode_for_file_access(), 
+xaae: xlog:00004664:  errmsg("could not read file \"%s\": %m", path))); 
+xaae: xlog:00004683:  ereport(ERROR, 
+xaae: xlog:00004684:  (errcode_for_file_access(), 
+xaae: xlog:00004685:  errmsg("could not write to file \"%s\": %m", tmppath))); 
+xaae: xlog:00004721:  ereport(ERROR, 
+xaae: xlog:00004722:  (errcode_for_file_access(), 
+xaae: xlog:00004723:  errmsg("could not write to file \"%s\": %m", tmppath))); 
+xaae: xlog:00004727:  ereport(ERROR, 
+xaae: xlog:00004728:  (errcode_for_file_access(), 
+xaae: xlog:00004729:  errmsg("could not fsync file \"%s\": %m", tmppath))); 
+xaae: xlog:00004732:  ereport(ERROR, 
+xaae: xlog:00004733:  (errcode_for_file_access(), 
+xaae: xlog:00004734:  errmsg("could not close file \"%s\": %m", tmppath))); 
+xaae: xlog:00004749:  ereport(ERROR, 
+xaae: xlog:00004750:  (errcode_for_file_access(), 
+xaae: xlog:00004751:  errmsg("could not link file \"%s\" to \"%s\": %m", 
+xaae: xlog:00004752:  tmppath, path))); 
+xaae: xlog:00004756:  ereport(ERROR, 
+xaae: xlog:00004757:  (errcode_for_file_access(), 
+xaae: xlog:00004758:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
+xaae: xlog:00004759:  tmppath, path))); 
+xaae: xlog:00004960:  ereport(FATAL, 
+xaae: xlog:00004961:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00004962:  errdetail("The database cluster was initialized with PG_CONTROL_VERSION %d," 
+xaae: xlog:00004963:  " but the server was compiled with PG_CONTROL_VERSION %d.", 
+xaae: xlog:00004964:  ControlFile->pg_control_version, PG_CONTROL_VERSION), 
+xaae: xlog:00004965:  errhint("It looks like you need to initdb."))); 
+xaae: xlog:00004974:  ereport(FATAL, 
+xaae: xlog:00004975:  (errmsg("incorrect checksum in control file"))); 
+xaae: xlog:00004989:  ereport(FATAL, 
+xaae: xlog:00004990:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00004991:  errdetail("The database cluster was initialized with CATALOG_VERSION_NO %d," 
+xaae: xlog:00004992:  " but the server was compiled with CATALOG_VERSION_NO %d.", 
+xaae: xlog:00004993:  ControlFile->catalog_version_no, CATALOG_VERSION_NO), 
+xaae: xlog:00004994:  errhint("It looks like you need to initdb."))); 
+xaae: xlog:00004996:  ereport(FATAL, 
+xaae: xlog:00004997:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00004998:  errdetail("The database cluster was initialized with MAXALIGN %d," 
+xaae: xlog:00004999:  " but the server was compiled with MAXALIGN %d.", 
+xaae: xlog:00005000:  ControlFile->maxAlign, MAXIMUM_ALIGNOF), 
+xaae: xlog:00005001:  errhint("It looks like you need to initdb."))); 
+xaae: xlog:00005003:  ereport(FATAL, 
+xaae: xlog:00005004:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005005:  errdetail("The database cluster appears to use a different floating-point number format than the server executable."), 
+xaae: xlog:00005006:  errhint("It looks like you need to initdb."))); 
+xaae: xlog:00005008:  ereport(FATAL, 
+xaae: xlog:00005009:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005010:  errdetail("The database cluster was initialized with BLCKSZ %d," 
+xaae: xlog:00005011:  " but the server was compiled with BLCKSZ %d.", 
+xaae: xlog:00005012:  ControlFile->blcksz, BLCKSZ), 
+xaae: xlog:00005013:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005015:  ereport(FATAL, 
+xaae: xlog:00005016:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005017:  errdetail("The database cluster was initialized with RELSEG_SIZE %d," 
+xaae: xlog:00005018:  " but the server was compiled with RELSEG_SIZE %d.", 
+xaae: xlog:00005019:  ControlFile->relseg_size, RELSEG_SIZE), 
+xaae: xlog:00005020:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005022:  ereport(FATAL, 
+xaae: xlog:00005023:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005024:  errdetail("The database cluster was initialized with XLOG_BLCKSZ %d," 
+xaae: xlog:00005025:  " but the server was compiled with XLOG_BLCKSZ %d.", 
+xaae: xlog:00005026:  ControlFile->xlog_blcksz, XLOG_BLCKSZ), 
+xaae: xlog:00005027:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005029:  ereport(FATAL, 
+xaae: xlog:00005030:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005031:  errdetail("The database cluster was initialized with XLOG_SEG_SIZE %d," 
+xaae: xlog:00005032:  " but the server was compiled with XLOG_SEG_SIZE %d.", 
+xaae: xlog:00005033:  ControlFile->xlog_seg_size, XLOG_SEG_SIZE), 
+xaae: xlog:00005034:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005036:  ereport(FATAL, 
+xaae: xlog:00005037:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005038:  errdetail("The database cluster was initialized with NAMEDATALEN %d," 
+xaae: xlog:00005039:  " but the server was compiled with NAMEDATALEN %d.", 
+xaae: xlog:00005040:  ControlFile->nameDataLen, NAMEDATALEN), 
+xaae: xlog:00005041:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005043:  ereport(FATAL, 
+xaae: xlog:00005044:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005045:  errdetail("The database cluster was initialized with INDEX_MAX_KEYS %d," 
+xaae: xlog:00005046:  " but the server was compiled with INDEX_MAX_KEYS %d.", 
+xaae: xlog:00005047:  ControlFile->indexMaxKeys, INDEX_MAX_KEYS), 
+xaae: xlog:00005048:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005052:  ereport(FATAL, 
+xaae: xlog:00005053:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005054:  errdetail("The database cluster was initialized without HAVE_INT64_TIMESTAMP" 
+xaae: xlog:00005055:  " but the server was compiled with HAVE_INT64_TIMESTAMP."), 
+xaae: xlog:00005056:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005059:  ereport(FATAL, 
+xaae: xlog:00005060:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005061:  errdetail("The database cluster was initialized with HAVE_INT64_TIMESTAMP" 
+xaae: xlog:00005062:  " but the server was compiled without HAVE_INT64_TIMESTAMP."), 
+xaae: xlog:00005063:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005067:  ereport(FATAL, 
+xaae: xlog:00005068:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005069:  errdetail("The database cluster was initialized with LOCALE_NAME_BUFLEN %d," 
+xaae: xlog:00005070:  " but the server was compiled with LOCALE_NAME_BUFLEN %d.", 
+xaae: xlog:00005071:  ControlFile->localeBuflen, LOCALE_NAME_BUFLEN), 
+xaae: xlog:00005072:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005074:  ereport(FATAL, 
+xaae: xlog:00005075:  (errmsg("database files are incompatible with operating system"), 
+xaae: xlog:00005076:  errdetail("The database cluster was initialized with LC_COLLATE \"%s\"," 
+xaae: xlog:00005077:  " which is not recognized by setlocale().", 
+xaae: xlog:00005078:  ControlFile->lc_collate), 
+xaae: xlog:00005079:  errhint("It looks like you need to initdb or install locale support."))); 
+xaae: xlog:00005081:  ereport(FATAL, 
+xaae: xlog:00005082:  (errmsg("database files are incompatible with operating system"), 
+xaae: xlog:00005083:  errdetail("The database cluster was initialized with LC_CTYPE \"%s\"," 
+xaae: xlog:00005084:  " which is not recognized by setlocale().", 
+xaae: xlog:00005085:  ControlFile->lc_ctype), 
+xaae: xlog:00005086:  errhint("It looks like you need to initdb or install locale support."))); 
+xaae: xlog:00005515:  ereport(FATAL, 
+xaae: xlog:00005516:  (errcode_for_file_access(), 
+xaae: xlog:00005517:  errmsg("could not open recovery command file \"%s\": %m", 
+xaae: xlog:00005518:  RECOVERY_COMMAND_FILE))); 
+xaae: xlog:00005536:  ereport(FATAL, 
+xaae: xlog:00005537:  (errcode_for_file_access(), 
+xaae: xlog:00005538:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
+xaae: xlog:00005539:  RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE))); 
+xaae: xlog:00005567:  ereport(FATAL, 
+xaae: xlog:00005568:  (errcode_for_file_access(), 
+xaae: xlog:00005569:  errmsg("could not open recovery command file \"%s\": %m", 
+xaae: xlog:00005570:  RECOVERY_COMMAND_FILE))); 
+xaae: xlog:00005632:  ereport(FATAL, 
+xaae: xlog:00005633:  (errmsg("recovery_target_timeline is not a valid number: \"%s\"", 
+xaae: xlog:00005634:  tok2))); 
+xaae: xlog:00005648:  ereport(FATAL, 
+xaae: xlog:00005649:  (errmsg("recovery_target_xid is not a valid number: \"%s\"", 
+xaae: xlog:00005650:  tok2))); 
+xaae: xlog:00005697:  ereport(FATAL, 
+xaae: xlog:00005698:  (errmsg("unrecognized recovery parameter \"%s\"", 
+xaae: xlog:00005699:  tok1))); 
+xaae: xlog:00005705:  ereport(FATAL, 
+xaae: xlog:00005706:  (errmsg("syntax error in recovery command file: %s", 
+xaae: xlog:00005707:  cmdline), 
+xaae: xlog:00005708:  errhint("Lines should have the format parameter = 'value'."))); 
+xaae: xlog:00005712:  ereport(FATAL, 
+xaae: xlog:00005713:  (errmsg("recovery command file \"%s\" did not specify restore_command", 
+xaae: xlog:00005714:  RECOVERY_COMMAND_FILE))); 
+xaae: xlog:00005731:  ereport(FATAL, 
+xaae: xlog:00005732:  (errmsg("recovery_target_timeline %u does not exist", 
+xaae: xlog:00005733:  rtli))); 
+xaae: xlog:00005798:  ereport(FATAL, 
+xaae: xlog:00005799:  (errcode_for_file_access(), 
+xaae: xlog:00005800:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
+xaae: xlog:00005801:  recoveryPath, xlogpath))); 
+xaae: xlog:00005839:  ereport(FATAL, 
+xaae: xlog:00005840:  (errcode_for_file_access(), 
+xaae: xlog:00005841:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
+xaae: xlog:00005842:  RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE))); 
+xaae: xlog:00006188:  ereport(FATAL, 
+xaae: xlog:00006189:  (errmsg("control file contains invalid data"))); 
+xaae: xlog:00006200:  ereport(LOG, 
+xaae: xlog:00006201:  (errmsg("database system was interrupted while in recovery at %s", 
+xaae: xlog:00006202:  str_time(ControlFile->time)), 
+xaae: xlog:00006203:  errhint("This probably means that some data is corrupted and" 
+xaae: xlog:00006204:  " you will have to use the last backup for recovery."), 
+xaae: xlog:00006205:  errSendAlert(true))); 
+xaae: xlog:00006207:  ereport(LOG, 
+xaae: xlog:00006208:  (errmsg("database system was interrupted while in recovery at log time %s", 
+xaae: xlog:00006209:  str_time(ControlFile->checkPointCopy.time)), 
+xaae: xlog:00006210:  errhint("If this has occurred more than once some data may be corrupted" 
+xaae: xlog:00006211:  " and you may need to choose an earlier recovery target."), 
+xaae: xlog:00006212:  errSendAlert(true))); 
+xaae: xlog:00006252:  ereport(FATAL, 
+xaae: xlog:00006253:  (errmsg("requested timeline %u is not a child of database system timeline %u", 
+xaae: xlog:00006254:  recoveryTargetTLI, 
+xaae: xlog:00006255:  ControlFile->checkPointCopy.ThisTimeLineID))); 
+xaae: xlog:00006421:  ereport(FATAL, 
+xaae: xlog:00006422:  (errmsg("Database must be shutdown cleanly when using single backend start"))); 
+xaae: xlog:00006427:  ereport(FATAL, 
+xaae: xlog:00006428:  (errmsg("Database must be shutdown cleanly when using gp_before_persistence_work = on"))); 
+xaae: xlog:00006483:  ereport(FATAL, 
+xaae: xlog:00006484:  (errcode_for_file_access(), 
+xaae: xlog:00006485:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
+xaae: xlog:00006486:  BACKUP_LABEL_FILE, BACKUP_LABEL_OLD))); 
+xaae: xlog:00006604:  ereport(FATAL, 
+xaae: xlog:00006605:  (errmsg("requested recovery stop point is before end time of backup dump"))); 
+xaae: xlog:00006607:  ereport(FATAL, 
+xaae: xlog:00006608:  (errmsg("WAL ends before end time of backup dump"))); 
+xaae: xlog:00006862:  ereport(ERROR, 
+xaae: xlog:00006863:  (errcode_for_file_access(), 
+xaae: xlog:00006864:  errmsg("could not create redo relation file \"%s\"", 
+xaae: xlog:00006865:  path))); 
+xaae: xlog:00006883:  ereport(ERROR, 
+xaae: xlog:00006884:  (errcode_for_file_access(), 
+xaae: xlog:00006885:  errmsg("could not open redo relation file \"%s\"", 
+xaae: xlog:00006886:  path))); 
+xaae: xlog:00006900:  ereport(ERROR, 
+xaae: xlog:00006901:  (errcode_for_file_access(), 
+xaae: xlog:00006902:  errmsg("could not unlink redo relation file \"%s\": %m", path))); 
+xaae: xlog:00006931:  ereport(FATAL, 
+xaae: xlog:00006932:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
+xaae: xlog:00007036:  ereport(FATAL, 
+xaae: xlog:00007037:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
+xaae: xlog:00007204:  ereport(FATAL, 
+xaae: xlog:00007205:  (errmsg("%s: control file contains invalid data", callerStr))); 
+xaae: xlog:00007251:  ereport(ERROR, 
+xaae: xlog:00007252:  (errmsg("%s: could not locate a valid checkpoint record", callerStr))); 
+xaae: xlog:00007269:  ereport(ERROR, 
+xaae: xlog:00007270:  (errmsg("%s: invalid redo in checkpoint record", callerStr))); 
+xaae: xlog:00007279:  ereport(ERROR, 
+xaae: xlog:00007280:  (errmsg("%s: first redo record before checkpoint not found at %s", 
+xaae: xlog:00007281:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
+xaae: xlog:00007824:  ereport(LOG, 
+xaae: xlog:00007825:  (errmsg("database system is shut down"), 
+xaae: xlog:00007826:  errSendAlert(true),errOmitLocation(true))); 
+xaae: xlog:00008674:  ereport(ERROR, 
+xaae: xlog:00008675:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00008676:  (errmsg("must be superuser to run a backup")))); 
+xaae: xlog:00008679:  ereport(ERROR, 
+xaae: xlog:00008680:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008681:  (errmsg("WAL archiving is not active"), 
+xaae: xlog:00008682:  (errhint("archive_command must be defined before " 
+xaae: xlog:00008683:  "online backups can be made safely."))))); 
+xaae: xlog:00008709:  ereport(ERROR, 
+xaae: xlog:00008710:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008711:  errmsg("a backup is already in progress"), 
+xaae: xlog:00008712:  errhint("Run pg_stop_backup() and try again."))); 
+xaae: xlog:00008757:  ereport(ERROR, 
+xaae: xlog:00008758:  (errcode_for_file_access(), 
+xaae: xlog:00008759:  errmsg("could not stat file \"%s\": %m", 
+xaae: xlog:00008760:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008763:  ereport(ERROR, 
+xaae: xlog:00008764:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008765:  errmsg("a backup is already in progress"), 
+xaae: xlog:00008766:  errhint("If you're sure there is no backup in progress, remove file \"%s\" and try again.", 
+xaae: xlog:00008767:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008774:  ereport(ERROR, 
+xaae: xlog:00008775:  (errcode_for_file_access(), 
+xaae: xlog:00008776:  errmsg("could not create file \"%s\": %m", 
+xaae: xlog:00008777:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008785:  ereport(ERROR, 
+xaae: xlog:00008786:  (errcode_for_file_access(), 
+xaae: xlog:00008787:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00008788:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008840:  ereport(ERROR, 
+xaae: xlog:00008841:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00008842:  (errmsg("must be superuser to run a backup")))); 
+xaae: xlog:00008874:  ereport(ERROR, 
+xaae: xlog:00008875:  (errcode_for_file_access(), 
+xaae: xlog:00008876:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00008877:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008878:  ereport(ERROR, 
+xaae: xlog:00008879:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008880:  errmsg("a backup is not in progress"))); 
+xaae: xlog:00008890:  ereport(ERROR, 
+xaae: xlog:00008891:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008892:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00008902:  ereport(ERROR, 
+xaae: xlog:00008903:  (errcode_for_file_access(), 
+xaae: xlog:00008904:  errmsg("could not create file \"%s\": %m", 
+xaae: xlog:00008905:  histfilepath))); 
+xaae: xlog:00008915:  ereport(ERROR, 
+xaae: xlog:00008916:  (errcode_for_file_access(), 
+xaae: xlog:00008917:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00008918:  histfilepath))); 
+xaae: xlog:00008924:  ereport(ERROR, 
+xaae: xlog:00008925:  (errcode_for_file_access(), 
+xaae: xlog:00008926:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00008927:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008929:  ereport(ERROR, 
+xaae: xlog:00008930:  (errcode_for_file_access(), 
+xaae: xlog:00008931:  errmsg("could not remove file \"%s\": %m", 
+xaae: xlog:00008932:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00008962:  ereport(ERROR, 
+xaae: xlog:00008963:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00008964:  (errmsg("must be superuser to switch transaction log files")))); 
+xaae: xlog:00009070:  ereport(ERROR, 
+xaae: xlog:00009071:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+xaae: xlog:00009072:  errmsg("could not parse transaction log location \"%s\"", 
+xaae: xlog:00009073:  locationstr))); 
+xaae: xlog:00009139:  ereport(ERROR, 
+xaae: xlog:00009140:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+xaae: xlog:00009141:  errmsg("could not parse transaction log location \"%s\"", 
+xaae: xlog:00009142:  locationstr))); 
+xaae: xlog:00009199:  ereport(FATAL, 
+xaae: xlog:00009200:  (errcode_for_file_access(), 
+xaae: xlog:00009201:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009202:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009214:  ereport(FATAL, 
+xaae: xlog:00009215:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009216:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009220:  ereport(FATAL, 
+xaae: xlog:00009221:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009222:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009224:  ereport(FATAL, 
+xaae: xlog:00009225:  (errcode_for_file_access(), 
+xaae: xlog:00009226:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009227:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009251:  ereport(FATAL, 
+xaae: xlog:00009252:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009253:  errmsg("invalid data in file \"%s\"", histfilename))); 
+xaae: xlog:00009257:  ereport(FATAL, 
+xaae: xlog:00009258:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009259:  errmsg("invalid data in file \"%s\"", histfilename))); 
+xaae: xlog:00009262:  ereport(FATAL, 
+xaae: xlog:00009263:  (errcode_for_file_access(), 
+xaae: xlog:00009264:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009265:  histfilepath))); 
+xaae: xlog:00009610:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
+xaae: xlog:00009611:  errmsg("database 'postgres' does not exist"))); 
+xaae: xlog:00010287:  ereport(ERROR, 
+xaae: xlog:00010288:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+xaae: xlog:00010289:  (errmsg("could not allocate memory for mirrored aligned buffer")))); 
 aaaaa GP_IGNORE: xaah: xlogloc - ./backend/access/transam/xlogloc.c
 xaah: xlogloc:00000060:  ereport(ERROR, 
 xaah: xlogloc:00000061:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
@@ -3295,45 +3298,48 @@ cacb: cdbmirroredappendonly:00001227:  relpath(*relFileNode),
 cacb: cdbmirroredappendonly:00001228:  relationName, 
 cacb: cdbmirroredappendonly:00001229:  strerror(primaryError)))); 
 aaaaa GP_IGNORE: cacb: cdbmirroredbufferpool - ./backend/cdb/cdbmirroredbufferpool.c
-cacb: cdbmirroredbufferpool:00000746:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00000747:  (errcode_for_file_access(), 
-cacb: cdbmirroredbufferpool:00000748:  errmsg("could not seek in file to position %d in file \"%s\", segment file %d: %m", 
-cacb: cdbmirroredbufferpool:00000749:  position, 
-cacb: cdbmirroredbufferpool:00000750:  relpath(open->relFileNode), 
-cacb: cdbmirroredbufferpool:00000751:  open->segmentFileNum))); 
-cacb: cdbmirroredbufferpool:00000804:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00000805:  (errcode_for_file_access(), 
-cacb: cdbmirroredbufferpool:00000806:  errmsg("could not seek in file to position %d in file \"%s\", segment file %d: %m", 
-cacb: cdbmirroredbufferpool:00000807:  position, 
-cacb: cdbmirroredbufferpool:00000808:  relpath(open->relFileNode), open->segmentFileNum))); 
-cacb: cdbmirroredbufferpool:00001037:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00001038:  (errcode_for_file_access(), 
-cacb: cdbmirroredbufferpool:00001039:  errmsg("could not read from position: " INT64_FORMAT " in file %d/%d/%d.%d : %m", 
-cacb: cdbmirroredbufferpool:00001040:  readOffset, 
-cacb: cdbmirroredbufferpool:00001041:  mirroredOpen->relFileNode.dbNode, 
-cacb: cdbmirroredbufferpool:00001042:  mirroredOpen->relFileNode.spcNode, 
-cacb: cdbmirroredbufferpool:00001043:  mirroredOpen->relFileNode.relNode, 
-cacb: cdbmirroredbufferpool:00001044:  mirroredOpen->segmentFileNum))); 
+cacb: cdbmirroredbufferpool:00000715:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00000716:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cacb: cdbmirroredbufferpool:00000717:  (errmsg("could not allocate memory for mirrored alligned buffer")))); 
+cacb: cdbmirroredbufferpool:00000768:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00000769:  (errcode_for_file_access(), 
+cacb: cdbmirroredbufferpool:00000770:  errmsg("could not seek in file to position %d in file \"%s\", segment file %d: %m", 
+cacb: cdbmirroredbufferpool:00000771:  position, 
+cacb: cdbmirroredbufferpool:00000772:  relpath(open->relFileNode), 
+cacb: cdbmirroredbufferpool:00000773:  open->segmentFileNum))); 
+cacb: cdbmirroredbufferpool:00000821:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00000822:  (errcode_for_file_access(), 
+cacb: cdbmirroredbufferpool:00000823:  errmsg("could not seek in file to position %d in file \"%s\", segment file %d: %m", 
+cacb: cdbmirroredbufferpool:00000824:  position, 
+cacb: cdbmirroredbufferpool:00000825:  relpath(open->relFileNode), open->segmentFileNum))); 
 cacb: cdbmirroredbufferpool:00001054:  ereport(ERROR, 
 cacb: cdbmirroredbufferpool:00001055:  (errcode_for_file_access(), 
-cacb: cdbmirroredbufferpool:00001056:  errmsg("could not write mirror position: " INT64_FORMAT " in file %d/%d/%d.%d : %m", 
+cacb: cdbmirroredbufferpool:00001056:  errmsg("could not read from position: " INT64_FORMAT " in file %d/%d/%d.%d : %m", 
 cacb: cdbmirroredbufferpool:00001057:  readOffset, 
 cacb: cdbmirroredbufferpool:00001058:  mirroredOpen->relFileNode.dbNode, 
 cacb: cdbmirroredbufferpool:00001059:  mirroredOpen->relFileNode.spcNode, 
 cacb: cdbmirroredbufferpool:00001060:  mirroredOpen->relFileNode.relNode, 
 cacb: cdbmirroredbufferpool:00001061:  mirroredOpen->segmentFileNum))); 
-cacb: cdbmirroredbufferpool:00001170:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00001171:  (errcode_for_file_access(), 
-cacb: cdbmirroredbufferpool:00001172:  errmsg("could not open relation file '%s', relation name '%s': %s", 
-cacb: cdbmirroredbufferpool:00001173:  relpath(*relFileNode), 
-cacb: cdbmirroredbufferpool:00001174:  relationName, 
-cacb: cdbmirroredbufferpool:00001175:  strerror(primaryError)))); 
-cacb: cdbmirroredbufferpool:00001203:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00001204:  (errcode_for_file_access(), 
-cacb: cdbmirroredbufferpool:00001205:  errmsg("could not flush relation file '%s', relation name '%s': %s", 
-cacb: cdbmirroredbufferpool:00001206:  relpath(*relFileNode), 
-cacb: cdbmirroredbufferpool:00001207:  relationName, 
-cacb: cdbmirroredbufferpool:00001208:  strerror(primaryError)))); 
+cacb: cdbmirroredbufferpool:00001071:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00001072:  (errcode_for_file_access(), 
+cacb: cdbmirroredbufferpool:00001073:  errmsg("could not write mirror position: " INT64_FORMAT " in file %d/%d/%d.%d : %m", 
+cacb: cdbmirroredbufferpool:00001074:  readOffset, 
+cacb: cdbmirroredbufferpool:00001075:  mirroredOpen->relFileNode.dbNode, 
+cacb: cdbmirroredbufferpool:00001076:  mirroredOpen->relFileNode.spcNode, 
+cacb: cdbmirroredbufferpool:00001077:  mirroredOpen->relFileNode.relNode, 
+cacb: cdbmirroredbufferpool:00001078:  mirroredOpen->segmentFileNum))); 
+cacb: cdbmirroredbufferpool:00001187:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00001188:  (errcode_for_file_access(), 
+cacb: cdbmirroredbufferpool:00001189:  errmsg("could not open relation file '%s', relation name '%s': %s", 
+cacb: cdbmirroredbufferpool:00001190:  relpath(*relFileNode), 
+cacb: cdbmirroredbufferpool:00001191:  relationName, 
+cacb: cdbmirroredbufferpool:00001192:  strerror(primaryError)))); 
+cacb: cdbmirroredbufferpool:00001220:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00001221:  (errcode_for_file_access(), 
+cacb: cdbmirroredbufferpool:00001222:  errmsg("could not flush relation file '%s', relation name '%s': %s", 
+cacb: cdbmirroredbufferpool:00001223:  relpath(*relFileNode), 
+cacb: cdbmirroredbufferpool:00001224:  relationName, 
+cacb: cdbmirroredbufferpool:00001225:  strerror(primaryError)))); 
 aaaaa GP_IGNORE: cacb: cdbmirroredfilesysobj - ./backend/cdb/cdbmirroredfilesysobj.c
 cacb: cdbmirroredfilesysobj:00000217:  ereport(ERROR, 
 cacb: cdbmirroredfilesysobj:00000218:  (errcode_for_file_access(), 
@@ -3418,39 +3424,39 @@ cabj: cdbmirroredflatfile:00000454:  oldPath, newPath)));
 cabj: cdbmirroredflatfile:00000526:  ereport(ERROR, 
 cabj: cdbmirroredflatfile:00000527:  (errcode_for_file_access(), 
 cabj: cdbmirroredflatfile:00000528:  errmsg("could not write to file \"%s\": %m", open->path))); 
-cabj: cdbmirroredflatfile:00000598:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00000599:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00000600:  errmsg("could not seek in file to position '%d' in file '%s': %m", 
-cabj: cdbmirroredflatfile:00000601:  position, 
-cabj: cdbmirroredflatfile:00000602:  open->path))); 
-cabj: cdbmirroredflatfile:00000611:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00000612:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00000613:  errmsg("could not write to file \"%s\": %m", open->path))); 
-cabj: cdbmirroredflatfile:00000663:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00000664:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00000665:  errmsg("could not open file \"%s\": %m", open->path))); 
-cabj: cdbmirroredflatfile:00000747:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00000748:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00000749:  errmsg("could not seek in file to position %d in file \"%s\": %m", 
-cabj: cdbmirroredflatfile:00000750:  position, 
-cabj: cdbmirroredflatfile:00000751:  open->path))); 
-cabj: cdbmirroredflatfile:00000818:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00000819:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00000820:  errmsg("could not unlink file \"%s\": %m", path))); 
-cabj: cdbmirroredflatfile:00000929:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00000930:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00000931:  errmsg("could not seek to end of file \"%s\" : %m", 
-cabj: cdbmirroredflatfile:00000932:  primaryOpen.path))); 
-cabj: cdbmirroredflatfile:00000960:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00000961:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cabj: cdbmirroredflatfile:00000962:  (errmsg("Not enough shared memory for Mirroring.")))); 
-cabj: cdbmirroredflatfile:00000975:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00000976:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00000977:  errmsg("could not read from position:%d in file \"%s\" : %m", 
-cabj: cdbmirroredflatfile:00000978:  startOffset, primaryOpen.path))); 
-cabj: cdbmirroredflatfile:00001181:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00001182:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cabj: cdbmirroredflatfile:00001183:  (errmsg("Not enough shared memory for Mirroring.")))); 
+cabj: cdbmirroredflatfile:00000597:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00000598:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00000599:  errmsg("could not seek in file to position '%d' in file '%s': %m", 
+cabj: cdbmirroredflatfile:00000600:  position, 
+cabj: cdbmirroredflatfile:00000601:  open->path))); 
+cabj: cdbmirroredflatfile:00000610:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00000611:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00000612:  errmsg("could not write to file \"%s\": %m", open->path))); 
+cabj: cdbmirroredflatfile:00000657:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00000658:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00000659:  errmsg("could not open file \"%s\": %m", open->path))); 
+cabj: cdbmirroredflatfile:00000741:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00000742:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00000743:  errmsg("could not seek in file to position %d in file \"%s\": %m", 
+cabj: cdbmirroredflatfile:00000744:  position, 
+cabj: cdbmirroredflatfile:00000745:  open->path))); 
+cabj: cdbmirroredflatfile:00000812:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00000813:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00000814:  errmsg("could not unlink file \"%s\": %m", path))); 
+cabj: cdbmirroredflatfile:00000923:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00000924:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00000925:  errmsg("could not seek to end of file \"%s\" : %m", 
+cabj: cdbmirroredflatfile:00000926:  primaryOpen.path))); 
+cabj: cdbmirroredflatfile:00000954:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00000955:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cabj: cdbmirroredflatfile:00000956:  (errmsg("Not enough shared memory for Mirroring.")))); 
+cabj: cdbmirroredflatfile:00000969:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00000970:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00000971:  errmsg("could not read from position:%d in file \"%s\" : %m", 
+cabj: cdbmirroredflatfile:00000972:  startOffset, primaryOpen.path))); 
+cabj: cdbmirroredflatfile:00001175:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00001176:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cabj: cdbmirroredflatfile:00001177:  (errmsg("Not enough shared memory for Mirroring.")))); 
 aaaaa GP_IGNORE: caaj: cdbmutate - ./backend/cdb/cdbmutate.c
 caaj: cdbmutate:00000410:  ereport(NOTICE, 
 caaj: cdbmutate:00000411:  (errcode(ERRCODE_SUCCESSFUL_COMPLETION), 
@@ -3698,48 +3704,48 @@ cabc: cdbsubselect:00000222:  ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET
 cabc: cdbsubselect:00000223:  errmsg("Set-returning function in EXISTS subquery: not yet implemented") 
 cabc: cdbsubselect:00000224:  )); 
 aaaaa GP_IGNORE: caaf: cdbtm - ./backend/cdb/cdbtm.c
-caaf: cdbtm:00000540:  ereport(ERROR, (errmsg("Global transaction upgrade from single segment to entire cluster failed for gid = \"%s\" due to error", 
-caaf: cdbtm:00000541:  currentGxact->gid))); 
-caaf: cdbtm:00001630:  ereport(ERROR, 
-caaf: cdbtm:00001631:  (errcode_for_file_access(), 
-caaf: cdbtm:00001632:  errmsg("could not create save DTM redo file \"%s\"", 
-caaf: cdbtm:00001633:  path))); 
-caaf: cdbtm:00001661:  ereport(ERROR, 
-caaf: cdbtm:00001662:  (errcode_for_file_access(), 
-caaf: cdbtm:00001663:  errmsg("could not write save DTM redo file : %m"))); 
-caaf: cdbtm:00001721:  ereport(ERROR, 
-caaf: cdbtm:00001722:  (errcode_for_file_access(), 
-caaf: cdbtm:00001723:  errmsg("error reading DTM redo file: %m"))); 
-caaf: cdbtm:00001792:  ereport(FATAL, 
-caaf: cdbtm:00001793:  (errmsg("the limit of %d distributed transactions has been reached.", 
-caaf: cdbtm:00001794:  max_tm_gxacts), 
-caaf: cdbtm:00001795:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
-caaf: cdbtm:00002339:  ereport(FATAL, 
-caaf: cdbtm:00002340:  (errmsg("the limit of %d distributed transactions has been reached.", 
-caaf: cdbtm:00002341:  max_tm_gxacts), 
-caaf: cdbtm:00002342:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
-caaf: cdbtm:00002675:  ereport(FATAL, 
-caaf: cdbtm:00002676:  (errmsg("reached limit of %u global transactions per start", LastDistributedTransactionId))); 
-caaf: cdbtm:00002929:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
-caaf: cdbtm:00002930:  errmsg("DTM Log recovery failed. There are still unresolved " 
-caaf: cdbtm:00002931:  "in-doubt transactions on some of the segment databaes " 
-caaf: cdbtm:00002932:  "that were not able to be resolved for an unknown reason. "), 
-caaf: cdbtm:00002933:  errdetail("Here is a list of in-doubt transactions in the system: %s", 
-caaf: cdbtm:00002934:  indoubtBuff.data), 
-caaf: cdbtm:00002935:  errhint("Try restarting the Greenplum Database array. If the problem persists " 
-caaf: cdbtm:00002936:  " an Administrator will need to resolve these transactions " 
-caaf: cdbtm:00002937:  " manually."))); 
-caaf: cdbtm:00002987:  ereport(ERROR, 
-caaf: cdbtm:00002988:  (errmsg("gp_max_distributed_xid error (gathered %d results from cmd '%s')", resultCount, buffer.data), 
-caaf: cdbtm:00002989:  errdetail("%s", errbuf.data))); 
-caaf: cdbtm:00003068:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-caaf: cdbtm:00003069:  errmsg("Unable to collect list of prepared transactions " 
-caaf: cdbtm:00003070:  "from all segment databases."), 
-caaf: cdbtm:00003071:  errdetail("%s", errmsgbuf.data))); 
-caaf: cdbtm:00003105:  ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY), 
-caaf: cdbtm:00003106:  errmsg("DTM could not allocate hash table for InDoubtDtxList."))); 
-caaf: cdbtm:00003784:  ereport(ERROR, (errmsg("Global transaction BEGIN failed for gid = \"%s\" due to error", 
-caaf: cdbtm:00003785:  currentGxact->gid))); 
+caaf: cdbtm:00000541:  ereport(ERROR, (errmsg("Global transaction upgrade from single segment to entire cluster failed for gid = \"%s\" due to error", 
+caaf: cdbtm:00000542:  currentGxact->gid))); 
+caaf: cdbtm:00001637:  ereport(ERROR, 
+caaf: cdbtm:00001638:  (errcode_for_file_access(), 
+caaf: cdbtm:00001639:  errmsg("could not create save DTM redo file \"%s\"", 
+caaf: cdbtm:00001640:  path))); 
+caaf: cdbtm:00001668:  ereport(ERROR, 
+caaf: cdbtm:00001669:  (errcode_for_file_access(), 
+caaf: cdbtm:00001670:  errmsg("could not write save DTM redo file : %m"))); 
+caaf: cdbtm:00001728:  ereport(ERROR, 
+caaf: cdbtm:00001729:  (errcode_for_file_access(), 
+caaf: cdbtm:00001730:  errmsg("error reading DTM redo file: %m"))); 
+caaf: cdbtm:00001806:  ereport(FATAL, 
+caaf: cdbtm:00001807:  (errmsg("the limit of %d distributed transactions has been reached.", 
+caaf: cdbtm:00001808:  max_tm_gxacts), 
+caaf: cdbtm:00001809:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
+caaf: cdbtm:00002353:  ereport(FATAL, 
+caaf: cdbtm:00002354:  (errmsg("the limit of %d distributed transactions has been reached.", 
+caaf: cdbtm:00002355:  max_tm_gxacts), 
+caaf: cdbtm:00002356:  errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit."))); 
+caaf: cdbtm:00002714:  ereport(FATAL, 
+caaf: cdbtm:00002715:  (errmsg("reached limit of %u global transactions per start", LastDistributedTransactionId))); 
+caaf: cdbtm:00002968:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+caaf: cdbtm:00002969:  errmsg("DTM Log recovery failed. There are still unresolved " 
+caaf: cdbtm:00002970:  "in-doubt transactions on some of the segment databaes " 
+caaf: cdbtm:00002971:  "that were not able to be resolved for an unknown reason. "), 
+caaf: cdbtm:00002972:  errdetail("Here is a list of in-doubt transactions in the system: %s", 
+caaf: cdbtm:00002973:  indoubtBuff.data), 
+caaf: cdbtm:00002974:  errhint("Try restarting the Greenplum Database array. If the problem persists " 
+caaf: cdbtm:00002975:  " an Administrator will need to resolve these transactions " 
+caaf: cdbtm:00002976:  " manually."))); 
+caaf: cdbtm:00003026:  ereport(ERROR, 
+caaf: cdbtm:00003027:  (errmsg("gp_max_distributed_xid error (gathered %d results from cmd '%s')", resultCount, buffer.data), 
+caaf: cdbtm:00003028:  errdetail("%s", errbuf.data))); 
+caaf: cdbtm:00003107:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+caaf: cdbtm:00003108:  errmsg("Unable to collect list of prepared transactions " 
+caaf: cdbtm:00003109:  "from all segment databases."), 
+caaf: cdbtm:00003110:  errdetail("%s", errmsgbuf.data))); 
+caaf: cdbtm:00003144:  ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY), 
+caaf: cdbtm:00003145:  errmsg("DTM could not allocate hash table for InDoubtDtxList."))); 
+caaf: cdbtm:00003823:  ereport(ERROR, (errmsg("Global transaction BEGIN failed for gid = \"%s\" due to error", 
+caaf: cdbtm:00003824:  currentGxact->gid))); 
 aaaaa GP_IGNORE: caah: cdbutil - ./backend/cdb/cdbutil.c
 caah: cdbutil:00000268:  ereport(ERROR, 
 caah: cdbutil:00000269:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
@@ -7333,563 +7339,563 @@ taaj: tablecmds:00017993:  "existing partition%s of %s",
 taaj: tablecmds:00017994:  prule->partIdStr, 
 taaj: tablecmds:00017995:  lrelname), 
 taaj: tablecmds:00017996:  errOmitLocation(true))); 
-taaj: tablecmds:00018365:  ereport(ERROR, 
-taaj: tablecmds:00018366:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00018367:  errmsg("cannot ALTER PARTITION for relation \"%s\"", 
-taaj: tablecmds:00018368:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00018369:  errOmitLocation(true))); 
-taaj: tablecmds:00018383:  ereport(ERROR, 
-taaj: tablecmds:00018384:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00018385:  errmsg("cannot ALTER PARTITION for relation \"%s\"", 
-taaj: tablecmds:00018386:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00018387:  errOmitLocation(true))); 
-taaj: tablecmds:00018430:  ereport(ERROR, 
-taaj: tablecmds:00018431:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00018432:  errmsg("cannot ALTER PARTITION ... SET " 
-taaj: tablecmds:00018433:  "DISTRIBUTED BY for %s", 
-taaj: tablecmds:00018434:  prule->relname), 
-taaj: tablecmds:00018435:  errhint("distribution policy of " 
-taaj: tablecmds:00018436:  "partition must match parent"), 
-taaj: tablecmds:00018437:  errOmitLocation(true) 
-taaj: tablecmds:00018438:  )); 
-taaj: tablecmds:00018447:  ereport(NOTICE, 
-taaj: tablecmds:00018448:  (errmsg("altering table \"%s\" " 
-taaj: tablecmds:00018449:  "(%s)", 
-taaj: tablecmds:00018450:  RelationGetRelationName(rel2), 
-taaj: tablecmds:00018451:  prule->relname))); 
-taaj: tablecmds:00018509:  ereport(ERROR, 
-taaj: tablecmds:00018510:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00018511:  errmsg("cannot COALESCE PARTITION for relation \"%s\"", 
-taaj: tablecmds:00018512:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00018513:  errOmitLocation(true))); 
-taaj: tablecmds:00018659:  ereport(ERROR, 
-taaj: tablecmds:00018660:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00018661:  errmsg("missing name or value for DROP for %s", 
-taaj: tablecmds:00018662:  lrelname), 
-taaj: tablecmds:00018663:  errOmitLocation(true))); 
-taaj: tablecmds:00018665:  ereport(ERROR, 
-taaj: tablecmds:00018666:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00018667:  errmsg("missing name or value for DROP"), 
-taaj: tablecmds:00018668:  errOmitLocation(true))); 
+taaj: tablecmds:00018389:  ereport(ERROR, 
+taaj: tablecmds:00018390:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00018391:  errmsg("cannot ALTER PARTITION for relation \"%s\"", 
+taaj: tablecmds:00018392:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00018393:  errOmitLocation(true))); 
+taaj: tablecmds:00018407:  ereport(ERROR, 
+taaj: tablecmds:00018408:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00018409:  errmsg("cannot ALTER PARTITION for relation \"%s\"", 
+taaj: tablecmds:00018410:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00018411:  errOmitLocation(true))); 
+taaj: tablecmds:00018454:  ereport(ERROR, 
+taaj: tablecmds:00018455:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00018456:  errmsg("cannot ALTER PARTITION ... SET " 
+taaj: tablecmds:00018457:  "DISTRIBUTED BY for %s", 
+taaj: tablecmds:00018458:  prule->relname), 
+taaj: tablecmds:00018459:  errhint("distribution policy of " 
+taaj: tablecmds:00018460:  "partition must match parent"), 
+taaj: tablecmds:00018461:  errOmitLocation(true) 
+taaj: tablecmds:00018462:  )); 
+taaj: tablecmds:00018471:  ereport(NOTICE, 
+taaj: tablecmds:00018472:  (errmsg("altering table \"%s\" " 
+taaj: tablecmds:00018473:  "(%s)", 
+taaj: tablecmds:00018474:  RelationGetRelationName(rel2), 
+taaj: tablecmds:00018475:  prule->relname))); 
+taaj: tablecmds:00018533:  ereport(ERROR, 
+taaj: tablecmds:00018534:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00018535:  errmsg("cannot COALESCE PARTITION for relation \"%s\"", 
+taaj: tablecmds:00018536:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00018537:  errOmitLocation(true))); 
 taaj: tablecmds:00018683:  ereport(ERROR, 
-taaj: tablecmds:00018684:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-taaj: tablecmds:00018685:  errmsg("FOR expression matches " 
-taaj: tablecmds:00018686:  "DEFAULT partition%s of %s", 
-taaj: tablecmds:00018687:  prule->partIdStr, 
-taaj: tablecmds:00018688:  prule->relname), 
-taaj: tablecmds:00018689:  errhint("FOR expression may only specify " 
-taaj: tablecmds:00018690:  "a non-default partition in this context."), 
-taaj: tablecmds:00018691:  errOmitLocation(true))); 
-taaj: tablecmds:00018703:  ereport(NOTICE, 
-taaj: tablecmds:00018704:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00018705:  errmsg("partition \"%s\" of %s does not " 
-taaj: tablecmds:00018706:  "exist, skipping", 
-taaj: tablecmds:00018707:  strVal(locPid->partiddef), 
-taaj: tablecmds:00018708:  lrelname 
-taaj: tablecmds:00018709:  ), 
-taaj: tablecmds:00018710:  errOmitLocation(true))); 
-taaj: tablecmds:00018714:  ereport(NOTICE, 
-taaj: tablecmds:00018715:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00018716:  errmsg("partition for specified value of " 
-taaj: tablecmds:00018717:  "%s does not exist, skipping", 
-taaj: tablecmds:00018718:  lrelname 
-taaj: tablecmds:00018719:  ), 
-taaj: tablecmds:00018720:  errOmitLocation(true))); 
-taaj: tablecmds:00018724:  ereport(NOTICE, 
-taaj: tablecmds:00018725:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00018726:  errmsg("partition for specified rank of " 
-taaj: tablecmds:00018727:  "%s does not exist, skipping", 
-taaj: tablecmds:00018728:  lrelname 
-taaj: tablecmds:00018729:  ), 
-taaj: tablecmds:00018730:  errOmitLocation(true))); 
-taaj: tablecmds:00018734:  ereport(NOTICE, 
-taaj: tablecmds:00018735:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00018736:  errmsg("partition for specified oid of " 
-taaj: tablecmds:00018737:  "%s does not exist, skipping", 
-taaj: tablecmds:00018738:  lrelname 
-taaj: tablecmds:00018739:  ), 
-taaj: tablecmds:00018740:  errOmitLocation(true))); 
-taaj: tablecmds:00018743:  ereport(NOTICE, 
-taaj: tablecmds:00018744:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00018745:  errmsg("DEFAULT partition for " 
-taaj: tablecmds:00018746:  "%s does not exist, skipping", 
-taaj: tablecmds:00018747:  lrelname 
-taaj: tablecmds:00018748:  ), 
-taaj: tablecmds:00018749:  errOmitLocation(true))); 
-taaj: tablecmds:00018773:  ereport(ERROR, 
-taaj: tablecmds:00018774:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
-taaj: tablecmds:00018775:  errmsg("cannot drop HASH partition%s of %s", 
-taaj: tablecmds:00018776:  prule->partIdStr, 
-taaj: tablecmds:00018777:  prule->relname), 
-taaj: tablecmds:00018778:  errhint("recreate the table to reduce the " 
-taaj: tablecmds:00018779:  "number of partitions"), 
-taaj: tablecmds:00018780:  errOmitLocation(true))); 
-taaj: tablecmds:00018786:  ereport(ERROR, 
-taaj: tablecmds:00018787:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
-taaj: tablecmds:00018788:  errmsg("cannot drop partition%s of " 
-taaj: tablecmds:00018789:  "%s -- only one remains", 
-taaj: tablecmds:00018790:  prule->partIdStr, 
-taaj: tablecmds:00018791:  prule->relname), 
-taaj: tablecmds:00018792:  errhint("Use DROP TABLE \"%s\" to remove the " 
-taaj: tablecmds:00018793:  "table and the final partition ", 
-taaj: tablecmds:00018794:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00018795:  errOmitLocation(true))); 
+taaj: tablecmds:00018684:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00018685:  errmsg("missing name or value for DROP for %s", 
+taaj: tablecmds:00018686:  lrelname), 
+taaj: tablecmds:00018687:  errOmitLocation(true))); 
+taaj: tablecmds:00018689:  ereport(ERROR, 
+taaj: tablecmds:00018690:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00018691:  errmsg("missing name or value for DROP"), 
+taaj: tablecmds:00018692:  errOmitLocation(true))); 
+taaj: tablecmds:00018707:  ereport(ERROR, 
+taaj: tablecmds:00018708:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+taaj: tablecmds:00018709:  errmsg("FOR expression matches " 
+taaj: tablecmds:00018710:  "DEFAULT partition%s of %s", 
+taaj: tablecmds:00018711:  prule->partIdStr, 
+taaj: tablecmds:00018712:  prule->relname), 
+taaj: tablecmds:00018713:  errhint("FOR expression may only specify " 
+taaj: tablecmds:00018714:  "a non-default partition in this context."), 
+taaj: tablecmds:00018715:  errOmitLocation(true))); 
+taaj: tablecmds:00018727:  ereport(NOTICE, 
+taaj: tablecmds:00018728:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00018729:  errmsg("partition \"%s\" of %s does not " 
+taaj: tablecmds:00018730:  "exist, skipping", 
+taaj: tablecmds:00018731:  strVal(locPid->partiddef), 
+taaj: tablecmds:00018732:  lrelname 
+taaj: tablecmds:00018733:  ), 
+taaj: tablecmds:00018734:  errOmitLocation(true))); 
+taaj: tablecmds:00018738:  ereport(NOTICE, 
+taaj: tablecmds:00018739:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00018740:  errmsg("partition for specified value of " 
+taaj: tablecmds:00018741:  "%s does not exist, skipping", 
+taaj: tablecmds:00018742:  lrelname 
+taaj: tablecmds:00018743:  ), 
+taaj: tablecmds:00018744:  errOmitLocation(true))); 
+taaj: tablecmds:00018748:  ereport(NOTICE, 
+taaj: tablecmds:00018749:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00018750:  errmsg("partition for specified rank of " 
+taaj: tablecmds:00018751:  "%s does not exist, skipping", 
+taaj: tablecmds:00018752:  lrelname 
+taaj: tablecmds:00018753:  ), 
+taaj: tablecmds:00018754:  errOmitLocation(true))); 
+taaj: tablecmds:00018758:  ereport(NOTICE, 
+taaj: tablecmds:00018759:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00018760:  errmsg("partition for specified oid of " 
+taaj: tablecmds:00018761:  "%s does not exist, skipping", 
+taaj: tablecmds:00018762:  lrelname 
+taaj: tablecmds:00018763:  ), 
+taaj: tablecmds:00018764:  errOmitLocation(true))); 
+taaj: tablecmds:00018767:  ereport(NOTICE, 
+taaj: tablecmds:00018768:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00018769:  errmsg("DEFAULT partition for " 
+taaj: tablecmds:00018770:  "%s does not exist, skipping", 
+taaj: tablecmds:00018771:  lrelname 
+taaj: tablecmds:00018772:  ), 
+taaj: tablecmds:00018773:  errOmitLocation(true))); 
 taaj: tablecmds:00018797:  ereport(ERROR, 
 taaj: tablecmds:00018798:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
-taaj: tablecmds:00018799:  errmsg("cannot drop partition%s of " 
-taaj: tablecmds:00018800:  "%s -- only one remains", 
-taaj: tablecmds:00018801:  prule->partIdStr, 
-taaj: tablecmds:00018802:  prule->relname), 
-taaj: tablecmds:00018803:  errhint("DROP the parent partition to remove the " 
-taaj: tablecmds:00018804:  "final partition "), 
-taaj: tablecmds:00018805:  errOmitLocation(true))); 
-taaj: tablecmds:00018846:  ereport(NOTICE, 
-taaj: tablecmds:00018847:  (errmsg("dropped partition%s for %s and its children", 
-taaj: tablecmds:00018848:  prule->partIdStr, 
-taaj: tablecmds:00018849:  prule->relname))); 
-taaj: tablecmds:00018853:  ereport(NOTICE, 
-taaj: tablecmds:00018854:  (errmsg("dropped partition%s for %s", 
-taaj: tablecmds:00018855:  prule->partIdStr, 
-taaj: tablecmds:00018856:  prule->relname))); 
-taaj: tablecmds:00019040:  ereport(ERROR, 
-taaj: tablecmds:00019041:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-taaj: tablecmds:00019042:  errmsg("constraint \"%s\" on table \"%s\" " 
-taaj: tablecmds:00019043:  "conflicts with partitioning rule", 
-taaj: tablecmds:00019044:  NameStr(con->conname), 
-taaj: tablecmds:00019045:  RelationGetRelationName(newrel)), 
-taaj: tablecmds:00019046:  errOmitLocation(true))); 
-taaj: tablecmds:00019299:  ereport(ERROR, 
-taaj: tablecmds:00019300:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00019301:  errmsg("cannot EXCHANGE PARTITION for " 
-taaj: tablecmds:00019302:  "%s -- partition has children", 
-taaj: tablecmds:00019303:  prule->relname 
-taaj: tablecmds:00019304:  ), 
-taaj: tablecmds:00019305:  errOmitLocation(true))); 
-taaj: tablecmds:00019420:  ereport(NOTICE, 
-taaj: tablecmds:00019421:  (errmsg("exchanged partition%s of " 
-taaj: tablecmds:00019422:  "%s with relation \"%s\"", 
-taaj: tablecmds:00019423:  orig_prule->partIdStr, 
-taaj: tablecmds:00019424:  orig_prule->relname, 
-taaj: tablecmds:00019425:  newname), 
-taaj: tablecmds:00019426:  errOmitLocation(true))); 
-taaj: tablecmds:00019501:  ereport(ERROR, 
-taaj: tablecmds:00019502:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00019503:  errmsg("target of MERGE must be either \"%s\" or " 
-taaj: tablecmds:00019504:  "\"%s\"", 
-taaj: tablecmds:00019505:  get_rel_name(prule1->topRule->parchildrelid), 
-taaj: tablecmds:00019506:  get_rel_name(prule2->topRule->parchildrelid)), 
-taaj: tablecmds:00019507:  errOmitLocation(true))); 
-taaj: tablecmds:00019545:  ereport(ERROR, 
-taaj: tablecmds:00019546:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00019547:  errmsg("cannot MERGE PARTITION for relation \"%s\"", 
-taaj: tablecmds:00019548:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00019549:  errOmitLocation(true))); 
-taaj: tablecmds:00019561:  ereport(ERROR, 
-taaj: tablecmds:00019562:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00019563:  errmsg("cannot MODIFY %s partition%s for " 
-taaj: tablecmds:00019564:  "relation \"%s\" to ADD values -- would " 
-taaj: tablecmds:00019565:  "overlap DEFAULT partition \"%s\"", 
-taaj: tablecmds:00019566:  "LIST", 
-taaj: tablecmds:00019567:  prule->partIdStr, 
-taaj: tablecmds:00019568:  RelationGetRelationName(rel), 
-taaj: tablecmds:00019569:  prule->pNode->default_part->parname), 
-taaj: tablecmds:00019570:  errhint("need to SPLIT partition \"%s\"", 
-taaj: tablecmds:00019571:  prule->pNode->default_part->parname), 
-taaj: tablecmds:00019572:  errOmitLocation(true))); 
-taaj: tablecmds:00019622:  ereport(ERROR, 
-taaj: tablecmds:00019623:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00019624:  errmsg("cannot MODIFY LIST partition%s for " 
-taaj: tablecmds:00019625:  "relation \"%s\" -- " 
-taaj: tablecmds:00019626:  "would overlap " 
-taaj: tablecmds:00019627:  "existing partition%s", 
-taaj: tablecmds:00019628:  prule->partIdStr, 
-taaj: tablecmds:00019629:  RelationGetRelationName(rel), 
-taaj: tablecmds:00019630:  prule2->isName ? 
-taaj: tablecmds:00019631:  prule2->partIdStr : ""), 
-taaj: tablecmds:00019632:  errOmitLocation(true))); 
-taaj: tablecmds:00019634:  ereport(ERROR, 
-taaj: tablecmds:00019635:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00019636:  errmsg("cannot MODIFY LIST partition%s for " 
-taaj: tablecmds:00019637:  "relation \"%s\" -- " 
-taaj: tablecmds:00019638:  "ADD value has duplicate in " 
-taaj: tablecmds:00019639:  "existing partition", 
-taaj: tablecmds:00019640:  prule->partIdStr, 
-taaj: tablecmds:00019641:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00019642:  errOmitLocation(true))); 
-taaj: tablecmds:00019653:  ereport(ERROR, 
-taaj: tablecmds:00019654:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00019655:  errmsg("cannot MODIFY LIST partition%s for " 
-taaj: tablecmds:00019656:  "relation \"%s\" -- DROP value not found", 
-taaj: tablecmds:00019657:  prule->partIdStr, 
-taaj: tablecmds:00019658:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00019659:  errOmitLocation(true))); 
-taaj: tablecmds:00019664:  ereport(ERROR, 
-taaj: tablecmds:00019665:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00019666:  errmsg("cannot MODIFY LIST partition%s for " 
-taaj: tablecmds:00019667:  "relation \"%s\" -- " 
-taaj: tablecmds:00019668:  "found DROP value in%s partition%s", 
-taaj: tablecmds:00019669:  prule->partIdStr, 
-taaj: tablecmds:00019670:  RelationGetRelationName(rel), 
-taaj: tablecmds:00019671:  prule2->isName ? "" : "other", 
-taaj: tablecmds:00019672:  prule2->isName ? prule2->partIdStr : ""), 
-taaj: tablecmds:00019673:  errOmitLocation(true))); 
-taaj: tablecmds:00019787:  ereport(ERROR, 
-taaj: tablecmds:00019788:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00019789:  errmsg("cannot MODIFY %s partition%s for " 
-taaj: tablecmds:00019790:  "relation \"%s\" to extend range -- would " 
-taaj: tablecmds:00019791:  "overlap DEFAULT partition \"%s\"", 
-taaj: tablecmds:00019792:  "RANGE", 
-taaj: tablecmds:00019793:  prule->partIdStr, 
-taaj: tablecmds:00019794:  RelationGetRelationName(rel), 
-taaj: tablecmds:00019795:  prule->pNode->default_part->parname), 
-taaj: tablecmds:00019796:  errhint("need to SPLIT partition \"%s\"", 
-taaj: tablecmds:00019797:  prule->pNode->default_part->parname), 
-taaj: tablecmds:00019798:  errOmitLocation(true))); 
-taaj: tablecmds:00019942:  ereport(ERROR, 
-taaj: tablecmds:00019943:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00019944:  errmsg("cannot MODIFY %s partition%s for " 
-taaj: tablecmds:00019945:  "relation \"%s\" to extend range -- would " 
-taaj: tablecmds:00019946:  "overlap DEFAULT partition \"%s\"", 
-taaj: tablecmds:00019947:  "RANGE", 
-taaj: tablecmds:00019948:  prule->partIdStr, 
-taaj: tablecmds:00019949:  RelationGetRelationName(rel), 
-taaj: tablecmds:00019950:  prule->pNode->default_part->parname), 
-taaj: tablecmds:00019951:  errhint("need to SPLIT partition \"%s\"", 
-taaj: tablecmds:00019952:  prule->pNode->default_part->parname), 
-taaj: tablecmds:00019953:  errOmitLocation(true))); 
-taaj: tablecmds:00020082:  ereport(ERROR, 
-taaj: tablecmds:00020083:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00020084:  errmsg("cannot MODIFY RANGE partition%s for " 
-taaj: tablecmds:00020085:  "relation \"%s\" -- " 
-taaj: tablecmds:00020086:  "would overlap " 
-taaj: tablecmds:00020087:  "existing partition%s", 
-taaj: tablecmds:00020088:  prule->partIdStr, 
-taaj: tablecmds:00020089:  RelationGetRelationName(rel), 
-taaj: tablecmds:00020090:  (prule2 && prule2->isName) ? 
-taaj: tablecmds:00020091:  prule2->partIdStr : ""), 
-taaj: tablecmds:00020092:  errOmitLocation(true))); 
-taaj: tablecmds:00020174:  ereport(ERROR, 
-taaj: tablecmds:00020175:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00020176:  errmsg("cannot MODIFY DEFAULT %s partition%s " 
-taaj: tablecmds:00020177:  "for relation \"%s\"", 
-taaj: tablecmds:00020178:  parTypName, 
-taaj: tablecmds:00020179:  ((prule && prule->isName) ? prule->partIdStr : ""), 
-taaj: tablecmds:00020180:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00020181:  errOmitLocation(true))); 
-taaj: tablecmds:00020184:  ereport(ERROR, 
-taaj: tablecmds:00020185:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00020186:  errmsg("invalid use of %s boundary specification " 
-taaj: tablecmds:00020187:  "in partition%s of type %s", 
-taaj: tablecmds:00020188:  "RANGE", 
-taaj: tablecmds:00020189:  ((prule && prule->isName) ? prule->partIdStr : ""), 
-taaj: tablecmds:00020190:  parTypName 
-taaj: tablecmds:00020191:  ), 
-taaj: tablecmds:00020192:  errOmitLocation(true))); 
-taaj: tablecmds:00020195:  ereport(ERROR, 
-taaj: tablecmds:00020196:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00020197:  errmsg("invalid use of %s boundary specification " 
-taaj: tablecmds:00020198:  "in partition%s of type %s", 
-taaj: tablecmds:00020199:  "LIST", 
-taaj: tablecmds:00020200:  ((prule && prule->isName) ? prule->partIdStr : ""), 
-taaj: tablecmds:00020201:  parTypName 
-taaj: tablecmds:00020202:  ), 
-taaj: tablecmds:00020203:  errOmitLocation(true))); 
-taaj: tablecmds:00020237:  ereport(ERROR, 
-taaj: tablecmds:00020238:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00020239:  errmsg("cannot MODIFY PARTITION for relation \"%s\"", 
-taaj: tablecmds:00020240:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00020241:  errOmitLocation(true))); 
-taaj: tablecmds:00020326:  ereport(ERROR, 
-taaj: tablecmds:00020327:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00020328:  errmsg("relation name \"%s\" for child partition " 
-taaj: tablecmds:00020329:  "is too long", 
-taaj: tablecmds:00020330:  newRelNameBuf))); 
-taaj: tablecmds:00020481:  ereport(ERROR, 
-taaj: tablecmds:00020482:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00020483:  errmsg("name \"%s\" for child partition " 
-taaj: tablecmds:00020484:  "is too long", 
-taaj: tablecmds:00020485:  newpartname))); 
-taaj: tablecmds:00020577:  ereport(NOTICE, 
-taaj: tablecmds:00020578:  (errmsg("renamed partition%s to \"%s\" for %s", 
-taaj: tablecmds:00020579:  prule->partIdStr, 
-taaj: tablecmds:00020580:  newpartname, 
-taaj: tablecmds:00020581:  prule->relname))); 
-taaj: tablecmds:00020586:  ereport(WARNING, 
-taaj: tablecmds:00020587:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-taaj: tablecmds:00020588:  errmsg("renamed %d partitions, skipped %d child partitions due to name truncation", 
-taaj: tablecmds:00020589:  renamed, skipped), 
-taaj: tablecmds:00020590:  errOmitLocation(true))); 
-taaj: tablecmds:00020640:  ereport(NOTICE, 
-taaj: tablecmds:00020641:  (errmsg("%s level %d " 
-taaj: tablecmds:00020642:  "subpartition template specification " 
-taaj: tablecmds:00020643:  "for relation \"%s\"", 
-taaj: tablecmds:00020644:  "adding", 
-taaj: tablecmds:00020645:  lvl, 
-taaj: tablecmds:00020646:  RelationGetRelationName(rel)))); 
-taaj: tablecmds:00020651:  ereport(ERROR, 
-taaj: tablecmds:00020652:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00020653:  errmsg("relation \"%s\" does not have a " 
-taaj: tablecmds:00020654:  "level %d " 
-taaj: tablecmds:00020655:  "subpartition template specification", 
-taaj: tablecmds:00020656:  RelationGetRelationName(rel), 
-taaj: tablecmds:00020657:  lvl), 
-taaj: tablecmds:00020658:  errOmitLocation(true))); 
-taaj: tablecmds:00020666:  ereport(NOTICE, 
-taaj: tablecmds:00020667:  (errmsg("%s level %d " 
-taaj: tablecmds:00020668:  "subpartition template specification " 
-taaj: tablecmds:00020669:  "for relation \"%s\"", 
-taaj: tablecmds:00020670:  (pc->arg1) ? "replacing" : "dropped", 
-taaj: tablecmds:00020671:  lvl, 
-taaj: tablecmds:00020672:  RelationGetRelationName(rel)))); 
-taaj: tablecmds:00021150:  ereport(ERROR, 
-taaj: tablecmds:00021151:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00021152:  errmsg("relation \"%s\" does not have a " 
-taaj: tablecmds:00021153:  "default partition", 
-taaj: tablecmds:00021154:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00021155:  errOmitLocation(true))); 
-taaj: tablecmds:00021237:  ereport(ERROR, 
-taaj: tablecmds:00021238:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00021239:  errmsg("relation \"%s\" does not have a " 
-taaj: tablecmds:00021240:  "default partition", 
-taaj: tablecmds:00021241:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00021242:  errOmitLocation(true))); 
-taaj: tablecmds:00021288:  ereport(ERROR, 
-taaj: tablecmds:00021289:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-taaj: tablecmds:00021290:  errmsg("both INTO partitions " 
-taaj: tablecmds:00021291:  "already exist"), 
-taaj: tablecmds:00021292:  errOmitLocation(true))); 
-taaj: tablecmds:00022075:  ereport(NOTICE, 
-taaj: tablecmds:00022076:  (errmsg("truncated partition%s for %s and its children", 
-taaj: tablecmds:00022077:  prule->partIdStr, 
-taaj: tablecmds:00022078:  prule->relname), 
-taaj: tablecmds:00022079:  errOmitLocation(true))); 
-taaj: tablecmds:00022083:  ereport(NOTICE, 
-taaj: tablecmds:00022084:  (errmsg("truncated partition%s for %s", 
-taaj: tablecmds:00022085:  prule->partIdStr, 
-taaj: tablecmds:00022086:  prule->relname), 
-taaj: tablecmds:00022087:  errOmitLocation(true))); 
-taaj: tablecmds:00022113:  ereport(ERROR, 
-taaj: tablecmds:00022114:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-taaj: tablecmds:00022115:  errmsg("\"%s\" is a TOAST relation", 
-taaj: tablecmds:00022116:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00022117:  errOmitLocation(true))); 
-taaj: tablecmds:00022120:  ereport(ERROR, 
-taaj: tablecmds:00022121:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-taaj: tablecmds:00022122:  errmsg("\"%s\" is an Append Only segment listing relation", 
-taaj: tablecmds:00022123:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00022124:  errOmitLocation(true))); 
-taaj: tablecmds:00022127:  ereport(ERROR, 
-taaj: tablecmds:00022128:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-taaj: tablecmds:00022129:  errmsg("\"%s\" is an Append Only block directory relation", 
-taaj: tablecmds:00022130:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00022131:  errOmitLocation(true))); 
-taaj: tablecmds:00022140:  ereport(ERROR, 
-taaj: tablecmds:00022141:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00022142:  errmsg("cannot move an owned sequence into another schema"), 
-taaj: tablecmds:00022143:  errdetail("Sequence \"%s\" is linked to table \"%s\".", 
-taaj: tablecmds:00022144:  RelationGetRelationName(rel), 
-taaj: tablecmds:00022145:  get_rel_name(tableId)), 
-taaj: tablecmds:00022146:  errOmitLocation(true))); 
-taaj: tablecmds:00022153:  ereport(ERROR, 
-taaj: tablecmds:00022154:  (errcode(ERRCODE_DUPLICATE_TABLE), 
-taaj: tablecmds:00022155:  errmsg("relation \"%s\" is already in schema \"%s\"", 
-taaj: tablecmds:00022156:  RelationGetRelationName(rel), 
-taaj: tablecmds:00022157:  newschema), 
-taaj: tablecmds:00022158:  errOmitLocation(true))); 
-taaj: tablecmds:00022162:  ereport(ERROR, 
-taaj: tablecmds:00022163:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00022164:  errmsg("cannot move objects into or out of temporary schemas"), 
-taaj: tablecmds:00022165:  errOmitLocation(true))); 
-taaj: tablecmds:00022169:  ereport(ERROR, 
-taaj: tablecmds:00022170:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00022171:  errmsg("cannot move objects into or out of TOAST schema"), 
-taaj: tablecmds:00022172:  errOmitLocation(true))); 
-taaj: tablecmds:00022176:  ereport(ERROR, 
-taaj: tablecmds:00022177:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00022178:  errmsg("cannot move objects into or out of AO SEGMENT schema"), 
-taaj: tablecmds:00022179:  errOmitLocation(true))); 
-taaj: tablecmds:00022237:  ereport(ERROR, 
-taaj: tablecmds:00022238:  (errcode(ERRCODE_DUPLICATE_TABLE), 
-taaj: tablecmds:00022239:  errmsg("relation \"%s\" already exists in schema \"%s\"", 
-taaj: tablecmds:00022240:  NameStr(classForm->relname), 
-taaj: tablecmds:00022241:  get_namespace_name(newNspOid)), 
-taaj: tablecmds:00022242:  errOmitLocation(true))); 
-taaj: tablecmds:00022613:  ereport(ERROR, 
-taaj: tablecmds:00022614:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00022615:  errmsg("location uri \"%s\" appears more than once", 
-taaj: tablecmds:00022616:  uri1), 
-taaj: tablecmds:00022617:  errOmitLocation(true))); 
-taaj: tablecmds:00022681:  ereport(ERROR, 
-taaj: tablecmds:00022682:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00022683:  errmsg("URI protocols must be the same for all data sources"), 
-taaj: tablecmds:00022684:  errhint("Available protocols are 'http', 'file' and 'gpfdist'"), 
-taaj: tablecmds:00022685:  errOmitLocation(true))); 
-taaj: tablecmds:00022693:  ereport(ERROR, 
-taaj: tablecmds:00022694:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00022695:  errmsg("unsupported URI protocol for \'%s\'", uri_str_final), 
-taaj: tablecmds:00022696:  errhint("Use 'file', 'http' or 'gpfdist' protocol instead."), 
-taaj: tablecmds:00022697:  errOmitLocation(true))); 
-taaj: tablecmds:00022701:  ereport(ERROR, 
-taaj: tablecmds:00022702:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00022703:  errmsg("an EXTERNAL WEB TABLE may only use http URI\'s, problem in: \'%s\'", uri_str_final), 
-taaj: tablecmds:00022704:  errhint("Use CREATE EXTERNAL TABLE instead."), 
-taaj: tablecmds:00022705:  errOmitLocation(true))); 
-taaj: tablecmds:00022708:  ereport(ERROR, 
-taaj: tablecmds:00022709:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00022710:  errmsg("http URI\'s can only be used in an external web table"), 
-taaj: tablecmds:00022711:  errhint("Use CREATE EXTERNAL WEB TABLE instead."), 
-taaj: tablecmds:00022712:  errOmitLocation(true))); 
-taaj: tablecmds:00022715:  ereport(ERROR, 
-taaj: tablecmds:00022716:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00022717:  errmsg("unsupported URI protocol \'%s\' for writable external table", 
-taaj: tablecmds:00022718:  (uri->protocol == URI_HTTP ? "http" : "file")), 
-taaj: tablecmds:00022719:  errhint("Writable external tables may use \'gpfdist\' URIs only."), 
-taaj: tablecmds:00022720:  errOmitLocation(true))); 
-taaj: tablecmds:00022723:  ereport(ERROR, 
-taaj: tablecmds:00022724:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00022725:  errmsg("Unsupported use of wildcard in a writable external web table definition: " 
-taaj: tablecmds:00022726:  "\'%s\'", uri_str_final), 
-taaj: tablecmds:00022727:  errhint("Specify the explicit path and file name to write into."))); 
-taaj: tablecmds:00022730:  ereport(ERROR, 
-taaj: tablecmds:00022731:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00022732:  errmsg("Unsupported use of a directory name in a writable external web table definition: " 
-taaj: tablecmds:00022733:  "\'%s\'", uri_str_final), 
-taaj: tablecmds:00022734:  errhint("Specify the explicit path and file name to write into."), 
-taaj: tablecmds:00022735:  errOmitLocation(true))); 
-taaj: tablecmds:00022786:  ereport(ERROR, 
-taaj: tablecmds:00022787:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00022788:  errmsg("ON clause must not have more than one element."), 
-taaj: tablecmds:00022789:  errOmitLocation(true))); 
-taaj: tablecmds:00022832:  ereport(ERROR, 
-taaj: tablecmds:00022833:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-taaj: tablecmds:00022834:  errmsg("Unknown location code for EXECUTE in tablecmds."), 
-taaj: tablecmds:00022835:  errOmitLocation(true))); 
-taaj: tablecmds:00022873:  ereport(ERROR, 
-taaj: tablecmds:00022874:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00022875:  errmsg("unsupported format '%s'", formatname), 
-taaj: tablecmds:00022876:  errhint("available formats are \"text\" or \"csv\""), 
-taaj: tablecmds:00022877:  errOmitLocation(true))); 
-taaj: tablecmds:00022925:  ereport(ERROR, 
-taaj: tablecmds:00022926:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00022927:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00022928:  errOmitLocation(true))); 
-taaj: tablecmds:00022934:  ereport(ERROR, 
-taaj: tablecmds:00022935:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00022936:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00022937:  errOmitLocation(true))); 
-taaj: tablecmds:00022943:  ereport(ERROR, 
-taaj: tablecmds:00022944:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00022945:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00022946:  errOmitLocation(true))); 
-taaj: tablecmds:00022952:  ereport(ERROR, 
-taaj: tablecmds:00022953:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00022954:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00022955:  errOmitLocation(true))); 
-taaj: tablecmds:00022961:  ereport(ERROR, 
-taaj: tablecmds:00022962:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00022963:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00022964:  errOmitLocation(true))); 
-taaj: tablecmds:00022970:  ereport(ERROR, 
-taaj: tablecmds:00022971:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00022972:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00022973:  errOmitLocation(true))); 
-taaj: tablecmds:00022980:  ereport(ERROR, 
-taaj: tablecmds:00022981:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00022982:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00022983:  errOmitLocation(true))); 
-taaj: tablecmds:00022990:  ereport(ERROR, 
-taaj: tablecmds:00022991:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00022992:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00022993:  errOmitLocation(true))); 
-taaj: tablecmds:00022999:  ereport(ERROR, 
-taaj: tablecmds:00023000:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023001:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00023002:  errOmitLocation(true))); 
-taaj: tablecmds:00023223:  ereport(ERROR, 
-taaj: tablecmds:00023224:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-taaj: tablecmds:00023225:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
-taaj: tablecmds:00023226:  cname, 
-taaj: tablecmds:00023227:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00023228:  errOmitLocation(true))); 
-taaj: tablecmds:00023267:  ereport(ERROR, 
-taaj: tablecmds:00023268:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
-taaj: tablecmds:00023269:  errmsg("cannot exchange HASH partition%s " 
-taaj: tablecmds:00023270:  "of relation \"%s\"", prule->partIdStr, 
-taaj: tablecmds:00023271:  RelationGetRelationName(rel)))); 
-taaj: tablecmds:00023317:  ereport(ERROR, 
-taaj: tablecmds:00023318:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023319:  errmsg("cannot exchange relation " 
-taaj: tablecmds:00023320:  "which is not a table"))); 
-taaj: tablecmds:00023339:  ereport(ERROR, 
-taaj: tablecmds:00023340:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023341:  errmsg("relation \"%s\" must have the same number " 
-taaj: tablecmds:00023342:  "columns as relation \"%s\"", 
-taaj: tablecmds:00023343:  RelationGetRelationName(newrel), 
-taaj: tablecmds:00023344:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00023345:  errOmitLocation(true))); 
-taaj: tablecmds:00023347:  ereport(ERROR, 
-taaj: tablecmds:00023348:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023349:  errmsg("relation \"%s\" and relation \"%s\" " 
-taaj: tablecmds:00023350:  "have mismatched dropped attributes", 
-taaj: tablecmds:00023351:  RelationGetRelationName(newrel), 
-taaj: tablecmds:00023352:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00023353:  errOmitLocation(true))); 
-taaj: tablecmds:00023366:  ereport(ERROR, 
-taaj: tablecmds:00023367:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023368:  errmsg("relation \"%s\" and relation \"%s\" " 
-taaj: tablecmds:00023369:  "have mismatched dropped attributes", 
-taaj: tablecmds:00023370:  RelationGetRelationName(newrel), 
-taaj: tablecmds:00023371:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00023372:  errOmitLocation(true))); 
-taaj: tablecmds:00023382:  ereport(ERROR, 
-taaj: tablecmds:00023383:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023384:  errmsg("relation \"%s\" must have the same " 
-taaj: tablecmds:00023385:  "column names and column order as \"%s\"", 
-taaj: tablecmds:00023386:  RelationGetRelationName(newrel), 
-taaj: tablecmds:00023387:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00023388:  errOmitLocation(true))); 
-taaj: tablecmds:00023398:  ereport(ERROR, 
-taaj: tablecmds:00023399:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023400:  errmsg("type mismatch for attribute \"%s\"", 
-taaj: tablecmds:00023401:  NameStr((oldatt->attname))), 
-taaj: tablecmds:00023402:  errOmitLocation(true))); 
-taaj: tablecmds:00023412:  ereport(ERROR, 
-taaj: tablecmds:00023413:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023414:  errmsg("owner of \"%s\" must be the same as that " 
-taaj: tablecmds:00023415:  "of \"%s\"", 
-taaj: tablecmds:00023416:  RelationGetRelationName(newrel), 
-taaj: tablecmds:00023417:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00023418:  errOmitLocation(true))); 
-taaj: tablecmds:00023427:  ereport(ERROR, 
-taaj: tablecmds:00023428:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023429:  errmsg("\"%s\" and \"%s\" must have same OIDs setting", 
-taaj: tablecmds:00023430:  RelationGetRelationName(rel), 
-taaj: tablecmds:00023431:  RelationGetRelationName(newrel)), 
-taaj: tablecmds:00023432:  errOmitLocation(true))); 
-taaj: tablecmds:00023441:  ereport(ERROR, 
-taaj: tablecmds:00023442:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023443:  errmsg("cannot EXCHANGE table \"%s\" as it has " 
-taaj: tablecmds:00023444:  "child table(s)", 
-taaj: tablecmds:00023445:  RelationGetRelationName(newrel)), 
-taaj: tablecmds:00023446:  errOmitLocation(true))); 
-taaj: tablecmds:00023454:  ereport(ERROR, 
-taaj: tablecmds:00023455:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023456:  errmsg("cannot exchange table \"%s\" as it " 
-taaj: tablecmds:00023457:  "inherits other table(s)", 
-taaj: tablecmds:00023458:  RelationGetRelationName(newrel)), 
-taaj: tablecmds:00023459:  errOmitLocation(true))); 
-taaj: tablecmds:00023468:  ereport(ERROR, 
-taaj: tablecmds:00023469:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023470:  errmsg("cannot exchange table which has rules " 
-taaj: tablecmds:00023471:  "defined on it"), 
-taaj: tablecmds:00023472:  errOmitLocation(true))); 
+taaj: tablecmds:00018799:  errmsg("cannot drop HASH partition%s of %s", 
+taaj: tablecmds:00018800:  prule->partIdStr, 
+taaj: tablecmds:00018801:  prule->relname), 
+taaj: tablecmds:00018802:  errhint("recreate the table to reduce the " 
+taaj: tablecmds:00018803:  "number of partitions"), 
+taaj: tablecmds:00018804:  errOmitLocation(true))); 
+taaj: tablecmds:00018810:  ereport(ERROR, 
+taaj: tablecmds:00018811:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
+taaj: tablecmds:00018812:  errmsg("cannot drop partition%s of " 
+taaj: tablecmds:00018813:  "%s -- only one remains", 
+taaj: tablecmds:00018814:  prule->partIdStr, 
+taaj: tablecmds:00018815:  prule->relname), 
+taaj: tablecmds:00018816:  errhint("Use DROP TABLE \"%s\" to remove the " 
+taaj: tablecmds:00018817:  "table and the final partition ", 
+taaj: tablecmds:00018818:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00018819:  errOmitLocation(true))); 
+taaj: tablecmds:00018821:  ereport(ERROR, 
+taaj: tablecmds:00018822:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
+taaj: tablecmds:00018823:  errmsg("cannot drop partition%s of " 
+taaj: tablecmds:00018824:  "%s -- only one remains", 
+taaj: tablecmds:00018825:  prule->partIdStr, 
+taaj: tablecmds:00018826:  prule->relname), 
+taaj: tablecmds:00018827:  errhint("DROP the parent partition to remove the " 
+taaj: tablecmds:00018828:  "final partition "), 
+taaj: tablecmds:00018829:  errOmitLocation(true))); 
+taaj: tablecmds:00018870:  ereport(NOTICE, 
+taaj: tablecmds:00018871:  (errmsg("dropped partition%s for %s and its children", 
+taaj: tablecmds:00018872:  prule->partIdStr, 
+taaj: tablecmds:00018873:  prule->relname))); 
+taaj: tablecmds:00018877:  ereport(NOTICE, 
+taaj: tablecmds:00018878:  (errmsg("dropped partition%s for %s", 
+taaj: tablecmds:00018879:  prule->partIdStr, 
+taaj: tablecmds:00018880:  prule->relname))); 
+taaj: tablecmds:00019064:  ereport(ERROR, 
+taaj: tablecmds:00019065:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+taaj: tablecmds:00019066:  errmsg("constraint \"%s\" on table \"%s\" " 
+taaj: tablecmds:00019067:  "conflicts with partitioning rule", 
+taaj: tablecmds:00019068:  NameStr(con->conname), 
+taaj: tablecmds:00019069:  RelationGetRelationName(newrel)), 
+taaj: tablecmds:00019070:  errOmitLocation(true))); 
+taaj: tablecmds:00019323:  ereport(ERROR, 
+taaj: tablecmds:00019324:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00019325:  errmsg("cannot EXCHANGE PARTITION for " 
+taaj: tablecmds:00019326:  "%s -- partition has children", 
+taaj: tablecmds:00019327:  prule->relname 
+taaj: tablecmds:00019328:  ), 
+taaj: tablecmds:00019329:  errOmitLocation(true))); 
+taaj: tablecmds:00019444:  ereport(NOTICE, 
+taaj: tablecmds:00019445:  (errmsg("exchanged partition%s of " 
+taaj: tablecmds:00019446:  "%s with relation \"%s\"", 
+taaj: tablecmds:00019447:  orig_prule->partIdStr, 
+taaj: tablecmds:00019448:  orig_prule->relname, 
+taaj: tablecmds:00019449:  newname), 
+taaj: tablecmds:00019450:  errOmitLocation(true))); 
+taaj: tablecmds:00019525:  ereport(ERROR, 
+taaj: tablecmds:00019526:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00019527:  errmsg("target of MERGE must be either \"%s\" or " 
+taaj: tablecmds:00019528:  "\"%s\"", 
+taaj: tablecmds:00019529:  get_rel_name(prule1->topRule->parchildrelid), 
+taaj: tablecmds:00019530:  get_rel_name(prule2->topRule->parchildrelid)), 
+taaj: tablecmds:00019531:  errOmitLocation(true))); 
+taaj: tablecmds:00019569:  ereport(ERROR, 
+taaj: tablecmds:00019570:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00019571:  errmsg("cannot MERGE PARTITION for relation \"%s\"", 
+taaj: tablecmds:00019572:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00019573:  errOmitLocation(true))); 
+taaj: tablecmds:00019585:  ereport(ERROR, 
+taaj: tablecmds:00019586:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00019587:  errmsg("cannot MODIFY %s partition%s for " 
+taaj: tablecmds:00019588:  "relation \"%s\" to ADD values -- would " 
+taaj: tablecmds:00019589:  "overlap DEFAULT partition \"%s\"", 
+taaj: tablecmds:00019590:  "LIST", 
+taaj: tablecmds:00019591:  prule->partIdStr, 
+taaj: tablecmds:00019592:  RelationGetRelationName(rel), 
+taaj: tablecmds:00019593:  prule->pNode->default_part->parname), 
+taaj: tablecmds:00019594:  errhint("need to SPLIT partition \"%s\"", 
+taaj: tablecmds:00019595:  prule->pNode->default_part->parname), 
+taaj: tablecmds:00019596:  errOmitLocation(true))); 
+taaj: tablecmds:00019646:  ereport(ERROR, 
+taaj: tablecmds:00019647:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00019648:  errmsg("cannot MODIFY LIST partition%s for " 
+taaj: tablecmds:00019649:  "relation \"%s\" -- " 
+taaj: tablecmds:00019650:  "would overlap " 
+taaj: tablecmds:00019651:  "existing partition%s", 
+taaj: tablecmds:00019652:  prule->partIdStr, 
+taaj: tablecmds:00019653:  RelationGetRelationName(rel), 
+taaj: tablecmds:00019654:  prule2->isName ? 
+taaj: tablecmds:00019655:  prule2->partIdStr : ""), 
+taaj: tablecmds:00019656:  errOmitLocation(true))); 
+taaj: tablecmds:00019658:  ereport(ERROR, 
+taaj: tablecmds:00019659:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00019660:  errmsg("cannot MODIFY LIST partition%s for " 
+taaj: tablecmds:00019661:  "relation \"%s\" -- " 
+taaj: tablecmds:00019662:  "ADD value has duplicate in " 
+taaj: tablecmds:00019663:  "existing partition", 
+taaj: tablecmds:00019664:  prule->partIdStr, 
+taaj: tablecmds:00019665:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00019666:  errOmitLocation(true))); 
+taaj: tablecmds:00019677:  ereport(ERROR, 
+taaj: tablecmds:00019678:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00019679:  errmsg("cannot MODIFY LIST partition%s for " 
+taaj: tablecmds:00019680:  "relation \"%s\" -- DROP value not found", 
+taaj: tablecmds:00019681:  prule->partIdStr, 
+taaj: tablecmds:00019682:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00019683:  errOmitLocation(true))); 
+taaj: tablecmds:00019688:  ereport(ERROR, 
+taaj: tablecmds:00019689:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00019690:  errmsg("cannot MODIFY LIST partition%s for " 
+taaj: tablecmds:00019691:  "relation \"%s\" -- " 
+taaj: tablecmds:00019692:  "found DROP value in%s partition%s", 
+taaj: tablecmds:00019693:  prule->partIdStr, 
+taaj: tablecmds:00019694:  RelationGetRelationName(rel), 
+taaj: tablecmds:00019695:  prule2->isName ? "" : "other", 
+taaj: tablecmds:00019696:  prule2->isName ? prule2->partIdStr : ""), 
+taaj: tablecmds:00019697:  errOmitLocation(true))); 
+taaj: tablecmds:00019811:  ereport(ERROR, 
+taaj: tablecmds:00019812:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00019813:  errmsg("cannot MODIFY %s partition%s for " 
+taaj: tablecmds:00019814:  "relation \"%s\" to extend range -- would " 
+taaj: tablecmds:00019815:  "overlap DEFAULT partition \"%s\"", 
+taaj: tablecmds:00019816:  "RANGE", 
+taaj: tablecmds:00019817:  prule->partIdStr, 
+taaj: tablecmds:00019818:  RelationGetRelationName(rel), 
+taaj: tablecmds:00019819:  prule->pNode->default_part->parname), 
+taaj: tablecmds:00019820:  errhint("need to SPLIT partition \"%s\"", 
+taaj: tablecmds:00019821:  prule->pNode->default_part->parname), 
+taaj: tablecmds:00019822:  errOmitLocation(true))); 
+taaj: tablecmds:00019966:  ereport(ERROR, 
+taaj: tablecmds:00019967:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00019968:  errmsg("cannot MODIFY %s partition%s for " 
+taaj: tablecmds:00019969:  "relation \"%s\" to extend range -- would " 
+taaj: tablecmds:00019970:  "overlap DEFAULT partition \"%s\"", 
+taaj: tablecmds:00019971:  "RANGE", 
+taaj: tablecmds:00019972:  prule->partIdStr, 
+taaj: tablecmds:00019973:  RelationGetRelationName(rel), 
+taaj: tablecmds:00019974:  prule->pNode->default_part->parname), 
+taaj: tablecmds:00019975:  errhint("need to SPLIT partition \"%s\"", 
+taaj: tablecmds:00019976:  prule->pNode->default_part->parname), 
+taaj: tablecmds:00019977:  errOmitLocation(true))); 
+taaj: tablecmds:00020106:  ereport(ERROR, 
+taaj: tablecmds:00020107:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00020108:  errmsg("cannot MODIFY RANGE partition%s for " 
+taaj: tablecmds:00020109:  "relation \"%s\" -- " 
+taaj: tablecmds:00020110:  "would overlap " 
+taaj: tablecmds:00020111:  "existing partition%s", 
+taaj: tablecmds:00020112:  prule->partIdStr, 
+taaj: tablecmds:00020113:  RelationGetRelationName(rel), 
+taaj: tablecmds:00020114:  (prule2 && prule2->isName) ? 
+taaj: tablecmds:00020115:  prule2->partIdStr : ""), 
+taaj: tablecmds:00020116:  errOmitLocation(true))); 
+taaj: tablecmds:00020198:  ereport(ERROR, 
+taaj: tablecmds:00020199:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00020200:  errmsg("cannot MODIFY DEFAULT %s partition%s " 
+taaj: tablecmds:00020201:  "for relation \"%s\"", 
+taaj: tablecmds:00020202:  parTypName, 
+taaj: tablecmds:00020203:  ((prule && prule->isName) ? prule->partIdStr : ""), 
+taaj: tablecmds:00020204:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00020205:  errOmitLocation(true))); 
+taaj: tablecmds:00020208:  ereport(ERROR, 
+taaj: tablecmds:00020209:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00020210:  errmsg("invalid use of %s boundary specification " 
+taaj: tablecmds:00020211:  "in partition%s of type %s", 
+taaj: tablecmds:00020212:  "RANGE", 
+taaj: tablecmds:00020213:  ((prule && prule->isName) ? prule->partIdStr : ""), 
+taaj: tablecmds:00020214:  parTypName 
+taaj: tablecmds:00020215:  ), 
+taaj: tablecmds:00020216:  errOmitLocation(true))); 
+taaj: tablecmds:00020219:  ereport(ERROR, 
+taaj: tablecmds:00020220:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00020221:  errmsg("invalid use of %s boundary specification " 
+taaj: tablecmds:00020222:  "in partition%s of type %s", 
+taaj: tablecmds:00020223:  "LIST", 
+taaj: tablecmds:00020224:  ((prule && prule->isName) ? prule->partIdStr : ""), 
+taaj: tablecmds:00020225:  parTypName 
+taaj: tablecmds:00020226:  ), 
+taaj: tablecmds:00020227:  errOmitLocation(true))); 
+taaj: tablecmds:00020261:  ereport(ERROR, 
+taaj: tablecmds:00020262:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00020263:  errmsg("cannot MODIFY PARTITION for relation \"%s\"", 
+taaj: tablecmds:00020264:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00020265:  errOmitLocation(true))); 
+taaj: tablecmds:00020350:  ereport(ERROR, 
+taaj: tablecmds:00020351:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00020352:  errmsg("relation name \"%s\" for child partition " 
+taaj: tablecmds:00020353:  "is too long", 
+taaj: tablecmds:00020354:  newRelNameBuf))); 
+taaj: tablecmds:00020505:  ereport(ERROR, 
+taaj: tablecmds:00020506:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00020507:  errmsg("name \"%s\" for child partition " 
+taaj: tablecmds:00020508:  "is too long", 
+taaj: tablecmds:00020509:  newpartname))); 
+taaj: tablecmds:00020601:  ereport(NOTICE, 
+taaj: tablecmds:00020602:  (errmsg("renamed partition%s to \"%s\" for %s", 
+taaj: tablecmds:00020603:  prule->partIdStr, 
+taaj: tablecmds:00020604:  newpartname, 
+taaj: tablecmds:00020605:  prule->relname))); 
+taaj: tablecmds:00020610:  ereport(WARNING, 
+taaj: tablecmds:00020611:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+taaj: tablecmds:00020612:  errmsg("renamed %d partitions, skipped %d child partitions due to name truncation", 
+taaj: tablecmds:00020613:  renamed, skipped), 
+taaj: tablecmds:00020614:  errOmitLocation(true))); 
+taaj: tablecmds:00020664:  ereport(NOTICE, 
+taaj: tablecmds:00020665:  (errmsg("%s level %d " 
+taaj: tablecmds:00020666:  "subpartition template specification " 
+taaj: tablecmds:00020667:  "for relation \"%s\"", 
+taaj: tablecmds:00020668:  "adding", 
+taaj: tablecmds:00020669:  lvl, 
+taaj: tablecmds:00020670:  RelationGetRelationName(rel)))); 
+taaj: tablecmds:00020675:  ereport(ERROR, 
+taaj: tablecmds:00020676:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00020677:  errmsg("relation \"%s\" does not have a " 
+taaj: tablecmds:00020678:  "level %d " 
+taaj: tablecmds:00020679:  "subpartition template specification", 
+taaj: tablecmds:00020680:  RelationGetRelationName(rel), 
+taaj: tablecmds:00020681:  lvl), 
+taaj: tablecmds:00020682:  errOmitLocation(true))); 
+taaj: tablecmds:00020690:  ereport(NOTICE, 
+taaj: tablecmds:00020691:  (errmsg("%s level %d " 
+taaj: tablecmds:00020692:  "subpartition template specification " 
+taaj: tablecmds:00020693:  "for relation \"%s\"", 
+taaj: tablecmds:00020694:  (pc->arg1) ? "replacing" : "dropped", 
+taaj: tablecmds:00020695:  lvl, 
+taaj: tablecmds:00020696:  RelationGetRelationName(rel)))); 
+taaj: tablecmds:00021174:  ereport(ERROR, 
+taaj: tablecmds:00021175:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00021176:  errmsg("relation \"%s\" does not have a " 
+taaj: tablecmds:00021177:  "default partition", 
+taaj: tablecmds:00021178:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00021179:  errOmitLocation(true))); 
+taaj: tablecmds:00021261:  ereport(ERROR, 
+taaj: tablecmds:00021262:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00021263:  errmsg("relation \"%s\" does not have a " 
+taaj: tablecmds:00021264:  "default partition", 
+taaj: tablecmds:00021265:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00021266:  errOmitLocation(true))); 
+taaj: tablecmds:00021312:  ereport(ERROR, 
+taaj: tablecmds:00021313:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+taaj: tablecmds:00021314:  errmsg("both INTO partitions " 
+taaj: tablecmds:00021315:  "already exist"), 
+taaj: tablecmds:00021316:  errOmitLocation(true))); 
+taaj: tablecmds:00022099:  ereport(NOTICE, 
+taaj: tablecmds:00022100:  (errmsg("truncated partition%s for %s and its children", 
+taaj: tablecmds:00022101:  prule->partIdStr, 
+taaj: tablecmds:00022102:  prule->relname), 
+taaj: tablecmds:00022103:  errOmitLocation(true))); 
+taaj: tablecmds:00022107:  ereport(NOTICE, 
+taaj: tablecmds:00022108:  (errmsg("truncated partition%s for %s", 
+taaj: tablecmds:00022109:  prule->partIdStr, 
+taaj: tablecmds:00022110:  prule->relname), 
+taaj: tablecmds:00022111:  errOmitLocation(true))); 
+taaj: tablecmds:00022137:  ereport(ERROR, 
+taaj: tablecmds:00022138:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+taaj: tablecmds:00022139:  errmsg("\"%s\" is a TOAST relation", 
+taaj: tablecmds:00022140:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00022141:  errOmitLocation(true))); 
+taaj: tablecmds:00022144:  ereport(ERROR, 
+taaj: tablecmds:00022145:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+taaj: tablecmds:00022146:  errmsg("\"%s\" is an Append Only segment listing relation", 
+taaj: tablecmds:00022147:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00022148:  errOmitLocation(true))); 
+taaj: tablecmds:00022151:  ereport(ERROR, 
+taaj: tablecmds:00022152:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+taaj: tablecmds:00022153:  errmsg("\"%s\" is an Append Only block directory relation", 
+taaj: tablecmds:00022154:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00022155:  errOmitLocation(true))); 
+taaj: tablecmds:00022164:  ereport(ERROR, 
+taaj: tablecmds:00022165:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00022166:  errmsg("cannot move an owned sequence into another schema"), 
+taaj: tablecmds:00022167:  errdetail("Sequence \"%s\" is linked to table \"%s\".", 
+taaj: tablecmds:00022168:  RelationGetRelationName(rel), 
+taaj: tablecmds:00022169:  get_rel_name(tableId)), 
+taaj: tablecmds:00022170:  errOmitLocation(true))); 
+taaj: tablecmds:00022177:  ereport(ERROR, 
+taaj: tablecmds:00022178:  (errcode(ERRCODE_DUPLICATE_TABLE), 
+taaj: tablecmds:00022179:  errmsg("relation \"%s\" is already in schema \"%s\"", 
+taaj: tablecmds:00022180:  RelationGetRelationName(rel), 
+taaj: tablecmds:00022181:  newschema), 
+taaj: tablecmds:00022182:  errOmitLocation(true))); 
+taaj: tablecmds:00022186:  ereport(ERROR, 
+taaj: tablecmds:00022187:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00022188:  errmsg("cannot move objects into or out of temporary schemas"), 
+taaj: tablecmds:00022189:  errOmitLocation(true))); 
+taaj: tablecmds:00022193:  ereport(ERROR, 
+taaj: tablecmds:00022194:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00022195:  errmsg("cannot move objects into or out of TOAST schema"), 
+taaj: tablecmds:00022196:  errOmitLocation(true))); 
+taaj: tablecmds:00022200:  ereport(ERROR, 
+taaj: tablecmds:00022201:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00022202:  errmsg("cannot move objects into or out of AO SEGMENT schema"), 
+taaj: tablecmds:00022203:  errOmitLocation(true))); 
+taaj: tablecmds:00022261:  ereport(ERROR, 
+taaj: tablecmds:00022262:  (errcode(ERRCODE_DUPLICATE_TABLE), 
+taaj: tablecmds:00022263:  errmsg("relation \"%s\" already exists in schema \"%s\"", 
+taaj: tablecmds:00022264:  NameStr(classForm->relname), 
+taaj: tablecmds:00022265:  get_namespace_name(newNspOid)), 
+taaj: tablecmds:00022266:  errOmitLocation(true))); 
+taaj: tablecmds:00022637:  ereport(ERROR, 
+taaj: tablecmds:00022638:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00022639:  errmsg("location uri \"%s\" appears more than once", 
+taaj: tablecmds:00022640:  uri1), 
+taaj: tablecmds:00022641:  errOmitLocation(true))); 
+taaj: tablecmds:00022705:  ereport(ERROR, 
+taaj: tablecmds:00022706:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00022707:  errmsg("URI protocols must be the same for all data sources"), 
+taaj: tablecmds:00022708:  errhint("Available protocols are 'http', 'file' and 'gpfdist'"), 
+taaj: tablecmds:00022709:  errOmitLocation(true))); 
+taaj: tablecmds:00022717:  ereport(ERROR, 
+taaj: tablecmds:00022718:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00022719:  errmsg("unsupported URI protocol for \'%s\'", uri_str_final), 
+taaj: tablecmds:00022720:  errhint("Use 'file', 'http' or 'gpfdist' protocol instead."), 
+taaj: tablecmds:00022721:  errOmitLocation(true))); 
+taaj: tablecmds:00022725:  ereport(ERROR, 
+taaj: tablecmds:00022726:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00022727:  errmsg("an EXTERNAL WEB TABLE may only use http URI\'s, problem in: \'%s\'", uri_str_final), 
+taaj: tablecmds:00022728:  errhint("Use CREATE EXTERNAL TABLE instead."), 
+taaj: tablecmds:00022729:  errOmitLocation(true))); 
+taaj: tablecmds:00022732:  ereport(ERROR, 
+taaj: tablecmds:00022733:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00022734:  errmsg("http URI\'s can only be used in an external web table"), 
+taaj: tablecmds:00022735:  errhint("Use CREATE EXTERNAL WEB TABLE instead."), 
+taaj: tablecmds:00022736:  errOmitLocation(true))); 
+taaj: tablecmds:00022739:  ereport(ERROR, 
+taaj: tablecmds:00022740:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00022741:  errmsg("unsupported URI protocol \'%s\' for writable external table", 
+taaj: tablecmds:00022742:  (uri->protocol == URI_HTTP ? "http" : "file")), 
+taaj: tablecmds:00022743:  errhint("Writable external tables may use \'gpfdist\' URIs only."), 
+taaj: tablecmds:00022744:  errOmitLocation(true))); 
+taaj: tablecmds:00022747:  ereport(ERROR, 
+taaj: tablecmds:00022748:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00022749:  errmsg("Unsupported use of wildcard in a writable external web table definition: " 
+taaj: tablecmds:00022750:  "\'%s\'", uri_str_final), 
+taaj: tablecmds:00022751:  errhint("Specify the explicit path and file name to write into."))); 
+taaj: tablecmds:00022754:  ereport(ERROR, 
+taaj: tablecmds:00022755:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00022756:  errmsg("Unsupported use of a directory name in a writable external web table definition: " 
+taaj: tablecmds:00022757:  "\'%s\'", uri_str_final), 
+taaj: tablecmds:00022758:  errhint("Specify the explicit path and file name to write into."), 
+taaj: tablecmds:00022759:  errOmitLocation(true))); 
+taaj: tablecmds:00022810:  ereport(ERROR, 
+taaj: tablecmds:00022811:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00022812:  errmsg("ON clause must not have more than one element."), 
+taaj: tablecmds:00022813:  errOmitLocation(true))); 
+taaj: tablecmds:00022856:  ereport(ERROR, 
+taaj: tablecmds:00022857:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+taaj: tablecmds:00022858:  errmsg("Unknown location code for EXECUTE in tablecmds."), 
+taaj: tablecmds:00022859:  errOmitLocation(true))); 
+taaj: tablecmds:00022897:  ereport(ERROR, 
+taaj: tablecmds:00022898:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00022899:  errmsg("unsupported format '%s'", formatname), 
+taaj: tablecmds:00022900:  errhint("available formats are \"text\" or \"csv\""), 
+taaj: tablecmds:00022901:  errOmitLocation(true))); 
+taaj: tablecmds:00022949:  ereport(ERROR, 
+taaj: tablecmds:00022950:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00022951:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00022952:  errOmitLocation(true))); 
+taaj: tablecmds:00022958:  ereport(ERROR, 
+taaj: tablecmds:00022959:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00022960:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00022961:  errOmitLocation(true))); 
+taaj: tablecmds:00022967:  ereport(ERROR, 
+taaj: tablecmds:00022968:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00022969:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00022970:  errOmitLocation(true))); 
+taaj: tablecmds:00022976:  ereport(ERROR, 
+taaj: tablecmds:00022977:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00022978:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00022979:  errOmitLocation(true))); 
+taaj: tablecmds:00022985:  ereport(ERROR, 
+taaj: tablecmds:00022986:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00022987:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00022988:  errOmitLocation(true))); 
+taaj: tablecmds:00022994:  ereport(ERROR, 
+taaj: tablecmds:00022995:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00022996:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00022997:  errOmitLocation(true))); 
+taaj: tablecmds:00023004:  ereport(ERROR, 
+taaj: tablecmds:00023005:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023006:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00023007:  errOmitLocation(true))); 
+taaj: tablecmds:00023014:  ereport(ERROR, 
+taaj: tablecmds:00023015:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023016:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00023017:  errOmitLocation(true))); 
+taaj: tablecmds:00023023:  ereport(ERROR, 
+taaj: tablecmds:00023024:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023025:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00023026:  errOmitLocation(true))); 
+taaj: tablecmds:00023247:  ereport(ERROR, 
+taaj: tablecmds:00023248:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+taaj: tablecmds:00023249:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
+taaj: tablecmds:00023250:  cname, 
+taaj: tablecmds:00023251:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00023252:  errOmitLocation(true))); 
+taaj: tablecmds:00023291:  ereport(ERROR, 
+taaj: tablecmds:00023292:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
+taaj: tablecmds:00023293:  errmsg("cannot exchange HASH partition%s " 
+taaj: tablecmds:00023294:  "of relation \"%s\"", prule->partIdStr, 
+taaj: tablecmds:00023295:  RelationGetRelationName(rel)))); 
+taaj: tablecmds:00023341:  ereport(ERROR, 
+taaj: tablecmds:00023342:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023343:  errmsg("cannot exchange relation " 
+taaj: tablecmds:00023344:  "which is not a table"))); 
+taaj: tablecmds:00023363:  ereport(ERROR, 
+taaj: tablecmds:00023364:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023365:  errmsg("relation \"%s\" must have the same number " 
+taaj: tablecmds:00023366:  "columns as relation \"%s\"", 
+taaj: tablecmds:00023367:  RelationGetRelationName(newrel), 
+taaj: tablecmds:00023368:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00023369:  errOmitLocation(true))); 
+taaj: tablecmds:00023371:  ereport(ERROR, 
+taaj: tablecmds:00023372:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023373:  errmsg("relation \"%s\" and relation \"%s\" " 
+taaj: tablecmds:00023374:  "have mismatched dropped attributes", 
+taaj: tablecmds:00023375:  RelationGetRelationName(newrel), 
+taaj: tablecmds:00023376:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00023377:  errOmitLocation(true))); 
+taaj: tablecmds:00023390:  ereport(ERROR, 
+taaj: tablecmds:00023391:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023392:  errmsg("relation \"%s\" and relation \"%s\" " 
+taaj: tablecmds:00023393:  "have mismatched dropped attributes", 
+taaj: tablecmds:00023394:  RelationGetRelationName(newrel), 
+taaj: tablecmds:00023395:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00023396:  errOmitLocation(true))); 
+taaj: tablecmds:00023406:  ereport(ERROR, 
+taaj: tablecmds:00023407:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023408:  errmsg("relation \"%s\" must have the same " 
+taaj: tablecmds:00023409:  "column names and column order as \"%s\"", 
+taaj: tablecmds:00023410:  RelationGetRelationName(newrel), 
+taaj: tablecmds:00023411:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00023412:  errOmitLocation(true))); 
+taaj: tablecmds:00023422:  ereport(ERROR, 
+taaj: tablecmds:00023423:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023424:  errmsg("type mismatch for attribute \"%s\"", 
+taaj: tablecmds:00023425:  NameStr((oldatt->attname))), 
+taaj: tablecmds:00023426:  errOmitLocation(true))); 
+taaj: tablecmds:00023436:  ereport(ERROR, 
+taaj: tablecmds:00023437:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023438:  errmsg("owner of \"%s\" must be the same as that " 
+taaj: tablecmds:00023439:  "of \"%s\"", 
+taaj: tablecmds:00023440:  RelationGetRelationName(newrel), 
+taaj: tablecmds:00023441:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00023442:  errOmitLocation(true))); 
+taaj: tablecmds:00023451:  ereport(ERROR, 
+taaj: tablecmds:00023452:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023453:  errmsg("\"%s\" and \"%s\" must have same OIDs setting", 
+taaj: tablecmds:00023454:  RelationGetRelationName(rel), 
+taaj: tablecmds:00023455:  RelationGetRelationName(newrel)), 
+taaj: tablecmds:00023456:  errOmitLocation(true))); 
+taaj: tablecmds:00023465:  ereport(ERROR, 
+taaj: tablecmds:00023466:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023467:  errmsg("cannot EXCHANGE table \"%s\" as it has " 
+taaj: tablecmds:00023468:  "child table(s)", 
+taaj: tablecmds:00023469:  RelationGetRelationName(newrel)), 
+taaj: tablecmds:00023470:  errOmitLocation(true))); 
+taaj: tablecmds:00023478:  ereport(ERROR, 
+taaj: tablecmds:00023479:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023480:  errmsg("cannot exchange table \"%s\" as it " 
+taaj: tablecmds:00023481:  "inherits other table(s)", 
+taaj: tablecmds:00023482:  RelationGetRelationName(newrel)), 
+taaj: tablecmds:00023483:  errOmitLocation(true))); 
 taaj: tablecmds:00023492:  ereport(ERROR, 
 taaj: tablecmds:00023493:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023494:  errmsg("distribution policy for \"%s\" " 
-taaj: tablecmds:00023495:  "must be the same as that for \"%s\"", 
-taaj: tablecmds:00023496:  RelationGetRelationName(newrel), 
-taaj: tablecmds:00023497:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00023498:  errOmitLocation(true))); 
+taaj: tablecmds:00023494:  errmsg("cannot exchange table which has rules " 
+taaj: tablecmds:00023495:  "defined on it"), 
+taaj: tablecmds:00023496:  errOmitLocation(true))); 
+taaj: tablecmds:00023516:  ereport(ERROR, 
+taaj: tablecmds:00023517:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023518:  errmsg("distribution policy for \"%s\" " 
+taaj: tablecmds:00023519:  "must be the same as that for \"%s\"", 
+taaj: tablecmds:00023520:  RelationGetRelationName(newrel), 
+taaj: tablecmds:00023521:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00023522:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: taba: tablespace - ./backend/commands/tablespace.c
 taba: tablespace:00000117:  ereport(ERROR, 
 taba: tablespace:00000118:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
