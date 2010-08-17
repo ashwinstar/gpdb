@@ -18066,6 +18066,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 		bool			 bFixFirstATS		 = true;
 		bool			 bFirst_TemplateOnly = true;   /* ignore dummy entry */
 		int 			 pby_templ_depth	 = 0;	   /* template partdepth */
+		Oid 			 skipTableRelid	 	 = InvalidOid; 
 
 		ct->partitionBy = (Node *)pBy;
 
@@ -18152,20 +18153,43 @@ atpxPartAddList(AlteredTableInfo *tab,
 		 */
 		lc = list_head(l1);
 
+		if (lc)
+		{
+			Node *s = lfirst(lc);
+
+			/* MPP-10421: but save the relid of the skipped table,
+			 * because we skip indexes associated with it... 
+			 */
+			if (IsA(s, Query) && IsA(((Query *)s)->utilityStmt, CreateStmt))
+			{
+				CreateStmt *t = (CreateStmt *)((Query *)s)->utilityStmt;
+
+				skipTableRelid = RangeVarGetRelid(t->relation, true);
+			}
+		}
+
+
 		for_each_cell(lc, lnext(lc))
 		{
 			Query *q = lfirst(lc);
 
 			/*
-			 * If the statement is an expanded index creation statement on the
-			 * master, ignore it. We get into this situation when the master has
-			 * one or more indexes on it which our new partition is inheriting.
+			 * MPP-6379, MPP-10421: If the statement is an expanded
+			 * index creation statement on the parent (or the "skipped
+			 * table"), ignore it. We get into this situation when the
+			 * parent has one or more indexes on it that our new
+			 * partition is inheriting.
 			 */
 			if (IsA(q->utilityStmt, IndexStmt))
 			{
-				IndexStmt *istmt = (IndexStmt *)q->utilityStmt;
+				IndexStmt *istmt	 = (IndexStmt *)q->utilityStmt;
+				Oid		   idxRelid	 = RangeVarGetRelid(istmt->relation, true);
 
-				if (RangeVarGetRelid(istmt->relation, true) == RelationGetRelid(rel))
+				if (idxRelid == RelationGetRelid(rel))
+					continue;
+
+				if (OidIsValid(skipTableRelid) &&
+					(idxRelid == skipTableRelid))
 					continue;
 			}
 

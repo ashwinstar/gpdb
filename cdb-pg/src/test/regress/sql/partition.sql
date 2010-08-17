@@ -3814,18 +3814,12 @@ PARTITION BY LIST (AGG_LEVEL)
     )
 );
 
--- doesn't work because only default partitions can re-use name
+-- MPP-10421: works -- can re-use name for non-DEFAULT partitions, and
+-- primary key problems fixed
 ALTER TABLE MPP10223pk
  ALTER PARTITION min15part 
 SPLIT PARTITION  P_FUTURE AT ('2010-06-25') 
 INTO (PARTITION P20010101, PARTITION P_FUTURE);
-
--- doesn't work because of primary key problem
-ALTER TABLE MPP10223pk
- ALTER PARTITION min15part 
-SPLIT PARTITION  P_FUTURE AT ('2010-06-25') 
-INTO (PARTITION P20010101, PARTITION P_FUTURE2);
-
 
 drop table mpp10223pk;
 
@@ -3916,3 +3910,49 @@ subpartition template (start (1) end (10) every (1))
 select pg_get_partition_template_def('MPP10480'::regclass, true, true);
 
 drop table MPP10480;
+
+-- MPP-10421: fix SPLIT of partitions with PRIMARY KEY constraint/indexes
+CREATE TABLE mpp10321a
+(
+        rnc VARCHAR(100),
+        wbts VARCHAR(100),
+        axc VARCHAR(100),
+        vptt VARCHAR(100),
+        vcct VARCHAR(100),
+        agg_level CHAR(5),
+        period_start_time TIMESTAMP WITH TIME ZONE,
+        load_time TIMESTAMP WITH TIME ZONE DEFAULT now(),
+        interval INTEGER,
+        totcellsegress double precision,
+        totcellsingress double precision,
+
+  CONSTRAINT "mpp10321a_pk"
+PRIMARY KEY (rnc,wbts,axc,vptt,vcct,agg_level,period_start_time)
+)
+
+DISTRIBUTED BY (rnc,wbts,axc,vptt,vcct)
+
+PARTITION BY LIST (AGG_LEVEL)
+  SUBPARTITION BY RANGE (PERIOD_START_TIME)
+(
+  PARTITION min15part  VALUES ('15min')
+    (
+         SUBPARTITION P_FUTURE  START (date '2001-01-01') INCLUSIVE,
+         SUBPARTITION P_ENDPART START (date '2999-12-30') INCLUSIVE
+                                END (date '2999-12-31') EXCLUSIVE
+    ),
+  PARTITION hourpart   VALUES ('hour')
+    (
+          SUBPARTITION P20100622 START (date '2010-06-22') INCLUSIVE,
+          SUBPARTITION P_ENDPART START (date '2999-12-30') INCLUSIVE
+                                 END (date '2999-12-31') EXCLUSIVE
+    )
+);
+
+ALTER TABLE mpp10321a
+ALTER PARTITION min15part
+SPLIT PARTITION  P_FUTURE AT ('2010-06-25')
+INTO (PARTITION P20010101, PARTITION P_FUTURE);
+
+DROP TABLE mpp10321a;
+
