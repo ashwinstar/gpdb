@@ -1,0 +1,13 @@
+$def with (hostname, rows)
+<?xml version="1.0"?>
+<HealthDetails>
+<Host Name='$hostname'>
+$for r in rows:
+    <Line>    
+        <Component Name>$r[2]</>
+        <Object ID>$r[1]</>
+        <Status>$r[3]</>
+        <Message>$r[4]</>
+    </Line>
+</Host Name>
+</HealthDetails>

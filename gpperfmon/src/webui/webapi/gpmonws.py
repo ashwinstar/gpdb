@@ -43,7 +43,9 @@ urls = ('/', 'index',
         '/system', 'system',
         '/queries', 'queries',
         '/querydetails', 'querydetails',
-        '/queryplan', 'queryplan' #,
+        '/queryplan', 'queryplan',
+        '/health', 'health',
+        '/healthdetails', 'healthdetails' #,
 #        '/iterator', 'iterator'  # Needs overhaul -- not functional
 )
 
@@ -173,7 +175,9 @@ class logon:
         else:
             role = 'user'
 
-        return render.logon(username, 'SUCCESS', role, session.getid())
+        isAppliance = os.path.exists('/etc/gpdb-appliance-version')
+
+        return render.logon(username, 'SUCCESS', role, session.getid(), isAppliance)
 
 class logoff:
     def GET(self):
@@ -633,8 +637,43 @@ class database:
         else:
             return render.database_noresult(i.start, i.end, i.interval, dbstatus)
            
+class health:
+    def GET(self):
+        web.header('Content-Type', 'text/xml')
+        web.header('Cache-Control', 'no-store')
+        if not session.loggedin:
+            return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
+
+        res = None
+        try:
+            res = db.health()
+        except db.GPDBError, errorinfo:
+            return mkerr(error.DATA_ACCESS, errorinfo)
+
+        (updatetime, table) = res
+
+        return render.health(updatetime, table)
 
 
+class healthdetails:
+    def GET(self):
+        web.header('Content-Type', 'text/xml')
+        web.header('Cache-Control', 'no-store')
+        if not session.loggedin:
+            return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
+
+        i = web.input(hostname='')
+
+        if i.hostname == '':
+            return mkerr(error.BADREQ, 'Must specify hostname parameter')
+
+        res = None
+        try:
+            res = db.healthdetails(i.hostname)
+        except db.GPDBError, errorinfo:
+            return mkerr(error.DATA_ACCESS, errorinfo)
+
+        return render.healthdetails(i.hostname, res)
 
 
 if __name__ == '__main__':

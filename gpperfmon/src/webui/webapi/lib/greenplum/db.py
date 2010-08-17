@@ -1,4 +1,4 @@
-import os, sys, datetime, locale
+import os, sys, datetime, locale, time
 import gplog
 
 sys.path.append(os.path.join(sys.path[0], 'lib'))
@@ -1029,3 +1029,103 @@ def database_state():
           dbstatus = 'UNBALANCED'
 
     return dbstatus
+
+def readLastUpdateTimeForHealthFromDisk():
+    retval = 0
+    filename = "%s/snmp/lastreport.txt" % (path)
+    try:
+        f = open(filename, 'r')
+    except:
+        return 0
+
+    try:
+        for line in f:
+            line = line.strip()
+            cols = line.split("|")
+            if len(cols) == 2:
+                retval = int(cols[1])
+            break
+    finally:
+        f.close()
+
+    return retval
+
+class HealthInfo:
+    def __init__(self):
+        self.lastreadfromdisk = 0
+        self.updatetime = 0
+        self.table = None # hash (k: categories v: list) ... each item in list is a tuple (hostname, status)
+
+cachedHealthInfo = HealthInfo() 
+
+def health():
+
+    # cache values for 10 seconds to avoid repeated access to filesystem
+    if (time.time() - cachedHealthInfo.lastreadfromdisk) > 10:
+        cachedHealthInfo.lastreadfromdisk = time.time()
+        cachedHealthInfo.updatetime = readLastUpdateTimeForHealthFromDisk()
+        cachedHealthInfo.table = dict()
+
+        filename = "%s/snmp/hostlistreport.txt" % (path)
+        try:
+            f = open(filename, 'r')
+        except:
+            log.msg('could not open health file: %s' % filename)
+            raise GPDBError, 'health data unavailable'
+
+        try:
+            for line in f:
+                line = line.strip()
+                cols = line.split("|")
+                if len(cols) != 3:
+                    continue
+        
+                category = cols[0]
+
+                if category not in cachedHealthInfo.table:
+                    cachedHealthInfo.table[category] = list()
+
+                # add (hostname, status_
+                cachedHealthInfo.table[category].append( (cols[1], cols[2]) )
+
+        except Exception, e:
+            log.msg('error reading from health file: %s' % filename)
+            log.msg(e.__str__())
+            raise GPDBError, 'health status unavailable'
+        finally:
+            f.close()
+
+        cachedHealthInfo.lastreadfromdisk = time.time()
+
+    return (cachedHealthInfo.updatetime, cachedHealthInfo.table)
+    
+
+def healthdetails(hostname):
+
+    results = list()
+    filename = "%s/snmp/snmp.host.%s.txt" % (path, hostname)
+    try:
+        f = open(filename, 'r')
+    except:
+        log.msg('could not open health details file: %s' % filename)
+        raise GPDBError, 'health details for %s unavailable' % hostname
+
+    try:
+        for line in f:
+            line = line.strip()
+            cols = line.split("|")
+            if len(cols) != 5:
+                continue
+            results.append(cols)
+    except:
+        log.msg('error reading from health details file: %s' % filename)
+        raise GPDBError, 'health details for %s unavailable' % hostname
+    finally:
+        f.close()
+
+    return results
+
+
+
+
+
