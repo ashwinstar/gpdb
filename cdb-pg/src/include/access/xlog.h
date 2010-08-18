@@ -20,6 +20,7 @@
 #include "utils/pg_crc.h"
 #include "utils/relcache.h"
 #include "utils/segadmin.h"
+#include "cdb/cdbpublic.h"
 
 /*
  * REDO Tracking DEFINEs.
@@ -223,6 +224,8 @@ extern void CreateCheckPoint(bool shutdown, bool force);
 extern void XLogPutNextOid(Oid nextOid);
 extern XLogRecPtr GetRedoRecPtr(void);
 extern void GetNextXidAndEpoch(TransactionId *xid, uint32 *epoch);
+extern void XLogPopulateMasterMirroring(
+	XLogRecPtr		*redoCheckPointLoc);
 
 extern void XLogGetBuffer(int startidx, int npages, char **from, Size *nbytes);
 extern void XLogGetRecoveryStart(char *callerStr, char *reasonStr, XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint);

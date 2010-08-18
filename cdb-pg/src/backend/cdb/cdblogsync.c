@@ -299,6 +299,12 @@ cdb_perform_redo(XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint, XLog
 	if (redoCheckPointLoc->xlogid == 0 && redoCheckPointLoc->xrecoff == 0)
 	{
 		XLogGetRecoveryStart("QDSYNC", "for redo apply", redoCheckPointLoc, redoCheckPoint);
+
+		/*
+		 * Since this is the first time this connection to the Standby Master has called, we need to
+		 * initialize the Master Mirroring persistent hash tables from the initial checkpoint.
+		 */
+		XLogPopulateMasterMirroring(redoCheckPointLoc);
 	}
 	
 	XLogStandbyRecoverRange(redoCheckPointLoc, redoCheckPoint, newCheckpointLoc);

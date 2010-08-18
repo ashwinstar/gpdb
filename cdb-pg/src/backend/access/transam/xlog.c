@@ -615,16 +615,12 @@ static bool ValidXLOGHeader(XLogPageHeader hdr, int emode);
 static XLogRecord *ReadCheckpointRecord(XLogRecPtr RecPtr, int whichChkpt);
 static void UnpackCheckPointRecord(
 	XLogRecord			*record,
-
 	XLogRecPtr 			*location,
-	
 	TMGXACT_CHECKPOINT	**dtxCheckpoint,
-
 	uint32				*dtxCheckpointLen,
-	
 	char				**masterMirroringCheckpoint,
-	
 	uint32				*masterMirroringCheckpointLen);
+
 static List *readTimeLineHistory(TimeLineID targetTLI);
 static bool existsTimeLineHistory(TimeLineID probeTLI);
 static TimeLineID findNewestTimeLine(TimeLineID startTLI);
@@ -6347,7 +6343,10 @@ StartupXLOG(void)
 		/*
 		 * Handle the DTX information.
 		 */
-		redoDtxCheckPoint(dtxCheckpoint);
+		if (dtxCheckpoint != NULL)
+		{
+			redoDtxCheckPoint(dtxCheckpoint);
+		}
 
 
 		/* 
@@ -7165,6 +7164,38 @@ StartupXLOG_Pass4(void)
 		elog(PersistentRecovery_DebugPrintLevel(), 
 			 "Exiting StartupXLOG_Pass4");
 }
+
+void
+XLogPopulateMasterMirroring(
+	XLogRecPtr		*redoCheckPointLoc)
+{
+	TMGXACT_CHECKPOINT	*dtxCheckpoint;
+	uint32				dtxCheckpointLen;
+	char				*masterMirroringCheckpoint;
+	uint32				masterMirroringCheckpointLen;
+
+	XLogRecord *record;
+
+	CloseReadRecord();
+
+	record = ReadRecord(redoCheckPointLoc, PANIC);
+
+	UnpackCheckPointRecord(
+						record,
+						redoCheckPointLoc,
+						&dtxCheckpoint,
+						&dtxCheckpointLen,
+						&masterMirroringCheckpoint,
+						&masterMirroringCheckpointLen);
+
+	if (masterMirroringCheckpoint != NULL)
+	{
+		mmxlog_read_checkpoint_data(masterMirroringCheckpoint);
+	}
+
+	CloseReadRecord();
+}
+
 
 /*
  * Determine the recovery redo start location from the pg_control file.
