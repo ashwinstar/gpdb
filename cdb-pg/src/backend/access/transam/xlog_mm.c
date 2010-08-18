@@ -30,7 +30,7 @@
 #include "storage/freespace.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
-#include "cdb/cdbpersistentstore.h"
+#include "cdb/cdbpersistentrecovery.h"
 #include "cdb/cdbpersistentfilesysobj.h"
 
 typedef struct fspc_map
@@ -75,8 +75,8 @@ static void tblspc_get_filespace_paths(Oid tblspc, int16 master_dbid,
 									   int16 mirror_dbid,
 									   char **master_path, char **mirror_path);
 static void get_filespace_paths(Oid filespace, char **master_path, char **mirror_path);
-static void add_filespace_map_entry(fspc_map *m);
-static void add_tablespace_map_entry(tspc_map *m);
+static void add_filespace_map_entry(fspc_map *m, char *caller);
+static void add_tablespace_map_entry(tspc_map *m, char *caller);
 
 /*
  * Remember filespace and tablespace mappings, used so that we know
@@ -171,7 +171,7 @@ mmxlog_redo(XLogRecPtr lsn, XLogRecord *record)
 			
 			m.dbid2 = xlrec->u.dbid.mirror;
 			strncpy(m.path2, xlrec->mirror_path, MAXPGPATH);
-			add_filespace_map_entry(&m);
+			add_filespace_map_entry(&m, "mmxlog_redo");
 		}
 		else if (xlrec->objtype == MM_OBJ_TABLESPACE)
 		{
@@ -180,7 +180,7 @@ mmxlog_redo(XLogRecPtr lsn, XLogRecord *record)
 			m.filespaceoid = xlrec->filespace;
 			m.tablespaceoid = xlrec->tablespace;
 
-			add_tablespace_map_entry(&m);
+			add_tablespace_map_entry(&m, "mmxlog_redo");
 		}
 
 		if (mkdir(path, 0700) < 0)
@@ -432,12 +432,15 @@ emit_mmxlog_fs_record(mm_fs_obj_type type, Oid filespace,
 void
 mmxlog_log_remove_filespace(Oid filespace)
 {
+	bool emitted;
 	XLogRecPtr location;
 
 	if (Debug_print_qd_mirroring)
 		elog(DEBUG1, "emitting drop filespace record for %u",
 			 filespace);
-	emit_mmxlog_fs_record(MM_OBJ_FILESPACE,
+	emitted =
+		emit_mmxlog_fs_record(
+						  MM_OBJ_FILESPACE,
 						  filespace,
 						  InvalidOid /* tablespace */,
 						  InvalidOid /* database */,
@@ -445,6 +448,20 @@ mmxlog_log_remove_filespace(Oid filespace)
 						  0 /* segnum */,
 						  MMXLOG_REMOVE_DIR,
 						  &location);
+	if (Debug_persistent_recovery_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+
+		SUPPRESS_ERRCONTEXT_PUSH();
+
+		elog(PersistentRecovery_DebugPrintLevel(), 
+			 "mmxlog_log_remove_filespace: delete filespace %u (emitted %s, location %s)",
+			 filespace,
+			 (emitted ? "true" : "false"),
+			 XLogLocationToString(&location));
+
+		SUPPRESS_ERRCONTEXT_POP();
+	}
 }
 
 /* External interface to tablespace removal logging */
@@ -467,13 +484,13 @@ mmxlog_log_remove_tablespace(Oid tablespace)
 						  0 /* segnum */,
 						  MMXLOG_REMOVE_DIR,
 						  &location);
-	if (Debug_persistent_print)
+	if (Debug_persistent_recovery_print)
 	{
 		SUPPRESS_ERRCONTEXT_DECLARE;
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(Persistent_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(), 
 			 "mmxlog_log_remove_tablespace: delete tablespace %u (emitted %s, location %s)",
 			 tablespace,
 			 (emitted ? "true" : "false"),
@@ -503,13 +520,13 @@ mmxlog_log_remove_database(Oid tablespace, Oid database)
 						  0 /* segnum */,
 						  MMXLOG_REMOVE_DIR,
 						  &location);
-	if (Debug_persistent_print)
+	if (Debug_persistent_recovery_print)
 	{
 		SUPPRESS_ERRCONTEXT_DECLARE;
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(Persistent_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(), 
 			 "mmxlog_log_remove_database: delete database directory %u/%u (emitted %s, location %s)",
 			 tablespace,
 			 database,
@@ -541,13 +558,13 @@ mmxlog_log_remove_relfilenode(Oid tablespace, Oid database, Oid relfilenode,
 						  segnum,
 						  MMXLOG_REMOVE_FILE,
 						  &location);
-	if (Debug_persistent_print)
+	if (Debug_persistent_recovery_print)
 	{
 		SUPPRESS_ERRCONTEXT_DECLARE;
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(Persistent_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(), 
 			 "mmxlog_log_remove_relfilenode: delete relation %u/%u/%u, segment file #%d (emitted %s, location %s)",
 			 tablespace,
 			 database,
@@ -564,9 +581,12 @@ mmxlog_log_remove_relfilenode(Oid tablespace, Oid database, Oid relfilenode,
 void
 mmxlog_log_create_filespace(Oid filespace)
 {
+	bool emitted;
 	XLogRecPtr location;
 
-	emit_mmxlog_fs_record(MM_OBJ_FILESPACE,
+	emitted =
+		emit_mmxlog_fs_record(
+						  MM_OBJ_FILESPACE,
 						  filespace,
 						  InvalidOid /* tablespace */,
 						  InvalidOid /* database */,
@@ -574,11 +594,25 @@ mmxlog_log_create_filespace(Oid filespace)
 						  0 /* segnum */,
 						  MMXLOG_CREATE_DIR,
 						  &location);
+	if (Debug_persistent_recovery_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+
+		SUPPRESS_ERRCONTEXT_PUSH();
+
+		elog(PersistentRecovery_DebugPrintLevel(), 
+			 "mmxlog_log_create_filespace: create filespace %u (emitted %s, location %s)",
+			 filespace,
+			 (emitted ? "true" : "false"),
+			 XLogLocationToString(&location));
+
+		SUPPRESS_ERRCONTEXT_POP();
+	}
 }
 
 /* External interface to tablespace creation logging */
 void
-mmxlog_log_create_tablespace(Oid tablespace)
+mmxlog_log_create_tablespace(Oid filespace, Oid tablespace)
 {
 	bool emitted;
 	XLogRecPtr location;
@@ -586,22 +620,23 @@ mmxlog_log_create_tablespace(Oid tablespace)
 	emitted =
 		emit_mmxlog_fs_record(
 						  MM_OBJ_TABLESPACE,
-						  InvalidOid /* filespace */,
+						  filespace,
 						  tablespace,
 						  InvalidOid /* database */,
 						  InvalidOid /* relfilenode */,
 						  0 /* segnum */,
 						  MMXLOG_CREATE_DIR,
 						  &location);
-	if (Debug_persistent_print)
+	if (Debug_persistent_recovery_print)
 	{
 		SUPPRESS_ERRCONTEXT_DECLARE;
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(Persistent_DebugPrintLevel(), 
-			 "mmxlog_log_create_tablespace: create tablespace %u (emitted %s, location %s)",
+		elog(PersistentRecovery_DebugPrintLevel(), 
+			 "mmxlog_log_create_tablespace: create tablespace %u (filespace %u, emitted %s, location %s)",
 			 tablespace,
+			 filespace,
 			 (emitted ? "true" : "false"),
 			 XLogLocationToString(&location));
 
@@ -626,13 +661,13 @@ mmxlog_log_create_database(Oid tablespace, Oid database)
 						  0 /* segnum */,
 						  MMXLOG_CREATE_DIR,
 						  &location);
-	if (Debug_persistent_print)
+	if (Debug_persistent_recovery_print)
 	{
 		SUPPRESS_ERRCONTEXT_DECLARE;
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(Persistent_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(), 
 			 "mmxlog_log_create_database: create database directory %u/%u (emitted %s, location %s)",
 			 tablespace,
 			 database,
@@ -661,13 +696,13 @@ mmxlog_log_create_relfilenode(Oid tablespace, Oid database,
 						  segnum,
 						  MMXLOG_CREATE_FILE,
 						  &location);
-	if (Debug_persistent_print)
+	if (Debug_persistent_recovery_print)
 	{
 		SUPPRESS_ERRCONTEXT_DECLARE;
 
 		SUPPRESS_ERRCONTEXT_PUSH();
 
-		elog(Persistent_DebugPrintLevel(), 
+		elog(PersistentRecovery_DebugPrintLevel(), 
 			 "mmxlog_log_create_relfilenode: create relation %u/%u/%u, segment file #%d (emitted %s, location %s)",
 			 tablespace,
 			 database,
@@ -716,7 +751,7 @@ init_hash(const char *name, Size keysize, Size entrysize)
  * end.
  */
 static void
-add_filespace_map_entry(fspc_map *m)
+add_filespace_map_entry(fspc_map *m, char *caller)
 {
 	void *entry;
 	bool found;
@@ -739,13 +774,23 @@ add_filespace_map_entry(fspc_map *m)
 	 * right over the top.
 	 */
 	memcpy(entry, m, sizeof(fspc_map));
+
+	if (Debug_persistent_recovery_print)
+	{
+		elog(PersistentRecovery_DebugPrintLevel(), 
+			 "add_filespace_map_entry: add filespace %u, dbid1 %d, dbid2 %d (caller '%s')",
+			 m->filespaceoid,
+			 m->dbid1,
+			 m->dbid2,
+			 caller);
+	}
 }
 
 /*
  * Same as add_filespace_map_entry(), but for tablespaces.
  */
 static void
-add_tablespace_map_entry(tspc_map *m)
+add_tablespace_map_entry(tspc_map *m, char *caller)
 {
 	void *entry;
 	bool found;
@@ -766,6 +811,15 @@ add_tablespace_map_entry(tspc_map *m)
 	 * See above for why we do this.
 	 */
 	memcpy(entry, m, sizeof(tspc_map));
+
+	if (Debug_persistent_recovery_print)
+	{
+		elog(PersistentRecovery_DebugPrintLevel(), 
+			 "add_tablespace_map_entry: add tablespace %u (filespace %u, caller '%s')",
+			 m->tablespaceoid,
+			 m->filespaceoid,
+			 caller);
+	}
 }
 
 /*
@@ -955,7 +1009,7 @@ mmxlog_read_checkpoint_data(char *cpdata)
 		if (!m)
 			break;
 
-		add_filespace_map_entry(m);
+		add_filespace_map_entry(m, "mmxlog_read_checkpoint_data");
 		
 		if (mkdir(fmap[i].path2, 0700) < 0)
 		{
@@ -973,7 +1027,7 @@ mmxlog_read_checkpoint_data(char *cpdata)
 		char *tmp;
 		tspc_map *m = &(tmap[i]);
 
-		add_tablespace_map_entry(m);
+		add_tablespace_map_entry(m, "mmxlog_read_checkpoint_data");
 
 		tmp = mmxlog_filespace_get_path(tmap[i].filespaceoid);
 		snprintf(path, sizeof(path), "%s/%u", tmp, tmap[i].tablespaceoid);

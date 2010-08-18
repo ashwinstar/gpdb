@@ -376,11 +376,6 @@ void MirroredAppendOnly_Create(
 	*primaryError = 0;
 	*mirrorDataLossOccurred = false;
 
-#ifdef MASTER_MIRROR_SYNC
-	mmxlog_log_create_relfilenode(relFileNode->spcNode, relFileNode->dbNode, relFileNode->relNode,
-								  segmentFileNum);
-#endif
-
 	MirroredAppendOnly_DoOpen(
 					&mirroredOpen, 
 					relFileNode,

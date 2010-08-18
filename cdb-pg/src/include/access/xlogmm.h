@@ -72,7 +72,7 @@ extern void mmxlog_log_remove_relfilenode( Oid tablespace, Oid database,
  * master / standby master.
  */
 extern void mmxlog_log_create_filespace(Oid filespace);
-extern void mmxlog_log_create_tablespace(Oid tablespace);
+extern void mmxlog_log_create_tablespace(Oid filespace, Oid tablespace);
 extern void mmxlog_log_create_database(Oid tablespace, Oid database);
 extern void mmxlog_log_create_relfilenode(Oid tablespace, Oid database,
 										  Oid relfilenode, uint32 segnum);

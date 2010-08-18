@@ -494,6 +494,11 @@ smgrcreatefilespacedirpending(
 								persistentSerialNum,
 								flushToXLog);
 
+	
+#ifdef MASTER_MIRROR_SYNC
+	mmxlog_log_create_filespace(filespaceOid);	
+#endif
+	
 	PendingDelete_AddCreatePendingEntry(
 								&fsObjName,
 								persistentTid,
@@ -524,11 +529,6 @@ smgrcreatefilespacedir(
 
 	bool						*mirrorDataLossOccurred)
 {
-
-#ifdef MASTER_MIRROR_SYNC
-	mmxlog_log_create_filespace(filespaceOid);	
-#endif
-
 	mdcreatefilespacedir(
 					filespaceOid, 
 					primaryFilespaceLocation, 
@@ -569,6 +569,12 @@ smgrcreatetablespacedirpending(
 								persistentSerialNum,
 								flushToXLog);
 
+#ifdef MASTER_MIRROR_SYNC
+	mmxlog_log_create_tablespace(	
+						tablespaceDirNode->filespace,
+						tablespaceDirNode->tablespace);
+#endif
+	
 	PendingDelete_AddCreatePendingEntry(
 						&fsObjName,
 						persistentTid,
@@ -591,10 +597,6 @@ smgrcreatetablespacedir(
 
 	bool						*mirrorDataLossOccurred)
 {
-#ifdef MASTER_MIRROR_SYNC
-	mmxlog_log_create_tablespace(tablespaceOid);	
-#endif
-
 	mdcreatetablespacedir(
 					tablespaceOid, 
 					mirrorMode,
@@ -636,6 +638,10 @@ smgrcreatedbdirpending(
 								persistentSerialNum,
 								flushToXLog);
 
+#ifdef MASTER_MIRROR_SYNC
+	mmxlog_log_create_database(dbDirNode->tablespace, dbDirNode->database); 
+#endif
+	
 	PendingDelete_AddCreatePendingEntry(
 						&fsObjName,
 						persistentTid,
@@ -658,10 +664,6 @@ smgrcreatedbdir(
 
 	bool						*mirrorDataLossOccurred)
 {
-#ifdef MASTER_MIRROR_SYNC
-	mmxlog_log_create_database(dbDirNode->tablespace, dbDirNode->database);	
-#endif
-
 	mdcreatedbdir(
 			dbDirNode, 
 			mirrorMode,
@@ -768,6 +770,15 @@ void smgrcreatepending(
 								flushToXLog);
 	
 	
+	
+#ifdef MASTER_MIRROR_SYNC
+	mmxlog_log_create_relfilenode(
+						relFileNode->spcNode,
+				  		relFileNode->dbNode,
+				  		relFileNode->relNode,
+				  		/* segmentFileNum */ 0);	
+#endif
+	
 	pending = PendingDelete_AddCreatePendingEntry(
 								&fsObjName,
 								persistentTid,
@@ -809,16 +820,6 @@ smgrcreate(
 
 	bool						*mirrorDataLossOccurred)
 {
-
-#ifdef MASTER_MIRROR_SYNC
-	/* ignoreAlreadyExists will only be true if we're called during recovery */
-	if (!ignoreAlreadyExists)
-		mmxlog_log_create_relfilenode(reln->smgr_rnode.spcNode,
-									  reln->smgr_rnode.dbNode,
-									  reln->smgr_rnode.relNode,
-									  0);	
-#endif
-
 	mdcreate(
 			reln,
 			isLocalBuf,
