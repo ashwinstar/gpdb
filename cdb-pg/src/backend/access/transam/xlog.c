@@ -613,6 +613,18 @@ static void CleanupBackupHistory(void);
 static XLogRecord *ReadRecord(XLogRecPtr *RecPtr, int emode);
 static bool ValidXLOGHeader(XLogPageHeader hdr, int emode);
 static XLogRecord *ReadCheckpointRecord(XLogRecPtr RecPtr, int whichChkpt);
+static void UnpackCheckPointRecord(
+	XLogRecord			*record,
+
+	XLogRecPtr 			*location,
+	
+	TMGXACT_CHECKPOINT	**dtxCheckpoint,
+
+	uint32				*dtxCheckpointLen,
+	
+	char				**masterMirroringCheckpoint,
+	
+	uint32				*masterMirroringCheckpointLen);
 static List *readTimeLineHistory(TimeLineID targetTLI);
 static bool existsTimeLineHistory(TimeLineID probeTLI);
 static TimeLineID findNewestTimeLine(TimeLineID startTLI);
@@ -6318,33 +6330,31 @@ StartupXLOG(void)
 	memcpy(&checkPoint, XLogRecGetData(record), sizeof(CheckPoint));
 	wasShutdown = (record->xl_info == XLOG_CHECKPOINT_SHUTDOWN);
 
-	if (record->xl_len > sizeof(CheckPoint))
 	{
-		TMGXACT_CHECKPOINT *gs = 
-			(TMGXACT_CHECKPOINT *)XLogRecGetData(record) + sizeof(CheckPoint);
-		size_t gactsz = TMGXACT_CHECKPOINT_BYTES(gs->committedCount);
+		TMGXACT_CHECKPOINT 	*dtxCheckpoint;
+		uint32 				dtxCheckpointLen;
+		char				*masterMirroringCheckpoint;
+		uint32				masterMirroringCheckpointLen;
+		
+		UnpackCheckPointRecord(
+							record,
+							&checkPointLoc,
+							&dtxCheckpoint,
+							&dtxCheckpointLen,
+							&masterMirroringCheckpoint,
+							&masterMirroringCheckpointLen);
 
-		if (Debug_persistent_recovery_print)
-		{
-			elog(PersistentRecovery_DebugPrintLevel(), 
-				 "StartupXLOG: Checkpoint record data length = %u, DTX committed count %d, DTX data length %u, Master Mirroring information length %u",
-				 record->xl_len,
-				 gs->committedCount,
-				 (uint32)gactsz,
-				 (uint32)(record->xl_len - sizeof(Checkpoint) - gactsz));
-		}
-		redoDtxCheckPoint((char *)gs);
+		/*
+		 * Handle the DTX information.
+		 */
+		redoDtxCheckPoint(dtxCheckpoint);
 
-		mmxlog_read_checkpoint_data(XLogRecGetData(record) + sizeof(CheckPoint)
-									+ gactsz);
-	}
-	else
-	{
-		if (Debug_persistent_recovery_print)
-		{
-			elog(PersistentRecovery_DebugPrintLevel(), 
-				 "StartupXLOG: Regular checkpoint with no DTX or Master Mirroring information");
-		}
+
+		/* 
+		 * Always ignore the Master Mirrroing information.  It is only used by
+		 * Standby Master REDO.
+		 */
+		
 	}
 
 	ereport(LOG,
@@ -7698,6 +7708,71 @@ ReadCheckpointRecord(XLogRecPtr RecPtr, int whichChkpt)
 		return NULL;
 	}
 	return record;
+}
+
+static void
+UnpackCheckPointRecord(
+	XLogRecord			*record,
+
+	XLogRecPtr 			*location,
+	
+	TMGXACT_CHECKPOINT	**dtxCheckpoint,
+
+	uint32				*dtxCheckpointLen,
+	
+	char				**masterMirroringCheckpoint,
+	
+	uint32				*masterMirroringCheckpointLen)
+{
+	*dtxCheckpoint = NULL;
+	*dtxCheckpointLen = 0;
+	*masterMirroringCheckpoint = NULL;
+	*masterMirroringCheckpointLen = 0;
+
+	if (record->xl_len > sizeof(CheckPoint))
+	{
+		uint32 remainderLen;
+
+		remainderLen = record->xl_len - sizeof(CheckPoint);
+		if (remainderLen < TMGXACT_CHECKPOINT_BYTES(0))
+			ereport(PANIC,
+				 (errmsg("Bad checkpoint record length %u (DTX information header: expected at least length %u, actual length %u) at location %s",
+				 		 record->xl_len,
+				 		 (uint32)TMGXACT_CHECKPOINT_BYTES(0),
+				 		 remainderLen,
+				 		 XLogLocationToString(location))));
+
+		*dtxCheckpoint = (TMGXACT_CHECKPOINT *)(XLogRecGetData(record) + sizeof(CheckPoint));
+		*dtxCheckpointLen = TMGXACT_CHECKPOINT_BYTES((*dtxCheckpoint)->committedCount);
+		if (remainderLen < *dtxCheckpointLen)
+			ereport(PANIC,
+				 (errmsg("Bad checkpoint record length %u (DTX information: expected at least length %u, actual length %u) at location %s",
+				 		 record->xl_len,
+				 		 *dtxCheckpointLen,
+				 		 remainderLen,
+				 		 XLogLocationToString(location))));
+
+		remainderLen -= *dtxCheckpointLen;
+
+		if (Debug_persistent_recovery_print)
+		{
+			elog(PersistentRecovery_DebugPrintLevel(), 
+				 "UnpackCheckPointRecord: Checkpoint record data length = %u, DTX committed count %d, DTX data length %u, Master Mirroring information length %u, location %s",
+				 record->xl_len,
+				 (*dtxCheckpoint)->committedCount,
+				 *dtxCheckpointLen,
+				 remainderLen,
+				 XLogLocationToString(location));
+		}
+
+		if (remainderLen > 0)
+		{
+			*masterMirroringCheckpoint = ((char*)*dtxCheckpoint) + *dtxCheckpointLen;
+			*masterMirroringCheckpointLen = remainderLen;
+
+			// UNDONE: Validate the Master Mirroring length.
+		}
+	}
 }
 
 /*

@@ -1577,9 +1577,8 @@ isTMInRecovery(void)
  * Redo transaction commit log record.
  */
 void
-redoDtxCheckPoint(char *dtxCheckpointBuffer)
+redoDtxCheckPoint(TMGXACT_CHECKPOINT *gxact_checkpoint)
 {
-	TMGXACT_CHECKPOINT * gxact_checkpoint;
 	int committedCount;
 	int segmentCount;
 	
@@ -1590,8 +1589,6 @@ redoDtxCheckPoint(char *dtxCheckpointBuffer)
 		elog(DTM_DEBUG3, "DB in Utility mode.  Defer DTM recovery till later.");
 		return;
 	}
-	
-	gxact_checkpoint = (TMGXACT_CHECKPOINT *)dtxCheckpointBuffer;
 	
 	committedCount = gxact_checkpoint->committedCount;
 	segmentCount = gxact_checkpoint->segmentCount;
