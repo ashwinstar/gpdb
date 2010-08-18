@@ -923,8 +923,7 @@ void write_lastreport_status()
 		return;
 	}
 
-    // temporary comment until i can fix in morning
-	//fprintf(fd, "%lu|%lu\n", (apr_int64_t)si.lastreport_started, (apr_int64_t)si.lastreport_done);
+	fprintf(fd, "%" FMT64 "|%" FMT64 "\n", (apr_int64_t)si.lastreport_started, (apr_int64_t)si.lastreport_done);
 	fclose(fd);
 	rename(si.lastreport_tmpfile, si.lastreport_file);
 }
