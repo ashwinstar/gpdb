@@ -188,11 +188,11 @@ GPDB_SNMP_STATUS snmp_network_interface_status_code_conversion(int statusCodeIn,
 	{
 		case 1:
 			status = GPDB_SNMP_STATUS_NORMAL;
-			*msgout = "";
+			*msgout = "up";
 		break;
 
 		case 2:
-			status = GPDB_SNMP_STATUS_ERROR;
+			status = GPDB_SNMP_STATUS_NORMAL;
 			*msgout = "down";
 		break;
 
