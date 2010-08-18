@@ -171,7 +171,7 @@ GPDB_SNMP_STATUS brocade_switch_status_code_conversion(int statusCodeIn, char** 
 
 		default:
 			status = GPDB_SNMP_STATUS_UNKNOWN;
-			*msgout = "unexpected status from Brocade";
+			*msgout = "unexpected status from device";
 		break;
 	}
 	return status;
@@ -203,7 +203,76 @@ GPDB_SNMP_STATUS snmp_network_interface_status_code_conversion(int statusCodeIn,
 
 		default:
 			status = GPDB_SNMP_STATUS_UNKNOWN;
-			*msgout = "unexpected status from Brocade";
+			*msgout = "unexpected status from device";
+		break;
+	}
+	return status;
+}
+
+GPDB_SNMP_STATUS dell_network_device_connection_status_conversion(int statusCodeIn, char** msgout)
+{
+    //unknown(0) Unable to determine connection status. 
+    //connected(1) Media reports that device is connected. 
+    //disconnected(2) Media reports that device is disconnected. 
+    //driverBad(3) Driver cannot be opened to determine status. 
+    //driverDisabled(4) Driver is disabled. 
+    //hardwareInitalizing(10) Hardware is initializing. 
+    //hardwareResetting(11) Hardware is resetting. 
+    //hardwareClosing(12) Hardware is closing down. 
+    //hardwareNotReady(13) Hardware is not ready. 
+
+	GPDB_SNMP_STATUS status;
+
+	switch(statusCodeIn)
+	{
+		case 0:
+			status = GPDB_SNMP_STATUS_UNKNOWN;
+			*msgout = "unknown";
+        break;
+
+		case 1:
+			status = GPDB_SNMP_STATUS_NORMAL;
+			*msgout = "connected";
+        break;
+
+		case 2:
+			status = GPDB_SNMP_STATUS_ERROR;
+			*msgout = "disconnected";
+        break;
+
+		case 3:
+			status = GPDB_SNMP_STATUS_ERROR;
+			*msgout = "driver bad";
+        break;
+
+		case 4:
+			status = GPDB_SNMP_STATUS_NORMAL;
+			*msgout = "driver disabled";
+        break;
+
+		case 10:
+			status = GPDB_SNMP_STATUS_ERROR;
+			*msgout = "hardware initalizing";
+        break;
+
+		case 11:
+			status = GPDB_SNMP_STATUS_ERROR;
+			*msgout = "hardware resetting";
+        break;
+
+		case 12:
+			status = GPDB_SNMP_STATUS_ERROR;
+			*msgout = "hardware closing";
+        break;
+
+		case 13:
+			status = GPDB_SNMP_STATUS_ERROR;
+			*msgout = "hardware not ready";
+        break;
+
+		default:
+			status = GPDB_SNMP_STATUS_UNKNOWN;
+			*msgout = "unexpected code from device";
 		break;
 	}
 	return status;
@@ -223,11 +292,11 @@ GPDB_SNMP_STATUS dell_status_code_conversion(int statusCodeIn, char** msgout)
 	{
 		case 1:
 			status = GPDB_SNMP_STATUS_UNKNOWN;
-			*msgout = "Dell indicates other status";
+			*msgout = "other";
 		break;
 		case 2:
 			status = GPDB_SNMP_STATUS_UNKNOWN;
-			*msgout = "Dell indicates unknown status";
+			*msgout = "unknown";
 		break;
 		case 3:
 			status = GPDB_SNMP_STATUS_NORMAL;
@@ -235,22 +304,22 @@ GPDB_SNMP_STATUS dell_status_code_conversion(int statusCodeIn, char** msgout)
 		break;
 		case 4:
 			status = GPDB_SNMP_STATUS_WARNING;
-			*msgout = "Dell indicates nonCritical status";
+			*msgout = "nonCritical";
 		break;
 
 		case 5:
 			status = GPDB_SNMP_STATUS_ERROR;
-			*msgout = "Dell indicates critical status";
+			*msgout = "critical";
 		break;
 
 		case 6:
 			status = GPDB_SNMP_STATUS_ERROR;
-			*msgout = "Dell indicates nonRecoverable status";
+			*msgout = "nonRecoverable";
 		break;
 
 		default:
 			status = GPDB_SNMP_STATUS_UNKNOWN;
-			*msgout = "unexpected status from Dell";
+			*msgout = "unexpected status from device";
 		break;
 	}
 	return status;
@@ -271,7 +340,7 @@ GPDB_SNMP_STATUS dell_controller_status_code_conversion(int statusCodeIn, char**
 	{
 		case 0:
 			status = GPDB_SNMP_STATUS_UNKNOWN;
-			*msgout = "Dell indicates unknown controller state";
+			*msgout = "unknown";
 		break;
 		case 1:
 			status = GPDB_SNMP_STATUS_NORMAL;;
@@ -279,7 +348,7 @@ GPDB_SNMP_STATUS dell_controller_status_code_conversion(int statusCodeIn, char**
 		break;
 		case 2:
 			status = GPDB_SNMP_STATUS_ERROR;
-			*msgout = "Dell indicates Failed controller state";
+			*msgout = "Failed";
 		break;
 		case 3:
 			status = GPDB_SNMP_STATUS_NORMAL;
@@ -287,15 +356,15 @@ GPDB_SNMP_STATUS dell_controller_status_code_conversion(int statusCodeIn, char**
 		break;
 		case 4:
 			status = GPDB_SNMP_STATUS_ERROR;
-			*msgout = "Dell indicates Offline controller state";
+			*msgout = "Offline";
 		break;
 		case 6:
 			status = GPDB_SNMP_STATUS_ERROR;
-			*msgout = "Dell indicates Degraded controller state";
+			*msgout = "Degraded";
 		break;
 		default:
 			status = GPDB_SNMP_STATUS_UNKNOWN;
-			*msgout = "unexpected controller state from dell";
+			*msgout = "unexpected code from device";
 		break;
 	}
 
@@ -327,7 +396,7 @@ GPDB_SNMP_STATUS dell_virtual_disk_state_status_code_conversion(int statusCodeIn
 	{
 		case 0:
 			status = GPDB_SNMP_STATUS_UNKNOWN;
-			*msgout = "Dell unknown";
+			*msgout = "unknown";
 		break;
 		case 1:
 			status = GPDB_SNMP_STATUS_NORMAL;
@@ -335,7 +404,7 @@ GPDB_SNMP_STATUS dell_virtual_disk_state_status_code_conversion(int statusCodeIn
 		break;
 		case 2:
 			status = GPDB_SNMP_STATUS_ERROR;
-			*msgout = "Dell Failed";
+			*msgout = "Failed";
 		break;
 		case 3:
 			status = GPDB_SNMP_STATUS_NORMAL;
@@ -343,55 +412,55 @@ GPDB_SNMP_STATUS dell_virtual_disk_state_status_code_conversion(int statusCodeIn
 		break;
 		case 4:
 			status = GPDB_SNMP_STATUS_ERROR;
-			*msgout = "Dell Offline";
+			*msgout = "Offline";
 		break;
 		case 6:
 			status = GPDB_SNMP_STATUS_ERROR;
-			*msgout = "Dell Degraded";
+			*msgout = "Degraded";
 		break;
 		case 15:
 			status = GPDB_SNMP_STATUS_ERROR;
-			*msgout = "Dell Resynching";
+			*msgout = "Resynching";
 		break;
 		case 16:
 			status = GPDB_SNMP_STATUS_ERROR;
-			*msgout = "Dell Regenerating";
+			*msgout = "Regenerating";
 		break;
 		case 24:
 			status = GPDB_SNMP_STATUS_ERROR;
-			*msgout = "Dell Rebuilding";
+			*msgout = "Rebuilding";
 		break;
 		case 26:
 			status = GPDB_SNMP_STATUS_ERROR;
-			*msgout = "Dell Formatting";
+			*msgout = "Formatting";
 		break;
 		case 32:
 			status = GPDB_SNMP_STATUS_ERROR;
-			*msgout = "Dell Reconstructing";
+			*msgout = "Reconstructing";
 		break;
 		case 35:
 			status = GPDB_SNMP_STATUS_WARNING;
-			*msgout = "Dell Initialization";
+			*msgout = "Initialization";
 		break;
 		case 36:
 			status = GPDB_SNMP_STATUS_WARNING;
-			*msgout = "Dell Background Initialization";
+			*msgout = "Background Initialization";
 		break;
 		case 38:
 			status = GPDB_SNMP_STATUS_ERROR;
-			*msgout = "Dell Resynching Paused";
+			*msgout = "Resynching Paused";
 		break;
 		case 52:
 			status = GPDB_SNMP_STATUS_ERROR;
-			*msgout = "Dell Permanently Degraded";
+			*msgout = "Permanently Degraded";
 		break;
 		case 54:
 			status = GPDB_SNMP_STATUS_ERROR;
-			*msgout = "Dell Degraded Redundancy";
+			*msgout = "Degraded Redundancy";
 		break;
 		default:
 			status = GPDB_SNMP_STATUS_UNKNOWN;
-			*msgout = "unexpected state from dell";
+			*msgout = "unexpected code from device";
 		break;
 	}
 
@@ -453,7 +522,7 @@ GPDB_SNMP_STATUS dell_virtual_disk_layout_code_conversion(int statusCodeIn, char
 		break;
 		default:
 			status = GPDB_SNMP_STATUS_UNKNOWN;
-			*msgout = "unexpected status code from Dell";
+			*msgout = "unexpected code from device";
 		break;
 	}
 
@@ -474,32 +543,32 @@ GPDB_SNMP_STATUS dell_virtual_disk_write_policy_code_conversion(int statusCodeIn
 	switch(statusCodeIn)
 	{
 		case 1:
-			status = GPDB_SNMP_STATUS_ERROR;
-			*msgout = "unexpected status code of 1";
+			status = GPDB_SNMP_STATUS_WARNING;
+			*msgout = "Enabled Adaptec Write Cache Enabled Protected";
 		break;
 		case 2:
-			status = GPDB_SNMP_STATUS_ERROR;
-			*msgout = "unexpected status code of 2";
+			status = GPDB_SNMP_STATUS_WARNING;
+			*msgout = "Disabled Adaptec Write Cache Disabled";
 		break;
 		case 3:
 			status = GPDB_SNMP_STATUS_NORMAL;
 			*msgout = "LSI Write Back";
 		break;
 		case 4:
-			status = GPDB_SNMP_STATUS_ERROR;
+			status = GPDB_SNMP_STATUS_WARNING;
 			*msgout = "LSI Write Through";
 		break;
 		case 5:
-			status = GPDB_SNMP_STATUS_NORMAL;
+			status = GPDB_SNMP_STATUS_WARNING;
 			*msgout = "Enabled Always (Adaptec)";
 		break;
 		case 6:
-			status = GPDB_SNMP_STATUS_ERROR;
+			status = GPDB_SNMP_STATUS_WARNING;
 			*msgout = "Enabled Always (SAS)";
 		break;
 		default:
-			status = GPDB_SNMP_STATUS_ERROR;
-			*msgout = "unexpected status code from dell";
+			status = GPDB_SNMP_STATUS_UNKNOWN;
+			*msgout = "unexpected code from device";
 		break;
 	}
 
@@ -569,6 +638,11 @@ void format_generic_status_code(FILE* fd, const char* hostname, oid oidname[], s
 void gpmon_format_dell_status(FILE* fd, const char* hostname, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
 	format_generic_status_code(fd, hostname, oidname, oidlen, displayname, vars, dell_status_code_conversion);
+}
+
+void gpmon_format_dell_network_device_status(FILE* fd, const char* hostname, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+{
+	format_generic_status_code(fd, hostname, oidname, oidlen, displayname, vars, dell_network_device_connection_status_conversion);
 }
 
 void format_dell_controller_status(FILE* fd, const char* hostname, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
@@ -839,6 +913,8 @@ void run_snmp_report_for_dell_host(const char* categoryname, const char* hostnam
 
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10892.1.600.12.1.5", "Power Supply Status", gpmon_format_dell_status, TRUE)) goto BAIL;
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10892.1.600.50.1.5", "Battery Status", gpmon_format_dell_status, TRUE)) goto BAIL;
+
+	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10892.1.700.12.1.8", "Cooling Device Name", gpmon_format_snmp_string, TRUE)) goto BAIL;
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10892.1.700.12.1.5", "Cooling Device Status", gpmon_format_dell_status, TRUE)) goto BAIL;
 
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10892.1.1100.30.1.16", "Processor Version", gpmon_format_snmp_string, TRUE)) goto BAIL;
@@ -851,9 +927,10 @@ void run_snmp_report_for_dell_host(const char* categoryname, const char* hostnam
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10892.1.1100.50.1.5", "Memory Device Status", gpmon_format_dell_status, TRUE)) goto BAIL;
 
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10892.1.1100.90.1.5", "Network Device", gpmon_format_snmp_string, TRUE)) goto BAIL;
+	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10892.1.1100.90.1.7", "Network Device Vendor", gpmon_format_snmp_string, TRUE)) goto BAIL;
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10892.1.1100.90.1.11", "Network Device IP", gpmon_format_snmp_ip, TRUE)) goto BAIL;
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10892.1.1100.90.1.12", "Network Device Subnet Mask", gpmon_format_snmp_ip, TRUE)) goto BAIL;
-	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10892.1.1100.90.1.3", "Network Device Status", gpmon_format_dell_status, TRUE)) goto BAIL;
+	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10892.1.1100.90.1.4", "Network Device Status", gpmon_format_dell_network_device_status, TRUE)) goto BAIL;
 
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10893.1.20.130.1.1.2", "Controller Name", gpmon_format_snmp_string, TRUE)) goto BAIL;
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10893.1.20.130.1.1.5", "Controller Status", format_dell_controller_status, TRUE)) goto BAIL;
