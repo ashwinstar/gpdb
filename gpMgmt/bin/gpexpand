@@ -2491,6 +2491,14 @@ class ExecuteSQLStatementsCommand(SQLCommand):
     
     def run(self, validateAfter = False):
         statement = None
+
+        faultPoint = os.getenv('GP_COMMAND_FAULT_POINT')
+        if faultPoint and self.name and self.name.startswith(faultPoint):
+           # simulate error
+           self.results = CommandResult(1,'Fault Injection','Fault Injection' ,False,True)
+           self.error = "Fault Injection"
+           return
+
         self.results = CommandResult(rc = 0
                                     , stdout = ""
                                     , stderr = ""
