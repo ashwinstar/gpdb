@@ -529,6 +529,53 @@ GPDB_SNMP_STATUS dell_virtual_disk_layout_code_conversion(int statusCodeIn, char
 	return status;
 }
 
+GPDB_SNMP_STATUS dell_virtual_disk_read_policy_code_conversion(int statusCodeIn, char** msgout)
+{
+	GPDB_SNMP_STATUS status;
+
+    //1: Enabled - Adaptec Read Cache Enabled 
+    //2: Disabled - Adaptec Read Cache Disabled 
+    //3: LSI Read Ahead 
+    //4: LSI Adaptive Read Ahead 
+    //5: LSI No Read Ahead 
+
+	switch(statusCodeIn)
+	{
+		case 1:
+			status = GPDB_SNMP_STATUS_WARNING;
+			*msgout = "Enabled Adaptec Read Cache Enabled";
+		break;
+
+		case 2:
+			status = GPDB_SNMP_STATUS_WARNING;
+			*msgout = "Disabled Adaptec Read Cache Disabled";
+		break;
+
+		case 3:
+			status = GPDB_SNMP_STATUS_WARNING;
+			*msgout = "LSI Read Ahead";
+		break;
+
+		case 4:
+			status = GPDB_SNMP_STATUS_NORMAL;
+			*msgout = "LSI Adaptive Read Ahead";
+		break;
+
+		case 5:
+			status = GPDB_SNMP_STATUS_WARNING;
+			*msgout = "LSI No Read Ahead";
+		break;
+
+		default:
+			status = GPDB_SNMP_STATUS_UNKNOWN;
+			*msgout = "unexpected code from device";
+		break;
+	}
+
+	return status;
+}
+
+
 GPDB_SNMP_STATUS dell_virtual_disk_write_policy_code_conversion(int statusCodeIn, char** msgout)
 {
 	GPDB_SNMP_STATUS status;
@@ -663,6 +710,11 @@ void format_dell_virtual_disk_state(FILE* fd, const char* hostname, oid oidname[
 void format_dell_virtual_disk_write_policy(FILE* fd, const char* hostname, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
 	format_generic_status_code(fd, hostname, oidname, oidlen, displayname, vars, dell_virtual_disk_write_policy_code_conversion);
+}
+
+void format_dell_virtual_disk_read_policy(FILE* fd, const char* hostname, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+{
+	format_generic_status_code(fd, hostname, oidname, oidlen, displayname, vars, dell_virtual_disk_read_policy_code_conversion);
 }
 
 void format_network_interface_status(FILE* fd, const char* hostname, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
@@ -933,6 +985,7 @@ void run_snmp_report_for_dell_host(const char* categoryname, const char* hostnam
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10892.1.1100.90.1.4", "Network Device Status", gpmon_format_dell_network_device_status, TRUE)) goto BAIL;
 
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10893.1.20.130.1.1.2", "Controller Name", gpmon_format_snmp_string, TRUE)) goto BAIL;
+	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10893.1.20.130.1.1.3", "Controller Vendor", gpmon_format_snmp_string, TRUE)) goto BAIL;
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10893.1.20.130.1.1.5", "Controller Status", format_dell_controller_status, TRUE)) goto BAIL;
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10893.1.20.130.15.1.5", "Controller Battery Status", gpmon_format_dell_status, TRUE)) goto BAIL;
 
@@ -941,7 +994,8 @@ void run_snmp_report_for_dell_host(const char* categoryname, const char* hostnam
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10893.1.20.140.1.1.19", "Virtual Disk Status", gpmon_format_dell_status, TRUE)) goto BAIL;
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10893.1.20.140.1.1.13", "Virtual Disk Layout", format_dell_virtual_disk_layout, TRUE)) goto BAIL;
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10893.1.20.140.1.1.6", "Virtual Disk MB", gpmon_format_snmp_int, TRUE)) goto BAIL;
-	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10893.1.20.140.1.1.10", "Virtual Disk WritePolicy", format_dell_virtual_disk_write_policy, TRUE)) goto BAIL;
+	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10893.1.20.140.1.1.10", "Virtual Disk Write Policy", format_dell_virtual_disk_write_policy, TRUE)) goto BAIL;
+	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10893.1.20.140.1.1.11", "Virtual Disk Read Policy", format_dell_virtual_disk_read_policy, TRUE)) goto BAIL;
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10893.1.20.140.1.1.4", "Virtual Disk State", format_dell_virtual_disk_state, TRUE)) goto BAIL;
 
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.674.10893.1.20.130.4.1.2", "Array Disk Name", gpmon_format_snmp_string, TRUE)) goto BAIL;
