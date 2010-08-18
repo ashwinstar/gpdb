@@ -205,34 +205,6 @@ _bitmap_xlog_insert_lovitem(XLogRecPtr lsn, XLogRecord *record)
 						   "item to \"%s\"",
 					RelationGetRelationName(reln))));
 
-		if (xlrec->bm_is_new_lov_blkno)
-		{
-			Buffer metabuf = XLogReadBuffer(reln, BM_METAPAGE, false);
-			BMMetaPage metapage;
-			REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, BM_METAPAGE, metabuf, lsn);
-			if (!BufferIsValid(metabuf))
-			{
-				_bitmap_relbuf(lovBuffer);
-				return;
-			}
-
-			metapage = _bitmap_get_metapage_data(reln, metabuf);
-
-			if (XLByteLT(PageGetLSN(metapage), lsn))
-			{
-				metapage->bm_lov_lastpage = xlrec->bm_lov_blkno;
-
-				PageSetLSN(BufferGetPage(metabuf), lsn);
-				PageSetTLI(BufferGetPage(metabuf), ThisTimeLineID);
-				
-				_bitmap_wrtbuf(metabuf);
-			}
-			else
-			{
-				_bitmap_relbuf(metabuf);
-			}
-		}
-
 		PageSetLSN(lovPage, lsn);
 		PageSetTLI(lovPage, ThisTimeLineID);
 
@@ -240,6 +212,33 @@ _bitmap_xlog_insert_lovitem(XLogRecPtr lsn, XLogRecord *record)
 	}
 	else
 		_bitmap_relbuf(lovBuffer);
+ 
+ 	/* Update the meta page when needed */
+ 	if (xlrec->bm_is_new_lov_blkno)
+ 	{
+ 		Buffer metabuf = XLogReadBuffer(reln, BM_METAPAGE, false);
+ 		BMMetaPage metapage;
+		REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, BM_METAPAGE, metabuf, lsn);
+		if (!BufferIsValid(metabuf))
+ 			return;
+		
+ 		metapage = (BMMetaPage)
+ 			PageGetContents(BufferGetPage(metabuf));
+ 		
+ 		if (XLByteLT(PageGetLSN(metapage), lsn))
+ 		{
+ 			metapage->bm_lov_lastpage = xlrec->bm_lov_blkno;
+ 			
+ 			PageSetLSN(BufferGetPage(metabuf), lsn);
+ 			PageSetTLI(BufferGetPage(metabuf), ThisTimeLineID);
+ 			
+ 			_bitmap_wrtbuf(metabuf);
+ 		}
+ 		else
+ 		{
+ 			_bitmap_relbuf(metabuf);
+ 		}
+ 	}
 }
 
 /*
@@ -354,6 +353,10 @@ _bitmap_xlog_insert_bitmapwords(XLogRecPtr lsn, XLogRecord *record)
 	int					cwords_size;
 	int					hwords_size;
 
+	Buffer lovBuffer;
+	Page lovPage;
+	BMLOVItem lovItem;
+	
 	xlrec = (xl_bm_bitmapwords *) XLogRecGetData(record);
 
 	reln = XLogOpenRelation(xlrec->bm_node);
@@ -372,9 +375,6 @@ _bitmap_xlog_insert_bitmapwords(XLogRecPtr lsn, XLogRecord *record)
 	REDO_PRINT_LSN_APPLICATION(reln, xlrec->bm_blkno, bitmapPage, lsn);
 	if (XLByteLT(PageGetLSN(bitmapPage), lsn))
 	{
-		Buffer		lovBuffer;
-		Page		lovPage;
-		BMLOVItem	lovItem;
 		uint64      *last_tids;
 		BM_HRL_WORD *cwords;
 		BM_HRL_WORD *hwords;
@@ -422,44 +422,8 @@ _bitmap_xlog_insert_bitmapwords(XLogRecPtr lsn, XLogRecord *record)
 		bitmapPageOpaque->bm_bitmap_next = xlrec->bm_next_blkno;
 		Assert(bitmapPageOpaque->bm_last_tid_location == xlrec->bm_last_tid);
 
-		lovBuffer = XLogReadBuffer(reln, xlrec->bm_lov_blkno, false);
-		REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xlrec->bm_lov_blkno, lovBuffer, lsn);
-		if (!BufferIsValid(lovBuffer))
-		{
-			_bitmap_relbuf(bitmapBuffer);
-			return;
-		}
-		
-		lovPage = BufferGetPage(lovBuffer);
-
-		lovItem = (BMLOVItem) PageGetItem(lovPage, 
-			PageGetItemId(lovPage, xlrec->bm_lov_offset));
-
 		if (xlrec->bm_is_last)
 		{
-			if (XLByteLT(PageGetLSN(lovPage), lsn))
-			{
-				lovItem->bm_last_compword = xlrec->bm_last_compword;
-				lovItem->bm_last_word = xlrec->bm_last_word;
-				lovItem->lov_words_header = xlrec->lov_words_header;
-				lovItem->bm_last_setbit = xlrec->bm_last_setbit;
-				lovItem->bm_last_tid_location = xlrec->bm_last_setbit -
-					xlrec->bm_last_setbit % BM_HRL_WORD_SIZE;
-				lovItem->bm_lov_tail = BufferGetBlockNumber(bitmapBuffer);
-				if (lovItem->bm_lov_head == InvalidBlockNumber)
-					lovItem->bm_lov_head = lovItem->bm_lov_tail;
-				
-				PageSetLSN(lovPage, lsn);
-				PageSetTLI(lovPage, ThisTimeLineID);
-
-				_bitmap_wrtbuf(lovBuffer);
-				
-			}
-			else
-			{
-				_bitmap_relbuf(lovBuffer);
-			}
-			
 			forget_incomplete_insert_bitmapwords(xlrec->bm_node, xlrec);
 		}
 
@@ -473,20 +437,6 @@ _bitmap_xlog_insert_bitmapwords(XLogRecPtr lsn, XLogRecord *record)
 			nextPage = BufferGetPage(nextBuffer);
 
 			_bitmap_init_bitmappage(reln, nextBuffer);
-
-			if (xlrec->bm_is_first && XLByteLT(PageGetLSN(lovPage), lsn))
-			{
-				lovItem->bm_lov_head = BufferGetBlockNumber(bitmapBuffer);
-				lovItem->bm_lov_tail = lovItem->bm_lov_head;
-				
-				PageSetLSN(lovPage, lsn);
-				PageSetTLI(lovPage, ThisTimeLineID);
-				
-				_bitmap_wrtbuf(lovBuffer);
-			}
-			
-			else
-				_bitmap_relbuf(lovBuffer);
 			
 			PageSetLSN(nextPage, lsn);
 			PageSetTLI(nextPage, ThisTimeLineID);
@@ -507,6 +457,52 @@ _bitmap_xlog_insert_bitmapwords(XLogRecPtr lsn, XLogRecord *record)
 	else {
 		_bitmap_relbuf(bitmapBuffer);
 	}
+
+ 	/* Update lovPage when needed */
+ 	lovBuffer = XLogReadBuffer(reln, xlrec->bm_lov_blkno, false);
+	REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xlrec->bm_lov_blkno, lovBuffer, lsn);
+ 	if (!BufferIsValid(lovBuffer))
+ 		return;
+ 	
+ 	lovPage = BufferGetPage(lovBuffer);
+ 	lovItem = (BMLOVItem)
+ 		PageGetItem(lovPage, 
+ 					PageGetItemId(lovPage, xlrec->bm_lov_offset));
+ 	
+ 	if (xlrec->bm_is_last && XLByteLT(PageGetLSN(lovPage), lsn))
+ 	{
+ 		lovItem->bm_last_compword = xlrec->bm_last_compword;
+ 		lovItem->bm_last_word = xlrec->bm_last_word;
+ 		lovItem->lov_words_header = xlrec->lov_words_header;
+ 		lovItem->bm_last_setbit = xlrec->bm_last_setbit;
+ 		lovItem->bm_last_tid_location = xlrec->bm_last_setbit -
+ 			xlrec->bm_last_setbit % BM_HRL_WORD_SIZE;
+ 		lovItem->bm_lov_tail = xlrec->bm_blkno;
+ 		if (lovItem->bm_lov_head == InvalidBlockNumber)
+ 			lovItem->bm_lov_head = lovItem->bm_lov_tail;
+ 		
+ 		PageSetLSN(lovPage, lsn);
+ 		PageSetTLI(lovPage, ThisTimeLineID);
+ 		
+ 		_bitmap_wrtbuf(lovBuffer);
+ 		
+ 	}
+ 	
+ 	else if (xlrec->bm_is_first && XLByteLT(PageGetLSN(lovPage), lsn))
+ 	{
+ 		lovItem->bm_lov_head = xlrec->bm_blkno;
+ 		lovItem->bm_lov_tail = lovItem->bm_lov_head;
+ 		
+ 		PageSetLSN(lovPage, lsn);
+ 		PageSetTLI(lovPage, ThisTimeLineID);
+ 		
+ 		_bitmap_wrtbuf(lovBuffer);
+ 	}
+ 	
+ 	else
+ 	{
+ 		_bitmap_relbuf(lovBuffer);
+ 	}
 }
 
 static void
@@ -596,17 +592,6 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
 		REDO_PRINT_LSN_APPLICATION(reln, xlrec->bm_first_blkno, firstPage, lsn);
 		if (XLByteLT(PageGetLSN(firstPage), lsn))
 		{
-			if (xlrec->bm_two_pages)
-			{
-				secondBuffer = XLogReadBuffer(reln, xlrec->bm_second_blkno, true);
-				secondPage = BufferGetPage(secondBuffer);
-				_bitmap_init_bitmappage(reln, secondBuffer);
-
-				secondOpaque =
-					(BMBitmapOpaque)PageGetSpecialPointer(secondPage);
-				secondBitmap = (BMBitmap) PageGetContentsMaxAligned(secondPage);
-			}
-
 			memcpy(firstBitmap->cwords, xlrec->bm_first_cwords,
 				   BM_NUM_OF_HRL_WORDS_PER_PAGE * sizeof(BM_HRL_WORD));
 			memcpy(firstBitmap->hwords, xlrec->bm_first_hwords,
@@ -619,63 +604,6 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
 			else
 				firstOpaque->bm_bitmap_next = xlrec->bm_next_blkno;
 
-			if (xlrec->bm_two_pages)
-			{
-				if (XLByteLT(PageGetLSN(secondPage), lsn))
-				{
-					memcpy(secondBitmap->cwords, xlrec->bm_second_cwords,
-						   BM_NUM_OF_HRL_WORDS_PER_PAGE * sizeof(BM_HRL_WORD));
-					memcpy(secondBitmap->hwords, xlrec->bm_second_hwords,
-						   BM_NUM_OF_HEADER_WORDS *	sizeof(BM_HRL_WORD));
-					secondOpaque->bm_hrl_words_used = xlrec->bm_second_num_cwords;
-					secondOpaque->bm_last_tid_location = xlrec->bm_second_last_tid;
-					secondOpaque->bm_bitmap_next = xlrec->bm_next_blkno;
-					
-					PageSetLSN(secondPage, lsn);
-					PageSetTLI(secondPage, ThisTimeLineID);
-					_bitmap_wrtbuf(secondBuffer);
-				}
-				
-				else
-				{
-					_bitmap_relbuf(secondBuffer);
-				}
-			}
-			
-			if (xlrec->bm_new_lastpage)
-			{
-				Buffer			lovBuffer;
-				Page 		lovPage;
-				BMLOVItem	lovItem;
-				
-				lovBuffer = XLogReadBuffer(reln, xlrec->bm_lov_blkno, false);
-				REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xlrec->bm_lov_blkno, lovBuffer, lsn);
-				if (!BufferIsValid(lovBuffer))
-				{
-					_bitmap_relbuf(firstBuffer);
-					return;
-				}
-
-				lovPage = BufferGetPage(lovBuffer);
-
-				if (XLByteLT(PageGetLSN(lovPage), lsn))
-				{
-					lovItem = (BMLOVItem) PageGetItem(lovPage, 
-													  PageGetItemId(lovPage, xlrec->bm_lov_offset));
-				
-					lovItem->bm_lov_tail = xlrec->bm_second_blkno;
-				
-					PageSetLSN(lovPage, lsn);
-					PageSetTLI(lovPage, ThisTimeLineID);
-
-					_bitmap_wrtbuf(lovBuffer);
-				}
-				else
-				{
-					_bitmap_relbuf(lovBuffer);
-				}
-			}
-			
 			PageSetLSN(firstPage, lsn);
 			PageSetTLI(firstPage, ThisTimeLineID);
 			_bitmap_wrtbuf(firstBuffer);
@@ -683,8 +611,72 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
 		else
 			_bitmap_relbuf(firstBuffer);
 	}
-}
 
+ 	/* Update secondPage when needed */
+ 	if (xlrec->bm_two_pages)
+ 	{
+ 		secondBuffer = XLogReadBuffer(reln, xlrec->bm_second_blkno, true);
+ 		secondPage = BufferGetPage(secondBuffer);
+ 		if (PageIsNew(secondPage))
+ 			_bitmap_init_bitmappage(reln, secondBuffer);
+ 		
+ 		secondOpaque =
+ 			(BMBitmapOpaque)PageGetSpecialPointer(secondPage);
+ 		secondBitmap = (BMBitmap) PageGetContentsMaxAligned(secondPage);
+ 
+ 		if (XLByteLT(PageGetLSN(secondPage), lsn))
+ 		{
+ 			memcpy(secondBitmap->cwords, xlrec->bm_second_cwords,
+ 				   BM_NUM_OF_HRL_WORDS_PER_PAGE * sizeof(BM_HRL_WORD));
+ 			memcpy(secondBitmap->hwords, xlrec->bm_second_hwords,
+ 				   BM_NUM_OF_HEADER_WORDS *	sizeof(BM_HRL_WORD));
+ 			secondOpaque->bm_hrl_words_used = xlrec->bm_second_num_cwords;
+ 			secondOpaque->bm_last_tid_location = xlrec->bm_second_last_tid;
+ 			secondOpaque->bm_bitmap_next = xlrec->bm_next_blkno;
+ 			
+ 			PageSetLSN(secondPage, lsn);
+ 			PageSetTLI(secondPage, ThisTimeLineID);
+ 			_bitmap_wrtbuf(secondBuffer);
+ 		}
+ 		
+ 		else
+ 		{
+ 			_bitmap_relbuf(secondBuffer);
+ 		}
+ 	}
+ 
+ 	/* Update lovPage when needed */
+ 	if (xlrec->bm_new_lastpage)
+ 	{
+ 		Buffer lovBuffer;
+ 		Page lovPage;
+ 		BMLOVItem lovItem;
+ 		
+ 		lovBuffer = XLogReadBuffer(reln, xlrec->bm_lov_blkno, false);
+ 		if (!BufferIsValid(lovBuffer))
+ 			return;
+ 		
+ 		lovPage = BufferGetPage(lovBuffer);
+ 		
+ 		if (XLByteLT(PageGetLSN(lovPage), lsn))
+ 		{
+ 			lovItem = (BMLOVItem)
+ 				PageGetItem(lovPage, 
+ 							PageGetItemId(lovPage, xlrec->bm_lov_offset));
+ 			
+ 			lovItem->bm_lov_tail = xlrec->bm_second_blkno;
+ 			
+ 			PageSetLSN(lovPage, lsn);
+ 			PageSetTLI(lovPage, ThisTimeLineID);
+ 			
+ 			_bitmap_wrtbuf(lovBuffer);
+ 		}
+ 		else
+ 		{
+ 			_bitmap_relbuf(lovBuffer);
+ 		}
+ 	}
+}
 
 void
 bitmap_redo(XLogRecPtr lsn, XLogRecord *record)
@@ -857,6 +849,11 @@ bitmap_xlog_cleanup(void)
 		_bitmap_write_new_bitmapwords(reln,
 							  lovBuffer, action->bm_lov_offset,
 							  &newWords, false);
+ 
+ 		elog(DEBUG1, "finish incomplete insert of bitmap words: last_tid: " INT64_FORMAT
+ 			 ", lov_blkno=%d, lov_offset=%d",
+ 			 newWords.last_tids[newWords.num_cwords-1], action->bm_lov_blkno,
+ 			 action->bm_lov_offset);
 	}
 	incomplete_actions = NIL;
 }
