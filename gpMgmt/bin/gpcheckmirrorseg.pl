@@ -491,7 +491,7 @@ sub get_presh2_txt
 ##nontiny perl script to preprocess ao or heap files
 ##by truncating to length (ao) or filtering hint bits (heap)
 ##
-## args: -adler|noadler -btree|-heap|(-ao <filesize> ) filename
+## args: -adler|noadler -btree|-heap|-other|(-ao <filesize> ) filename
 ##
 ## if adler is specified, prints blockno and adler32 for each block,
 ## else if noadler, just preprocesses each block according to ao/heap/btree rules
@@ -550,6 +550,7 @@ sub get_presh2_txt
 #	my ($sz, $orig_sz, $cur_sz);
 #	my $blockno = 0;
 #	my $isBtree = 0;
+#	my $isOther = 0;
 #
 #	if ($flag1 =~ m/noadler/i)
 #	{
@@ -568,7 +569,10 @@ sub get_presh2_txt
 #	}
 #	else
 #	{
+#		# if type "other" (not btree or heap), then don't process block.
+#		# Otherwise, treat (isBtree == 0) as heap block.
 #		$isBtree = ($flag2 =~ m/btree/i);
+#		$isOther = ($flag2 =~ m/other/i);
 #	}
 #
 #	my $filnam = shift @ARGV;
@@ -644,7 +648,11 @@ sub get_presh2_txt
 #				doprint($blockno, $buf, ($blockno == $lastblock)) if $realsiz;
 #				last;
 #			}
-#			
+#
+#			# just print block unless btree/heap case
+#			goto L_endloop
+#				if ($isOther);
+#
 #			# bits			  64 16			
 #			# bytes			   8 2
 #			my @foo = unpack("L2 S S S S S S ", $buf);
@@ -2084,8 +2092,9 @@ sub diff_thrice
 	for my $fil (@{$unknownfiles})
 	{
 		push @allfiles1, 
-		$fil . "  ( cat MYDIR/" . $fil
-		. " | openssl dgst -md5 -hex ) 2>&1  "
+		# XXX XXX: use "-adler -other" to do block by block
+		$fil . "  ( perl MYPRESH21 -adler -other MYDIR/" . $fil
+		. " ) 2>&1  "
 		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
 		. "| perl -e 'for (<STDIN>) { print \"" . $fil . 
 		':unknown: ", $_ ;}' . "'";
@@ -2104,8 +2113,9 @@ sub diff_thrice
 		my $fil = shift @ttt;
 
 		push @allfiles1, 
-		$fil . "  ( cat MYDIR/" . $fil
-		. " | openssl dgst -md5 -hex ) 2>&1  "
+		# XXX XXX: use "-adler -other" to do block by block
+		$fil . "  ( perl MYPRESH21 -adler -other MYDIR/" . $fil
+		. " ) 2>&1  "
 		# should be: perl -e 'for (<STDIN>) { print "filename: ", $_ ;}'
 		. "| perl -e 'for (<STDIN>) { print \"" . $fil . 
 		':' . $idx_type . ': ", $_ ;}' . "'";
