@@ -7,8 +7,9 @@ Runs a load job as defined in a YAML formatted control file.
 SYNOPSIS
 *****************************************************
 
-gpload -f <control_file> [-l <log_file>] [-h <hostname>] [-p <port>] 
-[-U <username>] [-d <database>] [-W] [[-v | -V] | [-q]] [-D]
+gpload -f <control_file> [-l <log_file>] 
+[-h <hostname>] [-p <port>] [-U <username>] [-d <database>] [-W] 
+[--gpfdist_timeout <number_seconds>] [[-v | -V] | [-q]] [-D]
 
 gpload -? 
 
@@ -60,6 +61,13 @@ OPTIONS
 
 Required. A YAML file that contains the load specification 
 details. See 'CONTROL FILE FORMAT' below.
+
+
+--gpfdist_timeout <number_seconds>
+
+Sets the timeout in seconds for the gpfdist parallel file 
+distribution program to send a response. May need to be 
+increased on busy networks.
 
 
 -l <log_file>
