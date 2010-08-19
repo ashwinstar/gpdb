@@ -317,6 +317,7 @@ RemoveTableSpace(List *names, DropBehavior behavior, bool missing_ok)
 
 	if (!HeapTupleIsValid(tuple))
 	{
+		/* No such tablespace, no need to hold the lock */
 		heap_endscan(scandesc);
 		heap_close(rel, RowExclusiveLock);
 
@@ -381,8 +382,8 @@ RemoveTableSpace(List *names, DropBehavior behavior, bool missing_ok)
 							tablespaceoid);
 
 	/*
-	 * Acquire TablespaceCreateLock to ensure that no MirroredFileSysObj_JustInTimeDbDirCreate
-	 * is running concurrently.
+	 * Acquire TablespaceCreateLock to ensure that no 
+	 * MirroredFileSysObj_JustInTimeDbDirCreate is running concurrently.
 	 */
 	LWLockAcquire(TablespaceCreateLock, LW_EXCLUSIVE);
 
@@ -407,8 +408,8 @@ RemoveTableSpace(List *names, DropBehavior behavior, bool missing_ok)
 	 */
 
     /*
-        * Schedule all persistent database directory removals for transaction commit.
-        */
+	 * Schedule all persistent database directory removals for transaction commit.
+	 */
     PersistentDatabase_DirIterateInit();
     while (PersistentDatabase_DirIterateNext(
                                         &dbDirNode,
@@ -986,7 +987,7 @@ GetDefaultTablespace(void)
 Oid
 get_tablespace_oid(const char *tablespacename)
 {
-	Oid			result;
+	Oid			tsoid;
 	Relation	rel;
 	HeapScanDesc scandesc;
 	HeapTuple	tuple;
@@ -1006,16 +1007,62 @@ get_tablespace_oid(const char *tablespacename)
 	scandesc = heap_beginscan(rel, SnapshotNow, 1, entry);
 	tuple = heap_getnext(scandesc, ForwardScanDirection);
 
-	/* We assume that there can be at most one matching tuple */
+	/* If nothing matches then the tablespace doesn't exist */
 	if (HeapTupleIsValid(tuple))
-		result = HeapTupleGetOid(tuple);
+		tsoid = HeapTupleGetOid(tuple);
 	else
-		result = InvalidOid;
+		tsoid = InvalidOid;
+
+	/* 
+	 * Anything that needs to lookup a tablespace name must need a lock
+	 * on the tablespace for the duration of its transaction, otherwise
+	 * there is nothing preventing it from being dropped.
+	 */
+	if (OidIsValid(tsoid))
+	{
+		Buffer			buffer = InvalidBuffer;
+		HTSU_Result		lockTest;
+		ItemPointerData	update_ctid;
+		TransactionId	update_xmax;
+
+		/*
+		 * Unfortunately locking of objects other than relations doesn't 
+		 * really work, the work around is to lock the tuple in pg_tablespace
+		 * to prevent drops from getting the exclusive lock they need.
+		 */
+		lockTest = heap_lock_tuple(rel, tuple, &buffer,
+								   &update_ctid, &update_xmax,
+								   GetCurrentCommandId(),
+								   LockTupleShared, LockTupleWait);
+		ReleaseBuffer(buffer);
+		switch (lockTest)
+		{
+			case HeapTupleMayBeUpdated:
+				break;  /* Got the Lock */
+
+			case HeapTupleSelfUpdated:
+				Assert(false); /* Shouldn't ever occur */
+				/* fallthrough */
+
+			case HeapTupleBeingUpdated:
+				Assert(false);  /* Not possible with LockTupleWait */
+				/* fallthrough */
+		   
+			case HeapTupleUpdated:
+				ereport(ERROR,
+						(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+						 errmsg("could not serialize access to tablespace %s due to concurrent update",
+								tablespacename)));
+
+			default:
+				elog(ERROR, "unrecognized heap_lock_tuple_status: %u", lockTest);
+		}
+	}
 
 	heap_endscan(scandesc);
 	heap_close(rel, AccessShareLock);
 
-	return result;
+	return tsoid;
 }
 
 /*
