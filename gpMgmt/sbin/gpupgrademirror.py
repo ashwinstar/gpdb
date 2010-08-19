@@ -2617,6 +2617,14 @@ class Phase1(threading.Thread):
             
             for nonBase in nonBaseList:
                cmdComplete = False
+               mirrorNonBase = mirrorTempDataDir + "/" + nonBase
+               while cmdComplete == False:
+                  rmCmd = RemoveFiles( name = 'gpupgrademirror remove non base file or dir  before creating %s:%s' % (seg.mirror_host, mirrorNonBase)
+                                     , directory = mirrorNonBase
+                                     , remoteHost = seg.mirror_host
+                                     )
+                  cmdComplete = runAndCheckCommandComplete(rmCmd)
+               cmdComplete = False
                primaryNonBase = seg.primary_data_directory + "/" + nonBase
                while cmdComplete == False:
                   self.logger.debug('remotecopy everything but base: %s:%s' % (self.nodeName, primaryNonBase))
@@ -2631,7 +2639,7 @@ class Phase1(threading.Thread):
                rcCmd.validate()        
     
             """ Put the base directory back together the way it was originally (e.g. 1.1 and 1.2 go into 1) """
-            dbDirs = DirectoryList( name = 'gpupgrademirror get database dirs for primary seg dbid +' + str(seg.primary_dbid)
+            dbDirs = DirectoryList( name = 'gpupgrademirror get database dirs for primary seg dbid ' + str(seg.primary_dbid)
                                   , dirLocation = seg.primary_data_directory + "/base"
                                   , ctxt = REMOTE
                                   , remoteHost = seg.primary_host 
@@ -2643,11 +2651,11 @@ class Phase1(threading.Thread):
                 qualDir = mirrorTempDataDir + "/base/" + unqualDir
                 cmdComplete = False
                 while cmdComplete == False:
-                   rmCmd = MakeDirectoryWithMode( name = 'gpupgrademirror make consolidation directory: %s' % qualDir
+                   rmCmd = CreateDirIfNecessaryWithMode( name = 'gpupgrademirror make consolidation directory: %s' % qualDir
                                      , directory = qualDir
                                      , ctxt = REMOTE
                                      , remoteHost = seg.mirror_host
-                                     , mode = 700
+                                     , mode = "0700"
                                      )
                    cmdComplete = runAndCheckCommandComplete(rmCmd)
                 rmCmd.validate()
