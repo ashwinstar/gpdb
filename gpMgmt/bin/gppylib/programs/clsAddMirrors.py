@@ -271,6 +271,8 @@ class GpAddMirrorsProgram:
             primarySegmentReplicationPort = int(fixedValues['primarySegmentReplicationPort'])
             dataDir = normalizeAndValidateInputPath( fixedValues['dataDirectory'], "in config file", row.getLine())
             hostName = interfaceLookup.getHostName(address)
+            if hostName is None:
+                raise Exception("Segment Host Address %s is unreachable" % address)
             
             filespaceOidToPathMap = {}
             for fsName, path in flexibleValues.iteritems():
