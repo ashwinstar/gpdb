@@ -370,7 +370,6 @@ create_gang_retry:
 							errdetail("pthread_create() failed with err %d gp_connections_per_thread %d", pthread_err, gp_connections_per_thread),
 							errhint("gp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", gp_connections_per_thread)));
 		}
-
 	}
 
 	/*
@@ -517,7 +516,20 @@ create_gang_retry:
 
 				if (create_gang_retry_counter++ < gp_gang_creation_retry_count)
 				{
-					disconnectAndDestroyGang(newGangDefinition); /* frees up resources */
+					/*
+					 * MPP-10751: In case we're destroying a
+					 * writer-gang, we don't want to cause a
+					 * session-reset (and odd side-effect inside
+					 * disconnectAndDestroyGang()) so let's pretend
+					 * that this is a reader-gang.
+					 */
+					if (newGangDefinition->type == GANGTYPE_PRIMARY_WRITER)
+					{
+						disconnectAndDestroyAllReaderGangs(true);
+						newGangDefinition->type = GANGTYPE_PRIMARY_READER;
+					}
+
+					disconnectAndDestroyGang(newGangDefinition); /* free up connections */
 					newGangDefinition = NULL;
 
 					MemoryContextSwitchTo(oldContext);
@@ -2385,8 +2397,7 @@ disconnectAndDestroyGang(Gang *gp)
 	if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 		elog(DEBUG5, "disconnectAndDestroyGang entered");
 
-	if (gp->active ||
-		gp->allocated)
+	if (gp->active || gp->allocated)
 		elog(DEBUG2, "Warning: disconnectAndDestroyGang called on an %s gang",
 			 gp->active ? "active" : "allocated");
 
@@ -2499,8 +2510,6 @@ disconnectAndDestroyGang(Gang *gp)
 	 */
 	if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 		elog(DEBUG5, "disconnectAndDestroyGang done");
-
-
 }
 
 /*
