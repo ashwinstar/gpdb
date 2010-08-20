@@ -1019,6 +1019,7 @@ void run_snmp_report_for_brocade_switch(const char* categoryname, const char* ho
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.2.1.1.1", "Description", gpmon_format_snmp_string, FALSE)) goto BAIL;
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.1588.2.1.1.1.1.7", "Operational Status", format_brocade_switch_status, FALSE)) goto BAIL;
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.1588.2.1.1.1.1.6", "Firmware Version", gpmon_format_snmp_string, FALSE)) goto BAIL;
+	if (snmp_array_collection(fd, hostname, "1.3.6.1.4.1.1588.2.1.1.1.1.10", "Soft Serial Number", gpmon_format_snmp_string, FALSE)) goto BAIL;
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.2.1.2.2.1.2", "Interface Description", gpmon_format_snmp_string, TRUE)) goto BAIL;
 	if (snmp_array_collection(fd, hostname, "1.3.6.1.2.1.2.2.1.8", "Interface Status", format_network_interface_status, TRUE)) goto BAIL;
 
