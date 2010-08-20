@@ -6,7 +6,7 @@
  * See also lsyscache.h, which provides convenience routines for
  * common cache-lookup operations.
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/utils/syscache.h,v 1.65 2006/07/13 18:01:02 momjian Exp $
@@ -28,48 +28,51 @@
  *		Keep them in alphabetical order.
  */
 
-#define AGGFNOID		0
-#define AMNAME			1
-#define AMOID			2
-#define AMOPOPID		3
-#define AMOPSTRATEGY	4
-#define AMPROCNUM		5
-#define ATTNAME			6
-#define ATTNUM			7
-#define AUTHMEMMEMROLE	8
-#define AUTHMEMROLEMEM	9
-#define AUTHNAME		10
-#define AUTHOID			11
-#define CASTSOURCETARGET 12
-#define CLAAMNAMENSP	13
-#define CLAOID			14
-#define CONDEFAULT		15
-#define CONNAMENSP		16
-#define CONOID			17
-#define DATABASEOID		18
-#define	FOREIGNDATAWRAPPERNAME 19
-#define FOREIGNDATAWRAPPEROID 20
-#define FOREIGNSERVERNAME 21
-#define FOREIGNSERVEROID 22
-#define INDEXRELID		23
-#define INHRELID		24
-#define LANGNAME		25
-#define LANGOID			26
-#define NAMESPACENAME	27
-#define NAMESPACEOID	28
-#define OPERNAMENSP		29
-#define OPEROID			30
-#define PROCNAMEARGSNSP 31
-#define PROCOID			32
-#define RELNAMENSP		33
-#define RELOID			34
-#define RULERELNAME		35
-#define STATRELATT		36
-#define TYPENAMENSP		37
-#define TYPEOID			38
-#define USERMAPPINGOID 39
-#define USERMAPPINGUSERSERVER 40
-#define WINFNOID		41
+enum SysCacheIdentifier
+{
+	AGGFNOID = 0,
+	AMNAME,
+	AMOID,
+	AMOPOPID,
+	AMOPSTRATEGY,
+	AMPROCNUM,
+	ATTNAME,
+	ATTNUM,
+	AUTHMEMMEMROLE,
+	AUTHMEMROLEMEM,
+	AUTHNAME,
+	AUTHOID,
+	CASTSOURCETARGET,
+	CLAAMNAMENSP,
+	CLAOID,
+	CONDEFAULT,
+	CONNAMENSP,
+    CONOID = 17,
+	DATABASEOID,
+	FOREIGNDATAWRAPPERNAME = 19,
+	FOREIGNDATAWRAPPEROID,
+	FOREIGNSERVERNAME,
+	FOREIGNSERVEROID,
+	INDEXRELID,
+ 	INHRELID = 24,
+	LANGNAME,
+	LANGOID,
+	NAMESPACENAME,
+	NAMESPACEOID,
+	OPERNAMENSP,
+	OPEROID,
+	PROCNAMEARGSNSP,
+	PROCOID,
+	RELNAMENSP,
+	RELOID,
+	RULERELNAME,
+	STATRELATT,
+	TYPENAMENSP,
+	TYPEOID,
+	USERMAPPINGOID,
+	USERMAPPINGUSERSERVER,
+	WINFNOID = 41
+};
 
 
 extern void InitCatalogCache(void);
