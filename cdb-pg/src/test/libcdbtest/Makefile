@@ -1,4 +1,3 @@
-# $Id$
 # Makefile copied from dblink
 
 subdir = src/test/libcdbtest

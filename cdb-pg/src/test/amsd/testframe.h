@@ -8,7 +8,6 @@
  * either something different or something that is more shareable with
  * other unit tests.
  *
- * $Header$
  *-------------------------------------------------------------------------
  */
 #ifndef TESTFRAME_H
