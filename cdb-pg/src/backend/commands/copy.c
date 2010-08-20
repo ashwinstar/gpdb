@@ -2091,6 +2091,7 @@ CopyTo(CopyState cstate)
 			AppendOnlyScanDesc aoscandesc = NULL;	/* append only table */
 
 			tupDesc = RelationGetDescr(rel);
+			attr = tupDesc->attrs;
 			num_phys_attrs = tupDesc->natts;
 
 			/*
@@ -2100,6 +2101,22 @@ CopyTo(CopyState cstate)
 			cstate->attnumlist =
 				CopyGetAttnums(tupDesc, rel, cstate->attnamelist);
 
+			pfree(cstate->out_functions);
+			cstate->out_functions =
+				(FmgrInfo *) palloc(num_phys_attrs * sizeof(FmgrInfo));
+
+			/* Get info about the columns we need to process. */
+			foreach(cur, cstate->attnumlist)
+			{
+				int			attnum = lfirst_int(cur);
+				Oid			out_func_oid;
+				bool		isvarlena;
+
+				getTypeOutputInfo(attr[attnum - 1]->atttypid,
+								  &out_func_oid,
+								  &isvarlena);
+				fmgr_info(out_func_oid, &cstate->out_functions[attnum - 1]);
+			}
 
 			values = (Datum *) palloc(num_phys_attrs * sizeof(Datum));
 			nulls = (bool *) palloc(num_phys_attrs * sizeof(bool));
