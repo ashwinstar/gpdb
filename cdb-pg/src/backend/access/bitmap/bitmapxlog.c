@@ -679,7 +679,7 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
 }
 
 void
-bitmap_redo(XLogRecPtr lsn, XLogRecord *record)
+bitmap_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 {
 	uint8	info = record->xl_info & ~XLR_INFO_MASK;
 

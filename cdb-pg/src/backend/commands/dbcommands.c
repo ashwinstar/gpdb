@@ -2373,7 +2373,7 @@ xlog_prepare_database_drop(Oid tblspc, Oid dbid)
  * DATABASE resource manager's routines
  */
 void
-dbase_redo(XLogRecPtr lsn  __attribute__((unused)), XLogRecord *record)
+dbase_redo(XLogRecPtr beginLoc  __attribute__((unused)), XLogRecPtr lsn  __attribute__((unused)), XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
 

@@ -449,7 +449,7 @@ ginRedoDeletePage(XLogRecPtr lsn, XLogRecord *record)
 }
 
 void
-gin_redo(XLogRecPtr lsn, XLogRecord *record)
+gin_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
 

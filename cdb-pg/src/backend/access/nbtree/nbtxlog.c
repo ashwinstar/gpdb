@@ -653,7 +653,7 @@ btree_xlog_newroot(XLogRecPtr lsn, XLogRecord *record)
 
 
 void
-btree_redo(XLogRecPtr lsn, XLogRecord *record)
+btree_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
 

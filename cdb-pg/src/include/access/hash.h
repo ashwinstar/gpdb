@@ -312,7 +312,7 @@ extern uint32 _hash_log2(uint32 num);
 extern void _hash_checkpage(Relation rel, Buffer buf, int flags);
 
 /* hash.c */
-extern void hash_redo(XLogRecPtr lsn, XLogRecord *record);
+extern void hash_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record);
 extern void hash_desc(StringInfo buf, XLogRecord *record);
 
 #endif   /* HASH_H */

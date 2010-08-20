@@ -1862,7 +1862,7 @@ WriteMZeroPageXlogRec(int pageno, uint8 info)
  * MULTIXACT resource manager's routines
  */
 void
-multixact_redo(XLogRecPtr lsn __attribute__((unused)) , XLogRecord *record)
+multixact_redo(XLogRecPtr beginLoc __attribute__((unused)), XLogRecPtr lsn __attribute__((unused)), XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
 

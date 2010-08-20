@@ -238,7 +238,7 @@ extern void RecordCrashTransactionAbortRecord(
 
 extern int	xactGetCommittedChildren(TransactionId **ptr);
 
-extern void xact_redo(XLogRecPtr lsn, XLogRecord *record);
+extern void xact_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record);
 extern bool xact_redo_get_info(
 		XLogRecord					*record,
 		XactInfoKind				*infoKind,

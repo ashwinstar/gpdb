@@ -5984,7 +5984,7 @@ xact_redo_distributed_forget(xl_xact_distributed_forget *xlrec, TransactionId xi
 
 
 void
-xact_redo(XLogRecPtr lsn __attribute__((unused)) , XLogRecord *record)
+xact_redo(XLogRecPtr beginLoc __attribute__((unused)), XLogRecPtr lsn __attribute__((unused)), XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
 

@@ -1456,6 +1456,12 @@ begin:;
 }
 
 XLogRecPtr 
+XLogLastInsertBeginLoc(void)
+{
+	return ProcLastRecPtr;
+}
+
+XLogRecPtr 
 XLogLastInsertEndLoc(void)
 {
 	return ProcLastRecEnd;
@@ -6153,7 +6159,7 @@ ApplyStartupRedo(
 	if (record->xl_info & XLR_BKP_BLOCK_MASK)
 		RestoreBkpBlocks(record, *lsn);
 	
-	RmgrTable[record->xl_rmid].rm_redo(*lsn, record);
+	RmgrTable[record->xl_rmid].rm_redo(*beginLoc, *lsn, record);
 	
 	/* Pop the error context stack */
 	error_context_stack = errcontext.previous;
@@ -7190,7 +7196,7 @@ XLogPopulateMasterMirroring(
 
 	if (masterMirroringCheckpoint != NULL)
 	{
-		mmxlog_read_checkpoint_data(masterMirroringCheckpoint);
+		mmxlog_read_checkpoint_data(masterMirroringCheckpoint, redoCheckPointLoc);
 	}
 
 	CloseReadRecord();
@@ -7541,7 +7547,7 @@ XLogStandbyRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoin
 		if (record->xl_info & XLR_BKP_BLOCK_MASK)
 			RestoreBkpBlocks(record, EndRecPtr);
 
-		RmgrTable[record->xl_rmid].rm_redo(EndRecPtr, record);
+		RmgrTable[record->xl_rmid].rm_redo(ReadRecPtr, EndRecPtr, record);
 
 		/* Pop the error context stack */
 		error_context_stack = errcontext.previous;
@@ -8493,7 +8499,7 @@ RequestXLogSwitch(void)
  * not all records types are related to control file processing.
  */
 void
-xlog_redo(XLogRecPtr lsn __attribute__((unused)) , XLogRecord *record)
+xlog_redo(XLogRecPtr beginLoc __attribute__((unused)), XLogRecPtr lsn __attribute__((unused)), XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
 

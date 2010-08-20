@@ -370,7 +370,7 @@ extern void smgrcommit(void);
 extern void smgrabort(void);
 extern void smgrsync(void);
 
-extern void smgr_redo(XLogRecPtr lsn, XLogRecord *record);
+extern void smgr_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record);
 extern void smgr_desc(StringInfo buf, XLogRecord *record);
 
 

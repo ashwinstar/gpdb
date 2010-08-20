@@ -96,7 +96,7 @@ extern Datum lastval(PG_FUNCTION_ARGS);
 extern void DefineSequence(CreateSeqStmt *stmt);
 extern void AlterSequence(AlterSeqStmt *stmt);
 
-extern void seq_redo(XLogRecPtr lsn, XLogRecord *rptr);
+extern void seq_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *rptr);
 extern void seq_desc(StringInfo buf, XLogRecord *record);
 
 /* Set the upper and lower bounds of a sequence */

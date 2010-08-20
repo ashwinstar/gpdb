@@ -402,7 +402,7 @@ gistRedoCompleteInsert(XLogRecPtr lsn __attribute__((unused)), XLogRecord *recor
 }
 
 void
-gist_redo(XLogRecPtr lsn, XLogRecord *record)
+gist_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
 

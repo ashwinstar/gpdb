@@ -685,7 +685,7 @@ hashvacuumcleanup(PG_FUNCTION_ARGS)
 
 
 void
-hash_redo(XLogRecPtr lsn __attribute__((unused)), XLogRecord *record __attribute__((unused)))
+hash_redo(XLogRecPtr beginLoc __attribute__((unused)), XLogRecPtr lsn __attribute__((unused)), XLogRecord *record __attribute__((unused)))
 {
 	elog(PANIC, "hash_redo: unimplemented");
 }

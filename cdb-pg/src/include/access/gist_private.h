@@ -278,7 +278,7 @@ extern SplitedPageLayout *gistSplit(Relation r, Page page, IndexTuple *itup,
 extern GISTInsertStack *gistFindPath(Relation r, BlockNumber child);
 
 /* gistxlog.c */
-extern void gist_redo(XLogRecPtr lsn, XLogRecord *record);
+extern void gist_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record);
 extern void gist_desc(StringInfo buf, XLogRecord *record);
 extern void gist_xlog_startup(void);
 extern void gist_xlog_cleanup(void);

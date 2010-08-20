@@ -242,7 +242,7 @@ extern Datum ginbuild(PG_FUNCTION_ARGS);
 extern Datum gininsert(PG_FUNCTION_ARGS);
 
 /* ginxlog.c */
-extern void gin_redo(XLogRecPtr lsn, XLogRecord *record);
+extern void gin_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record);
 extern void gin_desc(StringInfo buf, XLogRecord *record);
 extern void gin_xlog_startup(void);
 extern void gin_xlog_cleanup(void);

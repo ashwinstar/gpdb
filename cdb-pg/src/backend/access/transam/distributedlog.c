@@ -743,7 +743,7 @@ DistributedLog_WriteTruncateXlogRec(int page)
  * DistributedLog resource manager's routines
  */
 void
-DistributedLog_redo(XLogRecPtr lsn, XLogRecord *record)
+DistributedLog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
 

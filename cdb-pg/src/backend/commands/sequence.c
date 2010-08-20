@@ -1704,7 +1704,7 @@ process_owned_by(Relation seqrel, List *owned_by)
 
 
 void
-seq_redo(XLogRecPtr lsn, XLogRecord *record)
+seq_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
 	Relation	reln;

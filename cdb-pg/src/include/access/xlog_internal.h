@@ -232,7 +232,7 @@ typedef XLogLongPageHeaderData *XLogLongPageHeader;
 typedef struct RmgrData
 {
 	const char *rm_name;
-	void		(*rm_redo) (XLogRecPtr lsn, XLogRecord *rptr);
+	void		(*rm_redo) (XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *rptr);
 	void		(*rm_desc) (StringInfo buf, XLogRecord *record);
 	void		(*rm_startup) (void);
 	void		(*rm_cleanup) (void);

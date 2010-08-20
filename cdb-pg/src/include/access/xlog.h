@@ -196,6 +196,7 @@ extern bool XLOG_DEBUG;
 
 extern XLogRecPtr XLogInsert(RmgrId rmid, uint8 info, XLogRecData *rdata);
 extern XLogRecPtr XLogInsert_OverrideXid(RmgrId rmid, uint8 info, XLogRecData *rdata, TransactionId overrideXid);
+extern XLogRecPtr XLogLastInsertBeginLoc(void);
 extern XLogRecPtr XLogLastInsertEndLoc(void);
 extern XLogRecPtr XLogLastChangeTrackedLoc(void);
 extern uint32 XLogLastInsertTotalLen(void);
@@ -204,7 +205,7 @@ extern void XLogFlush(XLogRecPtr RecPtr);
 extern void XLogFileRepFlushCache(
 	XLogRecPtr	*lastChangeTrackingEndLoc);
 
-extern void xlog_redo(XLogRecPtr lsn __attribute__((unused)) , XLogRecord *record);
+extern void xlog_redo(XLogRecPtr beginLoc __attribute__((unused)), XLogRecPtr lsn __attribute__((unused)), XLogRecord *record);
 extern void xlog_desc(StringInfo buf, XLogRecord *record);
 
 extern void UpdateControlFile(void);

@@ -2881,7 +2881,7 @@ smgrsync(void)
 
 
 void
-smgr_redo(XLogRecPtr lsn, XLogRecord *record)
+smgr_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
 	int primaryError = 0;
