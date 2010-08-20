@@ -145,7 +145,7 @@ void gpdb_get_hostlist(int* hostcnt, char*** hostvec, char*** datadirvec,
 	PGresult* result = 0;
 	int rowcount, i;
 	const char
-			* QUERY = "SELECT hostname, fselocation as datadir, dbid FROM pg_filespace_entry JOIN gp_segment_configuration on (dbid = fsedbid) WHERE fsefsoid = (select oid from pg_filespace where fsname='pg_system') AND mode = 's' AND STATUS = 'u' ORDER BY dbid ASC";
+			* QUERY = "SELECT hostname, fselocation as datadir, dbid FROM pg_filespace_entry JOIN gp_segment_configuration on (dbid = fsedbid) WHERE fsefsoid = (select oid from pg_filespace where fsname='pg_system') AND STATUS = 'u' ORDER BY dbid ASC";
 	int cnt = 0;
 	char** vec = 0;
 	char** vec2 = 0;
