@@ -758,7 +758,7 @@ void gpmon_format_snmp_string(FILE* fd, const char* hostname, oid oidname[], siz
 		}
 	}
 
-	snprintf(buffer, snprintf_size, (char*)vars->val.string);
+	snprintf(buffer, snprintf_size, "%s", (char*)vars->val.string);
 	fprintf(fd, "%s|%s|%s|%s|%s\n", hostname, oidstring, displayname, snmp_status_prt(GPDB_SNMP_STATUS_NORMAL), buffer);
 	update_per_host_status(GPDB_SNMP_STATUS_NORMAL);
 }
