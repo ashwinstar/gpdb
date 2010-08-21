@@ -101,7 +101,11 @@ extern bool ChangeTracking_RetrieveLastChangeTrackedLoc(void);
 
 extern bool ChangeTracking_RetrieveIsTransitionToInsync(void);
 
+extern bool ChangeTracking_RetrieveIsTransitionToResync(void);
+
 extern void ChangeTracking_MarkFullResync(void);
+
+extern void ChangeTracking_MarkIncrResync(void);
 
 extern void ChangeTracking_MarkTransitionToResyncCompleted(void);
 

@@ -260,7 +260,7 @@ extern void getFileRepRoleAndState(
 /* functions for the postmaster/filerep interaction */
 extern bool isFullResync(void);
 
-extern void setFullResync(void);
+extern void setFullResync(bool isFullResync);
 
 extern bool isDatabaseRunning(void);
 

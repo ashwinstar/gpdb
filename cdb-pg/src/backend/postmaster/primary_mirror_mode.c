@@ -573,11 +573,11 @@ isFullResync(void)
 }
 
 void
-setFullResync(void)
+setFullResync(bool isFullResync)
 {
 	acquireModuleSpinLockAndMaybeStartCriticalSection(true);
 	{
-		pmModuleState->forceFullResync = true;
+		pmModuleState->forceFullResync = isFullResync;
 	}
 	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 }

@@ -259,6 +259,19 @@ FileRepPrimary_StartRecoveryInChangeTracking(void)
 		{
 			ChangeTracking_DropAll();
 		}
+		else
+		{
+			if (ChangeTracking_RetrieveIsTransitionToResync() == FALSE &&
+				isFullResync())
+			{
+				ChangeTracking_MarkFullResync();
+			}
+			else
+			{
+				ChangeTracking_MarkIncrResync();
+			}
+			
+		}
 		
 		XLogInChangeTrackingTransition();
 				

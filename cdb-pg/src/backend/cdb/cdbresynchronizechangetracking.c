@@ -2153,24 +2153,17 @@ ChangeTracking_MarkFullResyncLockAcquired(void)
 	CTFType	ftype = CTF_META;
 	bool	emit_error = false;
 
-	// can enable this when all callers are updated Assert( LWLockHeldByMe(ChangeTrackingWriteLock));
-
-	/* it will be removed when backend signaling will be implemented */
-	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
-
-	/* NOTE commented till fix is implemented for marking full copy before transition to InResync */
-	//Assert(dataState == DataStateInChangeTracking);
-
-	setFullResync(); // the routine set full resync required in shared memory
-
-	/* NOTE commented till fix is implemented for marking full copy before transition to InResync */
-	//FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
-	
 	/* 
 	 * Insert an entry into the meta file that mark FullResync needed, and fsync.
 	 */
 	elog(LOG, "CHANGETRACKING: marking full resync");
+	
 	changeTrackingResyncMeta->resync_mode_full = true;
+	changeTrackingResyncMeta->resync_lsn_end.xlogid = 0;
+	changeTrackingResyncMeta->resync_lsn_end.xrecoff = 0;
+	changeTrackingResyncMeta->resync_transition_completed = false;
+	changeTrackingResyncMeta->insync_transition_completed = false;
+	
 	file = ChangeTracking_OpenFile(ftype);	
 	
 	/*
@@ -2205,7 +2198,53 @@ ChangeTracking_MarkFullResyncLockAcquired(void)
 	/* Delete Change Tracking log file (if exists) */
 	ChangeTracking_DropLogFiles();
 	
+	/* set full resync flag in configuration shared memory */
+	setFullResync(changeTrackingResyncMeta->resync_mode_full); 
+	
+	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
+	
+	Assert(dataState == DataStateInChangeTracking);
+	
+	if (dataState == DataStateInChangeTracking)
+	{
+		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
+	}	
+
 	return 0;
+}
+
+/*
+ * Mark incremental resync, reset metadata and don't drop change tracking log files
+ */
+void ChangeTracking_MarkIncrResync(void)
+{
+	File		file;
+	CTFType		ftype = CTF_META;
+
+	elog(LOG, "CHANGETRACKING: marking incremental resync");
+	
+	LWLockAcquire(ChangeTrackingWriteLock, LW_EXCLUSIVE);
+
+	changeTrackingResyncMeta->resync_mode_full = false;
+	changeTrackingResyncMeta->resync_lsn_end.xlogid = 0;
+	changeTrackingResyncMeta->resync_lsn_end.xrecoff = 0;
+	changeTrackingResyncMeta->resync_transition_completed = false;
+	changeTrackingResyncMeta->insync_transition_completed = false;
+	
+	file = ChangeTracking_OpenFile(ftype);	
+	
+	if(ChangeTracking_WriteMeta(file) > 0)
+		ChangeTracking_HandleWriteError(ftype);
+	
+	errno = 0;
+	
+	/* fsync meta file to disk */
+	if(FileSync(file) < 0)
+		ChangeTracking_HandleWriteError(ftype);
+	
+	ChangeTracking_CloseFile(file);
+
+	LWLockRelease(ChangeTrackingWriteLock);
 }
 
 void
@@ -2356,8 +2395,7 @@ ChangeTracking_RetrieveLastChangeTrackedLoc(void)
 				recptr->resync_transition_completed,
 				recptr->insync_transition_completed);
 
-		if (recptr->resync_mode_full) 	
-			setFullResync();
+		setFullResync(recptr->resync_mode_full);
 		 
 		/* 
 		 * if resync_lsn_end isn't {0,0} then we have a valid value 
@@ -2399,12 +2437,56 @@ ChangeTracking_RetrieveIsTransitionToInsync(void)
 	{
 		res = recptr->insync_transition_completed;	
 		
-		elog(LOG, "CHANGETRACKING: ChangeTracking_RetrieveIsTransitionToInsync found "
-				  "insync_transition_completed is %d", res);
+		/* set full resync flag in configuration shared memory */
+		setFullResync(recptr->resync_mode_full); 
+
+		
+		elog(LOG, "CHANGETRACKING: ChangeTracking_RetrieveIsTransitionToInsync() found "
+			 "insync_transition_completed:'%s' full resync:'%s' ", 
+			 (res == TRUE) ? "true" : "false",
+			 (recptr->resync_mode_full == TRUE) ? "true" : "false");
+		
 	}
 	else
 		elog(LOG, "CHANGETRACKING: didn't find an MD record");
 
+	ChangeTracking_CloseFile(file);
+	
+	return res;
+}
+
+/*
+ * Return the value stored in the MD file resync_transition_completed field.
+ */
+bool
+ChangeTracking_RetrieveIsTransitionToResync(void)
+{	
+	ChangeTrackingMetaRecord  	rec;
+	ChangeTrackingMetaRecord* 	recptr = NULL;
+	File						file;
+	bool						res = false;
+	
+	file = ChangeTracking_OpenFile(CTF_META);	
+	
+	recptr = ChangeTracking_ReadMeta(file, &rec);
+	
+	/* is there a meta record in the meta file? */
+	if (recptr)
+	{
+		res = recptr->resync_transition_completed;	
+		
+		/* set full resync flag in configuration shared memory */
+		setFullResync(recptr->resync_mode_full); 
+		
+		elog(LOG, 
+			 "CHANGETRACKING: ChangeTracking_RetrieveIsTransitionToResync() found "
+			 "resync_transition_completed:'%s' full resync:'%s' ", 
+			 (res == TRUE) ? "true" : "false",
+			 (recptr->resync_mode_full == TRUE) ? "true" : "false");
+	}
+	else
+		elog(LOG, "CHANGETRACKING: didn't find an MD record");
+	
 	ChangeTracking_CloseFile(file);
 	
 	return res;

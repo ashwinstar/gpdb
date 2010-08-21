@@ -116,7 +116,7 @@ FileRepSubProcess_ShutdownHandler(SIGNAL_ARGS)
 
 	if ( FileRepIsBackendSubProcess(fileRepProcessType))
 	{
-		if (FileRepPrimary_IsResyncWorker())
+		if (FileRepPrimary_IsResyncManagerOrWorker())
 		{
 			getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, &isInTransition, &dataStateTransition);
 			
@@ -124,7 +124,7 @@ FileRepSubProcess_ShutdownHandler(SIGNAL_ARGS)
 				dataStateTransition == DataStateInChangeTracking)
 			{
 				/*
-				 * Resync worker may be waiting on lock that is acquired by backend process that is
+				 * Resync workers and manager may be waiting on lock that is acquired by backend process that is
 				 * suspended during transition to Change Tracking and so FileRep backend shutdown may 
 				 * never be completed.
 				 */

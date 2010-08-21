@@ -975,6 +975,9 @@ FileRepPrimary_RunResyncManager(void)
 				break;
 			}				
 			
+			elog(LOG, "FileRepPrimary_RunResyncManager() PersistentFileSysObj_ResynchronizeScan DONE, append only commit count:'%d' ",
+				 fileRepResyncShmem->appendOnlyCommitCount);
+			
 			LWLockAcquire(MirroredLock, LW_EXCLUSIVE);
 			mirroredLock = TRUE;
 						

@@ -5268,15 +5268,21 @@ static void PersistentFileSysObj_MarkPageIncremental(
 		(persistentState == PersistentFileSysState_CreatePending ||
 		 persistentState == PersistentFileSysState_Created)
 		&&
-		MirroredObjectExistenceState_IsResynchCreated(mirrorExistenceState))
+		MirroredObjectExistenceState_IsResynchCreated(mirrorExistenceState)
+		&&
+		mirrorDataSynchronizationState != MirroredRelDataSynchronizationState_FullCopy
+		&&
+		mirrorDataSynchronizationState != MirroredRelDataSynchronizationState_BufferPoolScanIncremental)
 	{
 		if (Debug_persistent_print)
 			elog(Persistent_DebugPrintLevel(), 
-				 "PersistentFileSysObj_MarkPageIncremental: Mark '%s' needing page incremental (changed page count " INT64_FORMAT "), persistent state '%s', mirror existence state '%s', serial number " INT64_FORMAT " at TID %s",
+				 "PersistentFileSysObj_MarkPageIncremental: Mark '%s' needing page incremental (changed page count " INT64_FORMAT "), "
+				 "persistent state '%s', mirror existence state '%s', mirror synchronization state '%s', serial number " INT64_FORMAT " at TID %s",
 				 PersistentFileSysObjName_ObjectName(&fsObjName),
 				 newMirrorBufpoolResyncChangedPageCount,
 				 PersistentFileSysObjState_Name(persistentState),
 				 MirroredObjectExistenceState_Name(mirrorExistenceState),
+				 MirroredRelDataSynchronizationState_Name(mirrorDataSynchronizationState),
 				 serialNum,
 				 ItemPointerToString(persistentTid));
 		
@@ -5293,11 +5299,13 @@ static void PersistentFileSysObj_MarkPageIncremental(
 	{
 		if (Debug_persistent_print)
 			elog(Persistent_DebugPrintLevel(), 
-				 "PersistentFileSysObj_MarkPageIncremental: Skipping '%s' for page incremental, relation storage manager '%s', persistent state '%s', mirror existence state '%s', serial number " INT64_FORMAT " at TID %s",
+				 "PersistentFileSysObj_MarkPageIncremental: Skipping '%s' for page incremental, relation storage manager '%s', "
+				 "persistent state '%s', mirror existence state '%s', mirror synchronization state '%s', serial number " INT64_FORMAT " at TID %s",
 				 PersistentFileSysObjName_ObjectName(&fsObjName),
 				 PersistentFileSysRelStorageMgr_Name(relationStorageManager),
 				 PersistentFileSysObjState_Name(persistentState),
 				 MirroredObjectExistenceState_Name(mirrorExistenceState),
+				 MirroredRelDataSynchronizationState_Name(mirrorDataSynchronizationState),
 				 serialNum,
 				 ItemPointerToString(persistentTid));
 
