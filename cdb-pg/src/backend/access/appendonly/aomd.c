@@ -136,7 +136,6 @@ OpenAOSegmentFile(
 	int64 persistentSerialNum;
 
 	int primaryError;
-	bool mirrorDataLossOccurred;	// We'll look at this at close time.
 
 	if (!ReadGpRelationNode(
 				rel->rd_node.relNode,
@@ -163,8 +162,7 @@ OpenAOSegmentFile(
 							logicalEof,
 							&persistentTid,
 							persistentSerialNum,
-							&primaryError,
-							&mirrorDataLossOccurred);
+							&primaryError);
 	if (primaryError != 0)
 		ereport(ERROR,
 			   (errcode_for_file_access(),

@@ -46,6 +46,8 @@ typedef struct MirroredAppendOnlyOpen
 	int64						mirrorDataLossTrackingSessionNum;
 
 	bool						create;
+
+	bool						primaryOnlyToLetResynchronizeWork;
 	
 	bool						mirrorOnly;
 	
@@ -100,7 +102,7 @@ extern void MirroredAppendOnly_MirrorReCreate(
 /*
  * MirroredAppendOnly_OpenReadWrite will acquire and release the MirroredLock.
  */
-extern bool MirroredAppendOnly_OpenReadWrite(
+extern void MirroredAppendOnly_OpenReadWrite(
 	MirroredAppendOnlyOpen		*open,
 				/* The resulting open struct. */
 
@@ -120,9 +122,7 @@ extern bool MirroredAppendOnly_OpenReadWrite(
 
 	int64						persistentSerialNum,
 	
-	int 						*primaryError,
-	
-	bool						*mirrorDataLossOccurred);
+	int 						*primaryError);
 
 extern void MirroredAppendOnly_AddMirrorResyncEofs(
 	RelFileNode						*relFileNode,
@@ -191,7 +191,9 @@ extern void MirroredAppendOnly_FlushAndClose(
 
 	int 						*primaryError,
 	
-	bool						*mirrorDataLossOccurred);
+	bool					*mirrorDataLossOccurred,
+
+	bool					*mirrorCatchupRequired);
 
 /*
  * Flush an Append-Only relation file.

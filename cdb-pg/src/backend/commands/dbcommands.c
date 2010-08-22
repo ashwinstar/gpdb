@@ -399,8 +399,7 @@ static void copy_append_only_segment_file(
 	int64			eof,
 	ItemPointer		persistentTid,
 	int64			persistentSerialNum,
-	char			*buffer,
-	bool			*mirrorDataLossOccurred)
+	char			*buffer)
 {
 	char srcFileName[MAXPGPATH];
 	char dstFileName[MAXPGPATH];
@@ -410,14 +409,16 @@ static void copy_append_only_segment_file(
 
 	MirroredAppendOnlyOpen mirroredDstOpen;
 
-	bool primaryOnlyToLetResynchronizeWork;
-
 	int64	endOffset;
 	int64	readOffset;
 	int32	bufferLen;
 	int 	retval;
 
 	int primaryError;
+
+	bool mirrorDataLossOccurred;
+
+	bool mirrorCatchupRequired;
 
 	Assert(eof > 0);
 
@@ -460,17 +461,15 @@ static void copy_append_only_segment_file(
 		strcat(dstFileName, extension);
 	}
 
-	primaryOnlyToLetResynchronizeWork =
-			MirroredAppendOnly_OpenReadWrite(
-									&mirroredDstOpen,
-									dstRelFileNode,
-									segmentFileNum,
-									relationName,
-									/* logicalEof */ 0,	// NOTE: This is the START EOF.  Since we are copying, we start at 0.
-									persistentTid,
-									persistentSerialNum,
-									&primaryError,
-									mirrorDataLossOccurred);
+	MirroredAppendOnly_OpenReadWrite(
+							&mirroredDstOpen,
+							dstRelFileNode,
+							segmentFileNum,
+							relationName,
+							/* logicalEof */ 0,	// NOTE: This is the START EOF.  Since we are copying, we start at 0.
+							persistentTid,
+							persistentSerialNum,
+							&primaryError);
 	if (primaryError != 0)
 		ereport(ERROR,
 				(errcode_for_file_access(),
@@ -505,7 +504,7 @@ static void copy_append_only_segment_file(
 							  buffer,
 							  bufferLen,
 							  &primaryError,
-							  mirrorDataLossOccurred);
+							  &mirrorDataLossOccurred);
 		if (primaryError != 0)
 			ereport(ERROR,
 					(errcode_for_file_access(),
@@ -521,7 +520,8 @@ static void copy_append_only_segment_file(
 	MirroredAppendOnly_FlushAndClose(
 							&mirroredDstOpen,
 							&primaryError,
-							mirrorDataLossOccurred);
+							&mirrorDataLossOccurred,
+							&mirrorCatchupRequired);
 	if (primaryError != 0)
 		ereport(ERROR,
 				(errcode_for_file_access(),
@@ -535,8 +535,7 @@ static void copy_append_only_segment_file(
 	{
 		int64 mirrorLossEof;
 
-		if (mirrorDataLossOccurred || 
-			primaryOnlyToLetResynchronizeWork)
+		if (mirrorCatchupRequired)
 		{
 			/*
 			 * Assume all mirror data we tried to write was lost, or
@@ -1118,8 +1117,6 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 
 			PersistentFileSysRelStorageMgr relStorageMgr;
 
-			bool mirrorDataLossOccurred;
-			
 			tablespace = dbInfoRel->reltablespace;
 			if (tablespace == GLOBALTABLESPACE_OID)
 				continue;
@@ -1210,8 +1207,7 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 										dbInfoGpRelationNode->logicalEof,
 										&dbInfoGpRelationNode->persistentTid,
 										dbInfoGpRelationNode->persistentSerialNum,
-										buffer,
-										&mirrorDataLossOccurred);
+										buffer);
 					}
 				}
 			}			

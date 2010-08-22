@@ -9947,9 +9947,7 @@ copy_append_only_data(
 	
 	int64			persistentSerialNum,
 	
-	char			*buffer,
-
-	bool			*mirrorDataLossOccurred)
+	char			*buffer)
 {
 	char srcFileName[MAXPGPATH];
 	char dstFileName[MAXPGPATH];
@@ -9959,14 +9957,16 @@ copy_append_only_data(
 
 	MirroredAppendOnlyOpen mirroredDstOpen;
 
-	bool primaryOnlyToLetResynchronizeWork;
-
 	int64	endOffset;
 	int64	readOffset;
 	int32	bufferLen;
 	int 	retval;
 
 	int 		primaryError;
+
+	bool mirrorDataLossOccurred;
+
+	bool mirrorCatchupRequired;
 
 	if (segmentFileNum > 0)
 	{
@@ -9997,17 +9997,15 @@ copy_append_only_data(
 		strcat(dstFileName, extension);
 	}
 
-	primaryOnlyToLetResynchronizeWork =
-			MirroredAppendOnly_OpenReadWrite(
-										&mirroredDstOpen,
-										newRelFileNode,
-										segmentFileNum,
-										relationName,
-										/* logicalEof */ 0, // NOTE: This is the START EOF.  Since we are copying, we start at 0.
-										persistentTid,
-										persistentSerialNum,
-										&primaryError,
-										mirrorDataLossOccurred);
+	MirroredAppendOnly_OpenReadWrite(
+								&mirroredDstOpen,
+								newRelFileNode,
+								segmentFileNum,
+								relationName,
+								/* logicalEof */ 0, // NOTE: This is the START EOF.  Since we are copying, we start at 0.
+								persistentTid,
+								persistentSerialNum,
+								&primaryError);
 	if (primaryError != 0)
 		ereport(ERROR,
 				(errcode_for_file_access(),
@@ -10043,7 +10041,7 @@ copy_append_only_data(
 							  buffer,
 							  bufferLen,
 							  &primaryError,
-							  mirrorDataLossOccurred);
+							  &mirrorDataLossOccurred);
 		if (primaryError != 0)
 			ereport(ERROR,
 					(errcode_for_file_access(),
@@ -10059,7 +10057,8 @@ copy_append_only_data(
 	MirroredAppendOnly_FlushAndClose(
 							&mirroredDstOpen,
 							&primaryError,
-							mirrorDataLossOccurred);
+							&mirrorDataLossOccurred,
+							&mirrorCatchupRequired);
 	if (primaryError != 0)
 		ereport(ERROR,
 				(errcode_for_file_access(),
@@ -10074,8 +10073,7 @@ copy_append_only_data(
 	{
 		int64 mirrorLossEof;
 
-		if (mirrorDataLossOccurred || 
-			primaryOnlyToLetResynchronizeWork)
+		if (mirrorCatchupRequired)
 		{
 			/*
 			 * Assume all mirror data we tried to write was lost, or
@@ -10146,8 +10144,6 @@ ATExecSetTableSpace_AppendOnly(
 	HeapTuple tupleCopy;
 
 	AppendOnlyEntry *aoEntry;
-
-	bool mirrorDataLossOccurred;
 
 	oldTablespace = rel->rd_rel->reltablespace ? rel->rd_rel->reltablespace : MyDatabaseTableSpace;
 
@@ -10315,23 +10311,7 @@ ATExecSetTableSpace_AppendOnly(
 						eof,
 						&newPersistentTid,
 						newPersistentSerialNum,
-						buffer,
-						&mirrorDataLossOccurred);
-		if (eof > 0)
-		{
-			int64 mirrorLossEof;
-
-			mirrorLossEof = (mirrorDataLossOccurred ? 0 : eof);
-
-			smgrappendonlymirrorresynceofs(
-									newRelFileNode,
-									segmentFileNum,
-									rel->rd_rel->relname.data,
-									&newPersistentTid,
-									newPersistentSerialNum,
-									mirrorLossEof,
-									eof);
-		}
+						buffer);
 	}
 
 	GpRelationNodeEndScan(&gpRelationNodeScan);

@@ -389,7 +389,6 @@ void AppendOnlyStorageWrite_OpenFile(
 	int64						persistentSerialNum)
 {
 	int		primaryError;
-	bool 	mirrorDataLossOccurred;	// We'll look at this at flush and close time.
 
 	File	file;
 	
@@ -407,17 +406,15 @@ void AppendOnlyStorageWrite_OpenFile(
 	/*
 	 * Open or create the file for write.
 	 */	
-	storageWrite->primaryOnlyToLetResynchronizeWork =
-		MirroredAppendOnly_OpenReadWrite(
-								&storageWrite->bufferedAppend.mirroredOpen, 
-								relFileNode,
-								segmentFileNum,
-								storageWrite->relationName,
-								logicalEof,
-								persistentTid,
-								persistentSerialNum,
-								&primaryError,
-								&mirrorDataLossOccurred);
+	MirroredAppendOnly_OpenReadWrite(
+							&storageWrite->bufferedAppend.mirroredOpen, 
+							relFileNode,
+							segmentFileNum,
+							storageWrite->relationName,
+							logicalEof,
+							persistentTid,
+							persistentSerialNum,
+							&primaryError);
 	if (primaryError != 0)
 		ereport(ERROR,
 			   (errcode_for_file_access(),
@@ -434,6 +431,8 @@ void AppendOnlyStorageWrite_OpenFile(
 	seekResult = FileSeek(file, logicalEof, SEEK_SET);
 	if (seekResult != logicalEof)
 	{
+		bool	mirrorDataLossOccurred;
+
 		MirroredAppendOnly_Close(
 						&storageWrite->bufferedAppend.mirroredOpen,
 						&mirrorDataLossOccurred);
@@ -566,7 +565,9 @@ void AppendOnlyStorageWrite_FlushAndCloseFile(
 
 	int64						*fileLen_uncompressed,
 
-	bool						*mirrorDataLossOccurred)
+	bool						*mirrorDataLossOccurred,
+
+	bool 						*mirrorCatchupRequired)
 {
 	int primaryError;
 
@@ -574,6 +575,7 @@ void AppendOnlyStorageWrite_FlushAndCloseFile(
 	Assert(storageWrite->isActive);
 
 	*mirrorDataLossOccurred = false;	// Assume.
+	*mirrorCatchupRequired = false;	// Assume.
 	
 	if (storageWrite->file == -1)
 	{
@@ -604,7 +606,8 @@ void AppendOnlyStorageWrite_FlushAndCloseFile(
 	MirroredAppendOnly_FlushAndClose(
 							&storageWrite->bufferedAppend.mirroredOpen,
 							&primaryError,
-							mirrorDataLossOccurred);
+							mirrorDataLossOccurred,
+							mirrorCatchupRequired);
 	if (primaryError != 0)
 		ereport(ERROR,
 			   (errcode_for_file_access(),
@@ -643,6 +646,7 @@ void AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
 		
 	int64	startEof;
 	bool	mirrorDataLossOccurred;
+	bool 	mirrorCatchupRequired;
 
 	Assert(storageWrite != NULL);
 	Assert(storageWrite->isActive);
@@ -665,14 +669,14 @@ void AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
 										storageWrite,
 										newLogicalEof,
 										fileLen_uncompressed,
-										&mirrorDataLossOccurred);
+										&mirrorDataLossOccurred,
+										&mirrorCatchupRequired);
 
 	if (*newLogicalEof - startEof > 0)
 	{
 		int64 mirrorLossEof;
 
-		if (mirrorDataLossOccurred || 
-			storageWrite->primaryOnlyToLetResynchronizeWork)
+		if (mirrorCatchupRequired)
 		{
 			/*
 			 * Assume all mirror data we tried to write was lost, or
@@ -699,13 +703,14 @@ void AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
 
 		if (Debug_persistent_print)
 			elog(Persistent_DebugPrintLevel(), 
-				 "AppendOnlyStorageWrite_TransactionFlushAndCloseFile: %u/%u/%u, segment file #%d, serial number " INT64_FORMAT ", TID %s, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
+				 "AppendOnlyStorageWrite_TransactionFlushAndCloseFile: %u/%u/%u, segment file #%d, serial number " INT64_FORMAT ", TID %s, mirror catchup required %s, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
 				 relFileNode.spcNode,
 				 relFileNode.dbNode,
 				 relFileNode.relNode,
 				 segmentFileNum,
 				 persistentSerialNum,
 				 ItemPointerToString(&persistentTid),
+				 (mirrorCatchupRequired ? "true" : "false"),
 				 mirrorLossEof,
 				 *newLogicalEof);
 	}
