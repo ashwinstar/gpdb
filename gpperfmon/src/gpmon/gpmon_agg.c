@@ -1323,7 +1323,12 @@ static apr_uint32_t write_qlog_full(FILE* fp, qdnode_t *qdnode, const char* nows
 						fputc('\"', fp);
 						bytes_written++;
 					}
-					fputc(*p, fp);
+
+					if ((*p == '\n') || (*p == '\r')) {
+					  fputc(' ', fp);
+					} else {
+					  fputc(*p, fp);
+					}
 					bytes_written++;
 				}
 				qtextlen -= n;
