@@ -1323,14 +1323,6 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	// NOTE: work.
 	START_CRIT_SECTION();
 
-	if (isCommit)
-	{
-		// NOTE: This use to be inside RecordTransactionCommitPrepared.
-		
-		/* See notes in RecordTransactionCommit */
-		LWLockAcquire(CheckpointStartLock, LW_SHARED);
-	}
-
 	/*
 	 * Use the MirroredLock to cover both the XLOG of the {COMMIT|ABORT} PREPARED
 	 * record and the removal the of the two phase file from the pg_twophase directory.
@@ -1394,14 +1386,6 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	RemoveGXact(gxact);
 
 	MIRRORED_UNLOCK;
-
-	if (isCommit)
-	{
-		// NOTE: This use to be inside RecordTransactionCommitPrepared.
-		
-		/* Checkpoint is allowed again */
-		LWLockRelease(CheckpointStartLock);
-	}
 
 	END_CRIT_SECTION();
 
@@ -1928,6 +1912,9 @@ RecordTransactionCommitPrepared(TransactionId xid,
 										persistentPrepareObjects,
 										EndXactRecKind_Commit);
 
+	/* See notes in RecordTransactionCommit */
+	LWLockAcquire(CheckpointStartLock, LW_SHARED);
+
 	/* Emit the XLOG commit record */
 	xlrec.xid = xid;
 	xlrec.crec.xtime = time(NULL);
@@ -2017,6 +2004,9 @@ RecordTransactionCommitPrepared(TransactionId xid,
 	
 	/* to avoid race conditions, the parent must commit first */
 	TransactionIdCommitTree(nchildren, children);
+
+	/* Checkpoint is allowed again */
+	LWLockRelease(CheckpointStartLock);
 
 	if (persistentCommitBuffer != NULL)
 		pfree(persistentCommitBuffer);
