@@ -256,11 +256,11 @@ bool gHaveInitializedLocalState = false;
 static int
 getPrimaryMirrorModeDebugLogLevel(bool isLowPriority)
 {
-    if ( isLowPriority)
-        return DEBUG3;
-    else if ( Debug_filerep_print )
-        return LOG;
-    else return DEBUG1;
+	if (isLowPriority)
+		return DEBUG3;
+	else if (Debug_filerep_print)
+		return LOG;
+	else return DEBUG1;
 }
 
 /**
@@ -279,12 +279,12 @@ const char *
 getMirrorModeLabel(PrimaryMirrorMode mode)
 {
 	static const char *labels[] =
-	{
-		"Uninitialized", "Master", "MirrorlessSegment",
-		"QuiescentSegment", "PrimarySegment", "MirrorSegment"
-	};
+		{
+			"Uninitialized", "Master", "MirrorlessSegment",
+			"QuiescentSegment", "PrimarySegment", "MirrorSegment"
+		};
 
-    COMPILE_ASSERT(ARRAY_SIZE(labels) == PMMode__EnumerationCount);
+	COMPILE_ASSERT(ARRAY_SIZE(labels) == PMMode__EnumerationCount);
 	
 	return labels[mode];
 }
@@ -301,11 +301,11 @@ const char *
 getDataStateLabel(DataState_e state)
 {
 	static const char *labels[] =
-	{
+		{
 			"NotInitialized", "InSync", "InChangeTracking",
 			"InResync"
-	};
-    COMPILE_ASSERT(ARRAY_SIZE(labels) == DataState__EnumerationCount);
+		};
+	COMPILE_ASSERT(ARRAY_SIZE(labels) == DataState__EnumerationCount);
 
 	return labels[state];
 }
@@ -320,12 +320,12 @@ const char *
 getSegmentStateLabel(SegmentState_e state)
 {
 	static const char *labels[] =
-	{
-		"NotInitialized", "Initialization", "InChangeTrackingTransition", "InResyncTransition",
-		"InSyncTransition", "Ready", "ChangeTrackingDisabled", "Fault",
-		"ShutdownBackends", "Shutdown", "ImmediateShutdown"
-	};
-    COMPILE_ASSERT(ARRAY_SIZE(labels) == SegmentState__EnumerationCount);
+		{
+			"NotInitialized", "Initialization", "InChangeTrackingTransition", "InResyncTransition",
+			"InSyncTransition", "Ready", "ChangeTrackingDisabled", "Fault",
+			"ShutdownBackends", "Shutdown", "ImmediateShutdown"
+		};
+	COMPILE_ASSERT(ARRAY_SIZE(labels) == SegmentState__EnumerationCount);
 
 	return labels[state];
 }
@@ -340,11 +340,11 @@ const char *
 getTransitionResultLabel(PrimaryMirrorModeTransitionResult res)
 {
 	static const char *labels[] =
-	{
-		"Success", "InvalidTargetMode", "OtherTransitionInProgress",
-		"InvalidInputParameter", "Error", "OkayButStillInProgress"
-	};
-    COMPILE_ASSERT(ARRAY_SIZE(labels) == PMTransition__EnumerationCount);
+		{
+			"Success", "InvalidTargetMode", "OtherTransitionInProgress",
+			"InvalidInputParameter", "Error", "OkayButStillInProgress"
+		};
+	COMPILE_ASSERT(ARRAY_SIZE(labels) == PMTransition__EnumerationCount);
 
 	return labels[res];
 }
@@ -356,28 +356,28 @@ static const char *
 getTransitionStateLabel(TransitionState state)
 {
 	static const char *labels[] =
-	{
-        "None",
+		{
+			"None",
 
-        "DoFilerepBackendsShutdown",
-        "AwaitingFilerepBackendsShutdown",
-        "DoneFilerepBackendsShutdown",
+			"DoFilerepBackendsShutdown",
+			"AwaitingFilerepBackendsShutdown",
+			"DoneFilerepBackendsShutdown",
 
-        "DoFilerepShutdown",
-        "AwaitingFilerepShutdown",
-        "DoneFilerepShutdown",
+			"DoFilerepShutdown",
+			"AwaitingFilerepShutdown",
+			"DoneFilerepShutdown",
 
-        "DoFilerepStartup",
-        "AwaitingFilerepStartup",
-        "DoneFilerepStartup",
+			"DoFilerepStartup",
+			"AwaitingFilerepStartup",
+			"DoneFilerepStartup",
 
-        "DoDatabaseStartup",
-        "AwaitingDatabaseStartup",
-        "DoneDatabaseStartup",
+			"DoDatabaseStartup",
+			"AwaitingDatabaseStartup",
+			"DoneDatabaseStartup",
 
-        "Done"
-	};
-    COMPILE_ASSERT(ARRAY_SIZE(labels) == TS__EnumerationCount);
+			"Done"
+		};
+	COMPILE_ASSERT(ARRAY_SIZE(labels) == TS__EnumerationCount);
 
 	return labels[state];
 }
@@ -412,12 +412,12 @@ decipherPrimaryMirrorModeArgument(const char *arg)
 static void
 acquireModuleSpinLockAndMaybeStartCriticalSection(bool startCriticalSection)
 {
-    Assert(!pmLocalState.criticalSectionStarted);
-    if ( startCriticalSection)
-    {
-        pmLocalState.criticalSectionStarted = true;
-	    START_CRIT_SECTION();
-    }
+	Assert(!pmLocalState.criticalSectionStarted);
+	if (startCriticalSection)
+	{
+		pmLocalState.criticalSectionStarted = true;
+		START_CRIT_SECTION();
+	}
 	SpinLockAcquire(&pmModuleState->lock);
 }
 
@@ -428,11 +428,11 @@ static void
 releaseModuleSpinLockAndEndCriticalSectionAsNeeded(void)
 {
 	SpinLockRelease(&pmModuleState->lock);
-	if ( pmLocalState.criticalSectionStarted )
+	if (pmLocalState.criticalSectionStarted)
 	{
-	    pmLocalState.criticalSectionStarted = false;
-	    END_CRIT_SECTION();
-    }
+		pmLocalState.criticalSectionStarted = false;
+		END_CRIT_SECTION();
+	}
 }
 
 static void
@@ -507,66 +507,66 @@ getPrimaryMirrorModeStatus(char *bufOut, int bufSize)
  */
 void
 primaryMirrorGetFilerepArguments(
-			FileRepRole_e	*fileRepRoleOut, 
-			SegmentState_e	*segmentStateOut, 
-			DataState_e		*dataStateOut,
-			char **primaryHostAddressOut,
-			int *primaryPortOut,
-			char **mirrorHostAddressOut, 
-			int *mirrorPortOut,
-            bool *fullSyncOut)
+	FileRepRole_e	*fileRepRoleOut, 
+	SegmentState_e	*segmentStateOut, 
+	DataState_e		*dataStateOut,
+	char **primaryHostAddressOut,
+	int *primaryPortOut,
+	char **mirrorHostAddressOut, 
+	int *mirrorPortOut,
+	bool *fullSyncOut)
 {
 	PrimaryMirrorMode mode;
 	volatile PrimaryMirrorModeTransitionArguments *args;
 
 	assertModuleInitialized();
 
-    acquireModuleSpinLockAndMaybeStartCriticalSection(false);
-    {
-        args = &pmModuleState->requestedTransition;
-        mode = args->mode;
+	acquireModuleSpinLockAndMaybeStartCriticalSection(false);
+	{
+		args = &pmModuleState->requestedTransition;
+		mode = args->mode;
 
-        if (mode == PMModePrimarySegment)
-        {
-            *fileRepRoleOut = FileRepPrimaryRole;
-            copyHostData(primaryHostAddressOut, primaryPortOut, (char*)args->hostAddress, args->hostPort);
-            copyHostData(mirrorHostAddressOut, mirrorPortOut, (char*)args->peerAddress, args->peerPort);
-            *dataStateOut = args->dataState;
-            *segmentStateOut = pmModuleState->segmentState;
-            *fullSyncOut = args->forceFullResync;
-        }
-        else if (mode == PMModeMirrorSegment)
-        {
-            *fileRepRoleOut = FileRepMirrorRole;
-            copyHostData(primaryHostAddressOut, primaryPortOut, (char*)args->peerAddress, args->peerPort);
-            copyHostData(mirrorHostAddressOut, mirrorPortOut, (char*)args->hostAddress, args->hostPort);
-            *dataStateOut = args->dataState;
-            *segmentStateOut = pmModuleState->segmentState;
-            *fullSyncOut = false;
-        }
-        else
-        {
-            *fileRepRoleOut = FileRepNoRoleConfigured;
-            *primaryHostAddressOut = *mirrorHostAddressOut = NULL;
-            *primaryPortOut = *mirrorPortOut = 0;
-            *segmentStateOut = SegmentStateNotInitialized;
-            *dataStateOut = DataStateNotInitialized;
-            *fullSyncOut = false;
-        }
-    }
-    releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
+		if (mode == PMModePrimarySegment)
+		{
+			*fileRepRoleOut = FileRepPrimaryRole;
+			copyHostData(primaryHostAddressOut, primaryPortOut, (char*)args->hostAddress, args->hostPort);
+			copyHostData(mirrorHostAddressOut, mirrorPortOut, (char*)args->peerAddress, args->peerPort);
+			*dataStateOut = args->dataState;
+			*segmentStateOut = pmModuleState->segmentState;
+			*fullSyncOut = args->forceFullResync;
+		}
+		else if (mode == PMModeMirrorSegment)
+		{
+			*fileRepRoleOut = FileRepMirrorRole;
+			copyHostData(primaryHostAddressOut, primaryPortOut, (char*)args->peerAddress, args->peerPort);
+			copyHostData(mirrorHostAddressOut, mirrorPortOut, (char*)args->hostAddress, args->hostPort);
+			*dataStateOut = args->dataState;
+			*segmentStateOut = pmModuleState->segmentState;
+			*fullSyncOut = false;
+		}
+		else
+		{
+			*fileRepRoleOut = FileRepNoRoleConfigured;
+			*primaryHostAddressOut = *mirrorHostAddressOut = NULL;
+			*primaryPortOut = *mirrorPortOut = 0;
+			*segmentStateOut = SegmentStateNotInitialized;
+			*dataStateOut = DataStateNotInitialized;
+			*fullSyncOut = false;
+		}
+	}
+	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 }
 
 bool
 isFullResync(void)
 {
-    bool result;
+	bool result;
 	assertModuleInitialized();
 
 	acquireModuleSpinLockAndMaybeStartCriticalSection(false);
-    {
-        result = pmModuleState->forceFullResync;
-    }
+	{
+		result = pmModuleState->forceFullResync;
+	}
 	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 
 	return result;
@@ -607,8 +607,8 @@ isDatabaseRunning(void)
 static bool
 isInValidTransition_UnderLock(void)
 {
-    return pmModuleState->isTransitionRequested &&
-            pmModuleState->transitionState >= TSDoFilerepBackendsShutdown;
+    return
+		pmModuleState->isTransitionRequested && pmModuleState->transitionState >= TSDoFilerepBackendsShutdown;
 }
 
 /**
@@ -628,70 +628,70 @@ isInValidTransition_UnderLock(void)
  */
 void
 getFileRepRoleAndState(
-			FileRepRole_e	*fileRepRoleOut,
-			SegmentState_e	*segmentStateOut,
-			DataState_e		*dataStateOut,
+	FileRepRole_e	*fileRepRoleOut,
+	SegmentState_e	*segmentStateOut,
+	DataState_e		*dataStateOut,
 
-			bool *isInFilerepTransitionOut,
-			DataState_e *transitionTargetDataStateOut
-			)
+	bool *isInFilerepTransitionOut,
+	DataState_e *transitionTargetDataStateOut
+	)
 {
 	assertModuleInitialized();
 
-    FileRepRole_e fileRepRole;
-    SegmentState_e	segmentState;
-    DataState_e		dataState;
-    bool isInFilerepTransition;
-    DataState_e transitionTargetDataState;
+	FileRepRole_e fileRepRole;
+	SegmentState_e	segmentState;
+	DataState_e		dataState;
+	bool isInFilerepTransition;
+	DataState_e transitionTargetDataState;
 
 	acquireModuleSpinLockAndMaybeStartCriticalSection(false);
 	{
-        /* check to see if postmaster is still processing a transition.  Note that here we don't
-         *  need to check to see if the listener is complete
-         **/
-	    isInFilerepTransition = isInValidTransition_UnderLock();
+		/* check to see if postmaster is still processing a transition.  Note that here we don't
+		 *  need to check to see if the listener is complete
+		 **/
+		isInFilerepTransition = isInValidTransition_UnderLock();
 
 		PrimaryMirrorMode mode = pmModuleState->mode;
 		switch (mode)
 		{
 			case PMModePrimarySegment:
 			case PMModeMirrorSegment:
-			    fileRepRole = mode == PMModePrimarySegment ? FileRepPrimaryRole : FileRepMirrorRole;
-                dataState = pmModuleState->dataState;
-                segmentState = pmModuleState->segmentState;
+				fileRepRole = mode == PMModePrimarySegment ? FileRepPrimaryRole : FileRepMirrorRole;
+				dataState = pmModuleState->dataState;
+				segmentState = pmModuleState->segmentState;
 				    
-                if ( isInFilerepTransition )
-                {
-                    transitionTargetDataState = pmModuleState->requestedTransition.dataState;
-                }
-                else
-                {
-                    transitionTargetDataState = DataStateNotInitialized;
-                }
+				if (isInFilerepTransition)
+				{
+					transitionTargetDataState = pmModuleState->requestedTransition.dataState;
+				}
+				else
+				{
+					transitionTargetDataState = DataStateNotInitialized;
+				}
 				    
 				break;
 			default:
-                fileRepRole = FileRepNoRoleConfigured;
-                dataState = DataStateNotInitialized;
-                segmentState = SegmentStateNotInitialized;
-                transitionTargetDataState = DataStateNotInitialized;
+				fileRepRole = FileRepNoRoleConfigured;
+				dataState = DataStateNotInitialized;
+				segmentState = SegmentStateNotInitialized;
+				transitionTargetDataState = DataStateNotInitialized;
 				break;
 		}
 	}
 	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 
 	/* now fill in output! */
-	if ( fileRepRoleOut )
-	    *fileRepRoleOut = fileRepRole;
-    if ( segmentStateOut )
-	    *segmentStateOut = segmentState;
-    if ( dataStateOut )
-	    *dataStateOut = dataState;
+	if (fileRepRoleOut)
+		*fileRepRoleOut = fileRepRole;
+	if (segmentStateOut)
+		*segmentStateOut = segmentState;
+	if (dataStateOut)
+		*dataStateOut = dataState;
 
-    if ( isInFilerepTransitionOut )
-	    *isInFilerepTransitionOut = isInFilerepTransition;
-    if ( transitionTargetDataStateOut )
-	    *transitionTargetDataStateOut = transitionTargetDataState;
+	if (isInFilerepTransitionOut)
+		*isInFilerepTransitionOut = isInFilerepTransition;
+	if (transitionTargetDataStateOut)
+		*transitionTargetDataStateOut = transitionTargetDataState;
 }
 
 static void
@@ -772,6 +772,7 @@ Size
 primaryMirrorModeShmemSize(void)
 {
 	Size		size;
+
 	size = sizeof(PMModuleState);
 	return size;
 }
@@ -779,17 +780,17 @@ primaryMirrorModeShmemSize(void)
 void
 primaryMirrorModeShmemInit(void)
 {
-    if ( ! gHaveInitializedLocalState )
-    {
-        /* only initialize local state once */
-        pmLocalState.haveSetMostRecentTransition = false;
-        pmLocalState.mostRecentSegmentStateWasChangeTrackingDisabled = false;
-        pmLocalState.criticalSectionStarted = false;
+	if (!gHaveInitializedLocalState)
+	{
+		/* only initialize local state once */
+		pmLocalState.haveSetMostRecentTransition = false;
+		pmLocalState.mostRecentSegmentStateWasChangeTrackingDisabled = false;
+		pmLocalState.criticalSectionStarted = false;
 
-        gHaveInitializedLocalState = true;
-    }
+		gHaveInitializedLocalState = true;
+	}
 
-    pmModuleState = (PMModuleState *) ShmemAlloc(sizeof(PMModuleState));
+	pmModuleState = (PMModuleState *) ShmemAlloc(sizeof(PMModuleState));
 	pmModuleState->isTransitionRequested = false;
 	pmModuleState->hasPostmasterCopiedTransitionToLocalMemory = false;
 	pmModuleState->mode = PMModeUninitialized;
@@ -810,11 +811,11 @@ primaryMirrorModeShmemInit(void)
 	pmModuleState->transitionResultExtraInfo[0] = '\0';
 
 	pmModuleState->haveStartedDatabase = false;
-    pmModuleState->bgWriterPID = 0;
+	pmModuleState->bgWriterPID = 0;
 	pmModuleState->transitionNumberCounter = 1;
 	pmModuleState->isInFaultFromPostmasterReset = false;
 	pmModuleState->shouldTryUpdatePmLocalDataStateFromModuleState = false;
-    pmModuleState->isIOSuspended = false;
+	pmModuleState->isIOSuspended = false;
 
 	clearTransitionArgs(&pmModuleState->requestedTransition);
 
@@ -866,30 +867,29 @@ primaryMirrorDoNextResetToFault(void)
 bool
 primaryMirrorPostmasterResetShouldRestartPeer(void)
 {
-	if ( !USE_PEER_RESET_DURING_POSTMASTER_RESET )
+	if (!USE_PEER_RESET_DURING_POSTMASTER_RESET)
 	{
 		return false;
 	}
 
-	if ( !pmLocalState.haveSetMostRecentTransition )
+	if (!pmLocalState.haveSetMostRecentTransition)
 	{
 		return false;
 	}
 
 	PrimaryMirrorMode mode = pmLocalState.mostRecentTransition.mode;
 
-    if ( mode == PMModeMirrorSegment )
-    {
-    	/* if we're a mirror and panicked, should try to reset the primary */
-        return true;
-    }
-    else if ( mode == PMModePrimarySegment &&
-              pmLocalState.mostRecentTransition.dataState != DataStateInChangeTracking )
+	if (mode == PMModeMirrorSegment)
+	{
+		/* if we're a mirror and panicked, should try to reset the primary */
+		return true;
+	}
+	else if (mode == PMModePrimarySegment &&
+			 pmLocalState.mostRecentTransition.dataState != DataStateInChangeTracking)
 	{
 		/* if we're a primary AND we were in resync/sync then try to restart in that mode */
 		return true;
 	}
-
     return false;
 }
 
@@ -902,57 +902,68 @@ primaryMirrorPostmasterResetShouldRestartPeer(void)
 void
 primaryMirrorHandlePostmasterReset(void)
 {
-    bool transitionToFault = false;
+	bool transitionToFault = false;
 
 	Assert(pmModuleState->mode == PMModeUninitialized);
-    Assert(pmLocalState.haveSetMostRecentTransition );
+	Assert(pmLocalState.haveSetMostRecentTransition);
 
-	if ( !USE_PEER_RESET_DURING_POSTMASTER_RESET )
+	if (!USE_PEER_RESET_DURING_POSTMASTER_RESET)
 	{
-		/** if we have not enabled USE_PEER_RESET_DURING_POSTMASTER_RESET, then treat it as ALWAYS
-		  * doing a reset to the fault state */
+		/*
+		 * if we have not enabled
+		 * USE_PEER_RESET_DURING_POSTMASTER_RESET, then treat it as
+		 * ALWAYS doing a reset to the fault state
+		 */
 		pmLocalState.doNextResetToFault = true;
 	}
 
-   	if ( pmLocalState.mostRecentTransition.mode == PMModeMirrorSegment)
-    {
-        transitionToFault = pmLocalState.doNextResetToFault;
-    }
-    else if ( pmLocalState.mostRecentTransition.mode == PMModePrimarySegment)
-    {
-        if ( pmLocalState.mostRecentTransition.dataState != DataStateInChangeTracking )
-        {
-            /* transition to fault if needed, to let fault prober decide what to do */
-            /* otherwise, the peer has been reset successfully and we can do a simple reset instead */
-            transitionToFault = pmLocalState.doNextResetToFault;
-        }
-    }
-    else
-    {
-        transitionToFault = false;
-    }
+	elog(LOG,
+		 "PrimaryMirrorMode: Processing postmaster reset with recent mode of %d",
+		 pmLocalState.mostRecentTransition.mode);
+
+	if (pmLocalState.mostRecentTransition.mode == PMModeMirrorSegment)
+	{
+		transitionToFault = pmLocalState.doNextResetToFault;
+	}
+	else if (pmLocalState.mostRecentTransition.mode == PMModePrimarySegment)
+	{
+		if (pmLocalState.mostRecentTransition.dataState != DataStateInChangeTracking)
+		{
+			/*
+			 * transition to fault if needed, to let fault prober
+			 * decide what to do. Otherwise, the peer has been reset
+			 * successfully and we can do a simple reset instead
+			 */
+			transitionToFault = pmLocalState.doNextResetToFault;
+		}
+	}
+	else
+	{
+		transitionToFault = false;
+	}
     
-    pmLocalState.doNextResetToFault = false;
+	pmLocalState.doNextResetToFault = false;
 
-    elog(getPrimaryMirrorModeDebugLogLevel(false), "PrimaryMirrorMode: Processing postmaster reset%s",
-                transitionToFault ? " to fault state" : " to non-fault state");
+	elog(LOG,
+		 "PrimaryMirrorMode: Processing postmaster reset to %s state",
+		 transitionToFault ? "fault" : "non-fault");
 
-    pmModuleState->requestedTransition = pmLocalState.mostRecentTransition;
-    pmModuleState->requestedTransition.transitionToFault = transitionToFault;
+	pmModuleState->requestedTransition = pmLocalState.mostRecentTransition;
+	pmModuleState->requestedTransition.transitionToFault = transitionToFault;
 
-    if ( pmModuleState->requestedTransition.dataState == DataStateInChangeTracking &&
-         pmModuleState->requestedTransition.mode == PMModePrimarySegment &&
+	if (pmModuleState->requestedTransition.dataState == DataStateInChangeTracking &&
+		pmModuleState->requestedTransition.mode == PMModePrimarySegment &&
 
-         pmLocalState.mostRecentSegmentStateWasChangeTrackingDisabled)
-    {
-        /**
-         * before reset we were in change tracking disabled; continue that through to after the reset
-         */
-        pmModuleState->requestedTransition.transitionToChangeTrackingDisabledMode = true;
-    }
+		pmLocalState.mostRecentSegmentStateWasChangeTrackingDisabled)
+	{
+		/*
+		 * before reset we were in change tracking disabled; continue that through to after the reset
+		 */
+		pmModuleState->requestedTransition.transitionToChangeTrackingDisabledMode = true;
+	}
 
-    /* come after assigning requestedTransition, so we get the transition number set */
-    resetModuleStateForInitialTransition();
+	/* come after assigning requestedTransition, so we get the transition number set */
+	resetModuleStateForInitialTransition();
 }
 
 /**
@@ -962,7 +973,7 @@ primaryMirrorHandlePostmasterReset(void)
  */
 PrimaryMirrorModeTransitionResult
 requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
-                                            char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO])
+									 char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO])
 {
 	volatile bool isTransitioning = false;
 	PrimaryMirrorMode targetMode;
@@ -973,20 +984,20 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 	targetMode = args->mode;
 
 	elog(getPrimaryMirrorModeDebugLogLevel(false), "PrimaryMirrorTransitionRequest: to primary/mirror mode %s, "
-	                "data state %s, host %s, port %d, peer %s, peerPort %d%s%s",
+		 "data state %s, host %s, port %d, peer %s, peerPort %d%s%s",
 		 getMirrorModeLabel(targetMode), getDataStateLabel(args->dataState),
 		 args->hostAddress, args->hostPort,
 		 args->peerAddress, args->peerPort,
 		 args->forceFullResync ? ", force full resync" : "",
 		 args->transitionToFault ? ", transition to fault" : ""
-		 );
+		);
 
 	/* first, request the transition */
 	PG_TRY();
 	{
 		acquireModuleSpinLockAndMaybeStartCriticalSection(true);
 		{
-		    args->transitionNumber = pmModuleState->transitionNumberCounter++;
+			args->transitionNumber = pmModuleState->transitionNumberCounter++;
 
 			/**
 			 * we can have one without the other because
@@ -1001,11 +1012,11 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 				!pmModuleState->isTransitionListenerFinished)
 			{
 				elog(getPrimaryMirrorModeDebugLogLevel(false),
-				    "PrimaryMirrorTransitionRequest (%d) Result: Cannot transition: modulestate is: %s %s",
-				     args->transitionNumber,
+					 "PrimaryMirrorTransitionRequest (%d) Result: Cannot transition: modulestate is: %s %s",
+					 args->transitionNumber,
 					 (pmModuleState->isTransitionRequested ? "requested transition and" : ""),
 					 (pmModuleState->isTransitionListenerFinished ?
-					            "listener is finished" : "transition listener isn't finished"));
+					  "listener is finished" : "transition listener isn't finished"));
 			}
 			else
 			{
@@ -1015,7 +1026,7 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 				pmModuleState->isTransitionListenerFinished = false;
 				pmModuleState->hasPostmasterCopiedTransitionToLocalMemory = false;
 				pmModuleState->transitionState = TSNone;
-                pmModuleState->requestedTransition.transitionNumber = args->transitionNumber;
+				pmModuleState->requestedTransition.transitionNumber = args->transitionNumber;
 			}
 		}
 
@@ -1024,8 +1035,8 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 			releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 
 			elog(getPrimaryMirrorModeDebugLogLevel(false),
-			        "PrimaryMirrorTransitionRequest (%d) Result: Transition to primary/mirror mode %s, "
-			                "data state %s resulted in %s pending request(%s%s)",
+				 "PrimaryMirrorTransitionRequest (%d) Result: Transition to primary/mirror mode %s, "
+				 "data state %s resulted in %s pending request(%s%s)",
 				 args->transitionNumber,
 				 getMirrorModeLabel(targetMode), getDataStateLabel(args->dataState),
 				 getTransitionResultLabel(PMTransitionOtherTransitionInProgress),
@@ -1051,11 +1062,11 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 			releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 
 			elog(getPrimaryMirrorModeDebugLogLevel(false),
-			        "PrimaryMirrorTransitionRequest (%d) Result: Transition to primary/mirror mode %s, "
-                    "data state %s is as no-op",
-                    args->transitionNumber,
-                    getMirrorModeLabel(targetMode),
-                    getDataStateLabel(args->dataState));
+				 "PrimaryMirrorTransitionRequest (%d) Result: Transition to primary/mirror mode %s, "
+				 "data state %s is as no-op",
+				 args->transitionNumber,
+				 getMirrorModeLabel(targetMode),
+				 getDataStateLabel(args->dataState));
 			return PMTransitionSuccess;
 		}
 
@@ -1072,37 +1083,37 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 			bool isDone = false;
 			bool postmasterIsDead = false;
 
-            /* sleep 10 ms, waiting for postmaster to do something
-             * don't change the scale here without updating counter check below!
-             */
+			/* sleep 10 ms, waiting for postmaster to do something
+			 * don't change the scale here without updating counter check below!
+			 */
 			pg_usleep(10 * 1000L);
 
 			/* every ~ 1 second, see if postmaster is gone */
 			counter++;
-			if ( counter == 100)
+			if (counter == 100)
 			{
-			    if ( ! PostmasterIsAlive(true))
-			        postmasterIsDead = true;
-			    counter = 0;
+				if (!PostmasterIsAlive(true))
+					postmasterIsDead = true;
+				counter = 0;
 			}
 
 			acquireModuleSpinLockAndMaybeStartCriticalSection(true);
 			{
-			    if ( postmasterIsDead)
-			    {
-			        pmModuleState->isTransitionRequested = false;
-			        pmModuleState->isTransitionListenerFinished = true;
-			        result = PMTransitionError;
-			        strncpy(extraResultInfoOut, RESULT_INFO_POSTMASTER_DIED, MAX_TRANSITION_RESULT_EXTRA_INFO);
-			        isDone = true;
-			    }
+				if (postmasterIsDead)
+				{
+					pmModuleState->isTransitionRequested = false;
+					pmModuleState->isTransitionListenerFinished = true;
+					result = PMTransitionError;
+					strlcpy(extraResultInfoOut, RESULT_INFO_POSTMASTER_DIED, MAX_TRANSITION_RESULT_EXTRA_INFO);
+					isDone = true;
+				}
 				else if (!pmModuleState->isTransitionRequested)
 				{
 					// postmaster completed the work
 					pmModuleState->isTransitionListenerFinished = true;
 					result = pmModuleState->transitionResult;
-					strncpy(extraResultInfoOut, (char*) pmModuleState->transitionResultExtraInfo,
-					        MAX_TRANSITION_RESULT_EXTRA_INFO);
+					strlcpy(extraResultInfoOut, (char*) pmModuleState->transitionResultExtraInfo,
+							MAX_TRANSITION_RESULT_EXTRA_INFO);
 					isDone = true;
 				}
 			}
@@ -1110,15 +1121,15 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 
 			if (isDone)
 			{
-			    /* this won't get transitionToFault, because that 'succeeds', but that's okay because
-			     *    that happens on a panic from in-sync anyway */
-			    int logLevel = result == PMTransitionError ? WARNING : getPrimaryMirrorModeDebugLogLevel(false);
+				/* this won't get transitionToFault, because that 'succeeds', but that's okay because
+				 *    that happens on a panic from in-sync anyway */
+				int logLevel = result == PMTransitionError ? WARNING : getPrimaryMirrorModeDebugLogLevel(false);
 				elog(logLevel, "PrimaryMirrorTransitionRequest (%d) Result: Transition to primary/mirror mode %s, "
-				    "data state %s%s resulted in %s",
-				        args->transitionNumber,
-                        getMirrorModeLabel(targetMode), getDataStateLabel(args->dataState),
-					    args->transitionToFault ? " (to fault)" : "",
-					    getTransitionResultLabel(result));
+					 "data state %s%s resulted in %s",
+					 args->transitionNumber,
+					 getMirrorModeLabel(targetMode), getDataStateLabel(args->dataState),
+					 args->transitionToFault ? " (to fault)" : "",
+					 getTransitionResultLabel(result));
 				return result;
 			}
 		}
@@ -1126,8 +1137,8 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 	PG_CATCH();
 	{
 		elog(getPrimaryMirrorModeDebugLogLevel(false),
-		        "PrimaryMirrorTransitionRequest: Caught exception in requestTransitionToPrimaryMirrorMode(), "
-                "isTransitioning %d", isTransitioning);
+			 "PrimaryMirrorTransitionRequest: Caught exception in requestTransitionToPrimaryMirrorMode(), "
+			 "isTransitioning %d", isTransitioning);
 
 		if (isTransitioning)
 		{
@@ -1145,21 +1156,21 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 static bool
 updateDataStateUnderSpinLock(DataState_e dataState)
 {
-    if (pmModuleState->dataState != dataState)
-    {
-        if ( dataState == DataStateInChangeTracking )
-            pmModuleState->changeTrackingSessionId++;
-        pmModuleState->dataState = dataState;
-        return true;
-    }
-    return false;
+	if (pmModuleState->dataState != dataState)
+	{
+		if (dataState == DataStateInChangeTracking)
+			pmModuleState->changeTrackingSessionId++;
+		pmModuleState->dataState = dataState;
+		return true;
+	}
+	return false;
 }
 
 int64
 getChangeTrackingSessionId(void)
 {
-    assertModuleInitialized();
-    return pmModuleState->changeTrackingSessionId;
+	assertModuleInitialized();
+	return pmModuleState->changeTrackingSessionId;
 }
 
 /**
@@ -1169,20 +1180,20 @@ getChangeTrackingSessionId(void)
 bool
 updateDataState(DataState_e dataState)
 {
-	bool isUpdated = FALSE;
+		bool isUpdated = FALSE;
 
-	acquireModuleSpinLockAndMaybeStartCriticalSection(true);
-	{
-	    isUpdated = updateDataStateUnderSpinLock(dataState);
-	    if ( isUpdated )
-	    {
-	        pmModuleState->shouldTryUpdatePmLocalDataStateFromModuleState = true;
-	    }
+		acquireModuleSpinLockAndMaybeStartCriticalSection(true);
+		{
+			isUpdated = updateDataStateUnderSpinLock(dataState);
+			if (isUpdated)
+			{
+				pmModuleState->shouldTryUpdatePmLocalDataStateFromModuleState = true;
+			}
+		}
+		releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
+
+		return isUpdated;
 	}
-	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
-
-	return isUpdated;
-}
 
 bool
 updateSegmentState(SegmentState_e segmentState)
@@ -1191,29 +1202,29 @@ updateSegmentState(SegmentState_e segmentState)
 
 	acquireModuleSpinLockAndMaybeStartCriticalSection(true);
 	{
-	    SegmentState_e curState = pmModuleState->segmentState;
-	    if ( curState == SegmentStateImmediateShutdown )
-	    {
-	        /* never set to anything else during immediate shutdown */
-	    }
-	    else if (curState == SegmentStateShutdown )
-        {
-            /* allow promotion from shutdown to immediate shutdown */
-            if ( segmentState == SegmentStateImmediateShutdown )
-            {
-                isUpdated = TRUE;
-            }
-        }
-        else if ( curState == SegmentStateShutdownFilerepBackends)
-        {
-            /* allow promotion from backend shutdown to other shutdowns */
-            if ( segmentState == SegmentStateShutdown ||
-                 segmentState == SegmentStateImmediateShutdown)
-            {
-                isUpdated = TRUE;
-            }
-        }
-		else if ( curState != segmentState )
+		SegmentState_e curState = pmModuleState->segmentState;
+		if (curState == SegmentStateImmediateShutdown)
+		{
+			/* never set to anything else during immediate shutdown */
+		}
+		else if (curState == SegmentStateShutdown)
+		{
+			/* allow promotion from shutdown to immediate shutdown */
+			if (segmentState == SegmentStateImmediateShutdown)
+			{
+				isUpdated = TRUE;
+			}
+		}
+		else if (curState == SegmentStateShutdownFilerepBackends)
+		{
+			/* allow promotion from backend shutdown to other shutdowns */
+			if (segmentState == SegmentStateShutdown ||
+				segmentState == SegmentStateImmediateShutdown)
+			{
+				isUpdated = TRUE;
+			}
+		}
+		else if (curState != segmentState)
 		{
 			/* During change tracking failure is reported by signaling postmaster Reset (no Fault) */
 			if (! (segmentState == SegmentStateFault && 
@@ -1224,7 +1235,7 @@ updateSegmentState(SegmentState_e segmentState)
 		}
 		if (isUpdated)
 		{
-            pmModuleState->segmentState = segmentState;
+			pmModuleState->segmentState = segmentState;
 		}
 	}
 	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
@@ -1242,21 +1253,21 @@ updateSegmentState(SegmentState_e segmentState)
 bool
 isPrimaryMirrorModeTransitionRequested(void)
 {
-    return pmModuleState->isTransitionRequested;
+	return pmModuleState->isTransitionRequested;
 }
 
 static void copyTransitionParametersToLocalMemoryIfNeeded(PrimaryMirrorModeTransitionArguments *args)
 {
-    Assert(pmModuleState->isTransitionRequested );
+	Assert(pmModuleState->isTransitionRequested);
 
-    if ( pmModuleState->hasPostmasterCopiedTransitionToLocalMemory)
-    {
-        return;
-    }
+	if (pmModuleState->hasPostmasterCopiedTransitionToLocalMemory)
+	{
+		return;
+	}
 
-    pmLocalState.mostRecentTransition = *args;
-    pmLocalState.haveSetMostRecentTransition = true;
-    pmModuleState->hasPostmasterCopiedTransitionToLocalMemory = true;
+	pmLocalState.mostRecentTransition = *args;
+	pmLocalState.haveSetMostRecentTransition = true;
+	pmModuleState->hasPostmasterCopiedTransitionToLocalMemory = true;
 }
 
 /**
@@ -1307,24 +1318,26 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 	int transitionNumber;
 	bool transitionToFault;
 
+	char extraResultInfo[MAX_TRANSITION_RESULT_EXTRA_INFO];
+
 	Assert(!IsUnderPostmaster);
 	assertModuleInitialized();
 
 	acquireModuleSpinLockAndMaybeStartCriticalSection(true);
 	{
-	    /**
-	     * first, do any in-sync changes that were requested
-	     */
-	    if ( pmModuleState->shouldTryUpdatePmLocalDataStateFromModuleState)
-	    {
-	        if ( pmModuleState->dataState == DataStateInSync)
-            {
-	            pmLocalState.mostRecentTransition.dataState = DataStateInSync;
-            }
-	        pmModuleState->shouldTryUpdatePmLocalDataStateFromModuleState = false;
-	    }
+		/**
+		 * first, do any in-sync changes that were requested
+		 */
+		if (pmModuleState->shouldTryUpdatePmLocalDataStateFromModuleState)
+		{
+			if (pmModuleState->dataState == DataStateInSync)
+			{
+				pmLocalState.mostRecentTransition.dataState = DataStateInSync;
+			}
+			pmModuleState->shouldTryUpdatePmLocalDataStateFromModuleState = false;
+		}
 
-        /* grab out values under spin lock */
+		/* grab out values under spin lock */
 		isRequested = pmModuleState->isTransitionRequested;
 		isPrevRequestComplete = pmModuleState->isTransitionListenerFinished;
 		requestedTransition = pmModuleState->requestedTransition;
@@ -1338,277 +1351,278 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 
 	if (!isRequested /* && isPrevRequestComplete */)
 	{
-	    if ( ! isPrevRequestComplete )
-	    {
-	        elog(getPrimaryMirrorModeDebugLogLevel(false),
-	                "PostmasterPrimaryMirrorTransition (%d): Nothing to do but listener is not done",
-                    transitionNumber );
-	    }
+		if (!isPrevRequestComplete)
+		{
+			elog(getPrimaryMirrorModeDebugLogLevel(false),
+				 "PostmasterPrimaryMirrorTransition (%d): Nothing to do but listener is not done",
+				 transitionNumber);
+		}
 		return;
 	}
 
 	elog(getPrimaryMirrorModeDebugLogLevel(false),
-	                "PostmasterPrimaryMirrorTransition (%d): Attempting requested transition mode to %s, "
-	                "data state to %s, state is currently %s",
-	                transitionNumber,
-		            getMirrorModeLabel(requestedTransition.mode),
-		            getDataStateLabel(requestedTransition.dataState),
-		            getTransitionStateLabel(currentState));
+		 "PostmasterPrimaryMirrorTransition (%d): Attempting requested transition mode to %s, "
+		 "data state to %s, state is currently %s",
+		 transitionNumber,
+		 getMirrorModeLabel(requestedTransition.mode),
+		 getDataStateLabel(requestedTransition.dataState),
+		 getTransitionStateLabel(currentState));
 
-    char extraResultInfo[MAX_TRANSITION_RESULT_EXTRA_INFO];
-    extraResultInfo[0] = '\0';
-    if ( isInShutdown )
-    {
-	    elog(getPrimaryMirrorModeDebugLogLevel(false),
-	            "PostmasterPrimaryMirrorTransition error: system is in shutdown");
-	    strncpy(extraResultInfo, RESULT_INFO_IN_SHUTDOWN, MAX_TRANSITION_RESULT_EXTRA_INFO);
-        result = PMTransitionError;
-    }
-    else if ( transitionToFault)
-    {
-        assertIsTransitioning();
+	extraResultInfo[0] = '\0';
+	if (isInShutdown)
+	{
+		elog(getPrimaryMirrorModeDebugLogLevel(false),
+			 "PostmasterPrimaryMirrorTransition error: system is in shutdown");
+		strlcpy(extraResultInfo, RESULT_INFO_IN_SHUTDOWN, MAX_TRANSITION_RESULT_EXTRA_INFO);
+		result = PMTransitionError;
+	}
+	else if (transitionToFault)
+	{
+		assertIsTransitioning();
 
-        /* filerep should have been shut down by postmaster reset prior to this transition */
-        Assert(!IsFilerepProcessRunning());
+		/* filerep should have been shut down by postmaster reset prior to this transition */
+		Assert(!IsFilerepProcessRunning());
 
-    	copyTransitionParametersToLocalMemoryIfNeeded(&requestedTransition);
-        copyTransitionInputParameters(&requestedTransition, SegmentStateInitialization);
+		copyTransitionParametersToLocalMemoryIfNeeded(&requestedTransition);
+		copyTransitionInputParameters(&requestedTransition, SegmentStateInitialization);
 
-        /**
-         * must be after copying the transition input parameters
-         */
-        pmModuleState->isInFaultFromPostmasterReset = true;
+		/**
+		 * must be after copying the transition input parameters
+		 */
+		pmModuleState->isInFaultFromPostmasterReset = true;
         
-        if ( updateSegmentState(SegmentStateFault))
-            NotifyProcessesOfFilerepStateChange();
-        result = PMTransitionSuccess;
-    }
-    else
-    {
-        for ( ;; )
-        {
-            TransitionState initialState = currentState;
+		if (updateSegmentState(SegmentStateFault))
+		{
+			NotifyProcessesOfFilerepStateChange();
+		}
+		result = PMTransitionSuccess;
+	}
+	else
+	{
+		for (;;)
+		{
+			TransitionState initialState = currentState;
 
-            switch (requestedTransition.mode)
-            {
-                case PMModeUninitialized:
-                    result = applyStepForTransitionToUninitializedMode(&requestedTransition, &currentState, extraResultInfo);
-                    break;
-                case PMModeMaster:
-                case PMModeMirrorlessSegment:
-                    result = applyStepForTransitionToMasterOrMirrorlessMode(&requestedTransition, &currentState, extraResultInfo);
-                    break;
-                case PMModePrimarySegment:
-                    result = applyStepForTransitionToPrimarySegmentMode(&requestedTransition, &currentState, extraResultInfo);
-                    break;
-                case PMModeQuiescentSegment:
-                    result = applyStepForTransitionToQuiescentSegmentMode(&requestedTransition, &currentState, extraResultInfo);
-                    break;
-                case PMModeMirrorSegment:
-                    result = applyStepForTransitionToMirrorSegmentMode(&requestedTransition, &currentState, extraResultInfo);
-                    break;
-                default:
-                    Assert(!"Unknown targetMode");
-                    result = PMTransitionInvalidTargetMode;
-                    break;
-            }
+			switch (requestedTransition.mode)
+			{
+				case PMModeUninitialized:
+					result = applyStepForTransitionToUninitializedMode(&requestedTransition, &currentState, extraResultInfo);
+					break;
+				case PMModeMaster:
+				case PMModeMirrorlessSegment:
+					result = applyStepForTransitionToMasterOrMirrorlessMode(&requestedTransition, &currentState, extraResultInfo);
+					break;
+				case PMModePrimarySegment:
+					result = applyStepForTransitionToPrimarySegmentMode(&requestedTransition, &currentState, extraResultInfo);
+					break;
+				case PMModeQuiescentSegment:
+					result = applyStepForTransitionToQuiescentSegmentMode(&requestedTransition, &currentState, extraResultInfo);
+					break;
+				case PMModeMirrorSegment:
+					result = applyStepForTransitionToMirrorSegmentMode(&requestedTransition, &currentState, extraResultInfo);
+					break;
+				default:
+					Assert(!"Unknown targetMode");
+					result = PMTransitionInvalidTargetMode;
+					break;
+			}
 
-            if ( initialState != currentState)
-            {
-                acquireModuleSpinLockAndMaybeStartCriticalSection(true);
-                {
-                    pmModuleState->transitionState = currentState;
-                }
-                releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
+			if (initialState != currentState)
+			{
+				acquireModuleSpinLockAndMaybeStartCriticalSection(true);
+				{
+					pmModuleState->transitionState = currentState;
+				}
+				releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 
-                elog(getPrimaryMirrorModeDebugLogLevel(false),
-                        "PostmasterPrimaryMirrorTransition (%d), after completed step, transition state is %s",
-                        transitionNumber, getTransitionStateLabel(currentState));
-            }
+				elog(getPrimaryMirrorModeDebugLogLevel(false),
+					 "PostmasterPrimaryMirrorTransition (%d), after completed step, transition state is %s",
+					 transitionNumber, getTransitionStateLabel(currentState));
+			}
 
-            Assert(result != PMTransitionOtherTransitionInProgress);
+			Assert(result != PMTransitionOtherTransitionInProgress);
 
-            if ( result != PMTransitionInvalidTargetMode &&
-                 result != PMTransitionInvalidInputParameter )
-            {
-                /* if the result was  code that indicated that we are committed to this transition
-                 *   then go ahead and copy it to local memory so that a postmaster reset will replay it */
-                copyTransitionParametersToLocalMemoryIfNeeded(&requestedTransition);
-            }
+			if (result != PMTransitionInvalidTargetMode &&
+				result != PMTransitionInvalidInputParameter)
+			{
+				/* if the result was  code that indicated that we are committed to this transition
+				 *   then go ahead and copy it to local memory so that a postmaster reset will replay it */
+				copyTransitionParametersToLocalMemoryIfNeeded(&requestedTransition);
+			}
 
-            if ( result != PMTransitionSuccess )
-            {
-                break;
-            }
+			if (result != PMTransitionSuccess)
+			{
+				break;
+			}
 
-            if ( currentState == TSDone)
-            {
-                elog(getPrimaryMirrorModeDebugLogLevel(false),
-                        "PostmasterPrimaryMirrorTransition (%d): transition to %s done",
-                        transitionNumber,
-                        getDataStateLabel(requestedTransition.dataState));
-                result = PMTransitionSuccess;
-                break;
-            }
-            else if ( currentState == initialState )
-            {
-                result = PMTransitionOkayButStillInProgress;
-                break;
-            }
-        }
-    }
+			if (currentState == TSDone)
+			{
+				elog(getPrimaryMirrorModeDebugLogLevel(false),
+					 "PostmasterPrimaryMirrorTransition (%d): transition to %s done",
+					 transitionNumber,
+					 getDataStateLabel(requestedTransition.dataState));
+				result = PMTransitionSuccess;
+				break;
+			}
+			else if (currentState == initialState)
+			{
+				result = PMTransitionOkayButStillInProgress;
+				break;
+			}
+		}
+	}
 
 	if (result == PMTransitionOkayButStillInProgress)
 	{
 		Assert(pmModuleState->transitionState != TSNone);
-    	elog(getPrimaryMirrorModeDebugLogLevel(true),
-    	        "PostmasterPrimaryMirrorTransition (%d): in-progress, current state %s",
-	    	    transitionNumber,
-	    	    getTransitionStateLabel(currentState));
+		elog(getPrimaryMirrorModeDebugLogLevel(true),
+			 "PostmasterPrimaryMirrorTransition (%d): in-progress, current state %s",
+			 transitionNumber,
+			 getTransitionStateLabel(currentState));
 	}
 	else
 	{
-        int logLevel = result == PMTransitionError ? WARNING : getPrimaryMirrorModeDebugLogLevel(false);
-	    elog(logLevel, "PostmasterPrimaryMirrorTransition (%d) Finished with %s",
-	        transitionNumber, getTransitionResultLabel(result));
+		int logLevel = result == PMTransitionError ? WARNING : getPrimaryMirrorModeDebugLogLevel(false);
+		elog(logLevel, "PostmasterPrimaryMirrorTransition (%d) Finished with %s",
+			 transitionNumber, getTransitionResultLabel(result));
 		acquireModuleSpinLockAndMaybeStartCriticalSection(true);
 		{
 			pmModuleState->transitionResult = result;
-			strncpy((char*)pmModuleState->transitionResultExtraInfo, extraResultInfo, MAX_TRANSITION_RESULT_EXTRA_INFO);
+			strlcpy((char*)pmModuleState->transitionResultExtraInfo, extraResultInfo, MAX_TRANSITION_RESULT_EXTRA_INFO);
 			pmModuleState->isTransitionRequested = false;
 			elog(getPrimaryMirrorModeDebugLogLevel(false),
-			        "PostmasterPrimaryMirrorTransition (%d): completed (waiting backend finished? %s)",
-                    transitionNumber,
-                    pmModuleState->isTransitionListenerFinished ? "yes" : "no");
+				 "PostmasterPrimaryMirrorTransition (%d): completed (waiting backend finished? %s)",
+				 transitionNumber,
+				 pmModuleState->isTransitionListenerFinished ? "yes" : "no");
 			pmModuleState->transitionState = TSNone;
 		}
 		releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 	}
-
 }
 
 static PrimaryMirrorModeTransitionResult
 stepDoDatabaseStartup(TransitionState nextState, TransitionState *stateInOut)
 {
-    Assert(!pmModuleState->haveStartedDatabase);
+	Assert(!pmModuleState->haveStartedDatabase);
 
-    pmModuleState->haveStartedDatabase = true;
-    StartMasterOrPrimaryPostmasterProcesses();
-	if ( IsDatabaseInRunMode())
+	pmModuleState->haveStartedDatabase = true;
+	StartMasterOrPrimaryPostmasterProcesses();
+	if (IsDatabaseInRunMode())
 	{
 		pmModuleState->isDatabaseRunning = true;
 	}	
-    *stateInOut = TSDone;
-    return PMTransitionSuccess;
+	*stateInOut = TSDone;
+	return PMTransitionSuccess;
 }
 
 static PrimaryMirrorModeTransitionResult
 stepDoFilerepStartup(TransitionState nextState, TransitionState *stateInOut)
 {
 #ifdef USE_ASSERT_CHECKING
-    /* verify that filerep will get correct values when it asks for them */
-    bool isInTransition = false;
-    FileRepRole_e role = FileRepRoleNotInitialized;
-    getFileRepRoleAndState(&role, NULL, NULL, &isInTransition, NULL);
-    Assert(isInTransition);
-    Assert(role == FileRepPrimaryRole || role == FileRepMirrorRole);
+	/* verify that filerep will get correct values when it asks for them */
+	bool isInTransition = false;
+	FileRepRole_e role = FileRepRoleNotInitialized;
+	getFileRepRoleAndState(&role, NULL, NULL, &isInTransition, NULL);
+	Assert(isInTransition);
+	Assert(role == FileRepPrimaryRole || role == FileRepMirrorRole);
 #endif
 
-    StartFilerepProcesses();
-    *stateInOut = nextState;
-    return PMTransitionSuccess;
+	StartFilerepProcesses();
+	*stateInOut = nextState;
+	return PMTransitionSuccess;
 }
 
 static PrimaryMirrorModeTransitionResult
 stepDoFilerepShutdown(TransitionState nextState, TransitionState *stateInOut)
 {
-    /* shutdown filerep */
-    SignalShutdownFilerepProcess();
-    *stateInOut = nextState;
-    return PMTransitionSuccess;
+	/* shutdown filerep */
+	SignalShutdownFilerepProcess();
+	*stateInOut = nextState;
+	return PMTransitionSuccess;
 }
 
 static PrimaryMirrorModeTransitionResult
 stepDoFilerepBackendsShutdown(TransitionState nextState, TransitionState *stateInOut)
 {
-    /* shutdown filerep backend processes */
-    SignalShutdownFilerepBackendProcesses();
-    *stateInOut = nextState;
-    return PMTransitionSuccess;
+	/* shutdown filerep backend processes */
+	SignalShutdownFilerepBackendProcesses();
+	*stateInOut = nextState;
+	return PMTransitionSuccess;
 }
 
 static PrimaryMirrorModeTransitionResult
 stepWaitForFilerepShutdown(TransitionState nextState, TransitionState *stateInOut)
 {
-    /* waiting for filerep to complete shutdown */
-    if (IsFilerepProcessRunning())
-    {
-        elog(getPrimaryMirrorModeDebugLogLevel(true),
-                "PostmasterPrimaryMirrorTransition: filerep still running, will wait longer");
-    }
-    else
-    {
-        /** note that at this point the postmaster will have set segment state to fault. */
-        *stateInOut = nextState;
-    }
-    return PMTransitionSuccess;
+	/* waiting for filerep to complete shutdown */
+	if (IsFilerepProcessRunning())
+	{
+		elog(getPrimaryMirrorModeDebugLogLevel(true),
+			 "PostmasterPrimaryMirrorTransition: filerep still running, will wait longer");
+	}
+	else
+	{
+		/** note that at this point the postmaster will have set segment state to fault. */
+		*stateInOut = nextState;
+	}
+	return PMTransitionSuccess;
 }
 
 static PrimaryMirrorModeTransitionResult
 stepWaitForFilerepBackendsShutdown(TransitionState nextState, TransitionState *stateInOut)
 {
-    /* waiting for filerep to complete shutdown of its backends */
-    if (IsFilerepBackendsDoneShutdown())
-    {
-        *stateInOut = nextState;
-    }
-    else
-    {
-        elog(getPrimaryMirrorModeDebugLogLevel(true),
-                "PostmasterPrimaryMirrorTransition: will wait longer for backends to shutdown");
-    }
-    return PMTransitionSuccess;
+	/* waiting for filerep to complete shutdown of its backends */
+	if (IsFilerepBackendsDoneShutdown())
+	{
+		*stateInOut = nextState;
+	}
+	else
+	{
+		elog(getPrimaryMirrorModeDebugLogLevel(true),
+			 "PostmasterPrimaryMirrorTransition: will wait longer for backends to shutdown");
+	}
+	return PMTransitionSuccess;
 }
 
 static PrimaryMirrorModeTransitionResult
 stepWaitForFilerepStartup(TransitionState nextState, TransitionState *stateInOut,
-                char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO])
+						  char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO])
 {
-    SegmentState_e segmentState;
-    getPrimaryMirrorStatusCodes(NULL, &segmentState, NULL);
+	SegmentState_e segmentState;
 
-    if (!IsFilerepProcessRunning() ||
-        segmentState == SegmentStateFault)
-    {
-        elog(getPrimaryMirrorModeDebugLogLevel(false),
-                "PostmasterPrimaryMirrorTransition: filerep startup: transition error");
-        if ( updateSegmentState(SegmentStateFault))
-            NotifyProcessesOfFilerepStateChange();
-        strncpy(extraResultInfoOut, RESULT_INFO_MIRRORING_FAILURE, MAX_TRANSITION_RESULT_EXTRA_INFO);
-        return PMTransitionError;
-    }
+	getPrimaryMirrorStatusCodes(NULL, &segmentState, NULL);
 
-    if (segmentState == SegmentStateReady ||
-        segmentState == SegmentStateChangeTrackingDisabled )
-    {
-        elog(getPrimaryMirrorModeDebugLogLevel(false),
-                "PostmasterPrimaryMirrorTransition: filerep startup: completed");
-        *stateInOut = nextState;
-    }
-    else
-    {
-        elog(getPrimaryMirrorModeDebugLogLevel(true),
-                "PostmasterPrimaryMirrorTransition: filerep startup: still starting up");
-    }
-    return PMTransitionSuccess;
+	if (!IsFilerepProcessRunning() ||
+		segmentState == SegmentStateFault)
+	{
+		elog(getPrimaryMirrorModeDebugLogLevel(false),
+			 "PostmasterPrimaryMirrorTransition: filerep startup: transition error");
+		if (updateSegmentState(SegmentStateFault))
+			NotifyProcessesOfFilerepStateChange();
+		strlcpy(extraResultInfoOut, RESULT_INFO_MIRRORING_FAILURE, MAX_TRANSITION_RESULT_EXTRA_INFO);
+		return PMTransitionError;
+	}
+
+	if (segmentState == SegmentStateReady ||
+		segmentState == SegmentStateChangeTrackingDisabled)
+	{
+		elog(getPrimaryMirrorModeDebugLogLevel(false),
+			 "PostmasterPrimaryMirrorTransition: filerep startup: completed");
+		*stateInOut = nextState;
+	}
+	else
+	{
+		elog(getPrimaryMirrorModeDebugLogLevel(true),
+			 "PostmasterPrimaryMirrorTransition: filerep startup: still starting up");
+	}
+	return PMTransitionSuccess;
 }
 
 static PrimaryMirrorModeTransitionResult
 invalidMode(PrimaryMirrorModeTransitionArguments *args)
 {
-    elog(getPrimaryMirrorModeDebugLogLevel(false),
-                "PostmasterPrimaryMirrorTransition: invalid target mode");
-    return PMTransitionInvalidTargetMode;
+	elog(getPrimaryMirrorModeDebugLogLevel(false),
+		 "PostmasterPrimaryMirrorTransition: invalid target mode");
+	return PMTransitionInvalidTargetMode;
 }
 
 /**
@@ -1617,9 +1631,9 @@ invalidMode(PrimaryMirrorModeTransitionArguments *args)
 static PrimaryMirrorModeTransitionResult
 invalidState(TransitionState *stateInOut, char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO])
 {
-    elog(ERROR, "Invalid state %d", *stateInOut );
-    strncpy(extraResultInfoOut, RESULT_INFO_INVALID_STATE_TRANSITION, MAX_TRANSITION_RESULT_EXTRA_INFO);
-    return PMTransitionError;
+	elog(ERROR, "Invalid state %d", *stateInOut);
+	strlcpy(extraResultInfoOut, RESULT_INFO_INVALID_STATE_TRANSITION, MAX_TRANSITION_RESULT_EXTRA_INFO);
+	return PMTransitionError;
 }
 
 /**
@@ -1638,31 +1652,31 @@ applyStepForTransitionToUninitializedMode(PrimaryMirrorModeTransitionArguments *
  */
 static PrimaryMirrorModeTransitionResult
 applyStepForTransitionToMasterOrMirrorlessMode(PrimaryMirrorModeTransitionArguments *args, TransitionState *stateInOut,
-                        char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO])
+											   char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO])
 {
 	assertIsTransitioning();
 
-	switch ( *stateInOut )
+	switch (*stateInOut)
 	{
-	    case TSNone:
-	        XLogStartupInit(); /* do this as early as possible */
+		case TSNone:
+			XLogStartupInit(); /* do this as early as possible */
 
-            switch (pmModuleState->mode)
-            {
-                case PMModeUninitialized:
-                    *stateInOut = TSDoDatabaseStartup;
-                    break;
-                default:
-                    return invalidMode(args);
-            }
-            return PMTransitionSuccess;
+			switch (pmModuleState->mode)
+			{
+				case PMModeUninitialized:
+					*stateInOut = TSDoDatabaseStartup;
+					break;
+				default:
+					return invalidMode(args);
+			}
+			return PMTransitionSuccess;
 
-        case TSDoDatabaseStartup:
-            copyTransitionInputParameters(args, SegmentStateNotInitialized);
-            return stepDoDatabaseStartup(TSDone, stateInOut );
+		case TSDoDatabaseStartup:
+			copyTransitionInputParameters(args, SegmentStateNotInitialized);
+			return stepDoDatabaseStartup(TSDone, stateInOut);
 
-        default:
-            return invalidState(stateInOut, extraResultInfoOut);
+		default:
+			return invalidState(stateInOut, extraResultInfoOut);
 	}
 }
 
@@ -1671,46 +1685,46 @@ applyStepForTransitionToMasterOrMirrorlessMode(PrimaryMirrorModeTransitionArgume
  */
 static PrimaryMirrorModeTransitionResult
 applyStepForTransitionToQuiescentSegmentMode(PrimaryMirrorModeTransitionArguments *args, TransitionState *stateInOut,
-                        char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO])
+											 char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO])
 {
 	assertIsTransitioning();
 
-    switch ( *stateInOut )
-    {
-        case TSNone:
-            switch (pmModuleState->mode)
-            {
-                case PMModeMirrorSegment:
-                    *stateInOut = TSDoFilerepBackendsShutdown;
-                    return PMTransitionSuccess;
-                case PMModeUninitialized:
-                    *stateInOut = TSDone;
-                    return PMTransitionSuccess;
-                default:
-                    return invalidMode(args);
-            }
+	switch (*stateInOut)
+	{
+		case TSNone:
+			switch (pmModuleState->mode)
+			{
+				case PMModeMirrorSegment:
+					*stateInOut = TSDoFilerepBackendsShutdown;
+					return PMTransitionSuccess;
+				case PMModeUninitialized:
+					*stateInOut = TSDone;
+					return PMTransitionSuccess;
+				default:
+					return invalidMode(args);
+			}
 
-        case TSDoFilerepBackendsShutdown:
-            return stepDoFilerepBackendsShutdown(TSAwaitingFilerepBackendsShutdown, stateInOut );
-        case TSAwaitingFilerepBackendsShutdown:
-            return stepWaitForFilerepBackendsShutdown(TSDoneFilerepBackendsShutdown, stateInOut );
-        case TSDoneFilerepBackendsShutdown:
-            *stateInOut = TSDoFilerepShutdown;
-            return PMTransitionSuccess;
+		case TSDoFilerepBackendsShutdown:
+			return stepDoFilerepBackendsShutdown(TSAwaitingFilerepBackendsShutdown, stateInOut);
+		case TSAwaitingFilerepBackendsShutdown:
+			return stepWaitForFilerepBackendsShutdown(TSDoneFilerepBackendsShutdown, stateInOut);
+		case TSDoneFilerepBackendsShutdown:
+			*stateInOut = TSDoFilerepShutdown;
+			return PMTransitionSuccess;
 
-        case TSDoFilerepShutdown:
-            return stepDoFilerepShutdown(TSAwaitingFilerepShutdown, stateInOut );
-        case TSAwaitingFilerepShutdown:
-            return stepWaitForFilerepShutdown(TSDoneFilerepShutdown, stateInOut );
-        case TSDoneFilerepShutdown:
+		case TSDoFilerepShutdown:
+			return stepDoFilerepShutdown(TSAwaitingFilerepShutdown, stateInOut);
+		case TSAwaitingFilerepShutdown:
+			return stepWaitForFilerepShutdown(TSDoneFilerepShutdown, stateInOut);
+		case TSDoneFilerepShutdown:
 
-            *stateInOut = TSDone;
-            copyTransitionInputParameters(args, SegmentStateNotInitialized);
-            return PMTransitionSuccess;
+			*stateInOut = TSDone;
+			copyTransitionInputParameters(args, SegmentStateNotInitialized);
+			return PMTransitionSuccess;
 
-        default:
-            return invalidState(stateInOut, extraResultInfoOut);
-    }
+		default:
+			return invalidState(stateInOut, extraResultInfoOut);
+	}
 	/* else */
 	return PMTransitionInvalidTargetMode;
 }
@@ -1720,117 +1734,117 @@ applyStepForTransitionToQuiescentSegmentMode(PrimaryMirrorModeTransitionArgument
  */
 static PrimaryMirrorModeTransitionResult
 applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments *args, TransitionState *stateInOut,
-                        char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO])
+										   char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO])
 {
 	assertIsTransitioning();
 
-	switch ( *stateInOut )
+	switch (*stateInOut)
 	{
-	    case TSNone:
-            /* verify the transition mode */
-            switch (pmModuleState->mode)
-            {
-                case PMModeMirrorSegment:
-                case PMModePrimarySegment:
-                case PMModeQuiescentSegment:
-                case PMModeMirrorlessSegment:
-                case PMModeUninitialized:
-                    *stateInOut = TSDoFilerepBackendsShutdown;
-                    return PMTransitionSuccess;
-                default:
-                    return invalidMode(args);
-            }
+		case TSNone:
+			/* verify the transition mode */
+			switch (pmModuleState->mode)
+			{
+				case PMModeMirrorSegment:
+				case PMModePrimarySegment:
+				case PMModeQuiescentSegment:
+				case PMModeMirrorlessSegment:
+				case PMModeUninitialized:
+					*stateInOut = TSDoFilerepBackendsShutdown;
+					return PMTransitionSuccess;
+				default:
+					return invalidMode(args);
+			}
 
-        case TSDoFilerepBackendsShutdown:
-            return stepDoFilerepBackendsShutdown(TSAwaitingFilerepBackendsShutdown, stateInOut );
-        case TSAwaitingFilerepBackendsShutdown:
-            return stepWaitForFilerepBackendsShutdown(TSDoneFilerepBackendsShutdown, stateInOut );
-        case TSDoneFilerepBackendsShutdown:
-            *stateInOut = TSDoFilerepShutdown;
-            return PMTransitionSuccess;
+		case TSDoFilerepBackendsShutdown:
+			return stepDoFilerepBackendsShutdown(TSAwaitingFilerepBackendsShutdown, stateInOut);
+		case TSAwaitingFilerepBackendsShutdown:
+			return stepWaitForFilerepBackendsShutdown(TSDoneFilerepBackendsShutdown, stateInOut);
+		case TSDoneFilerepBackendsShutdown:
+			*stateInOut = TSDoFilerepShutdown;
+			return PMTransitionSuccess;
 
-        case TSDoFilerepShutdown:
-            return stepDoFilerepShutdown(TSAwaitingFilerepShutdown, stateInOut );
-        case TSAwaitingFilerepShutdown:
-            return stepWaitForFilerepShutdown(TSDoneFilerepShutdown, stateInOut );
-        case TSDoneFilerepShutdown:
-            *stateInOut = TSDoFilerepStartup;
-            return PMTransitionSuccess;
+		case TSDoFilerepShutdown:
+			return stepDoFilerepShutdown(TSAwaitingFilerepShutdown, stateInOut);
+		case TSAwaitingFilerepShutdown:
+			return stepWaitForFilerepShutdown(TSDoneFilerepShutdown, stateInOut);
+		case TSDoneFilerepShutdown:
+			*stateInOut = TSDoFilerepStartup;
+			return PMTransitionSuccess;
 
-        case TSDoFilerepStartup:
+		case TSDoFilerepStartup:
 
-            /* do this as early as possible -- must do it before any of the new filerep processes are built */
-            XLogStartupInit();
+			/* do this as early as possible -- must do it before any of the new filerep processes are built */
+			XLogStartupInit();
 
-            if ( args->transitionToChangeTrackingDisabledMode )
-            {
-                copyTransitionInputParameters(args, SegmentStateChangeTrackingDisabled );
-                *stateInOut = TSDoDatabaseStartup;
-                return PMTransitionSuccess;
-            }
-            else
-            {
-                SegmentState_e segState;
-                if (args->dataState == DataStateInResync )
-                {
-                    if ( pmModuleState->dataState == DataStateNotInitialized &&
-                         pmModuleState->mode != PMModeMirrorlessSegment )
-                    {
-                        Assert(pmModuleState->mode == PMModeQuiescentSegment ||
-                               pmModuleState->mode == PMModeUninitialized);
+			if (args->transitionToChangeTrackingDisabledMode)
+			{
+				copyTransitionInputParameters(args, SegmentStateChangeTrackingDisabled);
+				*stateInOut = TSDoDatabaseStartup;
+				return PMTransitionSuccess;
+			}
+			else
+			{
+				SegmentState_e segState;
+				if (args->dataState == DataStateInResync)
+				{
+					if (pmModuleState->dataState == DataStateNotInitialized &&
+						pmModuleState->mode != PMModeMirrorlessSegment)
+					{
+						Assert(pmModuleState->mode == PMModeQuiescentSegment ||
+							   pmModuleState->mode == PMModeUninitialized);
 
-                        /* starting up in resync -- just go to initialization */
-                        /* we may have data state not initialized when going from mirrorless mode (during addmirrors) */
-                        segState = SegmentStateInitialization;
-                    }
-                    else
-                    {
-                        Assert(pmModuleState->mode == PMModePrimarySegment ||
-                               pmModuleState->mode == PMModeMirrorlessSegment ||
-                               pmModuleState->mode == PMModeMirrorSegment);
+						/* starting up in resync -- just go to initialization */
+						/* we may have data state not initialized when going from mirrorless mode (during addmirrors) */
+						segState = SegmentStateInitialization;
+					}
+					else
+					{
+						Assert(pmModuleState->mode == PMModePrimarySegment ||
+							   pmModuleState->mode == PMModeMirrorlessSegment ||
+							   pmModuleState->mode == PMModeMirrorSegment);
 
-                        segState = SegmentStateInResyncTransition;
-                    }
-                }
-                else
-                {
-                    segState = SegmentStateInitialization;
-                }
+						segState = SegmentStateInResyncTransition;
+					}
+				}
+				else
+				{
+					segState = SegmentStateInitialization;
+				}
 
-                copyTransitionInputParameters(args, segState);
-                return stepDoFilerepStartup(TSAwaitingFilerepStartup, stateInOut );
-            }
-        case TSAwaitingFilerepStartup:
-            return stepWaitForFilerepStartup(TSDoneFilerepStartup, stateInOut, extraResultInfoOut );
-        case TSDoneFilerepStartup:
-            *stateInOut = TSDoDatabaseStartup;
-            return PMTransitionSuccess;
+				copyTransitionInputParameters(args, segState);
+				return stepDoFilerepStartup(TSAwaitingFilerepStartup, stateInOut);
+			}
+		case TSAwaitingFilerepStartup:
+			return stepWaitForFilerepStartup(TSDoneFilerepStartup, stateInOut, extraResultInfoOut);
+		case TSDoneFilerepStartup:
+			*stateInOut = TSDoDatabaseStartup;
+			return PMTransitionSuccess;
 
-        case TSDoDatabaseStartup:
-            if ( ! pmModuleState->haveStartedDatabase )
-            {
-                Assert(!pmModuleState->haveStartedDatabase);
-                elog(getPrimaryMirrorModeDebugLogLevel(false),
-                        "PostmasterPrimaryMirrorTransition: starting database processes");
-                pmModuleState->haveStartedDatabase = true;
-                StartMasterOrPrimaryPostmasterProcesses();
-            }
+		case TSDoDatabaseStartup:
+			if (!pmModuleState->haveStartedDatabase)
+			{
+				Assert(!pmModuleState->haveStartedDatabase);
+				elog(getPrimaryMirrorModeDebugLogLevel(false),
+					 "PostmasterPrimaryMirrorTransition: starting database processes");
+				pmModuleState->haveStartedDatabase = true;
+				StartMasterOrPrimaryPostmasterProcesses();
+			}
 
-            *stateInOut = TSAwaitingDatabaseStartup;
-            return PMTransitionSuccess;
+			*stateInOut = TSAwaitingDatabaseStartup;
+			return PMTransitionSuccess;
 
-        case TSAwaitingDatabaseStartup:
-            if ( IsDatabaseInRunMode())
-            {
-                *stateInOut = TSDoneDatabaseStartup;
+		case TSAwaitingDatabaseStartup:
+			if (IsDatabaseInRunMode())
+			{
+				*stateInOut = TSDoneDatabaseStartup;
 				pmModuleState->isDatabaseRunning = true;
-            }
-            return PMTransitionSuccess;
+			}
+			return PMTransitionSuccess;
 
-        case TSDoneDatabaseStartup:
-            if ( args->dataState == DataStateInResync &&
-				pmModuleState->dataState == DataStateInChangeTracking )
-            {
+		case TSDoneDatabaseStartup:
+			if (args->dataState == DataStateInResync &&
+				pmModuleState->dataState == DataStateInChangeTracking)
+			{
 				/* if filerep wants to be notified
 				 * when XLOG crash recovery has completed then do that
 				 */
@@ -1841,7 +1855,7 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
 				bool isNowInFault = false;
 				acquireModuleSpinLockAndMaybeStartCriticalSection(true);
 				{
-					if ( pmModuleState->segmentState == SegmentStateFault )
+					if (pmModuleState->segmentState == SegmentStateFault)
 					{
 						isNowInFault = true;
 					}
@@ -1853,101 +1867,103 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
 				}
 				releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 
-				if ( isNowInFault )
+				if (isNowInFault)
 				{
-				    /* we are now in mirroring fault so we can't go to resync, report as mirroring failure */
-				    strncpy(extraResultInfoOut, RESULT_INFO_MIRRORING_FAILURE, MAX_TRANSITION_RESULT_EXTRA_INFO);
+					/* we are now in mirroring fault so we can't go to resync, report as mirroring failure */
+					strlcpy(extraResultInfoOut, RESULT_INFO_MIRRORING_FAILURE, MAX_TRANSITION_RESULT_EXTRA_INFO);
 					return PMTransitionError;
 				}
 				/** tell filerep processes that they can begin resync now! */
 				NotifyProcessesOfFilerepStateChange();
 			}
 			
-            *stateInOut = TSDone;
-            return PMTransitionSuccess;
+			*stateInOut = TSDone;
+			return PMTransitionSuccess;
 
-        default:
-            return invalidState(stateInOut, extraResultInfoOut);
-    }
+		default:
+			return invalidState(stateInOut, extraResultInfoOut);
+	}
 }
 
 /**
  */
 static PrimaryMirrorModeTransitionResult
 applyStepForTransitionToMirrorSegmentMode(PrimaryMirrorModeTransitionArguments *args, TransitionState *stateInOut,
-                        char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO])
+										  char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO])
 {
 	assertIsTransitioning();
 
-	switch ( *stateInOut )
+	switch (*stateInOut)
 	{
-        case TSNone:
-            switch (pmModuleState->mode)
-            {
-                case PMModeQuiescentSegment:
-                case PMModeUninitialized:
-                    *stateInOut = TSDoFilerepStartup;
-                    return PMTransitionSuccess;
-                default:
-                    return invalidMode(args);
-            }
+		case TSNone:
+			switch (pmModuleState->mode)
+			{
+				case PMModeQuiescentSegment:
+				case PMModeUninitialized:
+					*stateInOut = TSDoFilerepStartup;
+					return PMTransitionSuccess;
+				default:
+					return invalidMode(args);
+			}
 
-        case TSDoFilerepStartup:
-            copyTransitionInputParameters(args, SegmentStateInitialization);
-            return stepDoFilerepStartup(TSAwaitingFilerepStartup, stateInOut );
-        case TSAwaitingFilerepStartup:
-            return stepWaitForFilerepStartup(TSDoneFilerepStartup, stateInOut, extraResultInfoOut );
-        case TSDoneFilerepStartup:
-            *stateInOut = TSDone;
-            return PMTransitionSuccess;
+		case TSDoFilerepStartup:
+			copyTransitionInputParameters(args, SegmentStateInitialization);
+			return stepDoFilerepStartup(TSAwaitingFilerepStartup, stateInOut);
 
-        default:
-            return invalidState(stateInOut, extraResultInfoOut);
+		case TSAwaitingFilerepStartup:
+			return stepWaitForFilerepStartup(TSDoneFilerepStartup, stateInOut, extraResultInfoOut);
+
+		case TSDoneFilerepStartup:
+			*stateInOut = TSDone;
+			return PMTransitionSuccess;
+
+		default:
+			return invalidState(stateInOut, extraResultInfoOut);
 	}
 }
 
 void primaryMirrorRecordSegmentStateToPostmasterLocalMemory(void)
 {
-    Assert(!IsUnderPostmaster);
+	Assert(!IsUnderPostmaster);
 
-    SegmentState_e segmentState = pmModuleState->segmentState;
-    switch ( segmentState )
-    {
-        case SegmentStateInitialization:
-        case SegmentStateInResyncTransition:
-        case SegmentStateInSyncTransition:
-        case SegmentStateReady:
-            pmLocalState.mostRecentSegmentStateWasChangeTrackingDisabled = false;
-            break;
+	SegmentState_e segmentState = pmModuleState->segmentState;
+	switch (segmentState)
+	{
+		case SegmentStateInitialization:
+		case SegmentStateInResyncTransition:
+		case SegmentStateInSyncTransition:
+		case SegmentStateReady:
+			pmLocalState.mostRecentSegmentStateWasChangeTrackingDisabled = false;
+			break;
 
-        case SegmentStateChangeTrackingDisabled:
-            pmLocalState.mostRecentSegmentStateWasChangeTrackingDisabled = true;
-            break;
+		case SegmentStateChangeTrackingDisabled:
+			pmLocalState.mostRecentSegmentStateWasChangeTrackingDisabled = true;
+			break;
 
-        case SegmentStateNotInitialized:
+		case SegmentStateNotInitialized:
 		case SegmentStateInChangeTrackingTransition:
-        case SegmentStateFault:
-        case SegmentStateShutdownFilerepBackends:
-        case SegmentStateShutdown:
-        case SegmentStateImmediateShutdown:
-            /* does not change mostRecentSegmentStateWasChangeTrackingDisabled */
-             break;
+		case SegmentStateFault:
+		case SegmentStateShutdownFilerepBackends:
+		case SegmentStateShutdown:
+		case SegmentStateImmediateShutdown:
+			/* does not change mostRecentSegmentStateWasChangeTrackingDisabled */
+			break;
 
-         case SegmentState__EnumerationCount:
-            Assert(0);
-            break;
-    }
+		case SegmentState__EnumerationCount:
+			Assert(0);
+			break;
+	}
 }
 
 /**
  * Should only be called by filerep code, sets whether IO is suspended.
  */
-void primaryMirrorSetIOSuspended( bool ioSuspended )
+void primaryMirrorSetIOSuspended(bool ioSuspended)
 {
-    assertModuleInitialized();
+	assertModuleInitialized();
 
-    /* updating single small field, no need for fancy locking */
-    pmModuleState->isIOSuspended = ioSuspended;
+	/* updating single small field, no need for fancy locking */
+	pmModuleState->isIOSuspended = ioSuspended;
 }
 
 /**
@@ -1955,21 +1971,21 @@ void primaryMirrorSetIOSuspended( bool ioSuspended )
  */
 bool primaryMirrorIsIOSuspended(void)
 {
-    assertModuleInitialized();
+	assertModuleInitialized();
 
-    return pmModuleState->isIOSuspended;
+	return pmModuleState->isIOSuspended;
 }
 
 
 /**
  * set the bgwriter pid.  Should only be called by the postmaster
  */
-void primaryMirrorSetBGWriterPID( pid_t pid )
+void primaryMirrorSetBGWriterPID(pid_t pid)
 {
-    assertModuleInitialized();
+	assertModuleInitialized();
 
-    /* updating single int field, no need for fancy locking */
-    pmModuleState->bgWriterPID = pid;
+	/* updating single int field, no need for fancy locking */
+	pmModuleState->bgWriterPID = pid;
 }
 
 /**
@@ -1991,8 +2007,9 @@ PrimaryMirrorModeTransitionArguments primaryMirrorGetArgumentsFromLocalMemory(vo
  */
 pid_t primaryMirrorGetBGWriterPID(void)
 {
-    assertModuleInitialized();
-    /* fetching single int field, no need for fancy locking */
-    return pmModuleState->bgWriterPID;
+	assertModuleInitialized();
+
+	/* fetching single int field, no need for fancy locking */
+	return pmModuleState->bgWriterPID;
 }
 

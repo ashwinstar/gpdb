@@ -983,6 +983,8 @@ pthread_t *threads=NULL;
 static pthread_mutex_t	worker_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 struct threadWorkerInfo {
+	bool		foundFault;
+	bool		probeRestart;
 	uint8		*scan_status;
 	CdbComponentDatabases *dbs;
 };
@@ -998,10 +1000,12 @@ probeSegments(CdbComponentDatabases *cdb_component_dbs)
 {
 	int i;
 	bool updated_bitmap = false;
+	bool probeRestart = false;
 
 	if (cdb_component_dbs == NULL)
 		return false;
 
+probe_restart:
 	memset(scan_status, 0, sizeof(scan_status));
 
 	/* single threaded */
@@ -1052,6 +1056,8 @@ probeSegments(CdbComponentDatabases *cdb_component_dbs)
 			}
 		}
 
+		worker_info.foundFault = false;
+		worker_info.probeRestart = probeRestart;
 		worker_info.scan_status = scan_status;
 		worker_info.dbs = cdb_component_dbs;
 
@@ -1071,6 +1077,12 @@ probeSegments(CdbComponentDatabases *cdb_component_dbs)
 
 		pfree(threads);
 		threads = NULL;
+
+		if (worker_info.foundFault && !worker_info.probeRestart)
+		{
+			probeRestart = true;
+			goto probe_restart;
+		}
 	}
 
 	/* if we're shutting down, just exit. */
@@ -1129,6 +1141,12 @@ probeSegmentFromThread(void *arg)
 				worker_info->scan_status[segInfo->dbid] = PROBE_PENDING;
 				break;
 			}
+			if (worker_info->foundFault && !worker_info->probeRestart)
+			{
+				/* we need to stop probing, and prepare for our rescan. */
+				i = worker_info->dbs->total_segment_dbs;
+				break;
+			}
 		}
 		pthread_mutex_unlock(&worker_thread_mutex);
 
@@ -1153,6 +1171,10 @@ probeSegmentFromThread(void *arg)
 				write_log("Found a fault with a segment %d segment-dbid %d (status 0x%x)", segInfo->segindex, segInfo->dbid, probe_result);
 		}
 		pthread_mutex_lock(&worker_thread_mutex);
+		if ((probe_result & PROBE_FAULT) != 0)
+		{
+			worker_info->foundFault = true;
+		}
 		worker_info->scan_status[segInfo->dbid] = probe_result;
 		pthread_mutex_unlock(&worker_thread_mutex);
 	}
@@ -1884,11 +1906,14 @@ Filerep_preprocess_probe_results(uint8 *probe_results, CdbComponentDatabaseInfo 
 	}
 	else
 	{
-		/* all segment pairs will be preprocessed before we use any results, so it's okay
-		 *   to just preprocess when the primary is the segInfo.  Early returning here
-		 *   doesn't help correctness, but avoids bad log messages because the second
-		 *   trip through this function for a pair would print different output than
-		 *   the first */
+		/*
+		 * all segment pairs will be preprocessed before we use any
+		 * results, so it's okay to just preprocess when the primary
+		 * is the segInfo.  Early returning here doesn't help
+		 * correctness, but avoids bad log messages because the second
+		 * trip through this function for a pair would print different
+		 * output than the first
+		 */
 		return;
 	}
 
@@ -1898,9 +1923,11 @@ Filerep_preprocess_probe_results(uint8 *probe_results, CdbComponentDatabaseInfo 
 	if (PROBE_IS_TO_IN_SYNC(primary) &&
 	    PROBE_IS_TO_IN_SYNC(mirror))
 	{
-		/* if primary and mirror are both in-sync then update configuration:
-		 * because will not necessarily reach in-sync internally at the same point,
-		 * we make sure both are in-sync before updating configuraiton
+		/*
+		 * if primary and mirror are both in-sync then update
+		 * configuration: because will not necessarily reach in-sync
+		 * internally at the same point, we make sure both are in-sync
+		 * before updating configuraiton
 		 */
 		markSegmentInSyncInConfiguration(primary);
 		probe_results[primary->dbid] &= ~PROBE_TO_IN_SYNC;
@@ -2011,6 +2038,7 @@ Filerep_preprocess_probe_results(uint8 *probe_results, CdbComponentDatabaseInfo 
  		/* Primary is OK. What about the mirror ? (case 5) */
 		if (PROBE_IS_FAULT(mirror))
 		{
+			/* case 5: mirror should be considered dead. */
 			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported OK mirror, %d/0x%x considered dead.",
 				 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
 			/* consider mirror dead (5) */
@@ -2223,20 +2251,19 @@ Filerep_mode_update(int dbid, char *mode, char status, FilerepModeUpdateLoggingE
 		elog(FATAL, "Failed to create command file '%s': %m", tmp_filename);
 	}
 
-	switch ( logMsgToSend )
+	switch (logMsgToSend)
 	{
 		case FilerepModeUpdateLoggingEnum_MirrorToChangeTracking:
 			ereport(LOG,
-				(errmsg("Mirror segment on %s:%d is taking over as primary in change tracking mode.",
-					seg_addr, seg_pm_port ),
- 				errSendAlert(true)));
+					(errmsg("Mirror segment on %s:%d is taking over as primary in change tracking mode.",
+							seg_addr, seg_pm_port ),
+					 errSendAlert(true)));
 			break;
-
 		case FilerepModeUpdateLoggingEnum_PrimaryToChangeTracking:
 			ereport(LOG,
-				(errmsg("Primary segment on %s:%d is transitioning into change tracking mode (peer marked down).",
-					seg_addr, seg_pm_port ),
- 				errSendAlert(true)));
+					(errmsg("Primary segment on %s:%d is transitioning into change tracking mode (peer marked down).",
+							seg_addr, seg_pm_port ),
+					 errSendAlert(true)));
 			break;
 	}
 
@@ -2300,19 +2327,19 @@ Filerep_mode_update(int dbid, char *mode, char status, FilerepModeUpdateLoggingE
 			}
 		}
 
-		switch ( logMsgToSend )
+		switch (logMsgToSend)
 		{
 			case FilerepModeUpdateLoggingEnum_MirrorToChangeTracking:
 				ereport(LOG,
-					(errmsg("Mirror segment on %s:%d promoted to primary in change tracking mode.",
-						seg_addr, seg_pm_port ),
-						errSendAlert(true)));
+						(errmsg("Mirror segment on %s:%d promoted to primary in change tracking mode.",
+								seg_addr, seg_pm_port ),
+						 errSendAlert(true)));
 				break;
 			case FilerepModeUpdateLoggingEnum_PrimaryToChangeTracking:
 				ereport(LOG,
-					(errmsg("Primary segment on %s:%d transitioned to change tracking mode successfully.",
-						seg_addr, seg_pm_port ),
-						errSendAlert(true)));
+						(errmsg("Primary segment on %s:%d transitioned to change tracking mode successfully.",
+								seg_addr, seg_pm_port ),
+						 errSendAlert(true)));
 				break;
 		}
 
@@ -2385,6 +2412,7 @@ markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *dbInfo)
 	else
 	{
 		uint8	segStatus=0;
+		bool	isPrimary;
 
 		/* update in-core copy */
 		segStatus = ftsProbeInfo->fts_status[dbInfo->dbid];
@@ -2404,8 +2432,8 @@ markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *dbInfo)
 				 timestamp_str, dbInfo->dbid);
 		executeEntrySQL(entryConn, cmd);
 
-		bool isPrimary = segStatus & FTS_STATUS_PRIMARY;
-		if ( ! isPrimary)
+		isPrimary = segStatus & FTS_STATUS_PRIMARY;
+		if (!isPrimary)
 		{
 			ereport(LOG,
 					(errmsg("Resynchronization of mirror segment on %s:%d has completed.",

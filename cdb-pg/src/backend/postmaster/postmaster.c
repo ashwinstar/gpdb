@@ -1912,9 +1912,11 @@ RestartAfterPostmasterReset(void)
 static void
 BeginResetOfPostmasterAfterChildrenAreShutDown(void)
 {
+	elog(LOG, "BeginResetOfPostmasterAfterChildrenAreShutDown: counter %d", pmResetCounter);
 	pmResetCounter++;
-	if ( primaryMirrorPostmasterResetShouldRestartPeer())
+	if (primaryMirrorPostmasterResetShouldRestartPeer())
 	{
+		elog(LOG, "BeginResetOfPostmasterAfterChildrenAreShutDown: should restart peer");
 		pmState = PM_POSTMASTER_RESET_FILEREP_PEER;
 		peerResetResult = PEER_RESET_NONE;
 		elog(LOG, "all server processes terminated; requested filerep peer reset");
@@ -2743,6 +2745,8 @@ static void sendPrimaryMirrorTransitionResult( const char *msg)
 static void
 processTransitionRequest_beginPostmasterReset(void)
 {
+	char statusBuf[10000];
+ 	int counterToReturn;
 	PrimaryMirrorModeTransitionArguments args = primaryMirrorGetArgumentsFromLocalMemory();
 
 	if (args.mode != PMModePrimarySegment && args.mode != PMModeMirrorSegment)
@@ -2757,13 +2761,17 @@ processTransitionRequest_beginPostmasterReset(void)
  	 *      we won't inherit a state with FatalError not set but pmResetCounter already incremented --
  	 *      and so it's safe to tell the caller to wait for pmResetCounter + 1.
  	 */
- 	int counterToReturn;
 	if (FatalError)
 	{
 		/** a reset is already in progress or completed, just return the reset counter */
-		if ( pmState == PM_POSTMASTER_RESET_FILEREP_PEER)
+		if (pmState == PM_POSTMASTER_RESET_FILEREP_PEER)
+		{
 			counterToReturn = pmResetCounter;
-		else counterToReturn = pmResetCounter + 1;
+		}
+		else
+		{
+			counterToReturn = pmResetCounter + 1;
+		}
 	}
 	else
 	{
@@ -2777,7 +2785,6 @@ processTransitionRequest_beginPostmasterReset(void)
 	 *        <empty second line>
 	 *        reset counter (left-padded with zeros): to tell the peer to wait for the reset counter to reach this level before continuing)
 	 */
-	char statusBuf[10000];
 	snprintf(statusBuf, sizeof(statusBuf), "Success:\n\n%09d", counterToReturn);
 	sendPrimaryMirrorTransitionResult(statusBuf);
 }
@@ -2789,7 +2796,7 @@ processTransitionRequest_getPostmasterResetStatus(void)
 	PrimaryMirrorModeTransitionArguments args = primaryMirrorGetArgumentsFromLocalMemory();
 	PrimaryMirrorMode mode = args.mode;
 
-	if ( mode != PMModePrimarySegment && mode != PMModeMirrorSegment)
+	if (mode != PMModePrimarySegment && mode != PMModeMirrorSegment)
 	{
 		elog(ERROR, "Can only get postmaster reset status on a primary or mirror segment");
 	}
@@ -3548,11 +3555,17 @@ ClosePostmasterPorts(bool am_syslogger)
 static void
 reset_shared(int port, bool isReset)
 {
-    if (isReset)
-        ereport(LOG,
-                (errmsg("resetting shared memory")));
-    else ereport(LOG,
-				(errmsg("setting up shared memory")));
+	if (isReset)
+	{
+		ereport(LOG,
+			(errmsg("resetting shared memory")));
+	}
+	else
+	{
+		ereport(LOG,
+			(errmsg("setting up shared memory")));
+	}
+
 	/*
 	 * Create or re-create shared memory and semaphores.
 	 *
@@ -3563,11 +3576,15 @@ reset_shared(int port, bool isReset)
 	 */
 	CreateSharedMemoryAndSemaphores(false, port);
 
-    if ( isReset )
-        primaryMirrorHandlePostmasterReset();
-    else setInitialRequestedPrimaryMirrorMode(gInitialMode);
+	if (isReset)
+	{
+		primaryMirrorHandlePostmasterReset();
+	}
+	else
+	{
+		setInitialRequestedPrimaryMirrorMode(gInitialMode);
+	}
 }
-
 
 /*
  * SIGHUP -- reread config files, and tell children to do same
@@ -5403,12 +5420,12 @@ PostmasterStateMachine(void)
 
 #define DO_STATE_MACHINE_LOGGING (pmState >= minStateForLogging && Debug_print_server_processes)
 
-    for ( passThroughStateMachine = 0;; passThroughStateMachine ++)
+    for (passThroughStateMachine = 0;; passThroughStateMachine++)
     {
         int nextPmState = pmState;
         Assert(passThroughStateMachine < 100);
 
-        if ( DO_STATE_MACHINE_LOGGING )
+        if (DO_STATE_MACHINE_LOGGING)
         {
             elog(LOG, "Postmaster State Machine: checking state %s", gPmStateLabels[pmState]);
         }
