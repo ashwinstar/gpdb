@@ -149,6 +149,8 @@ _bitmap_xlog_insert_lovitem(XLogRecPtr lsn, XLogRecord *record)
 	if (!RelationIsValid(reln))
 		return;
 
+	Assert(xlrec->bm_lov_blkno > 0);
+
 	if (xlrec->bm_is_new_lov_blkno)
 	{
 		lovBuffer = XLogReadBuffer(reln, xlrec->bm_lov_blkno, true);
@@ -225,13 +227,13 @@ _bitmap_xlog_insert_lovitem(XLogRecPtr lsn, XLogRecord *record)
  		metapage = (BMMetaPage)
  			PageGetContents(BufferGetPage(metabuf));
  		
- 		if (XLByteLT(PageGetLSN(metapage), lsn))
+ 		if (XLByteLT(PageGetLSN(BufferGetPage(metabuf)), lsn))
  		{
  			metapage->bm_lov_lastpage = xlrec->bm_lov_blkno;
  			
  			PageSetLSN(BufferGetPage(metabuf), lsn);
  			PageSetTLI(BufferGetPage(metabuf), ThisTimeLineID);
- 			
+
  			_bitmap_wrtbuf(metabuf);
  		}
  		else

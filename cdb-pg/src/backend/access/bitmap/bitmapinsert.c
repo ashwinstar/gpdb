@@ -1226,7 +1226,7 @@ _bitmap_write_new_bitmapwords(Relation rel,
 	Page		bitmapPage;
 	BMBitmapOpaque	bitmapPageOpaque;
 		
-	uint64		numFreeWords;
+	uint64		numFreeWords = 0;
 	uint64		words_written = 0;
 	bool		isFirst = false;
 
@@ -1246,19 +1246,10 @@ _bitmap_write_new_bitmapwords(Relation rel,
 					   bitmapPageOpaque->bm_hrl_words_used;
 	}
 
-	else
+	else if (buf->curword - buf->start_wordno > 0)
 	{
 		bitmapBuffer = _bitmap_getbuf(rel, P_NEW, BM_WRITE);
 		_bitmap_init_bitmappage(rel, bitmapBuffer);
-
-		START_CRIT_SECTION();
-
-		MarkBufferDirty(lovBuffer);
-
-		lovItem->bm_lov_head = BufferGetBlockNumber(bitmapBuffer);
-		lovItem->bm_lov_tail = lovItem->bm_lov_head;
-
-		END_CRIT_SECTION();
 
 		numFreeWords = BM_NUM_OF_HRL_WORDS_PER_PAGE;
 	}
@@ -1326,7 +1317,8 @@ _bitmap_write_new_bitmapwords(Relation rel,
 	START_CRIT_SECTION();
 
 	MarkBufferDirty(lovBuffer);
-	MarkBufferDirty(bitmapBuffer);
+	if (BufferIsValid(bitmapBuffer))
+		MarkBufferDirty(bitmapBuffer);
 
 	if (buf->curword - buf->start_wordno > 0)
 		words_written = _bitmap_write_bitmapwords(bitmapBuffer, buf);
@@ -1338,14 +1330,17 @@ _bitmap_write_new_bitmapwords(Relation rel,
 	lovItem->lov_words_header = (buf->is_last_compword_fill) ? 2 : 0;
 	lovItem->bm_last_setbit = buf->last_tid;
 	lovItem->bm_last_tid_location = buf->last_tid - buf->last_tid % BM_HRL_WORD_SIZE;
-	lovItem->bm_lov_tail = BufferGetBlockNumber(bitmapBuffer);
-	if (lovItem->bm_lov_head == InvalidBlockNumber)
+	lovItem->bm_lov_tail = 
+		BufferIsValid(bitmapBuffer) ?
+		BufferGetBlockNumber(bitmapBuffer) : InvalidBlockNumber;
+	if (!BlockNumberIsValid(lovItem->bm_lov_head) &&
+		BlockNumberIsValid(lovItem->bm_lov_tail))
 	{
 		isFirst = true;
 		lovItem->bm_lov_head = lovItem->bm_lov_tail;
 	}
 
-	if (use_wal)
+	if (use_wal && words_written > 0)
 	{
 		_bitmap_log_bitmapwords(rel, bitmapBuffer, lovBuffer,
 								lovOffset, buf, words_written,
@@ -1367,8 +1362,11 @@ _bitmap_write_new_bitmapwords(Relation rel,
 
 	END_CRIT_SECTION();
 
-	/* release bitmap buffer */
-	_bitmap_relbuf(bitmapBuffer);	
+	if (BufferIsValid(bitmapBuffer))
+	{
+		/* release bitmap buffer */
+		_bitmap_relbuf(bitmapBuffer);
+	}
 }
 
 

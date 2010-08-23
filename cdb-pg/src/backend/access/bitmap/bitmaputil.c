@@ -927,6 +927,8 @@ _bitmap_log_lovitem(Relation rel, Buffer lovBuffer, OffsetNumber offset,
 	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
 	RelationFetchGpRelationNodeForXLog(rel);
 
+	Assert(BufferGetBlockNumber(lovBuffer) > 0);
+
 	xlLovItem.bm_node = rel->rd_node;
 	xlLovItem.bm_persistentTid = rel->rd_segfile0_relationnodeinfo.persistentTid;
 	xlLovItem.bm_persistentSerialNum = rel->rd_segfile0_relationnodeinfo.persistentSerialNum;
