@@ -1405,6 +1405,15 @@ select * from region where r_regionkey = 5;
 select * from region where r_regionkey = 6;
 
 -- Test indexes with insert
+-- start_matchsubs
+--
+-- # Note: insert is different partition depending on endianess
+--
+-- m/ERROR:.*duplicate key violates unique constraint.*region_1_prt_p1_2_prt_sp\d+_3_prt_1_pkey/
+-- s/sp\d+/SPSOMETHING/
+--
+-- end_matchsubs
+
 insert into region values(7, 'abc', 'def');
 select * from region where r_regionkey = '7';
 -- test duplicate key. We shouldn't really allow primary keys on partitioned
@@ -2608,6 +2617,9 @@ update v set j = 3;
 drop table v;
 
 -- test AO seg totals
+--
+-- Note: ignore partition tablenames due to endianess issues
+--
 create  or replace function ao_ptotal(relname text) returns float8 as $$
 declare
   aosegname text;
@@ -2627,8 +2639,11 @@ create table ao_p (i int) with (appendonly = true)
  (start(1) end(10) every(1));
 
 insert into ao_p values(1), (2), (3);
-
+-- start_ignore
 select partitiontablename, ao_ptotal(partitiontablename)
+from pg_partitions where tablename = 'ao_p';
+-- end_ignore
+select ao_ptotal(partitiontablename)
 from pg_partitions where tablename = 'ao_p';
 truncate ao_p;
 select partitiontablename, ao_ptotal(partitiontablename)
@@ -2638,7 +2653,11 @@ copy ao_p from stdin;
 5
 6
 \.
+-- start_ignore
 select partitiontablename, ao_ptotal(partitiontablename)
+from pg_partitions where tablename = 'ao_p';
+-- end_ignore
+select ao_ptotal(partitiontablename)
 from pg_partitions where tablename = 'ao_p';
 -- try SREH
 copy ao_p from stdin log errors into ao_p_err segment reject limit 100;
@@ -2647,7 +2666,11 @@ copy ao_p from stdin log errors into ao_p_err segment reject limit 100;
 10000
 f
 \.
+-- start_ignore
 select partitiontablename, ao_ptotal(partitiontablename)
+from pg_partitions where tablename = 'ao_p';
+-- end_ignore
+select ao_ptotal(partitiontablename)
 from pg_partitions where tablename = 'ao_p';
 drop table ao_p;
 
