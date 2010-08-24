@@ -200,6 +200,8 @@ extern void
 agg_filespace_data(void *s,
 				   void (*fn)(void *s, Oid filespace,
 							  int16 dbid1, char *path1,
-							  int16 dbid2, char *path2));
+							  int16 dbid2, char *path2,
+							  char *caller),
+						char *caller);
 #endif
 #endif   /* CDBPERSISTENTFILEESPACE_H */

@@ -1187,7 +1187,7 @@ void PersistentTablespace_ShmemInit(void)
  */
 #ifdef MASTER_MIRROR_SYNC /* annotation to show that this is just for mmsync */
 void
-agg_tablespace_data(void *s, void (*fn)(void *s, Oid filespace, Oid tablespace))
+agg_tablespace_data(void *s, void (*fn)(void *s, Oid filespace, Oid tablespace, char *caller), char *caller)
 {
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 	HASH_SEQ_STATUS stat;
@@ -1197,7 +1197,7 @@ agg_tablespace_data(void *s, void (*fn)(void *s, Oid filespace, Oid tablespace))
 	hash_seq_init(&stat, persistentTablespaceSharedHashTable);
 
 	while ((tde = hash_seq_search(&stat)) != NULL)
-		fn(s, tde->key.tablespaceOid, tde->filespaceOid);
+		fn(s, tde->filespaceOid, tde->key.tablespaceOid, caller);
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }

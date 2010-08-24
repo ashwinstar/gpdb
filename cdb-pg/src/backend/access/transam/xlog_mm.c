@@ -989,14 +989,17 @@ mmxlog_tablespace_get_path(Oid tspcoid)
 
 static void
 agg_fspc(void *s, Oid filespace, int16 dbid1, char *path1,
-		 int16 dbid2, char *path2)
+		 int16 dbid2, char *path2, char *caller)
 {
 	fspc_map m;
 	fspc_agg_state *fas = (fspc_agg_state *)s;
+	int pos;
 
-	Insist(fas->pos < gp_max_filespaces);
+	pos = fas->pos;
 
-	m = fas->maps[fas->pos++];
+	Insist(pos < gp_max_filespaces);
+
+	m = fas->maps[pos];
 	m.filespaceoid = filespace;
 
 	m.dbid1 = dbid1;
@@ -1004,17 +1007,57 @@ agg_fspc(void *s, Oid filespace, int16 dbid1, char *path1,
 
 	m.dbid2 = dbid2;
 	strncpy(m.path2, path2, MAXPGPATH);
+
+	if (Debug_persistent_recovery_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+
+		SUPPRESS_ERRCONTEXT_PUSH();
+
+		elog(PersistentRecovery_DebugPrintLevel(), 
+			 "agg_fspc[%d]: add filespace %u (dbid1 %d, dbid2 %d, caller '%s')",
+			 pos,
+			 filespace,
+			 dbid1,
+			 dbid2,
+			 caller);
+
+		SUPPRESS_ERRCONTEXT_POP();
+	}
+
+	fas->pos++;
 }
 
 static void
-agg_tspc(void *s, Oid filespace, Oid tablespace)
+agg_tspc(void *s, Oid filespace, Oid tablespace, char *caller)
 {
 	tspc_map m;
 	tspc_agg_state *tas = (tspc_agg_state *)s;
+	int pos;
 
-	m = tas->maps[tas->pos++];
+	pos = tas->pos;
+
+	m = tas->maps[pos];
 	m.filespaceoid = filespace;
 	m.tablespaceoid = tablespace;
+	
+	if (Debug_persistent_recovery_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+
+		SUPPRESS_ERRCONTEXT_PUSH();
+
+		elog(PersistentRecovery_DebugPrintLevel(), 
+			 "agg_fspc[%d]: add tablespace %u (filespace %u, caller '%s')",
+			 pos,
+			 tablespace,
+			 filespace,
+			 caller);
+
+		SUPPRESS_ERRCONTEXT_POP();
+	}
+
+	tas->pos++;
 }
 
 /*
@@ -1050,8 +1093,8 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[4])
 	f = palloc0(sz_f);
 	t = palloc0(sz_t);
 
-	agg_filespace_data((void *)f, agg_fspc);
-	agg_tablespace_data((void  *)t, agg_tspc);
+	agg_filespace_data((void *)f, agg_fspc, "mmxlog_append_checkpoint_data");
+	agg_tablespace_data((void  *)t, agg_tspc, "mmxlog_append_checkpoint_data");
 
 	rdata[2].data = (void *)f->maps;
 	rdata[2].buffer = InvalidBuffer;

@@ -169,6 +169,7 @@ extern void xlog_persistent_tablespace_create(Oid filespaceoid,
 											  Oid tablespaceoid);
 #ifdef MASTER_MIRROR_SYNC 
 extern void agg_tablespace_data(void *s,
-								void (*fn)(void *s, Oid filespace, Oid tablespace));
+								void (*fn)(void *s, Oid filespace, Oid tablespace, char *caller),
+									  char *caller);
 #endif
 #endif   /* CDBPERSISTENTTABLESPACE_H */

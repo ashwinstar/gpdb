@@ -1397,7 +1397,9 @@ void PersistentFilespace_ShmemInit(void)
 void
 agg_filespace_data(void *s,
 				   void (*fn)(void *s, Oid filespace,
-							  int16 dbid1, char *path1, int16 dbid2, char *path2))
+							  int16 dbid1, char *path1, int16 dbid2, char *path2,
+							  char *caller),
+						char *caller)
 {
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 	HASH_SEQ_STATUS stat;
@@ -1408,7 +1410,8 @@ agg_filespace_data(void *s,
 
 	while ((fde = hash_seq_search(&stat)) != NULL)
 		fn(s, fde->key.filespaceOid, fde->dbId1, fde->locationBlankPadded1,
-		   	                         fde->dbId2, fde->locationBlankPadded2);
+		   	                         fde->dbId2, fde->locationBlankPadded2,
+		   	                         caller);
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
