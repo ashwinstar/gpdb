@@ -1726,7 +1726,7 @@ LOAD_GP_TOOLKIT () {
 # Main Section
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Received INT or TERM signal" 2' INT TERM
-while getopts ":v'?'aiqe:c:l:-:p:m:h:on:s:rb:!DB:SI:O:" opt
+while getopts ":v'?'aiqe:c:l:-:p:m:h:on:s:b:!DB:SI:O:" opt
 		do
 		case $opt in
 				v ) VERSION_INFO ;;
