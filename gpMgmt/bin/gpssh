@@ -145,6 +145,7 @@ def interactive():
                 GV.session = ssh_utils.Session()
                 GV.session.verbose=GV.opt['-v']
                 GV.session.login(GV.opt['-h'], GV.USER)
+                GV.session.echoCommand=GV.opt['-e']
             GV.session.cmdloop()
         except pexpect.EOF:
             print '\n[Unexpected EOF from some hosts...]'
@@ -189,6 +190,7 @@ try:
                 GV.session = ssh_utils.Session()
                 GV.session.verbose=GV.opt['-v']
                 GV.session.login(GV.opt['-h'], GV.USER)
+                GV.session.echoCommand=GV.opt['-e']
                 output=GV.session.executeCommand(GV.argcmd)
                 GV.session.writeCommandOutput(output)
                 if GV.session.verbose: print '[INFO] completed successfully'

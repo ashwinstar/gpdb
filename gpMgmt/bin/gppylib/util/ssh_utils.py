@@ -112,6 +112,7 @@ class Session(cmd.Cmd):
     verbose=False
     hostList=[]
     userName=None
+    echoCommand=False
     class SessionError(StandardError): pass
     class SessionCmdExit(StandardError): pass
 
@@ -207,7 +208,10 @@ class Session(cmd.Cmd):
 
     def executeCommand(self,command):
         commandoutput=[]
-    
+        
+        if self.echoCommand:
+            command = 'echo %s; %s' % (command, command)
+            
         #Execute the command in all of the ssh sessions
         for s in self.pxssh:
             s.sendline(command)
@@ -224,7 +228,7 @@ class Session(cmd.Cmd):
             #    each line
             output = s.before.split('\n')
             output = output[1:-1]
-            
+                
             commandoutput.append(output)
             
         return commandoutput.__iter__()
