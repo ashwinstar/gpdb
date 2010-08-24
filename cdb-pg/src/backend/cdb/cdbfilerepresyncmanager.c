@@ -202,8 +202,6 @@ static FileRepResyncShmem_s *fileRepResyncShmem = NULL;
 
 static void FileRepResync_ShmemReInit(void);
 
-static void FileRepResync_Cleanup(void);
-
 static int FileRepResyncManager_InResyncTransition(void);
 static int FileRepResyncManager_InSyncTransition(void);
 static int FileRepPrimary_RunResyncManager(void);
@@ -562,7 +560,7 @@ FileRepResync_ShmemReInit(void)
 /*
  *
  */
-static void
+void
 FileRepResync_Cleanup(void)
 {
 	HASH_SEQ_STATUS				hash_status;
@@ -1096,7 +1094,6 @@ FileRepPrimary_RunResyncManager(void)
 				 entry.mirrorAppendOnlyNewEof,
 				 entry.mirrorBufpoolResyncChangedPageCount);
 		
-		
 	}
 	
 	FileRepResync_Cleanup();
@@ -1412,6 +1409,11 @@ FileRepResync_CheckProgress(void)
 					break;
 					
 				case FileRepResyncStateCompleted:
+					/* Release Resynchronize Lock on relation that was taken before fetching the relation */
+					UnlockRelationForResynchronize(
+												   &entry->relFileNode, 
+												   AccessExclusiveLock);					
+					
 					if (FileRepResync_RemoveEntry(entry->fileName) == TRUE) 
 					{
 						fileRepResyncShmem->resyncCompletedCount--;	
@@ -1421,12 +1423,7 @@ FileRepResync_CheckProgress(void)
 					{
 						Assert(0);
 					}
-					
-					/* Release Resynchronize Lock on relation that was taken before fetching the relation */
-					UnlockRelationForResynchronize(
-												   &entry->relFileNode, 
-												   AccessExclusiveLock);
-					
+										
 					PersistentFileSysObj_ResynchronizeRelationComplete(
 							&entry->persistentTid,
 							entry->persistentSerialNum,

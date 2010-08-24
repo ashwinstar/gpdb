@@ -63,6 +63,8 @@ extern Size FileRepResync_ShmemSize(void);
 
 extern void FileRepResync_ShmemInit(void);
 
+extern void FileRepResync_Cleanup(void);
+
 extern void FileRepPrimary_StartResyncManager(void);
 
 extern FileRepResyncHashEntry_s* FileRepPrimary_GetResyncEntry(ChangeTrackingRequest **request);

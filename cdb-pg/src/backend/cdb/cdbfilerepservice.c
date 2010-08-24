@@ -128,6 +128,10 @@ FileRepSubProcess_ShutdownHandler(SIGNAL_ARGS)
 				 * suspended during transition to Change Tracking and so FileRep backend shutdown may 
 				 * never be completed.
 				 */
+				if (fileRepProcessType == FileRepProcessTypeResyncManager)
+				{
+					FileRepResync_Cleanup();
+				}
 				proc_exit(0);
 				return;
 			}
