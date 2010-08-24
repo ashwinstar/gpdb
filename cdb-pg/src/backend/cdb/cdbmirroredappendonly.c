@@ -1245,15 +1245,12 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 							mirrorNewEof,
 							&mirrorDataLossOccurred);
 
-		if (!mirrorDataLossOccurred)
-		{
-			MirroredAppendOnly_FlushAndClose(
-							&mirroredOpen,
-							&primaryError,
-							&mirrorDataLossOccurred,
-							&mirrorCatchupRequired);
-			Assert(primaryError == 0);	// No primary work.
-		}
+		MirroredAppendOnly_FlushAndClose(
+						&mirroredOpen,
+						&primaryError,
+						&mirrorDataLossOccurred,
+						&mirrorCatchupRequired);
+		Assert(primaryError == 0);	// No primary work.
 
 		/*
 		 * We we successful in copying the data to the mirror?
