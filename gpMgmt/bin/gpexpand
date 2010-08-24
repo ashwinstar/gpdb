@@ -1643,7 +1643,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         self.conn.close()
 
         self.logger.info('Stopping database')
-        stopCmd = GpStop('gpexpand update master stop database', verbose = True, ctxt = LOCAL)
+        stopCmd = GpStop('gpexpand update master stop database', verbose = True, ctxt = LOCAL, force=True)
         # We do not check the results of GpStop becuase we will get errors for all the new segments.
         stopCmd.run(validateAfter = False)
 
