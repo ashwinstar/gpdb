@@ -198,7 +198,7 @@ typedef struct CopyStateData
 	char		raw_buf[RAW_BUF_SIZE + 1];		/* extra byte for '\0' */
 	int			raw_buf_index;	/* next byte to process */
 	bool		raw_buf_done;	/* finished processing the current buffer */
-
+	int			missing_bytes;  /* see scanTextLine() for explanation */
 	/* Greenplum Database specific variables */
 	bool		is_copy_in;		/* copy in or out? */
 	char		eol_ch[2];		/* The byte values of the 1 or 2 eol bytes */

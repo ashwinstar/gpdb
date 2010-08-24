@@ -1181,7 +1181,8 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 	cstate->copy_file = NULL;
 	cstate->fe_msgbuf = NULL;
 	cstate->fe_eof = false;
-
+	cstate->missing_bytes = 0;
+	
 	if(!is_from)
 	{
 		if (pipe)
@@ -6209,15 +6210,27 @@ attr_get_key(CopyState cstate, CdbCopy *cdbCopy, int original_lineno_for_qe,
 char *
 scanTextLine(CopyState cstate, const char *s, char eol, size_t len)
 {
-	const char *start;
-
+		
 	if (cstate->encoding_embeds_ascii && !cstate->line_buf_converted)
 	{
-		int			mblen = pg_encoding_mblen(cstate->client_encoding, s);
+		int			mblen;
+		const char *end = s + len;
+		
+		/* we may need to skip the end of a multibyte char from the previous buffer */
+		s += cstate->missing_bytes;
+		
+		mblen = pg_encoding_mblen(cstate->client_encoding, s);
 
-		for (start = s; *s != eol && s < start + len; s += mblen)
+		for (; *s != eol && s < end; s += mblen)
 			mblen = pg_encoding_mblen(cstate->client_encoding, s);
 
+		/* 
+		 * MPP-10802
+		 * if last char is a partial mb char (the rest of its bytes are in the next 
+		 * buffer) save # of missing bytes for this char and skip them next time around 
+		 */
+		cstate->missing_bytes = (s > end ? s - end : 0);
+			
 		return ((*s == eol) ? (char *) s : NULL);
 	}
 	else
@@ -6233,8 +6246,13 @@ scanCSVLine(CopyState cstate, const char *s, char eol, char escapec, char quotec
 	
 	if (cstate->encoding_embeds_ascii && !cstate->line_buf_converted)
 	{
-		int			mblen = pg_encoding_mblen(cstate->client_encoding, s);
-
+		int			mblen;
+		
+		/* we may need to skip the end of a multibyte char from the previous buffer */
+		s += cstate->missing_bytes;
+		
+		mblen = pg_encoding_mblen(cstate->client_encoding, s);
+		
 		for ( ; *s != eol && s < end ; s += mblen)
 		{
 			if (cstate->in_quote && *s == escapec)
@@ -6246,6 +6264,13 @@ scanCSVLine(CopyState cstate, const char *s, char eol, char escapec, char quotec
 
 			mblen = pg_encoding_mblen(cstate->client_encoding, s);
 		}
+		
+		/* 
+		 * MPP-10802
+		 * if last char is a partial mb char (the rest of its bytes are in the next 
+		 * buffer) save # of missing bytes for this char and skip them next time around 
+		 */
+		cstate->missing_bytes = (s > end ? s - end : 0);
 	}
 	else
 		/* safe to scroll byte by byte */

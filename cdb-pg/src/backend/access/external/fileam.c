@@ -1013,6 +1013,7 @@ initParseState(CopyState pstate, Relation relation,
 	pstate->processed = 0;
 	pstate->filename = uri;
 	pstate->copy_dest = COPY_EXTERNAL_SOURCE;
+	pstate->missing_bytes = 0;
 
 	/*
 	 * Error handling setup
