@@ -210,7 +210,8 @@ class Session(cmd.Cmd):
         commandoutput=[]
         
         if self.echoCommand:
-            command = 'echo %s; %s' % (command, command)
+            escapedCommand = command.replace('"', '\\"')
+            command = 'echo "%s"; %s' % (escapedCommand, command)
             
         #Execute the command in all of the ssh sessions
         for s in self.pxssh:
