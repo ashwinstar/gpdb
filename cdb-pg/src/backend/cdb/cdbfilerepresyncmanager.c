@@ -1423,12 +1423,6 @@ FileRepResync_CheckProgress(void)
 					{
 						Assert(0);
 					}
-										
-					PersistentFileSysObj_ResynchronizeRelationComplete(
-							&entry->persistentTid,
-							entry->persistentSerialNum,
-							entry->mirrorAppendOnlyNewEof,
-							TRUE); 
 					
 					fileRepResyncShmem->blocksSynchronized += entry->mirrorBufpoolResyncChangedPageCount;
 					
@@ -1438,8 +1432,23 @@ FileRepResync_CheckProgress(void)
 							 entry->fileName,
 							 entry->fileRepResyncState,
 							 fileRepResyncShmem->resyncCompletedCount,
-							 fileRepResyncShmem->blocksSynchronized);
+							 fileRepResyncShmem->blocksSynchronized);					
+						
+					/*
+					 * PersistentFileSysObj_ResynchronizeRelationComplete() issues IOs.
+					 * That may be long operation especially if IO is issued while segment is
+					 * transitioning to change tracking.
+					 */
+					FileRepResync_LockRelease();
+
+					PersistentFileSysObj_ResynchronizeRelationComplete(
+							&entry->persistentTid,
+							entry->persistentSerialNum,
+							entry->mirrorAppendOnlyNewEof,
+							TRUE); 
 					
+					FileRepResync_LockAcquire();
+										
 					break;
 					
 				/* 	FileRepResyncStateFault is not in use */
