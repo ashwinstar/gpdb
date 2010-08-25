@@ -27,6 +27,10 @@ typedef enum FaultInjectorIdentifier_e {
 		 */
 	Postmaster,
 	
+	PgControl,
+	
+	PgXlog,
+	
 	FileRepConsumer,
 	
 	FileRepSender,
@@ -229,7 +233,7 @@ extern Size FaultInjector_ShmemSize(void);
 
 extern void FaultInjector_ShmemInit(void);
 
-extern bool FaultInjector_InjectFaultIfSet(
+extern FaultInjectorType_e FaultInjector_InjectFaultIfSet(
 							   FaultInjectorIdentifier_e identifier,
 							   DDLStatement_e			 ddlStatement,
 							   char*					 databaseName,

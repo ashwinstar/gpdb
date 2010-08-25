@@ -90,6 +90,10 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* reset or display all injected faults */
 	_("postmaster"),
 		/* inject fault when new connection is accepted in postmaster */
+	_("pg_control"),
+		/* inject fault when pg_control file is written */
+	_("pg_xlog"),
+		/* inject fault when files in pg_xlog directory are written */
 	_("filerep_consumer"),
 		/* 
 		 * inject fault before data are processed
@@ -330,7 +334,7 @@ FaultInjector_ShmemInit(void)
 	return;						  
 }
 
-bool
+FaultInjectorType_e
 FaultInjector_InjectFaultIfSet(
 							   FaultInjectorIdentifier_e identifier,
 							   DDLStatement_e			 ddlStatement,
@@ -458,8 +462,12 @@ FaultInjector_InjectFaultIfSet(
 				pg_usleep(100000000L); // sleep for 1 hour (100 sec * 36 = 1 hour)
 			break;
 		case FaultInjectorTypeDataCorruption:
-			/* TO DO */
+			ereport(LOG, 
+					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
+							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
+							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));							
 			break;
+			
 		case FaultInjectorTypeSuspend:
 		{
 			FaultInjectorEntry_s	*entry;
@@ -505,7 +513,7 @@ FaultInjector_InjectFaultIfSet(
 
 	FaultInjector_UpdateHashEntry(entryLocal);	
 	
-	return (entryLocal->faultInjectorType == FaultInjectorTypeSkip ? TRUE : FALSE);
+	return (entryLocal->faultInjectorType);
 }
 
 /*
@@ -725,6 +733,8 @@ FaultInjector_NewHashEntry(
 		case FileRepReceiver:
 		case FileRepFlush:
 		case Postmaster:
+		case PgControl:
+		case PgXlog:
 			
 			if (fileRepRole != FileRepPrimaryRole && fileRepRole != FileRepMirrorRole)
 			{

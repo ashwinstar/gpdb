@@ -7968,7 +7968,7 @@ CreateCheckPoint(bool shutdown, bool force)
 										   Checkpoint, 
 										   DDLNotSpecified,
 										   "" /* databaseName */,
-										   "" /* tableName */) == TRUE)
+										   "" /* tableName */) == FaultInjectorTypeSkip)
 			return;  // skip checkpoint
 	}
 #endif	

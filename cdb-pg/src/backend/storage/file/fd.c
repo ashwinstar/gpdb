@@ -1144,7 +1144,35 @@ FileWrite(File file, char *buffer, int amount)
 	returnCode = FileAccess(file);
 	if (returnCode < 0)
 		return returnCode;
-
+	
+#ifdef FAULT_INJECTOR	
+	if (! strcmp(VfdCache[file].fileName, "global/pg_control"))
+	{
+		if (FaultInjector_InjectFaultIfSet(
+										   PgControl, 
+										   DDLNotSpecified,
+										   "" /* databaseName */,
+										   "" /* tableName */) == FaultInjectorTypeDataCorruption)
+		{
+			MemSet(buffer, 0, amount);
+		}
+	}
+	
+	if (strstr(VfdCache[file].fileName, "pg_xlog/"))
+	{
+		if (FaultInjector_InjectFaultIfSet(
+										   PgXlog, 
+										   DDLNotSpecified,
+										   "" /* databaseName */,
+										   "" /* tableName */) == FaultInjectorTypeDataCorruption)
+		{
+			MemSet(buffer, 0, amount);
+		}
+	}
+	
+	
+#endif	
+	
 retry:
 	errno = 0;
 	returnCode = write(VfdCache[file].fd, buffer, amount);
