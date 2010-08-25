@@ -66,7 +66,7 @@ def get_quantum():
     
 
 def get_role(username, password, allow_trust_logon):
-
+    global conn
     validate_db_conn()
 
     res = (False, False, 'Incorrect username/password')
@@ -96,21 +96,28 @@ def get_role(username, password, allow_trust_logon):
 
         auth_conn = pg8000.Connection(user=username, password=password, host=pghost_logon, port=pgport, database=pgdatabase)
         auth_conn.close()
-    except:
 
+    except:
         log.debug('failed connecting to database using password')
         return res
 
-    try:
-        # Then use our superuser connection to check the user's authorization level
-        check_auth = 'select rolsuper from pg_roles where rolname = \'%s\'' % username
-        conn.execute(check_auth)
-   
-        for r in conn.iterate_dict():
-            res = (True, r['rolsuper'], '')
-    except:
-        log.msg('error: checking for superuser with query; %s' % check_auth)
-        raise_db_error('Exception during query: %s ' % check_auth)
+    cnt=2
+    while cnt > 0:
+        try:
+            # Then use our superuser connection to check the user's authorization level
+            check_auth = 'select rolsuper from pg_roles where rolname = \'%s\'' % username
+            conn.execute(check_auth)
+            for r in conn.iterate_dict():
+                res = (True, r['rolsuper'], '')
+            break
+        except IOError:
+            log.msg('warning: database connection lost, attempting to reconnect...')
+            conn=None
+            validate_db_conn()
+            cnt -= 1
+        except Exception:
+            log.msg('error: checking for superuser with query; %s' % check_auth)
+            raise_db_error('Exception during query: %s ' % check_auth)
 
     return res
 
