@@ -2203,8 +2203,6 @@ ChangeTracking_MarkFullResyncLockAcquired(void)
 	
 	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
 	
-	Assert(dataState == DataStateInChangeTracking);
-	
 	if (dataState == DataStateInChangeTracking)
 	{
 		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
