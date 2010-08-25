@@ -1476,15 +1476,17 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		char		*prefixed_command = NULL;
 		char		*on_clause = NULL;
 		bool		match_found = false;
-		
-		/* allocate space for "execute:<cmd>" + 1 for null in sprintf */
-		prefixed_command = (char *) palloc((strlen(prefix) + 
-											strlen(rel->execcommand)) * 
-										   sizeof(char) + 1);
-		
+				
 		/* build the command string for the executor - 'execute:command' */
-		sprintf((char *) prefixed_command, "%s%s", prefix, command);
+		StringInfo buf = makeStringInfo();
 
+		appendStringInfo(buf, "%s%s", prefix, command);
+		prefixed_command = pstrdup(buf->data);
+		
+		pfree(buf->data);
+		pfree(buf);
+		buf = NULL;
+		
 		/* get the ON clause (execute location) information */
 		on_clause = (char *) strVal(lfirst(list_head(rel->locationlist)));
 			

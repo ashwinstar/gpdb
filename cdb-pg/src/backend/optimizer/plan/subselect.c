@@ -511,24 +511,31 @@ build_subplan(PlannerInfo *root, Plan *plan, List *rtable,
 	if (splan->is_initplan)
 	{
 		ListCell   *lc;
-		int			offset;
-
-		splan->plan_name = palloc(32 + 12 * list_length(splan->setParam));
-		sprintf(splan->plan_name, "InitPlan %d (returns ", splan->plan_id);
-		offset = strlen(splan->plan_name);
+		
+		StringInfo buf = makeStringInfo();
+		
+		appendStringInfo(buf, "InitPlan %d (returns ", splan->plan_id);
+		
 		foreach(lc, splan->setParam)
 		{
-			sprintf(splan->plan_name + offset, "$%d%s",
-					lfirst_int(lc),
-					lnext(lc) ? "," : "");
-			offset += strlen(splan->plan_name + offset);
+			appendStringInfo(buf, "$%d%s",
+							lfirst_int(lc),
+							lnext(lc) ? "," : "");
 		}
-		sprintf(splan->plan_name + offset, ")");
+		appendStringInfoString(buf, ")");
+		splan->plan_name = pstrdup(buf->data);
+		pfree(buf->data);
+		pfree(buf);
+		buf = NULL;
 	}
 	else
 	{
-		splan->plan_name = palloc(32);
-		sprintf(splan->plan_name, "SubPlan %d", splan->plan_id);
+		StringInfo buf = makeStringInfo();
+		appendStringInfo(buf, "SubPlan %d", splan->plan_id);
+		splan->plan_name = pstrdup(buf->data);
+		pfree(buf->data);
+		pfree(buf);
+		buf = NULL;
 	}
 
 	/* NB PostgreSQL calculates subplan cost here, but GPDB does it elsewhere. */
@@ -1353,9 +1360,13 @@ SS_make_initplan_from_plan(PlannerInfo *root, Plan *plan,
 	node->setParam = list_make1_int(prm->paramid);
 	
 	/* Label the subplan for EXPLAIN purposes */
-	node->plan_name = palloc(64);
-	sprintf(node->plan_name, "InitPlan %d (returns $%d)",
+	StringInfo buf = makeStringInfo();
+	appendStringInfo(buf, "InitPlan %d (returns $%d)",
 			node->plan_id, prm->paramid);
+	node->plan_name = pstrdup(buf->data);
+	pfree(buf->data);
+	pfree(buf);
+	buf = NULL;
 	
 	return prm;
 }

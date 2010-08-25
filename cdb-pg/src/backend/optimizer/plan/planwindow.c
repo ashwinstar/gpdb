@@ -2337,13 +2337,18 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 	foreach ( lc, input_plan->targetlist )
 	{
 		Value *tle_name;
-		char buf[50];
 		TargetEntry *tle = (TargetEntry*)lfirst(lc);
 		AttrNumber resno = i++;
 		
-		sprintf(buf,"unnamed_attr_%d", resno);
-		tle_name = get_tle_name(tle, context->subquery->rtable, buf);
+		StringInfo buf = makeStringInfo();
+		appendStringInfo(buf, "unnamed_attr_%d", resno);
+		
+		tle_name = get_tle_name(tle, context->subquery->rtable, buf->data);
 		win_names = lappend(win_names, tle_name);
+		
+		pfree(buf->data);
+		pfree(buf);
+		buf = NULL;
 		
 		if ( hasagg )
 		{
