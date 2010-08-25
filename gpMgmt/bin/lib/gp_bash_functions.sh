@@ -759,17 +759,23 @@ CREATE_SPREAD_MIRROR_ARRAY () {
         SEG_OFFSET=0
 	LOOP=1
 	SEG_PROCESSED=0
+        STAGGER_NICS=1
 	LOG_MSG "[INFO]:-Building spread mirror array type $MULTI_TXT, please wait..." 1
 	for QE_LINE in ${QE_PRIMARY_ARRAY[@]}
 	do
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		if [ $SEG_PROCESSED -eq $NUM_DATADIR ];then
-			LOOP=1
-			SEG_PROCESSED=0
-			((SEG_OFFSET=$SEG_OFFSET+$NUM_DATADIR))
+                if [ $SEG_PROCESSED -eq $NUM_DATADIR ];then
+                        LOOP=1
+                        # Stagger the index so that a mirror ends up on a different subnet than its primary.
+                        STAGGER_NICS=1
+                        SEG_PROCESSED=0
+                        ((SEG_OFFSET=$SEG_OFFSET+$NUM_DATADIR))
+                elif [ $SEG_PROCESSED -eq `expr $NUM_DATADIR - 1` ] ; then
+                        # Last segment on a node, so offset to the first primary segment's subnet.
+                        ((STAGGER_NICS=1-$NUM_DATADIR))
 		fi
 		((STEP=$NUM_DATADIR*$LOOP))
-		((VECTOR=$STEP+$SEG_PROCESSED+$SEG_OFFSET))
+		((VECTOR=$STEP+$SEG_PROCESSED+$SEG_OFFSET+$STAGGER_NICS))
 		if [ $VECTOR -gt $MAX_ARRAY ];then
 			((VECTOR=$VECTOR-$MAX_ARRAY-1))
 		fi
@@ -809,17 +815,25 @@ CREATE_GROUP_MIRROR_ARRAY () {
 
 	PRIMARY_ARRAY_LENGTH=${#QE_PRIMARY_ARRAY[@]}
 	PRIMARY_INDEX=0
+        STAGGER_NICS=1
 	for QE_LINE in ${QE_PRIMARY_ARRAY[@]}
 	do
 
         #
-        #  the mirror will take the host from the primary of $MIRROR_INDE
+        #  the mirror will take the host from the primary of $MIRROR_INDEX
         #     this is (primary+numDataDirs) % numPrimaries to get from the next block of hosts
         # 
 	    MIRROR_INDEX=$(($PRIMARY_INDEX+$NUM_DATADIR))
 	    MIRROR_INDEX=$(($MIRROR_INDEX%$PRIMARY_ARRAY_LENGTH))
 
-	    MIRROR_DIR_INDEX=$(($MIRROR_INDEX % $NUM_DATADIR))
+            MIRROR_DIR_INDEX=$(($MIRROR_INDEX % $NUM_DATADIR))
+
+            # Stagger the index so that a mirror ends up on a different subnet than its primary.
+            if [ $(($MIRROR_INDEX % $NUM_DATADIR)) -eq $(($NUM_DATADIR - 1)) ];then
+               ((MIRROR_INDEX=$MIRROR_INDEX-$NUM_DATADIR+1))
+            else
+               ((MIRROR_INDEX=$MIRROR_INDEX+1))
+            fi
 
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 		
