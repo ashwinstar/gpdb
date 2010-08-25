@@ -295,6 +295,7 @@ bool 		Debug_print_xlog_relation_change_info_skip_issues_only = false;
 bool 		Debug_print_xlog_relation_change_info_backtrace_skip_issues = false;
 bool		Debug_filerep_crc_on = true;
 bool		Debug_filerep_print = false;
+bool		Debug_filerep_gcov = false;
 bool		filerep_inject_listener_fault = false;
 
 #define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
@@ -2577,6 +2578,16 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_filerep_print,
+		false, NULL, NULL
+	},
+
+	{
+		{"debug_filerep_gcov", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("workaround for filerep gcov issue"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_filerep_gcov,
 		false, NULL, NULL
 	},
 

@@ -173,6 +173,7 @@ extern bool Debug_print_xlog_relation_change_info_skip_issues_only;
 extern bool Debug_print_xlog_relation_change_info_backtrace_skip_issues;
 extern bool Debug_filerep_crc_on;
 extern bool Debug_filerep_print;
+extern bool Debug_filerep_gcov;
 extern bool filerep_inject_listener_fault;
 
 extern bool Debug_print_tablespace;

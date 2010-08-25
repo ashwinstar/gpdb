@@ -138,6 +138,19 @@ FileRepSubProcess_ShutdownHandler(SIGNAL_ARGS)
 			
 		}
 			
+		/* temporary workaround for gcov testing */
+		if (Debug_filerep_gcov && fileRepProcessType == FileRepProcessTypePrimaryConsumerAck)
+		{
+			getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, &isInTransition, &dataStateTransition);
+			
+			if (isInTransition == TRUE &&
+				dataStateTransition == DataStateInChangeTracking)
+			{	
+				proc_exit(0);
+				return;
+			}
+		}
+		
 		/* call the normal postgres die so that it requests query cancel/procdie */
 		die(PASS_SIGNAL_ARGS);
     }
