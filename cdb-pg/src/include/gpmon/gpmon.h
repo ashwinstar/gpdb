@@ -54,7 +54,8 @@ extern void gpmon_gettmid(apr_int32_t*);
    ------------------------------------------------------------------ */
 typedef enum EmcConnectSymptom
 {
-	EMC_CONNECT_SYMPTOM_POWER_SUPPLY = 0,
+	EMC_CONNECT_SYMPTOM_NULL = 0,
+	EMC_CONNECT_SYMPTOM_POWER_SUPPLY,
 	EMC_CONNECT_SYMPTOM_BATTERY,
 	EMC_CONNECT_SYMPTOM_COOLING_DEVICE,
 	EMC_CONNECT_SYMPTOM_PROCESSOR,

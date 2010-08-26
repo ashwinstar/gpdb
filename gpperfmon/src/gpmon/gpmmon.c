@@ -605,7 +605,11 @@ static void* snmp_main(apr_thread_t* thread_, void* arg_)
 	snprintf(configfile, PATH_MAX, "%s/gpperfmon/conf/snmp.conf", ax.master_data_directory);
 	snprintf(outdir, PATH_MAX, "%s/gpperfmon/data/snmp", ax.master_data_directory);
 
-	gpmmon_init_snmp(configfile, outdir, opt.emcconnect);
+	if (gpmmon_init_snmp(configfile, outdir, opt.emcconnect) != APR_SUCCESS)
+	{
+		gpmon_warningx(FLINE, 0, "performance monitor snmp module not initialized successfully");
+		return NULL;
+	}
 
 	snmp_report(ax.hosttab, ax.hosttabsz);
 
@@ -621,7 +625,7 @@ static void* snmp_main(apr_thread_t* thread_, void* arg_)
 		}
 	}
 
-	return APR_SUCCESS;
+	return NULL;
 }
 
 /* seperate thread for harvest */

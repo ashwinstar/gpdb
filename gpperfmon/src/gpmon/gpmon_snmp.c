@@ -1,12 +1,16 @@
 #include "gpmonlib.h"
 #include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-includes.h>
+#include "apr_hash.h"
 
 #define GPMMON_SNMP_COMMUNITY_NAME "public"
 #define GPMMON_SNMP_PROTOCOL_VERSION SNMP_VERSION_2c
 #define GPMMON_SNMP_OID_STRING_BUF_SIZE 512
+#define GPMMON_SNMP_HOSTNAME_MAX_SIZE 512
 #define GPMON_SNMP_ALLOW_REALLOC 0
 #define GPMON_SNMP_CONFIG_MAX_STRING_LENGTH 128
+#define GPMON_SNMP_CLEANUP_ALERT_STATUS_TABLE_INTERVAL 15 // every X reports loop through the alerts table and clear out any thing that is no longer in error
+#define GPMON_SNMP_MAX_EMC_CONNECT_MSG_SRING_SIZE 1024
 
 //****************************************************************************************//
 // DECLARATIONS SECTION
@@ -41,7 +45,7 @@ const char* snmp_status_prt(GPDB_SNMP_STATUS status)
 	}
 }
 
-typedef void gpdb_snmp_format_function(oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars);
+typedef void gpdb_snmp_format_function(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars);
 typedef GPDB_SNMP_STATUS gpdb_status_code_conversion_function(int statusCodeIn, char** msgout);
 typedef void gpdb_snmp_device_function(const char* category, const char* hostname);
 
@@ -54,6 +58,20 @@ struct SnmpConfigEntry
 	// linked list
 	struct SnmpConfigEntry* next;
 };
+
+struct AlertStatusKey
+{
+	char hostname[GPMMON_SNMP_HOSTNAME_MAX_SIZE];
+	char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE];
+};
+typedef struct AlertStatusKey AlertStatusKey;
+
+struct AlertStatusData
+{
+	GPDB_SNMP_STATUS status;
+};
+typedef struct AlertStatusData AlertStatusData;
+
 
 static struct 
 {
@@ -70,21 +88,54 @@ static struct
 	time_t lastreport_started;
 	time_t lastreport_done;
 
-	int emcconnect;
+	int emcconnect; // 0 if emconnect is disabled
+
+	apr_pool_t* alert_status_table_pool;
+	apr_hash_t* alert_status_table;
 
 	// these are per host vars reset for each host
 	GPDB_SNMP_STATUS worst_status_per_host;
 	FILE* hostfd;
-	const char* hostname;
+	AlertStatusKey key;
 
 } si = { 0 };
 
 
-void record_status(const char* oidstring, const char* displayname, GPDB_SNMP_STATUS status, const char* message);
+void record_status(EmcConnectSymptom symptom, const char* oidstring, const char* displayname, GPDB_SNMP_STATUS status, const char* message);
 int init_host(const char* hostname);
 void write_line_in_hostlist_file(const char* category);
-int snmp_array_collection(const char* oidname, const char* displayname, gpdb_snmp_format_function format_func, bool enumerateDisplay);
+int snmp_array_collection(EmcConnectSymptom symptom, const char* oidname, const char* displayname, gpdb_snmp_format_function format_func, bool enumerateDisplay);
 void close_snmp_file_for_host();
+
+//****************************************************************************************//
+// EMC CONNECT CONVERSION FUNCTIONS SECTION
+// functions that convert from a type in SNMP monitoring to a type in EMC CONNECT
+//****************************************************************************************//
+
+EmcConnectStatus convert_gpdb_snmp_status_to_emc_connect_status(GPDB_SNMP_STATUS status)
+{
+	if (status == GPDB_SNMP_STATUS_UNREACHABLE)
+		return EMC_CONNECT_STATUS_FAILED;
+	else 
+		return EMC_CONNECT_STATUS_OK;
+}
+
+EmcConnectSeverity convert_gpdb_snmp_status_to_emc_connect_severity(GPDB_SNMP_STATUS status)
+{
+	switch(status)
+	{
+		case GPDB_SNMP_STATUS_WARNING:
+			return EMC_CONNECT_SEVERITY_WARNING;
+		break;
+		case GPDB_SNMP_STATUS_ERROR:
+			return EMC_CONNECT_SEVERITY_ERROR;
+		break;
+		default:
+		break;
+	}
+
+	return EMC_CONNECT_SEVERITY_UNKNOWN;
+}
 
 //****************************************************************************************//
 // CONVERSION FUNCTIONS SECTION
@@ -583,7 +634,7 @@ GPDB_SNMP_STATUS dell_virtual_disk_write_policy_code_conversion(int statusCodeIn
 //****************************************************************************************//
 
 #define FORMATIP_SIZE 64
-void gpmon_format_snmp_ip(oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+void gpmon_format_snmp_ip(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
 	unsigned char *ip;
 	char buffer[FORMATIP_SIZE] = { 0 };
@@ -592,16 +643,16 @@ void gpmon_format_snmp_ip(oid oidname[], size_t oidlen, const char* displayname,
 
 	if (vars->type != ASN_IPADDRESS)
 	{
-		record_status(oidstring, displayname, GPDB_SNMP_STATUS_UNKNOWN, "wrong var type");
+		record_status(symptom, oidstring, displayname, GPDB_SNMP_STATUS_UNKNOWN, "wrong var type");
 		return;
 	}
 	ip = vars->val.string;
 	snprintf(buffer, FORMATIP_SIZE, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-	record_status(oidstring, displayname, GPDB_SNMP_STATUS_NORMAL, buffer);
+	record_status(symptom, oidstring, displayname, GPDB_SNMP_STATUS_NORMAL, buffer);
 }
 
 #define FORMAT_SNMP_INT_BUFSIZE 64
-void gpmon_format_snmp_int(oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+void gpmon_format_snmp_int(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
 	char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
 	snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, oidname, oidlen);
@@ -609,15 +660,15 @@ void gpmon_format_snmp_int(oid oidname[], size_t oidlen, const char* displayname
 
 	if (vars->type != ASN_INTEGER)
 	{
-		record_status(oidstring, displayname, GPDB_SNMP_STATUS_UNKNOWN, "wrong var type");
+		record_status(symptom, oidstring, displayname, GPDB_SNMP_STATUS_UNKNOWN, "wrong var type");
 		return;
 	}
 
 	snprintf(outbuf, FORMAT_SNMP_INT_BUFSIZE, "%ld", *vars->val.integer);
-	record_status(oidstring, displayname, GPDB_SNMP_STATUS_NORMAL, outbuf);
+	record_status(symptom, oidstring, displayname, GPDB_SNMP_STATUS_NORMAL, outbuf);
 }
 
-void format_generic_status_code(oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars, gpdb_status_code_conversion_function conversion_func)
+void format_generic_status_code(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars, gpdb_status_code_conversion_function conversion_func)
 {
 	char* msg;
 	int status;
@@ -627,62 +678,62 @@ void format_generic_status_code(oid oidname[], size_t oidlen, const char* displa
 
 	if (vars->type != ASN_INTEGER)
 	{
-		record_status(oidstring, displayname, GPDB_SNMP_STATUS_UNKNOWN, "wrong var type");
+		record_status(symptom, oidstring, displayname, GPDB_SNMP_STATUS_UNKNOWN, "wrong var type");
 		return;
 	}
 
 	status = conversion_func(*vars->val.integer, &msg);
 
-	record_status(oidstring, displayname, status, msg);
+	record_status(symptom, oidstring, displayname, status, msg);
 }
 
-void gpmon_format_dell_status(oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+void gpmon_format_dell_status(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
-	format_generic_status_code(oidname, oidlen, displayname, vars, dell_status_code_conversion);
+	format_generic_status_code(symptom, oidname, oidlen, displayname, vars, dell_status_code_conversion);
 }
 
-void gpmon_format_dell_network_device_status(oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+void gpmon_format_dell_network_device_status(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
-	format_generic_status_code(oidname, oidlen, displayname, vars, dell_network_device_connection_status_conversion);
+	format_generic_status_code(symptom, oidname, oidlen, displayname, vars, dell_network_device_connection_status_conversion);
 }
 
-void format_dell_controller_status(oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+void format_dell_controller_status(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
-	format_generic_status_code(oidname, oidlen, displayname, vars, dell_controller_status_code_conversion);
+	format_generic_status_code(symptom, oidname, oidlen, displayname, vars, dell_controller_status_code_conversion);
 }
 
-void format_dell_virtual_disk_layout(oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+void format_dell_virtual_disk_layout(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
-	format_generic_status_code(oidname, oidlen, displayname, vars, dell_virtual_disk_layout_code_conversion);
+	format_generic_status_code(symptom, oidname, oidlen, displayname, vars, dell_virtual_disk_layout_code_conversion);
 }
 
-void format_dell_virtual_disk_state(oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+void format_dell_virtual_disk_state(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
-	format_generic_status_code(oidname, oidlen, displayname, vars, dell_virtual_disk_state_status_code_conversion);
+	format_generic_status_code(symptom, oidname, oidlen, displayname, vars, dell_virtual_disk_state_status_code_conversion);
 }
 
-void format_dell_virtual_disk_write_policy(oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+void format_dell_virtual_disk_write_policy(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
-	format_generic_status_code(oidname, oidlen, displayname, vars, dell_virtual_disk_write_policy_code_conversion);
+	format_generic_status_code(symptom, oidname, oidlen, displayname, vars, dell_virtual_disk_write_policy_code_conversion);
 }
 
-void format_dell_virtual_disk_read_policy(oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+void format_dell_virtual_disk_read_policy(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
-	format_generic_status_code(oidname, oidlen, displayname, vars, dell_virtual_disk_read_policy_code_conversion);
+	format_generic_status_code(symptom, oidname, oidlen, displayname, vars, dell_virtual_disk_read_policy_code_conversion);
 }
 
-void format_network_interface_status(oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+void format_network_interface_status(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
-	format_generic_status_code(oidname, oidlen, displayname, vars, snmp_network_interface_status_code_conversion);
+	format_generic_status_code(symptom, oidname, oidlen, displayname, vars, snmp_network_interface_status_code_conversion);
 }
 
-void format_brocade_switch_status(oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+void format_brocade_switch_status(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
-	format_generic_status_code(oidname, oidlen, displayname, vars, brocade_switch_status_code_conversion);
+	format_generic_status_code(symptom, oidname, oidlen, displayname, vars, brocade_switch_status_code_conversion);
 }
 
 #define FORMAT_DELL_SCALAR_STRING_BUF_SIZE 256
-void gpmon_format_snmp_string(oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+void gpmon_format_snmp_string(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
 	char buffer[FORMAT_DELL_SCALAR_STRING_BUF_SIZE] = { 0 };
 
@@ -692,7 +743,7 @@ void gpmon_format_snmp_string(oid oidname[], size_t oidlen, const char* displayn
 	if (vars->type != ASN_OCTET_STR)
 	{
 
-		record_status(oidstring, displayname, GPDB_SNMP_STATUS_UNKNOWN, "wrong var type");
+		record_status(symptom, oidstring, displayname, GPDB_SNMP_STATUS_UNKNOWN, "wrong var type");
 		return;
 	}
 
@@ -704,13 +755,13 @@ void gpmon_format_snmp_string(oid oidname[], size_t oidlen, const char* displayn
 		// paranoid check ... should not get here
 		if (snprintf_size < 1 || snprintf_size > FORMAT_DELL_SCALAR_STRING_BUF_SIZE)
 		{
-			gpmon_warningx(FLINE, 0, "buffer calculation warning on %s %s %s\n", si.hostname, oidstring, displayname);
+			gpmon_warningx(FLINE, 0, "buffer calculation warning on %s %s %s\n", si.key.hostname, oidstring, displayname);
 			snprintf_size = FORMAT_DELL_SCALAR_STRING_BUF_SIZE;
 		}
 	}
 
 	snprintf(buffer, snprintf_size, "%s", (char*)vars->val.string);
-	record_status(oidstring, displayname, GPDB_SNMP_STATUS_NORMAL, buffer);
+	record_status(symptom, oidstring, displayname, GPDB_SNMP_STATUS_NORMAL, buffer);
 }
 
 
@@ -727,49 +778,49 @@ void run_snmp_report_for_dell_host(const char* categoryname, const char* hostnam
 	if (init_host(hostname))
 		return;
 
-	if (snmp_array_collection("1.3.6.1.4.1.674.10892.1.300.10.1.8", "System Manufacturer", gpmon_format_snmp_string, FALSE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10892.1.300.10.1.9", "System Model", gpmon_format_snmp_string, FALSE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10892.1.400.10.1.6", "OS Name", gpmon_format_snmp_string, FALSE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10892.1.400.10.1.7", "OS Version", gpmon_format_snmp_string, FALSE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10892.1.300.10.1.8", "System Manufacturer", gpmon_format_snmp_string, FALSE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10892.1.300.10.1.9", "System Model", gpmon_format_snmp_string, FALSE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10892.1.400.10.1.6", "OS Name", gpmon_format_snmp_string, FALSE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10892.1.400.10.1.7", "OS Version", gpmon_format_snmp_string, FALSE)) goto BAIL;
 
-	if (snmp_array_collection("1.3.6.1.4.1.674.10892.1.600.12.1.5", "Power Supply Status", gpmon_format_dell_status, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10892.1.600.50.1.5", "Battery Status", gpmon_format_dell_status, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_POWER_SUPPLY, "1.3.6.1.4.1.674.10892.1.600.12.1.5", "Power Supply Status", gpmon_format_dell_status, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_BATTERY, "1.3.6.1.4.1.674.10892.1.600.50.1.5", "Battery Status", gpmon_format_dell_status, TRUE)) goto BAIL;
 
-	if (snmp_array_collection("1.3.6.1.4.1.674.10892.1.700.12.1.8", "Cooling Device Name", gpmon_format_snmp_string, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10892.1.700.12.1.5", "Cooling Device Status", gpmon_format_dell_status, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10892.1.700.12.1.8", "Cooling Device Name", gpmon_format_snmp_string, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, "1.3.6.1.4.1.674.10892.1.700.12.1.5", "Cooling Device Status", gpmon_format_dell_status, TRUE)) goto BAIL;
 
-	if (snmp_array_collection("1.3.6.1.4.1.674.10892.1.1100.30.1.16", "Processor Version", gpmon_format_snmp_string, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10892.1.1100.30.1.5", "Processor Status", gpmon_format_dell_status, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10892.1.1100.30.1.16", "Processor Version", gpmon_format_snmp_string, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_PROCESSOR, "1.3.6.1.4.1.674.10892.1.1100.30.1.5", "Processor Status", gpmon_format_dell_status, TRUE)) goto BAIL;
 
-	if (snmp_array_collection("1.3.6.1.4.1.674.10892.1.1100.40.1.13", "Cache Device Size", gpmon_format_snmp_int, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10892.1.1100.40.1.5", "Cache Device Status", gpmon_format_dell_status, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10892.1.1100.40.1.13", "Cache Device Size", gpmon_format_snmp_int, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_CACHE_DEVICE, "1.3.6.1.4.1.674.10892.1.1100.40.1.5", "Cache Device Status", gpmon_format_dell_status, TRUE)) goto BAIL;
 
-	if (snmp_array_collection("1.3.6.1.4.1.674.10892.1.400.20.1.4", "OS Memory Status", gpmon_format_dell_status, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10892.1.1100.50.1.5", "Memory Device Status", gpmon_format_dell_status, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_OS_MEMORY, "1.3.6.1.4.1.674.10892.1.400.20.1.4", "OS Memory Status", gpmon_format_dell_status, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_MEMORY_DEVICE, "1.3.6.1.4.1.674.10892.1.1100.50.1.5", "Memory Device Status", gpmon_format_dell_status, TRUE)) goto BAIL;
 
-	if (snmp_array_collection("1.3.6.1.4.1.674.10892.1.1100.90.1.5", "Network Device", gpmon_format_snmp_string, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10892.1.1100.90.1.7", "Network Device Vendor", gpmon_format_snmp_string, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10892.1.1100.90.1.11", "Network Device IP", gpmon_format_snmp_ip, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10892.1.1100.90.1.12", "Network Device Subnet Mask", gpmon_format_snmp_ip, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10892.1.1100.90.1.4", "Network Device Status", gpmon_format_dell_network_device_status, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10892.1.1100.90.1.5", "Network Device", gpmon_format_snmp_string, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10892.1.1100.90.1.7", "Network Device Vendor", gpmon_format_snmp_string, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10892.1.1100.90.1.11", "Network Device IP", gpmon_format_snmp_ip, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10892.1.1100.90.1.12", "Network Device Subnet Mask", gpmon_format_snmp_ip, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NETWORK_DEVICE, "1.3.6.1.4.1.674.10892.1.1100.90.1.4", "Network Device Status", gpmon_format_dell_network_device_status, TRUE)) goto BAIL;
 
-	if (snmp_array_collection("1.3.6.1.4.1.674.10893.1.20.130.1.1.2", "Controller Name", gpmon_format_snmp_string, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10893.1.20.130.1.1.3", "Controller Vendor", gpmon_format_snmp_string, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10893.1.20.130.1.1.5", "Controller Status", format_dell_controller_status, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10893.1.20.130.15.1.5", "Controller Battery Status", gpmon_format_dell_status, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10893.1.20.130.1.1.2", "Controller Name", gpmon_format_snmp_string, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10893.1.20.130.1.1.3", "Controller Vendor", gpmon_format_snmp_string, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_IO_CONTROLLER, "1.3.6.1.4.1.674.10893.1.20.130.1.1.5", "Controller Status", format_dell_controller_status, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_IO_CONTROLLER, "1.3.6.1.4.1.674.10893.1.20.130.15.1.5", "Controller Battery Status", gpmon_format_dell_status, TRUE)) goto BAIL;
 
-	if (snmp_array_collection("1.3.6.1.4.1.674.10893.1.20.140.1.1.2", "Virtual Disk Name", gpmon_format_snmp_string, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10893.1.20.140.1.1.3", "Virtual Disk Device Name", gpmon_format_snmp_string, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10893.1.20.140.1.1.19", "Virtual Disk Status", gpmon_format_dell_status, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10893.1.20.140.1.1.13", "Virtual Disk Layout", format_dell_virtual_disk_layout, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10893.1.20.140.1.1.6", "Virtual Disk MB", gpmon_format_snmp_int, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10893.1.20.140.1.1.10", "Virtual Disk Write Policy", format_dell_virtual_disk_write_policy, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10893.1.20.140.1.1.11", "Virtual Disk Read Policy", format_dell_virtual_disk_read_policy, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10893.1.20.140.1.1.4", "Virtual Disk State", format_dell_virtual_disk_state, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10893.1.20.140.1.1.2", "Virtual Disk Name", gpmon_format_snmp_string, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10893.1.20.140.1.1.3", "Virtual Disk Device Name", gpmon_format_snmp_string, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, "1.3.6.1.4.1.674.10893.1.20.140.1.1.19", "Virtual Disk Status", gpmon_format_dell_status, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10893.1.20.140.1.1.13", "Virtual Disk Layout", format_dell_virtual_disk_layout, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10893.1.20.140.1.1.6", "Virtual Disk MB", gpmon_format_snmp_int, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, "1.3.6.1.4.1.674.10893.1.20.140.1.1.10", "Virtual Disk Write Policy", format_dell_virtual_disk_write_policy, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, "1.3.6.1.4.1.674.10893.1.20.140.1.1.11", "Virtual Disk Read Policy", format_dell_virtual_disk_read_policy, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, "1.3.6.1.4.1.674.10893.1.20.140.1.1.4", "Virtual Disk State", format_dell_virtual_disk_state, TRUE)) goto BAIL;
 
-	if (snmp_array_collection("1.3.6.1.4.1.674.10893.1.20.130.4.1.2", "Array Disk Name", gpmon_format_snmp_string, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10893.1.20.130.4.1.3", "Array Disk Vendor", gpmon_format_snmp_string, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.674.10893.1.20.130.4.1.23", "Array Disk Status", gpmon_format_dell_status, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10893.1.20.130.4.1.2", "Array Disk Name", gpmon_format_snmp_string, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10893.1.20.130.4.1.3", "Array Disk Vendor", gpmon_format_snmp_string, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_PHYSICAL_DISK, "1.3.6.1.4.1.674.10893.1.20.130.4.1.23", "Array Disk Status", gpmon_format_dell_status, TRUE)) goto BAIL;
 
 BAIL:
 	close_snmp_file_for_host();
@@ -781,13 +832,13 @@ void run_snmp_report_for_brocade_switch(const char* categoryname, const char* ho
 	if (init_host(hostname))
 		return;
 
-	if (snmp_array_collection("1.3.6.1.2.1.1.5", "Host Name", gpmon_format_snmp_string, FALSE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.2.1.1.1", "Description", gpmon_format_snmp_string, FALSE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.1588.2.1.1.1.1.7", "Operational Status", format_brocade_switch_status, FALSE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.1588.2.1.1.1.1.6", "Firmware Version", gpmon_format_snmp_string, FALSE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.4.1.1588.2.1.1.1.1.10", "Soft Serial Number", gpmon_format_snmp_string, FALSE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.2.1.2.2.1.2", "Interface Description", gpmon_format_snmp_string, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.2.1.2.2.1.8", "Interface Status", format_network_interface_status, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.2.1.1.5", "Host Name", gpmon_format_snmp_string, FALSE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.2.1.1.1", "Description", gpmon_format_snmp_string, FALSE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.1588.2.1.1.1.1.7", "Operational Status", format_brocade_switch_status, FALSE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.1588.2.1.1.1.1.6", "Firmware Version", gpmon_format_snmp_string, FALSE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.1588.2.1.1.1.1.10", "Soft Serial Number", gpmon_format_snmp_string, FALSE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.2.1.2.2.1.2", "Interface Description", gpmon_format_snmp_string, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.2.1.2.2.1.8", "Interface Status", format_network_interface_status, TRUE)) goto BAIL;
 
 BAIL:
 	close_snmp_file_for_host();
@@ -799,10 +850,10 @@ void run_snmp_report_for_allied_telesis_switch(const char* categoryname, const c
 	if (init_host(hostname))
 		return;
 
-	if (snmp_array_collection("1.3.6.1.2.1.1.5", "Host Name", gpmon_format_snmp_string, FALSE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.2.1.1.1", "Description", gpmon_format_snmp_string, FALSE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.2.1.2.2.1.2", "Interface Description", gpmon_format_snmp_string, TRUE)) goto BAIL;
-	if (snmp_array_collection("1.3.6.1.2.1.2.2.1.8", "Interface Status", format_network_interface_status, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.2.1.1.5", "Host Name", gpmon_format_snmp_string, FALSE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.2.1.1.1", "Description", gpmon_format_snmp_string, FALSE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.2.1.2.2.1.2", "Interface Description", gpmon_format_snmp_string, TRUE)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.2.1.2.2.1.8", "Interface Status", format_network_interface_status, TRUE)) goto BAIL;
 
 BAIL:
 	close_snmp_file_for_host();
@@ -813,6 +864,28 @@ BAIL:
 // MAIN FLOW CODE SECTION
 // Change this code when modifying the overall flow of the snmp reporting
 //****************************************************************************************//
+
+// 0 is success
+int alert_status_table_creation()
+{
+	int e;
+	if (0 != (e = apr_pool_create(&si.alert_status_table_pool, 0)))
+	{
+		gpmon_warningx(FLINE, e, "unable to allocate memory pool from alert_status_table_creation in snmp module\n");
+		return 1;
+	}
+
+    si.alert_status_table = apr_hash_make(si.alert_status_table_pool);
+	if (!si.alert_status_table)
+	{
+		gpmon_warningx(FLINE, 0, "unable to allocate hash table from alert_status_table_creation in snmp module\n");
+		apr_pool_destroy(si.alert_status_table_pool);
+		si.alert_status_table_pool = NULL;
+		return 1;
+	}
+
+	return 0;
+}
 
 apr_status_t snmp_msg_send(const char* hostname, struct snmp_pdu *pdu_to_send, struct snmp_pdu** pdu_response)
 {
@@ -865,7 +938,7 @@ apr_status_t snmp_msg_send(const char* hostname, struct snmp_pdu *pdu_to_send, s
 }
 
 #define SNMP_ARRAY_DISPLAY_LENGTH 256
-int snmp_array_collection(const char* oidname, const char* displayname, gpdb_snmp_format_function format_func, bool enumerateDisplay)
+int snmp_array_collection(EmcConnectSymptom symptom, const char* oidname, const char* displayname, gpdb_snmp_format_function format_func, bool enumerateDisplay)
 {
 	apr_status_t retVal;
 	oid originalOID[MAX_OID_LEN] = {};
@@ -893,7 +966,7 @@ int snmp_array_collection(const char* oidname, const char* displayname, gpdb_snm
 		pdu = snmp_pdu_create(SNMP_MSG_GETNEXT);
 		snmp_add_null_var(pdu, nextOID, nextOID_len);
 
-		retVal = snmp_msg_send(si.hostname, pdu, &response);
+		retVal = snmp_msg_send(si.key.hostname, pdu, &response);
 	
 		if (retVal == APR_SUCCESS)
 		{
@@ -917,7 +990,7 @@ int snmp_array_collection(const char* oidname, const char* displayname, gpdb_snm
 					snprintf(display_buffer, SNMP_ARRAY_DISPLAY_LENGTH, "%s", displayname);
 				}
 
-				format_func(response->variables->name, response->variables->name_length, display_buffer, response->variables);
+				format_func(symptom, response->variables->name, response->variables->name_length, display_buffer, response->variables);
 				memmove(nextOID, response->variables->name, response->variables->name_length * sizeof(oid));
 				nextOID_len = response->variables->name_length;
 			}
@@ -926,36 +999,36 @@ int snmp_array_collection(const char* oidname, const char* displayname, gpdb_snm
 		{
 			char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
 			snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, nextOID, nextOID_len);
-			record_status(oidstring, displayname, GPDB_SNMP_STATUS_UNREACHABLE, "timeout");
+			record_status(symptom, oidstring, displayname, GPDB_SNMP_STATUS_UNREACHABLE, "timeout");
 			last_item_in_subtree = 1;
-			gpmon_warningx(FLINE, 0, "timeout trying to access snmp data on host %s for oid %s\n", si.hostname, oidstring);
+			gpmon_warningx(FLINE, 0, "timeout trying to access snmp data on host %s for oid %s\n", si.key.hostname, oidstring);
 		}
 		else if (retVal == APR_NOTFOUND)
 		{
 			char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
 			snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, nextOID, nextOID_len);
-			gpmon_warningx(FLINE, 0, "snmp_array_collection could not find OID %s at host %d\n", oidstring, si.hostname);
+			gpmon_warningx(FLINE, 0, "snmp_array_collection could not find OID %s at host %d\n", oidstring, si.key.hostname);
 			last_item_in_subtree = 1;
 		}
 		else if (retVal == APR_EPROC_UNKNOWN)
 		{
 			char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
 			snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, nextOID, nextOID_len);
-			gpmon_warningx(FLINE, 0, "snmp_array_collection got unexpected error looking for OID %s at host %d\n", oidstring, si.hostname);
+			gpmon_warningx(FLINE, 0, "snmp_array_collection got unexpected error looking for OID %s at host %d\n", oidstring, si.key.hostname);
 			last_item_in_subtree = 1;
 		}
 		else if (retVal == APR_ECONNABORTED)
 		{
 			char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
 			snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, nextOID, nextOID_len);
-			record_status(oidstring, displayname, GPDB_SNMP_STATUS_UNREACHABLE, "could not open session to host");
+			record_status(symptom, oidstring, displayname, GPDB_SNMP_STATUS_UNREACHABLE, "could not open session to host");
 			last_item_in_subtree = 1;
 		}
 		else
 		{
 			char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
 			snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, nextOID, nextOID_len);
-			gpmon_warningx(FLINE, 0, "snmp_array_collection got unknown error looking for OID %s at host %d\n", oidstring, si.hostname);
+			gpmon_warningx(FLINE, 0, "snmp_array_collection got unknown error looking for OID %s at host %d\n", oidstring, si.key.hostname);
 			last_item_in_subtree = 1;
 		}
 	
@@ -980,8 +1053,8 @@ void close_snmp_file_for_host()
 
 	fclose(si.hostfd);
 
-	snprintf(filename,     PATH_MAX, "%s/snmp.host.%s.txt",  si.outputdir, si.hostname);
-	snprintf(filename_tmp, PATH_MAX, "%s/_snmp.host.%s.txt", si.outputdir, si.hostname);
+	snprintf(filename,     PATH_MAX, "%s/snmp.host.%s.txt",  si.outputdir, si.key.hostname);
+	snprintf(filename_tmp, PATH_MAX, "%s/_snmp.host.%s.txt", si.outputdir, si.key.hostname);
 
 	rename(filename_tmp, filename);
 }
@@ -991,13 +1064,76 @@ void update_per_host_status(GPDB_SNMP_STATUS componentStatus)
 		si.worst_status_per_host = componentStatus;
 }
 
-void record_status(const char* oidstring, const char* displayname, GPDB_SNMP_STATUS status, const char* message)
+void record_status(EmcConnectSymptom symptom, const char* oidstring, const char* displayname, GPDB_SNMP_STATUS status, const char* message)
 {
+	AlertStatusData* alertData;
+	int retVal;
+	char msg_to_send[GPMON_SNMP_MAX_EMC_CONNECT_MSG_SRING_SIZE];
+	
 	// STATUS FORMAT IN HOST STATUS FILE
 	// HOSTNAME | OIDSTRING | DISPLAYNAME | STATUS | MESSAGE
 
-	fprintf(si.hostfd, "%s|%s|%s|%s|%s\n", si.hostname, oidstring, displayname, snmp_status_prt(status), message);
+	fprintf(si.hostfd, "%s|%s|%s|%s|%s\n", si.key.hostname, oidstring, displayname, snmp_status_prt(status), message);
 	update_per_host_status(status);
+
+	// remainder of this function is to handle sending an EMC connect alert
+	if (!si.emcconnect)
+		return;
+
+	// this oid does not have EMC CONNECT enabled
+	if (symptom == EMC_CONNECT_SYMPTOM_NULL)
+		return;
+
+	snprintf(si.key.oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, oidstring);
+	alertData = apr_hash_get(si.alert_status_table, &si.key, sizeof (si.key));
+
+	// currently good
+	if (status == GPDB_SNMP_STATUS_NORMAL)
+	{
+		// delete the status in the alert table if any
+		if (alertData)
+		{
+			apr_hash_set(si.alert_status_table, &si.key, sizeof(si.key), NULL);
+		}
+
+		// do not send EMC connect for NORMAL status
+		return;
+	}
+
+	// no status change don't do anything
+	if (alertData && alertData->status == status)
+		return;
+
+	// if we get here the status is not good and the status is not the same as before
+	// we need to update the status in our table and send the emc connect message
+
+	// add to status table
+	if (!alertData)
+	{
+		alertData = apr_palloc(si.alert_status_table_pool, sizeof(AlertStatusData));
+		if (!alertData)
+		{
+			gpmon_warningx(FLINE, 0, "Memory not allocated in snmp module function record_status. EMC connect message not sent\n");
+			return;
+		}
+
+		apr_hash_set(si.alert_status_table, &si.key, sizeof(si.key), alertData);
+	}
+
+	alertData->status = status;
+
+	snprintf(msg_to_send, GPMON_SNMP_MAX_EMC_CONNECT_MSG_SRING_SIZE, "%s: %s", displayname, message);
+
+	// send EMC connect message
+	retVal =  gpmon_emcconnect_send_alert(symptom,
+								convert_gpdb_snmp_status_to_emc_connect_status(status),
+								convert_gpdb_snmp_status_to_emc_connect_severity(status),
+								EMC_CONNECT_ORIGIN_GPMMON,
+								si.key.hostname,  
+								(char*)msg_to_send);
+
+	if (retVal)
+		gpmon_warningx(FLINE, 0, "Error creating EMC Connect XML Event File from snmp module\n");
 }
 
 FILE* open_snmp_file_for_host(const char* hostname)
@@ -1016,7 +1152,7 @@ FILE* open_snmp_file_for_host(const char* hostname)
 // 0 is success
 int init_host(const char* hostname)
 {
-	si.hostname = hostname;
+	snprintf(si.key.hostname, GPMMON_SNMP_HOSTNAME_MAX_SIZE, hostname);
 
 	si.worst_status_per_host = GPDB_SNMP_STATUS_NORMAL;
 
@@ -1042,7 +1178,7 @@ void write_line_in_hostlist_file(const char* category)
 {
 	if (si.hostlist_fd)
 	{
-		fprintf(si.hostlist_fd, "%s|%s|%s\n", category, si.hostname, snmp_status_prt(si.worst_status_per_host));
+		fprintf(si.hostlist_fd, "%s|%s|%s\n", category, si.key.hostname, snmp_status_prt(si.worst_status_per_host));
 	}
 	else
 	{
@@ -1117,9 +1253,6 @@ void snmp_report(host_t* tab, int tabsz)
 
 	if (!si.snmpInitialized)
 		return; // there was a failure in the setup phase ... do not collect data
-
-	// memset the summary data
-	// open the summary per history file
 
 	snmp_start_report();
 
@@ -1300,7 +1433,7 @@ void read_state_from_last_report_file()
 	fclose(fd);
 }
 
-void gpmmon_init_snmp(const char* configfile, const char* outdir, int emcconnect_enabled)
+apr_status_t gpmmon_init_snmp(const char* configfile, const char* outdir, int emcconnect_enabled)
 {
 	si.emcconnect = emcconnect_enabled;
 
@@ -1315,7 +1448,7 @@ void gpmmon_init_snmp(const char* configfile, const char* outdir, int emcconnect
 	if (gpmon_recursive_mkdir(si.outputdir))
 	{
 		gpmon_warningx(FLINE, 0, "could not make the output directory for snmp data: %s", si.outputdir);
-		return;
+		return APR_ENOMEM;
 	}
 	
 	read_state_from_last_report_file();
@@ -1323,5 +1456,10 @@ void gpmmon_init_snmp(const char* configfile, const char* outdir, int emcconnect
 	init_snmp("gpmmon");
 	snmp_out_toggle_options("n"); // make output of oids numeric only
 
+	if (alert_status_table_creation())
+		return APR_ENOMEM;
+
 	si.snmpInitialized=true;
+
+	return APR_SUCCESS;
 }
