@@ -1,15 +1,15 @@
 $def with (updatetime, table)
 <?xml version="1.0"?>
 <Health>
-<LastUpdateTime>$updatetime</>
+<LastUpdateTime>$updatetime</LastUpdateTime>
 <CategoryView>
 $for k in table.keys():
-    <CategoryName='$k'>
+    <Category Name="$k">
     $for r in table[k]:
         <Line>
-            <HostName>$r[0]</>
-            <Status>$r[1]</>
+            <HostName>$r[0]</HostName>
+            <Status>$r[1]</Status>
         </Line>
-    </CategoryName>
-</CategoryVIew>
+    </Category>
+</CategoryView>
 </Health>
