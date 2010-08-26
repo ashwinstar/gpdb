@@ -70,7 +70,7 @@ const char* emcconnect_alert_template = \
             <ClarifyID>%s</ClarifyID> \n\
             <SiteName>%s</SiteName> \n\
             <Vendor>EMC</Vendor> \n\
-            <DeviceType>Greenplum Appliance</DeviceType> \n\
+            <DeviceType>DCA1</DeviceType> \n\
             <Model></Model> \n\
             <SerialNumber>%s</SerialNumber> \n\
             <WWN></WWN> \n\
