@@ -806,7 +806,7 @@ updatesetbit_inpage(Relation rel, uint64 tidnum,
 			elog(ERROR, "The header bit should be 1.");
 
 		Assert(IS_FILL_WORD(new_words.hwords, 0) ==
-			   IS_FILL_WORD(bitmap->hwords, off));
+			   IS_FILL_WORD(bitmap->hwords, wordNo));
 
 		if (use_wal)
 			_bitmap_log_updateword(rel, bitmapBuffer, wordNo);
