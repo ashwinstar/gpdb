@@ -99,5 +99,5 @@ extern const char* gpdb_getnodestatus(PerfmonNodeStatus status);
 extern apr_status_t gpdb_getnode_metricinfo(PerfmonNodeType type, apr_byte_t metricnum, const char** name, const char** unit);
 extern apr_status_t gpdb_debug_string_lookup_table();
 extern void snmp_report(host_t* tab, int tabsz);
-extern void gpmmon_init_snmp(const char* configfile, const char* outdir);
+extern void gpmmon_init_snmp(const char* configfile, const char* outdir, int emcconnect_enabled);
 #endif /* GPMONLIB_H */

@@ -48,6 +48,7 @@ struct
 	int m;
 	int d;
 	int qamode;
+	int emcconnect;
 	int harvest_interval;
 	int snmp_interval;
 	apr_uint64_t tail_buffer_max;
@@ -604,7 +605,7 @@ static void* snmp_main(apr_thread_t* thread_, void* arg_)
 	snprintf(configfile, PATH_MAX, "%s/gpperfmon/conf/snmp.conf", ax.master_data_directory);
 	snprintf(outdir, PATH_MAX, "%s/gpperfmon/data/snmp", ax.master_data_directory);
 
-	gpmmon_init_snmp(configfile, outdir);
+	gpmmon_init_snmp(configfile, outdir, opt.emcconnect);
 
 	snmp_report(ax.hosttab, ax.hosttabsz);
 
@@ -1042,6 +1043,11 @@ static int read_conf_file(char *conffile)
 			{
 				/* this will allow QA to make config settings that are normally illegal */
 				opt.qamode = atoi(pVal);
+			}
+			else if (apr_strnatcasecmp(pName, "emcconnect") == 0)
+			{
+				/* this will enable sending health alerts through the emc connect api */
+				opt.emcconnect = atoi(pVal);
 			}
 			else if (apr_strnatcasecmp(pName, "log_location") == 0)
 			{
