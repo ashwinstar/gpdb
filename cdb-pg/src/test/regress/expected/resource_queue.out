@@ -33,14 +33,125 @@ SELECT * FROM pg_resqueue WHERE rsqname='regressq';
 ---------+---------------+--------------+---------------+--------------------
 (0 rows)
 
+-- more coverage
+CREATE RESOURCE QUEUE regressq ACTIVE THRESHOLD 1 WITH (max_cost=2000);
+SELECT * FROM pg_resqueue WHERE rsqname='regressq';
+ rsqname  | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+----------+---------------+--------------+---------------+--------------------
+ regressq |             1 |         2000 | f             |                  0
+(1 row)
+
+ALTER RESOURCE QUEUE regressq ACTIVE THRESHOLD 1 WITHOUT (max_cost);
+SELECT * FROM pg_resqueue WHERE rsqname='regressq';
+ rsqname  | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+----------+---------------+--------------+---------------+--------------------
+ regressq |             1 |           -1 | f             |                  0
+(1 row)
+
+ALTER RESOURCE QUEUE regressq ACTIVE THRESHOLD 1 WITH (max_cost=2000)
+WITHOUT (overcommit); -- negative
+ERROR:  option "overcommit" is not a valid resource type
+ALTER RESOURCE QUEUE regressq ACTIVE THRESHOLD 1 WITH (max_cost=2000)
+WITHOUT (cost_overcommit); -- works
+SELECT * FROM pg_resqueue WHERE rsqname='regressq';
+ rsqname  | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+----------+---------------+--------------+---------------+--------------------
+ regressq |             1 |         2000 | f             |                  0
+(1 row)
+
+ALTER RESOURCE QUEUE regressq OVERCOMMIT WITH (max_cost=2000);
+SELECT * FROM pg_resqueue WHERE rsqname='regressq';
+ rsqname  | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+----------+---------------+--------------+---------------+--------------------
+ regressq |             1 |         2000 | t             |                  0
+(1 row)
+
+ALTER RESOURCE QUEUE regressq IGNORE THRESHOLD 1 WITHOUT (max_cost);
+SELECT * FROM pg_resqueue WHERE rsqname='regressq';
+ rsqname  | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+----------+---------------+--------------+---------------+--------------------
+ regressq |             1 |           -1 | t             |                  1
+(1 row)
+
+ALTER RESOURCE QUEUE regressq WITH (priority=high);
+SELECT * FROM pg_resqueue_attributes WHERE rsqname='regressq';
+ rsqname  |      resname      | ressetting | restypid 
+----------+-------------------+------------+----------
+ regressq | active_statements | 1          |        1
+ regressq | max_cost          | -1         |        2
+ regressq | min_cost          | 1          |        3
+ regressq | cost_overcommit   | 1          |        4
+ regressq | priority          | high       |        5
+(5 rows)
+
+ALTER RESOURCE QUEUE regressq WITH (priority='MeDiUm');
+SELECT * FROM pg_resqueue_attributes WHERE rsqname='regressq';
+ rsqname  |      resname      | ressetting | restypid 
+----------+-------------------+------------+----------
+ regressq | active_statements | 1          |        1
+ regressq | max_cost          | -1         |        2
+ regressq | min_cost          | 1          |        3
+ regressq | cost_overcommit   | 1          |        4
+ regressq | priority          | MeDiUm     |        5
+(5 rows)
+
+ALTER RESOURCE QUEUE regressq;
+ERROR:  at least one threshold, overcommit or ignore limit must be specified
+DROP RESOURCE QUEUE regressq;
+SELECT * FROM pg_resqueue WHERE rsqname='regressq';
+ rsqname | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+---------+---------------+--------------+---------------+--------------------
+(0 rows)
+
 -- negative
 CREATE RESOURCE QUEUE regressq2;
 ERROR:  at least one threshold ("ACTIVE_STATEMENTS", "MAX_COST") must be specified
+CREATE RESOURCE QUEUE none ACTIVE THRESHOLD 2;
+ERROR:  resource queue name "none" is reserved
+;
 CREATE RESOURCE QUEUE regressq2 ACTIVE THRESHOLD 2;
 ALTER RESOURCE QUEUE regressq2 ACTIVE THRESHOLD -10;
 ERROR:  active threshold cannot be less than -1 or equal to 0
 ALTER RESOURCE QUEUE regressq2 COST THRESHOLD -1000.00;
 ERROR:  cost threshold must be equal to -1 or greater than 0
+ALTER RESOURCE QUEUE regressq2 WITH(max_cost=20,max_cost=21);
+ERROR:  conflicting or redundant options
+ALTER RESOURCE QUEUE regressq2 WITH(PRIORITY=funky);
+ERROR:  Invalid parameter value "funky" for resource type "PRIORITY"
+ALTER RESOURCE QUEUE regressq2 WITHOUT(PRIORITY);
+ERROR:  option "priority" cannot be disabled
+DROP RESOURCE QUEUE regressq2;
+CREATE RESOURCE QUEUE regressq2 ACTIVE THRESHOLD -10;
+ERROR:  active threshold cannot be less than -1 or equal to 0
+CREATE RESOURCE QUEUE regressq2 COST THRESHOLD -1000.00;
+ERROR:  cost threshold cannot be less than -1 or equal to 0
+CREATE RESOURCE QUEUE regressq2 IGNORE THRESHOLD -10;
+ERROR:  min_cost threshold cannot be negative
+CREATE RESOURCE QUEUE regressq2 ACTIVE THRESHOLD 2 ACTIVE THRESHOLD 2;
+ERROR:  conflicting or redundant options
+CREATE RESOURCE QUEUE regressq2 COST THRESHOLD 2 COST THRESHOLD 2;
+ERROR:  conflicting or redundant options
+CREATE RESOURCE QUEUE regressq2 OVERCOMMIT OVERCOMMIT;
+ERROR:  conflicting or redundant options
+CREATE RESOURCE QUEUE regressq2 OVERCOMMIT NOOVERCOMMIT;
+ERROR:  conflicting or redundant options
+CREATE RESOURCE QUEUE regressq2 IGNORE THRESHOLD 1 IGNORE THRESHOLD 1 ;
+ERROR:  conflicting or redundant options
+CREATE RESOURCE QUEUE regressq2 WITH (WITHLISTSTART=funky);
+ERROR:  option "withliststart" is not a valid resource type
+CREATE RESOURCE QUEUE regressq2 ACTIVE THRESHOLD 2;
+ALTER RESOURCE QUEUE regressq2 ACTIVE THRESHOLD 2 ACTIVE THRESHOLD 2;
+ERROR:  conflicting or redundant options
+ALTER RESOURCE QUEUE regressq2 COST THRESHOLD 2 COST THRESHOLD 2;
+ERROR:  conflicting or redundant options
+ALTER RESOURCE QUEUE regressq2 OVERCOMMIT OVERCOMMIT;
+ERROR:  conflicting or redundant options
+ALTER RESOURCE QUEUE regressq2 OVERCOMMIT NOOVERCOMMIT;
+ERROR:  conflicting or redundant options
+ALTER RESOURCE QUEUE regressq2 IGNORE THRESHOLD 1 IGNORE THRESHOLD 1 ;
+ERROR:  conflicting or redundant options
+ALTER RESOURCE QUEUE none IGNORE THRESHOLD 1 ;
+ERROR:  resource queue "none" does not exist
 DROP RESOURCE QUEUE regressq2;
 -- SQL coverage of ROLE -> RESOURCE QUEUE
 CREATE RESOURCE QUEUE reg_activeq ACTIVE THRESHOLD 2;
