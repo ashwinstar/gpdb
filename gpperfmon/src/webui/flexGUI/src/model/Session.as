@@ -1,8 +1,8 @@
 package model
 {
 	import flash.events.TimerEvent;
-	import flash.net.navigateToURL;
 	import flash.net.URLRequest;
+	import flash.net.navigateToURL;
 	import flash.utils.Timer;
 	
 	import mx.collections.ArrayCollection;
@@ -21,6 +21,7 @@ package model
 		import command.QueriesNowCommand;
 		import command.SystemHistoricCommand;
 		import command.DatabaseHistoricCommand;
+		import command.HealthCommand;
 				
 		public function setDatabaseConnection(protocol:String, 
 		                                      address:String, port:String,
@@ -47,7 +48,7 @@ package model
 	    // Callback from login command
 	    public function loginResult(success:Boolean, message:String,
 	    							_username:String = '', 
-	    							_role:String = ''):void
+	    							_role:String = '', _appliance:Boolean = false):void
 	    {
 			if (success)
 			{
@@ -56,7 +57,9 @@ package model
 				  isSuperuser = true;
 				else
 				  isSuperuser = false;
-				loggedIn = 1;		
+				loggedIn = 1;
+				
+				Resources.instance.appliance = _appliance;	
 				
 				// Setup the quantum timer (and call it once for good measure)
 				initTimeVals();
@@ -160,6 +163,15 @@ package model
 			var queriesNowCommand:QueriesNowCommand = new QueriesNowCommand;
 			systemNowCommand.chainCommand(databaseNowCommand);
 			databaseNowCommand.chainCommand(queriesNowCommand);
+			
+			/* For now, even though the call is going repeatedly, no one will be
+			** refreshing the views based on the results.
+			*/
+			if (Resources.instance.appliance) {
+				var healthCommand:HealthCommand = new HealthCommand;
+				queriesNowCommand.chainCommand(healthCommand);
+			}
+			
 			systemNowCommand.execute();
 		}
 

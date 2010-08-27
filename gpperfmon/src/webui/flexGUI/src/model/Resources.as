@@ -36,6 +36,11 @@ package model
 		//this has the label "Version" prefixed to the version number
 		private var __versionString:String;
 		
+		//We might want to store the type of this gpperfmon instance (whether appliance or not)
+		// in a different manner. However, since we dont know what else could be there, we will
+		// simply store in a boolean.
+		private var __applianceFlag:Boolean = false ;
+		
 		//holds the singleton instance of the class
 		private static var __instance:Resources;
 		
@@ -86,6 +91,14 @@ package model
 		
 		public function set versionString(val:String):void{
 			__versionString = val;
+		}
+		
+		public function get appliance():Boolean{
+			return __applianceFlag;
+		}		
+		
+		public function set appliance(val:Boolean):void{
+			__applianceFlag = val;
 		}
 		
 	}

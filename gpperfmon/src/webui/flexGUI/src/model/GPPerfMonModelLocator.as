@@ -20,6 +20,7 @@ package model
 					system = new System(this);
 					db = new Database(this);
 					queries = new Queries(this);
+					health = new Health(this);
 				}
 			}
 			else
@@ -47,7 +48,8 @@ package model
 			{
 				instance.system = null;
 				instance.db = null;
-				instance.queries = null;	
+				instance.queries = null;
+				instance.health = null;
 			}
 		}
 		
@@ -65,6 +67,9 @@ package model
 		
 		// Queries class
 		public var queries:Queries = null;
+
+		// Health class
+		public var health:Health = null;
 	}
 }
 

@@ -2,6 +2,7 @@ package command
 {
 	import model.GPPerfMonModelLocator;
 	
+	import mx.controls.Alert;
 	import mx.rpc.IResponder;
 	import mx.rpc.events.FaultEvent;
 	
@@ -16,6 +17,7 @@ package command
 		// Internal temporary storage
 		private var username:String;
 		private var role:String;
+		private var appliance:Boolean = false ;
 						
 		// These hold the parameters
 		private var login:String;
@@ -51,8 +53,7 @@ package command
 				Debug.debug("Login: successfully got config info");
 		    	if (loginCallback != null)
         			loginCallback(true, 'Login succeeded', 
-        								username, 
-        							    role);				
+        								username, role, appliance);				
 			}
 			else
 			{
@@ -67,7 +68,7 @@ package command
 		public function result(data:Object):void
 		{
         	var logon:XML = XML(data.result);
-         	
+        	
  			if (logon.name() == 'logon' && logon.status == 'SUCCESS')
         	{
         		Debug.debug("Login as " + logon.username + ": SUCCESS");
@@ -76,6 +77,10 @@ package command
         		mdl.session.sessionid = logon.sessionid;
         		username = logon.username;
         		role = logon.role;
+        		
+        		if (logon.hasOwnProperty("Device")) {
+        			appliance = (logon.Device == "Appliance");
+        		}
         		
 				// Now fetch config information
 				var configCommand:ConfigCommand = new ConfigCommand;

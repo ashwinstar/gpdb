@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:HDividedBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="536" verticalGap="0" creationComplete="initComp()">
+<mx:Script>
+	<![CDATA[
+		import view.healthTab.events.HostSubItemClickEvent;
+		import view.healthTab.events.HostSubItemSelectEvent;
+		import mx.events.ListEvent;
+		import mx.controls.Alert;
+		import view.healthTab.events.HostItemClickEvent;
+		import model.GPPerfMonModelLocator;
+		import model.Health;
+		import command.HealthCommand;
+		
+		private var __currentHostItem:HostItem;
+		
+		public static const HOSTXMLRECEIVED:String = "HOSTXMLRECEIVED";
+
+		[Bindable]
+		public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
+
+		//Placing an image in header of the details coloumn.
+		[Bindable]
+		[Embed (source="assets/img/Magnifying-Glass-16x16.png")]
+		public var logo_cls:Class;
+		
+		private function initComp():void{
+			fetchServiceData();
+			
+			detailsDG.doubleClickEnabled = true;
+			detailsDG.addEventListener(ListEvent.ITEM_DOUBLE_CLICK, handleDataGridDblClick);
+		}//end of initComp
+		
+		private function fetchServiceData():void{
+			var healthCommand:HealthCommand = new HealthCommand;
+			healthCommand.setParameters(showHostItems);
+			healthCommand.execute();
+		}//end of fetchServiceData
+		
+		/**
+		 * Based on the XML retrieved from the server, the function displays the host item list
+		 */
+		private function showHostItems(summary:XML):void{
+			hostsContainer.removeAllChildren();
+			for (var i:int = 0; i < mdl.health.summary.CategoryView.Category.length(); i++) {
+				var hostItem:HostItem = new HostItem();
+				hostItem.category = mdl.health.summary.CategoryView.Category[i];
+				hostsContainer.addChild(hostItem);
+				
+				hostItem.addEventListener(HostItemClickEvent.HOSTITEM_CLICK, handleHostItemClick);
+				hostItem.addEventListener(HostSubItemClickEvent.HOSTSUBITEM_CLICK, handleHostSubItemClick);
+			}
+			
+			// dont need this anymore --- the Top_Tab's timestamp is automatically updated now thru binding.
+			//callLater(dispatchEvent, [new Event(HOSTXMLRECEIVED)]);
+		}//end of showHostItems
+		
+		/**
+		 * When user selects a host item or status of a host item we need to show the details on the right
+		 * pane. Also, on the other hand, we need to manage the highlughts of each host item
+		 */
+		private function handleHostItemClick(eventObj:HostItemClickEvent):void{
+			if (__currentHostItem != eventObj.hostItemRef) {
+				selectHost(eventObj.hostItemRef);
+				viewHostDetails(__currentHostItem.category.Line);
+			}
+		}//end of handleHostItemClick
+		
+		private function handleHostSubItemClick(eventObj:HostSubItemClickEvent):void{
+			var hostSubItem:HostStatusItem = eventObj.hostItemRef;
+			var hostItem:HostItem = hostSubItem.parentRef;
+			var curStatus:String = hostSubItem.status;
+			
+			if (__currentHostItem != hostItem) {
+				selectHost(hostItem);
+			}
+
+			//show the details in the datagrid
+			viewHostDetails(hostItem.category.Line.(Status == curStatus));
+		}//end of hostsubitem clicked.
+		
+		
+		private function selectHost(hostItem:HostItem):void {
+			__currentHostItem = hostItem;
+			deselectAllHostItems();
+			__currentHostItem.toggleHostItemSelection(true);
+			var curHost:String = __currentHostItem.category.@Name.toString();
+			detailsSectionHeaderLbl.text = curHost;
+		}
+		
+		/**
+		 * Deselects all the Host items
+		 */
+		private function deselectAllHostItems():void{
+			for(var i:int = 0; i < hostsContainer.numChildren; i++) {
+				var hostItem:HostItem = HostItem(hostsContainer.getChildAt(i));
+				
+				hostItem.toggleHostItemSelection(false);
+			}
+		}
+			
+		
+		/**
+		 * Function takes the host details XML as a parameter and displays them in the datagrid
+		 */
+		private function viewHostDetails(details:XMLList):void{
+			detailsDG.dataProvider = details;
+		}//end of viewHostDetails
+		 
+		/**
+		 * Gets triggered when the user double-clicks on a row
+		 */
+		private function handleDataGridDblClick(eventObj:ListEvent):void{
+			var rowXML:XML = XML(eventObj.itemRenderer.data);
+	
+			//switch to the details view, retreive the related data from the server and show it in the details view
+			//to do this, dispatch an event to the parent with the details of the selected row
+			var eObj:HostSubItemSelectEvent = new HostSubItemSelectEvent(HostSubItemSelectEvent.HOSTSUBITEM_CLICK);
+			eObj.itemXML = rowXML;
+			
+		   // HealthDetails.
+			this.dispatchEvent(eObj);
+		}//end of handleDataGridDblClick
+		 
+		//when the user clicks on the details icon following function will be called.
+		public function switchToHealthDetails():void {
+			addEventListener(MouseEvent.CLICK,handleMouseClick);
+		}
+	  	  
+	  	  
+		private function handleMouseClick(eventObj:MouseEvent):void{
+	  	    var rowXML:XML = XML(eventObj);
+	
+			//switch to the details view, retreive the related data from the server and show it in the details view
+			//to do this, dispatch an event to the parent with the details of the selected row
+			var eObj:HostSubItemSelectEvent = new HostSubItemSelectEvent(HostSubItemSelectEvent.HOSTSUBITEM_CLICK);
+			eObj.itemXML = rowXML;
+			
+		   // HealthDetails.
+			this.dispatchEvent(eObj);
+		}//end of handleMouseClick.
+		
+		private function statusLabel(item:Object, col:DataGridColumn):String {
+			return Health.statusLabel(XML(item).Status);
+		}
+	]]>
+</mx:Script>
+   
+	<mx:VBox width="35%" height="100%" id="hostsSection" styleName="hostsSectionStyle">
+		<mx:Label text="Hosts" styleName="consolidatedViewSectionHeaderStyle" height="26"/>
+		<mx:HBox width="100%" horizontalGap="0" styleName="hostsSectionHeaderStyle" height="23" paddingTop="2">
+			<mx:Label text="Host Name" width="100%" styleName="consolidatedViewDGHeaderStyle"/>
+			<mx:Label text="Count" width="60" styleName="consolidatedViewDGHeaderStyle"/>
+		</mx:HBox>
+		<mx:VBox id="hostsContainer" width="100%" height="100%" styleName="hostsContainerStyle" verticalGap="0">
+			
+		</mx:VBox>
+	</mx:VBox>
+	
+	<mx:VBox width="65%" height="100%" id="detailsSection" styleName="detailsSectionStyle">
+		<mx:Label id="detailsSectionHeaderLbl" text="'Segment Server' details" styleName="consolidatedViewSectionHeaderStyle" height="26"/>
+		<mx:DataGrid id="detailsDG" width="100%" height="100%" styleName="hostItemStatusLbl">
+			<mx:columns>
+				<mx:DataGridColumn headerText="Status" dataField="Status" labelFunction="statusLabel" width="120" headerStyleName="consolidatedViewDGHeaderStyle" sortable="true"/>
+				<mx:DataGridColumn headerText="Host Name" dataField="HostName" headerStyleName="consolidatedViewDGHeaderStyle" sortable="true"/>
+				<mx:DataGridColumn headerText="Details" id="detailsColoumn" width="80" headerStyleName="consolidatedViewDGHeaderStyle">
+					<mx:itemRenderer>
+	         		<mx:Component>
+	         			<mx:HBox horizontalAlign="center" verticalAlign="middle">
+	         			    
+	         				<mx:Image id="img" source="{outerDocument.logo_cls}"  click="outerDocument.switchToHealthDetails()"/>
+	         			</mx:HBox>
+	         		</mx:Component>
+	         	</mx:itemRenderer>
+         	  </mx:DataGridColumn>
+			</mx:columns>
+		</mx:DataGrid>
+	</mx:VBox>
+</mx:HDividedBox>

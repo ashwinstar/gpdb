@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%" xmlns:healthTab="view.healthTab.*" 
+	backgroundColor="#FFFFFF" creationComplete="initComp()">
+<mx:Script>
+	<![CDATA[
+		import mx.controls.Alert;
+		import view.healthTab.events.HostSubItemSelectEvent;
+		import model.GPPerfMonModelLocator;
+
+		[Bindable] public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
+		
+		private function initComp():void{
+			consolidatedView.addEventListener(HostSubItemSelectEvent.HOSTSUBITEM_CLICK, handleHostSubItemClick);
+		}
+		
+		private function handleHostXMLReceivedUpdate(eventObj:Event):void{
+			lblDateAndTime.text= "Last Update" +" "+" "+" " + mdl.health.summary.LastUpdateTimeString;			
+		}
+		
+		/**
+		 * Gets triggered when user clicks on the details datagrid row of the consolidated view
+		 * We would, then, switch the viewstack to details view and trigger a server call that retreives the
+		 * details of the selected host item
+		 */
+		private function handleHostSubItemClick(eventObj:HostSubItemSelectEvent):void{
+			//switch to details view
+			switchToDetailsView(eventObj);
+		}//end fo handleHostSubItemClick
+		
+		
+		/**
+		 * Switches the View Stack back to consolidated view. This function is used by the bread crumb
+		 */
+		private function switchToConsolidatedView():void{
+			breadCrumbSepLbl.visible = false;
+			healthDetailsViewLbl.visible = false;
+			
+			tabViewStack.selectedChild = consolidatedView;
+			
+			consolidatedViewLbl.styleName = "healthTabBreadCrumbActiveStyle";
+		}//end of switchToConsolidatedView
+		
+		/**
+		 * Switches to the details view of the view stack. This is used when user clicks on the datagrid row
+		 */
+		private function switchToDetailsView(eventObj:HostSubItemSelectEvent):void{
+			breadCrumbSepLbl.visible = true;
+			healthDetailsViewLbl.visible = true;			
+			tabViewStack.selectedChild = detailsView;
+			detailsView.itemDetails = eventObj;
+			consolidatedViewLbl.styleName = "healthTabBreadCrumbInactiveStyle";
+		}//end of switchToDetailsView
+		
+		
+		
+	]]>
+</mx:Script>
+	<mx:HBox width="100%" horizontalGap="1" paddingTop="6" paddingRight="10">
+		<mx:Label id="consolidatedViewLbl" text="Consolidated View" styleName="healthTabBreadCrumbActiveStyle" buttonMode="true" useHandCursor="true" click="switchToConsolidatedView()"/>
+		<mx:Label id="breadCrumbSepLbl" text=">" styleName="healthTabBreadCrumbActiveStyle" visible="false"/>
+		<mx:Label id="healthDetailsViewLbl" text="Health Details" styleName="healthTabBreadCrumbActiveStyle" visible="false"/>
+		<mx:Spacer width="100%"/>
+		<mx:HBox horizontalGap="0" paddingTop="10">
+		<mx:Label id="lblDateAndTime" text="Last Update   {mdl.health.summary.LastUpdateTimeString}"/>
+		</mx:HBox>
+	</mx:HBox>
+	
+	<mx:ViewStack id="tabViewStack" width="100%" height="100%">
+		<healthTab:ConsolidatedView id="consolidatedView" width="100%" height="100%"/>
+		<healthTab:HealthDetails id="detailsView" width="100%" height="100%"/>
+	</mx:ViewStack>
+</mx:VBox>

@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:HBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="20"
+	 horizontalGap="2" verticalAlign="bottom" paddingBottom="0" borderSides="bottom" borderStyle="solid" borderColor="#D5E1C3" 
+	 creationComplete="initComp()" styleName="statusItemNormalStyle">
+	 <mx:Script>
+	 	<![CDATA[
+			import model.Health;
+	 		
+	 		private var __status:String;
+	 		[Bindable]private var __statusLabel:String;
+	 		[Bindable]private var __statusCount:String;
+	 		private var __parentRef:HostItem;
+	 		
+	 		[Embed (source="assets/img/LED_Error.png")]
+	 		private var errorCls:Class;
+	 		
+			[Embed (source="assets/img/LED_NoResponse.png")]
+	 		private var noResponseCls:Class;
+	 		
+	 		[Embed (source="assets/img/LED_Normal.png")]
+	 		private var normalCls:Class;
+	 		
+			[Embed (source="assets/img/LED_Unknown.png")]
+	 		private var unknownCls:Class;
+	 		
+	 		[Embed (source="assets/img/LED_Warning.png")]
+	 		private var warningCls:Class;
+	 		
+	 		private function initComp():void{
+	 			statusLbl.text = __statusLabel;
+	 			statusCountLbl.text = __statusCount;
+	 			
+	 			setStatusIcon();
+	 			
+	 			this.addEventListener(MouseEvent.CLICK, handleMouseClick);
+	 		}//end of initComp
+	 		
+	 		/**
+	 		 * Gets triggered when user clicks on the item. The background gets toggled based on the 
+	 		 * select status 
+	 		 */
+	 		private function handleMouseClick(eventObj:MouseEvent):void{
+	 			__parentRef.statusItemClicked(this);
+	 		}//end fo handleMouseClick
+	 		
+	 		/**
+	 		 * Toggles the selected status of the item. This function is sexposed to the parent component
+	 		 */
+	 		internal function toggleStatusItemSelection(flag:Boolean):void{
+	 			if(flag){
+	 				this.styleName = "statusItemSelectedStyle";
+	 			}else{
+	 				this.styleName = "statusItemNormalStyle";
+	 			}
+	 		}//end of toggleItemSelection
+	 		
+	 		/**
+	 		 * Sets the status Icon based on the label of the status
+	 		 */
+	 		private function setStatusIcon():void{
+	 			var iconSrc:Class;
+	 			
+	 			switch(__status){
+	 				case Health.STATUS_NORMAL:
+	 					iconSrc = normalCls;
+	 					break;
+	 				case Health.STATUS_ERROR:
+	 					iconSrc = errorCls;
+	 					break;
+	 				case Health.STATUS_WARNING:
+	 					iconSrc = warningCls;
+	 					break;
+	 				case Health.STATUS_UNKNOWN:
+	 					iconSrc = unknownCls;
+	 					break;
+	 				case Health.STATUS_NORESPONSE:
+	 					iconSrc = noResponseCls;
+	 					break;	 						 						 					
+	 			}
+	 			
+	 			statusImg.source = iconSrc;
+	 		}//end of setStatusIcon
+	 		
+	 		//PROPERTIES
+	 		public function set status(val:String):void{
+	 			__status = val;
+	 			__statusLabel = Health.statusLabel(val);
+	 			
+	 			if (statusLbl) {
+	 				statusLbl.text = __statusLabel;
+	 				
+	 				setStatusIcon();
+	 			}
+	 		}
+	 		
+	 		public function get status():String{
+	 			return __status;
+	 		}
+	 		
+	 		public function set statusCount(val:String):void{
+	 			__statusCount = val;
+	 			
+	 			if(statusCountLbl){
+	 				statusCountLbl.text = __statusCount;
+	 			}	 			
+	 		}
+	 		
+	 		public function set showBorder(val:Boolean):void{
+	 			if(!val){
+	 				this.setStyle("borderStyle", "none");
+	 			}
+	 		}
+	 		
+	 		public function set parentRef(val:HostItem):void{
+	 			__parentRef = val;
+	 		}
+	 		
+	 		public function get parentRef():HostItem{
+	 			return __parentRef ;
+	 		}
+	 		
+	 	]]>
+	 </mx:Script>
+			<mx:Label id="statusLbl" width="100%" styleName="hostItemStatusLbl" height="17" paddingBottom="0" text="{__statusLabel}"/>
+			<mx:Label id="statusCountLbl" width="35" styleName="hostItemStatusLbl" height="17" paddingBottom="0" text="{__statusCount}"/>	
+			<mx:Image id="statusImg" width="18"/>
+</mx:HBox>

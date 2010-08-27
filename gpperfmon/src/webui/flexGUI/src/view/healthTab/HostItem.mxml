@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="145" borderColor="#CCDB5E" borderStyle="solid"
+	horizontalAlign="right" paddingLeft="6" paddingRight="10" paddingTop="4" borderSides="bottom" creationComplete="initComp()" styleName="hostItemNormalStyle">
+	<mx:Script>
+		<![CDATA[
+			import view.healthTab.events.HostSubItemClickEvent;
+			import view.healthTab.events.HostItemClickEvent;
+			import model.GPPerfMonModelLocator;
+
+			[Bindable]
+			public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
+			
+			[Bindable] private var __category:XML = null;
+			private var __initialized:Boolean;
+			private var __currentStatusItem:HostStatusItem;
+			private var __statusItemClicked:Boolean;
+				
+			private function initComp():void{
+				this.addEventListener(MouseEvent.CLICK, handleMouseClick);
+				
+				__initialized = true;
+				
+				if(__category){
+					refreshView();
+				}
+			}//end of initComp
+			
+	 		/**
+	 		 * Gets triggered when user clicks on the item. The background gets toggled based on the 
+	 		 * select status 
+	 		 */
+	 		private function handleMouseClick(eventObj:MouseEvent):void{
+	 			var eObj:HostItemClickEvent = new HostItemClickEvent(HostItemClickEvent.HOSTITEM_CLICK);
+	 			eObj.hostItemRef = this;
+	 			
+	 			if(!__statusItemClicked){
+	 				__currentStatusItem = null;
+		 			dispatchEvent(eObj);
+	 			} else {
+	 				__statusItemClicked = false;
+	 			}
+	 			
+	 		}//end fo handleMouseClick
+	 		
+	 		/**
+	 		 * Toggles the selected status of the item. This function is sexposed to the parent component
+	 		 */
+	 		internal function toggleHostItemSelection(flag:Boolean):void{
+	 			if(flag){
+	 				this.styleName = "hostItemSelectedStyle";
+	 				//select the subitem if there is any
+	 				if(__currentStatusItem){
+	 					__currentStatusItem.toggleStatusItemSelection(true);
+	 				}
+	 			}else{
+	 				this.styleName = "hostItemNormalStyle";
+	 				deselectAllStatuses();
+	 			}
+	 		}//end of toggleHostItemSelection	 	
+	 		
+			/**
+			 * Function sets the label, count and the status values based on the values set in the 
+			 * item XML
+			 */
+			private function refreshView():void{
+				var statusItem:HostStatusItem = null;
+				for (var i:int = 0; i < __category.Summary.length(); i++) {
+					statusItem = new HostStatusItem();
+					statusItem.status = __category.Summary[i].@Status
+					statusItem.statusCount = __category.Summary[i].@Count;
+					statusItem.parentRef = this;
+					
+					statusBox.addChild(statusItem);
+				}
+				
+				// set the border to false for the *last* item.
+				if (statusItem) {
+					statusItem.showBorder = false;
+				}
+					
+			}//end of refreshView
+			
+			/**
+			 * Deselects all the status items and selects the current one. this gets triggered when user clicks on a child item
+			 */
+			internal function statusItemClicked(itemRef:HostStatusItem):void{
+				__statusItemClicked = true;
+				//if the current selected item is the item sent in reference, do nothing
+				if(__currentStatusItem == itemRef){
+					return;
+				}
+				
+				__currentStatusItem = itemRef;
+				
+				//before selceting the current item, deselect all the status items first
+				deselectAllStatuses();
+				
+				//select the current one
+				itemRef.toggleStatusItemSelection(true);
+				var hostSubItemEvent:HostSubItemClickEvent = new HostSubItemClickEvent(HostSubItemClickEvent.HOSTSUBITEM_CLICK);
+				hostSubItemEvent.hostItemRef = itemRef;
+				this.dispatchEvent(hostSubItemEvent);
+			}//end of statusItemClicked
+			
+			/**
+			 * Deselects all the status items
+			 */
+			private function deselectAllStatuses():void{
+				for(var i:int = 0;i<statusBox.numChildren;i++){
+					var statusItem:HostStatusItem = HostStatusItem(statusBox.getChildAt(i));
+					statusItem.toggleStatusItemSelection(false);
+				}				
+			}//end of deselectAllStatuses
+			
+			//PROPERTIES
+			public function set category(val:XML):void{
+				__category = val;
+				
+				if(__initialized){
+					refreshView();
+					
+				}
+			}
+			
+			public function get category():XML{
+				return __category;
+			}
+			
+		]]>
+	</mx:Script>
+	<mx:HBox horizontalGap="2" width="100%" paddingLeft="0" paddingTop="0">
+		<mx:Label id="hostNameLbl" width="100%" styleName="hostItemLbl" text="{__category.@Name}"/>
+		<mx:Label id="statusCountLbl" width="60" styleName="hostItemLbl" text="{__category.@Total}"/>
+	</mx:HBox>
+	
+	<mx:HBox width="100%" paddingLeft="15">
+		<mx:VBox id="statusBox" width="100%" height="104" verticalGap="0" paddingLeft="4" paddingRight="4" cornerRadius="6" borderStyle="solid" borderColor="#E5F1D3" backgroundColor="#E5F1D3"/>		
+	</mx:HBox>
+</mx:VBox>

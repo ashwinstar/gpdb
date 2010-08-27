@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%" backgroundColor="#DFFCB2" verticalGap="0">
+<mx:Script>
+	<![CDATA[
+	import mx.controls.Alert;
+	import view.healthTab.events.HostSubItemSelectEvent;
+	import model.Health;
+	import command.HealthDetailsCommand;
+	import model.GPPerfMonModelLocator;
+	
+	[Bindable]
+	public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
+	
+	private var healthDetailsXML:XML;
+	[Bindable]private var hostName:String;
+	
+	//function is used to set the value of healthDetails Datagridheader.
+	public function set itemDetails(value:HostSubItemSelectEvent):void
+	{
+		var itemDetailsXML:XML = value.itemXML ;
+	    hostName = itemDetailsXML.HostName.toString();
+	    
+	    var healthDetailCommand:HealthDetailsCommand = new HealthDetailsCommand;
+	    healthDetailCommand.setParameters(hostName, showHealthDetailsItems);
+	    healthDetailCommand.execute();
+	}//end of itemDetails.
+										
+		
+	public function showHealthDetailsItems(details:XML):void {
+	 	healthDetailsDG.dataProvider = XMLList(details.Host.Line);	
+	}//end of showHealth Details items.
+	
+	private function statusLabel(item:Object, col:DataGridColumn):String {
+		return Health.statusLabel(XML(item).Status);
+	}
+			     
+	
+	]]>
+</mx:Script>
+
+  <mx:HBox height="28" width="100%" backgroundColor="#bfdc92" paddingTop="4" paddingLeft="3" id="healthheaderPane">
+		<mx:Label text="{hostName}" id="healthheaderLabel" color="#0b333c" fontFamily="Verdana"  fontWeight="bold"
+	fontSize="11"> 
+			
+		</mx:Label>
+	</mx:HBox>
+	<mx:DataGrid width="100%" height="100%" id="healthDetailsDG">
+		<mx:columns>
+			<mx:DataGridColumn headerText="Component Name" fontFamily="Verdana" dataField="ComponentName"
+				fontWeight="bold" fontSize="11"  width="20" sortable="true"/>
+			<mx:DataGridColumn headerText="Object Id" fontFamily="Verdana"  dataField="ObjectID"
+				fontWeight="bold" fontSize="11" width="30" sortable="true"/>
+			<mx:DataGridColumn headerText="Status" width="15" fontFamily="Verdana"  dataField="Status" labelFunction="statusLabel" 
+				fontWeight="bold" fontSize="11" sortable="true"/>
+			<mx:DataGridColumn headerText="Message"  fontFamily="Verdana" dataField="Message"
+				fontWeight="bold" fontSize="11" width="100" sortable="true"/>
+		</mx:columns>
+	</mx:DataGrid>
+</mx:VBox>	

@@ -126,3 +126,81 @@ Panel {
 .dbUnBalancedStyle {
 	background-color: #ea7b29;
 }
+
+.hostItemLbl{
+        fontWeight:bold;
+        fontSize:11px;
+        color:#0b333c;
+}
+
+.hostItemStatusLbl{
+        fontSize:11px;
+        color:#79816d;
+}
+
+.hostItemSelectedStyle{
+        backgroundColor:#c4cdb6;
+}
+
+.hostItemNormalStyle{
+        backgroundColor:#F7F7F7;
+}
+
+.statusItemSelectedStyle{
+        backgroundColor:#c4cdb6;
+}
+
+.statusItemNormalStyle{
+        backgroundColor:#E5F1D3;
+}
+
+.consolidatedViewSectionHeaderStyle{
+        fontSize:14px;
+        fontWeight:bold;
+        color:#0b333c;
+        paddingLeft:4px;
+        paddingTop:2px;
+}
+
+.consolidatedViewDGHeaderStyle{
+        fontSize:12px;
+        fontWeight:bold;
+        color:#0b333c;
+}
+
+.hostsSectionStyle{
+        backgroundColor:#bfdc92;
+        verticalGap:0px;
+}
+
+.hostsSectionHeaderStyle{
+        backgroundColor:#efefef;
+        borderSides:"top, bottom";
+        borderStyle:solid;
+        borderColor:#b7babc;
+        paddingLeft:4px;
+}
+
+.hostsContainerStyle{
+        backgroundColor:#FFFFFF;
+}
+
+.detailsSectionStyle{
+        backgroundColor:#c4cdb6;
+        verticalGap:0px;
+}
+.commonHealthDetails{
+        fontFamily:Verdana ;
+        fontWeight:bold;
+        fontSize:11;
+}
+
+.healthTabBreadCrumbActiveStyle{
+        fontSize:15px;
+        color:#333333;
+}
+
+.healthTabBreadCrumbInactiveStyle{
+        fontSize:15px;
+        color:#AAAAAA;
+}
