@@ -629,7 +629,15 @@ class database:
         except db.GPDBError, errorinfo:
             return mkerr(error.DATA_ACCESS, errorinfo)
 
-        (tkeys, ckeys, tab) = res
+        if dbstatus == 'DOWN':
+            res = None
+
+        if res:
+            (tkeys, ckeys, tab) = res
+        else:
+            tkeys = None
+            ckeys = None
+            tab = None
 
         # check if the result set is empty
         if ckeys:

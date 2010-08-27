@@ -297,6 +297,9 @@ def execute_query(query):
     try:
         conn.execute(query)
         rows = [r for r in conn.iterate_dict()]
+    except IOError:
+        log.msg('error connection to database lost!')
+        raise IOError
     except:
         log.msg('error during query: %s' % query)
         raise_db_error('Exception during query: %s' % query)
@@ -1026,14 +1029,17 @@ def database_state():
     unbalancedState_query = "select count(*) from gp_segment_configuration where role <> preferred_role"
     dbstatus = 'NORMAL'
 
-    result = execute_query(degradeState_query)
+    try:
+        result = execute_query(degradeState_query)
 
-    if result[0]['count'] != 0:
-       dbstatus = 'DEGRADED'
-    else:
-       result = execute_query(unbalancedState_query)
-       if result[0]['count'] != 0:
-          dbstatus = 'UNBALANCED'
+        if result[0]['count'] != 0:
+            dbstatus = 'DEGRADED'
+        else:
+            result = execute_query(unbalancedState_query)
+            if result[0]['count'] != 0:
+               dbstatus = 'UNBALANCED'
+    except IOError:
+        dbstatus = 'DOWN'
 
     return dbstatus
 
