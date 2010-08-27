@@ -91,6 +91,7 @@ struct host_t
     char* ipstr; /* static */
     char* data_dir;
     unsigned char is_master; /* 1 if host is the same host where the master runs */ 
+    char ever_connected; /* set to non-zero after first connection attempt */
 };
 
 

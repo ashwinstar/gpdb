@@ -999,36 +999,36 @@ int snmp_array_collection(EmcConnectSymptom symptom, const char* oidname, const 
 		{
 			char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
 			snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, nextOID, nextOID_len);
-			record_status(symptom, oidstring, displayname, GPDB_SNMP_STATUS_UNREACHABLE, "timeout");
+			record_status(EMC_CONNECT_SYMPTOM_HOSTUP, oidstring, displayname, GPDB_SNMP_STATUS_UNREACHABLE, "timeout");
 			last_item_in_subtree = 1;
-			gpmon_warningx(FLINE, 0, "timeout trying to access snmp data on host %s for oid %s\n", si.key.hostname, oidstring);
+			gpmon_warningx(FLINE, 0, "timeout trying to access snmp data on host %s for oid %s", si.key.hostname, oidstring);
 		}
 		else if (retVal == APR_NOTFOUND)
 		{
 			char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
 			snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, nextOID, nextOID_len);
-			gpmon_warningx(FLINE, 0, "snmp_array_collection could not find OID %s at host %d\n", oidstring, si.key.hostname);
+			gpmon_warningx(FLINE, 0, "snmp_array_collection could not find OID %s at host %d", oidstring, si.key.hostname);
 			last_item_in_subtree = 1;
 		}
 		else if (retVal == APR_EPROC_UNKNOWN)
 		{
 			char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
 			snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, nextOID, nextOID_len);
-			gpmon_warningx(FLINE, 0, "snmp_array_collection got unexpected error looking for OID %s at host %d\n", oidstring, si.key.hostname);
+			gpmon_warningx(FLINE, 0, "snmp_array_collection got unexpected error looking for OID %s at host %d", oidstring, si.key.hostname);
 			last_item_in_subtree = 1;
 		}
 		else if (retVal == APR_ECONNABORTED)
 		{
 			char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
 			snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, nextOID, nextOID_len);
-			record_status(symptom, oidstring, displayname, GPDB_SNMP_STATUS_UNREACHABLE, "could not open session to host");
+			record_status(EMC_CONNECT_SYMPTOM_HOSTUP, oidstring, displayname, GPDB_SNMP_STATUS_UNREACHABLE, "could not open session to host");
 			last_item_in_subtree = 1;
 		}
 		else
 		{
 			char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
 			snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, nextOID, nextOID_len);
-			gpmon_warningx(FLINE, 0, "snmp_array_collection got unknown error looking for OID %s at host %d\n", oidstring, si.key.hostname);
+			gpmon_warningx(FLINE, 0, "snmp_array_collection got unknown error looking for OID %s at host %d", oidstring, si.key.hostname);
 			last_item_in_subtree = 1;
 		}
 	
@@ -1094,6 +1094,7 @@ void record_status(EmcConnectSymptom symptom, const char* oidstring, const char*
 		if (alertData)
 		{
 			apr_hash_set(si.alert_status_table, &si.key, sizeof(si.key), NULL);
+            TR0(("status for %s %s is now good.", oidstring, displayname));
 		}
 
 		// do not send EMC connect for NORMAL status

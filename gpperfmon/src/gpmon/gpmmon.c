@@ -546,7 +546,12 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 							h->hostname, ax.gphome, opt.max_log_size, ptr_smon_log_location, ptr_smon_log_location_suffix,
 							opt.v ? "-v" : "", ax.port);
 
-					TR0(("Connection to %s lost.  Restarting gpsmon.\n", h->hostname));
+                    if (h->ever_connected)
+					    TR0(("Connection to %s lost.  Restarting gpsmon.\n", h->hostname));
+                    else
+					    TR0(("Making initial connection to %s\n", h->hostname));
+                    h->ever_connected = 1;
+
 					TR1(("%s\n", line));
 					fp[j] = popen(line, "w");
 					if (fp[j])
