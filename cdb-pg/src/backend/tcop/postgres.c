@@ -3430,9 +3430,23 @@ SigHupHandler(SIGNAL_ARGS)
 void
 ProcessInterrupts(void)
 {
+
+#ifdef USE_FAULT_INJECTION
+	int simex_run = gp_simex_run;
+#endif   /* USE_FAULT_INJECTION */
+
 	/* OK to accept interrupt now? */
 	if (InterruptHoldoffCount != 0 || CritSectionCount != 0)
 		return;
+
+#ifdef USE_FAULT_INJECTION
+	/* disable SimEx for CHECK_FOR_INTERRUPTS */
+	if (gp_simex_init && gp_simex_run && gp_simex_class == SimExESClass_Cancel)
+	{
+		gp_simex_run = 0;
+	}
+#endif   /* USE_FAULT_INJECTION */
+
 	InterruptPending = false;
 	if (ProcDiePending)
 	{
@@ -3459,10 +3473,7 @@ ProcessInterrupts(void)
 	}
 	if (QueryCancelPending)
 	{
-		if (!gp_simex_init && !gp_simex_run && SimExESClass_Cancel != gp_simex_run)
-		{
-			elog(LOG,"Process interrupt for 'query cancel pending'.");
-		}
+		elog(LOG,"Process interrupt for 'query cancel pending'.");
 		
 		QueryCancelPending = false;
 		ImmediateInterruptOK = false;	/* not idle anymore */
@@ -3482,6 +3493,14 @@ ProcessInterrupts(void)
 					 errmsg("canceling statement due to user request")));
 	}
 	/* If we get here, do nothing (probably, QueryCancelPending was reset) */
+
+#ifdef USE_FAULT_INJECTION
+	/* restore SimEx for CHECK_FOR_INTERRUPTS */
+	if (gp_simex_init && simex_run && gp_simex_class == SimExESClass_Cancel)
+	{
+		gp_simex_run = simex_run;
+	}
+#endif   /* USE_FAULT_INJECTION */
 }
 
 /*
