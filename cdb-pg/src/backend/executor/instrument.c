@@ -58,8 +58,6 @@ InstrStopNode(Instrumentation *instr, double nTuples)
 	INSTR_TIME_SET_CURRENT(endtime);
 	INSTR_TIME_ACCUM_DIFF(instr->counter, endtime, instr->starttime);
 
-	INSTR_TIME_SET_ZERO(instr->starttime);
-
 	/* Is this the first tuple of this cycle? */
 	if (!instr->running)
 	{

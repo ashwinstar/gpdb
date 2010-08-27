@@ -1366,7 +1366,7 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
 		appendStringInfoString(str,
                                "allstat: "
         /*	 "seg_starttime_firststart_counter_firsttuple_startup_total_ntuples_nloops" */
-						       "seg_firststart_ntuples");
+						       "seg_firststart_total_ntuples");
 
         for (i = 0; i < ns->ninst; i++)
 		{
@@ -1379,11 +1379,13 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
 			INSTR_TIME_SET_ZERO(timediff);
 	        INSTR_TIME_ACCUM_DIFF(timediff, nsi->firststart, ctx->querystarttime);
 	        cdbexplain_formatSeconds(startbuf, INSTR_TIME_GET_DOUBLE(timediff));
+			cdbexplain_formatSeconds(totalbuf, nsi->total);
 
 			appendStringInfo(str,
-                             "/%d_%s_%.0f",
+                             "/seg%d_%s_%s_%.0f",
                              ns->segindex0 + i,
 							 startbuf,
+							 totalbuf,
                              nsi->ntuples);
 		}
 		appendStringInfoString(str, "//end\n");
