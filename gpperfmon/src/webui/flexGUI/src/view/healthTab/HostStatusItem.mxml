@@ -11,19 +11,19 @@
 	 		[Bindable]private var __statusCount:String;
 	 		private var __parentRef:HostItem;
 	 		
-	 		[Embed (source="assets/img/LED_Error.png")]
+	 		[Embed (source="../../assets/img/LED_Error.png")]
 	 		private var errorCls:Class;
 	 		
-			[Embed (source="assets/img/LED_NoResponse.png")]
+			[Embed (source="../../assets/img/LED_NoResponse.png")]
 	 		private var noResponseCls:Class;
 	 		
-	 		[Embed (source="assets/img/LED_Normal.png")]
+	 		[Embed (source="../../assets/img/LED_Normal.png")]
 	 		private var normalCls:Class;
 	 		
-			[Embed (source="assets/img/LED_Unknown.png")]
+			[Embed (source="../../assets/img/LED_Unknown.png")]
 	 		private var unknownCls:Class;
 	 		
-	 		[Embed (source="assets/img/LED_Warning.png")]
+	 		[Embed (source="../../assets/img/LED_Warning.png")]
 	 		private var warningCls:Class;
 	 		
 	 		private function initComp():void{

@@ -20,7 +20,7 @@
 
 		//Placing an image in header of the details coloumn.
 		[Bindable]
-		[Embed (source="assets/img/Magnifying-Glass-16x16.png")]
+		[Embed (source="../../assets/img/Magnifying-Glass-16x16.png")]
 		public var logo_cls:Class;
 		
 		private function initComp():void{
