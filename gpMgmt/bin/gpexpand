@@ -1672,10 +1672,10 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             filespaceNames = []
             filespaceLocations = []
             for entry in fsObjList:
-                name = entry.getName()
+                fsname = entry.getName()
                 oid = entry.getOid()
                 location = segFilespaces[oid]
-                filespaceNames.append(name)
+                filespaceNames.append(fsname)
                 filespaceLocations.append(location)
             prepCmd = PrepFileSpaces( name = name
                                     , filespaceNames = filespaceNames
