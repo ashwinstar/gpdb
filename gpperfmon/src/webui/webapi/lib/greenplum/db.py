@@ -689,20 +689,15 @@ def queryplan_get_username_now(tmid, ssid, ccnt):
         raise_db_error('Exception during query: %s' % query)
     return result
 
-
 def queryplan_sql(table, tmid, ssid, ccnt, start='', end=''):
     query = """select
-       min(a.ctime) as sample_time, a.tmid, a.ssid, a.ccnt, a.nid, min(a.pnid) as pnid,
-       min(ntype) as ntype,
-       CASE WHEN (sum(b.exec) > 0) THEN 'Executing'
-            WHEN (sum(b.init) = 0 and sum(b.exec) = 0) THEN 'Finished'
-            WHEN (sum(b.exec) = 0 and sum(b.done) = 0) THEN 'Initializing'
-       END as nstatus,
-       min(a.tstart) as tstart, avg(tduration) as tduration,
+       min(ctime) as sample_time, tmid, ssid, ccnt, nid, min(pnid) as pnid,
+       min(ntype) as ntype, array_to_string(iterators_array_accum(distinct nstatus), ',') as nstatus,
+       min(tstart) as tstart, avg(tduration) as tduration,
        avg(pmemsize) as pmemsize, avg(pmemmax) as pmemmax,
        avg(memsize) as memsize, avg(memresid) as memresid,
        avg(memshare) as memshare, sum(cpu_elapsed) as cpu_elapsed,
-       avg(cpu_currpct) as cpu_currpct, array_to_string(iterators_array_accum(distinct phase), ',') as phase,
+       avg(cpu_currpct) as cpu_currpct, array_to_string(iterators_array_accum(distinct phase), ',') as phase, 
        sum(rows_out) as rows_out, sum(rows_out_est) as rows_out_est,
        case when avg(cpu_elapsed) <= 0.001 THEN 0 else
           (stddev(cpu_elapsed)/avg(cpu_elapsed))*100 end as skew_cpu,
@@ -725,40 +720,14 @@ def queryplan_sql(table, tmid, ssid, ccnt, start='', end=''):
        min(m14_name)||'|'||min(m14_unit)||'|'||avg(m14_val)||'|'||avg(m14_est) as m14,
        min(m15_name)||'|'||min(m15_unit)||'|'||avg(m15_val)||'|'||avg(m15_est) as m15,
        min(t0_name)||'|'||min(t0_val) as t0
-       from %s a""" % table
-
-    # Join with ourselves to get the iterator status (initializing, executing, finished)
-    query += """
-        INNER JOIN (select ctime, tmid, ssid, ccnt, pnid, nid, min(tstart) as tstart,
-                   sum(case when nstatus = 'Initialize' and pnid > 0 and segid >= 0 then 1 when nstatus = 'Initialize' and pnid = -1 then 1 else 0 end) as init,
-                   sum(case when nstatus = 'Executing' and pnid > 0 and segid >= 0 then 1 when nstatus = 'Executing' and pnid = -1 then 1 else 0 end) as exec,
-                   sum(case when nstatus = 'Finished' and pnid > 0 and segid >= 0 then 1 when nstatus = 'Finished' and pnid = -1 then 1 else 0 end) as done
-        from %s
-       where tmid = '%s'
-         and ssid = '%s'
-         and ccnt = '%s'
-    group by ctime, tmid, ssid, ccnt, pnid, nid) b
-                ON a.pnid = b.pnid
-               AND a.nid = b.nid
-               AND a.ssid = b.ssid
-               AND a.ccnt = b.ccnt
-               AND a.tmid = b.tmid
-               AND a.ctime = b.ctime
-               AND a.tstart = b.tstart
-    """ % (table, tmid, ssid, ccnt)
-
-    # where clause for main query
-    query += """
-        where a.tmid='%s'
-          and a.ssid='%s'
-          and a.ccnt='%s'
-    """ % (tmid, ssid, ccnt)
-
+       from %s""" % table
+    query += "\nwhere tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
     if start != '' and end != '':
-        query += " and a.ctime>='%s' and a.ctime<='%s'" % (start, end)
-    query += "\ngroup by a.tmid, a.ssid, a.ccnt, a.nid, a.nstatus"
+        query += " and ctime>='%s' and ctime<='%s'" % (start, end)
+    query += "\ngroup by tmid, ssid, ccnt, nid"
 
     return query
+
 
 def queryplan_now(tmid, ssid, ccnt, username):
     # If not superuser, check that username matches
