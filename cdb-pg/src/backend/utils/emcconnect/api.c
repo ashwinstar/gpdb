@@ -151,7 +151,11 @@ int gpmon_emcconnect_create_xml(char* buffer,
 #define GPMON_EMCCONNECT_BUFFER_SIZE 65536
 #define GPMON_EMCCONNECT_FILENAME_MAX 256
 
+#define GPMON_EMCCONNECT_DOS_INTERVAL 900            // every 15 minutes reset the DOS counter
+#define GPMON_EMCCONNECT_DOS_MAX_COUNTER 1000        // do not send more than the DOS counter per DOS interval
+
 // return 0 for success
+// not a thread safe function
 int gpmon_emcconnect_send_alert(EmcConnectSymptom symptom,
 								EmcConnectStatus status,
 								EmcConnectSeverity severity,
@@ -163,6 +167,10 @@ int gpmon_emcconnect_send_alert(EmcConnectSymptom symptom,
 	static char serial_num[GPMON_EMCCONNECT_SERIALNUM_LEN];
 	static bool serialNumberFound = false;
 	static unsigned short counter = 0;
+
+    static unsigned int dos_counter = 1;    // how many alerts have been sent since the beginning of the DOS interval
+    static time_t last_dos_check = 0;       // timestamp of when the DOS counter was reset
+
 	char filename_buf[PATH_MAX];
 	char tmp_filename_buf[PATH_MAX];
 	FILE* fd = NULL;
@@ -201,8 +209,22 @@ int gpmon_emcconnect_send_alert(EmcConnectSymptom symptom,
 	}
 
 	now = time(NULL);
+
+    // it has been more than enough time to reset the DOS counter
+    if (now > (last_dos_check + GPMON_EMCCONNECT_DOS_INTERVAL))
+    {
+        last_dos_check = now;
+        dos_counter = 0;
+    }
+    else if (dos_counter >= GPMON_EMCCONNECT_DOS_MAX_COUNTER)
+    {
+        return 4; // Denial Of Service prevention.... don't send more alerts in this time period
+    }
+
+    dos_counter++;
+
 	if (!localtime_r(&now, &time_result))
-		return 4;
+		return 5;
 
 	mon = time_result.tm_mon + 1;
 	day = time_result.tm_mday;
@@ -215,30 +237,30 @@ int gpmon_emcconnect_send_alert(EmcConnectSymptom symptom,
 	// NOTE: we have 4 digits to represent a unique filenumber from this origin for this minute
 	retVal = snprintf(fn_buffer, GPMON_EMCCONNECT_FILENAME_MAX, "%s_%02d%02d%02d_%02d%02d%01d%04d", serial_num, mon, day, year, hr, min, origin, ++counter%10000);
 	if (retVal < 0)
-		return 5;
-	if (retVal >= GPMON_EMCCONNECT_FILENAME_MAX)
 		return 6;
+	if (retVal >= GPMON_EMCCONNECT_FILENAME_MAX)
+		return 7;
 
 	retVal = gpmon_emcconnect_create_xml(buffer, GPMON_EMCCONNECT_BUFFER_SIZE, symptom, status, severity, serial_num, "", hostname, msg);
 	if (retVal)
-		return 7;
+		return 8;
 
 	retVal = snprintf(filename_buf, PATH_MAX, "%s/%s_%s.xml", GPMON_EMCCONNECT_POLL_DIR, "RSC", fn_buffer);
 	if (retVal < 0)
-		return 8;
-	if (retVal >= PATH_MAX)
 		return 9;
+	if (retVal >= PATH_MAX)
+		return 10;
 
 	retVal = snprintf(tmp_filename_buf, PATH_MAX, "%s/%s_%s.tmp", GPMON_EMCCONNECT_POLL_DIR, "TMP", fn_buffer);
 	if (retVal < 0)
-		return 10;
-	if (retVal >= PATH_MAX)
 		return 11;
+	if (retVal >= PATH_MAX)
+		return 12;
 
 	fd = fopen(tmp_filename_buf, "w");
 
 	if (!fd)
-		return 12;
+		return 13;
 
 	fprintf(fd, buffer);
 
@@ -249,6 +271,6 @@ int gpmon_emcconnect_send_alert(EmcConnectSymptom symptom,
 	if (!retVal)
 		return 0;
 	else
-		return 13;
+		return 14;
 }
 
