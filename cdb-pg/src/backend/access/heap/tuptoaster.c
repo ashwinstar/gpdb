@@ -155,7 +155,7 @@ do { \
 #define SET_VARSIZE_C(PTR)			(((varattrib_1b *) (PTR))->va_header |= 0x40)
 
 static void toast_delete_datum(Relation rel, Datum value);
-static Datum toast_save_datum(Relation rel, Datum value);
+static Datum toast_save_datum(Relation rel, Datum value, bool isFrozen);
 static struct varlena *toast_fetch_datum(struct varlena * attr);
 static struct varlena *toast_fetch_datum_slice(struct varlena * attr,
 						int32 sliceoffset, int32 length);
@@ -583,7 +583,8 @@ static int compute_dest_tuplen(TupleDesc tupdesc, MemTupleBinding *pbind, bool h
 
 HeapTuple
 toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup, 
-					   MemTupleBinding *pbind, int toast_tuple_target)
+					   MemTupleBinding *pbind, int toast_tuple_target,
+					   bool isFrozen)
 {
 	HeapTuple	result_tuple;
 	TupleDesc	tupleDesc;
@@ -887,7 +888,7 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 		i = biggest_attno;
 		old_value = toast_values[i];
 		toast_action[i] = 'p';
-		toast_values[i] = toast_save_datum(rel, toast_values[i]);
+		toast_values[i] = toast_save_datum(rel, toast_values[i], isFrozen);
 		if (toast_free[i])
 			pfree(DatumGetPointer(old_value));
 		toast_free[i] = true;
@@ -994,7 +995,7 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 		i = biggest_attno;
 		old_value = toast_values[i];
 		toast_action[i] = 'p';
-		toast_values[i] = toast_save_datum(rel, toast_values[i]);
+		toast_values[i] = toast_save_datum(rel, toast_values[i], isFrozen);
 		if (toast_free[i])
 			pfree(DatumGetPointer(old_value));
 		toast_free[i] = true;
@@ -1266,7 +1267,7 @@ toast_compress_datum(Datum value)
  * ----------
  */
 static Datum
-toast_save_datum(Relation rel, Datum value)
+toast_save_datum(Relation rel, Datum value, bool isFrozen)
 {
 	Relation	toastrel;
 	Relation	toastidx;
@@ -1389,7 +1390,17 @@ toast_save_datum(Relation rel, Datum value)
 		if (!HeapTupleIsValid(toasttup))
 			elog(ERROR, "failed to build TOAST tuple");
 
-		simple_heap_insert(toastrel, toasttup);
+		if(!isFrozen)
+		{
+			/* the normal case. regular insert */
+			simple_heap_insert(toastrel, toasttup);
+		}
+		else
+		{
+			/* insert and freeze the tuple. used for errtables and their related toast data */
+			frozen_heap_insert(toastrel, toasttup);
+		}
+			
 		//heap_insert(relation, tup, GetCurrentCommandId(),
 		//			   true, true, GetCurrentTransactionId());
 

@@ -2268,7 +2268,8 @@ appendonly_insert_init(Relation rel, int segno)
 	if (need_toast)
 		tup = (MemTuple) toast_insert_or_update(relation, (HeapTuple) instup, 
 												NULL, aoInsertDesc->mt_bind,
-												aoInsertDesc->toast_tuple_target);
+												aoInsertDesc->toast_tuple_target,
+												false /* errtbl is never AO */);
 	else
 		tup = instup;
 
