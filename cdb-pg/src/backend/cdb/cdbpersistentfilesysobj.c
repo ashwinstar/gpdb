@@ -4404,11 +4404,12 @@ static void PersistentFileSysObj_ScanStateAction(
 				
 				LWLockRelease(PersistentObjLock);	// Don't hold lock during physical file-system operation.
 				
+				FileRepResync_SetReCreateRequest();
+				
 				// UNDONE: Pass this in from the resync worker?
 				mirrorDataLossTrackingState = 
 							FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
 															&mirrorDataLossTrackingSessionNum);
-				FileRepResync_SetReCreateRequest();
 				
 				PersistentFileSysObj_DoMirrorReCreate(
 										&fsObjName,
