@@ -2,6 +2,7 @@
 #include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-includes.h>
 #include "apr_hash.h"
+#include "emcconnect/api.h"
 
 #define GPMMON_SNMP_COMMUNITY_NAME "public"
 #define GPMMON_SNMP_PROTOCOL_VERSION SNMP_VERSION_2c

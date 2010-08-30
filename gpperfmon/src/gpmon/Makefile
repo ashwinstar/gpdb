@@ -17,7 +17,7 @@ ifneq ($(CUSTOM_COPT),)
 	COPT=$(CUSTOM_COPT)
 endif
 
-GPMMON_OBJS=gpmmon.o gpmondb.o gpmonlib.o gpmon_agg.o gpmon_snmp.o ../../../cdb-pg/src/backend/utils/gpmon/gpmon_shared.o
+GPMMON_OBJS=gpmmon.o gpmondb.o gpmonlib.o gpmon_agg.o gpmon_snmp.o ../../../cdb-pg/src/backend/utils/emcconnect/api.o
 GPSMON_OBJS=gpsmon.o gpmonlib.o
 SIGTEST_OBJS=sigartest.o
 SNMPTEST_OBJS=snmptest.o

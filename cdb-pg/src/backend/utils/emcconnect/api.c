@@ -3,13 +3,15 @@
 #include <unistd.h>
 #include <limits.h>
 #include <time.h>
-#include "gpmon/gpmon.h"
+#include "emcconnect/api.h"
 
 // NOTE: code in this file is shared between GPDB and gpperfmon processes.
 //  	 The code is bare bones C as much as possible to prevent having to link additional GPDB code in gpperfmon
 
 const char* gpmon_emcconnect_print_status(EmcConnectStatus status);
 const char* gpmon_emcconnect_print_severity(EmcConnectSeverity severity);
+int gpmon_emcconnect_create_xml(char* buffer, size_t bufsize, EmcConnectSymptom symptom, EmcConnectStatus status, EmcConnectSeverity severity, 
+								char* serialNumber, char* siteName, char* hostname,  char* msg);
 
 const char* gpmon_emcconnect_print_status(EmcConnectStatus status)
 {
