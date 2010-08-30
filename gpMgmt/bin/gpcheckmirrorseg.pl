@@ -1134,7 +1134,7 @@ sub find_eof_in_vpinfo
 
 sub get_aoseg_func
 {
-	my ($rkey, $rnod, $dbname, $diffi, $row, $fselochsh, $bigh) = @_;
+	my ($relid, $rnod, $dbname, $diffi, $row, $fselochsh, $bigh) = @_;
 
 	my $storage_class = $rnod->{relstorage};
 
@@ -1143,39 +1143,57 @@ sub get_aoseg_func
 	# XXX XXX: need portnumber!!
 	$psql_str .= "-p $glob_port " . $dbname;
 
-
-	if ($storage_class eq "a")
-	{
-
-		# select from gp_persistent_relation_node, pg_class, etc
-
-		# use "dollar-quoting" to avoid dealing with nested single-quotes:
-		# $q$p$q$ is equivalent to 'p'
-		$psql_str .= " -c \' " .
-			"select gp_segment_id,* from gp_dist_random(" . '$q$' .
-			"pg_aoseg.pg_aoseg_" . $rkey . '$q$' . ") " .
-			# filter by content/segment_id (which is identical for primary
-			# and mirror, ie not the dbid)
-			"where gp_segment_id = " . $row->{content} .
-			"\' ";
-	}
-	else # column store
-	{
-		# Extract the eofs from vpinfo in pg_aocsseg_XXX
-		# use "dollar-quoting" to avoid dealing with nested single-quotes:
-		# $q$p$q$ is equivalent to 'p'
-		$psql_str .= " -c \' " .
-			"select gp_segment_id,* from gp_dist_random(" . '$q$' .
-			"pg_aoseg.pg_aocsseg_" . $rkey . '$q$' . ") " .
-			# filter by content/segment_id (which is identical for primary
-			# and mirror, ie not the dbid)
-			"where gp_segment_id = " . $row->{content} .
-			"\' ";
-	}
+	# MPP-10866: segname construction is different for ALTER TABLE and
+	# TRUNCATE, so get the segname from pg_appendonly
+	$psql_str .= " -c \' " .
+		"select relname,oid  from pg_class where oid in ( " .
+		"select segrelid from pg_appendonly " . 
+		"where relid = " . $relid . " ) " .
+		"\' ";
 
 #	print $psql_str, "\n";
 
 	my $tabdef = `$psql_str`;
+
+#	print $tabdef;
+
+	my $segname = "unknown_segname";
+
+	my $segs = tablelizer($tabdef);
+
+	for my $rr (@{$segs})
+	{
+		if (exists($rr->{relname}))
+		{
+			$segname = $rr->{relname};
+			last;
+		}
+	}
+
+	$psql_str = "psql ";
+
+	# XXX XXX: need portnumber!!
+	$psql_str .= "-p $glob_port " . $dbname;
+
+
+	# select from gp_persistent_relation_node, pg_class, etc
+
+	# use "dollar-quoting" to avoid dealing with nested single-quotes:
+	# $q$p$q$ is equivalent to 'p'
+	$psql_str .= " -c \' " .
+		"select gp_segment_id,* from gp_dist_random(" . '$q$' .
+		"pg_aoseg.". $segname . '$q$' . ") " .
+		# filter by content/segment_id (which is identical for primary
+		# and mirror, ie not the dbid)
+		"where gp_segment_id = " . $row->{content} .
+		"\' ";
+
+	# for column store, will extract the eofs from vpinfo in
+	# pg_aocsseg_XXX
+
+#	print $psql_str, "\n";
+
+	$tabdef = `$psql_str`;
 
 #	print $tabdef;
 
@@ -1421,9 +1439,10 @@ sub get_relfilenode_func
 			if (exists($rnod->{relstorage})
 					&& ($rnod->{relstorage} =~ m/a|c/))
 			{
+				# MPP-10866: aoseg/aocsseg naming is inconsistent
 				$rnod->{aoseg} = 
-#					get_aoseg_func($rnod->{relid}, $rnod, $dbname,
-					get_aoseg_func($kk2, $rnod, $dbname,
+					get_aoseg_func($rnod->{relid}, $rnod, $dbname,
+#					get_aoseg_func($kk2, $rnod, $dbname,
 								   $diffi, $row, $fselochsh, $bigh);
 
 				$rnod->{aoseg_eof} = {};
