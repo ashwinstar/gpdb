@@ -1133,7 +1133,7 @@ void record_status(EmcConnectSymptom symptom, const char* oidstring, const char*
 	if (symptom == EMC_CONNECT_SYMPTOM_NULL)
 		return;
 
-	snprintf(si.key.oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, oidstring);
+	snprintf(si.key.oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, "%s", oidstring);
 	alertData = apr_hash_get(si.alert_status_table, &si.key, sizeof (si.key));
 
 	// currently good
@@ -1202,7 +1202,7 @@ FILE* open_snmp_file_for_host(const char* hostname)
 // 0 is success
 int init_host(const char* hostname)
 {
-	snprintf(si.key.hostname, GPMMON_SNMP_HOSTNAME_MAX_SIZE, hostname);
+	snprintf(si.key.hostname, GPMMON_SNMP_HOSTNAME_MAX_SIZE, "%s", hostname);
 
 	si.worst_status_per_host = GPDB_SNMP_STATUS_NORMAL;
 
