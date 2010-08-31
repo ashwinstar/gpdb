@@ -144,6 +144,50 @@ EmcConnectSeverity convert_gpdb_snmp_status_to_emc_connect_severity(GPDB_SNMP_ST
 // conversion functions are of type gpdb_status_code_conversion_function (see gpdb_status_code_conversion_function for parameters)
 //****************************************************************************************//
 
+GPDB_SNMP_STATUS brocade_switch_sensor_status_code_conversion(int statusCodeIn, char** msgout)
+{
+    // unknown (1) 
+    // other (2) 
+    // ok (3) 
+    // Warning (4)
+    // failed (5)
+	GPDB_SNMP_STATUS status;
+
+	switch(statusCodeIn)
+	{
+		case 1:
+			status = GPDB_SNMP_STATUS_UNKNOWN;
+			*msgout = "unknown";
+		break;
+
+		case 2:
+			status = GPDB_SNMP_STATUS_UNKNOWN;
+			*msgout = "other";
+		break;
+
+		case 3:
+			status = GPDB_SNMP_STATUS_NORMAL;
+			*msgout = "ok";
+		break;
+
+		case 4:
+			status = GPDB_SNMP_STATUS_WARNING;
+			*msgout = "Warning";
+		break;
+
+		case 5:
+			status = GPDB_SNMP_STATUS_ERROR;
+			*msgout = "failed";
+		break;
+
+		default:
+			status = GPDB_SNMP_STATUS_UNKNOWN;
+			*msgout = "unexpected status from device";
+		break;
+	}
+	return status;
+}
+
 GPDB_SNMP_STATUS brocade_switch_status_code_conversion(int statusCodeIn, char** msgout)
 {
 	//1. up
@@ -733,6 +777,11 @@ void format_brocade_switch_status(EmcConnectSymptom symptom, oid oidname[], size
 	format_generic_status_code(symptom, oidname, oidlen, displayname, vars, brocade_switch_status_code_conversion);
 }
 
+void format_brocade_switch_sensor_status(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+{
+	format_generic_status_code(symptom, oidname, oidlen, displayname, vars, brocade_switch_sensor_status_code_conversion);
+}
+
 #define FORMAT_DELL_SCALAR_STRING_BUF_SIZE 256
 void gpmon_format_snmp_string(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
@@ -832,6 +881,11 @@ void run_snmp_report_for_brocade_switch(const char* categoryname, const char* ho
 	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.1588.2.1.1.1.1.7", "Operational Status", NULL, format_brocade_switch_status)) goto BAIL;
 	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.1588.2.1.1.1.1.6", "Firmware Version", NULL, gpmon_format_snmp_string)) goto BAIL;
 	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.1588.2.1.1.1.1.10", "Soft Serial Number", NULL, gpmon_format_snmp_string)) goto BAIL;
+
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL,             "1.3.6.1.3.94.1.8.1.3", "Sensor", "Name", gpmon_format_snmp_string)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH_SENSOR,    "1.3.6.1.3.94.1.8.1.4", "Sensor", "Status", format_brocade_switch_sensor_status)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL,             "1.3.6.1.3.94.1.8.1.6", "Sensor", "Message", gpmon_format_snmp_string)) goto BAIL;
+
 	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.2.1.2.2.1.2", "Interface", "Description", gpmon_format_snmp_string)) goto BAIL;
 	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.2.1.2.2.1.8", "Interface", "Status", format_network_interface_status)) goto BAIL;
 
