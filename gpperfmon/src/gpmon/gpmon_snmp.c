@@ -1404,11 +1404,11 @@ void parse_snmp_config_line(char* line)
 
 	gpdb_snmp_device_function* fPtr = NULL;
 
-	if (strcmp(device, "Brocade8000") == 0)
+	if (strcmp(device, "InterconnectSwitch0001") == 0) // Brocade 8000
 	{
 		fPtr = run_snmp_report_for_brocade_switch;
 	}
-	else if (strcmp(device, "AlliedTelesis") == 0)
+	else if (strcmp(device, "AdminSwitch0001") == 0) // Allied Telesis TL
 	{
 		fPtr = run_snmp_report_for_allied_telesis_switch;
 	}
