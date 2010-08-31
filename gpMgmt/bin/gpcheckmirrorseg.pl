@@ -2365,6 +2365,37 @@ if (1)
 
 #	print Data::Dumper->Dump([$gp_seg_config]);
 
+	my $do_mm_skip = 0;
+
+	# MPP-10881: separate validation check for standby master
+	if ($glob_mm)
+	{
+		$psql_str = "psql ";
+
+		$psql_str .= $glob_connect
+			if (defined($glob_connect));
+
+		$psql_str .= " -c \' ".
+			"select * from gp_master_mirroring " . 
+			" order by log_time desc limit 1 \' ";
+
+		$tabdef = `$psql_str`;
+
+		my $gp_mm_state = tablelizer($tabdef);
+
+		if (scalar(@{$gp_mm_state})
+			&& exists($gp_mm_state->[0]->{summary_state}))
+		{
+			# skip unless synchronized
+			$do_mm_skip = 
+				($gp_mm_state->[0]->{summary_state} !~
+				 m/^Synchronized$/);
+		}
+
+		warn "master mirror not synchronized"
+			if ($do_mm_skip);
+	}
+
 	my $presh_txt = $glob_mm ? get_mm_presh_txt() : 
 		($glob_nohash ? get_nohash_presh_txt() : get_presh_txt());
 	my $presh2_txt = get_presh2_txt();
@@ -2405,8 +2436,9 @@ if (1)
 		# check that primary and mirror are in sync.  If they are not,
 		# don't bother checking for differences (unless skipseg is
 		# disabled)
-		unless (($row->{status} eq 'u') &&
-				($row->{mode} eq 's'))
+		if (!(($row->{status} eq 'u') &&
+			  ($row->{mode} eq 's'))
+			|| $do_mm_skip)
 		{
 			if ($glob_skipseg)
 			{
