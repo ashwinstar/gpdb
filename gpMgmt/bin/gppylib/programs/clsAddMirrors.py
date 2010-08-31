@@ -22,6 +22,7 @@ from gppylib.test.testUtils import *
 from gppylib.utils import toNonNoneString, checkNotNone, writeLinesToFile, readAllLinesFromFile, \
                     parseMirroringConfigFile, PathNormalizationException, normalizeAndValidateInputPath, TableLogger
 from gppylib.gphostcache import GpInterfaceToHostNameCache
+from gppylib.userinput import *
 
 logger = gplog.get_default_logger()
 
@@ -74,6 +75,19 @@ class GpMirrorBuildCalculator:
         self.__mirrorPortOffset = mirrorPortOffset
         self.__mirrorDataDirs = mirrorDataDirs
         self.__mirrorFilespaceOidToPathMaps = mirrorFilespaceOidToPathMaps
+
+        standard, message = self.__gpArray.isStandardArray()
+        if standard == False:
+           logger.warn('The current system appears to be non-standard.')
+           logger.warn(message)
+           logger.warn('gpaddmirrors will not be able to symmetrically distribute the new mirrors.')
+           logger.warn('It is recommended that you specify your own input file with appropriate values.')
+           if not ask_yesno('', "Are you sure you want to continue with this gpaddmirrors session?",'N'):
+              logger.info("User Aborted. Exiting...")
+              sys.exit(0)
+           self.__isStandard = False
+        else:
+           self.__isStandard = True
 
     def addMirror(self, resultOut, primary, targetHost, address, port, mirrorDataDir, replicationPort,
             primarySegmentReplicationPort, filespaceOidToPathMap):
@@ -133,6 +147,17 @@ class GpMirrorBuildCalculator:
         primariesOnTargetHost = self.__primariesByHost[targetHost]
         assert primariesOnTargetHost is not None
 
+        primariesOnPrimaryHost = self.__primariesByHost[primaryHost]
+        assert primariesOnPrimaryHost is not None
+
+        primaryHostAddressList = []
+        for thePrimary in primariesOnPrimaryHost:
+            address = thePrimary.getSegmentAddress()
+            if address in primaryHostAddressList:
+               continue
+            primaryHostAddressList.append(address)
+        primaryHostAddressList.sort()
+
         mirrorIndexOnTargetHost = self.__mirrorsAddedByHost[targetHost]
         assert mirrorIndexOnTargetHost is not None
 
@@ -161,10 +186,43 @@ class GpMirrorBuildCalculator:
         filespaceOidToPathMap = self.__mirrorFilespaceOidToPathMaps[mirrorIndexOnTargetHost]
 
         #
-        # we want to spread out use of addresses on a single host so go through primary addresses
-        #            for the target host to get the mirror address
+        # We want to spread out use of addresses on a single host so go through primary addresses
+        # for the target host to get the mirror address. We also want to put the primary and new
+        # mirror on different subnets (i.e. addresses).
         #
-        address = primariesOnTargetHost[mirrorIndexOnTargetHost % len(primariesOnTargetHost)].getSegmentAddress()
+
+        if self.__isStandard == False:
+            address = primariesOnTargetHost[mirrorIndexOnTargetHost % len(primariesOnTargetHost)].getSegmentAddress()
+        else:
+            # This looks like a nice standard system, so we will attempt to distribute the mirrors appropriately.
+            # Get a list of all the address on the primary and the mirror and sort them. Take the current primaries
+            # index into the primary host list, and add one, and mod it with the number of address on the primary to
+            # get the mirror address offset in a sorted list of addresses on the mirror host.
+
+            primaryHostAddressList = []
+            for thePrimary in primariesOnPrimaryHost:
+                address = thePrimary.getSegmentAddress()
+                if address in primaryHostAddressList:
+                   continue
+                primaryHostAddressList.append(address)
+            primaryHostAddressList.sort()
+
+            mirrorHostAddressList = []
+            for thePrimary in primariesOnTargetHost:
+                address = thePrimary.getSegmentAddress()
+                if address in mirrorHostAddressList:
+                   continue
+                mirrorHostAddressList.append(address)
+            mirrorHostAddressList.sort()
+
+            primaryAddress = primary.getSegmentAddress()
+            index = 0
+            for address in primaryHostAddressList:
+                if address == primaryAddress:
+                   break
+                index = index + 1
+            index = (index + 1) % len(primaryHostAddressList)
+            address = mirrorHostAddressList[index]
 
         self.addMirror( resultOut, primary, targetHost, address, port, mirrorDataDir, replicationPort,
                 primarySegmentReplicationPort, filespaceOidToPathMap)

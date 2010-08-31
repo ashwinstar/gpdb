@@ -249,6 +249,7 @@ class GpDB:
         # Return the completed segment
         return gpdb
 
+
     # --------------------------------------------------------------------
     @staticmethod
     def getDataDirPrefix(datadir):
@@ -1058,6 +1059,73 @@ class GpArray:
             self.numPrimarySegments += 1
         else:
             seg.addMirror(segdb)
+
+    # --------------------------------------------------------------------
+    def isStandardArray(self):
+        """
+        This method will check various aspects of the array to see if it looks like a standard
+        setup. It returns two values:
+
+           True or False depending on if the array looks like a standard array.
+           A message describing why the array doesn't look standard.
+        """
+
+        try:
+           # Do all the segments contain the same number of primary and mirrors.
+           firstNumPrimaries = 0
+           firstNumMirrors   = 0
+           firstHost         = ""
+           first             = True
+           dbList = self.getDbList(includeExpansionSegs = True)
+           gpdbByHost = self.getSegmentsByHostName(dbList)
+           for host in gpdbByHost:
+               gpdbList = gpdbByHost[host]
+               numPrimaries = 0
+               numMirrors   = 0
+               for gpdb in gpdbList:
+                   if gpdb.isSegmentMaster() == True:
+                      continue
+                   if gpdb.isSegmentPrimary() == True:
+                      numPrimaries = numPrimaries + 1
+                   else:
+                      numMirrors = numMirrors + 1
+               if first == True:
+                  firstNumPrimaries = numPrimaries
+                  firstNumMirrors = numMirrors
+                  firstHost = host
+                  first = False
+               if numPrimaries != firstNumPrimaries:
+                  raise Exception("The number of primary segments is not consistent across all nodes: %s != %s." % (host, firstHost))
+               elif numMirrors != firstNumMirrors:
+                  raise Exception("The number of mirror segments is not consistent across all nodes. %s != %s." % (host, firstHost))
+
+
+           # Make sure the address all have the same suffix "-<n>" (like -1, -2, -3...)
+           firstSuffixList = []
+           first           = True
+           suffixList      = []
+           for host in gpdbByHost:
+               gpdbList = gpdbByHost[host]
+               for gpdb in gpdbList:
+                   if gpdb.isSegmentMaster() == True:
+                      continue
+                   address = gpdb.getSegmentAddress()
+                   suffix  = address.split('-')[-1]
+                   if suffix.isdigit() == False:
+                      raise Exception("The address value for %s does not correspond to a standard address." % address)
+                   suffixList.append(suffix)
+               suffixList.sort()
+               if first == True:
+                  firstSuffixList = suffixList
+                  first = False
+               if suffixList != firstSuffixList:
+                  raise Exception("The address list for %s doesn't not have the same pattern as %s." % (str(suffixList), str(firstSuffixList)))
+        except Exception, e:
+           # Assume any exception implies a non-standard array
+           return False, str(e)
+
+        return True, ""
+
 
     # --------------------------------------------------------------------
     @staticmethod
