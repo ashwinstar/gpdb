@@ -43,6 +43,11 @@
    rolvaliduntil timestamp with time zone, -- password expiration time, if any
    rolconfig text[], -- GUC settings to apply at login 
    rolresqueue oid -- ID of resource queue for this role 
+   
+   -- GP added fields
+   rolcreaterextgpfd boolean, -- allowed to create readable gpfdist tbl? 
+   rolcreaterexthttp boolean, -- allowed to create readable http tbl? 
+   rolcreatewextgpfdboolean -- allowed to create writable gpfdist tbl? 
    );
 
    CREATE UNIQUE INDEX on pg_authid(rolname) with (indexid=2676);
@@ -108,7 +113,7 @@ CATALOG(pg_authid,1260) BKI_SHARED_RELATION
 	
 	/* GP added fields */
 	bool		rolcreaterextgpfd; /* allowed to create readable gpfdist tbl? */
-	bool		rolcreaterexthttp; /* allowed to create readable gpfdist tbl? */
+	bool		rolcreaterexthttp; /* allowed to create readable http tbl? */
 	bool		rolcreatewextgpfd; /* allowed to create writable gpfdist tbl? */
 	
 } FormData_pg_authid;
