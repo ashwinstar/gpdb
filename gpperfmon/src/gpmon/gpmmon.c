@@ -542,9 +542,8 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 					}
 
 					snprintf(line, line_size, "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
-							" %s %s/bin/gpsmon -m %" FMT64 " -l %s%s %s %d ",
-							h->hostname, ax.gphome, opt.max_log_size, ptr_smon_log_location, ptr_smon_log_location_suffix,
-							opt.v ? "-v" : "", ax.port);
+							" %s %s/bin/gpsmon -m %" FMT64 " -l %s%s -v %d %d ",
+							h->hostname, ax.gphome, opt.max_log_size, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v, ax.port);
 
                     if (h->ever_connected)
 					    TR0(("Connection to %s lost.  Restarting gpsmon.\n", h->hostname));

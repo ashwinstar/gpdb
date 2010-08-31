@@ -1062,7 +1062,10 @@ static void gx_recvfrom(SOCKET sock, short event, void* arg)
 
 	/* do some packet marshalling */
 	if (0 != gpmon_ntohpkt(&pkt))
+	{
+		gpmon_warning(FLINE, "error with packet marshalling");
 		return;
+	}
 
 	/* process the packet */
 	switch (pkt.pkttype)
@@ -1401,7 +1404,7 @@ static void parse_command_line(int argc, const char* const argv[])
 	static apr_getopt_option_t option[] =
 	{
 	{ NULL, '?', 0, "print help screen" },
-	{ NULL, 'v', 0, "verbose" },
+	{ NULL, 'v', 1, "verbose" },
 	{ NULL, 'D', 0, "debug mode" },
 	{ NULL, 'l', 1, "log directory" },
 	{ NULL, 'm', 1, "max log size" },
@@ -1436,7 +1439,7 @@ static void parse_command_line(int argc, const char* const argv[])
 			usage(0);
 			break;
 		case 'v':
-			opt.v = 1;
+			opt.v = atoi(arg);
 			break;
 		case 'D':
 			opt.D = 1;
