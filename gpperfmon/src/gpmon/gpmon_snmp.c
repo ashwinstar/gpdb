@@ -11,7 +11,7 @@
 #define GPMON_SNMP_ALLOW_REALLOC 0
 #define GPMON_SNMP_CONFIG_MAX_STRING_LENGTH 128
 #define GPMON_SNMP_CLEANUP_ALERT_STATUS_TABLE_INTERVAL 15 // every X reports loop through the alerts table and clear out any thing that is no longer in error
-#define GPMON_SNMP_MAX_EMC_CONNECT_MSG_SRING_SIZE 1024
+#define GPMON_SNMP_MAX_EMC_CONNECT_MSG_STRING_SIZE 1024
 
 //****************************************************************************************//
 // DECLARATIONS SECTION
@@ -126,6 +126,9 @@ EmcConnectSeverity convert_gpdb_snmp_status_to_emc_connect_severity(GPDB_SNMP_ST
 {
 	switch(status)
 	{
+		case GPDB_SNMP_STATUS_NORMAL:
+			return EMC_CONNECT_SEVERITY_INFO;
+		break;
 		case GPDB_SNMP_STATUS_WARNING:
 			return EMC_CONNECT_SEVERITY_WARNING;
 		break;
@@ -812,7 +815,7 @@ void gpmon_format_snmp_string(EmcConnectSymptom symptom, oid oidname[], size_t o
 	}
 
     // get rid of vertical bars
-    remove_vertical_bar_from_null_terminated_string(buffer, snprintf_size);
+	remove_vertical_bar_from_null_terminated_string(buffer, snprintf_size);
 
 	snprintf(buffer, snprintf_size, "%s", (char*)vars->val.string);
 	record_status(symptom, oidstring, displayname, GPDB_SNMP_STATUS_NORMAL, buffer);
@@ -920,17 +923,17 @@ BAIL:
 
 void remove_vertical_bar_from_null_terminated_string(char* str, unsigned int buffer_size)
 {
-    int i;
-    for (i = 0; i < buffer_size; ++i)
-    {
-        if (str[i] == '\0')
-            break;
+	int i;
+	for (i = 0; i < buffer_size; ++i)
+	{
+		if (str[i] == '\0')
+			break;
 
-        if (str[i] == '|')
-        {
-            str[i] = 0x20; // space char
-        }
-    }
+		if (str[i] == '|')
+		{
+			str[i] = 0x20; // space char
+		}
+	}
 }
 
 // 0 is success
@@ -1136,7 +1139,8 @@ void record_status(EmcConnectSymptom symptom, const char* oidstring, const char*
 {
 	AlertStatusData* alertData;
 	int retVal;
-	char msg_to_send[GPMON_SNMP_MAX_EMC_CONNECT_MSG_SRING_SIZE];
+	char msg_to_send[GPMON_SNMP_MAX_EMC_CONNECT_MSG_STRING_SIZE];
+	bool sendAlert = false;
 	
 	// STATUS FORMAT IN HOST STATUS FILE
 	// HOSTNAME | OIDSTRING | DISPLAYNAME | STATUS | MESSAGE
@@ -1152,57 +1156,65 @@ void record_status(EmcConnectSymptom symptom, const char* oidstring, const char*
 	if (symptom == EMC_CONNECT_SYMPTOM_NULL)
 		return;
 
+    // find the entry in the hash table
 	snprintf(si.key.oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, "%s", oidstring);
 	alertData = apr_hash_get(si.alert_status_table, &si.key, sizeof (si.key));
 
-	// currently good
 	if (status == GPDB_SNMP_STATUS_NORMAL)
 	{
-		// delete the status in the alert table if any
+		// was bad now good
 		if (alertData)
 		{
-			apr_hash_set(si.alert_status_table, &si.key, sizeof(si.key), NULL);
-            TR0(("status for %s %s is now good.", oidstring, displayname));
+			apr_hash_set(si.alert_status_table, &si.key, sizeof(si.key), NULL); // remove the entry from table
+			sendAlert = true;  // we send alerts when going bad to good
 		}
-
-		// do not send EMC connect for NORMAL status
-		return;
 	}
-
-	// no status change don't do anything
-	if (alertData && alertData->status == status)
-		return;
-
-	// if we get here the status is not good and the status is not the same as before
-	// we need to update the status in our table and send the emc connect message
-
-	// add to status table
-	if (!alertData)
+	else
 	{
-		alertData = apr_palloc(si.alert_status_table_pool, sizeof(AlertStatusData));
+		// Status is not good
+
 		if (!alertData)
 		{
-			gpmon_warningx(FLINE, 0, "Memory not allocated in snmp module function record_status. EMC connect message not sent\n");
-			return;
-		}
+			// status was good add new entry to hash
 
-		apr_hash_set(si.alert_status_table, &si.key, sizeof(si.key), alertData);
+			alertData = apr_palloc(si.alert_status_table_pool, sizeof(AlertStatusData));
+			if (!alertData)
+			{
+				gpmon_warningx(FLINE, 0, "Memory not allocated in snmp module function record_status. EMC connect message not sent\n");
+				return;
+			}
+
+			apr_hash_set(si.alert_status_table, &si.key, sizeof(si.key), alertData);
+			alertData->status = status; // set the status
+			sendAlert = true;
+		}
+		else
+		{
+			// Status was not good
+			if (alertData->status != status)
+			{
+				alertData->status = status; // set the status
+				sendAlert = true; // send alert for status change
+			}
+		}
 	}
 
-	alertData->status = status;
+	// send the alert to EMC Connect if required
+	if (sendAlert)
+    {
+	    snprintf(msg_to_send, GPMON_SNMP_MAX_EMC_CONNECT_MSG_STRING_SIZE, "%s: %s", displayname, message);
 
-	snprintf(msg_to_send, GPMON_SNMP_MAX_EMC_CONNECT_MSG_SRING_SIZE, "%s: %s", displayname, message);
-
-	// send EMC connect message
-	retVal =  gpmon_emcconnect_send_alert(symptom,
+	    // send EMC connect message
+	    retVal =  gpmon_emcconnect_send_alert(symptom,
 								convert_gpdb_snmp_status_to_emc_connect_status(status),
 								convert_gpdb_snmp_status_to_emc_connect_severity(status),
 								EMC_CONNECT_ORIGIN_GPMMON,
 								si.key.hostname,  
 								(char*)msg_to_send);
 
-	if (retVal)
-		gpmon_warningx(FLINE, 0, "Error creating EMC Connect XML Event File from snmp module\n");
+	    if (retVal)
+		    gpmon_warningx(FLINE, 0, "Error (%d) creating EMC Connect XML Event File from snmp module", retVal);
+    }
 }
 
 FILE* open_snmp_file_for_host(const char* hostname)
@@ -1398,9 +1410,9 @@ void parse_snmp_config_line(char* line)
 	// 		Device='FOO'
 	// 		Host='FOO'
 	// Here is an exmaple:
-	//Category='Admin Switch'         Device='AlliedTelesis'   Host='a-sw-1-app1'
-	//Category='Interconnect Switch'  Device='Brocade8000'     Host='i-sw-1-app1'
-	//Category='Interconnect Switch'  Device='Brocade8000'     Host='i-sw-2-app1'
+	//Category='Admin Switch'         Device='AdminSwitch0001'   		  Host='a-sw-1-app1'
+	//Category='Interconnect Switch'  Device='InterconnectSwitch0001'     Host='i-sw-1-app1'
+	//Category='Interconnect Switch'  Device='InterconnectSwitch0001'     Host='i-sw-2-app1'
 	char* host;
 	char* device;
 	char* category;
