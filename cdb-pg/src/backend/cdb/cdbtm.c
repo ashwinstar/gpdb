@@ -575,6 +575,8 @@ doPrepareTransaction(void)
 {
 	bool succeeded;
 	CdbDispatchDirectDesc direct=default_dispatch_direct_desc;
+
+	CHECK_FOR_INTERRUPTS();
 	
 	elog(DTM_DEBUG5, "doPrepareTransaction entering in state = %s",
 	     DtxStateToString(currentGxact->state));
@@ -624,8 +626,6 @@ doPrepareTransaction(void)
 	releaseTmLock();
 	
 	elog(DTM_DEBUG5, "doPrepareTransaction leaving in state = %s", DtxStateToString(currentGxact->state));
-
-	CHECK_FOR_INTERRUPTS();
 }
 
 /*
