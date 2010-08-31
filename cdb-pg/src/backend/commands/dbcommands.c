@@ -260,6 +260,16 @@ static void copy_buffer_pool_files(
 	}
 	else
 	{
+		if (Debug_persistent_print)
+		{
+			elog(Persistent_DebugPrintLevel(),
+				 "copy_buffer_pool_files %u/%u/%u: not bypassing the WAL -- not using bulk load, persistent serial num " INT64_FORMAT ", TID %s",
+				 dstRelFileNode->spcNode,
+				 dstRelFileNode->dbNode,
+				 dstRelFileNode->relNode,
+				 persistentSerialNum,
+				 ItemPointerToString(persistentTid));
+		}
 		MemSet(&bulkLoadInfo, 0, sizeof(MirroredBufferPoolBulkLoadInfo));
 	}
 	

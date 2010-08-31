@@ -10688,6 +10688,16 @@ copy_buffer_pool_data(
 	}
 	else
 	{
+		if (Debug_persistent_print)
+		{
+			elog(Persistent_DebugPrintLevel(),
+				 "copy_buffer_pool_data %u/%u/%u: not bypassing the WAL -- not using bulk load, persistent serial num " INT64_FORMAT ", TID %s",
+				 rel->rd_node.spcNode,
+				 rel->rd_node.dbNode,
+				 rel->rd_node.relNode,
+				 persistentSerialNum,
+				 ItemPointerToString(persistentTid));
+		}
 		MemSet(&bulkLoadInfo, 0, sizeof(MirroredBufferPoolBulkLoadInfo));
 	}
 	
@@ -10807,6 +10817,19 @@ copy_buffer_pool_data(
 									bulkLoadInfo.mirrorDataLossTrackingSessionNum,
 									nblocks,
 									&mirrorDataLossOccurred);
+		}
+	}
+	else
+	{
+		if (Debug_persistent_print)
+		{
+			elog(Persistent_DebugPrintLevel(),
+				 "copy_buffer_pool_data %u/%u/%u: did not bypass the WAL -- did not use bulk load, persistent serial num " INT64_FORMAT ", TID %s",
+				 rel->rd_node.spcNode,
+				 rel->rd_node.dbNode,
+				 rel->rd_node.relNode,
+				 persistentSerialNum,
+				 ItemPointerToString(persistentTid));
 		}
 	}
 }

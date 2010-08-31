@@ -90,6 +90,7 @@
 #include "cdb/cdboidsync.h"
 #include "cdb/cdbmirroredbufferpool.h"
 #include "cdb/cdbpersistentstore.h"
+#include "cdb/cdbpersistentfilesysobj.h"
 
 extern bool cdbpathlocus_querysegmentcatalogs;
 
@@ -3978,6 +3979,8 @@ OpenIntoRel(QueryDesc *queryDesc)
 	int			safefswritesize = gp_safefswritesize;
 	bool		bufferPoolBulkLoad;
 
+	RelFileNode relFileNode;
+	
 	ItemPointerData persistentTid;
 	int64			persistentSerialNum;
 	
@@ -4135,19 +4138,36 @@ OpenIntoRel(QueryDesc *queryDesc)
 				
 	estate->es_into_relation_descriptor = intoRelationDesc;
 
+	relFileNode.spcNode = tablespaceId;
+	relFileNode.dbNode = MyDatabaseId;
+	relFileNode.relNode = intoRelationId;
 	if (estate->es_into_relation_is_bulkload)
 	{
-		RelFileNode relFileNode;
-
-		relFileNode.spcNode = tablespaceId;
-		relFileNode.dbNode = MyDatabaseId;
-		relFileNode.relNode = intoRelationId;
-
 		MirroredBufferPool_BeginBulkLoad(
 								&relFileNode,
 								&persistentTid,
 								persistentSerialNum,
 								&estate->es_into_relation_bulkloadinfo);
+	}
+	else
+	{
+		/*
+		 * Save this information for tracing in CloseIntoRel.
+		 */
+		estate->es_into_relation_bulkloadinfo.relFileNode = relFileNode;
+		estate->es_into_relation_bulkloadinfo.persistentTid = persistentTid;
+		estate->es_into_relation_bulkloadinfo.persistentSerialNum = persistentSerialNum;
+
+		if (Debug_persistent_print)
+		{
+			elog(Persistent_DebugPrintLevel(),
+				 "OpenIntoRel %u/%u/%u: not bypassing the WAL -- not using bulk load, persistent serial num " INT64_FORMAT ", TID %s",
+				 relFileNode.spcNode,
+				 relFileNode.dbNode,
+				 relFileNode.relNode,
+				 persistentSerialNum,
+				 ItemPointerToString(&persistentTid));
+		}
 	}
 	
 	/*
@@ -4238,6 +4258,19 @@ CloseIntoRel(QueryDesc *queryDesc)
 							estate->es_into_relation_bulkloadinfo.mirrorDataLossTrackingSessionNum,
 							numOfBlocks,
 							&mirrorDataLossOccurred);
+				}
+			}
+			else
+			{
+				if (Debug_persistent_print)
+				{
+					elog(Persistent_DebugPrintLevel(),
+						 "CloseIntoRel %u/%u/%u: did not bypass the WAL -- did not use bulk load, persistent serial num " INT64_FORMAT ", TID %s",
+						 estate->es_into_relation_bulkloadinfo.relFileNode.spcNode,
+						 estate->es_into_relation_bulkloadinfo.relFileNode.dbNode,
+						 estate->es_into_relation_bulkloadinfo.relFileNode.relNode,
+						 estate->es_into_relation_bulkloadinfo.persistentSerialNum,
+						 ItemPointerToString(&estate->es_into_relation_bulkloadinfo.persistentTid));
 				}
 			}
 		}
