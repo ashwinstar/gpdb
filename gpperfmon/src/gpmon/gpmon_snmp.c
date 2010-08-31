@@ -107,6 +107,7 @@ int init_host(const char* hostname);
 void write_line_in_hostlist_file(const char* category);
 int snmp_array_collection(EmcConnectSymptom symptom, const char* oidname, const char* displayname_begin, const char* displayname_end, gpdb_snmp_format_function format_func);
 void close_snmp_file_for_host();
+void remove_vertical_bar_from_null_terminated_string(char* str, unsigned int buffer_size);
 
 //****************************************************************************************//
 // EMC CONNECT CONVERSION FUNCTIONS SECTION
@@ -810,6 +811,9 @@ void gpmon_format_snmp_string(EmcConnectSymptom symptom, oid oidname[], size_t o
 		}
 	}
 
+    // get rid of vertical bars
+    remove_vertical_bar_from_null_terminated_string(buffer, snprintf_size);
+
 	snprintf(buffer, snprintf_size, "%s", (char*)vars->val.string);
 	record_status(symptom, oidstring, displayname, GPDB_SNMP_STATUS_NORMAL, buffer);
 }
@@ -913,6 +917,21 @@ BAIL:
 // MAIN FLOW CODE SECTION
 // Change this code when modifying the overall flow of the snmp reporting
 //****************************************************************************************//
+
+void remove_vertical_bar_from_null_terminated_string(char* str, unsigned int buffer_size)
+{
+    int i;
+    for (i = 0; i < buffer_size; ++i)
+    {
+        if (str[i] == '\0')
+            break;
+
+        if (str[i] == '|')
+        {
+            str[i] = 0x20; // space char
+        }
+    }
+}
 
 // 0 is success
 int alert_status_table_creation()
