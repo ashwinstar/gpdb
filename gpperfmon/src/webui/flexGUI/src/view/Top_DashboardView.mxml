@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%"
-		   xmlns:chart="chart.*" creationPolicy="queued" xmlns:container="container.*">
+		   xmlns:chart="chart.*" creationPolicy="queued" xmlns:container="container.*"
+		   xmlns:healthTab="view.healthTab.*" creationComplete="initComp()">
 
 <mx:Script>
 <![CDATA[
@@ -18,6 +19,10 @@
 	public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
 
     public var magGlass:Class = Resources.magGlass;
+    
+    private function initComp():void {
+    	healthConsolidated.visibilityState = Resources.instance.appliance;
+    }
 	
 	// Handle a dblclick by jumping to the query
 	public function dblClickQuery(evt:Event):void {
@@ -118,6 +123,8 @@
 	  	<mx:Label text="System Summary" styleName="dashboardTitle"/>
 	  </mx:VBox>
 	  
+	  <healthTab:HealthWidget id="healthConsolidated" width="100%" height="0" visibilityState="false"/>
+
 	  <mx:Panel title="CPU" styleName="dashboardMinigraphs" width="100%" 
 	  			layout="vertical" horizontalAlign="center"> 			
 		  <mx:Grid verticalGap="0">

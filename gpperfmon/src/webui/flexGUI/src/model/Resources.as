@@ -41,6 +41,8 @@ package model
 		// simply store in a boolean.
 		private var __applianceFlag:Boolean = false ;
 		
+		private var __fakeDataFlag:Boolean = false ;
+		
 		//holds the singleton instance of the class
 		private static var __instance:Resources;
 		
@@ -94,12 +96,17 @@ package model
 		}
 		
 		public function get appliance():Boolean{
-			return __applianceFlag;
+			// TODO: Naveen: remove conditional.
+			return (__fakeDataFlag) ? true : __applianceFlag;
 		}		
 		
 		public function set appliance(val:Boolean):void{
 			__applianceFlag = val;
 		}
+		
+		public function get fakeData():Boolean{
+			return __fakeDataFlag;
+		}		
 		
 	}
 }

@@ -7,7 +7,11 @@
 		import view.healthTab.events.HostSubItemSelectEvent;
 		import model.GPPerfMonModelLocator;
 
-		[Bindable] public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
+		[Bindable] public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
+		[Bindable]
+		[Embed (source="../../assets/img/icon_refresh.png")]
+		public var icon_refresh:Class;
+		
 		
 		private function initComp():void{
 			consolidatedView.addEventListener(HostSubItemSelectEvent.HOSTSUBITEM_CLICK, handleHostSubItemClick);
@@ -34,7 +38,10 @@
 		private function switchToConsolidatedView():void{
 			breadCrumbSepLbl.visible = false;
 			healthDetailsViewLbl.visible = false;
-			
+			refreshDetailsIcon.visible = false;
+			refresh_lbl.visible = false;
+			refreshIconBox.width = 0;
+			lblDateAndTime.visible = true;
 			tabViewStack.selectedChild = consolidatedView;
 			
 			consolidatedViewLbl.styleName = "healthTabBreadCrumbActiveStyle";
@@ -45,25 +52,40 @@
 		 */
 		private function switchToDetailsView(eventObj:HostSubItemSelectEvent):void{
 			breadCrumbSepLbl.visible = true;
-			healthDetailsViewLbl.visible = true;			
+			healthDetailsViewLbl.visible = true;
+			refreshDetailsIcon.visible = true;
+			refresh_lbl.visible = true;
+			//refreshIconBox.visible = true;
+			refreshIconBox.width = 70;
+			lblDateAndTime.visible = false;			
 			tabViewStack.selectedChild = detailsView;
 			detailsView.itemDetails = eventObj;
 			consolidatedViewLbl.styleName = "healthTabBreadCrumbInactiveStyle";
 		}//end of switchToDetailsView
 		
-		
+		private function handleRefreshClick():void {
+			detailsView.handleRefreshClick();
+		}
 		
 	]]>
 </mx:Script>
-	<mx:HBox width="100%" horizontalGap="1" paddingTop="6" paddingRight="10">
-		<mx:Label id="consolidatedViewLbl" text="Consolidated View" styleName="healthTabBreadCrumbActiveStyle" buttonMode="true" useHandCursor="true" click="switchToConsolidatedView()"/>
+	<mx:HBox width="100%" horizontalGap="1" paddingTop="6" paddingRight="0">
+		<mx:Label id="consolidatedViewLbl" text="Consolidated View" styleName="healthTabBreadCrumbActiveStyle" buttonMode="true"
+			useHandCursor="true" mouseChildren="false" click="switchToConsolidatedView()"/>
 		<mx:Label id="breadCrumbSepLbl" text=">" styleName="healthTabBreadCrumbActiveStyle" visible="false"/>
 		<mx:Label id="healthDetailsViewLbl" text="Health Details" styleName="healthTabBreadCrumbActiveStyle" visible="false"/>
 		<mx:Spacer width="100%"/>
-		<mx:HBox horizontalGap="0" paddingTop="10">
+		<mx:HBox horizontalGap="0" paddingTop="10" id="dateTimeBox" >
 		<mx:Label id="lblDateAndTime" text="Last Update   {mdl.health.summary.LastUpdateTimeString}"/>
 		</mx:HBox>
+		<mx:HBox horizontalGap="0" paddingTop="10" id="refreshIconBox" width="0">
+			<mx:Image source="{icon_refresh}" id="refreshDetailsIcon"  visible="false" mouseChildren="false"
+				buttonMode="true" useHandCursor="true" click="handleRefreshClick()"/>
+		    <mx:Label text="Refresh" visible="false" id="refresh_lbl" mouseChildren="false"
+		    	buttonMode="true" useHandCursor="true" click="handleRefreshClick()"/>
+		</mx:HBox>
 	</mx:HBox>
+	
 	
 	<mx:ViewStack id="tabViewStack" width="100%" height="100%">
 		<healthTab:ConsolidatedView id="consolidatedView" width="100%" height="100%"/>

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%" backgroundColor="#DFFCB2" verticalGap="0">
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%" backgroundColor="#DFFCB2" verticalGap="0" creationComplete="initComp()">
 <mx:Script>
 	<![CDATA[
 	import mx.controls.Alert;
@@ -7,33 +7,65 @@
 	import model.Health;
 	import command.HealthDetailsCommand;
 	import model.GPPerfMonModelLocator;
+  	import mx.managers.CursorManager;
 	
 	[Bindable]
 	public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
 	
-	private var healthDetailsXML:XML;
+	private var compInitialized:Boolean = false ;
+	private var healthDetails:XML = null;
+	
 	[Bindable]private var hostName:String;
 	
+	private function initComp():void {
+		compInitialized = true;
+		healthDetailsDG.dataProvider = null;
+		
+		if (healthDetails != null) {
+			refreshView();
+		}
+	}
+
 	//function is used to set the value of healthDetails Datagridheader.
 	public function set itemDetails(value:HostSubItemSelectEvent):void
 	{
 		var itemDetailsXML:XML = value.itemXML ;
 	    hostName = itemDetailsXML.HostName.toString();
 	    
+	    if (compInitialized) {
+	    	healthDetailsDG.dataProvider = null;
+	    }
+	    
+		CursorManager.setBusyCursor();
 	    var healthDetailCommand:HealthDetailsCommand = new HealthDetailsCommand;
 	    healthDetailCommand.setParameters(hostName, showHealthDetailsItems);
 	    healthDetailCommand.execute();
-	}//end of itemDetails.
+	}
 										
 		
 	public function showHealthDetailsItems(details:XML):void {
-	 	healthDetailsDG.dataProvider = XMLList(details.Host.Line);	
-	}//end of showHealth Details items.
+		healthDetails = details;
+		if (compInitialized) {
+			refreshView();
+		}
+	}
+	
+	private function refreshView():void {
+	 	healthDetailsDG.dataProvider = XMLList(healthDetails.Host.Line);	
+		CursorManager.removeBusyCursor();
+	}
 	
 	private function statusLabel(item:Object, col:DataGridColumn):String {
 		return Health.statusLabel(XML(item).Status);
 	}
-			     
+	
+	public function handleRefreshClick():void {
+		CursorManager.setBusyCursor();
+		healthDetailsDG.dataProvider = null;
+	    var healthDetailCommand:HealthDetailsCommand = new HealthDetailsCommand;
+	    healthDetailCommand.setParameters(hostName, showHealthDetailsItems);
+	    healthDetailCommand.execute();
+	}
 	
 	]]>
 </mx:Script>
@@ -47,13 +79,13 @@
 	<mx:DataGrid width="100%" height="100%" id="healthDetailsDG">
 		<mx:columns>
 			<mx:DataGridColumn headerText="Component Name" fontFamily="Verdana" dataField="ComponentName"
-				fontWeight="bold" fontSize="11"  width="20" sortable="true"/>
+				fontWeight="normal" fontSize="11"  width="40" sortable="true"/>
 			<mx:DataGridColumn headerText="Object Id" fontFamily="Verdana"  dataField="ObjectID"
-				fontWeight="bold" fontSize="11" width="30" sortable="true"/>
-			<mx:DataGridColumn headerText="Status" width="15" fontFamily="Verdana"  dataField="Status" labelFunction="statusLabel" 
-				fontWeight="bold" fontSize="11" sortable="true"/>
+				fontWeight="normal" fontSize="11" width="50" sortable="true"/>
+			<mx:DataGridColumn headerText="Status" width="20" fontFamily="Verdana" dataField="Status"
+				fontWeight="normal" fontSize="11" sortable="true" itemRenderer="view.healthTab.StatusItemRender"/>
 			<mx:DataGridColumn headerText="Message"  fontFamily="Verdana" dataField="Message"
-				fontWeight="bold" fontSize="11" width="100" sortable="true"/>
+				fontWeight="normal" fontSize="11" width="100" sortable="true"/>
 		</mx:columns>
 	</mx:DataGrid>
 </mx:VBox>	
