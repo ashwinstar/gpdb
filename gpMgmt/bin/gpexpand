@@ -101,7 +101,7 @@ EXECNAME = os.path.split(__file__)[-1]
 def parseargs():
     parser = OptParser(option_class=OptChecker,
                 description=' '.join(description.split()),
-                version='%prog version $Revision$')
+                version='%prog version 4.0 build 21002')
     parser.setHelp(_help)
     parser.set_usage('%prog ' + _usage)
     parser.remove_option('-h')
@@ -873,8 +873,9 @@ class SegmentTemplate:
 #------------------------------------------------------------------------------------------------------
 class NewSegmentInput:
     
-    def __init__(self, hostname, port, datadir, dbid, contentId, role, replicationPort = None, fileSpaces = None):
+    def __init__(self, hostname, address, port, datadir, dbid, contentId, role, replicationPort = None, fileSpaces = None):
         self.hostname = hostname
+        self.address = address
         self.port = port
         self.datadir = datadir
         self.dbid = dbid
@@ -1044,16 +1045,6 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
 
         return True
 
-    def validate_no_down_segments(self):
-        for segdb in self.gparray.getSegDbList():
-            if segdb.isSegmentDown():
-                logger.error('There are currently segments in the array marked as \'down\'.')
-                logger.error('You must correct these errors prior to starting a new expansion.')
-                return False
-            
-        return True
-
-
     def validate_unalterable_tables(self):
         conn = None
         max_connections = 0
@@ -1199,13 +1190,14 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         logger.info("Generating input file...")
 
         for db in gparray.getExpansionSegDbList():
-            tempStr = "%s:%d:%s:%d:%d:%s" % ( db.getSegmentHostName()
-                                            , db.getSegmentPort()
-                                            , db.getSegmentDataDirectory()
-                                            , db.getSegmentDbId()
-                                            , db.getSegmentContentId()
-                                            , db.getSegmentPreferredRole()
-                                            )
+            tempStr = "%s:%s:%d:%s:%d:%d:%s" % ( db.getSegmentHostName()
+                                               , db.getSegmentAddress()
+                                               , db.getSegmentPort()
+                                               , db.getSegmentDataDirectory()
+                                               , db.getSegmentDbId()
+                                               , db.getSegmentContentId()
+                                               , db.getSegmentPreferredRole()
+                                               )
             if db.getSegmentReplicationPort() != None:
                tempStr = tempStr + ':' + str(db.getSegmentReplicationPort())                              
             outfile.write(tempStr + "\n")
@@ -1265,6 +1257,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
                                         , dbid = int(seg.dbid)
                                         , role = seg.role
                                         , hostname = seg.hostname.strip()
+                                        , address = seg.address.strip()
                                         , port = int(seg.port)
                                         , datadir = os.path.abspath(seg.datadir.strip())
                                         , replication_port = seg.replicationPort
@@ -1343,14 +1336,14 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
                     if l.strip().startswith('#') or l.strip() == '':
                         continue
 
-                    ''' Form of file is hostname:port:dtadir:dbid:contentId:role [:replicationPort] '''
+                    ''' Form of file is hostname:address:port:dtadir:dbid:contentId:role [:replicationPort] '''
                     replicationPort = None
-                    if len(l.strip().split(':')) == 6:
-                       hostname,port,datadir,dbid,contentId,role = l.strip().split(':')
-                    elif len(l.strip().split(':')) == 7:
-                       hostname,port,datadir,dbid,contentId,role,replicationPort = l.strip().split(':')
+                    if len(l.strip().split(':')) == 7:
+                       hostname,address,port,datadir,dbid,contentId,role = l.strip().split(':')
+                    elif len(l.strip().split(':')) == 8:
+                       hostname,address,port,datadir,dbid,contentId,role,replicationPort = l.strip().split(':')
                     else:
-                       raise ExpansionError('Incorrect line format. Either 6 or 7 entries expected. %d entries detected.' % \
+                       raise ExpansionError('Incorrect line format. Either 7 or 8 entries expected. %d entries detected.' % \
                                            (int(len(l.strip().split(':')))))
                     # content, role, dbid, preferred_role, hostname, port, datadir
                     filespaces = {}
@@ -1366,6 +1359,8 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
                     # Check that input values look reasonable.
                     if hostname == None or len(hostname) == 0:
                        raise ExpansionError("Invalid host name on line " + str(line))
+                    if address == None or len(address) == 0:
+                       raise ExpansionError("Invaid address on line " + str(line))
                     if port == None or str(port).isdigit() == False or int(port) < 0: 
                        raise ExpansionError("Invalid port number on line " + str(line))
                     if datadir == None or len(datadir) == 0:
@@ -1381,6 +1376,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
 
                     retValue.append(NewSegmentInput( hostname = hostname
                                                    , port = port
+                                                   , address = address
                                                    , datadir = datadir
                                                    , dbid = dbid
                                                    , contentId = contentId
@@ -2675,7 +2671,23 @@ Please refer to the Admin Guide for more information."""
     help="""
 This utility can handle some expansion scenarios by asking a few questions.
 More complex expansions can be done by providing an input file with
-the --input <file>.  Please see the docs for the format of this file.
+the --input <file>.  Please see the docs for the format of this file. """
+ 
+    standard, message = gparray.isStandardArray()
+    if standard == False:
+       help = help + """
+
+       The current system appears to be non-standard.
+       """
+       help = help + message
+       help = help + """
+       gpexpand may not be able to symmetrically distribute the new segments appropriately.
+       It is recommended that you specify your own input file with appropriate values."""
+       if not ask_yesno(help, "Are you sure you want to continue with this gpexpand session?",'N'):
+          logger.info("User Aborted. Exiting...")
+          sys.exit(0)
+ 
+    help = help + """
 
 We'll now ask you a few questions to try and build this file for you.
 You'll have the opportunity to save this file and inspect it/modify it
@@ -2918,9 +2930,6 @@ try:
         logger.info('If you want to expand again, run gpexpand -c to remove')
         logger.info('the gpexpand schema and begin a new expansion')
     elif gpexpand_db_status == None and gpexpand_file_status == None and options.filename:
-        # We can't do setup if there are downed hosts.
-        if not gp_expand.validate_no_down_segments():
-            raise ValidationError('Down segments exist')
         if not gp_expand.validate_unalterable_tables():
             raise ValidationError()
         if gp_expand.check_unique_indexes():

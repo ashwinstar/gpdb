@@ -16,6 +16,7 @@
 # ============================================================================
 from datetime import date
 import copy
+import traceback
 
 from gppylib.utils import checkNotNone, checkIsInt
 from gppylib    import gplog
@@ -622,11 +623,12 @@ class Segment:
 # --------------------------------------------------------------------
 class SegmentRow():
     
-    def __init__(self, content, isprimary, dbid, host, port, fulldir, prPort, fileSpaceDictionary = None):
+    def __init__(self, content, isprimary, dbid, host, address, port, fulldir, prPort, fileSpaceDictionary = None):
         self.content         = content
         self.isprimary       = isprimary
         self.dbid            = dbid
         self.host            = host
+        self.address         = address
         self.port            = port
         self.fulldir         = fulldir
         self.prPort          = prPort
@@ -638,6 +640,7 @@ class SegmentRow():
         "isprimary ="         + str(self.isprimary)       + "\n" + \
         "dbid = "             + str(self.dbid)            + "\n" + \
         "host = "             + str(self.host)             + "\n" + \
+        "address = "          + str(self.address)         + "\n" + \
         "port = "             + str(self.port)            + "\n" + \
         "fulldir = "          + str(self.fulldir)         + "\n" + \
         "prPort = "           + str(self.prPort)          + "\n" + \
@@ -645,6 +648,7 @@ class SegmentRow():
 
 
 def createSegmentRows( hostlist
+                     , interface_list
                      , primary_list
                      , primary_portbase
                      , mirror_type
@@ -673,6 +677,11 @@ def createSegmentRows( hostlist
         index = 0
         for pdir in primary_list:
             fulldir = "%s/%s%d" % (pdir,dir_prefix,content)
+            if len(interface_list) > 0:
+               interfaceNumber = interface_list[index % len(interface_list)]
+               address = host + '-' + str(interfaceNumber)
+            else:
+               address = host
             fsDict = {}
             if primary_fs_list != None and len(primary_fs_list) > index:
                fsDict = primary_fs_list[index]
@@ -683,6 +692,7 @@ def createSegmentRows( hostlist
                                    , isprimary = isprimary
                                    , dbid = dbid
                                    , host = host
+                                   , address = address
                                    , port = port
                                    , fulldir = fulldir
                                    , prPort = prPort
@@ -731,6 +741,11 @@ def createSegmentRows( hostlist
                 if mirror_host == host:
                     mirror_host_offset += 1
                     mirror_host = hostlist[mirror_host_offset % num_hosts]
+                if len(interface_list) > 0:
+                   interfaceNumber = interface_list[mirror_host_offset % len(interface_list)]
+                   address = mirror_host + '-' + str(interfaceNumber)
+                else:
+                   address = mirror_host
                     
                 if not mirror_port.has_key(mirror_host):
                     mirror_port[mirror_host] = mirror_portbase
@@ -741,6 +756,7 @@ def createSegmentRows( hostlist
                                        , isprimary = isprimary
                                        , dbid = dbid
                                        , host = mirror_host
+                                       , address = address
                                        , port = mirror_port[mirror_host]
                                        , fulldir = fulldir
                                        , prPort = mirror_replication_port[mirror_host]
@@ -774,6 +790,11 @@ def createSegmentRows( hostlist
             index = 0
             for mdir in mirror_list:
                 fulldir = "%s/%s%d" % (mdir,dir_prefix,content)
+                if len(interface_list) > 0:
+                   interfaceNumber = interface_list[(index + 1) % len(interface_list)]
+                   address = mirror_host + '-' + str(interfaceNumber)
+                else:
+                   address = mirror_host
                 fsDict = {}
                 if mirror_fs_list != None and len(mirror_fs_list) > index:
                    fsDict = mirror_fs_list[index]
@@ -784,6 +805,7 @@ def createSegmentRows( hostlist
                                        , isprimary = isprimary
                                        , dbid = dbid
                                        , host = mirror_host
+                                       , address = address
                                        , port = port
                                        , fulldir = fulldir
                                        , prPort = mrPort
@@ -802,6 +824,7 @@ def createSegmentRows( hostlist
 
 #========================================================================
 def createSegmentRowsFromSegmentList( newHostlist
+                                    , interface_list
                                     , primary_segment_list
                                     , primary_portbase
                                     , mirror_type
@@ -823,13 +846,20 @@ def createSegmentRowsFromSegmentList( newHostlist
         isprimary='t'
         port=primary_portbase
         prPort = primary_replication_portbase
+        index = 0
         for pSeg in primary_segment_list:
+            if len(interface_list) > 0:
+               interfaceNumber = interface_list[index % len(interface_list)]
+               address = host + '-' + str(interfaceNumber)
+            else:
+               address = host
             newFulldir = "%s/%s%d" % (GpDB.getDataDirPrefix(pSeg.getSegmentDataDirectory()), dir_prefix, content)
             newFileSpaceDictionary = GpDB.getFileSpaceDirsWithNewSuffix(pSeg.getSegmentFilespaces(), dir_prefix + str(content), includeSystemFilespace = False)
             rows.append( SegmentRow( content = content
                                    , isprimary = isprimary
                                    , dbid = dbid
                                    , host = host
+                                   , address = address
                                    , port = port
                                    , fulldir = newFulldir
                                    , prPort = prPort
@@ -840,6 +870,7 @@ def createSegmentRowsFromSegmentList( newHostlist
                prPort += 1
             content += 1
             dbid += 1
+            index += 1
     
     #mirrors
     if mirror_type is None or mirror_type == 'none':
@@ -871,7 +902,12 @@ def createSegmentRowsFromSegmentList( newHostlist
                 if mirror_host == host:
                     mirror_host_offset += 1
                     mirror_host = newHostlist[mirror_host_offset % num_hosts]
-                    
+                if len(interface_list) > 0:
+                   interfaceNumber = interface_list[mirror_host_offset % len(interface_list)]
+                   address = mirror_host + '-' + str(interfaceNumber)
+                else:
+                   address = mirror_host
+    
                 if not mirror_port.has_key(mirror_host):
                     mirror_port[mirror_host] = mirror_portbase
                 if not mirror_replication_port.has_key(mirror_host):
@@ -881,6 +917,7 @@ def createSegmentRowsFromSegmentList( newHostlist
                                        , isprimary = isprimary
                                        , dbid = dbid
                                        , host = mirror_host
+                                       , address = address
                                        , port = mirror_port[mirror_host]
                                        , fulldir = newFulldir
                                        , prPort = mirror_replication_port[mirror_host]
@@ -910,14 +947,20 @@ def createSegmentRowsFromSegmentList( newHostlist
             mirror_host_offset += 1
             port = mirror_portbase
             mrPort = mirror_replication_portbase
-            
+            index = 0
             for mSeg in mirror_segment_list:
+                if len(interface_list) > 0:
+                   interfaceNumber = interface_list[(index + 1) % len(interface_list)]
+                   address = mirror_host + '-' + str(interfaceNumber)
+                else:
+                   address = mirror_host
                 newFulldir = "%s/%s%d" % (GpDB.getDataDirPrefix(mSeg.getSegmentDataDirectory()), dir_prefix, content)
                 newFileSpaceDictionary = GpDB.getFileSpaceDirsWithNewSuffix(mSeg.getSegmentFilespaces(), dir_prefix + str(content), includeSystemFilespace = False)                
                 rows.append( SegmentRow( content = content
                                        , isprimary = isprimary
                                        , dbid = dbid
                                        , host = mirror_host
+                                       , address = address
                                        , port = port
                                        , fulldir = newFulldir
                                        , prPort = mrPort
@@ -927,6 +970,7 @@ def createSegmentRowsFromSegmentList( newHostlist
                 mrPort +=1
                 content += 1
                 dbid += 1
+                index = index + 1
         
     else:
         raise Exception("Invalid mirror type specified: %s" % mirror_type)
@@ -1067,11 +1111,11 @@ class GpArray:
         setup. It returns two values:
 
            True or False depending on if the array looks like a standard array.
-           A message describing why the array doesn't look standard.
+           If message if the array does not look like a standard array.
         """
 
         try:
-           # Do all the segments contain the same number of primary and mirrors.
+           # Do all the segments contain the same number of primary and mirrors.                                                                 
            firstNumPrimaries = 0
            firstNumMirrors   = 0
            firstHost         = ""
@@ -1699,29 +1743,29 @@ class GpArray:
 
     # --------------------------------------------------------------------    
     def get_interface_numbers(self):
-        """Returns interface numbers in the array.  Assumes that nodes are named
+        """Returns interface numbers in the array.  Assumes that addresses are named
         <hostname>-<int_num>.  If the nodes just have <hostname> then an empty
         array is returned."""
-        # Get the first segment hostname minus the interface number
+        
         interface_nums = []
         primary_hostname = self.segments[0].primaryDB.hostname
-        (host_part, inf_num) = get_host_interface(primary_hostname)
-        if host_part == '' or inf_num is None or not inf_num.isdigit():
-            return []
-        
-        search_host_part = host_part
-        
-        # get the interface numbers for host_part
-        for db in self.getDbList():
-            (host_part, inf_num) = get_host_interface(db.hostname)
-            if host_part == search_host_part:
-                if inf_num is None or not inf_num.isdigit():
-                    # We have an unexpected formatted hostname
-                    return []
-                else:
-                    if inf_num not in interface_nums:
-                        interface_nums.append(inf_num)
-        
+        primary_address_list = []
+        dbList = self.getDbList()
+        for db in dbList:
+            if db.isSegmentQD() == True:
+               continue
+            if db.getSegmentHostName() == primary_hostname:
+               if db.getSegmentAddress() not in primary_address_list:
+                  primary_address_list.append(db.getSegmentAddress())
+
+        for address in primary_address_list:
+            if address.startswith(primary_hostname) == False or len(primary_hostname) + 2 > len(address):
+               return []
+            suffix = address[len(primary_hostname):]
+            if len(suffix) < 2 or suffix[0] != '-' or suffix[1:].isdigit() == False:
+               return []
+            interface_nums.append(suffix[1:])
+
         return interface_nums
 
     # --------------------------------------------------------------------    
@@ -1842,7 +1886,7 @@ class GpArray:
 
     # --------------------------------------------------------------------    
     def addExpansionSeg(self, content, preferred_role, dbid, role, 
-                        hostname, port, datadir, replication_port, fileSpaces = None):
+                        hostname, address, port, datadir, replication_port, fileSpaces = None):
         """ 
         Adds a segment to the gparray as an expansion segment.
 
@@ -1860,7 +1904,7 @@ class GpArray:
                      mode = MODE_SYNCHRONIZED,
                      status = STATUS_UP,
                      hostname = hostname, 
-                     address = hostname,      # todo: add to parameters
+                     address = address,
                      port = port, 
                      datadir = datadir, 
                      replicationPort = replication_port)  # todo: add to parameters
@@ -2035,19 +2079,17 @@ class GpArray:
         # remove interface numbers if they exist
         existing_hosts = []
         for host in self.get_hostlist(True):
-            (host_part, inf_num) = get_host_interface(host)
-            if host_part not in existing_hosts:        
-                existing_hosts.append(host_part)
+            if host not in existing_hosts:        
+                existing_hosts.append(host)
         
         new_hosts = []
         
         for host in hosts:
             # see if we already have the host
-            (host_part, inf_num) = get_host_interface(host)
-            if host_part in existing_hosts or host_part in new_hosts:
+            if host in existing_hosts or host in new_hosts:
                 continue
             else:
-                new_hosts.append(host_part)
+                new_hosts.append(host)
 
         if len(new_hosts) == 0:        
             raise Exception('No new hosts to add')
@@ -2068,8 +2110,11 @@ class GpArray:
             base_mirror_replication_port = self.get_min_mirror_replication_port()
         
         prefix = self.get_datadir_prefix()
+        interface_list = self.get_interface_numbers()
+        interface_list.sort()
         
         rows = createSegmentRowsFromSegmentList( newHostlist = new_hosts
+                                               , interface_list = interface_list
                                                , primary_segment_list = primary_list
                                                , primary_portbase = base_primary_port
                                                , mirror_type = mirror_type
@@ -2097,7 +2142,7 @@ class GpArray:
             max_mirror_replication_port = self.get_max_mirror_replication_port()
 
         interface_list = self.get_interface_numbers()
-        interface_count = len(interface_list)
+        interface_list.sort()
             
         prefix = self.get_datadir_prefix()
           
@@ -2105,12 +2150,6 @@ class GpArray:
         # Get all the hosts to add the data dirs to
         for seg in self.getSegDbList(includeExpansionSegs = True):
             host = seg.getSegmentHostName()
-            
-            # If we have interface numbers, strip them so we only add data
-            # dirs once per node
-            if interface_count > 0:
-                host = host[:host.rfind('-')]
-        
             if host not in hosts:
                 hosts.append(host)
                 
@@ -2121,6 +2160,7 @@ class GpArray:
            tempPrimaryRP = max_primary_replication_port + 1
            tempMirrorRP = max_mirror_replication_port + 1
         rows = createSegmentRows( hostlist = hosts
+                                , interface_list = interface_list
                                 , primary_list = datadirs
                                 , primary_portbase = max_primary_port + 1
                                 , mirror_type = mirror_type
@@ -2148,26 +2188,13 @@ class GpArray:
         # must be sorted by isprimary, then hostname
         rows.sort(lambda a,b: (cmp(b.isprimary, a.isprimary) or cmp(a.host,b.host)))
         current_host = rows[0].host
-        current_interface = 0
         curr_dbid = self.get_max_dbid(True) + 1
         curr_content = self.get_max_contentid(True) + 1
         # Fix up the rows with correct dbids, contentids, datadirs and interfaces
         for row in rows:
             hostname = row.host
-            
-            # If we have interface hostnames in the original segments, 
-            # adjust the new segment hostname
-            if interface_count > 0:
-                if current_host != hostname:
-                    current_host = hostname
-                    current_interface = 0
+            address  = row.address
 
-                if current_interface == interface_count:
-                    current_interface = 0
-                
-                hostname = '%s-%s' % (current_host, interface_list[current_interface])
-                current_interface += 1
-     
             # Add the new segment to the expansion segments array
             # Remove the content id off of the datadir
             new_datadir = row.fulldir[:row.fulldir.rfind(str(row.content))]
@@ -2178,7 +2205,7 @@ class GpArray:
                                                           , newContent = curr_content
                                                           )
                 self.addExpansionSeg(curr_content, ROLE_PRIMARY, curr_dbid, 
-                                        ROLE_PRIMARY, hostname, int(row.port), new_datadir, row.prPort, fileSpaces = new_filespaces)
+                                        ROLE_PRIMARY, hostname, address, int(row.port), new_datadir, row.prPort, fileSpaces = new_filespaces)
                 # The content id was adjusted, so we need to save it for the mirror
                 mirror_dict[int(row.content)] = int(curr_content)
                 curr_content += 1
@@ -2190,7 +2217,7 @@ class GpArray:
                                                           , newContent = new_content
                                                           )                
                 self.addExpansionSeg(new_content, ROLE_MIRROR, curr_dbid, 
-                                     ROLE_MIRROR, hostname, int(row.port), new_datadir, row.prPort, fileSpaces = new_filespaces)
+                                     ROLE_MIRROR, hostname, address, int(row.port), new_datadir, row.prPort, fileSpaces = new_filespaces)
             curr_dbid += 1           
 
 
