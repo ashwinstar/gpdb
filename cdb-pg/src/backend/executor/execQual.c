@@ -2098,7 +2098,7 @@ ExecEvalFPScalarArrayInt(ScalarArrayOpExprState *sstate,
 	}
 
 	*isNull = false;
-	if (fnoid == INT4EQ_OID)
+	if (fnoid == INT4EQ_OID || fnoid == DATE_EQ_OID)
 		d = Int32GetDatum(DatumGetInt32(d));
 	else if (fnoid != INT8EQ_OID)
 	{
