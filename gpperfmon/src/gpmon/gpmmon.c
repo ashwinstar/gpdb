@@ -66,6 +66,8 @@ static struct
 	int hosttabsz; /* # machines */
 
 	char* master_data_directory;
+	char* standby_master_hostname;
+	char* gpdb_version;
 	apr_thread_mutex_t *agg_mutex; /* lock when accessing the agg data */
 	agg_t* agg;
 
@@ -76,6 +78,8 @@ static struct
 	apr_uint64_t tail_buffer_bytes;
 	apr_uint64_t _tail_buffer_bytes;
 } ax = { 0 };
+
+snmp_module_params_t snmp_module_params;
 
 void interuptable_sleep(unsigned int seconds);
 
@@ -603,13 +607,14 @@ static void* snmp_main(apr_thread_t* thread_, void* arg_)
 {
 	unsigned int loop;
 	int ticks_since_last_snmp_report = 0;
-	char configfile[PATH_MAX];
-	char outdir[PATH_MAX];
 
-	snprintf(configfile, PATH_MAX, "%s/gpperfmon/conf/snmp.conf", ax.master_data_directory);
-	snprintf(outdir, PATH_MAX, "%s/gpperfmon/data/snmp", ax.master_data_directory);
+	snprintf(snmp_module_params.configfile, PATH_MAX, "%s/gpperfmon/conf/snmp.conf", ax.master_data_directory);
+	snprintf(snmp_module_params.outdir, PATH_MAX, "%s/gpperfmon/data/snmp", ax.master_data_directory);
+	snmp_module_params.standby_master = ax.standby_master_hostname;
+	snmp_module_params.gpdb_version_string = ax.gpdb_version;
+	snmp_module_params.emcconnect_enabled = opt.emcconnect;
 
-	if (gpmmon_init_snmp(configfile, outdir, opt.emcconnect) != APR_SUCCESS)
+	if (gpmmon_init_snmp(&snmp_module_params) != APR_SUCCESS)
 	{
 		gpmon_warningx(FLINE, 0, "performance monitor snmp module not initialized successfully");
 		return NULL;
@@ -1607,6 +1612,8 @@ static void getconfig(void)
 {
 	char *hostname = NULL;
 	char *master_data_directory = NULL;
+	char *standby_master_hostname = NULL;
+	char *gpdb_version = NULL;
 	int rc = 0;
 
 	static apr_pool_t *pool = NULL;
@@ -1625,11 +1632,35 @@ static void getconfig(void)
 
 	/* fetch datadir */
 	gpdb_get_master_data_dir(&hostname, &master_data_directory, pool);
-
 	if (ax.master_data_directory == NULL)
 	{
 		ax.master_data_directory = strdup(master_data_directory);
 		CHECKMEM(ax.master_data_directory);
+	}
+
+	/* fetch standby master hostname */
+	gpdb_get_single_string_from_query("select hostname from gp_segment_configuration where content = -1 and dbid <> 1", &standby_master_hostname, pool);
+	if (standby_master_hostname)
+	{
+		ax.standby_master_hostname = strdup(standby_master_hostname);
+		CHECKMEM(ax.standby_master_hostname);
+	}
+	else
+	{
+		ax.standby_master_hostname =  NULL;
+	}
+
+
+	/* fetch gpdb version */
+	gpdb_get_single_string_from_query("select version()", &gpdb_version, pool);
+	if (gpdb_version)
+	{
+		ax.gpdb_version = strdup(gpdb_version);
+		CHECKMEM(ax.gpdb_version);
+	}
+	else
+	{
+		ax.gpdb_version =  ""; // should not have a null pointer, set to empty string
 	}
 
 	/* clear pool for next call */

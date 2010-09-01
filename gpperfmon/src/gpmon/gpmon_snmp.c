@@ -89,7 +89,7 @@ static struct
 	time_t lastreport_started;
 	time_t lastreport_done;
 
-	int emcconnect; // 0 if emconnect is disabled
+	snmp_module_params_t* params;
 
 	apr_pool_t* alert_status_table_pool;
 	apr_hash_t* alert_status_table;
@@ -1149,7 +1149,7 @@ void record_status(EmcConnectSymptom symptom, const char* oidstring, const char*
 	update_per_host_status(status);
 
 	// remainder of this function is to handle sending an EMC connect alert
-	if (!si.emcconnect)
+	if (!si.params->emcconnect_enabled)
 		return;
 
 	// this oid does not have EMC CONNECT enabled
@@ -1209,6 +1209,7 @@ void record_status(EmcConnectSymptom symptom, const char* oidstring, const char*
 								convert_gpdb_snmp_status_to_emc_connect_status(status),
 								convert_gpdb_snmp_status_to_emc_connect_severity(status),
 								EMC_CONNECT_ORIGIN_GPMMON,
+								(char*)si.params->gpdb_version_string,
 								si.key.hostname,  
 								(char*)msg_to_send);
 
@@ -1364,6 +1365,10 @@ void snmp_report(host_t* tab, int tabsz)
 		}
 	}
 
+	// do reporting on standby master host
+	if (si.params->standby_master)
+		run_snmp_report_for_dell_host("Master Server", si.params->standby_master);
+
 	snmp_close_hostlist_file();
 
 	snmp_done_report();
@@ -1514,17 +1519,17 @@ void read_state_from_last_report_file()
 	fclose(fd);
 }
 
-apr_status_t gpmmon_init_snmp(const char* configfile, const char* outdir, int emcconnect_enabled)
+apr_status_t gpmmon_init_snmp(snmp_module_params_t* params)
 {
-	si.emcconnect = emcconnect_enabled;
+	si.params = params;
 
-	read_snmp_config(configfile);
+	read_snmp_config(params->configfile);
 
-	snprintf(si.outputdir, PATH_MAX, "%s", outdir);
-	snprintf(si.lastreport_file,    PATH_MAX, "%s/lastreport.txt", outdir);
-	snprintf(si.lastreport_tmpfile, PATH_MAX, "%s/_lastreport.txt", outdir);
-	snprintf(si.hostlist_file,  	PATH_MAX, "%s/hostlistreport.txt", outdir);
-	snprintf(si.hostlist_tmpfile, 	PATH_MAX, "%s/_hostlistreport.txt", outdir);
+	snprintf(si.outputdir, 			PATH_MAX, "%s", si.params->outdir);
+	snprintf(si.lastreport_file,    PATH_MAX, "%s/lastreport.txt", si.params->outdir);
+	snprintf(si.lastreport_tmpfile, PATH_MAX, "%s/_lastreport.txt", si.params->outdir);
+	snprintf(si.hostlist_file,  	PATH_MAX, "%s/hostlistreport.txt", si.params->outdir);
+	snprintf(si.hostlist_tmpfile, 	PATH_MAX, "%s/_hostlistreport.txt", si.params->outdir);
 
 	if (gpmon_recursive_mkdir(si.outputdir))
 	{

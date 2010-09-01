@@ -94,11 +94,22 @@ struct host_t
     char ever_connected; /* set to non-zero after first connection attempt */
 };
 
+typedef struct snmp_module_params_t snmp_module_params_t;
+struct snmp_module_params_t
+{
+	char configfile[PATH_MAX];
+	char outdir[PATH_MAX];;
+	const char* standby_master;
+	const char* gpdb_version_string;
+	int emcconnect_enabled;
+};
+
 
 extern const char* gpdb_getnodename(PerfmonNodeType type);
 extern const char* gpdb_getnodestatus(PerfmonNodeStatus status);
 extern apr_status_t gpdb_getnode_metricinfo(PerfmonNodeType type, apr_byte_t metricnum, const char** name, const char** unit);
 extern apr_status_t gpdb_debug_string_lookup_table();
+extern void gpdb_get_single_string_from_query(const char* QUERY, char** resultstring, apr_pool_t* pool);
 extern void snmp_report(host_t* tab, int tabsz);
-extern apr_status_t gpmmon_init_snmp(const char* configfile, const char* outdir, int emcconnect_enabled);
+extern apr_status_t gpmmon_init_snmp(snmp_module_params_t* params);
 #endif /* GPMONLIB_H */

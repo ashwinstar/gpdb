@@ -52,6 +52,7 @@ int gpmon_emcconnect_send_alert(EmcConnectSymptom symptom,
 								EmcConnectStatus status,
 								EmcConnectSeverity severity,
 								EmcConnectOrigin origin,
+								char* gpdbVersion,
 								char* hostname,  
 								char* msg);
 										

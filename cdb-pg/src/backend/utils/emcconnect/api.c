@@ -11,7 +11,7 @@
 const char* gpmon_emcconnect_print_status(EmcConnectStatus status);
 const char* gpmon_emcconnect_print_severity(EmcConnectSeverity severity);
 int gpmon_emcconnect_create_xml(char* buffer, size_t bufsize, EmcConnectSymptom symptom, EmcConnectStatus status, EmcConnectSeverity severity, 
-								char* serialNumber, char* siteName, char* hostname,  char* msg);
+								char* gpdbVersion, char* serialNumber, char* siteName, char* hostname,  char* msg);
 
 const char* gpmon_emcconnect_print_status(EmcConnectStatus status)
 {
@@ -79,7 +79,7 @@ const char* emcconnect_alert_template = \
             <Platform></Platform> \n\
             <OS>Linux</OS> \n\
             <OS_VER></OS_VER> \n\
-            <UcodeVer></UcodeVer> \n\
+            <UcodeVer>%s</UcodeVer> \n\
             <EmbedLevel>1</EmbedLevel> \n\
             <InternalMaxSize>0</InternalMaxSize> \n\
             <Comment></Comment> \n\
@@ -95,7 +95,7 @@ const char* emcconnect_alert_template = \
             <IPName></IPName> \n\
             <NAT_IP></NAT_IP> \n\
             <EMC_IP></EMC_IP> \n\
-            <State>NA</State> \n\
+            <State></State> \n\
             <UserID></UserID> \n\
             <AppName></AppName> \n\
             <UdpSocket></UdpSocket> \n\
@@ -112,7 +112,7 @@ const char* emcconnect_alert_template = \
                     <Severity>%s</Severity> \n\
                     <Status>%s</Status> \n\
                     <Component>%s</Component> \n\
-                    <EventData><EventData> \n\
+                    <EventData></EventData> \n\
                     <Description>%s</Description> \n\
                 </Event> \n\
             </EventList> \n\
@@ -128,12 +128,13 @@ int gpmon_emcconnect_create_xml(char* buffer,
 										EmcConnectSymptom symptom,
 										EmcConnectStatus status,
 										EmcConnectSeverity severity,
+										char* gpdbVersion,
 										char* serialNumber, 
 										char* siteName, 
 										char* hostname,  
 										char* msg)
 {
-	int retVal = snprintf(buffer, bufsize, emcconnect_alert_template, serialNumber, serialNumber, siteName, serialNumber, 
+	int retVal = snprintf(buffer, bufsize, emcconnect_alert_template, serialNumber, serialNumber, siteName, serialNumber, gpdbVersion,
 							(int)symptom, gpmon_emcconnect_print_severity(severity), gpmon_emcconnect_print_status(status), 
 							hostname, msg);
 
@@ -160,6 +161,7 @@ int gpmon_emcconnect_send_alert(EmcConnectSymptom symptom,
 								EmcConnectStatus status,
 								EmcConnectSeverity severity,
 								EmcConnectOrigin origin,
+								char* gpdbVersion,
 								char* hostname,  
 								char* msg)
 {
@@ -241,7 +243,7 @@ int gpmon_emcconnect_send_alert(EmcConnectSymptom symptom,
 	if (retVal >= GPMON_EMCCONNECT_FILENAME_MAX)
 		return 7;
 
-	retVal = gpmon_emcconnect_create_xml(buffer, GPMON_EMCCONNECT_BUFFER_SIZE, symptom, status, severity, serial_num, "", hostname, msg);
+	retVal = gpmon_emcconnect_create_xml(buffer, GPMON_EMCCONNECT_BUFFER_SIZE, symptom, status, severity, gpdbVersion, serial_num, "", hostname, msg);
 	if (retVal)
 		return 8;
 

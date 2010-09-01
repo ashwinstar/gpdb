@@ -235,6 +235,43 @@ void gpdb_get_master_data_dir(char** hostname, char** mstrdir, apr_pool_t* pool)
 	*mstrdir = dir;
 }
 
+void gpdb_get_single_string_from_query(const char* QUERY, char** resultstring, apr_pool_t* pool)
+{
+	PGconn* conn = 0;
+	PGresult* result = 0;
+	char* tmpoutput = 0;
+	int rowcount;
+	const char* errmsg = gpdb_exec(&conn, &result, QUERY);
+	if (errmsg)
+	{
+		gpmon_warning(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
+	}
+	else
+	{
+		rowcount = PQntuples(result);
+		if (rowcount == 1)
+		{
+			tmpoutput = PQgetvalue(result, 0, 0);
+		}
+		else if (rowcount > 1)
+		{
+			gpmon_warning(FLINE, "unexpected number of rows returned from query %s", QUERY);
+		}
+
+		if (tmpoutput)
+		{
+			tmpoutput = apr_pstrdup(pool, gpmon_trim(tmpoutput));
+			CHECKMEM(tmpoutput);
+		}
+	}
+
+	PQclear(result);
+	PQfinish(conn);
+
+	*resultstring = tmpoutput;
+}
+
+
 static void check_and_add_partition(const char* tbl, int begin_year, int begin_month, int end_year, int end_month)
 {
 	PGconn* conn = 0;
