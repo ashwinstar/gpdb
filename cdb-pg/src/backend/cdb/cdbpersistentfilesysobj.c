@@ -4149,8 +4149,26 @@ bool PersistentFileSysObj_CheckForAppendOnlyCatchup(
 			 PersistentFileSysRelStorageMgr_Name(PersistentFileSysRelStorageMgr_AppendOnly),
 			 PersistentFileSysRelStorageMgr_Name(relationStorageManager));
 
-	return (mirrorAppendOnlyLossEof < mirrorAppendOnlyNewEof);
+	if (mirrorAppendOnlyLossEof < mirrorAppendOnlyNewEof)
+	{
+		/*
+		 * Resynchronize needs to catch-up the mirror.
+		 */
+		return true;
+	}
 
+	if ((persistentState == PersistentFileSysState_CreatePending ||
+		 persistentState == PersistentFileSysState_Created)
+		&&
+		mirrorDataSynchronizationState == MirroredRelDataSynchronizationState_FullCopy)
+	{
+		/*
+		 * When Resynchronize need to do a full copy, we need to not access the mirror.
+		 */
+		return true;
+	}
+
+	return false;
 }
 
 static int32 PersistentFileSysObj_GetBufferPoolRelationTotalBlocks(
