@@ -168,6 +168,20 @@ static void MirroredAppendOnly_CheckMirrorOperationSession(
 	}
 	else if (mirrorDataLossTrackingState != currentMirrorDataLossTrackingState)
 	{
+		/*
+		 * Same mirror data loss tracking number, but different state.
+		 */
+
+		if (mirrorDataLossTrackingState == MirrorDataLossTrackingState_MirrorDown)
+		{
+			/*
+			 * We started with the mirror down and ended with the mirror up in either
+			 * Resynchronized or Synchronized state (or not configured).
+			 *
+			 * So, there was mirror data loss.
+			 */
+			*mirrorDataLossOccurred = true;
+		}
 		trace = true;
 	}
 	
@@ -544,6 +558,8 @@ void MirroredAppendOnly_OpenReadWrite(
 	
 	int 						*primaryError)
 {
+	MIRRORED_LOCK_DECLARE;
+
 	MirrorDataLossTrackingState mirrorDataLossTrackingState;
 	int64 mirrorDataLossTrackingSessionNum;
 
@@ -553,7 +569,7 @@ void MirroredAppendOnly_OpenReadWrite(
 	
 	*primaryError = 0;
 
-	LWLockAcquire(MirroredLock, LW_SHARED);
+	MIRRORED_LOCK;
 
 	/*
 	 * Make this call while under the MirroredLock (unless we are a resync worker).
@@ -603,7 +619,7 @@ void MirroredAppendOnly_OpenReadWrite(
 							primaryError,
 							&mirrorDataLossOccurred);
 
-	LWLockRelease(MirroredLock);
+	MIRRORED_UNLOCK;
 }
 
 void MirroredAppendOnly_OpenResynchonize(
@@ -689,6 +705,8 @@ void MirroredAppendOnly_FlushAndClose(
 
 	bool					*mirrorCatchupRequired)
 {
+	MIRRORED_LOCK_DECLARE;
+
 	Assert(open != NULL);
 	Assert(open->isActive);
 
@@ -697,7 +715,9 @@ void MirroredAppendOnly_FlushAndClose(
 	*mirrorCatchupRequired = false;
 	
 	if (open->guardOtherCallsWithMirroredLock)
-		LWLockAcquire(MirroredLock, LW_SHARED);
+	{
+		MIRRORED_LOCK;
+	}
 
 	/*
 	 * See if things have changed and we shouldn't write to mirror anymore.
@@ -774,6 +794,21 @@ void MirroredAppendOnly_FlushAndClose(
 		}
 	}
 
+	/*
+	 * Finally since we've flushed and closed, see if things have changed and we had
+	 * a mirror issue...
+	 */
+	if (StorageManagerMirrorMode_SendToMirror(open->mirrorMode) &&
+		!open->mirrorDataLossOccurred)
+	{
+		MirroredAppendOnly_CheckMirrorOperationSession(
+												&open->relFileNode,
+												open->segmentFileNum,
+												open->mirrorDataLossTrackingState,
+												open->mirrorDataLossTrackingSessionNum,
+												&open->mirrorDataLossOccurred);
+	}
+
 	*mirrorDataLossOccurred = open->mirrorDataLossOccurred;	// Keep reporting -- it may have occurred anytime during the open session.
 
 	/*
@@ -785,7 +820,9 @@ void MirroredAppendOnly_FlushAndClose(
 	open->primaryFile = 0;
 
 	if (open->guardOtherCallsWithMirroredLock)
-		LWLockRelease(MirroredLock);
+	{
+		MIRRORED_UNLOCK;
+	}
 
 }
 
@@ -804,11 +841,15 @@ void MirroredAppendOnly_Flush(
 
 	bool					*mirrorDataLossOccurred)
 {
+	MIRRORED_LOCK_DECLARE;
+
 	Assert(open != NULL);
 	Assert(open->isActive);
 	
 	if (open->guardOtherCallsWithMirroredLock)
-		LWLockAcquire(MirroredLock, LW_SHARED);
+	{
+		MIRRORED_LOCK;
+	}
 
 	/*
 	 * See if things have changed and we shouldn't write to mirror anymore.
@@ -884,7 +925,9 @@ void MirroredAppendOnly_Flush(
 	}
 	
 	if (open->guardOtherCallsWithMirroredLock)
-		LWLockRelease(MirroredLock);
+	{
+		MIRRORED_UNLOCK;
+	}
 
 	*mirrorDataLossOccurred = open->mirrorDataLossOccurred;	// Keep reporting -- it may have occurred anytime during the open session.
 
@@ -900,12 +943,15 @@ void MirroredAppendOnly_Close(
 
 	bool					*mirrorDataLossOccurred)
 {
+	MIRRORED_LOCK_DECLARE;
 
 	Assert(open != NULL);
 	Assert(open->isActive);
 	
 	if (open->guardOtherCallsWithMirroredLock)
-		LWLockAcquire(MirroredLock, LW_SHARED);
+	{
+		MIRRORED_LOCK;
+	}
 
 	/*
 	 * See if things have changed and we shouldn't write to mirror anymore.
@@ -955,7 +1001,9 @@ void MirroredAppendOnly_Close(
 	}
 	
 	if (open->guardOtherCallsWithMirroredLock)
-		LWLockRelease(MirroredLock);
+	{
+		MIRRORED_UNLOCK;
+	}
 
 	*mirrorDataLossOccurred = open->mirrorDataLossOccurred;	// Keep reporting -- it may have occurred anytime during the open session.
 
@@ -1038,6 +1086,8 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 
 	int64							mirrorNewEof)
 {
+	MIRRORED_LOCK_DECLARE;
+
 	MirroredAppendOnlyOpen 		mirroredOpen;
 
 	MirrorDataLossTrackingState mirrorDataLossTrackingState;
@@ -1051,7 +1101,10 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 
 	while (true)
 	{
-		LWLockAcquire(MirroredLock, LW_SHARED);
+		/*
+		 * Do our FileRep mirror data loss tracking state evaluation under the MirroredLock.
+		 */
+		MIRRORED_LOCK;
 
 		if (*mirrorLossEof == mirrorNewEof)
 		{
@@ -1084,7 +1137,7 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 									persistentSerialNum,
 									*mirrorLossEof,
 									mirrorNewEof);
-			LWLockRelease(MirroredLock);
+			MIRRORED_UNLOCK;
 			break;
 		}
 
@@ -1125,7 +1178,7 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 									persistentSerialNum,
 									mirrorNewEof,	// No data loss for no mirror.
 									mirrorNewEof);
-			LWLockRelease(MirroredLock);
+			MIRRORED_UNLOCK;
 			return;
 
 		case MirrorDataLossTrackingState_MirrorDown:
@@ -1161,7 +1214,7 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 									persistentSerialNum,
 									*mirrorLossEof,
 									mirrorNewEof);
-			LWLockRelease(MirroredLock);
+			MIRRORED_UNLOCK;
 			return;
 
 		case MirrorDataLossTrackingState_MirrorCurrentlyUpInSync:
@@ -1226,7 +1279,7 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 			primaryError = errno;
 		}		
 		
-		LWLockRelease(MirroredLock);
+		MIRRORED_UNLOCK;
 
 		if (primaryError != 0)
 		{
@@ -1320,6 +1373,8 @@ void MirroredAppendOnly_CopyToMirror(
 	
 	bool							*mirrorDataLossOccurred)
 {
+	MIRRORED_LOCK_DECLARE;
+
 	MirroredAppendOnlyOpen 		mirroredOpen;
 
 	MirrorDataLossTrackingState mirrorDataLossTrackingState;
@@ -1330,7 +1385,7 @@ void MirroredAppendOnly_CopyToMirror(
 
 	bool mirrorCatchupRequired;
 
-	LWLockAcquire(MirroredLock, LW_SHARED);
+	MIRRORED_LOCK;
 	
 	mirrorDataLossTrackingState = 
 				FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
@@ -1361,7 +1416,7 @@ void MirroredAppendOnly_CopyToMirror(
 		primaryError = errno;
 	}			
 	
-	LWLockRelease(MirroredLock);
+	MIRRORED_UNLOCK;
 	
 	if (primaryError != 0)
 	{
@@ -1615,6 +1670,8 @@ void MirroredAppendOnly_Append(
 
 	bool					*mirrorDataLossOccurred)
 {
+	MIRRORED_LOCK_DECLARE;
+
 	Assert(open != NULL);
 	Assert(open->isActive);
 	
@@ -1622,7 +1679,9 @@ void MirroredAppendOnly_Append(
 	*mirrorDataLossOccurred = false;
 
 	if (open->guardOtherCallsWithMirroredLock)
-		LWLockAcquire(MirroredLock, LW_SHARED);
+	{
+		MIRRORED_LOCK;
+	}
 
 	/*
 	 * See if things have changed and we shouldn't write to mirror anymore.
@@ -1681,7 +1740,9 @@ void MirroredAppendOnly_Append(
 	}
 	
 	if (open->guardOtherCallsWithMirroredLock)
-		LWLockRelease(MirroredLock);
+	{
+		MIRRORED_UNLOCK;
+	}
 
 	*mirrorDataLossOccurred = open->mirrorDataLossOccurred;	// Keep reporting -- it may have occurred anytime during the open session.
 
@@ -1701,11 +1762,15 @@ void MirroredAppendOnly_Truncate(
 	
 	bool		*mirrorDataLossOccurred)
 {
+	MIRRORED_LOCK_DECLARE;
+
 	*primaryError = 0;
 	*mirrorDataLossOccurred = false;
 
 	if (open->guardOtherCallsWithMirroredLock)
-		LWLockAcquire(MirroredLock, LW_SHARED);
+	{
+		MIRRORED_LOCK;
+	}
 
 	/*
 	 * See if things have changed and we shouldn't write to mirror anymore.
@@ -1757,7 +1822,9 @@ void MirroredAppendOnly_Truncate(
 	}
 
 	if (open->guardOtherCallsWithMirroredLock)
-		LWLockRelease(MirroredLock);
+	{
+		MIRRORED_UNLOCK;
+	}
 
 	*mirrorDataLossOccurred = open->mirrorDataLossOccurred; // Keep reporting -- it may have occurred anytime during the open session.
 

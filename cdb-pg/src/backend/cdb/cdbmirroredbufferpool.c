@@ -925,10 +925,27 @@ bool MirroredBufferPool_EvaluateBulkLoadFinish(
 				FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
 												&mirrorDataLossTrackingSessionNum);
 
+	bulkLoadFinished = false;	// Assume.
 	if (mirrorDataLossTrackingSessionNum == bulkLoadInfo->mirrorDataLossTrackingSessionNum)
 	{
-		bulkLoadFinished = true;
+		if (bulkLoadInfo->mirrorDataLossTrackingState == MirrorDataLossTrackingState_MirrorDown &&
+			mirrorDataLossTrackingState != bulkLoadInfo->mirrorDataLossTrackingState)
+		{
+			/*
+			 * We started with the mirror down and ended with the mirror up in either
+			 * Resynchronized or Synchronized state (or not configured).
+			 *
+			 * So, there was mirror data loss.
+			 */
+		}
+		else
+		{
+			bulkLoadFinished = true;
+		}
+	}
 
+	if (bulkLoadFinished)
+	{
 		if (Debug_persistent_print)
 		{
 			SUPPRESS_ERRCONTEXT_DECLARE;
@@ -936,7 +953,7 @@ bool MirroredBufferPool_EvaluateBulkLoadFinish(
 			SUPPRESS_ERRCONTEXT_PUSH();
 		
 			elog(Persistent_DebugPrintLevel(),
-				 "MirroredBufferPool_EvaluateBulkLoadFinish %u/%u/%u: no change.  Mirror data loss tracking (state '%s', session num " INT64_FORMAT "), persistent serial num " INT64_FORMAT ", TID %s",
+				 "MirroredBufferPool_EvaluateBulkLoadFinish %u/%u/%u: no change -- mirror stayed up whole time.  Mirror data loss tracking (state '%s', session num " INT64_FORMAT "), persistent serial num " INT64_FORMAT ", TID %s",
 				 bulkLoadInfo->relFileNode.spcNode,
 				 bulkLoadInfo->relFileNode.dbNode,
 				 bulkLoadInfo->relFileNode.relNode,
