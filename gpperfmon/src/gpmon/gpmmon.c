@@ -1639,7 +1639,7 @@ static void getconfig(void)
 	}
 
 	/* fetch standby master hostname */
-	gpdb_get_single_string_from_query("select hostname from gp_segment_configuration where content = -1 and dbid <> 1", &standby_master_hostname, pool);
+	gpdb_get_single_string_from_query("select hostname from gp_segment_configuration where content = -1 and role = 'm'", &standby_master_hostname, pool);
 	if (standby_master_hostname)
 	{
 		ax.standby_master_hostname = strdup(standby_master_hostname);
