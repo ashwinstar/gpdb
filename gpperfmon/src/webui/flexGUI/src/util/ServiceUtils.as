@@ -1,8 +1,10 @@
 package util {
-    import mx.rpc.IResponder;
-    import mx.rpc.AsyncToken;
-    import mx.rpc.http.HTTPService;
     import model.GPPerfMonModelLocator;
+    import mx.rpc.AsyncToken;
+    import mx.rpc.IResponder;
+    import mx.rpc.events.FaultEvent;
+    import mx.rpc.events.ResultEvent;
+    import mx.rpc.http.HTTPService;
 
     public class ServiceUtils {
   		[Bindable]
@@ -29,10 +31,15 @@ package util {
                 service.method = method;
             }
             service.useProxy = useProxy;
-            var call : AsyncToken = service.send();
+            
+            // Dont use call.addResponder(responder) -- calls the handler twice for every call 
+            // This is a bug in 3.4 SDK; fixed in 3.5 SDK.
             if (responder != null) {
-                call.addResponder(responder);
+            	service.addEventListener(ResultEvent.RESULT, responder.result);
+				service.addEventListener(FaultEvent.FAULT, responder.fault);
             }
+
+            var call : AsyncToken = service.send();
         }
     }
 }
