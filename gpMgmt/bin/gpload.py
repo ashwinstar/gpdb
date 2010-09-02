@@ -41,7 +41,15 @@ except Exception, e:
  
 import datetime,getpass,os,signal,socket,subprocess,threading,time,traceback,re
 import platform
-import select
+thePlatform = platform.system()
+if thePlatform in ['Windows', 'Microsoft']:
+   windowsPlatform = True
+else:
+   windowsPlatform = False
+
+if windowsPlatform == False:
+   import select
+
 
 EXECNAME = 'gpload'
 
@@ -712,28 +720,37 @@ class CatThread(threading.Thread):
     We will wait 1 second between read attempts.
 
     """
-    def __init__(self,gpload,fd,sharedLock):
+    def __init__(self,gpload,fd, sharedLock = None):
         threading.Thread.__init__(self)
         self.gpload = gpload
         self.fd = fd
         self.theLock = sharedLock
 
     def run(self):
-        while 1:
-            retList = select.select( [self.fd]
-                                   , []
-                                   , []
-                                   , 1
-                                   )
-            if retList[0] == [self.fd]: 
-               self.theLock.acquire()
+        if windowsPlatform == True:
+           while 1:
+               # Windows select does not support select on non-file fd's, so we can use the lock fix. Deadlock is possible here.
+               # We need to look into the Python windows module to see if there is another way to do this in Windows.
                line = self.fd.readline()
-               self.theLock.release()
-            else:
-               continue
-            if line=='':
-                break
-            self.gpload.log(self.gpload.DEBUG, 'gpfdist: ' + line.strip('\n'))
+               if line=='':
+                   break
+               self.gpload.log(self.gpload.DEBUG, 'gpfdist: ' + line.strip('\n'))
+        else:
+           while 1:
+               retList = select.select( [self.fd]
+                                      , []
+                                      , []
+                                      , 1
+                                      )
+               if retList[0] == [self.fd]:
+                  self.theLock.acquire()
+                  line = self.fd.readline()
+                  self.theLock.release()
+               else:
+                  continue
+               if line=='':
+                  break
+               self.gpload.log(self.gpload.DEBUG, 'gpfdist: ' + line.strip('\n'))
 
 
 class Progress(threading.Thread):
