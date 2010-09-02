@@ -645,8 +645,8 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 	int		n, fd;
 	struct sockaddr_in  saddr;
 
-	struct timeval  startTime;
-	int             elapsed_ms = 0;
+	struct timeval	startTime;
+	uint64			elapsed_ms = 0;
 
 	char	buf[32]; /* big enough for the message we're expecting */
 	int		offset = 0;
@@ -935,7 +935,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 		elapsed_ms = gettime_elapsed_ms(startTime);
 
 		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
-			write_log("Probe elapsed time: %d milliseconds", elapsed_ms);
+			write_log("Probe elapsed time: " UINT64_FORMAT " milliseconds", elapsed_ms);
 
 		if (done)
 		{

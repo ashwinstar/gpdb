@@ -1218,7 +1218,7 @@ SetupTCPInterconnect(EState *estate)
     int         iteration = 0;
 	struct timeval  startTime;
     StringInfoData  logbuf;
-	int             elapsed_ms = 0;
+	uint64          elapsed_ms = 0;
 
 	/* we can have at most one of these. */
 	ChunkTransportStateEntry *sendingChunkTransportState = NULL;
@@ -1320,7 +1320,7 @@ SetupTCPInterconnect(EState *estate)
 		struct timeval	timeout;
         mpp_fd_set		rset, wset, eset;
 	    int			    highsock = -1;
-        int             timeout_ms = 20*60*1000;
+        uint64          timeout_ms = 20*60*1000;
         int             outgoing_fail_count = 0;
 
         iteration++;
@@ -1373,7 +1373,8 @@ SetupTCPInterconnect(EState *estate)
                 ereport(LOG, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
                               errmsg("Interconnect timeout: Connection "
                                      "to seg%d %s from local port %s was not "
-                                     "complete after %d ms %d elapsed.  Will retry.",
+                                     "complete after " UINT64_FORMAT
+									 "ms " UINT64_FORMAT " elapsed.  Will retry.",
                                      conn->remoteContentId,
                                      conn->remoteHostAndPort,
                                      conn->localHostAndPort,
@@ -1478,7 +1479,8 @@ SetupTCPInterconnect(EState *estate)
         {
             if (gp_log_interconnect >= GPVARS_VERBOSITY_VERBOSE &&
                 (timeout_ms > 0 || iteration > 2))
-                ereport(LOG, (errmsg("SetupInterconnect+%dms:   pause %dms   "
+                ereport(LOG, (errmsg("SetupInterconnect+" UINT64_FORMAT
+									 "ms:   pause " UINT64_FORMAT "ms   "
                                      "outgoing_fail=%d iteration=%d",
                                      elapsed_ms, timeout_ms,
                                      outgoing_fail_count, iteration)
@@ -1529,8 +1531,9 @@ SetupTCPInterconnect(EState *estate)
 
             elapsed_ms = gettime_elapsed_ms(startTime);
 
-            ereport(DEBUG1, (errmsg("SetupInterconnect+%dms:   select()  "
-                                    "Interest: %s.  timeout=%dms "
+            ereport(DEBUG1, (errmsg("SetupInterconnect+" UINT64_FORMAT
+									"ms:   select()  "
+                                    "Interest: %s.  timeout=" UINT64_FORMAT "ms "
                                     "outgoing_fail=%d iteration=%d",
                                     elapsed_ms, logbuf.data, timeout_ms,
                                     outgoing_fail_count, iteration)));
@@ -1566,7 +1569,7 @@ SetupTCPInterconnect(EState *estate)
                 }
                 else
                     appendStringInfoString(&logbuf, n < 0 ? "error" : "timeout");
-                ereport(elevel, (errmsg("SetupInterconnect+%dms:   select()  %s",
+                ereport(elevel, (errmsg("SetupInterconnect+" UINT64_FORMAT "ms:   select()  %s",
                                         elapsed_ms, logbuf.data) ));
                 pfree(logbuf.data);
                 MemSet(&logbuf, 0, sizeof(logbuf));
@@ -1749,7 +1752,7 @@ SetupTCPInterconnect(EState *estate)
         elapsed_ms = gettime_elapsed_ms(startTime);
         if (gp_log_interconnect >= GPVARS_VERBOSITY_VERBOSE ||
             elapsed_ms >= 0.1 * 1000 * interconnect_setup_timeout)
-            elog(LOG, "SetupInterconnect+%dms: Activated %d incoming, "
+            elog(LOG, "SetupInterconnect+" UINT64_FORMAT "ms: Activated %d incoming, "
                  "%d outgoing routes.",
                  elapsed_ms, incoming_count, outgoing_count);
     }
@@ -1784,7 +1787,8 @@ TeardownTCPInterconnect(ChunkTransportState *transportStates,
 
 	if (transportStates->sliceTable == NULL)
 	{
-		elog(FATAL, "TeardownUDPInterconnect: missing slice table.");
+		elog(LOG, "TeardownUDPInterconnect: missing slice table.");
+		return;
 	}
 
 	/* if we're already trying to clean up after an error -- don't

@@ -194,17 +194,17 @@ extern TupleChunkListItem RecvTupleChunkFrom(ChunkTransportState *transportState
 											 int16 srcRoute);
 
 /* Some really simple, but handy functions for dealing with time-intervals. */
-static inline int
+static inline uint64
 timeval_delta_ms(struct timeval t1, struct timeval t0)
 {
-    int tdiff = (t1.tv_usec - t0.tv_usec + 500) / 1000;
+    uint64 tdiff = (t1.tv_usec - t0.tv_usec + 500) / 1000;
 
     if (t1.tv_sec != t0.tv_sec)
         tdiff += 1000 * (t1.tv_sec - t0.tv_sec);
     return  tdiff;
 }
 
-static inline int
+static inline uint64
 gettime_elapsed_ms(struct timeval t0)
 {
     struct timeval  t1;

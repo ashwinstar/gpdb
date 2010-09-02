@@ -119,7 +119,7 @@ typedef struct MotionConn
 	
     MotionConnState state;
 	
-    int         wakeup_ms;
+    uint64      wakeup_ms;
 
 	struct icpkthdr		conn_info;
 	bool		isMirror;

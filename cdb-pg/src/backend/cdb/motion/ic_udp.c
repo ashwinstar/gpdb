@@ -1146,9 +1146,9 @@ SetupUDPInterconnect(EState *estate)
 	int			expectedTotalIncoming = 0;
 	int			expectedTotalOutgoing = 0;
 	int			iteration = 0;
-	struct timeval  startTime;
-	int             elapsed_ms = 0;
-	int             elapsed_timeout = 0;
+	struct timeval	startTime;
+	uint64			elapsed_ms = 0;
+	uint64		   	elapsed_timeout = 0;
 
 	ChunkTransportStateEntry *sendingChunkTransportState = NULL;
 
@@ -1349,7 +1349,7 @@ SetupUDPInterconnect(EState *estate)
 	while (outgoing_count < expectedTotalOutgoing)
 	{
 		int		timeout;
-		int		timeout_ms = 20*60*1000;
+		uint64	timeout_ms = 20*60*1000;
 		struct pollfd nfd;
 
 		/* check for cancellation */
@@ -1655,7 +1655,7 @@ SetupUDPInterconnect(EState *estate)
         elapsed_ms = gettime_elapsed_ms(startTime);
         if (gp_log_interconnect >= GPVARS_VERBOSITY_VERBOSE ||
             elapsed_ms >= 0.1 * 1000 * interconnect_setup_timeout)
-            elog(LOG, "SetupUDPInterconnect+%dms: Activated %d incoming, "
+            elog(LOG, "SetupUDPInterconnect+" UINT64_FORMAT "ms: Activated %d incoming, "
                  "%d outgoing routes.",
                  elapsed_ms, incoming_count, outgoing_count);
     }
@@ -1674,7 +1674,8 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 
 	if (transportStates->sliceTable == NULL)
 	{
-		elog(FATAL, "TeardownUDPInterconnect: missing slice table.");
+		elog(LOG, "TeardownUDPInterconnect: missing slice table.");
+		return;
 	}
 
 	mySlice = (Slice *) list_nth(transportStates->sliceTable->slices, transportStates->sliceId);
@@ -2495,7 +2496,7 @@ xmit_retry:
 static bool
 waitOnXmit(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn)
 {
-	int		retry = 0;
+	uint64	retry = 0;
 	int		timeout;
 	int		elapsed_ms = 0;
 	bool	got_stops=false;
@@ -2529,14 +2530,13 @@ waitOnXmit(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 				ic_stats_retrans++;
 
 			retry++;
-		}
 
-		if (Gp_role == GP_ROLE_EXECUTE &&
-			(retry & 0x3f) == 0)
-		{
-			if (!dispatcherAYT())
-				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-								errmsg("Interconnect error segment lost contact with master (xmit)")));
+			if (Gp_role == GP_ROLE_EXECUTE && (retry & 0x3f) == 0)
+			{
+				if (!dispatcherAYT())
+					ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+									errmsg("Interconnect error segment lost contact with master (xmit)")));
+			}
 		}
 
 		timeout = Max(1, timeout);
@@ -2558,7 +2558,10 @@ waitOnXmit(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 		}
 
 		if (n == 0) /* timeout */
+		{
+			ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 			continue;
+		}
 
 		/* got an ack to handle (possibly a stop message) */
 		if (n == 1 && (nfd.events & POLLIN))

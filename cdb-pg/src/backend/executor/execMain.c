@@ -195,19 +195,21 @@ CopyDirectDispatchToSlice( Plan *ddPlan, int sliceId, CopyDirectDispatchToSliceC
 static bool
 CopyDirectDispatchFromPlanToSliceTableWalker( Node *node, CopyDirectDispatchToSliceContext *context)
 {
-	int sliceId;
+	int sliceId = -1;
 	Plan *ddPlan = NULL;
+
 	if (node == NULL)
 		return false;
 
 	if (IsA(node, Motion))
 	{
 		Motion *motion = (Motion *) node;
+
 		ddPlan = (Plan*)node;
 		sliceId = motion->motionID;
 	}
 
-	if ( ddPlan != NULL)
+	if (ddPlan != NULL)
 	{
 		CopyDirectDispatchToSlice(ddPlan, sliceId, context);
 	}
