@@ -9,6 +9,7 @@ GPMONUI_DIR=../src/webui/flexGUI
 GPMONDOCS_DIR=../docs/release
 LIGHTY_DIR=$(BLD_TOP)/ext/$(BLD_ARCH)/lighttpd-1.4.19/
 GPPERFMON_VERSION=$(shell perl -pe 's, ,-,g' ../../VERSION)
+CONSOLEDOCS_DIR=../../docs/release/html/perfmon_console_help
 
 osx104_x86_PACKAGE_ARCH=OSX-i386
 osx105_x86_PACKAGE_ARCH=OSX-i386
@@ -66,6 +67,7 @@ all:
 	mkdir .tmp/docs
 	mkdir .tmp/www
 	mkdir .tmp/www/static
+	mkdir .tmp/www/static/docs
 	mkdir .tmp/instances
 	cp ../src/gpperfmon ../src/gpperfmon.py .tmp/bin
 	cp -rp $(BLD_TOP)/gpMgmt/bin/gppylib .tmp/lib/python
@@ -80,6 +82,7 @@ all:
 	fi;
 	cp $(BLD_TOP)/ext/$(BLD_ARCH)/bin/openssl .tmp/bin
 	cp $(BLD_TOP)/ext/$(BLD_ARCH)/ssl/openssl.cnf .tmp/etc	
+	cp -R $(CONSOLEDOCS_DIR)/* .tmp/www/static/docs
 	@if [ "$(PACKAGE_ARCH)" = "OSX-i386" ] ; then \
 		cp $(BLD_TOP)/ext/$(BLD_ARCH)/lib/libpcre.0.0.1.dylib .tmp/lib; \
 		cp $(BLD_TOP)/ext/$(BLD_ARCH)/lib/libcrypto.0.9.8.dylib .tmp/lib; \
