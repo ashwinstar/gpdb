@@ -1124,10 +1124,16 @@ class GpArray:
            gpdbByHost = self.getSegmentsByHostName(dbList)
            for host in gpdbByHost:
                gpdbList = gpdbByHost[host]
+               if len(gpdbList) == 1 and gpdbList[0].isSegmentQD() == True:
+                  # This host has one master segment and nothing else
+                  continue
+               if len(gpdbList) == 2 and gpdbList[0].isSegmentQD() and gpdbList[1].isSegmentQD():
+                  # This host has the master segment and its mirror and nothing else 
+                  continue
                numPrimaries = 0
                numMirrors   = 0
                for gpdb in gpdbList:
-                   if gpdb.isSegmentMaster() == True:
+                   if gpdb.isSegmentQD() == True:
                       continue
                    if gpdb.isSegmentPrimary() == True:
                       numPrimaries = numPrimaries + 1
