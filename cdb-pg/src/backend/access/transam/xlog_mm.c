@@ -1083,10 +1083,38 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[4])
 	rdata[3].next = NULL;
 
 	if (gp_before_filespace_setup)
+	{
+		if (Debug_persistent_recovery_print)
+		{
+			SUPPRESS_ERRCONTEXT_DECLARE;
+		
+			SUPPRESS_ERRCONTEXT_PUSH();
+		
+			elog(PersistentRecovery_DebugPrintLevel(), 
+				 "mmxlog_append_checkpoint_data: no tablespace and filespace information for checkpoint because gp_before_filespace_setup GUC is true");
+		
+			SUPPRESS_ERRCONTEXT_POP();
+		}
 		return;
+	}
 
 	if (GpIdentity.dbid != MASTER_DBID)
+	{
+		if (Debug_persistent_recovery_print)
+		{
+			SUPPRESS_ERRCONTEXT_DECLARE;
+		
+			SUPPRESS_ERRCONTEXT_PUSH();
+		
+			elog(PersistentRecovery_DebugPrintLevel(), 
+				 "mmxlog_append_checkpoint_data: no tablespace and filespace information for checkpoint because GpIdentity.dbid (%d) is not master (%d)",
+				 GpIdentity.dbid,
+				 MASTER_DBID);
+		
+			SUPPRESS_ERRCONTEXT_POP();
+		}
 		return;
+	}
 
 	sz_f = sizeof(fspc_agg_state) + (sizeof(fspc_map) * gp_max_filespaces);
 	sz_t = sizeof(tspc_agg_state) + (sizeof(tspc_map) * gp_max_tablespaces);
@@ -1105,6 +1133,20 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[4])
 
 	rdata[1].next = &(rdata[2]);
 	rdata[2].next = &(rdata[3]);
+
+	if (Debug_persistent_recovery_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+	
+		SUPPRESS_ERRCONTEXT_PUSH();
+	
+		elog(PersistentRecovery_DebugPrintLevel(), 
+			 "mmxlog_append_checkpoint_data: %d tablespaces and %d filespaces checkpoint information",
+			 t->pos,
+			 f->pos);
+	
+		SUPPRESS_ERRCONTEXT_POP();
+	}
 }
 
 /* 
