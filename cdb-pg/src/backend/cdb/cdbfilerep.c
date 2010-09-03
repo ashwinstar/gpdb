@@ -118,6 +118,7 @@ static bool FileRep_IsAnyBackendChildAlive(void);
 static void FileRep_SignalChildren(int signal, bool backendsOnly);
 static bool FileRep_ProcessSignals(void);
 static void FileRep_ConfigureSignals(void);
+static void FileRep_IpcSignalAllInternal(int ii);
 
 static pg_crc32 FileRep_CalculateAdler32(unsigned char *buf, int len);
 
@@ -431,7 +432,22 @@ FileRepSemas(void)
 	 *		4) receiver and consumer Append Only 2 (FileRepShmem_s = 2)
 	 *		5) consumers and sender ack (FileRepAckShmem_s = 2)
 	 *
+	 *	FileRep_IpcSignal() and reference count are protected by the following locks
+	 *
+	 *  PRIMARY
+	 *		1) LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
+	 *		2) LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE);
+	 *		3) LWLockAcquire(FileRepAckHashShmemLock, LW_EXCLUSIVE);
+	 *		4) LWLockAcquire(FileRepAckHashShmemLock, LW_EXCLUSIVE);
+	 *
+	 *	MIRROR
+	 *		1) LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
+	 *		2) LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
+	 *		3) LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
+	 *		4) LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
+	 *		5) LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE);
 	 */
+	
 	return(FILEREP_MAX_SEMAPHORES);
 }
 
@@ -482,7 +498,7 @@ FileRepIpc_ShmemInit(void)
 static void
 FileRepIpc_ShmemReInit(void)
 {
-	int		ii;
+	int		ii,jj;
 	
 	for (ii=0; ii < FILEREP_MAX_IPC_ARRAY; ii++)
 	{
@@ -492,6 +508,16 @@ FileRepIpc_ShmemReInit(void)
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 (errmsg("shared memory for filerep ipc not initialized"))));
 		}	
+		
+		for (jj=0; jj < fileRepIpcArray[ii]->refCountSemP; jj++)
+		{
+			PGSemaphoreUnlock(&fileRepIpcArray[ii]->semP);
+		}
+	
+		for (jj=0; jj < fileRepIpcArray[ii]->refCountSemC; jj++)
+		{
+			PGSemaphoreUnlock(&fileRepIpcArray[ii]->semC);
+		}				
 				
 		PGSemaphoreReset(&fileRepIpcArray[ii]->semP);
 		PGSemaphoreReset(&fileRepIpcArray[ii]->semC);
@@ -518,26 +544,81 @@ FileRep_IpcSignal(PGSemaphoreData sem, int refCount)
 	}
 }
 
+static void
+FileRep_IpcSignalAllInternal(int ii)
+{
+	int jj;
+	
+	for (jj=0; jj < fileRepIpcArray[ii]->refCountSemP; jj++)
+	{
+		PGSemaphoreUnlock(&fileRepIpcArray[ii]->semP);
+	}
+	
+	for (jj=0; jj < fileRepIpcArray[ii]->refCountSemC; jj++)
+	{
+		PGSemaphoreUnlock(&fileRepIpcArray[ii]->semC);
+	}		
+}
+
 void
 FileRep_IpcSignalAll(void)
 {
 	int ii;
-	int	jj;
 	
 	for (ii=0; ii < FILEREP_MAX_IPC_ARRAY; ii++)
 	{
-		for (jj=0; jj < fileRepIpcArray[ii]->refCountSemP; jj++)
+		switch (fileRepRole)
 		{
-			PGSemaphoreUnlock(&fileRepIpcArray[ii]->semP);
+			case FileRepPrimaryRole:
+				switch (ii)
+				{	
+					case 0:
+						LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
+						FileRep_IpcSignalAllInternal(ii);
+						LWLockRelease(FileRepShmemLock);
+						break;
+					case 1:
+						LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE);
+						FileRep_IpcSignalAllInternal(ii);
+						LWLockRelease(FileRepAckShmemLock);
+						break;
+					case 3:
+					case 4:
+						LWLockAcquire(FileRepAckHashShmemLock, LW_EXCLUSIVE);
+						FileRep_IpcSignalAllInternal(ii);
+						LWLockRelease(FileRepAckHashShmemLock);
+						break;
+					default:
+						break;
+				}
+				break;
+				
+			case FileRepMirrorRole:
+				switch (ii)
+				{	
+					case 0:
+					case 1:
+					case 2:
+					case 3:
+						LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
+						FileRep_IpcSignalAllInternal(ii);
+						LWLockRelease(FileRepShmemLock);
+						break;
+					case 4:
+						LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE);
+						FileRep_IpcSignalAllInternal(ii);
+						LWLockRelease(FileRepAckShmemLock);
+						break;
+					default:
+						break;
+				}
+				break;
+				
+			default:
+				break;
 		}
-		
-		for (jj=0; jj < fileRepIpcArray[ii]->refCountSemC; jj++)
-		{
-			PGSemaphoreUnlock(&fileRepIpcArray[ii]->semC);
-		}		
 	}
 }
-
 
 static FileRepShmem_s *FileRep_ShmemInitOneBuffer(const char *bufferLabel, int shmemSize, int bufSize)
 {
