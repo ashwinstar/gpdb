@@ -248,6 +248,8 @@ bool 		Debug_appendonly_print_storage_headers = false;
 bool 		Debug_appendonly_print_verify_write_block = false;
 bool		Debug_appendonly_use_no_toast = false;
 bool 		Debug_appendonly_print_blockdirectory = false;
+bool 		Debug_appendonly_print_read_block = false;
+bool 		Debug_appendonly_print_append_block = false;
 bool		Debug_bitmap_print_insert = false;
 bool 		Test_appendonly_override = false;
 bool		Test_print_direct_dispatch_info = false;
@@ -2108,7 +2110,27 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_appendonly_print_blockdirectory,
 		false, NULL, NULL
 	},
-
+	
+	{
+		{"Debug_appendonly_print_read_block", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print log messages for append-only reads."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_appendonly_print_read_block,
+		false, NULL, NULL
+	},
+	
+	{
+		{"Debug_appendonly_print_append_block", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print log messages for append-only writes."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_appendonly_print_append_block,
+		false, NULL, NULL
+	},
+	
 	{
 		{"debug_appendonly_print_insert", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print log messages for append-only insert."),

@@ -160,6 +160,7 @@ OpenAOSegmentFile(
 							segmentFileNum,
 							/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
 							logicalEof,
+							/* traceOpenFlags */ false,
 							&persistentTid,
 							persistentSerialNum,
 							&primaryError);

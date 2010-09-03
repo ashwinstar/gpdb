@@ -172,9 +172,10 @@ void AppendOnlyStorageWrite_Init(
 					   memory,
 					   memoryLen, 
 					   /* maxBufferLen */ storageWrite->maxBufferWithCompressionOverrrunLen, 
-					   storageWrite->largeWriteLen);
+					   storageWrite->largeWriteLen,
+					   relationName);
 				
-	if (Debug_appendonly_print_insert)
+	if (Debug_appendonly_print_insert || Debug_appendonly_print_append_block)
 		elog(LOG,"Append-Only Storage Write initialize for table '%s' "
 		     "(compression = %s, compression level %d, maximum buffer length %d, large write length %d)",
 		     storageWrite->relationName,
@@ -412,6 +413,7 @@ void AppendOnlyStorageWrite_OpenFile(
 							segmentFileNum,
 							storageWrite->relationName,
 							logicalEof,
+							/* traceOpenFlags */ Debug_appendonly_print_append_block,
 							persistentTid,
 							persistentSerialNum,
 							&primaryError);

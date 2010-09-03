@@ -147,9 +147,10 @@ void AppendOnlyStorageRead_Init(
 					 memory,
 					 memoryLen, 
 					 storageRead->maxBufferLen, 
-					 storageRead->largeReadLen);
+					 storageRead->largeReadLen,
+					 relationName);
 				
-	if (Debug_appendonly_print_scan)
+	if (Debug_appendonly_print_scan || Debug_appendonly_print_read_block)
 		elog(LOG,"Append-Only Storage Read initialize for table '%s' "
 		     "(compression = %s, compression level %d, maximum buffer length %d, large read length %d)",
 		     storageRead->relationName,
@@ -258,6 +259,15 @@ static File AppendOnlyStorageRead_DoOpenFile(
 	Assert(storageRead->isActive);
 	Assert(filePathName != NULL);
 
+	if (Debug_appendonly_print_read_block)
+	{
+		elog(LOG,
+			 "Append-Only storage read: opening table '%s', segment file '%s', fileFlags 0x%x, fileMode 0x%x",
+			 storageRead->relationName,
+			 storageRead->segmentFileName,
+			 fileFlags,
+			 fileMode);
+	}
 	/*
 	 * Open the file for read.
 	 */	

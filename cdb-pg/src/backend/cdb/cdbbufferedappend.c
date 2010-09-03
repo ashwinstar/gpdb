@@ -11,6 +11,7 @@
  */
 #include "cdb/cdbbufferedappend.h"
 #include <unistd.h>				/* for write() */
+#include "utils/guc.h"
 
 static void BufferedAppendWrite(
     BufferedAppend        *bufferedAppend);
@@ -42,8 +43,11 @@ void BufferedAppendInit(
     uint8                *memory,
     int32                memoryLen,
     int32                maxBufferLen,
-    int32                maxLargeWriteLen)
+    int32                maxLargeWriteLen,
+    char				 *relationName)
 {
+	int		relationNameLen;
+
 	Assert(bufferedAppend != NULL);
 	Assert(memory != NULL);
 	Assert(maxBufferLen > 0);
@@ -51,6 +55,13 @@ void BufferedAppendInit(
 	Assert(memoryLen >= BufferedAppendMemoryLen(maxBufferLen, maxLargeWriteLen));
 	
 	memset(bufferedAppend, 0, sizeof(BufferedAppend));
+
+	/*
+	 * Init level.
+	 */
+	relationNameLen = strlen(relationName);
+	bufferedAppend->relationName = (char *) palloc(relationNameLen + 1);
+	memcpy(bufferedAppend->relationName, relationName, relationNameLen + 1);
 
 	/*
 	 * Large-read memory level members.
@@ -138,15 +149,17 @@ static void BufferedAppendWrite(
 		currentWritePosition = FileNonVirtualCurSeek(bufferedAppend->file);
 		if (currentWritePosition < 0)
 			ereport(ERROR, (errcode_for_file_access(),
-							errmsg("unable to get current position for file \"%s\" (errcode %d)",
+							errmsg("unable to get current position in table \"%s\" for file \"%s\" (errcode %d)",
+								   bufferedAppend->relationName,
 							       bufferedAppend->filePathName,
 								   errno)));
 
 		if (currentWritePosition != bufferedAppend->largeWritePosition)
 			ereport(ERROR, (errcode_for_file_access(),
 							errmsg("Current position mismatch actual "
-								   INT64_FORMAT ", expected " INT64_FORMAT " in file \"%s\"",
+								   INT64_FORMAT ", expected " INT64_FORMAT " in table \"%s\" for file \"%s\"",
 								   currentWritePosition, bufferedAppend->largeWritePosition,
+								   bufferedAppend->relationName,
 								   bufferedAppend->filePathName)));
 	}
 #endif	
@@ -165,9 +178,23 @@ static void BufferedAppendWrite(
 		if (primaryError != 0)
 			ereport(ERROR,
 					(errcode_for_file_access(),
-					 errmsg("Could not write to segment file '%s': %m", 
+					 errmsg("Could not write in table \"%s\" to segment file '%s': %m", 
+					 		bufferedAppend->relationName,
 							bufferedAppend->filePathName)));
-					   
+	   
+	   if (Debug_appendonly_print_append_block)
+	   {
+		   elog(LOG,
+				"Append-Only storage write: table '%s', segment file '%s', write position " INT64_FORMAT ", "
+				"writeLen %d (equals large write length %d is %s)",
+				bufferedAppend->relationName,
+				bufferedAppend->filePathName,
+				bufferedAppend->largeWritePosition,
+				writeLen,
+				bufferedAppend->largeWriteLen,
+				(writeLen == bufferedAppend->largeWriteLen ? "true" : "false"));
+	   }
+	   
 		actualLen = writeLen;
 
 		writeLen -= actualLen;
@@ -220,8 +247,10 @@ uint8 *BufferedAppendGetBuffer(
 	Assert(bufferedAppend->file >= 0);
 	if (bufferLen > bufferedAppend->maxBufferLen)
 		elog(ERROR,
-		     "bufferLen %d greater than maxBufferLen %d at position " INT64_FORMAT,
-		     bufferLen, bufferedAppend->maxBufferLen, bufferedAppend->largeWritePosition);
+		     "bufferLen %d greater than maxBufferLen %d at position " INT64_FORMAT " in table \"%s\" in file \"%s\"",
+		     bufferLen, bufferedAppend->maxBufferLen, bufferedAppend->largeWritePosition,
+		     bufferedAppend->relationName,
+		     bufferedAppend->filePathName);
 
 	/*
 	 * Let next buffer carry-over into the extra buffer space after
@@ -289,8 +318,10 @@ void BufferedAppendFinishBuffer(
 	Assert(bufferedAppend->file >= 0);
 	if (usedLen > bufferedAppend->bufferLen)
 		elog(ERROR,
-		     "Used length %d greater than bufferLen %d at position " INT64_FORMAT,
-		     usedLen, bufferedAppend->bufferLen, bufferedAppend->largeWritePosition);
+		     "Used length %d greater than bufferLen %d at position " INT64_FORMAT " in table \"%s\" in file \"%s\"",
+		     usedLen, bufferedAppend->bufferLen, bufferedAppend->largeWritePosition,
+			 bufferedAppend->relationName,
+			 bufferedAppend->filePathName);
 		     
 
 	newLen = bufferedAppend->largeWriteLen + usedLen;
@@ -420,11 +451,15 @@ void BufferedAppendFinish(
     BufferedAppend *bufferedAppend)
 {
 	Assert(bufferedAppend != NULL);
-	
-	Assert(bufferedAppend != NULL);
+
 	Assert(bufferedAppend->file == -1);
     Assert(bufferedAppend->bufferLen == 0);
 	Assert(bufferedAppend->fileLen == 0);
 	Assert(bufferedAppend->fileLen_uncompressed == 0);
 
+	if (bufferedAppend->relationName != NULL)
+	{
+		pfree(bufferedAppend->relationName);
+		bufferedAppend->relationName = NULL;
+	}
 }

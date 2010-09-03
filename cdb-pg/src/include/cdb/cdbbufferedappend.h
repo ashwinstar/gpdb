@@ -20,6 +20,11 @@
 typedef struct BufferedAppend
 {
 	/*
+	 * Init level.
+	 */
+	char				*relationName;
+
+	/*
 	 * Large-write memory level members.
 	 */
     int32      			 maxBufferLen;
@@ -91,7 +96,8 @@ extern void BufferedAppendInit(
     uint8                *memory,
     int32                memoryLen,
     int32                maxBufferLen,
-    int32                maxLargeWriteLen);
+    int32                maxLargeWriteLen,
+    char				 *relationName);
 
 /*
  * Takes an open file handle for the next file.

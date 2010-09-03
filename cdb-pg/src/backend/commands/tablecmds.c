@@ -10003,6 +10003,7 @@ copy_append_only_data(
 								segmentFileNum,
 								relationName,
 								/* logicalEof */ 0, // NOTE: This is the START EOF.  Since we are copying, we start at 0.
+								/* traceOpenFlags */ false,
 								persistentTid,
 								persistentSerialNum,
 								&primaryError);

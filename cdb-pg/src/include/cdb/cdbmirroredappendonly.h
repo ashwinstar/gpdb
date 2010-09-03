@@ -118,6 +118,8 @@ extern void MirroredAppendOnly_OpenReadWrite(
 	int64						logicalEof,
 				/* The logical EOF to begin appending the new data. */
 
+	bool						traceOpenFlags,
+
 	ItemPointer					persistentTid,
 
 	int64						persistentSerialNum,

@@ -11,6 +11,7 @@
  */
 #include "cdb/cdbbufferedread.h"
 #include <unistd.h>				/* for read() */
+#include "utils/guc.h"
 
 static void BufferedReadIo(
     BufferedRead        *bufferedRead);
@@ -47,8 +48,11 @@ void BufferedReadInit(
     uint8                *memory,
     int32                memoryLen,
     int32                maxBufferLen,
-    int32                maxLargeReadLen)
+    int32                maxLargeReadLen,
+    char				 *relationName)
 {
+	int		relationNameLen;
+
 	Assert(bufferedRead != NULL);
 	Assert(memory != NULL);
 	Assert(maxBufferLen > 0);
@@ -56,6 +60,13 @@ void BufferedReadInit(
 	Assert(memoryLen >= BufferedReadMemoryLen(maxBufferLen, maxLargeReadLen));
 	
 	memset(bufferedRead, 0, sizeof(BufferedRead));
+
+	/*
+	 * Init level.
+	 */
+	relationNameLen = strlen(relationName);
+	bufferedRead->relationName = (char *) palloc(relationNameLen + 1);
+	memcpy(bufferedRead->relationName, relationName, relationNameLen + 1);
 
 	/*
 	 * Large-read memory level members.
@@ -143,6 +154,7 @@ static void BufferedReadIo(
 {
 	int32 largeReadLen;
 	uint8 *largeReadMemory;
+	int32 offset;
 
 	largeReadLen = bufferedRead->largeReadLen;
 	Assert(bufferedRead->largeReadLen > 0);
@@ -155,7 +167,8 @@ static void BufferedReadIo(
 		currentReadPosition = FileNonVirtualCurSeek(bufferedRead->file);
 		if (currentReadPosition < 0)
 			ereport(ERROR, (errcode_for_file_access(),
-							errmsg("unable to get current position for file \"%s\" (errcode %d)",
+							errmsg("unable to get current position for table \"%s\" in file \"%s\" (errcode %d)",
+								   bufferedRead->relationName,
 							       bufferedRead->filePathName,
 								   errno)));
 			
@@ -163,13 +176,15 @@ static void BufferedReadIo(
 		{
 			ereport(ERROR, (errcode_for_file_access(),
 							errmsg("Current position mismatch actual "
-								   INT64_FORMAT ", expected " INT64_FORMAT " in file \"%s\"",
+								   INT64_FORMAT ", expected " INT64_FORMAT " for table \"%s\" in file \"%s\"",
 								   currentReadPosition, bufferedRead->largeReadPosition,
+								   bufferedRead->relationName,
 								   bufferedRead->filePathName)));
 		}
 	}
 #endif
-	
+
+	offset = 0;
 	while (largeReadLen > 0) 
 	{
 		int actualLen = FileRead(
@@ -179,15 +194,33 @@ static void BufferedReadIo(
 
 		if (actualLen == 0) 
 			ereport(ERROR, (errcode_for_file_access(),
-							errmsg("read beyond eof in file \"%s\"",
+							errmsg("read beyond eof in table \"%s\" in file \"%s\"",
+								   bufferedRead->relationName,
 							       bufferedRead->filePathName)));
 		else if (actualLen < 0)
 			ereport(ERROR, (errcode_for_file_access(),
-							errmsg("unable to read file \"%s\" (errcode %d)", 
+							errmsg("unable to read table \"%s\" file \"%s\" (errcode %d)", 
+								   bufferedRead->relationName,
 								   bufferedRead->filePathName,
 								   errno)));
+		
+		if (Debug_appendonly_print_read_block)
+		{
+			elog(LOG,
+				 "Append-Only storage read: table '%s', segment file '%s', read postition " INT64_FORMAT " (small offset %d), "
+				 "actual read length %d (equals large read length %d is %s)",
+				 bufferedRead->relationName,
+				 bufferedRead->filePathName,
+				 bufferedRead->largeReadPosition,
+				 offset,
+				 actualLen,
+				 bufferedRead->largeReadLen,
+				 (actualLen == bufferedRead->largeReadLen ? "true" : "false"));
+		}
+		
 		largeReadLen -= actualLen;
 		largeReadMemory += actualLen;
+		offset += actualLen;
 	}
 }
 
@@ -354,7 +387,8 @@ void BufferedReadSetTemporaryRange(
 			int64 seekPos = FileSeek(bufferedRead->file, seekOffset, SEEK_CUR);
 			if (seekPos != beginFileOffset)
 				ereport(ERROR, (errcode_for_file_access(),
-								errmsg("unable to seek to position for file \"%s\" (errcode %d)",
+								errmsg("unable to seek to position for table \"%s\" in file \"%s\" (errcode %d)",
+									   bufferedRead->relationName,
 									   bufferedRead->filePathName,
 									   errno)));
 		}
@@ -644,5 +678,11 @@ void BufferedReadFinish(BufferedRead *bufferedRead)
 		pfree(bufferedRead->memory);
 		bufferedRead->memory = NULL;
 		bufferedRead->memoryLen = 0; 
+	}
+
+	if (bufferedRead->relationName != NULL)
+	{
+		pfree(bufferedRead->relationName);
+		bufferedRead->relationName = NULL;
 	}
 }

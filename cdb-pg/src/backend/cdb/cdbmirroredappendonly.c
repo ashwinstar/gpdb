@@ -50,6 +50,12 @@ static void MirroredAppendOnly_SetUpMirrorAccess(
 	bool						mirrorOnly,
 	
 	bool						copyToMirror,
+
+	bool						traceOpenFlags,
+
+	int							fileFlags,
+
+	int							fileMode,
 	
 	StorageManagerMirrorMode	*mirrorMode,
 
@@ -107,7 +113,7 @@ static void MirroredAppendOnly_SetUpMirrorAccess(
 		*mirrorMode = StorageManagerMirrorMode_None; 	// A happy optimizer is the sound of one hand clapping.
 	}
 	
-	if (Debug_persistent_print)
+	if (Debug_persistent_print || traceOpenFlags)
 	{
 		SUPPRESS_ERRCONTEXT_DECLARE;
 
@@ -115,6 +121,7 @@ static void MirroredAppendOnly_SetUpMirrorAccess(
 
 		elog(Persistent_DebugPrintLevel(), 
 			 "MirroredAppendOnly_SetUpMirrorAccess %u/%u/%u, segment file #%d, relation name '%s': create %s, drop %s, primaryOnly %s, mirrorOnly %s, copyToMirror %s, "
+			 "fileFlags 0x%x, fileMode 0x%x, "
 			 "mirror data loss tracking (state '%s', session num " INT64_FORMAT "), mirror mode %s, mirror data loss occurred %s",
 			 relFileNode->spcNode,
 			 relFileNode->dbNode,
@@ -126,6 +133,8 @@ static void MirroredAppendOnly_SetUpMirrorAccess(
 			 (primaryOnly ? "true" : "false"),
 			 (mirrorOnly ? "true" : "false"),
 			 (copyToMirror ? "true" : "false"),
+			 fileFlags,
+			 fileMode,
 			 MirrorDataLossTrackingState_Name(mirrorDataLossTrackingState),
 			 mirrorDataLossTrackingSessionNum,
 			 StorageManagerMirrorMode_Name(*mirrorMode),
@@ -279,7 +288,9 @@ static void MirroredAppendOnly_DoOpen(
 	bool						copyToMirror,
 
 	bool						guardOtherCallsWithMirroredLock,
-	
+
+	bool						traceOpenFlags,
+
 	int 						*primaryError,
 	
 	bool						*mirrorDataLossOccurred)
@@ -328,6 +339,9 @@ static void MirroredAppendOnly_DoOpen(
 									primaryOnlyToLetResynchronizeWork,
 									mirrorOnly,
 									copyToMirror,
+									traceOpenFlags,
+									fileFlags,
+									fileMode,
 									&open->mirrorMode,
 									&open->mirrorDataLossOccurred);
 
@@ -470,6 +484,7 @@ void MirroredAppendOnly_Create(
 					/* mirrorOnly */ false,
 					/* copyToMirror */ false,
 					/* guardOtherCallsWithMirroredLock */ false,
+					/* traceOpenFlags */ false,
 					primaryError,
 					mirrorDataLossOccurred);
 	if (primaryError != 0)
@@ -516,6 +531,7 @@ void MirroredAppendOnly_MirrorReCreate(
 				/* mirrorOnly */ true,
 				/* copyToMirror */ false,
 				/* guardOtherCallsWithMirroredLock */ false,
+				/* traceOpenFlags */ false,
 				&primaryError,
 				mirrorDataLossOccurred);
 	Assert(primaryError == 0);	// No primary work here.
@@ -551,6 +567,8 @@ void MirroredAppendOnly_OpenReadWrite(
 	
 	int64						logicalEof,
 				/* The logical EOF to begin appending the new data. */
+
+	bool						traceOpenFlags,
 
 	ItemPointer					persistentTid,
 
@@ -616,6 +634,7 @@ void MirroredAppendOnly_OpenReadWrite(
 							/* mirrorOnly */ false,
 							/* copyToMirror */ false,
 							/* guardOtherCallsWithMirroredLock */ true,
+							traceOpenFlags,
 							primaryError,
 							&mirrorDataLossOccurred);
 
@@ -665,6 +684,7 @@ void MirroredAppendOnly_OpenResynchonize(
 							/* mirrorOnly */ false,
 							/* copyToMirror */ true,
 							/* guardOtherCallsWithMirroredLock */ false,
+							/* traceOpenFlags */ false,
 							primaryError,
 							mirrorDataLossOccurred);
 	/* 
@@ -1267,6 +1287,7 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 						/* mirrorOnly */ false,
 						/* copyToMirror */ true,
 						/* guardOtherCallsWithMirroredLock */ true,
+						/* traceOpenFlags */ false,
 						&primaryError,
 						&mirrorDataLossOccurred);
 
@@ -1404,6 +1425,7 @@ void MirroredAppendOnly_CopyToMirror(
 					/* mirrorOnly */ false,
 					/* copyToMirror */ true,
 					/* guardOtherCallsWithMirroredLock */ true,
+					/* traceOpenFlags */ false,
 					&primaryError,
 					mirrorDataLossOccurred);
 	
@@ -1491,6 +1513,9 @@ static void MirroredAppendOnly_DoDrop(
 									primaryOnly,
 									mirrorOnly,
 									/* copyToMirror */ false,
+									/* traceOpenFlags */ false,
+									/* fileFlags */ 0,
+									/* fileMode */ 0,
 									&mirrorMode,
 									mirrorDataLossOccurred);
 

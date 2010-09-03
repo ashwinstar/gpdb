@@ -19,6 +19,11 @@
 typedef struct BufferedRead
 {
 	/*
+	 * Init level.
+	 */
+	char				*relationName;
+
+	/*
 	 * Large-read memory level members.
 	 */
     int32      			 maxBufferLen;
@@ -89,7 +94,8 @@ extern void BufferedReadInit(
     uint8                *memory,
     int32                memoryLen,
     int32                maxBufferLen,
-    int32                maxLargeReadLen);
+    int32                maxLargeReadLen,
+    char				 *relationName);
 
 /*
  * Takes an open file handle for the next file.
