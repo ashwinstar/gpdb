@@ -79,10 +79,10 @@ all:
 	cp -R $(LIGHTY_DIR)/* .tmp
 	if [ -f $(BLD_TOP)/docs/release/pdf/GPPerfmonUserGuide.pdf ]; then \
 		cp $(BLD_TOP)/docs/release/pdf/GPPerfmonUserGuide.pdf .tmp/docs; \
+		cp -R $(CONSOLEDOCS_DIR)/* .tmp/www/static/docs; \
 	fi;
 	cp $(BLD_TOP)/ext/$(BLD_ARCH)/bin/openssl .tmp/bin
 	cp $(BLD_TOP)/ext/$(BLD_ARCH)/ssl/openssl.cnf .tmp/etc	
-	cp -R $(CONSOLEDOCS_DIR)/* .tmp/www/static/docs
 	@if [ "$(PACKAGE_ARCH)" = "OSX-i386" ] ; then \
 		cp $(BLD_TOP)/ext/$(BLD_ARCH)/lib/libpcre.0.0.1.dylib .tmp/lib; \
 		cp $(BLD_TOP)/ext/$(BLD_ARCH)/lib/libcrypto.0.9.8.dylib .tmp/lib; \
