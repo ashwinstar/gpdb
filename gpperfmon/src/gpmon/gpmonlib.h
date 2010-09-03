@@ -100,7 +100,6 @@ struct snmp_module_params_t
 	char configfile[PATH_MAX];
 	char outdir[PATH_MAX];;
 	const char* standby_master;
-	const char* gpdb_version_string;
 	int emcconnect_enabled;
 };
 

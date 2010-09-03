@@ -1209,7 +1209,6 @@ void record_status(EmcConnectSymptom symptom, const char* oidstring, const char*
 								convert_gpdb_snmp_status_to_emc_connect_status(status),
 								convert_gpdb_snmp_status_to_emc_connect_severity(status),
 								EMC_CONNECT_ORIGIN_GPMMON,
-								(char*)si.params->gpdb_version_string,
 								si.key.hostname,  
 								(char*)msg_to_send);
 

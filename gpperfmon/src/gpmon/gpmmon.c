@@ -67,7 +67,6 @@ static struct
 
 	char* master_data_directory;
 	char* standby_master_hostname;
-	char* gpdb_version;
 	apr_thread_mutex_t *agg_mutex; /* lock when accessing the agg data */
 	agg_t* agg;
 
@@ -611,7 +610,6 @@ static void* snmp_main(apr_thread_t* thread_, void* arg_)
 	snprintf(snmp_module_params.configfile, PATH_MAX, "%s/gpperfmon/conf/snmp.conf", ax.master_data_directory);
 	snprintf(snmp_module_params.outdir, PATH_MAX, "%s/gpperfmon/data/snmp", ax.master_data_directory);
 	snmp_module_params.standby_master = ax.standby_master_hostname;
-	snmp_module_params.gpdb_version_string = ax.gpdb_version;
 	snmp_module_params.emcconnect_enabled = opt.emcconnect;
 
 	if (gpmmon_init_snmp(&snmp_module_params) != APR_SUCCESS)
@@ -1613,7 +1611,6 @@ static void getconfig(void)
 	char *hostname = NULL;
 	char *master_data_directory = NULL;
 	char *standby_master_hostname = NULL;
-	char *gpdb_version = NULL;
 	int rc = 0;
 
 	static apr_pool_t *pool = NULL;
@@ -1648,19 +1645,6 @@ static void getconfig(void)
 	else
 	{
 		ax.standby_master_hostname =  NULL;
-	}
-
-
-	/* fetch gpdb version */
-	gpdb_get_single_string_from_query("select version()", &gpdb_version, pool);
-	if (gpdb_version)
-	{
-		ax.gpdb_version = strdup(gpdb_version);
-		CHECKMEM(ax.gpdb_version);
-	}
-	else
-	{
-		ax.gpdb_version =  ""; // should not have a null pointer, set to empty string
 	}
 
 	/* clear pool for next call */

@@ -161,7 +161,6 @@ int gpmon_emcconnect_send_alert(EmcConnectSymptom symptom,
 								EmcConnectStatus status,
 								EmcConnectSeverity severity,
 								EmcConnectOrigin origin,
-								char* gpdbVersion,
 								char* hostname,  
 								char* msg)
 {
@@ -243,7 +242,7 @@ int gpmon_emcconnect_send_alert(EmcConnectSymptom symptom,
 	if (retVal >= GPMON_EMCCONNECT_FILENAME_MAX)
 		return 7;
 
-	retVal = gpmon_emcconnect_create_xml(buffer, GPMON_EMCCONNECT_BUFFER_SIZE, symptom, status, severity, gpdbVersion, serial_num, "", hostname, msg);
+	retVal = gpmon_emcconnect_create_xml(buffer, GPMON_EMCCONNECT_BUFFER_SIZE, symptom, status, severity, GP_VERSION, serial_num, "", hostname, msg);
 	if (retVal)
 		return 8;
 
