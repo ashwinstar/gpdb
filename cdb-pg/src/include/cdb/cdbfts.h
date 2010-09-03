@@ -90,6 +90,7 @@ struct FtsSegDBState
 #define FTS_STATUS_PRIMARY				(1<<1)
 #define FTS_STATUS_DEFINEDPRIMARY		(1<<2)
 #define FTS_STATUS_SYNCHRONIZED			(1<<3)
+#define FTS_STATUS_CHANGELOGGING		(1<<4)
 
 #define FTS_STATUS_TEST(dbid, status, flag) (((status)[(dbid)] & (flag)) ? true : false)
 #define FTS_STATUS_ISALIVE(dbid, status) FTS_STATUS_TEST((dbid), (status), FTS_STATUS_ALIVE)

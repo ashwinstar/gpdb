@@ -423,6 +423,9 @@ readCdbComponentInfoAndUpdateStatus(void)
 		if (segInfo->mode == 's')
 			segStatus |= FTS_STATUS_SYNCHRONIZED;
 
+		if (segInfo->mode == 'c')
+			segStatus |= FTS_STATUS_CHANGELOGGING;
+
 		ftsProbeInfo->fts_status[segInfo->dbid] = segStatus;
 	}
 	ftsUnlock();
@@ -1632,6 +1635,9 @@ addChangeHistory(PGconn *entryConn, struct segmentStatusChange *changes, int cha
 		{
 			if (!valid && primary)
 			{
+				if ((changes[i].oldStatus & FTS_STATUS_CHANGELOGGING) != 0)
+					continue; /* this was already marked */
+
 				count = snprintf(cmd, sizeof(cmd),
 								 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: content %d double failure, last known primary marked for changetracking')",
 								 time_str, change->dbid, change->segindex);
@@ -1730,6 +1736,9 @@ probeUpdateConfig(PGconn *entryConn, struct segmentStatusChange *changes, int ch
 				 */
 				if (!valid && primary)
 				{
+					if ((changes[i].oldStatus & FTS_STATUS_CHANGELOGGING) != 0)
+						continue; /* already marked */
+
 					count = snprintf(cmd, sizeof(cmd),
 									 "update %s set mode = 'c' where dbid=CAST(%d AS SMALLINT)",
 									 GpSegmentConfigRelationName,
