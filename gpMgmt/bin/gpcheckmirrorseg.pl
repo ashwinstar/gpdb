@@ -155,7 +155,9 @@ and tuple headers, which is somewhat platform dependent. Column store
 tables have a similar issue, since the implementation encodes the eof
 for each file of the cols of a segno in a single raw vpinfo struct
 (containing a variable length array) that is stored in a catalog
-column as a bytea.
+column as a bytea.  In particular (see MPP-10900), we assume that
+platform is 64-bit aligned little-endian (x86), with the exception
+that all Mac is 32-bit aligned.
 
 =head1 AUTHORS
 
@@ -194,6 +196,8 @@ my $glob_fixfile;
 my $glob_fixlist;
 
 my $glob_content;
+
+my $glob_platform;
 
 BEGIN {
     my $man  = 0;
@@ -1072,8 +1076,21 @@ sub find_eof_in_vpinfo
 
 		my $nentry = $ppp[0];
 
+		# MPP-10900: treat all platforms as 64 bit aligned (except
+		# mac).  XXX XXX: May need to get a bit more sophisticated at
+		# a later date to handle platforms like 64 bit mac, 32 bit
+		# Centos, or Sparc.
+		my $isMac = 0;
+
+		$isMac = 
+			($Config{'osname'} =~ m/darwin|mac|apple/i);
+
 		# two 64 bit (I2) fields in each entry, so multiply by 4
 		my $nentry2 = $nentry * 4;
+
+		# the mac is 32 bit aligned, but other platforms are 64 bit
+		# aligned, so we need another 32 bits of packing.
+		$nentry2++ unless $isMac;
 
 		@ppp = unpack("I2 I$nentry2", $bigbuf);
 
@@ -1082,6 +1099,9 @@ sub find_eof_in_vpinfo
 		# discard version, nentry
 		shift @ppp;
 		shift @ppp;
+
+		# and discard the packing...
+		shift @ppp unless $isMac;
 
 		print "\nppp: \n",Data::Dumper->Dump(\@ppp);
 
@@ -2350,6 +2370,33 @@ if (1)
 	print $tabdef;
 	
 	my $gp_seg_config = tablelizer($tabdef);
+
+	if (0)
+	{
+		$psql_str = "psql ";
+
+		$psql_str .= $glob_connect
+			if (defined($glob_connect));
+
+		$psql_str .= " -c \' select version() as vv, 1 as one \'" ;
+
+		$tabdef = `$psql_str`;
+
+		my $vsnh = tablelizer($tabdef);
+
+#	print Data::Dumper->Dump([$vsnh]);
+
+		die "bad version"
+			unless (scalar(@{$vsnh}));
+
+		{
+			my @ggg = ($vsnh->[0]->{vv} =~ m/on\s+(.*)\,\s+\compiled by/);
+
+			die "bad platform"
+				unless scalar(@ggg);
+
+		}
+	}
 
 	$psql_str = "psql ";
 
