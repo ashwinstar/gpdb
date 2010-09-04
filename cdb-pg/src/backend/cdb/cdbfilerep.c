@@ -1814,7 +1814,6 @@ FileRep_ProcessSignals()
     		processExit = true;
     		FileRep_SetState(FileRepStateShutdown);
     		FileRep_SignalChildren(SIGUSR2, false);
-			FileRep_IpcSignalAll();
 		}
 	}
 
@@ -1825,7 +1824,6 @@ FileRep_ProcessSignals()
 		FileRep_SignalChildren(SIGQUIT, false);
 		processExit = true;
 		exitWithImmediateShutdown = true;
-		FileRep_IpcSignalAll();
 	}
 	
 	/*
@@ -1838,7 +1836,6 @@ FileRep_ProcessSignals()
 		FileRep_SignalChildren(SIGQUIT, false);
 		processExit = true;
 		exitWithImmediateShutdown = true;
-		FileRep_IpcSignalAll();
 	}
 	
 	if (childTermination)

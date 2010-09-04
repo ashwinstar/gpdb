@@ -272,6 +272,11 @@ FileRepSubProcess_ProcessSignals()
                 Assert(0);
                 break;
         } // switch()
+		
+		if (processExit == true) 
+		{
+			FileRep_IpcSignalAll();
+		}
     }
 
 	return(processExit);
