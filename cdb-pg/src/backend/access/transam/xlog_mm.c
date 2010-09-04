@@ -255,7 +255,7 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
  * For log output
  */
 void
-mmxlog_desc(StringInfo buf, XLogRecord *record)
+mmxlog_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
 	char		*rec = XLogRecGetData(record);
@@ -1147,6 +1147,54 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[4])
 	
 		SUPPRESS_ERRCONTEXT_POP();
 	}
+}
+
+/* 
+ * If we're on the master standby, we expect to receive filespace and tablespace
+ * meta data from a checkpoint.
+ */
+void
+mmxlog_get_checkpoint_counts(char *cpdata, XLogRecPtr *beginLoc, int *tablespaceCount, int *filespaceCount)
+{
+	fspc_map *fmap = NULL;
+	tspc_map *tmap = NULL;
+	int n;
+	int i;
+
+	*tablespaceCount = 0;
+	*filespaceCount = 0;
+
+	if (!cpdata)
+		return;
+
+ 	fmap = (fspc_map *)cpdata;
+	tmap = (tspc_map *)(cpdata + (sizeof(fspc_map) * gp_max_filespaces));
+
+	/*
+	 * Push the data down into the hash tables. We calculate the array length
+	 * from the byte length of the array. We need to do filespaces first as
+	 * they are the root of the space hierarchy.
+	 */
+	n = gp_max_filespaces;
+
+	for (i = 0; i < n; i++)
+	{
+		fspc_map *m = &(fmap[i]);
+
+		if (m->filespaceoid == InvalidOid)
+			break;
+	}
+	*filespaceCount = i;
+
+	n = gp_max_tablespaces;
+	for (i = 0; i < n; i++)
+	{
+		tspc_map *m = &(tmap[i]);
+
+		if (m->tablespaceoid == InvalidOid)
+			break;
+	}
+	*tablespaceCount = i;
 }
 
 /* 

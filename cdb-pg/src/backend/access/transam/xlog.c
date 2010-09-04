@@ -640,6 +640,14 @@ static void issue_xlog_fsync(void);
 static void pg_start_backup_callback(int code, Datum arg);
 static bool read_backup_label(XLogRecPtr *checkPointLoc,
 				  XLogRecPtr *minRecoveryLoc);
+
+typedef struct RedoErrorCallBack
+{
+	XLogRecPtr	location;
+
+	XLogRecord 	*record;
+} RedoErrorCallBack;
+
 static void rm_redo_error_callback(void *arg);
 
 static void XLogQDMirrorWrite(int startidx, int npages, TimeLineID timeLineID, uint32 logId, uint32 logSeg, uint32 logOff);
@@ -1222,7 +1230,7 @@ begin:;
 
 		contiguousCopy = XLogContiguousCopy(record, rdata);
 		appendStringInfo(&buf, " - ");
-		RmgrTable[record->xl_rmid].rm_desc(&buf, (XLogRecord*)contiguousCopy);
+		RmgrTable[record->xl_rmid].rm_desc(&buf, RecPtr, (XLogRecord*)contiguousCopy);
 		pfree(contiguousCopy);
 
 		elog(LOG, "%s", buf.data);
@@ -6100,6 +6108,7 @@ StartupXLOG_RedoPass1Context(void *arg)
 	XLog_OutRec(&buf, record);
 	appendStringInfo(&buf, " - ");
 	RmgrTable[record->xl_rmid].rm_desc(&buf,
+									   ReadRecPtr,
 									   record);
 
 	errcontext("%s", buf.data);
@@ -6124,6 +6133,7 @@ StartupXLOG_RedoPass3Context(void *arg)
 	XLog_OutRec(&buf, record);
 	appendStringInfo(&buf, " - ");
 	RmgrTable[record->xl_rmid].rm_desc(&buf,
+									   ReadRecPtr,
 									   record);
 
 	errcontext("%s", buf.data);
@@ -6140,11 +6150,16 @@ ApplyStartupRedo(
 
 	XLogRecord		*record)
 {
+	RedoErrorCallBack redoErrorCallBack;
+
 	ErrorContextCallback errcontext;
 
 	/* Setup error traceback support for ereport() */
+	redoErrorCallBack.location = *beginLoc;
+	redoErrorCallBack.record = record;
+	
 	errcontext.callback = rm_redo_error_callback;
-	errcontext.arg = (void *) record;
+	errcontext.arg = (void *) &redoErrorCallBack;
 	errcontext.previous = error_context_stack;
 	error_context_stack = &errcontext;
 	
@@ -6346,20 +6361,50 @@ StartupXLOG(void)
 							&masterMirroringCheckpoint,
 							&masterMirroringCheckpointLen);
 
+
 		/*
 		 * Handle the DTX information.
 		 */
 		if (dtxCheckpoint != NULL)
 		{
+			if (Debug_persistent_recovery_print)
+			{
+				elog(PersistentRecovery_DebugPrintLevel(), 
+					 "StartupXLOG: Checkpoint record data length = %u, DTX committed count %d, DTX data length %u, Master Mirroring information length %u, location %s",
+					 record->xl_len,
+					 dtxCheckpoint->committedCount,
+					 dtxCheckpointLen,
+					 masterMirroringCheckpointLen,
+					 XLogLocationToString(&checkPointLoc));
+			}
 			redoDtxCheckPoint(dtxCheckpoint);
+
+			/* 
+			 * Always ignore the Master Mirrroing information.	It is only used by
+			 * Standby Master REDO.
+			 */
+
+			if (masterMirroringCheckpointLen > 0 &&
+				Debug_persistent_recovery_print)
+			{
+				int tablespaceCount;
+				int filespaceCount;
+			
+				mmxlog_get_checkpoint_counts(
+										masterMirroringCheckpoint,
+										&checkPointLoc,
+										&tablespaceCount,
+										&filespaceCount);
+										
+				elog(PersistentRecovery_DebugPrintLevel(), 
+					 "StartupXLOG: master mirroring information: %d tablespaces, %d filespaces, location %s",
+					 tablespaceCount,
+					 filespaceCount,
+					 XLogLocationToString(&checkPointLoc));
+			}
 		}
 
 
-		/* 
-		 * Always ignore the Master Mirrroing information.  It is only used by
-		 * Standby Master REDO.
-		 */
-		
 	}
 
 	ereport(LOG,
@@ -7194,6 +7239,17 @@ XLogPopulateMasterMirroring(
 						&masterMirroringCheckpoint,
 						&masterMirroringCheckpointLen);
 
+	if (Debug_persistent_recovery_print)
+	{
+		elog(PersistentRecovery_DebugPrintLevel(), 
+			 "XLogPopulateMasterMirroring: Checkpoint record data length = %u, DTX committed count %d, DTX data length %u, Master Mirroring information length %u, location %s",
+			 record->xl_len,
+			 dtxCheckpoint->committedCount,
+			 dtxCheckpointLen,
+			 masterMirroringCheckpointLen,
+			 XLogLocationToString(redoCheckPointLoc));
+	}
+
 	if (masterMirroringCheckpoint != NULL)
 	{
 		mmxlog_read_checkpoint_data(masterMirroringCheckpoint, redoCheckPointLoc);
@@ -7525,6 +7581,7 @@ XLogStandbyRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoin
 			XLog_OutRec(&buf, record);
 			appendStringInfo(&buf, " - ");
 			RmgrTable[record->xl_rmid].rm_desc(&buf,
+											   ReadRecPtr,
 											   record);
 			elog(LOG, "%s", buf.data);
 			pfree(buf.data);
@@ -7808,6 +7865,24 @@ UnpackCheckPointRecord(
 			*masterMirroringCheckpointLen = remainderLen;
 
 			// UNDONE: Validate the Master Mirroring length.
+			
+			if (Debug_persistent_recovery_print)
+			{
+				int tablespaceCount;
+				int filespaceCount;
+
+				mmxlog_get_checkpoint_counts(
+										(*masterMirroringCheckpoint),
+										location,
+										&tablespaceCount,
+										&filespaceCount);
+										
+				elog(PersistentRecovery_DebugPrintLevel(), 
+					 "UnpackCheckPointRecord: master mirroring information: %d tablespaces, %d filespaces, location %s",
+					 tablespaceCount,
+					 filespaceCount,
+					 XLogLocationToString(location));
+			}
 		}
 	}
 }
@@ -8492,6 +8567,56 @@ RequestXLogSwitch(void)
 	return RecPtr;
 }
 
+static void
+xlog_redo_print_extended_checkpoint_info(XLogRecPtr beginLoc, XLogRecord *record)
+{
+	TMGXACT_CHECKPOINT	*dtxCheckpoint;
+	uint32				dtxCheckpointLen;
+	char				*masterMirroringCheckpoint;
+	uint32				masterMirroringCheckpointLen;
+
+	/*
+	 * The UnpackCheckPointRecord routine will print under the 
+	 * Debug_persistent_recovery_print GUC.
+	 */
+	UnpackCheckPointRecord(
+						record,
+						&beginLoc,
+						&dtxCheckpoint,
+						&dtxCheckpointLen,
+						&masterMirroringCheckpoint,
+						&masterMirroringCheckpointLen);
+
+	if (dtxCheckpointLen > 0)
+	{
+		elog(PersistentRecovery_DebugPrintLevel(), 
+			 "xlog_redo_print_extended_checkpoint_info: Checkpoint record data length = %u, DTX committed count %d, DTX data length %u, Master Mirroring information length %u, location %s",
+			 record->xl_len,
+			 dtxCheckpoint->committedCount,
+			 dtxCheckpointLen,
+			 masterMirroringCheckpointLen,
+			 XLogLocationToString(&beginLoc));
+
+		if (masterMirroringCheckpointLen > 0)
+		{
+			int tablespaceCount;
+			int filespaceCount;
+
+			mmxlog_get_checkpoint_counts(
+									masterMirroringCheckpoint,
+									&beginLoc,
+									&tablespaceCount,
+									&filespaceCount);
+									
+			elog(PersistentRecovery_DebugPrintLevel(), 
+				 "xlog_redo_print_extended_checkpoint_info: master mirroring information: %d tablespaces, %d filespaces, location %s",
+				 tablespaceCount,
+				 filespaceCount,
+				 XLogLocationToString(&beginLoc));
+		}
+	}
+}
+
 /*
  * XLOG resource manager's routines
  *
@@ -8546,6 +8671,11 @@ xlog_redo(XLogRecPtr beginLoc __attribute__((unused)), XLogRecPtr lsn __attribut
 		}
 
 		RecoveryRestartPoint(&checkPoint);
+		
+		if (Debug_persistent_recovery_print)
+		{
+			xlog_redo_print_extended_checkpoint_info(beginLoc, record);
+		}
 	}
 	else if (info == XLOG_CHECKPOINT_ONLINE)
 	{
@@ -8575,6 +8705,11 @@ xlog_redo(XLogRecPtr beginLoc __attribute__((unused)), XLogRecPtr lsn __attribut
 							checkPoint.ThisTimeLineID, ThisTimeLineID)));
 
 		RecoveryRestartPoint(&checkPoint);
+		
+		if (Debug_persistent_recovery_print)
+		{
+			xlog_redo_print_extended_checkpoint_info(beginLoc, record);
+		}
 	}
 	else if (info == XLOG_SWITCH)
 	{
@@ -8583,7 +8718,7 @@ xlog_redo(XLogRecPtr beginLoc __attribute__((unused)), XLogRecPtr lsn __attribut
 }
 
 void
-xlog_desc(StringInfo buf, XLogRecord *record)
+xlog_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
 	char		*rec = XLogRecGetData(record);
@@ -8592,6 +8727,11 @@ xlog_desc(StringInfo buf, XLogRecord *record)
 		info == XLOG_CHECKPOINT_ONLINE)
 	{
 		CheckPoint *checkpoint = (CheckPoint *) rec;
+
+		TMGXACT_CHECKPOINT	*dtxCheckpoint;
+		uint32				dtxCheckpointLen;
+		char				*masterMirroringCheckpoint;
+		uint32				masterMirroringCheckpointLen;
 
 		appendStringInfo(buf, "checkpoint: redo %X/%X; undo %X/%X; "
 						 "tli %u; xid %u/%u; oid %u; multi %u; offset %u; %s",
@@ -8603,6 +8743,45 @@ xlog_desc(StringInfo buf, XLogRecord *record)
 						 checkpoint->nextMulti,
 						 checkpoint->nextMultiOffset,
 				 (info == XLOG_CHECKPOINT_SHUTDOWN) ? "shutdown" : "online");
+		
+		/*
+		 * The UnpackCheckPointRecord routine will print under the 
+		 * Debug_persistent_recovery_print GUC.
+		 */
+		UnpackCheckPointRecord(
+							record,
+							&beginLoc,
+							&dtxCheckpoint,
+							&dtxCheckpointLen,
+							&masterMirroringCheckpoint,
+							&masterMirroringCheckpointLen);
+
+		if (dtxCheckpointLen > 0)
+		{
+			appendStringInfo(buf,
+				 ", checkpoint record data length = %u, DTX committed count %d, DTX data length %u, Master Mirroring information length %u",
+				 record->xl_len,
+				 dtxCheckpoint->committedCount,
+				 dtxCheckpointLen,
+				 masterMirroringCheckpointLen);
+			
+			if (masterMirroringCheckpointLen > 0)
+			{
+				int tablespaceCount;
+				int filespaceCount;
+			
+				mmxlog_get_checkpoint_counts(
+										masterMirroringCheckpoint,
+										&beginLoc,
+										&tablespaceCount,
+										&filespaceCount);
+										
+				appendStringInfo(buf,
+					 ", master mirroring information: %d tablespaces, %d filespaces",
+					 tablespaceCount,
+					 filespaceCount);
+			}
+		}
 	}
 	else if (info == XLOG_NEXTOID)
 	{
@@ -9386,12 +9565,14 @@ read_backup_label(XLogRecPtr *checkPointLoc, XLogRecPtr *minRecoveryLoc)
 static void
 rm_redo_error_callback(void *arg)
 {
-	XLogRecord *record = (XLogRecord *) arg;
+	RedoErrorCallBack *redoErrorCallBack = (RedoErrorCallBack*) arg;
 	StringInfoData buf;
 
 	initStringInfo(&buf);
-	RmgrTable[record->xl_rmid].rm_desc(&buf,
-									   record);
+	RmgrTable[redoErrorCallBack->record->xl_rmid].rm_desc(
+												   &buf,
+												   redoErrorCallBack->location,
+												   redoErrorCallBack->record);
 
 	/* don't bother emitting empty description */
 	if (buf.len > 0)

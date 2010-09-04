@@ -6323,7 +6323,7 @@ xact_desc_abort(StringInfo buf, xl_xact_abort *xlrec)
 }
 
 void
-xact_desc(StringInfo buf, XLogRecord *record)
+xact_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
 	char		*rec = XLogRecGetData(record);

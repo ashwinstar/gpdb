@@ -68,6 +68,6 @@ extern void MultiXactAdvanceNextMXact(MultiXactId minMulti,
 						  MultiXactOffset minMultiOffset);
 
 extern void multixact_redo(XLogRecPtr beginLoc __attribute__((unused)) , XLogRecPtr lsn __attribute__((unused)), XLogRecord *record);
-extern void multixact_desc(StringInfo buf, XLogRecord *record);
+extern void multixact_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record);
 
 #endif   /* MULTIXACT_H */

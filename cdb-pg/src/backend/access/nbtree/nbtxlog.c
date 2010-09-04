@@ -933,7 +933,7 @@ out_newroot(StringInfo buf, XLogRecord *record)
 }
 
 void
-btree_desc(StringInfo buf, XLogRecord *record)
+btree_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
 

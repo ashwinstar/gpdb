@@ -313,6 +313,6 @@ extern void _hash_checkpage(Relation rel, Buffer buf, int flags);
 
 /* hash.c */
 extern void hash_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record);
-extern void hash_desc(StringInfo buf, XLogRecord *record);
+extern void hash_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record);
 
 #endif   /* HASH_H */

@@ -55,7 +55,7 @@ typedef struct xl_mm_fs_obj
 } xl_mm_fs_obj;
 
 extern void mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record);
-extern void mmxlog_desc(StringInfo buf, XLogRecord *record);
+extern void mmxlog_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record);
 
 /* 
  * Functions to generate WAL records to remove file system objects on the
@@ -77,6 +77,7 @@ extern void mmxlog_log_create_database(Oid tablespace, Oid database);
 extern void mmxlog_log_create_relfilenode(Oid tablespace, Oid database,
 										  Oid relfilenode, uint32 segnum);
 extern void mmxlog_append_checkpoint_data(XLogRecData rdata[4]);
+extern void mmxlog_get_checkpoint_counts(char *cpdata, XLogRecPtr *beginLoc, int *tablespaceCount, int *filespaceCount);
 extern void mmxlog_read_checkpoint_data(char *cpdata, XLogRecPtr *beginLoc);
 extern char *mmxlog_tablespace_get_path(Oid tspcoid);
 extern char *mmxlog_filespace_get_path(Oid fspcoid);
