@@ -101,6 +101,14 @@ static struct
 
 } si = { 0 };
 
+#define MAX_NIC_MAP_SIZE 16
+
+static struct
+{
+	bool tenGigCard[MAX_NIC_MAP_SIZE];
+
+} nic_map = { { 0 } }; 
+
 
 void record_status(EmcConnectSymptom symptom, const char* oidstring, const char* displayname, GPDB_SNMP_STATUS status, const char* message);
 int init_host(const char* hostname);
@@ -330,6 +338,78 @@ GPDB_SNMP_STATUS dell_network_device_connection_status_conversion(int statusCode
 	}
 	return status;
 }
+
+// interprets same oid as dell_network_device_connection_status_conversion, except for an interface nic
+GPDB_SNMP_STATUS dell_interconnect_device_connection_status_conversion(int statusCodeIn, char** msgout)
+{
+    //unknown(0) Unable to determine connection status. 
+    //connected(1) Media reports that device is connected. 
+    //disconnected(2) Media reports that device is disconnected. 
+    //driverBad(3) Driver cannot be opened to determine status. 
+    //driverDisabled(4) Driver is disabled. 
+    //hardwareInitalizing(10) Hardware is initializing. 
+    //hardwareResetting(11) Hardware is resetting. 
+    //hardwareClosing(12) Hardware is closing down. 
+    //hardwareNotReady(13) Hardware is not ready. 
+
+	GPDB_SNMP_STATUS status;
+
+	switch(statusCodeIn)
+	{
+		case 0:
+			status = GPDB_SNMP_STATUS_UNKNOWN;
+			*msgout = "unknown";
+        break;
+
+		case 1:
+			status = GPDB_SNMP_STATUS_NORMAL;
+			*msgout = "connected";
+        break;
+
+		case 2:
+			status = GPDB_SNMP_STATUS_ERROR;
+			*msgout = "disconnected";
+        break;
+
+		case 3:
+			status = GPDB_SNMP_STATUS_ERROR;
+			*msgout = "driver bad";
+        break;
+
+		case 4:
+			status = GPDB_SNMP_STATUS_ERROR;
+			*msgout = "driver disabled";
+        break;
+
+		case 10:
+			status = GPDB_SNMP_STATUS_ERROR;
+			*msgout = "hardware initalizing";
+        break;
+
+		case 11:
+			status = GPDB_SNMP_STATUS_ERROR;
+			*msgout = "hardware resetting";
+        break;
+
+		case 12:
+			status = GPDB_SNMP_STATUS_ERROR;
+			*msgout = "hardware closing";
+        break;
+
+		case 13:
+			status = GPDB_SNMP_STATUS_ERROR;
+			*msgout = "hardware not ready";
+        break;
+
+		default:
+			status = GPDB_SNMP_STATUS_UNKNOWN;
+			*msgout = "unexpected code from device";
+		break;
+	}
+	return status;
+}
+
+
 
 GPDB_SNMP_STATUS dell_status_code_conversion(int statusCodeIn, char** msgout)
 {
@@ -717,6 +797,41 @@ void gpmon_format_snmp_int(EmcConnectSymptom symptom, oid oidname[], size_t oidl
 	record_status(symptom, oidstring, displayname, GPDB_SNMP_STATUS_NORMAL, outbuf);
 }
 
+void gpmon_format_dell_network_device_status(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+{
+	char* msg;
+	int status;
+
+	char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
+	snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, oidname, oidlen);
+	bool isInterconnectDevice = false;
+	int nicIndex;
+
+	if (vars->type != ASN_INTEGER)
+	{
+		record_status(symptom, oidstring, displayname, GPDB_SNMP_STATUS_UNKNOWN, "wrong var type");
+		return;
+	}
+
+	nicIndex = oidname[oidlen - 1];
+    if (nicIndex < MAX_NIC_MAP_SIZE)
+	{
+		if (nic_map.tenGigCard[nicIndex])
+			isInterconnectDevice = true;
+	}
+
+	if (isInterconnectDevice)
+	{
+		status = dell_interconnect_device_connection_status_conversion(*vars->val.integer, &msg);
+	}
+	else
+	{
+		status = dell_network_device_connection_status_conversion(*vars->val.integer, &msg);
+	}
+
+	record_status(symptom, oidstring, displayname, status, msg);
+}
+
 void format_generic_status_code(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars, gpdb_status_code_conversion_function conversion_func)
 {
 	char* msg;
@@ -739,11 +854,6 @@ void format_generic_status_code(EmcConnectSymptom symptom, oid oidname[], size_t
 void gpmon_format_dell_status(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
 	format_generic_status_code(symptom, oidname, oidlen, displayname, vars, dell_status_code_conversion);
-}
-
-void gpmon_format_dell_network_device_status(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
-{
-	format_generic_status_code(symptom, oidname, oidlen, displayname, vars, dell_network_device_connection_status_conversion);
 }
 
 void format_dell_controller_status(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
@@ -787,6 +897,27 @@ void format_brocade_switch_sensor_status(EmcConnectSymptom symptom, oid oidname[
 }
 
 #define FORMAT_DELL_SCALAR_STRING_BUF_SIZE 256
+unsigned int calculate_snmp_string_size(unsigned int val_len, const char* oidstring)
+{
+	unsigned int snprintf_size = FORMAT_DELL_SCALAR_STRING_BUF_SIZE;
+	if (val_len < FORMAT_DELL_SCALAR_STRING_BUF_SIZE)
+	{
+		snprintf_size = val_len + 1;
+
+		// paranoid check ... should not get here
+		if (snprintf_size < 1 || snprintf_size > FORMAT_DELL_SCALAR_STRING_BUF_SIZE)
+		{
+			// verbose debugging
+			if (oidstring)
+				gpmon_warningx(FLINE, 0, "buffer calculation warning on %s %s\n", si.key.hostname, oidstring);
+
+			snprintf_size = FORMAT_DELL_SCALAR_STRING_BUF_SIZE;
+		}
+	}
+
+	return snprintf_size;
+}
+
 void gpmon_format_snmp_string(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
 	char buffer[FORMAT_DELL_SCALAR_STRING_BUF_SIZE] = { 0 };
@@ -796,23 +927,11 @@ void gpmon_format_snmp_string(EmcConnectSymptom symptom, oid oidname[], size_t o
 
 	if (vars->type != ASN_OCTET_STR)
 	{
-
 		record_status(symptom, oidstring, displayname, GPDB_SNMP_STATUS_UNKNOWN, "wrong var type");
 		return;
 	}
 
-	unsigned int snprintf_size = FORMAT_DELL_SCALAR_STRING_BUF_SIZE;
-	if (vars->val_len < FORMAT_DELL_SCALAR_STRING_BUF_SIZE)
-	{
-		snprintf_size = vars->val_len + 1;
-
-		// paranoid check ... should not get here
-		if (snprintf_size < 1 || snprintf_size > FORMAT_DELL_SCALAR_STRING_BUF_SIZE)
-		{
-			gpmon_warningx(FLINE, 0, "buffer calculation warning on %s %s %s\n", si.key.hostname, oidstring, displayname);
-			snprintf_size = FORMAT_DELL_SCALAR_STRING_BUF_SIZE;
-		}
-	}
+	unsigned int snprintf_size = calculate_snmp_string_size(vars->val_len, oidstring);
 
     // get rid of vertical bars
 	remove_vertical_bar_from_null_terminated_string(buffer, snprintf_size);
@@ -821,6 +940,32 @@ void gpmon_format_snmp_string(EmcConnectSymptom symptom, oid oidname[], size_t o
 	record_status(symptom, oidstring, displayname, GPDB_SNMP_STATUS_NORMAL, buffer);
 }
 
+// this format function will both format and generate the output and
+// store the state of which nic cards are 10 gig nic cards
+void gpmon_format_dell_nic_card(EmcConnectSymptom symptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+{
+	unsigned int snprintf_size;
+	char buffer[FORMAT_DELL_SCALAR_STRING_BUF_SIZE] = { 0 };
+	unsigned int index;
+
+	// update the nic mapping so we know which interfaces are the 10gig interconnect ports
+	if (vars->type == ASN_OCTET_STR)
+	{
+		snprintf_size = calculate_snmp_string_size(vars->val_len, NULL);
+		snprintf(buffer, snprintf_size, "%s", (char*)vars->val.string);
+		if (strstr(buffer, "10Gbps"))
+		{
+			index = oidname[oidlen - 1];
+			if (index < MAX_NIC_MAP_SIZE)
+			{
+				nic_map.tenGigCard[index] = true;
+			}
+		}
+	}
+
+	// reuse the generic string logic after extracting the necessary state
+	gpmon_format_snmp_string(symptom, oidname, oidlen, displayname, vars);
+}
 
 //****************************************************************************************//
 // DEVICE OID SECTION
@@ -834,6 +979,10 @@ void run_snmp_report_for_dell_host(const char* categoryname, const char* hostnam
 {
 	if (init_host(hostname))
 		return;
+
+	// for each dell host we have nic map to store information about the interfaces
+	// this information is used as part of the status checking
+	memset(&nic_map, 0, sizeof(nic_map));
 
 	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10892.1.400.10.1.6", "OS Name", NULL, gpmon_format_snmp_string)) goto BAIL;
 	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10892.1.400.10.1.7", "OS Version", NULL, gpmon_format_snmp_string)) goto BAIL;
@@ -853,7 +1002,7 @@ void run_snmp_report_for_dell_host(const char* categoryname, const char* hostnam
 	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_OS_MEMORY, "1.3.6.1.4.1.674.10892.1.400.20.1.4", "OS Memory", "Status", gpmon_format_dell_status)) goto BAIL;
 	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_MEMORY_DEVICE, "1.3.6.1.4.1.674.10892.1.1100.50.1.5", "Memory Device", "Status", gpmon_format_dell_status)) goto BAIL;
 
-	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10892.1.1100.90.1.5", "Network Device", "Name", gpmon_format_snmp_string)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10892.1.1100.90.1.5", "Network Device", "Name", gpmon_format_dell_nic_card)) goto BAIL;
 	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10892.1.1100.90.1.11", "Network Device", "IP", gpmon_format_snmp_ip)) goto BAIL;
 	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, "1.3.6.1.4.1.674.10892.1.1100.90.1.12", "Network Device", "Subnet Mask", gpmon_format_snmp_ip)) goto BAIL;
 	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NETWORK_DEVICE, "1.3.6.1.4.1.674.10892.1.1100.90.1.4", "Network Device", "Status", gpmon_format_dell_network_device_status)) goto BAIL;
