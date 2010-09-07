@@ -19,7 +19,7 @@ ifeq (sol,$(findstring sol,$(BLD_ARCH)))
 	GPNETBENCH_LIBS+=-lsocket -lnsl
 endif
 
-all: gpnetbenchServer gpnetbench
+all: gpnetbenchServer gpnetbenchClient
 
 gpnetbenchServer: $(SERVER_OBJS)
 	$(CC) -o gpnetbenchServer $(SERVER_OBJS) $(GPNETBENCH_LIBS)
@@ -31,4 +31,4 @@ gpnetbenchClient: $(CLIENT_OBJS)
 	$(CC) $(CFLAGS) -o $@ -c $<
 
 clean:
-	rm -rf *.o gpnetbenchServer gpnetbench
+	rm -rf *.o gpnetbenchServer gpnetbenchClient
