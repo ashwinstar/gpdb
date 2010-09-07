@@ -12,6 +12,11 @@ char* receiveBuffer = NULL;
 
 void handleIncomingConnection(int fd);
 
+void usage()
+{
+	fprintf(stdout, "usage: gpnetbenchServer -p PORT [-h]\n");
+}
+
 int main(int argc, char** argv)
 {
 	int socketFd;
@@ -24,16 +29,19 @@ int main(int argc, char** argv)
 	int serverPort = 0;
 	int pid;
      
-	while ((c = getopt (argc, argv, "p:")) != -1)
+	while ((c = getopt (argc, argv, "hp:")) != -1)
 	{
 		switch (c)
 		{
+			case 'h':
+				usage();
+				return 1;
 			case 'p':
 				serverPort = atoi(optarg);
 				break;
 			case '?':
         	default:
-				fprintf(stdout, "usage: \n");
+				usage();
 				return 1;
 		}
 	}
@@ -41,6 +49,7 @@ int main(int argc, char** argv)
 	if (!serverPort)
 	{
 		fprintf(stdout, "-p port not specified\n");
+		usage();
 		return 1;
 	}
 
