@@ -88,6 +88,7 @@ GPPGDIR=cdb-pg
 GPMGMT=gpMgmt
 GPCC=gpcc
 GPPERFMON=gpperfmon
+PLATFORM=platform
 
 RELEASE=$(shell $(CURDIR)/releasetag)
 GPDIR=greenplum-db$(RELEASE)
@@ -289,6 +290,7 @@ define BUILD_STEPS
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) mkpgbench INSTLOC=$(INSTLOC)
 	@$(MAKE) mkgpperfmon INSTLOC=$(INSTLOC)
+	@$(MAKE) mkplatform INSTLOC=$(INSTLOC)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
@@ -891,6 +893,11 @@ mkgpperfmon:
 	cp -p gpperfmon/src/gpmon/gpperfmon3.sql $(INSTLOC)/lib/gpperfmon
 	cp -p gpperfmon/src/gpmon/gpperfmon4.sql $(INSTLOC)/lib/gpperfmon
 	cp -p gpperfmon/src/gpmon/gpperfmonC.sql $(INSTLOC)/lib/gpperfmon
+
+mkplatform:
+	@cd $(PLATFORM) && $(MAKE)
+	cp -p platform//gpnetbench/gpnetbenchServer $(INSTLOC)/bin
+	cp -p platform//gpnetbench/gpnetbench $(INSTLOC)/bin
 
 copydocs :
 	@if [ ! -d $($INSTLOC)/docs ] ; then mkdir -p $(INSTLOC)/docs; fi
