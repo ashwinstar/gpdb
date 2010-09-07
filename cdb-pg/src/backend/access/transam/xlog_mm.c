@@ -77,6 +77,8 @@ static void tblspc_get_filespace_paths(Oid tblspc, int16 master_dbid,
 static void get_filespace_paths(Oid filespace, char **master_path, char **mirror_path);
 static void add_filespace_map_entry(fspc_map *m, XLogRecPtr *beginLoc, char *caller);
 static void add_tablespace_map_entry(tspc_map *m, XLogRecPtr *beginLoc, char *caller);
+static int mmxlog_get_filespace_count(fspc_map *fmap, int limit);
+static int mmxlog_get_tablespace_count(tspc_map *tmap, int limit);
 
 /*
  * Remember filespace and tablespace mappings, used so that we know
@@ -991,22 +993,22 @@ static void
 agg_fspc(void *s, Oid filespace, int16 dbid1, char *path1,
 		 int16 dbid2, char *path2, char *caller)
 {
-	fspc_map m;
 	fspc_agg_state *fas = (fspc_agg_state *)s;
 	int pos;
+	fspc_map *m;
 
 	pos = fas->pos;
 
 	Insist(pos < gp_max_filespaces);
 
-	m = fas->maps[pos];
-	m.filespaceoid = filespace;
+	m = &fas->maps[pos];
+	m->filespaceoid = filespace;
 
-	m.dbid1 = dbid1;
-	strncpy(m.path1, path1, MAXPGPATH);
+	m->dbid1 = dbid1;
+	strncpy(m->path1, path1, MAXPGPATH);
 
-	m.dbid2 = dbid2;
-	strncpy(m.path2, path2, MAXPGPATH);
+	m->dbid2 = dbid2;
+	strncpy(m->path2, path2, MAXPGPATH);
 
 	if (Debug_persistent_recovery_print)
 	{
@@ -1031,15 +1033,15 @@ agg_fspc(void *s, Oid filespace, int16 dbid1, char *path1,
 static void
 agg_tspc(void *s, Oid filespace, Oid tablespace, char *caller)
 {
-	tspc_map m;
 	tspc_agg_state *tas = (tspc_agg_state *)s;
 	int pos;
+	tspc_map *m;
 
 	pos = tas->pos;
 
-	m = tas->maps[pos];
-	m.filespaceoid = filespace;
-	m.tablespaceoid = tablespace;
+	m = &tas->maps[pos];
+	m->filespaceoid = filespace;
+	m->tablespaceoid = tablespace;
 	
 	if (Debug_persistent_recovery_print)
 	{
@@ -1122,7 +1124,9 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[4])
 	t = palloc0(sz_t);
 
 	agg_filespace_data((void *)f, agg_fspc, "mmxlog_append_checkpoint_data");
+	Assert(f->pos == mmxlog_get_filespace_count(f->maps, gp_max_filespaces));
 	agg_tablespace_data((void  *)t, agg_tspc, "mmxlog_append_checkpoint_data");
+	Assert(t->pos == mmxlog_get_tablespace_count(t->maps, gp_max_tablespaces));
 
 	rdata[2].data = (void *)f->maps;
 	rdata[2].buffer = InvalidBuffer;
@@ -1149,6 +1153,36 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[4])
 	}
 }
 
+static int
+mmxlog_get_filespace_count(fspc_map *fmap, int limit)
+{
+	int i;
+	
+	for (i = 0; i < limit; i++)
+	{
+		fspc_map *m = &(fmap[i]);
+
+		if (m->filespaceoid == InvalidOid)
+			break;
+	}
+	return i;
+}
+
+static int
+mmxlog_get_tablespace_count(tspc_map *tmap, int limit)
+{
+	int i;
+	
+	for (i = 0; i < limit; i++)
+	{
+		tspc_map *m = &(tmap[i]);
+
+		if (m->tablespaceoid == InvalidOid)
+			break;
+	}
+	return i;
+}
+
 /* 
  * If we're on the master standby, we expect to receive filespace and tablespace
  * meta data from a checkpoint.
@@ -1158,8 +1192,6 @@ mmxlog_get_checkpoint_counts(char *cpdata, XLogRecPtr *beginLoc, int *tablespace
 {
 	fspc_map *fmap = NULL;
 	tspc_map *tmap = NULL;
-	int n;
-	int i;
 
 	*tablespaceCount = 0;
 	*filespaceCount = 0;
@@ -1170,31 +1202,9 @@ mmxlog_get_checkpoint_counts(char *cpdata, XLogRecPtr *beginLoc, int *tablespace
  	fmap = (fspc_map *)cpdata;
 	tmap = (tspc_map *)(cpdata + (sizeof(fspc_map) * gp_max_filespaces));
 
-	/*
-	 * Push the data down into the hash tables. We calculate the array length
-	 * from the byte length of the array. We need to do filespaces first as
-	 * they are the root of the space hierarchy.
-	 */
-	n = gp_max_filespaces;
+	*filespaceCount = mmxlog_get_filespace_count(fmap, gp_max_filespaces);
 
-	for (i = 0; i < n; i++)
-	{
-		fspc_map *m = &(fmap[i]);
-
-		if (m->filespaceoid == InvalidOid)
-			break;
-	}
-	*filespaceCount = i;
-
-	n = gp_max_tablespaces;
-	for (i = 0; i < n; i++)
-	{
-		tspc_map *m = &(tmap[i]);
-
-		if (m->tablespaceoid == InvalidOid)
-			break;
-	}
-	*tablespaceCount = i;
+	*tablespaceCount = mmxlog_get_tablespace_count(tmap, gp_max_tablespaces);
 }
 
 /* 

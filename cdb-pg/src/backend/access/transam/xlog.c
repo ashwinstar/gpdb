@@ -7848,41 +7848,12 @@ UnpackCheckPointRecord(
 
 		remainderLen -= *dtxCheckpointLen;
 
-		if (Debug_persistent_recovery_print)
-		{
-			elog(PersistentRecovery_DebugPrintLevel(), 
-				 "UnpackCheckPointRecord: Checkpoint record data length = %u, DTX committed count %d, DTX data length %u, Master Mirroring information length %u, location %s",
-				 record->xl_len,
-				 (*dtxCheckpoint)->committedCount,
-				 *dtxCheckpointLen,
-				 remainderLen,
-				 XLogLocationToString(location));
-		}
-
 		if (remainderLen > 0)
 		{
 			*masterMirroringCheckpoint = ((char*)*dtxCheckpoint) + *dtxCheckpointLen;
 			*masterMirroringCheckpointLen = remainderLen;
 
 			// UNDONE: Validate the Master Mirroring length.
-			
-			if (Debug_persistent_recovery_print)
-			{
-				int tablespaceCount;
-				int filespaceCount;
-
-				mmxlog_get_checkpoint_counts(
-										(*masterMirroringCheckpoint),
-										location,
-										&tablespaceCount,
-										&filespaceCount);
-										
-				elog(PersistentRecovery_DebugPrintLevel(), 
-					 "UnpackCheckPointRecord: master mirroring information: %d tablespaces, %d filespaces, location %s",
-					 tablespaceCount,
-					 filespaceCount,
-					 XLogLocationToString(location));
-			}
 		}
 	}
 }
