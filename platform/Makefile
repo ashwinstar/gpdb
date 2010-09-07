@@ -1,7 +1,10 @@
-all: gpnetbench
+all: gpnetbenchClient gpnetbenchServer
 
-gpnetbench: gpnetbench/gpnetbenchServer gpnetbench/gpnetbench
-	$(MAKE) -C gpnetbench 
+gpnetbenchServer:
+	$(MAKE) -C gpnetbench gpnetbenchServer
+
+gpnetbenchClient:
+	$(MAKE) -C gpnetbench gpnetbenchClient
 
 clean:
 	$(MAKE) -C gpnetbench clean

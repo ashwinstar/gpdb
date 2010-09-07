@@ -11,17 +11,21 @@ EXT_DIR=$(BLD_TOP)/ext/$(BLD_ARCH)/
 CC=$(strip $(BLD_CC))
 
 SERVER_OBJS=gpnetbenchServer.o
-CLIENT_OBJS=gpnetbench.o
+CLIENT_OBJS=gpnetbenchClient.o
 
 CFLAGS=-Werror -Wall -g -O2
+
+ifeq (sol,$(findstring sol,$(BLD_ARCH)))
+	GPNETBENCH_LIBS+=-lsocket -lnsl
+endif
 
 all: gpnetbenchServer gpnetbench
 
 gpnetbenchServer: $(SERVER_OBJS)
-	$(CC) -o gpnetbenchServer $(SERVER_OBJS)
+	$(CC) -o gpnetbenchServer $(SERVER_OBJS) $(GPNETBENCH_LIBS)
 
-gpnetbench: $(CLIENT_OBJS)
-	$(CC) -o gpnetbench $(CLIENT_OBJS)
+gpnetbenchClient: $(CLIENT_OBJS)
+	$(CC) -o gpnetbenchClient $(CLIENT_OBJS) $(GPNETBENCH_LIBS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -o $@ -c $<
