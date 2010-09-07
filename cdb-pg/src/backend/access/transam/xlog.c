@@ -7559,6 +7559,8 @@ XLogStandbyRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoin
 	CurrentResourceOwner = ResourceOwnerCreate(NULL, "xlog");
 	while (true)
 	{
+		RedoErrorCallBack redoErrorCallBack;
+		
 		if (XLByteEQ(*lastRecordLoc,ReadRecPtr))
 			break;
 		if (XLByteLT(*lastRecordLoc,ReadRecPtr))
@@ -7588,8 +7590,11 @@ XLogStandbyRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoin
 		}
 		
 		/* Setup error traceback support for ereport() */
+		redoErrorCallBack.location = ReadRecPtr;
+		redoErrorCallBack.record = record;
+		
 		errcontext.callback = rm_redo_error_callback;
-		errcontext.arg = (void *) record;
+		errcontext.arg = (void *) &redoErrorCallBack;
 		errcontext.previous = error_context_stack;
 		error_context_stack = &errcontext;
 
