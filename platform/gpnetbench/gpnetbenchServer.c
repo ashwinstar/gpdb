@@ -40,7 +40,7 @@ int main(int argc, char** argv)
 				serverPort = atoi(optarg);
 				break;
 			case '?':
-        	default:
+			default:
 				usage();
 				return 1;
 		}
@@ -75,10 +75,10 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
-    memset(&serverSocketAddress, 0, sizeof(struct sockaddr_in));
-    serverSocketAddress.sin_family = AF_INET;
-    serverSocketAddress.sin_addr.s_addr = htonl(INADDR_ANY);
-    serverSocketAddress.sin_port = htons(serverPort);
+	memset(&serverSocketAddress, 0, sizeof(struct sockaddr_in));
+	serverSocketAddress.sin_family = AF_INET;
+	serverSocketAddress.sin_addr.s_addr = htonl(INADDR_ANY);
+	serverSocketAddress.sin_port = htons(serverPort);
 
 	retVal = bind(socketFd,(struct sockaddr *)&serverSocketAddress, sizeof(serverSocketAddress));
 	if (retVal)
@@ -95,15 +95,15 @@ int main(int argc, char** argv)
   	}
 
 	pid = fork();
-    if (pid < 0) 
+	if (pid < 0) 
 	{ 
 		perror("error forking process for incoming connection");
-        return 1;
-    }
-    if (pid > 0)
+		return 1;
+	}
+	if (pid > 0)
 	{ 
 		return 0; // we exit the parent cleanly and leave the child process open as a listening server
-    }
+	}
 
 	socket_length = sizeof(serverSocketAddress);
 	while(1)
@@ -115,16 +115,16 @@ int main(int argc, char** argv)
 			return 1;
 		}
 
-        pid = fork();
-        if (pid < 0) 
+		pid = fork();
+		if (pid < 0) 
 		{ 
 			perror("error forking process for incoming connection");
-            return 1;
-        }
-        if (pid == 0)
+			return 1;
+		}
+		if (pid == 0)
 		{ 
 			handleIncomingConnection(clientFd);
-        }
+		}
 	}
 
 	return 0;

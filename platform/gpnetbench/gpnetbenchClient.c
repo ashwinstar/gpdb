@@ -35,7 +35,7 @@ int main(int argc, char** argv)
 	char* sendBuffer = NULL;
 	int kilobytesBufSize = 32;
 	int bytesBufSize;
-    struct sockaddr_in address;
+	struct sockaddr_in address;
 	struct hostent* host_entry;
 	time_t start_time;
 	time_t end_time;
@@ -100,31 +100,32 @@ int main(int argc, char** argv)
 
 	socketFd = socket(PF_INET, SOCK_STREAM, 0); 
 
-	if (socketFd < 0){ 
+	if (socketFd < 0)
+	{ 
 		fprintf(stdout, "socket call failed\n");
 		return 1;
 	}   
 
 	host_entry = gethostbyname(hostname);
-    memset(&address, 0, sizeof(struct sockaddr_in));
-    address.sin_family = AF_INET;
-    memcpy((char *)&address.sin_addr,(char *)host_entry->h_addr, host_entry->h_length);
-    address.sin_port = htons(serverPort);
+	memset(&address, 0, sizeof(struct sockaddr_in));
+	address.sin_family = AF_INET;
+	memcpy((char *)&address.sin_addr,(char *)host_entry->h_addr, host_entry->h_length);
+	address.sin_port = htons(serverPort);
 
-    for (i = 0; i < INIT_RETRIES; ++i)
+	for (i = 0; i < INIT_RETRIES; ++i)
 	{
-    	retVal = connect(socketFd,(struct sockaddr *)&address, sizeof(address));
-    	if (retVal == 0)
+    		retVal = connect(socketFd,(struct sockaddr *)&address, sizeof(address));
+    		if (retVal == 0)
 			break;
 		sleep(1);
 	}
 
 	if (retVal < 0)
 	{
-    	fprintf(stdout, "Could not connect to server after %d retries\n", INIT_RETRIES);
+		fprintf(stdout, "Could not connect to server after %d retries\n", INIT_RETRIES);
 		return 1;
-    }
-    printf("Connected to server\n");
+	}
+	printf("Connected to server\n");
 
 	start_time = time(NULL);
 	end_time = start_time + duration;
