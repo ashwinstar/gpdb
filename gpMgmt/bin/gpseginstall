@@ -50,6 +50,7 @@ nonRootCommands = set(['s', 'e', 'v'])                       # valid command typ
 defaultNonRootCommands = set(['s', 'v'])                     # commands to run by default for non-root user
 currentUser = None
 isLinux = False
+GPSSH_EXKEYS_TIMEOUT = 240
 
 class InstallationInfo:
     def __init__(self, link_name, binary_path, binary_dir_location, binary_dir_name):
@@ -760,7 +761,7 @@ def exchangeKeysAsRootForUser():
 
         index = 0
         while 1:
-            index = child.expect(["password", "bad", pexpect.EOF, pexpect.TIMEOUT])
+            index = child.expect(["password", "bad", pexpect.EOF, pexpect.TIMEOUT], timeout=GPSSH_EXKEYS_TIMEOUT)
             if index == 0:
                 child.sendline(options.password)
                 continue
@@ -771,24 +772,22 @@ def exchangeKeysAsRootForUser():
                 done = True
                 break
             if index == 3:
-                logger.error("Timeout running command: %s" % cmdStr)
-                return True
+                logger.info("Timeout running command: %s" % cmdStr)
                 break
 
     except Exception, e:
-        logger.error("Exception running cmd: %s" % cmdStr)
-        logger.error(e.__str__())
-        return True
+        logger.info("Exception running cmd: %s" % cmdStr)
+        logger.info(e.__str__())
 
     if done:
         child.close()
         if child.exitstatus:
-            logger.error("Cmd '%s' failed with error code %s" % (cmdStr, child.exitstatus))
-            return True
+            logger.info("Cmd '%s' failed with error code %s" % (cmdStr, child.exitstatus))
         else:
             return False
 
     # using the supplied password did not work... lets try again in interactive mode
+    logger.info("gppsh-exkeys failed running from within pexpect ... now try outside of pexpect")
     return interactiveCommand(cmdStr)
    
 # True is an error
@@ -798,9 +797,11 @@ def exchangeKeysRoot():
 
     rootPasswords = list(passwordMap.unique_passwords)
 
+    done = False
     child = None
     cmdStr = None
     passwordIndex = 0
+    
 
     try:
         cmdStr = 'gpssh-exkeys -f %s' % options.file
@@ -808,7 +809,7 @@ def exchangeKeysRoot():
 
         index = 0
         while 1:
-            index = child.expect(["password", "bad", pexpect.EOF, pexpect.TIMEOUT])
+            index = child.expect(["password", "bad", pexpect.EOF, pexpect.TIMEOUT], timeout=GPSSH_EXKEYS_TIMEOUT)
             if index == 0:
                 passwordIndex = 0
                 child.sendline(rootPasswords[passwordIndex])
@@ -820,25 +821,25 @@ def exchangeKeysRoot():
                 child.sendline(rootPasswords[passwordIndex])
                 continue
             if index == 2:
+                done = True
                 break
             if index == 3:
                 logger.error("Timeout running command: %s" % cmdStr)
-                return True
                 break
 
     except Exception, e:
-        logger.error("Error running cmd: %s" % cmdStr)
-        logger.error(e.__str__())
-        return True
+        logger.info("Error running cmd: %s" % cmdStr)
+        logger.info(e.__str__())
 
-    child.close()
-    if child.exitstatus:
-        logger.error("Cmd '%s' failed with error code %s" % (cmdStr, child.exitstatus))
-        return True
-    else:
-        return False
+    if done:
+        child.close()
+        if child.exitstatus:
+            logger.info("Cmd '%s' failed with error code %s" % (cmdStr, child.exitstatus))
+        else:
+            return False
 
     # using the supplied password did not work... lets try again in interactive mode
+    logger.info("gppsh-exkeys failed running from within pexpect ... now try outside of pexpect")
     return interactiveCommand(cmdStr)
 
 
