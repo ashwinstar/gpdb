@@ -6231,6 +6231,18 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 						 numElts);
 			}
 
+			if (pElem->isDefault)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("invalid use of boundary specification "
+								"for DEFAULT partition%s%s",
+								namBuf,
+								at_depth),
+						 errOmitLocation(true),
+						 parser_errposition(pstate, pElem->location)));
+			} /* end if is default */
+
 			/* MPP-3541: invalid use of LIST spec */
 			if (!IsA(pBSpec, PartitionBoundSpec))
 			{

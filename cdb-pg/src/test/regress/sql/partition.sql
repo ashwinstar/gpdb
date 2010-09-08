@@ -3979,3 +3979,22 @@ INTO (PARTITION P20010101, PARTITION P_FUTURE);
 
 DROP TABLE mpp10321a;
 
+-- test for default partition with boundary spec
+create table bhagp_range (a int, b int) 
+distributed by (a) 
+partition by range (b) 
+( 
+  default partition x 
+  start (0) inclusive 
+  end (2) exclusive 
+  every (1) 
+);
+
+create table bhagp_list (a int, b int) 
+distributed by (a) 
+partition by list (b) 
+( 
+  default partition x 
+  values (1,2)
+);
+
