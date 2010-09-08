@@ -1595,6 +1595,8 @@ IndexBuildHeapScan(Relation heapRelation,
 				   IndexBuildCallback callback,
 				   void *callback_state)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	HeapScanDesc scan;
 	HeapTuple	heapTuple;
 	Datum		values[INDEX_MAX_KEYS];
@@ -1638,6 +1640,10 @@ IndexBuildHeapScan(Relation heapRelation,
 			 * since caller should hold ShareLock on the relation, but let's
 			 * be conservative about it.
 			 */
+			
+			// -------- MirroredLock ----------
+			MIRROREDLOCK_BUFMGR_LOCK;
+			
 			LockBuffer(scan->rs_cbuf, BUFFER_LOCK_SHARE);
 
 			switch (HeapTupleSatisfiesVacuum(heapTuple->t_data, OldestXmin,
@@ -1712,6 +1718,9 @@ IndexBuildHeapScan(Relation heapRelation,
 			}
 
 			LockBuffer(scan->rs_cbuf, BUFFER_LOCK_UNLOCK);
+
+			MIRROREDLOCK_BUFMGR_UNLOCK;
+			// -------- MirroredLock ----------
 
 			if (!indexIt)
 				continue;
@@ -2215,6 +2224,8 @@ validate_index_heapscan(Relation heapRelation,
 						Snapshot snapshot,
 						v_i_state *state)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	HeapScanDesc scan;
 	HeapTuple	heapTuple;
 	Datum		values[INDEX_MAX_KEYS];
@@ -2338,6 +2349,10 @@ validate_index_heapscan(Relation heapRelation,
 			 */
 			if (indexInfo->ii_Unique)
 			{
+				
+				// -------- MirroredLock ----------
+				MIRROREDLOCK_BUFMGR_LOCK;
+				
 				/* must hold a buffer lock to call HeapTupleSatisfiesNow */
 				LockBuffer(scan->rs_cbuf, BUFFER_LOCK_SHARE);
 
@@ -2347,6 +2362,10 @@ validate_index_heapscan(Relation heapRelation,
 					check_unique = false;
 
 				LockBuffer(scan->rs_cbuf, BUFFER_LOCK_UNLOCK);
+				
+				MIRROREDLOCK_BUFMGR_UNLOCK;
+				// -------- MirroredLock ----------
+				
 			}
 			else
 				check_unique = false;

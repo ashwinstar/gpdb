@@ -18,6 +18,8 @@
 #include "catalog/index.h"
 #include "utils/memutils.h"
 #include "nodes/tidbitmap.h"
+#include "storage/lwlock.h"
+#include "cdb/cdbfilerepprimary.h"
 
 static bool
 findItemInPage(Page page, ItemPointer item, OffsetNumber *off)
@@ -51,6 +53,8 @@ findItemInPage(Page page, ItemPointer item, OffsetNumber *off)
 static void
 startScanEntry(Relation index, GinState *ginstate, GinScanEntry entry)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	GinBtreeData    btreeEntry;
 	GinBtreeStack  *stackEntry;
 	Page            page;
@@ -69,6 +73,10 @@ startScanEntry(Relation index, GinState *ginstate, GinScanEntry entry)
 
 	prepareEntryScan(&btreeEntry, index, entry->entry, ginstate);
 	btreeEntry.searchMode = TRUE;
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	stackEntry = ginFindLeafPage(&btreeEntry, NULL);
 	page = BufferGetPage(stackEntry->buffer);
 
@@ -129,6 +137,10 @@ startScanEntry(Relation index, GinState *ginstate, GinScanEntry entry)
 
 	if (needUnlock)
 		LockBuffer(stackEntry->buffer, GIN_UNLOCK);
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 	freeGinBtreeStack(stackEntry);
 }
 
@@ -187,6 +199,8 @@ startScan(IndexScanDesc scan)
 static void
 entryGetNextItem(Relation index, GinScanEntry entry)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	Page		page;
 	BlockNumber blkno;
 
@@ -199,7 +213,10 @@ entryGetNextItem(Relation index, GinScanEntry entry)
 			entry->curItem = entry->list[entry->offset - 1];
 			return;
 		}
-
+		
+		// -------- MirroredLock ----------
+		MIRROREDLOCK_BUFMGR_LOCK;
+		
 		LockBuffer(entry->buffer, GIN_SHARE);
 		page = BufferGetPage(entry->buffer);
 		for(;;)
@@ -212,6 +229,10 @@ entryGetNextItem(Relation index, GinScanEntry entry)
 			blkno = GinPageGetOpaque(page)->rightlink;
 
 			LockBuffer(entry->buffer, GIN_UNLOCK);
+
+			MIRROREDLOCK_BUFMGR_UNLOCK;
+			// -------- MirroredLock ----------
+
 			if (blkno == InvalidBlockNumber)
 			{
 				ReleaseBuffer(entry->buffer);
@@ -220,7 +241,10 @@ entryGetNextItem(Relation index, GinScanEntry entry)
 				entry->isFinished = TRUE;
 				return;
 			}
-
+			
+			// -------- MirroredLock ----------
+			MIRROREDLOCK_BUFMGR_LOCK;
+			
 			entry->buffer = ReleaseAndReadBuffer(entry->buffer, index, blkno);
 			LockBuffer(entry->buffer, GIN_SHARE);
 			page = BufferGetPage(entry->buffer);
@@ -236,7 +260,10 @@ entryGetNextItem(Relation index, GinScanEntry entry)
 							GinPageGetOpaque(page)->maxoff * sizeof(ItemPointerData) );
 
 				LockBuffer(entry->buffer, GIN_UNLOCK);
-
+				
+				MIRROREDLOCK_BUFMGR_UNLOCK;
+				// -------- MirroredLock ----------
+				
 				if ( !ItemPointerIsValid(&entry->curItem) || 
 					 compareItemPointers( &entry->curItem, entry->list + entry->offset - 1 ) == 0 )
 				{

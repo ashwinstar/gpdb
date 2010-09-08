@@ -20,6 +20,8 @@
 #include "storage/freespace.h"
 #include "storage/freespace.h"
 #include "commands/vacuum.h"
+#include "storage/lwlock.h"
+#include "cdb/cdbfilerepprimary.h"
 
 typedef struct
 {
@@ -152,9 +154,14 @@ xlogVacuumPage(Relation index, Buffer buffer)
 static bool
 ginVacuumPostingTreeLeaves(GinVacuumState *gvs, BlockNumber blkno, bool isRoot, Buffer *rootBuffer)
 {
-	Buffer		buffer = ReadBuffer(gvs->index, blkno);
-	Page		page = BufferGetPage(buffer);
+	Buffer		buffer;
+	Page		page;
 	bool		hasVoidPage = FALSE;
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
+	buffer = ReadBuffer(gvs->index, blkno);
+	page = BufferGetPage(buffer);
 
 	/*
 	 * We should be sure that we don't concurrent with inserts, insert process
@@ -238,11 +245,17 @@ static void
 ginDeletePage(GinVacuumState *gvs, BlockNumber deleteBlkno, BlockNumber leftBlkno,
 			  BlockNumber parentBlkno, OffsetNumber myoff, bool isParentRoot)
 {
-	Buffer		dBuffer = ReadBuffer(gvs->index, deleteBlkno);
-	Buffer		lBuffer = (leftBlkno == InvalidBlockNumber) ? InvalidBuffer : ReadBuffer(gvs->index, leftBlkno);
-	Buffer		pBuffer = ReadBuffer(gvs->index, parentBlkno);
+	Buffer		dBuffer;
+	Buffer		lBuffer;
+	Buffer		pBuffer;
 	Page		page,
 				parentPage;
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
+	dBuffer = ReadBuffer(gvs->index, deleteBlkno);
+	lBuffer = (leftBlkno == InvalidBlockNumber) ? InvalidBuffer : ReadBuffer(gvs->index, leftBlkno);
+	pBuffer = ReadBuffer(gvs->index, parentBlkno);
 
 	LockBuffer(dBuffer, GIN_EXCLUSIVE);
 	if (!isParentRoot)			/* parent is already locked by
@@ -372,6 +385,8 @@ typedef struct DataPageDeleteStack
 static bool
 ginScanToDelete(GinVacuumState *gvs, BlockNumber blkno, bool isRoot, DataPageDeleteStack *parent, OffsetNumber myoff)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	DataPageDeleteStack *me;
 	Buffer		buffer;
 	Page		page;
@@ -393,7 +408,10 @@ ginScanToDelete(GinVacuumState *gvs, BlockNumber blkno, bool isRoot, DataPageDel
 		else
 			me = parent->child;
 	}
-
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	buffer = ReadBuffer(gvs->index, blkno);
 	page = BufferGetPage(buffer);
 
@@ -426,7 +444,10 @@ ginScanToDelete(GinVacuumState *gvs, BlockNumber blkno, bool isRoot, DataPageDel
 			}
 		}
 	}
-
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 	ReleaseBuffer(buffer);
 
 	if (!meDelete)
@@ -557,6 +578,8 @@ ginVacuumEntryPage(GinVacuumState *gvs, Buffer buffer, BlockNumber *roots, uint3
 Datum
 ginbulkdelete(PG_FUNCTION_ARGS)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	IndexVacuumInfo *info = (IndexVacuumInfo *) PG_GETARG_POINTER(0);
 	IndexBulkDeleteResult *stats = (IndexBulkDeleteResult *) PG_GETARG_POINTER(1);
 	IndexBulkDeleteCallback callback = (IndexBulkDeleteCallback) PG_GETARG_POINTER(2);
@@ -579,7 +602,10 @@ ginbulkdelete(PG_FUNCTION_ARGS)
 	gvs.callback = callback;
 	gvs.callback_state = callback_state;
 	initGinState(&gvs.ginstate, index);
-
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	buffer = ReadBuffer(index, blkno);
 
 	/* find leaf page */
@@ -657,13 +683,18 @@ ginbulkdelete(PG_FUNCTION_ARGS)
 		buffer = ReadBuffer(index, blkno);
 		LockBuffer(buffer, GIN_EXCLUSIVE);
 	}
-
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 	PG_RETURN_POINTER(gvs.result);
 }
 
 Datum
 ginvacuumcleanup(PG_FUNCTION_ARGS)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	IndexVacuumInfo *info = (IndexVacuumInfo *) PG_GETARG_POINTER(0);
 	IndexBulkDeleteResult *stats = (IndexBulkDeleteResult *) PG_GETARG_POINTER(1);
 	Relation	index = info->index;
@@ -716,7 +747,10 @@ ginvacuumcleanup(PG_FUNCTION_ARGS)
 		Page		page;
 
 		vacuum_delay_point();
-
+		
+		// -------- MirroredLock ----------
+		MIRROREDLOCK_BUFMGR_LOCK;
+		
 		buffer = ReadBuffer(index, blkno);
 		LockBuffer(buffer, GIN_SHARE);
 		page = (Page) BufferGetPage(buffer);
@@ -731,6 +765,10 @@ ginvacuumcleanup(PG_FUNCTION_ARGS)
 			lastFilledBlock = blkno;
 
 		UnlockReleaseBuffer(buffer);
+		
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
+		
 	}
 	lastBlock = npages - 1;
 

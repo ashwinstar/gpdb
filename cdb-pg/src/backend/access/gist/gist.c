@@ -19,6 +19,7 @@
 #include "catalog/index.h"
 #include "miscadmin.h"
 #include "utils/memutils.h"
+#include "cdb/cdbfilerepprimary.h"
 
 const XLogRecPtr XLogRecPtrForTemp = {1, 1};
 
@@ -84,6 +85,8 @@ createTempGistContext(void)
 Datum
 gistbuild(PG_FUNCTION_ARGS)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	Relation	heap = (Relation) PG_GETARG_POINTER(0);
 	Relation	index = (Relation) PG_GETARG_POINTER(1);
 	IndexInfo  *indexInfo = (IndexInfo *) PG_GETARG_POINTER(2);
@@ -103,7 +106,10 @@ gistbuild(PG_FUNCTION_ARGS)
 
 	/* no locking is needed */
 	initGISTstate(&buildstate.giststate, index);
-
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	/* initialize the root page */
 	buffer = gistNewBuffer(index);
 	Assert(BufferGetBlockNumber(buffer) == GIST_ROOT_BLKNO);
@@ -130,7 +136,10 @@ gistbuild(PG_FUNCTION_ARGS)
 		PageSetLSN(page, XLogRecPtrForTemp);
 
 	UnlockReleaseBuffer(buffer);
-
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 	END_CRIT_SECTION();
 
 	/* build the index */
@@ -255,6 +264,8 @@ gistinsert(PG_FUNCTION_ARGS)
 static void
 gistdoinsert(Relation r, IndexTuple itup, Size freespace, GISTSTATE *giststate)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	GISTInsertState state;
 
 	memset(&state, 0, sizeof(GISTInsertState));
@@ -270,9 +281,16 @@ gistdoinsert(Relation r, IndexTuple itup, Size freespace, GISTSTATE *giststate)
 
 	state.stack = (GISTInsertStack *) palloc0(sizeof(GISTInsertStack));
 	state.stack->blkno = GIST_ROOT_BLKNO;
-
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	gistfindleaf(&state, giststate);
 	gistmakedeal(&state, giststate);
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 }
 
 static bool
@@ -280,6 +298,8 @@ gistplacetopage(GISTInsertState *state, GISTSTATE *giststate)
 {
 	bool		is_splitted = false;
 	bool		is_leaf = (GistPageIsLeaf(state->stack->page)) ? true : false;
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
 
 	/*
 	 * if (!is_leaf) remove old key: This node's key has been modified, either
@@ -531,6 +551,8 @@ gistfindleaf(GISTInsertState *state, GISTSTATE *giststate)
 	IndexTuple	idxtuple;
 	GISTPageOpaque opaque;
 
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
 	/*
 	 * walk down, We don't lock page for a long time, but so we should be
 	 * ready to recheck path in a bad case... We remember, that page->lsn
@@ -661,6 +683,8 @@ gistFindPath(Relation r, BlockNumber child)
 			   *ptr;
 	BlockNumber blkno;
 
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
 	top = tail = (GISTInsertStack *) palloc0(sizeof(GISTInsertStack));
 	top->blkno = GIST_ROOT_BLKNO;
 
@@ -761,6 +785,8 @@ gistFindCorrectParent(Relation r, GISTInsertStack *child)
 {
 	GISTInsertStack *parent = child->parent;
 
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
 	LockBuffer(parent->buffer, GIST_EXCLUSIVE);
 	gistcheckpage(r, parent->buffer);
 	parent->page = (Page) BufferGetPage(parent->buffer);
@@ -849,6 +875,8 @@ gistmakedeal(GISTInsertState *state, GISTSTATE *giststate)
 	ItemId		iid;
 	IndexTuple	oldtup,
 				newtup;
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
 
 	/* walk up */
 	while (true)

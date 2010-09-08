@@ -3803,6 +3803,8 @@ CleanupBackupHistory(void)
 static void
 RestoreBkpBlocks(XLogRecord *record, XLogRecPtr lsn)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	Relation	reln;
 	Buffer		buffer;
 	Page		page;
@@ -3820,6 +3822,10 @@ RestoreBkpBlocks(XLogRecord *record, XLogRecPtr lsn)
 		blk += sizeof(BkpBlock);
 
 		reln = XLogOpenRelation(bkpb.node);
+		
+		// -------- MirroredLock ----------
+		MIRROREDLOCK_BUFMGR_LOCK;
+		
 		buffer = XLogReadBuffer(reln, bkpb.block, true);
 		Assert(BufferIsValid(buffer));
 		page = (Page) BufferGetPage(buffer);
@@ -3842,7 +3848,10 @@ RestoreBkpBlocks(XLogRecord *record, XLogRecPtr lsn)
 		PageSetTLI(page, ThisTimeLineID);
 		MarkBufferDirty(buffer);
 		UnlockReleaseBuffer(buffer);
-
+		
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
+		
 		blk += BLCKSZ - bkpb.hole_length;
 	}
 }
@@ -6150,9 +6159,12 @@ ApplyStartupRedo(
 
 	XLogRecord		*record)
 {
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
 	RedoErrorCallBack redoErrorCallBack;
 
 	ErrorContextCallback errcontext;
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
 
 	/* Setup error traceback support for ereport() */
 	redoErrorCallBack.location = *beginLoc;
@@ -6178,6 +6190,9 @@ ApplyStartupRedo(
 	
 	/* Pop the error context stack */
 	error_context_stack = errcontext.previous;
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
+
 }
 
 /*

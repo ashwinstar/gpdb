@@ -261,6 +261,8 @@ XLogReadBuffer(Relation reln, BlockNumber blkno, bool init)
 	BlockNumber lastblock = RelationGetNumberOfBlocks(reln);
 	Buffer		buffer;
 
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
 	Assert(blkno != P_NEW);
 
 	if (blkno < lastblock)

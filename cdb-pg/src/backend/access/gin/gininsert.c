@@ -18,6 +18,7 @@
 #include "catalog/index.h"
 #include "miscadmin.h"
 #include "utils/memutils.h"
+#include "cdb/cdbfilerepprimary.h"
 
 typedef struct
 {
@@ -36,8 +37,12 @@ static BlockNumber
 createPostingTree(Relation index, ItemPointerData *items, uint32 nitems)
 {
 	BlockNumber blkno;
-	Buffer		buffer = GinNewBuffer(index);
+	Buffer		buffer;
 	Page		page;
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
+	buffer = GinNewBuffer(index);
 
 	START_CRIT_SECTION();
 

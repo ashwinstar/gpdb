@@ -20,6 +20,7 @@
 #include "pgstat.h"
 #include "storage/bufmgr.h"
 #include "utils/rel.h"
+#include "cdb/cdbfilerepprimary.h"
 
 
 /*
@@ -72,6 +73,8 @@ _hash_readnext(Relation rel,
 {
 	BlockNumber blkno;
 
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
 	blkno = (*opaquep)->hasho_nextblkno;
 	_hash_relbuf(rel, *bufp);
 	*bufp = InvalidBuffer;
@@ -94,6 +97,8 @@ _hash_readprev(Relation rel,
 			   Buffer *bufp, Page *pagep, HashPageOpaque *opaquep)
 {
 	BlockNumber blkno;
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
 
 	blkno = (*opaquep)->hasho_prevblkno;
 	_hash_relbuf(rel, *bufp);
@@ -134,6 +139,8 @@ _hash_first(IndexScanDesc scan, ScanDirection dir)
 	IndexTuple	itup;
 	ItemPointer current;
 	OffsetNumber offnum;
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
 
 	pgstat_count_index_scan(rel);
 
@@ -216,7 +223,9 @@ _hash_first(IndexScanDesc scan, ScanDirection dir)
 
 	/* Now find the first tuple satisfying the qualification */
 	if (!_hash_step(scan, &buf, dir))
+	{
 		return false;
+	}
 
 	/* if we're here, _hash_step found a valid tuple */
 	offnum = ItemPointerGetOffsetNumber(current);

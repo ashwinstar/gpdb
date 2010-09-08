@@ -71,6 +71,7 @@
 #include "storage/bufmgr.h"
 #include "storage/lmgr.h"
 #include "utils/relcache.h"
+#include "cdb/cdbfilerepprimary.h"
 
 
 /* ----------------------------------------------------------------
@@ -188,7 +189,13 @@ index_insert(Relation indexRelation,
 			 Relation heapRelation,
 			 bool check_uniqueness)
 {
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
+
 	FmgrInfo   *procedure;
+
+	bool result;
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
 
 	RELATION_CHECKS;
 	GET_REL_PROCEDURE(aminsert);
@@ -199,13 +206,17 @@ index_insert(Relation indexRelation,
 	/*
 	 * have the am's insert proc do all the work.
 	 */
-	return DatumGetBool(FunctionCall6(procedure,
+	result = DatumGetBool(FunctionCall6(procedure,
 									  PointerGetDatum(indexRelation),
 									  PointerGetDatum(values),
 									  PointerGetDatum(isnull),
 									  PointerGetDatum(heap_t_ctid),
 									  PointerGetDatum(heapRelation),
 									  BoolGetDatum(check_uniqueness)));
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
+
+	return result;
 }
 
 /*
@@ -226,7 +237,11 @@ index_beginscan(Relation heapRelation,
 				Snapshot snapshot,
 				int nkeys, ScanKey key)
 {
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
+
 	IndexScanDesc scan;
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
 
 	scan = index_beginscan_internal(indexRelation, nkeys, key);
 
@@ -239,6 +254,8 @@ index_beginscan(Relation heapRelation,
 	scan->xs_snapshot = snapshot;
 
 	scan->earlyFreeSafe = true;
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
 
 	return scan;
 }
@@ -255,7 +272,11 @@ index_beginscan_multi(Relation indexRelation,
 					   Snapshot snapshot,
 					   int nkeys, ScanKey key)
 {
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
+
 	IndexScanDesc scan;
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
 
 	scan = index_beginscan_internal(indexRelation, nkeys, key);
 
@@ -267,6 +288,8 @@ index_beginscan_multi(Relation indexRelation,
 	scan->xs_snapshot = snapshot;
 
 	scan->earlyFreeSafe = true;
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
 
 	return scan;
 }
@@ -419,6 +442,8 @@ index_restrpos(IndexScanDesc scan)
 HeapTuple
 index_getnext(IndexScanDesc scan, ScanDirection direction)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	HeapTuple	heapTuple = &scan->xs_ctup;
 	FmgrInfo   *procedure;
 
@@ -475,6 +500,10 @@ index_getnext(IndexScanDesc scan, ScanDirection direction)
 		 * We told heap_release_fetch to keep a pin on the buffer, so we can
 		 * re-access the tuple here.  But we must re-lock the buffer first.
 		 */
+
+		// -------- MirroredLock ----------
+		MIRROREDLOCK_BUFMGR_LOCK;
+
 		LockBuffer(scan->xs_cbuf, BUFFER_LOCK_SHARE);
 
 		if (HeapTupleSatisfiesVacuum(heapTuple->t_data, RecentGlobalXmin,
@@ -482,6 +511,10 @@ index_getnext(IndexScanDesc scan, ScanDirection direction)
 			scan->kill_prior_tuple = true;
 
 		LockBuffer(scan->xs_cbuf, BUFFER_LOCK_UNLOCK);
+		
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
+		
 	}
 
 	/* Success exit */

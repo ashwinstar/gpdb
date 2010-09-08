@@ -18,6 +18,7 @@
 #include "postgres.h"
 
 #include "access/hash.h"
+#include "cdb/cdbfilerepprimary.h"
 
 
 static Buffer _hash_getovflpage(Relation rel, Buffer metabuf);
@@ -105,6 +106,8 @@ _hash_addovflpage(Relation rel, Buffer metabuf, Buffer buf)
 	HashPageOpaque pageopaque;
 	HashPageOpaque ovflopaque;
 
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
 	/* allocate and lock an empty overflow page */
 	ovflbuf = _hash_getovflpage(rel, metabuf);
 	ovflpage = BufferGetPage(ovflbuf);
@@ -178,6 +181,8 @@ _hash_getovflpage(Relation rel, Buffer metabuf)
 	uint32		last_page;
 	uint32		i,
 				j;
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
 
 	/* Get exclusive lock on the meta page */
 	_hash_chgbufaccess(rel, metabuf, HASH_NOLOCK, HASH_WRITE);
@@ -387,6 +392,8 @@ _hash_freeovflpage(Relation rel, Buffer ovflbuf)
 				bitmapbit;
 	Bucket		bucket;
 
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
 	/* Get information from the doomed page */
 	_hash_checkpage(rel, ovflbuf, LH_OVERFLOW_PAGE);
 	ovflblkno = BufferGetBlockNumber(ovflbuf);
@@ -497,6 +504,8 @@ _hash_initbitmap(Relation rel, HashMetaPage metap, BlockNumber blkno)
 	HashPageOpaque op;
 	uint32	   *freep;
 
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
 	/*
 	 * It is okay to write-lock the new bitmap page while holding metapage
 	 * write lock, because no one else could be contending for the new page.
@@ -578,6 +587,8 @@ _hash_squeezebucket(Relation rel,
 	OffsetNumber roffnum;
 	IndexTuple	itup;
 	Size		itemsz;
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
 
 	/*
 	 * start squeezing into the base bucket page.

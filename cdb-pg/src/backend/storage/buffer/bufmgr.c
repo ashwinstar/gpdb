@@ -207,13 +207,13 @@ ReadBuffer(Relation reln, BlockNumber blockNum)
 static Buffer
 ReadBuffer_Ex(Relation reln, BlockNumber blockNum, volatile BufferDesc* availBufHdr)
 {
-	MIRROREDLOCK_BUFMGR_DECLARE;
-
 	volatile BufferDesc* bufHdr;
 	Block		bufBlock;
 	bool		found;
 	bool		isExtend;
 	bool		isLocalBuf;
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
 
 	/* Make sure we will have room to remember the buffer pin */
 	ResourceOwnerEnlargeBuffers(CurrentResourceOwner);
@@ -229,10 +229,6 @@ ReadBuffer_Ex(Relation reln, BlockNumber blockNum, volatile BufferDesc* availBuf
 		blockNum = smgrnblocks(reln->rd_smgr);
 
 	pgstat_count_buffer_read(reln);
-	
-	// -------- MirroredLock ----------
-	// UNDONE: Unfortunately, I think we write temp relations to the mirror...
-	MIRROREDLOCK_BUFMGR_LOCK;
 	
 	if (isLocalBuf)
 	{
@@ -398,9 +394,6 @@ ReadBuffer_Ex(Relation reln, BlockNumber blockNum, volatile BufferDesc* availBuf
 			StrategyFreeBuffer(availBufHdr, true);
 	}
 	
-	MIRROREDLOCK_BUFMGR_UNLOCK;
-	// -------- MirroredLock ----------
-
 	return BufferDescriptorGetBuffer(bufHdr);
 }
 
@@ -1372,6 +1365,8 @@ ReleaseAndReadBuffer(Buffer buffer,
 {
 	volatile BufferDesc *bufHdr;
 
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
 	if (BufferIsValid(buffer))
 	{
 		if (BufferIsLocal(buffer))
@@ -1408,6 +1403,9 @@ KillAndReadBuffer(Buffer buffer,
 					 BlockNumber blockNum)
 {
 	volatile BufferDesc* bufHdr;
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
 	if (!BufferIsValid(buffer) || BufferIsLocal(buffer)) 
 	{
 		return ReleaseAndReadBuffer(buffer, relation, blockNum);
@@ -2464,11 +2462,8 @@ ReleaseBuffer_Ex(Buffer buffer, bool flushIfDirty)
 
 	if (flushIfDirty)
 	{
-		MIRROREDLOCK_BUFMGR_DECLARE;
-				
-		// -------- MirroredLock ----------
-		MIRROREDLOCK_BUFMGR_LOCK;
-
+		MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+		
 		LockBufHdr(bufHdr);
 		if (bufHdr->flags & BM_DIRTY)
 		{
@@ -2479,9 +2474,6 @@ ReleaseBuffer_Ex(Buffer buffer, bool flushIfDirty)
 		}
 		else
 			UnlockBufHdr(bufHdr);
-		
-		MIRROREDLOCK_BUFMGR_UNLOCK;
-		// -------- MirroredLock ----------
 		
 	}
 
@@ -2500,6 +2492,8 @@ ReleaseBuffer_Ex(Buffer buffer, bool flushIfDirty)
 void
 UnlockReleaseBuffer(Buffer buffer)
 {
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
 	LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
 	ReleaseBuffer(buffer);
 }
@@ -2618,6 +2612,8 @@ LockBuffer(Buffer buffer, int mode)
 {
 	volatile BufferDesc *buf;
 
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
 	Assert(BufferIsValid(buffer));
 	if (BufferIsLocal(buffer))
 		return;					/* local buffers need no lock */
@@ -2643,6 +2639,8 @@ bool
 ConditionalLockBuffer(Buffer buffer)
 {
 	volatile BufferDesc *buf;
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
 
 	Assert(BufferIsValid(buffer));
 	if (BufferIsLocal(buffer))

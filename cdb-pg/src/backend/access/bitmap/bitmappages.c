@@ -21,6 +21,7 @@
 #include "utils/memutils.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+#include "cdb/cdbfilerepprimary.h"
 
 /* 
  * Helper functions for hashing and matching build data. At this stage, the
@@ -51,6 +52,8 @@ Buffer
 _bitmap_getbuf(Relation rel, BlockNumber blkno, int access)
 {
 	Buffer buf;
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
 
 	if (blkno != P_NEW)
 	{
@@ -102,6 +105,8 @@ _bitmap_getbuf(Relation rel, BlockNumber blkno, int access)
 void
 _bitmap_wrtbuf(Buffer buf)
 {
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
 	MarkBufferDirty(buf);
 	UnlockReleaseBuffer(buf);
 }
@@ -113,6 +118,8 @@ _bitmap_wrtbuf(Buffer buf)
 void
 _bitmap_wrtnorelbuf(Buffer buf)
 {
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
 	MarkBufferDirty(buf);
 }
 
@@ -122,6 +129,8 @@ _bitmap_wrtnorelbuf(Buffer buf)
 void
 _bitmap_relbuf(Buffer buf)
 {
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
 	UnlockReleaseBuffer(buf);
 }
 
@@ -167,6 +176,8 @@ _bitmap_init_bitmappage(Relation rel __attribute__((unused)), Buffer buf)
 void
 _bitmap_init_buildstate(Relation index, BMBuildState *bmstate)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	BMMetaPage	mp;
 	HASHCTL		hash_ctl;
 	int			hash_flags;
@@ -181,7 +192,10 @@ _bitmap_init_buildstate(Relation index, BMBuildState *bmstate)
 	bmstate->bm_tidLocsBuffer->byte_size = 0;
 	bmstate->bm_tidLocsBuffer->lov_blocks = NIL;
 	bmstate->bm_tidLocsBuffer->max_lov_block = InvalidBlockNumber;
-
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	metabuf = _bitmap_getbuf(index, BM_METAPAGE, BM_READ);
 	mp = _bitmap_get_metapage_data(index, metabuf);
 	_bitmap_open_lov_heapandindex(index, mp, &(bmstate->bm_lov_heap),
@@ -189,7 +203,10 @@ _bitmap_init_buildstate(Relation index, BMBuildState *bmstate)
 								  RowExclusiveLock);
 
 	_bitmap_relbuf(metabuf);
-
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 	cur_bmbuild = (BMBuildHashData *)palloc(sizeof(BMBuildHashData));
 	cur_bmbuild->hash_funcs = (FmgrInfo *)
 						palloc(sizeof(FmgrInfo) * bmstate->bm_tupDesc->natts);
@@ -345,6 +362,8 @@ _bitmap_init(Relation rel, Oid comptypeOid,
 			 Oid heapRelfilenode, Oid indexRelfilenode,
 			 bool use_wal)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	BMMetaPage		metapage;
 	Buffer			metabuf;
 	Page			page;
@@ -361,7 +380,10 @@ _bitmap_init(Relation rel, Oid comptypeOid,
 				errmsg("cannot initialize non-empty bitmap index \"%s\"",
 				RelationGetRelationName(rel)),
 				errSendAlert(true)));
-
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	/* create the metapage */
 	metabuf = _bitmap_getbuf(rel, P_NEW, BM_WRITE);
 	page = BufferGetPage(metabuf);
@@ -424,7 +446,10 @@ _bitmap_init(Relation rel, Oid comptypeOid,
 
 	_bitmap_wrtbuf(buf);
 	_bitmap_wrtbuf(metabuf);
-
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 	pfree(lovItem);
 }
 

@@ -17,6 +17,7 @@
 #include "access/bitmap.h"
 #include "access/xlogutils.h"
 #include "utils/guc.h"
+#include "cdb/cdbfilerepprimary.h"
 
 static void forget_incomplete_insert_bitmapwords(RelFileNode node,
 									 xl_bm_bitmapwords* newWords);
@@ -94,6 +95,8 @@ forget_incomplete_insert_bitmapwords(RelFileNode node,
 static void
 _bitmap_xlog_newpage(XLogRecPtr lsn, XLogRecord *record)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	xl_bm_newpage	*xlrec = (xl_bm_newpage *) XLogRecGetData(record);
 
 	Relation		reln;
@@ -106,6 +109,9 @@ _bitmap_xlog_newpage(XLogRecPtr lsn, XLogRecord *record)
 	reln = XLogOpenRelation(xlrec->bm_node);
 	if (!RelationIsValid(reln))
 		return;
+
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
 
 	buffer = XLogReadBuffer(reln, xlrec->bm_new_blkno, true);
 	Assert(BufferIsValid(buffer));
@@ -132,6 +138,10 @@ _bitmap_xlog_newpage(XLogRecPtr lsn, XLogRecord *record)
 	}
 	else
 		_bitmap_relbuf(buffer);
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 }
 
 /*
@@ -140,6 +150,8 @@ _bitmap_xlog_newpage(XLogRecPtr lsn, XLogRecord *record)
 static void
 _bitmap_xlog_insert_lovitem(XLogRecPtr lsn, XLogRecord *record)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	xl_bm_lovitem	*xlrec = (xl_bm_lovitem *) XLogRecGetData(record);
 	Relation reln;
 	Buffer			lovBuffer;
@@ -149,7 +161,8 @@ _bitmap_xlog_insert_lovitem(XLogRecPtr lsn, XLogRecord *record)
 	if (!RelationIsValid(reln))
 		return;
 
-	Assert(xlrec->bm_lov_blkno > 0);
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
 
 	if (xlrec->bm_is_new_lov_blkno)
 	{
@@ -161,7 +174,12 @@ _bitmap_xlog_insert_lovitem(XLogRecPtr lsn, XLogRecord *record)
 		lovBuffer = XLogReadBuffer(reln, xlrec->bm_lov_blkno, false);
 		REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xlrec->bm_lov_blkno, lovBuffer, lsn);
 		if (!BufferIsValid(lovBuffer))
+		{
+			MIRROREDLOCK_BUFMGR_UNLOCK;
+			// -------- MirroredLock ----------
+			
 			return;
+		}
 	}
 
 	lovPage = BufferGetPage(lovBuffer);
@@ -190,6 +208,10 @@ _bitmap_xlog_insert_lovitem(XLogRecPtr lsn, XLogRecord *record)
 		if (newOffset < xlrec->bm_lov_offset)
 		{
 			_bitmap_relbuf(lovBuffer);
+
+			MIRROREDLOCK_BUFMGR_UNLOCK;
+			// -------- MirroredLock ----------
+			
 			return;
 		}
 
@@ -222,7 +244,12 @@ _bitmap_xlog_insert_lovitem(XLogRecPtr lsn, XLogRecord *record)
  		BMMetaPage metapage;
 		REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, BM_METAPAGE, metabuf, lsn);
 		if (!BufferIsValid(metabuf))
+		{
+			MIRROREDLOCK_BUFMGR_UNLOCK;
+			// -------- MirroredLock ----------
+			
  			return;
+		}
 		
  		metapage = (BMMetaPage)
  			PageGetContents(BufferGetPage(metabuf));
@@ -241,6 +268,10 @@ _bitmap_xlog_insert_lovitem(XLogRecPtr lsn, XLogRecord *record)
  			_bitmap_relbuf(metabuf);
  		}
  	}
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 }
 
 /*
@@ -249,6 +280,8 @@ _bitmap_xlog_insert_lovitem(XLogRecPtr lsn, XLogRecord *record)
 static void
 _bitmap_xlog_insert_meta(XLogRecPtr lsn, XLogRecord *record)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	xl_bm_metapage	*xlrec = (xl_bm_metapage *) XLogRecGetData(record);
 	Relation		reln;
 	Buffer			metabuf;
@@ -258,6 +291,9 @@ _bitmap_xlog_insert_meta(XLogRecPtr lsn, XLogRecord *record)
 	reln = XLogOpenRelation(xlrec->bm_node);
 	if (!RelationIsValid(reln))
 		return;
+
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
 
 	metabuf = XLogReadBuffer(reln, BM_METAPAGE, true);
 
@@ -282,6 +318,10 @@ _bitmap_xlog_insert_meta(XLogRecPtr lsn, XLogRecord *record)
 	}
 	else
 		_bitmap_relbuf(metabuf);
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 }
 
 /*
@@ -292,6 +332,8 @@ static void
 _bitmap_xlog_insert_bitmap_lastwords(XLogRecPtr lsn, 
 									 XLogRecord *record)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	Relation reln;
 	xl_bm_bitmap_lastwords *xlrec;
 
@@ -304,6 +346,9 @@ _bitmap_xlog_insert_bitmap_lastwords(XLogRecPtr lsn,
 	reln = XLogOpenRelation(xlrec->bm_node);
 	if (!RelationIsValid(reln))
 		return;
+
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
 
 	lovBuffer = XLogReadBuffer(reln, xlrec->bm_lov_blkno, false);
 	REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xlrec->bm_lov_blkno, lovBuffer, lsn);
@@ -337,11 +382,17 @@ _bitmap_xlog_insert_bitmap_lastwords(XLogRecPtr lsn,
 		else
 			_bitmap_relbuf(lovBuffer);
 	}
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 }
 
 static void
 _bitmap_xlog_insert_bitmapwords(XLogRecPtr lsn, XLogRecord *record)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	Relation reln;
 	xl_bm_bitmapwords *xlrec;
 
@@ -364,6 +415,9 @@ _bitmap_xlog_insert_bitmapwords(XLogRecPtr lsn, XLogRecord *record)
 	reln = XLogOpenRelation(xlrec->bm_node);
 	if (!RelationIsValid(reln))
 		return;
+
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
 
 	bitmapBuffer = XLogReadBuffer(reln, xlrec->bm_blkno, true);
 	bitmapPage = BufferGetPage(bitmapBuffer);
@@ -464,7 +518,12 @@ _bitmap_xlog_insert_bitmapwords(XLogRecPtr lsn, XLogRecord *record)
  	lovBuffer = XLogReadBuffer(reln, xlrec->bm_lov_blkno, false);
 	REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xlrec->bm_lov_blkno, lovBuffer, lsn);
  	if (!BufferIsValid(lovBuffer))
+	{
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
+		
  		return;
+	}
  	
  	lovPage = BufferGetPage(lovBuffer);
  	lovItem = (BMLOVItem)
@@ -505,11 +564,17 @@ _bitmap_xlog_insert_bitmapwords(XLogRecPtr lsn, XLogRecord *record)
  	{
  		_bitmap_relbuf(lovBuffer);
  	}
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 }
 
 static void
 _bitmap_xlog_updateword(XLogRecPtr lsn, XLogRecord *record)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	Relation reln;
 	xl_bm_updateword *xlrec;
 
@@ -527,6 +592,9 @@ _bitmap_xlog_updateword(XLogRecPtr lsn, XLogRecord *record)
 		 "(%d, %d, " INT64_FORMAT ", " INT64_FORMAT ")", xlrec->bm_blkno,
 		 xlrec->bm_word_no, xlrec->bm_cword,
 		 xlrec->bm_hword);
+
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
 
 	bitmapBuffer = XLogReadBuffer(reln, xlrec->bm_blkno, false);
 	REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xlrec->bm_blkno, bitmapBuffer, lsn);
@@ -553,11 +621,17 @@ _bitmap_xlog_updateword(XLogRecPtr lsn, XLogRecord *record)
 		else
 			_bitmap_relbuf(bitmapBuffer);
 	}
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 }
 
 static void
 _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	Relation reln;
 	xl_bm_updatewords *xlrec;
 	Buffer			firstBuffer;
@@ -581,6 +655,9 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
 		 xlrec->bm_two_pages ? xlrec->bm_second_blkno : xlrec->bm_next_blkno,
 		 xlrec->bm_second_blkno, xlrec->bm_second_num_cwords,
 		 xlrec->bm_second_last_tid, xlrec->bm_next_blkno);
+
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
 
 	firstBuffer = XLogReadBuffer(reln, xlrec->bm_first_blkno, false);
 	REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xlrec->bm_first_blkno, firstBuffer, lsn);
@@ -656,7 +733,12 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
  		
  		lovBuffer = XLogReadBuffer(reln, xlrec->bm_lov_blkno, false);
  		if (!BufferIsValid(lovBuffer))
+		{	
+			MIRROREDLOCK_BUFMGR_UNLOCK;
+			// -------- MirroredLock ----------
+			
  			return;
+		}
  		
  		lovPage = BufferGetPage(lovBuffer);
  		
@@ -678,6 +760,10 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
  			_bitmap_relbuf(lovBuffer);
  		}
  	}
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 }
 
 void
@@ -803,6 +889,8 @@ bitmap_xlog_startup(void)
 void
 bitmap_xlog_cleanup(void)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	ListCell* l;
 	foreach (l, incomplete_actions)
 	{
@@ -820,6 +908,9 @@ bitmap_xlog_cleanup(void)
 		reln = XLogOpenRelation(action->bm_node);
 		if (!RelationIsValid(reln))
 			return;
+
+		// -------- MirroredLock ----------
+		MIRROREDLOCK_BUFMGR_LOCK;
 
 		lovBuffer = XLogReadBuffer(reln, action->bm_lov_blkno, false);
 
@@ -851,7 +942,10 @@ bitmap_xlog_cleanup(void)
 		_bitmap_write_new_bitmapwords(reln,
 							  lovBuffer, action->bm_lov_offset,
 							  &newWords, false);
- 
+
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
+
  		elog(DEBUG1, "finish incomplete insert of bitmap words: last_tid: " INT64_FORMAT
  			 ", lov_blkno=%d, lov_offset=%d",
  			 newWords.last_tids[newWords.num_cwords-1], action->bm_lov_blkno,

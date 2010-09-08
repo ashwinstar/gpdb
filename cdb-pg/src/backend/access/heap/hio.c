@@ -18,6 +18,7 @@
 #include "access/heapam.h"
 #include "access/hio.h"
 #include "storage/freespace.h"
+#include "cdb/cdbfilerepprimary.h"
 
 
 /*
@@ -112,6 +113,8 @@ RelationGetBufferForTuple(Relation relation, Size len,
 	BlockNumber targetBlock,
 				otherBlock;
 	bool		needLock;
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
 
 	len = MAXALIGN(len);		/* be conservative */
 

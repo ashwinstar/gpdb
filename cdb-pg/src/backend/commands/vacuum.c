@@ -68,6 +68,8 @@
 #include "nodes/makefuncs.h"     /* makeRangeVar */
 #include "gp-libpq-fe.h"
 #include "gp-libpq-int.h"
+#include "storage/lwlock.h"
+#include "cdb/cdbfilerepprimary.h"
 
 /*
  * GUC parameters
@@ -1495,6 +1497,8 @@ static void
 scan_heap(VRelStats *vacrelstats, Relation onerel,
 		  VacPageList vacuum_pages, VacPageList fraged_pages)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	BlockNumber nblocks,
 				blkno;
 	char	   *relname;
@@ -1549,7 +1553,10 @@ scan_heap(VRelStats *vacrelstats, Relation onerel,
 		int			nfrozen;
 
 		vacuum_delay_point();
-
+		
+		// -------- MirroredLock ----------
+		MIRROREDLOCK_BUFMGR_LOCK;
+		
 		buf = ReadBuffer(onerel, blkno);
 		page = BufferGetPage(buf);
 
@@ -1584,6 +1591,10 @@ scan_heap(VRelStats *vacrelstats, Relation onerel,
 			vpage_insert(vacuum_pages, vacpagecopy);
 			vpage_insert(fraged_pages, vacpagecopy);
 			UnlockReleaseBuffer(buf);
+
+			MIRROREDLOCK_BUFMGR_UNLOCK;
+			// -------- MirroredLock ----------
+
 			continue;
 		}
 
@@ -1599,6 +1610,10 @@ scan_heap(VRelStats *vacrelstats, Relation onerel,
 			vpage_insert(vacuum_pages, vacpagecopy);
 			vpage_insert(fraged_pages, vacpagecopy);
 			UnlockReleaseBuffer(buf);
+
+			MIRROREDLOCK_BUFMGR_UNLOCK;
+			// -------- MirroredLock ----------
+
 			continue;
 		}
 
@@ -1823,6 +1838,10 @@ scan_heap(VRelStats *vacrelstats, Relation onerel,
 		}
 
 		UnlockReleaseBuffer(buf);
+		
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
+		
 	}
 
 	pfree(vacpage);
@@ -1911,6 +1930,8 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 			int nindexes, Relation *Irel, List *updated_stats,
 			List *all_extra_oids, int reindex_count)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	TransactionId myXID = GetCurrentTransactionId();
 	Buffer		dst_buffer = InvalidBuffer;
 	BlockNumber nblocks,
@@ -2001,6 +2022,10 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 		/*
 		 * Process this page of relation.
 		 */
+
+		// -------- MirroredLock ----------
+		MIRROREDLOCK_BUFMGR_LOCK;
+
 		buf = ReadBuffer(onerel, blkno);
 		page = BufferGetPage(buf);
 
@@ -2035,6 +2060,10 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 			}
 			if (isempty)
 			{
+				
+				MIRROREDLOCK_BUFMGR_UNLOCK;
+				// -------- MirroredLock ----------
+				
 				ReleaseBuffer(buf);
 				continue;
 			}
@@ -2607,7 +2636,10 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 			}
 			vpage_insert(&Nvacpagelist, copy_vac_page(vacpage));
 		}
-
+		
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
+		
 		ReleaseBuffer(buf);
 
 		if (offnum <= maxoff)
@@ -2657,12 +2689,20 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 			Page		page;
 
 			/* this page was not used as a move target, so must clean it */
+
+			// -------- MirroredLock ----------
+			MIRROREDLOCK_BUFMGR_LOCK;
+
 			buf = ReadBuffer(onerel, (*curpage)->blkno);
 			LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 			page = BufferGetPage(buf);
 			if (!PageIsEmpty(page))
 				vacuum_page(onerel, buf, *curpage);
 			UnlockReleaseBuffer(buf);
+
+			MIRROREDLOCK_BUFMGR_UNLOCK;
+			// -------- MirroredLock ----------
+
 		}
 	}
 
@@ -2748,6 +2788,9 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 			int			uncnt;
 			int			num_tuples = 0;
 
+			// -------- MirroredLock ----------
+			MIRROREDLOCK_BUFMGR_LOCK;
+
 			buf = ReadBuffer(onerel, vacpage->blkno);
 			LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 			page = BufferGetPage(buf);
@@ -2808,6 +2851,10 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 			END_CRIT_SECTION();
 
 			UnlockReleaseBuffer(buf);
+
+			MIRROREDLOCK_BUFMGR_UNLOCK;
+			// -------- MirroredLock ----------
+
 		}
 
 		/* now - free new list of reaped pages */
@@ -2860,6 +2907,8 @@ move_chain_tuple(Relation rel,
 	OffsetNumber newoff;
 	ItemId		newitemid;
 	Size		tuple_len = old_tup->t_len;
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
 
 	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
 	RelationFetchGpRelationNodeForXLog(rel);
@@ -3009,6 +3058,8 @@ move_plain_tuple(Relation rel,
 	ItemId		newitemid;
 	Size		tuple_len = old_tup->t_len;
 
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
 	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
 	RelationFetchGpRelationNodeForXLog(rel);
 
@@ -3126,6 +3177,8 @@ static void
 update_hint_bits(Relation rel, VacPageList fraged_pages, int num_fraged_pages,
 				 BlockNumber last_move_dest_block, int num_moved)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	TransactionId myXID = GetCurrentTransactionId();
 	int			checked_moved = 0;
 	int			i;
@@ -3147,6 +3200,10 @@ update_hint_bits(Relation rel, VacPageList fraged_pages, int num_fraged_pages,
 			break;				/* no need to scan any further */
 		if ((*curpage)->offsets_used == 0)
 			continue;			/* this page was never used as a move dest */
+		
+		// -------- MirroredLock ----------
+		MIRROREDLOCK_BUFMGR_LOCK;
+		
 		buf = ReadBuffer(rel, (*curpage)->blkno);
 		LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 		page = BufferGetPage(buf);
@@ -3183,6 +3240,10 @@ update_hint_bits(Relation rel, VacPageList fraged_pages, int num_fraged_pages,
 		}
 		MarkBufferDirty(buf);
 		UnlockReleaseBuffer(buf);
+		
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
+		
 		Assert((*curpage)->offsets_used == num_tuples);
 		checked_moved += num_tuples;
 	}
@@ -3198,6 +3259,8 @@ update_hint_bits(Relation rel, VacPageList fraged_pages, int num_fraged_pages,
 static void
 vacuum_heap(VRelStats *vacrelstats, Relation onerel, VacPageList vacuum_pages)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	Buffer		buf;
 	VacPage    *vacpage;
 	BlockNumber relblocks;
@@ -3216,10 +3279,18 @@ vacuum_heap(VRelStats *vacrelstats, Relation onerel, VacPageList vacuum_pages)
 
 		if ((*vacpage)->offsets_free > 0)
 		{
+
+			// -------- MirroredLock ----------
+			MIRROREDLOCK_BUFMGR_LOCK;
+
 			buf = ReadBuffer(onerel, (*vacpage)->blkno);
 			LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 			vacuum_page(onerel, buf, *vacpage);
 			UnlockReleaseBuffer(buf);
+
+			MIRROREDLOCK_BUFMGR_UNLOCK;
+			// -------- MirroredLock ----------
+
 		}
 	}
 
@@ -3256,6 +3327,8 @@ vacuum_page(Relation onerel, Buffer buffer, VacPage vacpage)
 	Page		page = BufferGetPage(buffer);
 	ItemId		itemid;
 	int			i;
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
 
 	/* There shouldn't be any tuples moved onto the page yet! */
 	Assert(vacpage->offsets_used == 0);

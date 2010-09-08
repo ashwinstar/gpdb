@@ -34,7 +34,7 @@
 #include "storage/lmgr.h"
 #include "storage/smgr.h"
 #include "utils/lsyscache.h"
-
+#include "cdb/cdbfilerepprimary.h"
 
 static bool _hash_alloc_buckets(Relation rel, BlockNumber firstblock,
 								uint32 nblocks);
@@ -118,6 +118,8 @@ _hash_getbuf(Relation rel, BlockNumber blkno, int access)
 {
 	Buffer		buf;
 
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
 	if (blkno == P_NEW)
 		elog(ERROR, "hash AM does not use P_NEW");
 
@@ -148,8 +150,12 @@ _hash_getbuf(Relation rel, BlockNumber blkno, int access)
 Buffer
 _hash_getnewbuf(Relation rel, BlockNumber blkno, int access)
 {
-	BlockNumber	nblocks = RelationGetNumberOfBlocks(rel);
+	BlockNumber	nblocks;
 	Buffer		buf;
+
+	nblocks = RelationGetNumberOfBlocks(rel);
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
 
 	if (blkno == P_NEW)
 		elog(ERROR, "hash AM does not use P_NEW");
@@ -183,6 +189,8 @@ _hash_getnewbuf(Relation rel, BlockNumber blkno, int access)
 void
 _hash_relbuf(Relation rel __attribute__((unused)), Buffer buf)
 {
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
 	UnlockReleaseBuffer(buf);
 }
 
@@ -212,6 +220,8 @@ _hash_dropbuf(Relation rel __attribute__((unused)), Buffer buf)
 void
 _hash_wrtbuf(Relation rel __attribute__((unused)), Buffer buf)
 {
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
 	MarkBufferDirty(buf);
 	UnlockReleaseBuffer(buf);
 }
@@ -234,6 +244,8 @@ _hash_chgbufaccess(Relation rel __attribute__((unused)),
 				   int from_access,
 				   int to_access)
 {
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
 	if (from_access == HASH_WRITE)
 		MarkBufferDirty(buf);
 	if (from_access != HASH_NOLOCK)
@@ -255,6 +267,8 @@ _hash_chgbufaccess(Relation rel __attribute__((unused)),
 void
 _hash_metapinit(Relation rel)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	HashMetaPage metap;
 	HashPageOpaque pageopaque;
 	Buffer		metabuf;
@@ -292,6 +306,10 @@ _hash_metapinit(Relation rel)
 	 * smgrextend() calls to occur.  This ensures that the smgr level
 	 * has the right idea of the physical index length.
 	 */
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	metabuf = _hash_getnewbuf(rel, HASH_METAPAGE, HASH_WRITE);
 	pg = BufferGetPage(metabuf);
 	_hash_pageinit(pg, BufferGetPageSize(metabuf));
@@ -364,6 +382,10 @@ _hash_metapinit(Relation rel)
 
 	/* all done */
 	_hash_wrtbuf(rel, metabuf);
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 }
 
 /*
@@ -389,6 +411,8 @@ _hash_pageinit(Page page, Size size)
 void
 _hash_expandtable(Relation rel, Buffer metabuf)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	HashMetaPage metap;
 	Bucket		old_bucket;
 	Bucket		new_bucket;
@@ -399,6 +423,10 @@ _hash_expandtable(Relation rel, Buffer metabuf)
 	uint32		highmask;
 	uint32		lowmask;
 
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	/*
 	 * Obtain the page-zero lock to assert the right to begin a split (see
 	 * README).
@@ -562,7 +590,10 @@ _hash_expandtable(Relation rel, Buffer metabuf)
 	/* Release bucket locks, allowing others to access them */
 	_hash_droplock(rel, start_oblkno, HASH_EXCLUSIVE);
 	_hash_droplock(rel, start_nblkno, HASH_EXCLUSIVE);
-
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 	return;
 
 	/* Here if decide not to split or fail to acquire old bucket lock */
@@ -573,6 +604,10 @@ fail:
 
 	/* Release split lock */
 	_hash_droplock(rel, 0, HASH_EXCLUSIVE);
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 }
 
 
@@ -685,6 +720,8 @@ _hash_splitbucket(Relation rel,
 	Page		opage;
 	Page		npage;
 	TupleDesc	itupdesc = RelationGetDescr(rel);
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
 
 	/*
 	 * It should be okay to simultaneously write-lock pages from each bucket,

@@ -253,6 +253,8 @@ static void
 lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 			   Relation *Irel, int nindexes, List *updated_stats, List *all_extra_oids)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	BlockNumber nblocks,
 				blkno;
 	HeapTupleData tuple;
@@ -328,7 +330,10 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 			/* Forget the now-vacuumed tuples, and press on */
 			vacrelstats->num_dead_tuples = 0;
 		}
-
+		
+		// -------- MirroredLock ----------
+		MIRROREDLOCK_BUFMGR_LOCK;
+		
 		buf = ReadBuffer(onerel, blkno);
 
 		/* Initially, we only need shared access to the buffer */
@@ -359,8 +364,16 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 			 * it's got exclusive lock on the whole relation.
 			 */
 			LockBuffer(buf, BUFFER_LOCK_UNLOCK);
+
+			MIRROREDLOCK_BUFMGR_UNLOCK;
+			// -------- MirroredLock ----------
+
 			LockRelationForExtension(onerel, ExclusiveLock);
 			UnlockRelationForExtension(onerel, ExclusiveLock);
+			
+			// -------- MirroredLock ----------
+			MIRROREDLOCK_BUFMGR_LOCK;
+			
 			LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);  // LockBufferForCleanup(buf)?
 			if (PageIsNew(page))
 			{
@@ -374,6 +387,10 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 			}
 			MarkBufferDirty(buf);
 			UnlockReleaseBuffer(buf);
+
+			MIRROREDLOCK_BUFMGR_UNLOCK;
+			// -------- MirroredLock ----------
+
 			continue;
 		}
 
@@ -383,6 +400,10 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 			lazy_record_free_space(vacrelstats, blkno,
 								   PageGetFreeSpace(page));
 			UnlockReleaseBuffer(buf);
+
+			MIRROREDLOCK_BUFMGR_UNLOCK;
+			// -------- MirroredLock ----------
+
 			continue;
 		}
 
@@ -524,6 +545,10 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 			vacrelstats->nonempty_pages = blkno + 1;
 
 		UnlockReleaseBuffer(buf);
+		
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
+		
 	}
 
 	/* save stats for use later */
@@ -601,6 +626,8 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 static void
 lazy_vacuum_heap(Relation onerel, LVRelStats *vacrelstats)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	int			tupindex;
 	int			npages;
 	PGRUsage	ru0;
@@ -618,6 +645,10 @@ lazy_vacuum_heap(Relation onerel, LVRelStats *vacrelstats)
 		vacuum_delay_point();
 
 		tblk = ItemPointerGetBlockNumber(&vacrelstats->dead_tuples[tupindex]);
+		
+		// -------- MirroredLock ----------
+		MIRROREDLOCK_BUFMGR_LOCK;
+		
 		buf = ReadBuffer(onerel, tblk);
 		LockBufferForCleanup(buf);
 		tupindex = lazy_vacuum_page(onerel, tblk, buf, tupindex, vacrelstats);
@@ -626,6 +657,10 @@ lazy_vacuum_heap(Relation onerel, LVRelStats *vacrelstats)
 		lazy_record_free_space(vacrelstats, tblk,
 							   PageGetFreeSpace(page));
 		UnlockReleaseBuffer(buf);
+		
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
+		
 		npages++;
 	}
 
@@ -655,7 +690,9 @@ lazy_vacuum_page(Relation onerel, BlockNumber blkno, Buffer buffer,
 	int			uncnt;
 	Page		page = BufferGetPage(buffer);
 	ItemId		itemid;
-	
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
 	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
 	RelationFetchGpRelationNodeForXLog(onerel);
 	
@@ -1311,6 +1348,8 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 static BlockNumber
 count_nondeletable_pages(Relation onerel, LVRelStats *vacrelstats)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	BlockNumber blkno;
 
 	/* Strange coding of loop control is needed because blkno is unsigned */
@@ -1331,7 +1370,10 @@ count_nondeletable_pages(Relation onerel, LVRelStats *vacrelstats)
 		CHECK_FOR_INTERRUPTS();
 
 		blkno--;
-
+		
+		// -------- MirroredLock ----------
+		MIRROREDLOCK_BUFMGR_LOCK;
+		
 		buf = ReadBuffer(onerel, blkno);
 
 		/* In this phase we only need shared access to the buffer */
@@ -1343,6 +1385,10 @@ count_nondeletable_pages(Relation onerel, LVRelStats *vacrelstats)
 		{
 			/* PageIsNew probably shouldn't happen... */
 			UnlockReleaseBuffer(buf);
+
+			MIRROREDLOCK_BUFMGR_UNLOCK;
+			// -------- MirroredLock ----------
+
 			continue;
 		}
 
@@ -1370,7 +1416,10 @@ count_nondeletable_pages(Relation onerel, LVRelStats *vacrelstats)
 		}						/* scan along page */
 
 		UnlockReleaseBuffer(buf);
-
+		
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
+		
 		/* Done scanning if we found a tuple here */
 		if (hastup)
 			return blkno + 1;

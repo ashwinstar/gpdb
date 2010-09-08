@@ -46,6 +46,7 @@
 #include "miscadmin.h"
 #include "parser/parsetree.h"
 #include "cdb/cdbvars.h" /* gp_select_invisible */
+#include "cdb/cdbfilerepprimary.h"
 
 static TupleTableSlot *BitmapHeapNext(BitmapHeapScanState *node);
 static void bitgetpage(HeapScanDesc scan, TBMIterateResult *tbmres);
@@ -363,6 +364,8 @@ BitmapHeapNext(BitmapHeapScanState *node)
 static void
 bitgetpage(HeapScanDesc scan, TBMIterateResult *tbmres)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	BlockNumber page = tbmres->blockno;
 	Buffer		buffer;
 	Snapshot	snapshot;
@@ -377,7 +380,10 @@ bitgetpage(HeapScanDesc scan, TBMIterateResult *tbmres)
 	 * Acquire pin on the target heap page, trading in any pin we held before.
 	 */
 	Assert(page < scan->rs_nblocks);
-
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	scan->rs_cbuf = ReleaseAndReadBuffer(scan->rs_cbuf,
 										 scan->rs_rd,
 										 page);
@@ -460,7 +466,10 @@ bitgetpage(HeapScanDesc scan, TBMIterateResult *tbmres)
 	}
 
 	LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
-
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 	Assert(ntup <= MaxHeapTuplesPerPage);
 	scan->rs_ntuples = ntup;
 }

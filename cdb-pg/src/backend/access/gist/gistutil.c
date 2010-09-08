@@ -21,6 +21,7 @@
 #include "storage/lmgr.h"
 #include "storage/bufmgr.h"
 #include "utils/rel.h"
+#include "cdb/cdbfilerepprimary.h"
 
 /*
  * static *S used for temrorary storage (saves stack and palloc() call)
@@ -619,6 +620,8 @@ gistNewBuffer(Relation r)
 {
 	Buffer		buffer;
 	bool		needLock;
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
 
 	/* First, try to get a page from FSM */
 	for (;;)

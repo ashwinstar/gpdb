@@ -14,6 +14,8 @@
 
 #include "postgres.h"
 #include "access/gin.h"
+#include "storage/lwlock.h"
+#include "cdb/cdbfilerepprimary.h"
 
 int
 compareItemPointers(ItemPointer a, ItemPointer b)
@@ -614,6 +616,8 @@ void
 insertItemPointer(GinPostingTreeScan *gdi, ItemPointerData *items, uint32 nitem)
 {
 	BlockNumber rootBlkno = gdi->stack->blkno;
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
 
 	gdi->btree.items = items;
 	gdi->btree.nitem = nitem;

@@ -2428,6 +2428,8 @@ static void updateAttributeStatisticsInCatalog(Oid relationOid, const char *attr
  */
 static void gp_statistics_estimate_reltuples_relpages_heap(Relation rel, float4 *reltuples, float4 *relpages)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	float4		nrowsseen = 0;	/* # rows seen */
 	float4		nrowsdead = 0;	/* # rows seen */
 	BlockNumber nblockstotal = 0;	/* nblocks in relation */
@@ -2489,6 +2491,10 @@ static void gp_statistics_estimate_reltuples_relpages_heap(Relation rel, float4 
 			 * looking at it.  We don't maintain a lock on the page, so tuples
 			 * could get added to it, but we ignore such tuples.
 			 */
+
+			// -------- MirroredLock ----------
+			MIRROREDLOCK_BUFMGR_LOCK;
+
 			targbuffer = ReadBuffer(rel, targblock);
 			LockBuffer(targbuffer, BUFFER_LOCK_SHARE);
 			targpage = BufferGetPage(targbuffer);
@@ -2520,6 +2526,10 @@ static void gp_statistics_estimate_reltuples_relpages_heap(Relation rel, float4 
 
 			/* Now release the pin on the page */
 			UnlockReleaseBuffer(targbuffer);
+
+			MIRROREDLOCK_BUFMGR_UNLOCK;
+			// -------- MirroredLock ----------
+
 			nblocksseen++;
 		}		
 	}

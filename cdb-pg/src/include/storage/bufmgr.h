@@ -119,10 +119,28 @@ extern PGDLLIMPORT int32 *LocalRefCount;
 )
 
 // Helper DEFINEs for MirroredLock within Buffer Pool Manager ONLY.
+#ifdef USE_ASSERT_CHECKING
+#define MIRROREDLOCK_BUFMGR_DECLARE \
+	bool mirroredLockIsHeldByMe = false; \
+	bool specialResyncManagerFlag = false; \
+	bool mirroredVariablesSet = false;
+#else
 #define MIRROREDLOCK_BUFMGR_DECLARE \
 	bool mirroredLockIsHeldByMe = false; \
 	bool specialResyncManagerFlag = false;
+#endif
 
+#ifdef USE_ASSERT_CHECKING
+#define MIRROREDLOCK_BUFMGR_LOCK \
+	{ \
+		mirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
+		specialResyncManagerFlag = FileRepPrimary_IsResyncManagerOrWorker(); \
+		mirroredVariablesSet = true; \
+		\
+		if (!mirroredLockIsHeldByMe && !specialResyncManagerFlag) \
+			LWLockAcquire(MirroredLock , LW_SHARED); \
+	}
+#else
 #define MIRROREDLOCK_BUFMGR_LOCK \
 	{ \
 		mirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
@@ -131,12 +149,80 @@ extern PGDLLIMPORT int32 *LocalRefCount;
 		if (!mirroredLockIsHeldByMe && !specialResyncManagerFlag) \
 			LWLockAcquire(MirroredLock , LW_SHARED); \
 	}
-	
+#endif
+
+#ifdef USE_ASSERT_CHECKING
+#define MIRROREDLOCK_BUFMGR_UNLOCK \
+	{ \
+		Assert(mirroredVariablesSet); \
+		if (!mirroredLockIsHeldByMe && !specialResyncManagerFlag) \
+			LWLockRelease(MirroredLock); \
+	}
+#else
 #define MIRROREDLOCK_BUFMGR_UNLOCK \
 	{ \
 		if (!mirroredLockIsHeldByMe && !specialResyncManagerFlag) \
 			LWLockRelease(MirroredLock); \
 	}
+#endif
+
+#define MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD \
+	{ \
+		bool alreadyMirroredLockIsHeldByMe; \
+		bool alreadySpecialResyncManagerFlag; \
+		\
+		alreadyMirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
+		alreadySpecialResyncManagerFlag = FileRepPrimary_IsResyncManagerOrWorker(); \
+		if (!alreadyMirroredLockIsHeldByMe && !alreadySpecialResyncManagerFlag) \
+			elog(ERROR, "Mirrored lock must already be held"); \
+	}
+
+#ifdef USE_ASSERT_CHECKING
+#define MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE \
+	bool verifyMirroredLockIsHeldByMe = false; \
+	bool verifyMirroredVariablesSet = false;
+#else
+#define MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE \
+	bool verifyMirroredLockIsHeldByMe = false;
+#endif
+
+#ifdef USE_ASSERT_CHECKING
+#define MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER \
+	{ \
+		verifyMirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
+		verifyMirroredVariablesSet = true; \
+	}
+#else
+#define MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER \
+	{ \
+		verifyMirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
+	}
+#endif
+
+#ifdef USE_ASSERT_CHECKING
+#define MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT \
+	{ \
+		bool currentMirroredLockIsHeldByMe; \
+		\
+		Assert(verifyMirroredVariablesSet); \
+		currentMirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
+		if (verifyMirroredLockIsHeldByMe != currentMirroredLockIsHeldByMe) \
+			elog(ERROR, "Exiting with mirrored lock held / not held different (enter %s, exit %s)", \
+				 (verifyMirroredLockIsHeldByMe ? "true" : "false"), \
+				 (currentMirroredLockIsHeldByMe ? "true" : "false")); \
+	}
+#else
+#define MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT \
+	{ \
+		bool currentMirroredLockIsHeldByMe; \
+		\
+		currentMirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
+		if (verifyMirroredLockIsHeldByMe != currentMirroredLockIsHeldByMe) \
+			elog(ERROR, "Exiting with mirrored lock held / not held different (enter %s, exit %s)", \
+				 (verifyMirroredLockIsHeldByMe ? "true" : "false"), \
+				 (currentMirroredLockIsHeldByMe ? "true" : "false")); \
+	}
+#endif
 
 /*
  * prototypes for functions in bufmgr.c

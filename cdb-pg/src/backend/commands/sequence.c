@@ -353,6 +353,8 @@ Sequence_FetchGpRelationNodeForXLog(Relation rel)
 void
 DefineSequence(CreateSeqStmt *seq)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	FormData_pg_sequence new;
 	List	   *owned_by;
 	CreateStmt *stmt = makeNode(CreateStmt);
@@ -494,7 +496,10 @@ DefineSequence(CreateSeqStmt *seq)
 	}
 
 	/* Initialize first page of relation with special magic number */
-
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	buf = ReadBuffer(rel, P_NEW);
 	Assert(BufferGetBlockNumber(buf) == 0);
 
@@ -507,7 +512,10 @@ DefineSequence(CreateSeqStmt *seq)
 	sm->magic = SEQ_MAGIC;
 
 	LockBuffer(buf, BUFFER_LOCK_UNLOCK);
-
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 	/* hack: ensure heap_insert will insert on the just-created page */
 	rel->rd_targblock = 0;
 
@@ -536,6 +544,10 @@ DefineSequence(CreateSeqStmt *seq)
 	 * page and sequence magic number would be lost.  This means two log
 	 * records instead of one :-(
 	 */
+		
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 
 	START_CRIT_SECTION();
@@ -599,7 +611,10 @@ DefineSequence(CreateSeqStmt *seq)
 	END_CRIT_SECTION();
 
 	UnlockReleaseBuffer(buf);
-
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 	/* process OWNED BY if given */
 	if (owned_by)
 		process_owned_by(rel, owned_by);
@@ -615,6 +630,8 @@ DefineSequence(CreateSeqStmt *seq)
 void
 AlterSequence(AlterSeqStmt *stmt)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	Oid							 relid;
 	SeqTable					 elm;
 	Relation					 seqrel;
@@ -642,6 +659,10 @@ AlterSequence(AlterSeqStmt *stmt)
 	save_increment = elm->increment;
 
 	/* lock page' buffer and read tuple into new sequence structure */
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	seq = read_info(seqrel, &buf);
 	elm->increment = seq->increment_by;
 	page = BufferGetPage(buf);
@@ -710,7 +731,10 @@ AlterSequence(AlterSeqStmt *stmt)
 	END_CRIT_SECTION();
 
 	UnlockReleaseBuffer(buf);
-
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 	/* process OWNED BY if given */
 	if (owned_by)
 		process_owned_by(seqrel, owned_by);
@@ -841,6 +865,8 @@ cdb_sequence_nextval(Relation   seqrel,
                      int64     *pcached,
                      int64     *pincrement)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	Buffer		buf;
 	Page		page;
 	Form_pg_sequence seq;
@@ -857,6 +883,10 @@ cdb_sequence_nextval(Relation   seqrel,
 	bool		logit = false;
 
 	/* lock page' buffer and read tuple */
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	seq = read_info(seqrel, &buf);
 	page = BufferGetPage(buf);
 
@@ -1035,6 +1065,10 @@ cdb_sequence_nextval(Relation   seqrel,
 	END_CRIT_SECTION();
 
 	UnlockReleaseBuffer(buf);
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 }                               /* cdb_sequence_nextval */
 
 
@@ -1138,6 +1172,8 @@ lastval(PG_FUNCTION_ARGS)
 static void
 do_setval(Oid relid, int64 next, bool iscalled)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	SeqTable	elm;
 	Relation	seqrel;
 	Buffer		buf;
@@ -1160,6 +1196,10 @@ do_setval(Oid relid, int64 next, bool iscalled)
 						RelationGetRelationName(seqrel))));
 
 	/* lock page' buffer and read tuple */
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	seq = read_info(seqrel, &buf);
 	elm->increment = seq->increment_by;
 
@@ -1233,7 +1273,10 @@ do_setval(Oid relid, int64 next, bool iscalled)
 	END_CRIT_SECTION();
 
 	UnlockReleaseBuffer(buf);
-
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 	relation_close(seqrel, NoLock);
 }
 
@@ -1378,6 +1421,8 @@ read_info(Relation rel, Buffer *buf)
 	HeapTupleData tuple;
 	sequence_magic *sm;
 	Form_pg_sequence seq;
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
 
 	*buf = ReadBuffer(rel, 0);
 	LockBuffer(*buf, BUFFER_LOCK_EXCLUSIVE);
@@ -1706,6 +1751,8 @@ process_owned_by(Relation seqrel, List *owned_by)
 void
 seq_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
 	Relation	reln;
 	Buffer		buffer;
@@ -1719,6 +1766,10 @@ seq_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 		elog(PANIC, "seq_redo: unknown op code %u", info);
 
 	reln = XLogOpenRelation(xlrec->node);
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	buffer = XLogReadBuffer(reln, 0, true);
 	Assert(BufferIsValid(buffer));
 	page = (Page) BufferGetPage(buffer);
@@ -1740,6 +1791,10 @@ seq_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 	PageSetTLI(page, ThisTimeLineID);
 	MarkBufferDirty(buffer);
 	UnlockReleaseBuffer(buffer);
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 }
 
 void

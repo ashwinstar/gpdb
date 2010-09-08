@@ -27,6 +27,7 @@
 #include "storage/lmgr.h"
 #include "utils/memutils.h"
 #include "nodes/tidbitmap.h"
+#include "cdb/cdbfilerepprimary.h"
 
 /* Working state for btbuild and its callback */
 typedef struct
@@ -80,12 +81,16 @@ static void btvacuumpage(BTVacState *vstate, BlockNumber blkno,
 Datum
 btbuild(PG_FUNCTION_ARGS)
 {
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
+
 	Relation	heap = (Relation) PG_GETARG_POINTER(0);
 	Relation	index = (Relation) PG_GETARG_POINTER(1);
 	IndexInfo  *indexInfo = (IndexInfo *) PG_GETARG_POINTER(2);
 	IndexBuildResult *result;
 	double		reltuples;
 	BTBuildState buildstate;
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
 
 	buildstate.isUnique = indexInfo->ii_Unique;
 	buildstate.haveDead = false;
@@ -162,6 +167,8 @@ btbuild(PG_FUNCTION_ARGS)
 	result->heap_tuples = reltuples;
 	result->index_tuples = buildstate.indtuples;
 
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
+
 	PG_RETURN_POINTER(result);
 }
 
@@ -176,8 +183,12 @@ btbuildCallback(Relation index,
 				bool tupleIsAlive,
 				void *state)
 {
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
+
 	BTBuildState *buildstate = (BTBuildState *) state;
 	IndexTuple	itup;
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
 
 	/* form an index tuple and point it at the heap tuple */
 	itup = index_form_tuple(RelationGetDescr(index), values, isnull);
@@ -199,6 +210,9 @@ btbuildCallback(Relation index,
 	buildstate->indtuples += 1;
 
 	pfree(itup);
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
+
 }
 
 /*
@@ -210,6 +224,8 @@ btbuildCallback(Relation index,
 Datum
 btinsert(PG_FUNCTION_ARGS)
 {
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
+
 	Relation	rel = (Relation) PG_GETARG_POINTER(0);
 	Datum	   *values = (Datum *) PG_GETARG_POINTER(1);
 	bool	   *isnull = (bool *) PG_GETARG_POINTER(2);
@@ -218,6 +234,8 @@ btinsert(PG_FUNCTION_ARGS)
 	bool		checkUnique = PG_GETARG_BOOL(5);
 	IndexTuple	itup;
 
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
+
 	/* generate an index tuple */
 	itup = index_form_tuple(RelationGetDescr(rel), values, isnull);
 	itup->t_tid = *ht_ctid;
@@ -225,6 +243,8 @@ btinsert(PG_FUNCTION_ARGS)
 	_bt_doinsert(rel, itup, checkUnique, heapRel);
 
 	pfree(itup);
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
 
 	PG_RETURN_BOOL(true);
 }
@@ -235,10 +255,14 @@ btinsert(PG_FUNCTION_ARGS)
 Datum
 btgettuple(PG_FUNCTION_ARGS)
 {
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
+
 	IndexScanDesc scan = (IndexScanDesc) PG_GETARG_POINTER(0);
 	ScanDirection dir = (ScanDirection) PG_GETARG_INT32(1);
 	BTScanOpaque so = (BTScanOpaque) scan->opaque;
 	bool		res;
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
 
 	/*
 	 * If we've already initialized this scan, we can just advance it in the
@@ -275,6 +299,8 @@ btgettuple(PG_FUNCTION_ARGS)
 	else
 		res = _bt_first(scan, dir);
 
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
+
 	PG_RETURN_BOOL(res);
 }
 
@@ -284,12 +310,16 @@ btgettuple(PG_FUNCTION_ARGS)
 Datum
 btgetmulti(PG_FUNCTION_ARGS)
 {
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
+
 	IndexScanDesc scan = (IndexScanDesc) PG_GETARG_POINTER(0);
 	Node *n = (Node *)PG_GETARG_POINTER(1);
 	HashBitmap	*hashBitmap;
 
 	BTScanOpaque so = (BTScanOpaque) scan->opaque;
 	bool		res = true;
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
 
 	if (n == NULL || IsA(n, StreamBitmap))
 	{
@@ -337,6 +367,9 @@ btgetmulti(PG_FUNCTION_ARGS)
 			tbm_create_stream_node(hashBitmap), BMS_OR);
 		PG_RETURN_POINTER(n);
 	}
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
+
 	PG_RETURN_POINTER(hashBitmap);
 }
 
@@ -346,13 +379,19 @@ btgetmulti(PG_FUNCTION_ARGS)
 Datum
 btbeginscan(PG_FUNCTION_ARGS)
 {
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
+
 	Relation	rel = (Relation) PG_GETARG_POINTER(0);
 	int			keysz = PG_GETARG_INT32(1);
 	ScanKey		scankey = (ScanKey) PG_GETARG_POINTER(2);
 	IndexScanDesc scan;
 
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
+
 	/* get the scan */
 	scan = RelationGetIndexScan(rel, keysz, scankey);
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
 
 	PG_RETURN_POINTER(scan);
 }
@@ -363,9 +402,13 @@ btbeginscan(PG_FUNCTION_ARGS)
 Datum
 btrescan(PG_FUNCTION_ARGS)
 {
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
+
 	IndexScanDesc scan = (IndexScanDesc) PG_GETARG_POINTER(0);
 	ScanKey		scankey = (ScanKey) PG_GETARG_POINTER(1);
 	BTScanOpaque so;
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
 
 	so = (BTScanOpaque) scan->opaque;
 
@@ -409,6 +452,8 @@ btrescan(PG_FUNCTION_ARGS)
 				scan->numberOfKeys * sizeof(ScanKeyData));
 	so->numberOfKeys = 0;		/* until _bt_preprocess_keys sets it */
 
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
+
 	PG_RETURN_VOID();
 }
 
@@ -418,8 +463,12 @@ btrescan(PG_FUNCTION_ARGS)
 Datum
 btendscan(PG_FUNCTION_ARGS)
 {
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
+
 	IndexScanDesc scan = (IndexScanDesc) PG_GETARG_POINTER(0);
 	BTScanOpaque so = (BTScanOpaque) scan->opaque;
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
 
 	/* we aren't holding any read locks, but gotta drop the pins */
 	if (BTScanPosIsValid(so->currPos))
@@ -444,6 +493,8 @@ btendscan(PG_FUNCTION_ARGS)
 		pfree(so->keyData);
 	pfree(so);
 
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
+
 	PG_RETURN_VOID();
 }
 
@@ -453,8 +504,12 @@ btendscan(PG_FUNCTION_ARGS)
 Datum
 btmarkpos(PG_FUNCTION_ARGS)
 {
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
+
 	IndexScanDesc scan = (IndexScanDesc) PG_GETARG_POINTER(0);
 	BTScanOpaque so = (BTScanOpaque) scan->opaque;
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
 
 	/* we aren't holding any read locks, but gotta drop the pin */
 	if (BTScanPosIsValid(so->markPos))
@@ -474,6 +529,8 @@ btmarkpos(PG_FUNCTION_ARGS)
 	else
 		so->markItemIndex = -1;
 
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
+
 	PG_RETURN_VOID();
 }
 
@@ -483,8 +540,12 @@ btmarkpos(PG_FUNCTION_ARGS)
 Datum
 btrestrpos(PG_FUNCTION_ARGS)
 {
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
+
 	IndexScanDesc scan = (IndexScanDesc) PG_GETARG_POINTER(0);
 	BTScanOpaque so = (BTScanOpaque) scan->opaque;
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
 
 	if (so->markItemIndex >= 0)
 	{
@@ -517,6 +578,8 @@ btrestrpos(PG_FUNCTION_ARGS)
 		}
 	}
 
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
+
 	PG_RETURN_VOID();
 }
 
@@ -530,12 +593,16 @@ btrestrpos(PG_FUNCTION_ARGS)
 Datum
 btbulkdelete(PG_FUNCTION_ARGS)
 {
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
+
 	IndexVacuumInfo *info = (IndexVacuumInfo *) PG_GETARG_POINTER(0);
 	IndexBulkDeleteResult *volatile stats = (IndexBulkDeleteResult *) PG_GETARG_POINTER(1);
 	IndexBulkDeleteCallback callback = (IndexBulkDeleteCallback) PG_GETARG_POINTER(2);
 	void	   *callback_state = (void *) PG_GETARG_POINTER(3);
 	Relation	rel = info->index;
 	BTCycleId	cycleid;
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
 
 	// Fetch gp_persistent_relation_node information that will be added to XLOG record.
 	RelationFetchGpRelationNodeForXLog(rel);
@@ -555,6 +622,8 @@ btbulkdelete(PG_FUNCTION_ARGS)
 	PG_END_ENSURE_ERROR_CLEANUP(_bt_end_vacuum_callback, PointerGetDatum(rel));
 	_bt_end_vacuum(rel);
 
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
+
 	PG_RETURN_POINTER(stats);
 }
 
@@ -566,8 +635,12 @@ btbulkdelete(PG_FUNCTION_ARGS)
 Datum
 btvacuumcleanup(PG_FUNCTION_ARGS)
 {
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
+
 	IndexVacuumInfo *info = (IndexVacuumInfo *) PG_GETARG_POINTER(0);
 	IndexBulkDeleteResult *stats = (IndexBulkDeleteResult *) PG_GETARG_POINTER(1);
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
 
 	/*
 	 * If btbulkdelete was called, we need not do anything, just return the
@@ -596,6 +669,8 @@ btvacuumcleanup(PG_FUNCTION_ARGS)
 			stats->num_index_tuples = info->num_heap_tuples;
 	}
 
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
+
 	PG_RETURN_POINTER(stats);
 }
 
@@ -616,11 +691,15 @@ btvacuumscan(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 			 IndexBulkDeleteCallback callback, void *callback_state,
 			 BTCycleId cycleid)
 {
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
+
 	Relation	rel = info->index;
 	BTVacState	vstate;
 	BlockNumber num_pages;
 	BlockNumber blkno;
 	bool		needLock;
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
 
 	/*
 	 * Reset counts that will be incremented during the scan; needed in case
@@ -753,6 +832,9 @@ btvacuumscan(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 	/* update statistics */
 	stats->num_pages = num_pages;
 	stats->pages_free = vstate.totFreePages;
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
+
 }
 
 /*
@@ -769,6 +851,8 @@ btvacuumscan(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 static void
 btvacuumpage(BTVacState *vstate, BlockNumber blkno, BlockNumber orig_blkno)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	IndexVacuumInfo *info = vstate->info;
 	IndexBulkDeleteResult *stats = vstate->stats;
 	IndexBulkDeleteCallback callback = vstate->callback;
@@ -779,7 +863,6 @@ btvacuumpage(BTVacState *vstate, BlockNumber blkno, BlockNumber orig_blkno)
 	Buffer		buf;
 	Page		page;
 	BTPageOpaque opaque;
-
 restart:
 	delete_now = false;
 	recurse_to = P_NONE;
@@ -792,6 +875,10 @@ restart:
 	 * _bt_checkpage(), which will barf on an all-zero page. We want to
 	 * recycle all-zero pages, not fail.
 	 */
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	buf = ReadBuffer(rel, blkno);
 	LockBuffer(buf, BT_READ);
 	page = BufferGetPage(buf);
@@ -813,6 +900,10 @@ restart:
 			opaque->btpo_cycleid != vstate->cycleid)
 		{
 			_bt_relbuf(rel, buf);
+
+			MIRROREDLOCK_BUFMGR_UNLOCK;
+			// -------- MirroredLock ----------
+
 			return;
 		}
 	}
@@ -969,6 +1060,10 @@ restart:
 	else
 		_bt_relbuf(rel, buf);
 
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 	/*
 	 * This is really tail recursion, but if the compiler is too stupid to
 	 * optimize it as such, we'd eat an uncomfortably large amount of stack

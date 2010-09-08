@@ -39,6 +39,7 @@
 #include "utils/syscache.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp.h"
+#include "cdb/cdbfilerepprimary.h"
 
 
 static void InsertTrigger(TriggerDesc *trigdesc, Trigger *trigger, int indx);
@@ -1725,6 +1726,8 @@ GetTupleForTrigger(EState *estate, ResultRelInfo *relinfo,
 				   ItemPointer tid, CommandId cid,
 				   TupleTableSlot **newSlot)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	Relation	relation = relinfo->ri_RelationDesc;
 	HeapTupleData tuple;
 	HeapTuple	result;
@@ -1796,9 +1799,15 @@ ltrmark:;
 	{
 		PageHeader	dp;
 		ItemId		lp;
-
+		
+		// -------- MirroredLock ----------
+		MIRROREDLOCK_BUFMGR_LOCK;
+		
 		buffer = ReadBuffer(relation, ItemPointerGetBlockNumber(tid));
-
+		
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
+		
 		dp = (PageHeader) BufferGetPage(buffer);
 		lp = PageGetItemId(dp, ItemPointerGetOffsetNumber(tid));
 

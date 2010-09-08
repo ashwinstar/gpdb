@@ -18,6 +18,7 @@
 #include "miscadmin.h"
 #include "utils/memutils.h"
 #include "utils/guc.h"
+#include "cdb/cdbfilerepprimary.h"
 
 
 typedef struct
@@ -187,6 +188,8 @@ decodePageUpdateRecord(PageUpdateRecord *decoded, XLogRecord *record)
 static void
 gistRedoPageUpdateRecord(XLogRecPtr lsn, XLogRecord *record, bool isnewroot)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	gistxlogPageUpdate *xldata = (gistxlogPageUpdate *) XLogRecGetData(record);
 	PageUpdateRecord xlrec;
 	Relation	reln;
@@ -209,15 +212,29 @@ gistRedoPageUpdateRecord(XLogRecPtr lsn, XLogRecord *record, bool isnewroot)
 	decodePageUpdateRecord(&xlrec, record);
 
 	reln = XLogOpenRelation(xlrec.data->node);
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	buffer = XLogReadBuffer(reln, xlrec.data->blkno, false);
 	REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xlrec.data->blkno, buffer, lsn);
 	if (!BufferIsValid(buffer))
+	{
+		
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
+		
 		return;
+	}
 	page = (Page) BufferGetPage(buffer);
 
 	if (XLByteLE(lsn, PageGetLSN(page)))
 	{
 		UnlockReleaseBuffer(buffer);
+		
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
+		
 		return;
 	}
 
@@ -257,11 +274,17 @@ gistRedoPageUpdateRecord(XLogRecPtr lsn, XLogRecord *record, bool isnewroot)
 	PageSetTLI(page, ThisTimeLineID);
 	MarkBufferDirty(buffer);
 	UnlockReleaseBuffer(buffer);
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 }
 
 static void
 gistRedoPageDeleteRecord(XLogRecPtr lsn, XLogRecord *record)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	gistxlogPageDelete *xldata = (gistxlogPageDelete *) XLogRecGetData(record);
 	Relation	reln;
 	Buffer		buffer;
@@ -272,6 +295,10 @@ gistRedoPageDeleteRecord(XLogRecPtr lsn, XLogRecord *record)
 		return;
 
 	reln = XLogOpenRelation(xldata->node);
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	buffer = XLogReadBuffer(reln, xldata->blkno, false);
 	REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xldata->blkno, buffer, lsn);
 	if (!BufferIsValid(buffer))
@@ -284,6 +311,10 @@ gistRedoPageDeleteRecord(XLogRecPtr lsn, XLogRecord *record)
 	PageSetTLI(page, ThisTimeLineID);
 	MarkBufferDirty(buffer);
 	UnlockReleaseBuffer(buffer);
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 }
 
 static void
@@ -320,6 +351,8 @@ decodePageSplitRecord(PageSplitRecord *decoded, XLogRecord *record)
 static void
 gistRedoPageSplitRecord(XLogRecPtr lsn, XLogRecord *record)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	PageSplitRecord xlrec;
 	Relation	reln;
 	Buffer		buffer;
@@ -335,7 +368,10 @@ gistRedoPageSplitRecord(XLogRecPtr lsn, XLogRecord *record)
 	for (i = 0; i < xlrec.data->npage; i++)
 	{
 		NewPage    *newpage = xlrec.page + i;
-
+		
+		// -------- MirroredLock ----------
+		MIRROREDLOCK_BUFMGR_LOCK;
+		
 		buffer = XLogReadBuffer(reln, newpage->header->blkno, true);
 		Assert(BufferIsValid(buffer));
 		page = (Page) BufferGetPage(buffer);
@@ -350,6 +386,10 @@ gistRedoPageSplitRecord(XLogRecPtr lsn, XLogRecord *record)
 		PageSetTLI(page, ThisTimeLineID);
 		MarkBufferDirty(buffer);
 		UnlockReleaseBuffer(buffer);
+		
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
+		
 	}
 
 	forgetIncompleteInsert(xlrec.data->node, xlrec.data->key);
@@ -362,6 +402,8 @@ gistRedoPageSplitRecord(XLogRecPtr lsn, XLogRecord *record)
 static void
 gistRedoCreateIndex(XLogRecPtr lsn, XLogRecord *record)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	gistxlogCreateIndex *xldata = (gistxlogCreateIndex *) XLogRecGetData(record);
 	
 	RelFileNode *node = &(xldata->node);
@@ -370,6 +412,10 @@ gistRedoCreateIndex(XLogRecPtr lsn, XLogRecord *record)
 	Page		page;
 
 	reln = XLogOpenRelation(*node);
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	buffer = XLogReadBuffer(reln, GIST_ROOT_BLKNO, true);
 	Assert(BufferIsValid(buffer));
 	page = (Page) BufferGetPage(buffer);
@@ -381,6 +427,10 @@ gistRedoCreateIndex(XLogRecPtr lsn, XLogRecord *record)
 
 	MarkBufferDirty(buffer);
 	UnlockReleaseBuffer(buffer);
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 }
 
 static void
@@ -536,6 +586,8 @@ gistxlogFindPath(Relation index, gistIncompleteInsert *insert)
 {
 	GISTInsertStack *top;
 
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+
 	insert->pathlen = 0;
 	insert->path = NULL;
 
@@ -602,6 +654,8 @@ gistMakePageLayout(Buffer *buffers, int nbuffers)
 static void
 gistContinueInsert(gistIncompleteInsert *insert)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	IndexTuple *itup;
 	int			i,
 				lenitup;
@@ -618,7 +672,10 @@ gistContinueInsert(gistIncompleteInsert *insert)
 
 	for (i = 0; i < insert->lenblk; i++)
 		itup[i] = gist_form_invalid_tuple(insert->blkno[i]);
-
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	/*
 	 * any insertion of itup[] should make LOG message about
 	 */
@@ -798,7 +855,10 @@ gistContinueInsert(gistIncompleteInsert *insert)
 			}
 		}
 	}
-
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 	ereport(LOG,
 			(errmsg("index %u/%u/%u needs VACUUM FULL or REINDEX to finish crash recovery",
 			insert->node.spcNode, insert->node.dbNode, insert->node.relNode),

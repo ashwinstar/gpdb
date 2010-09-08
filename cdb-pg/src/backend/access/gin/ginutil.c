@@ -18,6 +18,7 @@
 #include "access/heapam.h"
 #include "access/reloptions.h"
 #include "storage/freespace.h"
+#include "cdb/cdbfilerepprimary.h"
 
 void
 initGinState(GinState *state, Relation index)
@@ -53,6 +54,8 @@ GinNewBuffer(Relation index)
 {
 	Buffer		buffer;
 	bool		needLock;
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
 
 	/* First, try to get a page from FSM */
 	for (;;)

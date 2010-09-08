@@ -21,6 +21,7 @@
 #include "miscadmin.h"
 #include "storage/freespace.h"
 #include "utils/memutils.h"
+#include "cdb/cdbfilerepprimary.h"
 
 
 typedef struct GistBulkDeleteResult
@@ -82,6 +83,8 @@ gistDeleteSubtree(GistVacuum *gv, BlockNumber blkno)
 {
 	Buffer		buffer;
 	Page		page;
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
 
 	buffer = ReadBuffer(gv->index, blkno);
 	LockBuffer(buffer, GIST_EXCLUSIVE);
@@ -166,8 +169,13 @@ vacuumSplitPage(GistVacuum *gv, Page tempPage, Buffer buffer, IndexTuple *addon,
 			   *ptr;
 	int			i,
 				veclen = 0;
-	BlockNumber blkno = BufferGetBlockNumber(buffer);
-	MemoryContext oldCtx = MemoryContextSwitchTo(gv->opCtx);
+	BlockNumber blkno;
+	MemoryContext oldCtx;
+
+	MIRROREDLOCK_BUFMGR_MUST_ALREADY_BE_HELD;
+	
+	blkno = BufferGetBlockNumber(buffer);
+	oldCtx = MemoryContextSwitchTo(gv->opCtx);
 
 	vec = gistextractpage(tempPage, &veclen);
 	vec = gistjoinvector(vec, &veclen, addon, curlenaddon);
@@ -286,6 +294,8 @@ vacuumSplitPage(GistVacuum *gv, Page tempPage, Buffer buffer, IndexTuple *addon,
 static ArrayTuple
 gistVacuumUpdate(GistVacuum *gv, BlockNumber blkno, bool needunion)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	ArrayTuple	res = {NULL, 0, false};
 	Buffer		buffer;
 	Page		page,
@@ -307,7 +317,10 @@ gistVacuumUpdate(GistVacuum *gv, BlockNumber blkno, bool needunion)
 				lencompleted = 16;
 
 	vacuum_delay_point();
-
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	buffer = ReadBuffer(gv->index, blkno);
 	LockBuffer(buffer, GIST_EXCLUSIVE);
 	gistcheckpage(gv->index, buffer);
@@ -492,8 +505,10 @@ gistVacuumUpdate(GistVacuum *gv, BlockNumber blkno, bool needunion)
 		if (ncompleted && !gv->index->rd_istemp)
 			gistxlogInsertCompletion(gv->index->rd_node, completed, ncompleted);
 	}
-
-
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 	for (i = 0; i < curlenaddon; i++)
 		pfree(addon[i]);
 	if (addon)
@@ -516,6 +531,8 @@ gistVacuumUpdate(GistVacuum *gv, BlockNumber blkno, bool needunion)
 Datum
 gistvacuumcleanup(PG_FUNCTION_ARGS)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	IndexVacuumInfo *info = (IndexVacuumInfo *) PG_GETARG_POINTER(0);
 	GistBulkDeleteResult *stats = (GistBulkDeleteResult *) PG_GETARG_POINTER(1);
 	Relation	rel = info->index;
@@ -604,7 +621,10 @@ gistvacuumcleanup(PG_FUNCTION_ARGS)
 		Page		page;
 
 		vacuum_delay_point();
-
+		
+		// -------- MirroredLock ----------
+		MIRROREDLOCK_BUFMGR_LOCK;
+		
 		buffer = ReadBuffer(rel, blkno);
 		LockBuffer(buffer, GIST_SHARE);
 		page = (Page) BufferGetPage(buffer);
@@ -618,6 +638,10 @@ gistvacuumcleanup(PG_FUNCTION_ARGS)
 		else
 			lastFilledBlock = blkno;
 		UnlockReleaseBuffer(buffer);
+		
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
+		
 	}
 	lastBlock = npages - 1;
 
@@ -693,6 +717,8 @@ pushStackIfSplited(Page page, GistBDItem *stack)
 Datum
 gistbulkdelete(PG_FUNCTION_ARGS)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	IndexVacuumInfo *info = (IndexVacuumInfo *) PG_GETARG_POINTER(0);
 	GistBulkDeleteResult *stats = (GistBulkDeleteResult *) PG_GETARG_POINTER(1);
 	IndexBulkDeleteCallback callback = (IndexBulkDeleteCallback) PG_GETARG_POINTER(2);
@@ -712,13 +738,18 @@ gistbulkdelete(PG_FUNCTION_ARGS)
 
 	while (stack)
 	{
-		Buffer		buffer = ReadBuffer(rel, stack->blkno);
+		Buffer		buffer;
 		Page		page;
 		OffsetNumber i,
 					maxoff;
 		IndexTuple	idxtuple;
 		ItemId		iid;
-
+		
+		// -------- MirroredLock ----------
+		MIRROREDLOCK_BUFMGR_LOCK;
+		
+		buffer = ReadBuffer(rel, stack->blkno);
+		
 		LockBuffer(buffer, GIST_SHARE);
 		gistcheckpage(rel, buffer);
 		page = (Page) BufferGetPage(buffer);
@@ -736,6 +767,10 @@ gistbulkdelete(PG_FUNCTION_ARGS)
 			{
 				/* only the root can become non-leaf during relock */
 				UnlockReleaseBuffer(buffer);
+				
+				MIRROREDLOCK_BUFMGR_UNLOCK;
+				// -------- MirroredLock ----------
+				
 				/* one more check */
 				continue;
 			}
@@ -827,7 +862,10 @@ gistbulkdelete(PG_FUNCTION_ARGS)
 		}
 
 		UnlockReleaseBuffer(buffer);
-
+		
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
+		
 		ptr = stack->next;
 		pfree(stack);
 		stack = ptr;

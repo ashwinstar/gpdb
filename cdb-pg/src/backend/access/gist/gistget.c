@@ -20,6 +20,7 @@
 #include "nodes/tidbitmap.h"
 #include "pgstat.h"
 #include "utils/memutils.h"
+#include "cdb/cdbfilerepprimary.h"
 
 
 static OffsetNumber gistfindnext(IndexScanDesc scan, OffsetNumber n,
@@ -31,9 +32,14 @@ static bool gistindex_keytest(IndexTuple tuple, IndexScanDesc scan,
 static void
 killtuple(Relation r, GISTScanOpaque so, ItemPointer iptr)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	Page        p;
 	OffsetNumber offset;
- 
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	LockBuffer(so->curbuf, GIST_SHARE);
 	gistcheckpage(r, so->curbuf);
 	p = (Page) BufferGetPage(so->curbuf);
@@ -64,6 +70,10 @@ killtuple(Relation r, GISTScanOpaque so, ItemPointer iptr)
 	}
 
 	LockBuffer(so->curbuf, GIST_UNLOCK);
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 }
 
 /*
@@ -134,6 +144,8 @@ gistgetmulti(PG_FUNCTION_ARGS)
 static int
 gistnext(IndexScanDesc scan, ScanDirection dir, ItemPointer tids, int maxtids, bool ignore_killed_tuples)
 {
+	MIRROREDLOCK_BUFMGR_DECLARE;
+
 	Page		p;
 	OffsetNumber n;
 	GISTScanOpaque so;
@@ -143,7 +155,10 @@ gistnext(IndexScanDesc scan, ScanDirection dir, ItemPointer tids, int maxtids, b
 	int			ntids = 0;
 
 	so = (GISTScanOpaque) scan->opaque;
-
+	
+	// -------- MirroredLock ----------
+	MIRROREDLOCK_BUFMGR_LOCK;
+	
 	if (ItemPointerIsValid(&scan->currentItemData) == false)
 	{
 		/* Being asked to fetch the first entry, so start at the root */
@@ -161,6 +176,10 @@ gistnext(IndexScanDesc scan, ScanDirection dir, ItemPointer tids, int maxtids, b
 	}
 	else if (so->curbuf == InvalidBuffer)
 	{
+		
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
+		
 		return 0;
 	}
 
@@ -182,7 +201,13 @@ gistnext(IndexScanDesc scan, ScanDirection dir, ItemPointer tids, int maxtids, b
 		}
 
 		if ( ntids == maxtids )
+		{
+
+			MIRROREDLOCK_BUFMGR_UNLOCK;
+			// -------- MirroredLock ----------
+
 			return ntids;
+		}
 		
 		/*
 		 * Go to the next page
@@ -196,6 +221,10 @@ gistnext(IndexScanDesc scan, ScanDirection dir, ItemPointer tids, int maxtids, b
 		{
 			ReleaseBuffer(so->curbuf);
 			so->curbuf = InvalidBuffer;
+
+			MIRROREDLOCK_BUFMGR_UNLOCK;
+			// -------- MirroredLock ----------
+
 			return ntids;
 		}
 
@@ -245,6 +274,10 @@ gistnext(IndexScanDesc scan, ScanDirection dir, ItemPointer tids, int maxtids, b
 			{
 				ReleaseBuffer(so->curbuf);
 				so->curbuf = InvalidBuffer;
+				
+				MIRROREDLOCK_BUFMGR_UNLOCK;
+				// -------- MirroredLock ----------
+				
 				return ntids;
 			}
 
@@ -283,6 +316,10 @@ gistnext(IndexScanDesc scan, ScanDirection dir, ItemPointer tids, int maxtids, b
 				if ( ntids == maxtids )
 				{
 					LockBuffer(so->curbuf, GIST_UNLOCK);
+					
+					MIRROREDLOCK_BUFMGR_UNLOCK;
+					// -------- MirroredLock ----------
+					
 					return ntids;
 				}
 
@@ -302,6 +339,10 @@ gistnext(IndexScanDesc scan, ScanDirection dir, ItemPointer tids, int maxtids, b
 				{
 					ReleaseBuffer(so->curbuf);
 					so->curbuf = InvalidBuffer;
+					
+					MIRROREDLOCK_BUFMGR_UNLOCK;
+					// -------- MirroredLock ----------
+					
 					return ntids;
 				}
 
@@ -353,7 +394,10 @@ gistnext(IndexScanDesc scan, ScanDirection dir, ItemPointer tids, int maxtids, b
 				n = OffsetNumberNext(n);
 		}
 	}
-
+	
+	MIRROREDLOCK_BUFMGR_UNLOCK;
+	// -------- MirroredLock ----------
+	
 	return ntids;
 }
 
