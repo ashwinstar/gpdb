@@ -875,431 +875,431 @@ xaae: xact:00005532:  ereport(ERROR,
 xaae: xact:00005533:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
 xaae: xact:00005534:  errmsg("cannot have more than 2^32-1 subtransactions in a transaction"))); 
 aaaaa GP_IGNORE: xaae: xlog - ./backend/access/transam/xlog.c
-xaae: xlog:00000816:  ereport(ERROR, 
-xaae: xlog:00000817:  (errmsg("Reader qExec had local changes to commit! (rmid = %u)", 
-xaae: xlog:00000818:  rmid), 
-xaae: xlog:00000819:  errdetail("A Reader qExec tried to commit local changes. " 
-xaae: xlog:00000820:  "Only the single Writer qExec can do so. "), 
-xaae: xlog:00000821:  errhint("This is most likely the result of a feature being turned " 
-xaae: xlog:00000822:  "on that violates the single WRITER principle"))); 
-xaae: xlog:00001857:  ereport(ERROR, 
-xaae: xlog:00001858:  (errcode_for_file_access(), 
-xaae: xlog:00001859:  errmsg("could not open transaction log file for catch-up purposes -- it has been reclaimed (\"%s\")", 
-xaae: xlog:00001860:  path))); 
-xaae: xlog:00001862:  ereport(ERROR, 
-xaae: xlog:00001863:  (errcode_for_file_access(), 
-xaae: xlog:00001864:  errmsg("could not open transaction log file for catch-up purposes (\"%s\"): %m", 
-xaae: xlog:00001865:  path))); 
-xaae: xlog:00001875:  ereport(ERROR, 
-xaae: xlog:00001876:  (errcode_for_file_access(), 
-xaae: xlog:00001877:  errmsg("could not seek to end of file \"%s\" (log file %u, segment %u): %m", 
-xaae: xlog:00001878:  path, logId, seg))); 
-xaae: xlog:00001885:  ereport(ERROR, 
-xaae: xlog:00001886:  (errcode_for_file_access(), 
-xaae: xlog:00001887:  errmsg("could not seek to offset %u file \"%s\" (log file %u, segment %u): %m", 
-xaae: xlog:00001888:  offset, path, logId, seg))); 
-xaae: xlog:00001906:  ereport(ERROR, 
-xaae: xlog:00001907:  (errcode_for_file_access(), 
-xaae: xlog:00001908:  errmsg("could not read at offset %u file \"%s\" (log file %u, segment %u): %m", 
-xaae: xlog:00001909:  offset, path, logId, seg))); 
-xaae: xlog:00002773:  ereport(ERROR, 
-xaae: xlog:00002774:  (errcode_for_file_access(), 
-xaae: xlog:00002775:  errmsg("could not open file \"%s\" (log file %u, segment %u): %m", 
-xaae: xlog:00002776:  path, log, seg))); 
-xaae: xlog:00002841:  ereport(ERROR, 
-xaae: xlog:00002842:  (errcode_for_file_access(), 
-xaae: xlog:00002843:  errmsg("could not write to file \"%s\": %m", tmppath))); 
-xaae: xlog:00002920:  ereport(ERROR, 
-xaae: xlog:00002921:  (errcode_for_file_access(), 
-xaae: xlog:00002922:  errmsg("could not open file \"%s\": %m", path))); 
-xaae: xlog:00002938:  ereport(ERROR, 
-xaae: xlog:00002939:  (errcode_for_file_access(), 
-xaae: xlog:00002940:  errmsg("could not create file \"%s\": %m", tmppath))); 
-xaae: xlog:00002951:  ereport(ERROR, 
-xaae: xlog:00002952:  (errcode_for_file_access(), 
-xaae: xlog:00002953:  errmsg("could not read file \"%s\": %m", path))); 
-xaae: xlog:00002955:  ereport(ERROR, 
-xaae: xlog:00002956:  (errmsg("not enough data in file \"%s\"", path))); 
-xaae: xlog:00002970:  ereport(ERROR, 
-xaae: xlog:00002971:  (errcode_for_file_access(), 
-xaae: xlog:00002972:  errmsg("could not write to file \"%s\": %m", tmppath))); 
-xaae: xlog:00002977:  ereport(ERROR, 
-xaae: xlog:00002978:  (errcode_for_file_access(), 
-xaae: xlog:00002979:  errmsg("could not fsync file \"%s\": %m", tmppath))); 
-xaae: xlog:00002982:  ereport(ERROR, 
-xaae: xlog:00002983:  (errcode_for_file_access(), 
-xaae: xlog:00002984:  errmsg("could not close file \"%s\": %m", tmppath))); 
-xaae: xlog:00003100:  ereport(ERROR, 
-xaae: xlog:00003101:  (errcode_for_file_access(), 
-xaae: xlog:00003102:  errmsg("could not link file \"%s\" to \"%s\" (initialization of log file %u, segment %u): %m", 
-xaae: xlog:00003103:  tmppath, path, *log, *seg))); 
-xaae: xlog:00003143:  ereport(ERROR, 
-xaae: xlog:00003144:  (errcode_for_file_access(), 
-xaae: xlog:00003145:  errmsg("could not rename file \"%s\" to \"%s\" (initialization of log file %u, segment %u): %m", 
-xaae: xlog:00003146:  tmppath, path, *log, *seg))); 
-xaae: xlog:00003360:  ereport(FATAL, 
-xaae: xlog:00003361:  (errcode_for_file_access(), 
-xaae: xlog:00003362:  errmsg("could not stat file \"%s\": %m", 
-xaae: xlog:00003363:  xlogpath))); 
+xaae: xlog:00000824:  ereport(ERROR, 
+xaae: xlog:00000825:  (errmsg("Reader qExec had local changes to commit! (rmid = %u)", 
+xaae: xlog:00000826:  rmid), 
+xaae: xlog:00000827:  errdetail("A Reader qExec tried to commit local changes. " 
+xaae: xlog:00000828:  "Only the single Writer qExec can do so. "), 
+xaae: xlog:00000829:  errhint("This is most likely the result of a feature being turned " 
+xaae: xlog:00000830:  "on that violates the single WRITER principle"))); 
+xaae: xlog:00001865:  ereport(ERROR, 
+xaae: xlog:00001866:  (errcode_for_file_access(), 
+xaae: xlog:00001867:  errmsg("could not open transaction log file for catch-up purposes -- it has been reclaimed (\"%s\")", 
+xaae: xlog:00001868:  path))); 
+xaae: xlog:00001870:  ereport(ERROR, 
+xaae: xlog:00001871:  (errcode_for_file_access(), 
+xaae: xlog:00001872:  errmsg("could not open transaction log file for catch-up purposes (\"%s\"): %m", 
+xaae: xlog:00001873:  path))); 
+xaae: xlog:00001883:  ereport(ERROR, 
+xaae: xlog:00001884:  (errcode_for_file_access(), 
+xaae: xlog:00001885:  errmsg("could not seek to end of file \"%s\" (log file %u, segment %u): %m", 
+xaae: xlog:00001886:  path, logId, seg))); 
+xaae: xlog:00001893:  ereport(ERROR, 
+xaae: xlog:00001894:  (errcode_for_file_access(), 
+xaae: xlog:00001895:  errmsg("could not seek to offset %u file \"%s\" (log file %u, segment %u): %m", 
+xaae: xlog:00001896:  offset, path, logId, seg))); 
+xaae: xlog:00001914:  ereport(ERROR, 
+xaae: xlog:00001915:  (errcode_for_file_access(), 
+xaae: xlog:00001916:  errmsg("could not read at offset %u file \"%s\" (log file %u, segment %u): %m", 
+xaae: xlog:00001917:  offset, path, logId, seg))); 
+xaae: xlog:00002781:  ereport(ERROR, 
+xaae: xlog:00002782:  (errcode_for_file_access(), 
+xaae: xlog:00002783:  errmsg("could not open file \"%s\" (log file %u, segment %u): %m", 
+xaae: xlog:00002784:  path, log, seg))); 
+xaae: xlog:00002849:  ereport(ERROR, 
+xaae: xlog:00002850:  (errcode_for_file_access(), 
+xaae: xlog:00002851:  errmsg("could not write to file \"%s\": %m", tmppath))); 
+xaae: xlog:00002928:  ereport(ERROR, 
+xaae: xlog:00002929:  (errcode_for_file_access(), 
+xaae: xlog:00002930:  errmsg("could not open file \"%s\": %m", path))); 
+xaae: xlog:00002946:  ereport(ERROR, 
+xaae: xlog:00002947:  (errcode_for_file_access(), 
+xaae: xlog:00002948:  errmsg("could not create file \"%s\": %m", tmppath))); 
+xaae: xlog:00002959:  ereport(ERROR, 
+xaae: xlog:00002960:  (errcode_for_file_access(), 
+xaae: xlog:00002961:  errmsg("could not read file \"%s\": %m", path))); 
+xaae: xlog:00002963:  ereport(ERROR, 
+xaae: xlog:00002964:  (errmsg("not enough data in file \"%s\"", path))); 
+xaae: xlog:00002978:  ereport(ERROR, 
+xaae: xlog:00002979:  (errcode_for_file_access(), 
+xaae: xlog:00002980:  errmsg("could not write to file \"%s\": %m", tmppath))); 
+xaae: xlog:00002985:  ereport(ERROR, 
+xaae: xlog:00002986:  (errcode_for_file_access(), 
+xaae: xlog:00002987:  errmsg("could not fsync file \"%s\": %m", tmppath))); 
+xaae: xlog:00002990:  ereport(ERROR, 
+xaae: xlog:00002991:  (errcode_for_file_access(), 
+xaae: xlog:00002992:  errmsg("could not close file \"%s\": %m", tmppath))); 
+xaae: xlog:00003108:  ereport(ERROR, 
+xaae: xlog:00003109:  (errcode_for_file_access(), 
+xaae: xlog:00003110:  errmsg("could not link file \"%s\" to \"%s\" (initialization of log file %u, segment %u): %m", 
+xaae: xlog:00003111:  tmppath, path, *log, *seg))); 
+xaae: xlog:00003151:  ereport(ERROR, 
+xaae: xlog:00003152:  (errcode_for_file_access(), 
+xaae: xlog:00003153:  errmsg("could not rename file \"%s\" to \"%s\" (initialization of log file %u, segment %u): %m", 
+xaae: xlog:00003154:  tmppath, path, *log, *seg))); 
 xaae: xlog:00003368:  ereport(FATAL, 
 xaae: xlog:00003369:  (errcode_for_file_access(), 
-xaae: xlog:00003370:  errmsg("could not remove file \"%s\": %m", 
+xaae: xlog:00003370:  errmsg("could not stat file \"%s\": %m", 
 xaae: xlog:00003371:  xlogpath))); 
-xaae: xlog:00003444:  ereport(FATAL, 
-xaae: xlog:00003445:  (errmsg("archive file \"%s\" has wrong size: %lu instead of %lu", 
-xaae: xlog:00003446:  xlogfname, 
-xaae: xlog:00003447:  (unsigned long) stat_buf.st_size, 
-xaae: xlog:00003448:  (unsigned long) expectedSize))); 
-xaae: xlog:00003462:  ereport(FATAL, 
-xaae: xlog:00003463:  (errcode_for_file_access(), 
-xaae: xlog:00003464:  errmsg("could not stat file \"%s\": %m", 
-xaae: xlog:00003465:  xlogpath))); 
-xaae: xlog:00003567:  ereport(ERROR, 
-xaae: xlog:00003568:  (errcode_for_file_access(), 
-xaae: xlog:00003569:  errmsg("could not open transaction log directory \"%s\": %m", 
-xaae: xlog:00003570:  XLOGDIR))); 
-xaae: xlog:00003658:  ereport(ERROR, 
-xaae: xlog:00003659:  (errcode_for_file_access(), 
-xaae: xlog:00003660:  errmsg("QDSYNC: could not open standby transaction log directory \"%s\": %m", 
-xaae: xlog:00003661:  XLOGDIR))); 
-xaae: xlog:00003686:  ereport(WARNING, 
-xaae: xlog:00003687:  (errcode_for_file_access(), 
-xaae: xlog:00003688:  errmsg("QDSYNC: could not unlink standby transaction log file \"%s\": %m", 
-xaae: xlog:00003689:  xlde->d_name))); 
-xaae: xlog:00003719:  ereport(ERROR, 
-xaae: xlog:00003720:  (errcode_for_file_access(), 
-xaae: xlog:00003721:  errmsg("could not open transaction log directory \"%s\": %m", 
-xaae: xlog:00003722:  XLOGDIR))); 
-xaae: xlog:00003754:  ereport(ERROR, 
-xaae: xlog:00003755:  (errcode_for_file_access(), 
-xaae: xlog:00003756:  errmsg("could not open transaction log directory \"%s\": %m", 
-xaae: xlog:00003757:  XLOGDIR))); 
-xaae: xlog:00004476:  ereport(FATAL, 
-xaae: xlog:00004477:  (errcode_for_file_access(), 
-xaae: xlog:00004478:  errmsg("could not open file \"%s\": %m", path))); 
-xaae: xlog:00004506:  ereport(FATAL, 
-xaae: xlog:00004507:  (errmsg("syntax error in history file: %s", fline), 
-xaae: xlog:00004508:  errhint("Expected a numeric timeline ID."))); 
-xaae: xlog:00004512:  ereport(FATAL, 
-xaae: xlog:00004513:  (errmsg("invalid data in history file: %s", fline), 
-xaae: xlog:00004514:  errhint("Timeline IDs must be in increasing sequence."))); 
-xaae: xlog:00004526:  ereport(FATAL, 
-xaae: xlog:00004527:  (errmsg("invalid data in history file \"%s\"", path), 
-xaae: xlog:00004528:  errhint("Timeline IDs must be less than child timeline's ID."))); 
-xaae: xlog:00004566:  ereport(FATAL, 
-xaae: xlog:00004567:  (errcode_for_file_access(), 
-xaae: xlog:00004568:  errmsg("could not open file \"%s\": %m", path))); 
-xaae: xlog:00004645:  ereport(ERROR, 
-xaae: xlog:00004646:  (errcode_for_file_access(), 
-xaae: xlog:00004647:  errmsg("could not create file \"%s\": %m", tmppath))); 
-xaae: xlog:00004664:  ereport(ERROR, 
-xaae: xlog:00004665:  (errcode_for_file_access(), 
-xaae: xlog:00004666:  errmsg("could not open file \"%s\": %m", path))); 
-xaae: xlog:00004676:  ereport(ERROR, 
-xaae: xlog:00004677:  (errcode_for_file_access(), 
-xaae: xlog:00004678:  errmsg("could not read file \"%s\": %m", path))); 
-xaae: xlog:00004697:  ereport(ERROR, 
-xaae: xlog:00004698:  (errcode_for_file_access(), 
-xaae: xlog:00004699:  errmsg("could not write to file \"%s\": %m", tmppath))); 
-xaae: xlog:00004735:  ereport(ERROR, 
-xaae: xlog:00004736:  (errcode_for_file_access(), 
-xaae: xlog:00004737:  errmsg("could not write to file \"%s\": %m", tmppath))); 
-xaae: xlog:00004741:  ereport(ERROR, 
-xaae: xlog:00004742:  (errcode_for_file_access(), 
-xaae: xlog:00004743:  errmsg("could not fsync file \"%s\": %m", tmppath))); 
-xaae: xlog:00004746:  ereport(ERROR, 
-xaae: xlog:00004747:  (errcode_for_file_access(), 
-xaae: xlog:00004748:  errmsg("could not close file \"%s\": %m", tmppath))); 
-xaae: xlog:00004763:  ereport(ERROR, 
-xaae: xlog:00004764:  (errcode_for_file_access(), 
-xaae: xlog:00004765:  errmsg("could not link file \"%s\" to \"%s\": %m", 
-xaae: xlog:00004766:  tmppath, path))); 
-xaae: xlog:00004770:  ereport(ERROR, 
-xaae: xlog:00004771:  (errcode_for_file_access(), 
-xaae: xlog:00004772:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
-xaae: xlog:00004773:  tmppath, path))); 
-xaae: xlog:00004974:  ereport(FATAL, 
-xaae: xlog:00004975:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00004976:  errdetail("The database cluster was initialized with PG_CONTROL_VERSION %d," 
-xaae: xlog:00004977:  " but the server was compiled with PG_CONTROL_VERSION %d.", 
-xaae: xlog:00004978:  ControlFile->pg_control_version, PG_CONTROL_VERSION), 
-xaae: xlog:00004979:  errhint("It looks like you need to initdb."))); 
-xaae: xlog:00004988:  ereport(FATAL, 
-xaae: xlog:00004989:  (errmsg("incorrect checksum in control file"))); 
-xaae: xlog:00005003:  ereport(FATAL, 
-xaae: xlog:00005004:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005005:  errdetail("The database cluster was initialized with CATALOG_VERSION_NO %d," 
-xaae: xlog:00005006:  " but the server was compiled with CATALOG_VERSION_NO %d.", 
-xaae: xlog:00005007:  ControlFile->catalog_version_no, CATALOG_VERSION_NO), 
-xaae: xlog:00005008:  errhint("It looks like you need to initdb."))); 
-xaae: xlog:00005010:  ereport(FATAL, 
-xaae: xlog:00005011:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005012:  errdetail("The database cluster was initialized with MAXALIGN %d," 
-xaae: xlog:00005013:  " but the server was compiled with MAXALIGN %d.", 
-xaae: xlog:00005014:  ControlFile->maxAlign, MAXIMUM_ALIGNOF), 
-xaae: xlog:00005015:  errhint("It looks like you need to initdb."))); 
-xaae: xlog:00005017:  ereport(FATAL, 
-xaae: xlog:00005018:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005019:  errdetail("The database cluster appears to use a different floating-point number format than the server executable."), 
-xaae: xlog:00005020:  errhint("It looks like you need to initdb."))); 
-xaae: xlog:00005022:  ereport(FATAL, 
-xaae: xlog:00005023:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005024:  errdetail("The database cluster was initialized with BLCKSZ %d," 
-xaae: xlog:00005025:  " but the server was compiled with BLCKSZ %d.", 
-xaae: xlog:00005026:  ControlFile->blcksz, BLCKSZ), 
-xaae: xlog:00005027:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005029:  ereport(FATAL, 
-xaae: xlog:00005030:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005031:  errdetail("The database cluster was initialized with RELSEG_SIZE %d," 
-xaae: xlog:00005032:  " but the server was compiled with RELSEG_SIZE %d.", 
-xaae: xlog:00005033:  ControlFile->relseg_size, RELSEG_SIZE), 
-xaae: xlog:00005034:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005036:  ereport(FATAL, 
-xaae: xlog:00005037:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005038:  errdetail("The database cluster was initialized with XLOG_BLCKSZ %d," 
-xaae: xlog:00005039:  " but the server was compiled with XLOG_BLCKSZ %d.", 
-xaae: xlog:00005040:  ControlFile->xlog_blcksz, XLOG_BLCKSZ), 
-xaae: xlog:00005041:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005043:  ereport(FATAL, 
-xaae: xlog:00005044:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005045:  errdetail("The database cluster was initialized with XLOG_SEG_SIZE %d," 
-xaae: xlog:00005046:  " but the server was compiled with XLOG_SEG_SIZE %d.", 
-xaae: xlog:00005047:  ControlFile->xlog_seg_size, XLOG_SEG_SIZE), 
-xaae: xlog:00005048:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005050:  ereport(FATAL, 
-xaae: xlog:00005051:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005052:  errdetail("The database cluster was initialized with NAMEDATALEN %d," 
-xaae: xlog:00005053:  " but the server was compiled with NAMEDATALEN %d.", 
-xaae: xlog:00005054:  ControlFile->nameDataLen, NAMEDATALEN), 
-xaae: xlog:00005055:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005057:  ereport(FATAL, 
-xaae: xlog:00005058:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005059:  errdetail("The database cluster was initialized with INDEX_MAX_KEYS %d," 
-xaae: xlog:00005060:  " but the server was compiled with INDEX_MAX_KEYS %d.", 
-xaae: xlog:00005061:  ControlFile->indexMaxKeys, INDEX_MAX_KEYS), 
-xaae: xlog:00005062:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005066:  ereport(FATAL, 
-xaae: xlog:00005067:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005068:  errdetail("The database cluster was initialized without HAVE_INT64_TIMESTAMP" 
-xaae: xlog:00005069:  " but the server was compiled with HAVE_INT64_TIMESTAMP."), 
+xaae: xlog:00003376:  ereport(FATAL, 
+xaae: xlog:00003377:  (errcode_for_file_access(), 
+xaae: xlog:00003378:  errmsg("could not remove file \"%s\": %m", 
+xaae: xlog:00003379:  xlogpath))); 
+xaae: xlog:00003452:  ereport(FATAL, 
+xaae: xlog:00003453:  (errmsg("archive file \"%s\" has wrong size: %lu instead of %lu", 
+xaae: xlog:00003454:  xlogfname, 
+xaae: xlog:00003455:  (unsigned long) stat_buf.st_size, 
+xaae: xlog:00003456:  (unsigned long) expectedSize))); 
+xaae: xlog:00003470:  ereport(FATAL, 
+xaae: xlog:00003471:  (errcode_for_file_access(), 
+xaae: xlog:00003472:  errmsg("could not stat file \"%s\": %m", 
+xaae: xlog:00003473:  xlogpath))); 
+xaae: xlog:00003575:  ereport(ERROR, 
+xaae: xlog:00003576:  (errcode_for_file_access(), 
+xaae: xlog:00003577:  errmsg("could not open transaction log directory \"%s\": %m", 
+xaae: xlog:00003578:  XLOGDIR))); 
+xaae: xlog:00003666:  ereport(ERROR, 
+xaae: xlog:00003667:  (errcode_for_file_access(), 
+xaae: xlog:00003668:  errmsg("QDSYNC: could not open standby transaction log directory \"%s\": %m", 
+xaae: xlog:00003669:  XLOGDIR))); 
+xaae: xlog:00003694:  ereport(WARNING, 
+xaae: xlog:00003695:  (errcode_for_file_access(), 
+xaae: xlog:00003696:  errmsg("QDSYNC: could not unlink standby transaction log file \"%s\": %m", 
+xaae: xlog:00003697:  xlde->d_name))); 
+xaae: xlog:00003727:  ereport(ERROR, 
+xaae: xlog:00003728:  (errcode_for_file_access(), 
+xaae: xlog:00003729:  errmsg("could not open transaction log directory \"%s\": %m", 
+xaae: xlog:00003730:  XLOGDIR))); 
+xaae: xlog:00003762:  ereport(ERROR, 
+xaae: xlog:00003763:  (errcode_for_file_access(), 
+xaae: xlog:00003764:  errmsg("could not open transaction log directory \"%s\": %m", 
+xaae: xlog:00003765:  XLOGDIR))); 
+xaae: xlog:00004484:  ereport(FATAL, 
+xaae: xlog:00004485:  (errcode_for_file_access(), 
+xaae: xlog:00004486:  errmsg("could not open file \"%s\": %m", path))); 
+xaae: xlog:00004514:  ereport(FATAL, 
+xaae: xlog:00004515:  (errmsg("syntax error in history file: %s", fline), 
+xaae: xlog:00004516:  errhint("Expected a numeric timeline ID."))); 
+xaae: xlog:00004520:  ereport(FATAL, 
+xaae: xlog:00004521:  (errmsg("invalid data in history file: %s", fline), 
+xaae: xlog:00004522:  errhint("Timeline IDs must be in increasing sequence."))); 
+xaae: xlog:00004534:  ereport(FATAL, 
+xaae: xlog:00004535:  (errmsg("invalid data in history file \"%s\"", path), 
+xaae: xlog:00004536:  errhint("Timeline IDs must be less than child timeline's ID."))); 
+xaae: xlog:00004574:  ereport(FATAL, 
+xaae: xlog:00004575:  (errcode_for_file_access(), 
+xaae: xlog:00004576:  errmsg("could not open file \"%s\": %m", path))); 
+xaae: xlog:00004653:  ereport(ERROR, 
+xaae: xlog:00004654:  (errcode_for_file_access(), 
+xaae: xlog:00004655:  errmsg("could not create file \"%s\": %m", tmppath))); 
+xaae: xlog:00004672:  ereport(ERROR, 
+xaae: xlog:00004673:  (errcode_for_file_access(), 
+xaae: xlog:00004674:  errmsg("could not open file \"%s\": %m", path))); 
+xaae: xlog:00004684:  ereport(ERROR, 
+xaae: xlog:00004685:  (errcode_for_file_access(), 
+xaae: xlog:00004686:  errmsg("could not read file \"%s\": %m", path))); 
+xaae: xlog:00004705:  ereport(ERROR, 
+xaae: xlog:00004706:  (errcode_for_file_access(), 
+xaae: xlog:00004707:  errmsg("could not write to file \"%s\": %m", tmppath))); 
+xaae: xlog:00004743:  ereport(ERROR, 
+xaae: xlog:00004744:  (errcode_for_file_access(), 
+xaae: xlog:00004745:  errmsg("could not write to file \"%s\": %m", tmppath))); 
+xaae: xlog:00004749:  ereport(ERROR, 
+xaae: xlog:00004750:  (errcode_for_file_access(), 
+xaae: xlog:00004751:  errmsg("could not fsync file \"%s\": %m", tmppath))); 
+xaae: xlog:00004754:  ereport(ERROR, 
+xaae: xlog:00004755:  (errcode_for_file_access(), 
+xaae: xlog:00004756:  errmsg("could not close file \"%s\": %m", tmppath))); 
+xaae: xlog:00004771:  ereport(ERROR, 
+xaae: xlog:00004772:  (errcode_for_file_access(), 
+xaae: xlog:00004773:  errmsg("could not link file \"%s\" to \"%s\": %m", 
+xaae: xlog:00004774:  tmppath, path))); 
+xaae: xlog:00004778:  ereport(ERROR, 
+xaae: xlog:00004779:  (errcode_for_file_access(), 
+xaae: xlog:00004780:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
+xaae: xlog:00004781:  tmppath, path))); 
+xaae: xlog:00004982:  ereport(FATAL, 
+xaae: xlog:00004983:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00004984:  errdetail("The database cluster was initialized with PG_CONTROL_VERSION %d," 
+xaae: xlog:00004985:  " but the server was compiled with PG_CONTROL_VERSION %d.", 
+xaae: xlog:00004986:  ControlFile->pg_control_version, PG_CONTROL_VERSION), 
+xaae: xlog:00004987:  errhint("It looks like you need to initdb."))); 
+xaae: xlog:00004996:  ereport(FATAL, 
+xaae: xlog:00004997:  (errmsg("incorrect checksum in control file"))); 
+xaae: xlog:00005011:  ereport(FATAL, 
+xaae: xlog:00005012:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005013:  errdetail("The database cluster was initialized with CATALOG_VERSION_NO %d," 
+xaae: xlog:00005014:  " but the server was compiled with CATALOG_VERSION_NO %d.", 
+xaae: xlog:00005015:  ControlFile->catalog_version_no, CATALOG_VERSION_NO), 
+xaae: xlog:00005016:  errhint("It looks like you need to initdb."))); 
+xaae: xlog:00005018:  ereport(FATAL, 
+xaae: xlog:00005019:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005020:  errdetail("The database cluster was initialized with MAXALIGN %d," 
+xaae: xlog:00005021:  " but the server was compiled with MAXALIGN %d.", 
+xaae: xlog:00005022:  ControlFile->maxAlign, MAXIMUM_ALIGNOF), 
+xaae: xlog:00005023:  errhint("It looks like you need to initdb."))); 
+xaae: xlog:00005025:  ereport(FATAL, 
+xaae: xlog:00005026:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005027:  errdetail("The database cluster appears to use a different floating-point number format than the server executable."), 
+xaae: xlog:00005028:  errhint("It looks like you need to initdb."))); 
+xaae: xlog:00005030:  ereport(FATAL, 
+xaae: xlog:00005031:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005032:  errdetail("The database cluster was initialized with BLCKSZ %d," 
+xaae: xlog:00005033:  " but the server was compiled with BLCKSZ %d.", 
+xaae: xlog:00005034:  ControlFile->blcksz, BLCKSZ), 
+xaae: xlog:00005035:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005037:  ereport(FATAL, 
+xaae: xlog:00005038:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005039:  errdetail("The database cluster was initialized with RELSEG_SIZE %d," 
+xaae: xlog:00005040:  " but the server was compiled with RELSEG_SIZE %d.", 
+xaae: xlog:00005041:  ControlFile->relseg_size, RELSEG_SIZE), 
+xaae: xlog:00005042:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005044:  ereport(FATAL, 
+xaae: xlog:00005045:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005046:  errdetail("The database cluster was initialized with XLOG_BLCKSZ %d," 
+xaae: xlog:00005047:  " but the server was compiled with XLOG_BLCKSZ %d.", 
+xaae: xlog:00005048:  ControlFile->xlog_blcksz, XLOG_BLCKSZ), 
+xaae: xlog:00005049:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005051:  ereport(FATAL, 
+xaae: xlog:00005052:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005053:  errdetail("The database cluster was initialized with XLOG_SEG_SIZE %d," 
+xaae: xlog:00005054:  " but the server was compiled with XLOG_SEG_SIZE %d.", 
+xaae: xlog:00005055:  ControlFile->xlog_seg_size, XLOG_SEG_SIZE), 
+xaae: xlog:00005056:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005058:  ereport(FATAL, 
+xaae: xlog:00005059:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005060:  errdetail("The database cluster was initialized with NAMEDATALEN %d," 
+xaae: xlog:00005061:  " but the server was compiled with NAMEDATALEN %d.", 
+xaae: xlog:00005062:  ControlFile->nameDataLen, NAMEDATALEN), 
+xaae: xlog:00005063:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005065:  ereport(FATAL, 
+xaae: xlog:00005066:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005067:  errdetail("The database cluster was initialized with INDEX_MAX_KEYS %d," 
+xaae: xlog:00005068:  " but the server was compiled with INDEX_MAX_KEYS %d.", 
+xaae: xlog:00005069:  ControlFile->indexMaxKeys, INDEX_MAX_KEYS), 
 xaae: xlog:00005070:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005073:  ereport(FATAL, 
-xaae: xlog:00005074:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005075:  errdetail("The database cluster was initialized with HAVE_INT64_TIMESTAMP" 
-xaae: xlog:00005076:  " but the server was compiled without HAVE_INT64_TIMESTAMP."), 
-xaae: xlog:00005077:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005074:  ereport(FATAL, 
+xaae: xlog:00005075:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005076:  errdetail("The database cluster was initialized without HAVE_INT64_TIMESTAMP" 
+xaae: xlog:00005077:  " but the server was compiled with HAVE_INT64_TIMESTAMP."), 
+xaae: xlog:00005078:  errhint("It looks like you need to recompile or initdb."))); 
 xaae: xlog:00005081:  ereport(FATAL, 
 xaae: xlog:00005082:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005083:  errdetail("The database cluster was initialized with LOCALE_NAME_BUFLEN %d," 
-xaae: xlog:00005084:  " but the server was compiled with LOCALE_NAME_BUFLEN %d.", 
-xaae: xlog:00005085:  ControlFile->localeBuflen, LOCALE_NAME_BUFLEN), 
-xaae: xlog:00005086:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005088:  ereport(FATAL, 
-xaae: xlog:00005089:  (errmsg("database files are incompatible with operating system"), 
-xaae: xlog:00005090:  errdetail("The database cluster was initialized with LC_COLLATE \"%s\"," 
-xaae: xlog:00005091:  " which is not recognized by setlocale().", 
-xaae: xlog:00005092:  ControlFile->lc_collate), 
-xaae: xlog:00005093:  errhint("It looks like you need to initdb or install locale support."))); 
-xaae: xlog:00005095:  ereport(FATAL, 
-xaae: xlog:00005096:  (errmsg("database files are incompatible with operating system"), 
-xaae: xlog:00005097:  errdetail("The database cluster was initialized with LC_CTYPE \"%s\"," 
-xaae: xlog:00005098:  " which is not recognized by setlocale().", 
-xaae: xlog:00005099:  ControlFile->lc_ctype), 
-xaae: xlog:00005100:  errhint("It looks like you need to initdb or install locale support."))); 
-xaae: xlog:00005529:  ereport(FATAL, 
-xaae: xlog:00005530:  (errcode_for_file_access(), 
-xaae: xlog:00005531:  errmsg("could not open recovery command file \"%s\": %m", 
-xaae: xlog:00005532:  RECOVERY_COMMAND_FILE))); 
-xaae: xlog:00005550:  ereport(FATAL, 
-xaae: xlog:00005551:  (errcode_for_file_access(), 
-xaae: xlog:00005552:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
-xaae: xlog:00005553:  RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE))); 
-xaae: xlog:00005581:  ereport(FATAL, 
-xaae: xlog:00005582:  (errcode_for_file_access(), 
-xaae: xlog:00005583:  errmsg("could not open recovery command file \"%s\": %m", 
-xaae: xlog:00005584:  RECOVERY_COMMAND_FILE))); 
-xaae: xlog:00005646:  ereport(FATAL, 
-xaae: xlog:00005647:  (errmsg("recovery_target_timeline is not a valid number: \"%s\"", 
-xaae: xlog:00005648:  tok2))); 
-xaae: xlog:00005662:  ereport(FATAL, 
-xaae: xlog:00005663:  (errmsg("recovery_target_xid is not a valid number: \"%s\"", 
-xaae: xlog:00005664:  tok2))); 
-xaae: xlog:00005711:  ereport(FATAL, 
-xaae: xlog:00005712:  (errmsg("unrecognized recovery parameter \"%s\"", 
-xaae: xlog:00005713:  tok1))); 
+xaae: xlog:00005083:  errdetail("The database cluster was initialized with HAVE_INT64_TIMESTAMP" 
+xaae: xlog:00005084:  " but the server was compiled without HAVE_INT64_TIMESTAMP."), 
+xaae: xlog:00005085:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005089:  ereport(FATAL, 
+xaae: xlog:00005090:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005091:  errdetail("The database cluster was initialized with LOCALE_NAME_BUFLEN %d," 
+xaae: xlog:00005092:  " but the server was compiled with LOCALE_NAME_BUFLEN %d.", 
+xaae: xlog:00005093:  ControlFile->localeBuflen, LOCALE_NAME_BUFLEN), 
+xaae: xlog:00005094:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005096:  ereport(FATAL, 
+xaae: xlog:00005097:  (errmsg("database files are incompatible with operating system"), 
+xaae: xlog:00005098:  errdetail("The database cluster was initialized with LC_COLLATE \"%s\"," 
+xaae: xlog:00005099:  " which is not recognized by setlocale().", 
+xaae: xlog:00005100:  ControlFile->lc_collate), 
+xaae: xlog:00005101:  errhint("It looks like you need to initdb or install locale support."))); 
+xaae: xlog:00005103:  ereport(FATAL, 
+xaae: xlog:00005104:  (errmsg("database files are incompatible with operating system"), 
+xaae: xlog:00005105:  errdetail("The database cluster was initialized with LC_CTYPE \"%s\"," 
+xaae: xlog:00005106:  " which is not recognized by setlocale().", 
+xaae: xlog:00005107:  ControlFile->lc_ctype), 
+xaae: xlog:00005108:  errhint("It looks like you need to initdb or install locale support."))); 
+xaae: xlog:00005537:  ereport(FATAL, 
+xaae: xlog:00005538:  (errcode_for_file_access(), 
+xaae: xlog:00005539:  errmsg("could not open recovery command file \"%s\": %m", 
+xaae: xlog:00005540:  RECOVERY_COMMAND_FILE))); 
+xaae: xlog:00005558:  ereport(FATAL, 
+xaae: xlog:00005559:  (errcode_for_file_access(), 
+xaae: xlog:00005560:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
+xaae: xlog:00005561:  RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE))); 
+xaae: xlog:00005589:  ereport(FATAL, 
+xaae: xlog:00005590:  (errcode_for_file_access(), 
+xaae: xlog:00005591:  errmsg("could not open recovery command file \"%s\": %m", 
+xaae: xlog:00005592:  RECOVERY_COMMAND_FILE))); 
+xaae: xlog:00005654:  ereport(FATAL, 
+xaae: xlog:00005655:  (errmsg("recovery_target_timeline is not a valid number: \"%s\"", 
+xaae: xlog:00005656:  tok2))); 
+xaae: xlog:00005670:  ereport(FATAL, 
+xaae: xlog:00005671:  (errmsg("recovery_target_xid is not a valid number: \"%s\"", 
+xaae: xlog:00005672:  tok2))); 
 xaae: xlog:00005719:  ereport(FATAL, 
-xaae: xlog:00005720:  (errmsg("syntax error in recovery command file: %s", 
-xaae: xlog:00005721:  cmdline), 
-xaae: xlog:00005722:  errhint("Lines should have the format parameter = 'value'."))); 
-xaae: xlog:00005726:  ereport(FATAL, 
-xaae: xlog:00005727:  (errmsg("recovery command file \"%s\" did not specify restore_command", 
-xaae: xlog:00005728:  RECOVERY_COMMAND_FILE))); 
-xaae: xlog:00005745:  ereport(FATAL, 
-xaae: xlog:00005746:  (errmsg("recovery_target_timeline %u does not exist", 
-xaae: xlog:00005747:  rtli))); 
-xaae: xlog:00005812:  ereport(FATAL, 
-xaae: xlog:00005813:  (errcode_for_file_access(), 
-xaae: xlog:00005814:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
-xaae: xlog:00005815:  recoveryPath, xlogpath))); 
-xaae: xlog:00005853:  ereport(FATAL, 
-xaae: xlog:00005854:  (errcode_for_file_access(), 
-xaae: xlog:00005855:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
-xaae: xlog:00005856:  RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE))); 
-xaae: xlog:00006202:  ereport(FATAL, 
-xaae: xlog:00006203:  (errmsg("control file contains invalid data"))); 
-xaae: xlog:00006214:  ereport(LOG, 
-xaae: xlog:00006215:  (errmsg("database system was interrupted while in recovery at %s", 
-xaae: xlog:00006216:  str_time(ControlFile->time)), 
-xaae: xlog:00006217:  errhint("This probably means that some data is corrupted and" 
-xaae: xlog:00006218:  " you will have to use the last backup for recovery."), 
-xaae: xlog:00006219:  errSendAlert(true))); 
-xaae: xlog:00006221:  ereport(LOG, 
-xaae: xlog:00006222:  (errmsg("database system was interrupted while in recovery at log time %s", 
-xaae: xlog:00006223:  str_time(ControlFile->checkPointCopy.time)), 
-xaae: xlog:00006224:  errhint("If this has occurred more than once some data may be corrupted" 
-xaae: xlog:00006225:  " and you may need to choose an earlier recovery target."), 
-xaae: xlog:00006226:  errSendAlert(true))); 
-xaae: xlog:00006266:  ereport(FATAL, 
-xaae: xlog:00006267:  (errmsg("requested timeline %u is not a child of database system timeline %u", 
-xaae: xlog:00006268:  recoveryTargetTLI, 
-xaae: xlog:00006269:  ControlFile->checkPointCopy.ThisTimeLineID))); 
-xaae: xlog:00006436:  ereport(FATAL, 
-xaae: xlog:00006437:  (errmsg("Database must be shutdown cleanly when using single backend start"))); 
-xaae: xlog:00006442:  ereport(FATAL, 
-xaae: xlog:00006443:  (errmsg("Database must be shutdown cleanly when using gp_before_persistence_work = on"))); 
-xaae: xlog:00006498:  ereport(FATAL, 
-xaae: xlog:00006499:  (errcode_for_file_access(), 
-xaae: xlog:00006500:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
-xaae: xlog:00006501:  BACKUP_LABEL_FILE, BACKUP_LABEL_OLD))); 
-xaae: xlog:00006619:  ereport(FATAL, 
-xaae: xlog:00006620:  (errmsg("requested recovery stop point is before end time of backup dump"))); 
-xaae: xlog:00006622:  ereport(FATAL, 
-xaae: xlog:00006623:  (errmsg("WAL ends before end time of backup dump"))); 
-xaae: xlog:00006877:  ereport(ERROR, 
-xaae: xlog:00006878:  (errcode_for_file_access(), 
-xaae: xlog:00006879:  errmsg("could not create redo relation file \"%s\"", 
-xaae: xlog:00006880:  path))); 
-xaae: xlog:00006898:  ereport(ERROR, 
-xaae: xlog:00006899:  (errcode_for_file_access(), 
-xaae: xlog:00006900:  errmsg("could not open redo relation file \"%s\"", 
-xaae: xlog:00006901:  path))); 
-xaae: xlog:00006915:  ereport(ERROR, 
-xaae: xlog:00006916:  (errcode_for_file_access(), 
-xaae: xlog:00006917:  errmsg("could not unlink redo relation file \"%s\": %m", path))); 
-xaae: xlog:00006946:  ereport(FATAL, 
-xaae: xlog:00006947:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
-xaae: xlog:00007051:  ereport(FATAL, 
-xaae: xlog:00007052:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
-xaae: xlog:00007251:  ereport(FATAL, 
-xaae: xlog:00007252:  (errmsg("%s: control file contains invalid data", callerStr))); 
-xaae: xlog:00007298:  ereport(ERROR, 
-xaae: xlog:00007299:  (errmsg("%s: could not locate a valid checkpoint record", callerStr))); 
-xaae: xlog:00007316:  ereport(ERROR, 
-xaae: xlog:00007317:  (errmsg("%s: invalid redo in checkpoint record", callerStr))); 
-xaae: xlog:00007326:  ereport(ERROR, 
-xaae: xlog:00007327:  (errmsg("%s: first redo record before checkpoint not found at %s", 
-xaae: xlog:00007328:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
-xaae: xlog:00007936:  ereport(LOG, 
-xaae: xlog:00007937:  (errmsg("database system is shut down"), 
-xaae: xlog:00007938:  errSendAlert(true),errOmitLocation(true))); 
-xaae: xlog:00008786:  ereport(ERROR, 
-xaae: xlog:00008787:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00008788:  (errmsg("must be superuser to run a backup")))); 
-xaae: xlog:00008791:  ereport(ERROR, 
-xaae: xlog:00008792:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008793:  (errmsg("WAL archiving is not active"), 
-xaae: xlog:00008794:  (errhint("archive_command must be defined before " 
-xaae: xlog:00008795:  "online backups can be made safely."))))); 
-xaae: xlog:00008821:  ereport(ERROR, 
-xaae: xlog:00008822:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008823:  errmsg("a backup is already in progress"), 
-xaae: xlog:00008824:  errhint("Run pg_stop_backup() and try again."))); 
-xaae: xlog:00008869:  ereport(ERROR, 
-xaae: xlog:00008870:  (errcode_for_file_access(), 
-xaae: xlog:00008871:  errmsg("could not stat file \"%s\": %m", 
-xaae: xlog:00008872:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008875:  ereport(ERROR, 
-xaae: xlog:00008876:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008877:  errmsg("a backup is already in progress"), 
-xaae: xlog:00008878:  errhint("If you're sure there is no backup in progress, remove file \"%s\" and try again.", 
-xaae: xlog:00008879:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008886:  ereport(ERROR, 
-xaae: xlog:00008887:  (errcode_for_file_access(), 
-xaae: xlog:00008888:  errmsg("could not create file \"%s\": %m", 
-xaae: xlog:00008889:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008897:  ereport(ERROR, 
-xaae: xlog:00008898:  (errcode_for_file_access(), 
-xaae: xlog:00008899:  errmsg("could not write file \"%s\": %m", 
-xaae: xlog:00008900:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008952:  ereport(ERROR, 
-xaae: xlog:00008953:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00008954:  (errmsg("must be superuser to run a backup")))); 
-xaae: xlog:00008986:  ereport(ERROR, 
-xaae: xlog:00008987:  (errcode_for_file_access(), 
-xaae: xlog:00008988:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00008989:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00008990:  ereport(ERROR, 
-xaae: xlog:00008991:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008992:  errmsg("a backup is not in progress"))); 
-xaae: xlog:00009002:  ereport(ERROR, 
-xaae: xlog:00009003:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009004:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009014:  ereport(ERROR, 
-xaae: xlog:00009015:  (errcode_for_file_access(), 
-xaae: xlog:00009016:  errmsg("could not create file \"%s\": %m", 
-xaae: xlog:00009017:  histfilepath))); 
-xaae: xlog:00009027:  ereport(ERROR, 
-xaae: xlog:00009028:  (errcode_for_file_access(), 
-xaae: xlog:00009029:  errmsg("could not write file \"%s\": %m", 
-xaae: xlog:00009030:  histfilepath))); 
-xaae: xlog:00009036:  ereport(ERROR, 
-xaae: xlog:00009037:  (errcode_for_file_access(), 
-xaae: xlog:00009038:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009039:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00005720:  (errmsg("unrecognized recovery parameter \"%s\"", 
+xaae: xlog:00005721:  tok1))); 
+xaae: xlog:00005727:  ereport(FATAL, 
+xaae: xlog:00005728:  (errmsg("syntax error in recovery command file: %s", 
+xaae: xlog:00005729:  cmdline), 
+xaae: xlog:00005730:  errhint("Lines should have the format parameter = 'value'."))); 
+xaae: xlog:00005734:  ereport(FATAL, 
+xaae: xlog:00005735:  (errmsg("recovery command file \"%s\" did not specify restore_command", 
+xaae: xlog:00005736:  RECOVERY_COMMAND_FILE))); 
+xaae: xlog:00005753:  ereport(FATAL, 
+xaae: xlog:00005754:  (errmsg("recovery_target_timeline %u does not exist", 
+xaae: xlog:00005755:  rtli))); 
+xaae: xlog:00005820:  ereport(FATAL, 
+xaae: xlog:00005821:  (errcode_for_file_access(), 
+xaae: xlog:00005822:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
+xaae: xlog:00005823:  recoveryPath, xlogpath))); 
+xaae: xlog:00005861:  ereport(FATAL, 
+xaae: xlog:00005862:  (errcode_for_file_access(), 
+xaae: xlog:00005863:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
+xaae: xlog:00005864:  RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE))); 
+xaae: xlog:00006217:  ereport(FATAL, 
+xaae: xlog:00006218:  (errmsg("control file contains invalid data"))); 
+xaae: xlog:00006229:  ereport(LOG, 
+xaae: xlog:00006230:  (errmsg("database system was interrupted while in recovery at %s", 
+xaae: xlog:00006231:  str_time(ControlFile->time)), 
+xaae: xlog:00006232:  errhint("This probably means that some data is corrupted and" 
+xaae: xlog:00006233:  " you will have to use the last backup for recovery."), 
+xaae: xlog:00006234:  errSendAlert(true))); 
+xaae: xlog:00006236:  ereport(LOG, 
+xaae: xlog:00006237:  (errmsg("database system was interrupted while in recovery at log time %s", 
+xaae: xlog:00006238:  str_time(ControlFile->checkPointCopy.time)), 
+xaae: xlog:00006239:  errhint("If this has occurred more than once some data may be corrupted" 
+xaae: xlog:00006240:  " and you may need to choose an earlier recovery target."), 
+xaae: xlog:00006241:  errSendAlert(true))); 
+xaae: xlog:00006281:  ereport(FATAL, 
+xaae: xlog:00006282:  (errmsg("requested timeline %u is not a child of database system timeline %u", 
+xaae: xlog:00006283:  recoveryTargetTLI, 
+xaae: xlog:00006284:  ControlFile->checkPointCopy.ThisTimeLineID))); 
+xaae: xlog:00006481:  ereport(FATAL, 
+xaae: xlog:00006482:  (errmsg("Database must be shutdown cleanly when using single backend start"))); 
+xaae: xlog:00006487:  ereport(FATAL, 
+xaae: xlog:00006488:  (errmsg("Database must be shutdown cleanly when using gp_before_persistence_work = on"))); 
+xaae: xlog:00006543:  ereport(FATAL, 
+xaae: xlog:00006544:  (errcode_for_file_access(), 
+xaae: xlog:00006545:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
+xaae: xlog:00006546:  BACKUP_LABEL_FILE, BACKUP_LABEL_OLD))); 
+xaae: xlog:00006664:  ereport(FATAL, 
+xaae: xlog:00006665:  (errmsg("requested recovery stop point is before end time of backup dump"))); 
+xaae: xlog:00006667:  ereport(FATAL, 
+xaae: xlog:00006668:  (errmsg("WAL ends before end time of backup dump"))); 
+xaae: xlog:00006922:  ereport(ERROR, 
+xaae: xlog:00006923:  (errcode_for_file_access(), 
+xaae: xlog:00006924:  errmsg("could not create redo relation file \"%s\"", 
+xaae: xlog:00006925:  path))); 
+xaae: xlog:00006943:  ereport(ERROR, 
+xaae: xlog:00006944:  (errcode_for_file_access(), 
+xaae: xlog:00006945:  errmsg("could not open redo relation file \"%s\"", 
+xaae: xlog:00006946:  path))); 
+xaae: xlog:00006960:  ereport(ERROR, 
+xaae: xlog:00006961:  (errcode_for_file_access(), 
+xaae: xlog:00006962:  errmsg("could not unlink redo relation file \"%s\": %m", path))); 
+xaae: xlog:00006991:  ereport(FATAL, 
+xaae: xlog:00006992:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
+xaae: xlog:00007096:  ereport(FATAL, 
+xaae: xlog:00007097:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
+xaae: xlog:00007307:  ereport(FATAL, 
+xaae: xlog:00007308:  (errmsg("%s: control file contains invalid data", callerStr))); 
+xaae: xlog:00007354:  ereport(ERROR, 
+xaae: xlog:00007355:  (errmsg("%s: could not locate a valid checkpoint record", callerStr))); 
+xaae: xlog:00007372:  ereport(ERROR, 
+xaae: xlog:00007373:  (errmsg("%s: invalid redo in checkpoint record", callerStr))); 
+xaae: xlog:00007382:  ereport(ERROR, 
+xaae: xlog:00007383:  (errmsg("%s: first redo record before checkpoint not found at %s", 
+xaae: xlog:00007384:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
+xaae: xlog:00007987:  ereport(LOG, 
+xaae: xlog:00007988:  (errmsg("database system is shut down"), 
+xaae: xlog:00007989:  errSendAlert(true),errOmitLocation(true))); 
+xaae: xlog:00008941:  ereport(ERROR, 
+xaae: xlog:00008942:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00008943:  (errmsg("must be superuser to run a backup")))); 
+xaae: xlog:00008946:  ereport(ERROR, 
+xaae: xlog:00008947:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008948:  (errmsg("WAL archiving is not active"), 
+xaae: xlog:00008949:  (errhint("archive_command must be defined before " 
+xaae: xlog:00008950:  "online backups can be made safely."))))); 
+xaae: xlog:00008976:  ereport(ERROR, 
+xaae: xlog:00008977:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008978:  errmsg("a backup is already in progress"), 
+xaae: xlog:00008979:  errhint("Run pg_stop_backup() and try again."))); 
+xaae: xlog:00009024:  ereport(ERROR, 
+xaae: xlog:00009025:  (errcode_for_file_access(), 
+xaae: xlog:00009026:  errmsg("could not stat file \"%s\": %m", 
+xaae: xlog:00009027:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009030:  ereport(ERROR, 
+xaae: xlog:00009031:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009032:  errmsg("a backup is already in progress"), 
+xaae: xlog:00009033:  errhint("If you're sure there is no backup in progress, remove file \"%s\" and try again.", 
+xaae: xlog:00009034:  BACKUP_LABEL_FILE))); 
 xaae: xlog:00009041:  ereport(ERROR, 
 xaae: xlog:00009042:  (errcode_for_file_access(), 
-xaae: xlog:00009043:  errmsg("could not remove file \"%s\": %m", 
+xaae: xlog:00009043:  errmsg("could not create file \"%s\": %m", 
 xaae: xlog:00009044:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009074:  ereport(ERROR, 
-xaae: xlog:00009075:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00009076:  (errmsg("must be superuser to switch transaction log files")))); 
+xaae: xlog:00009052:  ereport(ERROR, 
+xaae: xlog:00009053:  (errcode_for_file_access(), 
+xaae: xlog:00009054:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00009055:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009107:  ereport(ERROR, 
+xaae: xlog:00009108:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00009109:  (errmsg("must be superuser to run a backup")))); 
+xaae: xlog:00009141:  ereport(ERROR, 
+xaae: xlog:00009142:  (errcode_for_file_access(), 
+xaae: xlog:00009143:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009144:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009145:  ereport(ERROR, 
+xaae: xlog:00009146:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009147:  errmsg("a backup is not in progress"))); 
+xaae: xlog:00009157:  ereport(ERROR, 
+xaae: xlog:00009158:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009159:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009169:  ereport(ERROR, 
+xaae: xlog:00009170:  (errcode_for_file_access(), 
+xaae: xlog:00009171:  errmsg("could not create file \"%s\": %m", 
+xaae: xlog:00009172:  histfilepath))); 
 xaae: xlog:00009182:  ereport(ERROR, 
-xaae: xlog:00009183:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-xaae: xlog:00009184:  errmsg("could not parse transaction log location \"%s\"", 
-xaae: xlog:00009185:  locationstr))); 
-xaae: xlog:00009251:  ereport(ERROR, 
-xaae: xlog:00009252:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-xaae: xlog:00009253:  errmsg("could not parse transaction log location \"%s\"", 
-xaae: xlog:00009254:  locationstr))); 
-xaae: xlog:00009311:  ereport(FATAL, 
-xaae: xlog:00009312:  (errcode_for_file_access(), 
-xaae: xlog:00009313:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009314:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009326:  ereport(FATAL, 
-xaae: xlog:00009327:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009328:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009332:  ereport(FATAL, 
-xaae: xlog:00009333:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009334:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009336:  ereport(FATAL, 
-xaae: xlog:00009337:  (errcode_for_file_access(), 
-xaae: xlog:00009338:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009339:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009363:  ereport(FATAL, 
-xaae: xlog:00009364:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009365:  errmsg("invalid data in file \"%s\"", histfilename))); 
-xaae: xlog:00009369:  ereport(FATAL, 
-xaae: xlog:00009370:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009371:  errmsg("invalid data in file \"%s\"", histfilename))); 
-xaae: xlog:00009374:  ereport(FATAL, 
-xaae: xlog:00009375:  (errcode_for_file_access(), 
-xaae: xlog:00009376:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009377:  histfilepath))); 
-xaae: xlog:00009722:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
-xaae: xlog:00009723:  errmsg("database 'postgres' does not exist"))); 
-xaae: xlog:00010399:  ereport(ERROR, 
-xaae: xlog:00010400:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-xaae: xlog:00010401:  (errmsg("could not allocate memory for mirrored aligned buffer")))); 
+xaae: xlog:00009183:  (errcode_for_file_access(), 
+xaae: xlog:00009184:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00009185:  histfilepath))); 
+xaae: xlog:00009191:  ereport(ERROR, 
+xaae: xlog:00009192:  (errcode_for_file_access(), 
+xaae: xlog:00009193:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009194:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009196:  ereport(ERROR, 
+xaae: xlog:00009197:  (errcode_for_file_access(), 
+xaae: xlog:00009198:  errmsg("could not remove file \"%s\": %m", 
+xaae: xlog:00009199:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009229:  ereport(ERROR, 
+xaae: xlog:00009230:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00009231:  (errmsg("must be superuser to switch transaction log files")))); 
+xaae: xlog:00009337:  ereport(ERROR, 
+xaae: xlog:00009338:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+xaae: xlog:00009339:  errmsg("could not parse transaction log location \"%s\"", 
+xaae: xlog:00009340:  locationstr))); 
+xaae: xlog:00009406:  ereport(ERROR, 
+xaae: xlog:00009407:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+xaae: xlog:00009408:  errmsg("could not parse transaction log location \"%s\"", 
+xaae: xlog:00009409:  locationstr))); 
+xaae: xlog:00009466:  ereport(FATAL, 
+xaae: xlog:00009467:  (errcode_for_file_access(), 
+xaae: xlog:00009468:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009469:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009481:  ereport(FATAL, 
+xaae: xlog:00009482:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009483:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009487:  ereport(FATAL, 
+xaae: xlog:00009488:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009489:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009491:  ereport(FATAL, 
+xaae: xlog:00009492:  (errcode_for_file_access(), 
+xaae: xlog:00009493:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009494:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009518:  ereport(FATAL, 
+xaae: xlog:00009519:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009520:  errmsg("invalid data in file \"%s\"", histfilename))); 
+xaae: xlog:00009524:  ereport(FATAL, 
+xaae: xlog:00009525:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009526:  errmsg("invalid data in file \"%s\"", histfilename))); 
+xaae: xlog:00009529:  ereport(FATAL, 
+xaae: xlog:00009530:  (errcode_for_file_access(), 
+xaae: xlog:00009531:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009532:  histfilepath))); 
+xaae: xlog:00009879:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
+xaae: xlog:00009880:  errmsg("database 'postgres' does not exist"))); 
+xaae: xlog:00010556:  ereport(ERROR, 
+xaae: xlog:00010557:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+xaae: xlog:00010558:  (errmsg("could not allocate memory for mirrored aligned buffer")))); 
 aaaaa GP_IGNORE: xaah: xlogloc - ./backend/access/transam/xlogloc.c
 xaah: xlogloc:00000060:  ereport(ERROR, 
 xaah: xlogloc:00000061:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
@@ -3098,11 +3098,11 @@ cacc: cdbfilerepresyncworker:00000545:  result->entries[ii].relFileNode.spcNode,
 cacc: cdbfilerepresyncworker:00000546:  result->entries[ii].relFileNode.dbNode, 
 cacc: cdbfilerepresyncworker:00000547:  result->entries[ii].relFileNode.relNode))); 
 aaaaa GP_IGNORE: cabh: cdbfilerepservice - ./backend/cdb/cdbfilerepservice.c
-cabh: cdbfilerepservice:00000330:  ereport(ERROR, 
-cabh: cdbfilerepservice:00000331:  (errmsg("failure is detected in segment mirroring during backend shutdown, abort requested (%d)", 
-cabh: cdbfilerepservice:00000332:  getpid()))); 
-cabh: cdbfilerepservice:00000556:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
-cabh: cdbfilerepservice:00000557:  errmsg("database 'postgres' does not exist"))); 
+cabh: cdbfilerepservice:00000335:  ereport(ERROR, 
+cabh: cdbfilerepservice:00000336:  (errmsg("failure is detected in segment mirroring during backend shutdown, abort requested (%d)", 
+cabh: cdbfilerepservice:00000337:  getpid()))); 
+cabh: cdbfilerepservice:00000561:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
+cabh: cdbfilerepservice:00000562:  errmsg("database 'postgres' does not exist"))); 
 aaaaa GP_IGNORE: caag: cdbfts - ./backend/cdb/cdbfts.c
 caag: cdbfts:00000206:  ereport(LOG, (errmsg_internal("FTS: reconfiguration is in progress"), 
 caag: cdbfts:00000207:  errSendAlert(true))); 
@@ -10125,438 +10125,446 @@ aaah: analyze:00005882:  "in specification%s",
 aaah: analyze:00005883:  partNumber, partno, vstate->at_depth), 
 aaah: analyze:00005884:  errOmitLocation(true), 
 aaah: analyze:00005885:  parser_errposition(pstate, pBy->location))); 
-aaah: analyze:00006237:  ereport(ERROR, 
-aaah: analyze:00006238:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00006239:  errmsg("invalid use of LIST boundary specification " 
-aaah: analyze:00006240:  "in partition%s of type RANGE%s", 
-aaah: analyze:00006241:  namBuf, 
-aaah: analyze:00006242:  at_depth), 
-aaah: analyze:00006243:  errOmitLocation(true), 
-aaah: analyze:00006244:  /* MPP-4249: use value spec location if have one */ 
-aaah: analyze:00006245:  ((IsA(pBSpec, PartitionValuesSpec)) ? 
-aaah: analyze:00006246:  parser_errposition(pstate, 
-aaah: analyze:00006247:  ((PartitionValuesSpec*)pBSpec)->location) : 
-aaah: analyze:00006248:  /* else use invalid parsestate/postition */ 
-aaah: analyze:00006249:  parser_errposition(NULL, 0) 
-aaah: analyze:00006250:  ) 
-aaah: analyze:00006251:  )); 
-aaah: analyze:00006267:  ereport(ERROR, 
-aaah: analyze:00006268:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00006269:  errmsg("EVERY clause in partition%s " 
-aaah: analyze:00006270:  "requires START and END%s", 
-aaah: analyze:00006271:  namBuf, 
-aaah: analyze:00006272:  at_depth), 
-aaah: analyze:00006273:  errOmitLocation(true), 
-aaah: analyze:00006274:  parser_errposition(pstate, pBSpec->location))); 
-aaah: analyze:00006298:  ereport(ERROR, 
-aaah: analyze:00006299:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00006300:  errmsg("invalid tablename specification"))); 
-aaah: analyze:00006327:  ereport(ERROR, 
-aaah: analyze:00006328:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00006329:  errmsg("mismatch between EVERY, START and END " 
-aaah: analyze:00006330:  "in partition%s%s", 
-aaah: analyze:00006331:  namBuf, 
-aaah: analyze:00006332:  at_depth), 
-aaah: analyze:00006333:  errOmitLocation(true), 
-aaah: analyze:00006334:  parser_errposition(pstate, pBSpec->location))); 
-aaah: analyze:00006504:  ereport(ERROR, 
-aaah: analyze:00006505:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00006506:  errmsg("EVERY parameter produces ambiguous partition rule"), 
-aaah: analyze:00006507:  errOmitLocation(true), 
-aaah: analyze:00006508:  parser_errposition(pstate, 
-aaah: analyze:00006509:  ((A_Const *)n3)->location))); 
-aaah: analyze:00006538:  ereport(ERROR, 
-aaah: analyze:00006539:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00006540:  errmsg("EVERY parameter too small"), 
-aaah: analyze:00006541:  errOmitLocation(true), 
-aaah: analyze:00006542:  parser_errposition(pstate, 
-aaah: analyze:00006543:  ((A_Const *)n3)->location))); 
-aaah: analyze:00006551:  ereport(ERROR, 
-aaah: analyze:00006552:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00006553:  errmsg("END parameter not reached before type overflows"), 
-aaah: analyze:00006554:  errOmitLocation(true), 
-aaah: analyze:00006555:  parser_errposition(pstate, 
-aaah: analyze:00006556:  ((A_Const *)n2)->location))); 
-aaah: analyze:00006682:  ereport(NOTICE, 
-aaah: analyze:00006683:  (errmsg("%s will create partition \"%s\" for " 
-aaah: analyze:00006684:  "table \"%s\"", 
-aaah: analyze:00006685:  cxt->stmtType, child_tab_name->relname, 
-aaah: analyze:00006686:  cxt->relation->relname))); 
-aaah: analyze:00006930:  ereport(ERROR, 
-aaah: analyze:00006931:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00006932:  errmsg("column \"%s\" specified in multiple " 
-aaah: analyze:00006933:  "partitioning keys", 
-aaah: analyze:00006934:  colname), 
-aaah: analyze:00006935:  errOmitLocation(true), 
-aaah: analyze:00006936:  parser_errposition(cxt->pstate, p->location))); 
-aaah: analyze:00007064:  ereport(ERROR, 
-aaah: analyze:00007065:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007066:  errmsg("%sPARTITIONS clause requires a HASH partition%s", 
-aaah: analyze:00007067:  pBy->partDepth != 0 ? "SUB" : "", at_depth), 
-aaah: analyze:00007068:  errOmitLocation(true), 
-aaah: analyze:00007069:  parser_errposition(pstate, pBy->location))); 
-aaah: analyze:00007074:  ereport(ERROR, 
-aaah: analyze:00007075:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007076:  errmsg("%sPARTITIONS cannot be less than one%s", 
-aaah: analyze:00007077:  pBy->partDepth != 0 ? "SUB" : "", at_depth), 
-aaah: analyze:00007078:  errOmitLocation(true), 
-aaah: analyze:00007079:  parser_errposition(pstate, pBy->location))); 
-aaah: analyze:00007091:  ereport(ERROR, 
-aaah: analyze:00007092:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007093:  errmsg("too many columns for RANGE partition%s -- " 
-aaah: analyze:00007094:  "only one column is allowed.", 
-aaah: analyze:00007095:  at_depth), 
-aaah: analyze:00007096:  errOmitLocation(true), 
-aaah: analyze:00007097:  parser_errposition(pstate, pBy->location))); 
-aaah: analyze:00007122:  ereport(ERROR, 
-aaah: analyze:00007123:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007124:  errmsg("column \"%s\" specified more than once " 
-aaah: analyze:00007125:  "in partitioning key", 
-aaah: analyze:00007126:  colname), 
-aaah: analyze:00007127:  errOmitLocation(true), 
-aaah: analyze:00007128:  parser_errposition(pstate, pBy->location))); 
-aaah: analyze:00007150:  ereport(ERROR, 
-aaah: analyze:00007151:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-aaah: analyze:00007152:  errmsg("column \"%s\" does not exist in relation \"%s\"", 
-aaah: analyze:00007153:  colname, cxt->relation->relname), 
-aaah: analyze:00007154:  errOmitLocation(true), 
-aaah: analyze:00007155:  parser_errposition(pstate, pBy->location))); 
-aaah: analyze:00007176:  ereport(ERROR, 
-aaah: analyze:00007177:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaah: analyze:00007178:  errmsg("data type %s has no default operator class", 
-aaah: analyze:00007179:  format_type_be(typeid)), 
-aaah: analyze:00007180:  errOmitLocation(true))); 
-aaah: analyze:00007196:  ereport(ERROR, 
-aaah: analyze:00007197:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007198:  errmsg("hash partition requires PARTITIONS clause " 
-aaah: analyze:00007199:  "or partition specification"), 
-aaah: analyze:00007200:  errOmitLocation(true), 
-aaah: analyze:00007201:  parser_errposition(pstate, pBy->location))); 
-aaah: analyze:00007221:  ereport(ERROR, 
-aaah: analyze:00007222:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007223:  errmsg("no partitions specified at depth %d", 
-aaah: analyze:00007224:  partDepth), 
-aaah: analyze:00007225:  errOmitLocation(true), 
-aaah: analyze:00007226:  parser_errposition(pstate, pBy->location))); 
-aaah: analyze:00007254:  ereport(ERROR, 
-aaah: analyze:00007255:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007256:  errmsg("missing SUBPARTITION BY clause for " 
-aaah: analyze:00007257:  "subpartition specification%s", 
-aaah: analyze:00007258:  at_depth), 
-aaah: analyze:00007259:  errOmitLocation(true), 
-aaah: analyze:00007260:  parser_errposition(pstate, pBy->location))); 
-aaah: analyze:00007264:  ereport(ERROR, 
-aaah: analyze:00007265:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007266:  errmsg("subpartition specification conflict%s", 
-aaah: analyze:00007267:  at_depth), 
-aaah: analyze:00007268:  errOmitLocation(true), 
-aaah: analyze:00007269:  parser_errposition(pstate, psubBy->location))); 
-aaah: analyze:00007385:  ereport(ERROR, 
-aaah: analyze:00007386:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007387:  errmsg("missing SUBPARTITION BY clause " 
-aaah: analyze:00007388:  "for subpartition specification%s", 
-aaah: analyze:00007389:  at_depth), 
-aaah: analyze:00007390:  errOmitLocation(true), 
-aaah: analyze:00007391:  parser_errposition(pstate, pElem->location))); 
-aaah: analyze:00007398:  ereport(ERROR, 
-aaah: analyze:00007399:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-aaah: analyze:00007400:  errmsg("subpartition configuration conflicts " 
-aaah: analyze:00007401:  "with subpartition template"), 
+aaah: analyze:00006236:  ereport(ERROR, 
+aaah: analyze:00006237:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00006238:  errmsg("invalid use of boundary specification " 
+aaah: analyze:00006239:  "for DEFAULT partition%s%s", 
+aaah: analyze:00006240:  namBuf, 
+aaah: analyze:00006241:  at_depth), 
+aaah: analyze:00006242:  errOmitLocation(true), 
+aaah: analyze:00006243:  parser_errposition(pstate, pElem->location))); 
+aaah: analyze:00006249:  ereport(ERROR, 
+aaah: analyze:00006250:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00006251:  errmsg("invalid use of LIST boundary specification " 
+aaah: analyze:00006252:  "in partition%s of type RANGE%s", 
+aaah: analyze:00006253:  namBuf, 
+aaah: analyze:00006254:  at_depth), 
+aaah: analyze:00006255:  errOmitLocation(true), 
+aaah: analyze:00006256:  /* MPP-4249: use value spec location if have one */ 
+aaah: analyze:00006257:  ((IsA(pBSpec, PartitionValuesSpec)) ? 
+aaah: analyze:00006258:  parser_errposition(pstate, 
+aaah: analyze:00006259:  ((PartitionValuesSpec*)pBSpec)->location) : 
+aaah: analyze:00006260:  /* else use invalid parsestate/postition */ 
+aaah: analyze:00006261:  parser_errposition(NULL, 0) 
+aaah: analyze:00006262:  ) 
+aaah: analyze:00006263:  )); 
+aaah: analyze:00006279:  ereport(ERROR, 
+aaah: analyze:00006280:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00006281:  errmsg("EVERY clause in partition%s " 
+aaah: analyze:00006282:  "requires START and END%s", 
+aaah: analyze:00006283:  namBuf, 
+aaah: analyze:00006284:  at_depth), 
+aaah: analyze:00006285:  errOmitLocation(true), 
+aaah: analyze:00006286:  parser_errposition(pstate, pBSpec->location))); 
+aaah: analyze:00006310:  ereport(ERROR, 
+aaah: analyze:00006311:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00006312:  errmsg("invalid tablename specification"))); 
+aaah: analyze:00006339:  ereport(ERROR, 
+aaah: analyze:00006340:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00006341:  errmsg("mismatch between EVERY, START and END " 
+aaah: analyze:00006342:  "in partition%s%s", 
+aaah: analyze:00006343:  namBuf, 
+aaah: analyze:00006344:  at_depth), 
+aaah: analyze:00006345:  errOmitLocation(true), 
+aaah: analyze:00006346:  parser_errposition(pstate, pBSpec->location))); 
+aaah: analyze:00006516:  ereport(ERROR, 
+aaah: analyze:00006517:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00006518:  errmsg("EVERY parameter produces ambiguous partition rule"), 
+aaah: analyze:00006519:  errOmitLocation(true), 
+aaah: analyze:00006520:  parser_errposition(pstate, 
+aaah: analyze:00006521:  ((A_Const *)n3)->location))); 
+aaah: analyze:00006550:  ereport(ERROR, 
+aaah: analyze:00006551:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00006552:  errmsg("EVERY parameter too small"), 
+aaah: analyze:00006553:  errOmitLocation(true), 
+aaah: analyze:00006554:  parser_errposition(pstate, 
+aaah: analyze:00006555:  ((A_Const *)n3)->location))); 
+aaah: analyze:00006563:  ereport(ERROR, 
+aaah: analyze:00006564:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00006565:  errmsg("END parameter not reached before type overflows"), 
+aaah: analyze:00006566:  errOmitLocation(true), 
+aaah: analyze:00006567:  parser_errposition(pstate, 
+aaah: analyze:00006568:  ((A_Const *)n2)->location))); 
+aaah: analyze:00006694:  ereport(NOTICE, 
+aaah: analyze:00006695:  (errmsg("%s will create partition \"%s\" for " 
+aaah: analyze:00006696:  "table \"%s\"", 
+aaah: analyze:00006697:  cxt->stmtType, child_tab_name->relname, 
+aaah: analyze:00006698:  cxt->relation->relname))); 
+aaah: analyze:00006942:  ereport(ERROR, 
+aaah: analyze:00006943:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00006944:  errmsg("column \"%s\" specified in multiple " 
+aaah: analyze:00006945:  "partitioning keys", 
+aaah: analyze:00006946:  colname), 
+aaah: analyze:00006947:  errOmitLocation(true), 
+aaah: analyze:00006948:  parser_errposition(cxt->pstate, p->location))); 
+aaah: analyze:00007076:  ereport(ERROR, 
+aaah: analyze:00007077:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007078:  errmsg("%sPARTITIONS clause requires a HASH partition%s", 
+aaah: analyze:00007079:  pBy->partDepth != 0 ? "SUB" : "", at_depth), 
+aaah: analyze:00007080:  errOmitLocation(true), 
+aaah: analyze:00007081:  parser_errposition(pstate, pBy->location))); 
+aaah: analyze:00007086:  ereport(ERROR, 
+aaah: analyze:00007087:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007088:  errmsg("%sPARTITIONS cannot be less than one%s", 
+aaah: analyze:00007089:  pBy->partDepth != 0 ? "SUB" : "", at_depth), 
+aaah: analyze:00007090:  errOmitLocation(true), 
+aaah: analyze:00007091:  parser_errposition(pstate, pBy->location))); 
+aaah: analyze:00007103:  ereport(ERROR, 
+aaah: analyze:00007104:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007105:  errmsg("too many columns for RANGE partition%s -- " 
+aaah: analyze:00007106:  "only one column is allowed.", 
+aaah: analyze:00007107:  at_depth), 
+aaah: analyze:00007108:  errOmitLocation(true), 
+aaah: analyze:00007109:  parser_errposition(pstate, pBy->location))); 
+aaah: analyze:00007134:  ereport(ERROR, 
+aaah: analyze:00007135:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007136:  errmsg("column \"%s\" specified more than once " 
+aaah: analyze:00007137:  "in partitioning key", 
+aaah: analyze:00007138:  colname), 
+aaah: analyze:00007139:  errOmitLocation(true), 
+aaah: analyze:00007140:  parser_errposition(pstate, pBy->location))); 
+aaah: analyze:00007162:  ereport(ERROR, 
+aaah: analyze:00007163:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+aaah: analyze:00007164:  errmsg("column \"%s\" does not exist in relation \"%s\"", 
+aaah: analyze:00007165:  colname, cxt->relation->relname), 
+aaah: analyze:00007166:  errOmitLocation(true), 
+aaah: analyze:00007167:  parser_errposition(pstate, pBy->location))); 
+aaah: analyze:00007188:  ereport(ERROR, 
+aaah: analyze:00007189:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaah: analyze:00007190:  errmsg("data type %s has no default operator class", 
+aaah: analyze:00007191:  format_type_be(typeid)), 
+aaah: analyze:00007192:  errOmitLocation(true))); 
+aaah: analyze:00007208:  ereport(ERROR, 
+aaah: analyze:00007209:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007210:  errmsg("hash partition requires PARTITIONS clause " 
+aaah: analyze:00007211:  "or partition specification"), 
+aaah: analyze:00007212:  errOmitLocation(true), 
+aaah: analyze:00007213:  parser_errposition(pstate, pBy->location))); 
+aaah: analyze:00007233:  ereport(ERROR, 
+aaah: analyze:00007234:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007235:  errmsg("no partitions specified at depth %d", 
+aaah: analyze:00007236:  partDepth), 
+aaah: analyze:00007237:  errOmitLocation(true), 
+aaah: analyze:00007238:  parser_errposition(pstate, pBy->location))); 
+aaah: analyze:00007266:  ereport(ERROR, 
+aaah: analyze:00007267:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007268:  errmsg("missing SUBPARTITION BY clause for " 
+aaah: analyze:00007269:  "subpartition specification%s", 
+aaah: analyze:00007270:  at_depth), 
+aaah: analyze:00007271:  errOmitLocation(true), 
+aaah: analyze:00007272:  parser_errposition(pstate, pBy->location))); 
+aaah: analyze:00007276:  ereport(ERROR, 
+aaah: analyze:00007277:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007278:  errmsg("subpartition specification conflict%s", 
+aaah: analyze:00007279:  at_depth), 
+aaah: analyze:00007280:  errOmitLocation(true), 
+aaah: analyze:00007281:  parser_errposition(pstate, psubBy->location))); 
+aaah: analyze:00007397:  ereport(ERROR, 
+aaah: analyze:00007398:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007399:  errmsg("missing SUBPARTITION BY clause " 
+aaah: analyze:00007400:  "for subpartition specification%s", 
+aaah: analyze:00007401:  at_depth), 
 aaah: analyze:00007402:  errOmitLocation(true), 
-aaah: analyze:00007403:  parser_errposition(pstate, psubBy->location))); 
-aaah: analyze:00007463:  ereport(ERROR, 
-aaah: analyze:00007464:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00007465:  errmsg("invalid tablename specification"))); 
-aaah: analyze:00007738:  ereport(ERROR, 
-aaah: analyze:00007739:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-aaah: analyze:00007740:  errmsg("relation \"%s.%s\" does not exist", 
-aaah: analyze:00007741:  stmt->relation->schemaname, stmt->relation->relname), 
-aaah: analyze:00007742:  errOmitLocation(true))); 
-aaah: analyze:00007744:  ereport(ERROR, 
-aaah: analyze:00007745:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-aaah: analyze:00007746:  errmsg("relation \"%s\" does not exist", 
-aaah: analyze:00007747:  stmt->relation->relname), 
-aaah: analyze:00007748:  errOmitLocation(true))); 
-aaah: analyze:00007910:  ereport(ERROR, 
-aaah: analyze:00007911:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-aaah: analyze:00007912:  errmsg("index expression may not return a set"), 
-aaah: analyze:00007913:  errOmitLocation(true))); 
-aaah: analyze:00008003:  ereport(ERROR, 
-aaah: analyze:00008004:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-aaah: analyze:00008005:  errmsg("rule WHERE condition may not contain references to other relations"), 
-aaah: analyze:00008006:  errOmitLocation(true))); 
-aaah: analyze:00008010:  ereport(ERROR, 
-aaah: analyze:00008011:  (errcode(ERRCODE_GROUPING_ERROR), 
-aaah: analyze:00008012:  errmsg("cannot use aggregate function in rule WHERE condition"), 
-aaah: analyze:00008013:  errOmitLocation(true))); 
-aaah: analyze:00008016:  ereport(ERROR, 
-aaah: analyze:00008017:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00008018:  errmsg("cannot use window function in rule WHERE condition"), 
-aaah: analyze:00008019:  errOmitLocation(true))); 
-aaah: analyze:00008087:  ereport(ERROR, 
-aaah: analyze:00008088:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-aaah: analyze:00008089:  errmsg("rules with WHERE conditions may only have SELECT, INSERT, UPDATE, or DELETE actions"), 
-aaah: analyze:00008090:  errOmitLocation(true))); 
-aaah: analyze:00008106:  ereport(ERROR, 
-aaah: analyze:00008107:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00008108:  errmsg("conditional UNION/INTERSECT/EXCEPT statements are not implemented"), 
-aaah: analyze:00008109:  errOmitLocation(true))); 
-aaah: analyze:00008125:  ereport(ERROR, 
-aaah: analyze:00008126:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-aaah: analyze:00008127:  errmsg("ON SELECT rule may not use OLD"), 
-aaah: analyze:00008128:  errOmitLocation(true))); 
-aaah: analyze:00008130:  ereport(ERROR, 
-aaah: analyze:00008131:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-aaah: analyze:00008132:  errmsg("ON SELECT rule may not use NEW"), 
-aaah: analyze:00008133:  errOmitLocation(true))); 
-aaah: analyze:00008140:  ereport(ERROR, 
-aaah: analyze:00008141:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-aaah: analyze:00008142:  errmsg("ON INSERT rule may not use OLD"), 
-aaah: analyze:00008143:  errOmitLocation(true))); 
-aaah: analyze:00008147:  ereport(ERROR, 
-aaah: analyze:00008148:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-aaah: analyze:00008149:  errmsg("ON DELETE rule may not use NEW"), 
-aaah: analyze:00008150:  errOmitLocation(true))); 
-aaah: analyze:00008181:  ereport(ERROR, 
-aaah: analyze:00008182:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00008183:  errmsg("conditional UNION/INTERSECT/EXCEPT statements are not implemented"), 
-aaah: analyze:00008184:  errOmitLocation(true))); 
-aaah: analyze:00008585:  ereport(ERROR, 
-aaah: analyze:00008586:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-aaah: analyze:00008587:  errmsg("error in building sortref mapping for sortClause"), 
-aaah: analyze:00008588:  errOmitLocation(true))); 
-aaah: analyze:00008592:  ereport(ERROR, 
-aaah: analyze:00008593:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-aaah: analyze:00008594:  errmsg("error in building sortref mapping for distinctClause"), 
-aaah: analyze:00008595:  errOmitLocation(true))); 
-aaah: analyze:00008599:  ereport(ERROR, 
-aaah: analyze:00008600:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-aaah: analyze:00008601:  errmsg("error in building sortref mapping for groupClause"), 
-aaah: analyze:00008602:  errOmitLocation(true))); 
-aaah: analyze:00008606:  ereport(ERROR, 
-aaah: analyze:00008607:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-aaah: analyze:00008608:  errmsg("error in building sortref mapping for windowClause"), 
-aaah: analyze:00008609:  errOmitLocation(true))); 
-aaah: analyze:00009019:  ereport(ERROR, 
-aaah: analyze:00009020:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00009021:  errmsg("VALUES lists must all be the same length"), 
-aaah: analyze:00009022:  errOmitLocation(true))); 
-aaah: analyze:00009033:  ereport(ERROR, 
-aaah: analyze:00009034:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00009035:  errmsg("DEFAULT can only appear in a VALUES list within INSERT"), 
-aaah: analyze:00009036:  errOmitLocation(true))); 
-aaah: analyze:00009105:  ereport(ERROR, 
-aaah: analyze:00009106:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00009107:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to VALUES"), 
-aaah: analyze:00009108:  errOmitLocation(true))); 
-aaah: analyze:00009129:  ereport(ERROR, 
-aaah: analyze:00009130:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00009131:  errmsg("VALUES must not contain table references"), 
-aaah: analyze:00009132:  errOmitLocation(true))); 
-aaah: analyze:00009142:  ereport(ERROR, 
-aaah: analyze:00009143:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00009144:  errmsg("VALUES must not contain OLD or NEW references"), 
-aaah: analyze:00009145:  errhint("Use SELECT ... UNION ALL ... instead."), 
-aaah: analyze:00009146:  errOmitLocation(true))); 
+aaah: analyze:00007403:  parser_errposition(pstate, pElem->location))); 
+aaah: analyze:00007410:  ereport(ERROR, 
+aaah: analyze:00007411:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+aaah: analyze:00007412:  errmsg("subpartition configuration conflicts " 
+aaah: analyze:00007413:  "with subpartition template"), 
+aaah: analyze:00007414:  errOmitLocation(true), 
+aaah: analyze:00007415:  parser_errposition(pstate, psubBy->location))); 
+aaah: analyze:00007475:  ereport(ERROR, 
+aaah: analyze:00007476:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00007477:  errmsg("invalid tablename specification"))); 
+aaah: analyze:00007750:  ereport(ERROR, 
+aaah: analyze:00007751:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+aaah: analyze:00007752:  errmsg("relation \"%s.%s\" does not exist", 
+aaah: analyze:00007753:  stmt->relation->schemaname, stmt->relation->relname), 
+aaah: analyze:00007754:  errOmitLocation(true))); 
+aaah: analyze:00007756:  ereport(ERROR, 
+aaah: analyze:00007757:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+aaah: analyze:00007758:  errmsg("relation \"%s\" does not exist", 
+aaah: analyze:00007759:  stmt->relation->relname), 
+aaah: analyze:00007760:  errOmitLocation(true))); 
+aaah: analyze:00007922:  ereport(ERROR, 
+aaah: analyze:00007923:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+aaah: analyze:00007924:  errmsg("index expression may not return a set"), 
+aaah: analyze:00007925:  errOmitLocation(true))); 
+aaah: analyze:00008015:  ereport(ERROR, 
+aaah: analyze:00008016:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+aaah: analyze:00008017:  errmsg("rule WHERE condition may not contain references to other relations"), 
+aaah: analyze:00008018:  errOmitLocation(true))); 
+aaah: analyze:00008022:  ereport(ERROR, 
+aaah: analyze:00008023:  (errcode(ERRCODE_GROUPING_ERROR), 
+aaah: analyze:00008024:  errmsg("cannot use aggregate function in rule WHERE condition"), 
+aaah: analyze:00008025:  errOmitLocation(true))); 
+aaah: analyze:00008028:  ereport(ERROR, 
+aaah: analyze:00008029:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00008030:  errmsg("cannot use window function in rule WHERE condition"), 
+aaah: analyze:00008031:  errOmitLocation(true))); 
+aaah: analyze:00008099:  ereport(ERROR, 
+aaah: analyze:00008100:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+aaah: analyze:00008101:  errmsg("rules with WHERE conditions may only have SELECT, INSERT, UPDATE, or DELETE actions"), 
+aaah: analyze:00008102:  errOmitLocation(true))); 
+aaah: analyze:00008118:  ereport(ERROR, 
+aaah: analyze:00008119:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00008120:  errmsg("conditional UNION/INTERSECT/EXCEPT statements are not implemented"), 
+aaah: analyze:00008121:  errOmitLocation(true))); 
+aaah: analyze:00008137:  ereport(ERROR, 
+aaah: analyze:00008138:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+aaah: analyze:00008139:  errmsg("ON SELECT rule may not use OLD"), 
+aaah: analyze:00008140:  errOmitLocation(true))); 
+aaah: analyze:00008142:  ereport(ERROR, 
+aaah: analyze:00008143:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+aaah: analyze:00008144:  errmsg("ON SELECT rule may not use NEW"), 
+aaah: analyze:00008145:  errOmitLocation(true))); 
+aaah: analyze:00008152:  ereport(ERROR, 
+aaah: analyze:00008153:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+aaah: analyze:00008154:  errmsg("ON INSERT rule may not use OLD"), 
+aaah: analyze:00008155:  errOmitLocation(true))); 
+aaah: analyze:00008159:  ereport(ERROR, 
+aaah: analyze:00008160:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+aaah: analyze:00008161:  errmsg("ON DELETE rule may not use NEW"), 
+aaah: analyze:00008162:  errOmitLocation(true))); 
+aaah: analyze:00008193:  ereport(ERROR, 
+aaah: analyze:00008194:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00008195:  errmsg("conditional UNION/INTERSECT/EXCEPT statements are not implemented"), 
+aaah: analyze:00008196:  errOmitLocation(true))); 
+aaah: analyze:00008597:  ereport(ERROR, 
+aaah: analyze:00008598:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+aaah: analyze:00008599:  errmsg("error in building sortref mapping for sortClause"), 
+aaah: analyze:00008600:  errOmitLocation(true))); 
+aaah: analyze:00008604:  ereport(ERROR, 
+aaah: analyze:00008605:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+aaah: analyze:00008606:  errmsg("error in building sortref mapping for distinctClause"), 
+aaah: analyze:00008607:  errOmitLocation(true))); 
+aaah: analyze:00008611:  ereport(ERROR, 
+aaah: analyze:00008612:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+aaah: analyze:00008613:  errmsg("error in building sortref mapping for groupClause"), 
+aaah: analyze:00008614:  errOmitLocation(true))); 
+aaah: analyze:00008618:  ereport(ERROR, 
+aaah: analyze:00008619:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+aaah: analyze:00008620:  errmsg("error in building sortref mapping for windowClause"), 
+aaah: analyze:00008621:  errOmitLocation(true))); 
+aaah: analyze:00009031:  ereport(ERROR, 
+aaah: analyze:00009032:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00009033:  errmsg("VALUES lists must all be the same length"), 
+aaah: analyze:00009034:  errOmitLocation(true))); 
+aaah: analyze:00009045:  ereport(ERROR, 
+aaah: analyze:00009046:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00009047:  errmsg("DEFAULT can only appear in a VALUES list within INSERT"), 
+aaah: analyze:00009048:  errOmitLocation(true))); 
+aaah: analyze:00009117:  ereport(ERROR, 
+aaah: analyze:00009118:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00009119:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to VALUES"), 
+aaah: analyze:00009120:  errOmitLocation(true))); 
+aaah: analyze:00009141:  ereport(ERROR, 
+aaah: analyze:00009142:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00009143:  errmsg("VALUES must not contain table references"), 
+aaah: analyze:00009144:  errOmitLocation(true))); 
 aaah: analyze:00009154:  ereport(ERROR, 
-aaah: analyze:00009155:  (errcode(ERRCODE_GROUPING_ERROR), 
-aaah: analyze:00009156:  errmsg("cannot use aggregate function in VALUES"), 
-aaah: analyze:00009157:  errOmitLocation(true))); 
-aaah: analyze:00009160:  ereport(ERROR, 
-aaah: analyze:00009161:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00009162:  errmsg("cannot use window function in VALUES"), 
-aaah: analyze:00009163:  errOmitLocation(true))); 
-aaah: analyze:00009245:  ereport(ERROR, 
-aaah: analyze:00009246:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00009247:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"), 
-aaah: analyze:00009248:  errOmitLocation(true))); 
-aaah: analyze:00009363:  ereport(ERROR, 
-aaah: analyze:00009364:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00009365:  errmsg("ORDER BY on a UNION/INTERSECT/EXCEPT result must be on one of the result columns"), 
-aaah: analyze:00009366:  errOmitLocation(true))); 
-aaah: analyze:00009420:  ereport(ERROR, 
-aaah: analyze:00009421:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00009422:  errmsg("INTO is only allowed on first SELECT of UNION/INTERSECT/EXCEPT"), 
-aaah: analyze:00009423:  errOmitLocation(true))); 
-aaah: analyze:00009426:  ereport(ERROR, 
-aaah: analyze:00009427:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00009428:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"), 
-aaah: analyze:00009429:  errOmitLocation(true))); 
-aaah: analyze:00009483:  ereport(ERROR, 
-aaah: analyze:00009484:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-aaah: analyze:00009485:  errmsg("UNION/INTERSECT/EXCEPT member statement may not refer to other relations of same query level"), 
-aaah: analyze:00009486:  errOmitLocation(true))); 
-aaah: analyze:00009542:  ereport(ERROR, 
-aaah: analyze:00009543:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00009544:  errmsg("each %s query must have the same number of columns", 
-aaah: analyze:00009545:  context), 
-aaah: analyze:00009546:  errOmitLocation(true))); 
-aaah: analyze:00009657:  ereport(ERROR, 
-aaah: analyze:00009658:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00009659:  errmsg("CREATE TABLE AS specifies too many column names"), 
-aaah: analyze:00009660:  errOmitLocation(true))); 
-aaah: analyze:00009702:  ereport(ERROR, 
-aaah: analyze:00009703:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00009704:  errmsg("The RETURNING clause of the UPDATE statement is not " 
-aaah: analyze:00009705:  "supported in this version of Greenplum Database."), 
-aaah: analyze:00009706:  errOmitLocation(true))); 
-aaah: analyze:00009737:  ereport(ERROR, 
-aaah: analyze:00009738:  (errcode(ERRCODE_GROUPING_ERROR), 
-aaah: analyze:00009739:  errmsg("cannot use aggregate function in UPDATE"), 
-aaah: analyze:00009740:  errOmitLocation(true))); 
-aaah: analyze:00009743:  ereport(ERROR, 
-aaah: analyze:00009744:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00009745:  errmsg("cannot use window function in UPDATE"), 
-aaah: analyze:00009746:  errOmitLocation(true))); 
-aaah: analyze:00009789:  ereport(ERROR, 
-aaah: analyze:00009790:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-aaah: analyze:00009791:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
-aaah: analyze:00009792:  origTarget->name, 
-aaah: analyze:00009793:  RelationGetRelationName(pstate->p_target_relation)), 
-aaah: analyze:00009794:  errOmitLocation(true), 
-aaah: analyze:00009795:  parser_errposition(pstate, origTarget->location))); 
-aaah: analyze:00009855:  ereport(ERROR, 
-aaah: analyze:00009856:  (errcode(ERRCODE_GROUPING_ERROR), 
-aaah: analyze:00009857:  errmsg("cannot use aggregate function in RETURNING"))); 
-aaah: analyze:00009860:  ereport(ERROR, 
-aaah: analyze:00009861:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00009862:  errmsg("cannot use window function in RETURNING"))); 
+aaah: analyze:00009155:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00009156:  errmsg("VALUES must not contain OLD or NEW references"), 
+aaah: analyze:00009157:  errhint("Use SELECT ... UNION ALL ... instead."), 
+aaah: analyze:00009158:  errOmitLocation(true))); 
+aaah: analyze:00009166:  ereport(ERROR, 
+aaah: analyze:00009167:  (errcode(ERRCODE_GROUPING_ERROR), 
+aaah: analyze:00009168:  errmsg("cannot use aggregate function in VALUES"), 
+aaah: analyze:00009169:  errOmitLocation(true))); 
+aaah: analyze:00009172:  ereport(ERROR, 
+aaah: analyze:00009173:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00009174:  errmsg("cannot use window function in VALUES"), 
+aaah: analyze:00009175:  errOmitLocation(true))); 
+aaah: analyze:00009257:  ereport(ERROR, 
+aaah: analyze:00009258:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00009259:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"), 
+aaah: analyze:00009260:  errOmitLocation(true))); 
+aaah: analyze:00009375:  ereport(ERROR, 
+aaah: analyze:00009376:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00009377:  errmsg("ORDER BY on a UNION/INTERSECT/EXCEPT result must be on one of the result columns"), 
+aaah: analyze:00009378:  errOmitLocation(true))); 
+aaah: analyze:00009432:  ereport(ERROR, 
+aaah: analyze:00009433:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00009434:  errmsg("INTO is only allowed on first SELECT of UNION/INTERSECT/EXCEPT"), 
+aaah: analyze:00009435:  errOmitLocation(true))); 
+aaah: analyze:00009438:  ereport(ERROR, 
+aaah: analyze:00009439:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00009440:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"), 
+aaah: analyze:00009441:  errOmitLocation(true))); 
+aaah: analyze:00009495:  ereport(ERROR, 
+aaah: analyze:00009496:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+aaah: analyze:00009497:  errmsg("UNION/INTERSECT/EXCEPT member statement may not refer to other relations of same query level"), 
+aaah: analyze:00009498:  errOmitLocation(true))); 
+aaah: analyze:00009554:  ereport(ERROR, 
+aaah: analyze:00009555:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00009556:  errmsg("each %s query must have the same number of columns", 
+aaah: analyze:00009557:  context), 
+aaah: analyze:00009558:  errOmitLocation(true))); 
+aaah: analyze:00009669:  ereport(ERROR, 
+aaah: analyze:00009670:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00009671:  errmsg("CREATE TABLE AS specifies too many column names"), 
+aaah: analyze:00009672:  errOmitLocation(true))); 
+aaah: analyze:00009714:  ereport(ERROR, 
+aaah: analyze:00009715:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00009716:  errmsg("The RETURNING clause of the UPDATE statement is not " 
+aaah: analyze:00009717:  "supported in this version of Greenplum Database."), 
+aaah: analyze:00009718:  errOmitLocation(true))); 
+aaah: analyze:00009749:  ereport(ERROR, 
+aaah: analyze:00009750:  (errcode(ERRCODE_GROUPING_ERROR), 
+aaah: analyze:00009751:  errmsg("cannot use aggregate function in UPDATE"), 
+aaah: analyze:00009752:  errOmitLocation(true))); 
+aaah: analyze:00009755:  ereport(ERROR, 
+aaah: analyze:00009756:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00009757:  errmsg("cannot use window function in UPDATE"), 
+aaah: analyze:00009758:  errOmitLocation(true))); 
+aaah: analyze:00009801:  ereport(ERROR, 
+aaah: analyze:00009802:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+aaah: analyze:00009803:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
+aaah: analyze:00009804:  origTarget->name, 
+aaah: analyze:00009805:  RelationGetRelationName(pstate->p_target_relation)), 
+aaah: analyze:00009806:  errOmitLocation(true), 
+aaah: analyze:00009807:  parser_errposition(pstate, origTarget->location))); 
 aaah: analyze:00009867:  ereport(ERROR, 
-aaah: analyze:00009868:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00009869:  errmsg("RETURNING may not contain references to other relations"))); 
-aaah: analyze:00009923:  ereport(ERROR, 
-aaah: analyze:00009924:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaah: analyze:00009925:  errmsg("%s is not partitioned", 
-aaah: analyze:00009926:  lrelname))); 
-aaah: analyze:00010307:  ereport(ERROR, 
-aaah: analyze:00010308:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
-aaah: analyze:00010309:  errmsg("cannot specify both SCROLL and NO SCROLL"))); 
-aaah: analyze:00010326:  ereport(ERROR, 
-aaah: analyze:00010327:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
-aaah: analyze:00010328:  errmsg("DECLARE CURSOR cannot specify INTO"))); 
-aaah: analyze:00010397:  ereport(ERROR, 
-aaah: analyze:00010398:  (errcode(ERRCODE_INDETERMINATE_DATATYPE), 
-aaah: analyze:00010399:  errmsg("could not determine data type of parameter $%d", 
-aaah: analyze:00010400:  i + 1))); 
-aaah: analyze:00010430:  ereport(ERROR, 
-aaah: analyze:00010431:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010432:  errmsg("wrong number of parameters for prepared statement \"%s\"", 
-aaah: analyze:00010433:  stmt->name), 
-aaah: analyze:00010434:  errdetail("Expected %d parameters but got %d.", 
-aaah: analyze:00010435:  nexpected, nparams), 
-aaah: analyze:00010436:  errOmitLocation(true))); 
-aaah: analyze:00010448:  ereport(ERROR, 
-aaah: analyze:00010449:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010450:  errmsg("cannot use subquery in EXECUTE parameter"))); 
-aaah: analyze:00010452:  ereport(ERROR, 
-aaah: analyze:00010453:  (errcode(ERRCODE_GROUPING_ERROR), 
-aaah: analyze:00010454:  errmsg("cannot use aggregate function in EXECUTE parameter"))); 
-aaah: analyze:00010456:  ereport(ERROR, 
-aaah: analyze:00010457:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010458:  errmsg("cannot use window function in EXECUTE parameter"))); 
-aaah: analyze:00010470:  ereport(ERROR, 
-aaah: analyze:00010471:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-aaah: analyze:00010472:  errmsg("parameter $%d of type %s cannot be coerced to the expected type %s", 
-aaah: analyze:00010473:  i, 
-aaah: analyze:00010474:  format_type_be(given_type_id), 
-aaah: analyze:00010475:  format_type_be(expected_type_id)), 
-aaah: analyze:00010476:  errhint("You will need to rewrite or cast the expression."), 
-aaah: analyze:00010477:  errOmitLocation(true))); 
-aaah: analyze:00010492:  ereport(ERROR, 
-aaah: analyze:00010493:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010494:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
-aaah: analyze:00010496:  ereport(ERROR, 
-aaah: analyze:00010497:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010498:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with DISTINCT clause"))); 
-aaah: analyze:00010500:  ereport(ERROR, 
-aaah: analyze:00010501:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010502:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with GROUP BY clause"))); 
+aaah: analyze:00009868:  (errcode(ERRCODE_GROUPING_ERROR), 
+aaah: analyze:00009869:  errmsg("cannot use aggregate function in RETURNING"))); 
+aaah: analyze:00009872:  ereport(ERROR, 
+aaah: analyze:00009873:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00009874:  errmsg("cannot use window function in RETURNING"))); 
+aaah: analyze:00009879:  ereport(ERROR, 
+aaah: analyze:00009880:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00009881:  errmsg("RETURNING may not contain references to other relations"))); 
+aaah: analyze:00009935:  ereport(ERROR, 
+aaah: analyze:00009936:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaah: analyze:00009937:  errmsg("%s is not partitioned", 
+aaah: analyze:00009938:  lrelname))); 
+aaah: analyze:00010319:  ereport(ERROR, 
+aaah: analyze:00010320:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
+aaah: analyze:00010321:  errmsg("cannot specify both SCROLL and NO SCROLL"))); 
+aaah: analyze:00010338:  ereport(ERROR, 
+aaah: analyze:00010339:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
+aaah: analyze:00010340:  errmsg("DECLARE CURSOR cannot specify INTO"))); 
+aaah: analyze:00010409:  ereport(ERROR, 
+aaah: analyze:00010410:  (errcode(ERRCODE_INDETERMINATE_DATATYPE), 
+aaah: analyze:00010411:  errmsg("could not determine data type of parameter $%d", 
+aaah: analyze:00010412:  i + 1))); 
+aaah: analyze:00010442:  ereport(ERROR, 
+aaah: analyze:00010443:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010444:  errmsg("wrong number of parameters for prepared statement \"%s\"", 
+aaah: analyze:00010445:  stmt->name), 
+aaah: analyze:00010446:  errdetail("Expected %d parameters but got %d.", 
+aaah: analyze:00010447:  nexpected, nparams), 
+aaah: analyze:00010448:  errOmitLocation(true))); 
+aaah: analyze:00010460:  ereport(ERROR, 
+aaah: analyze:00010461:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010462:  errmsg("cannot use subquery in EXECUTE parameter"))); 
+aaah: analyze:00010464:  ereport(ERROR, 
+aaah: analyze:00010465:  (errcode(ERRCODE_GROUPING_ERROR), 
+aaah: analyze:00010466:  errmsg("cannot use aggregate function in EXECUTE parameter"))); 
+aaah: analyze:00010468:  ereport(ERROR, 
+aaah: analyze:00010469:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010470:  errmsg("cannot use window function in EXECUTE parameter"))); 
+aaah: analyze:00010482:  ereport(ERROR, 
+aaah: analyze:00010483:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+aaah: analyze:00010484:  errmsg("parameter $%d of type %s cannot be coerced to the expected type %s", 
+aaah: analyze:00010485:  i, 
+aaah: analyze:00010486:  format_type_be(given_type_id), 
+aaah: analyze:00010487:  format_type_be(expected_type_id)), 
+aaah: analyze:00010488:  errhint("You will need to rewrite or cast the expression."), 
+aaah: analyze:00010489:  errOmitLocation(true))); 
 aaah: analyze:00010504:  ereport(ERROR, 
 aaah: analyze:00010505:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010506:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with HAVING clause"))); 
+aaah: analyze:00010506:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
 aaah: analyze:00010508:  ereport(ERROR, 
 aaah: analyze:00010509:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010510:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with aggregate functions"))); 
+aaah: analyze:00010510:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with DISTINCT clause"))); 
 aaah: analyze:00010512:  ereport(ERROR, 
 aaah: analyze:00010513:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010514:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with window functions"))); 
-aaah: analyze:00010555:  ereport(ERROR, 
-aaah: analyze:00010556:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010557:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to external tables"))); 
-aaah: analyze:00010595:  ereport(ERROR, 
-aaah: analyze:00010596:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010597:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to external tables"))); 
-aaah: analyze:00010612:  ereport(ERROR, 
-aaah: analyze:00010613:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010614:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to a join"))); 
-aaah: analyze:00010617:  ereport(ERROR, 
-aaah: analyze:00010618:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010619:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to NEW or OLD"))); 
-aaah: analyze:00010622:  ereport(ERROR, 
-aaah: analyze:00010623:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010624:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to a function"))); 
-aaah: analyze:00010627:  ereport(ERROR, 
-aaah: analyze:00010628:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010629:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to VALUES"))); 
-aaah: analyze:00010640:  ereport(ERROR, 
-aaah: analyze:00010641:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-aaah: analyze:00010642:  errmsg("relation \"%s\" in FOR UPDATE/SHARE clause not found in FROM clause", 
-aaah: analyze:00010643:  relname))); 
-aaah: analyze:00010720:  ereport(ERROR, 
-aaah: analyze:00010721:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010722:  errmsg("misplaced DEFERRABLE clause"))); 
-aaah: analyze:00010724:  ereport(ERROR, 
-aaah: analyze:00010725:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010726:  errmsg("multiple DEFERRABLE/NOT DEFERRABLE clauses not allowed"))); 
-aaah: analyze:00010733:  ereport(ERROR, 
-aaah: analyze:00010734:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010735:  errmsg("misplaced NOT DEFERRABLE clause"))); 
-aaah: analyze:00010737:  ereport(ERROR, 
-aaah: analyze:00010738:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010739:  errmsg("multiple DEFERRABLE/NOT DEFERRABLE clauses not allowed"))); 
-aaah: analyze:00010744:  ereport(ERROR, 
-aaah: analyze:00010745:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010746:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
-aaah: analyze:00010751:  ereport(ERROR, 
-aaah: analyze:00010752:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010753:  errmsg("misplaced INITIALLY DEFERRED clause"))); 
-aaah: analyze:00010755:  ereport(ERROR, 
-aaah: analyze:00010756:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010757:  errmsg("multiple INITIALLY IMMEDIATE/DEFERRED clauses not allowed"))); 
+aaah: analyze:00010514:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with GROUP BY clause"))); 
+aaah: analyze:00010516:  ereport(ERROR, 
+aaah: analyze:00010517:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010518:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with HAVING clause"))); 
+aaah: analyze:00010520:  ereport(ERROR, 
+aaah: analyze:00010521:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010522:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with aggregate functions"))); 
+aaah: analyze:00010524:  ereport(ERROR, 
+aaah: analyze:00010525:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010526:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with window functions"))); 
+aaah: analyze:00010567:  ereport(ERROR, 
+aaah: analyze:00010568:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010569:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to external tables"))); 
+aaah: analyze:00010607:  ereport(ERROR, 
+aaah: analyze:00010608:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010609:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to external tables"))); 
+aaah: analyze:00010624:  ereport(ERROR, 
+aaah: analyze:00010625:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010626:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to a join"))); 
+aaah: analyze:00010629:  ereport(ERROR, 
+aaah: analyze:00010630:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010631:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to NEW or OLD"))); 
+aaah: analyze:00010634:  ereport(ERROR, 
+aaah: analyze:00010635:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010636:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to a function"))); 
+aaah: analyze:00010639:  ereport(ERROR, 
+aaah: analyze:00010640:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010641:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to VALUES"))); 
+aaah: analyze:00010652:  ereport(ERROR, 
+aaah: analyze:00010653:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+aaah: analyze:00010654:  errmsg("relation \"%s\" in FOR UPDATE/SHARE clause not found in FROM clause", 
+aaah: analyze:00010655:  relname))); 
+aaah: analyze:00010732:  ereport(ERROR, 
+aaah: analyze:00010733:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010734:  errmsg("misplaced DEFERRABLE clause"))); 
+aaah: analyze:00010736:  ereport(ERROR, 
+aaah: analyze:00010737:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010738:  errmsg("multiple DEFERRABLE/NOT DEFERRABLE clauses not allowed"))); 
+aaah: analyze:00010745:  ereport(ERROR, 
+aaah: analyze:00010746:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010747:  errmsg("misplaced NOT DEFERRABLE clause"))); 
+aaah: analyze:00010749:  ereport(ERROR, 
+aaah: analyze:00010750:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010751:  errmsg("multiple DEFERRABLE/NOT DEFERRABLE clauses not allowed"))); 
+aaah: analyze:00010756:  ereport(ERROR, 
+aaah: analyze:00010757:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010758:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
+aaah: analyze:00010763:  ereport(ERROR, 
+aaah: analyze:00010764:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010765:  errmsg("misplaced INITIALLY DEFERRED clause"))); 
 aaah: analyze:00010767:  ereport(ERROR, 
 aaah: analyze:00010768:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010769:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
-aaah: analyze:00010774:  ereport(ERROR, 
-aaah: analyze:00010775:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010776:  errmsg("misplaced INITIALLY IMMEDIATE clause"))); 
-aaah: analyze:00010778:  ereport(ERROR, 
-aaah: analyze:00010779:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010780:  errmsg("multiple INITIALLY IMMEDIATE/DEFERRED clauses not allowed"))); 
-aaah: analyze:00010827:  ereport(ERROR, 
-aaah: analyze:00010828:  (errcode(ERRCODE_INVALID_SCHEMA_DEFINITION), 
-aaah: analyze:00010829:  errmsg("CREATE specifies a schema (%s) " 
-aaah: analyze:00010830:  "different from the one being created (%s)", 
-aaah: analyze:00010831:  *stmt_schema_name, context_schema))); 
-aaah: analyze:00011001:  ereport(ERROR, 
-aaah: analyze:00011002:  (errcode(ERRCODE_UNDEFINED_PARAMETER), 
-aaah: analyze:00011003:  errmsg("there is no parameter $%d", paramno))); 
-aaah: analyze:00011006:  ereport(ERROR, 
-aaah: analyze:00011007:  (errcode(ERRCODE_AMBIGUOUS_PARAMETER), 
-aaah: analyze:00011008:  errmsg("could not determine data type of parameter $%d", 
-aaah: analyze:00011009:  paramno))); 
-aaah: analyze:00011083:  ereport(ERROR, 
-aaah: analyze:00011084:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00011085:  errmsg("type \"%s\" can't be a part of a distribution key", 
-aaah: analyze:00011086:  strVal(linitial(column->typname->names))))); 
-aaah: analyze:00011100:  ereport(ERROR, 
-aaah: analyze:00011101:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-aaah: analyze:00011102:  errmsg("column \"%s\" named in DISTRIBUTED BY " 
-aaah: analyze:00011103:  "clause does not exist", 
-aaah: analyze:00011104:  key), 
-aaah: analyze:00011105:  errOmitLocation(true))); 
-aaah: analyze:00011206:  ereport(NOTICE, 
-aaah: analyze:00011207:  (errmsg("Error table \"%s\" does not exist. Auto generating an " 
-aaah: analyze:00011208:  "error table with the same name", sreh->errtable->relname))); 
+aaah: analyze:00010769:  errmsg("multiple INITIALLY IMMEDIATE/DEFERRED clauses not allowed"))); 
+aaah: analyze:00010779:  ereport(ERROR, 
+aaah: analyze:00010780:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010781:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
+aaah: analyze:00010786:  ereport(ERROR, 
+aaah: analyze:00010787:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010788:  errmsg("misplaced INITIALLY IMMEDIATE clause"))); 
+aaah: analyze:00010790:  ereport(ERROR, 
+aaah: analyze:00010791:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010792:  errmsg("multiple INITIALLY IMMEDIATE/DEFERRED clauses not allowed"))); 
+aaah: analyze:00010839:  ereport(ERROR, 
+aaah: analyze:00010840:  (errcode(ERRCODE_INVALID_SCHEMA_DEFINITION), 
+aaah: analyze:00010841:  errmsg("CREATE specifies a schema (%s) " 
+aaah: analyze:00010842:  "different from the one being created (%s)", 
+aaah: analyze:00010843:  *stmt_schema_name, context_schema))); 
+aaah: analyze:00011013:  ereport(ERROR, 
+aaah: analyze:00011014:  (errcode(ERRCODE_UNDEFINED_PARAMETER), 
+aaah: analyze:00011015:  errmsg("there is no parameter $%d", paramno))); 
+aaah: analyze:00011018:  ereport(ERROR, 
+aaah: analyze:00011019:  (errcode(ERRCODE_AMBIGUOUS_PARAMETER), 
+aaah: analyze:00011020:  errmsg("could not determine data type of parameter $%d", 
+aaah: analyze:00011021:  paramno))); 
+aaah: analyze:00011095:  ereport(ERROR, 
+aaah: analyze:00011096:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00011097:  errmsg("type \"%s\" can't be a part of a distribution key", 
+aaah: analyze:00011098:  strVal(linitial(column->typname->names))))); 
+aaah: analyze:00011112:  ereport(ERROR, 
+aaah: analyze:00011113:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+aaah: analyze:00011114:  errmsg("column \"%s\" named in DISTRIBUTED BY " 
+aaah: analyze:00011115:  "clause does not exist", 
+aaah: analyze:00011116:  key), 
+aaah: analyze:00011117:  errOmitLocation(true))); 
+aaah: analyze:00011218:  ereport(NOTICE, 
+aaah: analyze:00011219:  (errmsg("Error table \"%s\" does not exist. Auto generating an " 
+aaah: analyze:00011220:  "error table with the same name", sreh->errtable->relname))); 
 aaaaa GP_IGNORE: gaae: gram - ./backend/parser/gram.c
 gaae: gram:00018860:  ereport(ERROR, 
 gaae: gram:00018861:  (errcode(ERRCODE_SYNTAX_ERROR), 
@@ -12309,64 +12317,64 @@ daaj: ddaserver:00000974:  ));
 aaaaa GP_IGNORE: faai: ftsprobe - ./backend/postmaster/ftsprobe.c
 faai: ftsprobe:00000335:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
 faai: ftsprobe:00000336:  errmsg("database 'postgres' does not exist"))); 
-faai: ftsprobe:00001536:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-faai: ftsprobe:00001537:  errmsg("FTS: out of memory"))); 
-faai: ftsprobe:00001558:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-faai: ftsprobe:00001559:  errmsg("FTS: out of memory"))); 
-faai: ftsprobe:00001592:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-faai: ftsprobe:00001593:  errmsg("FTS: out of memory"))); 
-faai: ftsprobe:00001667:  ereport(ERROR, 
-faai: ftsprobe:00001668:  (errcode(ERRCODE_INTERNAL_ERROR), 
-faai: ftsprobe:00001669:  errmsg("FTS: could not insert into configuration history: format command string failure dbid %d", change->dbid))); 
-faai: ftsprobe:00001678:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-faai: ftsprobe:00001679:  errmsg("FTS: out of memory"))); 
-faai: ftsprobe:00001774:  ereport(ERROR, 
-faai: ftsprobe:00001775:  (errcode(ERRCODE_INTERNAL_ERROR), 
-faai: ftsprobe:00001776:  errmsg("FTS: could not modify config: format command string failure dbid %d", changes[i].dbid))); 
-faai: ftsprobe:00001806:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-faai: ftsprobe:00001807:  errmsg("FTS: out of memory"))); 
-faai: ftsprobe:00002257:  ereport(LOG, 
-faai: ftsprobe:00002258:  (errmsg("Mirror segment on %s:%d is taking over as primary in change tracking mode.", 
-faai: ftsprobe:00002259:  seg_addr, seg_pm_port ), 
-faai: ftsprobe:00002260:  errSendAlert(true))); 
-faai: ftsprobe:00002263:  ereport(LOG, 
-faai: ftsprobe:00002264:  (errmsg("Primary segment on %s:%d is transitioning into change tracking mode (peer marked down).", 
-faai: ftsprobe:00002265:  seg_addr, seg_pm_port ), 
-faai: ftsprobe:00002266:  errSendAlert(true))); 
-faai: ftsprobe:00002333:  ereport(LOG, 
-faai: ftsprobe:00002334:  (errmsg("Mirror segment on %s:%d promoted to primary in change tracking mode.", 
-faai: ftsprobe:00002335:  seg_addr, seg_pm_port ), 
-faai: ftsprobe:00002336:  errSendAlert(true))); 
-faai: ftsprobe:00002339:  ereport(LOG, 
-faai: ftsprobe:00002340:  (errmsg("Primary segment on %s:%d transitioned to change tracking mode successfully.", 
-faai: ftsprobe:00002341:  seg_addr, seg_pm_port ), 
-faai: ftsprobe:00002342:  errSendAlert(true))); 
-faai: ftsprobe:00002369:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), \ 
-faai: ftsprobe:00002370:  errmsg("FTS: out of memory"))); \ 
-faai: ftsprobe:00002371:  \ 
-faai: ftsprobe:00002372:  PQclear(rs); \ 
-faai: ftsprobe:00002373:  PQfinish(entryConn); \ 
-faai: ftsprobe:00002374:  entryConn = NULL; \ 
-faai: ftsprobe:00002375:  \ 
-faai: ftsprobe:00002376:  elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message); \ 
-faai: ftsprobe:00002377:  } \ 
-faai: ftsprobe:00002378:  } 
-faai: ftsprobe:00002379:  
-faai: ftsprobe:00002380: /** 
-faai: ftsprobe:00002381:  * Marks the given db as in-sync in the segment configuration. 
-faai: ftsprobe:00002382:  */ 
-faai: ftsprobe:00002383: static void 
-faai: ftsprobe:00002384: markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *dbInfo) 
-faai: ftsprobe:00002385: { 
-faai: ftsprobe:00002386:  char cmd[2000]; 
-faai: ftsprobe:00002438:  ereport(LOG, 
-faai: ftsprobe:00002439:  (errmsg("Resynchronization of mirror segment on %s:%d has completed.", 
-faai: ftsprobe:00002440:  dbInfo->address, dbInfo->port ), 
-faai: ftsprobe:00002441:  errSendAlert(true))); 
-faai: ftsprobe:00002716:  ereport(LOG, 
-faai: ftsprobe:00002717:  (errmsg("SAN mirror segment on %s:%d is taking over as primary.", 
-faai: ftsprobe:00002718:  host, port ), 
-faai: ftsprobe:00002719:  errSendAlert(true))); 
+faai: ftsprobe:00001539:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+faai: ftsprobe:00001540:  errmsg("FTS: out of memory"))); 
+faai: ftsprobe:00001561:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+faai: ftsprobe:00001562:  errmsg("FTS: out of memory"))); 
+faai: ftsprobe:00001595:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+faai: ftsprobe:00001596:  errmsg("FTS: out of memory"))); 
+faai: ftsprobe:00001673:  ereport(ERROR, 
+faai: ftsprobe:00001674:  (errcode(ERRCODE_INTERNAL_ERROR), 
+faai: ftsprobe:00001675:  errmsg("FTS: could not insert into configuration history: format command string failure dbid %d", change->dbid))); 
+faai: ftsprobe:00001684:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+faai: ftsprobe:00001685:  errmsg("FTS: out of memory"))); 
+faai: ftsprobe:00001783:  ereport(ERROR, 
+faai: ftsprobe:00001784:  (errcode(ERRCODE_INTERNAL_ERROR), 
+faai: ftsprobe:00001785:  errmsg("FTS: could not modify config: format command string failure dbid %d", changes[i].dbid))); 
+faai: ftsprobe:00001815:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+faai: ftsprobe:00001816:  errmsg("FTS: out of memory"))); 
+faai: ftsprobe:00002266:  ereport(LOG, 
+faai: ftsprobe:00002267:  (errmsg("Mirror segment on %s:%d is taking over as primary in change tracking mode.", 
+faai: ftsprobe:00002268:  seg_addr, seg_pm_port ), 
+faai: ftsprobe:00002269:  errSendAlert(true))); 
+faai: ftsprobe:00002272:  ereport(LOG, 
+faai: ftsprobe:00002273:  (errmsg("Primary segment on %s:%d is transitioning into change tracking mode (peer marked down).", 
+faai: ftsprobe:00002274:  seg_addr, seg_pm_port ), 
+faai: ftsprobe:00002275:  errSendAlert(true))); 
+faai: ftsprobe:00002342:  ereport(LOG, 
+faai: ftsprobe:00002343:  (errmsg("Mirror segment on %s:%d promoted to primary in change tracking mode.", 
+faai: ftsprobe:00002344:  seg_addr, seg_pm_port ), 
+faai: ftsprobe:00002345:  errSendAlert(true))); 
+faai: ftsprobe:00002348:  ereport(LOG, 
+faai: ftsprobe:00002349:  (errmsg("Primary segment on %s:%d transitioned to change tracking mode successfully.", 
+faai: ftsprobe:00002350:  seg_addr, seg_pm_port ), 
+faai: ftsprobe:00002351:  errSendAlert(true))); 
+faai: ftsprobe:00002378:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), \ 
+faai: ftsprobe:00002379:  errmsg("FTS: out of memory"))); \ 
+faai: ftsprobe:00002380:  \ 
+faai: ftsprobe:00002381:  PQclear(rs); \ 
+faai: ftsprobe:00002382:  PQfinish(entryConn); \ 
+faai: ftsprobe:00002383:  entryConn = NULL; \ 
+faai: ftsprobe:00002384:  \ 
+faai: ftsprobe:00002385:  elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message); \ 
+faai: ftsprobe:00002386:  } \ 
+faai: ftsprobe:00002387:  } 
+faai: ftsprobe:00002388:  
+faai: ftsprobe:00002389: /** 
+faai: ftsprobe:00002390:  * Marks the given db as in-sync in the segment configuration. 
+faai: ftsprobe:00002391:  */ 
+faai: ftsprobe:00002392: static void 
+faai: ftsprobe:00002393: markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *dbInfo) 
+faai: ftsprobe:00002394: { 
+faai: ftsprobe:00002395:  char cmd[2000]; 
+faai: ftsprobe:00002447:  ereport(LOG, 
+faai: ftsprobe:00002448:  (errmsg("Resynchronization of mirror segment on %s:%d has completed.", 
+faai: ftsprobe:00002449:  dbInfo->address, dbInfo->port ), 
+faai: ftsprobe:00002450:  errSendAlert(true))); 
+faai: ftsprobe:00002725:  ereport(LOG, 
+faai: ftsprobe:00002726:  (errmsg("SAN mirror segment on %s:%d is taking over as primary.", 
+faai: ftsprobe:00002727:  host, port ), 
+faai: ftsprobe:00002728:  errSendAlert(true))); 
 aaaaa GP_IGNORE: paag: pgarch - ./backend/postmaster/pgarch.c
 paag: pgarch:00000391:  ereport(WARNING, 
 paag: pgarch:00000392:  (errmsg("transaction log file \"%s\" could not be archived: too many failures", 
