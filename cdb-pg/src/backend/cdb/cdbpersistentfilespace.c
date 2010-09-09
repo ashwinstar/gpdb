@@ -511,7 +511,7 @@ void PersistentFilespace_GetPrimaryAndMirrorUnderLock(
 	if (GPStandby())
 	{
 		*primaryFilespaceLocation =
-			pstrdup(mmxlog_filespace_get_path(filespaceOid));
+						mmxlog_filespace_get_path(filespaceOid);
 		return;
 	}
 #endif
@@ -719,42 +719,6 @@ void PersistentFilespace_MarkCreatePending(
 			 MirroredObjectExistenceState_Name(mirrorExistenceState),
 			 *persistentSerialNum,
 			 ItemPointerToString(persistentTid));
-}
-
-void
-xlog_persistent_filespace_create(Oid filespaceoid,
-								 int16 pri_dbid, char *pri_loc,
-								 int16 mir_dbid, char *mir_loc)
-{
-	PersistentFileSysObjName fsObjName;
-	FilespaceDirEntry fse;
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
-
-	PersistentFilespace_InitScan();
-
-	PersistentFileSysObjName_SetFilespaceDir(&fsObjName, filespaceoid);
-
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
-
-	fse = PersistentFilespace_CreateDirUnderLock(filespaceoid);
-	Insist(fse != NULL);
-
-	fse->dbId1 = pri_dbid;
-	PersistentFilespace_BlankPadCopyLocation(
-										fse->locationBlankPadded1,
-										pri_loc);
-
-	fse->dbId2 = mir_dbid;
-	PersistentFilespace_BlankPadCopyLocation(
-										fse->locationBlankPadded2,
-										mir_loc);
-
-	fse->state = PersistentFileSysState_Created;
-
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
-	
-	elog(LOG, "replay filespace_create: oid = %u, %s(%i) %s(%i)",
-		 filespaceoid, pri_loc, pri_dbid, mir_loc, mir_dbid);
 }
 
 // -----------------------------------------------------------------------------

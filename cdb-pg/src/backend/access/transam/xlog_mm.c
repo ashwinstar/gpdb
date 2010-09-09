@@ -905,6 +905,8 @@ mmxlog_filespace_get_path(Oid fspcoid)
 	fspc_map *m;
 	char *path = NULL;
 
+	char *filespaceLocation;
+
 	Insist(fspcoid != SYSTEMFILESPACE_OID);
 
 	/* 
@@ -941,9 +943,14 @@ mmxlog_filespace_get_path(Oid fspcoid)
 		path = m->path1;
 	}
 
+	PersistentFilespace_ConvertBlankPaddedLocation(
+											&filespaceLocation,
+											path,
+											/* isPrimary */ false); // Always say false so we don't error out here.
+
 	elog(DEBUG1, "MMXLOG: looking for fspc with oid %u, returning %s",
-		 fspcoid, path);
-	return path;
+		 fspcoid, filespaceLocation);
+	return filespaceLocation;
 }
 
 /*
@@ -1240,18 +1247,26 @@ mmxlog_read_checkpoint_data(char *cpdata, XLogRecPtr *beginLoc)
 	{
 		fspc_map *m = &(fmap[i]);
 
+		char *filespaceLocation2;
+
 		if (m->filespaceoid == InvalidOid)
 			break;
 
 		add_filespace_map_entry(m, beginLoc, "mmxlog_read_checkpoint_data");
 		
-		if (mkdir(fmap[i].path2, 0700) < 0)
+		PersistentFilespace_ConvertBlankPaddedLocation(
+												&filespaceLocation2,
+												fmap[i].path2,
+												/* isPrimary */ false);	// Always say false so we don't error out here.
+		if (mkdir(filespaceLocation2, 0700) < 0)
 		{
 			/* allowed to already exist */
 			if (errno != EEXIST)
-				elog(WARNING, "could not create directory %s: %m",
+				elog(ERROR, "could not create directory %s: %m",
 					 fmap[i].path2);
 		}
+
+		pfree(filespaceLocation2);
 	}
 	filespaceCount = i;
 
@@ -1274,8 +1289,10 @@ mmxlog_read_checkpoint_data(char *cpdata, XLogRecPtr *beginLoc)
 		{
 			/* allowed to already exist */
 			if (errno != EEXIST)
-				elog(WARNING, "could not create directory %s: %m", path);
+				elog(ERROR, "could not create directory %s: %m", path);
 		}
+
+		pfree(tmp);
 	}
 	tablespaceCount = i;
 
