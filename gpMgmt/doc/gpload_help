@@ -9,7 +9,7 @@ SYNOPSIS
 
 gpload -f <control_file> [-l <log_file>] 
 [-h <hostname>] [-p <port>] [-U <username>] [-d <database>] [-W] 
-[--gpfdist_timeout <number_seconds>] [[-v | -V] | [-q]] [-D]
+[--gpfdist_timeout <seconds>] [[-v | -V] | [-q]] [-D]
 
 gpload -? 
 
@@ -63,11 +63,12 @@ Required. A YAML file that contains the load specification
 details. See 'CONTROL FILE FORMAT' below.
 
 
---gpfdist_timeout <number_seconds>
+--gpfdist_timeout <seconds>
 
-Sets the timeout in seconds for the gpfdist parallel file 
-distribution program to send a response. May need to be 
-increased on busy networks.
+Sets the timeout for the gpfdist parallel file distribution program 
+to send a response. Enter a value from 0 to 30 seconds (entering “0” 
+to disables timeouts). Note that you might need to increase this 
+value when operating on high-traffic networks.
 
 
 -l <log_file>
