@@ -2,14 +2,14 @@
 '''
 USAGE:   gpseginstall -f|--file HOSTFILE [-u|--user USER]  [-p|--password PASSWORD] [-c|--commands COMMAND_OPTIONS]
          where HOSTFILE lists all the hosts to install the software on
-         where USER will be the user to install the software as. default is gpadmin. (root only option)
+         where USER will be the user to install the software as. The default is gpadmin. (root only option)
          where PASSWORD will be set for the USER default is changeme (root only option)
 
          where COMMAND_OPTIONS list a subset of commands to be run from the list below.  The default is all commands.
             u -- add user  (root only)
             c -- chown software on master host (root only)
             s -- tar, zip and copy over software to machines in cluster
-            p -- change passworda (root only)
+            p -- change passwords (root only)
             E -- exchange keys for root (root only)
             e -- exchange keys for user
             l -- check and fix user limits for new user -- requires software to be installed on cluster with command 's' or equivalent (root only)
