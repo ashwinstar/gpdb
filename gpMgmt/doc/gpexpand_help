@@ -110,7 +110,7 @@ OPTIONS
  template1 and template0 cannot be used.
 
 
--e | --end <YYYY-MM-DD hh:mm:ss>
+-e | --end '<YYYY-MM-DD hh:mm:ss>'
  Ending date and time for the expansion session.
 
 
