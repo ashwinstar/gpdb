@@ -182,6 +182,8 @@ struct config_generic
 
 #define GUC_GPDB_ADDOPT         0x8000  /* Send by cdbgang */
 
+#define GUC_DISALLOW_USER_SET  0x10000 /* Do not allow this GUC to be set by the user */
+
 /* bit values in status field */
 #define GUC_HAVE_TENTATIVE	0x0001		/* tentative value is defined */
 #define GUC_HAVE_LOCAL		0x0002		/* a SET LOCAL has been executed */

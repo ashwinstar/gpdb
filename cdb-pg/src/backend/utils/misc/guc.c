@@ -835,7 +835,7 @@ static struct config_bool ConfigureNamesBool[] =
 						 "sure that updates are physically written to disk. This insures "
 						 "that a database cluster will recover to a consistent state after "
 						 "an operating system or hardware crash."),
-		  GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		  GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL | GUC_DISALLOW_USER_SET
 		},
 		&enableFsync,
 		true, NULL, NULL
@@ -3156,7 +3156,7 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"max_fsm_relations", PGC_POSTMASTER, RESOURCES_FSM,
 			gettext_noop("Sets the maximum number of tables and indexes for which free space is tracked."),
-			NULL
+		        NULL
 		},
 		&MaxFSMRelations,
 		1000, 100, INT_MAX, NULL, NULL
@@ -3216,7 +3216,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"checkpoint_timeout", PGC_SIGHUP, WAL_CHECKPOINTS,
 			gettext_noop("Sets the maximum time in seconds between automatic WAL checkpoints."),
 			NULL,
-			GUC_UNIT_S | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+			GUC_UNIT_S | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL | GUC_DISALLOW_USER_SET
 		},
 		&CheckPointTimeout,
 		300, 30, 3600, NULL, NULL
@@ -3239,7 +3239,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"wal_buffers", PGC_POSTMASTER, WAL_SETTINGS,
 			gettext_noop("Sets the number of disk-page buffers in shared memory for WAL."),
 			NULL,
-			GUC_UNIT_XBLOCKS | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+			GUC_UNIT_XBLOCKS | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL | GUC_DISALLOW_USER_SET
 		},
 		&XLOGbuffers,
 		8, 4, INT_MAX, NULL, NULL
@@ -3250,7 +3250,7 @@ static struct config_int ConfigureNamesInt[] =
 			gettext_noop("Sets the delay in microseconds between transaction commit and "
 						 "flushing WAL to disk."),
 			NULL,
-			GUC_GPDB_ADDOPT | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+			GUC_GPDB_ADDOPT | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL | GUC_DISALLOW_USER_SET
 		},
 		&CommitDelay,
 		0, 0, 100000, NULL, NULL
@@ -3261,7 +3261,7 @@ static struct config_int ConfigureNamesInt[] =
 			gettext_noop("Sets the minimum concurrent open transactions before performing "
 						 "commit_delay."),
 			NULL,
-			GUC_GPDB_ADDOPT | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+			GUC_GPDB_ADDOPT | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL | GUC_DISALLOW_USER_SET
 		},
 		&CommitSiblings,
 		5, 1, 1000, NULL, NULL
@@ -4905,7 +4905,7 @@ static struct config_string ConfigureNamesString[] =
 		{"wal_sync_method", PGC_SIGHUP, WAL_SETTINGS,
 			gettext_noop("Selects the method used for forcing WAL updates out to disk."),
 			NULL,
-			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL | GUC_DISALLOW_USER_SET
 		},
 		&XLOG_sync_method,
 		XLOG_sync_method_default, assign_xlog_sync_method, NULL
@@ -6984,6 +6984,17 @@ set_config_option(const char *name, const char *value,
 			   errSendAlert(false)));
 		return false;
 	}
+
+        /*
+         * Check if option can be set by the user.
+         */
+        if (record->flags & GUC_DISALLOW_USER_SET)
+ 	{
+              /* Only print a warning in the dispatch or utility mode */
+  	      if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
+	         elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name);
+	      return true;
+        }  /* end if (record->flags & GUC_DISALLOW_USER_SET) */
 
 	/*
 	 * Check if the option can be set at this time. See guc.h for the precise
