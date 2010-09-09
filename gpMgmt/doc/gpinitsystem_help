@@ -9,7 +9,7 @@ SYNOPSIS
 *****************************************************
 
 gpinitsystem -c <gp_init_config_file> [-h <host_file>] [-o]
-            [-r | -B <parallel_processes>] 
+            [-B <parallel_processes>] 
             [-p <postgresql_conf_param_file>]
             [-s <standby_master_host>]
             [--max_connections <number>] [--shared_buffers <size>]
@@ -186,11 +186,6 @@ OPTIONS
 
  Run in quiet mode. Command output is not displayed on the screen, but 
  is still written to the log file.
-
-
--r (serial mode)
-
- Runs in serial mode. The default is to build segments in parallel.
 
 
 --shared_buffers | -b size
