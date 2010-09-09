@@ -42,9 +42,7 @@ typedef struct LWLock
 	bool		releaseOK;		/* T if ok to release waiters */
 	char		exclusive;		/* # of exclusive holders (0 or 1) */
 	int			shared;			/* # of shared holders (0..MaxBackends) */
-#ifdef LOCK_DEBUG
 	int			exclusivePid;	/* PID of the exclusive holder. */
-#endif
 	PGPROC	   *head;			/* head of list of waiting PGPROCs */
 	PGPROC	   *tail;			/* tail of list of waiting PGPROCs */
 	/* tail is undefined when head is NULL */
@@ -474,9 +472,7 @@ LWLockAcquire(LWLockId lockid, LWLockMode mode)
 			if (lock->exclusive == 0 && lock->shared == 0)
 			{
 				lock->exclusive++;
-#ifdef LOCK_DEBUG
 				lock->exclusivePid = MyProcPid;
-#endif
 				mustwait = false;
 			}
 			else
@@ -636,9 +632,7 @@ LWLockConditionalAcquire(LWLockId lockid, LWLockMode mode)
 		if (lock->exclusive == 0 && lock->shared == 0)
 		{
 			lock->exclusive++;
-#ifdef LOCK_DEBUG
 			lock->exclusivePid = MyProcPid;
-#endif
 			mustwait = false;
 		}
 		else
@@ -735,9 +729,7 @@ LWLockRelease(LWLockId lockid)
 	if (lock->exclusive > 0)
 	{
 		lock->exclusive--;
-#ifdef LOCK_DEBUG
 		lock->exclusivePid = 0;
-#endif
 	}
 	else
 	{
