@@ -200,7 +200,7 @@ def lighty_start(instance):
             pass
         
         if master_port == '':
-            master_port = 5432
+            master_port = '5432'
 
         if master_hostname:
             os.environ['PGHOST'] = master_hostname
