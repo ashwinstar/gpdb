@@ -674,110 +674,6 @@ ResetCatalogCaches(void)
 }
 
 /*
- *		CatalogCacheFlushRelation
- *
- *	This is called by RelationFlushRelation() to clear out cached information
- *	about a relation being dropped.  (This could be a DROP TABLE command,
- *	or a temp table being dropped at end of transaction, or a table created
- *	during the current transaction that is being dropped because of abort.)
- *	Remove all cache entries relevant to the specified relation OID.
- *
- *	A special case occurs when relId is itself one of the cacheable system
- *	tables --- although those'll never be dropped, they can get flushed from
- *	the relcache (VACUUM causes this, for example).  In that case we need
- *	to flush all cache entries that came from that table.  (At one point we
- *	also tried to force re-execution of CatalogCacheInitializeCache for
- *	the cache(s) on that table.  This is a bad idea since it leads to all
- *	kinds of trouble if a cache flush occurs while loading cache entries.
- *	We now avoid the need to do it by copying cc_tupdesc out of the relcache,
- *	rather than relying on the relcache to keep a tupdesc for us.  Of course
- *	this assumes the tupdesc of a cachable system table will not change...)
- */
-void
-CatalogCacheFlushRelation(Oid relId)
-{
-	CatCache   *cache;
-
-	CACHE2_elog(DEBUG2, "CatalogCacheFlushRelation called for %u", relId);
-
-	for (cache = CacheHdr->ch_caches; cache; cache = cache->cc_next)
-	{
-		int			i;
-
-		/* We can ignore uninitialized caches, since they must be empty */
-		if (cache->cc_tupdesc == NULL)
-			continue;
-
-		/* Does this cache store tuples of the target relation itself? */
-		if (cache->cc_tupdesc->attrs[0]->attrelid == relId)
-		{
-			/* Yes, so flush all its contents */
-			ResetCatalogCache(cache);
-			continue;
-		}
-
-		/* Does this cache store tuples associated with relations at all? */
-		if (cache->cc_reloidattr == 0)
-			continue;			/* nope, leave it alone */
-
-		/* Yes, scan the tuples and remove those related to relId */
-		for (i = 0; i < cache->cc_nbuckets; i++)
-		{
-			Dlelem	   *elt,
-					   *nextelt;
-
-			for (elt = DLGetHead(&cache->cc_bucket[i]); elt; elt = nextelt)
-			{
-				CatCTup    *ct = (CatCTup *) DLE_VAL(elt);
-				Oid			tupRelid;
-
-				nextelt = DLGetSucc(elt);
-
-				/*
-				 * Negative entries are never considered related to a rel,
-				 * even if the rel is part of their lookup key.
-				 */
-				if (ct->negative)
-					continue;
-
-				if (cache->cc_reloidattr == ObjectIdAttributeNumber)
-					tupRelid = HeapTupleGetOid(&ct->tuple);
-				else
-				{
-					bool		isNull;
-
-					tupRelid =
-						DatumGetObjectId(fastgetattr(&ct->tuple,
-													 cache->cc_reloidattr,
-													 cache->cc_tupdesc,
-													 &isNull));
-					Assert(!isNull);
-				}
-
-				if (tupRelid == relId)
-				{
-					if (ct->refcount > 0 ||
-						(ct->c_list && ct->c_list->refcount > 0))
-					{
-						ct->dead = true;
-						/* parent list must be considered dead too */
-						if (ct->c_list)
-							ct->c_list->dead = true;
-					}
-					else
-						CatCacheRemoveCTup(cache, ct);
-#ifdef CATCACHE_STATS
-					cache->cc_invals++;
-#endif
-				}
-			}
-		}
-	}
-
-	CACHE1_elog(DEBUG2, "end of CatalogCacheFlushRelation call");
-}
-
-/*
  *		InitCatCache
  *
  *	This allocates and initializes a cache for a system catalog relation.
@@ -800,7 +696,6 @@ CatCache *
 InitCatCache(int id,
 			 Oid reloid,
 			 Oid indexoid,
-			 int reloidattr,
 			 int nkeys,
 			 const int *key,
 			 int nbuckets)
@@ -864,7 +759,6 @@ InitCatCache(int id,
 	cp->cc_indexoid = indexoid;
 	cp->cc_relisshared = false; /* temporary */
 	cp->cc_tupdesc = (TupleDesc) NULL;
-	cp->cc_reloidattr = reloidattr;
 	cp->cc_ntup = 0;
 	cp->cc_nbuckets = nbuckets;
 	cp->cc_nkeys = nkeys;

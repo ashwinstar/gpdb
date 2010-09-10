@@ -2060,12 +2060,6 @@ RelationClearRelation(Relation relation, bool rebuild)
 	relation->rd_isvalid = false;
 
 	/*
-	 * Clear out catcache's entries for this relation.  This is a bit of
-	 * a hack, but it's a convenient place to do it.
-	 */
-	CatalogCacheFlushRelation(RelationGetRelid(relation));
-
-	/*
 	 * If we're really done with the relcache entry, blow it away. But if
 	 * someone is still using it, reconstruct the whole deal without moving
 	 * the physical RelationData record (so that the someone's pointer is
