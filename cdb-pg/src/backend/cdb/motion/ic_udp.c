@@ -2287,6 +2287,8 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 
 	struct icpkthdr pkt;
 
+	uint32 short_packet_count = 0;
+
 	for (;;)
 	{
 		/* ready to read on our socket ? */
@@ -2310,10 +2312,19 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 		}
 		else if (n < sizeof(pkt))
 		{
-			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-							errmsg("Interconnect error waiting for peer ack"),
-							errdetail("short read during recvfrom() call. (%d)\n", n)));
-			/* not reached */
+			/* MPP-10351: could make this a guc, but leave it as a macro for now. macro is defined in ml_ipc.h */
+			if (short_packet_count++ > IC_SHORT_PACKET_LIMIT)
+			{
+				elog(LOG, "Interconnect error waiting for peer ack, short read during recvfrom() %d", n);
+				continue;
+			}
+			else
+			{
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+								errmsg("Interconnect error waiting for peer ack"),
+								errdetail("short read during recvfrom() call. (%d)\n", n)));
+				/* not reached */
+			}
 		}
 
 		/* read packet, is this the ack we want ? */
@@ -3086,14 +3097,14 @@ ic_rx_thread_func(void *arg)
 				break;
 			}
 
-			/* when we get a "good" recvfrom() result, we can skip poll() until we get a bad one. */
-			skip_poll = true;
-
 			if (read_count < sizeof(pkt))
 			{
-				write_log("Interconnect error: short conn receive");
-				break;
+				write_log("Interconnect error: short conn receive (%d)", read_count);
+				continue;
 			}
+
+			/* when we get a "good" recvfrom() result, we can skip poll() until we get a bad one. */
+			skip_poll = true;
 
 			/* length must be >= 0 */
 			if (pkt->len < 0)
