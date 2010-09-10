@@ -173,40 +173,40 @@ aabg: appendonlywriter:00000669:  ereport(ERROR,
 aabg: appendonlywriter:00000670:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
 aabg: appendonlywriter:00000671:  errmsg("int64 out of range (" INT64_FORMAT ")", (int64) tupcount))); 
 aaaaa GP_IGNORE: baag: bitmap - ./backend/access/bitmap/bitmap.c
-baag: bitmap:00000074:  ereport (ERROR, 
-baag: bitmap:00000075:  (errcode(ERRCODE_INDEX_CORRUPTED), 
-baag: bitmap:00000076:  errmsg("index \"%s\" already contains data", 
-baag: bitmap:00000077:  RelationGetRelationName(index)), 
-baag: bitmap:00000078:  errSendAlert(true))); 
-baag: bitmap:00000091:  ereport(ERROR, 
-baag: bitmap:00000092:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-baag: bitmap:00000093:  errmsg("oids for bitmap index \"%s\" do not exist", 
-baag: bitmap:00000094:  RelationGetRelationName(index)))); 
+baag: bitmap:00000079:  ereport (ERROR, 
+baag: bitmap:00000080:  (errcode(ERRCODE_INDEX_CORRUPTED), 
+baag: bitmap:00000081:  errmsg("index \"%s\" already contains data", 
+baag: bitmap:00000082:  RelationGetRelationName(index)), 
+baag: bitmap:00000083:  errSendAlert(true))); 
+baag: bitmap:00000096:  ereport(ERROR, 
+baag: bitmap:00000097:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+baag: bitmap:00000098:  errmsg("oids for bitmap index \"%s\" do not exist", 
+baag: bitmap:00000099:  RelationGetRelationName(index)))); 
 aaaaa GP_IGNORE: babc: bitmapinsert - ./backend/access/bitmap/bitmapinsert.c
-babc: bitmapinsert:00001600:  ereport(ERROR, 
-babc: bitmapinsert:00001601:  (errcode(ERRCODE_INTERNAL_ERROR), 
-babc: bitmapinsert:00001602:  errmsg("failed to add LOV item to \"%s\"", 
-babc: bitmapinsert:00001603:  RelationGetRelationName(rel)))); 
-babc: bitmapinsert:00001753:  ereport(ERROR, 
-babc: bitmapinsert:00001754:  (errcode(ERRCODE_INTERNAL_ERROR), 
-babc: bitmapinsert:00001755:  errmsg("tids are not in order when building the bitmap index: " 
-babc: bitmapinsert:00001756:  "new tidnum " INT64_FORMAT ", last tidnum " INT64_FORMAT, 
-babc: bitmapinsert:00001757:  tidnum, buf->last_tid))); 
+babc: bitmapinsert:00001634:  ereport(ERROR, 
+babc: bitmapinsert:00001635:  (errcode(ERRCODE_INTERNAL_ERROR), 
+babc: bitmapinsert:00001636:  errmsg("failed to add LOV item to \"%s\"", 
+babc: bitmapinsert:00001637:  RelationGetRelationName(rel)))); 
+babc: bitmapinsert:00001791:  ereport(ERROR, 
+babc: bitmapinsert:00001792:  (errcode(ERRCODE_INTERNAL_ERROR), 
+babc: bitmapinsert:00001793:  errmsg("tids are not in order when building the bitmap index: " 
+babc: bitmapinsert:00001794:  "new tidnum " INT64_FORMAT ", last tidnum " INT64_FORMAT, 
+babc: bitmapinsert:00001795:  tidnum, buf->last_tid))); 
 aaaaa GP_IGNORE: babb: bitmappages - ./backend/access/bitmap/bitmappages.c
-babb: bitmappages:00000359:  ereport(ERROR, 
-babb: bitmappages:00000360:  (errcode(ERRCODE_INDEX_CORRUPTED), 
-babb: bitmappages:00000361:  errmsg("cannot initialize non-empty bitmap index \"%s\"", 
-babb: bitmappages:00000362:  RelationGetRelationName(rel)), 
-babb: bitmappages:00000363:  errSendAlert(true))); 
-babb: bitmappages:00000413:  ereport(ERROR, 
-babb: bitmappages:00000414:  (errcode(ERRCODE_INTERNAL_ERROR), 
-babb: bitmappages:00000415:  errmsg("failed to add LOV item to \"%s\"", 
-babb: bitmappages:00000416:  RelationGetRelationName(rel)))); 
+babb: bitmappages:00000378:  ereport(ERROR, 
+babb: bitmappages:00000379:  (errcode(ERRCODE_INDEX_CORRUPTED), 
+babb: bitmappages:00000380:  errmsg("cannot initialize non-empty bitmap index \"%s\"", 
+babb: bitmappages:00000381:  RelationGetRelationName(rel)), 
+babb: bitmappages:00000382:  errSendAlert(true))); 
+babb: bitmappages:00000435:  ereport(ERROR, 
+babb: bitmappages:00000436:  (errcode(ERRCODE_INTERNAL_ERROR), 
+babb: bitmappages:00000437:  errmsg("failed to add LOV item to \"%s\"", 
+babb: bitmappages:00000438:  RelationGetRelationName(rel)))); 
 aaaaa GP_IGNORE: babc: bitmapsearch - ./backend/access/bitmap/bitmapsearch.c
-babc: bitmapsearch:00000392:  ereport(ERROR, 
-babc: bitmapsearch:00000393:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-babc: bitmapsearch:00000394:  errmsg("bitmap index scan key %d is null", 
-babc: bitmapsearch:00000395:  keyNo))); 
+babc: bitmapsearch:00000412:  ereport(ERROR, 
+babc: bitmapsearch:00000413:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+babc: bitmapsearch:00000414:  errmsg("bitmap index scan key %d is null", 
+babc: bitmapsearch:00000415:  keyNo))); 
 aaaaa GP_IGNORE: baba: bitmaputil - ./backend/access/bitmap/bitmaputil.c
 baba: bitmaputil:00000098:  ereport(ERROR, 
 baba: bitmaputil:00000099:  (0, 
@@ -214,11 +214,11 @@ baba: bitmaputil:00000100:  errmsg("The disk format for %s is not valid for this
 baba: bitmaputil:00000101:  "Greenplum Database. Use REINDEX %s to update this index", 
 baba: bitmaputil:00000102:  RelationGetRelationName(rel), RelationGetRelationName(rel)))); 
 aaaaa GP_IGNORE: baba: bitmapxlog - ./backend/access/bitmap/bitmapxlog.c
-baba: bitmapxlog:00000204:  ereport(ERROR, 
-baba: bitmapxlog:00000205:  (errcode(ERRCODE_INTERNAL_ERROR), 
-baba: bitmapxlog:00000206:  errmsg("_bitmap_xlog_insert_lovitem: failed to add LOV " 
-baba: bitmapxlog:00000207:  "item to \"%s\"", 
-baba: bitmapxlog:00000208:  RelationGetRelationName(reln)))); 
+baba: bitmapxlog:00000226:  ereport(ERROR, 
+baba: bitmapxlog:00000227:  (errcode(ERRCODE_INTERNAL_ERROR), 
+baba: bitmapxlog:00000228:  errmsg("_bitmap_xlog_insert_lovitem: failed to add LOV " 
+baba: bitmapxlog:00000229:  "item to \"%s\"", 
+baba: bitmapxlog:00000230:  RelationGetRelationName(reln)))); 
 aaaaa GP_IGNORE: haaj: heaptuple - ./backend/access/common/heaptuple.c
 haaj: heaptuple:00000720:  ereport(ERROR, 
 haaj: heaptuple:00000721:  (errcode(ERRCODE_TOO_MANY_COLUMNS), 
@@ -456,40 +456,40 @@ gaah: ginscan:00000180:  ereport(ERROR,
 gaah: ginscan:00000181:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
 gaah: ginscan:00000182:  errmsg("GIN index does not support search with void query"))); 
 aaaaa GP_IGNORE: gaai: gistutil - ./backend/access/gist/gistutil.c
-gaai: gistutil:00000587:  ereport(ERROR, 
-gaai: gistutil:00000588:  (errcode(ERRCODE_INDEX_CORRUPTED), 
-gaai: gistutil:00000589:  errmsg("index \"%s\" contains unexpected zero page at block %u", 
-gaai: gistutil:00000590:  RelationGetRelationName(rel), 
-gaai: gistutil:00000591:  BufferGetBlockNumber(buf)), 
-gaai: gistutil:00000592:  errhint("Please REINDEX it."), 
-gaai: gistutil:00000593:  errSendAlert(true))); 
-gaai: gistutil:00000600:  ereport(ERROR, 
-gaai: gistutil:00000601:  (errcode(ERRCODE_INDEX_CORRUPTED), 
-gaai: gistutil:00000602:  errmsg("index \"%s\" contains corrupted page at block %u", 
-gaai: gistutil:00000603:  RelationGetRelationName(rel), 
-gaai: gistutil:00000604:  BufferGetBlockNumber(buf)), 
-gaai: gistutil:00000605:  errhint("Please REINDEX it."), 
-gaai: gistutil:00000606:  errSendAlert(true))); 
+gaai: gistutil:00000588:  ereport(ERROR, 
+gaai: gistutil:00000589:  (errcode(ERRCODE_INDEX_CORRUPTED), 
+gaai: gistutil:00000590:  errmsg("index \"%s\" contains unexpected zero page at block %u", 
+gaai: gistutil:00000591:  RelationGetRelationName(rel), 
+gaai: gistutil:00000592:  BufferGetBlockNumber(buf)), 
+gaai: gistutil:00000593:  errhint("Please REINDEX it."), 
+gaai: gistutil:00000594:  errSendAlert(true))); 
+gaai: gistutil:00000601:  ereport(ERROR, 
+gaai: gistutil:00000602:  (errcode(ERRCODE_INDEX_CORRUPTED), 
+gaai: gistutil:00000603:  errmsg("index \"%s\" contains corrupted page at block %u", 
+gaai: gistutil:00000604:  RelationGetRelationName(rel), 
+gaai: gistutil:00000605:  BufferGetBlockNumber(buf)), 
+gaai: gistutil:00000606:  errhint("Please REINDEX it."), 
+gaai: gistutil:00000607:  errSendAlert(true))); 
 aaaaa GP_IGNORE: gaba: gistvacuum - ./backend/access/gist/gistvacuum.c
-gaba: gistvacuum:00000574:  ereport(NOTICE, 
-gaba: gistvacuum:00000575:  (errmsg("index \"%s\" needs VACUUM FULL or REINDEX to finish crash recovery", 
-gaba: gistvacuum:00000576:  RelationGetRelationName(rel)))); 
+gaba: gistvacuum:00000591:  ereport(NOTICE, 
+gaba: gistvacuum:00000592:  (errmsg("index \"%s\" needs VACUUM FULL or REINDEX to finish crash recovery", 
+gaba: gistvacuum:00000593:  RelationGetRelationName(rel)))); 
 aaaaa GP_IGNORE: haba: hashinsert - ./backend/access/hash/hashinsert.c
-haba: hashinsert:00000079:  ereport(ERROR, 
-haba: hashinsert:00000080:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-haba: hashinsert:00000081:  errmsg("index row size %lu exceeds hash maximum %lu", 
-haba: hashinsert:00000082:  (unsigned long) itemsz, 
-haba: hashinsert:00000083:  (unsigned long) HashMaxItemSize((Page) metap)), 
-haba: hashinsert:00000084:  errhint("Values larger than a buffer page cannot be indexed."))); 
+haba: hashinsert:00000086:  ereport(ERROR, 
+haba: hashinsert:00000087:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+haba: hashinsert:00000088:  errmsg("index row size %lu exceeds hash maximum %lu", 
+haba: hashinsert:00000089:  (unsigned long) itemsz, 
+haba: hashinsert:00000090:  (unsigned long) HashMaxItemSize((Page) metap)), 
+haba: hashinsert:00000091:  errhint("Values larger than a buffer page cannot be indexed."))); 
 aaaaa GP_IGNORE: haai: hashovfl - ./backend/access/hash/hashovfl.c
-haai: hashovfl:00000532:  ereport(ERROR, 
-haai: hashovfl:00000533:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-haai: hashovfl:00000534:  errmsg("out of overflow pages in hash index \"%s\"", 
-haai: hashovfl:00000535:  RelationGetRelationName(rel)))); 
+haai: hashovfl:00000541:  ereport(ERROR, 
+haai: hashovfl:00000542:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+haai: hashovfl:00000543:  errmsg("out of overflow pages in hash index \"%s\"", 
+haai: hashovfl:00000544:  RelationGetRelationName(rel)))); 
 aaaaa GP_IGNORE: haba: hashsearch - ./backend/access/hash/hashsearch.c
-haba: hashsearch:00000150:  ereport(ERROR, 
-haba: hashsearch:00000151:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haba: hashsearch:00000152:  errmsg("hash indexes do not support whole-index scans"))); 
+haba: hashsearch:00000157:  ereport(ERROR, 
+haba: hashsearch:00000158:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haba: hashsearch:00000159:  errmsg("hash indexes do not support whole-index scans"))); 
 aaaaa GP_IGNORE: haai: hashutil - ./backend/access/hash/hashutil.c
 haai: hashutil:00000124:  ereport(ERROR, 
 haai: hashutil:00000125:  (errcode(ERRCODE_INDEX_CORRUPTED), 
@@ -523,124 +523,124 @@ haai: hashutil:00000176:  RelationGetRelationName(rel)),
 haai: hashutil:00000177:  errhint("Please REINDEX it."), 
 haai: hashutil:00000178:  errSendAlert(true))); 
 aaaaa GP_IGNORE: haag: heapam - ./backend/access/heap/heapam.c
-haag: heapam:00000202:  ereport(ERROR, 
-haag: heapam:00000203:  (errcode(ERRCODE_INTERNAL_ERROR), 
-haag: heapam:00000204:  errmsg("page number mismatch, expect %d, but got %d", 
-haag: heapam:00000205:  page, scan->rs_rahead[ri].block))); 
-haag: heapam:00000883:  ereport(ERROR, 
-haag: heapam:00000884:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-haag: heapam:00000885:  errmsg("could not obtain lock on relation \"%s\"", 
-haag: heapam:00000886:  relname))); 
-haag: heapam:00000888:  ereport(ERROR, 
-haag: heapam:00000889:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-haag: heapam:00000890:  errmsg("could not obtain lock on relation with OID %u", 
-haag: heapam:00000891:  relationId))); 
-haag: heapam:00000977:  ereport(ERROR, 
-haag: heapam:00000978:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-haag: heapam:00000979:  errmsg("\"%s\" is an index", 
-haag: heapam:00000980:  RelationGetRelationName(r)))); 
-haag: heapam:00000982:  ereport(ERROR, 
-haag: heapam:00000983:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-haag: heapam:00000984:  errmsg("\"%s\" is a composite type", 
-haag: heapam:00000985:  RelationGetRelationName(r)))); 
-haag: heapam:00001005:  ereport(ERROR, 
-haag: heapam:00001006:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-haag: heapam:00001007:  errmsg("\"%s\" is an index", 
-haag: heapam:00001008:  RelationGetRelationName(r)))); 
-haag: heapam:00001010:  ereport(ERROR, 
-haag: heapam:00001011:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-haag: heapam:00001012:  errmsg("\"%s\" is a composite type", 
-haag: heapam:00001013:  RelationGetRelationName(r)))); 
-haag: heapam:00001217:  ereport(ERROR, 
-haag: heapam:00001218:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-haag: heapam:00001219:  errmsg("illegal value in tdatacnt"))); 
-haag: heapam:00001874:  ereport(ERROR, 
-haag: heapam:00001875:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haag: heapam:00001876:  errmsg("Append-only tables are not updatable. Operation not permitted."), 
-haag: heapam:00001877:  errOmitLocation(true))); 
-haag: heapam:00002199:  ereport(ERROR, 
-haag: heapam:00002200:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haag: heapam:00002201:  errmsg("Append-only tables are not updatable. Operation not permitted."), 
-haag: heapam:00002202:  errOmitLocation(true))); 
-haag: heapam:00002770:  ereport(ERROR, 
-haag: heapam:00002771:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-haag: heapam:00002772:  errmsg("could not obtain lock on row in relation \"%s\"", 
-haag: heapam:00002773:  RelationGetRelationName(relation)))); 
-haag: heapam:00002806:  ereport(ERROR, 
-haag: heapam:00002807:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-haag: heapam:00002808:  errmsg("could not obtain lock on row in relation \"%s\"", 
-haag: heapam:00002809:  RelationGetRelationName(relation)))); 
-haag: heapam:00002846:  ereport(ERROR, 
-haag: heapam:00002847:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-haag: heapam:00002848:  errmsg("could not obtain lock on row in relation \"%s\"", 
-haag: heapam:00002849:  RelationGetRelationName(relation)))); 
+haag: heapam:00000204:  ereport(ERROR, 
+haag: heapam:00000205:  (errcode(ERRCODE_INTERNAL_ERROR), 
+haag: heapam:00000206:  errmsg("page number mismatch, expect %d, but got %d", 
+haag: heapam:00000207:  page, scan->rs_rahead[ri].block))); 
+haag: heapam:00000953:  ereport(ERROR, 
+haag: heapam:00000954:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00000955:  errmsg("could not obtain lock on relation \"%s\"", 
+haag: heapam:00000956:  relname))); 
+haag: heapam:00000958:  ereport(ERROR, 
+haag: heapam:00000959:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00000960:  errmsg("could not obtain lock on relation with OID %u", 
+haag: heapam:00000961:  relationId))); 
+haag: heapam:00001047:  ereport(ERROR, 
+haag: heapam:00001048:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+haag: heapam:00001049:  errmsg("\"%s\" is an index", 
+haag: heapam:00001050:  RelationGetRelationName(r)))); 
+haag: heapam:00001052:  ereport(ERROR, 
+haag: heapam:00001053:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+haag: heapam:00001054:  errmsg("\"%s\" is a composite type", 
+haag: heapam:00001055:  RelationGetRelationName(r)))); 
+haag: heapam:00001075:  ereport(ERROR, 
+haag: heapam:00001076:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+haag: heapam:00001077:  errmsg("\"%s\" is an index", 
+haag: heapam:00001078:  RelationGetRelationName(r)))); 
+haag: heapam:00001080:  ereport(ERROR, 
+haag: heapam:00001081:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+haag: heapam:00001082:  errmsg("\"%s\" is a composite type", 
+haag: heapam:00001083:  RelationGetRelationName(r)))); 
+haag: heapam:00001300:  ereport(ERROR, 
+haag: heapam:00001301:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+haag: heapam:00001302:  errmsg("illegal value in tdatacnt"))); 
+haag: heapam:00002057:  ereport(ERROR, 
+haag: heapam:00002058:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haag: heapam:00002059:  errmsg("Append-only tables are not updatable. Operation not permitted."), 
+haag: heapam:00002060:  errOmitLocation(true))); 
+haag: heapam:00002416:  ereport(ERROR, 
+haag: heapam:00002417:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haag: heapam:00002418:  errmsg("Append-only tables are not updatable. Operation not permitted."), 
+haag: heapam:00002419:  errOmitLocation(true))); 
+haag: heapam:00003034:  ereport(ERROR, 
+haag: heapam:00003035:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00003036:  errmsg("could not obtain lock on row in relation \"%s\"", 
+haag: heapam:00003037:  RelationGetRelationName(relation)))); 
+haag: heapam:00003074:  ereport(ERROR, 
+haag: heapam:00003075:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00003076:  errmsg("could not obtain lock on row in relation \"%s\"", 
+haag: heapam:00003077:  RelationGetRelationName(relation)))); 
+haag: heapam:00003117:  ereport(ERROR, 
+haag: heapam:00003118:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00003119:  errmsg("could not obtain lock on row in relation \"%s\"", 
+haag: heapam:00003120:  RelationGetRelationName(relation)))); 
 aaaaa GP_IGNORE: haad: hio - ./backend/access/heap/hio.c
-haad: hio:00000122:  ereport(ERROR, 
-haad: hio:00000123:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-haad: hio:00000124:  errmsg("row is too big: size %lu, maximum size %lu", 
-haad: hio:00000125:  (unsigned long) len, 
-haad: hio:00000126:  (unsigned long) MaxHeapTupleSize))); 
+haad: hio:00000125:  ereport(ERROR, 
+haad: hio:00000126:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+haad: hio:00000127:  errmsg("row is too big: size %lu, maximum size %lu", 
+haad: hio:00000128:  (unsigned long) len, 
+haad: hio:00000129:  (unsigned long) MaxHeapTupleSize))); 
 aaaaa GP_IGNORE: iaah: indexam - ./backend/access/index/indexam.c
-iaah: indexam:00000148:  ereport(ERROR, 
-iaah: indexam:00000149:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-iaah: indexam:00000150:  errmsg("\"%s\" is not an index", 
-iaah: indexam:00000151:  RelationGetRelationName(r)))); 
+iaah: indexam:00000149:  ereport(ERROR, 
+iaah: indexam:00000150:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+iaah: indexam:00000151:  errmsg("\"%s\" is not an index", 
+iaah: indexam:00000152:  RelationGetRelationName(r)))); 
 aaaaa GP_IGNORE: naaj: nbtinsert - ./backend/access/nbtree/nbtinsert.c
-naaj: nbtinsert:00000183:  ereport(ERROR, 
-naaj: nbtinsert:00000184:  (errcode(ERRCODE_UNIQUE_VIOLATION), 
-naaj: nbtinsert:00000185:  errmsg("duplicate key violates unique constraint \"%s\"", 
-naaj: nbtinsert:00000186:  RelationGetRelationName(rel)), 
-naaj: nbtinsert:00000187:  errOmitLocation(true))); 
-naaj: nbtinsert:00000213:  ereport(ERROR, 
-naaj: nbtinsert:00000214:  (errcode(ERRCODE_UNIQUE_VIOLATION), 
-naaj: nbtinsert:00000215:  errmsg("duplicate key violates unique constraint \"%s\"", 
-naaj: nbtinsert:00000216:  RelationGetRelationName(rel)), 
-naaj: nbtinsert:00000217:  errOmitLocation(true))); 
-naaj: nbtinsert:00000369:  ereport(ERROR, 
-naaj: nbtinsert:00000370:  (errcode(ERRCODE_UNIQUE_VIOLATION), 
-naaj: nbtinsert:00000371:  errmsg("duplicate key violates unique constraint \"%s\"", 
-naaj: nbtinsert:00000372:  RelationGetRelationName(rel)), 
-naaj: nbtinsert:00000373:  errOmitLocation(true))); 
-naaj: nbtinsert:00000519:  ereport(ERROR, 
-naaj: nbtinsert:00000520:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-naaj: nbtinsert:00000521:  errmsg("index row size %lu exceeds btree maximum, %lu", 
-naaj: nbtinsert:00000522:  (unsigned long) itemsz, 
-naaj: nbtinsert:00000523:  (unsigned long) BTMaxItemSize(page)), 
-naaj: nbtinsert:00000524:  errhint("Values larger than 1/3 of a buffer page cannot be indexed.\n" 
-naaj: nbtinsert:00000525:  "Consider a function index of an MD5 hash of the value, " 
-naaj: nbtinsert:00000526:  "or use full text indexing."))); 
+naaj: nbtinsert:00000191:  ereport(ERROR, 
+naaj: nbtinsert:00000192:  (errcode(ERRCODE_UNIQUE_VIOLATION), 
+naaj: nbtinsert:00000193:  errmsg("duplicate key violates unique constraint \"%s\"", 
+naaj: nbtinsert:00000194:  RelationGetRelationName(rel)), 
+naaj: nbtinsert:00000195:  errOmitLocation(true))); 
+naaj: nbtinsert:00000221:  ereport(ERROR, 
+naaj: nbtinsert:00000222:  (errcode(ERRCODE_UNIQUE_VIOLATION), 
+naaj: nbtinsert:00000223:  errmsg("duplicate key violates unique constraint \"%s\"", 
+naaj: nbtinsert:00000224:  RelationGetRelationName(rel)), 
+naaj: nbtinsert:00000225:  errOmitLocation(true))); 
+naaj: nbtinsert:00000379:  ereport(ERROR, 
+naaj: nbtinsert:00000380:  (errcode(ERRCODE_UNIQUE_VIOLATION), 
+naaj: nbtinsert:00000381:  errmsg("duplicate key violates unique constraint \"%s\"", 
+naaj: nbtinsert:00000382:  RelationGetRelationName(rel)), 
+naaj: nbtinsert:00000383:  errOmitLocation(true))); 
+naaj: nbtinsert:00000531:  ereport(ERROR, 
+naaj: nbtinsert:00000532:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+naaj: nbtinsert:00000533:  errmsg("index row size %lu exceeds btree maximum, %lu", 
+naaj: nbtinsert:00000534:  (unsigned long) itemsz, 
+naaj: nbtinsert:00000535:  (unsigned long) BTMaxItemSize(page)), 
+naaj: nbtinsert:00000536:  errhint("Values larger than 1/3 of a buffer page cannot be indexed.\n" 
+naaj: nbtinsert:00000537:  "Consider a function index of an MD5 hash of the value, " 
+naaj: nbtinsert:00000538:  "or use full text indexing."))); 
 aaaaa GP_IGNORE: naah: nbtpage - ./backend/access/nbtree/nbtpage.c
-naah: nbtpage:00000193:  ereport(ERROR, 
-naah: nbtpage:00000194:  (errcode(ERRCODE_INDEX_CORRUPTED), 
-naah: nbtpage:00000195:  errmsg("index \"%s\" is not a btree", 
-naah: nbtpage:00000196:  RelationGetRelationName(rel)))); 
-naah: nbtpage:00000199:  ereport(ERROR, 
-naah: nbtpage:00000200:  (errcode(ERRCODE_INDEX_CORRUPTED), 
-naah: nbtpage:00000201:  errmsg("version mismatch in index \"%s\": file version %d, code version %d", 
-naah: nbtpage:00000202:  RelationGetRelationName(rel), 
-naah: nbtpage:00000203:  metad->btm_version, BTREE_VERSION))); 
-naah: nbtpage:00000400:  ereport(ERROR, 
-naah: nbtpage:00000401:  (errcode(ERRCODE_INDEX_CORRUPTED), 
-naah: nbtpage:00000402:  errmsg("index \"%s\" is not a btree", 
-naah: nbtpage:00000403:  RelationGetRelationName(rel)))); 
-naah: nbtpage:00000406:  ereport(ERROR, 
-naah: nbtpage:00000407:  (errcode(ERRCODE_INDEX_CORRUPTED), 
-naah: nbtpage:00000408:  errmsg("version mismatch in index \"%s\": file version %d, code version %d", 
-naah: nbtpage:00000409:  RelationGetRelationName(rel), 
-naah: nbtpage:00000410:  metad->btm_version, BTREE_VERSION))); 
-naah: nbtpage:00000468:  ereport(ERROR, 
-naah: nbtpage:00000469:  (errcode(ERRCODE_INDEX_CORRUPTED), 
-naah: nbtpage:00000470:  errmsg("index \"%s\" contains unexpected zero page at block %u", 
-naah: nbtpage:00000471:  RelationGetRelationName(rel), 
-naah: nbtpage:00000472:  BufferGetBlockNumber(buf)), 
-naah: nbtpage:00000473:  errhint("Please REINDEX it."))); 
-naah: nbtpage:00000480:  ereport(ERROR, 
-naah: nbtpage:00000481:  (errcode(ERRCODE_INDEX_CORRUPTED), 
-naah: nbtpage:00000482:  errmsg("index \"%s\" contains corrupted page at block %u", 
-naah: nbtpage:00000483:  RelationGetRelationName(rel), 
-naah: nbtpage:00000484:  BufferGetBlockNumber(buf)), 
-naah: nbtpage:00000485:  errhint("Please REINDEX it."), 
-naah: nbtpage:00000486:  errSendAlert(true))); 
+naah: nbtpage:00000196:  ereport(ERROR, 
+naah: nbtpage:00000197:  (errcode(ERRCODE_INDEX_CORRUPTED), 
+naah: nbtpage:00000198:  errmsg("index \"%s\" is not a btree", 
+naah: nbtpage:00000199:  RelationGetRelationName(rel)))); 
+naah: nbtpage:00000202:  ereport(ERROR, 
+naah: nbtpage:00000203:  (errcode(ERRCODE_INDEX_CORRUPTED), 
+naah: nbtpage:00000204:  errmsg("version mismatch in index \"%s\": file version %d, code version %d", 
+naah: nbtpage:00000205:  RelationGetRelationName(rel), 
+naah: nbtpage:00000206:  metad->btm_version, BTREE_VERSION))); 
+naah: nbtpage:00000405:  ereport(ERROR, 
+naah: nbtpage:00000406:  (errcode(ERRCODE_INDEX_CORRUPTED), 
+naah: nbtpage:00000407:  errmsg("index \"%s\" is not a btree", 
+naah: nbtpage:00000408:  RelationGetRelationName(rel)))); 
+naah: nbtpage:00000411:  ereport(ERROR, 
+naah: nbtpage:00000412:  (errcode(ERRCODE_INDEX_CORRUPTED), 
+naah: nbtpage:00000413:  errmsg("version mismatch in index \"%s\": file version %d, code version %d", 
+naah: nbtpage:00000414:  RelationGetRelationName(rel), 
+naah: nbtpage:00000415:  metad->btm_version, BTREE_VERSION))); 
+naah: nbtpage:00000473:  ereport(ERROR, 
+naah: nbtpage:00000474:  (errcode(ERRCODE_INDEX_CORRUPTED), 
+naah: nbtpage:00000475:  errmsg("index \"%s\" contains unexpected zero page at block %u", 
+naah: nbtpage:00000476:  RelationGetRelationName(rel), 
+naah: nbtpage:00000477:  BufferGetBlockNumber(buf)), 
+naah: nbtpage:00000478:  errhint("Please REINDEX it."))); 
+naah: nbtpage:00000485:  ereport(ERROR, 
+naah: nbtpage:00000486:  (errcode(ERRCODE_INDEX_CORRUPTED), 
+naah: nbtpage:00000487:  errmsg("index \"%s\" contains corrupted page at block %u", 
+naah: nbtpage:00000488:  RelationGetRelationName(rel), 
+naah: nbtpage:00000489:  BufferGetBlockNumber(buf)), 
+naah: nbtpage:00000490:  errhint("Please REINDEX it."), 
+naah: nbtpage:00000491:  errSendAlert(true))); 
 aaaaa GP_IGNORE: naah: nbtsort - ./backend/access/nbtree/nbtsort.c
 naah: nbtsort:00000507:  ereport(ERROR, 
 naah: nbtsort:00000508:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
@@ -974,332 +974,332 @@ xaae: xlog:00003762:  ereport(ERROR,
 xaae: xlog:00003763:  (errcode_for_file_access(), 
 xaae: xlog:00003764:  errmsg("could not open transaction log directory \"%s\": %m", 
 xaae: xlog:00003765:  XLOGDIR))); 
-xaae: xlog:00004484:  ereport(FATAL, 
-xaae: xlog:00004485:  (errcode_for_file_access(), 
-xaae: xlog:00004486:  errmsg("could not open file \"%s\": %m", path))); 
-xaae: xlog:00004514:  ereport(FATAL, 
-xaae: xlog:00004515:  (errmsg("syntax error in history file: %s", fline), 
-xaae: xlog:00004516:  errhint("Expected a numeric timeline ID."))); 
-xaae: xlog:00004520:  ereport(FATAL, 
-xaae: xlog:00004521:  (errmsg("invalid data in history file: %s", fline), 
-xaae: xlog:00004522:  errhint("Timeline IDs must be in increasing sequence."))); 
-xaae: xlog:00004534:  ereport(FATAL, 
-xaae: xlog:00004535:  (errmsg("invalid data in history file \"%s\"", path), 
-xaae: xlog:00004536:  errhint("Timeline IDs must be less than child timeline's ID."))); 
-xaae: xlog:00004574:  ereport(FATAL, 
-xaae: xlog:00004575:  (errcode_for_file_access(), 
-xaae: xlog:00004576:  errmsg("could not open file \"%s\": %m", path))); 
-xaae: xlog:00004653:  ereport(ERROR, 
-xaae: xlog:00004654:  (errcode_for_file_access(), 
-xaae: xlog:00004655:  errmsg("could not create file \"%s\": %m", tmppath))); 
-xaae: xlog:00004672:  ereport(ERROR, 
-xaae: xlog:00004673:  (errcode_for_file_access(), 
-xaae: xlog:00004674:  errmsg("could not open file \"%s\": %m", path))); 
-xaae: xlog:00004684:  ereport(ERROR, 
-xaae: xlog:00004685:  (errcode_for_file_access(), 
-xaae: xlog:00004686:  errmsg("could not read file \"%s\": %m", path))); 
-xaae: xlog:00004705:  ereport(ERROR, 
-xaae: xlog:00004706:  (errcode_for_file_access(), 
-xaae: xlog:00004707:  errmsg("could not write to file \"%s\": %m", tmppath))); 
-xaae: xlog:00004743:  ereport(ERROR, 
-xaae: xlog:00004744:  (errcode_for_file_access(), 
-xaae: xlog:00004745:  errmsg("could not write to file \"%s\": %m", tmppath))); 
-xaae: xlog:00004749:  ereport(ERROR, 
-xaae: xlog:00004750:  (errcode_for_file_access(), 
-xaae: xlog:00004751:  errmsg("could not fsync file \"%s\": %m", tmppath))); 
-xaae: xlog:00004754:  ereport(ERROR, 
-xaae: xlog:00004755:  (errcode_for_file_access(), 
-xaae: xlog:00004756:  errmsg("could not close file \"%s\": %m", tmppath))); 
-xaae: xlog:00004771:  ereport(ERROR, 
-xaae: xlog:00004772:  (errcode_for_file_access(), 
-xaae: xlog:00004773:  errmsg("could not link file \"%s\" to \"%s\": %m", 
-xaae: xlog:00004774:  tmppath, path))); 
-xaae: xlog:00004778:  ereport(ERROR, 
-xaae: xlog:00004779:  (errcode_for_file_access(), 
-xaae: xlog:00004780:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
-xaae: xlog:00004781:  tmppath, path))); 
-xaae: xlog:00004982:  ereport(FATAL, 
-xaae: xlog:00004983:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00004984:  errdetail("The database cluster was initialized with PG_CONTROL_VERSION %d," 
-xaae: xlog:00004985:  " but the server was compiled with PG_CONTROL_VERSION %d.", 
-xaae: xlog:00004986:  ControlFile->pg_control_version, PG_CONTROL_VERSION), 
-xaae: xlog:00004987:  errhint("It looks like you need to initdb."))); 
-xaae: xlog:00004996:  ereport(FATAL, 
-xaae: xlog:00004997:  (errmsg("incorrect checksum in control file"))); 
-xaae: xlog:00005011:  ereport(FATAL, 
-xaae: xlog:00005012:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005013:  errdetail("The database cluster was initialized with CATALOG_VERSION_NO %d," 
-xaae: xlog:00005014:  " but the server was compiled with CATALOG_VERSION_NO %d.", 
-xaae: xlog:00005015:  ControlFile->catalog_version_no, CATALOG_VERSION_NO), 
-xaae: xlog:00005016:  errhint("It looks like you need to initdb."))); 
-xaae: xlog:00005018:  ereport(FATAL, 
-xaae: xlog:00005019:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005020:  errdetail("The database cluster was initialized with MAXALIGN %d," 
-xaae: xlog:00005021:  " but the server was compiled with MAXALIGN %d.", 
-xaae: xlog:00005022:  ControlFile->maxAlign, MAXIMUM_ALIGNOF), 
-xaae: xlog:00005023:  errhint("It looks like you need to initdb."))); 
-xaae: xlog:00005025:  ereport(FATAL, 
-xaae: xlog:00005026:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005027:  errdetail("The database cluster appears to use a different floating-point number format than the server executable."), 
-xaae: xlog:00005028:  errhint("It looks like you need to initdb."))); 
-xaae: xlog:00005030:  ereport(FATAL, 
-xaae: xlog:00005031:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005032:  errdetail("The database cluster was initialized with BLCKSZ %d," 
-xaae: xlog:00005033:  " but the server was compiled with BLCKSZ %d.", 
-xaae: xlog:00005034:  ControlFile->blcksz, BLCKSZ), 
-xaae: xlog:00005035:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005037:  ereport(FATAL, 
-xaae: xlog:00005038:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005039:  errdetail("The database cluster was initialized with RELSEG_SIZE %d," 
-xaae: xlog:00005040:  " but the server was compiled with RELSEG_SIZE %d.", 
-xaae: xlog:00005041:  ControlFile->relseg_size, RELSEG_SIZE), 
-xaae: xlog:00005042:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005044:  ereport(FATAL, 
-xaae: xlog:00005045:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005046:  errdetail("The database cluster was initialized with XLOG_BLCKSZ %d," 
-xaae: xlog:00005047:  " but the server was compiled with XLOG_BLCKSZ %d.", 
-xaae: xlog:00005048:  ControlFile->xlog_blcksz, XLOG_BLCKSZ), 
-xaae: xlog:00005049:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005051:  ereport(FATAL, 
-xaae: xlog:00005052:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005053:  errdetail("The database cluster was initialized with XLOG_SEG_SIZE %d," 
-xaae: xlog:00005054:  " but the server was compiled with XLOG_SEG_SIZE %d.", 
-xaae: xlog:00005055:  ControlFile->xlog_seg_size, XLOG_SEG_SIZE), 
-xaae: xlog:00005056:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005058:  ereport(FATAL, 
-xaae: xlog:00005059:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005060:  errdetail("The database cluster was initialized with NAMEDATALEN %d," 
-xaae: xlog:00005061:  " but the server was compiled with NAMEDATALEN %d.", 
-xaae: xlog:00005062:  ControlFile->nameDataLen, NAMEDATALEN), 
-xaae: xlog:00005063:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005065:  ereport(FATAL, 
-xaae: xlog:00005066:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005067:  errdetail("The database cluster was initialized with INDEX_MAX_KEYS %d," 
-xaae: xlog:00005068:  " but the server was compiled with INDEX_MAX_KEYS %d.", 
-xaae: xlog:00005069:  ControlFile->indexMaxKeys, INDEX_MAX_KEYS), 
-xaae: xlog:00005070:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00004493:  ereport(FATAL, 
+xaae: xlog:00004494:  (errcode_for_file_access(), 
+xaae: xlog:00004495:  errmsg("could not open file \"%s\": %m", path))); 
+xaae: xlog:00004523:  ereport(FATAL, 
+xaae: xlog:00004524:  (errmsg("syntax error in history file: %s", fline), 
+xaae: xlog:00004525:  errhint("Expected a numeric timeline ID."))); 
+xaae: xlog:00004529:  ereport(FATAL, 
+xaae: xlog:00004530:  (errmsg("invalid data in history file: %s", fline), 
+xaae: xlog:00004531:  errhint("Timeline IDs must be in increasing sequence."))); 
+xaae: xlog:00004543:  ereport(FATAL, 
+xaae: xlog:00004544:  (errmsg("invalid data in history file \"%s\"", path), 
+xaae: xlog:00004545:  errhint("Timeline IDs must be less than child timeline's ID."))); 
+xaae: xlog:00004583:  ereport(FATAL, 
+xaae: xlog:00004584:  (errcode_for_file_access(), 
+xaae: xlog:00004585:  errmsg("could not open file \"%s\": %m", path))); 
+xaae: xlog:00004662:  ereport(ERROR, 
+xaae: xlog:00004663:  (errcode_for_file_access(), 
+xaae: xlog:00004664:  errmsg("could not create file \"%s\": %m", tmppath))); 
+xaae: xlog:00004681:  ereport(ERROR, 
+xaae: xlog:00004682:  (errcode_for_file_access(), 
+xaae: xlog:00004683:  errmsg("could not open file \"%s\": %m", path))); 
+xaae: xlog:00004693:  ereport(ERROR, 
+xaae: xlog:00004694:  (errcode_for_file_access(), 
+xaae: xlog:00004695:  errmsg("could not read file \"%s\": %m", path))); 
+xaae: xlog:00004714:  ereport(ERROR, 
+xaae: xlog:00004715:  (errcode_for_file_access(), 
+xaae: xlog:00004716:  errmsg("could not write to file \"%s\": %m", tmppath))); 
+xaae: xlog:00004752:  ereport(ERROR, 
+xaae: xlog:00004753:  (errcode_for_file_access(), 
+xaae: xlog:00004754:  errmsg("could not write to file \"%s\": %m", tmppath))); 
+xaae: xlog:00004758:  ereport(ERROR, 
+xaae: xlog:00004759:  (errcode_for_file_access(), 
+xaae: xlog:00004760:  errmsg("could not fsync file \"%s\": %m", tmppath))); 
+xaae: xlog:00004763:  ereport(ERROR, 
+xaae: xlog:00004764:  (errcode_for_file_access(), 
+xaae: xlog:00004765:  errmsg("could not close file \"%s\": %m", tmppath))); 
+xaae: xlog:00004780:  ereport(ERROR, 
+xaae: xlog:00004781:  (errcode_for_file_access(), 
+xaae: xlog:00004782:  errmsg("could not link file \"%s\" to \"%s\": %m", 
+xaae: xlog:00004783:  tmppath, path))); 
+xaae: xlog:00004787:  ereport(ERROR, 
+xaae: xlog:00004788:  (errcode_for_file_access(), 
+xaae: xlog:00004789:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
+xaae: xlog:00004790:  tmppath, path))); 
+xaae: xlog:00004991:  ereport(FATAL, 
+xaae: xlog:00004992:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00004993:  errdetail("The database cluster was initialized with PG_CONTROL_VERSION %d," 
+xaae: xlog:00004994:  " but the server was compiled with PG_CONTROL_VERSION %d.", 
+xaae: xlog:00004995:  ControlFile->pg_control_version, PG_CONTROL_VERSION), 
+xaae: xlog:00004996:  errhint("It looks like you need to initdb."))); 
+xaae: xlog:00005005:  ereport(FATAL, 
+xaae: xlog:00005006:  (errmsg("incorrect checksum in control file"))); 
+xaae: xlog:00005020:  ereport(FATAL, 
+xaae: xlog:00005021:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005022:  errdetail("The database cluster was initialized with CATALOG_VERSION_NO %d," 
+xaae: xlog:00005023:  " but the server was compiled with CATALOG_VERSION_NO %d.", 
+xaae: xlog:00005024:  ControlFile->catalog_version_no, CATALOG_VERSION_NO), 
+xaae: xlog:00005025:  errhint("It looks like you need to initdb."))); 
+xaae: xlog:00005027:  ereport(FATAL, 
+xaae: xlog:00005028:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005029:  errdetail("The database cluster was initialized with MAXALIGN %d," 
+xaae: xlog:00005030:  " but the server was compiled with MAXALIGN %d.", 
+xaae: xlog:00005031:  ControlFile->maxAlign, MAXIMUM_ALIGNOF), 
+xaae: xlog:00005032:  errhint("It looks like you need to initdb."))); 
+xaae: xlog:00005034:  ereport(FATAL, 
+xaae: xlog:00005035:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005036:  errdetail("The database cluster appears to use a different floating-point number format than the server executable."), 
+xaae: xlog:00005037:  errhint("It looks like you need to initdb."))); 
+xaae: xlog:00005039:  ereport(FATAL, 
+xaae: xlog:00005040:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005041:  errdetail("The database cluster was initialized with BLCKSZ %d," 
+xaae: xlog:00005042:  " but the server was compiled with BLCKSZ %d.", 
+xaae: xlog:00005043:  ControlFile->blcksz, BLCKSZ), 
+xaae: xlog:00005044:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005046:  ereport(FATAL, 
+xaae: xlog:00005047:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005048:  errdetail("The database cluster was initialized with RELSEG_SIZE %d," 
+xaae: xlog:00005049:  " but the server was compiled with RELSEG_SIZE %d.", 
+xaae: xlog:00005050:  ControlFile->relseg_size, RELSEG_SIZE), 
+xaae: xlog:00005051:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005053:  ereport(FATAL, 
+xaae: xlog:00005054:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005055:  errdetail("The database cluster was initialized with XLOG_BLCKSZ %d," 
+xaae: xlog:00005056:  " but the server was compiled with XLOG_BLCKSZ %d.", 
+xaae: xlog:00005057:  ControlFile->xlog_blcksz, XLOG_BLCKSZ), 
+xaae: xlog:00005058:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005060:  ereport(FATAL, 
+xaae: xlog:00005061:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005062:  errdetail("The database cluster was initialized with XLOG_SEG_SIZE %d," 
+xaae: xlog:00005063:  " but the server was compiled with XLOG_SEG_SIZE %d.", 
+xaae: xlog:00005064:  ControlFile->xlog_seg_size, XLOG_SEG_SIZE), 
+xaae: xlog:00005065:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005067:  ereport(FATAL, 
+xaae: xlog:00005068:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005069:  errdetail("The database cluster was initialized with NAMEDATALEN %d," 
+xaae: xlog:00005070:  " but the server was compiled with NAMEDATALEN %d.", 
+xaae: xlog:00005071:  ControlFile->nameDataLen, NAMEDATALEN), 
+xaae: xlog:00005072:  errhint("It looks like you need to recompile or initdb."))); 
 xaae: xlog:00005074:  ereport(FATAL, 
 xaae: xlog:00005075:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005076:  errdetail("The database cluster was initialized without HAVE_INT64_TIMESTAMP" 
-xaae: xlog:00005077:  " but the server was compiled with HAVE_INT64_TIMESTAMP."), 
-xaae: xlog:00005078:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005081:  ereport(FATAL, 
-xaae: xlog:00005082:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005083:  errdetail("The database cluster was initialized with HAVE_INT64_TIMESTAMP" 
-xaae: xlog:00005084:  " but the server was compiled without HAVE_INT64_TIMESTAMP."), 
-xaae: xlog:00005085:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005089:  ereport(FATAL, 
-xaae: xlog:00005090:  (errmsg("database files are incompatible with server"), 
-xaae: xlog:00005091:  errdetail("The database cluster was initialized with LOCALE_NAME_BUFLEN %d," 
-xaae: xlog:00005092:  " but the server was compiled with LOCALE_NAME_BUFLEN %d.", 
-xaae: xlog:00005093:  ControlFile->localeBuflen, LOCALE_NAME_BUFLEN), 
+xaae: xlog:00005076:  errdetail("The database cluster was initialized with INDEX_MAX_KEYS %d," 
+xaae: xlog:00005077:  " but the server was compiled with INDEX_MAX_KEYS %d.", 
+xaae: xlog:00005078:  ControlFile->indexMaxKeys, INDEX_MAX_KEYS), 
+xaae: xlog:00005079:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005083:  ereport(FATAL, 
+xaae: xlog:00005084:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005085:  errdetail("The database cluster was initialized without HAVE_INT64_TIMESTAMP" 
+xaae: xlog:00005086:  " but the server was compiled with HAVE_INT64_TIMESTAMP."), 
+xaae: xlog:00005087:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005090:  ereport(FATAL, 
+xaae: xlog:00005091:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005092:  errdetail("The database cluster was initialized with HAVE_INT64_TIMESTAMP" 
+xaae: xlog:00005093:  " but the server was compiled without HAVE_INT64_TIMESTAMP."), 
 xaae: xlog:00005094:  errhint("It looks like you need to recompile or initdb."))); 
-xaae: xlog:00005096:  ereport(FATAL, 
-xaae: xlog:00005097:  (errmsg("database files are incompatible with operating system"), 
-xaae: xlog:00005098:  errdetail("The database cluster was initialized with LC_COLLATE \"%s\"," 
-xaae: xlog:00005099:  " which is not recognized by setlocale().", 
-xaae: xlog:00005100:  ControlFile->lc_collate), 
-xaae: xlog:00005101:  errhint("It looks like you need to initdb or install locale support."))); 
-xaae: xlog:00005103:  ereport(FATAL, 
-xaae: xlog:00005104:  (errmsg("database files are incompatible with operating system"), 
-xaae: xlog:00005105:  errdetail("The database cluster was initialized with LC_CTYPE \"%s\"," 
-xaae: xlog:00005106:  " which is not recognized by setlocale().", 
-xaae: xlog:00005107:  ControlFile->lc_ctype), 
-xaae: xlog:00005108:  errhint("It looks like you need to initdb or install locale support."))); 
-xaae: xlog:00005537:  ereport(FATAL, 
-xaae: xlog:00005538:  (errcode_for_file_access(), 
-xaae: xlog:00005539:  errmsg("could not open recovery command file \"%s\": %m", 
-xaae: xlog:00005540:  RECOVERY_COMMAND_FILE))); 
-xaae: xlog:00005558:  ereport(FATAL, 
-xaae: xlog:00005559:  (errcode_for_file_access(), 
-xaae: xlog:00005560:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
-xaae: xlog:00005561:  RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE))); 
-xaae: xlog:00005589:  ereport(FATAL, 
-xaae: xlog:00005590:  (errcode_for_file_access(), 
-xaae: xlog:00005591:  errmsg("could not open recovery command file \"%s\": %m", 
-xaae: xlog:00005592:  RECOVERY_COMMAND_FILE))); 
-xaae: xlog:00005654:  ereport(FATAL, 
-xaae: xlog:00005655:  (errmsg("recovery_target_timeline is not a valid number: \"%s\"", 
-xaae: xlog:00005656:  tok2))); 
-xaae: xlog:00005670:  ereport(FATAL, 
-xaae: xlog:00005671:  (errmsg("recovery_target_xid is not a valid number: \"%s\"", 
-xaae: xlog:00005672:  tok2))); 
-xaae: xlog:00005719:  ereport(FATAL, 
-xaae: xlog:00005720:  (errmsg("unrecognized recovery parameter \"%s\"", 
-xaae: xlog:00005721:  tok1))); 
-xaae: xlog:00005727:  ereport(FATAL, 
-xaae: xlog:00005728:  (errmsg("syntax error in recovery command file: %s", 
-xaae: xlog:00005729:  cmdline), 
-xaae: xlog:00005730:  errhint("Lines should have the format parameter = 'value'."))); 
-xaae: xlog:00005734:  ereport(FATAL, 
-xaae: xlog:00005735:  (errmsg("recovery command file \"%s\" did not specify restore_command", 
-xaae: xlog:00005736:  RECOVERY_COMMAND_FILE))); 
-xaae: xlog:00005753:  ereport(FATAL, 
-xaae: xlog:00005754:  (errmsg("recovery_target_timeline %u does not exist", 
-xaae: xlog:00005755:  rtli))); 
-xaae: xlog:00005820:  ereport(FATAL, 
-xaae: xlog:00005821:  (errcode_for_file_access(), 
-xaae: xlog:00005822:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
-xaae: xlog:00005823:  recoveryPath, xlogpath))); 
-xaae: xlog:00005861:  ereport(FATAL, 
-xaae: xlog:00005862:  (errcode_for_file_access(), 
-xaae: xlog:00005863:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
-xaae: xlog:00005864:  RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE))); 
-xaae: xlog:00006217:  ereport(FATAL, 
-xaae: xlog:00006218:  (errmsg("control file contains invalid data"))); 
-xaae: xlog:00006229:  ereport(LOG, 
-xaae: xlog:00006230:  (errmsg("database system was interrupted while in recovery at %s", 
-xaae: xlog:00006231:  str_time(ControlFile->time)), 
-xaae: xlog:00006232:  errhint("This probably means that some data is corrupted and" 
-xaae: xlog:00006233:  " you will have to use the last backup for recovery."), 
-xaae: xlog:00006234:  errSendAlert(true))); 
-xaae: xlog:00006236:  ereport(LOG, 
-xaae: xlog:00006237:  (errmsg("database system was interrupted while in recovery at log time %s", 
-xaae: xlog:00006238:  str_time(ControlFile->checkPointCopy.time)), 
-xaae: xlog:00006239:  errhint("If this has occurred more than once some data may be corrupted" 
-xaae: xlog:00006240:  " and you may need to choose an earlier recovery target."), 
-xaae: xlog:00006241:  errSendAlert(true))); 
-xaae: xlog:00006281:  ereport(FATAL, 
-xaae: xlog:00006282:  (errmsg("requested timeline %u is not a child of database system timeline %u", 
-xaae: xlog:00006283:  recoveryTargetTLI, 
-xaae: xlog:00006284:  ControlFile->checkPointCopy.ThisTimeLineID))); 
-xaae: xlog:00006481:  ereport(FATAL, 
-xaae: xlog:00006482:  (errmsg("Database must be shutdown cleanly when using single backend start"))); 
-xaae: xlog:00006487:  ereport(FATAL, 
-xaae: xlog:00006488:  (errmsg("Database must be shutdown cleanly when using gp_before_persistence_work = on"))); 
-xaae: xlog:00006543:  ereport(FATAL, 
-xaae: xlog:00006544:  (errcode_for_file_access(), 
-xaae: xlog:00006545:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
-xaae: xlog:00006546:  BACKUP_LABEL_FILE, BACKUP_LABEL_OLD))); 
-xaae: xlog:00006664:  ereport(FATAL, 
-xaae: xlog:00006665:  (errmsg("requested recovery stop point is before end time of backup dump"))); 
-xaae: xlog:00006667:  ereport(FATAL, 
-xaae: xlog:00006668:  (errmsg("WAL ends before end time of backup dump"))); 
-xaae: xlog:00006922:  ereport(ERROR, 
-xaae: xlog:00006923:  (errcode_for_file_access(), 
-xaae: xlog:00006924:  errmsg("could not create redo relation file \"%s\"", 
-xaae: xlog:00006925:  path))); 
-xaae: xlog:00006943:  ereport(ERROR, 
-xaae: xlog:00006944:  (errcode_for_file_access(), 
-xaae: xlog:00006945:  errmsg("could not open redo relation file \"%s\"", 
-xaae: xlog:00006946:  path))); 
-xaae: xlog:00006960:  ereport(ERROR, 
-xaae: xlog:00006961:  (errcode_for_file_access(), 
-xaae: xlog:00006962:  errmsg("could not unlink redo relation file \"%s\": %m", path))); 
-xaae: xlog:00006991:  ereport(FATAL, 
-xaae: xlog:00006992:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
-xaae: xlog:00007096:  ereport(FATAL, 
-xaae: xlog:00007097:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
-xaae: xlog:00007307:  ereport(FATAL, 
-xaae: xlog:00007308:  (errmsg("%s: control file contains invalid data", callerStr))); 
-xaae: xlog:00007354:  ereport(ERROR, 
-xaae: xlog:00007355:  (errmsg("%s: could not locate a valid checkpoint record", callerStr))); 
-xaae: xlog:00007372:  ereport(ERROR, 
-xaae: xlog:00007373:  (errmsg("%s: invalid redo in checkpoint record", callerStr))); 
-xaae: xlog:00007382:  ereport(ERROR, 
-xaae: xlog:00007383:  (errmsg("%s: first redo record before checkpoint not found at %s", 
-xaae: xlog:00007384:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
-xaae: xlog:00007987:  ereport(LOG, 
-xaae: xlog:00007988:  (errmsg("database system is shut down"), 
-xaae: xlog:00007989:  errSendAlert(true),errOmitLocation(true))); 
-xaae: xlog:00008941:  ereport(ERROR, 
-xaae: xlog:00008942:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00008943:  (errmsg("must be superuser to run a backup")))); 
-xaae: xlog:00008946:  ereport(ERROR, 
-xaae: xlog:00008947:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008948:  (errmsg("WAL archiving is not active"), 
-xaae: xlog:00008949:  (errhint("archive_command must be defined before " 
-xaae: xlog:00008950:  "online backups can be made safely."))))); 
-xaae: xlog:00008976:  ereport(ERROR, 
-xaae: xlog:00008977:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00008978:  errmsg("a backup is already in progress"), 
-xaae: xlog:00008979:  errhint("Run pg_stop_backup() and try again."))); 
-xaae: xlog:00009024:  ereport(ERROR, 
-xaae: xlog:00009025:  (errcode_for_file_access(), 
-xaae: xlog:00009026:  errmsg("could not stat file \"%s\": %m", 
-xaae: xlog:00009027:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009030:  ereport(ERROR, 
-xaae: xlog:00009031:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009032:  errmsg("a backup is already in progress"), 
-xaae: xlog:00009033:  errhint("If you're sure there is no backup in progress, remove file \"%s\" and try again.", 
-xaae: xlog:00009034:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009041:  ereport(ERROR, 
-xaae: xlog:00009042:  (errcode_for_file_access(), 
-xaae: xlog:00009043:  errmsg("could not create file \"%s\": %m", 
-xaae: xlog:00009044:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009052:  ereport(ERROR, 
-xaae: xlog:00009053:  (errcode_for_file_access(), 
-xaae: xlog:00009054:  errmsg("could not write file \"%s\": %m", 
-xaae: xlog:00009055:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009107:  ereport(ERROR, 
-xaae: xlog:00009108:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00009109:  (errmsg("must be superuser to run a backup")))); 
-xaae: xlog:00009141:  ereport(ERROR, 
-xaae: xlog:00009142:  (errcode_for_file_access(), 
-xaae: xlog:00009143:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009144:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009145:  ereport(ERROR, 
-xaae: xlog:00009146:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009147:  errmsg("a backup is not in progress"))); 
-xaae: xlog:00009157:  ereport(ERROR, 
-xaae: xlog:00009158:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009159:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009169:  ereport(ERROR, 
-xaae: xlog:00009170:  (errcode_for_file_access(), 
-xaae: xlog:00009171:  errmsg("could not create file \"%s\": %m", 
-xaae: xlog:00009172:  histfilepath))); 
-xaae: xlog:00009182:  ereport(ERROR, 
-xaae: xlog:00009183:  (errcode_for_file_access(), 
-xaae: xlog:00009184:  errmsg("could not write file \"%s\": %m", 
-xaae: xlog:00009185:  histfilepath))); 
-xaae: xlog:00009191:  ereport(ERROR, 
-xaae: xlog:00009192:  (errcode_for_file_access(), 
-xaae: xlog:00009193:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009194:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009196:  ereport(ERROR, 
-xaae: xlog:00009197:  (errcode_for_file_access(), 
-xaae: xlog:00009198:  errmsg("could not remove file \"%s\": %m", 
-xaae: xlog:00009199:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009229:  ereport(ERROR, 
-xaae: xlog:00009230:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00009231:  (errmsg("must be superuser to switch transaction log files")))); 
-xaae: xlog:00009337:  ereport(ERROR, 
-xaae: xlog:00009338:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-xaae: xlog:00009339:  errmsg("could not parse transaction log location \"%s\"", 
-xaae: xlog:00009340:  locationstr))); 
-xaae: xlog:00009406:  ereport(ERROR, 
-xaae: xlog:00009407:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-xaae: xlog:00009408:  errmsg("could not parse transaction log location \"%s\"", 
-xaae: xlog:00009409:  locationstr))); 
-xaae: xlog:00009466:  ereport(FATAL, 
-xaae: xlog:00009467:  (errcode_for_file_access(), 
-xaae: xlog:00009468:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009469:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00005098:  ereport(FATAL, 
+xaae: xlog:00005099:  (errmsg("database files are incompatible with server"), 
+xaae: xlog:00005100:  errdetail("The database cluster was initialized with LOCALE_NAME_BUFLEN %d," 
+xaae: xlog:00005101:  " but the server was compiled with LOCALE_NAME_BUFLEN %d.", 
+xaae: xlog:00005102:  ControlFile->localeBuflen, LOCALE_NAME_BUFLEN), 
+xaae: xlog:00005103:  errhint("It looks like you need to recompile or initdb."))); 
+xaae: xlog:00005105:  ereport(FATAL, 
+xaae: xlog:00005106:  (errmsg("database files are incompatible with operating system"), 
+xaae: xlog:00005107:  errdetail("The database cluster was initialized with LC_COLLATE \"%s\"," 
+xaae: xlog:00005108:  " which is not recognized by setlocale().", 
+xaae: xlog:00005109:  ControlFile->lc_collate), 
+xaae: xlog:00005110:  errhint("It looks like you need to initdb or install locale support."))); 
+xaae: xlog:00005112:  ereport(FATAL, 
+xaae: xlog:00005113:  (errmsg("database files are incompatible with operating system"), 
+xaae: xlog:00005114:  errdetail("The database cluster was initialized with LC_CTYPE \"%s\"," 
+xaae: xlog:00005115:  " which is not recognized by setlocale().", 
+xaae: xlog:00005116:  ControlFile->lc_ctype), 
+xaae: xlog:00005117:  errhint("It looks like you need to initdb or install locale support."))); 
+xaae: xlog:00005546:  ereport(FATAL, 
+xaae: xlog:00005547:  (errcode_for_file_access(), 
+xaae: xlog:00005548:  errmsg("could not open recovery command file \"%s\": %m", 
+xaae: xlog:00005549:  RECOVERY_COMMAND_FILE))); 
+xaae: xlog:00005567:  ereport(FATAL, 
+xaae: xlog:00005568:  (errcode_for_file_access(), 
+xaae: xlog:00005569:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
+xaae: xlog:00005570:  RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE))); 
+xaae: xlog:00005598:  ereport(FATAL, 
+xaae: xlog:00005599:  (errcode_for_file_access(), 
+xaae: xlog:00005600:  errmsg("could not open recovery command file \"%s\": %m", 
+xaae: xlog:00005601:  RECOVERY_COMMAND_FILE))); 
+xaae: xlog:00005663:  ereport(FATAL, 
+xaae: xlog:00005664:  (errmsg("recovery_target_timeline is not a valid number: \"%s\"", 
+xaae: xlog:00005665:  tok2))); 
+xaae: xlog:00005679:  ereport(FATAL, 
+xaae: xlog:00005680:  (errmsg("recovery_target_xid is not a valid number: \"%s\"", 
+xaae: xlog:00005681:  tok2))); 
+xaae: xlog:00005728:  ereport(FATAL, 
+xaae: xlog:00005729:  (errmsg("unrecognized recovery parameter \"%s\"", 
+xaae: xlog:00005730:  tok1))); 
+xaae: xlog:00005736:  ereport(FATAL, 
+xaae: xlog:00005737:  (errmsg("syntax error in recovery command file: %s", 
+xaae: xlog:00005738:  cmdline), 
+xaae: xlog:00005739:  errhint("Lines should have the format parameter = 'value'."))); 
+xaae: xlog:00005743:  ereport(FATAL, 
+xaae: xlog:00005744:  (errmsg("recovery command file \"%s\" did not specify restore_command", 
+xaae: xlog:00005745:  RECOVERY_COMMAND_FILE))); 
+xaae: xlog:00005762:  ereport(FATAL, 
+xaae: xlog:00005763:  (errmsg("recovery_target_timeline %u does not exist", 
+xaae: xlog:00005764:  rtli))); 
+xaae: xlog:00005829:  ereport(FATAL, 
+xaae: xlog:00005830:  (errcode_for_file_access(), 
+xaae: xlog:00005831:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
+xaae: xlog:00005832:  recoveryPath, xlogpath))); 
+xaae: xlog:00005870:  ereport(FATAL, 
+xaae: xlog:00005871:  (errcode_for_file_access(), 
+xaae: xlog:00005872:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
+xaae: xlog:00005873:  RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE))); 
+xaae: xlog:00006232:  ereport(FATAL, 
+xaae: xlog:00006233:  (errmsg("control file contains invalid data"))); 
+xaae: xlog:00006244:  ereport(LOG, 
+xaae: xlog:00006245:  (errmsg("database system was interrupted while in recovery at %s", 
+xaae: xlog:00006246:  str_time(ControlFile->time)), 
+xaae: xlog:00006247:  errhint("This probably means that some data is corrupted and" 
+xaae: xlog:00006248:  " you will have to use the last backup for recovery."), 
+xaae: xlog:00006249:  errSendAlert(true))); 
+xaae: xlog:00006251:  ereport(LOG, 
+xaae: xlog:00006252:  (errmsg("database system was interrupted while in recovery at log time %s", 
+xaae: xlog:00006253:  str_time(ControlFile->checkPointCopy.time)), 
+xaae: xlog:00006254:  errhint("If this has occurred more than once some data may be corrupted" 
+xaae: xlog:00006255:  " and you may need to choose an earlier recovery target."), 
+xaae: xlog:00006256:  errSendAlert(true))); 
+xaae: xlog:00006296:  ereport(FATAL, 
+xaae: xlog:00006297:  (errmsg("requested timeline %u is not a child of database system timeline %u", 
+xaae: xlog:00006298:  recoveryTargetTLI, 
+xaae: xlog:00006299:  ControlFile->checkPointCopy.ThisTimeLineID))); 
+xaae: xlog:00006496:  ereport(FATAL, 
+xaae: xlog:00006497:  (errmsg("Database must be shutdown cleanly when using single backend start"))); 
+xaae: xlog:00006502:  ereport(FATAL, 
+xaae: xlog:00006503:  (errmsg("Database must be shutdown cleanly when using gp_before_persistence_work = on"))); 
+xaae: xlog:00006558:  ereport(FATAL, 
+xaae: xlog:00006559:  (errcode_for_file_access(), 
+xaae: xlog:00006560:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
+xaae: xlog:00006561:  BACKUP_LABEL_FILE, BACKUP_LABEL_OLD))); 
+xaae: xlog:00006679:  ereport(FATAL, 
+xaae: xlog:00006680:  (errmsg("requested recovery stop point is before end time of backup dump"))); 
+xaae: xlog:00006682:  ereport(FATAL, 
+xaae: xlog:00006683:  (errmsg("WAL ends before end time of backup dump"))); 
+xaae: xlog:00006937:  ereport(ERROR, 
+xaae: xlog:00006938:  (errcode_for_file_access(), 
+xaae: xlog:00006939:  errmsg("could not create redo relation file \"%s\"", 
+xaae: xlog:00006940:  path))); 
+xaae: xlog:00006958:  ereport(ERROR, 
+xaae: xlog:00006959:  (errcode_for_file_access(), 
+xaae: xlog:00006960:  errmsg("could not open redo relation file \"%s\"", 
+xaae: xlog:00006961:  path))); 
+xaae: xlog:00006975:  ereport(ERROR, 
+xaae: xlog:00006976:  (errcode_for_file_access(), 
+xaae: xlog:00006977:  errmsg("could not unlink redo relation file \"%s\": %m", path))); 
+xaae: xlog:00007006:  ereport(FATAL, 
+xaae: xlog:00007007:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
+xaae: xlog:00007111:  ereport(FATAL, 
+xaae: xlog:00007112:  (errmsg("Startup Pass 2: control file contains invalid data"))); 
+xaae: xlog:00007322:  ereport(FATAL, 
+xaae: xlog:00007323:  (errmsg("%s: control file contains invalid data", callerStr))); 
+xaae: xlog:00007369:  ereport(ERROR, 
+xaae: xlog:00007370:  (errmsg("%s: could not locate a valid checkpoint record", callerStr))); 
+xaae: xlog:00007387:  ereport(ERROR, 
+xaae: xlog:00007388:  (errmsg("%s: invalid redo in checkpoint record", callerStr))); 
+xaae: xlog:00007397:  ereport(ERROR, 
+xaae: xlog:00007398:  (errmsg("%s: first redo record before checkpoint not found at %s", 
+xaae: xlog:00007399:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
+xaae: xlog:00008002:  ereport(LOG, 
+xaae: xlog:00008003:  (errmsg("database system is shut down"), 
+xaae: xlog:00008004:  errSendAlert(true),errOmitLocation(true))); 
+xaae: xlog:00008956:  ereport(ERROR, 
+xaae: xlog:00008957:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00008958:  (errmsg("must be superuser to run a backup")))); 
+xaae: xlog:00008961:  ereport(ERROR, 
+xaae: xlog:00008962:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008963:  (errmsg("WAL archiving is not active"), 
+xaae: xlog:00008964:  (errhint("archive_command must be defined before " 
+xaae: xlog:00008965:  "online backups can be made safely."))))); 
+xaae: xlog:00008991:  ereport(ERROR, 
+xaae: xlog:00008992:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00008993:  errmsg("a backup is already in progress"), 
+xaae: xlog:00008994:  errhint("Run pg_stop_backup() and try again."))); 
+xaae: xlog:00009039:  ereport(ERROR, 
+xaae: xlog:00009040:  (errcode_for_file_access(), 
+xaae: xlog:00009041:  errmsg("could not stat file \"%s\": %m", 
+xaae: xlog:00009042:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009045:  ereport(ERROR, 
+xaae: xlog:00009046:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009047:  errmsg("a backup is already in progress"), 
+xaae: xlog:00009048:  errhint("If you're sure there is no backup in progress, remove file \"%s\" and try again.", 
+xaae: xlog:00009049:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009056:  ereport(ERROR, 
+xaae: xlog:00009057:  (errcode_for_file_access(), 
+xaae: xlog:00009058:  errmsg("could not create file \"%s\": %m", 
+xaae: xlog:00009059:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009067:  ereport(ERROR, 
+xaae: xlog:00009068:  (errcode_for_file_access(), 
+xaae: xlog:00009069:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00009070:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009122:  ereport(ERROR, 
+xaae: xlog:00009123:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00009124:  (errmsg("must be superuser to run a backup")))); 
+xaae: xlog:00009156:  ereport(ERROR, 
+xaae: xlog:00009157:  (errcode_for_file_access(), 
+xaae: xlog:00009158:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009159:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009160:  ereport(ERROR, 
+xaae: xlog:00009161:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009162:  errmsg("a backup is not in progress"))); 
+xaae: xlog:00009172:  ereport(ERROR, 
+xaae: xlog:00009173:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009174:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009184:  ereport(ERROR, 
+xaae: xlog:00009185:  (errcode_for_file_access(), 
+xaae: xlog:00009186:  errmsg("could not create file \"%s\": %m", 
+xaae: xlog:00009187:  histfilepath))); 
+xaae: xlog:00009197:  ereport(ERROR, 
+xaae: xlog:00009198:  (errcode_for_file_access(), 
+xaae: xlog:00009199:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00009200:  histfilepath))); 
+xaae: xlog:00009206:  ereport(ERROR, 
+xaae: xlog:00009207:  (errcode_for_file_access(), 
+xaae: xlog:00009208:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009209:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009211:  ereport(ERROR, 
+xaae: xlog:00009212:  (errcode_for_file_access(), 
+xaae: xlog:00009213:  errmsg("could not remove file \"%s\": %m", 
+xaae: xlog:00009214:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009244:  ereport(ERROR, 
+xaae: xlog:00009245:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00009246:  (errmsg("must be superuser to switch transaction log files")))); 
+xaae: xlog:00009352:  ereport(ERROR, 
+xaae: xlog:00009353:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+xaae: xlog:00009354:  errmsg("could not parse transaction log location \"%s\"", 
+xaae: xlog:00009355:  locationstr))); 
+xaae: xlog:00009421:  ereport(ERROR, 
+xaae: xlog:00009422:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+xaae: xlog:00009423:  errmsg("could not parse transaction log location \"%s\"", 
+xaae: xlog:00009424:  locationstr))); 
 xaae: xlog:00009481:  ereport(FATAL, 
-xaae: xlog:00009482:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009483:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009487:  ereport(FATAL, 
-xaae: xlog:00009488:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009489:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009491:  ereport(FATAL, 
-xaae: xlog:00009492:  (errcode_for_file_access(), 
-xaae: xlog:00009493:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009494:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009518:  ereport(FATAL, 
-xaae: xlog:00009519:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009520:  errmsg("invalid data in file \"%s\"", histfilename))); 
-xaae: xlog:00009524:  ereport(FATAL, 
-xaae: xlog:00009525:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009526:  errmsg("invalid data in file \"%s\"", histfilename))); 
-xaae: xlog:00009529:  ereport(FATAL, 
-xaae: xlog:00009530:  (errcode_for_file_access(), 
-xaae: xlog:00009531:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009532:  histfilepath))); 
-xaae: xlog:00009879:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
-xaae: xlog:00009880:  errmsg("database 'postgres' does not exist"))); 
-xaae: xlog:00010556:  ereport(ERROR, 
-xaae: xlog:00010557:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-xaae: xlog:00010558:  (errmsg("could not allocate memory for mirrored aligned buffer")))); 
+xaae: xlog:00009482:  (errcode_for_file_access(), 
+xaae: xlog:00009483:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009484:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009496:  ereport(FATAL, 
+xaae: xlog:00009497:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009498:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009502:  ereport(FATAL, 
+xaae: xlog:00009503:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009504:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009506:  ereport(FATAL, 
+xaae: xlog:00009507:  (errcode_for_file_access(), 
+xaae: xlog:00009508:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009509:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009533:  ereport(FATAL, 
+xaae: xlog:00009534:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009535:  errmsg("invalid data in file \"%s\"", histfilename))); 
+xaae: xlog:00009539:  ereport(FATAL, 
+xaae: xlog:00009540:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009541:  errmsg("invalid data in file \"%s\"", histfilename))); 
+xaae: xlog:00009544:  ereport(FATAL, 
+xaae: xlog:00009545:  (errcode_for_file_access(), 
+xaae: xlog:00009546:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009547:  histfilepath))); 
+xaae: xlog:00009894:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
+xaae: xlog:00009895:  errmsg("database 'postgres' does not exist"))); 
+xaae: xlog:00010571:  ereport(ERROR, 
+xaae: xlog:00010572:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+xaae: xlog:00010573:  (errmsg("could not allocate memory for mirrored aligned buffer")))); 
 aaaaa GP_IGNORE: xaah: xlogloc - ./backend/access/transam/xlogloc.c
 xaah: xlogloc:00000060:  ereport(ERROR, 
 xaah: xlogloc:00000061:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
@@ -1627,21 +1627,21 @@ iaaf: index:00000585:  ereport(ERROR,
 iaaf: index:00000586:  (errcode(ERRCODE_DUPLICATE_TABLE), 
 iaaf: index:00000587:  errmsg("relation \"%s\" already exists", 
 iaaf: index:00000588:  indexRelationName))); 
-iaaf: index:00001814:  ereport(ERROR, 
-iaaf: index:00001815:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
-iaaf: index:00001816:  errmsg("Cannot create index concurrently. Create an index non-concurrently " 
-iaaf: index:00001817:  "before creating an index concurrently in an appendonly table."))); 
-iaaf: index:00001967:  ereport(ERROR, 
-iaaf: index:00001968:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
-iaaf: index:00001969:  errmsg("Cannot create index concurrently. Create an index non-concurrently " 
-iaaf: index:00001970:  "before creating an index concurrently in an appendonly table."))); 
-iaaf: index:00002531:  ereport(ERROR, 
-iaaf: index:00002532:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-iaaf: index:00002533:  errmsg("cannot reindex temporary tables of other sessions"))); 
-iaaf: index:00002559:  ereport(ERROR, 
-iaaf: index:00002560:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-iaaf: index:00002561:  errmsg("shared index \"%s\" can only be reindexed in stand-alone mode", 
-iaaf: index:00002562:  RelationGetRelationName(iRel)))); 
+iaaf: index:00001823:  ereport(ERROR, 
+iaaf: index:00001824:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+iaaf: index:00001825:  errmsg("Cannot create index concurrently. Create an index non-concurrently " 
+iaaf: index:00001826:  "before creating an index concurrently in an appendonly table."))); 
+iaaf: index:00001976:  ereport(ERROR, 
+iaaf: index:00001977:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+iaaf: index:00001978:  errmsg("Cannot create index concurrently. Create an index non-concurrently " 
+iaaf: index:00001979:  "before creating an index concurrently in an appendonly table."))); 
+iaaf: index:00002550:  ereport(ERROR, 
+iaaf: index:00002551:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+iaaf: index:00002552:  errmsg("cannot reindex temporary tables of other sessions"))); 
+iaaf: index:00002578:  ereport(ERROR, 
+iaaf: index:00002579:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+iaaf: index:00002580:  errmsg("shared index \"%s\" can only be reindexed in stand-alone mode", 
+iaaf: index:00002581:  RelationGetRelationName(iRel)))); 
 aaaaa GP_IGNORE: naaj: namespace - ./backend/catalog/namespace.c
 naaj: namespace:00000199:  ereport(ERROR, 
 naaj: namespace:00000200:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
@@ -2614,18 +2614,18 @@ caba: cdbexplain:00000506:  errhint("Please verify that all instances are using 
 caba: cdbexplain:00000507:  "the correct %s software version.", 
 caba: cdbexplain:00000508:  PACKAGE_NAME))); 
 aaaaa GP_IGNORE: caba: cdbfilerep - ./backend/cdb/cdbfilerep.c
-caba: cdbfilerep:00000481:  ereport(ERROR, 
-caba: cdbfilerep:00000482:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00000483:  (errmsg("Not enough shared memory for Mirroring.")))); 
-caba: cdbfilerep:00000507:  ereport(ERROR, 
-caba: cdbfilerep:00000508:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00000509:  (errmsg("shared memory for filerep ipc not initialized")))); 
-caba: cdbfilerep:00000634:  ereport(ERROR, 
-caba: cdbfilerep:00000635:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00000636:  (errmsg("Not enough shared memory for Mirroring.")))); 
-caba: cdbfilerep:00000794:  ereport(ERROR, 
-caba: cdbfilerep:00000795:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00000796:  (errmsg("shared memory for Mirroring not initialized.")))); 
+caba: cdbfilerep:00000482:  ereport(ERROR, 
+caba: cdbfilerep:00000483:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00000484:  (errmsg("Not enough shared memory for Mirroring.")))); 
+caba: cdbfilerep:00000508:  ereport(ERROR, 
+caba: cdbfilerep:00000509:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00000510:  (errmsg("shared memory for filerep ipc not initialized")))); 
+caba: cdbfilerep:00000635:  ereport(ERROR, 
+caba: cdbfilerep:00000636:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00000637:  (errmsg("Not enough shared memory for Mirroring.")))); 
+caba: cdbfilerep:00000795:  ereport(ERROR, 
+caba: cdbfilerep:00000796:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00000797:  (errmsg("shared memory for Mirroring not initialized.")))); 
 aaaaa GP_IGNORE: caca: cdbfilerepconnclient - ./backend/cdb/cdbfilerepconnclient.c
 caca: cdbfilerepconnclient:00000058:  ereport(WARNING, 
 caca: cdbfilerepconnclient:00000059:  (errcode_for_socket_access(), 
@@ -2688,315 +2688,315 @@ caca: cdbfilerepconnserver:00000374:  ereport(WARNING,
 caca: cdbfilerepconnserver:00000375:  (errcode_for_socket_access(), 
 caca: cdbfilerepconnserver:00000376:  errmsg("receive EOF on connection: %m"))); 
 aaaaa GP_IGNORE: cabg: cdbfilerepmirror - ./backend/cdb/cdbfilerepmirror.c
-cabg: cdbfilerepmirror:00000141:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00000142:  (errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00000143:  "injected fault by guc filerep_inject_listener_fault, " 
-cabg: cdbfilerepmirror:00000144:  "failover requested"), 
-cabg: cdbfilerepmirror:00000145:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00000307:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00000308:  (errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00000309:  "could not queue received message to be processed, " 
-cabg: cdbfilerepmirror:00000310:  "failover requested"), 
-cabg: cdbfilerepmirror:00000311:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00000312:  FileRep_errdetail_Shmem(), 
-cabg: cdbfilerepmirror:00000313:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00000706:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00000707:  (errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00000708:  "could not match message header checksum between primary:'%u' and mirror:'%u', " 
-cabg: cdbfilerepmirror:00000709:  "failover requested", 
-cabg: cdbfilerepmirror:00000710:  *fileRepMessageHeaderCrc, 
-cabg: cdbfilerepmirror:00000711:  messageHeaderCrcLocal), 
-cabg: cdbfilerepmirror:00000712:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00000713:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00000714:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00000715:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00000716:  FileRep_errdetail_Shmem(), 
-cabg: cdbfilerepmirror:00000717:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00000737:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00000738:  (errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00000739:  "could not match message body checksum between primary:'%u' and mirror:'%u' data length:'%u', " 
-cabg: cdbfilerepmirror:00000740:  "failover requested", 
-cabg: cdbfilerepmirror:00000741:  fileRepMessageHeader->fileRepMessageBodyCrc, 
-cabg: cdbfilerepmirror:00000742:  messageBodyLocal, 
-cabg: cdbfilerepmirror:00000743:  fileRepMessageHeader->fileRepOperationDescription.write.dataLength), 
-cabg: cdbfilerepmirror:00000744:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00000745:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00000746:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00000747:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00000748:  FileRep_errdetail_Shmem(), 
-cabg: cdbfilerepmirror:00000749:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00000810:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00000811:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00000812:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00000813:  "could not seek to file position:" INT64_FORMAT " : %m, " 
-cabg: cdbfilerepmirror:00000814:  "failover requested", 
-cabg: cdbfilerepmirror:00000815:  fileRepMessageHeader->fileRepOperationDescription.open.logicalEof), 
-cabg: cdbfilerepmirror:00000816:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00000817:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00000818:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00000819:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00000820:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00000862:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00000863:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00000864:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00000865:  "could not open file position:" INT64_FORMAT " file flags:'%x' " 
-cabg: cdbfilerepmirror:00000866:  "file mode:'%o' : %m, " 
-cabg: cdbfilerepmirror:00000867:  "failover requested", 
-cabg: cdbfilerepmirror:00000868:  fileRepMessageHeader->fileRepOperationDescription.open.logicalEof, 
-cabg: cdbfilerepmirror:00000869:  fileRepMessageHeader->fileRepOperationDescription.open.fileFlags, 
-cabg: cdbfilerepmirror:00000870:  fileRepMessageHeader->fileRepOperationDescription.open.fileMode), 
-cabg: cdbfilerepmirror:00000871:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00000872:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00000873:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00000874:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00000875:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00000903:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00000904:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00000905:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00000906:  "could not seek to file position:" INT64_FORMAT " : %m, " 
-cabg: cdbfilerepmirror:00000907:  "failover requested", 
-cabg: cdbfilerepmirror:00000908:  fileRepMessageHeader->fileRepOperationDescription.open.logicalEof), 
-cabg: cdbfilerepmirror:00000909:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00000910:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00000911:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00000912:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00000913:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00000956:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00000957:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00000958:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00000959:  "could not open file position:" INT64_FORMAT " " 
-cabg: cdbfilerepmirror:00000960:  "file flags:'%x' file mode:'%o' : %m, " 
-cabg: cdbfilerepmirror:00000961:  "failover requested", 
-cabg: cdbfilerepmirror:00000962:  fileRepMessageHeader->fileRepOperationDescription.open.logicalEof, 
-cabg: cdbfilerepmirror:00000963:  fileRepMessageHeader->fileRepOperationDescription.open.fileFlags, 
-cabg: cdbfilerepmirror:00000964:  fileRepMessageHeader->fileRepOperationDescription.open.fileMode), 
-cabg: cdbfilerepmirror:00000965:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00000966:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00000967:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00000968:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00000969:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001021:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001022:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001023:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001024:  "could not open file position:" INT64_FORMAT " " 
-cabg: cdbfilerepmirror:00001025:  "file flags:'%x' file mode:'%o' : %m, " 
-cabg: cdbfilerepmirror:00001026:  "failover requested", 
-cabg: cdbfilerepmirror:00001027:  fileRepMessageHeader->fileRepOperationDescription.open.logicalEof, 
-cabg: cdbfilerepmirror:00001028:  fileRepMessageHeader->fileRepOperationDescription.open.fileFlags, 
-cabg: cdbfilerepmirror:00001029:  fileRepMessageHeader->fileRepOperationDescription.open.fileMode), 
-cabg: cdbfilerepmirror:00001030:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001031:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001032:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001033:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001034:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001068:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001069:  (errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001070:  "could not find file descriptor, " 
-cabg: cdbfilerepmirror:00001071:  "failover requested"), 
-cabg: cdbfilerepmirror:00001072:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001073:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001074:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001075:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001076:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001108:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001109:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001110:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001111:  "could not open file file flags:'%x' file mode:'%o': %m, " 
-cabg: cdbfilerepmirror:00001112:  "failover requested", 
-cabg: cdbfilerepmirror:00001113:  O_CREAT *PIPE* O_RDWR *PIPE* PG_BINARY, 
-cabg: cdbfilerepmirror:00001114:  fileMode), 
-cabg: cdbfilerepmirror:00001115:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001116:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001117:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001118:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001119:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001156:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001157:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001158:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001159:  "could not fill zero blocks into segment file : %m, " 
-cabg: cdbfilerepmirror:00001160:  "failover requested"), 
-cabg: cdbfilerepmirror:00001161:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001162:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001163:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001164:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001165:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001177:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001178:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001179:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001180:  "could not seek to file position:'%d' : %m, " 
-cabg: cdbfilerepmirror:00001181:  "failover requested", 
-cabg: cdbfilerepmirror:00001182:  fileRepMessageHeader->fileRepOperationDescription.write.offset), 
-cabg: cdbfilerepmirror:00001183:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001184:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001185:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001186:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001187:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001205:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001206:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001207:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001208:  "could not write to file : %m, " 
-cabg: cdbfilerepmirror:00001209:  "failover requested"), 
-cabg: cdbfilerepmirror:00001210:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001211:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001212:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001213:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001214:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001229:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001230:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001231:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001232:  "could not find file descriptor : %m, " 
-cabg: cdbfilerepmirror:00001233:  "failover requested"), 
-cabg: cdbfilerepmirror:00001234:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001235:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001236:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001237:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001238:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001262:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001263:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001264:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001265:  "could not find file descriptor or open file : %m" 
-cabg: cdbfilerepmirror:00001266:  "failover requested"), 
-cabg: cdbfilerepmirror:00001267:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001268:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001269:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001270:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001271:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001304:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001305:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001306:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001307:  "could not fsync file : %m" 
-cabg: cdbfilerepmirror:00001308:  "failover requested"), 
-cabg: cdbfilerepmirror:00001309:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001310:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001311:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001312:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001313:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001382:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001383:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001384:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001385:  "could not find file descriptor or open file : %m" 
-cabg: cdbfilerepmirror:00001386:  "failover requested"), 
-cabg: cdbfilerepmirror:00001387:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001388:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001389:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001390:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001391:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001416:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001417:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001418:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001419:  "could not fsync file : %m" 
-cabg: cdbfilerepmirror:00001420:  "failover requested"), 
-cabg: cdbfilerepmirror:00001421:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001422:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001423:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001424:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001425:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001462:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001463:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001464:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001465:  "could not find file descriptor or open file : %m" 
-cabg: cdbfilerepmirror:00001466:  "failover requested"), 
-cabg: cdbfilerepmirror:00001467:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001468:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001469:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001470:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001471:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001497:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001498:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001499:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001500:  "could not truncate file to position:'" INT64_FORMAT "' : %m" 
-cabg: cdbfilerepmirror:00001501:  "failover requested", 
-cabg: cdbfilerepmirror:00001502:  fileRepMessageHeader->fileRepOperationDescription.truncate.position), 
-cabg: cdbfilerepmirror:00001503:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001504:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001505:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001506:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001507:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001544:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001545:  (errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001546:  "could not reconcile xlog file : %m" 
-cabg: cdbfilerepmirror:00001547:  "failover requested"), 
-cabg: cdbfilerepmirror:00001548:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001549:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001550:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001551:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001552:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001595:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001596:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001597:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001598:  "could not create directory : %m" 
-cabg: cdbfilerepmirror:00001599:  "failover requested"), 
-cabg: cdbfilerepmirror:00001600:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001601:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001602:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001603:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001674:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001675:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001676:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001677:  "could not create file : %m, " 
-cabg: cdbfilerepmirror:00001678:  "failover requested"), 
-cabg: cdbfilerepmirror:00001679:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001680:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001681:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001682:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001931:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001932:  (errmsg("mirror failure, could not queue ACK message to be sent to primary, failover requested"), 
-cabg: cdbfilerepmirror:00001933:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001934:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001935:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001936:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00000142:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00000143:  (errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00000144:  "injected fault by guc filerep_inject_listener_fault, " 
+cabg: cdbfilerepmirror:00000145:  "failover requested"), 
+cabg: cdbfilerepmirror:00000146:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00000308:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00000309:  (errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00000310:  "could not queue received message to be processed, " 
+cabg: cdbfilerepmirror:00000311:  "failover requested"), 
+cabg: cdbfilerepmirror:00000312:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00000313:  FileRep_errdetail_Shmem(), 
+cabg: cdbfilerepmirror:00000314:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00000707:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00000708:  (errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00000709:  "could not match message header checksum between primary:'%u' and mirror:'%u', " 
+cabg: cdbfilerepmirror:00000710:  "failover requested", 
+cabg: cdbfilerepmirror:00000711:  *fileRepMessageHeaderCrc, 
+cabg: cdbfilerepmirror:00000712:  messageHeaderCrcLocal), 
+cabg: cdbfilerepmirror:00000713:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00000714:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00000715:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00000716:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00000717:  FileRep_errdetail_Shmem(), 
+cabg: cdbfilerepmirror:00000718:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00000738:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00000739:  (errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00000740:  "could not match message body checksum between primary:'%u' and mirror:'%u' data length:'%u', " 
+cabg: cdbfilerepmirror:00000741:  "failover requested", 
+cabg: cdbfilerepmirror:00000742:  fileRepMessageHeader->fileRepMessageBodyCrc, 
+cabg: cdbfilerepmirror:00000743:  messageBodyLocal, 
+cabg: cdbfilerepmirror:00000744:  fileRepMessageHeader->fileRepOperationDescription.write.dataLength), 
+cabg: cdbfilerepmirror:00000745:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00000746:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00000747:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00000748:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00000749:  FileRep_errdetail_Shmem(), 
+cabg: cdbfilerepmirror:00000750:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00000811:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00000812:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00000813:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00000814:  "could not seek to file position:" INT64_FORMAT " : %m, " 
+cabg: cdbfilerepmirror:00000815:  "failover requested", 
+cabg: cdbfilerepmirror:00000816:  fileRepMessageHeader->fileRepOperationDescription.open.logicalEof), 
+cabg: cdbfilerepmirror:00000817:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00000818:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00000819:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00000820:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00000821:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00000863:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00000864:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00000865:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00000866:  "could not open file position:" INT64_FORMAT " file flags:'%x' " 
+cabg: cdbfilerepmirror:00000867:  "file mode:'%o' : %m, " 
+cabg: cdbfilerepmirror:00000868:  "failover requested", 
+cabg: cdbfilerepmirror:00000869:  fileRepMessageHeader->fileRepOperationDescription.open.logicalEof, 
+cabg: cdbfilerepmirror:00000870:  fileRepMessageHeader->fileRepOperationDescription.open.fileFlags, 
+cabg: cdbfilerepmirror:00000871:  fileRepMessageHeader->fileRepOperationDescription.open.fileMode), 
+cabg: cdbfilerepmirror:00000872:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00000873:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00000874:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00000875:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00000876:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00000904:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00000905:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00000906:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00000907:  "could not seek to file position:" INT64_FORMAT " : %m, " 
+cabg: cdbfilerepmirror:00000908:  "failover requested", 
+cabg: cdbfilerepmirror:00000909:  fileRepMessageHeader->fileRepOperationDescription.open.logicalEof), 
+cabg: cdbfilerepmirror:00000910:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00000911:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00000912:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00000913:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00000914:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00000957:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00000958:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00000959:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00000960:  "could not open file position:" INT64_FORMAT " " 
+cabg: cdbfilerepmirror:00000961:  "file flags:'%x' file mode:'%o' : %m, " 
+cabg: cdbfilerepmirror:00000962:  "failover requested", 
+cabg: cdbfilerepmirror:00000963:  fileRepMessageHeader->fileRepOperationDescription.open.logicalEof, 
+cabg: cdbfilerepmirror:00000964:  fileRepMessageHeader->fileRepOperationDescription.open.fileFlags, 
+cabg: cdbfilerepmirror:00000965:  fileRepMessageHeader->fileRepOperationDescription.open.fileMode), 
+cabg: cdbfilerepmirror:00000966:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00000967:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00000968:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00000969:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00000970:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001022:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001023:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001024:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001025:  "could not open file position:" INT64_FORMAT " " 
+cabg: cdbfilerepmirror:00001026:  "file flags:'%x' file mode:'%o' : %m, " 
+cabg: cdbfilerepmirror:00001027:  "failover requested", 
+cabg: cdbfilerepmirror:00001028:  fileRepMessageHeader->fileRepOperationDescription.open.logicalEof, 
+cabg: cdbfilerepmirror:00001029:  fileRepMessageHeader->fileRepOperationDescription.open.fileFlags, 
+cabg: cdbfilerepmirror:00001030:  fileRepMessageHeader->fileRepOperationDescription.open.fileMode), 
+cabg: cdbfilerepmirror:00001031:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001032:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001033:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001034:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00001035:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001069:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001070:  (errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001071:  "could not find file descriptor, " 
+cabg: cdbfilerepmirror:00001072:  "failover requested"), 
+cabg: cdbfilerepmirror:00001073:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001074:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001075:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001076:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00001077:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001109:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001110:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001111:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001112:  "could not open file file flags:'%x' file mode:'%o': %m, " 
+cabg: cdbfilerepmirror:00001113:  "failover requested", 
+cabg: cdbfilerepmirror:00001114:  O_CREAT *PIPE* O_RDWR *PIPE* PG_BINARY, 
+cabg: cdbfilerepmirror:00001115:  fileMode), 
+cabg: cdbfilerepmirror:00001116:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001117:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001118:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001119:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00001120:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001157:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001158:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001159:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001160:  "could not fill zero blocks into segment file : %m, " 
+cabg: cdbfilerepmirror:00001161:  "failover requested"), 
+cabg: cdbfilerepmirror:00001162:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001163:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001164:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001165:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00001166:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001178:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001179:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001180:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001181:  "could not seek to file position:'%d' : %m, " 
+cabg: cdbfilerepmirror:00001182:  "failover requested", 
+cabg: cdbfilerepmirror:00001183:  fileRepMessageHeader->fileRepOperationDescription.write.offset), 
+cabg: cdbfilerepmirror:00001184:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001185:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001186:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001187:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00001188:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001206:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001207:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001208:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001209:  "could not write to file : %m, " 
+cabg: cdbfilerepmirror:00001210:  "failover requested"), 
+cabg: cdbfilerepmirror:00001211:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001212:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001213:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001214:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00001215:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001230:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001231:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001232:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001233:  "could not find file descriptor : %m, " 
+cabg: cdbfilerepmirror:00001234:  "failover requested"), 
+cabg: cdbfilerepmirror:00001235:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001236:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001237:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001238:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00001239:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001263:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001264:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001265:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001266:  "could not find file descriptor or open file : %m" 
+cabg: cdbfilerepmirror:00001267:  "failover requested"), 
+cabg: cdbfilerepmirror:00001268:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001269:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001270:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001271:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00001272:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001305:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001306:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001307:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001308:  "could not fsync file : %m" 
+cabg: cdbfilerepmirror:00001309:  "failover requested"), 
+cabg: cdbfilerepmirror:00001310:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001311:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001312:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001313:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00001314:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001383:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001384:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001385:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001386:  "could not find file descriptor or open file : %m" 
+cabg: cdbfilerepmirror:00001387:  "failover requested"), 
+cabg: cdbfilerepmirror:00001388:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001389:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001390:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001391:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00001392:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001417:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001418:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001419:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001420:  "could not fsync file : %m" 
+cabg: cdbfilerepmirror:00001421:  "failover requested"), 
+cabg: cdbfilerepmirror:00001422:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001423:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001424:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001425:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00001426:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001463:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001464:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001465:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001466:  "could not find file descriptor or open file : %m" 
+cabg: cdbfilerepmirror:00001467:  "failover requested"), 
+cabg: cdbfilerepmirror:00001468:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001469:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001470:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001471:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00001472:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001498:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001499:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001500:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001501:  "could not truncate file to position:'" INT64_FORMAT "' : %m" 
+cabg: cdbfilerepmirror:00001502:  "failover requested", 
+cabg: cdbfilerepmirror:00001503:  fileRepMessageHeader->fileRepOperationDescription.truncate.position), 
+cabg: cdbfilerepmirror:00001504:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001505:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001506:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001507:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00001508:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001545:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001546:  (errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001547:  "could not reconcile xlog file : %m" 
+cabg: cdbfilerepmirror:00001548:  "failover requested"), 
+cabg: cdbfilerepmirror:00001549:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001550:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001551:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001552:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00001553:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001596:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001597:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001598:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001599:  "could not create directory : %m" 
+cabg: cdbfilerepmirror:00001600:  "failover requested"), 
+cabg: cdbfilerepmirror:00001601:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001602:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001603:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00001604:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001675:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001676:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001677:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001678:  "could not create file : %m, " 
+cabg: cdbfilerepmirror:00001679:  "failover requested"), 
+cabg: cdbfilerepmirror:00001680:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001681:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001682:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00001683:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001937:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001938:  (errmsg("mirror failure, could not queue ACK message to be sent to primary, failover requested"), 
+cabg: cdbfilerepmirror:00001939:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001940:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001941:  fileRepMessageHeader->fileRepOperation), 
+cabg: cdbfilerepmirror:00001942:  FileRep_errcontext())); 
 aaaaa GP_IGNORE: cabh: cdbfilerepprimary - ./backend/cdb/cdbfilerepprimary.c
-cabh: cdbfilerepprimary:00000227:  ereport(ERROR, 
-cabh: cdbfilerepprimary:00000228:  (errmsg("failure is detected in segment mirroring during shutdown, abort requested (%d)", 
-cabh: cdbfilerepprimary:00000229:  getpid()))); 
-cabh: cdbfilerepprimary:00000275:  ereport(LOG, 
-cabh: cdbfilerepprimary:00000276:  (errmsg("failover is performed to the primary segment, " 
-cabh: cdbfilerepprimary:00000277:  "segment mirroring is suspended "), 
-cabh: cdbfilerepprimary:00000278:  errSendAlert(true), 
-cabh: cdbfilerepprimary:00000279:  FileRep_errcontext())); 
-cabh: cdbfilerepprimary:00000341:  ereport(WARNING, 
-cabh: cdbfilerepprimary:00000342:  (errmsg("mirror failure, " 
-cabh: cdbfilerepprimary:00000343:  "could not insert message in ACK table" 
-cabh: cdbfilerepprimary:00000344:  "failover requested"), 
-cabh: cdbfilerepprimary:00000345:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabh: cdbfilerepprimary:00000346:  FileRep_errdetail(fileRepIdentifier, 
-cabh: cdbfilerepprimary:00000347:  fileRepRelationType, 
-cabh: cdbfilerepprimary:00000348:  fileRepOperation), 
-cabh: cdbfilerepprimary:00000349:  FileRep_errdetail_Shmem(), 
-cabh: cdbfilerepprimary:00000350:  FileRep_errcontext())); 
-cabh: cdbfilerepprimary:00000379:  ereport(WARNING, 
-cabh: cdbfilerepprimary:00000380:  (errmsg("mirror failure, " 
-cabh: cdbfilerepprimary:00000381:  "could not queue message to be mirrored, " 
-cabh: cdbfilerepprimary:00000382:  "failover requested"), 
-cabh: cdbfilerepprimary:00000383:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabh: cdbfilerepprimary:00000384:  FileRep_errdetail(fileRepIdentifier, 
-cabh: cdbfilerepprimary:00000385:  fileRepRelationType, 
-cabh: cdbfilerepprimary:00000386:  fileRepOperation), 
-cabh: cdbfilerepprimary:00000387:  FileRep_errdetail_Shmem(), 
-cabh: cdbfilerepprimary:00000388:  FileRep_errcontext())); 
-cabh: cdbfilerepprimary:00001048:  ereport(WARNING, 
-cabh: cdbfilerepprimary:00001049:  (errmsg("mirror failure, " 
-cabh: cdbfilerepprimary:00001050:  "could not resynchonize mirror due to missing directories or relations on mirror, " 
-cabh: cdbfilerepprimary:00001051:  "failover requested"), 
-cabh: cdbfilerepprimary:00001052:  errhint("run gprecoverseg -F (full copy) to re-establish mirror connectivity"), 
-cabh: cdbfilerepprimary:00001053:  errSendAlert(true), 
-cabh: cdbfilerepprimary:00001054:  FileRep_errdetail(fileRepIdentifier, 
-cabh: cdbfilerepprimary:00001055:  fileRepRelationType, 
-cabh: cdbfilerepprimary:00001056:  FileRepOperationValidation), 
-cabh: cdbfilerepprimary:00001057:  FileRep_errcontext())); 
-cabh: cdbfilerepprimary:00001535:  ereport(WARNING, 
-cabh: cdbfilerepprimary:00001536:  (errcode_for_socket_access(), 
-cabh: cdbfilerepprimary:00001537:  errmsg("mirror failure, " 
-cabh: cdbfilerepprimary:00001538:  "could not sent message to mirror msg header count:'%d' local count:'%d' : %m, " 
-cabh: cdbfilerepprimary:00001539:  "failover requested", 
-cabh: cdbfilerepprimary:00001540:  fileRepMessageHeader->messageCount, 
-cabh: cdbfilerepprimary:00001541:  spare), 
-cabh: cdbfilerepprimary:00001542:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabh: cdbfilerepprimary:00001543:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabh: cdbfilerepprimary:00001544:  fileRepMessageHeader->fileRepRelationType, 
-cabh: cdbfilerepprimary:00001545:  fileRepMessageHeader->fileRepOperation), 
-cabh: cdbfilerepprimary:00001546:  FileRep_errdetail_Shmem(), 
-cabh: cdbfilerepprimary:00001547:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00000224:  ereport(ERROR, 
+cabh: cdbfilerepprimary:00000225:  (errmsg("failure is detected in segment mirroring during shutdown, abort requested (%d)", 
+cabh: cdbfilerepprimary:00000226:  getpid()))); 
+cabh: cdbfilerepprimary:00000272:  ereport(LOG, 
+cabh: cdbfilerepprimary:00000273:  (errmsg("failover is performed to the primary segment, " 
+cabh: cdbfilerepprimary:00000274:  "segment mirroring is suspended "), 
+cabh: cdbfilerepprimary:00000275:  errSendAlert(true), 
+cabh: cdbfilerepprimary:00000276:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00000338:  ereport(WARNING, 
+cabh: cdbfilerepprimary:00000339:  (errmsg("mirror failure, " 
+cabh: cdbfilerepprimary:00000340:  "could not insert message in ACK table" 
+cabh: cdbfilerepprimary:00000341:  "failover requested"), 
+cabh: cdbfilerepprimary:00000342:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabh: cdbfilerepprimary:00000343:  FileRep_errdetail(fileRepIdentifier, 
+cabh: cdbfilerepprimary:00000344:  fileRepRelationType, 
+cabh: cdbfilerepprimary:00000345:  fileRepOperation), 
+cabh: cdbfilerepprimary:00000346:  FileRep_errdetail_Shmem(), 
+cabh: cdbfilerepprimary:00000347:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00000376:  ereport(WARNING, 
+cabh: cdbfilerepprimary:00000377:  (errmsg("mirror failure, " 
+cabh: cdbfilerepprimary:00000378:  "could not queue message to be mirrored, " 
+cabh: cdbfilerepprimary:00000379:  "failover requested"), 
+cabh: cdbfilerepprimary:00000380:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabh: cdbfilerepprimary:00000381:  FileRep_errdetail(fileRepIdentifier, 
+cabh: cdbfilerepprimary:00000382:  fileRepRelationType, 
+cabh: cdbfilerepprimary:00000383:  fileRepOperation), 
+cabh: cdbfilerepprimary:00000384:  FileRep_errdetail_Shmem(), 
+cabh: cdbfilerepprimary:00000385:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00001069:  ereport(WARNING, 
+cabh: cdbfilerepprimary:00001070:  (errmsg("mirror failure, " 
+cabh: cdbfilerepprimary:00001071:  "could not resynchonize mirror due to missing directories or relations on mirror, " 
+cabh: cdbfilerepprimary:00001072:  "failover requested"), 
+cabh: cdbfilerepprimary:00001073:  errhint("run gprecoverseg -F (full copy) to re-establish mirror connectivity"), 
+cabh: cdbfilerepprimary:00001074:  errSendAlert(true), 
+cabh: cdbfilerepprimary:00001075:  FileRep_errdetail(fileRepIdentifier, 
+cabh: cdbfilerepprimary:00001076:  fileRepRelationType, 
+cabh: cdbfilerepprimary:00001077:  FileRepOperationValidation), 
+cabh: cdbfilerepprimary:00001078:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00001556:  ereport(WARNING, 
+cabh: cdbfilerepprimary:00001557:  (errcode_for_socket_access(), 
+cabh: cdbfilerepprimary:00001558:  errmsg("mirror failure, " 
+cabh: cdbfilerepprimary:00001559:  "could not sent message to mirror msg header count:'%d' local count:'%d' : %m, " 
+cabh: cdbfilerepprimary:00001560:  "failover requested", 
+cabh: cdbfilerepprimary:00001561:  fileRepMessageHeader->messageCount, 
+cabh: cdbfilerepprimary:00001562:  spare), 
+cabh: cdbfilerepprimary:00001563:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabh: cdbfilerepprimary:00001564:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabh: cdbfilerepprimary:00001565:  fileRepMessageHeader->fileRepRelationType, 
+cabh: cdbfilerepprimary:00001566:  fileRepMessageHeader->fileRepOperation), 
+cabh: cdbfilerepprimary:00001567:  FileRep_errdetail_Shmem(), 
+cabh: cdbfilerepprimary:00001568:  FileRep_errcontext())); 
 aaaaa GP_IGNORE: caca: cdbfilerepprimaryack - ./backend/cdb/cdbfilerepprimaryack.c
 caca: cdbfilerepprimaryack:00000139:  ereport(WARNING, 
 caca: cdbfilerepprimaryack:00000140:  (errmsg("mirror failure, " 
@@ -3015,18 +3015,18 @@ caca: cdbfilerepprimaryack:00000395:  (errmsg("Not enough shared memory for Mirr
 caca: cdbfilerepprimaryack:00000401:  ereport(ERROR, 
 caca: cdbfilerepprimaryack:00000402:  (errcode(ERRCODE_OUT_OF_MEMORY), 
 caca: cdbfilerepprimaryack:00000403:  (errmsg("Not enough shared memory for Mirroring.")))); 
-caca: cdbfilerepprimaryack:00001049:  ereport(LOG, 
-caca: cdbfilerepprimaryack:00001050:  (errmsg("ERROR(filerep): could not complete operation on mirror " 
-caca: cdbfilerepprimaryack:00001051:  "msg header count:'%d' ack state:'%s' ", 
-caca: cdbfilerepprimaryack:00001052:  fileRepMessageHeader->messageCount, 
-caca: cdbfilerepprimaryack:00001053:  FileRepAckStateToString[fileRepMessageHeader->fileRepAckState]), 
-caca: cdbfilerepprimaryack:00001054:  errSendAlert(true), 
-caca: cdbfilerepprimaryack:00001055:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-caca: cdbfilerepprimaryack:00001056:  fileRepMessageHeader->fileRepRelationType, 
-caca: cdbfilerepprimaryack:00001057:  fileRepMessageHeader->fileRepOperation), 
-caca: cdbfilerepprimaryack:00001058:  FileRep_errdetail_Shmem(), 
-caca: cdbfilerepprimaryack:00001059:  FileRep_errdetail_ShmemAck(), 
-caca: cdbfilerepprimaryack:00001060:  FileRep_errcontext())); 
+caca: cdbfilerepprimaryack:00001052:  ereport(LOG, 
+caca: cdbfilerepprimaryack:00001053:  (errmsg("ERROR(filerep): could not complete operation on mirror " 
+caca: cdbfilerepprimaryack:00001054:  "msg header count:'%d' ack state:'%s' ", 
+caca: cdbfilerepprimaryack:00001055:  fileRepMessageHeader->messageCount, 
+caca: cdbfilerepprimaryack:00001056:  FileRepAckStateToString[fileRepMessageHeader->fileRepAckState]), 
+caca: cdbfilerepprimaryack:00001057:  errSendAlert(true), 
+caca: cdbfilerepprimaryack:00001058:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+caca: cdbfilerepprimaryack:00001059:  fileRepMessageHeader->fileRepRelationType, 
+caca: cdbfilerepprimaryack:00001060:  fileRepMessageHeader->fileRepOperation), 
+caca: cdbfilerepprimaryack:00001061:  FileRep_errdetail_Shmem(), 
+caca: cdbfilerepprimaryack:00001062:  FileRep_errdetail_ShmemAck(), 
+caca: cdbfilerepprimaryack:00001063:  FileRep_errcontext())); 
 aaaaa GP_IGNORE: cacd: cdbfilerepresyncmanager - ./backend/cdb/cdbfilerepresyncmanager.c
 cacd: cdbfilerepresyncmanager:00000443:  ereport(ERROR, 
 cacd: cdbfilerepresyncmanager:00000444:  (errcode(ERRCODE_OUT_OF_MEMORY), 
@@ -3098,11 +3098,12 @@ cacc: cdbfilerepresyncworker:00000545:  result->entries[ii].relFileNode.spcNode,
 cacc: cdbfilerepresyncworker:00000546:  result->entries[ii].relFileNode.dbNode, 
 cacc: cdbfilerepresyncworker:00000547:  result->entries[ii].relFileNode.relNode))); 
 aaaaa GP_IGNORE: cabh: cdbfilerepservice - ./backend/cdb/cdbfilerepservice.c
-cabh: cdbfilerepservice:00000335:  ereport(ERROR, 
-cabh: cdbfilerepservice:00000336:  (errmsg("failure is detected in segment mirroring during backend shutdown, abort requested (%d)", 
-cabh: cdbfilerepservice:00000337:  getpid()))); 
-cabh: cdbfilerepservice:00000561:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
-cabh: cdbfilerepservice:00000562:  errmsg("database 'postgres' does not exist"))); 
+cabh: cdbfilerepservice:00000313:  ereport(WARNING, 
+cabh: cdbfilerepservice:00000314:  (errmsg("failure is detected in segment mirroring during backend shutdown, " 
+cabh: cdbfilerepservice:00000315:  "abort requested (%d)", 
+cabh: cdbfilerepservice:00000316:  getpid()))); 
+cabh: cdbfilerepservice:00000566:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
+cabh: cdbfilerepservice:00000567:  errmsg("database 'postgres' does not exist"))); 
 aaaaa GP_IGNORE: caag: cdbfts - ./backend/cdb/cdbfts.c
 caag: cdbfts:00000206:  ereport(LOG, (errmsg_internal("FTS: reconfiguration is in progress"), 
 caag: cdbfts:00000207:  errSendAlert(true))); 
@@ -3462,9 +3463,9 @@ cabj: cdbmirroredflatfile:00000969:  ereport(ERROR,
 cabj: cdbmirroredflatfile:00000970:  (errcode_for_file_access(), 
 cabj: cdbmirroredflatfile:00000971:  errmsg("could not read from position:%d in file \"%s\" : %m", 
 cabj: cdbmirroredflatfile:00000972:  startOffset, primaryOpen.path))); 
-cabj: cdbmirroredflatfile:00001175:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00001176:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cabj: cdbmirroredflatfile:00001177:  (errmsg("Not enough shared memory for Mirroring.")))); 
+cabj: cdbmirroredflatfile:00001249:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00001250:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cabj: cdbmirroredflatfile:00001251:  (errmsg("Not enough shared memory for Mirroring.")))); 
 aaaaa GP_IGNORE: caaj: cdbmutate - ./backend/cdb/cdbmutate.c
 caaj: cdbmutate:00000410:  ereport(NOTICE, 
 caaj: cdbmutate:00000411:  (errcode(ERRCODE_SUCCESSFUL_COMPLETION), 
@@ -3521,9 +3522,9 @@ aaaaa GP_IGNORE: cacc: cdbpersistentfilespace - ./backend/cdb/cdbpersistentfiles
 cacc: cdbpersistentfilespace:00000574:  ereport(FATAL, 
 cacc: cdbpersistentfilespace:00000575:  (errcode(ERRCODE_INTERNAL_ERROR), 
 cacc: cdbpersistentfilespace:00000576:  errmsg("Unable to determine dbid for filespace lookup"))); 
-cacc: cdbpersistentfilespace:00001372:  ereport(FATAL, 
-cacc: cdbpersistentfilespace:00001373:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cacc: cdbpersistentfilespace:00001374:  errmsg("Not enough shared memory for persistent filespace hash table"))); 
+cacc: cdbpersistentfilespace:00001336:  ereport(FATAL, 
+cacc: cdbpersistentfilespace:00001337:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cacc: cdbpersistentfilespace:00001338:  errmsg("Not enough shared memory for persistent filespace hash table"))); 
 aaaaa GP_IGNORE: cacd: cdbpersistentfilesysobj - ./backend/cdb/cdbpersistentfilesysobj.c
 cacd: cdbpersistentfilesysobj:00001102:  ereport(ERROR, 
 cacd: cdbpersistentfilesysobj:00001103:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
@@ -6050,119 +6051,119 @@ saba: schemacmds:00000406:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 saba: schemacmds:00000407:  errmsg("permission denied to ALTER SCHEMA \"%s\"", name), 
 saba: schemacmds:00000408:  errdetail("Schema %s is reserved for system use.", name))); 
 aaaaa GP_IGNORE: saai: sequence - ./backend/commands/sequence.c
-saai: sequence:00000812:  ereport(ERROR, 
-saai: sequence:00000813:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-saai: sequence:00000814:  errmsg("permission denied for sequence %s", 
-saai: sequence:00000815:  RelationGetRelationName(seqrel)))); 
-saai: sequence:00000924:  ereport(ERROR, 
-saai: sequence:00000925:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-saai: sequence:00000926:  errmsg("nextval: reached maximum value of sequence \"%s\" (%s)", 
-saai: sequence:00000927:  RelationGetRelationName(seqrel), buf))); 
-saai: sequence:00000947:  ereport(ERROR, 
-saai: sequence:00000948:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-saai: sequence:00000949:  errmsg("nextval: reached minimum value of sequence \"%s\" (%s)", 
-saai: sequence:00000950:  RelationGetRelationName(seqrel), buf))); 
-saai: sequence:00001052:  ereport(ERROR, 
-saai: sequence:00001053:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-saai: sequence:00001054:  errmsg("currval() not supported"))); 
-saai: sequence:00001062:  ereport(ERROR, 
-saai: sequence:00001063:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-saai: sequence:00001064:  errmsg("permission denied for sequence %s", 
-saai: sequence:00001065:  RelationGetRelationName(seqrel)))); 
-saai: sequence:00001068:  ereport(ERROR, 
-saai: sequence:00001069:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-saai: sequence:00001070:  errmsg("currval of sequence \"%s\" is not yet defined in this session", 
-saai: sequence:00001071:  RelationGetRelationName(seqrel)))); 
-saai: sequence:00001089:  ereport(ERROR, 
-saai: sequence:00001090:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-saai: sequence:00001091:  errmsg("lastval() not supported"))); 
-saai: sequence:00001095:  ereport(ERROR, 
-saai: sequence:00001096:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-saai: sequence:00001097:  errmsg("lastval is not yet defined in this session"))); 
-saai: sequence:00001103:  ereport(ERROR, 
-saai: sequence:00001104:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-saai: sequence:00001105:  errmsg("lastval is not yet defined in this session"))); 
-saai: sequence:00001114:  ereport(ERROR, 
-saai: sequence:00001115:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-saai: sequence:00001116:  errmsg("permission denied for sequence %s", 
-saai: sequence:00001117:  RelationGetRelationName(seqrel)))); 
+saai: sequence:00000836:  ereport(ERROR, 
+saai: sequence:00000837:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+saai: sequence:00000838:  errmsg("permission denied for sequence %s", 
+saai: sequence:00000839:  RelationGetRelationName(seqrel)))); 
+saai: sequence:00000954:  ereport(ERROR, 
+saai: sequence:00000955:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+saai: sequence:00000956:  errmsg("nextval: reached maximum value of sequence \"%s\" (%s)", 
+saai: sequence:00000957:  RelationGetRelationName(seqrel), buf))); 
+saai: sequence:00000977:  ereport(ERROR, 
+saai: sequence:00000978:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+saai: sequence:00000979:  errmsg("nextval: reached minimum value of sequence \"%s\" (%s)", 
+saai: sequence:00000980:  RelationGetRelationName(seqrel), buf))); 
+saai: sequence:00001086:  ereport(ERROR, 
+saai: sequence:00001087:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+saai: sequence:00001088:  errmsg("currval() not supported"))); 
+saai: sequence:00001096:  ereport(ERROR, 
+saai: sequence:00001097:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+saai: sequence:00001098:  errmsg("permission denied for sequence %s", 
+saai: sequence:00001099:  RelationGetRelationName(seqrel)))); 
+saai: sequence:00001102:  ereport(ERROR, 
+saai: sequence:00001103:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+saai: sequence:00001104:  errmsg("currval of sequence \"%s\" is not yet defined in this session", 
+saai: sequence:00001105:  RelationGetRelationName(seqrel)))); 
+saai: sequence:00001123:  ereport(ERROR, 
+saai: sequence:00001124:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+saai: sequence:00001125:  errmsg("lastval() not supported"))); 
+saai: sequence:00001129:  ereport(ERROR, 
+saai: sequence:00001130:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+saai: sequence:00001131:  errmsg("lastval is not yet defined in this session"))); 
+saai: sequence:00001137:  ereport(ERROR, 
+saai: sequence:00001138:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+saai: sequence:00001139:  errmsg("lastval is not yet defined in this session"))); 
 saai: sequence:00001148:  ereport(ERROR, 
-saai: sequence:00001149:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-saai: sequence:00001150:  errmsg("setval() not supported in this context"))); 
-saai: sequence:00001157:  ereport(ERROR, 
-saai: sequence:00001158:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-saai: sequence:00001159:  errmsg("permission denied for sequence %s", 
-saai: sequence:00001160:  RelationGetRelationName(seqrel)))); 
-saai: sequence:00001175:  ereport(ERROR, 
-saai: sequence:00001176:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-saai: sequence:00001177:  errmsg("setval: value %s is out of bounds for sequence \"%s\" (%s..%s)", 
-saai: sequence:00001178:  bufv, RelationGetRelationName(seqrel), 
-saai: sequence:00001179:  bufm, bufx))); 
-saai: sequence:00001345:  ereport(ERROR, 
-saai: sequence:00001346:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-saai: sequence:00001347:  errmsg("out of memory"))); 
-saai: sequence:00001362:  ereport(ERROR, 
-saai: sequence:00001363:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-saai: sequence:00001364:  errmsg("\"%s\" is not a sequence", 
-saai: sequence:00001365:  RelationGetRelationName(seqrel)))); 
-saai: sequence:00001430:  ereport(ERROR, 
-saai: sequence:00001431:  (errcode(ERRCODE_SYNTAX_ERROR), 
-saai: sequence:00001432:  errmsg("conflicting or redundant options"))); 
-saai: sequence:00001443:  ereport(ERROR, 
-saai: sequence:00001444:  (errcode(ERRCODE_SYNTAX_ERROR), 
-saai: sequence:00001445:  errmsg("conflicting or redundant options"))); 
-saai: sequence:00001451:  ereport(ERROR, 
-saai: sequence:00001452:  (errcode(ERRCODE_SYNTAX_ERROR), 
-saai: sequence:00001453:  errmsg("conflicting or redundant options"))); 
-saai: sequence:00001459:  ereport(ERROR, 
-saai: sequence:00001460:  (errcode(ERRCODE_SYNTAX_ERROR), 
-saai: sequence:00001461:  errmsg("conflicting or redundant options"))); 
-saai: sequence:00001467:  ereport(ERROR, 
-saai: sequence:00001468:  (errcode(ERRCODE_SYNTAX_ERROR), 
-saai: sequence:00001469:  errmsg("conflicting or redundant options"))); 
+saai: sequence:00001149:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+saai: sequence:00001150:  errmsg("permission denied for sequence %s", 
+saai: sequence:00001151:  RelationGetRelationName(seqrel)))); 
+saai: sequence:00001184:  ereport(ERROR, 
+saai: sequence:00001185:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+saai: sequence:00001186:  errmsg("setval() not supported in this context"))); 
+saai: sequence:00001193:  ereport(ERROR, 
+saai: sequence:00001194:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+saai: sequence:00001195:  errmsg("permission denied for sequence %s", 
+saai: sequence:00001196:  RelationGetRelationName(seqrel)))); 
+saai: sequence:00001215:  ereport(ERROR, 
+saai: sequence:00001216:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+saai: sequence:00001217:  errmsg("setval: value %s is out of bounds for sequence \"%s\" (%s..%s)", 
+saai: sequence:00001218:  bufv, RelationGetRelationName(seqrel), 
+saai: sequence:00001219:  bufm, bufx))); 
+saai: sequence:00001388:  ereport(ERROR, 
+saai: sequence:00001389:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+saai: sequence:00001390:  errmsg("out of memory"))); 
+saai: sequence:00001405:  ereport(ERROR, 
+saai: sequence:00001406:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+saai: sequence:00001407:  errmsg("\"%s\" is not a sequence", 
+saai: sequence:00001408:  RelationGetRelationName(seqrel)))); 
 saai: sequence:00001475:  ereport(ERROR, 
 saai: sequence:00001476:  (errcode(ERRCODE_SYNTAX_ERROR), 
 saai: sequence:00001477:  errmsg("conflicting or redundant options"))); 
-saai: sequence:00001483:  ereport(ERROR, 
-saai: sequence:00001484:  (errcode(ERRCODE_SYNTAX_ERROR), 
-saai: sequence:00001485:  errmsg("conflicting or redundant options"))); 
-saai: sequence:00001498:  ereport(ERROR, 
-saai: sequence:00001499:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-saai: sequence:00001500:  errmsg("INCREMENT must not be zero"))); 
-saai: sequence:00001544:  ereport(ERROR, 
-saai: sequence:00001545:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-saai: sequence:00001546:  errmsg("MINVALUE (%s) must be less than MAXVALUE (%s)", 
-saai: sequence:00001547:  bufm, bufx))); 
-saai: sequence:00001575:  ereport(ERROR, 
-saai: sequence:00001576:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-saai: sequence:00001577:  errmsg("START value (%s) can't be less than MINVALUE (%s)", 
-saai: sequence:00001578:  bufs, bufm))); 
-saai: sequence:00001587:  ereport(ERROR, 
-saai: sequence:00001588:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-saai: sequence:00001589:  errmsg("START value (%s) can't be greater than MAXVALUE (%s)", 
-saai: sequence:00001590:  bufs, bufm))); 
-saai: sequence:00001602:  ereport(ERROR, 
-saai: sequence:00001603:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-saai: sequence:00001604:  errmsg("CACHE (%s) must be greater than zero", 
-saai: sequence:00001605:  buf))); 
-saai: sequence:00001633:  ereport(ERROR, 
-saai: sequence:00001634:  (errcode(ERRCODE_SYNTAX_ERROR), 
-saai: sequence:00001635:  errmsg("invalid OWNED BY option"), 
-saai: sequence:00001636:  errhint("Specify OWNED BY table.column or OWNED BY NONE."))); 
-saai: sequence:00001656:  ereport(ERROR, 
-saai: sequence:00001657:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-saai: sequence:00001658:  errmsg("referenced relation \"%s\" is not a table", 
-saai: sequence:00001659:  RelationGetRelationName(tablerel)))); 
-saai: sequence:00001663:  ereport(ERROR, 
-saai: sequence:00001664:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-saai: sequence:00001665:  errmsg("sequence must have same owner as table it is linked to"))); 
-saai: sequence:00001667:  ereport(ERROR, 
-saai: sequence:00001668:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-saai: sequence:00001669:  errmsg("sequence must be in same schema as table it is linked to"))); 
-saai: sequence:00001674:  ereport(ERROR, 
-saai: sequence:00001675:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-saai: sequence:00001676:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
-saai: sequence:00001677:  attrname, RelationGetRelationName(tablerel)))); 
+saai: sequence:00001488:  ereport(ERROR, 
+saai: sequence:00001489:  (errcode(ERRCODE_SYNTAX_ERROR), 
+saai: sequence:00001490:  errmsg("conflicting or redundant options"))); 
+saai: sequence:00001496:  ereport(ERROR, 
+saai: sequence:00001497:  (errcode(ERRCODE_SYNTAX_ERROR), 
+saai: sequence:00001498:  errmsg("conflicting or redundant options"))); 
+saai: sequence:00001504:  ereport(ERROR, 
+saai: sequence:00001505:  (errcode(ERRCODE_SYNTAX_ERROR), 
+saai: sequence:00001506:  errmsg("conflicting or redundant options"))); 
+saai: sequence:00001512:  ereport(ERROR, 
+saai: sequence:00001513:  (errcode(ERRCODE_SYNTAX_ERROR), 
+saai: sequence:00001514:  errmsg("conflicting or redundant options"))); 
+saai: sequence:00001520:  ereport(ERROR, 
+saai: sequence:00001521:  (errcode(ERRCODE_SYNTAX_ERROR), 
+saai: sequence:00001522:  errmsg("conflicting or redundant options"))); 
+saai: sequence:00001528:  ereport(ERROR, 
+saai: sequence:00001529:  (errcode(ERRCODE_SYNTAX_ERROR), 
+saai: sequence:00001530:  errmsg("conflicting or redundant options"))); 
+saai: sequence:00001543:  ereport(ERROR, 
+saai: sequence:00001544:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+saai: sequence:00001545:  errmsg("INCREMENT must not be zero"))); 
+saai: sequence:00001589:  ereport(ERROR, 
+saai: sequence:00001590:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+saai: sequence:00001591:  errmsg("MINVALUE (%s) must be less than MAXVALUE (%s)", 
+saai: sequence:00001592:  bufm, bufx))); 
+saai: sequence:00001620:  ereport(ERROR, 
+saai: sequence:00001621:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+saai: sequence:00001622:  errmsg("START value (%s) can't be less than MINVALUE (%s)", 
+saai: sequence:00001623:  bufs, bufm))); 
+saai: sequence:00001632:  ereport(ERROR, 
+saai: sequence:00001633:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+saai: sequence:00001634:  errmsg("START value (%s) can't be greater than MAXVALUE (%s)", 
+saai: sequence:00001635:  bufs, bufm))); 
+saai: sequence:00001647:  ereport(ERROR, 
+saai: sequence:00001648:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+saai: sequence:00001649:  errmsg("CACHE (%s) must be greater than zero", 
+saai: sequence:00001650:  buf))); 
+saai: sequence:00001678:  ereport(ERROR, 
+saai: sequence:00001679:  (errcode(ERRCODE_SYNTAX_ERROR), 
+saai: sequence:00001680:  errmsg("invalid OWNED BY option"), 
+saai: sequence:00001681:  errhint("Specify OWNED BY table.column or OWNED BY NONE."))); 
+saai: sequence:00001701:  ereport(ERROR, 
+saai: sequence:00001702:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+saai: sequence:00001703:  errmsg("referenced relation \"%s\" is not a table", 
+saai: sequence:00001704:  RelationGetRelationName(tablerel)))); 
+saai: sequence:00001708:  ereport(ERROR, 
+saai: sequence:00001709:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+saai: sequence:00001710:  errmsg("sequence must have same owner as table it is linked to"))); 
+saai: sequence:00001712:  ereport(ERROR, 
+saai: sequence:00001713:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+saai: sequence:00001714:  errmsg("sequence must be in same schema as table it is linked to"))); 
+saai: sequence:00001719:  ereport(ERROR, 
+saai: sequence:00001720:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+saai: sequence:00001721:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
+saai: sequence:00001722:  attrname, RelationGetRelationName(tablerel)))); 
 aaaaa GP_IGNORE: taaj: tablecmds - ./backend/commands/tablecmds.c
 taaj: tablecmds:00000492:  * via ereport(ERROR,...) if unsuccessful. 
 taaj: tablecmds:00000493:  */ 
@@ -8022,98 +8023,98 @@ taba: tablespace:00001185:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 taba: tablespace:00001186:  errmsg("tablespace %u is not empty", 
 taba: tablespace:00001187:  xlrec->ts_id))); 
 aaaaa GP_IGNORE: taah: trigger - ./backend/commands/trigger.c
-taah: trigger:00000136:  ereport(NOTICE, 
-taah: trigger:00000137:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-taah: trigger:00000138:  errmsg("could not determine referenced table for constraint \"%s\"", 
-taah: trigger:00000139:  stmt->trigname))); 
-taah: trigger:00000143:  ereport(ERROR, 
-taah: trigger:00000144:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-taah: trigger:00000145:  errmsg("\"%s\" is not a table", 
-taah: trigger:00000146:  RelationGetRelationName(rel)))); 
-taah: trigger:00000149:  ereport(ERROR, 
-taah: trigger:00000150:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-taah: trigger:00000151:  errmsg("permission denied: \"%s\" is a system catalog", 
-taah: trigger:00000152:  RelationGetRelationName(rel)))); 
-taah: trigger:00000225:  ereport(ERROR, 
-taah: trigger:00000226:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taah: trigger:00000227:  errmsg("multiple INSERT events specified"))); 
-taah: trigger:00000232:  ereport(ERROR, 
-taah: trigger:00000233:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taah: trigger:00000234:  errmsg("multiple DELETE events specified"))); 
-taah: trigger:00000239:  ereport(ERROR, 
-taah: trigger:00000240:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taah: trigger:00000241:  errmsg("multiple UPDATE events specified"))); 
-taah: trigger:00000271:  ereport(ERROR, 
-taah: trigger:00000272:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-taah: trigger:00000273:  errmsg("trigger \"%s\" for relation \"%s\" already exists", 
-taah: trigger:00000274:  trigname, stmt->relation->relname))); 
-taah: trigger:00000293:  ereport(WARNING, 
-taah: trigger:00000294:  (errmsg("changing return type of function %s from \"opaque\" to \"trigger\"", 
-taah: trigger:00000295:  NameListToString(stmt->funcname)))); 
-taah: trigger:00000299:  ereport(ERROR, 
-taah: trigger:00000300:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-taah: trigger:00000301:  errmsg("function %s must return type \"trigger\"", 
-taah: trigger:00000302:  NameListToString(stmt->funcname)))); 
-taah: trigger:00000503:  ereport(ERROR, 
-taah: trigger:00000504:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taah: trigger:00000505:  errmsg("trigger \"%s\" for table \"%s\" does not exist", 
-taah: trigger:00000506:  trigname, get_rel_name(relid)))); 
-taah: trigger:00000508:  ereport(NOTICE, 
-taah: trigger:00000509:  (errmsg("trigger \"%s\" for table \"%s\" does not exist, skipping", 
-taah: trigger:00000510:  trigname, get_rel_name(relid)))); 
-taah: trigger:00000575:  ereport(ERROR, 
-taah: trigger:00000576:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-taah: trigger:00000577:  errmsg("\"%s\" is not a table", 
-taah: trigger:00000578:  RelationGetRelationName(rel)))); 
-taah: trigger:00000581:  ereport(ERROR, 
-taah: trigger:00000582:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-taah: trigger:00000583:  errmsg("permission denied: \"%s\" is a system catalog", 
-taah: trigger:00000584:  RelationGetRelationName(rel)))); 
-taah: trigger:00000682:  ereport(ERROR, 
-taah: trigger:00000683:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-taah: trigger:00000684:  errmsg("trigger \"%s\" for relation \"%s\" already exists", 
-taah: trigger:00000685:  newname, RelationGetRelationName(targetrel)))); 
-taah: trigger:00000724:  ereport(ERROR, 
-taah: trigger:00000725:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taah: trigger:00000726:  errmsg("trigger \"%s\" for table \"%s\" does not exist", 
-taah: trigger:00000727:  oldname, RelationGetRelationName(targetrel)))); 
-taah: trigger:00000801:  ereport(ERROR, 
-taah: trigger:00000802:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-taah: trigger:00000803:  errmsg("permission denied: \"%s\" is a system trigger", 
-taah: trigger:00000804:  NameStr(oldtrig->tgname)))); 
-taah: trigger:00000833:  ereport(ERROR, 
-taah: trigger:00000834:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taah: trigger:00000835:  errmsg("trigger \"%s\" for table \"%s\" does not exist", 
-taah: trigger:00000836:  tgname, RelationGetRelationName(rel)))); 
-taah: trigger:00001326:  ereport(ERROR, 
-taah: trigger:00001327:  (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED), 
-taah: trigger:00001328:  errmsg("trigger function %u returned null value", 
-taah: trigger:00001329:  fcinfo.flinfo->fn_oid))); 
-taah: trigger:00001384:  ereport(ERROR, 
-taah: trigger:00001385:  (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED), 
-taah: trigger:00001386:  errmsg("BEFORE STATEMENT trigger cannot return a value"))); 
-taah: trigger:00001500:  ereport(ERROR, 
-taah: trigger:00001501:  (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED), 
-taah: trigger:00001502:  errmsg("BEFORE STATEMENT trigger cannot return a value"))); 
-taah: trigger:00001631:  ereport(ERROR, 
-taah: trigger:00001632:  (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED), 
-taah: trigger:00001633:  errmsg("BEFORE STATEMENT trigger cannot return a value"))); 
-taah: trigger:00001762:  ereport(ERROR, 
-taah: trigger:00001763:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-taah: trigger:00001764:  errmsg("could not serialize access due to concurrent update"))); 
-taah: trigger:00003031:  ereport(ERROR, 
-taah: trigger:00003032:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taah: trigger:00003033:  errmsg("cross-database references are not implemented: \"%s.%s.%s\"", 
-taah: trigger:00003034:  constraint->catalogname, constraint->schemaname, 
-taah: trigger:00003035:  constraint->relname))); 
-taah: trigger:00003125:  ereport(ERROR, 
-taah: trigger:00003126:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-taah: trigger:00003127:  errmsg("constraint \"%s\" is not deferrable", 
-taah: trigger:00003128:  constraint->relname))); 
-taah: trigger:00003151:  ereport(ERROR, 
-taah: trigger:00003152:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taah: trigger:00003153:  errmsg("constraint \"%s\" does not exist", 
-taah: trigger:00003154:  constraint->relname))); 
+taah: trigger:00000137:  ereport(NOTICE, 
+taah: trigger:00000138:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+taah: trigger:00000139:  errmsg("could not determine referenced table for constraint \"%s\"", 
+taah: trigger:00000140:  stmt->trigname))); 
+taah: trigger:00000144:  ereport(ERROR, 
+taah: trigger:00000145:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+taah: trigger:00000146:  errmsg("\"%s\" is not a table", 
+taah: trigger:00000147:  RelationGetRelationName(rel)))); 
+taah: trigger:00000150:  ereport(ERROR, 
+taah: trigger:00000151:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+taah: trigger:00000152:  errmsg("permission denied: \"%s\" is a system catalog", 
+taah: trigger:00000153:  RelationGetRelationName(rel)))); 
+taah: trigger:00000226:  ereport(ERROR, 
+taah: trigger:00000227:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taah: trigger:00000228:  errmsg("multiple INSERT events specified"))); 
+taah: trigger:00000233:  ereport(ERROR, 
+taah: trigger:00000234:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taah: trigger:00000235:  errmsg("multiple DELETE events specified"))); 
+taah: trigger:00000240:  ereport(ERROR, 
+taah: trigger:00000241:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taah: trigger:00000242:  errmsg("multiple UPDATE events specified"))); 
+taah: trigger:00000272:  ereport(ERROR, 
+taah: trigger:00000273:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+taah: trigger:00000274:  errmsg("trigger \"%s\" for relation \"%s\" already exists", 
+taah: trigger:00000275:  trigname, stmt->relation->relname))); 
+taah: trigger:00000294:  ereport(WARNING, 
+taah: trigger:00000295:  (errmsg("changing return type of function %s from \"opaque\" to \"trigger\"", 
+taah: trigger:00000296:  NameListToString(stmt->funcname)))); 
+taah: trigger:00000300:  ereport(ERROR, 
+taah: trigger:00000301:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+taah: trigger:00000302:  errmsg("function %s must return type \"trigger\"", 
+taah: trigger:00000303:  NameListToString(stmt->funcname)))); 
+taah: trigger:00000504:  ereport(ERROR, 
+taah: trigger:00000505:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taah: trigger:00000506:  errmsg("trigger \"%s\" for table \"%s\" does not exist", 
+taah: trigger:00000507:  trigname, get_rel_name(relid)))); 
+taah: trigger:00000509:  ereport(NOTICE, 
+taah: trigger:00000510:  (errmsg("trigger \"%s\" for table \"%s\" does not exist, skipping", 
+taah: trigger:00000511:  trigname, get_rel_name(relid)))); 
+taah: trigger:00000576:  ereport(ERROR, 
+taah: trigger:00000577:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+taah: trigger:00000578:  errmsg("\"%s\" is not a table", 
+taah: trigger:00000579:  RelationGetRelationName(rel)))); 
+taah: trigger:00000582:  ereport(ERROR, 
+taah: trigger:00000583:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+taah: trigger:00000584:  errmsg("permission denied: \"%s\" is a system catalog", 
+taah: trigger:00000585:  RelationGetRelationName(rel)))); 
+taah: trigger:00000683:  ereport(ERROR, 
+taah: trigger:00000684:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+taah: trigger:00000685:  errmsg("trigger \"%s\" for relation \"%s\" already exists", 
+taah: trigger:00000686:  newname, RelationGetRelationName(targetrel)))); 
+taah: trigger:00000725:  ereport(ERROR, 
+taah: trigger:00000726:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taah: trigger:00000727:  errmsg("trigger \"%s\" for table \"%s\" does not exist", 
+taah: trigger:00000728:  oldname, RelationGetRelationName(targetrel)))); 
+taah: trigger:00000802:  ereport(ERROR, 
+taah: trigger:00000803:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+taah: trigger:00000804:  errmsg("permission denied: \"%s\" is a system trigger", 
+taah: trigger:00000805:  NameStr(oldtrig->tgname)))); 
+taah: trigger:00000834:  ereport(ERROR, 
+taah: trigger:00000835:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taah: trigger:00000836:  errmsg("trigger \"%s\" for table \"%s\" does not exist", 
+taah: trigger:00000837:  tgname, RelationGetRelationName(rel)))); 
+taah: trigger:00001327:  ereport(ERROR, 
+taah: trigger:00001328:  (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED), 
+taah: trigger:00001329:  errmsg("trigger function %u returned null value", 
+taah: trigger:00001330:  fcinfo.flinfo->fn_oid))); 
+taah: trigger:00001385:  ereport(ERROR, 
+taah: trigger:00001386:  (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED), 
+taah: trigger:00001387:  errmsg("BEFORE STATEMENT trigger cannot return a value"))); 
+taah: trigger:00001501:  ereport(ERROR, 
+taah: trigger:00001502:  (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED), 
+taah: trigger:00001503:  errmsg("BEFORE STATEMENT trigger cannot return a value"))); 
+taah: trigger:00001632:  ereport(ERROR, 
+taah: trigger:00001633:  (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED), 
+taah: trigger:00001634:  errmsg("BEFORE STATEMENT trigger cannot return a value"))); 
+taah: trigger:00001765:  ereport(ERROR, 
+taah: trigger:00001766:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+taah: trigger:00001767:  errmsg("could not serialize access due to concurrent update"))); 
+taah: trigger:00003040:  ereport(ERROR, 
+taah: trigger:00003041:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taah: trigger:00003042:  errmsg("cross-database references are not implemented: \"%s.%s.%s\"", 
+taah: trigger:00003043:  constraint->catalogname, constraint->schemaname, 
+taah: trigger:00003044:  constraint->relname))); 
+taah: trigger:00003134:  ereport(ERROR, 
+taah: trigger:00003135:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+taah: trigger:00003136:  errmsg("constraint \"%s\" is not deferrable", 
+taah: trigger:00003137:  constraint->relname))); 
+taah: trigger:00003160:  ereport(ERROR, 
+taah: trigger:00003161:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taah: trigger:00003162:  errmsg("constraint \"%s\" does not exist", 
+taah: trigger:00003163:  constraint->relname))); 
 aaaaa GP_IGNORE: taai: typecmds - ./backend/commands/typecmds.c
 taai: typecmds:00000135:  ereport(ERROR, 
 taai: typecmds:00000136:  (errcode(ERRCODE_INVALID_NAME), 
@@ -8647,56 +8648,56 @@ uaae: user:00002202:  ereport(WARNING,
 uaae: user:00002203:  (errmsg("role \"%s\" is not a member of role \"%s\"", 
 uaae: user:00002204:  membername, rolename))); 
 aaaaa GP_IGNORE: vaag: vacuum - ./backend/commands/vacuum.c
-vaag: vacuum:00000364:  ereport(NOTICE, 
-vaag: vacuum:00000365:  (errcode(ERRCODE_WARNING), 
-vaag: vacuum:00000366:  errmsg("'VACUUM FULL' is not safe for large tables and has " 
-vaag: vacuum:00000367:  "been known to yield unpredictable runtimes."), 
-vaag: vacuum:00000368:  errhint("Use 'VACUUM' instead."))); 
-vaag: vacuum:00000853:  ereport(WARNING, 
-vaag: vacuum:00000854:  (errmsg("oldest xmin is far in the past"), 
-vaag: vacuum:00000855:  errhint("Close open transactions soon to avoid wraparound problems."))); 
-vaag: vacuum:00001224:  ereport(WARNING, 
-vaag: vacuum:00001225:  (errmsg("some databases have not been vacuumed in over 2 billion transactions"), 
-vaag: vacuum:00001226:  errdetail("You may have already suffered transaction-wraparound data loss."))); 
-vaag: vacuum:00001574:  ereport(WARNING, 
-vaag: vacuum:00001575:  (errmsg("relation \"%s\" page %u is uninitialized --- fixing", 
-vaag: vacuum:00001576:  relname, blkno))); 
-vaag: vacuum:00001680:  ereport(NOTICE, 
-vaag: vacuum:00001681:  (errmsg("relation \"%s\" TID %u/%u: InsertTransactionInProgress %u --- can't shrink relation", 
-vaag: vacuum:00001682:  relname, blkno, offnum, HeapTupleHeaderGetXmin(tuple.t_data)))); 
-vaag: vacuum:00001693:  ereport(NOTICE, 
-vaag: vacuum:00001694:  (errmsg("relation \"%s\" TID %u/%u: DeleteTransactionInProgress %u --- can't shrink relation", 
-vaag: vacuum:00001695:  relname, blkno, offnum, HeapTupleHeaderGetXmax(tuple.t_data)))); 
-vaag: vacuum:00003341:  ereport(WARNING, 
-vaag: vacuum:00003342:  (errmsg("index \"%s\" contains %.0f row versions, but table contains %.0f row versions", 
-vaag: vacuum:00003343:  RelationGetRelationName(indrel), 
-vaag: vacuum:00003344:  stats->num_index_tuples, num_tuples), 
-vaag: vacuum:00003345:  errhint("Rebuild the index with REINDEX."))); 
-vaag: vacuum:00003413:  ereport(WARNING, 
-vaag: vacuum:00003414:  (errmsg("index \"%s\" contains %.0f row versions, but table contains %.0f row versions", 
-vaag: vacuum:00003415:  RelationGetRelationName(indrel), 
-vaag: vacuum:00003416:  stats->num_index_tuples, num_tuples + keep_tuples), 
-vaag: vacuum:00003417:  errhint("Rebuild the index with REINDEX."))); 
-vaag: vacuum:00003973:  ereport(WARNING, 
-vaag: vacuum:00003974:  (errmsg("skipping \"%s\" --- only table or database owner can vacuum it", 
-vaag: vacuum:00003975:  RelationGetRelationName(onerel)))); 
-vaag: vacuum:00003986:  ereport(WARNING, 
-vaag: vacuum:00003987:  (errmsg("skipping \"%s\" --- cannot vacuum indexes, views, external tables, or special system tables", 
-vaag: vacuum:00003988:  RelationGetRelationName(onerel)))); 
-vaag: vacuum:00004133:  ereport(ERROR, 
-vaag: vacuum:00004134:  (errmsg("can not vacuum the relation '%s' with bitmap indexes. " 
-vaag: vacuum:00004135:  "Please either increase your maintenance_work_mem or " 
-vaag: vacuum:00004136:  "drop the bitmap index and try again.", 
-vaag: vacuum:00004137:  RelationGetRelationName(onerel)))); 
+vaag: vacuum:00000366:  ereport(NOTICE, 
+vaag: vacuum:00000367:  (errcode(ERRCODE_WARNING), 
+vaag: vacuum:00000368:  errmsg("'VACUUM FULL' is not safe for large tables and has " 
+vaag: vacuum:00000369:  "been known to yield unpredictable runtimes."), 
+vaag: vacuum:00000370:  errhint("Use 'VACUUM' instead."))); 
+vaag: vacuum:00000855:  ereport(WARNING, 
+vaag: vacuum:00000856:  (errmsg("oldest xmin is far in the past"), 
+vaag: vacuum:00000857:  errhint("Close open transactions soon to avoid wraparound problems."))); 
+vaag: vacuum:00001226:  ereport(WARNING, 
+vaag: vacuum:00001227:  (errmsg("some databases have not been vacuumed in over 2 billion transactions"), 
+vaag: vacuum:00001228:  errdetail("You may have already suffered transaction-wraparound data loss."))); 
+vaag: vacuum:00001581:  ereport(WARNING, 
+vaag: vacuum:00001582:  (errmsg("relation \"%s\" page %u is uninitialized --- fixing", 
+vaag: vacuum:00001583:  relname, blkno))); 
+vaag: vacuum:00001695:  ereport(NOTICE, 
+vaag: vacuum:00001696:  (errmsg("relation \"%s\" TID %u/%u: InsertTransactionInProgress %u --- can't shrink relation", 
+vaag: vacuum:00001697:  relname, blkno, offnum, HeapTupleHeaderGetXmin(tuple.t_data)))); 
+vaag: vacuum:00001708:  ereport(NOTICE, 
+vaag: vacuum:00001709:  (errmsg("relation \"%s\" TID %u/%u: DeleteTransactionInProgress %u --- can't shrink relation", 
+vaag: vacuum:00001710:  relname, blkno, offnum, HeapTupleHeaderGetXmax(tuple.t_data)))); 
+vaag: vacuum:00003414:  ereport(WARNING, 
+vaag: vacuum:00003415:  (errmsg("index \"%s\" contains %.0f row versions, but table contains %.0f row versions", 
+vaag: vacuum:00003416:  RelationGetRelationName(indrel), 
+vaag: vacuum:00003417:  stats->num_index_tuples, num_tuples), 
+vaag: vacuum:00003418:  errhint("Rebuild the index with REINDEX."))); 
+vaag: vacuum:00003486:  ereport(WARNING, 
+vaag: vacuum:00003487:  (errmsg("index \"%s\" contains %.0f row versions, but table contains %.0f row versions", 
+vaag: vacuum:00003488:  RelationGetRelationName(indrel), 
+vaag: vacuum:00003489:  stats->num_index_tuples, num_tuples + keep_tuples), 
+vaag: vacuum:00003490:  errhint("Rebuild the index with REINDEX."))); 
+vaag: vacuum:00004046:  ereport(WARNING, 
+vaag: vacuum:00004047:  (errmsg("skipping \"%s\" --- only table or database owner can vacuum it", 
+vaag: vacuum:00004048:  RelationGetRelationName(onerel)))); 
+vaag: vacuum:00004059:  ereport(WARNING, 
+vaag: vacuum:00004060:  (errmsg("skipping \"%s\" --- cannot vacuum indexes, views, external tables, or special system tables", 
+vaag: vacuum:00004061:  RelationGetRelationName(onerel)))); 
+vaag: vacuum:00004206:  ereport(ERROR, 
+vaag: vacuum:00004207:  (errmsg("can not vacuum the relation '%s' with bitmap indexes. " 
+vaag: vacuum:00004208:  "Please either increase your maintenance_work_mem or " 
+vaag: vacuum:00004209:  "drop the bitmap index and try again.", 
+vaag: vacuum:00004210:  RelationGetRelationName(onerel)))); 
 aaaaa GP_IGNORE: vaba: vacuumlazy - ./backend/commands/vacuumlazy.c
-vaba: vacuumlazy:00000367:  ereport(WARNING, 
-vaba: vacuumlazy:00000368:  (errmsg("relation \"%s\" page %u is uninitialized --- fixing", 
-vaba: vacuumlazy:00000369:  relname, blkno))); 
-vaba: vacuumlazy:00000582:  ereport(WARNING, 
-vaba: vacuumlazy:00000583:  (errmsg("relation \"%s.%s\" contains more than \"max_fsm_pages\" pages with useful free space", 
-vaba: vacuumlazy:00000584:  get_namespace_name(RelationGetNamespace(onerel)), 
-vaba: vacuumlazy:00000585:  relname), 
-vaba: vacuumlazy:00000586:  errhint("Consider compacting this relation or increasing the configuration parameter \"max_fsm_pages\"."))); 
+vaba: vacuumlazy:00000380:  ereport(WARNING, 
+vaba: vacuumlazy:00000381:  (errmsg("relation \"%s\" page %u is uninitialized --- fixing", 
+vaba: vacuumlazy:00000382:  relname, blkno))); 
+vaba: vacuumlazy:00000607:  ereport(WARNING, 
+vaba: vacuumlazy:00000608:  (errmsg("relation \"%s.%s\" contains more than \"max_fsm_pages\" pages with useful free space", 
+vaba: vacuumlazy:00000609:  get_namespace_name(RelationGetNamespace(onerel)), 
+vaba: vacuumlazy:00000610:  relname), 
+vaba: vacuumlazy:00000611:  errhint("Consider compacting this relation or increasing the configuration parameter \"max_fsm_pages\"."))); 
 aaaaa GP_IGNORE: vaai: variable - ./backend/commands/variable.c
 vaai: variable:00000063:  ereport(ERROR, 
 vaai: variable:00000064:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
@@ -9202,15 +9203,15 @@ nabi: nodeshareinputscan:00000654:  errmsg("Share input reader failed: out of me
 nabi: nodeshareinputscan:00000725:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
 nabi: nodeshareinputscan:00000726:  errmsg("Shareinput Writer failed: out of memory"))); 
 aaaaa GP_IGNORE: nabb: nodesubplan - ./backend/executor/nodeSubplan.c
-nabb: nodesubplan:00000302:  ereport(ERROR, 
-nabb: nodesubplan:00000303:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
-nabb: nodesubplan:00000304:  errmsg("more than one row returned by a subquery used as an expression"))); 
-nabb: nodesubplan:00000345:  ereport(ERROR, 
-nabb: nodesubplan:00000346:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
-nabb: nodesubplan:00000347:  errmsg("more than one row returned by a subquery used as an expression"))); 
-nabb: nodesubplan:00001212:  ereport(ERROR, 
-nabb: nodesubplan:00001213:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
-nabb: nodesubplan:00001214:  errmsg("more than one row returned by a subquery used as an expression"))); 
+nabb: nodesubplan:00000295:  ereport(ERROR, 
+nabb: nodesubplan:00000296:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
+nabb: nodesubplan:00000297:  errmsg("more than one row returned by a subquery used as an expression"))); 
+nabb: nodesubplan:00000338:  ereport(ERROR, 
+nabb: nodesubplan:00000339:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
+nabb: nodesubplan:00000340:  errmsg("more than one row returned by a subquery used as an expression"))); 
+nabb: nodesubplan:00001213:  ereport(ERROR, 
+nabb: nodesubplan:00001214:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
+nabb: nodesubplan:00001215:  errmsg("more than one row returned by a subquery used as an expression"))); 
 aaaaa GP_IGNORE: naba: nodewindow - ./backend/executor/nodeWindow.c
 naba: nodewindow:00002560:  ereport(ERROR, 
 naba: nodewindow:00002561:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
@@ -12931,36 +12932,36 @@ aaaaa GP_IGNORE: baag: bufmgr - ./backend/storage/buffer/bufmgr.c
 baag: bufmgr:00000126:  ereport(ERROR, 
 baag: bufmgr:00000127:  (errmsg("Unable to set memory level to %d, error %d, block size %d, ptr %ld", protectionLevel, 
 baag: bufmgr:00000128:  errno, BLCKSZ, (long int) BufHdrGetBlock(bufHdr)))); 
-baag: bufmgr:00000285:  ereport(ERROR, 
-baag: bufmgr:00000286:  (errmsg("unexpected data beyond EOF in block %u of relation \"%s\"", 
-baag: bufmgr:00000287:  blockNum, RelationGetRelationName(reln)), 
-baag: bufmgr:00000288:  errhint("This has been seen to occur with buggy kernels; consider updating your system."))); 
-baag: bufmgr:00000358:  ereport(WARNING, 
-baag: bufmgr:00000359:  (errcode(ERRCODE_DATA_CORRUPTED), 
-baag: bufmgr:00000360:  errmsg("invalid page header in block %u of relation \"%s\"; zeroing out page", 
-baag: bufmgr:00000361:  blockNum, RelationGetRelationName(reln)))); 
-baag: bufmgr:00000365:  ereport(ERROR, 
-baag: bufmgr:00000366:  (errcode(ERRCODE_DATA_CORRUPTED), 
-baag: bufmgr:00000367:  errmsg("invalid page header in block %u of relation \"%s\"", 
-baag: bufmgr:00000368:  blockNum, RelationGetRelationName(reln)), 
-baag: bufmgr:00000369:  errSendAlert(true))); 
-baag: bufmgr:00000482:  ereport(WARNING, 
+baag: bufmgr:00000281:  ereport(ERROR, 
+baag: bufmgr:00000282:  (errmsg("unexpected data beyond EOF in block %u of relation \"%s\"", 
+baag: bufmgr:00000283:  blockNum, RelationGetRelationName(reln)), 
+baag: bufmgr:00000284:  errhint("This has been seen to occur with buggy kernels; consider updating your system."))); 
+baag: bufmgr:00000354:  ereport(WARNING, 
+baag: bufmgr:00000355:  (errcode(ERRCODE_DATA_CORRUPTED), 
+baag: bufmgr:00000356:  errmsg("invalid page header in block %u of relation \"%s\"; zeroing out page", 
+baag: bufmgr:00000357:  blockNum, RelationGetRelationName(reln)))); 
+baag: bufmgr:00000361:  ereport(ERROR, 
+baag: bufmgr:00000362:  (errcode(ERRCODE_DATA_CORRUPTED), 
+baag: bufmgr:00000363:  errmsg("invalid page header in block %u of relation \"%s\"", 
+baag: bufmgr:00000364:  blockNum, RelationGetRelationName(reln)), 
+baag: bufmgr:00000365:  errSendAlert(true))); 
+baag: bufmgr:00000475:  ereport(WARNING, 
+baag: bufmgr:00000476:  (errcode(ERRCODE_DATA_CORRUPTED), 
+baag: bufmgr:00000477:  errmsg("invalid page header in block %u of relation \"\"; zeroing out page", 
+baag: bufmgr:00000478:  blockNum/*, relpath(reln->smgr_rnode)*/))); 
+baag: bufmgr:00000482:  ereport(ERROR, 
 baag: bufmgr:00000483:  (errcode(ERRCODE_DATA_CORRUPTED), 
-baag: bufmgr:00000484:  errmsg("invalid page header in block %u of relation \"\"; zeroing out page", 
-baag: bufmgr:00000485:  blockNum/*, relpath(reln->smgr_rnode)*/))); 
-baag: bufmgr:00000489:  ereport(ERROR, 
-baag: bufmgr:00000490:  (errcode(ERRCODE_DATA_CORRUPTED), 
-baag: bufmgr:00000491:  errmsg("invalid page header in block %u of relation \"\"", 
-baag: bufmgr:00000492:  blockNum/*, relpath(reln->smgr_rnode)*/), 
-baag: bufmgr:00000493:  errSendAlert(true))); 
-baag: bufmgr:00002938:  ereport(WARNING, 
-baag: bufmgr:00002939:  (errcode(ERRCODE_IO_ERROR), 
-baag: bufmgr:00002940:  errmsg("could not write block %u of %u/%u/%u", 
-baag: bufmgr:00002941:  buf->tag.blockNum, 
-baag: bufmgr:00002942:  buf->tag.rnode.spcNode, 
-baag: bufmgr:00002943:  buf->tag.rnode.dbNode, 
-baag: bufmgr:00002944:  buf->tag.rnode.relNode), 
-baag: bufmgr:00002945:  errdetail("Multiple failures --- write error might be permanent."))); 
+baag: bufmgr:00000484:  errmsg("invalid page header in block %u of relation \"\"", 
+baag: bufmgr:00000485:  blockNum/*, relpath(reln->smgr_rnode)*/), 
+baag: bufmgr:00000486:  errSendAlert(true))); 
+baag: bufmgr:00002936:  ereport(WARNING, 
+baag: bufmgr:00002937:  (errcode(ERRCODE_IO_ERROR), 
+baag: bufmgr:00002938:  errmsg("could not write block %u of %u/%u/%u", 
+baag: bufmgr:00002939:  buf->tag.blockNum, 
+baag: bufmgr:00002940:  buf->tag.rnode.spcNode, 
+baag: bufmgr:00002941:  buf->tag.rnode.dbNode, 
+baag: bufmgr:00002942:  buf->tag.rnode.relNode), 
+baag: bufmgr:00002943:  errdetail("Multiple failures --- write error might be permanent."))); 
 aaaaa GP_IGNORE: faai: freelist - ./backend/storage/buffer/freelist.c
 faai: freelist:00000124:  ereport(ERROR, (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
 faai: freelist:00000125:  errmsg("Unable to allocate database I/O buffer; " 
@@ -13131,8 +13132,8 @@ laae: lock:00002845:  (errcode(ERRCODE_OUT_OF_MEMORY),
 laae: lock:00002846:  errmsg("out of shared memory"), 
 laae: lock:00002847:  errhint("You might need to increase max_locks_per_transaction."))); 
 aaaaa GP_IGNORE: laag: lwlock - ./backend/storage/lmgr/lwlock.c
-laag: lwlock:00000412:  ereport(ERROR, errcode(ERRCODE_OUT_OF_MEMORY), 
-laag: lwlock:00000413:  errmsg("LWLockAcquire failed: out of memory")); 
+laag: lwlock:00000410:  ereport(ERROR, errcode(ERRCODE_OUT_OF_MEMORY), 
+laag: lwlock:00000411:  errmsg("LWLockAcquire failed: out of memory")); 
 aaaaa GP_IGNORE: paae: proc - ./backend/storage/lmgr/proc.c
 paae: proc:00000191:  ereport(FATAL, 
 paae: proc:00000192:  (errcode(ERRCODE_OUT_OF_MEMORY), 
@@ -16702,11 +16703,11 @@ laaj: lsyscache:00002383:  (errcode(ERRCODE_UNDEFINED_OBJECT),
 laaj: lsyscache:00002384:  errmsg("role \"%s\" does not exist", rolname), 
 laaj: lsyscache:00002385:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: raai: relcache - ./backend/utils/cache/relcache.c
-raai: relcache:00003839:  ereport(WARNING, 
-raai: relcache:00003840:  (errcode_for_file_access(), 
-raai: relcache:00003841:  errmsg("could not create relation-cache initialization file \"%s\": %m", 
-raai: relcache:00003842:  tempfilename), 
-raai: relcache:00003843:  errdetail("Continuing anyway, but there's something wrong."))); 
+raai: relcache:00003904:  ereport(WARNING, 
+raai: relcache:00003905:  (errcode_for_file_access(), 
+raai: relcache:00003906:  errmsg("could not create relation-cache initialization file \"%s\": %m", 
+raai: relcache:00003907:  tempfilename), 
+raai: relcache:00003908:  errdetail("Continuing anyway, but there's something wrong."))); 
 aaaaa GP_IGNORE: taai: typcache - ./backend/utils/cache/typcache.c
 taai: typcache:00000143:  ereport(ERROR, 
 taai: typcache:00000144:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
@@ -17229,81 +17230,81 @@ gaai: gucxfile:00000552:  GUC_EOL = 99,
 gaai: gucxfile:00000553:  GUC_ERROR = 100 
 gaai: gucxfile:00000554: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00007578:  ereport(ERROR, 
-gaad: guc:00007579:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007580:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007582:  ereport(ERROR, 
-gaad: guc:00007583:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00007584:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00007618:  ereport(ERROR, 
-gaad: guc:00007619:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007620:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007622:  ereport(ERROR, 
-gaad: guc:00007623:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00007624:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00007693:  ereport(ERROR, 
-gaad: guc:00007694:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007695:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007702:  ereport(ERROR, 
-gaad: guc:00007703:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00007704:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00007875:  ereport(ERROR, 
-gaad: guc:00007876:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00007877:  errmsg("SET requires parameter name"))); 
-gaad: guc:00007939:  ereport(ERROR, 
-gaad: guc:00007940:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00007941:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00008260:  ereport(ERROR, 
-gaad: guc:00008261:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008262:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008264:  ereport(ERROR, 
-gaad: guc:00008265:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008266:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00009068:  ereport(FATAL, 
-gaad: guc:00009069:  (errcode_for_file_access(), 
-gaad: guc:00009070:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00009071:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00009178:  ereport(WARNING, 
-gaad: guc:00009179:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00009180:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00009374:  ereport(ERROR, 
-gaad: guc:00009375:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009376:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00009397:  ereport(ERROR, 
-gaad: guc:00009398:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009399:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00009400:  tok))); 
-gaad: guc:00009426:  ereport(ERROR, 
-gaad: guc:00009427:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009428:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00009429:  value))); 
-gaad: guc:00009779:  ereport(ERROR, 
-gaad: guc:00009780:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00009781:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00009855:  ereport(ERROR, 
-gaad: guc:00009856:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009857:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00009876:  ereport(ERROR, 
-gaad: guc:00009877:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009878:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00009889:  ereport(ERROR, 
-gaad: guc:00009890:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009891:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00009906:  ereport(ERROR, 
-gaad: guc:00009907:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009908:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00009909:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00009910:  "\"log_dispatch_stats\", " 
-gaad: guc:00009911:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00009926:  ereport(ERROR, 
-gaad: guc:00009927:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009928:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00009929:  "\"log_statement_stats\", " 
-gaad: guc:00009930:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00009931:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00009946:  ereport(ERROR, 
-gaad: guc:00009947:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009948:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00007589:  ereport(ERROR, 
+gaad: guc:00007590:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007591:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007593:  ereport(ERROR, 
+gaad: guc:00007594:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00007595:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00007629:  ereport(ERROR, 
+gaad: guc:00007630:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007631:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007633:  ereport(ERROR, 
+gaad: guc:00007634:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00007635:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00007704:  ereport(ERROR, 
+gaad: guc:00007705:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007706:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007713:  ereport(ERROR, 
+gaad: guc:00007714:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00007715:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00007886:  ereport(ERROR, 
+gaad: guc:00007887:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00007888:  errmsg("SET requires parameter name"))); 
+gaad: guc:00007950:  ereport(ERROR, 
+gaad: guc:00007951:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00007952:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00008271:  ereport(ERROR, 
+gaad: guc:00008272:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008273:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008275:  ereport(ERROR, 
+gaad: guc:00008276:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008277:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00009079:  ereport(FATAL, 
+gaad: guc:00009080:  (errcode_for_file_access(), 
+gaad: guc:00009081:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00009082:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00009189:  ereport(WARNING, 
+gaad: guc:00009190:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00009191:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00009385:  ereport(ERROR, 
+gaad: guc:00009386:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009387:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00009408:  ereport(ERROR, 
+gaad: guc:00009409:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009410:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00009411:  tok))); 
+gaad: guc:00009437:  ereport(ERROR, 
+gaad: guc:00009438:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009439:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00009440:  value))); 
+gaad: guc:00009790:  ereport(ERROR, 
+gaad: guc:00009791:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00009792:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00009866:  ereport(ERROR, 
+gaad: guc:00009867:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009868:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00009887:  ereport(ERROR, 
+gaad: guc:00009888:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009889:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00009900:  ereport(ERROR, 
+gaad: guc:00009901:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009902:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00009917:  ereport(ERROR, 
+gaad: guc:00009918:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009919:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00009920:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00009921:  "\"log_dispatch_stats\", " 
+gaad: guc:00009922:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00009937:  ereport(ERROR, 
+gaad: guc:00009938:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009939:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00009940:  "\"log_statement_stats\", " 
+gaad: guc:00009941:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00009942:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00009957:  ereport(ERROR, 
+gaad: guc:00009958:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009959:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
