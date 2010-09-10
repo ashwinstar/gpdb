@@ -200,14 +200,15 @@ def lighty_start(instance):
             pass
         
         if master_port == '':
-            master_port = '5432'
+            if old_pgport:
+                master_port = old_pgport
+            else:
+                master_port = '5432'
+            os.environ['PGPORT'] = master_port
 
         if master_hostname:
             os.environ['PGHOST'] = master_hostname
             
-        if master_port:
-            os.environ['PGPORT'] = master_port
-
         password = pgpass.get_password('gpmon', master_hostname, master_port, 'gpperfmon')
         if not password:
             password = old_pgpassword
@@ -672,7 +673,7 @@ def webui_upgrade():
     try:
         os.unlink(os.path.join(master_data_directory, 'gpperfmon', 'conf', 'cert.pem'))
     except Exception, msg:
-        print 'Warning - Error while trying to delete %s' % os.path.join(master_data_directory, 'gpperfmon', 'conf', 'cert.pem')
+        print 'Warning -  could not delete %s' % os.path.join(master_data_directory, 'gpperfmon', 'conf', 'cert.pem')
         print msg
 
     print 'Upgrade finished.  The Greenplum Performance Monitor web UI can be started'

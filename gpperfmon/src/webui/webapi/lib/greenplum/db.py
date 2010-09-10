@@ -35,7 +35,7 @@ def create_db_conn():
       log.debug('connect to database user=%s password=%s host=%s port=%s database=%s' % (pguser,pgpass,pghost,pgport,pgdatabase))
       conn = pg8000.Connection(user=pguser, password=pgpass, host=pghost, port=pgport, database=pgdatabase)
   except pg8000.errors.InterfaceError:
-      log.msg('user %s: InterfaceError connecting to database' % pguser)
+      log.msg('user %s: InterfaceError connecting to database on port %s' % (pguser,pgport))
       conn = None
   except pg8000.errors.InternalError:
       log.msg('user %s: InternalError connecting to database' % pguser)
