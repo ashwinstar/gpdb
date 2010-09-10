@@ -32,6 +32,7 @@
 #include "cdb/cdbfilerepmirrorack.h"
 #include "cdb/cdbfilerep.h"
 #include "cdb/cdbfilerepconnserver.h"
+#include "cdb/cdbmirroredflatfile.h"
 #include "libpq/pqsignal.h"
 #include "storage/lwlock.h"
 #include "utils/faultinjector.h"
@@ -1746,11 +1747,16 @@ FileRepMirror_RunConsumer(void)
 						
 						status = FileRepMirror_Drop(fileName);
 						break;
-												
+						
 					default:
 						Assert(0);
 				}
 				
+				break;
+				
+			case FileRepOperationDropTemporaryFiles:
+				
+				MirroredFlatFile_DropTemporaryFiles();
 				break;
 				
 			case FileRepOperationDropFilesFromDir:

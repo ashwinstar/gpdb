@@ -982,4 +982,32 @@ FlatFilesRecoverMirror(void)
 	return retval;
 }
 
-
+int
+FlatFilesTemporaryResynchronizeMirror(void)
+{
+	DIR             *global_dir;
+	struct dirent   *de;
+	int             retval = 0;
+	
+	global_dir = AllocateDir("global");
+	
+	while ((de = ReadDir(global_dir, "global")) != NULL) 
+	{
+		if (strstr(de->d_name, "pg_database.") != NULL ||
+			strstr(de->d_name, "pg_auth.") != NULL)
+		{
+			retval = MirrorFlatFile("global", de->d_name);
+			
+			if (retval != 0)
+				break;
+		}
+	}
+	
+	if (global_dir)
+	{
+		FreeDir(global_dir);
+	}
+	
+	return retval;
+}	
+	

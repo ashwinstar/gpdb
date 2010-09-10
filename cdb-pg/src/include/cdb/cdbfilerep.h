@@ -474,7 +474,10 @@ typedef enum FileRepOperation_e {
 	
 	FileRepOperationDropFilesFromDir,
 		/* Drop Files from specified directory */
-		
+	
+	FileRepOperationDropTemporaryFiles,
+		/* Drop temporary files */
+	
 	FileRepOperationNotSpecified,
 
 	/* the number of values in this enumeration */

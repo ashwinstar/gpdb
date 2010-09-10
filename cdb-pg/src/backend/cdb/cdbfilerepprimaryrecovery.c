@@ -167,7 +167,23 @@ FileRepPrimary_RunRecoveryInSync(void)
 		if (FileRepSubProcess_GetState() != FileRepStateInitialization) {
 			break;
 		}
+		
+		MirroredFlatFile_DropTemporaryFiles();
+		elog(DEBUG1, "FileRepPrimary_RunRecovery() MirroredFlatFile_DropTemporaryFiles");
+				
+		FileRepSubProcess_ProcessSignals();
+		if (FileRepSubProcess_GetState() != FileRepStateInitialization) {
+			break;
+		}				
 
+		MirroredFlatFile_MirrorDropTemporaryFiles();
+		elog(DEBUG1, "FileRepPrimary_RunRecovery() MirroredFlatFile_MirrorDropTemporaryFiles");
+
+		FileRepSubProcess_ProcessSignals();
+		if (FileRepSubProcess_GetState() != FileRepStateInitialization) {
+			break;
+		}						
+		
 		status = FlatFilesRecoverMirror();
 		elog(DEBUG1, "FileRepPrimary_RunRecovery() FlatFilesRecoverMirror");
 		
@@ -204,7 +220,7 @@ FileRepPrimary_RunRecoveryInSync(void)
 			break;
 		}			
 		
-		//status = PgVersionRecoverMirror();
+		status = PgVersionRecoverMirror();
 		elog(DEBUG1, "FileRepPrimary_RunRecovery() PgVersionRecoverMirror");
 		
 		if (status != STATUS_OK) {

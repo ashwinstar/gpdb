@@ -1191,7 +1191,27 @@ FileRepResyncManager_ResyncFlatFiles(void)
 		if (segmentState != SegmentStateInSyncTransition) {
 			break;
 		}		
-			
+		
+		MirroredFlatFile_MirrorDropTemporaryFiles();
+		elog(LOG, "FileRepResyncManager_ResyncFlatFiles() MirroredFlatFile_MirrorDropTemporaryFiles");
+				
+		FileRepSubProcess_ProcessSignals();
+		if (segmentState != SegmentStateInSyncTransition) {
+			break;
+		}		
+		
+		status = FlatFilesTemporaryResynchronizeMirror();
+		elog(LOG, "FileRepResyncManager_ResyncFlatFiles() FlatFilesTemporaryResynchronizeMirror");
+		
+		if (status != STATUS_OK) {
+			break;
+		}
+		
+		FileRepSubProcess_ProcessSignals();
+		if (segmentState != SegmentStateInSyncTransition) {
+			break;
+		}		
+		
 		status = FlatFilesRecoverMirror();
 		elog(LOG, "FileRepResyncManager_ResyncFlatFiles() FlatFilesRecoverMirror");
 		

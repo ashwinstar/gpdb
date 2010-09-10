@@ -74,10 +74,10 @@ int MirroredFlatFile_Open(
 		tmp_filename = (char*)palloc(MAXPGPATH + 1);
 
 		open->atomicSimpleFileName = MemoryContextStrdup(TopMemoryContext, simpleFileName);
-		snprintf(tmp_filename, sizeof(tmp_filename), "%s.%i",
+		sprintf(tmp_filename, "%s.%i",
 				 simpleFileName, MyProcPid);
 		open->simpleFileName = MemoryContextStrdup(TopMemoryContext, tmp_filename);
-
+		
 		pfree(tmp_filename);
 	}
 	else
@@ -1052,6 +1052,80 @@ MirroredFlatFile_DropFilesFromDir(void)
 										 FileRep_GetFlatFileIdentifier(XLOGDIR, ""),	
 										 FileRepRelationTypeFlatFile);
 	
+}
+
+/* 
+ * Drop temporary files of pg_database and pg_auth  
+ */
+void
+MirroredFlatFile_DropTemporaryFiles(void)
+{
+	
+	DIR             *global_dir;
+	struct dirent   *de;
+	char			path[MAXPGPATH+1];
+	
+	global_dir = AllocateDir("global");
+	
+	while ((de = ReadDir(global_dir, "global")) != NULL) 
+	{
+		if (strstr(de->d_name, "pg_database.") != NULL ||
+			strstr(de->d_name, "pg_auth.") != NULL)
+		{
+			sprintf(path, "%s/%s", "global", de->d_name);
+
+			errno = 0;
+			if (unlink(path))
+			{
+					char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+									
+					snprintf(tmpBuf, sizeof(tmpBuf), "unlink failed identifier '%s' errno '%d' ",
+							 de->d_name, 
+							 errno);
+				
+					ereport(LOG,
+						(errcode_for_file_access(),
+						 errmsg("LOG(filerep): %s : unlink failed : %m", path)));
+				
+					//FileRep_InsertConfigLogEntry(tmpBuf);				
+			}
+		}
+	}
+	
+	if (global_dir)
+	{
+		FreeDir(global_dir);
+	}	
+}
+
+/* 
+ * Send to mirror request for drop temporary files of pg_database and pg_auth
+ */
+void
+MirroredFlatFile_MirrorDropTemporaryFiles(void)
+{
+	
+	if (FileRepPrimary_MirrorDropTemporaryFiles(
+												FileRep_GetFlatFileIdentifier(
+																			  "global", 
+																			  "pg_database."),
+												FileRepRelationTypeFlatFile) != 0) 
+	{
+		ereport(LOG,
+				(errmsg("could not sent drop file to mirror identifier 'global/pg_database' ")));
+	}	
+	
+	if (FileRepPrimary_MirrorDropTemporaryFiles(
+												FileRep_GetFlatFileIdentifier(
+																			  "global", 
+																			  "pg_auth."),
+												FileRepRelationTypeFlatFile) != 0) 
+	{
+		ereport(LOG,
+				(errmsg("could not sent drop file to mirror identifier 'global/pg_auth' ")));
+	}	
+	
+	return;
 }
 	
 /*

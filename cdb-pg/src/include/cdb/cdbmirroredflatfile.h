@@ -276,6 +276,10 @@ extern int MirrorFlatFile(
 
 extern void MirroredFlatFile_DropFilesFromDir(void);
 
+extern void MirroredFlatFile_DropTemporaryFiles(void);
+
+extern void MirroredFlatFile_MirrorDropTemporaryFiles(void);
+
 extern int PgVersionRecoverMirror(void);
 
 #endif   /* CDBMIRROREDFLATFILE_H */

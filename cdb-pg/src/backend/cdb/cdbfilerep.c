@@ -264,10 +264,11 @@ FileRepOperationToString[] = {
 	_("Create and Open"),
 	_("Validation FileSpace Dir or Existence"),
 	_("Drop files from Dir"),
+	_("Drop temporary files"),
 	_("Not Specified"),
 };
 
-const char *
+const char*
 FileRepRelationTypeToString[] = {
 	_("Flat File"),
 	_("Append Only"),
@@ -2456,6 +2457,7 @@ FileRep_IsOperationSynchronous(FileRepOperation_e fileRepOperation)
 		case FileRepOperationTruncate:
 		case FileRepOperationWrite:
 		case FileRepOperationDropFilesFromDir:
+		case FileRepOperationDropTemporaryFiles:
 			
 			return FALSE;
 			

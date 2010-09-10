@@ -132,6 +132,9 @@ FileRepSubProcess_ShutdownHandler(SIGNAL_ARGS)
 				{
 					FileRepResync_Cleanup();
 				}
+				
+				LWLockReleaseAll();
+
 				proc_exit(0);
 				return;
 			}
@@ -285,66 +288,68 @@ FileRepSubProcess_ProcessSignals()
 bool
 FileRepSubProcess_IsStateTransitionRequested(void)
 {
-	/* NOTE remove when Shutdown Message will be moved to FileRep backend process */
-	if (fileRepProcessType == FileRepProcessTypeMain)
+	
+	bool isStateTransitionRequested = FALSE;
+	
+	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
+	
+	switch (fileRepProcessType)
 	{
-		getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
-		if (segmentState == SegmentStateImmediateShutdown)
-			return TRUE;
-		else
-			return FALSE;
+		case FileRepProcessTypeMain:
+			/* Handle Shutdown request */
+			if (segmentState == SegmentStateImmediateShutdown)
+			{
+				isStateTransitionRequested = TRUE;
+			}
+			
+			break;
+			
+		case FileRepProcessTypeNotInitialized:
+			
+			if (segmentState == SegmentStateShutdownFilerepBackends && 
+				fileRepShmemArray[0]->state == FileRepStateFault)
+			{
+				if (Debug_filerep_print)
+					ereport(WARNING,
+							(errmsg("failure is detected in segment mirroring during backend shutdown, "
+									"abort requested (%d)",
+									getpid())));
+				
+				LWLockReleaseAll();
+				proc_exit(0);
+			}
+			/* no break */
+		default:
+			
+			if (dataState == DataStateInChangeTracking)
+			{
+				isStateTransitionRequested = TRUE;			
+			}		
+			
+			switch (FileRepSubProcess_GetState())
+			{
+				case FileRepStateFault:
+				case FileRepStateShutdown:
+				
+					isStateTransitionRequested = TRUE;
+					break;
+				
+				default:
+					break;
+			}
+			
+			break;
 	}
 	
-	if (fileRepProcessType != FileRepProcessTypeNotInitialized)
+	if (Debug_filerep_print && isStateTransitionRequested)
 	{
-		FileRepSubProcess_ProcessSignals();
+		ereport(LOG,
+				(errmsg("state transition requested "),
+				 FileRep_errcontext()));		
+	}
+	return isStateTransitionRequested;
+}
 		
-		switch (FileRepSubProcess_GetState())
-		{
-			case FileRepStateFault:
-			case FileRepStateShutdown:
-				ereport(LOG,
-						(errmsg("LOG(filerep): filerep state transition requested "),
-						 FileRep_errcontext()));
-						 
-				return TRUE;
-				
-			default:
-				break;
-		}
-	}
-
-	if (fileRepProcessType == FileRepProcessTypeNotInitialized)
-	{
-		getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
-
-		switch (segmentState)
-		{
-			case SegmentStateFault:
-			case SegmentStateImmediateShutdown:
-			case SegmentStateShutdown:
-				ereport(LOG,
-						(errmsg("LOG(filerep): backend filerep state transition requested "),
-						 FileRep_errcontext()));
-				
-				return TRUE;
-				
-			case SegmentStateShutdownFilerepBackends:
-				
-				if (fileRepShmemArray[0]->state == FileRepStateFault)
-					ereport(ERROR,
-						(errmsg("failure is detected in segment mirroring during backend shutdown, abort requested (%d)",
-						 getpid())));
-
-			default:
-				break;
-		}		
-		
-	}
-	
-	return FALSE;
-}	
-	
 /*
  *  FileRepSubProcess_GetState()
  *  Return state of FileRep sub-process

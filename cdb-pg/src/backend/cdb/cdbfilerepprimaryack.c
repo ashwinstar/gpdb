@@ -724,9 +724,12 @@ FileRepAckPrimary_IsOperationCompleted(
 		
 		entry = FileRepAckPrimary_LookupHashEntry(fileName);
 		
-		/* entry should be found since backend haven't received ack yet */
-		Assert(entry != NULL);
-		
+		if (entry == NULL)
+		{
+			LWLockRelease(FileRepAckHashShmemLock);
+			break;
+		}
+			
 		if (! FileRep_IsIpcSleep(entry->fileRepOperation))
 		{					
 			if (wait == TRUE)
@@ -757,7 +760,7 @@ FileRepAckPrimary_IsOperationCompleted(
 				
 				break;
 			default:
-				Assert(0);
+				break;
 		}
 		
 		if (isCompleted == false) 

@@ -227,6 +227,10 @@ extern int FileRepPrimary_MirrorDropFilesFromDir(
 	FileRepRelationType_e fileRepRelationType);								 
 		/* FileRepRelationTypeFile or FileRepRelationTypeDir */
 
+extern int FileRepPrimary_MirrorDropTemporaryFiles(
+												   FileRepIdentifier_u		fileRepIdentifier,
+												   FileRepRelationType_e	fileRepRelationType);
+
 extern int FileRepPrimary_MirrorValidation(
 		FileRepIdentifier_u		fileRepIdentifier,
 				   

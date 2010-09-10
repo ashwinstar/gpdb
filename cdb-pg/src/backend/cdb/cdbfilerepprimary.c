@@ -81,7 +81,7 @@ FileRepPrimary_IsResyncManagerOrWorker(void)
 MirrorDataLossTrackingState 
 FileRepPrimary_GetMirrorDataLossTrackingSessionNum(int64 *sessionNum)
 {
-    
+
     *sessionNum = getChangeTrackingSessionId();
     
     getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
@@ -155,13 +155,10 @@ FileRepPrimary_IsMirroringRequired(
 	bool	isInTransition = FALSE;
 	DataState_e dataStateTransition;
 	
-	while (1) {
-/*		if (stateChangeRequested) {
-			
-			stateChangeRequested = FALSE;
-*/			
-			getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, &isInTransition, &dataStateTransition);
-/*		} */
+	while (1) 
+	{
+		
+		getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, &isInTransition, &dataStateTransition);
 		
 		switch (fileRepRole) {
 			case FileRepRoleNotInitialized:
@@ -997,6 +994,30 @@ FileRepPrimary_MirrorDropFilesFromDir(FileRepIdentifier_u	fileRepIdentifier,
 														  fileRepIdentifier,
 														  fileRepRelationType,
 														  FileRepOperationDropFilesFromDir,
+														  descr);		
+	}
+	
+	return status;
+}
+
+/*
+ * FileRepPrimary_MirrorDropTemporaryFiles
+ */
+int 
+FileRepPrimary_MirrorDropTemporaryFiles(
+										FileRepIdentifier_u		fileRepIdentifier,
+										FileRepRelationType_e	fileRepRelationType)
+{
+	int		status = STATUS_OK;
+	
+	FileRepOperationDescription_u descr;
+	
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationDropTemporaryFiles)) 
+	{
+		status = FileRepPrimary_ConstructAndInsertMessage(
+														  fileRepIdentifier,
+														  fileRepRelationType,
+														  FileRepOperationDropTemporaryFiles,
 														  descr);		
 	}
 	

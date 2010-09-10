@@ -34,4 +34,6 @@ extern void flatfile_twophase_postcommit(TransactionId xid, uint16 info,
 
 extern int FlatFilesRecoverMirror(void);
 
+extern int FlatFilesTemporaryResynchronizeMirror(void);
+
 #endif   /* FLATFILES_H */
