@@ -141,17 +141,34 @@ int set_alert_severity(const GpErrorData * errorData,
 		email_priority[0] = '1';
 	}
 
-	else if (strstr(errorData->error_message, gettext("the database system is starting up")) != NULL ||
-			  strstr(errorData->error_message, gettext("database system is ready to accept connections"))  != NULL)
+	else if (strstr(errorData->error_message, gettext("the database system is starting up")) != NULL)
 	{
 		snmp_severity[0] = '1';  // sev Ok -- Nothing is wrong
 		email_priority[0] = '5'; // 5  == lowest priority
+	}
+
+	else if (strstr(errorData->error_message, gettext("database system is ready to accept connections"))  != NULL)
+	{
+		snmp_severity[0] = '1';  // sev Ok -- Nothing is wrong
+		email_priority[0] = '5'; // 5  == lowest priority
+		*send_via_connectemc = true;
+		*connectemc_severity = EMC_CONNECT_SEVERITY_INFO;
+	}
+
+	else if (strstr(errorData->error_message, "Test message for Connect EMC")  != NULL)
+	{
+		snmp_severity[0] = '1';  // sev Ok -- Nothing is wrong
+		email_priority[0] = '5'; // 5  == lowest priority
+		*send_via_connectemc = true;
+		*connectemc_severity = EMC_CONNECT_SEVERITY_INFO;
 	}
 
 	else if (strcmp(errorData->error_severity,gettext("PANIC")) == 0)
 	{
 		snmp_severity[0] = '5';
 		email_priority[0] = '1'; // 1 == highest priority
+		*send_via_connectemc = true;
+		*connectemc_severity = EMC_CONNECT_SEVERITY_ERROR;
 	}
 
 	else if (strcmp(errorData->error_severity,gettext("FATAL")) == 0)
@@ -166,6 +183,9 @@ int set_alert_severity(const GpErrorData * errorData,
 	else
 		snmp_severity[0] = '0';  /* Informational, Log, or just plain unknown (might be serious) */
 
+#if !defined(__linux__)
+	*send_via_connectemc = false;	/* Connect EMC is only available on Linux systems, so don't try to use it otherwise */
+#endif
 
 	return 0;
 }

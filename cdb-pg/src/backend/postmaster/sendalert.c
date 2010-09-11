@@ -110,6 +110,10 @@ static int send_snmp_inform_or_trap();
 extern pg_time_t	MyStartTime;
 #endif
 
+#if defined(__linux__)
+static int send_alert_via_connect_emc(const GpErrorData * errorData, const char * subject, EmcConnectSeverity severity);
+#endif
+
 int send_alert_from_chunks(const PipeProtoChunk *chunk,
 		const PipeProtoChunk * saved_chunks_in)
 {
@@ -532,6 +536,69 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData, const char * 
 	return 0;
 }
 #endif
+
+#if defined(__linux__)
+static int send_alert_via_connect_emc(const GpErrorData * errorData, const char * subject, EmcConnectSeverity severity)
+{
+	int retVal = 0;
+
+	char msg[2048];
+	EmcConnectStatus status = EMC_CONNECT_STATUS_UNKNOWN;
+	char myhostname[255];	/* gethostname usually is limited to 65 chars out, but make this big to be safe */
+	struct stat statbuf;
+
+	myhostname[0] = '\0';
+	strcpy(msg,subject); /* subject is no more than 128 bytes */
+	if (errorData->error_detail != NULL && strlen(errorData->error_detail) > 0)
+	{
+		strcat(msg,"\n");
+		strncat(msg,errorData->error_detail,500);
+	}
+
+	{
+		char portnum[7];
+		myhostname[0] = '\0';
+
+		if (gethostname(myhostname, sizeof(myhostname)) == 0)
+		{
+			strcat(myhostname," on port ");
+			pg_itoa(PostPortNumber,portnum);
+			strcat(myhostname,portnum);
+		}
+	}
+
+	if (severity == EMC_CONNECT_SEVERITY_INFO)
+		status = EMC_CONNECT_STATUS_OK;
+	else if (severity == EMC_CONNECT_SEVERITY_ERROR)
+		status = EMC_CONNECT_STATUS_FAILED;
+	else if (severity == EMC_CONNECT_SEVERITY_WARNING)
+		status = EMC_CONNECT_STATUS_WARNING;
+
+	/*
+	 * Connect EMC is usually in /opt/connectemc, but Ivan was talking about having it in /opt/greenplum/connectemc,
+	 * so to be safe, allow for either.
+	 */
+	if (stat("/opt/connectemc",&statbuf) != 0)
+		if (stat("/opt/greenplum/connectemc",&statbuf) != 0)
+		{
+			/* Connect EMC is not installed */
+			return -1;
+		}
+
+	elog(DEBUG1, "Sending via connectEMC: %s", subject);
+	retVal = gpmon_emcconnect_send_alert(EMC_CONNECT_SYMPTOM_NULL,
+									status,
+									severity,
+									EMC_CONNECT_ORIGIN_GPMMON,
+									myhostname,
+									msg);
+	if (retVal)
+		elog(LOG,"Error (%d) creating EMC Connect XML Event File from sendalert", retVal);
+
+	return retVal;
+}
+#endif
+
 
 int send_alert(const GpErrorData * errorData)
 {
@@ -959,6 +1026,12 @@ int send_alert(const GpErrorData * errorData)
 	}
 #endif
 
+#if defined(__linux__)
+	/* Connect EMC is only available on Linux systems */
+
+	if (send_via_connectemc)
+		send_alert_via_connect_emc(errorData, subject, connectemc_severity);
+#endif
 
 	return 0;
 }
