@@ -18,10 +18,10 @@ OBJS = bgwriter.o autovacuum.o service.o seqserver.o ddaserver.o walsendserver.o
 	fork_process.o ftsprobe.o perfmon.o backoff.o perfmon_segmentinfo.o
 	
 ifeq ($(enable_email),yes)
-  OBJS += sendalert.o
+  OBJS += sendalert.o alertseverity.o
 else 
  ifeq ($(enable_snmp),yes)
- 	OBJS += sendalert.o
+ 	OBJS += sendalert.o alertseverity.o
  endif
 endif
 

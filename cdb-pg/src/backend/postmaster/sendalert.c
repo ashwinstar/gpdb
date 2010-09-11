@@ -46,6 +46,7 @@
 #include "utils/guc.h"
 #include "utils/elog.h"
 #include "utils/builtins.h"
+#include "emcconnect/api.h"
 
 extern int	PostPortNumber;
 extern void pg_itoa(int16 i, char *a);
@@ -199,9 +200,8 @@ int send_alert_from_chunks(const PipeProtoChunk *chunk,
 }
 
 #if USE_SNMP
-static int send_snmp_inform_or_trap(const GpErrorData * errorData)
+static int send_snmp_inform_or_trap(const GpErrorData * errorData, const char * subject, const char * severity)
 {
-#define MAX_SNMP_ALERT_STRING 127
 
 	netsnmp_session session, *ss = NULL;
 	netsnmp_pdu    *pdu, *response;
@@ -222,7 +222,6 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 	 */
 	bool inform = strcmp(gp_snmp_use_inform_or_trap,"inform") == 0;
 
-	char subject[MAX_SNMP_ALERT_STRING+1];
 
 	if (gp_snmp_monitor_address == NULL || gp_snmp_monitor_address[0] == '\0')
 	{
@@ -234,18 +233,6 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 		return -1;
 	}
 
-	/*
-	 * Set up the primary alert message for the inform/trap.
-	 * Let's limit it to 127 bytes just to be safe, as SNMP inform/trap messages are limited in size.
-	 *
-	 */
-	if (strcmp(errorData->error_severity,"LOG") == 0)
-		snprintf(subject, MAX_SNMP_ALERT_STRING, "%s",errorData->error_message);
-	else if (errorData->sql_state && strcmp(errorData->sql_state,"57P03") == 0)
-		snprintf(subject, MAX_SNMP_ALERT_STRING, "%s",errorData->error_message);
-	else
-		snprintf(subject, MAX_SNMP_ALERT_STRING, "%s: %s",errorData->error_severity, errorData->error_message);
-	subject[MAX_SNMP_ALERT_STRING] = '\0'; /* Guarantee subject is zero terminated */
 
 	/*
 	 * SNMP managers are required to handle messages up to at least 484 bytes long, but I believe most existing
@@ -331,52 +318,13 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 	 *	gpdbSevSystemDegraded(6),
 	 *	gpdbSevSystemDown(7)
 	 */
-	char severity[2] = { '0', '\0' }; // gpdbSevUnknown
-
-	/*
-	 * Check for "Interesting" messages and try to classify them by severity
-	 * Use of gettext() is because the strings are already localized in the errorData structure.
-	 */
-	if (strstr(errorData->error_message, gettext("abnormal database system shutdown")) != NULL ||
-		strstr(errorData->error_message, gettext("the database system is shutting down"))  != NULL ||
-		strstr(errorData->error_message, gettext("received smart shutdown request")) != NULL ||
-		strstr(errorData->error_message, gettext("received fast shutdown request")) != NULL ||
-		strstr(errorData->error_message, gettext("received immediate shutdown request")) != NULL ||
-		strstr(errorData->error_message, gettext("database system is shut down"))  != NULL)
-		severity[0] = '7';  //gpdbSevSystemDown
-
-	else if (strstr(errorData->error_message, gettext("Master mirroring synchronization lost"))  != NULL ||
-			  strstr(errorData->error_message, gettext("Error from sending to standby master"))  != NULL ||
-			  strstr(errorData->error_message, gettext("is going into change tracking mode"))  != NULL ||
-			  strstr(errorData->error_message, gettext("is taking over as primary in change tracking mode"))  != NULL ||
-			  strstr(errorData->error_message, "GPDB performed segment reconfiguration.") != NULL) // elog, so no gettext
-		severity[0] = '6';  // gpdbSevSystemDegraded
-
-	else if (strstr(errorData->error_message, gettext("the database system is starting up")) != NULL ||
-			  strstr(errorData->error_message, gettext("database system is ready to accept connections"))  != NULL)
-		severity[0] = '1';  // sev Ok -- Nothing is wrong
-
-	else if (strcmp(errorData->error_severity,gettext("PANIC")) == 0)
-		severity[0] = '5';
-
-	else if (strcmp(errorData->error_severity,gettext("FATAL")) == 0)
-		severity[0] = '4';
-
-	else if (strcmp(errorData->error_severity,gettext("ERROR")) == 0)
-		severity[0] = '3';
-
-	else if (strcmp(errorData->error_severity,gettext("WARNING")) == 0)
-		severity[0] = '2';
-
-	else
-		severity[0] = '0';  /* Informational, Log, or just plain unknown (might be serious) */
 
 
-	char detail[MAX_SNMP_ALERT_STRING+1];
-	snprintf(detail, MAX_SNMP_ALERT_STRING, "%s", errorData->error_detail);
+	char detail[MAX_ALERT_STRING+1];
+	snprintf(detail, MAX_ALERT_STRING, "%s", errorData->error_detail);
 	detail[127] = '\0';
 
-	char sqlstmt[MAX_SNMP_ALERT_STRING+1];
+	char sqlstmt[MAX_ALERT_STRING+1];
 	char * sqlstmtp = errorData->debug_query_string;
 	if (sqlstmtp == NULL || sqlstmtp[0] == '\0')
 		sqlstmtp = errorData->internal_query;
@@ -384,8 +332,8 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData)
 		sqlstmtp = "";
 
 
-	snprintf(sqlstmt, MAX_SNMP_ALERT_STRING, "%s", sqlstmtp);
-	sqlstmt[MAX_SNMP_ALERT_STRING] = '\0';
+	snprintf(sqlstmt, MAX_ALERT_STRING, "%s", sqlstmtp);
+	sqlstmt[MAX_ALERT_STRING] = '\0';
 
 
 	/* Need a modifiable copy of To list */
@@ -602,6 +550,12 @@ int send_alert(const GpErrorData * errorData)
 
 #endif
 	char subject[128];
+	bool send_via_email = true;
+	char email_priority[2];
+	bool send_via_snmp = true;
+	char snmp_severity[2];
+	bool send_via_connectemc = false;
+	EmcConnectSeverity connectemc_severity;
 
 	static char previous_subject[128];
 	pg_time_t current_time;
@@ -618,15 +572,18 @@ int send_alert(const GpErrorData * errorData)
 	 *
 	 */
 
-	/* Set up a subject line for the e-mail.  Let's limit it to 127 bytes just to be safe. */
-	if (strcmp(errorData->error_severity,"LOG") == 0)
-		snprintf(subject, 127, "%s",errorData->error_message);
-	else if (errorData->sql_state && strcmp(errorData->sql_state,"57P03") == 0)
-		snprintf(subject, 127, "%s",errorData->error_message);
-	else
-		snprintf(subject, 127, "%s: %s",errorData->error_severity, errorData->error_message);
-	subject[127] = '\0'; /* Guarantee subject is zero terminated */
-	previous_subject[127] = '\0';
+	/* Set up a subject line for the alert.  set_alert_severity will limit it to 127 bytes just to be safe. */
+	/* Assign a severity and email priority for this alert*/
+
+	set_alert_severity(errorData,
+						subject,
+						&send_via_email,
+						email_priority,
+						&send_via_snmp,
+						snmp_severity,
+						&send_via_connectemc,
+						&connectemc_severity);
+
 
 	/*
 	 * Check to see if we are sending the same message as last time.
@@ -684,7 +641,7 @@ int send_alert(const GpErrorData * errorData)
 			if (current_time - previous_time < 30)
 			{
 				/* Bail out here rather than send the alert. */
-				elog(DEBUG2,"Supressing repeats of this alert messages...");
+				elog(DEBUG2,"Suppressing repeats of this alert messages...");
 				return -1;
 			}
 		}
@@ -696,10 +653,15 @@ int send_alert(const GpErrorData * errorData)
 	memcpy(&previous_fix_fields,&errorData->fix_fields,sizeof(GpErrorDataFixFields));
 
 #if USE_SNMP
-	send_snmp_inform_or_trap(errorData);
+	if (send_via_snmp)
+		send_snmp_inform_or_trap(errorData, subject, snmp_severity);
+	else 
+		elog(DEBUG4,"Not sending via SNMP");
 #endif
 
 #if USE_EMAIL
+	if (send_via_email)
+	{
 
 	if (gp_email_to == NULL || strlen(gp_email_to) == 0)
 	{
@@ -826,28 +788,10 @@ int send_alert(const GpErrorData * errorData)
 	smtp_set_header_option(message, "Subject", Hdr_OVERRIDE, 1);
 	smtp_set_header(message, "Message-Id", NULL);
 
-	/*
-	 * A little bit of crude prioritization... If the message means we are down,
-	 * let's set high priority.  If the message says everything is OK, low priority
-	 * If we don't know, just let it default to medium.
-	 */
-	if (strcmp(errorData->error_severity,"PANIC") == 0)
-		smtp_set_header(message, "X-Priority", "1"); // 1 == highest priority
+	if (email_priority[0] != '\0' && email_priority[0] != '3')  // priority not the default?
+		smtp_set_header(message, "X-Priority", email_priority); // set a priority.  1 == highest priority, 5 lowest
 
-	else if (strstr(errorData->error_message, gettext("abnormal database system shutdown")) != NULL ||
-			strstr(errorData->error_message, gettext("the database system is shutting down"))  != NULL ||
-			strstr(errorData->error_message, gettext("received smart shutdown request")) != NULL ||
-			strstr(errorData->error_message, gettext("received fast shutdown request")) != NULL ||
-			strstr(errorData->error_message, gettext("received immediate shutdown request")) != NULL ||
-			strstr(errorData->error_message, gettext("database system is shut down"))  != NULL ||
-			strstr(errorData->error_message, gettext("Master mirroring synchronization lost"))  != NULL ||
-			strstr(errorData->error_message, gettext("error received sending data to standby master"))  != NULL ||
-			strstr(errorData->error_message, "GPDB performed segment reconfiguration.") != NULL) // elog, so no gettext
-		smtp_set_header(message, "X-Priority", "1"); // 1 == highest priority
 
-	else if (strstr(errorData->error_message, gettext("the database system is starting up")) != NULL ||
-			  strstr(errorData->error_message, gettext("database system is ready to accept connections"))  != NULL)
-		smtp_set_header(message, "X-Priority", "5"); // 5  == low priority
 
 	smtp_set_messagecb(message, messagebody_cb, (void *) errorData);
 
@@ -1012,7 +956,9 @@ int send_alert(const GpErrorData * errorData)
 
 	/* To save on overhead, don't call this more than necessary */
 	/* auth_client_exit(); */
+	}
 #endif
+
 
 	return 0;
 }
