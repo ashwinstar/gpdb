@@ -226,6 +226,11 @@ static int errdetail_nonexistent_relation(
 										relFileNode->spcNode,
 										&primaryFilespaceLocation,
 										&mirrorFilespaceLocation);
+	if (mirrorFilespaceLocation != NULL)
+	{
+		pfree(mirrorFilespaceLocation);
+		mirrorFilespaceLocation = NULL;
+	}
 	if (primaryFilespaceLocation != NULL)
 	{
 		/*
@@ -270,7 +275,6 @@ static int errdetail_nonexistent_relation(
 			pfree(buffer);
 
 			pfree(primaryFilespaceLocation);
-			pfree(mirrorFilespaceLocation);
 			return 0;
 		}
 	}
@@ -323,8 +327,8 @@ static int errdetail_nonexistent_relation(
 		errdetail(buffer);
 		pfree(buffer);
 
-		pfree(primaryFilespaceLocation);
-		pfree(mirrorFilespaceLocation);
+		if (primaryFilespaceLocation != NULL)
+			pfree(primaryFilespaceLocation);
 
 		pfree(tablespacePath);
 		return 0;
@@ -385,8 +389,8 @@ static int errdetail_nonexistent_relation(
 			errdetail(buffer);
 			pfree(buffer);
 		
-			pfree(primaryFilespaceLocation);
-			pfree(mirrorFilespaceLocation);
+			if (primaryFilespaceLocation != NULL)
+				pfree(primaryFilespaceLocation);
 
 			pfree(dbPath);
 			return 0;
@@ -395,8 +399,8 @@ static int errdetail_nonexistent_relation(
 		pfree(dbPath);
 	}
 	
-	pfree(primaryFilespaceLocation);
-	pfree(mirrorFilespaceLocation);
+	if (primaryFilespaceLocation != NULL)
+		pfree(primaryFilespaceLocation);
 
 	/*
 	 * No call to errdetail.
