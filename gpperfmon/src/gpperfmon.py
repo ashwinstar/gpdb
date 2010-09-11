@@ -426,8 +426,8 @@ that SSL be enabled."""
     print 'either re-run \'gpperfmon --setup\' or edit the configuration file'
     print 'located at ' + instance_info['ui_conf_file'] + '.'
     if not reconfigure:
-        print '\nYou can now start the web UI for this instance by running'
-        print '\'gpperfmon --start "' + instance_info['name'] + '"\'.'
+        print '\nThe web UI for this instance is available at %s' % webui_url
+        print '\nYou can now start the web UI for this instance by running: gpperfmon --start ' + instance_info['name'] 
     else:
         print '\nRestarting web UI instance %s...' % instance_info['name']
         status = lighty_restart(instance_info['name'])
