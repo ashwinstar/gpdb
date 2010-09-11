@@ -12538,7 +12538,7 @@ paba: postmaster:00003721:  errSendAlert(true),
 paba: postmaster:00003722:  errOmitLocation(true))); 
 paba: postmaster:00003927:  ereport(LOG, 
 paba: postmaster:00003928:  (errmsg("database system is ready to accept connections"), 
-paba: postmaster:00003929:  errdetail(version), 
+paba: postmaster:00003929:  errdetail("%s",version), 
 paba: postmaster:00003930:  errSendAlert(true), 
 paba: postmaster:00003931:  errOmitLocation(true))); 
 paba: postmaster:00004351:  ereport(LOG, 
