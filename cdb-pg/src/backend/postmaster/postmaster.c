@@ -3913,10 +3913,23 @@ static bool CommenceNormalOperations(void)
 	}
 
 	/* at this point we are really open for business */
-	ereport(LOG,
-		 (errmsg("database system is ready to accept connections"),
-		  errSendAlert(true),
-		  errOmitLocation(true)));
+	{
+		char version[512];
+
+		strcpy(version, PG_VERSION_STR " compiled on " __DATE__ " " __TIME__);
+
+#ifdef USE_ASSERT_CHECKING
+		strcat(version, " (with assert checking)");
+#endif
+		ereport(LOG,(errmsg("%s", version)));
+
+
+		ereport(LOG,
+			 (errmsg("database system is ready to accept connections"),
+			  errdetail(version),
+			  errSendAlert(true),
+			  errOmitLocation(true)));
+	}
 
 	return didServiceProcessWork;
 }
