@@ -263,7 +263,7 @@ int gpmon_emcconnect_send_alert(EmcConnectSymptom symptom,
 	if (!fd)
 		return 13;
 
-	fprintf(fd, buffer);
+	fprintf(fd, "%s", buffer);
 
 	fclose(fd);
 
