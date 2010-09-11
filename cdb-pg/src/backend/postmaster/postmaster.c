@@ -3926,7 +3926,7 @@ static bool CommenceNormalOperations(void)
 
 		ereport(LOG,
 			 (errmsg("database system is ready to accept connections"),
-			  errdetail(version),
+			  errdetail("%s",version),
 			  errSendAlert(true),
 			  errOmitLocation(true)));
 	}
