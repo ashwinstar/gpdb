@@ -4111,29 +4111,29 @@ iaag: icxudp:00002119:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR
 iaag: icxudp:00002120:  errmsg("Interconnect error master lost contact with client (recv)"))); 
 iaag: icxudp:00002127:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
 iaag: icxudp:00002128:  errmsg("Interconnect error: UDP-IC out of memory."))); 
-iaag: icxudp:00002306:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002307:  errmsg("Interconnect error waiting for peer ack"), 
-iaag: icxudp:00002308:  errdetail("During recvfrom() call.\n"))); 
-iaag: icxudp:00002313:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002314:  errmsg("Interconnect error waiting for peer ack"), 
-iaag: icxudp:00002315:  errdetail("short read during recvfrom() call. (%d)\n", n))); 
-iaag: icxudp:00002473:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002474:  errmsg("Interconnect error writing an outgoing packet"), 
-iaag: icxudp:00002475:  errdetail("error during sendto() call (error:%d).\n" 
-iaag: icxudp:00002476:  "For Remote Connection: contentId=%d at %s", 
-iaag: icxudp:00002477:  errno, conn->remoteContentId, 
-iaag: icxudp:00002478:  conn->remoteHostAndPort))); 
+iaag: icxudp:00002308:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002309:  errmsg("Interconnect error waiting for peer ack"), 
+iaag: icxudp:00002310:  errdetail("During recvfrom() call.\n"))); 
+iaag: icxudp:00002323:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002324:  errmsg("Interconnect error waiting for peer ack"), 
+iaag: icxudp:00002325:  errdetail("short read during recvfrom() call. (%d)\n", n))); 
 iaag: icxudp:00002484:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
 iaag: icxudp:00002485:  errmsg("Interconnect error writing an outgoing packet"), 
-iaag: icxudp:00002486:  errdetail("short transmit during sendto() call.\n" 
+iaag: icxudp:00002486:  errdetail("error during sendto() call (error:%d).\n" 
 iaag: icxudp:00002487:  "For Remote Connection: contentId=%d at %s", 
-iaag: icxudp:00002488:  conn->remoteContentId, 
+iaag: icxudp:00002488:  errno, conn->remoteContentId, 
 iaag: icxudp:00002489:  conn->remoteHostAndPort))); 
-iaag: icxudp:00002537:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002538:  errmsg("Interconnect error segment lost contact with master (xmit)"))); 
-iaag: icxudp:00002554:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002555:  errmsg("Interconnect error waiting for peer ack"), 
-iaag: icxudp:00002556:  errdetail("During poll() call.\n"))); 
+iaag: icxudp:00002495:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002496:  errmsg("Interconnect error writing an outgoing packet"), 
+iaag: icxudp:00002497:  errdetail("short transmit during sendto() call.\n" 
+iaag: icxudp:00002498:  "For Remote Connection: contentId=%d at %s", 
+iaag: icxudp:00002499:  conn->remoteContentId, 
+iaag: icxudp:00002500:  conn->remoteHostAndPort))); 
+iaag: icxudp:00002548:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002549:  errmsg("Interconnect error segment lost contact with master (xmit)"))); 
+iaag: icxudp:00002565:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002566:  errmsg("Interconnect error waiting for peer ack"), 
+iaag: icxudp:00002567:  errdetail("During poll() call.\n"))); 
 aaaaa GP_IGNORE: taag: tupser - ./backend/cdb/motion/tupser.c
 taag: tupser:00000086:  ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION), 
 taag: tupser:00000087:  errmsg("deserialize data underflow"))); 
@@ -12536,45 +12536,46 @@ paba: postmaster:00003719:  ereport(LOG,
 paba: postmaster:00003720:  (errmsg("received immediate shutdown request"), 
 paba: postmaster:00003721:  errSendAlert(true), 
 paba: postmaster:00003722:  errOmitLocation(true))); 
-paba: postmaster:00003916:  ereport(LOG, 
-paba: postmaster:00003917:  (errmsg("database system is ready to accept connections"), 
-paba: postmaster:00003918:  errSendAlert(true), 
-paba: postmaster:00003919:  errOmitLocation(true))); 
-paba: postmaster:00004338:  ereport(LOG, 
-paba: postmaster:00004339:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
-paba: postmaster:00005359:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
-paba: postmaster:00005944:  ereport(WARNING, 
-paba: postmaster:00005945:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
-paba: postmaster:00005946:  gai_strerror(ret)))); 
-paba: postmaster:00005988:  ereport(FATAL, 
-paba: postmaster:00005989:  (errmsg("could not load pg_hba.conf"))); 
-paba: postmaster:00006411:  ereport(ERROR, 
-paba: postmaster:00006412:  (errmsg_internal("could not terminate unstarted process: error code %d", 
-paba: postmaster:00006413:  (int) GetLastError()))); 
-paba: postmaster:00006438:  ereport(ERROR, 
-paba: postmaster:00006439:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
-paba: postmaster:00006440:  (int) GetLastError()))); 
-paba: postmaster:00006455:  ereport(ERROR, 
-paba: postmaster:00006456:  (errmsg_internal("could not terminate unstartable process: error code %d", 
-paba: postmaster:00006457:  (int) GetLastError()))); 
-paba: postmaster:00006464:  ereport(ERROR, 
-paba: postmaster:00006465:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
-paba: postmaster:00006466:  (int) GetLastError()))); 
-paba: postmaster:00006480:  ereport(FATAL, 
-paba: postmaster:00006481:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paba: postmaster:00006482:  errmsg("out of memory"))); 
+paba: postmaster:00003927:  ereport(LOG, 
+paba: postmaster:00003928:  (errmsg("database system is ready to accept connections"), 
+paba: postmaster:00003929:  errdetail(version), 
+paba: postmaster:00003930:  errSendAlert(true), 
+paba: postmaster:00003931:  errOmitLocation(true))); 
+paba: postmaster:00004351:  ereport(LOG, 
+paba: postmaster:00004352:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+paba: postmaster:00005372:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+paba: postmaster:00005957:  ereport(WARNING, 
+paba: postmaster:00005958:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
+paba: postmaster:00005959:  gai_strerror(ret)))); 
+paba: postmaster:00006001:  ereport(FATAL, 
+paba: postmaster:00006002:  (errmsg("could not load pg_hba.conf"))); 
+paba: postmaster:00006424:  ereport(ERROR, 
+paba: postmaster:00006425:  (errmsg_internal("could not terminate unstarted process: error code %d", 
+paba: postmaster:00006426:  (int) GetLastError()))); 
+paba: postmaster:00006451:  ereport(ERROR, 
+paba: postmaster:00006452:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
+paba: postmaster:00006453:  (int) GetLastError()))); 
+paba: postmaster:00006468:  ereport(ERROR, 
+paba: postmaster:00006469:  (errmsg_internal("could not terminate unstartable process: error code %d", 
+paba: postmaster:00006470:  (int) GetLastError()))); 
+paba: postmaster:00006477:  ereport(ERROR, 
+paba: postmaster:00006478:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
+paba: postmaster:00006479:  (int) GetLastError()))); 
 paba: postmaster:00006493:  ereport(FATAL, 
-paba: postmaster:00006494:  (errmsg_internal("could not register process for wait: error code %d", 
-paba: postmaster:00006495:  (int) GetLastError()))); 
-paba: postmaster:00006566:  ereport(FATAL, 
-paba: postmaster:00006567:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paba: postmaster:00006568:  errmsg("out of memory"))); 
-paba: postmaster:00007428:  ereport(ERROR, 
-paba: postmaster:00007429:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
-paba: postmaster:00007430:  (int) GetLastError()))); 
-paba: postmaster:00007450:  ereport(ERROR, 
-paba: postmaster:00007451:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
-paba: postmaster:00007452:  src, WSAGetLastError()))); 
+paba: postmaster:00006494:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paba: postmaster:00006495:  errmsg("out of memory"))); 
+paba: postmaster:00006506:  ereport(FATAL, 
+paba: postmaster:00006507:  (errmsg_internal("could not register process for wait: error code %d", 
+paba: postmaster:00006508:  (int) GetLastError()))); 
+paba: postmaster:00006579:  ereport(FATAL, 
+paba: postmaster:00006580:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paba: postmaster:00006581:  errmsg("out of memory"))); 
+paba: postmaster:00007441:  ereport(ERROR, 
+paba: postmaster:00007442:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
+paba: postmaster:00007443:  (int) GetLastError()))); 
+paba: postmaster:00007463:  ereport(ERROR, 
+paba: postmaster:00007464:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
+paba: postmaster:00007465:  src, WSAGetLastError()))); 
 aaaaa GP_IGNORE: saaj: seqserver - ./backend/postmaster/seqserver.c
 saaj: seqserver:00000216:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
 saaj: seqserver:00000217:  errmsg("Error: Could not write() message to seqserver: %s", 
@@ -16703,11 +16704,11 @@ laaj: lsyscache:00002383:  (errcode(ERRCODE_UNDEFINED_OBJECT),
 laaj: lsyscache:00002384:  errmsg("role \"%s\" does not exist", rolname), 
 laaj: lsyscache:00002385:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: raai: relcache - ./backend/utils/cache/relcache.c
-raai: relcache:00003904:  ereport(WARNING, 
-raai: relcache:00003905:  (errcode_for_file_access(), 
-raai: relcache:00003906:  errmsg("could not create relation-cache initialization file \"%s\": %m", 
-raai: relcache:00003907:  tempfilename), 
-raai: relcache:00003908:  errdetail("Continuing anyway, but there's something wrong."))); 
+raai: relcache:00003898:  ereport(WARNING, 
+raai: relcache:00003899:  (errcode_for_file_access(), 
+raai: relcache:00003900:  errmsg("could not create relation-cache initialization file \"%s\": %m", 
+raai: relcache:00003901:  tempfilename), 
+raai: relcache:00003902:  errdetail("Continuing anyway, but there's something wrong."))); 
 aaaaa GP_IGNORE: taai: typcache - ./backend/utils/cache/typcache.c
 taai: typcache:00000143:  ereport(ERROR, 
 taai: typcache:00000144:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
