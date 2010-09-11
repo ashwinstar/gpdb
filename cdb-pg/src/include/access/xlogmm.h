@@ -79,6 +79,12 @@ extern void mmxlog_log_create_relfilenode(Oid tablespace, Oid database,
 extern void mmxlog_append_checkpoint_data(XLogRecData rdata[4]);
 extern void mmxlog_get_checkpoint_counts(char *cpdata, XLogRecPtr *beginLoc, int *tablespaceCount, int *filespaceCount);
 extern void mmxlog_read_checkpoint_data(char *cpdata, XLogRecPtr *beginLoc);
-extern char *mmxlog_tablespace_get_path(Oid tspcoid);
-extern char *mmxlog_filespace_get_path(Oid fspcoid);
+extern bool mmxlog_filespace_get_path(
+	Oid fspcoid,
+
+	char **filespacePath);
+extern bool mmxlog_tablespace_get_filespace(
+	Oid tspcoid,
+
+	Oid *filespaceOid);
 #endif /* MMXLOG_H */

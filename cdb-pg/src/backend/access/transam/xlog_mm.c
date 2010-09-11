@@ -896,18 +896,22 @@ add_tablespace_map_entry(tspc_map *m, XLogRecPtr *beginLoc, char *caller)
 }
 
 /*
- * Given a filespace oid, return that path to the filespace.
+ * Given a filespace oid, lookup that path to the filespace.
+ *
+ * Output parameter will be set to NULL if not found.
  */
-char *
-mmxlog_filespace_get_path(Oid fspcoid)
+bool
+mmxlog_filespace_get_path(
+	Oid fspcoid,
+
+	char **filespacePath)
 {
 	bool found;
 	fspc_map *m;
 	char *path = NULL;
 
-	char *filespaceLocation;
-
 	Insist(fspcoid != SYSTEMFILESPACE_OID);
+	*filespacePath = NULL;
 
 	/* 
 	 * The table is lazily initialised.
@@ -931,8 +935,7 @@ mmxlog_filespace_get_path(Oid fspcoid)
 								PersistentRecovery_DebugPrintLevel(),
 								"mmxlog_filespace_get_path");
 		}
-		elog(ERROR, "cannot find filespace path for filespace OID %u",
-			 fspcoid);
+		return false;
 	}
 
 	if (GPStandby())
@@ -944,26 +947,30 @@ mmxlog_filespace_get_path(Oid fspcoid)
 	}
 
 	PersistentFilespace_ConvertBlankPaddedLocation(
-											&filespaceLocation,
+											filespacePath,
 											path,
 											/* isPrimary */ false); // Always say false so we don't error out here.
 
-	elog(DEBUG1, "MMXLOG: looking for fspc with oid %u, returning %s",
-		 fspcoid, filespaceLocation);
-	return filespaceLocation;
+	return (*filespacePath != NULL);
 }
 
 /*
- * The same as mmxlog_filespace_get_path() but for tablespaces.
+ * Given a tablespace oid, return that filespace for the tablespace.
+ *
+ * Output parameter will be set to InvalidOid if not found.
  */
-char *
-mmxlog_tablespace_get_path(Oid tspcoid)
+bool
+mmxlog_tablespace_get_filespace(
+	Oid tspcoid,
+
+	Oid *filespaceOid)
 {
-	Oid fspcoid;
 	tspc_map *m;
 	bool found;
 
 	elog(DEBUG1, "MMXLOG: looking for tspcoid %u", tspcoid);
+
+	*filespaceOid = InvalidOid;
 
 	/* 
 	 * The table is lazily initialised.
@@ -973,7 +980,6 @@ mmxlog_tablespace_get_path(Oid tspcoid)
 									 sizeof(Oid), /* keysize */
 									 sizeof(tspc_map),
 									 gp_max_tablespaces);
-
 	/*
 	 * First, get the filespace that the tablespace resides in.
 	 */
@@ -985,15 +991,14 @@ mmxlog_tablespace_get_path(Oid tspcoid)
 		{
 			mmxlog_print_tablespaces(
 								PersistentRecovery_DebugPrintLevel(),
-								"mmxlog_tablespace_get_path");
+								"mmxlog_tablespace_get_filespace");
 		}
-		elog(ERROR, "cannot find tablespace map for tablespace %u",
-			 tspcoid);
+		return false;
 	}
 
-	fspcoid = m->filespaceoid;
+	*filespaceOid = m->filespaceoid;
 
-	return mmxlog_filespace_get_path(fspcoid);
+	return true;
 }
 
 static void
@@ -1282,7 +1287,13 @@ mmxlog_read_checkpoint_data(char *cpdata, XLogRecPtr *beginLoc)
 
 		add_tablespace_map_entry(m, beginLoc, "mmxlog_read_checkpoint_data");
 
-		tmp = mmxlog_filespace_get_path(tmap[i].filespaceoid);
+		if (!mmxlog_filespace_get_path(
+								m->filespaceoid,
+								&tmp))
+		{
+			elog(ERROR, "cannot find filespace path for filespace OID %u (tablespace %u)",
+				 m->filespaceoid, m->tablespaceoid);
+		}
 		snprintf(path, sizeof(path), "%s/%u", tmp, tmap[i].tablespaceoid);
 
 		if (mkdir(path, 0700) < 0)

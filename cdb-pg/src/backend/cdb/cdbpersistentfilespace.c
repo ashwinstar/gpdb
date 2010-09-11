@@ -482,7 +482,7 @@ void PersistentFilespace_ConvertBlankPaddedLocation(
 	}
 }
 
-void PersistentFilespace_GetPrimaryAndMirrorUnderLock(
+bool PersistentFilespace_TryGetPrimaryAndMirrorUnderLock(
 	Oid 		filespaceOid,
 				/* The filespace OID to lookup. */
 
@@ -510,9 +510,9 @@ void PersistentFilespace_GetPrimaryAndMirrorUnderLock(
 	 */
 	if (GPStandby())
 	{
-		*primaryFilespaceLocation =
-						mmxlog_filespace_get_path(filespaceOid);
-		return;
+		return mmxlog_filespace_get_path(
+									filespaceOid,
+									primaryFilespaceLocation);
 	}
 #endif
 
@@ -520,8 +520,7 @@ void PersistentFilespace_GetPrimaryAndMirrorUnderLock(
 				PersistentFilespace_FindDirUnderLock(
 												filespaceOid);
 	if (filespaceDirEntry == NULL)
-		elog(ERROR, "Did not find persistent filespace entry %u", 
-			 filespaceOid);
+		return false;
 
 	/* 
 	 * The persistent_filespace_node_table contains the paths for both the 
@@ -590,6 +589,59 @@ void PersistentFilespace_GetPrimaryAndMirrorUnderLock(
 											mirrorFilespaceLocation,
 											mirrorBlankPadded,
 											/* isPrimary */ false);
+
+	return true;
+}
+
+void PersistentFilespace_GetPrimaryAndMirrorUnderLock(
+	Oid 		filespaceOid,
+				/* The filespace OID to lookup. */
+
+	char **primaryFilespaceLocation,
+				/* The primary filespace directory path.  Return NULL for global and base. */
+	
+	char **mirrorFilespaceLocation)
+				/* The primary filespace directory path.  Return NULL for global and base. 
+				 * Or, returns NULL when mirror not configured. */
+{
+	if (!PersistentFilespace_TryGetPrimaryAndMirrorUnderLock(
+													filespaceOid,
+													primaryFilespaceLocation,
+													mirrorFilespaceLocation))
+	{
+		elog(ERROR, "Did not find persistent filespace entry %u", 
+			 filespaceOid);
+	}
+}
+
+bool PersistentFilespace_TryGetPrimaryAndMirror(
+	Oid 		filespaceOid,
+ 	            /* The filespace OID to lookup */
+
+	char **primaryFilespaceLocation,
+				/* The primary filespace directory path.  Return NULL for global and base. */
+	
+	char **mirrorFilespaceLocation)
+				/* The primary filespace directory path.  Return NULL for global and base. 
+				 * Or, returns NULL when mirror not configured. */
+{
+	bool result;
+
+	PersistentFilespace_InitScan();
+
+	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
+	// acquire the MirroredLock.
+
+	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+
+	result = PersistentFilespace_TryGetPrimaryAndMirrorUnderLock(
+													filespaceOid,
+													primaryFilespaceLocation,
+													mirrorFilespaceLocation);
+
+	LWLockRelease(PersistentObjLock);
+
+	return result;
 }
 
 void PersistentFilespace_GetPrimaryAndMirror(
@@ -610,10 +662,14 @@ void PersistentFilespace_GetPrimaryAndMirror(
 
 	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
 
-	PersistentFilespace_GetPrimaryAndMirrorUnderLock(
+	if (!PersistentFilespace_TryGetPrimaryAndMirrorUnderLock(
 											filespaceOid,
 											primaryFilespaceLocation,
-											mirrorFilespaceLocation);
+											mirrorFilespaceLocation))
+	{
+		elog(ERROR, "Did not find persistent filespace entry %u", 
+			 filespaceOid);
+	}
 
 	LWLockRelease(PersistentObjLock);
 }

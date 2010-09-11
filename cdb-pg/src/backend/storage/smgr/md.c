@@ -35,6 +35,7 @@
 #include "cdb/cdbpersistenttablespace.h"
 #include "cdb/cdbfilerepprimary.h"
 #include "utils/guc.h"
+#include "catalog/pg_tablespace.h"
 
 
 /* interval for calling AbsorbFsyncRequests in mdsync */
@@ -194,6 +195,213 @@ mdinit(void)
 	}
 
 	return true;
+}
+
+static int errdetail_nonexistent_relation(
+	int				error,
+
+	RelFileNode		*relFileNode)
+{
+#define MAX_MSG_LEN MAXPGPATH + 100
+
+	char *primaryFilespaceLocation = NULL;
+	char *mirrorFilespaceLocation = NULL;
+
+	struct stat fst;
+	
+	char *tablespacePath;
+
+	if (!FILE_POSSIBLY_DELETED(error))
+	{
+		/*
+		 * No call to errdetail.
+		 */
+		return 0;
+	}
+	
+	/*
+	 * Investigate whether the containing directories exist to give more detail.
+	 */
+	PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+										relFileNode->spcNode,
+										&primaryFilespaceLocation,
+										&mirrorFilespaceLocation);
+	if (primaryFilespaceLocation != NULL)
+	{
+		/*
+		 * Does the filespace directory exist?
+		 */
+		if (stat(primaryFilespaceLocation, &fst) < 0)
+		{
+			int saved_err;
+			char *buffer;
+			int snprintfResult;
+
+			saved_err = errno;
+			buffer = (char*)palloc(MAX_MSG_LEN);
+
+			if (FILE_POSSIBLY_DELETED(saved_err))
+			{
+				snprintfResult = 
+					snprintf(
+						buffer,
+						MAX_MSG_LEN,
+						"Filespace directory \"%s\" does not exist",
+						primaryFilespaceLocation);
+			}
+			else
+			{
+				snprintfResult = 
+					snprintf(
+						buffer,
+						MAX_MSG_LEN,
+						"Filespace directory \"%s\" existence check: %s",
+						primaryFilespaceLocation,
+						strerror(saved_err));
+			}
+			
+			Assert(snprintfResult >= 0);
+			Assert(snprintfResult < MAX_MSG_LEN);
+
+			/*
+			 * Give DETAIL on the filespace directory!
+			 */
+			errdetail(buffer);
+			pfree(buffer);
+
+			pfree(primaryFilespaceLocation);
+			pfree(mirrorFilespaceLocation);
+			return 0;
+		}
+	}
+	
+	tablespacePath = (char*)palloc(MAXPGPATH + 1);
+
+	FormTablespacePath(
+				tablespacePath,
+				primaryFilespaceLocation,
+				relFileNode->spcNode);
+
+	/*
+	 * Does the tablespace directory exist?
+	 */
+	if (stat(tablespacePath, &fst) < 0)
+	{
+		int saved_err;
+		char *buffer;
+		int snprintfResult;
+
+		saved_err = errno;
+		buffer = (char*)palloc(MAX_MSG_LEN);
+
+		if (FILE_POSSIBLY_DELETED(saved_err))
+		{
+			snprintfResult = 
+				snprintf(
+					buffer,
+					MAX_MSG_LEN,
+					"Tablespace directory \"%s\" does not exist",
+					tablespacePath);
+		}
+		else
+		{
+			snprintfResult = 
+				snprintf(
+					buffer,
+					MAX_MSG_LEN,
+					"Tablespace directory \"%s\" existence check: %s",
+					tablespacePath,
+					strerror(saved_err));
+		}
+		
+		Assert(snprintfResult >= 0);
+		Assert(snprintfResult < MAX_MSG_LEN);
+
+		/*
+		 * Give DETAIL on the tablespace directory!
+		 */
+		errdetail(buffer);
+		pfree(buffer);
+
+		pfree(primaryFilespaceLocation);
+		pfree(mirrorFilespaceLocation);
+
+		pfree(tablespacePath);
+		return 0;
+	}
+
+	pfree(tablespacePath);
+
+	if (relFileNode->spcNode != GLOBALTABLESPACE_OID)
+	{
+		char *dbPath;
+
+		dbPath = (char*)palloc(MAXPGPATH + 1);
+		
+		FormDatabasePath(
+					dbPath,
+					primaryFilespaceLocation,
+					relFileNode->spcNode,
+					relFileNode->dbNode);
+
+		/*
+		 * Does the database directory exist?
+		 */
+		if (stat(dbPath, &fst) < 0)
+		{
+			int saved_err;
+			char *buffer;
+			int snprintfResult;
+		
+			saved_err = errno;
+			buffer = (char*)palloc(MAX_MSG_LEN);
+		
+			if (FILE_POSSIBLY_DELETED(saved_err))
+			{
+				snprintfResult = 
+					snprintf(
+						buffer,
+						MAX_MSG_LEN,
+						"Database directory \"%s\" does not exist",
+						dbPath);
+			}
+			else
+			{
+				snprintfResult = 
+					snprintf(
+						buffer,
+						MAX_MSG_LEN,
+						"Database directory \"%s\" existence check: %s",
+						dbPath,
+						strerror(saved_err));
+			}
+			
+			Assert(snprintfResult >= 0);
+			Assert(snprintfResult < MAX_MSG_LEN);
+		
+			/*
+			 * Give DETAIL on the database directory!
+			 */
+			errdetail(buffer);
+			pfree(buffer);
+		
+			pfree(primaryFilespaceLocation);
+			pfree(mirrorFilespaceLocation);
+
+			pfree(dbPath);
+			return 0;
+		}
+
+		pfree(dbPath);
+	}
+	
+	pfree(primaryFilespaceLocation);
+	pfree(mirrorFilespaceLocation);
+
+	/*
+	 * No call to errdetail.
+	 */
+	return 0;
 }
 
 /*
@@ -1057,14 +1265,20 @@ mdopen(SMgrRelation reln, bool allowNotFound)
 		}
 		if (!MirroredBufferPool_IsActive(&mirroredOpen))
 		{
+			int saved_err;
+
 			if (allowNotFound && FILE_POSSIBLY_DELETED(errno))
 				return NULL;
+
+			saved_err = errno;
 			ereport(ERROR,
 					(errcode_for_file_access(),
-					 errmsg("could not open relation %u/%u/%u: %m",
+					 errmsg("could not open relation %u/%u/%u: %s",
 							reln->smgr_rnode.spcNode,
 							reln->smgr_rnode.dbNode,
-							reln->smgr_rnode.relNode)));
+							reln->smgr_rnode.relNode,
+							strerror(saved_err)),
+					 errdetail_nonexistent_relation(saved_err, &reln->smgr_rnode)));
 		}
 	}
 
@@ -1921,16 +2135,23 @@ _mdmir_getseg(SMgrRelation reln, BlockNumber blkno, bool allowNotFound)
 								          createIfDoesntExist);
 			if (v->mdmir_chain == NULL)
 			{
+				int saved_err;
+				
 				if (allowNotFound && FILE_POSSIBLY_DELETED(errno))
 					return NULL;
+
+				saved_err = errno;
+
 				ereport(ERROR,
 						(errcode_for_file_access(),
-						 errmsg("could not open segment %u of relation %u/%u/%u (target block %u): %m",
+						 errmsg("could not open segment %u of relation %u/%u/%u (target block %u): %s",
 								nextsegno,
 								reln->smgr_rnode.spcNode,
 								reln->smgr_rnode.dbNode,
 								reln->smgr_rnode.relNode,
-								blkno)));
+								blkno,
+								strerror(saved_err)),
+						 errdetail_nonexistent_relation(saved_err, &reln->smgr_rnode)));
 			}
 		}
 		v = v->mdmir_chain;

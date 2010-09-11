@@ -419,30 +419,35 @@ static void PersistentTablespace_AddTuple(
 							&tablespaceDirEntry->persistentSerialNum);
 }
 
-void PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+PersistentTablespaceGetFilespaces PersistentTablespace_TryGetPrimaryAndMirrorFilespaces(
 	Oid 		tablespaceOid,
 				/* The tablespace OID for the create. */
 
 	char **primaryFilespaceLocation,
 				/* The primary filespace directory path.  Return NULL for global and base. */
 	
-	char **mirrorFilespaceLocation)
+	char **mirrorFilespaceLocation,
 				/* The primary filespace directory path.  Return NULL for global and base. 
 				 * Or, returns NULL when mirror not configured. */
+				 
+	Oid *filespaceOid)
 {
 	bool lockHeldByMe;
 
 	TablespaceDirEntry tablespaceDirEntry;
 
+	PersistentTablespaceGetFilespaces result;
+
 	*primaryFilespaceLocation = NULL;
 	*mirrorFilespaceLocation = NULL;
+	*filespaceOid = InvalidOid;
 
 	if (IsBuiltinTablespace(tablespaceOid))
 	{
 		/*
 		 * Optimize out the common cases.
 		 */
-		 return;
+		 return PersistentTablespaceGetFilespaces_Ok;
 	}
 
 #ifdef MASTER_MIRROR_SYNC
@@ -452,9 +457,17 @@ void PersistentTablespace_GetPrimaryAndMirrorFilespaces(
 	 */
 	if (GPStandby())
 	{
-		*primaryFilespaceLocation =
-			pstrdup(mmxlog_tablespace_get_path(tablespaceOid));
-		return;
+		if (!mmxlog_tablespace_get_filespace(
+									tablespaceOid,
+									filespaceOid))
+			return PersistentTablespaceGetFilespaces_TablespaceNotFound;
+
+		if (!mmxlog_filespace_get_path(
+									*filespaceOid,
+									primaryFilespaceLocation))
+			return PersistentTablespaceGetFilespaces_FilespaceNotFound;
+
+		return PersistentTablespaceGetFilespaces_Ok;
 	}
 #endif
 
@@ -486,16 +499,79 @@ void PersistentTablespace_GetPrimaryAndMirrorFilespaces(
 		PersistentTablespace_FindEntryUnderLock(
 										tablespaceOid);
 	if (tablespaceDirEntry == NULL)
-		elog(ERROR, "Did not find persistent tablespace entry %u", 
-			 tablespaceOid);
+	{
+		result = PersistentTablespaceGetFilespaces_TablespaceNotFound;
+	}
+	else
+	{
 
-	PersistentFilespace_GetPrimaryAndMirrorUnderLock(
-												tablespaceDirEntry->filespaceOid,
-												primaryFilespaceLocation,
-												mirrorFilespaceLocation);
+		*filespaceOid = tablespaceDirEntry->filespaceOid;
+
+		if (!PersistentFilespace_TryGetPrimaryAndMirrorUnderLock(
+													tablespaceDirEntry->filespaceOid,
+													primaryFilespaceLocation,
+													mirrorFilespaceLocation))
+		{
+			result = PersistentTablespaceGetFilespaces_FilespaceNotFound;
+		}
+		else
+		{
+			result = PersistentTablespaceGetFilespaces_Ok;
+		}
+	}
 
 	if (!lockHeldByMe)
 		LWLockRelease(PersistentObjLock);
+
+	return result;
+}
+
+void PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+	Oid 		tablespaceOid,
+				/* The tablespace OID for the create. */
+
+	char **primaryFilespaceLocation,
+				/* The primary filespace directory path.  Return NULL for global and base. */
+	
+	char **mirrorFilespaceLocation)
+				/* The primary filespace directory path.  Return NULL for global and base. 
+				 * Or, returns NULL when mirror not configured. */
+{
+	PersistentTablespaceGetFilespaces tablespaceGetFilespaces;
+
+	Oid filespaceOid;
+
+	tablespaceGetFilespaces =
+			PersistentTablespace_TryGetPrimaryAndMirrorFilespaces(
+													tablespaceOid,
+													primaryFilespaceLocation,
+													mirrorFilespaceLocation,
+													&filespaceOid);
+	switch (tablespaceGetFilespaces)
+	{
+	case PersistentTablespaceGetFilespaces_TablespaceNotFound:
+		ereport(ERROR, 
+				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				 errmsg("Unable to find entry for tablespace OID = %u when getting filespace directory paths",
+						tablespaceOid)));
+		break;
+			
+	case PersistentTablespaceGetFilespaces_FilespaceNotFound:
+		ereport(ERROR, 
+				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				 errmsg("Unable to find entry for filespace OID = %u when forming filespace directory paths for tablespace OID = %u",
+				 		filespaceOid,
+						tablespaceOid)));
+		break;
+					
+	case PersistentTablespaceGetFilespaces_Ok:
+		// Go below and pass back the result.
+		break;
+		
+	default:
+		elog(ERROR, "Unexpected tablespace filespace fetch result: %d",
+			 tablespaceGetFilespaces);
+	}
 }
 
 Oid

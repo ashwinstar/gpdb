@@ -36,6 +36,16 @@ extern void PersistentFilespace_LookupTidAndSerialNum(
 
 	int64			*persistentSerialNum);
 
+extern bool PersistentFilespace_TryGetPrimaryAndMirrorUnderLock(
+	Oid 		filespaceOid,
+				/* The filespace OID to lookup. */
+
+	char **primaryFilespaceLocation,
+				/* The primary filespace directory path.  Return NULL for global and base. */
+	
+	char **mirrorFilespaceLocation);
+				/* The primary filespace directory path.  Return NULL for global and base. 
+				 * Or, returns NULL when mirror not configured. */
 extern void PersistentFilespace_GetPrimaryAndMirrorUnderLock(
 	Oid 		filespaceOid,
 				/* The filespace OID to lookup. */
@@ -47,6 +57,16 @@ extern void PersistentFilespace_GetPrimaryAndMirrorUnderLock(
 				/* The primary filespace directory path.  Return NULL for global and base. 
 				 * Or, returns NULL when mirror not configured. */
 
+extern bool PersistentFilespace_TryGetPrimaryAndMirror(
+	Oid 		filespaceOid,
+				/* The filespace OID to lookup */
+
+	char **primaryFilespaceLocation,
+				/* The primary filespace directory path.  Return NULL for global and base. */
+	
+	char **mirrorFilespaceLocation);
+				/* The primary filespace directory path.  Return NULL for global and base. 
+				 * Or, returns NULL when mirror not configured. */
 extern void PersistentFilespace_GetPrimaryAndMirror(
 	Oid 		filespaceOid,
 				/* The filespace OID to lookup. */
