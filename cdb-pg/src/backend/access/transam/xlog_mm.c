@@ -157,6 +157,18 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 		elog(DEBUG1, "got create directory request: %s / %s",
 			 xlrec->master_path,
 			 xlrec->mirror_path);
+		if (Debug_persistent_recovery_print)
+		{
+			elog(PersistentRecovery_DebugPrintLevel(), 
+				 "mmxlog_redo: create directory request %d: path \"%s\", filespace %u, primary dbid %u, path \"%s\"; mirror dbid %u, path \"%s\"",
+				 info,
+				 path,
+				 xlrec->filespace,
+				 xlrec->u.dbid.master,
+				 xlrec->master_path,
+				 xlrec->u.dbid.mirror,
+				 xlrec->mirror_path);
+		}
 
 		/* 
 		 * Inform the persistent table code about the new filespace or
@@ -201,6 +213,18 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 	}
 	else if (info == MMXLOG_REMOVE_DIR)
 	{
+		if (Debug_persistent_recovery_print)
+		{
+			elog(PersistentRecovery_DebugPrintLevel(), 
+				 "mmxlog_redo: remove directory request %d: path \"%s\", filespace %u, primary dbid %u, path \"%s\"; mirror dbid %u, path \"%s\"",
+				 info,
+				 path,
+				 xlrec->filespace,
+				 xlrec->u.dbid.master,
+				 xlrec->master_path,
+				 xlrec->u.dbid.mirror,
+				 xlrec->mirror_path);
+		}
 		if (xlrec->objtype == MM_OBJ_DATABASE)
 			xlog_prepare_database_drop(xlrec->tablespace, xlrec->database);
 
@@ -209,6 +233,21 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 	}
 	else if (info == MMXLOG_CREATE_FILE)
 	{
+		if (Debug_persistent_recovery_print)
+		{
+			elog(PersistentRecovery_DebugPrintLevel(), 
+				 "mmxlog_redo: create file request %d: path \"%s\", filespace %u, %u/%u/%u, primary dbid %u, path \"%s\"; mirror dbid %u, path \"%s\"",
+				 info,
+				 path,
+				 xlrec->filespace,
+				 xlrec->tablespace,
+				 xlrec->database,
+				 xlrec->relfilenode,
+				 xlrec->u.dbid.master,
+				 xlrec->master_path,
+				 xlrec->u.dbid.mirror,
+				 xlrec->mirror_path);
+		}
 		int fd = open(path, O_CREAT | O_RDWR | PG_BINARY, 0600);
 
 		if (fd < 0)
@@ -232,6 +271,22 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 		RelFileNode rnode;
 
 		Insist(xlrec->objtype == MM_OBJ_RELFILENODE);
+
+		if (Debug_persistent_recovery_print)
+		{
+			elog(PersistentRecovery_DebugPrintLevel(), 
+				 "mmxlog_redo: remove file request %d: path \"%s\", filespace %u, %u/%u/%u, primary dbid %u, path \"%s\"; mirror dbid %u, path \"%s\"",
+				 info,
+				 path,
+				 xlrec->filespace,
+				 xlrec->tablespace,
+				 xlrec->database,
+				 xlrec->relfilenode,
+				 xlrec->u.dbid.master,
+				 xlrec->master_path,
+				 xlrec->u.dbid.mirror,
+				 xlrec->mirror_path);
+		}
 
 		rnode.spcNode = xlrec->tablespace;
 		rnode.dbNode = xlrec->database;
@@ -265,13 +320,21 @@ mmxlog_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 	char *path = obj_get_path(xlrec); 
 
 	if (info == MMXLOG_CREATE_DIR)
-		appendStringInfo(buf, "create directory: %s", path);
+		appendStringInfo(buf, "create directory: path \"%s\", filespace %u", 
+						 path,
+						 xlrec->filespace);
 	else if (info == MMXLOG_REMOVE_DIR)
-		appendStringInfo(buf, "remove directory: %s", path);
+		appendStringInfo(buf, "remove directory: path \"%s\", filespace %u", 
+						 path,
+						 xlrec->filespace);
 	else if (info == MMXLOG_CREATE_FILE)
-		appendStringInfo(buf, "create file: %s", path);
+		appendStringInfo(buf, "create file: path \"%s\", filespace %u", 
+						 path,
+						 xlrec->filespace);
 	else if (info == MMXLOG_REMOVE_FILE)
-		appendStringInfo(buf, "remove file: %s", path);
+		appendStringInfo(buf, "remove file: path \"%s\", filespace %u",
+						 path,
+						 xlrec->filespace);
 	else
 		appendStringInfo(buf, "UNKNOWN");
 }

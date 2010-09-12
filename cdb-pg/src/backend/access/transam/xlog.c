@@ -7603,6 +7603,20 @@ XLogStandbyRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoin
 			elog(LOG, "%s", buf.data);
 			pfree(buf.data);
 		}
+		if (Debug_persistent_recovery_print)
+		{
+			initStringInfo(&buf);
+			appendStringInfo(&buf, "XLogStandbyRecoverRange: Apply @ %s; LSN %s: ",
+							 XLogLocationToString(&ReadRecPtr),
+							 XLogLocationToString2(&EndRecPtr));
+			XLog_OutRec(&buf, record);
+			appendStringInfo(&buf, " - ");
+			RmgrTable[record->xl_rmid].rm_desc(&buf,
+											   ReadRecPtr,
+											   record);
+			elog(PersistentRecovery_DebugPrintLevel(), "%s", buf.data);
+			pfree(buf.data);
+		}
 		
 		/* Setup error traceback support for ereport() */
 		redoErrorCallBack.location = ReadRecPtr;
