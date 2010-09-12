@@ -16,6 +16,10 @@
  *
  *-------------------------------------------------------------------------
  */
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+	 
 #include "postgres.h"
 
 #include "access/xlogutils.h"
@@ -26,7 +30,9 @@
 #include "cdb/cdbmirroredfilesysobj.h"
 #include "cdb/cdbfilerepprimary.h"
 #include "cdb/cdbpersistentrecovery.h"
+#include "cdb/cdbpersistenttablespace.h"
 #include "utils/guc.h"
+#include "postmaster/postmaster.h"
 
 
 /*
@@ -462,6 +468,93 @@ XLogOpenRelation(RelFileNode rnode)
 	}
 	else
 	{
+		/*
+		 * We need to fault in the database directory on the standby.
+		 */
+		if (rnode.spcNode != GLOBALTABLESPACE_OID && GPStandby())
+		{
+			char *primaryFilespaceLocation = NULL;
+
+			char *dbPath;
+			
+			if (IsBuiltinTablespace(rnode.spcNode))
+			{
+				/*
+				 * No filespace to fetch.
+				 */
+			}
+			else
+			{		
+				char *mirrorFilespaceLocation = NULL;
+			
+				/*
+				 * Investigate whether the containing directories exist to give more detail.
+				 */
+				PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+													rnode.spcNode,
+													&primaryFilespaceLocation,
+													&mirrorFilespaceLocation);
+				if (primaryFilespaceLocation == NULL ||
+					strlen(primaryFilespaceLocation) == 0)
+				{
+					elog(ERROR, "Empty primary filespace directory location");
+				}
+			
+				if (mirrorFilespaceLocation != NULL)
+				{
+					pfree(mirrorFilespaceLocation);
+					mirrorFilespaceLocation = NULL;
+				}
+			}
+			
+			dbPath = (char*)palloc(MAXPGPATH + 1);
+			
+			FormDatabasePath(
+						dbPath,
+						primaryFilespaceLocation,
+						rnode.spcNode,
+						rnode.dbNode);
+
+			if (primaryFilespaceLocation != NULL)
+			{
+				pfree(primaryFilespaceLocation);
+				primaryFilespaceLocation = NULL;
+			}
+			
+			mkdir(dbPath, 0700);
+			if (errno == 0)
+			{
+				if (Debug_persistent_recovery_print)
+				{
+					elog(PersistentRecovery_DebugPrintLevel(), 
+						 "XLogOpenRelation: Re-created database directory \"%s\"",
+						 dbPath);
+				}
+			}
+			else
+			{
+				/*
+				 * Allowed to already exist.
+				 */
+				if (errno != EEXIST)
+				{
+					elog(ERROR, "could not create database directory \"%s\": %m",
+						 dbPath);
+				}
+				else
+				{
+					if (Debug_persistent_recovery_print)
+					{
+						elog(PersistentRecovery_DebugPrintLevel(), 
+							 "XLogOpenRelation: Database directory \"%s\" already exists",
+							 dbPath);
+					}
+				}
+			}
+
+			pfree(dbPath);
+		}
+		
 		res = _xl_new_reldesc();
 
 		sprintf(RelationGetRelationName(&(res->reldata)), "%u", rnode.relNode);

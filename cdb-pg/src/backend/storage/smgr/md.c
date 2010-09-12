@@ -204,12 +204,13 @@ static int errdetail_nonexistent_relation(
 {
 #define MAX_MSG_LEN MAXPGPATH + 100
 
+	char *buffer;
+	int snprintfResult;
+
 	char *primaryFilespaceLocation = NULL;
 	char *mirrorFilespaceLocation = NULL;
 
 	struct stat fst;
-	
-	char *tablespacePath;
 
 	if (!FILE_POSSIBLY_DELETED(error))
 	{
@@ -218,32 +219,46 @@ static int errdetail_nonexistent_relation(
 		 */
 		return 0;
 	}
-	
-	/*
-	 * Investigate whether the containing directories exist to give more detail.
-	 */
-	PersistentTablespace_GetPrimaryAndMirrorFilespaces(
-										relFileNode->spcNode,
-										&primaryFilespaceLocation,
-										&mirrorFilespaceLocation);
-	if (mirrorFilespaceLocation != NULL)
+
+	buffer = (char*)palloc(MAX_MSG_LEN);
+
+	if (IsBuiltinTablespace(relFileNode->spcNode))
 	{
-		pfree(mirrorFilespaceLocation);
-		mirrorFilespaceLocation = NULL;
+		/*
+		 * Assume filespace and tablespace exists.
+		 */
 	}
-	if (primaryFilespaceLocation != NULL)
-	{
+	else
+	{		
+		char *tablespacePath;
+
+		/*
+		 * Investigate whether the containing directories exist to give more detail.
+		 */
+		PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+											relFileNode->spcNode,
+											&primaryFilespaceLocation,
+											&mirrorFilespaceLocation);
+		if (primaryFilespaceLocation == NULL ||
+			strlen(primaryFilespaceLocation) == 0)
+		{
+			elog(ERROR, "Empty primary filespace directory location");
+		}
+
+		if (mirrorFilespaceLocation != NULL)
+		{
+			pfree(mirrorFilespaceLocation);
+			mirrorFilespaceLocation = NULL;
+		}
+
 		/*
 		 * Does the filespace directory exist?
 		 */
 		if (stat(primaryFilespaceLocation, &fst) < 0)
 		{
 			int saved_err;
-			char *buffer;
-			int snprintfResult;
 
 			saved_err = errno;
-			buffer = (char*)palloc(MAX_MSG_LEN);
 
 			if (FILE_POSSIBLY_DELETED(saved_err))
 			{
@@ -277,64 +292,99 @@ static int errdetail_nonexistent_relation(
 			pfree(primaryFilespaceLocation);
 			return 0;
 		}
-	}
-	
-	tablespacePath = (char*)palloc(MAXPGPATH + 1);
-
-	FormTablespacePath(
-				tablespacePath,
-				primaryFilespaceLocation,
-				relFileNode->spcNode);
-
-	/*
-	 * Does the tablespace directory exist?
-	 */
-	if (stat(tablespacePath, &fst) < 0)
-	{
-		int saved_err;
-		char *buffer;
-		int snprintfResult;
-
-		saved_err = errno;
-		buffer = (char*)palloc(MAX_MSG_LEN);
-
-		if (FILE_POSSIBLY_DELETED(saved_err))
+		else
 		{
-			snprintfResult = 
-				snprintf(
-					buffer,
-					MAX_MSG_LEN,
-					"Tablespace directory \"%s\" does not exist",
-					tablespacePath);
+			if (Debug_persistent_recovery_print)
+			{
+				/*
+				 * Since we are being invoked inside an elog, we don't want to
+				 * recurse.  So, use errdetail instead!
+				 */
+				snprintfResult = 
+					snprintf(
+						buffer,
+						MAX_MSG_LEN,
+						"Filespace directory \"%s\" does exist",
+						primaryFilespaceLocation);
+				
+				Assert(snprintfResult >= 0);
+				Assert(snprintfResult < MAX_MSG_LEN);
+				
+				errdetail(buffer);
+			}
+		}
+	
+		tablespacePath = (char*)palloc(MAXPGPATH + 1);
+
+		FormTablespacePath(
+					tablespacePath,
+					primaryFilespaceLocation,
+					relFileNode->spcNode);
+
+		/*
+		 * Does the tablespace directory exist?
+		 */
+		if (stat(tablespacePath, &fst) < 0)
+		{
+			int saved_err;
+
+			saved_err = errno;
+
+			if (FILE_POSSIBLY_DELETED(saved_err))
+			{
+				snprintfResult = 
+					snprintf(
+						buffer,
+						MAX_MSG_LEN,
+						"Tablespace directory \"%s\" does not exist",
+						tablespacePath);
+			}
+			else
+			{
+				snprintfResult = 
+					snprintf(
+						buffer,
+						MAX_MSG_LEN,
+						"Tablespace directory \"%s\" existence check: %s",
+						tablespacePath,
+						strerror(saved_err));
+			}
+			
+			Assert(snprintfResult >= 0);
+			Assert(snprintfResult < MAX_MSG_LEN);
+
+			/*
+			 * Give DETAIL on the tablespace directory!
+			 */
+			errdetail(buffer);
+			pfree(buffer);
+
+			if (primaryFilespaceLocation != NULL)
+				pfree(primaryFilespaceLocation);
+
+			pfree(tablespacePath);
+			return 0;
 		}
 		else
 		{
-			snprintfResult = 
-				snprintf(
-					buffer,
-					MAX_MSG_LEN,
-					"Tablespace directory \"%s\" existence check: %s",
-					tablespacePath,
-					strerror(saved_err));
+			if (Debug_persistent_recovery_print)
+			{
+				snprintfResult = 
+					snprintf(
+						buffer,
+						MAX_MSG_LEN,
+						"Tablespace directory \"%s\" does exist",
+						tablespacePath);
+				
+				Assert(snprintfResult >= 0);
+				Assert(snprintfResult < MAX_MSG_LEN);
+				
+				errdetail(buffer);
+			}
 		}
-		
-		Assert(snprintfResult >= 0);
-		Assert(snprintfResult < MAX_MSG_LEN);
-
-		/*
-		 * Give DETAIL on the tablespace directory!
-		 */
-		errdetail(buffer);
-		pfree(buffer);
-
-		if (primaryFilespaceLocation != NULL)
-			pfree(primaryFilespaceLocation);
 
 		pfree(tablespacePath);
-		return 0;
 	}
-
-	pfree(tablespacePath);
 
 	if (relFileNode->spcNode != GLOBALTABLESPACE_OID)
 	{
@@ -354,11 +404,8 @@ static int errdetail_nonexistent_relation(
 		if (stat(dbPath, &fst) < 0)
 		{
 			int saved_err;
-			char *buffer;
-			int snprintfResult;
 		
 			saved_err = errno;
-			buffer = (char*)palloc(MAX_MSG_LEN);
 		
 			if (FILE_POSSIBLY_DELETED(saved_err))
 			{
@@ -395,15 +442,33 @@ static int errdetail_nonexistent_relation(
 			pfree(dbPath);
 			return 0;
 		}
+		else
+		{
+			if (Debug_persistent_recovery_print)
+			{
+				snprintfResult = 
+					snprintf(
+						buffer,
+						MAX_MSG_LEN,
+						"Database directory \"%s\" does exist",
+						dbPath);
+				
+				Assert(snprintfResult >= 0);
+				Assert(snprintfResult < MAX_MSG_LEN);
+				
+				errdetail(buffer);
+			}
+		}
 
 		pfree(dbPath);
 	}
 	
+	pfree(buffer);
 	if (primaryFilespaceLocation != NULL)
 		pfree(primaryFilespaceLocation);
 
 	/*
-	 * No call to errdetail.
+	 * No (normal) call to errdetail.
 	 */
 	return 0;
 }

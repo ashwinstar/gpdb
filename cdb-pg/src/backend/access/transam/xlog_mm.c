@@ -1326,12 +1326,35 @@ mmxlog_read_checkpoint_data(char *cpdata, XLogRecPtr *beginLoc)
 												&filespaceLocation2,
 												fmap[i].path2,
 												/* isPrimary */ false);	// Always say false so we don't error out here.
-		if (mkdir(filespaceLocation2, 0700) < 0)
+		mkdir(filespaceLocation2, 0700);
+		if (errno == 0)
 		{
-			/* allowed to already exist */
-			if (errno != EEXIST)
-				elog(ERROR, "could not create directory %s: %m",
+			if (Debug_persistent_recovery_print)
+			{
+				elog(PersistentRecovery_DebugPrintLevel(), 
+					 "mmxlog_read_checkpoint_data: Re-created filespace directory \"%s\"",
 					 fmap[i].path2);
+			}
+		}
+		else
+		{
+			/*
+			 * Allowed to already exist.
+			 */
+			if (errno != EEXIST)
+			{
+				elog(ERROR, "could not create filespace directory \"%s\": %m",
+					 fmap[i].path2);
+			}
+			else
+			{
+				if (Debug_persistent_recovery_print)
+				{
+					elog(PersistentRecovery_DebugPrintLevel(), 
+						 "mmxlog_read_checkpoint_data: Filespace directory \"%s\" already exists",
+						 fmap[i].path2);
+				}
+			}
 		}
 
 		pfree(filespaceLocation2);
@@ -1359,11 +1382,35 @@ mmxlog_read_checkpoint_data(char *cpdata, XLogRecPtr *beginLoc)
 		}
 		snprintf(path, sizeof(path), "%s/%u", tmp, tmap[i].tablespaceoid);
 
-		if (mkdir(path, 0700) < 0)
+		mkdir(path, 0700);
+		if (errno == 0)
 		{
-			/* allowed to already exist */
+			if (Debug_persistent_recovery_print)
+			{
+				elog(PersistentRecovery_DebugPrintLevel(), 
+					 "mmxlog_read_checkpoint_data: Re-created tablespace directory \"%s\"",
+					 path);
+			}
+		}
+		else
+		{
+			/*
+			 * Allowed to already exist.
+			 */
 			if (errno != EEXIST)
-				elog(ERROR, "could not create directory %s: %m", path);
+			{
+				elog(ERROR, "could not create tablespace directory \"%s\": %m",
+					 path);
+			}
+			else
+			{
+				if (Debug_persistent_recovery_print)
+				{
+					elog(PersistentRecovery_DebugPrintLevel(), 
+						 "mmxlog_read_checkpoint_data: Tablespace directory \"%s\" already exists",
+						 path);
+				}
+			}
 		}
 
 		pfree(tmp);
