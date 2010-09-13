@@ -197,13 +197,36 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 			add_tablespace_map_entry(&m, &beginLoc, "mmxlog_redo");
 		}
 
-		if (mkdir(path, 0700) < 0)
+		if (mkdir(path, 0700) == 0)
 		{
-			/* allowed to already exist */
+			if (Debug_persistent_recovery_print)
+			{
+				elog(PersistentRecovery_DebugPrintLevel(), 
+					 "mmxlog_redo: Re-created directory \"%s\"",
+					 path);
+			}
+		}
+		else
+		{
+			/*
+			 * Allowed to already exist.
+			 */
 			if (errno != EEXIST)
 			{
+				elog(ERROR, "could not create directory \"%s\": %m",
+					 path);
+			}
+			else
+			{
+				// UNDONE: This isn't idempotent!  What if the directory create succeeds but the PG_VERSION create fails in a system crash?
 				dir_created = false;
-				elog(WARNING, "could not create directory %s: %m", path);
+
+				if (Debug_persistent_recovery_print)
+				{
+					elog(PersistentRecovery_DebugPrintLevel(), 
+						 "mmxlog_redo: Directory \"%s\" already exists",
+						 path);
+				}
 			}
 		}
 
@@ -1009,12 +1032,9 @@ mmxlog_filespace_get_path(
 		path = m->path1;
 	}
 
-	PersistentFilespace_ConvertBlankPaddedLocation(
-											filespacePath,
-											path,
-											/* isPrimary */ false); // Always say false so we don't error out here.
+	*filespacePath = pstrdup(path);
 
-	return (*filespacePath != NULL);
+	return true;
 }
 
 /*
@@ -1072,6 +1092,9 @@ agg_fspc(void *s, Oid filespace, int16 dbid1, char *path1,
 	int pos;
 	fspc_map *m;
 
+	char *filespaceLocation1;
+	char *filespaceLocation2;
+
 	pos = fas->pos;
 
 	Insist(pos < gp_max_filespaces);
@@ -1080,10 +1103,46 @@ agg_fspc(void *s, Oid filespace, int16 dbid1, char *path1,
 	m->filespaceoid = filespace;
 
 	m->dbid1 = dbid1;
-	strncpy(m->path1, path1, MAXPGPATH);
+	PersistentFilespace_ConvertBlankPaddedLocation(
+											&filespaceLocation1,
+											path1,
+											/* isPrimary */ false);
+	if (filespaceLocation1 != NULL)
+	{
+		strncpy(m->path1, filespaceLocation1, MAXPGPATH);
+		pfree(filespaceLocation1);
+	}
+	else
+	{
+		// UNDONE: Do we ever not have both a master and mirror path???
+		/* 
+		 * Allow relative paths if we didn't get anything when we looked up
+		 * the filespace. We must allow this for the default filespace.
+		 */
+		m->path1[0] = '.';
+		m->path1[1] = '\0';
+	}
 
 	m->dbid2 = dbid2;
-	strncpy(m->path2, path2, MAXPGPATH);
+	PersistentFilespace_ConvertBlankPaddedLocation(
+											&filespaceLocation2,
+											path2,
+											/* isPrimary */ false);
+	if (filespaceLocation2 != NULL)
+	{
+		strncpy(m->path2, filespaceLocation2, MAXPGPATH);
+		pfree(filespaceLocation2);
+	}
+	else
+	{
+		// UNDONE: Do we ever not have both a master and mirror path???
+		/* 
+		 * Allow relative paths if we didn't get anything when we looked up
+		 * the filespace. We must allow this for the default filespace.
+		 */
+		m->path2[0] = '.';
+		m->path2[1] = '\0';
+	}
 
 	if (Debug_persistent_recovery_print)
 	{
@@ -1092,11 +1151,13 @@ agg_fspc(void *s, Oid filespace, int16 dbid1, char *path1,
 		SUPPRESS_ERRCONTEXT_PUSH();
 
 		elog(PersistentRecovery_DebugPrintLevel(), 
-			 "agg_fspc[%d]: add filespace %u (dbid1 %d, dbid2 %d, caller '%s')",
+			 "agg_fspc[%d]: add filespace %u (dbid1 %d, path1 \"%s\", dbid2 %d, path2 \"%s\", caller '%s')",
 			 pos,
 			 filespace,
 			 dbid1,
+			 m->path1,
 			 dbid2,
+			 m->path2,
 			 caller);
 
 		SUPPRESS_ERRCONTEXT_POP();
@@ -1315,19 +1376,12 @@ mmxlog_read_checkpoint_data(char *cpdata, XLogRecPtr *beginLoc)
 	{
 		fspc_map *m = &(fmap[i]);
 
-		char *filespaceLocation2;
-
 		if (m->filespaceoid == InvalidOid)
 			break;
 
 		add_filespace_map_entry(m, beginLoc, "mmxlog_read_checkpoint_data");
 		
-		PersistentFilespace_ConvertBlankPaddedLocation(
-												&filespaceLocation2,
-												fmap[i].path2,
-												/* isPrimary */ false);	// Always say false so we don't error out here.
-		mkdir(filespaceLocation2, 0700);
-		if (errno == 0)
+		if (mkdir(fmap[i].path2, 0700) == 0)
 		{
 			if (Debug_persistent_recovery_print)
 			{
@@ -1356,8 +1410,6 @@ mmxlog_read_checkpoint_data(char *cpdata, XLogRecPtr *beginLoc)
 				}
 			}
 		}
-
-		pfree(filespaceLocation2);
 	}
 	filespaceCount = i;
 
@@ -1382,8 +1434,7 @@ mmxlog_read_checkpoint_data(char *cpdata, XLogRecPtr *beginLoc)
 		}
 		snprintf(path, sizeof(path), "%s/%u", tmp, tmap[i].tablespaceoid);
 
-		mkdir(path, 0700);
-		if (errno == 0)
+		if (mkdir(path, 0700) == 0)
 		{
 			if (Debug_persistent_recovery_print)
 			{

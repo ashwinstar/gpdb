@@ -521,8 +521,7 @@ XLogOpenRelation(RelFileNode rnode)
 				primaryFilespaceLocation = NULL;
 			}
 			
-			mkdir(dbPath, 0700);
-			if (errno == 0)
+			if (mkdir(dbPath, 0700) == 0)
 			{
 				if (Debug_persistent_recovery_print)
 				{
