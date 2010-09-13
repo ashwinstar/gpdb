@@ -13,6 +13,8 @@
  */
 #include "postgres.h"
 
+#include "miscadmin.h"
+
 #include "access/gin.h"
 #include "access/heapam.h"
 #include "utils/memutils.h"

@@ -137,8 +137,19 @@ extern PGDLLIMPORT int32 *LocalRefCount;
 		specialResyncManagerFlag = FileRepPrimary_IsResyncManagerOrWorker(); \
 		mirroredVariablesSet = true; \
 		\
-		if (!mirroredLockIsHeldByMe && !specialResyncManagerFlag) \
-			LWLockAcquire(MirroredLock , LW_SHARED); \
+		if (!mirroredLockIsHeldByMe) \
+		{ \
+			if (!specialResyncManagerFlag) \
+			{ \
+				LWLockAcquire(MirroredLock , LW_SHARED); \
+			} \
+			else \
+			{ \
+				HOLD_INTERRUPTS(); \
+			} \
+		} \
+		\
+		Assert(InterruptHoldoffCount > 0); \
 	}
 #else
 #define MIRROREDLOCK_BUFMGR_LOCK \
@@ -146,8 +157,17 @@ extern PGDLLIMPORT int32 *LocalRefCount;
 		mirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
 		specialResyncManagerFlag = FileRepPrimary_IsResyncManagerOrWorker(); \
 		\
-		if (!mirroredLockIsHeldByMe && !specialResyncManagerFlag) \
-			LWLockAcquire(MirroredLock , LW_SHARED); \
+		if (!mirroredLockIsHeldByMe) \
+		{ \
+			if (!specialResyncManagerFlag) \
+			{ \
+				LWLockAcquire(MirroredLock , LW_SHARED); \
+			} \
+			else \
+			{ \
+				HOLD_INTERRUPTS(); \
+			} \
+		} \
 	}
 #endif
 
@@ -155,14 +175,34 @@ extern PGDLLIMPORT int32 *LocalRefCount;
 #define MIRROREDLOCK_BUFMGR_UNLOCK \
 	{ \
 		Assert(mirroredVariablesSet); \
-		if (!mirroredLockIsHeldByMe && !specialResyncManagerFlag) \
-			LWLockRelease(MirroredLock); \
+		Assert(InterruptHoldoffCount > 0); \
+		\
+		if (!mirroredLockIsHeldByMe) \
+		{ \
+			if (!specialResyncManagerFlag) \
+			{ \
+				LWLockRelease(MirroredLock); \
+			} \
+			else \
+			{ \
+				RESUME_INTERRUPTS(); \
+			} \
+		} \
 	}
 #else
 #define MIRROREDLOCK_BUFMGR_UNLOCK \
 	{ \
-		if (!mirroredLockIsHeldByMe && !specialResyncManagerFlag) \
-			LWLockRelease(MirroredLock); \
+		if (!mirroredLockIsHeldByMe) \
+		{ \
+			if (!specialResyncManagerFlag) \
+			{ \
+				LWLockRelease(MirroredLock); \
+			} \
+			else \
+			{ \
+				RESUME_INTERRUPTS(); \
+			} \
+		} \
 	}
 #endif
 

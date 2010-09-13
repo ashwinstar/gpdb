@@ -63,6 +63,8 @@
 
 #include "postgres.h"
 
+#include "miscadmin.h"
+
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/relscan.h"

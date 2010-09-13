@@ -15,6 +15,8 @@
 
 #include "postgres.h"
 
+#include "miscadmin.h"
+
 #include "access/hash.h"
 #include "cdb/cdbfilerepprimary.h"
 

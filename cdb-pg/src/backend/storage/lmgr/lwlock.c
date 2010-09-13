@@ -702,6 +702,13 @@ LWLockRelease(LWLockId lockid)
 	if (i < 0)
 		elog(ERROR, "lock %d is not held", (int) lockid);
 
+
+	if (InterruptHoldoffCount <= 0)
+		elog(PANIC, "interrupt holdoff count is bad (%d) for release of lock %d (%s)", 
+			 InterruptHoldoffCount,
+			 (int)lockid,
+			 (held_lwlocks_exclusive[i] ? "Exclusive" : "Shared"));
+
 #ifdef LWLOCK_TRACE_MIRROREDLOCK
 	if (lockid == MirroredLock)
 		elog(LOG, 

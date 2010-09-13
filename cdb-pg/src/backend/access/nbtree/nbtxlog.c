@@ -14,6 +14,8 @@
  */
 #include "postgres.h"
 
+#include "miscadmin.h"
+
 #include "access/nbtree.h"
 #include "access/transam.h"
 #include "utils/guc.h"
