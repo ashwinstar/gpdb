@@ -896,8 +896,8 @@ mkgpperfmon:
 
 mkplatform:
 	@cd $(PLATFORM) && $(MAKE)
-	cp -p platform/gpnetbench/gpnetbenchServer $(INSTLOC)/bin
-	cp -p platform/gpnetbench/gpnetbenchClient $(INSTLOC)/bin
+	cp -p platform/gpnetbench/gpnetbenchServer $(INSTLOC)/bin/lib
+	cp -p platform/gpnetbench/gpnetbenchClient $(INSTLOC)/bin/lib
 
 copydocs :
 	@if [ ! -d $($INSTLOC)/docs ] ; then mkdir -p $(INSTLOC)/docs; fi
