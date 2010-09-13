@@ -321,16 +321,22 @@ FileRepSubProcess_IsStateTransitionRequested(void)
 			/* no break */
 		default:
 			
+			if (fileRepProcessType != FileRepProcessTypeNotInitialized)
+			{
+				FileRepSubProcess_ProcessSignals();
+			}
+			
 			if (dataState == DataStateInChangeTracking)
 			{
 				isStateTransitionRequested = TRUE;			
 			}		
 			
-			switch (FileRepSubProcess_GetState())
+			switch (segmentState)
 			{
-				case FileRepStateFault:
-				case FileRepStateShutdown:
-				
+				case SegmentStateFault:
+				case SegmentStateImmediateShutdown:
+				case SegmentStateShutdown:
+					
 					isStateTransitionRequested = TRUE;
 					break;
 				
