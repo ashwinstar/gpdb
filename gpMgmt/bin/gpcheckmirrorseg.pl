@@ -29,6 +29,7 @@ Options:
     -connect         psql connect parameters
     -ignore          filename pattern to ignore during comparison
 	-mastermirror    compare master and standby only 
+	-matchdirs       compare directory structure
 	-skipsegments    skip mirror check for segments which are not in sync
 	-parallel        run checks in parallel
 	-fixfile         location for fix file
@@ -67,6 +68,17 @@ master with the standby (normally false).  If true, only checks that
 the master and standby have identical relfilenode layout, ie the
 datafiles are identical in name and number.  Does not compare file
 contents, which may differ due to logical mirroring.
+
+=item B<-matchdirs> 
+    
+Boolean flag to control whether to compare if the segment and mirror
+have identical directory structure (normally true), in addition to the
+standard check on file contents.  Note that this check is unaffected
+by the "ignore" option: that is, while "ignore" patterns will exclude
+the comparison of file contents for files that match the pattern,
+directory names that match the pattern will not be excluded during the
+directory structure comparison.  Directory structure differences are
+flagged as extra or missing files.
 
 =item B<-skipsegments> 
     
@@ -184,6 +196,8 @@ my $glob_exit;
 
 my $glob_mm;
 
+my $glob_matchdirs;
+
 my $glob_skipseg;
 
 my $glob_diff;
@@ -206,6 +220,7 @@ BEGIN {
 	my @ignore;
 	my $skipseg;
 	my $mm;
+	my $matchdirs;
 	my $parallel;
 	my $nohash;
 	my $fixfile;
@@ -218,6 +233,7 @@ BEGIN {
                "connect=s" => \$conn,
 		       'exclude|ignore:s' => \@ignore,
 		       'mm|mastermirror:s' => \$mm,
+		       'matchdirs:s' => \$matchdirs,
 		       'skipsegments:s' => \$skipseg,
 		       'parallel:s' => \$parallel,
 		       'nohash:s' => \$nohash,
@@ -261,6 +277,15 @@ BEGIN {
 	else
 	{
 		$glob_mm = 0;
+	}
+
+	if (defined($matchdirs))
+	{
+		$glob_matchdirs = ($matchdirs =~ m/^\s*(1|t|true|y|yes)/i) ? 1 : 0;
+	}
+	else
+	{
+		$glob_matchdirs = 1;
 	}
 
 	if (defined($parallel))
@@ -2610,6 +2635,20 @@ EOF_msgstr
 			'| perl -i -ple \'s|MYDIR||gm \' ' . 
 			# strip out [hostname] prefix
 			'| perl -i -ple \'s|^\\s*\\[.*\\]\\s*||gm \'  ' ;
+
+		if ($glob_matchdirs)
+		{
+			$cmd_template .= "\n\n";
+
+			# MPP-11041: check for important directories
+			$cmd_template .= 
+				'find MYDIR -type d | awk \'{print $1" 0 ("$1") 0"}\' ' .
+				'| perl -nle \'print if /pg_changetracking|pg_stat_tmp/ \' ' .
+				'| sort  ' .
+				'| perl -i -ple \'s|MYDIR||gm \' ' . 
+				# strip out [hostname] prefix
+				'| perl -i -ple \'s|^\\s*\\[.*\\]\\s*||gm \'  ' ;
+		}
 
 		my $cmd = $cmd_template;
 		$cmd =~ s/MYHOST/$primhost/g;
