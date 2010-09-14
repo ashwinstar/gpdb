@@ -543,7 +543,7 @@ static int send_alert_via_connect_emc(const GpErrorData * errorData, const char 
 	int retVal = 0;
 
 	char msg[2048];
-	EmcConnectStatus status = EMC_CONNECT_STATUS_UNKNOWN;
+	EmcConnectStatus status = EMC_CONNECT_STATUS_OK; // we will mark status the same for all GPDB dial homes... severity distinguishes the level
 	char myhostname[255];	/* gethostname usually is limited to 65 chars out, but make this big to be safe */
 	struct stat statbuf;
 
@@ -567,13 +567,6 @@ static int send_alert_via_connect_emc(const GpErrorData * errorData, const char 
 		}
 	}
 
-	if (severity == EMC_CONNECT_SEVERITY_INFO)
-		status = EMC_CONNECT_STATUS_OK;
-	else if (severity == EMC_CONNECT_SEVERITY_ERROR)
-		status = EMC_CONNECT_STATUS_FAILED;
-	else if (severity == EMC_CONNECT_SEVERITY_WARNING)
-		status = EMC_CONNECT_STATUS_WARNING;
-
 	/*
 	 * Connect EMC is usually in /opt/connectemc, but Ivan was talking about having it in /opt/greenplum/connectemc,
 	 * so to be safe, allow for either.
@@ -586,7 +579,7 @@ static int send_alert_via_connect_emc(const GpErrorData * errorData, const char 
 		}
 
 	elog(DEBUG1, "Sending via connectEMC: %s", subject);
-	retVal = gpmon_emcconnect_send_alert(EMC_CONNECT_SYMPTOM_NULL,
+	retVal = gpmon_emcconnect_send_alert(EMC_CONNECT_SYMPTOM_GPDB,
 									status,
 									severity,
 									EMC_CONNECT_ORIGIN_GPDBALERTS,
