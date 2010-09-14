@@ -10,15 +10,20 @@
 
 #define INIT_RETRIES 5
 void send_buffer(int fd, char* buffer, int bytes);
+void print_headers();
 
 void usage()
 {
-	fprintf(stdout, "usage: gpnetbench -p PORT -H HOST [-d DURATION] [-b KB] [-h]\n");
+	fprintf(stdout, "usage: gpnetbench -p PORT -H HOST [-l SECONDS] [-t EXPERIMENT] [-f UNITS] [-P HEADERS] [-b KB] [-h]\n");
 	fprintf(stdout, "where\n");
 	fprintf(stdout, "       PORT is the port to connect to for the server\n");
 	fprintf(stdout, "       HOST is the hostname to connect to for the server\n");
-	fprintf(stdout, "       DURATION is the number of seconds to sample the network, where the default is 60\n");
+	fprintf(stdout, "       SECONDS is the number of seconds to sample the network, where the default is 60\n");
+	fprintf(stdout, "       EXPERIMENT is the experiment name to run, where the default is TCP_STREAM\n");
+	fprintf(stdout, "       UNITS is the output units, where the default is M megabytes\n");
+	fprintf(stdout, "       HEADERS is 0 (don't) or 1 (do) display headers in the output\n");
 	fprintf(stdout, "       KB is the size of the send buffer in kilobytes, where the default is 32\n");
+
 	fprintf(stdout, "       -h shows this help message\n");
 }
 
@@ -28,6 +33,7 @@ int main(int argc, char** argv)
 	int retVal;
 	int c;
 	int i;
+	int displayHeaders = 1;
 	int serverPort = 0;
 	int duration = 60;
 	int actual_duration;
@@ -43,21 +49,32 @@ int main(int argc, char** argv)
 	double megaBytesSent;
 	double megaBytesPerSecond;
 
-	while ((c = getopt (argc, argv, "hH:p:d:b:")) != -1)
+	while ((c = getopt (argc, argv, "p:l:b:P:H:f:t:h")) != -1)
 	{
 		switch (c)
 		{
 			case 'p':
 				serverPort = atoi(optarg);
 				break;
-			case 'd':
+			case 'l':
 				duration = atoi(optarg);
 				break;
 			case 'b':
 				kilobytesBufSize = atoi(optarg);
 				break;
+			case 'P':
+				displayHeaders = atoi(optarg);
+				if (displayHeaders)
+					displayHeaders = 1;
+				break;
 			case 'H':
 				hostname = optarg;
+				break;
+			case 'f':
+				// backward compat
+				break;
+			case 't':
+				// backward compat
 				break;
 			case 'h':
 			case '?':
@@ -81,9 +98,9 @@ int main(int argc, char** argv)
 	}
 
 	// validate a sensible value for duration
-	if (duration < 10 || duration > 3600)
+	if (duration < 5 || duration > 3600)
 	{
-		fprintf(stdout, "duration must be between 10 and 3600 seconds\n");
+		fprintf(stdout, "duration must be between 5 and 3600 seconds\n");
 		return 1;
 	}
 
@@ -139,8 +156,10 @@ int main(int argc, char** argv)
 	megaBytesSent = buffers_sent * (double)bytesBufSize / (1024.0*1024.0);
 	megaBytesPerSecond = megaBytesSent / actual_duration;
 
-	printf("duration = %d MB sent = %lf MB/sec = %lf\n", actual_duration, megaBytesSent, megaBytesPerSecond);
+	if (displayHeaders)
+		print_headers();
 
+	printf("0     0        %d       %.2f     %.2f\n", bytesBufSize, (double)actual_duration, megaBytesPerSecond);
 	return 0;
 }
 
@@ -167,5 +186,10 @@ void send_buffer(int fd, char* buffer, int bytes)
 	}
 }
 
-
-
+void print_headers()
+{
+	printf("               Send\n");
+	printf("               Message  Elapsed\n");
+	printf("               Size     Time     Throughput\n");
+	printf("n/a   n/a      bytes    secs.    MBytes/sec\n");
+}
