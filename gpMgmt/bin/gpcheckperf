@@ -138,29 +138,30 @@ def getPlatform():
 ################
 def getMemory():
     if getPlatform() == 'linux':
-	ok, out = run("sh -c 'cat /proc/meminfo | grep MemTotal'")
-	if not ok: return 0
-	list = out.strip().split(' ')
-	val = int(list[len(list) - 2])
-	factor = list[len(list) - 1]
-	if factor == 'kB': return val * 1024
-	return 0
+        ok, out = run("sh -c 'cat /proc/meminfo | grep MemTotal'")
+    if not ok: return 0
+    list = out.strip().split(' ')
+    val = int(list[len(list) - 2])
+    factor = list[len(list) - 1]
+    if factor == 'kB': return val * 1024
+        return 0
 
     if getPlatform() == 'darwin':
-	ok, out = run("/usr/sbin/sysctl hw.physmem")
-	if not ok: return 0
-	list = out.strip().split(' ')
-	val = int(list[1])
-	return val
-	
+        ok, out = run("/usr/sbin/sysctl hw.physmem")
+    if not ok: return 0
+    list = out.strip().split(' ')
+    val = int(list[1])
+    return val
+
     if getPlatform() == 'sunos5':
-	ok, out = run("sh -c \"/usr/sbin/prtconf | awk '/^Memory/{print}'\"")
-	if not ok: return 0
-	list = out.strip().split(' ')
-	val = int(list[2])
-	factor = list[3]
-	if factor == 'Megabytes': return val * 1024 * 1024
-	return 0
+        ok, out = run("sh -c \"/usr/sbin/prtconf | awk '/^Memory/{print}'\"")
+    if not ok: return 0
+    list = out.strip().split(' ')
+    val = int(list[2])
+    factor = list[3]
+    if factor == 'Megabytes': return val * 1024 * 1024
+        return 0
+    return 0
 
 ################
 def parseMemorySize(line):
