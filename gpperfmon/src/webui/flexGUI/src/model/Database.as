@@ -535,9 +535,9 @@ package model
 		public var oneDay_lastCalcDate:Date = null;
 		
 		// Lookup to find the appropriate data provider at each duration
-		public var activeAggLookup:Array = new Array(
+		public var activeAggLookup:ArrayCollection = new ArrayCollection([
 			oneMinAggData, oneMinAggData, fiveMinAggData, oneHrAggData, 
-			oneHrAggData, oneDayAggData, oneDayAggData);	
+			oneHrAggData, oneDayAggData, oneDayAggData]);	
 
 		// Lookup to find the appropriate max at each duration
 		public var activeMaxLookup:Array = new Array(

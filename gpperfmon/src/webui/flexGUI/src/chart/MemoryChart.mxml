@@ -44,18 +44,10 @@
   <mx:SolidColor id="used_clr" color="0x4ABF84" alpha="1.0"/>
   <mx:SolidColor id="free_clr" color="0xD8D8D8" alpha="1.0"/>
  
-<!--
-Comment#1
-Vasu (Divami) [28 July, 2010] - Databinding doesn't happen when square brackets are used inside MXML value declarations involving '{}'
-So, in order to avoid compiler warning, the declaration is done after component initialization. Databinding still doesn't happen,
-but compiler warning is avoided.
-
-I am presuming that the actual intent here was not to databind but just an assignment of value.
--->  
+  <!-- naveen(divami): Changing the way dataProvider is bound to the recommended
+       ArrayCollection style; this eliminates compiler warnings as well as binds correctly -->
   <mx:ColumnChart showDataTips="true" id="myChart" width="100%" height="100%"
-  				initialize="myChart.dataProvider=mdl.system.activeAggLookup[mdl.nav.durationSelected];
-  				haxis.dataInterval=mdl.system.dataIntervalNumber[mdl.nav.durationSelected];
-  				haxis.dataUnits=mdl.system.dataIntervalUnit[mdl.nav.durationSelected]"
+  				dataProvider="{mdl.system.activeAggLookup.getItemAt(mdl.nav.durationSelected)}"
   				type="stacked" updateComplete="{dataSelector.invalidateDisplayList()}"
   				dataTipFunction="formatDataTip">
   		<mx:series>	 
@@ -89,7 +81,10 @@ I am presuming that the actual intent here was not to databind but just an assig
         <mx:horizontalAxis>
             <mx:DateTimeAxis id="haxis" displayLocalTime="true" 
             	minimum="{mdl.session.timeArray.getItemAt(mdl.nav.durationSelected) as Date}"
-            	maximum="{mdl.session.timeArray.getItemAt(Session.LATEST_TICK) as Date}"/>
+            	maximum="{mdl.session.timeArray.getItemAt(Session.LATEST_TICK) as Date}"
+  				dataInterval="{mdl.system.dataIntervalNumber.getItemAt(mdl.nav.durationSelected) as Number}"
+  				dataUnits="{mdl.system.dataIntervalUnit.getItemAt(mdl.nav.durationSelected) as String}"
+  				/>
         </mx:horizontalAxis>
         <mx:verticalAxis>
             <mx:LinearAxis id="vaxis" baseAtZero="true"/>

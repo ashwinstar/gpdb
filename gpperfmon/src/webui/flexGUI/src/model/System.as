@@ -572,9 +572,9 @@ package model
 		public var oneDay_lastCalcDate:Date = null;
 		
 		// Lookup to find the appropriate data provider at each duration
-		public var activeAggLookup:Array = new Array(
+		public var activeAggLookup:ArrayCollection = new ArrayCollection([
 			oneMinAggData, oneMinAggData, fiveMinAggData, oneHrAggData, 
-			oneHrAggData, oneDayAggData, oneDayAggData);	
+			oneHrAggData, oneDayAggData, oneDayAggData]);	
 
 		// Lookup to find the appropriate max at each duration
 		public var activeMaxLookup:Array = new Array(
@@ -587,10 +587,10 @@ package model
 					  false, false, false));
 
 		// Lookup to find interval for each val
-		public var dataIntervalNumber:Array = 
-			new Array(1, 1, 5, 1, 1, 1, 1);
-		public var dataIntervalUnit:Array =
-			new Array('minutes', 'minutes', 'minutes', 'hours', 'hours', 'days', 'days');
+		public var dataIntervalNumber:ArrayCollection = 
+			new ArrayCollection([1, 1, 5, 1, 1, 1, 1]);
+		public var dataIntervalUnit:ArrayCollection =
+			new ArrayCollection(['minutes', 'minutes', 'minutes', 'hours', 'hours', 'days', 'days']);
 
 		// Reference to the model
 		private var mdl:GPPerfMonModelLocator;	

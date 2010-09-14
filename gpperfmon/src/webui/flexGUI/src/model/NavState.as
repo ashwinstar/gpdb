@@ -5,6 +5,7 @@ package model
 	import value.DatabaseSample;
 	import value.Query;
 	import value.SystemSample;
+	import mx.collections.ArrayCollection;
 	
 	[Bindable]
 	public class NavState
@@ -33,11 +34,11 @@ package model
 		public var selectedDatabaseItem:DatabaseSample = null;	
 
 		// Controls whether we are on summary view or detail view for a metric
-		public var metricsList:Array = new Array(
+		public var metricsList:ArrayCollection = new ArrayCollection([
 			"Active Queries", "Memory", "CPU", "Load", 
 			"Swap (in use)", "Swap (pages in/out)", 
 			"Disk I/O (ops/s)", "Disk I/O (MB/s)", 
-			"Network (pkts/s)", "Network (MB/s)");
+			"Network (pkts/s)", "Network (MB/s)"]);
 		public var metricSelected:int = 0;
 				
 		// Which view on the query list page

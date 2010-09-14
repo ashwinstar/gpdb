@@ -48,15 +48,10 @@
 	<mx:VBox width="100%" height="100%">
 		<mx:HBox width="100%" height="100%">
 			
-			<!--
-			Comment#1
-			Vasu (Divami) [28 July, 2010] - Databinding doesn't happen when square brackets are used inside MXML value declarations involving '{}'
-			So, in order to avoid compiler warning, the declaration is done after component initialization. Databinding still doesn't happen,
-			but compiler warning is avoided.
-			
-			I am presuming that the actual intent here was not to databind but just an assignment of value.
+			<!-- Comment#1:	changed the way data binding occurs by using the recommended
+					ArrayList wrapper and getItemAt method to eliminate compiler warnings.
 			-->
-			<mx:Panel initialize="p1.title=mdl.nav.metricsList[0]"
+			<mx:Panel title="{mdl.nav.metricsList.getItemAt(0)}"
 				styleName="smallMetricGraph" width="50%" height="100%" id="p1">	
 				<chart:ActiveQueriesChart id="smg0" width="100%" height="100%" 
 					click="{mdl.nav.metricSelected=0; mdl.nav.systemTabPage=1;}"
@@ -65,7 +60,7 @@
 			</mx:Panel>			
 					
 			<!--Same as Comment #1-->
-			<mx:Panel initialize="p2.title=mdl.nav.metricsList[1]"
+			<mx:Panel title="{mdl.nav.metricsList.getItemAt(1)}"
 				styleName="smallMetricGraph" width="50%" height="100%" id="p2">
 					<chart:MemoryChart id="smg1" width="100%" height="100%" 
 					click="{mdl.nav.metricSelected=1; mdl.nav.systemTabPage=1;}"
@@ -77,7 +72,7 @@
 		<mx:HBox width="100%" height="100%">
 		
 			<!--Same as Comment #1-->
-			<mx:Panel initialize="p3.title=mdl.nav.metricsList[2]"
+			<mx:Panel title="{mdl.nav.metricsList.getItemAt(2)}"
 				styleName="smallMetricGraph" width="50%" height="100%" id="p3">
 				<chart:CPUChart width="100%" height="100%" 
 					click="{mdl.nav.metricSelected=2; mdl.nav.systemTabPage=1;}"
@@ -86,7 +81,7 @@
 			</mx:Panel>			
 					
 			<!--Same as Comment #1-->
-			<mx:Panel initialize="p4.title=mdl.nav.metricsList[3]"
+			<mx:Panel title="{mdl.nav.metricsList.getItemAt(3)}"
 				styleName="smallMetricGraph" width="50%" height="100%" id="p4">
 					<chart:LoadChart width="100%" height="100%" 
 					click="{mdl.nav.metricSelected=3; mdl.nav.systemTabPage=1;}"
@@ -98,7 +93,7 @@
 		<mx:HBox width="100%" height="100%">
 		
 			<!--Same as Comment #1-->
-			<mx:Panel initialize="p5.title=mdl.nav.metricsList[4]" 
+			<mx:Panel title="{mdl.nav.metricsList.getItemAt(4)}" 
 				styleName="smallMetricGraph" width="50%" height="100%" id="p5">
 				<chart:SwapInUseChart width="100%" height="100%" 
 					click="{mdl.nav.metricSelected=4; mdl.nav.systemTabPage=1;}"
@@ -107,7 +102,7 @@
 			</mx:Panel>			
 					
 			<!--Same as Comment #1-->
-			<mx:Panel initialize="p6.title=mdl.nav.metricsList[5]"  
+			<mx:Panel title="{mdl.nav.metricsList.getItemAt(5)}"  
 				styleName="smallMetricGraph" width="50%" height="100%" id="p6">
 					<chart:SwapPagingChart width="100%" height="100%" 
 					click="{mdl.nav.metricSelected=5; mdl.nav.systemTabPage=1;}"
@@ -119,7 +114,7 @@
 		<mx:HBox width="100%" height="100%">
 			
 			<!--Same as Comment #1-->
-			<mx:Panel initialize="p7.title=mdl.nav.metricsList[6]"
+			<mx:Panel title="{mdl.nav.metricsList.getItemAt(6)}"
 				styleName="smallMetricGraph" width="50%" height="100%" id="p7">
 				<chart:DiskIOPSChart width="100%" height="100%" 
 					click="{mdl.nav.metricSelected=6; mdl.nav.systemTabPage=1;}"
@@ -128,7 +123,7 @@
 			</mx:Panel>							
 					
 			<!--Same as Comment #1-->
-			<mx:Panel initialize="p8.title=mdl.nav.metricsList[7]"
+			<mx:Panel title="{mdl.nav.metricsList.getItemAt(7)}"
 				styleName="smallMetricGraph" width="50%" height="100%" id="p8">
 					<chart:DiskIOBytesChart width="100%" height="100%" 
 					click="{mdl.nav.metricSelected=7; mdl.nav.systemTabPage=1;}"
@@ -140,7 +135,7 @@
 		<mx:HBox width="100%" height="100%">
 		
 			<!--Same as Comment #1-->
-			<mx:Panel initialize="p9.title=mdl.nav.metricsList[8]" 
+			<mx:Panel title="{mdl.nav.metricsList.getItemAt(8)}" 
 				styleName="smallMetricGraph" width="50%" height="100%" id="p9">
 					<chart:NetworkPacketsChart width="100%" height="100%" 
 					click="{mdl.nav.metricSelected=8; mdl.nav.systemTabPage=1;}"
@@ -149,7 +144,7 @@
 			</mx:Panel>					
 					
 			<!--Same as Comment #1-->
-			<mx:Panel initialize="p10.title=mdl.nav.metricsList[9]"
+			<mx:Panel title="{mdl.nav.metricsList.getItemAt(9)}"
 				styleName="smallMetricGraph" width="50%" height="100%" id="p10">
 					<chart:NetworkBytesChart width="100%" height="100%" 
 					click="{mdl.nav.metricSelected=9; mdl.nav.systemTabPage=1;}"
