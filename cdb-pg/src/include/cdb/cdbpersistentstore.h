@@ -129,24 +129,93 @@ inline static bool PersistentStore_IsZeroTid(
 }
 
 
+#ifdef USE_ASSERT_CHECKING
+#define MIRRORED_LOCK_DECLARE \
+	bool mirroredLockIsHeldByMe = false; \
+	bool specialResyncManagerFlag = false; \
+	bool mirroredVariablesSet = false;
+#else
 #define MIRRORED_LOCK_DECLARE \
 	bool mirroredLockIsHeldByMe = false; \
 	bool specialResyncManagerFlag = false;
+#endif
 
+#ifdef USE_ASSERT_CHECKING
+#define MIRRORED_LOCK \
+	{ \
+		mirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
+		specialResyncManagerFlag = FileRepPrimary_IsResyncManagerOrWorker(); \
+		mirroredVariablesSet = true; \
+		\
+		if (!mirroredLockIsHeldByMe) \
+		{ \
+			if (!specialResyncManagerFlag) \
+			{ \
+				LWLockAcquire(MirroredLock , LW_SHARED); \
+			} \
+			else \
+			{ \
+				HOLD_INTERRUPTS(); \
+			} \
+		} \
+		\
+		Assert(InterruptHoldoffCount > 0); \
+	}
+#else
 #define MIRRORED_LOCK \
 	{ \
 		mirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
 		specialResyncManagerFlag = FileRepPrimary_IsResyncManagerOrWorker(); \
 		\
-		if (!mirroredLockIsHeldByMe && !specialResyncManagerFlag) \
-			LWLockAcquire(MirroredLock , LW_SHARED); \
+		if (!mirroredLockIsHeldByMe) \
+		{ \
+			if (!specialResyncManagerFlag) \
+			{ \
+				LWLockAcquire(MirroredLock , LW_SHARED); \
+			} \
+			else \
+			{ \
+				HOLD_INTERRUPTS(); \
+			} \
+		} \
+		\
 	}
+#endif
 	
+#ifdef USE_ASSERT_CHECKING
 #define MIRRORED_UNLOCK \
 	{ \
-		if (!mirroredLockIsHeldByMe && !specialResyncManagerFlag) \
-			LWLockRelease(MirroredLock); \
+		Assert(mirroredVariablesSet); \
+		Assert(InterruptHoldoffCount > 0); \
+		\
+		if (!mirroredLockIsHeldByMe) \
+		{ \
+			if (!specialResyncManagerFlag) \
+			{ \
+				LWLockRelease(MirroredLock); \
+			} \
+			else \
+			{ \
+				RESUME_INTERRUPTS(); \
+			} \
+		} \
 	}
+#else
+#define MIRRORED_UNLOCK \
+	{ \
+		if (!mirroredLockIsHeldByMe) \
+		{ \
+			if (!specialResyncManagerFlag) \
+			{ \
+				LWLockRelease(MirroredLock); \
+			} \
+			else \
+			{ \
+				RESUME_INTERRUPTS(); \
+			} \
+		} \
+	}
+#endif
 
 // Helper DEFINEs for MirroredLock within the Persistent state-change modules
 // so we can maintain the lock ordering when calls under the PersistentObjLock
