@@ -28,6 +28,8 @@ Usage: gpcheckperf <options>
     -h host    : the host to connect to (multiple -h is okay)
     -f file    : a file listing all hosts to connect to
     --duration : how long to run network test (default 5 seconds)
+    --netserver: name of binary in $GPHOME/bin/lib to use for server in network testing (default=gpnetbenchServer)
+    --netclient: name of binary in $GPHOME/bin/lib to use for client in network testing (default=gpnetbenchClient)
 
 """
 
@@ -50,10 +52,6 @@ if GPHOME is None:
 USER=os.getenv('USER')
 if USER is None or USER is ' ':
     sys.exit('Please set USER environment variable')
-
-NETWORK_SERVER_BINARY = 'netserver'
-NETWORK_CLIENT_BINARY = 'netperf'
-
 
 ################
 def usage(exitarg):
@@ -79,6 +77,8 @@ class Global():
     opt['-f'] = None
     opt['--duration'] = 15  # default to 15s
     opt['--net'] = None
+    opt['--netserver'] = 'gpnetbenchServer'
+    opt['--netclient'] = 'gpnetbenchClient'
 
 GV = Global()
 
@@ -162,8 +162,6 @@ def getMemory():
 	if factor == 'Megabytes': return val * 1024 * 1024
 	return 0
 
-    return 0
-
 ################
 def parseMemorySize(line):
     factor = 1
@@ -198,14 +196,14 @@ def parseDuration(val):
 
 #############
 def print_version():
-    print '%s version $Revision$' % GV.script_name
+    print '%s version main build 21311' % GV.script_name
     sys.exit(0)
 
 #############
 def parseCommandLine():
     global opt
     try:
-	(options, args) = getopt.getopt(sys.argv[1:], '?vVDd:r:B:S:p:h:f:', ['duration=', 'version'])
+	(options, args) = getopt.getopt(sys.argv[1:], '?vVDd:r:B:S:p:h:f:', ['duration=', 'version', 'netserver=', 'netclient='])
     except Exception, e:
 	usage('Error: ' + str(e))
 
@@ -216,6 +214,8 @@ def parseCommandLine():
         elif (switch[1] in 'rf'): GV.opt[switch] = val
         elif (switch[1] in 'BS'): GV.opt[switch] = parseMemorySize(val)
         elif (switch == '--duration'): GV.opt[switch] = parseDuration(val)
+        elif (switch == '--netserver'): GV.opt[switch] = val
+        elif (switch == '--netclient'): GV.opt[switch] = val
         elif (switch == '--version'): print_version()
 
     # run default tests (if not specified)
@@ -317,7 +317,7 @@ def runTeardown():
 
     try:
         if GV.opt['--net']:
-            (ok, out) = gpssh(killall(NETWORK_SERVER_BINARY))
+            (ok, out) = gpssh(killall(GV.opt['--netserver']))
     except:
         pass
 
@@ -361,6 +361,10 @@ def copyExecOver(fname):
     d = GV.opt['-d'][0]
     target = '%s/gpcheckperf_$USER/%s' % (d, fname)
     path = '%s/lib/%s' % (sys.path[0], fname)
+
+    if not os.path.isfile(path):
+        print "binary file not found: %s" % path
+        sys.exit(1)
 
     if GV.opt['-v']: print '[Info] copy local %s to remote %s' % (path, target)
 
@@ -470,11 +474,11 @@ def runStreamTest():
 #############
 def startNetServer():
     port = 23000
-    rmtPath = copyExecOver(NETWORK_SERVER_BINARY)
+    rmtPath = copyExecOver(GV.opt['--netserver'])
 
     for i in xrange(5):
         if i > 0: print '[Warning] retrying with port %d' % port
-        (ok, out) = gpssh(killall(NETWORK_SERVER_BINARY))
+        (ok, out) = gpssh(killall(GV.opt['--netserver']))
 
         (ok, out) = gpssh('%s -p %d > /dev/null 2>&1' % (rmtPath, port))
         if ok: return port
@@ -519,6 +523,7 @@ def spawnNetperfTestBetween(x, y, netperf_path, netserver_port, sec=5):
 #############
 def reapNetperfTest(proc, x, y):
     ok = True
+    out = None
     if proc:
         try:
             rc = proc.wait()
@@ -591,7 +596,7 @@ def setupNetPerfTest():
         print '[Error] unable to start netserver ... abort netperf test'
         return (None, None, None)
     
-    netperf = copyExecOver(NETWORK_CLIENT_BINARY)
+    netperf = copyExecOver(GV.opt['--netclient'])
     return (netperf, h, netserver_port)
     
 
