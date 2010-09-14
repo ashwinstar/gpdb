@@ -1008,7 +1008,17 @@ def database_state():
             if result[0]['count'] != 0:
                dbstatus = 'UNBALANCED'
     except IOError:
+        log.msg('GPDB down')
         dbstatus = 'DOWN'
+
+    # if the DB is down try to re-establish the connection to the DB
+    if dbstatus == 'DOWN':
+        try:
+            global conn
+            conn=None
+            validate_db_conn()
+        except:
+            pass
 
     return dbstatus
 
