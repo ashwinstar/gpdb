@@ -150,9 +150,36 @@ int set_alert_severity(const GpErrorData * errorData,
 	else if (strstr(errorData->error_message, gettext("database system is ready to accept connections"))  != NULL)
 	{
 		snmp_severity[0] = '1';  // sev Ok -- Nothing is wrong
-		email_priority[0] = '5'; // 5  == lowest priority
+		email_priority[0] = '5'; // 1 == highest priority
 		*send_via_connectemc = true;
 		*connectemc_severity = EMC_CONNECT_SEVERITY_INFO;
+	}
+
+	else if (strstr(errorData->error_message, gettext("could not access status of transaction"))  != NULL)
+	{
+		/* This error usually means a table has been corrupted.  Should it be a 4? 5? 6? 7?*/
+		snmp_severity[0] = '7';  //gpdbSevSystemDown
+		email_priority[0] = '1'; /// 1 == highest priority
+		*send_via_connectemc = true;
+		*connectemc_severity = EMC_CONNECT_SEVERITY_ERROR;
+	}
+
+	else if (strstr(errorData->error_message, gettext("database system was interrupted while in recovery"))  != NULL)
+	{
+		/* This error usually means the entire database is questionable, and should be restored from backup  */
+		snmp_severity[0] = '7';  //gpdbSevSystemDown
+		email_priority[0] = '1'; // 1 == highest priority
+		*send_via_connectemc = true;
+		*connectemc_severity = EMC_CONNECT_SEVERITY_ERROR;
+	}
+
+	else if (strstr(errorData->error_message, gettext("two-phase state file for transaction"))  != NULL &&
+			 strstr(errorData->error_message, gettext("corrupt"))  != NULL)
+	{
+		snmp_severity[0] = '4';  //gpdbSevSystemDown
+		email_priority[0] = '1'; // 1 == highest priority
+		*send_via_connectemc = true;
+		*connectemc_severity = EMC_CONNECT_SEVERITY_ERROR;
 	}
 
 	else if (strstr(errorData->error_message, "Test message for Connect EMC")  != NULL)
