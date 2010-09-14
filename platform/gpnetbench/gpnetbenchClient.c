@@ -7,10 +7,12 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <time.h>
+#include <sys/time.h>
 
 #define INIT_RETRIES 5
 void send_buffer(int fd, char* buffer, int bytes);
 void print_headers();
+double subtractTimeOfDay(struct timeval* begin, struct timeval* end);
 
 void usage()
 {
@@ -36,7 +38,7 @@ int main(int argc, char** argv)
 	int displayHeaders = 1;
 	int serverPort = 0;
 	int duration = 60;
-	int actual_duration;
+	double actual_duration;
 	char* hostname = NULL;
 	char* sendBuffer = NULL;
 	int kilobytesBufSize = 32;
@@ -48,6 +50,8 @@ int main(int argc, char** argv)
 	unsigned int buffers_sent = 0;
 	double megaBytesSent;
 	double megaBytesPerSecond;
+    struct timeval beginTimeDetails;
+    struct timeval endTimeDetails;
 
 	while ((c = getopt (argc, argv, "p:l:b:P:H:f:t:h")) != -1)
 	{
@@ -146,13 +150,15 @@ int main(int argc, char** argv)
 
 	start_time = time(NULL);
 	end_time = start_time + duration;
+    gettimeofday(&beginTimeDetails, NULL);
 	while (time(NULL) < end_time)
 	{
 		send_buffer(socketFd, sendBuffer, bytesBufSize);
 		buffers_sent++;
 	}
+    gettimeofday(&endTimeDetails, NULL);
 
-	actual_duration = time(NULL) - start_time;
+	actual_duration = subtractTimeOfDay(&beginTimeDetails, &endTimeDetails);
 	megaBytesSent = buffers_sent * (double)bytesBufSize / (1024.0*1024.0);
 	megaBytesPerSecond = megaBytesSent / actual_duration;
 
@@ -184,6 +190,23 @@ void send_buffer(int fd, char* buffer, int bytes)
 		bytes -= retval;
 		buffer += retval;
 	}
+}
+
+double subtractTimeOfDay(struct timeval* begin, struct timeval* end)
+{
+	double seconds;
+
+	if (end->tv_usec < begin->tv_usec)
+	{
+		end->tv_usec += 1000000;
+		end->tv_sec -= 1;
+	}
+
+	seconds = end->tv_usec - begin->tv_usec;
+	seconds /= 1000000.0;
+
+	seconds += (end->tv_sec - begin->tv_sec);
+	return seconds;
 }
 
 void print_headers()
