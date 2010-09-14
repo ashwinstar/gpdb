@@ -120,7 +120,7 @@ void *mapred_malloc(int size)
 
 #ifdef INTERNAL_BUILD
 	if (global_debug_flag && global_verbose_flag)
-		fprintf(stderr, "%x\n", (unsigned int) m);
+		fprintf(stderr, "%p\n", m);
 #endif
 
 	return m;
@@ -135,7 +135,7 @@ void mapred_free(void *ptr)
 
 #ifdef INTERNAL_BUILD
 	if (global_debug_flag && global_verbose_flag)
-		fprintf(stderr, "Freeing memory: %x\n", (unsigned int) ptr);
+		fprintf(stderr, "Freeing memory: %p\n", ptr);
 #endif
 
 	free(ptr);
