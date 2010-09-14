@@ -10,6 +10,7 @@
 	
 <mx:Script>
 <![CDATA[
+	import flash.net.navigateToURL;
 	
     import model.GPPerfMonModelLocator;
   	import mx.events.CloseEvent;
@@ -21,6 +22,7 @@
   	[Bindable]
 	public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
 	private var debugModeActive:Boolean = false;
+	
 	
 	// Stores keystrokes entered into the about box
 	private var aboutKeys:String = '';
@@ -105,6 +107,14 @@
   		}
   	}
   	
+  	private function switchToHelpPage(event:MouseEvent):void
+  	{
+  		var urlStr:String = (Resources.instance.appliance) ? Resources.helpApplianceURL : Resources.helpGpdbURL ;
+  		var url:URLRequest = new URLRequest(urlStr);
+  		navigateToURL(url,"_blank");
+  	
+  	}// end of switchToHelpPage
+  	
 ]]>   	
 </mx:Script>
 	
@@ -112,16 +122,6 @@
 		<mx:VBox width="100%" height="100%" verticalGap="8" x="{header.x}" y="{header.y + header.height}">
 			<mx:Canvas width="100%" height="100%" minHeight="100">
 				<!-- This HBox contains DBStatus icon and Label-->
-				<mx:HBox width="100%" height="35" horizontalAlign="center" id="dbStatusContainer"
-					toolTip="{mdl.db.dbStatusToolTip}" visible="{mdl.db.showDBStatus}"	>
-					<mx:Canvas width="350" height="35" styleName="{mdl.db.dbStatusStyle}">
-						<mx:HBox width="100%" height="100%" horizontalAlign="center" verticalAlign="middle">
-							<mx:Image source="{mdl.db.dbStatusIcon}" id="dbStatusImage"/>
-							<mx:Label text="{mdl.db.dbStatus}" x="{dbStatusImage.x + 20}" y="{dbStatusImage.y + 2}" styleName="dbStatusLabelStyle"/>	
-						</mx:HBox>
-					</mx:Canvas>
-				</mx:HBox>
-			
 				<mx:TabNavigator id="mainTab" width="100%" height="100%" styleName="mainTabNavigator" x="0" y="8"
 					 selectedIndex="{mdl.nav.mainPageIndex}"
 					 change="toggleMainTab(event)">
@@ -160,6 +160,7 @@
 			<mx:Label text="{'Welcome ' + mdl.session.username}" id="greetingLabel" fontSize="9"/>
 			<mx:LinkButton label="Logout" click="tryLogout()" fontSize="9"/>
 			<mx:LinkButton label="About" click="aboutBox()" fontSize="9"/>
+			<mx:LinkButton label="Help" fontSize="9" click="switchToHelpPage(event)" />
 		</mx:HBox>
 	</mx:Canvas>
 	

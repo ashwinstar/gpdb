@@ -1,9 +1,6 @@
 package model
 {
-	import command.DatabaseHistoricCommand;
-	
 	import mx.collections.ArrayCollection;
-	import mx.events.ItemClickEvent;
 	
 	import util.Debug;
 	import util.MiscUtils;
@@ -22,9 +19,13 @@ package model
 		{			
 			var newVal:DatabaseSample = new DatabaseSample;
 			
-			if (db.hasOwnProperty("@dbstatus"))
-			{
+			if (db.hasOwnProperty("@dbstatus")) {
 				databaseStatus(db.@dbstatus);	
+			}
+			
+			if (db.hasOwnProperty("@noresult")) {
+				// we didnt get any results! -- this probably means the db is down!
+				return;
 			}
 					
 			if (newVal.sample_time == null)
@@ -469,27 +470,22 @@ package model
 		 * For DEGRADE and POTENTIALLY UNBALANCED states corresponding icons will be shown. 
 		 * @param dbState
 		 */		
-		public function databaseStatus(dbState:String):void
+		public function databaseStatus(_dbState:String):void
 		{
-			if(dbState == 'DEGRADED')
-			{
-				dbStatus = "System State: Segment Failure(s)";
-				dbStatusIcon = Resources.DBDegradeIcon;
-				showDBStatus = true;
-				dbStatusStyle = "dbDegradeStyle";
+			dbState = _dbState;
+			
+			if (dbState == DBSTATE_DEGRADED) {
+				dbStatus = "Segment Failure(s)";
 				dbStatusToolTip = "One or more segment failures in the system.";
-			}
-			else if(dbState == 'UNBALANCED')
-			{
-				dbStatus = "System State: Suboptimal Segment Configuration";
-				dbStatusIcon = Resources.DBUnbalancedIcon;
-				showDBStatus = true;
-				dbStatusStyle = "dbUnBalancedStyle";
+			} else if (dbState == DBSTATE_UNBALANCED) {
+				dbStatus = "Suboptimal Segment Configuration";
 				dbStatusToolTip = "One or more segments is not operating in its preferred role for the system";
-			}
-			else
-			{
-				showDBStatus = false;
+			} else if (dbState == DBSTATE_DOWN) {
+				dbStatus = "Database Unreachable";
+				dbStatusToolTip = "Unable to get a response from the Database";
+			} else {
+				dbStatus = "Normal";
+				dbStatusToolTip = "Normal Operations";
 			}
 		}//end of databaseStatus
 
@@ -557,11 +553,13 @@ package model
 		private var mdl:GPPerfMonModelLocator;
 		
 		//Database Status
+		public static var DBSTATE_NORMAL:String = "NORMAL";
+		public static var DBSTATE_UNBALANCED:String = "UNBALANCED";
+		public static var DBSTATE_DEGRADED:String = "DEGRADED";
+		public static var DBSTATE_DOWN:String = "DOWN";
+		
+		public var dbState:String = "";
 		public var dbStatus:String = "";
 		public var dbStatusToolTip:String = "";
-		public var showDBStatus:Boolean = false;
-		public var dbStatusIcon:Class;
-		public var dbStatusStyle:String;	
-
 	}
 }

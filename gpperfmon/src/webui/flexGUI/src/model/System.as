@@ -25,6 +25,11 @@ package model
 		
 		public function systemNow(systemData:XML):void
 		{
+			if (systemData.hasOwnProperty("@noresult")) {
+				// we didnt get any response this time around. simply return!
+				return;
+			}
+					
 			// Assign the XML to a XMLListCollection for display
 			systemNowXML.source = systemData.host;
 			

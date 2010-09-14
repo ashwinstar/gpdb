@@ -8,12 +8,12 @@
 	 		
 	 		private var __status:String;
 	 		[Bindable]private var __statusLabel:String;
-	 		[Bindable]private var __statusCount:String;
+	 		[Bindable]private var __statusCount:int;
 	 		private var __parentRef:HostItem;
 	 		
 	 		private function initComp():void{
 	 			statusLbl.text = __statusLabel;
-	 			statusCountLbl.text = __statusCount;
+	 			statusCountLbl.text = "" + __statusCount;
 	 			statusImg.status = __status;
 	 			
 	 			this.addEventListener(MouseEvent.CLICK, handleMouseClick);
@@ -24,6 +24,7 @@
 	 		 * select status 
 	 		 */
 	 		private function handleMouseClick(eventObj:MouseEvent):void{
+	 			toggleStatusItemSelection(true);
 	 			__parentRef.statusItemClicked(this);
 	 		}//end fo handleMouseClick
 	 		
@@ -53,12 +54,16 @@
 	 			return __status;
 	 		}
 	 		
-	 		public function set statusCount(val:String):void{
+	 		public function set statusCount(val:int):void{
 	 			__statusCount = val;
 	 			
 	 			if(statusCountLbl){
-	 				statusCountLbl.text = __statusCount;
+	 				statusCountLbl.text = "" + __statusCount;
 	 			}	 			
+	 		}
+	 		
+	 		public function get statusCount():int{
+	 			return __statusCount;
 	 		}
 	 		
 	 		public function set showBorder(val:Boolean):void{

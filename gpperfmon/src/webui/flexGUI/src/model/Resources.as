@@ -23,8 +23,7 @@ package model
 
  		[Embed(source='../assets/img/spyglass_cursor.png')]
    		public static var spyglassCursor:Class;
-   		[Embed(source='../assets/img/DBUnbalanced_icon.png')]   		public static var DBUnbalancedIcon:Class;   		   		[Embed(source='../assets/img/DBDegrade_Icon.png')]   		public static var DBDegradeIcon:Class;
-   		  				
+
 		public static var copyright:String = "Copyright (c) 2008-2010 Greenplum, Inc. All Rights Reserved";
 
 		public static var copyrightShort:String = "(c) 2008-2010 Greenplum, Inc.";
@@ -38,13 +37,19 @@ package model
 		
 		//We might want to store the type of this gpperfmon instance (whether appliance or not)
 		// in a different manner. However, since we dont know what else could be there, we will
-		// simply store in a boolean.
+		// simply store in a boolean. for now.
 		private var __applianceFlag:Boolean = false ;
 		
-		private var __fakeDataFlag:Boolean = false ;
+		// Set this flag to true either programmatically (use the setter) or in code to
+		// simulate an appliance for testing/development in the absence of a true appliance.
+		private var __simulateAppliance:Boolean = false ;
 		
 		//holds the singleton instance of the class
 		private static var __instance:Resources;
+		
+		public static var helpApplianceURL:String = "static/docs/appliance/index.html";
+		public static var helpGpdbURL:String = "static/docs/gpdb_only/index.html";
+		
 		
 		/**
 		 * Constructor 
@@ -97,16 +102,24 @@ package model
 		
 		public function get appliance():Boolean{
 			// TODO: Naveen: remove conditional.
-			return (__fakeDataFlag) ? true : __applianceFlag;
+			return (__simulateAppliance) ? true : __applianceFlag;
 		}		
 		
 		public function set appliance(val:Boolean):void{
 			__applianceFlag = val;
 		}
 		
-		public function get fakeData():Boolean{
-			return __fakeDataFlag;
+		/**
+		 * The following getter and setter should be used to simulate an
+		 * Appliance for dev & test purposes in the absence of a true appliance.
+		 */
+		public function get applianceSimulator():Boolean{
+			return __simulateAppliance;
 		}		
+		
+		public function set applianceSimulator(val:Boolean):void{
+			__simulateAppliance = val;
+		}
 		
 	}
 }

@@ -2,30 +2,28 @@ package model
 {
 	import mx.collections.ArrayCollection;
 	import mx.collections.XMLListCollection;
-	import util.Debug;
-	import util.MiscUtils;
-	
-	import value.DatabaseSample;
 		
 	[Bindable]
 	public class Health
 	{
 		public static const STATUS_NORMAL:String = "normal" ;
 		public static const STATUS_ERROR:String = "error" ;
-		public static const STATUS_WARNING:String = "warnings";
+		public static const STATUS_WARNING:String = "warning";
 		public static const STATUS_UNKNOWN:String = "unknown";
 		public static const STATUS_NORESPONSE:String = "unreachable";
 		
 		public static const STATUS_LABEL_NORMAL:String = "Normal" ;
 		public static const STATUS_LABEL_ERROR:String = "Error" ;
-		public static const STATUS_LABEL_WARNING:String = "Warnings";
+		public static const STATUS_LABEL_WARNING:String = "Warning";
 		public static const STATUS_LABEL_UNKNOWN:String = "Unknown";
 		public static const STATUS_LABEL_NORESPONSE:String = "Unreachable";
 		
 		public static const HOSTXMLRECEIVED:String = "HOSTXMLRECEIVED";
 
-		public static var statusList:Array;
-		public static var statusLabels:Array;
+		public var statusList:Array;
+		public var statusLabels:Array;
+
+		public var consolidatedStatusCounts:ArrayCollection;
 
 
 		// Reference to the model
@@ -46,10 +44,22 @@ package model
 			
 			statusList = new Array();
 			statusList = [STATUS_NORMAL, STATUS_UNKNOWN, STATUS_WARNING, STATUS_ERROR, STATUS_NORESPONSE];
+			
+			consolidatedStatusCounts = new ArrayCollection();
+			for each (var item:String in statusList) {
+				var obj:HealthStatusCount = new HealthStatusCount();
+				obj.status = item ;
+				obj.statusLabel = statusLabels[item];
+				obj.count = 0;
+				obj.nonEmpty = false ;
+				consolidatedStatusCounts.addItem(obj);
+			}
 		}
 		
 		public function setHealthSummary(_summary:XML):void
 		{
+			var i:int = 0;
+			
 			summary = _summary ;
 			
 			var lastUpdateTimeStamp:int = int(summary.LastUpdateTime);
@@ -60,8 +70,14 @@ package model
 			summary.ConsolidatedStatus = consolidatedStatus;
 			summary.ConsolidatedStatusLabel = statusLabel(consolidatedStatus);
 
+			for (i = 0; i < consolidatedStatusCounts.length; i++) {
+				var item:HealthStatusCount = HealthStatusCount(consolidatedStatusCounts.getItemAt(i));
+				item.count = summary.CategoryView.Category.Line.(Status == item.status).length();
+				item.nonEmpty = (item.count > 0);
+			}
+
 			var categoriesXML:XML = XML(summary.CategoryView);
-			for(var i:int = 0; i < categoriesXML.Category.length();  i++) {
+			for(i = 0; i < categoriesXML.Category.length();  i++) {
 				var catXML:XML = XML(categoriesXML.Category[i]);
 				
 				// add the total number as a new element.
@@ -101,7 +117,10 @@ package model
 		
 		public static function statusLabel(statusLabelKey:String):String {
 			// When localization is needed, change here. But the statuses array should always contain key=key pair as key=value.
-			return statusLabels[statusLabelKey];
+			
+			var singletonModel:GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
+			
+			return (singletonModel != null && singletonModel.health != null) ? singletonModel.health.statusLabels[statusLabelKey] : null;
 		}
 		
 	}

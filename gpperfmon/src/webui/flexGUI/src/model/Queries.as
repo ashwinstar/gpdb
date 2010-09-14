@@ -482,13 +482,16 @@ package model
 		// Stores the list of searched for queries
 		public var searchedQueriesArray:ArrayCollection = new ArrayCollection();
 		
+		// Always points to the currently Selected Queries DS.
+		public var currentQueriesArray:ArrayCollection = queriesNowArray;
+		
 		// Keeps track of counts of watched queries
 		public var watchedQueriesCounts:Object = { queued:0, running:0, done:0, abort:0 };
 		
 		// Lookup to find the appropriate array for each tab
 		public var queryArrayLookup:Array = new Array(
 			queriesNowArray, myQueriesNowArray, 
-			watchedQueriesArray, searchedQueriesArray ); 
+			watchedQueriesArray, searchedQueriesArray, null ); 
 		
 		// The query ID that we are fetching the query plan for
 		public var queryPlanID:String = '';

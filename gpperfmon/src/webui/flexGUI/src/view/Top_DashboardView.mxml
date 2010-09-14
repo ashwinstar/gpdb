@@ -5,12 +5,14 @@
 
 <mx:Script>
 <![CDATA[
+	import mx.events.FlexEvent;
 	import mx.controls.dataGridClasses.DataGridItemRenderer;
 	import value.Query;
     import model.GPPerfMonModelLocator;
   	import mx.events.CloseEvent;
   	import mx.controls.Alert;	
   	import model.Resources;
+  	import model.Health;
   	import util.MiscUtils;
   	import mx.events.ListEvent;
   	import util.Debug;
@@ -18,10 +20,14 @@
   	[Bindable]
 	public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
 
+	[Bindable] [Embed (source="/assets/img/white_bg_led.png")]
+	 private var bgCls:Class;
+
     public var magGlass:Class = Resources.magGlass;
     
     private function initComp():void {
-    	healthConsolidated.visibilityState = Resources.instance.appliance;
+    	systemHealthPanel.visible = Resources.instance.appliance;
+    	systemHealthPanel.includeInLayout = Resources.instance.appliance;
     }
 	
 	// Handle a dblclick by jumping to the query
@@ -41,6 +47,7 @@
 
 		mdl.nav.jumpToQueryDetails(obj as Query, true);
 	}
+
 
 ]]>   	
 </mx:Script>	
@@ -114,16 +121,35 @@
  						   sortOnXField="false"/>  						   
  						   
  	
-<mx:HBox width="{this.width}" height="{this.height}"
+<mx:VBox width="{this.width}" height="{this.height}" verticalGap="10">
+
+	<mx:HBox width="100%" height="100%"
 	 			paddingLeft="5" paddingRight="5" horizontalGap="20">
 							    						   
 	<mx:VBox width="50%" height="100%" horizontalAlign="center">
 		
-	  <mx:VBox width="100%" backgroundColor="0xBFDC92" horizontalAlign="center">
-	  	<mx:Label text="System Summary" styleName="dashboardTitle"/>
-	  </mx:VBox>
-	  
-	  <healthTab:HealthWidget id="healthConsolidated" width="100%" height="0" visibilityState="false"/>
+		<mx:VBox width="100%" backgroundColor="0xBFDC92" horizontalAlign="center">
+			<mx:Label text="System Summary" styleName="dashboardTitle"/>
+		</mx:VBox>
+  
+		<mx:Panel title="System Health (Hosts)" styleName="dashboardMinigraphs" width="100%" minHeight="105"
+			 id="systemHealthPanel" layout="vertical" horizontalAlign="center">
+			<mx:HBox width="100%" height="100%" id="countStatusHolder" paddingBottom="10" horizontalAlign="center" paddingRight="10" paddingLeft="10">
+			  <mx:Repeater id="countRepeater" dataProvider="{mdl.health.consolidatedStatusCounts}">
+				   <mx:Canvas width="115" height="100%" visible="{countRepeater.currentItem.nonEmpty}" 
+				   				includeInLayout="{countRepeater.currentItem.nonEmpty}">
+						<mx:HBox id="innerBox" width="100%" height="45" x="10" y="15" backgroundColor="#edf5e1"
+							 horizontalAlign="center" verticalAlign="top">
+							<mx:Label id="lblText" fontWeight="bold" x="35" y="10" fontSize="11" text="{countRepeater.currentItem.statusLabel}"/>
+						</mx:HBox>
+						<mx:Label id="lblCount" x="35" y="35" text="  {countRepeater.currentItem.count}" horizontalCenter="5"/>
+						<mx:Image id="wImg" width="23" height="22" x="0" y="28" source="{bgCls}"/>
+						<healthTab:StatusLED id="imgStatus" x="0" y="30" status="{countRepeater.currentItem.status}"/>
+		           </mx:Canvas>
+		       </mx:Repeater>
+			</mx:HBox>	
+		</mx:Panel>
+		<!-- <healthTab:HealthWidget id="healthConsolidated" width="100%" height="0" visibilityState="false"/> -->
 
 	  <mx:Panel title="CPU" styleName="dashboardMinigraphs" width="100%" 
 	  			layout="vertical" horizontalAlign="center"> 			
@@ -372,12 +398,26 @@
 	<mx:VBox width="50%" height="100%" horizontalAlign="center">
 
 	  <mx:VBox backgroundColor="0xBFDC92" width="100%" horizontalAlign="center">
-	  	<mx:Label text="Queries Summary" styleName="dashboardTitle"
+	  	<mx:Label text="Database &amp; Queries Summary" styleName="dashboardTitle"
 	  		visible="{mdl.session.isSuperuser}" includeInLayout="{mdl.session.isSuperuser}"/>
-	  	<mx:Label text="My Queries Summary" styleName="dashboardTitle"
+	  	<mx:Label text="Database &amp; My Queries Summary" styleName="dashboardTitle"
 	  		visible="{!mdl.session.isSuperuser}" includeInLayout="{!mdl.session.isSuperuser}"/>
 	  </mx:VBox>
 	  		
+		<mx:Panel title="Database Health" label="horizontal" width="100%" minHeight="105"
+			 styleName="dashboardMinigraphs">
+			<mx:HBox width="100%" height="100%" paddingBottom="10" horizontalAlign="center" paddingRight="10" paddingLeft="10"
+				toolTip="{mdl.db.dbStatusToolTip}">
+			   <mx:Canvas minWidth="200" height="100%">
+					<mx:HBox width="100%" height="45" x="15" y="15" backgroundColor="#edf5e1"
+						 horizontalAlign="center" verticalAlign="middle">
+						<mx:Label fontWeight="bold" fontSize="11" text="{mdl.db.dbStatus}" paddingLeft="30" paddingRight="20"/>
+					</mx:HBox>
+					<healthTab:ClusterStatusImage x="0" y="19" status="{mdl.db.dbState}"/>
+	           </mx:Canvas>
+			</mx:HBox>	
+		</mx:Panel>
+
 		<mx:Text htmlText="{mdl.queries.queryNowSummary + '   |   ' + mdl.queries.myQueryNowSummary}" 
 			visible="{mdl.session.isSuperuser}" includeInLayout="{mdl.session.isSuperuser}"/>			
 		<mx:Text htmlText="{mdl.queries.myQueryNowSummary}"
@@ -538,5 +578,8 @@
 	</mx:VBox>
 	
 </mx:HBox>
+	
+</mx:VBox>
+
 </mx:Canvas>
 

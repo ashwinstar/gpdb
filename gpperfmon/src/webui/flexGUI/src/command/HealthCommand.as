@@ -26,7 +26,8 @@ package command
 		
 		public function execute():void
 		{
-			if (Resources.instance.fakeData) {
+			if (Resources.instance.applianceSimulator) {
+				// If we are simulating the appliance, just get the hard coded response.
 				fakeExecute();
 			} else {
 				ServiceUtils.send(mdl.session.webServiceURL+'health', this);
@@ -67,8 +68,13 @@ package command
 		 	executeChainedCommand(); 
 		}
 		
-		// TODO: Naveen: remove (or keep?) when done with testing.
-		// This function will send fake XML to fake a non-existent command.
+		/**
+		 * Normally, the HealthCommand and HealthDetailsCommand are only sent when
+		 * we are dealing with an appliance. However, to simulate the appliance for
+		 * development and testing purposes, we can set the
+		 * Resources.instance.applianceSimulator flag, and the following hard-coded
+		 * data will be returned for the command.
+		 */
 		private function fakeExecute():void {
 			var data:Object = new Object();
 			var resultXML:XML = <Health>
@@ -139,10 +145,13 @@ package command
 			var curDate:Date = new Date();
 			resultXML.LastUpdateTime = int(curDate.time/1000);
 			
+			// The following code ensures we have some changes in the response XML
+			// every time period so that we can test data binding and view refresh
+			// to simulate real time data changes.
 			var testList:XMLList = resultXML.CategoryView.Category.(@Name == "Master Server");
 			var testCat:XML = testList[0];
 			testCat.Line.HostName = "mdw" + (curDate.time % 1000);
-			testCat.Line.Status = Health.statusList[(int(Math.random() * 5) % 5)];
+			testCat.Line.Status = mdl.health.statusList[(int(Math.random() * 5) % 5)];
 			
 			data.result = resultXML;
 			result(data);

@@ -7,7 +7,7 @@
 			[Embed (source="../../assets/img/LED_Error.png")]
 	 		private var errorCls:Class;
 	 		
-			[Embed (source="../../assets/img/LED_NoResponse.png")]
+			[Embed (source="../../assets/img/questionmark.png")]
 	 		private var unreachableCls:Class;
 	 		
 	 		[Embed (source="../../assets/img/LED_Normal.png")]

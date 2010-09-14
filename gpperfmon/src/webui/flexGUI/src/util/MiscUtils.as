@@ -2,8 +2,11 @@ package util {
 	import mx.collections.ArrayCollection;
 	import mx.controls.Alert;
 	import mx.controls.DataGrid;
+	import mx.controls.dataGridClasses.DataGridColumn;
 	import mx.rpc.events.FaultEvent;
 	import mx.rpc.events.ResultEvent;
+	import mx.collections.Sort;
+	import mx.collections.SortField;
 	
 	public class MiscUtils 
 	{
@@ -211,5 +214,16 @@ package util {
 		    }	
 		    return res;
 		}	
+
+
+		public static function sortDataGrid(dgGrid:DataGrid, dataField:String, descendingFlag:Boolean):void {
+			if (dataField != null && dataField != "") {
+				var sortThese:Sort = new Sort();
+				sortThese.fields = [new SortField(dataField, false, descendingFlag)];
+				dgGrid.dataProvider.sort = sortThese;
+				dgGrid.dataProvider.refresh();
+			}
+		}
+
 	}
 }

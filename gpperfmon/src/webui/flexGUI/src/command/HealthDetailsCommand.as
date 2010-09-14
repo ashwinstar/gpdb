@@ -27,7 +27,8 @@ package command
 		public function execute():void
 		{
 			var req:String = '?hostname=' + hostName;
-			if (Resources.instance.fakeData) {
+			if (Resources.instance.applianceSimulator) {
+				// If we are simulating the appliance, just get the hard coded response.
 				fakeExecute();
 			} else {
 				ServiceUtils.send(mdl.session.webServiceURL+'healthdetails'+req, this);
@@ -68,8 +69,13 @@ package command
 		}
 		
 		
-		// TODO: Naveen: remove (or keep?) when done with testing.
-		// This function will send fake XML to fake a non-existent command.
+		/**
+		 * Normally, the HealthCommand and HealthDetailsCommand are only sent when
+		 * we are dealing with an appliance. However, to simulate the appliance for
+		 * development and testing purposes, we can set the
+		 * Resources.instance.applianceSimulator flag, and the following hard-coded
+		 * data will be returned for the command.
+		 */
 		private function fakeExecute():void {
 			var data:Object = new Object();
 			data.result = <HealthDetails>
