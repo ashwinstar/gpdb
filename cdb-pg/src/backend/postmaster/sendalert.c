@@ -589,7 +589,7 @@ static int send_alert_via_connect_emc(const GpErrorData * errorData, const char 
 	retVal = gpmon_emcconnect_send_alert(EMC_CONNECT_SYMPTOM_NULL,
 									status,
 									severity,
-									EMC_CONNECT_ORIGIN_GPMMON,
+									EMC_CONNECT_ORIGIN_GPDBALERTS,
 									myhostname,
 									msg);
 	if (retVal)
