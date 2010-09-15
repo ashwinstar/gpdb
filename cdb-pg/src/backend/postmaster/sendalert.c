@@ -103,12 +103,16 @@ static int handle_invalid_peer_certificate(long vfy_result);
 static void event_cb(smtp_session_t session, int event_no, void *arg, ...);
 static bool SplitMailString(char *rawstring, char delimiter, List **namelist);
 static void monitor_cb (const char *buf, int buflen, int writing, void *arg);
+
+static int send_alert_via_email(const GpErrorData * errorData, const char * subject, const char * email_priority);
 #endif
 
 #if USE_SNMP
 static int send_snmp_inform_or_trap();
 extern pg_time_t	MyStartTime;
 #endif
+
+
 
 #if defined(__linux__)
 static int send_alert_via_connect_emc(const GpErrorData * errorData, const char * subject, EmcConnectSeverity severity);
@@ -592,10 +596,10 @@ static int send_alert_via_connect_emc(const GpErrorData * errorData, const char 
 }
 #endif
 
-
-int send_alert(const GpErrorData * errorData)
-{
 #if USE_EMAIL
+static int send_alert_via_email(const GpErrorData * errorData,
+		const char * subject, const char * email_priority)
+{
 	smtp_session_t session;
 	smtp_message_t message;
 	smtp_recipient_t recipient = NULL;
@@ -603,12 +607,312 @@ int send_alert(const GpErrorData * errorData)
 	const smtp_status_t *status;
 
 	enum notify_flags notify = Notify_FAILURE | Notify_DELAY;
-	char	   *rawstring = NULL;
-	List	   *elemlist = NIL;
-	ListCell   *l = NULL;
-	int			success = 0;
+	char *rawstring = NULL;
+	List *elemlist = NIL;
+	ListCell *l = NULL;
+	int success = 0;
+
+	if (gp_email_to == NULL || strlen(gp_email_to) == 0)
+	{
+		static bool firsttime = 1;
+
+		ereport(firsttime ? LOG : DEBUG1,(errmsg("e-mail alerts are disabled"),errOmitLocation(true)));
+		firsttime = false;
+		return -1;
+	}
+
+	if (strlen(gp_email_from) == 0)
+	{
+		elog(LOG,"e-mail alerts are not properly configured:  No 'from:' address configured");
+		return -1;
+	}
+
+	if (strchr(gp_email_to, ';') == NULL && strchr(gp_email_to, ',') != NULL)
+	{
+		// email addrs should be separated by ';', but because we used to require ',',
+		// let's accept that if it looks OK.
+		while (strchr(gp_email_to,',') != NULL)
+		*strchr(gp_email_to,',') = ';';
+	}
+
+	// Ok, send the alert here.
+
+	static bool auth_client_init_called = false;
+	if (!auth_client_init_called)
+	{
+		auth_client_init(); // Call this only once!
+		auth_client_init_called = true;
+	}
+	session = smtp_create_session();
+	if (session == NULL)
+	{
+		elog(LOG,"Unable to send e-mail: smtp_create_session() failed %d",smtp_errno());
+		return -1;
+	}
+
+	if (log_min_messages <= DEBUG1)
+	smtp_set_monitorcb (session, monitor_cb, NULL, 1);
+
+	message = smtp_add_message(session);
+	if (message == NULL)
+	elog(LOG,"smtp_add_message() failed");
+
+	//smtp_message_reset_status(message);
+
+#if USE_SSL
+	if (!smtp_starttls_enable(session, Starttls_ENABLED))
+		elog(LOG,"smtp_starttls_enable() failed");
+#endif
+
+	/*
+	 * Set the host running the SMTP server.  LibESMTP has a default port
+	 * number of 587, however this is not widely deployed so the port
+	 * is specified as 25 along with the default MTA host.
+	 */
+	if (!smtp_set_server(session,
+					gp_email_smtp_server != NULL && strlen(gp_email_smtp_server) > 0 ? gp_email_smtp_server : "localhost:25"))
+	{
+		elog(LOG,"Unable to send e-mail: smtp_set_server failed %d",smtp_errno());
+		smtp_destroy_session(session);
+		return -1;
+	}
+
+	smtp_set_eventcb(session, event_cb, NULL);
+
+	/*
+	 * Do what's needed at application level to use authentication.
+	 */
+	authctx = auth_create_context();
+	if (authctx == NULL)
+	elog(LOG,"auth_create_context() failed %d",smtp_errno());
+
+	if (!auth_set_mechanism_flags(authctx, AUTH_PLUGIN_PLAIN | AUTH_PLUGIN_ANONYMOUS, 0))
+	{
+		elog(LOG,"Can't auth_set_mechanism_flags");
+	}
+
+	auth_set_interact_cb(authctx, authinteract, NULL);
+
+	/*
+	 * From what I can tell, we aren't supposed to call auth_set_external_id() directly.
+	 * Instead, it gets called automatically based on the information in the client certificate,
+	 * which is usually the e-mail address.
+	 * Perhaps this might be needed for special circumstances?
+	 */
+	//if (gp_email_smtp_userid != NULL && gp_email_smtp_userid[0] != '\0')
+	//	auth_set_external_id(authctx, gp_email_smtp_userid);
+
+	if (!smtp_auth_set_context(session, authctx))
+	{
+		elog(LOG,"Can't smtp_auth_set_context");
+	}
+
+	/*
+	 * Use our callback for X.509 certificate passwords.  If STARTTLS is
+	 * not in use or disabled in configure, the following is harmless.
+	 */
+	smtp_starttls_set_password_cb(tlsinteract, NULL);
+
+	/*
+	 * Set the reverse path for the mail envelope.  (NULL is ok)
+	 */
+	if (strchr(gp_email_from,'<') != NULL)
+	{
+		/*
+		 * Pull out just the e-mail address
+		 */
+		char * from = pstrdup(strchr(gp_email_from,'<')+1);
+		if (strchr(from,'>') != NULL)
+		*strchr(from,'>') = '\0';
+		if (!smtp_set_reverse_path(message, from))
+		elog(LOG,"smtp_set_reverse_path failed %d",smtp_errno());
+	}
+	else
+	if (!smtp_set_reverse_path(message, gp_email_from))
+	elog(LOG,"smtp_set_reverse_path failed %d",smtp_errno());
+
+	smtp_set_header(message, "Subject", subject);
+	smtp_set_header_option(message, "Subject", Hdr_OVERRIDE, 1);
+	smtp_set_header(message, "Message-Id", NULL);
+
+	if (email_priority[0] != '\0' && email_priority[0] != '3') // priority not the default?
+	smtp_set_header(message, "X-Priority", email_priority); // set a priority.  1 == highest priority, 5 lowest
+
+
+	smtp_set_messagecb(message, messagebody_cb, (void *) errorData);
+
+	/* Need a modifiable copy of To list */
+	rawstring = pstrdup(gp_email_to);
+
+	/* Parse string into list of identifiers */
+	if (!SplitMailString(rawstring, ';', &elemlist))
+	{
+		/* syntax error in list */
+		ereport(LOG,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("invalid list syntax for \"gp_email_to\"")));
+	}
+
+#if 0
+	/*
+	 * We want to set a "To:" header.
+	 *
+	 * Some versions of libesmtp have a bug that only allows this to work for a single
+	 * e-mail recipient.  Because of that, I've changed the code to set the "To:" header
+	 * in the message body callback, but I'm not sure that is as good as doing this, since I
+	 * might not have it formatted the best way.
+	 *
+	 */
+	foreach(l, elemlist)
+	{
+		char *cur_gp_email_addr = (char *) lfirst(l);
+
+		char *free_form_text = NULL;
+		char *email_addr = cur_gp_email_addr;
+
+		/*
+		 * RFC 2822 doesn't require recipient headers but a To: header would
+		 * be nice to have if not present.
+		 *
+		 * First string is free-form text which is the real name of the person (not really used)
+		 * The second string is the e-mail address.
+		 */
+		if (strchr(cur_gp_email_addr,'<') != NULL)
+		{
+			free_form_text = pstrdup(cur_gp_email_addr);
+			*strchr(free_form_text,'<') = '\0';
+			email_addr = pstrdup(strchr(cur_gp_email_addr,'<')+1);
+			if (strchr(email_addr,'>') != NULL)
+			*strchr(email_addr,'>') = '\0';
+		}
+
+		if (!smtp_set_header(message, "To", free_form_text, email_addr));
+		{
+			char buf[128];
+
+			elog(LOG, "smtp_set_header failed:  %d  %s  for e-mail %s", smtp_errno(), smtp_strerror(smtp_errno(),
+							buf, sizeof buf), cur_gp_email_addr);
+		}
+	}
+#endif
+
+	foreach(l, elemlist)
+	{
+		char *cur_gp_email_addr = (char *) lfirst(l);
+
+		if (cur_gp_email_addr != NULL && strlen(cur_gp_email_addr) > 0)
+		{
+			char * to = cur_gp_email_addr;
+
+			/* Recipient must be in RFC2821 format */
+
+			if (strchr(cur_gp_email_addr,'<') != NULL)
+			{
+				/*
+				 * Pull out just the e-mail address
+				 */
+				to = pstrdup(strchr(cur_gp_email_addr,'<')+1);
+				if (strchr(to,'>') != NULL)
+				*strchr(to,'>') = '\0';
+			}
+
+			recipient = smtp_add_recipient(message, to);
+
+			if (recipient == NULL)
+			elog(LOG, "stmp_add_recipient failed for e-mail:  %s", cur_gp_email_addr);
+
+			smtp_dsn_set_notify(recipient, notify);
+
+			success = true;
+		}
+
+	}
+
+	if (!success && list_length(elemlist))
+	ereport(LOG,
+			(errmsg("Could not understand e-mail To: list")));
+
+	list_free(elemlist);
+	pfree(rawstring);
+
+	/*
+	 * Many e-mail transfer agents don't accept the 8BITMIME extension.  We'd
+	 * Like to use it if available, but I don't know how to do that yet.
+	 * For now, just don't set it.  The MTA will decide if it is 8BIT based on
+	 * the MIME header.
+	 */
+	/* smtp_8bitmime_set_body(message, E8bitmime_8BITMIME); */
+
+	/* Initiate a connection to the SMTP server and transfer the message. */
+	if (!smtp_start_session(session))
+	{
+		/*
+		 * If we get here, we can't talk to the SMTP server at all
+		 */
+		int smtperr = smtp_errno();
+		char buf[128];
+		memset(buf, 0, sizeof(buf)); /* in case smtp_strerror fails */
+		smtp_strerror(smtperr, buf, sizeof buf);
+
+		elog(LOG, "SMTP server problem %d  %s", smtperr, buf);
+	}
+	else
+	{
+		/* I would expect this to be always zero here, but just in case it's not */
+		if (smtp_errno() != 0)
+		{
+			int smtperr = smtp_errno();
+			char buf[128];
+			memset(buf, 0, sizeof(buf)); /* in case smtp_strerror fails */
+			smtp_strerror(smtperr, buf, sizeof buf);
+
+			elog(LOG, "SMTP server problem %d  %s", smtperr, buf);
+		}
+		/*
+		 * Report on the success or otherwise of the mail transfer.
+		 * This really only tells the "overall" status, so if an individual e-mail fails,
+		 * we won't see it here (even if every one of them fails!).
+		 */
+
+		/*
+		 * SMTP protocol status codes (see RFCs on SMTP)
+		 * status 250 == ok
+		 * 200 to 299 are warning or information.
+		 * >= 300 are errors
+		 */
+		status = smtp_message_transfer_status(message);
+		elog(status->code == 250 ? DEBUG1 : LOG, "overall transfer status: %d %s", status->code,
+				(status->text != NULL) ? status->text : "");
+
+		/*
+		 * This should tell us how each e-mail recipient fared.
+		 */
+		if (!smtp_enumerate_recipients(message, print_recipient_status, NULL))
+		{
+			elog(LOG,"smtp_enumerate_recipients failed %d",smtp_errno());
+		}
+	}
+
+	/* Free resources consumed by the program.
+	 */
+	if (session != NULL)
+	smtp_destroy_session(session);
+	if (authctx != NULL)
+	auth_destroy_context(authctx);
+
+	/* To save on overhead, don't call this more than necessary */
+	/* auth_client_exit(); */
+
+	return 0;
+
+}
 
 #endif
+
+
+int send_alert(const GpErrorData * errorData)
+{
+
 	char subject[128];
 	bool send_via_email = true;
 	char email_priority[2];
@@ -722,301 +1026,11 @@ int send_alert(const GpErrorData * errorData)
 #if USE_EMAIL
 	if (send_via_email)
 	{
-
-	if (gp_email_to == NULL || strlen(gp_email_to) == 0)
-	{
-		static bool firsttime = 1;
-
-		ereport(firsttime ? LOG : DEBUG1,(errmsg("e-mail alerts are disabled"),errOmitLocation(true)));
-		firsttime = false;
-		return -1;
-	}
-
-	if (strlen(gp_email_from) == 0)
-	{
-		elog(LOG,"e-mail alerts are not properly configured:  No 'from:' address configured");
-		return -1;
-	}
-
-	if (strchr(gp_email_to, ';') == NULL && strchr(gp_email_to, ',') != NULL)
-	{
-		// email addrs should be separated by ';', but because we used to require ',',
-		// let's accept that if it looks OK.
-		while (strchr(gp_email_to,',') != NULL)
-			*strchr(gp_email_to,',') = ';';
-	}
-
-
-
-	// Ok, send the alert here.
-
-	static bool auth_client_init_called = false;
-	if (!auth_client_init_called)
-	{
-		auth_client_init(); // Call this only once!
-		auth_client_init_called = true;
-	}
-	session = smtp_create_session();
-	if (session == NULL)
-	{
-		elog(LOG,"Unable to send e-mail: smtp_create_session() failed %d",smtp_errno());
-		return -1;
-	}
-
-	if (log_min_messages <= DEBUG1)
-		smtp_set_monitorcb (session, monitor_cb, NULL, 1);
-
-	message = smtp_add_message(session);
-	if (message == NULL)
-		elog(LOG,"smtp_add_message() failed");
-
-	//smtp_message_reset_status(message);
-
-#if USE_SSL
-	if (!smtp_starttls_enable(session, Starttls_ENABLED))
-		elog(LOG,"smtp_starttls_enable() failed");
-#endif
-
-	/*
-	 * Set the host running the SMTP server.  LibESMTP has a default port
-	 * number of 587, however this is not widely deployed so the port
-	 * is specified as 25 along with the default MTA host.
-	 */
-	if (!smtp_set_server(session,
-			gp_email_smtp_server != NULL && strlen(gp_email_smtp_server) > 0 ? gp_email_smtp_server : "localhost:25"))
-	{
-		elog(LOG,"Unable to send e-mail: smtp_set_server failed %d",smtp_errno());
-		smtp_destroy_session(session);
-		return -1;
-	}
-
-	smtp_set_eventcb(session, event_cb, NULL);
-
-	/*
-	 * Do what's needed at application level to use authentication.
-	 */
-	authctx = auth_create_context();
-	if (authctx == NULL)
-		elog(LOG,"auth_create_context() failed %d",smtp_errno());
-
-	if (!auth_set_mechanism_flags(authctx, AUTH_PLUGIN_PLAIN | AUTH_PLUGIN_ANONYMOUS, 0))
-	{
-		elog(LOG,"Can't auth_set_mechanism_flags");
-	}
-
-	auth_set_interact_cb(authctx, authinteract, NULL);
-
-	/*
-	 * From what I can tell, we aren't supposed to call auth_set_external_id() directly.
-	 * Instead, it gets called automatically based on the information in the client certificate,
-	 * which is usually the e-mail address.
-	 * Perhaps this might be needed for special circumstances?
-	 */
-	//if (gp_email_smtp_userid != NULL && gp_email_smtp_userid[0] != '\0')
-	//	auth_set_external_id(authctx, gp_email_smtp_userid);
-
-	if (!smtp_auth_set_context(session, authctx))
-	{
-		elog(LOG,"Can't smtp_auth_set_context");
-	}
-
-	/*
-	 * Use our callback for X.509 certificate passwords.  If STARTTLS is
-	 * not in use or disabled in configure, the following is harmless.
-	 */
-	smtp_starttls_set_password_cb(tlsinteract, NULL);
-
-	/*
-	 * Set the reverse path for the mail envelope.  (NULL is ok)
-	 */
-	if (strchr(gp_email_from,'<') != NULL)
-	{
-		/*
-		 * Pull out just the e-mail address
-		 */
-		char * from = pstrdup(strchr(gp_email_from,'<')+1);
-		if (strchr(from,'>') != NULL)
-			*strchr(from,'>') = '\0';
-		if (!smtp_set_reverse_path(message, from))
-					elog(LOG,"smtp_set_reverse_path failed %d",smtp_errno());
+		send_alert_via_email(errorData, subject, email_priority);
 	}
 	else
-		if (!smtp_set_reverse_path(message, gp_email_from))
-			elog(LOG,"smtp_set_reverse_path failed %d",smtp_errno());
+		elog(DEBUG4,"Not sending via e-mail");
 
-	smtp_set_header(message, "Subject", subject);
-	smtp_set_header_option(message, "Subject", Hdr_OVERRIDE, 1);
-	smtp_set_header(message, "Message-Id", NULL);
-
-	if (email_priority[0] != '\0' && email_priority[0] != '3')  // priority not the default?
-		smtp_set_header(message, "X-Priority", email_priority); // set a priority.  1 == highest priority, 5 lowest
-
-
-
-	smtp_set_messagecb(message, messagebody_cb, (void *) errorData);
-
-	/* Need a modifiable copy of To list */
-	rawstring = pstrdup(gp_email_to);
-
-	/* Parse string into list of identifiers */
-	if (!SplitMailString(rawstring, ';', &elemlist))
-	{
-		/* syntax error in list */
-		ereport(LOG,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid list syntax for \"gp_email_to\"")));
-	}
-
-#if 0
-	/*
-	 * We want to set a "To:" header.
-	 *
-	 * Some versions of libesmtp have a bug that only allows this to work for a single
-	 * e-mail recipient.  Because of that, I've changed the code to set the "To:" header
-	 * in the message body callback, but I'm not sure that is as good as doing this, since I
-	 * might not have it formatted the best way.
-	 *
-	 */
-	foreach(l, elemlist)
-	{
-		char	   *cur_gp_email_addr = (char *) lfirst(l);
-
-		char	*free_form_text = NULL;
-		char	*email_addr = cur_gp_email_addr;
-
-		/*
-		 * RFC 2822 doesn't require recipient headers but a To: header would
-		 * be nice to have if not present.
-		 *
-		 * First string is free-form text which is the real name of the person (not really used)
-		 * The second string is the e-mail address.
-		 */
-		if (strchr(cur_gp_email_addr,'<') != NULL)
-		{
-			free_form_text = pstrdup(cur_gp_email_addr);
-			*strchr(free_form_text,'<') = '\0';
-			email_addr = pstrdup(strchr(cur_gp_email_addr,'<')+1);
-			if (strchr(email_addr,'>') != NULL)
-				*strchr(email_addr,'>') = '\0';
-		}
-
-		if (!smtp_set_header(message, "To", free_form_text, email_addr));
-		{
-			char buf[128];
-
-			elog(LOG, "smtp_set_header failed:  %d  %s  for e-mail %s", smtp_errno(), smtp_strerror(smtp_errno(),
-							buf, sizeof buf), cur_gp_email_addr);
-		}
-	}
-#endif
-
-	foreach(l, elemlist)
-	{
-		char	   *cur_gp_email_addr = (char *) lfirst(l);
-
-		if (cur_gp_email_addr != NULL && strlen(cur_gp_email_addr) > 0)
-		{
-			char * to = cur_gp_email_addr;
-
-			/* Recipient must be in RFC2821 format */
-
-			if (strchr(cur_gp_email_addr,'<') != NULL)
-			{
-				/*
-				 * Pull out just the e-mail address
-				 */
-				to = pstrdup(strchr(cur_gp_email_addr,'<')+1);
-				if (strchr(to,'>') != NULL)
-					*strchr(to,'>') = '\0';
-			}
-
-			recipient = smtp_add_recipient(message, to);
-
-			if (recipient == NULL)
-				elog(LOG, "stmp_add_recipient failed for e-mail:  %s", cur_gp_email_addr);
-
-			smtp_dsn_set_notify(recipient, notify);
-
-			success = true;
-		}
-
-	}
-
-	if (!success && list_length(elemlist))
-		ereport(LOG,
-				(errmsg("Could not understand e-mail To: list")));
-
-	list_free(elemlist);
-	pfree(rawstring);
-
-	/*
-	 * Many e-mail transfer agents don't accept the 8BITMIME extension.  We'd
-	 * Like to use it if available, but I don't know how to do that yet.
-	 * For now, just don't set it.  The MTA will decide if it is 8BIT based on
-	 * the MIME header.
-	 */
-	/* smtp_8bitmime_set_body(message, E8bitmime_8BITMIME); */
-
-	/* Initiate a connection to the SMTP server and transfer the message. */
-	if (!smtp_start_session(session))
-	{
-		/*
-		 * If we get here, we can't talk to the SMTP server at all
-		 */
-		int smtperr = smtp_errno();
-		char buf[128];
-		memset(buf, 0, sizeof(buf));	/* in case smtp_strerror fails */
-		smtp_strerror(smtperr, buf, sizeof buf);
-
-		elog(LOG, "SMTP server problem %d  %s", smtperr, buf);
-	}
-	else
-	{
-		/* I would expect this to be always zero here, but just in case it's not */
-		if (smtp_errno() != 0)
-		{
-			int smtperr = smtp_errno();
-			char buf[128];
-			memset(buf, 0, sizeof(buf));	/* in case smtp_strerror fails */
-			smtp_strerror(smtperr, buf, sizeof buf);
-
-			elog(LOG, "SMTP server problem %d  %s", smtperr, buf);
-		}
-		/*
-		 * Report on the success or otherwise of the mail transfer.
-		 * This really only tells the "overall" status, so if an individual e-mail fails,
-		 * we won't see it here (even if every one of them fails!).
-		 */
-
-		/*
-		 * SMTP protocol status codes (see RFCs on SMTP)
-		 * status 250 == ok
-		 * 200 to 299 are warning or information.
-		 * >= 300 are errors
-		 */
-		status = smtp_message_transfer_status(message);
-		elog(status->code == 250 ? DEBUG1 : LOG, "overall transfer status: %d %s", status->code,
-				(status->text != NULL) ? status->text : "");
-
-		/*
-		 * This should tell us how each e-mail recipient fared.
-		 */
-		if (!smtp_enumerate_recipients(message, print_recipient_status, NULL))
-		{
-			elog(LOG,"smtp_enumerate_recipients failed %d",smtp_errno());
-		}
-	}
-
-	/* Free resources consumed by the program.
-	 */
-	if (session != NULL)
-		smtp_destroy_session(session);
-	if (authctx != NULL)
-		auth_destroy_context(authctx);
-
-	/* To save on overhead, don't call this more than necessary */
-	/* auth_client_exit(); */
-	}
 #endif
 
 #if defined(__linux__)
@@ -1024,6 +1038,8 @@ int send_alert(const GpErrorData * errorData)
 
 	if (send_via_connectemc)
 		send_alert_via_connect_emc(errorData, subject, connectemc_severity);
+	else
+		elog(DEBUG5,"Not sending via connect emc");
 #endif
 
 	return 0;
