@@ -244,7 +244,7 @@ AppendOnlyBlockDirectory_Init_forInsert(
 	blockDirectory->currentSegmentFileNum = segno;
 	blockDirectory->numColumnGroups = numColumnGroups;
 	blockDirectory->isAOCol = isAOCol;
-		
+	
 	Assert(OidIsValid(aoEntry->blkdirrelid));
 
 	blockDirectory->blkdirRel =
@@ -868,18 +868,9 @@ load_last_minipage(AppendOnlyBlockDirectory *blockDirectory,
 	/*
 	 * Search the btree to find the entry in the block directory
 	 * that contains the last minipage.
-	 *
-	 * SnapshotDirty is used here to make sure this insert
-	 * will see the row that is commited by another concurrent
-	 * insert. Usually, concurrent inserts will not choose the same
-	 * segment file number. However, there is a small time window
-	 * that this is possible -- some concurrent inserts may commit
-	 * after this insert starts its transaction, but before this
-	 * insert is assigned a segment file number. See MPP-10828
-	 * for more info.
 	 */
 	idxScanDesc = index_beginscan(blkdirRel, blkdirIdx,
-								  SnapshotDirty,
+								  ActiveSnapshot,
 								  numScanKeys, scanKeys);
 	
 	tuple = index_getnext(idxScanDesc, BackwardScanDirection);

@@ -590,7 +590,7 @@ UpdateFileSegInfo(Relation parentrel,
 	ScanKeyData			key;
 	IndexScanDesc		aoscan;
 	HeapTuple			tuple, new_tuple;
-	Snapshot	 		usesnapshot = SnapshotDirty;
+	Snapshot	 		usesnapshot = ActiveSnapshot;
 	Datum				filetupcount;
 	Datum				filevarblockcount;
 	Datum				new_tuple_count;

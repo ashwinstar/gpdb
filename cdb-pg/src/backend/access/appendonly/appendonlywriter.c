@@ -20,7 +20,8 @@
 #include "utils/lsyscache.h"
 
 #include "cdb/cdbvars.h"			  /* Gp_role              */
-
+#include "cdb/cdbtm.h"
+#include "utils/tqual.h"
 
 /*
  * GUC variables
@@ -187,6 +188,7 @@ AORelCreateHashEntry(Oid relid)
 	{
 		aoHashEntry->relsegfiles[i].inuse = false;
 		aoHashEntry->relsegfiles[i].xid = InvalidTransactionId;
+		aoHashEntry->relsegfiles[i].latestWriteXid = InvalidDistributedTransactionId;
 		aoHashEntry->relsegfiles[i].isfull = false;
 		aoHashEntry->relsegfiles[i].tupcount = 0;
 		aoHashEntry->relsegfiles[i].tupsadded = 0;
@@ -198,6 +200,7 @@ AORelCreateHashEntry(Oid relid)
 	 */
 	aoHashEntry->relsegfiles[RESERVED_SEGNO].inuse = true;
 	aoHashEntry->relsegfiles[RESERVED_SEGNO].xid = InvalidTransactionId;
+	aoHashEntry->relsegfiles[RESERVED_SEGNO].latestWriteXid = InvalidDistributedTransactionId;
 	aoHashEntry->relsegfiles[RESERVED_SEGNO].isfull = true;
 	aoHashEntry->relsegfiles[RESERVED_SEGNO].tupcount = 0;
 	aoHashEntry->relsegfiles[RESERVED_SEGNO].tupsadded = 0;
@@ -432,6 +435,57 @@ int64  segfileMaxRowThreshold(void)
 }
 
 /*
+ * usedByConcurrentTransaction
+ *
+ * Return true if segno has been used by any transactions
+ * that are running concurrently with the current transaction.
+ */
+static bool
+usedByConcurrentTransaction(AOSegfileStatus *segfilestat)
+{
+	DistributedTransactionId latestWriteXid =
+		segfilestat->latestWriteXid;
+
+	/*
+	 * If latestWriteXid is invalid, simple return false.
+	 */
+	if (!TransactionIdIsValid(latestWriteXid))
+		return false;
+	
+	/*
+	 * If the current transaction is started earlier than latestWriteXid,
+	 * this segno is surely used by a concurrent transaction. So
+	 * return true here.
+	 */
+	if (TransactionIdPrecedes(getDistributedTransactionId(),
+							  latestWriteXid))
+		return true;
+	
+	Snapshot snapshot = GetTransactionSnapshot();
+
+	if (!snapshot->haveDistribSnapshot)
+		return false;
+
+	/* If latestWriterXid is invisible to me, return true. */
+	if (latestWriteXid >= snapshot->distribSnapshotWithLocalMapping.header.xmax)
+		return true;
+
+	/*
+	 * If latestWriteXid is in in-progress, return true.
+	 */
+	int32 inProgressCount = snapshot->distribSnapshotWithLocalMapping.header.count;
+	
+	for (int inProgressNo = 0; inProgressNo < inProgressCount; inProgressNo++)
+	{
+		if (latestWriteXid ==
+			snapshot->distribSnapshotWithLocalMapping.inProgressEntryArray[inProgressNo].distribXid)
+			return true;
+	}
+	
+	return false;
+}
+
+/*
  * SetSegnoForWrite
  *
  * This function includes the key logic of the append only writer.
@@ -527,7 +581,8 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 
 				if(!segfilestat->isfull)
 				{
-					if(!segfilestat->inuse && !segno_chosen)
+					if(!segfilestat->inuse && !segno_chosen &&
+					   !usedByConcurrentTransaction(segfilestat))
 					{
 						/*
 						 * this segno is avaiable and not full. use it.
@@ -776,6 +831,12 @@ AtCommit_AppendOnly(void)
 					segfilestat->tupsadded = 0;
 					segfilestat->isfull =
 							(segfilestat->tupcount > segfileMaxRowThreshold());
+
+					Assert(!TransactionIdIsValid(segfilestat->latestWriteXid) ||
+						   TransactionIdPrecedes(segfilestat->latestWriteXid,
+												 getDistributedTransactionId()));
+
+					segfilestat->latestWriteXid = getDistributedTransactionId();
 				}
 			}
 		}
