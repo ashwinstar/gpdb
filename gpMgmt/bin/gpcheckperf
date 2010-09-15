@@ -28,9 +28,7 @@ Usage: gpcheckperf <options>
     -h host    : the host to connect to (multiple -h is okay)
     -f file    : a file listing all hosts to connect to
     --duration : how long to run network test (default 5 seconds)
-    --netserver: name of binary in $GPHOME/bin/lib to use for server in network testing (default=gpnetbenchServer)
-    --netclient: name of binary in $GPHOME/bin/lib to use for client in network testing (default=gpnetbenchClient)
-
+    --netserver: use netserver/netperf instead of gpnetbenchServer/gpnetbenchClient
 """
 
 import os, sys
@@ -207,7 +205,7 @@ def print_version():
 def parseCommandLine():
     global opt
     try:
-	(options, args) = getopt.getopt(sys.argv[1:], '?vVDd:r:B:S:p:h:f:', ['duration=', 'version', 'netserver=', 'netclient='])
+	(options, args) = getopt.getopt(sys.argv[1:], '?vVDd:r:B:S:p:h:f:', ['duration=', 'version', 'netserver'])
     except Exception, e:
 	usage('Error: ' + str(e))
 
@@ -218,9 +216,10 @@ def parseCommandLine():
         elif (switch[1] in 'rf'): GV.opt[switch] = val
         elif (switch[1] in 'BS'): GV.opt[switch] = parseMemorySize(val)
         elif (switch == '--duration'): GV.opt[switch] = parseDuration(val)
-        elif (switch == '--netserver'): GV.opt[switch] = val
-        elif (switch == '--netclient'): GV.opt[switch] = val
         elif (switch == '--version'): print_version()
+        elif (switch == '--netserver'): 
+            GV.opt['--netserver'] = 'netserver'
+            GV.opt['--netclient'] = 'netperf'
 
     # run default tests (if not specified)
     if GV.opt['-r'] == '':
