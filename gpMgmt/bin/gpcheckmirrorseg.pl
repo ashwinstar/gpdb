@@ -28,6 +28,7 @@ Options:
     -man             full documentation
     -connect         psql connect parameters
     -ignore          filename pattern to ignore during comparison
+    -dirignore       directory name pattern to ignore during comparison
 	-mastermirror    compare master and standby only 
 	-matchdirs       compare directory structure
 	-skipsegments    skip mirror check for segments which are not in sync
@@ -55,11 +56,25 @@ Options:
 
 =item B<-ignore>
 
-Specify a filename pattern that should be exclude when comparing data
+Specify a filename pattern that should be excluded when comparing data
 directories.  To specify multiple patterns, use multiple ignore
 arguments, eg:
 
   -ignore gp_dump -ignore pg_dump
+
+Note that "ignore" controls comparison of file contents and
+"dirignore" controls the comparison of directory structure.
+
+=item B<-dirignore>
+
+Specify a directory name pattern that should be exclude when comparing
+data directory structure during the "matchdir" phase.  To specify
+multiple patterns, use multiple dirignore arguments, eg:
+
+  -dirignore gp_dump -dirignore pg_dump
+
+Note that "ignore" controls comparison of file contents and
+"dirignore" controls the comparison of directory structure.
 
 =item B<-mastermirror> 
     
@@ -77,8 +92,9 @@ standard check on file contents.  Note that this check is unaffected
 by the "ignore" option: that is, while "ignore" patterns will exclude
 the comparison of file contents for files that match the pattern,
 directory names that match the pattern will not be excluded during the
-directory structure comparison.  Directory structure differences are
-flagged as extra or missing files.
+directory structure comparison unless they are specified by
+"dirignore".  Directory structure differences are flagged as extra or
+missing files.
 
 =item B<-skipsegments> 
     
@@ -190,6 +206,8 @@ my $glob_port;
 
 my $glob_ignore;
 
+my $glob_dirignore;
+
 my $glob_filedump;
 
 my $glob_exit;
@@ -218,6 +236,7 @@ BEGIN {
     my $help = 0;
     my $conn;
 	my @ignore;
+	my @dirignore;
 	my $skipseg;
 	my $mm;
 	my $matchdirs;
@@ -232,6 +251,7 @@ BEGIN {
                'help|?' => \$help, man => \$man, 
                "connect=s" => \$conn,
 		       'exclude|ignore:s' => \@ignore,
+		       'directoryignore|dirignore:s' => \@dirignore,
 		       'mm|mastermirror:s' => \$mm,
 		       'matchdirs:s' => \$matchdirs,
 		       'skipsegments:s' => \$skipseg,
@@ -248,6 +268,7 @@ BEGIN {
 
     $glob_connect = $conn;
     $glob_ignore = \@ignore;
+    $glob_dirignore = \@dirignore;
 
 	$glob_content = \@content;
 
@@ -2476,6 +2497,17 @@ if (1)
 
 	my $ignore_cmd = join (" | ", @{$ignore_arr});
 
+	my $dirignore_cmd = "";
+
+	if (defined($glob_dirignore) && scalar(@{$glob_dirignore}))
+	{
+		# MPP-11093: use "dirignore" to ignore directories 
+		my @m3 = map(quotemeta, @{$glob_dirignore});
+
+		$dirignore_cmd = 
+			" | perl -nle \'print unless /(" . join("|", @m3) . ")/  \' ";
+	}
+
 
 	# build an array of "good" segments/filespaces
 	my @good_segs;
@@ -2644,6 +2676,7 @@ EOF_msgstr
 			$cmd_template .= 
 				'find MYDIR -type d | awk \'{print $1" 0 ("$1") 0"}\' ' .
 				'| perl -nle \'print if /pg_changetracking|pg_stat_tmp/ \' ' .
+				$dirignore_cmd .
 				'| sort  ' .
 				'| perl -i -ple \'s|MYDIR||gm \' ' . 
 				# strip out [hostname] prefix
