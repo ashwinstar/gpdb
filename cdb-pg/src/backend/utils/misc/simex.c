@@ -46,6 +46,7 @@ const SimExESClassAssociate SimExESClassAssociateTable[] =
 	{SimExESClass_OOM, SimExESSubClass_OOM_ReturnNull, "OOM_ReturnNull"},
 	{SimExESClass_Cancel, SimExESSubClass_Cancel_QueryCancel, "Cancel_QueryCancel"},
 	{SimExESClass_Cancel, SimExESSubClass_Cancel_ProcDie, "Cancel_ProcDie"},
+	{SimExESClass_CacheInvalidation, SimExESSubClass_CacheInvalidation, "Cache_Invalidation"},
 };
 #define SimExESClassAssociateTable_Size (sizeof(SimExESClassAssociateTable) / sizeof(SimExESClassAssociate))
 
@@ -82,6 +83,9 @@ static SyncBitvectorContainer bitvectorContainer = NULL;
 /* maps bit vector offsets to ES subclasses */
 static int16 SimExESSubclassOffset[SIMEX_ES_SUBCLASS_MAX_COUNT];
 static int32 SimExESSubclassCount = 0;
+
+/* Should SimEx log stack traces, probably should become a GUC */
+static bool  SimExStackLogging = true;
 
 /* static functions */
 static bool check_associate_table(void);
@@ -346,15 +350,18 @@ SimExESSubClass simex_log_and_return(int32 associateOffset, const char *file, in
 
 	Assert(associateOffset < SimExESClassAssociateTable_Size && "Invalid association offset");
 
-	const char *buffer = get_backtrace(SIMEX_MAX_STACKTRACE_DEPTH);
-
-	ereport(LOG,
-			(errmsg("SimEx inject: class='%s', file='%s', line=%d, hash=%lu, stack trace: \n%s\n",
-					SimExESClassAssociateTable[associateOffset].ESName,
-					file,
-					line,
-					(unsigned long int) fingerprint,
-					buffer)));
+	if (SimExStackLogging)
+	{
+		const char *buffer = get_backtrace(SIMEX_MAX_STACKTRACE_DEPTH);
+		
+		ereport(LOG,
+				(errmsg("SimEx inject: class='%s', file='%s', line=%d, hash=%lu, stack trace: \n%s\n",
+						SimExESClassAssociateTable[associateOffset].ESName,
+						file,
+						line,
+						(unsigned long int) fingerprint,
+						buffer)));
+	}
 
 	return SimExESClassAssociateTable[associateOffset].subclass;
 }

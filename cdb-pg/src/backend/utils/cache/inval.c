@@ -96,7 +96,9 @@
 #include "utils/inval.h"
 #include "utils/memutils.h"
 #include "utils/relcache.h"
+#include "utils/simex.h"
 #include "utils/syscache.h"
+
 
 
 /*
@@ -725,7 +727,36 @@ AcceptInvalidationMessages(void)
 		}
 	}
 #elif defined(CLOBBER_CACHE_RECURSIVELY)
-	InvalidateSystemCaches();
+	{
+		InvalidateSystemCaches();
+	}
+
+#elif USE_FAULT_INJECTION
+	{
+		/*
+		 * Same basic idea as above, except using the SimEx facility, the main
+		 * advantage of this aproach is that it only triggers the invalidation
+		 * once per unique call stack, which should make testing significantly
+		 * faster.
+		 */
+		static bool in_recursion = false;
+
+		if (!in_recursion)
+		{
+			if (gp_simex_init && 
+				gp_simex_run && 
+				gp_simex_class == SimExESClass_CacheInvalidation)
+			{
+				SimExESSubClass subclass = SimEx_CheckInject();
+				if (subclass == SimExESSubClass_CacheInvalidation)
+				{
+					in_recursion = true;
+					InvalidateSystemCaches();
+					in_recursion = false;
+				}
+			}
+		}
+	}
 #endif
 }
 
