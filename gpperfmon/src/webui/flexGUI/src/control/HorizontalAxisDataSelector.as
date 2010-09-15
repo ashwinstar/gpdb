@@ -36,7 +36,6 @@ import flash.geom.Point;
 import model.GPPerfMonModelLocator;
 
 import mx.charts.chartClasses.ChartElement;
-import mx.charts.chartClasses.IChartElement2;
 import mx.collections.ArrayCollection;
 import mx.core.EventPriority;
 import mx.styles.CSSStyleDeclaration;
@@ -174,7 +173,7 @@ public class HorizontalAxisDataSelector extends ChartElement
 			{
 				var values:Array = dataValues;
 				// Get the location of where the selection line should be drawn
-				var location:Point = (chart as IChartElement2).dataToLocal( values[ 0 ], values[ 1 ] );
+				var location:Point = chart.dataToLocal( values[ 0 ], values[ 1 ] );
 				
 				// KLUDGE: We seem to off here by the width of the vertical axis.  Strange, not
 				// quite what I expected.  Fix it by subtracting the different coordinate systems
@@ -268,7 +267,7 @@ public class HorizontalAxisDataSelector extends ChartElement
 		var point:Point = new Point( chart.mouseX, chart.mouseY );
 				
 		// Get the data values that the point represents
-		var dataValues:Array = (chart as IChartElement2).localToData( point );
+		var dataValues:Array = chart.localToData( point );
 		
 		// The first value in the dataValues in the target x field value
 		var targetXFieldValue:Number = dataValues[ 0 ];
