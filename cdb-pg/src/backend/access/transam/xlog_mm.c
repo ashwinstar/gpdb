@@ -1386,8 +1386,8 @@ mmxlog_verify_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpoi
 bool
 mmxlog_get_checkpoint_counts(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc, int errlevel, int *tablespaceCount, int *filespaceCount)
 {
-	fspc_agg_state *f;
-	tspc_agg_state *t;
+	fspc_agg_state *f = NULL;
+	tspc_agg_state *t = NULL;
 
 	*tablespaceCount = 0;
 	*filespaceCount = 0;
