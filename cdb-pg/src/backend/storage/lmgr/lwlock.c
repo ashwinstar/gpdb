@@ -687,6 +687,7 @@ LWLockRelease(LWLockId lockid)
 	PGPROC	   *head;
 	PGPROC	   *proc;
 	int			i;
+	bool		saveExclusive;
 
 	PRINT_LWDEBUG("LWLockRelease", lockid, lock);
 
@@ -702,12 +703,12 @@ LWLockRelease(LWLockId lockid)
 	if (i < 0)
 		elog(ERROR, "lock %d is not held", (int) lockid);
 
-
+	saveExclusive = held_lwlocks_exclusive[i];
 	if (InterruptHoldoffCount <= 0)
-		elog(PANIC, "interrupt holdoff count is bad (%d) for release of lock %d (%s)", 
+		elog(PANIC, "upon entering lock release, the interrupt holdoff count is bad (%d) for release of lock %d (%s)", 
 			 InterruptHoldoffCount,
 			 (int)lockid,
-			 (held_lwlocks_exclusive[i] ? "Exclusive" : "Shared"));
+			 (saveExclusive ? "Exclusive" : "Shared"));
 
 #ifdef LWLOCK_TRACE_MIRROREDLOCK
 	if (lockid == MirroredLock)
@@ -805,6 +806,11 @@ LWLockRelease(LWLockId lockid)
 	/*
 	 * Now okay to allow cancel/die interrupts.
 	 */
+	if (InterruptHoldoffCount <= 0)
+		elog(PANIC, "upon exiting lock release, the interrupt holdoff count is bad (%d) for release of lock %d (%s)", 
+			 InterruptHoldoffCount,
+			 (int)lockid,
+			 (saveExclusive ? "Exclusive" : "Shared"));
 	RESUME_INTERRUPTS();
 }
 
