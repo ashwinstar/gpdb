@@ -1783,6 +1783,21 @@ File ChangeTracking_OpenFile(CTFType ftype)
 {
 	File	file;
 	char	path[MAXPGPATH];
+	struct	stat		st;
+	
+	if (stat(CHANGETRACKINGDIR, &st) < 0)
+	{
+		errno = 0;
+		if (mkdir(CHANGETRACKINGDIR, 0700) < 0)
+		{
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("change tracking failure, "
+							"could not create '%s' directory : %m",
+							CHANGETRACKINGDIR),
+					 errhint("create directory and re-start the cluster")));
+		}
+	}
 
 	ChangeTracking_SetPathByType(ftype, path);
 	
