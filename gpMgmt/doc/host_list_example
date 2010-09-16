@@ -1,28 +1,16 @@
-# sample host list for exchanging ssh keys (multi-nic configuration)
-
-# segment host 1
-seg1_eth1
-seg1_eth2
-seg1_eth3
-seg1_eth4
-
-# segment host 2
-seg2_eth1
-seg2_eth2
-seg2_eth3
-seg2_eth4
-
-# segment host 3
-seg3_eth1
-seg3_eth2
-seg3_eth3
-seg3_eth4
-
-
-# sample host list for initializing an array (one name per segment host)
-
-seg1
-seg2
-seg3
-
-
+sdw1-1
+sdw1-2
+sdw2-1
+sdw2-2
+sdw3-1
+sdw3-2
+sdw4-1
+sdw4-2
+sdw5-1
+sdw5-2
+sdw6-1
+sdw6-2
+sdw7-1
+sdw7-2
+sdw8-1
+sdw8-2
