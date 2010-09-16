@@ -152,26 +152,26 @@ aabd: appendonlytid:00000079:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 aabd: appendonlytid:00000080:  errmsg("invalid input syntax for type gpaotid: \"%s\"", 
 aabd: appendonlytid:00000081:  str))); 
 aaaaa GP_IGNORE: aabg: appendonlywriter - ./backend/access/appendonly/appendonlywriter.c
-aabg: appendonlywriter:00000098:  ereport(FATAL, 
-aabg: appendonlywriter:00000099:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-aabg: appendonlywriter:00000100:  errmsg("not enough shared memory for append only writer"))); 
-aabg: appendonlywriter:00000305:  ereport(ERROR, (errmsg("expected an AO hash entry for relid %d but " 
-aabg: appendonlywriter:00000306:  "found none", relid))); 
-aabg: appendonlywriter:00000427:  ereport(ERROR, 
-aabg: appendonlywriter:00000428:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-aabg: appendonlywriter:00000429:  errmsg("int64 out of range"))); 
-aabg: appendonlywriter:00000498:  ereport(ERROR, (errmsg("can't have more than %d different append-only " 
-aabg: appendonlywriter:00000499:  "tables open for writing data at the same time. " 
-aabg: appendonlywriter:00000500:  "if tables are heavily partitioned or if your " 
-aabg: appendonlywriter:00000501:  "workload requires, increase the value of " 
-aabg: appendonlywriter:00000502:  "max_appendonly_tables and retry", 
-aabg: appendonlywriter:00000503:  MaxAppendOnlyTables))); 
-aabg: appendonlywriter:00000568:  ereport(ERROR, (errmsg("could not find segment file to use for " 
-aabg: appendonlywriter:00000569:  "inserting into relation %s (%d).", 
-aabg: appendonlywriter:00000570:  get_rel_name(relid), relid))); 
-aabg: appendonlywriter:00000669:  ereport(ERROR, 
-aabg: appendonlywriter:00000670:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-aabg: appendonlywriter:00000671:  errmsg("int64 out of range (" INT64_FORMAT ")", (int64) tupcount))); 
+aabg: appendonlywriter:00000099:  ereport(FATAL, 
+aabg: appendonlywriter:00000100:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+aabg: appendonlywriter:00000101:  errmsg("not enough shared memory for append only writer"))); 
+aabg: appendonlywriter:00000308:  ereport(ERROR, (errmsg("expected an AO hash entry for relid %d but " 
+aabg: appendonlywriter:00000309:  "found none", relid))); 
+aabg: appendonlywriter:00000430:  ereport(ERROR, 
+aabg: appendonlywriter:00000431:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+aabg: appendonlywriter:00000432:  errmsg("int64 out of range"))); 
+aabg: appendonlywriter:00000552:  ereport(ERROR, (errmsg("can't have more than %d different append-only " 
+aabg: appendonlywriter:00000553:  "tables open for writing data at the same time. " 
+aabg: appendonlywriter:00000554:  "if tables are heavily partitioned or if your " 
+aabg: appendonlywriter:00000555:  "workload requires, increase the value of " 
+aabg: appendonlywriter:00000556:  "max_appendonly_tables and retry", 
+aabg: appendonlywriter:00000557:  MaxAppendOnlyTables))); 
+aabg: appendonlywriter:00000623:  ereport(ERROR, (errmsg("could not find segment file to use for " 
+aabg: appendonlywriter:00000624:  "inserting into relation %s (%d).", 
+aabg: appendonlywriter:00000625:  get_rel_name(relid), relid))); 
+aabg: appendonlywriter:00000724:  ereport(ERROR, 
+aabg: appendonlywriter:00000725:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+aabg: appendonlywriter:00000726:  errmsg("int64 out of range (" INT64_FORMAT ")", (int64) tupcount))); 
 aaaaa GP_IGNORE: baag: bitmap - ./backend/access/bitmap/bitmap.c
 baag: bitmap:00000079:  ereport (ERROR, 
 baag: bitmap:00000080:  (errcode(ERRCODE_INDEX_CORRUPTED), 
@@ -3603,34 +3603,40 @@ cada: cdbresynchronizechangetracking:00001317:  errdetail("SPI_connect failed in
 cada: cdbresynchronizechangetracking:00001601:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
 cada: cdbresynchronizechangetracking:00001602:  errmsg("Unable to obtain change tracking information from segment database."), 
 cada: cdbresynchronizechangetracking:00001603:  errdetail("SPI_connect failed in ChangeTracking_GetChanges()"))); 
-cada: cdbresynchronizechangetracking:00001867:  ereport(ERROR, 
-cada: cdbresynchronizechangetracking:00001868:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00001869:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
-cada: cdbresynchronizechangetracking:00001870:  fn1, fn2))); 
-cada: cdbresynchronizechangetracking:00002098:  ereport(WARNING, 
-cada: cdbresynchronizechangetracking:00002099:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00002100:  errmsg("ERROR(filerep): unable to read change tracking meta file \"%s\", " 
-cada: cdbresynchronizechangetracking:00002101:  "change tracking disabled : %m", 
-cada: cdbresynchronizechangetracking:00002102:  path), 
-cada: cdbresynchronizechangetracking:00002103:  errSendAlert(true))); 
-cada: cdbresynchronizechangetracking:00002187:  ereport(WARNING, 
-cada: cdbresynchronizechangetracking:00002188:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00002189:  errmsg("write error for change tracking meta file in " 
-cada: cdbresynchronizechangetracking:00002190:  "ChangeTracking_MarkFullResyncLockAcquired. " 
-cada: cdbresynchronizechangetracking:00002191:  "Change Tracking disabled : %m"), 
-cada: cdbresynchronizechangetracking:00002192:  errSendAlert(true))); 
-cada: cdbresynchronizechangetracking:00002542:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cada: cdbresynchronizechangetracking:00002543:  errmsg("Unable to obtain change tracking information from segment database."), 
-cada: cdbresynchronizechangetracking:00002544:  errdetail("SPI_connect failed in ChangeTracking_GetTotalBlocksToSync()"))); 
-cada: cdbresynchronizechangetracking:00002863:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cada: cdbresynchronizechangetracking:00002864:  errmsg("Unable to obtain change tracking information from segment database."), 
-cada: cdbresynchronizechangetracking:00002865:  errdetail("SPI_connect failed in ChangeTracking_CreateCompactLogFromFull()"))); 
-cada: cdbresynchronizechangetracking:00002990:  ereport(WARNING, 
-cada: cdbresynchronizechangetracking:00002991:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00002992:  errmsg("write error for change tracking %s file, " 
-cada: cdbresynchronizechangetracking:00002993:  "change tracking disabled : %m", 
-cada: cdbresynchronizechangetracking:00002994:  ChangeTracking_FtypeToString(ft)), 
-cada: cdbresynchronizechangetracking:00002995:  errSendAlert(true))); 
+cada: cdbresynchronizechangetracking:00001793:  ereport(ERROR, 
+cada: cdbresynchronizechangetracking:00001794:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00001795:  errmsg("change tracking failure, " 
+cada: cdbresynchronizechangetracking:00001796:  "could not create '%s' directory : %m", 
+cada: cdbresynchronizechangetracking:00001797:  CHANGETRACKINGDIR), 
+cada: cdbresynchronizechangetracking:00001798:  errhint("create directory and re-start the cluster"))); 
+cada: cdbresynchronizechangetracking:00001882:  ereport(ERROR, 
+cada: cdbresynchronizechangetracking:00001883:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00001884:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
+cada: cdbresynchronizechangetracking:00001885:  fn1, fn2))); 
+cada: cdbresynchronizechangetracking:00002113:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00002114:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00002115:  errmsg("ERROR(filerep): unable to read change tracking meta file \"%s\", " 
+cada: cdbresynchronizechangetracking:00002116:  "change tracking disabled : %m", 
+cada: cdbresynchronizechangetracking:00002117:  path), 
+cada: cdbresynchronizechangetracking:00002118:  errSendAlert(true))); 
+cada: cdbresynchronizechangetracking:00002202:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00002203:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00002204:  errmsg("write error for change tracking meta file in " 
+cada: cdbresynchronizechangetracking:00002205:  "ChangeTracking_MarkFullResyncLockAcquired. " 
+cada: cdbresynchronizechangetracking:00002206:  "Change Tracking disabled : %m"), 
+cada: cdbresynchronizechangetracking:00002207:  errSendAlert(true))); 
+cada: cdbresynchronizechangetracking:00002557:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cada: cdbresynchronizechangetracking:00002558:  errmsg("Unable to obtain change tracking information from segment database."), 
+cada: cdbresynchronizechangetracking:00002559:  errdetail("SPI_connect failed in ChangeTracking_GetTotalBlocksToSync()"))); 
+cada: cdbresynchronizechangetracking:00002878:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cada: cdbresynchronizechangetracking:00002879:  errmsg("Unable to obtain change tracking information from segment database."), 
+cada: cdbresynchronizechangetracking:00002880:  errdetail("SPI_connect failed in ChangeTracking_CreateCompactLogFromFull()"))); 
+cada: cdbresynchronizechangetracking:00003005:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00003006:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00003007:  errmsg("write error for change tracking %s file, " 
+cada: cdbresynchronizechangetracking:00003008:  "change tracking disabled : %m", 
+cada: cdbresynchronizechangetracking:00003009:  ChangeTracking_FtypeToString(ft)), 
+cada: cdbresynchronizechangetracking:00003010:  errSendAlert(true))); 
 aaaaa GP_IGNORE: caai: cdbsetop - ./backend/cdb/cdbsetop.c
 caai: cdbsetop:00000152:  ereport(ERROR, ( 
 caai: cdbsetop:00000153:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
@@ -16731,11 +16737,11 @@ laaj: lsyscache:00002383:  (errcode(ERRCODE_UNDEFINED_OBJECT),
 laaj: lsyscache:00002384:  errmsg("role \"%s\" does not exist", rolname), 
 laaj: lsyscache:00002385:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: raai: relcache - ./backend/utils/cache/relcache.c
-raai: relcache:00003898:  ereport(WARNING, 
-raai: relcache:00003899:  (errcode_for_file_access(), 
-raai: relcache:00003900:  errmsg("could not create relation-cache initialization file \"%s\": %m", 
-raai: relcache:00003901:  tempfilename), 
-raai: relcache:00003902:  errdetail("Continuing anyway, but there's something wrong."))); 
+raai: relcache:00003956:  ereport(WARNING, 
+raai: relcache:00003957:  (errcode_for_file_access(), 
+raai: relcache:00003958:  errmsg("could not create relation-cache initialization file \"%s\": %m", 
+raai: relcache:00003959:  tempfilename), 
+raai: relcache:00003960:  errdetail("Continuing anyway, but there's something wrong."))); 
 aaaaa GP_IGNORE: taai: typcache - ./backend/utils/cache/typcache.c
 taai: typcache:00000143:  ereport(ERROR, 
 taai: typcache:00000144:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
