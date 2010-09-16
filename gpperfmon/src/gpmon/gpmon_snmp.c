@@ -1227,7 +1227,7 @@ int snmp_array_collection(EmcConnectSymptom symptom, const char* oidname, const 
 		{
 			char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
 			snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, nextOID, nextOID_len);
-			gpmon_warningx(FLINE, 0, "snmp_array_collection could not find OID %s at host %d", oidstring, si.key.hostname);
+			record_status(EMC_CONNECT_SYMPTOM_SNMP, oidstring, display_buffer, GPDB_SNMP_STATUS_ERROR, "SNMP configuration issue on host");
 			last_item_in_subtree = 1;
 		}
 		else if (retVal == APR_EPROC_UNKNOWN)
