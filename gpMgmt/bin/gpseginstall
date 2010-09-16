@@ -50,7 +50,7 @@ nonRootCommands = set(['s', 'e', 'v'])                       # valid command typ
 defaultNonRootCommands = set(['s', 'v'])                     # commands to run by default for non-root user
 currentUser = None
 isLinux = False
-GPSSH_EXKEYS_TIMEOUT = 240
+GPSSH_EXKEYS_TIMEOUT = 600
 
 class InstallationInfo:
     def __init__(self, link_name, binary_path, binary_dir_location, binary_dir_name):
