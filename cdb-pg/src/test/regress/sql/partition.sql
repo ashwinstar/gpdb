@@ -3998,3 +3998,134 @@ partition by list (b)
   values (1,2)
 );
 
+-- more coverage tests
+
+-- bad partition by type
+create table cov1 (a int, b int)
+distributed by (a)
+partition by (b)
+(
+start (1) end (10) every (1)
+);
+
+-- bad partition by type
+create table cov1 (a int, b int)
+distributed by (a)
+partition by funky (b)
+(
+start (1) end (10) every (1)
+);
+
+drop table cov1;
+
+create table cov1 (a int, b int)
+distributed by (a)
+partition by range (b)
+(
+start (1) end (10) every (1)
+);
+
+-- syntax error
+alter table cov1 drop partition for (funky(1));
+
+-- no rank for default
+alter table cov1 drop default partition for (rank(1));
+
+-- no default
+alter table cov1 drop default partition;
+
+-- cannot add except by name
+alter table cov1 add partition for (rank(1));
+
+-- bad template
+alter table cov1 set subpartition template (values (1,2) (values (2,3)));
+
+-- create and drop default partition in one statement!
+alter table cov1 add default partition def1, drop default partition;
+
+drop table cov1;
+
+set gp_enable_hash_partitioned_tables = true;
+-- not hash
+create table cov1 (a int, b int)
+distributed by (a)
+partition by range (b)
+partitions 3
+(
+start (1) end (10) every (1)
+);
+
+-- not hash
+create table cov1 (a int, b int, d int)
+distributed by (a)
+partition by range (b)
+subpartition by range (d)
+subpartitions 3
+(
+start (1) end (10) every (1)
+);
+
+set gp_enable_hash_partitioned_tables = false;
+-- not hash
+create table cov1 (a int, b int)
+distributed by (a)
+partition by range (b)
+partitions 3
+(
+start (1) end (10) every (1)
+);
+
+-- not hash
+create table cov1 (a int, b int, d int)
+distributed by (a)
+partition by range (b)
+subpartition by range (d)
+subpartitions 3
+(
+start (1) end (10) every (1)
+);
+
+-- legal?!?! 
+create table cov1 (a int, b int)
+distributed by (a)
+partition by range (b)
+(
+start () end(2)  
+);
+
+-- no start, just end!
+select * from pg_partitions where tablename = 'cov1';
+
+drop table cov1;
+
+-- ??? should be every 5, not every 1...
+create table cov1 (a int, b int)
+distributed by (a)
+partition by range (b)
+(
+start (1) end(20) every 5 (1)
+);
+
+select * from pg_partitions where tablename = 'cov1';
+
+drop table cov1;
+
+create table cov1 (a int, b int)
+distributed by (a)
+partition by list (b)
+(
+partition p1 values (1,2,3,4,5,6,7,8)
+);
+
+-- bad split
+alter table cov1 split partition p1 at (5,50);
+
+-- good split
+alter table cov1 split partition p1 at (5,6,7) 
+into (partition p1, partition p2);
+
+select partitionboundary from pg_partitions where tablename = 'cov1';
+
+drop table cov1;
+
+

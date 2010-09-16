@@ -27,6 +27,28 @@ insert into fstest select i, i from generate_series (1,1000) i;
 
 select * from fstest;
 
+comment on filespace regressionfs1 is 'groovy';
+comment on tablespace regressionts1 is 'also groovy';
+
+-- partition coverage
+
+create table cov1 (a int, b int)
+distributed by (a)
+partition by range (b)
+(
+  partition p1 start (1) end (2) 
+    with (appendonly=true) tablespace regressionts1,
+  partition p2 start (2) end (3) tablespace regressionts1,
+  partition p3 start (3) end (4) 
+    with (appendonly=true) tablespace regressionts1
+);
+
+-- view is busted??
+select tablename, partitionname, partitiontablename, parenttablespace,
+partitiontablespace from pg_partitions where tablename = 'cov1';
+
+drop table cov1;
+
 -- err: not empty
 drop tablespace regressionts1;
 
